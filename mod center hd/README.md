@@ -14,7 +14,7 @@
 
 ## 1. POR QUÉ EXISTE ESTA CARPETA
 
-Las herramientas de `mod center\` y `modding resources discord\tools\` son
+Las herramientas de `mod center hd\` son
 **scripts Python 2/3 primitivos** (tkinter, 15-20KB, sin manejo de errores,
 hardcodeadas a un formato concreto) o **binarios compilados antiguos** (2006-2018).
 La comunidad las usa para el formato **PS2** (AMO/AMG/AMT), que está resuelto.
