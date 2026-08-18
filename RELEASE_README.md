@@ -1,0 +1,77 @@
+# DBZ Budokai 3 HD Collection — Release ejecutable
+
+Copyright (c) 2026 **NovaPowers**. Released under the MIT License.
+
+Este paquete contiene el ejecutable recompilado de *Dragon Ball Z: Budokai 3 HD
+Collection* (Xbox 360) con el launcher, el sistema de mods y el pipeline de
+modelos. **NO incluye los archivos del juego** (copyright): debes aportar los
+de tu copia legal.
+
+## Contenido
+
+- `dbz3.exe` — recompilador + launcher + sistema de mods
+- `rexruntime.dll` — runtime ReXGlue
+- `rexgpu-xenos.dll` — plugin GPU (Xenos)
+- `TracyClient.dll` — profiling (requerido por el runtime)
+- `amd_fidelityfx_dx12.dll` / `amd_fidelityfx_vk.dll` — upscaling FSR (D3D12/Vulkan)
+- `SPIRV-Tools-shared.dll` — utilidades SPIR-V (backend Vulkan)
+- `RELEASE_README.md` — este archivo
+
+## Cómo instalar y jugar
+
+1. **Aporta los archivos del juego** (no se incluyen, son de tu copia legal):
+   - Copia el `.xex` del juego como `default.xex` junto a `dbz3.exe`.
+   - Copia la carpeta de datos de tu región junto al ejecutable:
+     - **USA**: `us/` → `data_cmn.afs`, `data_eng.afs`, `data_fra.afs`,
+       `data_ger.afs`, `data_ita.afs`, `data_spn.afs`, `data_usi.afs`,
+       `data_yah.afs`, `adx_jpn.afs`, `adx_usa.afs`, `lang_jpn.afs`,
+       `lang_usa.afs`, `opening.sfd`, `Ending00.sfd`, `Ending01.sfd`.
+     - **EU (PAL)**: `eu/` → los mismos archivos de la región.
+2. **Ejecuta** `dbz3.exe`.
+3. En el launcher elige **Región** (USA / EU PAL), **Idioma**, **Vídeo** y
+   **Audio**, y pulsa **Play**.
+
+> Para extraer los archivos de tu **ISO legal** usa una herramienta tipo
+> `extract-xiso` (lee el FATX de Xbox 360). Ver `baserom.md` del repositorio
+> para los tamaños y checksums SHA-256 de cada archivo.
+
+## Mods (WIP)
+
+> 🚧 **Estado: en desarrollo (WIP).** El sistema de mods es experimental y puede
+> cambiar. Úsalo con copias de seguridad.
+
+Los mods se gestionan desde las pestañas **Mods**, **Texturas** y **Model Swap**
+del launcher. **No modifican** los archivos del juego: aplican un overlay sobre
+entradas concretas del AFS, así que cada mod pesa solo ~100 KB.
+
+- **Swap de modelo** B3→B3 nativo: reemplaza el personaje completo (geometría +
+  texturas) por otro del catálogo (183 personajes). Funciona en cualquier
+  dirección, incluso si el bin nuevo es más grande que el slot original
+  (mid-insert virtual).
+- **Texturas**: extrae las texturas de un personaje a PNG editables, las
+  editas y reconstruyes el mod.
+- **Música** (`og_music`): reemplaza los AFS de audio por región.
+
+## Estado de la release (WIP)
+
+El modo historia y los modos alternos se han verificado en una pasada completa
+**sin errores, crasheos ni fallos conocidos** con la configuración por defecto
+(D3D12 + upscaling 2x + 60 FPS). El sistema de mods es la parte experimental:
+los swaps y texturas funcionan, pero al ser personalizables, úsalos con
+copia de seguridad de tus AFS.
+
+## Bugs conocidos
+
+- **Vulkan experimental**: el backend Vulkan funciona pero el render 3D es
+  ~6.5x más lento que D3D12. Usa **D3D12** (por defecto).
+- **Port de personajes PS2/IW→B3**: investigado pero descartado (requiere
+  reconstrucción completa del formato; ver `docs/`).
+
+## Legal
+
+Proyecto no oficial, sin ánimo de lucro, de investigación y preservación. No
+afiliado ni avalado por Bandai Namco, Shueisha, Toei Animation ni ningún
+titular de los derechos de Dragon Ball. No se distribuye ningún `.xex`, AFS ni
+dato del juego. Los archivos del juego son de tu copia legal.
+
+Repositorio: https://github.com/novapowers0/DBZ-Budokai-3-HD-Collection
