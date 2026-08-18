@@ -1,0 +1,184 @@
+# bin|nombre|label|variante|jugable
+70|Android 16|X16G_BODY||1
+71|Android 16|X16G_BODY|Traje alternativo|1
+75|Android 17|X17G_BODY||1
+76|Android 17|X17G_BODY|Traje alternativo|1
+80|Android 18|X18G_BODY||1
+81|Android 18|X18G_BODY|Traje alternativo|1
+82|Android 18|X18G_BODY|Traje 3|1
+86|Syn Shenron|1SD_BODY_1||1
+87|Syn Shenron|1SD_BODY|Negro|1
+91|Dr. Gero|X20G_BODY||0
+92|Dr. Gero|X20G_BODY|Traje alternativo|0
+96|Babidi|XBAB_BODY||0
+99|Bardock|XBDK_BODY||1
+100|Bardock|XBDK_BODY|Traje alternativo|1
+104|Buu Gohan|XBGH_BODY_1||1
+105|Buu Gohan|XBGH_BODY|Traje alternativo|1
+107|Buu Gotenks|XBGX_BODY||1
+108|Buu Gotenks|XBGX_BODY|Traje alternativo|1
+110|Bulma|XBLM_BODY||0
+114|Buu Ghost|XBMG_BODY|Kamikaze|0
+116|Buu Piccolo|XBPC_BODY||1
+117|Buu Piccolo|XBPC_BODY|Traje alternativo|1
+119|Broly|XBRL_BODY||1
+120|Broly|XBRL_BODY|LSSJ|1
+121|Broly|XBRL_BODY|Traje alternativo|1
+122|Broly|XBRL_BODY|LSSJ alt|1
+128|Majin Buu|XBUL_BODY|Gordo|1
+129|Majin Buu|XBUL_BODY|Gordo (2)|1
+133|Super Buu|XBUM_BODY||1
+134|Super Buu|XBUM_BODY|Traje alternativo|1
+141|Kid Buu|XBUS_BODY||1
+142|Kid Buu|XBUS_BODY|Traje alternativo|1
+146|Cell|XCEL_BODY|Forma 1|1
+147|Cell|XCEL_BODY|Forma 2|1
+148|Cell|XCEL_BODY|Forma 3|1
+149|Cell|XCEL_BODY|Forma 1 alt|1
+150|Cell|XCEL_BODY|Forma 2 alt|1
+151|Cell|XCEL_BODY|Forma 3 alt|1
+160|Cell Jr.|XCLJ_BODY||1
+161|Cell Jr.|XCLJ_BODY|Traje alternativo|1
+166|Cooler|XCOO_BODY|Forma base|1
+167|Cooler|XCOO_BODY|Forma final|1
+168|Metal Cooler|XCOO_BODY||1
+169|Cooler|XCOO_BODY|Forma base alt|1
+170|Cooler|XCOO_BODY|Forma final alt|1
+171|Metal Cooler|XCOO_BODY|Traje alternativo|1
+176|Dabura|XDBR_BODY||1
+177|Dabura|XDBR_BODY|Traje alternativo|1
+181|Freeza|XFRZ_BODY|Forma 1|1
+182|Freeza|XFRZ_BODY|Forma 2|1
+183|Freeza|XFRZ_BODY|Forma 3|1
+184|Freeza|XFRZ_BODY|Forma 4|1
+185|Freeza|XFRZ_BODY|100%|1
+186|Freeza|XFRZ_BODY|Cibernetico|1
+187|Freeza|XFRZ_BODY|Forma 1 alt|1
+188|Freeza|XFRZ_BODY|Forma 2 alt|1
+189|Freeza|XFRZ_BODY|Forma 3 alt|1
+190|Freeza|XFRZ_BODY|Forma 4 alt|1
+191|Freeza|XFRZ_BODY|100% alt|1
+192|Freeza|XFRZ_BODY|Cibernetico alt|1
+193|Freeza|XFRZ_BODY_1|Forma 1 con nave|1
+214|Veku|GGL_BODY|Gogeta gordo|1
+215|Veku|GGL_BODY|Gogeta gordo alt|1
+217|Gogeta|XGGT_BODY|SSJ|1
+218|Gogeta|XGGT_BODY|SSJ4|1
+219|Gogeta|XGGT_BODY|SSJ alt|1
+220|Gogeta|XGGT_BODY|SSJ4 alt|1
+225|Gohan|XGHL_BODY|Adulto (violeta)|1
+226|Gohan|XGHL_BODY|Adulto SSJ (violeta)|1
+227|Gohan|XGHL_BODY|Adulto Mistico|1
+228|Gohan|XGHL_BODY|Adulto (naranja)|1
+229|Gohan|XGHL_BODY|Adulto SSJ (naranja)|1
+230|Gohan|XGHL_BODY|Adulto Mistico (naranja)|1
+235|Gohan|XGHM_BODY|Saga Cell|1
+236|Gohan|XGHM_BODY|Saga Cell SSJ|1
+238|Gohan|XGHM_BODY|Saga Cell armadura|1
+239|Gohan|XGHM_BODY|Saga Cell armadura SSJ|1
+240|Gohan|XGHM_BODY|Saga Cell armadura SSJ2|1
+246|Gohan|GHS_BODY|Nino|1
+247|Gohan|GHS_BODY|Namek armadura|1
+248|Gohan|GHS_BODY|Namek|1
+252|Goku|GKS_BODY|Nino|1
+253|Goku|GKS_BODY|Nino alt|1
+258|Ginyu|XGNY_BODY||1
+259|Ginyu|XGNY_BODY|Traje alternativo|1
+264|Goku|XGOK_BODY|Normal|1
+265|Goku|XGOK_BODY|Kaiohken|1
+266|Goku|XGOK_BODY|SSJ|1
+267|Goku|XGOK_BODY|SSJ2|1
+268|Goku|XGOK_BODY|SSJ3|1
+269|Goku|XGOK_BODY|SSJ4|1
+270|Goku|XGOK_BODY|Normal alt|1
+271|Goku|XGOK_BODY|Kaiohken alt|1
+272|Goku|XGOK_BODY|SSJ alt|1
+273|Goku|XGOK_BODY|SSJ2 alt|1
+274|Goku|XGOK_BODY|SSJ3 alt|1
+275|Goku|XGOK_BODY|SSJ4 alt|1
+276|Goku|XGOK_BODY|Traje roto|1
+277|Goku|XGOK_BODY|Traje roto + Kaiohken|1
+278|Goku|XGOK_BODY|Traje roto SSJ|1
+279|Goku|XGOK_BODY|Traje roto SSJ2|1
+280|Goku|XGOK_BODY|Traje roto SSJ3|1
+281|Goku|XGOK_BODY|Angelic|1
+282|Goku|XGOK_BODY|Angelic Kaiohken|1
+283|Goku|XGOK_BODY|Angelic SSJ|1
+284|Goku|XGOK_BODY|Angelic SSJ2|1
+285|Goku|XGOK_BODY|Angelic SSJ3|1
+286|Goku|XGOK_BODY|Angelic SSJ4|1
+287|Goku|XGOK_BODY|Angelic SSJ4 (2)|1
+293|Great Saiyaman|XGSM_BODY||1
+294|Great Saiyaman|XGSM_BODY|Traje alternativo|1
+298|Goten|XGTN_BODY||1
+299|Goten|XGTN_BODY|SSJ|1
+300|Goten|XGTN_BODY|Traje alternativo|1
+301|Goten|XGTN_BODY|SSJ alt|1
+305|Gotenks|XGTX_BODY|Normal|1
+306|Gotenks|XGTX_BODY_2|SSJ|1
+307|Gotenks|XGTX_BODY|SSJ3|1
+308|Gotenks|XGTX_BODY|Normal alt|1
+309|Gotenks|XGTX_BODY_2|SSJ alt|1
+310|Gotenks|XGTX_BODY|SSJ3 alt|1
+312|Ghost Gotenks|XGXG_BODY||1
+313|Ghost Gotenks|XGXG_BODY|SSJ3|1
+314|Fat Gotenks|XGXL_BODY||1
+315|Fat Gotenks|XGXL_BODY|Traje alternativo|1
+325|Kibito|XKBT_BODY||0
+327|Krillin|XKLL_BODY|Sin pelo / con pelo / armadura|1
+328|Krillin|XKLL_BODY|Con pelo|1
+329|Krillin|XKLL_BODY|Armadura|1
+334|Kibito Kai|XKOK_BODY||1
+335|Kibito Kai|XKOK_BODY|Traje alternativo|1
+339|Kaio-Shin|XKOS_BODY||1
+340|Kaio-Shin|XKOS_BODY|Traje alternativo|1
+345|Nappa|XNAP_BODY||1
+346|Nappa|XNAP_BODY|Traje alternativo|1
+350|Piccolo|XPIC_BODY|Normal|1
+351|Piccolo|XPIC_BODY|Nail fusion|1
+352|Piccolo|XPIC_BODY|Capa larga|1
+353|Piccolo Daimao|XPIC_BODY||1
+359|Recoome|RAD_SCOUT|Traje alternativo|1
+360|Raditz|XRAD_BODY||1
+361|Raditz|XRAD_BODY|Traje alternativo|1
+363|Saibaman|XRAD_HEAD||1
+376|Mr. Satan|STN_HEAIR|Con pelo|1
+377|Mr. Satan|XSTN_BODY||1
+378|Mr. Satan|XSTN_BODY|Traje alternativo|1
+383|Trunks|XTRS_BODY_1|Nino|1
+384|Trunks|XTRS_BODY_1|Nino SSJ|1
+385|Trunks|XTRS_BODY|Nino alt|1
+386|Trunks|XTRS_BODY|Nino SSJ alt|1
+390|Trunks|XTRX_BODY|Futuro espada|1
+391|Trunks|XTRX_BODY|Futuro espada SSJ|1
+392|Trunks|XTRX_BODY|Futuro espada alt|1
+393|Trunks|XTRX_BODY|Futuro espada SSJ alt|1
+394|Trunks|XTRX_BODY|Futuro armadura|1
+395|Trunks|XTRX_BODY|Futuro armadura SSJ|1
+400|Tenshinhan|TSH_BODY||1
+401|Tenshinhan|XTSH_BODY|Traje alternativo|1
+405|Uub|XUUB_BODY||1
+406|Uub|XUUB_BODY|Traje alternativo|1
+410|Videl|XVDL_BODY||1
+411|Videl|XVDL_BODY|Traje alternativo|1
+416|Vegeta|XVGT_BODY|Sin armadura|1
+417|Vegeta|XVGT_BODY|Sin armadura SSJ|1
+418|Vegeta|XVGT_BODY|SSJ4|1
+419|Majin Vegeta|XMVG_BODY||1
+420|Vegeta|XVGT_BODY|Armadura androides|1
+421|Vegeta|XVGT_BODY|Armadura androides SSJ|1
+422|Vegeta|XVGT_BODY|SSJ4 alt|1
+423|Majin Vegeta|XMVG_BODY|Armadura androides|1
+424|Vegeta|XVGT_BODY|Armadura saga Saiyan|1
+425|Vegeta|XVGT_BODY|Armadura saga Saiyan SSJ|1
+426|Majin Vegeta|XVGT_BODY|Armadura saga Saiyan|1
+427|Vegeta|XVGT_BODY|Armadura Namek|1
+428|Vegeta|XVGT_BODY|Armadura Namek SSJ|1
+429|Majin Vegeta|XVGT_BODY|Armadura Namek|1
+438|Vegito|XVTO_BODY||1
+439|Vegito|XVTO_BODY|SSJ|1
+440|Vegito|XVTO_BODY_2|Traje alternativo|1
+441|Vegito|XVTO_BODY|SSJ alt|1
+445|Yamcha|XYMC_BODY|Pelo corto|1
+446|Yamcha|XYMC_BODY|Vestimenta amarilla|1
+447|Yamcha|XYMC_BODY|Pelo largo|1

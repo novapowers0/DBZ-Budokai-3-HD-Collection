@@ -1,0 +1,94 @@
+# User-provided game files (never commit - copyrighted).
+assets/
+roms/
+isos/
+*.iso
+*.xiso
+*.xex
+*.afs
+*.bin
+*.awo
+*.azt
+*.amb
+*.amo
+*.amg
+
+# Save data and save states.
+saves/
+user_data/
+
+# Build output.
+out/
+build/
+build-*/
+release-stage/
+artifacts/
+*.exe
+*.dll
+*.pdb
+*.ilk
+*.obj
+*.tlog
+
+# Tools used by the modding scripts (kept in the repo on purpose).
+!tools/xbcompress.exe
+!tools/xbdecompress.exe
+
+# Generated code is derived from the copyrighted .xex. Regenerate locally.
+generated/*
+!generated/README.md
+
+# ReXGlue SDK (third-party, provided separately by rexglue/rexglue-sdk)
+rexglue/
+/rexglue-sdk/
+
+# ...except the runtime patches distributed in patches/ (mid-insert virtual AFS).
+!patches/
+patches/*
+!patches/rexglue-sdk/
+!patches/rexglue-sdk/**/*.h
+!patches/rexglue-sdk/**/*.cpp
+
+# Extracted/analysis outputs.
+afs_out/
+
+# Community modding resources (third-party, large).
+modding resources/
+modding resources discord/
+modding resources update/
+modding resources update 2/
+modding resources update 3/
+mod center/
+
+# User mods (content may carry copyright; keep mods/ for user-built only).
+mods/*/us/
+mods/*/.disabled
+
+# Python bytecode.
+__pycache__/
+*.pyc
+
+# User settings / local config.
+dbz3_user.toml
+*.local.toml
+*.local.ini
+
+# Logs, dumps, scratch.
+*.log
+*.dmp
+*.bmp
+*.png
+*.rgb
+*.csv
+*.frag
+*.bak
+*.tmp
+crash_*/
+
+# IDE, OS, and language caches.
+.vs/
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
