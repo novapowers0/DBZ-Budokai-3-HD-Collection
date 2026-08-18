@@ -258,13 +258,22 @@ public:
             game_dir = *arg;
             REXLOG_INFO("OnConfigurePaths - game_dir from arg: {}", game_dir.string());
         } else {
-            auto project_root = exe_dir.parent_path().parent_path().parent_path();
-            if (std::filesystem::is_directory(project_root / "us")) {
-                game_dir = project_root;
-                REXLOG_INFO("OnConfigurePaths - game_dir default (project root): {}", game_dir.string());
+            // Priority order for locating the game assets:
+            //   1) next to the exe (standalone release layout: dbz3.exe + us/ + default.xex)
+            //   2) the project root (dev layout: out/build/win-amd64-release, 3 levels up)
+            //   3) the parent of the exe folder
+            if (std::filesystem::is_directory(exe_dir / "us")) {
+                game_dir = exe_dir;
+                REXLOG_INFO("OnConfigurePaths - game_dir default (next to exe): {}", game_dir.string());
             } else {
-                game_dir = exe_dir.parent_path();
-                REXLOG_INFO("OnConfigurePaths - game_dir default (parent): {}", game_dir.string());
+                auto project_root = exe_dir.parent_path().parent_path().parent_path();
+                if (std::filesystem::is_directory(project_root / "us")) {
+                    game_dir = project_root;
+                    REXLOG_INFO("OnConfigurePaths - game_dir default (project root): {}", game_dir.string());
+                } else {
+                    game_dir = exe_dir.parent_path();
+                    REXLOG_INFO("OnConfigurePaths - game_dir default (parent): {}", game_dir.string());
+                }
             }
         }
         REXLOG_INFO("OnConfigurePaths - game_dir final: {}", game_dir.string());

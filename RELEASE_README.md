@@ -17,19 +17,42 @@ de tu copia legal.
 - `SPIRV-Tools-shared.dll` — utilidades SPIR-V (backend Vulkan)
 - `RELEASE_README.md` — este archivo
 
-## Cómo instalar y jugar
+## Cómo instalar y jugar (paso a paso)
 
-1. **Aporta los archivos del juego** (no se incluyen, son de tu copia legal):
-   - Copia el `.xex` del juego como `default.xex` junto a `dbz3.exe`.
-   - Copia la carpeta de datos de tu región junto al ejecutable:
-     - **USA**: `us/` → `data_cmn.afs`, `data_eng.afs`, `data_fra.afs`,
-       `data_ger.afs`, `data_ita.afs`, `data_spn.afs`, `data_usi.afs`,
-       `data_yah.afs`, `adx_jpn.afs`, `adx_usa.afs`, `lang_jpn.afs`,
-       `lang_usa.afs`, `opening.sfd`, `Ending00.sfd`, `Ending01.sfd`.
-     - **EU (PAL)**: `eu/` → los mismos archivos de la región.
-2. **Ejecuta** `dbz3.exe`.
-3. En el launcher elige **Región** (USA / EU PAL), **Idioma**, **Vídeo** y
-   **Audio**, y pulsa **Play**.
+El paquete **NO incluye los archivos del juego** (copyright). Tienes que
+aportarlos de tu **copia legal**. Haz esto:
+
+1. **Descomprime** el ZIP en una carpeta, por ejemplo `C:\Juegos\DBZ3\`.
+   Quedará un archivo `dbz3.exe` junto a varias DLLs.
+
+2. **Crea una carpeta `us`** (o `eu` si tu juego es PAL) **JUNTO a `dbz3.exe`**:
+
+   ```
+   C:\Juegos\DBZ3\
+   ├── dbz3.exe            ← ya viene aquí
+   ├── rexruntime.dll      ← ya viene aquí
+   ├── ... (DLLs)          ← ya vienen aquí
+   └── us/                 ← TÚ la creas
+   ```
+
+3. **Dentro de `us/`** copia los archivos de datos de tu copia legal del juego:
+   - USA: `data_cmn.afs`, `data_eng.afs`, `data_fra.afs`, `data_ger.afs`,
+     `data_ita.afs`, `data_spn.afs`, `data_usi.afs`, `data_yah.afs`,
+     `adx_jpn.afs`, `adx_usa.afs`, `lang_jpn.afs`, `lang_usa.afs`,
+     `opening.sfd`, `Ending00.sfd`, `Ending01.sfd`.
+   - EU/PAL: los mismos archivos pero en una carpeta `eu/`.
+
+4. **Copia el ejecutable del juego** como `default.xex` **junto a `dbz3.exe`**
+   (en `C:\Juegos\DBZ3\default.xex`, al mismo nivel que `dbz3.exe`, NO dentro
+   de `us/`).
+
+5. **Ejecuta `dbz3.exe`** (doble clic).
+
+6. En la ventana del launcher elige **Región** (USA / EU PAL), **Idioma**,
+   **Vídeo** y **Audio**, y pulsa **Play**.
+
+> Si algo falla, comprueba que `us/` (o `eu/`) y `default.xex` están en la
+> MISMA carpeta que `dbz3.exe`, tal como en el dibujo del paso 2.
 
 > Para extraer los archivos de tu **ISO legal** usa una herramienta tipo
 > `extract-xiso` (lee el FATX de Xbox 360). Ver `baserom.md` del repositorio
