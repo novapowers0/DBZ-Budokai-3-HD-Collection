@@ -22,10 +22,9 @@ Uso:
   python awg_to_obj.py <bin_amb_hd> <b327_ps2.bin> <salida.obj>
 """
 
-import os
 import io, sys, struct, math
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-sys.path.insert(0, os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..\..', 'awo_tools')))
+sys.path.insert(0, r'C:\Users\javie\Desktop\PROYECTOS IA\DBZ Budokai 3 HD Collection\awo_tools')
 from pose_matrix import build_world_mats
 
 def u32be(b, o): return struct.unpack('>I', b[o:o+4])[0]

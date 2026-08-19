@@ -19,10 +19,9 @@ Uso:
   python swap_cuerpo_hd_v2.py <goten.bin> <krillin.bin> <out_amb>
 """
 
-import os
 import sys, io, struct
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-sys.path.insert(0, os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..\..', 'awo_tools')))
+sys.path.insert(0, r'C:\Users\javie\Desktop\PROYECTOS IA\DBZ Budokai 3 HD Collection\awo_tools')
 from build_hd_world_mats_b3 import build_hd_world_mats_b3
 
 def u32be(b, o): return struct.unpack('>I', b[o:o+4])[0]

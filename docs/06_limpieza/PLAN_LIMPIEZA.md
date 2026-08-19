@@ -21,11 +21,16 @@
 
 ## 2. PLAN POR ÁREA
 
-### 2.1 BMPs de debug (seguro borrar)
+### 2.1 BMPs de debug (seguro borrar — ya gateados por Dev mode, 2026-08-19)
 **Qué**: `frontbuf_*.bmp`, `black_*.bmp` (31.5MB c/u, ~30 archivos) en el build release.
 **Qué son**: dumps de framebuffer del shader dump / debug.
 **Acción**: borrarlos. No afectan al juego.
 **Riesgo**: nulo.
+**Estado**: ✅ los 28 .bmp (~840MB) ya se borraron el 2026-08-19. Además, el toggle
+"GPU diagnostic logging" ahora SOLO genera estos dumps si el **Dev mode** está
+también activo (fix en `src/launcher/settings.cpp`: `dbz1_diag_logging` se propaga
+como `DiagLogging() && DevMode()`), así que no reaparecen en juego normal aunque
+el checkbox quede activado por accidente.
 
 ### 2.2 Crash dumps (seguro borrar)
 **Qué**: `crash_*.dmp` (8 archivos).

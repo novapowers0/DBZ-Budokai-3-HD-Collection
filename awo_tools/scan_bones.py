@@ -54,7 +54,7 @@ def main():
     afs = sys.argv[1]
     bins = [int(x) for x in sys.argv[2:]] if len(sys.argv) > 2 else []
     entries = read_afs_index(afs)
-    xbd = os.path.join(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'tools'), 'xbdecompress.exe')
+    xbd = r'C:\Users\javie\Desktop\PROYECTOS IA\DBZ Budokai 3 HD Collection\mod center\Xbox 360 Compression - Decompression tool from the XBOX Development Kit\xbdecompress.exe'
     tmp = tempfile.mkdtemp()
     results = []
     for bn in bins:

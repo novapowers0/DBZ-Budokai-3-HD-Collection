@@ -502,7 +502,15 @@ bool RumbleEnabled() { return REXCVAR_GET(dbz3_rumble); }
 void SetRumbleEnabled(bool enabled) { REXCVAR_SET(dbz3_rumble, enabled); }
 
 bool DevMode() { return REXCVAR_GET(dbz3_dev_mode); }
-void SetDevMode(bool enabled) { REXCVAR_SET(dbz3_dev_mode, enabled); }
+void SetDevMode(bool enabled) {
+  REXCVAR_SET(dbz3_dev_mode, enabled);
+  // The SDK diagnostic .bmp/readback dumps are gated by Dev mode too (see
+  // SetDiagLogging): toggling Dev mode re-asserts the effective diag flag so
+  // the GPU plugin stops writing frontbuf_*.bmp/black_*.bmp the moment Dev
+  // mode is turned off.
+  rex::cvar::SetFlagByName("dbz1_diag_logging",
+                           (DiagLogging() && enabled) ? "true" : "false");
+}
 
 bool DiagLogging() { return REXCVAR_GET(dbz3_diag_logging); }
 void SetDiagLogging(bool enabled) {
@@ -510,7 +518,12 @@ void SetDiagLogging(bool enabled) {
   // Propagate to the SDK's shared dbz1_diag_logging cvar (defined in
   // rexruntime.dll) so the GPU plugin's diagnostic logging/readbacks/.bmp
   // dumps are gated by the same toggle. Default off -> no log/.bmp clutter.
-  rex::cvar::SetFlagByName("dbz1_diag_logging", enabled ? "true" : "false");
+  //
+  // The .bmp/readback dumps only run when Dev mode is ALSO enabled: they are
+  // diagnostic-only and should never produce frontbuf_*.bmp/black_*.bmp in
+  // normal play, even if this toggle is left on by accident.
+  rex::cvar::SetFlagByName("dbz1_diag_logging",
+                           (enabled && DevMode()) ? "true" : "false");
 }
 
 bool CrashDumpEnabled() { return REXCVAR_GET(dbz3_diag_crashdump); }
@@ -572,7 +585,7 @@ void ApplyRuntimeSettingsToSdk(bool for_game) {
   SetSdkDouble("present_fsr_sharpness_reduction", REXCVAR_GET(dbz3_fsr_sharpness));
   SetSdkDouble("present_cas_additional_sharpness", REXCVAR_GET(dbz3_cas_sharpness));
   SetSdkBool("audio_mute", false);
-  SetSdkBool("dbz1_diag_logging", DiagLogging());
+  SetSdkBool("dbz1_diag_logging", DiagLogging() && DevMode());
   SetSdkDouble("master_volume", REXCVAR_GET(dbz3_master_volume));
   SetSdkString("audio_output_device", std::string());
 

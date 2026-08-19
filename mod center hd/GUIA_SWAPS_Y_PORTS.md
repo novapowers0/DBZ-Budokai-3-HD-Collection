@@ -3,7 +3,7 @@
 > 2026-08-17. Documento vivo para el proyecto B3. Consolida el conocimiento
 > validado en el proyecto hermano **B1** (mismo runtime ReXGlue, MISMO formato
 > HD) y lo adapta a B3. Antes de nada: **lea las lecciones del B1 en
-> `<dbz1>\AGENTS.md`**
+> `C:\Users\javie\Desktop\PROYECTOS IA\DBZ Budokai HD Collection\AGENTS.md`**
 > (especialmente lecciones 8-15) — este documento es el resumen operativo.
 
 ---

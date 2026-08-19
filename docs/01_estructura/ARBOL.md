@@ -1,6 +1,6 @@
 # Árbol del proyecto — qué es cada carpeta
 
-> Actualizado: 2026-08-14. Rutas relativas a `<proyecto>/`.
+> Actualizado: 2026-08-14. Rutas relativas a `C:\Users\javie\Desktop\PROYECTOS IA\DBZ Budokai 3 HD Collection\`.
 
 ---
 

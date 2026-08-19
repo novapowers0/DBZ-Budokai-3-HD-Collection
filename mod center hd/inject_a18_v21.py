@@ -17,10 +17,9 @@ Uso:
   python inject_a18_v21.py <model_v2.json> <b327_ps2> <e326> <out>
 """
 
-import os
 import io, sys, json, struct, math
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-sys.path.insert(0, os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..\..', 'awo_tools')))
+sys.path.insert(0, r'C:\Users\javie\Desktop\PROYECTOS IA\DBZ Budokai 3 HD Collection\awo_tools')
 from pose_matrix import build_world_mats, apply_mat
 
 F32 = struct.Struct('>f')

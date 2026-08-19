@@ -17,11 +17,10 @@ Uso:
   python build_janemba.py <bin_amb_krillin> <bin_ps2_janemba> <output_amb>
 """
 
-import os
 import struct
 import sys
 
-sys.path.insert(0, os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..\..\..', 'awo_tools')))
+sys.path.insert(0, r'C:\Users\javie\Desktop\PROYECTOS IA\DBZ Budokai 3 HD Collection\awo_tools')
 from extract_geometry import PS2Model
 from convert_personaje import extract_geometry_skinned
 

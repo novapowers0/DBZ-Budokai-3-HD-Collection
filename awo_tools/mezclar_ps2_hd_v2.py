@@ -12,12 +12,11 @@ rango del hueso HD. Si no hay cobertura, se mantiene la pos HD original.
 Uso:
   python mezclar_ps2_hd_v2.py <bin_hd> <bin_ps2> <output_bin>
 """
-import os
 import struct
 import sys
 import math
 
-sys.path.insert(0, os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..\..', 'awo_tools')))
+sys.path.insert(0, r'C:\Users\javie\Desktop\PROYECTOS IA\DBZ Budokai 3 HD Collection\awo_tools')
 from extract_geometry import PS2Model
 from convert_personaje import SkinData
 from pose_matrix import build_world_mats, apply_mat
