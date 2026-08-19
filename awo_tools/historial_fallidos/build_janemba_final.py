@@ -17,10 +17,9 @@ Uso:
   python build_janemba_final.py <janemba.amb> <krillin_hd> <krillin_ps2> <out_amb>
 """
 
-import os
 import sys, io, struct
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-sys.path.insert(0, os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..\..\..', 'awo_tools')))
+sys.path.insert(0, r'C:\Users\javie\Desktop\PROYECTOS IA\DBZ Budokai 3 HD Collection\awo_tools')
 
 from build_awo_desde_cero import (parse_ps2_amg, read_labels_ps2, read_labels_hd,
     build_mapping, build_vertex_hd, build_world_mats_ps2, inv_rigid, apply_mat,

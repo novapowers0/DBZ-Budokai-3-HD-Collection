@@ -51,6 +51,7 @@ patches/*
 
 # Extracted/analysis outputs.
 afs_out/
+awo_tools/bins_trabajo/
 
 # Community modding resources (third-party, large).
 modding resources/

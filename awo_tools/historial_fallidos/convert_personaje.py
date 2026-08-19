@@ -13,11 +13,10 @@ Uso:
   python convert_personaje.py <bin_ps2_amo0> <personaje> <output>
 """
 
-import os
 import struct
 import sys
 
-sys.path.insert(0, os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..\..\..', 'awo_tools')))
+sys.path.insert(0, r'C:\Users\javie\Desktop\PROYECTOS IA\DBZ Budokai 3 HD Collection\awo_tools')
 from extract_geometry import PS2Model
 
 F32 = struct.Struct('>f')

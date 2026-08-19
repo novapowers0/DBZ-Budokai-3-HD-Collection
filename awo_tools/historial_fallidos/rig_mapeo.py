@@ -27,7 +27,6 @@ Uso:
   python rig_mapeo.py <verts_skinned_jnb.bin> <output_verts_kll.bin>
 """
 
-import os
 import struct
 import sys
 
@@ -116,12 +115,12 @@ def main():
     out = sys.argv[2]
 
     # Cargar labels
-    krillin = open(os.path.join(os.environ.get('TEMP', ''), 'opencode', 'b327_hd.bin'), 'rb').read()
+    krillin = open(r'C:\Users\javie\AppData\Local\Temp\opencode\b327_hd.bin', 'rb').read()
     kll_labels = read_labels_hd(krillin)
-    janemba = open(os.path.join(os.environ.get('TEMP', ''), 'opencode', 'janemba_541.bin'), 'rb').read()
+    janemba = open(r'C:\Users\javie\AppData\Local\Temp\opencode\janemba_541.bin', 'rb').read()
     # amg_base del AMG0 de Janemba
     import sys as _s
-    _s.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    _s.path.insert(0, r'C:\Users\javie\Desktop\PROYECTOS IA\DBZ Budokai 3 HD Collection\awo_tools')
     from extract_geometry import PS2Model
     model = PS2Model(janemba)
     amg_base = model.amo0 + model.amg_offsets()[0]

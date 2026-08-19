@@ -16,11 +16,10 @@ Uso:
   python build_hd_pipeline.py <bin_ps2> <bin_hd_template> <cell> <max_tri> <out_bin>
 """
 
-import os
 import struct
 import sys
 
-sys.path.insert(0, os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..\..', 'awo_tools')))
+sys.path.insert(0, r'C:\Users\javie\Desktop\PROYECTOS IA\DBZ Budokai 3 HD Collection\awo_tools')
 from parse_ps2_mesh import r32, parse_part_mesh, VERT_STRIDE
 from convert_personaje import SkinData
 from extract_geometry import PS2Model

@@ -1,7 +1,7 @@
 # Inventario de modding resources (4 carpetas)
 
 > Actualizado: 2026-08-14. Qué hay en cada carpeta para no duplicar trabajo.
-> Rutas relativas a `<proyecto>/`.
+> Rutas relativas a `C:\Users\javie\Desktop\PROYECTOS IA\DBZ Budokai 3 HD Collection\`.
 
 ---
 

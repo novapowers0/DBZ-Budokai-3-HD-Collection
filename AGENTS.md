@@ -13,7 +13,7 @@ Port recompilado a PC de **DBZ Budokai 3 HD Collection (Xbox 360)** usando el
 (`src/launcher/`), la lógica de región/mods, y el runtime (rexglue-sdk).
 
 - **dbz3** (este proyecto): Budokai 3 HD Collection
-- **dbz1**: `<dbz1>`
+- **dbz1**: `C:\Users\javie\Desktop\PROYECTOS IA\DBZ Budokai HD Collection`
   (proyecto hermano, ya con los fixes de input aplicados)
 
 ## 2. UBICACIONES CLAVE
@@ -266,6 +266,14 @@ LOBI desplazados al final (29-37) y CHEST=3. El mapeo B1→B3 debe ser POR LABEL
     (Título/Descripción/Autor/Version — 2026-08-17 añadido campo Titulo/name).
   - **60fps con debug**: Dev tab → "Show FPS counter" (`dbz3_show_fps`) →
     overlay in-game condicional (estilo dbz1 `DebugOverlayDialog`).
+  - **🔴 .bmp de diagnóstico gateados por Dev mode (2026-08-19)**: el toggle
+    "GPU diagnostic logging" (`dbz3_diag_logging`) propagaba `dbz1_diag_logging`
+    al SDK, y el runtime escribía `frontbuf_*.bmp`/`black_*.bmp` (~31.5MB c/u)
+    cada 60 frames aunque Dev mode estuviera OFF → se acumulaban ~840MB. Fix en
+    `src/launcher/settings.cpp`: la propagación ahora es `DiagLogging() && DevMode()`
+    (en `SetDiagLogging`, `SetDevMode` y `ApplyRuntimeSettingsToSdk`). Los dumps
+    SOLO se generan con Dev mode + toggle ambos ON. Limpiados los 28 .bmp del
+    build.
   - **Adaptado a cualquier Hz de monitor + anti-bloqueo** (2026-08-17):
     - `DetectRefreshRate()` (Win32 `EnumDisplaySettingsW`) detecta los Hz del
       monitor y los muestra en la Video tab (calculado UNA vez, no por frame).
@@ -952,7 +960,7 @@ Plan validado (ver AWO_FORMAT.md sección 8 y awo_tools/RE_PROGRESO.md):
         - **`Goku_B3_PS3.zip`** (no descargado, era duplicado de los que ya
           teníamos). El resto: texturas, listas de bins, audio, shaders.
 53. [x] **🔴 RB2 (Raging Blast 2) = REFERENCIA DEL SKINNING SPIKE CHUNSOFT**
-        (`<RagingBlast2>\`):
+        (`C:\Users\javie\Desktop\PROYECTOS IA\Raging Blast 2\`):
         - Recompile PC del RB2 (2010) con el MISMO SDK ReXGlue/xenia/D3D12.
         - Modloader acepta ZPAK PS3 (STPZ→bloques 0LCS): _i.zpak=IORAM (malla+
           esqueleto), _s.zpak=SPR (sprites), _v.zpak=VRAM (texturas).
@@ -1620,3 +1628,329 @@ Construir el conversor PS2/OBJ→bin HD autocontenido para Janemba:
 3. Reconstruir la estructura de dibujo HD (mesh parts + descriptores + arms)
    coherente — el patrón de `amg_c.py` en HD.
 4. Instalar como override (swap) en el slot 327 y probar.
+
+## 13. 🔴🔴 SESIÓN 2026-08-19 — OJO FRESCO + HALLAZGO: MULTIPLES FORMATOS DE VÉRTICE
+
+**Revisión externa del proyecto (perspectiva nueva) + herramienta de feedback rápido
++ hallazgo que cambia el diagnóstico del port PS2→B3.**
+
+### 13.1 🔴 HALLAZGO CLAVE: EL B3 HD TIENE VARIOS FORMATOS DE VÉRTICE, NO UNO
+
+**El RE se hizo casi entero sobre el bin MÁS RARO del juego (Krillin b327, 18 AWGs).
+Otros bins nativos usan formatos de vértice DISTINTOS.** Verificado empíricamente
+leyendo bins frescos del mismo `us/data_cmn.afs`:
+
+| Personaje | bin | AWGs | bones | marker buffer principal | layout |
+|---|---|---|---|---|---|
+| Krillin | 327 | 18 | 51 | `0xFFFFFFFF` en +0 | **Formato A**: sec34 skinned `[FFFF,u,v,z,x,y,peso,BONE@28,nz,-ny,nx]` + vb2 estático (pos absolutas, bone=FFFF) |
+| Bulma | 110 | 2 | 43 | sin FFFF | formato B (posiciones en +0, otro campo en +24/+28) |
+| Babidi | 96 | 1 | 41 | `0x00090000` | formato C: posiciones en +0, sin marker FFFF, bones basura en +28 |
+| Goten | 298 | 21 | 56 | `0x20353320` | formato C/B: mezcla, NaN en algunos campos |
+| Cell F2 | 147 | 17 | 48 | FFFF en +0 | formato A (igual que Krillin) |
+
+- El bin e327 (otro Krillin, 624000 B) ya documentaba un layout "tipo B1" distinto
+  (item 44). → **El guest autodetecta el formato de cada bin. Cada bin es
+  autocontenido (se confirma la tesis de §12).**
+- **Implicación**: los swaps nativos que funcionan (Bulma/Babidi/Goten → slot
+  Krillin) llevan formatos DISTINTOS al de Krillin → el guest acepta cualquier
+  formato coherente. **El port de un personaje nuevo NO tiene que forzar el
+  formato A de Krillin: se puede emitir en el formato de una plantilla simple
+  probada en juego (Babidi/Bulma).**
+- La "inyección en plantilla de Krillin" fallaba porque forzaba geometría PS2 a
+  la topología/mesh-ref específicos de Krillin (formato A). Causa raíz ahora clara.
+
+### 13.2 HERRAMIENTA NUEVA: `awo_tools/awg_to_obj_b3.py` (exportador OBJ autocontenido)
+
+Exporta un bin HD (#AMB/#AWO) a OBJ **sin necesidad del PS2 de referencia**:
+- Matrices world reconstruidas desde los ejes del propio bin: quat+pos local en
+  los 12 primeros floats del eje (80B), **puntero padre en +0x40 (rel AWG0)**.
+  Verificado: world HD-from-axes == world PS2 **51/51 coincidencia exacta** en
+  Krillin. (Corrige la creencia del item 30/40 de que "el eje no tiene matriz".)
+- Layout AWG0 verificado empíricamente (dirime la discrepancia con la template
+  010 "PS3" del Discord, que usa offsets+size y da conteos absurdos):
+  `+0x2C vb2_rel | +0x30 ib_rel | +0x34 sec34_rel | +0x38 end_rel` (offsets, no
+  pares off+size). Los conteos salen exactos (Krillin 1956/226/5140).
+- **`analyze_bin_hd.py` está DESACTUALIZADO**: usa el layout de la template 010
+  (offsets+size en +28/+2C/+30/+34) que es INCORRECTO para X360 → da n_sec
+  absurdos (233 en Krillin). Corregir o marcar como PS3-only.
+- Uso: `python awo_tools\awg_to_obj_b3.py <bin> [out.obj] [--no-skin]`.
+
+**Este exportador es el bucle de feedback que faltaba**: permite ver la geometría
+de cualquier bin construido en 2 segundos sin abrir el juego (detectó al instante
+la diferencia de formatos de Babidi/Goten).
+
+### 13.3 DIAGNÓSTICO RÁPIDO DE UN BIN (bounds/finitud)
+
+Script de análisis de los OBJ exportados: comprueba NaN/inf y bounding box.
+Los personajes nativos válidos (Krillin, Cell F2) dan bounds humanos plausibles
+(~7-25 unidades) y 0 NaN. Los bins construidos de Janemba
+(`janemba_from_cell.amb`, `janemba_v2.amb`) exportan limpios: **4782 verts, 2100
+tris, 0 NaN, bounds plausibles** → la geometría del port está BIEN FORMADA; lo
+pendiente es si el guest la acepta.
+
+### 13.4 MOD DE PRUEBA INSTALADO: `janemba_from_cell` (slot 327)
+
+- Bin: `awo_tools/bins_trabajo/janemba_from_cell.amb` (796996 B, #AMB con AWO 340KB
+  + AZT 375KB, 48 huesos JNB, sec34=3832 + vb2=950 + ib=6302).
+- Construido con `build_from_template.py` usando **Cell Forma 2 (bin 147, 48 huesos)
+  como plantilla estructural** (mismo nº de huesos que Janemba) + geometría real de
+  Janemba (ps2_to_hd_geometry) + descriptores regenerados cubriendo toda la geometría.
+- Instalado como override por entrada (LZX /N:2048 = 122472 B, pad a 122880):
+  `mods/janemba_from_cell/us/data_cmn.afs/327/geom.bin` + `manifest.txt`.
+- **ACTIVO** (sin `.disabled`). Único otro mod activo: `tex_91` (entrada 91, sin
+  conflicto). `dbz3_enabled_mods` del toml sigue siendo código muerto (la activación
+  real es por ausencia de `.disabled`).
+- **⚠️ PENDIENTE PROBAR EN JUEGO**: arrancar → selector de personaje → Krillin
+  (slot 327) → si muestra silueta de Janemba, la reconstrucción autocontenida
+  está VALIDADA y el pipeline PS2→B3 queda abierto. Si crashea/cuelga, el guest
+  rechaza los descriptores/arms de Cell con geometría de Janemba.
+- El bin excede el to_read del slot (122472 > 106496) → ejercita además el
+  **mid-insert virtual** del runtime (pendiente de validación en juego desde
+  el 18/08 con goten_override_test).
+
+### 13.5 VEREDICTO DE VIABILIDAD (perspectiva fresca)
+
+- **El port PS2→B3 es VIABLE y está MÁS cerca de lo que sugiere el historial.** Cada
+  fracaso previo (Janemba, Krillin PS2) fue un bug concreto identificado y resuelto
+  por separado: IB falso (→ FaceType), bone en +28 (→ layout A), estructura incoherente
+  (→ template con mismo nº de huesos + descriptores regenerados), formatos (→ hallazgo
+  13.1). El B1 hermano YA completó un port PS2→HD completo (Goku) reconstruyendo el IB.
+- **El bloqueo real no es la investigación sino el feedback**: cada test costaba
+  abrir el juego. `awg_to_obj_b3.py` + el chequeo de bounds lo reducen a segundos.
+- **Conclusión de estrategia**: no forzar el formato de Krillin. Emitir el personaje
+  nuevo en el formato de una plantilla simple probada (Babidi/Bulma) o validar la
+  plantilla Cell F2 (48 huesos) con Janemba. Próximo paso = probar `janemba_from_cell`.
+
+### 13.6 🔴🔴 CAUSA RAÍZ DEL "KRILLIN SIN CAMBIO" (2026-08-19): DLL DEL RUNTIME STALE
+
+**El mod `janemba_from_cell` se probó en juego (13:37, log dbz3_056) y Krillin salía
+100% normal.** Tras análisis del runtime (no del bin — el LZX descomprime exacto al
+.amb fuente), la causa NO era el mod sino la **DLL del runtime desactualizada**:
+
+- El `out/build/win-amd64-release/rexruntime.dll` era la versión **vieja** (11155968 B,
+  del 14/08): contiene `AfsFindModOverride` + los debug `AFS327 READ`/`AFS MOD READ`
+  pero **NO** el mid-insert virtual (`AfsGetVirtualTable`/`AfsTranslateOffset` y los
+  logs `AFS OVERRIDE LOOKUP/HIT/MISS` AUSENTES en la DLL).
+- La DLL **correcta** (11183104 B, 18/08 12:29, con mid-insert virtual) existía en
+  `rexglue-sdk/out/win-amd64/rexruntime.dll` pero **no se había copiado** al build:
+  el build tenía la copia vieja de `rexglue/bin`.
+- **Consecuencia**: el override del slot 327 (geom.bin 122880 B > to_read 106496)
+  se rechazaba en silencio → el guest leía el Krillin original → "0 cambios".
+  El sistema de override simple (bins ≤ to_read, p.ej. tex_91 114688 ≤ 114688) sí
+  funcionaba, por eso tex_91 seguía OK.
+- **Esto explica también por qué `goten_override_test` (110592 > 106496) nunca se
+  validó**: el mid-insert virtual JAMÁS había corrido en juego (AGENTS lo marcaba
+  "PENDIENTE probar en juego").
+- **Fix aplicado**: `Copy-Item rexglue-sdk/out/win-amd64/rexruntime.dll →
+  out/build/win-amd64-release/rexruntime.dll`. Verificado: la DLL del build ahora
+  tiene los strings del mid-insert virtual y el tamaño 11183104.
+- **⚠️ LECCIÓN**: cualquier cambio en el SDK (afs.cpp/host_path_file.cpp) exige
+  recompilar `rexruntime` Y copiar la DLL al build — si se omite la copia, el build
+  usa la versión instalada en `rexglue/bin` (stale) y los overrides grandes fallan
+  EN SILENCIO (se ve el personaje original, sin crash ni aviso). Verificar siempre:
+  `Select-String rexruntime.dll -Pattern "AfsGetVirtualTable"` debe dar PRESENTE.
+- **ESTADO**: `janemba_from_cell` sigue activo y la DLL correcta está en el build.
+  PENDIENTE re-test en juego (debería mostrar Janemba con colores de Cell).
+
+### 13.7 🔴✅ FORMATO C DEL AWG0 RESUELTO (Goku 264 / Vegeta 424) — 2026-08-19
+
+**Objetivo de la sesión**: "Goku con armadura saiyan" (cuerpo de Vegeta armadura 424 +
+cabeza de Goku). Para localizar la cabeza se necesitaba exportar ambos bins → se
+descifró el FORMATO C (el de la mayoría de bins: Goku, Vegeta, Babidi, Goten, Krillin
+armadura 329), distinto del formato A (Krillin 327, Cell F2 147).
+
+**Layout FORMATO C del AWG0 (stride 44, SIN align +2)** — verificado en Goku y Vegeta:
+```
++0  x | +4  y | +8  z  (posición EN ESPACIO LOCAL DEL HUESO, bounds [-1,1])
++12 0xFFFFFFFF (marcador u32)
++16 u | +20 v  (UV, 0-1)
++24 n.x | +28 n.y | +32 n.z  (normal local)
++36 weight | +40 BONE (u32)
+```
+El `+0x2C` NO es un offset de vb2: es el TAMAÑO en bytes del buffer (2455×44 en Goku).
+El IB es **triangle STRIP** (índices consecutivos, winding alternado, triángulos
+degenerados como saltos), NO lista, y NO hay restarts 0xFFFF (a diferencia del formato A).
+
+**⚠️ CLAVE: la ubicación del buffer sec34 del AWG0 VARÍA por bin** (no siempre en
+`sec_rel`). El exportador `awg0_export.py` PRUEBA 3 ubicaciones (sec_rel, sec_rel+2,
+fin del mesh group = mg+mg_size) × 7 offsets de marker (0,2,12,16,24,38,40) y elige la
+que da ≥50% de markers FFFF:
+- **Goku 264**: sec34 en `sec_rel` (0x37B4), marker en +12, n_sec=2418
+- **Vegeta 424**: sec34 en `fin_mg` (0x44E0), marker en +38/+40, n_sec=2656
+- **Krillin 327** (formato A): sec34 en `sec_rel+2`, marker en +0, n_sec=2183
+Bounds verificados: Goku [-1,1] 0 NaN, Vegeta [-1,1] 0 NaN, Krillin [-1.76,2.49] 0 NaN.
+
+**Herramienta nueva**: `awo_tools/awg0_export.py` — exporta el AWG0 de cualquier bin
+a OBJ autodetectando formato (A/C) y ubicación del buffer. `awg_parts2.py` — por-AWG.
+
+**Mapa de AWGs (identificados por labels del mesh group)**:
+- **Goku** (23 AWG): AWG0 cuerpo+XGOK_L00_S00_FACE+dientes; AWG1-8 GOK_L*_LHAND (dedos
+  izq); AWG9-15 GOK_R*_RHAND (dedos der); **AWG16-22 XGOK_Lxx_S00_FACE (cara/cabello)**
+- **Vegeta** (26 AWG): AWG0 cuerpo+XVGT_HAIR+XVGT_L00_S00_FACE+dientes+armadura(RWPAT/
+  RSPAT/SCOUT/TAIL); AWG1-18 dedos; **AWG19-25 XVGT_Lxx_S00_FACE (cara/cabello)**
+
+**Correspondencia de cara Goku↔Vegeta** (por label numérico): Goku L01,L18,L04,L05,L06,
+L42 ↔ Vegeta L01,L18,L04,L05,L06,L44 (Goku L09/L00 ↔ Vegeta L00/L00_S09).
+
+**Esqueletos desplazados** (mismo orden base, armadura de Vegeta inserta huesos):
+Goku HEAD=36, JAW=38, RMOUTH=40, LMOUTH=42, DTEETH=44 | Vegeta HEAD=44, JAW=50,
+RMOUTH=52, LMOUTH=54 (+ RWPAT=16/18, RSPAT=26/28, HAIR=48, FAC=46). Mapeo POR LABEL.
+
+**Estado del swap de cabeza**: los AWG de cara (nb=1) usan un layout de offset aún sin
+resolver (distinto del AWG0 y de los AWG de dedos). Cada tipo de AWG tiene offsets
+propios. PENDIENTE: RE fino del layout de los AWG de cara para completar el swap.
+
+**Verificación de la tesis 13.1 confirmada**: cada bin es autocontenido con SU PROPIO
+formato (Goku marker+12, Vegeta marker+38/+40, Babidi+16, Goten+10, Krillin-arm+24).
+El guest autodetecta el formato de cada bin. Krillin 329 (armadura) usa formato C,
+Krillin 327 formato A — el mismo personaje tiene bins en ambos formatos.
+
+### 13.8 MOD DE PRUEBA: `sw_vegeta424` (validar formato C en runtime) — 2026-08-19
+
+- Objetivo: confirmar que el runtime acepta un bin en **formato C** (Vegeta armadura
+  424) vía swap bin-completo, antes de invertir en la mezcla fina de cabezas.
+- Bin: `awo_tools/bins_trabajo/vegeta_424.bin` (#AMB, 894528 B, formato C, 26 AWG,
+  55 huesos, sec34=2656). Comprimido LZX /N:2048 = 126030 B, pad a 126976 (0x1F000).
+- Instalado: `mods/sw_vegeta424/us/data_cmn.afs/327/geom.bin` + manifest. **ACTIVO**
+  (sin `.disabled`). `janemba_from_cell` **desactivado** (también tocaba la 327, se
+  aisló para este test). Único otro mod activo: `tex_91` (entrada 91, sin conflicto).
+- El bin excede el to_read del slot (126976 > 106496) → ejercita el mid-insert virtual.
+- **⚠️ PENDIENTE PROBAR EN JUEGO**: selector → Krillin (slot 327) → ¿aparece Vegeta
+  con armadura saiyan? Si SÍ, el formato C queda validado en runtime y la base para
+  la mezcla de cabezas está confirmada. Si crashea, el runtime no acepta este bin C
+  completo y hay que revisar.
+- DLL correcta (11183104 B, con mid-insert virtual) VERIFICADA presente en el build
+  tras el fix de 13.6.
+- **✅ VALIDADO EN JUEGO (usuario)**: `sw_vegeta424` muestra **Vegeta con armadura
+  saiyan en el slot de Krillin**. El formato C + el mid-insert virtual funcionan en
+  runtime. Base confirmada para la mezcla de cabezas.
+
+### 13.9 🔴✅ LAYOUT DE LOS AWG DE CARA/MANO (nb=1) RESUELTO — 2026-08-19
+
+**El swap de cabeza requiere exportar los AWG de cara. Se descifró el layout de los
+AWG con n_bones=1 (cara/cabello/manos)**, distinto del AWG0 (formato C) y del formato A.
+
+**Layout vertice AWG de cara (44B, marker 0xFFFFFFFF en +0)**:
+```
++0  u32 0xFFFFFFFF (marcador)
++4  f32 u | +8  f32 v        (UV, 0-1)
++12 f32 x | +16 f32 y | +20 f32 z  (posicion en espacio LOCAL del hueso cabeza)
++24 f32 weight (=1.0) | +28 f32 0.0 (pad)
++32 f32 nx | +36 f32 ny | +40 f32 nz  (normal unitaria)
+```
+Verificado: producto punto normal·(pos−centroide) positivo en 100% → esta es la
+interpretacion unica (posiciones +12/+16/+20, normal +32/+36/+40).
+
+**Estructura del AWG de cara (offsets rel header #AWG, h)** — los campos significan
+OTRA cosa que en el AWG0:
+```
++0x10 n_bones (=1) | +0x2C = TAMANO del buffer de vertices (n*44)
++0x30 ib_rel = offset IB | +0x34 sec_rel = TAMANO del IB en bytes
++0x38 end_rel | Descriptor en h+0x180: +0x1C = n_verts, +0x24 = n_tris
+Buffer de vertices SIEMPRE en h+0x1F0.
+```
+⚠️ En los AWG de cara, `sec_rel` (+0x34) NO es offset: es el TAMAÑO del index buffer.
+El buffer de vertices NO está en sec_rel sino en **h+0x1F0** fijo.
+El IB es **lista de triangulos** (cada 3 indices = 1 triangulo, quad-strip), no strip
+con winding alternado. El misterio del "IB max > n_sec" era un calculo sin sentido
+(usaba sec_rel como offset).
+
+**Herramienta nueva**: `awo_tools/awg_cara_export.py` — exporta un AWG de cara a OBJ.
+Uso: `python awg_cara_export.py <bin> <awg_index> [out.obj]`. Verificado: Goku AWG16
+101 verts/148 tris, Vegeta AWG25 120 verts/150 tris, todos 0 NaN, bounds plausibles.
+
+**CLAVE PARA EL SWAP DE CABEZA**: las piezas de cara de Goku y Vegeta comparten el
+espacio local del hueso cabeza (bounds casi identicos: Goku y[0..1.52] z[0..1.25],
+Vegeta y[0..1.62] z[0..1.23]) → la geometria se copia 1:1 entre bins sin
+transformacion.
+
+**Mapa de AWG de cara confirmado**: Goku AWG16-22 = XGOK_L01/L18/L09/L04/L05/L06/L42
+_S00_FACE ↔ Vegeta AWG19-25 = XVGT_L01/L18/L00_S09/L04/L05/L06/L44_S00_FACE.
+Correspondencia por label numerico (L01↔L01, L04, L05, L06, L18, L42↔L44).
+
+**PRÓXIMO PASO (swap de cabeza)**: script que tome el bin de Vegeta armadura (base,
+funciona) y reemplace la geometria de sus AWG de cara (19-25 + face/dientes/HAIR del
+AWG0) por la de los AWG de cara de Goku (16-22 + face/dientes del AWG0), por
+correspondencia de label, manteniendo los huesos/offsets de Vegeta.
+
+### 13.10 🔴✅ SWAP DE CABEZA GOKU→VEGETA FUNCIONA (reconstruccion de bloque) — 2026-08-19
+
+**Script nuevo**: `awo_tools/swap_cabeza.py`. Toma el bin de Vegeta armadura (424) y
+reemplaza su bloque de AWG de cara (AWG19-25, XVGT_Lxx_S00_FACE) por el de Goku
+(AWG16-22, XGOK_Lxx_S00_FACE), por correspondencia de label numerico. Mantiene el
+cuerpo/armadura de Vegeta.
+
+**Correspondencia de AWG** (Goku → Vegeta): L01(16→19), L18(17→20), L09(18→21),
+L04(19→22), L05(20→23), L06(21→24), L42(22→25). L09→L00_S09 mapeado explicitamente.
+
+**Estrategia = RECONSTRUCCION DE BLOQUE** (no mid-insert por-AWG, que era fragil por el
+solape buffer/IB): se leen los 7 AWG de cara de Goku, se re-empaquetan como AWG de
+Vegeta (layout con buffer en h+0x1F0 + IB que solapa los ultimos 32B), y se sustituye
+todo el bloque de cara de Vegeta de una vez, recalculando offsets de AWGs posteriores,
+AZT y AWO size.
+
+**CLAVE del solape buffer/IB en AWG de cara**: el buffer (n*44 bytes) y el IB (n*2
+bytes) se solapan 32 bytes — el IB empieza en `ib_rel = 0x1F0 + n*44 - 32`, y el tamaño
+total del AWG es `end_rel = ib_rel + n*2`. Al reconstruir, el bloque de datos desde
+0x1F0 es `buffer[0 : n*44-32] + IB completo`. (Bug inicial: recortar 32B del final
+corrompia el IB → indices OOB → muchos skipped.)
+
+**Verificado por exportacion OBJ** (awg_cara_export.py): los 7 AWG de cara del bin
+generado exportan 148/148 o 156/156 tris, 0 skipped, 0 NaN, bounds y[0..1.52] z[0..1.25]
+(= cabeza/cabello de Goku). El AWG0 (cuerpo de Vegeta armadura) sigue intacto.
+
+**Mod instalado**: `mods/goku_armadura` (slot 327, ACTIVO). `sw_vegeta424` desactivado.
+Bin: `awo_tools/bins_trabajo/goku_armadura.bin` (892216 B, LZX 123788 B, pad 126976).
+**⚠️ PENDIENTE PROBAR EN JUEGO**: selector → Krillin (slot 327) → ¿Goku con armadura
+saiyan (cabeza de Goku + cuerpo de Vegeta)? Si funciona, el swap de cabeza HD→HD esta
+VALIDADO. Si la cabeza sale rara/crashea, revisar el face/dientes del AWG0 (aun no
+swapeado).
+
+**🔴 CRASH DEL SWAP POR RECONSTRUCCION DE BLOQUE (2026-08-19)**: el bin `goku_armadura`
+(reconstruccion de bloque con mid-insert) es ESTRUCTURALMENTE VALIDO (AWG de cara
+contiguos, mesh group de Vegeta conservado, geometria de Goku con 0 skipped/0 NaN,
+AWG0 intacto) pero el guest CRASHEA con 0xC0000005 al parsear el modelo (hilo GPU,
+sin AFS327 READ = crash temprano). Causa probable: el AWG0 referencia los AWG de cara
+por offsets que se rompen al mover el bloque de cara. 
+
+**✅ VIA ALTERNATIVA: INYECCION IN-PLACE (no mover offsets)** — `swap_cabeza_inplace.py`:
+parte del bin de Vegeta armadura y copia la geometria de los AWG de cara de Goku en los
+buffers EXISTENTES de los AWG de cara de Vegeta, MANTENIENDO el tamano de cada AWG (sin
+mid-insert, sin mover offsets, sin tocar el AWG0). Si el buffer de Goku es menor se
+rellena con 0xFF; si es mayor se trunca (L04 106->102, L06 120->106). El bin mantiene
+el tamano original (894528 B) y las referencias del AWG0 quedan validas. Verificado por
+exportacion OBJ (0 NaN, 148-156 tris, pocos skipped por truncado). Instalado como
+`mods/goku_armadura` v2.0. **PENDIENTE PROBAR EN JUEGO**.
+
+**✅ FUNCIONA EN JUEGO (v2.0 in-place, usuario)**: el bin de inyeccion in-place CARGA y
+entra en combate — Vegeta con armadura saiyan con la cabeza/cabello de Goku inyectado.
+**PERO hay Z-FIGHTING localizado en la frente/ojos**: al parpadear se ve la geometria
+y textura de la cara de Goku alternando. Causa: la cara/cabello de VEGETA sigue en el
+AWG0 (descriptores XVGT_L00_S00_FACE, XVGT_HAIR A=[1992+87], XVGT_M_DTEETH/UTEETH) y se
+superpone a la geometria de Goku inyectada en los AWG de cara independientes (19-25).
+
+**FIX (v3.0)**: neutralizar los descriptores de cara/cabello/dientes de Vegeta del AWG0
+poniendo sus A_size/B_size a 0 (XVGT_HAIR x2, XVGT_M_DTEETH x2, XVGT_M_UTEETH x1). Los
+descriptores del AWG0 tienen label en +0x00 del bloque, 'max N m' en +0x18, rangos A/B
+en +0x50/+0x54/+0x58/+0x5C. Verificado: 20 descriptores siguen dibujando (cuerpo XVGT_
+BODY intacto), 5 neutralizados. Instalado como `mods/goku_armadura` v3.0.
+**RESULTADO EN JUEGO (v3.0)**: desaparecen partes del pelo, pero SIGUE sin ser la cara
+de Goku (no es la cabeza de Goku completa). El z-fighting de frente/ojos se redujo pero
+no se resuelve: la cara base de Goku inyectada en los AWG de cara (19-25) no coincide
+con lo que dibuja el runtime, y neutralizar el cabello de Vegeta dejó huecos.
+
+**🔴 ESTADO FINAL DEL SWAP DE CABEZA (2026-08-19) — PAUSADO POR DECISIÓN DEL USUARIO**:
+el swap Goku→Vegeta (cuerpo de Vegeta armadura 424 + cabeza de Goku 264) queda
+**documentado pero SIN resolver** y se abandona para dedicar la sesión a otras tareas.
+Lo aprendido queda archivado para retomarlo si se quiere:
+- La vía de **inyección in-place** (copiar buffers de AWG de cara en los AWG de cara
+  del destino sin mover offsets) SÍ carga y entra en combate (a diferencia de la
+  reconstrucción de bloque que crashea).
+- El bloqueo real: el runtime dibuja la cara del AWG0 (descriptores XVGT_L00_S00_FACE/
+  HAIR/DTEETH/UTEETH) que NO se sustituye solo inyectando los AWG de cara separados →
+  z-fighting y mezcla incompleta. Para una cara completa haría falta sustituir TAMBIÉN
+  la geometría de cara/cabello del sec34 del AWG0 (no solo neutralizarla, que deja
+  huecos), lo que requiere re-mapear vértices entre formatos A/C. No trivial, pausado.
+- Mod `goku_armadura` v3.0 sigue activo (slot 327) pero el resultado no es el buscado.
+- Herramientas: `swap_cabeza.py` (reconstrucción, crashea), `swap_cabeza_inplace.py`
+  (vía in-place), `awg_cara_export.py`, `awg0_export.py`, `awg_to_obj_b3.py`.

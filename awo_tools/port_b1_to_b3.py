@@ -43,8 +43,8 @@ import sys
 U32 = struct.Struct('>I')
 
 COMP_CANDIDATES = [
-    os.path.join(os.environ.get('TEMP', ''), 'opencode', 'xbcomp'),
-    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'tools'),
+    r"C:\Users\javie\AppData\Local\Temp\opencode\xbcomp",
+    r"C:\Users\javie\Desktop\PROYECTOS IA\DBZ Budokai 3 HD Collection\mod center\Xbox 360 Compression - Decompression tool from the XBOX Development Kit",
 ]
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, '..'))

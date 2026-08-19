@@ -1,5 +1,23 @@
 # DBZ Budokai 3 HD Collection — Recompile ReXGlue + Modding
 
+**Native PC port of *Dragon Ball Z: Budokai 3 HD Collection* for the Xbox 360 (Windows).**
+The game's original PowerPC machine code is statically recompiled and built into
+a standalone executable — this is a real PC port, not an emulator.
+
+[![Release](https://img.shields.io/github/v/release/novapowers0/DBZ-Budokai-3-HD-Collection?sort=semver&style=flat-square&color=orange&label=Release)](https://github.com/novapowers0/DBZ-Budokai-3-HD-Collection/releases/latest)
+[![Platform](https://img.shields.io/badge/Platform-Windows-0078D6?style=flat-square)](https://github.com/novapowers0/DBZ-Budokai-3-HD-Collection/releases/latest)
+[![License](https://img.shields.io/github/license/novapowers0/DBZ-Budokai-3-HD-Collection?style=flat-square)](LICENSE)
+[![Stars](https://img.shields.io/github/stars/novapowers0/DBZ-Budokai-3-HD-Collection?style=flat-square&color=yellow)](https://github.com/novapowers0/DBZ-Budokai-3-HD-Collection)
+[![Built with](https://img.shields.io/badge/built%20with-ReXGlue-8A2BE2?style=flat-square)](https://github.com/rexglue/rexglue-sdk)
+
+| | |
+|---|---|
+| **Players** | 1–2 (versus) |
+| **Platform** | Windows |
+| **Engine** | Xbox 360 (ReXGlue SDK) |
+| **Genre** | 3D fighting |
+| **Framework** | [ReXGlue](https://github.com/rexglue/rexglue-sdk) |
+
 Copyright (c) 2026 **NovaPowers**. Released under the MIT License (see `LICENSE`).
 
 Static recompilation of **Dragon Ball Z: Budokai 3 HD Collection** (Xbox 360) for
@@ -164,7 +182,7 @@ python "mod center hd/texture_b3.py" build --bin <bin> --slot <slot> --dir <carp
 
 ---
 
-## Estado (18/08/2026)
+## Estado (19/08/2026)
 
 | Técnica | Estado |
 |---|---|
@@ -172,6 +190,7 @@ python "mod center hd/texture_b3.py" build --bin <bin> --slot <slot> --dir <carp
 | Mod de texturas B3 HD | ✅ **100% funcional** (override por entrada, ~118KB) |
 | 2+ mods de modelo/textura simultáneos | ✅ **100% funcional** (mid-insert virtual) |
 | Mod de música (og_music) | ✅ **100% funcional** |
+| Diagnóstico GPU (logs + .bmp) | ✅ Gateado por Dev mode — OFF en juego normal |
 | Port PS2→HD | ⚠️ Investigado, requiere reconstrucción completa |
 | Port de personajes IW→B3 | 🔴 Descartado (Janemba fracasó, archivado) |
 
