@@ -23,6 +23,7 @@
 #include <rex/rex_app.h>
 #include <rex/hook.h>
 #include "hooks.h"
+#include "region.h"
 #include "launcher/settings.h"
 #include "launcher/launcher_state.h"
 #include "ingame/menu.h"
@@ -149,20 +150,13 @@ public:
                     // video, audio, input) before launching so they are applied
                     // on the next boot even if the user forgot "Save settings".
                     dbz3::settings::SaveUserSettings();
-                    // The region/mod overlay is built in OnConfigurePaths, but
-                    // the launcher lets the user change region/mods afterwards.
-                    // Rebuild it now (before the guest module launches) so the
-                    // selected region and enabled mods take effect immediately.
-                    // The VFS mounts the overlay directory, and PrepareRegionData
-                    // re-populates it from the chosen region + mods.
-                    if (!game_dir_.empty()) {
-                        try {
-                            dbz3::settings::PrepareRegionData(game_dir_);
-                        } catch (const std::exception& e) {
-                            REXLOG_ERROR("dbz3: rebuild region overlay on Play failed ({}), "
-                                         "continuing with the overlay from startup", e.what());
-                        }
-                    }
+                    // The launcher lets the user change the region (us/eu) after
+                    // the runtime's initial VFS setup. Re-apply the region mount
+                    // now (before the guest module launches) so game:\us points
+                    // at the currently selected region's assets. Mods (per-entry
+                    // AFS and whole-file) are served directly from mods/ by the
+                    // runtime's override hooks, with no overlay or duplication.
+                    dbz3::ApplyRegionMount();
                     // Apply the chosen window size and fullscreen mode to the
                     // actual host window before the module launches. The SDK
                     // only sets fullscreen at window creation, so we must do
@@ -206,6 +200,9 @@ public:
     void OnPreLaunchModule() override {
         OutputDebugStringA("OnPreLaunchModule START\n");
         REXLOG_INFO("OnPreLaunchModule - about to launch guest thread");
+        // Re-apply the region device mount so game:\us points at the currently
+        // selected region's assets (covers the skip-launcher fast path too).
+        dbz3::ApplyRegionMount();
         OutputDebugStringA("OnPreLaunchModule END\n");
     }
 
@@ -277,19 +274,14 @@ public:
             }
         }
         REXLOG_INFO("OnConfigurePaths - game_dir final: {}", game_dir.string());
-        // Region + mods overlay: build an "active_region" overlay next to the
-        // exe that layers mod files over the chosen region's assets, and mount
-        // that as the game drive. The runtime loads game:\default.xex and the
-        // game reads D:\us\... which resolve inside the overlay, so the US
-        // binary plays with the selected region's text/audio/video packs.
+        // Use the game folder directly as the game drive root (no overlay, no
+        // duplicate assets). The runtime mounts game:\ to game_data_root and the
+        // game reads D:\us\... which resolves to game_dir/us (or, for the eu
+        // region, to game_dir/eu via the ApplyRegionMount device). Mods are
+        // served by the runtime's AFS/whole-file override hooks from mods/,
+        // without copying anything.
         game_dir_ = game_dir;
-        try {
-            paths.game_data_root = dbz3::settings::PrepareRegionData(game_dir);
-        } catch (const std::exception& e) {
-            REXLOG_ERROR("dbz3: PrepareRegionData failed ({}), falling back to project root",
-                         e.what());
-            paths.game_data_root = game_dir;
-        }
+        paths.game_data_root = game_dir;
         paths.user_data_root = exe_dir / "user_data" / GetName();
         paths.cache_root = paths.user_data_root / "cache";
         paths.metadata_root = exe_dir / "metadata";

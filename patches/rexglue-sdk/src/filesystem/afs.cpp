@@ -202,6 +202,38 @@ bool AfsFindModOverride(const std::filesystem::path& host_path, int entry_index,
   return false;
 }
 
+// Look for a mod-provided replacement of an ENTIRE file (not a single AFS
+// entry). A mod is a subfolder under <exe>/mods/<mod>/<filename> (or the region
+// subfolders mods/<mod>/us/<filename> / mods/<mod>/eu/<filename>). The first
+// match (alphabetical mod order) wins. Returns true and fills out_path if found.
+bool AfsFindModFileOverride(const std::filesystem::path& host_path,
+                            std::filesystem::path& out_path) {
+  const std::string file_name = host_path.filename().string();
+  ScanModDirs();
+  std::lock_guard<std::mutex> lock(g_mod_dirs_mutex);
+  for (const auto& mod_dir : g_mod_dirs_cache) {
+    std::error_code ec;
+    // Preferred: mods/<mod>/<filename>
+    auto candidate = mod_dir / file_name;
+    if (std::filesystem::is_regular_file(candidate, ec)) {
+      out_path = candidate;
+      return true;
+    }
+    // Region subfolders: mods/<mod>/us/<filename> and mods/<mod>/eu/<filename>.
+    candidate = mod_dir / "us" / file_name;
+    if (std::filesystem::is_regular_file(candidate, ec)) {
+      out_path = candidate;
+      return true;
+    }
+    candidate = mod_dir / "eu" / file_name;
+    if (std::filesystem::is_regular_file(candidate, ec)) {
+      out_path = candidate;
+      return true;
+    }
+  }
+  return false;
+}
+
 namespace {
 
 // Virtual mid-insert AFS layout, cached per container. Builds a consistent

@@ -1954,3 +1954,44 @@ Lo aprendido queda archivado para retomarlo si se quiere:
 - Mod `goku_armadura` v3.0 sigue activo (slot 327) pero el resultado no es el buscado.
 - Herramientas: `swap_cabeza.py` (reconstrucción, crashea), `swap_cabeza_inplace.py`
   (vía in-place), `awg_cara_export.py`, `awg0_export.py`, `awg_to_obj_b3.py`.
+
+## 14. 🔴✅ REFACTOR DE ASSETS: SIN OVERLAY `active_region` (2026-08-20)
+
+**Problema**: el launcher construía un overlay `active_region/` al lado del exe
+(`PrepareRegionData`) hardlinkeando/copiando los assets de la región elegida +
+los mods, y borraba la carpeta completa en cada arranque. Esto duplicaba espacio
+y obligaba al usuario final a tener los assets mal ubicados. El hermano dbz1 ya
+usa el modelo limpio (leer assets directo, sin duplicar), replicado aquí.
+
+**Solución (modelo dbz1, sin duplicados)**:
+1. **`OnConfigurePaths`** (`src/main.cpp`): `paths.game_data_root = game_dir`
+   directo (la carpeta que contiene `us/`/`eu/`). Ya NO se construye
+   `active_region`.
+2. **`ApplyRegionMount()`** (`src/region.h`/`src/region.cpp`, nuevo): monta un
+   `HostPathDevice` en `\Device\Harddisk0\Partition1\us` → `game_dir/<region>`
+   (us/eu), leyendo los assets directamente sin copiar nada. Se llama en el
+   Play handler y en `OnPreLaunchModule` (cubre también skip-launcher).
+3. **`PrepareRegionData`** (`src/launcher/settings.cpp`): ahora devuelve
+   `project_root` sin construir overlay (se mantiene la firma por compat).
+4. **SDK — override de archivo completo** (`rexglue-sdk`):
+   - `AfsFindModFileOverride()` (`afs.cpp`/`afs.h`): busca reemplazo de un
+     archivo entero en `mods/<mod>/<filename>` o `mods/<mod>/us|eu/<filename>`.
+   - `HostPathEntry::Open()` (`host_path_entry.cpp`): si existe reemplazo
+     completo, abre el archivo del mod (así og_music y packs de audio/sfd
+     funcionan sin overlay).
+
+**Resultado**: el juego lee `game:\us\...` directo de la carpeta de assets (o de
+la región montada), y los mods (por entrada AFS y por archivo completo) los
+sirve el runtime desde `mods/`. Cero duplicación, cero staging. `active_region/`
+eliminado del build.
+
+**⚠️ LECCIÓN (AGENTS §13.6)**: al recompilar el juego (`cmake --build
+out/build/win-amd64-release`), el cmake SOBRESCRIBE `rexruntime.dll` con la
+versión instalada en `rexglue/bin` (stale, 11155968 B). Después de compilar el
+juego hay que volver a copiar la DLL correcta del SDK
+(`rexglue-sdk/out/win-amd64/rexruntime.dll`, 11188224 B, con
+`AfsFindModFileOverride`) al build. Verificado presente en el build.
+
+**Parches del SDK actualizados** en `github/patches/` (ahora son 4 archivos:
+`afs.cpp`, `afs.h`, `host_path_file.cpp`, `host_path_entry.cpp`). README
+actualizado. Release **v1.0.2**.

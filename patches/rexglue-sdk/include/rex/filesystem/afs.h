@@ -21,6 +21,12 @@ std::filesystem::path AfsModsRoot();
 bool AfsFindModOverride(const std::filesystem::path& host_path, int entry_index,
                         std::filesystem::path& out_path);
 
+// Look for a mod-provided replacement of an ENTIRE file (not a single AFS
+// entry): mods/<mod>/<filename>, mods/<mod>/us/<filename> or
+// mods/<mod>/eu/<filename>. Returns true and fills out_path if found.
+bool AfsFindModFileOverride(const std::filesystem::path& host_path,
+                            std::filesystem::path& out_path);
+
 // List mod folders under the mods root. Returns mod folder names; enabled ones
 // first. Rescans the directory (used by the launcher UI).
 std::vector<std::string> AfsListMods();

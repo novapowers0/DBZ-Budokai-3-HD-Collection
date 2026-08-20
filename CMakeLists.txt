@@ -15,6 +15,7 @@ set(DBZ3_SOURCES
     src/main.cpp
     src/hooks.cpp
     src/mods.cpp
+    src/region.cpp
     src/launcher/settings.cpp
     src/launcher/launcher_state.cpp
     src/launcher/mod_pipeline.cpp

@@ -314,84 +314,15 @@ void SetModEnabled(const std::string& mod_name, bool enabled) {
   REXCVAR_SET(dbz3_enabled_mods, all ? "*" : JoinList(tokens));
 }
 
-// Create a single hardlink (same volume) with a full-file copy fallback. The
-// overlay uses hardlinks so the game's large AFS/SFD files are not duplicated
-// on disk; a copy is only used if linking fails (different volume / FS).
-static bool LinkOrCopy(const std::filesystem::path& src, const std::filesystem::path& dst) {
-  std::error_code ec;
-  std::filesystem::create_hard_link(src, dst, ec);
-  if (!ec) return true;
-  std::filesystem::copy_file(src, dst, std::filesystem::copy_options::overwrite_existing, ec);
-  return !ec;
-}
-
+// Legacy helper kept for signature compatibility. Assets are no longer staged
+// into an "active_region" overlay: the game drive now points directly at the
+// game folder (project_root) and the region (us/eu) is mounted by
+// dbz3::ApplyRegionMount. Mods are served by the runtime's override hooks from
+// mods/, so no duplication or staging happens at all.
 std::filesystem::path PrepareRegionData(const std::filesystem::path& project_root) {
-  const std::string region = Region();
-  const std::string active = (region == "eu") ? "eu" : "us";
-
-  const auto exe_dir = rex::filesystem::GetExecutableFolder();
-  const auto mods_root = exe_dir / "mods";
-  const auto overlay = exe_dir / "active_region";
-
-  // Always build the overlay. Rebuilding it at Play (when the launcher may
-  // have changed region/mods) requires the game drive to point at the overlay
-  // unconditionally, so the early return for "us with no mods" is removed.
-  // Rebuild the overlay from scratch each boot so region/mod changes apply.
-  std::error_code ec;
-  if (std::filesystem::exists(overlay)) {
-    std::filesystem::remove_all(overlay, ec);
-  }
-  const auto us_dir = std::filesystem::absolute(project_root / active);
-  const auto fallback_us = std::filesystem::absolute(project_root / "us");
-  const auto us_out = overlay / "us";
-  std::filesystem::create_directories(us_out, ec);
-  REXLOG_INFO("dbz3: building region overlay for '{}' -> {}",
-              active, std::filesystem::absolute(overlay).string());
-
-  // Priority source list for us/: enabled mods/<mod>/<region>/ first, then the
-  // region folder, then the US folder as fallback (for files only US ships).
-  std::vector<std::filesystem::path> sources;
-  if (std::filesystem::is_directory(mods_root)) {
-    std::vector<std::filesystem::path> mods;
-    for (const auto& mod : std::filesystem::directory_iterator(mods_root)) {
-      if (!mod.is_directory()) continue;
-      if (!IsModEnabled(mod.path().filename().string())) continue;  // disabled mod
-      mods.push_back(mod.path());
-    }
-    std::sort(mods.begin(), mods.end());  // deterministic priority order
-    for (const auto& mod : mods) {
-      auto p = mod / active;
-      if (std::filesystem::is_directory(p)) sources.push_back(p);
-    }
-  }
-  sources.push_back(us_dir);
-  sources.push_back(fallback_us);
-
-  // Layer files from each source; first (highest-priority) source wins.
-  std::vector<std::string> linked;
-  for (const auto& src_dir : sources) {
-    if (!std::filesystem::is_directory(src_dir)) continue;
-    for (const auto& file : std::filesystem::directory_iterator(src_dir)) {
-      if (!file.is_regular_file()) continue;
-      const std::string name = file.path().filename().string();
-      const auto dst = us_out / name;
-      if (std::filesystem::exists(dst)) continue;  // already overridden
-      if (LinkOrCopy(file.path(), dst)) {
-        linked.push_back(name);
-      } else {
-        REXLOG_WARN("dbz3: failed to link '{}' from {}", name, src_dir.string());
-      }
-    }
-  }
-
-  // The runtime loads game:\default.xex (the recompiled US image). Link it at
-  // the overlay root so the mounted game: drive is complete.
-  const auto real_xex = std::filesystem::absolute(project_root / "default.xex");
-  if (std::filesystem::is_regular_file(real_xex)) {
-    LinkOrCopy(real_xex, overlay / "default.xex");
-  }
-  REXLOG_INFO("dbz3: region overlay ready ({} files): {}", linked.size(), overlay.string());
-  return overlay;
+  REXLOG_INFO("dbz3: PrepareRegionData no longer stages an overlay; using {} directly",
+              std::filesystem::absolute(project_root).string());
+  return project_root;
 }
 
 std::string FullscreenMode() { return REXCVAR_GET(dbz3_fullscreen_mode); }
