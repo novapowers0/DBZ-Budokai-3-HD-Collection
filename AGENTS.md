@@ -2081,3 +2081,48 @@ launcher arranca y carga (game dir, montaje, XEX, "launcher shown"). El catálog
 `MODDING_README.md` nuevo; `RELEASE_README.md` actualizado. La DLL correcta
 (11188224 B) restaurada en el build tras recompilar. Release v1.0.2 actualizada
 con el zip regenerado (incluye el toolkit).
+
+### 14.3 🔴✅ CRÍTICO: `dbz1_diag_logging` no se podía desactivar → .bmp en juego normal (2026-08-20)
+
+**Problema reportado (crítico)**: el juego seguía generando `black_*.bmp` y
+`frontbuf_*.bmp` (30 archivos, ~7.5MB c/u) **sin tener marcado nada en Dev**.
+Esto ensuciaba la carpeta y era inaceptable.
+
+**Causa raíz (doble)**:
+1. **La propagación del flag por nombre NO funcionaba**: `src/launcher/settings.cpp`
+   usaba `rex::cvar::SetFlagByName("dbz1_diag_logging", ...)` para apagar el
+   diagnóstico. PERO `dbz1_diag_logging` se define SOLO en `rexruntime.dll`
+   (`src/system/dbz1_diag_flags.cpp`), no en el exe. `SetFlagByName` resuelve en
+   el **registro de cvars del exe**, donde ese flag NO existe → devuelve `false`
+   y **no hacía nada**. El flag del runtime quedaba en su estado (true si una
+   sesión lo dejó activo), y la GPU (rexgpu-xenos.dll, `command_processor.cpp`
+   líneas 2284/2372/2934/2986) escribía los .bmp gated por
+   `REXCVAR_GET(dbz1_diag_logging)`.
+2. **La lib de enlace instalada estaba stale**: el exe enlaza con
+   `rexglue/lib/rexruntime.lib` (instalada, 5471988 B, 09/08) que **NO exportaba**
+   `FLAGS_dbz1_diag_logging_storage_`. La lib correcta del SDK
+   (`rexglue-sdk/out/win-amd64/rexruntime.lib`, 5978500 B) sí. Al usar
+   `REXCVAR_SET(dbz1_diag_logging, ...)` el enlace fallaba hasta copiar la lib.
+
+**Fix aplicado** (`src/launcher/settings.cpp`):
+- Añadido `REXCVAR_DECLARE(bool, dbz1_diag_logging)` (el símbolo está exportado
+  por `WINDOWS_EXPORT_ALL_SYMBOLS` del runtime). Ahora el exe enlaza el accessor
+  `FLAGS_dbz1_diag_logging_storage_()` y escribe la **misma storage** que lee la
+  GPU.
+- Sustituido `SetFlagByName("dbz1_diag_logging", ...)` por
+  `REXCVAR_SET(dbz1_diag_logging, ...)` en los 3 puntos: `SetDevMode`,
+  `SetDiagLogging` y `ApplyRuntimeSettingsToSdk`. Con Dev y Diag off (default),
+  `false && false` = **false** → la GPU no genera .bmp.
+- Copiada `rexglue-sdk/out/win-amd64/rexruntime.lib` → `rexglue/lib/rexruntime.lib`
+  (para que el enlace encuentre el símbolo) y
+  `rexglue-sdk/out/win-amd64/rexruntime.dll` → `rexglue/bin/rexruntime.dll`
+  (para que futuras compilaciones usen la DLL correcta, ver §13.6).
+
+**Verificado**: el exe compila (enlaza el símbolo), y en el paquete standalone
+`D:\Budokai 3` el juego arranca **sin generar ningún .bmp** (0 archivos) con Dev
+y Diag off. La generación de .bmp está gated exclusivamente por
+`REXCVAR_GET(dbz1_diag_logging)` en `command_processor.cpp`.
+
+**Sync aplicado**: `src/launcher/settings.cpp` → `github/`; `dbz3.exe` +
+`rexruntime.dll` (11188224 B) → `github/release-stage/`. **Release v1.0.3**
+nueva con el fix (zip regenerado).

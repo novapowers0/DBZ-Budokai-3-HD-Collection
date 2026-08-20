@@ -152,6 +152,12 @@ REXCVAR_DECLARE(bool, audio_mute);
 REXCVAR_DECLARE(bool, host_present_from_non_ui_thread);
 REXCVAR_DECLARE(bool, d3d12_allow_variable_refresh_rate_and_tearing);
 REXCVAR_DECLARE(double, video_mode_refresh_rate);
+// dbz1_diag_logging lives in rexruntime.dll (shared diagnostic flag). It IS
+// exported by WINDOWS_EXPORT_ALL_SYMBOLS, so the exe can link its accessor and
+// write it directly with REXCVAR_SET (same storage the GPU plugin reads).
+// NOTE: do NOT use SetFlagByName for it: that resolves in the EXE's own cvar
+// registry, where this flag is not registered, so it silently does nothing.
+REXCVAR_DECLARE(bool, dbz1_diag_logging);
 
 static std::string GetSdkString(const char* name) {
   return rex::cvar::Query<std::string>(name);
@@ -438,9 +444,9 @@ void SetDevMode(bool enabled) {
   // The SDK diagnostic .bmp/readback dumps are gated by Dev mode too (see
   // SetDiagLogging): toggling Dev mode re-asserts the effective diag flag so
   // the GPU plugin stops writing frontbuf_*.bmp/black_*.bmp the moment Dev
-  // mode is turned off.
-  rex::cvar::SetFlagByName("dbz1_diag_logging",
-                           (DiagLogging() && enabled) ? "true" : "false");
+  // mode is turned off. REXCVAR_SET writes the shared runtime flag directly
+  // (SetFlagByName would not find it in the exe's own registry).
+  REXCVAR_SET(dbz1_diag_logging, DiagLogging() && enabled);
 }
 
 bool DiagLogging() { return REXCVAR_GET(dbz3_diag_logging); }
@@ -453,8 +459,7 @@ void SetDiagLogging(bool enabled) {
   // The .bmp/readback dumps only run when Dev mode is ALSO enabled: they are
   // diagnostic-only and should never produce frontbuf_*.bmp/black_*.bmp in
   // normal play, even if this toggle is left on by accident.
-  rex::cvar::SetFlagByName("dbz1_diag_logging",
-                           (enabled && DevMode()) ? "true" : "false");
+  REXCVAR_SET(dbz1_diag_logging, enabled && DevMode());
 }
 
 bool CrashDumpEnabled() { return REXCVAR_GET(dbz3_diag_crashdump); }
@@ -475,8 +480,7 @@ void ApplyUserSettingsToSdk() {
   REXCVAR_SET(user_language, static_cast<uint32_t>(Language()));
   // Host graphics backend (d3d12/vulkan). Read by the runtime when it loads
   // the GPU plugin during SetupPresentation, so it must be set before then.
-  rex::cvar::SetFlagByName("gpu_backend", GpuBackend());
-  // VRR must be set BEFORE the swapchain is created (the D3D12 presenter reads
+  rex::cvar::SetFlagByName("gpu_backend", GpuBackend());  // VRR must be set BEFORE the swapchain is created (the D3D12 presenter reads
   // this cvar while creating the swap chain in SetupPresentation). This runs in
   // OnPreSetup, ahead of the swapchain creation, so the swapchain gets
   // DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING only if the user enabled VRR. Default is
@@ -516,7 +520,7 @@ void ApplyRuntimeSettingsToSdk(bool for_game) {
   SetSdkDouble("present_fsr_sharpness_reduction", REXCVAR_GET(dbz3_fsr_sharpness));
   SetSdkDouble("present_cas_additional_sharpness", REXCVAR_GET(dbz3_cas_sharpness));
   SetSdkBool("audio_mute", false);
-  SetSdkBool("dbz1_diag_logging", DiagLogging() && DevMode());
+  REXCVAR_SET(dbz1_diag_logging, DiagLogging() && DevMode());
   SetSdkDouble("master_volume", REXCVAR_GET(dbz3_master_volume));
   SetSdkString("audio_output_device", std::string());
 
