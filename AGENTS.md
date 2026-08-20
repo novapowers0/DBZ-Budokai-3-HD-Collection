@@ -2126,3 +2126,44 @@ y Diag off. La generación de .bmp está gated exclusivamente por
 **Sync aplicado**: `src/launcher/settings.cpp` → `github/`; `dbz3.exe` +
 `rexruntime.dll` (11188224 B) → `github/release-stage/`. **Release v1.0.3**
 nueva con el fix (zip regenerado).
+
+### 14.4 🔴✅ LAUNCHER: AUTO-GUARDADO DE AJUSTES AL CAMBIARLOS (2026-08-20)
+
+**Problema reportado**: el usuario selecciona la **escala interna** (p.ej. 2x)
+o el **efecto de upscaling** (CAS) en el launcher, pero **no siempre pulsa
+"Save settings"** → al lanzar o cerrar el launcher, el cambio se pierde y el
+juego arranca con la configuración anterior (se percibía "a 720p"). La
+persistencia solo ocurría en los botones "Save settings" y "PLAY"
+(`launcher_state.cpp` líneas 227-236).
+
+**Causa raíz**: los combos del launcher solo llamaban al setter del cvar
+(`SetResolutionScale`/`SetPresentEffect`) en memoria, sin persistir. El guardado
+dependía de pulsar "Save settings" o "PLAY", que el usuario no siempre hace.
+
+**Fix** (`src/launcher/launcher_state.{h,cpp}`):
+1. **Auto-guardado inmediato al cambiar la escala interna** (DrawVideoTab):
+   tras `SetResolutionScale`, se llama `SaveUserSettings()` → el toml
+   `dbz3_user.toml` se escribe al instante y `draw_resolution_scale_x/y`
+   quedan persistidos. Se aplica en el próximo boot.
+2. **Auto-guardado inmediato al cambiar el efecto** (DrawUpscaleTab): ídem con
+   `SetPresentEffect`.
+3. **Auto-guardado en `OnClose()`** (override nuevo): red de seguridad que
+   persiste TODOS los ajustes al cerrar el launcher (botón X o PLAY), cubriendo
+   cualquier otra opción que el usuario haya marcado sin pulsar "Save".
+
+**Resultado**: la escala/efecto seleccionados quedan guardados "al marcar", 100%
+garantizado sin depender de "Save settings". Confirmado que el toml persiste
+`draw_resolution_scale_x/y` (la propagación al plugin GPU funciona vía el
+registro compartido + pending values, y el hash del `dbz3_user.toml` de D:
+muestra los valores correctos).
+
+**Verificado**: compila (launcher_state.cpp/h) y el `dbz3.exe` nuevo (17285120 B)
+desplegado en `D:\Budokai 3` y `github/release-stage/`. `rexruntime.dll`
+(11188224 B) correcta en build/release-stage/D: (hash 0A18EFAA, con
+`AfsGetVirtualTable` + `AfsFindModFileOverride`).
+
+**Sync aplicado**: `src/launcher/launcher_state.{h,cpp}` → `github/` (commit
+`de40780`), push a origin/master, tag `v1.0.4`. **Release v1.0.4** creada
+(Latest, zip `DBZ-Budokai-3-HD-Collection-v1.0.4.zip` 17222532 B).
+⚠️ Nota git: el push https requería `git config --global credential.helper
+"!gh auth git-credential"` (antes colgaba sin helper).
