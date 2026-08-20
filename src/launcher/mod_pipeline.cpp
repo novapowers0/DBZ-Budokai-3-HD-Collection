@@ -18,12 +18,15 @@ namespace dbz3::launcher {
 namespace {
 
 // Project root = folder that contains "us"/"eu" (walk up from the exe).
+// Supports both layouts: <root>/us and <root>/assets/us (standalone release).
 std::filesystem::path ProjectRoot() {
   auto exe_dir = rex::filesystem::GetExecutableFolder();
   std::filesystem::path probe = exe_dir;
   for (int depth = 0; depth < 6; ++depth) {
     if (std::filesystem::is_directory(probe / "us") ||
-        std::filesystem::is_directory(probe / "eu")) {
+        std::filesystem::is_directory(probe / "eu") ||
+        std::filesystem::is_directory(probe / "assets" / "us") ||
+        std::filesystem::is_directory(probe / "assets" / "eu")) {
       return probe;
     }
     probe = probe.parent_path();

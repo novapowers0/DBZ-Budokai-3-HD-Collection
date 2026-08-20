@@ -33,19 +33,41 @@ import os
 import struct
 import subprocess
 import sys
+import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, '..'))
 
-# Ruta del xbcompress / xbdecompress (XDK).
-TOOLS_DIR = os.path.join(ROOT, 'mod center',
-                         'Xbox 360 Compression - Decompression tool '
-                         'from the XBOX Development Kit')
+
+def _first_existing(*paths):
+    for p in paths:
+        if os.path.exists(p):
+            return p
+    return paths[0]
+
+
+# Ruta del xbcompress / xbdecompress (XDK). Se busca en varios sitios para que
+# el script funcione tanto desde el repo de desarrollo como desde el paquete de
+# release standalone (donde las tools viven junto al script).
+TOOLS_DIR = _first_existing(
+    os.path.join(HERE, 'tools'),
+    os.path.join(HERE, '..', 'mod center',
+                 'Xbox 360 Compression - Decompression tool '
+                 'from the XBOX Development Kit'),
+    os.path.join(HERE, '..', 'tools'),
+)
 XBCOMPRESS = os.path.join(TOOLS_DIR, 'xbcompress.exe')
 XBDECOMPRESS = os.path.join(TOOLS_DIR, 'xbdecompress.exe')
 
-# AFS del B3 (modelos).
-DEFAULT_AFS = os.path.join(ROOT, 'us', 'data_cmn.afs')
+# AFS del B3 (modelos). Deteccion por prioridad:
+#   1) junto al exe (paquete release): <exe>/assets/us/data_cmn.afs o <exe>/us/data_cmn.afs
+#   2) proyecto de desarrollo: <root>/us/data_cmn.afs
+# En el paquete de release "mod center hd/" vive DENTRO de la carpeta del exe,
+# asi que ROOT (padre de la carpeta del script) ES el directorio del exe.
+DEFAULT_AFS = _first_existing(
+    os.path.join(ROOT, 'assets', 'us', 'data_cmn.afs'),
+    os.path.join(ROOT, 'us', 'data_cmn.afs'),
+)
 
 
 def _clean_env(workdir):
@@ -200,9 +222,12 @@ def main():
         ap.print_help()
         return 1
 
-    # Carpeta de trabajo FIJA del proyecto (no depender de TEMP del entorno,
-    # que puede estar invalido en el proceso del launcher).
+    # Carpeta de trabajo (no depender del TEMP del entorno, que puede estar
+    # invalido en el proceso del launcher). En el repo de desarrollo se usa la
+    # fija del build; en el paquete de release se usa el TEMP corregido.
     workdir = os.path.join(ROOT, 'out', 'build', 'win-amd64-release', '.swap_work')
+    if not os.path.isdir(workdir):
+        workdir = os.path.join(tempfile.gettempdir(), 'dbz3_swap_work')
     os.makedirs(workdir, exist_ok=True)
 
     # 1. Extraer el bin origen.
@@ -258,7 +283,11 @@ def main():
     if args.out:
         mods_root = args.out
     else:
-        mods_root = os.path.join(ROOT, 'out', 'build', 'win-amd64-release', 'mods')
+        # En el repo de desarrollo los mods van al build; en el paquete de
+        # release, junto al exe (donde el runtime los sirve: exe_dir/mods).
+        dev_mods = os.path.join(ROOT, 'out', 'build', 'win-amd64-release', 'mods')
+        mods_root = dev_mods if os.path.isdir(os.path.dirname(dev_mods)) else os.path.join(ROOT, 'mods')
+    os.makedirs(mods_root, exist_ok=True)
     afs_name = os.path.basename(args.afs)  # p.ej. data_cmn.afs
     # Migracion: si el mod tenia un AFS completo viejo (ARCHIVO), borrarlo
     # para poder crear el arbol de override por entrada (~100KB vs ~280MB).

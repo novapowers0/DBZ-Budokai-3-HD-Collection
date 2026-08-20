@@ -4,6 +4,7 @@
 #include "launcher_state.h"
 
 #include <rex/cvar.h>
+#include <rex/filesystem.h>
 #include <rex/logging.h>
 
 #include "settings.h"
@@ -473,7 +474,19 @@ void LauncherDialog::DrawModsTab() {
 
   const std::vector<dbz3::ModInfo> mods = dbz3::ListMods();
   if (mods.empty()) {
-    ImGui::TextDisabled("No mods found in the 'mods' folder next to the project.");
+    ImGui::TextWrapped("No hay mods instalados. Los mods se colocan en la "
+                       "carpeta 'mods' junto al ejecutable, cada uno en su "
+                       "propia subcarpeta con un manifest.txt.");
+    if (ImGui::Button("Abrir carpeta de mods", ImVec2(220, 0))) {
+      const std::filesystem::path mods_dir = dbz3::ModsRoot();
+      std::error_code ec;
+      std::filesystem::create_directories(mods_dir, ec);
+      std::string cmd = "explorer \"" + mods_dir.string() + "\"";
+      std::system(cmd.c_str());
+    }
+    ImGui::TextDisabled("Crea 'mods/' si no existe y la abre en el Explorador. "
+                        "Copia aqui tu mod descargado y se listara y activara "
+                        "automaticamente.");
     ImGui::EndChild();
     return;
   }
@@ -635,8 +648,18 @@ void LauncherDialog::DrawModelSwapTab() {
   const auto& chars = mod_pipeline_.B3();
 
   if (!mod_pipeline_.CatalogLoaded() || chars.empty()) {
-    ImGui::TextWrapped("El catalogo B3 no existe o esta vacio.");
-    ImGui::TextDisabled("Esperado en: mod center hd/catalog_b3.cat");
+    ImGui::TextWrapped("El catalogo de personajes (catalog_b3.cat) no se "
+                       "encontro o esta vacio.");
+    ImGui::TextWrapped("El model swap necesita la carpeta 'mod center hd' "
+                       "junto al ejecutable, con catalog_b3.cat y swap_b3.py. "
+                       "No viene incluida en el ZIP de release: descargala del "
+                       "repositorio (carpeta 'mod center hd') o desde un "
+                       "release completo, y colocala al lado de dbz3.exe.");
+    ImGui::TextDisabled("Esperado en: %s",
+                        (rex::filesystem::GetExecutableFolder() /
+                         "mod center hd" / "catalog_b3.cat")
+                            .string()
+                            .c_str());
     ImGui::EndChild();
     return;
   }
@@ -761,8 +784,18 @@ void LauncherDialog::DrawTexturesTab() {
   const auto& chars = mod_pipeline_.B3();
 
   if (!mod_pipeline_.CatalogLoaded() || chars.empty()) {
-    ImGui::TextWrapped("El catalogo B3 no existe o esta vacio.");
-    ImGui::TextDisabled("Esperado en: mod center hd/catalog_b3.cat");
+    ImGui::TextWrapped("El catalogo de personajes (catalog_b3.cat) no se "
+                       "encontro o esta vacio.");
+    ImGui::TextWrapped("El mod de texturas necesita la carpeta 'mod center hd' "
+                       "junto al ejecutable, con catalog_b3.cat y texture_b3.py. "
+                       "No viene incluida en el ZIP de release: descargala del "
+                       "repositorio (carpeta 'mod center hd') o desde un "
+                       "release completo, y colocala al lado de dbz3.exe.");
+    ImGui::TextDisabled("Esperado en: %s",
+                        (rex::filesystem::GetExecutableFolder() /
+                         "mod center hd" / "catalog_b3.cat")
+                            .string()
+                            .c_str());
     ImGui::EndChild();
     return;
   }

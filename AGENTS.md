@@ -2028,3 +2028,56 @@ documentan las dos disposiciones (us/ junto al exe o dentro de `assets/`).
 La DLL correcta (11188224 B, con `AfsFindModFileOverride`) fue restaurada en el
 build tras recompilar (el cmake la sobrescribe con la versión stale de
 `rexglue/bin`).
+
+### 14.2 🔴✅ TOOLKIT DE MODDING INTEGRADO AL PAQUETE DE RELEASE (2026-08-20)
+
+**Problema reportado (test en el paquete standalone)**: al ejecutar el zip de
+release (solo exe + DLLs, sin `mod center hd`), la pestaña **Model Swap** y
+**Texturas** mostraban "Esperado en: mod center hd/catalog_b3.cat" (el catálogo
+no existía junto al exe), y la pestaña **Mods** decía "no mods found...". El
+usuario pedía: (a) que el toolkit funcione de forma nativa en el paquete,
+(b) poder instalar un mod descargado de forma nativa (que el exe cree la
+carpeta), y (c) explicar qué hace falta si falta el toolkit.
+
+**Solución — toolkit integrado al zip de release**:
+- El paquete de release ahora incluye `mod center hd/` junto al exe con el
+  subconjunto de RUNTIME: `swap_b3.py`, `texture_b3.py`, `catalog_b3.cat` y
+  `tools/` (`xbcompress.exe`/`xbdecompress.exe` + sus DLLs `MSVCR71.dll`,
+  `MSVCP71.dll`, `xbdm.dll`). Añadido `MODDING_README.md` a la raíz del paquete
+  (cómo instalar mods y usar el toolkit) y sección en `RELEASE_README.md`.
+- **⚠️ DLLs del XDK**: `xbcompress/xbdecompress` son binarios del XDK antiguo
+  que dependen de `MSVCR71.dll`/`MSVCP71.dll` **y también de `xbdm.dll`**
+  (sin xbdm dan error 0xC0000135 = DLL not found). Las tres deben copiarse
+  JUNTO a los .exe (las busca Windows en el directorio del exe). El proyecto
+  hermano B1 ya las tenía en su `tools/`.
+
+**Cambios de código**:
+1. **`mod_pipeline.cpp::ProjectRoot()`**: ahora detecta también `probe/assets/us`
+   y `probe/assets/eu`, para que en el paquete standalone (assets en `assets/`)
+   el catálogo y los scripts se encuentren junto al exe.
+2. **`launcher_state.cpp`**: el mensaje de catálogo faltante ahora es claro y
+   accionable (explica que hay que tener `mod center hd/` junto al exe y la ruta
+   esperada); la pestaña **Mods** con 0 mods muestra un botón **"Abrir carpeta
+   de mods"** que crea `mods/` si no existe y la abre en el Explorador (para que
+   el usuario deje ahí su mod descargado; el launcher lo lista y activa solo).
+3. **`swap_b3.py` y `texture_b3.py`**: rutas PORTABLES (funcionan en dev y en el
+   paquete):
+   - `TOOLS_DIR` busca primero `HERE/tools` (paquete), luego el XDK del repo.
+   - `DEFAULT_AFS` busca `ROOT/assets/us` y `ROOT/us` (en el paquete `ROOT` = el
+     directorio del exe, porque `mod center hd/` vive dentro de él).
+   - `workdir` y `mods_root` por defecto: en el paquete usan el TEMP corregido y
+     `exe_dir/mods` (el runtime sirve los mods desde `exe_dir/mods`); en dev
+     usan `out/build/...`.
+
+**Verificado end-to-end (D:\Budokai 3, layout assets/)**: `swap_b3.py --origen
+298 --dest 327` extrae Goten (XGTN_BODY), comprime (107006 B), aplica mid-insert
+virtual (pad 110592) y genera el mod en `exe_dir/mods/...` sin errores. El
+launcher arranca y carga (game dir, montaje, XEX, "launcher shown"). El catálogo
+(183 personajes) se resuelve en `exe_dir/mod center hd/catalog_b3.cat`.
+
+**Sync aplicado**: `mod center hd/{swap_b3.py,texture_b3.py}` y
+`src/launcher/{mod_pipeline.cpp,launcher_state.cpp}` → `github/`;
+`dbz3.exe`/`rexruntime.dll` y el toolkit `mod center hd/` → `github/release-stage/`;
+`MODDING_README.md` nuevo; `RELEASE_README.md` actualizado. La DLL correcta
+(11188224 B) restaurada en el build tras recompilar. Release v1.0.2 actualizada
+con el zip regenerado (incluye el toolkit).
