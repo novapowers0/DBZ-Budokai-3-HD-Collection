@@ -248,8 +248,18 @@ public:
         // Game directory: arg or default to the project root (disc root).
         // The exe lives in out/build/win-amd64-release, so the project root
         // is three levels up. The VFS maps game:\ and d:\ to this root, so
-        // D:\us\ resolves to project_root/us/ (the actual game data).
-        // Fall back to exe_dir/.. if not found.
+        // D:\us\ resolves to <game_dir>/us/ (the actual game data).
+        // Both layouts are supported:
+        //   - dev:      <root>/us, <root>/eu (project root next to out/build)
+        //   - standalone release: <exe_dir>/us or <exe_dir>/assets/{default.xex,us,eu}
+        // Fall back to the exe folder if nothing is found.
+        auto FindGameRoot = [](const std::filesystem::path& base) -> std::filesystem::path {
+            if (std::filesystem::is_directory(base / "us"))
+                return base;
+            if (std::filesystem::is_directory(base / "assets" / "us"))
+                return base / "assets";
+            return {};
+        };
         std::filesystem::path game_dir;
         if (auto arg = GetArgument("game_directory")) {
             game_dir = *arg;
@@ -259,18 +269,19 @@ public:
             //   1) next to the exe (standalone release layout: dbz3.exe + us/ + default.xex)
             //   2) the project root (dev layout: out/build/win-amd64-release, 3 levels up)
             //   3) the parent of the exe folder
-            if (std::filesystem::is_directory(exe_dir / "us")) {
-                game_dir = exe_dir;
+            if (auto root = FindGameRoot(exe_dir); !root.empty()) {
+                game_dir = root;
                 REXLOG_INFO("OnConfigurePaths - game_dir default (next to exe): {}", game_dir.string());
+            } else if (auto root = FindGameRoot(exe_dir.parent_path().parent_path().parent_path());
+                       !root.empty()) {
+                game_dir = root;
+                REXLOG_INFO("OnConfigurePaths - game_dir default (project root): {}", game_dir.string());
+            } else if (auto root = FindGameRoot(exe_dir.parent_path()); !root.empty()) {
+                game_dir = root;
+                REXLOG_INFO("OnConfigurePaths - game_dir default (parent): {}", game_dir.string());
             } else {
-                auto project_root = exe_dir.parent_path().parent_path().parent_path();
-                if (std::filesystem::is_directory(project_root / "us")) {
-                    game_dir = project_root;
-                    REXLOG_INFO("OnConfigurePaths - game_dir default (project root): {}", game_dir.string());
-                } else {
-                    game_dir = exe_dir.parent_path();
-                    REXLOG_INFO("OnConfigurePaths - game_dir default (parent): {}", game_dir.string());
-                }
+                game_dir = exe_dir;
+                REXLOG_INFO("OnConfigurePaths - game_dir default (fallback exe dir): {}", game_dir.string());
             }
         }
         REXLOG_INFO("OnConfigurePaths - game_dir final: {}", game_dir.string());

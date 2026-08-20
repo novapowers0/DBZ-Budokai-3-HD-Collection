@@ -1966,7 +1966,10 @@ usa el modelo limpio (leer assets directo, sin duplicar), replicado aquí.
 **Solución (modelo dbz1, sin duplicados)**:
 1. **`OnConfigurePaths`** (`src/main.cpp`): `paths.game_data_root = game_dir`
    directo (la carpeta que contiene `us/`/`eu/`). Ya NO se construye
-   `active_region`.
+   `active_region`. La detección de `game_dir` soporta DOS disposiciones:
+   (a) `us/` junto al exe, y (b) `assets/{default.xex,us,eu}` junto al exe
+   (`FindGameRoot` busca `base/us` o `base/assets/us`, con fallback al
+   project root de desarrollo a 3 niveles y al padre del exe).
 2. **`ApplyRegionMount()`** (`src/region.h`/`src/region.cpp`, nuevo): monta un
    `HostPathDevice` en `\Device\Harddisk0\Partition1\us` → `game_dir/<region>`
    (us/eu), leyendo los assets directamente sin copiar nada. Se llama en el
@@ -1995,3 +1998,33 @@ juego hay que volver a copiar la DLL correcta del SDK
 **Parches del SDK actualizados** en `github/patches/` (ahora son 4 archivos:
 `afs.cpp`, `afs.h`, `host_path_file.cpp`, `host_path_entry.cpp`). README
 actualizado. Release **v1.0.2**.
+
+### 14.1 🔴✅ FIX: DETECCIÓN DE `assets/` EN EL PAQUETE STANDALONE (2026-08-20)
+
+**Problema reportado**: con el paquete standalone desplegado como
+`<carpeta>/dbz3.exe` + `<carpeta>/assets/{default.xex, us/, eu/}`, el launcher
+buscaba `default.xex` en la raíz del disco (`D:\default.xex`) en vez de
+`assets/default.xex`. En el log: `Game directory: D:\` y
+`Entrypoint XEX not found: D:\default.xex`.
+
+**Causa raíz**: `OnConfigurePaths` (src/main.cpp) solo detectaba `us/` junto al
+exe o en el project root a 3 niveles; con los assets en `assets/` ninguna
+existía y el fallback final era `exe_dir.parent_path()` (= raíz de disco si el
+exe está en la raíz de una unidad).
+
+**Fix aplicado** (src/main.cpp): helper `FindGameRoot(base)` que devuelve `base`
+si `base/us` existe, o `base/assets` si `base/assets/us` existe. La prioridad es:
+1) junto al exe (exe_dir o exe_dir/assets), 2) project root de dev (3 niveles
+arriba, o su assets/), 3) padre del exe (o su assets/), 4) fallback exe_dir.
+
+**Verificado en juego** (D:\Budokai 3, layout `assets/`): el log muestra
+`Game directory: D:\Budokai 3\assets`, `Mounted D:\Budokai 3\assets at
+\Device\Harddisk0\Partition1`, `Loading XEX image: game:\default.xex` sin error,
+y el launcher se muestra (`launcher shown, waiting for Play`).
+
+**Sync aplicado**: `src/main.cpp` → `github/`, `dbz3.exe`/`rexruntime.dll`
+actualizados en `github/release-stage/`, `RELEASE_README.md` + `README.md`
+documentan las dos disposiciones (us/ junto al exe o dentro de `assets/`).
+La DLL correcta (11188224 B, con `AfsFindModFileOverride`) fue restaurada en el
+build tras recompilar (el cmake la sobrescribe con la versión stale de
+`rexglue/bin`).

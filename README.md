@@ -86,8 +86,11 @@ DBZ-Budokai-3-HD-Collection/
 
 1. **Descarga** el ZIP de Windows desde la pestaña **Releases** y extráelo.
 2. **Aporta los archivos del juego**: junto a `dbz3.exe` coloca `default.xex`
-   y las carpetas `us/` y/o `eu/` con los datos de tu copia legal (ver
-   `baserom.md` y "Instalar el juego" abajo).
+   y las carpetas `us/` y/o `eu/` con los datos de tu copia legal. También se
+   admite ponerlos todos dentro de una subcarpeta `assets/` junto al exe
+   (`assets/default.xex`, `assets/us/`, `assets/eu/`) — el launcher detecta
+   ambas disposiciones automáticamente (ver
+   `RELEASE_README.md` del paquete).
 3. **Ejecuta** `dbz3.exe`.
 4. En el launcher elige **Región** (USA / EU PAL), **Idioma**, **Vídeo** y
    **Audio**, y pulsa **Play**.
@@ -103,13 +106,16 @@ que extraerlos de tu **ISO legal** de *Dragon Ball Z: Budokai 3 HD Collection*
 
 1. Extrae la ISO con una herramienta tipo `extract-xiso` (lee el sistema de
    archivos FATX de Xbox 360).
-2. Copia a `default.xex` el ejecutable del juego (junto a `dbz3.exe`).
+2. Copia a `default.xex` el ejecutable del juego (junto a `dbz3.exe`, o dentro
+   de `assets/` si prefieres esa disposición).
 3. Copia la carpeta de datos de tu región:
    - **USA**: a `us/` → `data_cmn.afs`, `data_eng.afs`, `data_fra.afs`,
      `data_ger.afs`, `data_ita.afs`, `data_spn.afs`, `data_usi.afs`,
      `data_yah.afs`, `adx_jpn.afs`, `adx_usa.afs`, `lang_jpn.afs`,
      `lang_usa.afs`, `opening.sfd`, `Ending00.sfd`, `Ending01.sfd`.
    - **EU/PAL**: a `eu/` → los mismos archivos de la región.
+   - Todo esto puede ir junto a `dbz3.exe` o dentro de `assets/` (junto a
+     `default.xex`); el launcher detecta ambas disposiciones.
 4. Verifica los archivos contra `baserom.md` (tamaños y checksums SHA-256).
 
 Solo necesitas el ejecutable y los archivos de datos, **no toda la ISO**.
