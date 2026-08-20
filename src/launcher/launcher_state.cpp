@@ -134,6 +134,13 @@ LauncherDialog::LauncherDialog(rex::ui::ImGuiDrawer* drawer, std::function<void(
   ApplyTheme();
 }
 
+void LauncherDialog::OnClose() {
+  // Robustness: persist whatever the user selected in the launcher, even if they
+  // close the dialog (Play button or window X) without pressing "Save settings".
+  // The Play button also saves explicitly; this guarantees nothing is ever lost.
+  dbz3::settings::SaveUserSettings();
+}
+
 void LauncherDialog::OnDraw(ImGuiIO& io) {
   // Fill the entire host window. The host window is always 1280x720 windowed
   // during the launcher (fullscreen/resolution are applied on Play), so the
@@ -257,6 +264,10 @@ void LauncherDialog::DrawVideoTab() {
   if (scale_idx > 3) scale_idx = 3;
   if (ImGui::Combo("Internal render scale", &scale_idx, scale_items, 4)) {
     dbz3::settings::SetResolutionScale(scale_idx + 1);
+    // Persist immediately: the user often marks the scale and then launches (or
+    // closes) without pressing "Save settings". Saving here guarantees the chosen
+    // internal resolution is always applied on the next boot.
+    dbz3::settings::SaveUserSettings();
   }
   ImGui::TextWrapped("Supersampling of the 720p framebuffer. Reduces aliasing. Restart.");
 
@@ -378,6 +389,9 @@ void LauncherDialog::DrawUpscaleTab() {
   }
   if (ImGui::Combo("Effect", &eff_idx, effects, 3)) {
     dbz3::settings::SetPresentEffect(effect_values[eff_idx]);
+    // Persist immediately so the chosen upscaling effect survives a launch/close
+    // without the user pressing "Save settings".
+    dbz3::settings::SaveUserSettings();
   }
 
   if (dbz3::settings::PresentEffect() == "fsr") {

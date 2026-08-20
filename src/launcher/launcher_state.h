@@ -23,6 +23,10 @@ class LauncherDialog : public rex::ui::ImGuiDialog {
 
  protected:
   void OnDraw(ImGuiIO& io) override;
+  // Called when the dialog is dismissed (Play button or window close). Auto-saves
+  // the user settings so choices made in the launcher are never lost, even if the
+  // user forgets to press "Save settings".
+  void OnClose() override;
 
  private:
   void DrawVideoTab();
