@@ -59,6 +59,50 @@ const char* LanguageName(int32_t xbox_language_id);
 // assets (text/audio/video packs), keeping the US binary.
 std::string Region();
 void SetRegion(const std::string& region);
+
+// --- Game data folder ------------------------------------------------------
+// Override for the game data folder (the one that directly contains us/ and
+// eu/). Empty = auto-detect (next to the exe / project root). Set by the
+// launcher's "Seleccionar carpeta de datos..." so the folder survives restarts.
+std::string GameDirOverride();
+void SetGameDirOverride(const std::string& path);
+
+// True if `root` looks like a game data folder: it directly contains a us/ or
+// eu/ asset folder, or a default.xex entrypoint. Used by the launcher to
+// validate a user-picked folder before pointing the game at it.
+bool IsValidGameDataDir(const std::filesystem::path& root);
+
+// XEX entrypoint compatibility status. Each core is a recompilation of ONE
+// executable: the US/NA core only boots the US xex (yae3_xenon.xex), and the
+// EU/PAL core (DBZ3_EU_VARIANT) only boots the EU xex (yae3_xenon_eu.xex).
+// A core given the wrong variant's xex exits immediately with
+// "No function registered" (different code layout). Region (assets us/ vs eu/)
+// and language are handled by the launcher on whichever core is running.
+enum class XexStatus {
+  kMissing = 0,  // default.xex does not exist
+  kUs = 1,       // known US/NA executable
+  kEu = 2,       // known EU/PAL executable
+  kUnknown = 3,  // present but not a known variant (informational note)
+};
+// Status of `root/default.xex`, cached by (path, size, mtime) so the per-frame
+// launcher banner does not re-hash a ~4.9MB file every frame.
+XexStatus CheckDefaultXex(const std::filesystem::path& root);
+
+// Whether `status` is the executable THIS core was recompiled from. On the
+// US/NA core that is the US xex; on the EU/PAL core (DBZ3_EU_VARIANT) the EU
+// one. A known wrong-variant xex must be blocked; kMissing/kUnknown are not
+// expected either but are handled with their own messaging.
+inline bool XexIsExpected(XexStatus status) {
+#if defined(DBZ3_EU_VARIANT)
+  return status == XexStatus::kEu;
+#else
+  return status == XexStatus::kUs;
+#endif
+}
+
+// Path of the most recent log file (exe_dir/logs/dbz3_*.log). Empty when the
+// logs folder does not exist yet. Used by the crash dialog.
+std::filesystem::path LatestLogPath();
 // Build the "active region" overlay next to the exe and return the game data
 // root the runtime should mount. Hardlinks (with copy fallback) map every file
 // the game may open to the highest-priority source:
@@ -132,6 +176,32 @@ void SetFsrSharpness(double sharpness);
 double CasSharpness();
 void SetCasSharpness(double sharpness);
 
+// --- Quality presets --------------------------------------------------------
+// One-click quality profiles that set the internal render scale, MSAA, aniso
+// and upscaling effect together. Values: "auto" (detect the GPU tier and apply
+// the recommended profile on every launch), "low", "medium", "high", "ultra",
+// or "manual" (the individual controls below are used as-is).
+std::string QualityPreset();
+void SetQualityPreset(const std::string& preset);
+
+// Name of the detected primary GPU (for the launcher UI). Empty when it cannot
+// be determined.
+std::string DetectGpuName();
+// Detected GPU performance tier: 0 = low (old integrated), 1 = medium,
+// 2 = high (modern discrete).
+int32_t DetectGpuTier();
+// Human-readable tier label: "Low" / "Medium" / "High".
+const char* GpuTierLabel(int32_t tier);
+
+// Apply the current quality preset to the individual quality cvars (scale/MSAA/
+// aniso/effect). For "auto" it uses the detected GPU tier; for a named preset
+// it also persists the resulting values. Safe to call at launch and from the UI.
+void ApplyQualityPreset();
+// Apply the "auto" preset at most once per process (used from
+// ApplyUserSettingsToSdk so fresh installs get GPU-appropriate defaults
+// without stomping a user's in-session tweaks when Play is pressed).
+void ApplyQualityPresetIfAuto();
+
 // --- Audio -----------------------------------------------------------------
 
 double MasterVolume();
@@ -149,6 +219,25 @@ double Deadzone();
 void SetDeadzone(double v);
 bool RumbleEnabled();
 void SetRumbleEnabled(bool enabled);
+
+// Controller backend: "xinput" (native, default) or "sdl" (generic pads).
+std::string InputBackend();
+void SetInputBackend(const std::string& backend);
+
+// Keyboard/mouse controller emulation (MnK). On by default: the keyboard must
+// work out of the box on PC.
+bool MnkMode();
+void SetMnkMode(bool enabled);
+
+// Use the mouse for the right stick (in addition to the rstick_* keys).
+bool MnkMouse();
+void SetMnkMouse(bool enabled);
+
+// Read/write a dbz3_keybind_<name> cvar by suffix (e.g. "a", "dpad_up").
+// These wrappers persist to dbz3_user.toml; ApplyUserSettingsToSdk forwards
+// them to the runtime's keybind_* cvars.
+std::string Keybind(const std::string& name);
+void SetKeybind(const std::string& name, const std::string& value);
 
 // --- Dev -------------------------------------------------------------------
 

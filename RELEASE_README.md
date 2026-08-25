@@ -9,13 +9,25 @@ de tu copia legal.
 
 ## Contenido
 
-- `dbz3.exe` — recompilador + launcher + sistema de mods
-- `rexruntime.dll` — runtime ReXGlue
-- `rexgpu-xenos.dll` — plugin GPU (Xenos)
+- `dbz3.exe` — **bootstrap de ISA**: detecta tu CPU y lanza la variante correcta
+- `dbz3_avx2\` — variante US/NA optimizada (CPU con AVX2: Intel 4ª gen+, AMD Ryzen+)
+  - `dbz3_core.exe` — recompilador + launcher + sistema de mods
+  - `rexruntime.dll`, `rexgpu-xenos.dll`, `amd_fidelityfx_dx12.dll`, etc.
+- `dbz3_legacy\` — variante US/NA compatible (cualquier CPU x64, sin AVX2)
+  - `dbz3_core.exe` (idéntico) + runtime compilado sin AVX2
+- `dbz3_eu_avx2\` / `dbz3_eu_legacy\` — **variantes EU/PAL**: recompiladas desde
+  el ejecutable EU (`yae3_xenon_eu.xex`), mismas reglas de CPU
 - `TracyClient.dll` — profiling (requerido por el runtime)
 - `amd_fidelityfx_dx12.dll` / `amd_fidelityfx_vk.dll` — upscaling FSR (D3D12/Vulkan)
 - `SPIRV-Tools-shared.dll` — utilidades SPIR-V (backend Vulkan)
 - `RELEASE_README.md` — este archivo
+
+> **No elijas variante a mano**: `dbz3.exe` comprueba una sola vez con CPUID si
+> tu CPU soporta AVX2 (x86-64-v3) y arranca `dbz3_avx2\` o `dbz3_legacy\`
+> automáticamente. Además identifica el `default.xex` que has puesto (US/NA o
+> EU/PAL) y elige el núcleo correspondiente (`dbz3_avx2\` vs `dbz3_eu_avx2\`).
+> Tanto el ejecutable US como el EU funcionan: cada uno es una recompilación
+> completa del juego.
 
 ## Cómo instalar y jugar (paso a paso)
 
@@ -23,7 +35,7 @@ El paquete **NO incluye los archivos del juego** (copyright). Tienes que
 aportarlos de tu **copia legal**. Haz esto:
 
 1. **Descomprime** el ZIP en una carpeta, por ejemplo `C:\Juegos\DBZ3\`.
-   Quedará un archivo `dbz3.exe` junto a varias DLLs.
+   Quedará `dbz3.exe` y las carpetas `dbz3_avx2\` y `dbz3_legacy\`.
 
 2. **Aporta los archivos del juego** en una de estas dos disposiciones (la que
    prefieras; el launcher las detecta ambas automáticamente):
@@ -33,8 +45,8 @@ aportarlos de tu **copia legal**. Haz esto:
    ```
    C:\Juegos\DBZ3\
    ├── dbz3.exe            ← ya viene aquí
-   ├── rexruntime.dll      ← ya viene aquí
-   ├── ... (DLLs)          ← ya vienen aquí
+   ├── dbz3_avx2\          ← ya viene aquí
+   ├── dbz3_legacy\        ← ya viene aquí
    ├── default.xex         ← TÚ lo pones aquí
    └── us/                 ← TÚ la creas (y/o eu/)
    ```
@@ -44,8 +56,8 @@ aportarlos de tu **copia legal**. Haz esto:
    ```
    C:\Juegos\DBZ3\
    ├── dbz3.exe            ← ya viene aquí
-   ├── rexruntime.dll      ← ya viene aquí
-   ├── ... (DLLs)          ← ya vienen aquí
+   ├── dbz3_avx2\          ← ya viene aquí
+   ├── dbz3_legacy\        ← ya viene aquí
    └── assets/             ← TÚ la creas
        ├── default.xex     ← TÚ lo pones aquí
        └── us/             ← TÚ la creas (y/o eu/)
@@ -62,10 +74,16 @@ aportarlos de tu **copia legal**. Haz esto:
    `us/` (es decir, junto a `dbz3.exe` en la Opción A, o dentro de `assets/` en
    la Opción B; **nunca** dentro de `us/`).
 
+   > **Puedes usar el ejecutable US/NA (`yae3_xenon.xex`) o el EU/PAL
+   > (`yae3_xenon_eu.xex`)**: cada uno tiene su núcleo recompilado dentro del
+   > paquete, y el launcher elige el correcto solo. La región PAL (assets `eu/`)
+   > y el idioma se eligen en el launcher, así que tampoco pierdes nada por usar
+   > un ejecutable u otro.
+
 5. **Ejecuta `dbz3.exe`** (doble clic).
 
 6. En la ventana del launcher elige **Región** (USA / EU PAL), **Idioma**,
-   **Vídeo** y **Audio**, y pulsa **Play**.
+    **Vídeo**, **Audio** e **Input**, y pulsa **Play**.
 
 > Si algo falla, comprueba que `default.xex` y `us/` (o `eu/`) están en la
 > MISMA carpeta, o ambos dentro de `assets/`, tal como en los dibujos del paso 2.
@@ -73,6 +91,50 @@ aportarlos de tu **copia legal**. Haz esto:
 > Para extraer los archivos de tu **ISO legal** usa una herramienta tipo
 > `extract-xiso` (lee el FATX de Xbox 360). Ver `baserom.md` del repositorio
 > para los tamaños y checksums SHA-256 de cada archivo.
+
+## Novedades de esta release
+
+- **Controles (pestaña Input)**: el **teclado funciona de serie** (emula al
+  mando; menús + combate). Puedes **remapear las 24 teclas** (campo "Keyboard
+  (MnK) mapping", formato `Tecla`, comas = alternativas, `Shift+/Ctrl+/Alt+` =
+  modificadores) y activar el ratón como stick derecho. Mando: selector
+  XInput/SDL, **deadzone** y **rumble** con efecto real (sliders en la pestaña).
+- **Velocidad del juego fija**: el juego corre SIEMPRE a su velocidad correcta
+  (60 FPS lógicos, sincronizados con el vblank del guest). Ya no se puede
+  "acelerar" accidentalmente.
+- **Frame cap** (pestaña Video): limita la tasa de presentación de tu PC
+  (60 = por defecto, fluido; **30 = media carga** recomendado para gráficas
+  integradas; 0 = sin límite). NO cambia la velocidad del juego.
+- **Presets de calidad por GPU** (pestaña Video, "Quality preset"): `Auto`
+  detecta tu gráfica (nombre + VRAM) y aplica el perfil recomendado en cada
+  arranque. Perfiles manuales: Low / Medium / High / Ultra. Las instalaciones
+  con ajustes hechos a mano se conservan intactas (se marcan como "Manual").
+- **Máquinas sin AVX2**: el arrancador `dbz3.exe` detecta tu CPU y usa la
+  variante correcta (`dbz3_avx2\` para CPU modernas, `dbz3_legacy\` para las
+  demás).
+- **Arranque fiable**: el launcher ya no se queda en negro/No responde al
+  abrir. La causa era la inicialización del mando SDL (que puede bloquearse
+  con software de captura como RTSS/OBS); ahora se inicializa en segundo plano
+  y el juego arranca al instante.
+- **Cierre fiable (Alt+F4 / botón X)**: cerrar el juego ya no lo deja colgado
+  en "No responde"; sale al instante.
+- **Detección del ejecutable**: si pones el `default.xex` EU/PAL, el launcher lo
+  detecta y arranca el núcleo EU/PAL correspondiente (igual con el US/NA); si
+  pones un núcleo con el ejecutable equivocado, te avisa y bloquea Play para que
+  no veas un cierre raro. También se detecta la carpeta de datos aunque solo
+  tengas `eu/` (sin `us/`).
+- **Launcher en tu idioma (y el juego también)**: el selector "Idioma" traduce
+  TODO el launcher (español, inglés, italiano, alemán, francés; el resto usa
+  inglés) **y condiciona el texto del juego** al mismo idioma.
+- **PLAY siempre visible**: el botón PLAY es grande y verde, siempre en
+  pantalla sin necesidad de hacer scroll, con un resumen de la configuración
+  que se va a lanzar (región, motor, escala, efecto, idioma). El selector de
+  región está en la barra inferior.
+- **UI compacta**: toda la interfaz cabe en la ventana sin barras de
+  desplazamiento (pestañas Video y Controles en columnas; las ayudas largas
+  se muestran al pasar el ratón).
+- **Presets visibles**: la pestaña Video muestra qué perfil de calidad está
+  activo y a qué valores resuelve (p.ej. "Auto → Alta: 1x, MSAA ON...").
 
 ## Mods (WIP)
 

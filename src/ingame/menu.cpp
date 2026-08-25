@@ -52,15 +52,13 @@ void InGameMenu::DrawDevModeSection() {
   }
   ImGui::TextDisabled("Supersampling of the 720p framebuffer (2x=1440p, 3x=2160p). Restart required.");
 
-  bool vsync = dbz3::settings::VsyncEnabled();
-  if (ImGui::Checkbox("VSync", &vsync)) {
-    dbz3::settings::SetVsyncEnabled(vsync);
-  }
+  ImGui::TextDisabled("Game speed: fixed 60 FPS (synchronized)");
 
   int cap = dbz3::settings::FrameCap();
   if (ImGui::SliderInt("Frame cap", &cap, 0, 240, cap == 0 ? "Uncapped" : "%d FPS")) {
     dbz3::settings::SetFrameCap(cap);
   }
+  ImGui::TextDisabled("Host present rate. Applied on the next launch.");
 }
 
 }  // namespace dbz3::ingame

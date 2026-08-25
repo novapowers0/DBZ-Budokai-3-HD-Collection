@@ -2,7 +2,11 @@
 // Dragon Ball Z Budokai 3 (PAL / Xbox 360 HD Collection)
 // Adapted from original Budokai 1 main.cpp
 
+#ifdef DBZ3_EU_VARIANT
+#include "generated_eu/dbz3_eu_init.h"
+#else
 #include "generated/dbz3_init.h"
+#endif
 
 #include <rex/cvar.h>
 #include <rex/filesystem.h>
@@ -11,6 +15,7 @@
 #include <rex/system/function.h>
 #include <rex/system/xthread.h>
 #include <rex/system/kernel_state.h>
+#include <rex/system.h>
 #include <rex/graphics/graphics_system.h>
 #include <rex/ui/window.h>
 #include <rex/ui/window_listener.h>
@@ -46,6 +51,9 @@ REXCVAR_DECLARE(bool, dbz3_skip_launcher);
 #include <filesystem>
 #include <thread>
 #include <exception>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 
 #if REX_PLATFORM_WIN32
 #include <windows.h>
@@ -254,9 +262,18 @@ public:
         //   - standalone release: <exe_dir>/us or <exe_dir>/assets/{default.xex,us,eu}
         // Fall back to the exe folder if nothing is found.
         auto FindGameRoot = [](const std::filesystem::path& base) -> std::filesystem::path {
+            // Accept either region folder (us/ or eu/), in both the flat layout
+            // (base/us, base/eu) and the assets/ layout (base/assets/us,
+            // base/assets/eu). An EU-only user has eu/ but no us/ — rejecting
+            // it made auto-detection fall back to the exe folder and fail with
+            // "Entrypoint XEX not found". Matches IsValidGameDataDir/banner.
             if (std::filesystem::is_directory(base / "us"))
                 return base;
+            if (std::filesystem::is_directory(base / "eu"))
+                return base;
             if (std::filesystem::is_directory(base / "assets" / "us"))
+                return base / "assets";
+            if (std::filesystem::is_directory(base / "assets" / "eu"))
                 return base / "assets";
             return {};
         };
@@ -266,22 +283,34 @@ public:
             REXLOG_INFO("OnConfigurePaths - game_dir from arg: {}", game_dir.string());
         } else {
             // Priority order for locating the game assets:
-            //   1) next to the exe (standalone release layout: dbz3.exe + us/ + default.xex)
-            //   2) the project root (dev layout: out/build/win-amd64-release, 3 levels up)
-            //   3) the parent of the exe folder
+            //   1) next to the exe (standalone release layout: dbz3.exe + us/ + default.xex,
+            //      or a variant folder dbz3_avx2/ / dbz3_eu_avx2/ with assets in the parent)
+            //   2) the parent of the exe folder (release layout when the core runs from a
+            //      variant subfolder: <release>/dbz3_eu_avx2 -> <release>/assets)
+            //   3) the project root (dev layout: out/build/win-amd64-release, 3 levels up)
             if (auto root = FindGameRoot(exe_dir); !root.empty()) {
                 game_dir = root;
                 REXLOG_INFO("OnConfigurePaths - game_dir default (next to exe): {}", game_dir.string());
+            } else if (auto root = FindGameRoot(exe_dir.parent_path()); !root.empty()) {
+                game_dir = root;
+                REXLOG_INFO("OnConfigurePaths - game_dir default (parent): {}", game_dir.string());
             } else if (auto root = FindGameRoot(exe_dir.parent_path().parent_path().parent_path());
                        !root.empty()) {
                 game_dir = root;
                 REXLOG_INFO("OnConfigurePaths - game_dir default (project root): {}", game_dir.string());
-            } else if (auto root = FindGameRoot(exe_dir.parent_path()); !root.empty()) {
-                game_dir = root;
-                REXLOG_INFO("OnConfigurePaths - game_dir default (parent): {}", game_dir.string());
             } else {
                 game_dir = exe_dir;
                 REXLOG_INFO("OnConfigurePaths - game_dir default (fallback exe dir): {}", game_dir.string());
+            }
+            // A folder explicitly picked in the launcher ("Seleccionar carpeta
+            // de datos...", persisted in dbz3_game_dir) outranks auto-detection.
+            const std::string override = dbz3::settings::GameDirOverride();
+            if (!override.empty() && dbz3::settings::IsValidGameDataDir(override)) {
+                game_dir = override;
+                REXLOG_INFO("OnConfigurePaths - game_dir from user override: {}", override);
+            } else if (!override.empty()) {
+                REXLOG_WARN("OnConfigurePaths - stored game_dir override '{}' is not a valid game "
+                            "data folder, ignoring it", override);
             }
         }
         REXLOG_INFO("OnConfigurePaths - game_dir final: {}", game_dir.string());
@@ -293,6 +322,10 @@ public:
         // without copying anything.
         game_dir_ = game_dir;
         paths.game_data_root = game_dir;
+        // Keep the effective game data root in sync so region mounting (which
+        // reads this root, not the runtime's fixed copy) always uses the folder
+        // we resolved here.
+        dbz3::SetEffectiveGameRoot(game_dir);
         paths.user_data_root = exe_dir / "user_data" / GetName();
         paths.cache_root = paths.user_data_root / "cache";
         paths.metadata_root = exe_dir / "metadata";
@@ -349,6 +382,53 @@ protected:
     // launcher's Play button calls ReXApp::LaunchModule() directly.
     void LaunchModule() override {
         if (REXCVAR_GET(dbz3_skip_launcher)) {
+            // Skip-launcher is a dev/test fast path. Still guard the XEX so a
+            // wrong-variant executable does not hit the cryptic "No function
+            // registered" guest exit.
+            if (auto status = dbz3::settings::CheckDefaultXex(dbz3::EffectiveGameRoot());
+                (status == dbz3::settings::XexStatus::kUs ||
+                 status == dbz3::settings::XexStatus::kEu) &&
+                !dbz3::settings::XexIsExpected(status)) {
+#if defined(DBZ3_EU_VARIANT)
+                REXLOG_ERROR(
+                    "dbz3: skip_launcher with US/NA default.xex - this EU/PAL core "
+                    "only supports the EU/PAL executable");
+                rex::ShowSimpleMessageBox(
+                    rex::SimpleMessageBoxType::Error,
+                    "default.xex is the US/NA executable but this is the EU/PAL "
+                    "core. Replace default.xex with your EU/PAL one "
+                    "(yae3_xenon_eu.xex), or use the main launcher which picks "
+                    "the correct core automatically.");
+#else
+                REXLOG_ERROR(
+                    "dbz3: skip_launcher with EU/PAL default.xex - the recompiled "
+                    "port only supports the US/NA executable");
+                rex::ShowSimpleMessageBox(
+                    rex::SimpleMessageBoxType::Error,
+                    "default.xex is the EU/PAL executable. This core is recompiled "
+                    "only from the US/NA one (yae3_xenon.xex) and cannot boot it. "
+                    "Replace default.xex with your US/NA copy, or use the main "
+                    "launcher which picks the EU/PAL core automatically.");
+#endif
+                return;
+            }
+#ifdef DBZ3_EU_VARIANT
+            // Diagnostic: dump the decrypted EU guest image for offline function
+            // pointer analysis (set DBZ3_DUMP_IMAGE=1). Temporary.
+            if (std::getenv("DBZ3_DUMP_IMAGE")) {
+                if (auto* rt = runtime()) {
+                    uint8_t* mb = rt->virtual_membase();
+                    if (mb) {
+                        FILE* f = fopen("dbz3_eu_image.bin", "wb");
+                        if (f) {
+                            fwrite(mb + 0x82000000, 1, 0x826D0000 - 0x82000000, f);
+                            fclose(f);
+                            REXLOG_INFO("dbz3: dumped EU guest image to dbz3_eu_image.bin");
+                        }
+                    }
+                }
+            }
+#endif
             REXLOG_INFO("dbz3: skip_launcher set, booting directly");
             ReXApp::LaunchModule();
             return;
@@ -356,14 +436,18 @@ protected:
         REXLOG_INFO("dbz3: launcher shown, waiting for Play");
     }
 
-    // Handle window close request
+    // Handle window close request (Alt+F4 / the window X button on Windows).
+    // Observed hang: closing during gameplay reached this point ("Window close
+    // requested" logged) but never proceeded to OnClosing's hard exit - the
+    // window stayed "Not Responding" until the process was killed. TerminateTitle
+    // / PerformClose / focus-loss can block on a straggler guest thread, so just
+    // hard-exit here instead: the user asked to close the app. OnClosing() keeps
+    // the same hard-exit as a safety net for other paths.
     bool OnWindowCloseRequested() override {
-        REXLOG_INFO("Window close requested");
+        REXLOG_INFO("Window close requested - exiting dbz3");
         shutting_down_.store(true, std::memory_order_release);
-        if (auto* rt = runtime(); rt && rt->kernel_state()) {
-            rt->kernel_state()->TerminateTitle();
-        }
-        return true;
+        rex::FlushLogging();
+        std::_Exit(0);
     }
 
 private:
@@ -383,15 +467,19 @@ private:
 #if REX_PLATFORM_WIN32
         SetUnhandledExceptionFilter([](EXCEPTION_POINTERS* ep) -> LONG {
             if (crash_logged_.exchange(true)) return EXCEPTION_CONTINUE_SEARCH;
+            // A debugger is attached: let it take the exception (don't swallow
+            // it and don't pop a dialog while debugging).
+            if (IsDebuggerPresent()) return EXCEPTION_CONTINUE_SEARCH;
+
             auto now = std::chrono::system_clock::now();
             auto time_t = std::chrono::system_clock::to_time_t(now);
             char timestamp[64];
             strftime(timestamp, sizeof(timestamp), "%Y%m%d_%H%M%S", std::localtime(&time_t));
-            char dump_path[MAX_PATH];
-            snprintf(dump_path, sizeof(dump_path), "crash_%s.dmp", timestamp);
+            char dump_path[MAX_PATH] = {};
             // Writing the minidump is optional (Dev tab toggle). Default off so
             // the game folder stays clean; the exception is still logged.
             if (dbz3::settings::CrashDumpEnabled()) {
+              snprintf(dump_path, sizeof(dump_path), "crash_%s.dmp", timestamp);
               HANDLE hFile = CreateFileA(dump_path, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
               if (hFile != INVALID_HANDLE_VALUE) {
                 MINIDUMP_EXCEPTION_INFORMATION mei;
@@ -400,17 +488,47 @@ private:
                 mei.ClientPointers = FALSE;
                 MiniDumpWriteDump(GetCurrentProcess(), GetCurrentProcessId(), hFile, MiniDumpNormal, &mei, nullptr, nullptr);
                 CloseHandle(hFile);
-                OutputDebugStringA("Crash dump written to ");
-                OutputDebugStringA(dump_path);
-                OutputDebugStringA("\n");
               }
             }
-            REXLOG_CRITICAL("UNHANDLED EXCEPTION: Code=0x{:08X} Addr={:p}", 
-                ep->ExceptionRecord->ExceptionCode, ep->ExceptionRecord->ExceptionAddress);
+            const uint32_t code = ep->ExceptionRecord->ExceptionCode;
+            const void* addr = ep->ExceptionRecord->ExceptionAddress;
+            REXLOG_CRITICAL("UNHANDLED EXCEPTION: Code=0x{:08X} Addr={:p}", code, addr);
+            // Flush the log so the message box below points at a complete file.
+            rex::FlushLogging();
+            char msg[4096];
+            int len = snprintf(msg, sizeof(msg),
+                               "DBZ Budokai 3 HD Collection se cerro inesperadamente.\n\n"
+                               "Excepcion: 0x%08X en %p\n\n",
+                               code, addr);
+            const std::string log_path = dbz3::settings::LatestLogPath().string();
+            if (!log_path.empty()) {
+              snprintf(msg + len, sizeof(msg) - static_cast<size_t>(len),
+                       "El registro del juego esta en:\n%s\n", log_path.c_str());
+            } else {
+              snprintf(msg + len, sizeof(msg) - static_cast<size_t>(len),
+                       "El registro no se pudo localizar (logs/ junto al juego).\n");
+            }
+            if (dump_path[0] != '\0') {
+              size_t cur = strnlen(msg, sizeof(msg));
+              snprintf(msg + cur, sizeof(msg) - cur,
+                       "\nMinidump guardado en:\n%s\n", dump_path);
+            }
+            size_t end = strnlen(msg, sizeof(msg));
+            snprintf(msg + end, sizeof(msg) - end,
+                     "\nSi el problema persiste, comparte el registro para diagnostico.");
+            MessageBoxA(nullptr, msg, "DBZ Budokai 3 - Error",
+                        MB_OK | MB_ICONERROR | MB_SETFOREGROUND | MB_TOPMOST);
             return EXCEPTION_EXECUTE_HANDLER;
         });
         std::set_terminate([]() {
             REXLOG_CRITICAL("std::terminate called!");
+            rex::FlushLogging();
+            MessageBoxA(nullptr,
+                        "DBZ Budokai 3 HD Collection se cerró inesperadamente "
+                        "(terminación del runtime). Consulta el registro en "
+                        "logs/ junto al juego.",
+                        "DBZ Budokai 3 - Error",
+                        MB_OK | MB_ICONERROR | MB_SETFOREGROUND | MB_TOPMOST);
             std::abort();
         });
 #endif

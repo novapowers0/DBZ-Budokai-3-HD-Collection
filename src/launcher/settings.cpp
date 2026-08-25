@@ -11,9 +11,16 @@
 #include <vector>
 #include <algorithm>
 #include <system_error>
+#include <cstdio>
 
 #if REX_PLATFORM_WIN32
 #include <windows.h>
+#include <dxgi.h>
+#include <wincrypt.h>
+#include <wrl/client.h>
+// The launcher only uses DXGI for GPU detection (name + performance tier).
+#pragma comment(lib, "dxgi.lib")
+#pragma comment(lib, "advapi32.lib")
 #endif
 
 // ---------------------------------------------------------------------------
@@ -38,6 +45,12 @@ REXCVAR_DEFINE_STRING(dbz3_region, "us", "DBZ3/Language",
                       "(text/audio/video packs). The recompiled binary is always the US XEX.")
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 
+REXCVAR_DEFINE_STRING(dbz3_game_dir, "", "DBZ3/Paths",
+                      "Override for the game data folder (the one that directly contains us/ and "
+                      "eu/). Empty = auto-detect (next to the exe, project root, parent). Set by "
+                      "the launcher's 'Seleccionar carpeta de datos...'.")
+    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
+
 REXCVAR_DEFINE_STRING(dbz3_enabled_mods, "*", "DBZ3/Mods",
                       "Comma-separated list of enabled mod folders under mods/. "
                       "'*' (default) enables every detected mod. Empty disables all.")
@@ -55,7 +68,7 @@ REXCVAR_DEFINE_BOOL(dbz3_vrr, true, "DBZ3/Video",
                     "to each presented frame for even pacing on high-refresh panels.")
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
 
-REXCVAR_DEFINE_INT32(dbz3_frame_cap, 0, "DBZ3/Video",
+REXCVAR_DEFINE_INT32(dbz3_frame_cap, 60, "DBZ3/Video",
                      "Frame cap in FPS (0 = uncapped)")
     .range(0, 240)
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
@@ -91,6 +104,16 @@ REXCVAR_DEFINE_DOUBLE(dbz3_cas_sharpness, 0.0, "DBZ3/Video",
     .range(0.0, 1.0)
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 
+// One-click quality profile: "auto" (detect the GPU tier and apply the
+// recommended settings on every launch), "low", "medium", "high", "ultra", or
+// "manual" (the individual scale/MSAA/aniso/effect options are used as-is).
+// Old installs (toml without this key) are migrated to "manual" so an existing
+// custom setup is never silently changed.
+REXCVAR_DEFINE_STRING(dbz3_quality_preset, "auto", "DBZ3/Video",
+                      "Quality preset: auto, low, medium, high, ultra, manual")
+    .allowed({"auto", "low", "medium", "high", "ultra", "manual"})
+    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
+
 REXCVAR_DEFINE_DOUBLE(dbz3_master_volume, 1.0, "DBZ3/Audio", "Master volume (0.0 - 1.0)")
     .range(0.0, 1.0)
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
@@ -113,6 +136,62 @@ REXCVAR_DEFINE_DOUBLE(dbz3_deadzone, 0.1, "DBZ3/Input", "Left stick deadzone (0.
 
 REXCVAR_DEFINE_BOOL(dbz3_rumble, true, "DBZ3/Input", "Enable controller vibration")
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
+
+// Controller backend: "xinput" (native, avoids the SDL_INIT_GAMEPAD hang with
+// RTSS/OBS) or "sdl" (generic pads, needs the SDL gamepad layer). Forwarded to
+// the SDK's input_backend before the input drivers are created in Setup.
+REXCVAR_DEFINE_STRING(dbz3_input_backend, "xinput", "DBZ3/Input",
+                      "Controller backend: xinput or sdl")
+    .allowed({"xinput", "sdl"})
+    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
+
+// Keyboard/mouse controller emulation (MnK driver in the runtime). Defaults to
+// ON: Budokai 3 is a gamepad game and the keyboard must work out of the box on
+// PC. Disable it if you only ever use a real pad.
+REXCVAR_DEFINE_BOOL(dbz3_mnk_mode, true, "DBZ3/Input",
+                    "Enable keyboard/mouse controller emulation")
+    .lifecycle(rex::cvar::Lifecycle::kHotReload);
+
+// Mouse -> right stick (with the SDK's mnk_sensitivity). Off means the right
+// stick comes only from the rstick_* keys.
+REXCVAR_DEFINE_BOOL(dbz3_mnk_mouse, false, "DBZ3/Input",
+                    "Use the mouse for the right stick")
+    .lifecycle(rex::cvar::Lifecycle::kHotReload);
+
+// MnK keybinds. These dbz3_* wrappers live in the launcher's registry so they
+// persist to dbz3_user.toml; the values are forwarded to the shared keybind_*
+// cvars (defined in rexinput -> rexruntime.dll) in ApplyUserSettingsToSdk.
+// Defaults mirror the SDK 0.10 mnk_input_driver.cpp (except start, where the
+// bare X key would double as the pause button). Empty = unbound.
+#define DBZ3_KEYBIND(name, default_val)                                             \
+  REXCVAR_DEFINE_STRING(dbz3_keybind_##name, default_val, "DBZ3/Input", "Key: " #name) \
+      .lifecycle(rex::cvar::Lifecycle::kHotReload)
+DBZ3_KEYBIND(a, "Semicolon,Space");
+DBZ3_KEYBIND(b, "Quote,Backspace");
+DBZ3_KEYBIND(x, "L");
+DBZ3_KEYBIND(y, "P");
+DBZ3_KEYBIND(left_trigger, "Q,I");
+DBZ3_KEYBIND(right_trigger, "E,O");
+DBZ3_KEYBIND(left_shoulder, "1");
+DBZ3_KEYBIND(right_shoulder, "3");
+DBZ3_KEYBIND(lstick_up, "W");
+DBZ3_KEYBIND(lstick_down, "S");
+DBZ3_KEYBIND(lstick_left, "A");
+DBZ3_KEYBIND(lstick_right, "D");
+DBZ3_KEYBIND(lstick_press, "F");
+DBZ3_KEYBIND(rstick_up, "Up");
+DBZ3_KEYBIND(rstick_down, "Down");
+DBZ3_KEYBIND(rstick_left, "Left");
+DBZ3_KEYBIND(rstick_right, "Right");
+DBZ3_KEYBIND(rstick_press, "K");
+DBZ3_KEYBIND(dpad_up, "Shift+Up");
+DBZ3_KEYBIND(dpad_down, "Shift+Down");
+DBZ3_KEYBIND(dpad_left, "Shift+Left");
+DBZ3_KEYBIND(dpad_right, "Shift+Right");
+DBZ3_KEYBIND(back, "Z,Tab");
+DBZ3_KEYBIND(start, "Return");
+DBZ3_KEYBIND(guide, "");
+#undef DBZ3_KEYBIND
 
 REXCVAR_DEFINE_BOOL(dbz3_dev_mode, false, "DBZ3/Dev", "Enable the F10 dev-mode overlay")
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
@@ -195,6 +274,15 @@ void LoadUserSettings() {
   if (std::filesystem::exists(path)) {
     rex::cvar::LoadConfig(path);
     REXLOG_INFO("dbz3: user settings loaded from {}", path.string());
+    // Quality presets were added after earlier releases: an existing toml that
+    // does not mention dbz3_quality_preset belongs to a user who already set up
+    // their options manually, so default it to "manual" (never auto-apply and
+    // change their current setup). Fresh installs (no toml) keep the "auto"
+    // default and get GPU-appropriate defaults on first run.
+    if (!rex::cvar::HasNonDefaultValue("dbz3_quality_preset")) {
+      REXLOG_INFO("dbz3: existing user settings have no quality preset -> using 'manual'");
+      REXCVAR_SET(dbz3_quality_preset, "manual");
+    }
   } else {
     REXLOG_INFO("dbz3: no user settings file at {}, using defaults", path.string());
   }
@@ -235,8 +323,110 @@ std::string Region() { return REXCVAR_GET(dbz3_region); }
 
 void SetRegion(const std::string& region) { REXCVAR_SET(dbz3_region, region); }
 
-// Mods root: mods/ next to the executable.
+std::string GameDirOverride() { return REXCVAR_GET(dbz3_game_dir); }
+
+void SetGameDirOverride(const std::string& path) { REXCVAR_SET(dbz3_game_dir, path); }
+
+bool IsValidGameDataDir(const std::filesystem::path& root) {
+  return std::filesystem::is_directory(root / "us") ||
+         std::filesystem::is_directory(root / "eu") ||
+         std::filesystem::is_regular_file(root / "default.xex");
+}
+
+XexStatus CheckDefaultXex(const std::filesystem::path& root) {
+  const auto xex = root / "default.xex";
+  if (!std::filesystem::is_regular_file(xex)) return XexStatus::kMissing;
+
+  // Cache by (path, size, mtime) so the per-frame banner does not re-hash the
+  // ~4.9MB executable every frame.
+  static std::string cached_path;
+  static uintmax_t cached_size = 0;
+  static std::filesystem::file_time_type cached_mtime{};
+  static XexStatus cached_status = XexStatus::kUnknown;
+  auto mtime = std::filesystem::last_write_time(xex);
+  const uintmax_t size = std::filesystem::file_size(xex);
+  if (cached_path == xex.string() && cached_size == size && cached_mtime == mtime) {
+    return cached_status;
+  }
+
+  // The retail disc files are fixed: every US/NA copy hashes A53E..., every
+  // EU/PAL copy C37E... (the raw bytes are encrypted with the region's key).
+  static constexpr char kUsMd5[] = "A53E324B5D2A65EBCBF648E4F85A7271";
+  static constexpr char kEuMd5[] = "C37EB979B762DA0AB5B8C9BA8037CE4E";
+  XexStatus status = XexStatus::kUnknown;
+  if (size == 4890624) {  // fast reject: both known variants are this size
+    HCRYPTPROV prov = 0;
+    HCRYPTHASH hash = 0;
+    if (CryptAcquireContextW(&prov, nullptr, nullptr, PROV_RSA_FULL,
+                             CRYPT_VERIFYCONTEXT) &&
+        CryptCreateHash(prov, CALG_MD5, 0, 0, &hash)) {
+      FILE* f = nullptr;
+      _wfopen_s(&f, xex.c_str(), L"rb");
+      if (f) {
+        uint8_t buf[65536];
+        size_t n;
+        while ((n = fread(buf, 1, sizeof(buf), f)) > 0) {
+          CryptHashData(hash, buf, static_cast<DWORD>(n), 0);
+        }
+        fclose(f);
+      }
+      BYTE md5[16];
+      DWORD md5_len = sizeof(md5);
+      CryptGetHashParam(hash, HP_HASHVAL, md5, &md5_len, 0);
+      std::string hex;
+      hex.reserve(32);
+      for (DWORD i = 0; i < md5_len; ++i) {
+        char tmp[3];
+        snprintf(tmp, sizeof(tmp), "%02X", md5[i]);
+        hex += tmp;
+      }
+      if (hex == kUsMd5) {
+        status = XexStatus::kUs;
+      } else if (hex == kEuMd5) {
+        status = XexStatus::kEu;
+      }
+      CryptDestroyHash(hash);
+    }
+    if (prov) CryptReleaseContext(prov, 0);
+  }
+
+  cached_path = xex.string();
+  cached_size = size;
+  cached_mtime = mtime;
+  cached_status = status;
+  return status;
+}
+
+std::filesystem::path LatestLogPath() {
+  const auto logs_dir = rex::filesystem::GetExecutableFolder() / "logs";
+  if (!std::filesystem::is_directory(logs_dir)) return {};
+  std::filesystem::path newest;
+  std::filesystem::file_time_type newest_time{};
+  for (const auto& entry : std::filesystem::directory_iterator(logs_dir)) {
+    if (!entry.is_regular_file()) continue;
+    if (entry.path().extension() != ".log") continue;
+    const auto t = entry.last_write_time();
+    if (newest.empty() || t > newest_time) {
+      newest = entry.path();
+      newest_time = t;
+    }
+  }
+  return newest;
+}
+
+// Mods root: mods/ next to the executable, or the nearest "mods" folder up to
+// 3 levels up (the release core exe lives in dbz3_avx2/dbz3_legacy while the
+// mods stay next to the game data).
 static std::filesystem::path ModsRoot() {
+  std::filesystem::path probe = rex::filesystem::GetExecutableFolder();
+  std::error_code ec;
+  for (int depth = 0; depth < 4; ++depth) {
+    const std::filesystem::path candidate = probe / "mods";
+    if (std::filesystem::is_directory(candidate, ec)) {
+      return candidate;
+    }
+    probe = probe.parent_path();
+  }
   return rex::filesystem::GetExecutableFolder() / "mods";
 }
 
@@ -423,6 +613,180 @@ void SetFsrSharpness(double sharpness) { REXCVAR_SET(dbz3_fsr_sharpness, sharpne
 double CasSharpness() { return REXCVAR_GET(dbz3_cas_sharpness); }
 void SetCasSharpness(double sharpness) { REXCVAR_SET(dbz3_cas_sharpness, sharpness); }
 
+// ---------------------------------------------------------------------------
+// Quality presets + GPU detection
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Enumerate the primary (first non-software) DXGI adapter and return its
+// description. Cached after the first call.
+bool GetPrimaryGpu(DXGI_ADAPTER_DESC1* desc_out) {
+  static DXGI_ADAPTER_DESC1 cached{};
+  static bool cached_initialized = false;
+  if (cached_initialized) {
+    if (desc_out) *desc_out = cached;
+    return true;
+  }
+  Microsoft::WRL::ComPtr<IDXGIFactory1> factory;
+  if (FAILED(CreateDXGIFactory1(IID_PPV_ARGS(&factory)))) {
+    return false;
+  }
+  Microsoft::WRL::ComPtr<IDXGIAdapter1> adapter;
+  for (UINT i = 0; factory->EnumAdapters1(i, &adapter) != DXGI_ERROR_NOT_FOUND; ++i) {
+    DXGI_ADAPTER_DESC1 desc{};
+    if (SUCCEEDED(adapter->GetDesc1(&desc))) {
+      const std::wstring name(desc.Description);
+      const bool is_software = (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) != 0 ||
+                               name.find(L"Microsoft Basic Render Driver") != std::wstring::npos;
+      if (!is_software) {
+        cached = desc;
+        cached_initialized = true;
+        if (desc_out) *desc_out = cached;
+        return true;
+      }
+    }
+    adapter.Reset();
+  }
+  return false;
+}
+
+}  // namespace
+
+std::string DetectGpuName() {
+  DXGI_ADAPTER_DESC1 desc{};
+  if (!GetPrimaryGpu(&desc)) {
+    return {};
+  }
+  // Convert the UTF-16 name to UTF-8 for the UI.
+  std::string narrow;
+  const int wide_len = lstrlenW(desc.Description);
+  if (wide_len <= 0) {
+    return {};
+  }
+  int needed = WideCharToMultiByte(CP_UTF8, 0, desc.Description, wide_len, nullptr, 0, nullptr,
+                                   nullptr);
+  if (needed > 0) {
+    narrow.resize(needed);
+    WideCharToMultiByte(CP_UTF8, 0, desc.Description, wide_len, narrow.data(), needed, nullptr,
+                        nullptr);
+  }
+  return narrow;
+}
+
+int32_t DetectGpuTier() {
+  DXGI_ADAPTER_DESC1 desc{};
+  if (!GetPrimaryGpu(&desc)) {
+    return 1;  // unknown -> medium
+  }
+  const std::wstring name(desc.Description);
+  const size_t vram_mb = desc.DedicatedVideoMemory / (1024 * 1024);
+  const bool is_intel = name.find(L"Intel") != std::wstring::npos;
+  const bool is_arc = name.find(L"Arc") != std::wstring::npos;
+  if (is_intel && !is_arc) {
+    // Integrated Intel: never auto-assign the top tier. Modern iGPUs with
+    // plenty of shared memory still get "medium"; old ones get "low".
+    return vram_mb >= 2048 ? 1 : 0;
+  }
+  if (vram_mb >= 4096) {
+    return 2;  // high
+  }
+  if (vram_mb >= 1536) {
+    return 1;  // medium
+  }
+  return 0;  // low
+}
+
+const char* GpuTierLabel(int32_t tier) {
+  switch (tier) {
+    case 0:
+      return "Low";
+    case 1:
+      return "Medium";
+    case 2:
+      return "High";
+    default:
+      return "?";
+  }
+}
+
+// Recommended quality values for a tier. Tier 2 (high) tops out at native 1x
+// supersampling + MSAA; "ultra" (2x supersampling) is always a manual choice.
+struct QualityConfig {
+  int32_t scale;
+  bool msaa;
+  int32_t aniso;
+  const char* effect;
+};
+
+QualityConfig QualityConfigForTier(int32_t tier) {
+  switch (tier) {
+    case 0:
+      return {1, false, 0, "bilinear"};  // low: everything off, minimal cost
+    case 1:
+      return {1, false, 3, "fsr"};  // medium: FSR upscale, 4x aniso, no MSAA
+    default:
+      return {1, true, 5, "fsr"};  // high: FSR + MSAA + 16x aniso
+  }
+}
+
+QualityConfig QualityConfigForPreset(const std::string& preset) {
+  if (preset == "low") {
+    return {1, false, 0, "bilinear"};
+  }
+  if (preset == "medium") {
+    return {1, false, 3, "fsr"};
+  }
+  if (preset == "ultra") {
+    return {2, true, 5, "fsr"};
+  }
+  return {1, true, 5, "fsr"};  // high
+}
+
+void ApplyQualityConfig(const QualityConfig& cfg, bool persist) {
+  SetResolutionScale(cfg.scale);
+  SetNative2xMsaa(cfg.msaa);
+  SetAnisotropicOverride(cfg.aniso);
+  SetPresentEffect(cfg.effect);
+  if (persist) {
+    SaveUserSettings();
+  }
+}
+
+std::string QualityPreset() { return REXCVAR_GET(dbz3_quality_preset); }
+
+void SetQualityPreset(const std::string& preset) { REXCVAR_SET(dbz3_quality_preset, preset); }
+
+void ApplyQualityPreset() {
+  const std::string preset = QualityPreset();
+  if (preset == "manual") {
+    return;
+  }
+  if (preset == "auto") {
+    // Detect the GPU and apply the recommended profile in memory (not persisted:
+    // "auto" re-evaluates on every launch, so it also adapts if the user later
+    // moves to a different machine).
+    ApplyQualityConfig(QualityConfigForTier(DetectGpuTier()), /*persist=*/false);
+    return;
+  }
+  ApplyQualityConfig(QualityConfigForPreset(preset), /*persist=*/true);
+}
+
+void ApplyQualityPresetIfAuto() {
+  // Apply the "auto" preset at most once per process. ApplyUserSettingsToSdk
+  // runs both at OnPreSetup (before the launcher shows) and again when Play is
+  // pressed; without this guard, "auto" would recompute and discard an option
+  // the user just changed in the launcher during the same session.
+  static bool applied = false;
+  if (applied) {
+    return;
+  }
+  applied = true;
+  if (QualityPreset() == "auto") {
+    ApplyQualityPreset();
+  }
+}
+
 double MasterVolume() { return REXCVAR_GET(dbz3_master_volume); }
 void SetMasterVolume(double v) { REXCVAR_SET(dbz3_master_volume, v); }
 double MusicVolume() { return REXCVAR_GET(dbz3_music_volume); }
@@ -437,6 +801,23 @@ void SetDeadzone(double v) { REXCVAR_SET(dbz3_deadzone, v); }
 
 bool RumbleEnabled() { return REXCVAR_GET(dbz3_rumble); }
 void SetRumbleEnabled(bool enabled) { REXCVAR_SET(dbz3_rumble, enabled); }
+
+std::string InputBackend() { return REXCVAR_GET(dbz3_input_backend); }
+void SetInputBackend(const std::string& backend) { REXCVAR_SET(dbz3_input_backend, backend); }
+
+bool MnkMode() { return REXCVAR_GET(dbz3_mnk_mode); }
+void SetMnkMode(bool enabled) { REXCVAR_SET(dbz3_mnk_mode, enabled); }
+
+bool MnkMouse() { return REXCVAR_GET(dbz3_mnk_mouse); }
+void SetMnkMouse(bool enabled) { REXCVAR_SET(dbz3_mnk_mouse, enabled); }
+
+// Read/write a dbz3_keybind_<name> cvar by suffix (e.g. "a", "dpad_up").
+std::string Keybind(const std::string& name) {
+  return rex::cvar::Query<std::string>("dbz3_keybind_" + name);
+}
+void SetKeybind(const std::string& name, const std::string& value) {
+  rex::cvar::SetFlagByName("dbz3_keybind_" + name, value);
+}
 
 bool DevMode() { return REXCVAR_GET(dbz3_dev_mode); }
 void SetDevMode(bool enabled) {
@@ -476,6 +857,10 @@ void ApplyUserSettingsToSdk() {
   // resize/fullscreen the host window before the pre-game launcher is shown,
   // making the launcher huge or borderless. They are applied on Play via
   // ApplyWindowSizeToSdk() so the launcher always opens windowed at 1280x720.
+  // If the quality preset is "auto", apply the GPU-detected profile first so
+  // the individual cvars below carry the recommended values (once per process,
+  // see ApplyQualityPresetIfAuto).
+  ApplyQualityPresetIfAuto();
   REXCVAR_SET(present_effect, REXCVAR_GET(dbz3_present_effect));
   REXCVAR_SET(user_language, static_cast<uint32_t>(Language()));
   // Host graphics backend (d3d12/vulkan). Read by the runtime when it loads
@@ -493,8 +878,47 @@ void ApplyUserSettingsToSdk() {
   int32_t scale = ResolutionScale();
   rex::cvar::SetFlagByName("draw_resolution_scale_x", std::to_string(scale));
   rex::cvar::SetFlagByName("draw_resolution_scale_y", std::to_string(scale));
-  REXLOG_INFO("dbz3: applied user settings -> present_effect={} internal_scale={}x lang={} backend={}",
-              REXCVAR_GET(present_effect), scale, LanguageName(Language()), GpuBackend());
+
+  // Input: backend (before the input drivers are created in Setup), deadzone
+  // (applied on the merged state), rumble (gates vibration), MnK emulation
+  // toggle + mouse mode, and the keyboard bindings.
+  rex::cvar::SetFlagByName("input_backend", InputBackend());
+  SetSdkDouble("deadzone", Deadzone());
+  SetSdkBool("rumble", RumbleEnabled());
+  SetSdkBool("mnk_mode", MnkMode());
+  SetSdkBool("mnk_mouse", MnkMouse());
+#define DBZ3_FORWARD_KEYBIND(name) \
+  SetSdkString("keybind_" #name, Keybind(#name))
+  DBZ3_FORWARD_KEYBIND(a);
+  DBZ3_FORWARD_KEYBIND(b);
+  DBZ3_FORWARD_KEYBIND(x);
+  DBZ3_FORWARD_KEYBIND(y);
+  DBZ3_FORWARD_KEYBIND(left_trigger);
+  DBZ3_FORWARD_KEYBIND(right_trigger);
+  DBZ3_FORWARD_KEYBIND(left_shoulder);
+  DBZ3_FORWARD_KEYBIND(right_shoulder);
+  DBZ3_FORWARD_KEYBIND(lstick_up);
+  DBZ3_FORWARD_KEYBIND(lstick_down);
+  DBZ3_FORWARD_KEYBIND(lstick_left);
+  DBZ3_FORWARD_KEYBIND(lstick_right);
+  DBZ3_FORWARD_KEYBIND(lstick_press);
+  DBZ3_FORWARD_KEYBIND(rstick_up);
+  DBZ3_FORWARD_KEYBIND(rstick_down);
+  DBZ3_FORWARD_KEYBIND(rstick_left);
+  DBZ3_FORWARD_KEYBIND(rstick_right);
+  DBZ3_FORWARD_KEYBIND(rstick_press);
+  DBZ3_FORWARD_KEYBIND(dpad_up);
+  DBZ3_FORWARD_KEYBIND(dpad_down);
+  DBZ3_FORWARD_KEYBIND(dpad_left);
+  DBZ3_FORWARD_KEYBIND(dpad_right);
+  DBZ3_FORWARD_KEYBIND(back);
+  DBZ3_FORWARD_KEYBIND(start);
+  DBZ3_FORWARD_KEYBIND(guide);
+#undef DBZ3_FORWARD_KEYBIND
+
+  REXLOG_INFO("dbz3: applied user settings -> present_effect={} internal_scale={}x lang={} backend={} preset={}",
+              REXCVAR_GET(present_effect), scale, LanguageName(Language()), GpuBackend(),
+              QualityPreset());
 }
 
 // Apply the selected window size and fullscreen mode ("resolution"/"fullscreen"
@@ -513,7 +937,16 @@ void ApplyRuntimeSettingsToSdk(bool for_game) {
   int32_t scale = ResolutionScale();
   SetSdkInt("draw_resolution_scale_x", scale);
   SetSdkInt("draw_resolution_scale_y", scale);
-  SetSdkBool("vsync", REXCVAR_GET(dbz3_vsync));
+  // The SDK's `vsync` cvar drives the GUEST vblank pacing (GraphicsSystem's
+  // vsync worker): with it enabled the guest ticks at 60 Hz and the game runs
+  // at its intended speed. With it disabled the guest vblank runs at ~1000 Hz
+  // and the game logic runs ~16x too fast (the classic "juego acelerado").
+  // The game MUST run at 60 Hz, so always force it on here regardless of the
+  // launcher toggle (which no longer exists for this reason).
+  if (!REXCVAR_GET(dbz3_vsync)) {
+    REXLOG_WARN("dbz3: vsync was disabled; forcing it ON so the game runs at its 60 Hz speed");
+  }
+  SetSdkBool("vsync", true);
   SetSdkBool("native_2x_msaa", REXCVAR_GET(dbz3_native_2x_msaa));
   SetSdkInt("anisotropic_override", REXCVAR_GET(dbz3_anisotropic));
   SetSdkString("present_fsr_quality_mode", REXCVAR_GET(dbz3_fsr_quality));
@@ -524,25 +957,21 @@ void ApplyRuntimeSettingsToSdk(bool for_game) {
   SetSdkDouble("master_volume", REXCVAR_GET(dbz3_master_volume));
   SetSdkString("audio_output_device", std::string());
 
-  // The D3D12 presenter always calls Present(0) (never waits for vsync), so the
-  // "vsync" cvar has no effect there. The frame cap caps the host present rate
-  // only; it never touches the guest vblank pacing or the game speed.
-  // NOTE: this mirrors the working dbz1 setup. We do NOT force the cap to 60
-  // nor clamp it to a clean divisor of the monitor refresh: doing so stalled
-  // the launcher at high refresh rates and made the game feel laggy. The frame
-  // cap is applied verbatim (0 = uncapped) exactly like dbz1.
+  // The D3D12 presenter always calls Present(0) (never waits for vsync), so
+  // the "vsync" cvar has no host-present meaning: it only paces the guest
+  // vblank above. The host present rate is throttled by the real `frame_cap`
+  // cvar (added to the 0.10 presenter) which the launcher maps to dbz3_frame_cap.
+  // The cap is applied only for the game: the launcher keeps its own ImGui
+  // repaints uncapped (frame_cap stays 0), preserving the pre-game UI behavior.
   REXCVAR_SET(host_present_from_non_ui_thread, true);
   REXCVAR_SET(d3d12_allow_variable_refresh_rate_and_tearing, VrrEnabled());
   // The game paces its main loop by the guest vblank; keep it at 60 Hz (never
   // raise it or the game logic would run faster than intended).
   REXCVAR_SET(video_mode_refresh_rate, 60.0);
-  // Host present pacing: use the user's frame cap verbatim. 0 = uncapped.
   int32_t cap = SafeFrameCap(FrameCap());
-  if (cap == 0 && for_game) {
-    // Uncapped is fine on VRR displays. Keep it verbatim like dbz1.
-    cap = 0;
+  if (for_game) {
+    SetSdkInt("frame_cap", cap);
   }
-  SetSdkInt("frame_cap", cap);
   REXLOG_INFO(
       "dbz3: applied runtime settings -> internal_scale={}x vsync={} msaa={} aniso={} "
       "fsr_quality={} fsr_sharpness={} cas_sharpness={} master_vol={} host_present={} vrr={} cap={}",
@@ -552,7 +981,7 @@ void ApplyRuntimeSettingsToSdk(bool for_game) {
       GetSdkDouble("present_cas_additional_sharpness"), GetSdkDouble("master_volume"),
       REXCVAR_GET(host_present_from_non_ui_thread) ? "true" : "false",
       REXCVAR_GET(d3d12_allow_variable_refresh_rate_and_tearing) ? "true" : "false",
-      GetSdkInt("frame_cap"));
+      for_game ? GetSdkInt("frame_cap") : 0);
 }
 
 }  // namespace dbz3::settings

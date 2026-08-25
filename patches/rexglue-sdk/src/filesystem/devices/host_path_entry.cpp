@@ -13,13 +13,14 @@
 #include <rex/filesystem/devices/host_path_file.h>
 
 #include <rex/filesystem.h>
+#include <rex/filesystem/afs.h>
 #include <rex/filesystem/device.h>
 #include <rex/filesystem/devices/host_path_device.h>
-#include <rex/filesystem/afs.h>
 #include <rex/cvar.h>
 #include <rex/logging.h>
 #include <rex/math.h>
 #include <rex/memory/mapped_memory.h>
+#include <rex/string.h>
 
 // dbz1_audio_jp is defined in src/system/dbz1_audio_jp_flag.cpp (shared storage).
 REXCVAR_DECLARE(bool, dbz1_audio_jp);
@@ -27,7 +28,6 @@ REXCVAR_DECLARE(bool, dbz1_audio_jp);
 REXCVAR_DECLARE(std::string, dbz1_region);
 // dbz1_diag_logging is defined in src/system/dbz1_diag_flags.cpp (shared runtime).
 REXCVAR_DECLARE(bool, dbz1_diag_logging);
-#include <rex/string.h>
 #include <fstream>
 
 namespace rex::filesystem {

@@ -19,13 +19,26 @@ set(DBZ3_SOURCES
     src/launcher/settings.cpp
     src/launcher/launcher_state.cpp
     src/launcher/mod_pipeline.cpp
+    src/launcher/i18n.cpp
     src/ingame/menu.cpp
 )
 
+# Codegen output directory. Default is the US/NA build (generated/); a second
+# variant built from the EU/PAL executable uses -DDBZ3_GENERATED_DIR=generated_eu
+# and produces a core that boots the EU xex (see dbz3_manifest_eu.toml).
+set(DBZ3_GENERATED_DIR "generated" CACHE STRING
+    "Codegen output dir to build against (generated = US/NA, generated_eu = EU/PAL)")
+
 # Include generated code if codegen has been run
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/generated/sources.cmake")
-    include(generated/sources.cmake)
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${DBZ3_GENERATED_DIR}/sources.cmake")
+    include(${DBZ3_GENERATED_DIR}/sources.cmake)
     list(APPEND DBZ3_SOURCES ${GENERATED_SOURCES})
+endif()
+
+# EU/PAL variant: the generated code has different guest addresses and its own
+# init headers (dbz3_eu_init.h). hooks.cpp only applies to the US/NA build.
+if(DBZ3_GENERATED_DIR STREQUAL "generated_eu")
+    list(REMOVE_ITEM DBZ3_SOURCES src/hooks.cpp)
 endif()
 
 if(WIN32)
@@ -34,10 +47,24 @@ else()
     add_executable(dbz3 ${DBZ3_SOURCES})
 endif()
 
+# ISA bootstrap: baseline x86-64 dispatcher (no -march) that checks for the
+# x86-64-v3 feature set and launches dbz3_avx2\dbz3_core.exe or
+# dbz3_legacy\dbz3_core.exe. No SDK dependencies, so it runs on any CPU.
+if(WIN32)
+    add_executable(dbz3_bootstrap WIN32 src/bootstrap.cpp)
+    target_compile_options(dbz3_bootstrap PRIVATE -march=x86-64)
+    target_compile_definitions(dbz3_bootstrap PRIVATE NOMINMAX)
+endif()
+
 target_include_directories(dbz3 PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated
+    ${CMAKE_CURRENT_SOURCE_DIR}/${DBZ3_GENERATED_DIR}
 )
+
+# EU/PAL variant compile definition (selects dbz3_eu_init.h in main.cpp).
+if(DBZ3_GENERATED_DIR STREQUAL "generated_eu")
+    target_compile_definitions(dbz3 PRIVATE DBZ3_EU_VARIANT=1)
+endif()
 
 target_link_libraries(dbz3 PRIVATE
     rex::runtime

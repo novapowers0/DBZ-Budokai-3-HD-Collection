@@ -126,8 +126,19 @@ int AfsFindEntry(const std::filesystem::path& host_path, uint64_t byte_offset,
   return -1;
 }
 
-// Root folder where mods live (next to the executable, "mods").
+// Root folder where mods live ("mods"). The core executable can live in a
+// release subfolder (dbz3_avx2/dbz3_legacy) while the mods stay next to the
+// game data, so walk up from the executable looking for a "mods" directory.
 std::filesystem::path AfsModsRoot() {
+  std::filesystem::path probe = rex::filesystem::GetExecutableFolder();
+  std::error_code ec;
+  for (int depth = 0; depth < 4; ++depth) {
+    const std::filesystem::path candidate = probe / "mods";
+    if (std::filesystem::is_directory(candidate, ec)) {
+      return candidate;
+    }
+    probe = probe.parent_path();
+  }
   return rex::filesystem::GetExecutableFolder() / "mods";
 }
 

@@ -48,6 +48,7 @@ patches/*
 !patches/rexglue-sdk/
 !patches/rexglue-sdk/**/*.h
 !patches/rexglue-sdk/**/*.cpp
+!patches/README.md
 
 # Extracted/analysis outputs.
 afs_out/

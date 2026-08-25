@@ -6,6 +6,42 @@
 
 ---
 
+## 0. ✅ MIGRACIÓN A REXGLUE 0.10.0 — COMPLETADA (2026-08-25)
+
+**Leer `docs/MIGRACION_REXGLUE_010.md` ANTES de tocar el SDK.** Documenta la
+migración 0.9.0 → 0.10.0 (ya validada en juego).
+
+- **Hecho**: SDK 0.10.0 clonado en `rexglue-sdk-0.10/` (tag v0.10.0) + submodulos;
+  build configurado (D3D12+Vulkan+FFX, clang 22, x86-64-v3); 2 bugs del build
+  resueltos (libmspack wrappers, ffx_api_dll.rc UTF-16); **parche del runtime
+  portado a 0.10** (afs.h/afs.cpp recreados porque 0.10 los eliminó + host_path_*
+  refactorizados + 3 cvars dbz1 restaurados); **rexruntime.dll 0.10.0 compilado
+  (10933248 B) con los marcadores del parche**.
+- **2026-08-25**: **rexgpu-xenos.dll 0.10.0 compilado (6207488 B)** + SDK
+  completo; **SDK 0.10 instalado en `rexglue/`** (respaldo 0.9 → `rexglue_0.9/`,
+  PACKAGE_VERSION 0.10.0 verificado); **dbz3.exe compilado contra 0.10**
+  (17298432 B, Release) con el código generado **regenerado con el codegen 0.10**
+  (`dbz3_codegen`, 44 recomp files; el 0.9 usaba `REX_WEAK_FUNC`, eliminado en
+  0.10); los fixes del SDK (CallInUIThreadSynchronous timeout + presenter
+  pacing) **ya son nativos en 0.10**; `github/patches/` actualizado a 0.10
+  (9 archivos + README).
+- **✅ VALIDADO EN JUEGO (2026-08-25, usuario)**: los mods `swap_96_on_327`
+  (Babidi→Krillin, override simple) y `tex_91` (Gero, texturas) funcionan, y el
+  **mid-insert virtual** funciona (mod `sw_vegeta424`, Vegeta armadura, bin
+  126976 > to_read 106496 del slot 327). **Migración 0.10.0 COMPLETA.**
+- **Estado del SDK**: `rexglue/` = 0.10 (activo). `rexglue_0.9/` = respaldo
+  (mantener por si acaso, ya no es el default). `rexglue-sdk/` = fuente 0.9
+  (histórico, no tocar).
+- **⚠️ Compilar el juego**: el preset `win-amd64-release` resuelve `clang` al
+  toolchain retcomm (MinGW, NO compila `rex/chrono/chrono.h`) — pasar SIEMPRE
+  `-DCMAKE_CXX_COMPILER="C:/Program Files/LLVM/bin/clang++.exe"` y
+  `-DCMAKE_PREFIX_PATH=.../rexglue` (ver MIGRACION §7.3).
+- **⚠️ PENDIENTE (cuando se complete el plan general)**: actualizar
+  release/README + README para el SDK 0.10 antes de subir a GitHub (el repo
+  `github/` aún no se sube; los parches y docs ya están actualizados en local).
+
+---
+
 ## 1. QUÉ ES ESTO
 
 Port recompilado a PC de **DBZ Budokai 3 HD Collection (Xbox 360)** usando el
@@ -2126,6 +2162,568 @@ y Diag off. La generación de .bmp está gated exclusivamente por
 **Sync aplicado**: `src/launcher/settings.cpp` → `github/`; `dbz3.exe` +
 `rexruntime.dll` (11188224 B) → `github/release-stage/`. **Release v1.0.3**
 nueva con el fix (zip regenerado).
+
+### 14.6 🔴✅ P2.1 COMPATIBILIDAD: BOOTSTRAP DE ISA + VARIANTES AVX2/LEGACY (2026-08-25)
+
+**Objetivo (HOJA_DE_RUTA_COMUNIDAD 2.1)**: CPUs sin AVX2 (Intel pre-Haswell,
+AMD pre-Excavator) crasheaban con `0xc0000142`/`0xc000001d` al arrancar porque
+el runtime se compila con `-march=x86-64-v3`.
+
+**Hallazgo clave que simplifica el diseño**: el exe del juego (`dbz3.exe`) se
+compila **sin** `-march` (CMAKE_CXX_FLAGS vacío = baseline x86-64). El AVX2
+vive SOLO en las DLLs del SDK (rexruntime.dll, rexgpu-xenos.dll y la FFX).
+Verificado en el cache del build. Por eso el core es UN solo binario y solo
+cambian las DLLs por variante.
+
+**Arquitectura (estándar de la industria, UE5-like)**:
+```
+<release>/
+  dbz3.exe               <- bootstrap (baseline x86-64, 44544 B, SIN SDK)
+  dbz3_avx2/dbz3_core.exe + rexruntime.dll(10934272 v3) + rexgpu-xenos.dll(6207488) + ffx dx12(5420544)
+  dbz3_legacy/dbz3_core.exe + rexruntime.dll(10836480 v2) + rexgpu-xenos.dll(6162944) + ffx dx12(5414912)
+  assets/ (o us/eu + default.xex), mods/, mod center hd/, docs
+```
+- **`src/bootstrap.cpp`** (`dbz3_bootstrap` target en CMakeLists): WinMain,
+  `HasCpuX86V3()` = `__cpuid` leaf 7 EBX {AVX2 bit5, BMI1 bit3, BMI2 bit8} +
+  leaf 1 ECX {FMA bit12, OSXSAVE bit27} + `_xgetbv(0)`&6 (gated a OSXSAVE).
+  Lanza `dbz3_avx2\dbz3_core.exe` o `dbz3_legacy\dbz3_core.exe`, pasa los args
+  del usuario, propaga el exit code, y muestra ventana de error clara si el
+  child no se encuentra o falla con código de excepción (>=0x80000000).
+- **dbz3_core.exe = el dbz3.exe actual** (baseline, MISMO binario en las dos
+  carpetas). En dev se sigue lanzando directo (`out/build/.../dbz3.exe`).
+- **Build v2 del SDK**: segundo build dir `rexglue-sdk-0.10/out/build-win-vulkan-legacy`
+  con `-march=x86-64-v2` y `-DREXGLUE_OUTPUT_DIR=.../out/win-amd64-legacy`
+  (nueva cache var en CMakeLists del SDK para no pisar `out/win-amd64`).
+  Produjo rexruntime.dll v2 (10836480), rexgpu-xenos v2 (6162944),
+  amd_fidelityfx_dx12 v2 (5414912). El FFX se compila desde el fuente FFX del
+  SDK (no es solo el prebuilt firmado) → necesita su variante.
+- **amd_fidelityfx_vk.dll** = el 0.9 heredado, igual en ambas variantes (el
+  backend Vulkan es experimental; aceptable).
+
+**Cambios de paths necesarios (el core vive en subcarpeta en release)**:
+- **Mods walk-up** (parche en `afs.cpp::AfsModsRoot` + `settings.cpp::ModsRoot`
+  + `mod_pipeline.cpp::ModsOutDir`): buscan `mods/` desde el exe subiendo hasta
+  3 niveles (release: `dbz3_avx2\` → `<root>\mods`). En dev sin cambios.
+- `ProjectRoot()` ya subía (cubre `mod center hd/` y `assets/`).
+- `FindGameRoot` (main.cpp) ya tenía el fallback "padre del exe" (§14.1) →
+  resuelve `<root>\assets` desde `dbz3_avx2\` sin cambios.
+- logs/toml/user_data quedan en la carpeta de la variante (aceptable; el
+  diálogo de crash muestra la ruta del log).
+
+**⚠️ bootstrap sin AVX2 en su .text propio**: el `-march=x86-64` explicito del
+target lo garantiza (verificado: el `-S` de bootstrap.cpp no emite AVX2). Las
+únicas instrucciones AVX2/AVX en el exe final son del **wmemcpy del CRT MSVC,
+protegido por dispatch** (`testb $0x20, [__isa_available]` + `je` fallback SSE2
+en 0x1400050ac) — seguro en CPUs legacy. La DLL dinámica se linkea (importa
+MSVCP140/VCRUNTIME140/api-ms-win-crt).
+
+**Script de release**: `tools/make_release.ps1` — monta `github/release-stage`
+(dbz3.exe bootstrap + dbz3_avx2/ + dbz3_legacy/ + mod center hd/ + mods/ +
+docs) y genera el zip. Origen canónico de las CRT DLLs = `github/` (msvcp140,
+msvcp140_atomic_wait, vcruntime140, vcruntime140_1 del redist VC; rexruntime
+importa msvcp140_atomic_wait). `README_PRIMER_ARRANQUE.txt` nuevo (disposiciones
++ variantes ISA).
+
+**Validado (test local, CPU AVX2)**: bootstrap → spawn `dbz3_avx2\dbz3_core.exe`
+(confirmado por proceso + log en `dbz3_avx2\logs`), launcher muestra
+"launcher shown, waiting for Play"; la variante **legacy** también arranca
+directo (v2 DLLs OK). Pendiente: validar en una CPU sin AVX2 real (o forzar la
+ruta legacy) y la confirmación visual de que los mods se listan desde la raíz.
+
+**Sync**: `src/{bootstrap.cpp, launcher/{settings.cpp, mod_pipeline.cpp}}`,
+`CMakeLists.txt`, `tools/make_release.ps1`, `patches/.../afs.cpp` (walk-up),
+`RELEASE_README.md`, `README_PRIMER_ARRANQUE.txt`, `MODDING_README.md` →
+`github/`. Release **v1.0.5** en `github/release-stage/` + zip (33112680 B).
+
+### 14.7 🔴✅ P3.1 CONTROLES: TECLADO POR DEFECTO + MAPEO CONFIGURABLE + DEADZONE/RUMBLE REALES (2026-08-25)
+
+**Objetivo (HOJA_DE_RUTA_COMUNIDAD 3.1)**: "teclado/botones no responden en
+juego". Diagnóstico: el driver MnK del SDK (teclado→mando) ya existía completo,
+pero `mnk_mode` estaba en **false** por defecto y **nadie en dbz3 lo activaba**
+→ el teclado no hacía nada. Además los sliders de deadzone/rumble del launcher
+eran **placebo** (se guardaban en el toml pero jamás llegaban al runtime: el SDK
+0.10 eliminó esos cvars).
+
+**Qué se hizo**:
+1. **Parche SDK `input_system.cpp`** (nuevo archivo en `github/patches/`):
+   - `REXCVAR_DEFINE_DOUBLE(deadzone, 0.1)` — aplicado en `InputSystem::GetState`
+     al estado fusionado: los 4 ejes de sticks se anulan si su magnitud
+     < `deadzone * INT16_MAX`. Cubre XInput+SDL+MnK en el único punto de salida.
+   - `REXCVAR_DEFINE_BOOL(rumble, true)` — en `InputSystem::SetState` acepta la
+     vibración sin llegar a ningún pad cuando está OFF.
+   - Ambos se exportan por nombre; el exe los escribe vía `SetFlagByName` (el
+     registro de cvars vive en rexruntime.dll y está compartido con el exe —
+     verificado: rexruntime.dll exporta `SetFlagByName`/`RegisterFlag`/`Query`).
+2. **Launcher `settings.{h,cpp}`** — cvars nuevos persistidos en dbz3_user.toml:
+   - `dbz3_mnk_mode` (**default TRUE** → teclado funciona de serie en PC),
+     `dbz3_mnk_mouse` (ratón → stick derecho), `dbz3_input_backend`
+     ("xinput"/"sdl", default xinput).
+   - `dbz3_keybind_*` (24 wrappers: a,b,x,y,lt,rt,lb,rb,ls 4d+press, rs 4d+press,
+     dpad 4, back, start, guide) con defaults = los del SDK 0.10 (start corregido
+     a "Return" para que la tecla X no duplique pausa).
+   - `ApplyUserSettingsToSdk` ahora propaga: `input_backend`, `deadzone`,
+     `rumble`, `mnk_mode`, `mnk_mouse` y los 24 `keybind_*` al runtime.
+3. **Launcher `launcher_state.cpp`** — pestaña Input ampliada:
+   - Selector "Controller backend" (XInput/SDL) con aviso de que SDL puede
+     colgar con RTSS/OBS (por eso xinput es default).
+   - Slider de deadzone + checkbox rumble (ahora con efecto real).
+   - Checkbox "Enable keyboard/mouse emulation" + "Use mouse for right stick".
+   - Sección "Keyboard (MnK) mapping": 24 campos de texto (helper `DrawKeybind`,
+     formato `Tecla`, comas = alternativas, `Shift+/Ctrl+/Alt+` = modificadores).
+   - Reset to defaults restaura los cvars nuevos.
+4. **Detalle verificado**: el exe enlaza `rex::runtime` (la DLL) → sus llamadas
+   a `rex::cvar::SetFlagByName` se resuelven a la exportación de rexruntime.dll
+   → registro compartido. La advertencia de §14.3 sobre `SetFlagByName` era de
+   la era 0.9/prebuilt; en 0.10 el path por nombre es el correcto (documentado
+   en `cvar.h`: "Cross-DLL access path").
+
+**Compilado y smoke test OK**: rexruntime.dll 10940928 B (parche deadzone/rumble),
+dbz3.exe 17461248 B, "launcher shown, waiting for Play" sin errores. FFX v3
+restaurada a 5420544 (la del release v1.0.5; un rebuild del SDK la regeneró en
+5418496 y se prefirió no cambiar un binario que no tocaba la tarea).
+
+**⚠️ PENDIENTE PROBAR EN JUEGO (usuario)**: (a) el teclado emula el mando por
+defecto (menús + combate), (b) remapear teclas en la pestaña Input y que se
+apliquen, (c) mando XInput sigue funcionando (deadzone/rumble). En el paquete de
+release hay que regenerar `dbz3_avx2/` y `dbz3_legacy/` con el dbz3_core.exe y
+rexruntime.dll nuevos.
+
+**Sync**: `src/launcher/{settings.{h,cpp}, launcher_state.cpp}` y
+`patches/.../src/input/input_system.cpp` (nuevo) + `patches/README.md` (10
+archivos) → `github/`.
+
+### 14.8 🔴✅ P2.3/P2.2 RENDIMIENTO: FRAME PACING REAL + PRESETS DE CALIDAD POR GPU (2026-08-25)
+
+**Objetivo (HOJA_DE_RUTA_COMUNIDAD 2.3 y 2.2)**: "el juego corre acelerado" y
+hacer las integradas jugables (presets automáticos).
+
+**Hallazgo clave de 2.3 — el pacing del guest en 0.10 lo hace `vsync`, no
+`frame_cap`**:
+- El SDK 0.10 **eliminó el cvar `frame_cap`** del 0.9. Verificado: no existe en
+  toda la fuente del SDK → `SetSdkInt("frame_cap", cap)` del launcher fallaba en
+  silencio (placebo).
+- El pacing real del guest es el worker `vsync` de `GraphicsSystem`
+  (`graphics_system.cpp`): con `vsync` ON el vblank del guest corre a
+  `1/video_mode_refresh_rate` (60 Hz) → el juego a su velocidad correcta. Con
+  `vsync` OFF el vblank corre a ~1000 Hz (intervalo 1ms) → **la lógica del juego
+  corre ~16x más rápida = el "juego acelerado"** de los reportes.
+- `video_mode_refresh_rate` solo *reporta* el modo (xboxkrnl_video.cpp); no pacea.
+- **Fixes**:
+  1. **vsync forzado a true en el juego** (`ApplyRuntimeSettingsToSdk`): el guest
+     DEBE correr a 60 Hz; si el usuario lo tenía off se fuerza con un warning.
+     Se **eliminó el checkbox "VSync"** del launcher y del menú Dev (era un
+     placebo/contraproducente) → ahora muestra "Game speed: fixed 60 FPS".
+  2. **`frame_cap` REAL restaurado** (parche `d3d12_presenter.cpp`): cvar
+     `frame_cap` (0=sin límite) + throttle de presentación en
+     `PaintAndPresentImpl` (sleep hasta el slot de frame_cap FPS con
+     `std::chrono::steady_clock` + `rex::thread::Sleep`; pintura serializada →
+     timestamp file-scope seguro). Solo limita la tasa de presentación host
+     (30 = media carga en integradas); NO toca el vblank del guest.
+  3. **`dbz3_frame_cap` default 0 → 60** (instalaciones frescas obtienen pacing
+     correcto; el ResetToDefaults ya ponía 60 — ahora coherente).
+  4. La propagación `SetSdkInt("frame_cap", ...)` ahora SOLO en modo juego
+     (`for_game`); el launcher mantiene sus repaints ImGui sin límite.
+
+**2.2 — Presets de calidad + detección de GPU (lo práctico; OpenGL/D3D11 NO
+viables, ver HOJA_DE_RUTA §2.2)**:
+- **Detección DXGI** (`settings.cpp`): `DetectGpuName()`/`DetectGpuTier()`
+  enumeran el primer adaptador no-software (`CreateDXGIFactory1` +
+  `EnumAdapters1`, descripción + `DedicatedVideoMemory`), enlazado con
+  `#pragma comment(lib, "dxgi.lib")`. Tier: 0=low, 1=medium, 2=high. Intel
+  iGPU (sin "Arc") nunca auto-por encima de medium. RTX 4070 SUPER → tier 2.
+- **Preset `dbz3_quality_preset`** (auto/low/medium/high/ultra/manual):
+  - `auto` → detecta la GPU y aplica el perfil recomendado en cada arranque.
+  - Perfiles: **low** (1x, sin MSAA, aniso off, bilinear), **medium** (1x, sin
+    MSAA, 4x aniso, FSR), **high** (1x, MSAA on, 16x aniso, FSR),
+    **ultra** (2x, MSAA on, 16x aniso, FSR — solo manual, nunca auto).
+  - **Migración**: un toml existente SIN `dbz3_quality_preset` se migra a
+    "manual" (LoadUserSettings se llama 2 veces: primero en OnConfigurePaths
+    ANTES de que el logging esté activo — ahí corre la migración — y luego en
+    OnPreSetup). Así un usuario con config hecha a mano nunca la ve cambiada.
+  - Instalación fresca (sin toml) → "auto" → el launcher aplica la detección.
+- **UI (pestaña Video)**: línea "GPU: <nombre> - detected tier: <X>", combo
+  "Quality preset" (Auto/Low/Medium/High/Ultra/Manual), slider "Frame cap"
+  ahora REAL con hint de 30 FPS para integradas, texto "Game speed: fixed 60".
+  ResetToDefaults añade `dbz3_quality_preset=auto`.
+
+**Verificado**: rexruntime.dll 10944000 B (cvar `frame_cap` presente), dbz3.exe
+17479168 B, smoke test OK. Con el toml del usuario: `preset=manual` (2x, sin
+cambios). Sin toml: `preset=auto` → tier 2 → `1x + fsr` (High). FFX v3
+restaurada (5420544).
+
+**⚠️ PENDIENTE**: (a) probar en juego el frame cap (60 y 30) y el preset auto en
+una máquina con integrada; (b) el perfilado Tracy del path D3D12 (build
+win-amd64-tracy) queda como tarea opcional de optimización fina — necesita
+sesión de juego para datos reales.
+
+**Sync**: `src/launcher/{settings.{h,cpp}, launcher_state.cpp}`,
+`src/ingame/menu.cpp`, `patches/.../src/ui/d3d12/d3d12_presenter.cpp` (nuevo) +
+`patches/README.md` (11 archivos) → `github/`.
+
+### 14.9 🔴✅ BUGS DE CIERRE/ARRANQUE + I18N DEL LAUNCHER (2026-08-25 noche)
+
+**Reportes del usuario**: (a) Alt+F4 en juego → "No responde" hasta matar el
+proceso; (b) el launcher a veces se abría en negro + "No responde" y aparecía
+"cuando pasa un rato"; (c) presets "no visibles"; (d) el selector Language debía
+traducir TODO el launcher (estaba "spanglish"). **CAUSA RAÍZ DE (b) ENCONTRADA Y
+REPRODUCIDA (marcadores de log)**: el arranque se colgaba en
+`InputSystem::AttachWindow` → `SDLInputDriver::OnWindowAvailable` →
+`CallInUIThreadSynchronous` → **`SDL_InitSubSystem(SDL_INIT_GAMEPAD)`** (el
+cuelgue clásico con RTSS/OBS). El usuario tiene `dbz3_input_backend = "sdl"` en
+su toml. **Fix**: init de SDL ASINCRONA (un `std::thread` hace la init SDL en
+segundo plano; flags atómicas; hilo detached). Launcher pasa de colgarse a
+"launcher shown" en **1.6 s**. El fix de `CallInUIThreadSynchronous` con timeout
+del 0.9 NO se portó a 0.10 (fence.Wait sin timeout) — con la init async ya no
+bloquea el arranque; anotado como follow-up.
+
+**Fix (a) Alt+F4**: el log del usuario (dbz3_003) confirmó que Alt+F4 SÍ llegaba
+a `Dbz3App::OnWindowCloseRequested` ("Window close requested") pero se colgaba
+después (nunca llegaba a `OnClosing`). **Fix en `src/main.cpp`**:
+`OnWindowCloseRequested` ahora hace `rex::FlushLogging()` + `std::_Exit(0)`
+inmediatamente (mismo hard-exit que OnClosing; TerminateTitle/PerformClose/
+focus-loss podían bloquearse con hilos guest rezagados). Cerrar el juego (X o
+Alt+F4) siempre sale al instante.
+
+**Fix (c) presets visibles**: la pestaña Video ahora muestra "Activo: <preset> →
+<escala>x, MSAA, aniso, efecto" bajo el combo de preset → "auto" ya no es una
+caja negra (aplica en memoria y re-evalúa en cada boot).
+
+**Fix (d) i18n del launcher** (ES/EN, resto → EN):
+- Nuevo `src/launcher/i18n.{h,cpp}`: `dbz3::i18n::SetLanguage(id)` +
+  `T(es, en)` que devuelve el string según `dbz3_language` (5=ES, resto=EN).
+- `launcher_state.cpp`: **172 cadenas** envueltas con `T(es,en)` (banner, tabs,
+  Video/Upscaling/Audio/Input/Mods/Model Swap/Texturas/Dev, tooltips, diálogos).
+  `OnDraw` llama `SetLanguage(Language())` cada frame → el cambio de idioma se
+  aplica al instante. Los arrays de combos localizados se hicieron no-static
+  (antes con `static` capturarían el idioma una sola vez).
+- `CMakeLists.txt`: añadido `src/launcher/i18n.cpp`.
+- La pestaña Video renombra el combo a "Idioma del launcher y del juego" y la
+  ayuda explica que traduce todo el launcher.
+
+**SDK parcheado (rexruntime, avx2+legacy)**: `src/ui/presenter.cpp`
+(`WaitForUITickFromUIThread` con `wait_for(50ms)` → el hilo UI NUNCA se bloquea
+esperando vblank → adiós ventana negra + siempre procesa mensajes) y
+`src/input/sdl/sdl_input_driver.{h,cpp}` (init SDL async). Parches nuevos en
+`github/patches/` (README → 14 archivos). **Binarios**: dbz3.exe 17488896 B,
+rexruntime.dll 10945536 B (avx2) / 10847232 B (legacy). FFX validada intacta
+(hashes idénticos).
+
+**Verificado**: launcher "shown" en 1.6 s (antes colgaba 25 s+), 3 drivers de
+input pasan AttachWindow al instante, juego compila y enlaza, FFX intacta.
+Alt+F4 validado por análisis estático (el test automatizado no puede simular el
+Alt+F4 real: SDL intercepta la tecla, no el SC_CLOSE posteado; el usuario
+validará en juego). **Release v1.0.7** pendiente de empaquetar con estos
+binarios.
+
+**Sync**: `src/{main.cpp, launcher/{launcher_state.cpp, i18n.{h,cpp}}}`,
+`CMakeLists.txt`, `patches/.../{presenter.cpp, sdl_input_driver.{h,cpp}}` +
+`patches/README.md` (14 archivos), `RELEASE_README.md` → `github/`. NO subido a
+GitHub (plan general aún en curso).
+
+### 14.10 🔴✅ I18N IT/DE/FR + UI COMPACTA SIN SCROLLBARS + MARCADOR DE ARRANQUE (2026-08-26)
+
+**Reportes del usuario**: (a) el selector de idioma solo traducía ES/EN (IT/DE/FR
+caían a inglés "por algún motivo"); (b) el launcher sigue tardando en pasar de
+pantalla negra a launcher; (c) la UI no cabe en la ventana (barras deslizantes);
+(d) Alt+F4 ya funciona ✅.
+
+**Fix (a) i18n completo EN/ES/IT/DE/FR** (`src/launcher/i18n.{h,cpp}`):
+- Diseño por TABLA, no por call-site: `T(es,en)` mantiene su firma; internamente
+  busca en `kTable[]` (161 entradas) la traducción según `dbz3_language`
+  (3=DE, 4=FR, 5=ES, 6=IT; resto→EN, incluido 2=Japonés). La clave ES es la
+  **cadena runtime EXACTA** (los literales concatenados de varias líneas cuentan
+  como una sola clave; se genera con un script Python que parsea los 172 call
+  sites de `launcher_state.cpp`, `extract_i18n.py`/`gen_i18n.py` en %TEMP%).
+- Traducciones: 483 cadenas (161×3) escritas a mano (IT desde ES, DE/FR desde
+  ES/EN), UTF-8 (clang la compila bien). Las cadenas con `\n`/`\\` se emiten
+  verbatim en la clave y escapadas en las traducciones.
+- El combo de idioma sigue listando los 6 idiomas del juego; el launcher solo
+  tiene EN/ES/IT/DE/FR (Japonés→EN).
+
+**Fix (b) UI compacta sin scrollbars** (`launcher_state.cpp`):
+- Estilo global apretado: WindowPadding (16,16)→(12,8), FramePadding
+  (10,6)→(7,4), ItemSpacing (10,8)→(7,4), CellPadding/ScrollbarSize menores.
+- Banner: font scale 1.5→1.3, separadores reducidos.
+- **Video tab en 2 columnas** (BeginChild izquierda/derecha): izquierda =
+  Calidad de imagen + Idioma; derecha = Pantalla + Motor + Gamma. Las ayudas
+  largas (preset, escala, MSAA, frame cap, VRR, monitor, Vulkan) pasan a
+  `SetTooltip` al pasar el ratón (siempre `SetTooltip("%s", i18n::T(...))`
+  para no trigger -Wformat-security).
+- **Input tab: los 24 keybinds en rejilla de 3 columnas** (antes vertical).
+  Ayudas de backend/MnK/mouse a tooltips.
+- Dev tab: 4 ayudas a tooltips. Mods/ModelSwap/Texturas mantienen su scroll
+  interno (listas naturalmente largas).
+- Resultado: todos los tabs de ajustes caben en la ventana 1280x720 sin barras.
+
+**Fix (c) diagnóstico del arranque lento** (`patches/.../d3d12_presenter.cpp`):
+- Log del primer `Present` del presentador D3D12: `dbz3: first present OK
+  (device/swapchain init + first paint took X ms)` → con los timestamps del log
+  (que ya tienen hora), el log del usuario muestra cuánto tarda la pantalla
+  negra (ventana creada→primer frame) en SU máquina. En mi máquina son ~7ms.
+  PENDIENTE: leer el valor en la máquina del usuario para saber si el cuello de
+  botella es el init D3D12/swapchain del primer paint (entonces: init temprano
+  o ventana oculta hasta el primer frame) o algo anterior.
+
+**Binarios**: dbz3.exe 17517568 B, rexruntime.dll 10947584 B (avx2) /
+10849792 B (legacy) con el marcador. Copiada la DLL avx2 al build y a
+`rexglue/bin` (evitar el stale de §13.6). FFX intacta.
+
+**Sync**: `src/launcher/{i18n.{h,cpp}, launcher_state.cpp}` +
+`patches/.../d3d12_presenter.cpp` + `patches/README.md` → `github/`. NO subido
+a GitHub. **Release v1.0.8** pendiente de empaquetar.
+
+### 14.11 🔴✅ IDIOMA QUE CONDICIONA EL JUEGO + FOOTER CON PLAY SIEMPRE VISIBLE (2026-08-26)
+
+**Reportes del usuario**: (a) el selector de idioma solo afectaba al launcher
+(esperaba que condicionara también el texto del juego); (b) la barra de scroll
+derecha seguía en Video/Audio/Dev y "PLAY" no se veía de entrada; (c) hacer el
+launcher más user-friendly (investigar buenas prácticas).
+
+**Fix (a) idioma → juego REAL** (`patches/.../xam_info.cpp`, nuevo parche #10):
+- El guest elige su idioma vía `XGetLanguage`. `XGetLanguage_entry` devolvía
+  inglés fijo (basado en region). Ahora devuelve `REXCVAR_GET(user_language)`,
+  el cvar que el launcher YA propagaba desde `dbz3_language`
+  (`ApplyUserSettingsToSdk`: `REXCVAR_SET(user_language, Language())`).
+- ⚠️ Scope: `user_language` se define en `xam_user.cpp` ANTES de abrir los
+  namespaces → su accesor es GLOBAL. El `REXCVAR_DECLARE` de `xam_info.cpp`
+  debe ir también fuera de `namespace rex::kernel::xam` (si no: link error
+  `undefined symbol: rex::kernel::xam::FLAGS_user_language_storage_`).
+- **Verificado por disassembly**: la DLL nueva tiene `XGetLanguage_entry` =
+  `sub rsp,28; call FLAGS_user_language_storage_; mov eax,[rax]; add rsp,28; ret`.
+  El selector del launcher ahora controla el texto del juego.
+
+**Fix (b) scrollbars + PLAY invisible** (`launcher_state.cpp`):
+- **CAUSA RAÍZ**: los tabs de ajustes usaban `BeginChild(..., ImVec2(0,0))`
+  (llenan TODO el alto restante) → el footer se dibujaba FUERA de la ventana →
+  la ventana ganaba una barra de scroll y PLAY quedaba bajo el pliegue.
+- **Fix**: TODOS los tabs reservan el alto del footer con
+  `ImVec2(0, -kFooterHeight)` (kFooterHeight = 76) → el footer siempre visible.
+- **Verificado por logging de geometría** (debug temporal, luego eliminado):
+  `win_scroll_y=0`, `video_left/right scroll_y=0`, y **PLAY rect y=[670,712]
+  en una ventana de 720** → sin barras y PLAY a la vista.
+
+**Fix (c) user-friendly** (aplicando buenas prácticas de launchers investigadas
+online: PLAY = acción primaria siempre visible y de alto contraste; agrupar por
+intención; feedback de qué se va a lanzar; utilidades secundarias discretas):
+- **Footer rediseñado**: línea de resumen "Inicio: <región> - <backend> - <N>x -
+  <efecto> - <idioma>" + combo de región (movido de la pestaña Mods, ahora
+  siempre visible con tooltip) + botones secundarios [Restablecer][Guardar] +
+  **PLAY grande y VERDE (300x42, estilo primary)** a la derecha.
+- El selector de región se eliminó de la pestaña Mods (ya no hay duplicado).
+- Tooltip del combo de idioma aclara que afecta al launcher Y al juego.
+- Arreglada una cadena mojibake doble (`pequeÃƒÂ±a` → `pequena`, byte-level).
+- Cadenas nuevas en la tabla i18n: "Inicio: ..." y el tooltip del idioma
+  (añadidas a mano en i18n.cpp, que es GENERADO — regenerar con el script si se
+  tocan más strings).
+
+**Binarios**: dbz3.exe 17519104 B, rexruntime.dll 10947584 B (avx2) /
+10849792 B (legacy) con el parche XGetLanguage. FFX intacta (avx2 5420544 A20438,
+legacy 5414912 5FE146). DLL avx2 copiada a build + `rexglue/bin`.
+
+**⚠️ LECCIÓN**: al recompilar el SDK avx2, el FFX de `rexglue-sdk-0.10/bin/`
+se regenera (5415424, distinto de la validada). NO copiarlo al build: el build
+y el release usan la FFX validada (5420544). La FFX del `out/win-amd64` del SDK
+sigue siendo la validada (la regeneración va a `bin/`, no a `out/`).
+
+**Sync**: `src/launcher/{i18n.{h,cpp}, launcher_state.cpp}` +
+`patches/.../{xam_info.cpp}` + `patches/README.md` (15 archivos) → `github/`.
+NO subido a GitHub. **Release v1.0.9** pendiente de empaquetar.
+
+### 14.12 🔴✅ EL XEX EU/PAL NO ES COMPATIBLE + DETECCIÓN Y BLOQUEO (2026-08-26)
+
+**Reporte del usuario**: "mucha gente reportó problemas con el `.xex` cuando
+usan el de EU; en conversaciones previas se dijo que era el mismo que el USA".
+Petición: verificar que eso esté 100% corregido.
+
+**VERIFICACIÓN EMPÍRICA (boot real del guest, no solo hashes)**:
+- `yae3_xenon.xex` (US/NA) vs `yae3_xenon_eu.xex` (EU/PAL): mismo tamaño
+  (4890624 B), mismo title id (0x82) y media id (0xFF030000), MISMOS headers
+  XEX2, mismo layout de imagen reportado por el runtime (code=82080000-
+  8230EC00, image=82000000-826D0000) — pero **MD5 distinto** (A53E... vs
+  C37E...). Los bytes crudos van cifrados con la clave de cada región → no
+  comparar en crudo.
+- **El xex EU NO puede arrancar en este port**: con `dbz3_skip_launcher`,
+  `OnPostLaunchModule` se alcanza pero el guest muere al instante con
+  `XThread::Execute - No function registered at 8221C570` (la misma dir tanto
+  con assets EU como con assets US → el fallo es 100% del ejecutable EU).
+  Causa: el **codegen (recompilador, 44 recomp files) se generó SOLO del xex
+  US**; el código descifrado del EU difiere (call graph distinto) y llama a
+  direcciones que la tabla de funciones del recompilador no cubre.
+- **El xex US arranca el guest sin error** (control), con región EU y cualquier
+  idioma vía el launcher (mount us/eu + `user_language`). → Un usuario EU no
+  pierde nada usando el xex US: la región PAL (assets `eu/`) y el idioma los
+  gestiona el launcher.
+
+**Fixes aplicados**:
+1. **`FindGameRoot` acepta `eu/`** (`src/main.cpp`): antes solo aceptaba `us/`
+   → un layout con SOLO `eu/` (usuario EU sin carpeta us) fallaba la
+   auto-detección y caía en "Entrypoint XEX not found" al Play. Ahora acepta
+   `base/eu` y `base/assets/eu` (coherente con `IsValidGameDataDir` y el banner).
+   (Este fue el bug secundario que EXPLICABA parte de los reportes "EU".)
+2. **Detección del xex EU en el launcher** (`settings.{h,cpp}` +
+   `launcher_state.cpp`): nuevo `XexStatus` (kMissing/kUs/kEu/kUnknown) +
+   `CheckDefaultXex(root)` = MD5 de `default.xex` (CryptoAPI, caché por
+   path+size+mtime para no re-hashear el ~4.9MB cada frame; fast-reject por
+   tamaño). Hashes conocidos: US `A53E324B5D2A65EBCBF648E4F85A7271`, EU
+   `C37EB979B762DA0AB5B8C9BA8037CE4E` (los de disco son fijos por región).
+   - Banner: xex EU → **mensaje rojo claro y Play BLOQUEADO** (en vez del
+     crash críptico); xex desconocido (modificado/otra región) → **nota ámbar**
+     informativa sin bloquear; US → verde normal.
+   - Guard también en `LaunchModule` con `skip_launcher` (path dev): si el xex
+     es EU, error + MessageBox claro, no arranca el guest.
+3. **Docs**: RELEASE_README + README_PRIMER_ARRANQUE explican "usa SIEMPRE el
+   `default.xex` US/NA (`yae3_xenon.xex`); el EU/PAL no arranca; región e
+   idioma se eligen en el launcher".
+
+**Verificado**: con xex EU + skip_launcher → log `skip_launcher with EU/PAL
+default.xex - the recompiled port only supports the US/NA executable` y NO crea
+el guest; con xex US → `OnPostLaunchModule - guest thread created and resumed`
+(sin error); launcher con xex EU se muestra sin crash (banner activo).
+`dbz3.exe` 17528320 B.
+
+**NOTA IMPORTANTE (verdad del asunto)**: "el xex EU es el mismo que el USA" es
+**FALSO** a nivel de binario y de código — el port solo está recompilado del
+US. Lo que SÍ es correcto: **no hace falta un xex EU** porque la región y el
+idioma los gestiona el launcher sobre el xex US. Con el xex US + región eu +
+idioma elegido, el usuario EU juega 100% (assets PAL + textos en su idioma).
+
+**Sync**: `src/{main.cpp, launcher/{settings.{h,cpp}, launcher_state.cpp,
+i18n.cpp}}` + `RELEASE_README.md` + `README_PRIMER_ARRANQUE.txt` → `github/`.
+NO subido a GitHub. **Release v1.0.10** pendiente de empaquetar.
+
+### 14.13 🔴✅ EL PORT EU/PAL YA FUNCIONA — SEGUNDA RECOMPILACIÓN (2026-08-26)
+
+**Reporte del usuario (tras §14.12)**: "el xex EU debería ser 100% compatible, no
+puede ser que hagamos la promesa de US o EU y no sea así". **Decisión: construir
+el port del xex EU como segunda recompilación** (no solo bloquearlo). Resultado:
+**ambos ejecutables funcionan** — el launcher elige el núcleo correcto solo.
+
+**HALLAZGO CLAVE: el xex EU es una build distinta a nivel de código** (no solo
+bytes): el codegen analiza el EU pero con **direcciones de funciones DIFERENTES**
+(partition JSON: US partition 3 @0x820800A8 vs EU @0x82080158). El title id es el
+MISMO (4E4D0856) en ambos → el discriminador es el **MD5** (US `A53E...`, EU
+`C37E...`; los bytes crudos van cifrados por región).
+
+**Pipeline del port EU (todo validado)**:
+1. **Codegen EU converge** (`dbz3_manifest_eu.toml` + `dbz3_config_eu.toml`):
+   `rexglue codegen` sobre `yae3_xenon_eu.xex` → `generated_eu/` (prefijo
+   `dbz3_eu_*`). 95 funciones (mismo conteo que US). `dbz3_config_eu.toml` =
+   el US + ajustes EU:
+   - `0x82097F08` sin `size 0x10` (el EU ramifica más allá);
+   - 4 name-only (`0x821ECA98, 0x82097EA0, 0x8213EB00, 0x821ED5C8`) para los
+     5 unresolved calls;
+   - ⚠️ las entradas adicionales deben ir DENTRO de `[functions]` (apendar
+     tras `[[switch_tables]]` las mete en la tabla del switch → no surten efecto);
+   - ramas condicionales no resueltas → **declarar con size del rango de la
+     partición** (`0x8213E834 size 0x1CC`, `0x82296500 size 0x288` + quitar
+     `0x82296528` del config US); el **bulk name-only de 298 candidatos NO
+     funciona** (gap-fill caótico → nuevos unresolved en 0x82303xxx);
+   - funciones por puntero de datos (dispatch) → declarar de a una (0x822A5AE0
+     size 8, 0x82290F18 size 0xF8, 0x8228B8D8/E0/F0/B948 cluster,
+     0x822922B8..0x82292300 tabla de handlers, 0x821F9D40 size 0x18).
+2. **CMake variante** (`CMakeLists.txt`): `DBZ3_GENERATED_DIR` (cache,
+   default `generated`). Build EU: `cmake -B out/build/win-amd64-release-eu
+   -DDBZ3_GENERATED_DIR=generated_eu` (mismos compiladores/prefix path que el
+   US). `main.cpp` incluye `generated_eu/dbz3_eu_init.h` si `DBZ3_EU_VARIANT`
+   (define que pone el CMake); `hooks.cpp` se excluye del build EU (sus hooks
+   US sub_820F2280/sub_820BB938 no existen en EU) y `hooks.h` se guarda con
+   `#ifndef DBZ3_EU_VARIANT`.
+3. **Boot EU validado**: el core EU con el xex EU arranca el guest y **ejecuta
+   el juego real** (lee `data_eng.afs`, `data_cmn.afs` 3983-3985, `data_yah.afs`;
+   60s estable sin FATAL). Iteración de funciones no registradas resuelta hasta
+   el guest estable. **El runtime del SDK es agnóstico del juego** (mismas DLLs
+   para ambos cores).
+4. **Detección consciente de variante** (`settings.h XexIsExpected()` +
+   `launcher_state.cpp` banner + `main.cpp` guard skip_launcher): cada core solo
+   arranca SU xex; con el del otro lo bloquea con mensaje claro (banner rojo /
+   MessageBox). Mensajes i18n añadidos para ambos casos.
+5. **Bootstrap dispatch** (`src/bootstrap.cpp`): ahora también detecta el xex
+   (`DetectXex` MD5 CryptoAPI, busca `default.xex` en exe_dir, exe_dir/assets,
+   parent, parent/assets) → lanza `dbz3_eu_avx2|legacy` si EU, `dbz3_avx2|
+   legacy` si US. **Validado end-to-end**: xex EU → dbz3_eu_avx2 → guest EU
+   bootea; xex US → dbz3_avx2 → guest US bootea.
+6. **Fix de prioridad FindGameRoot** (`main.cpp`): el fallback "3 niveles arriba"
+   encontraba el project root dev (con `us/` y `default.xex` US) ANTES que el
+   `assets/` del release cuando el core corre desde `github/release-stage/
+   dbz3_eu_avx2` → el core EU clasificaba el xex EU como US. Reordenado: exe →
+   **parent → 3-up (dev)**. Funciona para dev Y release.
+7. **Empaquetado** (`tools/make_release.ps1`): 4 variantes (dbz3_avx2/legacy =
+   US core, dbz3_eu_avx2/legacy = EU core; mismas DLL del SDK). Zip v1.0.10
+   (66.4 MB).
+
+**Diagnóstico útil**: `InvalidFunctionTrap` (rexglue-sdk-0.10/src/system/
+function_dispatcher.cpp) con env `DBZ3_COLLECT_UNREGISTERED` → logea cada
+función no registrada a `dbz3_unregistered.txt` y continúa (recolección masiva,
+aunque el guest se corrompe rápido → de a una por boot). Volcado de imagen EU:
+env `DBZ3_DUMP_IMAGE` (main.cpp) escribe la imagen descifrada para escanear
+punteros de función (u32 BE → código) — sirvió para hallar los dispatch targets.
+
+**Binarios**: core US 17529344 B, core EU 17508864 B, rexruntime 10951168 B
+(avx2) / 10849792 B (legacy), bootstrap 46592 B. FFX validada intacta
+(avx2 5420544 A20438, legacy 5414912 5FE146).
+
+**⚠️ PENDIENTE (usuario)**: validar el core EU **en juego** (menús + combate).
+El boot es estable, pero paths más profundos (combate/eventos) podrían revelar
+más funciones no registradas (usar `DBZ3_COLLECT_UNREGISTERED` para
+recolectarlas) y los hooks US (dispatches mal compilados) podrían tener
+equivalentes EU a descubrir. Si algo crashea, iterar el `dbz3_config_eu.toml`
+y re-codegen.
+
+**Sync**: `src/{bootstrap.cpp, main.cpp, hooks.h, launcher/{settings.{h,cpp},
+launcher_state.cpp, i18n.cpp}}`, `CMakeLists.txt`, `dbz3_manifest_eu.toml`,
+`dbz3_config_eu.toml`, `tools/make_release.ps1`, `RELEASE_README.md`,
+`README_PRIMER_ARRANQUE.txt`, `patches/.../function_dispatcher.cpp` (recolección
+de funciones no registradas) + `patches/README.md` → `github/`. NO subido a
+GitHub. `generated_eu/` NO se sube (código derivado). **Release v1.0.10**
+empaquetada y verificada (dispatch EU end-to-end OK).
+
+### 14.5 🔴✅ P1 PRIMER USO: BANNER DE VALIDACIÓN + SELECCIÓN DE CARPETA + VENTANA DE CRASH (2026-08-25)
+
+**Objetivo (HOJA_DE_RUTA_COMUNIDAD P1.1/P1.2)**: que un usuario con los assets
+mal ubicados NO caiga en el crash "Entrypoint XEX not found", y que cualquier
+crash muestre una ventana con la ruta del log en vez de cerrarse en silencio.
+
+**Banner de validación en el launcher** (`launcher_state.cpp` OnDraw, tras el
+header): comprueba cada frame `default.xex` + `us/`/`eu/` (región actual) sobre
+la **raíz efectiva**:
+- Verdes `[OK] Datos del juego en: <ruta>` cuando están; rojo con el detalle de
+  qué falta (default.xex / us / eu) cuando no.
+- **Botón "Seleccionar carpeta de datos..."**: `PickFolder` (IFileOpenDialog),
+  valida con `IsValidGameDataDir` (contiene `us/`/`eu/` o `default.xex`),
+  persiste en el cvar `dbz3_game_dir` (dbz3_user.toml) y **remonta el juego en
+  caliente** sin reiniciar.
+- **PLAY se bloquea** (`BeginDisabled`) mientras falten los assets.
+
+**Remontaje en caliente del game data** (`src/region.{h,cpp}`):
+- `dbz3::EffectiveGameRoot()`/`SetEffectiveGameRoot()`: raíz efectiva (la que
+  contiene `us/`/`eu/`). Se registra en `OnConfigurePaths` y la usa
+  `ApplyRegionMount` (antes usaba `rt->game_data_root()`, que es FIJO al Setup y
+  queda stale tras un remontaje).
+- `dbz3::RemountGameDrive(root)`: desregistra y re-registra el device
+  `\Device\Harddisk0\Partition1` en la nueva raíz + re-crea los symlinks
+  `game:`/`d:` (mismo patrón que `Runtime::SetupVfs`). `RelocateGameData` =
+  remontar + re-aplicar región. Seguro porque el guest aún no ha lanzado.
+- `OnConfigurePaths` prioridad: arg CLI > `dbz3_game_dir` (override) >
+  auto-detección (exe / assets / proyecto / padre). Si el override no es válido
+  se ignora con warning.
+
+**Ventana de crash** (`src/main.cpp` SetupCrashHandler):
+- Ante una excepción no controlada: minidump (si Dev "Write crash minidump"),
+  log del crash, `rex::FlushLogging()`, y **MessageBox "DBZ Budokai 3 - Error"**
+  con código de excepción, dirección, **ruta del log** (`LatestLogPath()`, el
+  `logs/dbz3_*.log` más reciente) y ruta del minidump. Con depurador conectado
+  delega en el depurador (`EXCEPTION_CONTINUE_SEARCH`).
+- `std::terminate` también muestra la ventana.
+
+**Compilado y smoke test OK**: dbz3.exe 17322496 B (25/08 18:23), el launcher
+arranca ("launcher shown, waiting for Play"), DLLs 0.10 intactas en el build.
+Pendiente: validación visual del banner (verde/rojo + picker) y del diálogo de
+crash en el paquete standalone.
+
+**Sync**: `src/{main.cpp, region.{h,cpp}, launcher/{settings.{h,cpp},
+launcher_state.{h,cpp}}}` → `github/`. NO subido a GitHub (plan general aún en
+curso). Cuando se haga release: añadir `README_PRIMER_ARRANQUE.txt` al zip y
+reforzar RELEASE_README.
 
 ### 14.4 🔴✅ LAUNCHER: AUTO-GUARDADO DE AJUSTES AL CAMBIARLOS (2026-08-20)
 

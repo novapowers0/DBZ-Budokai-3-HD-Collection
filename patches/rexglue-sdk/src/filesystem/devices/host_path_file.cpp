@@ -110,33 +110,12 @@ X_STATUS HostPathFile::ReadSync(std::span<uint8_t> buffer, size_t byte_offset,
           mod_file.seekg(std::streamoff(mod_offset), std::ios::beg);
           mod_file.read(reinterpret_cast<char*>(buffer.data()), std::streamsize(to_read));
           size_t got = mod_file.gcount() > 0 ? size_t(mod_file.gcount()) : 0;
-          if (host_path.filename() == "data_cmn.afs" && entry_index == 327) {
-            mod_file.seekg(0, std::ios::end);
-            const int64_t fsz = static_cast<int64_t>(mod_file.tellg());
-            mod_file.seekg(std::streamoff(mod_offset), std::ios::beg);
-            REXLOG_INFO("AFS MOD READ: bin 327 mod_off=0x{:X} to_read={} got={} mod_size={}", mod_offset, to_read, got, fsz);
-          }
-          if (host_path.filename() == "data_cmn.afs" && entry_index == 91) {
-            mod_file.seekg(0, std::ios::end);
-            const int64_t fsz = static_cast<int64_t>(mod_file.tellg());
-            mod_file.seekg(std::streamoff(mod_offset), std::ios::beg);
-            REXLOG_INFO("AFS MOD READ: bin 91 mod_off=0x{:X} to_read={} got={} mod_size={}", mod_offset, to_read, got, fsz);
-          }
           if (out_bytes_read) {
             *out_bytes_read = got;
           }
           return got > 0 ? X_STATUS_SUCCESS : X_STATUS_END_OF_FILE;
         }
       }
-    }
-  }
-
-  if (entry() && static_cast<HostPathEntry*>(entry())->host_path().filename() == "data_cmn.afs") {
-    uint64_t es = 0, esz = 0;
-    int ei = AfsFindEntry(static_cast<HostPathEntry*>(entry())->host_path(), byte_offset, es, esz);
-    if (ei == 327) {
-      REXLOG_INFO("AFS327 READ: off=0x{:X} to_read={} entry_start=0x{:X} entry_size={}",
-                  byte_offset, buffer.size(), es, esz);
     }
   }
 

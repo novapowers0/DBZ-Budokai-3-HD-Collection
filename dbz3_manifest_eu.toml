@@ -1,0 +1,10 @@
+[project]
+sdk_version = "0.10.0"
+name = "dbz3_eu"
+
+[entrypoint]
+file_path = "yae3_xenon_eu.xex"
+out_directory_path = "generated_eu"
+includes = [
+  "dbz3_config_eu.toml",
+]

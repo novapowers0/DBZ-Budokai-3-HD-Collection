@@ -1,0 +1,75 @@
+﻿[functions]
+0x82097F08 = { name = "rex_sub_82097F08" }
+0x820F8D28 = { name = "rex_sub_820F8D28" }
+0x8213EA00 = { name = "rex_sub_8213EA00" }
+0x821DEED0 = { name = "rex_sub_821DEED0", size = 0x10 }
+0x821DE85C = { name = "rex_sub_821DE85C" }
+0x821EDCE0 = { name = "rex_sub_821EDCE0", size = 0x10 }
+0x821EE810 = { name = "rex_sub_821EE810", size = 0x10 }
+0x82292C50 = { name = "rex_sub_82292C50", size = 0x10 }
+0x82292C68 = { name = "rex_sub_82292C68" }
+0x8228D8B0 = { name = "rex_sub_8228D8B0" }
+0x821EDCF0 = { name = "rex_sub_821EDCF0", size = 0x08 }
+0x82294030 = { name = "rex_sub_82294030" }
+0x821FB170 = { name = "rex_sub_821FB170" }
+0x82294788 = { name = "rex_sub_82294788" }
+0x8228D890 = { name = "rex_sub_8228D890" }
+0x8215B3B8 = { name = "rex_sub_8215B3B8" }
+0x820BB1E8 = { name = "rex_sub_820BB1E8" }
+# EU-specific function spans (US config sizes do not fit the EU code)
+0x821ECA98 = { name = "rex_sub_821ECA98" }
+0x82097EA0 = { name = "rex_sub_82097EA0" }
+0x8213EB00 = { name = "rex_sub_8213EB00" }
+0x821ED5C8 = { name = "rex_sub_821ED5C8" }
+0x821EE884 = { name = "rex_sub_821EE884" }
+0x821EE840 = { name = "rex_sub_821EE840" }
+0x82292C70 = { name = "rex_sub_82292C70" }
+0x820F8CE8 = { name = "rex_sub_820F8CE8" }
+0x8213E834 = { name = "rex_sub_8213E834", size = 0x1CC }
+0x821DEEE0 = { name = "rex_sub_821DEEE0" }
+0x821DEEEC = { name = "rex_sub_821DEEEC" }
+0x821EDD8C = { name = "rex_sub_821EDD8C" }
+0x821EDDA0 = { name = "rex_sub_821EDDA0" }
+0x821EDDEC = { name = "rex_sub_821EDDEC" }
+0x821EDE28 = { name = "rex_sub_821EDE28" }
+0x82296500 = { name = "rex_sub_82296500", size = 0x288 }
+0x822A5AE0 = { name = "rex_sub_822A5AE0", size = 0x8 }
+0x82290F18 = { name = "rex_sub_82290F18", size = 0xF8 }
+0x8228B8D8 = { name = "rex_sub_8228B8D8", size = 0x8 }
+0x8228B8E0 = { name = "rex_sub_8228B8E0", size = 0x10 }
+0x8228B8F0 = { name = "rex_sub_8228B8F0", size = 0x58 }
+0x8228B948 = { name = "rex_sub_8228B948", size = 0x8 }
+# 0x822922B8..0x82292300 dense handler table (guest dispatches through it)
+0x822922B8 = { name = "rex_sub_822922B8", size = 0x8 }
+0x822922C0 = { name = "rex_sub_822922C0", size = 0x10 }
+0x822922D0 = { name = "rex_sub_822922D0", size = 0x8 }
+0x822922D8 = { name = "rex_sub_822922D8", size = 0x8 }
+0x822922E0 = { name = "rex_sub_822922E0", size = 0x8 }
+0x822922E8 = { name = "rex_sub_822922E8", size = 0x8 }
+0x822922F0 = { name = "rex_sub_822922F0", size = 0x8 }
+0x822922F8 = { name = "rex_sub_822922F8", size = 0x8 }
+0x82292300 = { name = "rex_sub_82292300", size = 0x100 }
+0x821F9D40 = { name = "rex_sub_821F9D40", size = 0x18 }
+
+# sub_820F2280 dispatches through a jump table at 0x8201E350 (function pointer
+# dispatch for the event/combat system). The recompiler only detected 2 labels;
+# declare the full table so the bctr generates a correct dispatch.
+[[switch_tables]]
+address = 0x820F22A0
+register = 3
+labels = [
+    0x820F22A8, 0x820F22B8, 0x820F22C0, 0x820F22D8,
+    0x82308398, 0x82308398, 0x820F22F0, 0x820F2360,
+    0x820F23E8, 0x820F2440, 0x820F2530, 0x820F2590,
+    0x820F25E0, 0x820F2630, 0x820F2660, 0x820F27A8,
+    0x820F27D8, 0x820F2808, 0x820F2838, 0x820F2880,
+    0x820F2888, 0x820F2890, 0x820F2898, 0x820F28A0,
+    0x820F28A8, 0x820F28B0, 0x820F28B8, 0x820F28C0,
+    0x820F28C8, 0x820F28D0, 0x820F28D8, 0x820F28E0,
+    0x820F28E8, 0x820F28F0, 0x820F28F8, 0x820F2900,
+    0x820F2908, 0x820F2910, 0x820F2918, 0x820F2920,
+    0x820F2948, 0x820F2960, 0x820F2978, 0x820F2990,
+    0x820F29A8, 0x820F29C0, 0x820F29D8, 0x820F2A78,
+    0x820F2AC0, 0x820F2B20, 0x820F2B80, 0x820F2B98,
+    0x820F2C20, 0x820F2C28,
+]
