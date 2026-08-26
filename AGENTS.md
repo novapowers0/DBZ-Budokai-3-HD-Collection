@@ -3089,8 +3089,10 @@ convenga.
   default `$Version = "v1.0.9"`.
 - **Verificado el paquete**: VERSIONINFO 1.0.9.0 en bootstrap y core, rexgpu
   `60B613B2` (clamp presente), launcher "shown" sin crash.
-- **PENDIENTE**: subir v1.0.9 a GitHub (tag + release) cuando el usuario valide
-  la UI del centro de mods en juego.
+- **✅ SUBIDA A GITHUB (2026-08-26)**: tag `v1.0.9`, release con zip + changelog,
+  ahora Latest → https://github.com/novapowers0/DBZ-Budokai-3-HD-Collection/releases/tag/v1.0.9.
+  (Es el paquete equivalente al build de release; el usuario validó que "lo ve
+  bien".)
 
 **Sync**: `CMakeLists.txt`, `src/version.rc` (nuevo), `tools/make_release.ps1`,
 `AGENTS.md` → `github/`.
