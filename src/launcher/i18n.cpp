@@ -187,6 +187,22 @@ static const Entry kTable[] = {
     {"Escribe diagnostico GPU por fotograma (logs, readbacks y dumps .bmp). Genera archivos grandes. Mantener apagado normalmente.", "Scrive diagnostica GPU per fotogramma (log, readback e dump .bmp). Genera file grandi. Tenerlo spento normalmente.", "Schreibt pro Frame GPU-Diagnose (Logs, Readbacks und .bmp-Dumps). Erzeugt große Dateien. Normalerweise deaktiviert lassen.", "Écrit des diagnostics GPU par image (logs, readbacks et dumps .bmp). Génère de gros fichiers. À laisser désactivé normalement."},
     {"Guardar minidump de crash (crash_*.dmp)", "Salva minidump di crash (crash_*.dmp)", "Crash-Minidump speichern (crash_*.dmp)", "Enregistrer un minidump de crash (crash_*.dmp)"},
     {"Escribe un minidump cuando el juego falla. Mantener apagado normalmente.", "Scrive un minidump quando il gioco va in crash. Tenerlo spento normalmente.", "Schreibt einen Minidump, wenn das Spiel abstürzt. Normalerweise deaktiviert lassen.", "Écrit un minidump lorsque le jeu plante. À laisser désactivé normalement."},
+    {"Perfil:", "Profilo:", "Profil:", "Profil :"},
+    {"Guardar como...", "Salva come profilo...", "Als Profil speichern...", "Enregistrer comme profil..."},
+    {"Borrar perfil", "Elimina profilo", "Profil löschen", "Supprimer le profil"},
+    {"Instalar mod (.zip)...", "Installa mod (.zip)...", "Mod installieren (.zip)...", "Installer un mod (.zip)..."},
+    {"Archivo de mod (.zip)", "File mod (.zip)", "Mod-Datei (.zip)", "Fichier de mod (.zip)"},
+    {"Abrir carpeta del mod", "Apri cartella del mod", "Mod-Ordner öffnen", "Ouvrir le dossier du mod"},
+    {"Un perfil activa/desactiva un conjunto de mods de una vez. 'vanilla' desactiva todos (juego original).", "Un profilo attiva/disattiva un insieme di mod contemporaneamente. 'vanilla' disattiva tutto (gioco originale).", "Ein Profil aktiviert/deaktiviert mehrere Mods auf einmal. 'vanilla' deaktiviert alle (Original-Spiel).", "Un profil active/désactive un ensemble de mods en une fois. 'vanilla' désactive tout (jeu original)."},
+    {"Selecciona un archivo .zip con tu mod (carpeta con manifest.txt y los overrides us/eu). Se descomprime a la carpeta mods y se activa.", "Seleziona un file .zip con il tuo mod (cartella con manifest.txt e gli override us/eu). Viene estratto nella cartella mods e attivato.", "Wählen Sie eine .zip-Datei mit Ihrem Mod (Ordner mit manifest.txt und den us/eu-Overrides). Sie wird in den mods-Ordner entpackt und aktiviert.", "Sélectionnez un fichier .zip avec votre mod (dossier avec manifest.txt et les overrides us/eu). Il est extrait dans le dossier mods et activé."},
+    {"Perfil 'vanilla' aplicado (todos los mods desactivados)", "Profilo 'vanilla' applicato (tutti i mod disattivati)", "Profil 'vanilla' angewendet (alle Mods deaktiviert)", "Profil 'vanilla' appliqué (tous les mods désactivés)"},
+    {"Perfil aplicado: ", "Profilo applicato: ", "Profil angewendet: ", "Profil appliqué : "},
+    {"Perfil borrado: ", "Profilo eliminato: ", "Profil gelöscht: ", "Profil supprimé : "},
+    {"Mod instalado: ", "Mod installato: ", "Mod installiert: ", "Mod installé : "},
+    {"Error al instalar el mod: ", "Errore installando il mod: ", "Fehler beim Installieren des Mods: ", "Erreur lors de l'installation du mod : "},
+    {"Guardar estado actual como perfil:", "Salva lo stato attuale come profilo:", "Aktuellen Zustand als Profil speichern:", "Enregistrer l'état actuel comme profil :"},
+    {"Nombre de perfil invalido.", "Nome profilo non valido.", "Ungültiger Profilname.", "Nom de profil invalide."},
+    {"Perfil guardado: ", "Profilo salvato: ", "Profil gespeichert: ", "Profil enregistré : "},
 };
 
 const Entry* FindEntry(const char* es) {

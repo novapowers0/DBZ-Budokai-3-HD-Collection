@@ -130,6 +130,10 @@ void SetVsyncEnabled(bool enabled);
 bool VrrEnabled();
 void SetVrrEnabled(bool enabled);
 
+// Active mod profile ("vanilla" = all mods disabled).
+std::string ModProfile();
+void SetModProfile(const std::string& name);
+
 // Frame cap in FPS (0 = uncapped).
 int32_t FrameCap();
 void SetFrameCap(int32_t cap);

@@ -56,6 +56,12 @@ REXCVAR_DEFINE_STRING(dbz3_enabled_mods, "*", "DBZ3/Mods",
                       "'*' (default) enables every detected mod. Empty disables all.")
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 
+REXCVAR_DEFINE_STRING(dbz3_mod_profile, "vanilla", "DBZ3/Mods",
+                      "Active mod profile (a named set of enabled mods). "
+                      "'vanilla' = all mods disabled. Applied by the launcher's "
+                      "Mods tab.")
+    .lifecycle(rex::cvar::Lifecycle::kHotReload);
+
 REXCVAR_DEFINE_STRING(dbz3_fullscreen_mode, "windowed", "DBZ3/Video",
                       "Fullscreen mode: windowed, borderless, exclusive")
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
@@ -529,6 +535,9 @@ void SetVsyncEnabled(bool enabled) { REXCVAR_SET(dbz3_vsync, enabled); }
 
 bool VrrEnabled() { return REXCVAR_GET(dbz3_vrr); }
 void SetVrrEnabled(bool enabled) { REXCVAR_SET(dbz3_vrr, enabled); }
+
+std::string ModProfile() { return REXCVAR_GET(dbz3_mod_profile); }
+void SetModProfile(const std::string& name) { REXCVAR_SET(dbz3_mod_profile, name); }
 
 int32_t FrameCap() { return REXCVAR_GET(dbz3_frame_cap); }
 void SetFrameCap(int32_t cap) { REXCVAR_SET(dbz3_frame_cap, cap); }

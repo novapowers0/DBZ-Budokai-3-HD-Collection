@@ -62,4 +62,25 @@ const char* ModTypeLabel(const std::string& type);
 // Return a color for a mod type badge (0xRGB packed, negative = dim gray).
 int ModTypeColor(const std::string& type);
 
+// Installs a mod from a .zip file: extracts it (native PowerShell
+// Expand-Archive) and normalizes the layout into mods/<name>/. The name is
+// derived from the zip file (sanitized, suffixed if it already exists).
+// Returns true on success (out_name = final mod folder name).
+bool InstallModFromZip(const std::string& zip_path_utf8, std::string& out_name,
+                       std::string& out_error);
+
+// --- Mod profiles ---------------------------------------------------------
+// A profile is a named set of enabled mods. "vanilla" is the built-in profile
+// (all mods disabled) and is not stored in profiles.txt.
+std::vector<std::string> ListProfiles();
+// Enabled mods listed in a stored profile (empty for "vanilla").
+std::vector<std::string> ProfileEnabledMods(const std::string& profile);
+// Persists/replaces a profile with the given enabled set.
+bool SaveProfile(const std::string& name,
+                 const std::vector<std::string>& enabled_mods);
+// Removes a stored profile. Returns false for "vanilla".
+bool DeleteProfile(const std::string& name);
+// Enables exactly the mods in the profile (and disables the rest).
+void ApplyProfile(const std::string& name);
+
 }  // namespace dbz3

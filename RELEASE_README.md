@@ -93,6 +93,23 @@ aportarlos de tu **copia legal**. Haz esto:
 
 ## Novedades de esta release
 
+### v1.0.9 — Blindaje del pacing del guest (V-Sync) + centro de mods
+
+- **Bug cerrado: "el juego va super rápido al desactivar el V-Sync"**. La causa
+  era el worker de vblank del guest: con el cvar `vsync` OFF el vblank caía a
+  ~1000 Hz y la lógica corría ~16x. Ahora el SDK **clampa el intervalo** en
+  `graphics_system.cpp` (parche #13): el vblank del guest nunca puede ser más
+  corto que un frame de 60 Hz, sea cual sea el estado del cvar → `vsync=false`
+  es un no-op y el juego siempre corre a su velocidad. Se distribuye en
+  `rexgpu-xenos.dll` (avx2 + legacy).
+- **Centro de mods (pestaña Mods)**:
+  - **Instalar mod desde un `.zip`**: botón "Instalar mod (.zip)..." → diálogo
+    nativo, descomprime (PowerShell nativo, sin ventana) y normaliza el layout
+    a `mods/<nombre>/`.
+  - **Perfiles de mods**: combo para guardar/aplicar/borrar conjuntos de mods
+    activos de una vez; "vanilla" desactiva todos (juego original).
+  - **Abrir carpeta** por mod desde la lista.
+
 ### v1.0.8 — Nombres unificados + documentación bilingüe
 
 - **`dbz3_core.exe` ahora es `dbz3.exe`**: el ejecutable dentro de `dbz3_avx2\`

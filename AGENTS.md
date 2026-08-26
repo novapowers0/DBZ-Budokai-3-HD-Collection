@@ -3018,3 +3018,50 @@ clamp impide la aceleración. **El bug queda cerrado en todas las vías.**
 **Sync**: parche `patches/rexglue-sdk/src/graphics/graphics_system.cpp` (nuevo,
 #13 → patches/README 18 archivos) + DLLs nuevas. Pendiente: regenerar el zip
 de release cuando convenga (bundle con el centro de mods / housekeeping).
+
+### 14.18 ✅ CENTRO DE MODS (P4.1): INSTALAR DESDE .ZIP + PERFILES (2026-08-26)
+
+**Objetivo (HOJA_DE_RUTA_COMUNIDAD 4.1)**: que la comunidad gestione mods
+opcionales fácilmente. Cierra la demanda "instalar mod desde un .zip" +
+"perfiles". Mantiene el núcleo vanilla por defecto (ya era así: sin mods, el
+juego original).
+
+**Cambios** (solo launcher/proyecto, sin SDK):
+1. **Instalar mod desde .zip** (pestaña Mods → "Instalar mod (.zip)..."):
+   - `PickFile` nuevo (`launcher_state.cpp`, IFileOpenDialog + FOS_FORCEFILESYSTEM
+     con filtro `*.zip`, devuelve la ruta en **UTF-8** — WideToUtf8, a diferencia
+     del `PickFolder` viejo que trunca a char).
+   - `dbz3::InstallModFromZip(zip_utf8, name, err)` (`mods.cpp`): descomprime con
+     **PowerShell `Expand-Archive` vía `-EncodedCommand`** (base64 UTF-16LE, inmuno
+     a espacios/comillas/unicode; `CreateProcessW` con CREATE_NO_WINDOW, espera y
+     verifica exit 0). Normaliza el layout (si el zip envuelve todo en UNA carpeta
+     sin archivos sueltos, desenvuelve esa carpeta) y lo mueve a `mods/<name>`
+     (sanitizado; sufijo `_2`/`_3` si ya existe).
+   - ⚠️ **NO usar el prefijo `N'...'` de PS en el script**: Expand-Archive lo
+     traspasa a su New-Item interno y rompe la ruta (`unidad 'NC:'`). Usar comillas
+     simples normales con escape `''` para rutas con comilla.
+   - Botón también en el estado vacío ("no hay mods").
+2. **Perfiles de mods** (un conjunto activado/desactivado de una vez):
+   - Fichero `mods/profiles.txt` (`[nombre]` + lista de mods; "vanilla" = built-in
+     todo desactivado, no se guarda). `ListProfiles/ProfileEnabledMods/SaveProfile/
+     DeleteProfile/ApplyProfile` en `mods.cpp`.
+   - Cvar `dbz3_mod_profile` (default "vanilla", persistido en el toml) + combo en
+     la pestaña Mods: seleccionar aplica al momento; "Guardar como..." guarda el
+     estado actual con nombre; "Borrar perfil". "Reset to defaults" vuelve a
+     vanilla y aplica.
+   - El estado real se persiste vía los markers `.disabled` (como siempre) → el
+     perfil aplicado sobrevive reinicios.
+3. **Abrir carpeta** por mod (botón en la fila) + status line transitoria (clic
+   para descartar).
+
+**i18n**: 16 cadenas nuevas añadidas MANUALMENTE a `kTable[]` en `i18n.cpp`
+(ES/IT/DE/FR; el fichero es generado — si se regenera con el script, re-incluirlas).
+
+**Verificado**: compila (dbz3.exe 17624064 B); launcher "shown" sin crash;
+invocación PowerShell `-EncodedCommand` probada de forma aislada (exit 0, layout
+extraído correcto, incluye wrappers anidados). PENDIENTE probar en juego la UI
+(instalar un zip real + guardar/aplicar perfil).
+
+**Sync**: `src/{mods.{h,cpp}, launcher/{settings.{h,cpp}, launcher_state.{h,cpp},
+i18n.cpp}}` → `github/`. Bundle release v1.0.9 con el fix V-Sync (§14.17) cuando
+convenga.

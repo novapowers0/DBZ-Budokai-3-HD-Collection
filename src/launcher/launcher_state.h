@@ -68,6 +68,11 @@ class LauncherDialog : public rex::ui::ImGuiDialog {
   char edit_version_buf_[128] = {};
   bool pending_manifest_reload_ = false;
 
+  // Mods center (P4.1): zip install + profiles.
+  std::string mods_status_;  // transient status line shown in the Mods tab
+  bool profile_name_dialog_ = false;
+  char new_profile_buf_[64] = {};
+
   // Game-data validation banner (P1): transient error shown when a folder the
   // user picked for "Seleccionar carpeta de datos..." is not a valid game dir.
   std::string banner_error_;

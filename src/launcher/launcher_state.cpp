@@ -125,6 +125,75 @@ bool PickFolder(std::string& out, const std::string& initial) {
   return ok;
 }
 
+std::wstring Utf8ToWide(const std::string& utf8) {
+  if (utf8.empty()) return {};
+  const int len = MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), -1, nullptr, 0);
+  std::wstring out(len > 1 ? len - 1 : 0, L'\0');
+  if (len > 1) MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), -1, out.data(), len);
+  return out;
+}
+
+std::string WideToUtf8(const std::wstring& wide) {
+  if (wide.empty()) return {};
+  const int len = WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), -1, nullptr, 0,
+                                      nullptr, nullptr);
+  std::string out(len > 1 ? len - 1 : 0, '\0');
+  if (len > 1) {
+    WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), -1, out.data(), len, nullptr,
+                        nullptr);
+  }
+  return out;
+}
+
+// Abre el dialogo nativo de Windows para elegir un archivo (filtro
+// `filter_ext`, p.ej. "*.zip"). Rellena `out` (UTF-8) si el usuario eligio.
+bool PickFile(std::string& out, const char* filter_desc, const char* filter_ext,
+              const std::string& initial) {
+  CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+  IFileOpenDialog* dlg = nullptr;
+  bool ok = false;
+  if (SUCCEEDED(CoCreateInstance(CLSID_FileOpenDialog, nullptr,
+                                 CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dlg)))) {
+    DWORD opts = 0;
+    dlg->GetOptions(&opts);
+    dlg->SetOptions(opts | FOS_FORCEFILESYSTEM);
+    const std::wstring wdesc = Utf8ToWide(filter_desc);
+    const std::wstring wext = Utf8ToWide(filter_ext);
+    COMDLG_FILTERSPEC spec[2] = {
+        {wdesc.c_str(), wext.c_str()},
+        {L"Todos los archivos", L"*.*"},
+    };
+    dlg->SetFileTypes(2, spec);
+    if (!initial.empty()) {
+      std::filesystem::path init = initial;
+      if (std::filesystem::is_directory(init)) {
+        IShellItem* item = nullptr;
+        std::wstring winit = init.wstring();
+        if (SUCCEEDED(SHCreateItemFromParsingName(winit.c_str(), nullptr,
+                                                  IID_PPV_ARGS(&item)))) {
+          dlg->SetFolder(item);
+          item->Release();
+        }
+      }
+    }
+    if (SUCCEEDED(dlg->Show(nullptr))) {
+      IShellItem* res = nullptr;
+      if (SUCCEEDED(dlg->GetResult(&res))) {
+        PWSTR path = nullptr;
+        if (SUCCEEDED(res->GetDisplayName(SIGDN_FILESYSPATH, &path))) {
+          out = WideToUtf8(std::wstring(path));
+          CoTaskMemFree(path);
+          ok = true;
+        }
+        res->Release();
+      }
+    }
+    dlg->Release();
+  }
+  CoUninitialize();
+  return ok;
+}
+
 }  // namespace
 
 void LauncherDialog::ApplyTheme() {
@@ -398,6 +467,7 @@ void LauncherDialog::OnDraw(ImGuiIO& io) {
     rex::cvar::SetFlagByName("dbz3_language", "1");
     rex::cvar::SetFlagByName("dbz3_region", "us");
     rex::cvar::SetFlagByName("dbz3_enabled_mods", "*");
+    rex::cvar::SetFlagByName("dbz3_mod_profile", "vanilla");
     rex::cvar::SetFlagByName("dbz3_fullscreen_mode", "windowed");
     rex::cvar::SetFlagByName("dbz3_vsync", "true");
     rex::cvar::SetFlagByName("dbz3_frame_cap", "60");
@@ -446,6 +516,8 @@ void LauncherDialog::OnDraw(ImGuiIO& io) {
     DBZ3_RESET_KEYBIND(start);
     DBZ3_RESET_KEYBIND(guide);
 #undef DBZ3_RESET_KEYBIND
+    // Reset also returns the mods to vanilla (all disabled).
+    dbz3::ApplyProfile("vanilla");
   }
   ImGui::SameLine(0, 10);
   if (ImGui::Button(i18n::T("Guardar ajustes", "Save settings"), ImVec2(180, 0))) {
@@ -932,6 +1004,144 @@ void LauncherDialog::DrawModsTab() {
   ImGui::TextDisabled("mods/<name>/<region>/<file.afs>  (+ manifest.txt)");
   ImGui::Separator();
 
+  // --- Mods center: profiles + install from .zip ---------------------------
+  {
+    const std::vector<std::string> profiles = dbz3::ListProfiles();
+    std::string cur = dbz3::settings::ModProfile();
+    bool cur_valid = (cur == "vanilla");
+    if (!cur_valid) {
+      for (const auto& p : profiles) {
+        if (p == cur) {
+          cur_valid = true;
+          break;
+        }
+      }
+    }
+    if (!cur_valid) {
+      cur = "vanilla";
+    }
+
+    ImGui::Text("%s", i18n::T("Perfil:", "Profile:"));
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(180);
+    if (ImGui::BeginCombo("##mod_profile", cur.c_str())) {
+      if (ImGui::Selectable("vanilla", cur == "vanilla")) {
+        if (cur != "vanilla") {
+          dbz3::ApplyProfile("vanilla");
+          dbz3::settings::SetModProfile("vanilla");
+          mods_status_ = std::string(i18n::T(
+              "Perfil 'vanilla' aplicado (todos los mods desactivados)",
+              "Profile 'vanilla' applied (all mods disabled)"));
+        }
+      }
+      for (const auto& p : profiles) {
+        if (ImGui::Selectable(p.c_str(), cur == p)) {
+          dbz3::ApplyProfile(p);
+          dbz3::settings::SetModProfile(p);
+          mods_status_ =
+              std::string(i18n::T("Perfil aplicado: ", "Profile applied: ")) + p;
+        }
+      }
+      ImGui::EndCombo();
+    }
+    if (ImGui::IsItemHovered()) {
+      ImGui::SetTooltip("%s", i18n::T(
+          "Un perfil activa/desactiva un conjunto de mods de una vez. "
+          "'vanilla' desactiva todos (juego original).",
+          "A profile toggles a set of mods at once. 'vanilla' disables all "
+          "(original game)."));
+    }
+    ImGui::SameLine();
+    if (ImGui::Button(i18n::T("Guardar como...", "Save as..."), ImVec2(0, 0))) {
+      new_profile_buf_[0] = '\0';
+      profile_name_dialog_ = true;
+    }
+    ImGui::SameLine();
+    if (cur != "vanilla") {
+      if (ImGui::Button(i18n::T("Borrar perfil", "Delete profile"), ImVec2(0, 0))) {
+        dbz3::DeleteProfile(cur);
+        dbz3::settings::SetModProfile("vanilla");
+        mods_status_ =
+            std::string(i18n::T("Perfil borrado: ", "Profile deleted: ")) + cur;
+      }
+    }
+
+    // Install from zip (right-aligned).
+    ImGui::SameLine();
+    ImGui::SetCursorPosX(ImGui::GetWindowWidth() - 16.0f - 200.0f);
+    if (ImGui::Button(i18n::T("Instalar mod (.zip)...", "Install mod (.zip)..."),
+                      ImVec2(200, 0))) {
+      std::string picked;
+      const std::string mods_dir = dbz3::ModsRoot().string();
+      if (PickFile(picked, i18n::T("Archivo de mod (.zip)", "Mod zip file (.zip)"),
+                   "*.zip", mods_dir)) {
+        std::string modname, err;
+        if (dbz3::InstallModFromZip(picked, modname, err)) {
+          mods_status_ =
+              std::string(i18n::T("Mod instalado: ", "Mod installed: ")) + modname;
+        } else {
+          mods_status_ =
+              std::string(i18n::T("Error al instalar el mod: ",
+                                  "Error installing mod: ")) + err;
+        }
+      }
+    }
+    if (ImGui::IsItemHovered()) {
+      ImGui::SetTooltip("%s", i18n::T(
+          "Selecciona un archivo .zip con tu mod (carpeta con manifest.txt y "
+          "los overrides us/eu). Se descomprime a la carpeta mods y se "
+          "activa.",
+          "Pick a .zip with your mod (a folder with manifest.txt and the "
+          "us/eu overrides). It is extracted to the mods folder and enabled."));
+    }
+
+    // Save-as-profile dialog.
+    if (profile_name_dialog_) {
+      ImGui::Separator();
+      ImGui::Text("%s", i18n::T("Guardar estado actual como perfil:",
+                                "Save current state as profile:"));
+      ImGui::SetNextItemWidth(300);
+      ImGui::InputText("##new_profile", new_profile_buf_, sizeof(new_profile_buf_));
+      ImGui::SameLine();
+      if (ImGui::Button(i18n::T("Guardar", "Save"), ImVec2(0, 0))) {
+        std::string pname = new_profile_buf_;
+        while (!pname.empty() &&
+               (pname.back() == ' ' || pname.back() == '\t')) {
+          pname.pop_back();
+        }
+        if (pname.empty() || pname == "vanilla") {
+          mods_status_ =
+              std::string(i18n::T("Nombre de perfil invalido.",
+                                  "Invalid profile name."));
+        } else {
+          std::vector<std::string> enabled;
+          for (const dbz3::ModInfo& m : dbz3::ListMods()) {
+            if (m.enabled) enabled.push_back(m.name);
+          }
+          dbz3::SaveProfile(pname, enabled);
+          dbz3::settings::SetModProfile(pname);
+          mods_status_ =
+              std::string(i18n::T("Perfil guardado: ", "Profile saved: ")) + pname;
+        }
+        profile_name_dialog_ = false;
+      }
+      ImGui::SameLine();
+      if (ImGui::Button(i18n::T("Cancelar", "Cancel"), ImVec2(0, 0))) {
+        profile_name_dialog_ = false;
+      }
+    }
+
+    // Transient status line (click to dismiss).
+    if (!mods_status_.empty()) {
+      ImGui::TextColored(ImVec4(0.35f, 0.85f, 0.35f, 1.0f), "%s",
+                         mods_status_.c_str());
+      if (ImGui::IsItemClicked()) {
+        mods_status_.clear();
+      }
+    }
+  }
+  ImGui::Separator();
+
   const std::vector<dbz3::ModInfo> mods = dbz3::ListMods();
   if (mods.empty()) {
     ImGui::TextWrapped(i18n::T(
@@ -946,6 +1156,23 @@ void LauncherDialog::DrawModsTab() {
       std::filesystem::create_directories(mods_dir, ec);
       std::string cmd = "explorer \"" + mods_dir.string() + "\"";
       std::system(cmd.c_str());
+    }
+    ImGui::SameLine();
+    if (ImGui::Button(i18n::T("Instalar mod (.zip)...", "Install mod (.zip)..."),
+                      ImVec2(200, 0))) {
+      std::string picked;
+      if (PickFile(picked, i18n::T("Archivo de mod (.zip)", "Mod zip file (.zip)"),
+                   "*.zip", dbz3::ModsRoot().string())) {
+        std::string modname, err;
+        if (dbz3::InstallModFromZip(picked, modname, err)) {
+          mods_status_ =
+              std::string(i18n::T("Mod instalado: ", "Mod installed: ")) + modname;
+        } else {
+          mods_status_ =
+              std::string(i18n::T("Error al instalar el mod: ",
+                                  "Error installing mod: ")) + err;
+        }
+      }
     }
     ImGui::TextDisabled(i18n::T(
         "Crea 'mods/' si no existe y la abre en el Explorador. "
@@ -974,7 +1201,7 @@ ImGui::TextColored(ImVec4(0.80f, 0.80f, 0.80f, 1.0f),
     ImGui::TableSetupColumn(i18n::T("Mod", "Mod"), ImGuiTableColumnFlags_WidthStretch);
     ImGui::TableSetupColumn(i18n::T("Tipo", "Type"), ImGuiTableColumnFlags_WidthFixed,
                             std::min(130.0f, table_w * 0.18f));
-    ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 44.0f);
+    ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 56.0f);
     ImGui::TableHeadersRow();
 
     for (const dbz3::ModInfo& mod : mods) {
@@ -1035,6 +1262,14 @@ ImGui::TextDisabled(i18n::T("%d archivo%s", "%d file%s"), mod.file_count,
       }
 
       ImGui::TableSetColumnIndex(3);
+      if (ImGui::SmallButton(("##folder_" + mod.name).c_str())) {
+        std::string cmd = "explorer \"" + (dbz3::ModsRoot() / mod.name).string() + "\"";
+        std::system(cmd.c_str());
+      }
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("%s", i18n::T("Abrir carpeta del mod", "Open mod folder"));
+      }
+      ImGui::SameLine();
       if (ImGui::SmallButton(("##edit_" + mod.name).c_str())) {
         editing_mod_ = true;
         edit_mod_name_ = mod.name;
