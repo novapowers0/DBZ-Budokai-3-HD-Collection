@@ -2966,3 +2966,55 @@ pasa sin crash (tanto core EU-only como core dual). El usuario cerró manual
 `dbz3_config_eu.toml`, `AGENTS.md` → `github/`. `generated_eu/` NO se sube
 (código derivado). El cambio del SDK (logging en function_dispatcher.cpp) se
 documenta en `github/patches/` si se distribuye.
+
+### 14.17 🔴✅ BUG CERRADO: V-SYNC/VRR — BLINDAJE DEL PACING DEL GUEST A 60 Hz (2026-08-26)
+
+**Bug reportado**: "desactivando el V-Sync el juego va super rápido" (el juego
+corre ~16x). Es la última incidencia de gameplay abierta.
+
+**Causa raíz (multi-vector)**:
+1. El worker "GPU VSync" de `GraphicsSystem` (`rexglue-sdk-0.10/src/graphics/
+   graphics_system.cpp`) marca el vblank del guest con:
+   `interval_ticks = REXCVAR_GET(vsync) ? (freq/refresh_rate=60Hz) : (freq/1000=1ms)`.
+   Con el cvar `vsync` OFF el vblank corre a ~1000 Hz → la lógica del juego
+   corre ~16x más rápida.
+2. El launcher ya forzaba `vsync=true` en `ApplyRuntimeSettingsToSdk`
+   (settings.cpp:949), pero eso solo cubre el arranque: cualquier ruta que
+   apagara el cvar en runtime (args de línea de comandos via `cvar::Init(argc,
+   argv)` — el SDK stash-y-parsea `--cvar=valor` en cvar.cpp:610 — o un toml/
+   config residual) volvía a acelerar el juego.
+
+**Fix — blindaje en el SDK (parche #13, `graphics_system.cpp`)**:
+el worker ahora **clampa el intervalo** para que el vblank del guest nunca sea
+más corto que un frame de 60 Hz, sea cual sea el estado del cvar:
+```cpp
+uint64_t interval_ticks = std::max(
+    REXCVAR_GET(vsync) ? vsync_interval_ticks : no_vsync_interval_ticks,
+    vsync_interval_ticks);
+```
+→ `vsync=false` se convierte en un no-op. El juego siempre corre a 60 Hz.
+Vive en **rexgpu-xenos.dll** (NO en rexruntime.dll): `src/graphics/CMakeLists.txt`
+mete graphics_system.cpp y command_processor.cpp en `rexgpu-xenos`.
+
+**⚠️ Al recompilar `rexgpu-xenos` con el build, el FFX de `rexglue-sdk-0.10/bin/`
+se regenera distinto — NO copiarlo. Y el rexruntime de `out/win-amd64-legacy`
+puede relinkearse a un tamaño distinto (10853376 vs canónico 10849792): si pasa,
+**restaurar el canónico** desde el release-stage (el cambio de este parche no
+toca rexruntime). Canónicos: rexruntime avx2 10951168 / legacy 10849792;
+rexgpu-xenos avx2 6207488 / legacy 6162944 (nuevos); FFX 5420544 / 5414912.**
+
+**DLLs distribuidas**: `rexgpu-xenos.dll` nuevo (avx2+legacy) copiado a
+`out/win-amd64`, `out/win-amd64-legacy`, `out/build/win-amd64-release`,
+`github/release-stage/{dbz3_avx2,dbz3_legacy}`. **Stale de `rexglue/bin`
+arreglado de paso**: tenía rexruntime 10947584 (viejo, §14.11) → ahora el
+canónico 10951168 + rexgpu nuevo (evita el bug del §13.6 en futuros cmake).
+
+**Verificado**: smoke test del paquete con las DLLs nuevas — core US detectado,
+`applied runtime settings -> vsync=true`, `first present OK`, guest thread
+creado, 45s sin FATAL/UNHANDLED (el guest corre su secuencia de carga normal).
+Con `--vsync=0` el launcher mantiene `vsync=true`; y aunque algo lo apagara, el
+clamp impide la aceleración. **El bug queda cerrado en todas las vías.**
+
+**Sync**: parche `patches/rexglue-sdk/src/graphics/graphics_system.cpp` (nuevo,
+#13 → patches/README 18 archivos) + DLLs nuevas. Pendiente: regenerar el zip
+de release cuando convenga (bundle con el centro de mods / housekeeping).

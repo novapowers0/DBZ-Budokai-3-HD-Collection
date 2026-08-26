@@ -194,9 +194,32 @@ se envuelve en try/catch que registra `e.what()` y re-lanza. Convierte el
 mensaje de la excepcion. Se compila en el juego (no en rexruntime.dll) desde
 `rexglue/share/rexglue/rex_app.cpp` — el parche va a la fuente del SDK.
 
+### 13. Blindaje del pacing del guest a 60 Hz (`graphics_system.cpp`)
+
+El worker "GPU VSync" de `GraphicsSystem` marca el vblank del guest con un
+intervalo derivado del modo de video (60 Hz) cuando el cvar `vsync` esta ON,
+pero con el cvar OFF lo colapsaba a ~1 ms (1000 Hz) y la logica del juego
+corria ~16x mas rapida ("juego acelerado", reportado por usuarios al
+desactivar el V-Sync). El launcher ya forzaba `vsync=true` al arrancar, pero
+cualquier ruta que lo apagara en runtime (toml, config, cvar residual) volvia a
+acelerar el juego.
+
+El parche **clampa el intervalo** en el propio worker:
+
+```cpp
+uint64_t interval_ticks = std::max(
+    REXCVAR_GET(vsync) ? vsync_interval_ticks : no_vsync_interval_ticks,
+    vsync_interval_ticks);
+```
+
+asi el vblank del guest nunca puede ser mas corto que un frame de 60 Hz y
+`vsync=false` se convierte en un no-op (el juego siempre corre a su velocidad).
+Vive en **rexgpu-xenos.dll** (no en rexruntime.dll): tras aplicar el parche hay
+que recompilar `rexgpu-xenos` en ambas variantes (v3 y v2) y copiar las DLLs.
+
 ## Como aplicar (ReXGlue 0.10.0)
 
-Copiar los 17 archivos sobre el SDK (rutas relativas a la raiz del SDK):
+Copiar los 18 archivos sobre el SDK (rutas relativas a la raiz del SDK):
 
 ```
 patches/rexglue-sdk/include/rex/filesystem/afs.h      ->  rexglue-sdk/include/rex/filesystem/afs.h
@@ -213,6 +236,7 @@ patches/rexglue-sdk/src/input/sdl/sdl_input_driver.cpp
 patches/rexglue-sdk/src/kernel/xam/xam_info.cpp    ->  rexglue-sdk/src/kernel/xam/xam_info.cpp
 patches/rexglue-sdk/src/ui/presenter.cpp            ->  rexglue-sdk/src/ui/presenter.cpp
 patches/rexglue-sdk/src/ui/d3d12/d3d12_presenter.cpp -> rexglue-sdk/src/ui/d3d12/d3d12_presenter.cpp
+patches/rexglue-sdk/src/graphics/graphics_system.cpp  ->  rexglue-sdk/src/graphics/graphics_system.cpp
 patches/rexglue-sdk/src/system/dbz1_audio_jp_flag.cpp  ->  rexglue-sdk/src/system/dbz1_audio_jp_flag.cpp
 patches/rexglue-sdk/src/system/dbz1_diag_flags.cpp     ->  rexglue-sdk/src/system/dbz1_diag_flags.cpp
 patches/rexglue-sdk/src/system/dbz1_region_flag.cpp    ->  rexglue-sdk/src/system/dbz1_region_flag.cpp
@@ -226,12 +250,18 @@ Los 2 CMakeLists anaden los archivos nuevos a los targets (`afs.cpp` a
 `rexfilesystem`, los 3 `dbz1_*_flag.cpp` a `REXSYSTEM_SOURCES`). Sin ellos el
 link de rexruntime falla con `undefined symbol: FLAGS_dbz1_*_storage_(void)`.
 
-Luego recompilar el runtime y copiar la DLL al build del juego:
+Luego recompilar el runtime y copiar las DLLs al build del juego:
 
 ```powershell
 cmake --build rexglue-sdk/out/build-win-vulkan --target rexruntime
+cmake --build rexglue-sdk/out/build-win-vulkan --target rexgpu-xenos
 Copy-Item rexglue-sdk/out/win-amd64/rexruntime.dll out/build/win-amd64-release/
+Copy-Item rexglue-sdk/out/win-amd64/rexgpu-xenos.dll out/build/win-amd64-release/
 ```
+
+> El parche 13 (`graphics_system.cpp`) vive en **rexgpu-xenos.dll** (no en
+> rexruntime.dll): recompilar `rexgpu-xenos` en ambas variantes (v3 y v2) y
+> copiar las DLLs.
 
 ⚠️ En 0.10 el compilador del juego debe ser `C:/Program Files/LLVM/bin/clang++.exe`
 (target MSVC). El toolchain retcomm (MinGW/libstdc++) NO compila el header
