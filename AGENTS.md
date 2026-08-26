@@ -2745,6 +2745,27 @@ catch en LaunchModule) se sincroniza a `rexglue/share/rexglue/rex_app.cpp` y,
 si se distribuye como parche, a `github/patches/rexglue-sdk/src/ui/rex_app.cpp`.
 NO subido a GitHub. **Release v1.0.6** empaquetada y subida (ver §14.15).
 
+### 14.15 🔴✅ RELEASE v1.0.6 — SUBIDA A GITHUB (2026-08-26)
+
+**Sync**: `src/main.cpp`, `dbz3_config_eu.toml`, `AGENTS.md`, `RELEASE_README.md`,
+`patches/rexglue-sdk/src/ui/rex_app.cpp` (nuevo, #12 en patches/README → 17
+archivos) → `github/`. Commit `cd4a368`, push a origin/master, **tag v1.0.6**.
+
+**Release v1.0.6** creada en GitHub (Latest):
+https://github.com/novapowers0/DBZ-Budokai-3-HD-Collection/releases/tag/v1.0.6
+Zip `DBZ-Budokai-3-HD-Collection-v1.0.6.zip` (66428050 B) con las 4 variantes
+(US/EU × avx2/legacy). Cores: US 17532416 B, EU 17511936 B. FFX validada
+(avx2 5420544 A20438, legacy 5414912 5FE146). rexruntime avx2 10951168 (trap +
+collect), legacy 10849792.
+
+**Smoke test final del paquete**: core EU empaquetado bootea y corre 100 s sin
+FATAL (el intro completo validado con 210 s). Changelog en la release: fix del
+cierre en la intro + diagnóstico reforzado + V-Sync anotado para 1.0.6 EX.
+
+**PENDIENTE (usuario)**: validar 1.0.6 en juego (que el intro EU pase). Si algún
+usuario vuelve a reportar 0xC0000409, el log ahora trae "LaunchModule deferred
+threw std::exception: <msg>" + "terminate stack[...]" → resolver el throw.
+
 ### 14.5 🔴✅ P1 PRIMER USO: BANNER DE VALIDACIÓN + SELECCIÓN DE CARPETA + VENTANA DE CRASH (2026-08-25)
 
 **Objetivo (HOJA_DE_RUTA_COMUNIDAD P1.1/P1.2)**: que un usuario con los assets
