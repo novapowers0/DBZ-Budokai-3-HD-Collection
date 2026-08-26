@@ -3065,3 +3065,32 @@ extraído correcto, incluye wrappers anidados). PENDIENTE probar en juego la UI
 **Sync**: `src/{mods.{h,cpp}, launcher/{settings.{h,cpp}, launcher_state.{h,cpp},
 i18n.cpp}}` → `github/`. Bundle release v1.0.9 con el fix V-Sync (§14.17) cuando
 convenga.
+
+### 14.19 ✅ HOUSEKEEPING + RELEASE v1.0.9 (2026-08-26)
+
+- **VERSIONINFO del PE** (cosmético, antes pendiente): nuevo `src/version.rc`
+  (VS_VERSION_INFO, version 1.0.9.0, product "DBZ Budokai 3 HD Collection",
+  autor NovaPowers, MIT) añadido a los targets `dbz3` y `dbz3_bootstrap` en
+  `CMakeLists.txt`. Compila con llvm-rc (el RC compiler del build ya estaba
+  configurado). **Bump de versión**: editar `VERSION_MAJOR/MINOR/PATCH` en
+  `version.rc` + `make_release.ps1` + `RELEASE_README.md` + `AGENTS.md`.
+- **Zips stale borrados** de `github/`: `v1.0.5`, `v1.0.9` (viejo) y `v1.0.10`
+  (restos de la confusión de versiones de §14.16). Quedan los subidos a GitHub
+  (1.0.6/1.0.7/1.0.8).
+- **⚠️ Mojibake en `docs/HOJA_DE_RUTA_COMUNIDAD.md`** (155 secuencias): corrupción
+  MIXTA (doble-encodings CP1252 + bytes inválidos + acentos legítimos) → NO es
+  reversible de forma segura con un round-trip CP1252. Es un doc interno; queda
+  como cosmético conocido (los docs de cara al público — README, RELEASE_README,
+  primer arranque — están limpios). Si se quiere arreglar, reescribir el doc.
+- **Release v1.0.9 empaquetada** (`make_release.ps1 -Version v1.0.9 -UpxPath`):
+  bundle del fix V-Sync (§14.17, rexgpu nuevo) + centro de mods (§14.18) +
+  VERSIONINFO. Core dual 33,959,936 B → UPX 6,984,704 B (20.6%); zip
+  `DBZ-Budokai-3-HD-Collection-v1.0.9.zip` (36,827,718 B). `make_release.ps1`
+  default `$Version = "v1.0.9"`.
+- **Verificado el paquete**: VERSIONINFO 1.0.9.0 en bootstrap y core, rexgpu
+  `60B613B2` (clamp presente), launcher "shown" sin crash.
+- **PENDIENTE**: subir v1.0.9 a GitHub (tag + release) cuando el usuario valide
+  la UI del centro de mods en juego.
+
+**Sync**: `CMakeLists.txt`, `src/version.rc` (nuevo), `tools/make_release.ps1`,
+`AGENTS.md` → `github/`.

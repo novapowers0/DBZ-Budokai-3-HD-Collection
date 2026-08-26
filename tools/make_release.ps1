@@ -22,7 +22,7 @@
 # against Windows Defender; see AGENTS.md).
 
 param(
-[string]$Version = "v1.0.8",
+[string]$Version = "v1.0.9",
 [string]$OutDir = "",
 [string]$UpxPath = ""
 )

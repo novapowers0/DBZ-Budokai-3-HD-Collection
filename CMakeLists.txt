@@ -29,20 +29,35 @@ set(DBZ3_SOURCES
 set(DBZ3_GENERATED_DIR "generated" CACHE STRING
     "Codegen output dir to build against (generated = US/NA, generated_eu = EU/PAL)")
 
+# Dual-region core: ONE executable containing BOTH codegens. At runtime the
+# core detects the default.xex (MD5) and activates the matching image config.
+# This is the user-facing release build (single exe for US and EU).
+set(DBZ3_DUAL_REGION OFF CACHE BOOL
+    "Build one core with BOTH the US and EU codegens (auto-detects the xex)")
+
 # Include generated code if codegen has been run
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${DBZ3_GENERATED_DIR}/sources.cmake")
-    include(${DBZ3_GENERATED_DIR}/sources.cmake)
-    list(APPEND DBZ3_SOURCES ${GENERATED_SOURCES})
+if(DBZ3_DUAL_REGION OR DBZ3_GENERATED_DIR STREQUAL "generated")
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/generated/sources.cmake")
+        include(${CMAKE_CURRENT_SOURCE_DIR}/generated/sources.cmake)
+        list(APPEND DBZ3_SOURCES ${GENERATED_SOURCES})
+    endif()
+endif()
+if(DBZ3_DUAL_REGION OR DBZ3_GENERATED_DIR STREQUAL "generated_eu")
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/generated_eu/sources.cmake")
+        include(${CMAKE_CURRENT_SOURCE_DIR}/generated_eu/sources.cmake)
+        list(APPEND DBZ3_SOURCES ${GENERATED_SOURCES})
+    endif()
 endif()
 
-# EU/PAL variant: the generated code has different guest addresses and its own
-# init headers (dbz3_eu_init.h). hooks.cpp only applies to the US/NA build.
-if(DBZ3_GENERATED_DIR STREQUAL "generated_eu")
+# hooks.cpp only applies to builds that include the US/NA codegen (single US
+# and dual-region). The single-EU build excludes it: the EU guest addresses
+# differ and the US hooks would not apply.
+if(DBZ3_GENERATED_DIR STREQUAL "generated_eu" AND NOT DBZ3_DUAL_REGION)
     list(REMOVE_ITEM DBZ3_SOURCES src/hooks.cpp)
 endif()
 
 if(WIN32)
-    add_executable(dbz3 WIN32 ${DBZ3_SOURCES})
+    add_executable(dbz3 WIN32 ${DBZ3_SOURCES} src/version.rc)
 else()
     add_executable(dbz3 ${DBZ3_SOURCES})
 endif()
@@ -51,18 +66,25 @@ endif()
 # x86-64-v3 feature set and launches dbz3_avx2\dbz3.exe or
 # dbz3_legacy\dbz3.exe. No SDK dependencies, so it runs on any CPU.
 if(WIN32)
-    add_executable(dbz3_bootstrap WIN32 src/bootstrap.cpp)
+    add_executable(dbz3_bootstrap WIN32 src/bootstrap.cpp src/version.rc)
     target_compile_options(dbz3_bootstrap PRIVATE -march=x86-64)
     target_compile_definitions(dbz3_bootstrap PRIVATE NOMINMAX)
 endif()
 
 target_include_directories(dbz3 PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/${DBZ3_GENERATED_DIR}
 )
+if(DBZ3_DUAL_REGION OR DBZ3_GENERATED_DIR STREQUAL "generated")
+    target_include_directories(dbz3 PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/generated)
+endif()
+if(DBZ3_DUAL_REGION OR DBZ3_GENERATED_DIR STREQUAL "generated_eu")
+    target_include_directories(dbz3 PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/generated_eu)
+endif()
 
-# EU/PAL variant compile definition (selects dbz3_eu_init.h in main.cpp).
-if(DBZ3_GENERATED_DIR STREQUAL "generated_eu")
+# Variant compile definitions (selects the init headers in main.cpp).
+if(DBZ3_DUAL_REGION)
+    target_compile_definitions(dbz3 PRIVATE DBZ3_DUAL_REGION=1)
+elseif(DBZ3_GENERATED_DIR STREQUAL "generated_eu")
     target_compile_definitions(dbz3 PRIVATE DBZ3_EU_VARIANT=1)
 endif()
 
