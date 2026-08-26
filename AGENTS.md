@@ -2677,6 +2677,74 @@ de funciones no registradas) + `patches/README.md` → `github/`. NO subido a
 GitHub. `generated_eu/` NO se sube (código derivado). **Release v1.0.10**
 empaquetada y verificada (dispatch EU end-to-end OK).
 
+### 14.14 🔴✅ v1.0.6 — FIX DEL CIERRE EN LA INTRO (0xC0000409 / 0x82292A58) (2026-08-26)
+
+**Reportes de usuarios (patrón):** "llegan a la intro del juego y luego les
+cierra". Errores: **0xC0000409** (varios) y *"Call to invalid or unregistered
+function at guest address **0x82292A58**"*. Un usuario más reportó que
+desactivando el V-Sync el juego va super rápido (tarea derivada, ver abajo).
+
+**CAUSA RAÍZ (1) — función no registrada en el intro EU**: `0x82292A58` es un
+**thunk de despacho de vtable** (familia `lwz r11,0x48(r3); addi r3,r11,0x40;
+lwz r11,0x40(r11); lwz r11,N(r11); mtctr r11; bctr`, tamaño 0x18). El guest EU
+lo llama de forma INDIRECTA (vía puntero de dato de una vtable) durante la
+intro, y al no estar compilado → `InvalidFunctionTrap` → `REX_FATAL` →
+`std::abort()` → **0xC0000409** (en UCRT, abort = fastfail = 0xC0000409). Es el
+MISMO crash para los dos reportes (el trap mensaje + el código de excepción).
+
+**REPRODUCCIÓN (sin depender del usuario)**: el intro se reproduce sin input
+(el guest avanza solo al título/intro tras ~90s). Con el core EU en una carpeta
+de test (core EU + `assets/{default.xex EU, eu/}` + `dbz3_user.toml` con
+`dbz3_skip_launcher=true`) el log da exactamente el FATAL:
+`[FATAL] Call to invalid or unregistered function at guest address 0x82292A58`.
+
+**⚠️ Diagnóstico**: la vía del colector (`DBZ3_COLLECT_UNREGISTERED=1`) NO
+sirve: con la env var puesta el arranque muere con `std::terminate` antes del
+intro (quirk de arranque, ver abajo). La vía productiva es estática: **escaneo
+de thunks de vtable** en la imagen descifrada (`dbz3_eu_image.bin` via
+`DBZ3_DUMP_IMAGE=1`; capstone PPC BE) y registro con size exacto.
+
+**FIX (1)**: `dbz3_config_eu.toml` + `0x82292A58 = { name = "rex_sub_82292A58",
+size = 0x18 }` (el hermano `0x82292A40` con offset +8 SÍ estaba registrado; los
+3 thunks de la familia 0x44 en 0x82292500/528/550 también). Re-codegen EU
+("5 written, 90 unchanged") + rebuild. **VALIDADO**: el core EU pasa la intro
+(210 s sin FATAL; antes crasheaba ~90 s). El core US también pasa (210 s).
+
+**CAUSA RAÍZ (2) — `std::terminate` intermitente en el arranque (otro
+0xC0000409)**: a veces, justo tras `OnPostLaunchModule`, el hilo UI muere con
+`std::terminate called!`. Se diagnosticó con stack (`RtlCaptureStackBackTrace`
+en el handler de terminate): la excepción escapa del lambda diferido de
+`LaunchModule` (`ExecutePendingFunctionsFromUIThread` invoca la función, y ahí
+se lanza). Intermitente (~1/3 bajo carga, 0/6+ en frío). **No se ha podido
+localizar el `throw` exacto** (no se reprodujo con el try/catch puesto).
+**Medidas aplicadas**: (a) `rex_app.cpp` (se compila en el EXE desde
+`rexglue/share/rexglue/rex_app.cpp`, NO en rexruntime.dll — verificar con el
+string "Failed to launch module" en el exe) — el lambda de `LaunchModule` se
+envuelve en try/catch que loguea `e.what()` y re-lanza; (b) el handler de
+`std::terminate` en main.cpp loguea el stack del hilo. Así, si un usuario lo
+pilla, el log tendrá el mensaje exacto.
+
+**V-SYNC (tarea para la futura 1.0.6 EX, NO arreglada en 1.0.6)**: reporte de
+que desactivar el V-Sync acelera el juego. En 1.0.6 se fuerza la sincronización
+correcta en el arranque (vsync=true, ver §14.8), pero la tarea abierta es
+encontrar QUÉ ajuste/opción permite desactivarlo (¿menú interno del guest? ¿un
+cvar residual?) y blindarlo. Documentado en RELEASE_README "Bugs conocidos".
+
+**Binarios 1.0.6**: core US 17532416 B, core EU 17511936 B, rexruntime
+10951168 B (avx2, con trap+collect, sin cambios funcionales) / 10849792 B
+(legacy), FFX validada intacta (avx2 5420544 A20438, legacy 5414912 5FE146).
+Bootstrap sin cambios.
+
+**⚠️ Constraint de build (repetido)**: al recompilar el juego, el cmake
+sobrescribe `rexruntime.dll` con la versión stale de `rexglue/bin` → volver a
+copiar `rexglue-sdk-0.10/out/win-amd64/rexruntime.dll` al build tras compilar.
+
+**Sync**: `src/main.cpp`, `src/launcher/…` (sin cambios), `dbz3_config_eu.toml`,
+`AGENTS.md`, `RELEASE_README.md` → `github/`. El `rex_app.cpp` editado (try/
+catch en LaunchModule) se sincroniza a `rexglue/share/rexglue/rex_app.cpp` y,
+si se distribuye como parche, a `github/patches/rexglue-sdk/src/ui/rex_app.cpp`.
+NO subido a GitHub. **Release v1.0.6** empaquetada y subida (ver §14.15).
+
 ### 14.5 🔴✅ P1 PRIMER USO: BANNER DE VALIDACIÓN + SELECCIÓN DE CARPETA + VENTANA DE CRASH (2026-08-25)
 
 **Objetivo (HOJA_DE_RUTA_COMUNIDAD P1.1/P1.2)**: que un usuario con los assets

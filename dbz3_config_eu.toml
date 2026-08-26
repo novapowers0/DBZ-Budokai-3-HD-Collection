@@ -50,6 +50,11 @@
 0x822922F8 = { name = "rex_sub_822922F8", size = 0x8 }
 0x82292300 = { name = "rex_sub_82292300", size = 0x100 }
 0x821F9D40 = { name = "rex_sub_821F9D40", size = 0x18 }
+# vtable dispatch thunk (calls (obj->vtable+0x48)->[0x40]->+0x14). Reached only
+# via a data pointer (guest intro calls it indirectly) -> missed by the call
+# graph. The sibling 0x82292A40 (offset +8) IS registered; this +0x14 one was
+# not, crashing the intro with "unregistered function at 0x82292A58".
+0x82292A58 = { name = "rex_sub_82292A58", size = 0x18 }
 
 # sub_820F2280 dispatches through a jump table at 0x8201E350 (function pointer
 # dispatch for the event/combat system). The recompiler only detected 2 labels;

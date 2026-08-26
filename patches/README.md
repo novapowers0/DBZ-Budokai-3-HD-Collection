@@ -181,9 +181,17 @@ para la variante EU/PAL (segunda recompilacion): si el guest alcanza en combate
 una funcion no registrada, se recolectan las direcciones y se declaran en
 `dbz3_config_eu.toml`.
 
+### 12. Diagnostico del lanzamiento del juego (`rex_app.cpp`)
+
+`ReXApp::LaunchModule` (el lambda diferido que arranca el guest en el hilo UI)
+se envuelve en try/catch que registra `e.what()` y re-lanza. Convierte el
+`std::terminate` intermitente del arranque (0xC0000409) en un log con el
+mensaje de la excepcion. Se compila en el juego (no en rexruntime.dll) desde
+`rexglue/share/rexglue/rex_app.cpp` — el parche va a la fuente del SDK.
+
 ## Como aplicar (ReXGlue 0.10.0)
 
-Copiar los 16 archivos sobre el SDK (rutas relativas a la raiz del SDK):
+Copiar los 17 archivos sobre el SDK (rutas relativas a la raiz del SDK):
 
 ```
 patches/rexglue-sdk/include/rex/filesystem/afs.h      ->  rexglue-sdk/include/rex/filesystem/afs.h
@@ -204,6 +212,7 @@ patches/rexglue-sdk/src/system/dbz1_audio_jp_flag.cpp  ->  rexglue-sdk/src/syste
 patches/rexglue-sdk/src/system/dbz1_diag_flags.cpp     ->  rexglue-sdk/src/system/dbz1_diag_flags.cpp
 patches/rexglue-sdk/src/system/dbz1_region_flag.cpp    ->  rexglue-sdk/src/system/dbz1_region_flag.cpp
 patches/rexglue-sdk/src/system/function_dispatcher.cpp ->  rexglue-sdk/src/system/function_dispatcher.cpp
+patches/rexglue-sdk/src/ui/rex_app.cpp                 ->  rexglue-sdk/src/ui/rex_app.cpp
 patches/rexglue-sdk/src/filesystem/CMakeLists.txt      ->  rexglue-sdk/src/filesystem/CMakeLists.txt
 patches/rexglue-sdk/src/system/CMakeLists.txt          ->  rexglue-sdk/src/system/CMakeLists.txt
 ```

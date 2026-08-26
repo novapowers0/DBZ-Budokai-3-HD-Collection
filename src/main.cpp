@@ -522,6 +522,15 @@ private:
         });
         std::set_terminate([]() {
             REXLOG_CRITICAL("std::terminate called!");
+            // Log the failing thread's stack (the terminate handler runs
+            // synchronously from the exception unwinder, so the captured frames
+            // include the throw site). Helps diagnose uncaught exceptions from
+            // user crash reports.
+            void* frames[64] = {};
+            USHORT n = RtlCaptureStackBackTrace(0, 64, frames, nullptr);
+            for (USHORT i = 0; i < n; ++i) {
+                REXLOG_CRITICAL("terminate stack[{:02d}]: {:p}", i, frames[i]);
+            }
             rex::FlushLogging();
             MessageBoxA(nullptr,
                         "DBZ Budokai 3 HD Collection se cerró inesperadamente "

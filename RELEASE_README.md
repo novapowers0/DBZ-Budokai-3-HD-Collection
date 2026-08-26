@@ -94,6 +94,24 @@ aportarlos de tu **copia legal**. Haz esto:
 
 ## Novedades de esta release
 
+### v1.0.6 — Fix del cierre en la intro (0xC0000409 / función no registrada)
+
+- **Arreglado el cierre al llegar a la intro del juego** que reportaban varios
+  usuarios con `0xC0000409` y, en los logs, el mensaje *"Call to invalid or
+  unregistered function at guest address 0x82292A58"*. Era una **función de
+  despacho de tabla virtual** (thunk de vtable, offset +0x14) a la que el
+  ejecutable EU/PAL llama de forma indirecta durante la intro y que **no estaba
+  compilada** en el port recompilado. Se ha registrado con su tamaño exacto,
+  regenerado el codegen y recompilado el núcleo EU/PAL. **Validado**: la intro
+  pasa sin cierre (antes crasheaba ~1:30 tras el arranque).
+- **Diagnóstico de arranque reforzado**: si una excepción no controlada ocurre
+  al lanzar el juego (el cierre intermitente que también produce `0xC0000409`),
+  ahora el registro (`logs/`) incluye **el mensaje de la excepción y el stack
+  del hilo** para poder localizarla con precisión en futuras versiones.
+- El núcleo US/NA también validado en la intro (sin cierre).
+
+### Novedades acumuladas (1.0.5 EX → 1.0.6)
+
 - **Controles (pestaña Input)**: el **teclado funciona de serie** (emula al
   mando; menús + combate). Puedes **remapear las 24 teclas** (campo "Keyboard
   (MnK) mapping", formato `Tecla`, comas = alternativas, `Shift+/Ctrl+/Alt+` =
@@ -167,6 +185,11 @@ copia de seguridad de tus AFS.
   ~6.5x más lento que D3D12. Usa **D3D12** (por defecto).
 - **Port de personajes PS2/IW→B3**: investigado pero descartado (requiere
   reconstrucción completa del formato; ver `docs/`).
+- **V-Sync en investigación (1.0.6 EX)**: algún usuario reportó que si se
+  desactiva el V-Sync el juego corre acelerado. En esta versión el juego fuerza
+  la sincronización correcta (60 FPS lógicos); la tarea abierta es revisar qué
+  ajuste/opción permite desactivarlo para blindarlo del todo en la próxima
+  release (ver `docs/`).
 
 ## Legal
 
