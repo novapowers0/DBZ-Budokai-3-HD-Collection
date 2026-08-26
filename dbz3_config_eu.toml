@@ -1,7 +1,8 @@
 ﻿[functions]
 0x82097F08 = { name = "rex_sub_82097F08" }
 0x820F8D28 = { name = "rex_sub_820F8D28" }
-0x8213EA00 = { name = "rex_sub_8213EA00" }
+0x8213E7D0 = { size = 0x304 }
+0x820BB178 = { size = 0x24 }
 0x821DEED0 = { name = "rex_sub_821DEED0", size = 0x10 }
 0x821DE85C = { name = "rex_sub_821DE85C" }
 0x821EDCE0 = { name = "rex_sub_821EDCE0", size = 0x10 }
@@ -25,7 +26,6 @@
 0x821EE840 = { name = "rex_sub_821EE840" }
 0x82292C70 = { name = "rex_sub_82292C70" }
 0x820F8CE8 = { name = "rex_sub_820F8CE8" }
-0x8213E834 = { name = "rex_sub_8213E834", size = 0x1CC }
 0x821DEEE0 = { name = "rex_sub_821DEEE0" }
 0x821DEEEC = { name = "rex_sub_821DEEEC" }
 0x821EDD8C = { name = "rex_sub_821EDD8C" }
@@ -78,3 +78,10 @@ labels = [
     0x820F2AC0, 0x820F2B20, 0x820F2B80, 0x820F2B98,
     0x820F2C20, 0x820F2C28,
 ]
+
+# sub_820F2370 also dispatches through the event/combat function-pointer table
+# at 0x8201E348 (like sub_820F2280 above, but from a different base). The
+# auto-detector misread this bctr as a jump table with a single case 0, so any
+# real function pointer (e.g. 0x820F24D8) hit __builtin_trap() (0xC000001D)
+# during the demo battle. Treat it as a plain indirect call instead.
+indirect_calls = [0x820F2390]

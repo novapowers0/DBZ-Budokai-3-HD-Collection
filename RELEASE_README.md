@@ -10,13 +10,11 @@ de tu copia legal.
 ## Contenido
 
 - `dbz3.exe` — **bootstrap de ISA**: detecta tu CPU y lanza la variante correcta
-- `dbz3_avx2\` — variante US/NA optimizada (CPU con AVX2: Intel 4ª gen+, AMD Ryzen+)
-  - `dbz3_core.exe` — recompilador + launcher + sistema de mods
+- `dbz3_avx2\` — variante optimizada (CPU con AVX2: Intel 4ª gen+, AMD Ryzen+)
+  - `dbz3_core.exe` — **núcleo DUAL (US/NA + EU/PAL)**: recompilador + launcher + sistema de mods
   - `rexruntime.dll`, `rexgpu-xenos.dll`, `amd_fidelityfx_dx12.dll`, etc.
-- `dbz3_legacy\` — variante US/NA compatible (cualquier CPU x64, sin AVX2)
+- `dbz3_legacy\` — variante compatible (cualquier CPU x64, sin AVX2)
   - `dbz3_core.exe` (idéntico) + runtime compilado sin AVX2
-- `dbz3_eu_avx2\` / `dbz3_eu_legacy\` — **variantes EU/PAL**: recompiladas desde
-  el ejecutable EU (`yae3_xenon_eu.xex`), mismas reglas de CPU
 - `TracyClient.dll` — profiling (requerido por el runtime)
 - `amd_fidelityfx_dx12.dll` / `amd_fidelityfx_vk.dll` — upscaling FSR (D3D12/Vulkan)
 - `SPIRV-Tools-shared.dll` — utilidades SPIR-V (backend Vulkan)
@@ -24,10 +22,11 @@ de tu copia legal.
 
 > **No elijas variante a mano**: `dbz3.exe` comprueba una sola vez con CPUID si
 > tu CPU soporta AVX2 (x86-64-v3) y arranca `dbz3_avx2\` o `dbz3_legacy\`
-> automáticamente. Además identifica el `default.xex` que has puesto (US/NA o
-> EU/PAL) y elige el núcleo correspondiente (`dbz3_avx2\` vs `dbz3_eu_avx2\`).
-> Tanto el ejecutable US como el EU funcionan: cada uno es una recompilación
-> completa del juego.
+> automáticamente. El núcleo es **dual**: contiene las recompilaciones US/NA y
+> EU/PAL, y al arrancar identifica por su MD5 el `default.xex` que has puesto
+> (US/NA o EU/PAL) para usar el código correspondiente. Tanto el ejecutable US
+> como el EU funcionan: cada uno corre su propia recompilación completa del
+> juego.
 
 ## Cómo instalar y jugar (paso a paso)
 
@@ -93,6 +92,30 @@ aportarlos de tu **copia legal**. Haz esto:
 > para los tamaños y checksums SHA-256 de cada archivo.
 
 ## Novedades de esta release
+
+### v1.0.7 — Fix del crash de la demo battle EU + núcleo dual + tamaño reducido
+
+- **Arreglado el cierre al reproducirse la DEMO** (el modo "attract" que salta
+  si dejas el menú "Press start" sin pulsar nada: al llegar a la batalla 3D el
+  juego crasheaba con `0xC000001D` o *"Call to invalid or unregistered
+  function"* en la variante EU/PAL). Causas: tres clasificaciones erróneas del
+  recompilador sobre el código EU (punteros de función tratados como jump
+  tables de un solo caso → instrucción UD2) y una función de tabla virtual que
+  no se había compilado. Todo registrado con sus tamaños exactos y validado en
+  la batalla DEMO completa.
+- **Núcleo dual**: antes el paquete llevaba dos núcleos separados (US/NA y
+  EU/PAL). Ahora `dbz3_core.exe` es UN solo binario que contiene AMBAS
+  recompilaciones y elige la correcta según el `default.xex` que pongas. Esto
+  simplifica el paquete (2 variantes de CPU en vez de 4).
+- **Más ligero**: el núcleo dual comprimido pasa de ~33,9 MB a ~7 MB por
+  variante (UPX -9, verificado sin amenazas por Windows Defender).
+- **Arranque fiable verificado**: al abrir el paquete sin tocar nada, se
+  muestra el launcher con sus opciones y el juego NO arranca hasta pulsar Play
+  (el `default.xex` se detecta solo; la región y el idioma se eligen en el
+  launcher).
+- **Diagnóstico reforzado**: en cada indirect call no registrado se registra el
+  target, el `caller_lr` del guest y los registros r3/r4/r11; el crash handler
+  vuelca el contexto y los registros guest — todo solo se loguea en un crash.
 
 ### v1.0.6 — Fix del cierre en la intro (0xC0000409 / función no registrada)
 

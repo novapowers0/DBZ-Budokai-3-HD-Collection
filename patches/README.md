@@ -181,6 +181,11 @@ para la variante EU/PAL (segunda recompilacion): si el guest alcanza en combate
 una funcion no registrada, se recolectan las direcciones y se declaran en
 `dbz3_config_eu.toml`.
 
+Ademas, en cada indirect call no registrado se loguea (nivel critical) el target,
+el `caller_lr` del guest y los registros r3/r4/r11 — sirvio para localizar la
+causa raiz del crash de la batalla DEMO EU (v1.0.11): calls virtuales a
+vtable/mid-function blocks mal clasificados como jump tables (ver AGENTS 14.16).
+
 ### 12. Diagnostico del lanzamiento del juego (`rex_app.cpp`)
 
 `ReXApp::LaunchModule` (el lambda diferido que arranca el guest en el hilo UI)

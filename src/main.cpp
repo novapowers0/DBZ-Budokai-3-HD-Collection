@@ -2,10 +2,15 @@
 // Dragon Ball Z Budokai 3 (PAL / Xbox 360 HD Collection)
 // Adapted from original Budokai 1 main.cpp
 
-#ifdef DBZ3_EU_VARIANT
-#include "generated_eu/dbz3_eu_init.h"
-#else
-#include "generated/dbz3_init.h"
+// Generated image configs are defined in generated/dbz3_init.cpp and (dual
+// region) generated_eu/dbz3_eu_init.cpp. Forward-declared here instead of
+// including the codegen pch headers: each pch defines helper symbols
+// (get_jmp_buf_map, ppc_longjmp, ...) that would collide if both were pulled
+// into this one translation unit.
+#include <rex/image_info.h>
+extern const rex::PPCImageInfo PPCImageConfig;
+#if defined(DBZ3_DUAL_REGION) || defined(DBZ3_EU_VARIANT)
+extern const rex::PPCImageInfo PPCImageConfigEU;
 #endif
 
 #include <rex/cvar.h>
@@ -54,6 +59,7 @@ REXCVAR_DECLARE(bool, dbz3_skip_launcher);
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <cstring>
 
 #if REX_PLATFORM_WIN32
 #include <windows.h>
@@ -88,11 +94,38 @@ public:
     }
 
     Dbz3App(rex::ui::WindowedAppContext& ctx)
-        : ReXApp(ctx, "dbz3", PPCImageConfig, "[game_directory]") {
+        : ReXApp(ctx, "dbz3",
+#if defined(DBZ3_DUAL_REGION)
+                 // Dual-region: the base is constructed with the US config; the
+                 // ResolveImageInfo override switches to the EU config at setup
+                 // time when an EU/PAL default.xex is detected.
+                 PPCImageConfig,
+#else
+                 // Single-region builds (US or EU) use their own config symbol.
+                 PPCImageConfig,
+#endif
+                 "[game_directory]") {
         OutputDebugStringA("Dbz3App constructor START\n");
         AddPositionalOption("game_directory");
         OutputDebugStringA("Dbz3App constructor END\n");
     }
+
+#if defined(DBZ3_DUAL_REGION)
+    // Pick the image config (and its func_mappings) that matches the on-disk
+    // default.xex before Runtime::Setup. US and EU guest images share address
+    // ranges, so only the active region's mappings may be registered.
+    const rex::PPCImageInfo& ResolveImageInfo(const rex::PathConfig& paths) const override {
+        const auto status = dbz3::settings::CheckDefaultXex(paths.game_data_root);
+        if (status == dbz3::settings::XexStatus::kEu) {
+            REXLOG_INFO("dbz3: dual-region core detected EU/PAL default.xex - using EU image config");
+            return PPCImageConfigEU;
+        }
+        if (status == dbz3::settings::XexStatus::kUs) {
+            REXLOG_INFO("dbz3: dual-region core detected US/NA default.xex - using US image config");
+        }
+        return PPCImageConfig;
+    }
+#endif
 
     // Called before Runtime::Setup() - configure GPU plugin
     void OnPreSetup(rex::RuntimeConfig& config) override {
@@ -150,7 +183,10 @@ public:
         // triggers the gated module launch (see LaunchModule override below).
         // NOTE: the dialog self-deletes on Close(), so we hold a raw pointer
         // (not unique_ptr) and null it from the on_play callback.
-        if (!launcher_dialog_) {
+        // NOTE: skip-launcher boots directly; drawing the dialog here would let
+        // its PLAY/Enter shortcut fire a second LaunchModule (guarded, but
+        // pointless). Skip creating it in that dev fast path.
+        if (!launcher_dialog_ && !REXCVAR_GET(dbz3_skip_launcher)) {
             launcher_dialog_ = new dbz3::launcher::LauncherDialog(
                 drawer, [this]() {
                     launcher_dialog_ = nullptr;
@@ -383,13 +419,28 @@ protected:
     void LaunchModule() override {
         if (REXCVAR_GET(dbz3_skip_launcher)) {
             // Skip-launcher is a dev/test fast path. Still guard the XEX so a
-            // wrong-variant executable does not hit the cryptic "No function
-            // registered" guest exit.
-            if (auto status = dbz3::settings::CheckDefaultXex(dbz3::EffectiveGameRoot());
-                (status == dbz3::settings::XexStatus::kUs ||
-                 status == dbz3::settings::XexStatus::kEu) &&
-                !dbz3::settings::XexIsExpected(status)) {
-#if defined(DBZ3_EU_VARIANT)
+            // missing/unrecognized executable does not hit the cryptic "No
+            // function registered" guest exit.
+            auto status = dbz3::settings::CheckDefaultXex(dbz3::EffectiveGameRoot());
+#if defined(DBZ3_DUAL_REGION)
+            const bool xex_ok = (status == dbz3::settings::XexStatus::kUs ||
+                                 status == dbz3::settings::XexStatus::kEu);
+#elif defined(DBZ3_EU_VARIANT)
+            const bool xex_ok = (status == dbz3::settings::XexStatus::kEu);
+#else
+            const bool xex_ok = (status == dbz3::settings::XexStatus::kUs);
+#endif
+            if (!xex_ok) {
+#if defined(DBZ3_DUAL_REGION)
+                REXLOG_ERROR(
+                    "dbz3: skip_launcher without a recognized default.xex "
+                    "(expected US/NA yae3_xenon.xex or EU/PAL yae3_xenon_eu.xex)");
+                rex::ShowSimpleMessageBox(
+                    rex::SimpleMessageBoxType::Error,
+                    "default.xex is missing or unrecognized. The dual-region core "
+                    "boots either the US/NA (yae3_xenon.xex) or EU/PAL "
+                    "(yae3_xenon_eu.xex) executable.");
+#elif defined(DBZ3_EU_VARIANT)
                 REXLOG_ERROR(
                     "dbz3: skip_launcher with US/NA default.xex - this EU/PAL core "
                     "only supports the EU/PAL executable");
@@ -397,8 +448,7 @@ protected:
                     rex::SimpleMessageBoxType::Error,
                     "default.xex is the US/NA executable but this is the EU/PAL "
                     "core. Replace default.xex with your EU/PAL one "
-                    "(yae3_xenon_eu.xex), or use the main launcher which picks "
-                    "the correct core automatically.");
+                    "(yae3_xenon_eu.xex).");
 #else
                 REXLOG_ERROR(
                     "dbz3: skip_launcher with EU/PAL default.xex - the recompiled "
@@ -407,28 +457,28 @@ protected:
                     rex::SimpleMessageBoxType::Error,
                     "default.xex is the EU/PAL executable. This core is recompiled "
                     "only from the US/NA one (yae3_xenon.xex) and cannot boot it. "
-                    "Replace default.xex with your US/NA copy, or use the main "
-                    "launcher which picks the EU/PAL core automatically.");
+                    "Replace default.xex with your US/NA copy.");
 #endif
                 return;
             }
-#ifdef DBZ3_EU_VARIANT
-            // Diagnostic: dump the decrypted EU guest image for offline function
-            // pointer analysis (set DBZ3_DUMP_IMAGE=1). Temporary.
+// Diagnostic (optional): dump the decrypted guest image for offline
+            // function pointer analysis when DBZ3_DUMP_IMAGE=1 is set.
             if (std::getenv("DBZ3_DUMP_IMAGE")) {
                 if (auto* rt = runtime()) {
                     uint8_t* mb = rt->virtual_membase();
                     if (mb) {
-                        FILE* f = fopen("dbz3_eu_image.bin", "wb");
+                        const char* name = (status == dbz3::settings::XexStatus::kEu)
+                                               ? "dbz3_eu_image.bin"
+                                               : "dbz3_us_image.bin";
+                        FILE* f = fopen(name, "wb");
                         if (f) {
                             fwrite(mb + 0x82000000, 1, 0x826D0000 - 0x82000000, f);
                             fclose(f);
-                            REXLOG_INFO("dbz3: dumped EU guest image to dbz3_eu_image.bin");
+                            REXLOG_INFO("dbz3: dumped guest image to {}", name);
                         }
                     }
                 }
             }
-#endif
             REXLOG_INFO("dbz3: skip_launcher set, booting directly");
             ReXApp::LaunchModule();
             return;
@@ -493,6 +543,26 @@ private:
             const uint32_t code = ep->ExceptionRecord->ExceptionCode;
             const void* addr = ep->ExceptionRecord->ExceptionAddress;
             REXLOG_CRITICAL("UNHANDLED EXCEPTION: Code=0x{:08X} Addr={:p}", code, addr);
+            // Diagnostic: dump the faulting x64 context and, if RCX points at a
+            // PPCContext (recompiled code keeps the guest context in RCX), dump
+            // the guest register state that matters for indirect dispatches.
+            if (ep->ContextRecord && ep->ContextRecord->ContextFlags & CONTEXT_AMD64) {
+                auto* c = ep->ContextRecord;
+                REXLOG_CRITICAL("fault ctx: RIP={:p} RSP={:p} RBP={:p}", (void*)c->Rip, (void*)c->Rsp, (void*)c->Rbp);
+                REXLOG_CRITICAL("fault ctx: RAX=0x{:016X} RCX=0x{:016X} RDX=0x{:016X} R8=0x{:016X} R9=0x{:016X}",
+                                c->Rax, c->Rcx, c->Rdx, c->R8, c->R9);
+                REXLOG_CRITICAL("fault ctx: RDI=0x{:016X} RSI=0x{:016X} R10=0x{:016X} R11=0x{:016X}", c->Rdi, c->Rsi, c->R10, c->R11);
+                // PPCContext layout (rex/ppc/context.h): r3@0x00 r0@0x08 r1@0x10
+                // r2@0x18 r4@0x20 r5@0x28 ... r10@0x50 r11@0x58 ... r31@0xF8
+                // lr@0x100 ctr@0x108 xer@0x110 cr0@0x124 ... cr6@0x13C
+                const uint8_t* g = reinterpret_cast<const uint8_t*>(c->Rcx);
+                const auto rd32 = [&](size_t o) { uint32_t v; std::memcpy(&v, g + o, 4); return v; };
+                const auto rd64 = [&](size_t o) { uint64_t v; std::memcpy(&v, g + o, 8); return v; };
+                REXLOG_CRITICAL("guest(ctx=0x{:016X}): r3=0x{:08X} r4=0x{:08X} r11=0x{:08X}", c->Rcx, rd32(0x00), rd32(0x20), rd32(0x58));
+                REXLOG_CRITICAL("guest: r28=0x{:08X} r29=0x{:08X} r30=0x{:08X} r31=0x{:08X}", rd32(0xE0), rd32(0xE8), rd32(0xF0), rd32(0xF8));
+                REXLOG_CRITICAL("guest: lr=0x{:08X} ctr=0x{:08X} xer=0x{:08X} cr6=0x{:02X}",
+                                rd64(0x100), rd32(0x108), rd32(0x110), g[0x13C]);
+            }
             // Flush the log so the message box below points at a complete file.
             rex::FlushLogging();
             char msg[4096];

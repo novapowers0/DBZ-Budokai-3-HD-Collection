@@ -1,4 +1,4 @@
-# DBZ Budokai 3 HD Collection — Contexto del proyecto
+﻿# DBZ Budokai 3 HD Collection — Contexto del proyecto
 
 > Documento de contexto para agentes/AI. Consolida el estado del proyecto,
 > las decisiones tomadas y el trabajo realizado, para no perder información
@@ -2854,3 +2854,110 @@ desplegado en `D:\Budokai 3` y `github/release-stage/`. `rexruntime.dll`
 (Latest, zip `DBZ-Budokai-3-HD-Collection-v1.0.4.zip` 17222532 B).
 ⚠️ Nota git: el push https requería `git config --global credential.helper
 "!gh auth git-credential"` (antes colgaba sin helper).
+
+### 14.16 ✅ FIX DEL CRASH DE LA DEMO BATTLE EU + CORE DUAL + RELEASE v1.0.7 (2026-08-26)
+
+**Contexto**: el core EU crasheaba en la batalla DEMO (menú "Press start" en
+idle, ~40-50s) con 0xC000001D (UD2) o, tras avanzar, con
+`[FATAL] Call to invalid or unregistered function`. La DEMO es el modo de
+attract del juego: al dejar el "Press start" sin input salta una batalla AI
+3D. El usuario estaba AFK → los tests debían ser automáticos (skip_launcher,
+sin input). Se descartó (con evidencia) que el prefijo/la integración causaran
+el crash: el core EU-only SIN prefijo también crasheaba → bug preexistente del
+codegen EU.
+
+**CAUSAS RAÍZ (4, todas encontradas y arregladas)**:
+1. **UD2 en sub_820F2370 (bctr 0x820F2390)**: el guest hace un tail-call
+   indirecto real leyendo punteros de función de la tabla 0x8201E348
+   (`lwzx r11,r10,r11; mtctr r11; bctr`). El codegen lo auto-detectó como
+   **jump table de un solo caso** (`switch(r11){case 0: goto loc; default:
+   __builtin_trap();}`) → cualquier puntero real (p.ej. 0x820F24D8,
+   registrada) → UD2 → 0xC000001D.
+2. **UD2 en sub_820BB8C8 (call virtual)**: vtable en 0x82122B08, index
+   `*(r3+82)<<2` → `lwzx; mtctr; bctr`. Misma clasificación errónea
+   (single-case switch → trap). Target real del crash: 0x820BB178.
+3. **Clobber de r31 (callee-saved) por mis-split del codegen en
+   sub_8213E7D0**: el config `dbz3_config_eu.toml` tenía
+   `0x8213E834 = { name="rex_sub_8213E834", size=0x1CC }` y
+   `0x8213EA00 = { name="rex_sub_8213EA00" }` (añadidos en la iteración EU
+   §14.13 para resolver branches "unresolved"). Son bloques MEDIO-FUNCIÓN de
+   sub_8213E7D0 (loop header 0x8213E834 y bloque 0x8213EA00), NO funciones.
+   El codegen convirtió el `blt 0x8213e834` de sub_8213E7D0 en un tail-call a
+   rex_sub_8213E834 **sin epilogue** (no restaura r31/f30/f31/lr) → tras la
+   llamada, el loop de la tabla de callbacks de sub_820FCF90 (0x8201ED74)
+   leía r31 corrupto (0x8201ED94→0x823EE502) → target basura (0xB8DC45D7,
+   0xDC0845A9...) → FATAL. **Fix**: declarar `0x8213E7D0 = { size = 0x304 }`
+   (extent real 0x8213E7D0-0x8213EAD4, epilogue `addi r1,r1,0xa0; lfd
+   f30/f31; b __restgprlr_28`) y ELIMINAR las 2 entradas de split → sub_8213E7D0
+   se genera como UNA función con su loop y epilogue correctos.
+4. **Función sin registrar 0x820BB178 (método de vtable)**: la tabla de
+   funciones en 0x8201D300 (métodos virtuales, SIN RTTI) no la escanea el
+   vtable_scanner (solo C++ vtables con typeinfo). 0x820BB178 se llamaba vía
+   bctrl desde sub_820BB418 (`*(0x8201D314)`) y era el único método no
+   registrado → `UNREGISTERED indirect call: target=0x820BB178`. **Fix**:
+   `0x820BB178 = { size = 0x24 }` en el config.
+
+**Instrumentación que lo resolvió**:
+- Crash handler de main.cpp loguea el fault ctx + registros guest (r3/r4/r11)
+  en cada excepción no controlada (SE MANTIENE en release, solo loguea en
+  crash).
+- `InvalidFunctionTrap` (function_dispatcher.cpp) loguea caller_lr + r3/r4/r11
+  del call no registrado (SE MANTIENE).
+- `tools/fix_eu_bctr.py` GENERALIZADO: regex que reemplaza cualquier bctr
+  single-case (`switch(r11){case 0: ...; default: __builtin_trap();}`) por
+  `REX_CALL_INDIRECT_FUNC(ctx.ctr.u32); return;` — cubre sub_820F2370 y
+  sub_820BB8C8 (y futuros). Re-aplicar SIEMPRE tras re-codegen.
+- `DBZ3_DUMP_IMAGE` (main.cpp) para volcar la imagen descifrada y analizar
+  tablas/vtables offline; `%TEMP%\opencode\disppc.py` para desensamblar PPC.
+
+**Escaneo de tablas de punteros**: script ad-hoc que recorre la imagen
+buscando runs de 3+ punteros de código consecutivos → 186 tablas con miembros
+sin registrar, pero la mayoría son case blocks de jump tables (falsos
+positivos). Los métodos de vtable reales sin registrar se resuelven de a uno
+(con el crash log) o registrando el target del UNREGISTERED.
+
+**VALIDADO EN JUEGO (usuario, varias corridas)**: la batalla DEMO EU completa
+pasa sin crash (tanto core EU-only como core dual). El usuario cerró manual
+("la demo funcionó perfecto").
+
+**CORE DUAL v1.0.7 (reconstruido)**:
+- `win-amd64-dual` (DBZ3_DUAL_REGION=ON): US codegen (generated) + EU codegen
+  (generated_eu PREFIXED con `tools/prefix_eu_codegen.py`) → **dbz3.exe
+  33881088 B**. main.cpp: `ResolveImageInfo` elige PPCImageConfigEU/US según el
+  MD5 del default.xex. El bootstrap solo elige dbz3_avx2/legacy por CPU.
+- Verificado automáticamente (skip_launcher, D3D12 forzado, 180s): US y EU
+  VIVOS sin crash; log "dual-region core detected US/NA|EU/PAL".
+- **⚠️ Al recompilar el SDK, el rexruntime/FFX de `rexglue-sdk-0.10/bin/` se
+  regenera distinto — usar SIEMPRE los canónicos de `rexglue-sdk-0.10/out/
+  win-amd64` (rexruntime 10951168, rexgpu 6207488, ffx 5420544) y `out/
+  win-amd64-legacy` (rexruntime 10849792, rexgpu 6162944, ffx 5414912).**
+
+**RELEASE v1.0.7**:
+- `tools/make_release.ps1` reescrito: **2 variantes** (dbz3_avx2/dbz3_legacy,
+  MISMO core dual 33.8MB; DLLs v3/v2 de los out del SDK; shared DLLs de
+  `out\build\win-amd64-release`), bootstrap nuevo (44544 B, 2-variante), UPX
+  opcional `-UpxPath`.
+- **UPX -9 del core dual: 33881088 → 6960640 B (20.5%)**. Escaneado con
+  Windows Defender (MpCmdRun): **sin amenazas**. Zip 36778594 B.
+- **⚠️ Bootstrap stale**: el release-stage tenía el bootstrap VIEJO (46592 B,
+  4-variante, despachaba EU a dbz3_eu_avx2 que ya no existe) → el paquete EU
+  fallaba sin logs. Reconstruido `dbz3_bootstrap.exe` (44544 B) desde
+  `src/bootstrap.cpp` actual y copiado al stage. **LECCIÓN: al cambiar el
+  diseño de variantes hay que reconstruir el bootstrap**.
+- Verificado el PAQUETE real (bootstrap → dbz3_avx2\dbz3_core.exe UPX):
+  US y EU arrancan, "first present OK", sin crash (US 70s, EU 120s).
+- PENDIENTE (usuario): subir a GitHub (tag/release) y validar en máquinas
+  reales (AV, variantes legacy). El VERSIONINFO del PE sigue pendiente
+  (cosmético).
+- **⚠️ NOTA DE VERSIÓN (corregida tras la sesión)**: la release empaquetada en
+  esta sección se llamó inicialmente v1.0.11, pero la versión real por la que
+  vamos es **v1.0.7** (el Latest de GitHub es v1.0.6; los zips locales
+  1.0.7-1.0.10 se consolidaron en el tag "1.0.5 EX", commit d629f8c). El
+  paquete y el zip se renombraron a v1.0.7 y make_release.ps1 tiene el default
+  `$Version = "v1.0.7"`. Verificado además que el paquete, sin tocar nada,
+  muestra el launcher y espera Play (no arranca el guest directo).
+
+**Sync**: `src/main.cpp`, `tools/{make_release.ps1, fix_eu_bctr.py}`,
+`dbz3_config_eu.toml`, `AGENTS.md` → `github/`. `generated_eu/` NO se sube
+(código derivado). El cambio del SDK (logging en function_dispatcher.cpp) se
+documenta en `github/patches/` si se distribuye.

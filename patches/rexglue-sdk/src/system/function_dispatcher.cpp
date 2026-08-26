@@ -45,6 +45,12 @@ static void InvalidFunctionTrap(PPCContext& ctx, uint8_t* /*base*/) {
   static FILE* collect_file = nullptr;
   static std::unordered_set<uint32_t> seen;
   uint32_t addr = ctx.last_indirect_target;
+  // Also log the guest link register (caller return address) and the last
+  // guest PC when available, to locate which dispatch site faulted.
+  REXLOG_CRITICAL("UNREGISTERED indirect call: target=0x{:08X} caller_lr=0x{:08X} "
+                  "r3=0x{:08X} r4=0x{:08X} r11=0x{:08X}",
+                  addr, static_cast<uint32_t>(ctx.lr), ctx.r3.u32, ctx.r4.u32,
+                  ctx.r11.u32);
   if (getenv("DBZ3_COLLECT_UNREGISTERED")) {
     if (seen.insert(addr).second) {
       if (!collect_file) {

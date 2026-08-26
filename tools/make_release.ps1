@@ -1,54 +1,55 @@
 # DBZ Budokai 3 HD Collection - release packaging script
-# Assembles the standalone release with the AVX2 bootstrap + the runtime
-# variants. Each core is a recompilation of ONE executable, so there are four
-# variants: US/NA (dbz3_avx2/, dbz3_legacy/) and EU/PAL (dbz3_eu_avx2/,
-# dbz3_eu_legacy/). The bootstrap hashes default.xex and launches the right one.
+# Assembles the standalone release with the ISA bootstrap + the dual-region
+# core. The core (dbz3_core.exe) is a SINGLE dual-region binary (US/NA and
+# EU/PAL recompilations linked together); the bootstrap only picks the CPU
+# variant (dbz3_avx2/ for x86-64-v3 CPUs, dbz3_legacy/ for older ones).
 #
 # Usage:
-#   powershell -ExecutionPolicy Bypass -File tools\make_release.ps1 [-Version v1.0.10] [-OutDir <path>]
+#   powershell -ExecutionPolicy Bypass -File tools\make_release.ps1 [-Version v1.0.7] [-OutDir <path>] [-UpxPath <path\to\upx.exe>]
 #
 # Layout produced:
 #   <stage>/
 #     dbz3.exe                    <- ISA bootstrap (baseline x86-64)
-#     dbz3_avx2/dbz3_core.exe + v3 runtime DLLs   (US/NA xex, AVX2 CPUs)
-#     dbz3_legacy/dbz3_core.exe + v2 runtime DLLs (US/NA xex, older CPUs)
-#     dbz3_eu_avx2/dbz3_core.exe + v3 runtime DLLs   (EU/PAL xex, AVX2 CPUs)
-#     dbz3_eu_legacy/dbz3_core.exe + v2 runtime DLLs (EU/PAL xex, older CPUs)
+#     dbz3_avx2/dbz3_core.exe + v3 runtime DLLs   (dual core, AVX2 CPUs)
+#     dbz3_legacy/dbz3_core.exe + v2 runtime DLLs (dual core, older CPUs)
 #     mod center hd/              <- modding toolkit (scripts + XDK tools)
 #     mods/                       <- empty, with README
 #     README_PRIMER_ARRANQUE.txt, MODDING_README.md, RELEASE_README.md, baserom.md
 #   <version>.zip
+#
+# With -UpxPath, the core is compressed with UPX before staging (verified clean
+# against Windows Defender; see AGENTS.md).
 
 param(
-    [string]$Version = "v1.0.10",
-    [string]$OutDir = ""
+[string]$Version = "v1.0.7",
+[string]$OutDir = "",
+[string]$UpxPath = ""
 )
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 
-$build   = Join-Path $root "out\build\win-amd64-release"
-$build_eu = Join-Path $root "out\build\win-amd64-release-eu"
-$legacy  = Join-Path $root "rexglue-sdk-0.10\out\win-amd64-legacy"
+$build   = Join-Path $root "out\build\win-amd64-dual"
+$sdk_v3  = Join-Path $root "rexglue-sdk-0.10\out\win-amd64"
+$sdk_v2  = Join-Path $root "rexglue-sdk-0.10\out\win-amd64-legacy"
 $modcenter = Join-Path $root "mod center hd"
 
 if ($OutDir -eq "") { $OutDir = Join-Path $root "github\release-stage" }
 
 # --- inputs -------------------------------------------------------------
-$bootstrap   = Join-Path $build "dbz3_bootstrap.exe"
+$bootstrap   = Join-Path $root "out\build\win-amd64-release\dbz3_bootstrap.exe"
 $core        = Join-Path $build "dbz3.exe"
-$core_eu     = Join-Path $build_eu "dbz3.exe"
 $runtime_dlls = @("rexruntime.dll","rexgpu-xenos.dll","amd_fidelityfx_dx12.dll")
 $shared_dlls = @("amd_fidelityfx_vk.dll","SPIRV-Tools-shared.dll","TracyClient.dll",
-                 "msvcp140.dll","msvcp140_atomic_wait.dll",
-                 "vcruntime140.dll","vcruntime140_1.dll")
+"msvcp140.dll","msvcp140_atomic_wait.dll",
+"vcruntime140.dll","vcruntime140_1.dll")
 
-foreach ($p in @($bootstrap, $core, $core_eu)) {
-    if (-not (Test-Path -LiteralPath $p)) { throw "Falta $p" }
+foreach ($p in @($bootstrap, $core)) {
+if (-not (Test-Path -LiteralPath $p)) { throw "Falta $p" }
 }
 foreach ($dll in $runtime_dlls) {
-    if (-not (Test-Path -LiteralPath (Join-Path $build $dll))) { throw "Falta v3: $dll" }
-    if (-not (Test-Path -LiteralPath (Join-Path $legacy $dll))) { throw "Falta v2: $dll" }
+if (-not (Test-Path -LiteralPath (Join-Path $sdk_v3 $dll))) { throw "Falta v3: $dll" }
+if (-not (Test-Path -LiteralPath (Join-Path $sdk_v2 $dll))) { throw "Falta v2: $dll" }
 }
 
 # Snapshot of the shared DLLs + docs from the previous release-stage (the
@@ -71,9 +72,9 @@ if (Test-Path -LiteralPath $old_stage) {
 
 # Sanity: the two runtime variants must differ in size (v3 vs v2 ISA).
 foreach ($dll in $runtime_dlls) {
-    $s3 = (Get-Item (Join-Path $build $dll)).Length
-    $s2 = (Get-Item (Join-Path $legacy $dll)).Length
-    if ($s3 -eq $s2) { throw "Warning: $dll v3 y v2 tienen el mismo tamaño ($s3) - revisar" }
+$s3 = (Get-Item (Join-Path $sdk_v3 $dll)).Length
+$s2 = (Get-Item (Join-Path $sdk_v2 $dll)).Length
+if ($s3 -eq $s2) { throw "Warning: $dll v3 y v2 tienen el mismo tamaño ($s3) - revisar" }
 }
 
 # --- stage --------------------------------------------------------------
@@ -86,28 +87,29 @@ New-Item -ItemType Directory -Path $OutDir | Out-Null
 Copy-Item -LiteralPath $bootstrap (Join-Path $OutDir "dbz3.exe")
 
 $variants = @(
-    @{ Name = "dbz3_avx2";    Core = $core;    Src = $build },
-    @{ Name = "dbz3_legacy";  Core = $core;    Src = $legacy },
-    @{ Name = "dbz3_eu_avx2"; Core = $core_eu; Src = $build },
-    @{ Name = "dbz3_eu_legacy"; Core = $core_eu; Src = $legacy }
+    @{ Name = "dbz3_avx2";    Src = $sdk_v3 },
+    @{ Name = "dbz3_legacy";  Src = $sdk_v2 }
 )
 foreach ($v in $variants) {
     $vdir = Join-Path $OutDir $v.Name
     New-Item -ItemType Directory -Path $vdir | Out-Null
-    Copy-Item -LiteralPath $v.Core (Join-Path $vdir "dbz3_core.exe")
+    Copy-Item -LiteralPath $core (Join-Path $vdir "dbz3_core.exe")
+    if ($UpxPath -ne "") {
+        & $UpxPath -9 -q (Join-Path $vdir "dbz3_core.exe")
+    }
     foreach ($dll in $runtime_dlls) {
         Copy-Item -LiteralPath (Join-Path $v.Src $dll) (Join-Path $vdir $dll)
     }
     foreach ($dll in $shared_dlls) {
         # Canonical copy: github/ root (versioned, e.g. the MSVC CRT DLLs),
-        # then the snapshot of the previous release, then the build dir.
+        # then the snapshot of the previous release, then the US build dir.
         $from = Join-Path $root "github\$dll"
         if (-not (Test-Path -LiteralPath $from)) { $from = Join-Path $snap_dir $dll }
-        if (-not (Test-Path -LiteralPath $from)) { $from = Join-Path $build $dll }
+        if (-not (Test-Path -LiteralPath $from)) { $from = Join-Path $root "out\build\win-amd64-release\$dll" }
         if (Test-Path -LiteralPath $from) {
             Copy-Item -LiteralPath $from (Join-Path $vdir $dll)
         } else {
-            Write-Warning "No se encontro '$dll' para $variant - omitido"
+            Write-Warning "No se encontro '$dll' para $($v.Name) - omitido"
         }
     }
 }
