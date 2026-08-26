@@ -2944,11 +2944,16 @@ pasa sin crash (tanto core EU-only como core dual). El usuario cerró manual
   fallaba sin logs. Reconstruido `dbz3_bootstrap.exe` (44544 B) desde
   `src/bootstrap.cpp` actual y copiado al stage. **LECCIÓN: al cambiar el
   diseño de variantes hay que reconstruir el bootstrap**.
-- Verificado el PAQUETE real (bootstrap → dbz3_avx2\dbz3_core.exe UPX):
+- Verificado el PAQUETE real (bootstrap → dbz3_avx2\dbz3.exe UPX):
   US y EU arrancan, "first present OK", sin crash (US 70s, EU 120s).
 - PENDIENTE (usuario): subir a GitHub (tag/release) y validar en máquinas
   reales (AV, variantes legacy). El VERSIONINFO del PE sigue pendiente
   (cosmético).
+- **⚠️ RENAME (v1.0.8)**: el core del paquete pasó de `dbz3_core.exe` a
+  **`dbz3.exe`** (dentro de `dbz3_avx2\` y `dbz3_legacy\`), igual que el
+  bootstrap de la raíz, para unificar el nombre (docs/lanzador consistentes).
+  Tocar `src/bootstrap.cpp` (path del child) + `tools/make_release.ps1`
+  (nombre al copiar) y REBUILD del bootstrap + regenerar release.
 - **⚠️ NOTA DE VERSIÓN (corregida tras la sesión)**: la release empaquetada en
   esta sección se llamó inicialmente v1.0.11, pero la versión real por la que
   vamos es **v1.0.7** (el Latest de GitHub es v1.0.6; los zips locales

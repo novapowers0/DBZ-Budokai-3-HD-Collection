@@ -6,16 +6,14 @@
 // -march), so it runs on any CPU. At startup it probes the CPU once (a single
 // CPUID call) for the x86-64-v3 feature set and launches the matching build:
 //
-//   dbz3_avx2\dbz3_core.exe       (AVX2 capable CPUs - optimized runtime)
-//   dbz3_legacy\dbz3_core.exe     (older CPUs - SSE4.2 runtime fallback)
-//   dbz3_eu_avx2\dbz3_core.exe    (same, but recompiled from the EU/PAL xex)
-//   dbz3_eu_legacy\dbz3_core.exe  (same, EU/PAL, older CPUs)
+//   dbz3_avx2\dbz3.exe       (AVX2 capable CPUs - optimized runtime)
+//   dbz3_legacy\dbz3.exe     (older CPUs - SSE4.2 runtime fallback)
 //
-// The core executable (dbz3_core.exe) is the same baseline binary in both
-// variant folders; only the SDK DLLs differ. Which xex the user supplied
-// (default.xex, US/NA or EU/PAL) picks the US vs EU core, so a user can drop
-// either executable and it just works. The bootstrap passes the user's command
-// line through and propagates the game's exit code.
+// The core executable (dbz3.exe in the variant folder) is a single dual-region
+// binary: it contains BOTH the US/NA and EU/PAL codegens and activates the
+// right one at runtime based on the default.xex the user supplied. The
+// bootstrap only picks the ISA variant (the SDK DLLs differ); it passes the
+// user's command line through and propagates the game's exit code.
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -26,91 +24,9 @@
 #include <cstdio>
 #include <string>
 
-#include <wincrypt.h>
-
 #pragma comment(lib, "shell32.lib")
-#pragma comment(lib, "advapi32.lib")
 
 namespace {
-
-// Which executable this build is a recompilation of. Each core only boots ONE
-// xex: the US/NA core (dbz3_avx2|legacy) runs yae3_xenon.xex and the EU/PAL
-// core (dbz3_eu_avx2|legacy) runs yae3_xenon_eu.xex. The bootstrap hashes the
-// default.xex the user supplied and launches the matching core, so a user can
-// drop either the US or the EU xex and it just works.
-enum class XexKind { kUs, kEu, kUnknown };
-
-bool XexMd5(const std::wstring& path, unsigned char out[16]) {
-  FILE* f = nullptr;
-  _wfopen_s(&f, path.c_str(), L"rb");
-  if (!f) {
-    return false;
-  }
-  HCRYPTPROV prov = 0;
-  HCRYPTHASH hash = 0;
-  bool ok = false;
-  if (CryptAcquireContextW(&prov, nullptr, nullptr, PROV_RSA_FULL,
-                           CRYPT_VERIFYCONTEXT) &&
-      CryptCreateHash(prov, CALG_MD5, 0, 0, &hash)) {
-    BYTE buf[65536];
-    size_t n = 0;
-    while ((n = fread(buf, 1, sizeof(buf), f)) > 0) {
-      if (!CryptHashData(hash, buf, static_cast<DWORD>(n), 0)) {
-        break;
-      }
-    }
-    DWORD len = 16;
-    if (CryptGetHashParam(hash, HP_HASHVAL, out, &len, 0) && len == 16) {
-      ok = true;
-    }
-  }
-  if (hash) {
-    CryptDestroyHash(hash);
-  }
-  if (prov) {
-    CryptReleaseContext(prov, 0);
-  }
-  fclose(f);
-  return ok;
-}
-
-bool BytesEqual(const unsigned char* a, const unsigned char* b) {
-  for (int i = 0; i < 16; ++i) {
-    if (a[i] != b[i]) {
-      return false;
-    }
-  }
-  return true;
-}
-
-// Fingerprint the supplied default.xex: US/NA = A53E..., EU/PAL = C37E....
-XexKind DetectXex(const std::wstring& exe_dir) {
-  // Look for default.xex next to the bootstrap or inside assets/ (the two
-  // documented release layouts).
-  std::wstring candidates[] = {
-      exe_dir + L"\\default.xex",
-      exe_dir + L"\\assets\\default.xex",
-      exe_dir + L"\\..\\default.xex",
-      exe_dir + L"\\..\\assets\\default.xex",
-  };
-  unsigned char md5[16];
-  for (const auto& path : candidates) {
-    if (XexMd5(path, md5)) {
-      static const unsigned char kUsMd5[16] = {0xA5, 0x3E, 0x32, 0x4B, 0x5D, 0x2A, 0x65, 0xEB,
-                                               0xCB, 0xF6, 0x48, 0xE4, 0xF8, 0x5A, 0x72, 0x71};
-      static const unsigned char kEuMd5[16] = {0xC3, 0x7E, 0xB9, 0x79, 0xB7, 0x62, 0xDA, 0x0A,
-                                               0xB5, 0xB8, 0xC9, 0xBA, 0x80, 0x37, 0xCE, 0x4E};
-      if (BytesEqual(md5, kUsMd5)) {
-        return XexKind::kUs;
-      }
-      if (BytesEqual(md5, kEuMd5)) {
-        return XexKind::kEu;
-      }
-      return XexKind::kUnknown;
-    }
-  }
-  return XexKind::kUnknown;
-}
 
 bool HasCpuX86V3() {
   int regs[4] = {0, 0, 0, 0};
@@ -179,13 +95,9 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
   LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
   const std::wstring exe_dir = ExecutableDir();
   const bool v3 = HasCpuX86V3();
-  const bool eu = DetectXex(exe_dir) == XexKind::kEu;
 
-  std::wstring variant = v3 ? L"dbz3_avx2" : L"dbz3_legacy";
-  if (eu) {
-    variant = v3 ? L"dbz3_eu_avx2" : L"dbz3_eu_legacy";
-  }
-  const std::wstring child = exe_dir + L"\\" + variant + L"\\dbz3_core.exe";
+  const std::wstring variant = v3 ? L"dbz3_avx2" : L"dbz3_legacy";
+  const std::wstring child = exe_dir + L"\\" + variant + L"\\dbz3.exe";
 
   // Rebuild the child command line: quoted child path + original arguments.
   std::wstring cmd = L"\"" + child + L"\"";
@@ -216,7 +128,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
         L"El juego se ejecutara en modo " +
         (v3 ? L"optimizado (AVX2)." : L"compatible (sin AVX2).") +
         L"\n\n"
-        L"Motivo: " + ErrorCodeText(err) + L" (" + variant + L"\\dbz3_core.exe).\n"
+        L"Motivo: " + ErrorCodeText(err) + L" (" + variant + L"\\dbz3.exe).\n"
         L"Asegurate de que la carpeta " + variant +
         L" este completa junto a este ejecutable.");
     return 1;

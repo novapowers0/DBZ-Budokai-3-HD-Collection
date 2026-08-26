@@ -1,252 +1,228 @@
-# DBZ Budokai 3 HD Collection — Recompile ReXGlue + Modding
+# DBZ Budokai 3 HD Collection
 
-**Native PC port of *Dragon Ball Z: Budokai 3 HD Collection* for the Xbox 360 (Windows).**
-The game's original PowerPC machine code is statically recompiled and built into
-a standalone executable — this is a real PC port, not an emulator.
+[English](README_EN.md) · Español
+
+Port nativo a PC de *Dragon Ball Z: Budokai 3 HD Collection* (Xbox 360) basado
+en el [ReXGlue SDK](https://github.com/rexglue/rexglue-sdk). El código PowerPC
+original del juego se recompila de forma estática y se integra en un ejecutable
+independiente con su propio launcher y sistema de mods. Es un port real, no un
+emulador.
 
 [![Release](https://img.shields.io/github/v/release/novapowers0/DBZ-Budokai-3-HD-Collection?sort=semver&style=flat-square&color=orange&label=Release)](https://github.com/novapowers0/DBZ-Budokai-3-HD-Collection/releases/latest)
-[![Platform](https://img.shields.io/badge/Platform-Windows-0078D6?style=flat-square)](https://github.com/novapowers0/DBZ-Budokai-3-HD-Collection/releases/latest)
-[![License](https://img.shields.io/github/license/novapowers0/DBZ-Budokai-3-HD-Collection?style=flat-square)](LICENSE)
-[![Stars](https://img.shields.io/github/stars/novapowers0/DBZ-Budokai-3-HD-Collection?style=flat-square&color=yellow)](https://github.com/novapowers0/DBZ-Budokai-3-HD-Collection)
-[![Built with](https://img.shields.io/badge/built%20with-ReXGlue-8A2BE2?style=flat-square)](https://github.com/rexglue/rexglue-sdk)
+[![Plataforma](https://img.shields.io/badge/Plataforma-Windows-0078D6?style=flat-square)](https://github.com/novapowers0/DBZ-Budokai-3-HD-Collection/releases/latest)
+[![Licencia](https://img.shields.io/github/license/novapowers0/DBZ-Budokai-3-HD-Collection?style=flat-square)](LICENSE)
+[![Estrellas](https://img.shields.io/github/stars/novapowers0/DBZ-Budokai-3-HD-Collection?style=flat-square&color=yellow)](https://github.com/novapowers0/DBZ-Budokai-3-HD-Collection)
+[![Hecho con](https://img.shields.io/badge/hecho%20con-ReXGlue-8A2BE2?style=flat-square)](https://github.com/rexglue/rexglue-sdk)
 
 | | |
 |---|---|
-| **Players** | 1–2 (versus) |
-| **Platform** | Windows |
-| **Engine** | Xbox 360 (ReXGlue SDK) |
-| **Genre** | 3D fighting |
-| **Framework** | [ReXGlue](https://github.com/rexglue/rexglue-sdk) |
+| **Jugadores** | 1–2 (versus) |
+| **Plataforma** | Windows |
+| **Motor** | Xbox 360 (ReXGlue SDK) |
+| **Género** | Lucha 3D |
+| **Versión** | v1.0.8 |
 
-Copyright (c) 2026 **NovaPowers**. Released under the MIT License (see `LICENSE`).
-
-Static recompilation of **Dragon Ball Z: Budokai 3 HD Collection** (Xbox 360) for
-Windows, built on the [ReXGlue SDK](https://github.com/rexglue/rexglue-sdk),
-with a launcher and a model/texture modding system validated in-game.
-
-> ⚠️ **Origen**: este proyecto se **rehízo desde cero** sobre ReXGlue. El
-> repositorio [`WistfulHopes/DBZ1`](https://github.com/WistfulHopes/DBZ1) se
-> tomó **solo como referencia** (para entender la API del SDK), **NO como base
-> ni copia de código**. El launcher, mods, regiones y herramientas son trabajo
-> original de **NovaPowers**.
+Copyright (c) 2026 **NovaPowers**. Licencia MIT (ver `LICENSE`).
 
 ---
 
-## ⚖️ Copyright / Legal
+## ⚖️ Aviso legal
 
-**El juego y sus datos NO se distribuyen.** Debes aportar los archivos de tu
-**copia legal** del juego (el `.xex` y los `data_*.afs`). Este proyecto sigue la
-convención "copyright-friendly" de la comunidad de recompilación estática
-(como `mstan/DragonBallZBuusFuryRecomp`): el código y el launcher se
-distribuyen, **el contenido del juego no**.
+El juego y sus datos **no se distribuyen**. Para jugar tienes que aportar los
+archivos de tu **copia legal**: el ejecutable (`default.xex`) y los `data_*.afs`
+de la región que uses. Este proyecto sigue la convención de la comunidad de
+recompilación estática (como `mstan/DragonBallZBuusFuryRecomp`): se distribuye
+el código y el launcher, **no el contenido del juego**.
 
-- Ver `baserom.md` para la identidad exacta de los archivos (tamaño y checksums)
-  y cómo extraerlos de la ISO.
+- En `baserom.md` tienes la identidad exacta de cada archivo (tamaños y
+  checksums SHA-256) y cómo extraerlos de tu ISO.
 - El código recompilado (`generated/`) se genera **localmente** a partir de tu
   `.xex` y **no se sube** al repositorio.
 
-Proyecto no oficial, sin fines comerciales, de investigación y preservación.
-No está afiliado ni avalado por Bandai Namco, Shueisha, Toei Animation ni ningún
+Proyecto no oficial, sin ánimo de lucro, de investigación y preservación. No
+está afiliado ni avalado por Bandai Namco, Shueisha, Toei Animation ni ningún
 titular de los derechos de Dragon Ball.
 
 ---
 
-## Estructura de carpetas
+## 🎮 Para jugar (paso a paso)
 
-```
-DBZ-Budokai-3-HD-Collection/
-├── default.xex              # NO incluido. El ejecutable del juego (USA y EU son idénticos)
-├── us/                      # NO incluido. Datos región USA (data_cmn.afs, adx_usa.afs...)
-├── eu/                      # NO incluido. Datos región EU/PAL (data_cmn.afs, adx_jpn.afs...)
-├── src/                     # Código fuente del recompilador/launcher/mods
-│   ├── main.cpp             #   entrada, ventana, crash handler
-│   ├── mods.cpp             #   sistema de mods (overlay AFS)
-│   ├── hooks.cpp            #   hooks del runtime
-│   ├── launcher/            #   UI del launcher + pipeline de modelos
-│   └── ingame/              #   menú in-game (F10)
-├── generated/               # NO incluido. Código generado del .xex (ver README ahí)
-├── mod center hd/           # Herramientas Python de modding (propias)
-│   ├── swap_b3.py           #   swaps B3→B3 nativos
-│   ├── texture_b3.py        #   extracción/reconstrucción de texturas
-│   ├── catalog_b3.cat       #   catálogo de personajes del B3
-│   └── ...                  #   conversores, analizadores, exportadores
-├── awo_tools/               # Herramientas de RE del formato AWO/AWG (propias)
-├── patches/                 # Parches del ReXGlue SDK (mid-insert virtual AFS)
-├── mods/                    # Carpeta de mods de usuario (vacía)
-├── tools/                   # xbcompress.exe / xbdecompress.exe + utilidades
-├── docs/                    # Documentación completa
-├── CMakeLists.txt           # Build (REXSDK_DIR o rexglue/ junto al proyecto)
-├── baserom.md               # Archivos del juego requeridos + cómo extraerlos
-└── LICENSE                  # MIT (NovaPowers)
-```
+1. **Descarga** el ZIP de la pestaña **Releases** y descomprímelo en cualquier
+   carpeta (p. ej. `C:\Juegos\DBZ3`).
+2. **Aporta los archivos del juego** junto a `dbz3.exe`. Valen estas dos
+   disposiciones (el launcher detecta ambas solas):
 
----
+   ```
+   C:\Juegos\DBZ3\                C:\Juegos\DBZ3\
+   ├── dbz3.exe                   ├── dbz3.exe
+   ├── dbz3_avx2\                 ├── dbz3_avx2\
+   ├── dbz3_legacy\               ├── dbz3_legacy\
+   ├── default.xex                └── assets\
+   └── us\ (y/o eu\)                  ├── default.xex
+                                     └── us\ (y/o eu\)
+   ```
 
-## Quick start (jugadores)
-
-1. **Descarga** el ZIP de Windows desde la pestaña **Releases** y extráelo.
-2. **Aporta los archivos del juego**: junto a `dbz3.exe` coloca `default.xex`
-   y las carpetas `us/` y/o `eu/` con los datos de tu copia legal. También se
-   admite ponerlos todos dentro de una subcarpeta `assets/` junto al exe
-   (`assets/default.xex`, `assets/us/`, `assets/eu/`) — el launcher detecta
-   ambas disposiciones automáticamente (ver
-   `RELEASE_README.md` del paquete).
-3. **Ejecuta** `dbz3.exe`.
+3. **Ejecuta `dbz3.exe`**. Aparecerá el launcher; si algo falta, el propio
+   launcher te lo dice y puedes buscar la carpeta de datos con el botón
+   "Seleccionar carpeta de datos...".
 4. En el launcher elige **Región** (USA / EU PAL), **Idioma**, **Vídeo** y
    **Audio**, y pulsa **Play**.
 
-> El launcher recuerda la configuración. Si marcas "Skip launcher on boot",
-> los siguientes arranques van directos al juego.
+> **Qué es cada `dbz3.exe`**: el de la raíz es un lanzador que detecta tu CPU
+> y abre la variante adecuada (`dbz3_avx2\` si soporta AVX2, `dbz3_legacy\` si
+> no). No tienes que elegir nada: siempre se ejecuta el `dbz3.exe` de la raíz.
+> Ambos `dbz3.exe` internos contienen las recompilaciones USA y EU y eligen la
+> correcta según el `default.xex` que pongas.
 
-### Instalar el juego (aportar los archivos)
+### Qué archivos del juego necesitas
 
-El paquete de release **no trae** los archivos del juego (copyright). Tienes
-que extraerlos de tu **ISO legal** de *Dragon Ball Z: Budokai 3 HD Collection*
-(Xbox 360):
+Solo el ejecutable y los datos de tu región, **no toda la ISO**:
 
-1. Extrae la ISO con una herramienta tipo `extract-xiso` (lee el sistema de
-   archivos FATX de Xbox 360).
-2. Copia a `default.xex` el ejecutable del juego (junto a `dbz3.exe`, o dentro
-   de `assets/` si prefieres esa disposición).
-3. Copia la carpeta de datos de tu región:
-   - **USA**: a `us/` → `data_cmn.afs`, `data_eng.afs`, `data_fra.afs`,
-     `data_ger.afs`, `data_ita.afs`, `data_spn.afs`, `data_usi.afs`,
-     `data_yah.afs`, `adx_jpn.afs`, `adx_usa.afs`, `lang_jpn.afs`,
-     `lang_usa.afs`, `opening.sfd`, `Ending00.sfd`, `Ending01.sfd`.
-   - **EU/PAL**: a `eu/` → los mismos archivos de la región.
-   - Todo esto puede ir junto a `dbz3.exe` o dentro de `assets/` (junto a
-     `default.xex`); el launcher detecta ambas disposiciones.
-4. Verifica los archivos contra `baserom.md` (tamaños y checksums SHA-256).
+- **USA**: a `us\` → `data_cmn.afs`, `data_eng.afs`, `data_fra.afs`,
+  `data_ger.afs`, `data_ita.afs`, `data_spn.afs`, `data_usi.afs`,
+  `data_yah.afs`, `adx_jpn.afs`, `adx_usa.afs`, `lang_jpn.afs`,
+  `lang_usa.afs`, `opening.sfd`, `Ending00.sfd`, `Ending01.sfd`.
+- **EU/PAL**: los mismos archivos en `eu\`.
 
-Solo necesitas el ejecutable y los archivos de datos, **no toda la ISO**.
+Todo puede ir junto a `dbz3.exe` o dentro de `assets\` (con `default.xex`).
+Puedes verificar los archivos contra `baserom.md`.
+
+Para extraerlos de tu **ISO legal** usa una herramienta tipo `extract-xiso`
+(lee el sistema de archivos FATX de Xbox 360).
 
 ---
 
-## Regiones EU/US
+## 📁 Estructura del repositorio
 
-- Los `.xex` USA y EU son **byte-idénticos** (misma región lógica; la región
-  está en los datos).
-- El launcher (pestaña *Video* → *Region*: `USA` / `EU (PAL)`) o el cvar
-   `dbz3_region` montan `us` o `eu` en `game:\us`.
-- El guardado es compartido entre regiones.
+```
+DBZ-Budokai-3-HD-Collection/
+├── default.xex               # NO incluido. Ejecutable del juego (USA o EU)
+├── us/                       # NO incluido. Datos región USA
+├── eu/                       # NO incluido. Datos región EU/PAL
+├── src/                      # Recompilador + launcher + sistema de mods
+│   ├── main.cpp              #   entrada, ventana, gestor de crash
+│   ├── bootstrap.cpp         #   lanzador de ISA (avx2/legacy) del paquete
+│   ├── mods.cpp              #   sistema de mods (overlay AFS)
+│   ├── launcher/             #   interfaz del launcher + pipeline de modelos
+│   └── ingame/               #   menú in-game
+├── generated/                # NO incluido. Código derivado de tu .xex
+├── mod center hd/            # Herramientas Python de modding (propias)
+├── awo_tools/                # Herramientas de RE del formato AWO/AWG
+├── patches/                  # Parches del ReXGlue SDK (ver su README)
+├── mods/                     # Mods de usuario (vacía)
+├── tools/                    # xbcompress/xbdecompress + utilidades
+├── docs/                     # Documentación completa
+├── CMakeLists.txt            # Build
+├── baserom.md                # Archivos del juego requeridos + cómo extraerlos
+└── LICENSE                   # MIT (NovaPowers)
+```
 
 ---
 
-## Mods
+## 🌍 Regiones USA / EU
 
-Los mods viven en `mods/<nombre>/` (carpeta `mods/` se distribuye **vacía**) y
-reemplazan entradas del AFS por overlay, sin tocar los AFS originales:
+Los ejecutables USA (`yae3_xenon.xex`) y EU (`yae3_xenon_eu.xex`) son **builds
+distintas** (no son idénticos), y el paquete incluye la recompilación de cada
+uno dentro del mismo núcleo dual. El launcher identifica cuál has puesto (por
+su checksum) y usa el código correcto; si no coincide, te avisa y bloquea Play
+para que no veas un cierre raro.
+
+La región de **datos** (carpeta `us\` o `eu\`) y el **idioma** se eligen en el
+launcher y no dependen del ejecutable. El guardado es compartido entre
+regiones.
+
+---
+
+## 🛠️ Mods
+
+Los mods viven en `mods\<nombre>\` (la carpeta se distribuye vacía) y reemplazan
+entradas del AFS por overlay, sin tocar los AFS originales:
 
 ```
-mods/<mod>/us/data_cmn.afs/<entry>/geom.bin   # override de una entrada del AFS
-mods/<mod>/manifest.txt                       # metadatos del mod (nombre, autor...)
-mods/<mod>/.disabled                          # si existe, el mod está OFF
+mods/<mod>/us/data_cmn.afs/<entrada>/geom.bin   # override de una entrada
+mods/<mod>/manifest.txt                         # metadatos (nombre, autor...)
+mods/<mod>/.disabled                            # si existe, el mod está OFF
 ```
 
-El override se instala en todos los AFS de personaje. Gestión visual en el
-launcher (pestañas **Mods**, **Texturas** y **Model Swap**) o con
-`mod center hd/`. Guías: `docs/02_mods/`.
+Se gestionan visualmente desde el launcher (pestañas **Mods**, **Texturas** y
+**Model Swap**) o con las herramientas de `mod center hd/`. Guías en
+`docs/02_mods/`.
 
-### Model swaps en cualquier dirección (mid-insert virtual)
+### Swaps de modelo en cualquier dirección (mid-insert virtual)
 
-Un swap de modelo B3→B3 es un override por entrada (~100 KB). El bin comprimido
-del personaje origen se sirve en el slot destino; puede ser **más grande o más
-pequeño** que el slot original:
+Un swap B3→B3 es un override por entrada (~100 KB) que se sirve en el slot
+destino aunque el bin sea **más grande** que el slot original: el runtime
+presenta al juego una tabla AFS consistente (la entrada crece en su sitio y las
+siguientes se desplazan) y traduce las lecturas. Así funciona, por ejemplo,
+meter a Goten en el slot de Krillin.
 
-- Si el bin **cabe** en el `to_read` del slot (`ceil(size/0x1000)*0x1000`), el
-  override clásico lo sirve sin más.
-- Si el bin es **más grande** (p.ej. Goten 107006 B en el slot de Krillin, cuyo
-  to_read es 106496 B), el runtime aplica un **mid-insert virtual**: presenta al
-  guest una tabla AFS consistente donde la entrada crece in-place y las
-  posteriores se desplazan (igual que un AFS reconstruido), y traduce las
-  lecturas al archivo físico. Así el guest aloca el buffer correcto y recibe el
-  bin completo sin truncar.
-
-Este comportamiento requiere el **parche del ReXGlue SDK** incluido en
-`patches/` (ver `patches/README.md`): `afs.cpp`, `afs.h` y
-`host_path_file.cpp` añaden `AfsGetVirtualTable`/`AfsTranslateOffset`.
-
-Genera un swap desde el launcher (pestaña **Model Swap**) o:
-
-```powershell
-python "mod center hd/swap_b3.py" --origen <bin> --dest <slot> --mod <nombre>
-python "mod center hd/texture_b3.py" build --bin <bin> --slot <slot> --dir <carpeta png>
-```
+Esto requiere el **parche del ReXGlue SDK** incluido en `patches/` (ver
+`patches/README.md`).
 
 ### Funcionalidades del launcher
 
-- **Video**: resolución, región, idioma, VRR, frame cap (0 = sin tope).
-- **Upscaling**: escala de resolución interna, FSR/CAS.
-- **Audio**: volúmenes maestro/música/efectos/voz.
-- **Input**: backend (xinput recomendado), deadzone, vibración.
-- **Mods**: activar/desactivar mods y editar su manifest (título/autor/descripción).
-- **Texturas**: extraer texturas de un personaje a PNG, editarlas y reconstruir
-  el mod (cambia el slot destino si quieres).
+- **Video**: resolución interna, región, idioma, VRR, frame cap (0 = sin tope),
+  presets de calidad por GPU.
+- **Upscaling**: FSR / CAS.
+- **Audio**: volúmenes maestro / música / efectos / voz.
+- **Input**: teclado y mando (XInput), remapeo de teclas, deadzone, vibración.
+- **Mods**: activar/desactivar mods y editar su manifest.
+- **Texturas**: extraer texturas a PNG, editarlas y reconstruir el mod.
 - **Model Swap**: swap nativo B3→B3 (catálogo de 183 personajes).
-- **Dev**: FPS counter, diagnóstico GPU (logs + .bmp) y minidumps — **todo OFF
-  por defecto** para no ensuciar la carpeta.
+- **Dev**: contador de FPS y diagnóstico GPU — **todo OFF por defecto**.
 
 ---
 
-## Estado (19/08/2026)
+## 🏗️ Compilar desde el código
 
-| Técnica | Estado |
-|---|---|
-| Swap nativo B3→B3 (override ~100KB) | ✅ **100% funcional, cualquier dirección** (bins > o < slot) |
-| Mod de texturas B3 HD | ✅ **100% funcional** (override por entrada, ~118KB) |
-| 2+ mods de modelo/textura simultáneos | ✅ **100% funcional** (mid-insert virtual) |
-| Mod de música (og_music) | ✅ **100% funcional** |
-| Diagnóstico GPU (logs + .bmp) | ✅ Gateado por Dev mode — OFF en juego normal |
-| Port PS2→HD | ⚠️ Investigado, requiere reconstrucción completa |
-| Port de personajes IW→B3 | 🔴 Descartado (Janemba fracasó, archivado) |
+Requisitos: un compilador C++23, CMake ≥ 3.25 y el
+[ReXGlue SDK](https://github.com/rexglue/rexglue-sdk) (`REXSDK_DIR` o una
+carpeta `rexglue/` junto al proyecto).
 
----
-
-## Building from source (desarrolladores)
-
-Requisitos: compilador C++23, CMake ≥ 3.25, y el [ReXGlue SDK](https://github.com/rexglue/rexglue-sdk)
-(`REXSDK_DIR` o una carpeta `rexglue/` junto al proyecto).
-
-> ⚠️ **Aplica los parches del runtime** (carpeta `patches/`) al SDK antes de
-> compilar: copia los 3 archivos sobre su ruta equivalente del SDK y recompila
-> el runtime (ver `patches/README.md`). Sin ellos los swaps de modelo con bins
-> más grandes que el slot no funcionan.
+> **Aplica primero los parches del runtime** (`patches/`) sobre tu copia del
+> SDK, tal y como explica `patches/README.md`, y recompila el runtime. Sin
+> ellos los swaps con bins más grandes que el slot no funcionan.
 
 ```
 git clone --recurse-submodules https://github.com/novapowers0/DBZ-Budokai-3-HD-Collection.git
 cd DBZ-Budokai-3-HD-Collection
-# 0) aplica patches/ sobre tu ReXGlue SDK (afs.cpp, afs.h, host_path_file.cpp)
-# 1) aporta tu .xex legal en default.xex
+
+# 1) pon tu .xex legal en default.xex
 # 2) regenera el código derivado del xex
 cmake --build out/build/win-amd64-release --target dbz3_codegen
 # 3) compila
-cmake -S . -B out/build/win-amd64-release --preset win-amd64-release
+cmake -S . -B out/build/win-amd64-release
 cmake --build out/build/win-amd64-release
 # 4) ejecuta
 out\build\win-amd64-release\dbz3.exe
 ```
 
-> El código recompilado (`generated/`) se deriva de tu `.xex` y **nunca se
-> sube** (ver `generated/README.md` y `.gitignore`).
+El código recompilado (`generated/`) se deriva de tu `.xex` y **nunca se sube**
+(ver `generated/README.md` y `.gitignore`). La estructura del paquete de
+release (bootstrap + variantes avx2/legacy) la monta
+`tools/make_release.ps1`.
 
 ---
 
-## Rutas portables
+## 📄 Estado
 
-- Las herramientas detectan los AFS desde `us/`/`eu/` o desde la ruta que les
-  pases en el launcher (pestaña Mods → Archivos fuente).
-- El proyecto B1 se localiza con la variable `DBZ1_ROOT` o como carpeta
-  hermana `DBZ Budokai HD Collection`.
-- `xbcompress.exe`/`xbdecompress.exe` viven en `tools/` (o vía
-  `DBZ3_XBCOMP_DIR`).
+| Técnica | Estado |
+|---|---|
+| Swap nativo B3→B3 (override ~100 KB) | ✅ Funcional en cualquier dirección (bins > o < slot) |
+| Mod de texturas B3 HD | ✅ Funcional (override por entrada, ~118 KB) |
+| 2+ mods de modelo/textura simultáneos | ✅ Funcional (mid-insert virtual) |
+| Mod de música (og_music) | ✅ Funcional |
+| Núcleo dual USA/EU (un solo binario) | ✅ Funcional (validado en juego) |
+| Port PS2→HD | ⚠️ Investigado; requiere reconstrucción completa |
+| Port de personajes IW→B3 | 🔴 Descartado (Janemba fracasó, archivado) |
 
 ---
 
-## Créditos
+## 👥 Créditos
 
 - [ReXGlue](https://github.com/rexglue/rexglue-sdk) — herramientas de
   recompilación.
 - [WistfulHopes/DBZ1](https://github.com/WistfulHopes/DBZ1) — referencia de la
-  API del SDK (no usado como base).
+  API del SDK (solo referencia, no es base ni copia de código).
 - Comunidad de modding de Budokai — herramientas y modelos de referencia.
-- **NovaPowers** — autor del sistema de mods, launcher y herramientas.
+- **NovaPowers** — autor del launcher, el sistema de mods y las herramientas.

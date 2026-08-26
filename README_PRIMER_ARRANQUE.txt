@@ -5,8 +5,12 @@ El paquete incluye dos variantes del runtime:
   - dbz3_avx2\   -> optimizada (requiere CPU con AVX2, Intel 4a gen+ / AMD Ryzen+)
   - dbz3_legacy\ -> compatible (funciona en cualquier CPU x64)
 
-NO elijas una: dbz3.exe (este archivo) detecta automaticamente tu CPU y lanza
+NO elijas una: dbz3.exe (el de la raiz) detecta automaticamente tu CPU y lanza
 la variante correcta. En CPUs sin AVX2, dbz3.exe usara dbz3_legacy\ por si solo.
+
+Ojo: hay DOS archivos llamados dbz3.exe. El que SIEMPRE ejecutas es el de la
+raiz (este). Dentro de dbz3_avx2\ y dbz3_legacy\ hay otro dbz3.exe (el juego en
+si), pero no hace falta tocarlo: el de la raiz lo abre por ti.
 
 -----------------------------------------------------------------------
 PASO 1 - Coloca los datos del juego

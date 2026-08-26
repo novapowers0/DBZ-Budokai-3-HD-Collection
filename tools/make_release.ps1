@@ -1,17 +1,18 @@
 # DBZ Budokai 3 HD Collection - release packaging script
 # Assembles the standalone release with the ISA bootstrap + the dual-region
-# core. The core (dbz3_core.exe) is a SINGLE dual-region binary (US/NA and
-# EU/PAL recompilations linked together); the bootstrap only picks the CPU
-# variant (dbz3_avx2/ for x86-64-v3 CPUs, dbz3_legacy/ for older ones).
+# core. The core (dbz3.exe inside each variant folder) is a SINGLE dual-region
+# binary (US/NA and EU/PAL recompilations linked together); the bootstrap only
+# picks the CPU variant (dbz3_avx2/ for x86-64-v3 CPUs, dbz3_legacy/ for older
+# ones).
 #
 # Usage:
-#   powershell -ExecutionPolicy Bypass -File tools\make_release.ps1 [-Version v1.0.7] [-OutDir <path>] [-UpxPath <path\to\upx.exe>]
+#   powershell -ExecutionPolicy Bypass -File tools\make_release.ps1 [-Version v1.0.8] [-OutDir <path>] [-UpxPath <path\to\upx.exe>]
 #
 # Layout produced:
 #   <stage>/
 #     dbz3.exe                    <- ISA bootstrap (baseline x86-64)
-#     dbz3_avx2/dbz3_core.exe + v3 runtime DLLs   (dual core, AVX2 CPUs)
-#     dbz3_legacy/dbz3_core.exe + v2 runtime DLLs (dual core, older CPUs)
+#     dbz3_avx2/dbz3.exe + v3 runtime DLLs   (dual core, AVX2 CPUs)
+#     dbz3_legacy/dbz3.exe + v2 runtime DLLs (dual core, older CPUs)
 #     mod center hd/              <- modding toolkit (scripts + XDK tools)
 #     mods/                       <- empty, with README
 #     README_PRIMER_ARRANQUE.txt, MODDING_README.md, RELEASE_README.md, baserom.md
@@ -21,7 +22,7 @@
 # against Windows Defender; see AGENTS.md).
 
 param(
-[string]$Version = "v1.0.7",
+[string]$Version = "v1.0.8",
 [string]$OutDir = "",
 [string]$UpxPath = ""
 )
@@ -93,9 +94,9 @@ $variants = @(
 foreach ($v in $variants) {
     $vdir = Join-Path $OutDir $v.Name
     New-Item -ItemType Directory -Path $vdir | Out-Null
-    Copy-Item -LiteralPath $core (Join-Path $vdir "dbz3_core.exe")
+    Copy-Item -LiteralPath $core (Join-Path $vdir "dbz3.exe")
     if ($UpxPath -ne "") {
-        & $UpxPath -9 -q (Join-Path $vdir "dbz3_core.exe")
+        & $UpxPath -9 -q (Join-Path $vdir "dbz3.exe")
     }
     foreach ($dll in $runtime_dlls) {
         Copy-Item -LiteralPath (Join-Path $v.Src $dll) (Join-Path $vdir $dll)

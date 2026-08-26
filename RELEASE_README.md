@@ -11,10 +11,10 @@ de tu copia legal.
 
 - `dbz3.exe` — **bootstrap de ISA**: detecta tu CPU y lanza la variante correcta
 - `dbz3_avx2\` — variante optimizada (CPU con AVX2: Intel 4ª gen+, AMD Ryzen+)
-  - `dbz3_core.exe` — **núcleo DUAL (US/NA + EU/PAL)**: recompilador + launcher + sistema de mods
+  - `dbz3.exe` — **núcleo DUAL (US/NA + EU/PAL)**: recompilador + launcher + sistema de mods
   - `rexruntime.dll`, `rexgpu-xenos.dll`, `amd_fidelityfx_dx12.dll`, etc.
 - `dbz3_legacy\` — variante compatible (cualquier CPU x64, sin AVX2)
-  - `dbz3_core.exe` (idéntico) + runtime compilado sin AVX2
+  - `dbz3.exe` (idéntico) + runtime compilado sin AVX2
 - `TracyClient.dll` — profiling (requerido por el runtime)
 - `amd_fidelityfx_dx12.dll` / `amd_fidelityfx_vk.dll` — upscaling FSR (D3D12/Vulkan)
 - `SPIRV-Tools-shared.dll` — utilidades SPIR-V (backend Vulkan)
@@ -93,6 +93,16 @@ aportarlos de tu **copia legal**. Haz esto:
 
 ## Novedades de esta release
 
+### v1.0.8 — Nombres unificados + documentación bilingüe
+
+- **`dbz3_core.exe` ahora es `dbz3.exe`**: el ejecutable dentro de `dbz3_avx2\`
+  y `dbz3_legacy\` se llama igual que el lanzador de la raíz. Solo ejecutas el
+  `dbz3.exe` de la raíz; el de dentro de la variante lo abre él solo.
+- **README bilingüe**: el repositorio tiene `README.md` (español) y
+  `README_EN.md` (inglés), con enlaces entre ambos.
+- **Documentación del paquete pulida**: `README_PRIMER_ARRANQUE.txt` aclara los
+  dos `dbz3.exe` para una primera instalación sin sorpresas.
+
 ### v1.0.7 — Fix del crash de la demo battle EU + núcleo dual + tamaño reducido
 
 - **Arreglado el cierre al reproducirse la DEMO** (el modo "attract" que salta
@@ -104,9 +114,9 @@ aportarlos de tu **copia legal**. Haz esto:
   no se había compilado. Todo registrado con sus tamaños exactos y validado en
   la batalla DEMO completa.
 - **Núcleo dual**: antes el paquete llevaba dos núcleos separados (US/NA y
-  EU/PAL). Ahora `dbz3_core.exe` es UN solo binario que contiene AMBAS
-  recompilaciones y elige la correcta según el `default.xex` que pongas. Esto
-  simplifica el paquete (2 variantes de CPU en vez de 4).
+  EU/PAL). Ahora `dbz3.exe` (el de cada carpeta de variante) es UN solo binario
+  que contiene AMBAS recompilaciones y elige la correcta según el `default.xex`
+  que pongas. Esto simplifica el paquete (2 variantes de CPU en vez de 4).
 - **Más ligero**: el núcleo dual comprimido pasa de ~33,9 MB a ~7 MB por
   variante (UPX -9, verificado sin amenazas por Windows Defender).
 - **Arranque fiable verificado**: al abrir el paquete sin tocar nada, se

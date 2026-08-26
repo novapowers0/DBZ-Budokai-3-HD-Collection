@@ -48,8 +48,8 @@ else()
 endif()
 
 # ISA bootstrap: baseline x86-64 dispatcher (no -march) that checks for the
-# x86-64-v3 feature set and launches dbz3_avx2\dbz3_core.exe or
-# dbz3_legacy\dbz3_core.exe. No SDK dependencies, so it runs on any CPU.
+# x86-64-v3 feature set and launches dbz3_avx2\dbz3.exe or
+# dbz3_legacy\dbz3.exe. No SDK dependencies, so it runs on any CPU.
 if(WIN32)
     add_executable(dbz3_bootstrap WIN32 src/bootstrap.cpp)
     target_compile_options(dbz3_bootstrap PRIVATE -march=x86-64)
