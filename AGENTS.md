@@ -3096,3 +3096,67 @@ convenga.
 
 **Sync**: `CMakeLists.txt`, `src/version.rc` (nuevo), `tools/make_release.ps1`,
 `AGENTS.md` → `github/`.
+
+---
+
+## 15. 🔴✅ PIPELINE DE PORT PS2→B3 HD (`port_ps2_b3_*`) — 2026-08-26
+
+**Estudio completo del ecosistema**: `docs/07_ports/ESTUDIO_ECOSISTEMA_MODS.md`
+(inventario de ~60 herramientas de la comunidad — TODAS PS2 LE; **ninguna
+convierte PS2→HD 360**; la comunidad trabaja PS2→PS2 o edita HD con 010 Editor).
+**Hoja de ruta**: `docs/07_ports/HOJA_DE_RUTA_PORT_PS2_B3.md`.
+
+### 15.1 ESTRUCTURA DE DIBUJO HD MAPEADA (descriptores/mesh-ref/ejes/arms)
+
+`docs/07_ports/ESTRUCTURA_DIBUJO_HD.md` (basado en Babidi bin 96, formato C):
+- Mesh group = header + **mesh-ref blocks** (0x50: tipo B5/B4 + textura 0x29BD)
+  + **ejes** (80B: quat+pos + sello + arm_ptr) + **arms** (datos de skinning por
+  hueso) + **descriptores** (0x60).
+- **Descriptor CONFIRMADO por correlación directa**: `A = rango de vértices`
+  (pool), `B = rango de índices del IB` (triangle strip). El IB del rango B
+  [237,251) = `125,126,119,121,120...` cae exactamente en el rango A [119,128). ✓
+- **Arms = skinning por hueso** (NO rangos de dibujo — eso lo hacen los
+  descriptores; resuelve el misterio de los "shadows vacíos" de Krillin).
+- **La estructura es REGENERABLE**: descriptores = calcular del IB agrupado por
+  part; mesh-ref = de los parts PS2; ejes/arms = copiar de plantilla 1:1.
+
+### 15.2 PIPELINE NOMBRADO (`mod center hd/ports/`, formato A default)
+
+```
+port_ps2_b3_extract.py  <ps2.amb|amo0> <extract.json>      # malla+rig+esqueleto
+port_ps2_b3_geometry.py <extract.json> <geometry.json>     # buffers HD + grupos
+port_ps2_b3_draw.py     <geometry.json> <plantilla.bin> <draw.json>  # descriptores A/B por part
+port_ps2_b3_pack.py     <plantilla.bin> <geometry.json> <draw.json> <salida.amb>
+port_ps2_b3_verify.py   <bin.amb> [out.obj]                # OBJ + bounds/NaN
+```
+
+- `draw` lee la cuenta de descriptores REALES de la plantilla (stride 0x2C00,
+  offset buffer != 0; descarta anchors falsos) y fusiona grupos adyacentes del
+  IB (mismo tex/vtype) si exceden esa cuenta. **Corrige el reparto uniforme de
+  `build_from_template.py`** (que dividía los buffers por igual sin respetar los
+  mesh parts → rangos descuadrados).
+- `pack` clona la plantilla: mid-insert interno (buffers crecen in-place,
+  offsets AWG/tabla AWO/AZT desplazados, como el runtime), rellena geometría,
+  descriptores y el resto del IB con 0xFFFF. Mantiene ejes/arms de la plantilla
+  (requiere esqueleto 1:1 = mismo nº de huesos y orden).
+- **PRIMER PORT GENERADO (2026-08-26)**: Cell F2 PS2 (GH bin 147, 48 huesos) →
+  plantilla Cell F2 HD (48 huesos, formato A, 29 descriptores reales). Pipeline
+  completo OK: 36 parts → 29 descriptores (fusionados), sec34=4938 vb2=210
+  ib=5148, mid-insert +100164 B, 0 NaN, 0 OOB, OBJ exporta. Instalado como mod
+  **`cell_ps2_port`** (slot 327, ACTIVO). LZX 123536 → pad 126976 (ejercita el
+  mid-insert virtual). DLL correcta verificada (10951168, `AfsGetVirtualTable`).
+- **⚠️ PENDIENTE**: (a) validar `cell_ps2_port` EN JUEGO (slot 327 → ¿Cell F2
+  PS2 con la estructura de la plantilla?); (b) las partes estáticas (sin rig)
+  van a vb2 con coords PS2 (faltan ABSOLUTAS → transformar por world matrix del
+  hueso, item §40) — puede causar coords grandes; (c) mesh-ref blocks aún se
+  conservan de la plantilla (no regenerados); (d) el número de descriptores se
+  limita al de la plantilla (fusionar); (e) las coords PS2 grandes (Cell hasta
+  ±13) son del modelo PS2 real (no del HD) — se renderizan con las matrices del
+  esqueleto (mismo), no es necesariamente un bug.
+- **Caso Babidi descartado como template**: su bin HD (formato C) tiene el
+  buffer de vértices en una posición rara (sec_abs detectado con basura al
+  inicio) y el layout C difiere del A. El pipeline emite formato A (validado en
+  juego con sw_goten_nativo) → usar plantillas formato A (Krillin 327, Cell F2 147).
+
+**Sync**: `mod center hd/ports/` (5 scripts) + `docs/07_ports/` (3 docs) →
+`github/`. NO subido a GitHub.

@@ -21,6 +21,9 @@
 | [04_herramientas](04_herramientas/TOOLS.md) | Inventario de herramientas y su función |
 | [05_build](05_build/COMO_COMPILAR.md) | Cómo compilar el juego y el SDK |
 | [06_limpieza](06_limpieza/PLAN_LIMPIEZA.md) | Plan de limpieza/reorganización pendiente |
+| [07_ports](07_ports/ESTUDIO_ECOSISTEMA_MODS.md) | **Estudio del ecosistema de mods + comparativa de herramientas (2026-08-26)** |
+| [07_ports/HOJA_DE_RUTA_PORT](07_ports/HOJA_DE_RUTA_PORT_PS2_B3.md) | **Hoja de ruta del port PS2→B3 HD (pipeline nombrado `port_ps2_b3_`)** |
+| [07_ports/ESTRUCTURA_DIBUJO_HD](07_ports/ESTRUCTURA_DIBUJO_HD.md) | **Estructura de dibujo HD mapeada (descriptores A/B, mesh-ref, arms)** |
 
 ---
 
