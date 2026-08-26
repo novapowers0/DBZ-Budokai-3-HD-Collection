@@ -8,15 +8,22 @@ recompile expects, the same way other static-recompilation projects do
 
 ## Game executable (`.xex`)
 
-The Xbox 360 game executable. The USA and EU (PAL) `.xex` are **byte-identical**
-(one binary; region is decided by the data), so either copy works.
+The Xbox 360 game executable. **The USA and EU (PAL) builds are different**
+(the recompiled port includes a recompilation of each one inside the same dual
+core; the launcher picks the matching code by checksum), so each region has its
+own expected hash:
 
 - Expected path: `default.xex` (next to `dbz3.exe`)
 - Size: **4,890,624 bytes** (4.66 MB)
-- SHA-256: `B40BBA40CFD6C90CB269EBF5020818924F43109BCC86827A3CC37124C052A26B`
 
-> A second copy named `default.xex` (from the EU disc) is kept for parity; it is
-> the same binary.
+| Region | SHA-256 |
+|---|---|
+| USA / NA (`yae3_xenon.xex`) | `B40BBA40CFD6C90CB269EBF5020818924F43109BCC86827A3CC37124C052A26B` |
+| EU / PAL (`yae3_xenon_eu.xex`) | `7193803AEE6124C8D0782EF2C37FF2E8D41DB8A11286D198C23352EA7622E924` |
+
+> Either copy works, but only the matching one is used by the game; using the
+> other region's `.xex` is detected by the launcher, which warns and blocks Play
+> instead of crashing.
 
 ## Game data archives (`.afs`)
 
