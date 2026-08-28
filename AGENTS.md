@@ -3327,6 +3327,50 @@ mod_pipeline.cpp}}` (bootstrap.cpp ELIMINADO), `tools/make_release.ps1`,
 `RELEASE_README.md`, `README_PRIMER_ARRANQUE.txt`, `AGENTS.md` → `github/`.
 **Release v1.1.0** empaquetada y lista para subir.
 
+### 14.22 ✅ RESPALDO v1.1.0-CLASICO + ARCHIVO DE VERSIONES EN GITHUB (2026-08-28)
+
+**Petición del usuario (tras §14.21)**: "no los borres todos — déjalos archivados
+(¿hay alguna manera en github?) y deja presente alguno de los que resultó más
+funcional por si el 1.1.0 da problemas a alguien".
+
+**Respuesta a "¿hay alguna manera de archivar en GitHub?"**: GitHub **NO tiene
+un estado nativo de "archivado" para releases**. El mecanismo estándar es:
+(a) los **tags** (GitHub sirve automáticamente "Source code (zip/tar.gz)" de cada
+tag → el código de cada versión queda descargable para siempre desde la pestaña
+Tags), y (b) los releases **no-Latest** claramente marcados como deprecados en el
+texto. Solo UN release puede ser "Latest".
+
+**Lo hecho**:
+1. **Fallback jugable `v1.1.0-clasico`** (release no-Latest): el MISMO core dual
+   actual (dbz3.exe 1.1.0, mismo código/fixes que la 1.1.0) pero con el **runtime
+   clásico avx2** que llevaba meses probado en las v1.0.x. Se reutilizan las DLLs
+   avx2 que AÚN EXISTEN en `rexglue-sdk-0.10/out/win-amd64` (rexruntime 10951168,
+   rexgpu 6210048, ffx dx12 5420544, TracyClient 246784) — sin reconstruir nada.
+   Smoke test OK (core actual + DLLs clásicos → "launcher shown"). Paquete de
+   carpeta única = `github/release-stage-classic/`, zip
+   `DBZ-Budokai-3-HD-Collection-v1.1.0-clasico.zip` (21952645 B). Nota clara en la
+   release: usarla SOLO si la 1.1.0 universal da problemas en CPU moderna; la
+   1.1.0 sigue siendo la recomendada y la única para CPUs antiguas.
+2. **`gh release edit v1.1.0 --latest`**: al crear v1.1.0-clasico GitHub lo marcó
+   automáticamente como Latest → se volvió a marcar v1.1.0 como Latest. ⚠️ LECCIÓN:
+   cualquier release nueva creada después pasa a Latest automáticamente; si no es
+   la principal, hay que re-marcar la principal con `gh release edit <tag> --latest`.
+3. **Tags de todas las versiones viejas recreados** (código archivado, no se
+   perdió nada): v1.0.0=8fbd58d, v1.0.1=7218da8, v1.0.2=9e6eae3, v1.0.3=bc7ae61,
+   v1.0.4=de40780, v1.0.5-EX=d629f8c, v1.0.6=cd4a368, v1.0.7=3f8b2a8,
+   v1.0.8=583b947, v1.0.9=0ee3d5c (empujados a origin). El historial git de la
+   v1.0.10 vive en el commit d629f8c (compactación 1.0.5→1.0.10) + las posteriores.
+   **⚠️ Los zips binarios antiguos (v1.0.0-v1.0.10) ya NO existen** (se borraron
+   de GitHub y localmente) — el archivo queda como CÓDIGO (tags + source zips
+   automáticos de GitHub), no como binario jugable. El binario de respaldo jugable
+   es v1.1.0-clasico.
+4. **`.gitignore`**: `release-stage/` → `release-stage*/` (cubre `release-stage-classic/`).
+
+**Estado de GitHub (2026-08-28)**: releases = v1.1.0 (Latest, universal) +
+v1.1.0-clasico (fallback, runtime clásico). Tags = v1.0.0..v1.0.9, v1.0.5-EX,
+v1.1.0 (archivo de código). Nada se perdió del código; solo los zips binarios
+viejos.
+
 ---
 
 ## 15. 🔴✅ PIPELINE DE PORT PS2→B3 HD (`port_ps2_b3_*`) — 2026-08-26
