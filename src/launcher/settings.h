@@ -89,11 +89,15 @@ enum class XexStatus {
 XexStatus CheckDefaultXex(const std::filesystem::path& root);
 
 // Whether `status` is the executable THIS core was recompiled from. On the
-// US/NA core that is the US xex; on the EU/PAL core (DBZ3_EU_VARIANT) the EU
-// one. A known wrong-variant xex must be blocked; kMissing/kUnknown are not
-// expected either but are handled with their own messaging.
+// dual-region core (DBZ3_DUAL_REGION) both the US and EU executables are
+// compiled in, so both are expected. On the US/NA core that is the US xex; on
+// the EU/PAL core (DBZ3_EU_VARIANT) the EU one. A known wrong-variant xex must
+// be blocked; kMissing/kUnknown are not expected either but are handled with
+// their own messaging.
 inline bool XexIsExpected(XexStatus status) {
-#if defined(DBZ3_EU_VARIANT)
+#if defined(DBZ3_DUAL_REGION)
+  return status == XexStatus::kUs || status == XexStatus::kEu;
+#elif defined(DBZ3_EU_VARIANT)
   return status == XexStatus::kEu;
 #else
   return status == XexStatus::kUs;

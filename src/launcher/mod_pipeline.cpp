@@ -47,9 +47,9 @@ std::filesystem::path CatalogFile() {
 }
 
 std::filesystem::path ModsOutDir() {
-  // The mods the runtime reads live next to the game data. The release core
-  // exe lives in dbz3_avx2/dbz3_legacy while mods/ stays next to the assets,
-  // so walk up from the executable looking for a "mods" directory.
+  // The mods the runtime reads live next to the game data. In the release the
+  // exe and mods/ share the same folder, but walk up from the executable
+  // looking for a "mods" directory just in case.
   std::filesystem::path probe = rex::filesystem::GetExecutableFolder();
   std::error_code ec;
   for (int depth = 0; depth < 4; ++depth) {

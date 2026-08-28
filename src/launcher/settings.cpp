@@ -421,8 +421,7 @@ std::filesystem::path LatestLogPath() {
 }
 
 // Mods root: mods/ next to the executable, or the nearest "mods" folder up to
-// 3 levels up (the release core exe lives in dbz3_avx2/dbz3_legacy while the
-// mods stay next to the game data).
+// 3 levels up (in the release the exe and mods/ share the same folder).
 static std::filesystem::path ModsRoot() {
   std::filesystem::path probe = rex::filesystem::GetExecutableFolder();
   std::error_code ec;
@@ -641,21 +640,31 @@ bool GetPrimaryGpu(DXGI_ADAPTER_DESC1* desc_out) {
   if (FAILED(CreateDXGIFactory1(IID_PPV_ARGS(&factory)))) {
     return false;
   }
+  // Pick the best non-software adapter. Iterating all of them and keeping the
+  // one with the most dedicated video memory handles hybrid/Optimus laptops:
+  // the discrete GPU almost always has far more dedicated VRAM than the iGPU,
+  // so the iGPU is NOT selected just because it enumerates first.
   Microsoft::WRL::ComPtr<IDXGIAdapter1> adapter;
+  SIZE_T best_vram = 0;
+  bool found = false;
   for (UINT i = 0; factory->EnumAdapters1(i, &adapter) != DXGI_ERROR_NOT_FOUND; ++i) {
     DXGI_ADAPTER_DESC1 desc{};
     if (SUCCEEDED(adapter->GetDesc1(&desc))) {
       const std::wstring name(desc.Description);
       const bool is_software = (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) != 0 ||
                                name.find(L"Microsoft Basic Render Driver") != std::wstring::npos;
-      if (!is_software) {
+      if (!is_software && desc.DedicatedVideoMemory > best_vram) {
+        best_vram = desc.DedicatedVideoMemory;
         cached = desc;
-        cached_initialized = true;
-        if (desc_out) *desc_out = cached;
-        return true;
+        found = true;
       }
     }
     adapter.Reset();
+  }
+  if (found) {
+    cached_initialized = true;
+    if (desc_out) *desc_out = cached;
+    return true;
   }
   return false;
 }

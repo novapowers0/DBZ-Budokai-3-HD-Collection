@@ -319,10 +319,8 @@ public:
             REXLOG_INFO("OnConfigurePaths - game_dir from arg: {}", game_dir.string());
         } else {
             // Priority order for locating the game assets:
-            //   1) next to the exe (standalone release layout: dbz3.exe + us/ + default.xex,
-            //      or a variant folder dbz3_avx2/ / dbz3_eu_avx2/ with assets in the parent)
-            //   2) the parent of the exe folder (release layout when the core runs from a
-            //      variant subfolder: <release>/dbz3_eu_avx2 -> <release>/assets)
+            //   1) next to the exe (standalone release layout: dbz3.exe + us/ + default.xex)
+            //   2) the parent of the exe folder (release layout with assets in <release>/assets)
             //   3) the project root (dev layout: out/build/win-amd64-release, 3 levels up)
             if (auto root = FindGameRoot(exe_dir); !root.empty()) {
                 game_dir = root;

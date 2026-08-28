@@ -62,15 +62,6 @@ else()
     add_executable(dbz3 ${DBZ3_SOURCES})
 endif()
 
-# ISA bootstrap: baseline x86-64 dispatcher (no -march) that checks for the
-# x86-64-v3 feature set and launches dbz3_avx2\dbz3.exe or
-# dbz3_legacy\dbz3.exe. No SDK dependencies, so it runs on any CPU.
-if(WIN32)
-    add_executable(dbz3_bootstrap WIN32 src/bootstrap.cpp src/version.rc)
-    target_compile_options(dbz3_bootstrap PRIVATE -march=x86-64)
-    target_compile_definitions(dbz3_bootstrap PRIVATE NOMINMAX)
-endif()
-
 target_include_directories(dbz3 PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
 )

@@ -1,28 +1,29 @@
 # DBZ Budokai 3 HD Collection - release packaging script
-# Assembles the standalone release with the ISA bootstrap + the dual-region
-# core. The core (dbz3.exe inside each variant folder) is a SINGLE dual-region
-# binary (US/NA and EU/PAL recompilations linked together); the bootstrap only
-# picks the CPU variant (dbz3_avx2/ for x86-64-v3 CPUs, dbz3_legacy/ for older
-# ones).
+# Assembles the standalone release as a SINGLE universal folder: one dbz3.exe
+# (dual-region core: US/NA + EU/PAL, auto-detects the default.xex) and ONE set
+# of runtime DLLs compiled at the BASELINE x86-64 ISA (SSSE3, Core 2 2006+),
+# so the same package runs on any x86-64 CPU - no variant folders, no bootstrap.
 #
 # Usage:
-#   powershell -ExecutionPolicy Bypass -File tools\make_release.ps1 [-Version v1.0.8] [-OutDir <path>] [-UpxPath <path\to\upx.exe>]
+#   powershell -ExecutionPolicy Bypass -File tools\make_release.ps1 [-Version v1.1.0] [-OutDir <path>]
 #
 # Layout produced:
 #   <stage>/
-#     dbz3.exe                    <- ISA bootstrap (baseline x86-64)
-#     dbz3_avx2/dbz3.exe + v3 runtime DLLs   (dual core, AVX2 CPUs)
-#     dbz3_legacy/dbz3.exe + v2 runtime DLLs (dual core, older CPUs)
+#     dbz3.exe                    <- dual-region universal core (the ONLY exe)
+#     rexruntime.dll, rexgpu-xenos.dll, amd_fidelityfx_dx12.dll, amd_fidelityfx_vk.dll,
+#     TracyClient.dll, SPIRV-Tools-shared.dll, MSVC CRT DLLs
 #     mod center hd/              <- modding toolkit (scripts + XDK tools)
 #     mods/                       <- empty, with README
 #     README_PRIMER_ARRANQUE.txt, MODDING_README.md, RELEASE_README.md, baserom.md
 #   <version>.zip
 #
-# With -UpxPath, the core is compressed with UPX before staging (verified clean
-# against Windows Defender; see AGENTS.md).
+# ⚠️ AV / UPX: do NOT pass -UpxPath for distributed releases. UPX-packed
+# executables are a well-known malware packaging pattern and get flagged as
+# false positives by many antivirus products (users reported v1.0.6 as "virus").
+# -UpxPath is kept only for local testing.
 
 param(
-[string]$Version = "v1.0.9",
+[string]$Version = "v1.1.0",
 [string]$OutDir = "",
 [string]$UpxPath = ""
 )
@@ -31,26 +32,22 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 
 $build   = Join-Path $root "out\build\win-amd64-dual"
-$sdk_v3  = Join-Path $root "rexglue-sdk-0.10\out\win-amd64"
-$sdk_v2  = Join-Path $root "rexglue-sdk-0.10\out\win-amd64-legacy"
+$sdk     = Join-Path $root "rexglue-sdk-0.10\out\win-amd64-baseline"
 $modcenter = Join-Path $root "mod center hd"
 
 if ($OutDir -eq "") { $OutDir = Join-Path $root "github\release-stage" }
 
 # --- inputs -------------------------------------------------------------
-$bootstrap   = Join-Path $root "out\build\win-amd64-release\dbz3_bootstrap.exe"
 $core        = Join-Path $build "dbz3.exe"
 $runtime_dlls = @("rexruntime.dll","rexgpu-xenos.dll","amd_fidelityfx_dx12.dll")
 $shared_dlls = @("amd_fidelityfx_vk.dll","SPIRV-Tools-shared.dll","TracyClient.dll",
 "msvcp140.dll","msvcp140_atomic_wait.dll",
 "vcruntime140.dll","vcruntime140_1.dll")
 
-foreach ($p in @($bootstrap, $core)) {
-if (-not (Test-Path -LiteralPath $p)) { throw "Falta $p" }
-}
+if (-not (Test-Path -LiteralPath $core)) { throw "Falta $core" }
+if (-not (Test-Path -LiteralPath $sdk))  { throw "Falta el SDK baseline en $sdk" }
 foreach ($dll in $runtime_dlls) {
-if (-not (Test-Path -LiteralPath (Join-Path $sdk_v3 $dll))) { throw "Falta v3: $dll" }
-if (-not (Test-Path -LiteralPath (Join-Path $sdk_v2 $dll))) { throw "Falta v2: $dll" }
+if (-not (Test-Path -LiteralPath (Join-Path $sdk $dll))) { throw "Falta $dll en $sdk" }
 }
 
 # Snapshot of the shared DLLs + docs from the previous release-stage (the
@@ -71,47 +68,33 @@ if (Test-Path -LiteralPath $old_stage) {
     }
 }
 
-# Sanity: the two runtime variants must differ in size (v3 vs v2 ISA).
-foreach ($dll in $runtime_dlls) {
-$s3 = (Get-Item (Join-Path $sdk_v3 $dll)).Length
-$s2 = (Get-Item (Join-Path $sdk_v2 $dll)).Length
-if ($s3 -eq $s2) { throw "Warning: $dll v3 y v2 tienen el mismo tamaño ($s3) - revisar" }
-}
-
 # --- stage --------------------------------------------------------------
 if (Test-Path -LiteralPath $OutDir) {
     Remove-Item -LiteralPath $OutDir -Recurse -Force
 }
 New-Item -ItemType Directory -Path $OutDir | Out-Null
 
-# Bootstrap at the root: dbz3.exe
-Copy-Item -LiteralPath $bootstrap (Join-Path $OutDir "dbz3.exe")
+# The single universal exe
+Copy-Item -LiteralPath $core (Join-Path $OutDir "dbz3.exe")
+if ($UpxPath -ne "") {
+    & $UpxPath -9 -q (Join-Path $OutDir "dbz3.exe")
+}
 
-$variants = @(
-    @{ Name = "dbz3_avx2";    Src = $sdk_v3 },
-    @{ Name = "dbz3_legacy";  Src = $sdk_v2 }
-)
-foreach ($v in $variants) {
-    $vdir = Join-Path $OutDir $v.Name
-    New-Item -ItemType Directory -Path $vdir | Out-Null
-    Copy-Item -LiteralPath $core (Join-Path $vdir "dbz3.exe")
-    if ($UpxPath -ne "") {
-        & $UpxPath -9 -q (Join-Path $vdir "dbz3.exe")
-    }
-    foreach ($dll in $runtime_dlls) {
-        Copy-Item -LiteralPath (Join-Path $v.Src $dll) (Join-Path $vdir $dll)
-    }
-    foreach ($dll in $shared_dlls) {
-        # Canonical copy: github/ root (versioned, e.g. the MSVC CRT DLLs),
-        # then the snapshot of the previous release, then the US build dir.
-        $from = Join-Path $root "github\$dll"
-        if (-not (Test-Path -LiteralPath $from)) { $from = Join-Path $snap_dir $dll }
-        if (-not (Test-Path -LiteralPath $from)) { $from = Join-Path $root "out\build\win-amd64-release\$dll" }
-        if (Test-Path -LiteralPath $from) {
-            Copy-Item -LiteralPath $from (Join-Path $vdir $dll)
-        } else {
-            Write-Warning "No se encontro '$dll' para $($v.Name) - omitido"
-        }
+# Baseline runtime DLLs (from the SDK build dir)
+foreach ($dll in $runtime_dlls) {
+    Copy-Item -LiteralPath (Join-Path $sdk $dll) (Join-Path $OutDir $dll)
+}
+
+# Shared DLLs: canonical copy in github/ root (versioned), then the snapshot
+# of the previous release, then the US build dir.
+foreach ($dll in $shared_dlls) {
+    $from = Join-Path $root "github\$dll"
+    if (-not (Test-Path -LiteralPath $from)) { $from = Join-Path $snap_dir $dll }
+    if (-not (Test-Path -LiteralPath $from)) { $from = Join-Path $root "out\build\win-amd64-release\$dll" }
+    if (Test-Path -LiteralPath $from) {
+        Copy-Item -LiteralPath $from (Join-Path $OutDir $dll)
+    } else {
+        Write-Warning "No se encontro '$dll' - omitido"
     }
 }
 
@@ -126,6 +109,28 @@ if (Test-Path -LiteralPath $modcenter) {
     }
     if (Test-Path -LiteralPath (Join-Path $modcenter "tools")) {
         Copy-Item -LiteralPath (Join-Path $modcenter "tools") (Join-Path $mcd "tools") -Recurse
+    }
+}
+
+# XDK compression tools (xbcompress/xbdecompress) needed by the mod pipeline.
+# Canonical copy in github/tools/, plus the XDK runtime DLLs that the old XDK
+# binaries require (MSVCR71/MSVCP71/xbdm) from the XDK folder of the repo.
+$toolkit_dir = Join-Path $OutDir "mod center hd\tools"
+New-Item -ItemType Directory -Path $toolkit_dir -Force | Out-Null
+foreach ($t in @("xbcompress.exe","xbdecompress.exe")) {
+    $from = Join-Path $root "github\tools\$t"
+    if (Test-Path -LiteralPath $from) {
+        Copy-Item -LiteralPath $from (Join-Path $toolkit_dir $t)
+    }
+}
+$xdksrc = Get-ChildItem (Join-Path $root "mod center") -Directory -Filter "*Compression*" |
+    Select-Object -First 1
+if ($xdksrc) {
+    foreach ($t in @("MSVCR71.dll","MSVCP71.dll","xbdm.dll")) {
+        $from = Join-Path $xdksrc.FullName $t
+        if (Test-Path -LiteralPath $from) {
+            Copy-Item -LiteralPath $from (Join-Path $toolkit_dir $t)
+        }
     }
 }
 

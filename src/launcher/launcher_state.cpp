@@ -291,8 +291,15 @@ void LauncherDialog::OnDraw(ImGuiIO& io) {
   // US xex and the EU/PAL core only the EU xex. A known xex of the OTHER
   // variant blocks Play (the guest would exit with "No function registered").
   const bool xex_expected = dbz3::settings::XexIsExpected(xex_status);
-  const bool xex_blocked = xex_ok && xex_status != dbz3::settings::XexStatus::kMissing &&
-                           !xex_expected;
+  // Block only on a KNOWN wrong-variant xex (EU xex on the US core or vice
+  // versa). An unknown xex (modified/patched dump) is NOT blocked: it shows
+  // the amber note below and the user can still try to launch, since a
+  // compatible-but-modified copy of the right variant works fine. Blocking it
+  // silently disabled Play for those users while the Enter shortcut (not gated
+  // by BeginDisabled) still launched the game.
+  const bool xex_blocked =
+      xex_ok && xex_status != dbz3::settings::XexStatus::kMissing &&
+      xex_status != dbz3::settings::XexStatus::kUnknown && !xex_expected;
   const bool assets_ready = (region_ok || us_ok) && xex_ok && !xex_blocked;
 
   if (assets_ready) {
@@ -532,7 +539,8 @@ void LauncherDialog::OnDraw(ImGuiIO& io) {
   ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.16f, 0.62f, 0.28f, 1.0f));
   ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.22f, 0.74f, 0.36f, 1.0f));
   ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.11f, 0.50f, 0.22f, 1.0f));
-  if (ImGui::Button("PLAY", ImVec2(300, 42)) || ImGui::IsKeyPressed(ImGuiKey_Enter, false)) {
+  if (ImGui::Button("PLAY", ImVec2(300, 42)) ||
+      (assets_ready && ImGui::IsKeyPressed(ImGuiKey_Enter, false))) {
     dbz3::settings::SaveUserSettings();
     dbz3::settings::ApplyUserSettingsToSdk();
     dbz3::settings::ApplyRuntimeSettingsToSdk(true);

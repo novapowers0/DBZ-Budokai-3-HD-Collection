@@ -82,6 +82,7 @@ El proyecto está documentado en `docs/`. **LEER `docs/README.md` primero** y lu
 - `docs/04_herramientas/TOOLS.md` — inventario de herramientas
 - `docs/05_build/COMO_COMPILAR.md` — compilar juego/SDK
 - `docs/06_limpieza/PLAN_LIMPIEZA.md` — plan de limpieza pendiente
+- **PORT DE MODELOS → leer AGENTS §3.4 (estado consolidado) ANTES que todo**
 
 ## 3. ESTADO ACTUAL (RESUMEN EJECUTIVO)
 
@@ -187,6 +188,106 @@ El sec34 usa bones 0-35 (36 bones, sin piernas/rostro → esos van al vb2).
 **B1 Krillin (52 huesos, ORDEN DISTINTO al B3)**: mismos labels pero OBI/ROBI/
 LOBI desplazados al final (29-37) y CHEST=3. El mapeo B1→B3 debe ser POR LABEL
 (no por índice). Herramienta: `analyze_awo_b1.py` (estructura AWO B1).
+
+### 3.4 🔴 MODEL PORT PS2→B3 HD — ESTADO CONSOLIDADO (leer ANTES de tocar el port)
+
+> **Referencia ÚNICA del port de modelos.** La info histórica detallada vive en
+> §8, §11, §12, §13, §15, §65 y `docs/07_ports/`. Esta sección consolida el
+> ESTADO REAL y el PLAN para avanzar sin repetir errores (incluida la
+> contaminación de tests de 2026-08-26).
+
+#### 3.4.1 ESTADO ACTUAL (2026-08-26, verificado en juego)
+
+| Vía | Estado | Mejor resultado | Notas |
+|---|---|---|---|
+| Swap nativo B3→B3 | ✅ FUNCIONA | sw_goten_nativo, sw_vegeta424 | bin #AMB completo en slot ajeno |
+| Inyección (template + posiciones PS2) | ✅ FUNCIONA (reconocible) | **cell_npm4** (umbral binario 0.8) | cuerpo PS2 + extremidades/cabeza HD |
+| Port completo (topología PS2) | ❌ NO (amorfo) | — | pool reordenado rompe la estructura |
+| Swap de cabeza HD→HD | ◑ parcial | goku_armadura v3 | z-fighting, pausado por decisión |
+
+#### 3.4.2 HECHOS VALIDADOS (cómo renderiza el guest)
+
+1. **Dibuja por descriptores A/B + IB**: encoding `A<<8|B<<8` (flag 0x01 en +0x5C);
+   los índices del IB del rango B caen SIEMPRE en el rango A. Verificado 22/22.
+2. **Usa el bone del vértice (+28) para el transform** (test `bone0`: bones→0
+   colapsa TODO a los pies; la cara sup. y una mano se salvan porque viven en vb2).
+3. **ESTÁ ATADO al orden del pool** (test `reverse` REAL: pool invertido →
+   deformidades). Los mesh-ref/zonas referencian el pool por su índice original.
+4. **Layout sec34** (stride 44, align +2): `[FFFF, u, v, z, x, y, peso, BONE@+28,
+   nz, -ny, nx]`. La plantilla usa SOLO bones 0-33 en el sec34 (los 34-47 van a
+   vb2/otros AWG).
+5. **Layout vb2 de Cell F2** (layout B, 276 slots): `[1.0, 0, 0, ?, ?, ?,
+   nan@+20, U@+24, V@+28, nrm@+32]` — NO es el "estático absoluto" de Krillin.
+6. **Estructura del mesh group** (AWG0 +0x640): mesh-ref blocks (0x50:
+   X=índice de descriptor, Y=hueso primario), ejes (80B: +0x34 arm_ptr, +0x38
+   hijo, +0x3C hermano, +0x40 padre), matriz de zonas (0x28E0: diagonal de
+   huesos + punteros a bboxes), bboxes (AABB por zona, 0x40 c/u), descriptores
+   (0x60, desde 0x2EA9).
+7. **El bin es AUTOCONTENIDO** (cada personaje con su propio formato A/B/C; el
+   guest autodetecta). El nº de AWGs/huesos varía por personaje.
+8. **Conversión PS2→bone-local**: `local = inv(world[bone])·model`. Verificado
+   (conv2 world = modelo PS2 punto a punto, nearest med 0.000).
+
+#### 3.4.3 LAS DOS VÍAS (decisión pendiente)
+
+- **Vía A — INYECCIÓN (FUNCIONA)**: mantener el ORDEN del pool de la plantilla
+  y reescribir +12/+16/+20 (y normales `[nz,-ny,nx]`) con la geometría PS2
+  convertida a bone-local. Parámetro crítico: **umbral binario** (0.8 bueno,
+  2.0 malo, blends/soft SIEMPRE malos). Limitación: no es la topología PS2
+  exacta (el IB/estructura siguen siendo de la plantilla).
+- **Vía B — PORT COMPLETO (BLOQUEADO)**: reordenar el pool a la topología PS2.
+  La geometría/conversión/A-B **YA están resueltos** (verificados); el bloqueo
+  es que el pool reordenado rompe los mesh-ref/zonas → hay que RECONSTRUIR toda
+  la estructura de dibujo (mesh-ref + zonas + bboxes + descriptores) coherente
+  con el nuevo pool.
+
+#### 3.4.4 CRONOLOGÍA DE INTENTOS (para no repetir)
+
+| Fecha | Intento | Método | Resultado | Lección |
+|---|---|---|---|---|
+| 14/08 | Janemba IW→B3 (v4-v10) | parse→skin→decimar→build | masa deforme | el parser PS2 no leía el IB real (FaceType) |
+| 14/08 | Krillin PS2→HD (v1-v7) | inyección en slots | silueta pero deforme | el HD es RE-TRABAJO (0% match), no conversión 1:1 |
+| 17/08 | Swap nativo B3→B3 | bin completo en slot | ✅ FUNCIONA | el guest acepta bins autocontenidos |
+| 17/08 | Inyección v5-v7 | +12/+16/+20 con layout real | reconocible, deforme parcial | el bone va en **+28** (u32) |
+| 18/08 | Bins autocontenidos | re-layout #AMO0→#AWO | rig PS2 resuelto (chunks) | el bin HD es autocontenido |
+| 19/08 | Formatos de vértice | awg0_export / awg_cara_export | formatos A/B/C distintos | el guest autodetecta cada bin |
+| 26/08 | Inyección NPM+normales+umbral | port_ps2_b3_inject.py | **cell_npm4 = MEJOR** | umbral binario 0.8; blends malos |
+| 26/08 | Port completo (conv2) | pool PS2 + IB + A/B | amorfo | descriptor A mal + pool reordenado |
+| 26/08 | Reverse test (pool invertido) | pool reordenado + A/B | **deforma** | **el orden del pool importa** |
+| 26/08 | bone0 test (bones→0) | bones sec34 a 0 | colapsa a pies | **el guest usa el bone del vértice** |
+
+#### 3.4.5 BLOQUEADORES Y ERRORES CONOCIDOS
+
+1. **mesh-ref/zonas atados al pool por índice** → para un pool reordenado hay
+   que reconstruirlos (RE pendiente: decodificar el enlace exacto hueso→pool).
+2. **vb2 layout B** de Cell F2: aún no emitido correctamente por el port.
+3. **Descriptor A**: usar `[min(B), max(B)+1)`, NUNCA asumir contigüidad de la
+   part (las parts comparten vértices dedup).
+4. **⚠️ Contaminación de tests**: `AfsFindModOverride` sirve el PRIMER mod
+   activo (orden alfabético). Un mod olvidado invalida los tests del mismo slot.
+   → **UN SOLO mod activo por test** (`Get-ChildItem mods | Where {-not .disabled}`).
+5. **Crecimiento del AWG0/sec34**: en exceso → crash 0x856AC389 (histórico §27).
+   Para el port usar conteos ≤ plantilla o resolver el crecimiento.
+6. Los soft/blends (npm6/npm7) y el umbral 2.0 SIEMPRE empeoran vs npm4.
+
+#### 3.4.6 PRÓXIMOS PASOS (orden de avance)
+
+1. **Re-validar `cell_port_Afix_test` en solitario** (port con A corregido, sin
+   la contaminación) — confirma si el port con A correcto renderiza mejor.
+2. **Decidir**: reconstruir la estructura completa (Vía B, sesión RE larga) vs
+   aceptar la inyección como port práctico (Vía A).
+3. Si Vía B: decodificar el enlace mesh-ref/zonas→pool (cómo referencia la
+   estructura los vértices por índice) y escribir el regenerador de estructura.
+4. Para un estado jugable: **reactivar `cell_npm4`** (mejor inyección).
+
+#### 3.4.7 REFERENCIAS
+
+- `docs/07_ports/ESTRUCTURA_DIBUJO_HD.md` — mesh-ref/descriptores/arms.
+- `docs/07_ports/SESION_INYECCION_2026-08-26.md` — la vía A (inyección).
+- `docs/07_ports/SESION_PORT_RE_2026-08-26.md` — RE del port + contaminación.
+- `docs/07_ports/HOJA_DE_RUTA_PORT_PS2_B3.md` — hoja de ruta.
+- AGENTS históricos: §8 (conversor), §11 (Janemba), §12 (autocontenido),
+  §13 (formatos), §15 (pipeline), §65 (inyección v1-v7).
 
 ## 4. HISTORIAL DE TRABAJO
 
@@ -3097,9 +3198,141 @@ convenga.
 **Sync**: `CMakeLists.txt`, `src/version.rc` (nuevo), `tools/make_release.ps1`,
 `AGENTS.md` → `github/`.
 
+### 14.20 🔴✅ FEEDBACK DE USUARIOS → RELEASE v1.0.10 (2026-08-28)
+
+**Feedback recibido (vídeo/comentarios)** y los fixes aplicados:
+
+1. **"Variante dbz3_legacy → 0xC000001D, no aparece logs"** (bootstrap):
+   - Diagnóstico: el AVX (ymm) en los DLLs legacy está SOLO en el dispatch
+     del CRT/context-switch, **protegido por `__isa_available`** (verificado:
+     rexruntime → 1 función `HostToGuestFunction`, rexgpu → `rex_gpu_create`,
+     ambos con `testb $0x20; je fallback`) → el crash es de una CPU **anterior
+     a SSE4.2** (pre-2009) ejecutando código `-march=x86-64-v2` sin guarda.
+   - Fix: mensaje del bootstrap corregido (ruta real `dbz3_<variante>\logs` +
+     explica la causa del 0xC000001D y la variante a probar).
+2. **Falso positivo de antivirus en v1.0.6 (UPX)**: el core se empaquetaba con
+   UPX -9 → los AV lo marcan como virus (patrón de malware). **Fix**: ya NO se
+   empaca por defecto (`make_release.ps1` documenta que NO usar `-UpxPath` en
+   releases; zip 40.7 MB sin UPX).
+3. **Crash 0xC000001D al elegir Stage en Duelo / botón Start en combate**:
+   - 🔴 **CAUSA RAÍZ (codegen US)**: `sub_820BB938` es un **dispatch de vtable**
+     (index `*(r3+82)<<2` → `lwzx; mtctr; bctr`) que el codegen clasificó como
+     **jump table de 1 caso** → `default: __builtin_trap()` → UD2 → 0xC000001D
+     al entrar en combate. MISMA familia que el EU `sub_820BB8C8` (§14.16, ya
+     arreglado) pero en el codegen US.
+   - Fix: `tools/fix_eu_bctr.py` GENERALIZADO (procesa `dbz3_recomp.*` US y
+     `dbz3_eu_recomp.*` EU) → aplicado al US (`dbz3_recomp.0.cpp` → 1 site) →
+     `REX_CALL_INDIRECT_FUNC(ctx.ctr.u32)`. Re-aplicar SIEMPRE tras re-codegen.
+     **Core dual recompilado** (33961472 B) + build dev.
+4. **Botón PLAY no responde al ratón (solo Enter), Windows y Steam Deck**:
+   - 🔴 **CAUSA RAÍZ**: `assets_ready` bloquea PLAY con `xex_blocked`, y un xex
+     `kUnknown` (dump modificado/compatible) o **EU en el core dual** hacían
+     `xex_expected=false` → PLAY deshabilitado → el ratón no clicaba, pero el
+     **Enter NO pasaba por `BeginDisabled`** → lanzaba igual.
+   - Fixes: (a) `XexIsExpected` acepta US Y EU en el core dual (`DBZ3_DUAL_REGION`)
+     → arregla "no me reconoce la version eu"; (b) `xex_blocked` solo bloquea un
+     xex de **variante conocida equivocada** (el desconocido avisa pero no
+     bloquea); (c) Enter respeta el mismo gate `assets_ready`.
+5. **Launcher no detecta la GPU dedicada en portátiles Optimus**: `GetPrimaryGpu`
+   elegía el primer adaptador no-software (integrada). Fix: elegir el de **más
+   VRAM dedicada** (la dGPU siempre gana).
+
+**Binarios v1.0.10**: core dual 33961472 B (VERSIONINFO 1.0.10.0), bootstrap
+50176 B (mensaje nuevo), release-stage actualizado, zip regenerado
+(`DBZ-Budokai-3-HD-Collection-v1.0.10.zip`, 40.7 MB, SIN UPX). DLLs canónicas
+intactas (rexruntime 10951168, rexgpu 6207488 con clamp V-Sync, FFX 5420544).
+Smoke test: launcher shown + first present OK sin FATAL. `make_release.ps1`
+default `$Version = "v1.0.10"`.
+
+**Sync**: `src/{bootstrap.cpp, version.rc, launcher/{settings.{h,cpp},
+launcher_state.cpp}}`, `tools/{fix_eu_bctr.py, make_release.ps1}`,
+`RELEASE_README.md`, `AGENTS.md` → `github/`. NO subido a GitHub.
+
+> ⚠️ **DLLs del out del SDK cambiaron**: `rexglue-sdk-0.10/out/win-amd64/
+> rexgpu-xenos.dll` ahora es 6210048 B (regenerado 08/27), distinto del canónico
+> 6207488 (§14.17). NO re-correr `make_release.ps1` completo (copiaría DLLs del
+> out) — el release-stage mantiene las canónicas; el zip se genera desde el stage.
+
+### 14.21 🔴✅ UN SOLO EJECUTABLE UNIVERSAL (BASELINE SSSE3) + LIMPIEZA DE GITHUB (2026-08-28)
+
+**Petición del usuario**: (a) solo puede haber UN `.exe` universal, todo muy
+simple y user-friendly; (b) dejar fuera de GitHub (borrar) los releases/tags que
+salieron mal.
+
+**🔴🔴 DECISIÓN DE ARQUITECTURA — se ELIMINA el bootstrap de ISA y las variantes
+avx2/legacy**: en vez de despachar por CPUID a `dbz3_avx2\`/`dbz3_legacy\`, se
+compila el SDK entero en **ISA baseline universal `-march=x86-64 -mssse3`**
+(SSSE3 = Core 2 de 2006 en adelante → funciona en CUALQUIER CPU x64; cubre
+incluso las pre-SSE4.2 que daban 0xC000001D en la variante legacy). Resultado:
+**un solo `dbz3.exe` + un solo juego de DLLs, sin carpetas ni elección de
+variante**. Se eliminan `src/bootstrap.cpp` y el target `dbz3_bootstrap`.
+
+**Build baseline del SDK** (`rexglue-sdk-0.10/out/build-win-vulkan-baseline` →
+`out/win-amd64-baseline`):
+- Flags: `-march=x86-64 -mssse3` (C y CXX). El SDK exige SSSE3
+  (`memory.cpp` usa `_mm_shuffle_epi8` always_inline) → NO se puede ir a
+  baseline puro. SSSE3 cubre todo lo real (2006+).
+- **Bug del build conocido §0**: `ffx_api_dll.rc` UTF-16 → copiar el `.rc`
+  ARREGLADO (2831 B, ASCII `// Micro...`) desde `out/build-win-vulkan/_deps/
+  fidelityfx-src/...` al build baseline ANTES de compilar.
+- **La FFX dx12 se compila a `bin/`** (no al out): copiar
+  `bin/amd_fidelityfx_dx12.dll` (5413888 B) al out. La vk = prebuilt heredada
+  (9332432). DLLs baseline resultantes: rexruntime 10856960, rexgpu 6164992,
+  FFX dx12 5413888.
+- **Verificado por disassembly** (llvm-objdump): el AVX/ymm en las DLLs
+  baseline está SOLO en 2 funciones con dispatch guardado por `__isa_available`
+  (rexruntime → `HostToGuestFunction` context-switch, rexgpu → `rex_gpu_create`)
+  → seguro en cualquier CPU. (Mismo hallazgo que §14.20.1 pero ahora el floor
+  es SSSE3, por debajo de SSE4.2.)
+- **Instalado en `rexglue/`** (`cmake --install --prefix rexglue`): los builds
+  futuros del juego usan DLLs baseline por defecto (evita el stale de §13.6).
+
+**Core**: `dbz3.exe` dual-region (US+EU) recompilado contra el SDK baseline
+(33961472 B, VERSIONINFO **1.1.0.0**). Smoke test OK: "dual-region core detected
+US/NA" + "launcher shown, waiting for Play" + "first present OK" (con assets
+reales junto al exe). El paquete SIN assets falla en ConstructRuntime antes del
+launcher (comportamiento preexistente, no es una regresión).
+
+**Empaquetado** (`tools/make_release.ps1` reescrito, carpeta única):
+```
+<stage>/
+  dbz3.exe                  <- UN solo exe (dual, baseline)
+  rexruntime.dll, rexgpu-xenos.dll, amd_fidelityfx_dx12.dll, amd_fidelityfx_vk.dll,
+  TracyClient.dll, SPIRV-Tools-shared.dll, MSVC CRT DLLs
+  mod center hd/            <- toolkit + tools/ (xbcompress/xbdecompress + MSVCR71/MSVCP71/xbdm)
+  mods/ (README), README_PRIMER_ARRANQUE.txt, RELEASE_README.md, MODDING_README.md, baserom.md
+```
+- El toolkit `tools/` (XDK) se copia de `github/tools/` + la carpeta
+  "Xbox 360 Compression - Decompression tool from the XBOX Development Kit" del
+  repo (MSVCR71.dll/MSVCP71.dll/xbdm.dll) — antes dependía de `mod center hd/
+  tools/` que NO existía (bug del §14.2 sin detectar).
+- SIN UPX (AV, §14.20.2). Zip **v1.1.0 = 21,9 MB** (antes 40,7 con bootstrap).
+- `version.rc` bump 1.1.0; `make_release.ps1` default `$Version = "v1.1.0"`.
+
+**Docs**: RELEASE_README + README_PRIMER_ARRANQUE reescritos para el layout de
+carpeta única (sin variantes ni "dos dbz3.exe"); Bugs conocidos sin el V-Sync
+(cerrado §14.17).
+
+**Limpieza de GitHub (decisión §14.21)**: se borran TODOS los releases y tags
+previos (v1.0.0-v1.0.9, v1.0.5-EX) — todos tenían bugs conocidos (crash Duelo/
+Start, PLAY, virus UPX, confusión de versiones) — y se publica SOLO la v1.1.0
+universal como Latest. Releases obsoletos fuera del alcance público.
+
+**⚠️ NOTA dev**: el build dual `out/build/win-amd64-dual` tiene las DLLs
+baseline copiadas a mano; cualquier `cmake --build` las sobrescribe con las de
+`rexglue/bin` (ahora baseline, así que está bien).
+
+**Sync**: `CMakeLists.txt`, `src/{main.cpp, version.rc, launcher/{settings.cpp,
+mod_pipeline.cpp}}` (bootstrap.cpp ELIMINADO), `tools/make_release.ps1`,
+`RELEASE_README.md`, `README_PRIMER_ARRANQUE.txt`, `AGENTS.md` → `github/`.
+**Release v1.1.0** empaquetada y lista para subir.
+
 ---
 
 ## 15. 🔴✅ PIPELINE DE PORT PS2→B3 HD (`port_ps2_b3_*`) — 2026-08-26
+
+> ⚠️ **Este §15 es el HISTÓRICO del pipeline. Para el ESTADO consolidado y el
+> PLAN, leer AGENTS §3.4 PRIMERO.**
 
 **Estudio completo del ecosistema**: `docs/07_ports/ESTUDIO_ECOSISTEMA_MODS.md`
 (inventario de ~60 herramientas de la comunidad — TODAS PS2 LE; **ninguna
@@ -3153,6 +3386,65 @@ port_ps2_b3_verify.py   <bin.amb> [out.obj]                # OBJ + bounds/NaN
   limita al de la plantilla (fusionar); (e) las coords PS2 grandes (Cell hasta
   ±13) son del modelo PS2 real (no del HD) — se renderizan con las matrices del
   esqueleto (mismo), no es necesariamente un bug.
+- **🔴 CRASH EN EL SELECT (2026-08-26, log dbz3_008) — PENDIENTE DE ATRIBUCIÓN**:
+  al intentar entrar en el slot de Krillin, el guest crasheó leyendo la dirección
+  guest `0x856AC389` (puntero fuera de rango, host RIP en una DLL). **ANÁLISIS**:
+  (1) en los 8 logs del build, `data_cmn.afs` NO se leyó NUNCA (0 HITs de la
+  327) → **nuestro bin de port no se sirvió en ninguna sesión** → el crash es
+  del flujo select/attract (data_spn + adx_jpn), probablemente PREEXISTENTE;
+  (2) los ejes (matrices de bind + sellos) son **byte-idénticos PS2=HD** (41/41
+  en Babidi) → la conversión ES un re-layout real, no un misterio de endian;
+  (3) el modelo de descriptores A/B confirmado 10/10 en Cell F2 HD (los índices
+  del IB de cada rango B caen en el rango A de vértices). **ESTADO**: `cell_ps2_port`
+  desactivado (solo `tex_91` activo) para el test de atribución: si el select
+  crashea SIN el mod → bug preexistente del select a arreglar (como §14.16); si
+  no crashea → reactivar el mod para aislar nuestro bin.
+- **🔴 ATRIBUCIÓN COMPLETA (2026-08-26)**: con `cell_ps2_port` OFF **NO crashea**
+  (batalla normal, data_cmn=211 lecturas en dbz3_009); con el mod activo **CRASHEA**
+  (dbz3_008/010: data_cmn=0, crash leyendo heap guest 0x85xxxxxx en el select).
+  `sw_vegeta424` (bin HD nativo, mismo override 126976 > to_read) **FUNCIONA
+  PERFECTO** → el sistema de mods/mid-insert virtual está OK; el crash es del
+  CONTENIDO de nuestro bin de port.
+- **🔴🔴 CAUSA RAÍZ DEL CRASH (2026-08-26) — BONES 36-47 EN EL SEC34**: diff
+  estructural + análisis de bones del sec34:
+  - Plantilla Cell F2 HD (funciona): sec34 usa bones **0-33** (0 en 36-47).
+    Formato A: el sec34 skinnea SOLO bones 0-35; los bones 36+ van al **vb2**
+    (segundo stream, NO estático: layout B `[1.0,0,0, 0,0,FFFFFFFF@+20, peso,
+    float2, nx,ny,nz]` — el descriptor 26 cruza el límite sec34→vb2, ver abajo).
+  - Nuestro port (crashea): **669 vértices con bones 36-47 en el sec34** (40=276,
+    47=165, 45/46=56, 37/39=35...) → el lookup de matriz de hueso OOB → read de
+    heap 0x8598xxxx. La clasificación del geometry por `vtype` (BODY_VTYPES→sec)
+    es el bug: debe ser POR BONE.
+  - El IB del sec34 HD es **triangle STRIP con degenerados** (pares repetidos
+    como restarts; NO 0xFFFF, NO lista). Nuestro port emite LIST → formato
+    incompatible. El rango B del descriptor = conteo de ÍNDICES del strip (no
+    3×triángulos); `draw` lo calcula mal (3×tris). Los A/B van `<<8` con flag
+    bajo 1 en +0x5C (nuestro pack ya lo hace bien).
+  - El vb2 de Cell F2 NO es el "estático absoluto" de Krillin: es un segundo
+    stream con layout propio, y las parts pueden cruzar sec34→vb2 (desc26
+    A=(2655,25) usa 6 verts sec34 + 20 vb2). RE pendiente de este layout para
+    emitirlo correctamente.
+  - **TEST EN CURSO**: mod `cell_boneclamp_test` (mismo bin portado + 669 bones
+    clampeados a 35, LZX 123502→pad 126976) activo SOLO. Si no crashea → bones
+    confirmados como causa; si crashea → estructura (mid-insert/descriptores).
+- **🔴🔴 TEST 1 (bones) FALLIDO (2026-08-26)**: `cell_boneclamp_test` (669 bones
+  clampeados a ≤35 en el sec34) **CRASHEA IDÉNTICO** (mismo 0x856AC389, mismos
+  registros, mismo thread) → **los bones 36-47 NO eran la causa** (o el bin nunca
+  se parsea). Dato clave del log dbz3_012: **`data_cmn=0` otra vez** — pero el
+  path virtual (`AfsTranslateOffset`) NO loguea lecturas por entrada, así que
+  data_cmn SÍ se lee sin logs → el crash SÍ es del contenido. El bin nunca se
+  sirvió en los logs porque la ruta virtual no loguea.
+- **🔴🔴 HIPÓTESIS 2 (2026-08-26) — EL CRECIMIENTO DEL SEC34 (mid-insert interno)**:
+  el port original creció sec34 2661→4938 (+100188 B) con mid-insert interno
+  dentro del bin. Historial §27: "el AWG0 NO puede crecer en exceso (crash
+  combate); rellenar sec34/IB a los conteos EXACTOS de la plantilla es la clave"
+  (v6 delta=0 FUNCIONÓ, v4 con crecimiento crasheó). **Nuevo script
+  `port_ps2_b3_decimate.py`**: voxel-merge por part + strip consecutivo; descarta
+  las parts vb2 (cara, test de hipótesis). **TEST EN CURSO**: mod `cell_delta0_test`
+  = port decimado a conteos exactos (sec1880≤2661, vb2 210≤276, ib6302; bin
+  **715872 B = tamaño exacto de la plantilla, delta=0**) activo SOLO. Si no
+  crashea → crecimiento confirmado como causa → el pipeline DEBE decimar siempre
+  (delta=0). Si crashea → instrumentar con minidump (función guest exacta).
 - **Caso Babidi descartado como template**: su bin HD (formato C) tiene el
   buffer de vértices en una posición rara (sec_abs detectado con basura al
   inicio) y el layout C difiere del A. El pipeline emite formato A (validado en
@@ -3160,3 +3452,144 @@ port_ps2_b3_verify.py   <bin.amb> [out.obj]                # OBJ + bounds/NaN
 
 **Sync**: `mod center hd/ports/` (5 scripts) + `docs/07_ports/` (3 docs) →
 `github/`. NO subido a GitHub.
+
+### 15.3 ✅ VÍA DE LA INYECCIÓN (2026-08-26) — TEMPLATE HD + POSICIONES PS2 CONVERTIDAS = RECONOCIBLE
+
+**Ver doc completo**: `docs/07_ports/SESION_INYECCION_2026-08-26.md`.
+
+**Hallazgo que cambió el diagnóstico**: el port completo (pool/IB/descriptores
+reconstruidos) SIEMPRE sale amorfo, y la instrumentación de draws (`DBZ3_DRAW`
+en rexgpu-xenos.dll, env `DBZ3_LOG_DRAWS=1`, dedup por dma+idx) **PROBÓ que el
+guest dibuja nuestros strips correctamente** (23 strips en los `B_start×2` exactos
+con `B_count+2`). El bug NO es el IB/descriptores → es la **estructura de dibujo
+de la plantilla** (arms/mesh-ref/pool intercalado) que se rompe al reordenar el
+pool. Test negativos que NO cambiaron nada: clampeo de bones 35/33, +0x10=9 body,
+0xFFFF→0 en IB, flip winding.
+
+**La vía que FUNCIONA = INYECCIÓN**: plantilla HD COMPLETA intacta (pool, IB,
+descriptores, arms, ejes, vb2, otros AWGs) y SOLO reescribir +12/+16/+20 de los
+slots sec34 con la geometría PS2 convertida. Validado en juego: Cell F2 PS2 se ve
+reconocible (manos, torso, parte de cabeza, una pierna, silueta).
+
+**🔴🔴 PARENT DEL EJE = OFFSET, NO ÍNDICE (corrige TODO lo anterior)**:
+`eje+0x40` = puntero al eje padre como OFFSET relativo al AWG0.
+`parent_idx = (AWG0 + poff - axes_base) // 80`. Verificado: bone 1 parent=3360
+(0xD20) → AWG0+0xD20 = 0x19E0 = eje de bone 0. Con el parent corregido el world
+del template traza un cuerpo coherente (pies y≈-12.6, cabeza y≈8.7) que coincide
+con el model-space del PS2 (pies -11.5, cabeza 9.6) → ambos están en el MISMO
+world. **Todas las matrices world previas (y la conversión `cell_conv`) eran
+basura.**
+
+**El sec34 HD almacena bone-LOCAL** (mag 1.7); el PS2 entrega model-space (cuerpo
+coherente). La conversión correcta: `local = inv(world[bone]) · model`. Con ella
+la inyección empareja en el mismo espacio → funciona. La inyección v1 fallaba por
+emparejar model-space contra bone-local.
+
+**Limitación actual (look "decimado")**: el PS2 tiene 1880 vértices únicos
+(4938 expandidos del strip, dedup voxel 0.05) vs 2661 slots HD → el llenado
+completo reusa ~781 vértices → triángulos colapsados. Match distances (slot world
+↔ vert PS2): med 0.62, p90 2.02, max 8.91. Umbral 2.0 → 276 slots (10%) conservan
+la posición HD original.
+
+**Herramienta nueva**: `mod center hd/ports/port_ps2_b3_inject.py` (world-matching
++ conversión por slot + umbral). Uso: `python port_ps2_b3_inject.py <plantilla>
+<geometry.json> <umbral> <salida> [--npm]`. Mod actual: `cell_inject4_test` (2385
+inyectados + 276 HD).
+
+**✅ PROGRESO EN JUEGO (2026-08-26 tarde) — ver `docs/07_ports/
+SESION_INYECCION_2026-08-26.md` §5**:
+1. **NPM** (proyección a la superficie PS2, no al vértice): elimina el colapso
+   (568→1394 pos. únicas world ≈ el template 1501) pero visualmente "prácticamente
+   igual" → el colapso NO era el problema visible.
+2. **🔴 NORMALES**: la inyección solo tocaba posiciones; los normales HD quedaban
+   → specular roto → "polígonos deformes". Al escribir los normales de la
+   superficie PS2 (`[nz,-ny,nx]` en +32/+36/+40): el brillo B3HD funciona. Normal
+   de vértice interpolado (suavizado) > geométrico (facetado). Verificado 100%
+   unitarios.
+3. **🔴🔴 UMBRAL ESTRICTO = LA CLAVE**: el mismatch PS2/HD NO es uniforme. Match
+   distances por hueso: core (BODY/WAIST/CHEST/piernas) 0.33-0.8 ✅ alinea; las
+   extremidades (LHAND/RARM/RHAND, OBI, LLEGROT, bones 13/14) 1.5-8.9 ❌ mismach.
+   El umbral 2.0 inyectaba las extremidades con posiciones mal emparejadas →
+   estiradas → amorfo (boca/cola/manos/brazos). **Umbral 0.8** (1821+840) solo
+   toca el cuerpo bien alineado, extremidades HD correctas → **MEJORA
+   SIGNIFICATIVA** (torso, cabeza sup., cintura inf., piernas, pies, brazos,
+   manos; boca ligera). Mod actual: `cell_npm4_test`.
+4. **Pendiente**: **BINARIO SÍ, BLEND NO** (los soft blends npm6/npm7 fueron
+   peores que el binario npm4: los pesos parciales producen posiciones a medias →
+   amorfo). Afinar el VALOR del umbral binario, cabeza/boca (mismatch medio
+   1.0-1.25), y el port completo (topología PS2 + arms) como objetivo final.
+
+**Cómo conservar la calidad (próximo paso)**: nearest-point-on-surface (proyectar
+cada slot HD al punto más cercano de la SUPERFICIE PS2 sobre los triángulos, no al
+vértice) → 2661 posiciones distintas sin colapso. Alternativas: subdivisión del
+PS2, reconstruir los arms (port real), o afinar umbral/matching (incremental).
+
+**Sync**: `mod center hd/ports/port_ps2_b3_inject.py` (nuevo) +
+`docs/07_ports/SESION_INYECCION_2026-08-26.md` (nuevo) → `github/`. NO subido a
+GitHub.
+
+### 15.4 🔴🔴 RE DEL PORT COMPLETO (2026-08-26) — ver `docs/07_ports/SESION_PORT_RE_2026-08-26.md`
+
+**Decisión del usuario: comprometerse al port completo** (topología PS2). La
+inyección queda como resultado intermedio. Hallazgos:
+
+1. **Estructura de dibujo del AWG0 MAPEADA** (Cell F2): mesh-ref blocks (0x50,
+   X=índice de descriptor, Y=hueso primario), ejes (80B, +0x34 arm_ptr, +0x38
+   hijo, +0x3C hermano, +0x40 padre), matriz de zonas (diagonal de huesos +
+   punteros a bboxes), bboxes (AABB por zona), descriptores (0x60).
+2. **Descriptor A/B CONFIRMADO**: `A_start<<8 | A_count<<8 | B_start<<8 |
+   B_count<<8 | 0x01`. Verificado: índices del IB en B caen SIEMPRE en A.
+3. **🔴🔴 EL ORDEN DEL POOL NO IMPORTA** (test `cell_reverse_test`): pool
+   sec34 INVERTIDO + IB remapeado + A/B recomputados + mesh-ref/zonas/bboxes
+   intactos → **RENDERIZA CORRECTO en juego**. El guest lee el pool por
+   A/B+IB, NO por los mesh-ref/zonas/bboxes por índice.
+4. **🔴 BUG DEL PORT: descriptor A**. `port_ps2_b3_geometry.py` calculaba
+   `A=[primer_vértice, nº_vértices]` asumiendo contigüidad, pero las parts
+   comparten vértices → el strip referencia índices mucho más amplios → 22/23
+   descriptores A mal. Fix: `A=[min(B), max(B)+1)`. `cell_conv2_fixA` → 22/22
+   OK. **PERO en juego NO cambia nada** → A no era el bug visual.
+5. **La geometría del port ES correcta punto a punto**: conv2 transformado por
+   las world matrices = modelo PS2 exacto (nearest med 0.000, max 1.518).
+6. **DIFERENCIAS conv2 vs template** (candidatas al amorfo):
+   (a) IB nuevo (topología PS2, 4298 padding 0xFFFF);
+   (b) **293 slots con bones 34-47 en el sec34** (el template usa SOLO 0-33);
+   (c) **vb2 con layout DISTINTO** (template: `[1.0,0,0,?,?,?,nan@+20,U,V,normal]`
+   layout B de Cell F2; port: `[x,y,z,0,0,0,0,FFFF,nx,ny,nz]`);
+   (d) decimación (1880 verts → triángulos estirados "poligonado mal").
+7. **DISCRIMINADOR EN CURSO** `cell_bone0_test`: plantilla con todos los bones
+   sec34=0 (posiciones intactas). Si se deforma → el guest USA el bone del
+   vértice → los bones 34-47 son la causa (mapear/clampear). Si igual → vb2/
+   topología.
+8. **🔴🔴🔴 CONTAMINACIÓN DE TESTS DESCUBIERTA (2026-08-26)**: `cell_npm8_test`
+   (inyección, de la sesión anterior) **quedó activo** durante toda la sesión RE.
+   El runtime (`AfsFindModOverride`) sirve el **primer mod activo en orden
+   alfabético** para cada entrada → npm8 (ordena antes) se servía en vez de los
+   tests. Resultados INVALIDOS: cell_reverse_test ("prácticamente igual") y
+   cell_port_Afix_test ("exactamente igual") — el usuario vio la inyección, no
+   los bins de prueba. VALIDO: cell_bone0_test (ordena antes que npm8) →
+   "colapsó a los pies" = el guest usa el bone del vértice. **LECCIÓN**: verificar
+   que SOLO el mod de prueba esté activo antes de cada test
+   (`Get-ChildItem mods | Where {-not (Test-Path "$_.FullName\.disabled")}`).
+9. **🔴🔴🔴 RESULTADO REAL DEL REVERSE — EL ORDEN DEL POOL SÍ IMPORTA
+   (2026-08-26)**: re-testado en solitario (npm8 desactivado): pool sec34
+   INVERTIDO → **DEFORMIDADES**. La conclusión §15.4.3 ("el orden del pool NO
+   importa") era FALSA (test contaminado). **El guest está atado al orden del
+   pool por los mesh-ref/zonas** (referencian el pool por índice original). El
+   port con pool reordenado requiere reconstruir TODA la estructura de dibujo
+   (mesh-ref + zonas + bboxes + descriptores). La inyección funciona porque
+   mantiene el orden del pool de la plantilla. Reconciliación: el bone0 (válido)
+   probó que el transform usa el bone del vértice (+28), y el reverse probó que
+   además el pool está atado a la estructura — ambos son ciertos.
+10. **ESTADO CIERRE DE SESIÓN (2026-08-26, decisión del usuario: no crear
+    versiones nuevas, traspaso a otra sesión)**: mod activo = cell_reverse_test
+    (diagnóstico, DEFORME — no jugable). cell_npm8_test desactivado. El mejor
+    resultado jugable sigue siendo cell_npm4 (inyección binaria 0.8). Pendiente:
+    re-validar cell_port_Afix_test en solitario; decidir port completo
+    (reconstruir estructura) vs aceptar la inyección como port práctico. Ver
+    `docs/07_ports/SESION_PORT_RE_2026-08-26.md`.
+
+**Herramienta nueva**: `mod center hd/ports/pool_reorder_test.py` (test de
+reordenamiento de pool). Mods: cell_reverse_test (OK), cell_port_Afix_test
+(sin cambio), cell_bone0_test (ACTIVO).
+
+> ⚠️ Para el estado consolidado y el plan de avance, usar **AGENTS §3.4**.

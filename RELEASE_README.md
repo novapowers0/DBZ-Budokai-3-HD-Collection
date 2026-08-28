@@ -9,24 +9,22 @@ de tu copia legal.
 
 ## Contenido
 
-- `dbz3.exe` — **bootstrap de ISA**: detecta tu CPU y lanza la variante correcta
-- `dbz3_avx2\` — variante optimizada (CPU con AVX2: Intel 4ª gen+, AMD Ryzen+)
-  - `dbz3.exe` — **núcleo DUAL (US/NA + EU/PAL)**: recompilador + launcher + sistema de mods
-  - `rexruntime.dll`, `rexgpu-xenos.dll`, `amd_fidelityfx_dx12.dll`, etc.
-- `dbz3_legacy\` — variante compatible (cualquier CPU x64, sin AVX2)
-  - `dbz3.exe` (idéntico) + runtime compilado sin AVX2
+- `dbz3.exe` — **el único ejecutable** (núcleo DUAL US/NA + EU/PAL + launcher +
+  sistema de mods). Contiene ambas recompilaciones y elige la correcta según el
+  `default.xex` que pongas.
+- `rexruntime.dll`, `rexgpu-xenos.dll`, `amd_fidelityfx_dx12.dll` — runtime
+  compilado en ISA **baseline universal** (SSSE3): funciona en CUALQUIER CPU
+  x64, desde Core 2 (2006) hasta las más modernas. No hay que elegir variante.
 - `TracyClient.dll` — profiling (requerido por el runtime)
-- `amd_fidelityfx_dx12.dll` / `amd_fidelityfx_vk.dll` — upscaling FSR (D3D12/Vulkan)
+- `amd_fidelityfx_vk.dll` — upscaling FSR para el backend Vulkan
 - `SPIRV-Tools-shared.dll` — utilidades SPIR-V (backend Vulkan)
+- `mod center hd/` — toolkit de modding (catálogo + scripts + herramientas XDK)
 - `RELEASE_README.md` — este archivo
 
-> **No elijas variante a mano**: `dbz3.exe` comprueba una sola vez con CPUID si
-> tu CPU soporta AVX2 (x86-64-v3) y arranca `dbz3_avx2\` o `dbz3_legacy\`
-> automáticamente. El núcleo es **dual**: contiene las recompilaciones US/NA y
-> EU/PAL, y al arrancar identifica por su MD5 el `default.xex` que has puesto
-> (US/NA o EU/PAL) para usar el código correspondiente. Tanto el ejecutable US
-> como el EU funcionan: cada uno corre su propia recompilación completa del
-> juego.
+> **Un solo archivo**: ejecutas `dbz3.exe` y listo. El núcleo es **dual**:
+> contiene las recompilaciones US/NA y EU/PAL, y al arrancar identifica por su
+> MD5 el `default.xex` que has puesto para usar el código correspondiente. Tanto
+> el ejecutable US como el EU funcionan: cada uno corre su recompilación.
 
 ## Cómo instalar y jugar (paso a paso)
 
@@ -34,7 +32,7 @@ El paquete **NO incluye los archivos del juego** (copyright). Tienes que
 aportarlos de tu **copia legal**. Haz esto:
 
 1. **Descomprime** el ZIP en una carpeta, por ejemplo `C:\Juegos\DBZ3\`.
-   Quedará `dbz3.exe` y las carpetas `dbz3_avx2\` y `dbz3_legacy\`.
+   Quedará `dbz3.exe` y los demás archivos del paquete.
 
 2. **Aporta los archivos del juego** en una de estas dos disposiciones (la que
    prefieras; el launcher las detecta ambas automáticamente):
@@ -44,8 +42,6 @@ aportarlos de tu **copia legal**. Haz esto:
    ```
    C:\Juegos\DBZ3\
    ├── dbz3.exe            ← ya viene aquí
-   ├── dbz3_avx2\          ← ya viene aquí
-   ├── dbz3_legacy\        ← ya viene aquí
    ├── default.xex         ← TÚ lo pones aquí
    └── us/                 ← TÚ la creas (y/o eu/)
    ```
@@ -55,8 +51,6 @@ aportarlos de tu **copia legal**. Haz esto:
    ```
    C:\Juegos\DBZ3\
    ├── dbz3.exe            ← ya viene aquí
-   ├── dbz3_avx2\          ← ya viene aquí
-   ├── dbz3_legacy\        ← ya viene aquí
    └── assets/             ← TÚ la creas
        ├── default.xex     ← TÚ lo pones aquí
        └── us/             ← TÚ la creas (y/o eu/)
@@ -92,6 +86,20 @@ aportarlos de tu **copia legal**. Haz esto:
 > para los tamaños y checksums SHA-256 de cada archivo.
 
 ## Novedades de esta release
+
+### v1.1.0 — Un solo ejecutable universal (2026-08-28)
+
+- **Un único `dbz3.exe` para todo el mundo**: se eliminó el arrancador de
+  variantes y las carpetas `dbz3_avx2\` / `dbz3_legacy\`. El runtime se
+  compila ahora en ISA **baseline universal** (SSSE3) → el mismo paquete
+  funciona en CUALQUIER CPU x64 (Core 2 de 2006 en adelante), sin elegir nada.
+- **Adiós a los 0xC000001D de CPUs antiguas**: antes había que lanzar la
+  variante "compatible"; ahora no hay variantes. Un solo archivo, una sola
+  carpeta, un solo doble clic.
+- **Adiós al falso positivo de antivirus**: ya NO se comprime el ejecutable con
+  UPX (patrón típico de malware). Paquete más grande, cero sustos.
+- Se mantienen todos los fixes de la v1.0.10 (Duelo/Start, botón PLAY con el
+  ratón, EU/PAL, GPU dedicada en portátiles).
 
 ### v1.0.9 — Blindaje del pacing del guest (V-Sync) + centro de mods
 
@@ -233,13 +241,36 @@ copia de seguridad de tus AFS.
 
 - **Vulkan experimental**: el backend Vulkan funciona pero el render 3D es
   ~6.5x más lento que D3D12. Usa **D3D12** (por defecto).
-- **Port de personajes PS2/IW→B3**: investigado pero descartado (requiere
-  reconstrucción completa del formato; ver `docs/`).
-- **V-Sync en investigación (1.0.6 EX)**: algún usuario reportó que si se
-  desactiva el V-Sync el juego corre acelerado. En esta versión el juego fuerza
-  la sincronización correcta (60 FPS lógicos); la tarea abierta es revisar qué
-  ajuste/opción permite desactivarlo para blindarlo del todo en la próxima
-  release (ver `docs/`).
+- **Port de personajes PS2/IW→B3**: la inyección (geometría PS2 en la plantilla
+  HD) funciona y da siluetas reconocibles; el port con topología PS2 exacta
+  sigue en investigación (requiere reconstruir la estructura de dibujo; ver
+  `docs/`).
+
+## Historial de versiones
+
+- **v1.1.0** (2026-08-28): **un solo ejecutable universal** — runtime baseline
+  (SSSE3) para cualquier CPU x64, sin variantes ni carpetas, sin UPX.
+- **v1.0.10** (2026-08-28):
+  - **Crash 0xC000001D en Duelo/Start arreglado** (codegen US): el dispatch de
+    vtable `sub_820BB938` estaba mal clasificado como jump table de 1 caso →
+    UD2 al entrar en combate. Ahora es una llamada indirecta real.
+  - **Botón PLAY con el ratón arreglado**: un `default.xex` desconocido o de la
+    otra región deshabilitaba el botón (el Enter lo sorteaba). Ahora solo se
+    bloquea un xex de variante conocida y equivocada; el desconocido avisa pero
+    no bloquea, y Enter respeta el mismo gate.
+  - **Detección de GPU en portátiles Optimus**: se elige el adaptador con más
+    VRAM dedicada (antes el primero no-software = integrada).
+  - **Antivirus**: el paquete ya NO se comprime con UPX (los empacadores UPX
+    dan falsos positivos de virus). Descarga más grande, sin sustos.
+  - **Mensaje de error del bootstrap** más claro (ruta del log real
+    `dbz3_legacy\logs` + causa del 0xC000001D en CPUs antiguas).
+- **v1.0.9** (2026-08-26): centro de mods (instalar .zip + perfiles),
+  VERSIONINFO, fix V-Sync blindado.
+- **v1.0.8** (2026-08-26): i18n EN/ES/IT/DE/FR, UI compacta sin scrollbars.
+- **v1.0.7** (2026-08-26): core dual US+EU, fix de la demo battle EU (crash
+  0xC000001D).
+- **v1.0.6** (2026-08-26): fix del cierre en la intro (0xC0000409 /
+  0x82292A58), diagnóstico reforzado.
 
 ## Legal
 
