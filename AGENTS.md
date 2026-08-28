@@ -3435,6 +3435,33 @@ launcher_state.cpp, mod_pipeline.cpp}}`, `tools/make_release.ps1`, `AGENTS.md` �
 `github/`. Pendiente: commit + push; release 1.1.1 cuando se complete la Fase B
 pendiente y se valide en juego.
 
+### 14.23.1 ✅ RELEASE v1.1.1 (2026-08-28) + ANÁLISIS DEL "ALGO LENTO"
+
+**Reporte del usuario**: probó `win-amd64-release\dbz3.exe` en combate y menús
+(región EU) — todo funciona, pero notó el juego "algo lento". **Análisis**:
+- El log de la sesión (dbz3_041, 78s) está **limpio** (0 errores/FATAL, cierre
+  normal). GPU = RTX 4070 SUPER, escala 2x + FSR, región EU montada OK.
+- **Benchmark clang -mssse3 vs -march=x86-64-v3** en kernels host calientes
+  (swizzle ARGB, FMA blend, popcnt, memcpy): la diferencia es solo **~5-11%**
+  (memcpy igual, lo despacha el CRT por __isa_available). El runtime baseline
+  universal NO explica una lentitud dramática; es el coste aceptado del "un
+  solo exe".
+- Se dejó **vanilla** el build (desactivado `cell_reverse_test`, el único mod de
+  diagnóstico activo que deformaba a Krillin).
+- **Conclusión**: sin bug; el coste ISA baseline está documentado en
+  RELEASE_README ("Bugs conocidos" + "Contenido") con la alternativa
+  `v1.1.0-clasico` (runtime AVX2) si se nota en un equipo concreto.
+
+**Fase B completada en 1.1.1**: `tools/verify_release.ps1` (hashes DLL vs SDK
+baseline, VERSIONINFO, cvar vsync en rexgpu, mods/ vacía, zip sin assets del
+juego) + `analyze_bin_hd.py` marcado DESACTUALIZADO (§13.2). HOJA_DE_RUTA_
+COMUNIDAD (mojibake) sigue pendiente (cosmético).
+
+**Release v1.1.1 PUBLICADA** (Latest): zip 21898908 B, core dual 1.1.1.0,
+DLLs baseline verificadas idénticas al SDK. `make_release.ps1` leyó la versión
+de `version.rc` (fuente única). **v1.1.0-clasico** (fallback avx2) intacto.
+Commit `3e3c74f` → github/.
+
 ---
 
 ## 15. 🔴✅ PIPELINE DE PORT PS2→B3 HD (`port_ps2_b3_*`) — 2026-08-26
