@@ -3371,6 +3371,70 @@ v1.1.0-clasico (fallback, runtime clásico). Tags = v1.0.0..v1.0.9, v1.0.5-EX,
 v1.1.0 (archivo de código). Nada se perdió del código; solo los zips binarios
 viejos.
 
+### 14.23 🔴✅ FASE 1.1.1 — DEPURADO + MEJORA INTERNA + BASES DE LINUX (2026-08-28)
+
+**Objetivo**: cerrar los flecos del feedback, ordenar el proceso interno y
+sentar las bases de un port a Linux. Diseño completo en
+`docs/PLAN_1.1.1.md`; estrategia de port en `docs/PLAN_LINUX.md`.
+
+**Fase A — Depurado**:
+1. **🔴 FIX: crash 0xC0000005 sin assets** (`src/main.cpp`): con la carpeta de
+   datos vacía, `Runtime::Setup` fallaba (sin xex) y el teardown moría con
+   0xC0000005. **Fix**: pre-flight en `OnPreSetup` — si no hay `default.xex` en
+   `EffectiveGameRoot()`, MessageBox claro (cómo colocar los assets) + salida
+   limpia `_Exit(1)`. Validado: exit 1 sin crash; camino feliz llega al launcher
+   a ~880 ms.
+2. **Marcadores de timing de arranque** (`src/main.cpp`): `PhaseLog()` registra
+   ms desde el inicio en cada override (OnPreSetup/OnPostSetup/OnCreateDialogs/
+   OnPreLaunchModule/OnPostLaunchModule) → los reportes de "pantalla negra lenta"
+   (§14.10) se diagnostican desde el log (gap hasta `first present OK`).
+3. **Pendiente (documentado)**: `std::terminate` intermitente de `LaunchModule`
+   (mitigado §14.14, sin reproducir), core EU en combate real (§14.13), idioma
+   JP del launcher.
+
+**Fase B — Mejora interna**:
+1. **`tools/sync_github.ps1` (NUEVO)**: automatiza la sincronización §9.1 hacia
+   `github/` (src/docs/awo_tools/mod center hd/tools + archivos raíz), respeta
+   el .gitignore (conserva `tools/xbcompress.exe`/`xbdecompress.exe` canónicos
+   que viven solo en github/, no toca `mods/`), con `-DryRun`. Recuerda que
+   `patches/` es manual.
+2. **Versión con fuente única**: `make_release.ps1` lee `VERSION_MAJOR/MINOR/
+   PATCH` de `src/version.rc` por defecto (override `-Version` para sufijos tipo
+   `-clasico`).
+3. **Pendiente**: `tools/verify_release.ps1` (hashes canónicos + VERSIONINFO +
+   clamp V-Sync + zip sin assets), limpiar `analyze_bin_hd.py` desactualizado
+   (§13.2), reescribir HOJA_DE_RUTA_COMUNIDAD (mojibake §14.19).
+
+**Fase C — Bases de Linux** (detalle en `docs/PLAN_LINUX.md`):
+- **Auditoría**: el SDK ya es portable (`REX_PLATFORM_*`, pares `*_win/*_posix`,
+  Vulkan ON por defecto en Linux, SDL, filesystem abstraído). El cuello de
+  botella era `src/`.
+- **HECHO (guards de plataforma en `src/`)**:
+  - `settings.cpp`: **MD5 portable (RFC 1321)** escrito para `CheckDefaultXex`
+    → elimina CryptoAPI (compila en Linux); detección GPU DXGI protegida con
+    fallback (tier medium); defaults por plataforma `dbz3_gpu_backend`
+    (d3d12/vulkan) y `dbz3_input_backend` (xinput/sdl).
+  - `launcher_state.cpp`: diálogos COM (PickFolder/PickFile) + UTF-16 protegidos
+    con fallback "cancelado".
+  - `mod_pipeline.cpp`: `CreateProcessW` protegido con fallback de error claro.
+  - `main.cpp`: `OutputDebugStringA` → no-op fuera de Windows; pre-flight
+    portable (MessageBox/stderr).
+- **Pendiente para build Linux real**: preset CMake linux, diálogos portables
+  (zenity/kdialog/SDL), spawn portable (posix_spawn), zips portable (libzip),
+  **validar Vulkan fluido** (hoy 6.5x más lento que D3D12 — es el reto), toolkit
+  LZX en Linux (mspack/Wine).
+
+**Verificado**: build dual + release compilan (sin warnings nuevos); smoke test
+del pre-flight (sin assets → exit 1 + log claro, sin crash) y del camino feliz
+(launcher shown + first present OK). `sync_github.ps1` sincroniza y muestra el
+estado git de github/.
+
+**Sync**: `tools/sync_github.ps1` (raíz + github/), `docs/{PLAN_1.1.1.md,
+PLAN_LINUX.md}` (nuevos), `src/{main.cpp, launcher/{settings.cpp,
+launcher_state.cpp, mod_pipeline.cpp}}`, `tools/make_release.ps1`, `AGENTS.md` →
+`github/`. Pendiente: commit + push; release 1.1.1 cuando se complete la Fase B
+pendiente y se valide en juego.
+
 ---
 
 ## 15. 🔴✅ PIPELINE DE PORT PS2→B3 HD (`port_ps2_b3_*`) — 2026-08-26

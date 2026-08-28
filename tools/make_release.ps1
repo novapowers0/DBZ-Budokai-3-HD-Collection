@@ -7,6 +7,9 @@
 # Usage:
 #   powershell -ExecutionPolicy Bypass -File tools\make_release.ps1 [-Version v1.1.0] [-OutDir <path>]
 #
+# The version defaults to the one in src/version.rc (single source of truth);
+# pass -Version to override (e.g. a "-clasico" suffix).
+#
 # Layout produced:
 #   <stage>/
 #     dbz3.exe                    <- dual-region universal core (the ONLY exe)
@@ -23,13 +26,27 @@
 # -UpxPath is kept only for local testing.
 
 param(
-[string]$Version = "v1.1.0",
+[string]$Version = "",
 [string]$OutDir = "",
 [string]$UpxPath = ""
 )
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
+
+# Single source of truth for the version: src/version.rc (VERSION_MAJOR/MINOR/
+# PATCH). Bump it there and the release zip/name follows.
+if ($Version -eq "") {
+    $rc = Get-Content -LiteralPath (Join-Path $root "src\version.rc")
+    $maj = ($rc | Select-String 'VERSION_MAJOR\s+(\d+)' | ForEach-Object { $_.Matches[0].Groups[1].Value } | Select-Object -First 1)
+    $min = ($rc | Select-String 'VERSION_MINOR\s+(\d+)' | ForEach-Object { $_.Matches[0].Groups[1].Value } | Select-Object -First 1)
+    $pat = ($rc | Select-String 'VERSION_PATCH\s+(\d+)' | ForEach-Object { $_.Matches[0].Groups[1].Value } | Select-Object -First 1)
+    if (-not $maj -or -not $min -or -not $pat) {
+        throw "No se pudo leer la version de src\version.rc"
+    }
+    $Version = "v$maj.$min.$pat"
+}
+Write-Output "Version de release: $Version"
 
 $build   = Join-Path $root "out\build\win-amd64-dual"
 $sdk     = Join-Path $root "rexglue-sdk-0.10\out\win-amd64-baseline"

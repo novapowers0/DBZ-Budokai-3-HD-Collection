@@ -149,3 +149,52 @@ queda VALIDADA y el conversor se reduce a la mecánica anterior.
 - `SUBMESH_DATA_B3.md` documentaba ya el descriptor (0x60, rangos A/B); esta
   sesión confirma A=vértices / B=IB por correlación directa y añade el layout
   del mesh-ref block, los ejes y los arms.
+## 7. RE COMPLETA DEL MESH GROUP (Cell F2, 2026-08-26) — lo que faltaba para el port
+
+**Layout del AWG0 (Cell F2 bin 147, formato A)**: mesh group en +0x640 (0x1300),
+size 0x2F90. Contiene, en orden:
+
+| Región | Off rel AWG0 | Tamaño | Contenido |
+|---|---|---|---|
+| mesh-ref blocks | 0x640 | 0x6E0 (primer bloque 0x40 + 21×0x50) | parts de dibujo |
+| ejes | 0xD20 (axes_base) | 48×0x50 | quat+pos+scale + sello 0x6000020F + **+0x34 arm_ptr, +0x38 hijo, +0x3C hermano, +0x40 padre** |
+| matriz de zonas | 0x1C20 (0x28E0) | 48×0x10 | diagonal de índices de hueso + punteros a bboxes |
+| bboxes | 0x1FE0 (0x2CA0) | 0x40 c/u | AABB por zona (min/max vec4) en model-space |
+| descriptores | 0x2209 (0x2EA9) | 0x60 c/u | **A/B confirmados** |
+
+**Mesh-ref block (0x50, bloques 1+; el 0 es 0x40 sin prefijo)**:
+[0x44, 0x44, 0, 0][identidad 0x20][0, 5, 0, 5][X, Y][0x1B5, 0x29BD]. 
+X = índice de parte/zona, Y = hueso primario. Los B4 (cara) = [0x1B4, 0x1B4].
+17 bloques B5 + ~4 B4 (patrón 0x1B5/0x1B4, textura 0x29BD).
+
+**Descriptor (0x60)** — ENCODING CONFIRMADO (verificado: los índices del IB en
+rango B caen en rango A):
+`
++00 label (8 chars, "XCEL_BODY")
++10 0x09 | +14 0x0F (constantes)
++18 "max N m"
++24 0x34 (offset al rango?) | +28/+2C/+30 floats | +34 0x80000000
++3C 1/2/2 (varía por parte)
++40 0x1158 (pool offset const) | +44 0x2C (stride 44) | +48 0x05
++50 A_start <<8 | +54 A_count <<8 | +58 B_start <<8 | +5C B_count <<8 | 0x01 (flag)
+`
+Verificación: A=[56,138) A=[138,559) A=[559,583)... B indices caen SIEMPRE en A (OK).
+Los descriptores XCEL_BOD usan huesos MEZCLADOS (cada part dibuja varios huesos);
+los mesh-ref Y son el hueso primario de cada parte.
+
+**🔴🔴 CONCLUSIÓN DEL PORT**: el guest DIBUJA correctamente los strips con
+cualquier IB+descriptores correctos (probado por draw log). El amorfo del port
+(conv2, pool reordenado) viene de que el pool NUEVO rompe el enlace con los
+mesh-ref/zonas/bboxes (el pool está atado a la estructura por ORDEN). La
+inyección (npm4) mantiene el orden del pool de la plantilla → funciona.
+
+**Implicación**: el port con topología PS2 EXACTA (IB nuevo + pool reordenado)
+requiere reconstruir TODA la estructura de dibujo (mesh-ref + matriz de zonas +
+bboxes + descriptores) coherente con el nuevo pool. Es un proyecto de RE de
+varias sesiones. La inyección es el port PRÁCTICO (geometría PS2 en la
+estructura de la plantilla, topología de la plantilla).
+
+**Matriz de zonas (0x28E0, 48×0x10)**: cada fila = zona de hueso. La diagonal
+lleva los índices de hueso 0-47 en patrón rotativo; las filas con punteros
+apuntan a las bboxes (0x1FE0→0x2CA0, 0x2020→0x2CE0, 0x2060→0x2D20, ...). El
+eje +0x38/+0x3C/+0x40 = child/sibling/parent (árbol).

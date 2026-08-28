@@ -164,13 +164,20 @@ def main():
     npm = '--npm' in sys.argv
     if npm:
         sys.argv.remove('--npm')
+    bone_thr = {}
+    if '--bone-thr' in sys.argv:
+        k = sys.argv.index('--bone-thr')
+        for pair in sys.argv[k+1].split(','):
+            b, t = pair.split(':')
+            bone_thr[int(b)] = float(t)
+        del sys.argv[k:k+2]
     soft = None
     if '--soft' in sys.argv:
         k = sys.argv.index('--soft')
         soft = (float(sys.argv[k+1]), float(sys.argv[k+2]))
         del sys.argv[k:k+3]
     if len(sys.argv) < 5:
-        print('Uso: port_ps2_b3_inject.py <plantilla.bin> <geometry.json> <umbral> <salida.amb> [--npm] [--soft lo hi]')
+        print('Uso: port_ps2_b3_inject.py <plantilla.bin> <geometry.json> <umbral> <salida.amb> [--npm] [--soft lo hi] [--bone-thr B:THR,B:THR...]')
         return
     templ = bytearray(open(sys.argv[1], 'rb').read())
     thr = float(sys.argv[3])
@@ -194,7 +201,9 @@ def main():
     if npm:
         T, N = build_surface(json.load(open(sys.argv[2])))
         print('NPM: %d triangulos PS2' % len(T))
-        mapping = npm_surface_mapping(slot_world, T, N, thr)
+        # umbral por hueso: la proyeccion NPM se hace con el umbral MAXIMO global,
+        # y el descarte por hueso se decide en el bucle de escritura
+        mapping = npm_surface_mapping(slot_world, T, N, max([thr] + list(bone_thr.values())))
     else:
         geom = json.load(open(sys.argv[2]))
         b = bytes.fromhex(geom['sec34'])
@@ -237,41 +246,40 @@ def main():
             continue
         o = sec_real + i*44
         bone = be32(templ, o + 28)
-        hd_local = np.array([be_f(templ, o+12), be_f(templ, o+16), be_f(templ, o+20)])
-        hd_nrm = np.array([be_f(templ, o+32), -be_f(templ, o+36), be_f(templ, o+40)])
-        hd_nrm = hd_nrm/np.linalg.norm(hd_nrm) if np.linalg.norm(hd_nrm) > 1e-12 else hd_nrm
+        th = bone_thr.get(bone, thr)
         if npm:
+            if mapping[i] is None:
+                kept_hd += 1
+                continue
             pos, nrm, d = mapping[i]
-            w = 1.0
-            if soft is not None:
-                lo, hi = soft
-                if d >= hi:
-                    kept_hd += 1
-                    continue
-                w = 1.0 if d <= lo else (hi - d)/(hi - lo)
-            # blend en el espacio local del slot (PS2 convertido vs HD original)
+            if d > th:
+                kept_hd += 1
+                continue
+            hd_local = np.array([be_f(templ, o+12), be_f(templ, o+16), be_f(templ, o+20)])
+            hd_nrm = np.array([be_f(templ, o+32), -be_f(templ, o+36), be_f(templ, o+40)])
+            hd_nrm = hd_nrm/np.linalg.norm(hd_nrm) if np.linalg.norm(hd_nrm) > 1e-12 else hd_nrm
             lc = inv[bone].dot(np.concatenate([pos, [1.0]]))
-            bl = w * lc[:3] + (1.0 - w) * hd_local
-            bn = w * nrm + (1.0 - w) * hd_nrm
-            ln = np.linalg.norm(bn)
-            bn = bn/ln if ln > 1e-12 else bn
-            f32i(templ, o+12, float(bl[2]))
-            f32i(templ, o+16, float(bl[0]))
-            f32i(templ, o+20, float(bl[1]))
+            f32i(templ, o+12, float(lc[2]))
+            f32i(templ, o+16, float(lc[0]))
+            f32i(templ, o+20, float(lc[1]))
             # formato normal HD: [nz, -ny, nx]
-            f32i(templ, o+32, float(bn[2]))
-            f32i(templ, o+36, float(-bn[1]))
-            f32i(templ, o+40, float(bn[0]))
+            f32i(templ, o+32, float(nrm[2]))
+            f32i(templ, o+36, float(-nrm[1]))
+            f32i(templ, o+40, float(nrm[0]))
         else:
+            if mapping[i] is None:
+                kept_hd += 1
+                continue
             pos = mapping[i]
             lc = inv[bone].dot(np.concatenate([pos, [1.0]]))
             f32i(templ, o+12, float(lc[2]))
             f32i(templ, o+16, float(lc[0]))
             f32i(templ, o+20, float(lc[1]))
         filled += 1
-    print('slots=%d inyectados=%d conservados HD=%d (umbral %.2f%s%s)' %
+    print('slots=%d inyectados=%d conservados HD=%d (umbral %.2f%s%s%s)' %
           (n_slots, filled, kept_hd, thr, ' NPM' if npm else '',
-           (' soft[%.1f,%.1f]' % soft) if soft else ''))
+           (' soft[%.1f,%.1f]' % soft) if soft else '',
+           (' bone_thr=%s' % bone_thr) if bone_thr else ''))
     open(sys.argv[4], 'wb').write(bytes(templ))
     print('guardado:', sys.argv[4])
 

@@ -11,8 +11,10 @@
 #include "i18n.h"
 #include "../region.h"
 
+#if REX_PLATFORM_WIN32
 #include <windows.h>
 #include <shobjidl.h>
+#endif
 
 #include <algorithm>
 #include <cstdio>
@@ -82,8 +84,11 @@ const char* LanguageDisplayName(int xbox_language_id) {
   }
 }
 
-// Abre el dialogo nativo de Windows para elegir una carpeta. Devuelve true y
-// rellena `out` si el usuario eligio una; false si la cancelo.
+// Native folder/file pickers. Windows uses the IFileOpenDialog COM dialog; on
+// other platforms there is no native shell dialog wired up yet, so the pickers
+// report "cancelled" (callers keep the default paths). The plan for Linux is a
+// portable dialog (SDL file dialog or zenity/kdialog).
+#if REX_PLATFORM_WIN32
 bool PickFolder(std::string& out, const std::string& initial) {
   CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
   IFileOpenDialog* dlg = nullptr;
@@ -193,6 +198,15 @@ bool PickFile(std::string& out, const char* filter_desc, const char* filter_ext,
   CoUninitialize();
   return ok;
 }
+#else  // !REX_PLATFORM_WIN32
+bool PickFolder(std::string&, const std::string&) {
+  return false;  // no native shell dialog yet on this platform
+}
+
+bool PickFile(std::string&, const char*, const char*, const std::string&) {
+  return false;  // no native shell dialog yet on this platform
+}
+#endif  // REX_PLATFORM_WIN32
 
 }  // namespace
 

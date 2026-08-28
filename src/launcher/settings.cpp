@@ -12,15 +12,23 @@
 #include <algorithm>
 #include <system_error>
 #include <cstdio>
+#include <cstring>
+#include <fstream>
 
 #if REX_PLATFORM_WIN32
 #include <windows.h>
 #include <dxgi.h>
-#include <wincrypt.h>
 #include <wrl/client.h>
 // The launcher only uses DXGI for GPU detection (name + performance tier).
 #pragma comment(lib, "dxgi.lib")
-#pragma comment(lib, "advapi32.lib")
+// Sensible per-platform backend defaults. Windows uses D3D12 + XInput; other
+// platforms (Linux/BSD/macOS) use Vulkan + SDL, which is what the SDK selects
+// natively on those platforms.
+#define DBZ3_DEFAULT_GPU_BACKEND "d3d12"
+#define DBZ3_DEFAULT_INPUT_BACKEND "xinput"
+#else
+#define DBZ3_DEFAULT_GPU_BACKEND "vulkan"
+#define DBZ3_DEFAULT_INPUT_BACKEND "sdl"
 #endif
 
 // ---------------------------------------------------------------------------
@@ -146,7 +154,7 @@ REXCVAR_DEFINE_BOOL(dbz3_rumble, true, "DBZ3/Input", "Enable controller vibratio
 // Controller backend: "xinput" (native, avoids the SDL_INIT_GAMEPAD hang with
 // RTSS/OBS) or "sdl" (generic pads, needs the SDL gamepad layer). Forwarded to
 // the SDK's input_backend before the input drivers are created in Setup.
-REXCVAR_DEFINE_STRING(dbz3_input_backend, "xinput", "DBZ3/Input",
+REXCVAR_DEFINE_STRING(dbz3_input_backend, DBZ3_DEFAULT_INPUT_BACKEND, "DBZ3/Input",
                       "Controller backend: xinput or sdl")
     .allowed({"xinput", "sdl"})
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
@@ -218,7 +226,7 @@ REXCVAR_DEFINE_BOOL(dbz3_skip_launcher, false, "DBZ3/Dev",
                     "Skip the pre-game launcher and boot straight into the game")
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 
-REXCVAR_DEFINE_STRING(dbz3_gpu_backend, "d3d12", "DBZ3/Video",
+REXCVAR_DEFINE_STRING(dbz3_gpu_backend, DBZ3_DEFAULT_GPU_BACKEND, "DBZ3/Video",
                       "Host graphics backend: d3d12 or vulkan")
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 
@@ -339,6 +347,115 @@ bool IsValidGameDataDir(const std::filesystem::path& root) {
          std::filesystem::is_regular_file(root / "default.xex");
 }
 
+// Portable MD5 (RFC 1321), public-domain style. Used to fingerprint the ~4.9MB
+// XEX so CheckDefaultXex can tell the US/NA executable from the EU/PAL one
+// without depending on Windows CryptoAPI (keeps the launcher buildable on Linux).
+namespace {
+
+struct Md5Digest {
+  static constexpr uint32_t kK[64] = {
+      0xd76aa478, 0xe8c7b756, 0x242070db, 0xc1bdceee, 0xf57c0faf, 0x4787c62a,
+      0xa8304613, 0xfd469501, 0x698098d8, 0x8b44f7af, 0xffff5bb1, 0x895cd7be,
+      0x6b901122, 0xfd987193, 0xa679438e, 0x49b40821, 0xf61e2562, 0xc040b340,
+      0x265e5a51, 0xe9b6c7aa, 0xd62f105d, 0x02441453, 0xd8a1e681, 0xe7d3fbc8,
+      0x21e1cde6, 0xc33707d6, 0xf4d50d87, 0x455a14ed, 0xa9e3e905, 0xfcefa3f8,
+      0x676f02d9, 0x8d2a4c8a, 0xfffa3942, 0x8771f681, 0x6d9d6122, 0xfde5380c,
+      0xa4beea44, 0x4bdecfa9, 0xf6bb4b60, 0xbebfbc70, 0x289b7ec6, 0xeaa127fa,
+      0xd4ef3085, 0x04881d05, 0xd9d4d039, 0xe6db99e5, 0x1fa27cf8, 0xc4ac5665,
+      0xf4292244, 0x432aff97, 0xab9423a7, 0xfc93a039, 0x655b59c3, 0x8f0ccc92,
+      0xffeff47d, 0x85845dd1, 0x6fa87e4f, 0xfe2ce6e0, 0xa3014314, 0x4e0811a1,
+      0xf7537e82, 0xbd3af235, 0x2ad7d2bb, 0xeb86d391,
+  };
+  static constexpr int kS[64] = {
+      7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22,
+      5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20,
+      4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23,
+      6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21,
+  };
+
+  uint32_t a0 = 0x67452301, b0 = 0xefcdab89, c0 = 0x98badcfe, d0 = 0x10325476;
+  uint8_t block[64] = {};
+  size_t block_len = 0;
+  uint64_t total_bytes = 0;
+
+  static uint32_t Rot(uint32_t x, int n) { return (x << n) | (x >> (32 - n)); }
+  static uint32_t F(uint32_t x, uint32_t y, uint32_t z) { return (x & y) | (~x & z); }
+  static uint32_t G(uint32_t x, uint32_t y, uint32_t z) { return (x & z) | (y & ~z); }
+  static uint32_t H(uint32_t x, uint32_t y, uint32_t z) { return x ^ y ^ z; }
+  static uint32_t I(uint32_t x, uint32_t y, uint32_t z) { return y ^ (x | ~z); }
+
+  void ProcessBlock(const uint8_t* p) {
+    uint32_t m[16];
+    for (int i = 0; i < 16; ++i) {
+      m[i] = uint32_t(p[i * 4]) | (uint32_t(p[i * 4 + 1]) << 8) |
+             (uint32_t(p[i * 4 + 2]) << 16) | (uint32_t(p[i * 4 + 3]) << 24);
+    }
+    uint32_t a = a0, b = b0, c = c0, d = d0;
+    for (int i = 0; i < 64; ++i) {
+      const int round = i / 16;
+      const int j = i % 16;
+      const uint32_t mi = (round == 0) ? uint32_t(j)
+                         : (round == 1) ? uint32_t((5 * j + 1) & 15)
+                         : (round == 2) ? uint32_t((3 * j + 5) & 15)
+                         : uint32_t((7 * j) & 15);
+      const uint32_t f = (round == 0) ? F(b, c, d)
+                       : (round == 1) ? G(b, c, d)
+                       : (round == 2) ? H(b, c, d)
+                       : I(b, c, d);
+      a += f + m[mi] + kK[i];
+      a = Rot(a, kS[i]);
+      a += b;
+      const uint32_t tmp = a;
+      a = d;
+      d = c;
+      c = b;
+      b = tmp;
+    }
+    a0 += a;
+    b0 += b;
+    c0 += c;
+    d0 += d;
+  }
+
+ public:
+  void Update(const uint8_t* data, size_t len) {
+    total_bytes += len;
+    while (len > 0) {
+      const size_t take = std::min(len, sizeof(block) - block_len);
+      std::memcpy(block + block_len, data, take);
+      block_len += take;
+      data += take;
+      len -= take;
+      if (block_len == sizeof(block)) {
+        ProcessBlock(block);
+        block_len = 0;
+      }
+    }
+  }
+  void Final(uint8_t out[16]) {
+    const uint64_t bit_len = total_bytes * 8;
+    uint8_t pad = 0x80;
+    Update(&pad, 1);
+    uint8_t zero = 0;
+    while (block_len != 56) {
+      Update(&zero, 1);
+    }
+    for (int i = 0; i < 8; ++i) {
+      const uint8_t byte = static_cast<uint8_t>(bit_len >> (8 * i));
+      Update(&byte, 1);
+    }
+    const uint32_t words[4] = {a0, b0, c0, d0};
+    for (int i = 0; i < 4; ++i) {
+      out[i * 4 + 0] = static_cast<uint8_t>(words[i]);
+      out[i * 4 + 1] = static_cast<uint8_t>(words[i] >> 8);
+      out[i * 4 + 2] = static_cast<uint8_t>(words[i] >> 16);
+      out[i * 4 + 3] = static_cast<uint8_t>(words[i] >> 24);
+    }
+  }
+};
+
+}  // namespace
+
 XexStatus CheckDefaultXex(const std::filesystem::path& root) {
   const auto xex = root / "default.xex";
   if (!std::filesystem::is_regular_file(xex)) return XexStatus::kMissing;
@@ -361,29 +478,24 @@ XexStatus CheckDefaultXex(const std::filesystem::path& root) {
   static constexpr char kEuMd5[] = "C37EB979B762DA0AB5B8C9BA8037CE4E";
   XexStatus status = XexStatus::kUnknown;
   if (size == 4890624) {  // fast reject: both known variants are this size
-    HCRYPTPROV prov = 0;
-    HCRYPTHASH hash = 0;
-    if (CryptAcquireContextW(&prov, nullptr, nullptr, PROV_RSA_FULL,
-                             CRYPT_VERIFYCONTEXT) &&
-        CryptCreateHash(prov, CALG_MD5, 0, 0, &hash)) {
-      FILE* f = nullptr;
-      _wfopen_s(&f, xex.c_str(), L"rb");
-      if (f) {
-        uint8_t buf[65536];
-        size_t n;
-        while ((n = fread(buf, 1, sizeof(buf), f)) > 0) {
-          CryptHashData(hash, buf, static_cast<DWORD>(n), 0);
+    Md5Digest md5;
+    std::ifstream f(xex, std::ios::binary);
+    if (f) {
+      uint8_t buf[65536];
+      while (f) {
+        f.read(reinterpret_cast<char*>(buf), sizeof(buf));
+        const std::streamsize n = f.gcount();
+        if (n > 0) {
+          md5.Update(buf, static_cast<size_t>(n));
         }
-        fclose(f);
       }
-      BYTE md5[16];
-      DWORD md5_len = sizeof(md5);
-      CryptGetHashParam(hash, HP_HASHVAL, md5, &md5_len, 0);
+      uint8_t digest[16];
+      md5.Final(digest);
       std::string hex;
       hex.reserve(32);
-      for (DWORD i = 0; i < md5_len; ++i) {
+      for (size_t i = 0; i < sizeof(digest); ++i) {
         char tmp[3];
-        snprintf(tmp, sizeof(tmp), "%02X", md5[i]);
+        snprintf(tmp, sizeof(tmp), "%02X", digest[i]);
         hex += tmp;
       }
       if (hex == kUsMd5) {
@@ -391,9 +503,7 @@ XexStatus CheckDefaultXex(const std::filesystem::path& root) {
       } else if (hex == kEuMd5) {
         status = XexStatus::kEu;
       }
-      CryptDestroyHash(hash);
     }
-    if (prov) CryptReleaseContext(prov, 0);
   }
 
   cached_path = xex.string();
@@ -628,7 +738,9 @@ void SetCasSharpness(double sharpness) { REXCVAR_SET(dbz3_cas_sharpness, sharpne
 namespace {
 
 // Enumerate the primary (first non-software) DXGI adapter and return its
-// description. Cached after the first call.
+// description. Cached after the first call. Windows-only: on other platforms
+// the launcher has no DXGI and reports an unknown GPU (tier 1/medium).
+#if REX_PLATFORM_WIN32
 bool GetPrimaryGpu(DXGI_ADAPTER_DESC1* desc_out) {
   static DXGI_ADAPTER_DESC1 cached{};
   static bool cached_initialized = false;
@@ -668,10 +780,12 @@ bool GetPrimaryGpu(DXGI_ADAPTER_DESC1* desc_out) {
   }
   return false;
 }
+#endif  // REX_PLATFORM_WIN32
 
 }  // namespace
 
 std::string DetectGpuName() {
+#if REX_PLATFORM_WIN32
   DXGI_ADAPTER_DESC1 desc{};
   if (!GetPrimaryGpu(&desc)) {
     return {};
@@ -690,9 +804,15 @@ std::string DetectGpuName() {
                         nullptr);
   }
   return narrow;
+#else
+  // No DXGI on non-Windows platforms: report an unknown GPU (the quality preset
+  // "auto" then defaults to medium tier).
+  return {};
+#endif
 }
 
 int32_t DetectGpuTier() {
+#if REX_PLATFORM_WIN32
   DXGI_ADAPTER_DESC1 desc{};
   if (!GetPrimaryGpu(&desc)) {
     return 1;  // unknown -> medium
@@ -713,6 +833,10 @@ int32_t DetectGpuTier() {
     return 1;  // medium
   }
   return 0;  // low
+#else
+  // No DXGI on non-Windows platforms: unknown GPU -> medium tier.
+  return 1;
+#endif
 }
 
 const char* GpuTierLabel(int32_t tier) {

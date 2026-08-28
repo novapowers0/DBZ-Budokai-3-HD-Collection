@@ -53,6 +53,7 @@ extern const rex::PPCImageInfo PPCImageConfigEU;
 REXCVAR_DECLARE(bool, dbz3_skip_launcher);
 
 #include <atomic>
+#include <chrono>
 #include <filesystem>
 #include <thread>
 #include <exception>
@@ -65,7 +66,23 @@ REXCVAR_DECLARE(bool, dbz3_skip_launcher);
 #include <windows.h>
 #include <dbghelp.h>
 #pragma comment(lib, "dbghelp.lib")
+#else
+// OutputDebugStringA only exists on Windows. These call sites are temporary
+// debug traces (not functional), so make them no-ops on other platforms.
+#define OutputDebugStringA(s) ((void)0)
 #endif
+
+namespace {
+// Startup timing helper: logs the elapsed milliseconds since first call so the
+// "long black screen before the launcher" reports can be diagnosed from logs.
+double UptimeMs() {
+  static const auto t0 = std::chrono::steady_clock::now();
+  return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+}
+void PhaseLog(const char* name) {
+  REXLOG_INFO("dbz3: phase '{}' at {:.0f} ms since start", name, UptimeMs());
+}
+}  // namespace
 
 class DebugOverlayDialog : public rex::ui::ImGuiDialog {
 public:
@@ -130,6 +147,30 @@ public:
     // Called before Runtime::Setup() - configure GPU plugin
     void OnPreSetup(rex::RuntimeConfig& config) override {
         OutputDebugStringA("OnPreSetup START\n");
+        PhaseLog("OnPreSetup");
+        // Pre-flight check before Runtime::Setup(): without a default.xex the
+        // runtime cannot be constructed, and the framework teardown that follows
+        // a failed Setup used to end in a confusing 0xC0000005 access violation
+        // (the window opened, then died with no message). Fail early with a
+        // clear, actionable message instead.
+        const std::filesystem::path game_root = dbz3::EffectiveGameRoot();
+        if (!std::filesystem::is_regular_file(game_root / "default.xex")) {
+          REXLOG_ERROR("dbz3: no default.xex in game data folder '{}'", game_root.string());
+          const std::string msg =
+              "No se encontro el ejecutable del juego (default.xex) en la carpeta de datos.\n\n"
+              "Coloca tus archivos del juego junto a dbz3.exe (default.xex, us/ y eu/)\n"
+              "o dentro de una subcarpeta 'assets/'.\n\n"
+              "Carpeta buscada:\n" +
+              game_root.string();
+#if REX_PLATFORM_WIN32
+          MessageBoxA(nullptr, msg.c_str(), "DBZ Budokai 3 - Datos del juego",
+                      MB_OK | MB_ICONINFORMATION | MB_SETFOREGROUND | MB_TOPMOST);
+#else
+          std::fprintf(stderr, "%s\n", msg.c_str());
+#endif
+          rex::FlushLogging();
+          std::_Exit(1);
+        }
         config.gpu_plugin = "xenos";
         config.audio_factory = REX_AUDIO_BACKEND(rex::audio::sdl::SDLAudioSystem);
         config.input_factory = REX_INPUT_BACKEND(rex::input::CreateDefaultInputSystem);
@@ -159,6 +200,7 @@ public:
     // Called after runtime is fully initialized, before window creation
     void OnPostSetup() override {
         OutputDebugStringA("OnPostSetup START\n");
+        PhaseLog("OnPostSetup");
         REXLOG_INFO("OnPostSetup - Runtime initialized, graphics system should be ready");
         // Allow draws with invalid fetch constants (shadow passes etc). Mirrors
         // what dbz1's ApplyUserSettingsToSdk does with the user toml. Must run
@@ -174,6 +216,7 @@ public:
     // Called after ImGui drawer is created - add custom dialogs
     void OnCreateDialogs(rex::ui::ImGuiDrawer* drawer) override {
         OutputDebugStringA("OnCreateDialogs START\n");
+        PhaseLog("OnCreateDialogs");
         if (!debug_overlay_) {
             debug_overlay_ = std::make_unique<DebugOverlayDialog>(drawer);
         }
@@ -243,6 +286,7 @@ public:
     // Called immediately before the main guest thread is created
     void OnPreLaunchModule() override {
         OutputDebugStringA("OnPreLaunchModule START\n");
+        PhaseLog("OnPreLaunchModule");
         REXLOG_INFO("OnPreLaunchModule - about to launch guest thread");
         // Re-apply the region device mount so game:\us points at the currently
         // selected region's assets (covers the skip-launcher fast path too).
@@ -254,6 +298,7 @@ public:
     void OnPostLaunchModule(rex::system::XThread* thread) override {
         (void)thread;
         OutputDebugStringA("OnPostLaunchModule START\n");
+        PhaseLog("OnPostLaunchModule");
         REXLOG_INFO("OnPostLaunchModule - guest thread created and resumed");
         launched_.store(true, std::memory_order_release);
         if (auto* rt = runtime()) {

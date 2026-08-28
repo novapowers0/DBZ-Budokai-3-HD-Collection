@@ -5,7 +5,9 @@
 #include <rex/filesystem.h>
 #include <rex/logging.h>
 
+#if REX_PLATFORM_WIN32
 #include <windows.h>
+#endif
 
 #include <cstdio>
 #include <cstdlib>
@@ -170,6 +172,7 @@ void ModPipeline::RunAsync(const std::filesystem::path& script,
   }
 
   worker_ = std::thread([this, cmd]() {
+#if REX_PLATFORM_WIN32
     // Usamos CreateProcess en vez de _popen: _popen pasa el comando a
     // "cmd.exe /c", que falla al parsear comillas cuando el comando empieza
     // con '"' (p.ej. "\"python\" ...") con el error "sintaxis de la etiqueta
@@ -230,6 +233,13 @@ void ModPipeline::RunAsync(const std::filesystem::path& script,
       AppendOutput("\n[exit code " + std::to_string(rc) + "]\n");
     }
     running_.store(false);
+#else  // !REX_PLATFORM_WIN32
+    // Portable path not wired up yet: report a clear error instead of failing
+    // to link (the SDK spawn helper for posix is a follow-up for the Linux port).
+    AppendOutput("ERROR: ejecutar el pipeline de modding no esta soportado en "
+                 "esta plataforma todavia.\n");
+    running_.store(false);
+#endif  // REX_PLATFORM_WIN32
   });
 }
 
