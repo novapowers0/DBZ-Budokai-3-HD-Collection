@@ -3,6 +3,14 @@
 analyze_bin_hd.py — Analizar un bin HD (#AWO/#AWG) con la template
 B3_AMB_PS3.bt (010 Editor, del Discord de la comunidad).
 
+⚠️ DESACTUALIZADO (ver AGENTS §13.2): usa el layout de la template 010 del
+PS3 (offsets+size en +0x28/+0x2C/+0x30/+0x34) que NO es el layout real del
+X360 (offsets puros en +0x2C/+0x30/+0x34/+0x38) — da conteos de sec34
+absurdos. Para exportar/analizar bins HD actuales usar
+`awg_to_obj_b3.py` (formato A), `awg0_export.py` (formatos A/C con
+auto-deteccion) o `awg_cara_export.py` (AWG de cara).
+Se mantiene por referencia histórica.
+
 Usa los offsets REALES de la template:
 AWO:  +0x10 numberOfBones, +0x14 ptrtoConnections, +0x18 numberOfAWGs,
       +0x1C pointerAWGoffsets, +0x24 ptrBoneNames, +0x30 AWOunk[bones](32B)

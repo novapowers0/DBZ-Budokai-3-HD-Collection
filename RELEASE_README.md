@@ -15,6 +15,11 @@ de tu copia legal.
 - `rexruntime.dll`, `rexgpu-xenos.dll`, `amd_fidelityfx_dx12.dll` — runtime
   compilado en ISA **baseline universal** (SSSE3): funciona en CUALQUIER CPU
   x64, desde Core 2 (2006) hasta las más modernas. No hay que elegir variante.
+  **Coste de rendimiento**: al no poder usar AVX2, en CPUs modernas el runtime
+  es ~5-10% más lento en trabajo de host (medido en kernels calientes). En la
+  práctica el juego se mantiene a 60 FPS en cualquier GPU discreta; si notas
+  algo de lentitud en tu equipo, la release de respaldo **`v1.1.0-clasico`**
+  (runtime clásico AVX2) está disponible en GitHub.
 - `TracyClient.dll` — profiling (requerido por el runtime)
 - `amd_fidelityfx_vk.dll` — upscaling FSR para el backend Vulkan
 - `SPIRV-Tools-shared.dll` — utilidades SPIR-V (backend Vulkan)
@@ -86,6 +91,21 @@ aportarlos de tu **copia legal**. Haz esto:
 > para los tamaños y checksums SHA-256 de cada archivo.
 
 ## Novedades de esta release
+
+### v1.1.1 — Depurado + bases para Linux (2026-08-28)
+
+- **Sin datos del juego ya no hay crash**: si falta `default.xex`, el juego te
+  avisa con un mensaje claro de cómo colocar tus archivos (en vez de abrir la
+  ventana y morir con un cierre raro).
+- **Diagnóstico de arranque**: el log registra cuántos milisegundos tarda cada
+  fase de arranque (si el launcher tarda en aparecer, el log dice dónde).
+- **El MD5 del `default.xex` ya no usa CryptoAPI de Windows** (implementación
+  portable) — primer paso del port a Linux, sin cambios de comportamiento.
+- **Bases de Linux**: el launcher ya compila conceptualmente en Linux
+  (detección de GPU, diálogos y lanzamiento de scripts protegidos por
+  plataforma; en Windows nada cambia). Ver `docs/PLAN_LINUX.md`.
+- **Proceso interno**: sincronización automática del repo (`sync_github.ps1`)
+  y verificación del paquete antes de publicar (`verify_release.ps1`).
 
 ### v1.1.0 — Un solo ejecutable universal (2026-08-28)
 
@@ -239,6 +259,9 @@ copia de seguridad de tus AFS.
 
 ## Bugs conocidos
 
+- **Runtime universal (SSSE3) vs clásico (AVX2)**: el ejecutable universal es
+  ~5-10% más lento en CPUs modernas que el runtime AVX2. Si lo notas en tu
+  equipo, usa la release de respaldo `v1.1.0-clasico`.
 - **Vulkan experimental**: el backend Vulkan funciona pero el render 3D es
   ~6.5x más lento que D3D12. Usa **D3D12** (por defecto).
 - **Port de personajes PS2/IW→B3**: la inyección (geometría PS2 en la plantilla
@@ -248,6 +271,9 @@ copia de seguridad de tus AFS.
 
 ## Historial de versiones
 
+- **v1.1.1** (2026-08-28): depurado (sin datos → mensaje claro, marcadores de
+  arranque), bases de Linux (launcher portable), proceso interno (sync +
+  verificación de release).
 - **v1.1.0** (2026-08-28): **un solo ejecutable universal** — runtime baseline
   (SSSE3) para cualquier CPU x64, sin variantes ni carpetas, sin UPX.
 - **v1.0.10** (2026-08-28):
