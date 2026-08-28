@@ -94,3 +94,6 @@ crash_*/
 *.swp
 .DS_Store
 Thumbs.db
+
+# Release zips (assets de GitHub, no se versionan)
+*.zip
