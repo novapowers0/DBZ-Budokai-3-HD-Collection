@@ -3462,6 +3462,51 @@ DLLs baseline verificadas idénticas al SDK. `make_release.ps1` leyó la versió
 de `version.rc` (fuente única). **v1.1.0-clasico** (fallback avx2) intacto.
 Commit `3e3c74f` → github/.
 
+### 14.24 ✅ LIMPIEZA DE DISCO (2026-09-02) — 44 GB → 31,4 GB (+15,5 GB en TEMP)
+
+**Limpieza aprobada por el usuario** (solo contenido regenerable/accidental).
+La carpeta del proyecto pasó de **44 GB → 31,4 GB** y el scratch de opencode
+(`%TEMP%\opencode`) de **16 GB → 0,5 GB** (~28 GB liberados en total).
+
+**BORRADO (todo regenerable — NO recuperar a mano, regenerar con los comandos
+documentados)**:
+- `out/build/win-amd64-tracy/` (10,2 GB) — build de profiling; regenerar con el
+  preset Tracy del CMake (ver §9). Contenía copias us/eu/mods/active_region y
+  frontbuf_*.bmp.
+- `rexglue-sdk-0.10/out/build-win-vulkan-legacy/` (1,05 GB) — variante legacy
+  eliminada (§14.21). Las DLLs legacy están en `out/win-amd64-legacy/` (intactas).
+- `--append/` (560 MB) — AFS de prueba accidental del experimento §65.2.
+- `afs_out/` (259 MB) — scratch de extracciones AFS.
+- `out/build/win-amd64-release-eu/` (58 MB) — obsoleto (el core dual maneja EU).
+- `awo_tools/bins_trabajo/` (308 MB) + `github/awo_tools/bins_trabajo/` — bins
+  intermedios del port (regenerables desde `us/data_cmn.afs` + `ps2_games/` con
+  los scripts de `mod center hd/ports/`).
+- `github/release-stage/` + `github/release-stage-classic/` (135 MB) — regenerar
+  con `tools/make_release.ps1`.
+- Zips de release en `github/` (v1.1.0, v1.1.0-clasico, v1.1.1) — ya publicados
+  en GitHub (descargables).
+- Basura suelta del build: `dbz3.exe.bak`, `.diag_91/`, `.tex_work/`,
+  `.swap_work/`, `run_diag.bat`.
+- **`%TEMP%\opencode`**: SOLO la parte de DBZ (sandboxes de test con copias de
+  assets: dbz3_*, eu_boot/eu_*, us_*, dual*, launcher_test*, rel_*, mods_ui_test,
+  vsync_test, upx, codegen_test, check106, isabench, obj_to_amg_src,
+  generated_*_backup, __pycache__; bins/objs intermedios cell_*, babidi_*,
+  goku_264, selfport, world_*, eu.map, find_*.ps1, march_test*, etc.).
+
+**CONSERVADO (por decisión del usuario)**: `ps2_games/` (10,8 GB, AFS PS2 de
+referencia), `modding resources*` (~4,1 GB, docs/herramientas de la comunidad),
+todo el archivo de mods (`out/build/win-amd64-release/mods/` 2,4 GB con
+og_music + `out/build/_archivo_mods` + `_archivo_builds`/`_archivo_dlls`),
+`rexglue_0.9/` (respaldo SDK 0.9) y `rexglue-sdk/out/` (build 0.9 histórico).
+
+**⚠️ Notas**:
+- Los datos de referencia que AGENTS ubica en `%TEMP%\opencode\` (b327_*.bin,
+  cell_*.bin, etc.) ya NO existen: regenerar desde `us/` y `ps2_games/` con las
+  herramientas de `awo_tools/` si se necesitan.
+- `out/win-amd64-baseline/`, `out/win-amd64/` y `out/win-amd64-legacy/` del SDK
+  (DLLs canónicas), `rexglue/` (instalado), `out/build/win-amd64-dual` y
+  `out/build/win-amd64-release` (builds activos + mods) quedan INTACTOS.
+
 ---
 
 ## 15. 🔴✅ PIPELINE DE PORT PS2→B3 HD (`port_ps2_b3_*`) — 2026-08-26
