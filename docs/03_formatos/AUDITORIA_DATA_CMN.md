@@ -18,23 +18,63 @@
 | 3979-3982 | **Vídeos** (intro/ending) | MPEG (`00 00 01 BA`) |
 | 3983-3989 | Audio DRM (IECS/XMA) + "dummy" | `IECS...` / `xma` |
 
-## 1. STAGES — localización preliminar
+## 1. STAGES — localización VALIDADA (2026-09-02)
 
-Hay DOS zonas de bins con geometría de entorno:
+Validación con `awo_tools/stage_analyze.py` (reutiliza el parser de
+`awg_to_obj_b3.py`): se contaron los bloques #AWO por bin y los vértices/
+triángulos de cada uno. **Ningún personaje supera ~2-3K vértices; los stages
+tienen 7K-102K.** Conclusión: los stages del B3 viven en DOS zonas:
 
-- **Zona A (44-69)**: contenedores `#AMB` grandes con múltiples modelos (#AWO
-  5-16), múltiples texturas y bloques #ACM (animaciones de entorno). Los pares
-  `53/57/59/61/63/65/69` (~270 KB) son bins #AMB pequeños intercalados —
-  piezas o shells de bajo detalle. **12-13 stages**.
-- **Zona B (3735, 3786, 3788, 3821, 3823, 3845, 3847)**: **#AWO raw gigante**
-  (un solo mesh de 2.8-6.2 MB descomprimido), SIN wrapper #AMB y SIN textura
-  interna (los `#AZT` sueltos 3877/3884-3899 podrían ser sus texturas). **7
-  stages**.
+### Zona A (44-69) — entornos multi-pieza (13 stages)
+Cada bin = contenedor `#AMB` con **5-16 bloques #AWO** (plataformas, props,
+elementos animados) + texturas #AZT + animación #ACM:
 
-Total candidatos: **~19-20 bins de stage** — coincide con los ~20 stages del
-B3. **Pendiente de validar**: abrir cada bin con `awg0_export.py`/OBJ y
-confirmar que la geometría es un entorno (no un personaje). Cruce con la
-pantalla de select de stages (vive en `data_eng/ger/spn/fra/ita/usi.afs`).
+| entry | #AWO | verts | tris | descomp. |
+|---|---|---|---|---|
+| 44 | 6 | 16.5K | 8.9K | 1.9 MB |
+| 46 | 6 | 16.6K | 8.9K | 1.8 MB |
+| 48 | 6 | 13.4K | 12.3K | 1.9 MB |
+| 50 | 8 | 26.5K | 20.4K | 3.1 MB |
+| 52 | 11 | 27.1K | 20.2K | 3.5 MB |
+| 54 | 5 | 14.2K | 12.5K | 2.1 MB |
+| 56 | 16 | 34.4K | 27.8K | 4.0 MB |
+| 58 | 3 | 7.4K | 6.5K | 1.1 MB |
+| 60 | 14 | 33.9K | 28.4K | 4.2 MB |
+| 62 | 14 | 28.2K | 19.1K | 3.9 MB |
+| 64 | 10 | 26.0K | 20.8K | 3.6 MB |
+| 66 | 5 | 21.2K | 14.5K | 2.1 MB |
+| 68 | 12 | 29.3K | 20.5K | 4.2 MB |
+
+Los bins pequeños intercalados **53/57/59/61/63/65/69** (~260 KB, #AMB SIN
+#AWO) = **colisión/física** de cada stage (patrón: 1 bin de modelo + 1 de
+colisión por stage).
+
+### Zona B (3735-3847) — mesh único gigante (7 stages)
+Cada bin = **#AWO raw de un solo mesh** (sin wrapper #AMB):
+
+| entry | verts | tris | descomp. |
+|---|---|---|---|
+| 3735 | — (parse layout distinto) | — | 0.9 MB |
+| 3786 | 102.2K | 138.2K | 6.0 MB |
+| 3788 | 16.3K | 11.9K | 0.9 MB |
+| 3821 | 102.2K | 138.7K | 6.0 MB |
+| 3823 | 16.3K | 11.9K | 0.9 MB |
+| 3845 | 51.8K | 37.9K | 2.7 MB |
+| 3847 | 19.2K | 15.1K | 1.0 MB |
+
+Total: **~20 stages** (coincide con el roster del B3).
+
+### ⚠️ Nota técnica
+El layout de vértice de los stages **difiere del de personajes** (varias
+lecturas dan posiciones FLT_MAX/0): los stages usan mayoritariamente vb2
+(estático) y un esquema de ejes distinto. Para EDITAR stages (F3.4) hace
+falta RE del layout de vértice de stage (ver `docs/07_ports/`).
+
+### Pendiente
+- Cruzar cada bin con el nombre del stage (la pantalla de select vive en
+  `data_eng/ger/spn/fra/ita/usi.afs`).
+- Localizar los **#AZT sueltos 3877/3884-3899** (¿texturas compartidas de
+  stage?) y el 481.
 
 ## 2. PERSONAJES (70-505)
 

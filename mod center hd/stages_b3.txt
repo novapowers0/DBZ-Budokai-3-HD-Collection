@@ -1,0 +1,15 @@
+# Stages del B3 HD (localizados en data_cmn.afs) — validado 2026-09-02
+# Zona A (44-69): entornos multi-pieza (#AMB con 5-16 #AWO + #ACM + #AZT).
+# Los bins 53/57/59/61/63/65/69 (~260KB, sin #AWO) = colision/fisica.
+# Zona B (3735-3847): #AWO raw de un solo mesh gigante.
+# Falta: cruzar con el nombre real de cada stage (select vive en data_eng.afs).
+# Ver docs/03_formatos/AUDITORIA_DATA_CMN.md
+
+[zona A - multi-pieza]
+44  46  48  50  52  54  56  58  60  62  64  66  68
+
+[colision zona A]
+53  57  59  61  63  65  69
+
+[zona B - mesh unico gigante]
+3735  3786  3788  3821  3823  3845  3847

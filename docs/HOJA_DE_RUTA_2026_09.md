@@ -96,11 +96,15 @@ stages, movimientos) para duplicar la ENTRADA correcta.
    `docs/03_formatos/AUDITORIA_DATA_CMN.md` + mapa crudo en
    `mod center hd/data_cmn_map.txt`. Clasificación por magics internos
    (#AWO/#AWG/#AZT/#ACM/#AMB) con `awo_tools/afs_scan.py`.
-2. **🔴 Localizar los STAGES**: ✅ encontradas 2 zonas candidatas — bins 44-69
-   (entornos multi-modelo #AMB, 12-13 stages) y 3735/3786/3788/3821/3823/3845/
-   3847 (#AWO gigante de 2.8-6.2 MB, 7 stages) = ~20 total (coincide con el
-   juego). ⚠️ Pendiente: **validar** que cada bin es un entorno (exportar OBJ
-   con `awg0_export.py`) y cruzar con la pantalla de select de stages.
+2. **✅ Localizar los STAGES: VALIDADO** (2026-09-02) — dos zonas confirmadas con
+   `awo_tools/stage_analyze.py` (conteo #AWO/vértices): bins 44-69 (entornos
+   multi-pieza, 13 stages + bins de colisión 53-69) y 3735/3786/3788/3821/3823/
+   3845/3847 (#AWO gigante de 16K-102K vértices, 7 stages) = **~20 total**
+   (coincide con el juego; ningún personaje pasa de ~3K verts). Detalle en
+   `docs/03_formatos/AUDITORIA_DATA_CMN.md` + `mod center hd/stages_b3.txt`.
+   ⚠️ **Layout de vértice de stage ≠ personaje** (lecturas FLT_MAX): para
+   editar stages (F3.4) hace falta RE del layout. Pendiente: cruzar cada bin
+   con el nombre real del stage (select en data_eng.afs).
 3. **Localizar los MOVESETS/habilidades**: #ACM identificado como contenedor de
    animaciones (bins 127, 358, 435, 444, 2208, 2209, 3881) pero NO distingue
    moveset de personaje vs animación de escenario. Pendiente: mapear el moveset
