@@ -12,9 +12,13 @@
 #include <rex/filesystem/devices/host_path_entry.h>
 #include <rex/filesystem/devices/host_path_file.h>
 #include <rex/filesystem/afs.h>
+#include <rex/cvar.h>
 #include <rex/logging.h>
 
 #include <fstream>
+
+// dbz1_diag_logging is defined in src/system/dbz1_diag_flags.cpp (shared runtime).
+REXCVAR_DECLARE(bool, dbz1_diag_logging);
 
 namespace rex::filesystem {
 
@@ -38,6 +42,23 @@ X_STATUS HostPathFile::ReadSync(std::span<uint8_t> buffer, size_t byte_offset,
   // falls inside an entry that a mod replaces, serve the mod's bytes instead.
   if (entry()) {
     const auto& host_path = static_cast<HostPathEntry*>(entry())->host_path();
+
+    // TEMP diagnostic: log every AFS read mapped to its entry index, so a play
+    // session can reveal which data_cmn/data_eng entries each character/stage
+    // loads (roster -> bin mapping). Gated by dbz1_diag_logging (F10/dev
+    // toggle) so no file is written in normal play. Writes dbz1_afs_reads.log.
+    if (REXCVAR_GET(dbz1_diag_logging)) {
+      uint64_t entry_start = 0, entry_size = 0;
+      const int entry_index = AfsFindEntry(host_path, byte_offset, entry_start, entry_size);
+      if (entry_index >= 0) {
+        std::ofstream diag_file("dbz1_afs_reads.log", std::ios::app);
+        if (diag_file) {
+          diag_file << host_path.filename().string() << " entry=" << entry_index << std::hex
+                    << " off=0x" << byte_offset << " n=0x" << buffer.size() << " eoff=0x"
+                    << entry_start << " esize=0x" << entry_size << std::dec << std::endl;
+        }
+      }
+    }
 
     // Virtual mid-insert AFS table: presents a consistent AFS table where
     // overridden entries larger than their slot grow in place (like a rebuilt

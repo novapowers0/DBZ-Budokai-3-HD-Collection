@@ -114,8 +114,12 @@ stages, movimientos) para duplicar la ENTRADA correcta.
    `data_eng.afs` (auditoría en `AUDITORIA_DATA_CMN.md` §3.1): entry 0 =
    character select (28 MB, 5 secciones #ACA + 5 #AZT + 1 #AWO), 1976/2043 =
    texturas de retratos, `#SKC` = config UI. **Para F3.3 el mapeo exacto
-   (slot→bin) requiere instrumentar el guest en runtime** (loguear qué bins de
-   data_cmn carga el select con cada personaje) — siguiente sesión de juego.
+   (slot→bin) se obtiene instrumentando el guest**: YA INSTRUMENTADO
+   (2026-09-07) — trace de reads AFS por entrada en
+   `rexglue-sdk-0.10/src/filesystem/devices/host_path_file.cpp` (`ReadSync`,
+   gateado por `dbz1_diag_logging`, escribe `dbz1_afs_reads.log`). Sesión de
+   captura pendiente: F10 diag + abrir select + pasar por cada personaje +
+   entregar el log.
 
 ### 3.2 Habilidad adicional (por duplicado)
 1. RE del formato de habilidad en `generated/` (tabla de movimientos).
