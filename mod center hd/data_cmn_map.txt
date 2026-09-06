@@ -1,0 +1,3991 @@
+# data_cmn.afs mapa de contenido (auditoria 2026-09-02). columnas: entrada | comprimido | clasificacion
+    0     37806 small
+    1     37806 small
+    2     37806 small
+    3     40014 small
+    4     38832 small
+    5     38534 small
+    6     43692 small
+    7     36064 small
+    8     39854 small
+    9     36552 small
+   10     48322 small
+   11     38660 small
+   12     16020 small
+   13     48474 small
+   14     42090 small
+   15     49990 small
+   16     41408 small
+   17     38716 small
+   18     38330 small
+   19     36762 small
+   20     39196 small
+   21     37320 small
+   22     38660 small
+   23     39170 small
+   24     37314 small
+   25     37834 small
+   26     37992 small
+   27     37748 small
+   28     37912 small
+   29     37806 small
+   30     39836 small
+   31     39096 small
+   32     39836 small
+   33     38660 small
+   34     38658 small
+   35     45362 small
+   36     37842 small
+   37     37892 small
+   38     37314 small
+   39     45366 small
+   40     45366 small
+   41     38946 small
+   42     38718 small
+   43     37314 small
+   44    371134 len=1939744 #AWO6#AWG10#AZT5#ACM3#AMB2
+   45     51778 small
+   46    397652 len=1794848 #AWO6#AWG10#AZT4#ACM3#AMB2
+   47     51782 small
+   48    624380 len=1934944 #AWO6#AWG10#AZT2#ACM3#AMB2
+   49     51782 small
+   50    938352 len=3216768 #AWO8#AWG15#AZT6#ACM1#AMB2
+   51     51778 small
+   52   1095584 len=3546016 #AWO11#AWG18#AZT7#ACM5#AMB2
+   53    149210 len=287872 #AMB1
+   54    632808 len=2106176 #AWO5#AWG12#AZT4#ACM2#AMB2
+   55     57158 small
+   56   1279602 len=4111232 #AWO16#AWG24#AZT8#ACM6#AMB2
+   57    134566 len=263296 #AMB1
+   58    330790 len=1175744 #AWO3#AWG7#AZT2#ACM1#AMB2
+   59    139458 len=267072 #AMB1
+   60   1379752 len=4346944 #AWO14#AWG23#AZT8#ACM7#AMB2
+   61    139544 len=267392 #AMB1
+   62   1256846 len=3983488 #AWO14#AWG22#AZT7#ACM7#AMB2
+   63    138852 len=267392 #AMB1
+   64   1161402 len=3718240 #AWO10#AWG19#AZT6#ACM4#AMB2
+   65    121718 len=263296 #AMB1
+   66    638470 len=2194784 #AWO5#AWG9#AZT4#ACM2#AMB2
+   67     51778 small
+   68   1184212 len=4252096 #AWO12#AWG21#AZT6#ACM6#AMB2
+   69    129666 len=271488 #AMB1
+   70    121704 len=879488 #AWO1#AWG15#AZT1#AMB1
+   71    120292 len=879488 #AWO1#AWG15#AZT1#AMB1
+   72     16692 small
+   73      1258 small
+   74    764894 len=1480768 #ACM3#AMB1
+   75    101832 small
+   76     93868 small
+   77     18176 small
+   78      1092 small
+   79    882848 len=1700320 #ACM3#AMB1
+   80    113154 len=824064 #AWO1#AWG16#AZT1#AMB1
+   81    111890 len=826464 #AWO1#AWG16#AZT1#AMB1
+   82    114562 len=901440 #AWO1#AWG16#AZT1#AMB1
+   83     22302 small
+   84      1092 small
+   85    969454 len=1840192 #ACM3#AMB1
+   86    112444 len=809344 #AWO1#AWG17#AZT1#AMB1
+   87    111394 len=817536 #AWO1#AWG17#AZT1#AMB1
+   88     35656 small
+   89      1098 small
+   90    920788 len=1709184 #ACM3#AMB1
+   91    112458 len=733920 #AWO1#AWG16#AZT1#AMB1
+   92    116310 len=799616 #AWO1#AWG16#AZT1#AMB1
+   93     14656 small
+   94      1146 small
+   95    746156 len=1452608 #ACM3#AMB1
+   96     68736 small
+   97      1242 small
+   98      1246 small
+   99    124856 len=793664 #AWO1#AWG20#AZT1#AMB1
+  100    124336 len=811136 #AWO1#AWG20#AZT1#AMB1
+  101     26962 small
+  102      1138 small
+  103    778104 len=1533632 #ACM3#AMB1
+  104     99218 small
+  105     99862 small
+  106      1214 small
+  107    108710 len=829120 #AWO1#AWG22#AZT1#AMB1
+  108    108362 len=829120 #AWO1#AWG22#AZT1#AMB1
+  109      1260 small
+  110     82890 small
+  111      3146 small
+  112      1012 small
+  113    239710 len=445568 #ACM3#AMB1
+  114     48512 small
+  115      1134 small
+  116    100710 small
+  117    100682 small
+  118      1260 small
+  119    117080 len=879488 #AWO1#AWG15#AZT1#AMB1
+  120    119054 len=823936 #AWO1#AWG15#AZT1#AMB1
+  121    116348 len=879488 #AWO1#AWG15#AZT1#AMB1
+  122    118586 len=822720 #AWO1#AWG15#AZT1#AMB1
+  123     40724 small
+  124      1128 small
+  125      1352 small
+  126      2824 small
+  127   1123114 len=2110784 #ACM3#AMB1
+  128     97116 small
+  129     94864 small
+  130     21822 small
+  131      1186 small
+  132    900682 len=1695584 #ACM3#AMB1
+  133     90650 small
+  134     90676 small
+  135     83618 small
+  136      1266 small
+  137    127870 len=233920 #ACM2#AMB1
+  138    232784 len=395744 #ACM2#AMB1
+  139    220818 len=450496 #ACM2#AMB1
+  140    886762 len=1688992 #ACM3#AMB1
+  141    112108 len=754880 #AWO1#AWG19#AZT1#AMB1
+  142    111930 len=754880 #AWO1#AWG19#AZT1#AMB1
+  143     56276 small
+  144      1254 small
+  145   1041994 len=1931776 #ACM3#AMB1
+  146    119476 len=688384 #AWO1#AWG19#AZT1#AMB1
+  147    116654 len=715872 #AWO1#AWG17#AZT1#AMB1
+  148    122028 len=888576 #AWO1#AWG20#AZT1#AMB1
+  149    119132 len=688384 #AWO1#AWG19#AZT1#AMB1
+  150    115818 len=716416 #AWO1#AWG17#AZT1#AMB1
+  151    123846 len=920512 #AWO1#AWG20#AZT1#AMB1
+  152     41558 small
+  153      1140 small
+  154      1228 small
+  155      1188 small
+  156       602 small
+  157       578 small
+  158       666 small
+  159   1274208 len=2355296 #ACM3#AMB1
+  160    107826 len=702304 #AWO1#AWG17#AZT1#AMB1
+  161    108078 len=702304 #AWO1#AWG17#AZT1#AMB1
+  162      7790 small
+  163      1200 small
+  164    654472 len=1278048 #ACM3#AMB1
+  165   1244422 len=2569632 #ACM2#AMB1
+  166    128500 len=918368 #AWO1#AWG21#AZT1#AMB1
+  167    130260 len=925024 #AWO1#AWG22#AZT1#AMB1
+  168    125222 len=970048 #AWO1#AWG21#AZT1#AMB1
+  169    128454 len=918592 #AWO1#AWG21#AZT1#AMB1
+  170    130770 len=941664 #AWO1#AWG22#AZT1#AMB1
+  171    125394 len=970912 #AWO1#AWG21#AZT1#AMB1
+  172     39124 small
+  173      1174 small
+  174       604 small
+  175   1164530 len=2154528 #ACM3#AMB1
+  176     97888 small
+  177     97464 small
+  178     14852 small
+  179      1098 small
+  180    894114 len=1708864 #ACM3#AMB1
+  181    143262 len=912096 #AWO1#AWG21#AZT1#AMB1
+  182    141118 len=940960 #AWO1#AWG21#AZT1#AMB1
+  183    134788 len=948416 #AWO1#AWG21#AZT1#AMB1
+  184    122088 len=887936 #AWO1#AWG21#AZT1#AMB1
+  185    122864 len=884512 #AWO1#AWG21#AZT1#AMB1
+  186    150996 len=1127712 #AWO1#AWG21#AZT1#AMB1
+  187    143186 len=921344 #AWO1#AWG21#AZT1#AMB1
+  188    141052 len=943296 #AWO1#AWG21#AZT1#AMB1
+  189    135634 len=971648 #AWO1#AWG21#AZT1#AMB1
+  190    121446 len=887936 #AWO1#AWG21#AZT1#AMB1
+  191    123860 len=888800 #AWO1#AWG21#AZT1#AMB1
+  192    150052 len=1127712 #AWO1#AWG21#AZT1#AMB1
+  193     93266 small
+  194     30592 small
+  195      1364 small
+  196      1190 small
+  197      1242 small
+  198      1208 small
+  199      1716 small
+  200      2002 small
+  201      2118 small
+  202   1305802 len=2408256 #ACM3#AMB1
+  203     44844 small
+  204       236 small
+  205       236 small
+  206   1228602 len=2348864 #ACM3#AMB1
+  207     41992 small
+  208       238 small
+  209       238 small
+  210   1140304 len=2198592 #ACM3#AMB1
+  211     41326 small
+  212       406 small
+  213   1280850 len=2394528 #ACM3#AMB1
+  214     96262 small
+  215     96074 small
+  216      1670 small
+  217    121628 len=742688 #AWO1#AWG22#AZT1#AMB1
+  218    123218 len=819392 #AWO1#AWG22#AZT1#AMB1
+  219    122000 len=746976 #AWO1#AWG22#AZT1#AMB1
+  220    123396 len=810848 #AWO1#AWG22#AZT1#AMB1
+  221      1138 small
+  222     39218 small
+  223       408 small
+  224   1278012 len=2377824 #ACM3#AMB1
+  225    108512 len=814816 #AWO1#AWG19#AZT1#AMB1
+  226    110562 len=824064 #AWO1#AWG19#AZT1#AMB1
+  227    109814 len=882688 #AWO1#AWG19#AZT1#AMB1
+  228    108872 len=799328 #AWO1#AWG19#AZT1#AMB1
+  229    111748 len=808032 #AWO1#AWG19#AZT1#AMB1
+  230    110370 len=867168 #AWO1#AWG19#AZT1#AMB1
+  231     50828 small
+  232      1444 small
+  233       254 small
+  234   1001320 len=1870208 #ACM3#AMB1
+  235    107712 len=790016 #AWO1#AWG17#AZT1#AMB1
+  236    111992 len=868512 #AWO1#AWG17#AZT1#AMB1
+  237    110918 len=830560 #AWO1#AWG18#AZT1#AMB1
+  238    105592 len=753792 #AWO1#AWG17#AZT1#AMB1
+  239    105798 len=758560 #AWO1#AWG17#AZT1#AMB1
+  240    107570 len=789664 #AWO1#AWG18#AZT1#AMB1
+  241     42420 small
+  242      1138 small
+  243      3376 small
+  244      1588 small
+  245    901382 len=1778496 #ACM3#AMB1
+  246    100750 small
+  247     86554 small
+  248     95002 small
+  249     10850 small
+  250      1178 small
+  251    694538 len=1341120 #ACM3#AMB1
+  252    124070 len=936864 #AWO1#AWG24#AZT1#AMB1
+  253    125516 len=937216 #AWO1#AWG24#AZT1#AMB1
+  254     25498 small
+  255      1178 small
+  256   1241458 len=2367040 #ACM3#AMB1
+  257      1210 small
+  258    114602 len=918624 #AWO1#AWG18#AZT1#AMB1
+  259    125282 len=968320 #AWO1#AWG18#AZT1#AMB1
+  260     12898 small
+  261      1182 small
+  262    757256 len=1481984 #ACM3#AMB1
+  263      1200 small
+  264    127510 len=948128 #AWO1#AWG23#AZT1#AMB1
+  265    125768 len=933344 #AWO1#AWG21#AZT1#AMB1
+  266    129224 len=917696 #AWO1#AWG21#AZT1#AMB1
+  267    132228 len=924224 #AWO1#AWG21#AZT1#AMB1
+  268    115024 len=842688 #AWO1#AWG21#AZT1#AMB1
+  269    118906 len=798272 #AWO1#AWG22#AZT1#AMB1
+  270    128062 len=931968 #AWO1#AWG23#AZT1#AMB1
+  271    133192 len=1065952 #AWO1#AWG21#AZT1#AMB1
+  272    133898 len=938816 #AWO1#AWG21#AZT1#AMB1
+  273    136566 len=936704 #AWO1#AWG21#AZT1#AMB1
+  274    122252 len=867040 #AWO1#AWG21#AZT1#AMB1
+  275    120754 len=831200 #AWO1#AWG22#AZT1#AMB1
+  276    147980 len=990016 #AWO1#AWG23#AZT1#AMB1
+  277    145558 len=975136 #AWO1#AWG21#AZT1#AMB1
+  278    142010 len=1029760 #AWO1#AWG21#AZT1#AMB1
+  279    145416 len=1032000 #AWO1#AWG21#AZT1#AMB1
+  280    139548 len=958016 #AWO1#AWG21#AZT1#AMB1
+  281    129444 len=958176 #AWO1#AWG23#AZT1#AMB1
+  282    128174 len=956672 #AWO1#AWG23#AZT1#AMB1
+  283    126830 len=941888 #AWO1#AWG21#AZT1#AMB1
+  284    130616 len=926208 #AWO1#AWG21#AZT1#AMB1
+  285    133338 len=932768 #AWO1#AWG21#AZT1#AMB1
+  286    116328 len=851232 #AWO1#AWG21#AZT1#AMB1
+  287    120022 len=806656 #AWO1#AWG22#AZT1#AMB1
+  288     51792 small
+  289      1138 small
+  290      2012 small
+  291      1836 small
+  292   1280048 len=2440352 #ACM3#AMB1
+  293    109956 len=943680 #AWO1#AWG18#AZT1#AMB1
+  294    109830 len=959168 #AWO1#AWG18#AZT1#AMB1
+  295      8408 small
+  296      1062 small
+  297    801986 len=1588448 #ACM3#AMB1
+  298    107006 len=666752 #AWO1#AWG21#AZT1#AMB1
+  299    110490 len=678304 #AWO1#AWG20#AZT1#AMB1
+  300    105040 len=631328 #AWO1#AWG21#AZT1#AMB1
+  301    107856 len=643360 #AWO1#AWG20#AZT1#AMB1
+  302      8104 small
+  303      1118 small
+  304    794400 len=1539392 #ACM3#AMB1
+  305    105528 len=814080 #AWO1#AWG24#AZT1#AMB1
+  306    104458 len=829216 #AWO1#AWG24#AZT1#AMB1
+  307    109380 len=831040 #AWO1#AWG24#AZT1#AMB1
+  308    105796 len=814080 #AWO1#AWG24#AZT1#AMB1
+  309    104696 len=829120 #AWO1#AWG24#AZT1#AMB1
+  310    109566 len=830944 #AWO1#AWG24#AZT1#AMB1
+  311      1108 small
+  312     46788 small
+  313     52284 small
+  314    100316 small
+  315     96940 small
+  316      1124 small
+  317     45580 small
+  318       406 small
+  319       564 small
+  320   1280408 len=2394848 #ACM3#AMB1
+  321     47822 small
+  322       406 small
+  323       564 small
+  324   1270874 len=2383744 #ACM3#AMB1
+  325     74310 small
+  326      1148 small
+  327    105296 len=682528 #AWO1#AWG18#AZT1#AMB1
+  328    104404 len=624000 #AWO1#AWG18#AZT1#AMB1
+  329    101268 small
+  330     22862 small
+  331      1166 small
+  332       232 small
+  333    894818 len=1748256 #ACM3#AMB1
+  334    114918 len=890336 #AWO1#AWG15#AZT1#AMB1
+  335    114730 len=890400 #AWO1#AWG15#AZT1#AMB1
+  336     12844 small
+  337      1132 small
+  338      1344 small
+  339    108318 len=837536 #AWO1#AWG16#AZT1#AMB1
+  340    108268 len=837536 #AWO1#AWG16#AZT1#AMB1
+  341     12814 small
+  342      1256 small
+  343    781890 len=1546272 #ACM3#AMB1
+  344      1220 small
+  345    115734 len=891040 #AWO1#AWG18#AZT1#AMB1
+  346    121208 len=994400 #AWO1#AWG18#AZT1#AMB1
+  347     30334 small
+  348      1112 small
+  349    935068 len=1717440 #ACM3#AMB1
+  350    102856 len=732320 #AWO1#AWG19#AZT1#AMB1
+  351    108822 len=746080 #AWO1#AWG19#AZT1#AMB1
+  352    116004 len=890272 #AWO1#AWG19#AZT1#AMB1
+  353    139200 len=830016 #AWO1#AWG19#AZT1#AMB1
+  354     18200 small
+  355      1246 small
+  356      1358 small
+  357       466 small
+  358   1037336 len=2075904 #ACM3#AMB1
+  359      1168 small
+  360    106774 len=852992 #AWO1#AWG17#AZT1#AMB1
+  361    101972 small
+  362      7864 small
+  363      1208 small
+  364    669942 len=1319840 #ACM3#AMB1
+  365      1344 small
+  366    105638 len=905280 #AWO1#AWG16#AZT1#AMB1
+  367     96604 small
+  368     15516 small
+  369      1118 small
+  370    879650 len=1687168 #ACM3#AMB1
+  371     89044 small
+  372     88702 small
+  373      7652 small
+  374      1180 small
+  375    696638 len=1359744 #ACM3#AMB1
+  376      2960 small
+  377    140228 len=990944 #AWO1#AWG25#AZT1#AMB1
+  378    138302 len=990944 #AWO1#AWG25#AZT1#AMB1
+  379     25850 small
+  380      1130 small
+  381       272 small
+  382    952404 len=1855872 #ACM3#AMB1
+  383    101430 small
+  384    107224 len=640864 #AWO1#AWG17#AZT1#AMB1
+  385    101764 small
+  386    106420 len=636224 #AWO1#AWG17#AZT1#AMB1
+  387     11462 small
+  388      1108 small
+  389    767276 len=1494240 #ACM3#AMB1
+  390    119406 len=895680 #AWO1#AWG18#AZT1#AMB1
+  391    120534 len=905600 #AWO1#AWG18#AZT1#AMB1
+  392    114412 len=757888 #AWO1#AWG18#AZT1#AMB1
+  393    115072 len=759328 #AWO1#AWG18#AZT1#AMB1
+  394    113420 len=802144 #AWO1#AWG18#AZT1#AMB1
+  395    117530 len=868672 #AWO1#AWG18#AZT1#AMB1
+  396     18866 small
+  397      1290 small
+  398       270 small
+  399    922718 len=1807328 #ACM3#AMB1
+  400    128282 len=888768 #AWO1#AWG23#AZT1#AMB1
+  401    129320 len=889984 #AWO1#AWG23#AZT1#AMB1
+  402     16962 small
+  403      1140 small
+  404    916746 len=1747360 #ACM3#AMB1
+  405     97910 small
+  406     98046 small
+  407      8254 small
+  408      1256 small
+  409    831890 len=1622176 #ACM3#AMB1
+  410     88192 small
+  411     95878 small
+  412     22804 small
+  413      1070 small
+  414    965576 len=1842432 #ACM3#AMB1
+  415      1206 small
+  416    113674 len=844512 #AWO1#AWG26#AZT1#AMB1
+  417    107602 len=837312 #AWO1#AWG24#AZT1#AMB1
+  418    123174 len=863360 #AWO1#AWG26#AZT1#AMB1
+  419    116996 len=832832 #AWO1#AWG24#AZT1#AMB1
+  420    113714 len=849056 #AWO1#AWG26#AZT1#AMB1
+  421    106454 len=841856 #AWO1#AWG24#AZT1#AMB1
+  422    123752 len=863360 #AWO1#AWG26#AZT1#AMB1
+  423    118814 len=838336 #AWO1#AWG24#AZT1#AMB1
+  424    126030 len=894528 #AWO1#AWG26#AZT1#AMB1
+  425    119600 len=887232 #AWO1#AWG24#AZT1#AMB1
+  426    136088 len=1026336 #AWO1#AWG25#AZT1#AMB1
+  427    117114 len=854720 #AWO1#AWG26#AZT1#AMB1
+  428    110504 len=847456 #AWO1#AWG24#AZT1#AMB1
+  429    126872 len=986528 #AWO1#AWG25#AZT1#AMB1
+  430     65794 small
+  431      1116 small
+  432      1138 small
+  433       236 small
+  434       234 small
+  435   1230982 len=2352320 #ACM3#AMB1
+  436     38708 small
+  437   1081984 len=2096576 #ACM3#AMB1
+  438    118754 len=834496 #AWO1#AWG23#AZT1#AMB1
+  439    122284 len=832672 #AWO1#AWG23#AZT1#AMB1
+  440    119034 len=834496 #AWO1#AWG23#AZT1#AMB1
+  441    122394 len=832672 #AWO1#AWG23#AZT1#AMB1
+  442      1092 small
+  443     36486 small
+  444   1001954 len=1974656 #ACM3#AMB1
+  445    126082 len=888608 #AWO1#AWG22#AZT1#AMB1
+  446    124518 len=851168 #AWO1#AWG22#AZT1#AMB1
+  447    132436 len=924992 #AWO1#AWG22#AZT1#AMB1
+  448     18474 small
+  449      1104 small
+  450    771150 len=1538528 #ACM3#AMB1
+  451      2038 small
+  452     43852 small
+  453     62970 small
+  454     94424 small
+  455     38550 small
+  456     41186 small
+  457     36370 small
+  458      3566 small
+  459    101776 small
+  460     33864 small
+  461    239204 len=1050048 #AZT1
+  462     28358 small
+  463    149748 len=525056 #AZT1
+  464     43480 small
+  465    119728 len=393792 #AZT1
+  466     96880 small
+  467     58574 small
+  468    238170 len=787552 #AZT1
+  469    197830 len=656320 #AZT1
+  470    151678 len=525056 #AZT1
+  471    139666 len=525056 #AZT1
+  472    154786 len=525056 #AZT1
+  473     61170 small
+  474     36126 small
+  475     38402 small
+  476    272356 len=787552 #AZT1
+  477    272296 len=787552 #AZT1
+  478     37302 small
+  479     31610 small
+  480     78892 small
+  481    314706 len=1050048 #AZT1
+  482     62542 small
+  483     54118 small
+  484    127688 len=393792 #AZT1
+  485     38364 small
+  486     31702 small
+  487     92192 small
+  488     82824 small
+  489     38802 small
+  490     36492 small
+  491     71876 small
+  492     66496 small
+  493     73228 small
+  494    135614 len=393792 #AZT1
+  495    129488 len=393792 #AZT1
+  496     28958 small
+  497     23956 small
+  498     94986 small
+  499     82832 small
+  500    195410 len=656544 #AZT1
+  501    154264 len=525056 #AZT1
+  502     28878 small
+  503     35330 small
+  504     85582 small
+  505    104854 len=317024 #AWO1#AWG1#AZT6#ACM1#AMB3
+  506     46630 small
+  507     36166 small
+  508     55704 small
+  509     45192 small
+  510    163494 len=777952 #AWO1#AWG3#AZT5#AMB3
+  511    143054 len=509600 #AWO3#AWG4#AZT7#ACM1#AMB3
+  512     99218 small
+  513     75984 small
+  514     33424 small
+  515     72596 small
+  516    180822 len=504736 #AWO1#AWG1#AZT5#ACM1#AMB3
+  517    129340 len=454368 #AWO3#AWG3#AZT7#ACM2#AMB3
+  518    107956 len=355328 #AWO2#AWG3#AZT6#ACM1#AMB3
+  519     41826 small
+  520     56572 small
+  521     61762 small
+  522     41094 small
+  523     68432 small
+  524     62012 small
+  525     42862 small
+  526    112108 len=433440 #AWO1#AWG3#AZT5#AMB3
+  527     97782 small
+  528    144318 len=574208 #AWO3#AWG6#AZT7#ACM1#AMB3
+  529    151848 len=555072 #AWO3#AWG5#AZT7#ACM1#AMB3
+  530     27088 small
+  531     98962 small
+  532     61750 small
+  533    140850 len=514688 #AWO3#AWG6#AZT7#ACM2#AMB3
+  534     63248 small
+  535     41216 small
+  536     50752 small
+  537    129814 len=516384 #AWO1#AWG1#AZT4#ACM1#AMB3
+  538     17450 small
+  539     59312 small
+  540     43396 small
+  541     43508 small
+  542     84288 small
+  543     89338 small
+  544     49932 small
+  545     86668 small
+  546     21194 small
+  547     34618 small
+  548     32112 small
+  549     71996 small
+  550     45760 small
+  551     12764 small
+  552     37948 small
+  553    163946 len=635232 #AWO4#AWG7#AZT9#ACM2#AMB3
+  554    133616 len=581152 #AWO3#AWG3#AZT6#ACM2#AMB3
+  555     97106 small
+  556       186 small
+  557       188 small
+  558       184 small
+  559       186 small
+  560       188 small
+  561       190 small
+  562       188 small
+  563       190 small
+  564       188 small
+  565       194 small
+  566       192 small
+  567       186 small
+  568       182 small
+  569       174 small
+  570       190 small
+  571       184 small
+  572       190 small
+  573       186 small
+  574       188 small
+  575       184 small
+  576       184 small
+  577       190 small
+  578       192 small
+  579       194 small
+  580       186 small
+  581       188 small
+  582       190 small
+  583       196 small
+  584       324 small
+  585       312 small
+  586       314 small
+  587       304 small
+  588       304 small
+  589       306 small
+  590       310 small
+  591       300 small
+  592       314 small
+  593       304 small
+  594       316 small
+  595       316 small
+  596       188 small
+  597       178 small
+  598       192 small
+  599       196 small
+  600       188 small
+  601       192 small
+  602       190 small
+  603       192 small
+  604       184 small
+  605       192 small
+  606       188 small
+  607       184 small
+  608       188 small
+  609       190 small
+  610       182 small
+  611       186 small
+  612       180 small
+  613       188 small
+  614       192 small
+  615       192 small
+  616       188 small
+  617       184 small
+  618       180 small
+  619       192 small
+  620       192 small
+  621       190 small
+  622       188 small
+  623       188 small
+  624       190 small
+  625       186 small
+  626       184 small
+  627       186 small
+  628       190 small
+  629       196 small
+  630       200 small
+  631       192 small
+  632       190 small
+  633       194 small
+  634       190 small
+  635       200 small
+  636       196 small
+  637       192 small
+  638       192 small
+  639       196 small
+  640       194 small
+  641       184 small
+  642       186 small
+  643       188 small
+  644       190 small
+  645       188 small
+  646       194 small
+  647       194 small
+  648       192 small
+  649       192 small
+  650       192 small
+  651       192 small
+  652       188 small
+  653       186 small
+  654       188 small
+  655       186 small
+  656       188 small
+  657       192 small
+  658       194 small
+  659       192 small
+  660       188 small
+  661       188 small
+  662       194 small
+  663       188 small
+  664       194 small
+  665       192 small
+  666       194 small
+  667       188 small
+  668       306 small
+  669       310 small
+  670       314 small
+  671       314 small
+  672       314 small
+  673       308 small
+  674       302 small
+  675       326 small
+  676       318 small
+  677       296 small
+  678       308 small
+  679       312 small
+  680       314 small
+  681       294 small
+  682       304 small
+  683       328 small
+  684       326 small
+  685       308 small
+  686       314 small
+  687       292 small
+  688       314 small
+  689       328 small
+  690       318 small
+  691       330 small
+  692       324 small
+  693       186 small
+  694       178 small
+  695       194 small
+  696       184 small
+  697       190 small
+  698       186 small
+  699       188 small
+  700       188 small
+  701       194 small
+  702       188 small
+  703       188 small
+  704       188 small
+  705       292 small
+  706       312 small
+  707       310 small
+  708       320 small
+  709       334 small
+  710       340 small
+  711       334 small
+  712       324 small
+  713       318 small
+  714       330 small
+  715       320 small
+  716       326 small
+  717       330 small
+  718       316 small
+  719       322 small
+  720       166 small
+  721       300 small
+  722       170 small
+  723       326 small
+  724       318 small
+  725       166 small
+  726       324 small
+  727       310 small
+  728       282 small
+  729       258 small
+  730       192 small
+  731       194 small
+  732       196 small
+  733       186 small
+  734       184 small
+  735       178 small
+  736       192 small
+  737       184 small
+  738       184 small
+  739       194 small
+  740       182 small
+  741       192 small
+  742       304 small
+  743       310 small
+  744       316 small
+  745       306 small
+  746       314 small
+  747       320 small
+  748       322 small
+  749       186 small
+  750       186 small
+  751       178 small
+  752       188 small
+  753       192 small
+  754       178 small
+  755       190 small
+  756       184 small
+  757       296 small
+  758       308 small
+  759       308 small
+  760       304 small
+  761       316 small
+  762       310 small
+  763       306 small
+  764       320 small
+  765       324 small
+  766       304 small
+  767       308 small
+  768       318 small
+  769       312 small
+  770       314 small
+  771       312 small
+  772       308 small
+  773       298 small
+  774       302 small
+  775       182 small
+  776       186 small
+  777       190 small
+  778       192 small
+  779       192 small
+  780       188 small
+  781       186 small
+  782       190 small
+  783       190 small
+  784       180 small
+  785       190 small
+  786       192 small
+  787       190 small
+  788       186 small
+  789       186 small
+  790       186 small
+  791       190 small
+  792       180 small
+  793       184 small
+  794       180 small
+  795       188 small
+  796       194 small
+  797       180 small
+  798       186 small
+  799       192 small
+  800       192 small
+  801       198 small
+  802       190 small
+  803       192 small
+  804       188 small
+  805       190 small
+  806       198 small
+  807       196 small
+  808       298 small
+  809       310 small
+  810       318 small
+  811       310 small
+  812       308 small
+  813       306 small
+  814       306 small
+  815       320 small
+  816       302 small
+  817       330 small
+  818       308 small
+  819       304 small
+  820       180 small
+  821       184 small
+  822       186 small
+  823       188 small
+  824       298 small
+  825       300 small
+  826       310 small
+  827       316 small
+  828       324 small
+  829       308 small
+  830       310 small
+  831       300 small
+  832       312 small
+  833       316 small
+  834       318 small
+  835       322 small
+  836       326 small
+  837       316 small
+  838       316 small
+  839       314 small
+  840       320 small
+  841       314 small
+  842       288 small
+  843       306 small
+  844       286 small
+  845       310 small
+  846       300 small
+  847       278 small
+  848       190 small
+  849       190 small
+  850       186 small
+  851       190 small
+  852       188 small
+  853       194 small
+  854       184 small
+  855       178 small
+  856       184 small
+  857       188 small
+  858       188 small
+  859       180 small
+  860       184 small
+  861       180 small
+  862       186 small
+  863       186 small
+  864       188 small
+  865       190 small
+  866       196 small
+  867       186 small
+  868       184 small
+  869       188 small
+  870       188 small
+  871       284 small
+  872       276 small
+  873       274 small
+  874       276 small
+  875       284 small
+  876       284 small
+  877       188 small
+  878       188 small
+  879       192 small
+  880       188 small
+  881       186 small
+  882       188 small
+  883       190 small
+  884       188 small
+  885       198 small
+  886       200 small
+  887       202 small
+  888       184 small
+  889       196 small
+  890       184 small
+  891       182 small
+  892       188 small
+  893       188 small
+  894       190 small
+  895       182 small
+  896       188 small
+  897       186 small
+  898       182 small
+  899       184 small
+  900       186 small
+  901       190 small
+  902       196 small
+  903       190 small
+  904       188 small
+  905       192 small
+  906       198 small
+  907       178 small
+  908       178 small
+  909       186 small
+  910       184 small
+  911       182 small
+  912       186 small
+  913       184 small
+  914       182 small
+  915       194 small
+  916       182 small
+  917       186 small
+  918       186 small
+  919       274 small
+  920       282 small
+  921       278 small
+  922       278 small
+  923       262 small
+  924       276 small
+  925       294 small
+  926       274 small
+  927       282 small
+  928       266 small
+  929       290 small
+  930       266 small
+  931       296 small
+  932       276 small
+  933       304 small
+  934       186 small
+  935       188 small
+  936       192 small
+  937       188 small
+  938       194 small
+  939       186 small
+  940       190 small
+  941       190 small
+  942       184 small
+  943       190 small
+  944       190 small
+  945       184 small
+  946       266 small
+  947       258 small
+  948       274 small
+  949       272 small
+  950       286 small
+  951       280 small
+  952       280 small
+  953       278 small
+  954       280 small
+  955       272 small
+  956       278 small
+  957       286 small
+  958       290 small
+  959       294 small
+  960       286 small
+  961       300 small
+  962       282 small
+  963       288 small
+  964       288 small
+  965       292 small
+  966       184 small
+  967       194 small
+  968       188 small
+  969       186 small
+  970       190 small
+  971       174 small
+  972       194 small
+  973       284 small
+  974       292 small
+  975       258 small
+  976       284 small
+  977       282 small
+  978       264 small
+  979       272 small
+  980       184 small
+  981       182 small
+  982       188 small
+  983       192 small
+  984       188 small
+  985       186 small
+  986       190 small
+  987       180 small
+  988       286 small
+  989       280 small
+  990       276 small
+  991       278 small
+  992       290 small
+  993       280 small
+  994       296 small
+  995       260 small
+  996       276 small
+  997       270 small
+  998       278 small
+  999       278 small
+ 1000       292 small
+ 1001       298 small
+ 1002       302 small
+ 1003       300 small
+ 1004       278 small
+ 1005       272 small
+ 1006       196 small
+ 1007       184 small
+ 1008       188 small
+ 1009       188 small
+ 1010       188 small
+ 1011       192 small
+ 1012       194 small
+ 1013       162 small
+ 1014       172 small
+ 1015       188 small
+ 1016       194 small
+ 1017       176 small
+ 1018       186 small
+ 1019       182 small
+ 1020       182 small
+ 1021       188 small
+ 1022       190 small
+ 1023       190 small
+ 1024       192 small
+ 1025       188 small
+ 1026       196 small
+ 1027       188 small
+ 1028       180 small
+ 1029       188 small
+ 1030       194 small
+ 1031       178 small
+ 1032       192 small
+ 1033       190 small
+ 1034       282 small
+ 1035       280 small
+ 1036       266 small
+ 1037       286 small
+ 1038       138 small
+ 1039       284 small
+ 1040       264 small
+ 1041       274 small
+ 1042       282 small
+ 1043       280 small
+ 1044       292 small
+ 1045       188 small
+ 1046       182 small
+ 1047       180 small
+ 1048       284 small
+ 1049       282 small
+ 1050       278 small
+ 1051       288 small
+ 1052       292 small
+ 1053       284 small
+ 1054       284 small
+ 1055       286 small
+ 1056       258 small
+ 1057       262 small
+ 1058       272 small
+ 1059       284 small
+ 1060       288 small
+ 1061       286 small
+ 1062       268 small
+ 1063       274 small
+ 1064       274 small
+ 1065       188 small
+ 1066       192 small
+ 1067       192 small
+ 1068       186 small
+ 1069       188 small
+ 1070       186 small
+ 1071       186 small
+ 1072       284 small
+ 1073       184 small
+ 1074       184 small
+ 1075       288 small
+ 1076       294 small
+ 1077       288 small
+ 1078       184 small
+ 1079       192 small
+ 1080       196 small
+ 1081       180 small
+ 1082       198 small
+ 1083       180 small
+ 1084       186 small
+ 1085       186 small
+ 1086       186 small
+ 1087       292 small
+ 1088       182 small
+ 1089       138 small
+ 1090       138 small
+ 1091       138 small
+ 1092       138 small
+ 1093       138 small
+ 1094       138 small
+ 1095       138 small
+ 1096       138 small
+ 1097       138 small
+ 1098       138 small
+ 1099       138 small
+ 1100       138 small
+ 1101       138 small
+ 1102       138 small
+ 1103       138 small
+ 1104       138 small
+ 1105       138 small
+ 1106       138 small
+ 1107       138 small
+ 1108       138 small
+ 1109       138 small
+ 1110       138 small
+ 1111       138 small
+ 1112       138 small
+ 1113       138 small
+ 1114       138 small
+ 1115       138 small
+ 1116       138 small
+ 1117       138 small
+ 1118       138 small
+ 1119       138 small
+ 1120       138 small
+ 1121       138 small
+ 1122       138 small
+ 1123       138 small
+ 1124       138 small
+ 1125       138 small
+ 1126       138 small
+ 1127       138 small
+ 1128       138 small
+ 1129       138 small
+ 1130       138 small
+ 1131       138 small
+ 1132       138 small
+ 1133       138 small
+ 1134       138 small
+ 1135       138 small
+ 1136       138 small
+ 1137       138 small
+ 1138       138 small
+ 1139       138 small
+ 1140       138 small
+ 1141       138 small
+ 1142       138 small
+ 1143       138 small
+ 1144       138 small
+ 1145       138 small
+ 1146       138 small
+ 1147       138 small
+ 1148       138 small
+ 1149       138 small
+ 1150       138 small
+ 1151       138 small
+ 1152       138 small
+ 1153       138 small
+ 1154       138 small
+ 1155       138 small
+ 1156       138 small
+ 1157       138 small
+ 1158       138 small
+ 1159       140 small
+ 1160       140 small
+ 1161       140 small
+ 1162       140 small
+ 1163       138 small
+ 1164       138 small
+ 1165       138 small
+ 1166       138 small
+ 1167       138 small
+ 1168       138 small
+ 1169       138 small
+ 1170       138 small
+ 1171       138 small
+ 1172       138 small
+ 1173       138 small
+ 1174       138 small
+ 1175       138 small
+ 1176       138 small
+ 1177       138 small
+ 1178       138 small
+ 1179       138 small
+ 1180       138 small
+ 1181       138 small
+ 1182       138 small
+ 1183       138 small
+ 1184       138 small
+ 1185       138 small
+ 1186       138 small
+ 1187       138 small
+ 1188       138 small
+ 1189       138 small
+ 1190       138 small
+ 1191       138 small
+ 1192       138 small
+ 1193       138 small
+ 1194       138 small
+ 1195       176 small
+ 1196       138 small
+ 1197       138 small
+ 1198       138 small
+ 1199       138 small
+ 1200       138 small
+ 1201       138 small
+ 1202       138 small
+ 1203       138 small
+ 1204       138 small
+ 1205       138 small
+ 1206       138 small
+ 1207       138 small
+ 1208       138 small
+ 1209       138 small
+ 1210       138 small
+ 1211       138 small
+ 1212       138 small
+ 1213       156 small
+ 1214       156 small
+ 1215       156 small
+ 1216       138 small
+ 1217       138 small
+ 1218       138 small
+ 1219       138 small
+ 1220       138 small
+ 1221       138 small
+ 1222       138 small
+ 1223       138 small
+ 1224       138 small
+ 1225       138 small
+ 1226       172 small
+ 1227       138 small
+ 1228       138 small
+ 1229       138 small
+ 1230       172 small
+ 1231       138 small
+ 1232       166 small
+ 1233       138 small
+ 1234       138 small
+ 1235       138 small
+ 1236       138 small
+ 1237       138 small
+ 1238       166 small
+ 1239       168 small
+ 1240       138 small
+ 1241       138 small
+ 1242       138 small
+ 1243       138 small
+ 1244       138 small
+ 1245       138 small
+ 1246       138 small
+ 1247       138 small
+ 1248       138 small
+ 1249       138 small
+ 1250       138 small
+ 1251       138 small
+ 1252       138 small
+ 1253       138 small
+ 1254       154 small
+ 1255       138 small
+ 1256       138 small
+ 1257       138 small
+ 1258       140 small
+ 1259       140 small
+ 1260       140 small
+ 1261       140 small
+ 1262       138 small
+ 1263       138 small
+ 1264       138 small
+ 1265       138 small
+ 1266       138 small
+ 1267       138 small
+ 1268       138 small
+ 1269       138 small
+ 1270       138 small
+ 1271       138 small
+ 1272       138 small
+ 1273       138 small
+ 1274       138 small
+ 1275       138 small
+ 1276       138 small
+ 1277       138 small
+ 1278       138 small
+ 1279       138 small
+ 1280       138 small
+ 1281       138 small
+ 1282       138 small
+ 1283       138 small
+ 1284       138 small
+ 1285       138 small
+ 1286       138 small
+ 1287       138 small
+ 1288       138 small
+ 1289       138 small
+ 1290       138 small
+ 1291       138 small
+ 1292       138 small
+ 1293       138 small
+ 1294       138 small
+ 1295       138 small
+ 1296       138 small
+ 1297       138 small
+ 1298       138 small
+ 1299       138 small
+ 1300       138 small
+ 1301       138 small
+ 1302       138 small
+ 1303       138 small
+ 1304       138 small
+ 1305       138 small
+ 1306       138 small
+ 1307       138 small
+ 1308       138 small
+ 1309       138 small
+ 1310       138 small
+ 1311       138 small
+ 1312       138 small
+ 1313       138 small
+ 1314       138 small
+ 1315       138 small
+ 1316       138 small
+ 1317       138 small
+ 1318       138 small
+ 1319       138 small
+ 1320       138 small
+ 1321       138 small
+ 1322       138 small
+ 1323       138 small
+ 1324       138 small
+ 1325       138 small
+ 1326       138 small
+ 1327       138 small
+ 1328       138 small
+ 1329       138 small
+ 1330       138 small
+ 1331       138 small
+ 1332       138 small
+ 1333       138 small
+ 1334       138 small
+ 1335       138 small
+ 1336       138 small
+ 1337       138 small
+ 1338       138 small
+ 1339       138 small
+ 1340       138 small
+ 1341       138 small
+ 1342       138 small
+ 1343       138 small
+ 1344       138 small
+ 1345       138 small
+ 1346       138 small
+ 1347       138 small
+ 1348       166 small
+ 1349       138 small
+ 1350       138 small
+ 1351       138 small
+ 1352       164 small
+ 1353       166 small
+ 1354       138 small
+ 1355       138 small
+ 1356       138 small
+ 1357       138 small
+ 1358       180 small
+ 1359       182 small
+ 1360       182 small
+ 1361       182 small
+ 1362       182 small
+ 1363       182 small
+ 1364       182 small
+ 1365       182 small
+ 1366       182 small
+ 1367       184 small
+ 1368       182 small
+ 1369       184 small
+ 1370       184 small
+ 1371       184 small
+ 1372       182 small
+ 1373       182 small
+ 1374       182 small
+ 1375       182 small
+ 1376       184 small
+ 1377       184 small
+ 1378       186 small
+ 1379       184 small
+ 1380       182 small
+ 1381       182 small
+ 1382       184 small
+ 1383       180 small
+ 1384       184 small
+ 1385       184 small
+ 1386       182 small
+ 1387       182 small
+ 1388    428120 len=2097376 #AZT1
+ 1389    375442 len=2097376 #AZT1
+ 1390    287756 len=2097376 #AZT1
+ 1391    279456 len=2097376 #AZT1
+ 1392    406526 len=2097376 #AZT1
+ 1393    282610 len=2097376 #AZT1
+ 1394    332850 len=2097376 #AZT1
+ 1395    364974 len=2097376 #AZT1
+ 1396    527784 len=2097376 #AZT1
+ 1397    388350 len=2097376 #AZT1
+ 1398    402526 len=2097376 #AZT1
+ 1399    409504 len=2097376 #AZT1
+ 1400    409606 len=2097376 #AZT1
+ 1401    300554 len=2097376 #AZT1
+ 1402    257456 len=2097376 #AZT1
+ 1403    347874 len=2097376 #AZT1
+ 1404    383056 len=2097376 #AZT1
+ 1405    300834 len=2097376 #AZT1
+ 1406    237100 len=2097376 #AZT1
+ 1407    215804 len=2097376 #AZT1
+ 1408    257496 len=2097376 #AZT1
+ 1409    470486 len=2097376 #AZT1
+ 1410    431242 len=2097376 #AZT1
+ 1411      1504 small
+ 1412      1638 small
+ 1413    478646 len=2097376 #AZT1
+ 1414      2168 small
+ 1415    397264 len=7801888 #AZT1
+ 1416    302236 len=8389024 #AZT1
+ 1417    473480 len=8389024 #AZT1
+ 1418    479832 len=8389024 #AZT1
+ 1419    274210 len=4194528 #AZT1
+ 1420    368014 len=8389024 #AZT1
+ 1421    298402 len=8389024 #AZT1
+ 1422      2552 small
+ 1423      2610 small
+ 1424    209474 len=8389024 #AZT1
+ 1425    230280 len=8389024 #AZT1
+ 1426    241760 len=8389024 #AZT1
+ 1427    370308 len=8389024 #AZT1
+ 1428    400116 len=8389024 #AZT1
+ 1429    308406 len=8389024 #AZT1
+ 1430    285090 len=8389024 #AZT1
+ 1431    325872 len=8389024 #AZT1
+ 1432    245370 len=8389024 #AZT1
+ 1433    272278 len=8389024 #AZT1
+ 1434    306912 len=8389024 #AZT1
+ 1435    335686 len=8389024 #AZT1
+ 1436    335736 len=8389024 #AZT1
+ 1437    203090 len=4194528 #AZT1
+ 1438    403018 len=8389024 #AZT1
+ 1439    427370 len=8389024 #AZT1
+ 1440    232788 len=4194528 #AZT1
+ 1441    424230 len=8389024 #AZT1
+ 1442      1510 small
+ 1443    554532 len=8389024 #AZT1
+ 1444      1812 small
+ 1445    280078 len=8389024 #AZT1
+ 1446    282424 len=8389024 #AZT1
+ 1447    297680 len=8389024 #AZT1
+ 1448    119636 len=4194528 #AZT1
+ 1449    265038 len=8389024 #AZT1
+ 1450    296506 len=8389024 #AZT1
+ 1451    285134 len=8389024 #AZT1
+ 1452    165550 len=4194528 #AZT1
+ 1453    169972 len=4194528 #AZT1
+ 1454    207060 len=8389024 #AZT1
+ 1455      1032 small
+ 1456    329276 len=8389024 #AZT1
+ 1457    188476 len=4194528 #AZT1
+ 1458    185848 len=8389024 #AZT1
+ 1459    396072 len=8389024 #AZT1
+ 1460    484650 len=8389024 #AZT1
+ 1461    405900 len=8389024 #AZT1
+ 1462    447814 len=8389024 #AZT1
+ 1463    383240 len=8389024 #AZT1
+ 1464    264718 len=4194528 #AZT1
+ 1465    318576 len=4194528 #AZT1
+ 1466    273190 len=8389024 #AZT1
+ 1467    254500 len=4194528 #AZT1
+ 1468      1812 small
+ 1469    203146 len=8389024 #AZT1
+ 1470      1026 small
+ 1471    134100 len=4194528 #AZT1
+ 1472      1828 small
+ 1473    129220 len=4194528 #AZT1
+ 1474    580854 len=8389024 #AZT1
+ 1475    294774 len=4194528 #AZT1
+ 1476    415586 len=8389024 #AZT1
+ 1477    401866 len=8389024 #AZT1
+ 1478    367774 len=8389024 #AZT1
+ 1479    275898 len=8389024 #AZT1
+ 1480    223558 len=4194528 #AZT1
+ 1481    208378 len=4194528 #AZT1
+ 1482    168552 len=4194528 #AZT1
+ 1483    260608 len=8389024 #AZT1
+ 1484    541740 len=8389024 #AZT1
+ 1485    308494 len=8389024 #AZT1
+ 1486    210586 len=4194528 #AZT1
+ 1487    262690 len=8389024 #AZT1
+ 1488    330364 len=8389024 #AZT1
+ 1489    530968 len=8389024 #AZT1
+ 1490    439312 len=8389024 #AZT1
+ 1491    164584 len=4194528 #AZT1
+ 1492    189240 len=4194528 #AZT1
+ 1493    155188 len=4194528 #AZT1
+ 1494    358658 len=8389024 #AZT1
+ 1495    295588 len=4194528 #AZT1
+ 1496    234574 len=4194528 #AZT1
+ 1497    249836 len=4194528 #AZT1
+ 1498    185694 len=4194528 #AZT1
+ 1499    261994 len=4194528 #AZT1
+ 1500    300494 len=8389024 #AZT1
+ 1501    225644 len=8389024 #AZT1
+ 1502    286170 len=8389024 #AZT1
+ 1503    274986 len=8389024 #AZT1
+ 1504    438596 len=8389024 #AZT1
+ 1505    372518 len=8389024 #AZT1
+ 1506    379810 len=8389024 #AZT1
+ 1507    301718 len=8389024 #AZT1
+ 1508    421616 len=8389024 #AZT1
+ 1509    204462 len=8389024 #AZT1
+ 1510    250552 len=8389024 #AZT1
+ 1511    308140 len=8389024 #AZT1
+ 1512    291692 len=8389024 #AZT1
+ 1513    313336 len=8389024 #AZT1
+ 1514    251112 len=8389024 #AZT1
+ 1515    271298 len=8389024 #AZT1
+ 1516    239208 len=8389024 #AZT1
+ 1517    250762 len=8389024 #AZT1
+ 1518    237504 len=4194528 #AZT1
+ 1519    180254 len=8389024 #AZT1
+ 1520    215070 len=8389024 #AZT1
+ 1521    156702 len=8389024 #AZT1
+ 1522      1044 small
+ 1523     83582 small
+ 1524    614682 len=4194528 #AZT1
+ 1525    773388 len=4194528 #AZT1
+ 1526    916314 len=4194528 #AZT1
+ 1527    542416 len=4194528 #AZT1
+ 1528    778728 len=4194528 #AZT1
+ 1529    951718 len=4194528 #AZT1
+ 1530    562460 len=4194528 #AZT1
+ 1531    614390 len=4194528 #AZT1
+ 1532    499710 len=4194528 #AZT1
+ 1533    584676 len=4194528 #AZT1
+ 1534    783200 len=4194528 #AZT1
+ 1535    596490 len=4194528 #AZT1
+ 1536    711428 len=4194528 #AZT1
+ 1537    867202 len=4194528 #AZT1
+ 1538    659214 len=4194528 #AZT1
+ 1539    808490 len=4194528 #AZT1
+ 1540    746264 len=4194528 #AZT1
+ 1541    973576 len=4194528 #AZT1
+ 1542    711190 len=4194528 #AZT1
+ 1543    844540 len=4194528 #AZT1
+ 1544    685060 len=4194528 #AZT1
+ 1545    757660 len=4194528 #AZT1
+ 1546    627098 len=4194528 #AZT1
+ 1547   1028742 len=4194528 #AZT1
+ 1548    592416 len=4194528 #AZT1
+ 1549    784564 len=4194528 #AZT1
+ 1550    999752 len=4194528 #AZT1
+ 1551    750296 len=4194528 #AZT1
+ 1552    938084 len=4194528 #AZT1
+ 1553    818852 len=4194528 #AZT1
+ 1554    802444 len=4194528 #AZT1
+ 1555    451806 len=4194528 #AZT1
+ 1556      2510 small
+ 1557    189536 len=13911680 #AZT1
+ 1558      1950 small
+ 1559    121426 len=2113952 #AZT1
+ 1560    148808 len=4194528 #AZT1
+ 1561      1312 small
+ 1562    183462 len=2512704 #AZT1
+ 1563      1208 small
+ 1564    304062 len=3868480 #AZT1
+ 1565       180 small
+ 1566      3830 small
+ 1567      2126 small
+ 1568       436 small
+ 1569         0 small
+ 1570       224 small
+ 1571       228 small
+ 1572       264 small
+ 1573         0 small
+ 1574         0 small
+ 1575       296 small
+ 1576       318 small
+ 1577       338 small
+ 1578       308 small
+ 1579         0 small
+ 1580         0 small
+ 1581         0 small
+ 1582       252 small
+ 1583         0 small
+ 1584       342 small
+ 1585         0 small
+ 1586         0 small
+ 1587         0 small
+ 1588         0 small
+ 1589       390 small
+ 1590       258 small
+ 1591       306 small
+ 1592         0 small
+ 1593       250 small
+ 1594         0 small
+ 1595       240 small
+ 1596         0 small
+ 1597         0 small
+ 1598         0 small
+ 1599       272 small
+ 1600       296 small
+ 1601         0 small
+ 1602       224 small
+ 1603       266 small
+ 1604       260 small
+ 1605       362 small
+ 1606       232 small
+ 1607       270 small
+ 1608       260 small
+ 1609       256 small
+ 1610         0 small
+ 1611       260 small
+ 1612         0 small
+ 1613         0 small
+ 1614         0 small
+ 1615         0 small
+ 1616         0 small
+ 1617       404 small
+ 1618       258 small
+ 1619         0 small
+ 1620         0 small
+ 1621       228 small
+ 1622         0 small
+ 1623       314 small
+ 1624         0 small
+ 1625       280 small
+ 1626         0 small
+ 1627       206 small
+ 1628         0 small
+ 1629         0 small
+ 1630       204 small
+ 1631         0 small
+ 1632         0 small
+ 1633       258 small
+ 1634         0 small
+ 1635         0 small
+ 1636         0 small
+ 1637       202 small
+ 1638         0 small
+ 1639       358 small
+ 1640       222 small
+ 1641         0 small
+ 1642         0 small
+ 1643       250 small
+ 1644       206 small
+ 1645         0 small
+ 1646         0 small
+ 1647         0 small
+ 1648         0 small
+ 1649         0 small
+ 1650       270 small
+ 1651         0 small
+ 1652         0 small
+ 1653         0 small
+ 1654         0 small
+ 1655         0 small
+ 1656         0 small
+ 1657       262 small
+ 1658         0 small
+ 1659       390 small
+ 1660         0 small
+ 1661         0 small
+ 1662       260 small
+ 1663         0 small
+ 1664       308 small
+ 1665       354 small
+ 1666         0 small
+ 1667         0 small
+ 1668       258 small
+ 1669         0 small
+ 1670         0 small
+ 1671       286 small
+ 1672         0 small
+ 1673       286 small
+ 1674       256 small
+ 1675         0 small
+ 1676         0 small
+ 1677         0 small
+ 1678         0 small
+ 1679         0 small
+ 1680         0 small
+ 1681       256 small
+ 1682         0 small
+ 1683         0 small
+ 1684         0 small
+ 1685         0 small
+ 1686         0 small
+ 1687         0 small
+ 1688         0 small
+ 1689         0 small
+ 1690         0 small
+ 1691         0 small
+ 1692         0 small
+ 1693         0 small
+ 1694         0 small
+ 1695         0 small
+ 1696         0 small
+ 1697         0 small
+ 1698         0 small
+ 1699         0 small
+ 1700       260 small
+ 1701         0 small
+ 1702         0 small
+ 1703       250 small
+ 1704         0 small
+ 1705         0 small
+ 1706       226 small
+ 1707         0 small
+ 1708       252 small
+ 1709       308 small
+ 1710       256 small
+ 1711         0 small
+ 1712       198 small
+ 1713         0 small
+ 1714         0 small
+ 1715         0 small
+ 1716       224 small
+ 1717         0 small
+ 1718         0 small
+ 1719       234 small
+ 1720       206 small
+ 1721      3130 small
+ 1722       382 small
+ 1723      2246 small
+ 1724       408 small
+ 1725      1298 small
+ 1726       396 small
+ 1727      2532 small
+ 1728       758 small
+ 1729       442 small
+ 1730         0 small
+ 1731       394 small
+ 1732       392 small
+ 1733       600 small
+ 1734         0 small
+ 1735         0 small
+ 1736       718 small
+ 1737       666 small
+ 1738       600 small
+ 1739       716 small
+ 1740         0 small
+ 1741       354 small
+ 1742         0 small
+ 1743       604 small
+ 1744         0 small
+ 1745       916 small
+ 1746         0 small
+ 1747         0 small
+ 1748         0 small
+ 1749         0 small
+ 1750      2230 small
+ 1751       784 small
+ 1752       742 small
+ 1753         0 small
+ 1754       552 small
+ 1755         0 small
+ 1756       728 small
+ 1757         0 small
+ 1758         0 small
+ 1759         0 small
+ 1760       554 small
+ 1761       714 small
+ 1762         0 small
+ 1763       504 small
+ 1764       690 small
+ 1765       782 small
+ 1766      1536 small
+ 1767       624 small
+ 1768       486 small
+ 1769       532 small
+ 1770       732 small
+ 1771         0 small
+ 1772       540 small
+ 1773         0 small
+ 1774         0 small
+ 1775         0 small
+ 1776         0 small
+ 1777         0 small
+ 1778       574 small
+ 1779       220 small
+ 1780         0 small
+ 1781         0 small
+ 1782       352 small
+ 1783         0 small
+ 1784      1034 small
+ 1785         0 small
+ 1786       556 small
+ 1787         0 small
+ 1788       676 small
+ 1789         0 small
+ 1790         0 small
+ 1791       492 small
+ 1792         0 small
+ 1793         0 small
+ 1794       748 small
+ 1795         0 small
+ 1796         0 small
+ 1797         0 small
+ 1798       472 small
+ 1799         0 small
+ 1800       802 small
+ 1801       504 small
+ 1802         0 small
+ 1803         0 small
+ 1804       802 small
+ 1805       486 small
+ 1806         0 small
+ 1807         0 small
+ 1808         0 small
+ 1809         0 small
+ 1810         0 small
+ 1811       246 small
+ 1812         0 small
+ 1813         0 small
+ 1814         0 small
+ 1815         0 small
+ 1816         0 small
+ 1817         0 small
+ 1818       250 small
+ 1819         0 small
+ 1820       342 small
+ 1821         0 small
+ 1822         0 small
+ 1823      1134 small
+ 1824         0 small
+ 1825       250 small
+ 1826      1016 small
+ 1827         0 small
+ 1828         0 small
+ 1829       740 small
+ 1830         0 small
+ 1831         0 small
+ 1832       870 small
+ 1833         0 small
+ 1834       258 small
+ 1835       212 small
+ 1836         0 small
+ 1837         0 small
+ 1838         0 small
+ 1839         0 small
+ 1840         0 small
+ 1841         0 small
+ 1842       636 small
+ 1843         0 small
+ 1844         0 small
+ 1845         0 small
+ 1846         0 small
+ 1847         0 small
+ 1848         0 small
+ 1849         0 small
+ 1850         0 small
+ 1851         0 small
+ 1852         0 small
+ 1853         0 small
+ 1854         0 small
+ 1855         0 small
+ 1856         0 small
+ 1857         0 small
+ 1858         0 small
+ 1859         0 small
+ 1860         0 small
+ 1861      1272 small
+ 1862         0 small
+ 1863         0 small
+ 1864      1404 small
+ 1865         0 small
+ 1866         0 small
+ 1867       890 small
+ 1868         0 small
+ 1869       698 small
+ 1870      1070 small
+ 1871       626 small
+ 1872         0 small
+ 1873         0 small
+ 1874         0 small
+ 1875         0 small
+ 1876         0 small
+ 1877       692 small
+ 1878         0 small
+ 1879         0 small
+ 1880       714 small
+ 1881       588 small
+ 1882       390 small
+ 1883       358 small
+ 1884         0 small
+ 1885       206 small
+ 1886       218 small
+ 1887       234 small
+ 1888         0 small
+ 1889         0 small
+ 1890       404 small
+ 1891       244 small
+ 1892       288 small
+ 1893       338 small
+ 1894         0 small
+ 1895         0 small
+ 1896         0 small
+ 1897       342 small
+ 1898         0 small
+ 1899       450 small
+ 1900         0 small
+ 1901         0 small
+ 1902         0 small
+ 1903         0 small
+ 1904       376 small
+ 1905       204 small
+ 1906       330 small
+ 1907         0 small
+ 1908       310 small
+ 1909         0 small
+ 1910       288 small
+ 1911         0 small
+ 1912         0 small
+ 1913         0 small
+ 1914       220 small
+ 1915       322 small
+ 1916         0 small
+ 1917       296 small
+ 1918       410 small
+ 1919       230 small
+ 1920       354 small
+ 1921       330 small
+ 1922       242 small
+ 1923       204 small
+ 1924       246 small
+ 1925         0 small
+ 1926       344 small
+ 1927         0 small
+ 1928         0 small
+ 1929         0 small
+ 1930         0 small
+ 1931         0 small
+ 1932       242 small
+ 1933       234 small
+ 1934         0 small
+ 1935         0 small
+ 1936       224 small
+ 1937         0 small
+ 1938       436 small
+ 1939         0 small
+ 1940       222 small
+ 1941         0 small
+ 1942       328 small
+ 1943         0 small
+ 1944         0 small
+ 1945       300 small
+ 1946         0 small
+ 1947         0 small
+ 1948       314 small
+ 1949         0 small
+ 1950         0 small
+ 1951         0 small
+ 1952       216 small
+ 1953         0 small
+ 1954       326 small
+ 1955       322 small
+ 1956         0 small
+ 1957         0 small
+ 1958       296 small
+ 1959       306 small
+ 1960         0 small
+ 1961         0 small
+ 1962         0 small
+ 1963         0 small
+ 1964         0 small
+ 1965       214 small
+ 1966         0 small
+ 1967         0 small
+ 1968         0 small
+ 1969         0 small
+ 1970         0 small
+ 1971         0 small
+ 1972       214 small
+ 1973         0 small
+ 1974       214 small
+ 1975         0 small
+ 1976         0 small
+ 1977       316 small
+ 1978         0 small
+ 1979       214 small
+ 1980       338 small
+ 1981         0 small
+ 1982         0 small
+ 1983       314 small
+ 1984         0 small
+ 1985         0 small
+ 1986       340 small
+ 1987         0 small
+ 1988       214 small
+ 1989       214 small
+ 1990         0 small
+ 1991         0 small
+ 1992         0 small
+ 1993         0 small
+ 1994         0 small
+ 1995         0 small
+ 1996       346 small
+ 1997         0 small
+ 1998         0 small
+ 1999         0 small
+ 2000         0 small
+ 2001         0 small
+ 2002         0 small
+ 2003         0 small
+ 2004         0 small
+ 2005         0 small
+ 2006         0 small
+ 2007         0 small
+ 2008         0 small
+ 2009         0 small
+ 2010         0 small
+ 2011         0 small
+ 2012         0 small
+ 2013         0 small
+ 2014         0 small
+ 2015       426 small
+ 2016         0 small
+ 2017         0 small
+ 2018       416 small
+ 2019         0 small
+ 2020         0 small
+ 2021       414 small
+ 2022         0 small
+ 2023       358 small
+ 2024       440 small
+ 2025       356 small
+ 2026         0 small
+ 2027         0 small
+ 2028         0 small
+ 2029         0 small
+ 2030         0 small
+ 2031       408 small
+ 2032         0 small
+ 2033         0 small
+ 2034       436 small
+ 2035       392 small
+ 2036       294 small
+ 2037       420 small
+ 2038       302 small
+ 2039       392 small
+ 2040       406 small
+ 2041       314 small
+ 2042         0 small
+ 2043       246 small
+ 2044       248 small
+ 2045       386 small
+ 2046         0 small
+ 2047         0 small
+ 2048       758 small
+ 2049       542 small
+ 2050       496 small
+ 2051       514 small
+ 2052         0 small
+ 2053       362 small
+ 2054         0 small
+ 2055       538 small
+ 2056         0 small
+ 2057      1180 small
+ 2058         0 small
+ 2059         0 small
+ 2060         0 small
+ 2061         0 small
+ 2062      1294 small
+ 2063       300 small
+ 2064       806 small
+ 2065         0 small
+ 2066       602 small
+ 2067         0 small
+ 2068       392 small
+ 2069         0 small
+ 2070         0 small
+ 2071         0 small
+ 2072       306 small
+ 2073       674 small
+ 2074         0 small
+ 2075       466 small
+ 2076       664 small
+ 2077       316 small
+ 2078      1224 small
+ 2079       308 small
+ 2080       356 small
+ 2081       290 small
+ 2082       304 small
+ 2083         0 small
+ 2084       332 small
+ 2085         0 small
+ 2086         0 small
+ 2087         0 small
+ 2088         0 small
+ 2089         0 small
+ 2090       624 small
+ 2091       284 small
+ 2092         0 small
+ 2093         0 small
+ 2094       270 small
+ 2095         0 small
+ 2096       936 small
+ 2097         0 small
+ 2098       358 small
+ 2099         0 small
+ 2100       256 small
+ 2101         0 small
+ 2102         0 small
+ 2103       268 small
+ 2104         0 small
+ 2105         0 small
+ 2106       602 small
+ 2107         0 small
+ 2108         0 small
+ 2109         0 small
+ 2110       238 small
+ 2111         0 small
+ 2112       642 small
+ 2113       416 small
+ 2114         0 small
+ 2115         0 small
+ 2116       554 small
+ 2117       250 small
+ 2118         0 small
+ 2119         0 small
+ 2120         0 small
+ 2121         0 small
+ 2122         0 small
+ 2123       314 small
+ 2124         0 small
+ 2125         0 small
+ 2126         0 small
+ 2127         0 small
+ 2128         0 small
+ 2129         0 small
+ 2130       314 small
+ 2131         0 small
+ 2132       388 small
+ 2133         0 small
+ 2134         0 small
+ 2135       526 small
+ 2136         0 small
+ 2137       352 small
+ 2138       922 small
+ 2139         0 small
+ 2140         0 small
+ 2141       544 small
+ 2142         0 small
+ 2143         0 small
+ 2144       558 small
+ 2145         0 small
+ 2146       314 small
+ 2147       298 small
+ 2148         0 small
+ 2149         0 small
+ 2150         0 small
+ 2151         0 small
+ 2152         0 small
+ 2153         0 small
+ 2154       590 small
+ 2155         0 small
+ 2156         0 small
+ 2157         0 small
+ 2158         0 small
+ 2159         0 small
+ 2160         0 small
+ 2161         0 small
+ 2162         0 small
+ 2163         0 small
+ 2164         0 small
+ 2165         0 small
+ 2166         0 small
+ 2167         0 small
+ 2168         0 small
+ 2169         0 small
+ 2170         0 small
+ 2171         0 small
+ 2172         0 small
+ 2173       558 small
+ 2174         0 small
+ 2175         0 small
+ 2176       618 small
+ 2177         0 small
+ 2178         0 small
+ 2179       260 small
+ 2180         0 small
+ 2181       338 small
+ 2182       750 small
+ 2183       350 small
+ 2184         0 small
+ 2185       286 small
+ 2186         0 small
+ 2187         0 small
+ 2188         0 small
+ 2189       262 small
+ 2190         0 small
+ 2191         0 small
+ 2192       356 small
+ 2193       284 small
+ 2194       214 small
+ 2195    150958 len=159744
+ 2196        97 small
+ 2197       247 small
+ 2198    111260 len=120832
+ 2199        99 small
+ 2200       260 small
+ 2201      2374 small
+ 2202      4112 small
+ 2203     16464 small
+ 2204      9778 small
+ 2205      5946 small
+ 2206     39324 small
+ 2207     33470 small
+ 2208   1442948 len=2696160 #ACM1
+ 2209    155610 len=535168 #AWO1#AWG1
+ 2210     24600 small
+ 2211      1022 small
+ 2212     19586 small
+ 2213       200 small
+ 2214     13292 small
+ 2215      5014 small
+ 2216     13634 small
+ 2217     96570 small
+ 2218      1816 small
+ 2219     44098 small
+ 2220     19110 small
+ 2221     61004 small
+ 2222      1100 small
+ 2223     35368 small
+ 2224     26058 small
+ 2225     40884 small
+ 2226       872 small
+ 2227     35390 small
+ 2228       230 small
+ 2229       226 small
+ 2230       222 small
+ 2231       222 small
+ 2232      1058 small
+ 2233      1150 small
+ 2234      1058 small
+ 2235      1696 small
+ 2236      1058 small
+ 2237      1150 small
+ 2238      1032 small
+ 2239      1150 small
+ 2240      1032 small
+ 2241      1154 small
+ 2242      1058 small
+ 2243      1678 small
+ 2244      1058 small
+ 2245      1150 small
+ 2246      1032 small
+ 2247      1150 small
+ 2248      1058 small
+ 2249      1154 small
+ 2250      1058 small
+ 2251      1366 small
+ 2252      1032 small
+ 2253      1150 small
+ 2254      1058 small
+ 2255      1150 small
+ 2256      1216 small
+ 2257      1058 small
+ 2258      1032 small
+ 2259      1058 small
+ 2260      1058 small
+ 2261      1058 small
+ 2262       736 small
+ 2263      1032 small
+ 2264      1058 small
+ 2265      1058 small
+ 2266      1058 small
+ 2267      1032 small
+ 2268      1058 small
+ 2269       736 small
+ 2270      1032 small
+ 2271      1058 small
+ 2272      1058 small
+ 2273      1058 small
+ 2274      1182 small
+ 2275      1142 small
+ 2276      1020 small
+ 2277      1154 small
+ 2278      1020 small
+ 2279      1354 small
+ 2280      1020 small
+ 2281      1144 small
+ 2282      1692 small
+ 2283      1274 small
+ 2284      1644 small
+ 2285      1248 small
+ 2286      1678 small
+ 2287      1274 small
+ 2288      1644 small
+ 2289      1772 small
+ 2290      1680 small
+ 2291      1634 small
+ 2292      1680 small
+ 2293      1274 small
+ 2294      1518 small
+ 2295      1058 small
+ 2296      1032 small
+ 2297      1058 small
+ 2298      1032 small
+ 2299      1058 small
+ 2300      1058 small
+ 2301      1058 small
+ 2302      1058 small
+ 2303      1058 small
+ 2304      1032 small
+ 2305      1058 small
+ 2306      1032 small
+ 2307      1058 small
+ 2308      1058 small
+ 2309      1058 small
+ 2310      1032 small
+ 2311      1058 small
+ 2312      1058 small
+ 2313      1058 small
+ 2314      1032 small
+ 2315      1058 small
+ 2316      1032 small
+ 2317      1058 small
+ 2318      1058 small
+ 2319      1058 small
+ 2320      1058 small
+ 2321      1058 small
+ 2322      1226 small
+ 2323      1058 small
+ 2324      1058 small
+ 2325      1058 small
+ 2326      1058 small
+ 2327      1058 small
+ 2328      1214 small
+ 2329      1058 small
+ 2330      1032 small
+ 2331      1058 small
+ 2332      1032 small
+ 2333      1058 small
+ 2334      1032 small
+ 2335      1058 small
+ 2336      1058 small
+ 2337      1058 small
+ 2338      1058 small
+ 2339      1058 small
+ 2340      1032 small
+ 2341      1058 small
+ 2342      1032 small
+ 2343      1058 small
+ 2344      1032 small
+ 2345      1058 small
+ 2346      1032 small
+ 2347      1058 small
+ 2348      1032 small
+ 2349      1058 small
+ 2350      1032 small
+ 2351      1058 small
+ 2352      1032 small
+ 2353      1058 small
+ 2354      1032 small
+ 2355      1058 small
+ 2356      1032 small
+ 2357      1058 small
+ 2358      1032 small
+ 2359      1058 small
+ 2360      1032 small
+ 2361      1058 small
+ 2362      1032 small
+ 2363      1058 small
+ 2364      1058 small
+ 2365      1058 small
+ 2366      1058 small
+ 2367      1058 small
+ 2368      1058 small
+ 2369      1058 small
+ 2370      1058 small
+ 2371      1058 small
+ 2372      1032 small
+ 2373      1058 small
+ 2374      1008 small
+ 2375      1360 small
+ 2376      1020 small
+ 2377      1154 small
+ 2378      1008 small
+ 2379      1144 small
+ 2380      1014 small
+ 2381      1144 small
+ 2382      1032 small
+ 2383      1058 small
+ 2384      1032 small
+ 2385      1058 small
+ 2386      1032 small
+ 2387      1058 small
+ 2388       736 small
+ 2389      1032 small
+ 2390      1058 small
+ 2391      1020 small
+ 2392      1142 small
+ 2393      1020 small
+ 2394       696 small
+ 2395      1008 small
+ 2396      1144 small
+ 2397      1004 small
+ 2398      1154 small
+ 2399      1008 small
+ 2400      1142 small
+ 2401      1018 small
+ 2402       962 small
+ 2403      1014 small
+ 2404      1144 small
+ 2405      1008 small
+ 2406      1144 small
+ 2407      1020 small
+ 2408      1144 small
+ 2409      1004 small
+ 2410      1144 small
+ 2411      1014 small
+ 2412      1058 small
+ 2413      1020 small
+ 2414      1058 small
+ 2415      1722 small
+ 2416      1950 small
+ 2417      1646 small
+ 2418      1764 small
+ 2419      1730 small
+ 2420      1258 small
+ 2421      1734 small
+ 2422      1252 small
+ 2423      1742 small
+ 2424      1714 small
+ 2425      1736 small
+ 2426      1276 small
+ 2427      1636 small
+ 2428      1256 small
+ 2429      1650 small
+ 2430      1258 small
+ 2431      1638 small
+ 2432      1266 small
+ 2433      1692 small
+ 2434      1260 small
+ 2435      1734 small
+ 2436      1270 small
+ 2437      1722 small
+ 2438      1258 small
+ 2439      1730 small
+ 2440      1270 small
+ 2441      1722 small
+ 2442      1282 small
+ 2443      1646 small
+ 2444      1258 small
+ 2445      1738 small
+ 2446      1988 small
+ 2447      1914 small
+ 2448      1656 small
+ 2449      1598 small
+ 2450      1460 small
+ 2451      1618 small
+ 2452      1686 small
+ 2453      1600 small
+ 2454      1600 small
+ 2455      1232 small
+ 2456      1636 small
+ 2457      1692 small
+ 2458      1604 small
+ 2459      1256 small
+ 2460      1582 small
+ 2461      1520 small
+ 2462      1602 small
+ 2463      1252 small
+ 2464      1058 small
+ 2465      1058 small
+ 2466      1058 small
+ 2467      1058 small
+ 2468      1058 small
+ 2469      1058 small
+ 2470      1032 small
+ 2471      1058 small
+ 2472      1032 small
+ 2473      1058 small
+ 2474      1020 small
+ 2475      1352 small
+ 2476      1154 small
+ 2477      1024 small
+ 2478      1144 small
+ 2479      1008 small
+ 2480      1144 small
+ 2481      1008 small
+ 2482      1144 small
+ 2483      1022 small
+ 2484      1144 small
+ 2485      1024 small
+ 2486      1144 small
+ 2487      1024 small
+ 2488      1144 small
+ 2489      1606 small
+ 2490      1488 small
+ 2491      1602 small
+ 2492      1248 small
+ 2493      1592 small
+ 2494      1696 small
+ 2495      1604 small
+ 2496      1684 small
+ 2497      1608 small
+ 2498      1702 small
+ 2499      1608 small
+ 2500      1250 small
+ 2501      1824 small
+ 2502      1244 small
+ 2503      1832 small
+ 2504      1754 small
+ 2505      1606 small
+ 2506      1244 small
+ 2507      1614 small
+ 2508      1692 small
+ 2509      1876 small
+ 2510      1578 small
+ 2511      1700 small
+ 2512      1694 small
+ 2513      1956 small
+ 2514      1742 small
+ 2515      2068 small
+ 2516      1722 small
+ 2517      1888 small
+ 2518      1672 small
+ 2519      1738 small
+ 2520      1946 small
+ 2521      1638 small
+ 2522      2506 small
+ 2523      1652 small
+ 2524      1882 small
+ 2525      3422 small
+ 2526       726 small
+ 2527      1722 small
+ 2528      1332 small
+ 2529      1892 small
+ 2530      1938 small
+ 2531      1642 small
+ 2532      1250 small
+ 2533       734 small
+ 2534      1636 small
+ 2535      1488 small
+ 2536      1032 small
+ 2537      1154 small
+ 2538      1032 small
+ 2539      1150 small
+ 2540      1058 small
+ 2541      1150 small
+ 2542       736 small
+ 2543      1032 small
+ 2544      1116 small
+ 2545      1518 small
+ 2546      1356 small
+ 2547      1552 small
+ 2548      1146 small
+ 2549      1518 small
+ 2550      1172 small
+ 2551      1518 small
+ 2552      1170 small
+ 2553      1552 small
+ 2554      1146 small
+ 2555      1552 small
+ 2556      1170 small
+ 2557      1552 small
+ 2558      1172 small
+ 2559      1608 small
+ 2560      1600 small
+ 2561      1232 small
+ 2562      1606 small
+ 2563      1684 small
+ 2564      1592 small
+ 2565      1248 small
+ 2566      1608 small
+ 2567      1248 small
+ 2568      1590 small
+ 2569      1232 small
+ 2570       736 small
+ 2571      1686 small
+ 2572      3164 small
+ 2573      1058 small
+ 2574      1150 small
+ 2575      1058 small
+ 2576      1150 small
+ 2577      1058 small
+ 2578      1150 small
+ 2579       736 small
+ 2580      1058 small
+ 2581      1374 small
+ 2582      1012 small
+ 2583      1136 small
+ 2584      1020 small
+ 2585      1144 small
+ 2586      1024 small
+ 2587      1144 small
+ 2588      1020 small
+ 2589      1144 small
+ 2590      1610 small
+ 2591      1256 small
+ 2592      1846 small
+ 2593      1238 small
+ 2594      1608 small
+ 2595      1236 small
+ 2596      1598 small
+ 2597      1608 small
+ 2598      1248 small
+ 2599      1592 small
+ 2600      1236 small
+ 2601      1860 small
+ 2602      1692 small
+ 2603      1608 small
+ 2604      1248 small
+ 2605      1600 small
+ 2606      1234 small
+ 2607      1590 small
+ 2608      1244 small
+ 2609      1590 small
+ 2610      1734 small
+ 2611      1486 small
+ 2612      1722 small
+ 2613      1496 small
+ 2614      1734 small
+ 2615      1266 small
+ 2616      1650 small
+ 2617      1996 small
+ 2618      1722 small
+ 2619      1266 small
+ 2620      1734 small
+ 2621      1266 small
+ 2622      1686 small
+ 2623      1516 small
+ 2624      1020 small
+ 2625      1142 small
+ 2626      1028 small
+ 2627      1142 small
+ 2628      1022 small
+ 2629      1144 small
+ 2630      1022 small
+ 2631      1352 small
+ 2632      1018 small
+ 2633      1142 small
+ 2634      1012 small
+ 2635      1144 small
+ 2636      1020 small
+ 2637      1142 small
+ 2638      1022 small
+ 2639      1144 small
+ 2640      1014 small
+ 2641      1144 small
+ 2642      1012 small
+ 2643      5842 small
+ 2644      1018 small
+ 2645      2766 small
+ 2646      1020 small
+ 2647      4874 small
+ 2648      1022 small
+ 2649      3552 small
+ 2650      1058 small
+ 2651      1154 small
+ 2652      1058 small
+ 2653      1350 small
+ 2654      1236 small
+ 2655      1154 small
+ 2656      1032 small
+ 2657      1150 small
+ 2658       736 small
+ 2659      1058 small
+ 2660      1150 small
+ 2661      1552 small
+ 2662      1172 small
+ 2663      1734 small
+ 2664      1170 small
+ 2665      1552 small
+ 2666      1170 small
+ 2667      1552 small
+ 2668      1170 small
+ 2669      1552 small
+ 2670      1170 small
+ 2671      1552 small
+ 2672      1170 small
+ 2673      1518 small
+ 2674      1172 small
+ 2675      1736 small
+ 2676      1368 small
+ 2677      1518 small
+ 2678      1368 small
+ 2679      1552 small
+ 2680      1170 small
+ 2681      1518 small
+ 2682      1170 small
+ 2683      1518 small
+ 2684      1170 small
+ 2685      1764 small
+ 2686      1170 small
+ 2687      1552 small
+ 2688      1374 small
+ 2689      1608 small
+ 2690      1600 small
+ 2691      1646 small
+ 2692      1276 small
+ 2693      1636 small
+ 2694      1658 small
+ 2695      1692 small
+ 2696      1266 small
+ 2697       736 small
+ 2698      1636 small
+ 2699      1262 small
+ 2700      1644 small
+ 2701      1486 small
+ 2702      1676 small
+ 2703      1250 small
+ 2704      1890 small
+ 2705      1250 small
+ 2706       736 small
+ 2707      1644 small
+ 2708      1254 small
+ 2709      1058 small
+ 2710      1058 small
+ 2711      1818 small
+ 2712      1058 small
+ 2713      1150 small
+ 2714      1058 small
+ 2715      1150 small
+ 2716       736 small
+ 2717      1032 small
+ 2718      1150 small
+ 2719      1608 small
+ 2720      1250 small
+ 2721      1872 small
+ 2722       906 small
+ 2723      1606 small
+ 2724      1688 small
+ 2725      1598 small
+ 2726      1248 small
+ 2727      1614 small
+ 2728      1232 small
+ 2729      1632 small
+ 2730      1248 small
+ 2731      1630 small
+ 2732      1258 small
+ 2733      1650 small
+ 2734      1778 small
+ 2735      1640 small
+ 2736      1280 small
+ 2737      1734 small
+ 2738      1776 small
+ 2739      1904 small
+ 2740      1486 small
+ 2741      1700 small
+ 2742      1266 small
+ 2743      1644 small
+ 2744      1266 small
+ 2745      1644 small
+ 2746      1250 small
+ 2747      1692 small
+ 2748      1486 small
+ 2749      1634 small
+ 2750      1686 small
+ 2751      1696 small
+ 2752      3298 small
+ 2753      1682 small
+ 2754      1260 small
+ 2755      1644 small
+ 2756      1250 small
+ 2757      1630 small
+ 2758      1976 small
+ 2759      1608 small
+ 2760      2228 small
+ 2761      1914 small
+ 2762      1706 small
+ 2763      1640 small
+ 2764      1518 small
+ 2765      1904 small
+ 2766      1530 small
+ 2767      1032 small
+ 2768      1046 small
+ 2769      1032 small
+ 2770      1042 small
+ 2771      2052 small
+ 2772      1554 small
+ 2773      2312 small
+ 2774      2082 small
+ 2775      1840 small
+ 2776      1280 small
+ 2777      1830 small
+ 2778      2626 small
+ 2779      1126 small
+ 2780      1596 small
+ 2781      1246 small
+ 2782      1262 small
+ 2783       932 small
+ 2784       720 small
+ 2785       986 small
+ 2786       944 small
+ 2787      1068 small
+ 2788      1068 small
+ 2789      1144 small
+ 2790       754 small
+ 2791       754 small
+ 2792       754 small
+ 2793       754 small
+ 2794       754 small
+ 2795       754 small
+ 2796       754 small
+ 2797       754 small
+ 2798       754 small
+ 2799       754 small
+ 2800      1012 small
+ 2801       870 small
+ 2802       754 small
+ 2803       754 small
+ 2804       754 small
+ 2805       754 small
+ 2806       754 small
+ 2807       754 small
+ 2808       754 small
+ 2809       754 small
+ 2810       754 small
+ 2811       754 small
+ 2812       754 small
+ 2813       754 small
+ 2814       754 small
+ 2815       754 small
+ 2816       754 small
+ 2817       754 small
+ 2818       754 small
+ 2819      1242 small
+ 2820       830 small
+ 2821      1234 small
+ 2822       962 small
+ 2823      1076 small
+ 2824       814 small
+ 2825       918 small
+ 2826       754 small
+ 2827       754 small
+ 2828      1076 small
+ 2829      1076 small
+ 2830      1076 small
+ 2831      1240 small
+ 2832       754 small
+ 2833       834 small
+ 2834       754 small
+ 2835       754 small
+ 2836       754 small
+ 2837      1230 small
+ 2838      1076 small
+ 2839       754 small
+ 2840       754 small
+ 2841       754 small
+ 2842       754 small
+ 2843      1080 small
+ 2844      1076 small
+ 2845       754 small
+ 2846       754 small
+ 2847       754 small
+ 2848       754 small
+ 2849       754 small
+ 2850       754 small
+ 2851       754 small
+ 2852       754 small
+ 2853       754 small
+ 2854       754 small
+ 2855       812 small
+ 2856      1076 small
+ 2857      1076 small
+ 2858       812 small
+ 2859       754 small
+ 2860       754 small
+ 2861      1230 small
+ 2862      1080 small
+ 2863      1076 small
+ 2864      1076 small
+ 2865       812 small
+ 2866       286 small
+ 2867       892 small
+ 2868      3726 small
+ 2869      2050 small
+ 2870      2426 small
+ 2871      3222 small
+ 2872      3476 small
+ 2873      3366 small
+ 2874      1916 small
+ 2875      1928 small
+ 2876      1698 small
+ 2877       894 small
+ 2878      2564 small
+ 2879      1472 small
+ 2880      2946 small
+ 2881      4018 small
+ 2882      2206 small
+ 2883      2516 small
+ 2884      1938 small
+ 2885      2194 small
+ 2886      3398 small
+ 2887      1002 small
+ 2888      1438 small
+ 2889      1844 small
+ 2890      1940 small
+ 2891       976 small
+ 2892      2426 small
+ 2893      3114 small
+ 2894       762 small
+ 2895      2740 small
+ 2896      2946 small
+ 2897      1966 small
+ 2898      2696 small
+ 2899       768 small
+ 2900      2470 small
+ 2901      2246 small
+ 2902      3244 small
+ 2903       756 small
+ 2904      1912 small
+ 2905      1006 small
+ 2906      1464 small
+ 2907      2386 small
+ 2908      1930 small
+ 2909      2738 small
+ 2910      2742 small
+ 2911      1956 small
+ 2912      2972 small
+ 2913      1706 small
+ 2914      2188 small
+ 2915      2392 small
+ 2916      2922 small
+ 2917      2144 small
+ 2918      3288 small
+ 2919      2136 small
+ 2920      2400 small
+ 2921      1952 small
+ 2922       646 small
+ 2923      1666 small
+ 2924      1470 small
+ 2925      1106 small
+ 2926      3004 small
+ 2927      3712 small
+ 2928      1920 small
+ 2929      1000 small
+ 2930      1040 small
+ 2931      1418 small
+ 2932      2632 small
+ 2933      3000 small
+ 2934      2272 small
+ 2935      2188 small
+ 2936      2424 small
+ 2937      2986 small
+ 2938      1414 small
+ 2939      1004 small
+ 2940      1476 small
+ 2941      1990 small
+ 2942      1910 small
+ 2943      2600 small
+ 2944      2248 small
+ 2945      2834 small
+ 2946      3772 small
+ 2947      2254 small
+ 2948      2426 small
+ 2949      1124 small
+ 2950      1364 small
+ 2951      2234 small
+ 2952      2258 small
+ 2953      1324 small
+ 2954      2412 small
+ 2955      2172 small
+ 2956      1396 small
+ 2957      4152 small
+ 2958      2508 small
+ 2959      3716 small
+ 2960      1226 small
+ 2961       738 small
+ 2962      1750 small
+ 2963      1396 small
+ 2964      1352 small
+ 2965      2196 small
+ 2966       922 small
+ 2967      1070 small
+ 2968      1218 small
+ 2969      2156 small
+ 2970      2796 small
+ 2971      2422 small
+ 2972      3062 small
+ 2973      2926 small
+ 2974      2954 small
+ 2975      1126 small
+ 2976       824 small
+ 2977      2228 small
+ 2978      2420 small
+ 2979      2190 small
+ 2980       708 small
+ 2981       678 small
+ 2982      1126 small
+ 2983       816 small
+ 2984      2174 small
+ 2985       816 small
+ 2986      1730 small
+ 2987       968 small
+ 2988      2338 small
+ 2989      1080 small
+ 2990      1200 small
+ 2991      2542 small
+ 2992      4024 small
+ 2993      1920 small
+ 2994      1000 small
+ 2995      3350 small
+ 2996      1212 small
+ 2997      2852 small
+ 2998      2392 small
+ 2999      2360 small
+ 3000      2672 small
+ 3001      3006 small
+ 3002      2580 small
+ 3003       880 small
+ 3004      1562 small
+ 3005      1420 small
+ 3006      1616 small
+ 3007      1922 small
+ 3008      3350 small
+ 3009      1452 small
+ 3010       944 small
+ 3011      3814 small
+ 3012      2180 small
+ 3013      1214 small
+ 3014      3738 small
+ 3015      1930 small
+ 3016      1000 small
+ 3017      1922 small
+ 3018      1892 small
+ 3019      2446 small
+ 3020      2438 small
+ 3021      2678 small
+ 3022      1034 small
+ 3023      3216 small
+ 3024      1300 small
+ 3025      1300 small
+ 3026      1300 small
+ 3027      1300 small
+ 3028      1300 small
+ 3029      1300 small
+ 3030      1300 small
+ 3031      1300 small
+ 3032      1300 small
+ 3033      1300 small
+ 3034      1300 small
+ 3035      1300 small
+ 3036      1300 small
+ 3037      1300 small
+ 3038      1300 small
+ 3039      1300 small
+ 3040      1300 small
+ 3041      1300 small
+ 3042      1300 small
+ 3043      1300 small
+ 3044      1300 small
+ 3045      1300 small
+ 3046      1300 small
+ 3047      1300 small
+ 3048      1300 small
+ 3049      1300 small
+ 3050      1300 small
+ 3051      1300 small
+ 3052      1300 small
+ 3053      1300 small
+ 3054      1300 small
+ 3055      1300 small
+ 3056      1300 small
+ 3057      1300 small
+ 3058      1300 small
+ 3059      1300 small
+ 3060      1300 small
+ 3061      1300 small
+ 3062      1300 small
+ 3063      1300 small
+ 3064      1300 small
+ 3065      1300 small
+ 3066      1300 small
+ 3067      1300 small
+ 3068      1300 small
+ 3069      1300 small
+ 3070      1300 small
+ 3071      1300 small
+ 3072      1300 small
+ 3073      1300 small
+ 3074      1300 small
+ 3075      1300 small
+ 3076      1300 small
+ 3077      1300 small
+ 3078      1300 small
+ 3079      3646 small
+ 3080       794 small
+ 3081      2428 small
+ 3082      5120 small
+ 3083      1894 small
+ 3084      2150 small
+ 3085       958 small
+ 3086      5066 small
+ 3087      2190 small
+ 3088      2202 small
+ 3089      2644 small
+ 3090      1444 small
+ 3091      3296 small
+ 3092       958 small
+ 3093      2564 small
+ 3094       954 small
+ 3095      3402 small
+ 3096      1436 small
+ 3097      2144 small
+ 3098      1300 small
+ 3099      1300 small
+ 3100      1300 small
+ 3101      1300 small
+ 3102      1300 small
+ 3103      1300 small
+ 3104      1300 small
+ 3105      1300 small
+ 3106      1300 small
+ 3107      1300 small
+ 3108      1300 small
+ 3109      1300 small
+ 3110       996 small
+ 3111       748 small
+ 3112      1724 small
+ 3113      2976 small
+ 3114      1234 small
+ 3115      2216 small
+ 3116      2512 small
+ 3117      1964 small
+ 3118      1714 small
+ 3119      1192 small
+ 3120       912 small
+ 3121      1208 small
+ 3122      2618 small
+ 3123      3386 small
+ 3124       934 small
+ 3125      1482 small
+ 3126       896 small
+ 3127      2146 small
+ 3128      1662 small
+ 3129      3146 small
+ 3130      3646 small
+ 3131      2736 small
+ 3132      2004 small
+ 3133      3240 small
+ 3134      4438 small
+ 3135      2316 small
+ 3136       748 small
+ 3137      1646 small
+ 3138      1452 small
+ 3139      3400 small
+ 3140       800 small
+ 3141      4160 small
+ 3142      1144 small
+ 3143       962 small
+ 3144      3272 small
+ 3145      2212 small
+ 3146      1486 small
+ 3147      1716 small
+ 3148      1474 small
+ 3149      2446 small
+ 3150      1864 small
+ 3151       970 small
+ 3152       948 small
+ 3153      2022 small
+ 3154      1300 small
+ 3155      1300 small
+ 3156      1300 small
+ 3157      1300 small
+ 3158      1300 small
+ 3159      1300 small
+ 3160      1300 small
+ 3161      1300 small
+ 3162      1300 small
+ 3163      1300 small
+ 3164      1300 small
+ 3165      1300 small
+ 3166      1300 small
+ 3167      1300 small
+ 3168      1300 small
+ 3169      1300 small
+ 3170      1092 small
+ 3171      2386 small
+ 3172      3656 small
+ 3173      1146 small
+ 3174      2766 small
+ 3175      1896 small
+ 3176      5404 small
+ 3177      2072 small
+ 3178      2358 small
+ 3179      2358 small
+ 3180      2358 small
+ 3181      2358 small
+ 3182      2358 small
+ 3183      2358 small
+ 3184      2358 small
+ 3185      2358 small
+ 3186      2358 small
+ 3187      2358 small
+ 3188      2358 small
+ 3189      2358 small
+ 3190      2358 small
+ 3191      2358 small
+ 3192      2358 small
+ 3193      2358 small
+ 3194      2358 small
+ 3195      2358 small
+ 3196      2358 small
+ 3197      2358 small
+ 3198      2358 small
+ 3199      2358 small
+ 3200      2358 small
+ 3201      2358 small
+ 3202      2358 small
+ 3203      2358 small
+ 3204      2358 small
+ 3205      2358 small
+ 3206      2358 small
+ 3207      2358 small
+ 3208      2358 small
+ 3209      2358 small
+ 3210      2358 small
+ 3211      2358 small
+ 3212      2358 small
+ 3213      2358 small
+ 3214      2358 small
+ 3215      2358 small
+ 3216      2358 small
+ 3217      2358 small
+ 3218      2358 small
+ 3219      2358 small
+ 3220      2358 small
+ 3221      2358 small
+ 3222      2358 small
+ 3223      2358 small
+ 3224      2358 small
+ 3225      2358 small
+ 3226      2358 small
+ 3227      2358 small
+ 3228      2358 small
+ 3229      2358 small
+ 3230      2358 small
+ 3231      2358 small
+ 3232      2358 small
+ 3233      2358 small
+ 3234      2358 small
+ 3235      2358 small
+ 3236      2358 small
+ 3237      2358 small
+ 3238      2358 small
+ 3239      2358 small
+ 3240      2358 small
+ 3241      2358 small
+ 3242      2358 small
+ 3243      2358 small
+ 3244      2358 small
+ 3245      2358 small
+ 3246      2358 small
+ 3247      2358 small
+ 3248      2358 small
+ 3249      2358 small
+ 3250      2358 small
+ 3251      2358 small
+ 3252      2358 small
+ 3253      2358 small
+ 3254      2358 small
+ 3255      2358 small
+ 3256      2358 small
+ 3257      3130 small
+ 3258      6114 small
+ 3259      2750 small
+ 3260      2444 small
+ 3261       804 small
+ 3262       804 small
+ 3263      2902 small
+ 3264      2724 small
+ 3265      1332 small
+ 3266      3990 small
+ 3267      2968 small
+ 3268      1064 small
+ 3269       800 small
+ 3270      2434 small
+ 3271      2102 small
+ 3272      2448 small
+ 3273      3946 small
+ 3274      2728 small
+ 3275      2390 small
+ 3276      1702 small
+ 3277      3368 small
+ 3278      2582 small
+ 3279      1884 small
+ 3280      2196 small
+ 3281      2358 small
+ 3282      2358 small
+ 3283      2358 small
+ 3284      2358 small
+ 3285      2358 small
+ 3286      2358 small
+ 3287      2358 small
+ 3288      2358 small
+ 3289      2358 small
+ 3290      2358 small
+ 3291      2358 small
+ 3292      2358 small
+ 3293      2358 small
+ 3294      2358 small
+ 3295      2358 small
+ 3296      2718 small
+ 3297      2938 small
+ 3298      2666 small
+ 3299      3026 small
+ 3300      1008 small
+ 3301      1796 small
+ 3302      2004 small
+ 3303      2548 small
+ 3304      1520 small
+ 3305      2548 small
+ 3306      1948 small
+ 3307      2764 small
+ 3308      2434 small
+ 3309      1106 small
+ 3310      1086 small
+ 3311       798 small
+ 3312      2482 small
+ 3313      2206 small
+ 3314      2134 small
+ 3315      2156 small
+ 3316      1922 small
+ 3317      2486 small
+ 3318      3202 small
+ 3319      3494 small
+ 3320      5200 small
+ 3321      2172 small
+ 3322       966 small
+ 3323      2970 small
+ 3324      2432 small
+ 3325      3844 small
+ 3326      4430 small
+ 3327      1198 small
+ 3328       952 small
+ 3329      2226 small
+ 3330      3062 small
+ 3331       970 small
+ 3332      1228 small
+ 3333      1938 small
+ 3334      2358 small
+ 3335      2358 small
+ 3336      2358 small
+ 3337      2358 small
+ 3338      2358 small
+ 3339      2358 small
+ 3340      2358 small
+ 3341      2358 small
+ 3342      2358 small
+ 3343      2358 small
+ 3344      1540 small
+ 3345      5128 small
+ 3346      1188 small
+ 3347       914 small
+ 3348       744 small
+ 3349      1814 small
+ 3350      1788 small
+ 3351      1802 small
+ 3352      1814 small
+ 3353      1168 small
+ 3354      1564 small
+ 3355      1564 small
+ 3356      1744 small
+ 3357      2148 small
+ 3358      2018 small
+ 3359      2664 small
+ 3360      2444 small
+ 3361      1540 small
+ 3362      1946 small
+ 3363      1340 small
+ 3364      1028 small
+ 3365      2186 small
+ 3366      2488 small
+ 3367      2512 small
+ 3368      2672 small
+ 3369       798 small
+ 3370       804 small
+ 3371      2194 small
+ 3372      2150 small
+ 3373      1898 small
+ 3374      1720 small
+ 3375      3340 small
+ 3376       798 small
+ 3377       952 small
+ 3378       800 small
+ 3379      1320 small
+ 3380      1488 small
+ 3381      2200 small
+ 3382      2644 small
+ 3383      2186 small
+ 3384      2248 small
+ 3385      3114 small
+ 3386      2746 small
+ 3387      2650 small
+ 3388      4138 small
+ 3389      2462 small
+ 3390      2416 small
+ 3391      1300 small
+ 3392      1736 small
+ 3393      4026 small
+ 3394      2124 small
+ 3395      2170 small
+ 3396      1912 small
+ 3397      1740 small
+ 3398      1948 small
+ 3399       796 small
+ 3400      1506 small
+ 3401       962 small
+ 3402       804 small
+ 3403      1900 small
+ 3404       916 small
+ 3405       916 small
+ 3406       916 small
+ 3407       916 small
+ 3408       916 small
+ 3409       916 small
+ 3410       916 small
+ 3411       916 small
+ 3412       916 small
+ 3413       916 small
+ 3414       916 small
+ 3415       916 small
+ 3416       916 small
+ 3417       916 small
+ 3418       916 small
+ 3419       916 small
+ 3420       916 small
+ 3421       916 small
+ 3422       916 small
+ 3423       916 small
+ 3424       916 small
+ 3425       916 small
+ 3426       916 small
+ 3427       916 small
+ 3428       916 small
+ 3429       916 small
+ 3430       916 small
+ 3431      1648 small
+ 3432       912 small
+ 3433       752 small
+ 3434       916 small
+ 3435      2314 small
+ 3436      2826 small
+ 3437       730 small
+ 3438      1206 small
+ 3439      1930 small
+ 3440      2170 small
+ 3441      1716 small
+ 3442       916 small
+ 3443       916 small
+ 3444      2442 small
+ 3445      1082 small
+ 3446       916 small
+ 3447       916 small
+ 3448       916 small
+ 3449       916 small
+ 3450       916 small
+ 3451       916 small
+ 3452       916 small
+ 3453       916 small
+ 3454       916 small
+ 3455       916 small
+ 3456       916 small
+ 3457       916 small
+ 3458       916 small
+ 3459       916 small
+ 3460       916 small
+ 3461       916 small
+ 3462       916 small
+ 3463       916 small
+ 3464       916 small
+ 3465       916 small
+ 3466       916 small
+ 3467       916 small
+ 3468       916 small
+ 3469       916 small
+ 3470       916 small
+ 3471       916 small
+ 3472       916 small
+ 3473       916 small
+ 3474       916 small
+ 3475       916 small
+ 3476       916 small
+ 3477       916 small
+ 3478       916 small
+ 3479       916 small
+ 3480       916 small
+ 3481       916 small
+ 3482       916 small
+ 3483       916 small
+ 3484       916 small
+ 3485       916 small
+ 3486       916 small
+ 3487       916 small
+ 3488       916 small
+ 3489      2638 small
+ 3490      1764 small
+ 3491      1970 small
+ 3492      2418 small
+ 3493      2810 small
+ 3494      5244 small
+ 3495       806 small
+ 3496      3772 small
+ 3497       806 small
+ 3498      2740 small
+ 3499      4122 small
+ 3500      2056 small
+ 3501      2050 small
+ 3502       982 small
+ 3503      2168 small
+ 3504      1740 small
+ 3505      2456 small
+ 3506      2964 small
+ 3507      2914 small
+ 3508      2202 small
+ 3509       998 small
+ 3510      2794 small
+ 3511      2024 small
+ 3512      1786 small
+ 3513      1164 small
+ 3514      3792 small
+ 3515      1740 small
+ 3516      4426 small
+ 3517      4506 small
+ 3518      1738 small
+ 3519      2858 small
+ 3520      2028 small
+ 3521      1948 small
+ 3522      2914 small
+ 3523      2920 small
+ 3524      9138 small
+ 3525       996 small
+ 3526      7942 small
+ 3527      1738 small
+ 3528      3088 small
+ 3529      2988 small
+ 3530      1004 small
+ 3531      4546 small
+ 3532      1006 small
+ 3533      1786 small
+ 3534      2500 small
+ 3535      4362 small
+ 3536      1548 small
+ 3537      5794 small
+ 3538      2402 small
+ 3539      4504 small
+ 3540      2216 small
+ 3541      2206 small
+ 3542      2292 small
+ 3543      2784 small
+ 3544      4552 small
+ 3545      2190 small
+ 3546      3024 small
+ 3547      3342 small
+ 3548      2718 small
+ 3549      1936 small
+ 3550      1266 small
+ 3551      2712 small
+ 3552      2694 small
+ 3553      1796 small
+ 3554      2162 small
+ 3555      1830 small
+ 3556      2720 small
+ 3557      1794 small
+ 3558      1412 small
+ 3559      3054 small
+ 3560      1034 small
+ 3561      1568 small
+ 3562      1348 small
+ 3563      1508 small
+ 3564      1348 small
+ 3565      1778 small
+ 3566      1356 small
+ 3567      2382 small
+ 3568      1348 small
+ 3569      1704 small
+ 3570      2152 small
+ 3571      1774 small
+ 3572      2192 small
+ 3573      1954 small
+ 3574       750 small
+ 3575      1552 small
+ 3576      1948 small
+ 3577      1762 small
+ 3578      1564 small
+ 3579       750 small
+ 3580      2212 small
+ 3581      1380 small
+ 3582      2364 small
+ 3583      1940 small
+ 3584      2358 small
+ 3585      2392 small
+ 3586      1960 small
+ 3587      1950 small
+ 3588      2818 small
+ 3589      1564 small
+ 3590      1968 small
+ 3591      2900 small
+ 3592       750 small
+ 3593       750 small
+ 3594      2386 small
+ 3595      2634 small
+ 3596      1818 small
+ 3597      1780 small
+ 3598      1916 small
+ 3599       904 small
+ 3600       898 small
+ 3601      1980 small
+ 3602      2360 small
+ 3603      2186 small
+ 3604      1204 small
+ 3605      1362 small
+ 3606       998 small
+ 3607      1960 small
+ 3608      2154 small
+ 3609      2744 small
+ 3610       998 small
+ 3611      2818 small
+ 3612      1734 small
+ 3613      1344 small
+ 3614      2702 small
+ 3615      1932 small
+ 3616       750 small
+ 3617      1970 small
+ 3618      2192 small
+ 3619      2118 small
+ 3620       920 small
+ 3621      1730 small
+ 3622       898 small
+ 3623      2392 small
+ 3624      2202 small
+ 3625      3066 small
+ 3626      2140 small
+ 3627      2710 small
+ 3628      2902 small
+ 3629      2410 small
+ 3630      2210 small
+ 3631       898 small
+ 3632      2182 small
+ 3633      1956 small
+ 3634      1656 small
+ 3635      2756 small
+ 3636      2886 small
+ 3637      2488 small
+ 3638      1364 small
+ 3639      2364 small
+ 3640      1940 small
+ 3641      2342 small
+ 3642      1932 small
+ 3643      1552 small
+ 3644      1950 small
+ 3645      1778 small
+ 3646      1728 small
+ 3647      1508 small
+ 3648      1492 small
+ 3649       988 small
+ 3650      2186 small
+ 3651      2194 small
+ 3652      1162 small
+ 3653      2146 small
+ 3654      2680 small
+ 3655      1468 small
+ 3656      2184 small
+ 3657      1444 small
+ 3658      2456 small
+ 3659      2214 small
+ 3660      1110 small
+ 3661      1812 small
+ 3662      3070 small
+ 3663       804 small
+ 3664      1720 small
+ 3665      1934 small
+ 3666      2146 small
+ 3667      3762 small
+ 3668      1736 small
+ 3669      1942 small
+ 3670      2716 small
+ 3671      2468 small
+ 3672      2788 small
+ 3673      1970 small
+ 3674      2270 small
+ 3675      1996 small
+ 3676      1972 small
+ 3677      2118 small
+ 3678      2246 small
+ 3679       898 small
+ 3680      1988 small
+ 3681      2006 small
+ 3682       898 small
+ 3683      1772 small
+ 3684      2200 small
+ 3685      2376 small
+ 3686      2172 small
+ 3687      1582 small
+ 3688      1360 small
+ 3689      1556 small
+ 3690      2354 small
+ 3691      1574 small
+ 3692      1604 small
+ 3693      1524 small
+ 3694      2496 small
+ 3695      3274 small
+ 3696      3406 small
+ 3697      4014 small
+ 3698      3708 small
+ 3699      1764 small
+ 3700      2210 small
+ 3701      1986 small
+ 3702     11194 small
+ 3703      3004 small
+ 3704     10448 small
+ 3705      1730 small
+ 3706      5810 small
+ 3707      2416 small
+ 3708      4442 small
+ 3709       806 small
+ 3710      2690 small
+ 3711      2200 small
+ 3712      2748 small
+ 3713      5948 small
+ 3714      1236 small
+ 3715      2178 small
+ 3716      2192 small
+ 3717      1934 small
+ 3718      2710 small
+ 3719      1838 small
+ 3720      1016 small
+ 3721      1858 small
+ 3722      2144 small
+ 3723      1980 small
+ 3724      2174 small
+ 3725      1722 small
+ 3726      2306 small
+ 3727      1064 small
+ 3728       808 small
+ 3729       662 small
+ 3730       470 small
+ 3731       528 small
+ 3732       532 small
+ 3733      2384 small
+ 3734     45034 small
+ 3735    235804 len=932320 #AWO1#AWG3#AZT1#AMB1
+ 3736     75830 small
+ 3737     76152 small
+ 3738     76086 small
+ 3739     76074 small
+ 3740     76058 small
+ 3741     76134 small
+ 3742     76160 small
+ 3743     76200 small
+ 3744     75990 small
+ 3745     76142 small
+ 3746     76142 small
+ 3747     76142 small
+ 3748     75864 small
+ 3749     76060 small
+ 3750     88452 small
+ 3751     76210 small
+ 3752     76130 small
+ 3753     76130 small
+ 3754     76130 small
+ 3755     76130 small
+ 3756     75884 small
+ 3757     76230 small
+ 3758     87456 small
+ 3759     79686 small
+ 3760     76240 small
+ 3761     76092 small
+ 3762     76148 small
+ 3763     76172 small
+ 3764     76208 small
+ 3765     76154 small
+ 3766     90126 small
+ 3767     76064 small
+ 3768     67052 small
+ 3769    103408 len=185024 #ACM1
+ 3770     88096 small
+ 3771     76162 small
+ 3772     76226 small
+ 3773     75914 small
+ 3774     78098 small
+ 3775     76210 small
+ 3776     75984 small
+ 3777     87764 small
+ 3778     79486 small
+ 3779     76046 small
+ 3780     91390 small
+ 3781     76802 small
+ 3782     10226 small
+ 3783     15402 small
+ 3784      1438 small
+ 3785     21530 small
+ 3786   1134284 len=6187296 #AWO1#AWG1
+ 3787    583456 len=1676640 #AZT1
+ 3788    184110 len=876192 #AWO1#AWG1
+ 3789    265372 len=737600 #AZT1
+ 3790     93482 small
+ 3791      7728 small
+ 3792      2486 small
+ 3793       278 small
+ 3794      2796 small
+ 3795      2554 small
+ 3796       214 small
+ 3797     47708 small
+ 3798      2692 small
+ 3799      1654 small
+ 3800     23210 small
+ 3801      5182 small
+ 3802       926 small
+ 3803     26932 small
+ 3804      3290 small
+ 3805      1654 small
+ 3806      6596 small
+ 3807      4546 small
+ 3808       226 small
+ 3809       262 small
+ 3810      7702 small
+ 3811      3396 small
+ 3812       202 small
+ 3813       290 small
+ 3814      2844 small
+ 3815      1054 small
+ 3816       234 small
+ 3817      9806 small
+ 3818     15404 small
+ 3819      1226 small
+ 3820     21308 small
+ 3821   1139538 len=6192640 #AWO1#AWG1
+ 3822    567168 len=1668096 #AZT1
+ 3823    183836 len=876320 #AWO1#AWG1
+ 3824    261776 len=737600 #AZT1
+ 3825     93482 small
+ 3826      7728 small
+ 3827      2520 small
+ 3828       214 small
+ 3829      2758 small
+ 3830      2496 small
+ 3831       214 small
+ 3832     47708 small
+ 3833      2692 small
+ 3834      1618 small
+ 3835     23210 small
+ 3836      5182 small
+ 3837       938 small
+ 3838     26932 small
+ 3839      3290 small
+ 3840      1620 small
+ 3841      9762 small
+ 3842     15406 small
+ 3843      1430 small
+ 3844     20692 small
+ 3845    727470 len=2776992 #AWO1#AWG1
+ 3846    229734 len=704832 #AZT1
+ 3847    259128 len=1042464 #AWO1#AWG1
+ 3848    382640 len=1217120 #AZT1
+ 3849    310366 len=792896 #ACM1
+ 3850       530 small
+ 3851       278 small
+ 3852     69602 small
+ 3853      1074 small
+ 3854     36702 small
+ 3855      1540 small
+ 3856      3040 small
+ 3857     69584 small
+ 3858     49364 small
+ 3859     59188 small
+ 3860     52308 small
+ 3861     51732 small
+ 3862     63542 small
+ 3863     60458 small
+ 3864     68196 small
+ 3865     73760 small
+ 3866       290 small
+ 3867     83776 small
+ 3868    101252 small
+ 3869     62022 small
+ 3870     64512 small
+ 3871     63280 small
+ 3872     61206 small
+ 3873     60176 small
+ 3874     62334 small
+ 3875     74830 small
+ 3876     49638 small
+ 3877    126124 len=1048800 #AZT1
+ 3878      1666 small
+ 3879      3532 small
+ 3880      2390 small
+ 3881    269564 len=475584 #ACM1
+ 3882       558 small
+ 3883      3766 small
+ 3884    142036 len=1048800 #AZT1
+ 3885    145776 len=1048800 #AZT1
+ 3886     86064 small
+ 3887     83452 small
+ 3888    143452 len=1048800 #AZT1
+ 3889    157660 len=1048800 #AZT1
+ 3890    130220 len=1048800 #AZT1
+ 3891    126122 len=1048800 #AZT1
+ 3892    129952 len=1048800 #AZT1
+ 3893    130574 len=1048800 #AZT1
+ 3894    112056 len=1048800 #AZT1
+ 3895    118394 len=1048800 #AZT1
+ 3896    159650 len=1048800 #AZT1
+ 3897    159126 len=1048800 #AZT1
+ 3898    109094 len=1048800 #AZT1
+ 3899    108496 len=1048800 #AZT1
+ 3900     81192 small
+ 3901     79008 small
+ 3902     85312 small
+ 3903     83682 small
+ 3904    133090 len=1048800 #AZT1
+ 3905    126342 len=1048800 #AZT1
+ 3906    150436 len=1048800 #AZT1
+ 3907    152972 len=1048800 #AZT1
+ 3908     98508 small
+ 3909     98712 small
+ 3910    141820 len=1048800 #AZT1
+ 3911    141732 len=1048800 #AZT1
+ 3912    155462 len=1048800 #AZT1
+ 3913    151046 len=1048800 #AZT1
+ 3914     90262 small
+ 3915     92762 small
+ 3916    109770 len=1048800 #AZT1
+ 3917    109952 len=1048800 #AZT1
+ 3918    105866 len=1048800 #AZT1
+ 3919    106506 len=1048800 #AZT1
+ 3920    104338 len=1048800 #AZT1
+ 3921     98316 small
+ 3922    132068 len=1048800 #AZT1
+ 3923    138518 len=1048800 #AZT1
+ 3924    101600 small
+ 3925    101250 small
+ 3926    135718 len=1048800 #AZT1
+ 3927    134814 len=1048800 #AZT1
+ 3928     95282 small
+ 3929     96382 small
+ 3930    108186 len=1048800 #AZT1
+ 3931    107994 len=1048800 #AZT1
+ 3932    120876 len=1048800 #AZT1
+ 3933    117282 len=1048800 #AZT1
+ 3934    118922 len=1048800 #AZT1
+ 3935    116364 len=1048800 #AZT1
+ 3936     46276 small
+ 3937     45586 small
+ 3938    103382 len=1048800 #AZT1
+ 3939     95184 small
+ 3940    103946 len=1048800 #AZT1
+ 3941    105246 len=1048800 #AZT1
+ 3942    128710 len=1048800 #AZT1
+ 3943    132568 len=1048800 #AZT1
+ 3944    130140 len=1048800 #AZT1
+ 3945    126480 len=1048800 #AZT1
+ 3946    120414 len=1048800 #AZT1
+ 3947    121300 len=1048800 #AZT1
+ 3948    151824 len=1048800 #AZT1
+ 3949    154914 len=1048800 #AZT1
+ 3950    165320 len=1048800 #AZT1
+ 3951    167142 len=1048800 #AZT1
+ 3952     96624 small
+ 3953     97266 small
+ 3954     83964 small
+ 3955     87336 small
+ 3956     99088 small
+ 3957    100334 small
+ 3958     91360 small
+ 3959     92340 small
+ 3960     97402 small
+ 3961     91296 small
+ 3962  88363008 ERR
+ 3963   1021952 ERR
+ 3964      4434 small
+ 3965      3076 small
+ 3966      5906 small
+ 3967     12402 small
+ 3968     33836 small
+ 3969     15614 small
+ 3970   1292288 ERR
+ 3971   1071104 ERR
+ 3972   1409024 ERR
+ 3973   1271808 ERR
+ 3974   1531904 ERR
+ 3975   1296384 ERR
+ 3976   1519616 ERR
+ 3977   1085440 ERR
+ 3978   1071104 ERR
+ 3979   1413120 ERR
+ 3980   1300480 ERR
+ 3981   1402880 ERR
+ 3982   1296384 ERR
+ 3983     58448 small
+ 3984       468 small
+ 3985       326 small
+ 3986     75538 small
+ 3987       372 small
+ 3988       264 small
+ 3989        83 small

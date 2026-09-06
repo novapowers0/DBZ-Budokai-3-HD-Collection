@@ -91,21 +91,25 @@ cualquier slot (swap nativo §3.4.1) y que el guest autodetecta el formato de
 cada bin (§13.1). Lo que falta es **mapear las tablas de contenido** (roster,
 stages, movimientos) para duplicar la ENTRADA correcta.
 
-### 3.1 Auditoría de contenido (base de todo)
-1. **Mapa completo de `data_cmn.afs`** (3990 entradas) → personaje / traje /
-   stage / objeto, cruzando con `DBZ_B3_Character_Bin_List.txt`. Parcialmente
-   hecho (catálogo `catalog_b3.cat`, 183 personajes).
-2. **Localizar los STAGES**: encontrar los bins de stage (candidatos:
-   `data_cmn.afs` o un AFS propio — `data_yah.afs` es pequeño (1.6 MB), no
-   parece stages; confirmar). Listar los bins grandes no-personaje.
-3. **Localizar los MOVESETS/habilidades**: los 8 moveset ports IW→B3 ya
-   existen (AGENTS §8 item 13) → hay conocimiento de dónde viven los
-   movimientos; confirmar si van en el bin del personaje o en una tabla
-   compartida, y el formato de la habilidad (daño, nombre, animación,
-   textura, flags).
+### 3.1 Auditoría de contenido (base de todo) — 🔴 EN CURSO (2026-09-02)
+1. **✅ Mapa completo de `data_cmn.afs`** (3990 entradas): hecho y documentado en
+   `docs/03_formatos/AUDITORIA_DATA_CMN.md` + mapa crudo en
+   `mod center hd/data_cmn_map.txt`. Clasificación por magics internos
+   (#AWO/#AWG/#AZT/#ACM/#AMB) con `awo_tools/afs_scan.py`.
+2. **🔴 Localizar los STAGES**: ✅ encontradas 2 zonas candidatas — bins 44-69
+   (entornos multi-modelo #AMB, 12-13 stages) y 3735/3786/3788/3821/3823/3845/
+   3847 (#AWO gigante de 2.8-6.2 MB, 7 stages) = ~20 total (coincide con el
+   juego). ⚠️ Pendiente: **validar** que cada bin es un entorno (exportar OBJ
+   con `awg0_export.py`) y cruzar con la pantalla de select de stages.
+3. **Localizar los MOVESETS/habilidades**: #ACM identificado como contenedor de
+   animaciones (bins 127, 358, 435, 444, 2208, 2209, 3881) pero NO distingue
+   moveset de personaje vs animación de escenario. Pendiente: mapear el moveset
+   exacto por personaje vía RE del guest.
 4. **Mapear el SLXS/roster** (personaje→trajes→bins) y la **pantalla de
-   select** (los `data_eng/ger/spn/fra/ita/usi.afs` = select/menús, §5.1).
-   Primer caso público en HD (la comunidad solo lo hace en PS2).
+   select**: en HD el SLXS-equivalente NO está en data_cmn (3983-3989 = audio
+   DRM IECS). Candidato: **`data_eng.afs`** (2709 entradas; bins grandes
+   1976-2062 = ~2-6 MB, retratos/select). Pendiente: auditar data_eng + leer
+   del guest qué entradas usa el select.
 
 ### 3.2 Habilidad adicional (por duplicado)
 1. RE del formato de habilidad en `generated/` (tabla de movimientos).
