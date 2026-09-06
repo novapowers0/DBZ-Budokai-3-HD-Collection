@@ -135,6 +135,21 @@ X_STATUS HostPathEntry::Open(uint32_t desired_access, File** out_file) {
 
 std::unique_ptr<memory::MappedMemory> HostPathEntry::OpenMapped(memory::MappedMemory::Mode mode,
                                                                 size_t offset, size_t length) {
+  // Mapped AFS reads bypass HostPathFile::ReadSync. Keep them in the same
+  // diagnostic trace so select-screen composites and other mapped entries are
+  // visible during roster/stage captures.
+  if (REXCVAR_GET(dbz1_diag_logging) && host_path_.extension() == ".afs") {
+    uint64_t entry_start = 0, entry_size = 0;
+    const int entry_index = AfsFindEntry(host_path_, offset, entry_start, entry_size);
+    if (entry_index >= 0) {
+      std::ofstream diag_file("dbz1_afs_reads.log", std::ios::app);
+      if (diag_file) {
+        diag_file << host_path_.filename().string() << " mapped entry=" << entry_index
+                  << std::hex << " off=0x" << offset << " n=0x" << length << " eoff=0x"
+                  << entry_start << " esize=0x" << entry_size << std::dec << std::endl;
+      }
+    }
+  }
   return memory::MappedMemory::Open(host_path_, mode, offset, length);
 }
 

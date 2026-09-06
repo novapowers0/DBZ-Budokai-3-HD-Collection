@@ -363,10 +363,12 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
 - CVars importantes del runtime: `deadzone`, `rumble` (input_system), `frame_cap`
   (d3d12_presenter), `vsync` (blindado en graphics_system — el guest corre
   SIEMPRE a 60 Hz), `user_language` (XGetLanguage → idioma del juego).
-- **Trace de reads AFS** (2026-09-07, F3.1.4): `HostPathFile::ReadSync` loguea
-  cada read AFS→entrada (`dbz1_afs_reads.log`: afs entry off n eoff esize),
-  gateado por `dbz1_diag_logging` (F10/dev). Útil para mapear roster/stages:
-  activar diag, abrir el select, pasar por cada personaje, entregar el log.
+- **Trace de reads AFS** (2026-09-07, F3.1.4): `HostPathFile::ReadSync` y
+  `HostPathEntry::OpenMapped` loguean reads/mappings AFS→entrada
+  (`dbz1_afs_reads.log`: afs entry off n eoff esize), gateados por
+  `dbz1_diag_logging` (F10/dev). Útil para mapear roster/stages: activar diag,
+  abrir el select, pasar por cada personaje, entregar el log. Un mapping largo
+  puede no generar eventos por cada página interna.
 
 ## 8. LAUNCHER — FUNCIONALIDAD (resumen de §4/§12-§14 del histórico)
 

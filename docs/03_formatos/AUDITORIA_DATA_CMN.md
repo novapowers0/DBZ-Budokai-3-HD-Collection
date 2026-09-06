@@ -117,6 +117,62 @@ falta RE del layout de vértice de stage (ver `docs/07_ports/`).
   (slot→bin) requiere **instrumentar el guest en runtime** (loguear qué bins
   de data_cmn carga al abrir el select con cada personaje).
 
+### 3.2 Trace de reads del guest — captura parcial 2026-09-07
+
+Se capturó `out/build/win-amd64-release/dbz1_afs_reads.log` con el trace de
+`HostPathFile::ReadSync`, mientras se recorrieron los personajes y stages
+disponibles en la partida. El log tiene 663 reads totales, de los cuales 417
+son de `data_cmn.afs`.
+
+#### Modelos confirmados por firma `#AWO1#AWG*#AZT1#AMB1`
+
+| Entry | Identificación | Observación |
+|---:|---|---|
+| 91 | Dr. Gero | modelo, no jugable según catálogo |
+| 141 | Kid Buu | modelo |
+| 181 | Freeza forma 1 | modelo |
+| 258 | Ginyu | modelo |
+| 264 | Goku normal | modelo |
+| 270 | Goku normal alternativo | modelo |
+| 327 | Krillin | modelo; entrada de referencia conocida |
+| 345 | Nappa | modelo |
+| 350 | Piccolo normal | modelo |
+| 360 | Raditz | modelo |
+| 366 | modelo sin nombre en el catálogo actual | requiere label interno |
+| 400 | Tenshinhan | modelo |
+| 416 | Vegeta sin armadura | modelo |
+| 445 | Yamcha pelo corto | modelo |
+
+Además aparecen entradas pequeñas intercaladas inmediatamente después de
+varios modelos: `91→94`, `141→144`, `181→195`, `258→261`, `264/270→289`,
+`327→331`, `345→348`, `350→355`, `360→359/363`, `366→365/369`,
+`400→403`, `416→431` y `445→449`. El trace demuestra que son recursos leídos
+en la misma secuencia de carga, pero **no permite afirmar todavía** que cada
+bin pequeño sea exclusivamente el moveset o la voz de ese personaje; algunos
+pueden ser tablas/configuración compartida.
+
+#### Contenido no relacionado con roster
+
+- `3881` es `#ACM1` y se lee tres veces: recurso de animación/moveset común,
+  todavía sin asignación inequívoca a un personaje.
+- `3971`, `3973`, `3976-3981` generan lecturas grandes repetidas; corresponden
+  al bloque tardío de vídeo/cinemática del AFS, no a modelos de personaje.
+- `3983-3988` son las entradas DRM/audio ya identificadas.
+- `data_spn.afs`, `adx_jpn.afs` y `adx_usa.afs` aparecen por localización y
+  audio, no deben mezclarse con el mapa de modelos.
+
+#### Limitación del primer trace
+
+El entry 0 de `data_eng.afs` (composite del select) no aparece como read
+normal. El guest puede accederlo mediante `HostPathEntry::OpenMapped`, que no
+pasa por `HostPathFile::ReadSync`. El runtime ya fue actualizado para registrar
+también la creación del mapping (`mapped entry=...`), pero esto solo identifica
+el rango inicial que se mapea; no garantiza un evento por cada página que el
+guest toque después. Por ello esta captura resuelve parte del mapa
+**personaje→bin de modelo**, pero no el layout slot→retrato del select ni todos
+los stages bloqueados. El siguiente trace fino tendría que instrumentar los
+faults/lecturas del wrapper `MappedMemory`, si el backend elegido los expone.
+
 ## 4. HERRAMIENTAS DE LA AUDITORÍA (awo_tools/)
 
 - `afs_list.py <afs>` — tabla completa (entrada, addr, tamaño, magic).

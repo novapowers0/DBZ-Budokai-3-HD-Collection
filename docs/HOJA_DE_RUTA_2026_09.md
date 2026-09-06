@@ -114,12 +114,16 @@ stages, movimientos) para duplicar la ENTRADA correcta.
    `data_eng.afs` (auditoría en `AUDITORIA_DATA_CMN.md` §3.1): entry 0 =
    character select (28 MB, 5 secciones #ACA + 5 #AZT + 1 #AWO), 1976/2043 =
    texturas de retratos, `#SKC` = config UI. **Para F3.3 el mapeo exacto
-   (slot→bin) se obtiene instrumentando el guest**: YA INSTRUMENTADO
+   (slot→bin) se obtiene instrumentando el guest**: captura parcial realizada
    (2026-09-07) — trace de reads AFS por entrada en
    `rexglue-sdk-0.10/src/filesystem/devices/host_path_file.cpp` (`ReadSync`,
-   gateado por `dbz1_diag_logging`, escribe `dbz1_afs_reads.log`). Sesión de
-   captura pendiente: F10 diag + abrir select + pasar por cada personaje +
-   entregar el log.
+   gateado por `dbz1_diag_logging`, escribe `dbz1_afs_reads.log`). Identificados
+   14 bins de modelo (`#AWO1#AWG*#AZT1#AMB1`) y varias parejas de recursos
+   auxiliares; resultado completo en `AUDITORIA_DATA_CMN.md` §3.2. `OpenMapped`
+   ya está instrumentado para registrar mappings, aunque un mapping largo no
+   produce necesariamente un evento por cada página tocada. Pendiente:
+   captura adicional con personajes/stages bloqueados y, si hace falta, trace
+   de faults del backend `MappedMemory` para resolver el slot→retrato fino.
 
 ### 3.2 Habilidad adicional (por duplicado)
 1. RE del formato de habilidad en `generated/` (tabla de movimientos).
