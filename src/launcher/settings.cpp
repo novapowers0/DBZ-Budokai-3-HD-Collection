@@ -59,11 +59,6 @@ REXCVAR_DEFINE_STRING(dbz3_game_dir, "", "DBZ3/Paths",
                       "the launcher's 'Seleccionar carpeta de datos...'.")
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 
-REXCVAR_DEFINE_STRING(dbz3_enabled_mods, "*", "DBZ3/Mods",
-                      "Comma-separated list of enabled mod folders under mods/. "
-                      "'*' (default) enables every detected mod. Empty disables all.")
-    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
-
 REXCVAR_DEFINE_STRING(dbz3_mod_profile, "vanilla", "DBZ3/Mods",
                       "Active mod profile (a named set of enabled mods). "
                       "'vanilla' = all mods disabled. Applied by the launcher's "
@@ -528,112 +523,6 @@ std::filesystem::path LatestLogPath() {
     }
   }
   return newest;
-}
-
-// Mods root: mods/ next to the executable, or the nearest "mods" folder up to
-// 3 levels up (in the release the exe and mods/ share the same folder).
-static std::filesystem::path ModsRoot() {
-  std::filesystem::path probe = rex::filesystem::GetExecutableFolder();
-  std::error_code ec;
-  for (int depth = 0; depth < 4; ++depth) {
-    const std::filesystem::path candidate = probe / "mods";
-    if (std::filesystem::is_directory(candidate, ec)) {
-      return candidate;
-    }
-    probe = probe.parent_path();
-  }
-  return rex::filesystem::GetExecutableFolder() / "mods";
-}
-
-// Split a comma-separated list into trimmed tokens.
-static std::vector<std::string> SplitList(const std::string& list) {
-  std::vector<std::string> out;
-  std::string cur;
-  for (char c : list) {
-    if (c == ',') {
-      if (!cur.empty()) out.push_back(cur);
-      cur.clear();
-    } else if (c != ' ') {
-      cur.push_back(c);
-    }
-  }
-  if (!cur.empty()) out.push_back(cur);
-  return out;
-}
-
-std::vector<std::string> ListAvailableMods() {
-  std::vector<std::string> mods;
-  const auto root = ModsRoot();
-  if (!std::filesystem::is_directory(root)) return mods;
-  for (const auto& entry : std::filesystem::directory_iterator(root)) {
-    if (!entry.is_directory()) continue;
-    const std::string name = entry.path().filename().string();
-    // A mod is usable if it has a us/ or eu/ subfolder with content.
-    bool usable = false;
-    for (const auto& region : {"us", "eu"}) {
-      auto p = entry.path() / region;
-      if (std::filesystem::is_directory(p) && !std::filesystem::is_empty(p)) {
-        usable = true;
-        break;
-      }
-    }
-    if (usable) mods.push_back(name);
-  }
-  std::sort(mods.begin(), mods.end());
-  return mods;
-}
-
-// Join a vector into a comma-separated string (helper for SetModEnabled).
-static std::string JoinList(const std::vector<std::string>& items) {
-  std::string out;
-  for (size_t i = 0; i < items.size(); ++i) {
-    if (i) out += ",";
-    out += items[i];
-  }
-  return out;
-}
-
-bool IsModEnabled(const std::string& mod_name) {
-  // Source of truth is the ".disabled" marker in the mod folder (what the
-  // launcher's Mods tab toggles via dbz3::SetModEnabled). The legacy
-  // `dbz3_enabled_mods` cvar list is NOT used for mounting: otherwise toggling
-  // a mod in the launcher (which only touches the marker) would leave it
-  // mounted by PrepareRegionData. A mod is enabled iff it has no .disabled
-  // marker in its folder.
-  const auto exe_dir = rex::filesystem::GetExecutableFolder();
-  std::error_code ec;
-  return !std::filesystem::exists(exe_dir / "mods" / mod_name / ".disabled", ec);
-}
-
-void SetModEnabled(const std::string& mod_name, bool enabled) {
-  const std::string list = REXCVAR_GET(dbz3_enabled_mods);
-  std::vector<std::string> tokens;
-  if (list != "*") tokens = SplitList(list);
-  auto it = std::find(tokens.begin(), tokens.end(), mod_name);
-  const bool present = it != tokens.end();
-  if (enabled && !present) {
-    tokens.push_back(mod_name);
-  } else if (!enabled && present) {
-    tokens.erase(it);
-  }
-  // Keep the "all" shorthand when every available mod is on.
-  std::vector<std::string> available = ListAvailableMods();
-  bool all = true;
-  for (const auto& m : available) {
-    if (std::find(tokens.begin(), tokens.end(), m) == tokens.end()) all = false;
-  }
-  REXCVAR_SET(dbz3_enabled_mods, all ? "*" : JoinList(tokens));
-}
-
-// Legacy helper kept for signature compatibility. Assets are no longer staged
-// into an "active_region" overlay: the game drive now points directly at the
-// game folder (project_root) and the region (us/eu) is mounted by
-// dbz3::ApplyRegionMount. Mods are served by the runtime's override hooks from
-// mods/, so no duplication or staging happens at all.
-std::filesystem::path PrepareRegionData(const std::filesystem::path& project_root) {
-  REXLOG_INFO("dbz3: PrepareRegionData no longer stages an overlay; using {} directly",
-              std::filesystem::absolute(project_root).string());
-  return project_root;
 }
 
 std::string FullscreenMode() { return REXCVAR_GET(dbz3_fullscreen_mode); }

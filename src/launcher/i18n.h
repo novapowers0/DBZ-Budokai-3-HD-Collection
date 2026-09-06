@@ -17,6 +17,9 @@ void SetLanguage(int32_t xbox_language_id);
 // exact Spanish runtime string), and `en` otherwise. Every user-facing launcher
 // string goes through this so the whole UI switches with the "Language"
 // selector instead of being a hardcoded mix ("spanglish").
-const char* T(const char* es, const char* en);
+// format_arg(1): the returned string IS the Spanish format string (i18n::T
+// substitutes nothing), so callers may pass extra printf args and the compiler
+// checks them against the format specifiers without -Wformat-security noise.
+[[gnu::format_arg(1)]] const char* T(const char* es, const char* en);
 
 }  // namespace dbz3::i18n

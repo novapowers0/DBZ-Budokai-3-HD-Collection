@@ -107,21 +107,6 @@ inline bool XexIsExpected(XexStatus status) {
 // Path of the most recent log file (exe_dir/logs/dbz3_*.log). Empty when the
 // logs folder does not exist yet. Used by the crash dialog.
 std::filesystem::path LatestLogPath();
-// Build the "active region" overlay next to the exe and return the game data
-// root the runtime should mount. Hardlinks (with copy fallback) map every file
-// the game may open to the highest-priority source:
-//   mods/<mod>/<region>/file  >  <project>/<region>/file  >  <project>/us/file
-// Returns project_root unchanged when region==us and no mods are present.
-std::filesystem::path PrepareRegionData(const std::filesystem::path& project_root);
-
-// --- Mods ------------------------------------------------------------------
-// Names of mod folders under mods/ that are usable for the current region
-// (each has a <region>/ subfolder with at least one file).
-std::vector<std::string> ListAvailableMods();
-// Whether a given mod folder name is currently enabled.
-bool IsModEnabled(const std::string& mod_name);
-// Toggle a mod's enabled state (persisted via dbz3_enabled_mods).
-void SetModEnabled(const std::string& mod_name, bool enabled);
 
 // Fullscreen mode: "windowed", "borderless", "exclusive".
 std::string FullscreenMode();

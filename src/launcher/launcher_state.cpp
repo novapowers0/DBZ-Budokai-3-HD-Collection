@@ -454,8 +454,7 @@ void LauncherDialog::OnDraw(ImGuiIO& io) {
   // Primary action zone (big green PLAY, high contrast, never below the fold),
   // a one-line summary of what will launch, and the asset region picker (a
   // game-data choice, moved here from the Mods tab so it is always on screen).
-  ImGui::TextColored(kTextDim, "%s",
-                     i18n::T("Inicio: %s - %s - %dx - %s - %s",
+  ImGui::TextColored(kTextDim, i18n::T("Inicio: %s - %s - %dx - %s - %s",
                              "Launch: %s - %s - %dx - %s - %s"),
                      dbz3::settings::Region() == "eu"
                          ? i18n::T("Europa (PAL)", "Europe (PAL)")
@@ -487,7 +486,6 @@ void LauncherDialog::OnDraw(ImGuiIO& io) {
     rex::cvar::SetFlagByName("dbz3_resolution_scale", "1");
     rex::cvar::SetFlagByName("dbz3_language", "1");
     rex::cvar::SetFlagByName("dbz3_region", "us");
-    rex::cvar::SetFlagByName("dbz3_enabled_mods", "*");
     rex::cvar::SetFlagByName("dbz3_mod_profile", "vanilla");
     rex::cvar::SetFlagByName("dbz3_fullscreen_mode", "windowed");
     rex::cvar::SetFlagByName("dbz3_vsync", "true");
@@ -635,11 +633,11 @@ void LauncherDialog::DrawVideoTab() {
       const int p_scale = dbz3::settings::ResolutionScale();
       const bool p_msaa = dbz3::settings::Native2xMsaa();
       const int p_aniso = dbz3::settings::AnisotropicOverride();
-      const char* p_eff = dbz3::settings::PresentEffect().c_str();
+      const std::string p_eff = dbz3::settings::PresentEffect();
       ImGui::TextColored(kTextDim,
                          i18n::T("Activo: %s -> %dx, MSAA %s, aniso %d, %s",
                                  "Applied: %s -> %dx, MSAA %s, aniso %d, %s"),
-                         preset_items[preset_idx], p_scale, p_msaa ? "ON" : "OFF", p_aniso, p_eff);
+                         preset_items[preset_idx], p_scale, p_msaa ? "ON" : "OFF", p_aniso, p_eff.c_str());
     }
 
     const char* scale_items[] = {
@@ -1271,7 +1269,7 @@ ImGui::TextDisabled(i18n::T("%d archivo%s", "%d file%s"), mod.file_count,
         ImGui::TextColored(ImVec4(0.35f, 0.85f, 0.35f, 1.0f), "ON");
       }
       if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("%s", i18n::T("%s\n%s\nAutor: %s\nVersion: %s\nTipo: %s\nOrigen: %s\nDestino: %s",
+        ImGui::SetTooltip(i18n::T("%s\n%s\nAutor: %s\nVersion: %s\nTipo: %s\nOrigen: %s\nDestino: %s",
                                   "%s\n%s\nAuthor: %s\nVersion: %s\nType: %s\nSource: %s\nTarget: %s"),
                           title.c_str(),
                           mod.description.empty()
