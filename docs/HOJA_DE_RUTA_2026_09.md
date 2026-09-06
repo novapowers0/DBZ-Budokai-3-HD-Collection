@@ -109,11 +109,13 @@ stages, movimientos) para duplicar la ENTRADA correcta.
    animaciones (bins 127, 358, 435, 444, 2208, 2209, 3881) pero NO distingue
    moveset de personaje vs animación de escenario. Pendiente: mapear el moveset
    exacto por personaje vía RE del guest.
-4. **Mapear el SLXS/roster** (personaje→trajes→bins) y la **pantalla de
-   select**: en HD el SLXS-equivalente NO está en data_cmn (3983-3989 = audio
-   DRM IECS). Candidato: **`data_eng.afs`** (2709 entradas; bins grandes
-   1976-2062 = ~2-6 MB, retratos/select). Pendiente: auditar data_eng + leer
-   del guest qué entradas usa el select.
+4. **🔴 Mapear el SLXS/roster HD: 🔍 NO existe archivo SLXS en el HD** (2026-09-02).
+   El roster→trajes→bins vive en el **código del guest** + los composites de
+   `data_eng.afs` (auditoría en `AUDITORIA_DATA_CMN.md` §3.1): entry 0 =
+   character select (28 MB, 5 secciones #ACA + 5 #AZT + 1 #AWO), 1976/2043 =
+   texturas de retratos, `#SKC` = config UI. **Para F3.3 el mapeo exacto
+   (slot→bin) requiere instrumentar el guest en runtime** (loguear qué bins de
+   data_cmn carga el select con cada personaje) — siguiente sesión de juego.
 
 ### 3.2 Habilidad adicional (por duplicado)
 1. RE del formato de habilidad en `generated/` (tabla de movimientos).

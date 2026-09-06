@@ -3,7 +3,7 @@ import os
 import subprocess
 import sys
 
-AFS = r"us/data_cmn.afs"
+AFS = sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].isdigit() else r"us/data_cmn.afs"
 TMP = r"C:\Users\javie\AppData\Local\Temp\opencode\afs_audit"
 XBD = r"mod center\Xbox 360 Compression - Decompression tool from the XBOX Development Kit\xbdecompress.exe"
 
@@ -45,7 +45,7 @@ def describe(b, entry):
 
 
 def main():
-    entries_to_check = [int(x) for x in sys.argv[1:]]
+    entries_to_check = [int(x) for x in sys.argv[1:] if x.isdigit()]
     for e in entries_to_check:
         b, err = decompress(e)
         print(f"entry {e:>5}: {describe(b, e)}" + (f"  [{err}]" if err else ""))

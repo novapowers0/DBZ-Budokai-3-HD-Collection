@@ -97,11 +97,25 @@ falta RE del layout de vértice de stage (ver `docs/07_ports/`).
   resources update 2/SLXS Edit Tutorial - Lesson *` (1-1, 1-2 añadir modelos a
   trajes, 2-1 bloques de personaje, 2-2 transformaciones, 3-1 auras, 4-1
   pantalla de select).
-- **HD 360**: el equivalente del SLXS aún NO está localizado. NO está en
-  data_cmn (3983-3989 son audio DRM). Candidato: **`data_eng.afs`** (2709
-  entradas; los bins grandes 1976-2062 son ~2-6 MB = retratos/select).
-  Pendiente: auditar `data_eng.afs` y ver qué entradas lee el guest al abrir
-  el select de personajes (instrumentar `generated/`).
+- **HD 360 — 🔴 NO existe archivo SLXS**: el equivalente NO está en data_cmn
+  (3983-3989 = audio DRM IECS) ni como archivo suelto en los AFS. El roster HD
+  vive en el **código del guest** (generated/) + los composites de `data_eng`.
+
+### 3.1 Auditoría de `data_eng.afs` (2709 entradas, select/menús) — 2026-09-02
+- **Entry 0** = composite del **character select** (`#AMB` 28 MB: 5 secciones
+  `#ACA` + 5 texturas `#AZT` + 1 modelo `#AWO` con 3 `#AWG`). Las 5 secciones
+  #ACA = páginas del menú (personajes / stages / modos).
+- **1976, 2043** = texturas gigantes `#AZT` (29-34 MB: retratos/fondos del
+  select).
+- **`#SKC`** (entradas pequeñas, p.ej. 4) = config de UI/rects de pantalla (no
+  roster).
+- Composites `#AMB+#ACA` (1-3, 5-7...) = otras pantallas (VS, resultados...).
+- ~2600 entradas pequeñas (2-16 KB) = UI/textos.
+- **Conclusión para F3.3**: "añadir slot de personaje" en HD = duplicar la
+  entrada del guest (la que referencia el bin en data_cmn) + duplicar su
+  retrato en el composite del select (entry 0). El mapeo exacto
+  (slot→bin) requiere **instrumentar el guest en runtime** (loguear qué bins
+  de data_cmn carga al abrir el select con cada personaje).
 
 ## 4. HERRAMIENTAS DE LA AUDITORÍA (awo_tools/)
 

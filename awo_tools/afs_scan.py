@@ -3,9 +3,11 @@ import os
 import subprocess
 import sys
 
-AFS = r"us/data_cmn.afs"
 TMP = r"C:\Users\javie\AppData\Local\Temp\opencode\afs_audit"
 XBD = r"mod center\Xbox 360 Compression - Decompression tool from the XBOX Development Kit\xbdecompress.exe"
+
+AFS = sys.argv[1]
+range_args = sys.argv[2:]
 
 d = open(AFS, "rb").read()
 count = struct.unpack("<I", d[4:8])[0]
@@ -18,6 +20,7 @@ MAGICS = [b"#AWO", b"#AWG", b"#AZT", b"#ACM", b"#AWM", b"#AMO0", b"#AMB"]
 
 
 def classify(entry):
+    os.makedirs(TMP, exist_ok=True)
     addr, size = entries[entry]
     lzx = os.path.join(TMP, f"s{entry}.lzx")
     out = os.path.join(TMP, f"s{entry}.bin")
@@ -48,7 +51,7 @@ def classify(entry):
 
 def main():
     ranges = []
-    for a in sys.argv[1:]:
+    for a in range_args:
         if "-" in a:
             lo, hi = a.split("-")
             ranges.append(range(int(lo), int(hi) + 1))
@@ -66,7 +69,7 @@ def main():
                 c = "small"
             out_lines.append(f"{e:>5} {size:>9} {c}")
             print(f"{e:>5} {size:>9} {c}", flush=True)
-    with open(r"C:\Users\javie\AppData\Local\Temp\opencode\afs_classified.txt", "a") as f:
+    with open(r"C:\Users\javie\AppData\Local\Temp\opencode\afs_classified_%s.txt" % os.path.basename(AFS), "a") as f:
         f.write("\n".join(out_lines) + "\n")
 
 
