@@ -1,7 +1,10 @@
-# HOJA DE RUTA — Model swaps, costumes y roster
+# HOJA DE RUTA — Model swaps, costumes y roster (HISTÓRICO)
 
-> Actualizado: 2026-08-14. Plan estratégico de 3 fases. La base de todo es
-> entender el modelo a fondo (fase 1), luego costumes (fase 2), luego roster (fase 3).
+> **SUPERSEDIDA por `docs/HOJA_DE_RUTA_2026_09.md`** (2026-09-02). Conservada
+> como registro del plan original de modding (2026-08-14, 3 fases: modelos →
+> costumes → roster). La fase 1 (model swap) quedó **completada y validada**
+> (swap nativo + inyección, ver `AGENTS.md` §3.4). La fase 3 (roster) es hoy el
+> eje de RE de contenido de la hoja de ruta actual.
 
 ---
 
