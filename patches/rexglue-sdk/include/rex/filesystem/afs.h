@@ -64,4 +64,16 @@ int AfsTranslateOffset(const std::filesystem::path& host_path, uint64_t virtual_
                        std::filesystem::path& out_override_path,
                        uint64_t& out_override_mod_offset);
 
+// Resolve a run of contiguous bytes in the virtual mid-insert layout starting at
+// the given (guest-visible) offset. Fills out_source_file with the file to read
+// from (the real AFS or a mod override) and out_source_offset with the offset
+// inside it, and out_run_length with how many contiguous bytes that source
+// covers. An EMPTY out_source_file means the run is padding/gap/EOF and should
+// be served as zeros. Returns false when the offset is past the virtual end of
+// the AFS (everything after is zeros). The header+table region ([0, hdr_size))
+// is reported as a zero-run (the caller serves the virtual table bytes itself).
+bool AfsVirtualRange(const std::filesystem::path& host_path, uint64_t virtual_offset,
+                     std::filesystem::path& out_source_file, uint64_t& out_source_offset,
+                     uint64_t& out_run_length);
+
 }  // namespace rex::filesystem

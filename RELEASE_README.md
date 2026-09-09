@@ -92,6 +92,28 @@ aportarlos de tu **copia legal**. Haz esto:
 
 ## Novedades de esta release
 
+### v1.1.2 — Depurado de issues de la comunidad (2026-09-09)
+
+- **Fix del crash en Dragon Universe / menú de pausa (EU)**: la función
+  `sub_820F2398` del núcleo EU no estaba registrada (el recompilador la había
+  plegado como código muerto dentro de `sub_820F2370`; solo es alcanzable vía
+  la tabla de punteros de evento/combate `0x8201E348`). Ahora está extraída y
+  registrada como `dbz3eu_sub_820F2398`. Cierra el crash
+  `UNREGISTERED indirect call: target=0x820F2398` al seleccionar personaje en
+  Dragon Universe o pulsar START durante una pelea.
+- **Fix de regiones incompletas (solo `eu/` o solo `us/`)**: el launcher ahora
+  resuelve la región efectiva con `ResolveRegion()` — si la carpeta de la
+  región seleccionada no existe, cae automáticamente a la que sí está. Funciona
+  out-of-the-box con datos solo EU o solo US.
+- **Fix del selector de backend (Vulkan)**: el launcher enviaba su elección a
+  un cvar `gpu_backend` que **no existía** en el SDK 0.10 → D3D12 siempre.
+  Añadido el cvar en `rex_app.cpp` (SDK) y conectado a `LoadGpuPlugin`.
+  Seleccionar **Vulkan** ahora pide de verdad el backend Vulkan (verificado en
+  la DLL publicada).
+- **Pulido de código**: builds sin warnings, limpieza de traces temporales de
+  depuración, y fix de display (el resumen del footer muestra "Japanese" cuando
+  se elige japonés).
+
 ### v1.1.1 — Depurado + bases para Linux (2026-08-28)
 
 - **Sin datos del juego ya no hay crash**: si falta `default.xex`, el juego te
@@ -271,6 +293,9 @@ copia de seguridad de tus AFS.
 
 ## Historial de versiones
 
+- **v1.1.2** (2026-09-09): fix crash EU (Dragon Universe / START, `sub_820F2398`
+  registrada), fix regiones incompletas (`ResolveRegion()`), fix backend Vulkan
+  (cvar `gpu_backend` real en el SDK), pulido de código (0 warnings).
 - **v1.1.1** (2026-08-28): depurado (sin datos → mensaje claro, marcadores de
   arranque), bases de Linux (launcher portable), proceso interno (sync +
   verificación de release).

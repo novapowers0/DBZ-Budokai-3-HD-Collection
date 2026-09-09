@@ -6,7 +6,7 @@
 #   powershell -ExecutionPolicy Bypass -File tools\sync_github.ps1 [-DryRun]
 #
 # Lo que sincroniza (raiz del proyecto -> github/):
-#   src/, docs/, awo_tools/, "mod center hd/", tools/ (carpetas versionables)
+#   src/, docs/, awo_tools/, "mod center hd/", tools/, portforge/ (carpetas versionables)
 #   archivos raiz: AGENTS.md, AWO_FORMAT.md, CMakeLists.txt, CMakePresets.json,
 #                  dbz3_config.toml, dbz3_manifest.toml
 # Lo que NO sincroniza (o se gestiona aparte):
@@ -59,6 +59,7 @@ Sync-Tree "src"                  "src"
 Sync-Tree "docs"                 "docs"
 Sync-Tree "awo_tools"            "awo_tools"      @("bins_trabajo")
 Sync-Tree "mod center hd"        "mod center hd"  @("__pycache__")
+Sync-Tree "portforge"            "portforge"
 # tools: mirror pero CONSERVA los .exe canonicos (xbcompress/xbdecompress) que
 # viven solo en github/ (ver .gitignore !tools/*.exe).
 Sync-Tree "tools" "tools" @() @("xbcompress.exe", "xbdecompress.exe")

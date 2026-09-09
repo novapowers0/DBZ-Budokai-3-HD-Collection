@@ -3784,3 +3784,88 @@ reordenamiento de pool). Mods: cell_reverse_test (OK), cell_port_Afix_test
 
 > ⚠️ Para el estado consolidado y el plan de avance, usar **AGENTS §3.4**.
 
+---
+
+## 16. 🔴❌ SESIÓN 2026-09-07 — HITO 3 SLOTS NATIVOS: PARCHE DE DATOS = FRACASO
+
+> **Resumen**: intento de convertir la celda reservada "?" (slot 38) del select
+> en una celda fija de **Android 16** (tag 28, bin AFS 70) por la **vía 2 del
+> DICTAMEN (parche de datos memoria guest)**. Resultado: **3 crashes idénticos
+> `0xC0000005`**, causa raíz identificada y **código revertido**. NO reintentar
+> esta vía tal cual (ver bloqueador §16.4).
+
+### 16.1 HECHOS ESTABLECIDOS ANTES DEL INTENTO (sesiones previas, hito 2 cerrado)
+
+- Capacidad select = 39 slots (0-38); tabla **slot→tag u16 en `0x82020618`**
+  leída DIRECTAMENTE por el guest (sin copia runtime; `r25 = 0x82020000+1560`).
+- `slot 38 → tag 65535` = la celda "?"; `slot 23 → tag 28` = **Android 16**.
+- Tabla de retratos `0x82372818` (stride 8, 2 u32/slot): `slot 23 → entry 3884`
+  (Android 16), `slot 38 → 3936` ("?").
+- El "?" elige aleatoriamente entre personajes **desbloqueados** vía LFSR
+  (`sub_82084A78`) → Android 16 (no desbloqueado) nunca salía naturalmente.
+- Trazado del pick: ADE8 → si tag==65535 → lista desde bitmap `obj+16` → LFSR →
+  `stb r11,4(r31)`. Pruebas del usuario: resolvió a slot 11 (Piccolo) y 10
+  (Krillin) sin crash (sin confirmar combate).
+
+### 16.2 CRONOLOGÍA DE INTENTOS (todos con el MISMO crash)
+
+| # | Cambio | Resultado |
+|---|--------|-----------|
+| 1 | `REX_STORE_U16(0x82020618+38*2, 28)` + `REX_STORE_U32(retratos+38*8, 3884)` en hook ADE8 (solo con diag) | crash `write of guest 0x82020664` |
+| 2 | mismo pero vía `heap->Protect` temporal + `TranslateVirtual` + byte_swap (restaura read-only) | crash idéntico (mismo fault ctx) |
+| 3 | `MakeWritableGuest` (desprotege y DEJA writable) + write, aplicado SIEMPRE (sin depender de diag) | crash idéntico (mismo fault ctx) |
+
+Logs: `out/build/win-amd64-release/logs/dbz3_056/057/058.log`.
+Fault ctx (los 3 idénticos):
+```
+Unhandled guest access violation: write of guest 0x82020664 (host 0x...282020664)
+RAX=0x82020664 RSI=0x200000000  guest: lr=0x8217D408 (caller de sub_8217A920)
+```
+
+### 16.3 🔴 CAUSA RAÍZ (diagnosticada)
+
+1. El fault es **un WRITE del propio guest** (codegen recompilado: patrón
+   `RSI=base`, `RAX=guest_addr`), NO del hook. Ocurre al **CONFIRMAR la celda
+   "?"**: el guest **persiste el tag elegido escribiéndolo en la tabla
+   `0x82020618 + slot*2`** (slot 38).
+2. Esa página está en la imagen guest como **`XEX_SECTION_READONLY_DATA`**
+   (`xex_module.cpp` → `heap->Protect(..., kMemoryProtectRead)`). El write del
+   guest a una página read-only de imagen dispara el fault del runtime.
+3. Por eso los 3 intentos fallaron igual: el crash **no es por escribir desde
+   el hook**, es el guest escribiendo en una página que el port mantiene
+   read-only. Los intentos 2/3 desprotegían la página host del hook, pero el
+   fault reportado (RAX/RSI) es del codegen guest ejecutando su propio store.
+4. **Conclusión**: convertir el "?" en Android 16 por parche de datos requiere
+   que la página `0x82020618` sea writable PARA EL GUEST. Desproteger en el hook
+   no bastó; la vía limpia sería hacer writable la sección en el LOADER
+   (`xex_module.cpp`), lo que toca el SDK (parche + recompilar DLLs) y no se
+   hizo. **Vía descartada por ahora.**
+5. Dato extra: el "?" confirmado crashea **aunque no haya ningún mod/parche**
+   (es un bug latente del port en el flujo del "?"): confirmar la celda "?"
+   siempre escribirá en la tabla read-only. En las pruebas previas solo se
+   observó la RESOLUCIÓN visual (ADE8→obj+4), nunca el CONFIRM con carga.
+
+### 16.4 BLOQUEADORES / LECCIONES
+
+- **Tabla slot→tag `0x82020618` es read-only en el port** (imagen). Cualquier
+  write del guest ahí (persistir el pick del "?" al confirmar) crashea
+  `0xC0000005` (`write of guest 0x82020664`).
+- Un patch de datos que pretenda cambiar esa tabla debe ir acompañado de hacer
+  la sección writable a nivel de **loader/SDK** (no del hook).
+- El parche aplicado "incondicionalmente" y "solo con diag" da el MISMO crash →
+  el fault no depende del hook. Verificar SIEMPRE `RAX/RSI` del fault ctx para
+  distinguir write de hook vs write de guest (codegen usa RSI=base, RAX=addr).
+- **Estado final (revertido)**: `src/roster_trace.cpp` queda SOLO con tracing
+  (hito 2, 8 hooks), sin patches de datos. Compilado OK (`dbz3.exe`).
+  Pendiente en el flujo del juego: confirmar el "?" crashea por sí solo.
+
+### 16.5 REFERENCIAS
+
+- `src/roster_trace.cpp` (hooks de tracing, sin parches — comentario en ADE8
+  con la nota de esta sesión).
+- `docs/DICTAMEN_GPT6_ASTRA.md` (guía slots nativos, vías 0-7).
+- SDK: `rexglue-sdk-0.10/src/system/xex_module.cpp` (protección de secciones,
+  líneas ~1014-1030) y `xmemory.cpp` (`AccessViolationCallback`, líneas
+  ~534-550).
+- Logs de crash: `out/build/win-amd64-release/logs/dbz3_056..058.log`.
+

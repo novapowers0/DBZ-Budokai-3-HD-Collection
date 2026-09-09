@@ -4,7 +4,7 @@
 > de la comunidad (que son primitivas y específicas de PS2) para el objetivo
 > HD (Xbox 360 / ReXGlue).
 >
-> **ACTUALIZADO 17/08/2026 — LEA PRIMERO `GUIA_SWAPS_Y_PORTS.md`.** El
+> **ACTUALIZADO 2026-09-08 — LEA PRIMERO `GUIA_SWAPS_Y_PORTS.md`.** El
 > proyecto hermano B1 validó que los model swaps funcionan por **instalación
 > del bin completo** (el runtime NO valida conteos fijos): par geom+tex del
 > MISMO personaje, sellos del bin correctos. La retopología 3D y la
@@ -96,6 +96,9 @@ refactorizadas y adaptadas.
 - `emd_to_awo_hd.py` — v1: parseo de ESK (esqueleto SDBH WM) + mapeo de bones
   a KLL (28 mapeos verificados). Fase 2 pendiente: parseo completo del EMD.
 - `build_awo_v20/v22.py`, `build_awo_from_json.py`, `inject_a18*.py`,
-  `empaquetar_v20.py` — **OBSOLETOS** (vía de conteos fijos/retopología,
-  superada por el swap nativo). Ver GUIA_SWAPS_Y_PORTS.md §6.
+  `empaquetar_v20.py` — **experimentales/archivables** (vía de conteos fijos,
+  retopología e inyección; no usar como entrega). Ver GUIA_SWAPS_Y_PORTS.md §6.
+- `tools_manifest.json` + `tools_manifest_check.py` — inventario curado de
+  herramientas HD, bridges y referencias; el checker no ejecuta herramientas ni
+  modifica assets.
 - `EMD_NOTAS.txt` — formato EMD Xenoverse (big-endian, header, modelo en 0x100).

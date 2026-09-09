@@ -51,6 +51,14 @@ REXCVAR_DEFINE_STRING(gpu_plugin, "", "GPU",
                       "GPU emulation")
     .lifecycle(rex::cvar::Lifecycle::kInitOnly);
 
+REXCVAR_DEFINE_STRING(gpu_backend, "any", "GPU",
+                      "Graphics backend to request from the GPU plugin: 'd3d12', 'vulkan' or "
+                      "'any' (plugin default). Read by SetupPresentation when loading the "
+                      "plugin; project launchers write it from their Video tab. This cvar did "
+                      "not exist in the upstream SDK, so a launcher backend switch was silently "
+                      "ignored and D3D12 was always chosen on desktop.")
+    .lifecycle(rex::cvar::Lifecycle::kInitOnly);
+
 namespace rex {
 
 // --- ReXApp ---
@@ -234,7 +242,7 @@ bool ReXApp::ConstructRuntime(const PathConfig& paths) {
     runtime_->set_imgui_drawer(imgui_drawer_.get());
   }
 
-  auto status = runtime_->Setup(ppc_info_, std::move(config_));
+  auto status = runtime_->Setup(ResolveImageInfo(paths), std::move(config_));
   if (XFAILED(status)) {
     REXLOG_ERROR("Runtime setup failed: {:08X}", status);
     return false;
@@ -314,7 +322,8 @@ bool ReXApp::SetupPresentation() {
   OnPreSetup(config_);
 
   if (!config_.graphics && !config_.gpu_plugin.empty()) {
-    config_.graphics = rex::system::LoadGpuPlugin(config_.gpu_plugin);
+    config_.graphics =
+        rex::system::LoadGpuPlugin(config_.gpu_plugin, REXCVAR_GET(gpu_backend));
     if (!config_.graphics) {
       // Fatal by design: no silent headless fallback.
       auto msg =
@@ -428,6 +437,15 @@ void ReXApp::SetupOverlays(rex::ui::Presenter* presenter, rex::ui::ImmediateDraw
 }
 
 void ReXApp::LaunchModule() {
+  // Guard against double launch. The pre-game launcher's PLAY button (also
+  // bound to Enter) and the skip-launcher fast path can both reach the base
+  // LaunchModule; a second call would PrepareModuleLaunch a second guest
+  // thread, which throws inside the deferred lambda -> std::terminate
+  // (0xC0000409). Make the launch idempotent regardless of the source.
+  if (launch_invoked_.exchange(true)) {
+    REXLOG_WARN("LaunchModule called more than once - ignoring second launch");
+    return;
+  }
   app_context().CallInUIThreadDeferred([this]() {
     try {
     // Register the achievement notification callback now that the runtime and

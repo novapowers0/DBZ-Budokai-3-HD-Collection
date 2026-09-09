@@ -115,8 +115,11 @@ Ver §3. Criterios y candidatos.
   la MISMA numeración (GH=HD, §5) → tenemos el PS2 fuente. Esqueleto 1:1
   (mismo juego). Permite aislar cada etapa del pipeline sin el ruido de la
   estructura compleja de Krillin.
-- Validación: portar Babidi PS2 → bin autocontenido → instalar en slot de
-  prueba → debe renderizar un Babidi correcto.
+- **Importante**: Babidi no es personaje jugable en el select. Es nuestro
+  conejillo de indias técnico y se instala temporalmente sobre Krillin (slot
+  327) para comprobar render, rig y estructura.
+- Validación: portar Babidi PS2 → bin autocontenido → instalar sobre Krillin
+  como override de prueba → debe renderizar un Babidi correcto en combate.
 - Si el esqueleto PS2 GH de Babidi difiere en huesos del HD (a verificar con
   `scan_bones.py`), elegir otra plantilla simple del mismo personaje.
 
@@ -138,7 +141,8 @@ Ver §3. Criterios y candidatos.
 4. `port_ps2_b3_draw` → estructura de dibujo (RE fina, fase 2).
 5. `port_ps2_b3_pack` → bin autocontenido + override en slot de prueba.
 6. `port_ps2_b3_verify` → OBJ + bounds (feedback rápido).
-7. Probar en juego (slot 327 Krillin o slot Babidi 96) → ajustar.
+7. Probar en juego sobre slot 327 (Krillin); no usar el entry 96 como si fuera
+   un slot jugable independiente.
 ```
 
 ---
@@ -157,6 +161,21 @@ Ver §3. Criterios y candidatos.
 ---
 
 ## 5. ESTADO Y PRÓXIMOS PASOS
+
+> **Actualización 2026-09-08**: la siguiente prueba PS2→HD no será otro modelo
+> visualmente parecido sobre Krillin. Se usará la matriz de candidatos de
+> `MATRIZ_CANDIDATOS_PS2_HD.md`, empezando por Babidi B3 GH si el scan confirma
+> rig 1:1. Primero se valida el esqueleto y después la geometría/empaquetado.
+>
+> **Bloqueo actual**: la entrada 96 que se esperaba como Babidi PS2 devuelve
+> `#AMB/#AWO` HD big-endian; el extractor la rechaza correctamente. Los AFS
+> etiquetados localmente como PS2 deben verificarse antes de continuar. No se
+> generará un port hasta disponer de una fuente `#AMO0/#AMG` LE real.
+>
+> **Avance ejecutado**: se encontró una fuente PS2 real de Tien con capa
+> (`Tien (With Cape).amo`) y el rig base pasa 1:1 contra Tenshinhan HD entry
+> 400: 42 labels comunes en el mismo orden; 10 bones extra de capa. Este es el
+> candidato activo para la siguiente fase offline.
 
 > ⚠️ **ACTUALIZADO al cierre de la sesión 2026-08-26 (ver SESION_PORT_RE §7.1).**
 > La tabla de abajo es la realidad post-sesión; la Fase 0 original queda

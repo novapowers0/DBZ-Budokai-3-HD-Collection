@@ -15,6 +15,8 @@
 #include <rex/cvar.h>
 #include <rex/logging.h>
 
+#include <algorithm>
+#include <cstring>
 #include <fstream>
 
 // dbz1_diag_logging is defined in src/system/dbz1_diag_flags.cpp (shared runtime).
@@ -63,59 +65,67 @@ X_STATUS HostPathFile::ReadSync(std::span<uint8_t> buffer, size_t byte_offset,
     // Virtual mid-insert AFS table: presents a consistent AFS table where
     // overridden entries larger than their slot grow in place (like a rebuilt
     // AFS). The guest then allocates a buffer large enough for the mod bin, and
-    // data reads are translated back to the physical file (or the override).
-    // Only used when the AFS has at least one "grown" entry; otherwise the plain
-    // per-entry override below is enough.
+    // data reads are served consistently: every byte range is translated to the
+    // physical file (or the override), and anything outside an entry (header,
+    // gap, pad, EOF) is served as zeros -- NEVER as a physical read at a stale
+    // offset, which would pull garbage from the middle of another entry and
+    // crash the guest's sub-block parser.
     if (host_path.filename() == "data_cmn.afs") {
       std::vector<uint8_t> vtable;
       bool any_growth = false;
       const size_t vh_size = AfsGetVirtualTable(host_path, vtable, any_growth);
-      if (vh_size > 0 && byte_offset < vh_size) {
-        // Read inside the header+table region: serve the virtual table.
-        const size_t src_off = static_cast<size_t>(byte_offset);
-        const size_t n = std::min(buffer.size(), vh_size - src_off);
-        std::memcpy(buffer.data(), vtable.data() + src_off, n);
-        size_t got = n;
-        if (n < buffer.size()) {
-          // Request crossed past the table region (guest reads often round up
-          // to 0x8000). Complete from the real file to keep the total exact.
-          size_t real_got = 0;
-          if (file_handle_->Read(byte_offset + n, buffer.data() + n, buffer.size() - n,
-                                 &real_got)) {
-            got += real_got;
+      if (any_growth) {
+        size_t served = 0;
+        uint64_t off = byte_offset;
+        const uint64_t end = byte_offset + buffer.size();
+        while (off < end) {
+          std::filesystem::path src;
+          uint64_t src_off = 0, run = 0;
+          uint64_t chunk;
+          if (off < vh_size) {
+            // Header+table region: serve the virtual table bytes.
+            chunk = std::min<uint64_t>(vh_size - off, end - off);
+            std::memcpy(buffer.data() + served, vtable.data() + off, size_t(chunk));
+          } else if (AfsVirtualRange(host_path, off, src, src_off, run) && run > 0) {
+            chunk = std::min(run, end - off);
+            if (src.empty()) {
+              // Gap/pad region: zeros (never leak physical bytes).
+              std::memset(buffer.data() + served, 0, size_t(chunk));
+            } else if (src == host_path) {
+              size_t got = 0;
+              if (!file_handle_->Read(src_off, buffer.data() + served, size_t(chunk),
+                                      &got)) {
+                got = 0;
+              }
+              if (got < chunk) {
+                std::memset(buffer.data() + served + got, 0, size_t(chunk - got));
+              }
+            } else {
+              std::ifstream mod_file(src, std::ios::binary);
+              if (mod_file) {
+                mod_file.seekg(std::streamoff(src_off), std::ios::beg);
+                mod_file.read(reinterpret_cast<char*>(buffer.data() + served),
+                              std::streamsize(chunk));
+                const size_t got = size_t(mod_file.gcount());
+                if (got < chunk) {
+                  std::memset(buffer.data() + served + got, 0, size_t(chunk - got));
+                }
+              } else {
+                std::memset(buffer.data() + served, 0, size_t(chunk));
+              }
+            }
+          } else {
+            // Past the virtual end of the AFS: zeros.
+            chunk = end - off;
+            std::memset(buffer.data() + served, 0, size_t(chunk));
           }
+          off += chunk;
+          served += size_t(chunk);
         }
         if (out_bytes_read) {
-          *out_bytes_read = got;
+          *out_bytes_read = served;
         }
-        return got > 0 ? X_STATUS_SUCCESS : X_STATUS_END_OF_FILE;
-      }
-      if (any_growth) {
-        uint64_t phys_offset = 0, mod_offset = 0;
-        std::filesystem::path mod_path;
-        const int entry_index =
-            AfsTranslateOffset(host_path, byte_offset, phys_offset, mod_path, mod_offset);
-        if (entry_index >= 0) {
-          if (!mod_path.empty()) {
-            std::ifstream mod_file(mod_path, std::ios::binary);
-            if (mod_file) {
-              const size_t to_read = buffer.size();
-              mod_file.seekg(std::streamoff(mod_offset), std::ios::beg);
-              mod_file.read(reinterpret_cast<char*>(buffer.data()), std::streamsize(to_read));
-              size_t got = mod_file.gcount() > 0 ? size_t(mod_file.gcount()) : 0;
-              if (out_bytes_read) {
-                *out_bytes_read = got;
-              }
-              return got > 0 ? X_STATUS_SUCCESS : X_STATUS_END_OF_FILE;
-            }
-          }
-          // Regular (non-overridden) entry: read from the physical file at the
-          // translated offset.
-          if (file_handle_->Read(phys_offset, buffer.data(), buffer.size(), out_bytes_read)) {
-            return X_STATUS_SUCCESS;
-          }
-          return X_STATUS_END_OF_FILE;
-        }
+        return served > 0 ? X_STATUS_SUCCESS : X_STATUS_END_OF_FILE;
       }
     }
 

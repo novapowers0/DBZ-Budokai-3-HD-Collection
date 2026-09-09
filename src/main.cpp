@@ -60,16 +60,11 @@ REXCVAR_DECLARE(bool, dbz3_skip_launcher);
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <cstring>
 
 #if REX_PLATFORM_WIN32
 #include <windows.h>
 #include <dbghelp.h>
 #pragma comment(lib, "dbghelp.lib")
-#else
-// OutputDebugStringA only exists on Windows. These call sites are temporary
-// debug traces (not functional), so make them no-ops on other platforms.
-#define OutputDebugStringA(s) ((void)0)
 #endif
 
 namespace {
@@ -122,9 +117,7 @@ public:
                  PPCImageConfig,
 #endif
                  "[game_directory]") {
-        OutputDebugStringA("Dbz3App constructor START\n");
         AddPositionalOption("game_directory");
-        OutputDebugStringA("Dbz3App constructor END\n");
     }
 
 #if defined(DBZ3_DUAL_REGION)
@@ -146,7 +139,6 @@ public:
 
     // Called before Runtime::Setup() - configure GPU plugin
     void OnPreSetup(rex::RuntimeConfig& config) override {
-        OutputDebugStringA("OnPreSetup START\n");
         PhaseLog("OnPreSetup");
         // Pre-flight check before Runtime::Setup(): without a default.xex the
         // runtime cannot be constructed, and the framework teardown that follows
@@ -175,7 +167,6 @@ public:
         config.audio_factory = REX_AUDIO_BACKEND(rex::audio::sdl::SDLAudioSystem);
         config.input_factory = REX_INPUT_BACKEND(rex::input::CreateDefaultInputSystem);
         config.kernel_init = rex::kernel::InitializeKernel;
-        OutputDebugStringA("OnPreSetup END\n");
 
         // User settings: load dbz3_user.toml (must run after the SDK config
         // so user values win) and forward the friendly cvars onto the SDK's
@@ -199,7 +190,6 @@ public:
 
     // Called after runtime is fully initialized, before window creation
     void OnPostSetup() override {
-        OutputDebugStringA("OnPostSetup START\n");
         PhaseLog("OnPostSetup");
         REXLOG_INFO("OnPostSetup - Runtime initialized, graphics system should be ready");
         // Allow draws with invalid fetch constants (shadow passes etc). Mirrors
@@ -210,12 +200,10 @@ public:
         // GPU plugin has registered them.
         dbz3::settings::ApplyRuntimeSettingsToSdk(false);
         SetupCrashHandler();
-        OutputDebugStringA("OnPostSetup END\n");
     }
 
     // Called after ImGui drawer is created - add custom dialogs
     void OnCreateDialogs(rex::ui::ImGuiDrawer* drawer) override {
-        OutputDebugStringA("OnCreateDialogs START\n");
         PhaseLog("OnCreateDialogs");
         if (!debug_overlay_) {
             debug_overlay_ = std::make_unique<DebugOverlayDialog>(drawer);
@@ -280,51 +268,39 @@ public:
             }
         });
 
-        OutputDebugStringA("OnCreateDialogs END\n");
     }
 
     // Called immediately before the main guest thread is created
     void OnPreLaunchModule() override {
-        OutputDebugStringA("OnPreLaunchModule START\n");
         PhaseLog("OnPreLaunchModule");
         REXLOG_INFO("OnPreLaunchModule - about to launch guest thread");
         // Re-apply the region device mount so game:\us points at the currently
         // selected region's assets (covers the skip-launcher fast path too).
         dbz3::ApplyRegionMount();
-        OutputDebugStringA("OnPreLaunchModule END\n");
     }
 
     // Called after the main guest thread is created but before it starts executing
     void OnPostLaunchModule(rex::system::XThread* thread) override {
         (void)thread;
-        OutputDebugStringA("OnPostLaunchModule START\n");
         PhaseLog("OnPostLaunchModule");
         REXLOG_INFO("OnPostLaunchModule - guest thread created and resumed");
         launched_.store(true, std::memory_order_release);
         if (auto* rt = runtime()) {
-            OutputDebugStringA("OnPostLaunchModule - runtime available\n");
             if (window()) {
                 rt->set_display_window(window());
-                OutputDebugStringA("Set display window on runtime\n");
             } else {
-                OutputDebugStringA("Window is null!\n");
             }
             if (imgui_drawer_) {
                 rt->set_imgui_drawer(imgui_drawer_);
-                OutputDebugStringA("Set ImGui drawer on runtime\n");
             } else {
-                OutputDebugStringA("ImGui drawer is null!\n");
             }
         } else {
-            OutputDebugStringA("Runtime is null!\n");
         }
-        OutputDebugStringA("OnPostLaunchModule END\n");
     }
 
     // Called after path defaults are computed, before Runtime is constructed
     void OnConfigurePaths(rex::PathConfig& paths) override {
         auto exe_dir = rex::filesystem::GetExecutableFolder();
-        OutputDebugStringA("OnConfigurePaths START\n");
         REXLOG_INFO("OnConfigurePaths - exe_dir: {}", exe_dir.string());
         // OnConfigurePaths runs in SetupEnvironment, before OnPreSetup loads
         // the user settings. Load them here too so dbz3_region is already the
@@ -409,7 +385,6 @@ public:
         paths.cache_root = paths.user_data_root / "cache";
         paths.metadata_root = exe_dir / "metadata";
         REXLOG_INFO("OnConfigurePaths - game_data_root set to: {}", paths.game_data_root.string());
-        OutputDebugStringA("OnConfigurePaths END\n");
     }
 
     // Called when the main guest thread exits
@@ -567,7 +542,9 @@ private:
             auto now = std::chrono::system_clock::now();
             auto time_t = std::chrono::system_clock::to_time_t(now);
             char timestamp[64];
-            strftime(timestamp, sizeof(timestamp), "%Y%m%d_%H%M%S", std::localtime(&time_t));
+            struct tm local_tm;
+            localtime_s(&local_tm, &time_t);
+            strftime(timestamp, sizeof(timestamp), "%Y%m%d_%H%M%S", &local_tm);
             char dump_path[MAX_PATH] = {};
             // Writing the minidump is optional (Dev tab toggle). Default off so
             // the game folder stays clean; the exception is still logged.

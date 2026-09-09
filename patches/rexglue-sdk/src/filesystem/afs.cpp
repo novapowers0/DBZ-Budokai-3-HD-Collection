@@ -16,6 +16,7 @@
 #include <rex/filesystem/afs.h>
 
 #include <algorithm>
+#include <cstdio>
 #include <cstring>
 #include <fstream>
 #include <map>
@@ -258,6 +259,7 @@ struct VirtualAfsLayout {
   std::vector<uint64_t> virt_sizes;  // size the guest sees (grown entries)
   std::vector<uint64_t> phys_addrs;  // real address in the AFS file
   std::vector<uint64_t> delta;       // virt - phys per entry
+  std::vector<std::filesystem::path> mod_paths;  // override file per entry
   std::vector<uint8_t> table_bytes;  // "AFS" + count + virtual table
   bool any_growth = false;           // at least one entry grew (needs translation)
 };
@@ -307,6 +309,7 @@ const VirtualAfsLayout* GetOrLoadVirtualAfs(const std::filesystem::path& host_pa
   layout.virt_sizes.resize(count);
   layout.phys_addrs.resize(count);
   layout.delta.resize(count);
+  layout.mod_paths.resize(count);
 
   // Build the virtual table: for each entry, if it has an override file larger
   // than the physical slot, the entry grows to the override size (aligned to
@@ -336,6 +339,7 @@ const VirtualAfsLayout* GetOrLoadVirtualAfs(const std::filesystem::path& host_pa
     if (FindModOverrideQuiet(host_path, int(i), mod_path)) {
       std::error_code ec;
       const uint64_t fsz = std::filesystem::file_size(mod_path, ec);
+      layout.mod_paths[i] = mod_path;
       if (!ec && fsz > to_read) {
         // The override bin is larger than what the guest would allocate for the
         // original entry: grow in place (align the new slot to 0x800 like the
@@ -371,7 +375,70 @@ const VirtualAfsLayout* GetOrLoadVirtualAfs(const std::filesystem::path& host_pa
 
 }  // namespace
 
-// Virtual mid-insert AFS table (public API). See header.
+// Resolve a run of contiguous bytes in the virtual mid-insert layout. See the
+// header for the contract. Header/table offsets report as a zero-run so the
+// caller can serve the virtual table bytes itself; gap/pad/EOF also report as
+// zero-runs (never leak physical bytes at a shifted offset).
+bool AfsVirtualRange(const std::filesystem::path& host_path, uint64_t virtual_offset,
+                     std::filesystem::path& out_source_file, uint64_t& out_source_offset,
+                     uint64_t& out_run_length) {
+  out_source_file.clear();
+  out_source_offset = 0;
+  out_run_length = 0;
+  const VirtualAfsLayout* layout = GetOrLoadVirtualAfs(host_path);
+  if (!layout || !layout->any_growth) {
+    return false;
+  }
+  const uint64_t vh_size = layout->table_bytes.size();
+  if (virtual_offset < vh_size) {
+    out_run_length = vh_size - virtual_offset;
+    return true;  // header region: zeros, caller serves the virtual table
+  }
+  const uint64_t count = layout->entry_count;
+  int lo = 0, hi = int(count) - 1, found = -1;
+  while (lo <= hi) {
+    const int mid = (lo + hi) / 2;
+    if (layout->virt_addrs[mid] <= virtual_offset) {
+      found = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  if (found < 0) {
+    // Gap between the header region and the first entry (or past it): serve
+    // zeros up to the first entry's start.
+    const uint64_t first = layout->virt_addrs[0];
+    if (virtual_offset >= first) {
+      return false;
+    }
+    out_run_length = first - virtual_offset;
+    return true;
+  }
+  const uint64_t start = layout->virt_addrs[found];
+  const uint64_t size = layout->virt_sizes[found];
+  if (virtual_offset >= start + size) {
+    // Past this entry: a gap/pad run up to the next entry's start (or EOF).
+    const uint64_t next =
+        (uint64_t(found) + 1 < count) ? layout->virt_addrs[found + 1] : 0;
+    if (next == 0 || virtual_offset >= next) {
+      return false;  // EOF: everything after is zeros
+    }
+    out_run_length = next - virtual_offset;
+    return true;  // gap: zeros
+  }
+  // Inside the entry.
+  if (!layout->mod_paths[found].empty()) {
+    out_source_file = layout->mod_paths[found];
+    out_source_offset = virtual_offset - start;
+  } else {
+    out_source_file = host_path;
+    out_source_offset = virtual_offset - layout->delta[found];
+  }
+  out_run_length = start + size - virtual_offset;
+  return true;
+}
+
 size_t AfsGetVirtualTable(const std::filesystem::path& host_path,
                           std::vector<uint8_t>& out_vtable, bool& out_any_growth) {
   const VirtualAfsLayout* layout = GetOrLoadVirtualAfs(host_path);

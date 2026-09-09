@@ -1,0 +1,103 @@
+{
+  "schema": 1,
+  "updated": "2026-09-08",
+  "project": "DBZ Budokai 3 HD Collection",
+  "categories": {
+    "hd": [
+      {
+        "path": "swap_b3.py",
+        "kind": "model_swap",
+        "status": "validated",
+        "formats": ["X360", "AWO", "AWG", "AZT", "AFS", "LZX"]
+      },
+      {
+        "path": "texture_b3.py",
+        "kind": "texture",
+        "status": "validated",
+        "formats": ["X360", "AZT", "DXT3", "BC2"]
+      },
+      {
+        "path": "../awo_tools/awg_to_obj_b3.py",
+        "kind": "inspection_export",
+        "status": "validated",
+        "formats": ["AWO", "AWG", "OBJ"]
+      },
+      {
+        "path": "../awo_tools/awg0_export.py",
+        "kind": "inspection_export",
+        "status": "validated",
+        "formats": ["AWG", "OBJ"]
+      },
+      {
+        "path": "../awo_tools/awg_cara_export.py",
+        "kind": "inspection_export",
+        "status": "validated",
+        "formats": ["AWG", "OBJ"]
+      },
+      {
+        "path": "ports/port_ps2_b3_verify.py",
+        "kind": "port_verification",
+        "status": "research",
+        "formats": ["PS2", "X360", "AWO", "AWG"]
+      }
+    ],
+    "bridge": [
+      {
+        "path": "emd_to_awo_hd.py",
+        "kind": "skeleton_bridge",
+        "status": "experimental",
+        "formats": ["EMD", "ESK", "AWO"]
+      },
+      {
+        "path": "../modding resources discord/tools/Model-Rig_Extractor.py",
+        "kind": "rig_extraction",
+        "status": "reference",
+        "formats": ["PS2", "AMG", "JSON"]
+      },
+      {
+        "path": "../awo_tools/parse_ps2_mesh.py",
+        "kind": "geometry_bridge",
+        "status": "validated_input",
+        "formats": ["AMG", "PS2", "JSON"]
+      },
+      {
+        "path": "../awo_tools/pose_matrix.py",
+        "kind": "skeleton_bridge",
+        "status": "validated_input",
+        "formats": ["PS2", "JSON"]
+      },
+      {
+        "path": "../awo_tools/historial_fallidos/rig_mapeo.py",
+        "kind": "skeleton_bridge",
+        "status": "research",
+        "formats": ["PS2", "JSON"]
+      }
+    ],
+    "reference": [
+      {
+        "path": "../mod center/Xbox 360 Compression - Decompression tool from the XBOX Development Kit/xbcompress.exe",
+        "kind": "compression",
+        "status": "validated_external",
+        "formats": ["LZX", "X360"]
+      },
+      {
+        "path": "../mod center/SLXS Editor v0.50/SLXS Editor.exe",
+        "kind": "select_editor",
+        "status": "PS2_only",
+        "formats": ["SLXS", "PS2"]
+      },
+      {
+        "path": "../mod center/Budokai 3 BPL Editor v1.0/Budokai 3 BPL Editor v1.0.exe",
+        "kind": "stage_editor",
+        "status": "PS2_only",
+        "formats": ["BPL", "PS2"]
+      },
+      {
+        "path": "../awo_tools/analyze_bin_hd.py",
+        "kind": "legacy_parser",
+        "status": "obsolete",
+        "formats": ["PS3_template"]
+      }
+    ]
+  }
+}

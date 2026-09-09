@@ -105,25 +105,30 @@ stages, movimientos) para duplicar la ENTRADA correcta.
    ⚠️ **Layout de vértice de stage ≠ personaje** (lecturas FLT_MAX): para
    editar stages (F3.4) hace falta RE del layout. Pendiente: cruzar cada bin
    con el nombre real del stage (select en data_eng.afs).
-3. **Localizar los MOVESETS/habilidades**: #ACM identificado como contenedor de
-   animaciones (bins 127, 358, 435, 444, 2208, 2209, 3881) pero NO distingue
-   moveset de personaje vs animación de escenario. Pendiente: mapear el moveset
-   exacto por personaje vía RE del guest.
-4. **🔴 Mapear el SLXS/roster HD: 🔍 NO existe archivo SLXS en el HD** (2026-09-02).
-   El roster→trajes→bins vive en el **código del guest** + los composites de
-   `data_eng.afs` (auditoría en `AUDITORIA_DATA_CMN.md` §3.1): entry 0 =
-   character select (28 MB, 5 secciones #ACA + 5 #AZT + 1 #AWO), 1976/2043 =
-   texturas de retratos, `#SKC` = config UI. **Para F3.3 el mapeo exacto
-   (slot→bin) se obtiene instrumentando el guest**: captura parcial realizada
-   (2026-09-07) — trace de reads AFS por entrada en
-   `rexglue-sdk-0.10/src/filesystem/devices/host_path_file.cpp` (`ReadSync`,
-   gateado por `dbz1_diag_logging`, escribe `dbz1_afs_reads.log`). Identificados
-   14 bins de modelo (`#AWO1#AWG*#AZT1#AMB1`) y varias parejas de recursos
-   auxiliares; resultado completo en `AUDITORIA_DATA_CMN.md` §3.2. `OpenMapped`
-   ya está instrumentado para registrar mappings, aunque un mapping largo no
-   produce necesariamente un evento por cada página tocada. Pendiente:
-   captura adicional con personajes/stages bloqueados y, si hace falta, trace
-   de faults del backend `MappedMemory` para resolver el slot→retrato fino.
+3. **Localizar los MOVESETS/habilidades — RESUELTO a nivel de bin (2026-09-07)**:
+   el moveset/animación de cada personaje es el bin `#ACM#AMB` grande de su
+   grupo (columna ANM en `MAPA_ROSTER_HD.md`, p.ej. Krillin 332/333, Goku
+   290-292, Vegeta 433-435/437). Identificados por nombre AFL (CAM/LIPS/ANM) +
+   tamaño (1.2-2.4 MB), no solo por firma `#ACM`. Pendiente: estructura interna
+   de la tabla de movimientos en `generated/` (F3.2).
+4. **🔴 Mapear el SLXS/roster HD: ✅ RESUELTO (2026-09-07)** — no existe archivo
+   SLXS en el HD; el roster vive en la **imagen descifrada del guest**, no en
+   `data_eng.afs`. Se volcó `out/analysis/guest_image/dbz3_us_image.bin` con un
+   mini-tool (`out/analysis/guest_image/`, CMake+fuente; carga el xex en
+   tool_mode con el SDK instalado y vierte membase 0x82000000-0x826D0000) y se
+   localizaron:
+   - **Tabla de retratos/slots del select** `0x82372818`: 78 u32 = 39 slots ×
+     2 entradas; slot 10 = Krillin (3930), slot 19 = Nappa (3934) —
+     **CONFIRMADO con el experimento de sustitución** (§3.3.2). Orden completo
+     en `MAPA_ROSTER_HD.md` §7.
+   - **Tabla de bins por personaje** `0x823268C0`: runs de índices AFS con
+     separador 0xFFFFFFFF (modelos→CAM→LIPS/ANM).
+   - **Función consumidora** `sub_8217F3F0` (recomp `.15.cpp:13877`,
+     `lis -32201; addi r9,r9,10264` → índice slot*8+flag*4 sobre 0x82372818).
+   El trace previo de reads AFS (`dbz1_afs_reads.log`) y el experimento de
+   sustitución convirtieron las asociaciones temporales en mapeo confirmado;
+   las 17 `#AZT1` 288x352 exportadas quedan documentadas en
+   `AUDITORIA_DATA_CMN.md` §3.2.1.
 
 ### 3.2 Habilidad adicional (por duplicado)
 1. RE del formato de habilidad en `generated/` (tabla de movimientos).
@@ -132,11 +137,34 @@ stages, movimientos) para duplicar la ENTRADA correcta.
 3. Instalar como mod (override por entrada) + validar en combate.
 
 ### 3.3 Slot de personaje adicional (por duplicado) — el más cercano
-1. Elegir un slot vacío del `data_cmn.afs` (§8 item 15 ya explorado) o
-   duplicar una entrada.
-2. Modelo: swap nativo (ya funciona) o port (pipeline §3.4/§15).
-3. Entrada SLXS/roster duplicada + textura del select + voz.
-4. Validar: personaje nuevo en el select y en combate.
+1. **Inventario de dependencias del personaje — CERRADO (2026-09-07)**: modelo
+   `#AMB`, auxiliares (CAM/LIPS/SCOUT), moveset/animación (bin `#ACM` grande) y
+   aura (0-43) mapeados por personaje en
+   `docs/03_formatos/MAPA_ROSTER_HD.md` (catálogo HD + probe + AFL Pal, desfase
+   +6 validado). Los retratos son candidatos `#AZT1` 3884-3960 con asociación
+   temporal de confianza media (`AUDITORIA_DATA_CMN.md` §3.2.1).
+2. **✅ Experimento de menor riesgo — HECHO (2026-09-07)**: sustitución sobre
+   slot existente. El mod `portrait_swap_test` (servir entry 3934 en slot 3930
+   vía override por entrada) hizo aparecer el retrato de **Nappa en Krillin**
+   en el select → confirma las parejas 3930=Krillin y 3934=Nappa y valida el
+   override de retratos. Además se volcó la imagen del guest y se localizó la
+   **tabla de retratos del select** (`0x82372818`, 39 slots) y la tabla de bins
+   (`0x823268C0`) — el roster vive en datos del guest, con consumidor
+   `sub_8217F3F0` (§7 de MAPA_ROSTER_HD). 🟢 El siguiente paso es estudiar cómo
+   el guest enumera los 39 slots (bucle/conteo) y probar UN slot nativo.
+3. Confirmar dónde vive el índice de slot en el guest recompilado: buscar el
+   consumidor de la tabla de entradas del select y validar si el bin es un
+   inmediato, una tabla estática o un descriptor cargado desde `data_eng`.
+   **→ Avanzado 2026-09-07**: consumidor localizado (`sub_8217F3F0`), la tabla
+   es estática en la imagen del guest (`0x82372818`), no un descriptor de
+   `data_eng`. Pendiente: el bucle/conteo de 39 slots y decidir hook-host vs
+   re-codegen (§9 de MAPA_ROSTER_HD).
+4. Implementar la duplicación real solo después: ampliar/reemplazar el
+   descriptor de slot, asociar el modelo de `data_cmn`, asociar el retrato del
+   `#AZT1`/composite y conservar los auxiliares de voz/animación del destino.
+5. Validar por capas: modelo en combate, selección/retrato, transformaciones,
+   voz y guardado. Cada capa debe tener un override aislado para localizar la
+   dependencia que falte.
 
 ### 3.4 Stage adicional (por duplicado)
 1. Localizar bins de stage (3.1.2) + dónde se lista en el select.
@@ -148,10 +176,60 @@ stages, movimientos) para duplicar la ENTRADA correcta.
 Script/pipeline genérico que duplique una entrada (AFS + SLXS/select) y apunte
 a un bin nuevo — reutilizable para personajes, stages y habilidades.
 
+### 3.6 🔴 PLAN GPT-6 ASTRA — slots nativos + port (dictamen 2026-09-07)
+
+> **Documento completo**: `docs/DICTAMEN_GPT6_ASTRA.md` (verbatim + anexo con
+> hallazgos nuevos). El dictamen externo corrige 3 supuestos y propone el plan
+> de ejecución 0-7 que sustituye el "paso 4/5" de 3.3 para slots nativos.
+
+**Correcciones que aplican ya (verificadas en nuestro estado):**
+1. **`0xFFFF` = celda vacía, NO personaje libre**: distinguir celda de
+   interfaz / ID de retrato / ID de personaje / ID de forma. No asumir slots
+   libres.
+2. **`bone@+28` solo es válido para sec34 (Krillin)**: formato C usa `+40`.
+   Seleccionar layout por AWG, nunca offset global.
+3. **El mid-insert amplía una entrada AFS existente; NO añade índices AFS
+   nuevos**: aumentar el conteo de `data_cmn.afs` exige validar conteo, tabla
+   virtual y consumidores por separado.
+
+**Plan de ejecución (0-7 + paralelo acotado):**
+
+| Orden | Trabajo | Criterio de aceptación |
+|---|---|---|
+| 0 | Congelar baseline, DLL y override efectivo | Resultados repetibles y hashes registrados |
+| 1 | Restaurar inyección conocida y ejecutar Afix aislado | Modelo visible estable; diagnóstico sin contaminación |
+| 2 | Trazar conteo, celdas y registro de 184 B | Distinguir capacidad, identidad y enumeración |
+| 3 | Añadir una celda alias de un HD existente | Original y duplicado seleccionables, sin sustitución |
+| 4 | Crear identidad independiente y resolución de recursos | Ambos combaten simultáneamente sin compartir estado indebido |
+| 5 | Escanear rigs y producir primer IW compatible | Silueta y animación aceptables sobre rig HD |
+| 6 | Integrar ese modelo en el slot independiente | Select→combate→victoria→revancha estable |
+| 7 | Completar voz, textos, formas y persistencia | Guardado probado con perfil desechable; regresión del roster |
+| Paralelo | Discriminador de Vía B (port exacto) | Primera dependencia demostrada antes del regenerador general |
+
+**Decisiones del dictamen que adoptamos como criterio:**
+- **Slots nativos**: orden de vías = (1) reutilizar celda reservada real →
+  (2) parche de datos en memoria guest → (3) híbrido tablas+hooks mínimos.
+  **NO re-codegen ni tocar `generated/` como primer paso.** Módulo
+  `src/mods/native_roster` fuera de `generated/`, manifest por región+hash,
+  opt-in, abort si discrepancia.
+- **Primer personaje = duplicar comportamiento, no archivos**: celda alias que
+  resuelve al ORIGINAL (candidato: Android 16), sin duplicar CAM/ANM/voz/aura
+  inicialmente; modelo/retrato propios solo cuando la resolución independiente
+  esté demostrada.
+- **Port**: Vía A (inyección) = vía de ENTREGA; Vía B = investigación acotada
+  con entregables cerrados (round-trip, permutación mínima fallida, primera
+  divergencia runtime). Inversión en Vía A: correspondencias por hueso/zona/
+  material, preservación de costuras, umbrales por región, rechazo de
+  correspondencias dudosas conservando vértice HD.
+- **Guardado**: perfil desechable + slot experimental NO persistente; no
+  escribir IDs nuevos en partidas normales.
+
 **Orden de ejecución recomendado** (por viabilidad): 3.3 (personajes, swap
 ya validado) → 3.4 (stages, requiere localizar bins) → 3.2 (habilidades, la
 RE más profunda). El orden del usuario (habilidades → personajes → stages) es
 válido como prioridad de interés; la ejecución técnica sigue el de viabilidad.
+**⚠️ El plan del dictamen (§3.6) es la guía vigente para slots nativos y port**:
+hitos 0-3 primero, escáner de rigs, luego IW.
 
 ---
 
@@ -161,7 +239,8 @@ válido como prioridad de interés; la ejecución técnica sigue el de viabilida
 2. **Fase 2.1** (código muerto) — riesgo bajo, limpieza rápida + release menor.
 3. **Fase 2.2** (depuración) — solo lo que aparezca; no bloquea.
 4. **Fase 3.1** (auditoría) — el mapa de contenido habilita todo el RE.
-5. **Fase 3.3 → 3.4 → 3.2** (contenido nuevo por duplicados).
+5. **Fase 3.3 → 3.4 → 3.2** (contenido nuevo por duplicados), siguiendo el
+   **plan del dictamen (§3.6)** para slots nativos y port.
 
 ## CRITERIOS DE ACEPTACIÓN
 - F1: AGENTS ≤ 60 KB sin perder constraints; índices coherentes.
@@ -179,3 +258,5 @@ válido como prioridad de interés; la ejecución técnica sigue el de viabilida
 | Formato bin | `docs/03_formatos/` + `AWO_FORMAT.md` |
 | Plan 1.1.1 (depurado/Linux) | `docs/PLAN_1.1.1.md`, `docs/PLAN_LINUX.md` |
 | Código del guest (parser real) | `generated/`, `generated_eu/` |
+| **Dictamen GPT-6 Astra (plan slots + port)** | `docs/DICTAMEN_GPT6_ASTRA.md` |
+| Briefing que originó el dictamen | `docs/BRIEFING_GPT6_ASTRA.md` |

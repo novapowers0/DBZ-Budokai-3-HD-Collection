@@ -14,6 +14,7 @@ find_package(rexglue REQUIRED CONFIG)
 set(DBZ3_SOURCES
     src/main.cpp
     src/hooks.cpp
+    src/roster_trace.cpp
     src/mods.cpp
     src/region.cpp
     src/launcher/settings.cpp
@@ -54,10 +55,15 @@ endif()
 # differ and the US hooks would not apply.
 if(DBZ3_GENERATED_DIR STREQUAL "generated_eu" AND NOT DBZ3_DUAL_REGION)
     list(REMOVE_ITEM DBZ3_SOURCES src/hooks.cpp)
+    list(REMOVE_ITEM DBZ3_SOURCES src/roster_trace.cpp)
 endif()
 
 if(WIN32)
     add_executable(dbz3 WIN32 ${DBZ3_SOURCES} src/version.rc)
+    # UCRT marks getenv/fopen as "deprecated" even though they are the portable
+    # choice here (the game also builds on Linux where they are not). Silence
+    # the -Wdeprecated-declarations noise project-wide on MSVC/clang-cl.
+    target_compile_definitions(dbz3 PRIVATE _CRT_SECURE_NO_WARNINGS)
 else()
     add_executable(dbz3 ${DBZ3_SOURCES})
 endif()

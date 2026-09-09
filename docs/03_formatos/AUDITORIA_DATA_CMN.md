@@ -78,17 +78,23 @@ falta RE del layout de vértice de stage (ver `docs/07_ports/`).
 
 ## 2. PERSONAJES (70-505)
 
-- La numeración coincide con la **data_cmn de la Greatest Hits PS2** (el listado
-  comunitario `modding resources/DBZ_B3_Character_Bin_List.txt` mapea modelos
-  70-441; la HD 360 usa el mismo orden, p.ej. Krillin = 327).
+- **Mapa definitivo personaje→bins**: `docs/03_formatos/MAPA_ROSTER_HD.md`
+  (2026-09-07) consolida catálogo HD + probe real + nombres AFL. Cada personaje
+  tiene: modelos (`#AMB1 #AWO1 #AWG* #AZT1`) + CAM + LIPS + ANM (`#ACM` grande)
+  + opcional SCOUT + AURA (0-43).
+- La numeración coincide con la **data_cmn de la Greatest Hits PS2**. La lista
+  de nombres `data_cmn.afl` (Pal) coincide con la HD hasta 286 y con desfase
+  **+6** desde ~287 (la GH añadió 6 modelos angelicales de Goku 281-287). El
+  desfase deriva localmente (Recoome/Raditz/Saibaman, Trunks): el catálogo HD
+  (`catalog_b3.cat`) es la autoridad para modelos.
 - **Un slot de personaje = 1 bin #AMB** con `#AWO1 #AWG15-26 #AZT1`. El swap
   nativo (AGENTS §3.4) ya aprovecha esto: bin completo #AMB en slot ajeno.
-- Los bins de **animaciones/movesets** de cada personaje están en rangos
-  intercalados (p.ej. Krillin 324-327, Vegeta 420-427 según el listado PS2) —
-  binarios `#ACM`/`#AWM`. ⚠️ La firma #ACM no basta para distinguir moveset de
-  animación de escenario: ambos usan #ACM. **Para el roadmap: localizar el
-  moveset EXACTO de un personaje requiere RE del SLXS/roster HD (qué entradas
-  lee el guest para un personaje dado).**
+- **El moveset/animación de cada personaje YA está localizado** (columna ANM del
+  mapa, p.ej. Krillin = 332/333, Goku = 290-292, Vegeta = 433-435/437): son los
+  bins `#ACM#AMB` grandes intercalados tras cada grupo de modelos, identificados
+  por nombre AFL (CAM/LIPS/ANM) y tamaño (1.2-2.4 MB). ⚠️ La firma #ACM sola no
+  distingue moveset de animación de escenario; el nombre + la posición en el
+  grupo de personaje sí.
 
 ## 3. SLXS / ROSTER — siguiente paso RE
 
@@ -161,9 +167,82 @@ pueden ser tablas/configuración compartida.
 - `data_spn.afs`, `adx_jpn.afs` y `adx_usa.afs` aparecen por localización y
   audio, no deben mezclarse con el mapa de modelos.
 
+#### 3.2.1 Relectura del orden de carga y candidatos de retrato
+
+La captura sí contiene la información útil para F3.3, aunque no aparecen
+líneas `mapped entry=`. La información está en los `ReadSync` por páginas: el
+guest carga primero grupos de entradas `3884-3951`, que el mapa clasifica como
+`#AZT1` sueltos de tamaño descomprimido uniforme (~1,048,800 bytes), y después
+lee el modelo de personaje de `70-505`. Por tanto, esos grupos no deben
+clasificarse como vídeo. Las lecturas paginadas de vídeo son las entradas
+`3971-3981`, clasificadas como `ERR` por el escáner de contenido.
+
+La siguiente tabla es un mapa **candidato** derivado del orden de la captura,
+no una referencia interna explícita. La confianza sube cuando un grupo `39xx`
+precede a un modelo conocido y se repite con la misma variante:
+
+| Grupo #AZT candidato | Modelo leído después | Identificación | Confianza |
+|---:|---:|---|---|
+| 3924-3925 | 264, después 270 | Goku normal y variante | media |
+| 3918 | 246 | Gohan niño | media |
+| 3958 | 416 | Vegeta sin armadura | media |
+| 3930 | 327 | Krillin | media |
+| 3938 | 350 | Piccolo normal | media |
+| 3952 | 400 | Tenshinhan | media |
+| 3960 | 445 | Yamcha pelo corto | media |
+| 3940 | 360 | Raditz | media |
+| 3934 | 345 | Nappa | media |
+| 3922 | 258 | Ginyu | media |
+| 3942 | 366 | modelo aún sin label | media |
+| 3912 | 181 | Freeza forma 1 | media |
+| 3892 | 91 | Dr. Gero | media |
+| 3898 | 128 | Majin Buu gordo | media |
+| 3900 | 133 | Super Buu | media |
+| 3902 | 141 | Kid Buu | media |
+
+La asociación observada es más amplia que la lista inicial de 14 modelos: la
+captura también carga `246` (Gohan niño), `128` (Majin Buu gordo) y `133`
+(Super Buu). En los casos con dos variantes, como `264→270`, el mismo grupo de
+texturas de 1 MB puede ser compartido por varias apariencias; no se debe crear
+un retrato nuevo por cada bin hasta comprobar el contenido visual.
+
+La secuencia no demuestra todavía si un grupo `39xx` es un retrato único, una
+pareja normal/alternativa, o un bloque compartido por varias entradas del
+select. Para confirmarlo hay que descomprimir/exportar cada `#AZT1` y comparar
+la imagen, no inferirlo únicamente por proximidad temporal. `3881` sigue siendo
+un `#ACM1` y aparece entre las dos variantes de Goku; puede ser una tabla o
+animación común, pero no debe asignarse aún como moveset de Goku.
+
+La captura no contiene lecturas de los stages conocidos (`44-69` o
+`3735-3847`), por lo que esta sesión fue una captura del flujo de personajes,
+no una captura válida para mapear stage→bin.
+
+#### 3.2.2 Exportación de candidatos `#AZT1` (2026-09-07)
+
+Las entradas candidatas se probaron directamente, sin pasar por
+`texture_b3.py`: esa herramienta está diseñada para bins de personaje que
+empiezan por `#AMB`, mientras que estas entradas son bloques `#AZT` autónomos.
+La utilidad de análisis `awo_tools/extract_azt_afs.py` descomprime y exporta
+cada entrada a PNG.
+
+Resultado para las 17 entradas candidatas `3892, 3898, 3900, 3902, 3912,
+3918, 3922, 3924, 3925, 3930, 3934, 3938, 3940, 3942, 3952, 3958, 3960`:
+
+- Cada entrada contiene exactamente una textura.
+- Todas las texturas son de `288x352`.
+- Los 17 PNG tienen hashes SHA-256 distintos; no son copias binarias del
+  mismo retrato.
+- Los PNG de análisis están en `out/analysis/azt_exports/` y no forman parte
+  de ningún mod activo.
+
+Esto confirma que los `#AZT1` son recursos gráficos independientes, pero no
+permite asignar nombres de personaje sin inspección visual. Por tanto, las
+parejas `#AZT1 → modelo` de la tabla anterior siguen siendo asociaciones
+temporales de confianza media, no un mapeo confirmado de slot.
+
 #### Limitación del primer trace
 
-El entry 0 de `data_eng.afs` (composite del select) no aparece como read
+ El entry 0 de `data_eng.afs` (composite del select) no aparece como read
 normal. El guest puede accederlo mediante `HostPathEntry::OpenMapped`, que no
 pasa por `HostPathFile::ReadSync`. El runtime ya fue actualizado para registrar
 también la creación del mapping (`mapped entry=...`), pero esto solo identifica
@@ -181,14 +260,19 @@ faults/lecturas del wrapper `MappedMemory`, si el backend elegido los expone.
 - `afs_scan.py <rango>` — descomprime y clasifica (conteo de magics en todo el
   buffer) todos los bins >100 KB de un rango; append a
   `%TEMP%\opencode\afs_classified.txt`.
+- `extract_azt_afs.py <afs> --tool <xbdecompress> --entries ... --out ...`
+  — exporta entradas autónomas `#AZT` a PNG para comparar retratos/texturas.
 
 ## 5. REFERENCIAS
 
 | Tema | Dónde |
 |---|---|
+| **Mapa definitivo roster HD** | `docs/03_formatos/MAPA_ROSTER_HD.md` |
 | Mapa crudo (3990 líneas) | `mod center hd/data_cmn_map.txt` |
-| Listado comunitario PS2 | `modding resources/DBZ_B3_Character_Bin_List.txt` |
 | Catálogo Model Swap (183 personajes) | `mod center hd/catalog_b3.cat` |
+| Nombres AFL Pal (parseado) | `out/analysis/data_cmn_pal_afl.txt` (fuente: `modding resources/Data_CMN file name list (Budokai 3 Pal)/data_cmn.afl`) |
+| Tabla anotada (probe + AFL + catálogo) | `out/analysis/data_cmn_annotated.txt` |
+| Listado comunitario PS2 | `modding resources/DBZ_B3_Character_Bin_List.txt` |
 | Formato bin | `docs/03_formatos/AWO_FORMAT.md`, `BIN_LAYOUT.md` |
 | Swap nativo / port | `AGENTS.md` §3.4, `docs/07_ports/` |
 | Hoja de ruta | `docs/HOJA_DE_RUTA_2026_09.md` (Fase 3) |

@@ -54,11 +54,17 @@ const char* LanguageName(int32_t xbox_language_id);
 
 // --- Region ----------------------------------------------------------------
 // Asset region: "us" or "eu". Selects which asset folder (us/ or eu/) the game
-// reads from, with mods/ overrides layered on top. The recompiled XEX is the
-// US one (the EU XEX is a different build and cannot run), so this only swaps
-// assets (text/audio/video packs), keeping the US binary.
+// reads from, with mods/ overrides layered on top. The dual-region core detects
+// the XEX by checksum, so this only swaps the asset packs, keeping one binary.
 std::string Region();
 void SetRegion(const std::string& region);
+
+// Effective asset region for `root`. Prefers the user-selected region when its
+// folder (us/ or eu/) exists; otherwise falls back to whichever of the two
+// folders exists so EU-only (or US-only) data works out of the box even with
+// the default "us" selection. Returns the selection unchanged when neither
+// folder exists. Does not mutate the cvar.
+std::string ResolveRegion(const std::filesystem::path& root);
 
 // --- Game data folder ------------------------------------------------------
 // Override for the game data folder (the one that directly contains us/ and

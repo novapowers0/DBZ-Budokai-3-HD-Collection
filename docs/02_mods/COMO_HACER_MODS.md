@@ -45,7 +45,8 @@ xbdecompress.exe <entrada.lzx> <entrada.bin>
 ```
 
 ### Paso 2: modificar el bin
-- Con `awo_tools/analyze_bin_hd.py` puedes ver la estructura (AWGs, vértices).
+- Para verificar la estructura B3 HD usa `awo_tools/awg_to_obj_b3.py`,
+  `awo_tools/awg0_export.py` o `awo_tools/awg_cara_export.py`.
 - Para swaps nativos usa `swap_b3.py` o la pestaña Model Swap del launcher.
 
 ### Paso 3: comprimir con /N:2048 (IMPORTANTE)
@@ -136,6 +137,6 @@ activos simultáneamente.
 - **Activo**: carpeta `mods/<mod>/` SIN archivo `.disabled`.
 - **Desactivado**: con `.disabled`.
 - **Orden**: los mods se ordenan alfabéticamente; el primer match gana.
-- El toml `dbz3_user.toml` → `dbz3_enabled_mods` controla el overlay del launcher
-  (para AFS completos). El override por entrada es independiente del toml.
-
+- La activación real usa únicamente el marker `.disabled`; `dbz3_enabled_mods`
+  quedó obsoleto y no controla los mods actuales. El override por entrada es
+  independiente del perfil visualizado por el launcher.

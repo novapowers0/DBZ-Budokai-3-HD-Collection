@@ -16,7 +16,7 @@
 | **Swaps en cualquier dirección** | ✅ | **Mid-insert virtual**: bins > o < que el slot funcionan (Goten 107006B en slot Krillin 106496B validado) |
 | **2+ mods simultáneos** | ✅ | Cada mod toca entradas distintas del mismo AFS (goten_override_test + tex_91 = OK) |
 | **Override por entrada (mecanismo)** | ✅ | `AfsFindModOverride` + tabla AFS virtual (`AfsGetVirtualTable`/`AfsTranslateOffset`) |
-| **Parser del bin HD** | ✅ | `awo_tools/analyze_bin_hd.py` lee la estructura con la template oficial |
+| **Exportación/verificación del bin HD** | ✅ | `awo_tools/awg_to_obj_b3.py`, `awg0_export.py` y `awg_cara_export.py`; `analyze_bin_hd.py` queda obsoleto |
 | **Extracción PS2→datos** | ✅ | `parse_ps2_mesh.py` extrae vértices/IB de AMG PS2 |
 
 ## QUÉ NO FUNCIONA (PRIORIDAD)

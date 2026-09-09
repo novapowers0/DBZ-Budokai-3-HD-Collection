@@ -1,6 +1,6 @@
 # Herramientas — inventario
 
-> Actualizado: 2026-08-14. Inventario de herramientas disponibles y su función.
+> Actualizado: 2026-09-08. Inventario de herramientas disponibles y su función.
 
 ---
 
@@ -9,7 +9,10 @@
 ### awo_tools/ — scripts de RE y conversión
 | Herramienta | Función | Estado |
 |---|---|---|
-| `analyze_bin_hd.py` | Parser del bin HD (#AWO) con template oficial | ✅ Recomendada |
+| `analyze_bin_hd.py` | Parser histórico basado en template PS3 | ⚠️ Obsoleta; solo referencia |
+| `awg_to_obj_b3.py` | Exportador OBJ de bins B3 completos | ✅ Recomendada |
+| `awg0_export.py` | Exportador AWG0 con autodetección A/C | ✅ Recomendada |
+| `awg_cara_export.py` | Exportador de AWGs de cara | ✅ Recomendada |
 | `parse_ps2_mesh.py` | Parser de malla PS2 (verts+IB) | ✅ |
 | `pose_matrix.py` | Matrices world de huesos PS2 | ✅ |
 | `rig_mapeo.py` | Re-mapeo JNB→KLL por labels | ✅ |
@@ -17,6 +20,15 @@
 | `build_janemba_final.py` | Inyectar geometría de Janemba en Krillin | 🔸 en investigación |
 | `swap_cuerpo_hd.py` | Inyectar cuerpo de Goten en Krillin | 🔸 en investigación |
 | `build_janemba2.py`, `build_afs.py`, `mezclar_ps2_hd.py` | Experimentos previos | 🔸 archivable |
+
+### Mantenimiento del entorno (solo desarrollo, no se distribuye)
+- `tools/cleanup.ps1` — limpieza manual del peso del proyecto: `-DryRun`
+  (previsualiza), `-Yes` (L0 sin preguntar), `-Full -Yes` (+ L1 archivados).
+  Nunca toca docs/src/assets/mods/SDK/ps2_games. Reporta el top-12 de
+  consumidores. Ver cabecera del script.
+- `awo_tools/corpus_scan.py` — desde 2026-09-09 **limpia sus temporales** tras
+  cada descompresión (antes dejaba ~16 GB en `out/analysis/corpus/.work`).
+  Solo `--keep-bin` conserva copias en `.work/bins/`.
 
 ### mod center hd/ — herramientas HD adaptadas
 | Herramienta | Función |
@@ -95,7 +107,7 @@
 
 ---
 
-## 4. HERRAMIENTAS DEL SDK (rexglue-sdk/)
+## 4. HERRAMIENTAS DEL SDK (rexglue-sdk-0.10/)
 
 - `rexruntime.dll` — runtime (hook de mods, filesystem, logging)
 - `rexgpu-xenos.dll` — backend GPU
@@ -109,8 +121,8 @@
 # 1. Descomprimir el bin del AFS
 xbdecompress.exe entrada.lzx entrada.bin
 
-# 2. Ver la estructura con el parser
-python awo_tools/analyze_bin_hd.py entrada.bin --dump
+# 2. Exportar/verificar la estructura con las herramientas B3 actuales
+python awo_tools/awg_to_obj_b3.py entrada.bin salida.obj
 
 # 3. Si es PS2, extraer la malla
 python awo_tools/parse_ps2_mesh.py entrada.amb 0 salida

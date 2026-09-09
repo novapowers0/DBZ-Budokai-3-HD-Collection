@@ -2,7 +2,7 @@
 
 > Guía accesible para agentes y humanos. Consolidación del estado del proyecto,
 > estructura de carpetas, cómo hacer mods, formatos, herramientas y builds.
-> Actualizado: 2026-09-02
+> Actualizado: 2026-09-08
 
 ---
 
@@ -10,7 +10,11 @@
 
 | Carpeta | Contenido |
 |---|---|
-| [HOJA_DE_RUTA_2026_09](HOJA_DE_RUTA_2026_09.md) | **Hoja de ruta actual**: doc ligera / limpieza código muerto / RE contenido por duplicados |
+| [HOJA_DE_RUTA_ACELERADA](HOJA_DE_RUTA_ACELERADA.md) | **Hoja de ruta activa**: ejecución acelerada (swap-first, reader-first, corpus, roster por memoria) con sprints S0-S4 y automatización |
+| [HOJA_DE_RUTA_2026_09](HOJA_DE_RUTA_2026_09.md) | Madurez post-1.1.1 (superseded por la acelerada) |
+| [RE_MASTER_2026_09](RE_MASTER_2026_09.md) | **Plan rector de RE extremo a extremo**: laboratorio, capas, fases y validación |
+| [DICTAMEN_GPT6_ASTRA](DICTAMEN_GPT6_ASTRA.md) | **Dictamen externo (GPT-6 Astra)**: plan 0-7 slots nativos + port PS2→B3 (guía vigente) |
+| [BRIEFING_GPT6_ASTRA](BRIEFING_GPT6_ASTRA.md) | Briefing técnico que originó el dictamen |
 | [HOJA_DE_RUTA](HOJA_DE_RUTA.md) | Plan modding original (histórico, superseded) |
 | [HOJA_DE_RUTA_COMUNIDAD](HOJA_DE_RUTA_COMUNIDAD.md) | Feedback comunidad P0-P5 (histórico, todo completado) |
 | [01_estructura](01_estructura/ARBOL.md) | Árbol completo del proyecto, qué es cada carpeta |
@@ -22,9 +26,13 @@
 | [03_formatos](03_formatos/AMO_AWO.md) | Formato del modelo PS2 (#AMO0) vs HD (#AWO) |
 | [03_formatos/BIN_LAYOUT.md](03_formatos/BIN_LAYOUT.md) | Layout del bin HD (headers, buffers, vértice) |
 | [03_formatos/AWO_FORMAT.md](03_formatos/AWO_FORMAT.md) | Formato #AWO HD campo a campo |
+| [03_formatos/ACM_FORMAT.md](03_formatos/ACM_FORMAT.md) | Formato moveset HD (#AMB→#CSK→#ACM) + edición de habilidades |
+| [03_formatos/STAGES_FORMAT.md](03_formatos/STAGES_FORMAT.md) | Bins de stage (#AMB→#ZDD/#CAD/#CAS/#SPX) + contenedor PS2 (ports IW) |
 | [04_herramientas](04_herramientas/TOOLS.md) | Inventario de herramientas y su función |
 | [05_build](05_build/COMO_COMPILAR.md) | Cómo compilar el juego y el SDK |
 | [06_limpieza](06_limpieza/PLAN_LIMPIEZA.md) | Plan de limpieza/reorganización |
+| [06_limpieza/INVENTARIO_FISICO_2026-09](06_limpieza/INVENTARIO_FISICO_2026-09.md) | Inventario físico y artefactos |
+| [06_limpieza/INTEGRACION_MODDING_HD](06_limpieza/INTEGRACION_MODDING_HD.md) | Clasificación de herramientas y recursos para HD |
 | [07_ports](07_ports/ESTRUCTURA_DIBUJO_HD.md) | **Estructura de dibujo HD mapeada (descriptores A/B, mesh-ref, arms)** |
 
 ---
@@ -35,7 +43,7 @@
 - **Jugar**: `out\build\win-amd64-release\dbz3.exe`
 - **Config**: `out\build\win-amd64-release\dbz3_user.toml`
 - **Mods**: carpeta `mods\<mod>\` junto al exe. Solo los que NO tienen `.disabled`.
-- **Estado**: v1.1.1 publicada; juego funcional (D3D12, 60fps, US+EU). Model swap nativo y texturas funcionan. Port completo PS2→HD bloqueado (§3.4).
+- **Estado**: v1.1.1 publicada; **v1.1.2 en preparación** (fix crash EU, regiones incompletas, backend Vulkan real). Juego funcional (D3D12, 60fps, US+EU). Model swap nativo y texturas funcionan. Port completo PS2→HD bloqueado (§3.4).
 
 ---
 

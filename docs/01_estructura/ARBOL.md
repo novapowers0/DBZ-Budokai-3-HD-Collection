@@ -9,7 +9,7 @@
 ```
 DBZ Budokai 3 HD Collection/
 ├── src/                     ← Código del launcher y del juego (main.cpp, launcher/, ingame/)
-├── rexglue-sdk/             ← SDK FUENTE (runtime, GPU, filesystem, kernel) — compilable
+├── rexglue-sdk-0.10/         ← SDK FUENTE 0.10 (runtime, GPU, filesystem, kernel) — compilable
 ├── rexglue/                 ← SDK INSTALADO (bin/lib/include) — lo que usa el build del juego
 ├── generated/               ← Código recompilado del guest (dbz3_recomp.*.cpp) — 23 archivos ~2MB c/u
 ├── out/build/               ← Builds del juego (4 configuraciones, ver abajo)
@@ -54,7 +54,7 @@ DBZ Budokai 3 HD Collection/
 win-amd64-release/
 ├── dbz3.exe              ← El juego (lanza desde aquí)
 ├── dbz3_user.toml        ← CONFIG del usuario (mods, región, backend GPU, frame cap)
-├── rexruntime.dll        ← Runtime (el hook de mods vive aquí) — se actualiza desde rexglue-sdk/out/win-amd64/
+├── rexruntime.dll        ← Runtime (el hook de mods vive aquí) — se actualiza desde rexglue-sdk-0.10/out/win-amd64-baseline/
 ├── rexruntimerd.dll      ← Runtime debug (para Tracy)
 ├── rexgpu-xenos.dll      ← Backend GPU
 ├── amd_fidelityfx_*.dll  ← FidelityFX (FSR/CAS)
@@ -86,7 +86,10 @@ win-amd64-release/
 
 | Script | Función |
 |---|---|
-| `analyze_bin_hd.py` | Parser del bin HD con la template B3_AMB_PS3.bt (RECOMENDADO) |
+| `analyze_bin_hd.py` | Parser histórico PS3; obsoleto, no usar para bins B3 HD |
+| `awg_to_obj_b3.py` | Exportar bins B3 HD completos a OBJ |
+| `awg0_export.py` | Exportar AWG0 con autodetección de formatos A/C |
+| `awg_cara_export.py` | Exportar AWGs de cara |
 | `build_awo_desde_cero.py` | Parsear Janemba.amb → AMGs (extracción) |
 | `build_janemba_final.py` | Inyectar geometría de Janemba en slots de Krillin |
 | `swap_cuerpo_hd.py` | Inyectar cuerpo de Goten en Krillin |

@@ -22,9 +22,8 @@ lógica de región/mods, y runtime.
 | Ruta | Contenido |
 |------|-----------|
 | `src/` | Código del launcher y del juego (main.cpp, launcher/, ingame/) |
-| `rexglue-sdk/` | SDK fuente 0.9 (histórico, NO tocar) |
 | `rexglue-sdk-0.10/` | **SDK fuente 0.10 (activo)** — builds en `out/` |
-| `rexglue/` | SDK 0.10 **instalado** (usa el build del juego); respaldo 0.9 en `rexglue_0.9/` |
+| `rexglue/` | SDK 0.10 **instalado** (usa el build del juego); respaldo 0.9 eliminado (limpieza 2026-09-09) |
 | `out/build/win-amd64-release/` | **Build del juego** (dbz3.exe, DLLs, mods/) |
 | `out/build/win-amd64-dual/` | Build dual (US+EU) |
 | `eu/`, `us/` | Assets de región (AFS del juego) |
@@ -44,6 +43,7 @@ lógica de región/mods, y runtime.
 - `docs/01_estructura/ESTADO.md` — qué funciona / qué falla
 - `docs/02_mods/COMO_HACER_MODS.md`, `MODEL_SWAP.md`, `TEXTURAS_MOD.md`
 - `docs/03_formatos/AMO_AWO.md` + `BIN_LAYOUT.md` + `AWO_FORMAT.md` (formato bin)
+- `docs/03_formatos/ACM_FORMAT.md` (moveset HD) + `STAGES_FORMAT.md` (stages/SPX/PS2)
 - `docs/04_herramientas/TOOLS.md` — inventario de herramientas
 - `docs/05_build/COMO_COMPILAR.md` — compilar juego/SDK
 - `docs/06_limpieza/PLAN_LIMPIEZA.md` + `INVENTARIO_MODDING.md`
@@ -55,7 +55,10 @@ lógica de región/mods, y runtime.
 
 ## 3. ESTADO ACTUAL (RESUMEN EJECUTIVO)
 
-- **v1.1.1 publicada (Latest)**; juego muy funcional: D3D12 principal, Vulkan
+- **v1.1.1 publicada (Latest)**; **v1.1.2 en preparación** (fixes de issues de
+  la comunidad: crash EU `sub_820F2398` registrada, regiones incompletas con
+  `ResolveRegion()`, backend Vulkan real con cvar `gpu_backend`, pulido 0
+  warnings). Juego muy funcional: D3D12 principal, Vulkan
   experimental, XInput default, teclado por defecto (mnk_mode=true), presets de
   calidad por GPU, frame_cap real, idioma→juego (ES/EN/IT/DE/FR + JP), región US
   y EU con **núcleo dual** (un solo dbz3.exe detecta el xex por MD5).
@@ -261,6 +264,12 @@ cmake --build rexglue-sdk-0.10\out\build-win-vulkan-baseline --target rexruntime
 xbcompress /N:2048 <src> <dst>   # comprimir
 xbdecompress <src> <dst>         # descomprimir
 # Herramientas XDK: "mod center\Xbox 360 Compression - Decompression tool..."
+
+# Hoja de ruta ACELERADA (S0-S4) y sus automatismos
+#  docs/HOJA_DE_RUTA_ACELERADA.md            <- plan de ejecución activo
+#  tools/lab_f0.ps1                          <- baseline: hashes+región+mods+logs clasificados
+#  awo_tools/corpus_scan.py                  <- parse-all AFS -> JSON+SQLite (Content DB)
+#  mod center hd/swap_matrix.py              <- mover CUALQUIER blob entre slots/regiones
 ```
 
 **⚠️ Compilar el juego**: pasar SIEMPRE
@@ -311,12 +320,23 @@ mods/<mod>/us/<afs>/<entry_index>/<archivo>  ← carpeta con archivo dentro
 3. **Padding al tamaño exacto** del slot que lee el guest (`to_read`). Si es más
    corto → crash.
 
-### 🔴 MID-INSERT VIRTUAL (swaps en cualquier dirección)
+### 🔴 MID-INSERT VIRTUAL (swaps en cualquier dirección) — 100% LIGERO (2026-09-09)
 - `AfsGetVirtualTable`: si un override excede `to_read`, la entrada crece
   in-place (alineado 0x800) y las posteriores se desplazan por el delta
   acumulado (tabla virtual CONSISTENTE, replica un rebuild mid-insert).
-- `AfsTranslateOffset`: traduce offset virtual→físico y sirve el override
-  (bin completo) o lee del archivo físico.
+- 🔴 **SIN archivos gigantes (promesa de bajo peso)**: NO se materializa ningún
+  AFS reconstruido en disco. Toda la consistencia se resuelve en memoria vía
+  `AfsVirtualRange` (ReadSync): cada byte del rango pedido se traduce al archivo
+  físico o al override, y los huecos/pads/EOF se sirven como CEROS. Nunca se
+  hace un read físico con offset sin traducir.
+- **Histórico (crash 2026-09-09)**: la primera versión virtual servía solo la
+  entrada de inicio de cada read y caía a un read físico con el offset virtual
+  en el resto → basura → el parser #AMB despachaba un magic inexistente
+  (`#ACP`, sin handler en la tabla 0x82310110) → crash `UNREGISTERED indirect
+  call` target=0 en `sub_820800A8`. También se probó un REBUILD FÍSICO
+  (`AfsRebuildPath`, AFS de 286 MB en %TEMP%) → funcionaba pero VIOLABA la
+  promesa de bajo peso → descartado. El fix definitivo es el rango virtual
+  ligero (`AfsVirtualRange` + loop en ReadSync).
 - **Criterio de crecimiento**: solo crece si override > `to_read` (lo que el
   guest ya aloca), NO si excede el slot físico.
 - `AfsFindModFileOverride`: reemplazo de ARCHIVO COMPLETO en
@@ -422,7 +442,8 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
 
 ### 9.2 Releases y estado GitHub
 - **v1.1.1 = Latest** (core dual 1.1.1.0, baseline). **v1.1.0-clasico** =
-  fallback no-Latest (runtime avx2) para CPU modernas. Tags v1.0.0..v1.0.9 +
+  fallback no-Latest (runtime avx2) para CPU modernas. **v1.1.2 en
+  preparación** (fixes de issues de la comunidad; ver §3). Tags v1.0.0..v1.0.9 +
   v1.0.5-EX conservados (código archivado; los zips binarios viejos NO existen).
 - Empaquetado: `tools/make_release.ps1` (lee versión de `src/version.rc`,
   default `$Version`; **SIN UPX** — falso positivo AV). Verificación:
@@ -481,11 +502,23 @@ Ver **`docs/HOJA_DE_RUTA_2026_09.md`** — 3 fases:
    stages): auditoría de bins de `data_cmn.afs`, localizar stages/movesets,
    mapear SLXS/roster + select, y duplicar+modificar entradas.
 
+> **⚠️ Guía vigente para slots nativos y port**: `docs/DICTAMEN_GPT6_ASTRA.md`
+> (plan 0-7 + 3 correcciones: `0xFFFF`=celda vacía no personaje libre; bone
+> `+28` solo sec34, formato C usa `+40`; el mid-insert no añade índices AFS).
+> Vías slot nativo: (1) celda reservada → (2) parche datos memoria guest →
+> (3) híbrido tablas+hooks; **sin re-codegen primero**. Port: Vía A (inyección)
+> = entrega, Vía B = investigación acotada.
+
 ## 13. NOTAS DE OPERACIÓN
 
 - Los datos de referencia que vivían en `%TEMP%\opencode\` (b327_*.bin,
   cell_*.bin, etc.) **ya NO existen** (limpieza 2026-09-02): regenerar desde
   `us/` + `ps2_games/` con las herramientas de `awo_tools/`.
+- **Limpieza 2026-09-09 (~46 GB → ~28.4 GB)**: borrados `out/analysis/corpus/.work/`
+  (caché de bins extraídos, regenerable con `corpus_scan.py`), `rexglue-sdk/` (0.9)
+  y `rexglue_0.9/`, `out/build/_archivo_builds/` + `_archivo_dlls/`, y duplicados
+  exactos de docs en `modding resources discord/tutorials/`. Detalle en
+  `docs/06_limpieza/INVENTARIO_FISICO_2026-09.md`.
 - `out/build/win-amd64-tracy` (perfilado) se borró: regenerar con el preset
   Tracy del CMake si se necesita.
 - El usuario habla español. Sesiones largas de juego.

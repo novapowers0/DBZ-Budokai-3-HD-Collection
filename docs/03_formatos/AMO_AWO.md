@@ -107,7 +107,9 @@ El stride del vértice lo da MeshType[1].
 
 | Herramienta | Lee |
 |---|---|
-| `awo_tools/analyze_bin_hd.py` | Bin HD (#AWO) con template oficial |
+| `awo_tools/analyze_bin_hd.py` | Parser histórico PS3; obsoleto |
+| `awo_tools/awg_to_obj_b3.py` | Exportador recomendado para bins B3 HD |
+| `awo_tools/awg0_export.py` | Exportador AWG0 recomendado para formatos A/C |
 | `awo_tools/parse_ps2_mesh.py` | Malla PS2 (#AMO0) → verts+IB |
 | `modding resources discord\research\B3_AMB_PS3.bt` | Template 010 Editor (referencia) |
 | `modding resources discord\research\00000002...b3.AMO.json` | Formato intermedio aerithdevs |

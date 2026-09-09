@@ -50,7 +50,8 @@ REXCVAR_DEFINE_INT32(dbz3_language, 1, "DBZ3/Language",
 
 REXCVAR_DEFINE_STRING(dbz3_region, "us", "DBZ3/Language",
                       "Asset region: us (NTSC) or eu (PAL). Selects the us/ or eu/ asset folder "
-                      "(text/audio/video packs). The recompiled binary is always the US XEX.")
+                      "(text/audio/video packs). The dual-region core auto-detects the XEX, so "
+                      "this only swaps which asset folder is mounted.")
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 
 REXCVAR_DEFINE_STRING(dbz3_game_dir, "", "DBZ3/Paths",
@@ -331,6 +332,22 @@ const char* LanguageName(int32_t xbox_language_id) {
 std::string Region() { return REXCVAR_GET(dbz3_region); }
 
 void SetRegion(const std::string& region) { REXCVAR_SET(dbz3_region, region); }
+
+std::string ResolveRegion(const std::filesystem::path& root) {
+  const std::string sel = Region();
+  if (root.empty()) {
+    return sel;
+  }
+  if (std::filesystem::is_directory(root / sel)) {
+    return sel;
+  }
+  // The selected folder is missing (e.g. EU-only data with the default "us").
+  // Prefer whichever of us/eu actually exists. "eu" first so an EU-only folder
+  // does not accidentally stay "us" when both are absent.
+  if (std::filesystem::is_directory(root / "eu")) return "eu";
+  if (std::filesystem::is_directory(root / "us")) return "us";
+  return sel;
+}
 
 std::string GameDirOverride() { return REXCVAR_GET(dbz3_game_dir); }
 
@@ -896,7 +913,8 @@ void ApplyUserSettingsToSdk() {
   REXCVAR_SET(user_language, static_cast<uint32_t>(Language()));
   // Host graphics backend (d3d12/vulkan). Read by the runtime when it loads
   // the GPU plugin during SetupPresentation, so it must be set before then.
-  rex::cvar::SetFlagByName("gpu_backend", GpuBackend());  // VRR must be set BEFORE the swapchain is created (the D3D12 presenter reads
+  rex::cvar::SetFlagByName("gpu_backend", GpuBackend());
+  // VRR must be set BEFORE the swapchain is created (the D3D12 presenter reads
   // this cvar while creating the swap chain in SetupPresentation). This runs in
   // OnPreSetup, ahead of the swapchain creation, so the swapchain gets
   // DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING only if the user enabled VRR. Default is

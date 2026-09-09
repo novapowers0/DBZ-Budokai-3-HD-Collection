@@ -31,9 +31,15 @@ def detect_base(d):
         base = le32(d, 0x20)            # entrada 0 del AMB = el AMO0
         if d[base:base+4] in (b'#AMO', b'#AMO0'):
             return base
+        if d[0x40:0x44] in (b'#AWO', b'#AWG') or d.find(b'#AWO', 0, 0x1000) >= 0:
+            raise ValueError(
+                'la entrada es un contenedor HD #AMB/#AWO, no una fuente PS2 #AMO0/#AMG'
+            )
         return 0x40
     if d[:4] in (b'#AMO', b'#AMO0'):
         return 0
+    if d[:4] == b'#AWO' or d.find(b'#AWO', 0, 0x1000) >= 0:
+        raise ValueError('el archivo es #AWO HD; se esperaba #AMO0 PS2 LE')
     raise ValueError('no es #AMB ni #AMO0')
 
 

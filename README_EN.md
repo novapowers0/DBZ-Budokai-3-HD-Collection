@@ -20,7 +20,7 @@ emulator.
 | **Platform** | Windows |
 | **Engine** | Xbox 360 (ReXGlue SDK) |
 | **Genre** | 3D fighting |
-| **Version** | v1.0.8 |
+| **Version** | v1.1.2 |
 
 Copyright (c) 2026 **NovaPowers**. Released under the MIT License (see `LICENSE`).
 
@@ -56,8 +56,6 @@ rights holder of Dragon Ball.
    ```
    C:\Games\DBZ3\                C:\Games\DBZ3\
    ├── dbz3.exe                   ├── dbz3.exe
-   ├── dbz3_avx2\                 ├── dbz3_avx2\
-   ├── dbz3_legacy\               ├── dbz3_legacy\
    ├── default.xex                └── assets\
    └── us\ (and/or eu\)               ├── default.xex
                                      └── us\ (and/or eu\)
@@ -69,12 +67,10 @@ rights holder of Dragon Ball.
 4. In the launcher choose **Region** (USA / EU PAL), **Language**, **Video** and
    **Audio**, then press **Play**.
 
-> **About the two `dbz3.exe` files**: the one at the root is a tiny launcher
-> that detects your CPU and starts the right variant (`dbz3_avx2\` if it
-> supports AVX2, `dbz3_legacy\` otherwise). You never have to pick anything:
-> always run the root `dbz3.exe`. Both inner `dbz3.exe` files contain the USA
-> and EU recompilations and select the correct one based on the `default.xex`
-> you provide.
+> **A single `dbz3.exe`**: since v1.1.0 there are no variants. One universal
+> executable (baseline SSSE3 runtime) that runs on any x64 CPU (Core 2 2006
+> onwards), with the USA and EU recompilations inside and auto-detection of the
+> `default.xex` you provide.
 
 ### Which game files you need
 
@@ -103,7 +99,6 @@ DBZ-Budokai-3-HD-Collection/
 ├── eu/                       # NOT included. EU/PAL region data
 ├── src/                      # Recompiler + launcher + mod system
 │   ├── main.cpp              #   entry point, window, crash handler
-│   ├── bootstrap.cpp         #   ISA launcher (avx2/legacy) for the package
 │   ├── mods.cpp              #   mod system (AFS overlay)
 │   ├── launcher/             #   launcher UI + model pipeline
 │   └── ingame/               #   in-game menu
@@ -202,8 +197,7 @@ out\build\win-amd64-release\dbz3.exe
 
 The recompiled code (`generated/`) is derived from your `.xex` and **never
 uploaded** (see `generated/README.md` and `.gitignore`). The release package
-layout (bootstrap + avx2/legacy variants) is assembled by
-`tools/make_release.ps1`.
+layout is assembled by `tools/make_release.ps1`.
 
 ---
 
@@ -218,6 +212,19 @@ layout (bootstrap + avx2/legacy variants) is assembled by
 | USA/EU dual core (single binary) | ✅ Works (validated in-game) |
 | PS2→HD port | ⚠️ Researched; requires a full rebuild |
 | IW→B3 character ports | 🔴 Dropped (Janemba failed, archived) |
+
+---
+
+## 🔧 v1.1.2 highlights (debugging phase)
+
+- **EU crash fix (Dragon Universe / START)**: missing dispatch function
+  `sub_820F2398` extracted and registered as `dbz3eu_sub_820F2398`.
+- **Incomplete regions**: `ResolveRegion()` auto-falls back to whatever of
+  `us/` or `eu/` exists; EU-only or US-only data works out of the box.
+- **Real Vulkan backend**: `gpu_backend` cvar added to the SDK and wired into
+  `LoadGpuPlugin`; previously the launcher choice was ignored (always D3D12).
+- **Polish**: warning-free builds, temporary debug traces removed, footer now
+  shows "Japanese" correctly.
 
 ---
 

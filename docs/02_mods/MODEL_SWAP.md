@@ -169,9 +169,11 @@ inversa del parser del guest**, que vive en `generated/dbz3_recomp.*.cpp`:
    exactamente qué campo provoca el crash.
 
 ### Herramientas disponibles para esta RE
-- `awo_tools/analyze_bin_hd.py` — parser del bin con template oficial
+- `awo_tools/awg_to_obj_b3.py` — exportador recomendado para verificar bins B3 HD
+- `awo_tools/awg0_export.py` — exportador AWG0 con autodetección A/C
+- `awo_tools/analyze_bin_hd.py` — parser histórico PS3, obsoleto
 - `generated/dbz3_recomp.*.cpp` — código guest recompilado (el parser real)
-- `rexglue-sdk/` — runtime instrumentable (C++), donde vive el hook
+- `rexglue-sdk-0.10/` — runtime instrumentable (C++), donde vive el hook
 - Tracy profiling (build `win-amd64-tracy`)
 - `mod center hd/` — herramientas HD que hemos creado
 

@@ -71,6 +71,8 @@ constexpr float kFooterHeight = 76.0f;
 // the footer summary. ASCII-safe so it renders with the base font.
 const char* LanguageDisplayName(int xbox_language_id) {
   switch (xbox_language_id) {
+    case 2:
+      return "Japanese";
     case 3:
       return "Deutsch";
     case 4:
@@ -293,8 +295,15 @@ void LauncherDialog::OnDraw(ImGuiIO& io) {
   // Detects a missing/misplaced asset folder BEFORE the user hits Play (which
   // would otherwise end in an "Entrypoint XEX not found" crash) and offers a
   // folder picker that relocates the game data in-place (no restart needed).
-  const std::string sel_region = dbz3::settings::Region();
   const auto game_root = dbz3::EffectiveGameRoot();
+  const std::string sel_region = dbz3::settings::ResolveRegion(game_root);
+  // Auto-correct the region selection when the chosen folder is missing but the
+  // other one exists (e.g. EU-only data with the default "us"): keeps the
+  // banner, the footer summary and the ApplyRegionMount mount at Play time in
+  // sync with what is actually present.
+  if (sel_region != dbz3::settings::Region()) {
+    dbz3::settings::SetRegion(sel_region);
+  }
   const bool root_ok = !game_root.empty() && std::filesystem::is_directory(game_root);
   const bool region_ok = root_ok && std::filesystem::is_directory(game_root / sel_region);
   const bool us_ok = root_ok && std::filesystem::is_directory(game_root / "us");

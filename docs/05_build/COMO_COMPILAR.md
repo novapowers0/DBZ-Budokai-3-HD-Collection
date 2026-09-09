@@ -35,7 +35,7 @@ El DLL resultante está en `rexglue-sdk\out\win-amd64\rexruntime.dll`.
 Copy-Item "rexglue-sdk\out\win-amd64\rexruntime.dll" "out\build\win-amd64-release\rexruntime.dll" -Force
 ```
 
-> ⚠️ Si modificas `rexglue-sdk/src/filesystem/afs.cpp` (el hook de mods), tienes
+> ⚠️ Si modificas `rexglue-sdk-0.10/src/filesystem/afs.cpp` (el hook de mods), tienes
 > que recompilar el SDK Y copiar el DLL al build. El build del juego NO se
 > recompila solo para cambios del SDK.
 
