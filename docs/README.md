@@ -2,7 +2,7 @@
 
 > Guía accesible para agentes y humanos. Consolidación del estado del proyecto,
 > estructura de carpetas, cómo hacer mods, formatos, herramientas y builds.
-> Actualizado: 2026-09-08
+> Actualizado: 2026-09-09
 
 ---
 
@@ -12,6 +12,7 @@
 |---|---|
 | [HOJA_DE_RUTA_ACELERADA](HOJA_DE_RUTA_ACELERADA.md) | **Hoja de ruta activa**: ejecución acelerada (swap-first, reader-first, corpus, roster por memoria) con sprints S0-S4 y automatización |
 | [HOJA_DE_RUTA_2026_09](HOJA_DE_RUTA_2026_09.md) | Madurez post-1.1.1 (superseded por la acelerada) |
+| [EVALUACION_2026_09_PLAN_DEPURACION](EVALUACION_2026_09_PLAN_DEPURACION.md) | **Evaluación del proyecto + plan de depuración soberbia** (crash EU #4, issues, D0-D4) |
 | [RE_MASTER_2026_09](RE_MASTER_2026_09.md) | **Plan rector de RE extremo a extremo**: laboratorio, capas, fases y validación |
 | [DICTAMEN_GPT6_ASTRA](DICTAMEN_GPT6_ASTRA.md) | **Dictamen externo (GPT-6 Astra)**: plan 0-7 slots nativos + port PS2→B3 (guía vigente) |
 | [BRIEFING_GPT6_ASTRA](BRIEFING_GPT6_ASTRA.md) | Briefing técnico que originó el dictamen |
@@ -43,7 +44,7 @@
 - **Jugar**: `out\build\win-amd64-release\dbz3.exe`
 - **Config**: `out\build\win-amd64-release\dbz3_user.toml`
 - **Mods**: carpeta `mods\<mod>\` junto al exe. Solo los que NO tienen `.disabled`.
-- **Estado**: v1.1.1 publicada; **v1.1.2 en preparación** (fix crash EU, regiones incompletas, backend Vulkan real). Juego funcional (D3D12, 60fps, US+EU). Model swap nativo y texturas funcionan. Port completo PS2→HD bloqueado (§3.4).
+- **Estado**: v1.1.3 "El parche de la ISO" publicada (selector de fuente, detección DBZ1, i18n auditada, modo disco). Juego funcional (D3D12, 60fps, US+EU). Model swap nativo y texturas funcionan. Port completo PS2→HD bloqueado (§3.4). Crash EU en Dragon Universe pendiente (issue #4).
 
 ---
 

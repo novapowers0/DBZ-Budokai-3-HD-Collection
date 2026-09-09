@@ -56,6 +56,23 @@
 # not, crashing the intro with "unregistered function at 0x82292A58".
 0x82292A58 = { name = "rex_sub_82292A58", size = 0x18 }
 
+# One of the function pointers in the 0x8201E348 table is 0x820F2398 (it loads
+# 8/4/0 off r3 and tail-calls sub_820E55E8). It was folded as dead fall-through
+# inside sub_820F2370 and NOT registered -> "UNREGISTERED indirect call:
+# target=0x820F2398" crash in Dragon Universe character select and on START
+# during a fight (EU). Declared here so a re-codegen emits it as its own
+# function. size = 0x10 (0x820F2398..0x820F23A8, next registered function).
+# NOTE: MUST stay inside [functions] (appending after [[switch_tables]] puts it
+# in the switch table and the recompiler ignores it -> lost on re-codegen).
+0x820F2398 = { name = "rex_sub_820F2398", size = 0x10 }
+
+# sub_8209F390 dispatches through a vtable (lwz r11,0(r31) -> +68 -> slot*8)
+# and calls 0x8215B378. It was folded as dead fall-through between sub_8215B368
+# and sub_8215B388 -> "UNREGISTERED indirect call: target=0x8215B378" crash in
+# Dragon Universe character select (EU). Declared here so a re-codegen emits it
+# as its own function. size = 0x10 (0x8215B378..0x8215B388, next registered).
+0x8215B378 = { name = "rex_sub_8215B378", size = 0x10 }
+
 # sub_820F2280 dispatches through a jump table at 0x8201E350 (function pointer
 # dispatch for the event/combat system). The recompiler only detected 2 labels;
 # declare the full table so the bctr generates a correct dispatch.

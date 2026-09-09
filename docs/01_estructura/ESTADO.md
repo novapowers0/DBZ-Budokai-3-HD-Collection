@@ -1,6 +1,6 @@
 # Estado actual del proyecto
 
-> Actualizado: 2026-08-18 (mid-insert virtual — swaps en cualquier dirección)
+> Actualizado: 2026-09-10 (v1.1.3 publicada + fix crash EU Dragon Universe #4)
 
 ---
 
@@ -9,8 +9,11 @@
 | Cosa | Estado | Notas |
 |---|---|---|
 | **El juego arranca y se juega** | ✅ | D3D12, 60fps, mando XInput. `out\build\win-amd64-release\dbz3.exe` |
+| **Núcleo dual US+EU** | ✅ | Un solo exe detecta el xex por MD5 (US `A53E...`/EU `C37E...`). v1.1.3 "El parche de la ISO" |
+| **Modo disco (ISO)** | ✅ | v1.1.3: selector de fuente siempre visible (carpeta extraída / ISO); juega directo del `.iso` sin extraer |
+| **Crash EU Dragon Universe** | ✅ | Fix `0x8215B378` aplicado (2026-09-10, para v1.1.4). Boot EU validado sin FATAL |
 | **Launcher custom** | ✅ | Tabs: Video/Upscaling/Audio/Input/Mods/Model Swap/Texturas/Dev |
-| **Mod de música** (`og_music`) | ✅ | Reemplaza ADX/SFD, funciona |
+| **Mod de música** (`og_music`) | ✅ | Reemplaza ADX/SFD, funciona (override de audio por AFS) |
 | **Mod de texturas B3 HD** | ✅ | `texture_b3.py` + pestaña Texturas; override por entrada (~118KB) |
 | **Swap nativo B3→B3** | ✅ | `swap_b3.py` + pestaña Model Swap; override por entrada (~100KB) |
 | **Swaps en cualquier dirección** | ✅ | **Mid-insert virtual**: bins > o < que el slot funcionan (Goten 107006B en slot Krillin 106496B validado) |
@@ -50,10 +53,38 @@
 
 ## ESTADO DEL JUEGO AHORA MISMO
 
-- **Mods activos**: `goten_override_test` (Goten→Krillin por override) + `tex_91`
-  (texturas de Gero) — ambos a la vez, validado.
-- **Runtime**: `rexruntime.dll` con el parche mid-insert virtual (ver
-  `patches/` en el repo).
+- **v1.1.3 publicada** (Latest, "El parche de la ISO"): selector de fuente siempre
+  visible (carpeta/ISO), detección y bloqueo de xex DBZ1, i18n auditada 0 gaps,
+  0 warnings, empaquetador estricto.
+- **Fix crash EU `0x8215B378`** (para v1.1.4): Dragon Universe EU ya no crashea al
+  seleccionar personaje. Mismo tratamiento que `0x820F2398` (función plegada como
+  dead fall-through, solo alcanzable vía puntero de función). Aplicado MANUALMENTE
+  al codegen EU (4 sitios) + declarado en `dbz3_config_eu.toml` dentro de
+  `[functions]`.
+- **Runtime**: `rexruntime.dll` baseline (10.86 MB) con cvar `dbz1_diag_logging`
+  (diagnóstico F3.1). El build del juego SOBRESCRIBE la DLL instalada — verificar
+  siempre tras `cmake --build` (AGENTS §7).
+
+## HALLAZGOS 2026-09-10 (sesión de depuración)
+
+1. **El re-codegen EU NO es reproducible con el config actual**: el recompilador
+   actual genera nombres SIN prefijo `dbz3eu_` (solo `sub_*`/`rex_*`), rompiendo
+   el build dual (colisión de símbolos con US). El codegen probado (con prefijo)
+   se generó con un rexglue.exe anterior. → **los fixes EU se aplican MANUALMENTE
+   al codegen**, no vía re-codegen.
+2. **Entradas del config EU tras `[[switch_tables]]` se ignoran**: `0x820F2398`
+   estaba declarada fuera de `[functions]` y el recompilador la perdía en cada
+   re-codegen. Regla: declarar SIEMPRE dentro de `[functions]`, antes del primer
+   `[[switch_tables]]`.
+3. **`dbz1_diag_logging` se perdió en la reinstalación del SDK**: la DLL
+   instalada en `rexglue/bin` (recompilada 2026-09-09 23:29) no tenía el cvar →
+   el build dual fallaba al enlazar `roster_trace.cpp`. Solución: recompilar
+   `rexruntime rexgpu-xenos` del baseline (`rexglue-sdk-0.10/out/
+   build-win-vulkan-baseline`) y reinstalar DLL+lib en `rexglue/`.
+4. **Backup del codegen EU probado**: `out/analysis/codegen_backup_20260909/`
+   (pre-fix). El diff de direcciones registradas confirmó que el único cambio vs
+   el re-codegen era `0x820f2398` (perdida) → el xex `yae3_xenon_eu.xex` SÍ es el
+   correcto.
 
 ---
 

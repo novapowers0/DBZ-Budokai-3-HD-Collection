@@ -63,6 +63,19 @@ lógica de región/mods, y runtime.
   registrada, regiones incompletas con `ResolveRegion()`, backend Vulkan real
   con cvar `gpu_backend`, y **modo disco (ISO)** — juega directamente desde el
   `.iso`).
+- **Fix crash EU Dragon Universe (para v1.1.4, 2026-09-10)**: `0x8215B378`
+  registrada manualmente en el codegen EU (11792 funciones, +1). Mismo patrón
+  que `0x820F2398` (función plegada como dead fall-through, solo alcanzable vía
+  puntero de función). ⚠️ **REGLAS OPERATIVAS del codegen EU**: (1) los fixes se
+  aplican MANUALMENTE al codegen (el recompilador actual genera símbolos SIN
+  prefijo `dbz3eu_` → colisión con US en el build dual; el codegen probado vino
+  de un rexglue.exe anterior); (2) las entradas de `dbz3_config_eu.toml` deben
+  ir SIEMPRE dentro de `[functions]`, ANTES del primer `[[switch_tables]]` (si
+  no, el recompilador las ignora y se pierden en cada re-codegen); (3) el cvar
+  `dbz1_diag_logging` vive en `rexruntime.dll` — si se reinstala el SDK y el
+  build dual falla al enlazar `roster_trace.cpp`, recompilar el runtime
+  baseline (`rexglue-sdk-0.10/out/build-win-vulkan-baseline`, targets
+  `rexruntime rexgpu-xenos`) y reinstalar DLL+lib en `rexglue/`.
   Juego muy funcional: D3D12 principal, Vulkan
   experimental, XInput default, teclado por defecto (mnk_mode=true), presets de
   calidad por GPU, frame_cap real, idioma→juego (ES/EN/IT/DE/FR + JP), región US
