@@ -103,6 +103,28 @@ aportarlos de tu **copia legal**. Haz esto:
 
 ## Novedades de esta release
 
+### v1.1.4 — Fix del crash en Dragon Universe (EU) + thunks preventivos (2026-09-10)
+
+- **Fix del crash en Dragon Universe (EU)**: la función `0x8215B378` del núcleo
+  EU no estaba registrada (el recompilador la había plegado como dead
+  fall-through dentro de `sub_8215B368`, solo alcanzable vía puntero de
+  función). Al seleccionar personaje en Dragon Universe, el despacho indirecto
+  por vtable (`caller_lr=0x8209F390`) llegaba a una dirección no registrada →
+  crash `UNREGISTERED indirect call`. Registrada como `dbz3eu_sub_8215B378`
+  (11792 funciones EU, +1). Mismo tratamiento que `sub_820F2398` (v1.1.2).
+- **15 thunks preventivos registrados (EU)**: se analizaron las tablas de
+  punteros de función del xex EU y se encontraron 15 **adjustor thunks de C++**
+  (`addi r3,r3,-4; b target`) que el guest llama vía tablas de despacho y que
+  tampoco estaban registrados — el mismo patrón que causaba el crash. Registrados
+  todos (`0x82290EE0`, `0x82290F00`, `0x822A6040`, etc.; 11807 funciones EU
+  totales). Esto previene futuros `UNREGISTERED indirect call` en menús que
+  usen esas tablas.
+- **Regla del codegen EU corregida**: las entradas de `dbz3_config_eu.toml`
+  deben ir SIEMPRE dentro de `[functions]` (antes de `[[switch_tables]]`); una
+  entrada mal ubicada se pierde silenciosamente en cada re-codegen (era la causa
+  de que `0x820F2398` reapareciera). Verificado: re-codegen + prefijo produce el
+  codegen probado + los thunks (0 funciones perdidas).
+
 ### v1.1.3 — El parche de la ISO (2026-09-09)
 
 - **Selector de fuente siempre visible**: dos botones destacados en el launcher

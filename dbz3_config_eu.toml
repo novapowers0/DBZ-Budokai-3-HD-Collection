@@ -36,12 +36,14 @@
 0x822A5AE0 = { name = "rex_sub_822A5AE0", size = 0x8 }
 0x82290F18 = { name = "rex_sub_82290F18", size = 0xF8 }
 0x8228B8D8 = { name = "rex_sub_8228B8D8", size = 0x8 }
-0x8228B8E0 = { name = "rex_sub_8228B8E0", size = 0x10 }
+0x8228B8E0 = { name = "rex_sub_8228B8E0", size = 0x8 }
+0x8228B8E8 = { name = "rex_sub_8228B8E8", size = 0x8 }
 0x8228B8F0 = { name = "rex_sub_8228B8F0", size = 0x58 }
 0x8228B948 = { name = "rex_sub_8228B948", size = 0x8 }
 # 0x822922B8..0x82292300 dense handler table (guest dispatches through it)
 0x822922B8 = { name = "rex_sub_822922B8", size = 0x8 }
-0x822922C0 = { name = "rex_sub_822922C0", size = 0x10 }
+0x822922C0 = { name = "rex_sub_822922C0", size = 0x8 }
+0x822922C8 = { name = "rex_sub_822922C8", size = 0x8 }
 0x822922D0 = { name = "rex_sub_822922D0", size = 0x8 }
 0x822922D8 = { name = "rex_sub_822922D8", size = 0x8 }
 0x822922E0 = { name = "rex_sub_822922E0", size = 0x8 }
@@ -72,6 +74,24 @@
 # Dragon Universe character select (EU). Declared here so a re-codegen emits it
 # as its own function. size = 0x10 (0x8215B378..0x8215B388, next registered).
 0x8215B378 = { name = "rex_sub_8215B378", size = 0x10 }
+
+# C++ adjustor thunks reachable only via function-pointer tables (vtable /
+# dispatch tables). Same class as 0x820F2398 / 0x8215B378: folded as dead
+# fall-through, NOT registered -> would crash with "UNREGISTERED indirect
+# call" when the guest dispatches through a table. sizes = thunk body (0x8).
+0x820A4E20 = { name = "rex_sub_820A4E20", size = 0x8 }
+0x82290EE0 = { name = "rex_sub_82290EE0", size = 0x8 }
+0x82290EE8 = { name = "rex_sub_82290EE8", size = 0x8 }
+0x82290EF8 = { name = "rex_sub_82290EF8", size = 0x8 }
+0x82290F00 = { name = "rex_sub_82290F00", size = 0x8 }
+0x82290F08 = { name = "rex_sub_82290F08", size = 0x8 }
+0x82290F10 = { name = "rex_sub_82290F10", size = 0x8 }
+0x82294490 = { name = "rex_sub_82294490", size = 0x8 }
+0x82297380 = { name = "rex_sub_82297380", size = 0x10 }
+0x822A5AB8 = { name = "rex_sub_822A5AB8", size = 0x8 }
+0x822A6040 = { name = "rex_sub_822A6040", size = 0x8 }
+0x822A6050 = { name = "rex_sub_822A6050", size = 0x8 }
+0x822A7828 = { name = "rex_sub_822A7828", size = 0x8 }
 
 # sub_820F2280 dispatches through a jump table at 0x8201E350 (function pointer
 # dispatch for the event/combat system). The recompiler only detected 2 labels;
