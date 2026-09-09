@@ -4,6 +4,8 @@
 
 #include <rex/cvar.h>
 #include <rex/filesystem.h>
+#include <rex/filesystem/devices/disc_image_device.h>
+#include <rex/filesystem/file.h>
 #include <rex/logging.h>
 
 #include <filesystem>
@@ -58,6 +60,11 @@ REXCVAR_DEFINE_STRING(dbz3_game_dir, "", "DBZ3/Paths",
                       "Override for the game data folder (the one that directly contains us/ and "
                       "eu/). Empty = auto-detect (next to the exe, project root, parent). Set by "
                       "the launcher's 'Seleccionar carpeta de datos...'.")
+    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
+
+REXCVAR_DEFINE_STRING(dbz3_iso_path, "", "DBZ3/Paths",
+                      "Xbox 360 disc image (.iso) to play from instead of an extracted folder. "
+                      "Empty = folder mode. Set by the launcher's ISO picker / auto-detect.")
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 
 REXCVAR_DEFINE_STRING(dbz3_mod_profile, "vanilla", "DBZ3/Mods",
@@ -359,6 +366,38 @@ bool IsValidGameDataDir(const std::filesystem::path& root) {
          std::filesystem::is_regular_file(root / "default.xex");
 }
 
+std::string IsoPath() { return REXCVAR_GET(dbz3_iso_path); }
+
+void SetIsoPath(const std::string& path) { REXCVAR_SET(dbz3_iso_path, path); }
+
+bool IsIsoMode() {
+  const std::string p = IsoPath();
+  return !p.empty() && std::filesystem::is_regular_file(p);
+}
+
+std::filesystem::path FindIsoInDir(const std::filesystem::path& dir) {
+  std::error_code ec;
+  if (!std::filesystem::is_directory(dir, ec)) {
+    return {};
+  }
+  for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
+    if (!entry.is_regular_file()) continue;
+    const auto ext = entry.path().extension().string();
+    if (ext == ".iso" || ext == ".ISO" || ext == ".xiso" || ext == ".XISO") {
+      return entry.path();
+    }
+  }
+  return {};
+}
+
+bool IsValidIso(const std::filesystem::path& iso) {
+  if (!std::filesystem::is_regular_file(iso)) {
+    return false;
+  }
+  const auto ext = iso.extension().string();
+  return ext == ".iso" || ext == ".ISO" || ext == ".xiso" || ext == ".XISO";
+}
+
 // Portable MD5 (RFC 1321), public-domain style. Used to fingerprint the ~4.9MB
 // XEX so CheckDefaultXex can tell the US/NA executable from the EU/PAL one
 // without depending on Windows CryptoAPI (keeps the launcher buildable on Linux).
@@ -486,10 +525,15 @@ XexStatus CheckDefaultXex(const std::filesystem::path& root) {
 
   // The retail disc files are fixed: every US/NA copy hashes A53E..., every
   // EU/PAL copy C37E... (the raw bytes are encrypted with the region's key).
+  // DBZ Budokai HD Collection (the DBZ1 sister project) ships the SAME
+  // executable for both US and EU (5A6A..., 4464640 B). It is recognized here
+  // so the launcher can tell the user "this is the DBZ1 game, use its launcher"
+  // instead of letting the DBZ3 core crash on a foreign executable.
   static constexpr char kUsMd5[] = "A53E324B5D2A65EBCBF648E4F85A7271";
   static constexpr char kEuMd5[] = "C37EB979B762DA0AB5B8C9BA8037CE4E";
+  static constexpr char kDbz1Md5[] = "5A6AB28A4911851FCA955B5925CDFEBB";
   XexStatus status = XexStatus::kUnknown;
-  if (size == 4890624) {  // fast reject: both known variants are this size
+  if (size == 4890624 || size == 4464640) {  // fast reject: known variants
     Md5Digest md5;
     std::ifstream f(xex, std::ios::binary);
     if (f) {
@@ -514,6 +558,8 @@ XexStatus CheckDefaultXex(const std::filesystem::path& root) {
         status = XexStatus::kUs;
       } else if (hex == kEuMd5) {
         status = XexStatus::kEu;
+      } else if (hex == kDbz1Md5) {
+        status = XexStatus::kDbz1;
       }
     }
   }
@@ -523,6 +569,51 @@ XexStatus CheckDefaultXex(const std::filesystem::path& root) {
   cached_mtime = mtime;
   cached_status = status;
   return status;
+}
+
+namespace {
+
+// Read `path` (guest path inside the disc image, e.g. "default.xex") from the
+// ISO via the SDK's GDFX reader. Returns the file bytes on success.
+bool ReadFileFromIso(const std::filesystem::path& iso, const char* path,
+                     std::vector<uint8_t>& out) {
+  rex::filesystem::DiscImageDevice device("\\Device\\IsoProbe", iso);
+  if (!device.Initialize()) {
+    return false;
+  }
+  rex::filesystem::Entry* entry = device.ResolvePath(path);
+  if (!entry) {
+    return false;
+  }
+  rex::filesystem::File* file = nullptr;
+  if (XFAILED(entry->Open(rex::filesystem::FileAccess::kGenericRead, &file)) || !file) {
+    return false;
+  }
+  const size_t size = entry->size();
+  out.resize(size);
+  size_t got = 0;
+  const auto status = file->ReadSync({out.data(), size}, 0, &got);
+  delete file;
+  return XSUCCEEDED(status) && got == size;
+}
+
+}  // namespace
+
+bool ExtractDefaultXexFromIso(const std::filesystem::path& iso,
+                              const std::filesystem::path& dst) {
+  std::vector<uint8_t> xex;
+  if (!ReadFileFromIso(iso, "default.xex", xex) || xex.empty()) {
+    return false;
+  }
+  std::error_code ec;
+  std::filesystem::create_directories(dst.parent_path(), ec);
+  std::ofstream f(dst, std::ios::binary | std::ios::trunc);
+  if (!f) {
+    return false;
+  }
+  f.write(reinterpret_cast<const char*>(xex.data()),
+          static_cast<std::streamsize>(xex.size()));
+  return f.good();
 }
 
 std::filesystem::path LatestLogPath() {

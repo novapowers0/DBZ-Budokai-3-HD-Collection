@@ -151,7 +151,8 @@ public:
           const std::string msg =
               "No se encontro el ejecutable del juego (default.xex) en la carpeta de datos.\n\n"
               "Coloca tus archivos del juego junto a dbz3.exe (default.xex, us/ y eu/)\n"
-              "o dentro de una subcarpeta 'assets/'.\n\n"
+              "o dentro de una subcarpeta 'assets/', o elige una imagen de disco (.iso)\n"
+              "del juego en el launcher.\n\n"
               "Carpeta buscada:\n" +
               game_root.string();
 #if REX_PLATFORM_WIN32
@@ -226,12 +227,14 @@ public:
                     // on the next boot even if the user forgot "Save settings".
                     dbz3::settings::SaveUserSettings();
                     // The launcher lets the user change the region (us/eu) after
-                    // the runtime's initial VFS setup. Re-apply the region mount
-                    // now (before the guest module launches) so game:\us points
-                    // at the currently selected region's assets. Mods (per-entry
-                    // AFS and whole-file) are served directly from mods/ by the
-                    // runtime's override hooks, with no overlay or duplication.
-                    dbz3::ApplyRegionMount();
+                    // the runtime's initial VFS setup. Re-mount the game drive
+                    // (folder mode: <root>; ISO mode: the disc image) and re-apply
+                    // the region mount now (before the guest module launches) so
+                    // game:\us points at the currently selected region's assets.
+                    // Mods (per-entry AFS and whole-file) are served directly from
+                    // mods/ by the runtime's override hooks, with no overlay or
+                    // duplication.
+                    dbz3::RelocateGameData(dbz3::EffectiveGameRoot());
                     // Apply the chosen window size and fullscreen mode to the
                     // actual host window before the module launches. The SDK
                     // only sets fullscreen at window creation, so we must do
@@ -274,9 +277,10 @@ public:
     void OnPreLaunchModule() override {
         PhaseLog("OnPreLaunchModule");
         REXLOG_INFO("OnPreLaunchModule - about to launch guest thread");
-        // Re-apply the region device mount so game:\us points at the currently
-        // selected region's assets (covers the skip-launcher fast path too).
-        dbz3::ApplyRegionMount();
+        // Re-mount the game drive (folder or ISO) and re-apply the region device
+        // so game:\us points at the currently selected region's assets (covers
+        // the skip-launcher fast path too).
+        dbz3::RelocateGameData(dbz3::EffectiveGameRoot());
     }
 
     // Called after the main guest thread is created but before it starts executing
@@ -369,6 +373,7 @@ public:
             }
         }
         REXLOG_INFO("OnConfigurePaths - game_dir final: {}", game_dir.string());
+
         // Use the game folder directly as the game drive root (no overlay, no
         // duplicate assets). The runtime mounts game:\ to game_data_root and the
         // game reads D:\us\... which resolves to game_dir/us (or, for the eu
@@ -385,6 +390,44 @@ public:
         paths.cache_root = paths.user_data_root / "cache";
         paths.metadata_root = exe_dir / "metadata";
         REXLOG_INFO("OnConfigurePaths - game_data_root set to: {}", paths.game_data_root.string());
+
+        // ISO mode: play directly from a disc image instead of an extracted
+        // us/eu/ folder. The runtime still needs a real default.xex for its
+        // pre-flight checks and region detection, so we extract ONLY that file
+        // (few MB, cached) from the GDFX image -- nothing else is ever copied.
+        // At Play time RemountGameDrive mounts the whole disc as game:.
+        std::filesystem::path iso_path;
+        const std::string iso_override = dbz3::settings::IsoPath();
+        if (dbz3::settings::IsValidIso(iso_override)) {
+          iso_path = iso_override;
+        } else if (!dbz3::settings::IsValidGameDataDir(game_dir)) {
+          // Auto-detect: if no extracted folder was found, look for a disc
+          // image next to the game / executable and play from it directly.
+          iso_path = dbz3::settings::FindIsoInDir(game_dir);
+          if (iso_path.empty()) {
+            iso_path = dbz3::settings::FindIsoInDir(exe_dir);
+          }
+        }
+        if (!iso_path.empty()) {
+          dbz3::settings::SetIsoPath(iso_path.string());
+          const auto iso_cache = exe_dir / "user_data" / GetName() / "iso_cache";
+          const auto xex_dst = iso_cache / "default.xex";
+          if (!std::filesystem::is_regular_file(xex_dst)) {
+            if (!dbz3::settings::ExtractDefaultXexFromIso(iso_path, xex_dst)) {
+              REXLOG_ERROR("OnConfigurePaths - could not extract default.xex from {}",
+                           iso_path.string());
+            }
+          }
+          if (std::filesystem::is_regular_file(xex_dst)) {
+            game_dir_ = iso_cache;
+            paths.game_data_root = iso_cache;
+            dbz3::SetEffectiveGameRoot(iso_cache);
+            REXLOG_INFO("OnConfigurePaths - ISO mode: {} (xex cache {})",
+                        iso_path.string(), iso_cache.string());
+          } else {
+            dbz3::settings::SetIsoPath("");
+          }
+        }
     }
 
     // Called when the main guest thread exits
@@ -525,7 +568,6 @@ private:
     std::atomic<bool> launched_{false};
     std::atomic<bool> shutting_down_{false};
     std::thread transition_thread_;
-    rex::ui::Window* window_ = nullptr;
     rex::ui::ImGuiDrawer* imgui_drawer_ = nullptr;
     // Project root used to build the region/mod overlay (set in OnConfigurePaths).
     std::filesystem::path game_dir_;

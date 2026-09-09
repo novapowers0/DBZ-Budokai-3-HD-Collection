@@ -78,6 +78,17 @@ aportarlos de tu **copia legal**. Haz esto:
    > y el idioma se eligen en el launcher, así que tampoco pierdes nada por usar
    > un ejecutable u otro.
 
+   **Opción C — juega directamente desde el `.iso` (sin extraer nada):**
+
+   Deja el `.iso` del juego junto a `dbz3.exe` (o usa "Seleccionar ISO..." en el
+   launcher). El launcher lo detecta, saca el `default.xex` del disco (solo ese
+   archivo, unos pocos MB) y monta el resto directamente desde la imagen: no
+   hace falta descomprimir ni copiar los AFS. La región se detecta sola a partir
+   del ejecutable del propio disco.
+
+   > Los mods necesitan la carpeta extraída (opciones A o B). En modo disco se
+   > juega tal cual del ISO.
+
 5. **Ejecuta `dbz3.exe`** (doble clic).
 
 6. En la ventana del launcher elige **Región** (USA / EU PAL), **Idioma**,
@@ -92,7 +103,31 @@ aportarlos de tu **copia legal**. Haz esto:
 
 ## Novedades de esta release
 
-### v1.1.2 — Depurado de issues de la comunidad (2026-09-09)
+### v1.1.3 — El parche de la ISO (2026-09-09)
+
+- **Selector de fuente siempre visible**: dos botones destacados en el launcher
+  ("Carpeta extraida" / "ISO (.iso)") para elegir el origen de los datos en
+  CUALQUIER momento, no solo cuando faltan assets. El activo se resalta y
+  conmutar elige el modo al instante (persiste entre sesiones).
+- **Detección del juego equivocado**: si pones el `default.xex` de *DBZ Budokai
+  HD Collection* (DBZ1, proyecto hermano) por error, el launcher lo reconoce
+  por su MD5 y bloquea Play con el mensaje "usa el launcher dbz1.exe" — antes
+  el core de DBZ3 crasheaba con un xex de otro juego.
+- **Traducción completa auditada**: se extrajeron y verificaron TODAS las
+  cadenas del launcher (ES/EN/IT/DE/FR). Correcciones: la clave del botón
+  "ISO (.iso)" no tenía entrada y un tooltip de FPS caía a inglés por una
+  tilde mal escrita. Resultado: 0 cadenas sin traducir, 0 huérfanas, 0
+  sospechosas; verificado con un test que compila la tabla real.
+- **Preparado para usuarios no técnicos**: mensajes accionables sin jerga,
+  sugerencias al elegir la carpeta equivocada ("¿elegiste `us/`? elige la
+  carpeta que la CONTIENE"), tooltips en el selector, y notas claras cuando el
+  modo disco no admite mods.
+- **Pulido de código**: `-Wall -Wextra` en todo el launcher con 0 warnings;
+  eliminados 4 campos y 1 constante sin uso. El empaquetador de release ahora
+  rechaza residuos de ejecución (`user_data/`, `logs/`, `iso_cache/`,
+  `dbz3_user.toml`) en el ZIP.
+
+### v1.1.2 — Depurado de issues de la comunidad + modo disco (2026-09-09)
 
 - **Fix del crash en Dragon Universe / menú de pausa (EU)**: la función
   `sub_820F2398` del núcleo EU no estaba registrada (el recompilador la había
@@ -110,6 +145,9 @@ aportarlos de tu **copia legal**. Haz esto:
   Añadido el cvar en `rex_app.cpp` (SDK) y conectado a `LoadGpuPlugin`.
   Seleccionar **Vulkan** ahora pide de verdad el backend Vulkan (verificado en
   la DLL publicada).
+- **Modo disco (ISO)**: juega directamente desde el `.iso` sin extraer nada.
+  El launcher detecta el disco, extrae solo el `default.xex` (unos pocos MB) y
+  monta el resto desde la imagen. Mods requieren la carpeta extraída.
 - **Pulido de código**: builds sin warnings, limpieza de traces temporales de
   depuración, y fix de display (el resumen del footer muestra "Japanese" cuando
   se elige japonés).
@@ -293,9 +331,14 @@ copia de seguridad de tus AFS.
 
 ## Historial de versiones
 
+- **v1.1.3** (2026-09-09): **El parche de la ISO** — selector de fuente
+  siempre visible, detección y bloqueo de xex de DBZ1, i18n completa auditada
+  (ES/EN/IT/DE/FR, 0 gaps), mensajes para usuarios no técnicos, pulido
+  `-Wall -Wextra` (0 warnings), empaquetador más estricto.
 - **v1.1.2** (2026-09-09): fix crash EU (Dragon Universe / START, `sub_820F2398`
   registrada), fix regiones incompletas (`ResolveRegion()`), fix backend Vulkan
-  (cvar `gpu_backend` real en el SDK), pulido de código (0 warnings).
+  (cvar `gpu_backend` real en el SDK), **modo disco (ISO directo)**, pulido de
+  código (0 warnings).
 - **v1.1.1** (2026-08-28): depurado (sin datos → mensaje claro, marcadores de
   arranque), bases de Linux (launcher portable), proceso interno (sync +
   verificación de release).

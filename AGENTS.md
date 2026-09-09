@@ -55,10 +55,15 @@ lógica de región/mods, y runtime.
 
 ## 3. ESTADO ACTUAL (RESUMEN EJECUTIVO)
 
-- **v1.1.1 publicada (Latest)**; **v1.1.2 en preparación** (fixes de issues de
-  la comunidad: crash EU `sub_820F2398` registrada, regiones incompletas con
-  `ResolveRegion()`, backend Vulkan real con cvar `gpu_backend`, pulido 0
-  warnings). Juego muy funcional: D3D12 principal, Vulkan
+- **v1.1.3 publicada (Latest)**; **v1.1.3 "El parche de la ISO"** (2026-09-09):
+  selector de fuente siempre visible (carpeta extraida / ISO), detección y
+  bloqueo del xex de DBZ1, i18n completa auditada (0 gaps), mensajes para
+  usuarios no técnicos, pulido 0 warnings y empaquetador más estricto. Incluye
+  la v1.1.2 (fixes de issues de la comunidad: crash EU `sub_820F2398`
+  registrada, regiones incompletas con `ResolveRegion()`, backend Vulkan real
+  con cvar `gpu_backend`, y **modo disco (ISO)** — juega directamente desde el
+  `.iso`).
+  Juego muy funcional: D3D12 principal, Vulkan
   experimental, XInput default, teclado por defecto (mnk_mode=true), presets de
   calidad por GPU, frame_cap real, idioma→juego (ES/EN/IT/DE/FR + JP), región US
   y EU con **núcleo dual** (un solo dbz3.exe detecta el xex por MD5).
@@ -412,6 +417,22 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
   botón "Seleccionar carpeta de datos..." (remonta en caliente vía
   `dbz3::RelocateGameData`), PLAY bloqueado sin assets. Ventana de crash con
   código + ruta del log.
+- **Selector de fuente SIEMPRE visible**: dos botones destacados
+  ("Carpeta extraida" / "ISO (.iso)") que eligen el origen de los datos en
+  CUALQUIER momento, no solo cuando faltan assets (el activo se resalta; elegir
+  el otro conmuta el game drive al instante). El launcher distingue el juego:
+  `CheckDefaultXex` conoce US/EU de DBZ3 (`A53E...`/`C37E...`, 4890624 B) Y el
+  ejecutable de DBZ1 (`5A6AB28A...`, 4464640 B, igual para US/EU) → status
+  `kDbz1` bloquea PLAY con mensaje "usa el launcher dbz1.exe" (evita que el core
+  DBZ3 crashee con un xex de otro juego). El launcher dbz1 (proyecto hermano)
+  NO distingue nada aún (sin ISO ni validación de xex).
+- **Modo disco (ISO, v1.1.2)**: cvar `dbz3_iso_path` + selector "ISO (.iso)" siempre visible.
+  Juega directamente desde el `.iso` (GDFX) sin extraer nada: `OnConfigurePaths`
+  extrae SOLO `default.xex` (pocos MB) a `user_data/dbz3/iso_cache/`, y en Play
+  `RemountGameDrive` monta un `DiscImageDevice` (ya en el SDK) como `game:`.
+  La región se remapea DENTRO del device (`RegionDiscDevice`: `us\`→`eu\`),
+  evitando el shadowing del VFS (los devices se resuelven por primer-match de
+  prefijo y el orden de registro importa). Mods requieren la carpeta extraída.
 - **XexStatus**: `CheckDefaultXex` (MD5 portable RFC 1321) — US
   `A53E324B5D2A65EBCBF648E4F85A7271`, EU `C37EB979B762DA0AB5B8C9BA8037CE4E`.
   Con núcleo dual acepta ambos; bloquea solo variante conocida equivocada.
@@ -441,10 +462,10 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
   `DBZ3_DUMP_IMAGE` para volcar la imagen descifrada).
 
 ### 9.2 Releases y estado GitHub
-- **v1.1.1 = Latest** (core dual 1.1.1.0, baseline). **v1.1.0-clasico** =
-  fallback no-Latest (runtime avx2) para CPU modernas. **v1.1.2 en
-  preparación** (fixes de issues de la comunidad; ver §3). Tags v1.0.0..v1.0.9 +
-  v1.0.5-EX conservados (código archivado; los zips binarios viejos NO existen).
+- **v1.1.3 = Latest** (core dual 1.1.3.0, baseline, "El parche de la ISO").
+  **v1.1.2**, **v1.1.1**, **v1.1.0-clasico** = fallback no-Latest (runtime avx2)
+  para CPU modernas. Tags v1.0.0..v1.0.9 + v1.0.5-EX conservados (código
+  archivado; los zips binarios viejos NO existen).
 - Empaquetado: `tools/make_release.ps1` (lee versión de `src/version.rc`,
   default `$Version`; **SIN UPX** — falso positivo AV). Verificación:
   `tools/verify_release.ps1` (hashes DLL vs SDK, VERSIONINFO, cvar vsync en

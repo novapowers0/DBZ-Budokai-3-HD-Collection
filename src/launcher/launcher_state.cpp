@@ -32,7 +32,6 @@ namespace {
 // DBZ-inspired palette.
 constexpr ImVec4 kDragonOrange(0.96f, 0.54f, 0.10f, 1.0f);
 constexpr ImVec4 kDragonOrangeDim(0.70f, 0.40f, 0.08f, 1.0f);
-constexpr ImVec4 kDragonBlue(0.20f, 0.45f, 0.85f, 1.0f);
 constexpr ImVec4 kPanelBg(0.10f, 0.11f, 0.13f, 1.0f);
 constexpr ImVec4 kPanelBgAlt(0.14f, 0.15f, 0.18f, 1.0f);
 constexpr ImVec4 kTextMain(0.92f, 0.92f, 0.94f, 1.0f);
@@ -292,28 +291,41 @@ void LauncherDialog::OnDraw(ImGuiIO& io) {
   ImGui::Separator();
 
   // --- Game data validation banner (P1) -------------------------------------
-  // Detects a missing/misplaced asset folder BEFORE the user hits Play (which
+  // Detects a missing/misplaced asset source BEFORE the user hits Play (which
   // would otherwise end in an "Entrypoint XEX not found" crash) and offers a
-  // folder picker that relocates the game data in-place (no restart needed).
+  // folder/ISO picker that relocates the game data in-place (no restart needed).
+  // Two sources are supported: an extracted folder (us//eu/ + default.xex) and
+  // a disc image (.iso) whose game drive is mounted at Play time.
   const auto game_root = dbz3::EffectiveGameRoot();
+  const bool iso_mode = dbz3::settings::IsIsoMode();
   const std::string sel_region = dbz3::settings::ResolveRegion(game_root);
-  // Auto-correct the region selection when the chosen folder is missing but the
+  const bool root_ok = !game_root.empty() && std::filesystem::is_directory(game_root);
+  // Auto-correct the region selection when the chosen source is missing but the
   // other one exists (e.g. EU-only data with the default "us"): keeps the
-  // banner, the footer summary and the ApplyRegionMount mount at Play time in
-  // sync with what is actually present.
-  if (sel_region != dbz3::settings::Region()) {
+  // banner, the footer summary and the region mount at Play time in sync with
+  // what is actually present. In ISO mode the region comes from the disc's own
+  // default.xex (extracted to the ISO cache folder at startup).
+  const auto xex_status =
+      (root_ok || iso_mode) ? dbz3::settings::CheckDefaultXex(game_root)
+                            : dbz3::settings::XexStatus::kMissing;
+  if (iso_mode && (xex_status == dbz3::settings::XexStatus::kUs ||
+                   xex_status == dbz3::settings::XexStatus::kEu)) {
+    const std::string iso_region = xex_status == dbz3::settings::XexStatus::kEu ? "eu" : "us";
+    if (sel_region != iso_region) {
+      dbz3::settings::SetRegion(iso_region);
+    }
+  } else if (sel_region != dbz3::settings::Region()) {
     dbz3::settings::SetRegion(sel_region);
   }
-  const bool root_ok = !game_root.empty() && std::filesystem::is_directory(game_root);
   const bool region_ok = root_ok && std::filesystem::is_directory(game_root / sel_region);
   const bool us_ok = root_ok && std::filesystem::is_directory(game_root / "us");
   const bool xex_ok = root_ok && std::filesystem::is_regular_file(game_root / "default.xex");
-  const auto xex_status =
+  const auto xex_status_final =
       root_ok ? dbz3::settings::CheckDefaultXex(game_root) : dbz3::settings::XexStatus::kMissing;
   // Each core is recompiled from one executable: the US/NA core boots only the
   // US xex and the EU/PAL core only the EU xex. A known xex of the OTHER
   // variant blocks Play (the guest would exit with "No function registered").
-  const bool xex_expected = dbz3::settings::XexIsExpected(xex_status);
+  const bool xex_expected = dbz3::settings::XexIsExpected(xex_status_final);
   // Block only on a KNOWN wrong-variant xex (EU xex on the US core or vice
   // versa). An unknown xex (modified/patched dump) is NOT blocked: it shows
   // the amber note below and the user can still try to launch, since a
@@ -321,32 +333,61 @@ void LauncherDialog::OnDraw(ImGuiIO& io) {
   // silently disabled Play for those users while the Enter shortcut (not gated
   // by BeginDisabled) still launched the game.
   const bool xex_blocked =
-      xex_ok && xex_status != dbz3::settings::XexStatus::kMissing &&
-      xex_status != dbz3::settings::XexStatus::kUnknown && !xex_expected;
-  const bool assets_ready = (region_ok || us_ok) && xex_ok && !xex_blocked;
+      xex_ok && xex_status_final != dbz3::settings::XexStatus::kMissing &&
+      xex_status_final != dbz3::settings::XexStatus::kUnknown && !xex_expected;
+  const bool assets_ready =
+      (iso_mode ? xex_ok : (region_ok || us_ok) && xex_ok) && !xex_blocked;
 
   if (assets_ready) {
     ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.45f, 0.85f, 0.45f, 1.0f));
-    ImGui::Text(i18n::T("[OK] Datos del juego en: %s", "[OK] Game data at: %s"),
-                game_root.string().c_str());
+    if (iso_mode) {
+      const std::filesystem::path iso = dbz3::settings::IsoPath();
+      ImGui::Text(i18n::T("[OK] Disco: %s", "[OK] Disc: %s"), iso.filename().string().c_str());
+    } else {
+      ImGui::Text(i18n::T("[OK] Datos del juego en: %s", "[OK] Game data at: %s"),
+                  game_root.string().c_str());
+    }
     if (sel_region != "us") {
       ImGui::SameLine();
       ImGui::TextDisabled("(%s %s)", i18n::T("region", "region"), sel_region.c_str());
     }
     ImGui::PopStyleColor();
+    if (iso_mode) {
+      // ISO mode reads the game data straight off the disc; the per-entry AFS
+      // override hooks are wired to host files, so mods need the extracted
+      // folder. Inform the user instead of silently running without them.
+      ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.75f, 0.35f, 1.0f));
+      ImGui::TextWrapped(
+          i18n::T("Modo disco: se juega tal cual del ISO. Los mods requieren la "
+                  "carpeta extraida (elige 'Carpeta extraida' como origen).",
+                  "Disc mode: plays straight from the ISO. Mods need the "
+                  "extracted folder (choose 'Extracted folder' as the source)."));
+      ImGui::PopStyleColor();
+    }
     if (xex_status == dbz3::settings::XexStatus::kUnknown) {
       ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.75f, 0.35f, 1.0f));
       ImGui::TextWrapped(
-          i18n::T("Nota: default.xex no es el ejecutable US/NA estandar (version "
-                  "modificada o de otra region). Si el juego se cierra al inicio, "
-                  "sustituyelo por el default.xex de tu copia US/NA (yae3_xenon.xex).",
-                  "Note: default.xex is not the standard US/NA executable (modified "
-                  "or another region). If the game closes at startup, replace it "
-                  "with the default.xex from your US/NA copy (yae3_xenon.xex)."));
+          i18n::T("Nota: default.xex no es un ejecutable estandar de Budokai 3 "
+                  "(version modificada o de otra region). Si el juego se cierra "
+                  "al inicio, sustituyelo por el default.xex de tu copia.",
+                  "Note: default.xex is not a standard Budokai 3 executable "
+                  "(modified build or another region). If the game closes at "
+                  "startup, replace it with the default.xex from your copy."));
       ImGui::PopStyleColor();
     }
   } else if (xex_blocked) {
     ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.45f, 0.35f, 1.0f));
+    if (xex_status_final == dbz3::settings::XexStatus::kDbz1) {
+      ImGui::TextWrapped(
+          i18n::T("Este es el ejecutable de DBZ Budokai HD Collection (DBZ1), no "
+                  "de Budokai 3. Este launcher solo arranca Budokai 3 (dbz3.exe). "
+                  "Usa el launcher de DBZ1 (dbz1.exe) con este ejecutable, o pon "
+                  "el default.xex de tu copia de Budokai 3.",
+                  "This is the DBZ Budokai HD Collection (DBZ1) executable, not "
+                  "Budokai 3. This launcher only boots Budokai 3 (dbz3.exe). Use "
+                  "the DBZ1 launcher (dbz1.exe) with this executable, or place "
+                  "the default.xex from your Budokai 3 copy."));
+    } else {
 #if defined(DBZ3_EU_VARIANT)
     ImGui::TextWrapped(
         i18n::T("Este es el nucleo EU/PAL y default.xex es el ejecutable US/NA. "
@@ -369,54 +410,139 @@ void LauncherDialog::OnDraw(ImGuiIO& io) {
                 "default.xex is the EU/PAL executable. This core is recompiled ONLY "
                 "from the US/NA executable (yae3_xenon.xex): the EU one cannot boot "
                 "here (the game closes at startup). Replace default.xex with the "
-                "US/NA one, or use the main launcher (which picks the EU/PAL core "
-                "automatically). The EU/PAL region and language are chosen here."));
+"US/NA one, or use the main launcher (which picks the EU/PAL core "
+                 "automatically). The EU/PAL region and language are chosen here."));
 #endif
+    }
     ImGui::PopStyleColor();
   } else {
     ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.45f, 0.35f, 1.0f));
-    ImGui::Text(i18n::T("No se encontraron los datos del juego (default.xex / us / eu).",
-                        "Game data not found (default.xex / us / eu)."));
+    ImGui::Text(i18n::T("No se encontraron los datos del juego.", "Game data not found."));
     ImGui::PopStyleColor();
     std::string missing;
     if (!root_ok) {
-      missing = i18n::T("La carpeta de datos no se localizo automaticamente.",
-                        "The game data folder could not be located automatically.");
+      missing = i18n::T(
+          "Pon tu ISO de Budokai 3 (o la carpeta con los datos) junto a dbz3.exe "
+          "y pulsa PLAY. Tambien puedes elegir el origen abajo.",
+          "Place your Budokai 3 ISO (or the game data folder) next to dbz3.exe "
+          "and press PLAY. You can also pick the source below.");
     } else {
-      if (!xex_ok) missing += i18n::T("Falta default.xex. ", "Missing default.xex. ");
-      if (!region_ok && !us_ok)
-        missing += i18n::T("Faltan las carpetas us/ o eu/.", "Missing the us/ or eu/ folders.");
+      if (!xex_ok) {
+        missing += i18n::T(
+            "Falta el archivo del juego (default.xex). Copialo junto a dbz3.exe. ",
+            "The game executable (default.xex) is missing. Copy it next to "
+            "dbz3.exe. ");
+      }
+      if (!region_ok && !us_ok) {
+        missing += i18n::T(
+            "Faltan las carpetas us/ o eu/ (texto, audio y video del juego). ",
+            "The us/ or eu/ folders (game text, audio and video) are missing. ");
+      }
     }
     if (!banner_error_.empty()) {
       missing = banner_error_;
     }
-    ImGui::TextDisabled("%s", missing.c_str());
-    if (ImGui::Button(i18n::T("Seleccionar carpeta de datos...", "Select game data folder..."),
-                      ImVec2(230, 0))) {
-      std::string picked;
-      if (PickFolder(picked, game_root.string())) {
-        if (dbz3::settings::IsValidGameDataDir(picked)) {
-          dbz3::settings::SetGameDirOverride(picked);
-          dbz3::settings::SaveUserSettings();
-          if (dbz3::RelocateGameData(picked)) {
-            banner_error_.clear();
-            REXLOG_INFO("dbz3: game data relocated to {}", picked);
-          } else {
-            banner_error_ = i18n::T("No se pudo montar la carpeta elegida.",
-                                    "Could not mount the chosen folder.");
-            REXLOG_ERROR("dbz3: failed to relocate game data to {}", picked);
-          }
+    ImGui::TextWrapped("%s", missing.c_str());
+  }
+
+  // --- Data source selector (always visible) ----------------------------------
+  // Lets the user choose between an extracted folder (us//eu/ + default.xex) and
+  // a disc image (.iso) at ANY time -- not only when assets are missing. The
+  // active source is highlighted; clicking either one opens its picker, and
+  // picking a source switches the game drive over in-place (no restart needed).
+  const bool src_folder = !iso_mode;
+  const ImVec4 kSrcActive(0.42f, 0.31f, 0.15f, 1.0f);
+  if (src_folder) {
+    ImGui::PushStyleColor(ImGuiCol_Button, kSrcActive);
+  }
+  if (ImGui::Button(i18n::T("Carpeta extraida", "Extracted folder"), ImVec2(170, 0))) {
+    std::string picked;
+    if (PickFolder(picked, game_root.string())) {
+      if (dbz3::settings::IsValidGameDataDir(picked)) {
+        dbz3::settings::SetGameDirOverride(picked);
+        // Picking an extracted folder leaves ISO mode: the folder wins.
+        dbz3::settings::SetIsoPath("");
+        dbz3::settings::SaveUserSettings();
+        if (dbz3::RelocateGameData(picked)) {
+          banner_error_.clear();
+          REXLOG_INFO("dbz3: game data relocated to {}", picked);
+        } else {
+          banner_error_ = i18n::T("No se pudo montar la carpeta elegida.",
+                                  "Could not mount the chosen folder.");
+          REXLOG_ERROR("dbz3: failed to relocate game data to {}", picked);
+        }
+      } else {
+        // Common beginner mistakes: picked us/ or eu/ directly (instead of the
+        // folder CONTAINING them), or an assets/ subfolder. Give a targeted hint.
+        const std::string leaf = std::filesystem::path(picked).filename().string();
+        if (leaf == "us" || leaf == "eu") {
+          banner_error_ =
+              i18n::T("Has elegido la carpeta us/ (o eu/) directamente. Elige la "
+                      "carpeta que las CONTIENE (la que tiene us/ y eu/ dentro).",
+                      "You picked the us/ (or eu/) folder directly. Choose the "
+                      "folder that CONTAINS it (the one with us/ and eu/ inside).");
         } else {
           banner_error_ =
-              i18n::T("La carpeta elegida no contiene us/ o eu/ (ni default.xex). Reintenta.",
-                      "The chosen folder has no us/ or eu/ (nor default.xex). Try again.");
+              i18n::T("La carpeta elegida no tiene los datos del juego (le falta "
+                      "us/, eu/ o default.xex). Elige la carpeta que los contiene.",
+                      "The chosen folder has no game data (missing us/, eu/ or "
+                      "default.xex). Choose the folder that contains them.");
         }
       }
     }
-    ImGui::SameLine();
-    ImGui::TextDisabled(i18n::T("Elige la carpeta que contiene las carpetas us/ y eu/ (o assets/).",
-                                "Choose the folder containing the us/ and eu/ folders (or assets/)."));
   }
+  if (src_folder) {
+    ImGui::PopStyleColor();
+  }
+  if (ImGui::IsItemHovered()) {
+    ImGui::SetTooltip(
+        "%s",
+        i18n::T("Usa la carpeta con los datos ya extraidos (default.xex + us/ + eu/). "
+                "Es la unica opcion que permite mods.",
+                "Use the folder with the already-extracted data (default.xex + us/ + eu/). "
+                "This is the only option that supports mods."));
+  }
+  ImGui::SameLine();
+  if (!src_folder) {
+    ImGui::PushStyleColor(ImGuiCol_Button, kSrcActive);
+  }
+  if (ImGui::Button(i18n::T("ISO (.iso)", "ISO (.iso)"), ImVec2(120, 0))) {
+    std::string picked;
+    if (PickFile(picked, i18n::T("Imagen de disco Xbox 360 (.iso)", "Xbox 360 disc image (.iso)"),
+                 "*.iso", game_root.string())) {
+      if (dbz3::settings::IsValidIso(picked)) {
+        dbz3::settings::SetIsoPath(picked);
+        // Picking an ISO leaves folder mode: the disc wins.
+        dbz3::settings::SetGameDirOverride("");
+        dbz3::settings::SaveUserSettings();
+        // Re-point the game drive at the new ISO right away (no restart).
+        dbz3::RelocateGameData(dbz3::EffectiveGameRoot());
+        banner_error_.clear();
+        REXLOG_INFO("dbz3: game ISO set to {}", picked);
+      } else {
+        banner_error_ = i18n::T("El archivo no parece una imagen de disco Xbox 360.",
+                                "The file does not look like an Xbox 360 disc image.");
+        REXLOG_ERROR("dbz3: invalid ISO selected: {}", picked);
+      }
+    }
+  }
+  if (!src_folder) {
+    ImGui::PopStyleColor();
+  }
+  if (ImGui::IsItemHovered()) {
+    ImGui::SetTooltip(
+        "%s",
+        i18n::T("Juega directamente desde la imagen del disco, sin extraer nada. "
+                "Requiere el .iso de Budokai 3 HD.",
+                "Play directly from the disc image without extracting anything. "
+                "Requires the Budokai 3 HD .iso."));
+  }
+  ImGui::SameLine();
+  ImGui::TextDisabled(
+      i18n::T("Elige de donde leer los datos del juego: una carpeta ya extraida o "
+              "el ISO del disco.",
+              "Choose where the game data comes from: an already-extracted folder "
+              "or the disc ISO."));
   ImGui::Separator();
 
   // Tab bar.
@@ -465,9 +591,10 @@ void LauncherDialog::OnDraw(ImGuiIO& io) {
   // game-data choice, moved here from the Mods tab so it is always on screen).
   ImGui::TextColored(kTextDim, i18n::T("Inicio: %s - %s - %dx - %s - %s",
                              "Launch: %s - %s - %dx - %s - %s"),
-                     dbz3::settings::Region() == "eu"
-                         ? i18n::T("Europa (PAL)", "Europe (PAL)")
-                         : i18n::T("USA (NTSC)", "USA (NTSC)"),
+                     iso_mode ? std::filesystem::path(dbz3::settings::IsoPath()).filename().string().c_str()
+                              : (dbz3::settings::Region() == "eu"
+                                     ? i18n::T("Europa (PAL)", "Europe (PAL)")
+                                     : i18n::T("USA (NTSC)", "USA (NTSC)")),
                      dbz3::settings::GpuBackend() == "vulkan" ? "Vulkan" : "D3D12",
                      dbz3::settings::ResolutionScale(),
                      dbz3::settings::PresentEffect().c_str(),
@@ -478,13 +605,19 @@ void LauncherDialog::OnDraw(ImGuiIO& io) {
   static const char* region_vals[] = {"us", "eu"};
   int region_idx = dbz3::settings::Region() == "eu" ? 1 : 0;
   ImGui::SetNextItemWidth(150);
+  // In ISO mode the region comes from the disc's own default.xex, so the
+  // selector is informational only (the disc already contains its region's data).
+  ImGui::BeginDisabled(iso_mode);
   if (ImGui::Combo("##region_footer", &region_idx, region_items, 2)) {
     dbz3::settings::SetRegion(region_vals[region_idx]);
   }
+  ImGui::EndDisabled();
   if (ImGui::IsItemHovered()) {
-    ImGui::SetTooltip("%s", i18n::T(
-        "Paquete de texto/audio/video. Requiere reinicio.",
-        "Text/audio/video pack. Restart required."));
+    ImGui::SetTooltip("%s", iso_mode
+        ? i18n::T("Region del disco (la elige el propio ISO).",
+                  "Disc region (chosen by the ISO itself).")
+        : i18n::T("Paquete de texto/audio/video. Requiere reinicio.",
+                  "Text/audio/video pack. Restart required."));
   }
 
   ImGui::Spacing();

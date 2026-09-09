@@ -39,14 +39,12 @@ class LauncherDialog : public rex::ui::ImGuiDialog {
   void DrawDevTab();
 
   std::function<void()> on_play_;
-  int active_tab_ = 0;
 
   // Model swap pipeline state.
   ModPipeline mod_pipeline_;
   int pipeline_src_idx_ = -1;
   int pipeline_dst_idx_ = -1;
   bool catalog_load_attempted_ = false;
-  bool scan_was_running_ = false;
   char output_buf_[8192] = {};
   // Custom data_cmn.afs path for the model swap (empty = auto-detect).
   bool afs_path_auto_ = true;
@@ -57,7 +55,6 @@ class LauncherDialog : public rex::ui::ImGuiDialog {
   int tex_dst_idx_ = -1;  // -1 = mismo bin que el origen (sin swap)
   char tex_mod_buf_[128] = {};
   char tex_dir_buf_[512] = {};  // carpeta de texturas (default = mods/<mod>/textures)
-  bool tex_catalog_attempted_ = false;
 
   // Mod manifest editing state.
   bool editing_mod_ = false;
@@ -74,7 +71,7 @@ class LauncherDialog : public rex::ui::ImGuiDialog {
   char new_profile_buf_[64] = {};
 
   // Game-data validation banner (P1): transient error shown when a folder the
-  // user picked for "Seleccionar carpeta de datos..." is not a valid game dir.
+  // user picked for "Carpeta extraida" is not a valid game dir.
   std::string banner_error_;
 };
 

@@ -78,6 +78,31 @@ void SetGameDirOverride(const std::string& path);
 // validate a user-picked folder before pointing the game at it.
 bool IsValidGameDataDir(const std::filesystem::path& root);
 
+// --- ISO disc image --------------------------------------------------------
+// Path of the Xbox 360 disc image (.iso) to play from instead of an extracted
+// us/eu/ folder. Empty = folder mode. Set by the launcher's ISO picker (or
+// auto-detected when a *.iso is found next to the game). The game is mounted
+// directly from the GDFX image: no extraction, no repack.
+std::string IsoPath();
+void SetIsoPath(const std::string& path);
+
+// True when ISO mode is active: an ISO path is set and the file exists.
+bool IsIsoMode();
+
+// First *.iso in `dir` (any depth 0). Empty when none. Used to auto-activate
+// ISO mode when the user drops a disc image next to the game.
+std::filesystem::path FindIsoInDir(const std::filesystem::path& dir);
+
+// True if `iso` looks like a usable Xbox 360 disc image (regular file, .iso
+// extension). The GDFX header itself is verified when the device initializes.
+bool IsValidIso(const std::filesystem::path& iso);
+
+// Extract `default.xex` (few MB) from the ISO into `dst`. The runtime needs a
+// real file for its pre-flight checks and region detection; this is the ONLY
+// thing ever extracted from the disc. Returns true on success.
+bool ExtractDefaultXexFromIso(const std::filesystem::path& iso,
+                              const std::filesystem::path& dst);
+
 // XEX entrypoint compatibility status. Each core is a recompilation of ONE
 // executable: the US/NA core only boots the US xex (yae3_xenon.xex), and the
 // EU/PAL core (DBZ3_EU_VARIANT) only boots the EU xex (yae3_xenon_eu.xex).
@@ -89,6 +114,7 @@ enum class XexStatus {
   kUs = 1,       // known US/NA executable
   kEu = 2,       // known EU/PAL executable
   kUnknown = 3,  // present but not a known variant (informational note)
+  kDbz1 = 4,     // known DBZ Budokai HD Collection (DBZ1) executable — a DIFFERENT title
 };
 // Status of `root/default.xex`, cached by (path, size, mtime) so the per-frame
 // launcher banner does not re-hash a ~4.9MB file every frame.

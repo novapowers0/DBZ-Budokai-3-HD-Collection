@@ -99,6 +99,16 @@ if ($Version -ne "" -and (Test-Path -LiteralPath $zip)) {
         } else {
             Write-Output "zip OK: $($z.Entries.Count) entradas sin assets del juego"
         }
+        # Residuos de ejecucion: una carpeta de datos/user_data/logs/iso_cache
+        # delataria que se empaqueto la carpeta con la que se jugo, no una limpia.
+        $runtime_residue = $z.Entries | Where-Object {
+            $_.FullName -match "user_data/|logs/|iso_cache/|dbz3_user\.toml$"
+        }
+        if ($runtime_residue) {
+            $errors += "el zip contiene residuos de ejecucion (user_data/ logs/ iso_cache/ dbz3_user.toml): $($runtime_residue.FullName -join ', ')"
+        } else {
+            Write-Output "zip OK: sin residuos de ejecucion"
+        }
     } finally {
         $z.Dispose()
     }

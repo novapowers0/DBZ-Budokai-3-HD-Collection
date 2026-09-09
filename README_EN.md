@@ -16,29 +16,28 @@ emulator.
 
 | | |
 |---|---|
-| **Players** | 1–2 (versus) |
-| **Platform** | Windows |
-| **Engine** | Xbox 360 (ReXGlue SDK) |
-| **Genre** | 3D fighting |
-| **Version** | v1.1.2 |
+| Players | 1–2 (versus) |
+| Platform | Windows |
+| Engine | Xbox 360 (ReXGlue SDK) |
+| Genre | 3D fighting |
+| Version | v1.1.3 |
 
 Copyright (c) 2026 **NovaPowers**. Released under the MIT License (see `LICENSE`).
 
 ---
 
-## ⚖️ Legal notice
+## Legal notice
 
-The game and its data **are not distributed**. To play, you must provide the
-files from your **own legal copy**: the executable (`default.xex`) and the
-`data_*.afs` files of the region you use. This project follows the convention
-of the static-recompilation community (such as
-`mstan/DragonBallZBuusFuryRecomp`): the code and launcher are distributed,
-**the game content is not**.
+This project does not include the game. To play, you must provide the files
+from **your own legal copy**: the executable (`default.xex`) and the
+`data_*.afs` files of the region you use. This follows the usual convention of
+the static-recompilation community (e.g. `mstan/DragonBallZBuusFuryRecomp`):
+the code and launcher are distributed, the game content is not.
 
 - `baserom.md` lists the exact identity of each file (sizes and SHA-256
   checksums) and how to extract them from your ISO.
-- The recompiled code (`generated/`) is produced **locally** from your `.xex`
-  and is **never uploaded** to the repository.
+- The recompiled code (`generated/`) is produced locally from your `.xex` and
+  is never uploaded to the repository.
 
 Unofficial project, non-commercial, for research and preservation. Not
 affiliated with or endorsed by Bandai Namco, Shueisha, Toei Animation or any
@@ -46,12 +45,16 @@ rights holder of Dragon Ball.
 
 ---
 
-## 🎮 How to play (step by step)
+## How to play
 
-1. **Download** the ZIP from the **Releases** tab and extract it to any folder
-   (e.g. `C:\Games\DBZ3`).
-2. **Provide the game files** next to `dbz3.exe`. Both layouts below work (the
-   launcher detects them automatically):
+There are two ways to provide the game data: the extracted folder or the ISO
+directly. Both are detected automatically, nothing to configure.
+
+**Option A — the extracted folder (if you want mods)**
+
+1. Download the ZIP from **Releases** and extract it anywhere.
+2. Put `default.xex` and the `us\` (or `eu\`) folder next to `dbz3.exe`. Both
+   layouts below work:
 
    ```
    C:\Games\DBZ3\                C:\Games\DBZ3\
@@ -61,20 +64,29 @@ rights holder of Dragon Ball.
                                      └── us\ (and/or eu\)
    ```
 
-3. **Run `dbz3.exe`**. The launcher opens; if something is missing, it tells
-   you and you can locate your game folder with the "Select game data folder..."
-   button.
-4. In the launcher choose **Region** (USA / EU PAL), **Language**, **Video** and
-   **Audio**, then press **Play**.
+3. Run `dbz3.exe`. The launcher checks what's there and tells you if something
+   is missing. You can locate your game folder with "Select game data folder...".
+4. Choose **Region**, **Language**, **Video** and **Audio**, then press **Play**.
+
+**Option B — the ISO directly (play without extracting anything)**
+
+Drop the game's `.iso` next to `dbz3.exe` (or use "Select ISO..." in the
+launcher). The launcher detects it, pulls `default.xex` out of the disc (only
+that file, a few MB) and mounts the rest straight from the image: no need to
+extract or copy the AFS files. The region is detected on its own from the
+disc's executable.
+
+> Mods need the extracted folder (option A). In disc mode you play the game as
+> it comes on the ISO.
 
 > **A single `dbz3.exe`**: since v1.1.0 there are no variants. One universal
 > executable (baseline SSSE3 runtime) that runs on any x64 CPU (Core 2 2006
 > onwards), with the USA and EU recompilations inside and auto-detection of the
 > `default.xex` you provide.
 
-### Which game files you need
+### Which game files you need (option A)
 
-Only the executable and your region's data, **not the whole ISO**:
+Only the executable and your region's data, not the whole ISO:
 
 - **USA**: into `us\` → `data_cmn.afs`, `data_eng.afs`, `data_fra.afs`,
   `data_ger.afs`, `data_ita.afs`, `data_spn.afs`, `data_usi.afs`,
@@ -85,12 +97,12 @@ Only the executable and your region's data, **not the whole ISO**:
 Everything can live next to `dbz3.exe` or inside `assets\` (with `default.xex`).
 You can verify the files against `baserom.md`.
 
-To extract them from your **legal ISO**, use a tool such as `extract-xiso`
-(reads the FATX filesystem of the Xbox 360).
+To extract them from your legal ISO, use a tool such as `extract-xiso` (reads
+the FATX filesystem of the Xbox 360).
 
 ---
 
-## 📁 Repository layout
+## Repository layout
 
 ```
 DBZ-Budokai-3-HD-Collection/
@@ -116,21 +128,20 @@ DBZ-Budokai-3-HD-Collection/
 
 ---
 
-## 🌍 USA / EU regions
+## USA / EU regions
 
 The USA (`yae3_xenon.xex`) and EU (`yae3_xenon_eu.xex`) executables are
-**different builds** (they are not identical), and the package includes the
-recompilation of each one inside the same dual core. The launcher identifies
-which one you placed (by checksum) and uses the matching code; if it does not
-match, it warns you and blocks Play so you do not hit a cryptic crash.
+different builds, not two copies of the same thing, and the dual core includes
+the recompilation of each one. The launcher identifies which one you placed by
+checksum and uses the matching code; if they don't match, it warns you and
+blocks Play so you don't end up with a cryptic crash.
 
-The **data** region (the `us\` or `eu\` folder) and the **language** are chosen
-in the launcher and do not depend on the executable. Saves are shared between
-regions.
+The data region (the `us\` or `eu\` folder) and the language are chosen in the
+launcher and don't depend on the executable. Saves are shared between regions.
 
 ---
 
-## 🛠️ Mods
+## Mods
 
 Mods live in `mods\<name>\` (the folder ships empty) and replace AFS entries
 through an overlay, without touching the original AFS files:
@@ -148,7 +159,7 @@ They are managed visually from the launcher (**Mods**, **Textures** and
 ### Model swaps in any direction (virtual mid-insert)
 
 A B3→B3 swap is a per-entry override (~100 KB) that is served on the target
-slot even when the binary is **larger** than the original slot: the runtime
+slot even when the binary is larger than the original slot: the runtime
 presents the game a consistent AFS table (the entry grows in place and the
 following ones shift) and translates the reads. That is how, for example,
 placing Goten into Krillin's slot works.
@@ -167,18 +178,18 @@ This requires the **ReXGlue SDK patch** included in `patches/` (see
 - **Textures**: extract a character's textures to PNG, edit them and rebuild
   the mod.
 - **Model Swap**: native B3→B3 swap (183-character catalog).
-- **Dev**: FPS counter and GPU diagnostics — **all OFF by default**.
+- **Dev**: FPS counter and GPU diagnostics, all OFF by default.
 
 ---
 
-## 🏗️ Building from source
+## Building from source
 
-Requirements: a C++23 compiler, CMake ≥ 3.25 and the
+You need a C++23 compiler, CMake ≥ 3.25 and the
 [ReXGlue SDK](https://github.com/rexglue/rexglue-sdk) (`REXSDK_DIR` or a
 `rexglue/` folder next to the project).
 
-> **Apply the runtime patches first** (`patches/`) onto your copy of the SDK,
-> as explained in `patches/README.md`, and rebuild the runtime. Without them,
+> Apply the runtime patches first (`patches/`) onto your copy of the SDK, as
+> explained in `patches/README.md`, and rebuild the runtime. Without them,
 > swaps with binaries larger than the slot do not work.
 
 ```
@@ -195,27 +206,41 @@ cmake --build out/build/win-amd64-release
 out\build\win-amd64-release\dbz3.exe
 ```
 
-The recompiled code (`generated/`) is derived from your `.xex` and **never
-uploaded** (see `generated/README.md` and `.gitignore`). The release package
+The recompiled code (`generated/`) is derived from your `.xex` and never
+uploaded (see `generated/README.md` and `.gitignore`). The release package
 layout is assembled by `tools/make_release.ps1`.
 
 ---
 
-## 📄 Status
+## Status
 
 | Technique | Status |
 |---|---|
-| Native B3→B3 swap (~100 KB override) | ✅ Works in any direction (bins > or < slot) |
-| B3 HD texture mod | ✅ Works (per-entry override, ~118 KB) |
-| 2+ simultaneous model/texture mods | ✅ Works (virtual mid-insert) |
-| Music mod (og_music) | ✅ Works |
-| USA/EU dual core (single binary) | ✅ Works (validated in-game) |
-| PS2→HD port | ⚠️ Researched; requires a full rebuild |
-| IW→B3 character ports | 🔴 Dropped (Janemba failed, archived) |
+| Native B3→B3 swap (~100 KB override) | Works in any direction (bins > or < slot) |
+| B3 HD texture mod | Works (per-entry override, ~118 KB) |
+| 2+ simultaneous model/texture mods | Works (virtual mid-insert) |
+| Music mod (og_music) | Works |
+| Play from the ISO (disc mode) | Works (base game; mods need the folder) |
+| USA/EU dual core (single binary) | Works (validated in-game) |
+| PS2→HD port | In research; requires a full rebuild |
+| IW→B3 character ports | Dropped (Janemba failed, archived) |
 
 ---
 
-## 🔧 v1.1.2 highlights (debugging phase)
+## v1.1.3 highlights
+
+- **Always-visible source selector**: "Extracted folder" / "ISO (.iso)" buttons
+  in the launcher to pick the data source at any time.
+- **DBZ1 detection**: if you drop the *DBZ Budokai HD Collection* xex (sister
+  project), the launcher blocks Play and tells you to "use the dbz1 launcher
+  (dbz1.exe)" instead of crashing.
+- **Fully audited i18n**: 0 untranslated strings across ES/EN/IT/DE/FR.
+- **Clumsy-user ready**: actionable messages and hints when picking the wrong
+  folder.
+- **Polish**: `-Wall -Wextra` warning-free, dead code removed, stricter release
+  packager (rejects runtime residue in the ZIP).
+
+## v1.1.2 highlights
 
 - **EU crash fix (Dragon Universe / START)**: missing dispatch function
   `sub_820F2398` extracted and registered as `dbz3eu_sub_820F2398`.
@@ -225,10 +250,12 @@ layout is assembled by `tools/make_release.ps1`.
   `LoadGpuPlugin`; previously the launcher choice was ignored (always D3D12).
 - **Polish**: warning-free builds, temporary debug traces removed, footer now
   shows "Japanese" correctly.
+- **Disc mode**: play straight from the `.iso` without extracting anything
+  (v1.1.2).
 
 ---
 
-## 👥 Credits
+## Credits
 
 - [ReXGlue](https://github.com/rexglue/rexglue-sdk) — recompilation tools.
 - [WistfulHopes/DBZ1](https://github.com/WistfulHopes/DBZ1) — SDK API

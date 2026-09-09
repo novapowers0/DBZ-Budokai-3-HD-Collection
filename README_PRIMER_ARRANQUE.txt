@@ -9,7 +9,7 @@ variante" (no las hay).
 -----------------------------------------------------------------------
 PASO 1 - Coloca los datos del juego
 -----------------------------------------------------------------------
-Tienes DOS disposiciones validas (usa la que prefieras):
+Tienes TRES formas validas (usa la que prefieras):
 
   Opcion A (recomendada) - carpeta "assets":
     <carpeta del juego>\
@@ -26,14 +26,23 @@ Tienes DOS disposiciones validas (usa la que prefieras):
       us\
       eu\
 
-El launcher detecta cual usas. Tambien puedes pulsar "Seleccionar carpeta de
-datos..." en la pestana principal si los datos estan en otra ubicacion.
+  Opcion C - el ISO directamente (lo mas facil):
+    Deja tu .iso de Budokai 3 HD Collection junto a dbz3.exe. El launcher lo
+    detecta solo y juega directamente desde el disco: no hace falta extraer ni
+    copiar nada. Tambien puedes elegir el archivo con "ISO (.iso)" en el
+    launcher. (Nota: los mods necesitan la carpeta extraida, opciones A o B.)
+
+El launcher detecta cual usas. Tambien puedes elegir la fuente con los botones
+"Carpeta extraida" o "ISO (.iso)" en el launcher si los datos estan en otra
+ubicacion.
 
 IMPORTANTE - default.xex:
 - Puedes usar el ejecutable US/NA (yae3_xenon.xex) o el EU/PAL
   (yae3_xenon_eu.xex): el juego lleva la recompilacion de ambos dentro y elige
   el correcto automaticamente.
 - La region EU/PAL (carpeta eu/) y el idioma se eligen en el launcher.
+- Si pones un ejecutable de DBZ Budokai HD (DBZ1) por error, el launcher te lo
+  avisa y te pide que uses el launcher de DBZ1 (dbz1.exe).
 
 -----------------------------------------------------------------------
 PASO 2 - Instala mods (opcional)
