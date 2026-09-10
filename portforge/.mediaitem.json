@@ -9,6 +9,11 @@
   "description": "Static recompilation (ReXGlue) of Dragon Ball Z: Budokai 3 HD Collection (Xbox 360) for Windows, with a custom launcher, dual-region US/EU core, per-entry AFS mod system and model swap/texture tools. No game data is included: bring your own default.xex + us/eu asset folders from the disc.",
   "releaseYear": 2026,
   "versionType": "FanPort",
+  "tags": [
+    "Dragon Ball Z",
+    "ReXGlue",
+    "static recompilation"
+  ],
   "platforms": [
     "Windows"
   ],
@@ -21,12 +26,16 @@
   },
   "romDependencies": [
     {
-      "name": "Dragon Ball Z: Budokai 3 HD Collection",
+      "name": "Dragon Ball Z: Budokai HD Collection",
       "required": true,
       "options": [
         {
-          "_itemType": "Xbox360Game",
-          "title": "Dragon Ball Z: Budokai 3 HD Collection (Xbox 360)"
+          "_itemType": "Xbox360DiscImage",
+          "title": "Dragon Ball Z - Budokai HD Collection (USA)"
+        },
+        {
+          "_itemType": "Xbox360DiscImage",
+          "title": "Dragon Ball Z - Budokai HD Collection (Europe)"
         }
       ]
     }
