@@ -412,11 +412,13 @@ public:
           dbz3::settings::SetIsoPath(iso_path.string());
           const auto iso_cache = exe_dir / "user_data" / GetName() / "iso_cache";
           const auto xex_dst = iso_cache / "default.xex";
-          if (!std::filesystem::is_regular_file(xex_dst)) {
-            if (!dbz3::settings::ExtractDefaultXexFromIso(iso_path, xex_dst)) {
-              REXLOG_ERROR("OnConfigurePaths - could not extract default.xex from {}",
-                           iso_path.string());
-            }
+          // Re-extract when the source disc changed: the cache is only the
+          // region-detection copy, and a stale one (from a different ISO) makes
+          // the launcher pick the wrong core/region for the disc actually being
+          // played -> "No function registered at <addr>" at boot.
+          if (!dbz3::settings::EnsureIsoXexCache(iso_path, iso_cache)) {
+            REXLOG_ERROR("OnConfigurePaths - could not extract default.xex from {}",
+                         iso_path.string());
           }
           if (std::filesystem::is_regular_file(xex_dst)) {
             game_dir_ = iso_cache;

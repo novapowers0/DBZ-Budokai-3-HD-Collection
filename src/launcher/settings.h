@@ -103,6 +103,17 @@ bool IsValidIso(const std::filesystem::path& iso);
 bool ExtractDefaultXexFromIso(const std::filesystem::path& iso,
                               const std::filesystem::path& dst);
 
+// Ensure `cache_dir/default.xex` is the executable of the CURRENT ISO. The
+// cached file is used to detect the disc's region before the guest boots, but
+// the runtime executes the xex mounted from the disc. If the cache was produced
+// from a DIFFERENT disc (e.g. the user swapped a US ISO for an EU one) the
+// region/config chosen would not match the running executable and the guest
+// dies with "No function registered at <addr>". This records the source disc's
+// identity (path + size + mtime) next to the cache and re-extracts when it
+// changes. Returns true when cache_dir/default.xex is present and valid.
+bool EnsureIsoXexCache(const std::filesystem::path& iso,
+                       const std::filesystem::path& cache_dir);
+
 // XEX entrypoint compatibility status. Each core is a recompilation of ONE
 // executable: the US/NA core only boots the US xex (yae3_xenon.xex), and the
 // EU/PAL core (DBZ3_EU_VARIANT) only boots the EU xex (yae3_xenon_eu.xex).

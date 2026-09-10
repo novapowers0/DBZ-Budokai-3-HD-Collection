@@ -505,6 +505,33 @@ struct Md5Digest {
   }
 };
 
+// Read the XEX2 entry-point address from the (unencrypted) optional header.
+// The market variant keeps a fixed entry point even across minor re-prints or
+// re-dumps of the same region, so this identifies US vs EU when the MD5 does
+// not match a known hash (modified bytes, different pressing, decrypted dump).
+// Returns 0 when the file is not a readable XEX2.
+uint32_t ReadXexEntryPoint(const std::filesystem::path& xex) {
+  std::ifstream f(xex, std::ios::binary);
+  if (!f) return 0;
+  uint8_t hdr[0x18 + 16 * 8] = {};
+  f.read(reinterpret_cast<char*>(hdr), sizeof(hdr));
+  if (f.gcount() < 0x18) return 0;
+  if (std::memcmp(hdr, "XEX2", 4) != 0) return 0;
+  auto be32 = [](const uint8_t* p) -> uint32_t {
+    return (static_cast<uint32_t>(p[0]) << 24) | (static_cast<uint32_t>(p[1]) << 16) |
+           (static_cast<uint32_t>(p[2]) << 8) | static_cast<uint32_t>(p[3]);
+  };
+  const uint32_t count = be32(hdr + 0x14);
+  if (count > 16) return 0;  // the retail XEX has 14-15 optional headers
+  for (uint32_t i = 0; i < count; ++i) {
+    const uint8_t* e = hdr + 0x18 + i * 8;
+    if (be32(e) == 0x00010100) {  // XEX_HEADER_ENTRY_POINT
+      return be32(e + 4);
+    }
+  }
+  return 0;
+}
+
 }  // namespace
 
 XexStatus CheckDefaultXex(const std::filesystem::path& root) {
@@ -564,6 +591,21 @@ XexStatus CheckDefaultXex(const std::filesystem::path& root) {
     }
   }
 
+  // Fallback for a modified/re-pressed/decrypted dump whose MD5 is unknown: the
+  // US/NA and EU/PAL executables keep distinct XEX entry points, which survive
+  // minor edits. Without this, a valid copy of the wrong variant would be left
+  // as kUnknown and the dual core would silently pick the US image config (the
+  // default branch of ResolveImageInfo), booting an EU exe with US code -> the
+  // guest exits with "No function registered at <addr>".
+  if (status == XexStatus::kUnknown && size != 4464640) {
+    const uint32_t entry = ReadXexEntryPoint(xex);
+    if (entry == 0x8221DDB0u) {
+      status = XexStatus::kUs;
+    } else if (entry == 0x8221C570u) {
+      status = XexStatus::kEu;
+    }
+  }
+
   cached_path = xex.string();
   cached_size = size;
   cached_mtime = mtime;
@@ -614,6 +656,47 @@ bool ExtractDefaultXexFromIso(const std::filesystem::path& iso,
   f.write(reinterpret_cast<const char*>(xex.data()),
           static_cast<std::streamsize>(xex.size()));
   return f.good();
+}
+
+bool EnsureIsoXexCache(const std::filesystem::path& iso,
+                       const std::filesystem::path& cache_dir) {
+  std::error_code ec;
+  if (!std::filesystem::is_regular_file(iso, ec)) {
+    return false;
+  }
+  const auto xex_dst = cache_dir / "default.xex";
+  const auto stamp = cache_dir / "source.stamp";
+
+  // Identity of the disc the cache must match: absolute path + size + mtime.
+  const auto iso_abs = std::filesystem::absolute(iso, ec).string();
+  const auto iso_size = std::filesystem::file_size(iso, ec);
+  const auto iso_mtime =
+      static_cast<long long>(std::filesystem::last_write_time(iso, ec).time_since_epoch().count());
+  const std::string want = iso_abs + "\n" + std::to_string(iso_size) + "\n" +
+                           std::to_string(iso_mtime) + "\n";
+
+  std::string have;
+  if (std::filesystem::is_regular_file(xex_dst, ec) &&
+      std::filesystem::is_regular_file(stamp, ec)) {
+    std::ifstream in(stamp, std::ios::binary);
+    if (in) {
+      have.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+    }
+  }
+
+  if (have != want) {
+    // The cached xex belongs to another disc (or is missing): re-extract so the
+    // region detection matches the executable the runtime will actually run.
+    REXLOG_INFO("EnsureIsoXexCache: (re)extracting default.xex from {}", iso.string());
+    if (!ExtractDefaultXexFromIso(iso, xex_dst)) {
+      return false;
+    }
+    std::ofstream out(stamp, std::ios::binary | std::ios::trunc);
+    if (out) {
+      out << want;
+    }
+  }
+  return std::filesystem::is_regular_file(xex_dst, ec);
 }
 
 std::filesystem::path LatestLogPath() {

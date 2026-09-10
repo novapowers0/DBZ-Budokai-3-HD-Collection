@@ -55,7 +55,23 @@ lógica de región/mods, y runtime.
 
 ## 3. ESTADO ACTUAL (RESUMEN EJECUTIVO)
 
-- **v1.1.3 publicada (Latest)**; **v1.1.3 "El parche de la ISO"** (2026-09-09):
+- **v1.1.4 EX publicada (Latest, 2026-09-10)**: hotfix de la v1.1.4 que cierra
+  los issues de la comunidad. (a) **Crash EU al empezar CUALQUIER pelea**
+  (`0xC000001D`, `ctr=0x820F24D8`): el re-codegen volvió a clasificar como
+  "jump table" de 1 caso los `bctr` de `sub_820F2370` y `sub_820BB8C8`
+  (despacho por tabla de punteros de función); cualquier caso != 0 caía en
+  `__builtin_trap()`. Fix aplicado al codegen EU + **`tools/fix_eu_bctr.py`
+  reescrito** (antes fallaba en silencio con el prefijo nuevo `dbz3eu_sub_*`).
+  ⚠️ **Ejecutar `python tools/fix_eu_bctr.py --apply generated_eu generated`
+  SIEMPRE tras re-codegen** y comprobar "NO PATCH"/0 sites. (b) **Detección de
+  xex por entry point**: fallback en `CheckDefaultXex` cuando el MD5 es
+  desconocido (dump modificado/otra tirada): entry `0x8221DDB0`=US,
+  `0x8221C570`=EU (leído de la cabecera XEX2, offset 0x18, key 0x00010100).
+  Evita que el dual caiga al config US con un xex EU → `No function registered`.
+  (c) **Caché del xex del ISO invalidado** (`EnsureIsoXexCache`): guarda
+  ruta+tamaño+fecha del disco de origen en `iso_cache/source.stamp` y re-extrae
+  al cambiar de ISO. Binario `1.1.4.1`; zip `DBZ-Budokai-3-HD-Collection-v1.1.4-EX.zip`.
+- **v1.1.3**; v1.1.3 "El parche de la ISO" (2026-09-09):
   selector de fuente siempre visible (carpeta extraida / ISO), detección y
   bloqueo del xex de DBZ1, i18n completa auditada (0 gaps), mensajes para
   usuarios no técnicos, pulido 0 warnings y empaquetador más estricto. Incluye
@@ -63,7 +79,7 @@ lógica de región/mods, y runtime.
   registrada, regiones incompletas con `ResolveRegion()`, backend Vulkan real
   con cvar `gpu_backend`, y **modo disco (ISO)** — juega directamente desde el
   `.iso`).
-- **Fix crash EU Dragon Universe (para v1.1.4, 2026-09-10)**: `0x8215B378`
+- **Fix crash EU Dragon Universe (v1.1.4, 2026-09-10)**: `0x8215B378`
   registrada manualmente en el codegen EU (11792 funciones, +1). Mismo patrón
   que `0x820F2398` (función plegada como dead fall-through, solo alcanzable vía
   puntero de función). ⚠️ **REGLAS OPERATIVAS del codegen EU**: (1) los fixes se

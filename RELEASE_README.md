@@ -103,6 +103,28 @@ aportarlos de tu **copia legal**. Haz esto:
 
 ## Novedades de esta release
 
+### v1.1.4 EX — Hotfix: crash al empezar pelea (EU) + detección de xex (2026-09-10)
+
+- **Fix del crash al empezar CUALQUIER pelea (EU)**: el re-codegen de la v1.1.4
+  había vuelto a clasificar como "jump table" de un solo caso dos `bctr` que en
+  realidad despachan por tabla de punteros de función
+  (`sub_820F2370` y `sub_820BB8C8`). El caso 0 era válido, pero cualquier otro
+  puntero caía en `__builtin_trap()` → excepción `0xC000001D` (`ctr=0x820F24D8`)
+  al iniciar combate, en todos los modos. Corregido en el codegen EU y **blindado
+  el fixer** (`tools/fix_eu_bctr.py`), que fallaba en silencio con el prefijo de
+  símbolo nuevo (`dbz3eu_sub_*`). **Re-ejecutar SIEMPRE tras re-codegen.**
+- **Detección de xex por entry point (fallback)**: si el `default.xex` no coincide
+  con el MD5 retail (dump modificado, otra tirada, imagen recomprimida) el
+  núcleo dual caía al config US y arrancaba un ejecutable EU con código US →
+  `No function registered at <addr>` al primer hilo. Ahora se lee el entry point
+  del XEX (`0x8221DDB0`=US, `0x8221C570`=EU) cuando el MD5 es desconocido, de
+  modo que una copia válida de la variante correcta se detecta igual.
+- **Caché del xex en modo ISO invalidado al cambiar de disco**: el `default.xex`
+  extraído del ISO se cacheaba por nombre fijo y NUNCA se regeneraba; al cambiar
+  de ISO (p. ej. US→EU) se reutilizaba el xex viejo y se elegía la región/core
+  equivocada. Ahora se guarda la identidad del disco de origen (ruta+ tamaño+
+  fecha) y se re-extrae cuando cambia.
+
 ### v1.1.4 — Fix del crash en Dragon Universe (EU) + thunks preventivos (2026-09-10)
 
 - **Fix del crash en Dragon Universe (EU)**: la función `0x8215B378` del núcleo
