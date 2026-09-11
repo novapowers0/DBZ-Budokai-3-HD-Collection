@@ -1030,11 +1030,15 @@ Ver **`docs/HOJA_DE_RUTA_2026_09.md`** — 3 fases:
   `docs/06_limpieza/INVENTARIO_FISICO_2026-09.md`.
 - `out/build/win-amd64-tracy` (perfilado) se borró: regenerar con el preset
   Tracy del CMake si se necesita.
-- **Limpieza 2026-09-14 (~3.1 GB)**: borrados `out/build/_archivo_mods/` (mods de
-  test de ago, regenerables), `out/build/win-amd64-release/mods_archivo/` (los 83
-  tests archivados), `github/release-stage/` (regenerable con `make_release.ps1`)
-  y `rexglue_backup/` (DLLs `.old`). **Pendiente de decidir** (grandes): `ps2_games/`
-  (~10.6 GB de AFS de referencia), `mods/og_music` (~1.5 GB), el build SDK avx2
-  `rexglue-sdk-0.10/out/build-win-vulkan/` (~1.1 GB) y deduplicar `modding
-  resources update*/`.
+- **Limpieza 2026-09-14 (~10.6 GB; 29.4 GB → 18.8 GB)**: borrados
+  `out/build/_archivo_mods/` (mods de test de ago), `out/build/win-amd64-release/
+  mods_archivo/` (los 83 tests archivados), `github/release-stage/` +
+  `release-stage/` (regenerables con `make_release.ps1`), `rexglue_backup/` (DLLs
+  `.old`), el build SDK **avx2** `out/build-win-vulkan/` (se conserva `out/win-amd64/`
+  con las DLLs avx2), los AFS de B1/B2/B2V/Shin Budokai PSP **y sus ISOs** de
+  `ps2_games/` (se conservan **B3 Greatest Hits** e **Infinite World**), y
+  deduplicado `modding resources update*` (9 ítems idénticos + "Budokai 1 Models
+  Converted to AMB" duplicado de `mod center`). **Se conserva** `mods/og_music`.
+  Barrido de `__pycache__`/`*.pyc`/`.tmp`/`.bak`. **Sigue pendiente de decidir**:
+  `modding resources` (2.2 GB) y `modding resources discord` (0.86 GB).
 - El usuario habla español. Sesiones largas de juego.
