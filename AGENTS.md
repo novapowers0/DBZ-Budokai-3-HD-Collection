@@ -55,7 +55,17 @@ lógica de región/mods, y runtime.
 
 ## 3. ESTADO ACTUAL (RESUMEN EJECUTIVO)
 
-- **v1.1.4 EX publicada (Latest, 2026-09-10)**: hotfix de la v1.1.4 que cierra
+- **v1.2.0 publicada (Latest, 2026-09-14)**: Centro de mods renovado (lista
+  cacheada, buscador, activar/desactivar todos, badges de tipo, filas alternas),
+  Model Swap HD↔HD pulido (combos con buscador, vista previa, guard
+  origen==destino, manifest con nombres de catálogo), nitidez FSR/CAS ajustable,
+  aviso de modo ISO en Mods y Model Swap. Limpieza: 83 mods de prueba archivados
+  (release con `mods/` vacía). Docs nuevas:
+  `docs/ANALISIS_ESCALADO_RENDIMIENTO_2026-09-14.md` (**FSR3/DLSS no viables a
+  corto plazo**: el renderer no expone motion vectors/jitter; FSR1/CAS sí) y
+  `docs/02_mods/SESION_MODS_LAUNCHER_2026-09-14.md`. Binario 1.2.0; zip
+  `DBZ-Budokai-3-HD-Collection-v1.2.0.zip`.
+- **v1.1.4 EX publicada (2026-09-10)**: hotfix de la v1.1.4 que cierra
   los issues de la comunidad. (a) **Crash EU al empezar CUALQUIER pelea**
   (`0xC000001D`, `ctr=0x820F24D8`): el re-codegen volvió a clasificar como
   "jump table" de 1 caso los `bctr` de `sub_820F2370` y `sub_820BB8C8`
@@ -887,10 +897,10 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
   `DBZ3_DUMP_IMAGE` para volcar la imagen descifrada).
 
 ### 9.2 Releases y estado GitHub
-- **v1.1.3 = Latest** (core dual 1.1.3.0, baseline, "El parche de la ISO").
-  **v1.1.2**, **v1.1.1**, **v1.1.0-clasico** = fallback no-Latest (runtime avx2)
-  para CPU modernas. Tags v1.0.0..v1.0.9 + v1.0.5-EX conservados (código
-  archivado; los zips binarios viejos NO existen).
+- **v1.2.0 = Latest** (2026-09-14, core dual 1.2.0, baseline, "Centro de mods
+  renovado + Model Swap HD↔HD"). **v1.1.4 EX**, **v1.1.3**, **v1.1.2**,
+  **v1.1.1**, **v1.1.0-clasico** = no-Latest. Tags v1.0.0..v1.0.9 + v1.0.5-EX
+  conservados (código archivado; los zips binarios viejos NO existen).
 - Empaquetado: `tools/make_release.ps1` (lee versión de `src/version.rc`,
   default `$Version`; **SIN UPX** — falso positivo AV). Verificación:
   `tools/verify_release.ps1` (hashes DLL vs SDK, VERSIONINFO, cvar vsync en
