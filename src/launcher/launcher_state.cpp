@@ -751,6 +751,7 @@ void LauncherDialog::OnDraw(ImGuiIO& io) {
 #undef DBZ3_RESET_KEYBIND
     // Reset also returns the mods to vanilla (all disabled).
     dbz3::ApplyProfile("vanilla");
+    mods_loaded_ = false;
   }
   ImGui::SameLine(0, 10);
   if (ImGui::Button(i18n::T("Guardar ajustes", "Save settings"), ImVec2(180, 0))) {
@@ -1065,8 +1066,8 @@ void LauncherDialog::DrawUpscaleTab() {
       dbz3::settings::SaveUserSettings();
     }
     ImGui::SameLine();
-    ImGui::TextDisabled(i18n::T("0 = mas suave, 2 = mas nitido",
-                                "0 = softer, 2 = sharper"));
+    ImGui::TextDisabled(i18n::T("0 = mas nitido, 2 = mas suave",
+                                "0 = sharper, 2 = softer"));
   } else if (dbz3::settings::PresentEffect() == "cas") {
     ImGui::TextWrapped(i18n::T(
         "CAS aplica nitidez adaptativa al contraste despues del escalado.\n"
@@ -1250,6 +1251,14 @@ void LauncherDialog::DrawInputTab() {
 
 void LauncherDialog::DrawModsTab() {
   ImGui::BeginChild("##mods_settings", ImVec2(0, -kFooterHeight), true);
+
+  // Refresh the cached list when the async pipeline finishes: a swap/texture
+  // build just wrote a new mod into mods/ and the "activates itself and shows up
+  // in the Mods tab" promise must hold without a manual Refresh.
+  if (mod_pipeline_.Generation() != last_pipeline_gen_) {
+    last_pipeline_gen_ = mod_pipeline_.Generation();
+    mods_loaded_ = false;
+  }
 
   // Cached mod list: rebuilt lazily (first draw, after toggles/installs/edits,
   // or via the Refresh button) so we don't recurse the whole mods folder every
@@ -2063,9 +2072,17 @@ void LauncherDialog::DrawTexturesTab() {
   // texturas sin abrir el explorador).
   if (tex_dir_exists) {
     std::vector<std::pair<std::string, std::uintmax_t>> pngs;
-    for (const auto& e : std::filesystem::directory_iterator(active_tex_dir)) {
-      if (e.is_regular_file() && e.path().extension() == ".png") {
-        pngs.emplace_back(e.path().filename().string(), e.file_size());
+    // Non-throwing overload: the folder may vanish between the is_directory
+    // check and here (or be unreadable); a thrown filesystem_error out of
+    // OnDraw would take the launcher down.
+    std::error_code dir_ec;
+    for (const auto& e :
+         std::filesystem::directory_iterator(active_tex_dir, dir_ec)) {
+      if (dir_ec) break;
+      std::error_code fec;
+      if (e.is_regular_file(fec) && !fec &&
+          e.path().extension() == ".png") {
+        pngs.emplace_back(e.path().filename().string(), e.file_size(fec));
       }
     }
     if (!pngs.empty()) {

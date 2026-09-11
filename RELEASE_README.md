@@ -103,6 +103,17 @@ aportarlos de tu **copia legal**. Haz esto:
 
 ## Novedades de esta release
 
+### v1.2.1 — Hotfix del launcher (2026-09-14)
+
+- **Crash al cerrar el launcher tras usar Model Swap o Texturas**: el hilo del
+  pipeline Python quedaba sin unir y, al destruir el launcher (pulsar PLAY o
+  cerrar), se llamaba a `std::terminate()`. Ahora se une correctamente al cerrar.
+- **Etiqueta de nitidez de FSR corregida**: indicaba la escala al revés (0 = más
+  nítido, 2 = más suave).
+- **La lista de mods se refresca sola** al terminar un swap/textura (el mod nuevo
+  aparece sin pulsar "Refrescar"); el botón "Restablecer valores" la invalida.
+- **Robustez**: la carpeta de texturas se lee sin excepciones.
+
 ### v1.2.0 — Centro de mods renovado + Model Swap HD↔HD pulido (2026-09-14)
 
 - **Centro de mods renovado (QoL + visual)**: lista **cacheada** (ya no re-escanea

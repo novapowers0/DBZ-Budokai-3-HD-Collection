@@ -59,6 +59,15 @@ class ModPipeline {
   bool IsRunning() const { return running_.load(); }
   std::string Output() const;
 
+  // Monotonic counter bumped each time an async run finishes; the launcher uses
+  // it to refresh its cached mod list when a new mod appears on disk.
+  int Generation() const { return generation_.load(); }
+
+  // Joins the worker on destruction. A finished-but-unjoined std::thread is
+  // still joinable, and destroying a joinable thread calls std::terminate();
+  // this prevents a crash when the launcher closes right after a swap/build.
+  ~ModPipeline();
+
  private:
   void RunAsync(const std::filesystem::path& script,
                 const std::vector<std::string>& args);
@@ -75,6 +84,7 @@ class ModPipeline {
   std::vector<B3Char> b3_;
   bool loaded_ = false;
   std::atomic<bool> running_{false};
+  std::atomic<int> generation_{0};
   mutable std::mutex mutex_;
   std::string output_;
   std::string afs_path_;

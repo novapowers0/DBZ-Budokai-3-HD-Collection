@@ -76,6 +76,9 @@ class LauncherDialog : public rex::ui::ImGuiDialog {
   std::vector<dbz3::ModInfo> mods_cache_;
   bool mods_loaded_ = false;
   char mods_search_buf_[128] = {};
+  // Last ModPipeline generation seen: when the async swap/texture build finishes
+  // (counter bumps) the cached mod list is rebuilt so the new mod shows up.
+  int last_pipeline_gen_ = 0;
 
   // Searchable character combos (Model Swap / Textures).
   char swap_src_search_buf_[128] = {};

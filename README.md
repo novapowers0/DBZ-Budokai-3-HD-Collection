@@ -19,7 +19,7 @@ nativo en Windows.
 | Plataforma | Windows |
 | Motor | Xbox 360 (ReXGlue SDK) |
 | Género | Lucha 3D |
-| Versión | v1.1.3 |
+| Versión | v1.2.1 |
 
 Copyright (c) 2026 **NovaPowers**. Licencia MIT (ver `LICENSE`).
 
@@ -225,6 +225,35 @@ monta `tools/make_release.ps1`.
 | Port de personajes IW→B3 | Descartado (Janemba fracasó, archivado) |
 
 ---
+
+## Novedades de v1.2.1
+
+- **Fix de un crash al cerrar el launcher tras usar Model Swap o Texturas**: el
+  hilo del pipeline Python quedaba sin unir y al destruir el launcher se llamaba
+  a `std::terminate()`. Ahora se une correctamente al cerrar.
+- **Nitidez de FSR aclarada**: la etiqueta del slider estaba invertida (0 es más
+  nítido, 2 más suave).
+- **La lista de mods se refresca sola** al terminar un swap/textura (el mod nuevo
+  aparece sin pulsar "Refrescar"); el botón "Restablecer valores" también la
+  actualiza.
+- **Robustez**: lectura de la carpeta de texturas sin excepciones.
+
+## Novedades de v1.2.0
+
+- **Centro de mods renovado (QoL + visual)**: lista cacheada, buscador (nombre,
+  autor, origen, tipo), botones Activar todos / Desactivar todos / Refrescar /
+  Abrir carpeta, badges de tipo con color y filas alternas.
+- **Model Swap B3 HD↔HD pulido**: desplegables de personaje con buscador (183
+  personajes, con `[bin N]` y aviso `[NO JUGABLE]`), tarjeta de vista previa,
+  aviso/bloqueo si origen==destino, y el mod generado se nombra con los nombres
+  del catálogo (p. ej. «Cell Forma 2 en Krillin»).
+- **Nitidez ajustable en Escalado**: sliders de nitidez RCAS (FSR) y nitidez
+  adicional (CAS).
+- **Modo disco (ISO)**: aviso explícito en Mods y Model Swap (los mods no
+  aplican al jugar del `.iso`); el botón de swap se deshabilita.
+- **Notas de escalado/rendimiento**: FSR3/DLSS no son viables a corto plazo (el
+  renderer no expone motion vectors/jitter); FSR1/CAS sí. Ver
+  `docs/ANALISIS_ESCALADO_RENDIMIENTO_2026-09-14.md`.
 
 ## Novedades de v1.1.3
 

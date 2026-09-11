@@ -232,7 +232,7 @@ static const Entry kTable[] = {
     {"Destino: %s", "Destinazione: %s", "Ziel: %s", "Destination : %s"},
     {"(no jugable)", "(non giocabile)", "(nicht spielbar)", "(non jouable)"},
     {"Nitidez RCAS", "Nitidezza RCAS", "RCAS-Schärfe", "Netteté RCAS"},
-    {"0 = mas suave, 2 = mas nitido", "0 = più morbido, 2 = più nitido", "0 = weicher, 2 = schärfer", "0 = plus doux, 2 = plus net"},
+    {"0 = mas nitido, 2 = mas suave", "0 = più nitido, 2 = più morbido", "0 = schärfer, 2 = weicher", "0 = plus net, 2 = plus doux"},
     {"Nitidez adicional", "Nitidezza aggiuntiva", "Zusätzliche Schärfe", "Netteté supplémentaire"},
     {"0 = solo CAS, 1 = maxima nitidez", "0 = solo CAS, 1 = massima nitidezza", "0 = nur CAS, 1 = maximale Schärfe", "0 = CAS seul, 1 = netteté maximale"},
 };

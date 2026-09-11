@@ -1,6 +1,6 @@
 # HOJA DE RUTA 2026-09 — Madurez del proyecto (post-1.1.1)
 
-> Actualizado: 2026-09-02. Estado base: **v1.1.1 publicada** (Latest), juego muy
+> Actualizado: 2026-09-14. Estado base: **v1.2.1 publicada** (Latest), juego muy
 > funcional y validado en combate/menús (US+EU, teclado, presets, mods por
 > override). Documentos previos: `HOJA_DE_RUTA.md` (modding, 2026-08-14) y
 > `HOJA_DE_RUTA_COMUNIDAD.md` (feedback comunidad, 2026-08-25, P0-P5 casi todo

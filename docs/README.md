@@ -45,7 +45,7 @@
 - **Jugar**: `out\build\win-amd64-release\dbz3.exe`
 - **Config**: `out\build\win-amd64-release\dbz3_user.toml`
 - **Mods**: carpeta `mods\<mod>\` junto al exe. Solo los que NO tienen `.disabled`.
-- **Estado**: v1.1.3 "El parche de la ISO" publicada (selector de fuente, detección DBZ1, i18n auditada, modo disco). Juego funcional (D3D12, 60fps, US+EU). Model swap nativo y texturas funcionan. Port completo PS2→HD bloqueado (§3.4). Crash EU en Dragon Universe pendiente (issue #4).
+- **Estado**: **v1.2.1 publicada (Latest)** — hotfix del launcher (crash al cerrar tras Model Swap/Texturas, etiqueta de nitidez FSR, refresco de la lista de mods) sobre la v1.2.0 (Centro de mods renovado + Model Swap HD↔HD pulido + aviso de modo ISO). Juego funcional (D3D12, 60fps, US+EU). Swap nativo HD↔HD y texturas funcionan (Vía A aproximada). Port completo PS2→HD **aparcado** (§3.4.10). Escalado: FSR1/CAS sí; FSR3/DLSS no viable a corto plazo.
 
 ---
 

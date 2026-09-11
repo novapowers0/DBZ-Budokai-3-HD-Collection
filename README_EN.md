@@ -20,7 +20,7 @@ emulator.
 | Platform | Windows |
 | Engine | Xbox 360 (ReXGlue SDK) |
 | Genre | 3D fighting |
-| Version | v1.1.3 |
+| Version | v1.2.1 |
 
 Copyright (c) 2026 **NovaPowers**. Released under the MIT License (see `LICENSE`).
 
@@ -226,6 +226,33 @@ layout is assembled by `tools/make_release.ps1`.
 | IW→B3 character ports | Dropped (Janemba failed, archived) |
 
 ---
+
+## v1.2.1 highlights
+
+- **Fixed a crash when closing the launcher after a Model Swap or Texture
+  build**: the Python pipeline thread was left un-joined and destroying the
+  launcher called `std::terminate()`. It is now joined on close.
+- **Clarified FSR sharpness**: the slider label was inverted (0 is sharper, 2 is
+  softer).
+- **The mod list refreshes itself** when a swap/texture build finishes (the new
+  mod shows up without pressing "Refresh"); "Reset values" invalidates it too.
+- **Robustness**: the texture folder is read without exceptions.
+
+## v1.2.0 highlights
+
+- **Renewed mod center (QoL + visuals)**: cached list, search (name, author,
+  source, type), Enable all / Disable all / Refresh / Open folder buttons, colored
+  type badges and alternating rows.
+- **Polished HD↔HD Model Swap**: searchable character dropdowns (183 characters,
+  showing `[bin N]` and a `[NOT PLAYABLE]` tag), a preview card, a
+  source==target warning/block, and the generated mod is named after catalog names.
+- **Adjustable sharpness in Upscaling**: FSR RCAS and CAS additional sharpness
+  sliders.
+- **Disc (ISO) mode**: explicit warning in the Mods and Model Swap tabs (mods do
+  not apply when playing from the `.iso`); the swap button is disabled.
+- **Scaling/performance notes**: FSR3/DLSS are not viable short-term (the
+  renderer exposes no motion vectors/jitter); FSR1/CAS do work. See
+  `docs/ANALISIS_ESCALADO_RENDIMIENTO_2026-09-14.md`.
 
 ## v1.1.3 highlights
 

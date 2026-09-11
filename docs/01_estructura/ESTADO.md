@@ -1,6 +1,8 @@
 # Estado actual del proyecto
 
-> Actualizado: 2026-09-10 (v1.1.3 publicada + fix crash EU Dragon Universe #4)
+> Actualizado: 2026-09-14 (v1.2.1 Latest: Centro de mods renovado, Model Swap
+> HD↔HD pulido, hotfix de crash del launcher; port PS2→HD aparcado, ver §3.4.10
+> de AGENTS.md)
 
 ---
 
@@ -26,7 +28,8 @@
 
 | Cosa | Estado | Causa probable |
 |---|---|---|
-| **Port PS2→HD de personajes** | ⚠️ Investigado | El HD es re-trabajo; requiere reconstrucción completa (sec34+IB+arms+submesh) |
+| **Port PS2→HD de personajes (Vía B)** | ⏸️ Aparcado (2026-09-13) | Geometría y draw CORRECTOS; bloqueo = `M_bind` real (el renderer no lo expone). Ver AGENTS §3.4.10 |
+| **Inyección PS2→HD (Vía A)** | ✅ Aproximada | Techo conocido: no re-topologiza (cuerpo PS2 + extremidades/cabeza HD) |
 | **Port de personajes IW→B3** | 🔴 Descartado | Janemba fracasó (formato/retargeting); archivado. Ver AGENTS §11.1 |
 
 ---
@@ -53,9 +56,11 @@
 
 ## ESTADO DEL JUEGO AHORA MISMO
 
-- **v1.1.3 publicada** (Latest, "El parche de la ISO"): selector de fuente siempre
-  visible (carpeta/ISO), detección y bloqueo de xex DBZ1, i18n auditada 0 gaps,
-  0 warnings, empaquetador estricto.
+- **v1.2.1 publicada** (Latest, hotfix): crash al cerrar tras Model Swap/Texturas
+  (hilo del pipeline sin unir), etiqueta de nitidez FSR invertida, refresco
+  automático de la lista de mods. Sobre la **v1.2.0** (Centro de mods renovado +
+  Model Swap HD↔HD pulido + aviso de modo ISO + nitidez FSR/CAS ajustable + limpieza
+  de mods). Ver `RELEASE_README.md`.
 - **Fix crash EU `0x8215B378`** (para v1.1.4): Dragon Universe EU ya no crashea al
   seleccionar personaje. Mismo tratamiento que `0x820F2398` (función plegada como
   dead fall-through, solo alcanzable vía puntero de función). Aplicado MANUALMENTE

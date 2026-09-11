@@ -118,6 +118,16 @@ bool ModPipeline::LoadCatalog() {
   return true;
 }
 
+ModPipeline::~ModPipeline() {
+  // A std::thread that finished but was never joined/detached is STILL
+  // joinable; destroying a joinable thread calls std::terminate(). RunAsync
+  // only joins at the start of the next run, so closing the launcher right
+  // after a swap/build would crash without this.
+  if (worker_.joinable()) {
+    worker_.join();
+  }
+}
+
 std::string ModPipeline::Output() const {
   std::lock_guard<std::mutex> lock(mutex_);
   return output_;
@@ -224,12 +234,14 @@ void ModPipeline::RunAsync(const std::filesystem::path& script,
     if (rc != 0) {
       AppendOutput("\n[exit code " + std::to_string(rc) + "]\n");
     }
+    generation_.fetch_add(1);
     running_.store(false);
 #else  // !REX_PLATFORM_WIN32
     // Portable path not wired up yet: report a clear error instead of failing
     // to link (the SDK spawn helper for posix is a follow-up for the Linux port).
     AppendOutput("ERROR: ejecutar el pipeline de modding no esta soportado en "
                  "esta plataforma todavia.\n");
+    generation_.fetch_add(1);
     running_.store(false);
 #endif  // REX_PLATFORM_WIN32
   });
