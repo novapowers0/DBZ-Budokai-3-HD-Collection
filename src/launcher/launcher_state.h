@@ -70,6 +70,18 @@ class LauncherDialog : public rex::ui::ImGuiDialog {
   bool profile_name_dialog_ = false;
   char new_profile_buf_[64] = {};
 
+  // Mods tab: cached mod list (avoids a recursive disk scan every frame) plus
+  // a search filter. The cache is invalidated after toggles/installs/edits and
+  // rebuilt lazily on the next draw.
+  std::vector<dbz3::ModInfo> mods_cache_;
+  bool mods_loaded_ = false;
+  char mods_search_buf_[128] = {};
+
+  // Searchable character combos (Model Swap / Textures).
+  char swap_src_search_buf_[128] = {};
+  char swap_dst_search_buf_[128] = {};
+  char tex_search_buf_[128] = {};
+
   // Game-data validation banner (P1): transient error shown when a folder the
   // user picked for "Carpeta extraida" is not a valid game dir.
   std::string banner_error_;

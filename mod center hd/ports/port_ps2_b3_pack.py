@@ -2,6 +2,12 @@
 # -*- coding: utf-8 -*-
 """port_ps2_b3_pack.py - Paso 4 del pipeline port PS2 -> B3 HD.
 
+⚠️ SUPERADO (2026-09-11): este pack asume "descriptores A/B + buffers sec34/vb2
+separados", que NO es como dibuja el GPU. El modelo correcto son VENTANAS de
+44 B autocontenidas en la region contigua [vb0,ib) + IB. Reconstruir sobre
+`awo_tools/awg_vertex_buffer.py` (`.emit(out, vertices, indices)`). Ver
+`docs/07_ports/SESION_GPU_DRAW_2026-09-11.md` §8.
+
 Clona un bin HD (plantilla, #AMB) y reemplaza en su estructura de dibujo:
   1. La geometria (sec34/vb2/IB) con la generada por port_ps2_b3_geometry.
      Si no cabe en los buffers de la plantilla, aplica un MID-INSERT INTERNO

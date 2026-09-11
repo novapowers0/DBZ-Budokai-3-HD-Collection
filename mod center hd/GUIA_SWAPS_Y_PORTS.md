@@ -14,7 +14,7 @@
 |---|---|---|
 | **B1 → B1** (dentro del B1) | ✅ **100% FUNCIONAL** (Android 19 → Tenshinhan) | `swap_b1.py` (proyecto B1) |
 | **B3 → B1** (port de modelos) | ✅ **100% FUNCIONAL** (Dr. Gero → Tenshinhan) | `install_b3_to_b1.py` + `launcher_mod_pipeline.py` (proyecto B1) |
-| **B3 → B3** (dentro del B3) | 🔧 **Aplicable, requiere sistema de mods del B3** | Hoja de ruta §7 |
+| **B3 → B3** (dentro del B3) | ✅ **100% FUNCIONAL** (Cell Forma 2 → Krillin, 2026-09-10) | `swap_b3.py` |
 | **B1 → B3** (port inverso) | 🔬 No probado aún; mismo principio + conversión de sellos inversa | Hoja de ruta §7 |
 
 **El hallazgo que lo cambió todo** (lección 9 del B1, 16/08): el runtime HD
@@ -83,7 +83,31 @@ En **B3**, el modelo vive en un contenedor `#AMB` que incluye `#AWO` + `#AZT`
 juntos (una sola entrada AFS). Verificado: el Gero B3 = bin 91 (`#AMB` con
 `X20G_BODY`, 2501 verts, 16 AWGs, 46 bones).
 
-### 3.2 Vértice sec34 (stride 44) — CORRECTO (B1 v10+, B3 igual)
+### 3.2 Vértice (stride 44) — MODELO VERIFICADO 2026-09-11 (ventanas GPU)
+
+> ✅ El GPU NO dibuja con "descriptores A/B + sec34/vb2 separados" (§3.3/§3.4 son
+> metadata, no el dibujo). El vertex buffer es una **copia VERBATIM de la región
+> contigua `[vb0, ib)` del AWO** (`vb0 = ib - N*44`, `ib = AWG0+g(0x30)`), de **N
+> ventanas de 44 B autocontenidas**, y el **IB** (`AWG0+g(0x30)`) indexa ventanas.
+> Confirmado en juego: permutar ventanas + remapear IB = identidad **total**
+> (geometría + texturas, T11). Herramienta: `awo_tools/awg_vertex_buffer.py`.
+
+```
++00 pos.x  +04 pos.y  +08 pos.z   (3 float32 BE)   vfetch fmt 57 (32_32_32_FLOAT)
++12 weight (float32, ~1.0)                          fmt 36 (32_FLOAT)
++16 BONE   (u32; 1 byte usado)                      fmt 6  (8_8_8_8)
++20 nrm.x  +24 nrm.y  +28 nrm.z   (3 float32)        fmt 57
++32 0xFFFFFFFF
++36 uv.x   +40 uv.y               (2 float32)        fmt 37 (32_32_FLOAT)
+```
+`N = max(índice del IB) + 1`. El IB es int16 BE, índices de ventana 0..N-1.
+
+> ⚠️ El layout de "sec34" de abajo (`+36 blend, +40 uv`) NO es el del GPU; el uv
+> va en **+36**. La rejilla `sec+2` está desalineada +428 B respecto a las
+> ventanas (de ahí el antiguo "skew UV"). Ver
+> `docs/07_ports/SESION_GPU_DRAW_2026-09-11.md` §6-8.
+
+### 3.2b (histórico) sec34 del tool — metadata, no dibujo
 
 ```
 +00 pos.x  +04 pos.y  +08 pos.z          (floats BE)
@@ -169,16 +193,28 @@ python launcher_mod_pipeline.py swap --origen X19G_BODY --dest 2450 --tex 2451 -
 Extrae el par geom+tex del origen (49/48 o 45/46), comprime, padda y lo
 instala en los slots del destino.
 
-### 5.3 Swap B3 → B3 (el mismo principio, pendiente del sistema de mods)
+### 5.3 Swap B3 → B3 — ✅ VALIDADO (Cell Forma 2 → Krillin, 2026-09-10)
 
 El `#AMB` del B3 ya contiene AWO+AZT del MISMO personaje → un swap dentro del
 B3 es **sustituir la entrada del AFS** (el AMB de X en la entrada de Y). El
-runtime dibujará el AMB nuevo completo. Requisitos:
-1. El B3 debe soportar override **por entrada AFS** (hoy solo tiene override
-   por archivo completo — ver hoja de ruta §7).
-2. Herramienta `swap_b3.py`: dado origen/destino (del catálogo B3), extrae el
-   AMB del origen, comprime LZX `/N:2048`, padda al tamaño del slot destino e
-   instala en `mods/<mod>/us/data_cmn.afs/<dest>/geom.bin`.
+runtime dibuja el AMB nuevo completo (mesh group, IB, bones, UVs), 100%
+funcional (boca incluida).
+
+```powershell
+python "mod center hd\swap_b3.py" --list
+python "mod center hd\swap_b3.py" --origen 147 --dest 327 --mod cell_native
+```
+
+- `--origen`/`--dest` = **número de bin = índice de entrada AFS**
+  (`catalog_b3.cat`: `bin|nombre|label|variante|jugable`).
+- Instala `mods/<mod>/us/data_cmn.afs/<dest>/geom.bin` (override por entrada,
+  ~120 KB; el runtime aplica mid-insert virtual si excede `to_read`).
+- Detalle completo: `docs/07_ports/SESION_SWAP_NATIVO_2026-09-10.md`.
+- ⚠️ **Un solo mod activo por slot** (el runtime sirve el primero por orden
+  alfabético).
+
+> **Nota**: esto es un *swap nativo HD→HD*, NO una *conversión PS2→HD*. Para
+> modelos que no existen en HD, ver `docs/07_ports/PLAN_PS2_B3/PLAN.md`.
 
 ### 5.4 Port B1 → B3 (inverso, no probado)
 
@@ -271,6 +307,31 @@ sustituible sin RE completa de sus poses). Para swaps de modelos esto NO es
 necesario.
 
 ---
+
+## 7b. PORT PS2→B3 HD — VÍA B (ventanas + IB) ❌ NO RENDERIZA (2026-09-12)
+
+Para modelos que **NO existen en HD** (si existen → swap nativo, §5).
+⚠️ **Estado**: la geometría se emite **exacta** y llega al GPU, pero el modelo
+**explota** al renderizar (el guest trocea el IB por los descriptores/rangos de
+parte de la plantilla, que no casan con la topología PS2). **NO usar como
+entrega**; falta reconstruir los rangos A/B + mesh-refs.
+
+1. Extraer el PS2: `python ports/port_ps2_b3_extract.py <ps2.amb|amo0> <extract.json>`
+   (model-space + skin + labels).
+2. Elegir plantilla HD con **mismo esqueleto (labels) y textura**.
+3. Portar: `python ports/port_b3_windows.py <extract.json> <plantilla.bin> <out.amb>
+   [--fit|--no-grow]` → emite **ventanas 44 B + IB** (mapea huesos por label).
+   `--fit` = cluster-decimate si no cabe; sin `--fit` crece (`grow`, experimental).
+4. Empaquetar: LZX `/N:2048` + pad a `ceil(comp/0x1000)*0x1000` (ver `swap_b3.py`),
+   override en `mods/<mod>/us/data_cmn.afs/<entry>/geom.bin`.
+
+**Modelo del vertex buffer** (ver §3.2): el GPU dibuja una copia verbatim de
+`[vb0, ib)`, N ventanas de 44 B (`pos@0,w@12,bone@16,nrm@20,marker@32,uv@36`) +
+IB (lista, prim=4). Semántica: `pos=inv(world[bone])·model` y
+`nrm=inv(world[bone]).R·model_nrm`, **orden natural**. Herramienta canónica:
+`awo_tools/awg_vertex_buffer.py`.
+⚠️ **NO validado en juego** (2026-09-12): el port renderiza **explotado** pese a
+que la geometría es exacta y llega al GPU (ver `SESION_VIA_B_RENDER_2026-09-12.md`).
 
 ## 8. REFERENCIAS
 

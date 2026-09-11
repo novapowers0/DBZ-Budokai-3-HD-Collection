@@ -25,6 +25,48 @@ VERT_STRIDE = {0xBD:48, 0xFD:48, 0x3D:48, 0xB5:48, 0xB6:48, 0xF5:48,
                0x90:16}
 
 
+def qmat(qx, qy, qz, qw, px, py, pz):
+    x, y, z, w = qx, qy, qz, qw
+    return [[1-2*(y*y+z*z), 2*(x*y-z*w), 2*(x*z+y*w), px],
+            [2*(x*y+z*w), 1-2*(x*x+z*z), 2*(y*z-x*w), py],
+            [2*(x*z-y*w), 2*(y*z+x*w), 1-2*(x*x+y*y), pz],
+            [0, 0, 0, 1]]
+
+
+def mmul(a, b):
+    return [[sum(a[i][k]*b[k][j] for k in range(4)) for j in range(4)]
+            for i in range(4)]
+
+
+def mvec(m, v):
+    return [sum(m[i][k]*v[k] for k in range(4)) for i in range(4)]
+
+
+def compute_worlds(d, amg_abs, n_bones):
+    """Worlds por hueso. El campo +0x40 del eje es el PADRE como offset relativo
+    al AMG (parent = (poff - axes_rel)//80); axes_rel=0x20 en B3 PS2."""
+    axes_rel = le32(d, amg_abs + 0x14)
+    axes = amg_abs + axes_rel
+    loc = []
+    par = []
+    for i in range(n_bones):
+        e = axes + i * 80
+        q = (lef(d, e), lef(d, e+4), lef(d, e+8), lef(d, e+12))
+        p = (lef(d, e+16), lef(d, e+20), lef(d, e+24))
+        poff = le32(d, e + 0x40)
+        pi = (poff - axes_rel)//80 if poff else -1
+        loc.append(qmat(q[0], q[1], q[2], q[3], p[0], p[1], p[2]))
+        par.append(pi)
+    world = [None]*n_bones
+    for i in range(n_bones):
+        pr = par[i]
+        if 0 <= pr < i and world[pr] is not None:
+            world[i] = mmul(world[pr], loc[i])
+        else:
+            world[i] = loc[i]
+    return world, par
+
+
 def detect_base(d):
     """Devuelve el offset base del AMO0: 0x40 si es #AMB, 0 si es #AMO0."""
     if d[:4] == b'#AMB':
@@ -52,9 +94,12 @@ def find_amg0(d, base):
     return base + amg_off, n_amg
 
 
-def parse_parts(d, amg_abs):
+def parse_parts(d, amg_abs, worlds=None):
     """Devuelve (parts, all_verts_set) por mesh part del AMG0.
-    part = {bone, tex, shader, vtype, verts:[(oa,x,y,z,nx,ny,nz,u,v)], tris:[(a,b,c)]}"""
+    part = {bone, tex, shader, vtype, verts:[(oa,x,y,z,nx,ny,nz,u,v)], tris:[(a,b,c)]}
+    Los vertices se llevan a MODEL-SPACE aplicando el world del hueso del part:
+    el cuerpo (hueso 0) ya es model-space (identidad); las partes 'L00' (manos,
+    cara, dientes, cola) van en espacio LOCAL del hueso y hay que transformarlas."""
     bone_am = le32(d, amg_abs + 0x10)
     axes_loc = le32(d, amg_abs + 0x14)
     parts = []
@@ -72,6 +117,7 @@ def parse_parts(d, amg_abs):
         mp_amnt = le32(d, mg)
         if mp_amnt == 0 or mp_amnt > 64:
             continue
+        W = worlds[bi] if (worlds and bi < len(worlds)) else None
         part_offs = [le32(d, mg + 16 + i * 4) for i in range(mp_amnt)]
         for rel in part_offs:
             po = mg + rel
@@ -107,6 +153,12 @@ def parse_parts(d, amg_abs):
                     else:
                         nx, ny, nz = 0.0, 0.0, 0.0
                         tu, tv = 0.0, 0.0
+                    if W is not None:
+                        mv = mvec(W, [vx, vy, vz, 1.0])
+                        vx, vy, vz = mv[0], mv[1], mv[2]
+                        if nx or ny or nz:
+                            mn = mvec(W, [nx, ny, nz, 0.0])
+                            nx, ny, nz = mn[0], mn[1], mn[2]
                     verts.append([oa, vx, vy, vz, nx, ny, nz, tu, tv])
                     all_verts.add(oa)
                 if facetype == 1:      # triangle strip (winding alternado)
@@ -210,14 +262,17 @@ def main():
     base = detect_base(d)
     amg_abs, n_amg = find_amg0(d, base)
     n_bones = le32(d, amg_abs + 0x10)
-    parts, all_verts = parse_parts(d, amg_abs)
+    worlds, parents = compute_worlds(d, amg_abs, n_bones)
+    parts, all_verts = parse_parts(d, amg_abs, worlds)
     skin = extract_skin(d, amg_abs, all_verts)
     axes = extract_axes(d, amg_abs, n_bones)
     labels = extract_labels(d, amg_abs, n_bones)
     print('PS2: base=0x%X AMG0=0x%X n_bones=%d parts=%d verts=%d skinned=%d' %
           (base, amg_abs, n_bones, len(parts), len(all_verts), len(skin)))
     json.dump({'base': base, 'amg0_abs': amg_abs, 'n_bones': n_bones,
-               'labels': labels, 'axes': axes, 'skin': skin, 'parts': parts},
+               'labels': labels, 'axes': axes, 'skin': skin, 'parts': parts,
+               'parents': parents,
+               'worlds': [[round(v, 6) for row in w for v in row] for w in worlds]},
               open(sys.argv[2], 'w'))
     print('guardado:', sys.argv[2])
 

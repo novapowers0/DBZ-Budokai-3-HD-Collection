@@ -2,6 +2,13 @@
 # -*- coding: utf-8 -*-
 """port_ps2_b3_geometry.py - Paso 2 del pipeline port PS2 -> B3 HD.
 
+⚠️ SUPERADO (2026-09-11): el GPU NO dibuja con "descriptores A/B + sec34/vb2
+separados". El vertex buffer real son VENTANAS de 44 B autocontenidas
+([pos.xyz,w,bone,nrm.xyz,FFFFFFFF,uv]) + IB, en una region contigua [vb0,ib).
+Reconstruir sobre `awo_tools/awg_vertex_buffer.py`. Ver
+`docs/07_ports/SESION_GPU_DRAW_2026-09-11.md` §8. Se conserva como referencia
+de la conversion PS2 (coords -> bone-local, clasificacion por part).
+
 Convierte la geometria PS2 (coords locales + bone via rig) a los buffers HD
 (formato A, el validado en juego con sw_goten_nativo / sw_vegeta424 C):
   - sec34 (stride 44, skinned): [0xFFFFFFFF, u, v, z, x, y, peso, BONE, nz,-ny,nx]

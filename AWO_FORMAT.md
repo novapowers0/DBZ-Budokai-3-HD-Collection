@@ -34,7 +34,7 @@ Convertir un modelo PS2→360 requiere:
 2. Reescribir cada campo u32/u16 como big-endian
 3. Renombrar magic: `#AMO0`→`#AWO`, `#AMG`→`#AWG`, `#AMT`→`#AZT`
 4. Convertir el layout interno (bloques secuenciales → tabla de offsets)
-5. Recomprimir con `xbcompress /N:32`
+5. Recomprimir con `xbcompress /N:2048`
 
 ---
 
@@ -88,9 +88,9 @@ offset 16: registros de 32 bytes fijos (nombre null-padded), count × 32
 
 - Herramientas: `xbcompress.exe` / `xbdecompress.exe` (XDK 2.0.7645.0)
   en `mod center\Xbox 360 Compression - Decompression tool...\`.
-- **El juego usa `/N:32`** (native blocks de 32KB) → magic `0F F5 12 EE 01 03 00 00`.
+- **El juego usa `/N:2048`** (native blocks de 2048) → magic `0F F5 12 EE 01 03 00 00`.
 - `/Z:32` produce `0F F5 12 ED` (transparent segments) — NO es lo que usa el juego.
-- Sintaxis: `xbcompress /N:32 <src> <dst>` y `xbdecompress <src> <dst>`.
+- Sintaxis: `xbcompress /N:2048 <src> <dst>` y `xbdecompress <src> <dst>`.
 - Round-trip verificado: descomprimir→comprimir reproduce el bin exacto.
 
 ### 2.4 Sistema de mods del recomp (runtime)
@@ -295,7 +295,7 @@ Comparación directa del MISMO bin (327 = Krillin) en GH PS2 y HD 360:
 
 | Propiedad | PS2 GH (bin 327) | HD 360 (bin 327) |
 |-----------|------------------|-------------------|
-| Compresión | ninguna | LZX `/N:32` |
+| Compresión | ninguna | LZX `/N:2048` |
 | Endianness | little-endian | big-endian |
 | Magic modelo | `#AMO0` | `#AWO` |
 | Magic mesh | `#AMG` (18, secuenciales) | `#AWG` (18, vía tabla de offsets) |
@@ -340,7 +340,7 @@ Cada #AWG (header 0x40, big-endian):
 2. Convertir cada campo u32/u16 a big-endian
 3. Renombrar magics (#AMO0→#AWO, #AMG→#AWG, #AMT→#AZT)
 4. Reconstruir el layout: tabla de offsets AMG + ajustar punteros relativos
-5. Recomprimir con `xbcompress /N:32` y empaquetar en el AFS
+5. Recomprimir con `xbcompress /N:2048` y empaquetar en el AFS
 6. Validar comparando el render del personaje base convertido vs original
 
 ---

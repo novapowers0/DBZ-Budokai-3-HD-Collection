@@ -163,14 +163,6 @@ void ModPipeline::RunAsync(const std::filesystem::path& script,
     }
   }
 
-  // Diagnostico temporal: volcar el comando a un log para depurar el error de
-  // "sintaxis de la etiqueta del volumen".
-  {
-    std::ofstream dbg(rex::filesystem::GetExecutableFolder() / "pipeline_cmd.log",
-                      std::ios::app);
-    dbg << "CMD: " << cmd << "\n";
-  }
-
   worker_ = std::thread([this, cmd]() {
 #if REX_PLATFORM_WIN32
     // Usamos CreateProcess en vez de _popen: _popen pasa el comando a
@@ -246,6 +238,12 @@ void ModPipeline::RunAsync(const std::filesystem::path& script,
 void ModPipeline::SwapB3ToB3(const B3Char& src, const B3Char& dst) {
   if (src.bin == 0 || dst.bin == 0) {
     AppendOutput("ERROR: el personaje origen/destino no tiene bin asignado.\n");
+    return;
+  }
+  if (src.bin == dst.bin) {
+    AppendOutput(
+        "ERROR: el origen y el destino son el mismo personaje (bin " +
+        std::to_string(src.bin) + "). Elige dos distintos.\n");
     return;
   }
   const std::string mod = "swap_" + std::to_string(src.bin) + "_on_" +

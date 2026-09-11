@@ -2,6 +2,11 @@
 # -*- coding: utf-8 -*-
 """port_ps2_b3_draw.py - Paso 3 del pipeline port PS2 -> B3 HD.
 
+⚠️ SUPERADO (2026-09-11): los descriptores A/B NO gobiernan el dibujo (T6). El
+GPU dibuja por el IB sobre VENTANAS de 44 B autocontenidas. Reconstruir sobre
+`awo_tools/awg_vertex_buffer.py`. Ver
+`docs/07_ports/SESION_GPU_DRAW_2026-09-11.md` §8.
+
 Convierte los GRUPOS de port_ps2_b3_geometry.py (rango A=vertices en el pool,
 rango B=segmento del IB) en la ESTRUCTURA DE DIBUJO HD:
 

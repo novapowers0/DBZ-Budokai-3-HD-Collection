@@ -48,6 +48,78 @@ void PushSectionHeader(const char* title) {
   ImGui::Spacing();
 }
 
+// Case-insensitive ASCII substring test, used by the search boxes in the Mods
+// and Model Swap tabs. Empty needle matches everything.
+bool IContains(const std::string& hay, const std::string& needle) {
+  if (needle.empty()) return true;
+  auto lower = [](char c) {
+    return static_cast<char>(c >= 'A' && c <= 'Z' ? c + ('a' - 'A') : c);
+  };
+  const size_t n = needle.size();
+  if (hay.size() < n) return false;
+  for (size_t i = 0; i + n <= hay.size(); ++i) {
+    size_t j = 0;
+    while (j < n && lower(hay[i + j]) == lower(needle[j])) ++j;
+    if (j == n) return true;
+  }
+  return false;
+}
+
+// Searchable character combo shared by the Model Swap and Textures tabs. The
+// popup holds a filter box so the 180+ entry catalog is usable; each row shows
+// the bin and a [NO JUGABLE] tag when the slot is not playable.
+bool CharacterCombo(const char* id, const char* filter_id,
+                    const std::vector<B3Char>& chars, int& index,
+                    char* search_buf, size_t search_size) {
+  // Keep the preview string alive for the whole combo draw (DisplayName()
+  // returns a temporary; its c_str() must not outlive this statement).
+  std::string preview = (index >= 0 && index < static_cast<int>(chars.size()))
+                            ? chars[index].DisplayName()
+                            : std::string(i18n::T("Selecciona...", "Select..."));
+  if (!ImGui::BeginCombo(id, preview.c_str())) {
+    return false;
+  }
+  ImGui::SetNextItemWidth(-1.0f);
+  ImGui::InputTextWithHint(filter_id, i18n::T("Filtrar...", "Filter..."),
+                           search_buf, search_size);
+  const std::string q = search_buf;
+  int shown = 0;
+  bool changed = false;
+  for (int i = 0; i < static_cast<int>(chars.size()); ++i) {
+    const std::string dn = chars[i].DisplayName();
+    if (!IContains(dn, q)) continue;
+    ++shown;
+    std::string label = dn + "  [bin " + std::to_string(chars[i].bin) + "]";
+    if (!chars[i].playable) {
+      label += i18n::T("  [NO JUGABLE]", "  [NOT PLAYABLE]");
+    }
+    const bool selected = (index == i);
+    if (ImGui::Selectable(label.c_str(), selected)) {
+      index = i;
+      changed = true;
+    }
+    if (selected) ImGui::SetItemDefaultFocus();
+  }
+  if (shown == 0) {
+    ImGui::TextDisabled("%s", i18n::T("Sin resultados.", "No results."));
+  }
+  ImGui::EndCombo();
+  return changed;
+}
+
+// Small colored "pill" badge (type / ON-OFF). Drawn as a filled rounded label.
+void DrawBadge(const char* text, ImVec4 col) {
+  const ImVec2 pad(8.0f, 2.0f);
+  const ImVec2 ts = ImGui::CalcTextSize(text);
+  const ImVec2 p = ImGui::GetCursorScreenPos();
+  ImDrawList* dl = ImGui::GetWindowDrawList();
+  const ImVec2 p1(p.x + ts.x + pad.x * 2.0f, p.y + ts.y + pad.y * 2.0f);
+  dl->AddRectFilled(p, p1, ImGui::GetColorU32(col), 4.0f);
+  dl->AddRect(p, p1, ImGui::GetColorU32(ImVec4(col.x, col.y, col.z, 0.55f)), 4.0f);
+  dl->AddText(ImVec2(p.x + pad.x, p.y + pad.y), ImGui::GetColorU32(ImVec4(1, 1, 1, 0.95f)), text);
+  ImGui::Dummy(ImVec2(ts.x + pad.x * 2.0f, ts.y + pad.y * 2.0f));
+}
+
 // Edits a MnK keybind cvar with an ImGui text input. The cvar holds a
 // comma-separated list of VirtualKey names (e.g. "Space,W" or "Shift+Up");
 // empty means unbound.
@@ -985,12 +1057,33 @@ void LauncherDialog::DrawUpscaleTab() {
         "Ideal con una escala interna baja (1x) en pantallas 1080p o superiores.",
         "FSR upscales the internal render to the display size.\n"
         "Best paired with a low internal scale (1x) on a 1080p+ display."));
+    ImGui::Spacing();
+    double sharp = dbz3::settings::FsrSharpness();
+    ImGui::SetNextItemWidth(260);
+    if (SliderD(i18n::T("Nitidez RCAS", "RCAS sharpness"), &sharp, 0.0, 2.0, "%.2f")) {
+      dbz3::settings::SetFsrSharpness(sharp);
+      dbz3::settings::SaveUserSettings();
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled(i18n::T("0 = mas suave, 2 = mas nitido",
+                                "0 = softer, 2 = sharper"));
   } else if (dbz3::settings::PresentEffect() == "cas") {
     ImGui::TextWrapped(i18n::T(
         "CAS aplica nitidez adaptativa al contraste despues del escalado.\n"
         "Muy bueno con una escala interna alta (2x-3x).",
         "CAS applies contrast-adaptive sharpening after scaling.\n"
         "Great with a high internal scale (2x-3x)."));
+    ImGui::Spacing();
+    double sharp = dbz3::settings::CasSharpness();
+    ImGui::SetNextItemWidth(260);
+    if (SliderD(i18n::T("Nitidez adicional", "Additional sharpness"), &sharp, 0.0,
+                1.0, "%.2f")) {
+      dbz3::settings::SetCasSharpness(sharp);
+      dbz3::settings::SaveUserSettings();
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled(i18n::T("0 = solo CAS, 1 = maxima nitidez",
+                                "0 = CAS only, 1 = max sharpness"));
   } else {
     ImGui::TextWrapped(i18n::T("Escalado bilineal, el camino mas simple. Sin nitidez.",
                                "Bilinear upscaling - the simplest path. No sharpening."));
@@ -1158,13 +1251,79 @@ void LauncherDialog::DrawInputTab() {
 void LauncherDialog::DrawModsTab() {
   ImGui::BeginChild("##mods_settings", ImVec2(0, -kFooterHeight), true);
 
-  ImGui::TextWrapped(i18n::T(
-      "Los mods sobrescriben entradas dentro de los contenedores .afs del juego "
-      "(modelos, movesets, texturas) sin reempaquetar. Un mod es una carpeta aqui:",
-      "Mods override entries inside the game's .afs containers (models, move "
-      "sets, textures) without repacking. A mod is a folder here:"));
-  ImGui::TextDisabled("mods/<name>/<region>/<file.afs>  (+ manifest.txt)");
+  // Cached mod list: rebuilt lazily (first draw, after toggles/installs/edits,
+  // or via the Refresh button) so we don't recurse the whole mods folder every
+  // single frame.
+  if (!mods_loaded_) {
+    mods_cache_ = dbz3::ListMods();
+    mods_loaded_ = true;
+  }
+
+  ImGui::SeparatorText(i18n::T("Centro de mods", "Mod center"));
+  ImGui::TextDisabled(i18n::T(
+      "Sobrescriben entradas dentro de los .afs del juego (modelos, movesets, "
+      "texturas) sin reempaquetar. Cada mod es una carpeta en 'mods/'.",
+      "Override entries inside the game's .afs containers (models, move sets, "
+      "textures) without repacking. Each mod is a folder under 'mods/'."));
+
+  // ISO mode: the per-entry AFS override hooks resolve to host files on the
+  // extracted folder, so mods are NOT applied when playing straight from a
+  // .iso. Warn prominently instead of silently ignoring every mod.
+  if (dbz3::settings::IsIsoMode()) {
+    ImGui::Spacing();
+    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.72f, 0.30f, 1.0f));
+    ImGui::TextWrapped(i18n::T(
+        "Aviso: estas en modo disco (ISO). Los mods NO se aplican al jugar "
+        "directamente del .iso. Para usarlos, elige 'Carpeta extraida' como "
+        "origen de los datos (en el selector de origen).",
+        "Warning: you are in disc mode (ISO). Mods are NOT applied when playing "
+        "straight from the .iso. To use them, pick 'Extracted folder' as the "
+        "data source (in the source selector)."));
+    ImGui::PopStyleColor();
+  }
   ImGui::Separator();
+
+  // --- Search + bulk actions toolbar ---------------------------------------
+  {
+    ImGui::SetNextItemWidth(280);
+    ImGui::InputTextWithHint("##mods_search",
+                             i18n::T("Buscar por nombre, autor, origen...",
+                                     "Search by name, author, source..."),
+                             mods_search_buf_, sizeof(mods_search_buf_));
+    ImGui::SameLine();
+    if (ImGui::Button(i18n::T("Activar todos", "Enable all"), ImVec2(0, 0))) {
+      for (const dbz3::ModInfo& m : mods_cache_) {
+        if (!m.enabled) dbz3::SetModEnabled(m.name, true);
+      }
+      mods_loaded_ = false;
+      mods_status_ =
+          std::string(i18n::T("Todos los mods activados.", "All mods enabled."));
+    }
+    ImGui::SameLine();
+    if (ImGui::Button(i18n::T("Desactivar todos", "Disable all"), ImVec2(0, 0))) {
+      for (const dbz3::ModInfo& m : mods_cache_) {
+        if (m.enabled) dbz3::SetModEnabled(m.name, false);
+      }
+      mods_loaded_ = false;
+      mods_status_ = std::string(i18n::T("Todos los mods desactivados (vanilla).",
+                                         "All mods disabled (vanilla)."));
+    }
+    ImGui::SameLine();
+    if (ImGui::Button(i18n::T("Refrescar", "Refresh"), ImVec2(0, 0))) {
+      mods_loaded_ = false;
+      mods_status_ =
+          std::string(i18n::T("Lista de mods actualizada.", "Mod list refreshed."));
+    }
+    ImGui::SameLine();
+    if (ImGui::Button(i18n::T("Abrir carpeta", "Open folder"), ImVec2(0, 0))) {
+      const std::filesystem::path mods_dir = dbz3::ModsRoot();
+      std::error_code ec;
+      std::filesystem::create_directories(mods_dir, ec);
+      std::string cmd = "explorer \"" + mods_dir.string() + "\"";
+      std::system(cmd.c_str());
+    }
+    ImGui::Spacing();
+  }
 
   // --- Mods center: profiles + install from .zip ---------------------------
   {
@@ -1191,6 +1350,7 @@ void LauncherDialog::DrawModsTab() {
         if (cur != "vanilla") {
           dbz3::ApplyProfile("vanilla");
           dbz3::settings::SetModProfile("vanilla");
+          mods_loaded_ = false;
           mods_status_ = std::string(i18n::T(
               "Perfil 'vanilla' aplicado (todos los mods desactivados)",
               "Profile 'vanilla' applied (all mods disabled)"));
@@ -1200,6 +1360,7 @@ void LauncherDialog::DrawModsTab() {
         if (ImGui::Selectable(p.c_str(), cur == p)) {
           dbz3::ApplyProfile(p);
           dbz3::settings::SetModProfile(p);
+          mods_loaded_ = false;
           mods_status_ =
               std::string(i18n::T("Perfil aplicado: ", "Profile applied: ")) + p;
         }
@@ -1223,6 +1384,7 @@ void LauncherDialog::DrawModsTab() {
       if (ImGui::Button(i18n::T("Borrar perfil", "Delete profile"), ImVec2(0, 0))) {
         dbz3::DeleteProfile(cur);
         dbz3::settings::SetModProfile("vanilla");
+        mods_loaded_ = false;
         mods_status_ =
             std::string(i18n::T("Perfil borrado: ", "Profile deleted: ")) + cur;
       }
@@ -1241,6 +1403,7 @@ void LauncherDialog::DrawModsTab() {
         if (dbz3::InstallModFromZip(picked, modname, err)) {
           mods_status_ =
               std::string(i18n::T("Mod instalado: ", "Mod installed: ")) + modname;
+          mods_loaded_ = false;
         } else {
           mods_status_ =
               std::string(i18n::T("Error al instalar el mod: ",
@@ -1304,8 +1467,20 @@ void LauncherDialog::DrawModsTab() {
   }
   ImGui::Separator();
 
-  const std::vector<dbz3::ModInfo> mods = dbz3::ListMods();
-  if (mods.empty()) {
+  // Apply the search filter over the cached list.
+  std::vector<dbz3::ModInfo> mods;
+  {
+    const std::string query = mods_search_buf_;
+    for (const dbz3::ModInfo& m : mods_cache_) {
+      if (IContains(m.name, query) || IContains(m.display_name, query) ||
+          IContains(m.description, query) || IContains(m.author, query) ||
+          IContains(m.source, query) || IContains(m.target, query) ||
+          IContains(dbz3::ModTypeLabel(m.type), query)) {
+        mods.push_back(m);
+      }
+    }
+  }
+  if (mods_cache_.empty()) {
     ImGui::TextWrapped(i18n::T(
         "No hay mods instalados. Los mods se colocan en la "
         "carpeta 'mods' junto al ejecutable, cada uno en su "
@@ -1329,6 +1504,7 @@ void LauncherDialog::DrawModsTab() {
         if (dbz3::InstallModFromZip(picked, modname, err)) {
           mods_status_ =
               std::string(i18n::T("Mod instalado: ", "Mod installed: ")) + modname;
+          mods_loaded_ = false;
         } else {
           mods_status_ =
               std::string(i18n::T("Error al instalar el mod: ",
@@ -1346,18 +1522,26 @@ void LauncherDialog::DrawModsTab() {
     return;
   }
 
+  if (mods.empty()) {
+    ImGui::TextDisabled(i18n::T("Ningun mod coincide con la busqueda.",
+                                "No mod matches the search."));
+    ImGui::EndChild();
+    return;
+  }
+
   int enabled_count = 0;
   for (const dbz3::ModInfo& mod : mods) {
     if (mod.enabled) ++enabled_count;
   }
-ImGui::TextColored(ImVec4(0.80f, 0.80f, 0.80f, 1.0f),
+  ImGui::TextColored(ImVec4(0.80f, 0.80f, 0.80f, 1.0f),
                      i18n::T("%d mods (%d activados)", "%d mods (%d enabled)"),
                      static_cast<int>(mods.size()), enabled_count);
   ImGui::Separator();
 
   const float table_w = ImGui::GetContentRegionAvail().x;
   if (ImGui::BeginTable("##mods_table", 4,
-                        ImGuiTableFlags_BordersInnerV |
+                        ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_RowBg |
+                            ImGuiTableFlags_PadOuterX |
                             ImGuiTableFlags_NoHostExtendX)) {
     ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 28.0f);
     ImGui::TableSetupColumn(i18n::T("Mod", "Mod"), ImGuiTableColumnFlags_WidthStretch);
@@ -1376,6 +1560,7 @@ ImGui::TextColored(ImVec4(0.80f, 0.80f, 0.80f, 1.0f),
                            (row_h - ImGui::GetFrameHeight()) * 0.5f);
       if (ImGui::Checkbox(("##mod_" + mod.name).c_str(), &current)) {
         dbz3::SetModEnabled(mod.name, current);
+        mods_loaded_ = false;
       }
 
       ImGui::TableSetColumnIndex(1);
@@ -1405,7 +1590,7 @@ ImGui::TextDisabled(i18n::T("%d archivo%s", "%d file%s"), mod.file_count,
                       : ImVec4(((type_col >> 16) & 0xFF) / 255.0f,
                                ((type_col >> 8) & 0xFF) / 255.0f,
                                (type_col & 0xFF) / 255.0f, 1.0f);
-      ImGui::TextColored(tc, "%s", dbz3::ModTypeLabel(mod.type));
+      DrawBadge(dbz3::ModTypeLabel(mod.type), tc);
       if (mod.enabled) {
         ImGui::SameLine();
         ImGui::TextColored(ImVec4(0.35f, 0.85f, 0.35f, 1.0f), "ON");
@@ -1488,6 +1673,7 @@ ImGui::TextDisabled(i18n::T("%d archivo%s", "%d file%s"), mod.file_count,
       dbz3::SetModManifestValue(edit_mod_name_, "version", edit_version_buf_);
       editing_mod_ = false;
       pending_manifest_reload_ = true;
+      mods_loaded_ = false;
     }
     ImGui::SameLine();
     if (ImGui::Button(i18n::T("Cancelar", "Cancel"), ImVec2(120, 0))) {
@@ -1511,6 +1697,19 @@ void LauncherDialog::DrawModelSwapTab() {
       "B3 por el de otro (swap nativo). Genera el mod y lo activa.",
       "Swaps the full #AMB bin of one B3 HD character for another (native "
       "swap). Generates the mod and activates it."));
+
+  const bool iso = dbz3::settings::IsIsoMode();
+  if (iso) {
+    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.72f, 0.30f, 1.0f));
+    ImGui::TextWrapped(i18n::T(
+        "Estas en modo disco (ISO): el mod generado NO se aplicara mientras "
+        "juegues directamente del .iso. Elige 'Carpeta extraida' como origen "
+        "de datos para poder usarlo.",
+        "You are in disc mode (ISO): the generated mod will NOT apply while you "
+        "play straight from the .iso. Pick 'Extracted folder' as the data "
+        "source to use it."));
+    ImGui::PopStyleColor();
+  }
 
   // Lazy-load the B3 catalog once (first draw).
   if (!catalog_load_attempted_) {
@@ -1585,18 +1784,8 @@ void LauncherDialog::DrawModelSwapTab() {
   ImGui::Text(i18n::T("Personaje HD (origen)", "HD character (source)"));
   ImGui::SameLine();
   ImGui::SetNextItemWidth(340);
-  if (ImGui::BeginCombo("##swap_src", pipeline_src_idx_ >= 0
-                            ? chars[pipeline_src_idx_].DisplayName().c_str()
-                            : i18n::T("Selecciona...", "Select..."))) {
-    for (int i = 0; i < (int)chars.size(); ++i) {
-      const bool selected = (pipeline_src_idx_ == i);
-      if (ImGui::Selectable(chars[i].DisplayName().c_str(), selected)) {
-        pipeline_src_idx_ = i;
-      }
-      if (selected) ImGui::SetItemDefaultFocus();
-    }
-    ImGui::EndCombo();
-  }
+  CharacterCombo("##swap_src", "##swap_src_filter", chars, pipeline_src_idx_,
+                 swap_src_search_buf_, sizeof(swap_src_search_buf_));
   ImGui::SameLine();
   ImGui::TextDisabled("(%d %s)", static_cast<int>(chars.size()),
                       i18n::T("personajes", "characters"));
@@ -1604,37 +1793,52 @@ void LauncherDialog::DrawModelSwapTab() {
   ImGui::Text(i18n::T("Slot destino", "Destination slot"));
   ImGui::SameLine();
   ImGui::SetNextItemWidth(340);
-  if (ImGui::BeginCombo("##swap_dst", pipeline_dst_idx_ >= 0
-                            ? chars[pipeline_dst_idx_].DisplayName().c_str()
-                            : i18n::T("Selecciona...", "Select..."))) {
-    for (int i = 0; i < (int)chars.size(); ++i) {
-      const bool selected = (pipeline_dst_idx_ == i);
-      if (ImGui::Selectable(chars[i].DisplayName().c_str(), selected)) {
-        pipeline_dst_idx_ = i;
-      }
-      if (selected) ImGui::SetItemDefaultFocus();
-    }
-    ImGui::EndCombo();
-  }
+  CharacterCombo("##swap_dst", "##swap_dst_filter", chars, pipeline_dst_idx_,
+                 swap_dst_search_buf_, sizeof(swap_dst_search_buf_));
   ImGui::SameLine();
   ImGui::TextDisabled("(%d %s)", static_cast<int>(chars.size()),
                       i18n::T("personajes", "characters"));
 
-  const bool can_swap = pipeline_src_idx_ >= 0 && pipeline_dst_idx_ >= 0;
+  const bool same_pair =
+      pipeline_src_idx_ >= 0 && pipeline_src_idx_ == pipeline_dst_idx_;
+  const bool can_swap = pipeline_src_idx_ >= 0 && pipeline_dst_idx_ >= 0 &&
+                        !same_pair && !iso;
   ImGui::BeginDisabled(!can_swap || mod_pipeline_.IsRunning());
   if (ImGui::Button(i18n::T("Cambiar B3 -> B3", "Swap B3 -> B3"), ImVec2(220, 0))) {
     mod_pipeline_.SwapB3ToB3(chars[pipeline_src_idx_],
                              chars[pipeline_dst_idx_]);
   }
   ImGui::EndDisabled();
-  if (can_swap) {
+  if (same_pair) {
+    ImGui::SameLine();
+    ImGui::TextColored(ImVec4(1.0f, 0.72f, 0.30f, 1.0f), "%s",
+                       i18n::T("Origen y destino son el mismo personaje.",
+                               "Source and destination are the same character."));
+  }
+
+  if (pipeline_src_idx_ >= 0 && pipeline_dst_idx_ >= 0) {
     const B3Char& src = chars[pipeline_src_idx_];
     const B3Char& dst = chars[pipeline_dst_idx_];
-    ImGui::TextDisabled("%s (bin %d)%s -> %s (slot %d)%s",
-                        src.DisplayName().c_str(), src.bin,
-                        src.playable ? "" : i18n::T("  [NO JUGABLE]", "  [NOT PLAYABLE]"),
-                        dst.DisplayName().c_str(), dst.bin,
-                        dst.playable ? "" : i18n::T("  [NO JUGABLE]", "  [NOT PLAYABLE]"));
+    ImGui::Spacing();
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.13f, 0.14f, 0.17f, 1.0f));
+    ImGui::BeginChild("##swap_preview", ImVec2(0, 108.0f), true);
+    ImGui::TextColored(kDragonOrange, "%s", i18n::T("Vista previa", "Preview"));
+    ImGui::Text(i18n::T("Origen:  %s", "Source:  %s"), src.DisplayName().c_str());
+    if (!src.playable) {
+      ImGui::SameLine();
+      ImGui::TextColored(ImVec4(1.0f, 0.72f, 0.30f, 1.0f), "%s",
+                         i18n::T("(no jugable)", "(not playable)"));
+    }
+    ImGui::TextDisabled("bin %d", src.bin);
+    ImGui::Text(i18n::T("Destino: %s", "Target: %s"), dst.DisplayName().c_str());
+    if (!dst.playable) {
+      ImGui::SameLine();
+      ImGui::TextColored(ImVec4(1.0f, 0.72f, 0.30f, 1.0f), "%s",
+                         i18n::T("(no jugable)", "(not playable)"));
+    }
+    ImGui::TextDisabled("slot %d", dst.bin);
+    ImGui::EndChild();
+    ImGui::PopStyleColor();
   }
 
   ImGui::Separator();
@@ -1652,8 +1856,11 @@ void LauncherDialog::DrawModelSwapTab() {
                               sizeof(output_buf_), ImVec2(-1.0f, 160.0f),
                               ImGuiInputTextFlags_ReadOnly);
   }
-  ImGui::TextDisabled(i18n::T("El mod generado se activa solo y se lista en la pestana Mods.",
-                              "The generated mod activates itself and shows up in the Mods tab."));
+  if (!iso) {
+    ImGui::TextDisabled(i18n::T(
+        "El mod generado se activa solo y se lista en la pestana Mods.",
+        "The generated mod activates itself and shows up in the Mods tab."));
+  }
 
   ImGui::EndChild();
 }
@@ -1704,20 +1911,8 @@ void LauncherDialog::DrawTexturesTab() {
   ImGui::Text(i18n::T("Personaje (origen de las texturas)", "Character (texture source)"));
   ImGui::SameLine();
   ImGui::SetNextItemWidth(340);
-  if (ImGui::BeginCombo("##tex_src", tex_src_idx_ >= 0
-                          ? chars[tex_src_idx_].DisplayName().c_str()
-                          : i18n::T("Selecciona...", "Select..."))) {
-    for (int i = 0; i < (int)chars.size(); ++i) {
-      const bool selected = (tex_src_idx_ == i);
-      const std::string label =
-          chars[i].DisplayName() + "  [bin " + std::to_string(chars[i].bin) + "]";
-      if (ImGui::Selectable(label.c_str(), selected)) {
-        tex_src_idx_ = i;
-      }
-      if (selected) ImGui::SetItemDefaultFocus();
-    }
-    ImGui::EndCombo();
-  }
+  CharacterCombo("##tex_src", "##tex_src_filter", chars, tex_src_idx_,
+                 tex_search_buf_, sizeof(tex_search_buf_));
   ImGui::SameLine();
   ImGui::TextDisabled("(%d %s)", static_cast<int>(chars.size()),
                       i18n::T("personajes", "characters"));

@@ -46,8 +46,7 @@ def qm(qx, qy, qz, qw, px, py, pz):
 
 def world_mats(t, awo):
     AWG0 = awo + be32(t, awo + be32(t, awo + 0x1C))
-    mg = AWG0 + be32(t, AWG0 + 0x20)
-    axes_base = mg + 0x6E0
+    axes_base = AWG0 + be32(t, AWG0 + 0x14)
     nb = be32(t, AWG0 + 0x10)
     axes = []
     for i in range(nb):
@@ -66,17 +65,25 @@ def world_mats(t, awo):
 
 
 def build_surface(extract):
-    """Devuelve (T, N): triangulos (T,3,3) y sus normales de vertice (T,3,3),
+    """Devuelve (T, N, TB): triangulos (T,3,3), normales de vertice (T,3,3) y
+    hueso primario (TB,) de cada triangulo (via skin, fallback al hueso del part),
     en model-space."""
+    skin = extract.get('skin', {})
     tris = []
     nrm = []
+    tb = []
     for p in extract['parts']:
         V = [np.array(v[1:4], dtype=np.float64) for v in p['verts']]
         NV = [np.array(v[4:7], dtype=np.float64) for v in p['verts']]
+        oas = [v[0] for v in p['verts']]
+        pbone = p.get('bone', 0)
         for (a, b, c) in p['tris']:
             tris.append([V[a], V[b], V[c]])
             nrm.append([NV[a], NV[b], NV[c]])
-    return np.array(tris, dtype=np.float64), np.array(nrm, dtype=np.float64)
+            sv = skin.get(str(oas[a])) or skin.get(oas[a])
+            tb.append(int(sv[0]) if sv else pbone)
+    return (np.array(tris, dtype=np.float64), np.array(nrm, dtype=np.float64),
+            np.array(tb, dtype=np.int64))
 
 
 def barycentric(p, a, b, c):
@@ -160,10 +167,48 @@ def npm_surface_mapping(slot_world, T, N, thr):
     return res
 
 
+def npm_boneaware_mapping(slot_world, slot_bone, T, N, TB, thr):
+    """Como npm_surface_mapping pero cada slot solo empareja con triangulos del
+    MISMO hueso (HD bone index == PS2 bone index, labels identicos). Evita que un
+    slot de mano empareje con torso y viceversa."""
+    bybone = {}
+    for k in range(len(T)):
+        bybone.setdefault(int(TB[k]), []).append(k)
+    cand_first = {b: i for i, b in enumerate(bybone)}
+    res = []
+    hits = 0
+    for w, B in zip(slot_world, slot_bone):
+        cand = bybone.get(int(B))
+        if not cand:
+            res.append(None)
+            continue
+        idx = np.array(cand, dtype=np.int64)
+        Tc = T[idx]
+        cp = closest_point_triangles(np.asarray(w, np.float64), Tc)
+        d2 = ((cp - w)**2).sum(axis=1)
+        k = int(np.argmin(d2))
+        d = float(np.sqrt(d2[k]))
+        if d > thr:
+            res.append(None)
+        else:
+            na, nb, nc = N[idx[k], 0], N[idx[k], 1], N[idx[k], 2]
+            a, b, c = Tc[k, 0], Tc[k, 1], Tc[k, 2]
+            u, v, ww = barycentric(cp[k], a, b, c)
+            n = u*na + v*nb + ww*nc
+            ln = np.linalg.norm(n)
+            n = n/ln if ln > 1e-12 else np.array([0.0, 0.0, 1.0])
+            res.append((cp[k], n, d))
+            hits += 1
+    return res
+
+
 def main():
     npm = '--npm' in sys.argv
     if npm:
         sys.argv.remove('--npm')
+    bone_aware = '--bone-aware' in sys.argv
+    if bone_aware:
+        sys.argv.remove('--bone-aware')
     bone_thr = {}
     if '--bone-thr' in sys.argv:
         k = sys.argv.index('--bone-thr')
@@ -176,8 +221,11 @@ def main():
         k = sys.argv.index('--soft')
         soft = (float(sys.argv[k+1]), float(sys.argv[k+2]))
         del sys.argv[k:k+3]
+    normal_only = '--normal-only' in sys.argv
+    if normal_only:
+        sys.argv.remove('--normal-only')
     if len(sys.argv) < 5:
-        print('Uso: port_ps2_b3_inject.py <plantilla.bin> <geometry.json> <umbral> <salida.amb> [--npm] [--soft lo hi] [--bone-thr B:THR,B:THR...]')
+        print('Uso: port_ps2_b3_inject.py <plantilla.bin> <geometry.json> <umbral> <salida.amb> [--npm] [--bone-aware] [--soft lo hi] [--bone-thr B:THR,B:THR...]')
         return
     templ = bytearray(open(sys.argv[1], 'rb').read())
     thr = float(sys.argv[3])
@@ -192,18 +240,24 @@ def main():
 
     # World de cada slot del template (hueso del slot).
     slot_world = []
+    slot_bone = []
     for i in range(n_slots):
         o = sec_real + i*44
         bone = be32(templ, o + 28)
         z, x, y = be_f(templ, o+12), be_f(templ, o+16), be_f(templ, o+20)
         slot_world.append(world[bone].dot(np.array([x, y, z, 1.0]))[:3])
+        slot_bone.append(bone)
 
     if npm:
-        T, N = build_surface(json.load(open(sys.argv[2])))
-        print('NPM: %d triangulos PS2' % len(T))
-        # umbral por hueso: la proyeccion NPM se hace con el umbral MAXIMO global,
+        T, N, TB = build_surface(json.load(open(sys.argv[2])))
+        print('NPM: %d triangulos PS2 %s' % (len(T), '(bone-aware)' if bone_aware else ''))
+        # umbral por hueso: la proyeccion se hace con el umbral MAXIMO global,
         # y el descarte por hueso se decide en el bucle de escritura
-        mapping = npm_surface_mapping(slot_world, T, N, max([thr] + list(bone_thr.values())))
+        maxthr = max([thr] + list(bone_thr.values()))
+        if bone_aware:
+            mapping = npm_boneaware_mapping(slot_world, slot_bone, T, N, TB, maxthr)
+        else:
+            mapping = npm_surface_mapping(slot_world, T, N, maxthr)
     else:
         geom = json.load(open(sys.argv[2]))
         b = bytes.fromhex(geom['sec34'])
@@ -255,9 +309,18 @@ def main():
             if d > th:
                 kept_hd += 1
                 continue
-            hd_local = np.array([be_f(templ, o+12), be_f(templ, o+16), be_f(templ, o+20)])
-            hd_nrm = np.array([be_f(templ, o+32), -be_f(templ, o+36), be_f(templ, o+40)])
-            hd_nrm = hd_nrm/np.linalg.norm(hd_nrm) if np.linalg.norm(hd_nrm) > 1e-12 else hd_nrm
+            if normal_only:
+                # Mueve el slot SOLO a lo largo de su normal HD hasta la
+                # superficie PS2 (evita el deslizamiento tangencial = "derretido").
+                hd_local = np.array([be_f(templ, o+12), be_f(templ, o+16), be_f(templ, o+20)])
+                hd_world = world[bone].dot(np.concatenate([hd_local, [1.0]]))[:3]
+                hn_loc = np.array([be_f(templ, o+40), -be_f(templ, o+36), be_f(templ, o+32)])
+                hn_world = world[bone][:3, :3].dot(hn_loc)
+                ln = np.linalg.norm(hn_world)
+                if ln > 1e-12:
+                    hn_world = hn_world/ln
+                    signed = float((np.asarray(pos) - hd_world) @ hn_world)
+                    pos = hd_world + signed*hn_world
             lc = inv[bone].dot(np.concatenate([pos, [1.0]]))
             f32i(templ, o+12, float(lc[2]))
             f32i(templ, o+16, float(lc[0]))

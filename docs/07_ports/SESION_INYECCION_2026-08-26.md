@@ -228,3 +228,32 @@ Inyección npm4 (umbral 0.8): 1821 inyectados + 840 HD.
 
 **Enlaces**: `docs/07_ports/ESTRUCTURA_DIBUJO_HD.md` (descriptores/mesh-ref/ejes/
 arms), `docs/07_ports/HOJA_DE_RUTA_PORT_PS2_B3.md`, AGENTS §15.
+
+---
+
+## 7. 🔴 ADDENDUM 2026-09-10 — BUG DEL EXTRACTOR PS2 (espacio local de las partes "L00")
+
+**Causa de las deformidades de la inyección** (manos/cara/dientes): el extractor
+PS2 trataba TODOS los vértices como model-space, pero las partes "L00" (manos
+bones 23/30, cara 40, dientes 36/38, cola 43-47) van en **espacio LOCAL del
+hueso** y hay que transformarlas por el world del hueso.
+
+- **Estructura del eje PS2 (80B LE)**: `+0x14` de AMG0 = base de ejes (=**0x20**);
+  `+0x40` = **PADRE** como offset rel AMG → `parent = (poff - 0x20)//80`. (Antes
+  no se leía el padre.)
+- **Comprobación**: mano izq (bone 23) verts locales centroide (1.15,0.09) →
+  transformados por `world[23]` (padre 21 LHANDROT) → **(10.64,6.23)** = mano
+  real. El cuerpo (bone 0, world identidad) ya estaba en model-space.
+- **Fix aplicado** a `port_ps2_b3_extract.py`: `compute_worlds()` (qmat/mmul/mvec)
+  + `parse_parts(..., worlds)` transforma pos y normal por `world[part_bone]`.
+  Añade `parents` + `worlds` al JSON.
+- **Efecto**: NPM umbral 0.8 pasa de **1821→1962 inyectados**; LHAND de 228→373;
+  mediana de distancia 0.43→0.38; alineación por hueso LHAND 12.41→**0.15**,
+  dientes al cráneo. `cell_align_check.py` lo verifica.
+
+⚠️ Con el skin corregido, **el matching bone-aware (`--bone-aware`) vuelve a ser
+viable** (antes fallaba por el bug). Mod de prueba: `mods/cell_npm_fix`
+(`cell_npm_fix08.bin`, extract `cell_extract2.json`).
+
+**Uso**: `port_ps2_b3_extract.py <186.amo> cell_extract2.json` y luego
+`port_ps2_b3_inject.py e147.bin cell_extract2.json 0.8 out.bin --npm`.

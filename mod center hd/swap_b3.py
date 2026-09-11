@@ -15,12 +15,11 @@ ese archivo en lugar de leer la entrada del AFS original -> el mod pesa
 distintas del mismo AFS).
 
 Restricciones (documentadas en AGENTS.md):
-  - El bin comprimido DEBE caber en el slot destino: el guest lee el bin con
-    to_read = ceil(slot / 0x1000) * 0x1000 (p.ej. slot 105296 -> 106496).
-    Con override por entrada NO hay mid-insert: si el bin excede to_read se
-    avisa y se aborta (usar otro slot mas grande o decimar la geometria).
-  - Si el bin es mas corto que to_read se paddea con ceros (igual que
-    texture_b3.py) para que el guest reciba todos los bytes esperados.
+  - El bin comprimido puede superar el to_read del slot: el runtime aplica
+    MID-INSERT VIRTUAL (la entrada crece in-place y las posteriores se desplazan
+    en memoria). El script paddea al to_read virtual = ceil(bin/0x1000)*0x1000.
+    Históricamente el guest lee con to_read = ceil(slot/0x1000)*0x1000; si el bin
+    es mas corto se paddea con ceros (igual que texture_b3.py).
 
 Uso:
   python swap_b3.py --origen <bin_origen> --dest <slot_destino> [--mod <name>]
@@ -203,14 +202,78 @@ def labels_of_amb(amb):
     return lab or None
 
 
+def load_catalog():
+    """Devuelve [(bin:int, nombre, label, variante, jugable)] del catalogo."""
+    cat = os.path.join(HERE, 'catalog_b3.cat')
+    out = []
+    if not os.path.exists(cat):
+        return out
+    for line in open(cat, encoding='utf-8', errors='replace'):
+        line = line.rstrip('\n')
+        if not line.strip() or line.startswith('#'):
+            continue
+        p = line.split('|')
+        if len(p) < 3 or not p[0].strip().isdigit():
+            continue
+        out.append((int(p[0]), p[1], p[2], p[3] if len(p) > 3 else '',
+                    p[4] if len(p) > 4 else ''))
+    return out
+
+
+def resolve_bin(spec, cat):
+    """Acepta '147', 'Cell' o 'Cell:Forma 2'. Devuelve (bin, descripcion)."""
+    if spec is None:
+        return None, None
+    s = str(spec).strip()
+    if s.isdigit():
+        n = int(s)
+        for (b, nom, lab, var, jug) in cat:
+            if b == n:
+                return n, '%s %s' % (nom, var)
+        return n, None
+    # por nombre / 'Nombre:Variante' (case-insensitive)
+    if ':' in s:
+        name, var = [x.strip().lower() for x in s.split(':', 1)]
+    else:
+        name, var = s.lower(), None
+    hits = [c for c in cat
+            if name in c[1].lower() and (var is None or var in c[3].lower())]
+    if var is not None:
+        exact = [c for c in hits if c[3].strip().lower() == var]
+        if len(exact) == 1:
+            hits = exact
+    if len(hits) == 1:
+        b, nom, lab, vv, jug = hits[0]
+        return b, '%s %s' % (nom, vv)
+    if not hits:
+        raise SystemExit("ERROR: no hay bin que coincida con '%s'" % s)
+    print("AMBIGUO '%s':" % s)
+    for (b, nom, lab, vv, jug) in hits[:30]:
+        print("   %-5d %-16s %s" % (b, nom, vv))
+    raise SystemExit("   usa el bin explicito o 'Nombre:Variante'")
+
+
 def main():
     ap = argparse.ArgumentParser(description='Swap nativo B3->B3')
-    ap.add_argument('--origen', type=int, help='bin origen (entrada AFS)')
-    ap.add_argument('--dest', type=int, help='slot destino (entrada AFS)')
+    ap.add_argument('--origen', help='bin origen (numero, nombre o Nombre:Variante)')
+    ap.add_argument('--dest', help='slot destino (numero, nombre o Nombre:Variante)')
     ap.add_argument('--mod', default=None)
     ap.add_argument('--afs', default=DEFAULT_AFS)
     ap.add_argument('--out', default=None, help='raiz de mods (default <root>/out/.../mods)')
+    ap.add_argument('--list', action='store_true', help='lista el catalogo de bins')
+    ap.add_argument('--verify', action='store_true',
+                    help='descomprime el override y comprueba MD5 vs bin origen')
     args = ap.parse_args()
+
+    if args.list:
+        cat = os.path.join(HERE, 'catalog_b3.cat')
+        if not os.path.exists(cat):
+            print('ERROR: no se encontro %s' % cat)
+            return 1
+        print('%-6s %-16s %-10s %s' % ('bin', 'nombre', 'label', 'variante'))
+        for (b, nom, lab, var, jug) in load_catalog():
+            print('%-6d %-16s %-10s %s' % (b, nom, lab, var))
+        return 0
 
     if not os.path.exists(args.afs):
         print('ERROR: no se encontro %s' % args.afs)
@@ -222,6 +285,13 @@ def main():
         ap.print_help()
         return 1
 
+    cat = load_catalog()
+    origen, odesc = resolve_bin(args.origen, cat)
+    dest, ddesc = resolve_bin(args.dest, cat)
+    print('Origen: bin %s%s | Destino: slot %s%s' % (
+        origen, ' (%s)' % odesc if odesc else '',
+        dest, ' (%s)' % ddesc if ddesc else ''))
+
     # Carpeta de trabajo (no depender del TEMP del entorno, que puede estar
     # invalido en el proceso del launcher). En el repo de desarrollo se usa la
     # fija del build; en el paquete de release se usa el TEMP corregido.
@@ -231,8 +301,8 @@ def main():
     os.makedirs(workdir, exist_ok=True)
 
     # 1. Extraer el bin origen.
-    print('Extraer bin origen %d...' % args.origen)
-    orig_data = extract_afs_entry(args.afs, args.origen)
+    print('Extraer bin origen %d...' % origen)
+    orig_data = extract_afs_entry(args.afs, origen)
     orig_lzx = os.path.join(workdir, 'origen.lzx')
     orig_bin = os.path.join(workdir, 'origen.bin')
     open(orig_lzx, 'wb').write(orig_data)
@@ -246,7 +316,7 @@ def main():
         print('ERROR: el bin origen no es #AMB (magic %r)' % amb[:4])
         return 1
     lab = labels_of_amb(amb)
-    print('Bin origen %d: %s (label %s)' % (args.origen, orig_bin, lab))
+    print('Bin origen %d: %s (label %s)' % (origen, orig_bin, lab))
 
     # 2. Comprimir LZX.
     new_lzx = os.path.join(workdir, 'destino.lzx')
@@ -262,12 +332,12 @@ def main():
     # Por eso un bin puede superar el to_read (p.ej. Goten 107006 > Krillin
     # 106496): se paddea al to_read VIRTUAL = ceil(bin/0x1000)*0x1000.
     entries = read_afs_index(args.afs)
-    dest_sz = entries[args.dest][1]
+    dest_sz = entries[dest][1]
     to_read = ((dest_sz + 0xFFF) & ~0xFFF)  # ceil(slot / 0x1000) * 0x1000
     to_read_virtual = ((len(new_data) + 0xFFF) & ~0xFFF)  # ceil(bin / 0x1000) * 0x1000
     if len(new_data) > to_read:
         print('AVISO: bin comprimido %d > to_read %d del slot %d.' % (
-            len(new_data), to_read, args.dest))
+            len(new_data), to_read, dest))
         print('  El runtime (mid-insert virtual) autoriza bins mayores:')
         print('  la entrada crece in-place y las posteriores se desplazan.')
         print('  Padding al to_read virtual %d.' % to_read_virtual)
@@ -275,11 +345,11 @@ def main():
     if len(new_data) < to_read:
         new_data = new_data + b'\x00' * (to_read - len(new_data))
     print('Override: entry %d slot=%d to_read=%d (bin comprimido -> %d)'
-          % (args.dest, dest_sz, to_read, len(new_data)))
+          % (dest, dest_sz, to_read, len(new_data)))
 
     # 5. Generar el mod como OVERRIDE POR ENTRADA (bajo peso).
     # Estructura: mods/<mod>/us/<afs_filename>/<entry_index>/geom.bin
-    mod_name = args.mod or 'swap_%d_on_%d' % (args.origen, args.dest)
+    mod_name = args.mod or 'swap_%d_on_%d' % (origen, dest)
     if args.out:
         mods_root = args.out
     else:
@@ -295,21 +365,41 @@ def main():
     if os.path.isfile(old_afs_file):
         os.remove(old_afs_file)
         print('Migracion: eliminado AFS completo viejo (%s)' % old_afs_file)
-    entry_dir = os.path.join(mods_root, mod_name, 'us', afs_name, str(args.dest))
+    entry_dir = os.path.join(mods_root, mod_name, 'us', afs_name, str(dest))
     os.makedirs(entry_dir, exist_ok=True)
     geom_path = os.path.join(entry_dir, 'geom.bin')
     with open(geom_path, 'wb') as f:
         f.write(new_data)
 
-    # manifest.txt (formato del launcher).
+    # manifest.txt (formato del launcher). Usa los nombres del catalogo (ASCII)
+    # para que el mod se vea legible en la pestana Mods.
     manifest = os.path.join(mods_root, mod_name, 'manifest.txt')
+    src_name = (odesc or 'bin %d' % origen).strip()
+    dst_name = (ddesc or 'slot %d' % dest).strip()
     with open(manifest, 'w', encoding='utf-8') as f:
-        f.write('name=%s\n' % mod_name)
-        f.write('description=Swap nativo B3: bin %d -> slot %d\n' % (args.origen, args.dest))
+        f.write('name=%s en %s\n' % (src_name, dst_name))
+        f.write('description=Swap nativo B3 HD: %s (bin %d) en el slot de %s (%d)\n'
+                % (src_name, origen, dst_name, dest))
         f.write('type=swap_b3\n')
-        f.write('source=%d\n' % args.origen)
-        f.write('target=%d\n' % args.dest)
+        f.write('source=%s (bin %d)\n' % (src_name, origen))
+        f.write('target=%s (slot %d)\n' % (dst_name, dest))
     print('Mod generado (override por entrada, bajo peso): %s' % geom_path)
+
+    # 6. Verificacion (opcional): descomprimir el override y comparar con el bin.
+    if args.verify:
+        chk = os.path.join(workdir, 'verify.bin')
+        try:
+            lzx_decompress(geom_path, chk, workdir)
+        except RuntimeError as e:
+            print('VERIFY: FALLO al descomprimir el override: %s' % e)
+            return 1
+        a = open(orig_bin, 'rb').read()
+        bb = open(chk, 'rb').read()
+        if a == bb:
+            print('VERIFY: OK (override == bin origen, %d bytes)' % len(a))
+        else:
+            print('VERIFY: DIFERENTE (origen %d, override %d)' % (len(a), len(bb)))
+            return 1
     print('DONE')
     return 0
 

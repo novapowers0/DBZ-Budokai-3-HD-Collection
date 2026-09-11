@@ -103,6 +103,33 @@ aportarlos de tu **copia legal**. Haz esto:
 
 ## Novedades de esta release
 
+### v1.2.0 — Centro de mods renovado + Model Swap HD↔HD pulido (2026-09-14)
+
+- **Centro de mods renovado (QoL + visual)**: lista **cacheada** (ya no re-escanea
+  el disco en cada frame), **buscador** (por nombre, autor, origen o tipo),
+  botones **Activar todos / Desactivar todos / Refrescar / Abrir carpeta**,
+  **badges de tipo con color**, filas alternas y estado vacío claro.
+- **Model Swap B3 HD↔HD pulido**: desplegables de personaje **con buscador**
+  (183 personajes, con `[bin N]` y aviso `[NO JUGABLE]`), **tarjeta de vista
+  previa** origen→destino, aviso y bloqueo si origen==destino. El mod generado
+  ahora se llama con los **nombres del catálogo** (p. ej. «Cell Forma 2 en
+  Krillin») y se activa solo.
+- **Nitidez ajustable en Escalado**: sliders para la **nitidez RCAS** de FSR y
+  la **nitidez adicional** de CAS (antes estaban cableados pero ocultos).
+- **Modo disco (ISO)**: aviso ámbar explícito en las pestañas Mods y Model Swap
+  (los mods **no** se aplican jugando del `.iso`); el botón de swap se
+  deshabilita en ese modo.
+- **Limpieza**: los 83 mods de prueba se archivaron (fuera del release). El
+  release se entrega con `mods/` **vacía** (solo README).
+- **Documentación**: nuevo análisis de escalado (**FSR3/DLSS**: el upscaler
+  temporal y el frame generation **no** son viables a corto plazo sin exportar
+  depth/motion del renderer; FSR1/CAS sí) y de rendimiento.
+
+> Rendimiento: se revisaron los reportes de la comunidad. El problema duro
+> (frame cap que no fijaba 60) está resuelto; el resto son equipos modestos
+> (usa los **presets** de calidad por GPU) o el backend Vulkan (experimental).
+> Con FSR1 + escala interna 2x-3x se ve bien en 1080p+.
+
 ### v1.1.4 EX — Hotfix: crash al empezar pelea (EU) + detección de xex (2026-09-10)
 
 - **Fix del crash al empezar CUALQUIER pelea (EU)**: el re-codegen de la v1.1.4
