@@ -1,18 +1,18 @@
 {
-  "defaultVersion": "1.1.4",
+  "defaultVersion": "1.2.1",
   "dependencies": ["unzip", "7z"],
   "uninstallSteps": [
     { "step": "deletePath", "path": "install" }
   ],
   "builds": [
     {
-      "versions": ["1.1.4"],
+      "versions": ["1.2.1"],
       "targetPlatforms": ["Windows"],
       "steps": [
         { "step": "createDir", "path": ".build" },
         {
           "step": "fetch",
-          "url": "https://github.com/novapowers0/DBZ-Budokai-3-HD-Collection/releases/download/v1.1.4-EX/DBZ-Budokai-3-HD-Collection-v1.1.4-EX.zip",
+          "url": "https://github.com/novapowers0/DBZ-Budokai-3-HD-Collection/releases/download/v1.2.1/DBZ-Budokai-3-HD-Collection-v1.2.1.zip",
           "dest": ".build/port.zip"
         },
         { "step": "extract", "src": ".build/port.zip", "dest": ".build" },
