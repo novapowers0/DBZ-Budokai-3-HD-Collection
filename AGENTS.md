@@ -55,7 +55,13 @@ lógica de región/mods, y runtime.
 
 ## 3. ESTADO ACTUAL (RESUMEN EJECUTIVO)
 
-- **v1.2.0 publicada (Latest, 2026-09-14)**: Centro de mods renovado (lista
+- **v1.2.1 publicada (Latest, 2026-09-14)**: hotfix del launcher — (a) **crash al
+  cerrar tras Model Swap/Texturas** (el hilo del pipeline quedaba sin unir →
+  `std::terminate`; ahora `~ModPipeline` hace `join`); (b) etiqueta de nitidez FSR
+  invertida; (c) la lista de mods se refresca al terminar el pipeline
+  (`ModPipeline::Generation()`); (d) lectura de la carpeta de texturas sin
+  excepciones. Sobre la
+- **v1.2.0 publicada (2026-09-14)**: Centro de mods renovado (lista
   cacheada, buscador, activar/desactivar todos, badges de tipo, filas alternas),
   Model Swap HD↔HD pulido (combos con buscador, vista previa, guard
   origen==destino, manifest con nombres de catálogo), nitidez FSR/CAS ajustable,
@@ -897,10 +903,10 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
   `DBZ3_DUMP_IMAGE` para volcar la imagen descifrada).
 
 ### 9.2 Releases y estado GitHub
-- **v1.2.0 = Latest** (2026-09-14, core dual 1.2.0, baseline, "Centro de mods
-  renovado + Model Swap HD↔HD"). **v1.1.4 EX**, **v1.1.3**, **v1.1.2**,
-  **v1.1.1**, **v1.1.0-clasico** = no-Latest. Tags v1.0.0..v1.0.9 + v1.0.5-EX
-  conservados (código archivado; los zips binarios viejos NO existen).
+- **v1.2.1 = Latest** (2026-09-14, core dual 1.2.1, baseline, hotfix del launcher).
+  **v1.2.0**, **v1.1.4 EX**, **v1.1.3**, **v1.1.2**, **v1.1.1**,
+  **v1.1.0-clasico** = no-Latest. Tags v1.0.0..v1.0.9 + v1.0.5-EX conservados
+  (código archivado; los zips binarios viejos NO existen).
 - Empaquetado: `tools/make_release.ps1` (lee versión de `src/version.rc`,
   default `$Version`; **SIN UPX** — falso positivo AV). Verificación:
   `tools/verify_release.ps1` (hashes DLL vs SDK, VERSIONINFO, cvar vsync en
@@ -1024,4 +1030,11 @@ Ver **`docs/HOJA_DE_RUTA_2026_09.md`** — 3 fases:
   `docs/06_limpieza/INVENTARIO_FISICO_2026-09.md`.
 - `out/build/win-amd64-tracy` (perfilado) se borró: regenerar con el preset
   Tracy del CMake si se necesita.
+- **Limpieza 2026-09-14 (~3.1 GB)**: borrados `out/build/_archivo_mods/` (mods de
+  test de ago, regenerables), `out/build/win-amd64-release/mods_archivo/` (los 83
+  tests archivados), `github/release-stage/` (regenerable con `make_release.ps1`)
+  y `rexglue_backup/` (DLLs `.old`). **Pendiente de decidir** (grandes): `ps2_games/`
+  (~10.6 GB de AFS de referencia), `mods/og_music` (~1.5 GB), el build SDK avx2
+  `rexglue-sdk-0.10/out/build-win-vulkan/` (~1.1 GB) y deduplicar `modding
+  resources update*/`.
 - El usuario habla español. Sesiones largas de juego.
