@@ -1,6 +1,7 @@
 {
   "defaultVersion": "1.2.1",
   "dependencies": ["unzip", "7z"],
+  "userDataPaths": ["install/dbz3_user.toml", "install/user_data"],
   "uninstallSteps": [
     { "step": "deletePath", "path": "install" }
   ],
