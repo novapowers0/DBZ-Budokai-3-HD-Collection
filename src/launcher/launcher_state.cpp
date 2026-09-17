@@ -377,9 +377,12 @@ void LauncherDialog::OnDraw(ImGuiIO& io) {
   // banner, the footer summary and the region mount at Play time in sync with
   // what is actually present. In ISO mode the region comes from the disc's own
   // default.xex (extracted to the ISO cache folder at startup).
-  const auto xex_status =
-      (root_ok || iso_mode) ? dbz3::settings::CheckDefaultXex(game_root)
-                            : dbz3::settings::XexStatus::kMissing;
+  // The boot source resolved at startup (or on the last source switch) is
+  // authoritative: it reports the executable the runtime will really run, which
+  // is the staged copy when Budokai 3's file has another name or lives in a
+  // subfolder (retail discs keep it as DBZ3/yae3_xenon.xex).
+  const auto& boot = dbz3::settings::CurrentBootSource();
+  const auto xex_status = boot.status;
   if (iso_mode && (xex_status == dbz3::settings::XexStatus::kUs ||
                    xex_status == dbz3::settings::XexStatus::kEu)) {
     const std::string iso_region = xex_status == dbz3::settings::XexStatus::kEu ? "eu" : "us";
@@ -391,9 +394,9 @@ void LauncherDialog::OnDraw(ImGuiIO& io) {
   }
   const bool region_ok = root_ok && std::filesystem::is_directory(game_root / sel_region);
   const bool us_ok = root_ok && std::filesystem::is_directory(game_root / "us");
-  const bool xex_ok = root_ok && std::filesystem::is_regular_file(game_root / "default.xex");
-  const auto xex_status_final =
-      root_ok ? dbz3::settings::CheckDefaultXex(game_root) : dbz3::settings::XexStatus::kMissing;
+  const bool xex_present =
+      !boot.xex.empty() && std::filesystem::is_regular_file(boot.xex);
+  const auto xex_status_final = boot.status;
   // Each core is recompiled from one executable: the US/NA core boots only the
   // US xex and the EU/PAL core only the EU xex. A known xex of the OTHER
   // variant blocks Play (the guest would exit with "No function registered").
@@ -405,8 +408,9 @@ void LauncherDialog::OnDraw(ImGuiIO& io) {
   // silently disabled Play for those users while the Enter shortcut (not gated
   // by BeginDisabled) still launched the game.
   const bool xex_blocked =
-      xex_ok && xex_status_final != dbz3::settings::XexStatus::kMissing &&
-      xex_status_final != dbz3::settings::XexStatus::kUnknown && !xex_expected;
+      xex_present && (xex_status_final == dbz3::settings::XexStatus::kDbz1 ||
+                      xex_status_final == dbz3::settings::XexStatus::kHdMenu);
+  const bool xex_ok = xex_present && !xex_blocked;
   const bool assets_ready =
       (iso_mode ? xex_ok : (region_ok || us_ok) && xex_ok) && !xex_blocked;
 
@@ -436,6 +440,16 @@ void LauncherDialog::OnDraw(ImGuiIO& io) {
                   "extracted folder (choose 'Extracted folder' as the source)."));
       ImGui::PopStyleColor();
     }
+    if (boot.redirect_default_xex && !boot.note.empty()) {
+      // The executable was found somewhere other than `<data>/default.xex` (e.g.
+      // DBZ3/yae3_xenon.xex on a retail disc dump) and staged automatically.
+      ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.55f, 0.78f, 0.98f, 1.0f));
+      ImGui::TextWrapped(
+          i18n::T("Ejecutable detectado: %s (no hay que renombrar nada)",
+                  "Executable detected: %s (nothing to rename)"),
+          boot.note.c_str());
+      ImGui::PopStyleColor();
+    }
     if (xex_status == dbz3::settings::XexStatus::kUnknown) {
       ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.75f, 0.35f, 1.0f));
       ImGui::TextWrapped(
@@ -459,6 +473,18 @@ void LauncherDialog::OnDraw(ImGuiIO& io) {
                   "Budokai 3. This launcher only boots Budokai 3 (dbz3.exe). Use "
                   "the DBZ1 launcher (dbz1.exe) with this executable, or place "
                   "the default.xex from your Budokai 3 copy."));
+    } else if (xex_status_final == dbz3::settings::XexStatus::kHdMenu) {
+      ImGui::TextWrapped(
+          i18n::T("Ese es el MENU de la HD Collection (el default.xex de la raiz "
+                  "del disco), no Budokai 3. Copia el ejecutable de Budokai 3 "
+                  "(esta dentro de la carpeta DBZ3/, llamado yae3_xenon.xex) junto "
+                  "a dbz3.exe, o elige el .iso del disco abajo: el launcher saca el "
+                  "ejecutable del disco por su cuenta.",
+                  "That is the HD Collection MENU (the disc's root default.xex), "
+                  "not Budokai 3. Copy Budokai 3's executable (inside the DBZ3/ "
+                  "folder, named yae3_xenon.xex) next to dbz3.exe, or pick the "
+                  "disc's .iso below: the launcher extracts the executable from "
+                  "the disc by itself."));
     } else {
 #if defined(DBZ3_EU_VARIANT)
     ImGui::TextWrapped(

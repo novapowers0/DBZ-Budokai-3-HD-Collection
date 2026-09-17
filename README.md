@@ -19,7 +19,7 @@ nativo en Windows.
 | Plataforma | Windows |
 | Motor | Xbox 360 (ReXGlue SDK) |
 | Género | Lucha 3D |
-| Versión | v1.2.1 |
+| Versión | v1.2.2 |
 
 Copyright (c) 2026 **NovaPowers**. Licencia MIT (ver `LICENSE`).
 
@@ -63,6 +63,17 @@ directamente con el ISO. Las dos se detectan solas, no hay que configurar nada.
                                      └── us\ (y/o eu\)
    ```
 
+   **También vale el volcado tal cual del disco** (con la carpeta `DBZ3\` y su
+   ejecutable sin renombrar): el launcher busca el ejecutable de Budokai 3 solo.
+
+   ```
+   C:\Rom\Budokai HD Collection\
+   ├── dbz3.exe
+   └── DBZ3\                      ← tal cual sale de tu ISO
+       ├── yae3_xenon.xex
+       └── us\ (y/o eu\)
+   ```
+
 3. Ejecuta `dbz3.exe`. El launcher comprueba qué hay y, si falta algo, te lo
    dice. Puedes buscar la carpeta de datos con "Seleccionar carpeta de datos...".
 4. Elige **Región**, **Idioma**, **Vídeo** y **Audio** y pulsa **Play**.
@@ -70,10 +81,14 @@ directamente con el ISO. Las dos se detectan solas, no hay que configurar nada.
 **Opción B — el ISO directamente (para jugar sin extraer nada)**
 
 Deja el `.iso` del juego junto a `dbz3.exe` (o usa "Seleccionar ISO..." en el
-launcher). El launcher lo detecta, saca el `default.xex` del disco (solo ese
-archivo, unos pocos MB) y monta el resto directamente desde la imagen: no hace
-falta descomprimir ni copiar los AFS. La región se detecta sola a partir del
-ejecutable del propio disco.
+launcher). El launcher lo detecta, saca el ejecutable de Budokai 3 del disco
+(`DBZ3\yae3_xenon.xex`, unos pocos MB) y monta el resto directamente desde la
+imagen: no hace falta descomprimir ni copiar los AFS. La región se detecta sola
+a partir del ejecutable del propio disco.
+
+> Funciona con el ISO original completo (el que trae el menú de la HD Collection
+> en la raíz): el launcher coge el ejecutable de Budokai 3 de dentro del disco,
+> no el menú.
 
 > Los mods necesitan la carpeta extraída (opción A). En modo disco se juega
 > tal cual del ISO.
@@ -81,7 +96,8 @@ ejecutable del propio disco.
 > **Un solo `dbz3.exe`**: desde v1.1.0 no hay variantes. Un único ejecutable
 > universal (runtime baseline SSSE3) que funciona en cualquier CPU x64 (Core 2
 > 2006 en adelante), con las recompilaciones USA y EU dentro y autodetección
-> del `default.xex` que pongas.
+> del ejecutable que pongas (por tamaño y checksum, sin importar cómo se llame
+> ni dónde esté).
 
 ### Qué archivos necesitas (opción A)
 
@@ -134,6 +150,11 @@ distintas, no dos copias iguales, y el núcleo dual incluye la recompilación de
 cada uno. El launcher identifica cuál has puesto por su checksum y usa el
 código correcto; si no coincide, te avisa y bloquea Play para que no acabes con
 un cierre raro en pantalla.
+
+No hace falta que el archivo se llame `default.xex` ni que esté en la raíz: el
+launcher lo busca por **tamaño + checksum** (los nombres típicos son
+`yae3_xenon.xex` / `yae3_xenon_eu.xex`) y lo prepara él solo. Si pones el menú de
+la HD Collection en vez del ejecutable de Budokai 3, te lo dice y bloquea Play.
 
 La región de **datos** (carpeta `us\` o `eu\`) y el **idioma** se eligen en el
 launcher y no dependen del ejecutable. El guardado es compartido entre
@@ -225,6 +246,30 @@ monta `tools/make_release.ps1`.
 | Port de personajes IW→B3 | Descartado (Janemba fracasó, archivado) |
 
 ---
+
+## Novedades de v1.2.2
+
+- **El launcher encuentra el ejecutable del juego esté como esté**: ya no hace
+  falta renombrar nada a `default.xex` ni tenerlo en la raíz. Lo busca por
+  **tamaño + checksum** en la carpeta que elijas (y en las típicas `DBZ3\`,
+  `assets\`, `assets\DBZ3\`) y lo prepara él solo en una caché interna
+  (`user_data\xex_cache\`), sin escribir nada en tu carpeta de juego.
+- **Arreglado el arranque con el volcado del disco original** (el caso «pulso
+  Play y no pasa nada»): antes se arrancaba el menú de la HD Collection de la
+  raíz del disco, que no existe en el núcleo de Budokai 3 y moría con un error
+  críptico. Ahora se usa el ejecutable correcto (`DBZ3\yae3_xenon.xex`) y se
+  monta la carpeta `DBZ3\` como unidad del juego.
+- **Modo disco (ISO) con ISO original completo**: se extrae el ejecutable de
+  Budokai 3 de dentro del disco y los datos (`us\`, `eu\`) se resuelven bajo
+  `DBZ3\` automáticamente.
+- **Mensajes claros si el ejecutable no es el correcto**: el menú de la HD
+  Collection se detecta y se explica; un ejecutable desconocido avisa pero no
+  bloquea (puede ser un dump modificado).
+- **Arreglado un fallo de configuración**: si tu carpeta o tu ISO tienen `\` en
+  la ruta, el `dbz3_user.toml` se guardaba mal y se perdían los ajustes en cada
+  arranque (`unknown escape sequence`). Ahora se escapa correctamente.
+- **Log de diagnóstico del arranque**: se registran la ruta del ejecutable, su
+  tamaño y checksum, el estado y la carpeta de datos elegidos.
 
 ## Novedades de v1.2.1
 

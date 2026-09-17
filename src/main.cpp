@@ -146,13 +146,17 @@ public:
         // (the window opened, then died with no message). Fail early with a
         // clear, actionable message instead.
         const std::filesystem::path game_root = dbz3::EffectiveGameRoot();
-        if (!std::filesystem::is_regular_file(game_root / "default.xex")) {
-          REXLOG_ERROR("dbz3: no default.xex in game data folder '{}'", game_root.string());
+        const auto& boot = dbz3::settings::CurrentBootSource();
+        const std::filesystem::path xex_probe =
+            boot.xex.empty() ? (game_root / "default.xex") : boot.xex;
+        if (!std::filesystem::is_regular_file(xex_probe)) {
+          REXLOG_ERROR("dbz3: no executable found (probed '{}')", xex_probe.string());
           const std::string msg =
-              "No se encontro el ejecutable del juego (default.xex) en la carpeta de datos.\n\n"
-              "Coloca tus archivos del juego junto a dbz3.exe (default.xex, us/ y eu/)\n"
-              "o dentro de una subcarpeta 'assets/', o elige una imagen de disco (.iso)\n"
-              "del juego en el launcher.\n\n"
+              "No se encontro el ejecutable de Budokai 3.\n\n"
+              "Pon tu copia del juego junto a dbz3.exe: el ejecutable (default.xex,\n"
+              "o yae3_xenon.xex / DBZ3/yae3_xenon.xex si lo copiaste del disco) y la\n"
+              "carpeta us/ (y/o eu/). Tambien vale dentro de una subcarpeta 'assets/',\n"
+              "o elegir una imagen de disco (.iso) en el launcher.\n\n"
               "Carpeta buscada:\n" +
               game_root.string();
 #if REX_PLATFORM_WIN32
@@ -323,19 +327,21 @@ public:
         //   - standalone release: <exe_dir>/us or <exe_dir>/assets/{default.xex,us,eu}
         // Fall back to the exe folder if nothing is found.
         auto FindGameRoot = [](const std::filesystem::path& base) -> std::filesystem::path {
-            // Accept either region folder (us/ or eu/), in both the flat layout
-            // (base/us, base/eu) and the assets/ layout (base/assets/us,
-            // base/assets/eu). An EU-only user has eu/ but no us/ — rejecting
-            // it made auto-detection fall back to the exe folder and fail with
-            // "Entrypoint XEX not found". Matches IsValidGameDataDir/banner.
-            if (std::filesystem::is_directory(base / "us"))
-                return base;
-            if (std::filesystem::is_directory(base / "eu"))
-                return base;
-            if (std::filesystem::is_directory(base / "assets" / "us"))
-                return base / "assets";
-            if (std::filesystem::is_directory(base / "assets" / "eu"))
-                return base / "assets";
+            // Accept either region folder (us/ or eu/), in the flat layout
+            // (base/us), the assets/ layout (base/assets/us) and the RETAIL DISC
+            // layout (base/DBZ3/us — the disc keeps Budokai 3 in DBZ3/ next to
+            // the HD Collection's own default.xex menu). An EU-only user has eu/
+            // but no us/ — rejecting it made auto-detection fall back to the exe
+            // folder and fail with "Entrypoint XEX not found".
+            // Matches IsValidGameDataDir/banner.
+            const char* kSub[] = {"", "assets", "DBZ3", "assets/DBZ3", "DBZ3/assets"};
+            for (const char* sub : kSub) {
+                const auto dir = sub[0] == '\0' ? base : base / sub;
+                if (std::filesystem::is_directory(dir / "us") ||
+                    std::filesystem::is_directory(dir / "eu")) {
+                    return dir;
+                }
+            }
             return {};
         };
         std::filesystem::path game_dir;
@@ -374,22 +380,49 @@ public:
         }
         REXLOG_INFO("OnConfigurePaths - game_dir final: {}", game_dir.string());
 
-        // Use the game folder directly as the game drive root (no overlay, no
-        // duplicate assets). The runtime mounts game:\ to game_data_root and the
-        // game reads D:\us\... which resolves to game_dir/us (or, for the eu
-        // region, to game_dir/eu via the ApplyRegionMount device). Mods are
+        // The runtime boots <game_data_root>/default.xex while the game drive
+        // serves the assets. Locate the real Budokai 3 executable wherever the
+        // user keeps it: a retail disc dump has it at DBZ3/yae3_xenon.xex and its
+        // root default.xex is the HD Collection's own menu (which this core
+        // cannot boot), and extracted dumps often keep the original name too.
+        // The executable is staged in a small cache when its name differs, so no
+        // manual renaming is ever required and the user's files are never
+        // modified.
+        std::vector<std::filesystem::path> hunt_roots;
+        hunt_roots.push_back(game_dir);
+        if (!game_dir.parent_path().empty()) hunt_roots.push_back(game_dir.parent_path());
+        hunt_roots.push_back(exe_dir);
+        if (!exe_dir.parent_path().empty()) hunt_roots.push_back(exe_dir.parent_path());
+        dbz3::settings::BootSource boot = dbz3::settings::ResolveBootSource(
+            game_dir, hunt_roots, dbz3::settings::XexCacheDir());
+        dbz3::settings::SetCurrentBootSource(boot);
+        REXLOG_INFO(
+            "OnConfigurePaths - boot source: xex='{}' status={} data_root='{}' "
+            "redirect_default_xex={} note='{}'",
+            boot.xex.string(), dbz3::settings::XexStatusLabel(boot.status),
+            boot.data_root.string(), boot.redirect_default_xex ? "yes" : "no", boot.note);
+
+        // Use the resolved data folder directly as the game drive root (no
+        // overlay, no duplicate assets). The runtime mounts game:\ to that folder
+        // and the game reads D:\us\... which resolves to <root>/us (or, for the
+        // eu region, to <root>/eu via the ApplyRegionMount device). Mods are
         // served by the runtime's AFS/whole-file override hooks from mods/,
         // without copying anything.
-        game_dir_ = game_dir;
-        paths.game_data_root = game_dir;
+        game_dir_ = boot.data_root.empty() ? game_dir : boot.data_root;
+        // The runtime's pre-flight and its region detection read
+        // <game_data_root>/default.xex, so point it at the folder that actually
+        // holds the bootable executable (the staging cache when the executable
+        // had another name, otherwise the data folder itself).
+        paths.game_data_root = boot.xex.empty() ? game_dir : boot.xex.parent_path();
         // Keep the effective game data root in sync so region mounting (which
         // reads this root, not the runtime's fixed copy) always uses the folder
         // we resolved here.
-        dbz3::SetEffectiveGameRoot(game_dir);
+        dbz3::SetEffectiveGameRoot(game_dir_);
         paths.user_data_root = exe_dir / "user_data" / GetName();
         paths.cache_root = paths.user_data_root / "cache";
         paths.metadata_root = exe_dir / "metadata";
         REXLOG_INFO("OnConfigurePaths - game_data_root set to: {}", paths.game_data_root.string());
+        REXLOG_INFO("OnConfigurePaths - game drive root set to: {}", game_dir_.string());
 
         // ISO mode: play directly from a disc image instead of an extracted
         // us/eu/ folder. The runtime still needs a real default.xex for its
@@ -421,6 +454,27 @@ public:
                          iso_path.string());
           }
           if (std::filesystem::is_regular_file(xex_dst)) {
+            // The disc image is mounted as the game drive at Play time, so the
+            // runtime would load game:\default.xex straight from the disc - which
+            // on a RETAIL HD Collection disc is the collection's menu, not
+            // Budokai 3. Serve the cached executable instead: it is identical for
+            // a repacked image and the real executable when the disc keeps it at
+            // DBZ3/yae3_xenon.xex. Same trick for the assets: the retail disc
+            // stores them under DBZ3/, so us\... is resolved there too.
+            dbz3::settings::BootSource iso_boot;
+            iso_boot.data_root = iso_cache;
+            iso_boot.xex = xex_dst;
+            iso_boot.redirect_default_xex = true;
+            const std::string iso_xex_src = dbz3::settings::IsoXexSourcePath();
+            iso_boot.iso_prefix_dbz3 = iso_xex_src.rfind("DBZ3", 0) == 0;
+            iso_boot.status = dbz3::settings::ClassifyXexFile(xex_dst);
+            iso_boot.note = "ISO: " + (iso_xex_src.empty() ? std::string("default.xex")
+                                                           : iso_xex_src);
+            dbz3::settings::SetCurrentBootSource(iso_boot);
+            REXLOG_INFO(
+                "OnConfigurePaths - ISO xex source '{}' status {} prefix_dbz3={}",
+                iso_xex_src, dbz3::settings::XexStatusLabel(iso_boot.status),
+                iso_boot.iso_prefix_dbz3 ? "yes" : "no");
             game_dir_ = iso_cache;
             paths.game_data_root = iso_cache;
             dbz3::SetEffectiveGameRoot(iso_cache);
@@ -484,7 +538,12 @@ protected:
             // Skip-launcher is a dev/test fast path. Still guard the XEX so a
             // missing/unrecognized executable does not hit the cryptic "No
             // function registered" guest exit.
-            auto status = dbz3::settings::CheckDefaultXex(dbz3::EffectiveGameRoot());
+            // The resolved boot source knows the executable even when it is not
+            // named default.xex (retail disc dumps: DBZ3/yae3_xenon.xex).
+            auto status = dbz3::settings::CurrentBootSource().status;
+            if (dbz3::settings::CurrentBootSource().xex.empty()) {
+                status = dbz3::settings::CheckDefaultXex(dbz3::EffectiveGameRoot());
+            }
 #if defined(DBZ3_DUAL_REGION)
             const bool xex_ok = (status == dbz3::settings::XexStatus::kUs ||
                                  status == dbz3::settings::XexStatus::kEu);

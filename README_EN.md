@@ -64,6 +64,17 @@ directly. Both are detected automatically, nothing to configure.
                                      └── us\ (and/or eu\)
    ```
 
+   **A straight disc dump works too** (with the `DBZ3\` folder and its
+   executable not renamed): the launcher finds the Budokai 3 executable itself.
+
+   ```
+   C:\Rom\Budokai HD Collection\
+   ├── dbz3.exe
+   └── DBZ3\                      ← exactly as it comes off your ISO
+       ├── yae3_xenon.xex
+       └── us\ (and/or eu\)
+   ```
+
 3. Run `dbz3.exe`. The launcher checks what's there and tells you if something
    is missing. You can locate your game folder with "Select game data folder...".
 4. Choose **Region**, **Language**, **Video** and **Audio**, then press **Play**.
@@ -71,10 +82,14 @@ directly. Both are detected automatically, nothing to configure.
 **Option B — the ISO directly (play without extracting anything)**
 
 Drop the game's `.iso` next to `dbz3.exe` (or use "Select ISO..." in the
-launcher). The launcher detects it, pulls `default.xex` out of the disc (only
-that file, a few MB) and mounts the rest straight from the image: no need to
-extract or copy the AFS files. The region is detected on its own from the
-disc's executable.
+launcher). The launcher detects it, pulls the Budokai 3 executable out of the
+disc (`DBZ3\yae3_xenon.xex`, a few MB) and mounts the rest straight from the
+image: no need to extract or copy the AFS files. The region is detected on its
+own from the disc's executable.
+
+> Works with the full original ISO (the one that has the HD Collection menu at
+> the disc root): the launcher takes the Budokai 3 executable from inside the
+> disc, not the menu.
 
 > Mods need the extracted folder (option A). In disc mode you play the game as
 > it comes on the ISO.
@@ -82,7 +97,8 @@ disc's executable.
 > **A single `dbz3.exe`**: since v1.1.0 there are no variants. One universal
 > executable (baseline SSSE3 runtime) that runs on any x64 CPU (Core 2 2006
 > onwards), with the USA and EU recompilations inside and auto-detection of the
-> `default.xex` you provide.
+> executable you provide (by size + checksum, whatever it is called and
+> wherever it is).
 
 ### Which game files you need (option A)
 
@@ -135,6 +151,11 @@ different builds, not two copies of the same thing, and the dual core includes
 the recompilation of each one. The launcher identifies which one you placed by
 checksum and uses the matching code; if they don't match, it warns you and
 blocks Play so you don't end up with a cryptic crash.
+
+The file does not have to be named `default.xex` nor sit at the root: the
+launcher finds it by **size + checksum** (typical names are `yae3_xenon.xex` /
+`yae3_xenon_eu.xex`) and prepares it by itself. If you drop the HD Collection
+menu instead of the Budokai 3 executable, it tells you and blocks Play.
 
 The data region (the `us\` or `eu\` folder) and the language are chosen in the
 launcher and don't depend on the executable. Saves are shared between regions.
@@ -226,6 +247,30 @@ layout is assembled by `tools/make_release.ps1`.
 | IW→B3 character ports | Dropped (Janemba failed, archived) |
 
 ---
+
+## v1.2.2 highlights
+
+- **The launcher finds the game executable however you have it**: no need to
+  rename anything to `default.xex` or keep it at the root. It looks for it by
+  **size + checksum** inside the folder you pick (and in the usual `DBZ3\`,
+  `assets\`, `assets\DBZ3\` spots) and prepares it by itself in an internal
+  cache (`user_data\xex_cache\`), never writing into your game folder.
+- **Fixed booting from a straight disc dump** (the "I press Play and nothing
+  happens" case): it used to boot the HD Collection menu at the disc root, which
+  does not exist in the Budokai 3 core and died with a cryptic error. Now the
+  correct executable is used (`DBZ3\yae3_xenon.xex`) and `DBZ3\` is mounted as
+  the game drive.
+- **Disc mode (ISO) with a full original ISO**: the Budokai 3 executable is
+  taken from inside the disc and the data (`us\`, `eu\`) is resolved under
+  `DBZ3\` automatically.
+- **Clear messages when the executable is not the right one**: the HD Collection
+  menu is detected and explained; an unknown executable warns but does not block
+  Play (it may be a modified dump).
+- **Fixed a settings bug**: if your folder or ISO path contains `\`, the
+  `dbz3_user.toml` was saved incorrectly and your settings were lost on every
+  start (`unknown escape sequence`). It is properly escaped now.
+- **Boot diagnostics log**: the executable path, its size and checksum, the
+  detected status and the chosen data folder are logged.
 
 ## v1.2.1 highlights
 

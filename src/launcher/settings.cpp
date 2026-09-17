@@ -12,7 +12,9 @@
 #include <string>
 #include <vector>
 #include <algorithm>
+#include <functional>
 #include <system_error>
+#include <cctype>
 #include <cstdio>
 #include <cstring>
 #include <fstream>
@@ -280,6 +282,69 @@ static void SetSdkDouble(const char* name, double value) {
   rex::cvar::SetFlagByName(name, std::to_string(value));
 }
 
+namespace {
+
+// Re-write a config file escaping `\` and `"` inside double-quoted string
+// values (`name = "value"`). The SDK's writer emits the raw value, so a Windows
+// path such as E:\Game Roms\... lands as an invalid escape sequence and the
+// WHOLE file fails to parse on the next start ("unknown escape sequence '\G'"),
+// silently discarding every user setting. Escaping after each save keeps the
+// file loadable (and self-heals files written by older builds).
+bool EscapeTomlStrings(const std::filesystem::path& path) {
+  std::ifstream in(path, std::ios::binary);
+  if (!in) return false;
+  std::string line;
+  std::string out;
+  while (std::getline(in, line)) {
+    const auto eq = line.find('=');
+    if (eq != std::string::npos) {
+      size_t i = eq + 1;
+      while (i < line.size() && std::isspace(static_cast<unsigned char>(line[i]))) ++i;
+      if (i < line.size() && line[i] == '"') {
+        const size_t close = line.rfind('"');
+        if (close > i) {
+          const std::string raw = line.substr(i + 1, close - i - 1);
+          // Decode the escapes a previous pass may have added, then re-encode:
+          // the pass has to be idempotent (SaveConfig only rewrites the file
+          // when a cvar is modified, so this can run over an already-escaped
+          // file, and doubling every backslash would corrupt the paths).
+          std::string value;
+          value.reserve(raw.size());
+          for (size_t k = 0; k < raw.size(); ++k) {
+            if (raw[k] == '\\' && k + 1 < raw.size() &&
+                (raw[k + 1] == '\\' || raw[k + 1] == '"')) {
+              value.push_back(raw[k + 1]);
+              ++k;
+            } else {
+              value.push_back(raw[k]);
+            }
+          }
+          std::string esc;
+          esc.reserve(value.size() + 8);
+          for (const char c : value) {
+            if (c == '\\' || c == '"') {
+              esc.push_back('\\');
+            }
+            esc.push_back(c);
+          }
+          if (esc != raw) {
+            line = line.substr(0, i + 1) + esc + line.substr(close);
+          }
+        }
+      }
+    }
+    out += line;
+    out += '\n';
+  }
+  in.close();
+  std::ofstream os(path, std::ios::binary | std::ios::trunc);
+  if (!os) return false;
+  os << out;
+  return os.good();
+}
+
+}  // namespace
+
 namespace dbz3::settings {
 
 std::filesystem::path UserSettingsPath() {
@@ -313,6 +378,11 @@ void SaveUserSettings() {
   rex::cvar::SetFlagByName("draw_resolution_scale_y", std::to_string(ResolutionScale()));
   const auto path = UserSettingsPath();
   rex::cvar::SaveConfig(path);
+  // Escape the quoted values (Windows paths) so the file still parses on the
+  // next start - see EscapeTomlStrings.
+  if (!EscapeTomlStrings(path)) {
+    REXLOG_WARN("dbz3: could not normalise the escaped config at {}", path.string());
+  }
   REXLOG_INFO("dbz3: user settings saved to {}", path.string());
 }
 
@@ -361,9 +431,33 @@ std::string GameDirOverride() { return REXCVAR_GET(dbz3_game_dir); }
 void SetGameDirOverride(const std::string& path) { REXCVAR_SET(dbz3_game_dir, path); }
 
 bool IsValidGameDataDir(const std::filesystem::path& root) {
-  return std::filesystem::is_directory(root / "us") ||
-         std::filesystem::is_directory(root / "eu") ||
-         std::filesystem::is_regular_file(root / "default.xex");
+  if (std::filesystem::is_directory(root / "us") ||
+      std::filesystem::is_directory(root / "eu") ||
+      std::filesystem::is_regular_file(root / "default.xex")) {
+    return true;
+  }
+  // Retail disc dumps keep Budokai 3 inside DBZ3/ (next to the HD Collection's
+  // own default.xex menu) and extracted copies often keep the original name, so
+  // accept every layout the boot resolver can work with.
+  const std::filesystem::path dirs[] = {root / "DBZ3", root / "assets",
+                                        root / "assets" / "DBZ3"};
+  for (const auto& dir : dirs) {
+    if (std::filesystem::is_directory(dir / "us") ||
+        std::filesystem::is_directory(dir / "eu")) {
+      return true;
+    }
+  }
+  const std::filesystem::path xexes[] = {root / "yae3_xenon.xex",
+                                         root / "yae3_xenon_eu.xex",
+                                         root / "DBZ3" / "yae3_xenon.xex",
+                                         root / "DBZ3" / "yae3_xenon_eu.xex",
+                                         root / "assets" / "default.xex"};
+  for (const auto& xex : xexes) {
+    if (XexIsExpected(ClassifyXexFile(xex))) {
+      return true;
+    }
+  }
+  return false;
 }
 
 std::string IsoPath() { return REXCVAR_GET(dbz3_iso_path); }
@@ -534,9 +628,45 @@ uint32_t ReadXexEntryPoint(const std::filesystem::path& xex) {
 
 }  // namespace
 
-XexStatus CheckDefaultXex(const std::filesystem::path& root) {
-  const auto xex = root / "default.xex";
-  if (!std::filesystem::is_regular_file(xex)) return XexStatus::kMissing;
+namespace {
+
+// MD5 of a file as 32 uppercase hex characters. Empty string on failure.
+std::string FileMd5Hex(const std::filesystem::path& file) {
+  Md5Digest md5;
+  std::ifstream f(file, std::ios::binary);
+  if (!f) return {};
+  uint8_t buf[65536];
+  while (f) {
+    f.read(reinterpret_cast<char*>(buf), sizeof(buf));
+    const std::streamsize n = f.gcount();
+    if (n > 0) {
+      md5.Update(buf, static_cast<size_t>(n));
+    }
+  }
+  uint8_t digest[16];
+  md5.Final(digest);
+  std::string hex;
+  hex.reserve(32);
+  for (size_t i = 0; i < sizeof(digest); ++i) {
+    char tmp[3];
+    snprintf(tmp, sizeof(tmp), "%02X", digest[i]);
+    hex += tmp;
+  }
+  return hex;
+}
+
+// Retail executable sizes (bytes). Checked before hashing so a hunt over a
+// whole disc dump never reads a 4.9MB file unless it is a plausible candidate.
+constexpr uintmax_t kSizeDbz3 = 4890624;    // yae3_xenon.xex / yae3_xenon_eu.xex
+constexpr uintmax_t kSizeDbz1 = 4464640;    // DBZ1's own executable (other port)
+constexpr uintmax_t kSizeHdMenu = 3317760;  // HD Collection menu (disc root default.xex)
+
+}  // namespace
+
+XexStatus ClassifyXexFile(const std::filesystem::path& xex) {
+  std::error_code ec;
+  if (!std::filesystem::is_regular_file(xex, ec)) return XexStatus::kMissing;
+  const uintmax_t size = std::filesystem::file_size(xex, ec);
 
   // Cache by (path, size, mtime) so the per-frame banner does not re-hash the
   // ~4.9MB executable every frame.
@@ -544,8 +674,7 @@ XexStatus CheckDefaultXex(const std::filesystem::path& root) {
   static uintmax_t cached_size = 0;
   static std::filesystem::file_time_type cached_mtime{};
   static XexStatus cached_status = XexStatus::kUnknown;
-  auto mtime = std::filesystem::last_write_time(xex);
-  const uintmax_t size = std::filesystem::file_size(xex);
+  const auto mtime = std::filesystem::last_write_time(xex, ec);
   if (cached_path == xex.string() && cached_size == size && cached_mtime == mtime) {
     return cached_status;
   }
@@ -555,39 +684,23 @@ XexStatus CheckDefaultXex(const std::filesystem::path& root) {
   // DBZ Budokai HD Collection (the DBZ1 sister project) ships the SAME
   // executable for both US and EU (5A6A..., 4464640 B). It is recognized here
   // so the launcher can tell the user "this is the DBZ1 game, use its launcher"
-  // instead of letting the DBZ3 core crash on a foreign executable.
+  // instead of letting the DBZ3 core crash on a foreign executable. The disc's
+  // root default.xex is the HD Collection's own menu (3317760 B), which this
+  // core cannot boot either (it is a different program, not Budokai 3).
   static constexpr char kUsMd5[] = "A53E324B5D2A65EBCBF648E4F85A7271";
   static constexpr char kEuMd5[] = "C37EB979B762DA0AB5B8C9BA8037CE4E";
   static constexpr char kDbz1Md5[] = "5A6AB28A4911851FCA955B5925CDFEBB";
   XexStatus status = XexStatus::kUnknown;
-  if (size == 4890624 || size == 4464640) {  // fast reject: known variants
-    Md5Digest md5;
-    std::ifstream f(xex, std::ios::binary);
-    if (f) {
-      uint8_t buf[65536];
-      while (f) {
-        f.read(reinterpret_cast<char*>(buf), sizeof(buf));
-        const std::streamsize n = f.gcount();
-        if (n > 0) {
-          md5.Update(buf, static_cast<size_t>(n));
-        }
-      }
-      uint8_t digest[16];
-      md5.Final(digest);
-      std::string hex;
-      hex.reserve(32);
-      for (size_t i = 0; i < sizeof(digest); ++i) {
-        char tmp[3];
-        snprintf(tmp, sizeof(tmp), "%02X", digest[i]);
-        hex += tmp;
-      }
-      if (hex == kUsMd5) {
-        status = XexStatus::kUs;
-      } else if (hex == kEuMd5) {
-        status = XexStatus::kEu;
-      } else if (hex == kDbz1Md5) {
-        status = XexStatus::kDbz1;
-      }
+  if (size == kSizeDbz3 || size == kSizeDbz1 || size == kSizeHdMenu) {
+    const std::string hex = FileMd5Hex(xex);
+    if (hex == kUsMd5) {
+      status = XexStatus::kUs;
+    } else if (hex == kEuMd5) {
+      status = XexStatus::kEu;
+    } else if (hex == kDbz1Md5) {
+      status = XexStatus::kDbz1;
+    } else if (size == kSizeHdMenu) {
+      status = XexStatus::kHdMenu;
     }
   }
 
@@ -597,12 +710,17 @@ XexStatus CheckDefaultXex(const std::filesystem::path& root) {
   // as kUnknown and the dual core would silently pick the US image config (the
   // default branch of ResolveImageInfo), booting an EU exe with US code -> the
   // guest exits with "No function registered at <addr>".
-  if (status == XexStatus::kUnknown && size != 4464640) {
+  if (status == XexStatus::kUnknown && size != kSizeDbz1 && size != kSizeHdMenu) {
     const uint32_t entry = ReadXexEntryPoint(xex);
     if (entry == 0x8221DDB0u) {
       status = XexStatus::kUs;
     } else if (entry == 0x8221C570u) {
       status = XexStatus::kEu;
+    } else if (entry == 0x820D54A8u || entry == 0x820D54C8u) {
+      // Entry point observed for the HD Collection's menu: booting it with this
+      // core reports "No function registered at 820D54A8/820D54C8" (it is the
+      // disc's root default.xex, not Budokai 3).
+      status = XexStatus::kHdMenu;
     }
   }
 
@@ -611,6 +729,219 @@ XexStatus CheckDefaultXex(const std::filesystem::path& root) {
   cached_mtime = mtime;
   cached_status = status;
   return status;
+}
+
+XexStatus CheckDefaultXex(const std::filesystem::path& root) {
+  return ClassifyXexFile(root / "default.xex");
+}
+
+const char* XexStatusLabel(XexStatus status) {
+  switch (status) {
+    case XexStatus::kMissing: return "missing";
+    case XexStatus::kUs: return "US/NA Budokai 3";
+    case XexStatus::kEu: return "EU/PAL Budokai 3";
+    case XexStatus::kUnknown: return "unrecognized executable";
+    case XexStatus::kDbz1: return "DBZ1 executable";
+    case XexStatus::kHdMenu: return "HD Collection menu";
+  }
+  return "unrecognized executable";
+}
+
+bool GameExecutable::usable() const { return XexIsExpected(status); }
+
+namespace {
+
+bool HasXexExtension(const std::filesystem::path& p) {
+  std::string ext = p.extension().string();
+  for (char& c : ext) {
+    c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+  }
+  return ext == ".xex";
+}
+
+bool IsRegionFolderName(const std::filesystem::path& p) {
+  const auto name = p.filename().string();
+  return name == "us" || name == "eu";
+}
+
+// The asset folder that belongs to `xex`: the folder that directly contains
+// us/ or eu/. On a retail disc that is DBZ3/ (right next to the executable); in
+// other layouts it is often one level up (assets/) or one level down.
+std::filesystem::path DataRootFor(const std::filesystem::path& xex) {
+  std::error_code ec;
+  const auto dir = xex.parent_path();
+  if (std::filesystem::is_directory(dir / "us", ec) ||
+      std::filesystem::is_directory(dir / "eu", ec)) {
+    return dir;
+  }
+  const std::filesystem::path candidates[] = {
+      dir.parent_path(),
+      dir / "assets",
+      dir.parent_path() / "assets",
+      dir / "DBZ3",
+      dir.parent_path() / "DBZ3",
+  };
+  for (const auto& cand : candidates) {
+    if (cand.empty()) continue;
+    if (std::filesystem::is_directory(cand / "us", ec) ||
+        std::filesystem::is_directory(cand / "eu", ec)) {
+      return cand;
+    }
+  }
+  return dir;
+}
+
+// Directories that never hold the executable and can be enormous (the AFS asset
+// folders alone are ~1.5GB), so the hunt never descends into them.
+bool SkipDir(const std::filesystem::path& dir) {
+  const auto name = dir.filename().string();
+  static const char* kSkip[] = {"us",          "eu",        "mods",        "mods_archivo",
+                                "_archivo_mods", "user_data", "logs",      "cache",
+                                "iso_cache",   "xex_cache", "shaders",     "metadata",
+                                "System Volume Information", "$RECYCLE.BIN"};
+  for (const char* s : kSkip) {
+    if (name == s) return true;
+  }
+  return false;
+}
+
+}  // namespace
+
+GameExecutable FindGameExecutable(const std::vector<std::filesystem::path>& roots) {
+  std::error_code ec;
+  GameExecutable best;
+  GameExecutable fallback;
+  int visited_dirs = 0;
+  static constexpr int kMaxDirs = 4000;
+
+  auto record = [&](const std::filesystem::path& xex) -> bool {
+    if (!HasXexExtension(xex)) return false;
+    const XexStatus st = ClassifyXexFile(xex);
+    if (st == XexStatus::kMissing) return false;
+    if (XexIsExpected(st)) {
+      if (best.xex.empty()) {
+        best.xex = xex;
+        best.status = st;
+        best.data_root = DataRootFor(xex);
+        best.found_hint = xex.filename().string();
+      }
+      return true;  // bootable: stop hunting
+    }
+    // Recognized but not bootable by this core (DBZ1 / the HD Collection menu /
+    // an unknown build): remembered only to explain the failure to the user.
+    if (fallback.xex.empty()) {
+      fallback.xex = xex;
+      fallback.status = st;
+      fallback.data_root = DataRootFor(xex);
+      fallback.found_hint = xex.filename().string();
+    }
+    return false;
+  };
+
+  // Conventional spots: the folder itself, DBZ3/ (retail disc), assets/ and
+  // assets/DBZ3/ (extracted release layouts).
+  static const char* kNames[] = {"default.xex", "yae3_xenon.xex", "yae3_xenon_eu.xex"};
+  auto scan_flat = [&](const std::filesystem::path& dir) {
+    if (dir.empty()) return false;
+    for (const char* n : kNames) {
+      if (record(dir / n)) return true;
+    }
+    return false;
+  };
+
+  // Bounded recursive hunt (depth <= 3) for the executable under any other
+  // name/location the user may have ended up with.
+  std::function<bool(const std::filesystem::path&, int)> scan_deep =
+      [&](const std::filesystem::path& dir, int depth) -> bool {
+    if (depth > 3 || visited_dirs >= kMaxDirs) return false;
+    if (!std::filesystem::is_directory(dir, ec)) return false;
+    ++visited_dirs;
+    std::vector<std::filesystem::path> subdirs;
+    for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
+      if (entry.is_directory(ec)) {
+        if (!SkipDir(entry.path())) subdirs.push_back(entry.path());
+      } else if (entry.is_regular_file(ec)) {
+        if (record(entry.path())) return true;
+      }
+    }
+    for (const auto& sub : subdirs) {
+      if (scan_deep(sub, depth + 1)) return true;
+    }
+    return false;
+  };
+
+  // The FIRST root is the folder the launcher actually points at (or the data
+  // folder it resolved): that one gets the bounded recursive hunt, so a dump the
+  // user dropped a level or two deeper is still found. The remaining roots are
+  // only probed at the conventional spots - recursing over a parent folder could
+  // otherwise pick up an unrelated copy of the game from elsewhere on the disk.
+  for (size_t i = 0; i < roots.size(); ++i) {
+    const auto& root = roots[i];
+    if (root.empty() || !std::filesystem::is_directory(root, ec)) continue;
+    REXLOG_INFO("FindGameExecutable: searching {}", root.string());
+    if (scan_flat(root)) break;
+    if (scan_flat(root / "DBZ3")) break;
+    if (scan_flat(root / "assets")) break;
+    if (scan_flat(root / "assets" / "DBZ3")) break;
+    if (i == 0 && scan_deep(root, 0)) break;
+  }
+
+  if (!best.xex.empty()) {
+    REXLOG_INFO("FindGameExecutable: found {} ({}) at {} -> data root {}",
+                best.found_hint, XexStatusLabel(best.status), best.xex.string(),
+                best.data_root.string());
+    return best;
+  }
+  if (!fallback.xex.empty()) {
+    REXLOG_WARN("FindGameExecutable: only found {} ({}) at {} - not bootable by this core",
+                fallback.found_hint, XexStatusLabel(fallback.status),
+                fallback.xex.string());
+    return fallback;
+  }
+  REXLOG_INFO("FindGameExecutable: no executable found");
+  return {};
+}
+
+std::filesystem::path EnsureXexCache(const std::filesystem::path& exe,
+                                     const std::filesystem::path& cache_dir) {
+  std::error_code ec;
+  if (!std::filesystem::is_regular_file(exe, ec)) {
+    return {};
+  }
+  const auto dst = cache_dir / "default.xex";
+  const auto stamp = cache_dir / "source.stamp";
+
+  // Identity of the source executable: absolute path + size + mtime. Only the
+  // executable is ever copied (few MB): the AFS assets stay where they are.
+  const auto exe_abs = std::filesystem::absolute(exe, ec).string();
+  const auto exe_size = std::filesystem::file_size(exe, ec);
+  const auto exe_mtime = static_cast<long long>(
+      std::filesystem::last_write_time(exe, ec).time_since_epoch().count());
+  const std::string want = exe_abs + "\n" + std::to_string(exe_size) + "\n" +
+                           std::to_string(exe_mtime) + "\n";
+
+  std::string have;
+  if (std::filesystem::is_regular_file(dst, ec) &&
+      std::filesystem::is_regular_file(stamp, ec)) {
+    std::ifstream in(stamp, std::ios::binary);
+    if (in) {
+      have.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+    }
+  }
+  if (have != want) {
+    std::filesystem::create_directories(cache_dir, ec);
+    REXLOG_INFO("EnsureXexCache: copying {} -> {}", exe.string(), dst.string());
+    std::filesystem::copy_file(exe, dst, std::filesystem::copy_options::overwrite_existing, ec);
+    if (ec) {
+      REXLOG_ERROR("EnsureXexCache: copy failed for {}: {}", exe.string(), ec.message());
+      return {};
+    }
+    std::ofstream out(stamp, std::ios::binary | std::ios::trunc);
+    if (out) {
+      out << want;
+    }
+  }
+  return std::filesystem::is_regular_file(dst, ec) ? dst : std::filesystem::path{};
 }
 
 namespace {
@@ -641,21 +972,98 @@ bool ReadFileFromIso(const std::filesystem::path& iso, const char* path,
 
 }  // namespace
 
+namespace {
+
+bool WriteBytesToFile(const std::filesystem::path& path, const std::vector<uint8_t>& bytes) {
+  std::error_code ec;
+  std::filesystem::create_directories(path.parent_path(), ec);
+  std::ofstream f(path, std::ios::binary | std::ios::trunc);
+  if (!f) return false;
+  f.write(reinterpret_cast<const char*>(bytes.data()),
+          static_cast<std::streamsize>(bytes.size()));
+  f.close();
+  return f.good();
+}
+
+}  // namespace
+
+bool ExtractGameXexFromIso(const std::filesystem::path& iso,
+                           const std::filesystem::path& dst,
+                           std::string* out_source) {
+  if (out_source) out_source->clear();
+  // A repacked image keeps Budokai 3 as the root default.xex, while a RETAIL HD
+  // Collection disc keeps it at DBZ3/yae3_xenon.xex (its root default.xex is the
+  // collection's own menu, which this core cannot boot). Try the known spots and
+  // keep the first that really is this port's executable.
+  static const char* kCandidates[] = {
+      "default.xex",
+      "DBZ3/yae3_xenon.xex",
+      "DBZ3/yae3_xenon_eu.xex",
+      "yae3_xenon.xex",
+      "yae3_xenon_eu.xex",
+      "DBZ3/default.xex",
+  };
+
+  // Each candidate is classified from its OWN temporary file: the classifier
+  // caches by path+size+mtime, and rewriting the same path could be mistaken for
+  // the previously classified file.
+  const auto scratch = dst.parent_path() / "candidates";
+  std::filesystem::path last_bytes_path;
+  std::string last_source;
+
+  for (const char* cand : kCandidates) {
+    std::vector<uint8_t> bytes;
+    if (!ReadFileFromIso(iso, cand, bytes) || bytes.empty()) continue;
+    const auto temp = scratch / std::filesystem::path(cand).filename();
+    if (!WriteBytesToFile(temp, bytes)) continue;
+    last_bytes_path = temp;
+    last_source = cand;
+
+    const auto status = ClassifyXexFile(temp);
+    if (XexIsExpected(status)) {
+      std::error_code ec;
+      std::filesystem::copy_file(temp, dst, std::filesystem::copy_options::overwrite_existing, ec);
+      if (ec) {
+        REXLOG_ERROR("ExtractGameXexFromIso: could not stage {}: {}", cand, ec.message());
+        return false;
+      }
+      if (out_source) *out_source = cand;
+      REXLOG_INFO("ExtractGameXexFromIso: using '{}' ({})", cand, XexStatusLabel(status));
+      return true;
+    }
+    REXLOG_INFO("ExtractGameXexFromIso: '{}' is {} - not bootable, trying next", cand,
+                XexStatusLabel(status));
+  }
+
+  // Nothing bootable: keep the last readable candidate so the launcher can still
+  // tell the user what the disc contains (the HD Collection menu, DBZ1, ...).
+  if (!last_bytes_path.empty()) {
+    std::error_code ec;
+    std::filesystem::copy_file(last_bytes_path, dst,
+                               std::filesystem::copy_options::overwrite_existing, ec);
+    if (out_source) *out_source = last_source;
+    REXLOG_WARN("ExtractGameXexFromIso: no bootable Budokai 3 executable in {} (kept '{}')",
+                iso.string(), last_source);
+  }
+  return false;
+}
+
 bool ExtractDefaultXexFromIso(const std::filesystem::path& iso,
                               const std::filesystem::path& dst) {
-  std::vector<uint8_t> xex;
-  if (!ReadFileFromIso(iso, "default.xex", xex) || xex.empty()) {
-    return false;
+  return ExtractGameXexFromIso(iso, dst, nullptr);
+}
+
+std::string IsoXexSourcePath() {
+  const auto stamp = rex::filesystem::GetExecutableFolder() / "user_data" / "dbz3" /
+                     "iso_cache" / "source.stamp";
+  std::ifstream in(stamp, std::ios::binary);
+  if (!in) return {};
+  std::string line;
+  std::string last;
+  while (std::getline(in, line)) {
+    last = line;
   }
-  std::error_code ec;
-  std::filesystem::create_directories(dst.parent_path(), ec);
-  std::ofstream f(dst, std::ios::binary | std::ios::trunc);
-  if (!f) {
-    return false;
-  }
-  f.write(reinterpret_cast<const char*>(xex.data()),
-          static_cast<std::streamsize>(xex.size()));
-  return f.good();
+  return last;
 }
 
 bool EnsureIsoXexCache(const std::filesystem::path& iso,
@@ -672,31 +1080,141 @@ bool EnsureIsoXexCache(const std::filesystem::path& iso,
   const auto iso_size = std::filesystem::file_size(iso, ec);
   const auto iso_mtime =
       static_cast<long long>(std::filesystem::last_write_time(iso, ec).time_since_epoch().count());
-  const std::string want = iso_abs + "\n" + std::to_string(iso_size) + "\n" +
-                           std::to_string(iso_mtime) + "\n";
+  const std::string identity = iso_abs + "\n" + std::to_string(iso_size) + "\n" +
+                               std::to_string(iso_mtime) + "\n";
 
-  std::string have;
+  // The stamp's 4th line records which file inside the image provided the
+  // executable (e.g. "DBZ3/yae3_xenon.xex" for a retail disc). A stamp written
+  // by an older build has only three lines and no source: re-extract once so the
+  // retail layout (and the DBZ3 prefix it needs) is picked up.
+  std::string have_raw;
   if (std::filesystem::is_regular_file(xex_dst, ec) &&
       std::filesystem::is_regular_file(stamp, ec)) {
     std::ifstream in(stamp, std::ios::binary);
     if (in) {
-      have.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+      have_raw.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
     }
   }
+  std::vector<std::string> have;
+  {
+    size_t start = 0;
+    while (start <= have_raw.size()) {
+      const size_t pos = have_raw.find('\n', start);
+      if (pos == std::string::npos) {
+        if (start < have_raw.size()) have.push_back(have_raw.substr(start));
+        break;
+      }
+      have.push_back(have_raw.substr(start, pos - start));
+      start = pos + 1;
+    }
+  }
+  const bool have_identity =
+      have.size() >= 3 && (have[0] + "\n" + have[1] + "\n" + have[2] + "\n") == identity;
+  const bool have_source = have.size() >= 4 && !have[3].empty();
 
-  if (have != want) {
+  if (!have_identity || !have_source) {
     // The cached xex belongs to another disc (or is missing): re-extract so the
     // region detection matches the executable the runtime will actually run.
-    REXLOG_INFO("EnsureIsoXexCache: (re)extracting default.xex from {}", iso.string());
-    if (!ExtractDefaultXexFromIso(iso, xex_dst)) {
-      return false;
+    REXLOG_INFO("EnsureIsoXexCache: (re)extracting the executable from {}", iso.string());
+    std::string source;
+    const bool bootable = ExtractGameXexFromIso(iso, xex_dst, &source);
+    // A disc without a bootable executable still gets its cache written so the
+    // launcher can report what it is (HD Collection menu / DBZ1 / unknown).
+    if (std::filesystem::is_regular_file(xex_dst, ec)) {
+      std::ofstream out(stamp, std::ios::binary | std::ios::trunc);
+      if (out) {
+        out << identity << source << "\n";
+      }
     }
-    std::ofstream out(stamp, std::ios::binary | std::ios::trunc);
-    if (out) {
-      out << want;
-    }
+    (void)bootable;
   }
   return std::filesystem::is_regular_file(xex_dst, ec);
+}
+
+std::filesystem::path XexCacheDir() {
+  // Mirrors main.cpp's user_data_root (exe_dir/user_data/<app name>) so the
+  // staged executable lives with the rest of the user data.
+  return rex::filesystem::GetExecutableFolder() / "user_data" / "dbz3" / "xex_cache";
+}
+
+bool BootSource::usable() const { return XexIsExpected(status) && !xex.empty(); }
+
+namespace {
+BootSource g_boot_source;
+}  // namespace
+
+const BootSource& CurrentBootSource() { return g_boot_source; }
+void SetCurrentBootSource(const BootSource& source) { g_boot_source = source; }
+
+BootSource ResolveBootSource(const std::filesystem::path& data_root,
+                             const std::vector<std::filesystem::path>& extra_roots,
+                             const std::filesystem::path& cache_dir) {
+  BootSource src;
+  src.data_root = data_root;
+
+  // 1) The canonical spot: <data_root>/default.xex. When it already is a real
+  //    Budokai 3 executable nothing has to be staged and the game folder is
+  //    served as-is (the documented layout).
+  const auto canonical = data_root / "default.xex";
+  const XexStatus canonical_status = ClassifyXexFile(canonical);
+  if (XexIsExpected(canonical_status)) {
+    src.xex = canonical;
+    src.status = canonical_status;
+    src.note = std::string(XexStatusLabel(canonical_status)) + " (default.xex)";
+    REXLOG_INFO("ResolveBootSource: canonical {} -> {}", canonical.string(), src.note);
+    return src;
+  }
+  REXLOG_INFO("ResolveBootSource: {} is {} - hunting for the real executable",
+              canonical.string(), XexStatusLabel(canonical_status));
+
+  // 2) Hunt for the real executable around the data folder: the retail disc
+  //    keeps it as DBZ3/yae3_xenon.xex, dumps often as yae3_xenon.xex, and the
+  //    user may have nested it somewhere else.
+  // The data folder goes first: it gets the recursive hunt (see
+  // FindGameExecutable), the extra roots are only probed at the usual spots.
+  std::vector<std::filesystem::path> roots;
+  roots.push_back(data_root);
+  for (const auto& extra : extra_roots) {
+    roots.push_back(extra);
+  }
+  const GameExecutable found = FindGameExecutable(roots);
+  if (found.usable()) {
+    // The drive can serve it directly when it is already named default.xex at
+    // the mount root.
+    if (found.xex == canonical) {
+      src.xex = canonical;
+      src.status = found.status;
+      src.note = std::string(XexStatusLabel(found.status)) + " (default.xex)";
+      return src;
+    }
+    const auto staged = EnsureXexCache(found.xex, cache_dir);
+    if (!staged.empty()) {
+      src.xex = staged;
+      src.status = found.status;
+      src.redirect_default_xex = true;
+      src.note = found.found_hint + " -> default.xex";
+      if (!found.data_root.empty() && std::filesystem::is_directory(found.data_root)) {
+        src.data_root = found.data_root;
+      }
+      REXLOG_INFO("ResolveBootSource: {} ({}) staged at {}; game data root {}",
+                  found.xex.string(), XexStatusLabel(found.status), staged.string(),
+                  src.data_root.string());
+      return src;
+    }
+    src.status = found.status;
+    src.note = "found " + found.found_hint + " but could not stage it";
+    REXLOG_ERROR("ResolveBootSource: {}", src.note);
+    return src;
+  }
+
+  // 3) Nothing bootable anywhere: keep whatever is at the canonical spot so the
+  //    launcher can tell the user exactly what it is (DBZ1 / HD menu / unknown).
+  src.xex = canonical;
+  src.status = canonical_status;
+  src.note = XexStatusLabel(canonical_status);
+  REXLOG_WARN("ResolveBootSource: no bootable Budokai 3 executable found (canonical: {})",
+              src.note);
+  return src;
 }
 
 std::filesystem::path LatestLogPath() {

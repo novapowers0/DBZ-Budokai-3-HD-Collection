@@ -55,7 +55,32 @@ lógica de región/mods, y runtime.
 
 ## 3. ESTADO ACTUAL (RESUMEN EJECUTIVO)
 
-- **v1.2.1 publicada (Latest, 2026-09-14)**: hotfix del launcher — (a) **crash al
+- **v1.2.2 publicada (Latest, 2026-09-17)**: **arranque garantizado — el launcher
+  encuentra el ejecutable solo**. Motivo: los logs de un usuario (RTX 5090 /
+  9950X3D) mostraban "pulso Play y no pasa nada"; TODOS morían con
+  `XThread::Execute - No function registered at 820D54C8` porque se arrancaba el
+  **menú de la HD Collection** (el `default.xex` de la RAÍZ del disco, 3317760 B)
+  en vez de `DBZ3/yae3_xenon.xex` (4890624 B). Fixes:
+  (a) `ClassifyXexFile` + `XexStatus::kHdMenu` (detecta el menú) y
+  `XexStatusLabel`; (b) **`FindGameExecutable`**: busca el ejecutable real por
+  **tamaño+MD5** en la carpeta elegida (escaneo acotado: depth ≤3) y en las
+  ubicaciones convencionales de los roots vecinos (`root`, `DBZ3`, `assets`,
+  `assets/DBZ3`); (c) **`EnsureXexCache`**: lo prepara como
+  `user_data/dbz3/xex_cache/default.xex` (nunca escribe en la carpeta del
+  usuario); (d) **`ResolveBootSource`/`CurrentBootSource`** = fuente única de
+  verdad (xex + data root + status + redirect) + logs de diagnóstico;
+  (e) shims de dispositivo en `region.cpp` (`GameDataHostDevice` en modo carpeta
+  y `RegionDiscDevice` en ISO) que sirven `game:\default.xex` desde la caché y,
+  en ISO retail, resuelven `us\...` bajo `DBZ3\` con fallbacks;
+  (f) `ExtractGameXexFromIso` prueba `default.xex`, `DBZ3/yae3_xenon.xex`,
+  `DBZ3/yae3_xenon_eu.xex`… y lo anota en `source.stamp`; (g) banner del launcher
+  con "Ejecutable detectado: … (no hay que renombrar nada)", bloqueo con mensaje
+  específico del menú HD y aviso ámbar para xex desconocido; (h) **fix del TOML**:
+  `SaveUserSettings` escapa `\`/`"` (idempotente) → se acabó el
+  `unknown escape sequence '\G'` que perdía los ajustes con rutas Windows.
+  Verificado en local con junctions: layout retail (raíz=menú + `DBZ3/`) arranca,
+  layout clásico intacto, solo-menú → bloqueado sin crash.
+- **v1.2.1 publicada (2026-09-14)**: hotfix del launcher — (a) **crash al
   cerrar tras Model Swap/Texturas** (el hilo del pipeline quedaba sin unir →
   `std::terminate`; ahora `~ModPipeline` hace `join`); (b) etiqueta de nitidez FSR
   invertida; (c) la lista de mods se refresca al terminar el pipeline
@@ -854,29 +879,55 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
   Para usar mods: origen "Carpeta extraida".
 - **Dev**: FPS counter, diag logging gateado por `DevMode() && DiagLogging()`
   (los .bmp solo con ambos ON), minidump en crash.
-- **Banner de validación**: default.xex + us/eu verificados (verde/rojo),
+- **Banner de validación (v1.2.2)**: usa `CurrentBootSource()` (fuente única de
+  verdad), con nota azul "Ejecutable detectado: … (no hay que renombrar nada)",
   botón "Seleccionar carpeta de datos..." (remonta en caliente vía
-  `dbz3::RelocateGameData`), PLAY bloqueado sin assets. Ventana de crash con
-  código + ruta del log.
+  `dbz3::RelocateGameData`), PLAY bloqueado si `!assets_ready` (un solo gate:
+  botón + Enter). Ventana de crash con código + ruta del log.
+- **Resolución del ejecutable (v1.2.2)**: `ResolveBootSource()` =
+  `CheckDefaultXex` de la ruta canónica (`<root>/default.xex`, `<root>/assets/…`)
+  y, si ahí no hay ejecutable válido, `FindGameExecutable()` (por **tamaño+MD5**:
+  4890624=US, 4890624+MD5=EU; escaneo acotado del root elegido depth ≤3 + spots
+  convencionales de los roots vecinos `root`/`DBZ3`/`assets`/`assets/DBZ3`) →
+  `EnsureXexCache()` lo copia a `user_data/dbz3/xex_cache/default.xex`
+  (solo si hace falta) y fija el data root. `GameDataHostDevice` (carpeta) y
+  `RegionDiscDevice` (ISO) sirven ese `default.xex` al VFS y prefijan `DBZ3\`
+  cuando los datos viven ahí. ⚠️ Los logs de `OnConfigurePaths` se pierden (el
+  logging arranca después), así que el diagnóstico aparece en Play
+  (`RelocateGameData`).
 - **Selector de fuente SIEMPRE visible**: dos botones destacados
   ("Carpeta extraida" / "ISO (.iso)") que eligen el origen de los datos en
   CUALQUIER momento, no solo cuando faltan assets (el activo se resalta; elegir
   el otro conmuta el game drive al instante). El launcher distingue el juego:
-  `CheckDefaultXex` conoce US/EU de DBZ3 (`A53E...`/`C37E...`, 4890624 B) Y el
+  `ClassifyXexFile` conoce US/EU de DBZ3 (`A53E...`/`C37E...`, 4890624 B), el
   ejecutable de DBZ1 (`5A6AB28A...`, 4464640 B, igual para US/EU) → status
-  `kDbz1` bloquea PLAY con mensaje "usa el launcher dbz1.exe" (evita que el core
-  DBZ3 crashee con un xex de otro juego). El launcher dbz1 (proyecto hermano)
-  NO distingue nada aún (sin ISO ni validación de xex).
-- **Modo disco (ISO, v1.1.2)**: cvar `dbz3_iso_path` + selector "ISO (.iso)" siempre visible.
+  `kDbz1` bloquea PLAY con mensaje "usa el launcher dbz1.exe", y el **menú de la
+  HD Collection** (3317760 B) → `kHdMenu` bloquea con mensaje específico. Un xex
+  desconocido (`kUnknown`) avisa en ámbar pero **no** bloquea (dump modificado).
+  El launcher dbz1 (proyecto hermano) NO distingue nada aún.
+- **Modo disco (ISO, v1.1.2 + v1.2.2)**: cvar `dbz3_iso_path` + selector
+  "ISO (.iso)" siempre visible.
   Juega directamente desde el `.iso` (GDFX) sin extraer nada: `OnConfigurePaths`
-  extrae SOLO `default.xex` (pocos MB) a `user_data/dbz3/iso_cache/`, y en Play
-  `RemountGameDrive` monta un `DiscImageDevice` (ya en el SDK) como `game:`.
+  extrae SOLO el ejecutable (pocos MB) a `user_data/dbz3/iso_cache/` —
+  `ExtractGameXexFromIso` prueba `default.xex`, `DBZ3/yae3_xenon.xex`,
+  `DBZ3/yae3_xenon_eu.xex`, `yae3_xenon.xex`… y guarda cuál es en
+  `source.stamp` — y en Play `RemountGameDrive` monta un `DiscImageDevice` (ya
+  en el SDK) como `game:`.
   La región se remapea DENTRO del device (`RegionDiscDevice`: `us\`→`eu\`),
   evitando el shadowing del VFS (los devices se resuelven por primer-match de
-  prefijo y el orden de registro importa). Mods requieren la carpeta extraída.
-- **XexStatus**: `CheckDefaultXex` (MD5 portable RFC 1321) — US
-  `A53E324B5D2A65EBCBF648E4F85A7271`, EU `C37EB979B762DA0AB5B8C9BA8037CE4E`.
-  Con núcleo dual acepta ambos; bloquea solo variante conocida equivocada.
+  prefijo y el orden de registro importa). El device sirve además
+  `game:\default.xex` desde la caché y, en ISO retail, resuelve `us\...` bajo
+  `DBZ3\` (con fallback a la ruta original). Mods requieren la carpeta extraída.
+- **XexStatus**: `ClassifyXexFile` (MD5 portable RFC 1321 + entry point como
+  fallback, tamaño como refuerzo) — US
+  `A53E324B5D2A65EBCBF648E4F85A7271`, EU `C37EB979B762DA0AB5B8C9BA8037CE4E`,
+  DBZ1 `5A6AB28A4911851FCA955B5925CDFEBB`, menú HD 3317760 B. `XexStatusLabel()`
+  da el texto para la UI/logs. Con núcleo dual acepta US y EU.
+- **Fix TOML (v1.2.2)**: `rex::cvar::SaveConfig` escribe los valores crudos
+  (una ruta `E:\Game Roms\…` rompía el parseo con `unknown escape sequence
+  '\G'` y se perdían TODOS los ajustes). `SaveUserSettings` ahora pasa el
+  fichero por `EscapeTomlStrings` (escapa `\`/`"` dentro de valores entre
+  comillas; **idempotente** porque `SaveConfig` no reescribe si nada cambió).
 - **Video**: presets (`dbz3_quality_preset` auto/low/medium/high/ultra/manual;
   `auto` detecta GPU por DXGI — la dGPU de más VRAM — y aplica perfil), escala
   interna (draw_resolution_scale_x/y), MSAA, aniso, FSR/CAS, frame_cap REAL
@@ -903,10 +954,15 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
   `DBZ3_DUMP_IMAGE` para volcar la imagen descifrada).
 
 ### 9.2 Releases y estado GitHub
-- **v1.2.1 = Latest** (2026-09-14, core dual 1.2.1, baseline, hotfix del launcher).
+- **v1.2.2 = Latest** (2026-09-17, core dual 1.2.2, baseline, auto-detección del
+  ejecutable + fix del TOML). **v1.2.1** (2026-09-14, hotfix del launcher),
   **v1.2.0**, **v1.1.4 EX**, **v1.1.3**, **v1.1.2**, **v1.1.1**,
   **v1.1.0-clasico** = no-Latest. Tags v1.0.0..v1.0.9 + v1.0.5-EX conservados
   (código archivado; los zips binarios viejos NO existen).
+- ⚠️ **El exe de release se compila desde `out\build\win-amd64-dual`** (es el
+  core dual): `make_release.ps1` toma `dbz3.exe` de ahí (verificado 2026-09-17:
+  el hash del exe del zip v1.2.1 == el de ese build dir) y las DLL del
+  `rexglue-sdk-0.10\out\win-amd64-baseline\`.
 - Empaquetado: `tools/make_release.ps1` (lee versión de `src/version.rc`,
   default `$Version`; **SIN UPX** — falso positivo AV). Verificación:
   `tools/verify_release.ps1` (hashes DLL vs SDK, VERSIONINFO, cvar vsync en

@@ -103,6 +103,22 @@ bool IsValidIso(const std::filesystem::path& iso);
 bool ExtractDefaultXexFromIso(const std::filesystem::path& iso,
                               const std::filesystem::path& dst);
 
+// Like ExtractDefaultXexFromIso, but also looks for the executable where a
+// RETAIL disc keeps it (DBZ3/yae3_xenon.xex, DBZ3/yae3_xenon_eu.xex) - the disc's
+// root default.xex is the HD Collection's menu, not Budokai 3. The first
+// candidate that classifies as this port's executable wins; when none does, the
+// last candidate read is left in `dst` so the launcher can still report what the
+// disc contained. `out_source` (optional) receives the path inside the image
+// that provided the file (e.g. "DBZ3/yae3_xenon.xex"). Returns true when a
+// bootable executable was extracted.
+bool ExtractGameXexFromIso(const std::filesystem::path& iso,
+                           const std::filesystem::path& dst,
+                           std::string* out_source);
+
+// Which file inside the cached disc image provided the executable (e.g.
+// "DBZ3/yae3_xenon.xex"), as recorded by EnsureIsoXexCache. Empty when unknown.
+std::string IsoXexSourcePath();
+
 // Ensure `cache_dir/default.xex` is the executable of the CURRENT ISO. The
 // cached file is used to detect the disc's region before the guest boots, but
 // the runtime executes the xex mounted from the disc. If the cache was produced
@@ -126,10 +142,86 @@ enum class XexStatus {
   kEu = 2,       // known EU/PAL executable
   kUnknown = 3,  // present but not a known variant (informational note)
   kDbz1 = 4,     // known DBZ Budokai HD Collection (DBZ1) executable — a DIFFERENT title
+  kHdMenu = 5,   // the HD Collection's own menu/launcher (the disc's root default.xex)
 };
 // Status of `root/default.xex`, cached by (path, size, mtime) so the per-frame
 // launcher banner does not re-hash a ~4.9MB file every frame.
 XexStatus CheckDefaultXex(const std::filesystem::path& root);
+
+// Status of any executable file (no `<root>/default.xex` convention): used while
+// hunting for the real Budokai 3 executable in a disc dump, where it is named
+// `yae3_xenon.xex` / `yae3_xenon_eu.xex` and the root default.xex is the HD
+// Collection's menu (see kHdMenu). Cheap for non-XEX2 files (magic + size).
+XexStatus ClassifyXexFile(const std::filesystem::path& xex);
+
+// Human-readable label for logs and the launcher banner.
+const char* XexStatusLabel(XexStatus status);
+
+// --- Locating the game executable (any layout) ------------------------------
+// Retail discs keep Budokai 3 at DBZ3/yae3_xenon.xex (4 890 624 B) and the root
+// default.xex is the HD Collection menu, which this core cannot boot. Users also
+// extract it as yae3_xenon.xex next to the data, inside assets/, or nested a
+// level deeper. This resolver finds a REAL Budokai 3 executable (by size + MD5)
+// anywhere under the given roots and reports the asset folder it belongs to, so
+// no manual renaming is ever required.
+struct GameExecutable {
+  std::filesystem::path xex;        // the executable found (host path)
+  std::filesystem::path data_root;  // folder that holds us/ (or eu/) for it
+  XexStatus status = XexStatus::kMissing;
+  std::string found_hint;           // e.g. "DBZ3/yae3_xenon.xex"
+
+  // True when `status` is an executable this core can actually boot.
+  bool usable() const;
+};
+
+// Search `roots` (in order, bounded recursion) for a bootable Budokai 3
+// executable. `data_root` is the folder that directly contains us/ or eu/ next
+// to the executable (falling back to the executable's own folder). Returns an
+// empty .xex when nothing usable is found.
+GameExecutable FindGameExecutable(const std::vector<std::filesystem::path>& roots);
+
+// Make `exe` bootable as `<cache_dir>/default.xex` (the runtime loads
+// `game:\default.xex`). Copies only when the cache is stale or from a different
+// file; never writes to the game folder. Returns the path of the bootable copy
+// (empty on failure).
+std::filesystem::path EnsureXexCache(const std::filesystem::path& exe,
+                                     const std::filesystem::path& cache_dir);
+
+// Small cache folder next to the executable (user_data/dbz3/xex_cache). Holds
+// the staged `default.xex` when the game's own executable is named differently
+// or lives in a subfolder, so the user's files are never modified.
+std::filesystem::path XexCacheDir();
+
+// --- Boot source (what the runtime will actually run) -----------------------
+// The runtime loads `game:\default.xex` and threads the whole game through it.
+// Retail disc dumps place Budokai 3 at DBZ3/yae3_xenon.xex (the root
+// default.xex is the HD Collection's menu, which this core cannot boot), and
+// extracted dumps often keep the original name too. This describes what was
+// resolved so the VFS can serve the right file and the launcher can explain the
+// state to the user without any manual renaming.
+struct BootSource {
+  std::filesystem::path data_root;    // folder mounted as game: (holds us/ or eu/)
+  std::filesystem::path xex;          // executable the runtime must treat as default.xex
+  bool redirect_default_xex = false;  // serve <data_root>/default.xex from `xex`
+  bool iso_prefix_dbz3 = false;       // retail ISO: resolve the us/ folder under DBZ3/
+  XexStatus status = XexStatus::kMissing;
+  std::string note;  // short, human-readable summary for logs and the banner
+
+  bool usable() const;
+};
+
+// Current boot source (set while configuring paths / relocating game data).
+const BootSource& CurrentBootSource();
+void SetCurrentBootSource(const BootSource& source);
+
+// Resolve how to boot from `data_root`: use <data_root>/default.xex when it is a
+// real Budokai 3 executable, otherwise hunt for it (DBZ3/yae3_xenon.xex, a
+// renamed copy, a nested folder) and stage a copy in `cache_dir` so the drive
+// can serve it as default.xex. `extra_roots` are searched first (the folder the
+// user picked, the executable's folder, ...). Never writes to the game folder.
+BootSource ResolveBootSource(const std::filesystem::path& data_root,
+                             const std::vector<std::filesystem::path>& extra_roots,
+                             const std::filesystem::path& cache_dir);
 
 // Whether `status` is the executable THIS core was recompiled from. On the
 // dual-region core (DBZ3_DUAL_REGION) both the US and EU executables are

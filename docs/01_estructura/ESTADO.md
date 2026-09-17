@@ -1,8 +1,9 @@
 # Estado actual del proyecto
 
-> Actualizado: 2026-09-14 (v1.2.1 Latest: Centro de mods renovado, Model Swap
-> HD↔HD pulido, hotfix de crash del launcher; port PS2→HD aparcado, ver §3.4.10
-> de AGENTS.md)
+> Actualizado: 2026-09-17 (v1.2.2 Latest: el launcher encuentra el ejecutable
+> solo —volcado retail del disco e ISO original arrancan sin renombrar nada—;
+> sobre la v1.2.1 (hotfix del launcher) y v1.2.0 (Centro de mods + Model Swap).
+> Port PS2→HD aparcado, ver §3.4.10 de AGENTS.md)
 
 ---
 
@@ -12,7 +13,11 @@
 |---|---|---|
 | **El juego arranca y se juega** | ✅ | D3D12, 60fps, mando XInput. `out\build\win-amd64-release\dbz3.exe` |
 | **Núcleo dual US+EU** | ✅ | Un solo exe detecta el xex por MD5 (US `A53E...`/EU `C37E...`). v1.1.3 "El parche de la ISO" |
-| **Modo disco (ISO)** | ✅ | v1.1.3: selector de fuente siempre visible (carpeta extraída / ISO); juega directo del `.iso` sin extraer |
+| **Auto-detección del ejecutable (v1.2.2)** | ✅ | Lo busca por **tamaño+MD5** (`DBZ3\yae3_xenon.xex`, `assets\DBZ3\`, …) y lo cachea en `user_data/dbz3/xex_cache\`. Sin renombrar nada |
+| **Volcado retail del disco** | ✅ | Raíz = menú HD Collection (3317760 B) + `DBZ3\`: monta `DBZ3\` como unidad de juego y arranca (validado 2026-09-17) |
+| **Menú HD Collection / DBZ1 detectados** | ✅ | `kHdMenu`/`kDbz1` bloquean Play con mensaje claro (antes: muerte críptica `No function registered at 820D54C8`) |
+| **Fix TOML con rutas Windows (v1.2.2)** | ✅ | `EscapeTomlStrings` idempotente: se acabó el `unknown escape sequence '\G'` que perdía los ajustes |
+| **Modo disco (ISO)** | ✅ | v1.1.3: selector de fuente siempre visible (carpeta extraída / ISO); juega directo del `.iso` sin extraer. v1.2.2: extrae `DBZ3\yae3_xenon.xex` del ISO original |
 | **Crash EU Dragon Universe** | ✅ | Fix `0x8215B378` aplicado (2026-09-10, para v1.1.4). Boot EU validado sin FATAL |
 | **Launcher custom** | ✅ | Tabs: Video/Upscaling/Audio/Input/Mods/Model Swap/Texturas/Dev |
 | **Mod de música** (`og_music`) | ✅ | Reemplaza ADX/SFD, funciona (override de audio por AFS) |
@@ -56,11 +61,18 @@
 
 ## ESTADO DEL JUEGO AHORA MISMO
 
-- **v1.2.1 publicada** (Latest, hotfix): crash al cerrar tras Model Swap/Texturas
-  (hilo del pipeline sin unir), etiqueta de nitidez FSR invertida, refresco
-  automático de la lista de mods. Sobre la **v1.2.0** (Centro de mods renovado +
-  Model Swap HD↔HD pulido + aviso de modo ISO + nitidez FSR/CAS ajustable + limpieza
-  de mods). Ver `RELEASE_README.md`.
+- **v1.2.2 publicada** (Latest, 2026-09-17): **arranque garantizado** — el
+  launcher busca el ejecutable de Budokai 3 por tamaño+MD5 en la carpeta elegida
+  (y en `DBZ3\`, `assets\`, `assets\DBZ3\`), lo prepara como
+  `user_data/dbz3/xex_cache/default.xex` (sin escribir en la carpeta del usuario)
+  y monta el data root correcto; el menú de la HD Collection se detecta y se
+  bloquea con mensaje específico. Incluye el fix del `dbz3_user.toml` con rutas
+  Windows y logs de diagnóstico del xex. Ver `RELEASE_README.md`.
+- **v1.2.1 publicada** (no-Latest, 2026-09-14): crash al cerrar tras Model
+  Swap/Texturas (hilo del pipeline sin unir), etiqueta de nitidez FSR invertida,
+  refresco automático de la lista de mods. Sobre la **v1.2.0** (Centro de mods
+  renovado + Model Swap HD↔HD pulido + aviso de modo ISO + nitidez FSR/CAS
+  ajustable + limpieza de mods). Ver `RELEASE_README.md`.
 - **Fix crash EU `0x8215B378`** (para v1.1.4): Dragon Universe EU ya no crashea al
   seleccionar personaje. Mismo tratamiento que `0x820F2398` (función plegada como
   dead fall-through, solo alcanzable vía puntero de función). Aplicado MANUALMENTE

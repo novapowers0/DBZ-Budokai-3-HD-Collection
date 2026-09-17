@@ -40,7 +40,7 @@ aportarlos de tu **copia legal**. Haz esto:
    Quedará `dbz3.exe` y los demás archivos del paquete.
 
 2. **Aporta los archivos del juego** en una de estas dos disposiciones (la que
-   prefieras; el launcher las detecta ambas automáticamente):
+   prefieras; el launcher las detecta todas automáticamente):
 
    **Opción A — junto a `dbz3.exe`:**
 
@@ -60,6 +60,20 @@ aportarlos de tu **copia legal**. Haz esto:
        ├── default.xex     ← TÚ lo pones aquí
        └── us/             ← TÚ la creas (y/o eu/)
    ```
+
+   **Opción B2 — el volcado del disco tal cual (ni renombrar ni mover nada):**
+
+   ```
+   C:\Juegos\DBZ3\
+   ├── dbz3.exe            ← ya viene aquí
+   └── DBZ3/               ← TÚ la copias tal cual del disco
+       ├── yae3_xenon.xex  ← tal cual (NO hace falta renombrarlo)
+       └── us/             ← (y/o eu/)
+   ```
+
+   El launcher **busca el ejecutable de Budokai 3 por sí solo** (por tamaño y
+   checksum, se llame como se llame y esté donde esté dentro de la carpeta), así
+   que no importa cómo se llame ni dónde lo pongas.
 
 3. **Dentro de `us/`** copia los archivos de datos de tu copia legal del juego:
    - USA: `data_cmn.afs`, `data_eng.afs`, `data_fra.afs`, `data_ger.afs`,
@@ -81,10 +95,14 @@ aportarlos de tu **copia legal**. Haz esto:
    **Opción C — juega directamente desde el `.iso` (sin extraer nada):**
 
    Deja el `.iso` del juego junto a `dbz3.exe` (o usa "Seleccionar ISO..." en el
-   launcher). El launcher lo detecta, saca el `default.xex` del disco (solo ese
-   archivo, unos pocos MB) y monta el resto directamente desde la imagen: no
-   hace falta descomprimir ni copiar los AFS. La región se detecta sola a partir
-   del ejecutable del propio disco.
+   launcher). El launcher lo detecta, saca el **ejecutable de Budokai 3** del
+   disco (`DBZ3\yae3_xenon.xex`, solo ese archivo, unos pocos MB) y monta el
+   resto directamente desde la imagen: no hace falta descomprimir ni copiar los
+   AFS. La región se detecta sola a partir del ejecutable del propio disco.
+
+   > Funciona con el ISO **original completo**, el que trae el menú de la HD
+   > Collection en la raíz del disco: el launcher coge de dentro el ejecutable
+   > de Budokai 3, no el menú (que no existe en el núcleo recompilado).
 
    > Los mods necesitan la carpeta extraída (opciones A o B). En modo disco se
    > juega tal cual del ISO.
@@ -102,6 +120,32 @@ aportarlos de tu **copia legal**. Haz esto:
 > para los tamaños y checksums SHA-256 de cada archivo.
 
 ## Novedades de esta release
+
+### v1.2.2 — Arranque garantizado: el launcher encuentra el ejecutable solo (2026-09-17)
+
+- **Ya no hay que renombrar ni colocar nada de una manera concreta**: el launcher
+  busca el ejecutable de Budokai 3 por **tamaño + checksum** (se llame como se
+  llame: `yae3_xenon.xex`, `yae3_xenon_eu.xex`, …) en la carpeta que elijas y en
+  las ubicaciones típicas (`DBZ3\`, `assets\`, `assets\DBZ3\`). Lo prepara él
+  solo en una caché interna (`user_data\xex_cache\`), **sin escribir nada en tu
+  carpeta de juego**.
+- **Arreglado el caso «pulso Play y no pasa nada»** (volcado del disco original
+  sin reorganizar): antes se arrancaba el **menú de la HD Collection** de la raíz
+  del disco, que no está en el núcleo de Budokai 3, y el juego moría con un error
+  críptico (`No function registered`). Ahora se usa el ejecutable correcto y se
+  monta la carpeta `DBZ3\` como unidad del juego, así que los datos (`DBZ3\us\`)
+  se cargan bien.
+- **Modo disco (ISO) con ISO original completo**: se extrae el ejecutable de
+  Budokai 3 de dentro del disco y los datos se resuelven bajo `DBZ3\`
+  automáticamente. Sigue funcionando con ISOs ya repackados.
+- **Mensajes claros**: si pones el menú de la HD Collection, el launcher lo
+  detecta y lo explica (y bloquea Play); si el ejecutable es desconocido (dump
+  modificado), avisa pero deja jugar.
+- **Arreglado un fallo de configuración**: con `\` en la ruta de la carpeta o del
+  ISO, el `dbz3_user.toml` se guardaba mal (`unknown escape sequence`) y se
+  perdían los ajustes en cada arranque. Ahora se escapa correctamente.
+- **Log de diagnóstico del arranque**: ruta del ejecutable, tamaño, checksum,
+  estado, carpeta de datos y avisos.
 
 ### v1.2.1 — Hotfix del launcher (2026-09-14)
 
