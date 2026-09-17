@@ -19,7 +19,7 @@ nativo en Windows.
 | Plataforma | Windows |
 | Motor | Xbox 360 (ReXGlue SDK) |
 | Género | Lucha 3D |
-| Versión | v1.2.2 |
+| Versión | v1.2.2 EX |
 
 Copyright (c) 2026 **NovaPowers**. Licencia MIT (ver `LICENSE`).
 
@@ -247,7 +247,7 @@ monta `tools/make_release.ps1`.
 
 ---
 
-## Novedades de v1.2.2
+## Novedades de v1.2.2 EX
 
 - **El launcher encuentra el ejecutable del juego esté como esté**: ya no hace
   falta renombrar nada a `default.xex` ni tenerlo en la raíz. Lo busca por
@@ -259,9 +259,13 @@ monta `tools/make_release.ps1`.
   raíz del disco, que no existe en el núcleo de Budokai 3 y moría con un error
   críptico. Ahora se usa el ejecutable correcto (`DBZ3\yae3_xenon.xex`) y se
   monta la carpeta `DBZ3\` como unidad del juego.
-- **Modo disco (ISO) con ISO original completo**: se extrae el ejecutable de
-  Budokai 3 de dentro del disco y los datos (`us\`, `eu\`) se resuelven bajo
-  `DBZ3\` automáticamente.
+- **Modo disco (ISO) con ISO original completo, validado**: se extrae el
+  ejecutable de Budokai 3 de dentro del disco (no el menú) y los datos
+  (`DBZ3\us\`, `DBZ3\eu\`) se resuelven solos. Se corrigió además un fallo de
+  normalización de rutas que impedía leer los datos desde el disco.
+- **Si tu carpeta no puede arrancar, se usa el ISO que tengas al lado**: con el
+  volcado del disco tal cual (carpeta `us\` + el menú como `default.xex`) y el
+  `.iso` junto a `dbz3.exe`, el launcher salta solo al disco y arranca.
 - **Mensajes claros si el ejecutable no es el correcto**: el menú de la HD
   Collection se detecta y se explica; un ejecutable desconocido avisa pero no
   bloquea (puede ser un dump modificado).

@@ -433,12 +433,26 @@ public:
         const std::string iso_override = dbz3::settings::IsoPath();
         if (dbz3::settings::IsValidIso(iso_override)) {
           iso_path = iso_override;
-        } else if (!dbz3::settings::IsValidGameDataDir(game_dir)) {
-          // Auto-detect: if no extracted folder was found, look for a disc
-          // image next to the game / executable and play from it directly.
+        } else if (!dbz3::settings::IsValidGameDataDir(game_dir) ||
+                   boot.status == dbz3::settings::XexStatus::kHdMenu ||
+                   boot.status == dbz3::settings::XexStatus::kMissing) {
+          // Auto-detect: if no extracted folder was found, or the folder exists
+          // but holds only the HD Collection's menu (a disc dump copied as-is:
+          // us/ is there, so the folder looks valid, but default.xex is the
+          // menu and nothing can boot from it), look for a disc image next to
+          // the game / executable and play from it directly. The real Budokai 3
+          // executable lives inside the image (DBZ3/yae3_xenon.xex) and so does
+          // the game data, so this is the difference between "Play does nothing"
+          // and the game starting.
           iso_path = dbz3::settings::FindIsoInDir(game_dir);
           if (iso_path.empty()) {
             iso_path = dbz3::settings::FindIsoInDir(exe_dir);
+          }
+          if (!iso_path.empty()) {
+            REXLOG_INFO(
+                "OnConfigurePaths - folder cannot boot ({}) - using the disc "
+                "image next to the game instead: {}",
+                dbz3::settings::XexStatusLabel(boot.status), iso_path.string());
           }
         }
         if (!iso_path.empty()) {
@@ -470,16 +484,28 @@ public:
             iso_boot.status = dbz3::settings::ClassifyXexFile(xex_dst);
             iso_boot.note = "ISO: " + (iso_xex_src.empty() ? std::string("default.xex")
                                                            : iso_xex_src);
-            dbz3::settings::SetCurrentBootSource(iso_boot);
-            REXLOG_INFO(
-                "OnConfigurePaths - ISO xex source '{}' status {} prefix_dbz3={}",
-                iso_xex_src, dbz3::settings::XexStatusLabel(iso_boot.status),
-                iso_boot.iso_prefix_dbz3 ? "yes" : "no");
-            game_dir_ = iso_cache;
-            paths.game_data_root = iso_cache;
-            dbz3::SetEffectiveGameRoot(iso_cache);
-            REXLOG_INFO("OnConfigurePaths - ISO mode: {} (xex cache {})",
-                        iso_path.string(), iso_cache.string());
+            // Only play from the image when it really carries this port's
+            // executable: a disc whose candidates are all foreign (a menu-only
+            // image, a corrupted one) must not send the runtime after a file it
+            // cannot boot - keep the folder source so the banner explains it.
+            if (!iso_boot.usable()) {
+              REXLOG_WARN(
+                  "OnConfigurePaths - disc image {} has no bootable Budokai 3 "
+                  "executable ({}); keeping the folder source",
+                  iso_path.string(), dbz3::settings::XexStatusLabel(iso_boot.status));
+              dbz3::settings::SetIsoPath("");
+            } else {
+              dbz3::settings::SetCurrentBootSource(iso_boot);
+              REXLOG_INFO(
+                  "OnConfigurePaths - ISO xex source '{}' status {} prefix_dbz3={}",
+                  iso_xex_src, dbz3::settings::XexStatusLabel(iso_boot.status),
+                  iso_boot.iso_prefix_dbz3 ? "yes" : "no");
+              game_dir_ = iso_cache;
+              paths.game_data_root = iso_cache;
+              dbz3::SetEffectiveGameRoot(iso_cache);
+              REXLOG_INFO("OnConfigurePaths - ISO mode: {} (xex cache {})",
+                          iso_path.string(), iso_cache.string());
+            }
           } else {
             dbz3::settings::SetIsoPath("");
           }

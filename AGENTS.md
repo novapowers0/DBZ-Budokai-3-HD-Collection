@@ -55,12 +55,14 @@ lógica de región/mods, y runtime.
 
 ## 3. ESTADO ACTUAL (RESUMEN EJECUTIVO)
 
-- **v1.2.2 publicada (Latest, 2026-09-17)**: **arranque garantizado — el launcher
-  encuentra el ejecutable solo**. Motivo: los logs de un usuario (RTX 5090 /
-  9950X3D) mostraban "pulso Play y no pasa nada"; TODOS morían con
-  `XThread::Execute - No function registered at 820D54C8` porque se arrancaba el
-  **menú de la HD Collection** (el `default.xex` de la RAÍZ del disco, 3317760 B)
-  en vez de `DBZ3/yae3_xenon.xex` (4890624 B). Fixes:
+- **v1.2.2 EX publicada (Latest, 2026-09-17)**: **arranque garantizado — el
+  launcher encuentra el ejecutable solo** (misma base que la v1.2.2, que se
+  retiró: la EX añade los fixes que faltaban del modo ISO). Motivo: los logs de
+  un usuario (SSGPrinceVegeta, RTX 5090/9950X3D) y del issue #7 (RTX 5080, ISO
+  original) mostraban "pulso Play y no pasa nada"; TODOS morían con
+  `XThread::Execute - No function registered at 820D54C8` / `0x820D54A8` porque
+  se arrancaba el **menú de la HD Collection** (el `default.xex` de la RAÍZ del
+  disco, 3317760 B) en vez de `DBZ3/yae3_xenon.xex` (4890624 B). Fixes:
   (a) `ClassifyXexFile` + `XexStatus::kHdMenu` (detecta el menú) y
   `XexStatusLabel`; (b) **`FindGameExecutable`**: busca el ejecutable real por
   **tamaño+MD5** en la carpeta elegida (escaneo acotado: depth ≤3) y en las
@@ -75,11 +77,23 @@ lógica de región/mods, y runtime.
   (f) `ExtractGameXexFromIso` prueba `default.xex`, `DBZ3/yae3_xenon.xex`,
   `DBZ3/yae3_xenon_eu.xex`… y lo anota en `source.stamp`; (g) banner del launcher
   con "Ejecutable detectado: … (no hay que renombrar nada)", bloqueo con mensaje
-  específico del menú HD y aviso ámbar para xex desconocido; (h) **fix del TOML**:
-  `SaveUserSettings` escapa `\`/`"` (idempotente) → se acabó el
-  `unknown escape sequence '\G'` que perdía los ajustes con rutas Windows.
-  Verificado en local con junctions: layout retail (raíz=menú + `DBZ3/`) arranca,
-  layout clásico intacto, solo-menú → bloqueado sin crash.
+  específico del menú HD, bloqueo de DBZ1 y aviso ámbar para xex desconocido;
+  (h) **fix del TOML**: `SaveUserSettings` escapa `\`/`"` (idempotente) → se
+  acabó el `unknown escape sequence '\G'` que perdía los ajustes con rutas
+  Windows.
+  **EX añade (2026-09-17, validado con un ISO XDVDFS sintético)**:
+  (i) **`NormalizeGuestPath`** en `RegionDiscDevice::ResolvePath` — el VFS
+  entrega la ruta con el separador inicial (`\us\data_cmn.afs`) y el remapeo de
+  región + el prefijo `DBZ3\` exigían que no empezara por `\` → **en ISO retail
+  no se leía NINGÚN dato** (`NtCreateFile FAILED 'D:\us\data_cmn.afs' ->
+  0xc000000f`); (j) **fallback carpeta→ISO**: si la carpeta elegida tiene `us/` +
+  el menú como `default.xex` (dump retail copiado tal cual), el launcher **usa el
+  `.iso` de al lado** solo; (k) no se entra en modo ISO si el disco no da un
+  US/EU (`iso_boot.usable()`), y (l) `tools/make_test_iso.py` (generador de
+  XDVDFS de prueba). Pruebas: layout retail (raíz=menú + `DBZ3/`) y modo ISO
+  auto-detectado y por fallback → **el juego arranca** (validado en local e
+  informado por el usuario). Ver `docs/SESION_AUTODETECCION_XEX_2026-09-17.md`
+  (§4 y §4.bis).
 - **v1.2.1 publicada (2026-09-14)**: hotfix del launcher — (a) **crash al
   cerrar tras Model Swap/Texturas** (el hilo del pipeline quedaba sin unir →
   `std::terminate`; ahora `~ModPipeline` hace `join`); (b) etiqueta de nitidez FSR
@@ -725,6 +739,7 @@ xbdecompress <src> <dst>         # descomprimir
 #  tools/lab_f0.ps1                          <- baseline: hashes+región+mods+logs clasificados
 #  awo_tools/corpus_scan.py                  <- parse-all AFS -> JSON+SQLite (Content DB)
 #  mod center hd/swap_matrix.py              <- mover CUALQUIER blob entre slots/regiones
+#  tools/make_test_iso.py <out.iso> <carpeta> <- XDVDFS de prueba (validar el modo disco/ISO)
 ```
 
 **⚠️ Compilar el juego**: pasar SIEMPRE
@@ -905,19 +920,26 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
   HD Collection** (3317760 B) → `kHdMenu` bloquea con mensaje específico. Un xex
   desconocido (`kUnknown`) avisa en ámbar pero **no** bloquea (dump modificado).
   El launcher dbz1 (proyecto hermano) NO distingue nada aún.
-- **Modo disco (ISO, v1.1.2 + v1.2.2)**: cvar `dbz3_iso_path` + selector
+- **Modo disco (ISO, v1.1.2 + v1.2.2 EX)**: cvar `dbz3_iso_path` + selector
   "ISO (.iso)" siempre visible.
-  Juega directamente desde el `.iso` (GDFX) sin extraer nada: `OnConfigurePaths`
-  extrae SOLO el ejecutable (pocos MB) a `user_data/dbz3/iso_cache/` —
-  `ExtractGameXexFromIso` prueba `default.xex`, `DBZ3/yae3_xenon.xex`,
-  `DBZ3/yae3_xenon_eu.xex`, `yae3_xenon.xex`… y guarda cuál es en
-  `source.stamp` — y en Play `RemountGameDrive` monta un `DiscImageDevice` (ya
-  en el SDK) como `game:`.
+  Juega directamente desde el `.iso` (GDFX = **XDVDFS crudo**: descriptor de
+  volumen en el sector 32 con el magic `MICROSOFT*XBOX*MEDIA`) sin extraer nada:
+  `OnConfigurePaths` extrae SOLO el ejecutable (pocos MB) a
+  `user_data/dbz3/iso_cache/` — `ExtractGameXexFromIso` prueba `default.xex`,
+  `DBZ3/yae3_xenon.xex`, `DBZ3/yae3_xenon_eu.xex`, `yae3_xenon.xex`… y guarda
+  cuál es en `source.stamp` — y en Play `RemountGameDrive` monta un
+  `DiscImageDevice` (ya en el SDK) como `game:`.
   La región se remapea DENTRO del device (`RegionDiscDevice`: `us\`→`eu\`),
   evitando el shadowing del VFS (los devices se resuelven por primer-match de
-  prefijo y el orden de registro importa). El device sirve además
+  prefijo y el orden de registro importa). ⚠️ **`ResolvePath` normaliza la ruta
+  primero** (`NormalizeGuestPath`): el VFS la entrega con el separador inicial
+  (`\us\data_cmn.afs`) y sin eso el remapeo de región y el prefijo `DBZ3\` no se
+  aplicaban (el invitado no leía NINGÚN dato: `0xc000000f`). El device sirve
   `game:\default.xex` desde la caché y, en ISO retail, resuelve `us\...` bajo
-  `DBZ3\` (con fallback a la ruta original). Mods requieren la carpeta extraída.
+  `DBZ3\` (con fallback a la ruta original). Si el disco no da un US/EU, **no**
+  se entra en ISO (`iso_boot.usable()`). **Fallback carpeta→ISO**: si la carpeta
+  elegida no tiene ejecutable bootable (`kHdMenu`/`kMissing`) y hay un `.iso`
+  junto a ella o al exe, se juega del ISO. Mods requieren la carpeta extraída.
 - **XexStatus**: `ClassifyXexFile` (MD5 portable RFC 1321 + entry point como
   fallback, tamaño como refuerzo) — US
   `A53E324B5D2A65EBCBF648E4F85A7271`, EU `C37EB979B762DA0AB5B8C9BA8037CE4E`,
@@ -954,8 +976,10 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
   `DBZ3_DUMP_IMAGE` para volcar la imagen descifrada).
 
 ### 9.2 Releases y estado GitHub
-- **v1.2.2 = Latest** (2026-09-17, core dual 1.2.2, baseline, auto-detección del
-  ejecutable + fix del TOML). **v1.2.1** (2026-09-14, hotfix del launcher),
+- **v1.2.2 EX = Latest** (2026-09-17, core dual 1.2.2.1, baseline, auto-detección
+  del ejecutable + fixes del modo ISO + fix del TOML). ⚠️ La **v1.2.2 plana se
+  retiró** (le faltaban los fixes del ISO: normalización de rutas y fallback
+  carpeta→ISO). **v1.2.1** (2026-09-14, hotfix del launcher),
   **v1.2.0**, **v1.1.4 EX**, **v1.1.3**, **v1.1.2**, **v1.1.1**,
   **v1.1.0-clasico** = no-Latest. Tags v1.0.0..v1.0.9 + v1.0.5-EX conservados
   (código archivado; los zips binarios viejos NO existen).

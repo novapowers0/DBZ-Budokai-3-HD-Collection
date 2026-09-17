@@ -29,6 +29,11 @@
 - `awo_tools/corpus_scan.py` — desde 2026-09-09 **limpia sus temporales** tras
   cada descompresión (antes dejaba ~16 GB en `out/analysis/corpus/.work`).
   Solo `--keep-bin` conserva copias en `.work/bins/`.
+- `tools/make_test_iso.py <out.iso> <carpeta> [--quiet]` — genera un **XDVDFS de
+  prueba** (lo que el runtime lee como "GDFX") empaquetando una carpeta con el
+  layout retail: sirve para validar el **modo disco (ISO)** sin un ISO real
+  (v1.2.2 EX, ver `docs/SESION_AUTODETECCION_XEX_2026-09-17.md` §4.bis). Solo
+  empaqueta lo que le des: no contiene datos del juego.
 
 ### mod center hd/ — herramientas HD adaptadas
 | Herramienta | Función |

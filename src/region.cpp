@@ -65,6 +65,20 @@ bool IsDefaultXexRequest(std::string_view path) {
   return IEqualsAscii(path, "default.xex");
 }
 
+// The VFS strips the mount prefix but keeps its leading separator, so the device
+// receives "\us\data_cmn.afs". Normalize it before matching/remapping, otherwise
+// the region remap and the DBZ3\ prefix simply never apply and the guest gets
+// "NtCreateFile FAILED: path='D:\us\data_cmn.afs' -> 0xc000000f".
+std::string NormalizeGuestPath(std::string_view path) {
+  while (!path.empty() && (path.front() == '\\' || path.front() == '/')) {
+    path.remove_prefix(1);
+  }
+  while (!path.empty() && (path.back() == '\\' || path.back() == '/')) {
+    path.remove_suffix(1);
+  }
+  return std::string(path);
+}
+
 std::string PathLeaf(const std::string& path) {
   const auto pos = path.find_last_of("\\/");
   return pos == std::string::npos ? path : path.substr(pos + 1);
@@ -152,7 +166,7 @@ class RegionDiscDevice : public rex::filesystem::DiscImageDevice {
       }
     }
 
-    std::string mapped(path);
+    std::string mapped = NormalizeGuestPath(path);
     if (region_ == "eu") {
       // game:\us\... -> disc \eu\...
       if (mapped == "us") {
@@ -162,7 +176,7 @@ class RegionDiscDevice : public rex::filesystem::DiscImageDevice {
       }
     }
 
-    if (prefix_dbz3_ && !mapped.empty() && mapped.front() != '\\') {
+    if (prefix_dbz3_ && !mapped.empty()) {
       // 1) DBZ3\<path> (the data_cmn.afs and friends live under DBZ3\us\),
       // 2) DBZ3\<leaf> (adx_*.afs / *.sfd live at the DBZ3 root), 3) plain.
       const std::string candidates[] = {"DBZ3\\" + mapped, "DBZ3\\" + PathLeaf(mapped), mapped};

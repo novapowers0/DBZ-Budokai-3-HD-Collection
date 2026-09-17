@@ -119,8 +119,54 @@ gateada para no afectar a ISOs ya repackados).
 
 ---
 
+## 4.bis Modo ISO — VALIDADO (v1.2.2 EX, 2026-09-17)
+
+Sin un ISO original a mano, se validó montando un **XDVDFS sintético** con
+`tools/make_test_iso.py` (generador nuevo: empaqueta una carpeta con el layout
+retail — `default.xex` = menú 3317760 B en la raíz, `DBZ3/yae3_xenon.xex` real y
+`DBZ3/us` con los 15 ficheros de datos, 2,3 GB).
+
+Pruebas (todas con el exe dual 1.2.2.1):
+
+| Escenario | Resultado |
+|---|---|
+| **A** — sólo el `.iso` junto a `dbz3.exe` (sin carpeta) | El launcher auto-detecta el ISO, extrae `DBZ3/yae3_xenon.xex` (rechaza el menú), monta el disco con `prefix_dbz3=yes`, crea el hilo del invitado y **el juego arranca** (vivo a los 45 s, sin `No function registered`). |
+| **B** — carpeta "válida" pero con el **menú** como `default.xex` + ISO al lado (el caso del usuario) | Salta solo al ISO (`folder cannot boot (...) - using the disc image`), monta igual y **arranca**. |
+
+**2 bugs reales encontrados y corregidos por estas pruebas** (los habría sufrido
+cualquier usuario de ISO retail):
+
+1. **`RegionDiscDevice` no normalizaba la ruta**: el VFS entrega la ruta con el
+   prefijo desmontado pero **con el separador inicial** (`\us\data_cmn.afs`), y el
+   remapeo de región + el prefijo `DBZ3\` exigían que no empezara por `\` → nunca
+   se aplicaban → el invitado fallaba con
+   `NtCreateFile FAILED: path='D:\us\data_cmn.afs' -> 0xc000000f`. Fix:
+   `NormalizeGuestPath()` al entrar en `ResolvePath` (el redirect de `default.xex`
+   ya lo hacía, por eso el módulo sí cargaba y sólo fallaban los datos).
+2. **Modo ISO con un disco sin ejecutable bootable**: si las candidatas no dan un
+   US/EU, ahora **no** se entra en modo ISO (`iso_boot.usable()`); se conserva la
+   carpeta y el banner explica el motivo (antes se arrancaba un fichero que el
+   runtime no podía cargar → `Unknown module magic: 00000000`).
+
+Nota: en la captura queda un `NtCreateFile FAILED: path='D:\us\'` (petición de
+directorio que el VFS canonicaliza a la raíz de la unidad); es inocuo — el juego
+continúa y llega al menú.
+
+
+---
+
 ## 5. Notas para el futuro
 
+- **`tools/make_test_iso.py <out.iso> <carpeta>`** genera un XDVDFS de prueba
+  desde una carpeta (para validar el modo disco sin un ISO real). El runtime lee
+  XDVDFS crudo: descriptor de volumen en el sector 32 con el magic
+  `MICROSOFT*XBOX*MEDIA`, entradas de directorio de 14 B + nombre enlazadas como
+  árbol cuyos punteros van en unidades de 4 B. Si se añaden más ficheros a una
+  carpeta, no olvidar que cada directorio debe caber en un sector.
+- **El fallback carpeta→ISO** (v1.2.2 EX) se activa cuando la carpeta no tiene
+  ejecutable bootable (`kHdMenu`, `kMissing`) y hay un `.iso` junto a la carpeta
+  de datos o al ejecutable. Si el usuario quiere mods, en el launcher puede
+   volver a "Carpeta extraida" (eso limpia `dbz3_iso_path`).
 - ⚠️ **El exe de release se compila desde `out\build\win-amd64-dual`**
   (verificado: el SHA-256 del `dbz3.exe` del zip v1.2.1 coincide con el de ese
   build dir). `tools/make_release.ps1` ya lo toma de ahí.

@@ -121,7 +121,7 @@ aportarlos de tu **copia legal**. Haz esto:
 
 ## Novedades de esta release
 
-### v1.2.2 — Arranque garantizado: el launcher encuentra el ejecutable solo (2026-09-17)
+### v1.2.2 EX — Arranque garantizado: el launcher encuentra el ejecutable solo (2026-09-17)
 
 - **Ya no hay que renombrar ni colocar nada de una manera concreta**: el launcher
   busca el ejecutable de Budokai 3 por **tamaño + checksum** (se llame como se
@@ -135,12 +135,17 @@ aportarlos de tu **copia legal**. Haz esto:
   críptico (`No function registered`). Ahora se usa el ejecutable correcto y se
   monta la carpeta `DBZ3\` como unidad del juego, así que los datos (`DBZ3\us\`)
   se cargan bien.
-- **Modo disco (ISO) con ISO original completo**: se extrae el ejecutable de
-  Budokai 3 de dentro del disco y los datos se resuelven bajo `DBZ3\`
-  automáticamente. Sigue funcionando con ISOs ya repackados.
+- **Modo disco (ISO) con el ISO original completo, validado**: se extrae el
+  ejecutable de Budokai 3 de dentro del disco (no el menú) y los datos se
+  resuelven bajo `DBZ3\` automáticamente. Se corrigió además un fallo de
+  normalización de rutas que impedía leer los datos desde el disco aun con el
+  ejecutable correcto. Los ISOs ya repackados siguen funcionando igual.
+- **Fallback al ISO**: si tu carpeta tiene los datos (`us\`) pero el ejecutable
+  es el menú de la colección (volcado del disco tal cual), el launcher **usa el
+  `.iso` que tengas junto a `dbz3.exe`** y arranca, en vez de bloquearse.
 - **Mensajes claros**: si pones el menú de la HD Collection, el launcher lo
-  detecta y lo explica (y bloquea Play); si el ejecutable es desconocido (dump
-  modificado), avisa pero deja jugar.
+  detecta y lo explica; si pones un ejecutable de DBZ1, te remite a su launcher;
+  un ejecutable desconocido (dump modificado) avisa pero deja jugar.
 - **Arreglado un fallo de configuración**: con `\` en la ruta de la carpeta o del
   ISO, el `dbz3_user.toml` se guardaba mal (`unknown escape sequence`) y se
   perdían los ajustes en cada arranque. Ahora se escapa correctamente.

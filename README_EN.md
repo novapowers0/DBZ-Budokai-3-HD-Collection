@@ -248,7 +248,7 @@ layout is assembled by `tools/make_release.ps1`.
 
 ---
 
-## v1.2.2 highlights
+## v1.2.2 EX highlights
 
 - **The launcher finds the game executable however you have it**: no need to
   rename anything to `default.xex` or keep it at the root. It looks for it by
@@ -260,9 +260,13 @@ layout is assembled by `tools/make_release.ps1`.
   does not exist in the Budokai 3 core and died with a cryptic error. Now the
   correct executable is used (`DBZ3\yae3_xenon.xex`) and `DBZ3\` is mounted as
   the game drive.
-- **Disc mode (ISO) with a full original ISO**: the Budokai 3 executable is
-  taken from inside the disc and the data (`us\`, `eu\`) is resolved under
-  `DBZ3\` automatically.
+- **Disc mode (ISO) with a full original ISO, now validated**: the Budokai 3
+  executable is taken from inside the disc (not the menu) and the data
+  (`DBZ3\us\`, `DBZ3\eu\`) is resolved automatically. A path-normalization bug
+  that prevented reading any data from the disc was fixed too.
+- **If your folder cannot boot, the ISO next to it is used**: with a straight
+  disc dump (a `us\` folder plus the menu as `default.xex`) and the `.iso` next
+  to `dbz3.exe`, the launcher switches to the disc by itself and boots.
 - **Clear messages when the executable is not the right one**: the HD Collection
   menu is detected and explained; an unknown executable warns but does not block
   Play (it may be a modified dump).
