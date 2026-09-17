@@ -1,6 +1,6 @@
 # HOJA DE RUTA 2026-09 — Madurez del proyecto (post-1.1.1)
 
-> Actualizado: 2026-09-17. Estado base: **v1.2.2 publicada** (Latest; el launcher
+> Actualizado: 2026-09-17. Estado base: **v1.2.2 EX publicada** (Latest; el launcher
 > encuentra el ejecutable solo: volcado retail del disco e ISO original arrancan
 > sin renombrar nada; fix del TOML con rutas Windows), juego muy
 > funcional y validado en combate/menús (US+EU, teclado, presets, mods por

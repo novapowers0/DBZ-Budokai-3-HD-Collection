@@ -18,7 +18,7 @@
 | [BRIEFING_GPT6_ASTRA](BRIEFING_GPT6_ASTRA.md) | Briefing técnico que originó el dictamen |
 | [HOJA_DE_RUTA](HOJA_DE_RUTA.md) | Plan modding original (histórico, superseded) |
 | [HOJA_DE_RUTA_COMUNIDAD](HOJA_DE_RUTA_COMUNIDAD.md) | Feedback comunidad P0-P5 (histórico, todo completado) |
-| [SESION_AUTODETECCION_XEX_2026-09-17](SESION_AUTODETECCION_XEX_2026-09-17.md) | **v1.2.2**: auto-detección del ejecutable (volcado retail del disco, ISO original, `DBZ3\`), estados del xex y fix del TOML |
+| [SESION_AUTODETECCION_XEX_2026-09-17](SESION_AUTODETECCION_XEX_2026-09-17.md) | **v1.2.2 EX**: auto-detección del ejecutable (volcado retail del disco, ISO original, `DBZ3\`), estados del xex y fix del TOML |
 | [01_estructura](01_estructura/ARBOL.md) | Árbol completo del proyecto, qué es cada carpeta |
 | [01_estructura/ESTADO.md](01_estructura/ESTADO.md) | Estado actual, qué funciona, qué falla |
 | [01_estructura/HISTORICO_AGENTS.md](01_estructura/HISTORICO_AGENTS.md) | Historial verbatim de sesiones (solo bajo demanda) |
@@ -46,7 +46,7 @@
 - **Jugar**: `out\build\win-amd64-release\dbz3.exe`
 - **Config**: `out\build\win-amd64-release\dbz3_user.toml`
 - **Mods**: carpeta `mods\<mod>\` junto al exe. Solo los que NO tienen `.disabled`.
-- **Estado**: **v1.2.2 publicada (Latest)** — arranque garantizado: el launcher **encuentra el ejecutable de Budokai 3 solo** (por tamaño+MD5, se llame como se llame y esté en `DBZ3\`, `assets\` o donde sea) y arranca el volcado retail del disco o el ISO original sin renombrar nada; incluye fix del `dbz3_user.toml` con rutas Windows. Sobre la v1.2.1 (hotfix del launcher) y la v1.2.0 (Centro de mods renovado + Model Swap HD↔HD pulido + aviso de modo ISO). Juego funcional (D3D12, 60fps, US+EU). Swap nativo HD↔HD y texturas funcionan (Vía A aproximada). Port completo PS2→HD **aparcado** (§3.4.10). Escalado: FSR1/CAS sí; FSR3/DLSS no viable a corto plazo.
+- **Estado**: **v1.2.2 EX publicada (Latest)** — arranque garantizado: el launcher **encuentra el ejecutable de Budokai 3 solo** (por tamaño+MD5, se llame como se llame y esté en `DBZ3\`, `assets\` o donde sea) y arranca el volcado retail del disco o el ISO original sin renombrar nada; incluye fix del `dbz3_user.toml` con rutas Windows y el modo ISO retail validado (extracción de `DBZ3/yae3_xenon.xex` + resolución de `DBZ3\us\` + fallback carpeta→ISO). Sobre la v1.2.1 (hotfix del launcher) y la v1.2.0 (Centro de mods renovado + Model Swap HD↔HD pulido + aviso de modo ISO). Juego funcional (D3D12, 60fps, US+EU). Swap nativo HD↔HD y texturas funcionan (Vía A aproximada). Port completo PS2→HD **aparcado** (§3.4.10). Escalado: FSR1/CAS sí; FSR3/DLSS no viable a corto plazo.
 
 ---
 

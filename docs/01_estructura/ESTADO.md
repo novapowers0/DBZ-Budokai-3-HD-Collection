@@ -1,6 +1,6 @@
 # Estado actual del proyecto
 
-> Actualizado: 2026-09-17 (v1.2.2 Latest: el launcher encuentra el ejecutable
+> Actualizado: 2026-09-17 (v1.2.2 EX Latest: el launcher encuentra el ejecutable
 > solo —volcado retail del disco e ISO original arrancan sin renombrar nada—;
 > sobre la v1.2.1 (hotfix del launcher) y v1.2.0 (Centro de mods + Model Swap).
 > Port PS2→HD aparcado, ver §3.4.10 de AGENTS.md)
@@ -17,7 +17,7 @@
 | **Volcado retail del disco** | ✅ | Raíz = menú HD Collection (3317760 B) + `DBZ3\`: monta `DBZ3\` como unidad de juego y arranca (validado 2026-09-17) |
 | **Menú HD Collection / DBZ1 detectados** | ✅ | `kHdMenu`/`kDbz1` bloquean Play con mensaje claro (antes: muerte críptica `No function registered at 820D54C8`) |
 | **Fix TOML con rutas Windows (v1.2.2)** | ✅ | `EscapeTomlStrings` idempotente: se acabó el `unknown escape sequence '\G'` que perdía los ajustes |
-| **Modo disco (ISO)** | ✅ | v1.1.3: selector de fuente siempre visible (carpeta extraída / ISO); juega directo del `.iso` sin extraer. v1.2.2: extrae `DBZ3\yae3_xenon.xex` del ISO original |
+| **Modo disco (ISO)** | ✅ | v1.1.3: selector de fuente siempre visible (carpeta extraída / ISO); juega directo del `.iso` sin extraer. v1.2.2 EX: extrae `DBZ3\yae3_xenon.xex` del ISO original, resuelve `DBZ3\us\...` y usa el ISO si la carpeta no arranca (validado con XDVDFS sintético) |
 | **Crash EU Dragon Universe** | ✅ | Fix `0x8215B378` aplicado (2026-09-10, para v1.1.4). Boot EU validado sin FATAL |
 | **Launcher custom** | ✅ | Tabs: Video/Upscaling/Audio/Input/Mods/Model Swap/Texturas/Dev |
 | **Mod de música** (`og_music`) | ✅ | Reemplaza ADX/SFD, funciona (override de audio por AFS) |
@@ -61,7 +61,7 @@
 
 ## ESTADO DEL JUEGO AHORA MISMO
 
-- **v1.2.2 publicada** (Latest, 2026-09-17): **arranque garantizado** — el
+- **v1.2.2 EX publicada** (Latest, 2026-09-17; sustituye a la v1.2.2 plana, que se retiró): **arranque garantizado** — el
   launcher busca el ejecutable de Budokai 3 por tamaño+MD5 en la carpeta elegida
   (y en `DBZ3\`, `assets\`, `assets\DBZ3\`), lo prepara como
   `user_data/dbz3/xex_cache/default.xex` (sin escribir en la carpeta del usuario)
