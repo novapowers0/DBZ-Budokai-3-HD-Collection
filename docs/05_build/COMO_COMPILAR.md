@@ -66,7 +66,24 @@ cmake --build "out\build\win-amd64-tracy"
 
 ---
 
-## 5. PRECAUCIÓN
+## 5. EMPAQUETAR UN RELEASE
+
+```powershell
+cmake --build "out\build\win-amd64-dual"          # ⚠️ el exe de release sale de AQUÍ (core dual)
+powershell -ExecutionPolicy Bypass -File tools\sync_github.ps1
+powershell -ExecutionPolicy Bypass -File tools\make_release.ps1      # lee la versión de src\version.rc
+powershell -ExecutionPolicy Bypass -File tools\verify_release.ps1 -Version v1.2.2
+```
+- Versión: se sube en `src/version.rc` (VERSION_PATCH + DBZ3_VERSION_STR).
+- El stage (`github\release-stage\`) y el zip salen del **build dual**; las DLL
+  del `rexglue-sdk-0.10\out\win-amd64-baseline\`.
+- `verify_release.ps1` comprueba VERSIONINFO, hashes de DLL vs SDK, `mods/` vacía
+  y que el zip no lleve assets del juego ni residuos de ejecución.
+- Publicar: `gh release create vX.Y.Z <zip> --notes-file <notas> --latest`.
+
+---
+
+## 6. PRECAUCIÓN
 
 - El build release es el que se usa para jugar. Modifica el SDK con cuidado.
 - Hacer backup del `rexruntime.dll` antes de reemplazar (ya hay `.bak_afstest`).
