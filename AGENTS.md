@@ -59,14 +59,15 @@ lógica de región/mods, y runtime.
 
 ## 3. ESTADO ACTUAL (RESUMEN EJECUTIVO)
 
-- **(2026-09-18/19) v1.2.3 PREPARADA (sin commitear)**: version.rc a `1.2.3`,
-  PortForge (`portforge/.forge.json`, defaultVersion 1.2.3 + build nueva),
-  READMEs (ES/EN + RELEASE_README con las novedades). Contenido: contador de
+- **(2026-09-18) v1.2.3 PUBLICADA (Latest)**: commit `7a3e058`, release
+  `https://github.com/novapowers0/DBZ-Budokai-3-HD-Collection/releases/tag/v1.2.3`
+  (`DBZ-Budokai-3-HD-Collection-v1.2.3.zip`, 21.99 MB; `verify_release.ps1
+  -Version v1.2.3` = VERIFICACION OK; exe del build **dual**; version.rc
+  `1.2.3`; PortForge `defaultVersion 1.2.3`). Contenido: contador de
   rendimiento en partida (`dbz3_perf_logging`), log de overrides AFS
-  silenciado y **Texturas HD (WIP, OFF por defecto)**. **Zip montado y
-  verificado** (`github/DBZ-Budokai-3-HD-Collection-v1.2.3.zip`, 21.99 MB;
-  `verify_release.ps1 -Version v1.2.3` = VERIFICACION OK; exe del build
-  **dual**). Pendiente: commit + push + release en GitHub.
+  silenciado y **Texturas HD (WIP, OFF por defecto)**. Docs:
+  `docs/ANALISIS_RENDIMIENTO_LOGS_2026-09-18.md` +
+  `docs/07_ports/TEXTURAS_HD_RUNTIME_UPSCALE.md`.
 - **(2026-09-18) Rendimiento + texturas HD**: reporte de lentitud del usuario
   con RTX 5090 (logs en `Logs SSGPrinceVegeta/parte 2/`; v1.2.1 con
   `internal_scale=3x` + MSAA + audio VB-Audio Virtual Cable). Acciones:

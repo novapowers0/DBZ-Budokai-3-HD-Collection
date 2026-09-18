@@ -1,8 +1,10 @@
 # Estado actual del proyecto
 
-> Actualizado: 2026-09-17 (v1.2.2 EX Latest: el launcher encuentra el ejecutable
-> solo —volcado retail del disco e ISO original arrancan sin renombrar nada—;
-> sobre la v1.2.1 (hotfix del launcher) y v1.2.0 (Centro de mods + Model Swap).
+> Actualizado: 2026-09-18 (v1.2.3 Latest: contador de FPS en partida, log AFS
+> silenciado y Texturas HD en WIP/OFF). Sobre la v1.2.2 EX (el launcher encuentra
+> el ejecutable solo: volcado retail del disco e ISO original arrancan sin
+> renombrar nada), la v1.2.1 (hotfix del launcher) y la v1.2.0 (Centro de mods +
+> Model Swap).
 > Port PS2→HD aparcado, ver §3.4.10 de AGENTS.md)
 
 ---
@@ -61,7 +63,11 @@
 
 ## ESTADO DEL JUEGO AHORA MISMO
 
-- **v1.2.2 EX publicada** (Latest, 2026-09-17; sustituye a la v1.2.2 plana, que se retiró): **arranque garantizado** — el
+- **v1.2.3 publicada** (Latest, 2026-09-18): contador de rendimiento en partida
+  (`dbz3_perf_logging`), log de overrides AFS silenciado (gateado por
+  `dbz1_diag_logging`) y **Texturas HD (WIP, OFF por defecto**: upscale en runtime
+  con mips; funciona pero da tirones). Base: v1.2.2 EX.
+- **v1.2.2 EX publicada** (no-Latest, 2026-09-17; sustituye a la v1.2.2 plana, que se retiró): **arranque garantizado** — el
   launcher busca el ejecutable de Budokai 3 por tamaño+MD5 en la carpeta elegida
   (y en `DBZ3\`, `assets\`, `assets\DBZ3\`), lo prepara como
   `user_data/dbz3/xex_cache/default.xex` (sin escribir en la carpeta del usuario)
