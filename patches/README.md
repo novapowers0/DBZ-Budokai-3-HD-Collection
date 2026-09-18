@@ -270,3 +270,42 @@ Copy-Item rexglue-sdk/out/win-amd64/rexgpu-xenos.dll out/build/win-amd64-release
 Los scripts `mod center hd/swap_b3.py` y `mod center hd/texture_b3.py` generan
 los overrides con el padding correcto (al to_read del slot, o al to_read
 virtual si el bin es mayor) y el runtime los sirve con el mid-insert virtual.
+
+## Cambios 2026-09-18 (rendimiento + texturas HD)
+
+- **`src/graphics/d3d12/texture_cache.cpp` + `include/rex/graphics/d3d12/texture_cache.h`**
+  y los shaders **`src/graphics/shaders/texture_upscale_cs.hlsl`** /
+  **`bytecode/d3d12_5_1/texture_upscale_cs.h`**: capa exterior de upscale de
+  texturas en runtime (recurso host Nx + pasada bicubica). Cvar
+  **`dbz3_texture_upscale`** (1 = off). El launcher lo controla con
+`dbz3_hd_textures` (Video -> "Texturas HD (WIP)", x2/x3/x4; tambien genera
+la cadena de mips promediando bloques del nivel 0). **WIP y OFF por
+defecto**: funciona, pero provoca tirones al cargar texturas nuevas. Ver
+  `docs/07_ports/TEXTURAS_HD_RUNTIME_UPSCALE.md`.
+- **`src/filesystem/afs.cpp`**: el log de overrides
+  (`AFS OVERRIDE LOOKUP/HIT/MISS`) pasa a estar condicionado a
+  `dbz1_diag_logging`; antes se escribia en CADA lectura AFS (miles de
+  lineas por sesion).
+- **`src/ui/d3d12/d3d12_presenter.cpp`**: cvar **`dbz3_perf_logging`**
+  (default true) con una linea cada 5 s `dbz3: perf fps=... frames=...
+  max_frame_ms=... cap=...`.
+- DLLs recompiladas (baseline): `rexruntime.dll` 10.870.272 B,
+  `rexgpu-xenos.dll` 6.180.864 B (2026-09-18).
+
+### 2026-09-18 (cont.) - contador de rendimiento en el swap del guest
+
+- **`src/graphics/d3d12/command_processor.cpp`** (rexgpu-xenos):
+  `Dbz3LogGuestPerformance()` al inicio de `D3D12CommandProcessor::IssueSwap`
+  -> cvar `dbz3_perf_logging` (leida por nombre via
+  `rex::cvar::GetFlagByName`, definida en el runtime) y una linea cada 5 s
+  con `fps`, `frames` y `max_frame_ms` del juego. Es la medicion valida en
+  partida y funciona con la ventana fuera de pantalla (el presentador de la
+  UI solo pinta el launcher).
+- **`src/system/dbz1_diag_flags.cpp`**: definicion compartida de
+  `dbz1_diag_logging` (rexruntime), usada para gatear los logs de overrides
+  AFS y el trace de reads.
+- Arnes de pruebas offscreen: **`tools/hidden_run.ps1`**.
+- DLLs canonicas finales (2026-09-19): `rexgpu-xenos.dll` **6.202.368 B**,
+  `rexruntime.dll` **10.870.272 B** (ambas con el marker `dbz3_perf_logging`).
+  ⚠️ Compilar el juego sobrescribe `rexruntime.dll` con el stale de
+  `rexglue/bin` -> recopiar del baseline tras cada build (AGENTS 7).

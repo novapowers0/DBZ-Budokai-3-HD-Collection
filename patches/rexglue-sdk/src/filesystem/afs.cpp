@@ -26,6 +26,7 @@
 #include <vector>
 
 #include <rex/filesystem.h>
+#include <rex/cvar.h>
 #include <rex/logging.h>
 
 namespace rex::filesystem {
@@ -183,14 +184,25 @@ bool AfsFindModOverride(const std::filesystem::path& host_path, int entry_index,
   const std::string entry_name = std::to_string(entry_index);
   ScanModDirs();
   std::lock_guard<std::mutex> lock(g_mod_dirs_mutex);
-  REXLOG_INFO("AFS OVERRIDE LOOKUP: afs={} entry={} host={}", afs_name, entry_name,
-              rex::path_to_utf8(host_path));
+  // Los avisos por lectura se emiten SOLO en modo diagnostico: el juego hace
+  // cientos de lecturas AFS por segundo en las transiciones y este log
+  // (2 lineas + ruta completa por lectura) ensuciaba los logs y anadia trabajo
+  // al hilo del guest. Con dbz1_diag_logging (Dev) se recupera el detalle.
+  // Se consulta por nombre porque el cvar vive en otro modulo.
+  const bool log_override_lookups =
+      rex::cvar::GetFlagByName("dbz1_diag_logging") == "true";
+  if (log_override_lookups) {
+    REXLOG_INFO("AFS OVERRIDE LOOKUP: afs={} entry={} host={}", afs_name, entry_name,
+                rex::path_to_utf8(host_path));
+  }
   for (const auto& mod_dir : g_mod_dirs_cache) {
     auto candidate = mod_dir / "us" / afs_name / entry_name;
     std::error_code ec;
     if (std::filesystem::is_regular_file(candidate, ec)) {
       // Plain-file form: mods/<mod>/us/<afs>/<entry_index>
-      REXLOG_INFO("AFS OVERRIDE HIT: {}", rex::path_to_utf8(candidate));
+      if (log_override_lookups) {
+        REXLOG_INFO("AFS OVERRIDE HIT: {}", rex::path_to_utf8(candidate));
+      }
       out_path = candidate;
       return true;
     }
@@ -199,17 +211,21 @@ bool AfsFindModOverride(const std::filesystem::path& host_path, int entry_index,
       // regular file inside (lexicographic order).
       for (const auto& mod_file : std::filesystem::directory_iterator(candidate, ec)) {
         if (mod_file.is_regular_file()) {
-          REXLOG_INFO("AFS OVERRIDE HIT (folder): {}", rex::path_to_utf8(mod_file.path()));
+          if (log_override_lookups) {
+            REXLOG_INFO("AFS OVERRIDE HIT (folder): {}", rex::path_to_utf8(mod_file.path()));
+          }
           out_path = mod_file.path();
           return true;
         }
       }
     }
   }
-  REXLOG_INFO("AFS OVERRIDE MISS: mods_cache={} entries:",
-              std::to_string(g_mod_dirs_cache.size()));
-  for (const auto& mod_dir : g_mod_dirs_cache) {
-    REXLOG_INFO("  mod_dir={}", rex::path_to_utf8(mod_dir));
+  if (log_override_lookups) {
+    REXLOG_INFO("AFS OVERRIDE MISS: mods_cache={} entries:",
+                std::to_string(g_mod_dirs_cache.size()));
+    for (const auto& mod_dir : g_mod_dirs_cache) {
+      REXLOG_INFO("  mod_dir={}", rex::path_to_utf8(mod_dir));
+    }
   }
   return false;
 }

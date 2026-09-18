@@ -101,8 +101,21 @@ REXCVAR_DEFINE_BOOL(dbz3_native_2x_msaa, true, "DBZ3/Video",
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 
 REXCVAR_DEFINE_INT32(dbz3_anisotropic, 5, "DBZ3/Video",
-                     "Anisotropic filtering override (0 = off, 1..5)")
+    "Anisotropic filtering override (0 = off, 1..5)")
     .range(0, 5)
+    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
+
+// HD textures: runtime (host-side) upscaling of the game's textures, emulator
+// style. 1 = off; 2/3/4 = factor. No game file is modified and the guest's
+// memory budget is untouched (the upscale happens in the host texture cache).
+// Implemented in rexgpu-xenos (`dbz3_texture_upscale`); this is the friendly,
+// persistent launcher-side value forwarded at startup/Play.
+// (WIP) Filtro interno tipo emulador (capa exterior, no toca ficheros del juego).
+// Funciona (escala texturas y genera la cadena de mips), pero provoca tirones al
+// cargar texturas nuevas, por eso esta DESACTIVADO por defecto.
+REXCVAR_DEFINE_INT32(dbz3_hd_textures, 1, "DBZ3/Video",
+    "HD textures (WIP): runtime texture upscale factor (1 = off, 2/3/4)")
+    .range(1, 4)
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 
 REXCVAR_DEFINE_STRING(dbz3_present_effect, "fsr", "DBZ3/Video",
@@ -1313,9 +1326,13 @@ void SetGamma(double gamma) { REXCVAR_SET(dbz3_gamma, gamma); }
 
 bool Native2xMsaa() { return REXCVAR_GET(dbz3_native_2x_msaa); }
 void SetNative2xMsaa(bool enabled) { REXCVAR_SET(dbz3_native_2x_msaa, enabled); }
-
 int32_t AnisotropicOverride() { return REXCVAR_GET(dbz3_anisotropic); }
+
 void SetAnisotropicOverride(int32_t level) { REXCVAR_SET(dbz3_anisotropic, level); }
+
+int32_t HdTextures() { return REXCVAR_GET(dbz3_hd_textures); }
+
+void SetHdTextures(int32_t factor) { REXCVAR_SET(dbz3_hd_textures, factor); }
 
 std::string PresentEffect() { return REXCVAR_GET(dbz3_present_effect); }
 void SetPresentEffect(const std::string& effect) { REXCVAR_SET(dbz3_present_effect, effect); }
@@ -1690,6 +1707,11 @@ void ApplyRuntimeSettingsToSdk(bool for_game) {
   SetSdkBool("vsync", true);
   SetSdkBool("native_2x_msaa", REXCVAR_GET(dbz3_native_2x_msaa));
   SetSdkInt("anisotropic_override", REXCVAR_GET(dbz3_anisotropic));
+  // HD textures (runtime texture upscale). The graphics texture cache is
+  // initialized right after these settings are applied, so the value here is
+  // what governs the upscale pipeline for this session (hence "restart
+  // required" in the UI).
+  SetSdkInt("dbz3_texture_upscale", REXCVAR_GET(dbz3_hd_textures));
   SetSdkString("present_fsr_quality_mode", REXCVAR_GET(dbz3_fsr_quality));
   SetSdkDouble("present_fsr_sharpness_reduction", REXCVAR_GET(dbz3_fsr_sharpness));
   SetSdkDouble("present_cas_additional_sharpness", REXCVAR_GET(dbz3_cas_sharpness));
@@ -1715,9 +1737,11 @@ void ApplyRuntimeSettingsToSdk(bool for_game) {
   }
   REXLOG_INFO(
       "dbz3: applied runtime settings -> internal_scale={}x vsync={} msaa={} aniso={} "
+      "hd_tex={}x "
       "fsr_quality={} fsr_sharpness={} cas_sharpness={} master_vol={} host_present={} vrr={} cap={}",
       scale, GetSdkBool("vsync") ? "true" : "false",
       GetSdkBool("native_2x_msaa") ? "true" : "false", GetSdkInt("anisotropic_override"),
+      GetSdkInt("dbz3_texture_upscale"),
       GetSdkString("present_fsr_quality_mode"), GetSdkDouble("present_fsr_sharpness_reduction"),
       GetSdkDouble("present_cas_additional_sharpness"), GetSdkDouble("master_volume"),
       REXCVAR_GET(host_present_from_non_ui_thread) ? "true" : "false",

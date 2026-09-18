@@ -904,6 +904,43 @@ void LauncherDialog::DrawVideoTab() {
           "Supersampling of the 720p framebuffer. Reduces aliasing. Restart required."));
     }
 
+    // HD textures (WIP, OFF by default): emulator-style internal filter. It does
+    // work (the game's textures are re-created at Nx in the host texture cache
+    // with a bicubic pass and a generated mip chain, without touching the game's
+    // files or its memory budget), but it causes stutters while new textures are
+    // uploaded, so it is kept experimental and disabled by default.
+    static const char* hdtex_items[] = {
+        i18n::T("Off (original, recomendado)", "Off (original, recommended)"),
+        i18n::T("x2 (WIP)", "x2 (WIP)"),
+        i18n::T("x3 (WIP)", "x3 (WIP)"),
+        i18n::T("x4 (WIP)", "x4 (WIP)")};
+    int hdtex = dbz3::settings::HdTextures();
+    int hdtex_idx = hdtex - 1;
+    if (hdtex_idx < 0) hdtex_idx = 0;
+    if (hdtex_idx > 3) hdtex_idx = 3;
+    if (ImGui::Combo(i18n::T("Texturas HD (WIP)", "HD textures (WIP)"), &hdtex_idx, hdtex_items, 4)) {
+      dbz3::settings::SetHdTextures(hdtex_idx + 1);
+      // Persist immediately (same reason as the render scale: the user may just
+      // launch or close without pressing "Save settings").
+      dbz3::settings::SaveUserSettings();
+    }
+    if (ImGui::IsItemHovered()) {
+      ImGui::SetTooltip("%s", i18n::T(
+          "Filtro interno tipo emulador (WIP): reescala las texturas del juego "
+          "(bicubico) sin tocar sus ficheros ni su memoria, y genera la cadena de "
+          "mips. Ahora mismo provoca tirones al cargar texturas nuevas, por eso esta "
+          "desactivado por defecto. Requiere reinicio.",
+          "Emulator-style internal filter (WIP): upscales the game's textures "
+          "(bicubic) without touching its files or memory, and generates the mip "
+          "chain. It currently stutters while new textures are uploaded, so it is "
+          "disabled by default. Restart required."));
+    }
+    if (dbz3::settings::HdTextures() > 1) {
+      ImGui::TextColored(kDragonOrangeDim, "%s",
+                         i18n::T("WIP: experimental, puede provocar tirones",
+                                 "WIP: experimental, may cause stutter"));
+    }
+
     bool msaa = dbz3::settings::Native2xMsaa();
     if (ImGui::Checkbox(i18n::T("MSAA 2x nativo", "Native 2x MSAA"), &msaa)) {
       dbz3::settings::SetNative2xMsaa(msaa);

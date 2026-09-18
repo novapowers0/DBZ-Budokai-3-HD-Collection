@@ -248,6 +248,20 @@ layout is assembled by `tools/make_release.ps1`.
 
 ---
 
+## v1.2.3 highlights
+
+- **In-game performance counter**: `dbz3_perf_logging` (on by default) logs one line
+  every 5 s with the real game FPS and the worst frame of the interval, measured at
+  the guest swap (works even without a visible window).
+- **Quiet AFS override log**: no longer writes two lines with the full host path on
+  every AFS read (thousands per session); the detail is back with `dbz1_diag_logging`.
+- **HD textures (WIP, OFF by default)**: emulator-style internal runtime texture
+  upscale (x2/x3/x4) that leaves the game's files and memory untouched (it also
+  generates the mip chain). It works and is noticeable in the intro, but it stutters
+  while new textures are uploaded, so it ships as experimental and disabled by
+  default (Video -> "HD textures (WIP)").
+- Base: v1.2.2 EX.
+
 ## v1.2.2 EX highlights
 
 - **The launcher finds the game executable however you have it**: no need to

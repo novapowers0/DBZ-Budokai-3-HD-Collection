@@ -121,6 +121,22 @@ aportarlos de tu **copia legal**. Haz esto:
 
 ## Novedades de esta release
 
+### v1.2.3 - Rendimiento medible + logs limpios (2026-09-18)
+
+- **Contador de rendimiento en partida**: cvar `dbz3_perf_logging` (por defecto ON)
+  escribe una linea cada 5 s en el log con los FPS reales del juego y el peor frame
+  del intervalo (`dbz3: perf fps=... max_frame_ms=...`), medidos en el swap del guest
+  (funciona tambien sin ventana visible).
+- **Log de overrides AFS silenciado**: deja de escribir 2 lineas con la ruta completa
+  en CADA lectura del AFS (miles de lineas por sesion). El detalle se recupera con
+  `dbz1_diag_logging` (pestana Dev).
+- **Texturas HD (WIP, OFF por defecto)**: filtro interno tipo emulador que reescala
+  las texturas del juego en runtime (x2/x3/x4), sin tocar sus ficheros ni su memoria
+  (genera tambien la cadena de mips). Funciona y se nota en la intro, pero provoca
+  tirones al cargar texturas nuevas, por eso queda como experimental y **desactivado
+  por defecto**. Se elige en Video -> "Texturas HD (WIP)".
+- Base: v1.2.2 EX (auto-deteccion del ejecutable + fixes del modo ISO).
+
 ### v1.2.2 EX — Arranque garantizado: el launcher encuentra el ejecutable solo (2026-09-17)
 
 - **Ya no hay que renombrar ni colocar nada de una manera concreta**: el launcher

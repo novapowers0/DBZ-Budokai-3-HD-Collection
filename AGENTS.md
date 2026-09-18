@@ -49,12 +49,45 @@ lógica de región/mods, y runtime.
 - `docs/06_limpieza/PLAN_LIMPIEZA.md` + `INVENTARIO_MODDING.md`
 - `docs/07_ports/` — RE del port de modelos (ESTRUCTURA_DIBUJO_HD, sesiones, HOJA_DE_RUTA)
 - `docs/HOJA_DE_RUTA_2026_09.md` — **hoja de ruta actual** (doc ligera / limpieza / RE contenido)
+- `docs/07_ports/TEXTURAS_HD_RUNTIME_UPSCALE.md` - texturas HD en runtime
+  (APARCADO/desactivado; diseno, evidencia de por que el override no vale y como retomarlo)
+- `docs/ANALISIS_RENDIMIENTO_LOGS_2026-09-18.md` - rendimiento: analisis del
+  reporte de lentitud (RTX 5090) + instrumentacion de FPS
 - `docs/PLAN_1.1.1.md`, `docs/PLAN_LINUX.md` — planes de depurado y port Linux
 - `docs/MIGRACION_REXGLUE_010.md` — migración SDK 0.9→0.10 (leer ANTES de tocar el SDK)
 - `docs/01_estructura/HISTORICO_AGENTS.md` — historial verbatim de sesiones (solo bajo demanda)
 
 ## 3. ESTADO ACTUAL (RESUMEN EJECUTIVO)
 
+- **(2026-09-18/19) v1.2.3 PREPARADA (sin commitear)**: version.rc a `1.2.3`,
+  PortForge (`portforge/.forge.json`, defaultVersion 1.2.3 + build nueva),
+  READMEs (ES/EN + RELEASE_README con las novedades). Contenido: contador de
+  rendimiento en partida (`dbz3_perf_logging`), log de overrides AFS
+  silenciado y **Texturas HD (WIP, OFF por defecto)**. **Zip montado y
+  verificado** (`github/DBZ-Budokai-3-HD-Collection-v1.2.3.zip`, 21.99 MB;
+  `verify_release.ps1 -Version v1.2.3` = VERIFICACION OK; exe del build
+  **dual**). Pendiente: commit + push + release en GitHub.
+- **(2026-09-18) Rendimiento + texturas HD**: reporte de lentitud del usuario
+  con RTX 5090 (logs en `Logs SSGPrinceVegeta/parte 2/`; v1.2.1 con
+  `internal_scale=3x` + MSAA + audio VB-Audio Virtual Cable). Acciones:
+  (a) **Texturas HD (WIP, OFF por defecto)**: el upscale de texturas en runtime
+  (capa exterior, D3D12) **FUNCIONA** —recurso host Nx, bicubico y cadena de
+  mips generada, sin tocar ficheros ni memoria del guest— y se elige en el
+  primer tab del launcher (`dbz3_hd_textures`, Video → "Texturas HD (WIP)",
+  x2/x3/x4). Queda **desactivado por defecto** porque provoca **tirones** al
+  cargar texturas nuevas (validado por el usuario: se nota en la intro, pero
+  afecta a todo). Aparcado para pulir; detalle y siguientes pasos en
+  `docs/07_ports/TEXTURAS_HD_RUNTIME_UPSCALE.md` (incluye por que el override
+  del bin NO sirve: desborda la memoria del guest);
+  (b) el **log de overrides AFS** (`AFS OVERRIDE LOOKUP/HIT/MISS`: 2 líneas con
+  ruta completa por lectura) pasa a estar **condicionado a `dbz1_diag_logging`**
+  (antes incondicional → miles de líneas por sesión);
+  (c) **instrumentación nueva**: cvar `dbz3_perf_logging` (default true) →
+  `dbz3: perf fps=… frames=… max_frame_ms=…` cada 5 s **en el swap real del
+  guest** (`D3D12CommandProcessor::IssueSwap`, rexgpu-xenos; el presentador de la
+  UI solo pinta el launcher y no sirve en partida). Análisis, tests sintéticos
+  offscreen (arnés `tools/hidden_run.ps1`) y siguientes pasos:
+  `docs/ANALISIS_RENDIMIENTO_LOGS_2026-09-18.md`.
 - **v1.2.2 EX publicada (Latest, 2026-09-17)**: **arranque garantizado — el
   launcher encuentra el ejecutable solo** (misma base que la v1.2.2, que se
   retiró: la EX añade los fixes que faltaban del modo ISO). Motivo: los logs de
@@ -846,6 +879,11 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
   de `rexglue/bin` (§13.6): tras `cmake --build`, VOLVER A COPIAR la DLL
   correcta del SDK al build. Verificar siempre:
   `Select-String rexruntime.dll -Pattern "AfsGetVirtualTable"` debe dar PRESENTE.
+  (2026-09-18) Anadir tambien el marker **`dbz3_perf_logging`**: si falta, el
+  runtime es el stale (10.863.616 B) y las lineas `perf fps` no salen (parece
+  un cuelgue). El bueno del baseline es 10.870.272 B con `dbz3_perf_logging`
+  PRESENTE.
+
 - **🔴 Al recompilar el SDK, el FFX de `rexglue-sdk-0.10/bin/` se regenera
   distinto** — NO copiarlo. Usar las de los `out/` canónicos.
 - **Parches del SDK** en `github/patches/` (afs.cpp/h, host_path_file.cpp,
@@ -853,13 +891,23 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
   sdl_input_driver.{h,cpp}, xam_info.cpp, graphics_system.cpp,
   function_dispatcher.cpp, rex_app.cpp). **Si se toca el SDK: actualizar
   patches/ + recompilar + copiar DLLs.**
+- **Medir rendimiento** (2026-09-18): cvar `dbz3_perf_logging` (default
+  true) -> linea `dbz3: perf fps=... frames=... max_frame_ms=...` cada 5 s en
+  el **swap del guest** (`IssueSwap`, rexgpu-xenos) y en el presentador de la
+  UI (launcher, con `cap=`). Para probar sin ventana: `tools/hidden_run.ps1`
+  (mueve la ventana fuera de pantalla, aplica overrides al `dbz3_user.toml` y
+  restaura; usar `dbz3_skip_launcher=true` para bootear directo; los strings
+  del toml van entre comillas o el parser descarta el fichero entero).
+  Detalle: `docs/ANALISIS_RENDIMIENTO_LOGS_2026-09-18.md`.
 - CVars importantes del runtime: `deadzone`, `rumble` (input_system), `frame_cap`
   (d3d12_presenter), `vsync` (blindado en graphics_system — el guest corre
   SIEMPRE a 60 Hz), `user_language` (XGetLanguage → idioma del juego).
 - **Trace de reads AFS** (2026-09-07, F3.1.4): `HostPathFile::ReadSync` y
   `HostPathEntry::OpenMapped` loguean reads/mappings AFS→entrada
   (`dbz1_afs_reads.log`: afs entry off n eoff esize), gateados por
-  `dbz1_diag_logging` (F10/dev). Útil para mapear roster/stages: activar diag,
+  `dbz1_diag_logging` (F10/dev). (2026-09-18) También está gateado por `dbz1_diag_logging` el
+  log de overrides de `AfsFindModOverride` (`AFS OVERRIDE LOOKUP/HIT/MISS`),
+  que antes se escribía en CADA lectura AFS. Útil para mapear roster/stages: activar diag,
   abrir el select, pasar por cada personaje, entregar el log. Un mapping largo
   puede no generar eventos por cada página interna.
 

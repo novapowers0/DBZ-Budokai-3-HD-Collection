@@ -235,6 +235,13 @@ static const Entry kTable[] = {
     {"0 = mas nitido, 2 = mas suave", "0 = più nitido, 2 = più morbido", "0 = schärfer, 2 = weicher", "0 = plus net, 2 = plus doux"},
     {"Nitidez adicional", "Nitidezza aggiuntiva", "Zusätzliche Schärfe", "Netteté supplémentaire"},
     {"0 = solo CAS, 1 = maxima nitidez", "0 = solo CAS, 1 = massima nitidezza", "0 = nur CAS, 1 = maximale Schärfe", "0 = CAS seul, 1 = netteté maximale"},
+    {"Texturas HD (WIP)", "Texture HD (WIP)", "HD-Texturen (WIP)", "Textures HD (WIP)"},
+    {"Off (original, recomendado)", "Off (originale, consigliato)", "Aus (Original, empfohlen)", "Inactif (original, recommande)"},
+    {"x2 (WIP)", "x2 (WIP)", "x2 (WIP)", "x2 (WIP)"},
+    {"x3 (WIP)", "x3 (WIP)", "x3 (WIP)", "x3 (WIP)"},
+    {"x4 (WIP)", "x4 (WIP)", "x4 (WIP)", "x4 (WIP)"},
+    {"WIP: experimental, puede provocar tirones", "WIP: sperimentale, puo causare scatti", "WIP: experimentell, kann Ruckler verursachen", "WIP : experimental, peut provoquer des saccades"},
+    {"Filtro interno tipo emulador (WIP): reescala las texturas del juego (bicubico) sin tocar sus ficheros ni su memoria, y genera la cadena de mips. Ahora mismo provoca tirones al cargar texturas nuevas, por eso esta desactivado por defecto. Requiere reinicio.", "Filtro interno in stile emulatore (WIP): ricampiona le texture del gioco (bicubico) senza toccare i suoi file ne la sua memoria, e genera la catena di mip. Al momento provoca scatti quando si caricano nuove texture, quindi e disattivato per impostazione predefinita. Richiede un riavvio.", "Emulator-artiger interner Filter (WIP): skaliert die Texturen des Spiels (bikubisch) hoch, ohne seine Dateien oder seinen Speicher zu beruehren, und erzeugt die Mip-Kette. Derzeit verursacht er Ruckler beim Laden neuer Texturen und ist deshalb standardmaessig deaktiviert. Neustart erforderlich.", "Filtre interne de type emulateur (WIP) : reechantillonne les textures du jeu (bicubique) sans toucher a ses fichiers ni a sa memoire, et genere la chaine de mips. Il provoque actuellement des saccades lors du chargement de nouvelles textures, il est donc desactive par defaut. Redemarrage requis."},
 };
 
 const Entry* FindEntry(const char* es) {

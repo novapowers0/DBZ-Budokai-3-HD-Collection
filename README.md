@@ -247,6 +247,22 @@ monta `tools/make_release.ps1`.
 
 ---
 
+## Novedades de v1.2.3
+
+- **Contador de rendimiento en partida**: cvar `dbz3_perf_logging` (por defecto ON)
+  escribe una linea cada 5 s en el log con los FPS reales del juego y el peor frame
+  del intervalo, medidos en el swap del guest. Sirve para diagnosticar "va lento"
+  con datos (tambien funciona en pruebas sin ventana visible).
+- **Log de overrides AFS silenciado**: ya no escribe 2 lineas con la ruta completa en
+  CADA lectura del AFS (miles de lineas por sesion). El detalle vuelve activando
+  `dbz1_diag_logging` en la pestana Dev.
+- **Texturas HD (WIP, OFF por defecto)**: filtro interno tipo emulador que reescala
+  las texturas del juego en runtime (x2/x3/x4, generando tambien la cadena de mips),
+  **sin tocar los ficheros del juego ni su memoria**. Se nota en la intro, pero
+  provoca tirones al cargar texturas nuevas, asi que viene **desactivado por
+  defecto** como experimental. Se elige en Video -> "Texturas HD (WIP)".
+- Base: v1.2.2 EX (auto-deteccion del ejecutable + arreglos del modo ISO).
+
 ## Novedades de v1.2.2 EX
 
 - **El launcher encuentra el ejecutable del juego esté como esté**: ya no hace

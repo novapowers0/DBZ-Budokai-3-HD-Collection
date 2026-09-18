@@ -288,6 +288,12 @@ void SetNative2xMsaa(bool enabled);
 int32_t AnisotropicOverride();
 void SetAnisotropicOverride(int32_t level);
 
+// HD textures: runtime upscaling of the game's textures (1 = off, 2/3/4 =
+// factor). Emulator-style internal filter: the host texture is created at Nx and
+// filled with a bicubic pass; the game's files and guest memory are untouched.
+int32_t HdTextures();
+void SetHdTextures(int32_t factor);
+
 // Upscaling effect: "bilinear", "cas", "fsr".
 std::string PresentEffect();
 void SetPresentEffect(const std::string& effect);

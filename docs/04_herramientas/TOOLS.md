@@ -34,6 +34,22 @@
   layout retail: sirve para validar el **modo disco (ISO)** sin un ISO real
   (v1.2.2 EX, ver `docs/SESION_AUTODETECCION_XEX_2026-09-17.md` §4.bis). Solo
   empaqueta lo que le des: no contiene datos del juego.
+- `tools/perf_report.ps1 [-Count N]` (+ `perf_report.cmd` de doble clic) -
+  **informe de rendimiento** de los ultimos N logs: config aplicada, ventanas de
+  5 s, fps min/med/max, peor `max_frame_ms`, ventanas <58 fps, errores y
+  veredicto. Guarda el texto en `%TEMP%\opencode\perf_report.txt`.
+- `tools/perf_test_config.ps1 -Scale 1..4 -Msaa on|off [-Show]` - fija escala
+  interna + MSAA nativo en `dbz3_user.toml` para las pruebas A/B de rendimiento
+  (deja `dbz3_texture_upscale=1` y `dbz3_perf_logging=true`).
+- `tools/hidden_run.ps1 -Label <txt> -Seconds <n> [-HideMode 0|1] -Overrides
+  "cvar=valor;cvar=valor"` — **arnés de pruebas offscreen** (2026-09-18): lanza
+  `dbz3.exe` con la ventana movida fuera de pantalla, aplica overrides al
+  `dbz3_user.toml` (backup/restore automático), mata el proceso y resume el log
+  (líneas de `AFS OVERRIDE`, `perf fps=`, `upscale pipeline ready`, errores).
+  Usar `dbz3_skip_launcher=true` para bootear directo a la partida. Los valores
+  de texto del toml van **entre comillas** (`"manual"`, `"fsr"`); sin comillas el
+  parser descarta el fichero entero. Ver
+  `docs/ANALISIS_RENDIMIENTO_LOGS_2026-09-18.md` §6.
 
 ### mod center hd/ — herramientas HD adaptadas
 | Herramienta | Función |

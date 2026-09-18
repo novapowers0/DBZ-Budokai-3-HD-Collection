@@ -46,6 +46,14 @@ REXCVAR_DEFINE_INT32(frame_cap, 0, "UI/Presenter",
     .range(0, 1000)
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
 
+// DBZ3: instrumentacion de rendimiento. Escribe una linea cada 5 segundos con
+// los FPS reales de presentacion, el peor frame del intervalo y los ajustes que
+// mas afectan al coste (cap, escala interna, MSAA). Sirve para diagnosticar
+// reportes de "va lento" con datos en vez de a ojo; el coste es despreciable.
+REXCVAR_DEFINE_BOOL(dbz3_perf_logging, true, "UI/Presenter",
+                    "DBZ3: log FPS/frame stats every 5 seconds (diagnostics)")
+    .lifecycle(rex::cvar::Lifecycle::kHotReload);
+
 namespace rex::ui::d3d12 {
 
 // Generated with `xb buildshaders`.
@@ -567,7 +575,45 @@ void D3D12Presenter::PaintContext::DestroySwapChain() {
   swap_chain_width = 0;
 }
 
+// DBZ3: contador de rendimiento (una linea cada 5 s). Los ajustes que mas
+// afectan al coste (escala interna, MSAA, cap) ya quedan registrados al
+// arrancar la partida, asi que aqui basta con FPS y peor frame del intervalo.
+void Dbz3LogPerformanceWindow() {
+  if (!REXCVAR_GET(dbz3_perf_logging)) {
+    return;
+  }
+  static std::chrono::steady_clock::time_point window_start;
+  static std::chrono::steady_clock::time_point last_frame;
+  static uint32_t frames_in_window = 0;
+  static double max_frame_ms = 0.0;
+  const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+  if (last_frame.time_since_epoch().count() != 0) {
+    const double frame_ms = std::chrono::duration<double, std::milli>(now - last_frame).count();
+    if (frame_ms > max_frame_ms) {
+      max_frame_ms = frame_ms;
+    }
+  }
+  last_frame = now;
+  if (window_start.time_since_epoch().count() == 0) {
+    window_start = now;
+    return;
+  }
+  ++frames_in_window;
+  const double elapsed_s = std::chrono::duration<double>(now - window_start).count();
+  if (elapsed_s < 5.0) {
+    return;
+  }
+  REXLOG_INFO("dbz3: perf fps={:.1f} frames={} window={:.2f}s max_frame_ms={:.1f} cap={}",
+              double(frames_in_window) / elapsed_s, frames_in_window, elapsed_s, max_frame_ms,
+              int32_t(REXCVAR_GET(frame_cap)));
+  window_start = now;
+  frames_in_window = 0;
+  max_frame_ms = 0.0;
+}
+
 Presenter::PaintResult D3D12Presenter::PaintAndPresentImpl(bool execute_ui_drawers) {
+  Dbz3LogPerformanceWindow();
+
   // Host present pacing: limit the swap chain present rate to `frame_cap` FPS
   // when set (0 = uncapped). The guest vblank pacing (the `vsync` cvar) keeps
   // the game logic at 60 Hz regardless of this cap; here we only throttle the
