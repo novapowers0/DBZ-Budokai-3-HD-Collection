@@ -302,6 +302,9 @@ void SetAnisotropicOverride(int32_t level);
 int32_t HdTextures();
 void SetHdTextures(int32_t factor);
 
+int32_t HdTextureMaxTexels();
+void SetHdTextureMaxTexels(int32_t texels);
+
 // Upscaling effect: "bilinear", "cas", "fsr".
 std::string PresentEffect();
 void SetPresentEffect(const std::string& effect);

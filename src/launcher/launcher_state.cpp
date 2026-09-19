@@ -1003,11 +1003,13 @@ void LauncherDialog::DrawVideoTab() {
           "Supersampling of the 720p framebuffer. Reduces aliasing. Restart required."));
     }
 
-    // HD textures (WIP, OFF by default): emulator-style internal filter. It does
-    // work (the game's textures are re-created at Nx in the host texture cache
-    // with a bicubic pass and a generated mip chain, without touching the game's
-    // files or its memory budget), but it causes stutters while new textures are
-    // uploaded, so it is kept experimental and disabled by default.
+    // HD textures (WIP): emulator-style internal filter. It upscales the game's
+    // textures (DXT and the large native RGBA8 ones) at Nx in the host texture
+    // cache with a bicubic pass and a generated mip chain, without touching the
+    // game's files or its memory budget. The stutter caused by the mip
+    // generation was fixed (bounded block sampling), so it now holds 60 FPS in
+    // combat; it mainly costs VRAM and a slightly longer texture streaming on
+    // first load, so it stays opt-in and off by default.
     static const char* hdtex_items[] = {
         i18n::T("Off (original, recomendado)", "Off (original, recommended)"),
         i18n::T("x2 (WIP)", "x2 (WIP)"),
@@ -1027,17 +1029,38 @@ void LauncherDialog::DrawVideoTab() {
       ImGui::SetTooltip("%s", i18n::T(
           "Filtro interno tipo emulador (WIP): reescala las texturas del juego "
           "(bicubico) sin tocar sus ficheros ni su memoria, y genera la cadena de "
-          "mips. Ahora mismo provoca tirones al cargar texturas nuevas, por eso esta "
-          "desactivado por defecto. Requiere reinicio.",
+          "mips. Ya no provoca tirones al cargar texturas (el fix del coste de "
+          "mips esta aplicado); el coste principal es VRAM y algo mas de tiempo "
+          "de carga la primera vez. Si notas tirones, baja el factor o sube el "
+          "limite de escala. Requiere reinicio.",
           "Emulator-style internal filter (WIP): upscales the game's textures "
           "(bicubic) without touching its files or memory, and generates the mip "
-          "chain. It currently stutters while new textures are uploaded, so it is "
-          "disabled by default. Restart required."));
+          "chain. It no longer stutters while new textures are uploaded (the mip "
+          "cost fix is in); the main cost is VRAM and a slightly longer first "
+          "load. If you notice hitches, lower the factor. Restart required."));
     }
     if (dbz3::settings::HdTextures() > 1) {
       ImGui::TextColored(kDragonOrangeDim, "%s",
-                         i18n::T("WIP: experimental, puede provocar tirones",
-                                 "WIP: experimental, may cause stutter"));
+                         i18n::T("WIP: consume VRAM y alarga un poco la carga inicial",
+                                 "WIP: uses more VRAM, slightly longer first load"));
+      // Limite de area de textura a escalar (techo de VRAM). Bajo = menos VRAM;
+      // subir = escala tambien texturas grandes (2048x1024+).
+      int max_texels = dbz3::settings::HdTextureMaxTexels();
+      int max_mpx = max_texels <= 0 ? 0 : (max_texels + 524287) / 524288;
+      if (ImGui::SliderInt(
+              i18n::T("Limite de tamano de textura HD (Mpx)", "HD texture size limit (Mpx)"),
+              &max_mpx, 0, 16)) {
+        dbz3::settings::SetHdTextureMaxTexels(max_mpx <= 0 ? 0 : max_mpx * 524288);
+      }
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("%s", i18n::T(
+            "Area maxima (en megapixeles) de una textura para subirla de "
+            "resolucion. Bajarlo ahorra VRAM (util si hay tirones o se agota); "
+            "0 = sin limite. 1 Mpx cubre hasta 1024x1024.",
+            "Maximum area (in megapixels) of a texture to upscale. Lower it to "
+            "save VRAM (useful if you see hitches or run out); 0 = no limit. "
+            "1 Mpx covers up to 1024x1024."));
+      }
     }
 
     bool msaa = dbz3::settings::Native2xMsaa();

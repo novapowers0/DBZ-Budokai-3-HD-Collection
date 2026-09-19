@@ -36,15 +36,28 @@ float4 XeLoadSourceTexel(int2 xe_coord) {
 
 // Texel del nivel `xe_level`, promediando el bloque 2^level x 2^level del nivel
 // 0 (nivel 0 -> un solo texel, sin coste adicional).
+//
+// RENDIMIENTO: promediar el bloque COMPLETO es O(4^level) por tap y, peor aun,
+// en los mips altos quedan muy pocos hilos de shader: p.ej. el nivel 9 de una
+// textura 1024x512 tiene ~18 hilos, cada uno ejecutando 16 taps x 512x512 =
+// 4,2M de lecturas EN SERIE con acumulador dependiente -> cientos de ms de
+// frame (los tirones que se ven al cargar texturas nuevas). Se muestrea una
+// rejilla de como maximo kXeMaxBlockSamples por eje (paso uniforme sobre el
+// bloque): para niveles bajos (bloque <= 8) es EXACTO, y para los altos es una
+// aproximacion que quita el blow-up de coste sin afectar visiblemente (los mips
+// altos son minificacion borrosa). Reduce el trabajo por hilo de millones de
+// iteraciones a <= 64.
+static const uint kXeMaxBlockSamples = 8u;
 float4 XeLoadLevelTexel(uint2 xe_level_size, int2 xe_coord) {
   xe_coord = clamp(xe_coord, int2(0, 0),
                    int2(int(xe_level_size.x) - 1, int(xe_level_size.y) - 1));
   uint xe_block = 1u << xe_level;
+  uint xe_step = max(xe_block / kXeMaxBlockSamples, 1u);
   int2 xe_base = xe_coord * int2(int(xe_block), int(xe_block));
   float4 xe_sum = 0.0;
   float xe_count = 0.0;
-  for (uint xe_j = 0u; xe_j < xe_block; ++xe_j) {
-    for (uint xe_i = 0u; xe_i < xe_block; ++xe_i) {
+  for (uint xe_j = 0u; xe_j < xe_block; xe_j += xe_step) {
+    for (uint xe_i = 0u; xe_i < xe_block; xe_i += xe_step) {
       xe_sum += XeLoadSourceTexel(xe_base + int2(int(xe_i), int(xe_j)));
       xe_count += 1.0;
     }

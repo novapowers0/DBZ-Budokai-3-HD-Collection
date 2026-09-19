@@ -182,3 +182,119 @@ Causa probable de los tirones (siguientes pasos para retomarlo):
    al entrar en zonas nuevas. Vigilar `texture_cache_memory_limit_soft/hard`.
 3. Posible solucion de fondo: assets IA precalculados en el mismo enganche
    (menos coste por carga, mas calidad), o escalar solo atlas concretos.
+
+## 8. ARREGLO DE LOS TIRONES — limite de muestras del bloque de mips (2026-09-19)
+
+**Diagnostico (causa raiz confirmada).** `texture_upscale_cs.hlsl` generaba cada
+nivel de mip promediando el bloque COMPLETO `2^level x 2^level` del nivel 0 en
+cada uno de los 16 taps Catmull-Rom: `16 * 4^level` lecturas EN SERIE por texel
+de salida. En los mips altos el dispatch queda con muy pocos hilos (p.ej. nivel 9
+de una textura 1024x512 -> ~18 hilos, cada uno con 16 x 512x512 = 4,2M de
+iteraciones encadenadas tras un acumulador dependiente) -> la latencia de memoria
+se paga entera y el frame sube a cientos de ms. Es la causa de los "tirones al
+cargar texturas nuevas" que se venian reportando (y de que el tester con una
+RTX 5090 viera caidas a 30 fps: el coste no es GPU-bound, una GPU mas rapida no
+ayuda).
+
+**Arreglo.** `XeLoadLevelTexel` muestrea una rejilla de como maximo
+`kXeMaxBlockSamples = 8` por eje (paso uniforme sobre el bloque). Para niveles
+bajos (bloque <= 8) es EXACTO; para los altos es una aproximacion (los mips altos
+son minificacion borrosa, imperceptible). Reduce el trabajo por hilo de millones
+de iteraciones a <= 64. Basta recompilar el shader y recompilar `rexgpu-xenos`:
+
+```
+fxc /nologo /T cs_5_1 /E main /Vn texture_upscale_cs /O3 ^
+    /Fh bytecode\d3d12_5_1\texture_upscale_cs.h texture_upscale_cs.hlsl
+```
+
+**Medicion (RTX 4070 SUPER, `hd_tex=4x` + `3x` + MSAA + cap 60, config identica
+al tester):**
+
+| | ventanas | fps min | <58 fps | frames >100 ms | peor frame |
+|---|---|---|---|---|---|
+| Antes (`dbz3_144`) | 32 | 41.7 | **10** | **14** | 905 ms |
+| Despues (`dbz3_146`) | 73 | 52.6 | **1** | **1** | 634 ms\* |
+
+\* el unico hitch restante NO era del upscale: `io SLOW 205127us` en
+`adx_usa.afs` (lectura de disco de 205 ms, problema de E/S ajeno al feature).
+
+Con el arreglo la sesion escalo **1614 texturas** (vs 274 antes) sin hitches de
+upscale. **Pendiente: validacion visual del usuario** (los mips altos son
+aproximados).
+
+**Nota FSR vs escala interna (importante para el launcher).** Con
+`present_effect=fsr`, el presentador solo usa FSR EASU si el frontbuffer del
+guest es MENOR que la salida (`src/ui/presenter.cpp:1054-1131`); si la escala
+interna hace el frontbuffer >= la salida, cae a **CAS**
+(supersampling/downscale) y los ajustes de FSR quedan inertes. Es decir, "escala
+interna 3x" mejora el render (supersampling) pero no cambia la resolucion
+mostrada; para que FSR haga upscale de verdad hay que dejar la escala interna por
+debajo de la salida.
+
+## 9. ALCANCE REAL — SOLO SE ESCALABAN LAS DXT (y por que no se notaba)
+
+**Sintoma**: el usuario (SSGPrinceVegeta) activo Texturas HD a 4x y "no noto
+mejora de texturas", aunque los tirones se fueron con §8. Los logs lo explican.
+
+**Diagnostico con el catalogo instrumentado** (`dbz3_147`, hd_tex=4x):
+
+```
+upscale ACCEPT fmt=19 ...      <- fmt=19 = k_DXT2_3 (DXT3)  -> si se escalaba
+upscale skip [no_uncompressed] fmt=6 ...   <- fmt=6 = k_8_8_8_8 (RGBA8 nativo)
+upscale skip [no_uncompressed] fmt=6 ... 1024x1024 / 1024x512 / 256x2048 ...
+```
+
+`GetTextureUpscaleFactor` exigia `host_format.dxgi_format_uncompressed`, que
+**solo esta relleno en las DXT** (para descomprimir). Las texturas **RGBA8
+nativas (`fmt=6`)** -las MAS grandes del juego: caras, ropa, escenarios- tienen
+ese campo a `DXGI_FORMAT_UNKNOWN` y se descartaban TODAS. Resultado: se escalaban
+~650 texturas (DXT3, casi siempre pequenas de UI/efectos) y el efecto apenas se
+notaba en personajes/escenarios.
+
+## 10. EXTENSION A RGBA8 NATIVAS (2026-09-19, v1.2.6-WIP)
+
+**Objetivo**: escalar tambien las RGBA8 (`fmt=6`), que son las que de verdad dan
+el salto visual.
+
+**Requisito**: el shader de upscale escribe un UAV RGBA8 y lee la fuente como
+`uint32` (`R|G<<8|B<<16|A<<24`). Por tanto solo vale un formato host RGBA8
+explicito (`R8G8B8A8_UNORM`) con un load shader que produzca RGBA8
+(`bytes_per_host_block == 4`).
+
+**Cambios** (`texture_cache.{cpp,h}`):
+1. `GetTextureUpscaleFactor`: si no hay `dxgi_format_uncompressed`, usa
+   `dxgi_format_unsigned` **solo si es `R8G8B8A8_UNORM`** y el load estandar
+   produce RGBA8. Se rechaza el resto (`not_rgba8` / `load_not_rgba8`) para no
+   corromper texturas de otros formatos (`k_8`, `k_8_8`, `k_4_4_4_4`, `k_24_8`).
+2. `GetLoadShaderIndex` e `GetDXGIResourceFormat`/`GetDXGIUnormFormat(TextureKey)`:
+   nuevo helper `GetTextureUpscaleRgba8Format` que devuelve el RGBA8 correcto
+   (descomprimido para DXT, `dxgi_format_unsigned` para RGBA8 nativas). **Bug
+   corregido**: antes devolvian `dxgi_format_uncompressed`, que en `k_8_8_8_8`
+   es `UNKNOWN` -> el recurso se creaba con formato invalido y el juego escupia
+   miles de `Unsupported texture formats used in the frame: k_8_8_8_8 resource`.
+3. **Exclusion del frontbuffer** (`swap_texture_key_`): `RequestSwapTexture`
+   registra la key de la textura de presentacion ANTES de crearla, y
+   `GetTextureUpscaleFactor` la rechaza (`swap_texture`). **Bug corregido**: sin
+   esto, la textura de swap de 1280x720 se creaba a Nx (2560x1440) y el
+   presentador fallaba al crear el guest output ("Failed to create a command
+   allocator" / 3840x2160) - el crash del primer intento.
+4. **Limite de area** (cvar `dbz3_upscale_max_texels`, default 1 M texeles =
+   1024x1024): evita escalar texturas enormes (2048x1024+ = 32 MB+ a x4 por
+   textura), que dispararian la VRAM. `0` = sin limite. Expuesto en el launcher
+   como "Limite de tamano de textura HD (Mpx)".
+
+**Resultado (RTX 4070 SUPER, `hd_tex=2x`/`4x` + `3x` + MSAA + cap 60):**
+
+| | aceptadas | errores | fps min | frames >100 ms | peor frame |
+|---|---|---|---|---|---|
+| Solo DXT (`dbz3_147`) | 12 tipos | 0 | 50.9 | 14 | 905 ms |
+| DXT fix mips (`146`) | 12 tipos | 0 | 52.6 | 1 | 634 ms |
+| **+RGBA8 (`152`/`153`)** | **41 tipos** | **0** | **57.6** | **0** | **55 ms** |
+
+Con `dbz3_154` (intro+menu+demo, 52 ventanas): **1515 texturas** escaladas,
+fps min 57.4, **0 frames >100 ms**, 0 errores, 0 lecturas lentas de disco. La
+VRAM se mantiene (~3 GB usados de 12 GB). El gate `swap_texture` actua (1
+exclusion registrada, frontbuffer intacto).
+
+**Pendiente**: validacion visual del usuario (nitidez de personajes/escenarios
+con `hd_tex=4x`). Los mips altos siguen siendo aproximados (§8).

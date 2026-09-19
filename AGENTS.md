@@ -139,6 +139,37 @@ lógica de región/mods, y runtime.
   silenciado y **Texturas HD (WIP, OFF por defecto)**. Docs:
   `docs/ANALISIS_RENDIMIENTO_LOGS_2026-09-18.md` +
   `docs/07_ports/TEXTURAS_HD_RUNTIME_UPSCALE.md`.
+- **(2026-09-19) Texturas HD — ALCANCE ARREGLADO (RGBA8 nativas) + tirones
+  (pendiente de validación visual del usuario)**: además del fix de tirones
+  (§ abajo), el usuario reportó "no noté mejora de texturas" con `hd_tex=4x`.
+  **Causa**: `GetTextureUpscaleFactor` exigía `dxgi_format_uncompressed`, que
+  SOLO está relleno en las DXT → **todas las RGBA8 nativas (`fmt=6`, las más
+  grandes: caras/ropa/escenarios) se descartaban**; solo se escalaban DXT3
+  pequeñas. **Fix**: aceptar también RGBA8 nativas (`dxgi_format_unsigned ==
+  R8G8B8A8_UNORM` + load shader que produzca RGBA8), nuevo helper
+  `GetTextureUpscaleRgba8Format` (bug: el recurso se creaba con formato UNKNOWN
+  → miles de `Unsupported texture formats`), **exclusión del frontbuffer**
+  (`swap_texture_key_`; sin esto el recurso de swap se creaba a Nx → crash del
+  presentador) y **límite de área** (cvar `dbz3_upscale_max_texels`=1 M texeles,
+  expuesto en el launcher como "Límite de tamaño de textura HD (Mpx)"). Medición
+  (`dbz3_153`/`154`, `hd_tex=4x`+`3x`+MSAA): **1515 texturas** (vs 279), **0
+  errores**, fps min 57.4, **0 frames >100 ms**, peor frame 55 ms, VRAM ~3 GB.
+  Detalle: `docs/07_ports/TEXTURAS_HD_RUNTIME_UPSCALE.md` §9-§10.
+- **(2026-09-19) Texturas HD — CAUSA DE LOS TIRONES ARREGLADA (pendiente de
+  validación visual del usuario)**: reproducido con la config EXACTA del tester
+  (`hd_tex=4x` + `3x` + MSAA + cap 60) en local. **Causa raíz**: el shader
+  `texture_upscale_cs.hlsl` generaba cada mip promediando el bloque
+  `2^level × 2^level` del nivel 0 (16·4^level lecturas EN SERIE por texel; en
+  los mips altos quedan muy pocos hilos → cientos de ms de frame). **No es
+  GPU-bound** (por eso una RTX 5090 no ayuda: le pasa igual o peor). **Fix**:
+  `XeLoadLevelTexel` muestrea una rejilla de ≤ `kXeMaxBlockSamples=8` por eje
+  (EXACTO hasta nivel 3, aproximado por encima; los mips altos son minificación
+  borrosa). Medición local (`dbz3_144`→`dbz3_146`): ventanas <58 fps **10→1**,
+  frames >100 ms **14→1** (el único restante es un `io SLOW 205127us` de DISCO
+  en `adx_usa.afs`, ajeno al feature), con `upx` escalado 274→1614. El shader se
+  recompila con `fxc /T cs_5_1 /E main /Vn texture_upscale_cs /O3 /Fh …` y se
+  recompila `rexgpu-xenos` (patches en `github/patches/`). Detalle y nota
+  FSR/escala en `docs/07_ports/TEXTURAS_HD_RUNTIME_UPSCALE.md` §8.
 - **(2026-09-18) Rendimiento + texturas HD**: reporte de lentitud del usuario
   con RTX 5090 (logs en `Logs SSGPrinceVegeta/parte 2/`; v1.2.1 con
   `internal_scale=3x` + MSAA + audio VB-Audio Virtual Cable). Acciones:
@@ -146,10 +177,11 @@ lógica de región/mods, y runtime.
   (capa exterior, D3D12) **FUNCIONA** —recurso host Nx, bicubico y cadena de
   mips generada, sin tocar ficheros ni memoria del guest— y se elige en el
   primer tab del launcher (`dbz3_hd_textures`, Video → "Texturas HD (WIP)",
-  x2/x3/x4). Queda **desactivado por defecto** porque provoca **tirones** al
-  cargar texturas nuevas (validado por el usuario: se nota en la intro, pero
-  afecta a todo). Aparcado para pulir; detalle y siguientes pasos en
-  `docs/07_ports/TEXTURAS_HD_RUNTIME_UPSCALE.md` (incluye por que el override
+  x2/x3/x4; con `hd_tex>1` aparece el slider "Límite de tamaño de textura HD
+  (Mpx)" → `dbz3_hd_texture_max_texels` → SDK `dbz3_upscale_max_texels`). Escala
+  DXT **y RGBA8 nativas** (2026-09-19) sin tirones; el coste es VRAM (ver §3).
+  Sigue **desactivado por defecto** (opt-in) y detalle + siguientes pasos en
+  `docs/07_ports/TEXTURAS_HD_RUNTIME_UPSCALE.md` (incluye por qué el override
   del bin NO sirve: desborda la memoria del guest);
   (b) el **log de overrides AFS** (`AFS OVERRIDE LOOKUP/HIT/MISS`: 2 líneas con
   ruta completa por lectura) pasa a estar **condicionado a `dbz1_diag_logging`**
@@ -943,7 +975,8 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
     rexruntime **10910208** (con `audio_gain`, `dbz3_perf_logging`,
     `dbz3_io_logging`/`dbz3_io_readahead`, la poda de logs y
     `dbz3_mute_unfocused`), rexgpu-xenos
-    **6202368** (con `fg=` en la linea `perf`;
+    **6207488** (con `fg=` en la linea `perf`, el fix de mips del shader de
+    upscale `texture_upscale_cs` y la extensión a RGBA8 nativas del upscale;
     **sin** instrumentación de draw), amd_fidelityfx_dx12 5413888. ⚠️ El **SHA256 varía
     por build** (embebe timestamp) — comparar por **tamaño** o recompilar y
     copiar, no por hash fijo. ⚠️ Los tamaños de AMBAS DLL cambian cuando se

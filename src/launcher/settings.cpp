@@ -107,11 +107,19 @@ REXCVAR_DEFINE_INT32(dbz3_anisotropic, 5, "DBZ3/Video",
 // Implemented in rexgpu-xenos (`dbz3_texture_upscale`); this is the friendly,
 // persistent launcher-side value forwarded at startup/Play.
 // (WIP) Filtro interno tipo emulador (capa exterior, no toca ficheros del juego).
-// Funciona (escala texturas y genera la cadena de mips), pero provoca tirones al
-// cargar texturas nuevas, por eso esta DESACTIVADO por defecto.
+// Escala texturas DXT y RGBA8 nativas y genera la cadena de mips; el fix del
+// coste de mips quito los tirones. El coste principal ahora es VRAM + carga.
 REXCVAR_DEFINE_INT32(dbz3_hd_textures, 1, "DBZ3/Video",
     "HD textures (WIP): runtime texture upscale factor (1 = off, 2/3/4)")
     .range(1, 4)
+    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
+
+// Area maxima (texeles del nivel 0) de una textura que se sube de resolucion.
+// Evita que texturas enormes (2048x1024+) multipliquen la VRAM. 0 = sin limite.
+// Implementado en rexgpu-xenos (`dbz3_upscale_max_texels`).
+REXCVAR_DEFINE_INT32(dbz3_hd_texture_max_texels, 1048576, "DBZ3/Video",
+    "HD textures (WIP): max texture area to upscale in texels (0 = no limit)")
+    .range(0, 67108864)
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 
 REXCVAR_DEFINE_STRING(dbz3_present_effect, "fsr", "DBZ3/Video",
@@ -1430,6 +1438,12 @@ int32_t HdTextures() { return REXCVAR_GET(dbz3_hd_textures); }
 
 void SetHdTextures(int32_t factor) { REXCVAR_SET(dbz3_hd_textures, factor); }
 
+int32_t HdTextureMaxTexels() { return REXCVAR_GET(dbz3_hd_texture_max_texels); }
+
+void SetHdTextureMaxTexels(int32_t texels) {
+  REXCVAR_SET(dbz3_hd_texture_max_texels, texels);
+}
+
 std::string PresentEffect() { return REXCVAR_GET(dbz3_present_effect); }
 void SetPresentEffect(const std::string& effect) { REXCVAR_SET(dbz3_present_effect, effect); }
 
@@ -1844,6 +1858,7 @@ void ApplyRuntimeSettingsToSdk(bool for_game) {
   // what governs the upscale pipeline for this session (hence "restart
   // required" in the UI).
   SetSdkInt("dbz3_texture_upscale", REXCVAR_GET(dbz3_hd_textures));
+  SetSdkInt("dbz3_upscale_max_texels", REXCVAR_GET(dbz3_hd_texture_max_texels));
   SetSdkString("present_fsr_quality_mode", REXCVAR_GET(dbz3_fsr_quality));
   SetSdkDouble("present_fsr_sharpness_reduction", REXCVAR_GET(dbz3_fsr_sharpness));
   SetSdkDouble("present_cas_additional_sharpness", REXCVAR_GET(dbz3_cas_sharpness));

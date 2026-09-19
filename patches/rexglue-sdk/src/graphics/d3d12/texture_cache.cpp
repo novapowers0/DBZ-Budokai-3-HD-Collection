@@ -91,6 +91,16 @@ REXCVAR_DEFINE_INT32(dbz3_texture_upscale, 1, "GPU",
     .range(1, 4)
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 
+// DBZ3 HD Collection: area maxima (en texeles del nivel 0) de una textura que
+// se sube de resolucion. Limitar las enormes evita multiplicar la VRAM y el
+// coste de la pasada por texturas que apenas se notarian. 1M cubre 1024x1024 y
+// 2048x512 (las tipicas), pero deja fuera 2048x1024+ (que a x4 serian 32 MB+
+// por textura). 0 = sin limite.
+REXCVAR_DEFINE_INT32(dbz3_upscale_max_texels, 1 << 20, "GPU",
+                     "DBZ3: area maxima (texeles) de textura a escalar "
+                     "(0 = sin limite)")
+    .range(0, 64 * 1024 * 1024);
+
 // Constantes de la pasada de upscale (deben coincidir con el cbuffer del
 // shader texture_upscale_cs).
 struct TextureUpscaleConstants {
@@ -1406,6 +1416,11 @@ ID3D12Resource* D3D12TextureCache::RequestSwapTexture(D3D12_SHADER_RESOURCE_VIEW
   if (!key.is_valid || key.base_page == 0 || key.dimension != xenos::DataDimension::k2DOrStacked) {
     return nullptr;
   }
+  // Registrar la textura de swap ANTES de crearla/cargarla, para que
+  // GetTextureUpscaleFactor la rechace ya desde el primer uso (si no, el primer
+  // FindOrCreateTexture la crearia a Nx y el recurso de presentacion seria Nx).
+  swap_texture_key_ = key;
+  swap_texture_key_valid_ = true;
   D3D12Texture* texture = static_cast<D3D12Texture*>(FindOrCreateTexture(key));
   if (texture == nullptr || !LoadTextureData(*texture)) {
     return nullptr;
@@ -1513,9 +1528,9 @@ uint32_t D3D12TextureCache::GetTextureUpscaleFactor(const TextureKey& key) const
     }
     return 1;
   };
-  // Solo texturas 2D sencillas: un unico nivel, sin array/profundidad, no
-  // scaled-resolve, sin vista signed separada, y con variante descomprimida
-  // (el destino del upscale es un UAV, que no puede ser block-compressed).
+  // Solo texturas 2D sencillas: sin array/profundidad, no scaled-resolve, sin
+  // vista signed separada, y con representacion host RGBA8 (el destino del
+  // upscale es un UAV, que no puede ser block-compressed).
   if (key.dimension != xenos::DataDimension::k2DOrStacked) {
     return reject(1, "dim");
   }
@@ -1528,12 +1543,62 @@ uint32_t D3D12TextureCache::GetTextureUpscaleFactor(const TextureKey& key) const
   if (key.GetDepthOrArraySize() != 1) {
     return reject(5, "array");
   }
+  // EXCLUIR la textura del frontbuffer (la del fetch constant 0). Escalarla
+  // crearia un recurso de presentacion a Nx y el swap falla (recursos agotados
+  // al crear el guest output) - fue justo el crash del primer intento. Se
+  // compara por base_page + formato + tamano + mips.
+  if (swap_texture_key_valid_ && key.base_page == swap_texture_key_.base_page &&
+      key.format == swap_texture_key_.format && key.GetWidth() == swap_texture_key_.GetWidth() &&
+      key.GetHeight() == swap_texture_key_.GetHeight() &&
+      key.mip_max_level == swap_texture_key_.mip_max_level) {
+    return reject(4, "swap_texture");
+  }
   const HostFormat& host_format = host_formats_[uint32_t(key.format)];
-  if (host_format.dxgi_format_uncompressed == DXGI_FORMAT_UNKNOWN) {
+  // El destino del upscale es un UAV RGBA8, asi que se necesitan DOS cosas:
+  //  1) un formato host RGBA8 al que el load shader pueda escribir. En las
+  //     texturas comprimidas (DXT) es la variante descomprimida; en las que ya
+  //     son RGBA8 sin comprimir (fmt=6, las MAS grandes del juego: caras,
+  //     ropa, escenarios) es el propio formato unsigned (R8G8B8A8_UNORM), que
+  //     SI es UAV-capable en D3D12.
+  //  2) un load shader que produzca ese RGBA8: para las comprimidas el de
+  //     descompresion; para las nativas el load estandar (32bpb).
+  // Antes se exigia `dxgi_format_uncompressed`, que solo estaba relleno en las
+  // DXT -> TODAS las texturas RGBA8 nativas se descartaban y el efecto apenas
+  // se notaba (los DXT suelen ser las pequenas). El alpha del load estandar
+  // (passthrough) reproduce el swizzle RGBA del guest, asi que muestrear el
+  // recurso RGBA8 a Nx da el mismo color que el juego (verificado en el ASM
+  // de texture_load_32bpb: byte 0 = R de memoria).
+  DXGI_FORMAT upscale_format;
+  LoadShaderIndex upscale_load_shader;
+  if (host_format.dxgi_format_uncompressed != DXGI_FORMAT_UNKNOWN &&
+      host_format.load_shader_decompress != kLoadShaderIndexUnknown) {
+    // Comprimida (DXT): se descomprime a RGBA8.
+    upscale_format = host_format.dxgi_format_uncompressed;
+    upscale_load_shader = host_format.load_shader_decompress;
+  } else if (host_format.dxgi_format_unsigned == DXGI_FORMAT_R8G8B8A8_UNORM &&
+             host_format.load_shader != kLoadShaderIndexUnknown &&
+             !host_format.is_block_compressed) {
+    // Nativa sin comprimir que YA es RGBA8 (k_8_8_8_8, fmt=6): el load estandar
+    // escribe RGBA8 y el recurso se puede muestrear igual que el guest. Se
+    // exige R8G8B8A8_UNORM explicito: formatos de menos/otros canales (k_8 ->
+    // R8, k_8_8 -> R8G8, k_4_4_4_4 -> B4G4R4A4, k_24_8 -> R24G8...) producen
+    // otra cosa, el shader de upscale (que lee uint32 R|G<<8|B<<16|A<<24 y
+    // escribe un UAV RGBA8) daria texturas corruptas, y el recurso quedaria con
+    // un formato que el resto del pipeline no usa -> "Unsupported texture
+    // formats used in the frame" masivo (observado al aceptar fmt=2 y fmt=22).
+    upscale_format = host_format.dxgi_format_unsigned;
+    upscale_load_shader = host_format.load_shader;
+  } else {
     return reject(6, "no_uncompressed");
   }
-  if (host_format.load_shader_decompress == kLoadShaderIndexUnknown) {
-    return reject(7, "no_decompress_shader");
+  // El shader de upscale escribe un UAV RGBA8 y lee la fuente como uint32, asi
+  // que ademas se exige que el load shader produzca RGBA8 (bytes_per_host_block
+  // == 4). Los DXT descomprimidos y k_8_8_8_8 lo cumplen; los demas no.
+  if (upscale_format != DXGI_FORMAT_R8G8B8A8_UNORM) {
+    return reject(10, "not_rgba8");
+  }
+  if (GetLoadShaderInfo(upscale_load_shader).bytes_per_host_block != 4) {
+    return reject(11, "load_not_rgba8");
   }
   uint32_t width = key.GetWidth();
   uint32_t height = key.GetHeight();
@@ -1541,14 +1606,29 @@ uint32_t D3D12TextureCache::GetTextureUpscaleFactor(const TextureKey& key) const
       height > (D3D12_REQ_TEXTURE2D_U_OR_V_DIMENSION / factor)) {
     return reject(8, "too_big");
   }
+  // Limite de area: subir texturas enormes (2048x512, 1024x1024...) multiplica
+  // mucho la VRAM y el tiempo de la pasada, y apenas se nota (la ganancia vive
+  // en las texturas pequenas y medianas). knUpscaleMaxTexels=1M permite hasta
+  // 1024x1024 (y 2048x512), pero evita 2048x1024+ con factor 4 (32 MB+ por
+  // textura). Ajustable por cvar para medir.
+  uint32_t max_texels = uint32_t(REXCVAR_GET(dbz3_upscale_max_texels));
+  if (max_texels && uint64_t(width) * uint64_t(height) > uint64_t(max_texels)) {
+    return reject(9, "too_many_texels");
+  }
   {
-    // Cada combinacion aceptada se registra una sola vez (diagnostico).
-    static constexpr int kMaxOkLogged = 12;
+    // Cada textura aceptada se registra (diagnostico, para ver el catalogo
+    // completo de lo que SI se escala). Se cuentan los usos reales, no meras
+    // construcciones de TextureKey (GetTextureUpscaleFactor tambien se llama
+    // al crear recursos y al decidir el prim de carga).
+    static constexpr int kMaxOkLogged = 96;
     static int logged_ok = 0;
     static uint64_t seen_ok[kMaxOkLogged] = {};
-    const uint64_t sig_ok = (uint64_t(uint32_t(key.format)) << 48) |
-                            (uint64_t(key.GetWidth() & 0xFFFF) << 16) |
-                            uint64_t(key.GetHeight() & 0xFFFF);
+    const uint64_t sig_ok = (uint64_t(uint32_t(key.format)) << 56) |
+                            (uint64_t(uint32_t(key.dimension) & 0xF) << 52) |
+                            (uint64_t(key.mip_max_level & 0x1F) << 47) |
+                            (uint64_t(key.GetDepthOrArraySize() & 0xFF) << 39) |
+                            (uint64_t(key.GetWidth() & 0x7FFF) << 24) |
+                            uint64_t(key.GetHeight() & 0xFFFFFF);
     bool known = false;
     for (int i = 0; i < logged_ok; ++i) {
       if (seen_ok[i] == sig_ok) {
@@ -1558,8 +1638,12 @@ uint32_t D3D12TextureCache::GetTextureUpscaleFactor(const TextureKey& key) const
     }
     if (!known && logged_ok < kMaxOkLogged) {
       seen_ok[logged_ok++] = sig_ok;
-      REXGPU_INFO("dbz3: upscale ACCEPT fmt={} dim={} {}x{} factor={}", uint32_t(key.format),
-                  uint32_t(key.dimension), width, height, factor);
+      REXGPU_INFO(
+          "dbz3: upscale ACCEPT fmt={} dim={} mips={} array={} {}x{} factor={} dst_fmt={} "
+          "load_shader={}",
+          uint32_t(key.format), uint32_t(key.dimension), uint32_t(key.mip_max_level),
+          uint32_t(key.GetDepthOrArraySize()), width, height, factor, uint32_t(upscale_format),
+          uint32_t(upscale_load_shader));
     }
   }
   return factor;
@@ -1571,9 +1655,12 @@ TextureCache::LoadShaderIndex D3D12TextureCache::GetLoadShaderIndex(TextureKey k
     return host_format.load_shader_signed;
   }
   if (IsTextureUpscaled(key)) {
-    // El recurso host es RGBA8 a Nx: se descomprime con el shader estandar y
-    // luego se aplica la pasada de upscale.
-    return host_format.load_shader_decompress;
+    // El recurso host es RGBA8 a Nx: las comprimidas se descomprimen con su
+    // shader y las nativas RGBA8 usan el load estandar (que ya escribe RGBA8).
+    if (host_format.load_shader_decompress != kLoadShaderIndexUnknown) {
+      return host_format.load_shader_decompress;
+    }
+    return host_format.load_shader;
   }
   if (IsDecompressionNeeded(key.format, key.GetWidth(), key.GetHeight())) {
     return host_format.load_shader_decompress;

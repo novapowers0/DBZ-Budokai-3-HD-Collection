@@ -340,3 +340,37 @@ por ejecucion sin borrar los viejos.
 - **DLLs canonicas (2026-09-19, v1.2.5 definitiva)**: `rexruntime.dll`
   **10.910.208 B**, `rexgpu-xenos.dll` **6.202.368 B**,
   `amd_fidelityfx_dx12.dll` **5.413.888 B**.
+
+### 2026-09-19 (cont.) - Texturas HD: fix de tirones + alcance RGBA8
+
+> Detalle completo: `docs/07_ports/TEXTURAS_HD_RUNTIME_UPSCALE.md` §8-§10.
+
+- **`src/graphics/shaders/texture_upscale_cs.hlsl`** + **`bytecode/d3d12_5_1/
+  texture_upscale_cs.h`**: `XeLoadLevelTexel` muestrea una rejilla de como maximo
+  `kXeMaxBlockSamples = 8` por eje (antes promediaba el bloque `2^level x
+  2^level` completo = `16 * 4^level` lecturas EN SERIE; en los mips altos quedan
+  pocos hilos -> frames de cientos de ms). Recompilar con
+  `fxc /nologo /T cs_5_1 /E main /Vn texture_upscale_cs /O3 /Fh
+  bytecode/d3d12_5_1/texture_upscale_cs.h texture_upscale_cs.hlsl`.
+- **`src/graphics/d3d12/texture_cache.cpp` + `include/rex/graphics/d3d12/
+  texture_cache.h`**: el upscale pasa a cubrir tambien las **RGBA8 nativas**
+  (`fmt=6`), no solo las DXT:
+  - `GetTextureUpscaleFactor`: acepta `dxgi_format_unsigned == R8G8B8A8_UNORM`
+    cuando el load shader produce RGBA8 (`bytes_per_host_block == 4`); rechaza
+    los demas formatos (`not_rgba8`/`load_not_rgba8`) para no corromper texturas.
+  - **Exclusion del frontbuffer** (`swap_texture_key_`): `RequestSwapTexture`
+    registra la key ANTES de crearla y el upscale la rechaza (`swap_texture`).
+    Sin esto el recurso de presentacion se creaba a Nx y el swap fallaba.
+  - Nuevo helper `GetTextureUpscaleRgba8Format` para `GetDXGIResourceFormat` /
+    `GetDXGIUnormFormat(TextureKey)` (antes devolvian `dxgi_format_uncompressed`,
+    que en `k_8_8_8_8` es `UNKNOWN` -> miles de
+    `Unsupported texture formats used in the frame`).
+  - Nueva cvar **`dbz3_upscale_max_texels`** (default `1 << 20` texeles = area
+    max. 1024x1024; `0` = sin limite) para acotar VRAM. El launcher la expone como
+    "Limite de tamano de textura HD (Mpx)" -> cvar `dbz3_hd_texture_max_texels`.
+- **Medicion** (`hd_tex=4x` + `3x` + MSAA + cap 60, RTX 4070 SUPER): **1515
+  texturas** escaladas (vs 279 solo-DXT), **0 errores**, fps min 57.4, **0 frames
+  >100 ms**, peor frame 55 ms, VRAM ~3 GB.
+- **DLLs canonicas (2026-09-19, texturas HD RGBA8)**: `rexgpu-xenos.dll`
+  **6.207.488 B** (baseline; SHA256 varia por build), `rexruntime.dll`
+  **10.910.208 B**, `amd_fidelityfx_dx12.dll` **5.413.888 B**.

@@ -359,13 +359,22 @@ class D3D12TextureCache final : public TextureCache {
   // DBZ3 HD Collection: capa exterior de upscale de texturas. La textura host
   // se crea a un tamano Nx (N = dbz3_texture_upscale) y se rellena con una
   // pasada de upscale bicubica tras la carga estandar, sin tocar ni la memoria
-  // guest ni ningun fichero del juego. Solo se aplica a texturas 2D sencillas
-  // (un solo mip, sin array, no scaled-resolve) con representacion host
-  // descomprimida, para que el resto del camino de carga siga intacto.
+  // guest ni ningun fichero del juego. Se aplica a texturas 2D sencillas (sin
+  // array, no scaled-resolve, con representacion host RGBA8: DXT descomprimidas
+  // Y nativas RGBA8). La textura del FRONTBUFFER (la que se presenta) queda
+  // EXCLUIDA: escalarla multiplicaria por N el recurso de swap y tumba el
+  // presentador (recursos agotados), ademas de no aportar nada porque la imagen
+  // final la produce el upscaler de salida.
   uint32_t GetTextureUpscaleFactor(const TextureKey& key) const;
   bool IsTextureUpscaled(const TextureKey& key) const {
     return GetTextureUpscaleFactor(key) > 1;
   }
+
+  // Key de la textura usada como frontbuffer en el ultimo swap (fetch constant
+  // 0). Se compara por base_page + dimension + formato + tamano para no escalar
+  // esa textura (mutable porque GetTextureUpscaleFactor es const).
+  mutable TextureKey swap_texture_key_;
+  mutable bool swap_texture_key_valid_ = false;
 
  public:
   // Numero de texturas que se han subido de resolucion desde el arranque
@@ -385,8 +394,11 @@ class D3D12TextureCache final : public TextureCache {
   }
   DXGI_FORMAT GetDXGIResourceFormat(TextureKey key) const {
     if (IsTextureUpscaled(key)) {
-      // El recurso host es RGBA8 (destino de UAV); se descomprime al cargar.
-      return host_formats_[uint32_t(key.format)].dxgi_format_uncompressed;
+      // El recurso host es RGBA8 (destino de UAV). Para las DXT descomprimidas
+      // es dxgi_format_uncompressed; para las nativas RGBA8 es su dxgi_format_
+      // unsigned (R8G8B8A8_UNORM), porque su dxgi_format_uncompressed esta a
+      // UNKNOWN y usarlo crearia el recurso con formato invalido.
+      return GetTextureUpscaleRgba8Format(key);
     }
     return GetDXGIResourceFormat(key.format, key.GetWidth(), key.GetHeight());
   }
@@ -398,9 +410,21 @@ class D3D12TextureCache final : public TextureCache {
   }
   DXGI_FORMAT GetDXGIUnormFormat(TextureKey key) const {
     if (IsTextureUpscaled(key)) {
-      return host_formats_[uint32_t(key.format)].dxgi_format_uncompressed;
+      return GetTextureUpscaleRgba8Format(key);
     }
     return GetDXGIUnormFormat(key.format, key.GetWidth(), key.GetHeight());
+  }
+
+  // Formato host RGBA8 del recurso de upscale (debe coincidir con lo que
+  // devuelve GetTextureUpscaleFactor para la misma key). DXT -> descomprimido;
+  // nativas RGBA8 -> dxgi_format_unsigned.
+  DXGI_FORMAT GetTextureUpscaleRgba8Format(TextureKey key) const {
+    const HostFormat& host_format = host_formats_[uint32_t(key.format)];
+    if (host_format.dxgi_format_uncompressed != DXGI_FORMAT_UNKNOWN &&
+        host_format.load_shader_decompress != kLoadShaderIndexUnknown) {
+      return host_format.dxgi_format_uncompressed;
+    }
+    return host_format.dxgi_format_unsigned;
   }
 
   LoadShaderIndex GetLoadShaderIndex(TextureKey key) const;
