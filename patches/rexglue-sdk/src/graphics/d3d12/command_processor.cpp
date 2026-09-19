@@ -33,6 +33,10 @@
 #include <rex/ui/d3d12/d3d12_presenter.h>
 #include <rex/ui/d3d12/d3d12_util.h>
 
+#if REX_PLATFORM_WIN32
+#include <windows.h>
+#endif
+
 REXCVAR_DEFINE_BOOL(d3d12_bindless, true, "GPU/D3D12", "Use bindless resources where available")
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 
@@ -1897,6 +1901,23 @@ void D3D12CommandProcessor::OnGammaRampPWLValueWritten() {
 // ventana visible, oculta o fuera de pantalla - imprescindible para medir el
 // rendimiento en partida (el contador del presentador de la UI solo cubre el
 // launcher) y para las pruebas sin ventana.
+// dbz3 - True when the process owns the foreground window. Used only for the
+// performance log: an unfocused window is throttled by DWM to half the present
+// rate, which would otherwise look like a performance regression in user logs.
+bool Dbz3IsOurWindowForeground() {
+#if REX_PLATFORM_WIN32
+  HWND foreground = GetForegroundWindow();
+  if (!foreground) {
+    return false;
+  }
+  DWORD pid = 0;
+  GetWindowThreadProcessId(foreground, &pid);
+  return pid == GetCurrentProcessId();
+#else
+  return true;
+#endif
+}
+
 static void Dbz3LogGuestPerformance(uint64_t upscaled_textures) {
   static std::chrono::steady_clock::time_point window_start;
   static std::chrono::steady_clock::time_point last_frame;
@@ -1920,15 +1941,22 @@ static void Dbz3LogGuestPerformance(uint64_t upscaled_textures) {
     return;
   }
   if (rex::cvar::GetFlagByName("dbz3_perf_logging") == "true") {
+    // `fg=` = our window is the foreground one. Windows' DWM halves the present
+    // rate of an unfocused window (a clean 60 -> 30 fps in the log, not gradual),
+    // which is easy to mistake for a performance problem when reading logs from
+    // another machine: it tells "the player alt-tabbed" from "the game is slow".
+    const bool foreground = Dbz3IsOurWindowForeground();
     if (upscaled_textures) {
       // `upx=` = numero de texturas subidas de resolucion (capa exterior).
       REXGPU_INFO(
-          "dbz3: perf fps={:.1f} frames={} window={:.2f}s max_frame_ms={:.1f} upx={}",
+          "dbz3: perf fps={:.1f} frames={} window={:.2f}s max_frame_ms={:.1f} fg={} upx={}",
           double(frames_in_window) / elapsed_s, frames_in_window, elapsed_s, max_frame_ms,
-          upscaled_textures);
+          foreground ? 1 : 0, upscaled_textures);
     } else {
-      REXGPU_INFO("dbz3: perf fps={:.1f} frames={} window={:.2f}s max_frame_ms={:.1f}",
-                  double(frames_in_window) / elapsed_s, frames_in_window, elapsed_s, max_frame_ms);
+      REXGPU_INFO(
+          "dbz3: perf fps={:.1f} frames={} window={:.2f}s max_frame_ms={:.1f} fg={}",
+          double(frames_in_window) / elapsed_s, frames_in_window, elapsed_s, max_frame_ms,
+          foreground ? 1 : 0);
     }
   }
   window_start = now;

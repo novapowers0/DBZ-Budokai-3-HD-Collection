@@ -26,6 +26,15 @@
 
 REXCVAR_DEFINE_BOOL(audio_mute, false, "Audio", "Mute audio output");
 REXCVAR_DEFINE_DOUBLE(audio_gain, 1.0, "Audio", "Output gain (0.0 - 1.0)");
+// dbz3 - focus behaviour. `dbz3_window_focused` is written by the app when the
+// window gains/loses focus (same name in the launcher registry, so the value is
+// visible in the config); with `dbz3_mute_unfocused` (launcher: "mute when
+// leaving the window") the mix is silenced while the window is in the
+// background, like most emulators and games do.
+REXCVAR_DEFINE_BOOL(dbz3_mute_unfocused, true, "DBZ3/Audio",
+                    "Silence audio while the window is in the background");
+REXCVAR_DEFINE_BOOL(dbz3_window_focused, true, "DBZ3/Dev",
+                    "Window focus state (written by the app, not a user setting)");
 
 namespace rex::audio::sdl {
 
@@ -201,7 +210,8 @@ void SDLAudioDriver::SDLCallback(void* userdata, SDL_AudioStream* stream, int ad
     } else {
       auto buffer = driver->frames_queued_.front();
       driver->frames_queued_.pop();
-      if (REXCVAR_GET(audio_mute)) {
+      if (REXCVAR_GET(audio_mute) ||
+          (REXCVAR_GET(dbz3_mute_unfocused) && !REXCVAR_GET(dbz3_window_focused))) {
         std::memset(data, 0, len);
       } else {
         switch (driver->sdl_device_channels_) {

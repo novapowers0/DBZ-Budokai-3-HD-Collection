@@ -16,6 +16,8 @@
 #include <rex/filesystem/afs.h>
 
 #include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <fstream>
@@ -28,6 +30,21 @@
 #include <rex/filesystem.h>
 #include <rex/cvar.h>
 #include <rex/logging.h>
+
+// dbz1_diag_logging is defined in src/system/dbz1_diag_flags.cpp (shared
+// runtime). Declared here so the read path can test it as a plain bool instead
+// of a name lookup + string compare per read.
+REXCVAR_DECLARE(bool, dbz1_diag_logging);
+
+// dbz3 - AFS I/O diagnostics. `dbz3_io_logging` (default on) reports one summary
+// line every 5 s (read rate, latency percentiles, slow reads, opens) and one
+// line per read above `dbz3_io_slow_ms`; it is the only source of I/O timing in
+// the product, so it stays on by default (12 lines/minute) and can be turned off
+// from the launcher's Dev tab.
+REXCVAR_DEFINE_BOOL(dbz3_io_logging, true, "DBZ3/Dev",
+                    "Log AFS I/O statistics (read rate, latency, slow reads)");
+REXCVAR_DEFINE_INT32(dbz3_io_slow_ms, 25, "DBZ3/Dev",
+                     "Log a line for AFS reads slower than this many milliseconds");
 
 namespace rex::filesystem {
 
@@ -95,6 +112,147 @@ const AfsFileIndex* GetOrLoadAfsIndex(const std::filesystem::path& host_path) {
 }
 
 }  // namespace
+
+// ---------------------------------------------------------------------------
+// dbz3 - AFS I/O instrumentation.
+//
+// The host read path (HostPathFile::ReadSync -> FileHandle::Read -> ReadFile) is
+// synchronous: the guest thread blocks for the whole read. Without timing on
+// that call there is no way to tell "slow disk" from "emulator overhead" -- the
+// game logs nothing and a user report ("va lento") is otherwise unmeasurable.
+// These counters answer that with one line every 5 s.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+std::atomic<uint64_t> g_io_reads{0};
+std::atomic<uint64_t> g_io_bytes{0};
+std::atomic<uint64_t> g_io_pre_ns{0};
+std::atomic<uint64_t> g_io_read_ns{0};
+std::atomic<uint64_t> g_io_max_ns{0};
+std::atomic<uint64_t> g_io_slow{0};
+std::atomic<uint64_t> g_io_cache_hits{0};
+std::atomic<uint64_t> g_io_opens{0};
+std::atomic<uint64_t> g_io_slow_logged{0};
+
+// log2 histogram of physical read latencies (bucket b = [2^b, 2^(b+1)) ns), so
+// p95/p99 come out of a handful of atomics without sorting anything.
+constexpr int kIoBuckets = 24;
+std::atomic<uint64_t> g_io_hist[kIoBuckets];
+std::atomic<int64_t> g_io_window_start_ns{0};
+std::mutex g_io_flush_mutex;
+constexpr int64_t kIoWindowNs = 5000000000ll;  // 5 s
+constexpr uint64_t kIoSlowLinesPerWindow = 10;
+
+int64_t IoNowNs() {
+  return std::chrono::duration_cast<std::chrono::nanoseconds>(
+             std::chrono::steady_clock::now().time_since_epoch())
+      .count();
+}
+
+uint64_t IoPercentile(const uint64_t (&hist)[kIoBuckets], uint64_t total, double p) {
+  if (total == 0) {
+    return 0;
+  }
+  const uint64_t want = uint64_t(double(total) * p) + 1;
+  uint64_t acc = 0;
+  for (int i = 0; i < kIoBuckets; ++i) {
+    acc += hist[i];
+    if (acc >= want) {
+      return uint64_t(1) << i;
+    }
+  }
+  return uint64_t(1) << (kIoBuckets - 1);
+}
+
+// Emits the window summary and resets the counters. Caller holds the flush mutex.
+void IoFlushWindow() {
+  const uint64_t reads = g_io_reads.exchange(0, std::memory_order_relaxed);
+  const uint64_t bytes = g_io_bytes.exchange(0, std::memory_order_relaxed);
+  const uint64_t pre_ns = g_io_pre_ns.exchange(0, std::memory_order_relaxed);
+  const uint64_t read_ns = g_io_read_ns.exchange(0, std::memory_order_relaxed);
+  const uint64_t max_ns = g_io_max_ns.exchange(0, std::memory_order_relaxed);
+  const uint64_t slow = g_io_slow.exchange(0, std::memory_order_relaxed);
+  const uint64_t hits = g_io_cache_hits.exchange(0, std::memory_order_relaxed);
+  const uint64_t opens = g_io_opens.exchange(0, std::memory_order_relaxed);
+  uint64_t hist[kIoBuckets];
+  uint64_t sampled = 0;
+  for (int i = 0; i < kIoBuckets; ++i) {
+    hist[i] = g_io_hist[i].exchange(0, std::memory_order_relaxed);
+    sampled += hist[i];
+  }
+  g_io_slow_logged.store(0, std::memory_order_relaxed);
+  if (reads == 0 && opens == 0) {
+    return;
+  }
+  const uint64_t physical = reads - hits;
+  REXLOG_INFO(
+      "dbz3: io reads={} phys={} cache={} mb={} pre_avg_us={} read_avg_us={} p95_us={} "
+      "p99_us={} max_us={} slow={} opens={}",
+      reads, physical, hits, bytes >> 20,
+      physical ? (pre_ns / physical) / 1000 : 0, physical ? (read_ns / physical) / 1000 : 0,
+      IoPercentile(hist, sampled, 0.95) / 1000, IoPercentile(hist, sampled, 0.99) / 1000,
+      max_ns / 1000, slow, opens);
+}
+
+}  // namespace
+
+void AfsIoRecordRead(const AfsIoReadSample& sample) {
+  if (!REXCVAR_GET(dbz3_io_logging)) {
+    return;
+  }
+  g_io_reads.fetch_add(1, std::memory_order_relaxed);
+  g_io_bytes.fetch_add(sample.bytes, std::memory_order_relaxed);
+  g_io_pre_ns.fetch_add(sample.pre_ns, std::memory_order_relaxed);
+  if (sample.from_cache) {
+    g_io_cache_hits.fetch_add(1, std::memory_order_relaxed);
+  } else {
+    g_io_read_ns.fetch_add(sample.read_ns, std::memory_order_relaxed);
+    uint64_t prev = g_io_max_ns.load(std::memory_order_relaxed);
+    while (sample.read_ns > prev &&
+           !g_io_max_ns.compare_exchange_weak(prev, sample.read_ns, std::memory_order_relaxed)) {
+    }
+    int bucket = 0;
+    while (bucket < kIoBuckets - 1 && (uint64_t(1) << (bucket + 1)) <= sample.read_ns) {
+      ++bucket;
+    }
+    g_io_hist[bucket].fetch_add(1, std::memory_order_relaxed);
+  }
+
+  const uint64_t slow_ns = uint64_t(REXCVAR_GET(dbz3_io_slow_ms)) * 1000000ull;
+  if (!sample.from_cache && sample.read_ns >= slow_ns) {
+    g_io_slow.fetch_add(1, std::memory_order_relaxed);
+    if (g_io_slow_logged.fetch_add(1, std::memory_order_relaxed) < kIoSlowLinesPerWindow) {
+      REXLOG_INFO("dbz3: io SLOW {}us afs={} entry={} off=0x{:X} n=0x{:X} pre={}us",
+                  sample.read_ns / 1000,
+                  sample.host_path ? sample.host_path->filename().string() : "?",
+                  sample.entry_index, sample.offset, sample.bytes, sample.pre_ns / 1000);
+    }
+  }
+
+  const int64_t now = IoNowNs();
+  int64_t start = g_io_window_start_ns.load(std::memory_order_acquire);
+  if (start == 0) {
+    g_io_window_start_ns.store(now, std::memory_order_release);
+    return;
+  }
+  if (now - start < kIoWindowNs || !g_io_flush_mutex.try_lock()) {
+    return;
+  }
+  start = g_io_window_start_ns.load(std::memory_order_relaxed);
+  if (now - start >= kIoWindowNs) {
+    g_io_window_start_ns.store(now, std::memory_order_relaxed);
+    IoFlushWindow();
+  }
+  g_io_flush_mutex.unlock();
+}
+
+void AfsIoRecordOpen() {
+  if (!REXCVAR_GET(dbz3_io_logging)) {
+    return;
+  }
+  g_io_opens.fetch_add(1, std::memory_order_relaxed);
+}
 
 // Map a byte offset within the .afs to an entry index, or -1 if not inside any
 // entry. Returns the entry whose [address, address+size) contains the offset.
@@ -188,9 +346,7 @@ bool AfsFindModOverride(const std::filesystem::path& host_path, int entry_index,
   // cientos de lecturas AFS por segundo en las transiciones y este log
   // (2 lineas + ruta completa por lectura) ensuciaba los logs y anadia trabajo
   // al hilo del guest. Con dbz1_diag_logging (Dev) se recupera el detalle.
-  // Se consulta por nombre porque el cvar vive en otro modulo.
-  const bool log_override_lookups =
-      rex::cvar::GetFlagByName("dbz1_diag_logging") == "true";
+  const bool log_override_lookups = REXCVAR_GET(dbz1_diag_logging);
   if (log_override_lookups) {
     REXLOG_INFO("AFS OVERRIDE LOOKUP: afs={} entry={} host={}", afs_name, entry_name,
                 rex::path_to_utf8(host_path));
@@ -464,6 +620,23 @@ size_t AfsGetVirtualTable(const std::filesystem::path& host_path,
   out_vtable = layout->table_bytes;
   out_any_growth = layout->any_growth;
   return layout->table_bytes.size();
+}
+
+const std::vector<uint8_t>* AfsGetVirtualTableFast(const std::filesystem::path& host_path,
+                                                   bool& out_any_growth) {
+  const VirtualAfsLayout* layout = GetOrLoadVirtualAfs(host_path);
+  if (!layout) {
+    out_any_growth = false;
+    return nullptr;
+  }
+  out_any_growth = layout->any_growth;
+  return &layout->table_bytes;
+}
+
+bool AfsModsPresent() {
+  ScanModDirs();
+  std::lock_guard<std::mutex> lock(g_mod_dirs_mutex);
+  return !g_mod_dirs_cache.empty();
 }
 
 // Translate a virtual offset back to the physical file (or to a mod override).

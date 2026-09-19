@@ -15,6 +15,35 @@ int AfsFindEntry(const std::filesystem::path& host_path, uint64_t byte_offset,
 // Root folder where mods live (next to the executable, "mods").
 std::filesystem::path AfsModsRoot();
 
+// True when at least one enabled mod folder exists (cached scan). With no mods
+// installed there is no override lookup and no virtual AFS table work to do on
+// the read path, so callers can take a fast path (see HostPathFile::ReadSync).
+bool AfsModsPresent();
+
+// dbz3 - AFS I/O instrumentation (cvar `dbz3_io_logging`).
+//
+// Every guest read goes through HostPathFile::ReadSync, which is SYNCHRONOUS:
+// the guest thread blocks for the whole physical read plus the per-read lookup
+// work done in the host layer. Sampling both halves is the only way to tell a
+// slow disk (read_ns high) from host-side overhead (pre_ns high) -- neither the
+// game nor the emulator log any I/O timing otherwise. AfsIoRecordRead() feeds
+// the counters; every 5 s one summary line is emitted and, for reads above
+// `dbz3_io_slow_ms`, one line per slow read (capped per window).
+struct AfsIoReadSample {
+  const std::filesystem::path* host_path;  // container path; nullptr when unknown
+  int entry_index;       // AFS entry index, or -1 when unknown
+  uint64_t offset;       // byte offset inside the container
+  uint64_t bytes;        // bytes requested
+  uint64_t pre_ns;       // time resolving the read (lookup/override/virtual table)
+  uint64_t read_ns;      // time inside the physical read
+  bool from_cache;       // served by the readahead cache (no physical read)
+};
+void AfsIoRecordRead(const AfsIoReadSample& sample);
+
+// Counts one host file open (an open storm on a slow disk is a red flag and is
+// reported in the same summary line).
+void AfsIoRecordOpen();
+
 // Look for a mod-provided replacement for the given AFS entry. A mod is a
 // subfolder under <exe>/mods/<mod>/us/<afs_filename>/<entry_index>. Returns true
 // and fills out_path if a replacement exists.
@@ -52,6 +81,13 @@ std::string AfsRegionFileName(const std::string& region, const std::string& real
 // Returns 0 if the file is not a parseable AFS.
 size_t AfsGetVirtualTable(const std::filesystem::path& host_path,
                           std::vector<uint8_t>& out_vtable, bool& out_any_growth);
+
+// Same as AfsGetVirtualTable but WITHOUT copying the bytes: returns a pointer to
+// the cached table (nullptr when the file is not a parseable AFS). The pointer is
+// valid until AfsResetModCache(). Used on the read path, which must not copy the
+// whole table (thousands of reads per transition) just to check `any_growth`.
+const std::vector<uint8_t>* AfsGetVirtualTableFast(const std::filesystem::path& host_path,
+                                                   bool& out_any_growth);
 
 // Translate a virtual file offset (as the guest sees it) to the physical offset
 // inside the real AFS file, using the virtual mid-insert layout. Returns the

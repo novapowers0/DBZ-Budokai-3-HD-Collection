@@ -129,6 +129,9 @@ X_STATUS HostPathEntry::Open(uint32_t desired_access, File** out_file) {
     // TODO(benvanik): pick correct response.
     return X_STATUS_NO_SUCH_FILE;
   }
+  // dbz3: opens are counted in the AFS I/O summary (an open storm on a slow
+  // disk is a red flag; the guest normally opens each container once).
+  AfsIoRecordOpen();
   *out_file = new HostPathFile(desired_access, this, std::move(file_handle));
   return X_STATUS_SUCCESS;
 }
