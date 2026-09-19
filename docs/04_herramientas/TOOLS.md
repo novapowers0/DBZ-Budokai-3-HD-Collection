@@ -148,3 +148,20 @@ python awo_tools/awg_to_obj_b3.py entrada.bin salida.obj
 # 3. Si es PS2, extraer la malla
 python awo_tools/parse_ps2_mesh.py entrada.amb 0 salida
 ```
+
+---
+
+## 6. ARNES DE PRUEBAS DEL JUEGO EN EJECUCION (tools/, 2026-09-19)
+
+| Herramienta | Funcion |
+|---|---|
+| `tools/long_run.ps1` | Lanza/para/consulta pruebas **largas** desacopladas; silencia el juego (`audio_mute=true`), aplica overrides al `dbz3_user.toml` y lo restaura. Estado en `%TEMP%\opencode\long_run_state.json`. |
+| `tools/press_key.ps1` | Inyecta teclas por `PostMessage` (`-TargetPid`; mapa W/A/S/D/Backspace/Tab/Space/Return). |
+| `tools/grab_window.ps1` | Captura PNG de la ventana (`PrintWindow` PW_RENDERFULLCONTENT). Requiere la ventana **on-screen** (fuera de pantalla la presentacion se congela y las capturas salen identicas). |
+| `tools/click_window.ps1` | Click por coordenadas **cliente** de la ventana (launcher ImGui). |
+| `tools/hidden_run.ps1` | Igual que long_run pero moviendo la ventana fuera de pantalla (solo para medir el swap rate del guest, no para capturas). |
+
+**Receta para llegar al combate 3D**: boot con `dbz3_skip_launcher=true` →
+opening (~90-100 s) → pulsar `Return` (Start) → titulo/menu → idle ~2-2,5 min →
+salta la attract demo battle 3D.
+

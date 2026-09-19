@@ -248,6 +248,20 @@ layout is assembled by `tools/make_release.ps1`.
 
 ---
 
+## v1.2.4 highlights
+
+- **Working volume in the launcher**: the "Master volume" slider and the new
+  **"Mute all audio"** switch actually do something now. They used to write a
+  variable the runtime does not know, so they had no effect and the game could
+  not be muted from the UI.
+- **New-release notice**: on launch the launcher asks GitHub for the latest
+  release and, when a newer one exists, shows **"New version available: vX"**
+  with a one-click download (never blocks PLAY). Can be disabled in the Dev tab.
+- **Dead controls removed**: the **Gamma** slider and the **music/SFX/voice**
+  sliders are gone (the game mixes all audio into a single stream, so they are
+  not separable). "Reset to defaults" now restores VRR and HD textures too.
+- Base: v1.2.3 (in-game FPS counter + cleaner logs + HD textures WIP).
+
 ## v1.2.3 highlights
 
 - **In-game performance counter**: `dbz3_perf_logging` (on by default) logs one line

@@ -309,3 +309,13 @@ defecto**: funciona, pero provoca tirones al cargar texturas nuevas. Ver
   `rexruntime.dll` **10.870.272 B** (ambas con el marker `dbz3_perf_logging`).
   ⚠️ Compilar el juego sobrescribe `rexruntime.dll` con el stale de
   `rexglue/bin` -> recopiar del baseline tras cada build (AGENTS 7).
+- **`src/audio/sdl/sdl_audio_driver.cpp`** (rexruntime, 2026-09-19): cvar
+  `audio_gain` (double, 0.0-1.0) multiplicada en el callback SDL
+  (`gain = GetOutputGain() * clamp(audio_gain, 0, 1)`); `audio_mute` ya existia.
+  Es el volumen REAL del launcher: antes los sliders escribian `master_volume`,
+  una cvar que **no existe** en el SDK, asi que no hacian nada (y el launcher
+  forzaba `audio_mute=false`, por lo que tampoco se podia silenciar).
+- **DLLs canonicas (2026-09-19)**: `rexruntime.dll` **10.873.856 B** (con
+  `audio_gain` + `dbz3_perf_logging`), `rexgpu-xenos.dll` **6.202.368 B**,
+  `amd_fidelityfx_dx12.dll` **5.413.888 B** (el de `rexglue-sdk-0.10/bin/` se
+  regenera distinto al compilar: NO copiarlo).

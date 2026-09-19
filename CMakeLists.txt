@@ -21,6 +21,7 @@ set(DBZ3_SOURCES
     src/launcher/launcher_state.cpp
     src/launcher/mod_pipeline.cpp
     src/launcher/i18n.cpp
+    src/launcher/update_check.cpp
     src/ingame/menu.cpp
 )
 
@@ -89,6 +90,12 @@ target_link_libraries(dbz3 PRIVATE
     rex::runtime
     rex::gpu-xenos
 )
+
+if(WIN32)
+    # Launcher update check (GitHub releases over WinHTTP) and VERSIONINFO
+    # reading (winver) for the running build.
+    target_link_libraries(dbz3 PRIVATE winhttp version)
+endif()
 
 if(UNIX AND NOT APPLE)
     # Whole-archive linking for kernel hooks

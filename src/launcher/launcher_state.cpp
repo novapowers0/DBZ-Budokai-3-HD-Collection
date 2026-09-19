@@ -9,6 +9,7 @@
 
 #include "settings.h"
 #include "i18n.h"
+#include "update_check.h"
 #include "../region.h"
 
 #if REX_PLATFORM_WIN32
@@ -360,6 +361,46 @@ void LauncherDialog::OnDraw(ImGuiIO& io) {
   ImGui::SetWindowFontScale(1.0f);
   ImGui::PopStyleColor();
   ImGui::TextColored(kTextDim, "Recompiled with ReXGlue  -  HD Collection (PAL)");
+
+  // --- Update check (GitHub releases, Dusk-style) -----------------------------
+  // Started once; the HTTPS request runs on a background thread so the UI never
+  // blocks, and a failure is only a dim note (it must never gate Play). When a
+  // newer release exists the user gets a one-click download instead of running
+  // an outdated build.
+  if (dbz3::settings::UpdateCheckEnabled()) {
+    dbz3::launcher::StartUpdateCheck();
+    const std::string cur_ver = dbz3::launcher::CurrentVersion();
+    switch (dbz3::launcher::GetUpdateState()) {
+    case dbz3::launcher::UpdateState::kChecking:
+      ImGui::TextDisabled("%s", i18n::T("Buscando actualizaciones...",
+                                        "Checking for updates..."));
+      break;
+    case dbz3::launcher::UpdateState::kAvailable: {
+      ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.45f, 0.85f, 0.45f, 1.0f));
+      ImGui::Text(i18n::T("Nueva version disponible: v%s", "New version available: v%s"),
+                  dbz3::launcher::LatestVersion().c_str());
+      ImGui::PopStyleColor();
+      ImGui::SameLine();
+      if (ImGui::SmallButton(i18n::T("Descargar", "Download"))) {
+        dbz3::launcher::OpenUrl(dbz3::launcher::LatestReleaseUrl());
+      }
+      break;
+    }
+    case dbz3::launcher::UpdateState::kFailed:
+      ImGui::TextDisabled("%s", i18n::T("No se pudo comprobar la actualizacion.",
+                                        "Could not check for updates."));
+      break;
+    case dbz3::launcher::UpdateState::kUpToDate:
+      if (!cur_ver.empty()) {
+        ImGui::TextDisabled(i18n::T("Version actualizada (v%s).", "Up to date (v%s)."),
+                            cur_ver.c_str());
+      } else {
+        ImGui::TextDisabled("%s", i18n::T("Version actualizada.", "Up to date."));
+      }
+      break;
+    }
+  }
+
   ImGui::Separator();
 
   // --- Game data validation banner (P1) -------------------------------------
@@ -732,17 +773,16 @@ void LauncherDialog::OnDraw(ImGuiIO& io) {
     rex::cvar::SetFlagByName("dbz3_frame_cap", "60");
     rex::cvar::SetFlagByName("dbz3_quality_preset", "auto");
     rex::cvar::SetFlagByName("dbz3_gpu_backend", "d3d12");
-    rex::cvar::SetFlagByName("dbz3_gamma", "1.0");
     rex::cvar::SetFlagByName("dbz3_native_2x_msaa", "true");
     rex::cvar::SetFlagByName("dbz3_anisotropic", "5");
+    rex::cvar::SetFlagByName("dbz3_hd_textures", "1");
     rex::cvar::SetFlagByName("dbz3_present_effect", "fsr");
     rex::cvar::SetFlagByName("dbz3_fsr_quality", "quality");
     rex::cvar::SetFlagByName("dbz3_fsr_sharpness", "0.2");
     rex::cvar::SetFlagByName("dbz3_cas_sharpness", "0.0");
+    rex::cvar::SetFlagByName("dbz3_vrr", "false");
     rex::cvar::SetFlagByName("dbz3_master_volume", "1.0");
-    rex::cvar::SetFlagByName("dbz3_music_volume", "1.0");
-    rex::cvar::SetFlagByName("dbz3_sfx_volume", "1.0");
-    rex::cvar::SetFlagByName("dbz3_voice_volume", "1.0");
+    rex::cvar::SetFlagByName("dbz3_mute", "false");
     rex::cvar::SetFlagByName("dbz3_deadzone", "0.1");
     rex::cvar::SetFlagByName("dbz3_rumble", "true");
     rex::cvar::SetFlagByName("dbz3_input_backend", "xinput");
@@ -1085,11 +1125,6 @@ void LauncherDialog::DrawVideoTab() {
     }
     ImGui::TextWrapped(i18n::T("API de render del host. Requiere reinicio.",
                                "Host rendering API. Restart required."));
-
-    double gamma = dbz3::settings::Gamma();
-    if (SliderD("Gamma", &gamma, 0.5, 2.0, "%.2f")) {
-      dbz3::settings::SetGamma(gamma);
-    }
   }
   ImGui::EndChild();
 }
@@ -1166,27 +1201,38 @@ void LauncherDialog::DrawAudioTab() {
 
   PushSectionHeader(i18n::T("Volumen", "Volume"));
 
+  // Real controls: the SDK multiplies the guest mix by `audio_gain` (hot
+  // reloadable, applied in the SDL callback) and `audio_mute` hard-silences it.
+  // Both are applied to the running game as soon as they change, so the effect
+  // is audible without pressing Play again.
   double master = dbz3::settings::MasterVolume();
   if (SliderD(i18n::T("Volumen general", "Master volume"), & master, 0.0, 1.0, "%.2f")) {
     dbz3::settings::SetMasterVolume(master);
+    dbz3::settings::ApplyRuntimeSettingsToSdk(false);
   }
-  double music = dbz3::settings::MusicVolume();
-  if (SliderD(i18n::T("Musica", "Music volume"), & music, 0.0, 1.0, "%.2f")) {
-    dbz3::settings::SetMusicVolume(music);
+  ImGui::SameLine();
+  ImGui::TextDisabled("%s", i18n::T("0 = silencio, 1 = maximo",
+                                    "0 = silent, 1 = max"));
+
+  bool mute = dbz3::settings::AudioMute();
+  if (ImGui::Checkbox(i18n::T("Silenciar todo el audio", "Mute all audio"), &mute)) {
+    dbz3::settings::SetAudioMute(mute);
+    dbz3::settings::ApplyRuntimeSettingsToSdk(false);
   }
-  double sfx = dbz3::settings::SfxVolume();
-  if (SliderD(i18n::T("Efectos (SFX)", "SFX volume"), & sfx, 0.0, 1.0, "%.2f")) {
-    dbz3::settings::SetSfxVolume(sfx);
-  }
-  double voice = dbz3::settings::VoiceVolume();
-  if (SliderD(i18n::T("Voces", "Voice volume"), & voice, 0.0, 1.0, "%.2f")) {
-    dbz3::settings::SetVoiceVolume(voice);
+  if (ImGui::IsItemHovered()) {
+    ImGui::SetTooltip("%s", i18n::T(
+        "Silencia el juego por completo (equivale a volumen 0).",
+        "Silences the game completely (same as volume 0)."));
   }
 
   ImGui::Spacing();
-  ImGui::TextColored(kTextDim, i18n::T(
-      "Las pistas de idioma/voz se eligen dentro del juego (japones/ingles).",
-      "Language/voice tracks are selected in-game (Japanese/English)."));
+  ImGui::TextWrapped(i18n::T(
+      "El juego mezcla todo el audio en una sola pista, asi que solo se puede "
+      "ajustar el volumen general o silenciarlo. Las pistas de voz (japones/"
+      "ingles) se eligen dentro del juego.",
+      "The game mixes all audio into a single stream, so only the master volume "
+      "or silence can be adjusted. Voice tracks (Japanese/English) are selected "
+      "in-game."));
 
   ImGui::EndChild();
 }
@@ -2233,6 +2279,20 @@ void LauncherDialog::DrawDevTab() {
     ImGui::SetTooltip("%s", i18n::T(
         "Escribe un minidump cuando el juego falla. Mantener apagado normalmente.",
       "Writes a minidump file when the game crashes. Keep off normally."));
+  }
+
+  bool upd_check = dbz3::settings::UpdateCheckEnabled();
+  if (ImGui::Checkbox(i18n::T("Buscar actualizaciones al abrir",
+                              "Check for updates on launch"), &upd_check)) {
+    dbz3::settings::SetUpdateCheckEnabled(upd_check);
+  }
+  if (ImGui::IsItemHovered()) {
+    ImGui::SetTooltip("%s", i18n::T(
+        "Consulta en GitHub cual es la ultima version publicada al abrir el "
+        "launcher (solo lectura, menos de 1 KB). Desactivalo si no quieres "
+        "ninguna conexion.",
+        "Asks GitHub for the latest published release when the launcher opens "
+        "(read-only, under 1 KB). Turn it off if you prefer no connections."));
   }
 
   ImGui::EndChild();

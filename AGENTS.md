@@ -53,6 +53,9 @@ lógica de región/mods, y runtime.
   (APARCADO/desactivado; diseno, evidencia de por que el override no vale y como retomarlo)
 - `docs/ANALISIS_RENDIMIENTO_LOGS_2026-09-18.md` - rendimiento: analisis del
   reporte de lentitud (RTX 5090) + instrumentacion de FPS
+- `docs/SESION_LAUNCHER_AUDIT_2026-09-19.md` - auditoria del launcher
+  (controles muertos + audio_gain real + update check de GitHub, inspirado en
+  Dusklight)
 - `docs/PLAN_1.1.1.md`, `docs/PLAN_LINUX.md` — planes de depurado y port Linux
 - `docs/MIGRACION_REXGLUE_010.md` — migración SDK 0.9→0.10 (leer ANTES de tocar el SDK)
 - `docs/01_estructura/HISTORICO_AGENTS.md` — historial verbatim de sesiones (solo bajo demanda)
@@ -882,8 +885,9 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
   `Select-String rexruntime.dll -Pattern "AfsGetVirtualTable"` debe dar PRESENTE.
   (2026-09-18) Anadir tambien el marker **`dbz3_perf_logging`**: si falta, el
   runtime es el stale (10.863.616 B) y las lineas `perf fps` no salen (parece
-  un cuelgue). El bueno del baseline es 10.870.272 B con `dbz3_perf_logging`
-  PRESENTE.
+  un cuelgue). (2026-09-19) El bueno del baseline es **10.873.856 B** con
+  `dbz3_perf_logging` **y** `audio_gain` PRESENTES (el de 10.870.272 B es de
+  antes del volumen real, y el stale de 10.863.616 B no tiene ninguno).
 
 - **🔴 Al recompilar el SDK, el FFX de `rexglue-sdk-0.10/bin/` se regenera
   distinto** — NO copiarlo. Usar las de los `out/` canónicos.
@@ -900,9 +904,21 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
   restaura; usar `dbz3_skip_launcher=true` para bootear directo; los strings
   del toml van entre comillas o el parser descarta el fichero entero).
   Detalle: `docs/ANALISIS_RENDIMIENTO_LOGS_2026-09-18.md`.
+- **Arnes para llegar a la DEMO 3D y validar el juego** (2026-09-19):
+  `tools/long_run.ps1` (Start/Status/Stop; lanza pruebas largas desacopladas,
+  **silenciadas** con `audio_mute=true` y restaura el toml; estado en
+  `%TEMP%\opencode\long_run_state.json`), `tools/press_key.ps1` (inyecta teclas
+  por `PostMessage`; `-TargetPid`, mapa W/A/S/D/Backspace/Tab) y
+  `tools/grab_window.ps1` (captura PNG de la ventana; requiere ventana
+  **on-screen** — fuera de pantalla la presentacion se congela) y
+  `tools/click_window.ps1` (click por coordenadas cliente). Receta: boot con
+  `dbz3_skip_launcher=true` → opening (~90-100 s) → pulsar **Start (Return)** →
+  menu → idle ~2-2,5 min → attract demo battle 3D. Medido (2026-09-19): combate
+  3D a **2x y 3x + MSAA = 60,0 FPS**, 0 errores, 6 min sin crash.
 - CVars importantes del runtime: `deadzone`, `rumble` (input_system), `frame_cap`
   (d3d12_presenter), `vsync` (blindado en graphics_system — el guest corre
-  SIEMPRE a 60 Hz), `user_language` (XGetLanguage → idioma del juego).
+  SIEMPRE a 60 Hz), `user_language` (XGetLanguage → idioma del juego),
+  `audio_gain`/`audio_mute` (volumen real del launcher).
 - **Trace de reads AFS** (2026-09-07, F3.1.4): `HostPathFile::ReadSync` y
   `HostPathEntry::OpenMapped` loguean reads/mappings AFS→entrada
   (`dbz1_afs_reads.log`: afs entry off n eoff esize), gateados por
@@ -1003,6 +1019,18 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
   `auto` detecta GPU por DXGI — la dGPU de más VRAM — y aplica perfil), escala
   interna (draw_resolution_scale_x/y), MSAA, aniso, FSR/CAS, frame_cap REAL
   (0/15-1000; 30 para integradas), VRR (`dbz3_vrr`), "Game speed: fixed 60".
+- **Audio (real desde 2026-09-19)**: `dbz3_master_volume` -> SDK **`audio_gain`**
+  (ganancia del callback SDL) y checkbox **Silenciar** -> SDK `audio_mute`;
+  ambos se aplican en caliente al cambiar (`ApplyRuntimeSettingsToSdk`). Los
+  sliders de musica/SFX/voces se **eliminaron** (el guest mezcla todo en un solo
+  stream: no son separables) y el slider de **Gamma** tambien (no existe cvar de
+  gamma en el SDK; era decorativo).
+- **Update check** (`src/launcher/update_check.{h,cpp}`, 2026-09-19): al abrir,
+  hilo de fondo consulta `api.github.com/.../releases/latest` (WinHTTP) y compara
+  con la version del VERSIONINFO del exe; muestra "Nueva version disponible: vX"
+  + boton Descargar, "Version actualizada (vX)" o una nota gris si falla (nunca
+  bloquea PLAY). Toggle `dbz3_update_check` en el tab Dev. Requiere linkear
+  `winhttp` + `version` (CMake).
 - **Input**: `dbz3_input_backend` (xinput/sdl), `dbz3_mnk_mode` (teclado,
   default TRUE), `dbz3_mnk_mouse`, deadzone/rumble, 24 keybinds
   (`dbz3_keybind_*`, formato `Tecla`/comas/Shift+/Ctrl+/Alt+).

@@ -247,6 +247,21 @@ monta `tools/make_release.ps1`.
 
 ---
 
+## Novedades de v1.2.4
+
+- **Volumen real en el launcher**: el slider "Volumen general" y el nuevo
+  interruptor **"Silenciar todo el audio"** ahora SI hacen algo. Antes escribian
+  una variable que el runtime no reconocia, asi que no tenian efecto y el juego
+  nunca se podia silenciar desde la interfaz.
+- **Aviso de nueva version**: al abrir, el launcher consulta la ultima release
+  publicada en GitHub y, si hay una mas nueva, muestra **"Nueva version
+  disponible: vX"** con un boton para descargarla (nunca bloquea PLAY). Se puede
+  desactivar en la pestana Dev.
+- **Limpieza de controles muertos**: se quitaron el slider de **Gamma** y los de
+  **musica/SFX/voces** (el juego mezcla todo el audio en una sola pista: no son
+  separables). "Restablecer valores" ahora restaura tambien VRR y Texturas HD.
+- Base: v1.2.3 (contador de FPS en partida + logs limpios + Texturas HD WIP).
+
 ## Novedades de v1.2.3
 
 - **Contador de rendimiento en partida**: cvar `dbz3_perf_logging` (por defecto ON)

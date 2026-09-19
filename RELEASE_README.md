@@ -121,6 +121,19 @@ aportarlos de tu **copia legal**. Haz esto:
 
 ## Novedades de esta release
 
+### v1.2.4 - Volumen real + aviso de actualizacion (2026-09-19)
+
+- **Volumen real en el launcher**: el slider "Volumen general" y el interruptor
+  "Silenciar todo el audio" ahora funcionan de verdad (antes escribian una
+  variable que el runtime no reconocia). El runtime incorpora la ganancia de
+  salida (`audio_gain`) aplicada en el callback de audio.
+- **Aviso de nueva version**: al abrir el launcher se consulta la ultima release
+  de GitHub y, si hay una mas nueva, aparece "Nueva version disponible: vX" con
+  boton de descarga (nunca bloquea PLAY; desactivable en la pestana Dev).
+- **Controles muertos eliminados**: sliders de Gamma y de musica/SFX/voces
+  (no aplicables: el juego mezcla todo en una sola pista). "Restablecer valores"
+  ahora restaura tambien VRR y Texturas HD.
+
 ### v1.2.3 - Rendimiento medible + logs limpios (2026-09-18)
 
 - **Contador de rendimiento en partida**: cvar `dbz3_perf_logging` (por defecto ON)

@@ -92,10 +92,6 @@ REXCVAR_DEFINE_INT32(dbz3_frame_cap, 60, "DBZ3/Video",
     .range(0, 240)
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
 
-REXCVAR_DEFINE_DOUBLE(dbz3_gamma, 1.0, "DBZ3/Video", "Gamma correction (0.5 - 2.0)")
-    .range(0.5, 2.0)
-    .lifecycle(rex::cvar::Lifecycle::kHotReload);
-
 REXCVAR_DEFINE_BOOL(dbz3_native_2x_msaa, true, "DBZ3/Video",
                     "Native 2x MSAA for guest 2x MSAA surfaces")
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
@@ -150,16 +146,18 @@ REXCVAR_DEFINE_DOUBLE(dbz3_master_volume, 1.0, "DBZ3/Audio", "Master volume (0.0
     .range(0.0, 1.0)
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
 
-REXCVAR_DEFINE_DOUBLE(dbz3_music_volume, 1.0, "DBZ3/Audio", "Music volume (0.0 - 1.0)")
-    .range(0.0, 1.0)
+// The guest mixes every channel into ONE stream, so per-category volume (music /
+// SFX / voice) cannot be separated on the host side. The launcher therefore only
+// offers what really works: an output gain (dbz3_master_volume -> the SDK's
+// audio_gain, applied in the SDL callback) plus a silence toggle (dbz3_mute ->
+// the SDK's audio_mute).
+REXCVAR_DEFINE_BOOL(dbz3_mute, false, "DBZ3/Audio", "Mute all audio output")
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
 
-REXCVAR_DEFINE_DOUBLE(dbz3_sfx_volume, 1.0, "DBZ3/Audio", "SFX volume (0.0 - 1.0)")
-    .range(0.0, 1.0)
-    .lifecycle(rex::cvar::Lifecycle::kHotReload);
-
-REXCVAR_DEFINE_DOUBLE(dbz3_voice_volume, 1.0, "DBZ3/Audio", "Voice volume (0.0 - 1.0)")
-    .range(0.0, 1.0)
+// Update check (GitHub releases). On by default; the request only reads the
+// latest release tag/URL over HTTPS and can be turned off in the Dev tab.
+REXCVAR_DEFINE_BOOL(dbz3_update_check, true, "DBZ3/Dev",
+                    "Check GitHub for a newer release when the launcher opens")
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
 
 REXCVAR_DEFINE_DOUBLE(dbz3_deadzone, 0.1, "DBZ3/Input", "Left stick deadzone (0.0 - 1.0)")
@@ -1321,9 +1319,6 @@ int32_t RefreshRateCleanCap(int32_t requested) {
   return best != 0 ? best : requested;
 }
 
-double Gamma() { return REXCVAR_GET(dbz3_gamma); }
-void SetGamma(double gamma) { REXCVAR_SET(dbz3_gamma, gamma); }
-
 bool Native2xMsaa() { return REXCVAR_GET(dbz3_native_2x_msaa); }
 void SetNative2xMsaa(bool enabled) { REXCVAR_SET(dbz3_native_2x_msaa, enabled); }
 int32_t AnisotropicOverride() { return REXCVAR_GET(dbz3_anisotropic); }
@@ -1546,12 +1541,10 @@ void ApplyQualityPresetIfAuto() {
 
 double MasterVolume() { return REXCVAR_GET(dbz3_master_volume); }
 void SetMasterVolume(double v) { REXCVAR_SET(dbz3_master_volume, v); }
-double MusicVolume() { return REXCVAR_GET(dbz3_music_volume); }
-void SetMusicVolume(double v) { REXCVAR_SET(dbz3_music_volume, v); }
-double SfxVolume() { return REXCVAR_GET(dbz3_sfx_volume); }
-void SetSfxVolume(double v) { REXCVAR_SET(dbz3_sfx_volume, v); }
-double VoiceVolume() { return REXCVAR_GET(dbz3_voice_volume); }
-void SetVoiceVolume(double v) { REXCVAR_SET(dbz3_voice_volume, v); }
+bool AudioMute() { return REXCVAR_GET(dbz3_mute); }
+void SetAudioMute(bool mute) { REXCVAR_SET(dbz3_mute, mute); }
+bool UpdateCheckEnabled() { return REXCVAR_GET(dbz3_update_check); }
+void SetUpdateCheckEnabled(bool enabled) { REXCVAR_SET(dbz3_update_check, enabled); }
 
 double Deadzone() { return REXCVAR_GET(dbz3_deadzone); }
 void SetDeadzone(double v) { REXCVAR_SET(dbz3_deadzone, v); }
@@ -1715,10 +1708,14 @@ void ApplyRuntimeSettingsToSdk(bool for_game) {
   SetSdkString("present_fsr_quality_mode", REXCVAR_GET(dbz3_fsr_quality));
   SetSdkDouble("present_fsr_sharpness_reduction", REXCVAR_GET(dbz3_fsr_sharpness));
   SetSdkDouble("present_cas_additional_sharpness", REXCVAR_GET(dbz3_cas_sharpness));
-  SetSdkBool("audio_mute", false);
+  // Real audio controls. `audio_gain` is the output gain the SDL callback
+  // multiplies the mix by and `audio_mute` hard-silences it, both registered by
+  // the SDK's audio driver. (The old code wrote a non-existent `master_volume`
+  // cvar and forced audio_mute=false, which is why the volume sliders and the
+  // mute toggle never did anything.)
+  SetSdkDouble("audio_gain", REXCVAR_GET(dbz3_master_volume));
+  SetSdkBool("audio_mute", REXCVAR_GET(dbz3_mute));
   REXCVAR_SET(dbz1_diag_logging, DiagLogging() && DevMode());
-  SetSdkDouble("master_volume", REXCVAR_GET(dbz3_master_volume));
-  SetSdkString("audio_output_device", std::string());
 
   // The D3D12 presenter always calls Present(0) (never waits for vsync), so
   // the "vsync" cvar has no host-present meaning: it only paces the guest
@@ -1738,12 +1735,13 @@ void ApplyRuntimeSettingsToSdk(bool for_game) {
   REXLOG_INFO(
       "dbz3: applied runtime settings -> internal_scale={}x vsync={} msaa={} aniso={} "
       "hd_tex={}x "
-      "fsr_quality={} fsr_sharpness={} cas_sharpness={} master_vol={} host_present={} vrr={} cap={}",
+      "fsr_quality={} fsr_sharpness={} cas_sharpness={} audio_gain={} mute={} host_present={} vrr={} cap={}",
       scale, GetSdkBool("vsync") ? "true" : "false",
       GetSdkBool("native_2x_msaa") ? "true" : "false", GetSdkInt("anisotropic_override"),
       GetSdkInt("dbz3_texture_upscale"),
       GetSdkString("present_fsr_quality_mode"), GetSdkDouble("present_fsr_sharpness_reduction"),
-      GetSdkDouble("present_cas_additional_sharpness"), GetSdkDouble("master_volume"),
+      GetSdkDouble("present_cas_additional_sharpness"), GetSdkDouble("audio_gain"),
+      GetSdkBool("audio_mute") ? "true" : "false",
       REXCVAR_GET(host_present_from_non_ui_thread) ? "true" : "false",
       REXCVAR_GET(d3d12_allow_variable_refresh_rate_and_tearing) ? "true" : "false",
       for_game ? GetSdkInt("frame_cap") : 0);

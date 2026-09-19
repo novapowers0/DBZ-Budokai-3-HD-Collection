@@ -276,10 +276,6 @@ int32_t SafeFrameCap(int32_t requested);
 // `requested` (and >= 15). Removes judder on any panel, VRR or not.
 int32_t RefreshRateCleanCap(int32_t requested);
 
-// Gamma (0.5 - 2.0).
-double Gamma();
-void SetGamma(double gamma);
-
 // MSAA: native 2x multisample for guest 2x MSAA surfaces.
 bool Native2xMsaa();
 void SetNative2xMsaa(bool enabled);
@@ -338,14 +334,17 @@ void ApplyQualityPresetIfAuto();
 
 // --- Audio -----------------------------------------------------------------
 
+// Output gain (0.0 - 1.0) applied by the SDK's audio callback (audio_gain), and
+// a hard mute (audio_mute). The guest mixes all channels into one stream, so
+// per-category volume (music/SFX/voice) is not separable and is not offered.
 double MasterVolume();
 void SetMasterVolume(double v);
-double MusicVolume();
-void SetMusicVolume(double v);
-double SfxVolume();
-void SetSfxVolume(double v);
-double VoiceVolume();
-void SetVoiceVolume(double v);
+bool AudioMute();
+void SetAudioMute(bool mute);
+
+// Launcher update check (GitHub releases). On by default.
+bool UpdateCheckEnabled();
+void SetUpdateCheckEnabled(bool enabled);
 
 // --- Input -----------------------------------------------------------------
 
