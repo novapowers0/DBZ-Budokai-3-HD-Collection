@@ -62,7 +62,25 @@ lógica de región/mods, y runtime.
 
 ## 3. ESTADO ACTUAL (RESUMEN EJECUTIVO)
 
-- **(2026-09-18) v1.2.3 PUBLICADA (Latest)**: commit `7a3e058`, release
+- **(2026-09-19) v1.2.4 PUBLICADA (Latest)**: commit `fed62fc`, release
+  `https://github.com/novapowers0/DBZ-Budokai-3-HD-Collection/releases/tag/v1.2.4`
+  (`DBZ-Budokai-3-HD-Collection-v1.2.4.zip`, ~21.99 MB; `verify_release.ps1
+  -Version v1.2.4` = VERIFICACION OK; exe del build **dual**; version.rc `1.2.4`;
+  PortForge `defaultVersion 1.2.4`). **Auditoria del launcher** cruzando las 35
+  cvars `dbz3_*` contra las 199 del SDK: se encontraron **controles MUERTOS**.
+  Contenido: (a) **volumen REAL** — nueva cvar `audio_gain` en el runtime
+  (`sdl_audio_driver.cpp`, aplicada en el callback SDL) + slider Volumen y
+  checkbox Silenciar en la pestana Audio (se aplican en caliente); (b) **aviso de
+  nueva version** (`src/launcher/update_check.{h,cpp}`, WinHTTP en hilo de fondo,
+  compara con el VERSIONINFO del exe; toggle `dbz3_update_check`); (c) eliminados
+  el slider de Gamma y los de musica/SFX/voces (muertos: el guest mezcla todo en
+  un stream) y la linea `audio_output_device`; (d) "Restablecer valores" ahora
+  restaura tambien VRR y Texturas HD; (e) i18n +12 strings; (f) herramientas
+  nuevas `tools/long_run.ps1`, `press_key.ps1`, `grab_window.ps1`,
+  `click_window.ps1`. DLL canonica: `rexruntime.dll` **10.873.856 B** (con
+  `audio_gain` + `dbz3_perf_logging`). Doc:
+  `docs/SESION_LAUNCHER_AUDIT_2026-09-19.md`.
+- **(2026-09-18) v1.2.3 publicada (no-Latest)**: commit `7a3e058`, release
   `https://github.com/novapowers0/DBZ-Budokai-3-HD-Collection/releases/tag/v1.2.3`
   (`DBZ-Budokai-3-HD-Collection-v1.2.3.zip`, 21.99 MB; `verify_release.ps1
   -Version v1.2.3` = VERIFICACION OK; exe del build **dual**; version.rc
@@ -1053,7 +1071,9 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
   `DBZ3_DUMP_IMAGE` para volcar la imagen descifrada).
 
 ### 9.2 Releases y estado GitHub
-- **v1.2.2 EX = Latest** (2026-09-17, core dual 1.2.2.1, baseline, auto-detección
+- **v1.2.4 = Latest** (2026-09-19, core dual, baseline: volumen real con
+  `audio_gain` + aviso de nueva version desde GitHub). **v1.2.3** (2026-09-18),
+  **v1.2.2 EX** (2026-09-17, core dual 1.2.2.1, baseline, auto-detección
   del ejecutable + fixes del modo ISO + fix del TOML). ⚠️ La **v1.2.2 plana se
   retiró** (le faltaban los fixes del ISO: normalización de rutas y fallback
   carpeta→ISO). **v1.2.1** (2026-09-14, hotfix del launcher),

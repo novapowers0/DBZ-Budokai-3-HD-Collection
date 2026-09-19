@@ -1,10 +1,12 @@
 # Estado actual del proyecto
 
-> Actualizado: 2026-09-18 (v1.2.3 Latest: contador de FPS en partida, log AFS
-> silenciado y Texturas HD en WIP/OFF). Sobre la v1.2.2 EX (el launcher encuentra
-> el ejecutable solo: volcado retail del disco e ISO original arrancan sin
-> renombrar nada), la v1.2.1 (hotfix del launcher) y la v1.2.0 (Centro de mods +
-> Model Swap).
+> Actualizado: 2026-09-19 (v1.2.4 Latest: **volumen REAL en el launcher**
+> —ganancia `audio_gain` en el runtime— + **aviso de nueva version** consultando
+> GitHub; eliminados los controles muertos de gamma y de volumen por categoria).
+> Sobre la v1.2.3 (contador de FPS en partida, log AFS silenciado y Texturas HD
+> en WIP/OFF), la v1.2.2 EX (el launcher encuentra el ejecutable solo: volcado
+> retail del disco e ISO original arrancan sin renombrar nada), la v1.2.1
+> (hotfix del launcher) y la v1.2.0 (Centro de mods + Model Swap).
 > Port PS2→HD aparcado, ver §3.4.10 de AGENTS.md)
 
 ---

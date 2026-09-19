@@ -1,7 +1,10 @@
 # HOJA DE RUTA 2026-09 — Madurez del proyecto (post-1.1.1)
 
-> Actualizado: 2026-09-18. Estado base: **v1.2.3 publicada** (Latest; contador de FPS
-> en partida, log AFS silenciado y Texturas HD en WIP/OFF), sobre la **v1.2.2 EX** (el launcher
+> Actualizado: 2026-09-19. Estado base: **v1.2.4 publicada** (Latest; volumen
+> REAL en el launcher con `audio_gain` + aviso de nueva version desde GitHub,
+> controles muertos de gamma/volumen por categoria eliminados), sobre la
+> **v1.2.3** (contador de FPS en partida, log AFS silenciado y Texturas HD en
+> WIP/OFF) y la **v1.2.2 EX** (el launcher
 > encuentra el ejecutable solo: volcado retail del disco e ISO original arrancan
 > sin renombrar nada; fix del TOML con rutas Windows), juego muy
 > funcional y validado en combate/menús (US+EU, teclado, presets, mods por
