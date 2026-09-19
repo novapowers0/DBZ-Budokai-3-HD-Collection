@@ -53,9 +53,10 @@ pero era coste y ruido evitables, y escondía cualquier otro dato útil.)
 
 ### 3.2 Instrumentación de rendimiento (nueva)
 
-Cvar **`dbz3_perf_logging`** (default `true`), medida **en el swap real del
-guest** (`D3D12CommandProcessor::IssueSwap`, `rexgpu-xenos`): escribe una línea
-cada 5 s con los FPS del juego y el peor frame del intervalo:
+Cvar **`dbz3_perf_logging`** (default `true` en esta fecha; **la v1.2.5
+definitiva lo pasa a `false`**, opt-in en el tab Dev), medida **en el swap real
+del guest** (`D3D12CommandProcessor::IssueSwap`, `rexgpu-xenos`): escribe una
+línea cada 5 s con los FPS del juego y el peor frame del intervalo:
 
 ```
 [gpu] dbz3: perf fps=60.0 frames=301 window=5.01s max_frame_ms=20.4

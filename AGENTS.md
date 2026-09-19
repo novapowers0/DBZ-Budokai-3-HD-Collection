@@ -79,9 +79,14 @@ lógica de región/mods, y runtime.
   overlay a pantalla completa "Juego en segundo plano"); **sin pausa real** (no
   hay mecanismo seguro); (e) **ronda i18n**: 2 claves que salian en ingles en
   IT/DE/FR + 13 strings nuevas + `GpuTierLabel`/`ModTypeLabel` traducidos.
-  Seccion nueva **"Al salir de la ventana"** al principio del tab Video. Doc:
+  (f) **v1.2.5 definitiva (asset reemplazado, mismo tag)**: los diagnosticos
+  pasan a **OFF por defecto** (`dbz3_io_logging`, `dbz3_perf_logging`; opt-in en
+  el tab Dev, con casilla nueva de rendimiento) y `logging.cpp` **poda** los
+  `dbz3_NNN.log` antiguos (`log_max_files`=20) — antes se acumulaban (138).
+  Seccion nueva **"Al salir de la ventana"** al principio del tab Video. Titulo
+  del release: "1.2.5 - Mejoras del launcher (foco y disco)". Doc:
   `docs/SESION_IO_FOCO_2026-09-19.md`. DLL canonica: `rexruntime.dll`
-  **10.902.528 B**.
+  **10.910.208 B**.
 - **(2026-09-19) v1.2.4 EX PUBLICADA (no-Latest tras la 1.2.5)**: commit `43b4da4`, release
   `https://github.com/novapowers0/DBZ-Budokai-3-HD-Collection/releases/tag/v1.2.4-EX`
   (`DBZ-Budokai-3-HD-Collection-v1.2.4-EX.zip`; `verify_release.ps1 -Version
@@ -149,7 +154,8 @@ lógica de región/mods, y runtime.
   (b) el **log de overrides AFS** (`AFS OVERRIDE LOOKUP/HIT/MISS`: 2 líneas con
   ruta completa por lectura) pasa a estar **condicionado a `dbz1_diag_logging`**
   (antes incondicional → miles de líneas por sesión);
-  (c) **instrumentación nueva**: cvar `dbz3_perf_logging` (default true) →
+  (c) **instrumentación nueva**: cvar `dbz3_perf_logging` (default true entonces;
+  **la v1.2.5 definitiva lo pasa a false**) →
   `dbz3: perf fps=… frames=… max_frame_ms=…` cada 5 s **en el swap real del
   guest** (`D3D12CommandProcessor::IssueSwap`, rexgpu-xenos; el presentador de la
   UI solo pinta el launcher y no sirve en partida). Análisis, tests sintéticos
@@ -934,8 +940,9 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
 
 - **DLLs canónicas del SDK 0.10** (NO reemplazar por las regeneradas del build):
   - Baseline (único en uso): `rexglue-sdk-0.10/out/win-amd64-baseline/` →
-    rexruntime **10902528** (con `audio_gain`, `dbz3_perf_logging`,
-    `dbz3_io_logging`/`dbz3_io_readahead` y `dbz3_mute_unfocused`), rexgpu-xenos
+    rexruntime **10910208** (con `audio_gain`, `dbz3_perf_logging`,
+    `dbz3_io_logging`/`dbz3_io_readahead`, la poda de logs y
+    `dbz3_mute_unfocused`), rexgpu-xenos
     **6202368** (con `fg=` en la linea `perf`;
     **sin** instrumentación de draw), amd_fidelityfx_dx12 5413888. ⚠️ El **SHA256 varía
     por build** (embebe timestamp) — comparar por **tamaño** o recompilar y
@@ -952,10 +959,12 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
   `Select-String rexruntime.dll -Pattern "AfsGetVirtualTable"` debe dar PRESENTE.
   (2026-09-18) Anadir tambien el marker **`dbz3_perf_logging`**: si falta, el
   runtime es el stale (10.863.616 B) y las lineas `perf fps` no salen (parece
-  un cuelgue). (2026-09-19) El bueno del baseline es **10.902.528 B** con
+  un cuelgue). (2026-09-19) El bueno del baseline es **10.910.208 B** (v1.2.5
+  definitiva: diagnosticos `io`/`perf` OFF por defecto + poda de logs) con
   `dbz3_perf_logging`, `audio_gain` **y** `dbz3_io_logging` PRESENTES (el de
-  10.873.856 B es de antes de la instrumentacion de E/S, el de 10.870.272 B de
-  antes del volumen real, y el stale de 10.863.616 B no tiene ninguno).
+  10.902.528 B es de antes de la poda/defaults, el de 10.873.856 B de antes de la
+  instrumentacion de E/S, el de 10.870.272 B de antes del volumen real, y el
+  stale de 10.863.616 B no tiene ninguno).
 
 - **🔴 Al recompilar el SDK, el FFX de `rexglue-sdk-0.10/bin/` se regenera
   distinto** — NO copiarlo. Usar las de los `out/` canónicos.
@@ -964,8 +973,9 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
   sdl_input_driver.{h,cpp}, xam_info.cpp, graphics_system.cpp,
   function_dispatcher.cpp, rex_app.cpp). **Si se toca el SDK: actualizar
   patches/ + recompilar + copiar DLLs.**
-- **Medir rendimiento** (2026-09-18): cvar `dbz3_perf_logging` (default
-  true) -> linea `dbz3: perf fps=... frames=... max_frame_ms=...` cada 5 s en
+- **Medir rendimiento** (2026-09-18): cvar `dbz3_perf_logging` (default false
+  desde v1.2.5; activar en el tab Dev) -> linea
+  `dbz3: perf fps=... frames=... max_frame_ms=...` cada 5 s en
   el **swap del guest** (`IssueSwap`, rexgpu-xenos) y en el presentador de la
   UI (launcher, con `cap=`). Para probar sin ventana: `tools/hidden_run.ps1`
   (mueve la ventana fuera de pantalla, aplica overrides al `dbz3_user.toml` y
@@ -1136,7 +1146,8 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
   pausa real**: no existe un mecanismo seguro (suspender hilos del guest puede
   colgar); el juego sigue corriendo. Estandar en otros emuladores
   (Dolphin/RetroArch/PCSX2).
-- **Diagnostico de E/S (v1.2.5)**: `dbz3_io_logging` (default ON) emite cada 5 s
+- **Diagnostico de E/S (v1.2.5)**: `dbz3_io_logging` (default **OFF** desde la
+  v1.2.5 definitiva; casilla en el tab Dev) emite cada 5 s
   `dbz3: io reads=… phys=… cache=… mb=… pre_avg_us=… read_avg_us=… p95_us=…
   p99_us=… max_us=… slow=… opens=…` desde `HostPathFile::ReadSync`, mas una
   linea por lectura > `dbz3_io_slow_ms` (25). Sirve para separar "disco lento"
@@ -1144,7 +1155,9 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
   (default ON, `_kb`=2048) lee por delante en accesos secuenciales **solo si no
   hay mods**; ayuda en discos mecanicos. La linea `perf` lleva ademas **`fg=`**
   (foco de ventana): Windows/DWM limita a la MITAD (60→30 exacto) una ventana
-  visible sin foco — no es lentitud del juego.
+  visible sin foco — no es lentitud del juego. Ademas, `logging.cpp` **poda los
+  `dbz3_NNN.log` antiguos** al arrancar (`log_max_files`=20), asi que los logs no
+  se acumulan (138 → 20 en la prueba).
 
 ## 9. EJECUTABLE UNIVERSAL + RELEASES + GITHUB
 

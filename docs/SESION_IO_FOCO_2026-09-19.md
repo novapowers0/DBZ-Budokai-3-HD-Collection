@@ -42,7 +42,9 @@ es **SINCRONO**: el hilo del guest se bloquea en `FileHandle::Read` →
 ## 3. Cambios (v1.2.5)
 
 ### Runtime (SDK)
-- **`dbz3_io_logging`** (default true) + **`dbz3_io_slow_ms`** (25): resumen cada
+- **`dbz3_io_logging`** (default **false** desde la v1.2.5 definitiva; la
+  primera publicacion lo traia true y se corrigio en el mismo tag) +
+  **`dbz3_io_slow_ms`** (25): resumen cada
   5 s (`dbz3: io reads=… phys=… cache=… mb=… pre_avg_us=… read_avg_us=…
   p95_us=… p99_us=… max_us=… slow=… opens=…`, percentiles por histograma log2)
   y una linea por lectura lenta. Es la unica fuente de tiempos de E/S del
@@ -129,3 +131,17 @@ plano, que rompe alt-tab/OBS/multi-monitor).
   ya traducido.
 - I/O medido (menu, SSD): sin lectura anticipada `phys=112/112`; con ella
   `phys=60 cache=52` en la misma ventana de 5 s.
+
+## 6. v1.2.5 definitiva (asset reemplazado, mismo tag)
+
+Los diagnosticos salian activados de fabrica y el log creaba un fichero por
+ejecucion sin podar los viejos (138 en las pruebas). Se corrigio **sin subir
+version**, reemplazando el zip de la v1.2.5:
+
+- `dbz3_io_logging` y `dbz3_perf_logging` → **OFF por defecto**; se activan
+  desde el tab Dev (se anadio la casilla "Registro de rendimiento (cada 5 s)",
+  que antes no existia).
+- `logging.cpp` (`NextSequentialLogPath`) **poda** los `dbz3_NNN.log` mas
+  antiguos al arrancar, respetando `log_max_files` (20).
+- Verificado: 138 → 20 ficheros, 0 lineas `dbz3: io` y 0 `dbz3: perf` con los
+  valores por defecto. DLL canonica `rexruntime.dll` **10.910.208 B**.
