@@ -32,7 +32,13 @@ if (-not (Test-Path -LiteralPath $exe)) {
 } else {
     $vi = (Get-Item -LiteralPath $exe).VersionInfo
     Write-Output "exe: dbz3.exe  FileVersion=$($vi.FileVersion)  Product=$($vi.ProductName)"
-    if ($Version -ne "" -and $vi.FileVersion -and -not $vi.FileVersion.StartsWith($Version.TrimStart('v'))) {
+    # Compare against the NUMERIC part of -Version, so release names with a
+    # suffix (-EX, -clasico) still verify: the VERSIONINFO carries the extra
+    # build number (v1.2.4-EX -> v1.2.4.1), so "v1.2.4-EX" must match "1.2.4.1".
+    $base_ver = if ($Version -ne "") {
+        ([regex]::Match($Version.TrimStart('v'), '^[0-9]+(\.[0-9]+)*')).Value
+    } else { "" }
+    if ($base_ver -ne "" -and $vi.FileVersion -and -not $vi.FileVersion.StartsWith($base_ver)) {
         $errors += "VERSIONINFO ($($vi.FileVersion)) no coincide con -Version ($Version)"
     }
     if (-not $vi.FileVersion) { $errors += "dbz3.exe sin VERSIONINFO (no se enlazo version.rc)" }

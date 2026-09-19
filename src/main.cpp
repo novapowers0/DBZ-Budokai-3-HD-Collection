@@ -418,9 +418,17 @@ public:
         // reads this root, not the runtime's fixed copy) always uses the folder
         // we resolved here.
         dbz3::SetEffectiveGameRoot(game_dir_);
-        paths.user_data_root = exe_dir / "user_data" / GetName();
+        // User data (save games/memory cards + the xex/iso caches): normally
+        // <exe_dir>/user_data/dbz3 so the release stays portable. If that folder
+        // cannot be written (installed under Program Files, read-only share) the
+        // settings layer switches to the per-user app data folder so saves keep
+        // working instead of failing silently. The probe creates the folders.
+        paths.user_data_root = dbz3::settings::UserDataRoot();
         paths.cache_root = paths.user_data_root / "cache";
         paths.metadata_root = exe_dir / "metadata";
+        REXLOG_INFO("OnConfigurePaths - user_data_root: {} ({})",
+                    paths.user_data_root.string(),
+                    dbz3::settings::UserDataIsPortable() ? "portable" : "per-user");
         REXLOG_INFO("OnConfigurePaths - game_data_root set to: {}", paths.game_data_root.string());
         REXLOG_INFO("OnConfigurePaths - game drive root set to: {}", game_dir_.string());
 
@@ -457,7 +465,7 @@ public:
         }
         if (!iso_path.empty()) {
           dbz3::settings::SetIsoPath(iso_path.string());
-          const auto iso_cache = exe_dir / "user_data" / GetName() / "iso_cache";
+          const auto iso_cache = dbz3::settings::UserDataRoot() / "iso_cache";
           const auto xex_dst = iso_cache / "default.xex";
           // Re-extract when the source disc changed: the cache is only the
           // region-detection copy, and a stale one (from a different ISO) makes

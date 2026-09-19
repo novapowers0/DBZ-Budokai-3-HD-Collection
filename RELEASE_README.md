@@ -121,6 +121,21 @@ aportarlos de tu **copia legal**. Haz esto:
 
 ## Novedades de esta release
 
+### v1.2.4 EX - Knobs de GPU + datos de usuario portables (2026-09-19)
+
+> Sustituye a la v1.2.4 (mismo contenido + lo de abajo).
+
+- **FXAA** (Escalado): suavizado de bordes barato que se combina con FSR/CAS.
+- **Dither** (Escalado): menos bandas en los degradados.
+- **Sensibilidad del raton** (Controles): control real del stick derecho.
+- **Palancas de diagnostico GPU** (Desarrollo): compilar shaders en segundo plano
+  y consultas de oclusion del juego (para aislar tirones/esperas sin recompilar).
+- **Datos de usuario portables de verdad**: si la carpeta del juego no es
+  escribible, ajustes y guardado pasan a `Documents/dbz3` en vez de fallar en
+  silencio (el tab Desarrollo muestra la ruta).
+- Incluye la v1.2.4: volumen real en el launcher, aviso de nueva version desde
+  GitHub, eliminacion de los controles muertos (gamma y volumen por categoria).
+
 ### v1.2.4 - Volumen real + aviso de actualizacion (2026-09-19)
 
 - **Volumen real en el launcher**: el slider "Volumen general" y el interruptor

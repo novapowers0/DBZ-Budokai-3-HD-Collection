@@ -1,8 +1,11 @@
 # Estado actual del proyecto
 
-> Actualizado: 2026-09-19 (v1.2.4 Latest: **volumen REAL en el launcher**
+> Actualizado: 2026-09-19 (v1.2.4 EX Latest: **volumen REAL en el launcher**
 > —ganancia `audio_gain` en el runtime— + **aviso de nueva version** consultando
-> GitHub; eliminados los controles muertos de gamma y de volumen por categoria).
+> GitHub; **FXAA/dither**, **sensibilidad del raton**, **palancas de diagnostico
+> GPU** (async shaders / occlusion queries) y **datos de usuario portables**
+> —caen a `Documents/dbz3` si la carpeta del juego no es escribible—; eliminados
+> los controles muertos de gamma y de volumen por categoria).
 > Sobre la v1.2.3 (contador de FPS en partida, log AFS silenciado y Texturas HD
 > en WIP/OFF), la v1.2.2 EX (el launcher encuentra el ejecutable solo: volcado
 > retail del disco e ISO original arrancan sin renombrar nada), la v1.2.1

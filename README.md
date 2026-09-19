@@ -247,6 +247,37 @@ monta `tools/make_release.ps1`.
 
 ---
 
+## Novedades de v1.2.4 EX
+
+> Sustituye a la v1.2.4 (mismo contenido + lo de abajo).
+
+- **Volumen real en el launcher**: el slider "Volumen general" y el nuevo
+  interruptor **"Silenciar todo el audio"** ahora SI hacen algo. Antes escribian
+  una variable que el runtime no reconocia, asi que no tenian efecto y el juego
+  nunca se podia silenciar desde la interfaz.
+- **Aviso de nueva version**: al abrir, el launcher consulta la ultima release
+  publicada en GitHub y, si hay una mas nueva, muestra **"Nueva version
+  disponible: vX"** con un boton para descargarla (nunca bloquea PLAY). Se puede
+  desactivar en la pestana Dev.
+- **Nuevos ajustes de imagen** (pestana Escalado): **FXAA** (none/fxaa/
+  fxaa_extreme) y **dither**. El FXAA se aplica antes del escalado, asi que se
+  combina con FSR/CAS: es la via barata de antialiasing cuando subir la escala
+  interna o el MSAA cuesta demasiado.
+- **Sensibilidad del raton** (pestana Controles): control real del raton para el
+  stick derecho, visible al activar "Usar el raton para el stick derecho".
+- **Palancas de diagnostico GPU** (pestana Desarrollo): **compilar shaders en
+  segundo plano** y **consultas de oclusion del juego**. Sirven para separar un
+  tiron de compilacion de shaders o una espera de oclusion de un problema real de
+  rendimiento, sin recompilar nada.
+- **Datos de usuario portables de verdad**: si la carpeta del juego no es
+  escribible (instalado en Program Files, recurso de red, OneDrive bloqueado),
+  los ajustes y el guardado pasan a `Documents/dbz3` en vez de fallar en
+  silencio. En el tab Desarrollo se ve la carpeta en uso.
+- **Limpieza de controles muertos**: fuera el slider de **Gamma** y los de
+  **musica/SFX/voces** (el juego mezcla todo el audio en una sola pista: no son
+  separables). "Restablecer valores" ahora restaura tambien VRR, Texturas HD,
+  FXAA, dither, los toggles de GPU y la sensibilidad.
+
 ## Novedades de v1.2.4
 
 - **Volumen real en el launcher**: el slider "Volumen general" y el nuevo

@@ -132,6 +132,18 @@ REXCVAR_DEFINE_DOUBLE(dbz3_cas_sharpness, 0.0, "DBZ3/Video",
     .range(0.0, 1.0)
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 
+// FXAA on the guest output (SDK swap_post_effect). Cheap anti-aliasing applied
+// at swap time, before the upscaling effect, so it composes with FSR/CAS.
+REXCVAR_DEFINE_STRING(dbz3_fxaa, "none", "DBZ3/Video",
+                      "FXAA: none, fxaa, fxaa_extreme")
+    .allowed({"none", "fxaa", "fxaa_extreme"})
+    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
+
+// Dithering of the final image (SDK present_dither).
+REXCVAR_DEFINE_BOOL(dbz3_present_dither, false, "DBZ3/Video",
+                    "Dither the final image (smoother gradients)")
+    .lifecycle(rex::cvar::Lifecycle::kHotReload);
+
 // One-click quality profile: "auto" (detect the GPU tier and apply the
 // recommended settings on every launch), "low", "medium", "high", "ultra", or
 // "manual" (the individual scale/MSAA/aniso/effect options are used as-is).
@@ -188,6 +200,13 @@ REXCVAR_DEFINE_BOOL(dbz3_mnk_mouse, false, "DBZ3/Input",
                     "Use the mouse for the right stick")
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
 
+// Mouse -> right stick sensitivity (SDK mnk_sensitivity). Only used when
+// dbz3_mnk_mouse is on.
+REXCVAR_DEFINE_DOUBLE(dbz3_mnk_sensitivity, 1.0, "DBZ3/Input",
+                      "Mouse sensitivity for the right stick")
+    .range(0.01, 10.0)
+    .lifecycle(rex::cvar::Lifecycle::kHotReload);
+
 // MnK keybinds. These dbz3_* wrappers live in the launcher's registry so they
 // persist to dbz3_user.toml; the values are forwarded to the shared keybind_*
 // cvars (defined in rexinput -> rexruntime.dll) in ApplyUserSettingsToSdk.
@@ -237,6 +256,20 @@ REXCVAR_DEFINE_BOOL(dbz3_diag_crashdump, false, "DBZ3/Dev",
 REXCVAR_DEFINE_BOOL(dbz3_show_fps, false, "DBZ3/Dev",
                     "Show the in-game FPS counter overlay (60fps debug)")
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
+
+// Host shader compilation policy (SDK async_shader_compilation). On = compile in
+// parallel (default: faster loads, may hitch when a new pipeline first appears);
+// off = compile synchronously (no hitching, slower first-time loads). Useful to
+// tell a shader-compilation hitch apart from a real performance problem.
+REXCVAR_DEFINE_BOOL(dbz3_async_shaders, true, "DBZ3/Dev",
+                    "Compile shaders asynchronously (off = no hitching)")
+    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
+
+// Guest occlusion queries (SDK occlusion_query_enable). Off skips them, trading
+// overdraw for fewer GPU sync stalls: a diagnostic lever for slow GPUs.
+REXCVAR_DEFINE_BOOL(dbz3_occlusion_queries, true, "DBZ3/Dev",
+                    "Let the guest use occlusion queries")
+    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 
 REXCVAR_DEFINE_BOOL(dbz3_skip_launcher, false, "DBZ3/Dev",
                     "Skip the pre-game launcher and boot straight into the game")
@@ -358,8 +391,69 @@ bool EscapeTomlStrings(const std::filesystem::path& path) {
 
 namespace dbz3::settings {
 
+namespace {
+// Cached: the probe creates folders/files, so it must not run per frame.
+std::filesystem::path g_user_data_root;
+bool g_user_data_portable = true;
+
+// True when `dir` can be created and written to. Used to keep the release
+// portable (everything next to the exe) without breaking when the install
+// folder is read-only (Program Files, a locked-down share, OneDrive).
+bool IsWritableDir(const std::filesystem::path& dir) {
+  std::error_code ec;
+  std::filesystem::create_directories(dir, ec);
+  if (!std::filesystem::is_directory(dir, ec)) {
+    return false;
+  }
+  const auto probe = dir / ".dbz3_write_test";
+  {
+    std::ofstream out(probe, std::ios::binary | std::ios::trunc);
+    if (!out) return false;
+    out << "dbz3";
+    if (!out) return false;
+  }
+  std::filesystem::remove(probe, ec);
+  return true;
+}
+}  // namespace
+
 std::filesystem::path UserSettingsPath() {
-  return rex::filesystem::GetExecutableFolder() / "dbz3_user.toml";
+  const auto exe_dir = rex::filesystem::GetExecutableFolder();
+  const auto portable = exe_dir / "dbz3_user.toml";
+  // Normally the settings file lives next to the executable (portable). If that
+  // folder cannot be written, saving would fail silently and every option would
+  // reset on the next launch, so use the per-user data folder instead.
+  if (std::filesystem::exists(portable) || IsWritableDir(exe_dir)) {
+    return portable;
+  }
+  return UserDataRoot() / "dbz3_user.toml";
+}
+
+std::filesystem::path UserDataRoot() {
+  if (!g_user_data_root.empty()) return g_user_data_root;
+  const auto exe_dir = rex::filesystem::GetExecutableFolder();
+  const auto portable = exe_dir / "user_data" / "dbz3";
+  if (IsWritableDir(portable)) {
+    g_user_data_portable = true;
+    g_user_data_root = portable;
+    return g_user_data_root;
+  }
+  const auto fallback = rex::filesystem::GetUserFolder() / "dbz3";
+  if (IsWritableDir(fallback)) {
+    g_user_data_portable = false;
+    g_user_data_root = fallback;
+    REXLOG_WARN("dbz3: '{}' is not writable; storing user data (saves) in '{}'",
+                portable.string(), fallback.string());
+    return g_user_data_root;
+  }
+  // Nothing writable: keep the portable path so behaviour is unchanged.
+  g_user_data_root = portable;
+  return g_user_data_root;
+}
+
+bool UserDataIsPortable() {
+  UserDataRoot();
+  return g_user_data_portable;
 }
 
 void LoadUserSettings() {
@@ -1065,8 +1159,7 @@ bool ExtractDefaultXexFromIso(const std::filesystem::path& iso,
 }
 
 std::string IsoXexSourcePath() {
-  const auto stamp = rex::filesystem::GetExecutableFolder() / "user_data" / "dbz3" /
-                     "iso_cache" / "source.stamp";
+  const auto stamp = UserDataRoot() / "iso_cache" / "source.stamp";
   std::ifstream in(stamp, std::ios::binary);
   if (!in) return {};
   std::string line;
@@ -1143,9 +1236,9 @@ bool EnsureIsoXexCache(const std::filesystem::path& iso,
 }
 
 std::filesystem::path XexCacheDir() {
-  // Mirrors main.cpp's user_data_root (exe_dir/user_data/<app name>) so the
-  // staged executable lives with the rest of the user data.
-  return rex::filesystem::GetExecutableFolder() / "user_data" / "dbz3" / "xex_cache";
+  // Lives with the rest of the user data (portable unless the exe folder is not
+  // writable, see UserDataRoot).
+  return UserDataRoot() / "xex_cache";
 }
 
 bool BootSource::usable() const { return XexIsExpected(status) && !xex.empty(); }
@@ -1340,6 +1433,12 @@ void SetFsrSharpness(double sharpness) { REXCVAR_SET(dbz3_fsr_sharpness, sharpne
 
 double CasSharpness() { return REXCVAR_GET(dbz3_cas_sharpness); }
 void SetCasSharpness(double sharpness) { REXCVAR_SET(dbz3_cas_sharpness, sharpness); }
+
+std::string Fxaa() { return REXCVAR_GET(dbz3_fxaa); }
+void SetFxaa(const std::string& mode) { REXCVAR_SET(dbz3_fxaa, mode); }
+
+bool PresentDither() { return REXCVAR_GET(dbz3_present_dither); }
+void SetPresentDither(bool enabled) { REXCVAR_SET(dbz3_present_dither, enabled); }
 
 // ---------------------------------------------------------------------------
 // Quality presets + GPU detection
@@ -1561,6 +1660,9 @@ void SetMnkMode(bool enabled) { REXCVAR_SET(dbz3_mnk_mode, enabled); }
 bool MnkMouse() { return REXCVAR_GET(dbz3_mnk_mouse); }
 void SetMnkMouse(bool enabled) { REXCVAR_SET(dbz3_mnk_mouse, enabled); }
 
+double MnkSensitivity() { return REXCVAR_GET(dbz3_mnk_sensitivity); }
+void SetMnkSensitivity(double v) { REXCVAR_SET(dbz3_mnk_sensitivity, v); }
+
 // Read/write a dbz3_keybind_<name> cvar by suffix (e.g. "a", "dpad_up").
 std::string Keybind(const std::string& name) {
   return rex::cvar::Query<std::string>("dbz3_keybind_" + name);
@@ -1598,6 +1700,12 @@ void SetCrashDumpEnabled(bool enabled) { REXCVAR_SET(dbz3_diag_crashdump, enable
 
 bool ShowFps() { return REXCVAR_GET(dbz3_show_fps); }
 void SetShowFps(bool enabled) { REXCVAR_SET(dbz3_show_fps, enabled); }
+
+bool AsyncShaderCompilation() { return REXCVAR_GET(dbz3_async_shaders); }
+void SetAsyncShaderCompilation(bool enabled) { REXCVAR_SET(dbz3_async_shaders, enabled); }
+
+bool OcclusionQueries() { return REXCVAR_GET(dbz3_occlusion_queries); }
+void SetOcclusionQueries(bool enabled) { REXCVAR_SET(dbz3_occlusion_queries, enabled); }
 
 std::string GpuBackend() { return REXCVAR_GET(dbz3_gpu_backend); }
 void SetGpuBackend(const std::string& backend) { REXCVAR_SET(dbz3_gpu_backend, backend); }
@@ -1638,6 +1746,7 @@ void ApplyUserSettingsToSdk() {
   SetSdkBool("rumble", RumbleEnabled());
   SetSdkBool("mnk_mode", MnkMode());
   SetSdkBool("mnk_mouse", MnkMouse());
+  SetSdkDouble("mnk_sensitivity", MnkSensitivity());
 #define DBZ3_FORWARD_KEYBIND(name) \
   SetSdkString("keybind_" #name, Keybind(#name))
   DBZ3_FORWARD_KEYBIND(a);
@@ -1708,6 +1817,13 @@ void ApplyRuntimeSettingsToSdk(bool for_game) {
   SetSdkString("present_fsr_quality_mode", REXCVAR_GET(dbz3_fsr_quality));
   SetSdkDouble("present_fsr_sharpness_reduction", REXCVAR_GET(dbz3_fsr_sharpness));
   SetSdkDouble("present_cas_additional_sharpness", REXCVAR_GET(dbz3_cas_sharpness));
+  // Present-time filters and GPU plugin switches (these cvars are registered by
+  // the time this runs: OnPostSetup). swap_post_effect runs before the upscaler,
+  // so FXAA composes with FSR/CAS.
+  SetSdkString("swap_post_effect", REXCVAR_GET(dbz3_fxaa));
+  SetSdkBool("present_dither", REXCVAR_GET(dbz3_present_dither));
+  SetSdkBool("async_shader_compilation", REXCVAR_GET(dbz3_async_shaders));
+  SetSdkBool("occlusion_query_enable", REXCVAR_GET(dbz3_occlusion_queries));
   // Real audio controls. `audio_gain` is the output gain the SDL callback
   // multiplies the mix by and `audio_mute` hard-silences it, both registered by
   // the SDK's audio driver. (The old code wrote a non-existent `master_volume`
@@ -1735,12 +1851,19 @@ void ApplyRuntimeSettingsToSdk(bool for_game) {
   REXLOG_INFO(
       "dbz3: applied runtime settings -> internal_scale={}x vsync={} msaa={} aniso={} "
       "hd_tex={}x "
-      "fsr_quality={} fsr_sharpness={} cas_sharpness={} audio_gain={} mute={} host_present={} vrr={} cap={}",
+      "fsr_quality={} fsr_sharpness={} cas_sharpness={} fxaa={} dither={} "
+      "async_shaders={} occ_queries={} mnk_sens={} "
+      "audio_gain={} mute={} host_present={} vrr={} cap={}",
       scale, GetSdkBool("vsync") ? "true" : "false",
       GetSdkBool("native_2x_msaa") ? "true" : "false", GetSdkInt("anisotropic_override"),
       GetSdkInt("dbz3_texture_upscale"),
       GetSdkString("present_fsr_quality_mode"), GetSdkDouble("present_fsr_sharpness_reduction"),
-      GetSdkDouble("present_cas_additional_sharpness"), GetSdkDouble("audio_gain"),
+      GetSdkDouble("present_cas_additional_sharpness"), GetSdkString("swap_post_effect"),
+      GetSdkBool("present_dither") ? "true" : "false",
+      GetSdkBool("async_shader_compilation") ? "true" : "false",
+      GetSdkBool("occlusion_query_enable") ? "true" : "false",
+      GetSdkDouble("mnk_sensitivity"),
+      GetSdkDouble("audio_gain"),
       GetSdkBool("audio_mute") ? "true" : "false",
       REXCVAR_GET(host_present_from_non_ui_thread) ? "true" : "false",
       REXCVAR_GET(d3d12_allow_variable_refresh_rate_and_tearing) ? "true" : "false",

@@ -1,11 +1,33 @@
 {
-  "defaultVersion": "1.2.4",
+  "defaultVersion": "1.2.4-EX",
   "dependencies": ["unzip", "7z"],
   "userDataPaths": ["install/dbz3_user.toml", "install/user_data"],
   "uninstallSteps": [
     { "step": "deletePath", "path": "install" }
   ],
   "builds": [
+    {
+      "versions": ["1.2.4-EX"],
+      "targetPlatforms": ["Windows"],
+      "steps": [
+        { "step": "createDir", "path": ".build" },
+        {
+          "step": "fetch",
+          "url": "https://github.com/novapowers0/DBZ-Budokai-3-HD-Collection/releases/download/v1.2.4-EX/DBZ-Budokai-3-HD-Collection-v1.2.4-EX.zip",
+          "dest": ".build/port.zip"
+        },
+        { "step": "extract", "src": ".build/port.zip", "dest": ".build" },
+        { "step": "deletePath", "path": ".build/port.zip" },
+        { "step": "copy", "from": "rom", "dest": ".build/game.iso" },
+        { "step": "move", "src": "./.build", "dest": "./install" },
+        { "step": "deletePath", "path": "./.build" },
+        {
+          "step": "defineExecutable",
+          "executable": "install/dbz3.exe",
+          "title": "Play"
+        }
+      ]
+    },
     {
       "versions": ["1.2.4"],
       "targetPlatforms": ["Windows"],

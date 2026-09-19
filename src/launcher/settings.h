@@ -23,6 +23,18 @@ void SaveUserSettings();
 // Absolute path of the user settings file (next to the executable).
 std::filesystem::path UserSettingsPath();
 
+// Root folder for the per-user runtime data: save games/memory cards, plus the
+// xex and iso caches. Normally <exe_dir>/user_data/dbz3 so the release stays
+// portable (everything next to the executable). When the executable folder is
+// not writable - the game installed under Program Files, a read-only share, a
+// locked-down OneDrive folder - falls back to the per-user application data
+// folder so saves keep working instead of failing silently. Resolved once and
+// cached (the probe creates the folders, so it must not run every frame).
+std::filesystem::path UserDataRoot();
+// False when UserDataRoot() fell back to the per-user folder (the portable
+// location was not writable). For logs / the Dev tab.
+bool UserDataIsPortable();
+
 // Apply user video/audio/input cvars onto the SDK's cvars. Called before
 // window creation (in OnPreSetup) so they take effect at boot. Does NOT set
 // "fullscreen" - that is applied on Play to keep the launcher windowed.
@@ -306,6 +318,18 @@ void SetFsrSharpness(double sharpness);
 double CasSharpness();
 void SetCasSharpness(double sharpness);
 
+// FXAA applied to the guest output at swap time (SDK's swap_post_effect):
+// "none", "fxaa" (cheap) or "fxaa_extreme" (stronger). Runs before the
+// upscaling effect, so it composes with FSR/CAS. Good anti-aliasing on weak
+// GPUs that cannot afford the internal render scale or MSAA.
+std::string Fxaa();
+void SetFxaa(const std::string& mode);
+
+// Dithering of the final presented image (SDK's present_dither): trades a
+// little noise for smoother gradients on 8-bit displays.
+bool PresentDither();
+void SetPresentDither(bool enabled);
+
 // --- Quality presets --------------------------------------------------------
 // One-click quality profiles that set the internal render scale, MSAA, aniso
 // and upscaling effect together. Values: "auto" (detect the GPU tier and apply
@@ -366,6 +390,11 @@ void SetMnkMode(bool enabled);
 bool MnkMouse();
 void SetMnkMouse(bool enabled);
 
+// Mouse sensitivity for the right stick (SDK's mnk_sensitivity, 0.01 - 10.0).
+// Only used when MnkMouse() is on.
+double MnkSensitivity();
+void SetMnkSensitivity(double v);
+
 // Read/write a dbz3_keybind_<name> cvar by suffix (e.g. "a", "dpad_up").
 // These wrappers persist to dbz3_user.toml; ApplyUserSettingsToSdk forwards
 // them to the runtime's keybind_* cvars.
@@ -384,6 +413,17 @@ void SetCrashDumpEnabled(bool enabled);
 // Show an in-game FPS counter overlay (60fps debug). See Dev tab.
 bool ShowFps();
 void SetShowFps(bool enabled);
+
+// Host shader compilation (SDK's async_shader_compilation). On (default) compiles
+// in parallel: faster loads but can hitch when a new pipeline appears. Off
+// compiles synchronously: no hitching, slower first-time loads.
+bool AsyncShaderCompilation();
+void SetAsyncShaderCompilation(bool enabled);
+
+// Let the guest use occlusion queries (SDK's occlusion_query_enable). Off can
+// reduce GPU stalls on some titles/drivers, at the cost of overdraw.
+bool OcclusionQueries();
+void SetOcclusionQueries(bool enabled);
 
 // --- Graphics backend ------------------------------------------------------
 // Host graphics backend: "d3d12" or "vulkan".

@@ -70,7 +70,7 @@ así que el volumen por categoría (música/SFX/voz) no es separable en el host.
 
 | Dusklight | Nosotros |
 |---|---|
-| `data_location.json` portable/AppData (`previousPath`) | `user_data/` junto al exe; **falta** fallback a `%LOCALAPPDATA%` si no es escribible |
+| `data_location.json` portable/AppData (`previousPath`) | `user_data/` junto al exe; **fallback automático** a `Documents/dbz3` si la carpeta del exe no es escribible (abajo) |
 | `backend.wasPresetChosen` (asistente 1ª vez) | `dbz3_quality_preset=auto` (detección GPU) |
 | `config.json` plano con claves con punto | `dbz3_user.toml` con escape de rutas Windows |
 | Update check en prelaunch (checking/available/failed + descarga) | **implementado** (arriba) |
@@ -78,7 +78,67 @@ así que el volumen por categoría (música/SFX/voz) no es separable en el host.
 | `achievements.json`, `texture_replacements/` | fuera de alcance (nuestro equivalente: Texturas/Model Swap) |
 | crashpad + pipeline cache | minidump propio + `dbz3_perf_logging` |
 
-Pendiente (no hecho en esta sesión, por decisión del usuario): knob
-`async_shader_compilation` (stutter), `occlusion_query_enable`, FXAA
-(`swap_post_effect`), dither, overscan y sensibilidad de ratón; y el fallback
-`user_data` a `%LOCALAPPDATA%`.
+Pendiente (no hecho): `present_safe_area_x/y` (overscan de TV) y la esquina
+configurable del contador de FPS.
+
+## 6. Segunda tanda (misma fecha) — knobs de GPU + datos de usuario (v1.2.4 EX)
+
+Implementado lo que quedaba apuntado arriba (excepto overscan y la esquina del
+FPS). Cinco controles nuevos en el launcher, todos cableados a cvars REALES del
+SDK, más el fallback de datos de usuario.
+
+### Controles nuevos
+
+| Launcher | Cvar launcher | Cvar SDK | Dónde |
+|---|---|---|---|
+| Suavizado de bordes (FXAA) | `dbz3_fxaa` (`none`/`fxaa`/`fxaa_extreme`) | `swap_post_effect` | Escalado |
+| Tramado de color (dither) | `dbz3_present_dither` | `present_dither` | Escalado |
+| Sensibilidad del ratón | `dbz3_mnk_sensitivity` (0.1-5.0) | `mnk_sensitivity` | Controles (solo con ratón activado) |
+| Compilar shaders en segundo plano | `dbz3_async_shaders` | `async_shader_compilation` | Desarrollo |
+| Consultas de oclusión del juego | `dbz3_occlusion_queries` | `occlusion_query_enable` | Desarrollo |
+
+FXAA corre **antes** del escalado (`swap_post_effect`), así que se combina con
+FSR/CAS: es la vía barata de antialiasing para GPUs que no pueden con la escala
+interna ni el MSAA. Los dos toggles de GPU (async shaders, occlusion queries)
+son **palancas de diagnóstico** del problema de rendimiento reportado: permiten
+descartar (o confirmar) tirones por compilación de shaders y esperas por
+oclusión sin recompilar nada.
+
+### Datos de usuario escribibles (`settings.cpp`)
+
+`UserDataRoot()` decide dónde viven saves/memory cards + cachés
+(`user_data/dbz3`, `xex_cache`, `iso_cache`) y `UserSettingsPath()` dónde va
+`dbz3_user.toml`:
+
+1. Si `<exe_dir>/user_data/dbz3` (o la carpeta del exe, para el toml) es
+   escribible → **portable**, como hasta ahora (sin cambios para nadie).
+2. Si no (instalado en `Program Files`, recurso de red, OneDrive bloqueado) →
+   `Documents/dbz3` (el `GetUserFolder()` del SDK = `FOLDERID_Documents`, que es
+   justo el default del runtime cuando `user_data_root` está vacío).
+
+La comprobación es una sonda real (crear carpeta + escribir/borrar
+`.dbz3_write_test`), cacheada (una sola vez por proceso; el tab Dev muestra la
+ruta y si es portable). Sin esto, en una carpeta de solo lectura el guardado
+fallaba **en silencio** y los ajustes/saves se perdían.
+
+### Verificación
+
+- **Funcional (log)**: toml con `dbz3_fxaa="fxaa_extreme"`,
+  `dbz3_present_dither=true`, `dbz3_async_shaders=false`,
+  `dbz3_occlusion_queries=false`, `dbz3_mnk_sensitivity=2.5` →
+  `dbz3: applied runtime settings -> ... fxaa=fxaa_extreme dither=true
+  async_shaders=false occ_queries=false mnk_sens=2.5 ...`. Los valores se leen
+  del registro de cvars del **SDK** (no del launcher), así que confirman que el
+  cableado llega al runtime. 0 errores.
+- **Fallback**: `icacls <user_data/dbz3> /deny javie:(W)` → el juego creó
+  `Documents/dbz3/cache` y siguió funcionando sin errores. ACL retirado y
+  carpeta de prueba borradas después.
+- **UI**: captura del launcher OK (versión 1.2.4 en el header, sin asserts en el
+  log). El click sintético sigue sin cambiar de pestaña (ImGui + foco real), así
+  que los tabs nuevos no se capturaron por imagen.
+- ⚠️ **DLLs**: el build sobrescribe `rexruntime.dll`/`rexgpu-xenos.dll` con los
+  stale (`rexglue/bin`); tras compilar hay que recopiar del baseline. Los
+  canónicos ACTUALES del baseline son `rexruntime.dll` **10.873.856 B** y
+  `rexgpu-xenos.dll` **6.202.368 B** (el 6.165.504 B que cita AGENTS §7 es
+  viejo). `verify_release.ps1` compara por SHA256 contra ese baseline.
+

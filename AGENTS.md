@@ -62,7 +62,28 @@ lógica de región/mods, y runtime.
 
 ## 3. ESTADO ACTUAL (RESUMEN EJECUTIVO)
 
-- **(2026-09-19) v1.2.4 PUBLICADA (Latest)**: commit `fed62fc`, release
+- **(2026-09-19) v1.2.4 EX PUBLICADA (Latest)**: commit `TODO_EX_COMMIT`, release
+  `https://github.com/novapowers0/DBZ-Budokai-3-HD-Collection/releases/tag/v1.2.4-EX`
+  (`DBZ-Budokai-3-HD-Collection-v1.2.4-EX.zip`; `verify_release.ps1 -Version
+  v1.2.4-EX` = VERIFICACION OK; exe del build **dual** con FileVersion `1.2.4.1`;
+  PortForge `defaultVersion 1.2.4-EX`). **Segunda tanda de la auditoria del
+  launcher** (ver `docs/SESION_LAUNCHER_AUDIT_2026-09-19.md` §6): (a) **FXAA**
+  (`dbz3_fxaa` -> SDK `swap_post_effect`: none/fxaa/fxaa_extreme; corre antes del
+  upscaler y se combina con FSR/CAS) y **dither** (`dbz3_present_dither` ->
+  `present_dither`) en el tab Escalado; (b) **sensibilidad del raton**
+  (`dbz3_mnk_sensitivity` -> `mnk_sensitivity`, 0.1-5.0, visible con el raton
+  activado) en Controles; (c) **palancas de diagnostico GPU** en Dev:
+  `dbz3_async_shaders` -> `async_shader_compilation` y `dbz3_occlusion_queries` ->
+  `occlusion_query_enable`; (d) **datos de usuario escribibles**: `UserDataRoot()`
+  y `UserSettingsPath()` caen a `Documents/dbz3` (con sonda real cacheada y la
+  ruta visible en Dev) si `<exe_dir>` no es escribible (antes el guardado fallaba
+  en silencio); (e) i18n +17 strings y Reset ampliado. **Corrige el titulo del
+  release v1.2.4** (estaba sin el prefijo "DBZ Budokai 3 HD Collection");
+  `verify_release.ps1` acepta ya versiones con sufijo (`-EX`/`-clasico`).
+  Verificado por log (`fxaa=fxaa_extreme ... mnk_sens=2.5` leidos del registro del
+  SDK) y por prueba de fallback con ACL denegado. DLLs canonicas: `rexruntime.dll`
+  **10.873.856 B**, `rexgpu-xenos.dll` **6.202.368 B** (corregido en §7).
+- **(2026-09-19) v1.2.4 publicada (no-Latest, sustituida por la 1.2.4 EX)**: commit `fed62fc`, release
   `https://github.com/novapowers0/DBZ-Budokai-3-HD-Collection/releases/tag/v1.2.4`
   (`DBZ-Budokai-3-HD-Collection-v1.2.4.zip`, ~21.99 MB; `verify_release.ps1
   -Version v1.2.4` = VERIFICACION OK; exe del build **dual**; version.rc `1.2.4`;
@@ -889,10 +910,13 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
 
 - **DLLs canónicas del SDK 0.10** (NO reemplazar por las regeneradas del build):
   - Baseline (único en uso): `rexglue-sdk-0.10/out/win-amd64-baseline/` →
-    rexruntime 10863616 (con afstrace), rexgpu-xenos 6165504 (**sin**
+    rexruntime **10873856** (con `audio_gain` + `dbz3_perf_logging`), rexgpu-xenos
+    **6202368** (**sin**
     instrumentación de draw), amd_fidelityfx_dx12 5413888. ⚠️ El **SHA256 varía
     por build** (embebe timestamp) — comparar por **tamaño** o recompilar y
-    copiar, no por hash fijo.
+    copiar, no por hash fijo. ⚠️ Los tamaños de AMBAS DLL cambian cuando se
+    recompila el SDK: el valor de referencia es el que hay en
+    `out/win-amd64-baseline/` (lo que `verify_release.ps1` usa como baseline).
   - avx2 (para el fallback clasico): `out/win-amd64/` → rexruntime 10951168,
     rexgpu-xenos 6207488 (o 6210048 regenerado 08/27), ffx 5420544,
     TracyClient 246784.
@@ -1037,6 +1061,9 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
   `auto` detecta GPU por DXGI — la dGPU de más VRAM — y aplica perfil), escala
   interna (draw_resolution_scale_x/y), MSAA, aniso, FSR/CAS, frame_cap REAL
   (0/15-1000; 30 para integradas), VRR (`dbz3_vrr`), "Game speed: fixed 60".
+  En **Escalado** ademas: **FXAA** (`dbz3_fxaa` -> SDK `swap_post_effect`;
+  none/fxaa/fxaa_extreme; corre ANTES del upscaler, se combina con FSR/CAS y es
+  la via barata de AA) y **dither** (`dbz3_present_dither` -> `present_dither`).
 - **Audio (real desde 2026-09-19)**: `dbz3_master_volume` -> SDK **`audio_gain`**
   (ganancia del callback SDL) y checkbox **Silenciar** -> SDK `audio_mute`;
   ambos se aplican en caliente al cambiar (`ApplyRuntimeSettingsToSdk`). Los
@@ -1050,8 +1077,23 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
   bloquea PLAY). Toggle `dbz3_update_check` en el tab Dev. Requiere linkear
   `winhttp` + `version` (CMake).
 - **Input**: `dbz3_input_backend` (xinput/sdl), `dbz3_mnk_mode` (teclado,
-  default TRUE), `dbz3_mnk_mouse`, deadzone/rumble, 24 keybinds
+  default TRUE), `dbz3_mnk_mouse`, **sensibilidad del raton**
+  (`dbz3_mnk_sensitivity` 0.1-5.0 -> SDK `mnk_sensitivity`; slider visible solo
+  con el raton activado), deadzone/rumble, 24 keybinds
   (`dbz3_keybind_*`, formato `Tecla`/comas/Shift+/Ctrl+/Alt+).
+- **Dev — palancas de diagnostico GPU** (2026-09-19): `dbz3_async_shaders` ->
+  `async_shader_compilation` (off = compila shaders al momento: sin tirones,
+  carga inicial mas lenta) y `dbz3_occlusion_queries` -> `occlusion_query_enable`
+  (off = sin esperas de oclusion, mas overdraw). Sirven para separar un tiron de
+  compilacion de shaders / una espera de oclusion de un problema real de
+  rendimiento sin recompilar.
+- **Datos de usuario escribibles** (`settings.cpp`, 2026-09-19): `UserDataRoot()`
+  y `UserSettingsPath()` usan `<exe_dir>/user_data/dbz3` y `<exe_dir>/
+  dbz3_user.toml` (portable) **si son escribibles**; si no (Program Files,
+  recurso de red, OneDrive bloqueado) caen a `Documents/dbz3` (`GetUserFolder()`
+  del SDK = `FOLDERID_Documents`, el default del runtime con `user_data_root`
+  vacio). Sonda real (crear + escribir/borrar `.dbz3_write_test`), cacheada; el
+  tab Dev muestra la ruta elegida. Sin esto el guardado fallaba en silencio.
 - **Auto-guardado**: los cambios se persisten al marcarlos + `SaveUserSettings`
   en OnClose (no depende de "Save settings").
 
@@ -1071,8 +1113,10 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
   `DBZ3_DUMP_IMAGE` para volcar la imagen descifrada).
 
 ### 9.2 Releases y estado GitHub
-- **v1.2.4 = Latest** (2026-09-19, core dual, baseline: volumen real con
-  `audio_gain` + aviso de nueva version desde GitHub). **v1.2.3** (2026-09-18),
+- **v1.2.4 EX = Latest** (2026-09-19, core dual 1.2.4.1, baseline: volumen real
+  con `audio_gain` + aviso de nueva version + FXAA/dither + palancas de GPU +
+  datos de usuario portables). **v1.2.4** (2026-09-19, sustituida por la EX),
+  **v1.2.3** (2026-09-18),
   **v1.2.2 EX** (2026-09-17, core dual 1.2.2.1, baseline, auto-detección
   del ejecutable + fixes del modo ISO + fix del TOML). ⚠️ La **v1.2.2 plana se
   retiró** (le faltaban los fixes del ISO: normalización de rutas y fallback

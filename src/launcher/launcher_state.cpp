@@ -781,6 +781,10 @@ void LauncherDialog::OnDraw(ImGuiIO& io) {
     rex::cvar::SetFlagByName("dbz3_fsr_sharpness", "0.2");
     rex::cvar::SetFlagByName("dbz3_cas_sharpness", "0.0");
     rex::cvar::SetFlagByName("dbz3_vrr", "false");
+    rex::cvar::SetFlagByName("dbz3_fxaa", "none");
+    rex::cvar::SetFlagByName("dbz3_present_dither", "false");
+    rex::cvar::SetFlagByName("dbz3_async_shaders", "true");
+    rex::cvar::SetFlagByName("dbz3_occlusion_queries", "true");
     rex::cvar::SetFlagByName("dbz3_master_volume", "1.0");
     rex::cvar::SetFlagByName("dbz3_mute", "false");
     rex::cvar::SetFlagByName("dbz3_deadzone", "0.1");
@@ -788,6 +792,7 @@ void LauncherDialog::OnDraw(ImGuiIO& io) {
     rex::cvar::SetFlagByName("dbz3_input_backend", "xinput");
     rex::cvar::SetFlagByName("dbz3_mnk_mode", "true");
     rex::cvar::SetFlagByName("dbz3_mnk_mouse", "false");
+    rex::cvar::SetFlagByName("dbz3_mnk_sensitivity", "1.0");
 #define DBZ3_RESET_KEYBIND(name) rex::cvar::ResetToDefault("dbz3_keybind_" #name)
     DBZ3_RESET_KEYBIND(a);
     DBZ3_RESET_KEYBIND(b);
@@ -1189,6 +1194,46 @@ void LauncherDialog::DrawUpscaleTab() {
   }
 
   ImGui::Spacing();
+  PushSectionHeader(i18n::T("Antialiasing y filtros", "Anti-aliasing and filters"));
+
+  const char* fxaa_items[] = {i18n::T("Desactivado", "Off"), "FXAA",
+                              i18n::T("FXAA extremo", "FXAA extreme")};
+  static const char* fxaa_vals[] = {"none", "fxaa", "fxaa_extreme"};
+  int fxaa_idx = 0;
+  std::string fxaa = dbz3::settings::Fxaa();
+  for (int i = 0; i < 3; i++) {
+    if (fxaa == fxaa_vals[i]) fxaa_idx = i;
+  }
+  if (ImGui::Combo(i18n::T("Suavizado de bordes (FXAA)", "Edge smoothing (FXAA)"),
+                   &fxaa_idx, fxaa_items, 3)) {
+    dbz3::settings::SetFxaa(fxaa_vals[fxaa_idx]);
+    dbz3::settings::SaveUserSettings();
+  }
+  if (ImGui::IsItemHovered()) {
+    ImGui::SetTooltip("%s", i18n::T(
+        "Suaviza los bordes en el ultimo paso. Muy barato: ideal si subir la "
+        "escala interna o el MSAA te cuesta demasiado rendimiento. Se combina "
+        "con FSR/CAS.",
+        "Smooths edges in the final step. Very cheap: ideal if raising the "
+        "internal scale or MSAA costs you too much performance. Composes with "
+        "FSR/CAS."));
+  }
+
+  bool dither = dbz3::settings::PresentDither();
+  if (ImGui::Checkbox(i18n::T("Tramado de color (dither)", "Color dithering"),
+                      &dither)) {
+    dbz3::settings::SetPresentDither(dither);
+    dbz3::settings::SaveUserSettings();
+  }
+  if (ImGui::IsItemHovered()) {
+    ImGui::SetTooltip("%s", i18n::T(
+        "Aplica tramado a la imagen final: menos bandas en los degradados, a "
+        "cambio de un poco de ruido.",
+        "Dithers the final image: fewer gradient bands, at the cost of a little "
+        "noise."));
+  }
+
+  ImGui::Spacing();
   ImGui::TextColored(kTextDim,
                      i18n::T("El efecto elegido se aplica en el proximo arranque (requiere reinicio).",
                              "The chosen effect applies on the next boot (restart required)."));
@@ -1294,6 +1339,16 @@ void LauncherDialog::DrawInputTab() {
     ImGui::SetTooltip("%s", i18n::T(
         "Mueve el stick derecho con el raton (ademas de las teclas rstick_*).",
         "Moves the right stick with the mouse (in addition to the rstick_* keys)."));
+  }
+
+  if (dbz3::settings::MnkMouse()) {
+    double sens = dbz3::settings::MnkSensitivity();
+    if (SliderD(i18n::T("Sensibilidad del raton", "Mouse sensitivity"), &sens, 0.1,
+                5.0, "%.2f")) {
+      dbz3::settings::SetMnkSensitivity(sens);
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("%s", i18n::T("1.0 = por defecto", "1.0 = default"));
   }
 
   ImGui::Spacing();
@@ -2257,6 +2312,37 @@ void LauncherDialog::DrawDevTab() {
         "Useful to verify the frame cap / debug the 60fps mode."));
   }
 
+  bool async_shaders = dbz3::settings::AsyncShaderCompilation();
+  if (ImGui::Checkbox(i18n::T("Compilar shaders en segundo plano",
+                              "Compile shaders asynchronously"), &async_shaders)) {
+    dbz3::settings::SetAsyncShaderCompilation(async_shaders);
+  }
+  if (ImGui::IsItemHovered()) {
+    ImGui::SetTooltip("%s", i18n::T(
+        "En segundo plano (por defecto) los shaders se compilan en paralelo: "
+        "carga mas rapida, pero puede dar un tiron la primera vez que aparece "
+        "cada efecto. Desactivalo para compilarlos al momento (sin tirones, "
+        "carga inicial mas lenta).",
+        "Asynchronous (default) compiles shaders in parallel: faster loads, but "
+        "may hitch the first time each effect appears. Turn it off to compile "
+        "them on the spot (no hitching, slower initial load)."));
+  }
+
+  bool occ = dbz3::settings::OcclusionQueries();
+  if (ImGui::Checkbox(i18n::T("Consultas de oclusion del juego",
+                              "Game occlusion queries"), &occ)) {
+    dbz3::settings::SetOcclusionQueries(occ);
+  }
+  if (ImGui::IsItemHovered()) {
+    ImGui::SetTooltip("%s", i18n::T(
+        "Permite al juego descartar geometria oculta (por defecto). Si la GPU "
+        "se queda corta, desactivarlas elimina esperas del host a cambio de "
+        "dibujar de mas: util para diagnosticar.",
+        "Lets the game discard hidden geometry (default). On slow GPUs, turning "
+        "them off removes host waits at the cost of extra overdraw: useful for "
+        "diagnosis."));
+  }
+
   bool diag = dbz3::settings::DiagLogging();
   if (ImGui::Checkbox(i18n::T("Registro de diagnostico GPU (logs + .bmp)",
                               "GPU diagnostic logging (logs + .bmp dumps)"), &diag)) {
@@ -2294,6 +2380,16 @@ void LauncherDialog::DrawDevTab() {
         "Asks GitHub for the latest published release when the launcher opens "
         "(read-only, under 1 KB). Turn it off if you prefer no connections."));
   }
+
+  ImGui::Spacing();
+  PushSectionHeader(i18n::T("Datos del usuario", "User data"));
+  ImGui::TextWrapped(i18n::T("Guardado y cache: %s", "Saves and cache: %s"),
+                     dbz3::settings::UserDataRoot().string().c_str());
+  ImGui::TextWrapped("%s", dbz3::settings::UserDataIsPortable()
+      ? i18n::T("Carpeta portable (junto al juego).",
+                "Portable folder (next to the game).")
+      : i18n::T("La carpeta del juego no es escribible: se usa la carpeta de usuario.",
+                "The game folder is not writable: using the per-user folder."));
 
   ImGui::EndChild();
 }

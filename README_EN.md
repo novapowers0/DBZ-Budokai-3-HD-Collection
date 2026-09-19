@@ -248,6 +248,34 @@ layout is assembled by `tools/make_release.ps1`.
 
 ---
 
+## v1.2.4 EX highlights
+
+> Supersedes v1.2.4 (same content plus the items below).
+
+- **Working volume in the launcher**: the "Master volume" slider and the new
+  **"Mute all audio"** switch actually do something now. They used to write a
+  variable the runtime does not know, so they had no effect and the game could
+  not be muted from the UI.
+- **New-release notice**: on launch the launcher asks GitHub for the latest
+  release and, when a newer one exists, shows **"New version available: vX"**
+  with a one-click download (never blocks PLAY). Can be disabled in the Dev tab.
+- **New image settings** (Upscaling tab): **FXAA** (none/fxaa/fxaa_extreme) and
+  **dither**. FXAA runs before upscaling, so it composes with FSR/CAS: the cheap
+  anti-aliasing path when the internal scale or MSAA costs too much.
+- **Mouse sensitivity** (Controller tab): real mouse control for the right stick,
+  shown when "Use mouse for the right stick" is enabled.
+- **GPU diagnostic switches** (Dev tab): **async shader compilation** and
+  **game occlusion queries**. They separate a shader-compilation hitch or an
+  occlusion wait from a real performance problem, with no rebuild.
+- **Truly portable user data**: when the game folder is not writable (Program
+  Files install, network share, locked-down OneDrive), settings and saves move to
+  `Documents/dbz3` instead of failing silently. The Dev tab shows the folder in
+  use.
+- **Dead controls removed**: the **Gamma** slider and the **music/SFX/voice**
+  sliders are gone (the game mixes all audio into a single stream). "Reset to
+  defaults" now also restores VRR, HD textures, FXAA, dither, the GPU switches
+  and the mouse sensitivity.
+
 ## v1.2.4 highlights
 
 - **Working volume in the launcher**: the "Master volume" slider and the new
