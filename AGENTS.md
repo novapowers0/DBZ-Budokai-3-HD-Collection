@@ -62,7 +62,7 @@ lógica de región/mods, y runtime.
 
 ## 3. ESTADO ACTUAL (RESUMEN EJECUTIVO)
 
-- **(2026-09-19) v1.2.4 EX PUBLICADA (Latest)**: commit `TODO_EX_COMMIT`, release
+- **(2026-09-19) v1.2.4 EX PUBLICADA (Latest)**: commit `43b4da4`, release
   `https://github.com/novapowers0/DBZ-Budokai-3-HD-Collection/releases/tag/v1.2.4-EX`
   (`DBZ-Budokai-3-HD-Collection-v1.2.4-EX.zip`; `verify_release.ps1 -Version
   v1.2.4-EX` = VERIFICACION OK; exe del build **dual** con FileVersion `1.2.4.1`;
