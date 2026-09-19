@@ -5,6 +5,7 @@
 #include <rex/cvar.h>  // REX_PLATFORM_WIN32 (via rex/platform.h)
 
 #include <atomic>
+#include <cctype>
 #include <cstdio>
 #include <mutex>
 #include <string>
@@ -67,18 +68,42 @@ std::string JsonStringField(const std::string& body, const char* key) {
   return body.substr(p + 1, end - p - 1);
 }
 
-// True when `a` is a strictly newer dotted version than `b` ("1.2.10" > "1.2.9").
+// Version with an optional "repack" marker. A release tag like "1.2.4-EX"
+// names the version it is a repack of, so only its release number is
+// comparable; the local FileVersion carries the extra build number instead
+// (1.2.4.1). Both forms mean the same thing: this is a repack of 1.2.4.
+struct Version {
+  int parts[4] = {0, 0, 0, 0};
+  bool suffix = false;  // a tag suffix right after the numbers ("-EX")
+};
+
+Version ParseVersion(const std::string& s) {
+  Version v;
+  std::sscanf(s.c_str(), "%d.%d.%d.%d", &v.parts[0], &v.parts[1], &v.parts[2], &v.parts[3]);
+  size_t i = 0;
+  while (i < s.size() && (std::isdigit(static_cast<unsigned char>(s[i])) || s[i] == '.')) {
+    ++i;
+  }
+  v.suffix = i > 0 && i < s.size();
+  return v;
+}
+
+bool IsRepack(const Version& v) { return v.suffix || v.parts[3] > 0; }
+
+// True when `a` is a strictly newer version than `b` ("1.2.10" > "1.2.9").
+// Repacks rank above the plain release they are based on (1.2.4-EX > 1.2.4) but
+// never above the next release (1.2.4-EX < 1.2.5) and not above the repack build
+// itself (a 1.2.4 EX install comparing against the v1.2.4-EX tag is up to date).
 bool VersionNewer(const std::string& a, const std::string& b) {
-  int av[3] = {0, 0, 0};
-  int bv[3] = {0, 0, 0};
-  std::sscanf(a.c_str(), "%d.%d.%d", &av[0], &av[1], &av[2]);
-  std::sscanf(b.c_str(), "%d.%d.%d", &bv[0], &bv[1], &bv[2]);
-  for (int i = 0; i < 3; ++i) {
-    if (av[i] != bv[i]) {
-      return av[i] > bv[i];
+  const Version va = ParseVersion(a);
+  const Version vb = ParseVersion(b);
+  const int count = (va.suffix || vb.suffix) ? 3 : 4;
+  for (int i = 0; i < count; ++i) {
+    if (va.parts[i] != vb.parts[i]) {
+      return va.parts[i] > vb.parts[i];
     }
   }
-  return false;
+  return IsRepack(va) && !IsRepack(vb);
 }
 
 #if REX_PLATFORM_WIN32
@@ -153,8 +178,9 @@ std::string CurrentVersion() {
         UINT len = 0;
         if (VerQueryValueW(data.data(), L"\\", reinterpret_cast<void**>(&info), &len) && info) {
           char buf[64];
-          std::snprintf(buf, sizeof(buf), "%d.%d.%d", HIWORD(info->dwFileVersionMS),
-                        LOWORD(info->dwFileVersionMS), HIWORD(info->dwFileVersionLS));
+          std::snprintf(buf, sizeof(buf), "%d.%d.%d.%d", HIWORD(info->dwFileVersionMS),
+                        LOWORD(info->dwFileVersionMS), HIWORD(info->dwFileVersionLS),
+                        LOWORD(info->dwFileVersionLS));
           return buf;
         }
       }
