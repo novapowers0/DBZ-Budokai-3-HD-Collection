@@ -20,7 +20,7 @@ emulator.
 | Platform | Windows |
 | Engine | Xbox 360 (ReXGlue SDK) |
 | Genre | 3D fighting |
-| Version | v1.2.1 |
+| Version | v1.2.4 EX |
 
 Copyright (c) 2026 **NovaPowers**. Released under the MIT License (see `LICENSE`).
 
