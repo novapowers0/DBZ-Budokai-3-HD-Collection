@@ -71,6 +71,13 @@ if (-not (Test-Path -LiteralPath (Join-Path $sdk $dll))) { throw "Falta $dll en 
 # MSVC CRT DLLs are not produced by the build; the current release carries
 # the canonical, already-proven copies).
 $old_stage = $OutDir
+if (-not (Test-Path -LiteralPath $old_stage)) {
+    # The previous stage may have been archived to keep the repo root tidy
+    # (github/_archive/release-stage). Use it as the snapshot source so the
+    # shared DLLs/docs are carried over anyway.
+    $archived_stage = Join-Path $root "github\_archive\release-stage"
+    if (Test-Path -LiteralPath $archived_stage) { $old_stage = $archived_stage }
+}
 $snap_dir  = Join-Path $env:TEMP "dbz3_release_snapshot"
 if (Test-Path -LiteralPath $snap_dir) { Remove-Item -LiteralPath $snap_dir -Recurse -Force }
 if (Test-Path -LiteralPath $old_stage) {

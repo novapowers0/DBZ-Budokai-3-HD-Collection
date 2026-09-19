@@ -97,3 +97,7 @@ Thumbs.db
 
 # Release zips (assets de GitHub, no se versionan)
 *.zip
+
+# Archivo local de artefactos de releases antiguas (zips viejos + release-stage
+# movidos aqui para despejar la raiz). Se conserva en disco, nunca se versiona.
+_archive/
