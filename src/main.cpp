@@ -36,6 +36,7 @@ extern const rex::PPCImageInfo PPCImageConfigEU;
 #include "region.h"
 #include "launcher/settings.h"
 #include "launcher/launcher_state.h"
+#include "launcher/i18n.h"
 #include "ingame/menu.h"
 #include <rex/audio/sdl/sdl_audio_system.h>
 #include <rex/input/input_system.h>
@@ -52,6 +53,11 @@ extern const rex::PPCImageInfo PPCImageConfigEU;
 
 REXCVAR_DECLARE(bool, dbz3_skip_launcher);
 
+// dbz3 - Window focus, shared with the in-game overlay (which dims the picture
+// while the window is in the background) and with the audio driver through the
+// `dbz3_window_focused` cvar (which silences the mix while unfocused).
+std::atomic<bool> g_window_focused{true};
+
 #include <atomic>
 #include <chrono>
 #include <filesystem>
@@ -60,6 +66,7 @@ REXCVAR_DECLARE(bool, dbz3_skip_launcher);
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <atomic>
 
 #if REX_PLATFORM_WIN32
 #include <windows.h>
@@ -85,6 +92,42 @@ public:
         : ImGuiDialog(imgui_drawer) {}
 protected:
     void OnDraw(ImGuiIO& io) override {
+        // Dimmed "the game is in the background" screen. Drawn whether or not
+        // the FPS counter is on: it makes it obvious that the window is not
+        // active, and hides the picture so it cannot be read while the player is
+        // away (that is also why emulators dim the screen when they pause on
+        // focus loss). It is purely visual, the game keeps running.
+        if (dbz3::settings::DimUnfocused() && !g_window_focused.load()) {
+            dbz3::i18n::SetLanguage(dbz3::settings::Language());
+            const ImVec2 display = io.DisplaySize;
+            ImDrawList* draw_list = ImGui::GetForegroundDrawList();
+            draw_list->AddRectFilled(ImVec2(0.0f, 0.0f), display, IM_COL32(0, 0, 0, 205));
+            const char* title =
+                dbz3::i18n::T("Juego en segundo plano", "Game in the background");
+            const char* subtitle = dbz3::settings::MuteUnfocused()
+                                       ? dbz3::i18n::T("El audio esta silenciado.",
+                                                       "Audio is muted.")
+                                       : dbz3::i18n::T("El juego sigue en marcha.",
+                                                       "The game is still running.");
+            const char* hint = dbz3::i18n::T("Vuelve a la ventana para seguir jugando.",
+                                             "Return to the window to keep playing.");
+            ImFont* font = ImGui::GetFont();
+            const float title_size = ImGui::GetFontSize() * 1.9f;
+            const ImVec2 title_extent = font->CalcTextSizeA(title_size, FLT_MAX, 0.0f, title);
+            const ImVec2 sub_extent = ImGui::CalcTextSize(subtitle);
+            const ImVec2 hint_extent = ImGui::CalcTextSize(hint);
+            const float center_x = display.x * 0.5f;
+            const float center_y = display.y * 0.5f;
+            const float gap = ImGui::GetFontSize() * 0.6f;
+            draw_list->AddText(font, title_size,
+                               ImVec2(center_x - title_extent.x * 0.5f, center_y - title_size),
+                               IM_COL32(255, 255, 255, 235), title);
+            draw_list->AddText(ImVec2(center_x - sub_extent.x * 0.5f, center_y + gap),
+                               IM_COL32(230, 230, 230, 220), subtitle);
+            draw_list->AddText(ImVec2(center_x - hint_extent.x * 0.5f,
+                                      center_y + gap + ImGui::GetTextLineHeight() * 1.6f),
+                               IM_COL32(190, 190, 190, 200), hint);
+        }
         // Only visible when the user enables the FPS counter (Dev tab).
         if (!dbz3::settings::ShowFps()) {
             return;
@@ -205,6 +248,15 @@ public:
         // GPU plugin has registered them.
         dbz3::settings::ApplyRuntimeSettingsToSdk(false);
         SetupCrashHandler();
+    }
+
+    // dbz3 - Window focus. Drives the "mute while in the background" feature
+    // (the audio driver reads the `dbz3_window_focused` cvar) and the dimmed
+    // overlay drawn by DebugOverlayDialog.
+    void OnWindowFocusChanged(bool focused) override {
+        g_window_focused.store(focused);
+        rex::cvar::SetFlagByName("dbz3_window_focused", focused ? "true" : "false");
+        REXLOG_INFO("dbz3: window {}", focused ? "focused" : "in the background");
     }
 
     // Called after ImGui drawer is created - add custom dialogs

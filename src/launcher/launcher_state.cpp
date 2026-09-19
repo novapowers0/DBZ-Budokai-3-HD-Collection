@@ -1,4 +1,4 @@
-// dbz3 - Pre-game launcher screen implementation.
+﻿// dbz3 - Pre-game launcher screen implementation.
 // Dark modern style with Dragon Ball accent colors (orange/blue).
 
 #include "launcher_state.h"
@@ -41,6 +41,17 @@ constexpr ImVec4 kTextDim(0.55f, 0.57f, 0.62f, 1.0f);
 // Double slider with named min/max (avoids rvalue-address issues with clang).
 bool SliderD(const char* label, double* value, double min, double max, const char* fmt) {
   return ImGui::SliderScalar(label, ImGuiDataType_Double, value, &min, &max, fmt);
+}
+
+// dbz3::ModTypeLabel returns the raw English id used in the manifest; the UI
+// shows a translated label instead (the search matcher keeps the raw id).
+const char* ModTypeLabelText(const std::string& type) {
+  if (type == "swap_b3") return i18n::T("cambio B3", "swap B3");
+  if (type == "port_b3") return i18n::T("port B3", "port B3");
+  if (type == "audio") return i18n::T("audio", "audio");
+  if (type == "moveset") return i18n::T("moveset", "moveset");
+  if (type == "data") return i18n::T("datos", "data");
+  return i18n::T("otro", "other");
 }
 
 void PushSectionHeader(const char* title) {
@@ -874,6 +885,35 @@ void LauncherDialog::DrawVideoTab() {
 
   ImGui::BeginChild("##video_left", ImVec2(col_w, -kFooterHeight), false);
   {
+    // Focus behaviour, first thing in the first tab: it is what a non-technical
+    // user looks for ("what happens if I switch to Discord?"), and it is safe by
+    // design -- it silences and dims, it never freezes the game.
+    PushSectionHeader(i18n::T("Al salir de la ventana", "When you leave the window"));
+    bool mute_unfocused = dbz3::settings::MuteUnfocused();
+    if (ImGui::Checkbox(i18n::T("Silenciar el audio", "Mute audio"), &mute_unfocused)) {
+      dbz3::settings::SetMuteUnfocused(mute_unfocused);
+    }
+    if (ImGui::IsItemHovered()) {
+      ImGui::SetTooltip("%s", i18n::T(
+          "Si pasas a otra ventana, el sonido se corta solo y vuelve al regresar. "
+          "El juego sigue en marcha.",
+          "If you switch to another window, the sound cuts out and comes back when "
+          "you return. The game keeps running."));
+    }
+    bool dim_unfocused = dbz3::settings::DimUnfocused();
+    if (ImGui::Checkbox(i18n::T("Oscurecer la pantalla", "Dim the screen"),
+                        &dim_unfocused)) {
+      dbz3::settings::SetDimUnfocused(dim_unfocused);
+    }
+    if (ImGui::IsItemHovered()) {
+      ImGui::SetTooltip("%s", i18n::T(
+          "Mientras el juego esta detras, la imagen se oscurece y avisa de que "
+          "sigue en marcha: se ve de un vistazo desde la barra de tareas.",
+          "While the game is behind, the picture darkens and says it is still "
+          "running: obvious at a glance from the taskbar."));
+    }
+    ImGui::Spacing();
+
     PushSectionHeader(i18n::T("Calidad de imagen", "Image Quality"));
 
     // Detected GPU + one-click quality presets. Detection is a cheap DXGI
@@ -889,8 +929,11 @@ void LauncherDialog::DrawVideoTab() {
     if (!gpu_name.empty()) {
       ImGui::TextDisabled(i18n::T("GPU: %s", "GPU: %s"), gpu_name.c_str());
       ImGui::SameLine();
+      const char* tier_label = gpu_tier == 0 ? i18n::T("Baja", "Low")
+                                             : (gpu_tier == 2 ? i18n::T("Alta", "High")
+                                                              : i18n::T("Media", "Medium"));
       ImGui::TextColored(kTextDim, " - %s: %s", i18n::T("nivel detectado", "detected tier"),
-                         dbz3::settings::GpuTierLabel(gpu_tier));
+                         tier_label);
     } else {
       ImGui::TextDisabled(i18n::T("GPU: no detectado", "GPU: not detected"));
     }
@@ -1774,7 +1817,7 @@ ImGui::TextDisabled(i18n::T("%d archivo%s", "%d file%s"), mod.file_count,
                       : ImVec4(((type_col >> 16) & 0xFF) / 255.0f,
                                ((type_col >> 8) & 0xFF) / 255.0f,
                                (type_col & 0xFF) / 255.0f, 1.0f);
-      DrawBadge(dbz3::ModTypeLabel(mod.type), tc);
+      DrawBadge(ModTypeLabelText(mod.type), tc);
       if (mod.enabled) {
         ImGui::SameLine();
         ImGui::TextColored(ImVec4(0.35f, 0.85f, 0.35f, 1.0f), "ON");
@@ -1788,7 +1831,7 @@ ImGui::TextDisabled(i18n::T("%d archivo%s", "%d file%s"), mod.file_count,
                               : mod.description.c_str(),
                           mod.author.empty() ? "-" : mod.author.c_str(),
                           mod.version.empty() ? "-" : mod.version.c_str(),
-                          dbz3::ModTypeLabel(mod.type), mod.source.c_str(),
+                          ModTypeLabelText(mod.type), mod.source.c_str(),
                           mod.target.c_str());
       }
 
@@ -2352,6 +2395,37 @@ void LauncherDialog::DrawDevTab() {
         "Lets the game discard hidden geometry (default). On slow GPUs, turning "
         "them off removes host waits at the cost of extra overdraw: useful for "
         "diagnosis."));
+  }
+
+  bool io_logging = dbz3::settings::IoLogging();
+  if (ImGui::Checkbox(i18n::T("Registro de E/S de disco (cada 5 s)",
+                              "Disk I/O log (every 5 s)"), &io_logging)) {
+    dbz3::settings::SetIoLogging(io_logging);
+  }
+  if (ImGui::IsItemHovered()) {
+    ImGui::SetTooltip("%s", i18n::T(
+        "Escribe una linea cada 5 segundos con las lecturas de los AFS "
+        "(cantidad, MB, latencia media/p95/p99, maximos y lecturas lentas) y una "
+        "linea por cada lectura lenta. Es la forma de ver si un tiron viene del "
+        "disco.",
+        "Writes one line every 5 seconds with AFS reads (count, MB, average/"
+        "p95/p99 latency, worst and slow reads) plus one line per slow read. "
+        "The way to tell whether a hitch comes from the disk."));
+  }
+
+  bool readahead = dbz3::settings::IoReadahead();
+  if (ImGui::Checkbox(i18n::T("Lectura anticipada de disco",
+                              "Disk readahead"), &readahead)) {
+    dbz3::settings::SetIoReadahead(readahead);
+  }
+  if (ImGui::IsItemHovered()) {
+    ImGui::SetTooltip("%s", i18n::T(
+        "Lee bloques mas grandes de una vez y sirve las lecturas siguientes "
+        "desde memoria: ayuda en discos mecanicos y en las cargas. Se desactiva "
+        "solo mientras haya mods instalados.",
+        "Reads bigger chunks at once and serves the following reads from RAM: "
+        "helps on mechanical disks and during loads. Disabled automatically "
+        "while mods are installed."));
   }
 
   bool diag = dbz3::settings::DiagLogging();

@@ -121,6 +121,30 @@ aportarlos de tu **copia legal**. Haz esto:
 
 ## Novedades de esta release
 
+### v1.2.5 - Menos trabajo por lectura + que hacer al salir de la ventana (2026-09-19)
+
+- **Al salir de la ventana** (nuevo, al principio del tab Video): **silenciar el
+  audio** y **oscurecer la pantalla** mientras el juego esta detras. El juego
+  sigue en marcha (no es una pausa); al volver, el sonido y la imagen se
+  restauran solos. Es el comportamiento habitual en emuladores
+  (Dolphin/RetroArch/PCSX2) y evita molestar con el opening o la musica.
+- **Diagnostico de disco**: `dbz3_io_logging` escribe cada 5 s un resumen de las
+  lecturas (`dbz3: io reads=… mb=… p95_us=… p99_us=… max_us=… slow=…`) y una
+  linea por lectura lenta. Es la forma de ver si un tiron viene del disco o de
+  otra cosa, en lugar de suposiciones.
+- **Record de foco en el contador de rendimiento**: la linea `perf` incluye
+  `fg=`. Windows limita a la MITAD la presentacion de una ventana **visible sin
+  foco** (60 -> 30 exacto): asi un log con `fg=0` se lee como "el jugador hizo
+  alt-tab", no como "el juego va lento".
+- **Menos trabajo por lectura** (sin mods instalados): se elimino el trabajo que
+  se hacia en cada lectura AFS aunque no hubiera mods (busqueda de overrides y
+  copia completa de la tabla del contenedor), y se añadio **lectura
+  anticipada** (`dbz3_io_readahead`) para discos mecanicos: lee un bloque mayor
+  de una vez y sirve las lecturas siguientes de memoria. En SSD no se nota.
+- **Traducciones**: 2 mensajes que salian en ingles en italiano/aleman/frances
+  (deteccion del ejecutable y aviso del menu HD) y el nivel de GPU ("Alta"/
+  "Media"/"Baja") y los tipos de mod, ya traducidos.
+
 ### v1.2.4 EX - Knobs de GPU + datos de usuario portables (2026-09-19)
 
 > Sustituye a la v1.2.4 (mismo contenido + lo de abajo).

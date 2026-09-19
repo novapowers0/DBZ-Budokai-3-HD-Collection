@@ -166,6 +166,14 @@ REXCVAR_DEFINE_DOUBLE(dbz3_master_volume, 1.0, "DBZ3/Audio", "Master volume (0.0
 REXCVAR_DEFINE_BOOL(dbz3_mute, false, "DBZ3/Audio", "Mute all audio output")
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
 
+// Focus behaviour (see also the SDK's dbz3_mute_unfocused, forwarded below).
+// `dbz3_dim_unfocused` is only used by the in-game overlay: it darkens the
+// picture while the window is in the background so the state is obvious (and
+// so the paused/background picture cannot be read while the player is away).
+REXCVAR_DEFINE_BOOL(dbz3_dim_unfocused, true, "DBZ3/Video",
+                    "Dim the picture while the window is in the background")
+    .lifecycle(rex::cvar::Lifecycle::kHotReload);
+
 // Update check (GitHub releases). On by default; the request only reads the
 // latest release tag/URL over HTTPS and can be turned off in the Dev tab.
 REXCVAR_DEFINE_BOOL(dbz3_update_check, true, "DBZ3/Dev",
@@ -1707,6 +1715,23 @@ void SetAsyncShaderCompilation(bool enabled) { REXCVAR_SET(dbz3_async_shaders, e
 bool OcclusionQueries() { return REXCVAR_GET(dbz3_occlusion_queries); }
 void SetOcclusionQueries(bool enabled) { REXCVAR_SET(dbz3_occlusion_queries, enabled); }
 
+// AFS I/O diagnostics live in the runtime (rexruntime.dll, src/filesystem/afs.cpp)
+// and are read by the host read path; set through the SDK registry by name.
+bool IoLogging() { return GetSdkBool("dbz3_io_logging"); }
+void SetIoLogging(bool enabled) { SetSdkBool("dbz3_io_logging", enabled); }
+
+bool IoReadahead() { return GetSdkBool("dbz3_io_readahead"); }
+void SetIoReadahead(bool enabled) { SetSdkBool("dbz3_io_readahead", enabled); }
+
+// Focus behaviour. MuteUnfocused is registered by the SDK's audio driver
+// (dbz3_mute_unfocused) and forwarded through the SDK registry; the dim option
+// only exists in the launcher and is read by the in-game overlay.
+bool MuteUnfocused() { return GetSdkBool("dbz3_mute_unfocused"); }
+void SetMuteUnfocused(bool enabled) { SetSdkBool("dbz3_mute_unfocused", enabled); }
+
+bool DimUnfocused() { return REXCVAR_GET(dbz3_dim_unfocused); }
+void SetDimUnfocused(bool enabled) { REXCVAR_SET(dbz3_dim_unfocused, enabled); }
+
 std::string GpuBackend() { return REXCVAR_GET(dbz3_gpu_backend); }
 void SetGpuBackend(const std::string& backend) { REXCVAR_SET(dbz3_gpu_backend, backend); }
 
@@ -1831,6 +1856,9 @@ void ApplyRuntimeSettingsToSdk(bool for_game) {
   // mute toggle never did anything.)
   SetSdkDouble("audio_gain", REXCVAR_GET(dbz3_master_volume));
   SetSdkBool("audio_mute", REXCVAR_GET(dbz3_mute));
+  // Focus behaviour: the SDK's audio driver silences the mix while the window is
+  // in the background (the app writes `dbz3_window_focused` on focus changes).
+  SetSdkBool("dbz3_mute_unfocused", MuteUnfocused());
   REXCVAR_SET(dbz1_diag_logging, DiagLogging() && DevMode());
 
   // The D3D12 presenter always calls Present(0) (never waits for vsync), so
@@ -1853,7 +1881,7 @@ void ApplyRuntimeSettingsToSdk(bool for_game) {
       "hd_tex={}x "
       "fsr_quality={} fsr_sharpness={} cas_sharpness={} fxaa={} dither={} "
       "async_shaders={} occ_queries={} mnk_sens={} "
-      "audio_gain={} mute={} host_present={} vrr={} cap={}",
+      "audio_gain={} mute={} mute_unfocused={} dim_unfocused={} host_present={} vrr={} cap={}",
       scale, GetSdkBool("vsync") ? "true" : "false",
       GetSdkBool("native_2x_msaa") ? "true" : "false", GetSdkInt("anisotropic_override"),
       GetSdkInt("dbz3_texture_upscale"),
@@ -1865,6 +1893,8 @@ void ApplyRuntimeSettingsToSdk(bool for_game) {
       GetSdkDouble("mnk_sensitivity"),
       GetSdkDouble("audio_gain"),
       GetSdkBool("audio_mute") ? "true" : "false",
+      GetSdkBool("dbz3_mute_unfocused") ? "true" : "false",
+      DimUnfocused() ? "true" : "false",
       REXCVAR_GET(host_present_from_non_ui_thread) ? "true" : "false",
       REXCVAR_GET(d3d12_allow_variable_refresh_rate_and_tearing) ? "true" : "false",
       for_game ? GetSdkInt("frame_cap") : 0);

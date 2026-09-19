@@ -425,6 +425,29 @@ void SetAsyncShaderCompilation(bool enabled);
 bool OcclusionQueries();
 void SetOcclusionQueries(bool enabled);
 
+// AFS I/O diagnostics (runtime `dbz3_io_logging`): one summary line every 5 s
+// with read rate, latency percentiles and slow reads. The only source of I/O
+// timing in the product, so it is on by default.
+bool IoLogging();
+void SetIoLogging(bool enabled);
+
+// Sequential readahead of AFS containers (runtime `dbz3_io_readahead`): reads a
+// bigger chunk once and serves the following reads from RAM. Helps on slow
+// (mechanical) disks; disabled automatically while mods are installed.
+bool IoReadahead();
+void SetIoReadahead(bool enabled);
+
+// Mute the mix while the game window is in the background (SDK
+// `dbz3_mute_unfocused`, read by the audio callback). Standard emulator
+// behaviour; the app writes the window focus state on every focus change.
+bool MuteUnfocused();
+void SetMuteUnfocused(bool enabled);
+
+// Darken the picture while the window is in the background (in-game overlay).
+// Purely visual: it makes the state obvious and hides the picture while away.
+bool DimUnfocused();
+void SetDimUnfocused(bool enabled);
+
 // --- Graphics backend ------------------------------------------------------
 // Host graphics backend: "d3d12" or "vulkan".
 std::string GpuBackend();

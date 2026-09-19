@@ -62,7 +62,27 @@ lógica de región/mods, y runtime.
 
 ## 3. ESTADO ACTUAL (RESUMEN EJECUTIVO)
 
-- **(2026-09-19) v1.2.4 EX PUBLICADA (Latest)**: commit `43b4da4`, release
+- **(2026-09-19) v1.2.5 PUBLICADA (Latest)**: release
+  `…/releases/tag/v1.2.5` (`DBZ-Budokai-3-HD-Collection-v1.2.5.zip`; exe del
+  build **dual**, FileVersion `1.2.5.0`; PortForge `defaultVersion 1.2.5`).
+  Investigacion a fondo del **camino de lectura** (`HostPathFile::ReadSync` es
+  sincrono) + QoL de foco. Contenido: (a) **`dbz3_io_logging`** (resumen de E/S
+  cada 5 s con percentiles + linea por lectura lenta; `dbz3_io_slow_ms`=25) y
+  **camino rapido sin mods** (sin lookup de overrides ni copia de la tabla
+  virtual por lectura) + `AfsGetVirtualTableFast` + contador de opens;
+  (b) **lectura anticipada** (`dbz3_io_readahead`/`_kb`=2048; solo sin mods;
+  ayuda en discos mecanicos, en SSD neutro); (c) **`fg=` en la linea `perf`**:
+  DWM limita a la MITAD una ventana visible sin foco (60→30 exacto) — ahora se
+  distingue "alt-tab" de "va lento"; (d) **QoL al perder el foco**:
+  `dbz3_mute_unfocused` (default ON; el callback SDL silencia con
+  `dbz3_window_focused`, que escribe la app) y `dbz3_dim_unfocused` (default ON;
+  overlay a pantalla completa "Juego en segundo plano"); **sin pausa real** (no
+  hay mecanismo seguro); (e) **ronda i18n**: 2 claves que salian en ingles en
+  IT/DE/FR + 13 strings nuevas + `GpuTierLabel`/`ModTypeLabel` traducidos.
+  Seccion nueva **"Al salir de la ventana"** al principio del tab Video. Doc:
+  `docs/SESION_IO_FOCO_2026-09-19.md`. DLL canonica: `rexruntime.dll`
+  **10.902.528 B**.
+- **(2026-09-19) v1.2.4 EX PUBLICADA (no-Latest tras la 1.2.5)**: commit `43b4da4`, release
   `https://github.com/novapowers0/DBZ-Budokai-3-HD-Collection/releases/tag/v1.2.4-EX`
   (`DBZ-Budokai-3-HD-Collection-v1.2.4-EX.zip`; `verify_release.ps1 -Version
   v1.2.4-EX` = VERIFICACION OK; exe del build **dual** con FileVersion `1.2.4.1`;
@@ -914,9 +934,10 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
 
 - **DLLs canónicas del SDK 0.10** (NO reemplazar por las regeneradas del build):
   - Baseline (único en uso): `rexglue-sdk-0.10/out/win-amd64-baseline/` →
-    rexruntime **10873856** (con `audio_gain` + `dbz3_perf_logging`), rexgpu-xenos
-    **6202368** (**sin**
-    instrumentación de draw), amd_fidelityfx_dx12 5413888. ⚠️ El **SHA256 varía
+    rexruntime **10902528** (con `audio_gain`, `dbz3_perf_logging`,
+    `dbz3_io_logging`/`dbz3_io_readahead` y `dbz3_mute_unfocused`), rexgpu-xenos
+    **6202368** (con `fg=` en la linea `perf`;
+    **sin** instrumentación de draw), amd_fidelityfx_dx12 5413888. ⚠️ El **SHA256 varía
     por build** (embebe timestamp) — comparar por **tamaño** o recompilar y
     copiar, no por hash fijo. ⚠️ Los tamaños de AMBAS DLL cambian cuando se
     recompila el SDK: el valor de referencia es el que hay en
@@ -931,8 +952,9 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
   `Select-String rexruntime.dll -Pattern "AfsGetVirtualTable"` debe dar PRESENTE.
   (2026-09-18) Anadir tambien el marker **`dbz3_perf_logging`**: si falta, el
   runtime es el stale (10.863.616 B) y las lineas `perf fps` no salen (parece
-  un cuelgue). (2026-09-19) El bueno del baseline es **10.873.856 B** con
-  `dbz3_perf_logging` **y** `audio_gain` PRESENTES (el de 10.870.272 B es de
+  un cuelgue). (2026-09-19) El bueno del baseline es **10.902.528 B** con
+  `dbz3_perf_logging`, `audio_gain` **y** `dbz3_io_logging` PRESENTES (el de
+  10.873.856 B es de antes de la instrumentacion de E/S, el de 10.870.272 B de
   antes del volumen real, y el stale de 10.863.616 B no tiene ninguno).
 
 - **🔴 Al recompilar el SDK, el FFX de `rexglue-sdk-0.10/bin/` se regenera
@@ -1105,6 +1127,24 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
   tab Dev muestra la ruta elegida. Sin esto el guardado fallaba en silencio.
 - **Auto-guardado**: los cambios se persisten al marcarlos + `SaveUserSettings`
   en OnClose (no depende de "Save settings").
+- **QoL al perder el foco (v1.2.5)**: seccion **"Al salir de la ventana"** al
+  principio del tab Video con dos casillas. `dbz3_mute_unfocused` (default ON)
+  llega al callback SDL por el cvar `dbz3_window_focused`, que la app escribe en
+  `Dbz3App::OnWindowFocusChanged` (`src/main.cpp`); `dbz3_dim_unfocused`
+  (default ON) pinta un overlay ImGui a pantalla completa desde
+  `DebugOverlayDialog::OnDraw` ("Juego en segundo plano" + aviso). **NO hay
+  pausa real**: no existe un mecanismo seguro (suspender hilos del guest puede
+  colgar); el juego sigue corriendo. Estandar en otros emuladores
+  (Dolphin/RetroArch/PCSX2).
+- **Diagnostico de E/S (v1.2.5)**: `dbz3_io_logging` (default ON) emite cada 5 s
+  `dbz3: io reads=… phys=… cache=… mb=… pre_avg_us=… read_avg_us=… p95_us=…
+  p99_us=… max_us=… slow=… opens=…` desde `HostPathFile::ReadSync`, mas una
+  linea por lectura > `dbz3_io_slow_ms` (25). Sirve para separar "disco lento"
+  (read_ns alto) de "overhead del host" (pre_ns alto). `dbz3_io_readahead`
+  (default ON, `_kb`=2048) lee por delante en accesos secuenciales **solo si no
+  hay mods**; ayuda en discos mecanicos. La linea `perf` lleva ademas **`fg=`**
+  (foco de ventana): Windows/DWM limita a la MITAD (60→30 exacto) una ventana
+  visible sin foco — no es lentitud del juego.
 
 ## 9. EJECUTABLE UNIVERSAL + RELEASES + GITHUB
 
