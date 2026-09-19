@@ -219,7 +219,7 @@ que recompilar `rexgpu-xenos` en ambas variantes (v3 y v2) y copiar las DLLs.
 
 ## Como aplicar (ReXGlue 0.10.0)
 
-Copiar los 18 archivos sobre el SDK (rutas relativas a la raiz del SDK):
+Copiar los 19 archivos sobre el SDK (rutas relativas a la raiz del SDK):
 
 ```
 patches/rexglue-sdk/include/rex/filesystem/afs.h      ->  rexglue-sdk/include/rex/filesystem/afs.h
@@ -242,6 +242,7 @@ patches/rexglue-sdk/src/system/dbz1_diag_flags.cpp     ->  rexglue-sdk/src/syste
 patches/rexglue-sdk/src/system/dbz1_region_flag.cpp    ->  rexglue-sdk/src/system/dbz1_region_flag.cpp
 patches/rexglue-sdk/src/system/function_dispatcher.cpp ->  rexglue-sdk/src/system/function_dispatcher.cpp
 patches/rexglue-sdk/src/ui/rex_app.cpp                 ->  rexglue-sdk/src/ui/rex_app.cpp
+patches/rexglue-sdk/src/core/logging.cpp               ->  rexglue-sdk/src/core/logging.cpp
 patches/rexglue-sdk/src/filesystem/CMakeLists.txt      ->  rexglue-sdk/src/filesystem/CMakeLists.txt
 patches/rexglue-sdk/src/system/CMakeLists.txt          ->  rexglue-sdk/src/system/CMakeLists.txt
 ```
@@ -319,3 +320,23 @@ defecto**: funciona, pero provoca tirones al cargar texturas nuevas. Ver
   `audio_gain` + `dbz3_perf_logging`), `rexgpu-xenos.dll` **6.202.368 B**,
   `amd_fidelityfx_dx12.dll` **5.413.888 B** (el de `rexglue-sdk-0.10/bin/` se
   regenera distinto al compilar: NO copiarlo).
+
+### 2026-09-19 (cont.) - los logs de diagnostico pasan a ser opt-in
+
+Los diagnosticos salian activados de fabrica: quien no tocaba el tab Dev
+acababa con lineas de log que no habia pedido, y el log creaba un fichero nuevo
+por ejecucion sin borrar los viejos.
+
+- **`src/filesystem/afs.cpp`**: `dbz3_io_logging` pasa de `true` a **`false`**
+  por defecto (sigue activable desde el tab Dev del launcher).
+- **`src/ui/d3d12/d3d12_presenter.cpp`**: `dbz3_perf_logging` pasa de `true` a
+  **`false`** por defecto (nueva casilla "Registro de rendimiento (cada 5 s)"
+  en el tab Dev; `Dbz3IsOurWindowForeground` sigue aportando el `fg=`).
+- **`src/core/logging.cpp`** (NUEVO parche): `NextSequentialLogPath` poda los
+  `dbz3_NNN.log` mas antiguos al arrancar, respetando `log_max_files`
+  (default 20). Antes el tope de 20 no aplicaba entre ejecuciones porque cada
+  run usa un nombre secuencial nuevo (138 ficheros acumulados en pruebas;
+  verificado 138 -> 20).
+- **DLLs canonicas (2026-09-19, v1.2.5 definitiva)**: `rexruntime.dll`
+  **10.910.208 B**, `rexgpu-xenos.dll` **6.202.368 B**,
+  `amd_fidelityfx_dx12.dll` **5.413.888 B**.

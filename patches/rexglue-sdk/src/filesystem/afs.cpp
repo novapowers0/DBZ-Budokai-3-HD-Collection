@@ -36,12 +36,12 @@
 // of a name lookup + string compare per read.
 REXCVAR_DECLARE(bool, dbz1_diag_logging);
 
-// dbz3 - AFS I/O diagnostics. `dbz3_io_logging` (default on) reports one summary
-// line every 5 s (read rate, latency percentiles, slow reads, opens) and one
-// line per read above `dbz3_io_slow_ms`; it is the only source of I/O timing in
-// the product, so it stays on by default (12 lines/minute) and can be turned off
-// from the launcher's Dev tab.
-REXCVAR_DEFINE_BOOL(dbz3_io_logging, true, "DBZ3/Dev",
+// dbz3 - AFS I/O diagnostics. `dbz3_io_logging` reports one summary line every
+// 5 s (read rate, latency percentiles, slow reads, opens) and one line per read
+// above `dbz3_io_slow_ms`. It is a diagnostic, so it is OFF by default: users
+// should not get log lines they did not ask for. Enable it from the launcher's
+// Dev tab when measuring a "the game is slow" report.
+REXCVAR_DEFINE_BOOL(dbz3_io_logging, false, "DBZ3/Dev",
                     "Log AFS I/O statistics (read rate, latency, slow reads)");
 REXCVAR_DEFINE_INT32(dbz3_io_slow_ms, 25, "DBZ3/Dev",
                      "Log a line for AFS reads slower than this many milliseconds");

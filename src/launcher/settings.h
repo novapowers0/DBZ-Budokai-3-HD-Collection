@@ -426,10 +426,16 @@ bool OcclusionQueries();
 void SetOcclusionQueries(bool enabled);
 
 // AFS I/O diagnostics (runtime `dbz3_io_logging`): one summary line every 5 s
-// with read rate, latency percentiles and slow reads. The only source of I/O
-// timing in the product, so it is on by default.
+// with read rate, latency percentiles and slow reads. A diagnostic, so it is
+// off by default (Dev tab).
 bool IoLogging();
 void SetIoLogging(bool enabled);
+
+// Performance diagnostics (runtime `dbz3_perf_logging`): one line every 5 s
+// with the real FPS, the worst frame and the window focus state. A diagnostic,
+// so it is off by default (Dev tab).
+bool PerfLogging();
+void SetPerfLogging(bool enabled);
 
 // Sequential readahead of AFS containers (runtime `dbz3_io_readahead`): reads a
 // bigger chunk once and serves the following reads from RAM. Helps on slow

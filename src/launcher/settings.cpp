@@ -1720,6 +1720,11 @@ void SetOcclusionQueries(bool enabled) { REXCVAR_SET(dbz3_occlusion_queries, ena
 bool IoLogging() { return GetSdkBool("dbz3_io_logging"); }
 void SetIoLogging(bool enabled) { SetSdkBool("dbz3_io_logging", enabled); }
 
+// Performance diagnostics live in the GPU runtime (rexgpu-xenos.dll,
+// src/ui/d3d12/d3d12_presenter.cpp); set through the SDK registry by name.
+bool PerfLogging() { return GetSdkBool("dbz3_perf_logging"); }
+void SetPerfLogging(bool enabled) { SetSdkBool("dbz3_perf_logging", enabled); }
+
 bool IoReadahead() { return GetSdkBool("dbz3_io_readahead"); }
 void SetIoReadahead(bool enabled) { SetSdkBool("dbz3_io_readahead", enabled); }
 

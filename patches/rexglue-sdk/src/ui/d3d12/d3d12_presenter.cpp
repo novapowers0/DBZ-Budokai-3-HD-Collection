@@ -49,8 +49,9 @@ REXCVAR_DEFINE_INT32(frame_cap, 0, "UI/Presenter",
 // DBZ3: instrumentacion de rendimiento. Escribe una linea cada 5 segundos con
 // los FPS reales de presentacion, el peor frame del intervalo y los ajustes que
 // mas afectan al coste (cap, escala interna, MSAA). Sirve para diagnosticar
-// reportes de "va lento" con datos en vez de a ojo; el coste es despreciable.
-REXCVAR_DEFINE_BOOL(dbz3_perf_logging, true, "UI/Presenter",
+// reportes de "va lento" con datos en vez de a ojo. OFF por defecto (es
+// diagnostico): se activa desde el tab Dev del launcher.
+REXCVAR_DEFINE_BOOL(dbz3_perf_logging, false, "UI/Presenter",
                     "DBZ3: log FPS/frame stats every 5 seconds (diagnostics)")
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
 

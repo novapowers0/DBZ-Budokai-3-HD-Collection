@@ -2397,6 +2397,23 @@ void LauncherDialog::DrawDevTab() {
         "diagnosis."));
   }
 
+  bool perf_logging = dbz3::settings::PerfLogging();
+  if (ImGui::Checkbox(i18n::T("Registro de rendimiento (cada 5 s)",
+                              "Performance log (every 5 s)"), &perf_logging)) {
+    dbz3::settings::SetPerfLogging(perf_logging);
+  }
+  if (ImGui::IsItemHovered()) {
+    ImGui::SetTooltip("%s", i18n::T(
+        "Escribe una linea cada 5 segundos con los FPS reales, el peor frame del "
+        "intervalo y si la ventana tiene el foco. Es la forma de distinguir una "
+        "bajada real de un alt-tab: Windows limita a la mitad la presentacion de "
+        "una ventana visible sin foco.",
+        "Writes one line every 5 seconds with the real FPS, the worst frame in "
+        "the interval and whether the window has focus. The way to tell a real "
+        "drop from an alt-tab: Windows halves the presentation of a visible "
+        "unfocused window."));
+  }
+
   bool io_logging = dbz3::settings::IoLogging();
   if (ImGui::Checkbox(i18n::T("Registro de E/S de disco (cada 5 s)",
                               "Disk I/O log (every 5 s)"), &io_logging)) {
