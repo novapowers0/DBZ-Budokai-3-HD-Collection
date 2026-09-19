@@ -369,7 +369,15 @@ void LauncherDialog::OnDraw(ImGuiIO& io) {
   // an outdated build.
   if (dbz3::settings::UpdateCheckEnabled()) {
     dbz3::launcher::StartUpdateCheck();
-    const std::string cur_ver = dbz3::launcher::CurrentVersion();
+    // The installed version is always on screen (so the user never has to guess
+    // what build they are running), next to the state of the check and a manual
+    // re-check button.
+    const std::string cur_label = dbz3::launcher::CurrentVersionLabel();
+    if (!cur_label.empty()) {
+      ImGui::TextDisabled(i18n::T("Version instalada: v%s", "Installed version: v%s"),
+                          cur_label.c_str());
+      ImGui::SameLine();
+    }
     switch (dbz3::launcher::GetUpdateState()) {
     case dbz3::launcher::UpdateState::kChecking:
       ImGui::TextDisabled("%s", i18n::T("Buscando actualizaciones...",
@@ -389,13 +397,16 @@ void LauncherDialog::OnDraw(ImGuiIO& io) {
     case dbz3::launcher::UpdateState::kFailed:
       ImGui::TextDisabled("%s", i18n::T("No se pudo comprobar la actualizacion.",
                                         "Could not check for updates."));
+      ImGui::SameLine();
+      if (ImGui::SmallButton(i18n::T("Reintentar", "Retry"))) {
+        dbz3::launcher::RequestUpdateCheck();
+      }
       break;
     case dbz3::launcher::UpdateState::kUpToDate:
-      if (!cur_ver.empty()) {
-        ImGui::TextDisabled(i18n::T("Version actualizada (v%s).", "Up to date (v%s)."),
-                            cur_ver.c_str());
-      } else {
-        ImGui::TextDisabled("%s", i18n::T("Version actualizada.", "Up to date."));
+      ImGui::TextDisabled("%s", i18n::T("Version actualizada.", "Up to date."));
+      ImGui::SameLine();
+      if (ImGui::SmallButton(i18n::T("Buscar actualizaciones", "Check for updates"))) {
+        dbz3::launcher::RequestUpdateCheck();
       }
       break;
     }

@@ -121,6 +121,25 @@ La comprobación es una sonda real (crear carpeta + escribir/borrar
 ruta y si es portable). Sin esto, en una carpeta de solo lectura el guardado
 fallaba **en silencio** y los ajustes/saves se perdían.
 
+### Tercera pasada — el update check, pulido (mismo tag `v1.2.4-EX`)
+
+El aviso de versión era lo único visible de la release que el usuario no podía
+controlar, así que el mismo asset se reemplazó con:
+
+1. **Repacks** (commit `7a96385`, ya en el asset previo): `VersionNewer` compara
+   4 componentes e `IsRepack()` marca un tag con sufijo (`1.2.4-EX`) o un
+   FileVersion con build > 0 (`1.2.4.1`) ⇒ **1.2.4 < 1.2.4-EX < 1.2.5**; un EX
+   instalado compara empate y no se auto-avisa, un 1.2.4 sí recibe el aviso.
+   Antes el aviso no distinguía repacks (un 1.2.4 nunca vería la EX).
+2. **Versión instalada siempre en el header**: `CurrentVersionLabel()`
+   (`"1.2.4 EX"`) + estado + botones, vía `ImGui::TextDisabled` + `SmallButton`.
+3. **Re-chequeo manual**: `RequestUpdateCheck()` (botón "Buscar actualizaciones"
+   al estar al día, "Reintentar" si falló) con guardia `g_inflight` (una petición
+   a la vez); `StartUpdateCheck()` conserva la idempotencia por frame
+   (`g_autostarted`). El estado vuelve a "Buscando actualizaciones..." al repetir.
+4. i18n: +3 strings y eliminada la variante `Version actualizada (vX)` (ya
+   redundante con la línea de versión instalada).
+
 ### Verificación
 
 - **Funcional (log)**: toml con `dbz3_fxaa="fxaa_extreme"`,
@@ -133,9 +152,12 @@ fallaba **en silencio** y los ajustes/saves se perdían.
 - **Fallback**: `icacls <user_data/dbz3> /deny javie:(W)` → el juego creó
   `Documents/dbz3/cache` y siguió funcionando sin errores. ACL retirado y
   carpeta de prueba borradas después.
-- **UI**: captura del launcher OK (versión 1.2.4 en el header, sin asserts en el
-  log). El click sintético sigue sin cambiar de pestaña (ImGui + foco real), así
-  que los tabs nuevos no se capturaron por imagen.
+- **UI**: captura del launcher OK. El header quedó `Version instalada: v1.2.4 EX
+  | Version actualizada. | [Buscar actualizaciones]` (imagen
+  `%TEMP%\opencode\launcher_ua.png`), es decir: el EX instalado **no** se
+  auto-avisa y la versión que corre está siempre a la vista. Sin `[error]`/
+  `Assert` en `logs/dbz3_011.log`. El click sintético sigue sin cambiar de pestaña
+  (ImGui + foco real), así que los tabs nuevos no se capturaron por imagen.
 - ⚠️ **DLLs**: el build sobrescribe `rexruntime.dll`/`rexgpu-xenos.dll` con los
   stale (`rexglue/bin`); tras compilar hay que recopiar del baseline. Los
   canónicos ACTUALES del baseline son `rexruntime.dll` **10.873.856 B** y

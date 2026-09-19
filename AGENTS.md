@@ -77,8 +77,12 @@ lógica de región/mods, y runtime.
   `occlusion_query_enable`; (d) **datos de usuario escribibles**: `UserDataRoot()`
   y `UserSettingsPath()` caen a `Documents/dbz3` (con sonda real cacheada y la
   ruta visible en Dev) si `<exe_dir>` no es escribible (antes el guardado fallaba
-  en silencio); (e) i18n +17 strings y Reset ampliado. **Corrige el titulo del
-  release v1.2.4** (estaba sin el prefijo "DBZ Budokai 3 HD Collection");
+  en silencio); (e) i18n +17 strings y Reset ampliado. **Titulo del release
+  corregido y asset reemplazado** (mismo tag `v1.2.4-EX`) con el update check
+  pulido: repack-aware (`7a96385`), version instalada siempre visible
+  (`CurrentVersionLabel()`) + boton "Buscar actualizaciones"/"Reintentar"
+  (`RequestUpdateCheck()`), titulo corto "…1.2.4 EX - Mejoras del launcher" y
+  filas de version rancias de los README de GitHub corregidas (`7db1e81`).
   `verify_release.ps1` acepta ya versiones con sufijo (`-EX`/`-clasico`).
   Verificado por log (`fxaa=fxaa_extreme ... mnk_sens=2.5` leidos del registro del
   SDK) y por prueba de fallback con ACL denegado. DLLs canonicas: `rexruntime.dll`
@@ -1072,8 +1076,13 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
   gamma en el SDK; era decorativo).
 - **Update check** (`src/launcher/update_check.{h,cpp}`, 2026-09-19): al abrir,
   hilo de fondo consulta `api.github.com/.../releases/latest` (WinHTTP) y compara
-  con la version del VERSIONINFO del exe; muestra "Nueva version disponible: vX"
-  + boton Descargar, "Version actualizada (vX)" o una nota gris si falla (nunca
+  con la version del VERSIONINFO del exe (4 componentes, `VersionNewer`:
+  `1.2.4-EX` > `1.2.4` pero < `1.2.5`, y un build local > 0 cuenta como repack ⇒
+  la EX instalada no se auto-avisa y la 1.2.4 si recibe el aviso); en el header
+  hay SIEMPRE la **version instalada** (`CurrentVersionLabel()` =
+  "1.2.4 EX") junto al estado + boton **"Buscar actualizaciones"** / "Reintentar"
+  (`RequestUpdateCheck()`, ignora si ya hay una peticion en vuelo); muestra "Nueva version disponible: vX"
+  + boton Descargar, "Version actualizada." o una nota gris si falla (nunca
   bloquea PLAY). Toggle `dbz3_update_check` en el tab Dev. Requiere linkear
   `winhttp` + `version` (CMake).
 - **Input**: `dbz3_input_backend` (xinput/sdl), `dbz3_mnk_mode` (teclado,

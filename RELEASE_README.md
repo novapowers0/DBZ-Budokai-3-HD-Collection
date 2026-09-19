@@ -133,6 +133,8 @@ aportarlos de tu **copia legal**. Haz esto:
 - **Datos de usuario portables de verdad**: si la carpeta del juego no es
   escribible, ajustes y guardado pasan a `Documents/dbz3` en vez de fallar en
   silencio (el tab Desarrollo muestra la ruta).
+- **Aviso de version mas claro**: la version instalada siempre en la cabecera,
+  boton para reconsultar y aviso que entiende los repacks (`-EX`).
 - Incluye la v1.2.4: volumen real en el launcher, aviso de nueva version desde
   GitHub, eliminacion de los controles muertos (gamma y volumen por categoria).
 

@@ -30,7 +30,8 @@ constexpr const wchar_t* kApiPath =
     L"/repos/novapowers0/DBZ-Budokai-3-HD-Collection/releases/latest";
 
 std::atomic<UpdateState> g_state{UpdateState::kChecking};
-std::atomic<bool> g_started{false};
+std::atomic<bool> g_autostarted{false};  // the automatic check ran at least once
+std::atomic<bool> g_inflight{false};     // an HTTP request is in flight
 std::mutex g_mutex;
 std::string g_latest_version;
 std::string g_latest_url;
@@ -190,16 +191,40 @@ std::string CurrentVersion() {
   return {};
 }
 
+std::string CurrentVersionLabel() {
+  const std::string raw = CurrentVersion();
+  if (raw.empty()) {
+    return {};
+  }
+  const Version v = ParseVersion(raw);
+  char buf[64];
+  if (v.parts[3] > 0) {
+    std::snprintf(buf, sizeof(buf), "%d.%d.%d EX", v.parts[0], v.parts[1], v.parts[2]);
+  } else {
+    std::snprintf(buf, sizeof(buf), "%d.%d.%d", v.parts[0], v.parts[1], v.parts[2]);
+  }
+  return buf;
+}
+
 void StartUpdateCheck() {
-  if (g_started.exchange(true)) {
+  if (g_autostarted.exchange(true)) {
     return;
   }
+  RequestUpdateCheck();
+}
+
+void RequestUpdateCheck() {
+  if (g_inflight.exchange(true)) {
+    return;  // a request is already on its way; keep the current state
+  }
+  g_state.store(UpdateState::kChecking, std::memory_order_release);
   std::thread([]() {
     const std::string body = HttpGet(kApiHost, kApiPath);
     const std::string tag = JsonStringField(body, "tag_name");
     const std::string url = JsonStringField(body, "html_url");
     if (tag.empty() || url.empty()) {
       g_state.store(UpdateState::kFailed, std::memory_order_release);
+      g_inflight.store(false, std::memory_order_release);
       return;
     }
     const std::string latest = StripTag(tag);
@@ -212,6 +237,7 @@ void StartUpdateCheck() {
     const bool newer = current.empty() || VersionNewer(latest, current);
     g_state.store(newer ? UpdateState::kAvailable : UpdateState::kUpToDate,
                   std::memory_order_release);
+    g_inflight.store(false, std::memory_order_release);
   }).detach();
 }
 

@@ -19,13 +19,23 @@ enum class UpdateState {
   kFailed,     // offline / rate limited / parse error (never blocks the UI)
 };
 
-// Running build version as "1.2.3". Read from this executable's VERSIONINFO, so
-// src/version.rc stays the single source of truth (no duplicated constant).
+// Running build version as "1.2.3" (or "1.2.4.1" for an EX repack). Read from
+// this executable's VERSIONINFO, so src/version.rc stays the single source of
+// truth (no duplicated constant).
 std::string CurrentVersion();
 
-// Starts the check. Idempotent: safe to call every frame. The HTTP request runs
-// on a detached background thread.
+// Same version, in the form the release tags use: "1.2.3", "1.2.4 EX" (a local
+// build number above zero means this is a repack of that release). For display.
+std::string CurrentVersionLabel();
+
+// Starts the automatic check. Idempotent: safe to call every frame, only the
+// first call does anything. The HTTP request runs on a detached background
+// thread.
 void StartUpdateCheck();
+
+// Re-runs the check on demand (the "Check for updates" button). Ignored while a
+// request is still in flight; never blocks the UI.
+void RequestUpdateCheck();
 
 // Thread-safe snapshot of the check state.
 UpdateState GetUpdateState();
