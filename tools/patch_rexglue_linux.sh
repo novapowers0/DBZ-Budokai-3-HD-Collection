@@ -35,3 +35,24 @@ path.write_text(text.replace(needle, insert, 1))
 PY
 
 grep -q 'REXGLUE_LINUX_CLOCK_TIME_CONVERSION' "$header"
+
+numeric="$(dirname "$header")/../string/numeric.h"
+if ! grep -q 'REXGLUE_LINUX_FLOAT_FROM_CHARS' "$numeric"; then
+python3 - "$numeric" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+text = path.read_text()
+text = text.replace('#if REX_PLATFORM_MAC\n#include <locale.h>',
+                    '#if !REX_PLATFORM_WIN32\n#include <locale.h>')
+text = text.replace('#if REX_PLATFORM_MAC\ntemplate <typename T>\ninline std::from_chars_result portable_float_from_chars',
+                    '#if !REX_PLATFORM_WIN32\n#define REXGLUE_LINUX_FLOAT_FROM_CHARS 1\ntemplate <typename T>\ninline std::from_chars_result portable_float_from_chars')
+text = text.replace('#if REX_PLATFORM_MAC\n     auto [p, error] = portable_float_from_chars',
+                    '#if !REX_PLATFORM_WIN32\n     auto [p, error] = portable_float_from_chars')
+text = text.replace('#if REX_PLATFORM_MAC\n       auto result = detail::portable_float_from_chars',
+                    '#if !REX_PLATFORM_WIN32\n       auto result = detail::portable_float_from_chars')
+path.write_text(text)
+PY
+fi
+grep -q 'REXGLUE_LINUX_FLOAT_FROM_CHARS' "$numeric"
