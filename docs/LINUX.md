@@ -66,3 +66,6 @@ Para una build local, coloca esas dos carpetas como `generated/` y
 
 El tarball no incluye el juego. Coloca junto a `dbz3` el `default.xex` legal y
 `us/` o `eu/`, como en Windows. La carpeta `mods/` se crea junto al ejecutable.
+El paquete incluye `librexruntime.so`, `librexgpu-xenos.so` y las librerías
+LLVM libc++/libc++abi/libunwind usadas por la build de CI, por lo que no debe
+ser necesario crear enlaces manuales a `libunwind.so.1` en Arch o CachyOS.

@@ -37,7 +37,7 @@ jobs:
             libxinerama-dev libxi-dev libxrandr-dev libxss-dev libxtst-dev \
             libxkbcommon-dev \
             libwayland-dev wayland-protocols libasound2-dev libpulse-dev \
-            libpipewire-0.3-dev unzip zenity
+            libpipewire-0.3-dev unzip zenity patchelf binutils
           wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | \
             sudo gpg --dearmor -o /usr/share/keyrings/llvm.gpg
           echo "deb [signed-by=/usr/share/keyrings/llvm.gpg] http://apt.llvm.org/jammy/ llvm-toolchain-jammy-18 main" | \
@@ -94,14 +94,39 @@ jobs:
         run: |
           file out/build/linux-amd64-release/dbz3
           test -x out/build/linux-amd64-release/dbz3
+          test -n "$(find rexglue-linux -name 'librexruntime.so*' \
+            \( -type f -o -type l \) -print -quit)"
+          test -f out/build/linux-amd64-release/librexgpu-xenos.so
 
       - name: Package Linux release
         run: |
           mkdir -p package/mods
           cp out/build/linux-amd64-release/dbz3 package/dbz3
-          cp out/build/linux-amd64-release/*.so* package/ || true
+          # rexruntime is installed by the SDK, not staged beside the game.
+          # Copying only the game's *.so files silently produced a package
+          # that passed the ELF smoke check but could not start on Linux.
+          runtime=$(find rexglue-linux -name 'librexruntime.so*' \
+            \( -type f -o -type l \) -print -quit)
+          cp -L "$runtime" package/librexruntime.so
+          cp out/build/linux-amd64-release/librexgpu-xenos.so* package/
+          # The CI toolchain is libc++/libunwind 18. Bundle those exact ABI
+          # libraries so Arch/CachyOS does not need the Ubuntu SONAME .so.1.
+          for lib in libc++.so.1 libc++abi.so.1 libunwind.so.1; do
+            found=$(find /usr/lib/llvm-18/lib /usr/lib/x86_64-linux-gnu \
+              -name "$lib" \( -type f -o -type l \) -print -quit)
+            test -n "$found"
+            cp -L "$found" package/
+          done
+          patchelf --set-rpath '$ORIGIN' package/dbz3 package/*.so*
           cp README.md README_EN.md baserom.md package/
           printf '%s\n' 'Place your legally dumped default.xex and us/ or eu/ next to dbz3.' > package/README_LINUX.txt
+          # Validate the packaged layout, not merely the build directory.
+          test -f package/librexruntime.so
+          test -f package/librexgpu-xenos.so
+          env -i PATH="$PATH" LD_LIBRARY_PATH="$GITHUB_WORKSPACE/package" \
+            ldd package/dbz3 | tee package/ldd-dbz3.txt
+          ! grep -E 'not found|librexruntime\.so => not found' package/ldd-dbz3.txt
+          readelf -d package/dbz3 | grep -E 'RPATH|RUNPATH' | grep '\$ORIGIN'
           tar -C package -czf DBZ-Budokai-3-HD-Collection-v1.2.6-linux-amd64.tar.gz .
 
       - name: Upload Linux artifact
