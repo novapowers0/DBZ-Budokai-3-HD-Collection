@@ -74,7 +74,7 @@ jobs:
           cmake --preset linux-amd64 -S rexglue-sdk-0.10 \
             -DCMAKE_C_COMPILER=clang-18 \
             -DCMAKE_CXX_COMPILER=clang++-18 \
-            -DCMAKE_CXX_FLAGS="-march=x86-64-v2 -stdlib=libc++" \
+            -DCMAKE_CXX_FLAGS="-march=x86-64-v2 -stdlib=libc++ -pthread" \
             -DREXGLUE_ENABLE_FIDELITYFX=OFF \
             -DREXGLUE_ENABLE_TRACY=OFF \
             -DCMAKE_INSTALL_PREFIX="$GITHUB_WORKSPACE/rexglue-linux"
@@ -86,7 +86,7 @@ jobs:
           cmake --preset linux-amd64-release \
             -DCMAKE_C_COMPILER=clang-18 \
             -DCMAKE_CXX_COMPILER=clang++-18 \
-            -DCMAKE_CXX_FLAGS="-march=x86-64-v2 -stdlib=libc++" \
+            -DCMAKE_CXX_FLAGS="-march=x86-64-v2 -stdlib=libc++ -pthread" \
             -DCMAKE_PREFIX_PATH="$GITHUB_WORKSPACE/rexglue-linux"
           cmake --build out/build/linux-amd64-release --config Release --parallel
 
