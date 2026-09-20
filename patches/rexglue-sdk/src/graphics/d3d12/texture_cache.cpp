@@ -14,20 +14,30 @@
 #include <cfloat>
 #include <chrono>
 #include <cstddef>
+#include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <memory>
+#include <string>
+#include <unordered_set>
 #include <utility>
+#include <vector>
+
+#include <fmt/format.h>
 
 #include <rex/assert.h>
 #include <rex/cvar.h>
 #include <rex/dbg.h>
+#include <rex/filesystem.h>
 #include <rex/graphics/d3d12/command_processor.h>
 #include <rex/graphics/d3d12/shared_memory.h>
 #include <rex/graphics/d3d12/texture_cache.h>
 #include <rex/graphics/flags.h>
+#include <rex/graphics/pipeline/texture/conversion.h>
 #include <rex/graphics/pipeline/texture/info.h>
 #include <rex/graphics/pipeline/texture/util.h>
 #include <rex/graphics/xenos.h>
+#include <rex/hash.h>
 #include <rex/logging.h>
 #include <rex/perf/counter.h>
 #include <rex/math.h>
@@ -113,6 +123,88 @@ REXCVAR_DEFINE_INT32(dbz3_upscale_min_size, 16, "GPU",
                      "DBZ3: ancho/alto minimos (texeles) de textura a escalar "
                      "(evita emborronar HUD/UI; 1 = sin minimo)")
     .range(1, 4096);
+
+// DBZ3 HD Collection: volcado de texturas (modo dev) para autorar "packs" de
+// texturas al estilo PCSX2. Al cargar cada textura guest unica se escribe su
+// bitmap ORIGINAL (comprimido, linealizado y en little-endian) como un DDS
+// estandar + una linea de metadatos en index.jsonl. NO se decodifica nada (no
+// hay readback de GPU ni conversion de color): el DDS es bit a bit el mismo
+// dato que el juego tiene en el #AZT, asi que la herramienta offline lo puede
+// reconocer, convertir a PNG y organizar por personaje/material. Ruta vacia =
+// desactivado. La exclusion del frontbuffer evita volcar la imagen presentada.
+REXCVAR_DEFINE_STRING(dbz3_texture_dump, "", "GPU",
+                      "DBZ3: carpeta de volcado de texturas (DDS + index.jsonl; "
+                      "vacio = desactivado)")
+    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
+REXCVAR_DEFINE_INT32(dbz3_texture_dump_max, 4096, "GPU",
+                     "DBZ3: numero maximo de texturas unicas a volcar "
+                     "(0 = sin limite)")
+    .range(0, 1000000);
+
+namespace {
+
+// Estado del volcado. Solo lo toca el hilo del command processor, asi que no
+// necesita sincronizacion.
+struct Dbz3TextureDumpState {
+  std::unordered_set<std::string> written;
+  uint32_t count = 0;
+  bool disabled_logged = false;
+};
+Dbz3TextureDumpState& Dbz3DumpState() {
+  static Dbz3TextureDumpState state;
+  return state;
+}
+
+// DDS FourCC de los formatos comprimidos que usa el juego; 0 = no volcable
+// todavia (se omite en silencio para no ensuciar el volcado).
+uint32_t Dbz3DdsFourCc(xenos::TextureFormat format) {
+  switch (format) {
+    case xenos::TextureFormat::k_DXT1:
+    case xenos::TextureFormat::k_DXT1_AS_16_16_16_16:
+      return 0x31545844u;  // 'DXT1'
+    case xenos::TextureFormat::k_DXT2_3:
+    case xenos::TextureFormat::k_DXT2_3_AS_16_16_16_16:
+      return 0x33545844u;  // 'DXT3'
+    case xenos::TextureFormat::k_DXT4_5:
+    case xenos::TextureFormat::k_DXT4_5_AS_16_16_16_16:
+      return 0x35545844u;  // 'DXT5'
+    default:
+      return 0;
+  }
+}
+
+void Dbz3PutU32LE(uint8_t* p, uint32_t v) {
+  p[0] = uint8_t(v);
+  p[1] = uint8_t(v >> 8);
+  p[2] = uint8_t(v >> 16);
+  p[3] = uint8_t(v >> 24);
+}
+
+// Cabecera DDS estandar de 128 B (FourCC legacy) + bitmap.
+bool Dbz3WriteDds(const std::filesystem::path& path, const uint8_t* data, uint32_t data_size,
+                  uint32_t width, uint32_t height, uint32_t fourcc) {
+  FILE* f = filesystem::OpenFile(path, "wb");
+  if (!f) {
+    return false;
+  }
+  uint8_t header[128] = {};
+  std::memcpy(header, "DDS ", 4);
+  Dbz3PutU32LE(header + 4, 124);
+  Dbz3PutU32LE(header + 8, 0x00081007u);  // CAPS|HEIGHT|WIDTH|PIXELFORMAT|LINEARSIZE
+  Dbz3PutU32LE(header + 12, height);
+  Dbz3PutU32LE(header + 16, width);
+  Dbz3PutU32LE(header + 20, data_size);
+  Dbz3PutU32LE(header + 76, 32);          // ddspf.dwSize
+  Dbz3PutU32LE(header + 80, 0x00000004u);  // ddspf.dwFlags = DDPF_FOURCC
+  std::memcpy(header + 84, &fourcc, 4);    // ddspf.dwFourCC
+  Dbz3PutU32LE(header + 104, 0x00001000u);  // dwCaps = DDSCAPS_TEXTURE
+  bool ok = std::fwrite(header, 1, sizeof(header), f) == sizeof(header) &&
+            std::fwrite(data, 1, data_size, f) == data_size;
+  std::fclose(f);
+  return ok;
+}
+
+}  // namespace
 
 // Constantes de la pasada de upscale (deben coincidir con el cbuffer del
 // shader texture_upscale_cs).
@@ -2059,6 +2151,11 @@ bool D3D12TextureCache::LoadTextureDataFromResidentMemoryImpl(Texture& texture, 
 
     uint32_t guest_address = (is_base ? texture_key.base_page : texture_key.mip_page) << 12;
 
+    // DBZ3: volcado dev de la textura (bitmap original comprimido, sin decodificar).
+    if (is_base && level_first == 0) {
+      DumpTextureToDds(texture_key, guest_layout, guest_address);
+    }
+
     // Set up the base or mips source, also making it accessible if loading from
     // scaled resolve memory.
     if (texture_resolution_scaled && (is_base || !scaled_mips_source_set_up)) {
@@ -2272,6 +2369,113 @@ bool D3D12TextureCache::LoadTextureDataFromResidentMemoryImpl(Texture& texture, 
   command_processor_.ReleaseScratchGPUBuffer(copy_buffer, copy_buffer_state);
 
   return true;
+}
+
+void D3D12TextureCache::DumpTextureToDds(const TextureKey& key,
+                                         const texture_util::TextureGuestLayout& guest_layout,
+                                         uint32_t guest_address) const {
+  const std::string dump_dir = REXCVAR_GET(dbz3_texture_dump);
+  if (dump_dir.empty()) {
+    return;
+  }
+  // No solapar con la mejora de texturas HD: son dos usos distintos (jugar vs
+  // autorar un pack) y no deben combinarse.
+  if (REXCVAR_GET(dbz3_texture_upscale) > 1) {
+    return;
+  }
+  const uint32_t fourcc = Dbz3DdsFourCc(key.format);
+  if (fourcc == 0 || key.scaled_resolve || key.dimension != xenos::DataDimension::k2DOrStacked ||
+      key.GetDepthOrArraySize() != 1) {
+    return;
+  }
+  // Excluir el frontbuffer (la imagen que se presenta): no es una textura de
+  // material y volcarla seria ruido.
+  if (swap_texture_key_valid_ && swap_texture_key_.base_page == key.base_page &&
+      swap_texture_key_.format == key.format &&
+      swap_texture_key_.GetWidth() == key.GetWidth() &&
+      swap_texture_key_.GetHeight() == key.GetHeight()) {
+    return;
+  }
+  const FormatInfo* format_info = FormatInfo::Get(key.format);
+  if (!format_info) {
+    return;
+  }
+  const uint32_t block_width = format_info->block_width;
+  const uint32_t block_height = format_info->block_height;
+  const uint32_t bytes_per_block = format_info->bytes_per_block();
+  const uint32_t width = key.GetWidth();
+  const uint32_t height = key.GetHeight();
+  const uint32_t width_blocks = (width + block_width - 1) / block_width;
+  const uint32_t height_blocks = (height + block_height - 1) / block_height;
+  const texture_util::TextureGuestLayout::Level& base_level = guest_layout.base;
+  if (base_level.row_pitch_bytes < width_blocks * bytes_per_block) {
+    return;
+  }
+  const uint8_t* guest_ptr = shared_memory().memory().TranslatePhysical<uint8_t*>(guest_address);
+  if (!guest_ptr) {
+    return;
+  }
+  std::vector<uint8_t> linear(size_t(width_blocks) * height_blocks * bytes_per_block);
+  auto copy_swap = [&key](void* out, const void* in, size_t size) {
+    texture_conversion::CopySwapBlock(key.endianness, out, in, size);
+  };
+  if (key.tiled) {
+    texture_conversion::UntileInfo info;
+    info.offset_x = 0;
+    info.offset_y = 0;
+    info.width = width_blocks;
+    info.height = height_blocks;
+    info.input_pitch = base_level.row_pitch_bytes / bytes_per_block;
+    info.output_pitch = width_blocks;
+    info.input_format_info = format_info;
+    info.output_format_info = format_info;
+    info.copy_callback = copy_swap;
+    texture_conversion::Untile(linear.data(), guest_ptr, &info);
+  } else {
+    for (uint32_t y = 0; y < height_blocks; ++y) {
+      const uint8_t* src_row = guest_ptr + size_t(y) * base_level.row_pitch_bytes;
+      uint8_t* dst_row = linear.data() + size_t(y) * width_blocks * bytes_per_block;
+      for (uint32_t x = 0; x < width_blocks; ++x) {
+        copy_swap(dst_row + size_t(x) * bytes_per_block, src_row + size_t(x) * bytes_per_block,
+                  bytes_per_block);
+      }
+    }
+  }
+
+  Dbz3TextureDumpState& state = Dbz3DumpState();
+  const int32_t max_dumps = REXCVAR_GET(dbz3_texture_dump_max);
+  if (max_dumps > 0 && state.count >= uint32_t(max_dumps)) {
+    if (!state.disabled_logged) {
+      state.disabled_logged = true;
+      REXGPU_INFO("dbz3: volcado de texturas: alcanzado el limite de {} texturas", max_dumps);
+    }
+    return;
+  }
+  const uint64_t hash = XXH3_64bits(linear.data(), linear.size());
+  std::string name = fmt::format("{:016X}_{}x{}_{}.dds", hash, width, height,
+                                 std::string(reinterpret_cast<const char*>(&fourcc), 4));
+  if (!state.written.insert(name).second) {
+    return;
+  }
+  const std::filesystem::path dir = std::filesystem::absolute(dump_dir);
+  std::filesystem::create_directories(dir);
+  if (!Dbz3WriteDds(dir / name, linear.data(), uint32_t(linear.size()), width, height, fourcc)) {
+    return;
+  }
+  ++state.count;
+  FILE* index = filesystem::OpenFile(dir / "index.jsonl", "ab");
+  if (index) {
+    const std::string line = fmt::format(
+        "{{\"file\":\"{}\",\"hash\":\"{:016X}\",\"width\":{},\"height\":{},\"format\":{},"
+        "\"tiled\":{},\"mips\":{},\"guest_address\":\"0x{:08X}\"}}\n",
+        name, hash, width, height, uint32_t(key.format), key.tiled ? 1 : 0, key.mip_max_level,
+        guest_address);
+    std::fwrite(line.data(), 1, line.size(), index);
+    std::fclose(index);
+  }
+  if (state.count == 1) {
+    REXGPU_INFO("dbz3: volcado de texturas activado en '{}'", dir.string());
+  }
 }
 
 bool D3D12TextureCache::InitializeTextureUpscale() {

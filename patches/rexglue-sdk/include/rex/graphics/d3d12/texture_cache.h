@@ -395,6 +395,14 @@ class D3D12TextureCache final : public TextureCache {
   mutable std::unordered_map<TextureKey, uint8_t, TextureKey::Hasher> upscale_granted_keys_;
   bool UpscaleBudgetAllows(const TextureKey& key) const;
 
+  // DBZ3 HD Collection: volcado dev de texturas (autoría de "packs" al estilo
+  // PCSX2). Escribe el bitmap original comprimido de la textura como DDS +
+  // metadatos, sin decodificar ni tocar nada del guest. Activado por la cvar
+  // `dbz3_texture_dump` (ruta); off por defecto.
+  void DumpTextureToDds(const TextureKey& key,
+                        const texture_util::TextureGuestLayout& guest_layout,
+                        uint32_t guest_address) const;
+
  public:
   // Numero de texturas que se han subido de resolucion desde el arranque
   // (diagnostico: aparece en la linea `dbz3: perf ... upx=` cuando es > 0).

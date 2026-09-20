@@ -35,16 +35,10 @@
 REXCVAR_DEFINE_BOOL(d3d12_allow_variable_refresh_rate_and_tearing, true, "UI/D3D12",
                     "Allow variable refresh rate and tearing");
 
-// Maximum host present rate in FPS (0 = uncapped). This only throttles how
-// often the swap chain is presented; it does NOT affect the guest vblank
-// pacing / game speed (that's the `vsync` cvar, which the launcher keeps at
-// 60 Hz). Useful to reduce GPU load and heat on weak/older hardware (e.g. a
-// 30 FPS cap) or to even out frame delivery on high-refresh panels. Set by the
-// launcher's "Frame cap" option via the shared dbz3_frame_cap cvar.
-REXCVAR_DEFINE_INT32(frame_cap, 0, "UI/Presenter",
-                     "Maximum host present rate in FPS (0 = uncapped)")
-    .range(0, 1000)
-    .lifecycle(rex::cvar::Lifecycle::kHotReload);
+// Maximum host present rate in FPS (0 = uncapped). Defined in presenter.cpp
+// (compiled by every backend) to avoid a duplicate symbol when both the D3D12
+// and the Vulkan presenter are built; here we only declare it.
+REXCVAR_DECLARE(int32_t, frame_cap);
 
 // DBZ3: instrumentacion de rendimiento. Escribe una linea cada 5 segundos con
 // los FPS reales de presentacion, el peor frame del intervalo y los ajustes que

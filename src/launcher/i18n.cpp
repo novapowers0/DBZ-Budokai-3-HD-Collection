@@ -37,6 +37,7 @@ static const Entry kTable[] = {
     {"Video", "Video", "Video", "Vidéo"},
     {"Escalado", "Upscaling", "Skalierung", "Mise à l'échelle"},
     {"Audio", "Audio", "Audio", "Audio"},
+    {"Volcado de texturas para mods (dev)", "Dump texture per mod (dev)", "Textur-Dump fuer Mods (Dev)", "Dump de textures pour mods (dev)"},
     {"Controles", "Controlli", "Steuerung", "Contrôles"},
     {"Mods", "Mods", "Mods", "Mods"},
     {"Cambio de modelo", "Cambio modello", "Modelltausch", "Échange de modèle"},

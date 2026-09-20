@@ -111,15 +111,15 @@ text = text.replace(
 text = text.replace(
     'REXCVAR_DEFINE_BOOL(vulkan_allow_present_mode_fifo_relaxed, true, "UI/Vulkan",',
     'REXCVAR_DEFINE_BOOL(vulkan_allow_present_mode_fifo_relaxed, false, "UI/Vulkan",', 1)
-if 'REXCVAR_DEFINE_INT32(frame_cap' not in text:
-    marker = 'REXCVAR_DEFINE_BOOL(vulkan_allow_present_mode_fifo_relaxed'
-    marker_pos = text.find(marker)
-    if marker_pos < 0:
-        raise SystemExit('Vulkan presenter cvar marker not found')
-    end_pos = text.find(');', marker_pos)
-    if end_pos < 0:
-        raise SystemExit('Vulkan presenter FIFO cvar terminator not found')
-    text = text[:end_pos + 2] + '''\nREXCVAR_DEFINE_INT32(frame_cap, 0, "UI/Presenter",\n                     "Maximum host present rate in FPS (0 = uncapped)" );\n''' + text[end_pos + 2:]
+# frame_cap is now DEFINED in the shared presenter.cpp (all backends compile
+# it) and only DECLARED in each presenter, so both presenters can be linked
+# together without a duplicate FLAGS_frame_cap_storage_ symbol. The definition
+# itself ships in patches/, so here we only fix up the Vulkan presenter's
+# declaration if an older tree still defines it there.
+text = text.replace(
+    'REXCVAR_DEFINE_INT32(frame_cap, 0, "UI/Presenter",\n'
+    '                     "Maximum host present rate in FPS (0 = uncapped)" );',
+    'REXCVAR_DECLARE(int32_t, frame_cap);', 1)
 text = text.replace(
     '  if (REXCVAR_GET(vulkan_allow_present_mode_immediate) &&',
     '  const bool host_present_cap = int32_t(REXCVAR_GET(frame_cap)) > 0;\n'

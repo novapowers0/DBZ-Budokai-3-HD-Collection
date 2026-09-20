@@ -63,6 +63,13 @@ lógica de región/mods, y runtime.
 - `docs/SESION_PACING_WINDOWS_2026-09-20.md` - pacing Windows tras el fix
   Vulkan de Linux: por que D3D12 **no** tiene el bug del bucle de presents (sin
   cambios de codigo; el `frame_cap` se queda al inicio de `PaintAndPresentImpl`)
+- `docs/SESION_TEXTURAS_PACK_2026-09-20.md` - **packs de texturas tipo PCSX2:
+  Fase 1 (volcado dev)**: cvar `dbz3_texture_dump` (DDS + `index.jsonl` del
+  bitmap original comprimido, sin decodificar) + casilla en el tab Dev +
+  `awo_tools/texture_dump_import.py` (DDS->PNG y organizacion por personaje
+  cazando el `#AZT` por hash). **NO publicado** en ningun release (trabajo en
+  curso). El `frame_cap` pasa a definirse en `src/ui/presenter.cpp` (comun a los
+  backends) para evitar el simbolo duplicado al compilar D3D12+Vulkan juntos
 - `docs/PLAN_1.1.1.md`, `docs/PLAN_LINUX.md` — planes de depurado y port Linux
 - `docs/MIGRACION_REXGLUE_010.md` — migración SDK 0.9→0.10 (leer ANTES de tocar el SDK)
 - `docs/01_estructura/HISTORICO_AGENTS.md` — historial verbatim de sesiones (solo bajo demanda)

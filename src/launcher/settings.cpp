@@ -1828,6 +1828,15 @@ void SetPerfLogging(bool enabled) { SetSdkBool("dbz3_perf_logging", enabled); }
 bool IoReadahead() { return GetSdkBool("dbz3_io_readahead"); }
 void SetIoReadahead(bool enabled) { SetSdkBool("dbz3_io_readahead", enabled); }
 
+// Dev texture dump (runtime `dbz3_texture_dump`, a directory path): writes each
+// unique guest texture as a DDS + index.jsonl so texture packs can be authored.
+// Enabled while the path is non-empty; stored under the writable user data root.
+bool TextureDumpEnabled() { return !GetSdkString("dbz3_texture_dump").empty(); }
+void SetTextureDumpEnabled(bool enabled) {
+  SetSdkString("dbz3_texture_dump",
+               enabled ? (UserDataRoot() / "texture_dump").string() : std::string());
+}
+
 // Focus behaviour. MuteUnfocused is registered by the SDK's audio driver
 // (dbz3_mute_unfocused) and forwarded through the SDK registry; the dim option
 // only exists in the launcher and is read by the in-game overlay.

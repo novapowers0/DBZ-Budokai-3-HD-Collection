@@ -798,6 +798,10 @@ void LauncherDialog::OnDraw(ImGuiIO& io) {
       DrawModsTab();
       ImGui::EndTabItem();
     }
+    if (ImGui::BeginTabItem(i18n::T("Mods nativos", "Native mods"))) {
+      DrawNativeModsTab();
+      ImGui::EndTabItem();
+    }
     if (ImGui::BeginTabItem(i18n::T("Cambio de modelo", "Model Swap"))) {
       DrawModelSwapTab();
       ImGui::EndTabItem();
@@ -1577,6 +1581,95 @@ void LauncherDialog::DrawInputTab() {
       "de ajustes en juego (F4).",
       "Full button remapping is also available in the in-game Settings overlay (F4)."));
 
+  ImGui::EndChild();
+}
+
+void LauncherDialog::DrawNativeModsTab() {
+  ImGui::BeginChild("##native_mods_settings", ImVec2(0, -kFooterHeight), true);
+  ImGui::SeparatorText(i18n::T("Mods nativos", "Native mods"));
+  ImGui::TextWrapped("%s", i18n::T(
+      "Estos mods cambian el progreso o el comportamiento del juego. No sustituyen modelos, texturas ni archivos AFS.",
+      "These mods change game progress or behavior. They do not replace models, textures, or AFS files."));
+  ImGui::Spacing();
+
+  const auto saves = dbz3::FindNativeSaveFiles();
+  if (saves.empty()) {
+    ImGui::TextColored(kDragonOrangeDim, "%s", i18n::T(
+        "No se encontro ningun guardado. Arranca el juego y guarda al menos una partida; despues vuelve aqui.",
+        "No save was found. Start the game and save at least once, then come back here."));
+  } else {
+    ImGui::TextDisabled(i18n::T("Guardados detectados: %d", "Detected saves: %d"),
+                       static_cast<int>(saves.size()));
+    for (size_t i = 0; i < saves.size(); ++i) {
+      const auto& save = saves[i];
+      ImGui::BulletText("%s", save.parent_path().filename().string().c_str());
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("%s", save.string().c_str());
+      }
+      if (!dbz3::IsSupportedNativeSave(save)) {
+        ImGui::SameLine();
+        ImGui::TextColored(kDragonOrangeDim, "%s",
+                           i18n::T("formato no reconocido", "unknown format"));
+      } else {
+        ImGui::SameLine();
+        ImGui::PushID(static_cast<int>(i));
+        if (ImGui::SmallButton(i18n::T("Crear copia de seguridad",
+                                       "Create backup"))) {
+          std::filesystem::path backup;
+          std::string error;
+          if (dbz3::BackupNativeSave(save, backup, error)) {
+            native_mods_status_ = std::string(i18n::T(
+                "Copia creada: ", "Backup created: ")) + backup.string();
+          } else {
+            native_mods_status_ = std::string(i18n::T(
+                "No se pudo crear la copia: ", "Backup failed: ")) + error;
+          }
+        }
+        ImGui::PopID();
+      }
+    }
+  }
+
+  ImGui::Separator();
+  for (const auto& mod : dbz3::NativeModCatalog()) {
+    ImGui::PushID(mod.id.c_str());
+    ImGui::Text("%s", mod.name.c_str());
+    ImGui::SameLine();
+    ImGui::TextDisabled("[%s]", mod.scope.c_str());
+    ImGui::TextWrapped("%s", mod.description.c_str());
+    if (mod.state == dbz3::NativeModState::kReady) {
+      if (ImGui::Button(i18n::T("Aplicar", "Apply"))) {
+        native_mods_status_ = std::string(i18n::T(
+            "Este mod aun necesita validacion del formato del guardado.",
+            "This mod still needs save-format validation."));
+      }
+    } else if (mod.state == dbz3::NativeModState::kNeedsResearch) {
+      ImGui::BeginDisabled();
+      ImGui::Button(i18n::T("En investigacion", "Under research"));
+      ImGui::EndDisabled();
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("%s", i18n::T(
+            "No se activa hasta validar el guardado y su copia de seguridad. Esto evita corromper tu partida.",
+            "It will not activate until the save format and backup flow are validated. This prevents save corruption."));
+      }
+    } else {
+      ImGui::BeginDisabled();
+      ImGui::Button(i18n::T("Sin codigo encontrado", "No known code"));
+      ImGui::EndDisabled();
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("%s", i18n::T(
+            "No existe actualmente un parche Xenia conocido para este juego. Se necesita investigacion propia del guest.",
+            "There is currently no known Xenia patch for this game. Guest-specific research is required."));
+      }
+    }
+    ImGui::Separator();
+    ImGui::PopID();
+  }
+
+  if (!native_mods_status_.empty()) {
+    ImGui::TextColored(ImVec4(0.35f, 0.85f, 0.35f, 1.0f), "%s",
+                       native_mods_status_.c_str());
+  }
   ImGui::EndChild();
 }
 
@@ -2556,6 +2649,21 @@ void LauncherDialog::DrawDevTab() {
         "Reads bigger chunks at once and serves the following reads from RAM: "
         "helps on mechanical disks and during loads. Disabled automatically "
         "while mods are installed."));
+  }
+
+  bool texdump = dbz3::settings::TextureDumpEnabled();
+  if (ImGui::Checkbox(i18n::T("Volcado de texturas para mods (dev)",
+                              "Texture dump for mods (dev)"), &texdump)) {
+    dbz3::settings::SetTextureDumpEnabled(texdump);
+  }
+  if (ImGui::IsItemHovered()) {
+    ImGui::SetTooltip("%s", i18n::T(
+        "Escribe cada textura unica como DDS + index.jsonl para autorar packs de "
+        "texturas (estilo PCSX2). Solo para desarrollo; requiere reiniciar y no "
+        "tiene efecto con la mejora de texturas HD activada.",
+        "Writes every unique texture as DDS + index.jsonl for authoring texture "
+        "packs (PCSX2-style). Development only; requires a restart and has no "
+        "effect while HD texture enhancement is on."));
   }
 
   // Ajuste avanzado de la mejora de texturas: cuanto se gasta en VRAM. Se

@@ -41,6 +41,21 @@ REXCVAR_DEFINE_INT32(present_safe_area_y, 90, "UI/Presenter",
                      "Vertical safe area percentage (0-100)")
     .range(0, 100);
 
+// Maximum host present rate in FPS (0 = uncapped). This only throttles how
+// often the swap chain is presented; it does NOT affect the guest vblank
+// pacing / game speed (that's the `vsync` cvar, which the launcher keeps at
+// 60 Hz). Set by the launcher's "Frame cap" option via dbz3_frame_cap.
+//
+// Defined HERE (a file compiled by every backend) rather than in the D3D12 or
+// Vulkan presenter: defining it in both presenters produced a duplicate
+// `FLAGS_frame_cap_storage_` symbol on builds that compile both backends
+// (Windows), while a Vulkan-only build has no D3D12 presenter. The backends
+// only declare it.
+REXCVAR_DEFINE_INT32(frame_cap, 0, "UI/Presenter",
+                     "Maximum host present rate in FPS (0 = uncapped)")
+    .range(0, 1000)
+    .lifecycle(rex::cvar::Lifecycle::kHotReload);
+
 #if defined(REX_HAS_FIDELITYFX_SDK)
 REXCVAR_DEFINE_STRING(present_effect, "bilinear", "UI/Presenter",
                       "Guest output effect: bilinear, cas, fsr, fsr2, fsr3")
