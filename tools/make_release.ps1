@@ -131,6 +131,12 @@ if (Test-Path -LiteralPath $modcenter) {
             Copy-Item -LiteralPath (Join-Path $modcenter $f) (Join-Path $mcd $f)
         }
     }
+    # Texture-pack helper: converts the dev texture dump (DDS) to PNG and
+    # organizes it by character using the AFS #AZT hashes.
+    $importer = Join-Path $root "awo_tools\texture_dump_import.py"
+    if (Test-Path -LiteralPath $importer) {
+        Copy-Item -LiteralPath $importer (Join-Path $mcd "texture_dump_import.py")
+    }
     if (Test-Path -LiteralPath (Join-Path $modcenter "tools")) {
         Copy-Item -LiteralPath (Join-Path $modcenter "tools") (Join-Path $mcd "tools") -Recurse
     }

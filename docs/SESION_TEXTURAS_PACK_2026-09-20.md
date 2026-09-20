@@ -5,6 +5,12 @@
 > valida la identidad por hash antes de construir el cargador del pack.
 > El cargador (reemplazo) es la Fase 2 y aún no está hecho.
 
+**Publicación**: el 2026-09-20 21:54 se **reemplazó el asset Windows de la
+release v1.2.6** (`DBZ-Budokai-3-HD-Collection-v1.2.6.zip`, 22.090.591 B, digest
+`10df4bce…`) para incluirlo, junto con el helper `mod center hd/
+texture_dump_import.py`. Sigue **desactivado por defecto** (tab Dev). El tarball
+Linux de v1.2.6 no cambia. `verify_release.ps1 -Version v1.2.6` = OK.
+
 ---
 
 ## 1. Idea y por qué NO se toca el bin

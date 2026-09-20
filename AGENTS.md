@@ -72,7 +72,9 @@ lógica de región/mods, y runtime.
   registro de cvars: la ruta llega por el `dbz3_user.toml` (el launcher define
   la misma cvar `dbz3_texture_dump`). **Validado**: 138 DDS / 3,4 MB en la
   intro; 7 texturas casadas con bins 70-110 y puestas en su carpeta de
-  personaje. **NO publicado** en ningun release (trabajo en curso). El
+  personaje. **PUBLICADO en el asset Windows de v1.2.6** (asset reemplazado
+  2026-09-20 21:54; zip 22.090.591 B; el tarball Linux de v1.2.6 no cambia;
+  desactivado por defecto). El
   `frame_cap` pasa a definirse en `src/ui/presenter.cpp` (comun a los backends)
   para evitar el simbolo duplicado al compilar D3D12+Vulkan juntos
 - `docs/PLAN_1.1.1.md`, `docs/PLAN_LINUX.md` — planes de depurado y port Linux
@@ -96,6 +98,12 @@ lógica de región/mods, y runtime.
   irreparable) — cubre los logs de Prince Vegeta (v1.2.1). Doc:
   `docs/SESION_TOML_Y_UX_2026-09-20.md`. Titulo: "1.2.6 - Mejora de texturas HD
   pulida + ajustes que se autoreparan".
+  **Asset Windows reemplazado 2026-09-20 21:54** (mismo tag; zip 22.090.591 B,
+  digest `10df4bce…`) para incluir el **volcado dev de texturas** (carpeta
+  elegible, por defecto `D:\Proyectos IA\DBZ B3 DDS`; helper
+  `texture_dump_import.py` en `mod center hd/`) — ver
+  `docs/SESION_TEXTURAS_PACK_2026-09-20.md`. El tarball Linux de v1.2.6 no
+  cambia.
 - **(2026-09-19) v1.2.5 PUBLICADA (no-Latest tras la 1.2.6)**: release
   `…/releases/tag/v1.2.5` (`DBZ-Budokai-3-HD-Collection-v1.2.5.zip`; exe del
   build **dual**, FileVersion `1.2.5.0`; PortForge `defaultVersion 1.2.5`).
