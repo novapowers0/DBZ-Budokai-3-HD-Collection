@@ -22,6 +22,11 @@ insert = '''namespace std::chrono {
 #define REXGLUE_LINUX_CLOCK_TIME_CONVERSION 1
 template <class, class>
 struct clock_time_conversion {};
+
+template <class DestClock, class SourceClock, class Duration>
+auto clock_cast(const std::chrono::time_point<SourceClock, Duration>& t) {
+  return clock_time_conversion<DestClock, SourceClock>{}(t);
+}
 #endif
 '''
 if needle not in text:
