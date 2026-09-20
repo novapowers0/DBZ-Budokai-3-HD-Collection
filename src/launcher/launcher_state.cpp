@@ -2659,11 +2659,41 @@ void LauncherDialog::DrawDevTab() {
   if (ImGui::IsItemHovered()) {
     ImGui::SetTooltip("%s", i18n::T(
         "Escribe cada textura unica como DDS + index.jsonl para autorar packs de "
-        "texturas (estilo PCSX2). Solo para desarrollo; requiere reiniciar y no "
-        "tiene efecto con la mejora de texturas HD activada.",
+        "texturas (estilo PCSX2). Ocupa cientos de MB: elige una carpeta con "
+        "espacio. Solo para desarrollo; requiere reiniciar y no tiene efecto con "
+        "la mejora de texturas HD activada.",
         "Writes every unique texture as DDS + index.jsonl for authoring texture "
-        "packs (PCSX2-style). Development only; requires a restart and has no "
-        "effect while HD texture enhancement is on."));
+        "packs (PCSX2-style). It can take hundreds of MB: pick a folder with "
+        "room. Development only; requires a restart and has no effect while HD "
+        "texture enhancement is on."));
+  }
+  if (texdump) {
+    // Carpeta destino: el volcado puede ocupar cientos de MB, asi que nunca
+    // vive en el disco de instalacion por defecto: el usuario la elige y se
+    // recuerda entre sesiones (`dbz3_texture_dump_dir`).
+    std::string dir = dbz3::settings::TextureDumpDir();
+    if (dir.empty()) dir = dbz3::settings::DefaultTextureDumpDir();
+    static char texdump_buf[512];
+    std::snprintf(texdump_buf, sizeof(texdump_buf), "%s", dir.c_str());
+    ImGui::SetNextItemWidth(-160.0f);
+    if (ImGui::InputText(i18n::T("Carpeta del volcado", "Dump folder"),
+                         texdump_buf, sizeof(texdump_buf))) {
+      dbz3::settings::SetTextureDumpDir(texdump_buf);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button(i18n::T("Elegir carpeta...", "Choose folder..."))) {
+      std::string picked;
+      if (PickFolder(picked, dir) && !picked.empty()) {
+        dbz3::settings::SetTextureDumpDir(picked);
+      }
+    }
+    if (ImGui::IsItemHovered()) {
+      ImGui::SetTooltip("%s", i18n::T(
+          "Carpeta donde se escriben los DDS. Elige una unidad con espacio "
+          "libre; el volcado puede ocupar cientos de MB.",
+          "Folder the DDS files are written to. Pick a drive with free space; "
+          "the dump can take hundreds of MB."));
+    }
   }
 
   // Ajuste avanzado de la mejora de texturas: cuanto se gasta en VRAM. Se

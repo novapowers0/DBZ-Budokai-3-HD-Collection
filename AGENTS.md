@@ -64,12 +64,17 @@ lógica de región/mods, y runtime.
   Vulkan de Linux: por que D3D12 **no** tiene el bug del bucle de presents (sin
   cambios de codigo; el `frame_cap` se queda al inicio de `PaintAndPresentImpl`)
 - `docs/SESION_TEXTURAS_PACK_2026-09-20.md` - **packs de texturas tipo PCSX2:
-  Fase 1 (volcado dev)**: cvar `dbz3_texture_dump` (DDS + `index.jsonl` del
-  bitmap original comprimido, sin decodificar) + casilla en el tab Dev +
-  `awo_tools/texture_dump_import.py` (DDS->PNG y organizacion por personaje
-  cazando el `#AZT` por hash). **NO publicado** en ningun release (trabajo en
-  curso). El `frame_cap` pasa a definirse en `src/ui/presenter.cpp` (comun a los
-  backends) para evitar el simbolo duplicado al compilar D3D12+Vulkan juntos
+  Fase 1 (volcado dev)**: cvar `dbz3_texture_dump` (carpeta elegible por el
+  usuario, por defecto `D:\Proyectos IA\DBZ B3 DDS`; DDS + `index.jsonl` del
+  bitmap original comprimido, sin decodificar) + casilla y selector de carpeta en
+  el tab Dev + `awo_tools/texture_dump_import.py` (DDS->PNG y organizacion por
+  personaje cazando el `#AZT` por hash). 🔴 El plugin GPU tiene su PROPIO
+  registro de cvars: la ruta llega por el `dbz3_user.toml` (el launcher define
+  la misma cvar `dbz3_texture_dump`). **Validado**: 138 DDS / 3,4 MB en la
+  intro; 7 texturas casadas con bins 70-110 y puestas en su carpeta de
+  personaje. **NO publicado** en ningun release (trabajo en curso). El
+  `frame_cap` pasa a definirse en `src/ui/presenter.cpp` (comun a los backends)
+  para evitar el simbolo duplicado al compilar D3D12+Vulkan juntos
 - `docs/PLAN_1.1.1.md`, `docs/PLAN_LINUX.md` — planes de depurado y port Linux
 - `docs/MIGRACION_REXGLUE_010.md` — migración SDK 0.9→0.10 (leer ANTES de tocar el SDK)
 - `docs/01_estructura/HISTORICO_AGENTS.md` — historial verbatim de sesiones (solo bajo demanda)

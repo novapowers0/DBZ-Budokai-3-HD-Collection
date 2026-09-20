@@ -460,9 +460,14 @@ void SetIoReadahead(bool enabled);
 
 // Dev texture dump (runtime `dbz3_texture_dump`, a directory path): writes each
 // unique guest texture as a DDS + index.jsonl for authoring texture packs
-// (PCSX2-style). Off by default; requires a restart.
+// (PCSX2-style). Off by default; requires a restart. The dump is large, so the
+// folder is user-chosen (`dbz3_texture_dump`, persisted) instead of living under
+// user_data on the install drive.
 bool TextureDumpEnabled();
 void SetTextureDumpEnabled(bool enabled);
+std::string TextureDumpDir();
+void SetTextureDumpDir(const std::string& dir);
+std::string DefaultTextureDumpDir();
 
 // Mute the mix while the game window is in the background (SDK
 // `dbz3_mute_unfocused`, read by the audio callback). Standard emulator

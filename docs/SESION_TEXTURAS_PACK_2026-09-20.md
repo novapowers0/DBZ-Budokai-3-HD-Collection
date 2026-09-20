@@ -47,15 +47,22 @@ Fichero: `rexglue-sdk-0.10/src/graphics/d3d12/texture_cache.cpp`.
 - La llamada está dentro del bucle de carga, justo tras calcular
   `guest_address`, solo para el nivel base (`is_base && level_first == 0`).
 
-## 3. UI del launcher (tab Dev)
+## 3. UI del launcher (tab Dev) y la carpeta
 
-- `src/launcher/settings.{h,cpp}`: `TextureDumpEnabled()` /
-  `SetTextureDumpEnabled()`. Al activar, fija el cvar del SDK
-  `dbz3_texture_dump` a `<raíz de datos de usuario>/texture_dump`; al desactivar,
-  lo deja vacío.
+- **🔴 Descubrimiento clave**: el plugin GPU (`rexgpu-xenos.dll`) tiene su
+  **propio registro de cvars**, separado del ejecutable; `SetFlagByName` desde el
+  exe **no** llega al plugin. El plugin sí lee `dbz3_user.toml` al arrancar, así
+  que **el TOML es el puente**. Por eso el launcher define una cvar con el
+  **mismo nombre** que la del plugin (`dbz3_texture_dump`, en
+  `src/launcher/settings.cpp`): se persiste al TOML y el plugin la lee.
+- `src/launcher/settings.{h,cpp}`: `TextureDumpEnabled()`, `TextureDumpDir()`,
+  `SetTextureDumpDir()`, `SetTextureDumpEnabled()` y `DefaultTextureDumpDir()`.
+- **La carpeta NO vive en el disco de instalación**: puede ocupar cientos de MB,
+  así que el usuario la elige (`dbz3_texture_dump`) y se recuerda. Por defecto se
+  sugiere `D:\Proyectos IA\DBZ B3 DDS`.
 - `src/launcher/launcher_state.cpp` (tab **Dev**): casilla
-  "Volcado de texturas para mods (dev)" con tooltip. Requiere reiniciar
-  (el cvar es `kRequiresRestart`).
+  "Volcado de texturas para mods (dev)" + campo de carpeta + botón
+  "Elegir carpeta...". Requiere reiniciar (el cvar es `kRequiresRestart`).
 - i18n: entrada nueva en `src/launcher/i18n.cpp`.
 
 ## 4. Importar el volcado y organizarlo (offline)
@@ -109,6 +116,20 @@ de texturas.
 - **Fase 3 (launcher + conflicto)**: activar/desactivar pack y **exclusión mutua
   con aviso fuerte** si hay a la vez un pack de texturas HD y la mejora de
   texturas HD en runtime (ya se evita el solape del volcado; falta el del pack).
+
+## 7.bis VALIDACIÓN (2026-09-20)
+
+Con `dbz3_texture_dump = "D:\\...\\run4"` en el TOML y `skip_launcher`:
+
+- **138 DDS escritos** (todos DXT3, `fmt=19`), **3,4 MB**, en segundos tras
+  cargar la intro/título. `index.jsonl` con 137 líneas (hash, dims, formato,
+  `tiled`, mips, dirección guest). Cabecera DDS válida.
+- El importador convirtió 137 DDS → PNG sin error.
+- Con `--afs us\data_cmn.afs --bins 70-110 --max-bins 25` (19 bins
+  escaneados): **7 texturas identificadas** contra el `#AZT` y colocadas en su
+  carpeta de personaje. Confirma la cadena completa: volcado (DDS) → casado por
+  hash del bitmap → PNG organizado por personaje.
+- **C: intacto**: todo el volcado va a la carpeta elegida (D:).
 
 ## 8. Ficheros tocados
 

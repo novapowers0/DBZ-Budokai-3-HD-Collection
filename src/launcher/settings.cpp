@@ -302,6 +302,19 @@ REXCVAR_DEFINE_BOOL(dbz3_skip_launcher, false, "DBZ3/Dev",
                     "Skip the pre-game launcher and boot straight into the game")
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 
+// Destination folder for the dev texture dump. The dump can be hundreds of MB
+// (every unique texture as a DDS), so it must NOT default to the install/build
+// drive: the user picks a folder here and it is remembered across sessions.
+//
+// NOTE: this deliberately reuses the GPU plugin's cvar name
+// (`dbz3_texture_dump`, defined in rexgpu-xenos). The plugin reads its own
+// registry from `dbz3_user.toml` at startup, so this launcher-side cvar is what
+// persists the path to that file (the exe's registry and the plugin's are
+// separate; the TOML is the bridge).
+REXCVAR_DEFINE_STRING(dbz3_texture_dump, "", "DBZ3/Dev",
+                      "Folder for the dev texture dump (empty = off)")
+    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
+
 REXCVAR_DEFINE_STRING(dbz3_gpu_backend, DBZ3_DEFAULT_GPU_BACKEND, "DBZ3/Video",
                       "Host graphics backend: d3d12 or vulkan")
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
@@ -1830,11 +1843,25 @@ void SetIoReadahead(bool enabled) { SetSdkBool("dbz3_io_readahead", enabled); }
 
 // Dev texture dump (runtime `dbz3_texture_dump`, a directory path): writes each
 // unique guest texture as a DDS + index.jsonl so texture packs can be authored.
-// Enabled while the path is non-empty; stored under the writable user data root.
-bool TextureDumpEnabled() { return !GetSdkString("dbz3_texture_dump").empty(); }
+// Enabled while the path is non-empty. The dump can be huge (hundreds of MB),
+// so it lives OUTSIDE the project/build tree: a user-chosen folder (persisted
+// via `dbz3_texture_dump_dir`, empty = off) rather than under user_data.
+bool TextureDumpEnabled() { return !REXCVAR_GET(dbz3_texture_dump).empty(); }
+std::string TextureDumpDir() { return REXCVAR_GET(dbz3_texture_dump); }
+void SetTextureDumpDir(const std::string& dir) { REXCVAR_SET(dbz3_texture_dump, dir); }
+// Suggested location when the user enables the dump without picking a folder:
+// next to the project (a sibling of the install drive, where there is room).
+std::string DefaultTextureDumpDir() {
+  return (std::filesystem::path("D:/") / "Proyectos IA" / "DBZ B3 DDS").string();
+}
 void SetTextureDumpEnabled(bool enabled) {
-  SetSdkString("dbz3_texture_dump",
-               enabled ? (UserDataRoot() / "texture_dump").string() : std::string());
+  if (!enabled) {
+    REXCVAR_SET(dbz3_texture_dump, std::string());
+    return;
+  }
+  if (REXCVAR_GET(dbz3_texture_dump).empty()) {
+    REXCVAR_SET(dbz3_texture_dump, DefaultTextureDumpDir());
+  }
 }
 
 // Focus behaviour. MuteUnfocused is registered by the SDK's audio driver
