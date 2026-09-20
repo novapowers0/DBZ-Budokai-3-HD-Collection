@@ -319,7 +319,6 @@ REXCVAR_DECLARE(std::string, present_effect);
 REXCVAR_DECLARE(uint32_t, user_language);
 REXCVAR_DECLARE(bool, audio_mute);
 REXCVAR_DECLARE(bool, host_present_from_non_ui_thread);
-REXCVAR_DECLARE(bool, d3d12_allow_variable_refresh_rate_and_tearing);
 REXCVAR_DECLARE(double, video_mode_refresh_rate);
 // dbz1_diag_logging lives in rexruntime.dll (shared diagnostic flag). It IS
 // exported by WINDOWS_EXPORT_ALL_SYMBOLS, so the exe can link its accessor and
@@ -1975,7 +1974,6 @@ void ApplyRuntimeSettingsToSdk(bool for_game) {
   // The cap is applied only for the game: the launcher keeps its own ImGui
   // repaints uncapped (frame_cap stays 0), preserving the pre-game UI behavior.
   REXCVAR_SET(host_present_from_non_ui_thread, true);
-  REXCVAR_SET(d3d12_allow_variable_refresh_rate_and_tearing, VrrEnabled());
   // The game paces its main loop by the guest vblank; keep it at 60 Hz (never
   // raise it or the game logic would run faster than intended).
   REXCVAR_SET(video_mode_refresh_rate, 60.0);
@@ -2003,7 +2001,7 @@ void ApplyRuntimeSettingsToSdk(bool for_game) {
       GetSdkBool("dbz3_mute_unfocused") ? "true" : "false",
       DimUnfocused() ? "true" : "false",
       REXCVAR_GET(host_present_from_non_ui_thread) ? "true" : "false",
-      REXCVAR_GET(d3d12_allow_variable_refresh_rate_and_tearing) ? "true" : "false",
+      GetSdkBool("d3d12_allow_variable_refresh_rate_and_tearing") ? "true" : "false",
       for_game ? GetSdkInt("frame_cap") : 0);
 }
 
