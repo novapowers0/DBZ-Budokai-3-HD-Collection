@@ -1037,14 +1037,17 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
 
 - **DLLs canónicas del SDK 0.10** (NO reemplazar por las regeneradas del build):
   - Baseline (único en uso): `rexglue-sdk-0.10/out/win-amd64-baseline/` →
-    rexruntime **10910208** (con `audio_gain`, `dbz3_perf_logging`,
-    `dbz3_io_logging`/`dbz3_io_readahead`, la poda de logs y
-    `dbz3_mute_unfocused`), rexgpu-xenos
-    **6227456** (con `fg=` en la linea `perf`, el fix de mips del shader de
+    rexruntime **10910720** (con `audio_gain`, `dbz3_perf_logging`,
+    `dbz3_io_logging`/`dbz3_io_readahead`, la poda de logs,
+    `dbz3_mute_unfocused` y `frame_cap` definido en `src/ui/presenter.cpp`),
+    rexgpu-xenos
+    **6246400** (con `fg=` en la linea `perf`, el fix de mips del shader de
     upscale `texture_upscale_cs` + clamp anti-ringing, la extensión a RGBA8
-    nativas, el mínimo de tamaño `dbz3_upscale_min_size` y la guardia de
-    video `UpscaleBudgetAllows`; **sin** instrumentación de draw),
-    amd_fidelityfx_dx12 5413888. ⚠️ El **SHA256 varía
+    nativas, el mínimo de tamaño `dbz3_upscale_min_size`, la guardia de
+    video `UpscaleBudgetAllows` y el **volcado dev de texturas**
+    `dbz3_texture_dump`/`dbz3_texture_dump_max`; **sin** instrumentación de
+    draw), amd_fidelityfx_dx12 5413888. ⚠️ Los valores 10910208/6227456 son
+    los de la v1.2.6 publicada (antes de estos cambios, aun **no publicados**). ⚠️ El **SHA256 varía
     por build** (embebe timestamp) — comparar por **tamaño** o recompilar y
     copiar, no por hash fijo. ⚠️ Los tamaños de AMBAS DLL cambian cuando se
     recompila el SDK: el valor de referencia es el que hay en
