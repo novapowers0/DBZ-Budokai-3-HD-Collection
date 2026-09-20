@@ -112,6 +112,14 @@ if marker not in text:
         raise SystemExit("ReXApp OnPreSetup declaration not found")
     text = text.replace(needle, insert + needle, 1)
     path.write_text(text)
+
+member_marker = 'launch_invoked_'
+if member_marker not in text:
+    needle = '  std::thread module_thread_;\n'
+    replacement = needle + '  std::atomic<bool> launch_invoked_{false};\n'
+    if needle not in text:
+        raise SystemExit("ReXApp module thread member not found")
+    path.write_text(path.read_text().replace(needle, replacement, 1))
 PY
 fi
 grep -q 'REXGLUE_DUAL_IMAGE_RESOLVER' "$app_header"
