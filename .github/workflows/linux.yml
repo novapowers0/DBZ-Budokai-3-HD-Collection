@@ -33,7 +33,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y wget gnupg ca-certificates cmake ninja-build pkg-config \
-            libvulkan-dev vulkan-tools libx11-xcb-dev \
+            libvulkan-dev vulkan-tools libx11-xcb-dev libxcursor-dev \
+            libxinerama-dev libxi-dev libxrandr-dev libxss-dev libxtst-dev \
+            libxkbcommon-dev \
             libwayland-dev wayland-protocols libasound2-dev libpulse-dev \
             libpipewire-0.3-dev unzip zenity
           wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | \
@@ -69,7 +71,7 @@ jobs:
           cmake --preset linux-amd64 -S rexglue-sdk-0.10 \
             -DCMAKE_C_COMPILER=clang-18 \
             -DCMAKE_CXX_COMPILER=clang++-18 \
-            -DREXGLUE_ENABLE_FIDELITYFX=ON \
+            -DREXGLUE_ENABLE_FIDELITYFX=OFF \
             -DREXGLUE_ENABLE_TRACY=OFF \
             -DCMAKE_INSTALL_PREFIX="$GITHUB_WORKSPACE/rexglue-linux"
           cmake --build rexglue-sdk-0.10/out/build/linux-amd64 --config Release --parallel
