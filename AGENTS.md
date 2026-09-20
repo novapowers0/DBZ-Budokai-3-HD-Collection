@@ -1066,7 +1066,7 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
     `dbz3_io_logging`/`dbz3_io_readahead`, la poda de logs,
     `dbz3_mute_unfocused` y `frame_cap` definido en `src/ui/presenter.cpp`),
     rexgpu-xenos
-    **6299136** (con `fg=` en la linea `perf`, el fix de mips del shader de
+    **6334464** (con `fg=` en la linea `perf`, el fix de mips del shader de
     upscale `texture_upscale_cs` + clamp anti-ringing, la extensión a RGBA8
     nativas, el mínimo de tamaño `dbz3_upscale_min_size`, la guardia de
     video `UpscaleBudgetAllows`, el **volcado dev de texturas**

@@ -108,6 +108,7 @@ set_target_properties(rexgpu-xenos PROPERTIES
 
 target_include_directories(rexgpu-xenos PRIVATE
     ${REXGLUE_ROOT}/thirdparty/renderdoc
+    ${REXGLUE_ROOT}/thirdparty/stb  # stb_image.h for texture pack PNG decoding
     ${REXGLUE_ROOT}  # For thirdparty/dxbc/DXBCChecksum.h include
 )
 

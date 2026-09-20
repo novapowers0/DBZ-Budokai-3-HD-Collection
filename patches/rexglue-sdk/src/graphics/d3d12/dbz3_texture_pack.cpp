@@ -15,6 +15,14 @@
 #include <rex/filesystem.h>
 #include <rex/logging.h>
 
+// Decodificacion PNG (stb_image, solo PNG). El plugin no puede usar el helper
+// de rexui (visibilidad oculta entre DLLs), asi que compila su propia copia.
+#define STB_IMAGE_IMPLEMENTATION
+#define STBI_NO_STDIO
+#define STBI_ONLY_PNG
+#define STBI_NO_FAILURE_STRINGS
+#include <stb_image.h>
+
 namespace rex::graphics::d3d12 {
 
 // Lista de carpetas de pack activas, separadas por ';'. El launcher la escribe
@@ -278,12 +286,25 @@ bool Dbz3DecodePackImage(const std::filesystem::path& path, std::vector<uint8_t>
     file.insert(file.end(), buffer, buffer + got);
   }
   std::fclose(f);
-  if (file.size() < 128) {
+  if (file.size() < 4) {
     return false;
   }
   const uint32_t magic = uint32_t(file[0]) | (uint32_t(file[1]) << 8) | (uint32_t(file[2]) << 16) |
                          (uint32_t(file[3]) << 24);
-  if (magic != 0x20534444u) {  // "DDS "
+  if (magic != 0x20534444u) {  // "DDS " -> cualquier otra cosa: probar PNG.
+    int png_width = 0, png_height = 0, png_channels = 0;
+    stbi_uc* pixels = stbi_load_from_memory(file.data(), int(file.size()), &png_width, &png_height,
+                                            &png_channels, 4);
+    if (pixels == nullptr || png_width <= 0 || png_height <= 0) {
+      return false;
+    }
+    width = uint32_t(png_width);
+    height = uint32_t(png_height);
+    rgba.assign(pixels, pixels + size_t(png_width) * png_height * 4);
+    stbi_image_free(pixels);
+    return true;
+  }
+  if (file.size() < 128) {
     return false;
   }
   const uint32_t header_size = uint32_t(file[4]) | (uint32_t(file[5]) << 8) |
