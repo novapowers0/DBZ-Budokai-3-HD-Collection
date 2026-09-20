@@ -100,10 +100,14 @@ import re
 
 path = Path(sys.argv[1])
 text = path.read_text()
-pattern = r'(?m)^  (?:virtual )?const rex::PPCImageInfo& ResolveImageInfo\(const PathConfig& paths\) const \{'
-replacement = '  // REXGLUE_DUAL_IMAGE_RESOLVER: keep this hook virtual for dual-region clients.\n  virtual const rex::PPCImageInfo& ResolveImageInfo(const PathConfig& paths) const {'
+pattern = r'(?m)^\s*(?!//)(?P<signature>[^\n]*ResolveImageInfo\([^\n]*\) const \{)'
+replacement = '  // REXGLUE_DUAL_IMAGE_RESOLVER: keep this hook virtual for dual-region clients.\n  virtual \\g<signature>'
 if not re.search(pattern, text):
     raise SystemExit("ResolveImageInfo declaration not found")
+match = re.search(pattern, text)
+signature = match.group('signature')
+if signature.lstrip().startswith('virtual '):
+    raise SystemExit("unexpected virtual marker state")
 path.write_text(re.sub(pattern, replacement, text, count=1))
 PY
 fi
