@@ -19,7 +19,7 @@ nativo en Windows.
 | Plataforma | Windows |
 | Motor | Xbox 360 (ReXGlue SDK) |
 | Género | Lucha 3D |
-| Versión | v1.2.5 |
+| Versión | v1.2.6 |
 
 Copyright (c) 2026 **NovaPowers**. Licencia MIT (ver `LICENSE`).
 

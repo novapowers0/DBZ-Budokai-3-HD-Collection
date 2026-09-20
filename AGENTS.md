@@ -66,7 +66,22 @@ lógica de región/mods, y runtime.
 
 ## 3. ESTADO ACTUAL (RESUMEN EJECUTIVO)
 
-- **(2026-09-19) v1.2.5 PUBLICADA (Latest)**: release
+- **(2026-09-20) v1.2.6 PUBLICADA (Latest)**: release
+  `…/releases/tag/v1.2.6` (`DBZ-Budokai-3-HD-Collection-v1.2.6.zip`, ~22 MB;
+  `verify_release.ps1 -Version v1.2.6` = VERIFICACION OK; exe del build **dual**,
+  FileVersion `1.2.6.0`; PortForge `defaultVersion 1.2.6`). Agrupa el trabajo de
+  texturas HD **no publicado** (commit `f2f8f4e`) + la **reparacion del TOML/UX**
+  (commit `05745ab`): (a) **Mejora de texturas (experimental)**: fix de tirones
+  (mips en tiempo constante, `kXeMaxBlockSamples=8`), alcance RGBA8 nativas, tope
+  x3 y area en el tab Dev; (b) **HUD limpio** (`dbz3_upscale_min_size`=16 +
+  clamp anti-ringing en `texture_upscale_cs.hlsl`); (c) **UX anti-abuso de la
+  escala interna**: aviso + boton "Volver a nativo (1x)", presets que **no**
+  suben la escala; (d) **autorreparacion del TOML** (`ConfigLoadState`
+  kOk/kRepaired/kInvalid, aviso verde/rojo arriba de los tabs, `.bak` si es
+  irreparable) — cubre los logs de Prince Vegeta (v1.2.1). Doc:
+  `docs/SESION_TOML_Y_UX_2026-09-20.md`. Titulo: "1.2.6 - Mejora de texturas HD
+  pulida + ajustes que se autoreparan".
+- **(2026-09-19) v1.2.5 PUBLICADA (no-Latest tras la 1.2.6)**: release
   `…/releases/tag/v1.2.5` (`DBZ-Budokai-3-HD-Collection-v1.2.5.zip`; exe del
   build **dual**, FileVersion `1.2.5.0`; PortForge `defaultVersion 1.2.5`).
   Investigacion a fondo del **camino de lectura** (`HostPathFile::ReadSync` es
@@ -1263,17 +1278,20 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
   `DBZ3_DUMP_IMAGE` para volcar la imagen descifrada).
 
 ### 9.2 Releases y estado GitHub
-- **v1.2.4 EX = Latest** (2026-09-19, core dual 1.2.4.1, baseline: volumen real
-  con `audio_gain` + aviso de nueva version + FXAA/dither + palancas de GPU +
-  datos de usuario portables). **v1.2.4** (2026-09-19, sustituida por la EX),
-  **v1.2.3** (2026-09-18),
-  **v1.2.2 EX** (2026-09-17, core dual 1.2.2.1, baseline, auto-detección
-  del ejecutable + fixes del modo ISO + fix del TOML). ⚠️ La **v1.2.2 plana se
+- **v1.2.6 = Latest** (2026-09-20, core dual, FileVersion 1.2.6.0, baseline:
+  Mejora de texturas HD pulida (sin tirones, RGBA8, min-size anti-ringing) +
+  autorreparacion del TOML + UX anti-abuso de la escala). **v1.2.5** (2026-09-19,
+  foco y disco), **v1.2.4 EX** (2026-09-19, FXAA/dither + palancas GPU + datos
+  portables), **v1.2.4** (2026-09-19, sustituida por la EX), **v1.2.3**
+  (2026-09-18), **v1.2.2 EX** (2026-09-17, core dual 1.2.2.1, auto-detección del
+  ejecutable + fixes del modo ISO + fix del TOML). ⚠️ La **v1.2.2 plana se
   retiró** (le faltaban los fixes del ISO: normalización de rutas y fallback
   carpeta→ISO). **v1.2.1** (2026-09-14, hotfix del launcher),
   **v1.2.0**, **v1.1.4 EX**, **v1.1.3**, **v1.1.2**, **v1.1.1**,
   **v1.1.0-clasico** = no-Latest. Tags v1.0.0..v1.0.9 + v1.0.5-EX conservados
-  (código archivado; los zips binarios viejos NO existen).
+  (código archivado; los zips binarios viejos NO existen). PortForge
+  `defaultVersion` = 1.2.6 (visibles 1.2.6 / 1.2.5 / 1.2.4-EX; la 1.2.4 al
+  archivo en `portforge/archive/`).
 - ⚠️ **El exe de release se compila desde `out\build\win-amd64-dual`** (es el
   core dual): `make_release.ps1` toma `dbz3.exe` de ahí (verificado 2026-09-17:
   el hash del exe del zip v1.2.1 == el de ese build dir) y las DLL del

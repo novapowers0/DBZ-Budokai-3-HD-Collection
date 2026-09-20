@@ -121,6 +121,28 @@ aportarlos de tu **copia legal**. Haz esto:
 
 ## Novedades de esta release
 
+### v1.2.6 - Mejora de texturas HD pulida + ajustes que se autoreparan (2026-09-20)
+
+- **Mejora de texturas (experimental) realmente usable**: se corrigio el
+  **tiron** que daba al activarla (el calculo de los mipmaps recorria bloques
+  enormes; ahora es de tiempo constante, sin tirones) y ademas escala **las
+  texturas grandes** (caras, ropa, escenarios), no solo las pequenas. Pasa a
+  llamarse "Mejora de texturas (experimental)" con **Nitidas (x2)** y **Muy
+  nitidas (x3)**; el ajuste avanzado de area se movio al tab Desarrollo.
+- **Interfaz limpia**: los "cuadritos" de la barra de vida ya no salen
+  emborronados. Se anadio un **tamano minimo** (las texturas diminutas de la
+  interfaz no se escalan) y un **recorte anti-ringing** en el filtro.
+- **La escala interna avisa de su coste**: al subir la escala de render
+  (2x/3x/4x, supersampling real) aparece un **aviso** y un boton **"Volver a
+  nativo (1x)"** de un clic. Los **presets de calidad ya no suben la escala**
+  (ninguno); 1x es el valor por defecto y recomendado. El consumo alto esta en
+  la escala, **no** en las texturas.
+- **Si el archivo de ajustes se dana, ya no pierdes la configuracion**: al
+  arrancar se valida el `dbz3_user.toml`; si estaba mal (por ejemplo, una ruta
+  de Windows guardada sin escapar que rompia el fichero entero), se **repara
+  solo** y avisa en verde; si no se puede reparar, se conserva una copia
+  `dbz3_user.toml.bak` y avisa en rojo.
+
 ### v1.2.5 - Menos trabajo por lectura + que hacer al salir de la ventana (2026-09-19)
 
 - **Al salir de la ventana** (nuevo, al principio del tab Video): **silenciar el
