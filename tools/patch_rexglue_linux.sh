@@ -52,14 +52,15 @@ PY
 fi
 
 timer="$(dirname "$header")/../../../src/core/timer_queue.cpp"
-if ! grep -q '^#include <thread>' "$timer"; then
+if ! grep -q '^#include <stop_token>' "$timer"; then
   python3 - "$timer" <<'PY'
 from pathlib import Path
 import sys
 
 path = Path(sys.argv[1])
 text = path.read_text()
-text = text.replace('#include <forward_list>\n', '#include <forward_list>\n#include <thread>\n', 1)
+text = text.replace('#include <forward_list>\n',
+                    '#include <forward_list>\n#include <thread>\n#include <stop_token>\n', 1)
 path.write_text(text)
 PY
 fi
