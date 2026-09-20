@@ -1,5 +1,7 @@
 # DBZ Budokai 3 HD Collection
 
+**Windows | Linux**
+
 English · [Español](README.md)
 
 A native PC port of *Dragon Ball Z: Budokai 3 HD Collection* (Xbox 360) built
@@ -9,7 +11,7 @@ executable with its own launcher and mod system. It is a real port, not an
 emulator. Native Linux builds use Vulkan and SDL3.
 
 [![Release](https://img.shields.io/github/v/release/novapowers0/DBZ-Budokai-3-HD-Collection?sort=semver&style=flat-square&color=orange&label=Release)](https://github.com/novapowers0/DBZ-Budokai-3-HD-Collection/releases/latest)
-[![Platform](https://img.shields.io/badge/Platform-Windows-0078D6?style=flat-square)](https://github.com/novapowers0/DBZ-Budokai-3-HD-Collection/releases/latest)
+[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux-0078D6?style=flat-square)](https://github.com/novapowers0/DBZ-Budokai-3-HD-Collection/releases/latest)
 [![License](https://img.shields.io/github/license/novapowers0/DBZ-Budokai-3-HD-Collection?style=flat-square)](LICENSE)
 [![Stars](https://img.shields.io/github/stars/novapowers0/DBZ-Budokai-3-HD-Collection?style=flat-square&color=yellow)](https://github.com/novapowers0/DBZ-Budokai-3-HD-Collection)
 [![Built with](https://img.shields.io/badge/built%20with-ReXGlue-8A2BE2?style=flat-square)](https://github.com/rexglue/rexglue-sdk)
@@ -46,6 +48,16 @@ rights holder of Dragon Ball.
 ---
 
 ## How to play
+
+### Platform downloads
+
+- **Windows:** `DBZ-Budokai-3-HD-Collection-v1.2.6.zip`
+- **Linux amd64:** `DBZ-Budokai-3-HD-Collection-v1.2.6-linux-amd64.tar.gz` (Vulkan)
+
+The Linux package includes `dbz3` and `librexgpu-xenos.so`, but not the game or
+its assets. Extract the tarball, place your legally obtained `default.xex` and
+`us/` or `eu/` folder next to `dbz3`, then run `./dbz3`. See
+[`docs/LINUX.md`](docs/LINUX.md) for dependencies and local builds.
 
 There are two ways to provide the game data: the extracted folder or the ISO
 directly. Both are detected automatically, nothing to configure.

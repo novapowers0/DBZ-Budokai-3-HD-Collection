@@ -23,7 +23,7 @@ configura el juego contra esa instalación:
 
 ```bash
 cmake --preset linux-amd64 -S rexglue-sdk-0.10 \
-  -DREXGLUE_ENABLE_FIDELITYFX=ON \
+  -DREXGLUE_ENABLE_FIDELITYFX=OFF \
   -DCMAKE_INSTALL_PREFIX="$PWD/rexglue-linux"
 cmake --build rexglue-sdk-0.10/out/build/linux-amd64 --config Release --parallel
 cmake --install rexglue-sdk-0.10/out/build/linux-amd64 --config Release
@@ -31,7 +31,9 @@ cmake --preset linux-amd64-release -DCMAKE_PREFIX_PATH="$PWD/rexglue-linux"
 cmake --build out/build/linux-amd64-release --config Release --parallel
 ```
 
-El preset aplica `-march=x86-64 -mssse3`, Vulkan y `DBZ3_DUAL_REGION=ON`.
+El preset aplica Vulkan y `DBZ3_DUAL_REGION=ON`. La build publicada usa
+`-march=x86-64-v2`, Clang 18 y libc++ 18; FidelityFX se desactiva en Linux
+porque el backend Vulkan no lo necesita para la primera build publicada.
 Antes de compilar el SDK ejecuta `bash tools/patch_rexglue_linux.sh`; corrige
 la ausencia de `std::chrono::clock_time_conversion` en libstdc++ de Ubuntu 22.04.
 La CI usa libc++ 18 porque Ubuntu 22.04 incluye libstdc++ 12, que no expone
@@ -41,7 +43,8 @@ La CI usa libc++ 18 porque Ubuntu 22.04 incluye libstdc++ 12, que no expone
 
 El código generado deriva del `default.xex` y no se publica. La CI lo obtiene
 del repositorio privado `novapowers0/DBZ-Budokai-3-HD-Collection-generated`,
-usando el secret `DBZ3_GENERATED_TOKEN`. El repositorio contiene únicamente:
+usando una deploy key SSH almacenada en el secret `DBZ3_GENERATED_SSH_KEY`. El
+repositorio contiene únicamente:
 
 - `us/`: `sources.cmake`, init/register y fuentes generadas USA.
 - `eu/`: `sources.cmake`, init/register y fuentes generadas EU.
