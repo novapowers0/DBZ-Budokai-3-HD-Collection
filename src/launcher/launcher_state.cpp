@@ -1689,6 +1689,9 @@ void LauncherDialog::DrawModsTab() {
   // single frame.
   if (!mods_loaded_) {
     mods_cache_ = dbz3::ListMods();
+    // Re-detect texture packs (folders with the dump's `<hash>_<W>x<H>_<F>.dds`
+    // files) so enabling/disabling a pack is reflected before Play.
+    dbz3::settings::RefreshTexturePacks();
     mods_loaded_ = true;
   }
 
@@ -1713,6 +1716,25 @@ void LauncherDialog::DrawModsTab() {
         "straight from the .iso. To use them, pick 'Extracted folder' as the "
         "data source (in the source selector)."));
     ImGui::PopStyleColor();
+  }
+
+  // Texture packs: a folder in mods/ whose files are named like the dev dump
+  // (`<hash>_<W>x<H>_<FOURCC>.dds`) replaces those textures at runtime.
+  {
+    const std::string packs = dbz3::settings::TexturePacksList();
+    ImGui::Spacing();
+    if (packs.empty()) {
+      ImGui::TextDisabled(i18n::T(
+          "Packs de texturas: ninguno. Un pack es una carpeta en 'mods/' con "
+          "texturas nombradas <hash>_<AnchoxAlto>_<formato>.dds (se generan con "
+          "el volcado dev).",
+          "Texture packs: none. A pack is a folder in 'mods/' with textures named "
+          "<hash>_<WxH>_<format>.dds (produced by the dev dump)."));
+    } else {
+      ImGui::Text("%s", i18n::T("Packs de texturas activos:", "Active texture packs:"));
+      ImGui::SameLine();
+      ImGui::TextDisabled("%s", packs.c_str());
+    }
   }
   ImGui::Separator();
 

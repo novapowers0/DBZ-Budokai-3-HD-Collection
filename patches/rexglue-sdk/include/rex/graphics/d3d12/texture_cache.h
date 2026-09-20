@@ -32,6 +32,9 @@ namespace rex::graphics::d3d12 {
 
 class D3D12CommandProcessor;
 
+// Entrada de un "pack" de texturas (definida en dbz3_texture_pack.h).
+struct Dbz3TexturePackEntry;
+
 class D3D12TextureCache final : public TextureCache {
  public:
   // Keys that can be stored for checking validity whether descriptors for host
@@ -403,6 +406,30 @@ class D3D12TextureCache final : public TextureCache {
                         const texture_util::TextureGuestLayout& guest_layout,
                         uint32_t guest_address) const;
 
+  // DBZ3 HD Collection: "packs" de texturas al estilo PCSX2. Un pack es una
+  // carpeta en `mods/` con ficheros `<hash>_<W>x<H>_<FOURCC>.dds` (el hash es
+  // el mismo del volcado). Si la textura guest casa por hash, se sube la imagen
+  // del pack (decodificada a RGBA8) en lugar de los datos del juego. El factor
+  // (x1..x4) se deduce de W_pack / W_guest. Cvar: `dbz3_texture_packs`.
+  //
+  // Factor del pack para una textura (0 = sin pack, 1..4 = reemplazo). Cacheado
+  // por key; la primera consulta linealiza la textura guest para calcular el
+  // hash (mismo coste que el volcado, una vez por textura unica).
+  uint32_t GetTexturePackFactor(const TextureKey& key) const;
+  bool IsTexturePackReplaced(const TextureKey& key) const {
+    return GetTexturePackFactor(key) >= 1;
+  }
+  // Entrada del pack para una textura (nullptr si no hay). Cacheado.
+  const Dbz3TexturePackEntry* FindPackEntry(const TextureKey& key) const;
+  // Linealiza el bitmap base de una textura guest (untile + endian-swap) en el
+  // mismo formato que el volcado. Devuelve false si no es volcable.
+  bool LinearizeGuestTexture(const TextureKey& key,
+                             const texture_util::TextureGuestLayout& guest_layout,
+                             uint32_t guest_address, std::vector<uint8_t>& linear) const;
+  // Sube la imagen del pack a la textura host (RGBA8, con mips). Devuelve false
+  // si falla la decodificacion (se cae de vuelta a la carga normal).
+  bool UploadPackTextureData(D3D12Texture& texture, const TextureKey& key);
+
  public:
   // Numero de texturas que se han subido de resolucion desde el arranque
   // (diagnostico: aparece en la linea `dbz3: perf ... upx=` cuando es > 0).
@@ -420,11 +447,12 @@ class D3D12TextureCache final : public TextureCache {
                                                         : host_format.dxgi_format_resource;
   }
   DXGI_FORMAT GetDXGIResourceFormat(TextureKey key) const {
-    if (IsTextureUpscaled(key)) {
-      // El recurso host es RGBA8 (destino de UAV). Para las DXT descomprimidas
-      // es dxgi_format_uncompressed; para las nativas RGBA8 es su dxgi_format_
-      // unsigned (R8G8B8A8_UNORM), porque su dxgi_format_uncompressed esta a
-      // UNKNOWN y usarlo crearia el recurso con formato invalido.
+    if (IsTextureUpscaled(key) || IsTexturePackReplaced(key)) {
+      // El recurso host es RGBA8 (destino de UAV/copia del pack). Para las DXT
+      // descomprimidas es dxgi_format_uncompressed; para las nativas RGBA8 es su
+      // dxgi_format_unsigned (R8G8B8A8_UNORM), porque su
+      // dxgi_format_uncompressed esta a UNKNOWN y usarlo crearia el recurso con
+      // formato invalido.
       return GetTextureUpscaleRgba8Format(key);
     }
     return GetDXGIResourceFormat(key.format, key.GetWidth(), key.GetHeight());
@@ -436,7 +464,7 @@ class D3D12TextureCache final : public TextureCache {
                                                         : host_format.dxgi_format_unsigned;
   }
   DXGI_FORMAT GetDXGIUnormFormat(TextureKey key) const {
-    if (IsTextureUpscaled(key)) {
+    if (IsTextureUpscaled(key) || IsTexturePackReplaced(key)) {
       return GetTextureUpscaleRgba8Format(key);
     }
     return GetDXGIUnormFormat(key.format, key.GetWidth(), key.GetHeight());
@@ -547,6 +575,17 @@ class D3D12TextureCache final : public TextureCache {
                           D3D12_RESOURCE_STATES& copy_buffer_state, uint32_t level,
                           uint32_t upscale_factor, uint64_t copy_buffer_size, uint32_t src_pitch,
                           uint32_t src_offset);
+
+  // DBZ3 HD Collection: cache del factor/entrada del pack por textura. El
+  // resultado (incluido "no hay pack") se memoriza para que la respuesta sea
+  // estable entre la creacion del recurso y las recargas.
+  mutable std::unordered_map<TextureKey, uint8_t, TextureKey::Hasher> pack_factor_cache_;
+  mutable std::unordered_map<TextureKey, const Dbz3TexturePackEntry*, TextureKey::Hasher>
+      pack_entry_cache_;
+  // Buffers de subida del pack en vuelo (se liberan al completarse su
+  // submission).
+  mutable std::vector<std::pair<uint64_t, Microsoft::WRL::ComPtr<ID3D12Resource>>>
+      pending_pack_uploads_;
 
   std::vector<SRVDescriptorCachePage> srv_descriptor_cache_;
   uint32_t srv_descriptor_cache_allocated_;

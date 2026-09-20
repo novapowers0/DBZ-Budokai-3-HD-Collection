@@ -63,6 +63,23 @@ lógica de región/mods, y runtime.
 - `docs/SESION_PACING_WINDOWS_2026-09-20.md` - pacing Windows tras el fix
   Vulkan de Linux: por que D3D12 **no** tiene el bug del bucle de presents (sin
   cambios de codigo; el `frame_cap` se queda al inicio de `PaintAndPresentImpl`)
+- `docs/02_mods/PACKS_DE_TEXTURAS.md` - **guia para autores de packs** (formato,
+  creacion paso a paso, reglas, diagnostico).
+- **PACKS DE TEXTURAS tipo PCSX2 - FASE 2 (cargador) IMPLEMENTADA Y VALIDADA
+  (2026-09-21)**: un pack es una **carpeta en `mods/`** con ficheros
+  `<hash:16 hex>_<W>x<H>_<sufijo>.dds` (o `.png`); el `hash` es el del volcado
+  (XXH3-64 del bitmap guest) y el **factor se deduce** de `W_pack/W_original`
+  (1..4, entero e igual en X/Y). Runtime: `dbz3_texture_pack.{h,cpp}` (indice +
+  decodificador DDS: BC1/BC2/BC3 y 32bpp) + `texture_cache.cpp`
+  (`GetTexturePackFactor`/`UploadPackTextureData`; recurso host RGBA8 a la
+  resolucion del pack + mips por box filter). Launcher: `RefreshTexturePacks()`
+  en `settings.cpp` detecta los packs y los pasa por **`SetFlagByName`**; el
+  plugin los lee con **`REXCVAR_QUERY`** (⚠️ `REXCVAR_GET` lee el storage local
+  de cada DLL y el registro del plugin se ignora por duplicado). UI: linea en la
+  pestana Mods. Herramienta: `mod center hd/texture_pack.py` (validar/listar).
+  **Validado en partida**: 12 texturas indexadas, 5 reemplazadas a x2 con mips,
+  0 errores. Prioridad sobre la mejora HD; no se combinan. **NO publicado** aun
+  en ningun release.
 - `docs/SESION_TEXTURAS_PACK_2026-09-20.md` - **packs de texturas tipo PCSX2:
   Fase 1 (volcado dev)**: cvar `dbz3_texture_dump` (carpeta elegible por el
   usuario, por defecto `D:\Proyectos IA\DBZ B3 DDS`; DDS + `index.jsonl` del
@@ -1049,13 +1066,14 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
     `dbz3_io_logging`/`dbz3_io_readahead`, la poda de logs,
     `dbz3_mute_unfocused` y `frame_cap` definido en `src/ui/presenter.cpp`),
     rexgpu-xenos
-    **6246400** (con `fg=` en la linea `perf`, el fix de mips del shader de
+    **6299136** (con `fg=` en la linea `perf`, el fix de mips del shader de
     upscale `texture_upscale_cs` + clamp anti-ringing, la extensión a RGBA8
     nativas, el mínimo de tamaño `dbz3_upscale_min_size`, la guardia de
-    video `UpscaleBudgetAllows` y el **volcado dev de texturas**
-    `dbz3_texture_dump`/`dbz3_texture_dump_max`; **sin** instrumentación de
-    draw), amd_fidelityfx_dx12 5413888. ⚠️ Los valores 10910208/6227456 son
-    los de la v1.2.6 publicada (antes de estos cambios, aun **no publicados**). ⚠️ El **SHA256 varía
+    video `UpscaleBudgetAllows`, el **volcado dev de texturas**
+    `dbz3_texture_dump`/`dbz3_texture_dump_max` y el **cargador de packs**
+    `dbz3_texture_packs`; **sin** instrumentación de draw),
+    amd_fidelityfx_dx12 5413888. ⚠️ Los valores 10910208/6227456 son los de la
+    v1.2.6 publicada (antes de estos cambios, aun **no publicados**). ⚠️ El **SHA256 varía
     por build** (embebe timestamp) — comparar por **tamaño** o recompilar y
     copiar, no por hash fijo. ⚠️ Los tamaños de AMBAS DLL cambian cuando se
     recompila el SDK: el valor de referencia es el que hay en

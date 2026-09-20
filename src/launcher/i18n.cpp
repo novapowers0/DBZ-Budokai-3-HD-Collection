@@ -38,6 +38,8 @@ static const Entry kTable[] = {
     {"Escalado", "Upscaling", "Skalierung", "Mise à l'échelle"},
     {"Audio", "Audio", "Audio", "Audio"},
     {"Volcado de texturas para mods (dev)", "Dump texture per mod (dev)", "Textur-Dump fuer Mods (Dev)", "Dump de textures pour mods (dev)"},
+    {"Packs de texturas activos:", "Pack di texture attivi:", "Aktive Texturpakete:", "Packs de textures actifs :"},
+    {"Packs de texturas: ninguno. Un pack es una carpeta en 'mods/' con texturas nombradas <hash>_<AnchoxAlto>_<formato>.dds (se generan con el volcado dev).", "Pack di texture: nessuno. Un pack e una cartella in 'mods/' con texture nominate <hash>_<LxAx>_<formato>.dds (si generano con il dump dev).", "Texturpakete: keine. Ein Paket ist ein Ordner in 'mods/' mit Texturen namens <hash>_<BxH>_<Format>.dds (werden mit dem Dev-Dump erzeugt).", "Packs de textures : aucun. Un pack est un dossier dans 'mods/' avec des textures nommees <hash>_<LxH>_<format>.dds (generees par le dump dev)."},
     {"Controles", "Controlli", "Steuerung", "Contrôles"},
     {"Mods", "Mods", "Mods", "Mods"},
     {"Cambio de modelo", "Cambio modello", "Modelltausch", "Échange de modèle"},

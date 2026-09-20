@@ -44,6 +44,8 @@
 #include <rex/ui/d3d12/d3d12_upload_buffer_pool.h>
 #include <rex/ui/d3d12/d3d12_util.h>
 
+#include "dbz3_texture_pack.h"
+
 namespace rex::graphics::d3d12 {
 
 // Generated with `xb buildshaders`.
@@ -801,6 +803,16 @@ void D3D12TextureCache::ClearCache() {
 
 void D3D12TextureCache::BeginSubmission(uint64_t new_submission_index) {
   TextureCache::BeginSubmission(new_submission_index);
+
+  // Liberar los buffers de subida de packs cuya submission ya termino (la copia
+  // a la textura ya se ejecuto en la GPU).
+  if (!pending_pack_uploads_.empty()) {
+    const uint64_t completed = command_processor_.GetCompletedSubmission();
+    pending_pack_uploads_.erase(
+        std::remove_if(pending_pack_uploads_.begin(), pending_pack_uploads_.end(),
+                       [completed](const auto& e) { return e.first <= completed; }),
+        pending_pack_uploads_.end());
+  }
 
   // ExecuteCommandLists is a full UAV and aliasing barrier.
   if (IsDrawResolutionScaled()) {
@@ -1642,6 +1654,12 @@ bool D3D12TextureCache::UpscaleBudgetAllows(const TextureKey& key) const {
 }
 
 uint32_t D3D12TextureCache::GetTextureUpscaleFactor(const TextureKey& key) const {
+  // Pack de texturas: reemplazo directo a la resolucion del pack (RGBA8). Tiene
+  // prioridad sobre el upscale en runtime y no pasa por el presupuesto (no hay
+  // regeneracion por frame: la imagen viene del pack).
+  if (uint32_t pack_factor = GetTexturePackFactor(key); pack_factor >= 1) {
+    return pack_factor;
+  }
   uint32_t factor = uint32_t(REXCVAR_GET(dbz3_texture_upscale));
   if (factor <= 1 || !upscale_pipeline_) {
     return 1;
@@ -1937,6 +1955,19 @@ bool D3D12TextureCache::LoadTextureDataFromResidentMemoryImpl(Texture& texture, 
                                                               bool load_mips) {
   D3D12Texture& d3d12_texture = static_cast<D3D12Texture&>(texture);
   TextureKey texture_key = d3d12_texture.key();
+
+  // DBZ3: pack de texturas. Si la textura esta en un pack, se sube la imagen del
+  // pack (RGBA8, con toda la cadena de mips) y no se ejecuta el load shader. Si
+  // falla la decodificacion, se cae a la carga normal (mejor la original).
+  if (IsTexturePackReplaced(texture_key)) {
+    if (!load_base) {
+      return true;
+    }
+    if (UploadPackTextureData(d3d12_texture, texture_key)) {
+      d3d12_texture.MarkAsUsed();
+      return true;
+    }
+  }
 
   DeferredCommandList& command_list = command_processor_.GetDeferredCommandList();
   ID3D12Device* device = command_processor_.GetD3D12Provider().GetDevice();
@@ -2371,34 +2402,17 @@ bool D3D12TextureCache::LoadTextureDataFromResidentMemoryImpl(Texture& texture, 
   return true;
 }
 
-void D3D12TextureCache::DumpTextureToDds(const TextureKey& key,
-                                         const texture_util::TextureGuestLayout& guest_layout,
-                                         uint32_t guest_address) const {
-  const std::string dump_dir = REXCVAR_GET(dbz3_texture_dump);
-  if (dump_dir.empty()) {
-    return;
-  }
-  // No solapar con la mejora de texturas HD: son dos usos distintos (jugar vs
-  // autorar un pack) y no deben combinarse.
-  if (REXCVAR_GET(dbz3_texture_upscale) > 1) {
-    return;
-  }
-  const uint32_t fourcc = Dbz3DdsFourCc(key.format);
-  if (fourcc == 0 || key.scaled_resolve || key.dimension != xenos::DataDimension::k2DOrStacked ||
+bool D3D12TextureCache::LinearizeGuestTexture(
+    const TextureKey& key, const texture_util::TextureGuestLayout& guest_layout,
+    uint32_t guest_address, std::vector<uint8_t>& linear) const {
+  if (Dbz3DdsFourCc(key.format) == 0 || key.scaled_resolve ||
+      key.dimension != xenos::DataDimension::k2DOrStacked ||
       key.GetDepthOrArraySize() != 1) {
-    return;
-  }
-  // Excluir el frontbuffer (la imagen que se presenta): no es una textura de
-  // material y volcarla seria ruido.
-  if (swap_texture_key_valid_ && swap_texture_key_.base_page == key.base_page &&
-      swap_texture_key_.format == key.format &&
-      swap_texture_key_.GetWidth() == key.GetWidth() &&
-      swap_texture_key_.GetHeight() == key.GetHeight()) {
-    return;
+    return false;
   }
   const FormatInfo* format_info = FormatInfo::Get(key.format);
   if (!format_info) {
-    return;
+    return false;
   }
   const uint32_t block_width = format_info->block_width;
   const uint32_t block_height = format_info->block_height;
@@ -2409,13 +2423,13 @@ void D3D12TextureCache::DumpTextureToDds(const TextureKey& key,
   const uint32_t height_blocks = (height + block_height - 1) / block_height;
   const texture_util::TextureGuestLayout::Level& base_level = guest_layout.base;
   if (base_level.row_pitch_bytes < width_blocks * bytes_per_block) {
-    return;
+    return false;
   }
   const uint8_t* guest_ptr = shared_memory().memory().TranslatePhysical<uint8_t*>(guest_address);
   if (!guest_ptr) {
-    return;
+    return false;
   }
-  std::vector<uint8_t> linear(size_t(width_blocks) * height_blocks * bytes_per_block);
+  linear.assign(size_t(width_blocks) * height_blocks * bytes_per_block, 0);
   auto copy_swap = [&key](void* out, const void* in, size_t size) {
     texture_conversion::CopySwapBlock(key.endianness, out, in, size);
   };
@@ -2441,6 +2455,278 @@ void D3D12TextureCache::DumpTextureToDds(const TextureKey& key,
       }
     }
   }
+  return true;
+}
+
+uint32_t D3D12TextureCache::GetTexturePackFactor(const TextureKey& key) const {
+  auto cached = pack_factor_cache_.find(key);
+  if (cached != pack_factor_cache_.end()) {
+    return cached->second;
+  }
+  uint8_t factor = 0;
+  const Dbz3TexturePackEntry* entry = nullptr;
+  do {
+    if (!Dbz3TexturePackIndex::Get().active()) {
+      break;
+    }
+    // Mismas restricciones estructurales que el upscale: solo 2D simples y con
+    // representacion host RGBA8 (el reemplazo se sube como RGBA8).
+    if (key.dimension != xenos::DataDimension::k2DOrStacked) {
+      break;
+    }
+    if (key.scaled_resolve || key.signed_separate) {
+      break;
+    }
+    if (key.GetDepthOrArraySize() != 1) {
+      break;
+    }
+    if (key.base_page == 0) {
+      break;
+    }
+    if (Dbz3DdsFourCc(key.format) == 0) {
+      break;
+    }
+    if (GetTextureUpscaleRgba8Format(key) != DXGI_FORMAT_R8G8B8A8_UNORM) {
+      break;
+    }
+    if (swap_texture_key_valid_ && swap_texture_key_.base_page == key.base_page &&
+        swap_texture_key_.format == key.format &&
+        swap_texture_key_.GetWidth() == key.GetWidth() &&
+        swap_texture_key_.GetHeight() == key.GetHeight()) {
+      break;
+    }
+    const uint32_t width = key.GetWidth();
+    const uint32_t height = key.GetHeight();
+    if (width == 0 || height == 0 || width > 4096 || height > 4096) {
+      break;
+    }
+    std::vector<uint8_t> linear;
+    if (!LinearizeGuestTexture(key, key.GetGuestLayout(), key.base_page << 12, linear)) {
+      break;
+    }
+    const uint64_t hash = XXH3_64bits(linear.data(), linear.size());
+    entry = Dbz3TexturePackIndex::Get().Find(hash);
+    if (entry == nullptr) {
+      break;
+    }
+    if (entry->width % width != 0 || entry->height % height != 0) {
+      static int mismatch_logged = 0;
+      if (mismatch_logged < 12) {
+        ++mismatch_logged;
+        REXGPU_WARN("dbz3: pack '{}' {}x{} no es multiplo de {}x{} (ignorado)",
+                    entry->pack_name, entry->width, entry->height, width, height);
+      }
+      entry = nullptr;
+      break;
+    }
+    const uint32_t fx = entry->width / width;
+    const uint32_t fy = entry->height / height;
+    if (fx != fy || fx < 1 || fx > 4) {
+      static int factor_logged = 0;
+      if (factor_logged < 12) {
+        ++factor_logged;
+        REXGPU_WARN("dbz3: pack '{}' factor invalido ({}x{} vs {}x{}; max x4)",
+                    entry->pack_name, entry->width, entry->height, width, height);
+      }
+      entry = nullptr;
+      break;
+    }
+    factor = uint8_t(fx);
+  } while (false);
+  pack_factor_cache_.emplace(key, factor);
+  pack_entry_cache_.emplace(key, entry);
+  if (factor >= 1) {
+    static int logged = 0;
+    if (logged < 48) {
+      ++logged;
+      REXGPU_INFO("dbz3: pack '{}' reemplaza {}x{} (fmt {}) -> {}x{} (x{})", entry->pack_name,
+                  key.GetWidth(), key.GetHeight(), uint32_t(key.format), entry->width,
+                  entry->height, factor);
+    }
+  }
+  return factor;
+}
+
+const Dbz3TexturePackEntry* D3D12TextureCache::FindPackEntry(const TextureKey& key) const {
+  GetTexturePackFactor(key);
+  auto it = pack_entry_cache_.find(key);
+  return it != pack_entry_cache_.end() ? it->second : nullptr;
+}
+
+bool D3D12TextureCache::UploadPackTextureData(D3D12Texture& texture, const TextureKey& key) {
+  const Dbz3TexturePackEntry* entry = FindPackEntry(key);
+  if (entry == nullptr) {
+    return false;
+  }
+  std::vector<uint8_t> rgba;
+  uint32_t pack_width = 0, pack_height = 0;
+  if (!Dbz3DecodePackImage(entry->path, rgba, pack_width, pack_height) ||
+      pack_width != entry->width || pack_height != entry->height) {
+    static int decode_logged = 0;
+    if (decode_logged < 8) {
+      ++decode_logged;
+      REXGPU_WARN("dbz3: pack '{}': no se pudo decodificar '{}'", entry->pack_name,
+                  entry->path.filename().string());
+    }
+    return false;
+  }
+  ID3D12Device* device = command_processor_.GetD3D12Provider().GetDevice();
+  const uint32_t levels = key.mip_max_level + 1;
+  struct LevelLayout {
+    uint32_t offset;
+    uint32_t width;
+    uint32_t height;
+    uint32_t row_pitch;
+  };
+  std::vector<LevelLayout> layouts(levels);
+  uint64_t total_size = 0;
+  for (uint32_t l = 0; l < levels; ++l) {
+    const uint32_t lw = std::max(pack_width >> l, uint32_t(1));
+    const uint32_t lh = std::max(pack_height >> l, uint32_t(1));
+    const uint32_t pitch = uint32_t(rex::align(uint64_t(lw) * 4, uint64_t(256)));
+    const uint64_t offset = rex::align(total_size, uint64_t(512));
+    layouts[l] = LevelLayout{uint32_t(offset), lw, lh, pitch};
+    total_size = offset + uint64_t(pitch) * lh;
+  }
+  D3D12_RESOURCE_DESC buffer_desc = {};
+  buffer_desc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+  buffer_desc.Width = total_size;
+  buffer_desc.Height = 1;
+  buffer_desc.DepthOrArraySize = 1;
+  buffer_desc.MipLevels = 1;
+  buffer_desc.SampleDesc.Count = 1;
+  buffer_desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+  buffer_desc.Flags = D3D12_RESOURCE_FLAG_NONE;
+  Microsoft::WRL::ComPtr<ID3D12Resource> upload;
+  if (FAILED(device->CreateCommittedResource(
+          &ui::d3d12::util::kHeapPropertiesUpload, D3D12_HEAP_FLAG_NONE, &buffer_desc,
+          D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&upload)))) {
+    return false;
+  }
+  uint8_t* mapped = nullptr;
+  if (FAILED(upload->Map(0, nullptr, reinterpret_cast<void**>(&mapped)))) {
+    return false;
+  }
+  // Nivel 0 = imagen del pack; niveles siguientes por box filter 2x2.
+  std::vector<uint8_t> prev = std::move(rgba);
+  uint32_t prev_width = pack_width;
+  uint32_t prev_height = pack_height;
+  for (uint32_t l = 0; l < levels; ++l) {
+    const LevelLayout& layout = layouts[l];
+    uint8_t* dst_level = mapped + layout.offset;
+    for (uint32_t y = 0; y < layout.height; ++y) {
+      uint8_t* dst_row = dst_level + size_t(y) * layout.row_pitch;
+      for (uint32_t x = 0; x < layout.width; ++x) {
+        if (l == 0) {
+          std::memcpy(dst_row + size_t(x) * 4, prev.data() + (size_t(y) * prev_width + x) * 4, 4);
+        } else {
+          const uint32_t sx = std::min(x * 2, prev_width - 1);
+          const uint32_t sy = std::min(y * 2, prev_height - 1);
+          const uint32_t sx1 = std::min(sx + 1, prev_width - 1);
+          const uint32_t sy1 = std::min(sy + 1, prev_height - 1);
+          const uint8_t* p00 = prev.data() + (size_t(sy) * prev_width + sx) * 4;
+          const uint8_t* p10 = prev.data() + (size_t(sy) * prev_width + sx1) * 4;
+          const uint8_t* p01 = prev.data() + (size_t(sy1) * prev_width + sx) * 4;
+          const uint8_t* p11 = prev.data() + (size_t(sy1) * prev_width + sx1) * 4;
+          for (int c = 0; c < 4; ++c) {
+            dst_row[size_t(x) * 4 + c] =
+                uint8_t((uint32_t(p00[c]) + p10[c] + p01[c] + p11[c] + 2) / 4);
+          }
+        }
+      }
+    }
+    if (l + 1 < levels) {
+      const uint32_t nw = std::max(layout.width >> 1, uint32_t(1));
+      const uint32_t nh = std::max(layout.height >> 1, uint32_t(1));
+      std::vector<uint8_t> next(size_t(nw) * nh * 4);
+      for (uint32_t y = 0; y < nh; ++y) {
+        for (uint32_t x = 0; x < nw; ++x) {
+          const uint32_t sx = std::min(x * 2, layout.width - 1);
+          const uint32_t sy = std::min(y * 2, layout.height - 1);
+          const uint32_t sx1 = std::min(sx + 1, layout.width - 1);
+          const uint32_t sy1 = std::min(sy + 1, layout.height - 1);
+          const uint8_t* src_level = (l == 0) ? prev.data() : prev.data();
+          const uint32_t src_pitch_px = (l == 0) ? prev_width : layout.width;
+          const uint8_t* p00 = src_level + (size_t(sy) * src_pitch_px + sx) * 4;
+          const uint8_t* p10 = src_level + (size_t(sy) * src_pitch_px + sx1) * 4;
+          const uint8_t* p01 = src_level + (size_t(sy1) * src_pitch_px + sx) * 4;
+          const uint8_t* p11 = src_level + (size_t(sy1) * src_pitch_px + sx1) * 4;
+          for (int c = 0; c < 4; ++c) {
+            next[(size_t(y) * nw + x) * 4 + c] =
+                uint8_t((uint32_t(p00[c]) + p10[c] + p01[c] + p11[c] + 2) / 4);
+          }
+        }
+      }
+      prev = std::move(next);
+      prev_width = nw;
+      prev_height = nh;
+    }
+  }
+  upload->Unmap(0, nullptr);
+
+  ID3D12Resource* texture_resource = texture.resource();
+  command_processor_.PushTransitionBarrier(
+      texture_resource, texture.SetResourceState(D3D12_RESOURCE_STATE_COPY_DEST),
+      D3D12_RESOURCE_STATE_COPY_DEST);
+  command_processor_.SubmitBarriers();
+  DeferredCommandList& command_list = command_processor_.GetDeferredCommandList();
+  D3D12_TEXTURE_COPY_LOCATION location_source = {};
+  location_source.pResource = upload.Get();
+  location_source.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+  D3D12_TEXTURE_COPY_LOCATION location_dest = {};
+  location_dest.pResource = texture_resource;
+  location_dest.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+  for (uint32_t l = 0; l < levels; ++l) {
+    const LevelLayout& layout = layouts[l];
+    location_source.PlacedFootprint.Offset = layout.offset;
+    location_source.PlacedFootprint.Footprint.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    location_source.PlacedFootprint.Footprint.Width = layout.width;
+    location_source.PlacedFootprint.Footprint.Height = layout.height;
+    location_source.PlacedFootprint.Footprint.Depth = 1;
+    location_source.PlacedFootprint.Footprint.RowPitch = layout.row_pitch;
+    location_dest.SubresourceIndex = l;
+    command_list.D3DCopyTextureRegion(&location_dest, 0, 0, 0, &location_source, nullptr);
+  }
+  pending_pack_uploads_.emplace_back(command_processor_.GetCurrentSubmission(), upload);
+  static int upload_logged = 0;
+  if (upload_logged < 48) {
+    ++upload_logged;
+    REXGPU_INFO("dbz3: pack '{}' subido {}x{} ({} niveles, {} B)", entry->pack_name, pack_width,
+                pack_height, levels, total_size);
+  }
+  return true;
+}
+
+void D3D12TextureCache::DumpTextureToDds(const TextureKey& key,
+                                         const texture_util::TextureGuestLayout& guest_layout,
+                                         uint32_t guest_address) const {
+  const std::string dump_dir = REXCVAR_GET(dbz3_texture_dump);
+  if (dump_dir.empty()) {
+    return;
+  }
+  // No solapar con la mejora de texturas HD: son dos usos distintos (jugar vs
+  // autorar un pack) y no deben combinarse.
+  if (REXCVAR_GET(dbz3_texture_upscale) > 1) {
+    return;
+  }
+  const uint32_t fourcc = Dbz3DdsFourCc(key.format);
+  if (fourcc == 0) {
+    return;
+  }
+  // Excluir el frontbuffer (la imagen que se presenta): no es una textura de
+  // material y volcarla seria ruido.
+  if (swap_texture_key_valid_ && swap_texture_key_.base_page == key.base_page &&
+      swap_texture_key_.format == key.format &&
+      swap_texture_key_.GetWidth() == key.GetWidth() &&
+      swap_texture_key_.GetHeight() == key.GetHeight()) {
+    return;
+  }
+  std::vector<uint8_t> linear;
+  if (!LinearizeGuestTexture(key, guest_layout, guest_address, linear)) {
+    return;
+  }
+  const uint32_t width = key.GetWidth();
+  const uint32_t height = key.GetHeight();
 
   Dbz3TextureDumpState& state = Dbz3DumpState();
   const int32_t max_dumps = REXCVAR_GET(dbz3_texture_dump_max);

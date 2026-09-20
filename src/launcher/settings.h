@@ -469,6 +469,14 @@ std::string TextureDumpDir();
 void SetTextureDumpDir(const std::string& dir);
 std::string DefaultTextureDumpDir();
 
+// Texture packs (runtime `dbz3_texture_packs`): folders inside `mods/` with
+// `<hash>_<W>x<H>_<FOURCC>.dds` that replace the game's textures at runtime
+// (PCSX2 style). The launcher detects enabled packs and persists the list.
+bool TexturePacksEnabled();
+std::string TexturePacksList();
+bool IsTexturePackMod(const std::string& mod_dir);
+void RefreshTexturePacks();
+
 // Mute the mix while the game window is in the background (SDK
 // `dbz3_mute_unfocused`, read by the audio callback). Standard emulator
 // behaviour; the app writes the window focus state on every focus change.

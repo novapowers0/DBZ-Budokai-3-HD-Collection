@@ -315,6 +315,14 @@ REXCVAR_DEFINE_STRING(dbz3_texture_dump, "", "DBZ3/Dev",
                       "Folder for the dev texture dump (empty = off)")
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 
+// Texture packs: folders inside `mods/` with `<hash>_<W>x<H>_<FOURCC>.dds`
+// (or .png) that replace the game's textures at runtime (PCSX2 style). The
+// launcher detects them (see RefreshTexturePacks) and persists the list here;
+// the GPU plugin reads it (same cvar name).
+REXCVAR_DEFINE_STRING(dbz3_texture_packs, "", "DBZ3/Dev",
+                      "Active texture pack folders, ';'-separated (empty = off)")
+    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
+
 REXCVAR_DEFINE_STRING(dbz3_gpu_backend, DBZ3_DEFAULT_GPU_BACKEND, "DBZ3/Video",
                       "Host graphics backend: d3d12 or vulkan")
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
@@ -1864,6 +1872,107 @@ void SetTextureDumpEnabled(bool enabled) {
   }
 }
 
+// Texture packs: a pack is a folder in `mods/` containing files named like the
+// dev dump (`<hash>_<W>x<H>_<FOURCC>.dds`). The launcher detects them and
+// persists the list so the GPU plugin replaces those textures at runtime.
+namespace {
+std::filesystem::path LauncherModsRoot() {
+  std::filesystem::path probe = rex::filesystem::GetExecutableFolder();
+  std::error_code ec;
+  for (int depth = 0; depth < 4; ++depth) {
+    const std::filesystem::path candidate = probe / "mods";
+    if (std::filesystem::is_directory(candidate, ec)) {
+      return candidate;
+    }
+    probe = probe.parent_path();
+  }
+  return rex::filesystem::GetExecutableFolder() / "mods";
+}
+
+bool LooksLikeTexturePackFile(const std::string& stem) {
+  if (stem.size() < 20 || stem[16] != '_') {
+    return false;
+  }
+  for (int i = 0; i < 16; ++i) {
+    if (!std::isxdigit(static_cast<unsigned char>(stem[i]))) {
+      return false;
+    }
+  }
+  size_t pos = 17;
+  if (!std::isdigit(static_cast<unsigned char>(stem[pos]))) {
+    return false;
+  }
+  while (pos < stem.size() && std::isdigit(static_cast<unsigned char>(stem[pos]))) {
+    ++pos;
+  }
+  if (pos >= stem.size() || stem[pos] != 'x') {
+    return false;
+  }
+  ++pos;
+  return pos < stem.size() && std::isdigit(static_cast<unsigned char>(stem[pos]));
+}
+
+bool IsTexturePackDir(const std::filesystem::path& dir) {
+  std::error_code ec;
+  for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
+    if (!entry.is_regular_file()) {
+      continue;
+    }
+    std::string ext = entry.path().extension().string();
+    std::transform(ext.begin(), ext.end(), ext.begin(),
+                   [](unsigned char c) { return char(std::tolower(c)); });
+    if (ext != ".dds" && ext != ".png") {
+      continue;
+    }
+    if (LooksLikeTexturePackFile(entry.path().stem().string())) {
+      return true;
+    }
+  }
+  return false;
+}
+}  // namespace
+
+bool TexturePacksEnabled() { return !rex::cvar::GetFlagByName("dbz3_texture_packs").empty(); }
+std::string TexturePacksList() { return rex::cvar::GetFlagByName("dbz3_texture_packs"); }
+
+bool IsTexturePackMod(const std::string& mod_dir) {
+  std::error_code ec;
+  const std::filesystem::path dir(mod_dir);
+  return std::filesystem::is_directory(dir, ec) && IsTexturePackDir(dir);
+}
+
+void RefreshTexturePacks() {
+  const std::filesystem::path mods_root = LauncherModsRoot();
+  std::vector<std::string> dirs;
+  std::error_code ec;
+  if (std::filesystem::is_directory(mods_root, ec)) {
+    for (const auto& mod_entry : std::filesystem::directory_iterator(mods_root, ec)) {
+      if (!mod_entry.is_directory()) {
+        continue;
+      }
+      if (std::filesystem::exists(mod_entry.path() / ".disabled")) {
+        continue;
+      }
+      if (IsTexturePackDir(mod_entry.path())) {
+        dirs.push_back(mod_entry.path().string());
+      }
+    }
+  }
+  std::sort(dirs.begin(), dirs.end());
+  std::string list;
+  for (size_t i = 0; i < dirs.size(); ++i) {
+    if (i != 0) {
+      list += ';';
+    }
+    list += dirs[i];
+  }
+  // Set through the registry by name: the plugin's own storage is the ignored
+  // duplicate, so a plain REXCVAR_SET here would not reach the plugin.
+  rex::cvar::SetFlagByName("dbz3_texture_packs", list);
+  REXLOG_INFO("dbz3: texture packs detected in '{}': {} -> '{}'", mods_root.string(), dirs.size(),
+              list);
+}
+
 // Focus behaviour. MuteUnfocused is registered by the SDK's audio driver
 // (dbz3_mute_unfocused) and forwarded through the SDK registry; the dim option
 // only exists in the launcher and is read by the in-game overlay.
@@ -1885,6 +1994,10 @@ void ApplyUserSettingsToSdk() {
   // the individual cvars below carry the recommended values (once per process,
   // see ApplyQualityPresetIfAuto).
   ApplyQualityPresetIfAuto();
+  // Re-detect the texture packs in mods/ (a pack is a folder with the dump's
+  // `<hash>_<W>x<H>_<FOURCC>.dds` files). This runs before the GPU plugin loads,
+  // so it must be set here and not only saved to the TOML.
+  RefreshTexturePacks();
   REXCVAR_SET(present_effect, REXCVAR_GET(dbz3_present_effect));
   REXCVAR_SET(user_language, static_cast<uint32_t>(Language()));
   // Host graphics backend (d3d12/vulkan). Read by the runtime when it loads
