@@ -51,7 +51,7 @@ path.write_text(text)
 PY
 fi
 
-timer="$(dirname "$header")/../../src/core/timer_queue.cpp"
+timer="$(dirname "$header")/../../../src/core/timer_queue.cpp"
 if ! grep -q '^#include <thread>' "$timer"; then
   python3 - "$timer" <<'PY'
 from pathlib import Path
