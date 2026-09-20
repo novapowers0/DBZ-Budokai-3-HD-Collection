@@ -188,18 +188,6 @@ meter a Goten en el slot de Krillin.
 Esto requiere el **parche del ReXGlue SDK** incluido en `patches/` (ver
 `patches/README.md`).
 
-### Qué hace el launcher
-
-- **Video**: resolución interna, región, idioma, VRR, frame cap (0 = sin tope),
-  presets de calidad por GPU.
-- **Upscaling**: FSR / CAS.
-- **Audio**: volúmenes maestro / música / efectos / voz.
-- **Input**: teclado y mando (XInput), remapeo de teclas, deadzone, vibración.
-- **Mods**: activar/desactivar mods y editar su manifest.
-- **Texturas**: extraer texturas a PNG, editarlas y reconstruir el mod.
-- **Model Swap**: swap nativo B3→B3 (catálogo de 183 personajes).
-- **Dev**: contador de FPS y diagnóstico GPU, todo OFF por defecto.
-
 ---
 
 ## Compilar desde el código
@@ -247,149 +235,64 @@ monta `tools/make_release.ps1`.
 
 ---
 
-## Novedades de v1.2.4 EX
+## Características
 
-> Sustituye a la v1.2.4 (mismo contenido + lo de abajo).
+**Un solo ejecutable universal**
 
-- **Volumen real en el launcher**: el slider "Volumen general" y el nuevo
-  interruptor **"Silenciar todo el audio"** ahora SI hacen algo. Antes escribian
-  una variable que el runtime no reconocia, asi que no tenian efecto y el juego
-  nunca se podia silenciar desde la interfaz.
-- **Aviso de nueva version**: al abrir, el launcher consulta la ultima release
-  publicada en GitHub y, si hay una mas nueva, muestra **"Nueva version
-  disponible: vX"** con un boton para descargarla (nunca bloquea PLAY). Se puede
-  desactivar en la pestana Dev.
-- **Nuevos ajustes de imagen** (pestana Escalado): **FXAA** (none/fxaa/
-  fxaa_extreme) y **dither**. El FXAA se aplica antes del escalado, asi que se
-  combina con FSR/CAS: es la via barata de antialiasing cuando subir la escala
-  interna o el MSAA cuesta demasiado.
-- **Sensibilidad del raton** (pestana Controles): control real del raton para el
-  stick derecho, visible al activar "Usar el raton para el stick derecho".
-- **Palancas de diagnostico GPU** (pestana Desarrollo): **compilar shaders en
-  segundo plano** y **consultas de oclusion del juego**. Sirven para separar un
-  tiron de compilacion de shaders o una espera de oclusion de un problema real de
-  rendimiento, sin recompilar nada.
-- **Datos de usuario portables de verdad**: si la carpeta del juego no es
-  escribible (instalado en Program Files, recurso de red, OneDrive bloqueado),
-  los ajustes y el guardado pasan a `Documents/dbz3` en vez de fallar en
-  silencio. En el tab Desarrollo se ve la carpeta en uso.
-- **Limpieza de controles muertos**: fuera el slider de **Gamma** y los de
-  **musica/SFX/voces** (el juego mezcla todo el audio en una sola pista: no son
-  separables). "Restablecer valores" ahora restaura tambien VRR, Texturas HD,
-  FXAA, dither, los toggles de GPU y la sensibilidad.
+- Un único `dbz3.exe` (runtime baseline SSSE3) que funciona en cualquier CPU
+  x64 (Core 2 2006 en adelante), sin variantes.
+- Núcleo **dual USA/EU** con las dos recompilaciones dentro y **autodetección
+  del ejecutable** por tamaño y checksum: no hay que renombrarlo ni dejarlo en
+  la raíz.
+- **Modo disco (ISO)**: juega directamente del `.iso` sin extraer nada, incluido
+  el ISO original completo con el menú de la HD Collection.
 
-## Novedades de v1.2.4
+**Vídeo y rendimiento**
 
-- **Volumen real en el launcher**: el slider "Volumen general" y el nuevo
-  interruptor **"Silenciar todo el audio"** ahora SI hacen algo. Antes escribian
-  una variable que el runtime no reconocia, asi que no tenian efecto y el juego
-  nunca se podia silenciar desde la interfaz.
-- **Aviso de nueva version**: al abrir, el launcher consulta la ultima release
-  publicada en GitHub y, si hay una mas nueva, muestra **"Nueva version
-  disponible: vX"** con un boton para descargarla (nunca bloquea PLAY). Se puede
-  desactivar en la pestana Dev.
-- **Limpieza de controles muertos**: se quitaron el slider de **Gamma** y los de
-  **musica/SFX/voces** (el juego mezcla todo el audio en una sola pista: no son
-  separables). "Restablecer valores" ahora restaura tambien VRR y Texturas HD.
-- Base: v1.2.3 (contador de FPS en partida + logs limpios + Texturas HD WIP).
+- Escalado **FSR 1 / CAS**, **FXAA** y *dither*; resolución interna, MSAA y
+  filtro anisotrópico.
+- **VRR** y **frame cap** real (0 = sin tope).
+- **Presets de calidad por GPU**: el modo Automático detecta tu GPU y elige el
+  perfil; ningún preset sube la escala interna (1x es lo recomendado).
+- **Mejora de texturas (experimental)**: reescala las texturas en tiempo real
+  (Nitidas x2 / Muy nítidas x3) sin tocar los archivos del juego, con **HUD
+  limpio**.
+- **Aviso de coste** al subir la escala interna y botón **"Volver a nativo
+  (1x)"**.
 
-## Novedades de v1.2.3
+**Audio y controles**
 
-- **Contador de rendimiento en partida**: cvar `dbz3_perf_logging` (por defecto ON)
-  escribe una linea cada 5 s en el log con los FPS reales del juego y el peor frame
-  del intervalo, medidos en el swap del guest. Sirve para diagnosticar "va lento"
-  con datos (tambien funciona en pruebas sin ventana visible).
-- **Log de overrides AFS silenciado**: ya no escribe 2 lineas con la ruta completa en
-  CADA lectura del AFS (miles de lineas por sesion). El detalle vuelve activando
-  `dbz1_diag_logging` en la pestana Dev.
-- **Texturas HD (WIP, OFF por defecto)**: filtro interno tipo emulador que reescala
-  las texturas del juego en runtime (x2/x3/x4, generando tambien la cadena de mips),
-  **sin tocar los ficheros del juego ni su memoria**. Se nota en la intro, pero
-  provoca tirones al cargar texturas nuevas, asi que viene **desactivado por
-  defecto** como experimental. Se elige en Video -> "Texturas HD (WIP)".
-- Base: v1.2.2 EX (auto-deteccion del ejecutable + arreglos del modo ISO).
+- **Volumen general** y **Silenciar** reales, aplicados en caliente.
+- **Mando (XInput)** o teclado, con teclas configurables, *deadzone*, vibración
+  y sensibilidad del ratón.
+- Al salir de la ventana: **silenciar** y/o **atenuar** (opcional).
 
-## Novedades de v1.2.2 EX
+**Launcher**
 
-- **El launcher encuentra el ejecutable del juego esté como esté**: ya no hace
-  falta renombrar nada a `default.xex` ni tenerlo en la raíz. Lo busca por
-  **tamaño + checksum** en la carpeta que elijas (y en las típicas `DBZ3\`,
-  `assets\`, `assets\DBZ3\`) y lo prepara él solo en una caché interna
-  (`user_data\xex_cache\`), sin escribir nada en tu carpeta de juego.
-- **Arreglado el arranque con el volcado del disco original** (el caso «pulso
-  Play y no pasa nada»): antes se arrancaba el menú de la HD Collection de la
-  raíz del disco, que no existe en el núcleo de Budokai 3 y moría con un error
-  críptico. Ahora se usa el ejecutable correcto (`DBZ3\yae3_xenon.xex`) y se
-  monta la carpeta `DBZ3\` como unidad del juego.
-- **Modo disco (ISO) con ISO original completo, validado**: se extrae el
-  ejecutable de Budokai 3 de dentro del disco (no el menú) y los datos
-  (`DBZ3\us\`, `DBZ3\eu\`) se resuelven solos. Se corrigió además un fallo de
-  normalización de rutas que impedía leer los datos desde el disco.
-- **Si tu carpeta no puede arrancar, se usa el ISO que tengas al lado**: con el
-  volcado del disco tal cual (carpeta `us\` + el menú como `default.xex`) y el
-  `.iso` junto a `dbz3.exe`, el launcher salta solo al disco y arranca.
-- **Mensajes claros si el ejecutable no es el correcto**: el menú de la HD
-  Collection se detecta y se explica; un ejecutable desconocido avisa pero no
-  bloquea (puede ser un dump modificado).
-- **Arreglado un fallo de configuración**: si tu carpeta o tu ISO tienen `\` en
-  la ruta, el `dbz3_user.toml` se guardaba mal y se perdían los ajustes en cada
-  arranque (`unknown escape sequence`). Ahora se escapa correctamente.
-- **Log de diagnóstico del arranque**: se registran la ruta del ejecutable, su
-  tamaño y checksum, el estado y la carpeta de datos elegidos.
+- Interfaz con pestañas, **selector de fuente siempre visible** (carpeta o ISO)
+  y **Play** que avisa si falta algo en vez de fallar en silencio.
+- **5 idiomas** (ES/EN/IT/DE/FR) y **mensajes claros** si el ejecutable no es el
+  correcto (menú de la HD Collection, ejecutable de DBZ1, dump desconocido).
+- **Ajustes portables y autorreparables**: si la carpeta no es escribible se usa
+  `Documents/dbz3`, y si `dbz3_user.toml` se daña se repara solo o se guarda una
+  copia `.bak`.
+- **Aviso de nueva versión** al abrir (se puede desactivar).
 
-## Novedades de v1.2.1
+**Mods**
 
-- **Fix de un crash al cerrar el launcher tras usar Model Swap o Texturas**: el
-  hilo del pipeline Python quedaba sin unir y al destruir el launcher se llamaba
-  a `std::terminate()`. Ahora se une correctamente al cerrar.
-- **Nitidez de FSR aclarada**: la etiqueta del slider estaba invertida (0 es más
-  nítido, 2 más suave).
-- **La lista de mods se refresca sola** al terminar un swap/textura (el mod nuevo
-  aparece sin pulsar "Refrescar"); el botón "Restablecer valores" también la
-  actualiza.
-- **Robustez**: lectura de la carpeta de texturas sin excepciones.
+- **Override por entrada AFS** (sin tocar los AFS originales) con **mid-insert
+  virtual**: funciona aunque el modelo sea más grande que el hueco.
+- **Cambio de modelo nativo B3↔B3**: catálogo de 183 personajes, buscador, vista
+  previa y en cualquier dirección.
+- **Texturas**: extraer a PNG, editar y reconstruir el mod; también se pueden
+  reemplazar la música y ficheros completos.
+- Centro de mods con buscador, activar/desactivar todos, badges de tipo e
+  instalación desde ZIP.
 
-## Novedades de v1.2.0
+**Diagnóstico (opcional)**
 
-- **Centro de mods renovado (QoL + visual)**: lista cacheada, buscador (nombre,
-  autor, origen, tipo), botones Activar todos / Desactivar todos / Refrescar /
-  Abrir carpeta, badges de tipo con color y filas alternas.
-- **Model Swap B3 HD↔HD pulido**: desplegables de personaje con buscador (183
-  personajes, con `[bin N]` y aviso `[NO JUGABLE]`), tarjeta de vista previa,
-  aviso/bloqueo si origen==destino, y el mod generado se nombra con los nombres
-  del catálogo (p. ej. «Cell Forma 2 en Krillin»).
-- **Nitidez ajustable en Escalado**: sliders de nitidez RCAS (FSR) y nitidez
-  adicional (CAS).
-- **Modo disco (ISO)**: aviso explícito en Mods y Model Swap (los mods no
-  aplican al jugar del `.iso`); el botón de swap se deshabilita.
-- **Notas de escalado/rendimiento**: FSR3/DLSS no son viables a corto plazo (el
-  renderer no expone motion vectors/jitter); FSR1/CAS sí. Ver
-  `docs/ANALISIS_ESCALADO_RENDIMIENTO_2026-09-14.md`.
-
-## Novedades de v1.1.3
-
-- **Selector de fuente siempre visible**: botones "Carpeta extraida" / "ISO
-  (.iso)" en el launcher para elegir el origen en cualquier momento.
-- **Detección de DBZ1**: si pones el xex de *DBZ Budokai HD Collection* (proyecto
-  hermano), el launcher bloquea Play y avisa "usa el launcher dbz1.exe" (antes
-  crasheaba).
-- **i18n completa auditada**: 0 cadenas sin traducir en ES/EN/IT/DE/FR.
-- **Preparado para usuarios no técnicos**: mensajes accionables y sugerencias
-  al elegir la carpeta equivocada.
-- **Pulido**: `-Wall -Wextra` 0 warnings, código muerto eliminado, empaquetador
-  más estricto (rechaza residuos de ejecución en el ZIP).
-
-## Novedades de v1.1.2
-
-- **Fix crash en Dragon Universe / START (núcleo EU)**: función de despacho
-  `sub_820F2398` no registrada → extraída y registrada como `dbz3eu_sub_820F2398`.
-- **Regiones incompletas**: `ResolveRegion()` auto-cae a `us/` o `eu/` según lo
-  que exista; datos solo-EU o solo-US funcionan sin tocar nada.
-- **Backend Vulkan de verdad**: cvar `gpu_backend` añadido al SDK y conectado a
-  `LoadGpuPlugin`; antes la elección del launcher se ignoraba (siempre D3D12).
-- **Pulido**: builds sin warnings, traces temporales eliminados, footer muestra
-  "Japanese" correctamente.
-- **Modo disco**: juega directamente desde el `.iso` sin extraer nada (v1.1.2).
+- Pestaña Desarrollo: contador de FPS, registro de E/S y de rendimiento y
+  palancas de diagnóstico de GPU. Todo **desactivado por defecto**.
 
 ---
 
