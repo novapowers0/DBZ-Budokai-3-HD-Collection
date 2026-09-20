@@ -80,6 +80,10 @@ text = text.replace('while (!stop_token.stop_requested()) {',
                     'while (!stop_requested_.load(std::memory_order_acquire)) {')
 text = text.replace('std::jthread dispatch_thread_;',
                     'std::thread dispatch_thread_;\n  std::atomic<bool> stop_requested_{false};')
+text = text.replace('std::jthread', 'std::thread')
+text = text.replace('std::stop_token stop_token', '')
+text = text.replace('stop_token.stop_requested()',
+                    'stop_requested_.load(std::memory_order_acquire)')
 path.write_text(text)
 PY
 fi
