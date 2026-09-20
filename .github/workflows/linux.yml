@@ -58,6 +58,7 @@ jobs:
         run: |
           cp -a patches/rexglue-sdk/. rexglue-sdk-0.10/
           bash tools/patch_rexglue_linux.sh
+          grep -n -A3 'namespace std::chrono' rexglue-sdk-0.10/include/rex/chrono/chrono.h
 
       - name: Validate generated source set
         shell: bash
