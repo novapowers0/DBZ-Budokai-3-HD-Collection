@@ -6,10 +6,9 @@ set -euo pipefail
 # point, while libc++ does. Add the portable fallback once before the SDK build.
 header="${1:-rexglue-sdk-0.10/include/rex/chrono/chrono.h}"
 if grep -q 'REXGLUE_LINUX_CLOCK_TIME_CONVERSION' "$header"; then
-  exit 0
-fi
-
-python3 - "$header" <<'PY'
+  :
+else
+  python3 - "$header" <<'PY'
 from pathlib import Path
 import sys
 
@@ -33,6 +32,7 @@ if needle not in text:
     raise SystemExit("chrono namespace marker not found")
 path.write_text(text.replace(needle, insert, 1))
 PY
+fi
 
 grep -q 'REXGLUE_LINUX_CLOCK_TIME_CONVERSION' "$header"
 
@@ -88,3 +88,23 @@ path.write_text(text)
 PY
 fi
 grep -q 'REXGLUE_LINUX_FLOAT_FROM_CHARS' "$numeric"
+
+# The v0.10.0 release header misses the virtual dispatch point used by the
+# dual-region app. Keep the override valid so EU images select their mappings.
+app_header="$(dirname "$header")/../rex_app.h"
+if ! grep -q 'REXGLUE_DUAL_IMAGE_RESOLVER' "$app_header"; then
+python3 - "$app_header" <<'PY'
+from pathlib import Path
+import sys
+import re
+
+path = Path(sys.argv[1])
+text = path.read_text()
+pattern = r'(?m)^  (?:virtual )?const rex::PPCImageInfo& ResolveImageInfo\(const PathConfig& paths\) const \{'
+replacement = '  // REXGLUE_DUAL_IMAGE_RESOLVER: keep this hook virtual for dual-region clients.\n  virtual const rex::PPCImageInfo& ResolveImageInfo(const PathConfig& paths) const {'
+if not re.search(pattern, text):
+    raise SystemExit("ResolveImageInfo declaration not found")
+path.write_text(re.sub(pattern, replacement, text, count=1))
+PY
+fi
+grep -q 'REXGLUE_DUAL_IMAGE_RESOLVER' "$app_header"
