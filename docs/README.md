@@ -2,7 +2,7 @@
 
 > Guía accesible para agentes y humanos. Consolidación del estado del proyecto,
 > estructura de carpetas, cómo hacer mods, formatos, herramientas y builds.
-> Actualizado: 2026-09-17
+> Actualizado: 2026-09-20 (tras la **v1.2.6**)
 
 ---
 
@@ -20,6 +20,10 @@
 | [HOJA_DE_RUTA_COMUNIDAD](HOJA_DE_RUTA_COMUNIDAD.md) | Feedback comunidad P0-P5 (histórico, todo completado) |
 | [SESION_AUTODETECCION_XEX_2026-09-17](SESION_AUTODETECCION_XEX_2026-09-17.md) | **v1.2.2 EX**: auto-detección del ejecutable (volcado retail del disco, ISO original, `DBZ3\`), estados del xex y fix del TOML |
 | [ANALISIS_RENDIMIENTO_LOGS_2026-09-18](ANALISIS_RENDIMIENTO_LOGS_2026-09-18.md) | **Rendimiento**: análisis de los logs del reporte "va MUY lento" (RTX 5090) + instrumentación `dbz3_perf_logging` + gate del log AFS |
+| [SESION_LAUNCHER_AUDIT_2026-09-19](SESION_LAUNCHER_AUDIT_2026-09-19.md) | **v1.2.4/1.2.4 EX**: auditoría del launcher (controles muertos, `audio_gain` real, update check, FXAA/dither, palancas GPU, datos portables) |
+| [SESION_IO_FOCO_2026-09-19](SESION_IO_FOCO_2026-09-19.md) | **v1.2.5**: camino de lectura (`dbz3_io_logging`, readahead) + QoL al perder el foco (`fg=`, mute/dim) |
+| [SESION_TOML_Y_UX_2026-09-20](SESION_TOML_Y_UX_2026-09-20.md) | **v1.2.6**: autorreparación del TOML + UX anti-abuso de la escala interna |
+| [ANALISIS_ESCALADO_RENDIMIENTO_2026-09-14](ANALISIS_ESCALADO_RENDIMIENTO_2026-09-14.md) | Escalado/rendimiento: FSR1/CAS sí; FSR3/DLSS no viable a corto plazo |
 | [07_ports/TEXTURAS_HD_RUNTIME_UPSCALE](07_ports/TEXTURAS_HD_RUNTIME_UPSCALE.md) | **Texturas HD en runtime (APARCADO)**: capa exterior D3D12, evidencia de por qué el override del bin no sirve y cómo retomarlo |
 | [01_estructura](01_estructura/ARBOL.md) | Árbol completo del proyecto, qué es cada carpeta |
 | [01_estructura/ESTADO.md](01_estructura/ESTADO.md) | Estado actual, qué funciona, qué falla |
@@ -48,7 +52,7 @@
 - **Jugar**: `out\build\win-amd64-release\dbz3.exe`
 - **Config**: `out\build\win-amd64-release\dbz3_user.toml`
 - **Mods**: carpeta `mods\<mod>\` junto al exe. Solo los que NO tienen `.disabled`.
-- **Estado**: **v1.2.2 EX publicada (Latest)** — arranque garantizado: el launcher **encuentra el ejecutable de Budokai 3 solo** (por tamaño+MD5, se llame como se llame y esté en `DBZ3\`, `assets\` o donde sea) y arranca el volcado retail del disco o el ISO original sin renombrar nada; incluye fix del `dbz3_user.toml` con rutas Windows y el modo ISO retail validado (extracción de `DBZ3/yae3_xenon.xex` + resolución de `DBZ3\us\` + fallback carpeta→ISO). Sobre la v1.2.1 (hotfix del launcher) y la v1.2.0 (Centro de mods renovado + Model Swap HD↔HD pulido + aviso de modo ISO). Juego funcional (D3D12, 60fps, US+EU). Swap nativo HD↔HD y texturas funcionan (Vía A aproximada). Port completo PS2→HD **aparcado** (§3.4.10). Escalado: FSR1/CAS sí; FSR3/DLSS no viable a corto plazo.
+- **Estado**: **v1.2.6 publicada (Latest)** — Mejora de texturas HD pulida (sin tirones, alcance RGBA8 nativas, HUD limpio), UX anti-abuso de la escala interna y **autorreparación del `dbz3_user.toml`**. Sobre la v1.2.5 (foco/disco: `dbz3_io_logging`, readahead, mute/dim), la v1.2.4 EX (FXAA/dither, palancas GPU, datos de usuario portables, volumen real), la v1.2.3 y la v1.2.2 EX (auto-detección del ejecutable + modo ISO retail). Juego funcional (D3D12, 60 fps, US+EU). Swap nativo HD↔HD y texturas funcionan (Vía A aproximada). Port completo PS2→HD **aparcado** (§3.4.10). Escalado: FSR1/CAS sí; FSR3/DLSS no viable a corto plazo. El consumo alto es el **supersampling** (escala interna), no las texturas HD.
 
 ---
 

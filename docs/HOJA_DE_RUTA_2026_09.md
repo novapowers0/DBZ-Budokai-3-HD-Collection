@@ -1,16 +1,15 @@
 # HOJA DE RUTA 2026-09 — Madurez del proyecto (post-1.1.1)
 
-> Actualizado: 2026-09-19. Estado base: **v1.2.4 EX publicada** (Latest; volumen
-> REAL en el launcher con `audio_gain` + aviso de nueva version desde GitHub,
-> FXAA/dither, sensibilidad del raton, palancas de diagnostico GPU y datos de
-> usuario portables; controles muertos de gamma/volumen por categoria
-> eliminados), sobre la
-> **v1.2.3** (contador de FPS en partida, log AFS silenciado y Texturas HD en
-> WIP/OFF) y la **v1.2.2 EX** (el launcher
+> Actualizado: 2026-09-20. Estado base: **v1.2.6 publicada** (Latest; Mejora de
+> texturas HD pulida —sin tirones, alcance RGBA8 nativas, HUD limpio—, UX
+> anti-abuso de la escala interna y **autorreparación del TOML**), sobre la
+> **v1.2.5** (diagnóstico de E/S `dbz3_io_logging` + readahead, `fg=`, mute/dim al
+> perder el foco), la **v1.2.4/1.2.4 EX** (FXAA/dither, palancas GPU, datos de
+> usuario portables, volumen real), la **v1.2.3** y la **v1.2.2 EX** (el launcher
 > encuentra el ejecutable solo: volcado retail del disco e ISO original arrancan
-> sin renombrar nada; fix del TOML con rutas Windows), juego muy
-> funcional y validado en combate/menús (US+EU, teclado, presets, mods por
-> override). Documentos previos: `HOJA_DE_RUTA.md` (modding, 2026-08-14) y
+> sin renombrar nada; fix del TOML con rutas Windows). Juego muy funcional y
+> validado en combate/menús (US+EU, teclado, presets, mods por override).
+> Documentos previos: `HOJA_DE_RUTA.md` (modding, 2026-08-14) y
 > `HOJA_DE_RUTA_COMUNIDAD.md` (feedback comunidad, 2026-08-25, P0-P5 casi todo
 > HECHO). Esta hoja de ruta los **actualiza y consolida** en 3 fases.
 
@@ -22,7 +21,7 @@ nuestros bins contra eso.
 
 ---
 
-## FASE 1 — DOCUMENTACIÓN LIGERA (gasto de tokens)
+## FASE 1 — DOCUMENTACIÓN LIGERA (gasto de tokens) — ✅ HECHA (2026-09-20)
 
 **Objetivo**: reducir el coste de contexto de las sesiones sin perder datos
 relevantes. Hoy `AGENTS.md` = **236 KB / ~3392 líneas** (~60k tokens por
@@ -56,9 +55,16 @@ grep; ninguna sesión futura necesita el historial para operar.
 
 ---
 
-## FASE 2 — LIMPIEZA DE CÓDIGO MUERTO Y DEPURACIÓN
+## FASE 2 — LIMPIEZA DE CÓDIGO MUERTO Y DEPURACIÓN — ✅ 2.1 hecha; 2.2 según aparezca
 
-### 2.1 Código muerto (verificado en `src/`)
+### 2.1 Código muerto (verificado en `src/`) — ✅ HECHA (2026-09-20)
+**Verificado**: `dbz3_enabled_mods` (cvar + `JoinList`/`SetModEnabledList`),
+`PrepareRegionData` y los comentarios `active_region` **ya no existen** en
+`src/`; `awo_tools/analyze_bin_hd.py` conserva solo su aviso de DESACTUALIZADO
+apuntando a `awg_to_obj_b3.py`/`awg0_export.py`; no hay `out/win-amd64-legacy/`
+ni presets `win-amd64-release-eu`/bootstrap. `DBZ3_EU_VARIANT` (CMakeLists L86)
+**sí se usa** (variante EU-only histórica en `main.cpp`/`hooks.h`/`settings.h`),
+así que no es código muerto. Los puntos siguientes quedan como registro:
 - **`dbz3_enabled_mods` (cvar + rutas)**: código muerto desde §4.2 (la
   activación real es el marker `.disabled`). Quitar: cvar (settings.cpp:62),
   `SetFlagByName("dbz3_enabled_mods", ...)` (launcher_state.cpp:490), el
