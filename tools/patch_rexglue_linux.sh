@@ -115,7 +115,7 @@ marker = 'REXCVAR_DEFINE_BOOL(vulkan_allow_present_mode_fifo_relaxed, false, "UI
 if 'REXCVAR_DEFINE_INT32(frame_cap' not in text:
     if marker not in text:
         raise SystemExit('Vulkan presenter cvar marker not found')
-    text = text.replace(marker, marker + '''\nREXCVAR_DEFINE_INT32(frame_cap, 0, "UI/Presenter",\n                     "Maximum host present rate in FPS (0 = uncapped)")\n    .range(0, 1000)\n    .lifecycle(rex::cvar::Lifecycle::kHotReload);\n''', 1)
+    text = text.replace(marker, marker + '''\nREXCVAR_DEFINE_INT32(frame_cap, 0, "UI/Presenter",\n                     "Maximum host present rate in FPS (0 = uncapped)" );\n''', 1)
 text = text.replace(
     '  if (REXCVAR_GET(vulkan_allow_present_mode_immediate) &&',
     '  const bool host_present_cap = int32_t(REXCVAR_GET(frame_cap)) > 0;\n'
