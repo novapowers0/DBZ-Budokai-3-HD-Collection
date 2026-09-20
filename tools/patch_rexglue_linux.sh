@@ -111,13 +111,15 @@ text = text.replace(
 text = text.replace(
     'REXCVAR_DEFINE_BOOL(vulkan_allow_present_mode_fifo_relaxed, true, "UI/Vulkan",',
     'REXCVAR_DEFINE_BOOL(vulkan_allow_present_mode_fifo_relaxed, false, "UI/Vulkan",', 1)
-marker = '''REXCVAR_DEFINE_BOOL(vulkan_allow_present_mode_fifo_relaxed, false, "UI/Vulkan",
-                     "Allow FIFO relaxed present mode");
-'''
 if 'REXCVAR_DEFINE_INT32(frame_cap' not in text:
-    if marker not in text:
+    marker = 'REXCVAR_DEFINE_BOOL(vulkan_allow_present_mode_fifo_relaxed'
+    marker_pos = text.find(marker)
+    if marker_pos < 0:
         raise SystemExit('Vulkan presenter cvar marker not found')
-    text = text.replace(marker, marker + '''\nREXCVAR_DEFINE_INT32(frame_cap, 0, "UI/Presenter",\n                     "Maximum host present rate in FPS (0 = uncapped)" );\n''', 1)
+    end_pos = text.find(');', marker_pos)
+    if end_pos < 0:
+        raise SystemExit('Vulkan presenter FIFO cvar terminator not found')
+    text = text[:end_pos + 2] + '''\nREXCVAR_DEFINE_INT32(frame_cap, 0, "UI/Presenter",\n                     "Maximum host present rate in FPS (0 = uncapped)" );\n''' + text[end_pos + 2:]
 text = text.replace(
     '  if (REXCVAR_GET(vulkan_allow_present_mode_immediate) &&',
     '  const bool host_present_cap = int32_t(REXCVAR_GET(frame_cap)) > 0;\n'
