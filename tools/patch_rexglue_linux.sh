@@ -111,7 +111,9 @@ text = text.replace(
 text = text.replace(
     'REXCVAR_DEFINE_BOOL(vulkan_allow_present_mode_fifo_relaxed, true, "UI/Vulkan",',
     'REXCVAR_DEFINE_BOOL(vulkan_allow_present_mode_fifo_relaxed, false, "UI/Vulkan",', 1)
-marker = 'REXCVAR_DEFINE_BOOL(vulkan_allow_present_mode_fifo_relaxed, false, "UI/Vulkan",\n'
+marker = '''REXCVAR_DEFINE_BOOL(vulkan_allow_present_mode_fifo_relaxed, false, "UI/Vulkan",
+                     "Allow FIFO relaxed present mode");
+'''
 if 'REXCVAR_DEFINE_INT32(frame_cap' not in text:
     if marker not in text:
         raise SystemExit('Vulkan presenter cvar marker not found')
