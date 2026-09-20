@@ -9,7 +9,7 @@ Usa Vulkan, SDL3 y el mismo núcleo dual US/EU que Windows. No requiere Wine.
 En Ubuntu 22.04 o derivados:
 
 ```bash
-sudo apt install clang cmake ninja-build pkg-config libvulkan-dev \
+sudo apt install clang-18 libc++-18-dev libc++abi-18-dev cmake ninja-build pkg-config libvulkan-dev \
   libsdl3-dev libx11-xcb-dev libwayland-dev wayland-protocols \
   libasound2-dev libpulse-dev libpipewire-0.3-dev unzip zenity
 ```
@@ -34,6 +34,8 @@ cmake --build out/build/linux-amd64-release --config Release --parallel
 El preset aplica `-march=x86-64 -mssse3`, Vulkan y `DBZ3_DUAL_REGION=ON`.
 Antes de compilar el SDK ejecuta `bash tools/patch_rexglue_linux.sh`; corrige
 la ausencia de `std::chrono::clock_time_conversion` en libstdc++ de Ubuntu 22.04.
+La CI usa libc++ 18 porque Ubuntu 22.04 incluye libstdc++ 12, que no expone
+`std::expected` completo para este SDK C++23.
 
 ## Codegen privado
 
