@@ -23,6 +23,7 @@
 | [SESION_LAUNCHER_AUDIT_2026-09-19](SESION_LAUNCHER_AUDIT_2026-09-19.md) | **v1.2.4/1.2.4 EX**: auditoría del launcher (controles muertos, `audio_gain` real, update check, FXAA/dither, palancas GPU, datos portables) |
 | [SESION_IO_FOCO_2026-09-19](SESION_IO_FOCO_2026-09-19.md) | **v1.2.5**: camino de lectura (`dbz3_io_logging`, readahead) + QoL al perder el foco (`fg=`, mute/dim) |
 | [SESION_TOML_Y_UX_2026-09-20](SESION_TOML_Y_UX_2026-09-20.md) | **v1.2.6**: autorreparación del TOML + UX anti-abuso de la escala interna |
+| [SESION_PACING_WINDOWS_2026-09-20](SESION_PACING_WINDOWS_2026-09-20.md) | **Pacing Windows**: por qué el fix Vulkan de Linux no aplica a D3D12 (sin cambios de código) |
 | [LINUX](LINUX.md) | Build nativo Linux con Vulkan, SDL3 y CI usando codegen privado |
 | [ANALISIS_ESCALADO_RENDIMIENTO_2026-09-14](ANALISIS_ESCALADO_RENDIMIENTO_2026-09-14.md) | Escalado/rendimiento: FSR1/CAS sí; FSR3/DLSS no viable a corto plazo |
 | [07_ports/TEXTURAS_HD_RUNTIME_UPSCALE](07_ports/TEXTURAS_HD_RUNTIME_UPSCALE.md) | **Texturas HD en runtime (APARCADO)**: capa exterior D3D12, evidencia de por qué el override del bin no sirve y cómo retomarlo |

@@ -86,3 +86,11 @@ Para comprobar el comportamiento, inicia primero sin MangoHud y después con
 `mangohud ./dbz3`. Si MangoHud todavía produce tirones, prueba solo FPS y
 frametime, sin sensores de temperatura, potencia o carga; esas consultas
 adicionales permiten separar el coste del hook Vulkan del coste de telemetría.
+
+## Relación con Windows
+
+Este problema es exclusivo del camino Vulkan. La build Windows usa D3D12, donde
+la presentación la marca el guest (`IssueSwap`, 60 Hz) y no existe selección de
+present mode, así que no hay un bucle de presents sin límite ni un cambio de
+código equivalente. Análisis completo en
+`SESION_PACING_WINDOWS_2026-09-20.md`.
