@@ -52,7 +52,7 @@ PY
 fi
 
 timer="$(dirname "$header")/../../../src/core/timer_queue.cpp"
-if ! grep -q '^#include <stop_token>' "$timer"; then
+if ! grep -q 'REXGLUE_LINUX_TIMER_THREAD' "$timer"; then
   python3 - "$timer" <<'PY'
 from pathlib import Path
 import sys
@@ -60,7 +60,26 @@ import sys
 path = Path(sys.argv[1])
 text = path.read_text()
 text = text.replace('#include <forward_list>\n',
-                    '#include <forward_list>\n#include <thread>\n#include <stop_token>\n', 1)
+                    '#include <forward_list>\n#include <atomic>\n#include <thread>\n', 1)
+text = text.replace('namespace rex::thread {\n',
+                    'namespace rex::thread {\n\n#define REXGLUE_LINUX_TIMER_THREAD 1\n', 1)
+text = text.replace(
+    'dispatch_thread_ =\n        std::jthread([this](std::stop_token stop_token) { TimerThreadMain(stop_token); });',
+    'dispatch_thread_ = std::thread([this] { TimerThreadMain(); });')
+text = text.replace('dispatch_thread_.request_stop();',
+                    'stop_requested_.store(true, std::memory_order_release);')
+text = text.replace('''    // std::jthread auto-joins on destruction
+  }''',
+                    '''    if (dispatch_thread_.joinable()) {
+      dispatch_thread_.join();
+    }
+  }''')
+text = text.replace('void TimerThreadMain(std::stop_token stop_token) {',
+                    'void TimerThreadMain() {')
+text = text.replace('while (!stop_token.stop_requested()) {',
+                    'while (!stop_requested_.load(std::memory_order_acquire)) {')
+text = text.replace('std::jthread dispatch_thread_;',
+                    'std::thread dispatch_thread_;\n  std::atomic<bool> stop_requested_{false};')
 path.write_text(text)
 PY
 fi
