@@ -55,7 +55,9 @@ jobs:
 
       - name: Apply project runtime patches
         shell: bash
-        run: cp -a patches/rexglue-sdk/. rexglue-sdk-0.10/
+        run: |
+          cp -a patches/rexglue-sdk/. rexglue-sdk-0.10/
+          bash tools/patch_rexglue_linux.sh
 
       - name: Validate generated source set
         shell: bash

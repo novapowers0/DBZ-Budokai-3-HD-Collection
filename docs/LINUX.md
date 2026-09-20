@@ -32,6 +32,8 @@ cmake --build out/build/linux-amd64-release --config Release --parallel
 ```
 
 El preset aplica `-march=x86-64 -mssse3`, Vulkan y `DBZ3_DUAL_REGION=ON`.
+Antes de compilar el SDK ejecuta `bash tools/patch_rexglue_linux.sh`; corrige
+la ausencia de `std::chrono::clock_time_conversion` en libstdc++ de Ubuntu 22.04.
 
 ## Codegen privado
 
