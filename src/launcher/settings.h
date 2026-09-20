@@ -17,6 +17,18 @@ namespace dbz3::settings {
 // rex::cvar::LoadConfig for the SDK config so user values win.
 void LoadUserSettings();
 
+// Result of the last LoadUserSettings() call, so the launcher can tell the user
+// when their settings file had to be repaired (or was unusable) instead of
+// silently losing every option. A Windows path saved unescaped turned the whole
+// file into a parse error on the next start ("unknown escape sequence '\G'").
+enum class ConfigLoadState {
+  kMissing,   // no settings file yet (fresh install)
+  kOk,        // loaded cleanly
+  kRepaired,  // had an invalid escape; auto-fixed and loaded
+  kInvalid,   // still unparseable after repair: kept on disk, not loaded
+};
+ConfigLoadState LastConfigLoadState();
+
 // Write all user cvars to dbz3_user.toml.
 void SaveUserSettings();
 

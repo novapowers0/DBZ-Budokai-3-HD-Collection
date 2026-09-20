@@ -8,6 +8,8 @@
 #include <rex/filesystem/file.h>
 #include <rex/logging.h>
 
+#include <toml++/toml.hpp>
+
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -18,6 +20,7 @@
 #include <cstdio>
 #include <cstring>
 #include <fstream>
+#include <iterator>
 
 #if REX_PLATFORM_WIN32
 #include <windows.h>
@@ -102,22 +105,28 @@ REXCVAR_DEFINE_INT32(dbz3_anisotropic, 5, "DBZ3/Video",
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 
 // HD textures: runtime (host-side) upscaling of the game's textures, emulator
-// style. 1 = off; 2/3/4 = factor. No game file is modified and the guest's
+// style. 1 = off; 2/3 = factor. No game file is modified and the guest's
 // memory budget is untouched (the upscale happens in the host texture cache).
 // Implemented in rexgpu-xenos (`dbz3_texture_upscale`); this is the friendly,
 // persistent launcher-side value forwarded at startup/Play.
 // (WIP) Filtro interno tipo emulador (capa exterior, no toca ficheros del juego).
 // Escala texturas DXT y RGBA8 nativas y genera la cadena de mips; el fix del
-// coste de mips quito los tirones. El coste principal ahora es VRAM + carga.
+// coste de mips quito los tirones. El coste principal es VRAM.
+// El tope es x3 (no x4): x4 multiplica la VRAM y el coste casi sin ganancia
+// visible sobre x3, y es la opcion que un usuario puede "abusar" sin entenderla.
 REXCVAR_DEFINE_INT32(dbz3_hd_textures, 1, "DBZ3/Video",
-    "HD textures (WIP): runtime texture upscale factor (1 = off, 2/3/4)")
-    .range(1, 4)
+    "HD textures (WIP): runtime texture upscale factor (1 = off, 2/3)")
+    .range(1, 3)
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 
 // Area maxima (texeles del nivel 0) de una textura que se sube de resolucion.
 // Evita que texturas enormes (2048x1024+) multipliquen la VRAM. 0 = sin limite.
-// Implementado en rexgpu-xenos (`dbz3_upscale_max_texels`).
-REXCVAR_DEFINE_INT32(dbz3_hd_texture_max_texels, 1048576, "DBZ3/Video",
+// Implementado en rexgpu-xenos (`dbz3_upscale_max_texels`). AJUSTE AVANZADO:
+// vive en el tab Dev, no en la vista normal (no es un concepto para el usuario
+// promedio: se explica con ejemplos, no en "Mpx"). Default 0.5 M texeles
+// (1024x512 / 512x1024): deja fuera las grandes de escenario y mantiene el
+// consumo bajo control sin que el usuario tenga que tocar nada.
+REXCVAR_DEFINE_INT32(dbz3_hd_texture_max_texels, 524288, "DBZ3/Video",
     "HD textures (WIP): max texture area to upscale in texels (0 = no limit)")
     .range(0, 67108864)
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
@@ -153,13 +162,15 @@ REXCVAR_DEFINE_BOOL(dbz3_present_dither, false, "DBZ3/Video",
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
 
 // One-click quality profile: "auto" (detect the GPU tier and apply the
-// recommended settings on every launch), "low", "medium", "high", "ultra", or
-// "manual" (the individual scale/MSAA/aniso/effect options are used as-is).
-// Old installs (toml without this key) are migrated to "manual" so an existing
-// custom setup is never silently changed.
+// recommended settings on every launch), "performance", "balanced", "quality",
+// or "manual" (the individual scale/MSAA/aniso/effect options are used as-is).
+// Old presets ("low"/"medium"/"high"/"ultra") are accepted as aliases and
+// mapped to the new ones at load, and old installs (toml without this key) are
+// migrated to "manual" so an existing custom setup is never silently changed.
 REXCVAR_DEFINE_STRING(dbz3_quality_preset, "auto", "DBZ3/Video",
-                      "Quality preset: auto, low, medium, high, ultra, manual")
-    .allowed({"auto", "low", "medium", "high", "ultra", "manual"})
+                      "Quality preset: auto, performance, balanced, quality, manual")
+    .allowed({"auto", "performance", "balanced", "quality", "manual",
+              "low", "medium", "high", "ultra"})
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 
 REXCVAR_DEFINE_DOUBLE(dbz3_master_volume, 1.0, "DBZ3/Audio", "Master volume (0.0 - 1.0)")
@@ -403,6 +414,27 @@ bool EscapeTomlStrings(const std::filesystem::path& path) {
   return os.good();
 }
 
+// True when `path` parses as TOML. Used to detect a settings file that an older
+// build wrote with an unescaped Windows path ("unknown escape sequence '\G'"):
+// such a file is silently discarded by the runtime, so the launcher repairs it
+// before loading and tells the user.
+//
+// Reads the bytes and parses the text rather than toml::parse_file(path): the
+// latter takes a UTF-8 path, and std::filesystem::path::string() yields the
+// native ANSI encoding on Windows, so a folder with non-ASCII characters
+// ("Música", "Juegos") would fail to open and look like a corrupt file.
+bool TomlParses(const std::filesystem::path& path) {
+  std::ifstream in(path, std::ios::binary);
+  if (!in) return false;
+  std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+  try {
+    toml::parse(text);
+    return true;
+  } catch (const toml::parse_error&) {
+    return false;
+  }
+}
+
 }  // namespace
 
 namespace dbz3::settings {
@@ -411,6 +443,10 @@ namespace {
 // Cached: the probe creates folders/files, so it must not run per frame.
 std::filesystem::path g_user_data_root;
 bool g_user_data_portable = true;
+
+// Result of the last LoadUserSettings(): lets the launcher warn when the file
+// had to be repaired or is still unusable (see ConfigLoadState).
+ConfigLoadState g_config_load_state = ConfigLoadState::kMissing;
 
 // True when `dir` can be created and written to. Used to keep the release
 // portable (everything next to the exe) without breaking when the install
@@ -474,22 +510,62 @@ bool UserDataIsPortable() {
 
 void LoadUserSettings() {
   const auto path = UserSettingsPath();
-  if (std::filesystem::exists(path)) {
-    rex::cvar::LoadConfig(path);
-    REXLOG_INFO("dbz3: user settings loaded from {}", path.string());
-    // Quality presets were added after earlier releases: an existing toml that
-    // does not mention dbz3_quality_preset belongs to a user who already set up
-    // their options manually, so default it to "manual" (never auto-apply and
-    // change their current setup). Fresh installs (no toml) keep the "auto"
-    // default and get GPU-appropriate defaults on first run.
-    if (!rex::cvar::HasNonDefaultValue("dbz3_quality_preset")) {
-      REXLOG_INFO("dbz3: existing user settings have no quality preset -> using 'manual'");
-      REXCVAR_SET(dbz3_quality_preset, "manual");
-    }
-  } else {
+  if (!std::filesystem::exists(path)) {
+    g_config_load_state = ConfigLoadState::kMissing;
     REXLOG_INFO("dbz3: no user settings file at {}, using defaults", path.string());
+    return;
+  }
+  // Self-heal a file an older build left with an unescaped Windows path: it
+  // fails to parse as a whole, so the runtime would ignore EVERY setting. Repair
+  // first (idempotent), then load, and remember what happened for the UI.
+  if (!TomlParses(path)) {
+    REXLOG_WARN("dbz3: user settings at {} failed to parse; attempting repair", path.string());
+    EscapeTomlStrings(path);
+    if (TomlParses(path)) {
+      g_config_load_state = ConfigLoadState::kRepaired;
+      REXLOG_INFO("dbz3: user settings repaired at {}", path.string());
+    } else {
+      // Still broken (not just an escape problem). Keep a copy of the user's
+      // file BEFORE anything else: the launcher auto-saves on close, which would
+      // otherwise overwrite it with defaults and destroy their setup. The
+      // original stays next to it as dbz3_user.toml.bak and the UI explains it.
+      // (This runs once per boot: LoadUserSettings is called twice.)
+      if (g_config_load_state != ConfigLoadState::kInvalid) {
+        g_config_load_state = ConfigLoadState::kInvalid;
+        std::error_code ec;
+        std::filesystem::copy_file(path, path.string() + ".bak",
+                                   std::filesystem::copy_options::overwrite_existing, ec);
+        if (ec) {
+          REXLOG_ERROR("dbz3: user settings at {} are invalid (backup failed: {}); not loaded",
+                       path.string(), ec.message());
+        } else {
+          REXLOG_ERROR("dbz3: user settings at {} are invalid; backed up to {}.bak, not loaded",
+                       path.string(), path.string());
+        }
+      }
+      return;
+    }
+  } else if (g_config_load_state != ConfigLoadState::kRepaired &&
+             g_config_load_state != ConfigLoadState::kInvalid) {
+    // Keep the "repaired"/"invalid" notice: LoadUserSettings runs twice per boot
+    // (path setup, then pre-setup) and the second pass already sees the fixed
+    // file, so unconditionally writing kOk would swallow the message.
+    g_config_load_state = ConfigLoadState::kOk;
+  }
+  rex::cvar::LoadConfig(path);
+  REXLOG_INFO("dbz3: user settings loaded from {}", path.string());
+  // Quality presets were added after earlier releases: an existing toml that
+  // does not mention dbz3_quality_preset belongs to a user who already set up
+  // their options manually, so default it to "manual" (never auto-apply and
+  // change their current setup). Fresh installs (no toml) keep the "auto"
+  // default and get GPU-appropriate defaults on first run.
+  if (!rex::cvar::HasNonDefaultValue("dbz3_quality_preset")) {
+    REXLOG_INFO("dbz3: existing user settings have no quality preset -> using 'manual'");
+    REXCVAR_SET(dbz3_quality_preset, "manual");
   }
 }
+
+ConfigLoadState LastConfigLoadState() { return g_config_load_state; }
 
 void SaveUserSettings() {
   // Persist the friendly dbz3_* cvars plus the derived SDK cvars the user
@@ -1583,8 +1659,10 @@ const char* GpuTierLabel(int32_t tier) {
   }
 }
 
-// Recommended quality values for a tier. Tier 2 (high) tops out at native 1x
-// supersampling + MSAA; "ultra" (2x supersampling) is always a manual choice.
+// Recommended quality values for a tier. Everything tops out at internal 1x
+// (plus MSAA where affordable): raising the internal scale above 1x multiplies
+// the GPU load for a marginal visual gain, so it is left as an explicit manual
+// choice, never a preset.
 struct QualityConfig {
   int32_t scale;
   bool msaa;
@@ -1595,25 +1673,34 @@ struct QualityConfig {
 QualityConfig QualityConfigForTier(int32_t tier) {
   switch (tier) {
     case 0:
-      return {1, false, 0, "bilinear"};  // low: everything off, minimal cost
+      // Modest GPU: keep it native, no extras.
+      return {1, false, 0, "bilinear"};
     case 1:
-      return {1, false, 3, "fsr"};  // medium: FSR upscale, 4x aniso, no MSAA
+      // Mid GPU: FSR + 4x aniso, no MSAA.
+      return {1, false, 3, "fsr"};
     default:
-      return {1, true, 5, "fsr"};  // high: FSR + MSAA + 16x aniso
+      // Good GPU: FSR + MSAA + 16x aniso.
+      return {1, true, 5, "fsr"};
   }
 }
 
 QualityConfig QualityConfigForPreset(const std::string& preset) {
-  if (preset == "low") {
+  // Old preset names are kept as aliases so a toml written by an earlier build
+  // still resolves to a sensible profile after the rename.
+  if (preset == "performance" || preset == "low") {
+    // Max FPS, minimal cost: native resolution, no filtering, no MSAA.
     return {1, false, 0, "bilinear"};
   }
-  if (preset == "medium") {
+  if (preset == "balanced" || preset == "medium") {
+    // Good image with little cost: FSR upscale + 4x aniso, no MSAA.
     return {1, false, 3, "fsr"};
   }
-  if (preset == "ultra") {
-    return {2, true, 5, "fsr"};
-  }
-  return {1, true, 5, "fsr"};  // high
+  // "quality" (default), plus legacy "high"/"ultra": FSR + MSAA + 16x aniso at
+  // native internal res. Legacy "ultra" asked for 2x supersampling, but that is
+  // the exact case that multiplies GPU load for little gain, so it is folded
+  // into the same native-resolution profile (users who want it can raise the
+  // internal scale manually).
+  return {1, true, 5, "fsr"};
 }
 
 void ApplyQualityConfig(const QualityConfig& cfg, bool persist) {

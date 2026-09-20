@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <array>
 #include <cfloat>
+#include <chrono>
 #include <cstddef>
 #include <cstring>
 #include <memory>
@@ -87,19 +88,31 @@ namespace shaders {
 // textura (una vez por textura), no por frame.
 REXCVAR_DEFINE_INT32(dbz3_texture_upscale, 1, "GPU",
                      "DBZ3: upscale de texturas guest en la cache host "
-                     "(1 = off, 2-4 = factor)")
-    .range(1, 4)
+                     "(1 = off, 2-3 = factor)")
+    .range(1, 3)
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 
 // DBZ3 HD Collection: area maxima (en texeles del nivel 0) de una textura que
 // se sube de resolucion. Limitar las enormes evita multiplicar la VRAM y el
-// coste de la pasada por texturas que apenas se notarian. 1M cubre 1024x1024 y
-// 2048x512 (las tipicas), pero deja fuera 2048x1024+ (que a x4 serian 32 MB+
-// por textura). 0 = sin limite.
-REXCVAR_DEFINE_INT32(dbz3_upscale_max_texels, 1 << 20, "GPU",
+// coste de la pasada por texturas que apenas se notarian. 0.5M cubre hasta
+// 1024x512 / 512x1024 (la mayoria), pero deja fuera 1024x1024 y 2048x512+ (que
+// a x3 ya serian ~12-24 MB por textura). 0 = sin limite. Ajuste avanzado.
+REXCVAR_DEFINE_INT32(dbz3_upscale_max_texels, 1 << 19, "GPU",
                      "DBZ3: area maxima (texeles) de textura a escalar "
                      "(0 = sin limite)")
     .range(0, 64 * 1024 * 1024);
+
+// DBZ3 HD Collection: ancho Y alto minimos (en texeles del nivel 0) para
+// escalar una textura. Por debajo de este umbral las texturas son de HUD/UI
+// (segmentos de barra de vida, iconos, glifos): son quads minusculos con
+// textura diminuta y el filtro bicubico las EMBORRONA en vez de mejorarlas
+// (el borde nitido del glifo se convierte en un degradado sucio). 16 cubre las
+// micro-texturas de UI y deja pasar todo el catalogo util (caras, ropa,
+// escenarios, efectos). 1 = sin minimo. Ajuste avanzado.
+REXCVAR_DEFINE_INT32(dbz3_upscale_min_size, 16, "GPU",
+                     "DBZ3: ancho/alto minimos (texeles) de textura a escalar "
+                     "(evita emborronar HUD/UI; 1 = sin minimo)")
+    .range(1, 4096);
 
 // Constantes de la pasada de upscale (deben coincidir con el cbuffer del
 // shader texture_upscale_cs).
@@ -1493,9 +1506,58 @@ bool D3D12TextureCache::IsDecompressionNeeded(xenos::TextureFormat format, uint3
   return true;
 }
 
+bool D3D12TextureCache::UpscaleBudgetAllows(const TextureKey& key) const {
+  // Ya concedido antes: siempre permitido (la respuesta debe ser estable entre
+  // la creacion del recurso Nx y sus recargas).
+  auto it = upscale_granted_keys_.find(key);
+  if (it != upscale_granted_keys_.end()) {
+    return it->second != 0;
+  }
+  // Presupuesto por ventana deslizante: si en poco tiempo se conceden demasiadas
+  // texturas, es video/streaming (la intro reescribe la textura de video ~60
+  // veces/s) -> no conceder ninguna nueva durante kSuppressUs. Vuelve solo
+  // cuando la racha para; el usuario no tiene que hacer nada.
+  constexpr uint32_t kMaxPerWindow = 24;
+  constexpr uint64_t kWindowUs = 500000;     // 0.5 s
+  constexpr uint64_t kSuppressUs = 3000000;  // 3 s
+  const uint64_t now_us = uint64_t(std::chrono::duration_cast<std::chrono::microseconds>(
+                                       std::chrono::steady_clock::now().time_since_epoch())
+                                       .count());
+  bool allowed;
+  if (now_us < upscale_suppress_until_us_) {
+    allowed = false;
+  } else {
+    if (upscale_window_start_us_ == 0 || now_us - upscale_window_start_us_ >= kWindowUs) {
+      upscale_window_start_us_ = now_us;
+      upscale_recent_loads_ = 0;
+    }
+    allowed = upscale_recent_loads_ < kMaxPerWindow;
+    if (allowed) {
+      ++upscale_recent_loads_;
+    } else {
+      upscale_suppress_until_us_ = now_us + kSuppressUs;
+      upscale_recent_loads_ = 0;
+      upscale_window_start_us_ = 0;
+      static bool logged = false;
+      if (!logged) {
+        logged = true;
+        REXGPU_INFO("dbz3: upscale pausado (racha de recargas: probable video/intro)");
+      }
+    }
+  }
+  upscale_granted_keys_.emplace(key, allowed ? uint8_t(1) : uint8_t(0));
+  return allowed;
+}
+
 uint32_t D3D12TextureCache::GetTextureUpscaleFactor(const TextureKey& key) const {
   uint32_t factor = uint32_t(REXCVAR_GET(dbz3_texture_upscale));
   if (factor <= 1 || !upscale_pipeline_) {
+    return 1;
+  }
+  // Presupuesto (ver UpscaleBudgetAllows): estable por textura. El upscale de
+  // un frame de video no aporta nada y regenerar la cadena de mips 60 veces/s
+  // dispara el consumo de GPU.
+  if (!UpscaleBudgetAllows(key)) {
     return 1;
   }
   // Diagnostico: motivos de descarte. Solo se registra cada combinacion UNICA
@@ -1614,6 +1676,13 @@ uint32_t D3D12TextureCache::GetTextureUpscaleFactor(const TextureKey& key) const
   uint32_t max_texels = uint32_t(REXCVAR_GET(dbz3_upscale_max_texels));
   if (max_texels && uint64_t(width) * uint64_t(height) > uint64_t(max_texels)) {
     return reject(9, "too_many_texels");
+  }
+  // Minimo de tamano: las texturas diminutas son de HUD/UI (segmentos de barra
+  // de vida, iconos, glifos). Escalarlas no mejora nada: el filtro bicubico
+  // difumina el borde nitido del glifo y el HUD se ve sucio/emborronado.
+  uint32_t min_size = uint32_t(REXCVAR_GET(dbz3_upscale_min_size));
+  if (width < min_size || height < min_size) {
+    return reject(12, "too_small");
   }
   {
     // Cada textura aceptada se registra (diagnostico, para ver el catalogo

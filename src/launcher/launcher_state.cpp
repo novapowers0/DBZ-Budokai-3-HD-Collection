@@ -706,6 +706,29 @@ void LauncherDialog::OnDraw(ImGuiIO& io) {
               "or the disc ISO."));
   ImGui::Separator();
 
+  // Settings-file health notice. An older build could leave dbz3_user.toml with
+  // an unescaped Windows path, which made the WHOLE file fail to parse and
+  // silently threw away every option. Tell the user when that happened (and when
+  // the file was repaired) instead of letting their settings vanish in silence.
+  const auto config_state = dbz3::settings::LastConfigLoadState();
+  if (config_state == dbz3::settings::ConfigLoadState::kRepaired) {
+    ImGui::TextColored(ImVec4(0.55f, 0.85f, 0.55f, 1.0f), "%s",
+                       i18n::T("Tus ajustes se han recuperado (el archivo de "
+                               "configuracion estaba danado y se ha reparado).",
+                               "Your settings were recovered (the config file was "
+                               "damaged and has been repaired)."));
+  } else if (config_state == dbz3::settings::ConfigLoadState::kInvalid) {
+    ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), "%s",
+                       i18n::T("No se pudo leer tu archivo de ajustes (dbz3_user.toml): "
+                               "tiene un error de formato. Se ha guardado una copia en "
+                               "dbz3_user.toml.bak y se usan los valores por defecto. "
+                               "Corrige o borra el archivo para empezar limpio.",
+                               "Your settings file (dbz3_user.toml) could not be read: it "
+                               "has a format error. A copy was saved as dbz3_user.toml.bak "
+                               "and the default values are in use. Fix or delete the file "
+                               "to start clean."));
+  }
+
   // Tab bar.
   if (ImGui::BeginTabBar("##launcher_tabs")) {
     if (ImGui::BeginTabItem(i18n::T("Video", "Video"))) {
@@ -798,6 +821,7 @@ void LauncherDialog::OnDraw(ImGuiIO& io) {
     rex::cvar::SetFlagByName("dbz3_native_2x_msaa", "true");
     rex::cvar::SetFlagByName("dbz3_anisotropic", "5");
     rex::cvar::SetFlagByName("dbz3_hd_textures", "1");
+    rex::cvar::SetFlagByName("dbz3_hd_texture_max_texels", "524288");
     rex::cvar::SetFlagByName("dbz3_present_effect", "fsr");
     rex::cvar::SetFlagByName("dbz3_fsr_quality", "quality");
     rex::cvar::SetFlagByName("dbz3_fsr_sharpness", "0.2");
@@ -939,19 +963,18 @@ void LauncherDialog::DrawVideoTab() {
     }
 
     const char* preset_items[] = {
-        i18n::T("Auto (recomendado)", "Auto (recommended)"),
-        i18n::T("Baja", "Low"),
-        i18n::T("Media", "Medium"),
-        i18n::T("Alta", "High"),
-        i18n::T("Ultra", "Ultra"),
-        i18n::T("Manual", "Manual")};
-    static const char* preset_vals[] = {"auto", "low", "medium", "high", "ultra", "manual"};
+        i18n::T("Automatico (recomendado)", "Automatic (recommended)"),
+        i18n::T("Rendimiento", "Performance"),
+        i18n::T("Equilibrado", "Balanced"),
+        i18n::T("Calidad", "Quality"),
+        i18n::T("Personalizado", "Custom")};
+    static const char* preset_vals[] = {"auto", "performance", "balanced", "quality", "manual"};
     int preset_idx = 0;
     std::string preset = dbz3::settings::QualityPreset();
-    for (int i = 0; i < 6; i++) {
+    for (int i = 0; i < 5; i++) {
       if (preset == preset_vals[i]) preset_idx = i;
     }
-    if (ImGui::Combo(i18n::T("Perfil de calidad", "Quality preset"), &preset_idx, preset_items, 6)) {
+    if (ImGui::Combo(i18n::T("Modo de calidad", "Quality mode"), &preset_idx, preset_items, 5)) {
       dbz3::settings::SetQualityPreset(preset_vals[preset_idx]);
       // Apply immediately: named presets persist their values, "auto" detects
       // the GPU now, "manual" leaves the individual controls untouched.
@@ -960,12 +983,16 @@ void LauncherDialog::DrawVideoTab() {
     }
     if (ImGui::IsItemHovered()) {
       ImGui::SetTooltip("%s", i18n::T(
-          "Perfil que ajusta escala interna, MSAA, filtrado anisotropico y upscaler. "
-          "Auto detecta la GPU en cada arranque; elige un perfil fijo para bloquear "
-          "los valores. Afecta a la proxima partida.",
-          "Profile that adjusts internal scale, MSAA, anisotropic filtering and "
-          "upscaler. Auto detects the GPU on every launch; pick a fixed profile to "
-          "lock the values. Applies to the next game session."));
+          "Elige que priorizar. Rendimiento = lo mas fluido en equipos modestos; "
+          "Equilibrado = buena imagen con poco coste; Calidad = la mejor imagen "
+          "sin disparar la GPU. Automatico detecta tu GPU y elige por ti. Ninguno "
+          "sube la escala interna (el supersampling se ajusta aparte, abajo). Las "
+          "opciones de abajo solo se tocan en Personalizado.",
+          "Choose what to prioritize. Performance = smoothest on modest PCs; "
+          "Balanced = good image at low cost; Quality = best image without "
+          "maxing out the GPU. Automatic detects your GPU and picks for you. None "
+          "raises the internal scale (supersampling is set separately, below). The "
+          "controls below are only touched in Custom."));
     }
     // Visibility for the preset: always show what it currently resolves to, so
     // "auto" isn't a black box (it applies in-memory and re-evaluates on boot).
@@ -981,10 +1008,10 @@ void LauncherDialog::DrawVideoTab() {
     }
 
     const char* scale_items[] = {
-        i18n::T("1x (nativa 720p)", "1x (native 720p)"),
-        i18n::T("2x (interna 1440p)", "2x (1440p internal)"),
-        i18n::T("3x (interna 2160p)", "3x (2160p internal)"),
-        i18n::T("4x (interna 2880p)", "4x (2880p internal)")};
+        i18n::T("1x (nativa 720p) - recomendado", "1x (native 720p) - recommended"),
+        i18n::T("2x (interna 1440p) - consume mas GPU", "2x (1440p internal) - higher GPU"),
+        i18n::T("3x (interna 2160p) - consume mucho mas GPU", "3x (2160p internal) - much higher GPU"),
+        i18n::T("4x (interna 2880p) - solo GPUs de gama alta", "4x (2880p internal) - high-end GPUs only")};
     int scale = dbz3::settings::ResolutionScale();
     int scale_idx = scale - 1;
     if (scale_idx < 0) scale_idx = 0;
@@ -999,8 +1026,38 @@ void LauncherDialog::DrawVideoTab() {
     }
     if (ImGui::IsItemHovered()) {
       ImGui::SetTooltip("%s", i18n::T(
-          "Supersampling del framebuffer de 720p. Reduce el aliasing. Requiere reinicio.",
-          "Supersampling of the 720p framebuffer. Reduces aliasing. Restart required."));
+          "Supersampling del framebuffer de 720p: el juego renderiza de verdad a "
+          "mayor resolucion y luego se reduce. Reduce muy bien el aliasing, pero "
+          "multiplica el consumo de GPU y potencia (cada paso hacia arriba cuesta "
+          "aprox. el doble). Empieza por 1x. Requiere reinicio.",
+          "Supersampling of the 720p framebuffer: the game really renders at a "
+          "higher resolution and is then downscaled. It greatly reduces aliasing, "
+          "but multiplies GPU load and power draw (each step up costs roughly "
+          "twice as much). Start at 1x. Restart required."));
+    }
+    // Aviso fuerte y accion de revertir: un usuario puede subir la escala sin
+    // entender que ahi esta el coste real (no en las texturas HD). Se le da el
+    // dato claro y el boton para volver a lo razonable en un clic.
+    if (scale > 1) {
+      ImGui::PushStyleColor(ImGuiCol_Text, kDragonOrangeDim);
+      ImGui::TextWrapped("%s",
+                         i18n::T("Supersampling activo: la GPU trabajara mucho mas "
+                                 "(no es necesario para jugar perfectamente a 720p).",
+                                 "Supersampling on: the GPU will work much harder "
+                                 "(not needed to play 720p flawlessly)."));
+      ImGui::PopStyleColor();
+      if (ImGui::SmallButton(i18n::T("Volver a nativo (1x)", "Back to native (1x)"))) {
+        dbz3::settings::SetResolutionScale(1);
+        dbz3::settings::SetQualityPreset("manual");
+        dbz3::settings::SaveUserSettings();
+      }
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("%s", i18n::T(
+            "Deja la escala interna en 1x (render nativo 720p). Es como mejor "
+            "rinde y la calidad ya es alta gracias al escalado FSR/CAS.",
+            "Sets the internal scale back to 1x (native 720p render). It performs "
+            "best this way and quality is already high thanks to FSR/CAS."));
+      }
     }
 
     // HD textures (WIP): emulator-style internal filter. It upscales the game's
@@ -1008,18 +1065,20 @@ void LauncherDialog::DrawVideoTab() {
     // cache with a bicubic pass and a generated mip chain, without touching the
     // game's files or its memory budget. The stutter caused by the mip
     // generation was fixed (bounded block sampling), so it now holds 60 FPS in
-    // combat; it mainly costs VRAM and a slightly longer texture streaming on
-    // first load, so it stays opt-in and off by default.
+    // combat; the cost is GPU load / VRAM (x2 is light, x3 is heavy), so it is
+    // opt-in and off by default, and capped at x3. The advanced VRAM knob lives
+    // in the Dev tab.
     static const char* hdtex_items[] = {
-        i18n::T("Off (original, recomendado)", "Off (original, recommended)"),
-        i18n::T("x2 (WIP)", "x2 (WIP)"),
-        i18n::T("x3 (WIP)", "x3 (WIP)"),
-        i18n::T("x4 (WIP)", "x4 (WIP)")};
+        i18n::T("Desactivado (recomendado)", "Off (recommended)"),
+        i18n::T("Nitidas (uso ligero)", "Sharp (light)"),
+        i18n::T("Muy nitidas (exigente)", "Very sharp (demanding)")};
     int hdtex = dbz3::settings::HdTextures();
     int hdtex_idx = hdtex - 1;
     if (hdtex_idx < 0) hdtex_idx = 0;
-    if (hdtex_idx > 3) hdtex_idx = 3;
-    if (ImGui::Combo(i18n::T("Texturas HD (WIP)", "HD textures (WIP)"), &hdtex_idx, hdtex_items, 4)) {
+    if (hdtex_idx > 2) hdtex_idx = 2;
+    if (ImGui::Combo(i18n::T("Mejora de texturas (experimental)",
+                             "Texture enhancement (experimental)"),
+                     &hdtex_idx, hdtex_items, 3)) {
       dbz3::settings::SetHdTextures(hdtex_idx + 1);
       // Persist immediately (same reason as the render scale: the user may just
       // launch or close without pressing "Save settings").
@@ -1027,40 +1086,19 @@ void LauncherDialog::DrawVideoTab() {
     }
     if (ImGui::IsItemHovered()) {
       ImGui::SetTooltip("%s", i18n::T(
-          "Filtro interno tipo emulador (WIP): reescala las texturas del juego "
-          "(bicubico) sin tocar sus ficheros ni su memoria, y genera la cadena de "
-          "mips. Ya no provoca tirones al cargar texturas (el fix del coste de "
-          "mips esta aplicado); el coste principal es VRAM y algo mas de tiempo "
-          "de carga la primera vez. Si notas tirones, baja el factor o sube el "
-          "limite de escala. Requiere reinicio.",
-          "Emulator-style internal filter (WIP): upscales the game's textures "
-          "(bicubic) without touching its files or memory, and generates the mip "
-          "chain. It no longer stutters while new textures are uploaded (the mip "
-          "cost fix is in); the main cost is VRAM and a slightly longer first "
-          "load. If you notice hitches, lower the factor. Restart required."));
+          "Aumenta la nitidez de las texturas del juego (caras, ropa, escenarios). "
+          "Funciona con la GPU: sube bastante el consumo y el uso de VRAM. Empieza "
+          "por \"Nitidas\"; si notas ralentizaciones, vuelve a Desactivado. "
+          "Requiere reiniciar el juego.",
+          "Sharpens the game's textures (faces, clothes, stages). It runs on the "
+          "GPU: noticeably raises power draw and VRAM usage. Start with \"Sharp\"; "
+          "if you notice slowdowns, switch back to Off. Requires restarting the "
+          "game."));
     }
     if (dbz3::settings::HdTextures() > 1) {
       ImGui::TextColored(kDragonOrangeDim, "%s",
-                         i18n::T("WIP: consume VRAM y alarga un poco la carga inicial",
-                                 "WIP: uses more VRAM, slightly longer first load"));
-      // Limite de area de textura a escalar (techo de VRAM). Bajo = menos VRAM;
-      // subir = escala tambien texturas grandes (2048x1024+).
-      int max_texels = dbz3::settings::HdTextureMaxTexels();
-      int max_mpx = max_texels <= 0 ? 0 : (max_texels + 524287) / 524288;
-      if (ImGui::SliderInt(
-              i18n::T("Limite de tamano de textura HD (Mpx)", "HD texture size limit (Mpx)"),
-              &max_mpx, 0, 16)) {
-        dbz3::settings::SetHdTextureMaxTexels(max_mpx <= 0 ? 0 : max_mpx * 524288);
-      }
-      if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("%s", i18n::T(
-            "Area maxima (en megapixeles) de una textura para subirla de "
-            "resolucion. Bajarlo ahorra VRAM (util si hay tirones o se agota); "
-            "0 = sin limite. 1 Mpx cubre hasta 1024x1024.",
-            "Maximum area (in megapixels) of a texture to upscale. Lower it to "
-            "save VRAM (useful if you see hitches or run out); 0 = no limit. "
-            "1 Mpx covers up to 1024x1024."));
-      }
+                         i18n::T("Experimental: mayor consumo de GPU y VRAM",
+                                 "Experimental: higher GPU and VRAM usage"));
     }
 
     bool msaa = dbz3::settings::Native2xMsaa();
@@ -1068,8 +1106,13 @@ void LauncherDialog::DrawVideoTab() {
       dbz3::settings::SetNative2xMsaa(msaa);
     }
     if (ImGui::IsItemHovered()) {
-      ImGui::SetTooltip("%s", i18n::T("MSAA 2x del host para superficies MSAA 2x del guest.",
-                                "Host 2x MSAA for guest 2x MSAA surfaces."));
+      ImGui::SetTooltip("%s", i18n::T(
+          "Suaviza los bordes (menos dientes de sierra) con un coste moderado de "
+          "GPU. Se nota sobre todo con la escala interna en 1x; si subes la escala, "
+          "puedes quitarlo sin perder mucha calidad.",
+          "Smooths edges (less aliasing) at a moderate GPU cost. It helps most with "
+          "the internal scale at 1x; if you raise the scale, you can turn it off "
+          "without losing much quality."));
     }
 
     static const char* aniso_items[] = {"Off", "1x", "2x", "4x", "8x", "16x"};
@@ -2466,6 +2509,39 @@ void LauncherDialog::DrawDevTab() {
         "Reads bigger chunks at once and serves the following reads from RAM: "
         "helps on mechanical disks and during loads. Disabled automatically "
         "while mods are installed."));
+  }
+
+  // Ajuste avanzado de la mejora de texturas: cuanto se gasta en VRAM. Se
+  // expone solo aqui (Dev) y en lenguaje no tecnico.
+  if (dbz3::settings::HdTextures() > 1) {
+    static const char* hd_texmins_items[] = {
+        i18n::T("Bajo (maximo ahorro, texturas medianas y menores)",
+                "Low (max savings, medium and smaller textures)"),
+        i18n::T("Medio (equilibrado)", "Medium (balanced)"),
+        i18n::T("Alto (mas texturas, mas VRAM)", "High (more textures, more VRAM)")};
+    // 0.25 M / 0.5 M / 1 M texeles.
+    static const int32_t hd_texmins_vals[] = {1 << 18, 1 << 19, 1 << 20};
+    int mins_idx = 1;
+    const int32_t cur = dbz3::settings::HdTextureMaxTexels();
+    for (int i = 0; i < 3; i++) {
+      if (cur == hd_texmins_vals[i]) mins_idx = i;
+    }
+    if (ImGui::Combo(i18n::T("Texturas HD: cuanto gastar (avanzado)",
+                             "HD textures: spending (advanced)"),
+                     &mins_idx, hd_texmins_items, 3)) {
+      dbz3::settings::SetHdTextureMaxTexels(hd_texmins_vals[mins_idx]);
+    }
+    if (ImGui::IsItemHovered()) {
+      ImGui::SetTooltip("%s", i18n::T(
+          "Cuantas texturas se mejoran segun su tamano. \"Bajo\" solo toca las "
+          "pequenas y medianas (mucho menos consumo); \"Alto\" tambien las "
+          "grandes de escenario (nota mas, gasta mas). Cambia la VRAM y el uso "
+          "de GPU de la mejora de texturas.",
+          "Which textures get enhanced based on size. \"Low\" only touches small "
+          "and medium ones (much less cost); \"High\" also the big stage "
+          "textures (more noticeable, more cost). Changes the VRAM and GPU usage "
+          "of the texture enhancement."));
+    }
   }
 
   bool diag = dbz3::settings::DiagLogging();

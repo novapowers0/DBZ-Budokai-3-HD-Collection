@@ -365,12 +365,30 @@ por ejecucion sin borrar los viejos.
     `GetDXGIUnormFormat(TextureKey)` (antes devolvian `dxgi_format_uncompressed`,
     que en `k_8_8_8_8` es `UNKNOWN` -> miles de
     `Unsupported texture formats used in the frame`).
-  - Nueva cvar **`dbz3_upscale_max_texels`** (default `1 << 20` texeles = area
-    max. 1024x1024; `0` = sin limite) para acotar VRAM. El launcher la expone como
-    "Limite de tamano de textura HD (Mpx)" -> cvar `dbz3_hd_texture_max_texels`.
-- **Medicion** (`hd_tex=4x` + `3x` + MSAA + cap 60, RTX 4070 SUPER): **1515
-  texturas** escaladas (vs 279 solo-DXT), **0 errores**, fps min 57.4, **0 frames
-  >100 ms**, peor frame 55 ms, VRAM ~3 GB.
-- **DLLs canonicas (2026-09-19, texturas HD RGBA8)**: `rexgpu-xenos.dll`
-  **6.207.488 B** (baseline; SHA256 varia por build), `rexruntime.dll`
+  - Nueva cvar **`dbz3_upscale_max_texels`** (default `1 << 19` texeles = 0.5 M,
+    area max. 1024x512 / 512x1024; `0` = sin limite) para acotar VRAM. El
+    launcher la expone como ajuste **avanzado** en el tab Dev
+    ("HD textures: spending", Bajo/Medio/Alto) -> cvar
+    `dbz3_hd_texture_max_texels`.
+  - **Guardia de video** (`UpscaleBudgetAllows`): la intro/SFD reescribe la
+    textura de video ~60 veces/s y cada reescritura regeneraba la cadena de mips
+    (`upx` llegaba a **32182**, GPU al 80 % / 133 W). Ventana deslizante: >24
+    upscales en 0.5 s -> deja de conceder 3 s. La decision se **cachea por key**
+    (`upscale_granted_keys_`) para que sea estable entre la creacion del recurso
+    Nx y sus recargas (si no, el recurso Nx queda sin rellenar -> `device
+    removed 0x887A0001`). Medido: upx 32182->237, GPU 80->39 %, 133->34 W.
+  - **Tope x3** (`dbz3_texture_upscale` rango 1-3, antes 1-4): x4 multiplicaba
+    VRAM/GPU casi sin ganancia visible.
+  - **Minimo de tamano** (`dbz3_upscale_min_size`, default **16**): no se escalan
+    texturas menores de 16 texeles de ancho/alto. Son de HUD/UI (segmentos de
+    barra de vida, iconos) y el bicubico las emborronaba. Fix del HUD sucio
+    (feedback del usuario).
+  - **Clamp anti-ringing** en `texture_upscale_cs.hlsl`: el resultado del kernel
+    Catmull-Rom se acota al `[min, max]` de las 16 muestras, sin sobre-disparo
+    en contornos (glifos/letras). Bytecode regenerado con `fxc /T cs_5_1 /E main
+    /Vn texture_upscale_cs /O3 /Fh ...`.
+- **Medicion** (`hd_tex=3x` + limite 0.5 M, preset Calidad, RTX 4070 SUPER,
+  combate real): **0 errores**, fps min 54.7, GPU **39 % / 33 W / 1.67 GB**.
+- **DLLs canonicas (2026-09-19b, texturas HD: RGBA8 + guardia + min-size)**: `rexgpu-xenos.dll`
+  **6.227.456 B** (baseline; SHA256 varia por build), `rexruntime.dll`
   **10.910.208 B**, `amd_fidelityfx_dx12.dll` **5.413.888 B**.

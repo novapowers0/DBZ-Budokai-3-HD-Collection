@@ -56,6 +56,10 @@ lógica de región/mods, y runtime.
 - `docs/SESION_LAUNCHER_AUDIT_2026-09-19.md` - auditoria del launcher
   (controles muertos + audio_gain real + update check de GitHub, inspirado en
   Dusklight)
+- `docs/SESION_TOML_Y_UX_2026-09-20.md` - autorreparacion del TOML
+  (`unknown escape sequence '\G'`, aviso + `.bak`) + UX anti-abuso de la escala
+  interna (aviso fuerte + boton "Volver a nativo (1x)"); cubre los logs de
+  Prince Vegeta
 - `docs/PLAN_1.1.1.md`, `docs/PLAN_LINUX.md` — planes de depurado y port Linux
 - `docs/MIGRACION_REXGLUE_010.md` — migración SDK 0.9→0.10 (leer ANTES de tocar el SDK)
 - `docs/01_estructura/HISTORICO_AGENTS.md` — historial verbatim de sesiones (solo bajo demanda)
@@ -139,22 +143,53 @@ lógica de región/mods, y runtime.
   silenciado y **Texturas HD (WIP, OFF por defecto)**. Docs:
   `docs/ANALISIS_RENDIMIENTO_LOGS_2026-09-18.md` +
   `docs/07_ports/TEXTURAS_HD_RUNTIME_UPSCALE.md`.
-- **(2026-09-19) Texturas HD — ALCANCE ARREGLADO (RGBA8 nativas) + tirones
-  (pendiente de validación visual del usuario)**: además del fix de tirones
-  (§ abajo), el usuario reportó "no noté mejora de texturas" con `hd_tex=4x`.
+- **(2026-09-19) Texturas HD — ALCANCE ARREGLADO (RGBA8 nativas) + UX + guardia
+  de video (pendiente de validación visual del usuario)**: además del fix de
+  tirones (§ abajo), el usuario reportó "no noté mejora de texturas" con
+  `hd_tex=4x`.
   **Causa**: `GetTextureUpscaleFactor` exigía `dxgi_format_uncompressed`, que
   SOLO está relleno en las DXT → **todas las RGBA8 nativas (`fmt=6`, las más
   grandes: caras/ropa/escenarios) se descartaban**; solo se escalaban DXT3
   pequeñas. **Fix**: aceptar también RGBA8 nativas (`dxgi_format_unsigned ==
   R8G8B8A8_UNORM` + load shader que produzca RGBA8), nuevo helper
   `GetTextureUpscaleRgba8Format` (bug: el recurso se creaba con formato UNKNOWN
-  → miles de `Unsupported texture formats`), **exclusión del frontbuffer**
+  → miles de `Unsupported texture formats`) y **exclusión del frontbuffer**
   (`swap_texture_key_`; sin esto el recurso de swap se creaba a Nx → crash del
-  presentador) y **límite de área** (cvar `dbz3_upscale_max_texels`=1 M texeles,
-  expuesto en el launcher como "Límite de tamaño de textura HD (Mpx)"). Medición
-  (`dbz3_153`/`154`, `hd_tex=4x`+`3x`+MSAA): **1515 texturas** (vs 279), **0
-  errores**, fps min 57.4, **0 frames >100 ms**, peor frame 55 ms, VRAM ~3 GB.
-  Detalle: `docs/07_ports/TEXTURAS_HD_RUNTIME_UPSCALE.md` §9-§10.
+  presentador).
+  **🔴 CONSUMO BRUTAL (feedback del usuario, 2026-09-19)**: con el feature activo
+  la GPU pasaba a **80 % / 133 W / 3,1 GB**. Causa: la intro/SFD reescribe la
+  textura de video ~60 veces/s y cada reescritura regeneraba la cadena de mips
+  (`upx` llegó a **32182**; ~700 en combate). **Fix**: `UpscaleBudgetAllows`
+  (ventana deslizante; >24 upscales en 0,5 s ⇒ deja de conceder 3 s; decisión
+  **cacheada por key** para que sea estable, si no el recurso Nx queda sin
+  rellenar → `device removed 0x887A0001`). Medición: upx **32182→237**, GPU
+  **80→39 %**, 133→34 W, 3,1→1,95 GB; combate x3 = 689 texturas, 0 errores,
+  60 FPS, <25 % GPU.
+  **Rediseño de UX** (petición del usuario): tope **x3** (antes x4), el "límite
+  Mpx" sale de la vista normal al **tab Dev** en lenguaje llano
+  (Bajo/Medio/Alto), la opción se llama **"Mejora de texturas (experimental)"**
+  con **Nitidas (x2) / Muy nitidas (x3)**, default de área 1 M→**0,5 M** texeles,
+  y **presets de calidad reformulados**
+  (Automático/Rendimiento/Equilibrado/Calidad/Personalizado, **ninguno sube la
+  escala interna**; los nombres viejos low/medium/high/ultra son alias).
+  **🔴 HUD EMBORRONADO (feedback del usuario, 2026-09-19b)**: los "cuadritos" de
+  la barra de vida salían sucios. Causa: son **quads con textura diminuta de UI**
+  y el bicúbico puro hace *ringing* en bordes de contraste. **Fix**: nuevo cvar
+  **`dbz3_upscale_min_size`** (default **16**; no se escalan texturas menores) +
+  **clamp anti-ringing** en `texture_upscale_cs.hlsl` (resultado acotado al
+  min/max de las 16 muestras). Medición (`dbz3_170`, x3 + 0.5 M): 0 errores,
+  fps min 54.7, GPU **39 % / 33 W / 1.67 GB**.
+  **🔴 EL COSTE ES EL SUPERSAMPLING, NO LAS TEXTURAS HD (2026-09-19c)**: el
+  consumo alto (80 %/132 W) de la captura del usuario era de la **versión vieja
+  (x4 HD)**; con la actual, medido a 3x interno SIN texturas HD = 51 %/50 W, y a
+  **1x+FSR = 22-23 %/29-30 W**. `draw_resolution_scale` hace que el guest
+  renderice de verdad a Nx (supersampling real; FSR queda inerte). **No hay bug**.
+  Acción (petición del usuario "mantener 3x pero avisar fuerte"): aviso naranja
+  cuando `scale>1` + **botón "Volver a nativo (1x)"** + etiquetas de coste en el
+  combo de escala + tooltips de preset/MSAA aclarando que **ningún preset sube la
+  escala**. `1x` es default y recomendado. **⚠️ Un valor cvar fuera de rango
+  invalida el toml ENTERO** (`dbz3_texture_upscale=4` viejo lo rompía).
+  Detalle: `docs/07_ports/TEXTURAS_HD_RUNTIME_UPSCALE.md` §9-§16.
 - **(2026-09-19) Texturas HD — CAUSA DE LOS TIRONES ARREGLADA (pendiente de
   validación visual del usuario)**: reproducido con la config EXACTA del tester
   (`hd_tex=4x` + `3x` + MSAA + cap 60) en local. **Causa raíz**: el shader
@@ -975,9 +1010,11 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
     rexruntime **10910208** (con `audio_gain`, `dbz3_perf_logging`,
     `dbz3_io_logging`/`dbz3_io_readahead`, la poda de logs y
     `dbz3_mute_unfocused`), rexgpu-xenos
-    **6207488** (con `fg=` en la linea `perf`, el fix de mips del shader de
-    upscale `texture_upscale_cs` y la extensión a RGBA8 nativas del upscale;
-    **sin** instrumentación de draw), amd_fidelityfx_dx12 5413888. ⚠️ El **SHA256 varía
+    **6227456** (con `fg=` en la linea `perf`, el fix de mips del shader de
+    upscale `texture_upscale_cs` + clamp anti-ringing, la extensión a RGBA8
+    nativas, el mínimo de tamaño `dbz3_upscale_min_size` y la guardia de
+    video `UpscaleBudgetAllows`; **sin** instrumentación de draw),
+    amd_fidelityfx_dx12 5413888. ⚠️ El **SHA256 varía
     por build** (embebe timestamp) — comparar por **tamaño** o recompilar y
     copiar, no por hash fijo. ⚠️ Los tamaños de AMBAS DLL cambian cuando se
     recompila el SDK: el valor de referencia es el que hay en
@@ -1121,18 +1158,36 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
   `A53E324B5D2A65EBCBF648E4F85A7271`, EU `C37EB979B762DA0AB5B8C9BA8037CE4E`,
   DBZ1 `5A6AB28A4911851FCA955B5925CDFEBB`, menú HD 3317760 B. `XexStatusLabel()`
   da el texto para la UI/logs. Con núcleo dual acepta US y EU.
-- **Fix TOML (v1.2.2)**: `rex::cvar::SaveConfig` escribe los valores crudos
-  (una ruta `E:\Game Roms\…` rompía el parseo con `unknown escape sequence
-  '\G'` y se perdían TODOS los ajustes). `SaveUserSettings` ahora pasa el
-  fichero por `EscapeTomlStrings` (escapa `\`/`"` dentro de valores entre
-  comillas; **idempotente** porque `SaveConfig` no reescribe si nada cambió).
-- **Video**: presets (`dbz3_quality_preset` auto/low/medium/high/ultra/manual;
-  `auto` detecta GPU por DXGI — la dGPU de más VRAM — y aplica perfil), escala
+- **Fix TOML (v1.2.2 + autorreparación 2026-09-20)**: `rex::cvar::SaveConfig`
+  escribe los valores crudos (una ruta `E:\Game Roms\…` rompía el parseo con
+  `unknown escape sequence '\G'` y se perdían TODOS los ajustes).
+  `SaveUserSettings` pasa el fichero por `EscapeTomlStrings` (escapa `\`/`"`
+  dentro de valores entre comillas; **idempotente** porque `SaveConfig` no
+  reescribe si nada cambió). **Además `LoadUserSettings` ahora AUTORREPARA**:
+  valida el fichero con toml++ (`TomlParses`, leyendo el TEXTO y no la ruta —
+  una carpeta con no-ASCII rompería `parse_file`) y, si no parsea, aplica
+  `EscapeTomlStrings` y recarga. El estado se expone (`ConfigLoadState`:
+  `kOk/kRepaired/kInvalid`) y el launcher avisa arriba de los tabs (verde
+  "recuperado" / rojo "inválido"); si sigue inválido **no carga** y guarda una
+  copia `dbz3_user.toml.bak` antes de que el autoguardado del cierre lo pise.
+  ⚠️ `LoadUserSettings` corre DOS veces por arranque (OnConfigurePaths +
+  OnPreSetup) → el estado `kRepaired`/`kInvalid` se preserva (si no, el segundo
+  pase lo pisa con `kOk` y el aviso no sale). Debe incluirse `<toml++/toml.hpp>`
+  (lo provee `rex::runtime`). Cubre los logs de Prince Vegeta (v1.2.1).
+  ⚠️ Un valor **fuera de rango** NO rompe el fichero: se rechaza solo ese cvar
+  (warning `Config: invalid value for cvar`).
+- **Video**: presets (`dbz3_quality_preset` **auto/performance/balanced/quality/
+  manual**; `auto` detecta GPU por DXGI — la dGPU de más VRAM — y aplica perfil;
+  **ningún preset sube la escala interna**, tope 1x; los nombres viejos
+  low/medium/high/ultra se aceptan como alias), escala
   interna (draw_resolution_scale_x/y), MSAA, aniso, FSR/CAS, frame_cap REAL
   (0/15-1000; 30 para integradas), VRR (`dbz3_vrr`), "Game speed: fixed 60".
   En **Escalado** ademas: **FXAA** (`dbz3_fxaa` -> SDK `swap_post_effect`;
   none/fxaa/fxaa_extreme; corre ANTES del upscaler, se combina con FSR/CAS y es
   la via barata de AA) y **dither** (`dbz3_present_dither` -> `present_dither`).
+  **Mejora de texturas (experimental)**: `dbz3_hd_textures` (Off/**Nitidas x2**/
+  **Muy nitidas x3**), y el ajuste avanzado de VRAM
+  (`dbz3_hd_texture_max_texels`, Bajo/Medio/Alto) en el tab Dev.
 - **Audio (real desde 2026-09-19)**: `dbz3_master_volume` -> SDK **`audio_gain`**
   (ganancia del callback SDL) y checkbox **Silenciar** -> SDK `audio_mute`;
   ambos se aplican en caliente al cambiar (`ApplyRuntimeSettingsToSdk`). Los

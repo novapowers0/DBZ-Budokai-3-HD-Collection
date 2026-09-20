@@ -376,6 +376,25 @@ class D3D12TextureCache final : public TextureCache {
   mutable TextureKey swap_texture_key_;
   mutable bool swap_texture_key_valid_ = false;
 
+  // Presupuesto de carga: si en poco tiempo se generan demasiadas texturas
+  // escaladas (senal de VIDEO/streaming: la intro y los SFD reescriben la
+  // textura de video ~60 veces/s, cada reescritura dispara un upscale completo
+  // de la cadena de mips -> el consumo de GPU se dispara sin ninguna ganancia
+  // visible), se deja de conceder upscale a texturas NUEVAS durante un rato. El
+  // usuario no tiene que entender nada: el feature se frena solo cuando no
+  // aporta. La decision debe ser ESTABLE por textura (el recurso se crea Nx al
+  // inicio y las recargas deben seguir tratandolo como Nx), por eso se guarda el
+  // conjunto de keys que YA tienen upscale concedido: la guardia solo impide
+  // concederlo a las que aun no lo tenian.
+  mutable uint32_t upscale_recent_loads_ = 0;
+  mutable uint64_t upscale_window_start_us_ = 0;
+  mutable uint64_t upscale_suppress_until_us_ = 0;
+  // Keys (canonicas) con upscale concedido. Necesario para que la respuesta de
+  // GetTextureUpscaleFactor sea la misma entre la creacion del recurso y las
+  // recargas (si no, el recurso Nx queda sin rellenar -> device removed).
+  mutable std::unordered_map<TextureKey, uint8_t, TextureKey::Hasher> upscale_granted_keys_;
+  bool UpscaleBudgetAllows(const TextureKey& key) const;
+
  public:
   // Numero de texturas que se han subido de resolucion desde el arranque
   // (diagnostico: aparece en la linea `dbz3: perf ... upx=` cuando es > 0).

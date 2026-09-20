@@ -1,11 +1,10 @@
-# Texturas HD en runtime (capa exterior) — APARCADO
+# Texturas HD en runtime (capa exterior)
 
-> Estado: **DESACTIVADO / APARCADO el 2026-09-18**, a petición del usuario, para
-> centrar el esfuerzo en rendimiento. El código está implementado y probado en
-> su parte estructural; basta activar el cvar para retomarlo.
->
-> Cvar: **`dbz3_texture_upscale`** (`1` = off por defecto, `2`-`4` = factor;
-> requiere reinicio). Valor actual en el build de desarrollo: `1`.
+> Estado: **FUNCIONAL, opt-in (default OFF)**, tope **x3**. Cvar
+> **`dbz3_texture_upscale`** (`1` = off, `2`/`3` = factor; requiere reinicio).
+> En el launcher: "Mejora de texturas (experimental)" con dos niveles
+> (**Nitidas** = x2 / **Muy nitidas** = x3); el ajuste avanzado de VRAM vive en
+> el tab Dev. Ver §11 para el rediseno de UX y §12 para la guardia de video.
 
 ---
 
@@ -296,5 +295,173 @@ fps min 57.4, **0 frames >100 ms**, 0 errores, 0 lecturas lentas de disco. La
 VRAM se mantiene (~3 GB usados de 12 GB). El gate `swap_texture` actua (1
 exclusion registrada, frontbuffer intacto).
 
-**Pendiente**: validacion visual del usuario (nitidez de personajes/escenarios
-con `hd_tex=4x`). Los mips altos siguen siendo aproximados (§8).
+  **Pendiente**: validacion visual del usuario (nitidez de personajes/escenarios
+  con `hd_tex=4x`). Los mips altos siguen siendo aproximados (§8).
+
+## 11. REDISENO DE UX + TOPE x3 (2026-09-19, feedback del usuario)
+
+Feedback del usuario: el feature "se puede abusar mucho sin entenderlo", el
+"HD texture size limit (Mpx)" es incomprensible para el usuario promedio y en
+general los controles no son user-friendly. Cambios:
+
+- **Tope duro x3** (antes x4): la cvar `dbz3_texture_upscale` pasa a rango 1-3 y
+  el launcher solo ofrece Off / x2 / x3. x4 multiplicaba VRAM y GPU casi sin
+  ganancia visible sobre x3.
+- **Sin "Mpx" en la vista normal**: el limite de area se movio al **tab Dev**
+  como ajuste avanzado, en lenguaje no tecnico ("Bajo/Medio/Alto: cuanto
+  gastar"), con la explicacion por *que hace*, no por megapixeles.
+- **Nombres orientados al resultado**: la opcion de texturas pasa de
+  "Texturas HD (WIP) x2/x3/x4" a **"Mejora de texturas (experimental)"** con
+  **"Nitidas (uso ligero)"** y **"Muy nitidas (exigente)"**; el aviso dice
+  claro que sube el consumo de GPU y que hay que reiniciar.
+- **Default de area mas conservador**: `dbz3_upscale_max_texels` pasa de 1 M a
+  **0.5 M texeles** (1024x512 / 512x1024), lo que deja fuera las texturas
+  grandes de escenario y recorta el coste por defecto.
+- **Presets de calidad reformulados** (ver §13): ya no se llaman
+  Baja/Media/Alta/Ultra, sino **Rendimiento / Equilibrado / Calidad**, y
+  **ninguno sube la escala interna** (esa era la otra fuente de consumo
+  desmedido). Los nombres viejos se aceptan como alias al cargar.
+
+## 12. GUARDIA DE VIDEO — causa del consumo brutal (2026-09-19)
+
+**Sintoma**: con `hd_tex` activado el consumo de GPU se disparaba (80 % / 133 W
+/ 3.1 GB en la RTX 4070 SUPER del dev, captura del overlay MSI Afterburner) y
+aparecian fallos graficos, incluso con factor x2.
+
+**Diagnostico**: el contador `upx` (texturas escaladas) llegaba a **32182** en
+~35 s durante la intro, frente a ~700 en combate. La intro reproduce video (SFD)
+renderizado como una textura que se **reescribe ~60 veces por segundo**; cada
+reescritura marca la textura como *outdated*, dispara una carga completa y con
+ella **regenera toda la cadena de mips**. Es decir: se estaba re-escalando el
+video frame a frame, sin ninguna ganancia (es contenido que cambia cada frame).
+
+**Fix** (`UpscaleBudgetAllows`): ventana deslizante; si en 0.5 s se conceden mas
+de 24 upscales, se dejan de conceder durante 3 s (probable video). La decision
+se **cachea por key** (`upscale_granted_keys_`) porque debe ser estable: el
+recurso se crea Nx al inicio y sus recargas deben seguir tratandolo como Nx (si
+no, el recurso Nx queda sin rellenar -> `device removed: 0x887A0001`). El
+usuario no tiene que entender nada: el feature se frena solo cuando no aporta.
+
+**Medicion** (`hd_tex=2x`, limite 0.5 M, escala 1x, mismo tramo de intro):
+
+| | upx | GPU | potencia | VRAM |
+|---|---|---|---|---|
+| Sin guardia (`dbz3_160`) | **32182** | 80 % | 133 W | 3.1 GB |
+| **Con guardia (`dbz3_162`)** | **237** | 39 % | 34 W | 1.95 GB |
+
+Con `hd_tex=3x` y combate real (`dbz3_163`): **689 texturas**, 0 errores, 0
+`device removed`, 60 FPS, GPU < 25 % / 35 W / 1.9 GB. La guardia se activa 1 vez
+por sesion (al pasar la intro) y no afecta al combate.
+
+## 13. PRESETS DE CALIDAD REFORMULADOS (2026-09-19)
+
+Los presets (tab Video) pasan de `Auto/Baja/Media/Alta/Ultra/Manual` a:
+
+| Preset | Escala | MSAA | Aniso | Efecto |
+|---|---|---|---|---|
+| **Automatico** (recomendado) | detecta GPU (1x) | segun tier | segun tier | segun tier |
+| **Rendimiento** | 1x | no | no | bilinear |
+| **Equilibrado** | 1x | no | 4x | fsr |
+| **Calidad** | 1x | si | 16x | fsr |
+| **Personalizado** | lo que ponga el usuario | | | |
+
+Claves del cambio:
+- **Ningun preset sube la escala interna** (1x siempre). "Ultra" pedia 2x de
+  supersampling: justo el caso que multiplica la GPU por poco beneficio, asi que
+  se elimino (quien lo quiera, sube la escala a mano). El tope del tier "high"
+  ya era 1x.
+- Los nombres **describen el resultado** que busca el usuario, no un nivel
+  abstracto.
+- El combo muestra siempre **que valores resuelve** ("Activo: Calidad -> 1x,
+  MSAA ON, aniso 16, fsr") para que "Automatico" no sea una caja negra.
+- **Migracion**: `low`->`performance`, `medium`->`balanced`, `high`/`ultra`->
+  `quality` (alias en `QualityConfigForPreset`; siguen en `.allowed()` para que
+  un `dbz3_user.toml` viejo no invalide el fichero).
+
+## 14. FIX DEL HUD EMBORRONADO (2026-09-19b, feedback del usuario)
+
+**Sintoma**: sobre la barra de vida del combate, los "cuadritos" que
+representan los segmentos de vida salian **emborronados/sucios** (captura del
+usuario, RTX 4070 S, 80 % / 133 W antes de la iteracion). No era el video de la
+intro: es **contenido de HUD**.
+
+**Causa**: los segmentos de la barra de vida son **quads diminutos con textura
+pequena** (glifos de UI: 1x1..16x16), y el kernel **Catmull-Rom bicubico** puro
+hace *ringing* (sobre/sub-disparo) en bordes de contraste fuerte → halo sucio
+que se percibe como desenfoque. Escalar una textura de 8x8 no aporta nada de
+todas formas.
+
+**Fix (dos capas)**:
+1. **Minimo de tamano** (`dbz3_upscale_min_size`, default **16**): no se
+   escalan texturas cuyo ancho o alto sea menor que 16 texeles. Quita de raiz
+   las micro-texturas de HUD/iconos y deja intacto el catalogo util (las
+   aceptadas van de 16x32 a 512x1024). `1` = sin minimo (avanzado).
+2. **Clamp anti-ringing** en `texture_upscale_cs.hlsl`: el resultado del
+   bicubico se acota al `[min, max]` de las 16 muestras del kernel. Mantiene la
+   nitidez sin el sobre-disparo en contornos (glifos, letras, bordes duros).
+
+**Medicion** (`hd_tex=3x` + 0.5 M, preset Calidad, `dbz3_170`): **0 errores**,
+fps min 54.7, upx 508, GPU **39 % / 33 W / 1.67 GB**. El bytecode del shader se
+regenero con `fxc /T cs_5_1 /E main /Vn texture_upscale_cs /O3 /Fh ...`.
+
+**Pendiente**: validacion visual del usuario del HUD (necesita ventana
+on-screen; `long_run.ps1` la mueve fuera de pantalla y `PrintWindow` no captura
+el 3D).
+
+## 15. UX — "que no se pueda abusar" (2026-09-19b)
+
+Principios aplicados al feature (peticion explicita del usuario):
+- **Defaults seguros**: off por defecto; area maxima 0.5 M; minimo 16;
+  presets que no suben la escala interna.
+- **Sin jerga en la vista normal**: nada de "Mpx", "factor", "texeles". El
+  control principal es un combo con **resultado** ("Nitidas" / "Muy nitidas") y
+  los ajustes tecnicos viven en el tab **Dev**, explicados por lo que hacen.
+- **Tope duro x3** en la cvar, no solo en la UI (aunque se edite el toml, no
+  hay x4).
+- **Coste visible**: al activar la mejora aparece un aviso naranja en la propia
+  pestana ("mas detalle a cambio de mas consumo de GPU y VRAM").
+- **Presets con nombre de intencion** (Rendimiento/Equilibrado/Calidad) y
+  resumen "Activo: …" siempre visible para que "Automatico" no sea caja negra.
+- **Salvaguardas internas invisibles**: la guardia de video (§12) y el minimo
+  de tamano (§14) no tienen control: frenan el mal uso por si solo.
+
+## 16. RENDIMIENTO — EL COSTE ES EL SUPERSAMPLING, NO LAS TEXTURAS HD (2026-09-19c)
+
+**Confusion a resolver**: el usuario reporto "lo note muy fluido pero me consumia
+demasiado" (80 % / 132 W) con SU config. **Esa captura era de la version vieja
+(x4 HD)**; con la version actual, ese consumo viene de la **escala interna 3x**,
+no de las texturas HD (que estan en OFF en su toml).
+
+**Medido (RTX 4070 SUPER, combate, `dbz3_175..178`)**:
+
+| Config | GPU | Potencia | VRAM |
+|---|---|---|---|
+| **1x + FSR** (nativo) | **22-23 %** | **29-30 W** | 1.35 GB |
+| 3x interno (supersampling) | 51 % | 50 W | 2.9 GB |
+| 3x + HD x4 (version vieja) | **80 %** | **132 W** | 3.1 GB |
+
+**Conclusion**: `draw_resolution_scale` hace que el **guest renderice de verdad
+a Nx** (supersampling real, `command_processor.cpp`), no es un upscale barato.
+Cada paso de escala cuesta ~el doble. A 1x el port consume **30 W / 23 %**, que
+es lo esperable de un port nativo a 720p. **No hay bug ni desperdicio**: a 3x el
+FSR/CAS queda inerte (frontbuffer >= salida) y no se añade ninguna pasada extra
+(verificado en `presenter.cpp:1065`).
+
+**Accion (peticion del usuario: "mantener 3x pero avisar fuerte")**:
+- Aviso naranja visible cuando `scale > 1` ("la GPU trabajara mucho mas...").
+- **Boton "Volver a nativo (1x)"** de un clic (pone escala 1x y persiste).
+- Etiquetas del combo de escala con el coste ("consume mas GPU" / "mucho mas").
+- Tooltip del preset aclara que **ninguno sube la escala**.
+- Tooltip del MSAA: coste moderado, se puede quitar si subes la escala.
+- `1x` es el default y el recomendado (marcado en la propia opcion).
+
+**La config del tester (SSGPrinceVegeta) se conserva** en el toml local
+(`manual` + 3x, su intencion original) pero el launcher la presenta con el aviso
+y la via de un clic para bajarla.
+
+**FIX de valores fuera de rango**: el toml del tester traia
+`dbz3_texture_upscale = 4` (valor viejo, ya no existe) y
+`dbz3_hd_textures = 3` con `dbz3_skip_launcher = true`. Un valor fuera de rango
+**invalida el fichero ENTERO** en el parser (`could not determine value type`) y
+el usuario pierde todos los ajustes. Se limpio el toml; conviene recordar que
+los rangos nuevos son HD textures 1-3, area 0..64M, minimo 1..4096.

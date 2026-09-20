@@ -89,5 +89,18 @@ void main(uint3 xe_thread_id : SV_DispatchThreadID) {
       xe_accum += xe_texel * (xe_w[xe_i].x * xe_w[xe_j].y);
     }
   }
-  xe_upscale_dest[xe_thread_id.xy] = saturate(xe_accum);
+  // Clamp anti-ringing: el Catmull-Rom puro sobre/bajo-dispara en bordes de
+  // contraste fuerte (contornos de glifos del HUD, letras), y ese halo se ve
+  // como EMBORRONADO sucio. Se acota el resultado al rango [min, max] de las 16
+  // muestras: mantiene la nitidez del kernel sin el sobre-disparo.
+  float4 xe_min = 1.0;
+  float4 xe_max = 0.0;
+  [unroll] for (int xe_j2 = 0; xe_j2 < 4; ++xe_j2) {
+    [unroll] for (int xe_i2 = 0; xe_i2 < 4; ++xe_i2) {
+      float4 xe_t = XeLoadLevelTexel(xe_level_size, xe_base + int2(xe_i2 - 1, xe_j2 - 1));
+      xe_min = min(xe_min, xe_t);
+      xe_max = max(xe_max, xe_t);
+    }
+  }
+  xe_upscale_dest[xe_thread_id.xy] = saturate(clamp(xe_accum, xe_min, xe_max));
 }
