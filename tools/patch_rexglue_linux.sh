@@ -44,15 +44,14 @@ import sys
 
 path = Path(sys.argv[1])
 text = path.read_text()
-text = text.replace('#if REX_PLATFORM_MAC\n#include <locale.h>',
-                    '#if !REX_PLATFORM_WIN32\n#include <locale.h>')
-text = text.replace('#if REX_PLATFORM_MAC\ntemplate <typename T>\ninline std::from_chars_result portable_float_from_chars',
-                    '#if !REX_PLATFORM_WIN32\n#define REXGLUE_LINUX_FLOAT_FROM_CHARS 1\ntemplate <typename T>\ninline std::from_chars_result portable_float_from_chars')
-text = text.replace('#if REX_PLATFORM_MAC\n     auto [p, error] = portable_float_from_chars',
-                    '#if !REX_PLATFORM_WIN32\n     auto [p, error] = portable_float_from_chars')
-text = text.replace('#if REX_PLATFORM_MAC\n       auto result = detail::portable_float_from_chars',
-                    '#if !REX_PLATFORM_WIN32\n       auto result = detail::portable_float_from_chars')
+text = text.replace('#if REX_PLATFORM_MAC', '#if !REX_PLATFORM_WIN32')
+text = text.replace('#if !REX_PLATFORM_WIN32\ntemplate <typename T>\ninline std::from_chars_result portable_float_from_chars',
+                    '#if !REX_PLATFORM_WIN32\n#define REXGLUE_LINUX_FLOAT_FROM_CHARS 1\ntemplate <typename T>\ninline std::from_chars_result portable_float_from_chars', 1)
 path.write_text(text)
 PY
 fi
 grep -q 'REXGLUE_LINUX_FLOAT_FROM_CHARS' "$numeric"
+if grep -q 'std::from_chars.*chars_format' "$numeric"; then
+  echo 'Linux float from_chars fallback was not applied' >&2
+  exit 1
+fi
