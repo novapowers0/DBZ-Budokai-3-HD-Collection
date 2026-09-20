@@ -51,7 +51,7 @@ path.write_text(text)
 PY
 fi
 grep -q 'REXGLUE_LINUX_FLOAT_FROM_CHARS' "$numeric"
-if grep -q 'std::from_chars.*chars_format' "$numeric"; then
+if grep -Eq 'std::from_chars\([^;]*chars_format' "$numeric"; then
   echo 'Linux float from_chars fallback was not applied' >&2
   exit 1
 fi
