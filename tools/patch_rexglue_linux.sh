@@ -96,19 +96,22 @@ if ! grep -q 'REXGLUE_DUAL_IMAGE_RESOLVER' "$app_header"; then
 python3 - "$app_header" <<'PY'
 from pathlib import Path
 import sys
-import re
-
 path = Path(sys.argv[1])
 text = path.read_text()
-pattern = r'(?m)^\s*(?!//)(?P<signature>[^\n]*ResolveImageInfo\([^\n]*\) const \{)'
-replacement = '  // REXGLUE_DUAL_IMAGE_RESOLVER: keep this hook virtual for dual-region clients.\n  virtual \\g<signature>'
-if not re.search(pattern, text):
-    raise SystemExit("ResolveImageInfo declaration not found")
-match = re.search(pattern, text)
-signature = match.group('signature')
-if signature.lstrip().startswith('virtual '):
-    raise SystemExit("unexpected virtual marker state")
-path.write_text(re.sub(pattern, replacement, text, count=1))
+marker = 'REXGLUE_DUAL_IMAGE_RESOLVER'
+needle = '  // Called before Runtime::Setup(). Override to modify backend config.\n'
+insert = '''  // REXGLUE_DUAL_IMAGE_RESOLVER: allow clients to select a region-specific image.
+  virtual const rex::PPCImageInfo& ResolveImageInfo(const PathConfig& paths) const {
+    (void)paths;
+    return ppc_info_;
+  }
+
+'''
+if marker not in text:
+    if needle not in text:
+        raise SystemExit("ReXApp pre-setup hook marker not found")
+    text = text.replace(needle, insert + needle, 1)
+    path.write_text(text)
 PY
 fi
 grep -q 'REXGLUE_DUAL_IMAGE_RESOLVER' "$app_header"
