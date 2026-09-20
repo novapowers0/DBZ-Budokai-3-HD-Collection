@@ -99,7 +99,7 @@ import sys
 path = Path(sys.argv[1])
 text = path.read_text()
 marker = 'REXGLUE_DUAL_IMAGE_RESOLVER'
-needle = '  // Called before Runtime::Setup(). Override to modify backend config.\n'
+needle = '  virtual void OnPreSetup(RuntimeConfig& config) {}\n'
 insert = '''  // REXGLUE_DUAL_IMAGE_RESOLVER: allow clients to select a region-specific image.
   virtual const rex::PPCImageInfo& ResolveImageInfo(const PathConfig& paths) const {
     (void)paths;
@@ -109,7 +109,7 @@ insert = '''  // REXGLUE_DUAL_IMAGE_RESOLVER: allow clients to select a region-s
 '''
 if marker not in text:
     if needle not in text:
-        raise SystemExit("ReXApp pre-setup hook marker not found")
+        raise SystemExit("ReXApp OnPreSetup declaration not found")
     text = text.replace(needle, insert + needle, 1)
     path.write_text(text)
 PY
