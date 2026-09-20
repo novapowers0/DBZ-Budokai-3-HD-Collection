@@ -89,8 +89,50 @@ PY
 fi
 grep -q 'REXGLUE_LINUX_FLOAT_FROM_CHARS' "$numeric"
 
-# The v0.10.0 release header misses the virtual dispatch point used by the
-# dual-region app. Keep the override valid so EU images select their mappings.
+# Linux Vulkan presenter: apply the same host frame cap as D3D12 and keep FIFO
+# as the safe default for Steam/MangoHud compatibility.
+vulkan_presenter="$(dirname "$header")/../../../src/ui/vulkan/vulkan_presenter.cpp"
+if ! grep -q 'REXGLUE_DBZ3_VULKAN_PRESENT_FIX' "$vulkan_presenter"; then
+python3 - "$vulkan_presenter" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+text = path.read_text()
+text = text.replace('#include <cmath>\n', '#include <cmath>\n#include <chrono>\n', 1)
+text = text.replace('#include <rex/platform.h>\n', '#include <rex/platform.h>\n#include <rex/thread.h>\n', 1)
+text = text.replace(
+    'REXCVAR_DEFINE_BOOL(vulkan_allow_present_mode_immediate, true, "UI/Vulkan",',
+    '// REXGLUE_DBZ3_VULKAN_PRESENT_FIX\n'
+    'REXCVAR_DEFINE_BOOL(vulkan_allow_present_mode_immediate, false, "UI/Vulkan",', 1)
+text = text.replace(
+    'REXCVAR_DEFINE_BOOL(vulkan_allow_present_mode_mailbox, true, "UI/Vulkan",',
+    'REXCVAR_DEFINE_BOOL(vulkan_allow_present_mode_mailbox, false, "UI/Vulkan",', 1)
+text = text.replace(
+    'REXCVAR_DEFINE_BOOL(vulkan_allow_present_mode_fifo_relaxed, true, "UI/Vulkan",',
+    'REXCVAR_DEFINE_BOOL(vulkan_allow_present_mode_fifo_relaxed, false, "UI/Vulkan",', 1)
+marker = 'REXCVAR_DEFINE_BOOL(vulkan_allow_present_mode_fifo_relaxed, false, "UI/Vulkan",\n'
+if 'REXCVAR_DEFINE_INT32(frame_cap' not in text:
+    if marker not in text:
+        raise SystemExit('Vulkan presenter cvar marker not found')
+    text = text.replace(marker, marker + '''\nREXCVAR_DEFINE_INT32(frame_cap, 0, "UI/Presenter",\n                     "Maximum host present rate in FPS (0 = uncapped)")\n    .range(0, 1000)\n    .lifecycle(rex::cvar::Lifecycle::kHotReload);\n''', 1)
+text = text.replace(
+    '  if (REXCVAR_GET(vulkan_allow_present_mode_immediate) &&',
+    '  const bool host_present_cap = int32_t(REXCVAR_GET(frame_cap)) > 0;\n'
+    '  if (!host_present_cap && REXCVAR_GET(vulkan_allow_present_mode_immediate) &&', 1)
+text = text.replace(
+    '  } else if (REXCVAR_GET(vulkan_allow_present_mode_mailbox) &&',
+    '  } else if (!host_present_cap && REXCVAR_GET(vulkan_allow_present_mode_mailbox) &&', 1)
+marker = 'Presenter::PaintResult VulkanPresenter::PaintAndPresentImpl(bool execute_ui_drawers) {\n'
+if 'REXGLUE_DBZ3_VULKAN_FRAME_CAP' not in text:
+    if marker not in text:
+        raise SystemExit('Vulkan presenter paint marker not found')
+    text = text.replace(marker, marker + '''  // REXGLUE_DBZ3_VULKAN_FRAME_CAP\n  if (int32_t frame_cap = REXCVAR_GET(frame_cap); frame_cap > 0) {\n    static std::chrono::steady_clock::time_point last_present_time;\n    const auto now = std::chrono::steady_clock::now();\n    if (last_present_time.time_since_epoch().count() != 0) {\n      const std::chrono::nanoseconds interval(1000000000LL / frame_cap);\n      const auto elapsed = now - last_present_time;\n      if (elapsed < interval) {\n        rex::thread::Sleep(std::chrono::duration_cast<std::chrono::microseconds>(interval - elapsed));\n      }\n    }\n    last_present_time = std::chrono::steady_clock::now();\n  }\n\n''', 1)
+path.write_text(text)
+PY
+fi
+grep -q 'REXGLUE_DBZ3_VULKAN_PRESENT_FIX' "$vulkan_presenter"
+
 app_header="$(dirname "$header")/../rex_app.h"
 if ! grep -q 'REXGLUE_DUAL_IMAGE_RESOLVER' "$app_header"; then
 python3 - "$app_header" <<'PY'

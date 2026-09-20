@@ -67,5 +67,22 @@ Para una build local, coloca esas dos carpetas como `generated/` y
 El tarball no incluye el juego. Coloca junto a `dbz3` el `default.xex` legal y
 `us/` o `eu/`, como en Windows. La carpeta `mods/` se crea junto al ejecutable.
 El paquete incluye `librexruntime.so`, `librexgpu-xenos.so` y las librerías
-LLVM libc++/libc++abi/libunwind usadas por la build de CI, por lo que no debe
-ser necesario crear enlaces manuales a `libunwind.so.1` en Arch o CachyOS.
+  LLVM libc++/libc++abi/libunwind usadas por la build de CI, por lo que no debe
+  ser necesario crear enlaces manuales a `libunwind.so.1` en Arch o CachyOS.
+
+## MangoHud y Steam FPS
+
+La build Linux usa un swapchain Vulkan. MangoHud y el contador de Steam
+interceptan la presentación (`vkQueuePresentKHR`), no la cadencia lógica de
+60 Hz del juego. El presenter aplica el límite de presentación configurado en
+el launcher y usa FIFO por defecto; así los overlays no reciben un bucle de
+presentación sin límite ni cuentan cientos o miles de presents por segundo.
+
+`IMMEDIATE`, `MAILBOX` y `FIFO_RELAXED` quedan disponibles como opciones
+avanzadas, pero no se recomiendan con overlays externos. El límite solo
+regula la salida del host: no cambia la velocidad lógica del juego.
+
+Para comprobar el comportamiento, inicia primero sin MangoHud y después con
+`mangohud ./dbz3`. Si MangoHud todavía produce tirones, prueba solo FPS y
+frametime, sin sensores de temperatura, potencia o carga; esas consultas
+adicionales permiten separar el coste del hook Vulkan del coste de telemetría.

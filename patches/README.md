@@ -119,6 +119,24 @@ por tanto un placebo. Este parche lo restaura de verdad en el backend D3D12:
   OK (...)`) para medir desde el log la duracion de la pantalla negra del
   launcher en maquinas lentas (cuanto tarda el init de device/swapchain).
 
+### 6.b Frame cap y modo seguro del presenter Vulkan (`vulkan_presenter.cpp`)
+
+El presenter Vulkan del SDK 0.10 podia elegir `IMMEDIATE` o `MAILBOX` por
+defecto y no compartia el cvar `frame_cap` del presenter D3D12. En Linux esto
+es problematico con MangoHud y Steam, que interceptan cada
+`vkQueuePresentKHR`: se podia generar un bucle de presents sin limite, causar
+tirones severos con MangoHud y hacer que Steam mostrara cientos o miles de FPS
+aunque la cadencia logica del guest siguiera siendo 60 Hz.
+
+El parche:
+
+- restaura `frame_cap` en el presenter Vulkan y aplica el mismo pacing host que
+  D3D12;
+- fuerza FIFO cuando hay un cap configurado;
+- cambia `IMMEDIATE`, `MAILBOX` y `FIFO_RELAXED` a opt-in, dejando FIFO como
+  comportamiento seguro por defecto;
+- no altera el vblank ni la velocidad logica del guest.
+
 ### 7. Build de la variante legacy (SDK CMakeLists, opcional)
 
 Para compilar el SDK sin AVX2 (`-march=x86-64-v2`) en un directorio aparte sin
