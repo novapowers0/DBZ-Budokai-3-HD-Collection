@@ -15,6 +15,14 @@
 #include <sstream>
 #include <vector>
 
+#if !REX_PLATFORM_WIN32
+#include <fcntl.h>
+#include <spawn.h>
+#include <sys/wait.h>
+#include <unistd.h>
+extern char** environ;
+#endif
+
 namespace dbz3::launcher {
 
 namespace {
@@ -237,10 +245,49 @@ void ModPipeline::RunAsync(const std::filesystem::path& script,
     generation_.fetch_add(1);
     running_.store(false);
 #else  // !REX_PLATFORM_WIN32
-    // Portable path not wired up yet: report a clear error instead of failing
-    // to link (the SDK spawn helper for posix is a follow-up for the Linux port).
-    AppendOutput("ERROR: ejecutar el pipeline de modding no esta soportado en "
-                 "esta plataforma todavia.\n");
+    int pipe_fds[2] = {-1, -1};
+    if (pipe(pipe_fds) != 0) {
+      AppendOutput("ERROR: no se pudo crear el pipe para python.\n");
+      running_.store(false);
+      return;
+    }
+    posix_spawn_file_actions_t actions;
+    posix_spawn_file_actions_init(&actions);
+    posix_spawn_file_actions_adddup2(&actions, pipe_fds[1], STDOUT_FILENO);
+    posix_spawn_file_actions_adddup2(&actions, pipe_fds[1], STDERR_FILENO);
+    posix_spawn_file_actions_addclose(&actions, pipe_fds[0]);
+    posix_spawn_file_actions_addclose(&actions, pipe_fds[1]);
+
+    const std::string shell = "/bin/sh";
+    std::vector<char*> argv = {
+        const_cast<char*>(shell.c_str()), const_cast<char*>("-c"),
+        const_cast<char*>(cmd.c_str()), nullptr};
+    pid_t pid = -1;
+    const int spawn_rc = posix_spawn(&pid, shell.c_str(), &actions, nullptr,
+                                     argv.data(), environ);
+    posix_spawn_file_actions_destroy(&actions);
+    close(pipe_fds[1]);
+    if (spawn_rc != 0) {
+      close(pipe_fds[0]);
+      AppendOutput("ERROR: no se pudo ejecutar python (errno " +
+                   std::to_string(spawn_rc) + ").\n");
+      running_.store(false);
+      return;
+    }
+
+    char buf[4096];
+    ssize_t n = 0;
+    while ((n = read(pipe_fds[0], buf, sizeof(buf))) > 0) {
+      AppendOutput(std::string(buf, static_cast<size_t>(n)));
+    }
+    close(pipe_fds[0]);
+    int status = 0;
+    waitpid(pid, &status, 0);
+    if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+      AppendOutput("\n[exit code " +
+                   std::to_string(WIFEXITED(status) ? WEXITSTATUS(status) : -1) +
+                   "]\n");
+    }
     generation_.fetch_add(1);
     running_.store(false);
 #endif  // REX_PLATFORM_WIN32

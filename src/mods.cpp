@@ -10,8 +10,13 @@
 #include <map>
 #include <system_error>
 
-#ifdef _WIN32
+#if REX_PLATFORM_WIN32
 #include <windows.h>
+#else
+#include <spawn.h>
+#include <sys/wait.h>
+#include <unistd.h>
+extern char** environ;
 #endif
 
 namespace dbz3 {
@@ -460,14 +465,93 @@ bool InstallModFromZip(const std::string& zip_path_utf8, std::string& out_name,
   return true;
 }
 
-#else  // !_WIN32
+#else  // !REX_PLATFORM_WIN32
 
-bool InstallModFromZip(const std::string&, std::string&, std::string& err) {
-  err = "no soportado en esta plataforma";
-  return false;
+namespace {
+
+std::string SanitizeModName(const std::string& raw) {
+  std::string s = raw;
+  for (char& c : s) {
+    if (c < 32 || c == '/' || c == '\\') c = '_';
+  }
+  while (!s.empty() && (s.back() == '.' || s.back() == ' ')) s.pop_back();
+  return s.empty() ? "mod" : s;
 }
 
-#endif  // _WIN32
+bool ExtractZip(const std::filesystem::path& zip,
+                const std::filesystem::path& destination) {
+  const std::string program = "unzip";
+  const std::string zip_arg = zip.string();
+  const std::string dest_arg = destination.string();
+  std::vector<char*> argv = {
+      const_cast<char*>(program.c_str()), const_cast<char*>("-q"),
+      const_cast<char*>("-o"), const_cast<char*>(zip_arg.c_str()),
+      const_cast<char*>("-d"), const_cast<char*>(dest_arg.c_str()), nullptr};
+  pid_t pid = -1;
+  if (posix_spawnp(&pid, program.c_str(), nullptr, nullptr, argv.data(), environ) != 0) {
+    return false;
+  }
+  int status = 0;
+  waitpid(pid, &status, 0);
+  return WIFEXITED(status) && WEXITSTATUS(status) == 0;
+}
+
+}  // namespace
+
+bool InstallModFromZip(const std::string& zip_path_utf8, std::string& out_name,
+                       std::string& out_error) {
+  namespace fs = std::filesystem;
+  std::error_code ec;
+  const fs::path mods_root = ModsRoot();
+  fs::create_directories(mods_root, ec);
+  const fs::path zip = fs::u8path(zip_path_utf8);
+  if (!fs::is_regular_file(zip, ec)) {
+    out_error = "ruta del zip invalida";
+    return false;
+  }
+
+  const std::string base = SanitizeModName(rex::path_to_utf8(zip.stem()));
+  const fs::path temp_dir = mods_root / (".install_" + base);
+  fs::remove_all(temp_dir, ec);
+  fs::create_directories(temp_dir, ec);
+  if (!ExtractZip(zip, temp_dir)) {
+    fs::remove_all(temp_dir, ec);
+    out_error = "no se pudo extraer el zip (instala unzip)";
+    return false;
+  }
+
+  fs::path base_dir = temp_dir;
+  bool loose_file = false;
+  std::vector<fs::path> subdirs;
+  for (const auto& entry : fs::directory_iterator(temp_dir, ec)) {
+    if (entry.is_regular_file()) loose_file = true;
+    else if (entry.is_directory()) subdirs.push_back(entry.path());
+  }
+  if (!loose_file && subdirs.size() == 1) base_dir = subdirs[0];
+
+  std::string name = base;
+  fs::path dest = mods_root / name;
+  for (int suffix = 2; fs::exists(dest, ec); ++suffix) {
+    dest = mods_root / (name + "_" + std::to_string(suffix));
+  }
+  name = rex::path_to_utf8(dest.filename());
+  fs::rename(base_dir, dest, ec);
+  if (ec) {
+    ec.clear();
+    fs::copy(base_dir, dest, fs::copy_options::recursive, ec);
+    if (ec) {
+      fs::remove_all(temp_dir, ec);
+      out_error = "no se pudieron mover los archivos extraidos";
+      return false;
+    }
+  }
+  fs::remove_all(temp_dir, ec);
+  out_name = name;
+  REXLOG_INFO("dbz3: mod instalado desde zip -> '{}'", name);
+  return true;
+}
+
+#endif  // REX_PLATFORM_WIN32
 
 namespace {
 

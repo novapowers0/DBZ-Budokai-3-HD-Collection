@@ -79,9 +79,9 @@ obligatorias en rutas de build).
 Orden de trabajo recomendado:
 
 ### 4.1 Build toolchain
-1. **Preset CMake `linux-release`** en `CMakePresets.json`: compilador clang,
-   flags baseline `-march=x86-64 -mssse3` (igual que el SDK baseline de
-   Windows), `DBZ3_DUAL_REGION=ON`, `DBZ3_GENERATED_DIR=generated`.
+1. **Preset CMake Linux** en `CMakePresets.json`: compilador clang,
+   flags baseline `-march=x86-64 -mssse3`, Vulkan obligatorio y
+   `DBZ3_DUAL_REGION=ON`. El preset no depende de una versión exacta de Clang.
 2. **Dependencias** (apt/pacman): vulkan (libvulkan-dev), SDL3, X11-xcb,
    wayland-client, xdg. El CMake del SDK ya las contempla.
 3. **Recompilar el codegen**: `generated/` (US) y `generated_eu/` (EU) se
@@ -92,15 +92,12 @@ Orden de trabajo recomendado:
    `librexgpu-xenos.so`, FFX vk.
 
 ### 4.2 Funcional pendiente (launcher)
-1. **Diálogos de archivo portables**: `PickFolder`/`PickFile` hoy devuelven
-   "cancelado". Opciones: (a) diálogo SDL (pequeño, sin deps extra), (b) invocar
-   `zenity`/`kdialog` (común en escritorios Linux), (c) integración GTK/Qt.
-   Recomendado: (b) para el primer port, (a) como meta.
-2. **Spawn de scripts portable**: `mod_pipeline.cpp` — reemplazar
-   `CreateProcessW` por `posix_spawn`/`fork+exec` con pipe para capturar salida
-   (mismo contrato que hoy).
-3. **Instalación de zips**: `mods.cpp` — backend con libzip/minizip o `unzip`
-   externo (mismo flujo: extraer a temp → normalizar layout → mover a mods/).
+1. **Diálogos de archivo portables**: implementados con `zenity` y fallback a
+   `kdialog`; sin ninguno, el launcher conserva el comportamiento de cancelar.
+2. **Spawn de scripts portable**: implementado con `posix_spawn` y un pipe para
+   capturar stdout/stderr, manteniendo el pipeline asíncrono de Windows.
+3. **Instalación de zips**: implementada con `unzip` y la misma normalización
+   de layouts; la dependencia se documenta como paquete de sistema.
 4. **Gestion de `mod center hd/`**: los scripts (`swap_b3.py`, `texture_b3.py`)
    llaman a `xbcompress.exe`/`xbdecompress.exe` (binarios XDK, solo Windows).
    En Linux hay que: (a) portar la compresión LZX (el SDK ya tiene

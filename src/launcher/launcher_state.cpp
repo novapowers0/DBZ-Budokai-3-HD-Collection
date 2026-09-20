@@ -18,6 +18,7 @@
 #endif
 
 #include <algorithm>
+#include <array>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -284,13 +285,59 @@ bool PickFile(std::string& out, const char* filter_desc, const char* filter_ext,
   return ok;
 }
 #else  // !REX_PLATFORM_WIN32
-bool PickFolder(std::string&, const std::string&) {
-  return false;  // no native shell dialog yet on this platform
+namespace {
+
+std::string ShellQuote(const std::string& value) {
+  std::string quoted = "'";
+  for (char c : value) {
+    if (c == '\'') quoted += "'\\''";
+    else quoted += c;
+  }
+  quoted += "'";
+  return quoted;
 }
 
-bool PickFile(std::string&, const char*, const char*, const std::string&) {
-  return false;  // no native shell dialog yet on this platform
+bool RunPicker(const std::string& command, std::string& out) {
+  FILE* pipe = popen(command.c_str(), "r");
+  if (!pipe) return false;
+  std::array<char, 512> buffer{};
+  std::string result;
+  while (fgets(buffer.data(), static_cast<int>(buffer.size()), pipe)) {
+    result += buffer.data();
+  }
+  const int status = pclose(pipe);
+  while (!result.empty() && (result.back() == '\n' || result.back() == '\r')) {
+    result.pop_back();
+  }
+  if (status != 0 || result.empty()) return false;
+  out = result;
+  return true;
 }
+
+bool PickFolder(std::string& out, const std::string& initial) {
+  const std::string start = initial.empty() ? "." : initial;
+  return RunPicker("zenity --file-selection --directory --filename=" +
+                      ShellQuote(start + "/") + " 2>/dev/null",
+                  out) ||
+         RunPicker("kdialog --getexistingdirectory " + ShellQuote(start) +
+                       " 2>/dev/null",
+                   out);
+}
+
+bool PickFile(std::string& out, const char* filter_desc, const char* filter_ext,
+              const std::string& initial) {
+  (void)filter_desc;
+  const std::string start = initial.empty() ? "." : initial;
+  const std::string pattern = filter_ext && *filter_ext ? filter_ext : "*";
+  return RunPicker("zenity --file-selection --filename=" +
+                      ShellQuote(start + "/" + pattern) + " 2>/dev/null",
+                  out) ||
+         RunPicker("kdialog --getopenfilename " + ShellQuote(start) + " " +
+                       ShellQuote(pattern) + " 2>/dev/null",
+                   out);
+}
+
+}  // namespace
 #endif  // REX_PLATFORM_WIN32
 
 }  // namespace

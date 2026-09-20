@@ -24,8 +24,13 @@
             "generator": "Ninja",
             "binaryDir": "${sourceDir}/out/build/${presetName}",
             "cacheVariables": {
-                "CMAKE_C_COMPILER": "clang-20",
-                "CMAKE_CXX_COMPILER": "clang++-20"
+                "CMAKE_C_COMPILER": "clang",
+                "CMAKE_CXX_COMPILER": "clang++",
+                "CMAKE_CXX_FLAGS": "-march=x86-64 -mssse3",
+                "DBZ3_DUAL_REGION": "ON",
+                "REXGLUE_USE_D3D12": "OFF",
+                "REXGLUE_USE_VULKAN": "ON",
+                "CMAKE_PREFIX_PATH": "${sourceDir}/rexglue"
             },
             "condition": {
                 "type": "equals",

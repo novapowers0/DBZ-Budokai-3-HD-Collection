@@ -7,7 +7,7 @@
 #
 # Lo que sincroniza (raiz del proyecto -> github/):
 #   src/, docs/, awo_tools/, "mod center hd/", tools/, portforge/ (carpetas versionables)
-#   archivos raiz: AGENTS.md, AWO_FORMAT.md, CMakeLists.txt, CMakePresets.json,
+#   archivos raiz: AGENTS.md, AWO_FORMAT.md, README*.md, CMakeLists.txt, CMakePresets.json,
 #                  dbz3_config.toml, dbz3_manifest.toml
 # Lo que NO sincroniza (o se gestiona aparte):
 #   - mods/          -> github/mods queda VACIA (solo README; los mods reales
@@ -80,7 +80,7 @@ if (-not $DryRun) {
 
 # Archivos raiz versionables.
 $rootFiles = @("AGENTS.md", "AWO_FORMAT.md", "CMakeLists.txt", "CMakePresets.json",
-               "dbz3_config.toml", "dbz3_manifest.toml")
+               "dbz3_config.toml", "dbz3_manifest.toml", "README.md", "README_EN.md")
 foreach ($f in $rootFiles) {
     $srcFile = Join-Path $root $f
     if (-not (Test-Path -LiteralPath $srcFile)) {

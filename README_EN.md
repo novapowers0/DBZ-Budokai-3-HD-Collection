@@ -6,7 +6,7 @@ A native PC port of *Dragon Ball Z: Budokai 3 HD Collection* (Xbox 360) built
 on the [ReXGlue SDK](https://github.com/rexglue/rexglue-sdk). The game's
 original PowerPC code is statically recompiled and linked into a standalone
 executable with its own launcher and mod system. It is a real port, not an
-emulator.
+emulator. Native Linux builds use Vulkan and SDL3.
 
 [![Release](https://img.shields.io/github/v/release/novapowers0/DBZ-Budokai-3-HD-Collection?sort=semver&style=flat-square&color=orange&label=Release)](https://github.com/novapowers0/DBZ-Budokai-3-HD-Collection/releases/latest)
 [![Platform](https://img.shields.io/badge/Platform-Windows-0078D6?style=flat-square)](https://github.com/novapowers0/DBZ-Budokai-3-HD-Collection/releases/latest)
@@ -17,7 +17,7 @@ emulator.
 | | |
 |---|---|
 | Players | 1–2 (versus) |
-| Platform | Windows |
+| Platform | Windows / Linux |
 | Engine | Xbox 360 (ReXGlue SDK) |
 | Genre | 3D fighting |
 | Version | v1.2.6 |

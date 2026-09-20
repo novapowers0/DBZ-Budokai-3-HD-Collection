@@ -1,0 +1,94 @@
+name: Linux build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - 'src/**'
+      - 'generated/**'
+      - 'generated_eu/**'
+      - 'CMakeLists.txt'
+      - 'CMakePresets.json'
+      - '.github/workflows/linux.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-linux-amd64:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Check out public project
+        uses: actions/checkout@v4
+
+      - name: Check out private generated code
+        uses: actions/checkout@v4
+        with:
+          repository: novapowers0/DBZ-Budokai-3-HD-Collection-generated
+          token: ${{ secrets.DBZ3_GENERATED_TOKEN }}
+          path: generated-private
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config \
+            libvulkan-dev vulkan-tools libx11-xcb-dev \
+            libwayland-dev wayland-protocols libasound2-dev libpulse-dev \
+            libpipewire-0.3-dev unzip zenity
+
+      - name: Check out ReXGlue SDK
+        uses: actions/checkout@v4
+        with:
+          repository: rexglue/rexglue-sdk
+          ref: v0.10.0
+          path: rexglue-sdk-0.10
+          submodules: recursive
+
+      - name: Apply project runtime patches
+        shell: bash
+        run: cp -a github/patches/rexglue-sdk/. rexglue-sdk-0.10/
+
+      - name: Validate generated source set
+        shell: bash
+        run: |
+          test -f generated-private/us/sources.cmake
+          test -f generated-private/eu/sources.cmake
+          rm -rf generated generated_eu
+          cp -a generated-private/us generated
+          cp -a generated-private/eu generated_eu
+
+      - name: Build and install ReXGlue SDK
+        run: |
+          cmake --preset linux-amd64 -S rexglue-sdk-0.10 \
+            -DREXGLUE_ENABLE_FIDELITYFX=ON \
+            -DREXGLUE_ENABLE_TRACY=OFF \
+            -DCMAKE_INSTALL_PREFIX="$GITHUB_WORKSPACE/rexglue-linux"
+          cmake --build rexglue-sdk-0.10/out/build/linux-amd64 --config Release --parallel
+          cmake --install rexglue-sdk-0.10/out/build/linux-amd64 --config Release
+
+      - name: Configure and build dbz3
+        run: |
+          cmake --preset linux-amd64-release \
+            -DCMAKE_PREFIX_PATH="$GITHUB_WORKSPACE/rexglue-linux"
+          cmake --build out/build/linux-amd64-release --config Release --parallel
+
+      - name: Smoke-check ELF outputs
+        run: |
+          file out/build/linux-amd64-release/dbz3
+          test -x out/build/linux-amd64-release/dbz3
+
+      - name: Package Linux release
+        run: |
+          mkdir -p package/mods
+          cp out/build/linux-amd64-release/dbz3 package/dbz3
+          cp out/build/linux-amd64-release/*.so* package/ || true
+          cp README.md README_EN.md baserom.md package/
+          printf '%s\n' 'Place your legally dumped default.xex and us/ or eu/ next to dbz3.' > package/README_LINUX.txt
+          tar -C package -czf DBZ-Budokai-3-HD-Collection-v1.2.6-linux-amd64.tar.gz .
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DBZ-Budokai-3-HD-Collection-v1.2.6-linux-amd64
+          path: DBZ-Budokai-3-HD-Collection-v1.2.6-linux-amd64.tar.gz
