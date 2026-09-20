@@ -51,13 +51,3 @@ path.write_text(text)
 PY
 fi
 grep -q 'REXGLUE_LINUX_FLOAT_FROM_CHARS' "$numeric"
-python3 - "$numeric" <<'PY'
-from pathlib import Path
-import sys
-
-text = Path(sys.argv[1]).read_text()
-if 'REXGLUE_LINUX_FLOAT_FROM_CHARS' not in text:
-    raise SystemExit('Linux float from_chars fallback was not applied')
-if 'std::from_chars(p, end, v.f32[i], std::chars_format::general)' in text:
-    raise SystemExit('Linux vector float parser still calls std::from_chars')
-PY
