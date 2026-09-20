@@ -50,4 +50,17 @@ text = text.replace('#if !REX_PLATFORM_WIN32\ntemplate <typename T>\ninline std:
 path.write_text(text)
 PY
 fi
+
+timer="$(dirname "$header")/../../src/core/timer_queue.cpp"
+if ! grep -q '^#include <thread>' "$timer"; then
+  python3 - "$timer" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+text = path.read_text()
+text = text.replace('#include <forward_list>\n', '#include <forward_list>\n#include <thread>\n', 1)
+path.write_text(text)
+PY
+fi
 grep -q 'REXGLUE_LINUX_FLOAT_FROM_CHARS' "$numeric"
