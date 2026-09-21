@@ -1,4 +1,4 @@
-﻿# DBZ Budokai 3 HD Collection — Contexto del proyecto (operativo)
+﻿﻿# DBZ Budokai 3 HD Collection — Contexto del proyecto (operativo)
 
 > Documento de contexto para agentes/AI. **Versión compactada 2026-09-02**
 > (236 KB → ~60 KB). El relato detallado de todas las sesiones vive VERBATIM
@@ -1339,7 +1339,7 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
   `DBZ3_DUMP_IMAGE` para volcar la imagen descifrada).
 
 ### 9.2 Releases y estado GitHub
-- **v1.2.6 = Latest** (2026-09-20, core dual, FileVersion 1.2.6.0, baseline:
+- **v1.2.7 = Latest** (2026-09-21, core dual, FileVersion 1.2.7.0, baseline: packs de texturas estilo PCSX2 en D3D12 y Vulkan + herramienta y guia). **v1.2.6** (2026-09-20, core dual, FileVersion 1.2.6.0, baseline:
   Mejora de texturas HD pulida (sin tirones, RGBA8, min-size anti-ringing) +
   autorreparacion del TOML + UX anti-abuso de la escala). **v1.2.5** (2026-09-19,
   foco y disco), **v1.2.4 EX** (2026-09-19, FXAA/dither + palancas GPU + datos
@@ -1351,7 +1351,7 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
   **v1.2.0**, **v1.1.4 EX**, **v1.1.3**, **v1.1.2**, **v1.1.1**,
   **v1.1.0-clasico** = no-Latest. Tags v1.0.0..v1.0.9 + v1.0.5-EX conservados
   (código archivado; los zips binarios viejos NO existen). PortForge
-  `defaultVersion` = 1.2.6 (visibles 1.2.6 / 1.2.5 / 1.2.4-EX; la 1.2.4 al
+  `defaultVersion` = 1.2.7 (visibles 1.2.7 / 1.2.5 / 1.2.4-EX; la 1.2.4 al
   archivo en `portforge/archive/`).
 - ⚠️ **El exe de release se compila desde `out\build\win-amd64-dual`** (es el
   core dual): `make_release.ps1` toma `dbz3.exe` de ahí (verificado 2026-09-17:

@@ -2,7 +2,7 @@
 
 > Guía accesible para agentes y humanos. Consolidación del estado del proyecto,
 > estructura de carpetas, cómo hacer mods, formatos, herramientas y builds.
-> Actualizado: 2026-09-20 (tras la **v1.2.6**)
+> Actualizado: 2026-09-21 (tras la **v1.2.7**)
 
 ---
 
@@ -56,7 +56,7 @@
 - **Jugar**: `out\build\win-amd64-release\dbz3.exe`
 - **Config**: `out\build\win-amd64-release\dbz3_user.toml`
 - **Mods**: carpeta `mods\<mod>\` junto al exe. Solo los que NO tienen `.disabled`.
-- **Estado**: **v1.2.6 publicada (Latest)** — Mejora de texturas HD pulida (sin tirones, alcance RGBA8 nativas, HUD limpio), UX anti-abuso de la escala interna y **autorreparación del `dbz3_user.toml`**. Sobre la v1.2.5 (foco/disco: `dbz3_io_logging`, readahead, mute/dim), la v1.2.4 EX (FXAA/dither, palancas GPU, datos de usuario portables, volumen real), la v1.2.3 y la v1.2.2 EX (auto-detección del ejecutable + modo ISO retail). Juego funcional (D3D12, 60 fps, US+EU). Swap nativo HD↔HD y texturas funcionan (Vía A aproximada). Port completo PS2→HD **aparcado** (§3.4.10). Escalado: FSR1/CAS sí; FSR3/DLSS no viable a corto plazo. El consumo alto es el **supersampling** (escala interna), no las texturas HD.
+- **Estado**: **v1.2.7 publicada (Latest)** - Packs de texturas estilo PCSX2 (volcado dev + cargador en runtime, en D3D12 y Vulkan). Sobre la v1.2.6 (mejora de texturas HD pulida, RGBA8 nativas, HUD limpio, UX de escala y autorreparacion del `dbz3_user.toml`), la v1.2.5 (foco/disco: `dbz3_io_logging`, readahead, mute/dim), la v1.2.4 EX (FXAA/dither, palancas GPU, datos de usuario portables, volumen real), la v1.2.3 y la v1.2.2 EX (auto-detección del ejecutable + modo ISO retail). Juego funcional (D3D12, 60 fps, US+EU). Swap nativo HD↔HD y texturas funcionan (Vía A aproximada). Port completo PS2→HD **aparcado** (§3.4.10). Escalado: FSR1/CAS sí; FSR3/DLSS no viable a corto plazo. El consumo alto es el **supersampling** (escala interna), no las texturas HD.
 
 ---
 
