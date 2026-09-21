@@ -61,6 +61,17 @@ Para una build local, coloca esas dos carpetas como `generated/` y
 - La compresión LZX de Model Swap sigue dependiendo del binario XDK de Windows;
   el juego base y los mods ya construidos sí funcionan en Linux. Portar LZX a
   `libmspack` queda separado de la primera build jugable.
+- **Los packs de texturas (estilo PCSX2) funcionan también en Linux/Vulkan**: el
+  mismo pack de `mods/` que usa Windows se aplica aquí (la imagen se sube a la
+  GPU con un staging buffer y `vkCmdCopyBufferToImage`, con las dimensiones y el
+  formato RGBA8 del pack). La detección de packs del launcher es idéntica.
+- **Dos funciones de la capa D3D12 no existen en Linux** (Vulkan): la **mejora de
+  texturas HD** experimental (`dbz3_hd_textures`, `dbz3_upscale_min_size`) y el
+  **volcado dev de texturas** (`dbz3_texture_dump`). El resto sí está en la build
+  Linux: FXAA/dither del presentador (`swap_post_effect`/`present_dither`),
+  escala interna (`draw_resolution_scale`) y las palancas de diagnóstico GPU del
+  tab Desarrollo (`async_shader_compilation`, `occlusion_query_enable`). Los
+  packs de texturas **no** dependen de la capa D3D12.
 
 ## Paquete de datos
 
