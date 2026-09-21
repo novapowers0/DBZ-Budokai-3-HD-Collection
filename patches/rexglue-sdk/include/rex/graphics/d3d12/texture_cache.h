@@ -28,12 +28,17 @@
 #include <rex/ui/d3d12/d3d12_api.h>
 #include <rex/ui/d3d12/d3d12_provider.h>
 
+namespace rex::graphics {
+
+// Entrada de un "pack" de texturas (definida en dbz3_texture_pack.h; comun a
+// los backends D3D12 y Vulkan).
+struct Dbz3TexturePackEntry;
+
+}  // namespace rex::graphics
+
 namespace rex::graphics::d3d12 {
 
 class D3D12CommandProcessor;
-
-// Entrada de un "pack" de texturas (definida en dbz3_texture_pack.h).
-struct Dbz3TexturePackEntry;
 
 class D3D12TextureCache final : public TextureCache {
  public:

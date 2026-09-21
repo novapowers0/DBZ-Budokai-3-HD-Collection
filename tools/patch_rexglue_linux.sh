@@ -89,8 +89,9 @@ PY
 fi
 grep -q 'REXGLUE_LINUX_FLOAT_FROM_CHARS' "$numeric"
 
-# Linux Vulkan presenter: apply the same host frame cap as D3D12 and keep FIFO
-# as the safe default for Steam/MangoHud compatibility.
+# Linux Vulkan presenter: match the real host frame cap used by D3D12 and use
+# FIFO by default. This prevents MangoHud/Steam from observing an unbounded
+# vkQueuePresentKHR loop when the driver exposes immediate or mailbox first.
 vulkan_presenter="$(dirname "$header")/../../../src/ui/vulkan/vulkan_presenter.cpp"
 if ! grep -q 'REXGLUE_DBZ3_VULKAN_PRESENT_FIX' "$vulkan_presenter"; then
 python3 - "$vulkan_presenter" <<'PY'
@@ -127,16 +128,19 @@ text = text.replace(
 text = text.replace(
     '  } else if (REXCVAR_GET(vulkan_allow_present_mode_mailbox) &&',
     '  } else if (!host_present_cap && REXCVAR_GET(vulkan_allow_present_mode_mailbox) &&', 1)
-marker = 'Presenter::PaintResult VulkanPresenter::PaintAndPresentImpl(bool execute_ui_drawers) {\n'
+needle = 'Presenter::PaintResult VulkanPresenter::PaintAndPresentImpl(bool execute_ui_drawers) {\n'
+insert = needle + '''  if (int32_t frame_cap = REXCVAR_GET(frame_cap); frame_cap > 0) {\n    static std::chrono::steady_clock::time_point last_present_time;\n    const auto now = std::chrono::steady_clock::now();\n    if (last_present_time.time_since_epoch().count() != 0) {\n      const std::chrono::nanoseconds interval(1000000000LL / frame_cap);\n      const auto elapsed = now - last_present_time;\n      if (elapsed < interval) {\n        rex::thread::Sleep(std::chrono::duration_cast<std::chrono::microseconds>(interval - elapsed));\n      }\n    }\n    last_present_time = std::chrono::steady_clock::now();\n  }\n\n'''
 if 'REXGLUE_DBZ3_VULKAN_FRAME_CAP' not in text:
-    if marker not in text:
+    if needle not in text:
         raise SystemExit('Vulkan presenter paint marker not found')
-    text = text.replace(marker, marker + '''  // REXGLUE_DBZ3_VULKAN_FRAME_CAP\n  if (int32_t frame_cap = REXCVAR_GET(frame_cap); frame_cap > 0) {\n    static std::chrono::steady_clock::time_point last_present_time;\n    const auto now = std::chrono::steady_clock::now();\n    if (last_present_time.time_since_epoch().count() != 0) {\n      const std::chrono::nanoseconds interval(1000000000LL / frame_cap);\n      const auto elapsed = now - last_present_time;\n      if (elapsed < interval) {\n        rex::thread::Sleep(std::chrono::duration_cast<std::chrono::microseconds>(interval - elapsed));\n      }\n    }\n    last_present_time = std::chrono::steady_clock::now();\n  }\n\n''', 1)
+    text = text.replace(needle, insert.replace(needle, needle + '  // REXGLUE_DBZ3_VULKAN_FRAME_CAP\n', 1), 1)
 path.write_text(text)
 PY
 fi
 grep -q 'REXGLUE_DBZ3_VULKAN_PRESENT_FIX' "$vulkan_presenter"
 
+# The v0.10.0 release header misses the virtual dispatch point used by the
+# dual-region app. Keep the override valid so EU images select their mappings.
 app_header="$(dirname "$header")/../rex_app.h"
 if ! grep -q 'REXGLUE_DUAL_IMAGE_RESOLVER' "$app_header"; then
 python3 - "$app_header" <<'PY'

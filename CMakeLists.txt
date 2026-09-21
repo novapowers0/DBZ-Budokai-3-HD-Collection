@@ -16,6 +16,7 @@ set(DBZ3_SOURCES
     src/hooks.cpp
     src/roster_trace.cpp
     src/mods.cpp
+    src/native_mods.cpp
     src/region.cpp
     src/launcher/settings.cpp
     src/launcher/launcher_state.cpp

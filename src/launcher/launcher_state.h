@@ -11,6 +11,7 @@
 
 #include "mod_pipeline.h"
 #include "../mods.h"
+#include "../native_mods.h"
 
 namespace dbz3::launcher {
 
@@ -34,6 +35,7 @@ class LauncherDialog : public rex::ui::ImGuiDialog {
   void DrawAudioTab();
   void DrawInputTab();
   void DrawModsTab();
+  void DrawNativeModsTab();
   void DrawModelSwapTab();
   void DrawTexturesTab();
   void DrawDevTab();
@@ -67,6 +69,7 @@ class LauncherDialog : public rex::ui::ImGuiDialog {
 
   // Mods center (P4.1): zip install + profiles.
   std::string mods_status_;  // transient status line shown in the Mods tab
+  std::string native_mods_status_;
   bool profile_name_dialog_ = false;
   char new_profile_buf_[64] = {};
 

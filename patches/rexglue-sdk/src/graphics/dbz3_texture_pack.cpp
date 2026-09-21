@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <cstring>
 #include <mutex>
 #include <string>
@@ -14,6 +15,7 @@
 #include <rex/cvar.h>
 #include <rex/filesystem.h>
 #include <rex/logging.h>
+#include <rex/math.h>
 
 // Decodificacion PNG (stb_image, solo PNG). El plugin no puede usar el helper
 // de rexui (visibilidad oculta entre DLLs), asi que compila su propia copia.
@@ -23,7 +25,7 @@
 #define STBI_NO_FAILURE_STRINGS
 #include <stb_image.h>
 
-namespace rex::graphics::d3d12 {
+namespace rex::graphics {
 
 // Lista de carpetas de pack activas, separadas por ';'. El launcher la escribe
 // en el TOML (mismo nombre de cvar) tras detectar los packs en `mods/`.
@@ -31,6 +33,22 @@ REXCVAR_DEFINE_STRING(dbz3_texture_packs, "", "GPU",
                       "DBZ3: carpetas de packs de texturas activos, separadas por ';' "
                       "(vacio = desactivado)")
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
+
+uint32_t Dbz3DdsFourCc(xenos::TextureFormat format) {
+  switch (format) {
+    case xenos::TextureFormat::k_DXT1:
+    case xenos::TextureFormat::k_DXT1_AS_16_16_16_16:
+      return 0x31545844u;  // 'DXT1'
+    case xenos::TextureFormat::k_DXT2_3:
+    case xenos::TextureFormat::k_DXT2_3_AS_16_16_16_16:
+      return 0x33545844u;  // 'DXT3'
+    case xenos::TextureFormat::k_DXT4_5:
+    case xenos::TextureFormat::k_DXT4_5_AS_16_16_16_16:
+      return 0x35545844u;  // 'DXT5'
+    default:
+      return 0;
+  }
+}
 
 namespace {
 
@@ -445,4 +463,67 @@ const Dbz3TexturePackEntry* Dbz3TexturePackIndex::Find(uint64_t hash) const {
   return nullptr;
 }
 
-}  // namespace rex::graphics::d3d12
+void Dbz3BuildPackMips(const std::vector<uint8_t>& base, uint32_t width, uint32_t height,
+                       uint32_t levels, uint32_t row_pitch_alignment, std::vector<uint8_t>& out,
+                       std::vector<Dbz3PackLevel>& layouts_out) {
+  if (levels == 0) {
+    levels = 1;
+  }
+  if (row_pitch_alignment == 0) {
+    row_pitch_alignment = 4;
+  }
+  // Generar la cadena completa (nivel 0 = imagen base; siguientes por box
+  // filter 2x2 con clamp en los bordes).
+  std::vector<std::vector<uint8_t>> mips(levels);
+  mips[0] = base;
+  for (uint32_t l = 1; l < levels; ++l) {
+    const uint32_t prev_width = std::max(width >> (l - 1), UINT32_C(1));
+    const uint32_t prev_height = std::max(height >> (l - 1), UINT32_C(1));
+    const uint32_t level_width = std::max(width >> l, UINT32_C(1));
+    const uint32_t level_height = std::max(height >> l, UINT32_C(1));
+    std::vector<uint8_t>& src = mips[l - 1];
+    std::vector<uint8_t>& dst = mips[l];
+    dst.assign(size_t(level_width) * level_height * 4, 0);
+    for (uint32_t y = 0; y < level_height; ++y) {
+      for (uint32_t x = 0; x < level_width; ++x) {
+        const uint32_t sx = std::min(x * 2, prev_width - 1);
+        const uint32_t sy = std::min(y * 2, prev_height - 1);
+        const uint32_t sx1 = std::min(sx + 1, prev_width - 1);
+        const uint32_t sy1 = std::min(sy + 1, prev_height - 1);
+        const uint8_t* p00 = src.data() + (size_t(sy) * prev_width + sx) * 4;
+        const uint8_t* p10 = src.data() + (size_t(sy) * prev_width + sx1) * 4;
+        const uint8_t* p01 = src.data() + (size_t(sy1) * prev_width + sx) * 4;
+        const uint8_t* p11 = src.data() + (size_t(sy1) * prev_width + sx1) * 4;
+        uint8_t* dst_px = dst.data() + (size_t(y) * level_width + x) * 4;
+        for (int c = 0; c < 4; ++c) {
+          dst_px[c] = uint8_t((uint32_t(p00[c]) + p10[c] + p01[c] + p11[c] + 2) / 4);
+        }
+      }
+    }
+  }
+  // Disponer los niveles con offsets y pitch alineados.
+  layouts_out.assign(levels, Dbz3PackLevel{});
+  uint64_t total = 0;
+  for (uint32_t l = 0; l < levels; ++l) {
+    const uint32_t level_width = std::max(width >> l, UINT32_C(1));
+    const uint32_t level_height = std::max(height >> l, UINT32_C(1));
+    const uint32_t pitch =
+        uint32_t(rex::align(uint64_t(level_width) * 4, uint64_t(row_pitch_alignment)));
+    total = rex::align(total, uint64_t(row_pitch_alignment));
+    layouts_out[l].offset = uint32_t(total);
+    layouts_out[l].width = level_width;
+    layouts_out[l].height = level_height;
+    layouts_out[l].row_pitch = pitch;
+    total += uint64_t(pitch) * level_height;
+  }
+  out.assign(size_t(total), 0);
+  for (uint32_t l = 0; l < levels; ++l) {
+    const Dbz3PackLevel& layout = layouts_out[l];
+    for (uint32_t y = 0; y < layout.height; ++y) {
+      std::memcpy(out.data() + layout.offset + size_t(y) * layout.row_pitch,
+                  mips[l].data() + size_t(y) * layout.width * 4, size_t(layout.width) * 4);
+    }
+  }
+}
+
+}  // namespace rex::graphics

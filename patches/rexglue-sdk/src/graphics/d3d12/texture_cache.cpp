@@ -44,7 +44,7 @@
 #include <rex/ui/d3d12/d3d12_upload_buffer_pool.h>
 #include <rex/ui/d3d12/d3d12_util.h>
 
-#include "dbz3_texture_pack.h"
+#include "../dbz3_texture_pack.h"
 
 namespace rex::graphics::d3d12 {
 
@@ -155,24 +155,6 @@ struct Dbz3TextureDumpState {
 Dbz3TextureDumpState& Dbz3DumpState() {
   static Dbz3TextureDumpState state;
   return state;
-}
-
-// DDS FourCC de los formatos comprimidos que usa el juego; 0 = no volcable
-// todavia (se omite en silencio para no ensuciar el volcado).
-uint32_t Dbz3DdsFourCc(xenos::TextureFormat format) {
-  switch (format) {
-    case xenos::TextureFormat::k_DXT1:
-    case xenos::TextureFormat::k_DXT1_AS_16_16_16_16:
-      return 0x31545844u;  // 'DXT1'
-    case xenos::TextureFormat::k_DXT2_3:
-    case xenos::TextureFormat::k_DXT2_3_AS_16_16_16_16:
-      return 0x33545844u;  // 'DXT3'
-    case xenos::TextureFormat::k_DXT4_5:
-    case xenos::TextureFormat::k_DXT4_5_AS_16_16_16_16:
-      return 0x35545844u;  // 'DXT5'
-    default:
-      return 0;
-  }
 }
 
 void Dbz3PutU32LE(uint8_t* p, uint32_t v) {
@@ -2572,22 +2554,12 @@ bool D3D12TextureCache::UploadPackTextureData(D3D12Texture& texture, const Textu
   }
   ID3D12Device* device = command_processor_.GetD3D12Provider().GetDevice();
   const uint32_t levels = key.mip_max_level + 1;
-  struct LevelLayout {
-    uint32_t offset;
-    uint32_t width;
-    uint32_t height;
-    uint32_t row_pitch;
-  };
-  std::vector<LevelLayout> layouts(levels);
-  uint64_t total_size = 0;
-  for (uint32_t l = 0; l < levels; ++l) {
-    const uint32_t lw = std::max(pack_width >> l, uint32_t(1));
-    const uint32_t lh = std::max(pack_height >> l, uint32_t(1));
-    const uint32_t pitch = uint32_t(rex::align(uint64_t(lw) * 4, uint64_t(256)));
-    const uint64_t offset = rex::align(total_size, uint64_t(512));
-    layouts[l] = LevelLayout{uint32_t(offset), lw, lh, pitch};
-    total_size = offset + uint64_t(pitch) * lh;
-  }
+  // Cadena de mips (box filter) con pitch y offsets alineados a 512 B, que es lo
+  // que exige el footprint de las copias de D3D12.
+  std::vector<uint8_t> buffer;
+  std::vector<Dbz3PackLevel> layouts;
+  Dbz3BuildPackMips(rgba, pack_width, pack_height, levels, 512, buffer, layouts);
+  const uint64_t total_size = buffer.size();
   D3D12_RESOURCE_DESC buffer_desc = {};
   buffer_desc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
   buffer_desc.Width = total_size;
@@ -2607,61 +2579,7 @@ bool D3D12TextureCache::UploadPackTextureData(D3D12Texture& texture, const Textu
   if (FAILED(upload->Map(0, nullptr, reinterpret_cast<void**>(&mapped)))) {
     return false;
   }
-  // Nivel 0 = imagen del pack; niveles siguientes por box filter 2x2.
-  std::vector<uint8_t> prev = std::move(rgba);
-  uint32_t prev_width = pack_width;
-  uint32_t prev_height = pack_height;
-  for (uint32_t l = 0; l < levels; ++l) {
-    const LevelLayout& layout = layouts[l];
-    uint8_t* dst_level = mapped + layout.offset;
-    for (uint32_t y = 0; y < layout.height; ++y) {
-      uint8_t* dst_row = dst_level + size_t(y) * layout.row_pitch;
-      for (uint32_t x = 0; x < layout.width; ++x) {
-        if (l == 0) {
-          std::memcpy(dst_row + size_t(x) * 4, prev.data() + (size_t(y) * prev_width + x) * 4, 4);
-        } else {
-          const uint32_t sx = std::min(x * 2, prev_width - 1);
-          const uint32_t sy = std::min(y * 2, prev_height - 1);
-          const uint32_t sx1 = std::min(sx + 1, prev_width - 1);
-          const uint32_t sy1 = std::min(sy + 1, prev_height - 1);
-          const uint8_t* p00 = prev.data() + (size_t(sy) * prev_width + sx) * 4;
-          const uint8_t* p10 = prev.data() + (size_t(sy) * prev_width + sx1) * 4;
-          const uint8_t* p01 = prev.data() + (size_t(sy1) * prev_width + sx) * 4;
-          const uint8_t* p11 = prev.data() + (size_t(sy1) * prev_width + sx1) * 4;
-          for (int c = 0; c < 4; ++c) {
-            dst_row[size_t(x) * 4 + c] =
-                uint8_t((uint32_t(p00[c]) + p10[c] + p01[c] + p11[c] + 2) / 4);
-          }
-        }
-      }
-    }
-    if (l + 1 < levels) {
-      const uint32_t nw = std::max(layout.width >> 1, uint32_t(1));
-      const uint32_t nh = std::max(layout.height >> 1, uint32_t(1));
-      std::vector<uint8_t> next(size_t(nw) * nh * 4);
-      for (uint32_t y = 0; y < nh; ++y) {
-        for (uint32_t x = 0; x < nw; ++x) {
-          const uint32_t sx = std::min(x * 2, layout.width - 1);
-          const uint32_t sy = std::min(y * 2, layout.height - 1);
-          const uint32_t sx1 = std::min(sx + 1, layout.width - 1);
-          const uint32_t sy1 = std::min(sy + 1, layout.height - 1);
-          const uint8_t* src_level = (l == 0) ? prev.data() : prev.data();
-          const uint32_t src_pitch_px = (l == 0) ? prev_width : layout.width;
-          const uint8_t* p00 = src_level + (size_t(sy) * src_pitch_px + sx) * 4;
-          const uint8_t* p10 = src_level + (size_t(sy) * src_pitch_px + sx1) * 4;
-          const uint8_t* p01 = src_level + (size_t(sy1) * src_pitch_px + sx) * 4;
-          const uint8_t* p11 = src_level + (size_t(sy1) * src_pitch_px + sx1) * 4;
-          for (int c = 0; c < 4; ++c) {
-            next[(size_t(y) * nw + x) * 4 + c] =
-                uint8_t((uint32_t(p00[c]) + p10[c] + p01[c] + p11[c] + 2) / 4);
-          }
-        }
-      }
-      prev = std::move(next);
-      prev_width = nw;
-      prev_height = nh;
-    }
-  }
+  std::memcpy(mapped, buffer.data(), buffer.size());
   upload->Unmap(0, nullptr);
 
   ID3D12Resource* texture_resource = texture.resource();
@@ -2677,7 +2595,7 @@ bool D3D12TextureCache::UploadPackTextureData(D3D12Texture& texture, const Textu
   location_dest.pResource = texture_resource;
   location_dest.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
   for (uint32_t l = 0; l < levels; ++l) {
-    const LevelLayout& layout = layouts[l];
+    const Dbz3PackLevel& layout = layouts[l];
     location_source.PlacedFootprint.Offset = layout.offset;
     location_source.PlacedFootprint.Footprint.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
     location_source.PlacedFootprint.Footprint.Width = layout.width;

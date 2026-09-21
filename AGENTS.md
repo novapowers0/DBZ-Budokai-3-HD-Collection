@@ -66,20 +66,24 @@ lógica de región/mods, y runtime.
 - `docs/02_mods/PACKS_DE_TEXTURAS.md` - **guia para autores de packs** (formato,
   creacion paso a paso, reglas, diagnostico).
 - **PACKS DE TEXTURAS tipo PCSX2 - FASE 2 (cargador) IMPLEMENTADA Y VALIDADA
-  (2026-09-21)**: un pack es una **carpeta en `mods/`** con ficheros
-  `<hash:16 hex>_<W>x<H>_<sufijo>.dds` (o `.png`); el `hash` es el del volcado
-  (XXH3-64 del bitmap guest) y el **factor se deduce** de `W_pack/W_original`
-  (1..4, entero e igual en X/Y). Runtime: `dbz3_texture_pack.{h,cpp}` (indice +
-  decodificador DDS: BC1/BC2/BC3 y 32bpp) + `texture_cache.cpp`
-  (`GetTexturePackFactor`/`UploadPackTextureData`; recurso host RGBA8 a la
-  resolucion del pack + mips por box filter). Launcher: `RefreshTexturePacks()`
-  en `settings.cpp` detecta los packs y los pasa por **`SetFlagByName`**; el
-  plugin los lee con **`REXCVAR_QUERY`** (⚠️ `REXCVAR_GET` lee el storage local
-  de cada DLL y el registro del plugin se ignora por duplicado). UI: linea en la
-  pestana Mods. Herramienta: `mod center hd/texture_pack.py` (validar/listar).
-  **Validado en partida**: 12 texturas indexadas, 5 reemplazadas a x2 con mips,
-  0 errores. Prioridad sobre la mejora HD; no se combinan. **NO publicado** aun
-  en ningun release.
+  EN D3D12 Y VULKAN (2026-09-21)**: un pack es una **carpeta en `mods/`** con
+  ficheros `<hash:16 hex>_<W>x<H>_<sufijo>.dds` (o `.png`); el `hash` es el del
+  volcado (XXH3-64 del bitmap guest) y el **factor se deduce** de
+  `W_pack/W_original` (1..4, entero e igual en X/Y). Modulo **comun a los dos
+  backends**: `src/graphics/dbz3_texture_pack.{h,cpp}` (indice + decodificador
+  DDS BC1/2/3 y 32bpp + PNG via stb + `Dbz3BuildPackMips` box filter). Backends:
+  `d3d12/texture_cache.cpp` y `vulkan/texture_cache.cpp` (`GetTexturePackFactor`/
+  `UploadPackTextureData`; recurso host RGBA8 a la resolucion del pack + mips).
+  En Vulkan el reemplazo se sube con un **staging buffer host-visible (VMA)** +
+  `vkCmdCopyBufferToImage` y la imagen se crea con las dimensiones del pack
+  (formato RGBA8 via `GetHostFormatPair`). Launcher: `RefreshTexturePacks()` en
+  `settings.cpp` detecta los packs y los pasa por **`SetFlagByName`**; el plugin
+  los lee con **`REXCVAR_QUERY`** (⚠️ `REXCVAR_GET` lee el storage local de cada
+  DLL y el registro del plugin se ignora por duplicado). UI: linea en la pestana
+  Mods. Herramienta: `mod center hd/texture_pack.py` (validar/listar).
+  **Validado en partida**: 12 indexadas/5 reemplazadas a x2 con mips, 0 errores;
+  y **confirmacion visual** (pack magenta del menu de seleccion) en **D3D12 y
+  Vulkan**. Prioridad sobre la mejora HD; no se combinan. Publicado en **v1.2.7**.
 - `docs/SESION_TEXTURAS_PACK_2026-09-20.md` - **packs de texturas tipo PCSX2:
   Fase 1 (volcado dev)**: cvar `dbz3_texture_dump` (carpeta elegible por el
   usuario, por defecto `D:\Proyectos IA\DBZ B3 DDS`; DDS + `index.jsonl` del
@@ -100,7 +104,20 @@ lógica de región/mods, y runtime.
 
 ## 3. ESTADO ACTUAL (RESUMEN EJECUTIVO)
 
-- **(2026-09-20) v1.2.6 PUBLICADA (Latest)**: release
+- **(2026-09-21) v1.2.7 PUBLICADA (Latest)**: **packs de texturas (estilo
+  PCSX2) completos**: volcado dev (ya en v1.2.6) + **cargador en runtime**
+  (carpeta en `mods/` con `<hash>_<W>x<H>_<sufijo>.dds|.png`; factor x1..x4
+  deducido del tamano; RGBA8 + mips por box filter; prioridad sobre la mejora
+  HD). Implementado en **D3D12 y Vulkan** (modulo comun
+  `dbz3_texture_pack.{h,cpp}`; en Vulkan staging VMA + `vkCmdCopyBufferToImage`).
+  Deteccion desde el launcher (`RefreshTexturePacks()` -> `SetFlagByName`;
+  plugin lee con `REXCVAR_QUERY`) + linea en la pestana Mods. Herramienta
+  `mod center hd/texture_pack.py` y guia `docs/02_mods/PACKS_DE_TEXTURAS.md`.
+  **Validado visualmente en ambos backends** (pack magenta: personajes del menu
+  de seleccion en magenta). Release con zip Windows + **tarball Linux v1.2.7**
+  (el port Vulkan entra en el CI de Linux). FileVersion `1.2.7.0`.
+  DLLs canonicas: `rexgpu-xenos.dll` **6346752 B**, `rexruntime.dll` 10910720 B.
+- **(2026-09-20) v1.2.6 PUBLICADA (no-Latest tras la 1.2.7)**: release
   `…/releases/tag/v1.2.6` (`DBZ-Budokai-3-HD-Collection-v1.2.6.zip`, ~22 MB;
   `verify_release.ps1 -Version v1.2.6` = VERIFICACION OK; exe del build **dual**,
   FileVersion `1.2.6.0`; PortForge `defaultVersion 1.2.6`). Agrupa el trabajo de
@@ -1066,7 +1083,7 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
     `dbz3_io_logging`/`dbz3_io_readahead`, la poda de logs,
     `dbz3_mute_unfocused` y `frame_cap` definido en `src/ui/presenter.cpp`),
     rexgpu-xenos
-    **6334464** (con `fg=` en la linea `perf`, el fix de mips del shader de
+    **6346752** (con `fg=` en la linea `perf`, el fix de mips del shader de
     upscale `texture_upscale_cs` + clamp anti-ringing, la extensión a RGBA8
     nativas, el mínimo de tamaño `dbz3_upscale_min_size`, la guardia de
     video `UpscaleBudgetAllows`, el **volcado dev de texturas**

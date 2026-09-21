@@ -24,6 +24,8 @@ set(REXGPU_XENOS_SOURCES
     primitive_processor.cpp
     pipeline/render_target/cache.cpp
     shared_memory.cpp
+    # DBZ3 HD Collection: packs de texturas (comun a D3D12 y Vulkan)
+    dbz3_texture_pack.cpp
     pipeline/texture/cache.cpp
     pipeline/shader/interpreter.cpp
     pipeline/shader/translator.cpp
@@ -80,7 +82,6 @@ if(REXGLUE_USE_D3D12)
         d3d12/shader.cpp
         d3d12/shared_memory.cpp
         d3d12/texture_cache.cpp
-        d3d12/dbz3_texture_pack.cpp
         d3d12/deferred_command_list.cpp
         d3d12/pipeline_cache.cpp
     )

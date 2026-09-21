@@ -66,9 +66,10 @@ Para una build local, coloca esas dos carpetas como `generated/` y
 
 El tarball no incluye el juego. Coloca junto a `dbz3` el `default.xex` legal y
 `us/` o `eu/`, como en Windows. La carpeta `mods/` se crea junto al ejecutable.
-El paquete incluye `librexruntime.so`, `librexgpu-xenos.so` y las librerías
-  LLVM libc++/libc++abi/libunwind usadas por la build de CI, por lo que no debe
-  ser necesario crear enlaces manuales a `libunwind.so.1` en Arch o CachyOS.
+El paquete debe incluir `librexruntime.so`, `librexgpu-xenos.so` y las librerías
+LLVM libc++/libc++abi/libunwind usadas por la build de CI. Esto evita que el
+binario falle antes de abrir el launcher en distribuciones como Arch o CachyOS
+por la ausencia de `librexruntime.so` o `libunwind.so.1`.
 
 ## MangoHud y Steam FPS
 

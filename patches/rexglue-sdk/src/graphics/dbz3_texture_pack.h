@@ -20,7 +20,13 @@
 #include <string>
 #include <vector>
 
-namespace rex::graphics::d3d12 {
+#include <rex/graphics/xenos.h>
+
+namespace rex::graphics {
+
+// DDS FourCC de los formatos comprimidos del juego que un pack puede
+// representar; 0 = formato no soportado (ni volcable ni reemplazable).
+uint32_t Dbz3DdsFourCc(xenos::TextureFormat format);
 
 // Entrada de un pack ya indexada por hash.
 struct Dbz3TexturePackEntry {
@@ -57,9 +63,30 @@ class Dbz3TexturePackIndex {
   mutable std::vector<std::pair<uint64_t, Dbz3TexturePackEntry>> entries_;
 };
 
-// Decodifica una imagen de pack (DDS: DXT1/3/5 o 32bpp sin comprimir) a RGBA8
-// empaquetado (width*height*4). Devuelve false si el formato no se soporta.
+// Decodifica una imagen de pack (DDS: DXT1/3/5 o 32bpp sin comprimir, o PNG) a
+// RGBA8 empaquetado (width*height*4). Devuelve false si el formato no se
+// soporta.
 bool Dbz3DecodePackImage(const std::filesystem::path& path, std::vector<uint8_t>& rgba,
                          uint32_t& width, uint32_t& height);
 
-}  // namespace rex::graphics::d3d12
+// Descripcion de un nivel de la cadena de mips generada para un pack.
+struct Dbz3PackLevel {
+  // Offset en bytes dentro del buffer devuelto.
+  uint32_t offset = 0;
+  uint32_t width = 0;
+  uint32_t height = 0;
+  // Bytes por fila (alineado a la alineacion pedida).
+  uint32_t row_pitch = 0;
+};
+
+// Construye la cadena de mips (box filter 2x2, con clamp en los bordes) de un
+// pack a partir de su imagen base RGBA8 (`width * height * 4`). `levels` suele
+// ser `key.mip_max_level + 1`. Las filas quedan con `row_pitch` alineado a
+// `row_pitch_alignment` y cada nivel empieza en un offset tambien alineado (lo
+// que necesitan tanto las copias de D3D12 como las de Vulkan). `out` recibe el
+// buffer completo y `layouts_out` la descripcion de cada nivel.
+void Dbz3BuildPackMips(const std::vector<uint8_t>& base, uint32_t width, uint32_t height,
+                       uint32_t levels, uint32_t row_pitch_alignment, std::vector<uint8_t>& out,
+                       std::vector<Dbz3PackLevel>& layouts_out);
+
+}  // namespace rex::graphics
