@@ -126,7 +126,7 @@ foreach ($dll in $shared_dlls) {
 if (Test-Path -LiteralPath $modcenter) {
     $mcd = Join-Path $OutDir "mod center hd"
     New-Item -ItemType Directory -Path $mcd | Out-Null
-    foreach ($f in @("catalog_b3.cat","swap_b3.py","texture_b3.py")) {
+    foreach ($f in @("catalog_b3.cat","swap_b3.py","texture_b3.py","texture_pack.py")) {
         if (Test-Path -LiteralPath (Join-Path $modcenter $f)) {
             Copy-Item -LiteralPath (Join-Path $modcenter $f) (Join-Path $mcd $f)
         }

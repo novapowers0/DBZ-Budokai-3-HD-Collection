@@ -22,7 +22,7 @@ emulator. Native Linux builds use Vulkan and SDL3.
 | Platform | Windows / Linux |
 | Engine | Xbox 360 (ReXGlue SDK) |
 | Genre | 3D fighting |
-| Version | v1.2.6 |
+| Version | v1.2.7 |
 
 Copyright (c) 2026 **NovaPowers**. Released under the MIT License (see `LICENSE`).
 
@@ -51,8 +51,8 @@ rights holder of Dragon Ball.
 
 ### Platform downloads
 
-- **Windows:** `DBZ-Budokai-3-HD-Collection-v1.2.6.zip`
-- **Linux amd64:** `DBZ-Budokai-3-HD-Collection-v1.2.6-linux-amd64.tar.gz` (Vulkan)
+- **Windows:** `DBZ-Budokai-3-HD-Collection-v1.2.7.zip`
+- **Linux amd64:** `DBZ-Budokai-3-HD-Collection-v1.2.7-linux-amd64.tar.gz` (Vulkan)
 
 The Linux package includes `dbz3` and `librexgpu-xenos.so`, but not the game or
 its assets. Extract the tarball, place your legally obtained `default.xex` and

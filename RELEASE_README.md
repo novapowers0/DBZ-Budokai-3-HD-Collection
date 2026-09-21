@@ -121,6 +121,30 @@ aportarlos de tu **copia legal**. Haz esto:
 
 ## Novedades de esta release
 
+### v1.2.7 - Packs de texturas (estilo PCSX2) (2026-09-21)
+
+- **Packs de texturas**: puedes sustituir las texturas del juego por las tuyas
+  (por ejemplo, reescaladas con IA) **sin tocar los ficheros del juego ni su
+  memoria**. Un pack es una **carpeta dentro de `mods/`** con ficheros
+  `<hash>_<Ancho>x<Alto>_<sufijo>.dds` (o `.png`). El launcher los detecta y el
+  juego los aplica al vuelo; el **factor (x1..x4) se deduce del tamano**, no hay
+  que escribir ningun manifiesto.
+- **Formatos admitidos**: DDS (DXT1/BC1, DXT3/BC2, DXT5/BC3 y 32 bpp sin
+  comprimir) y PNG. Los mipmaps se generan solos (box filter).
+- **Funciona en los dos backends**: D3D12 y Vulkan (el mismo pack vale para
+  ambos).
+- **Tienen prioridad sobre la mejora de texturas HD** experimental; no se
+  combinan. Si algo no cuadra, el juego ignora ese fichero con un aviso en el
+  log en vez de fallar.
+- **Como crear un pack**: activa el **volcado de texturas** en el tab
+  Desarrollo, juega un rato y tendras las texturas en DDS. El helper
+  `mod center hd/texture_dump_import.py` las convierte a PNG y las organiza por
+  personaje; luego las reescalas y las guardas con el nombre del pack.
+  `mod center hd/texture_pack.py` valida y lista tus packs. Guia completa en
+  `docs/02_mods/PACKS_DE_TEXTURAS.md`.
+- Recuerda que los packs (como el resto de mods) necesitan jugar desde
+  **carpeta extraida**; en modo disco (ISO) no se aplican.
+
 ### v1.2.6 - Mejora de texturas HD pulida + ajustes que se autoreparan (2026-09-20)
 
 - **Mejora de texturas (experimental) realmente usable**: se corrigio el
