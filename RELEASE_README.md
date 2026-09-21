@@ -121,6 +121,18 @@ aportarlos de tu **copia legal**. Haz esto:
 
 ## Novedades de esta release
 
+### v1.2.8 - El volcado de texturas ya funciona (2026-09-21)
+
+- **Arreglado el volcado de texturas (dev)**: al activarlo en el tab
+  **Desarrollo**, elegir una carpeta y jugar, las texturas se escriben de verdad
+  (antes **no se volcaba nada**: la carpeta elegida no llegaba al motor grafico,
+  asi que el volcado se quedaba desactivado en silencio). Es el punto de partida
+  para crear tus propios **packs de texturas**.
+- **Log limpio**: desaparecen los avisos `duplicate registration` de
+  `dbz3_texture_dump` y `dbz3_texture_packs` que salian en cada arranque.
+- Incluye todo lo de la v1.2.7 (packs de texturas estilo PCSX2 en D3D12 y
+  Vulkan) y de la v1.2.6.
+
 ### v1.2.7 - Packs de texturas (estilo PCSX2) (2026-09-21)
 
 - **Packs de texturas**: puedes sustituir las texturas del juego por las tuyas

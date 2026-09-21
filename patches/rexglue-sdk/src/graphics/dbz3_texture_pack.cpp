@@ -27,12 +27,15 @@
 
 namespace rex::graphics {
 
-// Lista de carpetas de pack activas, separadas por ';'. El launcher la escribe
-// en el TOML (mismo nombre de cvar) tras detectar los packs en `mods/`.
-REXCVAR_DEFINE_STRING(dbz3_texture_packs, "", "GPU",
-                      "DBZ3: carpetas de packs de texturas activos, separadas por ';' "
-                      "(vacio = desactivado)")
-    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
+// Lista de carpetas de pack activas, separadas por ';'. La escribe el launcher
+// (`src/launcher/settings.cpp`) en el TOML tras detectar los packs en `mods/`.
+//
+// 🔴 NO se define aqui a proposito: el registro de cvars es COMPARTIDO entre el
+// exe y este plugin y el launcher se carga antes, asi que una definicion
+// duplicada aqui se DESCARTA con un error ("duplicate registration ... second
+// registration ignored") y el storage de este modulo nunca se rellenaria. Se lee
+// por nombre con `REXCVAR_QUERY`, que resuelve el valor desde el registro.
+// (Mismo caso que `dbz3_texture_dump` en `d3d12/texture_cache.cpp`.)
 
 uint32_t Dbz3DdsFourCc(xenos::TextureFormat format) {
   switch (format) {

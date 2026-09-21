@@ -134,10 +134,13 @@ REXCVAR_DEFINE_INT32(dbz3_upscale_min_size, 16, "GPU",
 // dato que el juego tiene en el #AZT, asi que la herramienta offline lo puede
 // reconocer, convertir a PNG y organizar por personaje/material. Ruta vacia =
 // desactivado. La exclusion del frontbuffer evita volcar la imagen presentada.
-REXCVAR_DEFINE_STRING(dbz3_texture_dump, "", "GPU",
-                      "DBZ3: carpeta de volcado de texturas (DDS + index.jsonl; "
-                      "vacio = desactivado)")
-    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
+// 🔴 `dbz3_texture_dump` NO se define aqui: la define el launcher
+// (`src/launcher/settings.cpp`), que es quien la persiste en el TOML. El
+// registro de cvars es COMPARTIDO entre el exe y este plugin, y el launcher se
+// carga antes, asi que una definicion duplicada aqui se DESCARTA
+// ("duplicate registration ... second registration ignored") y el storage de
+// este modulo nunca se rellenaria -> el volcado no se activaba nunca. Se lee
+// por nombre con `REXCVAR_QUERY`, igual que `dbz3_texture_packs`.
 REXCVAR_DEFINE_INT32(dbz3_texture_dump_max, 4096, "GPU",
                      "DBZ3: numero maximo de texturas unicas a volcar "
                      "(0 = sin limite)")
@@ -2618,7 +2621,7 @@ bool D3D12TextureCache::UploadPackTextureData(D3D12Texture& texture, const Textu
 void D3D12TextureCache::DumpTextureToDds(const TextureKey& key,
                                          const texture_util::TextureGuestLayout& guest_layout,
                                          uint32_t guest_address) const {
-  const std::string dump_dir = REXCVAR_GET(dbz3_texture_dump);
+  const std::string dump_dir = REXCVAR_QUERY(std::string, dbz3_texture_dump);
   if (dump_dir.empty()) {
     return;
   }

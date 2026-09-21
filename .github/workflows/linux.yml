@@ -127,10 +127,10 @@ jobs:
             ldd package/dbz3 | tee package/ldd-dbz3.txt
           ! grep -E 'not found|librexruntime\.so => not found' package/ldd-dbz3.txt
           readelf -d package/dbz3 | grep -E 'RPATH|RUNPATH' | grep '\$ORIGIN'
-          tar -C package -czf DBZ-Budokai-3-HD-Collection-v1.2.7-linux-amd64.tar.gz .
+          tar -C package -czf DBZ-Budokai-3-HD-Collection-v1.2.8-linux-amd64.tar.gz .
 
       - name: Upload Linux artifact
         uses: actions/upload-artifact@v4
         with:
-          name: DBZ-Budokai-3-HD-Collection-v1.2.7-linux-amd64
-          path: DBZ-Budokai-3-HD-Collection-v1.2.7-linux-amd64.tar.gz
+          name: DBZ-Budokai-3-HD-Collection-v1.2.8-linux-amd64
+          path: DBZ-Budokai-3-HD-Collection-v1.2.8-linux-amd64.tar.gz

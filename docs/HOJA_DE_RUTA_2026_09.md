@@ -1,6 +1,6 @@
 # HOJA DE RUTA 2026-09 — Madurez del proyecto (post-1.1.1)
 
-> Actualizado: 2026-09-21. Estado base: **v1.2.7 publicada** (Latest; packs de texturas estilo PCSX2). Sobre la v1.2.6 (Mejora de
+> Actualizado: 2026-09-21. Estado base: **v1.2.8 publicada** (Latest; fix del volcado de texturas). Sobre la v1.2.7 (packs de texturas estilo PCSX2), la v1.2.6 (Mejora de
 > texturas HD pulida —sin tirones, alcance RGBA8 nativas, HUD limpio—, UX
 > anti-abuso de la escala interna y **autorreparación del TOML**), sobre la
 > **v1.2.5** (diagnóstico de E/S `dbz3_io_logging` + readahead, `fg=`, mute/dim al

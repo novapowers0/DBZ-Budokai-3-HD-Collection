@@ -9,17 +9,17 @@ entradas retiradas.
   vuelta al array `builds` de `../.forge.json`.
 - `_retired` (dentro del JSON) — motivo de retirada de cada version.
 
-## Estado actual (2026-09-20)
+## Estado actual (2026-09-21)
 
 Versiones **visibles** en PortForge (las tres ultimas funcionales):
 
 | Version | Notas |
 |---|---|
-| `1.2.6` | Actual (Latest). Default. |
-| `1.2.5` | Respaldo inmediato. |
-| `1.2.4-EX` | Base estable anterior. |
+| `1.2.8` | Actual (Latest). Default. Fix del volcado de texturas (issue #11). |
+| `1.2.7` | Packs de texturas (D3D12 + Vulkan). Respaldo inmediato. |
+| `1.2.5` | Base estable anterior (foco y disco). |
 
-**Archivadas**: `1.2.4`, `1.2.3`, `1.2.2-EX`, `1.2.2` (retirada), `1.2.1`, `1.1.4`, `1.1.2`.
+**Archivadas**: `1.2.6`, `1.2.4-EX`, `1.2.4`, `1.2.3`, `1.2.2-EX`, `1.2.2` (retirada), `1.2.1`, `1.1.4`, `1.1.2`.
 
 ## Como rehabilitar una version
 
