@@ -2,7 +2,7 @@
 
 **Windows | Linux**
 
-English · [Español](README.md)
+English Â· [EspaÃ±ol](README.md)
 
 A native PC port of *Dragon Ball Z: Budokai 3 HD Collection* (Xbox 360) built
 on the [ReXGlue SDK](https://github.com/rexglue/rexglue-sdk). The game's
@@ -18,11 +18,11 @@ emulator. Native Linux builds use Vulkan and SDL3.
 
 | | |
 |---|---|
-| Players | 1–2 (versus) |
+| Players | 1â€“2 (versus) |
 | Platform | Windows / Linux |
 | Engine | Xbox 360 (ReXGlue SDK) |
 | Genre | 3D fighting |
-| Version | v1.2.8 |
+| Version | v1.2.8.1 |
 
 Copyright (c) 2026 **NovaPowers**. Released under the MIT License (see `LICENSE`).
 
@@ -51,8 +51,8 @@ rights holder of Dragon Ball.
 
 ### Platform downloads
 
-- **Windows:** `DBZ-Budokai-3-HD-Collection-v1.2.8.zip`
-- **Linux amd64:** `DBZ-Budokai-3-HD-Collection-v1.2.8-linux-amd64.tar.gz` (Vulkan)
+- **Windows:** `DBZ-Budokai-3-HD-Collection-v1.2.8.1.zip`
+- **Linux amd64:** `DBZ-Budokai-3-HD-Collection-v1.2.8.1-linux-amd64.tar.gz` (Vulkan)
 
 The Linux package includes `dbz3` and `librexgpu-xenos.so`, but not the game or
 its assets. Extract the tarball, place your legally obtained `default.xex` and
@@ -62,7 +62,7 @@ its assets. Extract the tarball, place your legally obtained `default.xex` and
 There are two ways to provide the game data: the extracted folder or the ISO
 directly. Both are detected automatically, nothing to configure.
 
-**Option A — the extracted folder (if you want mods)**
+**Option A â€” the extracted folder (if you want mods)**
 
 1. Download the ZIP from **Releases** and extract it anywhere.
 2. Put `default.xex` and the `us\` (or `eu\`) folder next to `dbz3.exe`. Both
@@ -70,10 +70,10 @@ directly. Both are detected automatically, nothing to configure.
 
    ```
    C:\Games\DBZ3\                C:\Games\DBZ3\
-   ├── dbz3.exe                   ├── dbz3.exe
-   ├── default.xex                └── assets\
-   └── us\ (and/or eu\)               ├── default.xex
-                                     └── us\ (and/or eu\)
+   â”œâ”€â”€ dbz3.exe                   â”œâ”€â”€ dbz3.exe
+   â”œâ”€â”€ default.xex                â””â”€â”€ assets\
+   â””â”€â”€ us\ (and/or eu\)               â”œâ”€â”€ default.xex
+                                     â””â”€â”€ us\ (and/or eu\)
    ```
 
    **A straight disc dump works too** (with the `DBZ3\` folder and its
@@ -81,17 +81,17 @@ directly. Both are detected automatically, nothing to configure.
 
    ```
    C:\Rom\Budokai HD Collection\
-   ├── dbz3.exe
-   └── DBZ3\                      ← exactly as it comes off your ISO
-       ├── yae3_xenon.xex
-       └── us\ (and/or eu\)
+   â”œâ”€â”€ dbz3.exe
+   â””â”€â”€ DBZ3\                      â† exactly as it comes off your ISO
+       â”œâ”€â”€ yae3_xenon.xex
+       â””â”€â”€ us\ (and/or eu\)
    ```
 
 3. Run `dbz3.exe`. The launcher checks what's there and tells you if something
    is missing. You can locate your game folder with "Select game data folder...".
 4. Choose **Region**, **Language**, **Video** and **Audio**, then press **Play**.
 
-**Option B — the ISO directly (play without extracting anything)**
+**Option B â€” the ISO directly (play without extracting anything)**
 
 Drop the game's `.iso` next to `dbz3.exe` (or use "Select ISO..." in the
 launcher). The launcher detects it, pulls the Budokai 3 executable out of the
@@ -116,7 +116,7 @@ own from the disc's executable.
 
 Only the executable and your region's data, not the whole ISO:
 
-- **USA**: into `us\` → `data_cmn.afs`, `data_eng.afs`, `data_fra.afs`,
+- **USA**: into `us\` â†’ `data_cmn.afs`, `data_eng.afs`, `data_fra.afs`,
   `data_ger.afs`, `data_ita.afs`, `data_spn.afs`, `data_usi.afs`,
   `data_yah.afs`, `adx_jpn.afs`, `adx_usa.afs`, `lang_jpn.afs`,
   `lang_usa.afs`, `opening.sfd`, `Ending00.sfd`, `Ending01.sfd`.
@@ -134,24 +134,24 @@ the FATX filesystem of the Xbox 360).
 
 ```
 DBZ-Budokai-3-HD-Collection/
-├── default.xex               # NOT included. Game executable (USA or EU)
-├── us/                       # NOT included. USA region data
-├── eu/                       # NOT included. EU/PAL region data
-├── src/                      # Recompiler + launcher + mod system
-│   ├── main.cpp              #   entry point, window, crash handler
-│   ├── mods.cpp              #   mod system (AFS overlay)
-│   ├── launcher/             #   launcher UI + model pipeline
-│   └── ingame/               #   in-game menu
-├── generated/                # NOT included. Code derived from your .xex
-├── mod center hd/            # Python modding tools (ours)
-├── awo_tools/                # AWO/AWG format reverse-engineering tools
-├── patches/                  # ReXGlue SDK patches (see its README)
-├── mods/                     # User mods (empty)
-├── tools/                    # xbcompress/xbdecompress + utilities
-├── docs/                     # Full documentation
-├── CMakeLists.txt            # Build
-├── baserom.md                # Required game files + how to extract them
-└── LICENSE                   # MIT (NovaPowers)
+â”œâ”€â”€ default.xex               # NOT included. Game executable (USA or EU)
+â”œâ”€â”€ us/                       # NOT included. USA region data
+â”œâ”€â”€ eu/                       # NOT included. EU/PAL region data
+â”œâ”€â”€ src/                      # Recompiler + launcher + mod system
+â”‚   â”œâ”€â”€ main.cpp              #   entry point, window, crash handler
+â”‚   â”œâ”€â”€ mods.cpp              #   mod system (AFS overlay)
+â”‚   â”œâ”€â”€ launcher/             #   launcher UI + model pipeline
+â”‚   â””â”€â”€ ingame/               #   in-game menu
+â”œâ”€â”€ generated/                # NOT included. Code derived from your .xex
+â”œâ”€â”€ mod center hd/            # Python modding tools (ours)
+â”œâ”€â”€ awo_tools/                # AWO/AWG format reverse-engineering tools
+â”œâ”€â”€ patches/                  # ReXGlue SDK patches (see its README)
+â”œâ”€â”€ mods/                     # User mods (empty)
+â”œâ”€â”€ tools/                    # xbcompress/xbdecompress + utilities
+â”œâ”€â”€ docs/                     # Full documentation
+â”œâ”€â”€ CMakeLists.txt            # Build
+â”œâ”€â”€ baserom.md                # Required game files + how to extract them
+â””â”€â”€ LICENSE                   # MIT (NovaPowers)
 ```
 
 ---
@@ -191,7 +191,7 @@ They are managed visually from the launcher (**Mods**, **Textures** and
 
 ### Model swaps in any direction (virtual mid-insert)
 
-A B3→B3 swap is a per-entry override (~100 KB) that is served on the target
+A B3â†’B3 swap is a per-entry override (~100 KB) that is served on the target
 slot even when the binary is larger than the original slot: the runtime
 presents the game a consistent AFS table (the entry grows in place and the
 following ones shift) and translates the reads. That is how, for example,
@@ -204,7 +204,7 @@ This requires the **ReXGlue SDK patch** included in `patches/` (see
 
 ## Building from source
 
-You need a C++23 compiler, CMake ≥ 3.25 and the
+You need a C++23 compiler, CMake â‰¥ 3.25 and the
 [ReXGlue SDK](https://github.com/rexglue/rexglue-sdk) (`REXSDK_DIR` or a
 `rexglue/` folder next to the project).
 
@@ -236,14 +236,14 @@ layout is assembled by `tools/make_release.ps1`.
 
 | Technique | Status |
 |---|---|
-| Native B3→B3 swap (~100 KB override) | Works in any direction (bins > or < slot) |
+| Native B3â†’B3 swap (~100 KB override) | Works in any direction (bins > or < slot) |
 | B3 HD texture mod | Works (per-entry override, ~118 KB) |
 | 2+ simultaneous model/texture mods | Works (virtual mid-insert) |
 | Music mod (og_music) | Works |
 | Play from the ISO (disc mode) | Works (base game; mods need the folder) |
 | USA/EU dual core (single binary) | Works (validated in-game) |
-| PS2→HD port | In research; requires a full rebuild |
-| IW→B3 character ports | Dropped (Janemba failed, archived) |
+| PS2â†’HD port | In research; requires a full rebuild |
+| IWâ†’B3 character ports | Dropped (Janemba failed, archived) |
 
 ---
 
@@ -295,7 +295,7 @@ layout is assembled by `tools/make_release.ps1`.
 
 - **Per-entry AFS override** (without touching the original AFS files) with
   **virtual mid-insert**: works even when the model is larger than the slot.
-- **Native B3↔B3 model swap**: 183-character catalog, search, preview and in any
+- **Native B3â†”B3 model swap**: 183-character catalog, search, preview and in any
   direction.
 - **Textures**: extract to PNG, edit and rebuild the mod; music and whole files
   can be replaced too.
@@ -310,8 +310,8 @@ layout is assembled by `tools/make_release.ps1`.
 
 ## Credits
 
-- [ReXGlue](https://github.com/rexglue/rexglue-sdk) — recompilation tools.
-- [WistfulHopes/DBZ1](https://github.com/WistfulHopes/DBZ1) — SDK API
+- [ReXGlue](https://github.com/rexglue/rexglue-sdk) â€” recompilation tools.
+- [WistfulHopes/DBZ1](https://github.com/WistfulHopes/DBZ1) â€” SDK API
   reference (reference only; not a base or a code copy).
-- Budokai modding community — reference tools and models.
-- **NovaPowers** — author of the launcher, the mod system and the tools.
+- Budokai modding community â€” reference tools and models.
+- **NovaPowers** â€” author of the launcher, the mod system and the tools.

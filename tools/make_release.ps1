@@ -35,16 +35,22 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 
 # Single source of truth for the version: src/version.rc (VERSION_MAJOR/MINOR/
-# PATCH). Bump it there and the release zip/name follows.
+# PATCH/BUILD). Bump it there and the release zip/name follows. VERSION_BUILD
+# distinto de 0 se anade como 4o componente (v1.2.8.1, seguimiento de la 1.2.8);
+# con 0 se queda en 3 (v1.2.8).
 if ($Version -eq "") {
     $rc = Get-Content -LiteralPath (Join-Path $root "src\version.rc")
     $maj = ($rc | Select-String 'VERSION_MAJOR\s+(\d+)' | ForEach-Object { $_.Matches[0].Groups[1].Value } | Select-Object -First 1)
     $min = ($rc | Select-String 'VERSION_MINOR\s+(\d+)' | ForEach-Object { $_.Matches[0].Groups[1].Value } | Select-Object -First 1)
     $pat = ($rc | Select-String 'VERSION_PATCH\s+(\d+)' | ForEach-Object { $_.Matches[0].Groups[1].Value } | Select-Object -First 1)
+    $bld = ($rc | Select-String 'VERSION_BUILD\s+(\d+)' | ForEach-Object { $_.Matches[0].Groups[1].Value } | Select-Object -First 1)
     if (-not $maj -or -not $min -or -not $pat) {
         throw "No se pudo leer la version de src\version.rc"
     }
     $Version = "v$maj.$min.$pat"
+    if ($bld -and [int]$bld -ne 0) {
+        $Version = "$Version.$bld"
+    }
 }
 Write-Output "Version de release: $Version"
 

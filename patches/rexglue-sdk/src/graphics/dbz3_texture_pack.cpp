@@ -53,6 +53,76 @@ uint32_t Dbz3DdsFourCc(xenos::TextureFormat format) {
   }
 }
 
+bool Dbz3PackReplaceableFormat(xenos::TextureFormat format) {
+  if (Dbz3DdsFourCc(format) != 0) {
+    return true;  // DXT1/3/5: el recurso host se crea RGBA8 (descomprimido).
+  }
+  // Nativas que ya son RGBA8 en memoria (swizzle identidad en el host).
+  return format == xenos::TextureFormat::k_8_8_8_8 ||
+         format == xenos::TextureFormat::k_8_8_8_8_AS_16_16_16_16;
+}
+
+// Formatos sin comprimir volcables. Los masks son los del guest (el volcado es
+// el bitmap CRUDO). Ver el comentario del header para la verificacion.
+const Dbz3DumpFormat* Dbz3DumpFormatFor(xenos::TextureFormat format) {
+  // Comprimidos: el sufijo es el FourCC (mismo que ya usaba el volcado).
+  static const Dbz3DumpFormat kDxt1 = {"DXT1", true, 0x31545844u, 0, 0, 0, 0, 0};
+  static const Dbz3DumpFormat kDxt3 = {"DXT3", true, 0x33545844u, 0, 0, 0, 0, 0};
+  static const Dbz3DumpFormat kDxt5 = {"DXT5", true, 0x35545844u, 0, 0, 0, 0, 0};
+  // Sin comprimir (bits, R, G, B, A).
+  // k_8_8_8_8: R,G,B,A en memoria (XePackR8G8B8A8UNorm: R | G<<8 | B<<16 | A<<24).
+  static const Dbz3DumpFormat kRgba8 = {"RGBA8", false, 0, 32, 0x000000FFu, 0x0000FF00u,
+                                        0x00FF0000u, 0xFF000000u};
+  // k_2_10_10_10: passthrough 32bpp -> mismo layout que DXGI R10G10B10A2_UNORM.
+  static const Dbz3DumpFormat kRgba1010102 = {"RGBA1010102", false, 0, 32, 0x000003FFu, 0x000FFC00u,
+                                              0x3FF00000u, 0xC0000000u};
+  // k_1_5_5_5 (XePackR5G5B5A1UNorm: R | G<<5 | B<<10 | A<<15).
+  static const Dbz3DumpFormat kRgb5a1 = {"RGB5A1", false, 0, 16, 0x001Fu, 0x03E0u, 0x7C00u, 0x8000u};
+  // k_5_6_5 (XePackR5G6B5UNorm: R | G<<5 | B<<11).
+  static const Dbz3DumpFormat kRgb565 = {"RGB565", false, 0, 16, 0x001Fu, 0x07E0u, 0xF800u, 0};
+  // k_6_5_5 (XePackR5G5B6UNorm: R5 | G5<<5 | B6<<10).
+  static const Dbz3DumpFormat kRgb655 = {"RGB655", false, 0, 16, 0x001Fu, 0x03E0u, 0xFC00u, 0};
+  // k_4_4_4_4 (XeR4G4B4A4ToB4G4R4A4: A en los bits altos).
+  static const Dbz3DumpFormat kRgba4 = {"RGBA4", false, 0, 16, 0x000Fu, 0x00F0u, 0x0F00u, 0xF000u};
+  // k_8 / k_8_A / k_8_B: un canal (se muestra como luminancia).
+  static const Dbz3DumpFormat kL8 = {"L8", false, 0, 8, 0xFFu, 0, 0, 0};
+  // k_8_8: R,G por texel (con el swizzle RGGG se muestrea como luminancia+alpha).
+  static const Dbz3DumpFormat kL8a8 = {"L8A8", false, 0, 16, 0x00FFu, 0, 0, 0xFF00u};
+  switch (format) {
+    case xenos::TextureFormat::k_DXT1:
+    case xenos::TextureFormat::k_DXT1_AS_16_16_16_16:
+      return &kDxt1;
+    case xenos::TextureFormat::k_DXT2_3:
+    case xenos::TextureFormat::k_DXT2_3_AS_16_16_16_16:
+      return &kDxt3;
+    case xenos::TextureFormat::k_DXT4_5:
+    case xenos::TextureFormat::k_DXT4_5_AS_16_16_16_16:
+      return &kDxt5;
+    case xenos::TextureFormat::k_8_8_8_8:
+    case xenos::TextureFormat::k_8_8_8_8_AS_16_16_16_16:
+      return &kRgba8;
+    case xenos::TextureFormat::k_2_10_10_10:
+    case xenos::TextureFormat::k_2_10_10_10_AS_16_16_16_16:
+      return &kRgba1010102;
+    case xenos::TextureFormat::k_1_5_5_5:
+      return &kRgb5a1;
+    case xenos::TextureFormat::k_5_6_5:
+      return &kRgb565;
+    case xenos::TextureFormat::k_6_5_5:
+      return &kRgb655;
+    case xenos::TextureFormat::k_4_4_4_4:
+      return &kRgba4;
+    case xenos::TextureFormat::k_8:
+    case xenos::TextureFormat::k_8_A:
+    case xenos::TextureFormat::k_8_B:
+      return &kL8;
+    case xenos::TextureFormat::k_8_8:
+      return &kL8a8;
+    default:
+      return nullptr;
+  }
+}
+
 namespace {
 
 bool IsHex(char c) {

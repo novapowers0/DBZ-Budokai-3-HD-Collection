@@ -69,6 +69,22 @@ lógica de región/mods, y runtime.
   (v1.2.8, issue #11)**: el registro de cvars es COMPARTIDO y la definicion
   duplicada del plugin se descarta, asi que el plugin leia su storage vacio;
   ahora lee con `REXCVAR_QUERY` (igual que los packs).
+- `docs/SESION_VOLCADO_FORMATOS_2026-09-23.md` - **volcado: formatos del HUD +
+  packs RGBA8 (v1.2.8.1, seguimiento del issue #11)**: `Dbz3DdsFourCc` solo
+  reconocia DXT1/3/5, asi que el HUD/UI (sin comprimir) se omitia EN SILENCIO;
+  ahora `Dbz3DumpFormatFor()` cubre RGBA8, RGB565, RGB5A1, RGB655, RGBA4, L8,
+  L8A8 y RGBA1010102 (mascaras del guest **verificadas** contra
+  `pixel_formats.xesli` de Xenia: ojo, `k_5_6_5` tiene R en los bits BAJOS, y el
+  `texture_dump.cc` de Xenia da mascaras BGRA **incorrectas**). Arreglado
+  `dwCaps` (iba en +104 = `dwABitMask`; ahora +108). Tope de **4 versiones por
+  identidad** de textura (la textura de video de la intro se volcaba fotograma a
+  fotograma: 4096 ficheros/1,4 GB en 5 min -> 194/51 MB). Los "cuadrados
+  negros" del reporter son DXT3 con alpha **todo a cero** (el juego ignora el
+  alpha; no es un bug) -> `--opaque-alpha` en el importador. **Packs**: el gate
+  pasa a `Dbz3PackReplaceableFormat()` = DXT1/3/5 + **`k_8_8_8_8`** (RGBA8), asi
+  que las texturas del HUD que ahora se vuelcan **si** se pueden reemplazar
+  (validado: `reemplaza 128x1024 (fmt 6) -> subido`); los formatos de 8/16 bits
+  se vuelcan pero su pack se ignora (pendiente: recurso RGBA8 + swizzle).
 - **PACKS DE TEXTURAS tipo PCSX2 - FASE 2 (cargador) IMPLEMENTADA Y VALIDADA
   EN D3D12 Y VULKAN (2026-09-21)**: un pack es una **carpeta en `mods/`** con
   ficheros `<hash:16 hex>_<W>x<H>_<sufijo>.dds` (o `.png`); el `hash` es el del
@@ -108,7 +124,24 @@ lógica de región/mods, y runtime.
 
 ## 3. ESTADO ACTUAL (RESUMEN EJECUTIVO)
 
-- **(2026-09-21) v1.2.8 PUBLICADA (Latest)**: **fix del volcado de texturas**
+- **(2026-09-23) v1.2.8.1 PUBLICADA (Latest)**: **el volcado cubre los formatos
+  del HUD/UI y los packs aceptan RGBA8** (seguimiento del issue #11). El
+  reporter confirmo que la v1.2.8 ya volcaba, y anadio dos cosas: faltaban casi
+  todas las texturas del HUD (solo salian algunos fonts) y algunas salian como
+  "cuadrado negro". Causa del primero: `Dbz3DdsFourCc` solo reconocia DXT1/3/5,
+  asi que todo lo **sin comprimir** (`k_8_8_8_8`, `k_1_5_5_5`, `k_5_6_5`, `k_8`...)
+  se omitia en silencio. Ahora `Dbz3DumpFormatFor()` los volca con el DDS
+  correcto (mascaras del guest verificadas contra Xenia) y los no soportados
+  **avisan** una vez en el log. Los "cuadrados negros" son DXT3 con el alpha
+  **todo a cero** (el juego dibuja esas texturas ignorando su alpha): el DDS es
+  fiel, y el importador gana `--opaque-alpha` para verlas. Ademas: **tope de 4
+  versiones por identidad** (la textura de video de la intro se volcaba fotograma
+  a fotograma: 4096 ficheros/1,4 GB en 5 min -> 194/51 MB) y el pack pasa a
+  aceptar **`k_8_8_8_8`** (`Dbz3PackReplaceableFormat`), asi que el HUD que ahora
+  se vuelca **si** se puede reemplazar (validado en D3D12). Doc:
+  `docs/SESION_VOLCADO_FORMATOS_2026-09-23.md`. FileVersion `1.2.8.1`.
+  DLL canonica: `rexgpu-xenos.dll` **6342656 B**, `rexruntime.dll` 10910720 B.
+- **(2026-09-21) v1.2.8 PUBLICADA (no-Latest tras la 1.2.8.1)**: **fix del volcado de texturas**
   (issue #11: "Error al dumpear texturas"). El registro de cvars es
   **COMPARTIDO** entre `dbz3.exe` y `rexgpu-xenos.dll` (el exe se carga antes),
   asi que la definicion duplicada de `dbz3_texture_dump` en el plugin se
@@ -1100,14 +1133,15 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
     `dbz3_io_logging`/`dbz3_io_readahead`, la poda de logs,
     `dbz3_mute_unfocused` y `frame_cap` definido en `src/ui/presenter.cpp`),
     rexgpu-xenos
-    **6340096** (con `fg=` en la linea `perf`, el fix de mips del shader de
+    **6342656** (con `fg=` en la linea `perf`, el fix de mips del shader de
     upscale `texture_upscale_cs` + clamp anti-ringing, la extensión a RGBA8
     nativas, el mínimo de tamaño `dbz3_upscale_min_size`, la guardia de
     video `UpscaleBudgetAllows`, el **volcado dev de texturas**
     `dbz3_texture_dump`/`dbz3_texture_dump_max` y el **cargador de packs**
     `dbz3_texture_packs`; **sin** instrumentación de draw),
     amd_fidelityfx_dx12 5413888. ⚠️ Los valores 10910208/6227456 son los de la
-    v1.2.6 y 6346752 los de la v1.2.7 (todas ya publicadas). ⚠️ El **SHA256 varía
+    v1.2.6, 6346752 los de la v1.2.7 y 6340096 los de la v1.2.8 (todas ya
+    publicadas). ⚠️ El **SHA256 varía
     por build** (embebe timestamp) — comparar por **tamaño** o recompilar y
     copiar, no por hash fijo. ⚠️ Los tamaños de AMBAS DLL cambian cuando se
     recompila el SDK: el valor de referencia es el que hay en
@@ -1356,8 +1390,11 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
   `DBZ3_DUMP_IMAGE` para volcar la imagen descifrada).
 
 ### 9.2 Releases y estado GitHub
-- **v1.2.8 = Latest** (2026-09-21, core dual, FileVersion 1.2.8.0, baseline: fix
-  del volcado de texturas, issue #11 - `REXCVAR_QUERY` + log sin duplicados).
+- **v1.2.8.1 = Latest** (2026-09-23, core dual, FileVersion 1.2.8.1, baseline:
+  volcado de los formatos del HUD/UI sin comprimir + packs RGBA8 + tope de
+  versiones por identidad, issue #11 - `Dbz3DumpFormatFor`). **v1.2.8**
+  (2026-09-21, core dual, FileVersion 1.2.8.0, baseline: fix del volcado de
+  texturas, issue #11 - `REXCVAR_QUERY` + log sin duplicados).
   **v1.2.7** (2026-09-21, core dual, FileVersion 1.2.7.0, baseline: packs de
   texturas estilo PCSX2 en D3D12 y Vulkan + herramienta y guia). **v1.2.6** (2026-09-20, core dual, FileVersion 1.2.6.0, baseline:
   Mejora de texturas HD pulida (sin tirones, RGBA8, min-size anti-ringing) +
@@ -1371,8 +1408,8 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
   **v1.2.0**, **v1.1.4 EX**, **v1.1.3**, **v1.1.2**, **v1.1.1**,
   **v1.1.0-clasico** = no-Latest. Tags v1.0.0..v1.0.9 + v1.0.5-EX conservados
   (código archivado; los zips binarios viejos NO existen). PortForge
-  `defaultVersion` = 1.2.8 (visibles 1.2.8 / 1.2.7 / 1.2.5; la 1.2.6 y la 1.2.4-EX al
-  archivo en `portforge/archive/`).
+  `defaultVersion` = 1.2.8.1 (visibles 1.2.8.1 / 1.2.8 / 1.2.7; la 1.2.5, la 1.2.6
+  y la 1.2.4-EX al archivo en `portforge/archive/`).
 - ⚠️ **El exe de release se compila desde `out\build\win-amd64-dual`** (es el
   core dual): `make_release.ps1` toma `dbz3.exe` de ahí (verificado 2026-09-17:
   el hash del exe del zip v1.2.1 == el de ese build dir) y las DLL del

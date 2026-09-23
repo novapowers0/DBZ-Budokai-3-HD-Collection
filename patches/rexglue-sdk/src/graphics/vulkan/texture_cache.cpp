@@ -1833,7 +1833,7 @@ bool VulkanTextureCache::LoadTextureDataFromResidentMemoryImpl(Texture& texture,
 bool VulkanTextureCache::LinearizeGuestTexture(
     const TextureKey& key, const texture_util::TextureGuestLayout& guest_layout,
     uint32_t guest_address, std::vector<uint8_t>& linear) const {
-  if (Dbz3DdsFourCc(key.format) == 0 || key.scaled_resolve ||
+  if (Dbz3DumpFormatFor(key.format) == nullptr || key.scaled_resolve ||
       key.dimension != xenos::DataDimension::k2DOrStacked ||
       key.GetDepthOrArraySize() != 1) {
     return false;
@@ -1911,7 +1911,9 @@ uint32_t VulkanTextureCache::GetTexturePackFactor(const TextureKey& key) const {
     if (key.base_page == 0) {
       break;
     }
-    if (Dbz3DdsFourCc(key.format) == 0) {
+    // Mismo conjunto de formatos reemplazables que en D3D12 (DXT1/3/5 y RGBA8
+    // nativa); el resto se vuelca como referencia pero no se reemplaza.
+    if (!Dbz3PackReplaceableFormat(key.format)) {
       break;
     }
     // No reemplazar la textura de origen del presentador.

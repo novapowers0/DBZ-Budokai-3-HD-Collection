@@ -28,6 +28,41 @@ namespace rex::graphics {
 // representar; 0 = formato no soportado (ni volcable ni reemplazable).
 uint32_t Dbz3DdsFourCc(xenos::TextureFormat format);
 
+// Descripcion del volcado DDS de un formato guest: el sufijo del fichero
+// (`<hash>_<W>x<H>_<sufijo>.dds`) y el formato DDS que hay que declarar para que
+// el bitmap crudo se lea bien. El `suffix` de los comprimidos es el FourCC
+// (DXT1/DXT3/DXT5); el de los formatos sin comprimir es un nombre legible
+// (RGBA8, RGB565, RGB5A1, RGBA4, L8, L8A8, RGBA1010102).
+//
+// El layout de bits de cada formato es el del guest (el volcado es el bitmap
+// CRUDO, byte a byte), verificado contra la conversion de Xenia
+// (`pixel_formats.xesli` / `XePack*UNorm`): p.ej. k_5_6_5 tiene R en los bits
+// BAJOS (R=0x001F, B=0xF800), y k_8_8_8_8 es R,G,B,A en memoria.
+//
+// Devuelve nullptr si el formato no se puede volcar (ni reemplazar).
+struct Dbz3DumpFormat {
+  const char* suffix;
+  bool compressed;
+  uint32_t fourcc;  // valido si `compressed`
+  uint32_t bits;    // valido si !`compressed` (8/16/32)
+  uint32_t r_mask;
+  uint32_t g_mask;
+  uint32_t b_mask;
+  uint32_t a_mask;
+};
+const Dbz3DumpFormat* Dbz3DumpFormatFor(xenos::TextureFormat format);
+
+// Formato que un pack puede REEMPLAZAR, en los DOS backends. La imagen del pack
+// se decodifica a RGBA8 y se sube tal cual, asi que solo valen:
+//  - los comprimidos DXT1/DXT3/DXT5 (el recurso host se crea RGBA8, ya
+//    descomprimido), y
+//  - las texturas que YA son RGBA8 (k_8_8_8_8), cuyo recurso host es RGBA8 con
+//    swizzle identidad.
+// Los formatos de 8/16 bits (k_8, k_8_8, k_5_6_5, k_4_4_4_4...) SI se vuelcan
+// como referencia, pero todavia NO se pueden reemplazar (su recurso host no es
+// RGBA8 y su swizzle es especifico del formato).
+bool Dbz3PackReplaceableFormat(xenos::TextureFormat format);
+
 // Entrada de un pack ya indexada por hash.
 struct Dbz3TexturePackEntry {
   std::filesystem::path path;

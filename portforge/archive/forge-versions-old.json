@@ -1,10 +1,11 @@
 {
   "_note": "Historico de versiones retiradas de ../.forge.json. PortForge (el instalador de 1 clic) SOLO consume ../.forge.json; este fichero es un registro para no perder las entradas antiguas. Para rehabilitar una version, copia su objeto del array 'builds' al array 'builds' de ../.forge.json.",
-    "_archivedOn": "2026-09-21",
-    "_activeVersions": ["1.2.8", "1.2.7", "1.2.5"],
+    "_archivedOn": "2026-09-23",
+    "_activeVersions": ["1.2.8.1", "1.2.8", "1.2.7"],
     "_retired": {
-      "1.2.4-EX": "Base estable anterior (FXAA/dither + palancas GPU + datos portables). Retirada al dejar visibles 1.2.8 / 1.2.7 / 1.2.5.",
-      "1.2.6": "Mejora de texturas HD pulida + autorreparacion del TOML. Retirada al dejar visibles 1.2.8 / 1.2.7 / 1.2.5 (la 1.2.7 incluye todo lo de la 1.2.6).",
+      "1.2.5": "Foco/disco (dbz3_io_logging, readahead, mute/dim). Retirada al dejar visibles 1.2.8.1 / 1.2.8 / 1.2.7.",
+      "1.2.4-EX": "Base estable anterior (FXAA/dither + palancas GPU + datos portables). Retirada al dejar visibles 1.2.8.1 / 1.2.8 / 1.2.7.",
+      "1.2.6": "Mejora de texturas HD pulida + autorreparacion del TOML. Retirada al dejar visibles 1.2.8.1 / 1.2.8 / 1.2.7 (la 1.2.7 incluye todo lo de la 1.2.6).",
       "1.2.4": "Base estable anterior (volumen real + aviso de actualizacion). Retirada al dejar visibles 1.2.6 / 1.2.5 / 1.2.4-EX.",
       "1.2.3": "Sustituida por la 1.2.4 (su entrada se reemplazo in-place). Estable, pero sin las mejoras posteriores.",
     "1.2.2-EX": "Ultima de la linea 1.2.2; funcional pero muy superada. Retirada al dejar visibles 1.2.5 / 1.2.4-EX / 1.2.4.",
@@ -14,6 +15,28 @@
     "1.1.2": "Formato de pasos antiguo (dest con nombre completo del zip y copia del rom a 'gamedata'); incompatible con el layout actual. NO reusar."
   },
     "builds": [
+      {
+        "versions": ["1.2.5"],
+        "targetPlatforms": ["Windows"],
+        "steps": [
+          { "step": "createDir", "path": ".build" },
+          {
+            "step": "fetch",
+            "url": "https://github.com/novapowers0/DBZ-Budokai-3-HD-Collection/releases/download/v1.2.5/DBZ-Budokai-3-HD-Collection-v1.2.5.zip",
+            "dest": ".build/port.zip"
+          },
+          { "step": "extract", "src": ".build/port.zip", "dest": ".build" },
+          { "step": "deletePath", "path": ".build/port.zip" },
+          { "step": "copy", "from": "rom", "dest": ".build/game.iso" },
+          { "step": "move", "src": "./.build", "dest": "./install" },
+          { "step": "deletePath", "path": "./.build" },
+          {
+            "step": "defineExecutable",
+            "executable": "install/dbz3.exe",
+            "title": "Play"
+          }
+        ]
+      },
       {
         "versions": ["1.2.6"],
         "targetPlatforms": ["Windows"],

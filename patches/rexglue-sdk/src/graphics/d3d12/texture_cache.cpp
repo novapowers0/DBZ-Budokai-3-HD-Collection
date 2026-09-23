@@ -17,8 +17,10 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <map>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -128,12 +130,19 @@ REXCVAR_DEFINE_INT32(dbz3_upscale_min_size, 16, "GPU",
 
 // DBZ3 HD Collection: volcado de texturas (modo dev) para autorar "packs" de
 // texturas al estilo PCSX2. Al cargar cada textura guest unica se escribe su
-// bitmap ORIGINAL (comprimido, linealizado y en little-endian) como un DDS
-// estandar + una linea de metadatos en index.jsonl. NO se decodifica nada (no
-// hay readback de GPU ni conversion de color): el DDS es bit a bit el mismo
-// dato que el juego tiene en el #AZT, asi que la herramienta offline lo puede
-// reconocer, convertir a PNG y organizar por personaje/material. Ruta vacia =
-// desactivado. La exclusion del frontbuffer evita volcar la imagen presentada.
+// bitmap ORIGINAL (linealizado y en little-endian) como un DDS estandar + una
+// linea de metadatos en index.jsonl. NO se decodifica nada (no hay readback de
+// GPU ni conversion de color): el DDS es bit a bit el mismo dato que el juego
+// tiene en el #AZT, asi que la herramienta offline lo puede reconocer,
+// convertir a PNG y organizar por personaje/material. Ruta vacia = desactivado.
+// La exclusion del frontbuffer evita volcar la imagen presentada.
+//
+// Formatos volcados (`Dbz3DumpFormatFor`, en `dbz3_texture_pack.cpp`): los
+// comprimidos (DXT1/DXT3/DXT5, con su FourCC) y los SIN COMPRIMIR que el
+// HUD/UI/menus usan de verdad (RGBA8, RGB565, RGB5A1, RGB655, RGBA4, L8, L8A8,
+// RGBA1010102). Antes solo se volcaban los DXT, asi que casi todo el HUD
+// desaparecia del volcado. Los formatos no soportados se omiten y se avisa UNA
+// vez por formato en el log (asi se ve que queda pendiente).
 // 🔴 `dbz3_texture_dump` NO se define aqui: la define el launcher
 // (`src/launcher/settings.cpp`), que es quien la persiste en el TOML. El
 // registro de cvars es COMPARTIDO entre el exe y este plugin, y el launcher se
@@ -151,10 +160,23 @@ namespace {
 // Estado del volcado. Solo lo toca el hilo del command processor, asi que no
 // necesita sincronizacion.
 struct Dbz3TextureDumpState {
+  // Nombres ya escritos (hash del contenido): evita duplicados exactos y, de
+  // paso, deja pasar las texturas cuyo contenido cambia (pools reutilizados).
   std::unordered_set<std::string> written;
+  // Veces que se ha volcado cada IDENTIDAD (direccion guest + formato +
+  // tamano). El video de la intro (y otros render targets) reescriben la misma
+  // textura en cada fotograma: sin este tope el volcado se llenaba de miles de
+  // fotogramas (medido: 4096 ficheros / 1,4 GB en 5 min). Con el tope, una
+  // textura que cambia de contenido unas pocas veces se volca igual (los pools
+  // de personajes reutilizan direcciones) pero el churn de video se corta.
+  std::map<std::tuple<uint32_t, uint32_t, uint32_t, uint32_t>, uint32_t> per_identity;
   uint32_t count = 0;
   bool disabled_logged = false;
+  bool identity_capped_logged = false;
 };
+
+// Maximo de versiones de contenido por identidad de textura.
+constexpr uint32_t kDbz3DumpMaxVersionsPerTexture = 4;
 Dbz3TextureDumpState& Dbz3DumpState() {
   static Dbz3TextureDumpState state;
   return state;
@@ -167,9 +189,15 @@ void Dbz3PutU32LE(uint8_t* p, uint32_t v) {
   p[3] = uint8_t(v >> 24);
 }
 
-// Cabecera DDS estandar de 128 B (FourCC legacy) + bitmap.
+// Cabecera DDS estandar de 128 B + bitmap. Los comprimidos usan el FourCC
+// legacy; los formatos sin comprimir, mascaras de bits (asi el visor / Pillow /
+// el cargador de packs leen el bitmap CRUDO en el orden correcto).
+//
+// ⚠️ dwCaps va en +108, NO en +104: +104 es `dwABitMask` dentro de
+// DDS_PIXELFORMAT (que ocupa 76..107), asi que escribirlo ahi lo perdia y
+// ademas pisaba la mascara de alpha (critico en los formatos sin comprimir).
 bool Dbz3WriteDds(const std::filesystem::path& path, const uint8_t* data, uint32_t data_size,
-                  uint32_t width, uint32_t height, uint32_t fourcc) {
+                  uint32_t width, uint32_t height, const Dbz3DumpFormat& format) {
   FILE* f = filesystem::OpenFile(path, "wb");
   if (!f) {
     return false;
@@ -177,14 +205,31 @@ bool Dbz3WriteDds(const std::filesystem::path& path, const uint8_t* data, uint32
   uint8_t header[128] = {};
   std::memcpy(header, "DDS ", 4);
   Dbz3PutU32LE(header + 4, 124);
-  Dbz3PutU32LE(header + 8, 0x00081007u);  // CAPS|HEIGHT|WIDTH|PIXELFORMAT|LINEARSIZE
+  // DDSD_CAPS|HEIGHT|WIDTH|PIXELFORMAT + LINEARSIZE (comprimido) o PITCH (no).
+  Dbz3PutU32LE(header + 8, 0x00001007u | (format.compressed ? 0x00080000u : 0x00000008u));
   Dbz3PutU32LE(header + 12, height);
   Dbz3PutU32LE(header + 16, width);
-  Dbz3PutU32LE(header + 20, data_size);
-  Dbz3PutU32LE(header + 76, 32);          // ddspf.dwSize
-  Dbz3PutU32LE(header + 80, 0x00000004u);  // ddspf.dwFlags = DDPF_FOURCC
-  std::memcpy(header + 84, &fourcc, 4);    // ddspf.dwFourCC
-  Dbz3PutU32LE(header + 104, 0x00001000u);  // dwCaps = DDSCAPS_TEXTURE
+  // dwPitchOrLinearSize: tamano total (comprimido) o bytes por fila (sin comprimir).
+  Dbz3PutU32LE(header + 20, format.compressed ? data_size : (width * format.bits / 8));
+  Dbz3PutU32LE(header + 76, 32);  // ddspf.dwSize
+  if (format.compressed) {
+    Dbz3PutU32LE(header + 80, 0x00000004u);  // ddspf.dwFlags = DDPF_FOURCC
+    Dbz3PutU32LE(header + 84, format.fourcc);
+  } else {
+    // Un solo canal (L8/L8A8) -> DDPF_LUMINANCE; si no, DDPF_RGB.
+    const bool luminance = format.r_mask != 0 && format.g_mask == 0 && format.b_mask == 0;
+    uint32_t pixel_flags = luminance ? 0x00020000u : 0x00000040u;
+    if (format.a_mask != 0) {
+      pixel_flags |= 0x00000001u;  // DDPF_ALPHAPIXELS
+    }
+    Dbz3PutU32LE(header + 80, pixel_flags);
+    Dbz3PutU32LE(header + 88, format.bits);  // ddspf.dwRGBBitCount
+    Dbz3PutU32LE(header + 92, format.r_mask);
+    Dbz3PutU32LE(header + 96, format.g_mask);
+    Dbz3PutU32LE(header + 100, format.b_mask);
+    Dbz3PutU32LE(header + 104, format.a_mask);
+  }
+  Dbz3PutU32LE(header + 108, 0x00001000u);  // dwCaps = DDSCAPS_TEXTURE
   bool ok = std::fwrite(header, 1, sizeof(header), f) == sizeof(header) &&
             std::fwrite(data, 1, data_size, f) == data_size;
   std::fclose(f);
@@ -2390,7 +2435,9 @@ bool D3D12TextureCache::LoadTextureDataFromResidentMemoryImpl(Texture& texture, 
 bool D3D12TextureCache::LinearizeGuestTexture(
     const TextureKey& key, const texture_util::TextureGuestLayout& guest_layout,
     uint32_t guest_address, std::vector<uint8_t>& linear) const {
-  if (Dbz3DdsFourCc(key.format) == 0 || key.scaled_resolve ||
+  // Volcable/reemplazable: los comprimidos (DXT1/3/5) y los formatos sin
+  // comprimir del HUD/UI (RGBA8, RGB565, ...). Ver Dbz3DumpFormatFor.
+  if (Dbz3DumpFormatFor(key.format) == nullptr || key.scaled_resolve ||
       key.dimension != xenos::DataDimension::k2DOrStacked ||
       key.GetDepthOrArraySize() != 1) {
     return false;
@@ -2468,10 +2515,9 @@ uint32_t D3D12TextureCache::GetTexturePackFactor(const TextureKey& key) const {
     if (key.base_page == 0) {
       break;
     }
-    if (Dbz3DdsFourCc(key.format) == 0) {
-      break;
-    }
-    if (GetTextureUpscaleRgba8Format(key) != DXGI_FORMAT_R8G8B8A8_UNORM) {
+    // Formato reemplazable: DXT1/3/5 (el recurso host se crea RGBA8) y k_8_8_8_8
+    // (nativa RGBA8 con swizzle identidad). Ver Dbz3PackReplaceableFormat.
+    if (!Dbz3PackReplaceableFormat(key.format)) {
       break;
     }
     if (swap_texture_key_valid_ && swap_texture_key_.base_page == key.base_page &&
@@ -2630,8 +2676,19 @@ void D3D12TextureCache::DumpTextureToDds(const TextureKey& key,
   if (REXCVAR_GET(dbz3_texture_upscale) > 1) {
     return;
   }
-  const uint32_t fourcc = Dbz3DdsFourCc(key.format);
-  if (fourcc == 0) {
+  const Dbz3DumpFormat* format = Dbz3DumpFormatFor(key.format);
+  if (format == nullptr) {
+    // Diagnostico: UN aviso por formato omitido (el HUD/UI usa formatos que el
+    // volcado todavia no representa: normales DXN, alpha DXT5A, 16_16_16_16...).
+    // Se registra una sola vez para no llenar el log.
+    const uint32_t format_index = uint32_t(key.format);
+    static uint64_t logged_formats = 0;
+    if (format_index < 64 && !(logged_formats & (uint64_t(1) << format_index))) {
+      logged_formats |= uint64_t(1) << format_index;
+      const FormatInfo* format_info = FormatInfo::Get(key.format);
+      REXGPU_INFO("dbz3: volcado: formato {} (fmt={}) no soportado, texturas omitidas",
+                  format_info ? format_info->name : "?", format_index);
+    }
     return;
   }
   // Excluir el frontbuffer (la imagen que se presenta): no es una textura de
@@ -2659,14 +2716,28 @@ void D3D12TextureCache::DumpTextureToDds(const TextureKey& key,
     return;
   }
   const uint64_t hash = XXH3_64bits(linear.data(), linear.size());
-  std::string name = fmt::format("{:016X}_{}x{}_{}.dds", hash, width, height,
-                                 std::string(reinterpret_cast<const char*>(&fourcc), 4));
+  std::string name = fmt::format("{:016X}_{}x{}_{}.dds", hash, width, height, format->suffix);
   if (!state.written.insert(name).second) {
     return;
   }
+  // Tope de versiones por identidad (corta el churn de video/render targets).
+  const auto identity = std::make_tuple(guest_address, uint32_t(key.format), width, height);
+  uint32_t& versions = state.per_identity[identity];
+  if (versions >= kDbz3DumpMaxVersionsPerTexture) {
+    state.written.erase(name);
+    if (!state.identity_capped_logged) {
+      state.identity_capped_logged = true;
+      REXGPU_INFO(
+          "dbz3: volcado: textura en 0x{:08X} ({}x{}, fmt={}) cambia de contenido en cada uso "
+          "(video/render target): solo se volcaron {} versiones",
+          guest_address, width, height, uint32_t(key.format), kDbz3DumpMaxVersionsPerTexture);
+    }
+    return;
+  }
+  ++versions;
   const std::filesystem::path dir = std::filesystem::absolute(dump_dir);
   std::filesystem::create_directories(dir);
-  if (!Dbz3WriteDds(dir / name, linear.data(), uint32_t(linear.size()), width, height, fourcc)) {
+  if (!Dbz3WriteDds(dir / name, linear.data(), uint32_t(linear.size()), width, height, *format)) {
     return;
   }
   ++state.count;
@@ -2674,9 +2745,9 @@ void D3D12TextureCache::DumpTextureToDds(const TextureKey& key,
   if (index) {
     const std::string line = fmt::format(
         "{{\"file\":\"{}\",\"hash\":\"{:016X}\",\"width\":{},\"height\":{},\"format\":{},"
-        "\"tiled\":{},\"mips\":{},\"guest_address\":\"0x{:08X}\"}}\n",
-        name, hash, width, height, uint32_t(key.format), key.tiled ? 1 : 0, key.mip_max_level,
-        guest_address);
+        "\"dds\":\"{}\",\"tiled\":{},\"mips\":{},\"guest_address\":\"0x{:08X}\"}}\n",
+        name, hash, width, height, uint32_t(key.format), format->suffix, key.tiled ? 1 : 0,
+        key.mip_max_level, guest_address);
     std::fwrite(line.data(), 1, line.size(), index);
     std::fclose(index);
   }

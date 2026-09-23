@@ -1,6 +1,9 @@
 # HOJA DE RUTA 2026-09 — Madurez del proyecto (post-1.1.1)
 
-> Actualizado: 2026-09-21. Estado base: **v1.2.8 publicada** (Latest; fix del volcado de texturas). Sobre la v1.2.7 (packs de texturas estilo PCSX2), la v1.2.6 (Mejora de
+> Actualizado: 2026-09-23. Estado base: **v1.2.8.1 publicada** (Latest; volcado de
+> los formatos del HUD/UI sin comprimir + packs RGBA8 + tope de versiones por
+> identidad, seguimiento del issue #11). Sobre la v1.2.8 (fix del volcado), la
+> v1.2.7 (packs de texturas estilo PCSX2), la v1.2.6 (Mejora de
 > texturas HD pulida —sin tirones, alcance RGBA8 nativas, HUD limpio—, UX
 > anti-abuso de la escala interna y **autorreparación del TOML**), sobre la
 > **v1.2.5** (diagnóstico de E/S `dbz3_io_logging` + readahead, `fg=`, mute/dim al
@@ -94,6 +97,14 @@ así que no es código muerto. Los puntos siguientes quedan como registro:
   usar `DBZ3_COLLECT_UNREGISTERED` si aparece un crash.
 - **`verify_release.ps1` como gate**: correrlo en CADA release (ya existe).
 - **Mojibake** en `HOJA_DE_RUTA_COMUNIDAD.md` (→ Fase 1.2).
+- **Packs de texturas para formatos de 8/16 bits** (`k_8`, `k_8_8`, `k_5_6_5`,
+  `k_1_5_5_5`, `k_4_4_4_4`...): hoy **se vuelcan** (v1.2.8.1) pero su pack se
+  ignora porque el recurso host no es RGBA8 y su swizzle es propio del formato.
+  Habilitarlos = recurso RGBA8 para el pack + swizzle identidad en
+  `GetHostFormatSwizzle` (camino caliente: medir). Ver
+  `docs/SESION_VOLCADO_FORMATOS_2026-09-23.md` §8.
+- **Formatos sin volcar**: `k_DXN` (BC5), `k_DXT5A` (BC4), `k_DXT3A`, `k_24_8`,
+  `k_16_16_16_16` (avisan una vez en el log).
 
 ---
 

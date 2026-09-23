@@ -121,6 +121,32 @@ aportarlos de tu **copia legal**. Haz esto:
 
 ## Novedades de esta release
 
+### v1.2.8.1 - El volcado cubre el HUD y los packs aceptan RGBA8 (2026-09-23)
+
+Seguimiento del issue #11. Al probar la v1.2.8, el reporter confirmo que ya
+volcaba y anadio dos cosas: **faltaban casi todas las texturas del HUD** (solo
+salian algunos fonts) y **algunas salian como un cuadrado negro**.
+
+- **El volcado ahora cubre los formatos sin comprimir** (RGBA8, RGB565, RGB5A1,
+  RGB655, RGBA4, L8, L8A8, RGBA1010102). Antes solo se volcaban las **DXT**, asi
+  que todo el HUD/UI (que usa formatos sin comprimir) se omitia **en silencio**.
+  Medido en la intro: **51 → 194 ficheros** (96 DXT3 + **26 RGBA8** + 72 L8).
+- **Los formatos no soportados ahora avisan** una vez en el log
+  (`dbz3: volcado: formato k_24_8 (fmt=22) no soportado, texturas omitidas`).
+- **Los packs aceptan texturas RGBA8** (las del HUD): antes solo valian las DXT.
+  Validado: `pack '...' reemplaza 128x1024 (fmt 6) -> 128x1024 (x1)` y
+  `subido 128x1024 (11 niveles)`. Los formatos de 8/16 bits se vuelcan como
+  referencia, pero su pack **todavia no** se aplica (siguiente paso).
+- **Tope de 4 versiones por textura**: la textura de video de la intro se
+  volcaba **fotograma a fotograma** (4096 ficheros / **1,4 GB** en 5 min). Ahora
+  se corta con un aviso en el log: **194 ficheros / 51 MB** en la misma prueba.
+- **Los "cuadrados negros" no son un fallo**: son texturas DXT3 cuyo canal alpha
+  esta **todo a cero** (el juego dibuja esas texturas ignorando su alpha, pero un
+  visor las muestra transparentes). El DDS es el dato exacto del juego; el
+  importador gana **`--opaque-alpha`** para verlas y usarlas.
+- Incluye todo lo de la v1.2.8 (fix del volcado), la v1.2.7 (packs de texturas en
+  D3D12 y Vulkan) y la v1.2.6.
+
 ### v1.2.8 - El volcado de texturas ya funciona (2026-09-21)
 
 - **Arreglado el volcado de texturas (dev)**: al activarlo en el tab

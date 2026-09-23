@@ -8,6 +8,13 @@
 > Estado: **Fase 1 (volcado) + Fase 2 (cargador) implementadas y validadas.**
 > El cargador soporta DDS (DXT1/3/5 y 32bpp sin comprimir) y PNG, con factor
 > x1..x4 y generacion de mips.
+>
+> **v1.2.8.1 — el volcado cubre tambien los formatos del HUD/UI**: ademas de los
+> comprimidos (DXT1/DXT3/DXT5) se vuelcan los SIN comprimir que el juego usa de
+> verdad (RGBA8, RGB565, RGB5A1, RGB655, RGBA4, L8, L8A8, RGBA1010102). Antes
+> solo se volcaban los DXT y casi todo el HUD desaparecia del volcado.
+> **Reemplazables por un pack**: DXT1/3/5 y **RGBA8** (`k_8_8_8_8`); los de
+> 8/16 bits se vuelcan como referencia pero su pack todavia **no** se aplica.
 
 ---
 
@@ -38,11 +45,13 @@ mods/
 - Nombre: **`<hash:16 hex>_<Ancho>x<Alto>_<sufijo>.dds`** (o `.png`).
   - `hash` = el del volcado dev (identifica la textura ORIGINAL).
   - `Ancho`/`Alto` = tamano de **esta** imagen (la del pack).
-  - `sufijo` = libre (`DXT3`, `RGBA`, `PNG`...); informativo.
+  - `sufijo` = libre (`DXT3`, `RGBA8`, `PNG`...); informativo.
 - El **factor** se deduce: `factor = Ancho_pack / Ancho_original`, y debe ser
   entero, igual en X e Y, y estar entre **1 y 4**.
 - Formatos admitidos: **DDS** (DXT1/BC1, DXT3/BC2, DXT5/BC3, o 32bpp sin
   comprimir) y **PNG**. Cualquier otro se ignora con un aviso en el log.
+  Como el pack se sube siempre como **RGBA8**, lo normal es exportar el PNG (asi
+  el factor y el contenido son libres) o el DDS de 32bpp.
 - `pack.json` (opcional):
   ```json
   { "name": "Mi pack", "author": "tu nombre", "version": "1.0",
@@ -56,7 +65,22 @@ mods/
 1. Launcher → pestaña **Desarrollo** → activa **"Volcado de texturas para mods
    (dev)"** y elige una carpeta (por defecto `D:\Proyectos IA\DBZ B3 DDS`).
 2. Reinicia y juega. Se escriben los DDS + `index.jsonl` (hash, tamano, formato,
-   mips) de cada textura unica.
+   sufijo DDS, mips) de cada textura unica. El nombre del fichero lleva el
+   sufijo del formato: `DXT1`/`DXT3`/`DXT5` (comprimidos) o `RGBA8`, `RGB565`,
+   `RGB5A1`, `RGB655`, `RGBA4`, `L8`, `L8A8`, `RGBA1010102`.
+
+Notas del volcado:
+
+- **Formatos no soportados**: se omiten y queda **un aviso por formato** en el
+  log (`dbz3: volcado: formato k_24_8 (fmt=22) no soportado, texturas omitidas`).
+  Asi se ve de un vistazo que queda pendiente (hoy: `k_DXN`/normales,
+  `k_DXT5A`/alpha, `k_24_8`, 16_16_16_16...).
+- **Video/render targets**: una textura cuyo contenido cambia en cada uso (el
+  video de la intro) se volca como maximo **4 versiones** y luego se deja de
+  volcar (aviso en el log). Sin ese tope el volcado se llenaba de fotogramas
+  (medido: 4096 ficheros / 1,4 GB en 5 min; con el tope, 194 / 51 MB).
+- **Limite total**: `dbz3_texture_dump_max` (por defecto 4096, `0` = sin limite)
+  en el tab Dev.
 
 ### 3.2 Convertir y organizar
 
@@ -66,6 +90,13 @@ python awo_tools\texture_dump_import.py "D:\Proyectos IA\DBZ B3 DDS" "D:\pack_pn
 
 Convierte los DDS a PNG y los coloca en `<personaje>\texNN_WxH.png`; los que no
 casan con ningun `#AZT` van a `_unknown\`.
+
+> **Cuadrados negros**: algunas texturas del juego tienen el canal alpha **todo a
+> cero** (el juego dibuja esas texturas ignorando su alpha, pero un visor las
+> muestra transparentes, es decir, negras). No es un fallo del volcado: el DDS es
+> el dato exacto del juego. Si quieres verlas/utilizarlas, anade
+> **`--opaque-alpha`** y el PNG se escribe opaco (y el `manifest.json` marca
+> `alpha_all_zero`). En un pack da igual: el juego ya ignora ese alpha.
 
 ### 3.3 Escalar
 
@@ -102,6 +133,11 @@ correcto) y se lo pasa al runtime. Reinicia.
 
 - Solo texturas **2D de una sola rebanada** (no cubemaps/3D/arrays), igual que la
   mejora HD. El **frontbuffer** (la imagen que se presenta) nunca se reemplaza.
+- **Formatos reemplazables**: DXT1/DXT3/DXT5 y **RGBA8** (`k_8_8_8_8`). Los
+  formatos de 8/16 bits (`k_8`, `k_8_8`, `k_5_6_5`, `k_1_5_5_5`, `k_4_4_4_4`...)
+  **si** se vuelcan (referencia/edicion) pero su pack se **ignora**: su recurso
+  host no es RGBA8 y su swizzle es propio del formato. Es el siguiente paso
+  pendiente (ver `docs/SESION_VOLCADO_FORMATOS_2026-09-23.md`).
 - El pack **tiene prioridad** sobre la "mejora de texturas HD" en runtime; se
   recomienda no activar ambas a la vez.
 - **Conflictos**: si dos packs definen el mismo hash, gana el primero por orden
@@ -129,10 +165,23 @@ dbz3: pack 'MiPack' subido 256x1024 (10 niveles, 1441280 B)
 - `factor invalido` → el factor no es entero o pasa de x4.
 - `no se pudo decodificar` → formato no soportado o fichero corrupto.
 
+Y del volcado:
+
+```
+dbz3: volcado de texturas activado en '...'
+dbz3: volcado: formato k_24_8 (fmt=22) no soportado, texturas omitidas
+dbz3: volcado: textura en 0x1D633000 (960x720, fmt=2) cambia de contenido en cada uso
+      (video/render target): solo se volcaron 4 versiones
+dbz3: volcado de texturas: alcanzado el limite de 4096 texturas
+```
+
 ## 6. Ficheros implicados
 
-- Runtime (SDK): `rexglue-sdk-0.10/src/graphics/d3d12/dbz3_texture_pack.{h,cpp}`
-  (indice + decodificacion DDS/BC) y `texture_cache.cpp` (hash, factor, subida).
+- Runtime (SDK): `rexglue-sdk-0.10/src/graphics/dbz3_texture_pack.{h,cpp}`
+  (modulo COMUN a los dos backends: indice, tabla de formatos volcables
+  `Dbz3DumpFormatFor`, `Dbz3PackReplaceableFormat`, decodificacion DDS/BC) y
+  `d3d12/texture_cache.cpp` + `vulkan/texture_cache.cpp` (hash, factor, subida,
+  y el volcado dev en D3D12).
 - Launcher: `src/launcher/settings.cpp` (`RefreshTexturePacks`, cvar
   `dbz3_texture_packs`), `src/launcher/launcher_state.cpp` (pestaña Mods).
 - Herramientas: `awo_tools/texture_dump_import.py` (DDS→PNG y organizacion),

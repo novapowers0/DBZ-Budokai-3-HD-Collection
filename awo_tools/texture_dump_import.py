@@ -2,8 +2,10 @@
 """Importa un volcado de texturas de dbz3 (dbz3_texture_dump) y lo organiza.
 
 El runtime (rexgpu-xenos.dll) escribe, al cargar cada textura unica, un DDS con
-el bitmap ORIGINAL comprimido (linealizado y en little-endian, identico al del
-#AZT) mas una linea en `index.jsonl`. Este importador:
+el bitmap ORIGINAL (linealizado y en little-endian, identico al del #AZT) mas
+una linea en `index.jsonl`. Formatos: DXT1/DXT3/DXT5 (comprimidos) y los SIN
+comprimir que usa el HUD/UI (RGBA8, RGB565, RGB5A1, RGB655, RGBA4, L8, L8A8,
+RGBA1010102). Este importador:
 
   1. convierte cada DDS a PNG (Pillow), y
   2. si se le pasa el AFS + el catalogo, identifica a que personaje y a que
@@ -15,7 +17,7 @@ el bitmap ORIGINAL comprimido (linealizado y en little-endian, identico al del
 Uso:
     python texture_dump_import.py <dump_dir> <out_dir>
         [--afs us/data_cmn.afs] [--catalog "mod center hd/catalog_b3.cat"]
-        [--bins 70-90] [--no-match] [--limit N] [--max-bins N]
+        [--bins 70-90] [--no-match] [--opaque-alpha] [--limit N] [--max-bins N]
 
 Sin --afs/--catalog (o con --no-match) solo convierte y agrupa por WxH.
 
@@ -129,6 +131,10 @@ def main():
     ap.add_argument('--catalog', default=os.path.join(ROOT, 'mod center hd', 'catalog_b3.cat'))
     ap.add_argument('--bins', default=None, help='rango de bins, p.ej. 70-95')
     ap.add_argument('--no-match', action='store_true')
+    ap.add_argument('--opaque-alpha', action='store_true',
+                    help='si el alpha del DDS esta TODO a cero, escribe el PNG opaco. Son '
+                         'texturas que el juego dibuja ignorando el alpha de la textura, pero '
+                         'que un visor muestra como un cuadrado negro (y transparente).')
     ap.add_argument('--limit', type=int, default=0, help='procesar solo N volcados')
     ap.add_argument('--max-bins', type=int, default=0, help='limitar bins escaneados')
     args = ap.parse_args()
@@ -175,8 +181,14 @@ def main():
         out_folder = os.path.join(args.out_dir, folder)
         os.makedirs(out_folder, exist_ok=True)
         out_png = os.path.join(out_folder, png_name)
+        alpha_all_zero = False
         try:
             im = Image.open(dds_path)
+            if args.opaque_alpha and im.mode in ('RGBA', 'LA', 'PA'):
+                im = im.convert('RGBA')
+                alpha_all_zero = im.getchannel('A').getextrema() == (0, 0)
+                if alpha_all_zero:
+                    im.putalpha(255)
             im.save(out_png)
         except Exception as exc:
             print('  %s: fallo al convertir (%s)' % (e['file'], exc))
@@ -189,6 +201,8 @@ def main():
             'width': e['width'],
             'height': e['height'],
             'format': e['format'],
+            'dds': e.get('dds'),
+            'alpha_all_zero': alpha_all_zero,
         })
 
     with open(os.path.join(args.out_dir, 'manifest.json'), 'w', encoding='utf-8') as f:
