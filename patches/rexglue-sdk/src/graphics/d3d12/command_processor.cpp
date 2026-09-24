@@ -1918,11 +1918,13 @@ bool Dbz3IsOurWindowForeground() {
 #endif
 }
 
-static void Dbz3LogGuestPerformance(uint64_t upscaled_textures) {
+static void Dbz3LogGuestPerformance(uint64_t upscaled_textures, uint64_t upscale_dynamic_refills,
+                                    uint64_t texture_loads) {
   static std::chrono::steady_clock::time_point window_start;
   static std::chrono::steady_clock::time_point last_frame;
   static uint32_t frames_in_window = 0;
   static double max_frame_ms = 0.0;
+  static uint64_t texture_loads_last_window = 0;
   const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
   if (last_frame.time_since_epoch().count() != 0) {
     const double frame_ms = std::chrono::duration<double, std::milli>(now - last_frame).count();
@@ -1946,18 +1948,29 @@ static void Dbz3LogGuestPerformance(uint64_t upscaled_textures) {
     // which is easy to mistake for a performance problem when reading logs from
     // another machine: it tells "the player alt-tabbed" from "the game is slow".
     const bool foreground = Dbz3IsOurWindowForeground();
-    if (upscaled_textures) {
-      // `upx=` = numero de texturas subidas de resolucion (capa exterior).
-      REXGPU_INFO(
-          "dbz3: perf fps={:.1f} frames={} window={:.2f}s max_frame_ms={:.1f} fg={} upx={}",
-          double(frames_in_window) / elapsed_s, frames_in_window, elapsed_s, max_frame_ms,
-          foreground ? 1 : 0, upscaled_textures);
-    } else {
-      REXGPU_INFO(
-          "dbz3: perf fps={:.1f} frames={} window={:.2f}s max_frame_ms={:.1f} fg={}",
-          double(frames_in_window) / elapsed_s, frames_in_window, elapsed_s, max_frame_ms,
-          foreground ? 1 : 0);
-    }
+    // `cfg=` = ajustes activos que mas afectan al coste de GPU, leidos del
+    // registro compartido de cvars cada ventana (5 s). Se incluyen aqui para que
+    // un log de usuario sea concluyente por si solo: sin esto hay que pedirle el
+    // dbz3_user.toml y esperar otra ronda. `upx_dyn=` = recargas de texturas
+    // dinamicas (render targets reescritos por frame) regeneradas SOLO a nivel 0.
+    // `texload=` = cargas de textura de esta ventana: si es alto, el guest esta
+    // subiendo texturas sin parar (streaming / cache desalojando) y el coste no
+    // es la GPU.
+    const uint64_t texture_loads_window = texture_loads - texture_loads_last_window;
+    texture_loads_last_window = texture_loads;
+    REXGPU_INFO(
+        "dbz3: perf fps={:.1f} frames={} window={:.2f}s max_frame_ms={:.1f} fg={} "
+        "cfg=scale:{}x{} msaa:{} hdtex:{} area:{} min:{} aniso:{} upx={} upx_dyn={} "
+        "texload={}",
+        double(frames_in_window) / elapsed_s, frames_in_window, elapsed_s, max_frame_ms,
+        foreground ? 1 : 0, rex::cvar::GetFlagByName("draw_resolution_scale_x"),
+        rex::cvar::GetFlagByName("draw_resolution_scale_y"),
+        rex::cvar::GetFlagByName("native_2x_msaa"),
+        rex::cvar::GetFlagByName("dbz3_texture_upscale"),
+        rex::cvar::GetFlagByName("dbz3_upscale_max_texels"),
+        rex::cvar::GetFlagByName("dbz3_upscale_min_size"),
+        rex::cvar::GetFlagByName("anisotropic_override"), upscaled_textures,
+        upscale_dynamic_refills, texture_loads_window);
   }
   window_start = now;
   frames_in_window = 0;
@@ -1966,7 +1979,9 @@ static void Dbz3LogGuestPerformance(uint64_t upscaled_textures) {
 
 void D3D12CommandProcessor::IssueSwap(uint32_t frontbuffer_ptr, uint32_t frontbuffer_width,
                                       uint32_t frontbuffer_height) {
-  Dbz3LogGuestPerformance(texture_cache_ ? texture_cache_->upscaled_texture_count() : 0);
+  Dbz3LogGuestPerformance(texture_cache_ ? texture_cache_->upscaled_texture_count() : 0,
+                          texture_cache_ ? texture_cache_->upscale_dynamic_refill_count() : 0,
+                          texture_cache_ ? texture_cache_->texture_load_count() : 0);
   SCOPE_profile_cpu_f("gpu");
   vertex_buffers_in_sync_[0] = 0;
   vertex_buffers_in_sync_[1] = 0;

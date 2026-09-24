@@ -121,6 +121,40 @@ aportarlos de tu **copia legal**. Haz esto:
 
 ## Novedades de esta release
 
+### v1.2.8.2 - La mejora de texturas deja de hundir los FPS (2026-09-24)
+
+Seguimiento de los reportes de **bajones de FPS con la "Mejora de texturas"
+activada**. Lo primero fue descartar lo evidente: en un equipo de prueba con
+**exactamente la misma configuración** (escala interna 3x + MSAA + texturas HD
+3x + área 1M) el juego se mantiene a **60,0 FPS**, así que no era "la GPU no
+puede" — el reparto del trabajo era el problema.
+
+- **Causa**: cada vez que una textura se vuelve a subir, el feature regenera su
+  **cadena de mips completa** (12 niveles para una textura 4K). Hay texturas que
+  el juego **reescribe en cada fotograma** (el vídeo de la intro, los render
+  targets de efectos): regenerar 12 niveles **en serie** por fotograma cuesta
+  tiempo de **comandos/CPU**, no de GPU — por eso **una tarjeta más potente no
+  ayuda** y no se ve en el uso de GPU. En los logs del reporter se veía el
+  contador `upx` subiendo a ~665 (**~1 textura re-escalada por fotograma**)
+  mientras los FPS caían a 31.
+- **Arreglo**: una textura que se re-escala muchas veces en poco tiempo (o que
+  se recarga solo en su nivel 0) se marca como **dinámica** y a partir de ahí se
+  **regenera solo el nivel 0**: la imagen que se ve es exacta (los mips solo
+  afectan a la minificación, y se conservan). Las texturas normales (estáticas)
+  siguen escalándose **con toda su cadena de mips**, igual que antes.
+- **Diagnóstico en la propia línea `perf`**: ahora incluye los ajustes activos
+  (`cfg=scale:3x3 msaa:true hdtex:3 area:1048576 min:16 aniso:5`) y contadores
+  (`upx=`, `upx_dyn=`, `texload=`). Con esto **un solo log dice qué tienes
+  configurado y si el juego está re-escalando texturas dinámicas**, sin pedir
+  más datos.
+- **Qué NO cambia**: la calidad de las texturas estáticas, los packs de texturas,
+  el volcado y todo lo de la v1.2.8.1.
+
+Si tu equipo va lento con la mejora de texturas activada: actualiza, activa
+**"Registro de rendimiento (cada 5 s)"** en la pestaña **Dev**, juega hasta el
+punto donde va lento y adjunta el `dbz3_NNN.log` más reciente (la línea `perf`
+ya trae la configuración y los contadores).
+
 ### v1.2.8.1 - El volcado cubre el HUD y los packs aceptan RGBA8 (2026-09-23)
 
 Seguimiento del issue #11. Al probar la v1.2.8, el reporter confirmó que ya

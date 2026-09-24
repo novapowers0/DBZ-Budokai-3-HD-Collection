@@ -27,6 +27,7 @@
 | [SESION_TEXTURAS_PACK_2026-09-20](SESION_TEXTURAS_PACK_2026-09-20.md) | **Packs de texturas tipo PCSX2 (Fase 1, dev)**: volcado DDS + importador a PNG por personaje |
 | [SESION_FIX_VOLCADO_2026-09-21](SESION_FIX_VOLCADO_2026-09-21.md) | **v1.2.8**: fix del volcado de texturas (issue #11) - registro de cvars compartido, `REXCVAR_QUERY` |
 | [SESION_VOLCADO_FORMATOS_2026-09-23](SESION_VOLCADO_FORMATOS_2026-09-23.md) | **v1.2.8.1**: volcado de los formatos del HUD/UI sin comprimir + packs RGBA8 + tope de versiones por identidad (issue #11) |
+| [SESION_PERF_TEXTURAS_2026-09-24](SESION_PERF_TEXTURAS_2026-09-24.md) | **v1.2.8.2**: la mejora de texturas deja de hundir los FPS (solo nivel 0 en recargas dinámicas) + `cfg=`/`upx_dyn=`/`texload=` en la línea `perf` |
 | [LINUX](LINUX.md) | Build nativo Linux con Vulkan, SDL3 y CI usando codegen privado |
 | [ANALISIS_ESCALADO_RENDIMIENTO_2026-09-14](ANALISIS_ESCALADO_RENDIMIENTO_2026-09-14.md) | Escalado/rendimiento: FSR1/CAS sí; FSR3/DLSS no viable a corto plazo |
 | [07_ports/TEXTURAS_HD_RUNTIME_UPSCALE](07_ports/TEXTURAS_HD_RUNTIME_UPSCALE.md) | **Texturas HD en runtime (APARCADO)**: capa exterior D3D12, evidencia de por qué el override del bin no sirve y cómo retomarlo |

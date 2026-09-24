@@ -403,6 +403,31 @@ class D3D12TextureCache final : public TextureCache {
   mutable std::unordered_map<TextureKey, uint8_t, TextureKey::Hasher> upscale_granted_keys_;
   bool UpscaleBudgetAllows(const TextureKey& key) const;
 
+  // DBZ3 HD Collection: recargas SOLO-base de una textura ya escalada = el guest
+  // reescribe esa textura (render target dinamico: video, efectos, sombras).
+  // Regenerar la cadena de mips COMPLETA en cada recarga es lo que hunde el
+  // framerate: cada nivel cuesta dos barreras + descriptores de un solo uso + un
+  // cambio de pipeline, todo EN SERIE dentro del command list, y se repite por
+  // frame (por eso una GPU mas rapida no ayuda: es coste de comandos, no de GPU).
+  // En esas recargas se regenera SOLO el nivel 0 (la imagen que se ve es
+  // correcta) y los mips se conservan de la ultima generacion completa (solo
+  // afectan a la minificacion). La condicion exige que la cadena ya se generara
+  // sobre ESTE MISMO recurso (`upscale_chain_resources_`): tras un desalojo el
+  // recurso es nuevo y hay que regenerar la cadena entera (sus mips son basura).
+  mutable std::unordered_map<TextureKey, uint8_t, TextureKey::Hasher> upscale_dynamic_keys_;
+  mutable std::unordered_map<TextureKey, ID3D12Resource*, TextureKey::Hasher>
+      upscale_chain_resources_;
+  // Contador de recargas por identidad en una ventana corta: la misma textura
+  // re-escalada 4+ veces en 1.5 s es dinamica (el guest la reescribe por frame,
+  // reescritura completa incluidos los mips, no solo la base).
+  struct UpscaleReloadCounter {
+    uint32_t count = 0;
+    uint64_t window_start_us = 0;
+  };
+  mutable std::unordered_map<TextureKey, UpscaleReloadCounter, TextureKey::Hasher>
+      upscale_reload_counters_;
+  mutable uint64_t upscale_dynamic_refills_ = 0;
+
   // DBZ3 HD Collection: volcado dev de texturas (autoría de "packs" al estilo
   // PCSX2). Escribe el bitmap original comprimido de la textura como DDS +
   // metadatos, sin decodificar ni tocar nada del guest. Activado por la cvar
@@ -439,6 +464,20 @@ class D3D12TextureCache final : public TextureCache {
   // Numero de texturas que se han subido de resolucion desde el arranque
   // (diagnostico: aparece en la linea `dbz3: perf ... upx=` cuando es > 0).
   uint64_t upscaled_texture_count() const { return upscaled_texture_count_; }
+  // Numero de recargas SOLO-base de texturas dinamicas (render targets que el
+  // guest reescribe por frame) y de identidades distintas detectadas. Aparece en
+  // la linea `dbz3: perf ... upx_dyn=`: si sube, el juego esta reescribiendo
+  // texturas que no tiene sentido escalar (y el coste era regenerar sus mips).
+  uint64_t upscale_dynamic_refill_count() const { return upscale_dynamic_refills_; }
+  uint32_t upscale_dynamic_key_count() const {
+    return uint32_t(upscale_dynamic_keys_.size());
+  }
+  // Numero TOTAL de cargas de textura (cualquier formato, escalada o no) desde el
+  // arranque. Sale como `texload=` en la linea `perf`: si sube mucho por ventana,
+  // el juego esta SUBIENDO texturas sin parar (streaming o cache de texturas
+  // desalojando y recargando) y ese es el coste real, no la GPU.
+  uint64_t texture_load_count() const { return texture_load_count_; }
+  mutable uint64_t texture_load_count_ = 0;
 
  private:
 

@@ -1985,6 +1985,7 @@ bool D3D12TextureCache::LoadTextureDataFromResidentMemoryImpl(Texture& texture, 
                                                               bool load_mips) {
   D3D12Texture& d3d12_texture = static_cast<D3D12Texture&>(texture);
   TextureKey texture_key = d3d12_texture.key();
+  ++texture_load_count_;
 
   // DBZ3: pack de texturas. Si la textura esta en un pack, se sube la imagen del
   // pack (RGBA8, con toda la cadena de mips) y no se ejecuta el load shader. Si
@@ -2337,7 +2338,45 @@ bool D3D12TextureCache::LoadTextureDataFromResidentMemoryImpl(Texture& texture, 
     if (level_first == 0) {
       // Se genera la cadena completa: el shader promedia bloques del nivel 0
       // para los niveles siguientes (no se leen los mips empaquetados del guest).
-      const uint32_t last_level = texture_key.mip_max_level;
+      // PERO si esta carga NO trae los mips (`load_mips == false`: el guest solo
+      // reescribio el nivel 0) y la cadena YA se genero sobre ESTE MISMO recurso,
+      // la textura es DINAMICA (render target reescrito por frame): regenerar los
+      // 12 niveles en serie por frame es lo que hunde el framerate (coste de
+      // comandos/CPU, no de GPU; por eso una GPU mas rapida no ayuda). En ese
+      // caso se regenera solo el nivel 0 y se conservan los mips de la ultima
+      // generacion completa (solo afectan a la minificacion). Si el recurso es
+      // nuevo (tras un desalojo) sus mips son basura -> cadena entera.
+      ID3D12Resource* upscale_resource = d3d12_texture.resource();
+      auto chain_it = upscale_chain_resources_.find(texture_key);
+      const bool chain_on_this_resource =
+          chain_it != upscale_chain_resources_.end() && chain_it->second == upscale_resource;
+      // Recargas frecuentes de la MISMA identidad: el guest reescribe la textura
+      // por frame (video o render target). Se cuentan las cargas en una ventana de
+      // 1.5 s; a partir de la 4a la textura es dinamica y no se regeneran sus mips.
+      const uint64_t now_us = uint64_t(std::chrono::duration_cast<std::chrono::microseconds>(
+                                           std::chrono::steady_clock::now().time_since_epoch())
+                                           .count());
+      UpscaleReloadCounter& reload_counter = upscale_reload_counters_[texture_key];
+      if (reload_counter.window_start_us == 0 || now_us - reload_counter.window_start_us > 1500000) {
+        reload_counter.window_start_us = now_us;
+        reload_counter.count = 0;
+      }
+      ++reload_counter.count;
+      const bool chronic_reload = reload_counter.count > 3;
+      const bool dynamic_refill = texture_key.mip_max_level > 0 &&
+                                  ((chain_on_this_resource && !load_mips) || chronic_reload);
+      if (dynamic_refill) {
+        ++upscale_dynamic_refills_;
+        if (upscale_dynamic_keys_.emplace(texture_key, uint8_t(1)).second) {
+          REXGPU_INFO(
+              "dbz3: upscale textura dinamica {}x{} fmt={} mips={} - solo nivel 0 por recarga",
+              texture_key.GetWidth(), texture_key.GetHeight(), uint32_t(texture_key.format),
+              uint32_t(texture_key.mip_max_level));
+        }
+      } else {
+        upscale_chain_resources_[texture_key] = upscale_resource;
+      }
+      const uint32_t last_level = dynamic_refill ? 0 : texture_key.mip_max_level;
       for (uint32_t level = 0; level <= last_level; ++level) {
         bool level_ok = UpscaleTextureData(
             d3d12_texture, copy_buffer, copy_buffer_state, level, texture_upscale_factor,

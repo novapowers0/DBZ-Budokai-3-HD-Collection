@@ -63,6 +63,16 @@ lógica de región/mods, y runtime.
 - `docs/SESION_PACING_WINDOWS_2026-09-20.md` - pacing Windows tras el fix
   Vulkan de Linux: por que D3D12 **no** tiene el bug del bucle de presents (sin
   cambios de codigo; el `frame_cap` se queda al inicio de `PaintAndPresentImpl`)
+- `docs/SESION_PERF_TEXTURAS_2026-09-24.md` - **la mejora de texturas deja de
+  hundir los FPS (v1.2.8.2)**: la cadena de mips completa (12 niveles, en serie
+  dentro del command list) se regeneraba en CADA recarga de una textura; las
+  texturas que el guest reescribe por frame (video/render targets) pagaban eso
+  por fotograma (coste de comandos, **no** de GPU: por eso una GPU mas potente no
+  ayuda). Ahora se detectan como **dinamicas** (recarga solo-base sobre el mismo
+  recurso, o 4+ recargas en 1,5 s) y **solo se regenera el nivel 0** (los mips se
+  conservan; tras un desalojo se regenera la cadena entera). Diagnostico nuevo en
+  la linea `perf`: `cfg=scale:3x3 msaa:true hdtex:3 area:... min:... aniso:5`,
+  `upx_dyn=` (recargas dinamicas) y `texload=` (cargas de textura/ventana).
 - `docs/02_mods/PACKS_DE_TEXTURAS.md` - **guia para autores de packs** (formato,
   creacion paso a paso, reglas, diagnostico).
 - `docs/SESION_FIX_VOLCADO_2026-09-21.md` - **fix del volcado de texturas
@@ -124,7 +134,35 @@ lógica de región/mods, y runtime.
 
 ## 3. ESTADO ACTUAL (RESUMEN EJECUTIVO)
 
-- **(2026-09-23) v1.2.8.1 PUBLICADA (Latest)**: **el volcado cubre los formatos
+- **(2026-09-24) v1.2.8.2 PUBLICADA (Latest)**: **la mejora de texturas deja de
+  hundir los FPS** (seguimiento de los reportes de bajones de FPS con el feature
+  activado; logs de SSGPrinceVegeta `parte 4`, RTX 5090). **Diagnostico**: la
+  config EXACTA del reporter (3x + MSAA + hd_tex 3x + area 1M) da **60,0 fps** en
+  una RTX 4070 SUPER ⇒ no es carga. La diferencia real es la **tasa de
+  re-escalado**: su `upx` subia a ~665 (~1 textura re-escalada por fotograma)
+  mientras los FPS caian a 31. **Causa**: `LoadTextureDataFromResidentMemoryImpl`
+  regeneraba la **cadena de mips completa** (12 niveles) en CADA recarga; cada
+  nivel son 2 barreras + descriptores de un solo uso + cambio de pipeline +
+  dispatch, **en serie** en el command list ⇒ coste de **comandos/CPU, no de
+  GPU** (por eso una 5090 no ayuda y no se ve en el uso de GPU). El presupuesto
+  existente (`UpscaleBudgetAllows`) solo acota las concesiones **nuevas**, no las
+  recargas de keys ya concedidas. **Fix**: una textura se marca **dinamica**
+  (recarga solo-base sobre el MISMO recurso, o **4+ recargas en 1,5 s** por
+  contador de identidad) y **solo se regenera el nivel 0**; los mips se conservan
+  (`upscale_chain_resources_` fuerza la cadena entera si el recurso es nuevo tras
+  un desalojo). Las estaticas siguen con la cadena completa. **NO se puede
+  des-conceder** el factor (el recurso Nx ya existe y el camino de subida lee el
+  mismo factor) ⇒ la decision de tamano sigue siendo estable; se abarata el
+  relleno. **Diagnostico nuevo** en la linea `perf`: `cfg=scale:3x3 msaa:true
+  hdtex:3 area:1048576 min:16 aniso:5` + `upx_dyn=` + `texload=` (cargas de
+  textura por ventana; medido 120-210/s en la intro ⇒ el juego es un streaming
+  agresivo). Validado: smoke test con umbral temporal (`count>=1`) ejecutando el
+  camino nuevo en TODAS las texturas con mips (**0 errores**, 60 fps, `upx_dyn`
+  114) + 3 sesiones con la config del reporter (60,0 fps, 0 errores,
+  `upx_dyn=0` en local). Doc: `docs/SESION_PERF_TEXTURAS_2026-09-24.md`.
+  FileVersion `1.2.8.2`. DLL canonica: `rexgpu-xenos.dll` **6346240 B**,
+  `rexruntime.dll` 10910720 B.
+- **(2026-09-23) v1.2.8.1 PUBLICADA (no-Latest tras la 1.2.8.2)**: **el volcado cubre los formatos
   del HUD/UI y los packs aceptan RGBA8** (seguimiento del issue #11). El
   reporter confirmo que la v1.2.8 ya volcaba, y anadio dos cosas: faltaban casi
   todas las texturas del HUD (solo salian algunos fonts) y algunas salian como
@@ -1133,14 +1171,17 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
     `dbz3_io_logging`/`dbz3_io_readahead`, la poda de logs,
     `dbz3_mute_unfocused` y `frame_cap` definido en `src/ui/presenter.cpp`),
     rexgpu-xenos
-    **6342656** (con `fg=` en la linea `perf`, el fix de mips del shader de
-    upscale `texture_upscale_cs` + clamp anti-ringing, la extensión a RGBA8
-    nativas, el mínimo de tamaño `dbz3_upscale_min_size`, la guardia de
-    video `UpscaleBudgetAllows`, el **volcado dev de texturas**
+    **6346240** (con `fg=` y `cfg=`/`upx`/`upx_dyn=`/`texload=` en la linea `perf`,
+    el fix de mips del shader de
+    upscale `texture_upscale_cs` + clamp anti-ringing, la extension a RGBA8
+    nativas, el minimo de tamaño `dbz3_upscale_min_size`, la guardia de
+    video `UpscaleBudgetAllows`, el **throttle de texturas dinamicas**
+    (v1.2.8.2: solo nivel 0 en recargas dinamicas), el **volcado dev de texturas**
     `dbz3_texture_dump`/`dbz3_texture_dump_max` y el **cargador de packs**
-    `dbz3_texture_packs`; **sin** instrumentación de draw),
+    `dbz3_texture_packs`; **sin** instrumentacion de draw),
     amd_fidelityfx_dx12 5413888. ⚠️ Los valores 10910208/6227456 son los de la
-    v1.2.6, 6346752 los de la v1.2.7 y 6340096 los de la v1.2.8 (todas ya
+    v1.2.6, 6346752 los de la v1.2.7, 6340096 los de la v1.2.8 y 6342656 los de
+    la v1.2.8.1 (todas ya
     publicadas). ⚠️ El **SHA256 varía
     por build** (embebe timestamp) — comparar por **tamaño** o recompilar y
     copiar, no por hash fijo. ⚠️ Los tamaños de AMBAS DLL cambian cuando se
@@ -1390,7 +1431,10 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
   `DBZ3_DUMP_IMAGE` para volcar la imagen descifrada).
 
 ### 9.2 Releases y estado GitHub
-- **v1.2.8.1 = Latest** (2026-09-23, core dual, FileVersion 1.2.8.1, baseline:
+- **v1.2.8.2 = Latest** (2026-09-24, core dual, FileVersion 1.2.8.2, baseline:
+  la mejora de texturas deja de hundir los FPS - throttle de texturas dinamicas
+  + `cfg=`/`upx_dyn=`/`texload=` en la linea `perf`).
+  **v1.2.8.1** (2026-09-23, core dual, FileVersion 1.2.8.1, baseline:
   volcado de los formatos del HUD/UI sin comprimir + packs RGBA8 + tope de
   versiones por identidad, issue #11 - `Dbz3DumpFormatFor`). **v1.2.8**
   (2026-09-21, core dual, FileVersion 1.2.8.0, baseline: fix del volcado de
@@ -1408,8 +1452,8 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
   **v1.2.0**, **v1.1.4 EX**, **v1.1.3**, **v1.1.2**, **v1.1.1**,
   **v1.1.0-clasico** = no-Latest. Tags v1.0.0..v1.0.9 + v1.0.5-EX conservados
   (código archivado; los zips binarios viejos NO existen). PortForge
-  `defaultVersion` = 1.2.8.1 (visibles 1.2.8.1 / 1.2.8 / 1.2.7; la 1.2.5, la 1.2.6
-  y la 1.2.4-EX al archivo en `portforge/archive/`).
+  `defaultVersion` = 1.2.8.2 (visibles 1.2.8.2 / 1.2.8.1 / 1.2.8; la 1.2.7 va
+  al archivo en `portforge/archive/`).
 - ⚠️ **El exe de release se compila desde `out\build\win-amd64-dual`** (es el
   core dual): `make_release.ps1` toma `dbz3.exe` de ahí (verificado 2026-09-17:
   el hash del exe del zip v1.2.1 == el de ese build dir) y las DLL del
