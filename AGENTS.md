@@ -1464,6 +1464,16 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
   rexgpu, mods/ vacía, zip sin assets).
 - `make_release.ps1` monta una carpeta única: dbz3.exe + DLLs + `mod center hd/`
   (toolkit + tools/ XDK) + `mods/` + docs.
+- **Issues (triaje 2026-09-25)**: **cerrados** #7 (crash al título: era el
+  `default.xex` de la raíz = menú HD, arreglado en v1.2.2 EX), #11 (volcado de
+  texturas: original arreglado en v1.2.8 y confirmado por el reporter; HUD +
+  cuadrados negros + packs RGBA8 en la v1.2.8.1), #3 (CrossOver Mac: hallazgos 1
+  y 2 arreglados en v1.1.2; el splash "Press START" sin canal rojo es del
+  D3DMetal, cosmetico y ajeno al port). **Abiertos**: #8 (bajones de FPS:
+  comentado el fix de la v1.2.8.2, esperando el log `perf` del reporter), #9
+  (importar saves: receta por carpeta + helper "import save" pendiente de
+  decidir), #1 (v1.0.4: cap de FPS e idioma arreglados; el **pico de volumen al
+  volar** sigue sin repro), #10/#6/#5/#4/#2 cerrados antes.
 
 ### 9.3 🔴 CARPETA `github/` — REPO DE SUBIDA (sync manual)
 `github/` es la copia versionable (NO es repo git local; se sube manualmente).
