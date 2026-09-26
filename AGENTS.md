@@ -1506,7 +1506,12 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
   `DBZ3_DUMP_IMAGE` para volcar la imagen descifrada).
 
 ### 9.2 Releases y estado GitHub
-- **v1.2.8.2 = Latest** (2026-09-24, core dual, FileVersion 1.2.8.2, baseline:
+- **v1.2.9 = Latest** (2026-09-26, core dual, FileVersion 1.2.9, baseline:
+  diagnostico que se explica solo - avisos SIEMPRE activos de fps sostenido,
+  disco lento e instalacion mixta, `vram=`/`lim=` en la linea `perf`, guardia de
+  VRAM, linea `dbz3: entorno ...` con sistema/RAM/versiones y herramientas
+  `copy_sdk_dlls.ps1`; zip Windows + tarball Linux por CI).
+  **v1.2.8.2** (2026-09-24, core dual, FileVersion 1.2.8.2, baseline:
   la mejora de texturas deja de hundir los FPS - throttle de texturas dinamicas
   + `cfg=`/`upx_dyn=`/`texload=` en la linea `perf`).
   **v1.2.8.1** (2026-09-23, core dual, FileVersion 1.2.8.1, baseline:
