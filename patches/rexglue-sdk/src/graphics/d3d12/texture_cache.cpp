@@ -1640,6 +1640,60 @@ bool D3D12TextureCache::IsDecompressionNeeded(xenos::TextureFormat format, uint3
   return true;
 }
 
+// DBZ3 - una sola linea cuando el runtime no puede consultar la VRAM (adaptador
+// sin DXGI 1.4). Sin esto, la telemetria `vram=` sale a cero y no se sabe por que.
+void WarnVideoMemoryUnavailableOnce(const char* where) {
+  static bool logged = false;
+  if (logged) {
+    return;
+  }
+  logged = true;
+  REXGPU_WARN("dbz3: VRAM no disponible ({}) - la telemetria vram= saldra a 0", where);
+}
+
+// DBZ3 - VRAM del segmento local (DXGI). Cache de 1 s: la consulta es barata
+// pero se llama desde el camino de creacion de cada textura. El dispositivo de
+// este runtime no implementa IDXGIDevice, asi que se usa el adaptador que el
+// proveedor conserva vivo (IDXGIAdapter3::QueryVideoMemoryInfo).
+void D3D12TextureCache::RefreshVideoMemory() const {
+  const int64_t now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                             std::chrono::steady_clock::now().time_since_epoch())
+                             .count();
+  if (video_memory_query_ns_ != 0 && now_ns - video_memory_query_ns_ < 1000000000) {
+    return;
+  }
+  video_memory_query_ns_ = now_ns;
+  IDXGIAdapter* adapter = command_processor_.GetD3D12Provider().GetAdapter();
+  if (adapter == nullptr) {
+    return;
+  }
+  IDXGIAdapter3* adapter3 = nullptr;
+  if (SUCCEEDED(adapter->QueryInterface(IID_PPV_ARGS(&adapter3))) && adapter3 != nullptr) {
+    DXGI_QUERY_VIDEO_MEMORY_INFO info = {};
+    // Group 0 = el adaptador que usa el proceso; LOCAL = VRAM dedicada (en un
+    // equipo con GPU integrada + dedicada, DXGI da el budget del adaptador en uso).
+    if (SUCCEEDED(adapter3->QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, &info))) {
+      video_memory_usage_ = info.CurrentUsage;
+      video_memory_budget_ = info.Budget;
+    } else {
+      WarnVideoMemoryUnavailableOnce("QueryVideoMemoryInfo");
+    }
+    adapter3->Release();
+  } else {
+    WarnVideoMemoryUnavailableOnce("IDXGIAdapter3");
+  }
+}
+
+uint64_t D3D12TextureCache::video_memory_usage_bytes() const {
+  RefreshVideoMemory();
+  return video_memory_usage_;
+}
+
+uint64_t D3D12TextureCache::video_memory_budget_bytes() const {
+  RefreshVideoMemory();
+  return video_memory_budget_;
+}
+
 bool D3D12TextureCache::UpscaleBudgetAllows(const TextureKey& key) const {
   // Ya concedido antes: siempre permitido (la respuesta debe ser estable entre
   // la creacion del recurso Nx y sus recargas).
@@ -1679,6 +1733,10 @@ bool D3D12TextureCache::UpscaleBudgetAllows(const TextureKey& key) const {
       }
     }
   }
+  if (!allowed) {
+    // `lim=1` en la linea `perf`: el presupuesto esta frenando upscales nuevos.
+    upscale_limit_reason_ = 1;
+  }
   upscale_granted_keys_.emplace(key, allowed ? uint8_t(1) : uint8_t(0));
   return allowed;
 }
@@ -1698,6 +1756,29 @@ uint32_t D3D12TextureCache::GetTextureUpscaleFactor(const TextureKey& key) const
   // un frame de video no aporta nada y regenerar la cadena de mips 60 veces/s
   // dispara el consumo de GPU.
   if (!UpscaleBudgetAllows(key)) {
+    return 1;
+  }
+  // Guardia de VRAM: con el heap local casi lleno, conceder MAS texturas Nx hace
+  // que el driver empiece a paginar (evictar/recargar recursos cada frame) y el
+  // framerate se hunde de forma sostenida -- justo el sintoma "bajo a 30 y no
+  // sube" con la mejora de texturas activa. En ese punto se dejan de conceder
+  // upscales NUEVOS: el guardia se levanta solo cuando el uso baja, y las
+  // texturas ya concedidas no se tocan (la decision debe ser estable por key).
+  // Comparte el cache de 1 s de RefreshVideoMemory (no añade coste por textura).
+  const uint64_t vram_budget = video_memory_budget_bytes();
+  const uint64_t vram_usage = video_memory_usage_bytes();
+  if (vram_budget != 0 && vram_usage * 100 >= vram_budget * 92) {
+    upscale_limit_reason_ = 2;
+    static bool vram_logged = false;
+    if (!vram_logged) {
+      vram_logged = true;
+      REXGPU_INFO(
+          "dbz3: upscale limitado por VRAM (uso {} MB de {} MB) - no se escalan texturas nuevas",
+          vram_usage >> 20, vram_budget >> 20);
+    }
+    // Se registra como denegada: la respuesta tiene que ser la misma en las
+    // recargas (si cambiara, el recurso Nx quedaria sin rellenar).
+    upscale_granted_keys_.emplace(key, uint8_t(0));
     return 1;
   }
   // Diagnostico: motivos de descarte. Solo se registra cada combinacion UNICA

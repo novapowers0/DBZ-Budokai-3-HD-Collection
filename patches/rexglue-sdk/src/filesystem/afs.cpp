@@ -29,6 +29,7 @@
 
 #include <rex/filesystem.h>
 #include <rex/cvar.h>
+#include <rex/dbz3_build.h>
 #include <rex/logging.h>
 
 // dbz1_diag_logging is defined in src/system/dbz1_diag_flags.cpp (shared
@@ -45,6 +46,13 @@ REXCVAR_DEFINE_BOOL(dbz3_io_logging, false, "DBZ3/Dev",
                     "Log AFS I/O statistics (read rate, latency, slow reads)");
 REXCVAR_DEFINE_INT32(dbz3_io_slow_ms, 25, "DBZ3/Dev",
                      "Log a line for AFS reads slower than this many milliseconds");
+
+// DBZ3 - build stamp of THIS DLL (rexruntime). No la version del juego, sino la
+// del runtime: el launcher la compara con la suya para detectar instalaciones
+// MIXTAS (copiar solo el exe o solo una DLL encima de una carpeta vieja deja un
+// build que no se puede identificar desde su log). Ver rex/dbz3_build.h.
+REXCVAR_DEFINE_STRING(dbz3_runtime_build, DBZ3_RUNTIME_BUILD, "DBZ3/Dev",
+                      "Build de rexruntime (lo comprueba el launcher)");
 
 namespace rex::filesystem {
 
@@ -134,6 +142,15 @@ std::atomic<uint64_t> g_io_slow{0};
 std::atomic<uint64_t> g_io_cache_hits{0};
 std::atomic<uint64_t> g_io_opens{0};
 std::atomic<uint64_t> g_io_slow_logged{0};
+// Aviso de disco lento SIEMPRE activo (independiente de `dbz3_io_logging`): un
+// log de usuario tiene que explicar por si solo los tirones de carga. Solo
+// cuenta lecturas fisicas muy lentas (>= kSlowDiskNs) y emite UNA linea por
+// sesion, con el volumen y el peor caso; el log normal sigue limpio.
+constexpr uint64_t kSlowDiskNs = 50000000ull;  // 50 ms
+constexpr int kSlowDiskReadsToWarn = 5;
+std::atomic<uint32_t> g_slow_disk_reads{0};
+std::atomic<uint64_t> g_slow_disk_max_ns{0};
+std::atomic<bool> g_slow_disk_warned{false};
 
 // log2 histogram of physical read latencies (bucket b = [2^b, 2^(b+1)) ns), so
 // p95/p99 come out of a handful of atomics without sorting anything.
@@ -196,6 +213,33 @@ void IoFlushWindow() {
 }
 
 }  // namespace
+
+// DBZ3 - aviso de disco lento, SIEMPRE activo y una sola vez por sesion. El
+// coste es un atomico por lectura fisica (el tiempo de la lectura ya se mide para
+// la instrumentacion). Se dispara con lecturas de 50 ms o mas, que en un SSD no
+// existen y en un disco mecanico son la causa directa de los tirones de carga
+// (nota: la ruta puede ser un disco de red, que se comporta igual de mal).
+void AfsIoNoteSlowRead(const std::filesystem::path& path, uint64_t read_ns) {
+  if (g_slow_disk_warned.load(std::memory_order_relaxed) || read_ns < kSlowDiskNs) {
+    return;
+  }
+  const uint32_t count = g_slow_disk_reads.fetch_add(1, std::memory_order_relaxed) + 1;
+  uint64_t prev_max = g_slow_disk_max_ns.load(std::memory_order_relaxed);
+  while (read_ns > prev_max &&
+         !g_slow_disk_max_ns.compare_exchange_weak(prev_max, read_ns,
+                                                   std::memory_order_relaxed)) {
+  }
+  if (count < kSlowDiskReadsToWarn || g_slow_disk_warned.exchange(true)) {
+    return;
+  }
+  const std::string volume = rex::path_to_utf8(path.root_name());
+  REXLOG_WARN(
+      "dbz3: aviso - {} lecturas de disco lentas (peor caso {} ms, volumen {}) - el juego se "
+      "esta leyendo de un disco lento, que es lo que produce los tirones de carga; mover la "
+      "carpeta del juego a un SSD los elimina (los datos son los mismos)",
+      count, g_slow_disk_max_ns.load(std::memory_order_relaxed) / 1000000,
+      volume.empty() ? "?" : volume.c_str());
+}
 
 void AfsIoRecordRead(const AfsIoReadSample& sample) {
   if (!REXCVAR_GET(dbz3_io_logging)) {

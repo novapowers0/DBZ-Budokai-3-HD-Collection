@@ -73,6 +73,12 @@ lógica de región/mods, y runtime.
   conservan; tras un desalojo se regenera la cadena entera). Diagnostico nuevo en
   la linea `perf`: `cfg=scale:3x3 msaa:true hdtex:3 area:... min:... aniso:5`,
   `upx_dyn=` (recargas dinamicas) y `texload=` (cargas de textura/ventana).
+- `docs/SESION_DIAGNOSTICO_2026-09-26.md` - **v1.2.9: diagnostico que se explica
+  solo** (a raiz de los ultimos logs de SSGPrinceVegeta: instalacion mixta
+  indetectable, 31 fps sostenidos por vsync a media tasa, disco lento). Avisos
+  SIEMPRE activos (fps sostenido, disco lento, instalacion mixta),
+  `vram=`/`lim=` en la linea `perf`, guardia de VRAM, linea `dbz3: entorno ...`
+  con sistema/RAM/versiones y `tools/copy_sdk_dlls.ps1`.
 - `docs/02_mods/PACKS_DE_TEXTURAS.md` - **guia para autores de packs** (formato,
   creacion paso a paso, reglas, diagnostico).
 - `docs/SESION_FIX_VOLCADO_2026-09-21.md` - **fix del volcado de texturas
@@ -134,6 +140,35 @@ lógica de región/mods, y runtime.
 
 ## 3. ESTADO ACTUAL (RESUMEN EJECUTIVO)
 
+- **(2026-09-26) v1.2.9 EN ARBOL (pendiente de publicar)**: **diagnostico que se
+  explica solo**, a raiz de los ultimos logs de SSGPrinceVegeta (parte 4: **cero
+  errores**, pero tres cosas invisibles en el log): (1) **instalacion mixta no
+  detectable** (carpeta `...v1.2.1` con DLLs nuevas: se perdio una ronda entera
+  averiguando que build produjo el log); (2) **31 fps sostenidos** con
+  `upx` planchado = vsync a **media tasa** (frame > 16,7 ms con `3x`+MSAA+texturas
+  HD), no un bug; (3) **disco lento** (`io SLOW 42614us` con `pre=12us`, en
+  `E:\Game Roms\...`). Implementado: (a) **sello de build del runtime** en las DLL
+  (`rex/dbz3_build.h` -> cvars `dbz3_runtime_build`/`dbz3_gpu_build`, porque las
+  DLL **no tienen VERSIONINFO**) + **deteccion de instalacion mixta** en el
+  launcher (banner naranja + `[warning]` + linea en Dev; un componente sin sello
+  tambien cuenta) + linea **`dbz3: entorno os=... ram=... dbz3.exe=... ...`**;
+  (b) **`vram=uso/presupuesto`** y **`lim=`** (0/1/2 = racha/VRAM) en la linea
+  `perf`, leidos de `IDXGIAdapter3::QueryVideoMemoryInfo` (el adaptador se
+  conserva vivo en `D3D12Provider`: el dispositivo **no implementa
+  `IDXGIDevice`**, hr `E_NOINTERFACE`); (c) **guardia de VRAM** (>= 92 % del heap
+  local -> no se conceden upscales nuevos, decision cacheada por key); (d)
+  **aviso de fps sostenido** y **aviso de disco lento**, SIEMPRE activos (no
+  dependen de `dbz3_perf_logging`/`dbz3_io_logging`; el log normal sigue limpio y
+  solo aparece la linea si hay algo accionable); (e) aviso de **combinacion**
+  escala interna + mejora de texturas en el tab Video; (f)
+  `tools/copy_sdk_dlls.ps1` (la trampa de las DLL stale de `rexglue/bin` invalido
+  dos tests en esta sesion) y `verify_release.ps1` comprueba el sello.
+  Validado: entorno coherente sin falso aviso; **mezcla real** (exe 1.2.9 +
+  `rexgpu-xenos.dll` 1.2.8.2 sacada del zip) -> aviso; partida 3x+MSAA+`hd_tex=3`
+  = 60,0 fps / 0 errores / `vram=2171MB/11231MB lim=0`; guardia de VRAM forzada ->
+  `lim=2` + `upx=0`; avisos forzados con umbrales temporales -> salen una vez.
+  FileVersion `1.2.9`. DLL canonicas: `rexgpu-xenos.dll` **6355456 B**,
+  `rexruntime.dll` 10917888 B. Doc: `docs/SESION_DIAGNOSTICO_2026-09-26.md`.
 - **(2026-09-24) v1.2.8.2 PUBLICADA (Latest)**: **la mejora de texturas deja de
   hundir los FPS** (seguimiento de los reportes de bajones de FPS con el feature
   activado; logs de SSGPrinceVegeta `parte 4`, RTX 5090). **Diagnostico**: la
@@ -1048,6 +1083,9 @@ Detalle completo: `docs/07_ports/SESION_DRAW_SEMANTICS_2026-09-11.md` §20.
 ```powershell
 # Compilar el juego (release, usa el SDK instalado en rexglue/)
 cmake --build "out\build\win-amd64-release"
+# 🔴 DESPUES de cada build del juego: recopiar las DLL canonicas (el build las
+# sobrescribe con las stale/avx2 de rexglue/bin -> un test mediria otro runtime)
+powershell -ExecutionPolicy Bypass -File tools\copy_sdk_dlls.ps1
 # Build dual (US+EU): cmake -B out/build/win-amd64-dual -DDBZ3_DUAL_REGION=ON ...
 # Build EU (histórico, ya no usado): -DDBZ3_GENERATED_DIR=generated_eu
 
@@ -1167,19 +1205,24 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
 
 - **DLLs canónicas del SDK 0.10** (NO reemplazar por las regeneradas del build):
   - Baseline (único en uso): `rexglue-sdk-0.10/out/win-amd64-baseline/` →
-    rexruntime **10910720** (con `audio_gain`, `dbz3_perf_logging`,
+    rexruntime **10917888** (con `audio_gain`, `dbz3_perf_logging`,
     `dbz3_io_logging`/`dbz3_io_readahead`, la poda de logs,
-    `dbz3_mute_unfocused` y `frame_cap` definido en `src/ui/presenter.cpp`),
+    `dbz3_mute_unfocused`, `frame_cap` definido en `src/ui/presenter.cpp`, el
+    **aviso de disco lento** y el sello `dbz3_runtime_build`),
     rexgpu-xenos
-    **6346240** (con `fg=` y `cfg=`/`upx`/`upx_dyn=`/`texload=` en la linea `perf`,
+    **6355456** (con `fg=` y `cfg=`/`upx`/`upx_dyn=`/`texload=`/`vram=`/`lim=`
+    en la linea `perf`,
     el fix de mips del shader de
     upscale `texture_upscale_cs` + clamp anti-ringing, la extension a RGBA8
     nativas, el minimo de tamaño `dbz3_upscale_min_size`, la guardia de
     video `UpscaleBudgetAllows`, el **throttle de texturas dinamicas**
-    (v1.2.8.2: solo nivel 0 en recargas dinamicas), el **volcado dev de texturas**
-    `dbz3_texture_dump`/`dbz3_texture_dump_max` y el **cargador de packs**
-    `dbz3_texture_packs`; **sin** instrumentacion de draw),
-    amd_fidelityfx_dx12 5413888. ⚠️ Los valores 10910208/6227456 son los de la
+    (v1.2.8.2: solo nivel 0 en recargas dinamicas), la **guardia de VRAM** y el
+    **aviso de fps sostenido** (v1.2.9), el **volcado dev de texturas**
+    `dbz3_texture_dump`/`dbz3_texture_dump_max`, el **cargador de packs**
+    `dbz3_texture_packs` y el sello `dbz3_gpu_build`; **sin** instrumentacion de
+    draw),
+    amd_fidelityfx_dx12 5413888. ⚠️ Los valores 10910720/6346240 son los de la
+    v1.2.8.2; 10910208/6227456 los de la
     v1.2.6, 6346752 los de la v1.2.7, 6340096 los de la v1.2.8 y 6342656 los de
     la v1.2.8.1 (todas ya
     publicadas). ⚠️ El **SHA256 varía
@@ -1187,13 +1230,21 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
     copiar, no por hash fijo. ⚠️ Los tamaños de AMBAS DLL cambian cuando se
     recompila el SDK: el valor de referencia es el que hay en
     `out/win-amd64-baseline/` (lo que `verify_release.ps1` usa como baseline).
+    ⚠️ **Sello de build del runtime** (v1.2.9): `rex/dbz3_build.h`
+    (`DBZ3_RUNTIME_BUILD`) se publica por las cvars `dbz3_runtime_build` /
+    `dbz3_gpu_build` y **hay que subirlo junto con `src/version.rc`**
+    (`verify_release.ps1` lo comprueba); el launcher lo usa para avisar de
+    instalaciones mixtas.
   - avx2 (para el fallback clasico): `out/win-amd64/` → rexruntime 10951168,
     rexgpu-xenos 6207488 (o 6210048 regenerado 08/27), ffx 5420544,
     TracyClient 246784.
   - legacy: `out/win-amd64-legacy/` (variante eliminada; se puede limpiar).
 - **🔴 El build del juego SOBRESCRIBE `rexruntime.dll`** con la versión stale
   de `rexglue/bin` (§13.6): tras `cmake --build`, VOLVER A COPIAR la DLL
-  correcta del SDK al build. Verificar siempre:
+  correcta del SDK al build — **lo más simple es
+  `powershell -ExecutionPolicy Bypass -File tools\copy_sdk_dlls.ps1`** (copia las
+  canónicas y avisa si el sello no está; cierra dbz3.exe antes o el fichero está
+  bloqueado). Verificar siempre:
   `Select-String rexruntime.dll -Pattern "AfsGetVirtualTable"` debe dar PRESENTE.
   (2026-09-18) Anadir tambien el marker **`dbz3_perf_logging`**: si falta, el
   runtime es el stale (10.863.616 B) y las lineas `perf fps` no salen (parece
@@ -1220,6 +1271,13 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
   restaura; usar `dbz3_skip_launcher=true` para bootear directo; los strings
   del toml van entre comillas o el parser descarta el fichero entero).
   Detalle: `docs/ANALISIS_RENDIMIENTO_LOGS_2026-09-18.md`.
+  (v1.2.9) La linea lleva ademas **`vram=uso/presupuesto` MB** y **`lim=`**
+  (0 = nada, 1 = racha de recargas, 2 = guardia de VRAM). Y hay **avisos
+  SIEMPRE activos** (no dependen de estas cvars: el log normal sigue limpio y
+  solo sale la linea si hay algo accionable, max 3 por sesion): **fps sostenido
+  bajo** (con escala/MSAA/mejora activos -> vsync a media tasa) y **disco lento**
+  (5+ lecturas fisicas >= 50 ms, con el volumen). Ver
+  `docs/SESION_DIAGNOSTICO_2026-09-26.md`.
 - **Arnes para llegar a la DEMO 3D y validar el juego** (2026-09-19):
   `tools/long_run.ps1` (Start/Status/Stop; lanza pruebas largas desacopladas,
   **silenciadas** con `audio_mute=true` y restaura el toml; estado en
@@ -1356,6 +1414,10 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
   **Mejora de texturas (experimental)**: `dbz3_hd_textures` (Off/**Nitidas x2**/
   **Muy nitidas x3**), y el ajuste avanzado de VRAM
   (`dbz3_hd_texture_max_texels`, Bajo/Medio/Alto) en el tab Dev.
+  (v1.2.9) Con la escala interna > 1x **y** la mejora activada sale un aviso
+  naranja en la propia opcion: es la combinacion de las dos palancas caras y el
+  origen mas comun del reporte "va a 30" (frame > 16,7 ms -> vsync a media tasa).
+  El tab Dev lista las **versiones** de los ficheros instalados (ver sello).
 - **Audio (real desde 2026-09-19)**: `dbz3_master_volume` -> SDK **`audio_gain`**
   (ganancia del callback SDL) y checkbox **Silenciar** -> SDK `audio_mute`;
   ambos se aplican en caliente al cambiar (`ApplyRuntimeSettingsToSdk`). Los
@@ -1373,6 +1435,19 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
   + boton Descargar, "Version actualizada." o una nota gris si falla (nunca
   bloquea PLAY). Toggle `dbz3_update_check` en el tab Dev. Requiere linkear
   `winhttp` + `version` (CMake).
+- **Instalacion mixta / sello de version** (v1.2.9, `update_check.cpp`): las DLL
+  del runtime **no tienen VERSIONINFO**, asi que publican su build por cvar
+  (`dbz3_runtime_build` en rexruntime, `dbz3_gpu_build` en rexgpu-xenos, desde
+  `rex/dbz3_build.h`) y el launcher compara major.minor.patch con el exe. Si un
+  componente no coincide (o **no se puede identificar**: sin sello = build
+  anterior) sale **banner naranja** arriba (con el fichero culpable, tooltip con
+  la solucion), un `[warning] instalacion mixta: ...` en el log y la linea en el
+  tab Dev. Ademas, **una linea `dbz3: entorno os=... ram=... dbz3.exe=...
+  rexgpu-xenos=... rexruntime=... amd_fidelityfx_dx12.dll=...`** al arrancar el
+  launcher (sistema real via `RtlGetVersion`, RAM y TODAS las versiones), que es
+  lo que hace concluyente un reporte de usuario. La AMD FidelityFX se lista pero
+  no se compara (es de terceros). `verify_release.ps1` comprueba que el sello
+  coincide con `src/version.rc`.
 - **Input**: `dbz3_input_backend` (xinput/sdl), `dbz3_mnk_mode` (teclado,
   default TRUE), `dbz3_mnk_mouse`, **sensibilidad del raton**
   (`dbz3_mnk_sensitivity` 0.1-5.0 -> SDK `mnk_sensitivity`; slider visible solo

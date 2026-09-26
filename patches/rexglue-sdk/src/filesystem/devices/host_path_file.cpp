@@ -27,6 +27,8 @@ REXCVAR_DECLARE(bool, dbz3_io_logging);
 REXCVAR_DECLARE(bool, dbz3_io_readahead);
 REXCVAR_DECLARE(int32_t, dbz3_io_readahead_kb);
 
+
+
 // dbz3 - sequential readahead for AFS containers.
 //
 // Host reads are synchronous (one ReadFile per guest read), so a burst of small
@@ -317,7 +319,10 @@ X_STATUS HostPathFile::ReadSync(std::span<uint8_t> buffer, size_t byte_offset,
     }
   }
 
-  const int64_t time_pre = io_logging ? IoNowNs() : 0;
+  // Se mide SIEMPRE (dos lecturas de reloj, nanosegundos): ademas de la
+  // instrumentacion opcional, alimenta el aviso de disco lento, que tiene que
+  // salir en el log normal (una linea por sesion) sin que el usuario active nada.
+  const int64_t time_pre = IoNowNs();
 
   // Physical read, with the sequential readahead cache in front of it (only for
   // AFS containers without mods, where a byte offset maps 1:1 to the file). The
@@ -350,11 +355,15 @@ X_STATUS HostPathFile::ReadSync(std::span<uint8_t> buffer, size_t byte_offset,
   if (out_bytes_read) {
     *out_bytes_read = got;
   }
+  const int64_t time_after = IoNowNs();
   if (io_logging) {
-    const int64_t now = IoNowNs();
     AfsIoRecordRead({host_path, entry_index, byte_offset, buffer.size(),
                      uint64_t(time_pre - time_begin),
-                     from_cache ? 0 : uint64_t(now - time_pre), from_cache});
+                     from_cache ? 0 : uint64_t(time_after - time_pre), from_cache});
+  }
+  if (!from_cache && host_path) {
+    // Aviso de disco lento (siempre activo; UNA linea por sesion como maximo).
+    AfsIoNoteSlowRead(*host_path, uint64_t(time_after - time_pre));
   }
   return X_STATUS_SUCCESS;
 }

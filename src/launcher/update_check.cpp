@@ -3,9 +3,11 @@
 #include "update_check.h"
 
 #include <rex/cvar.h>  // REX_PLATFORM_WIN32 (via rex/platform.h)
+#include <rex/logging.h>
 
 #include <atomic>
 #include <cctype>
+#include <cstdint>
 #include <cstdio>
 #include <mutex>
 #include <string>
@@ -253,6 +255,190 @@ std::string LatestVersion() {
 std::string LatestReleaseUrl() {
   std::lock_guard<std::mutex> lock(g_mutex);
   return g_latest_url;
+}
+// --- Installed-file consistency ---------------------------------------------
+// See the header for why: a user who updates by copying only some of the files
+// ends up with a build that cannot be identified from its log, and the report
+// becomes unactionable. Reading each component's VERSIONINFO (once, cached)
+// makes a mixed install obvious both in the log and on screen.
+
+namespace {
+
+#if REX_PLATFORM_WIN32
+
+std::string FileVersionString(const std::wstring& path) {
+  DWORD unused = 0;
+  const DWORD size = GetFileVersionInfoSizeW(path.c_str(), &unused);
+  if (size == 0) {
+    return {};
+  }
+  std::vector<uint8_t> data(size);
+  if (!GetFileVersionInfoW(path.c_str(), 0, size, data.data())) {
+    return {};
+  }
+  VS_FIXEDFILEINFO* info = nullptr;
+  UINT len = 0;
+  if (!VerQueryValueW(data.data(), L"\\", reinterpret_cast<void**>(&info), &len) || !info) {
+    return {};
+  }
+  char buf[64];
+  std::snprintf(buf, sizeof(buf), "%d.%d.%d.%d", HIWORD(info->dwFileVersionMS),
+                LOWORD(info->dwFileVersionMS), HIWORD(info->dwFileVersionLS),
+                LOWORD(info->dwFileVersionLS));
+  return buf;
+}
+
+// Directory of the running executable (where the launcher and the DLLs live).
+std::wstring ExeDirectory() {
+  wchar_t path[MAX_PATH] = {};
+  if (!GetModuleFileNameW(GetModuleHandleW(nullptr), path, MAX_PATH)) {
+    return {};
+  }
+  std::wstring dir(path);
+  const size_t slash = dir.find_last_of(L"\\/");
+  if (slash != std::wstring::npos) {
+    dir.resize(slash + 1);
+  }
+  return dir;
+}
+
+// VERSIONINFO of a file that sits next to the executable (empty when the file
+// has no version resource, which is the case for the ReXGlue runtime DLLs).
+std::string DllFileVersion(const char* file_name) {
+  const int needed = MultiByteToWideChar(CP_UTF8, 0, file_name, -1, nullptr, 0);
+  std::wstring wide(needed > 0 ? size_t(needed) : 0, L'\0');
+  if (needed > 0) {
+    MultiByteToWideChar(CP_UTF8, 0, file_name, -1, wide.data(), needed);
+    wide.resize(size_t(needed - 1));
+  }
+  return FileVersionString(ExeDirectory() + wide);
+}
+
+// Real OS version. GetVersionExW lies unless the process is manifested for the// newest Windows, so RtlGetVersion (ntdll) is used instead -- it is what a
+// support log needs to be useful.
+std::string OsVersionString() {
+  struct OsVersionInfo {
+    ULONG size;
+    ULONG major;
+    ULONG minor;
+    ULONG build;
+    ULONG platform_id;
+    wchar_t csd[128];
+  };
+  using RtlGetVersionFn = LONG(WINAPI*)(OsVersionInfo*);
+  OsVersionInfo info = {};
+  info.size = sizeof(info);
+  HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
+  auto rtl_get_version =
+      ntdll ? reinterpret_cast<RtlGetVersionFn>(GetProcAddress(ntdll, "RtlGetVersion")) : nullptr;
+  if (!rtl_get_version || rtl_get_version(&info) != 0) {
+    return "?";
+  }
+  char buf[64];
+  std::snprintf(buf, sizeof(buf), "%lu.%lu.%lu", info.major, info.minor, info.build);
+  return buf;
+}
+
+uint64_t TotalRamMb() {
+  MEMORYSTATUSEX status = {};
+  status.dwLength = sizeof(status);
+  if (!GlobalMemoryStatusEx(&status)) {
+    return 0;
+  }
+  return status.ullTotalPhys >> 20;
+}
+
+#else
+
+std::string DllFileVersion(const char*) { return {}; }
+
+#endif  // REX_PLATFORM_WIN32
+
+// Name of the component that does not match the executable, filled by the probe
+// inside InstalledComponents() (empty when the install is consistent).
+std::string g_component_mismatch;
+
+// Logs one line with everything a support report needs to be actionable without
+// a second round trip (OS, RAM, versions of every installed component) plus a
+// warning when they do not match.
+void LogEnvironmentOnce(const std::vector<InstalledComponent>& components,
+                        const std::string& mismatch) {
+  std::string line = "dbz3: entorno os=";
+#if REX_PLATFORM_WIN32
+  line += OsVersionString();
+  const uint64_t ram_mb = TotalRamMb();
+  if (ram_mb) {
+    line += " ram=" + std::to_string(ram_mb) + "MB";
+  }
+#else
+  line += "?";
+#endif
+  for (const InstalledComponent& component : components) {
+    line += " " + component.file_name + "=";
+    line += component.version.empty() ? "?" : component.version;
+  }
+  REXLOG_INFO("{}", line);
+  if (!mismatch.empty()) {
+    REXLOG_WARN(
+        "dbz3: aviso - instalacion mixta: {0} no coincide con dbz3.exe (o es de una version "
+        "que no se puede identificar) - al actualizar hay que reemplazar TODOS los ficheros: "
+        "descomprime el zip completo en una carpeta nueva (o copia el exe Y las DLLs)",
+        mismatch);
+  }
+}
+
+}  // namespace
+
+const std::vector<InstalledComponent>& InstalledComponents() {
+  static std::vector<InstalledComponent> components;
+  static bool probed = false;
+  if (probed) {
+    return components;
+  }
+  probed = true;
+  // The runtime DLLs carry no VERSIONINFO, so each one publishes its build stamp
+  // as a cvar of its own (`dbz3_gpu_build` / `dbz3_runtime_build`, defined in
+  // rex/dbz3_build.h and bumped together with src/version.rc). The cvar registry
+  // is shared between the exe and the DLLs, so reading them from here is enough.
+#if REX_PLATFORM_WIN32
+  components.push_back({"dbz3.exe", CurrentVersion(), true});
+#else
+  components.push_back({"dbz3", CurrentVersion(), true});
+#endif
+  components.push_back({"rexgpu-xenos", rex::cvar::GetFlagByName("dbz3_gpu_build"), true});
+  components.push_back({"rexruntime", rex::cvar::GetFlagByName("dbz3_runtime_build"), true});
+  components.push_back({"amd_fidelityfx_dx12.dll", DllFileVersion("amd_fidelityfx_dx12.dll"),
+                        false});
+  // Major.minor.patch must match the executable; a repack build number
+  // (1.2.4.1 vs 1.2.4.0) is not a mismatch. A component that cannot be
+  // identified at all (an older build, which has no stamp) counts as a mismatch
+  // too: that is exactly the "new exe over an old folder" case.
+  const std::string reference = components[0].version;
+  if (!reference.empty()) {
+    const Version ref = ParseVersion(reference);
+    for (const InstalledComponent& component : components) {
+      if (!component.must_match) {
+        continue;
+      }
+      if (component.version.empty()) {
+        g_component_mismatch = component.file_name;
+        break;
+      }
+      const Version v = ParseVersion(component.version);
+      if (v.parts[0] != ref.parts[0] || v.parts[1] != ref.parts[1] ||
+          v.parts[2] != ref.parts[2]) {
+        g_component_mismatch = component.file_name;
+        break;
+      }
+    }
+  }
+  LogEnvironmentOnce(components, g_component_mismatch);
+  return components;
+}
+
+std::string InstalledVersionMismatch() {
+  InstalledComponents();
+  return g_component_mismatch;
 }
 
 void OpenUrl(const std::string& url) {

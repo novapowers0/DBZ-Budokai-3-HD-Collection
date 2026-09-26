@@ -40,6 +40,13 @@ struct AfsIoReadSample {
 };
 void AfsIoRecordRead(const AfsIoReadSample& sample);
 
+// dbz3 - aviso de disco lento SIEMPRE activo (no depende de `dbz3_io_logging`).
+// Cuenta lecturas fisicas de 50 ms o mas y emite UNA linea de aviso por sesion
+// con el volumen y el peor caso: es la explicacion directa de los tirones de
+// carga en un disco mecanico o de red, y sin esto el usuario no tiene forma de
+// saberlo. Solo cuenta atomos por lectura fisica.
+void AfsIoNoteSlowRead(const std::filesystem::path& path, uint64_t read_ns);
+
 // Counts one host file open (an open storm on a slow disk is a red flag and is
 // reported in the same summary line).
 void AfsIoRecordOpen();

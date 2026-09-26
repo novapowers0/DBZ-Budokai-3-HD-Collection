@@ -470,6 +470,35 @@ void LauncherDialog::OnDraw(ImGuiIO& io) {
     }
   }
 
+  // --- Mixed installs (exe vs runtime DLLs) ---------------------------------
+  // Updating by copying only some of the files over an old folder leaves a build
+  // that cannot be identified from its log: one of the reports that motivated
+  // this came from a folder labelled v1.2.1 while its DLLs were already newer.
+  // The versions of every component are in the log (`dbz3: entorno ...`) and in
+  // the Dev tab; here the user is simply told what to do about it.
+  {
+    const std::string mismatch = dbz3::launcher::InstalledVersionMismatch();
+    if (!mismatch.empty()) {
+      ImGui::PushStyleColor(ImGuiCol_Text, kDragonOrange);
+      ImGui::TextWrapped(
+          i18n::T("Aviso: los archivos instalados no son de la misma version (%s no coincide "
+                  "con dbz3.exe o no se puede identificar).",
+                  "Warning: the installed files are not the same version (%s does not match "
+                  "dbz3.exe or cannot be identified)."),
+          mismatch.c_str());
+      ImGui::PopStyleColor();
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip(
+            "%s", i18n::T("Descomprime el zip completo en una carpeta nueva: mezclar el exe de "
+                          "una version con las DLLs de otra produce fallos que no se pueden "
+                          "reproducir.",
+                          "Unzip the full package into a new folder: mixing the exe of one "
+                          "version with the DLLs of another causes failures that cannot be "
+                          "reproduced."));
+      }
+    }
+  }
+
   ImGui::Separator();
 
   // --- Game data validation banner (P1) -------------------------------------
@@ -1150,6 +1179,20 @@ void LauncherDialog::DrawVideoTab() {
       ImGui::TextColored(kDragonOrangeDim, "%s",
                          i18n::T("Experimental: mayor consumo de GPU y VRAM",
                                  "Experimental: higher GPU and VRAM usage"));
+      // La combinacion con el supersampling es la que produce el "va a 30": con
+      // la escala interna por encima de 1x el framebuffer ya es enorme y, si el
+      // frame deja de llegar al intervalo de presentacion, el vsync cae a media
+      // tasa (60 -> 30 exactos). Se dice aqui, junto a la opcion, y no solo en el
+      // log: es la causa mas habitual de un reporte de "va lento con texturas HD".
+      if (dbz3::settings::ResolutionScale() > 1) {
+        ImGui::TextColored(kDragonOrangeDim, "%s",
+                           i18n::T("Aviso: escala interna + mejora de texturas multiplican el "
+                                   "coste. Si notas tirones o el juego baja a 30, deja la escala "
+                                   "en 1x (abajo) o desactiva la mejora.",
+                                   "Note: internal scale + texture enhancement multiply the "
+                                   "cost. If you notice stutters or the game drops to 30, set "
+                                   "the scale back to 1x (below) or turn the enhancement off."));
+      }
     }
 
     bool msaa = dbz3::settings::Native2xMsaa();
@@ -2798,6 +2841,31 @@ void LauncherDialog::DrawDevTab() {
                 "Portable folder (next to the game).")
       : i18n::T("La carpeta del juego no es escribible: se usa la carpeta de usuario.",
                 "The game folder is not writable: using the per-user folder."));
+
+  ImGui::Spacing();
+  PushSectionHeader(i18n::T("Versiones", "Versions"));
+  // Coherencia de los ficheros instalados: actualizar copiando solo el exe (o
+  // solo las DLLs) encima de una carpeta vieja deja un build que no se puede
+  // identificar desde su log -- paso justo en los reportes que motivaron esto.
+  // El log lleva la linea `dbz3: entorno ...` con el sistema, la RAM y TODAS las
+  // versiones; aqui se ven en pantalla.
+  for (const auto& component : dbz3::launcher::InstalledComponents()) {
+    ImGui::TextWrapped("%s: %s", component.file_name.c_str(),
+                       component.version.empty() ? "?" : component.version.c_str());
+  }
+  {
+    const std::string mismatch = dbz3::launcher::InstalledVersionMismatch();
+    if (!mismatch.empty()) {
+      ImGui::TextColored(kDragonOrange, "%s",
+                         i18n::T("Mezcla de versiones detectada.",
+                                 "Mixed versions detected."));
+      ImGui::TextWrapped(i18n::T(
+          "Descomprime el zip completo en una carpeta nueva: mezclar el exe de una version con "
+          "las DLLs de otra produce fallos que no se pueden reproducir.",
+          "Unzip the full package into a new folder: mixing the exe of one version with the DLLs "
+          "of another causes failures that cannot be reproduced."));
+    }
+  }
 
   ImGui::EndChild();
 }

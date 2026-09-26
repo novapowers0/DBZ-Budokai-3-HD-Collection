@@ -19,6 +19,7 @@
 #include <rex/assert.h>
 #include <rex/cvar.h>
 #include <rex/dbg.h>
+#include <rex/dbz3_build.h>
 #include <rex/perf/counter.h>
 #include <rex/graphics/d3d12/command_processor.h>
 #include <rex/graphics/d3d12/graphics_system.h>
@@ -51,6 +52,17 @@ REXCVAR_DEFINE_BOOL(d3d12_readback_resolve, false, "GPU/D3D12",
 REXCVAR_DEFINE_BOOL(d3d12_submit_on_primary_buffer_end, true, "GPU/D3D12",
                     "Submit command list when PM4 primary buffer ends")
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
+
+// DBZ3: definido en src/ui/presenter.cpp (comun a los dos backends). Se lee para
+// que el aviso de rendimiento sostenido conozca el limite de presentacion real.
+REXCVAR_DECLARE(int32_t, frame_cap);
+
+// DBZ3 - build stamp de ESTA DLL (rexgpu-xenos). El launcher lo lee y lo compara
+// con su propia version para detectar instalaciones MIXTAS (copiar solo el exe o
+// solo una DLL encima de una carpeta vieja deja un build que no se puede
+// identificar desde su log). Ver rex/dbz3_build.h.
+REXCVAR_DEFINE_STRING(dbz3_gpu_build, DBZ3_RUNTIME_BUILD, "DBZ3/Dev",
+                      "Build de rexgpu-xenos (lo comprueba el launcher)");
 
 namespace rex::graphics::d3d12 {
 
@@ -1918,8 +1930,55 @@ bool Dbz3IsOurWindowForeground() {
 #endif
 }
 
+// DBZ3 - aviso de rendimiento sostenido, SIEMPRE activo (una linea por episodio,
+// como maximo 3 por sesion). El objetivo es que un log de usuario explique por si
+// solo el "va a 30 y no sube" sin tener que activar `dbz3_perf_logging` ni pedir
+// otra ronda de pruebas:
+//  * si el fps se queda por debajo de algo mas de la mitad del limite efectivo
+//    (`frame_cap`, o 60 Hz si no hay limite) durante 3 ventanas seguidas, el
+//    frame no esta llegando al intervalo de presentacion (sintoma clasico de
+//    vsync a media tasa: 60 -> 30 exactos);
+//  * si ademas hay ajustes caros activos (escala interna > 1x, MSAA o mejora de
+//    texturas) la linea dice CUALES y que tocar. Sin ellos el aviso no sale: en
+//    un equipo modesto ir por debajo de 60 es esperado, no un error.
+// Es deliberadamente independiente de las cvars de diagnostico: el log normal
+// sigue limpio y solo aparece una linea cuando hay algo que el usuario puede
+// arreglar.
+void Dbz3CheckSustainedLowFps(double fps) {
+  const bool scale_high = rex::cvar::GetFlagByName("draw_resolution_scale_x") != "1" ||
+                          rex::cvar::GetFlagByName("draw_resolution_scale_y") != "1";
+  const bool msaa = rex::cvar::GetFlagByName("native_2x_msaa") == "true";
+  const bool hd_tex = rex::cvar::GetFlagByName("dbz3_texture_upscale") != "1";
+  if (!scale_high && !msaa && !hd_tex) {
+    return;
+  }
+  int32_t cap = int32_t(REXCVAR_GET(frame_cap));
+  if (cap <= 0) {
+    cap = 60;  // el guest corre a 60 Hz: ese es el limite real de presentacion
+  }
+  static int low_windows = 0;
+  static int warnings = 0;
+  if (fps >= double(cap) * 0.55) {
+    low_windows = 0;
+    return;
+  }
+  ++low_windows;
+  if (low_windows < 3 || warnings >= 3) {
+    return;
+  }
+  ++warnings;
+  low_windows = 0;
+  REXGPU_WARN(
+      "dbz3: aviso - fps {:.1f} sostenido con limite {} (config: escala {}x{} msaa={} "
+      "mejora_texturas={}) - el frame no llega al intervalo de presentacion (vsync a media "
+      "tasa); baja la escala interna a 1x, desactiva MSAA o la mejora de texturas",
+      fps, uint32_t(cap), rex::cvar::GetFlagByName("draw_resolution_scale_x"),
+      rex::cvar::GetFlagByName("draw_resolution_scale_y"), msaa ? 1 : 0, hd_tex ? 1 : 0);
+}
+
 static void Dbz3LogGuestPerformance(uint64_t upscaled_textures, uint64_t upscale_dynamic_refills,
-                                    uint64_t texture_loads) {
+                                    uint64_t texture_loads, uint64_t vram_usage,
+                                    uint64_t vram_budget, uint32_t upscale_limit) {
   static std::chrono::steady_clock::time_point window_start;
   static std::chrono::steady_clock::time_point last_frame;
   static uint32_t frames_in_window = 0;
@@ -1961,7 +2020,7 @@ static void Dbz3LogGuestPerformance(uint64_t upscaled_textures, uint64_t upscale
     REXGPU_INFO(
         "dbz3: perf fps={:.1f} frames={} window={:.2f}s max_frame_ms={:.1f} fg={} "
         "cfg=scale:{}x{} msaa:{} hdtex:{} area:{} min:{} aniso:{} upx={} upx_dyn={} "
-        "texload={}",
+        "texload={} vram={}MB/{}MB lim={}",
         double(frames_in_window) / elapsed_s, frames_in_window, elapsed_s, max_frame_ms,
         foreground ? 1 : 0, rex::cvar::GetFlagByName("draw_resolution_scale_x"),
         rex::cvar::GetFlagByName("draw_resolution_scale_y"),
@@ -1970,8 +2029,10 @@ static void Dbz3LogGuestPerformance(uint64_t upscaled_textures, uint64_t upscale
         rex::cvar::GetFlagByName("dbz3_upscale_max_texels"),
         rex::cvar::GetFlagByName("dbz3_upscale_min_size"),
         rex::cvar::GetFlagByName("anisotropic_override"), upscaled_textures,
-        upscale_dynamic_refills, texture_loads_window);
+        upscale_dynamic_refills, texture_loads_window, vram_usage >> 20, vram_budget >> 20,
+        upscale_limit);
   }
+  Dbz3CheckSustainedLowFps(double(frames_in_window) / elapsed_s);
   window_start = now;
   frames_in_window = 0;
   max_frame_ms = 0.0;
@@ -1981,7 +2042,10 @@ void D3D12CommandProcessor::IssueSwap(uint32_t frontbuffer_ptr, uint32_t frontbu
                                       uint32_t frontbuffer_height) {
   Dbz3LogGuestPerformance(texture_cache_ ? texture_cache_->upscaled_texture_count() : 0,
                           texture_cache_ ? texture_cache_->upscale_dynamic_refill_count() : 0,
-                          texture_cache_ ? texture_cache_->texture_load_count() : 0);
+                          texture_cache_ ? texture_cache_->texture_load_count() : 0,
+                          texture_cache_ ? texture_cache_->video_memory_usage_bytes() : 0,
+                          texture_cache_ ? texture_cache_->video_memory_budget_bytes() : 0,
+                          texture_cache_ ? texture_cache_->ConsumeUpscaleLimitReason() : 0);
   SCOPE_profile_cpu_f("gpu");
   vertex_buffers_in_sync_[0] = 0;
   vertex_buffers_in_sync_[1] = 0;

@@ -8,13 +8,16 @@
 // raises BUILD by one, igual que un repack.
 // v1.2.8.2 = rendimiento del escalado de texturas (texturas dinamicas) +
 // diagnostico de rendimiento en la propia linea `perf`.
+// v1.2.9 = diagnostico pensado para que los reportes se expliquen solos
+// (avisos de fps bajo/disco lento instalacion mixta, telemetria vram/lim en
+// `perf`, comprobacion de versiones de los ficheros instalados).
 #include <windows.h>
 
 #define VERSION_MAJOR 1
 #define VERSION_MINOR 2
-#define VERSION_PATCH 8
-#define VERSION_BUILD 2
-#define DBZ3_VERSION_STR "1.2.8.2"
+#define VERSION_PATCH 9
+#define VERSION_BUILD 0
+#define DBZ3_VERSION_STR "1.2.9"
 
 VS_VERSION_INFO VERSIONINFO
 FILEVERSION VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH, VERSION_BUILD

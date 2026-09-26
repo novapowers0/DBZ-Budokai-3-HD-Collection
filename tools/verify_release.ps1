@@ -80,6 +80,34 @@ if (Test-Path -LiteralPath $rexgpu) {
     }
 }
 
+# --- sello de version del runtime (deteccion de instalaciones mixtas) -----
+# Las DLLs no llevan VERSIONINFO: publican su build por cvar (dbz3_runtime_build /
+# dbz3_gpu_build) desde rex/dbz3_build.h, y el launcher avisa al usuario cuando no
+# coincide con la del exe. Si el sello se queda atras, ese aviso salta en TODAS
+# las instalaciones nuevas: hay que subirlo junto con version.rc.
+$rc = Join-Path $root "src\version.rc"
+$buildh = Join-Path $root "rexglue-sdk-0.10\include\rex\dbz3_build.h"
+if ((Test-Path -LiteralPath $rc) -and (Test-Path -LiteralPath $buildh)) {
+    $rcVer = ([regex]::Match((Get-Content -LiteralPath $rc -Raw), 'DBZ3_VERSION_STR\s+"([^"]+)"')).Groups[1].Value
+    $hVer = ([regex]::Match((Get-Content -LiteralPath $buildh -Raw), 'DBZ3_RUNTIME_BUILD\s+"([^"]+)"')).Groups[1].Value
+    if ($rcVer -eq "" -or $hVer -eq "") {
+        $errors += "no se pudo leer la version de version.rc o el sello de dbz3_build.h"
+    } elseif ($rcVer -ne $hVer) {
+        $errors += "sello del runtime ($hVer en rex/dbz3_build.h) != src/version.rc ($rcVer)"
+    } else {
+        Write-Output "sello runtime OK: $hVer (coincide con src/version.rc)"
+    }
+    foreach ($dll in @("rexruntime.dll", "rexgpu-xenos.dll")) {
+        $p = Join-Path $Stage $dll
+        if (-not (Test-Path -LiteralPath $p)) { continue }
+        $txt = [System.Text.Encoding]::ASCII.GetString([System.IO.File]::ReadAllBytes($p))
+        $needle = if ($dll -eq "rexruntime.dll") { "Build de rexruntime" } else { "Build de rexgpu" }
+        if ($txt -notmatch $needle) {
+            $errors += "$dll no contiene el sello de version ($needle): la deteccion de instalacion mixta no lo vera"
+        }
+    }
+}
+
 # --- mods/: solo README (vanilla) ----------------------------------------
 $modsDir = Join-Path $Stage "mods"
 if (Test-Path -LiteralPath $modsDir) {

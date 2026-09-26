@@ -397,6 +397,15 @@ class D3D12TextureCache final : public TextureCache {
   mutable uint32_t upscale_recent_loads_ = 0;
   mutable uint64_t upscale_window_start_us_ = 0;
   mutable uint64_t upscale_suppress_until_us_ = 0;
+  // Motivo (0/1/2) del ultimo bloqueo del presupuesto; ver
+  // ConsumeUpscaleLimitReason (mutable porque lo escribe GetTextureUpscaleFactor,
+  // que es const).
+  mutable uint32_t upscale_limit_reason_ = 0;
+  // Cache de la consulta de VRAM (uso/presupuesto, actualizada 1/s como mucho).
+  void RefreshVideoMemory() const;
+  mutable uint64_t video_memory_usage_ = 0;
+  mutable uint64_t video_memory_budget_ = 0;
+  mutable int64_t video_memory_query_ns_ = 0;
   // Keys (canonicas) con upscale concedido. Necesario para que la respuesta de
   // GetTextureUpscaleFactor sea la misma entre la creacion del recurso y las
   // recargas (si no, el recurso Nx queda sin rellenar -> device removed).
@@ -478,6 +487,28 @@ class D3D12TextureCache final : public TextureCache {
   // desalojando y recargando) y ese es el coste real, no la GPU.
   uint64_t texture_load_count() const { return texture_load_count_; }
   mutable uint64_t texture_load_count_ = 0;
+
+  // DBZ3 - telemetria de memoria de video del segmento LOCAL (DXGI
+  // IDXGIAdapter3::QueryVideoMemoryInfo). Se consulta como mucho una vez por
+  // segundo (es barata pero no gratis) y tiene dos usos:
+  //  * la telemetria `vram=uso/presupuesto` de la linea `perf`, para que un log
+  //    de usuario diga por si solo si el problema es VRAM;
+  //  * la guardia que impide conceder NUEVOS upscales cuando el heap local se
+  //    acerca al limite: en ese punto el driver empieza a paginar y el
+  //    framerate se hunde de forma sostenida (el "va a 30 y no sube" que el
+  //    usuario reporta como error).
+  // Devuelven 0 cuando DXGI no da el dato (no soportado / adaptador WARP).
+  uint64_t video_memory_usage_bytes() const;
+  uint64_t video_memory_budget_bytes() const;
+  // Motivo por el que en la ventana actual se ha dejado de conceder upscale a
+  // texturas nuevas: 0 = ninguno, 1 = racha de recargas (video/intro), 2 = VRAM.
+  // La consume (y la resetea) la linea `perf` como `lim=`, para que un log de
+  // usuario explique por si solo por que dejo de mejorar texturas.
+  uint32_t ConsumeUpscaleLimitReason() {
+    const uint32_t reason = upscale_limit_reason_;
+    upscale_limit_reason_ = 0;
+    return reason;
+  }
 
  private:
 
