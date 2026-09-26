@@ -1,8 +1,10 @@
 # HOJA DE RUTA 2026-09 — Madurez del proyecto (post-1.1.1)
 
-> Actualizado: 2026-09-23. Estado base: **v1.2.8.1 publicada** (Latest; volcado de
-> los formatos del HUD/UI sin comprimir + packs RGBA8 + tope de versiones por
-> identidad, seguimiento del issue #11). Sobre la v1.2.8 (fix del volcado), la
+> Actualizado: 2026-09-26. Estado base: **v1.2.9 publicada** (Latest; diagnóstico
+> que se explica solo —avisos de fps sostenido, disco lento e instalación mixta,
+> `vram=`/`lim=`, guardia de VRAM, línea `entorno`—). Re-compactado `AGENTS.md` a
+> ≤60 KB (de 117 KB) el 2026-09-26, con `01_estructura/HISTORICO_RELEASES.md`.
+> Sobre la v1.2.8.2 (texturas sin hundir fps) y la v1.2.8.1 (volcado HUD/RGBA8), la
 > v1.2.7 (packs de texturas estilo PCSX2), la v1.2.6 (Mejora de
 > texturas HD pulida —sin tirones, alcance RGBA8 nativas, HUD limpio—, UX
 > anti-abuso de la escala interna y **autorreparación del TOML**), sobre la

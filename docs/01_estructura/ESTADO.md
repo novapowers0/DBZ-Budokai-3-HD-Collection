@@ -1,16 +1,8 @@
 # Estado actual del proyecto
 
-> Actualizado: 2026-09-19 (v1.2.4 EX Latest: **volumen REAL en el launcher**
-> —ganancia `audio_gain` en el runtime— + **aviso de nueva version** consultando
-> GitHub; **FXAA/dither**, **sensibilidad del raton**, **palancas de diagnostico
-> GPU** (async shaders / occlusion queries) y **datos de usuario portables**
-> —caen a `Documents/dbz3` si la carpeta del juego no es escribible—; eliminados
-> los controles muertos de gamma y de volumen por categoria).
-> Sobre la v1.2.3 (contador de FPS en partida, log AFS silenciado y Texturas HD
-> en WIP/OFF), la v1.2.2 EX (el launcher encuentra el ejecutable solo: volcado
-> retail del disco e ISO original arrancan sin renombrar nada), la v1.2.1
-> (hotfix del launcher) y la v1.2.0 (Centro de mods + Model Swap).
-> Port PS2→HD aparcado, ver §3.4.10 de AGENTS.md)
+> Actualizado: 2026-09-26 (tras la **v1.2.9 Latest**). Referencia operativa:
+> `AGENTS.md`. Detalle release a release: `01_estructura/HISTORICO_RELEASES.md`
+> §A y los docs de sesión. Port PS2→HD **aparcado** (AGENTS §3.4.10).
 
 ---
 
@@ -18,31 +10,35 @@
 
 | Cosa | Estado | Notas |
 |---|---|---|
-| **El juego arranca y se juega** | ✅ | D3D12, 60fps, mando XInput. `out\build\win-amd64-release\dbz3.exe` |
-| **Núcleo dual US+EU** | ✅ | Un solo exe detecta el xex por MD5 (US `A53E...`/EU `C37E...`). v1.1.3 "El parche de la ISO" |
+| **El juego arranca y se juega** | ✅ | D3D12 principal, 60,0 fps, núcleo dual US+EU. `out\build\win-amd64-release\dbz3.exe` |
+| **Núcleo dual US+EU** | ✅ | Un solo exe detecta el xex por MD5 (US `A53E…`/EU `C37E…`) |
 | **Auto-detección del ejecutable (v1.2.2)** | ✅ | Lo busca por **tamaño+MD5** (`DBZ3\yae3_xenon.xex`, `assets\DBZ3\`, …) y lo cachea en `user_data/dbz3/xex_cache\`. Sin renombrar nada |
-| **Volcado retail del disco** | ✅ | Raíz = menú HD Collection (3317760 B) + `DBZ3\`: monta `DBZ3\` como unidad de juego y arranca (validado 2026-09-17) |
-| **Menú HD Collection / DBZ1 detectados** | ✅ | `kHdMenu`/`kDbz1` bloquean Play con mensaje claro (antes: muerte críptica `No function registered at 820D54C8`) |
-| **Fix TOML con rutas Windows (v1.2.2)** | ✅ | `EscapeTomlStrings` idempotente: se acabó el `unknown escape sequence '\G'` que perdía los ajustes |
-| **Modo disco (ISO)** | ✅ | v1.1.3: selector de fuente siempre visible (carpeta extraída / ISO); juega directo del `.iso` sin extraer. v1.2.2 EX: extrae `DBZ3\yae3_xenon.xex` del ISO original, resuelve `DBZ3\us\...` y usa el ISO si la carpeta no arranca (validado con XDVDFS sintético) |
-| **Crash EU Dragon Universe** | ✅ | Fix `0x8215B378` aplicado (2026-09-10, para v1.1.4). Boot EU validado sin FATAL |
+| **Volcado retail del disco** | ✅ | Raíz = menú HD Collection (3317760 B) + `DBZ3\`: monta `DBZ3\` como unidad de juego y arranca |
+| **Menú HD Collection / DBZ1 detectados** | ✅ | `kHdMenu`/`kDbz1` bloquean Play con mensaje claro (`XexStatus`) |
+| **Fix TOML + autorreparación (v1.2.2 + v1.2.6)** | ✅ | `EscapeTomlStrings` idempotente + `LoadUserSettings` valida con toml++ y repara (`ConfigLoadState`); `.bak` si es irreparable |
+| **Modo disco (ISO)** | ✅ | Juega directo del `.iso` (XDVDFS) sin extraer; extrae solo el xex a `iso_cache/`; `RegionDiscDevice` remapea región y prefija `DBZ3\`; fallback carpeta→ISO. ⚠️ **Los mods NO se aplican en ISO** |
+| **Crash EU Dragon Universe** | ✅ | Fix `0x8215B378` + `fix_eu_bctr.py` (aplicar tras re-codegen) |
 | **Launcher custom** | ✅ | Tabs: Video/Upscaling/Audio/Input/Mods/Model Swap/Texturas/Dev |
-| **Mod de música** (`og_music`) | ✅ | Reemplaza ADX/SFD, funciona (override de audio por AFS) |
-| **Mod de texturas B3 HD** | ✅ | `texture_b3.py` + pestaña Texturas; override por entrada (~118KB) |
-| **Swap nativo B3→B3** | ✅ | `swap_b3.py` + pestaña Model Swap; override por entrada (~100KB) |
-| **Swaps en cualquier dirección** | ✅ | **Mid-insert virtual**: bins > o < que el slot funcionan (Goten 107006B en slot Krillin 106496B validado) |
-| **2+ mods simultáneos** | ✅ | Cada mod toca entradas distintas del mismo AFS (goten_override_test + tex_91 = OK) |
-| **Override por entrada (mecanismo)** | ✅ | `AfsFindModOverride` + tabla AFS virtual (`AfsGetVirtualTable`/`AfsTranslateOffset`) |
-| **Exportación/verificación del bin HD** | ✅ | `awo_tools/awg_to_obj_b3.py`, `awg0_export.py` y `awg_cara_export.py`; `analyze_bin_hd.py` queda obsoleto |
-| **Extracción PS2→datos** | ✅ | `parse_ps2_mesh.py` extrae vértices/IB de AMG PS2 |
+| **Mod de música** (`og_music`) | ✅ | Reemplaza ADX/SFD (override de archivo completo) |
+| **Mod de texturas B3 HD** | ✅ | `texture_b3.py` + pestaña Texturas; override por entrada (~118 KB) |
+| **Packs de texturas (v1.2.7)** | ✅ | Estilo PCSX2; volcado dev + cargador en runtime (D3D12 y Vulkan) |
+| **Swap nativo B3→B3** | ✅ | `swap_b3.py` + pestaña Model Swap; override por entrada (~100 KB) |
+| **Swaps en cualquier dirección** | ✅ | **Mid-insert virtual**: bins > o < que el slot (Goten 107006 B en slot Krillin 106496 B) |
+| **2+ mods simultáneos** | ✅ | Cada mod toca entradas distintas del mismo AFS |
+| **Mejora de texturas HD** | ✅ | `dbz3_hd_textures` x2/x3, DXT + RGBA8 nativas, mips; coste en VRAM. Off por defecto |
+| **Diagnóstico v1.2.9** | ✅ | Avisos SIEMPRE activos (fps sostenido, disco lento, instalación mixta), `vram=`/`lim=` en `perf`, línea `entorno` |
+| **Exportación/verificación del bin HD** | ✅ | `awo_tools/awg_to_obj_b3.py`, `awg0_export.py`, `awg_cara_export.py`; `analyze_bin_hd.py` obsoleto |
+| **Extracción PS2→datos** | ✅ | `parse_ps2_mesh.py` (AMG PS2) |
 
-## QUÉ NO FUNCIONA (PRIORIDAD)
+## QUÉ NO FUNCIONA / APARCADO
 
-| Cosa | Estado | Causa probable |
+| Cosa | Estado | Causa |
 |---|---|---|
-| **Port PS2→HD de personajes (Vía B)** | ⏸️ Aparcado (2026-09-13) | Geometría y draw CORRECTOS; bloqueo = `M_bind` real (el renderer no lo expone). Ver AGENTS §3.4.10 |
-| **Inyección PS2→HD (Vía A)** | ✅ Aproximada | Techo conocido: no re-topologiza (cuerpo PS2 + extremidades/cabeza HD) |
-| **Port de personajes IW→B3** | 🔴 Descartado | Janemba fracasó (formato/retargeting); archivado. Ver AGENTS §11.1 |
+| **Port PS2→HD completo (Vía B)** | ⏸️ Aparcado (2026-09-13) | Geometría y draw CORRECTOS (1 draw strip, VB+IB verbatim); bloqueo = `M_bind` real + mapeo hueso→slot (σ). Ver AGENTS §3.4.5/§3.4.10 |
+| **Inyección PS2→HD (Vía A)** | ✅ Aproximada | No re-topologiza (cuerpo PS2 + extremidades/cabeza HD); umbral binario 0.8 |
+| **Port de personajes IW→B3** | 🔴 Descartado | Janemba fracasó (formato/retargeting). No reintentar sin conversor validado |
+| **Bajones de FPS con escala>1x + texturas** | 🟡 Vigilado | Issue #8 abierto: comentado el fix de la v1.2.8.2, esperando el log `perf` del reporter |
+| **Pausa real al perder el foco** | 🔴 No viable | No hay mecanismo seguro; solo mute/dim (QoL v1.2.5) |
 
 ---
 
@@ -54,74 +50,32 @@
    excedía el slot → el guest truncaba el LZX → crash.
 3. **Padding**: el bin del mod se paddea al `to_read` del slot
    (`ceil(size/0x1000)*0x1000`, p.ej. 106496 para la entrada 327).
-4. **Off-by-one de la tabla AFS**: los scripts leían la tabla en offset 0x10,
-   el runtime en offset 8 → desfase de 1 entrada (bin N = física N+1). Corregido
-   a offset 8. Era la causa del crash de tex_91.
-5. **🔴 Mid-insert virtual (2026-08-18)**: para bins que EXCEDEN el `to_read`
-   del slot (p.ej. Goten 107006B > Krillin 106496B), el runtime presenta al
-   guest una **tabla AFS virtual consistente**: la entrada crece in-place y las
-   posteriores se desplazan (como un AFS reconstruido), y traduce las lecturas
-   al archivo físico. Antes, el intento "naive" de inflar sizes manteniendo
-   addr rompía el arranque (el guest recalcula offsets acumulando sizes).
+4. **Off-by-one de la tabla AFS**: los scripts leían la tabla en offset 0x10, el
+   runtime en offset 8 → desfase de 1 entrada (bin N = física N+1). Corregido a
+   offset 8. Era la causa del crash de tex_91.
+5. **🔴 Mid-insert virtual (2026-08-18)**: para bins que EXCEDEN el `to_read` del
+   slot, el runtime presenta al guest una **tabla AFS virtual consistente**: la
+   entrada crece in-place y las posteriores se desplazan; las lecturas se traducen
+   al archivo físico (`AfsVirtualRange`), sin materializar ficheros gigantes.
+
+> Detalle completo del pipeline de mods en `AGENTS.md` §6 y
+> `02_mods/COMO_HACER_MODS.md`.
 
 ---
 
-## ESTADO DEL JUEGO AHORA MISMO
+## NOTA HISTÓRICA: RE-CODEGEN EU (2026-09-10)
 
-- **v1.2.3 publicada** (Latest, 2026-09-18): contador de rendimiento en partida
-  (`dbz3_perf_logging`), log de overrides AFS silenciado (gateado por
-  `dbz1_diag_logging`) y **Texturas HD (WIP, OFF por defecto**: upscale en runtime
-  con mips; funciona pero da tirones). Base: v1.2.2 EX.
-- **v1.2.2 EX publicada** (no-Latest, 2026-09-17; sustituye a la v1.2.2 plana, que se retiró): **arranque garantizado** — el
-  launcher busca el ejecutable de Budokai 3 por tamaño+MD5 en la carpeta elegida
-  (y en `DBZ3\`, `assets\`, `assets\DBZ3\`), lo prepara como
-  `user_data/dbz3/xex_cache/default.xex` (sin escribir en la carpeta del usuario)
-  y monta el data root correcto; el menú de la HD Collection se detecta y se
-  bloquea con mensaje específico. Incluye el fix del `dbz3_user.toml` con rutas
-  Windows y logs de diagnóstico del xex. Ver `RELEASE_README.md`.
-- **v1.2.1 publicada** (no-Latest, 2026-09-14): crash al cerrar tras Model
-  Swap/Texturas (hilo del pipeline sin unir), etiqueta de nitidez FSR invertida,
-  refresco automático de la lista de mods. Sobre la **v1.2.0** (Centro de mods
-  renovado + Model Swap HD↔HD pulido + aviso de modo ISO + nitidez FSR/CAS
-  ajustable + limpieza de mods). Ver `RELEASE_README.md`.
-- **Fix crash EU `0x8215B378`** (para v1.1.4): Dragon Universe EU ya no crashea al
-  seleccionar personaje. Mismo tratamiento que `0x820F2398` (función plegada como
-  dead fall-through, solo alcanzable vía puntero de función). Aplicado MANUALMENTE
-  al codegen EU (4 sitios) + declarado en `dbz3_config_eu.toml` dentro de
-  `[functions]`.
-- **Runtime**: `rexruntime.dll` baseline (10.86 MB) con cvar `dbz1_diag_logging`
-  (diagnóstico F3.1). El build del juego SOBRESCRIBE la DLL instalada — verificar
-  siempre tras `cmake --build` (AGENTS §7).
+- El re-codegen EU **no es reproducible** con el config actual: el recompilador
+  genera símbolos SIN prefijo `dbz3eu_` → colisión con US en el build dual. Por
+  eso los fixes EU se aplican **MANUALMENTE** al codegen.
+- Las entradas de `dbz3_config_eu.toml` deben ir SIEMPRE dentro de `[functions]`,
+  ANTES del primer `[[switch_tables]]` (si no, se pierden en cada re-codegen).
+- El cvar `dbz1_diag_logging` vive en `rexruntime.dll`; si el build dual falla al
+  enlazar `roster_trace.cpp`, recompilar el runtime baseline y reinstalar DLL+lib.
+- Backup del codegen EU probado: `out/analysis/codegen_backup_20260909/`.
 
-## HALLAZGOS 2026-09-10 (sesión de depuración)
+## DATOS DE REFERENCIA
 
-1. **El re-codegen EU NO es reproducible con el config actual**: el recompilador
-   actual genera nombres SIN prefijo `dbz3eu_` (solo `sub_*`/`rex_*`), rompiendo
-   el build dual (colisión de símbolos con US). El codegen probado (con prefijo)
-   se generó con un rexglue.exe anterior. → **los fixes EU se aplican MANUALMENTE
-   al codegen**, no vía re-codegen.
-2. **Entradas del config EU tras `[[switch_tables]]` se ignoran**: `0x820F2398`
-   estaba declarada fuera de `[functions]` y el recompilador la perdía en cada
-   re-codegen. Regla: declarar SIEMPRE dentro de `[functions]`, antes del primer
-   `[[switch_tables]]`.
-3. **`dbz1_diag_logging` se perdió en la reinstalación del SDK**: la DLL
-   instalada en `rexglue/bin` (recompilada 2026-09-09 23:29) no tenía el cvar →
-   el build dual fallaba al enlazar `roster_trace.cpp`. Solución: recompilar
-   `rexruntime rexgpu-xenos` del baseline (`rexglue-sdk-0.10/out/
-   build-win-vulkan-baseline`) y reinstalar DLL+lib en `rexglue/`.
-4. **Backup del codegen EU probado**: `out/analysis/codegen_backup_20260909/`
-   (pre-fix). El diff de direcciones registradas confirmó que el único cambio vs
-   el re-codegen era `0x820f2398` (perdida) → el xex `yae3_xenon_eu.xex` SÍ es el
-   correcto.
-
----
-
-## DATOS DE REFERENCIA (en `%TEMP%\opencode\`)
-
-| Archivo | Contenido |
-|---|---|
-| `rt_327.bin` | Krillin visible (entrada 327 descomprimida, 682528B, 51 huesos, 18 AWGs) |
-| `goten_298.bin` | Goten (entrada 298, 666752B, 56 huesos, 21 AWGs) |
-| `b327_ps2.bin` | Krillin PS2 (#AMO0 LE) |
-| `janemba.amb` | Janemba IW→B3 PS2 (48 huesos JNB) |
-| `piccolo_hd.bin` | Piccolo B1 HD (el port que SÍ funcionó en el B1) |
+Los datos que vivían en `%TEMP%\opencode\` (b327_*.bin, cell_*.bin, …) **ya NO
+existen** (limpieza 2026-09-02): regenerar desde `us/` + `ps2_games/` con las
+herramientas de `awo_tools/` (`rt_327.bin` = Krillin entrada 327 descomprimida).

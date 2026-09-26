@@ -6,6 +6,8 @@
 > fixes del launcher, releases 1.0.x-1.1.1, limpieza de disco).
 > NO cargar por defecto: leer solo si se necesita el detalle de una sesion
 > concreta. La referencia operativa es el AGENTS.md actual.
+> Para los releases 1.1.3→1.2.9, la investigación del port PS2→B3 y el detalle
+> del launcher, ver `01_estructura/HISTORICO_RELEASES.md` (compactación 2026-09-26).
 
 ---
 # DBZ Budokai 3 HD Collection — Contexto del proyecto

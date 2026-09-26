@@ -2,7 +2,9 @@
 
 > Guía accesible para agentes y humanos. Consolidación del estado del proyecto,
 > estructura de carpetas, cómo hacer mods, formatos, herramientas y builds.
-> Actualizado: 2026-09-23 (tras la **v1.2.8.1**)
+> Actualizado: 2026-09-26 (tras la **v1.2.9**, y con la compactación de
+> `AGENTS.md` a ≤60 KB: el detalle verbatim se movió a
+> `01_estructura/HISTORICO_RELEASES.md`)
 
 ---
 
@@ -34,7 +36,8 @@
 | [07_ports/TEXTURAS_HD_RUNTIME_UPSCALE](07_ports/TEXTURAS_HD_RUNTIME_UPSCALE.md) | **Texturas HD en runtime (APARCADO)**: capa exterior D3D12, evidencia de por qué el override del bin no sirve y cómo retomarlo |
 | [01_estructura](01_estructura/ARBOL.md) | Árbol completo del proyecto, qué es cada carpeta |
 | [01_estructura/ESTADO.md](01_estructura/ESTADO.md) | Estado actual, qué funciona, qué falla |
-| [01_estructura/HISTORICO_AGENTS.md](01_estructura/HISTORICO_AGENTS.md) | Historial verbatim de sesiones (solo bajo demanda) |
+| [01_estructura/HISTORICO_AGENTS.md](01_estructura/HISTORICO_AGENTS.md) | Historial verbatim de sesiones hasta 2026-09-02 (solo bajo demanda) |
+| [01_estructura/HISTORICO_RELEASES.md](01_estructura/HISTORICO_RELEASES.md) | Detalle verbatim extraído de `AGENTS.md` en la compactación 2026-09-26: §A releases 1.1.3→1.2.9, §B investigación del port PS2→B3, §C launcher (solo bajo demanda) |
 | [02_mods](02_mods/COMO_HACER_MODS.md) | Pipeline de mods (override por entrada) |
 | [02_mods/MODEL_SWAP.md](02_mods/MODEL_SWAP.md) | Investigación de model swap (lo que sabemos/falla) |
 | [02_mods/TEXTURAS_MOD.md](02_mods/TEXTURAS_MOD.md) | **Pestaña Texturas del launcher** (extraer/editar/reconstruir) |
@@ -71,4 +74,4 @@
 3. **Mods**: el runtime tiene un hook (`AfsFindModOverride`) que sirve archivos por entrada del AFS sin reempaquetar.
 4. **Compresión**: los bins del AFS van comprimidos LZX `/N:2048` (NO `/N:32`).
 5. **Tamaño slot**: cada entrada del AFS tiene un tamaño fijo; el bin del mod debe caber (padded al slot) o usar mid-insert virtual.
-6. **Contexto operativo**: `AGENTS.md` es la referencia operativa compactada; el detalle histórico está en `01_estructura/HISTORICO_AGENTS.md`.
+6. **Contexto operativo**: `AGENTS.md` es la referencia operativa compactada; el detalle histórico está en `01_estructura/HISTORICO_AGENTS.md` (hasta 2026-09-02) y `01_estructura/HISTORICO_RELEASES.md` (releases, port y launcher).
