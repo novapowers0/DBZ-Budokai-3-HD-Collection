@@ -1,4 +1,4 @@
-﻿# DBZ Budokai 3 HD Collection — Contexto del proyecto (operativo)
+# DBZ Budokai 3 HD Collection — Contexto del proyecto (operativo)
 
 > Documento de contexto para agentes/AI. **Versión compactada 2026-09-02**
 > (236 KB → ~60 KB). El relato detallado de todas las sesiones vive VERBATIM
@@ -140,7 +140,7 @@ lógica de región/mods, y runtime.
 
 ## 3. ESTADO ACTUAL (RESUMEN EJECUTIVO)
 
-- **(2026-09-26) v1.2.9 EN ARBOL (pendiente de publicar)**: **diagnostico que se
+- **(2026-09-26) v1.2.9 PUBLICADA (Latest)**: **diagnostico que se
   explica solo**, a raiz de los ultimos logs de SSGPrinceVegeta (parte 4: **cero
   errores**, pero tres cosas invisibles en el log): (1) **instalacion mixta no
   detectable** (carpeta `...v1.2.1` con DLLs nuevas: se perdio una ronda entera
