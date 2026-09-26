@@ -2729,3 +2729,578 @@ Ver **`docs/HOJA_DE_RUTA_2026_09.md`** — 3 fases:
   Barrido de `__pycache__`/`*.pyc`/`.tmp`/`.bak`. **Sigue pendiente de decidir**:
   `modding resources` (2.2 GB) y `modding resources discord` (0.86 GB).
 - El usuario habla español. Sesiones largas de juego.
+---
+
+## E. RELEASE_README - changelog verbatim (v1.0.5 -> v1.2.8.2)
+
+> Copia verbatim del bloque `Novedades de esta release` + `Historial de
+> versiones` de `github/RELEASE_README.md` previo a su compactacion
+> (2026-09-26). Se conserva el detalle por version; la version compacta
+> (instalacion + notas de la ultima release + tabla de historial) es la que
+> se empaqueta con el juego. NO cargar por defecto.
+
+## Novedades de esta release
+
+### v1.2.8.2 - La mejora de texturas deja de hundir los FPS (2026-09-24)
+
+Seguimiento de los reportes de **bajones de FPS con la "Mejora de texturas"
+activada**. Lo primero fue descartar lo evidente: en un equipo de prueba con
+**exactamente la misma configuración** (escala interna 3x + MSAA + texturas HD
+3x + área 1M) el juego se mantiene a **60,0 FPS**, así que no era "la GPU no
+puede" — el reparto del trabajo era el problema.
+
+- **Causa**: cada vez que una textura se vuelve a subir, el feature regenera su
+  **cadena de mips completa** (12 niveles para una textura 4K). Hay texturas que
+  el juego **reescribe en cada fotograma** (el vídeo de la intro, los render
+  targets de efectos): regenerar 12 niveles **en serie** por fotograma cuesta
+  tiempo de **comandos/CPU**, no de GPU — por eso **una tarjeta más potente no
+  ayuda** y no se ve en el uso de GPU. En los logs del reporter se veía el
+  contador `upx` subiendo a ~665 (**~1 textura re-escalada por fotograma**)
+  mientras los FPS caían a 31.
+- **Arreglo**: una textura que se re-escala muchas veces en poco tiempo (o que
+  se recarga solo en su nivel 0) se marca como **dinámica** y a partir de ahí se
+  **regenera solo el nivel 0**: la imagen que se ve es exacta (los mips solo
+  afectan a la minificación, y se conservan). Las texturas normales (estáticas)
+  siguen escalándose **con toda su cadena de mips**, igual que antes.
+- **Diagnóstico en la propia línea `perf`**: ahora incluye los ajustes activos
+  (`cfg=scale:3x3 msaa:true hdtex:3 area:1048576 min:16 aniso:5`) y contadores
+  (`upx=`, `upx_dyn=`, `texload=`). Con esto **un solo log dice qué tienes
+  configurado y si el juego está re-escalando texturas dinámicas**, sin pedir
+  más datos.
+- **Qué NO cambia**: la calidad de las texturas estáticas, los packs de texturas,
+  el volcado y todo lo de la v1.2.8.1.
+
+Si tu equipo va lento con la mejora de texturas activada: actualiza, activa
+**"Registro de rendimiento (cada 5 s)"** en la pestaña **Dev**, juega hasta el
+punto donde va lento y adjunta el `dbz3_NNN.log` más reciente (la línea `perf`
+ya trae la configuración y los contadores).
+
+### v1.2.8.1 - El volcado cubre el HUD y los packs aceptan RGBA8 (2026-09-23)
+
+Seguimiento del issue #11. Al probar la v1.2.8, el reporter confirmó que ya
+volcaba y añadió dos cosas: **faltaban casi todas las texturas del HUD** (solo
+salían algunos fonts) y **algunas salían como un cuadrado negro**.
+
+- **El volcado ahora cubre los formatos sin comprimir** (RGBA8, RGB565, RGB5A1,
+  RGB655, RGBA4, L8, L8A8, RGBA1010102). Antes solo se volcaban las **DXT**, así
+  que todo el HUD/UI (que usa formatos sin comprimir) se omitía **en silencio**.
+  Medido en la intro: **51 → 194 ficheros** (96 DXT3 + **26 RGBA8** + 72 L8).
+- **Los formatos no soportados ahora avisan** una vez en el log
+  (`dbz3: volcado: formato k_24_8 (fmt=22) no soportado, texturas omitidas`).
+- **Los packs aceptan texturas RGBA8** (las del HUD): antes solo valían las DXT.
+  Validado: `pack '...' reemplaza 128x1024 (fmt 6) -> 128x1024 (x1)` y
+  `subido 128x1024 (11 niveles)`. Los formatos de 8/16 bits se vuelcan como
+  referencia, pero su pack **todavía no** se aplica (siguiente paso).
+- **Tope de 4 versiones por textura**: la textura de vídeo de la intro se
+  volcaba **fotograma a fotograma** (4096 ficheros / **1,4 GB** en 5 min). Ahora
+  se corta con un aviso en el log: **194 ficheros / 51 MB** en la misma prueba.
+- **Los "cuadrados negros" no son un fallo**: son texturas DXT3 cuyo canal alpha
+  está **todo a cero** (el juego dibuja esas texturas ignorando su alpha, pero un
+  visor las muestra transparentes). El DDS es el dato exacto del juego; el
+  importador gana **`--opaque-alpha`** para verlas y usarlas.
+- Incluye todo lo de la v1.2.8 (fix del volcado), la v1.2.7 (packs de texturas en
+  D3D12 y Vulkan) y la v1.2.6.
+
+### v1.2.8 - El volcado de texturas ya funciona (2026-09-21)
+
+- **Arreglado el volcado de texturas (dev)**: al activarlo en el tab
+  **Desarrollo**, elegir una carpeta y jugar, las texturas se escriben de verdad
+  (antes **no se volcaba nada**: la carpeta elegida no llegaba al motor grafico,
+  asi que el volcado se quedaba desactivado en silencio). Es el punto de partida
+  para crear tus propios **packs de texturas**.
+- **Log limpio**: desaparecen los avisos `duplicate registration` de
+  `dbz3_texture_dump` y `dbz3_texture_packs` que salian en cada arranque.
+- Incluye todo lo de la v1.2.7 (packs de texturas estilo PCSX2 en D3D12 y
+  Vulkan) y de la v1.2.6.
+
+### v1.2.7 - Packs de texturas (estilo PCSX2) (2026-09-21)
+
+- **Packs de texturas**: puedes sustituir las texturas del juego por las tuyas
+  (por ejemplo, reescaladas con IA) **sin tocar los ficheros del juego ni su
+  memoria**. Un pack es una **carpeta dentro de `mods/`** con ficheros
+  `<hash>_<Ancho>x<Alto>_<sufijo>.dds` (o `.png`). El launcher los detecta y el
+  juego los aplica al vuelo; el **factor (x1..x4) se deduce del tamano**, no hay
+  que escribir ningun manifiesto.
+- **Formatos admitidos**: DDS (DXT1/BC1, DXT3/BC2, DXT5/BC3 y 32 bpp sin
+  comprimir) y PNG. Los mipmaps se generan solos (box filter).
+- **Funciona en los dos backends**: D3D12 y Vulkan (el mismo pack vale para
+  ambos).
+- **Tienen prioridad sobre la mejora de texturas HD** experimental; no se
+  combinan. Si algo no cuadra, el juego ignora ese fichero con un aviso en el
+  log en vez de fallar.
+- **Como crear un pack**: activa el **volcado de texturas** en el tab
+  Desarrollo, juega un rato y tendras las texturas en DDS. El helper
+  `mod center hd/texture_dump_import.py` las convierte a PNG y las organiza por
+  personaje; luego las reescalas y las guardas con el nombre del pack.
+  `mod center hd/texture_pack.py` valida y lista tus packs. Guia completa en
+  `docs/02_mods/PACKS_DE_TEXTURAS.md`.
+- Recuerda que los packs (como el resto de mods) necesitan jugar desde
+  **carpeta extraida**; en modo disco (ISO) no se aplican.
+
+### v1.2.6 - Mejora de texturas HD pulida + ajustes que se autoreparan (2026-09-20)
+
+- **Mejora de texturas (experimental) realmente usable**: se corrigio el
+  **tiron** que daba al activarla (el calculo de los mipmaps recorria bloques
+  enormes; ahora es de tiempo constante, sin tirones) y ademas escala **las
+  texturas grandes** (caras, ropa, escenarios), no solo las pequenas. Pasa a
+  llamarse "Mejora de texturas (experimental)" con **Nitidas (x2)** y **Muy
+  nitidas (x3)**; el ajuste avanzado de area se movio al tab Desarrollo.
+- **Interfaz limpia**: los "cuadritos" de la barra de vida ya no salen
+  emborronados. Se anadio un **tamano minimo** (las texturas diminutas de la
+  interfaz no se escalan) y un **recorte anti-ringing** en el filtro.
+- **La escala interna avisa de su coste**: al subir la escala de render
+  (2x/3x/4x, supersampling real) aparece un **aviso** y un boton **"Volver a
+  nativo (1x)"** de un clic. Los **presets de calidad ya no suben la escala**
+  (ninguno); 1x es el valor por defecto y recomendado. El consumo alto esta en
+  la escala, **no** en las texturas.
+- **Si el archivo de ajustes se dana, ya no pierdes la configuracion**: al
+  arrancar se valida el `dbz3_user.toml`; si estaba mal (por ejemplo, una ruta
+  de Windows guardada sin escapar que rompia el fichero entero), se **repara
+  solo** y avisa en verde; si no se puede reparar, se conserva una copia
+  `dbz3_user.toml.bak` y avisa en rojo.
+
+### v1.2.5 - Menos trabajo por lectura + que hacer al salir de la ventana (2026-09-19)
+
+- **Al salir de la ventana** (nuevo, al principio del tab Video): **silenciar el
+  audio** y **oscurecer la pantalla** mientras el juego esta detras. El juego
+  sigue en marcha (no es una pausa); al volver, el sonido y la imagen se
+  restauran solos. Es el comportamiento habitual en emuladores
+  (Dolphin/RetroArch/PCSX2) y evita molestar con el opening o la musica.
+- **Diagnostico de disco**: `dbz3_io_logging` escribe cada 5 s un resumen de las
+  lecturas (`dbz3: io reads=… mb=… p95_us=… p99_us=… max_us=… slow=…`) y una
+  linea por lectura lenta. Es la forma de ver si un tiron viene del disco o de
+  otra cosa, en lugar de suposiciones.
+- **Record de foco en el contador de rendimiento**: la linea `perf` incluye
+  `fg=`. Windows limita a la MITAD la presentacion de una ventana **visible sin
+  foco** (60 -> 30 exacto): asi un log con `fg=0` se lee como "el jugador hizo
+  alt-tab", no como "el juego va lento".
+- **Menos trabajo por lectura** (sin mods instalados): se elimino el trabajo que
+  se hacia en cada lectura AFS aunque no hubiera mods (busqueda de overrides y
+  copia completa de la tabla del contenedor), y se añadio **lectura
+  anticipada** (`dbz3_io_readahead`) para discos mecanicos: lee un bloque mayor
+  de una vez y sirve las lecturas siguientes de memoria. En SSD no se nota.
+- **Traducciones**: 2 mensajes que salian en ingles en italiano/aleman/frances
+  (deteccion del ejecutable y aviso del menu HD) y el nivel de GPU ("Alta"/
+  "Media"/"Baja") y los tipos de mod, ya traducidos.
+
+### v1.2.4 EX - Knobs de GPU + datos de usuario portables (2026-09-19)
+
+> Sustituye a la v1.2.4 (mismo contenido + lo de abajo).
+
+- **FXAA** (Escalado): suavizado de bordes barato que se combina con FSR/CAS.
+- **Dither** (Escalado): menos bandas en los degradados.
+- **Sensibilidad del raton** (Controles): control real del stick derecho.
+- **Palancas de diagnostico GPU** (Desarrollo): compilar shaders en segundo plano
+  y consultas de oclusion del juego (para aislar tirones/esperas sin recompilar).
+- **Datos de usuario portables de verdad**: si la carpeta del juego no es
+  escribible, ajustes y guardado pasan a `Documents/dbz3` en vez de fallar en
+  silencio (el tab Desarrollo muestra la ruta).
+- **Aviso de version mas claro**: la version instalada siempre en la cabecera,
+  boton para reconsultar y aviso que entiende los repacks (`-EX`).
+- Incluye la v1.2.4: volumen real en el launcher, aviso de nueva version desde
+  GitHub, eliminacion de los controles muertos (gamma y volumen por categoria).
+
+### v1.2.4 - Volumen real + aviso de actualizacion (2026-09-19)
+
+- **Volumen real en el launcher**: el slider "Volumen general" y el interruptor
+  "Silenciar todo el audio" ahora funcionan de verdad (antes escribian una
+  variable que el runtime no reconocia). El runtime incorpora la ganancia de
+  salida (`audio_gain`) aplicada en el callback de audio.
+- **Aviso de nueva version**: al abrir el launcher se consulta la ultima release
+  de GitHub y, si hay una mas nueva, aparece "Nueva version disponible: vX" con
+  boton de descarga (nunca bloquea PLAY; desactivable en la pestana Dev).
+- **Controles muertos eliminados**: sliders de Gamma y de musica/SFX/voces
+  (no aplicables: el juego mezcla todo en una sola pista). "Restablecer valores"
+  ahora restaura tambien VRR y Texturas HD.
+
+### v1.2.3 - Rendimiento medible + logs limpios (2026-09-18)
+
+- **Contador de rendimiento en partida**: cvar `dbz3_perf_logging` (por defecto ON)
+  escribe una linea cada 5 s en el log con los FPS reales del juego y el peor frame
+  del intervalo (`dbz3: perf fps=... max_frame_ms=...`), medidos en el swap del guest
+  (funciona tambien sin ventana visible).
+- **Log de overrides AFS silenciado**: deja de escribir 2 lineas con la ruta completa
+  en CADA lectura del AFS (miles de lineas por sesion). El detalle se recupera con
+  `dbz1_diag_logging` (pestana Dev).
+- **Texturas HD (WIP, OFF por defecto)**: filtro interno tipo emulador que reescala
+  las texturas del juego en runtime (x2/x3/x4), sin tocar sus ficheros ni su memoria
+  (genera tambien la cadena de mips). Funciona y se nota en la intro, pero provoca
+  tirones al cargar texturas nuevas, por eso queda como experimental y **desactivado
+  por defecto**. Se elige en Video -> "Texturas HD (WIP)".
+- Base: v1.2.2 EX (auto-deteccion del ejecutable + fixes del modo ISO).
+
+### v1.2.2 EX — Arranque garantizado: el launcher encuentra el ejecutable solo (2026-09-17)
+
+- **Ya no hay que renombrar ni colocar nada de una manera concreta**: el launcher
+  busca el ejecutable de Budokai 3 por **tamaño + checksum** (se llame como se
+  llame: `yae3_xenon.xex`, `yae3_xenon_eu.xex`, …) en la carpeta que elijas y en
+  las ubicaciones típicas (`DBZ3\`, `assets\`, `assets\DBZ3\`). Lo prepara él
+  solo en una caché interna (`user_data\xex_cache\`), **sin escribir nada en tu
+  carpeta de juego**.
+- **Arreglado el caso «pulso Play y no pasa nada»** (volcado del disco original
+  sin reorganizar): antes se arrancaba el **menú de la HD Collection** de la raíz
+  del disco, que no está en el núcleo de Budokai 3, y el juego moría con un error
+  críptico (`No function registered`). Ahora se usa el ejecutable correcto y se
+  monta la carpeta `DBZ3\` como unidad del juego, así que los datos (`DBZ3\us\`)
+  se cargan bien.
+- **Modo disco (ISO) con el ISO original completo, validado**: se extrae el
+  ejecutable de Budokai 3 de dentro del disco (no el menú) y los datos se
+  resuelven bajo `DBZ3\` automáticamente. Se corrigió además un fallo de
+  normalización de rutas que impedía leer los datos desde el disco aun con el
+  ejecutable correcto. Los ISOs ya repackados siguen funcionando igual.
+- **Fallback al ISO**: si tu carpeta tiene los datos (`us\`) pero el ejecutable
+  es el menú de la colección (volcado del disco tal cual), el launcher **usa el
+  `.iso` que tengas junto a `dbz3.exe`** y arranca, en vez de bloquearse.
+- **Mensajes claros**: si pones el menú de la HD Collection, el launcher lo
+  detecta y lo explica; si pones un ejecutable de DBZ1, te remite a su launcher;
+  un ejecutable desconocido (dump modificado) avisa pero deja jugar.
+- **Arreglado un fallo de configuración**: con `\` en la ruta de la carpeta o del
+  ISO, el `dbz3_user.toml` se guardaba mal (`unknown escape sequence`) y se
+  perdían los ajustes en cada arranque. Ahora se escapa correctamente.
+- **Log de diagnóstico del arranque**: ruta del ejecutable, tamaño, checksum,
+  estado, carpeta de datos y avisos.
+
+### v1.2.1 — Hotfix del launcher (2026-09-14)
+
+- **Crash al cerrar el launcher tras usar Model Swap o Texturas**: el hilo del
+  pipeline Python quedaba sin unir y, al destruir el launcher (pulsar PLAY o
+  cerrar), se llamaba a `std::terminate()`. Ahora se une correctamente al cerrar.
+- **Etiqueta de nitidez de FSR corregida**: indicaba la escala al revés (0 = más
+  nítido, 2 = más suave).
+- **La lista de mods se refresca sola** al terminar un swap/textura (el mod nuevo
+  aparece sin pulsar "Refrescar"); el botón "Restablecer valores" la invalida.
+- **Robustez**: la carpeta de texturas se lee sin excepciones.
+
+### v1.2.0 — Centro de mods renovado + Model Swap HD↔HD pulido (2026-09-14)
+
+- **Centro de mods renovado (QoL + visual)**: lista **cacheada** (ya no re-escanea
+  el disco en cada frame), **buscador** (por nombre, autor, origen o tipo),
+  botones **Activar todos / Desactivar todos / Refrescar / Abrir carpeta**,
+  **badges de tipo con color**, filas alternas y estado vacío claro.
+- **Model Swap B3 HD↔HD pulido**: desplegables de personaje **con buscador**
+  (183 personajes, con `[bin N]` y aviso `[NO JUGABLE]`), **tarjeta de vista
+  previa** origen→destino, aviso y bloqueo si origen==destino. El mod generado
+  ahora se llama con los **nombres del catálogo** (p. ej. «Cell Forma 2 en
+  Krillin») y se activa solo.
+- **Nitidez ajustable en Escalado**: sliders para la **nitidez RCAS** de FSR y
+  la **nitidez adicional** de CAS (antes estaban cableados pero ocultos).
+- **Modo disco (ISO)**: aviso ámbar explícito en las pestañas Mods y Model Swap
+  (los mods **no** se aplican jugando del `.iso`); el botón de swap se
+  deshabilita en ese modo.
+- **Limpieza**: los 83 mods de prueba se archivaron (fuera del release). El
+  release se entrega con `mods/` **vacía** (solo README).
+- **Documentación**: nuevo análisis de escalado (**FSR3/DLSS**: el upscaler
+  temporal y el frame generation **no** son viables a corto plazo sin exportar
+  depth/motion del renderer; FSR1/CAS sí) y de rendimiento.
+
+> Rendimiento: se revisaron los reportes de la comunidad. El problema duro
+> (frame cap que no fijaba 60) está resuelto; el resto son equipos modestos
+> (usa los **presets** de calidad por GPU) o el backend Vulkan (experimental).
+> Con FSR1 + escala interna 2x-3x se ve bien en 1080p+.
+
+### v1.1.4 EX — Hotfix: crash al empezar pelea (EU) + detección de xex (2026-09-10)
+
+- **Fix del crash al empezar CUALQUIER pelea (EU)**: el re-codegen de la v1.1.4
+  había vuelto a clasificar como "jump table" de un solo caso dos `bctr` que en
+  realidad despachan por tabla de punteros de función
+  (`sub_820F2370` y `sub_820BB8C8`). El caso 0 era válido, pero cualquier otro
+  puntero caía en `__builtin_trap()` → excepción `0xC000001D` (`ctr=0x820F24D8`)
+  al iniciar combate, en todos los modos. Corregido en el codegen EU y **blindado
+  el fixer** (`tools/fix_eu_bctr.py`), que fallaba en silencio con el prefijo de
+  símbolo nuevo (`dbz3eu_sub_*`). **Re-ejecutar SIEMPRE tras re-codegen.**
+- **Detección de xex por entry point (fallback)**: si el `default.xex` no coincide
+  con el MD5 retail (dump modificado, otra tirada, imagen recomprimida) el
+  núcleo dual caía al config US y arrancaba un ejecutable EU con código US →
+  `No function registered at <addr>` al primer hilo. Ahora se lee el entry point
+  del XEX (`0x8221DDB0`=US, `0x8221C570`=EU) cuando el MD5 es desconocido, de
+  modo que una copia válida de la variante correcta se detecta igual.
+- **Caché del xex en modo ISO invalidado al cambiar de disco**: el `default.xex`
+  extraído del ISO se cacheaba por nombre fijo y NUNCA se regeneraba; al cambiar
+  de ISO (p. ej. US→EU) se reutilizaba el xex viejo y se elegía la región/core
+  equivocada. Ahora se guarda la identidad del disco de origen (ruta+ tamaño+
+  fecha) y se re-extrae cuando cambia.
+
+### v1.1.4 — Fix del crash en Dragon Universe (EU) + thunks preventivos (2026-09-10)
+
+- **Fix del crash en Dragon Universe (EU)**: la función `0x8215B378` del núcleo
+  EU no estaba registrada (el recompilador la había plegado como dead
+  fall-through dentro de `sub_8215B368`, solo alcanzable vía puntero de
+  función). Al seleccionar personaje en Dragon Universe, el despacho indirecto
+  por vtable (`caller_lr=0x8209F390`) llegaba a una dirección no registrada →
+  crash `UNREGISTERED indirect call`. Registrada como `dbz3eu_sub_8215B378`
+  (11792 funciones EU, +1). Mismo tratamiento que `sub_820F2398` (v1.1.2).
+- **15 thunks preventivos registrados (EU)**: se analizaron las tablas de
+  punteros de función del xex EU y se encontraron 15 **adjustor thunks de C++**
+  (`addi r3,r3,-4; b target`) que el guest llama vía tablas de despacho y que
+  tampoco estaban registrados — el mismo patrón que causaba el crash. Registrados
+  todos (`0x82290EE0`, `0x82290F00`, `0x822A6040`, etc.; 11807 funciones EU
+  totales). Esto previene futuros `UNREGISTERED indirect call` en menús que
+  usen esas tablas.
+- **Regla del codegen EU corregida**: las entradas de `dbz3_config_eu.toml`
+  deben ir SIEMPRE dentro de `[functions]` (antes de `[[switch_tables]]`); una
+  entrada mal ubicada se pierde silenciosamente en cada re-codegen (era la causa
+  de que `0x820F2398` reapareciera). Verificado: re-codegen + prefijo produce el
+  codegen probado + los thunks (0 funciones perdidas).
+
+### v1.1.3 — El parche de la ISO (2026-09-09)
+
+- **Selector de fuente siempre visible**: dos botones destacados en el launcher
+  ("Carpeta extraida" / "ISO (.iso)") para elegir el origen de los datos en
+  CUALQUIER momento, no solo cuando faltan assets. El activo se resalta y
+  conmutar elige el modo al instante (persiste entre sesiones).
+- **Detección del juego equivocado**: si pones el `default.xex` de *DBZ Budokai
+  HD Collection* (DBZ1, proyecto hermano) por error, el launcher lo reconoce
+  por su MD5 y bloquea Play con el mensaje "usa el launcher dbz1.exe" — antes
+  el core de DBZ3 crasheaba con un xex de otro juego.
+- **Traducción completa auditada**: se extrajeron y verificaron TODAS las
+  cadenas del launcher (ES/EN/IT/DE/FR). Correcciones: la clave del botón
+  "ISO (.iso)" no tenía entrada y un tooltip de FPS caía a inglés por una
+  tilde mal escrita. Resultado: 0 cadenas sin traducir, 0 huérfanas, 0
+  sospechosas; verificado con un test que compila la tabla real.
+- **Preparado para usuarios no técnicos**: mensajes accionables sin jerga,
+  sugerencias al elegir la carpeta equivocada ("¿elegiste `us/`? elige la
+  carpeta que la CONTIENE"), tooltips en el selector, y notas claras cuando el
+  modo disco no admite mods.
+- **Pulido de código**: `-Wall -Wextra` en todo el launcher con 0 warnings;
+  eliminados 4 campos y 1 constante sin uso. El empaquetador de release ahora
+  rechaza residuos de ejecución (`user_data/`, `logs/`, `iso_cache/`,
+  `dbz3_user.toml`) en el ZIP.
+
+### v1.1.2 — Depurado de issues de la comunidad + modo disco (2026-09-09)
+
+- **Fix del crash en Dragon Universe / menú de pausa (EU)**: la función
+  `sub_820F2398` del núcleo EU no estaba registrada (el recompilador la había
+  plegado como código muerto dentro de `sub_820F2370`; solo es alcanzable vía
+  la tabla de punteros de evento/combate `0x8201E348`). Ahora está extraída y
+  registrada como `dbz3eu_sub_820F2398`. Cierra el crash
+  `UNREGISTERED indirect call: target=0x820F2398` al seleccionar personaje en
+  Dragon Universe o pulsar START durante una pelea.
+- **Fix de regiones incompletas (solo `eu/` o solo `us/`)**: el launcher ahora
+  resuelve la región efectiva con `ResolveRegion()` — si la carpeta de la
+  región seleccionada no existe, cae automáticamente a la que sí está. Funciona
+  out-of-the-box con datos solo EU o solo US.
+- **Fix del selector de backend (Vulkan)**: el launcher enviaba su elección a
+  un cvar `gpu_backend` que **no existía** en el SDK 0.10 → D3D12 siempre.
+  Añadido el cvar en `rex_app.cpp` (SDK) y conectado a `LoadGpuPlugin`.
+  Seleccionar **Vulkan** ahora pide de verdad el backend Vulkan (verificado en
+  la DLL publicada).
+- **Modo disco (ISO)**: juega directamente desde el `.iso` sin extraer nada.
+  El launcher detecta el disco, extrae solo el `default.xex` (unos pocos MB) y
+  monta el resto desde la imagen. Mods requieren la carpeta extraída.
+- **Pulido de código**: builds sin warnings, limpieza de traces temporales de
+  depuración, y fix de display (el resumen del footer muestra "Japanese" cuando
+  se elige japonés).
+
+### v1.1.1 — Depurado + bases para Linux (2026-08-28)
+
+- **Sin datos del juego ya no hay crash**: si falta `default.xex`, el juego te
+  avisa con un mensaje claro de cómo colocar tus archivos (en vez de abrir la
+  ventana y morir con un cierre raro).
+- **Diagnóstico de arranque**: el log registra cuántos milisegundos tarda cada
+  fase de arranque (si el launcher tarda en aparecer, el log dice dónde).
+- **El MD5 del `default.xex` ya no usa CryptoAPI de Windows** (implementación
+  portable) — primer paso del port a Linux, sin cambios de comportamiento.
+- **Bases de Linux**: el launcher ya compila conceptualmente en Linux
+  (detección de GPU, diálogos y lanzamiento de scripts protegidos por
+  plataforma; en Windows nada cambia). Ver `docs/PLAN_LINUX.md`.
+- **Proceso interno**: sincronización automática del repo (`sync_github.ps1`)
+  y verificación del paquete antes de publicar (`verify_release.ps1`).
+
+### v1.1.0 — Un solo ejecutable universal (2026-08-28)
+
+- **Un único `dbz3.exe` para todo el mundo**: se eliminó el arrancador de
+  variantes y las carpetas `dbz3_avx2\` / `dbz3_legacy\`. El runtime se
+  compila ahora en ISA **baseline universal** (SSSE3) → el mismo paquete
+  funciona en CUALQUIER CPU x64 (Core 2 de 2006 en adelante), sin elegir nada.
+- **Adiós a los 0xC000001D de CPUs antiguas**: antes había que lanzar la
+  variante "compatible"; ahora no hay variantes. Un solo archivo, una sola
+  carpeta, un solo doble clic.
+- **Adiós al falso positivo de antivirus**: ya NO se comprime el ejecutable con
+  UPX (patrón típico de malware). Paquete más grande, cero sustos.
+- Se mantienen todos los fixes de la v1.0.10 (Duelo/Start, botón PLAY con el
+  ratón, EU/PAL, GPU dedicada en portátiles).
+
+### v1.0.9 — Blindaje del pacing del guest (V-Sync) + centro de mods
+
+- **Bug cerrado: "el juego va super rápido al desactivar el V-Sync"**. La causa
+  era el worker de vblank del guest: con el cvar `vsync` OFF el vblank caía a
+  ~1000 Hz y la lógica corría ~16x. Ahora el SDK **clampa el intervalo** en
+  `graphics_system.cpp` (parche #13): el vblank del guest nunca puede ser más
+  corto que un frame de 60 Hz, sea cual sea el estado del cvar → `vsync=false`
+  es un no-op y el juego siempre corre a su velocidad. Se distribuye en
+  `rexgpu-xenos.dll` (avx2 + legacy).
+- **Centro de mods (pestaña Mods)**:
+  - **Instalar mod desde un `.zip`**: botón "Instalar mod (.zip)..." → diálogo
+    nativo, descomprime (PowerShell nativo, sin ventana) y normaliza el layout
+    a `mods/<nombre>/`.
+  - **Perfiles de mods**: combo para guardar/aplicar/borrar conjuntos de mods
+    activos de una vez; "vanilla" desactiva todos (juego original).
+  - **Abrir carpeta** por mod desde la lista.
+
+### v1.0.8 — Nombres unificados + documentación bilingüe
+
+- **`dbz3_core.exe` ahora es `dbz3.exe`**: el ejecutable dentro de `dbz3_avx2\`
+  y `dbz3_legacy\` se llama igual que el lanzador de la raíz. Solo ejecutas el
+  `dbz3.exe` de la raíz; el de dentro de la variante lo abre él solo.
+- **README bilingüe**: el repositorio tiene `README.md` (español) y
+  `README_EN.md` (inglés), con enlaces entre ambos.
+- **Documentación del paquete pulida**: `README_PRIMER_ARRANQUE.txt` aclara los
+  dos `dbz3.exe` para una primera instalación sin sorpresas.
+
+### v1.0.7 — Fix del crash de la demo battle EU + núcleo dual + tamaño reducido
+
+- **Arreglado el cierre al reproducirse la DEMO** (el modo "attract" que salta
+  si dejas el menú "Press start" sin pulsar nada: al llegar a la batalla 3D el
+  juego crasheaba con `0xC000001D` o *"Call to invalid or unregistered
+  function"* en la variante EU/PAL). Causas: tres clasificaciones erróneas del
+  recompilador sobre el código EU (punteros de función tratados como jump
+  tables de un solo caso → instrucción UD2) y una función de tabla virtual que
+  no se había compilado. Todo registrado con sus tamaños exactos y validado en
+  la batalla DEMO completa.
+- **Núcleo dual**: antes el paquete llevaba dos núcleos separados (US/NA y
+  EU/PAL). Ahora `dbz3.exe` (el de cada carpeta de variante) es UN solo binario
+  que contiene AMBAS recompilaciones y elige la correcta según el `default.xex`
+  que pongas. Esto simplifica el paquete (2 variantes de CPU en vez de 4).
+- **Más ligero**: el núcleo dual comprimido pasa de ~33,9 MB a ~7 MB por
+  variante (UPX -9, verificado sin amenazas por Windows Defender).
+- **Arranque fiable verificado**: al abrir el paquete sin tocar nada, se
+  muestra el launcher con sus opciones y el juego NO arranca hasta pulsar Play
+  (el `default.xex` se detecta solo; la región y el idioma se eligen en el
+  launcher).
+- **Diagnóstico reforzado**: en cada indirect call no registrado se registra el
+  target, el `caller_lr` del guest y los registros r3/r4/r11; el crash handler
+  vuelca el contexto y los registros guest — todo solo se loguea en un crash.
+
+### v1.0.6 — Fix del cierre en la intro (0xC0000409 / función no registrada)
+
+- **Arreglado el cierre al llegar a la intro del juego** que reportaban varios
+  usuarios con `0xC0000409` y, en los logs, el mensaje *"Call to invalid or
+  unregistered function at guest address 0x82292A58"*. Era una **función de
+  despacho de tabla virtual** (thunk de vtable, offset +0x14) a la que el
+  ejecutable EU/PAL llama de forma indirecta durante la intro y que **no estaba
+  compilada** en el port recompilado. Se ha registrado con su tamaño exacto,
+  regenerado el codegen y recompilado el núcleo EU/PAL. **Validado**: la intro
+  pasa sin cierre (antes crasheaba ~1:30 tras el arranque).
+- **Diagnóstico de arranque reforzado**: si una excepción no controlada ocurre
+  al lanzar el juego (el cierre intermitente que también produce `0xC0000409`),
+  ahora el registro (`logs/`) incluye **el mensaje de la excepción y el stack
+  del hilo** para poder localizarla con precisión en futuras versiones.
+- El núcleo US/NA también validado en la intro (sin cierre).
+
+### Novedades acumuladas (1.0.5 EX → 1.0.6)
+
+- **Controles (pestaña Input)**: el **teclado funciona de serie** (emula al
+  mando; menús + combate). Puedes **remapear las 24 teclas** (campo "Keyboard
+  (MnK) mapping", formato `Tecla`, comas = alternativas, `Shift+/Ctrl+/Alt+` =
+  modificadores) y activar el ratón como stick derecho. Mando: selector
+  XInput/SDL, **deadzone** y **rumble** con efecto real (sliders en la pestaña).
+- **Velocidad del juego fija**: el juego corre SIEMPRE a su velocidad correcta
+  (60 FPS lógicos, sincronizados con el vblank del guest). Ya no se puede
+  "acelerar" accidentalmente.
+- **Frame cap** (pestaña Video): limita la tasa de presentación de tu PC
+  (60 = por defecto, fluido; **30 = media carga** recomendado para gráficas
+  integradas; 0 = sin límite). NO cambia la velocidad del juego.
+- **Presets de calidad por GPU** (pestaña Video, "Quality preset"): `Auto`
+  detecta tu gráfica (nombre + VRAM) y aplica el perfil recomendado en cada
+  arranque. Perfiles manuales: Low / Medium / High / Ultra. Las instalaciones
+  con ajustes hechos a mano se conservan intactas (se marcan como "Manual").
+- **Máquinas sin AVX2**: el arrancador `dbz3.exe` detecta tu CPU y usa la
+  variante correcta (`dbz3_avx2\` para CPU modernas, `dbz3_legacy\` para las
+  demás).
+- **Arranque fiable**: el launcher ya no se queda en negro/No responde al
+  abrir. La causa era la inicialización del mando SDL (que puede bloquearse
+  con software de captura como RTSS/OBS); ahora se inicializa en segundo plano
+  y el juego arranca al instante.
+- **Cierre fiable (Alt+F4 / botón X)**: cerrar el juego ya no lo deja colgado
+  en "No responde"; sale al instante.
+- **Detección del ejecutable**: si pones el `default.xex` EU/PAL, el launcher lo
+  detecta y arranca el núcleo EU/PAL correspondiente (igual con el US/NA); si
+  pones un núcleo con el ejecutable equivocado, te avisa y bloquea Play para que
+  no veas un cierre raro. También se detecta la carpeta de datos aunque solo
+  tengas `eu/` (sin `us/`).
+- **Launcher en tu idioma (y el juego también)**: el selector "Idioma" traduce
+  TODO el launcher (español, inglés, italiano, alemán, francés; el resto usa
+  inglés) **y condiciona el texto del juego** al mismo idioma.
+- **PLAY siempre visible**: el botón PLAY es grande y verde, siempre en
+  pantalla sin necesidad de hacer scroll, con un resumen de la configuración
+  que se va a lanzar (región, motor, escala, efecto, idioma). El selector de
+  región está en la barra inferior.
+- **UI compacta**: toda la interfaz cabe en la ventana sin barras de
+  desplazamiento (pestañas Video y Controles en columnas; las ayudas largas
+  se muestran al pasar el ratón).
+- **Presets visibles**: la pestaña Video muestra qué perfil de calidad está
+  activo y a qué valores resuelve (p.ej. "Auto → Alta: 1x, MSAA ON...").
+
+## Mods (WIP)
+
+> 🚧 **Estado: en desarrollo (WIP).** El sistema de mods es experimental y puede
+> cambiar. Úsalo con copias de seguridad.
+
+Los mods se gestionan desde las pestañas **Mods**, **Texturas** y **Model Swap**
+del launcher. **No modifican** los archivos del juego: aplican un overlay sobre
+entradas concretas del AFS, así que cada mod pesa solo ~100 KB.
+
+- **Swap de modelo** B3→B3 nativo: reemplaza el personaje completo (geometría +
+  texturas) por otro del catálogo (183 personajes). Funciona en cualquier
+  dirección, incluso si el bin nuevo es más grande que el slot original
+  (mid-insert virtual).
+- **Texturas**: extrae las texturas de un personaje a PNG editables, las
+  editas y reconstruyes el mod.
+- **Música** (`og_music`): reemplaza los AFS de audio por región.
+
+## Estado de la release (WIP)
+
+El modo historia y los modos alternos se han verificado en una pasada completa
+**sin errores, crasheos ni fallos conocidos** con la configuración por defecto
+(D3D12 + upscaling 2x + 60 FPS). El sistema de mods es la parte experimental:
+los swaps y texturas funcionan, pero al ser personalizables, úsalos con
+copia de seguridad de tus AFS.
+
+## Bugs conocidos
+
+- **Runtime universal (SSSE3) vs clásico (AVX2)**: el ejecutable universal es
+  ~5-10% más lento en CPUs modernas que el runtime AVX2. Si lo notas en tu
+  equipo, usa la release de respaldo `v1.1.0-clasico`.
+- **Vulkan experimental**: el backend Vulkan funciona pero el render 3D es
+  ~6.5x más lento que D3D12. Usa **D3D12** (por defecto).
+- **Port de personajes PS2/IW→B3**: la inyección (geometría PS2 en la plantilla
+  HD) funciona y da siluetas reconocibles; el port con topología PS2 exacta
+  sigue en investigación (requiere reconstruir la estructura de dibujo; ver
+  `docs/`).
+
+## Historial de versiones
+
+- **v1.1.3** (2026-09-09): **El parche de la ISO** — selector de fuente
+  siempre visible, detección y bloqueo de xex de DBZ1, i18n completa auditada
+  (ES/EN/IT/DE/FR, 0 gaps), mensajes para usuarios no técnicos, pulido
+  `-Wall -Wextra` (0 warnings), empaquetador más estricto.
+- **v1.1.2** (2026-09-09): fix crash EU (Dragon Universe / START, `sub_820F2398`
+  registrada), fix regiones incompletas (`ResolveRegion()`), fix backend Vulkan
+  (cvar `gpu_backend` real en el SDK), **modo disco (ISO directo)**, pulido de
+  código (0 warnings).
+- **v1.1.1** (2026-08-28): depurado (sin datos → mensaje claro, marcadores de
+  arranque), bases de Linux (launcher portable), proceso interno (sync +
+  verificación de release).
+- **v1.1.0** (2026-08-28): **un solo ejecutable universal** — runtime baseline
+  (SSSE3) para cualquier CPU x64, sin variantes ni carpetas, sin UPX.
+- **v1.0.10** (2026-08-28):
+  - **Crash 0xC000001D en Duelo/Start arreglado** (codegen US): el dispatch de
+    vtable `sub_820BB938` estaba mal clasificado como jump table de 1 caso →
+    UD2 al entrar en combate. Ahora es una llamada indirecta real.
+  - **Botón PLAY con el ratón arreglado**: un `default.xex` desconocido o de la
+    otra región deshabilitaba el botón (el Enter lo sorteaba). Ahora solo se
+    bloquea un xex de variante conocida y equivocada; el desconocido avisa pero
+    no bloquea, y Enter respeta el mismo gate.
+  - **Detección de GPU en portátiles Optimus**: se elige el adaptador con más
+    VRAM dedicada (antes el primero no-software = integrada).
+  - **Antivirus**: el paquete ya NO se comprime con UPX (los empacadores UPX
+    dan falsos positivos de virus). Descarga más grande, sin sustos.
+  - **Mensaje de error del bootstrap** más claro (ruta del log real
+    `dbz3_legacy\logs` + causa del 0xC000001D en CPUs antiguas).
+- **v1.0.9** (2026-08-26): centro de mods (instalar .zip + perfiles),
+  VERSIONINFO, fix V-Sync blindado.
+- **v1.0.8** (2026-08-26): i18n EN/ES/IT/DE/FR, UI compacta sin scrollbars.
+- **v1.0.7** (2026-08-26): core dual US+EU, fix de la demo battle EU (crash
+  0xC000001D).
+- **v1.0.6** (2026-08-26): fix del cierre en la intro (0xC0000409 /
+  0x82292A58), diagnóstico reforzado.
