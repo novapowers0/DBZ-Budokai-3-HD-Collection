@@ -75,3 +75,24 @@
 4. **Compresión**: los bins del AFS van comprimidos LZX `/N:2048` (NO `/N:32`).
 5. **Tamaño slot**: cada entrada del AFS tiene un tamaño fijo; el bin del mod debe caber (padded al slot) o usar mid-insert virtual.
 6. **Contexto operativo**: `AGENTS.md` es la referencia operativa compactada; el detalle histórico está en `01_estructura/HISTORICO_AGENTS.md` (hasta 2026-09-02) y `01_estructura/HISTORICO_RELEASES.md` (releases, port y launcher).
+
+---
+
+## MANTENIMIENTO DE LA DOCUMENTACIÓN
+
+**Regla de oro**: `AGENTS.md` (lo que se carga en cada sesión) se mantiene
+**≤ 60 KB** y solo con lo OPERATIVO (estado, offsets, constraints, comandos).
+Todo relato histórico o blow-by-blow se mueve a los históricos, no se borra.
+
+- **Archivos históricos** (no se cargan por defecto):
+  `01_estructura/HISTORICO_AGENTS.md` (hasta 2026-09-02) y
+  `01_estructura/HISTORICO_RELEASES.md` (§A releases, §B port, §C launcher,
+  §D snapshot verbatim del AGENTS previo a la compactación 2026-09-26).
+- **Ciclo de compaction**: cada release que engorde `AGENTS.md` por encima de
+  ~60 KB → mover el detalle de esa release a `HISTORICO_RELEASES.md` §A y dejar
+  una fila en la tabla §3.0 + los invariantes en §3.0b.
+- **Sesiones**: cada release/sesión relevante tiene su `SESION_*_2026-09-*.md`;
+  enlazarlo desde `AGENTS.md` §3.0 (columna "Doc de sesión") y desde este índice.
+- **Verificación tras compactar**: (1) `AGENTS.md` ≤ 60 KB; (2) grep de tokens
+  operativos (hashes, offsets, cvars, comandos) presentes; (3) sync con
+  `tools/sync_github.ps1` y commit en `github/`.
