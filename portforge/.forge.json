@@ -1,26 +1,107 @@
 {
-  "defaultVersion": "1.4.0",
-  "dependencies": ["unzip", "7z"],
-  "userDataPaths": ["install/dbz3_user.toml", "install/user_data"],
+  "defaultVersion": "1.4.2.3",
+  "dependencies": [
+    "unzip",
+    "7z"
+  ],
+  "userDataPaths": [
+    "install/dbz3_user.toml",
+    "install/user_data"
+  ],
   "uninstallSteps": [
-    { "step": "deletePath", "path": "install" }
+    {
+      "step": "deletePath",
+      "path": "install"
+    }
   ],
   "builds": [
     {
-      "versions": ["1.4.0"],
-      "targetPlatforms": ["Windows"],
+      "versions": [
+        "1.4.2.3"
+      ],
+      "targetPlatforms": [
+        "Windows"
+      ],
       "steps": [
-        { "step": "createDir", "path": ".build" },
+        {
+          "step": "createDir",
+          "path": ".build"
+        },
+        {
+          "step": "fetch",
+          "url": "https://github.com/novapowers0/DBZ-Budokai-3-HD-Collection/releases/download/v1.4.2.3/DBZ-Budokai-3-HD-Collection-v1.4.2.3.zip",
+          "dest": ".build/port.zip"
+        },
+        {
+          "step": "extract",
+          "src": ".build/port.zip",
+          "dest": ".build"
+        },
+        {
+          "step": "deletePath",
+          "path": ".build/port.zip"
+        },
+        {
+          "step": "copy",
+          "from": "rom",
+          "dest": ".build/game.iso"
+        },
+        {
+          "step": "move",
+          "src": "./.build",
+          "dest": "./install"
+        },
+        {
+          "step": "deletePath",
+          "path": "./.build"
+        },
+        {
+          "step": "defineExecutable",
+          "executable": "install/dbz3.exe",
+          "title": "Play"
+        }
+      ]
+    },
+    {
+      "versions": [
+        "1.4.0"
+      ],
+      "targetPlatforms": [
+        "Windows"
+      ],
+      "steps": [
+        {
+          "step": "createDir",
+          "path": ".build"
+        },
         {
           "step": "fetch",
           "url": "https://github.com/novapowers0/DBZ-Budokai-3-HD-Collection/releases/download/v1.4.0/DBZ-Budokai-3-HD-Collection-v1.4.0.zip",
           "dest": ".build/port.zip"
         },
-        { "step": "extract", "src": ".build/port.zip", "dest": ".build" },
-        { "step": "deletePath", "path": ".build/port.zip" },
-        { "step": "copy", "from": "rom", "dest": ".build/game.iso" },
-        { "step": "move", "src": "./.build", "dest": "./install" },
-        { "step": "deletePath", "path": "./.build" },
+        {
+          "step": "extract",
+          "src": ".build/port.zip",
+          "dest": ".build"
+        },
+        {
+          "step": "deletePath",
+          "path": ".build/port.zip"
+        },
+        {
+          "step": "copy",
+          "from": "rom",
+          "dest": ".build/game.iso"
+        },
+        {
+          "step": "move",
+          "src": "./.build",
+          "dest": "./install"
+        },
+        {
+          "step": "deletePath",
+          "path": "./.build"
+        },
         {
           "step": "defineExecutable",
           "executable": "install/dbz3.exe",
@@ -29,20 +110,45 @@
       ]
     },
     {
-      "versions": ["1.3.0"],
-      "targetPlatforms": ["Windows"],
+      "versions": [
+        "1.3.0"
+      ],
+      "targetPlatforms": [
+        "Windows"
+      ],
       "steps": [
-        { "step": "createDir", "path": ".build" },
+        {
+          "step": "createDir",
+          "path": ".build"
+        },
         {
           "step": "fetch",
           "url": "https://github.com/novapowers0/DBZ-Budokai-3-HD-Collection/releases/download/v1.3.0/DBZ-Budokai-3-HD-Collection-v1.3.0.zip",
           "dest": ".build/port.zip"
         },
-        { "step": "extract", "src": ".build/port.zip", "dest": ".build" },
-        { "step": "deletePath", "path": ".build/port.zip" },
-        { "step": "copy", "from": "rom", "dest": ".build/game.iso" },
-        { "step": "move", "src": "./.build", "dest": "./install" },
-        { "step": "deletePath", "path": "./.build" },
+        {
+          "step": "extract",
+          "src": ".build/port.zip",
+          "dest": ".build"
+        },
+        {
+          "step": "deletePath",
+          "path": ".build/port.zip"
+        },
+        {
+          "step": "copy",
+          "from": "rom",
+          "dest": ".build/game.iso"
+        },
+        {
+          "step": "move",
+          "src": "./.build",
+          "dest": "./install"
+        },
+        {
+          "step": "deletePath",
+          "path": "./.build"
+        },
         {
           "step": "defineExecutable",
           "executable": "install/dbz3.exe",
@@ -51,20 +157,45 @@
       ]
     },
     {
-      "versions": ["1.2.9"],
-      "targetPlatforms": ["Windows"],
+      "versions": [
+        "1.2.9"
+      ],
+      "targetPlatforms": [
+        "Windows"
+      ],
       "steps": [
-        { "step": "createDir", "path": ".build" },
+        {
+          "step": "createDir",
+          "path": ".build"
+        },
         {
           "step": "fetch",
           "url": "https://github.com/novapowers0/DBZ-Budokai-3-HD-Collection/releases/download/v1.2.9/DBZ-Budokai-3-HD-Collection-v1.2.9.zip",
           "dest": ".build/port.zip"
         },
-        { "step": "extract", "src": ".build/port.zip", "dest": ".build" },
-        { "step": "deletePath", "path": ".build/port.zip" },
-        { "step": "copy", "from": "rom", "dest": ".build/game.iso" },
-        { "step": "move", "src": "./.build", "dest": "./install" },
-        { "step": "deletePath", "path": "./.build" },
+        {
+          "step": "extract",
+          "src": ".build/port.zip",
+          "dest": ".build"
+        },
+        {
+          "step": "deletePath",
+          "path": ".build/port.zip"
+        },
+        {
+          "step": "copy",
+          "from": "rom",
+          "dest": ".build/game.iso"
+        },
+        {
+          "step": "move",
+          "src": "./.build",
+          "dest": "./install"
+        },
+        {
+          "step": "deletePath",
+          "path": "./.build"
+        },
         {
           "step": "defineExecutable",
           "executable": "install/dbz3.exe",
