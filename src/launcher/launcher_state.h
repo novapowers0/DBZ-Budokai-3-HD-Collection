@@ -33,11 +33,15 @@ void SetPreviewDrawer(rex::ui::ImmediateDrawer* drawer);
 // CallInUIThreadDeferred). The launcher reads the controllers through it:
 // reading them may pump window events, which must not happen mid-paint.
 void SetUiDefer(std::function<void(std::function<void()>)> defer);
+// A file dropped on the window (any thread). The launcher installs .zip mods and copies
+// edited texture PNGs into "Mi pack de texturas" on its next frame.
+void QueueDroppedFile(const std::filesystem::path& path);
 
 class LauncherDialog : public rex::ui::ImGuiDialog {
  public:
   LauncherDialog(rex::ui::ImGuiDrawer* drawer, std::function<void()> on_play);
   ~LauncherDialog() override;
+  void HandleDroppedFiles();
 
   // Over a running game (F4): the game doesn't see the controller meanwhile.
   void SetInGame(bool in_game);
@@ -108,6 +112,11 @@ class LauncherDialog : public rex::ui::ImGuiDialog {
   int tex_dst_idx_ = -1;  // -1 = mismo bin que el origen (sin swap)
   char tex_mod_buf_[128] = {};
   char tex_dir_buf_[512] = {};  // carpeta de texturas (default = mods/<mod>/textures)
+  // "Texturas faciles" (pestana Mods): conversion de capturas a PNG en curso y cuantas hay.
+  int broken_mods_ = -1;        // mods activos con problemas (-1 = sin contar)
+  bool tex_easy_job_ = false;
+  int tex_easy_captures_ = -1;  // -1 = sin contar todavia
+  std::string tex_easy_status_;
 
   // New characters tab (roster_build.py).
   struct CharacterSource {

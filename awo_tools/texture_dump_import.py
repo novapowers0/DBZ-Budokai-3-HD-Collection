@@ -136,6 +136,14 @@ def main():
                          'texturas que el juego dibuja ignorando el alpha de la textura, pero '
                          'que un visor muestra como un cuadrado negro (y transparente).')
     ap.add_argument('--limit', type=int, default=0, help='procesar solo N volcados')
+    ap.add_argument('--pack-names', action='store_true',
+                    help='nombre del PNG = el del DDS (<hash>_<WxH>_<formato>.png): listo para copiar '
+                         'a un pack de mods/ tal cual (lo usa el launcher, "Texturas faciles")')
+    ap.add_argument('--solo-reemplazables', action='store_true',
+                    help='solo los formatos que un pack puede reemplazar hoy (DXT1/3/5 y RGBA8); '
+                         'los de 8/16 bits del HUD se capturan pero el juego aun no los cambia')
+    ap.add_argument('--solo-nuevos', action='store_true',
+                    help='no rehace los PNG que ya existen (conversion incremental)')
     ap.add_argument('--max-bins', type=int, default=0, help='limitar bins escaneados')
     args = ap.parse_args()
 
@@ -164,6 +172,8 @@ def main():
     manifest = []
     matched = 0
     for e in entries:
+        if args.solo_reemplazables and not e['file'].rsplit('.', 1)[0].endswith(('_DXT1', '_DXT3', '_DXT5', '_RGBA8')):
+            continue
         dds_path = os.path.join(args.dump_dir, e['file'])
         if not os.path.exists(dds_path):
             continue
@@ -178,9 +188,13 @@ def main():
         else:
             folder = '_unknown' if index else ('%dx%d' % (e['width'], e['height']))
             png_name = '%s_%dx%d.png' % (e['hash'], e['width'], e['height'])
+        if args.pack_names:
+            png_name = os.path.splitext(os.path.basename(e['file']))[0] + '.png'
         out_folder = os.path.join(args.out_dir, folder)
         os.makedirs(out_folder, exist_ok=True)
         out_png = os.path.join(out_folder, png_name)
+        if args.solo_nuevos and os.path.exists(out_png):
+            continue
         alpha_all_zero = False
         try:
             im = Image.open(dds_path)

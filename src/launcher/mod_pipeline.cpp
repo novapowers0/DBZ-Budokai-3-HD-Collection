@@ -94,6 +94,16 @@ std::vector<std::string> PythonCandidates() {
     v.push_back(Quote(py));
   }
 #if REX_PLATFORM_WIN32
+  // Python portatil que trae la release (python/, con Pillow, numpy y tkinter): nadie tiene
+  // que instalar nada para el Kit ni para las texturas.
+  for (const auto& dir : {rex::filesystem::GetExecutableFolder(), ProjectRoot()}) {
+    std::error_code ec;
+    const auto exe = dir / "python" / "python.exe";
+    if (std::filesystem::is_regular_file(exe, ec)) {
+      v.push_back(Quote(exe.string()));
+      break;
+    }
+  }
   v.push_back("py -3");
   v.push_back("python");
   v.push_back("python3");
@@ -110,6 +120,12 @@ std::string PythonMissingMessage() {
       "No se encontro Python 3 en este equipo.\n"
       "This feature (model swap / texture mods) runs Python scripts.\n"
       "============================================================\n"
+      "LO MAS FACIL: descarga el 'Kit de Modding' del release y descomprimelo\n"
+      "junto a dbz3.exe. Trae Python listo (carpeta python): no instalas nada.\n"
+      "EASIEST: download the 'Modding Kit' from the release and extract it next\n"
+      "to dbz3.exe. It ships Python ready to use (python folder).\n"
+      "\n"
+      "O bien / Or:\n"
       "1) Instala Python 3 desde https://www.python.org/downloads/\n"
       "   (en Windows, marca \"Add python.exe to PATH\").\n"
       "2) Instala las dependencias:\n"
@@ -551,6 +567,17 @@ void ModPipeline::ExtractTextures(const B3Char& src,
     return;
   }
   RunAsync(TextureScript(), TextureArgs(src, mod_name, dir));
+}
+
+void ModPipeline::ConvertTextureCaptures(const std::string& dump_dir,
+                                         const std::string& out_dir) {
+  // texture_dump_import.py va en "mod center hd/" en la release y en awo_tools/ en el proyecto.
+  std::filesystem::path script = ProjectRoot() / "mod center hd" / "texture_dump_import.py";
+  std::error_code ec;
+  if (!std::filesystem::is_regular_file(script, ec)) {
+    script = ProjectRoot() / "awo_tools" / "texture_dump_import.py";
+  }
+  RunAsync(script, {dump_dir, out_dir, "--no-match", "--pack-names", "--solo-reemplazables", "--solo-nuevos"});
 }
 
 void ModPipeline::BuildTextures(const std::string& mod_name, int dest_slot,

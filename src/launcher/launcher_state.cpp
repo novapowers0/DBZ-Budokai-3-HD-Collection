@@ -28,6 +28,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <mutex>
 #include <cctype>
 #include <sstream>
 #include <string>
@@ -511,12 +512,87 @@ void LauncherDialog::RefreshAssets() {
   assets_ = p;
 }
 
+// Archivos soltados sobre la ventana (lo pide main.cpp desde el evento de la ventana, en otro
+// hilo): se procesan en el siguiente OnDraw.
+namespace {
+std::mutex g_drop_mutex;
+std::vector<std::filesystem::path> g_dropped;
+}  // namespace
+void QueueDroppedFile(const std::filesystem::path& path) {
+  std::lock_guard<std::mutex> lock(g_drop_mutex);
+  g_dropped.push_back(path);
+}
+
+// Problema de un mod (mods.cpp) en lenguaje para usuarios no tecnicos.
+static std::string ModProblemText(int kind, const std::string& d) {
+  switch (kind) {
+    case dbz3::ModInfo::kEmpty:
+      return i18n::T("Esta vacio: no hace nada.", "It is empty: it does nothing.");
+    case dbz3::ModInfo::kNested:
+      return std::string(i18n::T("Esta metido dentro de otra carpeta ('", "It is inside an extra folder ('")) + d +
+             i18n::T("'), asi el juego no lo ve. Pulsa 'Arreglar'.", "'), so the game can't see it. Press 'Fix'.");
+    case dbz3::ModInfo::kMissingFile:
+      return std::string(i18n::T("Le falta un archivo: ", "A file is missing: ")) + d;
+    case dbz3::ModInfo::kBadTextureName:
+      return d + i18n::T(" imagen(es) con un nombre que el juego no reconoce: se ignoran. Usa el nombre "
+                         "original de la textura capturada.",
+                         " image(s) with a name the game doesn't recognize: they are ignored. Keep the "
+                         "original name of the captured texture.");
+    case dbz3::ModInfo::kBadTextureSize:
+      return std::string(i18n::T("Tamano no valido en ", "Invalid size in ")) + d +
+             i18n::T(": tiene que medir 1, 2, 3 o 4 veces el original (el tamano esta en el nombre).",
+                     ": it must be 1, 2, 3 or 4 times the original size (the size is in the name).");
+    case dbz3::ModInfo::kBadToml:
+      return std::string(i18n::T("Error en el archivo de configuracion: ", "Error in the settings file: ")) + d;
+  }
+  return d;
+}
+
+// Arrastrar y soltar (lo mas pedido para instalar mods sin buscar carpetas): un .zip se instala
+// como mod; un .png/.dds con nombre de textura de pack va a "Mi pack de texturas".
+void LauncherDialog::HandleDroppedFiles() {
+  std::vector<std::filesystem::path> files;
+  {
+    std::lock_guard<std::mutex> lock(g_drop_mutex);
+    files.swap(g_dropped);
+  }
+  for (const auto& f : files) {
+    std::string ext = f.extension().string();
+    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return char(std::tolower(c)); });
+    std::string name;
+    std::string err;
+    if (ext == ".zip") {
+      if (dbz3::InstallModFromZip(rex::path_to_utf8(f), name, err)) {
+        mods_status_ = std::string(i18n::T("Mod instalado: ", "Mod installed: ")) + name;
+      } else {
+        mods_status_ = std::string(i18n::T("Error al instalar el mod: ", "Error installing mod: ")) + err;
+      }
+    } else if ((ext == ".png" || ext == ".dds") &&
+               dbz3::settings::IsTexturePackFileName(f.stem().string())) {
+      const auto pack = dbz3::ModsRoot() / "Mi pack de texturas";
+      std::error_code ec;
+      std::filesystem::create_directories(pack, ec);
+      std::filesystem::copy_file(f, pack / f.filename(), std::filesystem::copy_options::overwrite_existing, ec);
+      mods_status_ = ec ? std::string(i18n::T("No se pudo copiar: ", "Could not copy: ")) + f.filename().string()
+                        : std::string(i18n::T("Textura anadida a 'Mi pack de texturas': ",
+                                              "Texture added to 'My texture pack': ")) + f.filename().string();
+    } else {
+      mods_status_ = std::string(i18n::T(
+          "Suelta un mod (.zip) o una textura editada (.png con su nombre original): ",
+          "Drop a mod (.zip) or an edited texture (.png with its original name): ")) + f.filename().string();
+    }
+    mods_loaded_ = false;
+    request_tab_ = 1;   // muestra el resultado en la pestana Mods
+  }
+}
+
 void LauncherDialog::OnDraw(ImGuiIO& io) {
   // The launcher UI language follows the game's selected text language. Keep it
   // updated every frame so changing the "Language" combo re-translates the whole
   // launcher immediately.
   i18n::SetLanguage(dbz3::settings::Language());
   PollController(io);
+  HandleDroppedFiles();
   // Ctrl+Tab / Ctrl+Shift+Tab switch tabs from the keyboard.
   if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Tab, false)) {
     tab_request_ = (tab_index_ + (io.KeyShift ? 9 : 1)) % 10;
@@ -1206,8 +1282,23 @@ void LauncherDialog::OnDraw(ImGuiIO& io) {
   ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 12.0f);
   const std::string play_label = std::string(ICON_PLAY) + "   " + i18n::T("JUGAR", "PLAY") + "###play";
   const bool play_pressed = ImGui::Button(play_label.c_str(), ImVec2(320, 62));
+  const ImVec2 play_min = ImGui::GetItemRectMin();
   ImGui::PopStyleVar();
   if (fonts.h2) ImGui::PopFont();
+  if (broken_mods_ < 0) {
+    broken_mods_ = 0;
+    for (const dbz3::ModInfo& m : dbz3::ListMods()) {
+      if (m.enabled && !m.problems.empty()) ++broken_mods_;
+    }
+  }
+  if (broken_mods_ > 0) {
+    // Encima del boton, sin mover el layout (debajo se cortaba y salia una barra de scroll).
+    char warn[128];
+    std::snprintf(warn, sizeof(warn), i18n::T("! %d mod(s) con problemas: mira la pestana Mods",
+                                             "! %d mod(s) with problems: see the Mods tab"), broken_mods_);
+    ImGui::GetWindowDrawList()->AddText(ImVec2(play_min.x, play_min.y - ImGui::GetTextLineHeight() - 4.0f),
+                                        ImGui::GetColorU32(kGold), warn);
+  }
   const bool pad_play = pad_play_;
   pad_play_ = false;
   if (play_pressed || (assets_ready && (pad_play || ImGui::IsKeyPressed(ImGuiKey_Enter, false)))) {
@@ -2089,6 +2180,10 @@ void LauncherDialog::DrawModsTab() {
   // single frame.
   if (!mods_loaded_) {
     mods_cache_ = dbz3::ListMods();
+    broken_mods_ = 0;
+    for (const dbz3::ModInfo& m : mods_cache_) {
+      if (m.enabled && !m.problems.empty()) ++broken_mods_;
+    }
     // Re-detect texture packs (folders with the dump's `<hash>_<W>x<H>_<F>.dds`
     // files) so enabling/disabling a pack is reflected before Play.
     dbz3::settings::RefreshTexturePacks();
@@ -2118,19 +2213,99 @@ void LauncherDialog::DrawModsTab() {
     ImGui::PopStyleColor();
   }
 
-  // Texture packs: a folder in mods/ whose files are named like the dev dump
-  // (`<hash>_<W>x<H>_<FOURCC>.dds`) replaces those textures at runtime.
+  // Texturas faciles: capturar las texturas del juego, prepararlas como PNG con el nombre que
+  // reconoce un pack y editarlas en "mods/Mi pack de texturas" (el runtime acepta PNG).
+  // Lo mas pedido en foros de modding: no mezclar captura y carga, PNG directos, sin pasos raros.
   {
-    const std::string packs = dbz3::settings::TexturePacksList();
+    const std::filesystem::path exe_dir = rex::filesystem::GetExecutableFolder();
+    const std::filesystem::path edit_dir = exe_dir / "texturas" / "para_editar";
+    const std::filesystem::path my_pack = dbz3::ModsRoot() / "Mi pack de texturas";
+    std::string cap_dir = dbz3::settings::TextureDumpDir();
+    if (cap_dir.empty()) cap_dir = dbz3::settings::DefaultTextureDumpDir();
+    if (tex_easy_captures_ < 0) {
+      tex_easy_captures_ = 0;
+      std::ifstream idx(std::filesystem::path(cap_dir) / "index.jsonl");
+      for (std::string line; std::getline(idx, line);) {
+        if (!line.empty()) ++tex_easy_captures_;
+      }
+    }
+    auto open_dir = [](const std::filesystem::path& d) {
+      std::error_code ec;
+      std::filesystem::create_directories(d, ec);
+      std::system(("explorer \"" + d.string() + "\"").c_str());
+    };
     ImGui::Spacing();
-    if (packs.empty()) {
-      ImGui::TextDisabled(i18n::T(
-          "Packs de texturas: ninguno. Un pack es una carpeta en 'mods/' con "
-          "texturas nombradas <hash>_<AnchoxAlto>_<formato>.dds (se generan con "
-          "el volcado dev).",
-          "Texture packs: none. A pack is a folder in 'mods/' with textures named "
-          "<hash>_<WxH>_<format>.dds (produced by the dev dump)."));
-    } else {
+    ui::SectionTitle(i18n::T("Texturas faciles (PNG)", "Easy textures (PNG)"));
+    ImGui::TextWrapped("%s", i18n::T(
+        "1. Activa 'Capturar texturas' y juega hasta ver lo que quieres cambiar.\n"
+        "2. Pulsa 'Preparar PNG' y abre la carpeta: estan ordenados por tamano.\n"
+        "3. Edita el PNG que quieras SIN cambiarle el nombre (puede ser 2, 3 o 4 veces mas "
+        "grande) y guardalo en 'Mi pack de texturas'.\n"
+        "4. Juega: se aplica solo. Para quitarlo, desactiva el pack en la lista de abajo.",
+        "1. Turn on 'Capture textures' and play until you see what you want to change.\n"
+        "2. Press 'Prepare PNGs' and open the folder: they are sorted by size.\n"
+        "3. Edit any PNG WITHOUT renaming it (it can be 2, 3 or 4 times bigger) and save it "
+        "in 'My texture pack'.\n"
+        "4. Play: it is applied automatically. To remove it, disable the pack in the list below."));
+    bool capture = dbz3::settings::TextureDumpEnabled();
+    if (ImGui::Checkbox(i18n::T("Capturar texturas mientras juego", "Capture textures while playing"),
+                        &capture)) {
+      dbz3::settings::SetTextureDumpEnabled(capture);   // sin carpeta: texturas/capturas
+      dbz3::settings::SaveUserSettings();
+    }
+    ui::Tip(i18n::T(
+        "Guarda cada textura que aparece en pantalla (personajes, escenarios, menus) en la "
+        "carpeta 'texturas/capturas' junto al juego. Desactivalo cuando termines: ocupa espacio.",
+        "Saves every texture shown on screen (characters, stages, menus) to the "
+        "'texturas/capturas' folder next to the game. Turn it off when done: it uses disk space."));
+    if (capture && dbz3::settings::HdTextures() > 1) {
+      ImGui::PushStyleColor(ImGuiCol_Text, kGold);
+      ImGui::TextWrapped("%s", i18n::T(
+          "La captura no funciona con la mejora de texturas HD activada.",
+          "Capturing does not work while HD texture enhancement is on."));
+      ImGui::PopStyleColor();
+      ImGui::SameLine();
+      if (ImGui::SmallButton(i18n::T("Desactivar la mejora", "Turn enhancement off"))) {
+        dbz3::settings::SetHdTextures(1);
+        dbz3::settings::SaveUserSettings();
+      }
+    }
+    if (tex_easy_job_ && !mod_pipeline_.IsRunning()) {
+      tex_easy_job_ = false;
+      const std::string out = mod_pipeline_.Output();
+      const bool ok = out.find("Listo:") != std::string::npos;
+      tex_easy_status_ = ok ? std::string(i18n::T("PNG preparados en 'texturas/para_editar'.",
+                                                  "PNGs ready in 'texturas/para_editar'."))
+                            : out.substr(out.size() > 600 ? out.size() - 600 : 0);
+      if (ok) open_dir(edit_dir);
+    }
+    ImGui::BeginDisabled(tex_easy_captures_ == 0 || mod_pipeline_.IsRunning());
+    char prep[96];
+    std::snprintf(prep, sizeof(prep), i18n::T("Preparar PNG (%d capturadas)", "Prepare PNGs (%d captured)"),
+                  tex_easy_captures_);
+    if (ImGui::Button(prep)) {
+      tex_easy_job_ = true;
+      tex_easy_status_ = i18n::T("Preparando PNG...", "Preparing PNGs...");
+      mod_pipeline_.ConvertTextureCaptures(cap_dir, edit_dir.string());
+    }
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    if (ImGui::Button(i18n::T("Abrir PNG para editar", "Open PNGs to edit"))) open_dir(edit_dir);
+    ImGui::SameLine();
+    if (ImGui::Button(i18n::T("Abrir 'Mi pack de texturas'", "Open 'My texture pack'"))) {
+      std::error_code ec;
+      std::filesystem::create_directories(my_pack, ec);
+      const auto readme = my_pack / "LEEME.txt";
+      if (!std::filesystem::exists(readme, ec)) {
+        std::ofstream(readme) << "Pega aqui los PNG editados de texturas/para_editar SIN cambiarles el nombre.\n"
+                                 "Paste the edited PNGs from texturas/para_editar here WITHOUT renaming them.\n";
+      }
+      open_dir(my_pack);
+      mods_loaded_ = false;
+    }
+    if (!tex_easy_status_.empty()) ImGui::TextDisabled("%s", tex_easy_status_.c_str());
+    const std::string packs = dbz3::settings::TexturePacksList();
+    if (!packs.empty()) {
       ImGui::Text("%s", i18n::T("Packs de texturas activos:", "Active texture packs:"));
       ImGui::SameLine();
       ImGui::TextDisabled("%s", packs.c_str());
@@ -2390,6 +2565,15 @@ void LauncherDialog::DrawModsTab() {
   ImGui::TextColored(ImVec4(0.80f, 0.80f, 0.80f, 1.0f),
                      i18n::T("%d mods (%d activados)", "%d mods (%d enabled)"),
                      static_cast<int>(mods.size()), enabled_count);
+  int broken = 0;
+  for (const dbz3::ModInfo& mod : mods) {
+    if (mod.enabled && !mod.problems.empty()) ++broken;
+  }
+  if (broken) {
+    ImGui::SameLine();
+    ImGui::TextColored(kGold, i18n::T("  -  %d con problemas (en amarillo, abajo)",
+                                      "  -  %d with problems (in yellow, below)"), broken);
+  }
   ImGui::Separator();
 
   const float table_w = ImGui::GetContentRegionAvail().x;
@@ -2448,6 +2632,19 @@ void LauncherDialog::DrawModsTab() {
       }
 ImGui::TextDisabled(i18n::T("%d archivo%s", "%d file%s"), mod.file_count,
                       mod.file_count == 1 ? "" : i18n::T("s", "s"));
+      for (const auto& [kind, detail] : mod.problems) {
+        ImGui::PushStyleColor(ImGuiCol_Text, kGold);
+        ImGui::TextWrapped("! %s", ModProblemText(kind, detail).c_str());
+        ImGui::PopStyleColor();
+        if (kind == dbz3::ModInfo::kNested &&
+            ImGui::SmallButton((std::string(i18n::T("Arreglar", "Fix")) + "##fix_" + mod.name).c_str())) {
+          mods_status_ = dbz3::FixNestedMod(mod.name)
+                             ? std::string(i18n::T("Mod arreglado: ", "Mod fixed: ")) + mod.name
+                             : std::string(i18n::T("No se pudo arreglar solo; abre su carpeta: ",
+                                                   "Could not fix it automatically; open its folder: ")) + mod.name;
+          mods_loaded_ = false;
+        }
+      }
 
       ImGui::TableSetColumnIndex(2);
       const int type_col = dbz3::ModTypeColor(mod.type);
@@ -2943,6 +3140,7 @@ void LiveBanner(const char* name) {
 }  // namespace
 
 void SetPreviewDrawer(rex::ui::ImmediateDrawer* drawer) { g_preview_drawer = drawer; }
+
 
 namespace {
 std::function<void(std::function<void()>)> g_ui_defer;

@@ -6,8 +6,12 @@
 #include <rex/logging.h>
 
 #include <algorithm>
+#include <cctype>
+#include <cstdint>
+#include <cstdio>
 #include <fstream>
 #include <map>
+#include <toml++/toml.hpp>
 #include <system_error>
 
 #if REX_PLATFORM_WIN32
@@ -145,6 +149,127 @@ void InferTypeAndCount(const std::filesystem::path& dir, ModInfo& info) {
 
 }  // namespace
 
+namespace {
+// <hash16>_<W>x<H>_<formato> (nombre de textura de pack, el del volcado).
+bool PackStem(const std::string& stem, uint32_t& w, uint32_t& h) {
+  if (stem.size() < 20 || stem[16] != '_') return false;
+  for (int i = 0; i < 16; ++i) {
+    if (!std::isxdigit(static_cast<unsigned char>(stem[i]))) return false;
+  }
+  return std::sscanf(stem.c_str() + 17, "%ux%u", &w, &h) == 2 && w && h;
+}
+
+// Tamano real de un PNG (IHDR) o DDS (cabecera); false si no se puede leer.
+bool ImageSize(const std::filesystem::path& p, uint32_t& w, uint32_t& h) {
+  std::ifstream f(p, std::ios::binary);
+  unsigned char b[24] = {};
+  if (!f.read(reinterpret_cast<char*>(b), sizeof(b))) return false;
+  auto be = [&](int o) { return uint32_t(b[o]) << 24 | uint32_t(b[o + 1]) << 16 | uint32_t(b[o + 2]) << 8 | b[o + 3]; };
+  auto le = [&](int o) { return uint32_t(b[o]) | uint32_t(b[o + 1]) << 8 | uint32_t(b[o + 2]) << 16 | uint32_t(b[o + 3]) << 24; };
+  if (b[1] == 'P' && b[2] == 'N' && b[3] == 'G') { w = be(16); h = be(20); return true; }
+  if (b[0] == 'D' && b[1] == 'D' && b[2] == 'S') { h = le(12); w = le(16); return true; }
+  return false;
+}
+
+bool HasModContent(const std::filesystem::path& d) {
+  std::error_code ec;
+  for (const char* n : {"us", "eu", "personaje.toml", "traje.toml", "roster.toml", "manifest.txt"}) {
+    if (std::filesystem::exists(d / n, ec)) return true;
+  }
+  uint32_t w, h;
+  for (const auto& e : std::filesystem::directory_iterator(d, ec)) {
+    if (e.is_regular_file() && PackStem(e.path().stem().string(), w, h)) return true;
+  }
+  return false;
+}
+
+// Rutas relativas que pide un personaje.toml ("modelos/t1.bin"...) y no estan.
+void MissingTomlFiles(const toml::node& n, const std::filesystem::path& dir, std::vector<std::string>& out) {
+  if (const auto* t = n.as_table()) {
+    for (const auto& [k, v] : *t) MissingTomlFiles(v, dir, out);
+  } else if (const auto* a = n.as_array()) {
+    for (const auto& v : *a) MissingTomlFiles(v, dir, out);
+  } else if (const auto* s = n.as_string()) {
+    const std::string& v = s->get();
+    const auto dot = v.rfind('.');
+    const bool looks_file = v.find(':') == std::string::npos && dot != std::string::npos &&
+                            v.size() - dot <= 5 && v.find(' ') == std::string::npos &&
+                            (v.find('/') != std::string::npos || v.find('\\') != std::string::npos);
+    std::error_code ec;
+    if (looks_file && !std::filesystem::exists(dir / std::filesystem::u8path(v), ec)) out.push_back(v);
+  }
+}
+
+void CheckProblems(const std::filesystem::path& dir, ModInfo& info) {
+  std::error_code ec;
+  if (info.file_count == 0) {
+    info.problems.emplace_back(ModInfo::kEmpty, "");
+    return;
+  }
+  if (!HasModContent(dir)) {
+    std::vector<std::filesystem::path> subs;
+    for (const auto& e : std::filesystem::directory_iterator(dir, ec)) {
+      if (e.is_directory()) subs.push_back(e.path());
+    }
+    if (subs.size() == 1 && HasModContent(subs[0])) {
+      info.problems.emplace_back(ModInfo::kNested, rex::path_to_utf8(subs[0].filename()));
+      return;
+    }
+  }
+  for (const char* tn : {"personaje.toml", "traje.toml"}) {
+    if (!std::filesystem::exists(dir / tn, ec)) continue;
+    try {
+      const toml::table t = toml::parse_file(rex::path_to_utf8(dir / tn));
+      std::vector<std::string> missing;
+      MissingTomlFiles(t, dir, missing);
+      for (const auto& m : missing) info.problems.emplace_back(ModInfo::kMissingFile, m);
+    } catch (const toml::parse_error& e) {
+      info.problems.emplace_back(ModInfo::kBadToml, std::string(tn) + ": " + std::string(e.description()));
+    }
+  }
+  // Pack de texturas: nombres que el juego no reconoce y tamanos que no son x1-x4 del original.
+  int pack = 0, bad_name = 0;
+  std::string bad_size;
+  for (const auto& e : std::filesystem::directory_iterator(dir, ec)) {
+    if (!e.is_regular_file()) continue;
+    std::string ext = e.path().extension().string();
+    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return char(std::tolower(c)); });
+    if (ext != ".png" && ext != ".dds") continue;
+    uint32_t w0, h0, w, h;
+    if (!PackStem(e.path().stem().string(), w0, h0)) { ++bad_name; continue; }
+    ++pack;
+    if (bad_size.empty() && ImageSize(e.path(), w, h) &&
+        (w % w0 || h % h0 || w / w0 != h / h0 || w / w0 < 1 || w / w0 > 4)) {
+      bad_size = rex::path_to_utf8(e.path().filename());
+    }
+  }
+  if (pack && bad_name) info.problems.emplace_back(ModInfo::kBadTextureName, std::to_string(bad_name));
+  if (!bad_size.empty()) info.problems.emplace_back(ModInfo::kBadTextureSize, bad_size);
+}
+}  // namespace
+
+bool FixNestedMod(const std::string& mod_name) {
+  const std::filesystem::path dir = ModsRoot() / mod_name;
+  std::error_code ec;
+  std::filesystem::path inner;
+  for (const auto& e : std::filesystem::directory_iterator(dir, ec)) {
+    if (e.is_directory()) {
+      if (!inner.empty()) return false;
+      inner = e.path();
+    }
+  }
+  if (inner.empty() || !HasModContent(inner)) return false;
+  for (const auto& e : std::filesystem::directory_iterator(inner, ec)) {
+    const auto to = dir / e.path().filename();
+    if (std::filesystem::exists(to, ec)) return false;   // nunca se pisa nada
+    std::filesystem::rename(e.path(), to, ec);
+    if (ec) return false;
+  }
+  std::filesystem::remove(inner, ec);   // ya vacia
+  REXLOG_INFO("dbz3: mod '{}' sacado de su carpeta interior", mod_name);
+  return true;
+}
+
 std::vector<ModInfo> ListMods() {
   std::vector<ModInfo> result;
   std::error_code ec;
@@ -166,6 +291,7 @@ std::vector<ModInfo> ListMods() {
     info.enabled = !FolderIsDisabled(mod_entry.path(), raw_name);
     LoadManifest(mod_entry.path(), info);
     InferTypeAndCount(mod_entry.path(), info);
+    CheckProblems(mod_entry.path(), info);
     result.push_back(std::move(info));
   }
   std::stable_sort(result.begin(), result.end(),

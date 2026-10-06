@@ -488,6 +488,8 @@ std::string DefaultTextureDumpDir();
 bool TexturePacksEnabled();
 std::string TexturePacksList();
 bool IsTexturePackMod(const std::string& mod_dir);
+// File stem named like a pack texture (<hash16>_<W>x<H>_<format>).
+bool IsTexturePackFileName(const std::string& stem);
 void RefreshTexturePacks();
 
 // Mute the mix while the game window is in the background (SDK

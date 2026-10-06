@@ -148,6 +148,13 @@ def kit_pack(ver, stage):
         shutil.copyfile(os.path.join(ROOT, "tools", "modpacks", f), os.path.join(stage, f))
     shutil.copyfile(os.path.join(ROOT, "tools", "modpacks", "LEEME_PS2_GAMES.txt"),
                     os.path.join(stage, "ps2_games", "LEEME.txt"))
+    # Python portatil (python/ con numpy, Pillow, scipy y tkinter): el Kit, el launcher (texturas,
+    # personajes) y DBZ3_ModKit.bat lo usan antes que el del sistema. Nadie instala nada.
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    import make_python_bundle  # noqa: PLC0415
+    make_python_bundle.build(stage)
+    if not make_python_bundle.check(os.path.join(stage, "python")):
+        raise SystemExit("python portatil: la comprobacion fallo")
     out = os.path.join(OUT, "DBZ3HD-%s-Kit-Modding.zip" % ver)
     zip_dir(stage, out)
     return out

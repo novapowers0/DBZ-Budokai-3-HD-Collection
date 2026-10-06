@@ -19,4 +19,4 @@
 
 #pragma once
 
-#define DBZ3_RUNTIME_BUILD "1.4.2.2"
+#define DBZ3_RUNTIME_BUILD "1.4.2.3"

@@ -2014,7 +2014,8 @@ void SetTextureDumpDir(const std::string& dir) { REXCVAR_SET(dbz3_texture_dump, 
 // Suggested location when the user enables the dump without picking a folder:
 // next to the project (a sibling of the install drive, where there is room).
 std::string DefaultTextureDumpDir() {
-  return (std::filesystem::path("D:/") / "Proyectos IA" / "DBZ B3 DDS").string();
+  // Junto al juego (antes una ruta de desarrollo en D:, que no existe en otros equipos).
+  return (rex::filesystem::GetExecutableFolder() / "texturas" / "capturas").string();
 }
 void SetTextureDumpEnabled(bool enabled) {
   if (!enabled) {
@@ -2088,6 +2089,8 @@ bool IsTexturePackDir(const std::filesystem::path& dir) {
 
 bool TexturePacksEnabled() { return !rex::cvar::GetFlagByName("dbz3_texture_packs").empty(); }
 std::string TexturePacksList() { return rex::cvar::GetFlagByName("dbz3_texture_packs"); }
+
+bool IsTexturePackFileName(const std::string& stem) { return LooksLikeTexturePackFile(stem); }
 
 bool IsTexturePackMod(const std::string& mod_dir) {
   std::error_code ec;

@@ -6,6 +6,12 @@ are summarized at the end; the full history (in Spanish) is in
 
 Downloads: [latest release](../../releases/latest).
 
+## v1.4.2.3 "1.4.2 EX" (2026-10-07)
+- Launcher Mods tab: "Easy textures" (capture while playing, prepare pack-named PNGs with the bundled Python, "My texture pack"), drag-and-drop install of mod zips and edited PNGs, plain-language broken-mod warnings (empty, nested folder with a Fix button, missing files, invalid texture names/sizes) and a warning next to PLAY.
+- Modding Kit ships a portable Python (python.org build with numpy, Pillow, scipy, tkinter); the launcher and DBZ3_ModKit.bat use it first.
+- Default texture capture folder is next to the game (was a developer path).
+- Shin Budokai ports: empty donor yell slots are enabled (SQ flag + volume), specials live in codes 0x240-0x27F, own ball ASTs use low codes with both #AME links, recoil hold, full recolor of ball effects, SB sub-block header fix, donor ki blasts grafted (holding E no longer crashes).
+
 ## v1.4.2.2 (2026-10-07)
 - New characters now work with the European (EU/PAL) executable too (region-aware guest addresses and hooks; roster_build reads eu/ and data_eng).
 - The Kit ships Roboto Bold (Apache 2.0) as its font fallback.

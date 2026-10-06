@@ -247,6 +247,11 @@ class Src:
         struct.pack_into("<HH", blk, 0, *anim_fn(self, *struct.unpack_from("<HH", blk, 0)))
         if self.sb:
             set16(blk, 8, w16(blk, 8) & 0x7F)
+            # +0x0C y +0x14: 0 en los 141 936 sub-bloques nativos. SB lleva ahi un f32 (0.3) que
+            # B3 tiene en +0x08; B3 lee +0x0C como puntero (cuelgue al cargar la rafaga, prueba 8)
+            if not struct.unpack_from("<I", blk, 8)[0]:
+                blk[8:12] = blk[12:16]
+            blk[12:16] = blk[20:24] = bytes(4)
         _, n_ap, ap_off = struct.unpack_from("<3I", blk, 0x24)
         aps = []
         for k in range(n_ap):
@@ -348,6 +353,10 @@ def sb_bcm_nodes(c, report):
             why = "solo en aura de SB (w6 0x100 / cond 0x40-0x80)"
         elif cond & 0x20:
             why = "transformacion de SB (abajo+E, 4000 de ki)"
+        elif btn == 8 and not dirn and not cap and not cond & 0x8:
+            # las rafagas de SB (suelo, aire y cadenas) colgaban el juego al mantener E (pruebas
+            # 8-9): van las del donante enteras (donor_entries), como el agarre
+            why = "rafaga de ki de SB (va la del donante)"
         elif starter and btn == 5 and not cond and not cap:
             why = "agarre de SB (va el del donante)"
         elif any(w[i] >= 0x800 for i in (12, 13, 14, 15)):
@@ -457,7 +466,8 @@ def alloc_codes(tuples, reserved):
 
 
 def donor_entries(d_bcm, report):
-    """Arranques del donante que se injertan: agarre (P+G) y modo hiper (cond 0x400)."""
+    """Arranques del donante que se injertan: agarre (P+G), modo hiper (cond 0x400) y rafagas
+    de ki (E sin direccion ni capsula, suelo y aire, con sus cadenas)."""
     st, bl = bp.bcm_parse(d_bcm)
     nodes, starters = {}, []
 
@@ -470,10 +480,11 @@ def donor_entries(d_bcm, report):
 
     for o in st:
         b = bl[o][0]
-        if w16(b, 4) & 0x400 or (w16(b, 1) == 5 and not w16(b, 4) and not w16(b, 8)):
+        ki = w16(b, 1) == 8 and not w16(b, 0) and not w16(b, 8) and not w16(b, 4) & 0x408
+        if w16(b, 4) & 0x400 or (w16(b, 1) == 5 and not w16(b, 4) and not w16(b, 8)) or ki:
             starters.append(copy(o))
             report.append("BCM: del donante %s (cond %#x, codigo %#x)" % (
-                "modo hiper" if w16(b, 4) & 0x400 else "agarre", w16(b, 4), w16(b, 12)))
+                "modo hiper" if w16(b, 4) & 0x400 else "rafaga de ki" if ki else "agarre", w16(b, 4), w16(b, 12)))
     return starters, nodes
 
 

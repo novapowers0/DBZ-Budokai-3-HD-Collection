@@ -283,12 +283,20 @@ def build_bank(bank, sounds):
     start = struct.unpack(">I", bank[0x10:0x14])[0]
     head = bytearray(bank[:start])
     data = bytearray()
-    for i, r in enumerate(records(bank)):
+    recs = records(bank)
+    loud = [r for r in recs if struct.unpack(">I", bank[r + 0xE0:r + 0xE4])[0] > SILENT_MAX]
+    for i, r in enumerate(recs):
         size, off = struct.unpack(">II", head[r + 0x14:r + 0x1C])
         s = sounds[i] if i < len(sounds) else None
         if s is None:
             blob = bytes(bank[start + off:start + off + size])
         else:
+            if len(s) > SILENT_MAX and struct.unpack(">I", bank[r + 0xE0:r + 0xE4])[0] <= SILENT_MAX and loud:
+                # hueco vacio del donante: volumen -99 dB (+0x34), +0x60 y -100 dB (+0x6C);
+                # se copian del ultimo hueco con sonido anterior (o el primero) para que se oiga
+                ref = max((x for x in loud if x < r), default=loud[0])
+                for o in (0x34, 0x60, 0x6C):
+                    head[r + o:r + o + 4] = bank[ref + o:ref + o + 4]
             blob, nb = packets(s)
             struct.pack_into(">I", head, r + 0xD4, nb * SPF)       # muestras codificadas
             struct.pack_into(">I", head, r + 0xDC, 0)              # inicio
@@ -300,6 +308,19 @@ def build_bank(bank, sounds):
     return bytes(head + data)
 
 
+def sq_enable(sq, sounds):
+    """SQ del banco: la secuencia de cada sonido (u32 0x009000XX) lleva en -0x0C un 0x7F si
+    suena y 0x00 si el donante tenia el hueco vacio (Gohan adulto: 46-49). Se enciende en los
+    huecos que ahora llevan sonido; si no, el grito existe pero el juego no lo reproduce."""
+    out = bytearray(sq)
+    for i, s in enumerate(sounds):
+        if s is not None and len(s) > SILENT_MAX:
+            at = out.find(bytes((0, 0x90, 0, i)))
+            if at >= 0x0C:
+                out[at - 0x0C] = 0x7F
+    return bytes(out)
+
+
 def build_lang(entry, sounds):
     """Entrada lang_*.afs (#AMB HD descomprimido) con los dos bancos sustituidos."""
     kids = amb_children(entry)
@@ -309,6 +330,8 @@ def build_lang(entry, sounds):
         part = entry[off:off + size]
         if k < 2 and size:
             part = build_bank(part, sounds)
+        elif k == 2 and size:
+            part = sq_enable(part, sounds)
         out += bytes((-len(out)) % 0x20)
         kids[k] = [len(out), len(part), typ, z]
         out += part
@@ -367,3 +390,20 @@ if __name__ == "__main__":
     snr = 10 * np.log10(np.sum(sig.astype(float) ** 2) / np.sum((sig.astype(float) - back) ** 2))
     assert len(back) == len(sig) and snr > 20, snr
     print("gritos.py: RXADPC ida y vuelta OK (%d muestras, SNR %.1f dB)" % (len(back), snr))
+    # SQ: un hueco vacio del donante (0x00) se enciende al llenarlo; los demas no se tocan
+    ent = lambda on, i: bytes.fromhex("10000000") + bytes((on, 0x40, 0xE8, 3)) + bytes(8) + bytes((0, 0x90, 0, i)) + bytes(4)
+    sq = sq_enable(ent(0, 0) + ent(0, 1), [sig, None])
+    assert sq == ent(0x7F, 0) + ent(0, 1)
+    print("gritos.py: SQ de huecos nuevos encendida OK")
+    # ficha: un hueco vacio (-99 dB) que se llena toma el volumen de uno con sonido
+    bank = bytearray(0x230)                     # cabecera + tabla en 0x20 + 2 fichas de 0x100
+    struct.pack_into(">I", bank, 0x0C, 2)
+    struct.pack_into(">II", bank, 0x10, 0x230, 0)
+    struct.pack_into(">I", bank, 0x18, 0x20)
+    struct.pack_into(">II", bank, 0x20, 0x30, 0x130)
+    for r, vol, ln in ((0x30, -6.0, 9000), (0x130, -99.0, 1116)):
+        struct.pack_into(">f", bank, r + 0x34, vol)
+        struct.pack_into(">I", bank, r + 0xE0, ln)
+    out = build_bank(bytes(bank), [None, sig])
+    assert struct.unpack_from(">f", out, 0x130 + 0x34)[0] == -6.0
+    print("gritos.py: volumen de huecos vacios OK")

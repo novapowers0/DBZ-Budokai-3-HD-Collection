@@ -61,7 +61,8 @@ SB_ISO = {"sb1": os.path.join(ROOT, "ps2_games", "Dragonball Z Shin Budokai (USA
           "sb2": os.path.join(ROOT, "ps2_games", "Dragonball Z Shin Budokai Another Road (USA).iso")}
 DMG_AST = 0.625          # dano de energia B3 / SB (Kamehameha de Gohan adulto: 250 / 400)
 AST_ZERO = (0x14, 0x16, 0xCA, 0xDC, 0xEC, 0xEE)     # campos SB que ningun AST de B3 usa
-AST_NEW = list(range(0x50, 0x58))                    # codigos libres (ni propios ni comunes)
+AST_NEW = list(range(1, 0x10))     # libres y BAJOS: los 38 nativos solo usan 0-4 (con 0x53 la bola
+                                    # del Burning Attack no hacia dano, prueba 4); los equipados primero
 ASE_NEW = list(range(0x58, 0x60)) + list(range(0x72, 0x7F))
 RESERVED = {0x15E, 0x15F} | set(range(0x160, 0x170)) | set(range(0x12C, 0x140))
 FREEZE_BEFORE = 11       # 0x66 (descongelar) 11 frames antes de soltar la energia (donante)
@@ -237,12 +238,14 @@ RECETAS = {
         # lineas de clase 0/4/6 (carga 0x4/0x5, rayo 0x0, 0x64/0x68/0x66, 0x46/0x47) con -1
         0x460: dict(nombre="Kamehameha", donante={0xA: 0x4, 0x15F: 0x0}, plantilla_donante=0x24B,
                     desfase=-1, beam_struggle=True, ki=10, equipada=True,
-                    voz=[(11, 0x2E), (45, 0x2F)]),    # banco de F: 46 "Kamehame!", 47 "HA!" (los nativos no usan k3 0x30/0x31)
+                    voz=[(11, 0x2E), (45, 0x2F)]),    # banco de F: 46 "Kamehame!", 47 "HA!" (gritos.sq_enable los enciende)
         0x488: dict(nombre="Spirit Shot", dano=250, ki=10, equipada=False),
         0x48B: dict(nombre="Evasive Kick", dano_golpe=250, ki=10, equipada=False),
         0x491: dict(nombre="Masenko", tono=52, dano=250, ki=10, equipada=False),
         0x495: dict(nombre="Z Sword", dano=400, ki=20, equipada=False),
-        0x49C: dict(nombre="Burning Attack", tono=38, dano=400, ki=20, equipada=True),
+        0x49C: dict(nombre="Burning Attack", tono=38, dano=400, ki=20, equipada=True,
+                    sin_retroceso=True,      # el salto atras de 6 unidades en 3 frames al disparar
+                    voz=[(41, 0x1A), (57, 0x16)]),   # GHF no tiene "Burning Attack!": "Take this!" + "HA!"
         0x499: dict(nombre="Special Beam Cannon", tono=300, tipo=0, dano=480, radio=6.0, especial=1, ki=30,
                     equipada=False, omitir="definitivo de SB como especial: el personaje se quedaba "
                     "congelado tras disparar (prueba en juego 2)"),
@@ -345,6 +348,12 @@ def ame_recolor(a, hue, tex_new):
         cnt, tex = struct.unpack_from("<II", a, o + 0xA0)
         if cnt == 1 and tex < 0x10000:
             struct.pack_into("<I", out, o + 0xA4, tex_new(tex))
+        else:
+            # otra variante de particula (estela del rayo, carga): textura en +0xC4 y colores
+            # blancos; el azul esta en la textura (prueba 7: Burning Attack "azulado")
+            cnt2, tex2 = struct.unpack_from("<II", a, o + 0xC0)
+            if cnt2 in (0, 1) and tex2 < 0x100:
+                struct.pack_into("<I", out, o + 0xC4, tex_new(tex2))
     return bytes(out)
 
 
@@ -489,7 +498,7 @@ def build_bsp(code, game="sb2", donor=4, receta=None, sources=None):
     free_ast = [c for c in AST_NEW if c not in own]
     free_ase = [c for c in ASE_NEW if c not in own]
     mapas = {}
-    for t in techs:
+    for t in sorted(techs, key=lambda t: not receta.get(t["codigo"], {}).get("equipada", False)):
         r = receta.get(t["codigo"], {})
         if r.get("omitir"):
             rep.append("%#x %s: omitida (%s)" % (t["codigo"], r.get("nombre", ""), r["omitir"]))
@@ -539,7 +548,18 @@ def build_bsp(code, game="sb2", donor=4, receta=None, sources=None):
                 b[0x58:0x60] = struct.pack("<4H", 2, 1, 2, head)
             else:
                 b[0x58:0x60] = struct.pack("<4H", 2, 2, 2, head)
+            if typ == 1:
+                # bola: los 22 nativos enlazan DOS #AME (+0x58 nucleo, +0x64 el siguiente) y llevan
+                # 9 en +0xC0. El 2o es el nucleo otra vez: la cola del rayo del donante es una estela
+                # de particulas blancas con texturas azules que no se recolorea (prueba 6: "azul")
+                for o in range(0x60, 0x6C, 2):
+                    put16(b, o, 0)
+                b[0x64:0x6C] = struct.pack("<4H", 2, 2, 2, head if hue is not None else clone(0, tail_ame, hue))
+                put16(b, 0xC0, 9)
             b[0x70:0x7C], b[0xAC:0xB8] = hit_link
+            for o in (0x78, 0xB4):              # impacto: estela del rayo del donante, tambien teñida
+                if u16(b, o) == 2:
+                    put16(b, o + 2, clone(0, u16(b, o + 2), hue))
             # texturas del rayo: las de SB (importadas) o las del donante
             if typ == 0:
                 t0, t1 = u16(sbk, 0x48), u16(sbk, 0x4A)
@@ -722,7 +742,7 @@ def tech_lines(sb_ls, m, aps, receta, donor_aps=None, shift=0, hits=(), freeze=T
         # gritos (clase 3): < 0x40 = tono del banco del personaje (sb_voces.K3, el de su banco de
         # B3); >= 0x40 = banco comun de SB (tabla por mayoria de sbport, sb_tablas.T7[3])
         for f, cat, v in sb_ls:
-            if cat != 3 or (v >= 0x40 and receta.get("voz")):     # la receta pone sus gritos
+            if cat != 3 or receta.get("voz"):     # la receta pone sus gritos (y quita los de SB)
                 continue
             nv = K3.get(v) if v < 0x40 else T7[3].get(v)
             if nv is not None:
@@ -764,6 +784,28 @@ def set_ap7(aps, lines):
     return sorted([(t, ls) for t, ls in aps if t != 7] + [(7, lines)], key=lambda e: e[0])
 
 
+def waist_hold(amm, anim, frame):
+    """Pista de posicion de la cintura (WAIST, la que mueve al personaje) de la animacion `anim`
+    del AMM (PS2): desde `frame` se queda donde estaba (sin el retroceso de SB al disparar).
+    Claves de 16 B [x, y, z f32][frame u32]; la ultima lleva frame 0 (= el final)."""
+    n, t, nb, no = struct.unpack_from("<4I", amm, 0x10)
+    flags, _, _, off = struct.unpack_from("<4I", amm, t + 16 * anim)
+    per = 3 if flags & 0x10 else 2
+    for j in range(nb):
+        if not amm[no + 32 * j:no + 32 * j + 32].split(b"\0")[0].endswith(b"WAIST"):
+            continue
+        pp = struct.unpack_from("<I", amm, off + 4 * per * j + 4)[0]
+        k = struct.unpack_from("<I", amm, pp + 8)[0] if pp else 0
+        keys = [pp + 16 + 16 * i for i in range(k)]
+        before = [o for i, o in enumerate(keys) if i < k - 1 and struct.unpack_from("<I", amm, o + 12)[0] <= frame]
+        if not before:
+            return
+        z = struct.unpack_from("<f", amm, before[-1] + 8)[0]
+        for o in keys[keys.index(before[-1]) + 1:]:
+            struct.pack_into("<f", amm, o + 8, z)
+        return
+
+
 def aplicar(anm, cam, info, code, game="sb2", donor=4, receta=None, mapas=None, sources=None):
     """Tecnicas sobre el moveset de sbport (PS2): lineas AP7 de cada especial con el BSP hibrido,
     congelacion, beam struggle del Kamehameha (bit 0x2000 + respuesta cond2 0x4003), definitivo
@@ -796,6 +838,7 @@ def aplicar(anm, cam, info, code, game="sb2", donor=4, receta=None, mapas=None, 
     order = list(st)
     rep, items, new_hr = [], {}, []
     nhr, hr = bp.bsk_head(bsk)[2:]
+    amm, held = bytearray(ak[1][0]), set()
 
     def hit_dmg(x, dmg):
         """Linea de golpe con su bloque HR copiado y el dano cambiado (el HR puede ser compartido)."""
@@ -857,6 +900,29 @@ def aplicar(anm, cam, info, code, game="sb2", donor=4, receta=None, mapas=None, 
             else:
                 lines = tech_lines(sb_ls, m, aps, r, hits=hit_frames(aps))
             items[code_b3] = (None, set_ap7(aps, lines))
+            if r.get("sin_retroceso"):
+                fire = [struct.unpack_from("<H", x, 0)[0] for tt, ls in items[code_b3][1] if tt == 7 for x in ls
+                        if struct.unpack_from("<I", x, 4)[0] == 4 and struct.unpack_from("<I", x, 8)[0] in r["_ast"]]
+                anim, pool = struct.unpack_from("<HH", bsk, L[code_b3])
+                if fire and pool == 3 and anim not in held:
+                    held.add(anim)
+                    waist_hold(amm, anim, min(fire))
+        # Los 38 nativos tienen TODOS sus especiales en 0x240-0x27F (+0x100 aire); en la zona de
+        # golpes normales (0x23B de SB) el juego no lanzaba la energia y lo desplazaba (prueba 3)
+        for gb in [x for x, _ in pairs if x is not None and x < 0x300 and x in items and not 0x240 <= x < 0x280]:
+            rg = next(x for x in range(0x240, 0x280) if x not in used and x + 0x100 not in used
+                      and x not in bp.ENGINE and x + 0x100 not in bp.ENGINE)
+            used.update((rg, rg + 0x100))
+            remap = {gb: rg, gb + 0x100: rg + 0x100}
+            for src, dst in remap.items():
+                if src in items:
+                    items[dst] = (bytes(bsk[L[src]:L[src] + 48]), items.pop(src)[1])
+            for nd in nodes.values():
+                for i in (12, 13, 14):
+                    if bp.w16(nd[0], i) in remap:
+                        bp.set16(nd[0], i, remap[bp.w16(nd[0], i)])
+            g, a = remap.get(g, g), remap.get(a, a) if a is not None else None
+            rep.append("%s: codigo %#x -> %#x (zona de especiales)" % (name, gb, rg))
         for o in ents:
             b = nodes[o][0]
             bp.set16(b, 8, cap)
@@ -916,7 +982,7 @@ def aplicar(anm, cam, info, code, game="sb2", donor=4, receta=None, mapas=None, 
         rep.append("otros golpes: enlaces c4 de SB sin efecto en el BSP hibrido, quitados: %s" % dropped)
     bsk2 = bsk_put(bsk, items, new_hr)
     bcm2 = bp.bcm_build(bcm, order, nodes)
-    anm2 = bp.amb_build([(bsk2, ak[0][1])] + ak[1:])
+    anm2 = bp.amb_build([(bsk2, ak[0][1]), (bytes(amm), ak[1][1])] + ak[2:])
     cam2 = bp.amb_build([(bcm2, t) if x[:4] == b"#BCM" else (x, t) for x, t in ck])
     return anm2, cam2, rep
 

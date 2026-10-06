@@ -25,7 +25,7 @@ struct NativeModInfo {
   NativeModState state = NativeModState::kNeedsResearch;
 };
 
-const std::vector<NativeModInfo>& NativeModCatalog();
+std::vector<NativeModInfo> NativeModCatalog();
 
 // Finds the game's native content packages below the configured user-data root.
 // No files are changed.

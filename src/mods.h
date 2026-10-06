@@ -38,7 +38,13 @@ struct ModInfo {
   std::string target;   // target slot (e.g. "Krillin (326)")
   // Human-readable file count inside the mod (0 when empty).
   int file_count = 0;
+  // Problems a non-technical user can fix (the launcher words them): kind + detail.
+  enum Problem { kEmpty = 1, kNested, kMissingFile, kBadTextureName, kBadTextureSize, kBadToml };
+  std::vector<std::pair<int, std::string>> problems;
 };
+
+// A mod unzipped inside an extra folder (mods/X/X/...): moves the inner contents up one level.
+bool FixNestedMod(const std::string& mod_name);
 
 // List mod folders under the mods root. Enabled mods first, then disabled.
 std::vector<ModInfo> ListMods();

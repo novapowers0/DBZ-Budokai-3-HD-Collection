@@ -12,6 +12,8 @@ if not exist "%GUI%" goto :nogui
 
 set "PYEXE="
 if defined DBZ3_PYTHON if exist "%DBZ3_PYTHON%" set "PYEXE=%DBZ3_PYTHON%"
+rem Python portatil que trae el juego (carpeta python\): no hace falta instalar nada
+if not defined PYEXE if exist "%~dp0python\python.exe" set "PYEXE=%~dp0python\python.exe"
 if not defined PYEXE call :probe py -3
 if not defined PYEXE call :probe python
 if not defined PYEXE call :probe python3

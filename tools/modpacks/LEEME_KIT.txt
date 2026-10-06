@@ -1,4 +1,4 @@
-DBZ BUDOKAI 3 HD COLLECTION - KIT DE MODDING (v1.4.0)
+DBZ BUDOKAI 3 HD COLLECTION - KIT DE MODDING (v1.4.2 EX)
 =====================================================
 
 Todas las herramientas de modding del port, ahora con su propia ventana (DBZ3 HD Mod Kit):
@@ -7,17 +7,23 @@ comunidad), capsulas propias, voces y gritos, texturas, cambio de modelo y el re
 conversores. No hace falta abrir ninguna consola.
 
 QUE NECESITAS
-- DBZ Budokai 3 HD Collection v1.4.0 o superior, con los datos del juego en una CARPETA.
-- Python 3.11 o superior (gratis: https://www.python.org/downloads/). Al instalarlo,
-  marca la casilla "Add python.exe to PATH".
+- DBZ Budokai 3 HD Collection v1.4.2 EX o superior, con los datos del juego en una CARPETA.
+- Nada mas: el kit trae su propio Python (carpeta "python", con numpy, Pillow y scipy).
+  No hay que instalar Python ni ejecutar nada antes.
 
-INSTALAR (4 pasos)
+INSTALAR (3 pasos)
 1. Cierra el juego.
 2. Copia TODO el contenido de este ZIP en la carpeta del juego (donde estan dbz3.exe y
-   la carpeta us). Deben quedar "mod center hd" y "awo_tools" junto a dbz3.exe.
-3. Haz doble clic en "instalar_requisitos.bat" (instala numpy, Pillow y scipy, las
-   librerias que usan las herramientas; solo hace falta una vez).
-4. Haz doble clic en "DBZ3_ModKit.bat": se abre la ventana del kit.
+   la carpeta us). Deben quedar "mod center hd", "awo_tools" y "python" junto a dbz3.exe.
+3. Haz doble clic en "DBZ3_ModKit.bat": se abre la ventana del kit.
+   (El launcher tambien usa ese Python para las texturas y los personajes nuevos.)
+
+TEXTURAS FACILES (en el launcher, pestana Mods; usa el Python de este kit)
+1. Activa "Capturar texturas mientras juego" y juega hasta ver lo que quieres cambiar.
+2. Pulsa "Preparar PNG" y edita el PNG que quieras sin cambiarle el nombre (puede ser
+   2, 3 o 4 veces mas grande).
+3. Guardalo en "Mi pack de texturas" (o arrastralo encima de la ventana del launcher).
+4. Juega: se aplica solo.
 
 LA VENTANA DEL KIT (DBZ3_ModKit.bat)
 - Modo BASICO: tarjetas grandes y guiadas. Empieza por "Comprobar instalacion" (todo en
@@ -39,6 +45,8 @@ IMPORTAR PERSONAJES DE OTROS JUEGOS
 
 CONTENIDO
 - DBZ3_ModKit.bat  abre la ventana del kit (doble clic)
+- python\          Python portatil (python.org) con numpy, Pillow y scipy; licencias en
+                   python\LEEME_LICENCIAS.txt
 - mod center hd\   herramientas (roster_build, importar, capsulas, voces, gritos, texturas,
                    modkit_gui...) y tools\ (compresion LZX de Xbox 360)
 - awo_tools\       conversores de formatos (PS2 -> HD, Budokai 1, alturas, rotulos, retratos...)
@@ -48,8 +56,8 @@ CONTENIDO
 No incluye archivos de ningun juego: usa siempre los de tus copias.
 
 ----------------------------------------------------------------------------------
-ENGLISH (short): copy everything next to dbz3.exe (v1.4.0+), install Python 3.11+, run
-instalar_requisitos.bat once, then double-click DBZ3_ModKit.bat: the Mod Kit window opens
+ENGLISH (short): copy everything next to dbz3.exe (v1.4.2 EX+). Python is included (python
+folder), nothing to install. Double-click DBZ3_ModKit.bat: the Mod Kit window opens
 (Basic mode = guided cards, Advanced mode = every tool option, log and paths; ES/EN toggle
 at the top right). It runs the same tools as the launcher's "New characters" / "Textures" /
 "Model Swap" tabs. Put your own PS2 game copies in ps2_games to import characters.

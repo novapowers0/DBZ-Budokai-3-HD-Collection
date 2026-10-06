@@ -289,6 +289,10 @@ public:
             debug_overlay_ = std::make_unique<DebugOverlayDialog>(drawer);
         }
         imgui_drawer_ = drawer;
+        if (!drop_listener_added_ && window()) {
+            window()->AddListener(&drop_listener_);
+            drop_listener_added_ = true;
+        }
         // The launcher reads the controllers on the UI thread, outside its paint.
         dbz3::launcher::SetUiDefer([this](std::function<void()> fn) {
             app_context().CallInUIThreadDeferred(std::move(fn));
@@ -650,6 +654,10 @@ public:
     // Called before cleanup begins
     void OnShutdown() override {
         REXLOG_INFO("OnShutdown called");
+        if (drop_listener_added_ && window()) {
+            window()->RemoveListener(&drop_listener_);
+            drop_listener_added_ = false;
+        }
     }
 
 protected:
@@ -755,6 +763,13 @@ private:
     std::atomic<bool> shutting_down_{false};
     std::thread transition_thread_;
     rex::ui::ImGuiDrawer* imgui_drawer_ = nullptr;
+    // Arrastrar y soltar sobre la ventana: mods (.zip) y texturas editadas (launcher).
+    struct DropListener : rex::ui::WindowListener {
+        void OnFileDrop(rex::ui::FileDropEvent& e) override {
+            dbz3::launcher::QueueDroppedFile(e.filename());
+        }
+    } drop_listener_;
+    bool drop_listener_added_ = false;
     // Project root used to build the region/mod overlay (set in OnConfigurePaths).
     std::filesystem::path game_dir_;
     static std::atomic<bool> crash_logged_;

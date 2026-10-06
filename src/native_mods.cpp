@@ -1,5 +1,6 @@
 #include "native_mods.h"
 
+#include "launcher/i18n.h"
 #include "launcher/settings.h"
 
 #include <rex/filesystem.h>
@@ -16,17 +17,25 @@ namespace {
 
 constexpr char kSpfMagic[] = "#SPF 1.0";
 
-const std::vector<NativeModInfo> kCatalog = {
-    {"save_100", "Guardar al 100%",
-     "Instala una partida completa de Xbox 360 (todo desbloqueado). Tu partida se copia antes y se puede restaurar.",
-     "Progreso / guardado", NativeModState::kReady},
-    {"infinite_health", "Vida infinita",
-     "Mantiene la vida del jugador al maximo durante los combates.",
-     "Gameplay", NativeModState::kNoKnownPatch},
-    {"infinite_ki", "Ki infinito",
-     "Evita que el ki del jugador disminuya durante los combates.",
-     "Gameplay", NativeModState::kNoKnownPatch},
-};
+// Textos en el idioma del launcher (i18n::T): se construye en cada llamada porque el idioma
+// se puede cambiar en caliente.
+std::vector<NativeModInfo> Catalog() {
+  using i18n::T;
+  return {
+      {"save_100", T("Guardar al 100%", "100% save"),
+       T("Instala una partida completa de Xbox 360 (todo desbloqueado). Tu partida se copia antes y se puede restaurar.",
+         "Installs a complete Xbox 360 save (everything unlocked). Your save is backed up first and can be restored."),
+       T("Progreso / guardado", "Progress / save"), NativeModState::kReady},
+      {"infinite_health", T("Vida infinita", "Infinite health"),
+       T("Mantiene la vida del jugador al maximo durante los combates.",
+         "Keeps the player's health full during fights."),
+       "Gameplay", NativeModState::kNoKnownPatch},
+      {"infinite_ki", T("Ki infinito", "Infinite ki"),
+       T("Evita que el ki del jugador disminuya durante los combates.",
+         "Keeps the player's ki from going down during fights."),
+       "Gameplay", NativeModState::kNoKnownPatch},
+  };
+}
 
 bool IsDataFile(const std::filesystem::path& path) {
   return path.filename() == "data.bin" && std::filesystem::is_regular_file(path);
@@ -61,7 +70,7 @@ bool Save100Available() {
 
 bool ApplySave100(std::string& message) {
   if (!Save100Available()) {
-    message = "Falta la partida al 100% en mods_nativos/partida_100.";
+    message = i18n::T("Falta la partida al 100% en mods_nativos/partida_100.", "The 100% save is missing from mods_nativos/partida_100.");
     return false;
   }
   const auto root = settings::UserDataRoot();
@@ -84,7 +93,7 @@ bool ApplySave100(std::string& message) {
     std::filesystem::create_directories(dest, ec);
     std::filesystem::copy(e.path(), dest / name, std::filesystem::copy_options::recursive, ec);
     if (ec) {
-      message = "No se pudo copiar tu partida; no se ha cambiado nada: " + ec.message();
+      message = std::string(i18n::T("No se pudo copiar tu partida; no se ha cambiado nada: ", "Could not back up your save; nothing was changed: ")) + ec.message();
       return false;
     }
     any = true;
@@ -99,12 +108,14 @@ bool ApplySave100(std::string& message) {
   for (const auto& p : profiles) {
     if (!CopyAtomic(TemplateDir() / "data.bin", p / kTitle / "00000001" / "DBZ3" / "data.bin", ec) ||
         !CopyAtomic(TemplateDir() / "DBZ3.header", p / kTitle / "Headers" / "00000001" / "DBZ3.header", ec)) {
-      message = "Error al instalar la partida: " + ec.message();
+      message = std::string(i18n::T("Error al instalar la partida: ", "Error installing the save: ")) + ec.message();
       return false;
     }
   }
-  message = any ? "Partida al 100% instalada. Copia de tu partida: " + dest.string()
-                : "Partida al 100% instalada (no habia partida previa).";
+  message = any ? std::string(i18n::T("Partida al 100% instalada. Copia de tu partida: ",
+                                      "100% save installed. Backup of your save: ")) + dest.string()
+                : std::string(i18n::T("Partida al 100% instalada (no habia partida previa).",
+                                      "100% save installed (there was no previous save)."));
   REXLOG_INFO("dbz3: save_100 applied ({})", message);
   return true;
 }
@@ -115,7 +126,7 @@ bool RestoreLastSaveBackup(std::string& message) {
   for (const auto& e : std::filesystem::directory_iterator(BackupRoot(), ec))
     if (e.is_directory() && (last.empty() || e.path().filename() > last.filename())) last = e.path();
   if (last.empty()) {
-    message = "No hay ninguna copia de partida que restaurar.";
+    message = i18n::T("No hay ninguna copia de partida que restaurar.", "There is no save backup to restore.");
     return false;
   }
   const auto root = settings::UserDataRoot();
@@ -124,15 +135,15 @@ bool RestoreLastSaveBackup(std::string& message) {
                           std::filesystem::copy_options::recursive |
                               std::filesystem::copy_options::overwrite_existing, ec);
     if (ec) {
-      message = "No se pudo restaurar: " + ec.message();
+      message = std::string(i18n::T("No se pudo restaurar: ", "Could not restore: ")) + ec.message();
       return false;
     }
   }
-  message = "Partida restaurada desde " + last.string();
+  message = std::string(i18n::T("Partida restaurada desde ", "Save restored from ")) + last.string();
   return true;
 }
 
-const std::vector<NativeModInfo>& NativeModCatalog() { return kCatalog; }
+std::vector<NativeModInfo> NativeModCatalog() { return Catalog(); }
 
 std::vector<std::filesystem::path> FindNativeSaveFiles() {
   std::vector<std::filesystem::path> result;
@@ -168,11 +179,11 @@ bool BackupNativeSave(const std::filesystem::path& save,
                       std::string& error) {
   error.clear();
   if (!std::filesystem::is_regular_file(save)) {
-    error = "No se encontro el guardado.";
+    error = i18n::T("No se encontro el guardado.", "The save was not found.");
     return false;
   }
   if (!IsSupportedNativeSave(save)) {
-    error = "El guardado no tiene un formato reconocido (#SPF).";
+    error = i18n::T("El guardado no tiene un formato reconocido (#SPF).", "The save has an unrecognized format (#SPF).");
     return false;
   }
 
@@ -182,7 +193,7 @@ bool BackupNativeSave(const std::filesystem::path& save,
   std::filesystem::copy_file(save, backup,
                              std::filesystem::copy_options::overwrite_existing, ec);
   if (ec) {
-    error = "No se pudo crear la copia de seguridad: " + ec.message();
+    error = std::string(i18n::T("No se pudo crear la copia de seguridad: ", "Could not create the backup: ")) + ec.message();
     return false;
   }
   REXLOG_INFO("dbz3: native save backup created at {}", backup.string());

@@ -24,13 +24,15 @@
 // Windows 11), pulido del launcher y del kit de mods.
 // v1.4.2 = NVIDIA DLSS y AMD FSR 3 (beta), brillo HD regulable, importador de Shin Budokai
 // y Super Dragon Ball Heroes, Studio de camaras en el kit de mods.
+// v1.4.2.3 = "1.4.2 EX": texturas faciles en PNG, arrastrar mods, aviso de mods rotos,
+// Python portatil en el Kit y arreglos de los ports de Shin Budokai.
 #include <windows.h>
 
 #define VERSION_MAJOR 1
 #define VERSION_MINOR 4
 #define VERSION_PATCH 2
-#define VERSION_BUILD 2
-#define DBZ3_VERSION_STR "1.4.2.2"
+#define VERSION_BUILD 3
+#define DBZ3_VERSION_STR "1.4.2.3"
 
 VS_VERSION_INFO VERSIONINFO
 FILEVERSION VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH, VERSION_BUILD

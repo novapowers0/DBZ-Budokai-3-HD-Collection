@@ -49,6 +49,9 @@ class ModPipeline {
                        const std::string& dir = "");
   void BuildTextures(const std::string& mod_name, int dest_slot = -1,
                      const std::string& dir = "");
+  // "Texturas faciles": convierte las capturas del juego (DDS + index.jsonl) a PNG con el
+  // nombre que reconoce un pack (<hash>_<WxH>_<formato>.png), por tamano, solo las nuevas.
+  void ConvertTextureCaptures(const std::string& dump_dir, const std::string& out_dir);
 
   // New characters (mod center hd/roster_build.py): creates a source mod
   // (mods/<mod>/personaje.toml + models + face images) and builds the combined
