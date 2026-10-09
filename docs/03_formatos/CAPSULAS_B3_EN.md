@@ -1,0 +1,169 @@
+# Budokai 3 HD (US) capsules — format and use in new characters
+
+RE from 2026-10-04 (US image, `default.xex`). It only describes structures; it contains no game
+data. Code: `mod center hd/capsulas.py`, `mod center hd/roster_build.py`
+(class `Capsules`) and `src/roster_ext.cpp`.
+
+## `#SKC` catalog (data_usi 4; on PS2 `skill.ska`, `#SKA`, little-endian)
+
+0x20 B header (`+0x10` n = 596, `+0x14` start = 0x20) and n records of 40 B (BE on HD).
+The capsule ID is the record index.
+
+| Offset | Type | Meaning |
+|---|---|---|
+| +0 | u64 | owners: bit k = character ID k (0–63). Common items = bits 0–43 |
+| +8 | u8 | class: 0x11 skill/transformation, 0x21 attack, 0x17 fusion/awakening, 0x00 derived (appears when a condition is met: X10 Kamehameha…) |
+| +10 | u8 | rarity (high nibble 0–3) |
+| +14 | u8 | mask of forms it can be used from |
+| +15 | u8 | cost / level |
+| +16 | u32 | required capsule (SSJ2 requires SSJ…) |
+| +20..+35 | | effect (items) / attack number; +30 u16 substitution type, +32 base capsule |
+| +38 | u16 | price / 100 |
+
+In memory: the game loads the `#SKC` at 0x824A60E8 and uses it through two pointers,
+`0x82375608` (header) and `0x8237560C` (records). Several menu routines loop up to
+595/596 with fixed constants; combat indexes by direct ID.
+
+## Where the capsule ID is used
+
+- **Default list** ("Original" custom): `char96` (0x8234ABB8 + 96·ID) `+80` u16 n,
+  `+82` 7 × u16.
+- **Transformations**: `char372` (0x82329CF0 + 372·ID) `+0xD0` u32 number of forms,
+  `+212 + 20·form` u16 = capsule required by that form (`+214` = ID whose model it loads).
+- **Moves**: 64 B block of the character's `#CCM` (BCM), word 8 (u16 `+16`).
+  On HD word 4 is the special type and word 5 the condition (in the PS2 `#BCM` they are
+  swapped): 0x0400 hyper mode, 0x0004 transform, 0x0008 ultimate, 0x0002 special with
+  capsule, 0x0001 costs ki; 0x8000 / 0x4000 are Infinite World's (see below).
+- **Names in menus**: data_usi 2663 (short) and 2684 (long), `#AZT` indexed by ID.
+  Per character: u16 table at 0x82373D68 → data_usi entry with its capsule names
+  (`#AZT`, header `+0x18` = first ID).
+- **Skill sheet** (pause list and capsule banner when used in combat):
+  data_usi 5–52 (`SCM<code>.amb`: `#AZT` name + condition per capsule and `#CFC` with the
+  button glyphs; 16 B rows: u32 capsule, `0xFFFFFFFF` = transform). The game picks it with
+  the 16 B table at 0x82324468 (ID, costumes, HUD face in data_cmn, index; ends with ID −1)
+  → record `0x82373A00[index + 1]` (u32 fid, ptr u16 attacks, ptr u16 transformations, n, n).
+  Read by `sub_820E6D70` when combat starts and loaded by `sub_821B5FC0`.
+
+## Inventory, "Custom" list and "Edit Skills" (RE 2026-10-04, part two)
+
+- **Inventory** (u8 = how many you own, per capsule ID): save in memory 0x824BA110
+  `+0x2AFE9`, **2048 B** (the game only uses 1..594, but the save keeps 2048: new capsules
+  fit without changing the format). Selection works on a copy (player save block, pointer in
+  player state `+120`): `+1094` inventory (2048 B), `+68` "Custom" lists. Copy in/out:
+  `sub_82179C20` / `sub_82179880` (by pointer).
+- **"Custom" list** = 7 × s16 per **select cell** (38): save 0x824BA110 `+4928`
+  + 4624·cell; in the copy, `+68 + 14·cell`. `0xFFFF` = empty.
+- **Select menu** "Normal / Custom / Edit Skills" (per player). Editor state:
+  `*0x8247971C + 460·player + 68`: `+28` ID, `+32` used slots, `+36` tab
+  (record `+10 & 3`), `+44` inventory pointer, `+76 + 28·tab` block (`+0`
+  scroll, `+4` cursor, `+8` 9 visible × u16, `+26` total), `+188` equipped list
+  (u32 n + 7 u32).
+  - `sub_821B6ED8` (visible) and `sub_821B6FE8` (total and cursor): fixed loop over 594 capsules.
+  - `sub_821B7290` loads a list into the editor and drops those ≥ 595.
+  - `sub_821B7C50` draws the tray and skips those ≥ 595. The name is requested by
+    `sub_82146430` (r3 sprite, `+24` texture; r4 #AZT bank, r5 ID).
+  - `sub_821B8470` says whether a capsule can be equipped (0 yes, 1 already, 2 no slots…).
+  - `sub_821B8FC8` draws the character's face with the u8 table `0x82373D38[ID]` (44
+    entries, `0xFF` for cut ones): with a cut ID or ≥ 44 → null pointer and a
+    **crash** (it affected every new character).
+  - The description panel (`sub_821BB680`) loads data_usi `2079 + ID` and is only requested
+    for ID < 595.
+- **Before combat in mode 5** (`cfg +2018`), `sub_820FE3D8` cleans the selection lists and
+  removes those ≥ 595. It is not called in Versus and Practice.
+
+## Health bar face (`*_HUD.amt`)
+
+data_cmn (US 452–503), picked by the sheet table 0x82324468 `+8`. It is an `#AZT` with
+**one texture per form**: 256 × 128 A8R8G8B8 DDS, useful area 192 × 120 HD px (128 × 80
+logical). Measured on the official ones:
+- model render with a fixed camera (~30 px per unit), nearly frontal and slightly from above;
+- head centre at x = 91 and chin at y = 85;
+- alpha 205, shoulders cut by an ellipse and the last 4 rows blended;
+- soft blue halo (48, 137, 192), σ ≈ 11 px.
+
+Generated by `model_render.make_hud` (`roster_build.hud_bin`), or `ui/hud.png` is used.
+
+## What the runtime does (`src/roster_ext.cpp`)
+
+- Copies the catalog to its own memory with the new capsules (`[[capsula]]` from
+  `roster.toml`, IDs ≥ 596), adds the owner bits of inherited ones and of common items for
+  IDs 44–63, and moves both pointers. Done as soon as the `#SKC` is in memory (boot, select or
+  combat).
+- Writes the default list (`capsulas`) and each form's capsule (`capsulas_forma`).
+- Sheets: adds the new characters' entries to the 0x82324468 table only while
+  `sub_820E6D70` runs; custom sheets (index ≥ 1000) are served through slot 1 of
+  0x82373A00 while `sub_821B5FC0` loads them.
+- "Edit Skills" with the whole catalog:
+  - `sub_821B6ED8` and `sub_821B6FE8` are rewritten to loop to the end of the catalog.
+  - `sub_821B7290` rebuilds the equipped list.
+  - In `sub_821B7C50` (tray) and `sub_820FE3D8` (mode 5), each new capsule borrows an
+    ID < 595 during the call, with the record swapped. `sub_82146430` requests the name with
+    the real ID.
+  - In `sub_821B8FC8` new characters use their donor's face.
+- New capsules count as yours: the copy's inventory goes to 1 if it was 0. They are not
+  needed in the shop.
+- Each new character's own "Custom" list:
+  - `select_ext.cpp` swaps it with the host cell's while the player is processed.
+  - If edited, it is saved in `mods/capsulas_custom.txt`; otherwise it uses its Normal list.
+  - While swapped, the dump to the save (`sub_82179880`) gets the host's.
+  - Before, "Edit Skills" with a new character changed the host's Custom list and crashed
+    (see the face, above).
+- Extra slots 44–63: `char96`/`char372`/aura/BSP/HUD have 105 entries (64–104 are
+  fusions and combat forms) and 44–63 are empty in all of them; the unlock mask is u64.
+  The select framing table (0x82372950) ends at 44 → hook of `sub_8217FF20`; ID → slot
+  (0x82020668) too → hook of `sub_82159A88` (answers the host cell). IDs without a name
+  record get one (`nombre`).
+
+## Infinite World ports
+
+IW has no hyper mode: its BCM has an "aura burst" (B button, condition 0x4000), specials carry
+an IW capsule with slot 1/2 (condition 0x8001) and the ultimate is ^E without a capsule
+(0x8009). `capsulas.adapt_iw_bcm()`:
+
+1. "aura burst" → B3 hyper mode entry (P+K+G+E, 0x0400) — on the pad, LT / L2.
+2. Hyper mode is triggered by the animation of its attack code, whose `#CSK` properties (AP)
+   set the state: the donor's hyper block is grafted (every B3 character uses the common bank 3
+   animation with the same AP) into the codes of the converted entry (`csk_graft`). Validated
+   in game: the stage darkens and the state holds.
+3. Specials → condition 0x0002 with the character's new capsules, in order; ultimate
+   → P+K+G+E in hyper mode (0x000A) with its capsule. IW's ki cost is kept for the sheet text.
+
+## Declaring it in a mod (`personaje.toml`)
+
+```toml
+[[capsula]]
+nombre = "Hell Gate"
+tipo = "especial"          # especial (special) | definitiva (ultimate) | transformacion
+[[capsula]]
+nombre = "Monster Transformation"
+tipo = "transformacion"
+forma = 1                  # form it leads to (1 = the first transformation)
+```
+
+**Importing a port's capsules** (`roster_build.py capsulas --mod X --importar [auto|iw|b1|b2|b3]`,
+or the launcher's "Bring capsules from its game" button):
+- Reads the port's BCM and creates one `[[capsula]]` per move that needs a capsule, with
+  `reemplaza` = the original ID.
+- Names:
+  - IW: per character, from the `Dragon Ball Z Infinite World Capsule List.xlsx` sheet (the IW
+    BCM IDs do not match that sheet's).
+  - B3: the `Budokai_3_Capsules_IDs.txt` list.
+  - Any game: your own "ID: Name" list with `--lista`.
+- B1/B2 types: `#SKA` catalog from `Budokai 1 and Budokai 2 Capsule Data` (28 B LE records;
+  `+4` class, 0x11 = transformation).
+- B3 port: its capsules already exist and go to `capsulas_nativas`.
+- If there were capsules already, `personaje.toml.antes_de_importar` is saved.
+
+Without `[[capsula]]` the character uses the donor's (sheet included). With its own capsules:
+specials/ultimates replace the donor's in order (or are linked to a port's moves), and a
+transformation replaces that form's capsule. Also from the launcher (New characters → editor →
+"Capsules") or `roster_build.py capsulas --mod X --anadir "Name" especial`.
+
+## Pending
+
+- The face in the "Edit Skills" header is the donor's (select sprite table).
+- The description panel of a new capsule does not show (data_usi `2079 + ID` does not exist for
+  ID ≥ 596).
+- Effects of non-attack capsules (green/yellow items) for new characters.
+- B1/B2 names: there is no list in the resources; the importer uses "Special 1…" unless given one
+  with `--lista`.

@@ -358,6 +358,83 @@ def add_b3_transform(ccm, donor_ccm):
     return ccm_build(ccm, starters, nodes), rep
 
 
+def add_combo_specials(ccm, donor_ccm):
+    """Tecnicas al final de un combo (B3: P,P,P,P y ->E lanza la especial): son hijas normales
+    de un nodo de combo, E con direccion, condicion 0x0002 y la capsula de la especial. Los ports
+    (Shin Budokai, IW) no las traen. Por cada rama combo -> E del donante se busca en el BCM
+    propio el mismo combo (direcciones y botones; si no, solo botones) y se le cuelgan las
+    especiales PROPIAS de esa direccion (las entradas de arranque ->E / <-E: su capsula, sus
+    codigos y sus formas). -> (#CCM nuevo, informe)."""
+    st, bl = ccm_parse(ccm)
+    dst, dbl = ccm_parse(donor_ccm)
+
+    def is_special(blk):
+        return w(blk, 0, 1) == 8 and w(blk, 0, COND) & 0x0002 and w(blk, 0, 8)
+    # especiales de arranque: capsula del donante -> direccion; direccion -> entradas propias
+    dcap_dir = {}
+    for o in dst:
+        if o in dbl and is_special(dbl[o][0]):
+            dcap_dir.setdefault(w(dbl[o][0], 0, 8), w(dbl[o][0], 0, 0))
+    own = {}
+    for o in st:
+        if o in bl and is_special(bl[o][0]):
+            own.setdefault(w(bl[o][0], 0, 0), []).append(bl[o][0])
+
+    def paths(starters, blocks):
+        out, seen = {}, set()
+
+        def walk(o, path):
+            if (o, path) in seen or len(path) > 8:
+                return
+            seen.add((o, path))
+            blk, kids = blocks[o]
+            p = path + ((w(blk, 0, 0), w(blk, 0, 1)),)
+            out.setdefault(p, o)
+            for k in kids:
+                if k in blocks:
+                    walk(k, p)
+        for o in starters:
+            if o in blocks:
+                walk(o, ())
+        return out
+    dpaths, ppaths = paths(dst, dbl), paths(st, bl)
+    loose = {}
+    for p, o in ppaths.items():
+        loose.setdefault(tuple(b for _, b in p), o)
+    nodes = {o: [blk, list(kids)] for o, (blk, kids) in bl.items()}
+    rep, added = [], 0
+    for p, o in sorted(dpaths.items(), key=lambda x: len(x[0])):
+        for k in dbl[o][1]:
+            ch = dbl.get(k)
+            if not ch or not is_special(ch[0]):
+                continue
+            dirn = w(ch[0], 0, 0)
+            mine = own.get(dcap_dir.get(w(ch[0], 0, 8), dirn))
+            target = ppaths.get(p) or loose.get(tuple(b for _, b in p))
+            if not mine or target is None or w(nodes[target][0], 0, 1) == 8:
+                continue
+            have = {(w(nodes[x][0], 0, 0), w(nodes[x][0], 0, 8)) for x in nodes[target][1] if x in nodes}
+            for src in mine:
+                if (dirn, w(src, 0, 8)) in have:
+                    continue
+                blk = bytearray(ch[0])
+                setw(blk, 0, 0, dirn)
+                for i in (8, 10, 12, 13, 14, 15):        # capsula, formas y codigos: los propios
+                    setw(blk, 0, i, w(src, 0, i))
+                setw(blk, 0, 6, 0)
+                setw(blk, 0, 9, 0)
+                key = ("combo", target, dirn, w(src, 0, 8))
+                nodes[key] = [blk, []]
+                nodes[target][1].append(key)
+                added += 1
+            rep.append("%s -> %sE" % (">".join("PKGE"[(b & -b).bit_length() - 1] if b in (1, 2, 4, 8) else "%x" % b
+                                                for _, b in p), {1: "->", 2: "<-"}.get(dirn, "")))
+    if not added:
+        return bytes(ccm), []
+    return ccm_build(ccm, [o for o in st if o in bl], nodes), ["tecnicas tras combo (%d): %s" % (
+        added, ", ".join(dict.fromkeys(rep)))]
+
+
 # ---------------------------------------------------------------- nombres (#AZT)
 def render_name(text, h=NAME_H, color=(255, 255, 255, 255)):
     """Nombre de capsula al estilo del juego (blanco con borde oscuro): mismo tamano y
@@ -632,7 +709,14 @@ def csk_graft(dst, dst_code, src, src_code):
     out += blk
     dn, dl = struct.unpack(">II", dst[0x10:0x18])
     if dst_code >= dn:
-        raise ValueError("codigo %#x fuera de la lista del #CSK" % dst_code)
+        # lista corta (port IW de Goku GT: 0x120 codigos): una lista mas larga al final, con
+        # los mismos punteros y ceros (= sin golpe) hasta el codigo nuevo
+        n2 = dst_code + 1
+        old = bytes(out[dl:dl + 4 * dn])
+        out += bytes((-len(out)) % 0x10)
+        dl = len(out)
+        out += old + bytes(4 * (n2 - dn))
+        struct.pack_into(">II", out, 0x10, n2, dl)
     struct.pack_into(">I", out, dl + 4 * dst_code, new_blk)
     return bytes(out)
 
@@ -643,6 +727,32 @@ def hyper_codes(ccm):
         if st and w(ccm, o, COND) & 0x0400:
             return w(ccm, o, 12), w(ccm, o, 13)
     return None
+
+
+def hyper_check(ccm, anm_bins):
+    """Por que no podria entrar en modo hiper o lanzar su definitiva: [texto] (vacio = bien).
+    Entrada hiper (condicion 0x0400) y definitivas (0x0008) en el BCM, y sus codigos de
+    ataque con bloque en el #CSK de la forma 1."""
+    blocks = ccm_blocks(ccm)
+    hyp = [o for o, st in blocks if st and w(ccm, o, COND) & 0x0400]
+    ult = [o for o, _ in blocks if w(ccm, o, COND) & 0x0008]
+    out = [] if hyp else ["sin entrada de modo hiper (P+K+G) en su BCM"]
+    if not ult:
+        out.append("sin definitiva en su BCM")
+    # solo la forma 1: las demas (B3 e IW) cambian unos golpes sobre los suyos
+    for k, anm in enumerate(anm_bins[:1]):
+        cc = csk_child(anm)
+        if not cc:
+            out.append("forma %d: moveset sin #CSK" % (k + 1))
+            continue
+        csk = anm[cc[1]:cc[1] + cc[2]]
+        n, lst = struct.unpack(">II", csk[0x10:0x18])
+        for o in hyp[:1] + ult:
+            for c in (w(ccm, o, 12), w(ccm, o, 13)):
+                if c and (c >= n or not struct.unpack(">I", csk[lst + 4 * c:lst + 4 * c + 4])[0]):
+                    out.append("forma %d: el codigo %#x del %s no tiene animacion" % (
+                        k + 1, c, "modo hiper" if o in hyp else "definitivo"))
+    return list(dict.fromkeys(out))
 
 
 # ---------------------------------------------------------------- ficha de habilidades (SCM)
@@ -689,6 +799,51 @@ def build_scm(imgs, rows):
         struct.pack_into(">4I", out, 0x20 + 16 * k, *e)
     struct.pack_into(">I", out, 0x18, ents[0][0])
     return bytes(out)
+
+
+# Glifos de la ficha de habilidades por (direccion, botones) del BCM: censo de las 38 fichas
+# nativas frente a las rutas de su BCM (2026-10-08). Fila de 16 B: u32 capsula, u8 numero de
+# fila; en +5..+11 la secuencia (hasta 6 glifos) alineada a la derecha y, encima, alineada a
+# la izquierda con 0x1B de cierre.
+GLYPH = {(0, 1): 2, (0, 2): 3, (0, 8): 5, (0, 7): 0x15, (0, 0xF): 0x1A,
+         (1, 1): 9, (1, 2): 10, (1, 8): 0x19, (2, 1): 6, (2, 2): 7, (2, 8): 0x18}
+
+
+def skill_rows(cam, cap, limit=4):
+    """Filas de la ficha para la capsula `cap` sacadas de las rutas del BCM que llegan a un golpe
+    con esa capsula (combos primero, como las nativas). [] si ninguna ruta se puede dibujar."""
+    at = ccm_child(cam)
+    if not at:
+        return []
+    ccm = cam[at[0]:at[0] + at[1]]
+    n = struct.unpack(">H", ccm[0x1E:0x20])[0]
+    seqs = []
+
+    def walk(o, pre, depth):
+        if depth > 8 or not 0x50 <= o <= len(ccm) - 0x40:
+            return
+        g = GLYPH.get((w(ccm, o, 0), w(ccm, o, 1)))
+        if g is None:
+            return
+        seq = pre + [g]
+        if w(ccm, o, 8) == cap:           # la tecnica sale aqui: no se sigue la cadena
+            if len(seq) <= 6 and seq not in seqs:
+                seqs.append(seq)
+            return
+        for k in range(min(w(ccm, o, 7), 64)):
+            walk(struct.unpack_from(">I", ccm, o + 0x40 + 4 * k)[0], seq, depth + 1)
+
+    for k in range(n):
+        walk(struct.unpack_from(">I", ccm, 0x50 + 4 * k)[0], [], 0)
+    rows = []
+    for i, s in enumerate(seqs[:limit]):
+        r = bytearray(16)
+        struct.pack_into(">IB", r, 0, cap, i)
+        r[12 - len(s):12] = bytes(s)         # la secuencia alineada a la derecha en +5..+11 y
+        r[5:5 + len(s)] = bytes(s)           # encima, a la izquierda, con su cierre (nativas)
+        r[5 + len(s)] = 0x1B
+        rows.append(bytes(r))
+    return rows
 
 
 def ki_text(n):
@@ -752,6 +907,24 @@ def _selftest():
         t, nl, do = struct.unpack(">HHI", out[apo:apo + 8])
         assert (nap, t) == (2, 1) and csk_hr_block(out, struct.unpack(">I", out[do + 4:do + 8])[0]) == b"\x07" * 128
     assert csk_hr_block(out, 0) == b"\x01" * 128
+    # ficha: P P E (combo) y ->E directo de la capsula 26, igual que las filas nativas
+    p1, p2 = blk(0, 1, 0, 0, 0, 0, 1, 1), blk(0, 1, 0, 0, 0, 0, 1, 1)
+    e1, fe = blk(0, 8, 0, 0, 0, 2, 1, 0, 26), blk(1, 8, 0, 0, 0, 2, 1, 0, 26)
+    fich = ccm_build(head, ["a", "f"], {"a": [p1, ["b"]], "b": [p2, ["e"]], "e": [e1, []], "f": [fe, []]})
+    cam = b"#AMB" + bytes(12) + struct.pack(">II", 1, 0x20) + bytes(8) + struct.pack(">II", 0x30, len(fich)) + bytes(8) + fich
+    assert [r[4:12].hex() for r in skill_rows(cam, 26)] == ["000202051b020205", "01191b0000000019"]
+    # modo hiper / definitiva: entradas en el BCM y sus codigos con bloque en el #CSK (forma 1)
+    ult = blk(0, 0xF, 0, 0, 0, 0x000A, 0x8001, 0, 49, 0, 0, 0, 0x25A, 0x35A)
+    hc = ccm_build(head, ["h", "u"], {"h": [hyper, []], "u": [ult, []]})
+
+    def anm(c):
+        return b"#AMB" + bytes(12) + struct.pack(">II", 1, 0x20) + bytes(8) + struct.pack(">II", 0x30, len(c)) + \
+            bytes(8) + c
+    full = csk(0x400, {k: [(7, [bytes(16)])] for k in (0x259, 0x359, 0x25A, 0x35A)}, [bytes(128)])
+    assert hyper_check(hc, [anm(full)]) == []
+    holes = hyper_check(hc, [anm(csk(0x400, {0x259: [(7, [bytes(16)])]}, [bytes(128)]))])
+    assert len(holes) == 3 and "0x359 del modo hiper" in holes[0] and "definitivo" in holes[1], holes
+    assert hyper_check(ccm_build(head, ["h"], {"h": [hyper, []]}), [anm(full)]) == ["sin definitiva en su BCM"]
     print("capsulas.py: autocomprobacion OK")
 
 

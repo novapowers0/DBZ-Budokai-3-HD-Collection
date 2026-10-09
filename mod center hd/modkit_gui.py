@@ -43,7 +43,7 @@ import tkinter.font as tkfont
 from tkinter import filedialog, messagebox, ttk
 
 MODKIT_VERSION = "1.1.0"
-KIT_VERSION = "1.4.1"
+KIT_VERSION = "1.4.2.3"
 
 # =================================================================================================
 # COMUNIDAD / COMMUNITY: pega aqui el enlace de invitacion del servidor de Discord.
@@ -68,6 +68,7 @@ C = {
 }
 F = {}          # fuentes (init_fonts)
 LANG = "es"
+ADV_LABELS = False      # modo avanzado: IDs internos junto a los nombres (plazas, personajes base)
 
 
 def T(es, en):
@@ -93,17 +94,17 @@ DONORS = [
 ]
 # Plazas: los 6 IDs recortados de fabrica y los 20 IDs extra (launcher_state.cpp kFreeSlots)
 FREE_SLOTS = [(22, "Guldo"), (23, "Jeice"), (24, "Burter"), (25, "Zarbon"), (26, "Dodoria"),
-              (31, "Androide 19")] + [(44 + i, "Extra %d" % (i + 1)) for i in range(20)]
+              (31, "Android 19")] + [(44 + i, "Extra %d" % (i + 1)) for i in range(20)]
 
 SOURCE_NOTES = {
-    "b1": ("Modelo, golpes, combos y gritos del Budokai 1 original.",
-           "Model, moves, combos and yells from the original Budokai 1."),
-    "b2": ("Modelo de Budokai 2; los golpes son los del personaje donante.",
-           "Budokai 2 model; the moves are the donor character's."),
+    "b1": ("Modelo, golpes, combos y gritos del Budokai 1 original; definitiva de su equivalente en Budokai 3.",
+           "Model, moves, combos and yells from the original Budokai 1; ultimate from its Budokai 3 counterpart."),
+    "b2": ("Modelo de Budokai 2; golpes, técnicas y definitiva de su equivalente en Budokai 3.",
+           "Budokai 2 model; moves, techniques and ultimate from its Budokai 3 counterpart."),
     "b3": ("Modelos de la comunidad (.amb / .amo + .amt) de 'modding resources'.",
            "Community models (.amb / .amo + .amt) from 'modding resources'."),
-    "iw": ("Modelo, voces y gritos de Infinite World; golpes del donante o del port de la comunidad.",
-           "Infinite World model, voices and yells; moves from the donor or the community port."),
+    "iw": ("Modelo, voces, gritos, golpes, técnicas y definitiva de Infinite World (con modo hiper).",
+           "Infinite World model, voices, yells, moves, techniques and ultimate (with hyper mode)."),
     "sdbh": ("Modelos HD de Heroes (boca, 7 caras, rampas); golpes de Shin Budokai o del donante.",
              "HD models from Heroes (mouth, 7 faces, ramps); Shin Budokai or donor moves."),
     "psp": ("Modelos de PSP con sus formas; golpes, combos y cámara de Shin Budokai (o del donante).",
@@ -572,7 +573,11 @@ class JobRunner:
         except queue.Empty:
             pass
         if chunks:
-            self.app.log_text("".join(chunks))
+            text = "".join(chunks)
+            if LANG == "en":    # las herramientas escriben en espanol: el registro sale en ingles
+                import log_en  # noqa: PLC0415
+                text = log_en.traducir(text)
+            self.app.log_text(text)
         if finished:
             job, rc = finished
             job.rc = rc
@@ -704,6 +709,129 @@ CURATED = {
                           "Validates ps2hd.py against the native pairs.", {}),
     "amo2awo_validate.py": ("validacion", "Valida amo2awo.py contra los pares nativos.",
                             "Validates amo2awo.py against the native pairs.", {}),
+}
+
+# Herramientas sin entrada en CURATED: en ingles, su descripcion (en espanol sale la 1a linea del
+# docstring). Sin esto la pestana Herramientas en EN las mostraba en espanol.
+TOOL_EN = {
+    "auditar_importar.py": "Imports (and builds) EVERY character of a source in a separate folder and lists the failures",
+    "build_awo_from_json.py": "Builds an HD AWO from JSON v2 (SDBH WM / any FBX model)",
+    "build_awo_v20.py": "Builds HD AWO v20: Android 18 (SDBH WM) with rebuilt IB and remapped arms",
+    "build_awo_v22.py": "Builds HD AWO v22: Android 18 (SDBH) with Android 18's IB, exact counts",
+    "colores.py": "Changes the aura and ki (technique effects) color of a B3 HD character",
+    "diagnostico.py": "Explains a game log (dbz3_*.log) in plain language",
+    "emd_to_awo_hd.py": "EMD (SDBH WM / Xenoverse) -> B3 HD AWO converter, from scratch",
+    "empaquetar_v20.py": "Packs HD AWO v20: Android 18 sec34/vb2/ib plus shadow-arm remap",
+    "hexedit.py": "Hex editor for expert modders (Hex tab of the advanced Mod Kit)",
+    "inject_a18.py": "Injects Android 18 (from JSON) into the sec34 slots of Krillin e326",
+    "inject_a18_v21.py": "Injector v21: Android 18 (SDBH WM) into 100% of Krillin's sec34 slots",
+    "json_to_obj.py": "SDBH JSON -> OBJ v1: exports an SDBH model (parsed FBX) to OBJ",
+    "log_en.py": "Translates the kit tools' output lines into English (Mod Kit log in EN)",
+    "obj_to_awg.py": "OBJ to AWG v1: re-imports an edited OBJ into the B3 HD bin",
+    "sb_voces.py": "Shin Budokai voices (PSP: SB1 and SB2/Another Road) for ports to B3 HD",
+    "studio_core.py": "Studio core (no UI): B3 HD technique cameras",
+    "studio_gui.py": "DBZ3 HD Studio: technique camera editor (own Mod Kit window)",
+    "port_b3_strip.py": "Route B: rewrites the IB of a port (strip) with an optional bone limit",
+    "port_b3_windows.py": "Route B: ports a PS2 geometry to a B3 HD bin using the native windows",
+    "port_ps2_b3_decimate.py": "Decimates the PS2 geometry to fit the HD buffers",
+    "port_ps2_b3_draw.py": "Step 3 of the PS2 -> B3 HD port pipeline",
+    "port_ps2_b3_extract.py": "Step 1 of the PS2 -> B3 HD port pipeline",
+    "port_ps2_b3_geometry.py": "Step 2 of the PS2 -> B3 HD port pipeline",
+    "port_ps2_b3_inject.py": "Injection: HD template plus converted PS2 geometry",
+    "port_ps2_b3_inject_aux.py": "Extends Route A (NPM injection) to the 16 AWGs",
+    "port_ps2_b3_pack.py": "Step 4 of the PS2 -> B3 HD port pipeline",
+    "port_ps2_b3_verify.py": "Step 5 of the PS2 -> B3 HD port pipeline",
+    "test_injection.py": "Injection test: template topology plus our PS2 geometry",
+    "afs_extract_hd.py": "Extracts entries from an HD AFS",
+    "afs_list.py": "Lists the entries of an AFS",
+    "afs_probe.py": "Probes the entries of an AFS (magic and size)",
+    "afs_scan.py": "Scans an AFS for known formats",
+    "analisis_completo_hd.py": "Exhaustive map of a B3 HD bin (#AMB -> #AWO + #AZT)",
+    "analyze_awg.py": "Detailed analyzer of an HD #AWG block (structure mapping)",
+    "analyze_awg_full.py": "Analyzer of the full hierarchical structure of an HD #AWG",
+    "analyze_awo_b1.py": "Analyzes an HD AWO structure (B1 or B3) to decimate geometry",
+    "analyze_bin_hd.py": "Analyzes an HD bin (#AWO/#AWG) with the template",
+    "analyze_mesh.py": "Analyzes the mesh parts inside an HD #AWG",
+    "analyze_meshgroup.py": "Breaks down the mesh group of an HD AWG (draw structure)",
+    "awg_diff.py": "Field-by-field diff of the AWGs of two B3 HD #AMB bins",
+    "awg_fields.py": "Checks the fields the guest uses to size the VB fetch",
+    "awg_invariants.py": "AWG0 invariants a Route B bin must meet",
+    "awg_normal_fix.py": "Normal fix for Route A (PS2 -> B3 HD injection)",
+    "awg_parts.py": "Lists the geometry of a B3 HD bin per AWG: bounds, bones",
+    "awg_parts2.py": "Exports the AWGs of a B3 HD bin to OBJ, detecting the format",
+    "awg_vertex_buffer.py": "Real model of the B3 HD vertex buffer (Route B)",
+    "axis_probe.py": "Tests whether the port positions are PERMUTED relative to the native one",
+    "bind_oracle.py": "Compares the model-space geometry of two #AMB bins",
+    "bind_oracle_bones.py": "Native vs port model-space error PER BONE",
+    "bone_probe.py": "Checks where the real bone lives in the window (44 B), native vs port",
+    "build_awo.py": "Builds an HD #AWO from the extracted PS2 geometry",
+    "build_awo_autocontenido.py": "Builds a self-contained HD #AWO bin",
+    "build_awo_desde_cero.py": "Builds a character's HD AWO from scratch",
+    "build_awo_template.py": "#AMO0 (PS2) -> #AWO (HD) converter based on a TEMPLATE",
+    "build_big_amb.py": "Full AMB re-layout: grows the AWG0 (sec34 or vb2) and repacks",
+    "build_from_template.py": "Builds Janemba's HD bin using Cell form 2 as template",
+    "build_hd_pipeline.py": "Full PS2 -> HD pipeline with the correct mesh parser",
+    "build_hd_world_mats_b3.py": "World matrices of the B3 AWG (from B1, adapted)",
+    "build_ib_from_ps2.py": "Builds HD verts+IB from expanded skinned verts plus PS2 triangles",
+    "cell_align_check.py": "Compares positions per bone: HD slots (world) vs PS2",
+    "cell_dist_stats.py": "Per-bone statistics of the global NPM (slot -> PS2 distances)",
+    "cinematica.py": "Ultimates with their own animations on the donor's B3 cinematic",
+    "decimar.py": "Vertex decimation by voxel grid (merges close positions)",
+    "decimar_tri.py": "Triangle decimation: fewer triangles and vertices",
+    "draw_oracle.py": "OFFLINE draw oracle of a B3 HD #AMB bin (AWG0)",
+    "extract_geometry.py": "Geometry extractor of a PS2 #AMO0/#AMG: vertices and triangles per mesh part",
+    "inyeccion_awg.py": "Injects Janemba's geometry into the main buffer (vb2)",
+    "mezclar_ps2_hd.py": "Mixes PS2 positions into the existing sec34 slots of the HD bin",
+    "mezclar_ps2_hd_v2.py": "Mixes PS2 positions into sec34 slots with PER-BONE SCALE",
+    "mezclar_ps2_hd_v3.py": "Mixes PS2 positions into HD sec34 slots in SEQUENTIAL skin order",
+    "mezclar_ps2_hd_v4.py": "Mixes PS2 positions into HD sec34 slots with the CORRECT pose transform",
+    "mezclar_ps2_hd_v5.py": "Mixes PS2 (B3) positions into HD sec34 slots with the REAL layout",
+    "mezclar_ps2_hd_v6.py": "Mixes PS2 (B3) positions into HD sec34 slots by WORLD COORDS",
+    "parse_model.py": "Parser of #AMO0/#AMG (PS2) and #AWO/#AWG/#AZT (HD) models",
+    "parse_ps2_mesh.py": "B3 PS2 mesh parser based on the budokai_updated.ms MaxScript",
+    "phase_b_ab_compare.py": "Do A (block) and B (IB) describe the SAME mesh?",
+    "phase_b_arms_dump.py": "Dump of the AWG0 arms (skinning)",
+    "phase_b_census.py": "Phase B census of the AWG0 structures",
+    "phase_b_consumer_scan.py": "Phase B scan of the buffer consumers",
+    "phase_b_deep_scan.py": "Deep analysis of the pool <-> draw binding",
+    "phase_b_desc_detail.py": "Detailed dump of the A/B descriptors and the IB",
+    "phase_b_make_t2.py": "Phase B test T2",
+    "phase_b_make_t3.py": "Test T3: reverse done right (Phase B / C1)",
+    "phase_b_make_t4.py": "Test T4: permute ONLY inside each A block",
+    "phase_b_make_t5.py": "Decisive test T5: reverse the sec34 pool WITHOUT touching the IB",
+    "phase_b_make_t6.py": "Test T6: touch ONLY the A ranges (pool and IB intact)",
+    "phase_b_make_t7.py": "Test T7: reverse the whole IB, pool INTACT",
+    "phase_c_arms_targets.py": "Dump of the AWG0 arm targets",
+    "phase_c_descriptors.py": "Map of ALL the 0x60 descriptor tables of the AWG",
+    "phase_c_find_bonemap.py": "Looks for a position -> bone table in the AWG",
+    "phase_c_make_t10.py": "Test T10: CONSISTENT relabeling in the vertex space",
+    "phase_c_make_t11.py": "Test T11: permute the GPU vertex buffer WINDOWS",
+    "phase_c_make_t8.py": "Test T8: permutation of WHOLE PARTS (identity)",
+    "phase_c_make_t9.py": "Test T9: reorder single-bone RUNS inside an A block",
+    "phase_c_meshgroup.py": "Dump of the mesh-group structure and the AWG0 arms",
+    "phase_d_cmp_guest_ib.py": "Phase D: compares the guest IB with the bin's",
+    "phase_d_descriptor_corr.py": "Phase D: descriptor correlation",
+    "port_ps2_to_b3.py": "FULL port of a PS2 model (#AMO0) to a B3 HD bin (#AWO)",
+    "ps2_rig_skin.py": "Extracts the skin (bone + weight per vertex) of a PS2 #AMO0",
+    "ps2_to_hd_geometry.py": "Converts PS2 geometry to HD buffers (sec34/vb2/IB)",
+    "RE_PS2_HD_MAPEO.py": "Side-by-side breakdown of AMG (PS2) vs AWG (HD)",
+    "relayout_awg.py": "AWG0 re-layout: grows sec34 (main vertex buffer)",
+    "relayout_sec34_remap.py": "sec34 re-layout (main buffer) with IB REMAP",
+    "relayout_vb2.py": "AWG0 re-layout: grows vb2 (secondary buffer, +0x2C) for more slots",
+    "render_bin_windows.py": "Front-view render of a bin's model to PNG",
+    "scan_bones.py": "Scans the HD bins of the AFS and counts each character's bones",
+    "skin_oracle.py": "Offline lint of the 'bone' field domain of a B3 HD #AMB bin",
+    "space_probe.py": "Space hypothesis: positions written in MODEL space by the port pipeline",
+    "stage_analyze.py": "Analyzes STAGE candidate bins of data_cmn.afs",
+    "strip_order_winding.py": "Port stripifier that PRESERVES order and winding",
+    "swap_cabeza.py": "Head swap Goku -> armored Vegeta (block rebuild)",
+    "swap_cabeza_inplace.py": "Injects Goku's head into Vegeta WITHOUT moving offsets",
+    "swap_cuerpo_hd.py": "Injects Goten's BODY geometry into the AWG0",
+    "swap_cuerpo_hd_v2.py": "Transforms Goten's geometry into KLL space",
+    "topology_check.py": "Checks the connectivity hypothesis (port keeps the native IB)",
+    "trace_bone.py": "Bone hierarchy tracer inside a #AMG (PS2) or #AWG (HD)",
+    "vbdump_info.py": "Analyzes dbz3_vbdump.bin (captured vertex buffers)",
+    "vbdump_vs_bin.py": "Compares the captured VBs (dbz3_vbdump.bin) with the bin's windows",
 }
 
 
@@ -950,7 +1078,10 @@ class ToolInfo:
 
     @property
     def desc(self):
-        return T(self.desc_es, self.desc_en) if self.desc_es else (self.doc.split("\n")[0] if self.doc else "")
+        if self.desc_es:
+            return T(self.desc_es, self.desc_en)
+        first = self.doc.split("\n")[0] if self.doc else ""
+        return T(first, TOOL_EN.get(self.name, first))
 
     @property
     def research(self):
@@ -1182,6 +1313,15 @@ def toml_literal(v):
     return '"%s"' % str(v).replace("\\", "\\\\").replace('"', '\\"')
 
 
+# colores de aura / ki del Mod Kit: (valor en personaje.toml = nombre de colores.NOMBRES, es, en, tono)
+COLOR_PRESETS = [("rojo", "Rojo", "Red", 0), ("naranja", "Naranja", "Orange", 28), ("dorado", "Dorado", "Gold", 45),
+                 ("amarillo", "Amarillo", "Yellow", 55), ("lima", "Lima", "Lime", 90),
+                 ("verde", "Verde", "Green", 120), ("turquesa", "Turquesa", "Teal", 165),
+                 ("cian", "Cian", "Cyan", 185), ("azul", "Azul", "Blue", 225), ("violeta", "Violeta", "Violet", 265),
+                 ("morado", "Morado", "Purple", 280), ("magenta", "Magenta", "Magenta", 300),
+                 ("rosa", "Rosa", "Pink", 325)]
+
+
 def toml_set_keys(path, section, values):
     """Como roster_build.set_toml_keys(): escribe/actualiza 'clave = valor' en [seccion]
     (valor en sintaxis TOML; None quita la clave). Conserva comentarios y el resto."""
@@ -1271,7 +1411,7 @@ def load_catalog(env):
 
 
 def char_label(c):
-    s = c["name"] + (" (%s)" % c["variant"] if c["variant"] else "") + "   [bin %d]" % c["bin"]
+    s = c["name"] + (" (%s)" % c["variant"] if c["variant"] else "") + ("   [bin %d]" % c["bin"] if ADV_LABELS else "")
     if not c["playable"]:
         s += "   · " + T("no jugable", "not playable")
     return s
@@ -1321,7 +1461,7 @@ ICONS = {  # (Segoe MDL2 / Fluent, alternativa)
     "setup": ("\uE9D9", "⚙"), "mods": ("\uE8F1", "▤"), "importer": ("\uE896", "⇩"),
     "characters": ("\uE716", "☺"), "create": ("\uE8FA", "✚"), "textures": ("\uE790", "✎"),
     "swap": ("\uE8AB", "⇄"), "help": ("\uE897", "?"), "tools": ("\uE90F", "⚒"), "home": ("\uE80F", "⌂"),
-    "diag": ("\uE9D2", "♥"), "studio": ("\uE714", "◉"),
+    "diag": ("\uE9D2", "♥"), "studio": ("\uE714", "◉"), "hex": ("\uE943", "#"),
 }
 
 
@@ -1681,7 +1821,12 @@ class CharPicker(tk.Frame):
 
     def __init__(self, master, chars, none_label=None, width=52, on_change=None):
         super().__init__(master, bg=master.cget("bg"))
-        self.items = ([(None, none_label)] if none_label else []) + [(c, char_label(c)) for c in chars]
+        self.items = [(None, none_label)] if none_label else []
+        seen = {}
+        for c in chars:                    # sin el numero interno (modo sencillo) un nombre puede repetirse
+            lb = char_label(c)
+            seen[lb] = seen.get(lb, 0) + 1
+            self.items.append((c, lb if seen[lb] == 1 else "%s (%d)" % (lb, seen[lb])))
         self.var = tk.StringVar(value=none_label or "")
         self.cb = ttk.Combobox(self, textvariable=self.var, values=[lb for _, lb in self.items], width=width,
                                height=18)
@@ -1717,14 +1862,28 @@ class CharPicker(tk.Frame):
 
 
 def slot_label(sid, original, owner=""):
+    """Plaza por su nombre (el numero interno solo en modo avanzado)."""
+    name = ("%d (%s)" % (sid, original)) if ADV_LABELS else original
     if owner:
-        return T("%d (%s) - ocupada por %s", "%d (%s) - taken by %s") % (sid, original, owner)
-    return T("%d (%s) - libre", "%d (%s) - free") % (sid, original)
+        return T("%s - ocupada por %s", "%s - taken by %s") % (name, owner)
+    return T("%s - libre", "%s - free") % name
+
+
+def slot_values():
+    return [("%d (%s)" % (s, o)) if ADV_LABELS else o for s, o in FREE_SLOTS]
 
 
 def donor_values(auto_label=None):
+    """Personajes base por su nombre (con su ID solo en modo avanzado). Las listas se leen por
+    posicion (donor_from_index) o con donor_id()."""
     vals = [auto_label] if auto_label else []
-    return vals + ["%s  (ID %d)" % (T(es, en), i) for i, es, en in DONORS]
+    return vals + [("%s  (ID %d)" % (T(es, en), i)) if ADV_LABELS else T(es, en) for i, es, en in DONORS]
+
+
+def donor_id(label):
+    """ID del personaje base de una etiqueta de donor_values() (None si no es ninguna)."""
+    vals = donor_values()
+    return DONORS[vals.index(label)][0] if label in vals else None
 
 
 def donor_from_index(idx, has_auto):
@@ -2146,13 +2305,13 @@ def collect_checks(app):
                     "dbz3.exe not found. Copy the kit next to dbz3.exe or choose the game folder."),
                 "action": None if env.game else (T("Elegir carpeta…", "Choose folder…"), app.pick_game)})
     afs = env.afs
-    out.append({"key": "data", "title": T("Datos del juego (us\\data_cmn.afs)", "Game data (us\\data_cmn.afs)"),
+    out.append({"key": "data", "title": T("Datos del juego", "Game data"),
                 "level": "ok" if afs and os.path.isfile(afs) else "warn",
                 "detail": afs if afs and os.path.isfile(afs) else T(
-                    "No encuentro la carpeta us con data_cmn.afs. Los mods necesitan los datos del juego en una "
-                    "CARPETA (en modo disco/ISO no se aplican).",
-                    "The us folder with data_cmn.afs was not found. Mods need the game data in a FOLDER (they "
-                    "do not apply in disc/ISO mode).")})
+                    "No encuentro los datos del juego (carpeta us). Los mods necesitan el juego extraído en una "
+                    "CARPETA (jugando desde la ISO no se aplican).",
+                    "The game data (us folder) was not found. Mods need the game extracted to a FOLDER (they "
+                    "do not apply when playing from the ISO).")})
     out.append({"key": "mods", "title": T("Carpeta de mods", "Mods folder"),
                 "level": "ok" if os.path.isdir(env.mods) else "warn",
                 "detail": env.mods + ("" if os.path.isdir(env.mods) else T("  (se creará al hacer el primer mod)",
@@ -2161,8 +2320,8 @@ def collect_checks(app):
     xdk_ok = bool(env.xdk) and os.path.isfile(os.path.join(env.xdk, "xbcompress.exe"))
     out.append({"key": "tools", "title": T("Herramientas del kit", "Kit tools"),
                 "level": "ok" if tools_ok and xdk_ok else "err" if not tools_ok else "warn",
-                "detail": (T("importar.py, roster_build.py y la compresión LZX (xbcompress) presentes.",
-                             "importar.py, roster_build.py and LZX compression (xbcompress) present.")
+                "detail": (T("Todo en su sitio: puedes importar y crear personajes.",
+                             "All in place: you can import and create characters.")
                            if tools_ok and xdk_ok else T("Falta: ", "Missing: ") + ", ".join(
                                x for x, ok in (("importar.py / roster_build.py", tools_ok),
                                                ("mod center hd\\tools\\xbcompress.exe", xdk_ok)) if not ok))})
@@ -2374,10 +2533,10 @@ class ModsPage(Page):
         if not m:
             return
         if m["type"] == "generado" and m["enabled"]:
-            if not self.app.ask(T("_roster lo genera el kit con tus personajes nuevos. Si lo desactivas, ninguno "
-                                  "aparecerá en el juego. ¿Desactivar?",
-                                  "_roster is generated from your new characters. If you disable it none of them "
-                                  "will show up in game. Disable?")):
+            if not self.app.ask(T("Este mod es la lista de tus personajes nuevos (la crea el kit). Si lo desactivas, "
+                                  "ninguno aparecerá en el juego. ¿Desactivar?",
+                                  "This mod is the list of your new characters (the kit makes it). If you disable it "
+                                  "none of them will show up in game. Disable?")):
                 return
         try:
             set_mod_enabled(self.env.mods, m["name"], not m["enabled"])
@@ -2398,7 +2557,7 @@ class ModsPage(Page):
     def rebuild(self):
         self.run(cmd_roster_build(self.env, True), T("Reconstruir personajes nuevos", "Rebuild new characters"),
                  lambda job: self.alive and self.refresh(), self.status,
-                 T("Personajes nuevos montados (_roster).", "New characters built (_roster)."))
+                 T("Personajes nuevos montados.", "New characters built."))
 
 
 class TextEditor(tk.Toplevel):
@@ -2497,8 +2656,10 @@ class TomlFormDialog(tk.Toplevel):
         g.columnconfigure(1, weight=1)
         self.vars = {}
         hints = {
-            "voces": T("iw:NOMBRE | b3:ID | donante | ninguna", "iw:NAME | b3:ID | donante | ninguna"),
-            "gritos": T("iw:NOMBRE | b1:N | donante | ninguno", "iw:NAME | b1:N | donante | ninguno"),
+            "voces": T("iw:NOMBRE | b3:ID | donante | ninguna",
+                       "iw:NAME | b3:ID | donante (= the donor's) | ninguna (= none)"),
+            "gritos": T("iw:NOMBRE | b1:N | donante | ninguno",
+                        "iw:NAME | b1:N | donante (= the donor's) | ninguno (= none)"),
             "formas": T("número de formas (vacío = las del donante)", "number of forms (empty = the donor's)"),
             "despues_de": T("su casilla aparece tras este personaje", "its cell shows up after this character"),
             "id": T("plaza en la rueda (vacío = automática)", "wheel slot (empty = automatic)"),
@@ -2522,10 +2683,10 @@ class TomlFormDialog(tk.Toplevel):
                 if isinstance(cur, int):
                     var.set(vals[donor_index(cur, True)] if any(d[0] == cur for d in DONORS) else str(cur))
             elif kind == "slot":
-                vals = [""] + ["%d (%s)" % (s, o) for s, o in FREE_SLOTS]
+                vals = [""] + slot_values()
                 w = ttk.Combobox(g, textvariable=var, values=vals, state="readonly", width=40)
                 if isinstance(cur, int):
-                    var.set(next((v for v in vals if v.startswith("%d " % cur)), str(cur)))
+                    var.set(next((v for (sid, _), v in zip(FREE_SLOTS, vals[1:]) if sid == cur), str(cur)))
             elif kind == "src":
                 w = ttk.Combobox(g, textvariable=var, values=["", "modelo", "imagen", "terminado"], state="readonly",
                                  width=40)
@@ -2563,6 +2724,10 @@ class TomlFormDialog(tk.Toplevel):
                 values[key] = v
             elif kind == "fis":
                 values[key] = v if re.fullmatch(r"\d+", v) else toml_literal(v)
+            elif kind in ("donor", "after") and donor_id(v) is not None:
+                values[key] = toml_literal(donor_id(v))
+            elif kind == "slot" and v in slot_values():
+                values[key] = toml_literal(FREE_SLOTS[slot_values().index(v)][0])
             elif kind in ("donor", "after", "slot", "int"):
                 m = re.search(r"ID (-?\d+)\)$", v) or re.match(r"(-?\d+)", v)
                 if not m:
@@ -2620,7 +2785,7 @@ class NewModDialog(tk.Toplevel):
         for r, (k, txt) in enumerate(rows, start=1):
             label(g, txt, bg=C["card"]).grid(row=r, column=0, sticky="w", padx=(0, 12), pady=3)
             ttk.Entry(g, textvariable=self.v[k], width=52).grid(row=r, column=1, sticky="ew", pady=3)
-        label(g, T("Donante / personaje", "Donor / character"), bg=C["card"]).grid(row=5, column=0, sticky="w",
+        label(g, T("Personaje base", "Base character"), bg=C["card"]).grid(row=5, column=0, sticky="w",
                                                                                   padx=(0, 12), pady=3)
         ttk.Combobox(g, textvariable=self.donor, values=donor_values(), state="readonly", width=50).grid(
             row=5, column=1, sticky="ew", pady=3)
@@ -2660,10 +2825,10 @@ class NewModDialog(tk.Toplevel):
                     "type=%s\n" % kind if kind != "vacio" else ""))
             if kind == "personaje":
                 with open(os.path.join(d, "personaje.toml"), "w", encoding="utf-8") as fh:
-                    fh.write(PERSONAJE_TEMPLATE % {"nombre": name.replace('"', ""), "donante": did})
+                    fh.write(T(PERSONAJE_TEMPLATE, PERSONAJE_TEMPLATE_EN) % {"nombre": name.replace('"', ""), "donante": did})
             elif kind == "traje":
                 with open(os.path.join(d, "traje.toml"), "w", encoding="utf-8") as fh:
-                    fh.write(TRAJE_TEMPLATE % {"nombre": name.replace('"', ""), "personaje": did})
+                    fh.write(T(TRAJE_TEMPLATE, TRAJE_TEMPLATE_EN) % {"nombre": name.replace('"', ""), "personaje": did})
             set_mod_enabled(env.mods, folder, False)
         except OSError as ex:
             self.msg.configure(text=str(ex), fg=C["err"])
@@ -2693,6 +2858,30 @@ TRAJE_TEMPLATE = """[traje]
 personaje = %(personaje)d               # ID del personaje (0 = Goku)
 nombre = "%(nombre)s"
 # Un modelo por forma, en el orden de sus transformaciones (si faltan, se repite el ultimo):
+modelos = ["modelos/base.amb"]
+"""
+
+
+# las mismas claves (las lee roster_build); solo cambian los comentarios
+PERSONAJE_TEMPLATE_EN = """[personaje]
+nombre = "%(nombre)s"         # name banner on the select screen
+donante = %(donante)d                 # base character: moves, techniques, aura and match voice
+# Put your models (one per costume: B3 PS2 #AMB, HD #AMB or LZX) in modelos/ and list them here:
+modelos = ["modelos/traje1.amb"]
+# id = 44                     # optional: slot (22-26, 31 or 44-63)
+# despues_de = 10             # optional: its cell shows up after this ID
+# voces = "donante"           # iw:NAME | b3:ID | donante (base character's) | ninguna (none)
+# gritos = "donante"          # iw:NAME | b1:N | donante (base character's) | ninguno (none)
+# Own capsules (optional, several):
+# [[capsula]]
+# nombre = "My attack"
+# tipo = "especial"           # especial (special) | definitiva (ultimate) | transformacion (+ forma = 1)
+"""
+
+TRAJE_TEMPLATE_EN = """[traje]
+personaje = %(personaje)d               # character ID (0 = Goku)
+nombre = "%(nombre)s"
+# One model per form, in transformation order (if some are missing, the last one repeats):
 modelos = ["modelos/base.amb"]
 """
 
@@ -2737,7 +2926,7 @@ class ImporterPage(Page):
         self.count.pack(side="left", padx=8)
         if self.adv:
             self.v_folder = tk.StringVar()
-            label(sr, "--carpeta (b3)", fg=C["dim"], bg=C["card"]).pack(side="left", padx=(16, 4))
+            label(sr, T("--carpeta (b3)", "Extra folder (B3)"), fg=C["dim"], bg=C["card"]).pack(side="left", padx=(16, 4))
             PathEntry(sr, self.v_folder, "dir", width=30, bg=C["card"]).pack(side="left")
             Tooltip(sr.winfo_children()[-1], T("Carpeta extra con modelos de la comunidad (.amb / .amo+.amt) para la "
                                                "fuente Budokai 3.", "Extra folder with community models (.amb / "
@@ -2771,7 +2960,7 @@ class ImporterPage(Page):
         self.banner = BannerPreview(g, 360, 42)
         self.banner.grid(row=1, column=1, sticky="w")
         self.name.trace_add("write", lambda *_: self._name_changed())
-        label(g, T("Golpes base (donante)", "Base moves (donor)"), bg=C["card"]).grid(row=2, column=0, sticky="w",
+        label(g, T("Golpes de (personaje base)", "Moves from (base character)"), bg=C["card"]).grid(row=2, column=0, sticky="w",
                                                                                     padx=(0, 12), pady=4)
         self.donor = tk.StringVar()
         self.donor_cb = ttk.Combobox(g, textvariable=self.donor, state="readonly", width=40, height=20)
@@ -2786,16 +2975,16 @@ class ImporterPage(Page):
             self.mod = tk.StringVar()
             label(g, "--id (" + T("plaza", "slot") + ")", bg=C["card"]).grid(row=r, column=0, sticky="w", pady=4)
             self.slot_cb = ttk.Combobox(g, textvariable=self.slot, state="readonly", width=40, height=20,
-                                        values=[T("Automática", "Automatic")] + ["%d (%s)" % s for s in FREE_SLOTS])
+                                        values=[T("Automática", "Automatic")] + slot_values())
             self.slot_cb.grid(row=r, column=1, sticky="w", pady=4)
             self.slot.set(T("Automática", "Automatic"))
             r += 1
-            label(g, "--despues-de", bg=C["card"]).grid(row=r, column=0, sticky="w", pady=4)
+            label(g, T("--despues-de", "Cell after"), bg=C["card"]).grid(row=r, column=0, sticky="w", pady=4)
             self.after_cb = ttk.Combobox(g, textvariable=self.after_var, state="readonly", width=40, height=20,
-                                         values=donor_values(T("Automática (tras su donante)",
-                                                               "Automatic (after its donor)")))
+                                         values=donor_values(T("Automática (tras su personaje base)",
+                                                               "Automatic (after its base character)")))
             self.after_cb.grid(row=r, column=1, sticky="w", pady=4)
-            self.after_var.set(T("Automática (tras su donante)", "Automatic (after its donor)"))
+            self.after_var.set(T("Automática (tras su personaje base)", "Automatic (after its base character)"))
             r += 1
             label(g, "--mod (" + T("carpeta", "folder") + ")", bg=C["card"]).grid(row=r, column=0, sticky="w", pady=4)
             ttk.Entry(g, textvariable=self.mod, width=40).grid(row=r, column=1, sticky="w", pady=4)
@@ -3168,7 +3357,7 @@ class CharactersPage(Page):
     def rebuild(self):
         self.run(cmd_roster_build(self.env, True), T("Reconstruir personajes nuevos", "Rebuild new characters"),
                  lambda j: self.alive and self.reload(), self.status,
-                 T("Listo: personajes nuevos montados en _roster.", "Done: new characters built into _roster."))
+                 T("Listo: personajes nuevos montados.", "Done: new characters built."))
 
     def preview(self, m, extra=()):
         self.want = m["name"]
@@ -3231,10 +3420,10 @@ class CharactersPage(Page):
         sb.pack(side="right", padx=(0, 6))
         if not own:
             sb.state(["disabled"])
-            Tooltip(sb, T("Usa las cámaras de su donante: para cámaras propias necesita su propio moveset "
-                          "(camara.bin). Las del donante se editan eligiéndolo en el Studio.",
-                          "It uses its donor's cameras: own cameras need its own moveset (camara.bin). Edit the "
-                          "donor's by picking it in the Studio."))
+            Tooltip(sb, T("Usa las cámaras de su personaje base: para cámaras propias necesita su propio moveset "
+                          "(camara.bin). Las de su personaje base se editan eligiéndolo en el Studio.",
+                          "It uses its base character's cameras: own cameras need its own moveset (camara.bin). Edit "
+                          "the base character's by picking it in the Studio."))
         pv = tk.Frame(c.body, bg=C["card"])
         pv.pack(fill="x", pady=(10, 4))
         for fn, mw, mh, cap in (("icono.png", 84, 84, T("Icono", "Icon")), ("rotulo.png", 200, 50, T("Rótulo",
@@ -3294,7 +3483,7 @@ class CharactersPage(Page):
              T("Desactivado: no ocupa plaza.", "Disabled: takes no slot."), bg=C["card"]).grid(row=2, column=2,
                                                                                             sticky="w", padx=8)
         label(g, T("Casilla tras", "Cell after"), bg=C["card"]).grid(row=3, column=0, sticky="w", padx=(0, 12), pady=4)
-        auto = T("Automática (tras su donante)", "Automatic (after its donor)")
+        auto = T("Automática (tras su personaje base)", "Automatic (after its base character)")
         after_vals = donor_values(auto)
         after = tk.StringVar()
         a = d.get("despues_de")
@@ -3305,6 +3494,8 @@ class CharactersPage(Page):
             m, ["--despues-de", str(donor_from_index(acb.current(), True)), "--guardar", "--solo", "icono"]))
 
         self._forms_card(body, m, own)
+        self._colors_card(body, m)
+        self._ult_card(body, m)
 
         c3 = Card(body, T("Imágenes", "Images"), T(
             "El icono y los retratos se generan desde el modelo 3D con el estilo del juego. Puedes usar tu arte.",
@@ -3359,13 +3550,13 @@ class CharactersPage(Page):
         g = c4.body
         caps = m["caps"]
         if not caps:
-            label(g, T("Usa las cápsulas de su donante (%s). Añade cápsulas propias para darle nombres propios y una "
-                       "transformación con su propia cápsula.", "Uses its donor's capsules (%s). Add own capsules "
+            label(g, T("Usa las cápsulas de su personaje base (%s). Añade cápsulas propias para darle nombres propios y una "
+                       "transformación con su propia cápsula.", "Uses its base character's capsules (%s). Add own capsules "
                        "for its own names and a transformation with its own capsule.") % donor_name(
                 d.get("donante", 21)), fg=C["dim"], bg=C["card"], wrap=700).pack(fill="x")
         else:
-            label(g, T("Las especiales y definitivas sustituyen, en orden, a las del donante; una transformación "
-                       "lleva su propia cápsula.", "Specials and ultimates replace the donor's in order; a "
+            label(g, T("Las especiales y definitivas sustituyen, en orden, a las de su personaje base; una transformación "
+                       "lleva su propia cápsula.", "Specials and ultimates replace its base character's in order; a "
                        "transformation gets its own capsule.") if not own else T(
                 "Port con moveset propio: sus especiales y su definitiva se ligan, en este orden, a estas cápsulas.",
                 "Port with its own moveset: its specials and ultimate are linked, in this order, to these capsules."),
@@ -3487,13 +3678,13 @@ class CharactersPage(Page):
         kv = tk.StringVar(value=lst(d.get("ki_base")))
         mv = tk.StringVar(value=lst(d.get("modelo_forma")))
         phys = d.get("fisica")
-        fis_vals = [T("Sin física (rígido)", "No physics (rigid)"), T("La del donante", "The donor's")] + \
+        fis_vals = [T("Sin física (rígido)", "No physics (rigid)"), T("La de su personaje base", "Its base character's")] + \
             donor_values()
         pv = tk.StringVar(value=fis_vals[1] if phys == "donante" else fis_vals[donor_index(phys, False) + 2]
                           if isinstance(phys, int) and any(x[0] == phys for x in DONORS) else fis_vals[0])
         tv = tk.BooleanVar(value=d.get("transformacion") == "donante")
         rows = ((T("Formas", "Forms"), ttk.Spinbox(g, from_=1, to=8, width=5, textvariable=fv),
-                 T("vacío = las del donante (%s)", "empty = the donor's (%s)") % donor_name(d.get("donante", 21))),
+                 T("vacío = las de su personaje base (%s)", "empty = its base character's (%s)") % donor_name(d.get("donante", 21))),
                 (T("Ki base por forma", "Base ki per form"), ttk.Entry(g, textvariable=kv, width=18),
                  T("barras a las que tiende cada forma, p. ej. 3, 4, 4, 5",
                    "bars each form drifts to, e.g. 3, 4, 4, 5")),
@@ -3507,7 +3698,7 @@ class CharactersPage(Page):
             label(g, txt, bg=C["card"]).grid(row=r, column=0, sticky="w", padx=(0, 12), pady=3)
             w.grid(row=r, column=1, sticky="w")
             hint(g, h, bg=C["card"], wrap=420).grid(row=r, column=2, sticky="w", padx=8)
-        cb = ttk.Checkbutton(g, text=T("Transformación del donante en su moveset propio (P+K+G)",
+        cb = ttk.Checkbutton(g, text=T("Transformación de su personaje base en sus golpes propios (P+K+G)",
                                        "Donor's transformation in its own moveset (P+K+G)"), variable=tv,
                              style="Card.TCheckbutton")
         cb.grid(row=len(rows), column=0, columnspan=3, sticky="w", pady=(6, 0))
@@ -3552,6 +3743,154 @@ class CharactersPage(Page):
                   "textures have alpha 255 ('unshaded'): convert it with alpha 0 and a ramp per material."),
              bg=C["card"], wrap=820).grid(row=len(rows) + 3, column=0, columnspan=3, sticky="w", pady=(8, 0))
 
+    def _ult_card(self, body, m):
+        """Definitiva: la de su personaje base o, si su juego de origen tenia otra (B1, SB...), con
+        sus animaciones dentro de esa cinematica (definitiva_animaciones); y su nombre."""
+        d, mdir = m["data"], os.path.dirname(m["toml"])
+        rel = d.get("definitiva_animaciones") or "moveset/definitiva.json"
+        has_rec = os.path.isfile(os.path.join(mdir, rel))
+        c = Card(body, T("Definitiva (WIP)", "Ultimate (WIP)"), T(
+            "En modo hiper: P+K+G+E. La cámara, el rival y los efectos son los de la definitiva de su personaje "
+            "base; si su juego de origen tenía otra, sus animaciones van dentro. Primera versión: puede fallar.",
+            "In hyper mode: P+K+G+E. Camera, opponent and effects come from its base character's ultimate; "
+            "if its original game had another one, its animations go inside. First version: may have bugs."))
+        c.pack(fill="x", pady=(0, 12))
+        g = c.body
+        st = self.status_label(g)
+        if has_rec:
+            try:
+                with open(os.path.join(mdir, rel), encoding="utf-8") as fh:
+                    n = sum(1 for k in json.load(fh) if not str(k).startswith("_"))
+            except (OSError, ValueError):
+                n = 0
+            var = tk.BooleanVar(value=bool(d.get("definitiva_animaciones")))
+
+            def toggle():
+                try:
+                    bk = backup_file(m["toml"], self.env)
+                    toml_set_keys(m["toml"], "personaje", {"definitiva_animaciones": toml_literal(rel)
+                                                           if var.get() else None})
+                except OSError as ex:
+                    self.set_status(st, "err", str(ex))
+                    return
+                self.app.log_text(T("Guardado %s (copia en %s). Se aplica al montar el roster.\n",
+                                    "Saved %s (backup at %s). Applied when the roster is built.\n") % (m["toml"], bk),
+                                  "ok")
+                self.want = m["name"]
+                self.reload()
+            ttk.Checkbutton(g, text=T("Con sus animaciones originales (%d momentos de la cinemática de %s)",
+                                      "With its original animations (%d moments of %s's cinematic)") % (
+                n, donor_name(d.get("donante", 21))), variable=var, command=toggle).pack(anchor="w")
+        else:
+            label(g, T("La de su personaje base (%s).", "Its base character's (%s).") % donor_name(
+                d.get("donante", 21)), fg=C["dim"], bg=C["card"]).pack(anchor="w")
+        ults = [(i, cc) for i, cc in enumerate(m["caps"]) if cc.get("tipo") == "definitiva"]
+        if ults:
+            i, cap = ults[0]
+            row = tk.Frame(g, bg=C["card"])
+            row.pack(fill="x", pady=(6, 0))
+            label(row, T("Nombre", "Name"), bg=C["card"], width=10).pack(side="left")
+            nm = tk.StringVar(value=cap.get("nombre", ""))
+            ttk.Entry(row, textvariable=nm, width=34).pack(side="left")
+            ttk.Button(row, text=T("Renombrar", "Rename"), style="Small.TButton", command=lambda: self.caps(
+                m, ["--renombrar", str(i), nm.get().strip()])).pack(side="left", padx=6)
+        st.pack(fill="x")
+
+    def _colors_card(self, body, m):
+        """Color del aura y del ki (aura_color / ki_color, ver colores.py): presets + selector."""
+        import colorsys  # noqa: PLC0415
+        d = m["data"]
+        c = Card(body, T("Colores del aura y del ki", "Aura and ki colors"), T(
+            "Cambia el tono de su aura y de los efectos de sus técnicas (rayos, ráfagas). Lo blanco se queda blanco.",
+            "Changes the hue of its aura and of its techniques' effects (beams, blasts). White stays white."))
+        c.pack(fill="x", pady=(0, 12))
+        g = c.body
+        donor = T("Como su personaje base (%s)", "Like its base character (%s)") % donor_name(d.get("donante", 21))
+        custom = T("Personalizado…", "Custom…")
+        names = [(n, T(es, en), h) for n, es, en, h in COLOR_PRESETS]
+
+        def swatch_hex(v):
+            h = None if v is None else next((x[2] for x in names if x[0] == v), None)
+            if h is None and isinstance(v, int):
+                h = v
+            if h is None and isinstance(v, str) and v.startswith("#"):
+                return v
+            if h is None:
+                return C["card"]
+            r, g_, b = colorsys.hsv_to_rgb(h / 360.0, 0.85, 1.0)
+            return "#%02x%02x%02x" % (int(r * 255), int(g_ * 255), int(b * 255))
+        vals = [donor] + [x[1] for x in names] + [custom]
+        st = self.status_label(g)
+        chosen = {}
+        for r, (key, txt) in enumerate((("aura_color", T("Aura", "Aura")), ("ki_color", T("Ki y técnicas",
+                                                                                         "Ki and techniques")))):
+            cur = d.get(key)
+            chosen[key] = cur
+            label(g, txt, bg=C["card"], width=16).grid(row=r, column=0, sticky="w", pady=3)
+            var = tk.StringVar(value=donor if cur is None else next((x[1] for x in names if x[0] == cur),
+                                                                    "%s %s" % (custom, cur)))
+            cb = ttk.Combobox(g, textvariable=var, values=vals, state="readonly", width=26)
+            cb.grid(row=r, column=1, sticky="w")
+            sw = tk.Label(g, width=4, bg=swatch_hex(cur), relief="solid", bd=1)
+            sw.grid(row=r, column=2, sticky="w", padx=8)
+
+            def picked(_e=None, k=key, cb=cb, sw=sw, var=var):
+                i = cb.current()
+                if i == 0:
+                    chosen[k] = None
+                elif i == len(vals) - 1:
+                    from tkinter import colorchooser  # noqa: PLC0415
+                    rgb, hx = colorchooser.askcolor(parent=self, title=T("Elige un color", "Pick a color"))
+                    if not hx:
+                        return
+                    rr, gg, bb = (x / 255 for x in rgb)
+                    if colorsys.rgb_to_hsv(rr, gg, bb)[1] < 0.15:
+                        self.set_status(st, "warn", T("Elige un color con más color: los grises no cambian el tono.",
+                                                      "Pick a more colorful color: greys do not change the hue."))
+                        return
+                    chosen[k] = hx.lower()
+                    var.set("%s %s" % (custom, hx.lower()))
+                else:
+                    chosen[k] = names[i - 1][0]
+                sw.configure(bg=swatch_hex(chosen[k]))
+            cb.bind("<<ComboboxSelected>>", picked)
+
+        # aura de otro personaje (aura_de): fusiones del juego o cualquier personaje
+        specials = [("gogeta", "Gogeta"), ("gogeta_ssj4", "Gogeta SSJ4"), ("vegito", "Vegito")]
+        avals = [T("La suya (la de su personaje base)", "Its own (its base character's)")] + [x[1] for x in specials] + donor_values()
+        cur = d.get("aura_de")
+        chosen["aura_de"] = cur
+        av = tk.StringVar(value=avals[0] if cur is None else next(
+            (x[1] for x in specials if x[0] == str(cur).lower()), None) or (
+            avals[1 + len(specials) + donor_index(cur, False)] if isinstance(cur, int) else avals[0]))
+        label(g, T("Forma del aura", "Aura shape"), bg=C["card"], width=16).grid(row=2, column=0, sticky="w", pady=3)
+        acb = ttk.Combobox(g, textvariable=av, values=avals, state="readonly", width=26)
+        acb.grid(row=2, column=1, sticky="w")
+
+        def aura_picked(_e=None):
+            i = acb.current()
+            chosen["aura_de"] = None if i <= 0 else specials[i - 1][0] if i <= len(specials) else                 DONORS[i - 1 - len(specials)][0]
+        acb.bind("<<ComboboxSelected>>", aura_picked)
+        hint(g, T("las fusiones tienen auras propias; el color de arriba se aplica encima",
+                  "fusions have their own auras; the color above is applied on top"), bg=C["card"],
+             wrap=300).grid(row=2, column=2, sticky="w", padx=8)
+
+        def save():
+            try:
+                bk = backup_file(m["toml"], self.env)
+                toml_set_keys(m["toml"], "personaje", {k: None if v is None else toml_literal(v)
+                                                       for k, v in chosen.items()})
+            except OSError as ex:
+                self.set_status(st, "err", str(ex))
+                return
+            self.app.log_text(T("Guardado %s (copia en %s). Se aplica al montar el roster.\n",
+                                "Saved %s (backup at %s). Applied when the roster is built.\n") % (m["toml"], bk), "ok")
+            self.want = m["name"]
+            self.reload()
+        ttk.Button(g, text=T("Guardar", "Save"), style="Small.TButton", command=save).grid(
+            row=3, column=0, sticky="w", pady=(8, 0))
+        st.grid(row=4, column=0, columnspan=3, sticky="ew")
+
     def _traje_editor(self, body, m):
         d = m["data"]
         c = Card(body, m["display"] or m["name"], T("Traje extra para %s: se añade detrás de los trajes del juego.",
@@ -3577,9 +3916,9 @@ class CreatePage(Page):
 
     def build(self):
         self.header(T("Crear personaje con mis modelos", "Create a character from my models"),
-                    T("Para tus propios archivos de modelo (#AMB de B3 PS2, #AMB HD o LZX). El icono, el rótulo y "
+                    T("Para tus propios modelos (.amb o .bin de Budokai 3, de PS2 o HD). El icono, el rótulo y "
                       "los retratos se generan solos desde el modelo.",
-                      "For your own model files (B3 PS2 #AMB, HD #AMB or LZX). The icon, banner and portraits are "
+                      "For your own models (Budokai 3 .amb or .bin, PS2 or HD). The icon, banner and portraits are "
                       "generated from the model."))
         sf, body = self.scroll_body()
         c = Card(body, T("Datos del personaje", "Character data"))
@@ -3603,7 +3942,7 @@ class CreatePage(Page):
         me.bind("<Key>", lambda _e: setattr(self, "_mod_auto", False))
         r += 1
         self.name.trace_add("write", lambda *_: self._name_changed())
-        label(g, T("Donante (moveset y técnicas)", "Donor (moveset and techniques)"), bg=C["card"]).grid(
+        label(g, T("Personaje base (golpes y técnicas)", "Base character (moves and techniques)"), bg=C["card"]).grid(
             row=r, column=0, sticky="w", padx=(0, 12), pady=4)
         self.donor = ttk.Combobox(g, values=donor_values(), state="readonly", width=40, height=20)
         self.donor.current(donor_index(0, False))
@@ -3614,15 +3953,15 @@ class CreatePage(Page):
              bg=C["card"]).grid(row=r, column=1, sticky="w")
         r += 1
         label(g, T("Casilla tras", "Cell after"), bg=C["card"]).grid(row=r, column=0, sticky="w", padx=(0, 12), pady=4)
-        self.after_cb = ttk.Combobox(g, values=donor_values(T("Automática (tras su donante)", "Automatic (after its "
-                                                                                           "donor)")),
+        self.after_cb = ttk.Combobox(g, values=donor_values(T("Automática (tras su personaje base)", "Automatic (after its base "
+                                                                                           "character)")),
                                   state="readonly", width=40, height=20)
         self.after_cb.current(0)
         self.after_cb.grid(row=r, column=1, sticky="w", pady=4)
         r += 1
         label(g, T("Plaza", "Slot"), bg=C["card"]).grid(row=r, column=0, sticky="w", padx=(0, 12), pady=4)
         self.slot = ttk.Combobox(g, values=[T("Automática (primera libre)", "Automatic (first free)")] + [
-            "%d (%s)" % s for s in FREE_SLOTS], state="readonly", width=40, height=20)
+            x for x in slot_values()], state="readonly", width=40, height=20)
         self.slot.current(0)
         self.slot.grid(row=r, column=1, sticky="w", pady=4)
         r += 1
@@ -3632,9 +3971,9 @@ class CreatePage(Page):
         ttk.Spinbox(g, from_=1, to=6, textvariable=self.forms, width=5).grid(row=r, column=1, sticky="w", pady=4)
 
         c2 = Card(body, T("Modelos", "Models"), T(
-            "Uno por traje (con varias formas: traje 1 forma 1, traje 1 forma 2, ...). Admite #AMB de B3 PS2, #AMB HD "
-            "o LZX.", "One per costume (with several forms: costume 1 form 1, costume 1 form 2, ...). Accepts B3 PS2 "
-            "#AMB, HD #AMB or LZX."))
+            "Uno por traje. Con transformaciones, en orden: traje 1 normal, traje 1 transformado, traje 2 normal... "
+            "Valen los .amb/.bin de Budokai 3 (PS2 o HD).", "One per costume. With transformations, in order: "
+            "costume 1 normal, costume 1 transformed, costume 2 normal... Budokai 3 .amb/.bin files work (PS2 or HD)."))
         c2.pack(fill="x", pady=(0, 12))
         lf = tk.Frame(c2.body, bg=C["card"])
         lf.pack(fill="x")
@@ -4463,10 +4802,33 @@ DOCS = [
     ("Escenarios", "Stages", "Formato de los escenarios.", "Stage format.",
      ["docs/formatos/STAGES_FORMAT.md", "docs/03_formatos/STAGES_FORMAT.md"]),
     ("Guía de swaps y ports", "Swaps & ports guide", "Principios de los swaps y ports entre juegos.",
-     "Principles of cross-game swaps and ports.", ["mod center hd/GUIA_SWAPS_Y_PORTS.md"]),
+     "Principles of cross-game swaps and ports (technical notes, Spanish only).", ["mod center hd/GUIA_SWAPS_Y_PORTS.md"]),
     ("Inventario de herramientas", "Tools inventory", "Todas las herramientas del proyecto.",
-     "Every tool in the project.", ["docs/04_herramientas/TOOLS.md"]),
+     "Every tool in the project (technical list, Spanish only).", ["docs/04_herramientas/TOOLS.md"]),
 ]
+
+
+class HexPage(Page):
+    """Editor hexadecimal (hexedit.py) para modders expertos: sabe de #AMB/#AMO y guarda con copia."""
+    key = "hex"
+
+    def build(self):
+        self.header(T("Editor hexadecimal", "Hex editor"),
+                    T("Para modders expertos: edita bytes como en HxD. El árbol de la izquierda entiende los #AMB "
+                      "(PS2 en little endian, HD en big endian) y las partes de los #AMO (ocultar una parte para "
+                      "un traje alternativo). Al guardar se hace una copia de seguridad.",
+                      "For expert modders: edit bytes like in HxD. The tree on the left understands #AMB (PS2 "
+                      "little endian, HD big endian) and #AMO parts (hide a part for an alternate costume). "
+                      "Saving makes a backup first."))
+        try:
+            import hexedit  # noqa: PLC0415
+            hexedit.COLORS.update(bg=C["bg"], card=C["card"], text=C["text"], dim=C["dim"], accent=C["accent"],
+                                  err=C["err"])
+            self.ed = hexedit.HexEditor(self, fonts=F, tr=T)
+            self.ed.pack(fill="both", expand=True, padx=22, pady=(0, 10))
+        except Exception as ex:  # noqa: BLE001
+            label(self, T("No se pudo cargar el editor: %s", "Could not load the editor: %s") % ex,
+                  fg=C["err"]).pack(fill="x", padx=22)
 
 
 class DiagPage(Page):
@@ -4602,6 +4964,8 @@ class HelpPage(Page):
         g.pack(fill="x", pady=(0, 12))
         found = 0
         for es, en, des, den, cands in DOCS:
+            if LANG == "en":    # X.md -> X_EN.md / X.txt -> X_EN.txt (guia traducida, si existe)
+                cands = [re.sub(r"(\.\w+)$", r"_EN\1", c) for c in cands] + cands
             p = first_existing(*[os.path.join(KIT, *c.split("/")) for c in cands])
             if not p:
                 continue
@@ -4840,7 +5204,7 @@ class LogPanel(tk.Frame):
 
     def save(self):
         p = filedialog.asksaveasfilename(defaultextension=".txt", initialfile="modkit_log.txt",
-                                         filetypes=[("Texto", "*.txt")])
+                                         filetypes=[(T("Texto", "Text"), "*.txt")])
         if p:
             try:
                 with open(p, "w", encoding="utf-8") as fh:
@@ -4896,11 +5260,11 @@ class StatusBar(tk.Frame):
 ADV_TABS = [("setup", "Entorno", "Environment"), ("mods", "Mods", "Mods"), ("importer", "Importar", "Import"),
             ("characters", "Personajes", "Characters"), ("create", "Crear", "Create"),
             ("textures", "Texturas", "Textures"), ("swap", "Cambio de modelo", "Model swap"),
-            ("tools", "Herramientas", "Tools"), ("diag", "Diagnóstico", "Diagnostics"),
+            ("tools", "Herramientas", "Tools"), ("hex", "Hex", "Hex"), ("diag", "Diagnóstico", "Diagnostics"),
             ("help", "Ayuda", "Help")]
 PAGE_CLASSES = {"home": HomePage, "setup": SetupPage, "mods": ModsPage, "importer": ImporterPage,
                 "characters": CharactersPage, "create": CreatePage, "textures": TexturesPage, "swap": SwapPage,
-                "tools": ToolsPage, "diag": DiagPage, "help": HelpPage}
+                "tools": ToolsPage, "hex": HexPage, "diag": DiagPage, "help": HelpPage}
 
 
 class App:
@@ -5038,6 +5402,8 @@ class App:
         self.pages[ADV_TABS[idx][0]].on_show()
 
     def rebuild(self):
+        global ADV_LABELS
+        ADV_LABELS = self.adv
         self._basic_current = None
         self.build()
 
@@ -5355,11 +5721,11 @@ def selftest(lang=None):
         cat = load_catalog(env)
         if cat:
             tx = app.pages["textures"]
-            tx.src.var.set(char_label(cat[0]))
+            tx.src.set_char(cat[0])
             tx.extract()
             sw = app.pages["swap"]
-            sw.src.var.set(char_label(cat[0]))
-            sw.dst.var.set(char_label(cat[-1]))
+            sw.src.set_char(cat[0])
+            sw.dst.set_char(cat[-1])
             sw.swap()
         chp = app.pages["characters"]
         chp.reload()

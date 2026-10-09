@@ -259,6 +259,16 @@ def _encode_block(block):
     return alpha_bytes + struct.pack('<HH', c0 & 0xFFFF, c1 & 0xFFFF) + bytes(indices)
 
 
+def pad4(rgba):
+    """DXT va en bloques de 4x4: una textura de PS2 de 2 o 6 pixeles de lado (Super 17 de IW) se
+    escala (vecino mas proximo, mismo aspecto con UV normalizadas) al multiplo de 4 siguiente."""
+    h, w = rgba.shape[:2]
+    if w % 4 == 0 and h % 4 == 0:
+        return rgba
+    H, W = -(-h // 4) * 4, -(-w // 4) * 4
+    return rgba[(np.arange(H) * h // H)[:, None], (np.arange(W) * w // W)[None, :]]
+
+
 def encode_dxt3(rgba):
     h, w = rgba.shape[:2]
     assert w % 4 == 0 and h % 4 == 0, "dimensiones deben ser multiplo de 4"

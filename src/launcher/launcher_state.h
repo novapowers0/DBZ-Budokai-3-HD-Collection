@@ -113,6 +113,7 @@ class LauncherDialog : public rex::ui::ImGuiDialog {
   char tex_mod_buf_[128] = {};
   char tex_dir_buf_[512] = {};  // carpeta de texturas (default = mods/<mod>/textures)
   // "Texturas faciles" (pestana Mods): conversion de capturas a PNG en curso y cuantas hay.
+  int active_mods_ = 0;         // mods activos (aviso de modo ISO junto a JUGAR)
   int broken_mods_ = -1;        // mods activos con problemas (-1 = sin contar)
   bool tex_easy_job_ = false;
   int tex_easy_captures_ = -1;  // -1 = sin contar todavia
@@ -198,6 +199,7 @@ class LauncherDialog : public rex::ui::ImGuiDialog {
   int tab_index_ = 0;              // tab drawn this frame
   int tab_request_ = -1;           // tab to select next frame (LB/RB, Ctrl+Tab)
   bool pad_play_ = false;          // START pressed
+  bool launching_ = false;         // JUGAR pulsado: montando los personajes nuevos
   bool in_game_ = false;
   bool input_blocked_ = false;
 

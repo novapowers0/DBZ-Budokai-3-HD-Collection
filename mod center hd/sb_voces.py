@@ -50,8 +50,10 @@ import iso as isomod
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, ".."))
-ISOS = {"sb1": "Dragonball Z Shin Budokai (USA).iso",
-        "sb2": "Dragonball Z Shin Budokai Another Road (USA).iso"}
+import iso as _iso  # noqa: E402
+# la ISO de PSP de cualquier region (ruta completa; join con ps2_games la deja igual)
+ISOS = {"sb1": _iso.find_game("sb1") or "Dragonball Z Shin Budokai (USA).iso",
+        "sb2": _iso.find_game("sb2") or "Dragonball Z Shin Budokai Another Road (USA).iso"}
 BTL = {"sb1": {"usa": "data_btl_voice_us.afs", "jpn": "data_btl_voice.afs"},
        "sb2": {"usa": "data_btl_voice_us.afs", "jpn": "data_btl_voice_jp.afs"}}
 SYS = {"sb2": {"usa": "data_sys_voice_us.afs", "jpn": "data_sys_voice_jp.afs"}}
@@ -97,7 +99,7 @@ class Afs:
     """AFS de PSP dentro de la ISO, con su tabla de nombres (48 B por entrada)."""
 
     def __init__(self, iso, name):
-        path = iso.find(name)
+        path = iso.find_region(name)
         if not path:
             raise FileNotFoundError("falta %s en %s" % (name, iso.path))
         self.f = iso.open(path)

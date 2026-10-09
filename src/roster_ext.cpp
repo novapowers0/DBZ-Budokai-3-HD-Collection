@@ -136,6 +136,9 @@ std::map<uint32_t, uint32_t> g_host_slot;
 std::map<uint32_t, std::array<uint8_t, 40>> g_new_caps;
 // panel de descripcion de las capsulas nuevas: ID -> entrada de data_usi (#AZT de 5 lineas)
 std::map<uint32_t, uint32_t> g_cap_desc;
+// nombres de capsulas de los IDs >= 44 (la tabla 0x82373D68 tiene 44 entradas: justo
+// detras van las posiciones de la bandeja de "Edit Skills", 0x82373DC4..0x82373DE8)
+std::map<uint32_t, int32_t> g_hud_fid;
 std::map<uint32_t, uint64_t> g_cap_owner_add;
 std::atomic<bool> g_caps_done{false};
 // fichas de habilidades (lista de la pausa y rotulos de capsula en combate)
@@ -439,7 +442,13 @@ void ApplyCharacter(Guest& g, const toml::table& t, const std::string& mod) {
     }
   }
   const auto hud = Ints(t["hud"]);
-  if (hud.size() == 2) {
+  if (id >= 44) {
+    if (hud.size() == 2) {
+      g_hud_fid[uint32_t(id)] = int32_t((hud[0] & 0xFF) << 8 | (hud[1] & 0xFF));
+    } else if (donor >= 0 && donor < 44) {
+      g_hud_fid[uint32_t(id)] = int16_t((g.U8(kHudFace + uint32_t(donor) * 2) << 8) | g.U8(kHudFace + uint32_t(donor) * 2 + 1));
+    }
+  } else if (hud.size() == 2) {
     g.W8(kHudFace + uint32_t(id) * 2, uint8_t(hud[0]));
     g.W8(kHudFace + uint32_t(id) * 2 + 1, uint8_t(hud[1]));
   } else if (donor >= 0) {
@@ -795,6 +804,7 @@ void ApplyAtLaunch(rex::memory::Memory* memory) {
   g_host_slot.clear();
   g_new_caps.clear();
   g_cap_desc.clear();
+  g_hud_fid.clear();
   g_cap_owner_add.clear();
   g_caps_done.store(false);
   g_unlock.store(0);
@@ -1387,10 +1397,42 @@ DBZ3_HOOK(sub_821BB680, dbz3eu_sub_821BA468) {
   t_desc_from = t_desc_fid = 0;
 }
 
+// Nombres de las capsulas del personaje (data_usi 0x82373D68[ID], u16 x 44): para los
+// IDs >= 44 el juego lee fuera de la tabla; durante la llamada, el fichero que pediria se
+// cambia por el suyo (g_hud_fid). sub_821B6B98: r3 = ID (combate); sub_821B9F90: r5 =
+// casilla del select (ID con la tabla casilla -> ID).
+namespace {
+thread_local uint32_t t_hud_from = 0;
+thread_local uint32_t t_hud_to = 0;
+
+bool HudRemap(uint8_t* base, int32_t id) {
+  auto it = id >= 44 ? dbz3::roster::g_hud_fid.find(uint32_t(id)) : dbz3::roster::g_hud_fid.end();
+  if (it == dbz3::roster::g_hud_fid.end()) return false;
+  // mismo valor que calcula el juego: lhax + oris 1
+  t_hud_from = uint32_t(int32_t(int16_t(REX_LOAD_U16(dbz3::roster::kHudFace + 2 * uint32_t(id))))) | 0x10000u;
+  t_hud_to = 0x10000u | (uint32_t(it->second) & 0xFFFF);
+  return true;
+}
+}  // namespace
+
+DBZ3_HOOK(sub_821B6B98, dbz3eu_sub_821B5980) {
+  const bool remap = HudRemap(base, ctx.r3.s32);
+  orig(ctx, base);
+  if (remap) t_hud_from = t_hud_to = 0;
+}
+
+DBZ3_HOOK(sub_821B9F90, dbz3eu_sub_821B8D78) {
+  const uint32_t slot = ctx.r5.u32;
+  const bool remap = slot < 64 && HudRemap(base, int16_t(REX_LOAD_U16(dbz3::roster::kSlotToId + 2 * slot)));
+  orig(ctx, base);
+  if (remap) t_hud_from = t_hud_to = 0;
+}
+
 // Carga de un fichero (r3 = 0x10000 | indice de data_usi): durante el panel de una
 // capsula nueva, 2079 + ID se cambia por su descripcion.
 DBZ3_HOOK(sub_82083968, dbz3eu_sub_82083968) {
   if (t_desc_from && ctx.r3.u32 == t_desc_from) ctx.r3.u64 = t_desc_fid;
+  if (t_hud_from && ctx.r3.u32 == t_hud_from) ctx.r3.u64 = t_hud_to;
   orig(ctx, base);
 }
 

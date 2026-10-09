@@ -57,10 +57,12 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path[:0] = [HERE, os.path.join(ROOT, "mod center hd")]
 
-SB_ISO = {"sb1": os.path.join(ROOT, "ps2_games", "Dragonball Z Shin Budokai (USA).iso"),
-          "sb2": os.path.join(ROOT, "ps2_games", "Dragonball Z Shin Budokai Another Road (USA).iso")}
+import iso as _iso  # noqa: E402
+SB_ISO = {g: _iso.find_game(g) or os.path.join(ROOT, "ps2_games", fn) for g, fn in (   # cualquier region
+    ("sb1", "Dragonball Z Shin Budokai (USA).iso"), ("sb2", "Dragonball Z Shin Budokai Another Road (USA).iso"))}
 DMG_AST = 0.625          # dano de energia B3 / SB (Kamehameha de Gohan adulto: 250 / 400)
 AST_ZERO = (0x14, 0x16, 0xCA, 0xDC, 0xEC, 0xEE)     # campos SB que ningun AST de B3 usa
+AST_LOW = (1, 2, 3, 4)             # los de las tecnicas nuevas (ver build_bsp)
 AST_NEW = list(range(1, 0x10))     # libres y BAJOS: los 38 nativos solo usan 0-4 (con 0x53 la bola
                                     # del Burning Attack no hacia dano, prueba 4); los equipados primero
 ASE_NEW = list(range(0x58, 0x60)) + list(range(0x72, 0x7F))
@@ -75,7 +77,7 @@ class SbAfs:
     def __init__(self, game, name):
         import iso  # noqa: PLC0415
         self.iso = iso.Iso(SB_ISO[game])
-        self.f = self.iso.open(self.iso.find(name))
+        self.f = self.iso.open(self.iso.find_region(name))
         self.f.seek(4)
         n = struct.unpack("<I", self.f.read(4))[0]
         self.tab = [struct.unpack("<II", self.f.read(8)) for _ in range(n)]
@@ -155,7 +157,8 @@ def sb_bcm(bcm):
         w = struct.unpack_from("<16H", bcm, o)
         # tecnica: E con direccion (->, <-, ^) y condicion de especial (2, 4 cuerpo a cuerpo) o de
         # definitivo (8); 0x20 = transformarse y 0x40/0x80 = estado aura de SB no lo son
-        if w[1] == 8 and w[0] in (1, 2, 0x10) and w[4] & 0x000E and not w[4] & 0x00E0:
+        # (definitivo: cond 8 en Another Road, 0x10 en Shin Budokai 1)
+        if w[1] == 8 and w[0] in (1, 2, 0x10) and w[4] & 0x001E and not w[4] & 0x00E0:
             out.append(dict(off=o, dir=w[0], botones=w[1], cond=w[4], cond2=w[6], booster=w[8], ki=w[9],
                             codigos=[c for c in w[12:15] if c]))
         todo += [struct.unpack_from("<I", bcm, o + 0x40 + 4 * k)[0] for k in range(min(w[7], 64))]
@@ -239,10 +242,19 @@ RECETAS = {
         0x460: dict(nombre="Kamehameha", donante={0xA: 0x4, 0x15F: 0x0}, plantilla_donante=0x24B,
                     desfase=-1, beam_struggle=True, ki=10, equipada=True,
                     voz=[(11, 0x2E), (45, 0x2F)]),    # banco de F: 46 "Kamehame!", 47 "HA!" (gritos.sq_enable los enciende)
-        0x488: dict(nombre="Spirit Shot", dano=250, ki=10, equipada=False),
+        # ast_nativo = (ID, codigo #AST) de una tecnica nativa de B3: su energia con sus efectos
+        # (2026-10-08, pruebas en juego: la bola de SB salia como un destello morado sin rayo y
+        # el proyectil de la Z Sword no se veia ni golpeaba)
+        0x488: dict(nombre="Spirit Shot", ast_nativo=(39, 0), dano=250, ki=10, equipada=False),  # bola: Riot Javelin
         0x48B: dict(nombre="Evasive Kick", dano_golpe=250, ki=10, equipada=False),
-        0x491: dict(nombre="Masenko", tono=52, dano=250, ki=10, equipada=False),
-        0x495: dict(nombre="Z Sword", dano=400, ki=20, equipada=False),
+        0x491: dict(nombre="Masenko", tipo=0, tono=52, dano=250, ki=10, equipada=False),     # rayo amarillo
+        # Z Sword: lanza la espada. El Kienzan nativo (tipo 3) es un MODELO (#AMO del BSP de
+        # Krilin): sin el no sale nada (prueba 2026-10-08). Proyectil de energia (bola, tipo 1)
+        # azul; sin el 2o destello de SB (tras la carrera llenaba la pantalla)
+        # Tras lanzar, SB lo hace correr hacia delante (encima de su proyectil): se queda en su
+        # sitio (sin_retroceso fija la cintura desde el lanzamiento) y la carga acaba al lanzar
+        0x495: dict(nombre="Z Sword", tipo=1, tono=200, dano=400, ki=20, equipada=False,
+                    donante={0x14: 0x10}, sin_retroceso=True, extra=[(38, 4, 0x10)]),
         0x49C: dict(nombre="Burning Attack", tono=38, dano=400, ki=20, equipada=True,
                     sin_retroceso=True,      # el salto atras de 6 unidades en 3 frames al disparar
                     voz=[(41, 0x1A), (57, 0x16)]),   # GHF no tiene "Burning Attack!": "Take this!" + "HA!"
@@ -251,15 +263,34 @@ RECETAS = {
                     "congelado tras disparar (prueba en juego 2)"),
         0x464: dict(nombre="Super Kamehameha", definitivo=True, ki=50, equipada=True),
     },
+    # Trunks con espada (Another Road). Rotulos oficiales (texturas bftrx/bftrxm1). B3 solo tiene
+    # una definitiva: la de la forma normal (Burning Slash, con las poses de SB sobre la
+    # cinematica de Trunks: cinematica.py) en todas las formas; Heat Dome Attack (SSJ) fuera.
+    "TRX": {
+        0x45C: dict(nombre="Masenko", tono=52, equipada=True),          # bola amarilla (sin tono: azul del donante)
+        0x460: dict(nombre="Buster Cannon", equipada=True),
+        0x468: dict(nombre="Shining Slash", equipada=True),
+        0x471: dict(nombre="Burning Slash", definitivo=True, todas_las_formas=True, equipada=True),
+        0x476: dict(nombre="Heat Dome Attack", omitir="B3 solo tiene una definitiva por personaje: "
+                    "va Burning Slash (forma normal de SB) en todas las formas"),
+    },
 }
 
 
-def receta_de(code, techs, receta=None):
+def donor_ult(donor):
+    """Codigo del definitivo cinematico del donante (entrada P+K+G+E cond 8 del BCM) o None."""
+    import afs_pair  # noqa: PLC0415
+    import b1port as bp  # noqa: PLC0415
+    st, bl = bp.bcm_parse(next(x for x, t in bp.amb_kids(afs_pair.ps2(donor_ids(donor)["cam"])) if x[:4] == b"#BCM"))
+    return next((bp.w16(bl[o][0], 12) for o in st if bp.w16(bl[o][0], 4) & 0x8 and bp.w16(bl[o][0], 1) == 0xF), None)
+
+
+def receta_de(code, techs, receta=None, donor=None):
     """Receta completa por codigo SB: la de RECETAS (o --receta) y, para lo que falte, la
     automatica: nombre provisional, ki de SB, dano SB x DMG_AST; de los ^E de SB el que vale en
     mas formas pasa a ser el definitivo cinematico del donante y el resto, especiales ->E."""
     base = receta if receta is not None else RECETAS.get(code, {})
-    ults = [t for t in techs if t["entrada"]["dir"] == 0x10 or t["entrada"]["cond"] & 0x8]
+    ults = [t for t in techs if t["entrada"]["dir"] == 0x10 or t["entrada"]["cond"] & 0x18]
     main = max(ults, key=lambda t: (bin(t["entrada"]["booster"]).count("1"), t["codigo"]), default=None)
     out, k = {}, 0
     for t in techs:
@@ -274,7 +305,40 @@ def receta_de(code, techs, receta=None):
                     r.update(especial=1)
         r.setdefault("ki", (t["entrada"]["ki"] + 500) // 1000 * 10)
         out[t["codigo"]] = r
+    if donor is not None and any(r.get("definitivo") for r in out.values()) and donor_ult(donor) is None:
+        for r in out.values():          # sin cinematica que heredar: especial ->E
+            if r.pop("definitivo", None):
+                r["especial"] = 1
     return out
+
+
+def cadenas(techs, receta):
+    """Tecnicas que EVOLUCIONAN con la forma (SB no gasta otra capsula: en la misma entrada, el
+    Masenko de la forma normal pasa a Spirit Shot en SSJ y a Kamehameha en SSJ2; como el
+    Kamehameha x10 del SSJ4 de B3). Especiales de la misma direccion/botones con mascaras de
+    formas (booster) no nulas y disjuntas. -> [[tecnica, ...]] ordenadas por su 1a forma; la
+    capsula (y la entrada del BCM) es la de la 1a, salvo que otra tenga beam struggle."""
+    low = lambda t: (t["entrada"]["booster"] & -t["entrada"]["booster"]).bit_length()   # noqa: E731
+    groups = {}
+    for t in techs:
+        r, e = receta[t["codigo"]], t["entrada"]
+        if r.get("definitivo") or r.get("omitir") or r.get("especial") or not e["booster"]:
+            continue
+        groups.setdefault((e["dir"], e["botones"]), []).append(t)
+    out = []
+    for ts in groups.values():
+        chain, mask = [], 0
+        for t in sorted(ts, key=low):
+            if not t["entrada"]["booster"] & mask:
+                chain.append(t)
+                mask |= t["entrada"]["booster"]
+        if len(chain) > 1:
+            out.append(chain)
+    return out
+
+
+def cadena_principal(chain, receta):
+    return next((t for t in chain if receta[t["codigo"]].get("beam_struggle")), chain[0])
 
 
 def placeholders(techs, receta):
@@ -333,6 +397,27 @@ def ame_nodes(a):
     return seen
 
 
+def ame_retex(a, tex_new):
+    """#AME (LE) con los indices de textura de sus particulas cambiados (otro #AMT)."""
+    out = bytearray(a)
+    for o in ame_nodes(a):
+        if u16(a, o + 6) != 2:
+            continue
+        cnt, tex = struct.unpack_from("<II", a, o + 0xA0)
+        if cnt == 1 and tex < 0x10000:               # mismas reglas que ame_recolor
+            struct.pack_into("<I", out, o + 0xA4, tex_new(tex))
+        else:
+            cnt2, tex2 = struct.unpack_from("<II", a, o + 0xC0) if o + 0xC8 <= len(a) else (9, 0)
+            if cnt2 in (0, 1) and tex2 < 0x100:
+                struct.pack_into("<I", out, o + 0xC4, tex_new(tex2))
+    return bytes(out)
+
+
+# pares (origen, indice) de los enlaces #AME de un bloque #AST: cola, cabeza, 2o enlace de la
+# bola, impacto e impacto 2 (origen 2 = hijo del propio #AMB del BSP; 0/6 = bancos comunes)
+AST_LINKS = (0x34, 0x5C, 0x68, 0x78, 0xB4)
+
+
 def ame_recolor(a, hue, tex_new):
     """#AME (LE) con las particulas de otro tono. tex_new(indice) -> indice de la textura
     recoloreada (o el mismo si es gris)."""
@@ -351,7 +436,7 @@ def ame_recolor(a, hue, tex_new):
         else:
             # otra variante de particula (estela del rayo, carga): textura en +0xC4 y colores
             # blancos; el azul esta en la textura (prueba 7: Burning Attack "azulado")
-            cnt2, tex2 = struct.unpack_from("<II", a, o + 0xC0)
+            cnt2, tex2 = struct.unpack_from("<II", a, o + 0xC0) if o + 0xC8 <= len(a) else (9, 0)
             if cnt2 in (0, 1) and tex2 < 0x100:
                 struct.pack_into("<I", out, o + 0xC4, tex_new(tex2))
     return bytes(out)
@@ -447,25 +532,28 @@ def build_bsp(code, game="sb2", donor=4, receta=None, sources=None):
     import ps2hd  # noqa: PLC0415
     bc, bsp = sources or sb_sources(game, code)
     techs, sbp = sb_tecnicas(bc, bsp)
-    receta = receta_de(code, techs, receta)
+    receta = receta_de(code, techs, receta, donor)
     rep = []
     P, H = donor_bsp(donor)
     ptop, htop = kids(P), kids(H, ">")
     p0, p1 = kids(ptop[0][0]), kids(ptop[1][0])
     h0, h1 = kids(htop[0][0], ">"), kids(htop[1][0], ">")
     ast_t, ase_t = wk_blocks(p0[0][0]), wk_blocks(p1[0][0])
-    big = next(i for i, (x, t) in enumerate(ptop) if x[:4] == b"#AMT")
-    amt, hazt = ptop[big][0], htop[big][0]
+    # el #AMT grande (texturas de los efectos): arriba en casi todos; Gotenks lo lleva dentro del
+    # #AMB de los #AST. big = (None | 0 | 1, indice)
+    amts = [((None, i), x) for i, (x, t) in enumerate(ptop) if x[:4] == b"#AMT"]
+    amts += [((a, i), x) for a, pp in ((0, p0), (1, p1)) for i, (x, t) in enumerate(pp) if x[:4] == b"#AMT"]
+    big, amt = max(amts, key=lambda lx: struct.unpack_from("<I", lx[1], 0x10)[0])
+    hazt = (htop if big[0] is None else (h0, h1)[big[0]])[big[1]][0]
     ntex = struct.unpack_from("<I", amt, 0x10)[0]
     assert len(azt_entries(hazt)) == ntex
     texs = {t["idx"]: t for t in amt_ps2.entries(amt)}
     own = {u16(b, 0x12) for b in ast_t} | {c for b in ase_t for c in struct.unpack_from("<3H", b, 0x6A)} - {0}
-    beam_tpl = next(b for b in ast_t if u16(b, 0x10) == 0)
-    # plantillas de #ASE: carga (inicio/medio/fin, efecto propio: la del Kamehameha) y destello
-    charge_tpl = next(b for b in ase_t if u16(b, 0x6C) and u16(b, 0x5C) == 2)
-    shot_tpl = next(b for b in ase_t if not u16(b, 0x6C) and not u16(b, 0x6E) and u16(b, 0x5C) == 2)
-    head_ame, tail_ame = u16(beam_tpl, 0x5E), u16(beam_tpl, 0x36)
-    hit_link = bytes(beam_tpl[0x70:0x7C]), bytes(beam_tpl[0xAC:0xB8])
+    # de donde leen sus texturas los #AST de este BSP (+0x20) y una textura suya de plantilla
+    # para las anadidas (la de un rayo o rafaga: mismo formato)
+    srcs = [bytes(b[0x20:0x24]) for b in ast_t if u16(b, 0x20) in (1, 2)]
+    tex_src = max(set(srcs), key=srcs.count) if srcs else b"\x01\x00\x02\x00"
+    tex_tpl = next((u16(b, 0x48) for b in ast_t if u16(b, 0x48) and u16(b, 0x48) < ntex), 0)
     new_ame0, new_ame1, extra_tex = [], [], []
     tex_cache, clone_cache = {}, {}
     sb_amt = next((x for x, t in sbp["top"] if x[:4] == b"#AMT" and struct.unpack_from("<I", x, 0x10)[0] > 4), None)
@@ -484,20 +572,147 @@ def build_bsp(code, game="sb2", donor=4, receta=None, sources=None):
         return tex_cache[key]
 
     def clone(amb, idx, hue):
-        """Indice del hijo #AME `idx` del AMB 0/1 del donante recoloreado (o el mismo)."""
+        """Indice del hijo #AME `idx` del AMB 0/1 del donante (o de los ya anadidos) recoloreado."""
         if hue is None:
             return idx
         key = (amb, idx, hue)
         if key not in clone_cache:
-            src = (p0 if amb == 0 else p1)[idx][0]
             lst, base = (new_ame0, len(p0)) if amb == 0 else (new_ame1, len(p1))
+            src = (p0 if amb == 0 else p1)[idx][0] if idx < base else lst[idx - base]
             lst.append(ame_recolor(src, hue, lambda t: tex_hue(t, hue)))
             clone_cache[key] = base + len(lst) - 1
         return clone_cache[key]
 
-    free_ast = [c for c in AST_NEW if c not in own]
+    natives = {}
+
+    def native_ast(cid, code_n, hue):
+        """Bloque #AST `code_n` del BSP del nativo `cid`, con los #AME propios (origen 2) clonados
+        a este BSP (texturas importadas, tono opcional) y las texturas del rayo importadas."""
+        if cid not in natives:
+            np_, nh_ = donor_bsp(cid)
+            nt, nht = kids(np_), kids(nh_, ">")
+            # texturas de sus #AME y del rayo: el #AMT con mas entradas del BSP (el de arriba en
+            # Gohan adulto; Gohan nino solo lo tiene dentro del #AMB de los #ASE)
+            amts = [(x, h) for (x, _), (h, _) in zip(nt, nht) if x[:4] == b"#AMT"]
+            for ai in (0, 1):
+                amts += [(x, h) for (x, _), (h, _) in zip(kids(nt[ai][0]), kids(nht[ai][0], ">")) if x[:4] == b"#AMT"]
+            amt, azt = max(amts, key=lambda xh: struct.unpack_from("<I", xh[0], 0x10)[0])
+            natives[cid] = dict(p=(kids(nt[0][0]), kids(nt[1][0])), ast=wk_blocks(kids(nt[0][0])[0][0]), azt=azt,
+                                texs={tt["idx"]: tt for tt in amt_ps2.entries(amt)}, tex={}, ame={})
+        nb = natives[cid]
+        if code_n is None:
+            return None
+        src = next(x for x in nb["ast"] if u16(x, 0x12) == code_n)
+
+        def tex_import(i):
+            if i not in nb["texs"]:
+                return i
+            if i not in nb["tex"]:
+                img = azt_image(nb["azt"], i)
+                if hue is not None and img_saturated(img):
+                    img = hue_image(img, hue)
+                extra_tex.append((img, tex_tpl, (nb["texs"][i]["w"], nb["texs"][i]["h"])))
+                nb["tex"][i] = ntex + len(extra_tex) - 1
+            return nb["tex"][i]
+
+        def ame_import(amb, i):
+            """origen 2 = hijo del #AMB de los #AST (amb 0), origen 1 = del de los #ASE (amb 1)."""
+            if (amb, i) not in nb["ame"]:
+                a = nb["p"][amb][i][0]
+                lst, base = (new_ame0, len(p0)) if amb == 0 else (new_ame1, len(p1))
+                lst.append(ame_recolor(a, hue, tex_import) if hue is not None else ame_retex(a, tex_import))
+                nb["ame"][(amb, i)] = base + len(lst) - 1
+            return nb["ame"][(amb, i)]
+
+        b = bytearray(src)
+        # +0x20/+0x22 = de donde salen las texturas del rayo: 2 el BSP (casi todos), 1 el #AMB de
+        # los #ASE (Gohan nino). Aqui van en el #AMT grande del hibrido (prueba en juego
+        # 2026-10-08: con el 1 de Gohan nino el Masenko leia una textura inexistente y colgaba)
+        b[0x20:0x24] = tex_src
+        for o in AST_LINKS:                          # (origen, indice); (0, 0) = sin enlace
+            if u16(b, o) in (1, 2):
+                put16(b, o + 2, ame_import(2 - u16(b, o), u16(b, o + 2)))
+            elif u16(b, o + 2) and o == 0x68:        # 2o enlace de la bola al banco comun: el nucleo
+                b[0x64:0x6C] = b[0x58:0x60]
+            elif u16(b, o + 2) and plantilla:        # plantilla prestada: sin ese efecto de impacto
+                put16(b, o + 2, 0)
+            elif u16(b, o + 2):
+                # el banco comun (origen 0) colgaba el juego desde un BSP hibrido (Masenko de Gohan
+                # nino, prueba 2026-10-08): esas tecnicas no se copian
+                raise ValueError("AST %#x del ID %d: enlace +%#x al banco comun" % (code_n, cid, o))
+        for o in (0x48, 0x4A):                       # texturas del rayo (tipo 0)
+            if u16(b, o):
+                put16(b, o, tex_import(u16(b, o)))
+        return b
+
+    def native_ase(cid, pick):
+        """#ASE del nativo `cid` que cumple `pick`, con sus #AME (origen 1/2) importados; los
+        enlaces al banco comun se quitan (plantilla prestada)."""
+        native_ast(cid, None, None) if cid not in natives else None
+        nb = natives[cid]
+        src = next(x for x in wk_blocks(nb["p"][1][0][0]) if pick(x))
+        b = bytearray(src)
+        # enlace del #ASE: +0x5C (2 = hijo de su propio #AMB, el de los #ASE) -> +0x5E; +0x50..+0x5A
+        # son iguales en todos los nativos (como en build_bsp, se copian tal cual)
+        if u16(b, 0x5C) == 2:
+            new_ame1.append(ame_retex(nb["p"][1][u16(b, 0x5E)][0], lambda i: tex_of(cid, i)))
+            put16(b, 0x5E, len(p1) + len(new_ame1) - 1)
+        return b
+
+    def tex_of(cid, i):
+        nb = natives[cid]
+        if i not in nb["texs"]:
+            return i
+        if i not in nb["tex"]:
+            extra_tex.append((azt_image(nb["azt"], i), tex_tpl, (nb["texs"][i]["w"], nb["texs"][i]["h"])))
+            nb["tex"][i] = ntex + len(extra_tex) - 1
+        return nb["tex"][i]
+
+    # plantillas: rayo (tipo 0; los 0x15E+ son el aspecto de las rafagas de ki, no valen) y #ASE
+    # de carga (inicio/medio/fin, la del Kamehameha) y destello. Si el donante no las tiene
+    # (Trunks, Piccolo, Cell, Krilin, Gotenks...: auditoria 2026-10-08) se toman las de Gohan
+    # adulto (ID 4) con sus #AME y texturas
+    TPL_ID = 4
+    plantilla = True
+    beam_tpl = next((b for b in ast_t if u16(b, 0x10) == 0 and u16(b, 0x12) not in RESERVED), None)
+    if beam_tpl is None:
+        beam_tpl = native_ast(TPL_ID, 0, None)
+        rep.append("plantilla del rayo: la de Gohan adulto (el donante no tiene rayo propio)")
+    charge = lambda b: u16(b, 0x6C) and u16(b, 0x5C) == 2              # noqa: E731
+    shot = lambda b: not u16(b, 0x6C) and not u16(b, 0x6E) and u16(b, 0x5C) == 2   # noqa: E731
+    charge_tpl = next((b for b in ase_t if charge(b)), None)
+    if charge_tpl is None:
+        charge_tpl = native_ase(TPL_ID, charge)
+        rep.append("plantilla de la carga: la de Gohan adulto")
+    shot_tpl = next((b for b in ase_t if shot(b)), None)
+    if shot_tpl is None:
+        shot_tpl = native_ase(TPL_ID, shot)
+        rep.append("plantilla del destello: la de Gohan adulto")
+    plantilla = False
+    head_ame, tail_ame = u16(beam_tpl, 0x5E), u16(beam_tpl, 0x36)
+    hit_link = bytes(beam_tpl[0x70:0x7C]), bytes(beam_tpl[0xAC:0xB8])
+
     free_ase = [c for c in ASE_NEW if c not in own]
-    mapas = {}
+    # Los #AST nuevos van en 1-4 (los 38 nativos solo usan 0-4; la Z Sword con el 6 no lanzaba
+    # nada, prueba 2026-10-08). Si los #ASE del donante ocupan esos codigos (el 4/5 de la carga
+    # del Kamehameha de Gohan adulto), se renumeran y aplicar() cambia sus lineas c4.
+    need = sum(1 for t in techs for c in t["ast"]
+               if not receta.get(t["codigo"], {}).get("omitir") and not receta.get(t["codigo"], {}).get("definitivo")
+               and c not in receta.get(t["codigo"], {}).get("donante", {}))
+    ast_codes = {u16(b, 0x12) for b in ast_t}
+    ase_remap = {}
+    for c in AST_LOW:
+        if len([x for x in AST_LOW if x not in own]) >= need:
+            break
+        if c in own and c not in ast_codes:
+            ase_remap[c] = free_ase.pop(0)
+            own = (own - {c}) | {ase_remap[c]}
+    for b in ase_t:
+        b[0x6A:0x70] = struct.pack("<3H", *(ase_remap.get(x, x) for x in struct.unpack_from("<3H", b, 0x6A)))
+    if ase_remap:
+        rep.append("ASE del donante renumerados para dejar los AST en 1-4: %s" % {hex(k): hex(v) for k, v in ase_remap.items()})
+    free_ast = [c for c in AST_LOW if c not in own] + [c for c in AST_NEW if c not in own and c not in AST_LOW]
+    mapas = {"_ase_remap": ase_remap}
     for t in sorted(techs, key=lambda t: not receta.get(t["codigo"], {}).get("equipada", False)):
         r = receta.get(t["codigo"], {})
         if r.get("omitir"):
@@ -510,12 +725,28 @@ def build_bsp(code, game="sb2", donor=4, receta=None, sources=None):
             continue
         hue = r.get("tono")
         m = {0x10: 0x10}
-        m.update(r.get("donante", {}))
+        m.update({k: ase_remap.get(v, v) for k, v in r.get("donante", {}).items()})
         # energia (#AST)
         for c in t["ast"]:
             if c in m:
                 continue
             sbk = sbp["ast"][c]
+            if r.get("ast_nativo"):
+                # la energia de una tecnica nativa de B3 (rayo, disco...) con sus #AME y texturas;
+                # de SB solo el punto de salida y el dano
+                cid, code_n = r["ast_nativo"]
+                b = native_ast(cid, code_n, hue)
+                new = free_ast.pop(0)
+                put16(b, 0x12, new)
+                put16(b, 0xDE, 7)
+                put16(b, 0x2C, u16(sbk, 0x2C))
+                put16(b, 0xC8, r.get("dano", int(round(u16(sbk, 0xC8) * DMG_AST))))
+                ast_t.append(b)
+                m[c] = new
+                rep.append("%#x %s: AST SB %#x -> %#x = AST %#x del ID %d (tipo %d, dano %d)%s" % (
+                    t["codigo"], r.get("nombre", ""), c, new, code_n, cid, u16(b, 0x10), u16(b, 0xC8),
+                    "" if hue is None else ", tono %d" % hue))
+                continue
             typ = r.get("tipo", u16(sbk, 0x10))
             if typ != u16(sbk, 0x10):           # otro tipo: el rayo del donante con los datos de SB
                 b = bytearray(beam_tpl)
@@ -534,7 +765,7 @@ def build_bsp(code, game="sb2", donor=4, receta=None, sources=None):
                 struct.pack_into("<f", b, 0xCC, r["radio"])
             # +0x20/+0x22 = (1, origen) como los demas enlaces: SB pone 8 (su AMB), B3 2 o 1;
             # con el 8 de SB la bola no salia y el personaje se desplazaba (prueba en juego 2)
-            b[0x20:0x24] = beam_tpl[0x20:0x24]
+            b[0x20:0x24] = tex_src
             # enlaces a #AME: patron de B3 por tipo, con los efectos del donante (recoloreados)
             for o in range(0x30, 0x38, 2):
                 put16(b, o, 0)
@@ -567,7 +798,7 @@ def build_bsp(code, game="sb2", donor=4, receta=None, sources=None):
                     ids = []
                     for ti in (t0, t1):
                         img = psp_tex(sb_amt, ti)
-                        extra_tex.append((img, u16(beam_tpl, 0x48), (img.shape[1], img.shape[0])))
+                        extra_tex.append((img, tex_tpl, (img.shape[1], img.shape[0])))
                         ids.append(ntex + len(extra_tex) - 1)
                     b[0x48:0x4C] = struct.pack("<2H", *ids)
                 else:
@@ -609,12 +840,13 @@ def build_bsp(code, game="sb2", donor=4, receta=None, sources=None):
     hd0 = [(ps2hd.conv_ast(p_ast), h0[0][1])] + h0[1:] + [(ps2hd.conv_u32_names(a), 0xFFFFFFFF) for a in new_ame0]
     hd1 = [(ps2hd.conv_ase(p_ase), h1[0][1])] + h1[1:] + [(ps2hd.conv_u32_names(a), 0xFFFFFFFF) for a in new_ame1]
     top = list(htop)
-    top[0] = (amb_hd(hd0), htop[0][1])
-    top[1] = (amb_hd(hd1), htop[1][1])
     if extra_tex:
         z, ids = azt_append(hazt, extra_tex)
         assert ids[0] == ntex
-        top[big] = (z, htop[big][1])
+        where = top if big[0] is None else (hd0, hd1)[big[0]]
+        where[big[1]] = (z, where[big[1]][1])
+    top[0] = (amb_hd(hd0), htop[0][1])
+    top[1] = (amb_hd(hd1), htop[1][1])
     out = amb_hd(top)
     rep.append("BSP: %d AST (+%d), %d ASE (+%d), #AME clonados %d+%d, texturas +%d (%d en total)" % (
         len(ast_t), len(ast_t) - len(wk_blocks(p0[0][0])), len(ase_t), len(ase_t) - len(wk_blocks(p1[0][0])),
@@ -806,6 +1038,29 @@ def waist_hold(amm, anim, frame):
         return
 
 
+ULT_RECETA = {}      # la ultima definitiva de SB traducida (receta de cinematica.py; aplicar la rellena)
+
+
+def receta_ult_sb(anm, bsk, code_b3, donor):
+    """Animacion de la definitiva de SB (la de su codigo raiz en el moveset portado, numeracion
+    de SB) repartida sobre la version 'gana' de la cinematica del donante, a su velocidad
+    (b1port.receta_definitiva). {} si no se puede."""
+    import afs_pair  # noqa: PLC0415
+    import b1port as bp  # noqa: PLC0415
+    L = bp.bsk_code_list(bsk)
+    if code_b3 is None or code_b3 >= len(L) or not L[code_b3]:
+        return {}
+    an, bank = struct.unpack_from("<HH", bsk, L[code_b3])
+    amm = bp.Amm(bp.amb_kids(anm)[1][0])
+    nf = amm.anims[an][2] if bank == 3 and an < len(amm.anims) else 0
+    dk = bp.amb_kids(afs_pair.ps2(donor_ids(donor)["anm"][0]))
+    dspx = next((x for x, t in bp.amb_kids(afs_pair.ps2(donor_ids(donor)["cam"])) if x[:4] == b"#SPX"), None)
+    win = bp.cine_win(dk[0][0], bp.Amm(dk[1][0]), dspx)
+    if nf < 2 or not win or sum(f for _, f in win) < nf / 2:
+        return {}
+    return bp.receta_definitiva([(an, 0, nf - 1)], win)
+
+
 def aplicar(anm, cam, info, code, game="sb2", donor=4, receta=None, mapas=None, sources=None):
     """Tecnicas sobre el moveset de sbport (PS2): lineas AP7 de cada especial con el BSP hibrido,
     congelacion, beam struggle del Kamehameha (bit 0x2000 + respuesta cond2 0x4003), definitivo
@@ -815,7 +1070,7 @@ def aplicar(anm, cam, info, code, game="sb2", donor=4, receta=None, mapas=None, 
     import b1port as bp  # noqa: PLC0415
     bc, bsp = sources or sb_sources(game, code)
     techs, sbp = sb_tecnicas(bc, bsp)
-    receta = receta_de(code, techs, receta)
+    receta = receta_de(code, techs, receta, donor)
     caps = placeholders(techs, receta)
     bsk_sb = next(x for x, t in kids(bc) if x[:4] == b"#BSK")
     cmap = {int(k, 16): int(v, 16) for k, v in info["codigos"].items()}
@@ -826,8 +1081,8 @@ def aplicar(anm, cam, info, code, game="sb2", donor=4, receta=None, mapas=None, 
     d_bsk = bp.amb_kids(afs_pair.ps2(de["anm"][0]))[0][0]
     d_bcm = next(x for x, t in bp.amb_kids(afs_pair.ps2(de["cam"])) if x[:4] == b"#BCM")
     d_st, d_bl = bp.bcm_parse(d_bcm)
-    d_ult = next(bp.w16(d_bl[o][0], 12) for o in d_st if bp.w16(d_bl[o][0], 4) & 0x8 and bp.w16(d_bl[o][0], 1) == 0xF)
-    d_resp = next(bp.w16(d_bl[o][0], 12) for o in d_st if bp.w16(d_bl[o][0], 6) == 0x4003)
+    d_ult = donor_ult(donor)
+    d_resp = next((bp.w16(d_bl[o][0], 12) for o in d_st if bp.w16(d_bl[o][0], 6) == 0x4003), None)   # Trunks: sin respuesta
     L = bp.bsk_code_list(bsk)
     used = {c for c, a in enumerate(L) if a}
     st, bl = bp.bcm_parse(bcm)
@@ -837,6 +1092,8 @@ def aplicar(anm, cam, info, code, game="sb2", donor=4, receta=None, mapas=None, 
         by_code.setdefault(bp.w16(nodes[o][0], 12), []).append(o)
     order = list(st)
     rep, items, new_hr = [], {}, []
+    moved = {}                  # codigo B3 -> el de la zona de especiales
+    final = {}                  # codigo SB -> [codigos B3 del suelo, aire y variantes] ya movidos
     nhr, hr = bp.bsk_head(bsk)[2:]
     amm, held = bytearray(ak[1][0]), set()
 
@@ -883,6 +1140,14 @@ def aplicar(anm, cam, info, code, game="sb2", donor=4, receta=None, mapas=None, 
                                              for tt, ls in aps])
             rep.append("%s: entrada P+K+G+E (modo hiper) -> cinematica del donante %#x/%#x, capsula %d" % (
                 name, d_ult, d_ult + 0x100, cap))
+            try:                        # su animacion de SB dentro de esa cinematica
+                ULT_RECETA.clear()
+                ULT_RECETA.update(receta_ult_sb(anm, bsk, g, donor))
+                if ULT_RECETA:
+                    rep.append("%s: su animacion de SB en %d codigos de la cinematica del donante" % (
+                        name, len(ULT_RECETA)))
+            except Exception as ex:  # noqa: BLE001
+                rep.append("aviso: %s: definitiva con las animaciones del donante (%s)" % (name, ex))
             continue
         m = (mapas or {}).get(c, {})
         r["_ast"] = {v for k, v in m.items() if k in sbp["ast"]}
@@ -914,6 +1179,7 @@ def aplicar(anm, cam, info, code, game="sb2", donor=4, receta=None, mapas=None, 
                       and x not in bp.ENGINE and x + 0x100 not in bp.ENGINE)
             used.update((rg, rg + 0x100))
             remap = {gb: rg, gb + 0x100: rg + 0x100}
+            moved.update(remap)
             for src, dst in remap.items():
                 if src in items:
                     items[dst] = (bytes(bsk[L[src]:L[src] + 48]), items.pop(src)[1])
@@ -936,10 +1202,11 @@ def aplicar(anm, cam, info, code, game="sb2", donor=4, receta=None, mapas=None, 
                     order.insert(k, o)
                 rep.append("%s: definitivo en SB -> especial %sE (delante de los de esa direccion)" % (
                     name, {1: "->", 2: "<-"}[r["especial"]]))
+        final[c] = [moved.get(x, x) for x, _ in pairs]
         rep.append("%s: codigos %#x/%s, capsula provisional %d, BSP %s%s" % (
             name, g, hex(a) if a else "-", cap, {hex(k): hex(v) for k, v in m.items() if k != 0x10},
             ", golpe con dano %d" % r["dano_golpe"] if r.get("dano_golpe") else ""))
-        if r.get("beam_struggle"):
+        if r.get("beam_struggle") and d_resp is not None:
             rg = next(x for x in range(0x260, 0x280) if x not in used and x + 0x100 not in used
                       and x not in bp.ENGINE and x + 0x100 not in bp.ENGINE)
             used.update((rg, rg + 0x100))
@@ -980,11 +1247,59 @@ def aplicar(anm, cam, info, code, game="sb2", donor=4, receta=None, mapas=None, 
             items[code_b3] = (None, [(tt, [x for x in ls if x not in bad]) for tt, ls in aps])
     if dropped:
         rep.append("otros golpes: enlaces c4 de SB sin efecto en el BSP hibrido, quitados: %s" % dropped)
-    bsk2 = bsk_put(bsk, items, new_hr)
+    # #ASE del donante renumerados en build_bsp: sus lineas c4 en todo el moveset
+    remap = (mapas or {}).get("_ase_remap", {})
+    if remap:
+        n = 0
+        # tambien los codigos nuevos (respuesta del beam struggle, especiales movidos)
+        for code_b3 in sorted({c for c, x in enumerate(L) if x} | set(items)):
+            blk, aps = items.get(code_b3, (None, None))
+            aps = aps if aps is not None else bsk_aps(bsk, code_b3)
+            new = []
+            for tt, ls in aps:
+                out = []
+                for x in ls:
+                    if tt == 7 and struct.unpack_from("<I", x, 4)[0] == 4 and struct.unpack_from("<I", x, 8)[0] in remap:
+                        x = x[:8] + struct.pack("<I", remap[struct.unpack_from("<I", x, 8)[0]]) + x[12:]
+                        n += 1
+                    out.append(x)
+                new.append((tt, out))
+            if new != aps:
+                items[code_b3] = (blk, new)
+        rep.append("lineas c4 de los ASE renumerados: %d" % n)
+    # tecnicas que evolucionan: una entrada (la principal) y, en el moveset de cada forma, sus
+    # codigos con el bloque (animacion + lineas) de la tecnica de esa forma
+    chains = [(cadena_principal(ch, receta), ch) for ch in cadenas(techs, receta)]
+    chains = [(m, [t for t in ch if t["codigo"] in final]) for m, ch in chains if m["codigo"] in final]
+    for m, ch in chains:
+        for t in ch:
+            if t is not m:
+                gone = [o for o in by_code.get(final[t["codigo"]][0], []) if o in order]
+                order[:] = [o for o in order if o not in gone]
+        rep.append("evoluciona con la forma (una capsula): " + " -> ".join("%s %s" % (
+            receta[t["codigo"]].get("nombre"), [i + 1 for i in range(8) if t["entrada"]["booster"] >> i & 1])
+            for t in sorted(ch, key=lambda t: t["entrada"]["booster"] & -t["entrada"]["booster"])))
+    nforms = max([t["entrada"]["booster"].bit_length() for t in techs] + [1]) if chains else 1
+
+    def block(code):
+        blk, aps = items.get(code, (None, None))
+        hdr = blk if blk is not None else bytes(bsk[L[code]:L[code] + 48])
+        return hdr, (aps if aps is not None else bsk_aps(bsk, code))
+
     bcm2 = bp.bcm_build(bcm, order, nodes)
-    anm2 = bp.amb_build([(bsk2, ak[0][1]), (bytes(amm), ak[1][1])] + ak[2:])
     cam2 = bp.amb_build([(bcm2, t) if x[:4] == b"#BCM" else (x, t) for x, t in ck])
-    return anm2, cam2, rep
+    anms = []
+    for k in range(nforms):
+        it = dict(items)
+        for m, ch in chains:
+            v = next((t for t in ch if t["entrada"]["booster"] >> k & 1), m)
+            if v is m:
+                continue
+            src = [x for x in final[v["codigo"]] if x is not None]
+            for i, dst in enumerate(x for x in final[m["codigo"]] if x is not None):
+                it[dst] = block(src[i] if i < len(src) else src[0])
+        anms.append(bp.amb_build([(bsk_put(bsk, it, new_hr), ak[0][1]), (bytes(amm), ak[1][1])] + ak[2:]))
+    return anms[0], cam2, rep, anms[1:]
 
 
 # ---------------------------------------------------------------- comprobaciones (sin el juego)
@@ -993,7 +1308,9 @@ def bsp_codes_hd(bsp):
     errs = []
     top = kids(bsp, ">")
     out = dict(ast={}, ase=set(), errores=errs)
-    z = next(x for x, t in top if x[:4] == b"#AZT")
+    # el #AZT grande: arriba o dentro de un #AMB de efectos (Gotenks)
+    azts = [x for x, t in top if x[:4] == b"#AZT"] + [x for i in (0, 1) for x, t in kids(top[i][0], ">") if x[:4] == b"#AZT"]
+    z = max(azts, key=lambda x: len(azt_entries(x)))
     offs = azt_entries(z)
     for k, o in enumerate(offs):
         if o:
@@ -1026,6 +1343,8 @@ def bsp_codes_hd(bsp):
                         errs.append("AST %#x: textura %d inexistente" % (code, t))
             else:
                 c = struct.unpack_from(">H", b, 0x6A)[0]
+                # medio/fin: lineas c4 que apagan el efecto (Dabura 0x68)
+                out.setdefault("ase_fin", set()).update(set(struct.unpack_from(">2H", b, 0x6C)) - {0})
                 if c in out["ase"]:
                     errs.append("ASE %#x repetido" % c)
                 out["ase"].add(c)
@@ -1067,8 +1386,17 @@ def comprobar(bsp, anm, cam, donor=4):
     P, H = donor_bsp(donor)
     base = bsp_codes_hd(H)                       # lo que ya trae el BSP nativo del donante no cuenta
     errs = [e for e in info["errores"] if e not in base["errores"]]
+    # recuentos que ya trae el nativo (Dabura: 18 particulas con textura fuera del #AZT, Buu: ASE
+    # repetidos): solo es error si el hibrido tiene MAS
+    def count(lst, pat):
+        import re  # noqa: PLC0415
+        n = [int(re.match(r"(\d+) ", e).group(1)) for e in lst if pat in e and re.match(r"\d+ ", e)]
+        return sum(n) + sum(1 for e in lst if pat in e and not re.match(r"\d+ ", e))
+    for pat in ("particulas con textura inexistente", "ASE ", "AST "):
+        if count(info["errores"], pat) <= count(base["errores"], pat):
+            errs = [e for e in errs if pat not in e or "repetido" not in e and "particulas" not in e]
     notes = sorted(set(info.get("notas", [])) - set(base.get("notas", [])))
-    known = set(info["ast"]) | info["ase"] | B3_COMMON_C4
+    known = set(info["ast"]) | info["ase"] | info.get("ase_fin", set()) | B3_COMMON_C4
     dtop, top = kids(H, ">"), kids(bsp, ">")
     if len(dtop) != len(top):
         errs.append("el BSP no tiene los mismos hijos que el del donante")
@@ -1167,20 +1495,31 @@ def comprobar(bsp, anm, cam, donor=4):
 
 
 # ---------------------------------------------------------------- [[capsula]] propuesto
-def capsulas_toml(code, techs, receta=None):
+def capsulas_toml(code, techs, receta=None, donor=None):
     """Bloque [[capsula]] (una por tecnica, en el orden del BCM de SB; el definitivo al final) con
     `reemplaza` = capsula provisional del BCM, `ki` en barras (se gastan) y `formas` = formas en las
     que se puede usar (1 = normal), de la mascara de SB."""
-    receta = receta_de(code, techs, receta)
+    receta = receta_de(code, techs, receta, donor)
     caps = placeholders(techs, receta)
+    evo = {}                 # codigo de la principal -> cadena; las demas no tienen capsula propia
+    for ch in cadenas(techs, receta):
+        evo[cadena_principal(ch, receta)["codigo"]] = ch
+    skip = {t["codigo"] for ch in evo.values() for t in ch} - set(evo)
     dirs = {1: "->E", 2: "<-E", 0x10: "P+K+G+E en modo hiper"}
     out = []
     for t in sorted(techs, key=lambda t: bool(receta[t["codigo"]].get("definitivo"))):
         r, e = receta[t["codigo"]], t["entrada"]
-        if r.get("omitir"):
+        if r.get("omitir") or t["codigo"] in skip:
             continue
+        ch = evo.get(t["codigo"])
+        if ch:           # nombre de la de la 1a forma; se equipa si alguna de la cadena lo estaba
+            extra = "evoluciona: " + " -> ".join("%s (formas %s)" % (receta[x["codigo"]]["nombre"], [
+                i + 1 for i in range(8) if x["entrada"]["booster"] >> i & 1]) for x in ch)
+            r = dict(r, nombre=receta[ch[0]["codigo"]]["nombre"],
+                     equipada=any(receta[x["codigo"]].get("equipada", True) for x in ch))
         d = dirs[0x10] if r.get("definitivo") else dirs[r.get("especial", e["dir"])]
-        extra = "beam struggle" if r.get("beam_struggle") else "cinematica del donante" if r.get("definitivo") else ""
+        if not ch:
+            extra = "beam struggle" if r.get("beam_struggle") else "cinematica del donante" if r.get("definitivo") else ""
         formas = [i + 1 for i in range(8) if e["booster"] >> i & 1]
         out += ["", "[[capsula]]   # %s (SB %#x)%s" % (d, t["codigo"], ", " + extra if extra else ""),
                 'nombre = "%s"' % r["nombre"], 'tipo = "%s"' % ("definitiva" if r.get("definitivo") else "especial"),
@@ -1188,7 +1527,8 @@ def capsulas_toml(code, techs, receta=None):
                 # especiales en TODAS las formas: el BCM elige la 1a entrada equipada de esa
                 # direccion; si su mascara excluye la forma actual el golpe falla (prueba en juego
                 # 2026-10-06). Solo el definitivo conserva la de SB (como el 0x0E del donante).
-                "formas = %s" % formas if formas and r.get("definitivo") else "# formas: todas",
+                "formas = %s" % formas if formas and r.get("definitivo") and not r.get("todas_las_formas")
+                else "# formas: todas",
                 "equipada = %s" % ("true" if r.get("equipada", True) else "false")]
     return "\n".join(out[1:]) + "\n"
 
@@ -1259,20 +1599,29 @@ def main():
         return 0
     bsp, mapas, rep, techs = build_bsp(a.personaje, a.juego, a.donante, receta, src)
     open(os.path.join(a.salida, "tecnicas.bin"), "wb").write(bsp)
-    open(os.path.join(a.salida, "capsulas.toml"), "w", encoding="utf-8").write(capsulas_toml(a.personaje, techs, receta))
+    open(os.path.join(a.salida, "capsulas.toml"), "w", encoding="utf-8").write(capsulas_toml(a.personaje, techs, receta, a.donante))
     print("\n".join(rep))
     if a.cmd in ("aplicar", "todo"):
         import ps2hd  # noqa: PLC0415
         mv = a.moveset or os.path.join(os.path.dirname(os.path.abspath(a.salida)), "moveset")
         info = json.load(open(os.path.join(mv, "sbport.json"), encoding="utf-8"))
-        anm, cam, rep2 = aplicar(open(os.path.join(mv, "anm_forma1_ps2.bin"), "rb").read(),
+        anm, cam, rep2, extra = aplicar(open(os.path.join(mv, "anm_forma1_ps2.bin"), "rb").read(),
                                  open(os.path.join(mv, "camara_ps2.bin"), "rb").read(),
                                  info, a.personaje, a.juego, a.donante, receta, mapas, src)
         print("\n".join(rep2))
-        for n, d in (("anm_forma1", anm), ("camara", cam)):
+        for n, d in [("anm_forma1", anm), ("camara", cam)] + [("anm_forma%d" % (k + 2), x) for k, x in enumerate(extra)]:
             open(os.path.join(a.salida, n + "_ps2.bin"), "wb").write(d)
             open(os.path.join(a.salida, n + ".bin"), "wb").write(ps2hd.convert_block(d))
+        if ULT_RECETA:                  # definitiva de SB traducida -> definitiva_animaciones
+            json.dump(ULT_RECETA, open(os.path.join(a.salida, "definitiva.json"), "w", encoding="utf-8"), indent=1)
         errs, notes = comprobar(bsp, anm, cam, a.donante)
+        for k, x in enumerate(extra):         # moveset de cada forma (tecnicas que evolucionan)
+            errs += ["forma %d: %s" % (k + 2, e) for e in comprobar(bsp, x, cam, a.donante)[0] if e not in errs]
+        # beam struggle en una cadena: basta con que su tecnica lo tenga en sus formas
+        bs = [e for e in errs if "beam struggle" in e]
+        if extra and len(bs) <= len(extra):
+            errs = [e for e in errs if e not in bs]
+            notes += ["beam struggle solo en las formas de su tecnica"] if bs else []
         print("\n".join(["nota: " + x for x in notes] + ["ERROR: " + x for x in errs]))
         print("RESULTADO", "OK" if not errs else "CON ERRORES")
         return 1 if errs else 0

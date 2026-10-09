@@ -1,0 +1,167 @@
+# Budokai 1 (PS2): nombre oficial de cada capsula por su ID (Kanzenshuu), para el importador.
+# Formato: ID: nombre. Los dudosos (lista compartida en la fuente: C-17/C-18, Freezer, Saibaman,
+# Cell Jr.) llevan el nombre mas probable; se pueden renombrar en el Mod Kit.
+1: Kaio-Ken x2
+2: Kaio-Ken x5
+3: Kaio-Ken x10
+4: Super Saiyan
+5: Kamehameha
+6: Teleportation Kamehameha
+7: Rapid Fire Kamehameha
+8: Genki-Dama
+9: Zanku-Fist
+10: Dragon Throw
+11: Super Dragon Fist
+12: Potential Unlocked
+13: Kamehameha
+14: Masenkō
+15: Continuous Ki Wave
+16: Fierce Demon Kill
+17: Hurricane Kick
+18: Super Saiyan
+19: Super Saiyan 2
+20: Kamehameha
+21: Super Kamehameha
+22: Rapid Fire Shot
+23: Instant Fierce Demon Kill
+24: Fierce Demon Rampage
+25: Continuous Strike
+26: Super Saiyan
+27: Super Vegeta
+28: Galic Cannon
+29: Final Flash
+30: Big Bang Attack
+31: Final Bride
+32: Meteor Flash
+33: Nosedive Crash
+34: Meteor Break
+35: Super Saiyan
+36: Super Trunks
+37: Super Trunks 2
+38: Buster Cannon
+39: Finish Buster
+40: Burning Attack
+41: Blast Attack
+42: Energy Burst
+43: Rapid Fall Slash
+44: Meteor Break
+45: Double Sunday
+46: Saturday Crush
+47: Exciting Year
+48: Weekly Special
+49: Day Crush
+50: Dynamite Monday
+51: Break Cannon
+52: Deluxe Bomber
+53: Giant Attack
+54: Megaton Throw
+55: Breakstorm
+56: Fuse with Nail
+57: Fuse with Kami
+58: Gekiretsukodan
+59: Explosive Magic Wave
+60: Makankōsappō
+61: Makūhōidan
+62: Instant Fierce Demon Kill
+63: Flying Demon Kick
+64: Fierce Demon Rampage
+65: Reacoom Eraser Gun
+66: Reacoom Bomber
+67: Reacoom Buster Magnum
+68: Reacoom Maximum Vulcan
+69: Reacoom Hyper Swing
+70: Milky Cannon
+71: Body Change
+72: Processed Power Crush
+73: Parmesan Shower
+74: Ginyu Strike
+75: Ginyu Special
+76: Monster Form
+77: Possibility Cannon
+78: Hyper Elegant Magnum
+79: Super Beautiful Arrow
+80: Missing Screw
+81: Extra Graceful Cannon
+82: Dodoria Beam
+83: Dodoria Ultra Spike
+84: Dodoria Big Blaster
+85: Dodoria Typhoon
+86: Final Form
+87: 100% Power
+88: Death Beam
+89: Death Ball
+90: Killer Ball
+91: Freeza Nightmare
+92: Meteor Crash
+93: Evil Dance
+94: Potential Unlocked
+95: Kamehameha
+96: Kienretsuzan
+97: Zanku-Fist
+98: Fierce Continuous Fist
+99: Continuous Strike
+100: High Tension
+101: Dynamite Kick
+102: Satan Special
+103: Present For You
+104: Satan Critical Attack
+105: Satan Miracle Bomber
+106: Satan Ultra Dynamite
+107: Kikōhō
+108: Dodonpa
+109: Volleyball Fist
+110: Consecutive Fist
+111: Machine Gun Fist
+112: Tien unnamed special
+113: Kamehameha
+114: Wolf Fang Fist
+115: Wolf Fang Ki Blast
+116: Wolf Slice Fist
+117: Tiger Strike
+118: Rocket Punch
+119: Hell Flash
+120: Devil Crush
+121: Killing Neck Throw
+122: Finishing Splash
+123: Power Blitz
+124: Energy Field
+125: Power Strike
+126: Power Falling Star
+127: Buster Swing
+128: Power Blitz
+129: Energy Field
+130: Power Strike
+131: Power Falling Star
+132: Buster Swing
+133: Photon Shot
+134: Drain Life
+135: Power Break
+136: Rolling Crush
+137: Cybernetic Pain
+138: Second Form
+139: Perfect Form
+140: Perfect Form (Power)
+141: Kamehameha
+142: Ultimate Attack
+143: Genki-Dama
+144: Negative Power Rain
+145: Cybernetic Raider
+146: Lasso
+262: Special Fighting Pose 1
+263: Special Fighting Pose 2
+264: Special Fighting Pose 3
+265: Special Fighting Pose 4
+266: Unnamed Saibaman capsule 266
+267: Unnamed Saibaman capsule 267
+268: Unnamed Saibaman capsule 268
+269: Unnamed Cell Jr. capsule 269
+270: Unnamed Cell Jr. capsule 270
+271: Unnamed Cell Jr. capsule 271
+272: Unnamed Cell Jr. capsule 272
+273: Tien unnamed special (extra)
+274: Justice Punch
+275: Justice Kick
+276: Justice Flash
+277: Justice Finisher
+278: Justice Carnival
+279: Justice Dynamite

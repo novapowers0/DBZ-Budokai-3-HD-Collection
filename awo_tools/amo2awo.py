@@ -98,7 +98,9 @@ class PS2AMG:
             self.arms.append((arm, w))
         self.parts = []
         self.vert_of = {}
+        self.hidden_verts = set()              # vertices de partes ocultas (no se exportan)
         self.groups = []                       # (bone, [part idx])
+        self.all_parts = []                    # todas, tambien las ocultas (editor hex del Mod Kit)
         for i, (arm, w) in enumerate(self.arms):
             if not w or not w[1]:
                 continue
@@ -106,9 +108,14 @@ class PS2AMG:
             n, tbl = le(b, g), le(b, g + 4)
             idx = []
             for k in range(n):
+                p = self._part(i, a + w[1] + le(b, g + tbl + 4 * k))
+                self.all_parts.append(p)
+                if p.hidden:
+                    continue
                 idx.append(len(self.parts))
-                self.parts.append(self._part(i, a + w[1] + le(b, g + tbl + 4 * k)))
-            self.groups.append((i, idx))
+                self.parts.append(p)
+            if idx:
+                self.groups.append((i, idx))
         self.skin = []   # (bone, peso, pos, nrm|None, vert_off)
         for i, (arm, w) in enumerate(self.arms):
             if not w or not w[2]:
@@ -126,13 +133,18 @@ class PS2AMG:
                     e = a + l16 + 16 * k
                     self.skin.append((i, wt, [lef(b, e + 4 * j) for j in range(3)], None,
                                       le(b, e + 12)))
+        self.skin = [s for s in self.skin if s[4] not in self.hidden_verts]
 
     def _part(self, bone, po):
         b, a = self.b, self.a
         p = Part()
         p.bone = bone
+        p.off = po                             # en el #AMO: cabecera de la parte (vtype +0, vflags +4)
         p.hdr = bytes(b[po:po + 0xA0])
         p.vtype, p.vflags, p.tex, p.shader = struct.unpack_from("<4I", b, po)
+        # Truco de modders para trajes alternativos (aureola, cola...): vtype/vflags = FFFFFF/FFFF
+        # oculta la parte en el juego. Se omite (sus vertices se apartan para filtrar la piel).
+        p.hidden = (p.vtype & 0xFFFF) == 0xFFFF
         p.center = [lef(b, po + 0x10 + 4 * j) for j in range(3)]
         p.radius = lef(b, po + 0x1C)
         size = le(b, po + 0x90)
@@ -155,6 +167,9 @@ class PS2AMG:
             strip = []
             for x in range(cnt):
                 o = vp + x * stride
+                if p.hidden:
+                    self.hidden_verts.add(o - a)
+                    continue
                 xyz = [lef(b, o + 4 * j) for j in range(3)]
                 nrm, col, uv = None, None, None
                 q = o + 16

@@ -32,14 +32,17 @@ CHARACTERS = ["cut_janemba", "cut_android19", "cut_zarbon", "cut_dodoria", "cut_
 KIT_ENTRIES = ["roster_build", "importar", "swap_b3", "texture_b3", "texture_dump_import", "texture_pack",
                "capsulas", "gritos", "voces", "iso", "model_render",
                "modkit_gui",      # DBZ3 HD Mod Kit: the no-console window over all of these
-               "diagnostico"]     # its Diagnostics page (reads a game log, explains it)
+               "diagnostico",     # its Diagnostics page (reads a game log, explains it)
+               "hexedit",         # its Hex page (expert byte editor that knows #AMB/#AMO)
+               "log_en"]          # English log of the tools when the Mod Kit is in EN
 # Standalone modder tools the Mod Kit window also exposes (advanced mode > Tools), with the
 # local modules they import (kit_modules follows them).
 KIT_EXTRA_TOOLS = ["name_banner", "portrait_hd", "extract_azt_afs", "awg_to_obj_b3", "awg0_export",
                    "awg_cara_export", "swap_matrix", "texture_upscale_b3", "psp_amo", "sb_amm", "csk_edit",
                    "acm_parse", "sbport", "sb_tablas", "sdbh_model", "sb_tecnicas", "sb_voces"]
-KIT_DATA = ["catalog_b3.cat", "roster_db.json"]
-KIT_ROOT_FILES = ["LEEME_KIT.txt", "requirements.txt", "instalar_requisitos.bat", "DBZ3_ModKit.bat"]
+KIT_DATA = ["catalog_b3.cat", "roster_db.json", "b1_capsulas.txt"]   # b1_capsulas: nombres de B1 (importador)
+AWO_DATA = ["psp_ramp.npy"]      # rampa toon de PSP: la carga psp_amo.py (importar de Shin Budokai)
+KIT_ROOT_FILES = ["LEEME_KIT.txt", "LEEME_KIT_EN.txt", "requirements.txt", "instalar_requisitos.bat", "DBZ3_ModKit.bat"]
 KIT_FORMAT_DOCS = ["CAPSULAS_B3.md", "MAPA_ROSTER_HD.md", "ACM_FORMAT.md", "AMO_AWO.md", "BIN_LAYOUT.md",
                    "STAGES_FORMAT.md", "CAMARA_ACC.md", "SB_VS_B3_MOVESET.md", "FORMAS_Y_KI.md",
                    "TOON_Y_BRILLO_HD.md"]
@@ -90,7 +93,7 @@ def characters_pack(ver, stage):
     os.makedirs(mods)
     for m in CHARACTERS:
         shutil.copytree(os.path.join(MODS, m), os.path.join(mods, m),
-                        ignore=shutil.ignore_patterns(".disabled", "*.antes_de_importar"))
+                        ignore=shutil.ignore_patterns(".disabled", "*.antes_de_importar", "respaldo"))
     # the generated mod for exactly these characters
     r = subprocess.run([sys.executable, os.path.join(ROOT, "mod center hd", "roster_build.py"), "construir",
                         "--mods", mods, "--force"], capture_output=True, text=True, encoding="utf-8",
@@ -121,6 +124,8 @@ def kit_pack(ver, stage):
         shutil.copytree(fonts, os.path.join(mch, "fonts"))
     for f in KIT_DATA:
         shutil.copyfile(os.path.join(ROOT, "mod center hd", f), os.path.join(mch, f))
+    for f in AWO_DATA:
+        shutil.copyfile(os.path.join(ROOT, "awo_tools", f), os.path.join(awo, f))
     for f in os.listdir(XDK):
         shutil.copyfile(os.path.join(XDK, f), os.path.join(mch, "tools", f))
     res = os.path.join(stage, "modding resources")
@@ -134,13 +139,14 @@ def kit_pack(ver, stage):
     os.makedirs(os.path.join(stage, "ps2_games"))
     docs = os.path.join(stage, "docs")
     os.makedirs(docs)
-    for f in ("COMO_HACER_MODS.md", "PACKS_DE_TEXTURAS.md", "TEXTURAS_MOD.md", "MODEL_SWAP.md", "STUDIO_CAMARAS.md"):
+    mod_docs = ("COMO_HACER_MODS.md", "PACKS_DE_TEXTURAS.md", "TEXTURAS_MOD.md", "MODEL_SWAP.md", "STUDIO_CAMARAS.md")
+    for f in mod_docs + tuple(x.replace(".md", "_EN.md") for x in mod_docs):     # _EN = la del Kit en ingles
         src = os.path.join(ROOT, "docs", "02_mods", f)
         if os.path.exists(src):
             shutil.copyfile(src, os.path.join(docs, f))
     formats = os.path.join(docs, "formatos")      # the Mod Kit's Help tab lists them
     os.makedirs(formats)
-    for f in KIT_FORMAT_DOCS:
+    for f in KIT_FORMAT_DOCS + [x.replace(".md", "_EN.md") for x in KIT_FORMAT_DOCS]:
         src = os.path.join(ROOT, "docs", "03_formatos", f)
         if os.path.exists(src):
             shutil.copyfile(src, os.path.join(formats, f))
@@ -148,6 +154,8 @@ def kit_pack(ver, stage):
         shutil.copyfile(os.path.join(ROOT, "tools", "modpacks", f), os.path.join(stage, f))
     shutil.copyfile(os.path.join(ROOT, "tools", "modpacks", "LEEME_PS2_GAMES.txt"),
                     os.path.join(stage, "ps2_games", "LEEME.txt"))
+    shutil.copyfile(os.path.join(ROOT, "tools", "modpacks", "LEEME_PS2_GAMES_EN.txt"),
+                    os.path.join(stage, "ps2_games", "LEEME_EN.txt"))
     # Python portatil (python/ con numpy, Pillow, scipy y tkinter): el Kit, el launcher (texturas,
     # personajes) y DBZ3_ModKit.bat lo usan antes que el del sistema. Nadie instala nada.
     sys.path.insert(0, os.path.join(ROOT, "tools"))

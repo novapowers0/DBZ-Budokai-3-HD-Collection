@@ -18,6 +18,7 @@
 #include <filesystem>
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include <rex/assert.h>
 #include <rex/cvar.h>
@@ -1545,13 +1546,39 @@ Presenter::PaintResult D3D12Presenter::PaintAndPresentImpl(bool execute_ui_drawe
   // dbz3 dev: "dbz3_shot.req" in the working directory saves the next painted
   // frame (after the upscaler) as dbz3_shot.bmp. Automated tests use it because
   // PrintWindow returns black for the D3D12 window while it's in the background.
+  // "N K" in the request file starts a burst instead: N frames, one every K paints, saved at
+  // half size as dbz3_shot_000.bmp, dbz3_shot_001.bmp... (beams and hits last a few frames).
   Microsoft::WRL::ComPtr<ID3D12Resource> dbz3_shot_buffer;
   D3D12_PLACED_SUBRESOURCE_FOOTPRINT dbz3_shot_footprint = {};
+  static int dbz3_burst_left = 0, dbz3_burst_every = 1, dbz3_burst_tick = 0, dbz3_burst_index = 0;
+  int dbz3_burst_shot = -1;
   {
     static uint32_t dbz3_shot_poll = 0;
     std::error_code ec;
-    if (++dbz3_shot_poll % 30 == 0 && std::filesystem::exists("dbz3_shot.req", ec)) {
+    bool want = false;
+    if (dbz3_burst_left > 0) {
+      if (++dbz3_burst_tick % dbz3_burst_every == 0) {
+        want = true;
+        dbz3_burst_shot = dbz3_burst_index++;
+        --dbz3_burst_left;
+      }
+    } else if (++dbz3_shot_poll % 30 == 0 && std::filesystem::exists("dbz3_shot.req", ec)) {
+      int n = 0, every = 1;
+      if (FILE* req = std::fopen("dbz3_shot.req", "rb")) {
+        if (std::fscanf(req, "%d %d", &n, &every) < 2) n = 0;
+        std::fclose(req);
+      }
       std::filesystem::remove("dbz3_shot.req", ec);
+      want = true;
+      if (n > 1) {
+        dbz3_burst_left = std::min(n, 240) - 1;
+        dbz3_burst_every = std::clamp(every, 1, 60);
+        dbz3_burst_tick = 0;
+        dbz3_burst_index = 1;
+        dbz3_burst_shot = 0;
+      }
+    }
+    if (want) {
       ID3D12Device* device = provider_.GetDevice();
       D3D12_RESOURCE_DESC back_desc = back_buffer->GetDesc();
       UINT64 size = 0;
@@ -1608,8 +1635,10 @@ Presenter::PaintResult D3D12Presenter::PaintAndPresentImpl(bool execute_ui_drawe
     D3D12_RANGE read_range = {0, SIZE_T(dbz3_shot_footprint.Footprint.RowPitch) *
                                      dbz3_shot_footprint.Footprint.Height};
     if (SUCCEEDED(dbz3_shot_buffer->Map(0, &read_range, &mapping))) {
-      // 32-bit top-down BMP; the swap chain is B8G8R8A8 like BMP.
-      uint32_t w = dbz3_shot_footprint.Footprint.Width, h = dbz3_shot_footprint.Footprint.Height;
+      // 32-bit top-down BMP; the swap chain is B8G8R8A8 like BMP. Bursts keep every 2nd pixel.
+      const uint32_t step = dbz3_burst_shot >= 0 ? 2 : 1;
+      uint32_t w = dbz3_shot_footprint.Footprint.Width / step,
+               h = dbz3_shot_footprint.Footprint.Height / step;
       uint32_t image_size = w * h * 4;
       uint8_t header[54] = {'B', 'M'};
       auto put32 = [&header](size_t offset, uint32_t value) {
@@ -1623,16 +1652,23 @@ Presenter::PaintResult D3D12Presenter::PaintAndPresentImpl(bool execute_ui_drawe
       header[26] = 1;
       header[28] = 32;
       put32(34, image_size);
+      char name[32] = "dbz3_shot.bmp";
+      if (dbz3_burst_shot >= 0) {
+        std::snprintf(name, sizeof(name), "dbz3_shot_%03d.bmp", dbz3_burst_shot);
+      }
       if (FILE* file = std::fopen("dbz3_shot.bmp.tmp", "wb")) {
         std::fwrite(header, 1, sizeof(header), file);
+        std::vector<uint32_t> row(w);
         for (uint32_t y = 0; y < h; ++y) {
-          std::fwrite(static_cast<const uint8_t*>(mapping) +
-                          size_t(y) * dbz3_shot_footprint.Footprint.RowPitch,
-                      1, size_t(w) * 4, file);
+          const uint32_t* src = reinterpret_cast<const uint32_t*>(
+              static_cast<const uint8_t*>(mapping) +
+              size_t(y) * step * dbz3_shot_footprint.Footprint.RowPitch);
+          for (uint32_t x = 0; x < w; ++x) row[x] = src[x * step];
+          std::fwrite(row.data(), 4, w, file);
         }
         std::fclose(file);
         std::error_code ec;
-        std::filesystem::rename("dbz3_shot.bmp.tmp", "dbz3_shot.bmp", ec);
+        std::filesystem::rename("dbz3_shot.bmp.tmp", name, ec);
       }
       D3D12_RANGE written_range = {};
       dbz3_shot_buffer->Unmap(0, &written_range);

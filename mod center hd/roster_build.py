@@ -30,6 +30,16 @@ Un personaje nuevo es un mod "fuente" con `personaje.toml` (sin numeros de entra
                                    # (quita la de transformarse que traiga un port)
     camara = "moveset/cam.bin"     # opcional: camara/animaciones especiales propias
     tecnicas = "moveset/bsp.bin"   # opcional: efectos de tecnicas propios
+    combos_tecnica = true          # opcional (por defecto si): tecnicas al final de los combos
+                                   # (P,P,P,P y E...) como en el donante, para movesets propios
+    definitiva_animaciones = "moveset/definitiva.json"  # opcional: la definitiva (cinematica del
+                                   # donante) con animaciones propias: {"0x4a0": [anim, desde, hasta]}
+                                   # por codigo de la cinematica (awo_tools/cinematica.py)
+    aura_color = "morado"          # opcional: color del aura (nombre, "#RRGGBB" o tono 0-359;
+                                   # solo cambia el tono: lo blanco o gris se queda igual)
+    ki_color = "rojo"              # opcional: color de los efectos de sus tecnicas (ki, rayos)
+    aura_de = "gogeta"             # opcional: el aura de otro personaje (ID 0-43 o gogeta,
+                                   # gogeta_ssj4, vegito); se puede combinar con aura_color
     bocas = ["modelos/bocas.bin"]  # opcional: bocas propias (si no, las del donante re-etiquetadas)
     icono_fuente = "modelo"        # modelo (render cel-shading del 1er modelo, por defecto) |
                                    # imagen (ui/cara.png con fondo y aro oficiales) |
@@ -88,6 +98,7 @@ import shutil
 import struct
 import sys
 import tempfile
+import time
 import tomllib
 import zlib
 
@@ -104,6 +115,7 @@ import swap_b3  # noqa: E402  (LZX + AFS)
 import capsulas  # noqa: E402  (catalogo de capsulas, BCM, nombres)
 import voces  # noqa: E402  (voces de combate: tabla por ID + ADX nuevos)
 import gritos  # noqa: E402  (gritos de los golpes: banco lang_* por personaje)
+import colores  # noqa: E402  (color del aura y del ki)
 
 VERSION = 1
 OUT_MOD = "_roster"
@@ -1173,6 +1185,12 @@ class Capsules:
                 dmoves = {capsulas.w(dccm, o, 8) for o, _ in capsulas.ccm_blocks(dccm)}
                 dmoves |= set(dn.get("form_caps", []))
                 dmoves -= {0}
+                # las que su moveset propio sigue usando (la definitiva del donante que b1port
+                # injerta) si se heredan: sin ellas no se podria equipar
+                oat = capsulas.ccm_child(cam) if cam is not None else None
+                if oat:
+                    occm = cam[oat[0]:oat[0] + oat[1]]
+                    dmoves -= {capsulas.w(occm, o, 8) for o, _ in capsulas.ccm_blocks(occm)}
                 dropped = [i for i in inherit if i in dmoves]
                 inherit = [i for i in inherit if i not in dmoves]
                 if dropped:
@@ -1285,8 +1303,12 @@ class Capsules:
                 src = cands[min(used[kind], len(cands) - 1)] if cands else None
                 used[kind] += 1
             i = dorder.index(src) if src in dorder else None
-            name = (capsulas.render_name(ownby[c]["nombre"], 24) if c in ownby
-                    else dimgs[2 * i] if i is not None else capsulas.render_name("?", 24))
+            if c in ownby:
+                name = capsulas.render_name(ownby[c]["nombre"], 24)
+            elif i is not None and 2 * i < len(dimgs):
+                name = dimgs[2 * i]
+            else:   # la ficha del donante tiene menos rotulos que capsulas (Androide 18)
+                name = capsulas.render_name(b3_cap_names().get(c, "?"), 24)
             if c in ownby:                        # propia: su coste, sin notas del donante
                 kk = ownby[c]["ki"] if ownby[c]["ki"] is not None else (
                     capsulas.KI.get(c) or {"especial": 1, "definitiva": 4}.get(kind, 3))
@@ -1295,12 +1317,17 @@ class Capsules:
             else:
                 cond = dimgs[2 * i + 1] if i is not None and 2 * i + 1 < len(dimgs) else                     capsulas.render_name(capsulas.ki_text(1), 24, (150, 205, 255, 255))
             imgs += [name, cond]
-            for r in drows:
+            # botones: los de su propio BCM (como las fichas nativas); si no hay ruta, los del donante
+            own_rows = capsulas.skill_rows(cam, c) if c in ownby and cam is not None else []
+            rows += own_rows
+            for r in drows if not own_rows else ():
                 rc = struct.unpack(">I", r[:4])[0]
                 if src is not None and rc == src:
                     rows.append(struct.pack(">I", c) + r[4:])
         if trans:
             rows = [r for r in drows if r[:4] == bytes([255] * 4)] + rows
+        if not imgs:                  # ninguna capsula (un port de IW sin especiales): la del donante
+            return []
         fid = self.next_usi
         self.next_usi += 1
         self.banks.append((fid, capsulas.build_scm(imgs, rows)))
@@ -1403,6 +1430,7 @@ def build(a):
         manifest = []
         ids = assign_ids(srcs)
         caps = Capsules(usi, cmn)
+        own_caps, first_new = {}, caps.next_id
         voice_out = voces.VoiceWriter(us, out_dir)
         iw_voices = None
         b1_cache = {}
@@ -1426,8 +1454,14 @@ def build(a):
             nforms, mforma, form_lines = forms_config(c, dn, per, donor, name)
             model_fids, heights, prefixes, hds = [], [], [], []
             first_hd = None
-            for rel in files:
-                hdb = to_hd(open(os.path.join(d, rel), "rb").read(), work)
+            hdbs = []
+            try:              # un modelo que no se puede leer no tumba el montaje de los demas
+                for rel in files:
+                    hdbs.append(to_hd(open(os.path.join(d, rel), "rb").read(), work))
+            except Exception as e:  # noqa: BLE001
+                log("!! %s: modelo %s no valido (%s): personaje omitido" % (name, rel, e))
+                continue
+            for hdb in hdbs:
                 first_hd = first_hd or hdb
                 hds.append(hdb)
                 labels, height = skeleton(hdb, work)
@@ -1511,7 +1545,9 @@ def build(a):
             extra = list(hud_line)
             # capsulas: propias ([[capsula]]), las del donante o las de un port de IW
             cam = load_bin(os.path.join(d, c["camara"]), work) if c.get("camara") else None
+            n_new = len(caps.new)
             cap_lines, cam, notes = caps.character(name, cid, donor, c, cam, cmn)
+            own_caps[cid] = {x[0] for x in caps.new[n_new:]}
             # moveset por forma; el mismo fichero en varias formas se escribe una vez (con uno
             # solo, las demas formas usan el de la forma 1, como el SSJ de Gohan adulto)
             anm_rels = list(c.get("moveset", []))
@@ -1519,19 +1555,52 @@ def build(a):
             anm_bins = [load_bin(os.path.join(d, rel), work) for rel in uniq]
             if caps.hyper and anm_bins:
                 try:
-                    anm_bins[0] = caps.graft_hyper(anm_bins[0], donor, cmn)
+                    anm_bins = [caps.graft_hyper(b, donor, cmn) for b in anm_bins]   # todas las formas
                     notes.append("modo hiper: animacion y efecto de Budokai 3 (los de %s)" % dn["name"])
                 except Exception as e:  # noqa: BLE001
                     notes.append("aviso: sin injerto del modo hiper (%s)" % e)
-            if str(c.get("transformacion", "")).lower() == "donante":
+            # tecnicas tras combo (P,P,P,P y E...) como las del donante: los ports no las traen
+            if cam is not None and c.get("combos_tecnica", True):
+                try:
+                    dcam = cmn.entry(dn["cam"])
+                    at, dat = capsulas.ccm_child(cam), capsulas.ccm_child(dcam)
+                    ccm, rep = capsulas.add_combo_specials(cam[at[0]:at[0] + at[1]], dcam[dat[0]:dat[0] + dat[1]])
+                    if rep:
+                        cam = capsulas.amb_rebuild(cam, {next(k for k, e in enumerate(capsulas.amb_children(cam))
+                                                              if e[0] == at[0] and e[1] == at[1]): ccm})
+                        notes += rep
+                except Exception as e:  # noqa: BLE001
+                    notes.append("aviso: sin tecnicas tras combo (%s)" % e)
+            # con formas pero sin P+K+G en su moveset (ports IW de Goku GT, Janemba...) no podria
+            # transformarse: se pone la del donante, como con transformacion = "donante"
+            auto_tr = nforms > 1 and cam is not None and not capsulas.has_transform(cam)
+            if auto_tr:
+                notes.append("%d formas sin P+K+G en su moveset: transformacion del donante" % nforms)
+            if str(c.get("transformacion", "")).lower() == "donante" or auto_tr:
                 try:
                     cam, anm_bins, rep = caps.graft_transform(cam, anm_bins, donor, cmn)
                     notes += ["transformacion del donante: " + r for r in rep]
                 except Exception as e:  # noqa: BLE001
                     notes.append("aviso: sin transformacion del donante (%s)" % e)
-            elif nforms > 1 and cam is not None and not capsulas.has_transform(cam):
-                notes.append("aviso: %d formas pero su moveset no tiene P+K+G para transformarse "
-                             "(transformacion = \"donante\" la pone)" % nforms)
+            # definitiva con animaciones propias sobre la cinematica del donante (cinematica.py)
+            if c.get("definitiva_animaciones") and anm_bins:
+                try:
+                    import cinematica  # noqa: PLC0415
+                    with open(os.path.join(d, c["definitiva_animaciones"]), encoding="utf-8") as fh:
+                        receta = json.load(fh)
+                    done = [cinematica.aplicar(b, receta) for b in anm_bins]
+                    anm_bins = [b for b, _ in done]
+                    notes.append("definitiva con animaciones propias: %d codigos de la cinematica" % len(done[0][1]))
+                except Exception as e:  # noqa: BLE001
+                    notes.append("aviso: definitiva con las animaciones del donante (%s)" % e)
+            # todos (ports de IW incluidos) deben poder entrar en modo hiper y lanzar su definitiva
+            try:
+                fcam = cam if cam is not None else cmn.entry(dn["cam"])
+                at = capsulas.ccm_child(fcam)
+                for p in capsulas.hyper_check(fcam[at[0]:at[0] + at[1]], anm_bins or [cmn.entry(dn["anm"][0])]):
+                    notes.append(("" if p.startswith("sin definitiva") else "aviso: ") + p)
+            except Exception as e:  # noqa: BLE001
+                notes.append("aviso: modo hiper sin comprobar (%s)" % e)
             for n_ in notes:
                 log("   %s: %s" % (name, n_))
             anm = []
@@ -1560,10 +1629,45 @@ def build(a):
             if c.get("formas"):
                 extra.append("formas = %d" % nforms)
             extra += form_lines
-            if c.get("tecnicas"):
-                write_entry(out_dir, "data_cmn.afs", next_fid, load_bin(os.path.join(d, c["tecnicas"]), work), work)
+            # efectos de tecnicas propios y/o color del ki (tono sobre los del donante)
+            try:
+                bsp = load_bin(os.path.join(d, c["tecnicas"]), work) if c.get("tecnicas") else None
+            except Exception as e:  # noqa: BLE001 (un BSP ilegible no tumba el montaje de todos)
+                log("   %s: aviso: tecnicas propias ilegibles (%s): las del donante" % (name, e))
+                bsp = None
+            if c.get("ki_color") is not None:
+                try:
+                    bsp, cnt = colores.retint(bsp if bsp else cmn.entry(dn["bsp"]),
+                                              colores.tono(c["ki_color"]))
+                    log("   %s: color del ki %s (%d texturas, %d particulas)" % (
+                        name, c["ki_color"], cnt["texturas"], cnt["particulas"]))
+                except Exception as e:  # noqa: BLE001
+                    log("   %s: aviso: color del ki sin cambiar (%s)" % (name, e))
+            if bsp is not None:
+                write_entry(out_dir, "data_cmn.afs", next_fid, bsp, work)
                 extra.append("tecnicas = %d" % next_fid)
                 next_fid += 1
+            # aura: la de otro personaje (aura_de) y/o de otro color (aura_color)
+            try:
+                aura_fid = colores.aura_fid(c["aura_de"]) if c.get("aura_de") is not None else dn["aura"]
+                if c.get("aura_de") is not None:
+                    log("   %s: aura de %s" % (name, c["aura_de"]))
+            except Exception as e:  # noqa: BLE001
+                log("   %s: aviso: aura del donante (%s)" % (name, e))
+                aura_fid = dn["aura"]
+            if c.get("aura_color") is not None:
+                try:
+                    aura, cnt = colores.retint(cmn.entry(aura_fid), colores.tono(c["aura_color"]))
+                    write_entry(out_dir, "data_cmn.afs", next_fid, aura, work)
+                    extra.append("aura = %d" % next_fid)
+                    next_fid += 1
+                    log("   %s: color del aura %s (%d texturas)" % (name, c["aura_color"], cnt["texturas"]))
+                except Exception as e:  # noqa: BLE001
+                    log("   %s: aviso: color del aura sin cambiar (%s)" % (name, e))
+                    if aura_fid != dn["aura"]:
+                        extra.append("aura = %d" % aura_fid)
+            elif aura_fid != dn["aura"]:
+                extra.append("aura = %d" % aura_fid)
             if cam is not None:
                 write_entry(out_dir, "data_cmn.afs", next_fid, cam, work)
                 extra.append("cam = %d" % next_fid)
@@ -1573,7 +1677,7 @@ def build(a):
             try:
                 spec = c.get("voces", "donante")
                 if isinstance(spec, str) and spec.lower().startswith("iw:") and iw_voices is None:
-                    iw_voices = voces.IwVoices(getattr(a, "iw", None) or voces.IW_DIR)
+                    iw_voices = voces.IwVoices(getattr(a, "iw", None))
                 v_lines, v_note = voces.resolve(spec, voice_out, iw_voices, donor=donor)
                 extra += v_lines
                 log("   %s: %s" % (name, v_note))
@@ -1596,7 +1700,7 @@ def build(a):
                             sounds = [gritos.np.zeros(max(n, 1), gritos.np.int16) for n in lens]
                         elif gl.startswith("iw:"):
                             if iw_voices is None:
-                                iw_voices = voces.IwVoices(getattr(a, "iw", None) or voces.IW_DIR)
+                                iw_voices = voces.IwVoices(getattr(a, "iw", None))
                             sounds = gritos.assign(lens, gritos.iw_pool(iw_voices, gspec[3:].strip(), lk))
                         elif gl.startswith("b1:"):
                             # banco de Budokai 1 (55 sonidos, mismo orden que los huecos)
@@ -1697,10 +1801,39 @@ def build(a):
         open(os.path.join(out_dir, "manifest.txt"), "w", encoding="utf-8").write(
             "Personajes nuevos (generado por roster_build.py)\n" + "\n".join(manifest) + "\n")
         open(stamp, "w").write(digest)
+        clean_custom_lists(mods, first_new, own_caps)
         log("_roster listo: %d personajes, data_cmn %d..%d" % (len(manifest), len(cmn.index), next_fid - 1))
         return 0
     finally:
         shutil.rmtree(work, ignore_errors=True)
+
+
+def clean_custom_lists(mods, first_new, own_caps):
+    """mods/capsulas_custom.txt (listas Custom que guarda el juego): si un personaje nuevo cambio de
+    capsulas (reimportado, tecnicas que ahora evolucionan...), su lista vieja apunta a IDs nuevos
+    que ya son de otro o no existen -> se quita su linea (vuelve a su lista Normal), con copia."""
+    path = os.path.join(mods, "capsulas_custom.txt")
+    if not os.path.isfile(path):
+        return []
+    lines = open(path, encoding="utf-8").read().splitlines()
+    keep, gone = [], []
+    for ln in lines:
+        head, _, rest = ln.partition(":")
+        try:
+            cid, ids = int(head), [int(x) for x in rest.split()]
+        except ValueError:
+            keep.append(ln)
+            continue
+        if cid in own_caps and any(first_new <= x < 0xFFFF and x not in own_caps[cid] for x in ids):
+            gone.append(cid)
+        else:
+            keep.append(ln)
+    if gone:
+        shutil.copyfile(path, path + time.strftime(".%Y%m%d_%H%M%S.bak"))
+        open(path, "w", encoding="utf-8").write("\n".join(keep) + "\n")
+        log("capsulas Custom de los IDs %s: sus capsulas cambiaron, vuelven a la lista Normal "
+            "(copia: capsulas_custom.txt.*.bak)" % gone)
+    return gone
 
 
 # ---------------------------------------------------------------- nuevo
@@ -1764,8 +1897,14 @@ def read_caps(path):
 
 
 def write_caps(path, caps):
-    """Reescribe las secciones [[capsula]] de personaje.toml (el resto se conserva)."""
-    lines = open(path, encoding="utf-8").read().splitlines()
+    """Reescribe las secciones [[capsula]] de personaje.toml (el resto se conserva; la version
+    anterior queda en <mod>/respaldo/: los comentarios de esas secciones no se reescriben)."""
+    text = open(path, encoding="utf-8").read()
+    bk = os.path.join(os.path.dirname(path), "respaldo")
+    os.makedirs(bk, exist_ok=True)
+    with open(os.path.join(bk, "personaje.toml.%s" % time.strftime("%Y%m%d_%H%M%S")), "w", encoding="utf-8") as fh:
+        fh.write(text)
+    lines = text.splitlines()
     out, skip = [], False
     for ln in lines:
         s = ln.strip()
@@ -1801,7 +1940,17 @@ def write_caps(path, caps):
 # `reemplaza` = ID original (el build cambia esos IDs del BCM por los nuevos). Las de un port
 # de B3 son capsulas que ya existen: van en `capsulas_nativas` (se las queda tal cual).
 RESOURCES = os.path.join(ROOT, "modding resources")
-NAME_LISTS = {"iw": "Dragon Ball Z Infinite World Capsule List.xlsx", "b3": "Budokai_3_Capsules_IDs.txt"}
+NAME_LISTS = {"iw": "Dragon Ball Z Infinite World Capsule List.xlsx", "b3": "Budokai_3_Capsules_IDs.txt",
+              "b1": os.path.join(HERE, "b1_capsulas.txt")}       # nombres oficiales de B1 (va con el kit)
+
+
+def b1_cap_name(cap, default="?"):
+    """Nombre oficial de una capsula de Budokai 1 (b1_capsulas.txt, "ID: nombre  # notas")."""
+    try:
+        by_id, _ = read_name_list(NAME_LISTS["b1"])
+    except OSError:
+        return default
+    return (by_id.get(cap) or default).replace("(?)", "").strip()
 SKA_FILES = {"b1": os.path.join("Budokai 1 and Budokai 2 Capsule Data", "B1 Capsules"),
              "b2": os.path.join("Budokai 1 and Budokai 2 Capsule Data", "B2 Capsules")}
 GAMES = ("auto", "iw", "b1", "b2", "b3")
@@ -1840,6 +1989,17 @@ def _xlsx_rows(path):
 
 def _clean(t):
     return "".join(ch if 32 <= ord(ch) < 127 else "'" for ch in str(t)).strip()[:40]
+
+
+def b3_cap_names():
+    """{id: nombre} de la lista de capsulas de B3 de "modding resources" (o {} si no esta)."""
+    if not hasattr(b3_cap_names, "cache"):
+        p = os.path.join(RESOURCES, NAME_LISTS["b3"])
+        try:
+            b3_cap_names.cache = read_name_list(p)[0] if os.path.isfile(p) else {}
+        except Exception:  # noqa: BLE001
+            b3_cap_names.cache = {}
+    return b3_cap_names.cache
 
 
 def read_name_list(path):
@@ -1970,6 +2130,9 @@ def import_caps(a, path, c, d):
     for cap, kind in refs:
         if classes.get(cap) == 0x11:
             kind = "transformacion"
+        if game == "b1" and kind == "definitiva" and 0 < cap < capsulas.N_NATIVE:
+            log("  definitiva del donante (capsula %d del juego, se hereda)" % cap)
+            continue                  # B1 no tiene la de B3: b1port injerta la del donante
         k = used[kind]
         used[kind] += 1
         nm = by_id.get(cap) if game != "iw" else None

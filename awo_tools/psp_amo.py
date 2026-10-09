@@ -234,6 +234,9 @@ def decode_tex(amt, t):
         idx[0::2], idx[1::2] = a & 15, a >> 4
     elif t["psm"] == 5:               # indices de 8 bits
         idx = np.frombuffer(unswizzle(amt[t["data"]:t["data"] + w * h], w, h), np.uint8)
+    elif t["psm"] == 3:               # RGBA 8888 directo (Bardock de Another Road)
+        raw = unswizzle(amt[t["data"]:t["data"] + w * h * 4], w * 4, h)
+        return np.frombuffer(raw, np.uint8).reshape(h, w, 4).copy()
     else:
         raise A.ConvError("textura de PSP psm=%d no soportada" % t["psm"])
     clut = np.frombuffer(bytes(amt[t["clut"]:t["clut"] + t["csize"]]), np.uint8).reshape(-1, 4)
@@ -272,6 +275,8 @@ def convert_amt(amt, ramp=True):
             index += bytes(4)
             continue
         tid, flags, clut, csize, img = t
+        from texture_b3 import pad4  # noqa: PLC0415
+        img = pad4(img)
         w, h = img.shape[1], img.shape[0]
         blob = amt_ps2.dds_dxt3_header(w, h) + encode_dxt3(img)
         lw, lh = (w - 1).bit_length(), (h - 1).bit_length()

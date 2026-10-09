@@ -35,6 +35,51 @@ VOICE_AFS = ("adx_usa.afs", "adx_jpn.afs")
 IW_DIR = os.path.join(ROOT, "ps2_games", "Infinite World (USA)")
 
 
+def iw_source():
+    """Infinite World en ps2_games: carpeta extraida o ISO, de cualquier region."""
+    import glob  # noqa: PLC0415
+    hits = sorted(glob.glob(os.path.join(ROOT, "ps2_games", "*Infinite World*")),
+                  key=lambda p: not os.path.isdir(p))          # la carpeta primero
+    return next((p for p in hits if os.path.isdir(p) or p.lower().endswith(".iso")), IW_DIR)
+
+
+class GameFiles:
+    """Ficheros de un juego de PS2 en su carpeta extraida o dentro de su ISO (sin extraer)."""
+
+    def __init__(self, src):
+        self.src = src
+        self.iso = None
+        if os.path.isfile(src):
+            import iso  # noqa: PLC0415
+            self.iso = iso.Iso(src)
+
+    def find(self, name):
+        if self.iso:
+            return self.iso.find(name)
+        return find_file(self.src, name)
+
+    def names(self):
+        if self.iso:
+            return [p.rsplit("/", 1)[-1] for p in self.iso.files()]
+        out = []
+        for base in (self.src, os.path.join(self.src, "USR"), os.path.join(self.src, "usr")):
+            if os.path.isdir(base):
+                out += os.listdir(base)
+        return out
+
+    def elf(self):
+        """Ruta del ejecutable (SYSTEM.CNF), sea SLUS (USA) o SLES (Europa)."""
+        import iso  # noqa: PLC0415
+        return self.iso.boot_elf() if self.iso else iso.folder_elf(self.src)
+
+    def read(self, key, offset=0, n=None):
+        if self.iso:
+            return self.iso.read(key, offset, n)
+        with open(key, "rb") as f:
+            f.seek(offset)
+            return f.read() if n is None else f.read(n)
+
+
 def afs_index(path):
     with open(path, "rb") as f:
         head = f.read(8)
@@ -73,12 +118,13 @@ def find_elf(folder):
 class IwVoices:
     """Tabla de voces de Infinite World (SLUS de PS2, little-endian)."""
 
-    def __init__(self, folder=IW_DIR):
-        self.folder = folder
-        elf = find_elf(folder)
+    def __init__(self, folder=None):
+        self.folder = folder or iw_source()
+        self.files = GameFiles(self.folder)
+        elf = self.files.elf()
         if not elf:
-            raise FileNotFoundError("no encuentro el ejecutable de Infinite World en %s" % folder)
-        self.elf = open(elf, "rb").read()
+            raise FileNotFoundError("no encuentro el ejecutable de Infinite World en %s" % self.folder)
+        self.elf = self.files.read(elf)
         ph = struct.unpack_from("<I", self.elf, 0x1C)[0]
         _, off, va = struct.unpack_from("<3I", self.elf, ph)[:3]
         self._seg = (off, va)
@@ -156,15 +202,24 @@ class IwVoices:
         return [v if v >= 0 else -1 for v in out]
 
     def adx(self, lang, idx):
-        """ADX de IW (lang = 'usa' | 'jpn')."""
-        path = find_file(self.folder, "ADX_%s.AFS" % lang.upper())
+        """ADX de IW (lang = 'usa' | 'jpn'). 'usa' = el banco en ingles (ADX_USA en la americana;
+        en otras regiones el ADX_*.AFS que no sea JPN ni CMN)."""
+        path = self.files.find("ADX_%s.AFS" % lang.upper())
+        if not path and lang.lower() != "jpn":
+            other = sorted(n for n in self.files.names() if n.upper().startswith("ADX_") and
+                           n.upper().endswith(".AFS") and n.upper()[4:7] not in ("JPN", "CMN"))
+            path = self.files.find(other[0]) if other else None
         if not path:
             raise FileNotFoundError("falta ADX_%s.AFS de Infinite World" % lang.upper())
         if not hasattr(self, "_idx"):
             self._idx = {}
         if path not in self._idx:
-            self._idx[path] = afs_index(path)
-        return afs_read(path, self._idx[path], idx)
+            head = self.files.read(path, 0, 8)
+            n = struct.unpack("<I", head[4:8])[0]
+            t = struct.unpack("<%dI" % (2 * n), self.files.read(path, 8, 8 * n))
+            self._idx[path] = [(t[2 * i], t[2 * i + 1]) for i in range(n)]
+        a, sz = self._idx[path][idx]
+        return self.files.read(path, a, sz)
 
 
 B3_PS2_DIR = os.path.join(ROOT, "ps2_games", "Budokai 3 Greatest Hits (USA)")
@@ -254,7 +309,7 @@ def resolve(spec, writer, iw=None, log=print, donor=None):
 
 if __name__ == "__main__":
     import sys
-    iw = IwVoices(sys.argv[1] if len(sys.argv) > 1 else IW_DIR)
+    iw = IwVoices(sys.argv[1] if len(sys.argv) > 1 else None)
     print("tabla en 0x%X, %d IDs; %d nombres" % (iw.ptr_off, iw.n, len(iw.names)))
     for nm, cid in sorted(iw.names.items(), key=lambda x: x[1]):
         s = iw.slots(cid)

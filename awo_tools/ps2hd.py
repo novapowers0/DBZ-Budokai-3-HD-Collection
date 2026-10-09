@@ -21,6 +21,7 @@ MAGIC = {
     b"#AMB": b"#AMB", b"#AMO": b"#AWO", b"#AMG": b"#AWG", b"#AMT": b"#AZT",
     b"#AMM": b"#ACM", b"#BSK": b"#CSK", b"#BCM": b"#CCM", b"#AMC": b"#ACC",
     b"#AML": b"#ACL", b"#AME": b"#ACE", b"#AST": b"#CST", b"#SPX": b"#SPX",
+    b"#AMP": b"#ACP",        # BSP de Goku 533 y Dabura 523 (y el de Dabura de IW): todo u32
 }
 
 
@@ -338,10 +339,53 @@ def conv_ase(b):
     return conv_wk_table(b, ASE_WORDS, b"#CSE")
 
 
+# #AWV (bloques 0xB0, en el #AMB de los #ASE de casi todos los BSP; tambien en los ports IW de la
+# comunidad): nombre "wk0" y u16 en +0x50..+0x5F; el resto u32/f32. Medido en los 28 nativos.
+AWV_WORDS = {0: "11", 0x50: "22", 0x54: "22", 0x58: "22", 0x5C: "22"}
+
+
+def conv_awv(b):
+    return conv_wk_table(b, AWV_WORDS, b"#CWV")
+
+
+def conv_amp(b):
+    """#AMP -> #ACP (BSP de Goku 533 y Dabura 523; el de Dabura de IW es el mismo). Cabecera:
+    +0x10 grupos, +0x1C tabla de nombres; grupo (16 B en 0x20+) = [.., .., .., lista de offsets];
+    cada offset apunta a una entrada de 20 B cuya ultima palabra son dos u16; los nombres
+    (ASCII) van tal cual; el resto, u32."""
+    out = swap32_all(b)
+    out[:4] = b"#ACP"
+    ng, names = struct.unpack_from("<I", b, 0x10)[0], struct.unpack_from("<I", b, 0x1C)[0]
+    entries = set()
+    for g in range(min(ng, 64)):
+        pos = struct.unpack_from("<I", b, 0x2C + 16 * g)[0]
+        stop = len(b)
+        while 0 < pos < min(stop, len(b) - 3):      # la lista acaba donde empieza la 1a entrada
+            v = struct.unpack_from("<I", b, pos)[0]
+            if v and v + 20 <= len(b):
+                entries.add(v)
+                stop = min(stop, v)
+            pos += 4
+    for e in entries:
+        out[e + 16:e + 20] = struct.pack(">2H", *struct.unpack_from("<2H", b, e + 16))
+    o = names
+    while 0 < o < len(b):                           # nombres: hasta su NUL, redondeado a 4
+        if 65 <= b[o] <= 90:
+            z = b.find(b"\0", o)
+            z = len(b) if z < 0 else z
+            end = min(len(b), (z + 4) & ~3)
+            out[o:end] = b[o:end]
+            o = end
+        else:
+            o += 4
+    return bytes(out)
+
+
 HANDLERS = {
     b"#AST": conv_ast,
     b"#ATR": conv_atr,
     b"#ASE": conv_ase,
+    b"#AWV": conv_awv,
     b"#AMT": conv_amt,
     b"#BCM": conv_bcm,
     b"#BSK": conv_bsk,
@@ -350,6 +394,7 @@ HANDLERS = {
     b"#SPX": conv_copy,
     b"#AML": conv_copy,
     b"#AMC": conv_u32,
+    b"#AMP": conv_amp,
     b"#AME": conv_u32_names,
 }
 

@@ -54,6 +54,7 @@ class StudioApp:
         self.cam = self.orig = None
         self.src = None
         self.edited = set()
+        self.dirty = False            # cambios sin guardar (para avisar al cerrar)
         self.k = 0
         self.f = 0
         self.seqs, self.seq = [], None
@@ -329,6 +330,7 @@ class StudioApp:
                                                      self.src["label"]):
             self.char_cb.current(self.chars.index(self.src))
             return
+        prev = (self.src, getattr(self, "orig", None), self.cam, set(self.edited))
         self.src = c = self.chars[i]
         self.root.config(cursor="watch")
         self.root.update_idletasks()
@@ -377,7 +379,12 @@ class StudioApp:
                 msg += "  " + T("Cambios del mod Studio cargados: %s.", "Studio mod changes loaded: %s.") % sorted(
                     self.edited)
             self.say(msg, "text")
+            self.dirty = False
         except Exception as ex:  # noqa: BLE001
+            # se vuelve al anterior: si no, "Guardar" escribiria sus camaras en este personaje
+            self.src, self.orig, self.cam, self.edited = prev
+            if self.src in self.chars:
+                self.char_cb.current(self.chars.index(self.src))
             self.say(T("No se pudo abrir: %s", "Could not open: %s") % ex, "err")
             traceback.print_exc()
         finally:
@@ -386,9 +393,8 @@ class StudioApp:
     def _seq_label(self, s, j):
         txt = sc.seq_label(s, j)
         if mk.LANG == "en":
-            txt = txt.replace("Guion", "Script").replace("ranura", "slot").replace("modo hiper / definitiva",
-                                                                                   "hyper mode / ultimate")
-            txt = txt.replace("agarre", "grab").replace("sin ranura", "no slot")
+            txt = txt.replace("sin ranura", "no slot").replace("Guion", "Script").replace("ranura", "slot")
+            txt = txt.replace("modo hiper / definitiva", "hyper mode / ultimate").replace("agarre", "grab")
         return txt
 
     def pick_seq(self):
@@ -643,6 +649,7 @@ class StudioApp:
             return False
         self.cam.clips[self.k] = new
         self.edited.add(self.k)
+        self.dirty = True
         self.refresh_tree()
         self.select_clip(self.k)
         self.say(msg, "ok")
@@ -756,6 +763,7 @@ class StudioApp:
             return
         self.cam.clips[self.k] = self.orig.clips[self.k].copy()
         self.edited.discard(self.k)
+        self.dirty = True
         self.refresh_tree()
         self.select_clip(self.k)
         self.say(T("Clip %d como el original.", "Clip %d back to the original.") % self.k, "ok")
@@ -768,6 +776,7 @@ class StudioApp:
         self.cam.clips.append(new)
         k = len(self.cam.clips) - 1
         self.edited.add(k)
+        self.dirty = True
         self.refresh_tree()
         self.select_clip(k)
         self.say(T("Clip %d añadido al final. El guion no lo usará hasta que una técnica lo pida (o "
@@ -927,6 +936,7 @@ class StudioApp:
             self.say(T("No se pudo guardar: %s", "Could not save: %s") % ex, "err")
             traceback.print_exc()
             return None
+        self.dirty = False
         lines = [T("Guardado en el mod «%s».", "Saved in mod '%s'.") % r["mod"]]
         if r["respaldo"]:
             lines.append(T("La versión anterior está en %s.", "The previous version is in %s.") % os.path.dirname(
@@ -1050,10 +1060,35 @@ class StudioApp:
                     self.say(val, "err")
         except queue.Empty:
             pass
-        self.root.after(150, self.poll)
+        except Exception as ex:  # noqa: BLE001  (un error aqui paraba el sondeo para siempre)
+            self.say(T("Error: %s", "Error: %s") % ex, "err")
+            traceback.print_exc()
+        finally:
+            self.root.after(150, self.poll)
 
     def ask(self, msg):
         return True if self.selftest else messagebox.askyesno("DBZ3 HD Studio", msg, parent=self.root)
+
+    def on_close(self):
+        """Cerrar la ventana: con cambios sin guardar, se pregunta (antes se perdian sin aviso)."""
+        if self.dirty and self.src and not self.ask(T("Hay cambios sin guardar en %s. ¿Cerrar y descartarlos?",
+                                                      "There are unsaved changes in %s. Close and discard them?")
+                                                    % self.src["label"]):
+            return
+        self.root.destroy()
+
+
+def report_error(*exc):
+    """Errores de los botones (Tk los tragaba sin consola): ventana con el motivo + .log."""
+    err = "".join(traceback.format_exception(*exc))
+    log = os.path.join(os.environ.get("TEMP") or HERE, "dbz3_studio_error.log")
+    try:
+        with open(log, "a", encoding="utf-8") as fh:
+            fh.write(err + "\n")
+    except OSError:
+        pass
+    messagebox.showerror("DBZ3 HD Studio", T("Algo ha fallado: %s\n\n(detalles en %s)",
+                                             "Something went wrong: %s\n\n(details in %s)") % (exc[1], log))
 
 
 # ================================================================================ autotest
@@ -1183,7 +1218,9 @@ def main(argv=None):
     sw, sh = root.winfo_screenwidth(), root.winfo_screenheight()
     w, h = min(1440, sw - 40), min(900, sh - 60)
     root.geometry("%dx%d+%d+%d" % (w, h, max(0, (sw - w) // 2), max(0, (sh - h) // 3)))
+    root.report_callback_exception = report_error
     app = StudioApp(root, env, start=a.personaje)
+    root.protocol("WM_DELETE_WINDOW", app.on_close)
     if a.captura:
         def go():
             capture(app, a.captura, [lambda: app.set_frame(30)])

@@ -1,0 +1,22 @@
+PUT YOUR COPIES OF THE PS2 / PSP GAMES HERE (to import characters)
+==================================================================
+
+Both USA and Europe (PAL) versions work. The launcher's importer finds them by
+file name; it only needs to contain:
+
+- Budokai 1:  "Budokai (" in an .iso
+              example: DragonBall Z - Budokai (Europe) (En,Fr,De,Es,It).iso
+- Budokai 2:  "Budokai 2" in an .iso
+- Infinite World:  "Infinite World" in an .iso, or in a FOLDER with the disc
+              extracted inside (with USR\DATA_CMN.AFS)
+- Shin Budokai (PSP): "Shin Budokai" in an .iso
+              example: Dragonball Z Shin Budokai (USA).iso
+- Shin Budokai Another Road (PSP): "Another Road" in an .iso
+- Budokai 3 (PS2): "Budokai 3" in an .iso, or in a folder with the disc extracted.
+              Used for the base moves of Budokai 1 characters and for Shin Budokai
+              moves; without it the base character's moves are used.
+
+ISOs are read as they are: no need to extract them.
+Tested with: Budokai 1 and 2 (Europe), Infinite World, Shin Budokai and Another
+Road (USA). Other regions are found the same way (by content) but are not tested
+yet: if one does not work, tell us on Discord.

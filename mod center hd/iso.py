@@ -70,6 +70,21 @@ class Iso:
                 return p
         return None
 
+    def find_region(self, name):
+        """Como find, pero si el fichero lleva sufijo de region (data_btl_voice_us.afs) y esta
+        copia es de otra region, el mismo fichero con su sufijo (_eu, _en...; nunca _jp/_cmn)."""
+        import re  # noqa: PLC0415
+        hit = self.find(name)
+        if hit:
+            return hit
+        stem, ext = os.path.splitext(os.path.basename(name).lower())
+        base = re.sub(r"_(us|usa)$", "", stem)
+        for p in sorted(self._files):
+            m = re.fullmatch(re.escape(base) + r"_([a-z]{2,3})" + re.escape(ext), p.rsplit("/", 1)[-1].lower())
+            if m and m.group(1) not in ("jp", "jpn", "cmn"):
+                return p
+        return None
+
     def read(self, path, offset=0, n=None):
         lba, size = self._files[path]
         n = size - offset if n is None else min(n, size - offset)
@@ -78,6 +93,50 @@ class Iso:
 
     def open(self, path):
         return _Sub(self.path, *self._files[path])
+
+    def boot_elf(self):
+        """Ruta del ejecutable de arranque (SYSTEM.CNF BOOT2): /SLUS_218.42, /SLES_512.33...
+        Asi vale cualquier region (USA / Europa) sin nombres fijos."""
+        return boot_elf_name(self.read(self.find("SYSTEM.CNF") or "/SYSTEM.CNF"), self.find)
+
+
+# juegos de origen en ps2_games, de cualquier region: '(USA)', '(Europe)', '(En,Fr,De,Es,It)'...
+GAME_RE = {"b1": r"budokai \(", "b2": r"budokai 2", "sb1": r"shin budokai(?!.*another)", "sb2": r"another road"}
+GAME_SKIP = {"b1": "shin"}
+
+
+def find_game(game, root=None):
+    """ISO de un juego de origen en ps2_games (o None): por patron, no por el nombre exacto."""
+    import glob  # noqa: PLC0415
+    import re  # noqa: PLC0415
+    root = root or os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "ps2_games")
+    for p in sorted(glob.glob(os.path.join(root, "*.iso"))):
+        low = os.path.basename(p).lower()
+        if re.search(GAME_RE[game], low) and not (GAME_SKIP.get(game) and GAME_SKIP[game] in low):
+            return p
+    return None
+
+
+def boot_elf_name(cnf, find):
+    """Nombre del ELF de un SYSTEM.CNF de PS2 (BOOT2 = cdrom0:\\SLES_512.33;1) resuelto con
+    find(nombre) (Iso.find o una busqueda en carpeta)."""
+    for ln in cnf.decode("latin1", "replace").splitlines():
+        if ln.strip().upper().startswith("BOOT2"):
+            name = ln.split("=", 1)[1].strip().replace("cdrom0:", "").strip("\\/").split(";")[0]
+            return find(name)
+    return None
+
+
+def folder_elf(folder):
+    """Igual que Iso.boot_elf para un juego extraido en una carpeta (ruta completa o None)."""
+    names = {fn.lower(): os.path.join(folder, fn) for fn in os.listdir(folder)}
+    cnf = names.get("system.cnf")
+    if cnf:
+        with open(cnf, "rb") as fh:
+            hit = boot_elf_name(fh.read(), lambda n: names.get(n.lower()))
+        if hit:
+            return hit
+    return next((p for n, p in sorted(names.items()) if n[:4] in ("slus", "sles", "sces", "scus", "slps")), None)
 
 
 class _Sub(io.RawIOBase):
@@ -114,7 +173,24 @@ class _Sub(io.RawIOBase):
         super().close()
 
 
+def prueba():
+    """Region: SYSTEM.CNF de PS2 y ficheros con sufijo de region (sin ISO real)."""
+    files = {"SLES_512.33": "/SLES_512.33", "SLUS_218.42": "/SLUS_218.42"}
+    assert boot_elf_name(b"BOOT2 = cdrom0:\\SLES_512.33;1\r\nVER = 1.00\r\n", files.get) == "/SLES_512.33"
+    assert boot_elf_name(b"BOOT2 = cdrom0:\\SLUS_218.42;1\n", files.get) == "/SLUS_218.42"
+    img = Iso.__new__(Iso)
+    img._files = {"/U/data_btl_voice.afs": 0, "/U/data_btl_voice_jp.afs": 0, "/U/data_btl_voice_eu.afs": 0,
+                  "/U/data_btl_eu.afs": 0, "/U/data_btl_cmn.afs": 0}
+    assert img.find_region("data_btl_voice_us.afs") == "/U/data_btl_voice_eu.afs"
+    assert img.find_region("data_btl_us.afs") == "/U/data_btl_eu.afs"
+    assert img.find_region("data_btl_voice_jp.afs") == "/U/data_btl_voice_jp.afs"
+    print("iso.py: prueba OK")
+
+
 if __name__ == "__main__":
+    if sys.argv[1:] == ["prueba"]:
+        prueba()
+        sys.exit(0)
     iso = Iso(sys.argv[1])
     print(iso.label)
     for p, (lba, size) in sorted(iso.files().items()):

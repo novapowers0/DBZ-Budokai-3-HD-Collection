@@ -18,8 +18,23 @@ import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-PS2_GH = os.path.join(ROOT, "ps2_games", "Budokai 3 Greatest Hits (USA)", "USR")
-PS2_IW = os.path.join(ROOT, "ps2_games", "Infinite World (USA)", "USR")
+def _ps2_source(pattern, default):
+    """Juego de PS2 en ps2_games de cualquier region: su carpeta USR (disco extraido) o su ISO
+    (se lee sin extraer). La carpeta tiene prioridad."""
+    import glob  # noqa: PLC0415
+    hits = sorted(glob.glob(os.path.join(ROOT, "ps2_games", pattern)), key=lambda p: not os.path.isdir(p))
+    for p in hits:
+        if os.path.isdir(p):
+            usr = next((os.path.join(p, d) for d in ("USR", "usr") if os.path.isdir(os.path.join(p, d))), None)
+            if usr:
+                return usr
+        elif p.lower().endswith(".iso"):
+            return p
+    return default
+
+
+PS2_GH = _ps2_source("*Budokai 3*", os.path.join(ROOT, "ps2_games", "Budokai 3 Greatest Hits (USA)", "USR"))
+PS2_IW = _ps2_source("*Infinite World*", os.path.join(ROOT, "ps2_games", "Infinite World (USA)", "USR"))
 HD_US = os.path.join(ROOT, "us")
 XBDEC = next((p for p in (
     os.path.join(ROOT, "mod center", "Xbox 360 Compression - Decompression tool from the XBOX Development Kit",
@@ -46,7 +61,30 @@ def table(path):
 _maps = {}
 
 
+_isos = {}
+
+
+def _iso_entry(iso_path, afs, n):
+    """Entrada n de /USR/<afs> dentro de una ISO de PS2."""
+    import sys  # noqa: PLC0415
+    sys.path.insert(0, os.path.join(ROOT, "mod center hd"))
+    import iso  # noqa: PLC0415
+    key = (iso_path, afs.lower())
+    if key not in _isos:
+        img = iso.Iso(iso_path)
+        inner = img.find("USR/" + afs) or img.find(afs)
+        hdr = img.read(inner, 0, 8)
+        cnt = struct.unpack("<I", hdr[4:8])[0]
+        t = img.read(inner, 8, 8 * cnt)
+        _isos[key] = (img, inner, [struct.unpack_from("<II", t, 8 * k) for k in range(cnt)])
+    img, inner, tab = _isos[key]
+    off, size = tab[n]
+    return img.read(inner, off, size)
+
+
 def entry(path, n):
+    if os.path.isfile(os.path.dirname(path)) and os.path.dirname(path).lower().endswith(".iso"):
+        return _iso_entry(os.path.dirname(path), os.path.basename(path), n)
     off, size = table(path)[n]
     if path not in _maps:
         import mmap

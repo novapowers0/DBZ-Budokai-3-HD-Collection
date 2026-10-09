@@ -128,10 +128,11 @@ bool CharacterCombo(const char* id, const char* filter_id,
     const std::string dn = chars[i].DisplayName();
     if (!IContains(dn, q)) continue;
     ++shown;
-    std::string label = dn + "  [bin " + std::to_string(chars[i].bin) + "]";
+    std::string label = dn;
     if (!chars[i].playable) {
       label += i18n::T("  [NO JUGABLE]", "  [NOT PLAYABLE]");
     }
+    label += "##" + std::to_string(i);       // nombres repetidos (trajes): ID propio
     const bool selected = (index == i);
     if (ImGui::Selectable(label.c_str(), selected)) {
       index = i;
@@ -521,6 +522,52 @@ std::vector<std::filesystem::path> g_dropped;
 void QueueDroppedFile(const std::filesystem::path& path) {
   std::lock_guard<std::mutex> lock(g_drop_mutex);
   g_dropped.push_back(path);
+}
+
+// Registro de una herramienta (Python): resumen claro y el texto tecnico plegado (se puede
+// copiar para pedir ayuda). Antes el registro crudo, con rutas y trazas, era lo primero.
+static bool ToolOutputFailed(const std::string& out) {
+  return out.find("Traceback") != std::string::npos || out.find("ERROR") != std::string::npos ||
+         out.find("\n!! ") != std::string::npos || out.rfind("!! ", 0) == 0;
+}
+
+static void DrawToolLog(const std::string& out, char* buf, size_t cap, const char* id, float h) {
+  if (out.empty()) return;
+  if (ToolOutputFailed(out)) {
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextColored(ui::kWarn, "%s", i18n::T(
+        "Algo ha fallado. Abre 'Detalles tecnicos' para ver el motivo (puedes copiarlo para pedir ayuda).",
+        "Something went wrong. Open 'Technical details' to see why (you can copy it to ask for help)."));
+    ImGui::PopTextWrapPos();
+  }
+  if (ImGui::CollapsingHeader((std::string(i18n::T("Detalles tecnicos", "Technical details")) + "##" + id).c_str())) {
+    std::memcpy(buf, out.c_str(), std::min(out.size(), cap - 1));
+    buf[std::min(out.size(), cap - 1)] = '\0';
+    ImGui::InputTextMultiline((std::string("##") + id).c_str(), buf, cap, ImVec2(-1.0f, h),
+                              ImGuiInputTextFlags_ReadOnly);
+  }
+}
+
+// Confirmacion de acciones que pierden datos: true el frame en que se pulsa `yes`.
+// Se abre con ImGui::OpenPopup(id) (mismo id, mismo nivel de la pila de IDs).
+static bool ConfirmModal(const char* id, const char* text, const char* yes) {
+  bool ok = false;
+  if (ImGui::BeginPopupModal(id, nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+    ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + 520.0f);
+    ImGui::TextUnformatted(text);
+    ImGui::PopTextWrapPos();
+    ImGui::Spacing();
+    if (ImGui::Button(yes, ImVec2(220, 0))) {
+      ok = true;
+      ImGui::CloseCurrentPopup();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button(i18n::T("Cancelar", "Cancel"), ImVec2(120, 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+      ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndPopup();
+  }
+  return ok;
 }
 
 // Problema de un mod (mods.cpp) en lenguaje para usuarios no tecnicos.
@@ -1121,7 +1168,8 @@ void LauncherDialog::OnDraw(ImGuiIO& io) {
       DrawNewCharactersTab();
       ImGui::EndTabItem();
     }
-    if (begin_tab(tab_label(ICON_DEV, i18n::T("Desarrollo", "Dev"), "tab_dev"))) {
+    // la ultima pestana: diagnostico para quien lo necesite (el modo Dev se activa aqui)
+    if (begin_tab(tab_label(ICON_DEV, i18n::T("Avanzado", "Advanced"), "tab_dev"))) {
       DrawDevTab();
       ImGui::EndTabItem();
     }
@@ -1186,6 +1234,18 @@ void LauncherDialog::OnDraw(ImGuiIO& io) {
   ImGui::PushStyleColor(ImGuiCol_ButtonActive, kDragonOrange);
   ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
   if (ui::IconButton(ICON_RESET, i18n::T("Restablecer", "Reset defaults"), ImVec2(170, 38))) {
+    ImGui::OpenPopup("###confirm_reset");
+  }
+  if (ImGui::IsItemHovered()) {
+    ImGui::SetTooltip("%s", i18n::T("Vuelve a los ajustes de fabrica (pide confirmacion).",
+                                    "Back to factory settings (asks first)."));
+  }
+  if (ConfirmModal((std::string(i18n::T("Restablecer", "Reset")) + "###confirm_reset").c_str(),
+                   i18n::T("Restablecer todos los ajustes? Se perderan tus teclas y se desactivaran "
+                           "todos los mods (no se borra ninguno).",
+                           "Reset all settings? Your keys will be lost and all mods will be turned off "
+                           "(none is deleted)."),
+                   i18n::T("Si, restablecer", "Yes, reset"))) {
     rex::cvar::SetFlagByName("dbz3_resolution_scale", "1");
     rex::cvar::SetFlagByName("dbz3_language", "1");
     rex::cvar::SetFlagByName("dbz3_region", "us");
@@ -1274,34 +1334,65 @@ void LauncherDialog::OnDraw(ImGuiIO& io) {
   // PLAY is gated on the assets being found: pressing it with no game data
   // would crash before the guest even starts (P1). The banner above offers the
   // folder picker to fix it.
-  ImGui::BeginDisabled(!assets_ready);
+  ImGui::BeginDisabled(!assets_ready || launching_);
   ImGui::PushStyleColor(ImGuiCol_Button, kPlayIdle);
   ImGui::PushStyleColor(ImGuiCol_ButtonHovered, kPlayHovered);
   ImGui::PushStyleColor(ImGuiCol_ButtonActive, kPlayActive);
   if (fonts.h2) ImGui::PushFont(fonts.h2);
   ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 12.0f);
-  const std::string play_label = std::string(ICON_PLAY) + "   " + i18n::T("JUGAR", "PLAY") + "###play";
+  const std::string play_label = std::string(ICON_PLAY) + "   " +
+      (launching_ ? i18n::T("Preparando...", "Preparing...") : i18n::T("JUGAR", "PLAY")) + "###play";
   const bool play_pressed = ImGui::Button(play_label.c_str(), ImVec2(320, 62));
   const ImVec2 play_min = ImGui::GetItemRectMin();
   ImGui::PopStyleVar();
   if (fonts.h2) ImGui::PopFont();
   if (broken_mods_ < 0) {
     broken_mods_ = 0;
+    active_mods_ = 0;
     for (const dbz3::ModInfo& m : dbz3::ListMods()) {
+      if (m.enabled) ++active_mods_;
       if (m.enabled && !m.problems.empty()) ++broken_mods_;
     }
   }
-  if (broken_mods_ > 0) {
-    // Encima del boton, sin mover el layout (debajo se cortaba y salia una barra de scroll).
-    char warn[128];
-    std::snprintf(warn, sizeof(warn), i18n::T("! %d mod(s) con problemas: mira la pestana Mods",
-                                             "! %d mod(s) with problems: see the Mods tab"), broken_mods_);
+  if (active_mods_ > 0 && dbz3::settings::IsIsoMode()) {
+    // Modo disco: los mods solo se sirven desde la carpeta extraida. Aviso junto a JUGAR (el
+    // de la seccion de origen pasaba desapercibido: "dice instalado pero no hace efecto").
+    char warn[192];
+    std::snprintf(warn, sizeof(warn),
+                  i18n::T("! Juegas desde la ISO: tus %d mod(s) activos NO se cargan (usa la carpeta extraida)",
+                          "! Playing from the ISO: your %d active mod(s) will NOT load (use the extracted folder)"),
+                  active_mods_);
     ImGui::GetWindowDrawList()->AddText(ImVec2(play_min.x, play_min.y - ImGui::GetTextLineHeight() - 4.0f),
                                         ImGui::GetColorU32(kGold), warn);
+  } else if (broken_mods_ > 0) {
+    // Encima del boton, sin mover el layout (debajo se cortaba y salia una barra de scroll).
+    char warn[128];
+    std::snprintf(warn, sizeof(warn), i18n::T("! %d mod(s) con problemas: pulsa para verlos###broken",
+                                             "! %d mod(s) with problems: click to see them###broken"), broken_mods_);
+    const ImVec2 keep = ImGui::GetCursorPos();
+    ImGui::SetCursorScreenPos(ImVec2(play_min.x, play_min.y - ImGui::GetTextLineHeight() - 4.0f));
+    ImGui::PushStyleColor(ImGuiCol_Text, kGold);
+    if (ImGui::Selectable(warn, false, 0, ImGui::CalcTextSize(warn, nullptr, true))) request_tab_ = 1;
+    ImGui::PopStyleColor();
+    ImGui::SetCursorPos(keep);
   }
   const bool pad_play = pad_play_;
   pad_play_ = false;
-  if (play_pressed || (assets_ready && (pad_play || ImGui::IsKeyPressed(ImGuiKey_Enter, false)))) {
+  if (!assets_ready && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+    ImGui::SetTooltip("%s", i18n::T("Faltan los datos del juego: mira el aviso de arriba.",
+                                    "Game data missing: see the notice above."));
+  }
+  if (launching_) {
+    ImGui::GetWindowDrawList()->AddText(ImVec2(play_min.x, play_min.y - ImGui::GetTextLineHeight() - 4.0f),
+                                        ImGui::GetColorU32(kGold),
+                                        i18n::T("Preparando los personajes nuevos, un momento...",
+                                                "Preparing the new characters, one moment..."));
+  }
+  bool launch_now = false;
+  // Enter juega, salvo mientras se escribe en un campo de texto (buscador, nombre...).
+  const bool enter = ImGui::IsKeyPressed(ImGuiKey_Enter, false) && !ImGui::GetIO().WantTextInput &&
+                     !ImGui::IsAnyItemActive();
+  if (!launching_ && (play_pressed || (assets_ready && (pad_play || enter)))) {
     dbz3::settings::SaveUserSettings();
     dbz3::settings::ApplyUserSettingsToSdk();
     dbz3::settings::ApplyRuntimeSettingsToSdk(true);
@@ -1311,10 +1402,10 @@ void LauncherDialog::OnDraw(ImGuiIO& io) {
     // (instantaneo si esta al dia; los mods no se aplican en modo ISO).
     if (!dbz3::settings::IsIsoMode() && ModPipeline::HasCharacterSources()) {
       if (ModPipeline::RosterToolAvailable()) {
+        // en segundo plano: la ventana sigue viva y dice que esta montando (antes se congelaba)
         mod_pipeline_.Wait();
         mod_pipeline_.BuildRoster();
-        mod_pipeline_.Wait();
-        REXLOG_INFO("dbz3: personajes nuevos: {}", mod_pipeline_.Output());
+        launching_ = true;
       } else {
         // v1.4.1: el pack de personajes trae el _roster ya montado y funciona sin el kit
         // de modding; antes se lanzaba igualmente roster_build.py y cada partida dejaba
@@ -1323,6 +1414,15 @@ void LauncherDialog::OnDraw(ImGuiIO& io) {
                     "modding no se reconstruye; para cambiar personajes instala el kit)");
       }
     }
+    if (!launching_) launch_now = true;
+  }
+  if (launching_ && !mod_pipeline_.IsRunning()) {
+    mod_pipeline_.Wait();
+    REXLOG_INFO("dbz3: personajes nuevos: {}", mod_pipeline_.Output());
+    launching_ = false;
+    launch_now = true;
+  }
+  if (launch_now) {
     Close();
     if (on_play_) {
       on_play_();
@@ -2126,12 +2226,28 @@ void LauncherDialog::DrawNativeModsTab() {
     if (mod.state == dbz3::NativeModState::kReady) {
       const bool avail = mod.id != "save_100" || dbz3::Save100Available();
       if (!avail) ImGui::BeginDisabled();
-      if (ImGui::Button(i18n::T("Aplicar", "Apply"))) {
-        dbz3::ApplySave100(native_mods_status_);
+      if (ImGui::Button(i18n::T("Aplicar (reemplaza tu partida)", "Apply (replaces your save)"))) {
+        ImGui::OpenPopup("###confirm_save100");
       }
       if (!avail) ImGui::EndDisabled();
+      if (ConfirmModal((std::string(i18n::T("Partida", "Save")) + "###confirm_save100").c_str(),
+                       i18n::T("Tu partida se sustituira por esta. Antes se hace una copia de seguridad "
+                               "(la recuperas con 'Restaurar mi partida'). Continuar?",
+                               "Your save will be replaced with this one. A backup is made first "
+                               "(get it back with 'Restore my save'). Continue?"),
+                       i18n::T("Si, aplicar", "Yes, apply"))) {
+        dbz3::ApplySave100(native_mods_status_);
+      }
       ImGui::SameLine();
       if (ImGui::Button(i18n::T("Restaurar mi partida", "Restore my save"))) {
+        ImGui::OpenPopup("###confirm_restore");
+      }
+      if (ConfirmModal((std::string(i18n::T("Partida", "Save")) + "###confirm_restore").c_str(),
+                       i18n::T("Vuelve a la ultima copia de seguridad de tu partida (la de ahora se "
+                               "sustituye). Continuar?",
+                               "Goes back to the last backup of your save (the current one is "
+                               "replaced). Continue?"),
+                       i18n::T("Si, restaurar", "Yes, restore"))) {
         dbz3::RestoreLastSaveBackup(native_mods_status_);
       }
     } else if (mod.state == dbz3::NativeModState::kNeedsResearch) {
@@ -2149,8 +2265,8 @@ void LauncherDialog::DrawNativeModsTab() {
       ImGui::EndDisabled();
       if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip("%s", i18n::T(
-            "No existe actualmente un parche Xenia conocido para este juego. Se necesita investigacion propia del guest.",
-            "There is currently no known Xenia patch for this game. Guest-specific research is required."));
+            "Todavia no hay forma de activarlo en este juego.",
+            "Not available for this game yet."));
       }
     }
     ImGui::Separator();
@@ -2181,7 +2297,9 @@ void LauncherDialog::DrawModsTab() {
   if (!mods_loaded_) {
     mods_cache_ = dbz3::ListMods();
     broken_mods_ = 0;
+    active_mods_ = 0;
     for (const dbz3::ModInfo& m : mods_cache_) {
+      if (m.enabled) ++active_mods_;
       if (m.enabled && !m.problems.empty()) ++broken_mods_;
     }
     // Re-detect texture packs (folders with the dump's `<hash>_<W>x<H>_<F>.dds`
@@ -2412,6 +2530,14 @@ void LauncherDialog::DrawModsTab() {
     ImGui::SameLine();
     if (cur != "vanilla") {
       if (ImGui::Button(i18n::T("Borrar perfil", "Delete profile"), ImVec2(0, 0))) {
+        ImGui::OpenPopup("###confirm_delprofile");
+      }
+      if (ConfirmModal((std::string(i18n::T("Borrar perfil", "Delete profile")) + "###confirm_delprofile").c_str(),
+                       i18n::T("Borrar este perfil? Tus mods no se borran: solo la lista de cuales "
+                               "estan activos.",
+                               "Delete this profile? Your mods are not deleted: only the list of "
+                               "which ones are on."),
+                       i18n::T("Si, borrar", "Yes, delete"))) {
         dbz3::DeleteProfile(cur);
         dbz3::settings::SetModProfile("vanilla");
         mods_loaded_ = false;
@@ -2463,11 +2589,19 @@ void LauncherDialog::DrawModsTab() {
                (pname.back() == ' ' || pname.back() == '\t')) {
           pname.pop_back();
         }
+        static std::string overwrite_warned;   // 2a pulsacion = sustituir
+        const std::vector<std::string> profs = dbz3::ListProfiles();
+        const bool exists = std::find(profs.begin(), profs.end(), pname) != profs.end();
         if (pname.empty() || pname == "vanilla") {
           mods_status_ =
               std::string(i18n::T("Nombre de perfil invalido.",
                                   "Invalid profile name."));
+        } else if (exists && overwrite_warned != pname) {
+          overwrite_warned = pname;
+          mods_status_ = i18n::T("Ya existe un perfil con ese nombre: pulsa Guardar otra vez para sustituirlo.",
+                                 "A profile with that name exists: press Save again to replace it.");
         } else {
+          overwrite_warned.clear();
           std::vector<std::string> enabled;
           for (const dbz3::ModInfo& m : dbz3::ListMods()) {
             if (m.enabled) enabled.push_back(m.name);
@@ -2476,8 +2610,8 @@ void LauncherDialog::DrawModsTab() {
           dbz3::settings::SetModProfile(pname);
           mods_status_ =
               std::string(i18n::T("Perfil guardado: ", "Profile saved: ")) + pname;
+          profile_name_dialog_ = false;
         }
-        profile_name_dialog_ = false;
       }
       ImGui::SameLine();
       if (ImGui::Button(i18n::T("Cancelar", "Cancel"), ImVec2(0, 0))) {
@@ -2585,7 +2719,7 @@ void LauncherDialog::DrawModsTab() {
     ImGui::TableSetupColumn(i18n::T("Mod", "Mod"), ImGuiTableColumnFlags_WidthStretch);
     ImGui::TableSetupColumn(i18n::T("Tipo", "Type"), ImGuiTableColumnFlags_WidthFixed,
                             std::min(130.0f, table_w * 0.18f));
-    ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 100.0f);
+    ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 150.0f);
     ImGui::TableHeadersRow();
 
     for (const dbz3::ModInfo& mod : mods) {
@@ -2672,7 +2806,7 @@ ImGui::TextDisabled(i18n::T("%d archivo%s", "%d file%s"), mod.file_count,
       }
 
       ImGui::TableSetColumnIndex(3);
-      if (ImGui::SmallButton(("##folder_" + mod.name).c_str())) {
+      if (ImGui::SmallButton((std::string(i18n::T("Carpeta", "Folder")) + "##folder_" + mod.name).c_str())) {
         std::string cmd = "explorer \"" + (dbz3::ModsRoot() / mod.name).string() + "\"";
         std::system(cmd.c_str());
       }
@@ -2680,7 +2814,7 @@ ImGui::TextDisabled(i18n::T("%d archivo%s", "%d file%s"), mod.file_count,
         ImGui::SetTooltip("%s", i18n::T("Abrir carpeta del mod", "Open mod folder"));
       }
       ImGui::SameLine();
-      if (ImGui::SmallButton(("##edit_" + mod.name).c_str())) {
+      if (ImGui::SmallButton((std::string(i18n::T("Editar", "Edit")) + "##edit_" + mod.name).c_str())) {
         editing_mod_ = true;
         edit_mod_name_ = mod.name;
         std::string n = dbz3::GetModManifestValue(mod.name, "name");
@@ -2925,15 +3059,7 @@ void LauncherDialog::DrawModelSwapTab() {
   } else if (!mod_pipeline_.Output().empty()) {
     ImGui::TextDisabled(i18n::T("Hecho.", "Done."));
   }
-  const std::string out = mod_pipeline_.Output();
-  if (!out.empty()) {
-    std::memcpy(output_buf_, out.c_str(),
-                std::min(out.size(), sizeof(output_buf_) - 1));
-    output_buf_[std::min(out.size(), sizeof(output_buf_) - 1)] = '\0';
-    ImGui::InputTextMultiline("##swap_out", output_buf_,
-                              sizeof(output_buf_), ImVec2(-1.0f, 160.0f),
-                              ImGuiInputTextFlags_ReadOnly);
-  }
+  DrawToolLog(mod_pipeline_.Output(), output_buf_, sizeof(output_buf_), "swap_out", 160.0f);
   if (!iso) {
     ImGui::TextDisabled(i18n::T(
         "El mod generado se activa solo y se lista en la pestana Mods.",
@@ -2949,19 +3075,30 @@ namespace {
 // son los recortados de fabrica: los ocupan los personajes nuevos).
 struct DonorEntry {
   int id;
-  const char* name;
+  const char* name;      // espanol
+  const char* en;        // ingles
+  const char* Name() const { return i18n::T(name, en); }
 };
 constexpr DonorEntry kDonors[] = {
-    {0, "Goku"},           {1, "Goku (nino)"},      {2, "Gohan (nino)"},  {3, "Gohan (adolescente)"},
-    {4, "Gohan (adulto)"}, {5, "Gran Saiyaman"},    {6, "Goten"},         {7, "Vegeta"},
-    {8, "Trunks"},         {9, "Trunks (nino)"},    {10, "Krillin"},      {11, "Piccolo"},
-    {12, "Tenshinhan"},    {13, "Yamcha"},          {14, "Mr. Satan"},    {15, "Videl"},
-    {16, "Kaio-shin"},     {17, "Uub"},             {18, "Raditz"},       {19, "Nappa"},
-    {20, "Ginyu"},         {21, "Recoome"},         {27, "Freezer"},      {28, "Androide 16"},
-    {29, "Androide 17"},   {30, "Androide 18"},     {32, "Dr. Gero"},     {33, "Cell"},
-    {34, "Majin Buu"},     {35, "Super Buu"},       {36, "Kid Buu"},      {37, "Dabura"},
-    {38, "Cooler"},        {39, "Bardock"},         {40, "Broly"},        {41, "Omega Shenron"},
-    {42, "Saibaman"},      {43, "Cell Jr."},
+    {0, "Goku", "Goku"},                     {1, "Goku (nino)", "Goku (kid)"},
+    {2, "Gohan (nino)", "Gohan (kid)"},      {3, "Gohan (adolescente)", "Gohan (teen)"},
+    {4, "Gohan (adulto)", "Gohan (adult)"},  {5, "Gran Saiyaman", "Great Saiyaman"},
+    {6, "Goten", "Goten"},                   {7, "Vegeta", "Vegeta"},
+    {8, "Trunks", "Trunks"},                 {9, "Trunks (nino)", "Trunks (kid)"},
+    {10, "Krilin", "Krillin"},               {11, "Piccolo", "Piccolo"},
+    {12, "Ten Shin Han", "Tien"},            {13, "Yamcha", "Yamcha"},
+    {14, "Mr. Satan", "Hercule"},            {15, "Videl", "Videl"},
+    {16, "Kaio-shin", "Supreme Kai"},        {17, "Uub", "Uub"},
+    {18, "Raditz", "Raditz"},                {19, "Nappa", "Nappa"},
+    {20, "Ginyu", "Ginyu"},                  {21, "Recoome", "Recoome"},
+    {27, "Freezer", "Frieza"},               {28, "Androide 16", "Android 16"},
+    {29, "Androide 17", "Android 17"},       {30, "Androide 18", "Android 18"},
+    {32, "Dr. Gero", "Dr. Gero"},            {33, "Cell", "Cell"},
+    {34, "Majin Buu", "Majin Buu"},          {35, "Super Buu", "Super Buu"},
+    {36, "Kid Buu", "Kid Buu"},              {37, "Dabura", "Dabura"},
+    {38, "Cooler", "Cooler"},                {39, "Bardock", "Bardock"},
+    {40, "Broly", "Broly"},                  {41, "Omega Shenron", "Omega Shenron"},
+    {42, "Saibaman", "Saibaman"},            {43, "Cell Jr.", "Cell Jr."},
 };
 constexpr int kDonorCount = int(sizeof(kDonors) / sizeof(kDonors[0]));
 
@@ -2974,7 +3111,7 @@ struct FreeSlot {
 // las tablas por personaje del juego; ver src/roster_ext.cpp).
 constexpr FreeSlot kFreeSlots[] = {
     {22, "Guldo"},    {23, "Jeice"},    {24, "Burter"},   {25, "Zarbon"},   {26, "Dodoria"},
-    {31, "Androide 19"}, {44, "Extra 1"}, {45, "Extra 2"},  {46, "Extra 3"},  {47, "Extra 4"},
+    {31, "Android 19"}, {44, "Extra 1"}, {45, "Extra 2"},  {46, "Extra 3"},  {47, "Extra 4"},
     {48, "Extra 5"},  {49, "Extra 6"},  {50, "Extra 7"},  {51, "Extra 8"},  {52, "Extra 9"},
     {53, "Extra 10"}, {54, "Extra 11"}, {55, "Extra 12"}, {56, "Extra 13"}, {57, "Extra 14"},
     {58, "Extra 15"}, {59, "Extra 16"}, {60, "Extra 17"}, {61, "Extra 18"}, {62, "Extra 19"},
@@ -3085,7 +3222,7 @@ const char* SourceName(int i) { return i == 1 ? "imagen" : i == 2 ? "terminado" 
 
 const char* DonorName(int id) {
   for (const auto& d : kDonors) {
-    if (d.id == id) return d.name;
+    if (d.id == id) return d.Name();
   }
   return "?";
 }
@@ -3099,12 +3236,12 @@ int DonorIndex(int id) {
 
 void DonorCombo(const char* label, int& idx, bool allow_default) {
   const char* def = i18n::T("(la del donante)", "(the donor's)");
-  const char* preview = (idx >= 0 && idx < kDonorCount) ? kDonors[idx].name : def;
+  const char* preview = (idx >= 0 && idx < kDonorCount) ? kDonors[idx].Name() : def;
   ImGui::SetNextItemWidth(260);
   if (ImGui::BeginCombo(label, preview)) {
     if (allow_default && ImGui::Selectable(def, idx < 0)) idx = -1;
     for (int i = 0; i < kDonorCount; ++i) {
-      if (ImGui::Selectable(kDonors[i].name, idx == i)) idx = i;
+      if (ImGui::Selectable(kDonors[i].Name(), idx == i)) idx = i;
     }
     ImGui::EndCombo();
   }
@@ -3665,6 +3802,15 @@ void LauncherDialog::DrawCharacterEditor(CharacterSource& cs, const std::map<std
     ImGui::SameLine();
     ImGui::BeginDisabled(busy);
     if (ImGui::SmallButton(i18n::T("Quitar", "Remove"))) {
+      ImGui::OpenPopup("###confirm_delcap");
+    }
+    if (ImGui::IsItemHovered()) {
+      ImGui::SetTooltip("%s", i18n::T("Quitar esta capsula del personaje", "Remove this capsule from the character"));
+    }
+    if (ConfirmModal((std::string(i18n::T("Quitar", "Remove")) + "###confirm_delcap").c_str(),
+                     i18n::T("Quitar esta capsula del personaje?",
+                             "Remove this capsule from the character?"),
+                     i18n::T("Si, quitar", "Yes, remove"))) {
       mod_pipeline_.EditCapsules(cs.folder, {"--quitar", std::to_string(i)});
     }
     ImGui::EndDisabled();
@@ -3764,20 +3910,20 @@ std::vector<std::string> SplitTabs(const std::string& line) {
 // Short, translated description of each import source (the script's own notes are Spanish).
 const char* ImportSourceNote(const std::string& id) {
   if (id == "b1") {
-    return i18n::T("Modelo, golpes, combos y gritos del Budokai 1 original.",
-                   "Model, moves, combos and yells from the original Budokai 1.");
+    return i18n::T("Modelo, golpes, combos y gritos del Budokai 1 original; definitiva de su equivalente en Budokai 3.",
+                   "Model, moves, combos and yells from the original Budokai 1; ultimate from its Budokai 3 counterpart.");
   }
   if (id == "b2") {
-    return i18n::T("Modelo de Budokai 2; los golpes son los del personaje donante.",
-                   "Budokai 2 model; the moves are the donor character's.");
+    return i18n::T("Modelo de Budokai 2; golpes, tecnicas y definitiva de su equivalente en Budokai 3.",
+                   "Budokai 2 model; moves, techniques and ultimate from its Budokai 3 counterpart.");
   }
   if (id == "b3") {
     return i18n::T("Modelos de la comunidad (.amb / .amo + .amt) de 'modding resources'.",
                    "Community models (.amb / .amo + .amt) from 'modding resources'.");
   }
   if (id == "iw") {
-    return i18n::T("Modelo, voces y gritos de Infinite World; golpes del donante o del port de la comunidad.",
-                   "Infinite World model, voices and yells; moves from the donor or the community port.");
+    return i18n::T("Modelo, voces, gritos, golpes, tecnicas y definitiva de Infinite World (con modo hiper).",
+                   "Infinite World model, voices, yells, moves, techniques and ultimate (with hyper mode).");
   }
   if (id == "sdbh") {
     return i18n::T("Modelos HD de Heroes (boca, 7 caras, rampas); golpes de Shin Budokai o del donante.",
@@ -3836,7 +3982,8 @@ void LauncherDialog::ParseImporterOutput() {
                                             "juego al pulsar JUGAR.",
                                             "Imported. It is listed below under \"Installed\" and is "
                                             "added to the game when you press PLAY."))
-                      : std::string(i18n::T("No se pudo importar: ", "Import failed: ")) + last;
+                      : std::string(i18n::T("No se pudo importar. Abre 'Detalles tecnicos' para ver el motivo.",
+                                            "Import failed. Open 'Technical details' to see why."));
   } else {
     // queries leave no log behind; a failed one says why
     if ((what == 1 && imp_sources_.empty()) || (what == 2 && imp_entries_.empty())) {
@@ -3863,6 +4010,9 @@ void LauncherDialog::DrawImporter() {
         "copy it next to dbz3.exe and follow its LEEME_KIT.txt. Ready-made character packs work "
         "without the kit."));
     ImGui::PopTextWrapPos();
+    if (ImGui::Button(i18n::T("Abrir la carpeta del juego", "Open the game folder"))) {
+      std::system(("explorer \"" + ModPipeline::ModsDir().parent_path().string() + "\"").c_str());
+    }
     ui::EndCard();
     return;
   }
@@ -3911,7 +4061,7 @@ void LauncherDialog::DrawImporter() {
       ui::FontScope f(fonts.sm);
       const char* status = ready ? i18n::T(ICON_OK "  Listo para importar", ICON_OK "  Ready to import")
                            : dev ? i18n::T(ICON_WARN "  En desarrollo", ICON_WARN "  In development")
-                                 : i18n::T(ICON_ERROR "  No encontrado en ps2_games", ICON_ERROR "  Not found in ps2_games");
+                                 : i18n::T(ICON_ERROR "  No encontrado (copialo en ps2_games)", ICON_ERROR "  Not found (copy it into ps2_games)");
       dl->AddText(ImVec2(p.x + 12.0f, p.y + tile_h - ImGui::GetFontSize() - 9.0f),
                   ImGui::GetColorU32(ready ? ui::kOk : dev ? ui::kWarn : ui::kTextDim), status);
     }
@@ -3934,6 +4084,18 @@ void LauncherDialog::DrawImporter() {
       }
     }
     ImGui::PopID();
+  }
+
+  bool any_missing = false;
+  for (const auto& src : imp_sources_) any_missing |= src.state != "listo" && src.state != "desarrollo";
+  if (any_missing && !mod_pipeline_.IsRunning()) {
+    if (ImGui::SmallButton(i18n::T("Buscar de nuevo", "Search again"))) {
+      imp_loaded_ = false;          // vuelve a mirar ps2_games (un juego recien copiado)
+      imp_source_.clear();
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("%s", i18n::T("Copia el juego (ISO o carpeta) en la carpeta ps2_games y pulsa Buscar de nuevo.",
+                                      "Copy the game (ISO or folder) into the ps2_games folder, then press Search again."));
   }
 
   // 2) Characters of the chosen game.
@@ -4020,11 +4182,11 @@ void LauncherDialog::DrawImporter() {
     {
       std::string auto_label = i18n::T("Automatico", "Automatic");
       if (e.donor >= 0) auto_label += std::string(" (") + DonorName(e.donor) + ")";
-      const char* preview = imp_donor_idx_ >= 0 ? kDonors[imp_donor_idx_].name : auto_label.c_str();
+      const char* preview = imp_donor_idx_ >= 0 ? kDonors[imp_donor_idx_].Name() : auto_label.c_str();
       if (ImGui::BeginCombo("##imp_donor", preview)) {
         if (ImGui::Selectable(auto_label.c_str(), imp_donor_idx_ < 0)) imp_donor_idx_ = -1;
         for (int i = 0; i < kDonorCount; ++i) {
-          if (ImGui::Selectable(kDonors[i].name, imp_donor_idx_ == i)) imp_donor_idx_ = i;
+          if (ImGui::Selectable(kDonors[i].Name(), imp_donor_idx_ == i)) imp_donor_idx_ = i;
         }
         ImGui::EndCombo();
       }
@@ -4065,9 +4227,18 @@ void LauncherDialog::DrawImporter() {
   if (!imp_message_.empty()) {
     ImGui::Dummy(ImVec2(0, 2));
     ImGui::PushTextWrapPos(0.0f);
-    ImGui::TextColored(imp_message_.rfind(i18n::T("Importado", "Imported"), 0) == 0 ? ui::kOk : ui::kWarn, "%s",
-                       imp_message_.c_str());
+    const bool imp_ok = imp_message_.rfind(i18n::T("Importado", "Imported"), 0) == 0;
+    ImGui::TextColored(imp_ok ? ui::kOk : ui::kWarn, "%s", imp_message_.c_str());
     ImGui::PopTextWrapPos();
+    if (!imp_ok && imp_pending_ == 0 && !mod_pipeline_.IsRunning() && !mod_pipeline_.Output().empty()) {
+      if (ImGui::CollapsingHeader(i18n::T("Detalles tecnicos##imp", "Technical details##imp"))) {
+        const std::string out = mod_pipeline_.Output();
+        std::memcpy(output_buf_, out.c_str(), std::min(out.size(), sizeof(output_buf_) - 1));
+        output_buf_[std::min(out.size(), sizeof(output_buf_) - 1)] = '\0';
+        ImGui::InputTextMultiline("##imp_out", output_buf_, sizeof(output_buf_), ImVec2(-1.0f, 140.0f),
+                                  ImGuiInputTextFlags_ReadOnly);
+      }
+    }
   }
   ui::EndCard();
 }
@@ -4142,10 +4313,10 @@ void LauncherDialog::DrawNewCharactersTab() {
   if (!rex::cvar::Query<bool>("dbz3_afs_append")) {
     ImGui::PushStyleColor(ImGuiCol_Text, kGold);
     ImGui::TextWrapped("%s", i18n::T(
-        "Este rexruntime.dll no admite entradas nuevas en los AFS (falta el parche "
-        "AfsVirtualSize): los personajes nuevos se omitiran al jugar.",
-        "This rexruntime.dll does not support new AFS entries (missing the AfsVirtualSize "
-        "patch): new characters will be skipped in game."));
+        "Tu copia del juego no puede cargar personajes nuevos (falta un archivo actualizado): "
+        "vuelve a descargar el juego completo. Los demas mods funcionan.",
+        "Your game copy can't load new characters (an updated file is missing): download the "
+        "full game again. Other mods still work."));
     ImGui::PopStyleColor();
   }
 
@@ -4261,8 +4432,12 @@ void LauncherDialog::DrawNewCharactersTab() {
     ImGui::SameLine(0.0f, 18.0f);
     LiveBanner(nc_name_buf_);
   }
+  // carpeta: se deduce del nombre (como al importar); escribir una propia es opcional
+  const std::string nc_auto_mod = nc_name_buf_[0] ? ModSlug("pj", nc_name_buf_) : std::string();
   ImGui::SetNextItemWidth(260);
-  ImGui::InputText(i18n::T("Carpeta del mod", "Mod folder"), nc_mod_buf_, sizeof(nc_mod_buf_));
+  ImGui::InputTextWithHint(i18n::T("Carpeta (opcional)", "Folder (optional)"),
+                           nc_auto_mod.empty() ? i18n::T("se pone sola", "set automatically") : nc_auto_mod.c_str(),
+                           nc_mod_buf_, sizeof(nc_mod_buf_));
   DonorCombo(i18n::T("Donante (moveset y tecnicas)", "Donor (moveset and techniques)"), nc_donor_idx_,
              false);
   Help(i18n::T("El personaje del juego del que toma los golpes, las tecnicas, la voz y las "
@@ -4277,7 +4452,10 @@ void LauncherDialog::DrawNewCharactersTab() {
     if (nc_slot_choice_ < 0) {
       std::snprintf(cur, sizeof(cur), "%s", i18n::T("Automatica (primera libre)", "Automatic (first free)"));
     } else {
-      std::snprintf(cur, sizeof(cur), "%d", nc_slot_choice_);
+      std::snprintf(cur, sizeof(cur), "%s", i18n::T("Elegida", "Chosen"));
+      for (const auto& s : kFreeSlots) {
+        if (s.id == nc_slot_choice_) std::snprintf(cur, sizeof(cur), "%s", s.original);
+      }
     }
     ImGui::SetNextItemWidth(260);
     if (ImGui::BeginCombo(i18n::T("Plaza", "Slot"), cur)) {
@@ -4291,25 +4469,49 @@ void LauncherDialog::DrawNewCharactersTab() {
         }
         char label[128];
         if (owner.empty()) {
-          std::snprintf(label, sizeof(label), i18n::T("%d (%s) - libre", "%d (%s) - free"), s.id, s.original);
+          std::snprintf(label, sizeof(label), i18n::T("%s - libre##%d", "%s - free##%d"), s.original, s.id);
         } else {
-          std::snprintf(label, sizeof(label), i18n::T("%d (%s) - ocupada por %s", "%d (%s) - taken by %s"),
-                        s.id, s.original, owner.c_str());
+          std::snprintf(label, sizeof(label), i18n::T("%s - ocupada por %s##%d", "%s - taken by %s##%d"),
+                        s.original, owner.c_str(), s.id);
         }
         if (ImGui::Selectable(label, nc_slot_choice_ == s.id)) nc_slot_choice_ = s.id;
       }
       ImGui::EndCombo();
     }
   }
-  ImGui::SetNextItemWidth(120);
-  ImGui::InputInt(i18n::T("Formas por traje", "Forms per costume"), &nc_forms_);
   nc_forms_ = std::clamp(nc_forms_, 1, 6);
+  {
+    char cur[48];
+    std::snprintf(cur, sizeof(cur), nc_forms_ == 1 ? i18n::T("1 forma", "1 form") : i18n::T("%d formas", "%d forms"),
+                  nc_forms_);
+    ImGui::SetNextItemWidth(160);
+    if (ImGui::BeginCombo(i18n::T("Formas por traje", "Forms per costume"), cur)) {
+      for (int f = 1; f <= 6; ++f) {
+        char it[48];
+        std::snprintf(it, sizeof(it), f == 1 ? i18n::T("1 forma", "1 form") : i18n::T("%d formas", "%d forms"), f);
+        if (ImGui::Selectable(it, f == nc_forms_)) nc_forms_ = f;
+      }
+      ImGui::EndCombo();
+    }
+    Help(i18n::T("Transformaciones (normal, Super Saiyan...): una forma por modelo de cada traje.",
+                 "Transformations (normal, Super Saiyan...): one form per model of each costume."));
+  }
   ImGui::TextDisabled("%s", i18n::T(
       "Modelos: una ruta por linea, uno por traje (con varias formas: traje 1 forma 1, traje 1 "
       "forma 2, ...). Admite #AMB de B3 PS2, #AMB HD o LZX.",
       "Models: one path per line, one per costume (with several forms: costume 1 form 1, "
       "costume 1 form 2, ...). Accepts B3 PS2 #AMB, HD #AMB or LZX."));
   ImGui::InputTextMultiline("##nc_models", nc_models_buf_, sizeof(nc_models_buf_), ImVec2(-1.0f, 70.0f));
+  if (ImGui::Button(i18n::T("Anadir modelo...", "Add model..."))) {
+    std::string picked;
+    if (PickFile(picked, i18n::T("Modelo (.amb / .bin)", "Model (.amb / .bin)"), "*.amb;*.bin;*.amo",
+                 ModPipeline::ModsDir().string())) {
+      std::string cur = nc_models_buf_;
+      if (!cur.empty() && cur.back() != '\n') cur += '\n';
+      cur += picked + '\n';
+      std::snprintf(nc_models_buf_, sizeof(nc_models_buf_), "%s", cur.c_str());
+    }
+  }
   ImGui::TextDisabled("%s", i18n::T(
       "Icono y retratos: se generan desde el modelo (opcional: tu arte, aqui o despues en el editor).",
       "Icon and portraits: rendered from the model (optional: your own art, here or later in the editor)."));
@@ -4321,7 +4523,7 @@ void LauncherDialog::DrawNewCharactersTab() {
                    sizeof(nc_portrait_buf_));
   ModPipeline::NewCharacter nc;
   nc.name = nc_name_buf_;
-  nc.mod = nc_mod_buf_;
+  nc.mod = nc_mod_buf_[0] ? std::string(nc_mod_buf_) : nc_auto_mod;
   nc.donor = kDonors[std::clamp(nc_donor_idx_, 0, kDonorCount - 1)].id;
   nc.after = nc_after_idx_ >= 0 ? kDonors[nc_after_idx_].id : -1;
   nc.slot = nc_slot_choice_;
@@ -4344,18 +4546,16 @@ void LauncherDialog::DrawNewCharactersTab() {
     nc_selected_ = nc.mod;
   }
   ImGui::EndDisabled();
+  if (!can_create && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+    ImGui::SetTooltip("%s", nc.name.empty() ? i18n::T("Escribe primero un nombre.", "Type a name first.")
+                                            : i18n::T("Anade al menos un modelo.", "Add at least one model."));
+  }
 
   ImGui::Separator();
   if (mod_pipeline_.IsRunning()) {
     ImGui::TextColored(kGold, "%s", i18n::T("Trabajando...", "Working..."));
   }
-  const std::string out = mod_pipeline_.Output();
-  if (!out.empty()) {
-    std::memcpy(output_buf_, out.c_str(), std::min(out.size(), sizeof(output_buf_) - 1));
-    output_buf_[std::min(out.size(), sizeof(output_buf_) - 1)] = '\0';
-    ImGui::InputTextMultiline("##nc_out", output_buf_, sizeof(output_buf_), ImVec2(-1.0f, 140.0f),
-                              ImGuiInputTextFlags_ReadOnly);
-  }
+  DrawToolLog(mod_pipeline_.Output(), output_buf_, sizeof(output_buf_), "nc_out", 140.0f);
   ImGui::EndChild();
 }
 
@@ -4435,8 +4635,7 @@ void LauncherDialog::DrawTexturesTab() {
     if (tex_dst_idx_ < 0) ImGui::SetItemDefaultFocus();
     for (int i = 0; i < (int)chars.size(); ++i) {
       const bool selected = (tex_dst_idx_ == i);
-      const std::string label =
-          chars[i].DisplayName() + "  [bin " + std::to_string(chars[i].bin) + "]";
+      const std::string label = chars[i].DisplayName() + "##" + std::to_string(i);
       if (ImGui::Selectable(label.c_str(), selected)) {
         tex_dst_idx_ = i;
       }
@@ -4596,15 +4795,7 @@ void LauncherDialog::DrawTexturesTab() {
   } else if (!mod_pipeline_.Output().empty()) {
     ImGui::TextDisabled(i18n::T("Hecho.", "Done."));
   }
-  const std::string out = mod_pipeline_.Output();
-  if (!out.empty()) {
-    std::memcpy(output_buf_, out.c_str(),
-                std::min(out.size(), sizeof(output_buf_) - 1));
-    output_buf_[std::min(out.size(), sizeof(output_buf_) - 1)] = '\0';
-    ImGui::InputTextMultiline("##tex_out", output_buf_,
-                              sizeof(output_buf_), ImVec2(-1.0f, 160.0f),
-                              ImGuiInputTextFlags_ReadOnly);
-  }
+  DrawToolLog(mod_pipeline_.Output(), output_buf_, sizeof(output_buf_), "tex_out", 160.0f);
 
   ImGui::EndChild();
 }

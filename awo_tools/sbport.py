@@ -87,8 +87,9 @@ import sb_amm  # noqa: E402
 from sb_tablas import B3_C0, GLOBAL, T7  # noqa: E402
 from sb_voces import K3  # noqa: E402  (agente F: tono de SB -> hueco del banco de gritos de B3)
 
-ISOS = {"sb1": os.path.join(ROOT, "ps2_games", "Dragonball Z Shin Budokai (USA).iso"),
-        "sb2": os.path.join(ROOT, "ps2_games", "Dragonball Z Shin Budokai Another Road (USA).iso")}
+import iso as _iso  # noqa: E402
+ISOS = {g: _iso.find_game(g) or os.path.join(ROOT, "ps2_games", fn) for g, fn in (   # cualquier region
+    ("sb1", "Dragonball Z Shin Budokai (USA).iso"), ("sb2", "Dragonball Z Shin Budokai Another Road (USA).iso"))}
 DMG_SCALE = 0.85
 # dano B3 / SB del MISMO personaje (mediana de golpes casados por animacion); si el personaje
 # de SB no esta en B3 (Gohan del Futuro, Gogeta...) se usa la mediana global DMG_SCALE
@@ -111,8 +112,8 @@ GROUND, AIR = range(0x200, 0x280), range(0x300, 0x380)
 
 # personajes de SB: nombre y donante B3 sugerido (el mismo personaje si esta en B3)
 NAMES = {"GOK": ("Goku", 0), "VGT": ("Vegeta", 7), "PIC": ("Piccolo", 11), "KLL": ("Krillin", 10),
-         "GHM": ("Teen Gohan", 3), "GHL": ("Adult Gohan", 4), "TRX": ("Trunks", 8),
-         "TRF": ("Future Trunks (sword)", 8), "FRZ": ("Frieza", 27), "CEL": ("Cell", 33),
+         "GHM": ("Teen Gohan", 3), "GHL": ("Adult Gohan", 4), "TRX": ("Future Trunks (sword)", 8),
+         "TRF": ("Future Trunks (melee)", 8), "FRZ": ("Frieza", 27), "CEL": ("Cell", 33),
          "COO": ("Cooler", 38), "BRL": ("Broly", 40), "18G": ("Android 18", 30), "BUS": ("Kid Buu", 36),
          "BUL": ("Majin Buu", 34), "BUM": ("Super Buu", 35), "BDK": ("Bardock", 39),
          "DBR": ("Dabura", 37), "GHF": ("Future Gohan", 4), "GGT": ("Gogeta", 7),
@@ -379,7 +380,9 @@ def sb_bcm_nodes(c, report):
         if kind == "normal" and btn == 8:
             kind = "especial" if cond & 0x6 else "rafaga" if cond & 1 else "normal"
         if cond & 4:
-            cond = (cond & ~4) | (2 if cap else 0)
+            # especial cuerpo a cuerpo de SB -> especial con capsula de B3 (0x2) aunque su booster
+            # (mascara de formas) sea 0: sin el 0x2 el Shining Slash de Trunks salia sin rotulo
+            cond = (cond & ~4) | 2
         if kind != "definitivo":
             cond &= 0x3
             state &= 0xFF
@@ -816,12 +819,17 @@ def verify(anm, cam, d_anm, d_cam, models=()):
         errs.append("combos sin golpe %s" % [hex(c) for c in sorted(allc - defined)])
     if any(c < 0x200 for c in allc):
         errs.append("combo a codigo bajo")
+    # lo que llevan los nativos del donante (Broly 0x11, Freezer 0x1001...) tambien vale
+    d_vals = {(w16(b, 0), w16(b, 4), w16(b, 6)) for b, _ in bp.bcm_parse(
+        next(x for x, t in bp.amb_kids(d_cam) if x[:4] == b"#BCM"))[1].values()}
     for o, (b, _) in bl.items():
+        if (w16(b, 0), w16(b, 4), w16(b, 6)) in d_vals:
+            continue
         if w16(b, 0) not in (0, 1, 2) or w16(b, 4) & ~0x240F or w16(b, 6) & 0x100:
             errs.append("entrada con valores de SB: %s" % " ".join("%04x" % w16(b, i) for i in range(16)))
             break
     ws = [[w16(bl[o][0], i) for i in range(16)] for o in st0]
-    if not any(w[1] == 8 and w[4] == 1 for w in ws):
+    if not any(w[1] == 8 and w[4] & 0xF == 1 for w in ws):     # Freezer: 0x1001
         errs.append("sin rafaga de ki")
     if not any(w[1] == 5 for w in ws):
         errs.append("sin agarre")
@@ -833,9 +841,13 @@ def verify(anm, cam, d_anm, d_cam, models=()):
         mn = set()
         for m in models:
             mn |= set(model_bind(m)[1])
-        bad = [x for x in A.names if x not in mn]
+        # caras y esqueletos de formas que no se importan (Goku SSJ3 de SB1 / SSJ4 de SB2, mas
+        # alla de 4 formas): el motor ignora las pistas de huesos que el modelo no tiene
+        pre = {x.lstrip("X").split("_")[0] for x in mn}           # GOK, GK4 (SSJ4 de SB2)...
+        bad = [x for x in A.names if x not in mn and not x.endswith("_FACE") and x.lstrip("X").split("_")[0] in pre]
         if bad:
-            errs.append("huesos del AMM que no estan en el modelo: %s" % bad[:8])
+            # aviso, no error: el motor ignora esas pistas (modelo de Heroes sin las alas de Cell)
+            errs.append("aviso: huesos del AMM que no estan en el modelo: %s" % bad[:8])
     # HD
     import ps2hd  # noqa: PLC0415
     try:
@@ -1072,7 +1084,7 @@ def main():
     print("\n".join(report))
     print("comprobacion: %s" % ("OK" if not errs else errs))
     print("ok: %s -> %s" % (code, a.salida))
-    return 1 if errs else 0
+    return 1 if [e for e in errs if not e.startswith("aviso:")] else 0
 
 
 if __name__ == "__main__":

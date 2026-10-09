@@ -1,14 +1,22 @@
-PON AQUI TUS COPIAS DE LOS JUEGOS DE PS2 (para importar personajes)
-===================================================================
+PON AQUI TUS COPIAS DE LOS JUEGOS DE PS2 Y PSP (para importar personajes)
+=========================================================================
 
-El importador del launcher los detecta solo si tienen estos nombres:
+Valen las versiones de USA y de Europa (PAL). El importador del launcher las
+encuentra por el nombre del archivo; basta con que contenga:
 
-- Budokai 1:  un .iso cuyo nombre contenga "Budokai (Europe)" o "Budokai (USA)"
+- Budokai 1:  "Budokai (" en un .iso
               ejemplo: DragonBall Z - Budokai (Europe) (En,Fr,De,Es,It).iso
-- Budokai 2:  un .iso cuyo nombre contenga "Budokai 2"
-- Infinite World:  una CARPETA cuyo nombre contenga "Infinite World" con el disco
-              extraido dentro (debe tener USR\DATA_CMN.AFS)
-- Budokai 3 Greatest Hits (PS2): carpeta "Budokai 3 Greatest Hits (USA)" con el disco
-              extraido (la usan los golpes base de los personajes de Budokai 1)
+- Budokai 2:  "Budokai 2" en un .iso
+- Infinite World:  "Infinite World" en un .iso, o en una CARPETA con el disco
+              extraido dentro (con USR\DATA_CMN.AFS)
+- Shin Budokai (PSP): "Shin Budokai" en un .iso
+              ejemplo: Dragonball Z Shin Budokai (USA).iso
+- Shin Budokai Another Road (PSP): "Another Road" en un .iso
+- Budokai 3 (PS2): "Budokai 3" en un .iso, o en una carpeta con el disco extraido.
+              Lo usan los golpes base de los personajes de Budokai 1 y los golpes
+              de Shin Budokai; sin el, se usan los del personaje base.
 
 Las ISOs se leen tal cual: no hace falta extraerlas.
+Probado con: Budokai 1 y 2 de Europa, Infinite World, Shin Budokai y Another Road
+de USA. Las otras regiones se buscan igual (por contenido), pero aun no se han
+probado: si una no funciona, avisa en el Discord.

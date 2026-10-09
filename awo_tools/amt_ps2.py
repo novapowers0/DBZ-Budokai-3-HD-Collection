@@ -101,6 +101,8 @@ def to_azt(amt, images=None):
         img = images.get(k) if images else None
         if img is None:
             img = decode(amt, t)
+        from texture_b3 import pad4  # noqa: PLC0415
+        img = pad4(img)
         w, h = img.shape[1], img.shape[0]
         blob = dds_dxt3_header(w, h) + encode_dxt3(img)
         lw, lh = (w - 1).bit_length(), (h - 1).bit_length()

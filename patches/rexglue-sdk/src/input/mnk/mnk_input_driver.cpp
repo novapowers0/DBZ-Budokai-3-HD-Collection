@@ -150,9 +150,10 @@ std::atomic<bool> mouse_look_active{true};
 // the focused window, so automated tests write key names (ParseVirtualKey
 // names, one per line) to "dbz3_input.req" in the working directory. Each key
 // is held for 150 ms with a 150 ms gap, in order; the file is consumed.
+// "Name 2000" holds it for 2000 ms instead (charging ki, guarding).
 void PumpInjectedKeys(bool (&key_down)[256]) {
   using clock = std::chrono::steady_clock;
-  static std::deque<uint16_t> queue;
+  static std::deque<std::pair<uint16_t, int>> queue;
   static uint16_t held = 0;
   static clock::time_point until, next_poll;
   const clock::time_point now = clock::now();
@@ -186,9 +187,15 @@ void PumpInjectedKeys(bool (&key_down)[256]) {
           }
           continue;
         }
+        int hold_ms = 150;
+        size_t space = name.find(' ');
+        if (space != std::string_view::npos) {
+          hold_ms = std::clamp(std::atoi(std::string(name.substr(space + 1)).c_str()), 50, 20000);
+          name = name.substr(0, space);
+        }
         rex::ui::VirtualKey vk = rex::ui::ParseVirtualKey(name);
         if (vk != rex::ui::VirtualKey::kNone && static_cast<uint16_t>(vk) < 256) {
-          queue.push_back(static_cast<uint16_t>(vk));
+          queue.emplace_back(static_cast<uint16_t>(vk), hold_ms);
         }
       }
       file.close();
@@ -197,10 +204,10 @@ void PumpInjectedKeys(bool (&key_down)[256]) {
     }
   }
   if (!queue.empty()) {
-    held = queue.front();
+    held = queue.front().first;
+    until = now + std::chrono::milliseconds(queue.front().second);
     queue.pop_front();
     key_down[held] = true;
-    until = now + std::chrono::milliseconds(150);
   }
 }
 

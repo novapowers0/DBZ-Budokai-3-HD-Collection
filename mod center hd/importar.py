@@ -11,8 +11,9 @@ Fuentes:
   b2         Budokai 2 (ISO PS2): modelos (#AMB [AMO, AMT]); moveset del donante
   b3         Budokai 3 / mods de la comunidad: .amb y parejas .amo/.amt en "modding resources"
              (y en la carpeta que se pase con --carpeta)
-  iw         Infinite World (carpeta del juego PS2): modelos, voces y gritos de IW; si hay un
-             port de la comunidad (moveset IW->B3), su moveset y sus capsulas
+  iw         Infinite World (carpeta del juego PS2): modelos, voces y gritos de IW, y su moveset
+             original (golpes, tecnicas, definitiva; tabla del ejecutable, iw_movesets) o el del
+             port de la comunidad si lo hay; --golpes-donante = los del donante
   sb1 / sb2  Shin Budokai / Another Road (ISO PSP): modelos BC<XXX>B0n (formas, psp_amo.py);
              golpes, camara y tecnicas de SB si awo_tools/sbport.py y sb_tecnicas.py estan
              listos (si no, los del donante, como b2)
@@ -68,10 +69,10 @@ GAMES = [
     ("sdbh", "Super Dragon Ball Heroes: World Mission", "listo"),
 ]
 NOTES = {
-    "b1": "Modelo, golpes, combos y gritos del Budokai 1 original.",
-    "b2": "Modelo de Budokai 2; golpes del personaje donante.",
+    "b1": "Modelo, golpes, combos y gritos del Budokai 1 original; definitiva de su equivalente en B3.",
+    "b2": "Modelo de Budokai 2; golpes, tecnicas y definitiva de su equivalente en Budokai 3.",
     "b3": "Modelos de la comunidad (.amb / .amo+.amt); golpes del donante.",
-    "iw": "Modelo, voces y gritos de Infinite World; golpes del donante o del port de la comunidad.",
+    "iw": "Modelo, voces, gritos, golpes, tecnicas y definitiva de Infinite World (con modo hiper).",
     "sb1": "Modelos de PSP con sus formas; golpes de Shin Budokai (sbport) o del donante.",
     "sb2": "Modelos de PSP con sus formas; golpes de Shin Budokai (sbport) o del donante.",
     "sdbh": "Modelos HD de Heroes (boca, 7 caras, rampas); golpes de Shin Budokai o del donante.",
@@ -104,10 +105,10 @@ def find_iso(*patterns):
 
 
 def iw_dir():
-    for d in sorted(glob.glob(os.path.join(PS2, "*Infinite World*"))):
-        if os.path.isdir(d):
-            return d
-    return None
+    """Infinite World: carpeta extraida o ISO (cualquier region)."""
+    hits = sorted(glob.glob(os.path.join(PS2, "*Infinite World*")), key=lambda p: not os.path.isdir(p))
+    return next((p for p in hits if os.path.isdir(os.path.join(p, "USR")) or os.path.isdir(os.path.join(p, "usr"))
+                 or p.lower().endswith(".iso")), None)
 
 
 def sdbh_dir():
@@ -117,17 +118,22 @@ def sdbh_dir():
 
 def source_path(game):
     if game == "b1":
-        return find_iso("*Budokai (Europe)*.iso", "*Budokai (USA)*.iso")
+        import b1port  # noqa: PLC0415  (cualquier region: '... Budokai (Europe)...', '(USA)'...)
+        p = b1port.find_b1_iso()
+        return p if os.path.isfile(p) else None
     if game == "b2":
-        return find_iso("*Budokai 2*.iso")
+        import iso  # noqa: PLC0415  (cualquier region)
+        return iso.find_game("b2")
     if game == "b3":
         return RESOURCES if os.path.isdir(RESOURCES) else None
     if game == "iw":
         return iw_dir()
     if game == "sb1":
-        return find_iso("*Shin Budokai (*.iso")
+        import iso  # noqa: PLC0415
+        return iso.find_game("sb1")
     if game == "sb2":
-        return find_iso("*Another Road*.iso")
+        import iso  # noqa: PLC0415
+        return iso.find_game("sb2")
     if game == "sdbh":
         return sdbh_dir()
     return None
@@ -159,6 +165,10 @@ EXTRA_NAMES = {  # personajes que B3 no tiene (prefijos de B2 / IW)
     "XKBT": "Kibito", "XKOK": "Kibito Kai", "BCDBR": "Dabura (alternativo)", "SNR": "Shenron",
 }
 EXTRA_DONORS = {"XRCM": ("Recoome", 21), "XSBM": ("Saibaman", 42), "TSH": ("Tenshinhan", 12)}
+# sin ID propio en B3 (fusiones, Babidi, Kibito...): el personaje de B3 mas parecido, con modo hiper
+# y definitiva si lo hay (sin esto caian en el 21, Recoome)
+SIMILAR_DONOR = {"XBAB": 37, "BCDBR": 37, "XGTA": 0, "XVTO": 7, "XGTX": 8, "XGXL": 8, "XGXG": 8,
+                 "XKBT": 16, "XKOK": 16}
 
 
 def cache_load():
@@ -182,7 +192,8 @@ class AfsFile:
         self.key = "%s|%s" % (path, inner or "")
         if inner:
             import iso  # noqa: PLC0415
-            self.f = iso.Iso(path).open(inner)
+            img = iso.Iso(path)
+            self.f = img.open(img.find(inner) or inner)      # sin distinguir mayusculas
         else:
             self.f = open(path, "rb")
         st = os.stat(path)
@@ -212,7 +223,8 @@ def model_prefix(d):
 def scan_models(afs):
     """[(fid, prefijo)] de los modelos (#AMB [AMO, AMT]) de un AFS, con cache en disco."""
     c = cache_load()
-    hit = c.get(afs.key)
+    key = afs.key + "|v3"            # (cache anterior: incluia el #AMB v2 de Shenron)
+    hit = c.get(key)
     if hit and hit.get("stamp") == afs.stamp:
         return [tuple(x) for x in hit["models"]]
     out = []
@@ -221,7 +233,8 @@ def scan_models(afs):
         if s < 60000 or s > 4000000:
             continue
         h = afs.head(i)
-        if h[:4] != b"#AMB" or struct.unpack_from("<I", h, 0x10)[0] < 2:
+        # version 3 = la de los luchadores de PS2; Shenron (B2) es un #AMB v2 que el montaje no lee
+        if h[:4] != b"#AMB" or struct.unpack_from("<I", h, 0xC)[0] != 3 or struct.unpack_from("<I", h, 0x10)[0] < 2:
             continue
         o0 = struct.unpack_from("<I", h, 0x20)[0]
         o1 = struct.unpack_from("<I", h, 0x30)[0]
@@ -237,7 +250,7 @@ def scan_models(afs):
         p = model_prefix(afs.f.read(o1 - o0))
         if p:
             out.append((i, p))
-    c[afs.key] = {"stamp": afs.stamp, "models": out}
+    c[key] = {"stamp": afs.stamp, "models": out}
     cache_save(c)
     return out
 
@@ -251,6 +264,8 @@ def group_by_character(models):
     out = []
     for p, fids in groups.items():
         nm, donor = cat.get(p) or EXTRA_DONORS.get(p) or (EXTRA_NAMES.get(p), None)
+        if donor is None:
+            donor = SIMILAR_DONOR.get(p)
         out.append({"clave": p, "nombre": nm or "Modelo %s" % p, "modelos": fids, "donante": donor})
     # mismo nombre (Gohan adulto / joven...): se distinguen por el personaje de B3 que lo usa
     import roster_build  # noqa: PLC0415
@@ -300,7 +315,11 @@ def donor_by_name(name):
             ids[nm.lower()] = min(did, ids.get(nm.lower(), did))
     for alias, did in (("hercule", 14), ("frieza", 27), ("tien", 12), ("captain ginyu", 20),
                        ("kid gohan", 2), ("teen gohan", 3), ("adult gohan", 4), ("kid trunks", 9),
-                       ("future trunks", 8), ("majin buu", 34), ("kid buu", 36), ("super buu", 35)):
+                       ("future trunks", 8), ("majin buu", 34), ("kid buu", 36), ("super buu", 35),
+                       # sin casilla propia en B3: el mas parecido (modo hiper, agarre, aura)
+                       ("babidi", 37), ("gogeta", 0), ("vegito", 7), ("janemba", 10), ("omega shenron", 41),
+                       ("pan", 15), ("pikkon", 11), ("recoome", 21), ("saibaman", 42), ("super 17", 29),
+                       ("shenron", 41)):
         ids[alias] = did
     hits = [n for n in ids if n in low]
     return ids[max(hits, key=len)] if hits else None
@@ -341,8 +360,8 @@ def community_model(path):
 # codigo de 3 letras (SB y SDBH usan los mismos) -> (nombre, ID de B3 donante: hiper, agarre...)
 SB_CHARS = {
     "GOK": ("Goku", 0), "VGT": ("Vegeta", 7), "PIC": ("Piccolo", 11), "KLL": ("Krillin", 10),
-    "GHM": ("Teen Gohan", 3), "GHL": ("Adult Gohan", 4), "GHF": ("Future Gohan", 4), "TRX": ("Trunks", 8),
-    "TRF": ("Future Trunks (sword)", 8), "FRZ": ("Frieza", 27), "CEL": ("Cell", 33), "COO": ("Cooler", 38),
+    "GHM": ("Teen Gohan", 3), "GHL": ("Adult Gohan", 4), "GHF": ("Future Gohan", 4), "TRX": ("Future Trunks (sword)", 8),
+    "TRF": ("Future Trunks (melee)", 8), "FRZ": ("Frieza", 27), "CEL": ("Cell", 33), "COO": ("Cooler", 38),
     "BRL": ("Broly", 40), "18G": ("Android 18", 30), "BUS": ("Kid Buu", 36), "BUL": ("Majin Buu", 34),
     "BUM": ("Super Buu", 35), "BDK": ("Bardock", 39), "DBR": ("Dabura", 37), "GGT": ("Gogeta", 7),
     "VTO": ("Vegito", 7), "GTX": ("Gotenks", 6), "JNB": ("Janemba", 10), "PKH": ("Pikkon", 11),
@@ -493,7 +512,7 @@ def sb_import(game, e, donor, work, us):
             anm, cam = os.path.join(out, "anm_forma1.bin"), os.path.join(out, "camara.bin")
             if not (os.path.isfile(anm) and os.path.isfile(cam)):
                 raise RuntimeError("sbport no dejo anm_forma1.bin y camara.bin en %s" % out)
-            tec = awo_tool("sb_tecnicas.py")
+            tec, evo_anm = awo_tool("sb_tecnicas.py"), []
             if tec:
                 try:
                     t = os.path.join(work, "tecnicas")
@@ -504,12 +523,32 @@ def sb_import(game, e, donor, work, us):
                         raise RuntimeError("sb_tecnicas no dejo tecnicas.bin, anm_forma1.bin y camara.bin")
                     files["moveset/tecnicas.bin"], anm, cam = got     # moveset con las tecnicas aplicadas
                     keys["tecnicas"] = '"moveset/tecnicas.bin"'
+                    # tecnicas que evolucionan con la forma: un moveset por forma (anm_formaK)
+                    # (las formas que falten usan el de la forma 1: ahi ninguna tecnica cambia)
+                    for k in range(2, len(models) + 1):
+                        p = os.path.join(t, "anm_forma%d.bin" % k)
+                        if not os.path.isfile(p):
+                            break
+                        evo_anm.append(p)
                     if os.path.isfile(os.path.join(t, "capsulas.toml")):   # nombres oficiales (propuesta)
                         files["capsulas.toml"] = os.path.join(t, "capsulas.toml")
+                    if os.path.isfile(os.path.join(t, "definitiva.json")):   # su definitiva, traducida
+                        files["moveset/definitiva.json"] = os.path.join(t, "definitiva.json")
+                        keys["definitiva_animaciones"] = '"moveset/definitiva.json"'
                 except Exception as ex:  # noqa: BLE001
                     rb.log("aviso: tecnicas de SB sin portar, se usan las del donante (%s)" % ex)
+            # formas: las del donante como maximo (el runtime no pasa de ellas; sin su P+K+G no se
+            # llega a las demas: Androide 18, los Buu); los modelos de mas no se montan
+            nf = max(1, min(len(models), int(dn.get("forms") or 1)))
+            if nf < len(models):
+                rb.log("el donante tiene %d formas: se usan los %d primeros modelos" % (nf, nf))
+                models = models[:nf]
+                evo_anm = evo_anm[:nf - 1]
             rel = ["moveset/anm_forma1.bin"]
             files.update({rel[0]: anm, "moveset/camara.bin": cam})
+            for k, p in enumerate(evo_anm):
+                rel.append("moveset/anm_forma%d.bin" % (k + 2))
+                files[rel[-1]] = p
             keys.update(moveset=str_list(rel), camara='"moveset/camara.bin"')
             if len(models) > 1:          # claves del agente de formas (docs/03_formatos/FORMAS_Y_KI.md)
                 keys.update(formas=str(len(models)), transformacion='"donante"')
@@ -573,6 +612,153 @@ def port_for(name, ports=None):
     return next((p for k, p in ports.items() if norm == re.sub(r"[^a-z0-9]", "", k)), None)
 
 
+# Tabla de personajes del ejecutable de IW (SLUS_218.42, USA; RE 2026-10-09): registro de
+# 0x190 B por ID de IW con los fids del moveset de cada forma (+0x120, 8 x u32) y la camara
+# (+0x140); el BSP de tecnicas en otra tabla por ID. Los ports de la comunidad (Janemba, Pikkon,
+# Pan...) son estos mismos bins tal cual, con un hijo #AML en la camara.
+IW_REC_SIZE, IW_IDS = 0x190, 80
+AML = b"#AML\x03"
+_IW_CACHE = {}
+
+
+def iw_afs(iw):
+    """DATA_CMN.AFS de Infinite World, de su carpeta extraida o de su ISO."""
+    if os.path.isfile(iw):
+        return AfsFile(iw, "/USR/DATA_CMN.AFS")
+    return AfsFile(os.path.join(iw, "USR", "DATA_CMN.AFS"))
+
+
+def _kid_magics(afs, i):
+    """Magics de los hijos de una entrada #AMB del AFS (sin leerla entera)."""
+    head = afs.head(i, 0x40)
+    if head[:4] != b"#AMB":
+        return set()
+    n, tbl = struct.unpack_from("<II", head, 0x10)
+    if not 0 < n < 64:
+        return set()
+    t = afs.head(i, tbl + 16 * n)[tbl:]
+    out = set()
+    for k in range(n):
+        off, size = struct.unpack_from("<II", t, 16 * k)
+        if size and off + 4 <= afs.tab[2 * i + 1]:
+            afs.f.seek(afs.tab[2 * i] + off)
+            out.add(afs.f.read(4))
+    return out
+
+
+def iw_tables(elf, afs):
+    """(offset de la tabla de personajes, offset de la tabla de BSP) del ejecutable de IW, por
+    contenido (valen la version americana y la europea; en SLUS_218.42 = 0x34FB20 y 0x348D94):
+    registro de 0x190 B por ID con id << 16 en +8 (IDs 2, 10, 11, 20 y 40), camara (#AMC) en
+    +0x140; la de BSP es la lista de u32 por ID que apunta a #AMB con efectos (#AME)."""
+    def u32(o):
+        return struct.unpack_from("<I", elf, o)[0] if 0 <= o <= len(elf) - 4 else None
+    rec = None
+    for p in range(0, len(elf) - IW_REC_SIZE * 41, 4):
+        if u32(p + 8 + IW_REC_SIZE * 2) == 2 << 16 and all(
+                u32(p + 8 + IW_REC_SIZE * k) == k << 16 for k in (10, 11, 20, 40)):
+            rec = p
+            break
+    if rec is None:
+        raise ValueError("no encuentro la tabla de personajes en el ejecutable de Infinite World")
+    ids = [k for k in range(IW_IDS) if 0 < (u32(rec + IW_REC_SIZE * k + 0x140) or 0) < afs.n]
+    bsp_like = {}
+
+    def is_bsp(v):
+        if v not in bsp_like:
+            bsp_like[v] = 0 < v < afs.n and b"#AME" in _kid_magics(afs, v)
+        return bsp_like[v]
+    best, best_n = None, 0
+    k0 = ids[0]
+    for q in range(0, len(elf) - 4, 4):
+        v = u32(q)
+        if not (0 < v < afs.n) or not is_bsp(v):
+            continue
+        t = q - 4 * k0
+        n = sum(1 for k in ids[:12] if is_bsp(u32(t + 4 * k) or 0))
+        if n > best_n:
+            best, best_n = t, n
+            if n == len(ids[:12]):
+                break
+    return rec, best
+
+
+def iw_movesets(iw=None):
+    """{ID de IW: {"cam": fid, "anm": [fid por forma], "bsp": fid o None}} (cualquier region,
+    carpeta o ISO)."""
+    iw = iw or source_path("iw")
+    if not iw:
+        return {}
+    if iw in _IW_CACHE:
+        return _IW_CACHE[iw]
+    import voces  # noqa: PLC0415
+    files = voces.GameFiles(iw)
+    elf = files.elf()
+    if not elf:
+        return {}
+    d = files.read(elf)
+    afs = iw_afs(iw)
+    rec, bsp_t = iw_tables(d, afs)
+    out = {}
+    for cid in range(IW_IDS):
+        r = rec + IW_REC_SIZE * cid
+        cam = struct.unpack_from("<I", d, r + 0x140)[0]
+        # por forma (como el anm de B3: la 1a completa, las demas solo #BSK con los golpes que
+        # cambian sobre ella); un hueco en medio = la de la forma 1
+        anm = [x if 0 < x < afs.n else 0 for x in struct.unpack_from("<8I", d, r + 0x120)]
+        while anm and not anm[-1]:
+            anm.pop()
+        anm = [x or anm[0] for x in anm]
+        if not (0 < cam < afs.n and anm) or b"#AMC" not in afs.head(cam, 0x200):
+            continue
+        bsp = struct.unpack_from("<I", d, bsp_t + 4 * cid)[0] if bsp_t is not None else 0
+        out[cid] = {"cam": cam, "anm": anm, "bsp": bsp if 0 < bsp < afs.n else None}
+    _IW_CACHE[iw] = out
+    return out
+
+
+def iw_id_of_model(model, iw=None, ms=None):
+    """ID de IW de un modelo de la coleccion (#AMB [AMO, AMT]): su #AMO esta en DATA_CMN justo
+    antes de la camara de su personaje (modelos, camara, bocas, moveset)."""
+    import b1port  # noqa: PLC0415
+    amo = next((k for k, t in b1port.amb_kids(model) if k[:4] == b"#AMO"), None)
+    iw = iw or source_path("iw")
+    if amo is None or not iw:
+        return None
+    afs = iw_afs(iw)
+    hit = next((i for i in range(afs.n) if afs.tab[2 * i + 1] == len(amo) and afs.head(i, 4096) == amo[:4096]), None)
+    if hit is None:
+        return None
+    ms = iw_movesets(iw) if ms is None else ms
+    after = sorted((v["cam"], k) for k, v in ms.items() if v["cam"] > hit)
+    return after[0][1] if after else None
+
+
+def iw_moveset_files(cid, work, iw=None):
+    """Bins PS2 del moveset de IW del personaje en work -> {"anm": [...], "cam": p, "bsp": p}
+    (lo mismo que port_files de un port de la comunidad)."""
+    import b1port  # noqa: PLC0415
+    iw = iw or source_path("iw")
+    m = iw_movesets(iw).get(cid)
+    if not m:
+        return {}
+    afs = iw_afs(iw)
+    out = {"anm": []}
+    for k, f in enumerate(m["anm"]):
+        p = os.path.join(work, "iw_anm_%d.bin" % f)
+        open(p, "wb").write(afs.entry(f))
+        out["anm"].append(p)
+    ks = b1port.amb_kids(afs.entry(m["cam"]))
+    if not any(d[:4] == b"#AML" for d, _ in ks):        # B3 lee los hijos de la camara por posicion
+        ks = ks[:1] + [(AML, 6)] + ks[1:]
+    out["cam"] = os.path.join(work, "iw_camara.bin")
+    open(out["cam"], "wb").write(b1port.amb_build(ks))
+    if m["bsp"]:
+        out["bsp"] = os.path.join(work, "iw_tecnicas.bin")
+        open(out["bsp"], "wb").write(afs.entry(m["bsp"]))
+    return out
+
+
 def list_source(game, extra=None):
     if game == "b1":
         return b1_list()
@@ -582,7 +768,7 @@ def list_source(game, extra=None):
         if os.path.isdir(IW_MODELS):      # la coleccion de modelos de IW ya trae los nombres
             lst = community_list([IW_MODELS])
         else:
-            lst = group_by_character(scan_models(AfsFile(os.path.join(source_path("iw"), "USR", "DATA_CMN.AFS"))))
+            lst = group_by_character(scan_models(iw_afs(source_path("iw"))))
         ports = iw_ports()
         for e in lst:
             e["port"] = port_for(e["nombre"], ports)
@@ -629,12 +815,16 @@ def entry_kind(game, e):
 def note_for(game, e):
     if game == "b1":
         return "%d modelos; golpes, combos y gritos de B1" % len(e["modelos"])
+    if game == "iw" and not e.get("port"):
+        e = dict(e, port="iw")        # su moveset de IW (iw_movesets)
     if e.get("ficheros"):
         n = min(len(e["ficheros"]), 6)
-        extra = "; moveset del port de la comunidad" if e.get("port") else ""
+        extra = ("; golpes y tecnicas de IW" if e.get("port") == "iw" else
+                 "; moveset del port de la comunidad" if e.get("port") else "")
         return ("1 traje" if n == 1 else "1 traje, %d formas" % n) + extra
     n = min(len(e["modelos"]), MAX_COSTUMES)
-    extra = "; moveset del port de la comunidad" if e.get("port") else ""
+    extra = ("; golpes y tecnicas de IW" if e.get("port") == "iw" else
+             "; moveset del port de la comunidad" if e.get("port") else "")
     return "%d trajes%s" % (n, extra)
 
 
@@ -701,7 +891,7 @@ def do_import(a):
         port = e.get("port") or port_for(e["nombre"])
     else:                             # modelos de un AFS: un traje cada uno
         afs = (AfsFile(source_path("b2"), "/USR/DATA_CMN.AFS") if game == "b2"
-               else AfsFile(os.path.join(source_path("iw"), "USR", "DATA_CMN.AFS")))
+               else iw_afs(source_path("iw")))
         for m in e["modelos"][:MAX_COSTUMES]:
             p = os.path.join(work, "traje%d.amb" % (len(models) + 1))
             open(p, "wb").write(afs.entry(m))
@@ -709,18 +899,45 @@ def do_import(a):
         port = e.get("port")
     rb.log("importando %s de %s: %d modelos, donante %d" % (e["nombre"], dict((g, n) for g, n, s in GAMES)[game],
                                                          len(models), donor))
+    files, own_donor = {}, donor
     if port:
         pd, files = port_files(port)
         if pd is not None and files.get("anm"):
             donor = pd
             rb.log("port de la comunidad: moveset de %s (sustituia al ID %d)" % (os.path.dirname(port), pd))
+    if game == "iw" and files.get("cam"):
+        # un port de la comunidad sin modo hiper ni aura de IW esta incompleto (el de Pan: 4
+        # entradas en su BCM): mejor el moveset original de IW
+        try:
+            import capsulas  # noqa: PLC0415
+            pc = rb.load_bin(files["cam"], work)
+            at = capsulas.ccm_child(pc)
+            sm = capsulas.bcm_summary(pc[at[0]:at[0] + at[1]]) if at else {}
+            if not (sm.get("hiper") or sm.get("aura_iw")):
+                rb.log("aviso: el port de la comunidad esta incompleto (sin modo hiper): moveset original de IW")
+                files, port, donor = {}, None, own_donor
+        except Exception as ex:  # noqa: BLE001
+            rb.log("aviso: port de la comunidad sin comprobar (%s)" % ex)
+    if game == "iw" and not files.get("anm") and models and not a.golpes_donante:
+        try:                          # golpes, tecnicas y definitiva originales de IW
+            cid = iw_id_of_model(open(models[0], "rb").read())
+            files = iw_moveset_files(cid, work) if cid is not None else {}
+            if files.get("anm"):
+                port = "iw"
+                rb.log("golpes, tecnicas y definitiva de Infinite World (personaje %d de IW)" % cid)
+            else:
+                rb.log("aviso: sin moveset de IW para este modelo: golpes del donante")
+        except Exception as ex:  # noqa: BLE001
+            files = {}
+            rb.log("aviso: moveset de IW sin leer (%s): golpes del donante" % ex)
     if game == "b1":                  # golpes, combos y gritos de B1 sobre el moveset del donante
         import afs_pair  # noqa: PLC0415
         import ps2hd  # noqa: PLC0415
         dn = next(x for x in rb.DB["ids"] if x["id"] == donor)
         rep = []
+        b1_ult = {}               # su definitiva de B1 traducida a la cinematica del donante
         anm, cam = b1port.port(b1, int(e["clave"]), afs_pair.ps2(dn["anm"][0]), afs_pair.ps2(dn["cam"]), rep,
-                               models, [0x64], b1port.donor_model(dn["anm"][0]))
+                               models, [0x64], b1port.donor_model(dn["anm"][0]), ult_out=b1_ult)
         for ln in rep:
             rb.log("   " + ln)
         # con transformacion (P+K+G) los modelos van de dos en dos: traje 1 normal, traje 1 forma 2...
@@ -739,6 +956,10 @@ def do_import(a):
         open(os.path.join(d, "moveset", "camara.bin"), "wb").write(b1_cam)
         keys.update({"moveset": str_list(["moveset/anm.bin"] * forms), "camara": '"moveset/camara.bin"',
                      "gritos": '"b1:%s"' % e["clave"], "voces": '"ninguna"'})
+        if b1_ult.get("receta"):
+            with open(os.path.join(d, "moveset", "definitiva.json"), "w", encoding="utf-8") as fh:
+                json.dump(dict({"_capsulas_b1": b1_ult["capsulas"]}, **b1_ult["receta"]), fh, indent=1)
+            keys["definitiva_animaciones"] = '"moveset/definitiva.json"'
         if forms > 1:
             keys["formas"] = str(forms)
     elif game in ("sb1", "sb2", "sdbh"):
@@ -747,13 +968,17 @@ def do_import(a):
             if rel.startswith("moveset/"):
                 shutil.copyfile(src, os.path.join(d, rel))
         keys.update(sb_keys)
-    elif port and files.get("anm"):
+    elif files.get("anm"):
         import shutil  # noqa: PLC0415
         rel = []
+        if port == "iw":            # IW: uno por forma; las que no tengan, los golpes de la 1a
+            files["anm"] = files["anm"][:max(forms, 1)]
+        seen = {}
         for k, f in enumerate(files["anm"]):
-            r = "moveset/anm_forma%d.bin" % (k + 1)
-            shutil.copyfile(f, os.path.join(d, r))
-            rel.append(r)
+            if f not in seen:         # el mismo bin en varias formas se copia una vez
+                seen[f] = "moveset/anm_forma%d.bin" % (k + 1)
+                shutil.copyfile(f, os.path.join(d, seen[f]))
+            rel.append(seen[f])
         keys["moveset"] = str_list(rel)
         if files.get("cam"):
             shutil.copyfile(files["cam"], os.path.join(d, "moveset", "camara.bin"))
@@ -790,6 +1015,15 @@ def do_import(a):
             with open(toml, "rb") as fh:
                 c = rb.tomllib.load(fh).get("personaje", {})
             caps = rb.import_caps(cap_args, toml, c, d)
+            # su definitiva: la de B1 traducida (nombre de B1) o la del donante si su capsula
+            # chocaba con una de B1 (b1port la paso a la 595)
+            cu = b1_ult.get("capsula_donante") if game == "b1" else None
+            if cu and (b1_ult.get("receta") or cu != b1_ult.get("capsula_donante_b3")):
+                nm = (rb.b1_cap_name(b1_ult["capsulas"][0], "Ultimate") if b1_ult.get("receta") else
+                      rb.b3_cap_names().get(b1_ult["capsula_donante_b3"], "Ultimate"))
+                caps = (caps or []) + [{"nombre": nm, "tipo": "definitiva", "reemplaza": cu}]
+                rb.log("definitiva de Budokai 1 traducida: %s (sobre la cinematica de %s)" % (nm, dn["name"])
+                       if b1_ult.get("receta") else "definitiva: %s (la del donante)" % nm)
             if caps:
                 rb.write_caps(toml, caps)
                 rb.log("capsulas propias: %d (renombralas en el editor si quieres)" % len(caps))
@@ -817,6 +1051,8 @@ def main():
     i.add_argument("--carpeta")
     i.add_argument("--mods")
     i.add_argument("--us")
+    i.add_argument("--golpes-donante", action="store_true",
+                   help="iw: golpes del donante en vez de los de Infinite World")
     a = ap.parse_args()
     if a.cmd == "fuentes":
         for g, nm, st in GAMES:

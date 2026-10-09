@@ -22,7 +22,7 @@ emulator. Native Linux builds use Vulkan and SDL3.
 | Platform | Windows / Linux |
 | Engine | Xbox 360 (ReXGlue SDK) |
 | Genre | 3D fighting |
-| Version | v1.4.2 EX (1.4.2.3) |
+| Version | v1.4.3 |
 
 Copyright (c) 2026 **NovaPowers**. Released under the MIT License (see `LICENSE`).
 
@@ -31,6 +31,14 @@ Copyright (c) 2026 **NovaPowers**. Released under the MIT License (see `LICENSE`
 [Mods and new characters](#mods-and-new-characters)
 
 ---
+
+## What's new in 1.4.3
+
+- **Ultimates for everyone (WIP):** Zarbon, Dodoria and Android 19 get their Budokai 1 ultimate adapted to Budokai 3; Android 19 gets its Budokai 1 moves. This is a first version: expect bugs.
+- **Edit Skills fixed:** with new characters installed, the capsule tray was shifted and did not respond.
+- **Full Infinite World:** imported characters bring their original moves, techniques and ultimate, and all of them enter hyper mode.
+- **USA and European copies** of Budokai 1, Budokai 2, Infinite World and Shin Budokai for the importer.
+- **Easier launcher and Kit:** confirmations before deleting or replacing, PLAY without freezing, plain-language errors, full English and an *Ultimate* card in the Kit.
 
 ## What's new in 1.4.2 EX
 
@@ -123,14 +131,14 @@ From the [**Releases**](../../releases/latest) page:
 
 | File | What it is |
 |---|---|
-| `DBZ-Budokai-3-HD-Collection-v1.4.2.3.zip` | **The game for Windows** (required). |
-| `DBZ-Budokai-3-HD-Collection-v1.4.2.3-linux-amd64.tar.gz` | The game for Linux (Vulkan). |
-| [`DBZ3HD-1.4.0-Personajes.zip`](https://drive.google.com/file/d/1zpwuuU7ITKZlC43nsTbp6s2wceBcwO85/view?usp=sharing) | Optional: the 7 new characters (**download it from [Google Drive](https://drive.google.com/file/d/1zpwuuU7ITKZlC43nsTbp6s2wceBcwO85/view?usp=sharing)**). |
-| `DBZ3HD-1.4.2.3-Kit-Modding.zip` | Optional: tools to create and import characters. |
+| `DBZ-Budokai-3-HD-Collection-v1.4.3.zip` | **The game for Windows** (required). |
+| `DBZ-Budokai-3-HD-Collection-v1.4.3-linux-amd64.tar.gz` | The game for Linux (Vulkan). |
+| [`DBZ3HD-1.4.3-Personajes.zip`](https://drive.google.com/file/d/1jDRwzd_idmeIxwAMN4q4bC89JKFiGXX7/view?usp=sharing) | Optional: the 7 new characters (**Google Drive**, updated in 1.4.3; WIP). |
+| `DBZ3HD-1.4.3-Kit-Modding.zip` | Optional: tools to create and import characters. |
 
 ### Windows
 
-1. **Extract** `DBZ-Budokai-3-HD-Collection-v1.4.2.3.zip` into a folder, for
+1. **Extract** `DBZ-Budokai-3-HD-Collection-v1.4.3.zip` into a folder, for
    example `C:\Games\DBZ3\`.
 2. **Add the data from your copy of the game**, in one of two ways:
    - **Easiest — the ISO**: drop the game's `.iso` next to `dbz3.exe`. Nothing
@@ -204,15 +212,18 @@ depending on what you used last.
 > Mods need the game data as a **folder** (ISO mode plays the game as it is).
 > New characters also need the **USA version**.
 
-### Character pack (`DBZ3HD-1.4.0-Personajes.zip`)
+### Character pack (`DBZ3HD-1.4.3-Personajes.zip`)
 
 Seven **new** characters in their own cells of the character-select wheel
 (they replace nobody): **Janemba, Android 19, Zarbon (with his transformation),
 Dodoria, Guldo, Jeice and Burter**. Zarbon and Dodoria bring the moves, combos
-and yells of their Budokai 1 version.
+and yells of their Budokai 1 version, and Zarbon, Dodoria and Android 19 their ultimate.
+
+> **WIP:** the ultimates and the movesets translated from Budokai 1 are a first
+> version and may have bugs.
 
 1. Close the game.
-2. Download the ZIP from [Google Drive](https://drive.google.com/file/d/1zpwuuU7ITKZlC43nsTbp6s2wceBcwO85/view?usp=sharing) and copy its `mods`
+2. Download the ZIP from [Google Drive](https://drive.google.com/file/d/1jDRwzd_idmeIxwAMN4q4bC89JKFiGXX7/view?usp=sharing) and copy its `mods`
    folder next to `dbz3.exe` (if Windows asks, merge the folders: nothing of
    yours is deleted).
 3. Open `dbz3.exe`, check the **New characters** tab and press **PLAY**.
@@ -220,7 +231,7 @@ and yells of their Budokai 1 version.
 To remove one, untick it under **New characters → Installed**. Your saves are
 never touched.
 
-### Modding kit (`DBZ3HD-1.4.2.3-Kit-Modding.zip`)
+### Modding kit (`DBZ3HD-1.4.3-Kit-Modding.zip`)
 
 The tools behind the launcher's modding tabs: create and **import characters**
 (Budokai 1, Budokai 2, Infinite World and community models), custom capsules,

@@ -26,13 +26,16 @@
 // y Super Dragon Ball Heroes, Studio de camaras en el kit de mods.
 // v1.4.2.3 = "1.4.2 EX": texturas faciles en PNG, arrastrar mods, aviso de mods rotos,
 // Python portatil en el Kit y arreglos de los ports de Shin Budokai.
+// v1.4.3 = definitivas para todos los ports (las de Budokai 1 traducidas a B3: Zarbon, Dodoria,
+// Androide 19), movesets originales de Infinite World con modo hiper, copias USA/EUR de los
+// juegos de origen, launcher y Mod Kit mas faciles (confirmaciones, ES/EN completos).
 #include <windows.h>
 
 #define VERSION_MAJOR 1
 #define VERSION_MINOR 4
-#define VERSION_PATCH 2
-#define VERSION_BUILD 3
-#define DBZ3_VERSION_STR "1.4.2.3"
+#define VERSION_PATCH 3
+#define VERSION_BUILD 0
+#define DBZ3_VERSION_STR "1.4.3"
 
 VS_VERSION_INFO VERSIONINFO
 FILEVERSION VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH, VERSION_BUILD

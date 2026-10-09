@@ -62,6 +62,7 @@ Uso:
                    [--modelos traje1.amb traje2.amb ...] [--quitar-efecto 64 ...]
 """
 import argparse
+import json
 import os
 import struct
 import sys
@@ -96,15 +97,42 @@ B1_KEEP = code_ranges("0 ea 200-3ff")
 
 
 # ---------------------------------------------------------------- fuentes
+def find_b1_iso():
+    """ISO de Budokai 1 en ps2_games: cualquier region ('... Budokai (Europe)...', '(USA)'...)."""
+    import iso  # noqa: PLC0415
+    return iso.find_game("b1") or B1_ISO
+
+
+def b1_record_table(elf):
+    """Offset de la tabla de 25 registros de personaje (564 B) en el ELF de B1, por firma y no
+    por posicion (cambia entre la version europea y la americana): el AMM comun (+320) es el
+    mismo en todos y +332 vale 0xFFFFFFFF. En la europea (SLES_512.33) sale 0x259390."""
+    for p in range(0, len(elf) - B1_REC_SIZE * 25, 4):
+        common = struct.unpack_from("<I", elf, p + 320)[0]
+        if not 0 < common < 0x10000 or struct.unpack_from("<I", elf, p + 332)[0] != 0xFFFFFFFF:
+            continue
+        if all(struct.unpack_from("<I", elf, p + B1_REC_SIZE * k + 320)[0] == common and
+               struct.unpack_from("<I", elf, p + B1_REC_SIZE * k + 332)[0] == 0xFFFFFFFF for k in range(1, 25)):
+            return p
+    raise ValueError("no encuentro la tabla de personajes en el ejecutable de Budokai 1")
+
+
 class B1:
-    def __init__(self, iso_path=B1_ISO):
+    def __init__(self, iso_path=None):
         import iso
-        self.iso = iso.Iso(iso_path)
-        self.f = self.iso.open("/USR/DATA_EN.AFS")
+        self.iso = iso.Iso(iso_path or find_b1_iso())
+        # AFS de datos: DATA_EN en la europea (los 5 idiomas traen lo mismo para el importador);
+        # en otras regiones el primer /USR/DATA_*.AFS que haya
+        names = sorted(p for p in self.iso.files() if p.upper().startswith("/USR/DATA_") and
+                       p.upper().endswith(".AFS") and "CMN" not in p.upper())
+        data = next((p for p in names if p.upper() in ("/USR/DATA_EN.AFS", "/USR/DATA_US.AFS")), None) or \
+            (names[0] if names else "/USR/DATA_EN.AFS")
+        self.f = self.iso.open(data)
         self.f.seek(4)
         n = struct.unpack("<I", self.f.read(4))[0]
         self.tab = struct.unpack("<%dI" % (2 * n), self.f.read(8 * n))
         self.elf = None
+        self.rec0 = B1_REC
 
     def entry(self, i):
         self.f.seek(self.tab[2 * i])
@@ -112,8 +140,9 @@ class B1:
 
     def record(self, rec):
         if self.elf is None:
-            self.elf = self.iso.read("/SLES_512.33")
-        r = self.elf[B1_REC + B1_REC_SIZE * rec:B1_REC + B1_REC_SIZE * (rec + 1)]
+            self.elf = self.iso.read(self.iso.boot_elf() or "/SLES_512.33")
+            self.rec0 = b1_record_table(self.elf)
+        r = self.elf[self.rec0 + B1_REC_SIZE * rec:self.rec0 + B1_REC_SIZE * (rec + 1)]
         v = [struct.unpack_from("<i", r, o)[0] for o in range(320, 360, 4)]
         return dict(common=v[0], amm=v[1], small=v[2], bcm=v[4], bsk=v[5], spx=v[6], snd=v[7:10],
                     models=[x for x in struct.unpack_from("<4i", r, 128) if x > 0])
@@ -603,11 +632,12 @@ def set16(blk, i, v):
     struct.pack_into("<H", blk, 2 * i, v & 0xFFFF)
 
 
-def bcm_hyper_codes(c):
-    """Codigos del subarbol de la entrada de modo hiper (condicion 0x400)."""
+def bcm_hyper_codes(c, cond=0x0400):
+    """Codigos del subarbol de las entradas de modo hiper (condicion 0x400; 0x0008 = las
+    definitivas)."""
     st, bl = bcm_parse(c)
     out, seen = set(), set()
-    stack = [o for o in st if w16(bl[o][0], 4) & 0x0400]
+    stack = [o for o in st if w16(bl[o][0], 4) & cond]
     while stack:
         o = stack.pop()
         if o in seen:
@@ -618,9 +648,11 @@ def bcm_hyper_codes(c):
     return out
 
 
-def convert_bcm(b1c, donor_c, report, code_remap, throw_map):
+def convert_bcm(b1c, donor_c, report, code_remap, throw_map, ult_caps=(), cap_map=None):
     """BCM de B1 -> B3. code_remap {codigo B1: codigo B3} (rafaga de ki, transformacion);
-    throw_map {codigo del donante: codigo nuevo} para su agarre (P+G)."""
+    throw_map {codigo del donante: codigo nuevo} para su agarre (P+G); ult_caps: capsulas de B1
+    cuyo especial pasa a ser la definitiva (sus entradas se quitan: sin su guion de B1 eran
+    solo una patada)."""
     st1, bl1 = bcm_parse(b1c)
     nodes = {}
     w6_seen = {}
@@ -648,6 +680,9 @@ def convert_bcm(b1c, donor_c, report, code_remap, throw_map):
         if w16(blk, 1) == 0x0007 and w16(blk, 4) & 0x0004 and w16(blk, 12) != 0x2E0:
             dropped += 1
             continue
+        if w16(blk, 8) in ult_caps:
+            dropped += 1
+            continue
         # tecnica con boton propio (P+G en B1): P+G es el agarre en B3 -> entrada directa
         if w16(blk, 8) and w16(blk, 1) != 0x0008:
             caps_start[w16(blk, 8)] = blk
@@ -657,7 +692,7 @@ def convert_bcm(b1c, donor_c, report, code_remap, throw_map):
     # tecnicas: en B1 solo cierran combos; en B3 tienen entrada directa (direccion + E)
     for o, (blk, kids) in bl1.items():
         cap = w16(blk, 8)
-        if cap and o not in st1 and w16(blk, 1) == 0x0008 and cap not in caps_start:
+        if cap and o not in st1 and w16(blk, 1) == 0x0008 and cap not in caps_start and cap not in ult_caps:
             caps_start[cap] = blk
     for n, (cap, blk) in enumerate(sorted(caps_start.items())):
         nb = bytearray(blk)
@@ -683,8 +718,9 @@ def convert_bcm(b1c, donor_c, report, code_remap, throw_map):
         blk = bl2[o][0]
         cond, cap, code = w16(blk, 4), w16(blk, 8), w16(blk, 12)
         hyper = bool(cond & 0x0400)
+        ult = bool(cond & 0x0008)          # definitiva del donante (P+K+G+E en modo hiper)
         throw = w16(blk, 1) == 0x0005 and not cond and not cap and code in throw_map
-        if not (hyper or throw):
+        if not (hyper or ult or throw):
             continue
 
         def copy(k):
@@ -694,13 +730,25 @@ def convert_bcm(b1c, donor_c, report, code_remap, throw_map):
                 for i in (12, 13, 14):
                     if w16(nb, i) in throw_map:
                         set16(nb, i, throw_map[w16(nb, i)])
+                if cap_map and w16(nb, 8) in cap_map:          # capsula de la definitiva (choque B1/B3)
+                    set16(nb, 8, cap_map[w16(nb, 8)])
                 nodes[key] = [nb, []]
                 nodes[key][1] = [copy(ch) for ch in bl2[k][1]]
             return key
         starters.append(copy(o))
         add += 1
         report.append("BCM: entrada del donante %s (botones %#x, condicion %#x, codigo %#x)" % (
-            "modo hiper" if hyper else "agarre", w16(blk, 1), cond, w16(nodes[("d", o)][0], 12)))
+            "modo hiper" if hyper else "definitiva" if ult else "agarre", w16(blk, 1), cond,
+            w16(nodes[("d", o)][0], 12)))
+    if ult_caps:                                  # el especial que es ahora la definitiva
+        gone = {k for k, (b, _) in nodes.items() if k[0] == "b1" and w16(b, 8) in ult_caps}
+        for k in gone:
+            del nodes[k]
+        for v in nodes.values():
+            v[1] = [k for k in v[1] if k not in gone]
+        starters = [k for k in starters if k not in gone]
+        report.append("BCM: el especial de las capsulas %s es la definitiva (%d entradas fuera)" % (
+            sorted(ult_caps), len(gone)))
     return bcm_build(b1c, starters, nodes), add
 
 
@@ -732,6 +780,176 @@ def spx_code_refs(s, slot):
                 v = struct.unpack_from("<H", s, i + 2)[0]
                 if 0x200 <= v < 0x400:
                     out.setdefault(v, []).append(i)
+    return out
+
+
+# ---------------------------------------------------------------- definitiva de B1 -> B3
+# Las definitivas de B1 son golpes HR tipo 3 que lanzan un guion del #SPX de B1 (ranuras 1-7;
+# la 0 es el agarre) con sus propias ordenes: builtin 17 = reproducir un codigo (lado 0 = el
+# atacante, 1 = el rival; codigo) y la subrutina 0 = esperar N frames. B3 no las entiende, asi
+# que se lee la linea de tiempo del atacante (la rafaga de 16 golpes de 10 f de Zarbon, su
+# lanzamiento...) y se reparte sobre los codigos de la cinematica de la definitiva del donante
+# (cinematica.py), que pone camara, rival y efectos.
+def spx_ins(s, i):
+    """(longitud, tipo, valor) de la instruccion en i de un #SPX de PS2 (little-endian)."""
+    op = s[i]
+    if op == 0x08 and i + 2 < len(s):
+        t = s[i + 1]
+        if t == 0x10:
+            return 3, "push", s[i + 2]
+        if t == 0x20:
+            return 4, "push", struct.unpack_from("<H", s, i + 2)[0]
+        if t == 0x30:
+            return 6, "push", struct.unpack_from("<I", s, i + 2)[0]
+        if t == 0x5C:
+            return 3, "var", s[i + 2]
+        return 2, "?", None
+    if op == 0x09 and i + 5 < len(s) and s[i + 1] == 0x30:
+        return 6, "pushf", struct.unpack_from("<f", s, i + 2)[0]
+    if op == 0x01 and i + 2 < len(s):
+        t = s[i + 1]
+        if t == 0x10:
+            return 3, "id", s[i + 2]
+        if t == 0x20:
+            return 4, "id", struct.unpack_from("<H", s, i + 2)[0]
+        if t == 0x30:
+            return 6, "id", struct.unpack_from("<I", s, i + 2)[0]
+        return 2, "?", None
+    if op == 0x02 and i + 2 < len(s):
+        return 3, "call", struct.unpack_from("<H", s, i + 1)[0]
+    if op in (0x12, 0x13) and i + 2 < len(s):
+        return 3, "pop", s[i + 2]
+    return 1, "?", None
+
+
+def spx_plays(s, slot):
+    """Guion de B1 de una ranura -> ([(frame, lado, codigo)], frames totales)."""
+    span = spx_slot_span(s, slot)
+    if not span:
+        return [], 0
+    out, args, t, i = [], [], 0, span[0]
+    while i < span[1]:
+        n, kind, v = spx_ins(s, i)
+        if kind in ("push", "pushf", "var", "id"):
+            args.append((kind, v))
+        elif kind == "pop":
+            args = []
+        elif kind == "call":
+            if v == 0x280 and len(args) >= 4 and args[-1] == ("id", 17):
+                out.append((t, args[-4][1], args[-2][1]))
+            elif v == 0x273 and len(args) >= 2 and args[-1] == ("id", 0) and args[-2][0] == "push":
+                t += args[-2][1]
+            args = []
+        i += n
+    return out, t
+
+
+def b1_ultimate(raw, spx, bcm_blocks):
+    """La definitiva de un personaje de B1: el especial con guion (HR tipo 3) cuya linea de
+    tiempo del atacante es la mas larga (Zarbon K,K,K,E: 16 golpes + lanzamiento).
+    -> {"ranura", "capsulas", "eventos": [(frame, codigo)], "frames"} o None."""
+    L = bsk_code_list(raw)
+    best = None
+    for slot in range(1, 8):
+        codes = bsk_st3_codes(raw, slot)
+        if not codes:
+            continue
+        plays, end = spx_plays(spx, slot)
+        att = [(t, c) for t, side, c in plays if side == 0 and c < len(L) and L[c]]
+        if len(att) < 2:
+            continue
+        caps = sorted({w16(b, 8) for b, _ in bcm_blocks.values()
+                       if w16(b, 8) and {w16(b, 12), w16(b, 13), w16(b, 14)} & codes})
+        score = (len(att), end)
+        if best is None or score > best[0]:
+            best = (score, {"ranura": slot, "capsulas": caps, "eventos": att, "frames": end})
+    return best[1] if best else None
+
+
+def cine_call(spx):
+    """(capsula, primer codigo 'gana', ?) de la llamada de la ranura 0 de un #SPX de B3 (PS2):
+    Goku sub(10, 0x4A0, 12), Nappa (85, 0x49F, 0), Piccolo (62, 0x480, 0)... Las ranuras van
+    desde la base de +0x14. None si no se encuentra."""
+    try:
+        base, t0 = struct.unpack_from("<I", spx, 0x14)[0], struct.unpack_from("<I", spx, 0x20)[0]
+    except struct.error:
+        return None
+    i, args, end = base + t0, [], min(len(spx), base + t0 + 256)
+    while i < end:
+        n, kind, v = spx_ins(spx, i)
+        if kind in ("push", "pushf", "var", "id"):
+            args.append((kind, v))
+        elif kind == "call":
+            vals = [x[1] for x in args if x[0] == "push"]
+            if v == 0x273 and len(vals) >= 3:
+                return vals[-3:]
+            args = []
+        elif kind == "pop":
+            args = []
+        i += n
+    return None
+
+
+def cine_win(bsk, amm, spx=None):
+    """Codigos de la version 'gana' de la cinematica de la definitiva de un B3 (PS2):
+    [(codigo, frames)] del banco propio (3), seguidos, desde el 1o que pasa el guion de la
+    ranura 0 (cine_call: 0x4A0 casi siempre, 0x490 Saiyaman, 0x480 Piccolo/Krilin/Vegeta, 0x49F
+    Nappa; los del banco comun del principio se saltan, Yamcha) hasta el primer hueco. La version
+    en la que el rival se defiende va detras: tras el hueco (Trunks 0x4B2-) o seguida, repitiendo
+    los frames del 2o y 3er codigo (Cooler, Gero 0x4A9-)."""
+    L = bsk_code_list(bsk)
+
+    def info(c):
+        if c >= len(L) or not L[c]:
+            return None
+        anim, bank = struct.unpack_from("<HH", bsk, L[c])
+        return amm.anims[anim][2] if bank == 3 and anim < len(amm.anims) else -1
+    call = cine_call(spx) if spx is not None else None
+    if call and 0x400 <= call[1] < 0x500:
+        start = call[1]
+    else:
+        start = 0x4A0
+        while info(start - 1) not in (None, -1):
+            start -= 1
+    codes = []
+    for c in range(start, min(start + 0x40, len(L))):
+        f = info(c)
+        if f is None or (f == -1 and codes):
+            break
+        if f > 0:
+            codes.append((c, f))
+    fr = [f for _, f in codes]
+    cut = next((k for k in range(3, len(fr) - 1) if fr[k] == fr[1] and fr[k + 1] == fr[2]), len(fr))
+    return codes[:cut]
+
+
+def receta_definitiva(tramos, win, max_lento=1.5):
+    """Receta de cinematica.py: la linea de tiempo B1 [(anim, desde, hasta)] sobre los codigos de
+    la version 'gana' del donante [(codigo, frames)], a su velocidad (como mucho max_lento veces
+    mas lenta; si es mas larga, mas rapida): los codigos que sobran se quedan con el remate del
+    donante. El codigo donde acaba la linea de tiempo la recibe entera (re-temporizada)."""
+    lens = [b - a + 1 for _, a, b in tramos]
+    total, dtotal = sum(lens), sum(f for _, f in win)
+    speed = total / min(dtotal, total * max_lento)        # frames de B1 por frame del donante
+    starts, acc = [], 0
+    for _, frames in win:
+        starts.append(acc * speed)
+        acc += frames
+    use = [k for k, lo in enumerate(starts) if lo < total - 1]
+    if len(use) > 1 and (total - starts[use[-1]]) / speed < 0.4 * win[use[-1]][1]:
+        use.pop()          # le tocaria un trozo minimo (se veria congelado): sigue el del donante
+    out = {}
+    for k in use:
+        code, lo = win[k][0], starts[k]
+        hi = total if k == use[-1] else starts[k + 1]
+        segs, pos = [], 0
+        for (anim, a, _), ln in zip(tramos, lens):
+            s0, s1 = max(lo, pos), min(hi, pos + ln)
+            if s1 - s0 >= 1:
+                segs.append([anim, a + int(round(s0 - pos)), a + int(round(s1 - pos)) - 1])
+            pos += ln
+        if segs:
+            out["%#x" % code] = segs
     return out
 
 
@@ -779,7 +997,9 @@ def amm_tracks(anim):
     return out
 
 
-def port(b1, rec, donor_anm, donor_cam, report, models=(), drop_effects=(), donor_model=None):
+def port(b1, rec, donor_anm, donor_cam, report, models=(), drop_effects=(), donor_model=None, ult_out=None):
+    """ult_out (dict): se rellena con la definitiva de B1 traducida (receta de cinematica.py
+    sobre la cinematica del donante, capsula de B1) y sus animaciones entran en el moveset."""
     r = b1.record(rec)
     report.append("registro B1 %d: %s" % (rec, r))
     own, common = Amm(b1.entry(r["amm"])), Amm(b1.entry(r["common"]))
@@ -856,6 +1076,44 @@ def port(b1, rec, donor_anm, donor_cam, report, models=(), drop_effects=(), dono
         return idx[(pool, anim)]
 
     bsk = remap_b1_pools(bsk, new_index)
+    # definitiva de B1: sus animaciones (rafaga, lanzamiento...) entran en el AMM propio (antes
+    # que las del donante: se adaptan al modelo como las de B1) y su linea de tiempo se reparte
+    # sobre la cinematica del donante
+    ult = b1_ultimate(raw, b1.entry(r["spx"]), bl1) if ult_out is not None else None
+    ult_caps = ()
+    # capsula de la definitiva del donante: B1 y B3 numeran sus capsulas en el mismo espacio
+    # (la 85 es el Typhoon de Dodoria y la definitiva de Nappa); si choca, la vacia 595 (la
+    # capsula propia de la definitiva la sustituye con reemplaza = 595)
+    d_st, d_bl = bcm_parse(d_bcm)
+    d_ult = next((w16(d_bl[o][0], 8) for o in d_st if w16(d_bl[o][0], 4) & 0x0008), 0)
+    ult_cap = 595 if d_ult and d_ult in {w16(b, 8) for b, _ in bl1.values()} else d_ult
+    if d_ult != ult_cap:
+        report.append("definitiva del donante: su capsula %d es una de B1 -> %d" % (d_ult, ult_cap))
+    if ult_out is not None and d_ult:
+        ult_out.update(capsula_donante=ult_cap, capsula_donante_b3=d_ult)
+    if ult:
+        d_spx0 = next((d for d, t in amb_kids(donor_cam) if d[:4] == b"#SPX"), None)
+        win = cine_win(d_bsk, d_amm, d_spx0)
+        tramos, evs = [], ult["eventos"]
+        for k, (t, c) in enumerate(evs):
+            nxt = evs[k + 1][0] if k + 1 < len(evs) else ult["frames"]
+            pool, anim = b1_anim(c)
+            nf = pools[pool].anims[anim][2] if anim < len(pools[pool].anims) else 1
+            tramos.append((new_index(pool, anim), 0, max(1, min(nxt - t, nf)) - 1))
+        b1_total = sum(b - a + 1 for _, a, b in tramos)
+        if win and sum(f for _, f in win) < b1_total / 2:   # cinematica partida (Vegeta): no cabe
+            report.append("aviso: la cinematica del donante es demasiado corta (%d f) para la definitiva de B1 "
+                          "(%d f): se queda la del donante" % (sum(f for _, f in win), b1_total))
+            win = []
+        if win:
+            ult_caps = tuple(ult["capsulas"])
+            ult_out.update(capsulas=list(ult_caps), ranura=ult["ranura"], tramos=tramos,
+                           receta=receta_definitiva(tramos, win))
+            report.append("definitiva de B1 (ranura %d, capsula %s): %d animaciones, %d frames -> %d codigos "
+                          "de la cinematica del donante" % (ult["ranura"], list(ult_caps), len(tramos),
+                                                            sum(b - a + 1 for _, a, b in tramos), len(win)))
+        elif not win:
+            report.append("aviso: el donante no tiene cinematica de definitiva: la de B1 no se traduce")
     report.append("B1: %d codigos conservados, %d quitados (significan otra cosa en B3); "
                   "%d animaciones usadas" % (len(set(c for c, a in enumerate(L1) if a)) - len(dropped),
                                              len(dropped), len(anims)))
@@ -885,13 +1143,41 @@ def port(b1, rec, donor_anm, donor_cam, report, models=(), drop_effects=(), dono
     if throw_map:
         bsk, _ = bsk_graft(bsk, d_bsk, sorted(throw_map), anim_map, code_map=throw_map)
         report.append("agarre (P+G) del donante: %s" % {hex(k): hex(v) for k, v in throw_map.items()})
+    # definitiva del donante (B1 no tiene la de B3): sus codigos (a uno libre si B1 usa ese
+    # numero) y los de su cinematica (0x400-0x4FF, que el guion calcula desde una base)
+    ult = bcm_hyper_codes(d_bcm, 0x0008) & d_used
+    ult_map = {}
+    for v in sorted(ult):
+        if v in b1_used:
+            band = 0x360 if v >= 0x300 else 0x260
+            k = next((c for c in range(band, band + 0x20) if c not in taken), None)
+            if k is None:
+                report.append("aviso: sin codigo libre para el %#x de la definitiva" % v)
+                continue
+            taken.add(k)
+            ult_map[v] = k
+    if ult:
+        have = bsk_code_list(bsk)
+        todo = sorted(c for c in ult if c in ult_map or not (c < len(have) and have[c]))
+        if todo:
+            bsk, _ = bsk_graft(bsk, d_bsk, todo, anim_map, code_map=ult_map)
+        cine = sorted(c for c in d_used if 0x400 <= c < 0x500 and not bsk_code_list(bsk)[c])
+        if cine:
+            bsk, _ = bsk_graft(bsk, d_bsk, cine, anim_map)
+        ult_slots = [sl for sl in range(32) if bsk_st3_codes(d_bsk, sl) & ult]
+        report.append("definitiva del donante: codigos %s%s, cinematica %d codigos, guion %s" % (
+            [hex(c) for c in sorted(ult)], " (-> %s)" % {hex(a): hex(b) for a, b in ult_map.items()}
+            if ult_map else "", len(cine), ult_slots))
+    else:
+        ult_slots = []
+    throw_map = {**throw_map, **ult_map}
     # codigos que los guiones del donante (acometida 0, agarre/definitivos 20) piden por numero:
     # si B1 usa ese numero para otro golpe, el del donante va a un codigo libre y el guion se
     # reescribe (sin esto la acometida acababa sin la rafaga de ki final)
     d_spx = next(d for d, t in amb_kids(donor_cam) if d[:4] == b"#SPX")
     spx_patch = {}
     cur = bsk_code_list(bsk)
-    for sl in (0, 20):
+    for sl in sorted({0, 20} | set(ult_slots)):
         for v, where in sorted(spx_code_refs(d_spx, sl).items()):
             ok = [i for i in where if i + 4 < len(d_spx) and d_spx[i + 4] in (0x01, 0x02, 0x08, 0x09, 0x12)]
             if not ok or not (v < len(d_list) and d_list[v]):
@@ -957,7 +1243,8 @@ def port(b1, rec, donor_anm, donor_cam, report, models=(), drop_effects=(), dono
     amm = own.build(names, anims, reduce=True)
     anm = amb_build([(bsk, 0xFFFFFFFF), (amm, 3), (dk[2][0], 3), (dk[3][0], 3)])
     ck = amb_kids(donor_cam)
-    bcm, added = convert_bcm(b1.entry(r["bcm"]), d_bcm, report, code_remap, throw_map)
+    bcm, added = convert_bcm(b1.entry(r["bcm"]), d_bcm, report, code_remap, throw_map, ult_caps,
+                             {d_ult: ult_cap} if d_ult != ult_cap else None)
     # el SPX es el del donante: los guiones de B1 usan ordenes que el de B3 no tiene
     cam = amb_build([(bcm, t) if d[:4] == b"#BCM" else (d_spx_new, t) if d[:4] == b"#SPX" else (d, t)
                      for d, t in ck])
@@ -974,7 +1261,25 @@ def donor_model(anm_fid):
     return None
 
 
+def prueba():
+    """Definitiva de B1 -> B3: reparto de la linea de tiempo y, con la ISO de B1, la de Zarbon."""
+    tr = [(10, 0, 9)] * 16 + [(20, 0, 24), (30, 0, 152)]
+    win = [(0x4A0 + k, f) for k, f in enumerate([50, 60, 45, 40, 40, 100, 90, 80, 80])]
+    r = receta_definitiva(tr, win)
+    assert sum(b - a + 1 for v in r.values() for _, a, b in v) == 338, r     # todo, una vez
+    assert "0x4a8" not in r and all(len(v) for v in r.values())            # el remate, del donante
+    assert receta_definitiva(tr, [(0x4A0, 400)]) == {"0x4a0": [list(t) for t in tr]}
+    if os.path.isfile(find_b1_iso()):
+        b1 = B1()
+        rr = b1.record(13)
+        u = b1_ultimate(b1.entry(rr["bsk"]), b1.entry(rr["spx"]), bcm_parse(b1.entry(rr["bcm"]))[1])
+        assert u["ranura"] == 3 and u["capsulas"] == [81] and len(u["eventos"]) == 18, u
+    print("b1port: prueba OK")
+
+
 def main():
+    if sys.argv[1:] == ["prueba"]:
+        return prueba()
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--registro", type=int, required=True, help="personaje de B1 (13 Zarbon, 14 Dodoria)")
     ap.add_argument("--donante-anm", type=int, required=True, help="fid data_cmn del ANM B3 donante (PS2 GH)")
@@ -989,14 +1294,18 @@ def main():
     import afs_pair
     b1 = B1()
     report = []
+    ult = {}
     anm, cam = port(b1, a.registro, afs_pair.ps2(a.donante_anm), afs_pair.ps2(a.donante_cam), report,
-                    a.modelos, [int(x, 16) for x in a.quitar_efecto], donor_model(a.donante_anm))
+                    a.modelos, [int(x, 16) for x in a.quitar_efecto], donor_model(a.donante_anm), ult_out=ult)
     if a.hd:
         import ps2hd
         anm, cam = bytes(ps2hd.convert_block(anm)), bytes(ps2hd.convert_block(cam))
     os.makedirs(a.salida, exist_ok=True)
     open(os.path.join(a.salida, "anm.bin"), "wb").write(anm)
     open(os.path.join(a.salida, "camara.bin"), "wb").write(cam)
+    if ult.get("receta"):         # definitiva de B1 traducida: receta para definitiva_animaciones
+        with open(os.path.join(a.salida, "definitiva.json"), "w", encoding="utf-8") as fh:
+            json.dump(dict({"_capsulas_b1": ult["capsulas"], "_ranura_b1": ult["ranura"]}, **ult["receta"]), fh, indent=1)
     print("\n".join(report))
     print("ok: anm %d B, camara %d B -> %s" % (len(anm), len(cam), a.salida))
 

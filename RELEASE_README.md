@@ -63,7 +63,20 @@ El paquete **NO incluye los archivos del juego** (copyright). Aporta los de tu
 > Para extraer los archivos de tu **ISO legal** usa `extract-xiso` (FATX de Xbox
 > 360). Tamaños y SHA-256 de cada archivo en `baserom.md`.
 
-## Novedades de esta release — v1.4.1 (2026-10-05)
+## Novedades de esta release — v1.4.3 (2026-10-09)
+
+- **Definitivas**: Zarbon, Dodoria y Androide 19 (pack de personajes 1.4.3) tienen su
+  definitiva de Budokai 1 adaptada a Budokai 3 (P+K+G+E en modo hiper); Androide 19 usa
+  sus golpes, técnicas y gritos de Budokai 1.
+- **Importador** (Kit 1.4.3): Infinite World con sus golpes, técnicas y definitiva
+  originales y modo hiper para todos; definitivas de Budokai 1 y Shin Budokai traducidas
+  solas; copias USA y europeas de Budokai 1/2, Infinite World y Shin Budokai 1/2.
+- **Launcher**: confirmación antes de restablecer, sustituir la partida, borrar un perfil
+  o quitar una cápsula; JUGAR ya no congela la ventana; errores explicados en claro.
+- DLL del runtime: `rexruntime.dll` 11.109.888 B y `rexgpu-xenos.dll` 6.431.232 B,
+  sello 1.4.3: no las mezcles con las de versiones anteriores.
+
+## Release anterior — v1.4.1 (2026-10-05)
 
 - **Rendimiento**: temporización de alta resolución (pausas de 1 ms reales en
   Windows 11) y el juego deja de entrar en el modo ahorro de Windows (núcleos de
@@ -115,6 +128,7 @@ rendimiento»**.
 
 | Versión | Fecha | Resumen |
 |---|---|---|
+| v1.4.3 | 2026-10-09 | Definitivas de Budokai 1 adaptadas (Zarbon, Dodoria, Androide 19), Infinite World con movesets propios y modo hiper, copias USA/EUR de los juegos de origen, launcher y Kit más fáciles | 1.4.3 |
 | v1.4.1 | 2026-10-05 | Rendimiento (temporización precisa, sin modo ahorro de Windows, DRED solo tras un fallo), registro de esperas y tirones, aviso EU de personajes nuevos, Kit con Diagnóstico | 1.4.1 |
 | v1.4.0 | 2026-10-04 | Menú rápido en partida (F1 / Back+Start), «Más FPS con FSR», panel de FPS F3, vídeo en vivo, launcher rediseñado con mando y arranque <1 s, personajes nuevos e importador |
 | v1.3.0 | 2026-09-30 | Reparar instalación, etiquetas de botón (Xbox/PS/Switch), DRED por defecto, `gamecontrollerdb.txt`, fix del extractor de texturas (#13), pulido y optimización del launcher |
@@ -155,9 +169,10 @@ entradas concretas del AFS, así que cada mod pesa solo ~100 KB.
 - **Música** (`og_music`): reemplaza los AFS de audio por región.
 - **Personajes nuevos** (v1.4.0, experimental, versión USA): casillas propias en
   el select sin sustituir a nadie. Descargas opcionales:
-  - `DBZ3HD-1.4.0-Personajes.zip` (Google Drive: https://drive.google.com/file/d/1zpwuuU7ITKZlC43nsTbp6s2wceBcwO85/view?usp=sharing) — Janemba, Androide 19, Zarbon, Dodoria,
-    Guldo, Jeice y Burter. Copia su carpeta `mods` junto a `dbz3.exe`.
-  - `DBZ3HD-1.4.1-Kit-Modding.zip` — herramientas para crear e importar
+  - `DBZ3HD-1.4.3-Personajes.zip` (Google Drive: https://drive.google.com/file/d/1jDRwzd_idmeIxwAMN4q4bC89JKFiGXX7/view?usp=sharing) — Janemba, Androide 19, Zarbon, Dodoria,
+    Guldo, Jeice y Burter (definitivas WIP: pueden tener fallos). Copia su carpeta
+    `mods` junto a `dbz3.exe`.
+  - `DBZ3HD-1.4.3-Kit-Modding.zip` — herramientas para crear e importar
     personajes (requiere Python 3.11+; ejecuta `instalar_requisitos.bat` una vez).
 
 ## Estado de la release

@@ -21,7 +21,7 @@ nativo en Windows y Linux (Vulkan).
 | Plataforma | Windows / Linux |
 | Motor | Xbox 360 (ReXGlue SDK) |
 | Género | Lucha 3D |
-| Versión | v1.4.2 EX (1.4.2.3) |
+| Versión | v1.4.3 |
 
 Copyright (c) 2026 **NovaPowers**. Licencia MIT (ver `LICENSE`).
 
@@ -30,6 +30,14 @@ Copyright (c) 2026 **NovaPowers**. Licencia MIT (ver `LICENSE`).
 [Mods y personajes nuevos](#mods-y-personajes-nuevos)
 
 ---
+
+## Novedades de la 1.4.3
+
+- **Definitivas para todos (WIP):** Zarbon, Dodoria y Androide 19 tienen su definitiva de Budokai 1 adaptada a Budokai 3; Androide 19 estrena sus golpes de Budokai 1. Es una primera versión: puede tener fallos.
+- **Edit Skills arreglado:** con personajes nuevos instalados, la bandeja de cápsulas salía desplazada y no respondía.
+- **Infinite World completo:** los personajes importados traen sus golpes, técnicas y definitiva originales, y todos entran en modo hiper.
+- **Copias USA y Europa** de Budokai 1, Budokai 2, Infinite World y Shin Budokai para el importador.
+- **Launcher y Kit más fáciles:** confirmaciones antes de borrar o sustituir, JUGAR sin congelarse, errores en claro, inglés completo y tarjeta *Definitiva* en el Kit.
 
 ## Novedades de la 1.4.2 EX
 
@@ -122,14 +130,14 @@ En la página de [**Releases**](../../releases/latest):
 
 | Archivo | Para qué |
 |---|---|
-| `DBZ-Budokai-3-HD-Collection-v1.4.2.3.zip` | **El juego para Windows** (obligatorio). |
-| `DBZ-Budokai-3-HD-Collection-v1.4.2.3-linux-amd64.tar.gz` | El juego para Linux (Vulkan). |
-| [`DBZ3HD-1.4.0-Personajes.zip`](https://drive.google.com/file/d/1zpwuuU7ITKZlC43nsTbp6s2wceBcwO85/view?usp=sharing) | Opcional: los 7 personajes nuevos (**se descarga desde [Google Drive](https://drive.google.com/file/d/1zpwuuU7ITKZlC43nsTbp6s2wceBcwO85/view?usp=sharing)**). |
-| `DBZ3HD-1.4.2.3-Kit-Modding.zip` | Opcional: herramientas para crear e importar personajes. |
+| `DBZ-Budokai-3-HD-Collection-v1.4.3.zip` | **El juego para Windows** (obligatorio). |
+| `DBZ-Budokai-3-HD-Collection-v1.4.3-linux-amd64.tar.gz` | El juego para Linux (Vulkan). |
+| [`DBZ3HD-1.4.3-Personajes.zip`](https://drive.google.com/file/d/1jDRwzd_idmeIxwAMN4q4bC89JKFiGXX7/view?usp=sharing) | Opcional: los 7 personajes nuevos (**Google Drive**, actualizado en la 1.4.3; WIP). |
+| `DBZ3HD-1.4.3-Kit-Modding.zip` | Opcional: herramientas para crear e importar personajes. |
 
 ### Windows
 
-1. **Descomprime** `DBZ-Budokai-3-HD-Collection-v1.4.2.3.zip` en una carpeta, por
+1. **Descomprime** `DBZ-Budokai-3-HD-Collection-v1.4.3.zip` en una carpeta, por
    ejemplo `C:\Juegos\DBZ3\`.
 2. **Añade los datos de tu copia del juego** de una de estas dos formas:
    - **Lo más fácil — el ISO**: deja el `.iso` del juego junto a `dbz3.exe`. No
@@ -204,15 +212,18 @@ Switch) según lo último que hayas usado.
 > Los mods necesitan los datos del juego en una **carpeta** (en modo ISO se
 > juega tal cual). Los personajes nuevos necesitan además la **versión USA**.
 
-### Pack de personajes (`DBZ3HD-1.4.0-Personajes.zip`)
+### Pack de personajes (`DBZ3HD-1.4.3-Personajes.zip`)
 
 Siete personajes **nuevos** en casillas propias de la rueda del select (no
 sustituyen a nadie): **Janemba, Androide 19, Zarbon (con su transformación),
 Dodoria, Guldo, Jeice y Burter**. Zarbon y Dodoria traen los golpes, combos y
-gritos de su versión de Budokai 1.
+gritos de su versión de Budokai 1, y Zarbon, Dodoria y Androide 19 su definitiva.
+
+> **WIP:** las definitivas y los movesets traducidos de Budokai 1 son una primera
+> versión y pueden tener fallos.
 
 1. Cierra el juego.
-2. Descarga el ZIP desde [Google Drive](https://drive.google.com/file/d/1zpwuuU7ITKZlC43nsTbp6s2wceBcwO85/view?usp=sharing) y copia su carpeta
+2. Descarga el ZIP desde [Google Drive](https://drive.google.com/file/d/1jDRwzd_idmeIxwAMN4q4bC89JKFiGXX7/view?usp=sharing) y copia su carpeta
    `mods` junto a `dbz3.exe` (si Windows pregunta, acepta combinar carpetas: no
    se borra nada tuyo).
 3. Abre `dbz3.exe`, mira la pestaña **Personajes nuevos** y pulsa **JUGAR**.
@@ -220,7 +231,7 @@ gritos de su versión de Budokai 1.
 Para quitar uno, desmárcalo en **Personajes nuevos → Instalados**. Tus partidas
 guardadas no se tocan.
 
-### Kit de modding (`DBZ3HD-1.4.2.3-Kit-Modding.zip`)
+### Kit de modding (`DBZ3HD-1.4.3-Kit-Modding.zip`)
 
 Las herramientas que hay detrás de las pestañas de modding del launcher: crear
 e **importar personajes** (Budokai 1, Budokai 2, Infinite World y modelos de la

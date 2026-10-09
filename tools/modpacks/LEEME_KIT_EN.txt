@@ -1,0 +1,66 @@
+DBZ BUDOKAI 3 HD COLLECTION - MODDING KIT (v1.4.2 EX)
+=====================================================
+
+Every modding tool of the port, now with its own window (DBZ3 HD Mod Kit):
+create and import new characters (Budokai 1, Budokai 2, Infinite World, Shin Budokai and
+community models), custom capsules, voices and yells, textures, model swap and the rest of
+the converters. No console needed.
+
+WHAT YOU NEED
+- DBZ Budokai 3 HD Collection v1.4.2 EX or newer, with the game data in a FOLDER.
+- Nothing else: the kit ships its own Python ("python" folder, with numpy, Pillow and scipy).
+  No Python install and nothing to run beforehand.
+
+INSTALL (3 steps)
+1. Close the game.
+2. Copy EVERYTHING in this ZIP into the game folder (where dbz3.exe and the us folder are).
+   "mod center hd", "awo_tools" and "python" must end up next to dbz3.exe.
+3. Double-click "DBZ3_ModKit.bat": the kit window opens.
+   (The launcher also uses that Python for textures and new characters.)
+
+EASY TEXTURES (in the launcher, Mods tab; uses this kit's Python)
+1. Turn on "Capture textures while playing" and play until you see what you want to change.
+2. Press "Prepare PNGs" and edit any PNG without renaming it (it can be 2, 3 or 4 times
+   bigger).
+3. Save it in "My texture pack" (or drag it onto the launcher window).
+4. Play: it applies automatically.
+
+THE KIT WINDOW (DBZ3_ModKit.bat)
+- BASIC mode: big guided cards. Start with "Check installation" (all green), then pick:
+  My mods, Import a character, New characters, Create from my models, Textures, Model swap
+  or Help & community.
+- ADVANCED mode (top right): tabs with EVERY option of each tool, the full log, the paths
+  and the "Tools" tab with every script in the kit.
+- Language: ES / EN, top right.
+- It does the same as the launcher's modding tabs (same tools, same arguments): you can
+  use both. New characters are added when you press PLAY.
+- Before a mod file is edited, a copy is saved in "modkit_backups".
+- Aura and ki colors: in Characters, every character has an "Aura and ki colors" card
+  with ready-made colors (red, gold, green, blue, purple...) or one of your choice. It changes
+  the hue of its aura and of its techniques' effects; white stays white.
+  In personaje.toml: aura_color = "morado" / ki_color = "#ff3030" (or a hue 0-359).
+- HEX tab (advanced mode, for expert modders): a byte editor like HxD that understands the
+  game formats: tree of #AMB blocks (PS2 little endian / HD big endian), value inspector in
+  both endians, go to offset, find. On #AMO models it lists every part with its vtype and
+  "Hide / show part" (vtype/vflags = FF FF FF 00 FF FF 00 00, the usual trick for alternate
+  costumes without a halo, tail...). Hidden parts are skipped when the model is converted.
+  Saving always keeps a .bak copy next to the file.
+
+IMPORTING CHARACTERS FROM OTHER GAMES
+- Put YOUR copies of the PS2/PSP games in the "ps2_games" folder (read ps2_games\LEEME_EN.txt).
+- In the kit window: "Import a character": pick the game, find the character, check the
+  name and press Import (or in the launcher: "New characters" > "Import a character from
+  another game"). It is added when you press PLAY.
+- Community models (.amb or .amo + .amt) are looked up in "modding resources".
+
+CONTENTS
+- DBZ3_ModKit.bat  opens the kit window (double-click)
+- python\          portable Python (python.org) with numpy, Pillow and scipy; licenses in
+                   python\LEEME_LICENCIAS.txt
+- mod center hd\   tools (roster_build, importar, capsulas, voces, gritos, textures,
+                   modkit_gui...) and tools\ (Xbox 360 LZX compression)
+- awo_tools\       format converters (PS2 -> HD, Budokai 1, heights, banners, portraits...)
+- modding resources\  community lists (capsules, IDs, voices) used by the importer
+- docs\            guides (how to make mods, textures, model swap) and docs\formatos
+
+No game files are included: always use the ones from your own copies.

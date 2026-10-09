@@ -35,6 +35,16 @@ LA VENTANA DEL KIT (DBZ3_ModKit.bat)
 - Hace lo mismo que las pestanas de modding del launcher (mismas herramientas y mismos
   argumentos): puedes usar las dos cosas. Los personajes nuevos se anaden al pulsar JUGAR.
 - Al editar un archivo de un mod se guarda antes una copia en "modkit_backups".
+- Colores del aura y del ki: en Personajes, cada personaje tiene la tarjeta «Colores del
+  aura y del ki» con colores preparados (rojo, dorado, verde, azul, morado...) o uno a tu
+  gusto. Cambia el tono del aura y de los efectos de sus técnicas; lo blanco sigue blanco.
+  En personaje.toml: aura_color = "morado" / ki_color = "#ff3030" (o un tono 0-359).
+- Pestaña HEX (modo avanzado, para modders expertos): editor de bytes como HxD que entiende
+  los formatos del juego: árbol de bloques #AMB (PS2 little endian / HD big endian),
+  inspector de valores en los dos endian, ir a offset y buscar. En los modelos #AMO lista
+  cada parte con su vtype y «Ocultar / mostrar parte» (vtype/vflags = FF FF FF 00 FF FF 00 00,
+  el truco habitual para trajes alternativos sin aureola, cola...). Las partes ocultas se
+  omiten al convertir el modelo. Al guardar siempre deja una copia .bak junto al fichero.
 
 IMPORTAR PERSONAJES DE OTROS JUEGOS
 - Pon TUS copias de los juegos de PS2 en la carpeta "ps2_games" (lee ps2_games\LEEME.txt).
