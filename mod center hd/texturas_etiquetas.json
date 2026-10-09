@@ -1,0 +1,3115 @@
+{
+ "data_cmn.afs": {
+  "0": {
+   "cat": "personajes",
+   "name": "aura_android_16"
+  },
+  "1": {
+   "cat": "personajes",
+   "name": "aura_android_17"
+  },
+  "2": {
+   "cat": "personajes",
+   "name": "aura_android_18"
+  },
+  "3": {
+   "cat": "personajes",
+   "name": "aura_syn_shenron"
+  },
+  "4": {
+   "cat": "personajes",
+   "name": "aura_dr_gero"
+  },
+  "5": {
+   "cat": "personajes",
+   "name": "aura_bardock"
+  },
+  "6": {
+   "cat": "personajes",
+   "name": "aura_broly"
+  },
+  "7": {
+   "cat": "personajes",
+   "name": "aura_majin_buu_gordo"
+  },
+  "8": {
+   "cat": "personajes",
+   "name": "aura_super_buu"
+  },
+  "9": {
+   "cat": "personajes",
+   "name": "aura_kid_buu"
+  },
+  "10": {
+   "cat": "personajes",
+   "name": "aura_cell"
+  },
+  "11": {
+   "cat": "personajes",
+   "name": "aura_cell_jr"
+  },
+  "12": {
+   "cat": "personajes",
+   "name": "aura_carga"
+  },
+  "13": {
+   "cat": "personajes",
+   "name": "aura_cooler"
+  },
+  "14": {
+   "cat": "personajes",
+   "name": "aura_dabura"
+  },
+  "15": {
+   "cat": "personajes",
+   "name": "aura_freeza"
+  },
+  "16": {
+   "cat": "personajes",
+   "name": "aura_gogeta_ssj"
+  },
+  "17": {
+   "cat": "personajes",
+   "name": "aura_gogeta_ssj4"
+  },
+  "18": {
+   "cat": "personajes",
+   "name": "aura_gohan_adulto"
+  },
+  "19": {
+   "cat": "personajes",
+   "name": "aura_gohan_saga_cell"
+  },
+  "20": {
+   "cat": "personajes",
+   "name": "aura_gohan_nino"
+  },
+  "21": {
+   "cat": "personajes",
+   "name": "aura_goku_nino"
+  },
+  "22": {
+   "cat": "personajes",
+   "name": "aura_ginyu"
+  },
+  "23": {
+   "cat": "personajes",
+   "name": "aura_goku"
+  },
+  "24": {
+   "cat": "personajes",
+   "name": "aura_goku_cuerpo_ginyu"
+  },
+  "25": {
+   "cat": "personajes",
+   "name": "aura_great_saiyaman"
+  },
+  "26": {
+   "cat": "personajes",
+   "name": "aura_goten"
+  },
+  "27": {
+   "cat": "personajes",
+   "name": "aura_gotenks"
+  },
+  "28": {
+   "cat": "personajes",
+   "name": "aura_krillin"
+  },
+  "29": {
+   "cat": "personajes",
+   "name": "aura_kaio_shin"
+  },
+  "30": {
+   "cat": "personajes",
+   "name": "aura_nappa"
+  },
+  "31": {
+   "cat": "personajes",
+   "name": "aura_piccolo"
+  },
+  "32": {
+   "cat": "personajes",
+   "name": "aura_raditz"
+  },
+  "33": {
+   "cat": "personajes",
+   "name": "aura_recoome"
+  },
+  "34": {
+   "cat": "personajes",
+   "name": "aura_saibaman"
+  },
+  "35": {
+   "cat": "personajes",
+   "name": "aura_mr_satan"
+  },
+  "36": {
+   "cat": "personajes",
+   "name": "aura_trunks_nino"
+  },
+  "37": {
+   "cat": "personajes",
+   "name": "aura_trunks_futuro"
+  },
+  "38": {
+   "cat": "personajes",
+   "name": "aura_tenshinhan"
+  },
+  "39": {
+   "cat": "personajes",
+   "name": "aura_uub"
+  },
+  "40": {
+   "cat": "personajes",
+   "name": "aura_videl"
+  },
+  "41": {
+   "cat": "personajes",
+   "name": "aura_vegeta"
+  },
+  "42": {
+   "cat": "personajes",
+   "name": "aura_vegito"
+  },
+  "43": {
+   "cat": "personajes",
+   "name": "aura_yamcha"
+  },
+  "44": {
+   "cat": "escenarios",
+   "name": "escenario_red_ribbon_base"
+  },
+  "45": {
+   "cat": "escenarios",
+   "name": "escenario_red_ribbon_base_se"
+  },
+  "46": {
+   "cat": "escenarios",
+   "name": "escenario_world_tour"
+  },
+  "47": {
+   "cat": "escenarios",
+   "name": "escenario_world_tour_se"
+  },
+  "48": {
+   "cat": "escenarios",
+   "name": "escenario_buu_body"
+  },
+  "49": {
+   "cat": "escenarios",
+   "name": "escenario_buu_body_se"
+  },
+  "50": {
+   "cat": "escenarios",
+   "name": "escenario_cell_ring"
+  },
+  "51": {
+   "cat": "escenarios",
+   "name": "escenario_cell_ring_se"
+  },
+  "52": {
+   "cat": "escenarios",
+   "name": "escenario_grandpa_house"
+  },
+  "53": {
+   "cat": "escenarios",
+   "name": "escenario_grandpa_house_se"
+  },
+  "54": {
+   "cat": "escenarios",
+   "name": "escenario_kai_world"
+  },
+  "55": {
+   "cat": "escenarios",
+   "name": "escenario_kai_world_se"
+  },
+  "56": {
+   "cat": "escenarios",
+   "name": "escenario_island"
+  },
+  "57": {
+   "cat": "escenarios",
+   "name": "escenario_island_se"
+  },
+  "58": {
+   "cat": "escenarios",
+   "name": "escenario_time_bolic_chamber"
+  },
+  "59": {
+   "cat": "escenarios",
+   "name": "escenario_time_bolic_chamber_se"
+  },
+  "60": {
+   "cat": "escenarios",
+   "name": "escenario_namek"
+  },
+  "61": {
+   "cat": "escenarios",
+   "name": "escenario_namek_se"
+  },
+  "62": {
+   "cat": "escenarios",
+   "name": "escenario_plains"
+  },
+  "63": {
+   "cat": "escenarios",
+   "name": "escenario_plains_se"
+  },
+  "64": {
+   "cat": "escenarios",
+   "name": "escenario_desert"
+  },
+  "65": {
+   "cat": "escenarios",
+   "name": "escenario_desert_se"
+  },
+  "66": {
+   "cat": "escenarios",
+   "name": "escenario_city"
+  },
+  "67": {
+   "cat": "escenarios",
+   "name": "escenario_city_se"
+  },
+  "68": {
+   "cat": "escenarios",
+   "name": "escenario_damaged_city"
+  },
+  "69": {
+   "cat": "escenarios",
+   "name": "escenario_damaged_city_se"
+  },
+  "70": {
+   "cat": "personajes",
+   "name": "android_16_modelo_1"
+  },
+  "71": {
+   "cat": "personajes",
+   "name": "android_16_alt"
+  },
+  "72": {
+   "cat": "personajes",
+   "name": "android_16_camara"
+  },
+  "73": {
+   "cat": "personajes",
+   "name": "android_16_labios"
+  },
+  "74": {
+   "cat": "personajes",
+   "name": "android_16_anim_1"
+  },
+  "75": {
+   "cat": "personajes",
+   "name": "android_17_modelo_1"
+  },
+  "76": {
+   "cat": "personajes",
+   "name": "android_17_alt"
+  },
+  "77": {
+   "cat": "personajes",
+   "name": "android_17_camara"
+  },
+  "78": {
+   "cat": "personajes",
+   "name": "android_17_labios"
+  },
+  "79": {
+   "cat": "personajes",
+   "name": "android_17_anim_1"
+  },
+  "80": {
+   "cat": "personajes",
+   "name": "android_18_modelo_1"
+  },
+  "81": {
+   "cat": "personajes",
+   "name": "android_18_alt"
+  },
+  "82": {
+   "cat": "personajes",
+   "name": "android_18_alt2"
+  },
+  "83": {
+   "cat": "personajes",
+   "name": "android_18_camara"
+  },
+  "84": {
+   "cat": "personajes",
+   "name": "android_18_labios"
+  },
+  "85": {
+   "cat": "personajes",
+   "name": "android_18_anim_1"
+  },
+  "86": {
+   "cat": "personajes",
+   "name": "syn_shenron_li"
+  },
+  "87": {
+   "cat": "personajes",
+   "name": "syn_shenron_li_black"
+  },
+  "88": {
+   "cat": "personajes",
+   "name": "syn_shenron_camara"
+  },
+  "89": {
+   "cat": "personajes",
+   "name": "syn_shenron_labios"
+  },
+  "90": {
+   "cat": "personajes",
+   "name": "syn_shenron_anim_1"
+  },
+  "91": {
+   "cat": "personajes",
+   "name": "dr_gero"
+  },
+  "92": {
+   "cat": "personajes",
+   "name": "dr_gero_alt"
+  },
+  "93": {
+   "cat": "personajes",
+   "name": "dr_gero_camara"
+  },
+  "94": {
+   "cat": "personajes",
+   "name": "dr_gero_labios"
+  },
+  "95": {
+   "cat": "personajes",
+   "name": "dr_gero_anim_1"
+  },
+  "96": {
+   "cat": "personajes",
+   "name": "babidi_babidy"
+  },
+  "97": {
+   "cat": "personajes",
+   "name": "babidi_labios"
+  },
+  "98": {
+   "cat": "personajes",
+   "name": "bardock_scouter"
+  },
+  "99": {
+   "cat": "personajes",
+   "name": "bardock_bardack"
+  },
+  "100": {
+   "cat": "personajes",
+   "name": "bardock_bardack_alt"
+  },
+  "101": {
+   "cat": "personajes",
+   "name": "bardock_camara"
+  },
+  "102": {
+   "cat": "personajes",
+   "name": "bardock_labios"
+  },
+  "103": {
+   "cat": "personajes",
+   "name": "bardock_anim_1"
+  },
+  "104": {
+   "cat": "personajes",
+   "name": "buu_gohan"
+  },
+  "105": {
+   "cat": "personajes",
+   "name": "buu_gohan_alt"
+  },
+  "106": {
+   "cat": "personajes",
+   "name": "buu_gohan_labios"
+  },
+  "107": {
+   "cat": "personajes",
+   "name": "buu_gotenks"
+  },
+  "108": {
+   "cat": "personajes",
+   "name": "buu_gotenks_alt"
+  },
+  "109": {
+   "cat": "personajes",
+   "name": "buu_gotenks_labios"
+  },
+  "110": {
+   "cat": "personajes",
+   "name": "bulma"
+  },
+  "111": {
+   "cat": "personajes",
+   "name": "bulma_camara"
+  },
+  "112": {
+   "cat": "personajes",
+   "name": "bulma_labios"
+  },
+  "113": {
+   "cat": "personajes",
+   "name": "bulma_anim_1"
+  },
+  "114": {
+   "cat": "personajes",
+   "name": "buu_ghost_fantasmi_kamikaze"
+  },
+  "115": {
+   "cat": "personajes",
+   "name": "buu_ghost_labios"
+  },
+  "116": {
+   "cat": "personajes",
+   "name": "buu_piccolo"
+  },
+  "117": {
+   "cat": "personajes",
+   "name": "buu_piccolo_alt"
+  },
+  "118": {
+   "cat": "personajes",
+   "name": "buu_piccolo_labios"
+  },
+  "119": {
+   "cat": "personajes",
+   "name": "broly"
+  },
+  "120": {
+   "cat": "personajes",
+   "name": "broly_lss"
+  },
+  "121": {
+   "cat": "personajes",
+   "name": "broly_alt"
+  },
+  "122": {
+   "cat": "personajes",
+   "name": "broly_lss_alt"
+  },
+  "123": {
+   "cat": "personajes",
+   "name": "broly_camara"
+  },
+  "124": {
+   "cat": "personajes",
+   "name": "broly_labios"
+  },
+  "125": {
+   "cat": "personajes",
+   "name": "broly_labios_2"
+  },
+  "126": {
+   "cat": "personajes",
+   "name": "broly_anim_1"
+  },
+  "127": {
+   "cat": "personajes",
+   "name": "broly_anim_2"
+  },
+  "128": {
+   "cat": "personajes",
+   "name": "majin_buu_fat"
+  },
+  "129": {
+   "cat": "personajes",
+   "name": "majin_buu_fat_129"
+  },
+  "130": {
+   "cat": "personajes",
+   "name": "majin_buu_camara"
+  },
+  "131": {
+   "cat": "personajes",
+   "name": "majin_buu_labios"
+  },
+  "132": {
+   "cat": "personajes",
+   "name": "majin_buu_anim_1"
+  },
+  "133": {
+   "cat": "personajes",
+   "name": "super_buu_bu"
+  },
+  "134": {
+   "cat": "personajes",
+   "name": "super_buu_bu_alt"
+  },
+  "135": {
+   "cat": "personajes",
+   "name": "super_buu_camara"
+  },
+  "136": {
+   "cat": "personajes",
+   "name": "super_buu_labios"
+  },
+  "137": {
+   "cat": "personajes",
+   "name": "buu_anim_compartida_137"
+  },
+  "138": {
+   "cat": "personajes",
+   "name": "buu_anim_compartida_138"
+  },
+  "139": {
+   "cat": "personajes",
+   "name": "buu_anim_compartida_139"
+  },
+  "140": {
+   "cat": "personajes",
+   "name": "buu_anim_compartida_140"
+  },
+  "141": {
+   "cat": "personajes",
+   "name": "kid_buu"
+  },
+  "142": {
+   "cat": "personajes",
+   "name": "kid_buu_alt"
+  },
+  "143": {
+   "cat": "personajes",
+   "name": "kid_buu_camara"
+  },
+  "144": {
+   "cat": "personajes",
+   "name": "kid_buu_labios"
+  },
+  "145": {
+   "cat": "personajes",
+   "name": "kid_buu_anim_1"
+  },
+  "146": {
+   "cat": "personajes",
+   "name": "cell_1"
+  },
+  "147": {
+   "cat": "personajes",
+   "name": "cell_2"
+  },
+  "148": {
+   "cat": "personajes",
+   "name": "cell_3"
+  },
+  "149": {
+   "cat": "personajes",
+   "name": "cell_1_alt"
+  },
+  "150": {
+   "cat": "personajes",
+   "name": "cell_2_alt"
+  },
+  "151": {
+   "cat": "personajes",
+   "name": "cell_3_alt"
+  },
+  "152": {
+   "cat": "personajes",
+   "name": "cell_camara"
+  },
+  "153": {
+   "cat": "personajes",
+   "name": "cell_labios"
+  },
+  "154": {
+   "cat": "personajes",
+   "name": "cell_labios_2"
+  },
+  "155": {
+   "cat": "personajes",
+   "name": "cell_labios_3"
+  },
+  "156": {
+   "cat": "personajes",
+   "name": "cell_anim_1"
+  },
+  "157": {
+   "cat": "personajes",
+   "name": "cell_anim_2"
+  },
+  "158": {
+   "cat": "personajes",
+   "name": "cell_anim_3"
+  },
+  "159": {
+   "cat": "personajes",
+   "name": "cell_anim_4"
+  },
+  "160": {
+   "cat": "personajes",
+   "name": "cell_jr"
+  },
+  "161": {
+   "cat": "personajes",
+   "name": "cell_jr_alt"
+  },
+  "162": {
+   "cat": "personajes",
+   "name": "cell_jr_camara"
+  },
+  "163": {
+   "cat": "personajes",
+   "name": "cell_jr_labios"
+  },
+  "164": {
+   "cat": "personajes",
+   "name": "cell_jr_anim_1"
+  },
+  "165": {
+   "cat": "personajes",
+   "name": "cell_jr_anim_compartida_165"
+  },
+  "166": {
+   "cat": "personajes",
+   "name": "cooler"
+  },
+  "167": {
+   "cat": "personajes",
+   "name": "cooler_final_form"
+  },
+  "168": {
+   "cat": "personajes",
+   "name": "cooler_metal"
+  },
+  "169": {
+   "cat": "personajes",
+   "name": "cooler_alt"
+  },
+  "170": {
+   "cat": "personajes",
+   "name": "cooler_final_form_alt"
+  },
+  "171": {
+   "cat": "personajes",
+   "name": "cooler_metal_alt"
+  },
+  "172": {
+   "cat": "personajes",
+   "name": "cooler_camara"
+  },
+  "173": {
+   "cat": "personajes",
+   "name": "cooler_labios"
+  },
+  "174": {
+   "cat": "personajes",
+   "name": "cooler_anim_1"
+  },
+  "175": {
+   "cat": "personajes",
+   "name": "cooler_anim_2"
+  },
+  "176": {
+   "cat": "personajes",
+   "name": "dabura_darbula"
+  },
+  "177": {
+   "cat": "personajes",
+   "name": "dabura_darbula_alt"
+  },
+  "178": {
+   "cat": "personajes",
+   "name": "dabura_camara"
+  },
+  "179": {
+   "cat": "personajes",
+   "name": "dabura_labios"
+  },
+  "180": {
+   "cat": "personajes",
+   "name": "dabura_anim_1"
+  },
+  "181": {
+   "cat": "personajes",
+   "name": "freeza_1"
+  },
+  "182": {
+   "cat": "personajes",
+   "name": "freeza_2"
+  },
+  "183": {
+   "cat": "personajes",
+   "name": "freeza_3"
+  },
+  "184": {
+   "cat": "personajes",
+   "name": "freeza_freezer_4"
+  },
+  "185": {
+   "cat": "personajes",
+   "name": "freeza_freezer_4_100"
+  },
+  "186": {
+   "cat": "personajes",
+   "name": "freeza_freezabot"
+  },
+  "187": {
+   "cat": "personajes",
+   "name": "freeza_1_alt"
+  },
+  "188": {
+   "cat": "personajes",
+   "name": "freeza_2_alt"
+  },
+  "189": {
+   "cat": "personajes",
+   "name": "freeza_3_alt"
+  },
+  "190": {
+   "cat": "personajes",
+   "name": "freeza_freezer_4_alt"
+  },
+  "191": {
+   "cat": "personajes",
+   "name": "freeza_freezer_4_100_alt"
+  },
+  "192": {
+   "cat": "personajes",
+   "name": "freeza_freezabot_alt"
+  },
+  "193": {
+   "cat": "personajes",
+   "name": "freeza_freezer_1_con_mini_navicella"
+  },
+  "194": {
+   "cat": "personajes",
+   "name": "freeza_camara"
+  },
+  "195": {
+   "cat": "personajes",
+   "name": "freeza_labios"
+  },
+  "196": {
+   "cat": "personajes",
+   "name": "freeza_labios_2"
+  },
+  "197": {
+   "cat": "personajes",
+   "name": "freeza_labios_3"
+  },
+  "198": {
+   "cat": "personajes",
+   "name": "freeza_labios_4"
+  },
+  "199": {
+   "cat": "personajes",
+   "name": "freeza_anim_1"
+  },
+  "200": {
+   "cat": "personajes",
+   "name": "freeza_anim_2"
+  },
+  "201": {
+   "cat": "personajes",
+   "name": "freeza_anim_3"
+  },
+  "202": {
+   "cat": "personajes",
+   "name": "freeza_anim_4"
+  },
+  "203": {
+   "cat": "personajes",
+   "name": "freeza_anim_5"
+  },
+  "204": {
+   "cat": "personajes",
+   "name": "freeza_anim_6"
+  },
+  "205": {
+   "cat": "personajes",
+   "name": "freeza_anim_7"
+  },
+  "206": {
+   "cat": "personajes",
+   "name": "freeza_anim_8"
+  },
+  "207": {
+   "cat": "personajes",
+   "name": "freeza_anim_9"
+  },
+  "208": {
+   "cat": "personajes",
+   "name": "freeza_anim_10"
+  },
+  "209": {
+   "cat": "personajes",
+   "name": "freeza_anim_11"
+  },
+  "210": {
+   "cat": "personajes",
+   "name": "freeza_anim_12"
+  },
+  "211": {
+   "cat": "personajes",
+   "name": "freeza_anim_13"
+  },
+  "212": {
+   "cat": "personajes",
+   "name": "freeza_anim_14"
+  },
+  "213": {
+   "cat": "personajes",
+   "name": "freeza_anim_15"
+  },
+  "214": {
+   "cat": "personajes",
+   "name": "veku_gogeta_grasso"
+  },
+  "215": {
+   "cat": "personajes",
+   "name": "veku_gogeta_grasso_alt"
+  },
+  "216": {
+   "cat": "personajes",
+   "name": "veku_labios"
+  },
+  "217": {
+   "cat": "personajes",
+   "name": "gogeta_ss"
+  },
+  "218": {
+   "cat": "personajes",
+   "name": "gogeta_ss4"
+  },
+  "219": {
+   "cat": "personajes",
+   "name": "gogeta_ss_alt"
+  },
+  "220": {
+   "cat": "personajes",
+   "name": "gogeta_ss4_alt"
+  },
+  "221": {
+   "cat": "personajes",
+   "name": "veku_labios_2"
+  },
+  "222": {
+   "cat": "personajes",
+   "name": "veku_camara"
+  },
+  "223": {
+   "cat": "personajes",
+   "name": "veku_anim_1"
+  },
+  "224": {
+   "cat": "personajes",
+   "name": "veku_anim_2"
+  },
+  "225": {
+   "cat": "personajes",
+   "name": "gohan_adulto"
+  },
+  "226": {
+   "cat": "personajes",
+   "name": "gohan_adulto_ss"
+  },
+  "227": {
+   "cat": "personajes",
+   "name": "gohan_adulto_mystic"
+  },
+  "228": {
+   "cat": "personajes",
+   "name": "gohan_adulto_228"
+  },
+  "229": {
+   "cat": "personajes",
+   "name": "gohan_adulto_ss_229"
+  },
+  "230": {
+   "cat": "personajes",
+   "name": "gohan_adulto_mystic_230"
+  },
+  "231": {
+   "cat": "personajes",
+   "name": "gohan_adulto_camara"
+  },
+  "232": {
+   "cat": "personajes",
+   "name": "gohan_adulto_labios"
+  },
+  "233": {
+   "cat": "personajes",
+   "name": "gohan_adulto_anim_1"
+  },
+  "234": {
+   "cat": "personajes",
+   "name": "gohan_adulto_anim_2"
+  },
+  "235": {
+   "cat": "personajes",
+   "name": "gohan_saga_cell"
+  },
+  "236": {
+   "cat": "personajes",
+   "name": "gohan_saga_cell_ss"
+  },
+  "237": {
+   "cat": "personajes",
+   "name": "gohan_saga_cell_ssj2_mistico"
+  },
+  "238": {
+   "cat": "personajes",
+   "name": "gohan_saga_cell_saiyan_armour"
+  },
+  "239": {
+   "cat": "personajes",
+   "name": "gohan_saga_cell_saiyan_armour_ss"
+  },
+  "240": {
+   "cat": "personajes",
+   "name": "gohan_saga_cell_saiyan_armour_ss2"
+  },
+  "241": {
+   "cat": "personajes",
+   "name": "gohan_saga_cell_camara"
+  },
+  "242": {
+   "cat": "personajes",
+   "name": "gohan_saga_cell_labios"
+  },
+  "243": {
+   "cat": "personajes",
+   "name": "gohan_saga_cell_labios_2"
+  },
+  "244": {
+   "cat": "personajes",
+   "name": "gohan_saga_cell_anim_1"
+  },
+  "245": {
+   "cat": "personajes",
+   "name": "gohan_saga_cell_anim_2"
+  },
+  "246": {
+   "cat": "personajes",
+   "name": "gohan_nino_bambino"
+  },
+  "247": {
+   "cat": "personajes",
+   "name": "gohan_nino_namek_sayan_armour"
+  },
+  "248": {
+   "cat": "personajes",
+   "name": "gohan_nino_namek"
+  },
+  "249": {
+   "cat": "personajes",
+   "name": "gohan_nino_camara"
+  },
+  "250": {
+   "cat": "personajes",
+   "name": "gohan_nino_labios"
+  },
+  "251": {
+   "cat": "personajes",
+   "name": "gohan_nino_anim_1"
+  },
+  "252": {
+   "cat": "personajes",
+   "name": "goku_nino_bambino"
+  },
+  "253": {
+   "cat": "personajes",
+   "name": "goku_nino_bambino_alt"
+  },
+  "254": {
+   "cat": "personajes",
+   "name": "goku_nino_camara"
+  },
+  "255": {
+   "cat": "personajes",
+   "name": "goku_nino_labios"
+  },
+  "256": {
+   "cat": "personajes",
+   "name": "goku_nino_anim_1"
+  },
+  "257": {
+   "cat": "personajes",
+   "name": "ginyu_scouter"
+  },
+  "258": {
+   "cat": "personajes",
+   "name": "ginyu"
+  },
+  "259": {
+   "cat": "personajes",
+   "name": "ginyu_alt"
+  },
+  "260": {
+   "cat": "personajes",
+   "name": "ginyu_camara"
+  },
+  "261": {
+   "cat": "personajes",
+   "name": "ginyu_labios"
+  },
+  "262": {
+   "cat": "personajes",
+   "name": "ginyu_anim_1"
+  },
+  "263": {
+   "cat": "personajes",
+   "name": "goku_scouter"
+  },
+  "264": {
+   "cat": "personajes",
+   "name": "goku_norm"
+  },
+  "265": {
+   "cat": "personajes",
+   "name": "goku_kaiohken"
+  },
+  "266": {
+   "cat": "personajes",
+   "name": "goku_ss"
+  },
+  "267": {
+   "cat": "personajes",
+   "name": "goku_ss2"
+  },
+  "268": {
+   "cat": "personajes",
+   "name": "goku_ss3"
+  },
+  "269": {
+   "cat": "personajes",
+   "name": "goku_ss4"
+  },
+  "270": {
+   "cat": "personajes",
+   "name": "goku_norm_alt"
+  },
+  "271": {
+   "cat": "personajes",
+   "name": "goku_kaiohken_alt"
+  },
+  "272": {
+   "cat": "personajes",
+   "name": "goku_alt_ss"
+  },
+  "273": {
+   "cat": "personajes",
+   "name": "goku_alt_ss2"
+  },
+  "274": {
+   "cat": "personajes",
+   "name": "goku_alt_ss3"
+  },
+  "275": {
+   "cat": "personajes",
+   "name": "goku_alt_ss4"
+  },
+  "276": {
+   "cat": "personajes",
+   "name": "goku_vestito_rotto"
+  },
+  "277": {
+   "cat": "personajes",
+   "name": "goku_vestito_rotto_norm_kaioken"
+  },
+  "278": {
+   "cat": "personajes",
+   "name": "goku_vestito_rotto_ss"
+  },
+  "279": {
+   "cat": "personajes",
+   "name": "goku_vestito_rotto_ss2"
+  },
+  "280": {
+   "cat": "personajes",
+   "name": "goku_vestito_rotto_ss3"
+  },
+  "281": {
+   "cat": "personajes",
+   "name": "goku_modelo_18"
+  },
+  "282": {
+   "cat": "personajes",
+   "name": "goku_angelic"
+  },
+  "283": {
+   "cat": "personajes",
+   "name": "goku_angelic_kaioken"
+  },
+  "284": {
+   "cat": "personajes",
+   "name": "goku_angelic_ss"
+  },
+  "285": {
+   "cat": "personajes",
+   "name": "goku_angelic_ss2"
+  },
+  "286": {
+   "cat": "personajes",
+   "name": "goku_angelic_ss3"
+  },
+  "287": {
+   "cat": "personajes",
+   "name": "goku_angelic_ss4"
+  },
+  "288": {
+   "cat": "personajes",
+   "name": "goku_camara"
+  },
+  "289": {
+   "cat": "personajes",
+   "name": "goku_labios"
+  },
+  "290": {
+   "cat": "personajes",
+   "name": "goku_anim_1"
+  },
+  "291": {
+   "cat": "personajes",
+   "name": "goku_anim_2"
+  },
+  "292": {
+   "cat": "personajes",
+   "name": "goku_anim_3"
+  },
+  "293": {
+   "cat": "personajes",
+   "name": "great_saiyaman"
+  },
+  "294": {
+   "cat": "personajes",
+   "name": "great_saiyaman_alt"
+  },
+  "295": {
+   "cat": "personajes",
+   "name": "great_saiyaman_camara"
+  },
+  "296": {
+   "cat": "personajes",
+   "name": "great_saiyaman_labios"
+  },
+  "297": {
+   "cat": "personajes",
+   "name": "great_saiyaman_anim_1"
+  },
+  "298": {
+   "cat": "personajes",
+   "name": "goten"
+  },
+  "299": {
+   "cat": "personajes",
+   "name": "goten_ss"
+  },
+  "300": {
+   "cat": "personajes",
+   "name": "goten_alt"
+  },
+  "301": {
+   "cat": "personajes",
+   "name": "goten_alt_ss"
+  },
+  "302": {
+   "cat": "personajes",
+   "name": "goten_camara"
+  },
+  "303": {
+   "cat": "personajes",
+   "name": "goten_labios"
+  },
+  "304": {
+   "cat": "personajes",
+   "name": "goten_anim_1"
+  },
+  "305": {
+   "cat": "personajes",
+   "name": "gotenks_normale"
+  },
+  "306": {
+   "cat": "personajes",
+   "name": "gotenks_ss"
+  },
+  "307": {
+   "cat": "personajes",
+   "name": "gotenks_ss3"
+  },
+  "308": {
+   "cat": "personajes",
+   "name": "gotenks_normale_alt"
+  },
+  "309": {
+   "cat": "personajes",
+   "name": "gotenks_ss_alt"
+  },
+  "310": {
+   "cat": "personajes",
+   "name": "gotenks_ss3_alt"
+  },
+  "311": {
+   "cat": "personajes",
+   "name": "gotenks_labios"
+  },
+  "312": {
+   "cat": "personajes",
+   "name": "ghost_gotenks"
+  },
+  "313": {
+   "cat": "personajes",
+   "name": "ghost_gotenks_ss3"
+  },
+  "314": {
+   "cat": "personajes",
+   "name": "fat_gotenks"
+  },
+  "315": {
+   "cat": "personajes",
+   "name": "fat_gotenks_alt"
+  },
+  "316": {
+   "cat": "personajes",
+   "name": "gotenks_labios_2"
+  },
+  "317": {
+   "cat": "personajes",
+   "name": "gotenks_camara"
+  },
+  "318": {
+   "cat": "personajes",
+   "name": "gotenks_anim_1"
+  },
+  "319": {
+   "cat": "personajes",
+   "name": "gotenks_anim_2"
+  },
+  "320": {
+   "cat": "personajes",
+   "name": "gotenks_anim_3"
+  },
+  "321": {
+   "cat": "personajes",
+   "name": "gotenks_anim_4"
+  },
+  "322": {
+   "cat": "personajes",
+   "name": "gotenks_anim_5"
+  },
+  "323": {
+   "cat": "personajes",
+   "name": "gotenks_anim_6"
+  },
+  "324": {
+   "cat": "personajes",
+   "name": "gotenks_anim_7"
+  },
+  "325": {
+   "cat": "personajes",
+   "name": "kibito_kibith"
+  },
+  "326": {
+   "cat": "personajes",
+   "name": "kibito_labios"
+  },
+  "327": {
+   "cat": "personajes",
+   "name": "krillin_senza_capelli"
+  },
+  "328": {
+   "cat": "personajes",
+   "name": "krillin_capelli"
+  },
+  "329": {
+   "cat": "personajes",
+   "name": "krillin_armour"
+  },
+  "330": {
+   "cat": "personajes",
+   "name": "krillin_camara"
+  },
+  "331": {
+   "cat": "personajes",
+   "name": "krillin_labios"
+  },
+  "332": {
+   "cat": "personajes",
+   "name": "krillin_anim_1"
+  },
+  "333": {
+   "cat": "personajes",
+   "name": "krillin_anim_2"
+  },
+  "334": {
+   "cat": "personajes",
+   "name": "kibito_kai_kaiohkibith"
+  },
+  "335": {
+   "cat": "personajes",
+   "name": "kibito_kai_kaiohkibith_alt"
+  },
+  "336": {
+   "cat": "personajes",
+   "name": "kibito_kai_camara"
+  },
+  "337": {
+   "cat": "personajes",
+   "name": "kibito_kai_labios"
+  },
+  "338": {
+   "cat": "personajes",
+   "name": "kibito_kai_anim_1"
+  },
+  "339": {
+   "cat": "personajes",
+   "name": "kaio_shin_kaiohshin"
+  },
+  "340": {
+   "cat": "personajes",
+   "name": "kaio_shin_kaiohshin_alt"
+  },
+  "341": {
+   "cat": "personajes",
+   "name": "kaio_shin_camara"
+  },
+  "342": {
+   "cat": "personajes",
+   "name": "kaio_shin_labios"
+  },
+  "343": {
+   "cat": "personajes",
+   "name": "kaio_shin_anim_1"
+  },
+  "344": {
+   "cat": "personajes",
+   "name": "nappa_scouter"
+  },
+  "345": {
+   "cat": "personajes",
+   "name": "nappa"
+  },
+  "346": {
+   "cat": "personajes",
+   "name": "nappa_alt"
+  },
+  "347": {
+   "cat": "personajes",
+   "name": "nappa_camara"
+  },
+  "348": {
+   "cat": "personajes",
+   "name": "nappa_labios"
+  },
+  "349": {
+   "cat": "personajes",
+   "name": "nappa_anim_1"
+  },
+  "350": {
+   "cat": "personajes",
+   "name": "piccolo"
+  },
+  "351": {
+   "cat": "personajes",
+   "name": "piccolo_nail"
+  },
+  "352": {
+   "cat": "personajes",
+   "name": "piccolo_long_cape"
+  },
+  "353": {
+   "cat": "personajes",
+   "name": "piccolo_daimao"
+  },
+  "354": {
+   "cat": "personajes",
+   "name": "piccolo_camara"
+  },
+  "355": {
+   "cat": "personajes",
+   "name": "piccolo_labios"
+  },
+  "356": {
+   "cat": "personajes",
+   "name": "piccolo_labios_2"
+  },
+  "357": {
+   "cat": "personajes",
+   "name": "piccolo_scouter"
+  },
+  "358": {
+   "cat": "personajes",
+   "name": "piccolo_anim_1"
+  },
+  "360": {
+   "cat": "personajes",
+   "name": "raditz"
+  },
+  "361": {
+   "cat": "personajes",
+   "name": "raditz_alt"
+  },
+  "362": {
+   "cat": "personajes",
+   "name": "raditz_camara"
+  },
+  "363": {
+   "cat": "personajes",
+   "name": "raditz_labios"
+  },
+  "364": {
+   "cat": "personajes",
+   "name": "raditz_anim_1"
+  },
+  "366": {
+   "cat": "personajes",
+   "name": "recoome_modelo_1"
+  },
+  "367": {
+   "cat": "personajes",
+   "name": "recoome_modelo_2"
+  },
+  "368": {
+   "cat": "personajes",
+   "name": "recoome_camara"
+  },
+  "369": {
+   "cat": "personajes",
+   "name": "recoome_labios"
+  },
+  "370": {
+   "cat": "personajes",
+   "name": "recoome_anim_1"
+  },
+  "371": {
+   "cat": "personajes",
+   "name": "saibaman_modelo_1"
+  },
+  "372": {
+   "cat": "personajes",
+   "name": "saibaman_modelo_2"
+  },
+  "373": {
+   "cat": "personajes",
+   "name": "saibaman_camara"
+  },
+  "374": {
+   "cat": "personajes",
+   "name": "saibaman_labios"
+  },
+  "375": {
+   "cat": "personajes",
+   "name": "saibaman_anim_1"
+  },
+  "376": {
+   "cat": "personajes",
+   "name": "mr_satan_pelo"
+  },
+  "377": {
+   "cat": "personajes",
+   "name": "mr_satan"
+  },
+  "378": {
+   "cat": "personajes",
+   "name": "mr_satan_alt"
+  },
+  "379": {
+   "cat": "personajes",
+   "name": "mr_satan_camara"
+  },
+  "380": {
+   "cat": "personajes",
+   "name": "mr_satan_labios"
+  },
+  "381": {
+   "cat": "personajes",
+   "name": "mr_satan_anim_1"
+  },
+  "382": {
+   "cat": "personajes",
+   "name": "mr_satan_anim_2"
+  },
+  "383": {
+   "cat": "personajes",
+   "name": "trunks_nino_bambino"
+  },
+  "384": {
+   "cat": "personajes",
+   "name": "trunks_nino_bambino_ss"
+  },
+  "385": {
+   "cat": "personajes",
+   "name": "trunks_nino_bambino_alt"
+  },
+  "386": {
+   "cat": "personajes",
+   "name": "trunks_nino_bambino_alt_ss"
+  },
+  "387": {
+   "cat": "personajes",
+   "name": "trunks_nino_camara"
+  },
+  "388": {
+   "cat": "personajes",
+   "name": "trunks_nino_labios"
+  },
+  "389": {
+   "cat": "personajes",
+   "name": "trunks_nino_anim_1"
+  },
+  "390": {
+   "cat": "personajes",
+   "name": "trunks_futuro_future_sword"
+  },
+  "391": {
+   "cat": "personajes",
+   "name": "trunks_futuro_future_sword_ss"
+  },
+  "392": {
+   "cat": "personajes",
+   "name": "trunks_futuro_future_sword_alt"
+  },
+  "393": {
+   "cat": "personajes",
+   "name": "trunks_futuro_future_sword_ss_alt"
+  },
+  "394": {
+   "cat": "personajes",
+   "name": "trunks_futuro_future_armour"
+  },
+  "395": {
+   "cat": "personajes",
+   "name": "trunks_futuro_future_armour_ss"
+  },
+  "396": {
+   "cat": "personajes",
+   "name": "trunks_futuro_camara"
+  },
+  "397": {
+   "cat": "personajes",
+   "name": "trunks_futuro_labios"
+  },
+  "398": {
+   "cat": "personajes",
+   "name": "trunks_futuro_anim_1"
+  },
+  "399": {
+   "cat": "personajes",
+   "name": "trunks_futuro_anim_2"
+  },
+  "400": {
+   "cat": "personajes",
+   "name": "tenshinhan"
+  },
+  "401": {
+   "cat": "personajes",
+   "name": "tenshinhan_alt"
+  },
+  "402": {
+   "cat": "personajes",
+   "name": "tenshinhan_camara"
+  },
+  "403": {
+   "cat": "personajes",
+   "name": "tenshinhan_labios"
+  },
+  "404": {
+   "cat": "personajes",
+   "name": "tenshinhan_anim_1"
+  },
+  "405": {
+   "cat": "personajes",
+   "name": "uub"
+  },
+  "406": {
+   "cat": "personajes",
+   "name": "uub_alt"
+  },
+  "407": {
+   "cat": "personajes",
+   "name": "uub_camara"
+  },
+  "408": {
+   "cat": "personajes",
+   "name": "uub_labios"
+  },
+  "409": {
+   "cat": "personajes",
+   "name": "uub_anim_1"
+  },
+  "410": {
+   "cat": "personajes",
+   "name": "videl"
+  },
+  "411": {
+   "cat": "personajes",
+   "name": "videl_alt"
+  },
+  "412": {
+   "cat": "personajes",
+   "name": "videl_camara"
+  },
+  "413": {
+   "cat": "personajes",
+   "name": "videl_labios"
+  },
+  "414": {
+   "cat": "personajes",
+   "name": "videl_anim_1"
+  },
+  "416": {
+   "cat": "personajes",
+   "name": "vegeta_no_armour_normal_ss"
+  },
+  "417": {
+   "cat": "personajes",
+   "name": "vegeta_no_armour_ss"
+  },
+  "418": {
+   "cat": "personajes",
+   "name": "vegeta_ss4"
+  },
+  "419": {
+   "cat": "personajes",
+   "name": "vegeta_majin"
+  },
+  "420": {
+   "cat": "personajes",
+   "name": "vegeta_androids_saga_armour_ss"
+  },
+  "421": {
+   "cat": "personajes",
+   "name": "vegeta_androids_saga_armour_ss_421"
+  },
+  "422": {
+   "cat": "personajes",
+   "name": "vegeta_ss4_alt"
+  },
+  "423": {
+   "cat": "personajes",
+   "name": "vegeta_majin_androids_armour"
+  },
+  "424": {
+   "cat": "personajes",
+   "name": "vegeta_sayan_saga_armour"
+  },
+  "425": {
+   "cat": "personajes",
+   "name": "vegeta_sayan_saga_armour_ss"
+  },
+  "426": {
+   "cat": "personajes",
+   "name": "vegeta_majin_sayan_saga_armour"
+  },
+  "427": {
+   "cat": "personajes",
+   "name": "vegeta_namek_armour"
+  },
+  "428": {
+   "cat": "personajes",
+   "name": "vegeta_namek_armour_ss"
+  },
+  "429": {
+   "cat": "personajes",
+   "name": "vegeta_majin_namek_armour"
+  },
+  "430": {
+   "cat": "personajes",
+   "name": "vegeta_camara"
+  },
+  "431": {
+   "cat": "personajes",
+   "name": "vegeta_labios"
+  },
+  "432": {
+   "cat": "personajes",
+   "name": "vegeta_labios_2"
+  },
+  "433": {
+   "cat": "personajes",
+   "name": "vegeta_anim_1"
+  },
+  "434": {
+   "cat": "personajes",
+   "name": "vegeta_anim_2"
+  },
+  "435": {
+   "cat": "personajes",
+   "name": "vegeta_anim_3"
+  },
+  "437": {
+   "cat": "personajes",
+   "name": "vegeta_anim_4"
+  },
+  "438": {
+   "cat": "personajes",
+   "name": "vegito_vegetto"
+  },
+  "439": {
+   "cat": "personajes",
+   "name": "vegito_vegetto_ss"
+  },
+  "440": {
+   "cat": "personajes",
+   "name": "vegito_vegetto_alt"
+  },
+  "441": {
+   "cat": "personajes",
+   "name": "vegito_vegetto_alt_ss"
+  },
+  "442": {
+   "cat": "personajes",
+   "name": "vegito_labios"
+  },
+  "443": {
+   "cat": "personajes",
+   "name": "vegito_camara"
+  },
+  "444": {
+   "cat": "personajes",
+   "name": "vegito_anim_1"
+  },
+  "445": {
+   "cat": "personajes",
+   "name": "yamcha_capelli_corti"
+  },
+  "446": {
+   "cat": "personajes",
+   "name": "yamcha_vestiti_gialli"
+  },
+  "447": {
+   "cat": "personajes",
+   "name": "yamcha_capelli_lunghi"
+  },
+  "448": {
+   "cat": "personajes",
+   "name": "yamcha_camara"
+  },
+  "449": {
+   "cat": "personajes",
+   "name": "yamcha_labios"
+  },
+  "450": {
+   "cat": "personajes",
+   "name": "yamcha_anim_1"
+  },
+  "452": {
+   "cat": "menus",
+   "name": "cara_hud_android_16"
+  },
+  "453": {
+   "cat": "menus",
+   "name": "cara_hud_android_17"
+  },
+  "454": {
+   "cat": "menus",
+   "name": "cara_hud_android_18"
+  },
+  "455": {
+   "cat": "menus",
+   "name": "cara_hud_syn_shenron"
+  },
+  "456": {
+   "cat": "menus",
+   "name": "cara_hud_dr_gero"
+  },
+  "457": {
+   "cat": "menus",
+   "name": "cara_hud_bardock"
+  },
+  "459": {
+   "cat": "menus",
+   "name": "cara_hud_broly"
+  },
+  "460": {
+   "cat": "menus",
+   "name": "cara_hud_buu_gordo"
+  },
+  "461": {
+   "cat": "menus",
+   "name": "cara_hud_super_buu"
+  },
+  "462": {
+   "cat": "menus",
+   "name": "cara_hud_kid_buu"
+  },
+  "463": {
+   "cat": "menus",
+   "name": "cara_hud_cell"
+  },
+  "464": {
+   "cat": "menus",
+   "name": "cara_hud_cell_jr"
+  },
+  "465": {
+   "cat": "menus",
+   "name": "cara_hud_cooler"
+  },
+  "466": {
+   "cat": "menus",
+   "name": "cara_hud_dabura"
+  },
+  "468": {
+   "cat": "menus",
+   "name": "cara_hud_freeza"
+  },
+  "471": {
+   "cat": "menus",
+   "name": "cara_hud_gohan_adulto"
+  },
+  "472": {
+   "cat": "menus",
+   "name": "cara_hud_gohan_saga_cell"
+  },
+  "473": {
+   "cat": "menus",
+   "name": "cara_hud_gohan_nino"
+  },
+  "474": {
+   "cat": "menus",
+   "name": "cara_hud_goku_nino"
+  },
+  "475": {
+   "cat": "menus",
+   "name": "cara_hud_ginyu"
+  },
+  "476": {
+   "cat": "menus",
+   "name": "cara_hud_goku"
+  },
+  "478": {
+   "cat": "menus",
+   "name": "cara_hud_great_saiyaman"
+  },
+  "480": {
+   "cat": "menus",
+   "name": "cara_hud_goten"
+  },
+  "481": {
+   "cat": "efectos",
+   "name": "textura_grande_481"
+  },
+  "482": {
+   "cat": "menus",
+   "name": "cara_hud_krillin"
+  },
+  "485": {
+   "cat": "menus",
+   "name": "cara_hud_kaio_shin"
+  },
+  "486": {
+   "cat": "menus",
+   "name": "cara_hud_nappa"
+  },
+  "487": {
+   "cat": "menus",
+   "name": "cara_hud_piccolo"
+  },
+  "489": {
+   "cat": "menus",
+   "name": "cara_hud_raditz"
+  },
+  "490": {
+   "cat": "menus",
+   "name": "cara_hud_recoome"
+  },
+  "491": {
+   "cat": "menus",
+   "name": "cara_hud_saibaman"
+  },
+  "492": {
+   "cat": "menus",
+   "name": "cara_hud_mr_satan"
+  },
+  "493": {
+   "cat": "menus",
+   "name": "cara_hud_trunks_nino"
+  },
+  "494": {
+   "cat": "menus",
+   "name": "cara_hud_trunks_futuro"
+  },
+  "496": {
+   "cat": "menus",
+   "name": "cara_hud_tenshinhan"
+  },
+  "497": {
+   "cat": "menus",
+   "name": "cara_hud_uub"
+  },
+  "498": {
+   "cat": "menus",
+   "name": "cara_hud_videl"
+  },
+  "500": {
+   "cat": "menus",
+   "name": "cara_hud_vegeta"
+  },
+  "502": {
+   "cat": "menus",
+   "name": "cara_hud_yamcha"
+  },
+  "504": {
+   "cat": "efectos",
+   "name": "efectos_combate"
+  },
+  "505": {
+   "cat": "efectos",
+   "name": "efecto_android_16"
+  },
+  "506": {
+   "cat": "efectos",
+   "name": "efecto_android_17"
+  },
+  "507": {
+   "cat": "efectos",
+   "name": "efecto_android_18"
+  },
+  "508": {
+   "cat": "efectos",
+   "name": "efecto_508"
+  },
+  "509": {
+   "cat": "efectos",
+   "name": "efecto_android_20"
+  },
+  "510": {
+   "cat": "efectos",
+   "name": "efecto_bardock"
+  },
+  "511": {
+   "cat": "efectos",
+   "name": "efecto_511"
+  },
+  "512": {
+   "cat": "efectos",
+   "name": "efecto_512"
+  },
+  "513": {
+   "cat": "efectos",
+   "name": "efecto_513"
+  },
+  "514": {
+   "cat": "efectos",
+   "name": "efecto_broly"
+  },
+  "515": {
+   "cat": "efectos",
+   "name": "efecto_515"
+  },
+  "516": {
+   "cat": "efectos",
+   "name": "efecto_majin_buu"
+  },
+  "517": {
+   "cat": "efectos",
+   "name": "efecto_517"
+  },
+  "518": {
+   "cat": "efectos",
+   "name": "efecto_cell"
+  },
+  "519": {
+   "cat": "efectos",
+   "name": "efecto_cell_jr"
+  },
+  "520": {
+   "cat": "efectos",
+   "name": "efecto_520"
+  },
+  "521": {
+   "cat": "efectos",
+   "name": "efecto_cooler"
+  },
+  "522": {
+   "cat": "efectos",
+   "name": "efecto_cooler_spaceship"
+  },
+  "523": {
+   "cat": "efectos",
+   "name": "efecto_dabura"
+  },
+  "524": {
+   "cat": "efectos",
+   "name": "efecto_freeza"
+  },
+  "525": {
+   "cat": "efectos",
+   "name": "efecto_cooler_spaceship_525"
+  },
+  "526": {
+   "cat": "efectos",
+   "name": "efecto_gogeta"
+  },
+  "527": {
+   "cat": "efectos",
+   "name": "efecto_gogeta_527"
+  },
+  "528": {
+   "cat": "efectos",
+   "name": "efecto_gohan"
+  },
+  "529": {
+   "cat": "efectos",
+   "name": "efecto_gohan_529"
+  },
+  "530": {
+   "cat": "efectos",
+   "name": "efecto_gohan_kid"
+  },
+  "531": {
+   "cat": "efectos",
+   "name": "efecto_goku"
+  },
+  "532": {
+   "cat": "efectos",
+   "name": "efecto_ginyu"
+  },
+  "533": {
+   "cat": "efectos",
+   "name": "efecto_goku_533"
+  },
+  "534": {
+   "cat": "efectos",
+   "name": "efecto_golden_dragon"
+  },
+  "535": {
+   "cat": "efectos",
+   "name": "efecto_great_saiyaman"
+  },
+  "536": {
+   "cat": "efectos",
+   "name": "efecto_goten"
+  },
+  "537": {
+   "cat": "efectos",
+   "name": "efecto_gotenks"
+  },
+  "538": {
+   "cat": "efectos",
+   "name": "efecto_538"
+  },
+  "539": {
+   "cat": "efectos",
+   "name": "efecto_crilin"
+  },
+  "540": {
+   "cat": "efectos",
+   "name": "efecto_540"
+  },
+  "541": {
+   "cat": "efectos",
+   "name": "efecto_kos"
+  },
+  "542": {
+   "cat": "efectos",
+   "name": "efecto_nappa"
+  },
+  "543": {
+   "cat": "efectos",
+   "name": "efecto_piccolo"
+  },
+  "544": {
+   "cat": "efectos",
+   "name": "efecto_raditz"
+  },
+  "545": {
+   "cat": "efectos",
+   "name": "efecto_recoome"
+  },
+  "546": {
+   "cat": "efectos",
+   "name": "efecto_saibaman"
+  },
+  "547": {
+   "cat": "efectos",
+   "name": "efecto_mr_satan"
+  },
+  "548": {
+   "cat": "efectos",
+   "name": "efecto_trunks"
+  },
+  "549": {
+   "cat": "efectos",
+   "name": "efecto_trunks_549"
+  },
+  "550": {
+   "cat": "efectos",
+   "name": "efecto_tenshinhan"
+  },
+  "551": {
+   "cat": "efectos",
+   "name": "efecto_uub"
+  },
+  "552": {
+   "cat": "efectos",
+   "name": "efecto_videl"
+  },
+  "553": {
+   "cat": "efectos",
+   "name": "efecto_vegeta"
+  },
+  "554": {
+   "cat": "efectos",
+   "name": "efecto_vegetto"
+  },
+  "555": {
+   "cat": "efectos",
+   "name": "efecto_yamcha"
+  },
+  "2208": {
+   "cat": "otros",
+   "name": "animacion_2208"
+  },
+  "2209": {
+   "cat": "otros",
+   "name": "animacion_2209"
+  },
+  "3735": {
+   "cat": "escenarios",
+   "name": "escenario_3735"
+  },
+  "3786": {
+   "cat": "escenarios",
+   "name": "escenario_3786"
+  },
+  "3788": {
+   "cat": "escenarios",
+   "name": "escenario_3788"
+  },
+  "3821": {
+   "cat": "escenarios",
+   "name": "escenario_3821"
+  },
+  "3823": {
+   "cat": "escenarios",
+   "name": "escenario_3823"
+  },
+  "3845": {
+   "cat": "escenarios",
+   "name": "escenario_3845"
+  },
+  "3847": {
+   "cat": "escenarios",
+   "name": "escenario_3847"
+  },
+  "3877": {
+   "cat": "otros",
+   "name": "textura_suelta_3877"
+  },
+  "3881": {
+   "cat": "otros",
+   "name": "animacion_comun_3881"
+  },
+  "3884": {
+   "cat": "seleccion",
+   "name": "retrato_android_16_0"
+  },
+  "3885": {
+   "cat": "seleccion",
+   "name": "retrato_android_16_1"
+  },
+  "3886": {
+   "cat": "seleccion",
+   "name": "retrato_android_17_0"
+  },
+  "3887": {
+   "cat": "seleccion",
+   "name": "retrato_android_17_1"
+  },
+  "3888": {
+   "cat": "seleccion",
+   "name": "retrato_android_18_0"
+  },
+  "3889": {
+   "cat": "seleccion",
+   "name": "retrato_android_18_1"
+  },
+  "3890": {
+   "cat": "seleccion",
+   "name": "retrato_syn_shenron_0"
+  },
+  "3891": {
+   "cat": "seleccion",
+   "name": "retrato_syn_shenron_1"
+  },
+  "3892": {
+   "cat": "seleccion",
+   "name": "retrato_dr_gero_0"
+  },
+  "3893": {
+   "cat": "seleccion",
+   "name": "retrato_dr_gero_1"
+  },
+  "3894": {
+   "cat": "seleccion",
+   "name": "retrato_bardock_0"
+  },
+  "3895": {
+   "cat": "seleccion",
+   "name": "retrato_bardock_1"
+  },
+  "3896": {
+   "cat": "seleccion",
+   "name": "retrato_broly_0"
+  },
+  "3897": {
+   "cat": "seleccion",
+   "name": "retrato_broly_1"
+  },
+  "3898": {
+   "cat": "seleccion",
+   "name": "retrato_majin_buu_gordo_0"
+  },
+  "3899": {
+   "cat": "seleccion",
+   "name": "retrato_majin_buu_gordo_1"
+  },
+  "3900": {
+   "cat": "seleccion",
+   "name": "retrato_super_buu_0"
+  },
+  "3901": {
+   "cat": "seleccion",
+   "name": "retrato_super_buu_1"
+  },
+  "3902": {
+   "cat": "seleccion",
+   "name": "retrato_kid_buu_0"
+  },
+  "3903": {
+   "cat": "seleccion",
+   "name": "retrato_kid_buu_1"
+  },
+  "3904": {
+   "cat": "seleccion",
+   "name": "retrato_cell_0"
+  },
+  "3905": {
+   "cat": "seleccion",
+   "name": "retrato_cell_1"
+  },
+  "3906": {
+   "cat": "seleccion",
+   "name": "retrato_cell_jr_0"
+  },
+  "3907": {
+   "cat": "seleccion",
+   "name": "retrato_cell_jr_1"
+  },
+  "3908": {
+   "cat": "seleccion",
+   "name": "retrato_cooler_0"
+  },
+  "3909": {
+   "cat": "seleccion",
+   "name": "retrato_cooler_1"
+  },
+  "3910": {
+   "cat": "seleccion",
+   "name": "retrato_dabura_0"
+  },
+  "3911": {
+   "cat": "seleccion",
+   "name": "retrato_dabura_1"
+  },
+  "3912": {
+   "cat": "seleccion",
+   "name": "retrato_freeza_0"
+  },
+  "3913": {
+   "cat": "seleccion",
+   "name": "retrato_freeza_1"
+  },
+  "3914": {
+   "cat": "seleccion",
+   "name": "retrato_gohan_adulto_0"
+  },
+  "3915": {
+   "cat": "seleccion",
+   "name": "retrato_gohan_adulto_1"
+  },
+  "3916": {
+   "cat": "seleccion",
+   "name": "retrato_gohan_saga_cell_0"
+  },
+  "3917": {
+   "cat": "seleccion",
+   "name": "retrato_gohan_saga_cell_1"
+  },
+  "3918": {
+   "cat": "seleccion",
+   "name": "retrato_gohan_nino_0"
+  },
+  "3919": {
+   "cat": "seleccion",
+   "name": "retrato_gohan_nino_1"
+  },
+  "3920": {
+   "cat": "seleccion",
+   "name": "retrato_goku_nino_0"
+  },
+  "3921": {
+   "cat": "seleccion",
+   "name": "retrato_goku_nino_1"
+  },
+  "3922": {
+   "cat": "seleccion",
+   "name": "retrato_ginyu_0"
+  },
+  "3923": {
+   "cat": "seleccion",
+   "name": "retrato_ginyu_1"
+  },
+  "3924": {
+   "cat": "seleccion",
+   "name": "retrato_goku_0"
+  },
+  "3925": {
+   "cat": "seleccion",
+   "name": "retrato_goku_1"
+  },
+  "3926": {
+   "cat": "seleccion",
+   "name": "retrato_great_saiyaman_0"
+  },
+  "3927": {
+   "cat": "seleccion",
+   "name": "retrato_great_saiyaman_1"
+  },
+  "3928": {
+   "cat": "seleccion",
+   "name": "retrato_goten_0"
+  },
+  "3929": {
+   "cat": "seleccion",
+   "name": "retrato_goten_1"
+  },
+  "3930": {
+   "cat": "seleccion",
+   "name": "retrato_krillin_0"
+  },
+  "3931": {
+   "cat": "seleccion",
+   "name": "retrato_krillin_1"
+  },
+  "3932": {
+   "cat": "seleccion",
+   "name": "retrato_kaio_shin_0"
+  },
+  "3933": {
+   "cat": "seleccion",
+   "name": "retrato_kaio_shin_1"
+  },
+  "3934": {
+   "cat": "seleccion",
+   "name": "retrato_nappa_0"
+  },
+  "3935": {
+   "cat": "seleccion",
+   "name": "retrato_nappa_1"
+  },
+  "3936": {
+   "cat": "seleccion",
+   "name": "retrato_random_0"
+  },
+  "3937": {
+   "cat": "seleccion",
+   "name": "retrato_random_1"
+  },
+  "3938": {
+   "cat": "seleccion",
+   "name": "retrato_piccolo_0"
+  },
+  "3939": {
+   "cat": "seleccion",
+   "name": "retrato_piccolo_1"
+  },
+  "3940": {
+   "cat": "seleccion",
+   "name": "retrato_raditz_0"
+  },
+  "3941": {
+   "cat": "seleccion",
+   "name": "retrato_raditz_1"
+  },
+  "3942": {
+   "cat": "seleccion",
+   "name": "retrato_recoome_0"
+  },
+  "3943": {
+   "cat": "seleccion",
+   "name": "retrato_recoome_1"
+  },
+  "3944": {
+   "cat": "seleccion",
+   "name": "retrato_saibaman_0"
+  },
+  "3945": {
+   "cat": "seleccion",
+   "name": "retrato_saibaman_1"
+  },
+  "3946": {
+   "cat": "seleccion",
+   "name": "retrato_mr_satan_0"
+  },
+  "3947": {
+   "cat": "seleccion",
+   "name": "retrato_mr_satan_1"
+  },
+  "3948": {
+   "cat": "seleccion",
+   "name": "retrato_trunks_nino_0"
+  },
+  "3949": {
+   "cat": "seleccion",
+   "name": "retrato_trunks_nino_1"
+  },
+  "3950": {
+   "cat": "seleccion",
+   "name": "retrato_trunks_futuro_0"
+  },
+  "3951": {
+   "cat": "seleccion",
+   "name": "retrato_trunks_futuro_1"
+  },
+  "3952": {
+   "cat": "seleccion",
+   "name": "retrato_tenshinhan_0"
+  },
+  "3953": {
+   "cat": "seleccion",
+   "name": "retrato_tenshinhan_1"
+  },
+  "3954": {
+   "cat": "seleccion",
+   "name": "retrato_uub_0"
+  },
+  "3955": {
+   "cat": "seleccion",
+   "name": "retrato_uub_1"
+  },
+  "3956": {
+   "cat": "seleccion",
+   "name": "retrato_videl_0"
+  },
+  "3957": {
+   "cat": "seleccion",
+   "name": "retrato_videl_1"
+  },
+  "3958": {
+   "cat": "seleccion",
+   "name": "retrato_vegeta_0"
+  },
+  "3959": {
+   "cat": "seleccion",
+   "name": "retrato_vegeta_1"
+  },
+  "3960": {
+   "cat": "seleccion",
+   "name": "retrato_yamcha_0"
+  },
+  "3961": {
+   "cat": "seleccion",
+   "name": "retrato_yamcha_1"
+  }
+ },
+ "data_usi.afs": {
+  "4": {
+   "cat": "capsulas",
+   "name": "catalogo_capsulas_skc"
+  },
+  "5": {
+   "cat": "capsulas",
+   "name": "ficha_habilidades_android_16"
+  },
+  "6": {
+   "cat": "capsulas",
+   "name": "ficha_habilidades_android_17"
+  },
+  "7": {
+   "cat": "capsulas",
+   "name": "ficha_habilidades_android_18"
+  },
+  "8": {
+   "cat": "capsulas",
+   "name": "ficha_habilidades_syn_shenron"
+  },
+  "9": {
+   "cat": "capsulas",
+   "name": "ficha_habilidades_dr_gero"
+  },
+  "10": {
+   "cat": "capsulas",
+   "name": "ficha_habilidades_bardock"
+  },
+  "11": {
+   "cat": "capsulas",
+   "name": "ficha_habilidades_broly"
+  },
+  "12": {
+   "cat": "capsulas",
+   "name": "ficha_habilidades_buu_gordo"
+  },
+  "13": {
+   "cat": "capsulas",
+   "name": "ficha_habilidades_super_buu"
+  },
+  "14": {
+   "cat": "capsulas",
+   "name": "ficha_habilidades_kid_buu"
+  },
+  "15": {
+   "cat": "capsulas",
+   "name": "ficha_habilidades_cell"
+  },
+  "16": {
+   "cat": "capsulas",
+   "name": "ficha_habilidades_cell_jr"
+  },
+  "18": {
+   "cat": "capsulas",
+   "name": "ficha_habilidades_cooler"
+  },
+  "19": {
+   "cat": "capsulas",
+   "name": "ficha_habilidades_dabura"
+  },
+  "20": {
+   "cat": "capsulas",
+   "name": "ficha_habilidades_freeza"
+  },
+  "25": {
+   "cat": "capsulas",
+   "name": "ficha_habilidades_gohan_adulto"
+  },
+  "26": {
+   "cat": "capsulas",
+   "name": "ficha_habilidades_gohan_saga_cell"
+  },
+  "27": {
+   "cat": "capsulas",
+   "name": "ficha_habilidades_gohan_nino"
+  },
+  "28": {
+   "cat": "capsulas",
+   "name": "ficha_habilidades_goku_nino"
+  },
+  "29": {
+   "cat": "capsulas",
+   "name": "ficha_habilidades_ginyu"
+  },
+  "30": {
+   "cat": "capsulas",
+   "name": "ficha_habilidades_goku"
+  },
+  "31": {
+   "cat": "capsulas",
+   "name": "ficha_habilidades_great_saiyaman"
+  },
+  "32": {
+   "cat": "capsulas",
+   "name": "ficha_habilidades_goten"
+  },
+  "35": {
+   "cat": "capsulas",
+   "name": "ficha_habilidades_krillin"
+  },
+  "37": {
+   "cat": "capsulas",
+   "name": "ficha_habilidades_kaio_shin"
+  },
+  "38": {
+   "cat": "capsulas",
+   "name": "ficha_habilidades_nappa"
+  },
+  "39": {
+   "cat": "capsulas",
+   "name": "ficha_habilidades_piccolo"
+  },
+  "40": {
+   "cat": "capsulas",
+   "name": "ficha_habilidades_raditz"
+  },
+  "41": {
+   "cat": "capsulas",
+   "name": "ficha_habilidades_recoome"
+  },
+  "42": {
+   "cat": "capsulas",
+   "name": "ficha_habilidades_saibaman"
+  },
+  "43": {
+   "cat": "capsulas",
+   "name": "ficha_habilidades_mr_satan"
+  },
+  "44": {
+   "cat": "capsulas",
+   "name": "ficha_habilidades_trunks_nino"
+  },
+  "45": {
+   "cat": "capsulas",
+   "name": "ficha_habilidades_trunks_futuro"
+  },
+  "46": {
+   "cat": "capsulas",
+   "name": "ficha_habilidades_tenshinhan"
+  },
+  "47": {
+   "cat": "capsulas",
+   "name": "ficha_habilidades_uub"
+  },
+  "48": {
+   "cat": "capsulas",
+   "name": "ficha_habilidades_videl"
+  },
+  "49": {
+   "cat": "capsulas",
+   "name": "ficha_habilidades_vegeta"
+  },
+  "52": {
+   "cat": "capsulas",
+   "name": "ficha_habilidades_yamcha"
+  },
+  "622": {
+   "cat": "dragon_universe",
+   "name": "dragon_universe_conditions"
+  },
+  "664": {
+   "cat": "otros",
+   "name": "entrada_0664"
+  },
+  "1878": {
+   "cat": "dragon_universe",
+   "name": "dragon_universe_objects"
+  },
+  "1957": {
+   "cat": "dragon_universe",
+   "name": "dragon_universe_save"
+  },
+  "1958": {
+   "cat": "dragon_universe",
+   "name": "shenron_dialogue"
+  },
+  "1960": {
+   "cat": "menus",
+   "name": "reset"
+  },
+  "1962": {
+   "cat": "otros",
+   "name": "entrada_1962"
+  },
+  "1964": {
+   "cat": "dragon_universe",
+   "name": "mini_map_tierra"
+  },
+  "1966": {
+   "cat": "dragon_universe",
+   "name": "mini_map_namek"
+  },
+  "1968": {
+   "cat": "dragon_universe",
+   "name": "dragon_universe_gui"
+  },
+  "1970": {
+   "cat": "otros",
+   "name": "entrada_1970"
+  },
+  "1972": {
+   "cat": "dragon_universe",
+   "name": "dragon_universe_select_characters"
+  },
+  "1974": {
+   "cat": "dragon_universe",
+   "name": "level_up"
+  },
+  "1976": {
+   "cat": "dragon_universe",
+   "name": "dragon_universe_menu"
+  },
+  "1978": {
+   "cat": "capsulas",
+   "name": "edit_capsules"
+  },
+  "1980": {
+   "cat": "capsulas",
+   "name": "capsule_tutorial"
+  },
+  "1982": {
+   "cat": "capsulas",
+   "name": "capsule_list"
+  },
+  "1983": {
+   "cat": "otros",
+   "name": "entrada_1983"
+  },
+  "1985": {
+   "cat": "otros",
+   "name": "entrada_1985"
+  },
+  "1987": {
+   "cat": "capsulas",
+   "name": "skill_shop"
+  },
+  "1989": {
+   "cat": "capsulas",
+   "name": "skill_trade"
+  },
+  "2016": {
+   "cat": "dragon_universe",
+   "name": "dragon_arena_characters"
+  },
+  "2018": {
+   "cat": "dragon_universe",
+   "name": "dragon_arena_menu"
+  },
+  "2020": {
+   "cat": "dragon_universe",
+   "name": "dragon_universe_dragon_arena_related"
+  },
+  "2022": {
+   "cat": "dragon_universe",
+   "name": "dragon_arena_stage"
+  },
+  "2024": {
+   "cat": "otros",
+   "name": "entrada_2024"
+  },
+  "2027": {
+   "cat": "seleccion",
+   "name": "pantalla_seleccion_personajes"
+  },
+  "2029": {
+   "cat": "seleccion",
+   "name": "pantalla_seleccion_2"
+  },
+  "2031": {
+   "cat": "menus",
+   "name": "password"
+  },
+  "2033": {
+   "cat": "menus",
+   "name": "main_menu"
+  },
+  "2035": {
+   "cat": "otros",
+   "name": "entrada_2035"
+  },
+  "2037": {
+   "cat": "menus",
+   "name": "character_password"
+  },
+  "2039": {
+   "cat": "menus",
+   "name": "training"
+  },
+  "2041": {
+   "cat": "menus",
+   "name": "credits"
+  },
+  "2043": {
+   "cat": "seleccion",
+   "name": "stage_select"
+  },
+  "2045": {
+   "cat": "menus",
+   "name": "start_menu"
+  },
+  "2047": {
+   "cat": "menus",
+   "name": "world_tournament_ingame"
+  },
+  "2049": {
+   "cat": "menus",
+   "name": "world_tournament_menu"
+  },
+  "2051": {
+   "cat": "otros",
+   "name": "entrada_2051"
+  },
+  "2053": {
+   "cat": "menus",
+   "name": "world_tournament_prize"
+  },
+  "2055": {
+   "cat": "menus",
+   "name": "versus_menu"
+  },
+  "2057": {
+   "cat": "seleccion",
+   "name": "select_screen_background"
+  },
+  "2060": {
+   "cat": "seleccion",
+   "name": "language_idioma_selection"
+  },
+  "2062": {
+   "cat": "menus",
+   "name": "options_menu"
+  },
+  "2064": {
+   "cat": "capsulas",
+   "name": "skill_menu"
+  },
+  "2067": {
+   "cat": "capsulas",
+   "name": "you_got_a_skill"
+  },
+  "2658": {
+   "cat": "capsulas",
+   "name": "nombres_capsulas_android_16"
+  },
+  "2659": {
+   "cat": "capsulas",
+   "name": "nombres_capsulas_android_17"
+  },
+  "2660": {
+   "cat": "capsulas",
+   "name": "nombres_capsulas_android_18"
+  },
+  "2661": {
+   "cat": "capsulas",
+   "name": "nombres_capsulas_syn_shenron"
+  },
+  "2662": {
+   "cat": "capsulas",
+   "name": "nombres_capsulas_dr_gero"
+  },
+  "2663": {
+   "cat": "capsulas",
+   "name": "nombres_capsulas_cortos"
+  },
+  "2664": {
+   "cat": "capsulas",
+   "name": "nombres_capsulas_bardock"
+  },
+  "2665": {
+   "cat": "capsulas",
+   "name": "nombres_capsulas_broly"
+  },
+  "2666": {
+   "cat": "capsulas",
+   "name": "nombres_capsulas_buu_gordo"
+  },
+  "2667": {
+   "cat": "capsulas",
+   "name": "nombres_capsulas_super_buu"
+  },
+  "2668": {
+   "cat": "capsulas",
+   "name": "nombres_capsulas_kid_buu"
+  },
+  "2669": {
+   "cat": "capsulas",
+   "name": "nombres_capsulas_cell"
+  },
+  "2670": {
+   "cat": "capsulas",
+   "name": "nombres_capsulas_cell_jr"
+  },
+  "2671": {
+   "cat": "capsulas",
+   "name": "nombres_capsulas_cooler"
+  },
+  "2672": {
+   "cat": "capsulas",
+   "name": "nombres_capsulas_dabura"
+  },
+  "2673": {
+   "cat": "capsulas",
+   "name": "nombres_capsulas_freeza"
+  },
+  "2674": {
+   "cat": "capsulas",
+   "name": "nombres_capsulas_gohan_adulto"
+  },
+  "2675": {
+   "cat": "capsulas",
+   "name": "nombres_capsulas_gohan_saga_cell"
+  },
+  "2676": {
+   "cat": "capsulas",
+   "name": "nombres_capsulas_gohan_nino"
+  },
+  "2677": {
+   "cat": "capsulas",
+   "name": "nombres_capsulas_goku_nino"
+  },
+  "2678": {
+   "cat": "capsulas",
+   "name": "nombres_capsulas_ginyu"
+  },
+  "2679": {
+   "cat": "capsulas",
+   "name": "nombres_capsulas_goku"
+  },
+  "2680": {
+   "cat": "capsulas",
+   "name": "nombres_capsulas_great_saiyaman"
+  },
+  "2681": {
+   "cat": "capsulas",
+   "name": "nombres_capsulas_goten"
+  },
+  "2682": {
+   "cat": "capsulas",
+   "name": "nombres_capsulas_krillin"
+  },
+  "2683": {
+   "cat": "capsulas",
+   "name": "nombres_capsulas_kaio_shin"
+  },
+  "2684": {
+   "cat": "capsulas",
+   "name": "nombres_capsulas_largos"
+  },
+  "2685": {
+   "cat": "capsulas",
+   "name": "nombres_capsulas_nappa"
+  },
+  "2686": {
+   "cat": "capsulas",
+   "name": "nombres_capsulas_piccolo"
+  },
+  "2687": {
+   "cat": "capsulas",
+   "name": "nombres_capsulas_raditz"
+  },
+  "2688": {
+   "cat": "capsulas",
+   "name": "nombres_capsulas_recoome"
+  },
+  "2689": {
+   "cat": "capsulas",
+   "name": "nombres_capsulas_saibaman"
+  },
+  "2690": {
+   "cat": "capsulas",
+   "name": "nombres_capsulas_mr_satan"
+  },
+  "2691": {
+   "cat": "capsulas",
+   "name": "nombres_capsulas_trunks_nino"
+  },
+  "2692": {
+   "cat": "capsulas",
+   "name": "nombres_capsulas_trunks_futuro"
+  },
+  "2693": {
+   "cat": "capsulas",
+   "name": "nombres_capsulas_tenshinhan"
+  },
+  "2694": {
+   "cat": "capsulas",
+   "name": "nombres_capsulas_uub"
+  },
+  "2695": {
+   "cat": "capsulas",
+   "name": "nombres_capsulas_videl"
+  },
+  "2696": {
+   "cat": "capsulas",
+   "name": "nombres_capsulas_vegeta"
+  },
+  "2697": {
+   "cat": "capsulas",
+   "name": "nombres_capsulas_yamcha"
+  },
+  "2698": {
+   "cat": "menus",
+   "name": "sponsors"
+  },
+  "2700": {
+   "cat": "dragon_universe",
+   "name": "zenie"
+  }
+ },
+ "_ranges": [
+  {
+   "afs": "data_cmn.afs",
+   "from": 0,
+   "to": 43,
+   "cat": "personajes",
+   "name": "auras"
+  },
+  {
+   "afs": "data_cmn.afs",
+   "from": 44,
+   "to": 69,
+   "cat": "escenarios",
+   "name": "escenarios"
+  },
+  {
+   "afs": "data_cmn.afs",
+   "from": 70,
+   "to": 505,
+   "cat": "personajes",
+   "name": "personajes_sin_nombre"
+  },
+  {
+   "afs": "data_cmn.afs",
+   "from": 451,
+   "to": 503,
+   "cat": "efectos",
+   "name": "texturas_efectos_hud"
+  },
+  {
+   "afs": "data_cmn.afs",
+   "from": 504,
+   "to": 555,
+   "cat": "efectos",
+   "name": "efectos_personajes"
+  },
+  {
+   "afs": "data_cmn.afs",
+   "from": 3735,
+   "to": 3847,
+   "cat": "escenarios",
+   "name": "escenarios_mesh"
+  },
+  {
+   "afs": "data_cmn.afs",
+   "from": 3884,
+   "to": 3962,
+   "cat": "seleccion",
+   "name": "retratos_select"
+  },
+  {
+   "afs": "data_cmn.afs",
+   "from": 3971,
+   "to": 3982,
+   "cat": "otros",
+   "name": "videos"
+  },
+  {
+   "afs": "data_cmn.afs",
+   "from": 3983,
+   "to": 3989,
+   "cat": "otros",
+   "name": "audio_drm"
+  },
+  {
+   "afs": "data_usi.afs",
+   "from": 5,
+   "to": 52,
+   "cat": "capsulas",
+   "name": "fichas_habilidades"
+  },
+  {
+   "afs": "data_usi.afs",
+   "from": 2079,
+   "to": 2142,
+   "cat": "capsulas",
+   "name": "descripcion_capsulas"
+  },
+  {
+   "afs": "data_usi.afs",
+   "from": 2658,
+   "to": 2697,
+   "cat": "capsulas",
+   "name": "nombres_capsulas"
+  },
+  {
+   "afs": "data_usi.afs",
+   "from": 2068,
+   "to": 2071,
+   "cat": "capsulas",
+   "name": "cartas_habilidad"
+  }
+ ]
+}

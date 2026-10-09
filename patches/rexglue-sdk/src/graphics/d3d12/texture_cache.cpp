@@ -764,7 +764,9 @@ bool D3D12TextureCache::Initialize() {
 
   // DBZ3: pasada de upscale de texturas (opcional; si falla, se desactiva
   // sola porque GetTextureUpscaleFactor exige el pipeline).
-  if (uint32_t(REXCVAR_GET(dbz3_texture_upscale)) > 1) {
+  // Tambien con un pack: si una textura del pack cambia de contenido, la original
+  // se carga escalada en su recurso Nx (ver UploadPackTextureData).
+  if (uint32_t(REXCVAR_GET(dbz3_texture_upscale)) > 1 || Dbz3TexturePackIndex::Get().active()) {
     InitializeTextureUpscale();
   }
 
@@ -2709,10 +2711,22 @@ bool D3D12TextureCache::UploadPackTextureData(D3D12Texture& texture, const Textu
   if (entry == nullptr) {
     return false;
   }
-  std::vector<uint8_t> rgba;
-  uint32_t pack_width = 0, pack_height = 0;
-  if (!Dbz3DecodePackImage(entry->path, rgba, pack_width, pack_height) ||
-      pack_width != entry->width || pack_height != entry->height) {
+  // 1.4.3 EX: la cache es por direccion/formato/tamano, no por contenido. Si el
+  // juego reutiliza esa memoria para OTRA textura del mismo tamano (personajes
+  // de otro combate), se vuelve a mirar el hash: otra entrada del mismo tamano o,
+  // si no hay, la original (false = carga normal en el mismo recurso).
+  {
+    std::vector<uint8_t> linear;
+    if (LinearizeGuestTexture(key, key.GetGuestLayout(), key.base_page << 12, linear)) {
+      entry = Dbz3PackRevalidate(entry, XXH3_64bits(linear.data(), linear.size()));
+      if (entry == nullptr) {
+        return false;
+      }
+    }
+  }
+  // Decodificada una sola vez (cache de RAM + precarga, dbz3_texture_pack.cpp).
+  const auto image = Dbz3TexturePackIndex::Get().Decoded(*entry);
+  if (!image || image->width != entry->width || image->height != entry->height) {
     static int decode_logged = 0;
     if (decode_logged < 8) {
       ++decode_logged;
@@ -2727,7 +2741,9 @@ bool D3D12TextureCache::UploadPackTextureData(D3D12Texture& texture, const Textu
   // que exige el footprint de las copias de D3D12.
   std::vector<uint8_t> buffer;
   std::vector<Dbz3PackLevel> layouts;
-  Dbz3BuildPackMips(rgba, pack_width, pack_height, levels, 512, buffer, layouts);
+  const uint32_t pack_width = image->width, pack_height = image->height;
+  Dbz3BuildPackMips(image->rgba, pack_width, pack_height, levels, 512, buffer, layouts,
+                    Dbz3PackSwapsRedBlue(key.format));
   const uint64_t total_size = buffer.size();
   D3D12_RESOURCE_DESC buffer_desc = {};
   buffer_desc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
@@ -2775,6 +2791,7 @@ bool D3D12TextureCache::UploadPackTextureData(D3D12Texture& texture, const Textu
     command_list.D3DCopyTextureRegion(&location_dest, 0, 0, 0, &location_source, nullptr);
   }
   pending_pack_uploads_.emplace_back(command_processor_.GetCurrentSubmission(), upload);
+  g_dbz3_pack_uploads.fetch_add(1, std::memory_order_relaxed);
   static int upload_logged = 0;
   if (upload_logged < 48) {
     ++upload_logged;

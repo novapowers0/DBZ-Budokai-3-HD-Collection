@@ -13,7 +13,7 @@ Cada hallazgo es (nivel, titulo, detalle) con nivel "ok" | "info" | "warn" | "er
 import re
 import sys
 
-ULTIMA_VERSION = (1, 4, 1)
+ULTIMA_VERSION = (1, 4, 3, 1)   # "1.4.3 EX" (4o numero = EX)
 
 _TS = re.compile(r"^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)")
 _ENTORNO = re.compile(r"entorno os=(\S+) ram=(\d+)MB dbz3\.exe=([\d.]+) rexgpu-xenos=(\S+) rexruntime=(\S+)")
@@ -30,13 +30,15 @@ _ROSTER_CHAR = re.compile(r"dbz3 roster \[[^\]]+\]: personaje id=(\d+)")
 
 def _v(text):
     try:
-        return tuple(int(x) for x in text.split(".")[:3])
+        return tuple(int(x) for x in text.split(".")[:4])
     except ValueError:
         return None
 
 
 def _vs(v):
-    return ".".join(str(x) for x in v)
+    if len(v) == 4 and v[3]:
+        return "%d.%d.%d EX" % v[:3]
+    return ".".join(str(x) for x in v[:3])
 
 
 def analizar(texto, en=False):
@@ -135,13 +137,16 @@ def analizar(texto, en=False):
                         "update and, if it continues, share the new log (it names the exact cause).") % \
                     _vs(version)
             elif espera_lenta and sum(espera_lenta) / len(espera_lenta) < 2.0:
-                det = T("El juego se quedo clavado a 30 FPS y la tarjeta grafica estaba casi parada: el freno "
-                        "es el procesador. Cierra programas en segundo plano (navegador, grabadores, "
-                        "antivirus en escaneo), pon el plan de energia de Windows en alto rendimiento y "
-                        "comprueba que el portatil este enchufado.",
-                        "The game got stuck at 30 FPS while the graphics card was nearly idle: the processor "
-                        "is the bottleneck. Close background apps (browser, recorders, antivirus scans), set "
-                        "the Windows power plan to high performance and make sure a laptop is plugged in.")
+                det = T("El juego se quedo clavado a 30 FPS y la tarjeta grafica estaba casi parada. Lo mas "
+                        "comun: un limite de FPS externo a 60 (panel de NVIDIA/AMD 'Max Frame Rate' o "
+                        "RivaTuner) deja el juego a 30; quitalo y usa el limitador del launcher. Si no hay "
+                        "ninguno, el freno es el procesador: cierra programas en segundo plano, pon el plan "
+                        "de energia de Windows en alto rendimiento y enchufa el portatil.",
+                        "The game got stuck at 30 FPS while the graphics card was nearly idle. Most common "
+                        "cause: an external 60 FPS limit (NVIDIA/AMD control panel 'Max Frame Rate' or "
+                        "RivaTuner) locks the game to 30; remove it and use the launcher's limiter. If there is "
+                        "none, the processor is the bottleneck: close background apps, set the Windows power "
+                        "plan to high performance and plug in a laptop.")
             else:
                 det = T("El juego se quedo clavado a 30 FPS: cada fotograma tarda un poco mas de lo que da la "
                         "pantalla. Prueba a bajar la escala interna a 1x, quitar el MSAA o la mejora de "

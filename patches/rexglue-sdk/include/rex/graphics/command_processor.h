@@ -39,6 +39,11 @@ namespace rex::graphics {
 // DBZ3 (v1.4.1): tiempo total (us) del command processor dormido en WAIT_REG_MEM.
 extern std::atomic<uint64_t> g_dbz3_regmem_wait_us;
 
+class Shader;
+// DBZ3 "HD shine": true if this B3 HD model vertex shader writes the rim light
+// strength from c39.x (cvar dbz3_rim_light_scale scales it; D3D12 and Vulkan).
+bool Dbz3IsRimLightShader(const Shader& shader);
+
 class GraphicsSystem;
 class Shader;
 

@@ -33,6 +33,16 @@ extern const rex::PPCImageInfo PPCImageConfigEU;
 #include <rex/rex_app.h>
 #include <rex/hook.h>
 #include "hooks.h"
+
+#ifdef _WIN32
+// DBZ3 1.4.3 EX: los drivers de NVIDIA (Optimus) y AMD (PowerXpress) solo leen
+// estas exportaciones en el .EXE; en rexgpu-xenos.dll (donde las pone el SDK)
+// no tienen efecto, y los portatiles hibridos arrancaban con la integrada.
+extern "C" {
+__declspec(dllexport) unsigned long NvOptimusEnablement = 0x00000001;
+__declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
+}
+#endif
 #ifndef DBZ3_EU_VARIANT
 #include "roster_ext.h"
 #endif
@@ -244,6 +254,19 @@ public:
         // Runtime/GPU cvars (vsync, MSAA, aniso, FSR) only exist now that the
         // GPU plugin has registered them.
         dbz3::settings::ApplyRuntimeSettingsToSdk(false);
+        // 1.4.3 EX: el launcher sin tope se repintaba a la frecuencia del monitor
+        // (143-240 Hz) y en reposo gastaba ~30 % de una RTX 4070: en portatiles y
+        // graficas integradas eso basta para que todo vaya a tirones. 60 es fluido;
+        // al pulsar Jugar se aplica el tope del usuario (ApplyRuntimeSettingsToSdk(true)).
+        rex::cvar::SetFlagByName("frame_cap", "60");
+#ifdef _WIN32
+        // 1.4.3 EX: el guest necesita sus hilos a tiempo cada 16,7 ms. Con otros
+        // programas pesados abiertos (navegador, render de video, antivirus) se
+        // medio 45-52 FPS y tirones de 100 ms en un 12600KF. "Por encima de lo
+        // normal" (no "alta" ni "tiempo real") le da preferencia sin ahogar
+        // al resto del sistema.
+        SetPriorityClass(GetCurrentProcess(), ABOVE_NORMAL_PRIORITY_CLASS);
+#endif
         SetupCrashHandler();
     }
 
@@ -518,6 +541,26 @@ public:
         paths.user_data_root = dbz3::settings::UserDataRoot();
         paths.cache_root = paths.user_data_root / "cache";
         paths.metadata_root = exe_dir / "metadata";
+        // 1.4.3 EX: la release trae en shader_cache/ los shaders y pipelines de
+        // TODO el juego. En una instalacion nueva se copian (solo si faltan: nunca
+        // se pisa la cache del jugador), asi el primer combate no compila nada
+        // sobre la marcha (efectos que tardan en salir o tirones).
+        {
+            std::error_code ec;
+            const auto shipped = exe_dir / "shader_cache";
+            const auto shareable = paths.cache_root / "shaders" / "shareable";
+            if (std::filesystem::is_directory(shipped, ec)) {
+                std::filesystem::create_directories(shareable, ec);
+                for (const auto& f : std::filesystem::directory_iterator(shipped, ec)) {
+                    const auto dst = shareable / f.path().filename();
+                    if (f.is_regular_file(ec) && !std::filesystem::exists(dst, ec) &&
+                        std::filesystem::copy_file(f.path(), dst, ec)) {
+                        REXLOG_INFO("dbz3: cache de shaders inicial copiada: {}",
+                                    f.path().filename().string());
+                    }
+                }
+            }
+        }
         REXLOG_INFO("OnConfigurePaths - user_data_root: {} ({})",
                     paths.user_data_root.string(),
                     dbz3::settings::UserDataIsPortable() ? "portable" : "per-user");

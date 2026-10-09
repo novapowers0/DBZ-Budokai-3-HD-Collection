@@ -15,9 +15,12 @@
 
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 #include <filesystem>
+#include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include <rex/graphics/xenos.h>
@@ -65,6 +68,7 @@ bool Dbz3PackReplaceableFormat(xenos::TextureFormat format);
 
 // Entrada de un pack ya indexada por hash.
 struct Dbz3TexturePackEntry {
+  uint64_t hash = 0;
   std::filesystem::path path;
   uint32_t width = 0;
   uint32_t height = 0;
@@ -90,12 +94,23 @@ class Dbz3TexturePackIndex {
   // Numero de entradas indexadas (diagnostico).
   size_t size() const;
 
+  // Imagen decodificada (RGBA8) de una entrada, desde la cache de RAM (la llena
+  // la precarga en segundo plano) o decodificando en el momento. nullptr si el
+  // fichero no se puede leer.
+  struct Image {
+    std::vector<uint8_t> rgba;
+    uint32_t width = 0;
+    uint32_t height = 0;
+  };
+  std::shared_ptr<const Image> Decoded(const Dbz3TexturePackEntry& entry) const;
+
  private:
   Dbz3TexturePackIndex() = default;
   void EnsureInitialized() const;
+  void StartPreload() const;
 
   mutable bool initialized_ = false;
-  mutable std::vector<std::pair<uint64_t, Dbz3TexturePackEntry>> entries_;
+  mutable std::unordered_map<uint64_t, Dbz3TexturePackEntry> entries_;
 };
 
 // Decodifica una imagen de pack (DDS: DXT1/3/5 o 32bpp sin comprimir, o PNG) a
@@ -120,8 +135,23 @@ struct Dbz3PackLevel {
 // `row_pitch_alignment` y cada nivel empieza en un offset tambien alineado (lo
 // que necesitan tanto las copias de D3D12 como las de Vulkan). `out` recibe el
 // buffer completo y `layouts_out` la descripcion de cada nivel.
+// swap_rb: la imagen del pack viene en colores reales (RGBA) y la textura guest
+// es k_8_8_8_8, que el B3 HD guarda como BGRA (mascaras del #AZT 00FF0000 = R):
+// se intercambian R y B para quedar en el orden de bytes del guest.
 void Dbz3BuildPackMips(const std::vector<uint8_t>& base, uint32_t width, uint32_t height,
                        uint32_t levels, uint32_t row_pitch_alignment, std::vector<uint8_t>& out,
-                       std::vector<Dbz3PackLevel>& layouts_out);
+                       std::vector<Dbz3PackLevel>& layouts_out, bool swap_rb = false);
+
+// Texturas de pack subidas (acumulado; la linea `perf` lo muestra como pack=).
+extern std::atomic<uint64_t> g_dbz3_pack_uploads;
+
+// true si la textura guest es k_8_8_8_8 (el pack se sube con R y B intercambiados).
+bool Dbz3PackSwapsRedBlue(xenos::TextureFormat format);
+
+// Entrada que corresponde AHORA al contenido `hash` de una textura cuya entrada
+// cacheada es `cached`: la misma si el hash coincide, otra del mismo tamano si
+// la memoria se reutilizo para otra textura del pack, o nullptr si ya no es del
+// pack (el recurso host tiene el tamano de `cached`, asi que no vale otro).
+const Dbz3TexturePackEntry* Dbz3PackRevalidate(const Dbz3TexturePackEntry* cached, uint64_t hash);
 
 }  // namespace rex::graphics

@@ -1,5 +1,22 @@
 # Packs de texturas (estilo PCSX2)
 
+> **v1.4.4 — pack HD para terceros (lo mas facil):**
+> - `mod center hd/texturas_originales.py <carpeta> --zip <fichero.zip>` saca de los AFS
+>   TODAS las texturas sustituibles (44.232: DXT1/3/5 y RGBA8), en PNG a **colores reales**,
+>   ordenadas en carpetas (personajes, escenarios, efectos, menus, capsulas, seleccion,
+>   idiomas/...). Genera dos zips en ingles listos para `mods/`: `DBZ3HD-Textures-Originals.zip` (carpeta `HD Textures/`) y `...-Languages.zip` (carpeta `HD Textures - Languages/`), cada uno con README (ingles), LEEME y manifest.txt; se instalan arrastrando el zip al launcher o descomprimiendo en `mods/`.
+>   Necesita `xxhash` (`pip install xxhash`). No hace falta jugar ni volcar nada.
+> - El artista **solo agranda** las imagenes (x2-x4) **sin renombrarlas**: el tamaño del
+>   nombre puede ser el ORIGINAL; el juego lee el tamaño real del PNG/DDS.
+> - El pack puede ir en **subcarpetas** (el juego y el launcher las recorren).
+> - Las RGBA8 se guardan en colores reales: el juego gira R/B al subirlas (el B3 HD las
+>   tiene en BGRA). `texture_dump_import.py` tambien las saca ya en colores reales.
+> - Cache de RAM (2 GB) de imagenes decodificadas y **precarga** en segundo plano si el
+>   pack cabe; si no, se decodifica la primera vez que se usa cada textura.
+> - La linea `perf` lleva `pack=` (texturas de pack subidas).
+> - Hash = XXH3-64 del nivel base tal como esta en el `#AZT` (verificado: 42/43 del volcado).
+
+
 > Un **pack de texturas** reemplaza las texturas del juego por versiones propias
 > (normalmente escaladas con IA) **sin tocar ficheros ni la memoria del guest**:
 > el runtime intercepta cada textura al cargarla y, si el pack tiene una versión

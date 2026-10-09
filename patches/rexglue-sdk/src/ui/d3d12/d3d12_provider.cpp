@@ -10,6 +10,7 @@
  */
 
 #include <cstdlib>
+#include <cstring>
 
 #include <rex/cvar.h>
 #include <rex/logging.h>
@@ -62,13 +63,10 @@ std::unique_ptr<D3D12Provider> D3D12Provider::Create() {
   std::unique_ptr<D3D12Provider> provider(new D3D12Provider);
   if (!provider->Initialize()) {
     rex::FatalError(
-        "Unable to initialize Direct3D 12 graphics subsystem.\n"
-        "\n"
-        "Ensure that you have the latest drivers for your GPU and it supports "
-        "Direct3D 12 with the feature level of at least 11_0.\n"
-        "\n"
-        "See https://xenia.jp/faq/ for more information and a list of "
-        "supported GPUs.");
+        "No se pudo iniciar Direct3D 12. Actualiza el driver de la grafica; si sigue, "
+        "elige Vulkan en el launcher (Motor grafico).\n\n"
+        "Unable to initialize Direct3D 12. Update your graphics driver; if it continues, "
+        "choose Vulkan in the launcher (Graphics backend).");
     return nullptr;
   }
   return provider;
@@ -268,9 +266,25 @@ bool D3D12Provider::Initialize() {
   }
 
   // Choose the adapter.
+  // DBZ3 1.4.3 EX: en automatico (-1) se recorren los adaptadores por
+  // preferencia de ALTO RENDIMIENTO (IDXGIFactory6, Windows 10 1803+). Con
+  // EnumAdapters1 el primero es el de la pantalla principal, que en portatiles
+  // hibridos suele ser la grafica integrada: el juego iba a tirones con una
+  // RTX/RX dedicada sin usar. Los indices de d3d12_adapter >= 0 no cambian.
+  IDXGIFactory6* dxgi_factory6 = nullptr;
+  if (REXCVAR_GET(d3d12_adapter) == -1) {
+    dxgi_factory->QueryInterface(IID_PPV_ARGS(&dxgi_factory6));
+  }
+  auto enum_adapter = [&](uint32_t index, IDXGIAdapter1** out) -> HRESULT {
+    if (dxgi_factory6) {
+      return dxgi_factory6->EnumAdapterByGpuPreference(index, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE,
+                                                       IID_PPV_ARGS(out));
+    }
+    return dxgi_factory->EnumAdapters1(index, out);
+  };
   uint32_t adapter_index = 0;
   IDXGIAdapter1* adapter = nullptr;
-  while (dxgi_factory->EnumAdapters1(adapter_index, &adapter) == S_OK) {
+  while (enum_adapter(adapter_index, &adapter) == S_OK) {
     DXGI_ADAPTER_DESC1 adapter_desc;
     if (SUCCEEDED(adapter->GetDesc1(&adapter_desc))) {
       if (SUCCEEDED(pfn_d3d12_create_device_(adapter, D3D_FEATURE_LEVEL_11_0, _uuidof(ID3D12Device),
@@ -293,6 +307,9 @@ bool D3D12Provider::Initialize() {
     adapter->Release();
     adapter = nullptr;
     ++adapter_index;
+  }
+  if (dxgi_factory6) {
+    dxgi_factory6->Release();
   }
   if (adapter == nullptr) {
     REXLOG_ERROR(
@@ -320,6 +337,10 @@ bool D3D12Provider::Initialize() {
                             adapter_name_mb_size, nullptr, nullptr) != 0) {
       REXGPU_INFO("DXGI adapter: {} (vendor 0x{:04X}, device 0x{:04X})", adapter_name_mb,
                   adapter_desc.VendorId, adapter_desc.DeviceId);
+      // Intel Arc (Alchemist y posteriores, tambien las iGPU "Arc" de Core
+      // Ultra) no tiene el fallo de stencil de las Intel antiguas.
+      is_intel_arc_ = adapter_vendor_id_ == GpuVendorID::kIntel &&
+                      std::strstr(adapter_name_mb, "Arc") != nullptr;
     }
   }
 

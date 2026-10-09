@@ -187,7 +187,11 @@ bool D3D12RenderTargetCache::Initialize() {
     // TODO(Triang3l): Make ROV the default when it's optimized better (for
     // instance, using static shader modifications to pass render target
     // parameters).
-    path_ = provider.GetAdapterVendorID() == ui::GraphicsProvider::GpuVendorID::kIntel
+    // DBZ3 1.4.3 EX (como xenia-canary, dic. 2025): Intel Arc no tiene el fallo
+    // de stencil, asi que va por RTV (mucho mas rapido); solo las Intel previas
+    // a Arc (UHD/Iris Xe) siguen forzando ROV.
+    path_ = provider.GetAdapterVendorID() == ui::GraphicsProvider::GpuVendorID::kIntel &&
+                    !provider.IsIntelArcGpu()
                 ? Path::kPixelShaderInterlock
                 : Path::kHostRenderTargets;
 #else

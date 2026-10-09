@@ -295,6 +295,24 @@ bool D3D12Presenter::EnsureTemporalUpscalerContext(uint32_t render_width, uint32
     create_desc.header.pNext = &backend_desc.header;
 
     ffxContext* context = reinterpret_cast<ffxContext*>(&temporal_upscaler_context_);
+    // DBZ3 1.4.3 EX: la DLL se carga en diferido (src/system/CMakeLists.txt); sin
+    // ella, la primera llamada lanzaria una excepcion de carga y cerraria el juego.
+    static const bool ffx_dll_available = [] {
+      HMODULE module = LoadLibraryExW(L"amd_fidelityfx_dx12.dll", nullptr,
+                                      LOAD_LIBRARY_SEARCH_APPLICATION_DIR |
+                                          LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
+      if (!module) {
+        REXLOG_WARN(
+            "D3D12Presenter: falta amd_fidelityfx_dx12.dll: FSR 3 desactivado (se usa el "
+            "escalado normal). Reinstala la carpeta del juego para recuperarlo.");
+        return false;
+      }
+      return true;  // se queda cargada: la usara el delay-load
+    }();
+    if (!ffx_dll_available) {
+      temporal_upscaler_context_ = nullptr;
+      return false;
+    }
     if (ffxCreateContext(context, &create_desc.header, nullptr) != FFX_API_RETURN_OK) {
       REXLOG_WARN("D3D12Presenter: Failed to create FidelityFX temporal upscaler context");
       temporal_upscaler_context_ = nullptr;
@@ -937,18 +955,15 @@ Presenter::PaintResult D3D12Presenter::PaintAndPresentImpl(bool execute_ui_drawe
   // host presentation to smooth frame delivery and reduce GPU load on weaker
   // hardware. Painting is serialized (single owner), so a file-scope timestamp
   // is safe.
-  if (int32_t frame_cap = REXCVAR_GET(frame_cap); frame_cap > 0) {
-    static std::chrono::steady_clock::time_point last_present_time;
-    const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
-    if (last_present_time.time_since_epoch().count() != 0) {
-      const std::chrono::nanoseconds frame_interval(1000000000LL / frame_cap);
-      const std::chrono::nanoseconds elapsed = now - last_present_time;
-      if (elapsed < frame_interval) {
-        rex::thread::Sleep(
-            std::chrono::duration_cast<std::chrono::microseconds>(frame_interval - elapsed));
-      }
-    }
-    last_present_time = std::chrono::steady_clock::now();
+  // DBZ3 1.4.3 EX: los frames del juego se presentan desde el hilo de la GPU
+  // (host_present_from_non_ui_thread). Dormir ahi con un tope >= 60 no limita
+  // nada (el guest ya va a 60 por su vblank) pero retrasa al command processor:
+  // con dos relojes de 60 Hz desfasados, el guest pierde vblanks y se queda a
+  // 30 FPS exactos (issue #18, i9 + RTX 4090). Asi que el tope solo se aplica a
+  // los repintados con UI (launcher, overlay) o si es menor que 60.
+  if (int32_t frame_cap = REXCVAR_GET(frame_cap);
+      frame_cap > 0 && (execute_ui_drawers || frame_cap < 60)) {
+    Dbz3PaceHostPresent(frame_cap);
   }
 
   // Begin the command list with the command allocator not currently potentially

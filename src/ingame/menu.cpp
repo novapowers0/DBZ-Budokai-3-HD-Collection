@@ -4,6 +4,7 @@
 
 #include <rex/cvar.h>
 
+#include "../launcher/i18n.h"
 #include "../launcher/settings.h"
 
 namespace dbz3::ingame {
@@ -22,17 +23,19 @@ void InGameMenu::OnDraw(ImGuiIO& io) {
   ImGui::Separator();
 
   bool dev_mode = dbz3::settings::DevMode();
-  if (ImGui::Checkbox("Dev mode", &dev_mode)) {
+  if (ImGui::Checkbox(dbz3::i18n::T("Modo desarrollador", "Dev mode"), &dev_mode)) {
     dbz3::settings::SetDevMode(dev_mode);
   }
-  ImGui::TextDisabled("Dev mode exposes hot test switches used for debugging.");
+  ImGui::TextDisabled("%s", dbz3::i18n::T("El modo desarrollador muestra interruptores de prueba para depurar.",
+                                              "Dev mode exposes hot test switches used for debugging."));
 
   if (dev_mode) {
     DrawDevModeSection();
   }
 
   ImGui::Separator();
-  ImGui::TextDisabled("F10 toggles this overlay. F4 opens advanced settings.");
+  ImGui::TextDisabled("%s", dbz3::i18n::T("F10 muestra u oculta este panel. F4 abre los ajustes avanzados.",
+                                              "F10 toggles this overlay. F4 opens advanced settings."));
   ImGui::End();
 }
 

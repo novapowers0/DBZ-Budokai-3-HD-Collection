@@ -74,28 +74,14 @@ REXCVAR_DEFINE_BOOL(dbz3_motion_vectors, true, "DBZ3/Dev",
                     "the previous frame's constants (off = camera-less, for debugging)");
 REXCVAR_DEFINE_BOOL(dbz3_temporal_jitter, true, "DBZ3/Dev",
                     "Sub-pixel camera jitter for the temporal upscaler (off = debugging)");
-REXCVAR_DEFINE_DOUBLE(dbz3_rim_light_scale, 1.0, "DBZ3/Video",
-                      "Strength of the HD rim light on character models (0 = off, 1 = original)")
-    .lifecycle(rex::cvar::Lifecycle::kHotReload);
+REXCVAR_DECLARE(double, dbz3_rim_light_scale);  // src/graphics/command_processor.cpp
 REXCVAR_DEFINE_STRING(dbz3_gpu_build, DBZ3_RUNTIME_BUILD, "DBZ3/Dev",
                       "Build de rexgpu-xenos (lo comprueba el launcher)");
 
+#include "../dbz3_texture_pack.h"
+
 namespace rex::graphics::d3d12 {
 
-namespace {
-// The B3 HD model vertex shaders write the rim light strength as
-// "o2.w = c39.x * (normal != 0)". ponytail: matched on the ucode disassembly
-// text, cached for the last shader; a ucode pattern check if this gets hot.
-bool Dbz3IsRimLightShader(const Shader& shader) {
-  static const Shader* last = nullptr;
-  static bool last_result = false;
-  if (&shader != last) {
-    last = &shader;
-    last_result = shader.ucode_disassembly().find("o2.___w, c39.x") != std::string::npos;
-  }
-  return last_result;
-}
-}  // namespace
 
 // Generated with `xb buildshaders`.
 namespace shaders {
@@ -2194,9 +2180,12 @@ void Dbz3CheckSustainedLowFps(double fps, double gpu_wait_ms_per_frame) {
   // son la causa y bajarlos no ayudara.
   const bool cpu_bound = gpu_wait_ms_per_frame >= 0.0 && gpu_wait_ms_per_frame < 2.0;
   if (cpu_bound) {
+    // 1.4.3 EX: un limitador externo a 60 (panel de NVIDIA/AMD, RTSS) retiene cada
+    // Present en el hilo de la GPU y deja el juego a 30 exactos (visto en Burst Limit).
     hints = "el cuello es la CPU (espera a la GPU " + fmt::format("{:.1f}", gpu_wait_ms_per_frame) +
-            " ms/frame): cierra programas en segundo plano y usa el plan de energia de alto "
-            "rendimiento";
+            " ms/frame): quita cualquier limite de FPS externo (panel de NVIDIA/AMD 'Max Frame "
+            "Rate', RivaTuner); usa el limitador del launcher. Cierra programas en segundo plano "
+            "y usa el plan de energia de alto rendimiento";
   }
   if (scale_high && !cpu_bound) {
     hints += "baja la escala interna a 1x";
@@ -2300,7 +2289,7 @@ static void Dbz3LogGuestPerformance(uint64_t upscaled_textures, uint64_t upscale
     REXGPU_INFO(
         "dbz3: perf fps={:.1f} frames={} window={:.2f}s max_frame_ms={:.1f} fg={} "
         "cfg=scale:{}x{} msaa:{} hdtex:{} area:{} min:{} aniso:{} upx={} upx_dyn={} "
-        "texload={} vram={}MB/{}MB lim={} gpu_wait={:.1f}ms/f syncs={} cp_wait={:.1f}ms/f",
+        "texload={} pack={} vram={}MB/{}MB lim={} gpu_wait={:.1f}ms/f syncs={} cp_wait={:.1f}ms/f",
         double(frames_in_window) / elapsed_s, frames_in_window, elapsed_s, max_frame_ms,
         foreground ? 1 : 0, rex::cvar::GetFlagByName("draw_resolution_scale_x"),
         rex::cvar::GetFlagByName("draw_resolution_scale_y"),
@@ -2309,7 +2298,8 @@ static void Dbz3LogGuestPerformance(uint64_t upscaled_textures, uint64_t upscale
         rex::cvar::GetFlagByName("dbz3_upscale_max_texels"),
         rex::cvar::GetFlagByName("dbz3_upscale_min_size"),
         rex::cvar::GetFlagByName("anisotropic_override"), upscaled_textures,
-        upscale_dynamic_refills, texture_loads_window, vram_usage >> 20, vram_budget >> 20,
+        upscale_dynamic_refills, texture_loads_window, g_dbz3_pack_uploads.load(),
+        vram_usage >> 20, vram_budget >> 20,
         upscale_limit, gpu_wait_ms, fence_waits, cp_wait_ms);
   }
   Dbz3CheckSustainedLowFps(double(frames_in_window) / elapsed_s, gpu_wait_ms);

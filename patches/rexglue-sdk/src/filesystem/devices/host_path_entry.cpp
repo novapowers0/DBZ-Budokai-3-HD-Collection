@@ -9,6 +9,8 @@
  * @modified    Tom Clay, 2026 - Adapted for ReXGlue runtime
  */
 
+#include <cctype>
+#include <algorithm>
 #include <rex/filesystem/devices/host_path_entry.h>
 #include <rex/filesystem/devices/host_path_file.h>
 
@@ -162,6 +164,20 @@ X_STATUS HostPathEntry::Open(uint32_t desired_access, File** out_file) {
   // dbz3: opens are counted in the AFS I/O summary (an open storm on a slow
   // disk is a red flag; the guest normally opens each container once).
   AfsIoRecordOpen();
+  // dbz3: los videos (intro, creditos) se abren una vez por reproduccion; dejar
+  // constancia en el log ayuda a diagnosticar cuelgues al reproducirlos (issue #19,
+  // creditos en negro en Linux).
+  {
+    std::string ext = open_path.extension().string();
+    std::transform(ext.begin(), ext.end(), ext.begin(),
+                   [](unsigned char c) { return char(std::tolower(c)); });
+    if (ext == ".sfd") {
+      std::error_code size_ec;
+      const auto bytes = std::filesystem::file_size(open_path, size_ec);
+      REXFS_INFO("dbz3: video abierto: guest={} host={} ({} MB)", path(),
+                 rex::path_to_utf8(open_path), size_ec ? 0 : uint64_t(bytes >> 20));
+    }
+  }
   *out_file = new HostPathFile(desired_access, this, std::move(file_handle));
   return X_STATUS_SUCCESS;
 }

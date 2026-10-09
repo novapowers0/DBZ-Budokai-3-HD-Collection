@@ -188,7 +188,16 @@ X_STATUS GraphicsSystem::SetupGuestGpu(runtime::FunctionDispatcher* function_dis
             MarkVblank();
             last_frame_time += interval_ticks;
           }
-          rex::thread::Sleep(std::chrono::milliseconds(1));
+          // DBZ3 1.4.3 EX (como Burst Limit, SDK b3ea19ebe): un Sleep solo es
+          // preciso al milisegundo, asi que se duerme mientras falten mas de 2 ms
+          // para el siguiente vblank y el resto se cede el hilo. Vblanks
+          // equiespaciados = el guest no pierde frames por un vblank tardio.
+          const uint64_t remaining_ticks = last_frame_time + interval_ticks - current_time;
+          if (remaining_ticks * 1000 > guest_tick_frequency * 2) {
+            rex::thread::Sleep(std::chrono::milliseconds(1));
+          } else {
+            rex::thread::MaybeYield();
+          }
         }
         return 0;
       }));
@@ -240,7 +249,18 @@ void GraphicsSystem::OnHostGpuLossFromAnyThread([[maybe_unused]] bool is_respons
   if (host_gpu_loss_reported_.test_and_set(std::memory_order_relaxed)) {
     return;
   }
-  rex::FatalError("Graphics device lost (probably due to an internal error)");
+  // DBZ3 1.4.3 EX: mensaje util (ES/EN) en vez de "internal error".
+  rex::FatalError(
+      "La tarjeta grafica dejo de responder (Graphics device lost).\n\n"
+      "Prueba, en este orden:\n"
+      "1. Actualiza el driver de la grafica (NVIDIA / AMD / Intel).\n"
+      "2. En el launcher: Calidad de imagen -> preset Rendimiento y escala interna 1x.\n"
+      "3. Si sigue: Motor grafico -> Vulkan.\n\n"
+      "The graphics card stopped responding (Graphics device lost).\n\n"
+      "Try, in this order:\n"
+      "1. Update your graphics driver (NVIDIA / AMD / Intel).\n"
+      "2. In the launcher: Image quality -> Performance preset and internal scale 1x.\n"
+      "3. If it continues: Graphics backend -> Vulkan.");
 }
 
 uint32_t GraphicsSystem::ReadRegisterThunk(void* ppc_context, GraphicsSystem* gs, uint32_t addr) {

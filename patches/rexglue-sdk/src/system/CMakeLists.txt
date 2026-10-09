@@ -93,6 +93,16 @@ target_link_libraries(rexruntime
         xxHash::xxhash
 )
 
+# DBZ3 1.4.3 EX: FidelityFX (FSR 3) cargado al usarlo, no al arrancar. Con import
+# directo, si faltaba amd_fidelityfx_dx12.dll (antivirus, copia a medias) el juego
+# no arrancaba aunque no se usara FSR 3. El presentador comprueba la DLL antes de
+# la primera llamada (d3d12_presenter.cpp, Dbz3FfxRuntimeAvailable).
+if(WIN32 AND TARGET amd_fidelityfx_dx12)
+    target_link_options(rexruntime PRIVATE
+        "LINKER:/DELAYLOAD:$<TARGET_FILE_NAME:amd_fidelityfx_dx12>")
+    target_link_libraries(rexruntime PRIVATE delayimp)
+endif()
+
 if(REXGLUE_ENABLE_TRACY)
     # TARGET_NAME is what tells install(EXPORT) this text is a target to
     # namespace. Without it the plain name survives into the installed config

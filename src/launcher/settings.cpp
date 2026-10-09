@@ -1758,6 +1758,44 @@ bool GetPrimaryGpu(DXGI_ADAPTER_DESC1* desc_out) {
   }
   return false;
 }
+
+// 1.4.3 EX: true si algun adaptador hardware crea un dispositivo D3D12 de
+// nivel 11_0 (lo mismo que exige el runtime). Si no (GPU muy antigua, driver
+// roto, maquina virtual, escritorio remoto), el juego arranca con Vulkan en
+// vez de cerrarse con "Unable to initialize Direct3D 12". Se mide una vez.
+bool D3D12Usable() {
+  static int cached = -1;
+  if (cached >= 0) {
+    return cached == 1;
+  }
+  cached = 0;
+  HMODULE d3d12 = LoadLibraryW(L"d3d12.dll");
+  if (!d3d12) {
+    return false;
+  }
+  using CreateDeviceFn = HRESULT(WINAPI*)(IUnknown*, int, REFIID, void**);
+  auto create_device =
+      reinterpret_cast<CreateDeviceFn>(GetProcAddress(d3d12, "D3D12CreateDevice"));
+  // IID de ID3D12Device (d3d12.h); con ppDevice nulo solo se comprueba.
+  static const GUID kIidD3D12Device = {
+      0x189819f1, 0x1db6, 0x4b57, {0xbe, 0x54, 0x18, 0x21, 0x33, 0x9b, 0x85, 0xf7}};
+  Microsoft::WRL::ComPtr<IDXGIFactory1> factory;
+  if (create_device && SUCCEEDED(CreateDXGIFactory1(IID_PPV_ARGS(&factory)))) {
+    Microsoft::WRL::ComPtr<IDXGIAdapter1> adapter;
+    for (UINT i = 0; cached == 0 && factory->EnumAdapters1(i, &adapter) != DXGI_ERROR_NOT_FOUND;
+         ++i) {
+      DXGI_ADAPTER_DESC1 desc{};
+      if (SUCCEEDED(adapter->GetDesc1(&desc)) && !(desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) &&
+          SUCCEEDED(create_device(adapter.Get(), 0xb000 /* D3D_FEATURE_LEVEL_11_0 */,
+                                  kIidD3D12Device, nullptr))) {
+        cached = 1;
+      }
+      adapter.Reset();
+    }
+  }
+  FreeLibrary(d3d12);
+  return cached == 1;
+}
 #endif  // REX_PLATFORM_WIN32
 
 }  // namespace
@@ -1799,12 +1837,22 @@ int32_t DetectGpuTier() {
   const size_t vram_mb = desc.DedicatedVideoMemory / (1024 * 1024);
   const bool is_intel = name.find(L"Intel") != std::wstring::npos;
   const bool is_arc = name.find(L"Arc") != std::wstring::npos;
-  if (is_intel && !is_arc) {
-    // Integrated Intel: never auto-assign the top tier. Modern iGPUs with
+  // 1.4.3 EX: las APU de AMD (Radeon 680M/780M/890M, Vega 8, "AMD Radeon(TM)
+  // Graphics") son integradas aunque la BIOS les reserve 2-4 GB "dedicados":
+  // antes salian como "alta" (MSAA) y daban tirones. Las dedicadas llevan "RX",
+  // "Pro", "FirePro" o "Instinct" en el nombre.
+  const bool is_amd = desc.VendorId == 0x1002;
+  const bool is_amd_apu = is_amd && name.find(L"RX") == std::wstring::npos &&
+                          name.find(L"Pro") == std::wstring::npos &&
+                          name.find(L"Instinct") == std::wstring::npos;
+  if ((is_intel && !is_arc) || is_amd_apu) {
+    // Integrated: never auto-assign the top tier. Modern iGPUs with
     // plenty of shared memory still get "medium"; old ones get "low".
     return vram_mb >= 2048 ? 1 : 0;
   }
-  if (vram_mb >= 4096) {
+  // 1.4.3 EX: "alta" (MSAA 2x) desde 6 GB; las de 3-4 GB (RX 570/580 4 GB,
+  // GTX 1650, GTX 970) van a "media", que es fluida en todas ellas.
+  if (vram_mb >= 6000) {
     return 2;  // high
   }
   if (vram_mb >= 1536) {
@@ -2069,7 +2117,9 @@ bool LooksLikeTexturePackFile(const std::string& stem) {
 
 bool IsTexturePackDir(const std::filesystem::path& dir) {
   std::error_code ec;
-  for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
+  // Recursivo: un pack puede ir ordenado en subcarpetas (personajes/, escenarios/...).
+  for (const auto& entry : std::filesystem::recursive_directory_iterator(
+           dir, std::filesystem::directory_options::skip_permission_denied, ec)) {
     if (!entry.is_regular_file()) {
       continue;
     }
@@ -2160,7 +2210,20 @@ void ApplyUserSettingsToSdk() {
   REXCVAR_SET(user_language, static_cast<uint32_t>(Language()));
   // Host graphics backend (d3d12/vulkan). Read by the runtime when it loads
   // the GPU plugin during SetupPresentation, so it must be set before then.
-  rex::cvar::SetFlagByName("gpu_backend", GpuBackend());
+  std::string backend = GpuBackend();
+#if REX_PLATFORM_WIN32
+  if (backend != "vulkan" && !D3D12Usable()) {
+    static bool warned = false;
+    if (!warned) {
+      warned = true;
+      REXLOG_WARN(
+          "dbz3: Direct3D 12 no disponible en este equipo (GPU sin D3D12 11_0, driver o escritorio "
+          "remoto): se usa Vulkan. Actualiza el driver de la grafica si el juego no arranca.");
+    }
+    backend = "vulkan";
+  }
+#endif
+  rex::cvar::SetFlagByName("gpu_backend", backend);
   // VRR must be set BEFORE the swapchain is created (the D3D12 presenter reads
   // this cvar while creating the swap chain in SetupPresentation). This runs in
   // OnPreSetup, ahead of the swapchain creation, so the swapchain gets
@@ -2288,8 +2351,8 @@ void ApplyRuntimeSettingsToSdk(bool for_game) {
   // the "vsync" cvar has no host-present meaning: it only paces the guest
   // vblank above. The host present rate is throttled by the real `frame_cap`
   // cvar (added to the 0.10 presenter) which the launcher maps to dbz3_frame_cap.
-  // The cap is applied only for the game: the launcher keeps its own ImGui
-  // repaints uncapped (frame_cap stays 0), preserving the pre-game UI behavior.
+  // The cap is applied only for the game; before Play the launcher's ImGui
+  // repaints are capped at 60 by main.cpp (OnPostSetup).
   REXCVAR_SET(host_present_from_non_ui_thread, true);
   // The game paces its main loop by the guest vblank; keep it at 60 Hz (never
   // raise it or the game logic would run faster than intended).

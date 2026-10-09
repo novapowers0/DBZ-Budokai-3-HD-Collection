@@ -1986,10 +1986,24 @@ bool VulkanTextureCache::UploadPackTextureData(VulkanTexture& texture, const Tex
   if (entry == nullptr) {
     return false;
   }
-  std::vector<uint8_t> rgba;
-  uint32_t pack_width = 0, pack_height = 0;
-  if (!Dbz3DecodePackImage(entry->path, rgba, pack_width, pack_height) ||
-      pack_width != entry->width || pack_height != entry->height) {
+  // 1.4.3 EX: revalidar por contenido (ver la version D3D12). Vulkan no tiene la
+  // pasada de upscale, asi que la original solo se puede cargar en packs x1; en
+  // packs Nx sin otra entrada se mantiene la imagen anterior.
+  {
+    std::vector<uint8_t> linear;
+    if (LinearizeGuestTexture(key, key.GetGuestLayout(), key.base_page << 12, linear)) {
+      const Dbz3TexturePackEntry* now =
+          Dbz3PackRevalidate(entry, XXH3_64bits(linear.data(), linear.size()));
+      if (now != nullptr) {
+        entry = now;
+      } else if (entry->width == key.GetWidth()) {
+        return false;
+      }
+    }
+  }
+  // Decodificada una sola vez (cache de RAM + precarga, dbz3_texture_pack.cpp).
+  const auto image = Dbz3TexturePackIndex::Get().Decoded(*entry);
+  if (!image || image->width != entry->width || image->height != entry->height) {
     static int decode_logged = 0;
     if (decode_logged < 8) {
       ++decode_logged;
@@ -2002,7 +2016,9 @@ bool VulkanTextureCache::UploadPackTextureData(VulkanTexture& texture, const Tex
   // Cadena de mips (box filter) en un buffer host-visible que sirve de staging.
   std::vector<uint8_t> buffer;
   std::vector<Dbz3PackLevel> layouts;
-  Dbz3BuildPackMips(rgba, pack_width, pack_height, levels, 256, buffer, layouts);
+  const uint32_t pack_width = image->width, pack_height = image->height;
+  Dbz3BuildPackMips(image->rgba, pack_width, pack_height, levels, 256, buffer, layouts,
+                    Dbz3PackSwapsRedBlue(key.format));
 
   VkBufferCreateInfo buffer_create_info;
   buffer_create_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -2075,6 +2091,7 @@ bool VulkanTextureCache::UploadPackTextureData(VulkanTexture& texture, const Tex
   }
   pending_pack_uploads_.push_back(PendingPackUpload{
       command_processor_.GetCurrentSubmission(), staging_buffer, staging_allocation});
+  g_dbz3_pack_uploads.fetch_add(1, std::memory_order_relaxed);
   static int upload_logged = 0;
   if (upload_logged < 48) {
     ++upload_logged;

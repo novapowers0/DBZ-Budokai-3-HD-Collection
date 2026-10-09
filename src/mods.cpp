@@ -177,7 +177,9 @@ bool HasModContent(const std::filesystem::path& d) {
     if (std::filesystem::exists(d / n, ec)) return true;
   }
   uint32_t w, h;
-  for (const auto& e : std::filesystem::directory_iterator(d, ec)) {
+  // Los packs de texturas pueden ir en subcarpetas (el runtime las recorre).
+  for (const auto& e : std::filesystem::recursive_directory_iterator(
+           d, std::filesystem::directory_options::skip_permission_denied, ec)) {
     if (e.is_regular_file() && PackStem(e.path().stem().string(), w, h)) return true;
   }
   return false;
@@ -230,7 +232,8 @@ void CheckProblems(const std::filesystem::path& dir, ModInfo& info) {
   // Pack de texturas: nombres que el juego no reconoce y tamanos que no son x1-x4 del original.
   int pack = 0, bad_name = 0;
   std::string bad_size;
-  for (const auto& e : std::filesystem::directory_iterator(dir, ec)) {
+  for (const auto& e : std::filesystem::recursive_directory_iterator(
+           dir, std::filesystem::directory_options::skip_permission_denied, ec)) {
     if (!e.is_regular_file()) continue;
     std::string ext = e.path().extension().string();
     std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return char(std::tolower(c)); });

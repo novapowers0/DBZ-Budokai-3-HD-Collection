@@ -1,5 +1,16 @@
 # Texture packs (PCSX2 style)
 
+> **v1.4.4 — HD pack for third parties (easiest way):**
+> - `mod center hd/texturas_originales.py <folder> --zip <file.zip>` extracts ALL replaceable
+>   textures from the AFS files (44,232: DXT1/3/5 and RGBA8) as **true-color** PNGs sorted into
+>   folders (characters, stages, effects, menus, capsules, select, languages...). It writes two
+>   English zips ready for `mods/`: `DBZ3HD-Textures-Originals.zip` (folder `HD Textures/`) and `...-Languages.zip` (folder `HD Textures - Languages/`), each with README, manifest.txt and index.csv; install by dropping the zip on the launcher or extracting into `mods/`. Needs `xxhash` (`pip install xxhash`).
+> - The artist **only upscales** the images (x2-x4) **without renaming** them: the size in the
+>   name may stay the ORIGINAL one; the game reads the real PNG/DDS size.
+> - Packs may use **subfolders**. RGBA8 textures are true color; the game swaps R/B on upload.
+> - Decoded-image RAM cache (2 GB) and background **preload** when the pack fits.
+> - The `perf` log line shows `pack=` (pack textures uploaded).
+
 > A **texture pack** replaces the game's textures with your own versions
 > (usually AI-upscaled) **without touching files or the guest memory**:
 > the runtime intercepts each texture as it loads and, if the pack has a version

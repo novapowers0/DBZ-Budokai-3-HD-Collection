@@ -206,6 +206,11 @@ X_STATUS HostPathFile::ReadSync(std::span<uint8_t> buffer, size_t byte_offset,
   // virtual table on every read.
   const bool has_mods = is_afs && AfsModsPresent();
   int entry_index = -1;
+  // 1.4.3 EX: true si la lectura fisica de abajo es identica a la del AFS sin
+  // mods (este AFS no tiene entradas que crecen y la entrada no tiene override).
+  // Entonces puede usar el readahead aunque haya mods instalados: antes, con el
+  // pack de personajes (casi todos los jugadores), cada lectura iba al disco.
+  bool identity_read = !has_mods;
 
   if (host_entry && (diag || has_mods)) {
     // v1.4.1: la tabla virtual y los offsets se calculan sobre el fichero que de verdad
@@ -247,6 +252,7 @@ X_STATUS HostPathFile::ReadSync(std::span<uint8_t> buffer, size_t byte_offset,
       {
         bool any_growth = false;
         const std::vector<uint8_t>* vtable = AfsGetVirtualTableFast(path, any_growth);
+        identity_read = !any_growth;
         if (any_growth && vtable) {
           size_t served = 0;
           uint64_t off = byte_offset;
@@ -340,7 +346,7 @@ X_STATUS HostPathFile::ReadSync(std::span<uint8_t> buffer, size_t byte_offset,
   size_t got = 0;
   bool from_cache = false;
   const std::filesystem::path& phys_path = file_handle_->path();
-  if (is_afs && !has_mods && host_path && *host_path == phys_path &&
+  if (is_afs && identity_read && host_path && *host_path == phys_path &&
       ReadaheadRead(phys_path, *file_handle_, host_entry->size(), byte_offset, buffer.data(),
                     buffer.size(), got)) {
     from_cache = true;

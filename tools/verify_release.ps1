@@ -21,12 +21,13 @@ $baseline = Join-Path $root "rexglue-sdk-0.10\out\win-amd64-baseline"
 $errors = @()
 
 # Tamanos de las DLL canonicas de la release actual (SDK rama dbz3-burstlimit,
-# 2026-10-05). Historico: v1.3.0 = 10920448 / 6360064, v1.4.0 = 11034624 / 6372864.
+# 2026-10-05). Historico: v1.3.0 = 10920448 / 6360064, v1.4.0 = 11034624 / 6372864,
+# v1.4.3 = 11109888 / 6431232.
 # amd_fidelityfx_dx12.dll no cambia desde 2026-08-28.
-$canonVersion = "1.4.3"
+$canonVersion = "1.4.3.1"
 $canonSizes = @{
-    "rexruntime.dll"          = 11109888
-    "rexgpu-xenos.dll"        = 6431232
+    "rexruntime.dll"          = 11127296
+    "rexgpu-xenos.dll"        = 6448640
     "amd_fidelityfx_dx12.dll" = 5413888
 }
 

@@ -71,6 +71,8 @@ REXCVAR_DEFINE_BOOL(vulkan_dynamic_rendering, true, "GPU/Vulkan",
                     "device (falls back to render passes otherwise)")
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
 
+REXCVAR_DECLARE(double, dbz3_rim_light_scale);  // src/graphics/command_processor.cpp
+
 namespace rex::graphics::vulkan {
 
 namespace {
@@ -6446,6 +6448,15 @@ bool VulkanCommandProcessor::UpdateBindings(const VulkanShader* vertex_shader,
       }
     }
   }
+  // DBZ3 rim light scale (same as D3D12): re-upload when it starts/stops applying or changes.
+  const float rim_scale = float(REXCVAR_GET(dbz3_rim_light_scale));
+  const bool rim_shader = rim_scale != 1.0f && Dbz3IsRimLightShader(*vertex_shader);
+  const float rim_applied = rim_shader ? rim_scale : 1.0f;
+  if (rim_applied != dbz3_rim_applied_scale_) {
+    dbz3_rim_applied_scale_ = rim_applied;
+    current_constant_buffers_up_to_date_ &=
+        ~(UINT32_C(1) << SpirvShaderTranslator::kConstantBufferFloatVertex);
+  }
   uint32_t float_constant_count_pixel = 0;
   if (pixel_shader != nullptr) {
     const Shader::ConstantRegisterMap& float_constant_map_pixel =
@@ -6517,6 +6528,10 @@ bool VulkanCommandProcessor::UpdateBindings(const VulkanShader* vertex_shader,
               mapping,
               &regs[XE_GPU_REG_SHADER_CONSTANT_000_X + (i << 8) + (float_constant_index << 2)],
               sizeof(float) * 4);
+          // DBZ3 "HD shine": c39.x is the rim light strength (o2.w), scale it on request.
+          if (i == 0 && float_constant_index == 39 && rim_shader) {
+            reinterpret_cast<float*>(mapping)[0] *= rim_scale;
+          }
           mapping += sizeof(float) * 4;
         }
       }

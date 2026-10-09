@@ -53,6 +53,10 @@ namespace ui {
 class Presenter;
 class Window;
 
+// DBZ3: espera hasta el siguiente hueco de `frame_cap` FPS. Plazos fijos (no
+// "ahora + intervalo") para que el retraso de cada Sleep no se acumule.
+void Dbz3PaceHostPresent(int32_t frame_cap);
+
 class UIDrawContext {
  public:
   UIDrawContext(const UIDrawContext& context) = delete;

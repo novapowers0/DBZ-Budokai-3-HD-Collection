@@ -126,6 +126,19 @@ if (Test-Path -LiteralPath $ctrldb) {
     Write-Warning "No se encontro gamecontrollerdb.txt - omitido"
 }
 
+# 1.4.3 EX: cache inicial de shaders/pipelines (la del build de desarrollo, que ya
+# ha visto todo el juego). dbz3.exe la copia a user_data solo si falta: el primer
+# combate de una instalacion nueva no compila nada sobre la marcha.
+$shader_src = Join-Path $root "out\build\win-amd64-release\user_data\dbz3\cache\shaders\shareable"
+$shader_files = @(Get-ChildItem -LiteralPath $shader_src -Filter "4E4D0856.*" -File -ErrorAction SilentlyContinue)
+if ($shader_files.Count -gt 0) {
+    $shader_dst = Join-Path $OutDir "shader_cache"
+    New-Item -ItemType Directory -Path $shader_dst | Out-Null
+    $shader_files | ForEach-Object { Copy-Item -LiteralPath $_.FullName (Join-Path $shader_dst $_.Name) }
+} else {
+    Write-Warning "No hay cache de shaders en $shader_src - omitida"
+}
+
 # Shared DLLs: canonical copy in github/ root (versioned), then the snapshot
 # of the previous release, then the US build dir.
 foreach ($dll in $shared_dlls) {

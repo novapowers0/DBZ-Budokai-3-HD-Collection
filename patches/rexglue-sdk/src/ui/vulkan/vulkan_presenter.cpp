@@ -61,7 +61,11 @@ REXCVAR_DEFINE_BOOL(vulkan_allow_present_mode_immediate, false, "UI/Vulkan",
 REXCVAR_DEFINE_BOOL(vulkan_allow_present_mode_mailbox, false, "UI/Vulkan",
                     "Allow mailbox present mode (triple buffering)");
 
-REXCVAR_DEFINE_BOOL(vulkan_allow_present_mode_fifo_relaxed, false, "UI/Vulkan",
+// DBZ3 1.4.3 EX: FIFO relaxed por defecto. Sigue limitado por el vsync (sin el
+// bucle infinito de immediate/mailbox), pero un frame que llega tarde se
+// presenta ya en vez de esperar al siguiente vblank: con FIFO puro esa espera
+// bloquea el hilo de la GPU y el juego cae a 30 FPS en pantallas de 60 Hz.
+REXCVAR_DEFINE_BOOL(vulkan_allow_present_mode_fifo_relaxed, true, "UI/Vulkan",
                      "Allow FIFO relaxed present mode");
 
 // Host presentation cap. Defined in presenter.cpp (compiled by every backend)
@@ -280,6 +284,15 @@ bool VulkanPresenter::EnsureTemporalUpscalerContext(uint32_t render_width, uint3
       temporal_upscaler_max_render_height_ != render_height ||
       temporal_upscaler_max_output_width_ != output_width ||
       temporal_upscaler_max_output_height_ != output_height) {
+    // DBZ3: si FidelityFX no se puede crear para estos tamanos (falta el runtime o
+    // la GPU no lo admite), no reintentar en cada frame: era un aviso por frame en el
+    // log (16.000+ lineas en 5 min) y una creacion de contexto fallida por frame.
+    // ponytail: memoria de un solo fallo; se reintenta solo si cambian los tamanos.
+    static uint32_t failed_size[4] = {};
+    const uint32_t size_now[4] = {render_width, render_height, output_width, output_height};
+    if (std::equal(std::begin(size_now), std::end(size_now), std::begin(failed_size))) {
+      return false;
+    }
     DestroyTemporalUpscalerContext();
 
     ffxCreateContextDescUpscale create_desc = {};
@@ -313,8 +326,10 @@ bool VulkanPresenter::EnsureTemporalUpscalerContext(uint32_t render_width, uint3
     if (ffxCreateContext(context, &create_desc.header, nullptr) != FFX_API_RETURN_OK) {
       REXLOG_WARN(
           "VulkanPresenter: Failed to create FidelityFX temporal upscaler "
-          "context");
+          "context ({}x{} -> {}x{}); falling back until the size changes",
+          render_width, render_height, output_width, output_height);
       temporal_upscaler_context_ = nullptr;
+      std::copy(std::begin(size_now), std::end(size_now), std::begin(failed_size));
       return false;
     }
 
@@ -1543,18 +1558,11 @@ bool VulkanPresenter::GuestOutputImage::Initialize() {
 Presenter::PaintResult VulkanPresenter::PaintAndPresentImpl(bool execute_ui_drawers) {
   // Pace host presents independently from guest vblank. Without this, a
   // non-FIFO swapchain can make Steam report thousands of presents per second.
-  if (int32_t frame_cap = REXCVAR_GET(frame_cap); frame_cap > 0) {
-    static std::chrono::steady_clock::time_point last_present_time;
-    const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
-    if (last_present_time.time_since_epoch().count() != 0) {
-      const std::chrono::nanoseconds frame_interval(1000000000LL / frame_cap);
-      const std::chrono::nanoseconds elapsed = now - last_present_time;
-      if (elapsed < frame_interval) {
-        rex::thread::Sleep(
-            std::chrono::duration_cast<std::chrono::microseconds>(frame_interval - elapsed));
-      }
-    }
-    last_present_time = std::chrono::steady_clock::now();
+  // DBZ3 1.4.3 EX: igual que en D3D12 (ver d3d12_presenter.cpp): no dormir el
+  // hilo de la GPU con un tope >= 60, el guest ya va a 60 por su vblank.
+  if (int32_t frame_cap = REXCVAR_GET(frame_cap);
+      frame_cap > 0 && (execute_ui_drawers || frame_cap < 60)) {
+    Dbz3PaceHostPresent(frame_cap);
   }
 
   // Begin the submission in place of the one not currently potentially used on

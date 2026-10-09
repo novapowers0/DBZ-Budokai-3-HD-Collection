@@ -486,18 +486,60 @@ def render_lines(text):
     return np.array(out)
 
 
-def desc_texts(kind, name, who, ki, extra=None):
-    """Textos por defecto (estilo de las nativas) de una capsula nueva."""
+# Textos generados de las capsulas nuevas por idioma del juego (data_usi/eng = en,
+# spn = es, fra = fr, ger = de, ita = it). {n} = barras de ki; [s|p] = singular|plural.
+TEXTS = {
+    "en": {"ult": "Can launch Ultimate-move\n{name}", "trans": "Fight as\n{name}",
+           "special": "Can launch Death-move\n{name}",
+           "ult_cmd": "P+K+G+E attack hits\nopponent in Hyper Mode\n(Consumes {n} Ki [Gauge|Gauges])",
+           "trans_cmd": "P+K+G\nWith {n} or more Ki Gauges", "special_cmd": "(Consumes {n} Ki [Gauge|Gauges])",
+           "ki": "{n} Ki [gauge|gauges] consumed", "over": "With over {n} Ki gauges"},
+    "es": {"ult": "Puede lanzar el ataque definitivo\n{name}", "trans": "Lucha como\n{name}",
+           "special": "Puede lanzar el ataque mortal\n{name}",
+           "ult_cmd": "El ataque P+K+G+E golpea\nal rival en Modo Híper\n(Gasta {n} [barra|barras] de Ki)",
+           "trans_cmd": "P+K+G\nCon {n} o más barras de Ki", "special_cmd": "(Gasta {n} [barra|barras] de Ki)",
+           "ki": "Gasta {n} [barra|barras] de Ki", "over": "Con más de {n} barras de Ki"},
+    "fr": {"ult": "Peut lancer l'attaque ultime\n{name}", "trans": "Combat en tant que\n{name}",
+           "special": "Peut lancer l'attaque mortelle\n{name}",
+           "ult_cmd": "L'attaque P+K+G+E touche\nl'adversaire en mode Hyper\n(Consomme {n} [jauge|jauges] de Ki)",
+           "trans_cmd": "P+K+G\nAvec {n} jauges de Ki ou plus", "special_cmd": "(Consomme {n} [jauge|jauges] de Ki)",
+           "ki": "Consomme {n} [jauge|jauges] de Ki", "over": "Avec plus de {n} jauges de Ki"},
+    "de": {"ult": "Kann den Ultimativen Angriff\n{name} einsetzen", "trans": "Kampf als\n{name}",
+           "special": "Kann den Todesangriff\n{name} einsetzen",
+           "ult_cmd": "Der Angriff P+K+G+E trifft\nden Gegner im Hyper-Modus\n(Verbraucht {n} [Ki-Leiste|Ki-Leisten])",
+           "trans_cmd": "P+K+G\nAb {n} Ki-Leisten", "special_cmd": "(Verbraucht {n} [Ki-Leiste|Ki-Leisten])",
+           "ki": "Verbraucht {n} [Ki-Leiste|Ki-Leisten]", "over": "Mit mehr als {n} Ki-Leisten"},
+    "it": {"ult": "Può usare l'attacco finale\n{name}", "trans": "Combatti come\n{name}",
+           "special": "Può usare l'attacco mortale\n{name}",
+           "ult_cmd": "L'attacco P+K+G+E colpisce\nl'avversario in modalità Hyper\n(Consuma {n} [barra|barre] di Ki)",
+           "trans_cmd": "P+K+G\nCon {n} o più barre di Ki", "special_cmd": "(Consuma {n} [barra|barre] di Ki)",
+           "ki": "Consuma {n} [barra|barre] di Ki", "over": "Con più di {n} barre di Ki"},
+}
+
+
+def lang_of(afs_name):
+    """Idioma de un data_*.afs: usi/eng/us/en -> en, spn -> es, fra -> fr, ger -> de, ita -> it."""
+    n = str(afs_name).lower()
+    for key, lang in (("spn", "es"), ("fra", "fr"), ("ger", "de"), ("ita", "it")):
+        if key in n:
+            return lang
+    return "en"
+
+
+def text(key, lang="en", n=0, name=""):
+    import re  # noqa: PLC0415
+    t = TEXTS.get(lang, TEXTS["en"])[key]
+    t = re.sub(r"\[([^|\]]*)\|([^\]]*)\]", lambda m: m.group(1) if n == 1 else m.group(2), t)
+    return t.replace("{n}", str(n)).replace("{name}", name)
+
+
+def desc_texts(kind, name, who, ki, extra=None, lang="en"):
+    """Textos por defecto (estilo de las nativas) de una capsula nueva, en el idioma del juego.
+    Los textos que escribe el usuario (quien/descripcion/botones/nota) van tal cual."""
     extra = extra or {}
-    if kind == "definitiva":
-        what = "Can launch Ultimate-move\n" + name
-        cmd = "P+K+G+E attack hits\nopponent in Hyper Mode\n(Consumes %d Ki Gauge%s)" % (ki, "" if ki == 1 else "s")
-    elif kind == "transformacion":
-        what = "Fight as\n" + name
-        cmd = "P+K+G\nWith %d or more Ki Gauges" % ki
-    else:
-        what = "Can launch Death-move\n" + name
-        cmd = "(Consumes %d Ki Gauge%s)" % (ki, "" if ki == 1 else "s")
+    k = {"definitiva": "ult", "transformacion": "trans"}.get(kind, "special")
+    what = text(k, lang, ki, name)
+    cmd = text(k + "_cmd", lang, ki, name)
     return (extra.get("quien") or who, extra.get("descripcion") or what,
             extra.get("botones") or cmd, extra.get("nota") or "")
 
@@ -846,12 +888,22 @@ def skill_rows(cam, cap, limit=4):
     return rows
 
 
-def ki_text(n):
-    return "%d Ki gauge%s consumed" % (n, "" if n == 1 else "s")
+def ki_text(n, lang="en"):
+    return text("ki", lang, n)
 
 
 # ---------------------------------------------------------------- autocomprobacion
+def _selftest_texts():
+    assert ki_text(1) == "1 Ki gauge consumed" and ki_text(3) == "3 Ki gauges consumed"
+    assert ki_text(1, "es") == "Gasta 1 barra de Ki" and ki_text(2, "de") == "Verbraucht 2 Ki-Leisten"
+    assert lang_of("data_spn.afs") == "es" and lang_of("data_usi.afs") == "en" and lang_of("data_ger.afs") == "de"
+    w, d, c, _ = desc_texts("definitiva", "Cannon", "Zarbon", 4, None, "fr")
+    assert d == "Peut lancer l'attaque ultime\nCannon" and "4 jauges" in c, (d, c)
+    assert desc_texts("especial", "X", "Y", 1, {"descripcion": "mio"}, "it")[1] == "mio"
+
+
 def _selftest():
+    _selftest_texts()
     """python capsulas.py: P+K+G del donante en un #CCM y golpe injertado con su bloque HR."""
     def blk(*ws):
         b = bytearray(0x40)

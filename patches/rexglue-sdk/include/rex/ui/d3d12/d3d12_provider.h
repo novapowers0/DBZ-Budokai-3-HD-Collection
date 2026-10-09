@@ -84,6 +84,8 @@ class D3D12Provider : public GraphicsProvider {
 
   // Adapter info.
   GpuVendorID GetAdapterVendorID() const { return adapter_vendor_id_; }
+  // DBZ3: Intel Arc (por nombre del adaptador); ver render_target_cache.cpp.
+  bool IsIntelArcGpu() const { return is_intel_arc_; }
 
   // Device features.
   D3D12_HEAP_FLAGS GetHeapFlagCreateNotZeroed() const { return heap_flag_create_not_zeroed_; }
@@ -165,6 +167,7 @@ class D3D12Provider : public GraphicsProvider {
   uint32_t descriptor_sizes_[D3D12_DESCRIPTOR_HEAP_TYPE_NUM_TYPES];
 
   GpuVendorID adapter_vendor_id_;
+  bool is_intel_arc_ = false;
 
   D3D12_HEAP_FLAGS heap_flag_create_not_zeroed_;
   D3D12_PROGRAMMABLE_SAMPLE_POSITIONS_TIER programmable_sample_positions_tier_;

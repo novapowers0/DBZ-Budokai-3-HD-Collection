@@ -23,6 +23,7 @@
 #include <fstream>
 #include <map>
 #include <mutex>
+#include <unordered_map>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -358,6 +359,10 @@ namespace {
 std::mutex g_mod_dirs_mutex;
 std::vector<std::filesystem::path> g_mod_dirs_cache;
 bool g_mod_dirs_scanned = false;
+// 1.4.3 EX: resultado de AfsFindModOverride por "<afs>#<entrada>" (vacio = sin
+// override). Antes cada lectura hacia 2 stat por mod instalado, con el mutex
+// tomado; se vacia al reescanear los mods.
+std::unordered_map<std::string, std::filesystem::path> g_override_cache;
 
 void ScanModDirs() {
   std::lock_guard<std::mutex> lock(g_mod_dirs_mutex);
@@ -365,6 +370,7 @@ void ScanModDirs() {
     return;
   }
   g_mod_dirs_cache.clear();
+  g_override_cache.clear();
   const std::filesystem::path mods_root = AfsModsRoot();
   std::error_code ec;
   if (std::filesystem::is_directory(mods_root, ec)) {
@@ -401,6 +407,17 @@ bool AfsFindModOverride(const std::filesystem::path& host_path, int entry_index,
     REXLOG_INFO("AFS OVERRIDE LOOKUP: afs={} entry={} host={}", afs_name, entry_name,
                 rex::path_to_utf8(host_path));
   }
+  const std::string cache_key = afs_name + "#" + entry_name;
+  if (!log_override_lookups) {
+    auto cached = g_override_cache.find(cache_key);
+    if (cached != g_override_cache.end()) {
+      if (cached->second.empty()) {
+        return false;
+      }
+      out_path = cached->second;
+      return true;
+    }
+  }
   for (const auto& mod_dir : g_mod_dirs_cache) {
     auto candidate = mod_dir / "us" / afs_name / entry_name;
     std::error_code ec;
@@ -410,6 +427,7 @@ bool AfsFindModOverride(const std::filesystem::path& host_path, int entry_index,
         REXLOG_INFO("AFS OVERRIDE HIT: {}", rex::path_to_utf8(candidate));
       }
       out_path = candidate;
+      g_override_cache[cache_key] = out_path;
       return true;
     }
     if (std::filesystem::is_directory(candidate, ec)) {
@@ -421,11 +439,13 @@ bool AfsFindModOverride(const std::filesystem::path& host_path, int entry_index,
             REXLOG_INFO("AFS OVERRIDE HIT (folder): {}", rex::path_to_utf8(mod_file.path()));
           }
           out_path = mod_file.path();
+          g_override_cache[cache_key] = out_path;
           return true;
         }
       }
     }
   }
+  g_override_cache[cache_key].clear();
   if (log_override_lookups) {
     REXLOG_INFO("AFS OVERRIDE MISS: mods_cache={} entries:",
                 std::to_string(g_mod_dirs_cache.size()));

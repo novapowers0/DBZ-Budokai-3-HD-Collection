@@ -19,6 +19,7 @@
 #include <rex/cvar.h>
 #include <rex/logging.h>
 #include <rex/platform.h>
+#include <rex/thread.h>
 #include <rex/ui/presenter.h>
 #include <rex/ui/window.h>
 
@@ -189,9 +190,34 @@ GuestOutputPaintConfig BuildGuestOutputPaintConfigFromCVar() {
 namespace rex {
 namespace ui {
 
+void Dbz3PaceHostPresent(int32_t frame_cap) {
+  // El pintado esta serializado (un solo dueno a la vez): el estático basta.
+  static std::chrono::steady_clock::time_point next;
+  const std::chrono::nanoseconds interval(1000000000LL / frame_cap);
+  const auto now = std::chrono::steady_clock::now();
+  if (next.time_since_epoch().count() != 0 && now < next) {
+    rex::thread::Sleep(std::chrono::duration_cast<std::chrono::microseconds>(next - now));
+    next += interval;
+  } else {
+    // Primer frame o ya vamos tarde: no recuperar el tiempo perdido de golpe.
+    next = now + interval;
+  }
+}
+
 void Presenter::FatalErrorHostGpuLossCallback([[maybe_unused]] bool is_responsible,
                                               [[maybe_unused]] bool statically_from_ui_thread) {
-  rex::FatalError("Graphics device lost (probably due to an internal error)");
+  // DBZ3 1.4.3 EX: mensaje util (ES/EN) en vez de "internal error".
+  rex::FatalError(
+      "La tarjeta grafica dejo de responder (Graphics device lost).\n\n"
+      "Prueba, en este orden:\n"
+      "1. Actualiza el driver de la grafica (NVIDIA / AMD / Intel).\n"
+      "2. En el launcher: Calidad de imagen -> preset Rendimiento y escala interna 1x.\n"
+      "3. Si sigue: Motor grafico -> Vulkan.\n\n"
+      "The graphics card stopped responding (Graphics device lost).\n\n"
+      "Try, in this order:\n"
+      "1. Update your graphics driver (NVIDIA / AMD / Intel).\n"
+      "2. In the launcher: Image quality -> Performance preset and internal scale 1x.\n"
+      "3. If it continues: Graphics backend -> Vulkan.");
 }
 
 Presenter::~Presenter() {

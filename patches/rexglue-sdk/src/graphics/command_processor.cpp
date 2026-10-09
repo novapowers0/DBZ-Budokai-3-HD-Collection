@@ -29,6 +29,7 @@
 #include <rex/graphics/command_processor.h>
 #include <rex/graphics/flags.h>
 #include <rex/graphics/graphics_system.h>
+#include <rex/graphics/pipeline/shader/shader.h>
 #include <rex/graphics/pipeline/texture/info.h>
 #include <rex/graphics/sampler_info.h>
 #include <rex/graphics/xenos.h>
@@ -85,7 +86,24 @@ REXCVAR_DEFINE_BOOL(async_shader_compilation, true, "GPU",
                     "pipelines are being prepared.")
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
 
+REXCVAR_DEFINE_DOUBLE(dbz3_rim_light_scale, 1.0, "DBZ3/Video",
+                      "Strength of the HD rim light on character models (0 = off, 1 = original)")
+    .lifecycle(rex::cvar::Lifecycle::kHotReload);
+
 namespace rex::graphics {
+
+// The B3 HD model vertex shaders write the rim light strength as
+// "o2.w = c39.x * (normal != 0)". ponytail: matched on the ucode disassembly
+// text, cached for the last shader; a ucode pattern check if this gets hot.
+bool Dbz3IsRimLightShader(const Shader& shader) {
+  static const Shader* last = nullptr;
+  static bool last_result = false;
+  if (&shader != last) {
+    last = &shader;
+    last_result = shader.ucode_disassembly().find("o2.___w, c39.x") != std::string::npos;
+  }
+  return last_result;
+}
 
 // DBZ3 (v1.4.1): microsegundos que el command processor pasa dormido en WAIT_REG_MEM
 // (esperando a que el guest escriba un registro/memoria). Lo lee la linea `perf`.

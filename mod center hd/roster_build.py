@@ -1031,7 +1031,7 @@ class Capsules:
         self.next_id = len(self.recs)
         self.new = []                 # [(id, registro, nombre)]
         self.next_usi = len(usi.index)
-        self.banks = []               # [(fid data_usi, bytes)]
+        self.banks = []               # [(fid data_usi, bytes | f(afs, idioma) -> bytes)]
         self._names = {}
         self.hyper = None             # (suelo, aire) del modo hiper convertido de un port IW
         self.desc = {}                # id -> fid data_usi del panel de descripcion
@@ -1230,24 +1230,31 @@ class Capsules:
                 mine.add(i)
         mine.discard(0)
         base = min(mine)
-        srcb = []
-        if dn.get("bank", 0xFFFF) != 0xFFFF:
-            b = self.usi.entry(dn["bank"])
-            srcb.append((b, self._bank_ids(b)))
-        b = self.usi.entry(capsulas.NAMES_SHORT)
-        srcb.append((b, self._bank_ids(b)))
-        items = {}
-        for i in sorted(mine):
-            if i < len(self.recs):
-                img = self._native_name(i, srcb)
-                if img is not None:
-                    items[i] = img
+        own_imgs = {}
         for o in own:
-            items[o["id"]] = capsulas.render_name(o["nombre"])
-            self._names[o["id"]] = items[o["id"]]
+            own_imgs[o["id"]] = capsulas.render_name(o["nombre"])
+            self._names[o["id"]] = own_imgs[o["id"]]
+
+        def hud_bank(afs, lang, mine=sorted(mine), bank=dn.get("bank", 0xFFFF), base=base, own_imgs=own_imgs):
+            # los rotulos de las capsulas nativas, del data del MISMO idioma (antes, siempre
+            # los ingleses de data_usi en todos los idiomas)
+            srcb = []
+            if bank != 0xFFFF:
+                b = afs.entry(bank)
+                srcb.append((b, self._bank_ids(b)))
+            b = afs.entry(capsulas.NAMES_SHORT)
+            srcb.append((b, self._bank_ids(b)))
+            items = {}
+            for i in mine:
+                if i < len(self.recs):
+                    img = self._native_name(i, srcb)
+                    if img is not None:
+                        items[i] = img
+            items.update(own_imgs)
+            return capsulas.build_bank(base, items)
         fid = self.next_usi
         self.next_usi += 1
-        self.banks.append((fid, capsulas.build_bank(base, items)))
+        self.banks.append((fid, hud_bank))
         lines.append("hud = %s" % toml_list([fid >> 8, fid & 0xFF]))
         lines += self._skills(dn, own, iw, repl, fcaps, cam, dmoves)
         # panel de descripcion de "Edit Skills" (textos propios o al estilo de las nativas)
@@ -1257,8 +1264,8 @@ class Capsules:
                 capsulas.KI.get(o["id"]) or {"especial": 1, "definitiva": 4, "transformacion": 3}[o["tipo"]])
             fid = self.next_usi
             self.next_usi += 1
-            self.banks.append((fid, capsulas.build_desc(o["nombre"], *capsulas.desc_texts(
-                o["tipo"], o["nombre"], who, ki, o["textos"]))))
+            self.banks.append((fid, lambda afs, lang, o=o, ki=ki: capsulas.build_desc(
+                o["nombre"], *capsulas.desc_texts(o["tipo"], o["nombre"], who, ki, o["textos"], lang))))
             self.desc[o["id"]] = fid
         for o in own:
             notes.append("capsula %d: %s (%s%s)" % (o["id"], o["nombre"], o["tipo"],
@@ -1292,7 +1299,7 @@ class Capsules:
             attacks += [repl.get(c, c) for c in sk["ataques"] if repl.get(c, c) not in attacks and c not in dmoves]
         ownby = {o["id"]: o for o in own}
         used = {"transformacion": 0, "especial": 0, "definitiva": 0}
-        imgs, rows = [], []
+        plan, rows = [], []           # plan: (capsula, tipo, indice en la ficha del donante)
         for c in trans + attacks:
             kind = ownby[c]["tipo"] if c in ownby else (
                 "transformacion" if c in trans else dkind.get(c, "especial"))
@@ -1303,20 +1310,7 @@ class Capsules:
                 src = cands[min(used[kind], len(cands) - 1)] if cands else None
                 used[kind] += 1
             i = dorder.index(src) if src in dorder else None
-            if c in ownby:
-                name = capsulas.render_name(ownby[c]["nombre"], 24)
-            elif i is not None and 2 * i < len(dimgs):
-                name = dimgs[2 * i]
-            else:   # la ficha del donante tiene menos rotulos que capsulas (Androide 18)
-                name = capsulas.render_name(b3_cap_names().get(c, "?"), 24)
-            if c in ownby:                        # propia: su coste, sin notas del donante
-                kk = ownby[c]["ki"] if ownby[c]["ki"] is not None else (
-                    capsulas.KI.get(c) or {"especial": 1, "definitiva": 4}.get(kind, 3))
-                txt = ("With over %d Ki gauges" % kk) if kind == "transformacion" else capsulas.ki_text(kk)
-                cond = capsulas.render_name(txt, 24, (150, 205, 255, 255))
-            else:
-                cond = dimgs[2 * i + 1] if i is not None and 2 * i + 1 < len(dimgs) else                     capsulas.render_name(capsulas.ki_text(1), 24, (150, 205, 255, 255))
-            imgs += [name, cond]
+            plan.append((c, kind, i))
             # botones: los de su propio BCM (como las fichas nativas); si no hay ruta, los del donante
             own_rows = capsulas.skill_rows(cam, c) if c in ownby and cam is not None else []
             rows += own_rows
@@ -1326,11 +1320,35 @@ class Capsules:
                     rows.append(struct.pack(">I", c) + r[4:])
         if trans:
             rows = [r for r in drows if r[:4] == bytes([255] * 4)] + rows
-        if not imgs:                  # ninguna capsula (un port de IW sin especiales): la del donante
+        if not plan:                  # ninguna capsula (un port de IW sin especiales): la del donante
             return []
+
+        def scm(afs, lang, plan=plan, rows=rows, scm_entry=sk["scm"]):
+            # rotulos de la ficha en el idioma de ese data (los del donante salen de su propio
+            # data; los textos de coste de las propias, traducidos)
+            dimgs = capsulas.scm_parts(afs.entry(scm_entry))[0]
+            blue = (150, 205, 255, 255)
+            imgs = []
+            for c, kind, i in plan:
+                if c in ownby:
+                    name = capsulas.render_name(ownby[c]["nombre"], 24)
+                elif i is not None and 2 * i < len(dimgs):
+                    name = dimgs[2 * i]
+                else:   # la ficha del donante tiene menos rotulos que capsulas (Androide 18)
+                    name = capsulas.render_name(b3_cap_names().get(c, "?"), 24)
+                if c in ownby:                        # propia: su coste, sin notas del donante
+                    kk = ownby[c]["ki"] if ownby[c]["ki"] is not None else (
+                        capsulas.KI.get(c) or {"especial": 1, "definitiva": 4}.get(kind, 3))
+                    txt = capsulas.text("over", lang, kk) if kind == "transformacion" else capsulas.ki_text(kk, lang)
+                    cond = capsulas.render_name(txt, 24, blue)
+                else:
+                    cond = dimgs[2 * i + 1] if i is not None and 2 * i + 1 < len(dimgs) else \
+                        capsulas.render_name(capsulas.ki_text(1, lang), 24, blue)
+                imgs += [name, cond]
+            return capsulas.build_scm(imgs, rows)
         fid = self.next_usi
         self.next_usi += 1
-        self.banks.append((fid, capsulas.build_scm(imgs, rows)))
+        self.banks.append((fid, scm))
         return ["habilidades = %d" % fid, "habilidades_ataques = %s" % toml_list(attacks),
                 "habilidades_transformaciones = %s" % toml_list(trans)]
 
@@ -1338,8 +1356,9 @@ class Capsules:
         """Bancos de nombres, nombres en los menus y registros del catalogo.
         data_langs: [(nombre del afs, Afs)] de los otros idiomas, que reciben lo mismo."""
         for afs_name, afs in [("data_usi.afs", self.usi)] + list(data_langs):
-            for fid, b in self.banks:
-                write_entry(out_dir, afs_name, fid, b, work)
+            lang = capsulas.lang_of(afs_name)
+            for fid, b in self.banks:      # bytes, o una funcion (afs, idioma) -> bytes
+                write_entry(out_dir, afs_name, fid, b(afs, lang) if callable(b) else b, work)
             if self._names:
                 for e in (capsulas.NAMES_SHORT, capsulas.NAMES_LONG):
                     write_entry(out_dir, afs_name, e,

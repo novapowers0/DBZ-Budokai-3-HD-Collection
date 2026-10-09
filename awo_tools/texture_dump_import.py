@@ -198,6 +198,11 @@ def main():
         alpha_all_zero = False
         try:
             im = Image.open(dds_path)
+            if e.get('dds') == 'RGBA8':
+                # El volcado guarda los bytes del guest (BGRA en el B3 HD): a colores
+                # reales, que es lo que espera el cargador de packs (gira R/B al subir).
+                r, g, b, a = im.convert('RGBA').split()
+                im = Image.merge('RGBA', (b, g, r, a))
             if args.opaque_alpha and im.mode in ('RGBA', 'LA', 'PA'):
                 im = im.convert('RGBA')
                 alpha_all_zero = im.getchannel('A').getextrema() == (0, 0)

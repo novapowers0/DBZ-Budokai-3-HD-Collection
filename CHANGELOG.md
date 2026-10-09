@@ -6,6 +6,11 @@ are summarized at the end; the full history (in Spanish) is in
 
 Downloads: [latest release](../../releases/latest).
 
+## v1.4.3.1 "1.4.3 EX" (2026-10-10)
+- Performance: the host frame cap no longer sleeps the GPU thread at 60 (fixed "stuck at 30 FPS" on 60 Hz screens), evenly spaced guest vblanks, launcher capped at 60, process priority above normal, shipped shader/pipeline cache, AFS mod lookups cached and readahead with mods, Vulkan FIFO relaxed.
+- Compatibility: high-performance GPU on hybrid laptops (D3D12 and Vulkan, Optimus/PowerXpress exports in the exe), AMD RDNA "device lost" fix (MaxAs clamp, from Xenia Canary), Intel Arc on the RTV path, automatic Vulkan fallback when Direct3D 12 is unavailable, better auto preset (AMD APUs, 4 GB cards), FidelityFX DLL delay-loaded, bilingual GPU error messages.
+- HD texture packs: replacements re-checked by content (no wrong texture when memory is reused); Linux HD brightness; FR/DE/IT text.
+
 ## v1.4.2.3 "1.4.2 EX" (2026-10-07)
 - Launcher Mods tab: "Easy textures" (capture while playing, prepare pack-named PNGs with the bundled Python, "My texture pack"), drag-and-drop install of mod zips and edited PNGs, plain-language broken-mod warnings (empty, nested folder with a Fix button, missing files, invalid texture names/sizes) and a warning next to PLAY.
 - Modding Kit ships a portable Python (python.org build with numpy, Pillow, scipy, tkinter); the launcher and DBZ3_ModKit.bat use it first.
