@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <mutex>
+#include <cstdlib>
 #include <string>
 #include <thread>
 #include <vector>
@@ -451,7 +452,20 @@ void OpenUrl(const std::string& url) {
   }
   ShellExecuteA(nullptr, "open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
 #else
-  (void)url;
+  if (url.empty()) {
+    return;
+  }
+  std::string quoted = "'";
+  for (char c : url) {
+    if (c == '\'') quoted += "'\\''";
+    else quoted += c;
+  }
+  quoted += "'";
+#if REX_PLATFORM_MAC
+  std::system(("open " + quoted + " >/dev/null 2>&1 &").c_str());
+#else
+  std::system(("xdg-open " + quoted + " >/dev/null 2>&1 &").c_str());
+#endif
 #endif
 }
 

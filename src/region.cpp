@@ -1,6 +1,7 @@
 // dbz3 - Region selection support (project-side, no SDK changes).
 
 #include "region.h"
+#include "portable_root.h"
 
 #include "launcher/settings.h"
 
@@ -329,7 +330,7 @@ bool RelocateGameData(const std::filesystem::path& root) {
   // extras folder, an ISO...). Re-resolve the executable for the new root so the
   // drive serves the right default.xex and the banner stays truthful.
   if (!IsoPathActive() && std::filesystem::is_directory(root)) {
-    const auto exe_dir = rex::filesystem::GetExecutableFolder();
+    const auto exe_dir = dbz3::PortableRoot();
     std::vector<std::filesystem::path> roots{root};
     if (!root.parent_path().empty()) roots.push_back(root.parent_path());
     roots.push_back(exe_dir);

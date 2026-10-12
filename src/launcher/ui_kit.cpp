@@ -85,6 +85,7 @@ void LoadFonts(ImFontAtlas* atlas) {
       "/usr/share/fonts/TTF/DejaVuSans.ttf",
       "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
       "Z:\\usr\\share\\fonts\\truetype\\dejavu\\DejaVuSans.ttf",
+      "/System/Library/Fonts/Supplemental/Arial.ttf",  // macOS
   });
   if (regular.empty()) {
     REXLOG_WARN("dbz3 launcher: no system UI font found; using the default font");
@@ -97,10 +98,12 @@ void LoadFonts(ImFontAtlas* atlas) {
       "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
       "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
       "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+      "/System/Library/Fonts/Supplemental/Arial Bold.ttf",  // macOS
   });
   const std::string black = FirstExisting({
       "C:\\Windows\\Fonts\\seguibl.ttf",
       "C:\\Windows\\Fonts\\segoeuib.ttf",
+      "/System/Library/Fonts/Supplemental/Arial Black.ttf",  // macOS
   });
   const std::string icons = FirstExisting({
       "C:\\Windows\\Fonts\\SegoeIcons.ttf",
@@ -114,9 +117,11 @@ void LoadFonts(ImFontAtlas* atlas) {
   g_fonts.h2 = AddFont(atlas, bold_path, 19.0f, icons, density);
   g_fonts.title = AddFont(atlas, black.empty() ? bold_path : black, 30.0f, {}, density);
   // Same face as the generated name banners (roster_build.py FONT).
-  g_fonts.banner = AddFont(atlas, FirstExisting({"C:\\Windows\\Fonts\\comicbd.ttf"}), 44.0f, {}, density);
+  g_fonts.banner = AddFont(atlas, FirstExisting({"C:\\Windows\\Fonts\\comicbd.ttf",
+                                                    "/System/Library/Fonts/Supplemental/Comic Sans MS Bold.ttf"}), 44.0f, {}, density);
   // Same face as the generated capsule names (capsulas.py); menus of the game look like it.
-  const std::string rounded = FirstExisting({"C:\\Windows\\Fonts\\ARLRDBD.TTF"});
+  const std::string rounded = FirstExisting({"C:\\Windows\\Fonts\\ARLRDBD.TTF",
+                                                "/System/Library/Fonts/Supplemental/Arial Rounded Bold.ttf"});
   g_fonts.menu = AddFont(atlas, rounded.empty() ? bold_path : rounded, 48.0f, {}, density);
   g_fonts.speech = AddFont(atlas, bold_path, 30.0f, {}, density);
   REXLOG_INFO("dbz3 launcher: fonts {} / {} (icons: {}), density {:.2f}", regular, bold_path,

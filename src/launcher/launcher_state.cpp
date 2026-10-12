@@ -2,6 +2,7 @@
 // Dark modern style with Dragon Ball accent colors (orange/blue).
 
 #include "launcher_state.h"
+#include "../portable_root.h"
 
 #include <rex/cvar.h>
 #include <rex/filesystem.h>
@@ -381,6 +382,52 @@ bool RunPicker(const std::string& command, std::string& out) {
   return true;
 }
 
+#if REX_PLATFORM_MAC
+// macOS: dialogos nativos a traves de AppleScript (osascript viene con el
+// sistema; no hace falta enlazar AppKit en el juego).
+std::string AppleScriptString(const std::string& value) {
+  std::string quoted = "\"";
+  for (char c : value) {
+    if (c == '"' || c == '\\') quoted += '\\';
+    quoted += c;
+  }
+  return quoted + "\"";
+}
+
+std::string AppleScriptDefaultLocation(const std::string& initial) {
+  std::error_code ec;
+  if (initial.empty() || !std::filesystem::is_directory(initial, ec)) return {};
+  return " default location (POSIX file " + AppleScriptString(initial) + ")";
+}
+
+bool PickFolder(std::string& out, const std::string& initial) {
+  const std::string script =
+      "POSIX path of (choose folder" + AppleScriptDefaultLocation(initial) + ")";
+  if (!RunPicker("osascript -e " + ShellQuote(script) + " 2>/dev/null", out)) return false;
+  while (out.size() > 1 && out.back() == '/') out.pop_back();
+  return true;
+}
+
+bool PickFile(std::string& out, const char* filter_desc, const char* filter_ext,
+              const std::string& initial) {
+  (void)filter_desc;
+  // "*.png;*.jpg" -> of type {"png", "jpg"}
+  std::string types;
+  const std::string spec = filter_ext ? filter_ext : "";
+  for (size_t pos = 0; pos <= spec.size();) {
+    const size_t end = std::min(spec.find(';', pos), spec.size());
+    const std::string item = spec.substr(pos, end - pos);
+    if (item.rfind("*.", 0) == 0 && item.size() > 2 && item != "*.*") {
+      types += (types.empty() ? "" : ", ") + AppleScriptString(item.substr(2));
+    }
+    pos = end + 1;
+  }
+  std::string script = "POSIX path of (choose file";
+  if (!types.empty()) script += " of type {" + types + "}";
+  script += AppleScriptDefaultLocation(initial) + ")";
+  return RunPicker("osascript -e " + ShellQuote(script) + " 2>/dev/null", out);
+}
+#else
 bool PickFolder(std::string& out, const std::string& initial) {
   const std::string start = initial.empty() ? "." : initial;
   return RunPicker("zenity --file-selection --directory --filename=" +
@@ -403,9 +450,22 @@ bool PickFile(std::string& out, const char* filter_desc, const char* filter_ext,
                        ShellQuote(pattern) + " 2>/dev/null",
                    out);
 }
+#endif  // REX_PLATFORM_MAC
 
 }  // namespace
 #endif  // REX_PLATFORM_WIN32
+
+// Abre una carpeta en el explorador del sistema (Explorer, Finder o el gestor
+// de archivos de Linux).
+void OpenFolderInShell(const std::filesystem::path& dir) {
+#if REX_PLATFORM_WIN32
+  std::system(("explorer \"" + dir.string() + "\"").c_str());
+#elif REX_PLATFORM_MAC
+  std::system(("open " + ShellQuote(dir.string()) + " >/dev/null 2>&1 &").c_str());
+#else
+  std::system(("xdg-open " + ShellQuote(dir.string()) + " >/dev/null 2>&1 &").c_str());
+#endif
+}
 
 }  // namespace
 
@@ -2437,7 +2497,7 @@ void LauncherDialog::DrawModsTab() {
   // reconoce un pack y editarlas en "mods/Mi pack de texturas" (el runtime acepta PNG).
   // Lo mas pedido en foros de modding: no mezclar captura y carga, PNG directos, sin pasos raros.
   {
-    const std::filesystem::path exe_dir = rex::filesystem::GetExecutableFolder();
+    const std::filesystem::path exe_dir = dbz3::PortableRoot();
     const std::filesystem::path edit_dir = exe_dir / "texturas" / "para_editar";
     const std::filesystem::path my_pack = dbz3::ModsRoot() / "Mi pack de texturas";
     std::string cap_dir = dbz3::settings::TextureDumpDir();
@@ -2452,7 +2512,7 @@ void LauncherDialog::DrawModsTab() {
     auto open_dir = [](const std::filesystem::path& d) {
       std::error_code ec;
       std::filesystem::create_directories(d, ec);
-      std::system(("explorer \"" + d.string() + "\"").c_str());
+      OpenFolderInShell(d);
     };
     ImGui::Spacing();
     ui::SectionTitle(i18n::T("Texturas faciles (PNG)", "Easy textures (PNG)"));
@@ -2569,8 +2629,7 @@ void LauncherDialog::DrawModsTab() {
       const std::filesystem::path mods_dir = dbz3::ModsRoot();
       std::error_code ec;
       std::filesystem::create_directories(mods_dir, ec);
-      std::string cmd = "explorer \"" + mods_dir.string() + "\"";
-      std::system(cmd.c_str());
+      OpenFolderInShell(mods_dir);
     }
     ImGui::Spacing();
   }
@@ -2756,8 +2815,7 @@ void LauncherDialog::DrawModsTab() {
       const std::filesystem::path mods_dir = dbz3::ModsRoot();
       std::error_code ec;
       std::filesystem::create_directories(mods_dir, ec);
-      std::string cmd = "explorer \"" + mods_dir.string() + "\"";
-      std::system(cmd.c_str());
+      OpenFolderInShell(mods_dir);
     }
     ImGui::SameLine();
     if (ImGui::Button(i18n::T("Instalar mod (.zip)...", "Install mod (.zip)..."),
@@ -2909,8 +2967,7 @@ ImGui::TextDisabled(i18n::T("%d archivo%s", "%d file%s"), mod.file_count,
 
       ImGui::TableSetColumnIndex(3);
       if (ImGui::SmallButton((std::string(i18n::T("Carpeta", "Folder")) + "##folder_" + mod.name).c_str())) {
-        std::string cmd = "explorer \"" + (dbz3::ModsRoot() / mod.name).string() + "\"";
-        std::system(cmd.c_str());
+        OpenFolderInShell(dbz3::ModsRoot() / mod.name);
       }
       if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip("%s", i18n::T("Abrir carpeta del mod", "Open mod folder"));
@@ -3048,7 +3105,7 @@ void LauncherDialog::DrawModelSwapTab() {
         "ZIP: download it from the repository ('mod center hd' folder) or from "
         "a full release, and place it next to dbz3.exe."));
     ImGui::TextDisabled(i18n::T("Esperado en: %s", "Expected at: %s"),
-                        (rex::filesystem::GetExecutableFolder() /
+                        (dbz3::PortableRoot() /
                          "mod center hd" / "catalog_b3.cat")
                             .string()
                             .c_str());
@@ -4123,7 +4180,7 @@ void LauncherDialog::DrawImporter() {
         "without the kit."));
     ImGui::PopTextWrapPos();
     if (ImGui::Button(i18n::T("Abrir la carpeta del juego", "Open the game folder"))) {
-      std::system(("explorer \"" + ModPipeline::ModsDir().parent_path().string() + "\"").c_str());
+      OpenFolderInShell(ModPipeline::ModsDir().parent_path());
     }
     ui::EndCard();
     return;
@@ -4738,7 +4795,7 @@ void LauncherDialog::DrawTexturesTab() {
         "in the release ZIP: download it from the repository ('mod center hd' "
         "folder) or from a full release, and place it next to dbz3.exe."));
     ImGui::TextDisabled(i18n::T("Esperado en: %s", "Expected at: %s"),
-                        (rex::filesystem::GetExecutableFolder() /
+                        (dbz3::PortableRoot() /
                          "mod center hd" / "catalog_b3.cat")
                             .string()
                             .c_str());
@@ -4878,8 +4935,7 @@ void LauncherDialog::DrawTexturesTab() {
     ImGui::SameLine();
     if (ImGui::Button(i18n::T("Abrir carpeta de texturas", "Open textures folder"),
                       ImVec2(220, 0))) {
-      std::string cmd = "explorer \"" + active_tex_dir + "\"";
-      std::system(cmd.c_str());
+      OpenFolderInShell(active_tex_dir);
     }
     ImGui::TextDisabled(i18n::T("Edita los PNG en: %s", "Edit the PNGs in: %s"),
                         active_tex_dir.c_str());

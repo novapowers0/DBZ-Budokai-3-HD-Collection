@@ -33,6 +33,7 @@ extern const rex::PPCImageInfo PPCImageConfigEU;
 #include <rex/rex_app.h>
 #include <rex/hook.h>
 #include "hooks.h"
+#include "portable_root.h"
 
 #ifdef _WIN32
 // DBZ3 1.4.3 EX: los drivers de NVIDIA (Optimus) y AMD (PowerXpress) solo leen
@@ -96,6 +97,80 @@ bool GameDimmed() { return dbz3::settings::DimUnfocused() && !g_window_focused.l
 #include <windows.h>
 #include <dbghelp.h>
 #pragma comment(lib, "dbghelp.lib")
+#endif
+
+#if REX_PLATFORM_MAC
+#include <unistd.h>
+
+namespace {
+
+// macOS (.app): sin los datos del juego no hay launcher que mostrar y stderr no
+// se ve. Dialogo nativo (osascript): elegir la .iso (se enlaza en la carpeta de
+// datos y el juego se reabre), abrir esa carpeta en el Finder o salir.
+std::string MacShellQuote(const std::string& value) {
+    std::string quoted = "'";
+    for (char c : value) {
+        if (c == '\'') quoted += "'\\''";
+        else quoted += c;
+    }
+    return quoted + "'";
+}
+
+std::string MacAppleScriptString(const std::string& value) {
+    std::string quoted = "\"";
+    for (char c : value) {
+        if (c == '"' || c == '\\') quoted += '\\';
+        quoted += c;
+    }
+    return quoted + "\"";
+}
+
+std::string MacRunOsascript(const std::string& script) {
+    FILE* pipe = popen(("osascript -e " + MacShellQuote(script) + " 2>/dev/null").c_str(), "r");
+    if (!pipe) return {};
+    std::string out;
+    char buffer[512];
+    while (std::fgets(buffer, sizeof(buffer), pipe)) out += buffer;
+    pclose(pipe);
+    while (!out.empty() && (out.back() == '\n' || out.back() == '\r')) out.pop_back();
+    return out;
+}
+
+bool MacAskForGameData(const std::filesystem::path& data_dir) {
+    const std::string choose = dbz3::i18n::T("Elegir .iso...", "Choose .iso...");
+    const std::string open = dbz3::i18n::T("Abrir carpeta", "Open folder");
+    const std::string quit = dbz3::i18n::T("Salir", "Quit");
+    const std::string text =
+        std::string(dbz3::i18n::T(
+            "No se encontro tu copia de DBZ Budokai HD Collection (Xbox 360).\n\n"
+            "Elige la .iso, o pon default.xex + us/ (o eu/) en la carpeta de datos:\n",
+            "Your copy of DBZ Budokai HD Collection (Xbox 360) was not found.\n\n"
+            "Choose the .iso, or put default.xex + us/ (or eu/) in the data folder:\n")) +
+        data_dir.string();
+    const std::string answer = MacRunOsascript(
+        "button returned of (display dialog " + MacAppleScriptString(text) +
+        " with title \"DBZ Budokai 3\" buttons {" + MacAppleScriptString(quit) + ", " +
+        MacAppleScriptString(open) + ", " + MacAppleScriptString(choose) +
+        "} default button 3 with icon caution)");
+    if (answer == open) {
+        std::system(("open " + MacShellQuote(data_dir.string())).c_str());
+        return false;
+    }
+    if (answer != choose) return false;
+    const std::string iso = MacRunOsascript(
+        "POSIX path of (choose file of type {\"iso\"} with prompt " +
+        MacAppleScriptString(dbz3::i18n::T("Imagen de disco Xbox 360 (.iso)",
+                                           "Xbox 360 disc image (.iso)")) + ")");
+    if (iso.empty()) return false;
+    const std::filesystem::path source(iso);
+    const auto link = data_dir / source.filename();
+    std::error_code ec;
+    std::filesystem::remove(link, ec);
+    std::filesystem::create_symlink(source, link, ec);
+    return !ec;
+}
+
+}  // namespace
 #endif
 
 namespace {
@@ -221,6 +296,14 @@ public:
           MessageBoxA(nullptr, msg.c_str(), "DBZ Budokai 3 - Datos del juego",
                       MB_OK | MB_ICONINFORMATION | MB_SETFOREGROUND | MB_TOPMOST);
 #else
+#if REX_PLATFORM_MAC
+          if (dbz3::RunningFromMacBundle() && MacAskForGameData(dbz3::PortableRoot())) {
+            // La .iso ya esta enlazada en la carpeta de datos: reabrir el juego.
+            rex::FlushLogging();
+            const std::string exe = rex::filesystem::GetExecutablePath().string();
+            execl(exe.c_str(), exe.c_str(), static_cast<char*>(nullptr));
+          }
+#endif
           std::fprintf(stderr, "%s\n", msg.c_str());
 #endif
           rex::FlushLogging();
@@ -434,8 +517,21 @@ public:
 
     // Called after path defaults are computed, before Runtime is constructed
     void OnConfigurePaths(rex::PathConfig& paths) override {
-        auto exe_dir = rex::filesystem::GetExecutableFolder();
+        auto exe_dir = dbz3::PortableRoot();
         REXLOG_INFO("OnConfigurePaths - exe_dir: {}", exe_dir.string());
+#if REX_PLATFORM_MAC
+        if (dbz3::RunningFromMacBundle()) {
+            // .app: la config del SDK (y con ella los logs) va a la carpeta de
+            // datos; el GameControllerDB viaja dentro del bundle (Resources/).
+            paths.config_path = exe_dir / paths.config_path.filename();
+            const auto controller_db = rex::filesystem::GetExecutableFolder().parent_path() /
+                                       "Resources" / "gamecontrollerdb.txt";
+            std::error_code ec;
+            if (std::filesystem::exists(controller_db, ec)) {
+                rex::cvar::SetFlagByName("hid_mappings_file", controller_db.string());
+            }
+        }
+#endif
         // OnConfigurePaths runs in SetupEnvironment, before OnPreSetup loads
         // the user settings. Load them here too so dbz3_region is already the
         // persisted value when we build the region/mod overlay below.

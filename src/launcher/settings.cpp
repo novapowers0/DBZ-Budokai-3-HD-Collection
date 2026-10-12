@@ -1,6 +1,7 @@
 // dbz3 - User settings layer implementation.
 
 #include "settings.h"
+#include "../portable_root.h"
 
 #include <rex/cvar.h>
 #include <rex/filesystem.h>
@@ -527,7 +528,7 @@ bool IsWritableDir(const std::filesystem::path& dir) {
 }  // namespace
 
 std::filesystem::path UserSettingsPath() {
-  const auto exe_dir = rex::filesystem::GetExecutableFolder();
+  const auto exe_dir = dbz3::PortableRoot();
   const auto portable = exe_dir / "dbz3_user.toml";
   // Normally the settings file lives next to the executable (portable). If that
   // folder cannot be written, saving would fail silently and every option would
@@ -540,7 +541,7 @@ std::filesystem::path UserSettingsPath() {
 
 std::filesystem::path UserDataRoot() {
   if (!g_user_data_root.empty()) return g_user_data_root;
-  const auto exe_dir = rex::filesystem::GetExecutableFolder();
+  const auto exe_dir = dbz3::PortableRoot();
   const auto portable = exe_dir / "user_data" / "dbz3";
   if (IsWritableDir(portable)) {
     g_user_data_portable = true;
@@ -1550,7 +1551,7 @@ BootSource ResolveBootSource(const std::filesystem::path& data_root,
 }
 
 std::filesystem::path LatestLogPath() {
-  const auto logs_dir = rex::filesystem::GetExecutableFolder() / "logs";
+  const auto logs_dir = dbz3::PortableRoot() / "logs";
   if (!std::filesystem::is_directory(logs_dir)) return {};
   std::filesystem::path newest;
   std::filesystem::file_time_type newest_time{};
@@ -1578,7 +1579,7 @@ std::filesystem::path LatestLogPath() {
 // removed"), que es justo cuando hace falta el informe. Un `d3d12_dred = true`
 // puesto a mano en el toml se respeta.
 static bool PreviousSessionLostGpu() {
-  const auto logs_dir = rex::filesystem::GetExecutableFolder() / "logs";
+  const auto logs_dir = dbz3::PortableRoot() / "logs";
   std::error_code ec;
   if (!std::filesystem::is_directory(logs_dir, ec)) return false;
   // La sesion actual ya ha creado su log (el mas reciente): mirar el anterior.
@@ -2077,7 +2078,7 @@ void SetTextureDumpDir(const std::string& dir) { REXCVAR_SET(dbz3_texture_dump, 
 // next to the project (a sibling of the install drive, where there is room).
 std::string DefaultTextureDumpDir() {
   // Junto al juego (antes una ruta de desarrollo en D:, que no existe en otros equipos).
-  return (rex::filesystem::GetExecutableFolder() / "texturas" / "capturas").string();
+  return (dbz3::PortableRoot() / "texturas" / "capturas").string();
 }
 void SetTextureDumpEnabled(bool enabled) {
   if (!enabled) {
@@ -2094,7 +2095,7 @@ void SetTextureDumpEnabled(bool enabled) {
 // persists the list so the GPU plugin replaces those textures at runtime.
 namespace {
 std::filesystem::path LauncherModsRoot() {
-  std::filesystem::path probe = rex::filesystem::GetExecutableFolder();
+  std::filesystem::path probe = dbz3::PortableRoot();
   std::error_code ec;
   for (int depth = 0; depth < 4; ++depth) {
     const std::filesystem::path candidate = probe / "mods";
@@ -2103,7 +2104,7 @@ std::filesystem::path LauncherModsRoot() {
     }
     probe = probe.parent_path();
   }
-  return rex::filesystem::GetExecutableFolder() / "mods";
+  return dbz3::PortableRoot() / "mods";
 }
 
 bool LooksLikeTexturePackFile(const std::string& stem) {
@@ -2270,6 +2271,12 @@ void ApplyUserSettingsToSdk() {
   }
 #endif
   rex::cvar::SetFlagByName("gpu_backend", backend);
+#if REX_PLATFORM_MAC
+  // MoltenVK avisa en cada frame de que Metal no puede desactivar el primitive
+  // restart (inofensivo): ~60 lineas por segundo en el log del juego. Sus avisos
+  // siguen saliendo por stderr ([mvk-warn]).
+  rex::cvar::SetFlagByName("vulkan_log_debug_messages", "false");
+#endif
   // VRR must be set BEFORE the swapchain is created (the D3D12 presenter reads
   // this cvar while creating the swap chain in SetupPresentation). This runs in
   // OnPreSetup, ahead of the swapchain creation, so the swapchain gets

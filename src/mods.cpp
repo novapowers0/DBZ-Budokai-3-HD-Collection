@@ -1,6 +1,7 @@
 // dbz3 - Mod manager (project-side).
 
 #include "mods.h"
+#include "portable_root.h"
 
 #include <rex/filesystem.h>
 #include <rex/logging.h>
@@ -28,7 +29,7 @@ namespace dbz3 {
 std::filesystem::path ModsRoot() {
   // Mods live next to the executable (where the runtime's VFS resolves them),
   // matching dbz3::settings. The build output dir is not wiped for mods.
-  return rex::filesystem::GetExecutableFolder() / "mods";
+  return dbz3::PortableRoot() / "mods";
 }
 
 namespace {
