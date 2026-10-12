@@ -43,6 +43,9 @@ generated/*
 # ReXGlue SDK (third-party, provided separately by rexglue/rexglue-sdk)
 rexglue/
 /rexglue-sdk/
+# macOS (docs/MACOS.md): SDK installed in the repo root and the packaged app.
+/rexglue-mac/
+*.app/
 
 # ...except the runtime patches distributed in patches/ (mid-insert virtual AFS).
 !patches/
