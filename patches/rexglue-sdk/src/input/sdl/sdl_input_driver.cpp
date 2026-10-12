@@ -18,6 +18,7 @@
 #include <rex/input/flags.h>
 #include <rex/input/sdl/sdl_input_driver.h>
 #include <rex/logging.h>
+#include <rex/platform.h>
 #include <rex/ui/virtual_key.h>
 
 REXCVAR_DEFINE_STRING(hid_mappings_file, "gamecontrollerdb.txt", "Input",
@@ -73,7 +74,7 @@ void SDLInputDriver::OnWindowAvailable(rex::ui::Window* window) {
     if (init_thread_.joinable()) {
       init_thread_.detach();
     }
-    init_thread_ = std::thread([this]() {
+    auto init_sdl = [this]() {
       // Initialize SDL events subsystem
       if (!SDL_InitSubSystem(SDL_INIT_EVENTS)) {
         REXLOG_ERROR("SDL: Failed to init events subsystem: {}", SDL_GetError());
@@ -132,7 +133,17 @@ void SDLInputDriver::OnWindowAvailable(rex::ui::Window* window) {
         }
       }
       REXLOG_INFO("SDL input driver initialized successfully");
-    });
+    };
+#if REX_PLATFORM_MAC
+    // macOS: IOKit/GameController atan los mandos al run loop del hilo que
+    // inicia SDL_INIT_GAMEPAD. Un hilo propio termina al acabar la init y deja
+    // ese run loop colgando: al conectarse un mando (p.ej. DualSense) SDL lo
+    // usaba y el proceso caia (EXC_BREAKPOINT en CFRunLoopAddSource). Aqui se
+    // inicia en el hilo de la UI, que vive toda la partida.
+    init_sdl();
+#else
+    init_thread_ = std::thread(init_sdl);
+#endif
   }
 }
 

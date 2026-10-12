@@ -1,0 +1,105 @@
+name: macOS build
+
+# Manual for now: same steps as linux.yml on an Apple Silicon runner. See
+# docs/MACOS.md.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos-arm64:
+    runs-on: macos-26
+    steps:
+      - name: Check out public project
+        uses: actions/checkout@v4
+
+      - name: Resolve release version
+        id: version
+        shell: bash
+        run: |
+          # Single source of truth: src/version.rc (DBZ3_VERSION_STR "x.y.z")
+          version=$(grep -oE 'DBZ3_VERSION_STR[[:space:]]+"[^"]+"' src/version.rc \
+            | head -n1 | sed -E 's/.*"([^"]+)".*/\1/')
+          test -n "$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Resolved version: $version"
+
+      - name: Check out private generated code
+        uses: actions/checkout@v4
+        with:
+          repository: novapowers0/DBZ-Budokai-3-HD-Collection-generated
+          ssh-key: ${{ secrets.DBZ3_GENERATED_SSH_KEY }}
+          path: generated-private
+
+      - name: Install build dependencies
+        run: brew install cmake ninja
+
+      - name: Check out ReXGlue SDK
+        uses: actions/checkout@v4
+        with:
+          repository: rexglue/rexglue-sdk
+          ref: v0.10.0
+          path: rexglue-sdk-0.10
+          submodules: recursive
+
+      - name: Apply project runtime patches
+        shell: bash
+        run: |
+          cp -R patches/rexglue-sdk/. rexglue-sdk-0.10/
+          bash tools/patch_rexglue_macos.sh rexglue-sdk-0.10
+
+      - name: Validate generated source set
+        shell: bash
+        run: |
+          test -f generated-private/us/sources.cmake
+          test -f generated-private/eu/sources.cmake
+          rm -rf generated generated_eu
+          cp -R generated-private/us generated
+          cp -R generated-private/eu generated_eu
+
+      - name: Build and install ReXGlue SDK
+        run: |
+          cmake --preset mac-arm64 -S rexglue-sdk-0.10 \
+            -DREXGLUE_ENABLE_FIDELITYFX=OFF \
+            -DREXGLUE_ENABLE_TRACY=OFF \
+            -DCMAKE_INSTALL_PREFIX="$GITHUB_WORKSPACE/rexglue-mac"
+          cmake --build rexglue-sdk-0.10/out/build/mac-arm64 --config Release --parallel
+          cmake --install rexglue-sdk-0.10/out/build/mac-arm64 --config Release
+
+      - name: Configure and build dbz3
+        run: |
+          cmake --preset mac-arm64-release -DCMAKE_PREFIX_PATH="$GITHUB_WORKSPACE/rexglue-mac"
+          cmake --build out/build/mac-arm64-release --parallel
+
+      - name: Package macOS app
+        shell: bash
+        run: |
+          app="$GITHUB_WORKSPACE/DBZ Budokai 3.app"
+          bash tools/macos/make_app.sh out/build/mac-arm64-release "$app"
+          file "$app/Contents/MacOS/dbz3" | grep arm64
+          otool -L "$app/Contents/MacOS/dbz3" | grep '@rpath/librexruntime.dylib'
+          test -f "$app/Contents/Resources/vulkan/lib/libMoltenVK.dylib"
+          zip="DBZ-Budokai-3-HD-Collection-v${{ steps.version.outputs.version }}-macos-arm64.zip"
+          ditto -c -k --keepParent "$app" "$zip"
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DBZ-Budokai-3-HD-Collection-v${{ steps.version.outputs.version }}-macos-arm64
+          path: DBZ-Budokai-3-HD-Collection-v${{ steps.version.outputs.version }}-macos-arm64.zip
+
+      - name: Attach macOS package to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="v${{ steps.version.outputs.version }}"
+          file="DBZ-Budokai-3-HD-Collection-v${{ steps.version.outputs.version }}-macos-arm64.zip"
+          # Only attach when the release for this version exists; never create it here.
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$tag" "$file" --clobber --repo "$GITHUB_REPOSITORY"
+            echo "Attached $file to release $tag"
+          else
+            echo "No release $tag yet; skipping asset upload (artifact retained above)."
+          fi

@@ -1,4 +1,5 @@
 #include "native_mods.h"
+#include "portable_root.h"
 
 #include "launcher/i18n.h"
 #include "launcher/settings.h"
@@ -45,7 +46,7 @@ constexpr char kProfile[] = "B13EBABEBABEBABE";
 constexpr char kTitle[] = "4E4D0856";
 
 std::filesystem::path TemplateDir() {
-  return rex::filesystem::GetExecutableFolder() / "mods_nativos" / "partida_100";
+  return dbz3::PortableRoot() / "mods_nativos" / "partida_100";
 }
 std::filesystem::path BackupRoot() { return settings::UserDataRoot() / "respaldos_partida"; }
 

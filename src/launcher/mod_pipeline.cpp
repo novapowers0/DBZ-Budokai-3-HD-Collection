@@ -1,6 +1,7 @@
 // dbz3 - Model swap pipeline integration (project-side).
 
 #include "mod_pipeline.h"
+#include "../portable_root.h"
 
 #include <rex/filesystem.h>
 #include <rex/logging.h>
@@ -30,7 +31,7 @@ namespace {
 // Project root = folder that contains "us"/"eu" (walk up from the exe).
 // Supports both layouts: <root>/us and <root>/assets/us (standalone release).
 std::filesystem::path ProjectRoot() {
-  auto exe_dir = rex::filesystem::GetExecutableFolder();
+  auto exe_dir = dbz3::PortableRoot();
   std::filesystem::path probe = exe_dir;
   for (int depth = 0; depth < 6; ++depth) {
     if (std::filesystem::is_directory(probe / "us") ||
@@ -68,7 +69,7 @@ std::filesystem::path ModsOutDir() {
   // The mods the runtime reads live next to the game data. In the release the
   // exe and mods/ share the same folder, but walk up from the executable
   // looking for a "mods" directory just in case.
-  std::filesystem::path probe = rex::filesystem::GetExecutableFolder();
+  std::filesystem::path probe = dbz3::PortableRoot();
   std::error_code ec;
   for (int depth = 0; depth < 4; ++depth) {
     const std::filesystem::path candidate = probe / "mods";
@@ -77,7 +78,7 @@ std::filesystem::path ModsOutDir() {
     }
     probe = probe.parent_path();
   }
-  return rex::filesystem::GetExecutableFolder() / "mods";
+  return dbz3::PortableRoot() / "mods";
 }
 
 std::string Quote(const std::string& s) { return "\"" + s + "\""; }
@@ -96,7 +97,7 @@ std::vector<std::string> PythonCandidates() {
 #if REX_PLATFORM_WIN32
   // Python portatil que trae la release (python/, con Pillow, numpy y tkinter): nadie tiene
   // que instalar nada para el Kit ni para las texturas.
-  for (const auto& dir : {rex::filesystem::GetExecutableFolder(), ProjectRoot()}) {
+  for (const auto& dir : {dbz3::PortableRoot(), ProjectRoot()}) {
     std::error_code ec;
     const auto exe = dir / "python" / "python.exe";
     if (std::filesystem::is_regular_file(exe, ec)) {
