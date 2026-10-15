@@ -1,0 +1,20 @@
+# Isolated host configuration; no original shader dumping by default.
+gpu_backend = "d3d12"
+input_backend = "xinput"
+mnk_mode = true
+mnk_mouse = false
+keybind_start = "Return"
+keybind_a = "Space"
+keybind_lstick_up = "W"
+keybind_lstick_down = "S"
+keybind_lstick_left = "A"
+keybind_lstick_right = "D"
+fullscreen = false
+window_width = 1280
+window_height = 720
+frame_cap = 60
+draw_resolution_scale_x = 1
+draw_resolution_scale_y = 1
+present_effect = "none"
+audio_mute = true
+async_shader_compilation = false
