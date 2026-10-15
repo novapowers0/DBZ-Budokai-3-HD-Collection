@@ -118,3 +118,21 @@ docs/13_assets_externos/
 
 # Derivado del codigo generado (lo crea CMake con tools/gen_escenarios_sel.py).
 src/escenarios_sel_gen.inc
+
+# Locally regenerated EU guest code and native graphics research data.
+/generated_eu/*
+!/generated_eu/README.md
+lab-user/
+lab-cache/
+lab-trace/
+lab-shaders/
+lab-input-audit/
+native-unsupported/
+*.rdc
+*.ppm
+*.dbzgpu
+*.dbzregistry
+*.bridge
+*.indexed
+native-*-status.json
+native-service-*.json

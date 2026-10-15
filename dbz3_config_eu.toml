@@ -1,4 +1,8 @@
-﻿[functions]
+# Root scope: keys after [[switch_tables]] belong to that table.
+# This EU dispatcher calls a function pointer.
+indirect_calls = [0x820F2390]
+
+[functions]
 0x82097F08 = { name = "rex_sub_82097F08" }
 0x820F8D28 = { name = "rex_sub_820F8D28" }
 0x8213E7D0 = { size = 0x304 }
@@ -121,4 +125,3 @@ labels = [
 # auto-detector misread this bctr as a jump table with a single case 0, so any
 # real function pointer (e.g. 0x820F24D8) hit __builtin_trap() (0xC000001D)
 # during the demo battle. Treat it as a plain indirect call instead.
-indirect_calls = [0x820F2390]
