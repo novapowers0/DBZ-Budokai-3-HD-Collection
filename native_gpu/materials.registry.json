@@ -1,0 +1,1110 @@
+{
+  "schema": "DBZMAT01",
+  "scope": "Numeric identifiers for 23 checked source material families, including endian variants. No shader program bytes, textures or geometry.",
+  "entries": [
+    {
+      "vertex_fnv": "742b6edce652073f",
+      "pixel_fnv": "b3834b9407fae5d0",
+      "vertex_bytes": 540,
+      "pixel_bytes": 156,
+      "kind": 0,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "742b6edce652073f",
+      "pixel_fnv": "e094af9fd48ff846",
+      "vertex_bytes": 540,
+      "pixel_bytes": 156,
+      "kind": 0,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "2963f5f6495b957f",
+      "pixel_fnv": "b3834b9407fae5d0",
+      "vertex_bytes": 540,
+      "pixel_bytes": 156,
+      "kind": 0,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "2963f5f6495b957f",
+      "pixel_fnv": "e094af9fd48ff846",
+      "vertex_bytes": 540,
+      "pixel_bytes": 156,
+      "kind": 0,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "a73d8198234b1ba6",
+      "pixel_fnv": "01dc491d6518fd95",
+      "vertex_bytes": 1680,
+      "pixel_bytes": 384,
+      "kind": 1,
+      "diffuse": [
+        0.5,
+        1.0,
+        0.9900000095367432
+      ]
+    },
+    {
+      "vertex_fnv": "a73d8198234b1ba6",
+      "pixel_fnv": "c162880e98d57249",
+      "vertex_bytes": 1680,
+      "pixel_bytes": 384,
+      "kind": 1,
+      "diffuse": [
+        0.5,
+        1.0,
+        0.9900000095367432
+      ]
+    },
+    {
+      "vertex_fnv": "927c9f9479e88388",
+      "pixel_fnv": "01dc491d6518fd95",
+      "vertex_bytes": 1680,
+      "pixel_bytes": 384,
+      "kind": 1,
+      "diffuse": [
+        0.5,
+        1.0,
+        0.9900000095367432
+      ]
+    },
+    {
+      "vertex_fnv": "927c9f9479e88388",
+      "pixel_fnv": "c162880e98d57249",
+      "vertex_bytes": 1680,
+      "pixel_bytes": 384,
+      "kind": 1,
+      "diffuse": [
+        0.5,
+        1.0,
+        0.9900000095367432
+      ]
+    },
+    {
+      "vertex_fnv": "2ae6b5b5f60e5b2d",
+      "pixel_fnv": "01dc491d6518fd95",
+      "vertex_bytes": 660,
+      "pixel_bytes": 384,
+      "kind": 2,
+      "diffuse": [
+        0.5,
+        1.0,
+        0.9900000095367432
+      ]
+    },
+    {
+      "vertex_fnv": "2ae6b5b5f60e5b2d",
+      "pixel_fnv": "c162880e98d57249",
+      "vertex_bytes": 660,
+      "pixel_bytes": 384,
+      "kind": 2,
+      "diffuse": [
+        0.5,
+        1.0,
+        0.9900000095367432
+      ]
+    },
+    {
+      "vertex_fnv": "a34cfca8df9f1b29",
+      "pixel_fnv": "01dc491d6518fd95",
+      "vertex_bytes": 660,
+      "pixel_bytes": 384,
+      "kind": 2,
+      "diffuse": [
+        0.5,
+        1.0,
+        0.9900000095367432
+      ]
+    },
+    {
+      "vertex_fnv": "a34cfca8df9f1b29",
+      "pixel_fnv": "c162880e98d57249",
+      "vertex_bytes": 660,
+      "pixel_bytes": 384,
+      "kind": 2,
+      "diffuse": [
+        0.5,
+        1.0,
+        0.9900000095367432
+      ]
+    },
+    {
+      "vertex_fnv": "56bad0d2d545db96",
+      "pixel_fnv": "8391ffb8f4ea66f3",
+      "vertex_bytes": 1428,
+      "pixel_bytes": 36,
+      "kind": 3,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "56bad0d2d545db96",
+      "pixel_fnv": "438c2af84c78a133",
+      "vertex_bytes": 1428,
+      "pixel_bytes": 36,
+      "kind": 3,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "73297748d1c92c48",
+      "pixel_fnv": "8391ffb8f4ea66f3",
+      "vertex_bytes": 1428,
+      "pixel_bytes": 36,
+      "kind": 3,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "73297748d1c92c48",
+      "pixel_fnv": "438c2af84c78a133",
+      "vertex_bytes": 1428,
+      "pixel_bytes": 36,
+      "kind": 3,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "d338c0a260b28a57",
+      "pixel_fnv": "8391ffb8f4ea66f3",
+      "vertex_bytes": 336,
+      "pixel_bytes": 36,
+      "kind": 4,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "d338c0a260b28a57",
+      "pixel_fnv": "438c2af84c78a133",
+      "vertex_bytes": 336,
+      "pixel_bytes": 36,
+      "kind": 4,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "2ee4c07a6e0c2f37",
+      "pixel_fnv": "8391ffb8f4ea66f3",
+      "vertex_bytes": 336,
+      "pixel_bytes": 36,
+      "kind": 4,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "2ee4c07a6e0c2f37",
+      "pixel_fnv": "438c2af84c78a133",
+      "vertex_bytes": 336,
+      "pixel_bytes": 36,
+      "kind": 4,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "dec56322b0219131",
+      "pixel_fnv": "b3834b9407fae5d0",
+      "vertex_bytes": 1680,
+      "pixel_bytes": 156,
+      "kind": 5,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "dec56322b0219131",
+      "pixel_fnv": "e094af9fd48ff846",
+      "vertex_bytes": 1680,
+      "pixel_bytes": 156,
+      "kind": 5,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "66881433771d0255",
+      "pixel_fnv": "b3834b9407fae5d0",
+      "vertex_bytes": 1680,
+      "pixel_bytes": 156,
+      "kind": 5,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "66881433771d0255",
+      "pixel_fnv": "e094af9fd48ff846",
+      "vertex_bytes": 1680,
+      "pixel_bytes": 156,
+      "kind": 5,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "e4d5c5e8d4ae34aa",
+      "pixel_fnv": "06a3c7896da29299",
+      "vertex_bytes": 1380,
+      "pixel_bytes": 36,
+      "kind": 6,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "e4d5c5e8d4ae34aa",
+      "pixel_fnv": "731aa87455f8c4ed",
+      "vertex_bytes": 1380,
+      "pixel_bytes": 36,
+      "kind": 6,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "d6dae15caeeb56b0",
+      "pixel_fnv": "06a3c7896da29299",
+      "vertex_bytes": 1380,
+      "pixel_bytes": 36,
+      "kind": 6,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "d6dae15caeeb56b0",
+      "pixel_fnv": "731aa87455f8c4ed",
+      "vertex_bytes": 1380,
+      "pixel_bytes": 36,
+      "kind": 6,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "628308b4f941927e",
+      "pixel_fnv": "06a3c7896da29299",
+      "vertex_bytes": 540,
+      "pixel_bytes": 36,
+      "kind": 7,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "628308b4f941927e",
+      "pixel_fnv": "731aa87455f8c4ed",
+      "vertex_bytes": 540,
+      "pixel_bytes": 36,
+      "kind": 7,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "7fc4e3113fe6ef3c",
+      "pixel_fnv": "06a3c7896da29299",
+      "vertex_bytes": 540,
+      "pixel_bytes": 36,
+      "kind": 7,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "7fc4e3113fe6ef3c",
+      "pixel_fnv": "731aa87455f8c4ed",
+      "vertex_bytes": 540,
+      "pixel_bytes": 36,
+      "kind": 7,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "c74e95102bb40389",
+      "pixel_fnv": "7ed945cb33d45496",
+      "vertex_bytes": 792,
+      "pixel_bytes": 72,
+      "kind": 8,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "c74e95102bb40389",
+      "pixel_fnv": "777b6471bbc86688",
+      "vertex_bytes": 792,
+      "pixel_bytes": 72,
+      "kind": 8,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "4109c6d12be066d9",
+      "pixel_fnv": "7ed945cb33d45496",
+      "vertex_bytes": 792,
+      "pixel_bytes": 72,
+      "kind": 8,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "4109c6d12be066d9",
+      "pixel_fnv": "777b6471bbc86688",
+      "vertex_bytes": 792,
+      "pixel_bytes": 72,
+      "kind": 8,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "1b5b6455877b3035",
+      "pixel_fnv": "61b3401f8ce00437",
+      "vertex_bytes": 540,
+      "pixel_bytes": 132,
+      "kind": 9,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "1b5b6455877b3035",
+      "pixel_fnv": "41e558b6d99557e7",
+      "vertex_bytes": 540,
+      "pixel_bytes": 132,
+      "kind": 9,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "1d589c7580c1aded",
+      "pixel_fnv": "61b3401f8ce00437",
+      "vertex_bytes": 540,
+      "pixel_bytes": 132,
+      "kind": 9,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "1d589c7580c1aded",
+      "pixel_fnv": "41e558b6d99557e7",
+      "vertex_bytes": 540,
+      "pixel_bytes": 132,
+      "kind": 9,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "ac2be224363edc68",
+      "pixel_fnv": "b3834b9407fae5d0",
+      "vertex_bytes": 264,
+      "pixel_bytes": 156,
+      "kind": 10,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "ac2be224363edc68",
+      "pixel_fnv": "e094af9fd48ff846",
+      "vertex_bytes": 264,
+      "pixel_bytes": 156,
+      "kind": 10,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "7d577f20d5b5d94a",
+      "pixel_fnv": "b3834b9407fae5d0",
+      "vertex_bytes": 264,
+      "pixel_bytes": 156,
+      "kind": 10,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "7d577f20d5b5d94a",
+      "pixel_fnv": "e094af9fd48ff846",
+      "vertex_bytes": 264,
+      "pixel_bytes": 156,
+      "kind": 10,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "43e04e3f72ad80a0",
+      "pixel_fnv": "b3834b9407fae5d0",
+      "vertex_bytes": 540,
+      "pixel_bytes": 156,
+      "kind": 11,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "43e04e3f72ad80a0",
+      "pixel_fnv": "e094af9fd48ff846",
+      "vertex_bytes": 540,
+      "pixel_bytes": 156,
+      "kind": 11,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "57e7e8196de3aaca",
+      "pixel_fnv": "b3834b9407fae5d0",
+      "vertex_bytes": 540,
+      "pixel_bytes": 156,
+      "kind": 11,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "57e7e8196de3aaca",
+      "pixel_fnv": "e094af9fd48ff846",
+      "vertex_bytes": 540,
+      "pixel_bytes": 156,
+      "kind": 11,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "e5cd3dccdd74f05c",
+      "pixel_fnv": "963a7b128c3f5ffe",
+      "vertex_bytes": 1680,
+      "pixel_bytes": 96,
+      "kind": 12,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "e5cd3dccdd74f05c",
+      "pixel_fnv": "8efd395be363773c",
+      "vertex_bytes": 1680,
+      "pixel_bytes": 96,
+      "kind": 12,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "d00cadb3efe77076",
+      "pixel_fnv": "963a7b128c3f5ffe",
+      "vertex_bytes": 1680,
+      "pixel_bytes": 96,
+      "kind": 12,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "d00cadb3efe77076",
+      "pixel_fnv": "8efd395be363773c",
+      "vertex_bytes": 1680,
+      "pixel_bytes": 96,
+      "kind": 12,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "6e886f46f54d27c1",
+      "pixel_fnv": "963a7b128c3f5ffe",
+      "vertex_bytes": 660,
+      "pixel_bytes": 96,
+      "kind": 14,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "6e886f46f54d27c1",
+      "pixel_fnv": "8efd395be363773c",
+      "vertex_bytes": 660,
+      "pixel_bytes": 96,
+      "kind": 14,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "e1c5ab5bc1ea9889",
+      "pixel_fnv": "963a7b128c3f5ffe",
+      "vertex_bytes": 660,
+      "pixel_bytes": 96,
+      "kind": 14,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "e1c5ab5bc1ea9889",
+      "pixel_fnv": "8efd395be363773c",
+      "vertex_bytes": 660,
+      "pixel_bytes": 96,
+      "kind": 14,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "cacf23cd771425fd",
+      "pixel_fnv": "43bcee701d3bf17d",
+      "vertex_bytes": 264,
+      "pixel_bytes": 180,
+      "kind": 13,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "cacf23cd771425fd",
+      "pixel_fnv": "b435830236617a45",
+      "vertex_bytes": 264,
+      "pixel_bytes": 180,
+      "kind": 13,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "fe6c88541e4e09cd",
+      "pixel_fnv": "43bcee701d3bf17d",
+      "vertex_bytes": 264,
+      "pixel_bytes": 180,
+      "kind": 13,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "fe6c88541e4e09cd",
+      "pixel_fnv": "b435830236617a45",
+      "vertex_bytes": 264,
+      "pixel_bytes": 180,
+      "kind": 13,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "1564b5f2065136cc",
+      "pixel_fnv": "61b3401f8ce00437",
+      "vertex_bytes": 240,
+      "pixel_bytes": 132,
+      "kind": 15,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "1564b5f2065136cc",
+      "pixel_fnv": "41e558b6d99557e7",
+      "vertex_bytes": 240,
+      "pixel_bytes": 132,
+      "kind": 15,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "7b778cd5ca2ec31a",
+      "pixel_fnv": "61b3401f8ce00437",
+      "vertex_bytes": 240,
+      "pixel_bytes": 132,
+      "kind": 15,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "7b778cd5ca2ec31a",
+      "pixel_fnv": "41e558b6d99557e7",
+      "vertex_bytes": 240,
+      "pixel_bytes": 132,
+      "kind": 15,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "30a836c50c36d574",
+      "pixel_fnv": "407f01782043e25c",
+      "vertex_bytes": 108,
+      "pixel_bytes": 588,
+      "kind": 16,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "30a836c50c36d574",
+      "pixel_fnv": "6815a84c9c3cf452",
+      "vertex_bytes": 108,
+      "pixel_bytes": 588,
+      "kind": 16,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "1257e062925fe3be",
+      "pixel_fnv": "407f01782043e25c",
+      "vertex_bytes": 108,
+      "pixel_bytes": 588,
+      "kind": 16,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "1257e062925fe3be",
+      "pixel_fnv": "6815a84c9c3cf452",
+      "vertex_bytes": 108,
+      "pixel_bytes": 588,
+      "kind": 16,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "5ea966fd0c432616",
+      "pixel_fnv": "a15c6c9c2d249375",
+      "vertex_bytes": 96,
+      "pixel_bytes": 60,
+      "kind": 17,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "5ea966fd0c432616",
+      "pixel_fnv": "b990a4ada6846a69",
+      "vertex_bytes": 96,
+      "pixel_bytes": 60,
+      "kind": 17,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "6de68f568b4a5b98",
+      "pixel_fnv": "a15c6c9c2d249375",
+      "vertex_bytes": 96,
+      "pixel_bytes": 60,
+      "kind": 17,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "6de68f568b4a5b98",
+      "pixel_fnv": "b990a4ada6846a69",
+      "vertex_bytes": 96,
+      "pixel_bytes": 60,
+      "kind": 17,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "7a45e6fda0bbf679",
+      "pixel_fnv": "a15c6c9c2d249375",
+      "vertex_bytes": 96,
+      "pixel_bytes": 60,
+      "kind": 18,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "7a45e6fda0bbf679",
+      "pixel_fnv": "b990a4ada6846a69",
+      "vertex_bytes": 96,
+      "pixel_bytes": 60,
+      "kind": 18,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "8e58070811bee469",
+      "pixel_fnv": "a15c6c9c2d249375",
+      "vertex_bytes": 96,
+      "pixel_bytes": 60,
+      "kind": 18,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "8e58070811bee469",
+      "pixel_fnv": "b990a4ada6846a69",
+      "vertex_bytes": 96,
+      "pixel_bytes": 60,
+      "kind": 18,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "7a45e6fda0bbf679",
+      "pixel_fnv": "b2b9d431bbf26086",
+      "vertex_bytes": 96,
+      "pixel_bytes": 504,
+      "kind": 19,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "7a45e6fda0bbf679",
+      "pixel_fnv": "a381edda6271a6d0",
+      "vertex_bytes": 96,
+      "pixel_bytes": 504,
+      "kind": 19,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "8e58070811bee469",
+      "pixel_fnv": "b2b9d431bbf26086",
+      "vertex_bytes": 96,
+      "pixel_bytes": 504,
+      "kind": 19,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "8e58070811bee469",
+      "pixel_fnv": "a381edda6271a6d0",
+      "vertex_bytes": 96,
+      "pixel_bytes": 504,
+      "kind": 19,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "7a45e6fda0bbf679",
+      "pixel_fnv": "e86ae295fc7b8b82",
+      "vertex_bytes": 96,
+      "pixel_bytes": 432,
+      "kind": 20,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "7a45e6fda0bbf679",
+      "pixel_fnv": "09b8f554c1672270",
+      "vertex_bytes": 96,
+      "pixel_bytes": 432,
+      "kind": 20,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "8e58070811bee469",
+      "pixel_fnv": "e86ae295fc7b8b82",
+      "vertex_bytes": 96,
+      "pixel_bytes": 432,
+      "kind": 20,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "8e58070811bee469",
+      "pixel_fnv": "09b8f554c1672270",
+      "vertex_bytes": 96,
+      "pixel_bytes": 432,
+      "kind": 20,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "458bbc82aace919c",
+      "pixel_fnv": "8f53cc91e921fe3b",
+      "vertex_bytes": 72,
+      "pixel_bytes": 132,
+      "kind": 21,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "458bbc82aace919c",
+      "pixel_fnv": "0251e44355091ee7",
+      "vertex_bytes": 72,
+      "pixel_bytes": 132,
+      "kind": 21,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "4a18c3fbebee2eea",
+      "pixel_fnv": "8f53cc91e921fe3b",
+      "vertex_bytes": 72,
+      "pixel_bytes": 132,
+      "kind": 21,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "4a18c3fbebee2eea",
+      "pixel_fnv": "0251e44355091ee7",
+      "vertex_bytes": 72,
+      "pixel_bytes": 132,
+      "kind": 21,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "c310ddf65cf614c5",
+      "pixel_fnv": "43bcee701d3bf17d",
+      "vertex_bytes": 540,
+      "pixel_bytes": 180,
+      "kind": 22,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "c310ddf65cf614c5",
+      "pixel_fnv": "b435830236617a45",
+      "vertex_bytes": 540,
+      "pixel_bytes": 180,
+      "kind": 22,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "3a730c5ea28f2a4d",
+      "pixel_fnv": "43bcee701d3bf17d",
+      "vertex_bytes": 540,
+      "pixel_bytes": 180,
+      "kind": 22,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "vertex_fnv": "3a730c5ea28f2a4d",
+      "pixel_fnv": "b435830236617a45",
+      "vertex_bytes": 540,
+      "pixel_bytes": 180,
+      "kind": 22,
+      "diffuse": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    }
+  ]
+}
