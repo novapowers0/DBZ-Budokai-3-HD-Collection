@@ -49,6 +49,11 @@ __declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
 #endif
 #include "region.h"
 #include "mods.h"
+#include "native_gpu.h"
+#if defined(DBZ3_NATIVE_GPU)
+#include "native_gpu/lab/native_services.h"
+#include "native_gpu/lab/native_stream.h"
+#endif
 #include "launcher/settings.h"
 #if REX_PLATFORM_WIN32
 #include <commdlg.h>
@@ -389,6 +394,22 @@ public:
           std::_Exit(1);
         }
         config.gpu_plugin = "xenos";
+#if defined(DBZ3_NATIVE_GPU)
+        // Proceso hijo de JUGAR con el motor "Direct3D 12 nativo" (src/native_gpu.h): los servicios
+        // graficos propios sustituyen a rexgpu-xenos. Solo la imagen EU/PAL tiene sus ganchos.
+        if (dbz3::native_gpu::ChildActive()) {
+            auto status = boot.status;
+            if (boot.xex.empty()) status = dbz3::settings::CheckDefaultXex(game_root);
+            if (status == dbz3::settings::XexStatus::kEu) {
+                config.graphics = dbzlab::createNativeServices();
+                config.gpu_plugin.clear();
+                native_gpu_ = true;
+                REXLOG_INFO("dbz3: motor D3D12 nativo (experimental) activo");
+            } else {
+                REXLOG_WARN("dbz3: el motor D3D12 nativo solo admite el xex EU/PAL; se usa Direct3D 12");
+            }
+        }
+#endif
         config.audio_factory = REX_AUDIO_BACKEND(rex::audio::sdl::SDLAudioSystem);
         config.input_factory = REX_INPUT_BACKEND(rex::input::CreateDefaultInputSystem);
         config.kernel_init = rex::kernel::InitializeKernel;
@@ -429,6 +450,15 @@ public:
         // graficas integradas eso basta para que todo vaya a tirones. 60 es fluido;
         // al pulsar Jugar se aplica el tope del usuario (ApplyRuntimeSettingsToSdk(true)).
         rex::cvar::SetFlagByName("frame_cap", "60");
+#if defined(DBZ3_NATIVE_GPU)
+        if (native_gpu_) {
+            if (auto* w = window(); w && w->GetNativeWindowHandle()) {
+                dbzlab::streamSetPresentationWindow(w->GetNativeWindowHandle());
+            } else {
+                REXLOG_ERROR("dbz3: motor D3D12 nativo sin ventana nativa");
+            }
+        }
+#endif
 #ifdef _WIN32
         // 1.4.3 EX: el guest necesita sus hilos a tiempo cada 16,7 ms. Con otros
         // programas pesados abiertos (navegador, render de video, antivirus) se
@@ -506,7 +536,7 @@ public:
         // NOTE: skip-launcher boots directly; drawing the dialog here would let
         // its PLAY/Enter shortcut fire a second LaunchModule (guarded, but
         // pointless). Skip creating it in that dev fast path.
-        if (!launcher_dialog_ && !REXCVAR_GET(dbz3_skip_launcher)) {
+        if (!launcher_dialog_ && !SkipLauncher()) {
             launcher_dialog_ = new dbz3::launcher::LauncherDialog(
                 drawer, [this]() {
                     launcher_dialog_ = nullptr;
@@ -514,6 +544,13 @@ public:
                     // video, audio, input) before launching so they are applied
                     // on the next boot even if the user forgot "Save settings".
                     dbz3::settings::SaveUserSettings();
+                    // Motor "Direct3D 12 nativo": el juego corre en un proceso nuevo sin rexgpu-xenos
+                    // (src/native_gpu.h); si no puede arrancar se sigue aqui con Direct3D 12.
+                    if (dbz3::settings::GpuBackend() == dbz3::native_gpu::kBackend &&
+                        dbz3::native_gpu::LaunchChild()) {
+                        rex::FlushLogging();
+                        std::_Exit(0);
+                    }
                     // The launcher lets the user change the region (us/eu) after
                     // the runtime's initial VFS setup. Re-mount the game drive
                     // (folder mode: <root>; ISO mode: the disc image) and re-apply
@@ -901,6 +938,9 @@ public:
     // Called before cleanup begins
     void OnShutdown() override {
         REXLOG_INFO("OnShutdown called");
+#if defined(DBZ3_NATIVE_GPU)
+        if (native_gpu_) dbzlab::streamShutdown();
+#endif
         dbz3::SessionEnd(true);   // partida cerrada bien: sus mods pasan a "ultima partida buena"
         if (drop_listener_added_ && window()) {
             window()->RemoveListener(&drop_listener_);
@@ -912,7 +952,7 @@ protected:
     // Gate the module launch behind the pre-game launcher dialog. The
     // launcher's Play button calls ReXApp::LaunchModule() directly.
     void LaunchModule() override {
-        if (REXCVAR_GET(dbz3_skip_launcher)) {
+        if (SkipLauncher()) {
             // R8 (pruebas): el mismo paso que JUGAR del launcher, escenarios de los juegos de PS2 del jugador
             if (std::getenv("DBZ3_TEST_ESCENARIOS_AUTO")) {
                 dbz3::launcher::ModPipeline stages;
@@ -1024,7 +1064,13 @@ protected:
     }
 
 private:
+    // El hijo del motor D3D12 nativo arranca el juego directamente: el launcher ya se uso en el padre.
+    static bool SkipLauncher() {
+        return REXCVAR_GET(dbz3_skip_launcher) || dbz3::native_gpu::ChildActive();
+    }
+
     std::unique_ptr<DebugOverlayDialog> debug_overlay_;
+    bool native_gpu_ = false;   // servicios graficos nativos en vez de rexgpu-xenos (OnPreSetup)
     dbz3::launcher::LauncherDialog* launcher_dialog_ = nullptr;
     std::unique_ptr<dbz3::ingame::InGameMenu> ingame_menu_;
     std::unique_ptr<dbz3::ingame::OnlinePanel> online_panel_;

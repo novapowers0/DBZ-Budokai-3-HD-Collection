@@ -100,6 +100,21 @@ if(DBZ3_DUAL_REGION OR DBZ3_GENERATED_DIR STREQUAL "generated_eu")
     endif()
 endif()
 
+# Motor grafico "Direct3D 12 nativo (experimental)" del launcher: renderer propio (native_gpu/) para el
+# guest EU/PAL en Windows. Ver src/native_gpu.h y native_gpu/INTEGRATION.md.
+option(DBZ3_NATIVE_GPU "Build the experimental native Direct3D 12 renderer (Windows, EU/PAL guest)" ON)
+set(DBZ3_NATIVE_GPU_ACTIVE OFF)
+if(WIN32 AND DBZ3_NATIVE_GPU AND (DBZ3_DUAL_REGION OR DBZ3_GENERATED_DIR STREQUAL "generated_eu"))
+    set(DBZ3_NATIVE_GPU_ACTIVE ON)
+    list(APPEND DBZ3_SOURCES
+        src/native_gpu_hooks.cpp
+        native_gpu/lab/native_stream.cpp
+        native_gpu/lab/native_services.cpp)
+    set_source_files_properties(native_gpu/lab/native_stream.cpp native_gpu/lab/native_services.cpp
+        PROPERTIES COMPILE_OPTIONS "-msse4.1;-Wno-deprecated-declarations")
+endif()
+list(APPEND DBZ3_SOURCES src/native_gpu.cpp)
+
 # hooks.cpp only applies to builds that include the US/NA codegen (single US
 # and dual-region). The single-EU build excludes it: the EU guest addresses
 # differ and the US hooks would not apply.
@@ -184,6 +199,22 @@ endif()
 # REXGLUE_BUILD_CONFIG define, runtime DLL staging (rexruntime, TracyClient),
 # and copies the xenos GPU plugin next to the executable.
 rexglue_configure_target(dbz3 GPU_PLUGINS xenos)
+
+# Renderer D3D12 nativo junto al exe, en native_gpu/ (lo carga el proceso del juego, src/native_gpu.cpp)
+if(DBZ3_NATIVE_GPU_ACTIVE)
+    target_compile_definitions(dbz3 PRIVATE DBZ3_NATIVE_GPU=1)
+    add_subdirectory(native_gpu EXCLUDE_FROM_ALL)
+    add_dependencies(dbz3 dbz3-native-renderer)
+    add_custom_command(TARGET dbz3 POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:dbz3>/native_gpu"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:dbz3-native-renderer>"
+            "${CMAKE_CURRENT_SOURCE_DIR}/native_gpu/materials.hlsl"
+            "${CMAKE_CURRENT_BINARY_DIR}/native_gpu/materials.dbzregistry"
+            "$<TARGET_FILE_DIR:dbz3>/native_gpu/"
+        COMMENT "Staging the native D3D12 renderer in native_gpu/"
+        VERBATIM)
+endif()
 
 # Videos SFD de IW (frente R7): MPEG-2 del FFmpeg del SDK, objetivo estatico propio solo en el exe
 include(src/video_sfd.cmake)

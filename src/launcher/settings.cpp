@@ -2636,6 +2636,9 @@ void ApplyUserSettingsToSdk() {
   // Host graphics backend (d3d12/vulkan). Read by the runtime when it loads
   // the GPU plugin during SetupPresentation, so it must be set before then.
   std::string backend = GpuBackend();
+  // "native_d3d12" (src/native_gpu.h): el launcher sigue dibujandose con Direct3D 12 de ReX; el
+  // renderer nativo solo corre en el proceso del juego que lanza JUGAR.
+  if (backend == "native_d3d12") backend = "d3d12";
 #if REX_PLATFORM_WIN32
   if (backend != "vulkan" && !D3D12Usable()) {
     static bool warned = false;

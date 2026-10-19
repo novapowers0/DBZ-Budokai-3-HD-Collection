@@ -1,9 +1,29 @@
 # Experimental native Direct3D 12 backend
 
-This contribution provides an opt-in EU graphics laboratory for maintainers to
-integrate and extend. It is **not a complete replacement** for the release
-backend. The normal launcher, dual-region build, Linux/Vulkan backend and SDK
-binaries are unchanged.
+This contribution provides an opt-in native D3D12 renderer for the EU/PAL guest.
+It is **not a complete replacement** for the release backend. The Linux/Vulkan
+backend and SDK binaries are unchanged.
+
+## Launcher integration
+
+On Windows builds that include the EU codegen (dual-region or EU-only),
+`DBZ3_NATIVE_GPU` (CMake option, default ON) adds a third choice to the
+launcher's graphics backend combo: **Native Direct3D 12 (experimental, PAL)**
+(`dbz3_gpu_backend = "native_d3d12"`). The launcher itself keeps drawing with
+ReX's D3D12 presenter. Pressing PLAY with this backend relaunches `dbz3.exe`
+with `DBZ3_NATIVE_GRAPHICS=1` and the renderer paths in its environment. The new
+process skips the launcher, injects the native `IGraphicsSystem` instead of
+`rexgpu-xenos`, and boots the game. With a US/NA xex it falls back to normal
+D3D12.
+
+- `src/native_gpu.{h,cpp}`: availability, child detection, relaunch.
+- `src/native_gpu_hooks.cpp`: the EU driver hooks (`dbz3eu_sub_*` in the dual
+  core). Outside native mode each hook calls the original directly.
+- The build stages `dbz3-native-renderer.dll`, `materials.hlsl` and
+  `materials.dbzregistry` in `native_gpu/` next to the exe.
+- ImGui overlays (F1/F4 menus, custom panels) are not drawn in native mode.
+
+The isolated laboratory below remains available for research and replay.
 
 The renderer submits its own D3D12 draw calls and custom HLSL. In native mode the
 EU host injects its own `IGraphicsSystem`, creates its own swapchain in the SDK
