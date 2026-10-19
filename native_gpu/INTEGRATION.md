@@ -22,6 +22,12 @@ D3D12.
 - The build stages `dbz3-native-renderer.dll`, `materials.hlsl` and
   `materials.dbzregistry` in `native_gpu/` next to the exe.
 - ImGui overlays (F1/F4 menus, custom panels) are not drawn in native mode.
+- With the launcher's DLSS effect, PLAY also sets `DBZ3_NATIVE_DLSS=1`. The renderer
+  (built with `DBZ3_DLSS_SDK_DIR`, an NVIDIA/DLSS release) keeps rendering at the
+  guest size, sizes the swapchain to the window and runs DLSS (DLAA at equal
+  size). The guest has no motion vectors, so each frame is evaluated with reset
+  and zero motion. `native-dlss-status.txt` reports the state. Without RTX/driver
+  support it falls back to the plain copy.
 
 The isolated laboratory below remains available for research and replay.
 

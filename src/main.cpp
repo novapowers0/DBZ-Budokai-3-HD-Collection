@@ -454,6 +454,8 @@ public:
         if (native_gpu_) {
             if (auto* w = window(); w && w->GetNativeWindowHandle()) {
                 dbzlab::streamSetPresentationWindow(w->GetNativeWindowHandle());
+                // sin ImGui no llega OnCreateDialogs, que es quien pone el nombre del juego
+                w->SetTitle("Dragon Ball Z Budokai 3 HD");
             } else {
                 REXLOG_ERROR("dbz3: motor D3D12 nativo sin ventana nativa");
             }

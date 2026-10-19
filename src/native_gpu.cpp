@@ -1,6 +1,8 @@
 // dbz3 - Motor grafico "Direct3D 12 nativo": lanzamiento desde el launcher (ver native_gpu.h).
 #include "native_gpu.h"
 
+#include "launcher/settings.h"
+
 #include <cstdlib>
 #include <filesystem>
 #include <string>
@@ -51,6 +53,8 @@ bool LaunchChild() {
   SetEnvironmentVariableW(L"DBZ3_NATIVE_RENDERER", (dir / "dbz3-native-renderer.dll").c_str());
   SetEnvironmentVariableW(L"DBZ3_NATIVE_SHADERS", (dir / "materials.hlsl").c_str());
   SetEnvironmentVariableW(L"DBZ3_NATIVE_MATERIALS", (dir / "materials.dbzregistry").c_str());
+  // Efecto "DLSS" del launcher: el renderer nativo usa NVIDIA DLSS (nvngx_dlss.dll junto al exe)
+  SetEnvironmentVariableW(L"DBZ3_NATIVE_DLSS", settings::PresentEffect() == "dlss" ? L"1" : nullptr);
   wchar_t self[MAX_PATH] = {};
   GetModuleFileNameW(nullptr, self, MAX_PATH);
   std::wstring cmd(GetCommandLineW());

@@ -13,6 +13,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <iostream>
@@ -21,8 +22,14 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include <chrono>
+#include <filesystem>
 #define DBZ_NATIVE_GPU_BUILD
 #include "native_gpu.h"
+#if defined(DBZ_NATIVE_DLSS)
+#include <nvsdk_ngx.h>
+#include <nvsdk_ngx_helpers.h>
+#endif
 
 static void check(HRESULT result, const char* operation) {
     if (FAILED(result)) {
@@ -249,8 +256,110 @@ class Renderer {
     D3D12_GRAPHICS_PIPELINE_STATE_DESC basePipeline{};
     std::map<std::string,ID3D12PipelineState*> pipelineCache;
     uint64_t textureBytesUploaded=0,submittedFrames=0;uint32_t textureUploads=0;
+    // Optional NVIDIA DLSS (DBZ3_NATIVE_DLSS=1): the frame renders at the guest size and DLSS writes
+    // the window-sized output. The guest supplies no motion vectors, so every frame is evaluated on
+    // its own (reset, zero motion). Unsupported or failing DLSS falls back to the plain copy.
+    bool dlssWanted=false;int dlssState=0;void *ngxParams=nullptr,*dlssFeature=nullptr;
+    ID3D12Resource *dlssOutput=nullptr,*dlssMotion=nullptr;HWND presentWindow=nullptr;
+    uint32_t outputWidth=0,outputHeight=0;std::chrono::steady_clock::time_point lastPresent{};std::wstring adapterName;
+
+    static void dlssStatus(const std::string& text) noexcept {
+        try{std::ofstream("native-dlss-status.txt")<<text<<'\n';}catch(...){}
+    }
+#if defined(DBZ_NATIVE_DLSS)
+    void initDlss() {
+        dlssState=-1;
+        std::error_code ec;std::wstring data=std::filesystem::temp_directory_path(ec).wstring();
+        // nvngx_dlss.dll ships next to the game exe; this DLL lives in native_gpu/
+        wchar_t exePath[MAX_PATH]{},selfPath[MAX_PATH]{};HMODULE self=nullptr;
+        GetModuleFileNameW(nullptr,exePath,MAX_PATH);
+        GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS|GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+            reinterpret_cast<LPCWSTR>(&Renderer::dlssStatus),&self);
+        GetModuleFileNameW(self,selfPath,MAX_PATH);
+        std::wstring exeDir=std::filesystem::path(exePath).parent_path().wstring(),selfDir=std::filesystem::path(selfPath).parent_path().wstring();
+        const wchar_t* paths[]={exeDir.c_str(),selfDir.c_str()};
+        NVSDK_NGX_FeatureCommonInfo featureInfo{};featureInfo.PathListInfo.Path=paths;featureInfo.PathListInfo.Length=2;
+        NVSDK_NGX_Result result=NVSDK_NGX_D3D12_Init_with_ProjectID("6f3c2a1e-8d4b-4c7a-9e21-b3d5f0a7c942",
+            NVSDK_NGX_ENGINE_TYPE_CUSTOM,"1.5.1",data.empty()?L".":data.c_str(),device,&featureInfo,NVSDK_NGX_Version_API);
+        if(NVSDK_NGX_FAILED(result)){dlssStatus("unavailable: NGX init "+std::to_string(uint32_t(result)));return;}
+        NVSDK_NGX_Parameter* params=nullptr;int available=0;
+        if(NVSDK_NGX_FAILED(NVSDK_NGX_D3D12_GetCapabilityParameters(&params))||!params||
+           NVSDK_NGX_FAILED(params->Get(NVSDK_NGX_Parameter_SuperSampling_Available,&available))||!available){
+            int initResult=0,needsDriver=0,minMajor=0,minMinor=0;
+            if(params){params->Get(NVSDK_NGX_Parameter_SuperSampling_FeatureInitResult,&initResult);
+                params->Get(NVSDK_NGX_Parameter_SuperSampling_NeedsUpdatedDriver,&needsDriver);
+                params->Get(NVSDK_NGX_Parameter_SuperSampling_MinDriverVersionMajor,&minMajor);
+                params->Get(NVSDK_NGX_Parameter_SuperSampling_MinDriverVersionMinor,&minMinor);
+                NVSDK_NGX_D3D12_DestroyParameters(params);}
+            NVSDK_NGX_D3D12_Shutdown1(device);
+            char text[200];std::snprintf(text,sizeof(text),"unavailable: DLSS not supported (init 0x%08X, needs driver %d, min %d.%d, adapter %ls)",
+                uint32_t(initResult),needsDriver,minMajor,minMinor,adapterName.c_str());
+            dlssStatus(text);return;
+        }
+        ngxParams=params;dlssState=1;
+        // committed default-heap textures start zeroed: zero motion at render resolution
+        dlssMotion=resource(textureDescription(width,height,DXGI_FORMAT_R16G16_FLOAT),D3D12_HEAP_TYPE_DEFAULT,
+            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE|D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    }
+    void releaseDlssFeature() noexcept {
+        if(dlssFeature){NVSDK_NGX_D3D12_ReleaseFeature(static_cast<NVSDK_NGX_Handle*>(dlssFeature));dlssFeature=nullptr;}
+    }
+    void shutdownDlss() noexcept {
+        releaseDlssFeature();
+        if(ngxParams&&device){NVSDK_NGX_D3D12_DestroyParameters(static_cast<NVSDK_NGX_Parameter*>(ngxParams));NVSDK_NGX_D3D12_Shutdown1(device);}
+        ngxParams=nullptr;
+    }
+    // Records DLSS into the frame's command list; false leaves the states as they were.
+    bool evaluateDlss() {
+        if(!dlssOutput){
+            auto od=textureDescription(outputWidth,outputHeight,DXGI_FORMAT_R8G8B8A8_UNORM);od.Flags=D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+            dlssOutput=resource(od,D3D12_HEAP_TYPE_DEFAULT,D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        }
+        auto* params=static_cast<NVSDK_NGX_Parameter*>(ngxParams);
+        if(!dlssFeature){
+            NVSDK_NGX_DLSS_Create_Params create{};
+            create.Feature.InWidth=width;create.Feature.InHeight=height;
+            create.Feature.InTargetWidth=outputWidth;create.Feature.InTargetHeight=outputHeight;
+            create.Feature.InPerfQualityValue=(width>=outputWidth&&height>=outputHeight)?NVSDK_NGX_PerfQuality_Value_DLAA:NVSDK_NGX_PerfQuality_Value_MaxQuality;
+            create.InFeatureCreateFlags=NVSDK_NGX_DLSS_Feature_Flags_MVLowRes;
+            NVSDK_NGX_Handle* handle=nullptr;
+            NVSDK_NGX_Result result=NGX_D3D12_CREATE_DLSS_EXT(commands,1,1,&handle,params,&create);
+            if(NVSDK_NGX_FAILED(result)||!handle){dlssState=-1;dlssStatus("off: feature creation "+std::to_string(uint32_t(result)));return false;}
+            dlssFeature=handle;
+            dlssStatus("active "+std::to_string(width)+"x"+std::to_string(height)+" -> "+std::to_string(outputWidth)+"x"+std::to_string(outputHeight));
+        }
+        const auto read=D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE|D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        barrier(target,D3D12_RESOURCE_STATE_RENDER_TARGET,read);barrier(depth,D3D12_RESOURCE_STATE_DEPTH_WRITE,read);
+        auto now=std::chrono::steady_clock::now();
+        float deltaMs=lastPresent.time_since_epoch().count()?std::chrono::duration<float,std::milli>(now-lastPresent).count():16.7f;
+        NVSDK_NGX_D3D12_DLSS_Eval_Params eval{};
+        eval.Feature.pInColor=target;eval.Feature.pInOutput=dlssOutput;eval.pInDepth=depth;eval.pInMotionVectors=dlssMotion;
+        eval.InRenderSubrectDimensions.Width=width;eval.InRenderSubrectDimensions.Height=height;
+        eval.InReset=1;eval.InMVScaleX=eval.InMVScaleY=0;eval.InPreExposure=eval.InExposureScale=1;eval.InFrameTimeDeltaInMsec=deltaMs;
+        NVSDK_NGX_Result result=NGX_D3D12_EVALUATE_DLSS_EXT(commands,static_cast<NVSDK_NGX_Handle*>(dlssFeature),params,&eval);
+        barrier(depth,read,D3D12_RESOURCE_STATE_DEPTH_WRITE);barrier(target,read,D3D12_RESOURCE_STATE_RENDER_TARGET);
+        if(NVSDK_NGX_FAILED(result)){dlssState=-1;dlssStatus("off: evaluation "+std::to_string(uint32_t(result)));return false;}
+        return true;
+    }
+#else
+    void initDlss(){dlssState=-1;dlssStatus("unavailable: renderer built without the DLSS SDK");}
+    void releaseDlssFeature() noexcept {}
+    void shutdownDlss() noexcept {}
+    bool evaluateDlss(){return false;}
+#endif
+    // Swapchain size: the window client with DLSS, the render size otherwise. Frames complete
+    // before the next one starts (submit waits), so the buffers can be resized here.
+    void fitSwapchain() {
+        uint32_t w=width,h=height;RECT client{};
+        if(dlssState==1&&presentWindow&&GetClientRect(presentWindow,&client)&&client.right>0&&client.bottom>0){w=uint32_t(client.right);h=uint32_t(client.bottom);}
+        if(w==outputWidth&&h==outputHeight)return;
+        releaseDlssFeature();if(dlssOutput){release(dlssOutput);dlssOutput=nullptr;}
+        check(swapchain->ResizeBuffers(0,w,h,DXGI_FORMAT_UNKNOWN,0),"Resize native swapchain");
+        outputWidth=w;outputHeight=h;
+    }
 
     void dispose() noexcept {
+        shutdownDlss();
         if (event) {CloseHandle(event);event=nullptr;}
         for (auto i=owned.rbegin();i!=owned.rend();++i) (*i)->Release();
         owned.clear();
@@ -390,6 +499,7 @@ public:
             if (!(desc.Flags&DXGI_ADAPTER_FLAG_SOFTWARE) &&
                 SUCCEEDED(D3D12CreateDevice(adapter,D3D_FEATURE_LEVEL_11_0,IID_PPV_ARGS(&device)))) {
                 std::wcout << L"Native Direct3D 12 adapter: " << desc.Description << L"\n";
+                adapterName=desc.Description;
                 keep(device);
             }
             adapter->Release();
@@ -418,8 +528,12 @@ public:
         device->CreateRenderTargetView(target,nullptr,rtv->GetCPUDescriptorHandleForHeapStart());
         auto dd=textureDescription(width,height,DXGI_FORMAT_D24_UNORM_S8_UINT); dd.Flags=D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
         D3D12_CLEAR_VALUE depthClear{};depthClear.Format=dd.Format;depthClear.DepthStencil.Depth=1;
-        depth=resource(dd,D3D12_HEAP_TYPE_DEFAULT,D3D12_RESOURCE_STATE_DEPTH_WRITE,&depthClear);
-        device->CreateDepthStencilView(depth,nullptr,dsv->GetCPUDescriptorHandleForHeapStart());
+        if(const char* dlss=std::getenv("DBZ3_NATIVE_DLSS");window&&dlss&&std::string(dlss)=="1")dlssWanted=true;
+        // DLSS samples the depth: typeless storage, same D24S8 views for drawing
+        auto depthStorage=dd;if(dlssWanted)depthStorage.Format=DXGI_FORMAT_R24G8_TYPELESS;
+        depth=resource(depthStorage,D3D12_HEAP_TYPE_DEFAULT,D3D12_RESOURCE_STATE_DEPTH_WRITE,&depthClear);
+        D3D12_DEPTH_STENCIL_VIEW_DESC depthView{};depthView.Format=dd.Format;depthView.ViewDimension=D3D12_DSV_DIMENSION_TEXTURE2D;
+        device->CreateDepthStencilView(depth,&depthView,dsv->GetCPUDescriptorHandleForHeapStart());
         uint32_t maskWidth=0,maskHeight=0;bool samplesMask=false,samplesScene=false;
         for(size_t i=0;i<liveDraws.size();++i){
             if(liveDraws[i].flags&DBZ_NATIVE_SAMPLE_MASK)samplesMask=true;
@@ -534,7 +648,9 @@ public:
         submit();
         for(auto* staging:temporaryUploads)release(staging);temporaryUploads.clear();
         if (window) {
-            DXGI_SWAP_CHAIN_DESC1 desc{};desc.Width=width;desc.Height=height;desc.Format=td.Format;
+            presentWindow=window;outputWidth=width;outputHeight=height;
+            if(dlssWanted)initDlss();
+            DXGI_SWAP_CHAIN_DESC1 desc{};desc.Width=outputWidth;desc.Height=outputHeight;desc.Format=td.Format;
             desc.SampleDesc.Count=1;desc.BufferUsage=DXGI_USAGE_RENDER_TARGET_OUTPUT;desc.BufferCount=2;
             desc.SwapEffect=DXGI_SWAP_EFFECT_FLIP_DISCARD;
             IDXGISwapChain1* temporary;
@@ -871,14 +987,19 @@ public:
         selectTarget(0);
         ID3D12Resource* backbuffer=nullptr;
         if(swapchain){
+            fitSwapchain();
             check(swapchain->GetBuffer(swapchain->GetCurrentBackBufferIndex(),IID_PPV_ARGS(&backbuffer)),"Get backbuffer");
-            barrier(target,D3D12_RESOURCE_STATE_RENDER_TARGET,D3D12_RESOURCE_STATE_COPY_SOURCE);
+            ID3D12Resource* source=target;auto sourceState=D3D12_RESOURCE_STATE_RENDER_TARGET;
+            if(dlssState==1&&evaluateDlss()){source=dlssOutput;sourceState=D3D12_RESOURCE_STATE_UNORDERED_ACCESS;}
+            barrier(source,sourceState,D3D12_RESOURCE_STATE_COPY_SOURCE);
             barrier(backbuffer,D3D12_RESOURCE_STATE_PRESENT,D3D12_RESOURCE_STATE_COPY_DEST);
-            commands->CopyResource(backbuffer,target);
+            // a DLSS failure this frame leaves a window-sized backbuffer: the next frame resizes it back
+            if(source!=target||(outputWidth==width&&outputHeight==height))commands->CopyResource(backbuffer,source);
             barrier(backbuffer,D3D12_RESOURCE_STATE_COPY_DEST,D3D12_RESOURCE_STATE_PRESENT);
-            barrier(target,D3D12_RESOURCE_STATE_COPY_SOURCE,D3D12_RESOURCE_STATE_RENDER_TARGET);
+            barrier(source,D3D12_RESOURCE_STATE_COPY_SOURCE,sourceState);
         }
-        submit();++submittedFrames;if(swapchain){auto result=swapchain->Present(presentInterval,0);backbuffer->Release();check(result,"Present native frame");}
+        submit();++submittedFrames;lastPresent=std::chrono::steady_clock::now();
+        if(swapchain){auto result=swapchain->Present(presentInterval,0);backbuffer->Release();check(result,"Present native frame");}
         for(const auto& op:operations)if(op.type==DBZ_NATIVE_COPY_COLOR||op.type==DBZ_NATIVE_COPY_DEPTH)initializedSnapshots[op.destination_texture]=true;
     }
     void capture(const char* path) {

@@ -2588,10 +2588,10 @@ void LauncherDialog::DrawVideoTab() {
       ui::Tip(i18n::T(
             "Renderer D3D12 propio, sin emular la GPU de Xbox 360. Solo con el juego europeo (PAL). "
             "JUGAR abre el juego en una ventana nueva sin los menus F1/F4 ni los paneles propios. "
-            "Faltan particulas y algunos efectos.",
+            "Faltan particulas y algunos efectos. Con el escalado DLSS (RTX) lo aplica al tamano de la ventana.",
             "Own D3D12 renderer, without emulating the Xbox 360 GPU. European (PAL) game only. "
             "PLAY opens the game in a new window without the F1/F4 menus or the custom panels. "
-            "Particles and some effects are still missing."));
+            "Particles and some effects are still missing. With DLSS upscaling (RTX) it scales to the window size."));
     }
     ui::Tip(i18n::T(
           "Vulkan es experimental: el combate 3D corre notablemente mas lento "

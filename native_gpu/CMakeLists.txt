@@ -34,6 +34,15 @@ foreach(target dbz3-native-gpu dbz3-native-renderer)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${DBZ3_REGISTRY}" "$<TARGET_FILE_DIR:${target}>/materials.dbzregistry")
 endforeach()
+# Optional NVIDIA DLSS in the renderer DLL (DBZ3_NATIVE_DLSS=1 at run time). Same convention as the
+# SDK's REXGLUE_DLSS_SDK_DIR: an extracted NVIDIA/DLSS release; nvngx_dlss.dll ships next to the exe.
+set(DBZ3_DLSS_SDK_DIR "${REXGLUE_DLSS_SDK_DIR}" CACHE PATH "NVIDIA DLSS SDK root for the native renderer (optional)")
+if(DBZ3_DLSS_SDK_DIR AND EXISTS "${DBZ3_DLSS_SDK_DIR}/include/nvsdk_ngx.h")
+    target_include_directories(dbz3-native-renderer PRIVATE "${DBZ3_DLSS_SDK_DIR}/include")
+    target_link_libraries(dbz3-native-renderer PRIVATE "${DBZ3_DLSS_SDK_DIR}/lib/Windows_x86_64/x64/nvsdk_ngx_d.lib")
+    target_compile_definitions(dbz3-native-renderer PRIVATE DBZ_NATIVE_DLSS=1)
+    message(STATUS "Native renderer DLSS: ${DBZ3_DLSS_SDK_DIR}")
+endif()
 # Independent CPU bridge: no ReX runtime or reference graphics libraries.
 add_library(indexed-replay SHARED lab/native_indexed.cpp lab/native_stream.cpp lab/replay_api.cpp)
 set_target_properties(indexed-replay PROPERTIES CXX_STANDARD 23)
