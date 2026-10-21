@@ -163,7 +163,7 @@ std::atomic<bool> g_caps_done{false};
 // roster.toml): registros 1984 + ID, panel de descripcion y bancos de nombres ampliados (data_usi:
 // carga del banco original -> su copia con el nombre de la capsula unica).
 std::atomic<bool> g_unified_on{false};
-bool g_unified_all = false;              // todas = true: tambien las formas sin desbloquear
+bool g_unified_all = true;              // todas = true: tambien las formas sin desbloquear
 uint32_t g_unified_desc = 0;
 std::vector<uint16_t> g_unified_ids;     // capsulas unicas creadas
 std::map<uint32_t, uint32_t> g_bank_redirect;   // 0x10000 | fid -> 0x10000 | fid
@@ -854,8 +854,10 @@ std::string RosterStamp() {
 // roster_hash: los bancos del _roster (y 2663/2684) solo valen con el mismo _roster con que se hicieron.
 void ReadUnified(const toml::table& t, const std::string& mod) {
   g_unified_on.store(true);
-  g_unified_all = t["todas"].value_or(false);
+  g_unified_all = t["todas"].value_or(true);
   g_unified_desc = uint32_t(std::clamp<int64_t>(Int(t["descripcion"], 0), 0, 0xFFFF));
+  if (const int64_t dt = Int(t["descripcion_teleport"], -1); dt > 0 && dt < 0x10000)
+    g_cap_desc[1970] = uint32_t(dt);
   auto pairs = [](const std::vector<int64_t>& v) {
     for (size_t k = 0; k + 1 < v.size(); k += 2) {
       if (v[k] > 0 && v[k] < 0x10000 && v[k + 1] > 0 && v[k + 1] < 0x10000)
@@ -1040,6 +1042,20 @@ void EnsureCapsules() {
     g.Write(buf + start + kSkcRec * uid, rec.data(), 40);
     if (g_unified_desc) g_cap_desc[uid] = g_unified_desc;
     g_unified_ids.push_back(uid);
+  }
+  // Capsula 1970: Transmision Instantanea (universal para todos los personajes, coste 1 slot)
+  constexpr uint16_t kCapTeleport = 1970;
+  if (kCapTeleport < total) {
+    std::array<uint8_t, 40> rec{};
+    const uint64_t own = ~0ull; // Todos los personajes (bits 0..63)
+    for (int b = 0; b < 8; ++b) rec[size_t(b)] = uint8_t(own >> (56 - 8 * b));
+    rec[8] = 0x21; // Clase objeto / habilidad
+    rec[10] = 0x30; // Rareza oro/alta
+    rec[14] = 0x01; // Equipada en forma normal
+    rec[15] = 0x01; // Coste: 1 ranura
+    g.Write(buf + start + kSkcRec * kCapTeleport, rec.data(), 40);
+    if (!g_cap_desc.count(kCapTeleport) && g_unified_desc) g_cap_desc[kCapTeleport] = g_unified_desc + 1;
+    REXLOG_INFO("dbz3 roster: capsula {} registrada: Transmision Instantanea (universal)", kCapTeleport);
   }
   if (!g_unified_ids.empty())
     REXLOG_INFO("dbz3 roster: {} capsulas unicas de transformacion ({}..{})", g_unified_ids.size(),
@@ -1245,7 +1261,7 @@ uint8_t UnifiedForms(int id) {
   const uint32_t recs = g.U32(kSkcRecPtr);
   if (uid >= count || recs < 0x10000u || !((g.U32(recs + kSkcRec * uid + (id < 32 ? 4 : 0)) >> (id & 31)) & 1))
     return 0;
-  const int k = GroupableChain(g, recs, count, id, true);
+  const int k = GroupableChain(g, recs, count, id, !g_unified_all);
   return uint8_t(((1u << (k + 1)) - 1) & ~1u);   // bits 1..k
 }
 
@@ -1591,6 +1607,22 @@ bool ListedCapsule(uint8_t* base, uint32_t rec, uint64_t owner_bit, uint32_t tab
   return (REX_LOAD_U64(rec) & owner_bit) != 0 && (REX_LOAD_U8(rec + 10) & 3) == tab &&
          (REX_LOAD_U8(rec + 8) & 7) != 0 && inv_count != 0;
 }
+
+bool IsVirtualEquipped(uint8_t* base, uint32_t st, uint32_t cap_id) {
+  for (uint32_t k = 0; k < 7; ++k) {
+    const uint32_t raw1 = REX_LOAD_U32(st + 192 + 4 * k);
+    if (raw1 != 0 && raw1 != 0xFFFFFFFFu) {
+      const uint32_t c1 = (raw1 & 0xFFFFF000u) ? (raw1 & 0xFFF) : (raw1 & 0xFFFF);
+      if (raw1 == cap_id || c1 == cap_id) return true;
+    }
+    const uint32_t raw2 = REX_LOAD_U32(st + 48 + 4 * k);
+    if (raw2 != 0 && raw2 != 0xFFFFFFFFu) {
+      const uint32_t c2 = (raw2 & 0xFFFFF000u) ? (raw2 & 0xFFF) : (raw2 & 0xFFFF);
+      if (raw2 == cap_id || c2 == cap_id) return true;
+    }
+  }
+  return false;
+}
 }  // namespace
 
 // Lista visible de la pestana (9 capsulas desde el desplazamiento). Misma logica que el
@@ -1623,7 +1655,9 @@ DBZ3_HOOK(sub_821B6ED8, dbz3eu_sub_821B5CC0) {
   const uint32_t n = dbz3::roster::CapsuleCount();
   uint32_t skipped = 0, shown = 0;
   for (uint32_t id = 1; id < n; ++id) {
-    if (!ListedCapsule(base, recs + 40 * id, bit, tab, id == uid ? 1u : REX_LOAD_U8(inv + id))) continue;
+    const bool is_virt = (id == uid || id == 1970);
+    const uint8_t owned_count = is_virt ? (IsVirtualEquipped(base, st, id) ? 0u : 1u) : REX_LOAD_U8(inv + id);
+    if (!ListedCapsule(base, recs + 40 * id, bit, tab, owned_count)) continue;
     if (int32_t(skipped) < int32_t(skip)) {
       ++skipped;
       continue;
@@ -1655,7 +1689,9 @@ DBZ3_HOOK(sub_821B6FE8, dbz3eu_sub_821B5DD0) {
   int32_t pos = 0, count = 0;
   for (uint32_t id = 1; id < n; ++id) {
     if (int32_t(id) == want) pos = count;
-    if (ListedCapsule(base, recs + 40 * id, bit, tab, id == uid ? 1u : REX_LOAD_U8(inv + id))) ++count;
+    const bool is_virt = (id == uid || id == 1970);
+    const uint8_t owned_count = is_virt ? (IsVirtualEquipped(base, st, id) ? 0u : 1u) : REX_LOAD_U8(inv + id);
+    if (ListedCapsule(base, recs + 40 * id, bit, tab, owned_count)) ++count;
   }
   REX_STORE_U16(blk + 102, uint16_t(count));
   if (count < 9) {

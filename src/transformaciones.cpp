@@ -5,7 +5,7 @@
 // (P+K+G -> sub_82119108) sube mientras esos bytes, la mascara de formas y el ki de cada capsula lo
 // permitan; la bajada (sub_82119258) tambien los mira. La capsula unica (1984 + ID, roster_ext.cpp) solo
 // enciende esos bytes para las formas que agrupa: el ki que pide cada forma y el resto del juego no cambian.
-// Online no hace nada (cada PC tiene su partida: las formas desbloqueadas podrian no coincidir).
+// Activo en offline y online (UnifiedForms es determinista en ambos jugadores).
 #include <rex/logging.h>
 
 #include <algorithm>
@@ -35,10 +35,6 @@ void GrantForms(uint8_t* base, uint32_t x) {
   bool equipped = false;
   for (int k = 0; k < n && !equipped; ++k) equipped = REX_LOAD_U16(rec + 54 + 2 * uint32_t(k)) == uid;
   if (!equipped) return;
-  if (dbz3::net::Session::Get().link() != dbz3::net::Link::kIdle) {
-    REXLOG_INFO("dbz3 formas: id {}: capsula unica sin efecto en el online", id);
-    return;
-  }
   const uint8_t mask = dbz3::roster::UnifiedForms(id);
   std::string caps;   // capsula de cada forma y cuantas tienes (inventario de la partida)
   const uint32_t c372 = REX_LOAD_U32(x + 7416), inv = dbz3::GuestAddr(0x824BA110, 0x824BA100) + 0x2AFE9;
@@ -275,7 +271,7 @@ namespace {
 
 namespace fs = std::filesystem;
 using Bytes = std::vector<uint8_t>;
-constexpr const char* kVersion = "forma_unica 1";
+constexpr const char* kVersion = "forma_unica 2";
 constexpr uint32_t kNamesShort = 2663, kNamesLong = 2684;
 
 struct Texts {
@@ -299,6 +295,24 @@ const std::map<std::string, Texts> kTexts = {
             "P+K+G\nMit dem Ki jeder Form", "Braucht die H\xC3\xA4lfte der Pl\xC3\xA4tze\nseiner einzelnen Kapseln"}},
     {"it", {"Tutte le trasformazioni", "Personaggi che si trasformano", "Pu\xC3\xB2 usare tutte le\ntrasformazioni sbloccate",
             "P+K+G\nCon il Ki di ogni forma", "Occupa met\xC3\xA0 degli spazi\ndelle sue capsule separate"}},
+};
+
+const std::map<std::string, Texts> kTextsTeleport = {
+    {"en", {"Instant Transmission", "All characters",
+            "Infinite teleport\nwithout Ki cost", "Guard towards opponent\nwhen attacked",
+            "Consumes no Ki when\ncountering or vanishing"}},
+    {"es", {"Transmisión Instantánea", "Todos los personajes",
+            "Teletransporte infinito\nsin uso de KI", "Guardia hacia el rival\nal recibir un ataque",
+            "Elimina el consumo de Ki\ndurante el teletransporte"}},
+    {"fr", {"Transmission Instantanée", "Tous les personnages",
+            "Téléportation infinie\nsans coût de Ki", "Garde vers l'adversaire\nlors d'une attaque",
+            "Ne consomme pas de Ki\nlors de la téléportation"}},
+    {"de", {"Momentane Teleportation", "Alle Charaktere",
+            "Unendliche Teleportation\nohne Ki-Verbrauch", "Blocken zum Gegner\nbei einem Angriff",
+            "Verbraucht kein Ki\nbeim Teleportieren"}},
+    {"it", {"Trasmissione Istantanea", "Tutti i personaggi",
+            "Teletrasporto infinito\nsenza consumo di Ki", "Parata verso l'avversario\nquando attaccato",
+            "Non consuma Ki\ndurante il teletrasporto"}},
 };
 
 uint32_t Be32(const uint8_t* p) { return uint32_t(p[0]) << 24 | uint32_t(p[1]) << 16 | uint32_t(p[2]) << 8 | p[3]; }
@@ -764,6 +778,7 @@ bool PrepareNamesMod(const std::vector<std::pair<int, uint32_t>>& banks, const s
     return false;
   }
   const uint32_t desc = count + 1024;
+  const uint32_t desc_teleport = desc + 1;
   struct Plan {
     uint32_t from, to;
     std::vector<int> ids;   // personajes que usan ese banco (vacio: los generales 2663/2684, con todas)
@@ -772,9 +787,9 @@ bool PrepareNamesMod(const std::vector<std::pair<int, uint32_t>>& banks, const s
   std::vector<Plan> plan;
   std::map<uint32_t, std::vector<int>> owner;   // banco -> personajes (un port sin banco propio usa el del donante)
   for (const auto& [id, fid] : banks) owner[fid].push_back(id);
-  for (const auto& [fid, ids] : owner) plan.push_back({fid, uint32_t(desc + 1 + plan.size()), ids, false});
+  for (const auto& [fid, ids] : owner) plan.push_back({fid, uint32_t(desc + 2 + plan.size()), ids, false});
   for (const uint32_t general : {kNamesShort, kNamesLong})
-    plan.push_back({general, uint32_t(desc + 1 + plan.size()), {}, false});
+    plan.push_back({general, uint32_t(desc + 2 + plan.size()), {}, false});
   const fs::path tmp = mods / ".forma_unica_nueva";   // con punto: los mods y el runtime la ignoran
   fs::remove_all(tmp, ec);
   size_t written = 0;
@@ -784,10 +799,21 @@ bool PrepareNamesMod(const std::vector<std::pair<int, uint32_t>>& banks, const s
     const std::array<Image, 5> panel = {name, RenderLines(desc_font, t.who), RenderLines(desc_font, t.what),
                                         RenderLines(desc_font, t.cmd), RenderLines(desc_font, t.note)};
     written += WriteFile(tmp / "us" / afs_name / std::to_string(desc) / "forma_unica.bin", BuildDesc(panel));
+
+    const Texts& tt = kTextsTeleport.at(LangOf(afs_name));
+    const Image name_teleport = RenderName(name_font, tt.name);
+    const std::array<Image, 5> panel_teleport = {name_teleport, RenderLines(desc_font, tt.who), RenderLines(desc_font, tt.what),
+                                                 RenderLines(desc_font, tt.cmd), RenderLines(desc_font, tt.note)};
+    written += WriteFile(tmp / "us" / afs_name / std::to_string(desc_teleport) / "forma_unica.bin", BuildDesc(panel_teleport));
+
     for (auto& p : plan) {
       std::map<uint32_t, Image> items;
       for (const auto& [id, fid] : banks)
         if (p.ids.empty() || std::find(p.ids.begin(), p.ids.end(), id) != p.ids.end()) items[forms::UnifiedId(id)] = name;
+      // FIXME(refactor): Extraer el motor de rasterizado de texto #AZT (Font, RenderName, ExtendBank, BuildDesc)
+      // a un modulo independiente (ej. src/capsule_ui.h y src/capsule_ui.cpp) para desacoplar transformaciones.cpp
+      // de capsulas genericas o pasivas como Transmision Instantanea (ID 1970).
+      items[1970] = name_teleport;
       Bytes bank = ModEntry(roster, afs_name, p.from);   // el del _roster gana, como en el juego
       p.from_roster = p.from_roster || !bank.empty();
       if (bank.empty()) bank = ReadEntry(path, p.from);
@@ -801,9 +827,9 @@ bool PrepareNamesMod(const std::vector<std::pair<int, uint32_t>>& banks, const s
     s += (s.empty() ? "" : ", ") + std::to_string(p.from) + ", " + std::to_string(p.to);
   }
   std::ofstream(tmp / "roster.toml") << "# GENERADO por el juego (src/transformaciones.cpp) desde tus AFS: se rehace solo.\n"
-                                        "[forma_unica]\ndescripcion = " << desc << "\nbancos = [" << pairs[0]
-                                     << "]\nbancos_roster = [" << pairs[1] << "]\nroster_hash = \"" << roster_stamp
-                                     << "\"\ntodas = false\n";
+                                        "[forma_unica]\ndescripcion = " << desc << "\ndescripcion_teleport = " << desc_teleport
+                                     << "\nbancos = [" << pairs[0] << "]\nbancos_roster = [" << pairs[1]
+                                     << "]\nroster_hash = \"" << roster_stamp << "\"\ntodas = true\n";
   std::ofstream(tmp / "LEEME.txt") << "Nombre y panel de la capsula 'Todas las transformaciones', hechos por el juego\n"
                                       "desde tus archivos del juego. No van con la descarga; si apartas esta carpeta,\n"
                                       "el juego la vuelve a crear al arrancar.\n";

@@ -477,6 +477,38 @@ void DefinitivaLog(uint8_t* base) {
   }
 }
 
+// ---------------------------------------------------------------- Capsula 1970: Transmision Instantanea
+// Elimina el consumo de Ki durante la accion de teletransporte (Z-Counter / colocarse a la espalda, accion 39)
+constexpr uint16_t kCapTeleportInstant = 1970;
+void TransmisionInstantaneaTick(uint8_t* base) {
+  static float ki_prev[2] = {0.0f, 0.0f};
+  static uint16_t act_prev[2] = {0, 0};
+  for (int k = 0; k < 2; ++k) {
+    const uint32_t x = Fighter(base, k);
+    if (!x) continue;
+    const uint16_t act = REX_LOAD_U16(x + kAct);
+    const float cur_ki = LoadF(base, x + kKi);
+
+    if (Equipada(base, x, kCapTeleportInstant)) {
+      // Acciones 39/40: Teletransporte a la espalda / contraataque
+      if (act == 39 || act == 40) {
+        if (cur_ki < ki_prev[k]) {
+          // Restaurar el Ki previo al consumo del teletransporte
+          StoreF(base, x + kKi, ki_prev[k]);
+          REXLOG_INFO("dbz3 combate: Transmision Instantanea lado {}: Ki protegido ({:.0f} -> {:.0f})",
+                      k + 1, cur_ki, ki_prev[k]);
+        }
+      } else {
+        // En cualquier otra accion guardamos el Ki actual como referencia
+        ki_prev[k] = cur_ki;
+      }
+    } else {
+      ki_prev[k] = cur_ki;
+    }
+    act_prev[k] = act;
+  }
+}
+
 // ---------------------------------------------------------------- modo ondas (prueba IV de la Nave de Babidi)
 // B2, modo de combate 9: el ordenador no elige ningun movimiento (FUN_001d1c40 da -2: nodo de reposo), tras cada reaccion
 // vuelve a la guardia (FUN_001d1db0 da 1 = accion 1) y a toda onda que le llega la devuelve (FUN_001d1980 da 2 -> FUN_001f7fc0
@@ -573,7 +605,7 @@ DBZ3_HOOK_EU(sub_821100B0) {
     if (!panel) panel = true, dbz3::launcher::DeferUi(&CrearPanel);
     MunecoCuadro(base, st);
     OndasRival(base, st);
-    if (st == 4) Avisos(base), PruebaCuadro(ctx, base);
+    if (st == 4) Avisos(base), PruebaCuadro(ctx, base), TransmisionInstantaneaTick(base);
     if (st >= 4 && st <= 7) DefinitivaLog(base);
     OtroDano(ctx, base, st);
     Sonda(base, st);
@@ -590,6 +622,11 @@ DBZ3_HOOK_EU(sub_8210ED48) {
   if (lado < 0) {
     orig(ctx, base);
     return;
+  }
+  const bool has_teleport = Equipada(base, x, kCapTeleportInstant);
+  const float ki_pre_hit = has_teleport ? LoadF(base, x + kKi) : 0.0f;
+  if (has_teleport && ki_pre_hit < 3000.0f) {
+    StoreF(base, x + kKi, 3000.0f);
   }
   const uint32_t from = REX_LOAD_U32(x + kHitFrom);
   const int de = from ? SideOf(base, from) : -1;   // -1: proyectil u otro objeto (sin reglas 05)
@@ -655,6 +692,14 @@ DBZ3_HOOK_EU(sub_8210ED48) {
                  de >= 0 ? code : g_ultima_code[size_t(1 - lado)], cf, REX_LOAD_U16(x + kHitProps), hr_code, int(dano_hr), hp0, hp1, act0,
                  REX_LOAD_U16(x + kAct), ki0, LoadF(base, x + kKi), parcheado ? 1 : 0, ret);
   }
+  if (has_teleport) {
+    const uint16_t act_now = REX_LOAD_U16(x + kAct);
+    if (act_now == 39 || act_now == 40) {
+      StoreF(base, x + kKi, ki_pre_hit);
+    } else {
+      StoreF(base, x + kKi, std::max(ki_pre_hit, LoadF(base, x + kKi)));
+    }
+  }
 }
 
 // Contraataque por teletransporte del jugador (sub_82102DF8: r3 = victima humana). El juego lo concede si el
@@ -666,6 +711,11 @@ DBZ3_HOOK_EU(sub_82102DF8) {
   const int32_t tg = int32_t(REX_LOAD_U32(i + 80)), te = int32_t(REX_LOAD_U32(i + 84));
   const uint32_t ent = i + 100 + 4 * (REX_LOAD_U32(i + 88) & 0x3F);   // ultima entrada del bufer (tipo, valor)
   orig(ctx, base);
+  if (Equipada(base, x, kCapTeleportInstant)) {
+    if (tg >= -15 && tg <= 20) {
+      ctx.r3.u64 = 1;
+    }
+  }
   if (g_golpes) {
     const uint32_t a = REX_LOAD_U32(x + 4948);
     std::fprintf(g_golpes, "%u,ventana,%d,%d,P%d K%d E%d ent %u/%d,%X,%.0f,,,,,,,,,,%d,%u\n", g_frame.load(),
