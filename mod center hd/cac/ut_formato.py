@@ -209,8 +209,8 @@ class Spr:
         return self.d[p:p + data_size]
 
 
-USAGE = {0x00: "pos", 0x02: "nrm", 0x03: "uv", 0x05: "ib",
-         0x06: "skin_w", 0x07: "skin_i", 0x09: "tan"}
+USAGE = {0x00: "pos", 0x02: "nrm", 0x03: "tan", 0x05: "uv",
+         0x06: "skin_w", 0x07: "skin_i"}
 
 
 class Grup:
@@ -243,9 +243,10 @@ class Grup:
             rno = struct.unpack_from(">I", spr.d, p + 4)[0]
             usage = struct.unpack_from(">H", spr.d, p + 8)[0]
             idx = struct.unpack_from(">H", spr.d, p + 10)[0]
+            formato = struct.unpack_from(">H", spr.d, p + 12)[0]
             stride = struct.unpack_from(">H", spr.d, p + 14)[0]
             off = struct.unpack_from(">I", spr.d, p + 16)[0]
-            self.decls.append({"usage": usage, "index": idx, "stride": stride, "offset": off,
+            self.decls.append({"usage": usage, "index": idx, "formato": formato, "stride": stride, "offset": off,
                                "nombre": spr.cstr(rno)})
 
     # -- helpers de declaraciones -------------------------------------------
@@ -265,33 +266,44 @@ class Grup:
         if dpos is None or not dpos["stride"]:
             return []
         dnrm = self._decl(0x02)
-        duv = self._decl(0x03)
-        wdecl = [self._decl(0x06, i) for i in range(4)]
-        idecl = [self._decl(0x07, i) for i in range(4)]
+        duv = self._decl(0x05)
+        skin = self.influencias()
         out = []
         for i in range(self.vertex_count):
             off = i * dpos["stride"]
             x, y, z = struct.unpack_from(">fff", self.vertex_data, off + dpos["offset"])
             if dnrm:
-                nx, ny, nz = struct.unpack_from(">fff", self.vertex_data, off + dnrm["offset"])
+                nx, ny, nz = struct.unpack_from(">fff", self.vertex_data, i * dnrm["stride"] + dnrm["offset"])
             else:
                 nx = ny = nz = 0.0
             if duv:
-                u, v = struct.unpack_from(">ff", self.vertex_data, off + duv["offset"])
+                u, v = struct.unpack_from(">ff", self.vertex_data, i * duv["stride"] + duv["offset"])
             else:
                 u = v = 0.0
-            n = len(self.vertex_data)
-            bone, peso = 0, 1.0
-            if wdecl[0] and idecl[0]:
-                ws = []
-                for wd, idd in zip(wdecl, idecl):
-                    if wd and idd and off + wd["offset"] < n and off + idd["offset"] < n:
-                        ws.append((self.vertex_data[off + wd["offset"]],
-                                   self.vertex_data[off + idd["offset"]]))
-                if ws:
-                    w, b = max(ws, key=lambda t: t[0])
-                    bone, peso = b, (w / 255.0 if w > 1 else float(w))
+            bone, peso = max(skin[i], key=lambda t: t[1]) if skin[i] else (0, 1.0)
             out.append((x, y, z, nx, ny, nz, u, v, bone, peso))
+        return out
+
+    def influencias(self):
+        """Skin UT original: FLOAT1 BE (usage 6), u32 BE (usage 7), stride propio.
+
+        Conserva todas las influencias: los índices son IDs BONE, no bytes ni materiales.
+        La API vertices() mantiene su tupla histórica (influencia dominante).
+        """
+        out = [[] for _ in range(self.vertex_count)]
+        for lane in range(4):
+            wd, bd = self._decl(6, lane), self._decl(7, lane)
+            if wd is None and bd is None:
+                continue
+            if wd is None or bd is None or wd["formato"] != 8 or bd["formato"] != 2:
+                raise ValueError("skin UT no soportado en " + self.nombre)
+            for i in range(self.vertex_count):
+                w = struct.unpack_from(">f", self.vertex_data, wd["offset"] + i * wd["stride"])[0]
+                b = struct.unpack_from(">I", self.vertex_data, bd["offset"] + i * bd["stride"])[0]
+                if not 0 <= w <= 1:
+                    raise ValueError("peso UT inválido en " + self.nombre)
+                if w > 0:
+                    out[i].append((b, w))
         return out
 
     def triangulos(self):

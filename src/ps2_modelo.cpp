@@ -2,6 +2,8 @@
 // combate con ImGui (frente P4, 2026-10-16; antes dentro de iw_minijuegos.cpp). Ver ps2_modelo.h.
 #include "ps2_modelo.h"
 
+#include "ingame/game_style.h"   // L05: GuestImage
+
 #include <rex/cvar.h>
 #include <rex/logging.h>
 #include <rex/runtime.h>
@@ -431,6 +433,13 @@ Modelo CargarDeAfs(pasarela::AfsPs2& afs, size_t amo, size_t amt, bool animable)
 // ---- Pintado (hilo de la interfaz) ----
 Camara CamaraCombate(uint8_t* base, ImVec2 pantalla) {
   Camara c;
+  ImVec2 p0(0, 0);
+  const ImGuiIO& io = ImGui::GetIO();
+  if (pantalla.x == io.DisplaySize.x && pantalla.y == io.DisplaySize.y) {
+    const dbz3::ingame::style::Imagen gi = dbz3::ingame::style::GuestImage(io);   // L05: el 3D, en la imagen del juego
+    pantalla = gi.Size();
+    p0 = gi.p0;
+  }
   const uint32_t mgr = base ? REX_LOAD_U32(dbz3::GA(0x823D6CF4)) : 0;
   if (!mgr) return c;
   for (uint32_t i = 0; i < 16; ++i) c.m[i] = LoadF(base, mgr + 0x60 + 4 * i);   // vista (mgr+0x60)
@@ -438,8 +447,8 @@ Camara CamaraCombate(uint8_t* base, ImVec2 pantalla) {
   if (fov > 0.1f && fov < 3.0f) c.fov = fov;
   const float cerca = LoadF(base, mgr + 0x20), lejos = LoadF(base, mgr + 0x24);   // planos (Camara::Prof)
   if (cerca > 0.01f && lejos > cerca * 2.0f && lejos < 1.0e7f) c.za = cerca, c.zb = lejos;
-  c.c = ImVec2(pantalla.x * 0.5f, pantalla.y * 0.5f);
-  c.h = c.c;
+  c.c = ImVec2(p0.x + pantalla.x * 0.5f, p0.y + pantalla.y * 0.5f);
+  c.h = ImVec2(pantalla.x * 0.5f, pantalla.y * 0.5f);
   c.ok = true;
   return c;
 }

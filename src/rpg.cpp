@@ -41,6 +41,7 @@
 #include "escenarios.h"
 #include "heroe_api.h"
 #include "modos.h"
+#include "mods.h"
 #include "tagteam.h"
 #include "cac/cac.h"
 #include "heroe_ui.h"   // studies 8 H3/H4: Create / Edit y Select Master al estilo UT
@@ -52,7 +53,7 @@ namespace S = dbz3::ingame::style;
 using M::L;
 
 constexpr uint16_t kUp = 0x0001, kDown = 0x0002, kLeft = 0x0004, kRight = 0x0008, kLb = 0x0100, kRb = 0x0200,
-                   kA = 0x1000, kB = 0x2000, kX = 0x4000, kY = 0x8000;   // X/Y: moveset del heroe (frente 10)
+                   kStart = 0x0010, kA = 0x1000, kB = 0x2000, kX = 0x4000, kY = 0x8000;   // X/Y: moveset; Start: fichas (K)
 
 uint32_t Hash(uint32_t a, uint32_t b) {   // mezcla entera (semilla, paso): lo mismo da lo mismo
   uint32_t h = a * 0x9E3779B1u ^ (b * 0x85EBCA6Bu + 0x7F4A7C15u);
@@ -476,6 +477,17 @@ void CargarRpg() {   // con g_mu (lo llama Cargar)
 // Fichas de heroe (cac.toml): van despues de rpg.toml y hub_heroe.toml; el heroe de la partida es el de la ficha
 // activa. Primera vez (sin cac.toml): el heroe que ya hay pasa a ser la ficha 1, las partidas antiguas no cambian.
 void CargarCac() {   // con g_mu
+  // Catalogo real de piezas CaC (cuerpo/cara/pelo/ropa/color/voz/aura). Antes no se llamaba nunca y el
+  // juego usaba el respaldo de 20 entradas: cara/ropa quedaban en 0..1 y el TOML de piezas no llegaba.
+  for (const std::filesystem::path& cat : {dbz3::settings::UserDataRoot() / "heroe" / "piezas_cac.toml",
+                                           dbz3::ModsRoot().parent_path() / "res" / "heroe" / "piezas_cac.toml",
+                                           dbz3::ModsRoot().parent_path() / "mod center hd" / "cac" / "piezas_cac.toml"}) {
+    std::error_code ec;
+    if (std::filesystem::exists(cat, ec)) {
+      dbz3::cac::CargarCatalogo(cat.string());
+      break;
+    }
+  }
   const auto p = CacRuta();
   const std::string ruta = p.string();
   std::error_code ec;
@@ -498,6 +510,7 @@ void CargarCac() {   // con g_mu
       migrado = true;
     }
     if (migrado) dbz3::cac::Guardar(ruta);
+    H::Importar(dbz3::cac::SlotActivo());   // G06a: restaurar también cuerpo/apariencia de la ficha, no solo XP
     H::CargarProgreso(dbz3::cac::SlotActivo());
     return;
   }
@@ -777,7 +790,7 @@ int PremioDe(int modo, int extra = 0) {
 }
 
 // ---- Pantallas ----
-enum Vista { kCerrada, kSelector, kSimDia, kHeroeP, kTorresP, kCuadro, kMisionP, kHeroeCrear, kHeroeMaestro, kHeroeMoveset, kHeroeMapa };
+enum Vista { kCerrada, kSelector, kSimDia, kHeroeP, kTorresP, kCuadro, kMisionP, kHeroeCrear, kHeroeMaestro, kHeroeMoveset, kHeroeMapa, kHeroeLista };
 Vista g_vista = kCerrada;
 int g_entrada = 0, g_sel = 0, g_cursor = 0, g_cursor2 = 0;   // selector, pantallas, torre
 int g_jugador = 0, g_traje = 0;
@@ -1107,6 +1120,12 @@ uint32_t Semilla() {
 // Empieza (o sigue) un reto del selector (con g_mu).
 void Empezar(int modo) {
   g_aviso.clear();
+  // G06a: nunca sustituir silenciosamente el cuerpo CaC por el luchador del estilo.
+  if (modo == M::kHeroe && g_vista == kHeroeP && H::Cuerpo() >= 100 && H::Cuerpo() <= 105 && H::IdPropio() < 0) {
+    g_aviso = T::T("Confirma el cuerpo UT en Apariencia antes de jugar. Si acaba de montarse, reinicia el juego.",
+                   "Confirm the UT body in Look before playing. If it was just installed, restart the game.");
+    return;
+  }
   if (modo <= M::kKumite) {
     if (M::Start(modo, g_jugador, g_traje)) g_vista = kCerrada;
     else g_aviso = L("No se pudo empezar el reto.", "The challenge could not start.", "Le défi n'a pas pu commencer.",
@@ -1673,6 +1692,7 @@ void NuevaFicha() {
 }
 
 void DibujarHeroe(ImDrawList* dl, const S::Area& a, float t, uint16_t p) {
+  if (H::Cuerpo() >= 100 && H::Cuerpo() <= 105) dbz3::heroe_ui::DibujarAvatarUT(dl, a);   // G06a
   constexpr int kFilas = 9;   // raza, cuerpo, apariencia, estilo, moveset, aura, puntos (PH), maestros, empezar
   g_cursor = std::clamp(g_cursor, 0, kFilas - 1);
   if (p & (kUp | kDown | kLeft | kRight | kLb | kRb)) g_aviso.clear();
@@ -1691,6 +1711,11 @@ void DibujarHeroe(ImDrawList* dl, const S::Area& a, float t, uint16_t p) {
                                           "To switch master, complete at least 60% of training with the current one.");
   if (p & kY) CambiarFicha(+1);   // ficha de heroe (cac.toml): Y la siguiente, X una nueva
   if (p & kX) NuevaFicha();
+  if (p & kStart) {   // K: lista de fichas (elegir / duplicar / archivar) sin salir del modo
+    dbz3::heroe_ui::AbrirSlots();
+    g_vista = kHeroeLista;
+    return;
+  }
   if (p & kB) {
     Guardar();
     g_vista = g_entrada == 4 ? kCerrada : kSelector;   // entrada propia del HUB: B vuelve al HUB
@@ -1798,7 +1823,8 @@ void DibujarHeroe(ImDrawList* dl, const S::Area& a, float t, uint16_t p) {
                {"LB", T::T("Estilo -", "Style -")},
                {"RB", T::T("Estilo +", "Style +")},
                {"X", T::T("Ficha nueva", "New slot")},
-               {"Y", T::T("Ficha", "Slot")}});
+               {"Y", T::T("Ficha", "Slot")},
+               {"Start", T::T("Fichas", "Slots")}});
 }
 
 // Simulacion: un dia (entrenar / explorar / descansar) o, gastados los tres, el jefe.
@@ -2316,7 +2342,7 @@ bool Mision100() {
 bool Heroe() {
   std::lock_guard<std::mutex> lk(g_mu);
   const std::vector<int>& r = Retos(g_entrada);
-  if (g_vista == kHeroeP || g_vista == kHeroeCrear || g_vista == kHeroeMaestro || g_vista == kHeroeMoveset || g_vista == kHeroeMapa || (g_vista == kSelector && g_sel >= 0 && g_sel < int(r.size()) && r[size_t(g_sel)] == M::kHeroe))
+  if (g_vista == kHeroeP || g_vista == kHeroeCrear || g_vista == kHeroeMaestro || g_vista == kHeroeMoveset || g_vista == kHeroeMapa || g_vista == kHeroeLista || (g_vista == kSelector && g_sel >= 0 && g_sel < int(r.size()) && r[size_t(g_sel)] == M::kHeroe))
     return true;
   const M::Estado st = M::Get();
   return st.propio && st.tipo == M::kHeroe && (st.fase == M::kEntre || st.fase == M::kCombate || g_fin);
@@ -2385,6 +2411,9 @@ void AbrirHeroe() {
     } else if (v == "movesets") {
       dbz3::heroe_ui::AbrirMovesets();
       g_vista = kHeroeMoveset;
+    } else if (v == "fichas") {
+      dbz3::heroe_ui::AbrirSlots();
+      g_vista = kHeroeLista;
     }
   }
 }
@@ -2396,6 +2425,18 @@ void Dibujar(ImDrawList* dl, const S::Area& a, float t, uint16_t pulsado) {
     case kSelector: return DibujarSelector(dl, a, t, pulsado);
     case kSimDia: return DibujarSim(dl, a, t, pulsado);
     case kHeroeP: return DibujarHeroe(dl, a, t, pulsado);
+    case kHeroeLista: {   // K: lista de fichas; A elige, X duplica, Y archiva, B vuelve
+      const auto r = dbz3::heroe_ui::SlotsUI(dl, a, t, pulsado);
+      if (r == dbz3::heroe_ui::Accion::kConfirmar) {
+        H::Importar(dbz3::cac::SlotActivo());
+        Guardar();
+        g_vista = kHeroeP;
+      } else if (r == dbz3::heroe_ui::Accion::kVolver) {
+        Guardar();   // persiste duplicar/archivar aunque no se elija otra ficha
+        g_vista = kHeroeP;
+      }
+      return;
+    }
     case kHeroeMapa: {   // studies 8 fase 2 (H5): A en la saga siguiente la empieza; B vuelve a la creacion
       const auto r = dbz3::heroe_ui::MapaUI(dl, a, t, pulsado);
       if (r == dbz3::heroe_ui::Accion::kNada) return;

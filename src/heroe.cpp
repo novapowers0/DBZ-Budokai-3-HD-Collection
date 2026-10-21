@@ -51,7 +51,7 @@ struct Fisico {
 };
 struct Raza {
   const char *es, *en, *fr, *de, *it;
-  Fisico cuerpos[4];
+  Fisico cuerpos[6];
   int n;
 };
 const Raza kRazas[] = {
@@ -61,6 +61,9 @@ const Raza kRazas[] = {
     {"Raza de Freezer", "Frieza Race", "Race de Freezer", "Freezers Volk", "Razza di Freezer", {{27, 2}, {38, 2}}, 2},
     {"Majin", "Majin", "Majin", "Majin", "Majin", {{34, 2}, {36, 2}}, 2},
     {"Androide", "Android", "Androïde", "Androide", "Androide", {{30, 2}, {29, 2}, {28, 2}, {33, 2}}, 4},
+    // G06a: IDs de catálogo, NO IDs de luchador; la geometría sale del creador UT.
+    {"Saiyan (CaC UT)", "Saiyan (UT CaC)", "Saiyan (CaC UT)", "Saiyajin (UT CaC)", "Saiyan (UT CaC)",
+     {{100, 17}, {101, 17}, {102, 17}, {103, 17}, {104, 17}, {105, 17}}, 6},
 };
 constexpr int kNumRazas = int(std::size(kRazas));
 
@@ -498,6 +501,7 @@ void Vestir(int estilo, int cuerpo, int traje) {
 const Fisico& CuerpoAct() { return kRazas[g_raza].cuerpos[g_cuerpo]; }
 // Trajes del cuerpo: la tabla del select por casilla (la que llena el juego, con los trajes de mods), o los fijos.
 int TrajesDe(const Fisico& c) {
+  if (c.id >= 100 && c.id <= 105) return 17;   // G06a: apariencias originales UT
   if (uint8_t* b = Base()) {
     const uint32_t slot = uint32_t(b[kIdToSlot + c.id * 2]) << 8 | b[kIdToSlot + c.id * 2 + 1];
     if (slot < 38 && b[kCostumeCounts + slot] >= 1 && b[kCostumeCounts + slot] <= 8) return b[kCostumeCounts + slot];
@@ -618,7 +622,7 @@ void AplicarHooksDePrueba() {
   }
   g_raza = HookEntero("DBZ3_TEST_HEROE_RAZA", g_raza, 0, kNumRazas - 1);
   g_cuerpo = HookEntero("DBZ3_TEST_HEROE_CUERPO", g_cuerpo, 0, 15);   // Ajustar() lo lleva al cuerpo valido
-  g_traje = HookEntero("DBZ3_TEST_HEROE_TRAJE", g_traje, 0, 15);
+  g_traje = HookEntero("DBZ3_TEST_HEROE_TRAJE", g_traje, 0, 16);
   g_estilo = HookEntero("DBZ3_TEST_HEROE_ESTILO", g_estilo, 0, kNumEstilos - 1);
   g_moveset = HookEntero("DBZ3_TEST_HEROE_MOVESET", g_moveset, -1, 400);
   g_aura = HookEntero("DBZ3_TEST_HEROE_AURA", g_aura, 0, kNumAuras - 1);
@@ -654,6 +658,13 @@ void Escribir(std::ostream& o) {
 }
 
 int Cuerpo() { return CuerpoAct().id; }
+std::string NombreCuerpo() {   // G06a: no mostrar Goku/Vegeta como cuerpo del creador
+  if (Cuerpo() < 100 || Cuerpo() > 105) return M::Nombre(Cuerpo());
+  const int k = Cuerpo() - 100;
+  const char* constitucion = k < 2 ? T::T("Ligera", "Light") : k < 4 ? T::T("Estándar", "Standard")
+                                                                      : T::T("Pesada", "Heavy");
+  return std::string(constitucion) + " / " + T::T("Cara ", "Face ") + (k % 2 ? "B" : "A") + " (UT)";
+}
 int Traje() { return g_traje; }
 
 namespace C = dbz3::cac;
@@ -667,9 +678,11 @@ std::string ArgsFicha(int id, int traje) {
   s += ";pelo=" + std::to_string(h.pelo) + ";c1=" + hsv(h.pelo_c1) + ";c2=" + hsv(h.pelo_c2) +
        ";logo=" + std::to_string(h.logo) + ";scouter=" + std::to_string(h.scouter);
   if (h.ropa > 0) s += ";ropa=" + std::to_string(h.ropa);   // studies 9b: prenda de Xenoverse (vista_heroe.py PRENDAS)
+  if (id >= 100 && id <= 105) s += ";ut=4";   // G06a: invalida tiras viejas del conversor; vista_heroe lo ignora
   return s;
 }
 bool FichaNativa() {
+  if (Cuerpo() >= 100 && Cuerpo() <= 105) return false;   // G06a: siempre usar su malla propia
   const C::Heroe& h = C::Slot(C::SlotActivo());
   auto cero = [](const C::Hsv& c) { return c.h == 0 && c.s == 0 && c.v == 0; };
   for (const auto& c : h.parte)
@@ -1071,7 +1084,7 @@ std::string Fila(int fila) {
   const Raza& r = kRazas[g_raza];
   switch (fila) {
     case 0: return std::string(L("Raza: ", "Race: ", "Race : ", "Volk: ", "Razza: ")) + L(r.es, r.en, r.fr, r.de, r.it);
-    case 1: return std::string(L("Cuerpo: ", "Body: ", "Corps : ", "Körper: ", "Corpo: ")) + M::Nombre(Cuerpo());
+    case 1: return std::string(L("Cuerpo: ", "Body: ", "Corps : ", "Körper: ", "Corpo: ")) + NombreCuerpo();
     case 2:
       return std::string(L("Apariencia: traje ", "Look: costume ", "Apparence : tenue ", "Aussehen: Kostüm ",
                            "Aspetto: costume ")) + std::to_string(g_traje + 1) + " / " +

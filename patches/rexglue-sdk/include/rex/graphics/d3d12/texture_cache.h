@@ -14,6 +14,7 @@
 #include <array>
 #include <functional>
 #include <memory>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -98,6 +99,13 @@ class D3D12TextureCache final : public TextureCache {
   void BeginSubmission(uint64_t new_submission_index) override;
   void BeginFrame() override;
   void EndFrame();
+
+  // DBZ3: cambio de pack transaccional. BeginSubmission solo anota el estado
+  // solicitado (cvar viva); el aplicado no cambia hasta que EndSubmission ha
+  // esperado al fence y ha limpiado la cache. Asi ninguna decision de la
+  // submission mezcla el estado nuevo con recursos creados con el anterior.
+  bool HasPendingPackState() const { return pack_state_pending_; }
+  void ApplyPendingPackState();
 
   // Must be called within a submission - creates and untiles textures needed by
   // shaders and puts them in the SRV state. This may bind compute pipelines
@@ -656,8 +664,66 @@ class D3D12TextureCache final : public TextureCache {
   // resultado (incluido "no hay pack") se memoriza para que la respuesta sea
   // estable entre la creacion del recurso y las recargas.
   mutable std::unordered_map<TextureKey, uint32_t, TextureKey::Hasher> pack_factor_cache_;
-  bool packs_on_seen_ = true;  // ultimo estado del interruptor F1 del pack HD
-  bool pack_index_seen_ = false;  // el indice de packs (en segundo plano) ya estaba listo
+  // Estado EFECTIVO del pack (el que usan todas las decisiones de la cache).
+  // Se actualiza solo tras el fence; el solicitado se lee de las cvars al abrir
+  // submission y se coalesce hasta que se puede aplicar.
+  struct PackState {
+    bool index_ready = false;
+    bool packs_on = false;
+    bool side_borders_hidden = false;
+
+    bool operator==(const PackState& other) const {
+      return index_ready == other.index_ready && packs_on == other.packs_on &&
+             side_borders_hidden == other.side_borders_hidden;
+    }
+    bool operator!=(const PackState& other) const { return !(*this == other); }
+  };
+  PackState pack_applied_state_;
+  PackState pack_requested_state_;
+  bool pack_state_initialized_ = false;
+  bool pack_state_pending_ = false;
+  uint32_t pack_state_coalesced_ = 0;
+  bool pack_txn_debug_enabled_ = false;
+  uint64_t pack_generation_ = 0;
+  uint64_t pack_requested_generation_ = 0;
+  uint64_t pack_state_change_submission_ = 0;
+  uint64_t pack_state_applied_submission_ = 0;
+  void CaptureRequestedPackState(uint64_t submission_index);
+
+  // DBZ3: registro acotado de texturas del pack que NO se pudieron aplicar.
+  // La identidad de pantalla no existe en el SDK; el integrador puede fijarla
+  // con SetPackReportScreen (por defecto "sdk").
+  struct PackOmission {
+    uint64_t pack_hash = 0;
+    uint64_t game_hash = 0;
+    uint64_t key_signature = 0;
+    uint32_t width = 0;
+    uint32_t height = 0;
+    uint32_t format = 0;
+    uint32_t mips = 0;
+    const char* reason = nullptr;
+    uint64_t submission = 0;
+    uint64_t generation = 0;
+  };
+  void RecordPackOmission(const Dbz3TexturePackEntry* entry, uint64_t game_hash,
+                          const TextureKey& key, const char* reason) const;
+  void MaybeLogPackReport() const;
+  mutable std::vector<PackOmission> pack_omissions_;
+  mutable std::unordered_set<uint64_t> pack_omission_seen_;
+  mutable bool pack_report_emitted_ = false;
+  std::string pack_report_screen_ = "sdk";
+
+  // Trazas dev del cambio de pack (cvar dbz3_pack_txn_debug o diag logging).
+  // Una linea por key y etapa como maximo.
+  void TracePackTexture(const char* stage, const TextureKey& key, uint32_t factor,
+                        const D3D12_RESOURCE_DESC* desc) const;
+  mutable std::unordered_set<uint64_t> pack_trace_seen_;
+
+ public:
+  void SetPackReportScreen(std::string screen) { pack_report_screen_ = std::move(screen); }
+
+ private:
+
   mutable std::unordered_map<TextureKey, const Dbz3TexturePackEntry*, TextureKey::Hasher>
       pack_entry_cache_;
   // Buffers de subida del pack en vuelo (se liberan al completarse su

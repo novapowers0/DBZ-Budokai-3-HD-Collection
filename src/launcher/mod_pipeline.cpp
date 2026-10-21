@@ -1,4 +1,4 @@
-#include <cctype>
+﻿#include <cctype>
 #include <chrono>
 #include <algorithm>
 // dbz3 - Model swap pipeline integration (project-side).
@@ -15,11 +15,13 @@
 #endif
 
 #include <cerrno>
+#include <ctime>
 #include <exception>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
 #include <sstream>
+#include <string_view>
 #include <vector>
 
 #if !REX_PLATFORM_WIN32
@@ -33,6 +35,78 @@ extern char** environ;
 namespace dbz3::launcher {
 
 namespace {
+
+// G11: los paths que se pasan a Python y se escriben en el registro van SIEMPRE en UTF-8. Con
+// path::string() Windows usa la pagina ANSI: un usuario con "Jose" con tilde (o cualquier carpeta no
+// ASCII) hacia que Python recibiera otra ruta y no encontrara ni mods/ ni ps2_games/.
+std::string Utf8(const std::filesystem::path& p) { return rex::path_to_utf8(p); }
+
+std::string TrimCopy(std::string s) {
+  while (!s.empty() && (s.front() == ' ' || s.front() == '\t' || s.front() == '\r')) s.erase(0, 1);
+  while (!s.empty() && (s.back() == ' ' || s.back() == '\t' || s.back() == '\r')) s.pop_back();
+  return s;
+}
+
+// Lee `entrada` y `menu` del stage.toml de un escenario (mismo formato que src/escenarios.cpp).
+bool StageEntries(const std::filesystem::path& file, int& entrada, int& menu) {
+  std::ifstream in(file);
+  if (!in.is_open()) return false;
+  entrada = menu = -1;
+  std::string line;
+  while (std::getline(in, line)) {
+    line = TrimCopy(std::move(line));
+    if (line.empty() || line.front() == '#' || line.front() == '[') continue;
+    const size_t eq = line.find('=');
+    if (eq == std::string::npos) continue;
+    const std::string key = TrimCopy(line.substr(0, eq));
+    std::string value = TrimCopy(line.substr(eq + 1));
+    if (!value.empty() && value.front() == '"') {
+      const size_t end = value.find('"', 1);
+      value = value.substr(1, end == std::string::npos ? std::string::npos : end - 1);
+    } else if (const size_t hash = value.find('#'); hash != std::string::npos) {
+      value.resize(hash);
+      value = TrimCopy(std::move(value));
+    }
+    if (key == "entrada") entrada = std::atoi(value.c_str());
+    else if (key == "menu") menu = std::atoi(value.c_str());
+  }
+  if (entrada < 0) return false;
+  if (menu <= 0) menu = entrada + 100;   // escenarios_convertir.instalar usa entrada + 100
+  return true;
+}
+
+// Un escenario auto-generado esta completo si estan sus dos bins (escenario y menu) y su manifiesto.
+// El sello origen.txt solo dice "ya se intento"; no garantiza que la carpeta se copiara entera.
+bool StageFolderComplete(const std::filesystem::path& dir, std::string* why) {
+  auto fail = [why](const std::string& text) {
+    if (why) *why = text;
+    return false;
+  };
+  std::error_code ec;
+  if (!std::filesystem::is_regular_file(dir / "stage.toml", ec)) return fail("falta stage.toml");
+  int entrada = -1, menu = -1;
+  if (!StageEntries(dir / "stage.toml", entrada, menu)) return fail("stage.toml sin entrada valida");
+  if (!std::filesystem::is_regular_file(dir / "manifest.txt", ec)) return fail("falta manifest.txt");
+  for (const int n : {entrada, menu}) {
+    const auto geom = dir / "us" / "data_cmn.afs" / std::to_string(n) / "geom.bin";
+    if (!std::filesystem::is_regular_file(geom, ec)) return fail("falta geom.bin de la entrada " + std::to_string(n));
+  }
+  return true;
+}
+
+int CountCompleteStages() {
+  std::error_code ec;
+  int count = 0;
+  const auto root = rex::filesystem::GetExecutableFolder() / "mods";
+  for (auto [it, iec] = std::pair{std::filesystem::directory_iterator(root, ec), std::error_code{}};
+       !iec && it != std::filesystem::directory_iterator(); it.increment(iec)) {
+    if (!it->is_directory(ec)) continue;
+    // solo las auto-generadas: una carpeta de escenario hecha a mano no lleva origen.txt
+    if (!std::filesystem::is_regular_file(it->path() / "origen.txt", ec)) continue;
+    if (StageFolderComplete(it->path(), nullptr)) ++count;
+  }
+  return count;
+}
 
 // Project root = folder that contains "us"/"eu" (walk up from the exe).
 // Supports both layouts: <root>/us and <root>/assets/us (standalone release).
@@ -121,7 +195,7 @@ std::vector<std::string> PythonCandidates() {
     std::error_code ec;
     const auto exe = dir / "python" / "python.exe";
     if (std::filesystem::is_regular_file(exe, ec)) {
-      v.push_back(Quote(exe.string()));
+      v.push_back(Quote(Utf8(exe)));
       break;
     }
   }
@@ -273,7 +347,7 @@ bool ModPipeline::LoadCatalog() {
 
   std::ifstream in(CatalogFile());
   if (!in.is_open()) {
-    REXLOG_WARN("dbz3: catalogo B3 no encontrado en {}", CatalogFile().string());
+    REXLOG_WARN("dbz3: catalogo B3 no encontrado en {}", Utf8(CatalogFile()));
     return false;
   }
   std::string line;
@@ -357,6 +431,7 @@ void ModPipeline::AppendOutput(const std::string& text) {
 void ModPipeline::RunAsync(const std::filesystem::path& script,
                            const std::vector<std::string>& args) {
   if (running_.exchange(true)) {
+    stages_run_pending_ = false;   // G11: no dejar marcado un paso de escenarios que no llego a arrancar
     return;
   }
   exit_code_.store(-1);
@@ -365,6 +440,8 @@ void ModPipeline::RunAsync(const std::filesystem::path& script,
   {
     std::lock_guard<std::mutex> lock(mutex_);
     output_.clear();
+    last_job_stages_ = stages_run_pending_;
+    stages_run_pending_ = false;
   }
   if (worker_.joinable()) {
     worker_.join();
@@ -374,7 +451,7 @@ void ModPipeline::RunAsync(const std::filesystem::path& script,
   // resolved inside the worker with a real probe, so a bare "python" that
   // resolves to the Microsoft Store alias stub is skipped instead of failing
   // with exit code 9009 (issue #13).
-  std::string tail = Quote(script.string());
+  std::string tail = Quote(Utf8(script));
   for (const std::string& a : args) {
     // Escapar cada argumento: si contiene espacios, envolverlo en comillas
     // para que cmd.exe lo trate como un solo token (las rutas del proyecto
@@ -567,7 +644,7 @@ std::vector<std::string> ModPipeline::SwapArgs(const B3Char& src,
   std::vector<std::string> args = {"--origen", std::to_string(src.bin),
                                    "--dest", std::to_string(dst.bin),
                                    "--mod", mod,
-                                   "--out", ModsOutDir().string()};
+                                   "--out", Utf8(ModsOutDir())};
   std::string afs;
   {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -585,7 +662,7 @@ std::vector<std::string> ModPipeline::TextureArgs(
   std::vector<std::string> args = {"extract",
                                    "--bin", std::to_string(src.bin),
                                    "--mod", mod,
-                                   "--out", ModsOutDir().string()};
+                                   "--out", Utf8(ModsOutDir())};
   if (!dir.empty()) {
     args.push_back("--dir");
     args.push_back(dir);
@@ -606,7 +683,7 @@ std::vector<std::string> ModPipeline::BuildTextureArgs(
     const std::string& mod, int dest_slot, const std::string& dir) const {
   std::vector<std::string> args = {"build",
                                    "--mod", mod,
-                                   "--out", ModsOutDir().string()};
+                                   "--out", Utf8(ModsOutDir())};
   if (dest_slot >= 0) {
     args.push_back("--slot");
     args.push_back(std::to_string(dest_slot));
@@ -658,7 +735,7 @@ void ModPipeline::CreateCharacter(const NewCharacter& c) {
     AppendOutput("ERROR: faltan el nombre, la carpeta del mod o los modelos.\n");
     return;
   }
-  std::vector<std::string> args = {"nuevo", "--mods", ModsOutDir().string(), "--mod", c.mod,
+  std::vector<std::string> args = {"nuevo", "--mods", Utf8(ModsOutDir()), "--mod", c.mod,
                                    "--nombre", c.name, "--donante", std::to_string(c.donor)};
   if (c.forms_per_costume > 1) {
     args.push_back("--por-traje");
@@ -693,7 +770,7 @@ void ModPipeline::CreateCharacter(const NewCharacter& c) {
 }
 
 void ModPipeline::PreviewCharacter(const std::string& mod, const std::vector<std::string>& extra) {
-  std::vector<std::string> args = {"vista", "--mods", ModsOutDir().string(), "--mod", mod};
+  std::vector<std::string> args = {"vista", "--mods", Utf8(ModsOutDir()), "--mod", mod};
   const std::string us = UsDir();
   if (!us.empty()) {
     args.push_back("--us");
@@ -719,7 +796,7 @@ std::string ModPipeline::UsDir() const {
 }
 
 void ModPipeline::EditCapsules(const std::string& mod, const std::vector<std::string>& extra) {
-  std::vector<std::string> args = {"capsulas", "--mods", ModsOutDir().string(), "--mod", mod};
+  std::vector<std::string> args = {"capsulas", "--mods", Utf8(ModsOutDir()), "--mod", mod};
   args.insert(args.end(), extra.begin(), extra.end());
   RunAsync(RosterScript(), args);
 }
@@ -762,7 +839,7 @@ void ModPipeline::RunOfficialPorts(const std::vector<std::string>& install, cons
   std::vector<std::string> args = {"oficial"};
   args.insert(args.end(), install.begin(), install.end());
   args.push_back("--mods");
-  args.push_back(root.string());
+  args.push_back(Utf8(root));
   if (const std::string us = UsDir(); !us.empty()) {
     args.push_back("--us");
     args.push_back(us);
@@ -772,7 +849,7 @@ void ModPipeline::RunOfficialPorts(const std::vector<std::string>& install, cons
 
 void ModPipeline::ImportCharacter(const ImportRequest& r) {
   std::vector<std::string> args = {"importar", r.source, r.key, "--mod", r.mod, "--nombre", r.name,
-                                   "--mods", ModsOutDir().string()};
+                                   "--mods", Utf8(ModsOutDir())};
   if (r.donor >= 0) {
     args.push_back("--donante");
     args.push_back(std::to_string(r.donor));
@@ -794,7 +871,7 @@ void ModPipeline::ImportCharacter(const ImportRequest& r) {
 }
 
 void ModPipeline::CreateTeam(const std::vector<int>& members, const std::string& name) {
-  std::vector<std::string> args = {"equipo", "--mods", ModsOutDir().string(), "--miembros"};
+  std::vector<std::string> args = {"equipo", "--mods", Utf8(ModsOutDir()), "--miembros"};
   for (int m : members) args.push_back(std::to_string(m));
   if (!name.empty()) {
     args.push_back("--nombre");
@@ -834,7 +911,7 @@ void ModPipeline::ClearOutput() {
 }
 
 void ModPipeline::BuildRoster(bool force) {
-  std::vector<std::string> args = {"construir", "--mods", ModsOutDir().string()};
+  std::vector<std::string> args = {"construir", "--mods", Utf8(ModsOutDir())};
   const std::string us = UsDir();
   if (!us.empty()) {
     args.push_back("--us");
@@ -849,19 +926,200 @@ bool ModPipeline::StagesToolAvailable() {
   return std::filesystem::exists(StagesScript(), ec);
 }
 
-void ModPipeline::BuildStages() {
-  // ps2_games como el juego (pasarela_b1.cpp BuscarIsoB1): DBZ3_PS2_GAMES (pruebas) o la carpeta de los ajustes
-  const char* env = std::getenv("DBZ3_PS2_GAMES");
-  const std::filesystem::path ps2 =
-      env && *env ? std::filesystem::path(env) : dbz3::settings::UserSettingsPath().parent_path() / "ps2_games";
-  const std::string us = UsDir();
+std::filesystem::path ModPipeline::StagesRegistryPath() {
+  return rex::filesystem::GetExecutableFolder() / "mods" / "_escenarios_ps2.txt";
+}
+
+void ModPipeline::SetStagesReport(int created, int failed, const std::string& reason) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  StageReport report;
+  report.ran = true;
+  report.created = created >= 0 ? created : CountCompleteStages();
+  report.failed = failed;
+  report.reason = reason;
+  report.up_to_date = failed == 0;
+  stages_report_ = report;
+  stages_report_loaded_ = true;
+  stages_parsed_ = true;
+  stages_parsed_output_ = output_;   // que no se reinterpreta una salida vieja del roster/swap
+  WriteStagesRegistryLocked(stages_report_);
+}
+
+void ModPipeline::WriteStagesRegistryLocked(const StageReport& report) {
   std::error_code ec;
-  if (us.empty() || !std::filesystem::is_directory(ps2, ec)) {   // sin datos del juego o sin ps2_games: nada
-    AppendOutput("escenarios: sin datos del juego o sin carpeta ps2_games; no se crea ninguno\n");
-    REXLOG_INFO("dbz3: escenarios de PS2: omitido (us '{}', ps2_games '{}')", us, rex::path_to_utf8(ps2));
+  const auto path = StagesRegistryPath();
+  std::filesystem::create_directories(path.parent_path(), ec);
+  auto partial = path;
+  partial += ".tmp";
+  {
+    std::ofstream out(partial, std::ios::binary | std::ios::trunc);
+    if (!out) return;
+    out << "# dbz3: ultimo paso de escenarios de PS2 (lo escribe el launcher)\n";
+    out << "version=1\n";
+    out << "creados=" << report.created << "\n";
+    out << "fallaron=" << report.failed << "\n";
+    out << "al_dia=" << (report.up_to_date ? 1 : 0) << "\n";
+    std::string reason = report.reason;
+    for (char& c : reason)
+      if (c == '\r' || c == '\n' || c == '=') c = ' ';
+    out << "motivo=" << reason << "\n";
+    out << "fecha=" << std::time(nullptr) << "\n";
+  }
+  std::filesystem::rename(partial, path, ec);
+  if (ec) {   // otro proceso lo tiene abierto: se conserva el .tmp (nada se borra)
+    REXLOG_WARN("dbz3: escenarios de PS2: no se pudo publicar el registro {} ({})", Utf8(path), ec.message());
+    ec.clear();
+  }
+}
+
+void ModPipeline::LoadStagesRegistryLocked() {
+  std::ifstream in(StagesRegistryPath());
+  if (!in.is_open()) return;
+  StageReport report;
+  std::string line;
+  while (std::getline(in, line)) {
+    line = TrimCopy(std::move(line));
+    const size_t eq = line.find('=');
+    if (eq == std::string::npos) continue;
+    const std::string key = TrimCopy(line.substr(0, eq));
+    const std::string value = TrimCopy(line.substr(eq + 1));
+    if (key == "creados") report.created = std::atoi(value.c_str());
+    else if (key == "fallaron") report.failed = std::atoi(value.c_str());
+    else if (key == "al_dia") report.up_to_date = value == "1";
+    else if (key == "motivo") report.reason = value;
+  }
+  report.ran = true;
+  report.created = CountCompleteStages();   // el disco manda: una carpeta borrada no se cuenta
+  stages_report_ = std::move(report);
+}
+
+void ModPipeline::ParseStagesOutputLocked() {
+  if (running_ || !last_job_stages_) return;
+  if (stages_parsed_ && stages_parsed_output_ == output_) return;
+  stages_parsed_ = true;
+  stages_parsed_output_ = output_;
+  StageReport report;
+  report.ran = true;
+  int made = 0;
+  std::istringstream lines(output_);
+  std::string line;
+  while (std::getline(lines, line)) {
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+    constexpr std::string_view prefix = "escenarios: ";
+    if (line.compare(0, prefix.size(), prefix) != 0) continue;
+    const std::string msg = line.substr(prefix.size());
+    if (msg.rfind("creado ", 0) == 0) {
+      ++made;
+    } else if (msg.rfind("fallo ", 0) == 0 || msg.rfind("sin ", 0) == 0) {
+      ++report.failed;
+      if (report.reason.empty()) report.reason = msg;
+    } else if (msg.rfind("al dia", 0) == 0) {
+      report.up_to_date = true;
+    }
+  }
+  report.created = CountCompleteStages();
+  if (made > report.created) report.created = made;
+  if (report.failed == 0 && state_.load() == JobState::kFailed) {
+    report.failed = 1;
+    report.reason = "el conversor termino con error (codigo " + std::to_string(exit_code_.load()) + ")";
+  }
+  if (report.failed == 0 && output_.empty()) {
+    report.failed = 1;
+    report.reason = "sin salida del conversor (revisa el registro)";
+  }
+  if (report.reason.size() > 180) report.reason.resize(180);
+  stages_report_ = std::move(report);
+  stages_report_loaded_ = true;
+  WriteStagesRegistryLocked(stages_report_);
+}
+
+ModPipeline::StageReport ModPipeline::StagesReport() {
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (!stages_report_loaded_) LoadStagesRegistryLocked();
+  if (!running_) ParseStagesOutputLocked();
+  return stages_report_;
+}
+
+int ModPipeline::PruneIncompleteStages() {
+  std::error_code ec;
+  const auto root = ModsOutDir();
+  const auto backup = root.parent_path() / "mods_respaldo";
+  const std::string stamp = std::to_string(std::time(nullptr));
+  int moved = 0;
+  for (auto [it, iec] = std::pair{std::filesystem::directory_iterator(root, ec), std::error_code{}};
+       !iec && it != std::filesystem::directory_iterator(); it.increment(iec)) {
+    if (!it->is_directory(ec)) continue;
+    const auto dir = it->path();
+    if (!std::filesystem::is_regular_file(dir / "origen.txt", ec)) continue;   // solo auto-generados
+    std::string why;
+    if (StageFolderComplete(dir, &why)) continue;
+    std::filesystem::create_directories(backup, ec);
+    const auto dst = backup / (Utf8(dir.filename()) + "_medias_" + stamp);
+    std::filesystem::rename(dir, dst, ec);
+    if (ec) {
+      REXLOG_WARN("dbz3: escenarios de PS2: no se pudo apartar la carpeta a medias {} ({})", Utf8(dir), ec.message());
+      ec.clear();
+      continue;
+    }
+    ++moved;
+    REXLOG_INFO("dbz3: escenarios de PS2: carpeta a medias '{}' apartada a {} ({}); se volvera a crear",
+                Utf8(dir.filename()), Utf8(dst), why);
+  }
+  return moved;
+}
+
+void ModPipeline::BuildStages() {
+  // ps2_games como el juego (pasarela_b1.cpp BuscarIsoB1): DBZ3_PS2_GAMES (pruebas) o la carpeta de los ajustes.
+  // Si los ajustes cayeron a Documentos (instalacion no escribible), tambien se mira junto al exe y en user_data:
+  // antes solo se miraba UserSettingsPath().parent_path() y el paso se omitia en silencio.
+  std::vector<std::filesystem::path> candidates;
+  if (const char* env = std::getenv("DBZ3_PS2_GAMES"); env && *env) {
+    candidates.push_back(std::filesystem::u8path(env));
+  } else {
+    candidates.push_back(dbz3::settings::UserSettingsPath().parent_path() / "ps2_games");
+    candidates.push_back(rex::filesystem::GetExecutableFolder() / "ps2_games");
+    candidates.push_back(dbz3::settings::UserDataRoot() / "ps2_games");
+    candidates.push_back(ProjectRoot() / "ps2_games");
+  }
+  std::error_code ec;
+  std::filesystem::path ps2;
+  for (const auto& candidate : candidates) {
+    if (std::filesystem::is_directory(candidate, ec)) {
+      ps2 = candidate;
+      break;
+    }
+  }
+  const std::string us = UsDir();
+  if (us.empty()) {
+    const int created = CountCompleteStages();
+    SetStagesReport(created, 1,
+                    "no encuentro los datos de Budokai 3 HD (elige la carpeta/ISO del juego en la pestana Juego)");
+    REXLOG_INFO("dbz3: escenarios de PS2: omitido (sin datos del juego)");
     return;
   }
-  RunAsync(StagesScript(), {"auto", "--mods", ModsOutDir().string(), "--us", us, "--ps2", rex::path_to_utf8(ps2)});
+  if (ps2.empty()) {
+    std::string where;
+    for (const auto& candidate : candidates) where += (where.empty() ? "" : ", ") + Utf8(candidate);
+    const int created = CountCompleteStages();
+    SetStagesReport(created, 1,
+                    "no encuentro la carpeta ps2_games (elige las ISO de Budokai 2/Infinite World en la pestana Juego)");
+    REXLOG_INFO("dbz3: escenarios de PS2: omitido (ps2_games no existe; buscado en {})", where);
+    return;
+  }
+  if (!StagesToolAvailable()) {
+    const int created = CountCompleteStages();
+    SetStagesReport(created, 1, "falta 'mod center hd/campos_iw.py' (Kit de modding) junto al juego");
+    REXLOG_INFO("dbz3: escenarios de PS2: omitido (sin campos_iw.py)");
+    return;
+  }
+  if (IsRunning()) {
+    SetStagesReport(-1, 1, "otra tarea de mods sigue en marcha");
+    return;
+  }
+  const int pruned = PruneIncompleteStages();
+  if (pruned > 0) REXLOG_INFO("dbz3: escenarios de PS2: {} carpetas a medias apartadas a mods_respaldo", pruned);
+  stages_run_pending_ = true;
+  RunAsync(StagesScript(), {"auto", "--mods", Utf8(ModsOutDir()), "--us", us, "--ps2", Utf8(ps2)});
 }
 
 void ModPipeline::Wait() {

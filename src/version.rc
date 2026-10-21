@@ -49,6 +49,7 @@
 // v1.5.1.1 = minijuegos de IW cotejados con el original (giro, camara, HUD y resultados de IW), heroe con ID propio
 // (peinado UT, logo, dos colores), maestros y movesets desbloqueables, Leyenda de Mr. Satan como B1, tablero B2 sin atascos.
 // v1.5.1.3 = estudios 1 (tablero B2, nave, Satan, IW, HUD, cierres, issues), IW europea, escenarios sin Office, descarga
+// v1.5.1.4 = estudios 2-4 (tablero B2 1:1 en encuadre, Gotenks/Vegito/Shenron, nave, IW europea y NB006, Heroe CaC v2 y movesets, Satan ronda 1, pack HD estable, modo rendimiento)
 // con curl y reanudacion.
 // v1.5.1.2 = escenarios de PS2 (B2/B1/IW) sin Kit ni Python instalado (Python portatil en el zip; ISO elegida con .ruta),
 // salir del tablero de B2, heroe: cara propia en la saga, peinado en calvos, scouter, nombres con acentos.
@@ -57,8 +58,8 @@
 #define VERSION_MAJOR 1
 #define VERSION_MINOR 5
 #define VERSION_PATCH 1
-#define VERSION_BUILD 3
-#define DBZ3_VERSION_STR "1.5.1.3"
+#define VERSION_BUILD 4
+#define DBZ3_VERSION_STR "1.5.1.4"
 
 VS_VERSION_INFO VERSIONINFO
 FILEVERSION VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH, VERSION_BUILD

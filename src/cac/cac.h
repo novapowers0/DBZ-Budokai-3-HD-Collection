@@ -62,6 +62,7 @@ constexpr int kNumEntreno = 6;
 constexpr int kProgresoFicha = 2;       // marcador `progreso = 2` de cada [[heroe]]
 void ClampHsv(Hsv& c);                  // h 0..360, s y v -100..100
 constexpr int kMaxSlots = 8;   // fichas de heroe (cac.toml)
+constexpr int kVersion = 2;    // cac.toml v2: fichas + [[archivado]] (v1 se migra al guardar)
 
 // --- slots -------------------------------------------------------------------
 int NumSlots();
@@ -72,6 +73,9 @@ void ElegirSlot(int i);
 int NuevoSlot();                          // devuelve el indice del slot nuevo
 void DuplicarSlot(int i);
 void BorrarSlot(int i);                   // deja >= 1 slot siempre
+void ArchivarSlot(int i);                 // mueve la ficha a [[archivado]] (deja >= 1)
+const std::vector<Heroe>& Archivados();
+int NumArchivados();
 void AjustarSlot(int i);                  // clamp de todos los campos
 
 // --- guardado (patron rpg.toml) ---------------------------------------------

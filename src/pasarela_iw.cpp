@@ -3,6 +3,7 @@
 // juego (mapa del mundo, insignias, ficha y resultado), leidos en marcha; nada del juego va en la version. Docs:
 // docs/16_pasarela_modos/03_infinite_world.md §2.
 #include "pasarela_iw.h"
+#include "guest_region.h"
 #include "ingame/tutorial.h"
 #include "ps2_modelo.h"
 #include "video_sfd.h"
@@ -173,6 +174,13 @@ namespace {
 namespace T = dbz3::i18n;
 namespace S = dbz3::ingame::style;
 
+// I03 (studies 4): el vuelo 0x7D6/0x7E0 ya esta validado con el xex europeo y la ISO europea (0x7D6 y 0x7E0
+// PASS en EU). Ya no hay motivo especial para EU; solo queda el aviso generico de los modulos sin portar.
+const char* MotivoMinijuegoIW(int clave) {
+  (void)clave;
+  return T::T("Minijuego de Infinite World: aun no disponible.", "Infinite World minigame: not available yet.");
+}
+
 constexpr uint16_t kUp = 0x0001, kDown = 0x0002, kLeft = 0x0004, kRight = 0x0008, kStart = 0x0010, kLB = 0x0100,
                    kRB = 0x0200, kA = 0x1000, kB = 0x2000;
 // Texturas por indice (hojas de E:/DBZ3HD_trabajo/estudio_ports/iw_assets/png): 334/5 iconos, 334/1 interfaz, 333/0.
@@ -289,11 +297,128 @@ std::vector<EscenaIW> LeerEscenas(const std::vector<uint8_t>& elf) {
 }
 }  // namespace
 
+namespace {
+// Busca `rel` dentro de una carpeta extraida: tal cual (raiz/USR/FDxx) y un nivel o dos mas abajo (raiz/<juego>/USR/
+// FDxx, como queda al extraer una ISO en su propia carpeta). Sin recorrer ficheros: solo directorios, para no tardar.
+std::filesystem::path EnCarpetaIW(const std::filesystem::path& raiz, const std::filesystem::path& rel) {
+  std::error_code ec;
+  if (std::filesystem::is_regular_file(raiz / rel, ec)) return raiz / rel;
+  if (!std::filesystem::is_directory(raiz, ec)) return {};
+  for (const auto& a : std::filesystem::directory_iterator(raiz, ec)) {
+    if (!a.is_directory(ec)) continue;
+    if (std::filesystem::is_regular_file(a.path() / rel, ec)) return a.path() / rel;
+    for (const auto& b : std::filesystem::directory_iterator(a.path(), ec)) {
+      if (b.is_directory(ec) && std::filesystem::is_regular_file(b.path() / rel, ec)) return b.path() / rel;
+    }
+  }
+  return {};
+}
+// ISO 9660 de solo lectura para extraer un SFD. `partes` = componentes de la ruta (p. ej. {"USR","FD01A.SFD"}),
+// sin distinguir mayusculas ni el ";1". Devuelve el LBA y el tamano del fichero.
+bool BuscarEnIso(std::ifstream& f, const std::vector<std::string>& partes, uint32_t& lba, uint32_t& tam) {
+  auto sector = [&](uint64_t off, uint32_t n) {
+    std::vector<uint8_t> b(n);
+    f.clear();
+    f.seekg(std::streamoff(off));
+    f.read(reinterpret_cast<char*>(b.data()), std::streamsize(n));
+    b.resize(size_t(std::max<std::streamsize>(0, f.gcount())));
+    return b;
+  };
+  const std::vector<uint8_t> pvd = sector(16ull * 2048, 2048);
+  if (pvd.size() < 190 || std::memcmp(pvd.data() + 1, "CD001", 5) != 0) return false;
+  lba = U32(pvd, 156 + 2);
+  tam = U32(pvd, 156 + 10);
+  for (const std::string& parte : partes) {
+    const std::vector<uint8_t> dir = sector(uint64_t(lba) * 2048, ((tam + 2047) / 2048) * 2048);
+    std::string quiero = parte;
+    for (char& c : quiero) c = char(std::tolower(static_cast<unsigned char>(c)));
+    if (const size_t p = quiero.find(';'); p != std::string::npos) quiero.resize(p);
+    bool hallado = false;
+    for (size_t o = 0; o < dir.size();) {
+      const uint8_t len = dir[o];
+      if (len == 0) {
+        o = (o / 2048 + 1) * 2048;
+        continue;
+      }
+      if (o + 33 > dir.size()) break;
+      const uint32_t l = U32(dir, o + 2), s = U32(dir, o + 10);
+      const uint8_t nl = dir[o + 32];
+      std::string n(reinterpret_cast<const char*>(&dir[o + 33]), std::min<size_t>(nl, dir.size() - o - 33));
+      o += len;
+      if (const size_t p = n.find(';'); p != std::string::npos) n.resize(p);
+      for (char& c : n) c = char(std::tolower(static_cast<unsigned char>(c)));
+      if (n != quiero) continue;
+      lba = l;
+      tam = s;
+      hallado = true;
+      break;
+    }
+    if (!hallado) return false;
+  }
+  return true;
+}
+// El reproductor de SFD (video_sfd.h) necesita un fichero: con una ISO se extrae el SFD a la cache de datos del
+// usuario (una vez; si ya esta con su tamano, se reutiliza). No toca la ISO ni borra nada.
+std::filesystem::path ExtraerSfdDeIso(const std::filesystem::path& iso, const std::filesystem::path& rel) {
+  std::ifstream f(iso, std::ios::binary);
+  if (!f) return {};
+  uint32_t lba = 0, tam = 0;
+  const std::string nombre = rel.filename().string();
+  if (!BuscarEnIso(f, {"usr", nombre}, lba, tam) || !tam || tam > (512u << 20)) return {};
+  std::error_code ec;
+  const auto dir = dbz3::settings::UserDataRoot() / "iw_video_cache";
+  std::filesystem::create_directories(dir, ec);
+  const auto dst = dir / (iso.filename().string() + "_" + nombre);
+  if (std::filesystem::is_regular_file(dst, ec) && std::filesystem::file_size(dst, ec) == tam) return dst;
+  auto parcial = dst;
+  parcial += ".parcial";
+  std::ofstream out(parcial, std::ios::binary | std::ios::trunc);
+  if (!out) return {};
+  for (uint64_t off = 0; off < tam;) {
+    const uint32_t n = uint32_t(std::min<uint64_t>(4u << 20, uint64_t(tam) - off));
+    const std::vector<uint8_t> b = [&] {
+      std::vector<uint8_t> v(n);
+      f.clear();
+      f.seekg(std::streamoff(uint64_t(lba) * 2048 + off));
+      f.read(reinterpret_cast<char*>(v.data()), std::streamsize(n));
+      v.resize(size_t(std::max<std::streamsize>(0, f.gcount())));
+      return v;
+    }();
+    if (b.empty() || !out.write(reinterpret_cast<const char*>(b.data()), std::streamsize(b.size()))) return {};
+    off += b.size();
+  }
+  out.close();
+  if (std::filesystem::exists(dst, ec)) std::filesystem::remove(dst, ec);   // cache incompleta de otra version
+  std::filesystem::rename(parcial, dst, ec);
+  if (ec) return {};
+  REXLOG_INFO("dbz3 misiones: iw: video {} extraido de la ISO a {}", nombre, dst.string());
+  return dst;
+}
+}  // namespace
+
 std::filesystem::path RutaVideoIW(const DragonMissionIW& dm, int video) {
   if (video < 0 || video >= int(dm.videos.size()) || dm.raiz.empty()) return {};
   std::error_code ec;
-  const auto ruta = dm.raiz / std::filesystem::path(dm.videos[size_t(video)]).relative_path();
-  return std::filesystem::is_regular_file(ruta, ec) ? ruta : std::filesystem::path();
+  const auto rel = std::filesystem::path(dm.videos[size_t(video)]).relative_path();
+  // 1) carpeta extraida (la habitual): la ruta tal cual o con uno/dos niveles de mas.
+  if (std::filesystem::is_directory(dm.raiz, ec)) {
+    if (const auto p = EnCarpetaIW(dm.raiz, rel); !p.empty()) return p;
+  } else {
+    // 2) ISO: el SFD no es un fichero del sistema de ficheros. Se acepta una carpeta extraida al lado con el mismo
+    // nombre que la ISO (convencion de extraccion), la carpeta USR hermana y DBZ3_IW_VIDEO_DIR (pruebas).
+    const auto padre = dm.raiz.parent_path();
+    for (const auto& cand : {padre / dm.raiz.stem(), padre / "USR", padre / dm.raiz.stem() / "USR"}) {
+      if (const auto p = EnCarpetaIW(cand, rel); !p.empty()) return p;
+    }
+    if (const char* dir = std::getenv("DBZ3_IW_VIDEO_DIR")) {
+      if (const auto p = EnCarpetaIW(std::filesystem::u8path(dir), rel); !p.empty()) return p;
+    }
+    // 3) ISO sin carpeta al lado: se extrae el SFD a la cache de datos del usuario (el reproductor necesita fichero).
+    if (const auto p = ExtraerSfdDeIso(dm.raiz, rel); !p.empty()) return p;
+    REXLOG_INFO("dbz3 misiones: iw: la ISO {} no trae el video {} como fichero: se usan los subtitulos",
+                dm.raiz.filename().string(), rel.filename().string());
+  }
+  return {};
 }
 
 const std::vector<CasillaDM>& Cas(const InfoDM& in) { return in.road ? in.dm->casillas_road : in.dm->casillas; }
@@ -499,6 +624,28 @@ int PantallaDM::Mision(const InfoDM& in) const {
   return in.dm && sel_ >= 0 && sel_ < int(Cas(in).size()) ? Cas(in)[size_t(sel_)].mision : 0;
 }
 
+void PantallaDM::ReiniciarMapa() {
+  volviendo_ = false;   // una entrada nueva cancela cualquier vuelta de combate pendiente
+  t_intro_ = 0;
+  ap_t_ = 0;
+  tcam_ = 0;
+  REXLOG_INFO("dbz3 iw mapa: intro Story_MapIntroDelayTick 100 cuadros; mandos bloqueados");
+}
+
+void PantallaDM::VolverDelCombate() {
+  // H03 P0: al volver de un combate o minijuego, IW no repite Story_MapIntroDelayTick. El panel de resultado se cierra
+  // y corren Story_MapResultDelayTick (60 cuadros) y Story_MapReloadAfterDelayTick (~100) antes de dar las casillas por
+  // recargadas. [H] el dato exacto de la recarga (s1: ~100; falta captura sincronizada): no se inventa otro tiempo.
+  volviendo_ = true;
+  t_vuelta_ = 0;
+  res_delay_hecho_ = recarga_hecha_ = false;
+  t_intro_ = 1.0f;      // sin espera de entrada
+  ap_t_ = 1.0e6f;       // casillas ya visibles (sin la aparicion escalonada)
+  tcam_ = 1.0f;
+  REXLOG_INFO("dbz3 iw mapa: vuelta de combate: sin Story_MapIntroDelayTick; "
+              "Story_MapResultDelayTick 60 y Story_MapReloadAfterDelayTick ~100 [H]");
+}
+
 void PantallaDM::Elegir(const InfoDM& in, int mision) {
   if (!in.dm) return;
   const auto& cas = Cas(in);
@@ -506,6 +653,7 @@ void PantallaDM::Elegir(const InfoDM& in, int mision) {
     if (cas[j].mision == mision) {
       if (sel_ < 0 || cas[size_t(std::max(sel_, 0))].saga != cas[j].saga) mx_ = -1;   // otro mapa: sin paseo
       sel_ = int(j);
+      ReiniciarMapa();   // entrar al mapa: Story_MapIntroDelayTick + aparicion de casillas
       return;
     }
   }
@@ -517,6 +665,7 @@ void PantallaDM::Elegir(const InfoDM& in, int mision) {
       }
     }
     mx_ = -1;
+    ReiniciarMapa();
   }
 }
 
@@ -625,69 +774,130 @@ void PantallaDM::DibujarFondo(ImDrawList* dl, const ImGuiIO& io, float t, const 
   if (sel_ < 0 || sel_ >= int(cas.size())) Elegir(in, std::clamp(in.hecho + 1, 1, kRegistros));
   if (sel_ < 0) return;
   const float dt = std::clamp(t - t_ultimo_, 0.0f, 0.1f);
+  // Entrada al mapa (no hay aviso del coordinador): un hueco grande entre dos dibujos = mapa reabierto (vuelta de un
+  // combate/minijuego). Tras un combate (VolverDelCombate) no se repite la intro: IW recarga las casillas con sus dos
+  // esperas. ReiniciarMapa() tambien lo hace Elegir, que es el aviso exacto que existe hoy.
+  if (t_intro_ < 0 || t - t_ultimo_ > 0.5f) {
+    if (volviendo_) {
+      t_intro_ = 1.0f;
+      ap_t_ = 1.0e6f;
+      tcam_ = 1.0f;
+    } else {
+      ReiniciarMapa();
+    }
+  }
   t_ultimo_ = t;
+  // H03: Story_MapResultDelayTick (60 cuadros) y Story_MapReloadAfterDelayTick (~100) de la vuelta de combate.
+  if (volviendo_) {
+    t_vuelta_ += dt * 60.0f;
+    if (!res_delay_hecho_ && t_vuelta_ >= 60.0f) {
+      res_delay_hecho_ = true;
+      REXLOG_INFO("dbz3 iw mapa: Story_MapResultDelayTick 60 cuadros: Goku vuelve a su sitio");
+    }
+    if (!recarga_hecha_ && t_vuelta_ >= 100.0f) {
+      recarga_hecha_ = true;
+      volviendo_ = false;
+      REXLOG_INFO("dbz3 iw mapa: Story_MapReloadAfterDelayTick ~100 cuadros: casillas recargadas [H]");
+    }
+  }
+  // Story_MapIntroDelayTick (EU 0x2F8790): +0,01 por cuadro (fRam0049c7dc = 1,0 a 60 Hz; 1,2 en el modo de 50) y al
+  // pasar de 1,0 se pasa al scroll. Son 100 cuadros (101 por el > 1,0), no un sleep de interfaz.
+  if (t_intro_ < 1.0f) {
+    t_intro_ = std::min(1.0f, t_intro_ + 0.01f * dt * 60.0f);
+    if (t_intro_ >= 1.0f) {
+      ap_t_ = 0;      // Story_MapObjectsAppearTick empieza a contar
+      tcam_ = 0;      // Story_MapScrollToTargetTick arranca con su acumulador a 0
+      REXLOG_INFO("dbz3 iw mapa: intro acabada; aparecen {} casillas", cas.size());
+    }
+  } else {
+    ap_t_ += dt * 60.0f;
+  }
+  const bool listo = t_intro_ >= 1.0f;
   const CasillaDM& c = cas[size_t(sel_)];
   if (mx_ < 0) {
     mx_ = cx_ = c.x;
     my_ = cy_ = c.y;
   }
-  const float k1 = 1.0f - std::exp(-dt * 6.0f);
-  mx_ += (c.x - mx_) * k1;
-  my_ += (c.y - my_) * k1;
-  // aplicar_estudios (entrega 16 P4), Story_MapScrollToTargetTick (EU 0x2F8390, L384840-384937): objetivo = Goku del
-  // mapa (+0x1D0) limitado a x [300, 980] e y [225, 735]; camara += (objetivo - camara) * t, t += 0,01 por cuadro y
-  // vuelve a 0 al pasar de 1; a menos de 2 px, la camara salta al objetivo con t = 1; despues se limita igual.
-  constexpr float kX0 = 300, kX1 = 980, kY0 = 225, kY1 = 735;
-  const float ox = std::clamp(mx_, kX0, kX1), oy = std::clamp(my_, kY0, kY1);
-  if (std::hypot(ox - cx_, oy - cy_) < 2.0f) {
-    cx_ = ox, cy_ = oy, tcam_ = 1.0f;
+  if (listo) {   // durante la espera de entrada, Goku y la camara se quedan quietos (el original no carga mandos)
+    const float k1 = 1.0f - std::exp(-dt * 6.0f);
+    mx_ += (c.x - mx_) * k1;
+    my_ += (c.y - my_) * k1;
+    // aplicar_estudios (entrega 16 P4), Story_MapScrollToTargetTick (EU 0x2F8390, L384840-384937): objetivo = Goku del
+    // mapa (+0x1D0) limitado a x [300, 980] e y [225, 735]; camara += (objetivo - camara) * t, t += 0,01 por cuadro y
+    // vuelve a 0 al pasar de 1; a menos de 2 px, la camara salta al objetivo con t = 1; despues se limita igual.
+    constexpr float kX0 = 300, kX1 = 980, kY0 = 225, kY1 = 735;
+    const float ox = std::clamp(mx_, kX0, kX1), oy = std::clamp(my_, kY0, kY1);
+    if (std::hypot(ox - cx_, oy - cy_) < 2.0f) {
+      cx_ = ox, cy_ = oy, tcam_ = 1.0f;
+    } else {
+      cx_ += (ox - cx_) * tcam_;
+      cy_ += (oy - cy_) * tcam_;
+    }
+    if ((tcam_ += 0.01f * dt * 60.0f) > 1.0f) tcam_ = 0;
+    cx_ = std::clamp(cx_, kX0, kX1), cy_ = std::clamp(cy_, kY0, kY1);
   } else {
-    cx_ += (ox - cx_) * tcam_;
-    cy_ += (oy - cy_) * tcam_;
+    cx_ = std::clamp(cx_, 300.0f, 980.0f), cy_ = std::clamp(cy_, 225.0f, 735.0f);
   }
-  if ((tcam_ += 0.01f * dt * 60.0f) > 1.0f) tcam_ = 0;
-  cx_ = std::clamp(cx_, kX0, kX1), cy_ = std::clamp(cy_, kY0, kY1);
-  const ImVec2 D = io.DisplaySize;
-  // ponytail: zoom medido en las capturas del original (iconos y Goku 1,6-2 veces mas grandes que con 640x480 a la vista)
-  constexpr float kZoom = 1.7f;
+  const S::Imagen gi = S::GuestImage(io);   // L05: la imagen del juego (21:9/16:10/4:3), no la ventana
+  const ImVec2 D = gi.Size();
+  // I03 (studies 4): 1:1 con la pantalla de 640x480 del original (640 px de mapa a lo alto).
+  // Antes kZoom = 1,7: se veian 282 px de mapa de alto (1,7x mas cerca) y los iconos salian
+  // un 70 % mas grandes que en el original. Con 1,0 el alto visible es 480 y el ancho 853
+  // (16:9 muestra mas mapa a los lados; el alto coincide con el original).
+  constexpr float kZoom = 1.0f;
   const float s = D.y / 480.0f * kZoom, vw = D.x / s, vh = 480.0f / kZoom;
   // IW pone la camara en el punto (300, 225) de su pantalla de 640 x 480 (Story_WorldToScreenX/Y): el centro es +20, +15.
   // Pantallas muy anchas: ademas, sin salirse del mapa de 1280 x 960.
   const float vx = cx_ + 20, vy = cy_ + 15;
   const float camx = vw >= 1280 ? 640.0f : std::clamp(vx, vw * 0.5f, 1280 - vw * 0.5f);
   const float camy = vh >= 960 ? 480.0f : std::clamp(vy, vh * 0.5f, 960 - vh * 0.5f);
-  flechas_[0] = cy_ > kY0 + 1;
-  flechas_[1] = cy_ < kY1 - 1;
-  flechas_[2] = cx_ > kX0 + 1;
-  flechas_[3] = cx_ < kX1 - 1;
-  auto P = [&](float x, float y) { return ImVec2(D.x * 0.5f + (x - camx) * s, D.y * 0.5f + (y - camy) * s); };
-  dl->AddRectFilled(ImVec2(0, 0), D, IM_COL32(0, 0, 0, 255));
+  flechas_[0] = listo && cy_ > 225.0f + 1;
+  flechas_[1] = listo && cy_ < 735.0f - 1;
+  flechas_[2] = listo && cx_ > 300.0f + 1;
+  flechas_[3] = listo && cx_ < 980.0f - 1;
+  auto P = [&](float x, float y) { return ImVec2(gi.p0.x + D.x * 0.5f + (x - camx) * s, gi.p0.y + D.y * 0.5f + (y - camy) * s); };
+  dl->AddRectFilled(gi.p0, gi.p1, IM_COL32(0, 0, 0, 255));
   const int m = MapaDeSaga(c.saga);
   for (int i = 0; i < 4; ++i) {
     const float x = float(i % 2) * 640, y = float(i / 2) * 480;
     Imagen2(dl, 100 + m * 4 + i, in.dm->piezas[m][i], P(x, y), P(x + 640, y + 480));
   }
+  // Story_MapObjectsAppearTick (EU 0x2FCCB0): tras la intro, cada 20 cuadros (param+0x34 > 20) aparece UNA casilla,
+  // desde la ultima de la lista hacia la primera; el sprite entra con su fundido (w_Appear_FadeFlag_). El orden de
+  // casillas es el del #DMD filtrado por area: aqui, las dibujables de esta saga. [H] el fundido exacto: se usa 20
+  // cuadros (el mismo umbral que el contador), sin captura que lo separe.
+  int n_saga = 0;
+  for (const CasillaDM& q : cas)
+    if (q.saga == c.saga && q.icono >= 0 && !(q.tipo == 1 && q.mision > in.abiertas)) ++n_saga;
+  int pos_saga = 0;
   for (size_t j = 0; j < cas.size(); ++j) {
     const CasillaDM& q = cas[j];
     if (q.saga != c.saga || q.icono < 0) continue;
     if (q.tipo == 1 && q.mision > in.abiertas) continue;   // las de mas adelante aun no salen
+    const int rank = n_saga - 1 - pos_saga++;              // la ultima primero (indice count-1 hacia abajo)
+    const float t_ap = 20.0f * float(rank + 1);            // una cada 20 cuadros
+    const float alfa = listo ? std::clamp((ap_t_ - t_ap) / 20.0f, 0.0f, 1.0f) : 0.0f;
+    if (alfa <= 0.0f) continue;                            // aun no ha aparecido
+    const int al = int(255.0f * alfa + 0.5f);
     const Imagen& im = De(in.dm->iconos, q.icono);
     float w = float(im.w), h = float(im.h);
     if (int(j) == sel_) {   // aro verde (t89) bajo la elegida, que late
       const float r = 40.0f + 5.0f * std::sin(t * 5.0f);
-      Imagen2(dl, 1000 + kAro, De(in.dm->iconos, kAro), P(q.x - r, q.y - r), P(q.x + r, q.y + r));
+      Imagen2(dl, 1000 + kAro, De(in.dm->iconos, kAro), P(q.x - r, q.y - r), P(q.x + r, q.y + r), {},
+              IM_COL32(255, 255, 255, al));
       w *= 1.15f;
       h *= 1.15f;
     }
     const bool no_b3 = q.mision > 0 && q.mision < int(in.motivo.size()) && !in.motivo[size_t(q.mision)].empty();
-    const ImU32 tint = no_b3 ? IM_COL32(110, 110, 110, 255) : IM_COL32_WHITE;
+    const ImU32 tint = no_b3 ? IM_COL32(110, 110, 110, al) : IM_COL32(255, 255, 255, al);
     Imagen2(dl, 1000 + q.icono, im, P(q.x - w * 0.5f, q.y - h * 0.5f), P(q.x + w * 0.5f, q.y + h * 0.5f), {}, tint);
     if (q.mision > 0 && q.mision <= in.hecho && !no_b3) {   // superada: estrella de 334/1 t31
       Imagen2(dl, 3000 + kEstrella, De(in.dm->ui, kEstrella), P(q.x + w * 0.5f - 22, q.y - h * 0.5f - 6),
-              P(q.x + w * 0.5f + 2, q.y - h * 0.5f + 18));
+              P(q.x + w * 0.5f + 2, q.y - h * 0.5f + 18), {}, IM_COL32(255, 255, 255, al));
     } else if (q.mision > 0 && !no_b3) {   // abierta y sin hacer: "New!" (t16)
       const float b = 2.0f * std::sin(t * 4.0f);
-      Imagen2(dl, 1000 + kNew, De(in.dm->iconos, kNew), P(q.x - 26, q.y - h * 0.5f - 34 + b), P(q.x + 26, q.y - h * 0.5f + 4 + b));
+      Imagen2(dl, 1000 + kNew, De(in.dm->iconos, kNew), P(q.x - 26, q.y - h * 0.5f - 34 + b), P(q.x + 26, q.y - h * 0.5f + 4 + b),
+              {}, IM_COL32(255, 255, 255, al));
     }
   }
   // Goku del mapa, de pie junto a la casilla: ~21 % del alto de la pantalla, como el original. En 3D (su modelo de
@@ -709,6 +919,10 @@ PantallaDM::Accion PantallaDM::Mapa(ImDrawList* dl, const ImGuiIO& io, float t, 
   if (video_ >= 0) return Historia(dl, io, t, pulsado, in);
   DibujarFondo(dl, io, t, in);
   if (sel_ < 0) return pulsado & kB ? kSalir : kNada;
+  // Story_MapIntroDelayTick: el original no carga los mandos del mapa hasta acabar la espera y el scroll. Aqui solo se
+  // bloquea la espera de entrada (100 cuadros); B sigue saliendo para no dejar al jugador atrapado. [H] el bloqueo
+  // durante todo el scroll, que depende del tramo recorrido y no se ha medido en pantalla.
+  if (EnIntroMapa()) return pulsado & kB ? kSalir : kNada;
   const auto& cas = Cas(in);
   const CasillaDM c = cas[size_t(sel_)];
   auto abierta = [&](const CasillaDM& q) { return q.tipo == 0 || (q.mision > 0 && q.mision <= in.abiertas); };
@@ -754,10 +968,11 @@ PantallaDM::Accion PantallaDM::Mapa(ImDrawList* dl, const ImGuiIO& io, float t, 
   if (pulsado & kBack) guia_ = !guia_;
   const CasillaDM& q = cas[size_t(sel_)];
   // HUD del mapa con las piezas de 334/3, en px de la ventana (u = 1 px de la pantalla de 448 de la PS2)
-  const ImVec2 D = io.DisplaySize;
+  const S::Imagen gi = S::GuestImage(io);   // L05: HUD sobre la imagen del juego
+  const ImVec2 D = gi.Size();
   const float u = D.y / 448.0f;
   auto H = [&](int k) -> const Imagen& { return De(in.dm->hud, k); };
-  auto pon = [&](int k, ImVec2 p0, ImVec2 p1, ImVec4 src = ImVec4(0, 0, 0, 0)) { Imagen2(dl, 7000 + k, H(k), p0, p1, src); };
+  auto pon = [&](int k, ImVec2 p0, ImVec2 p1, ImVec4 src = ImVec4(0, 0, 0, 0)) { Imagen2(dl, 7000 + k, H(k), ImVec2(gi.p0.x + p0.x, gi.p0.y + p0.y), ImVec2(gi.p0.x + p1.x, gi.p0.y + p1.y), src); };
   // flechas azules en los bordes hacia donde se puede desplazar (t17: arriba x 4-60 y 28-59; derecha x 69-101 y 7-63)
   const float lat = 3.0f * u * (0.5f + 0.5f * std::sin(t * 5.0f)), al = 46 * u, an = 26 * u;
   if (flechas_[0]) pon(kFlechas, ImVec2(D.x * 0.5f - al * 0.5f, 6 * u - lat), ImVec2(D.x * 0.5f + al * 0.5f, 6 * u + an - lat), ImVec4(4, 28, 61, 60));
@@ -774,7 +989,7 @@ PantallaDM::Accion PantallaDM::Mapa(ImDrawList* dl, const ImGuiIO& io, float t, 
     if (in.road) Imagen2(dl, 4000, nombre, ImVec2(x - w * 0.5f, y - h * 0.5f), ImVec2(x + w * 0.5f, y + h * 0.5f));
     else pon(k, ImVec2(x - w * 0.5f, y - h * 0.5f), ImVec2(x + w * 0.5f, y + h * 0.5f));
   }
-  S::HelpLine(dl, ImVec2(D.x - 96 * u, 18 * u), 20 * u, {{"LB", ""}, {"RB", T::T("Saga", "Saga")}});
+  S::HelpLine(dl, ImVec2(gi.p0.x + D.x - 96 * u, gi.p0.y + 18 * u), 20 * u, {{"LB", ""}, {"RB", T::T("Saga", "Saga")}});
   // abajo a la derecha: Bulma (la guia) asomada en su vehiculo
   float bw = 0;
   if (guia_) {
@@ -804,7 +1019,7 @@ PantallaDM::Accion PantallaDM::Mapa(ImDrawList* dl, const ImGuiIO& io, float t, 
   pon(kClear, ImVec2(cx0, cy - 20 * k), ImVec2(cx0 + 88 * k, cy + 20 * k));
   char cuenta[16];
   std::snprintf(cuenta, sizeof(cuenta), "%02d/%02d", hechas, total);
-  Cifras(dl, false, cuenta, ImVec2(cx0 + 88 * k + 6 * u + 5 * 0.9f * 24 * k, cy), 24 * k, in, true);
+  Cifras(dl, false, cuenta, ImVec2(gi.p0.x + cx0 + 88 * k + 6 * u + 5 * 0.9f * 24 * k, gi.p0.y + cy), 24 * k, in, true);
   // globo de la guia (334/3 t01) a lo ancho, encima de la barra, con la frase original de la casilla (334/6)
   const bool no_b3 = q.mision > 0 && q.mision < int(in.motivo.size()) && !in.motivo[size_t(q.mision)].empty();
   const float gx0 = 8 * u, gx1 = std::max(D.x * 0.5f, D.x - std::max(bw * 0.7f, 60 * u)), gy1 = b0.y - 4 * u, gy0 = gy1 - 104 * u;
@@ -813,13 +1028,13 @@ PantallaDM::Accion PantallaDM::Mapa(ImDrawList* dl, const ImGuiIO& io, float t, 
     const Imagen& fr = De(in.road ? in.dm->frases_road : in.dm->frases, q.fila);
     if (fr.w > 16) {
       ImVec2 p0, p1;
-      Encajar(float(fr.w), float(fr.h), (gx0 + gx1) * 0.5f - 14 * u, (gy0 + gy1) * 0.5f, gx1 - gx0 - 90 * u, 80 * u,
+      Encajar(float(fr.w), float(fr.h), gi.p0.x + (gx0 + gx1) * 0.5f - 14 * u, gi.p0.y + (gy0 + gy1) * 0.5f, gx1 - gx0 - 90 * u, 80 * u,
               1.4f * u, p0, p1);
       Imagen2(dl, 2000 + q.fila, fr, p0, p1);
     }
   }
   const std::string nota = !aviso_.empty() ? aviso_ : no_b3 ? in.motivo[size_t(q.mision)] : std::string();
-  if (!nota.empty()) S::MenuText(dl, ImVec2((gx0 + gx1) * 0.5f, gy0 - 14 * u), 22 * u, nota.c_str(), false, true, gx1 - gx0);
+  if (!nota.empty()) S::MenuText(dl, ImVec2(gi.p0.x + (gx0 + gx1) * 0.5f, gi.p0.y + gy0 - 14 * u), 22 * u, nota.c_str(), false, true, gx1 - gx0);
   constexpr uint16_t kY = 0x8000;   // Y: Fighter's Road (o de vuelta a Dragon Mission)
   if (pulsado & kY) return in.road ? kSalir : kRoad;
   S::mode::Help(dl, S::GameArea(io), {{"Y", in.road ? T::T("A Dragon Mission", "To Dragon Mission") : T::T("A Fighter's Road", "To Fighter's Road")}, {"BACK", T::T("Guía", "Guide")}, {"A", T::T("Elegir", "Select")},
@@ -835,7 +1050,7 @@ PantallaDM::Accion PantallaDM::Mapa(ImDrawList* dl, const ImGuiIO& io, float t, 
         return kNada;
       }
       if (g_minijuego && g_minijuego(q.clave, q.fila)) return g_mini_clave = q.clave, kMinijuego;
-      aviso_ = T::T("Minijuego de Infinite World: aún no disponible.", "Infinite World minigame: not available yet.");
+      aviso_ = MotivoMinijuegoIW(q.clave);
     } else if (q.mision > 0 && q.mision <= in.abiertas && !no_b3) {
       return kElegir;
     } else if (q.mision > 0 && no_b3) {   // bloqueada: el motivo (p. ej. "Necesita a Super 17...") en el globo
@@ -873,19 +1088,20 @@ PantallaDM::Accion PantallaDM::Historia(ImDrawList* dl, const ImGuiIO& io, float
       const int clave = mini_clave_;
       mini_clave_ = -1;
       if (g_minijuego && g_minijuego(clave, mini_fila_)) return g_mini_clave = clave, kMinijuego;
-      aviso_ = T::T("Minijuego de Infinite World: aún no disponible.", "Infinite World minigame: not available yet.");
+      aviso_ = MotivoMinijuegoIW(clave);
     }
     return kNada;
   }
   DibujarFondo(dl, io, t, in);
-  const ImVec2 D = io.DisplaySize;
+  const S::Imagen gi = S::GuestImage(io);   // L05: bandas y video sobre la imagen del juego
+  const ImVec2 D = gi.Size();
   const float banda = D.y * 0.13f;
-  dl->AddRectFilled(ImVec2(0, 0), D, IM_COL32(0, 0, 0, 110));
-  dl->AddRectFilled(ImVec2(0, 0), ImVec2(D.x, banda), IM_COL32(0, 0, 0, 255));
-  dl->AddRectFilled(ImVec2(0, D.y - banda * 1.7f), D, IM_COL32(0, 0, 0, 255));
+  dl->AddRectFilled(gi.p0, gi.p1, IM_COL32(0, 0, 0, 110));
+  dl->AddRectFilled(gi.p0, ImVec2(gi.p0.x + D.x, gi.p0.y + banda), IM_COL32(0, 0, 0, 255));
+  dl->AddRectFilled(ImVec2(gi.p0.x, gi.p1.y - banda * 1.7f), gi.p1, IM_COL32(0, 0, 0, 255));
   const Imagen& l = (*lineas)[size_t(linea_)];
   ImVec2 p0, p1;   // a la escala de la PS2 (448 lineas), centrada en la banda de abajo
-  Encajar(float(l.w), float(l.h), D.x * 0.5f, D.y - banda * 0.95f, D.x * 0.9f, banda * 1.3f, D.y / 448.0f, p0, p1);
+  Encajar(float(l.w), float(l.h), gi.p0.x + D.x * 0.5f, gi.p0.y + D.y - banda * 0.95f, D.x * 0.9f, banda * 1.3f, D.y / 448.0f, p0, p1);
   Imagen2(dl, 20000 + video_ * 256 + linea_, l, p0, p1);
   S::mode::Help(dl, S::GameArea(io), {{"A", T::T("Siguiente", "Next")}, {"B", T::T("Saltar", "Skip")}});
   return kNada;

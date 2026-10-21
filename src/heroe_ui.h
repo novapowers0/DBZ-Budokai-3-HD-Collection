@@ -30,10 +30,15 @@ Accion MapaUI(ImDrawList* dl, const dbz3::ingame::style::Area& a, float t, uint1
 void AbrirMovesets();
 Accion MovesetsUI(ImDrawList* dl, const dbz3::ingame::style::Area& a, float t, uint16_t p);
 
+// Fichas de heroe (K): lista de las 8 fichas de cac.toml, duplicar (X) y archivar (Y) sin salir del modo.
+void AbrirSlots();
+Accion SlotsUI(ImDrawList* dl, const dbz3::ingame::style::Area& a, float t, uint16_t p);
+
 void AbrirMaestros();
 Accion Maestros(ImDrawList* dl, const dbz3::ingame::style::Area& a, float t, uint16_t p);
 
 // Vista previa (tira de giros) del cuerpo `id` con el traje `traje`: si falta, se genera en segundo plano.
 void PedirVista(int id, int traje);
+void DibujarAvatarUT(ImDrawList* dl, const dbz3::ingame::style::Area& a);   // G06a: selector con el cuerpo propio
 
 }  // namespace dbz3::heroe_ui

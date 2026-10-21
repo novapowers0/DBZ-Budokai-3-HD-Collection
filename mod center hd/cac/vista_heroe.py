@@ -18,9 +18,10 @@ El juego la carga con S::Img("heroe_vista/<id>_<traje>"). Si falta, la pantalla 
 segundo plano (`--faltan`) y dibuja el retrato mientras tanto.
 
 Uso:
-  python vista_heroe.py --juego D:\\DBZ3HD\\heroe_s8 [--faltan] [--size 256] [--giros 8] [--solo 0_0]
+  python vista_heroe.py --juego D:\\DBZ3HD\\heroe_s8 [--faltan] [--size 384] [--giros 12] [--solo 0_0]
 """
 import argparse
+import json
 import os
 import sys
 import tempfile
@@ -33,6 +34,13 @@ for p in (HERE, os.path.join(HERE, "..")):
 
 import numpy as np                 # noqa: E402
 from PIL import Image              # noqa: E402
+
+import swap_b3                     # noqa: E402  (L03: localiza us/ y el awo_tools del proyecto)
+_us = swap_b3.find_us()
+if _us:
+    _awo = os.path.join(os.path.dirname(_us), "awo_tools")
+    if os.path.isdir(_awo) and _awo not in sys.path:
+        sys.path.insert(0, _awo)
 
 import model_render as mr          # noqa: E402
 import roster_build as rb          # noqa: E402
@@ -742,6 +750,9 @@ def escribir_personaje_propio(juego, slot, ficha, args_txt, datos, r, fid):
 def escribir_mod_combate(juego, slot, ficha, args_txt, afs):
     """mods/heroe_ficha<slot>/: un TRAJE EXTRA del cuerpo (traje.toml de roster_build: se anade detras de los del
     juego) con el modelo tenido + ficha.txt (los valores con que se hizo: el juego solo lo usa si coinciden)."""
+    if 100 <= ficha.get("cuerpo", 0) <= 105:   # G06a: malla CaC completa; ninguna superficie B3
+        datos, r = modelo_ut(afs, ficha, juego)
+        return escribir_personaje_propio(juego, slot, ficha, args_txt, datos, r, -1)
     fids = KFID.get(ficha.get("cuerpo", 0))
     fid = fids[min(max(ficha.get("traje", 0), 0), len(fids) - 1)]
     datos, r = combate_bin(afs.entry(fid), ficha, juego)
@@ -759,6 +770,58 @@ def escribir_mod_combate(juego, slot, ficha, args_txt, afs):
         fh.write(args_txt + "\n")
     r.update(fid=fid, mod=mod)
     return r
+
+
+def _huella_conversor():
+    """Firma de los conversores UT para invalidar la cache al cambiarlos (G06a)."""
+    import hashlib
+    partes = []
+    for nombre in ("ut_cuerpo.py", "ut_color.py", "ut_formato.py", "ut_textura.py"):
+        p = os.path.join(HERE, nombre)
+        try:
+            st = os.stat(p)
+            partes.append("%s:%d:%d" % (nombre, st.st_size, st.st_mtime_ns))
+        except OSError:
+            partes.append(nombre + ":?")
+    return hashlib.sha256("|".join(partes).encode()).hexdigest()[:12]
+
+
+def modelo_ut(afs, ficha, juego):
+    """G06a: una sola malla/materiales para la vista previa y el combate.
+
+    Los IDs 100..105 son identificadores del catálogo, no personajes B3. No se
+    intenta teñir el avatar con las máscaras heurísticas del traje anfitrión.
+    """
+    import hashlib
+    import ut_cuerpo
+    familia = ("b0", "b1", "a0", "a1", "c0", "c1")[ficha["cuerpo"] - 100]
+    spr = ut_cuerpo.fuente(familia, ficha.get("traje", 0) + 1, juego=juego)
+    datos_clave = (json.dumps(ficha, sort_keys=True) + str(spr) + str(spr.stat().st_mtime_ns) +
+                   "ut-real-v4:" + _huella_conversor())
+    key = hashlib.sha256(datos_clave.encode()).hexdigest()[:24]
+    work = os.path.join(juego, "user_data", "dbz3", "cac_ut")
+    os.makedirs(work, exist_ok=True)
+    dst, rep = os.path.join(work, key + ".bin"), os.path.join(work, key + ".json")
+    if not os.path.isfile(dst) or not os.path.isfile(rep):
+        plantilla = os.path.join(work, "esqueleto_%s.bin" % familia[0])
+        if not os.path.isfile(plantilla):
+            with open(plantilla, "wb") as fh:
+                fh.write(afs.entry(327 if familia[0] == "b" else 264))
+        colores = {}
+        for z, c in zip(("arriba", "abajo", "cinturon", "calzado"), ficha.get("partes", [CERO] * 4)):
+            if tuple(c) != CERO:
+                colores[z] = tuple(float(x) for x in _hsv_rgb(*[np.array(x) for x in objetivo(c)]))
+        if tuple(ficha.get("c1", CERO)) != CERO:
+            colores["pelo"] = tuple(float(x) for x in _hsv_rgb(*[np.array(x) for x in objetivo(ficha["c1"])]))
+        else:
+            # La textura de pelo UT es verde-oliva; sin color elegido, pelo oscuro.
+            colores["pelo"] = (0.16, 0.11, 0.08)
+        ut_cuerpo.construir(plantilla, spr, dst, colores=colores, informe=rep, pelo=int(ficha.get("pelo", 0)))
+    with open(dst, "rb") as fh:
+        datos = fh.read()
+    with open(rep, encoding="utf-8") as fh:
+        r = json.load(fh)
+    return datos, r
 
 
 def leer_ficha(txt):
@@ -795,8 +858,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--juego", required=True, help="carpeta del juego (la de dbz3.exe)")
     ap.add_argument("--us", default=None, help="carpeta us/ con data_cmn.afs (por defecto la que encuentre)")
-    ap.add_argument("--size", type=int, default=256)
-    ap.add_argument("--giros", type=int, default=8)
+    ap.add_argument("--size", type=int, default=384)
+    ap.add_argument("--giros", type=int, default=12)
     ap.add_argument("--faltan", action="store_true", help="solo las que no existen")
     ap.add_argument("--solo", default=None, help="id_traje (p. ej. 0_0)")
     ap.add_argument("--ficha", default=None, help='vista de la ficha: "cuerpo=0;traje=2;partes=h,s,v|...;pelo=1;'
@@ -809,7 +872,7 @@ def main():
     os.makedirs(salida, exist_ok=True)
     if a.ficha and a.combate:
         f = leer_ficha(a.ficha)
-        if f.get("cuerpo", 0) not in KFID:
+        if f.get("cuerpo", 0) not in KFID and not 100 <= f.get("cuerpo", 0) <= 105:
             print("vista_heroe: cuerpo %s sin modelo" % f.get("cuerpo"))
             return 2
         t0 = time.time()
@@ -819,6 +882,19 @@ def main():
         return 0
     if a.ficha:
         f = leer_ficha(a.ficha)
+        if 100 <= f.get("cuerpo", 0) <= 105:   # G06a: exportar exactamente el modelo del combate
+            work = tempfile.mkdtemp(prefix="vista_cac_ut_")
+            afs = rb.Afs(os.path.join(rb.us_dir(a.us), "data_cmn.afs"), work)
+            datos, r = modelo_ut(afs, f, a.juego)
+            m = mr.Model(datos)
+            dst = os.path.join(salida, (a.clave or "f_prueba") + ".malla")
+            exportar_malla(m, pose_de(m), dst)
+            # El avatar UT completo puede superar el presupuesto de vértices de
+            # ImGui. La tira usa EXACTAMENTE esta malla, UV y materiales, sin LOD
+            # ni huecos; el combate mantiene la geometría completa.
+            tira(m, a.size, a.giros).save(os.path.splitext(dst)[0] + ".png")
+            print("vista_heroe: cuerpo UT -> %s (%s)" % (dst, r["fuente"]))
+            return 0
         fids = KFID.get(f.get("cuerpo", 0))
         if not fids:
             print("vista_heroe: cuerpo %s sin modelo" % f.get("cuerpo"))

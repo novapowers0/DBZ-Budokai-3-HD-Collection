@@ -188,7 +188,7 @@ constexpr Poses kPosesNB006 = {{921, 925},
                                {0x276, 0x279, 0x27C, 0x27F}, {0x263, 0x266, 0x269, 0x26C}, {0x264, 0x267, 0x26A, 0x26D},
                                {0x289, 0x28A}, {0x287, 0x288}, 0x2A9, 0x2AA, true, 14, 50, 15,   // NB006 pelea en el suelo (cadera a y = 4-10)
                                0x96, 0x97, 0x9A, 0x9A, 0x322, 0x323, 100, {-15, -0.5f, 0, 1, 7}, {0, 0}, -1,   // Mg_UpdateIntroSequence / EnterResultPhase
-                               -1, 2, 0x321, 300, {0x4000, 0xC002}};   // s8: entrada = 2 clips de un #AMC sin localizar [H]
+                               871, 2, 0x321, 300, {0x4000, 0xC002}};  // s8: entrada 871 (2 clips, 630 cuadros; L02)
 // R7 quinta tanda (NB006): el resultado es 0x9A gane o pierda (Mg_EnterResultPhase EU L467302/467309) y el final del
 // jugador 0x322 con rango > 0 / 0x323 con rango 0 (Mg_StartResultAnim L466793-466901, por iRam0049cebc + 0x1C).
 // 05_iw_minijuegos_pendientes: 0x98 = el clip del punto ganado (Mg_ResetRoundState L467467: jugador con la pose 0x10);
@@ -261,6 +261,7 @@ struct Juego {
   P::Imagen ready, start, hit, miss, clear, failed;   // DATA_USA 5/1 t08 t00 t07 t02 t09 t10
   P::Imagen objetivo;                                 // DATA_USA 0/1 t10: aro rojo y amarillo con la flecha
   P::Imagen aro, relleno, barra;                       // DATA_USA 6/0 t00, t01, t15 (HUD de P4)
+  P::Imagen barra06;                                  // I03: DATA_USA 4/0 t42 (480x8): barra roja de NB006
   // s9: el HUD propio de los minijuegos de botones de IW (DATA_USA 4/0, cotejado con nb013_030 de PCSX2): banda azul
   // t38 (800x168), siluetas t39..t50, aro con engranaje t17, marco t18 y relleno verde t19 de la vida.
   P::Imagen banda, sil[2], aro4, marco4, verde4, caras;   // caras: t53, 3x3 de 64 (ver CaraIW)
@@ -282,6 +283,7 @@ std::atomic<bool> g_raw_ok{false};
 std::atomic<float> g_cam_alto{14}, g_cam_dist{62};
 std::atomic<bool> g_cam_reset{true};
 std::atomic<int> g_fase_a{0};   // s9: fase del minijuego A (0 espera, 1 READY, 2 juego, 3 fin) para Colocar
+std::atomic<bool> g_fondo_off{false};   // NB006: fondo del escenario apagado mientras dure el minijuego
 std::atomic<float> g_cam_lado{1};   // 1: la camara a un lado; -1: al otro (la pose final, de frente)   // lo que pide el panel a la camara (PasoBotones la acerca poco a poco)
 
 uint8_t* Base() {
@@ -409,6 +411,7 @@ bool Cargar(Juego& j, std::string& error) {
     const bool b13 = j.m->poses == &kPosesNB013, b06 = j.m->poses == &kPosesNB006;
     j.cara[0] = b13 ? 1 : b06 ? 6 : 0;
     j.cara[1] = b13 ? 3 : b06 ? 4 : 2;
+    if (b06) j.barra06 = P::TexturaAmt(h4, 0x2A);   // I03: barra roja de NB006 (Mg_LayoutHud, fila 0, y 366)
   }
   return true;
 }
@@ -570,6 +573,12 @@ void Muestra(const std::vector<std::array<float, N>>& k, float f, float* out) {
   for (size_t c = 1; c < N; ++c) out[c - 1] = k[i][c] + (k[j][c] - k[i][c]) * t;
 }
 void CamB(int clip, bool quieto = false, bool bucle = false) {   // hilo de la interfaz: este clip desde el cuadro 0
+  // s10 PRUEBA (DBZ3_S10_CLIP=BB): fuerza un clip concreto (p. ej. la ronda 8 de NB007) para medir su camara sin
+  // recorrer las diez rondas. Solo actua si el clip existe en la copia del jugador.
+  if (const char* c = std::getenv("DBZ3_S10_CLIP")) {
+    const int v = int(std::strtol(c, nullptr, 16));
+    if (g_clips.count(v)) clip = v;
+  }
   if (clip < 0 || !g_clips.count(clip)) return;
   g_cb_clip = clip;
   g_cb_frame = 0;
@@ -753,6 +762,7 @@ void Paso(Juego& j, uint16_t pulsado) {
     const float v = j.rango == 0 ? 100.0f : j.pts[j.rango] * j.mult[j.dif];
     j.puntos = (int(v) + 99) / 100 * 100;
     j.fase = 3;
+    if (j.poses == &kPosesNB006) g_fondo_off = false;
     j.t = 0;
     {   // QteMg_StartResultPhase: poses de victoria o derrota (la del jugador al acabar sale en el panel)
       const Poses& p = *j.poses;
@@ -945,6 +955,7 @@ class Panel : public rex::ui::ImGuiDialog {
     aro_ = ps2::Crear(j.aro);
     relleno_ = ps2::Crear(j.relleno);
     barra_ = ps2::Crear(j.barra);
+    barra06_ = ps2::Crear(j.barra06);
     banda_ = ps2::Crear(j.banda);
     aro4_ = ps2::Crear(j.aro4);
     marco4_ = ps2::Crear(j.marco4);
@@ -1101,6 +1112,17 @@ class Panel : public rex::ui::ImGuiDialog {
           fg->AddImage(sil_[i].id(), at(cx - w / 2, cy - h / 2), at(cx + w / 2, cy + h / 2));
         }
     }
+    if (j.fase >= 2 && !panel_res && j.m->poses == &kPosesNB006) {
+      // I03: barra roja de NB006 (Mg_LayoutHud 0x376FB0: fila 0, y 366, largo vel*240-48). Va debajo de los
+      // iconos, sobre la banda azul; el original la apaga en el resultado (panel_res). Se dibuja con primitivas
+      // (la textura 4/0 t42 es el carril gris y al estirarla solo asomaba una linea): relleno rojo, borde azul y
+      // la muesca blanca del boton entrante.
+      const float len = std::min(kW, j.vel * 240.0f - 48.0f);
+      const ImVec2 r0 = at(0, 376), r1 = at(len, 416);
+      fg->AddRectFilled(r0, r1, IM_COL32(198, 62, 88, 255), 7 * k);
+      fg->AddRect(r0, r1, IM_COL32(38, 78, 148, 255), 7 * k, 0, 2 * k);
+      fg->AddRectFilled(at(len - 42, 378), at(len - 30, 414), IM_COL32(245, 245, 245, 235), 2 * k);
+    }
     if (j.fase >= 2 && !panel_res) {
       fg->PushClipRect(at(0, 0), at(kW, kH), true);   // s9: los iconos entran desde el borde de la pantalla de IW (4:3)
       for (int l = 0; l < 2; ++l) {
@@ -1159,7 +1181,7 @@ class Panel : public rex::ui::ImGuiDialog {
   int sondas_ = 0;
   bool fin_ = false;
   float acum_ = 0;
-  ps2::Tex objetivo_, ready_, start_, hit_, miss_, clear_, failed_, aro_, relleno_, barra_;
+  ps2::Tex objetivo_, ready_, start_, hit_, miss_, clear_, failed_, aro_, relleno_, barra_, barra06_;
   ps2::Tex banda_, aro4_, marco4_, verde4_, sil_[2], caras_;   // s9: HUD de IW (DATA_USA 4/0)
   ps2::Tex rot_[3], cif_c_, cif_n_, earned_, total_, zeni_;     // s9: panel de resultado de IW
   ps2::Tex titulo_, cif_e_;                                     // s1 F04.3
@@ -1220,6 +1242,7 @@ bool Empezar(int clave, int fila, int dificultad) {
     REXLOG_WARN("dbz3 r14: el conector no acepto el combate");
     return false;
   }
+  g_fondo_off = (m->poses == &kPosesNB006);   // NB006: el original sale sobre negro
   dbz3::combate::SetMuneco(1);       // el rival quieto, sin IA (le pegan los aciertos del minijuego)
   dbz3::combate::OcultarHud(true);   // sin marcador de B3
   g_corre = true;
@@ -1234,6 +1257,8 @@ bool Empezar(int clave, int fila, int dificultad) {
   }
   P::VigilarCombate("r14", r, [j](const P::Fin&) {
     g_corre = false;
+    g_fondo_off = false;
+    if (j->poses == &kPosesNB006) dbz3::escenarios::OcultarFondo(false);
     g_cb_clip = -1;
     if (j->auto_) dbz3::net::InyectarPad(0, -1);
     dbz3::combate::SetMuneco(-1);
@@ -2152,10 +2177,122 @@ void MandoBotones(uint8_t* base, uint32_t usuario, bool leido) {
 // (X+6062 + 15759 = el de IW), la cadera de la pose de IW (anim::RaizActual) y la camara. Para comparar con la tabla
 // medida en PCSX2 (studies 8\ENTREGAS\B_minijuegos_iw\INFORME.md).
 static float g_cam_d[6];   // s9: la ultima camara pedida (tras el fov, antes de compensar el arrastre de B3)
+static float g_cam_fov_iw = 0, g_cam_fov_b3 = 0, g_cam_k = 1;   // s10: fov del clip, fov leido de B3 y factor aplicado
+// s10 (DBZ3_S10_MATRIZ=1): busca en la memoria del guest la matriz 4x4 de proyeccion que el juego tiene preparada
+// antes de dibujar. La proyeccion D3D deja m11 = 1/tan(fov/2) (o tan(fov/2) segun la convencion); se buscan las
+// dos y se marca si el fov implicito es ~0,785 (el que se lee en mgr+0x1C4) o ~0,602 (el que explicaria el 1,3x de
+// NB007). Solo lee; no escribe nada. Coste: un barrido de 2 MB cada 30 cuadros, solo con la variable puesta.
+static void SondaMatriz(uint8_t* base, uint32_t mgr) {
+  static const bool on = std::getenv("DBZ3_S10_MATRIZ") != nullptr;
+  if (!on) return;
+  constexpr uint32_t k0 = 0x82300000, k1 = 0x82500000;
+  const float inv785 = 1.0f / std::tan(0.7853981634f * 0.5f);
+  const float inv602 = 1.0f / std::tan(0.602416f * 0.5f);
+  static bool volcado = false;
+  if (!volcado) {   // una vez: el gestor de camara crudo (para mirar sus 4x4 fuera del juego)
+    volcado = true;
+    if (std::FILE* f = std::fopen("dbz3_s10_mgr.bin", "wb")) {
+      const uint32_t cab[2] = {mgr, 0x400};
+      std::fwrite(cab, 4, 2, f);
+      std::fwrite(base + mgr, 1, 0x400, f);
+      std::fclose(f);
+      REXLOG_INFO("dbz3 s10 matriz: gestor volcado en dbz3_s10_mgr.bin (mgr 0x{:08X})", mgr);
+    }
+  }
+  // 1b) El anillo de comandos del GPU, por su alias virtual 0xBBD00000 (= fisico 0x1BD00000 a traves
+  // del heap vA0000000). Buscar ahi la proyeccion que se sube como constantes c0..c3.
+  static uint32_t n_scan = 0;
+  if (n_scan++ < 3) {
+    constexpr uint32_t c0 = 0xBBD00000, c1 = 0xBBE00000;
+    int cmd_hits = 0;
+    for (uint32_t a = c0; a + 64 <= c1; a += 4) {
+      const float m11 = LoadF(base, a + 20);
+      float fov = 0;
+      if (m11 > 1.2f && m11 < 5.0f) fov = 2.0f * std::atan(1.0f / m11);
+      else if (m11 > 0.15f && m11 < 0.9f) fov = 2.0f * std::atan(m11);
+      else continue;
+      if (!(fov > 0.25f && fov < 1.0f)) continue;
+      float m[16];
+      for (int i = 0; i < 16; ++i) m[i] = LoadF(base, a + 4 * uint32_t(i));
+      const bool fila = std::fabs(m[1]) < 1e-3f && std::fabs(m[2]) < 1e-3f && std::fabs(m[3]) < 1e-3f &&
+                        std::fabs(m[4]) < 1e-3f && std::fabs(m[6]) < 1e-3f && std::fabs(m[7]) < 1e-3f &&
+                        std::fabs(m[8]) < 1e-3f && std::fabs(m[9]) < 1e-3f && std::fabs(m[12]) < 1e-3f &&
+                        std::fabs(m[13]) < 1e-3f && std::fabs(m[11] - 1.0f) < 1e-3f && std::fabs(m[15]) < 1e-3f;
+      const bool col = std::fabs(m[1]) < 1e-3f && std::fabs(m[3]) < 1e-3f && std::fabs(m[4]) < 1e-3f &&
+                       std::fabs(m[7]) < 1e-3f && std::fabs(m[8]) < 1e-3f && std::fabs(m[11]) < 1e-3f &&
+                       std::fabs(m[12]) < 1e-3f && std::fabs(m[13]) < 1e-3f && std::fabs(m[14] - 1.0f) < 1e-3f &&
+                       std::fabs(m[15]) < 1e-3f;
+      if (!fila && !col) continue;
+      if (cmd_hits < 8)
+        REXLOG_INFO("dbz3 s10 matriz: comando 0x{:08X} {} fov {:.4f} = [{:.4f} {:.4f} {:.4f} {:.4f} | {:.4f} {:.4f} "
+                    "{:.4f} {:.4f} | {:.4f} {:.4f} {:.4f} {:.4f} | {:.4f} {:.4f} {:.4f} {:.4f}]",
+                    a, fila ? "fila" : "columna", fov, m[0], m[1], m[2], m[3], m[4], m[5], m[6], m[7], m[8], m[9],
+                    m[10], m[11], m[12], m[13], m[14], m[15]);
+      ++cmd_hits;
+    }
+    REXLOG_INFO("dbz3 s10 matriz: barrido comandos 0x{:08X}..0x{:08X}: {} matrices de proyeccion", c0, c1, cmd_hits);
+  }
+  // 1) Los 4x4 del propio gestor de camara (vista en +0x60; la proyeccion suele estar en otro bloque): solo se
+  // aceptan los que tienen forma de proyeccion (fila/columna 3 casi nula salvo el 1 de perspectiva).
+  for (uint32_t off = 0; off <= 0x180; off += 0x20) {
+    float m[16];
+    for (int i = 0; i < 16; ++i) m[i] = LoadF(base, mgr + off + 4 * uint32_t(i));
+    if (!(m[5] > 0.2f && m[5] < 5.0f)) continue;
+    const bool fila = std::fabs(m[1]) < 1e-3f && std::fabs(m[2]) < 1e-3f && std::fabs(m[3]) < 1e-3f &&
+                      std::fabs(m[4]) < 1e-3f && std::fabs(m[6]) < 1e-3f && std::fabs(m[7]) < 1e-3f &&
+                      std::fabs(m[8]) < 1e-3f && std::fabs(m[9]) < 1e-3f && std::fabs(m[12]) < 1e-3f &&
+                      std::fabs(m[13]) < 1e-3f && std::fabs(m[11] - 1.0f) < 1e-3f && std::fabs(m[15]) < 1e-3f;
+    const bool col = std::fabs(m[1]) < 1e-3f && std::fabs(m[3]) < 1e-3f && std::fabs(m[4]) < 1e-3f &&
+                     std::fabs(m[7]) < 1e-3f && std::fabs(m[8]) < 1e-3f && std::fabs(m[11]) < 1e-3f &&
+                     std::fabs(m[12]) < 1e-3f && std::fabs(m[13]) < 1e-3f && std::fabs(m[14] - 1.0f) < 1e-3f &&
+                     std::fabs(m[15]) < 1e-3f;
+    if (!fila && !col) continue;
+    const float fov = m[5] > 1.2f ? 2.0f * std::atan(1.0f / m[5]) : 2.0f * std::atan(m[5]);
+    REXLOG_INFO("dbz3 s10 matriz: mgr+0x{:03X} {} fov {:.4f} = [{:.4f} {:.4f} {:.4f} {:.4f} | {:.4f} {:.4f} {:.4f} "
+                "{:.4f} | {:.4f} {:.4f} {:.4f} {:.4f} | {:.4f} {:.4f} {:.4f} {:.4f}]",
+                off, fila ? "fila" : "columna", fov, m[0], m[1], m[2], m[3], m[4], m[5], m[6], m[7], m[8], m[9], m[10],
+                m[11], m[12], m[13], m[14], m[15]);
+  }
+  int hits = 0;
+  for (uint32_t a = k0; a + 64 <= k1; a += 4) {
+    const float m11 = LoadF(base, a + 20);
+    float fov = 0;
+    if (m11 > 1.2f && m11 < 5.0f) fov = 2.0f * std::atan(1.0f / m11);
+    else if (m11 > 0.15f && m11 < 0.9f) fov = 2.0f * std::atan(m11);
+    else continue;
+    if (!(fov > 0.25f && fov < 1.0f)) continue;
+    float m[16];
+    for (int i = 0; i < 16; ++i) m[i] = LoadF(base, a + 4 * uint32_t(i));
+    const bool fila = std::fabs(m[1]) < 1e-3f && std::fabs(m[2]) < 1e-3f && std::fabs(m[3]) < 1e-3f &&
+                      std::fabs(m[4]) < 1e-3f && std::fabs(m[6]) < 1e-3f && std::fabs(m[7]) < 1e-3f &&
+                      std::fabs(m[8]) < 1e-3f && std::fabs(m[9]) < 1e-3f && std::fabs(m[12]) < 1e-3f &&
+                      std::fabs(m[13]) < 1e-3f && std::fabs(m[11] - 1.0f) < 1e-3f && std::fabs(m[15]) < 1e-3f;
+    const bool col = std::fabs(m[1]) < 1e-3f && std::fabs(m[3]) < 1e-3f && std::fabs(m[4]) < 1e-3f &&
+                     std::fabs(m[7]) < 1e-3f && std::fabs(m[8]) < 1e-3f && std::fabs(m[11]) < 1e-3f &&
+                     std::fabs(m[12]) < 1e-3f && std::fabs(m[13]) < 1e-3f && std::fabs(m[14] - 1.0f) < 1e-3f &&
+                     std::fabs(m[15]) < 1e-3f;
+    if (!fila && !col) continue;
+    const float d785 = std::fabs(m11 - inv785), d602 = std::fabs(m11 - inv602);
+    if (d785 > 0.03f * inv785 && d602 > 0.03f * inv602) continue;
+    REXLOG_INFO("dbz3 s10 matriz: addr 0x{:08X} {} fov {:.4f} ({}); m11 {:.4f} m23 {:.4f} m32 {:.4f} m33 {:.4f}", a,
+                fila ? "fila" : "columna", fov, d602 < d785 ? "~0.602" : "~0.785", m11, m[11], m[14], m[15]);
+    if (hits == 0)   // la primera: los 16 floats, para identificar la convencion
+      REXLOG_INFO("dbz3 s10 matriz: completa addr 0x{:08X} = [{:.4f} {:.4f} {:.4f} {:.4f} | {:.4f} {:.4f} {:.4f} {:.4f}"
+                  " | {:.4f} {:.4f} {:.4f} {:.4f} | {:.4f} {:.4f} {:.4f} {:.4f}]",
+                  a, m[0], m[1], m[2], m[3], m[4], m[5], m[6], m[7], m[8], m[9], m[10], m[11], m[12], m[13], m[14],
+                  m[15]);
+    if (++hits >= 12) break;
+  }
+  REXLOG_INFO("dbz3 s10 matriz: mgr 0x{:08X} fov B3 {:.4f}; barrido 0x{:08X}..0x{:08X}: {} coincidencias", mgr,
+              LoadF(base, mgr + 0x1C4), k0, k1, hits);
+}
 static void Sonda(uint8_t* base, uint32_t mgr, const char* quien) {
   static const bool on = std::getenv("DBZ3_S8_SONDA") != nullptr;
+  static const bool mat = std::getenv("DBZ3_S10_MATRIZ") != nullptr;
   static uint32_t n = 0;
-  if (!on || (n++ % 30) != 0) return;
+  if ((!on && !mat) || (n++ % 30) != 0) return;
+  if (mat) SondaMatriz(base, mgr);
+  if (!on) return;
   float ojo[3] = {0, 0, 0}, obj[3] = {0, 0, 0};
   dbz3::cine::LeerCamara(base, ojo, obj);
   for (int rol = 0; rol < 2; ++rol) {
@@ -2174,6 +2311,15 @@ static void Sonda(uint8_t* base, uint32_t mgr, const char* quien) {
               g_origen[2]);
   REXLOG_INFO("dbz3 s9 sonda {}: camara pedida ojo ({:.2f}, {:.2f}, {:.2f}) obj ({:.2f}, {:.2f}, {:.2f})", quien, g_cam_d[0],
               g_cam_d[1], g_cam_d[2], g_cam_d[3], g_cam_d[4], g_cam_d[5]);
+  // s10 (NB007 ronda 8, clip 0xBB): fov del clip 0,3295 (medido en el #AMC), k = tan(fov/2)/tan(0,785/2) = 0,401. Si
+  // el tamano sale 1,3x, el dibujo NO usa el 0,785 leido: el fov implicito es ~0,602 (0,785/0,602 = 1,30). Comparar
+  // esta linea con el vuelco de constantes del draw (sonda siguiente, ver studies 2 G01_iw_cam).
+  const float dp = std::hypot(g_cam_d[0] - g_cam_d[3], std::hypot(g_cam_d[1] - g_cam_d[4], g_cam_d[2] - g_cam_d[5]));
+  const float dl = std::hypot(ojo[0] - obj[0], std::hypot(ojo[1] - obj[1], ojo[2] - obj[2]));
+  REXLOG_INFO("dbz3 s10 sonda {}: clip 0x{:X} cuadro {} fov clip {:.4f} fov B3 {:.4f} k {:.4f}; distancia pedida {:.2f} "
+              "leida {:.2f} ({:.3f}x)",
+              quien, g_cb_clip.load(), g_cb_frame.load(), g_cam_fov_iw, g_cam_fov_b3, g_cam_k, dp, dl,
+              dl > 0.01f ? dp / dl : 0.0f);
 }
 
 // s8: los dos luchadores de la familia A como en IW (medido en PCSX2): objetos en el origen comun (aqui a +-kMedio en X
@@ -2265,6 +2411,7 @@ static void CamaraFov(uint8_t* base, uint32_t mgr, const float ojo[3], const flo
   fov = std::clamp(fov, 0.2f, 1.3f);
   const float b3 = LoadF(base, mgr + 0x1C4);
   const float k = sin || !(b3 > 0.3f && b3 < 1.4f) ? 1.0f : std::tan(fov * 0.5f) / std::tan(b3 * 0.5f);
+  g_cam_fov_iw = fov, g_cam_fov_b3 = b3, g_cam_k = k;
   float e[3] = {obj[0] + (ojo[0] - obj[0]) * k, obj[1] + (ojo[1] - obj[1]) * k, obj[2] + (ojo[2] - obj[2]) * k};
   float t[3] = {obj[0], obj[1], obj[2]};
   // prueba: camara fija en el mundo de B3 (DBZ3_S8_CAMDBG=ojo.x,y,z,obj.x,y,z), p. ej. una vista desde arriba
@@ -2402,6 +2549,7 @@ static bool PasoCamaraA(uint8_t* base, uint32_t mgr, const Poses& p) {
 }
 
 void PasoBotones(uint8_t* base) {
+  if (g_poses_a.load() == &kPosesNB006) dbz3::escenarios::OcultarFondo(g_fondo_off.load());
   if (g_corre_b.load()) {
     if (const uint32_t mgr = REX_LOAD_U32(kMgrPtr)) Sonda(base, mgr, "B");
     PasoCamaraB(base);

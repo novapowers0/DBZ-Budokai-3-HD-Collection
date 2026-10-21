@@ -365,7 +365,8 @@ struct Anim {
 std::vector<Tex> g_pz, g_frases;                 // 1131 (piezas), 1132 (frases de Babidi)
 std::vector<Tex> g_pzv;                          // ventana de premio: DATA_<idioma> 1148 (#AMT: 0 "Get skill!",
                                                  // 1 estrella, 2 emblema, 3 "BOOM!!")
-std::vector<Anim> g_anim, g_animv;               // 905 (nave) y 933 (ventana de premio)
+std::vector<Tex> g_nubes;                        // nubes del fondo: DATA_CMN 910 (#AMT: 512x512 + banco 512x128)
+std::vector<Anim> g_anim, g_animv, g_animn;      // 905 (nave), 933 (ventana de premio) y 906 (nubes)
 std::map<int, Tex> g_nombres;                    // nombre de cada premio: DATA_<idioma> (542 + ID), textura 0
 std::vector<Tex> g_ficha;                        // "Skill Z Sheet": DATA_<idioma> 541 (fondos, rotulos, iconos, "New")
 std::map<int, Tex> g_textos_capsula;             // textos de cada capsula: DATA_<idioma> (542 + ID), texturas 1-4 (clave ID * 8 + j)
@@ -421,6 +422,40 @@ std::vector<Anim> LeerAma(const std::vector<uint8_t>& d) {
   return out;
 }
 
+// Fondo de nubes del original: #AMA 906 (5 capas visibles; la 5.a es vacia) sobre el #AMT 910 de DATA_CMN
+// (0: nube 512x512, 4: banco 512x128). Los recortes del #AMA van en pixeles de la pantalla de 640x448, asi que se
+// crean con repeticion para que las UV que pasan de la textura (por ejemplo 639/512) sigan tileando como el original.
+bool CargarNubes(AfsPs2& cmn, rex::ui::ImmediateDrawer* dr) {
+  g_animn = LeerAma(cmn.Entrada(906));
+  const std::vector<uint8_t> amt = cmn.Entrada(910);
+  g_nubes.clear();
+  const int n = std::min(CuantasAmt(amt), 64);
+  for (int j = 0; j < n; ++j) {
+    const Imagen im = TexturaAmt(amt, j);
+    Tex x;
+    if (im) {
+      x.t = dr->CreateTexture(uint32_t(im.w), uint32_t(im.h), rex::ui::ImmediateTextureFilter::kLinear, true,
+                              im.rgba.data());
+      x.w = float(im.w);
+      x.h = float(im.h);
+    }
+    g_nubes.push_back(std::move(x));
+  }
+  if (g_animn.empty() || g_nubes.empty()) {
+    g_nubes.clear();
+    g_animn.clear();
+    REXLOG_WARN("dbz3 nave nubes: ama=906 tex=910 no disponible (fondo sin nubes)");
+    return false;
+  }
+  for (size_t k = 0; k < g_animn.size(); ++k) {
+    const int p = g_animn[k].pieza;
+    if (p < 0 || p >= int(g_nubes.size())) continue;
+    REXLOG_INFO("dbz3 nave nubes: ama=906 tex=910 capa={} w/h={}/{}", k, int(g_nubes[size_t(p)].w),
+                int(g_nubes[size_t(p)].h));
+  }
+  return true;
+}
+
 void Cargar() {
   if (g_cargado) return;
   g_cargado = true;
@@ -455,6 +490,7 @@ void Cargar() {
   leer(541, g_ficha);  // la ficha de la capsula (FUN_00292850 pide 0x1021D = DATA_<idioma> 541)
   g_anim = LeerAma(cmn.Entrada(905));
   g_animv = LeerAma(cmn.Entrada(933));
+  CargarNubes(cmn, dr);
   if (g_animv.size() > 3 && g_animv[0].dur_tarea > 0) g_cartel = std::max(g_animv[0].dur_tarea, g_animv[3].dur_tarea);   // S1-F01.4
   REXLOG_INFO("dbz3 nave: graficos de la ISO: {} piezas, {} frases, {} animaciones; ventana de premio {} texturas y "
               "{} animaciones", g_pz.size(), g_frases.size(), g_anim.size(), g_pzv.size(), g_animv.size());
@@ -644,9 +680,17 @@ void Fondo(ImDrawList* dl, const Lienzo& L, bool cielo) {
     }
   }
   dl->AddRectFilled(L.P(0, 0), L.P(640, 448), IM_COL32(34, 22, 52, 255));
+  if (!g_animn.empty()) {   // nubes del fondo (DATA_CMN 906 + 910), detras de la nave y del marco
+    dl->PushClipRect(L.P(0, 0), L.P(640, 448), true);
+    // El original modula las nubes con un tinte morado oscuro (media medida 58,42,58), no las pinta blancas:
+    // con blanco se comen el fondo y producen el "fondo erratico" que reporta el jugador.
+    const ImU32 tinte = IM_COL32(58, 42, 58, 255);
+    for (int k = 0; k < int(g_animn.size()); ++k) DibC(dl, L, k, g_cuadro, true, 0, 0, 0, tinte, &g_animn, &g_nubes);
+    dl->PopClipRect();
+  }
+  if (cielo) DibC(dl, L, 124, 0, false);   // el cielo va detras de la nave y del marco (0x2644E0)
   DibC(dl, L, 71, g_cuadro, true);
   for (int k = 4; k <= 7; ++k) DibC(dl, L, k, 0, false);
-  if (cielo) DibC(dl, L, 124, 0, false);   // en la seleccion, la franja de abajo con el cielo (0x2644E0)
   DibC(dl, L, 13, 0, false);
 }
 // Babidi (36 -> 37) y su bocadillo con la frase k de 1132 a su tamano, centrada: el de abajo (18 -> 19) o, en la

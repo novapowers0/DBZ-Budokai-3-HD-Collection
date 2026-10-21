@@ -32,6 +32,7 @@ Formato (medido contra los 13 pares nativos B3 PS2 GH <-> HD; detalle en docs/14
 import argparse
 import bisect
 import os
+import re
 import struct
 import subprocess
 import sys
@@ -529,6 +530,24 @@ def hd_nativo(i):
 SUCESO_B2 = ("KEMURI", "BAKU", "NULL", "HAKAI", "BOM", "KAMINARI")   # humo, explosion, cascotes, rotura, bombas, rayo
 
 
+def _raiz_amm_y_adornos(mdd, s):
+    """(tiene #AMM, entradas activas que NO son #AMM) de una raiz. Las raices de B2 pueden llevar en el
+    segundo par un #AMP (particula) en vez de un #AMM; B3 no tiene manejador para ese bloque en la lista de
+    nodos (cierre al dibujar, lr 0x8208E5AC)."""
+    tiene_amm, adornos = False, 0
+    for cf, af in ((0, 12), (4, 16)):
+        cnt, arr = le(mdd, s + cf), le(mdd, s + af)
+        for q in range(cnt if (cnt and arr) else 0):
+            flag, blk = struct.unpack_from("<II", mdd, arr + 16 * q)
+            if not blk or blk + 4 > len(mdd):
+                continue
+            if mdd[blk:blk + 4] == b"#AMM":
+                tiene_amm = True
+            elif flag:
+                adornos += 1
+    return tiene_amm, adornos
+
+
 def raices_quietas_b2(mdd):
     """B2: las animaciones de las raices del escenario (#MDD +0x08 n, +0x24 lista; raiz +0 n, +0xC entradas de 16 B
     [tipo, #AMM, parametros, 0]) son TODAS de destruccion (medido en los 9 grupos por los nombres de hueso: TOWER y
@@ -565,6 +584,9 @@ def raices_quietas_b2(mdd):
                         v0 = mdd[q + 12 + ini:q + 12 + paso]   # valores de la clave del cuadro 0
                         for c in range(1, n_c):
                             out[q + 12 + paso * c + ini:q + 12 + paso * (c + 1)] = v0
+        tiene_amm, adornos = _raiz_amm_y_adornos(mdd, s)
+        if adornos and not tiene_amm:   # grupo 1 (BUDO): raiz solo #AMP; B3 se cierra al dibujar su lista
+            continue
         suceso = any(re.match(r"BB[A-Z]{3}B\d", nm) for nm in nombres) or             any(w in nm.upper() for nm in nombres for w in SUCESO_B2)
         if suceso:
             continue
@@ -632,6 +654,88 @@ def sin_camaras_suceso(mdd):
     out = bytearray(mdd)
     struct.pack_into("<II", out, ob + 0xD4, 0, 0)
     return bytes(out), n
+
+
+def llamadas_efectos_b2(spx):
+    """Llamadas al efecto de escenario del #SPX de B2: builtin 0x96 con argumentos
+    [capa, instancia, efecto, bucle, retardo]. Devuelve [(offset, [args])]."""
+    out = []
+    if not spx:
+        return out
+    for m in re.finditer(rb"\x01(\x10.|\x20..|\x30....)\x02\x80\x02", spx, re.S):
+        op = m.group(1)
+        bid = op[1] if op[0] == 0x10 else (struct.unpack("<H", op[1:])[0] if op[0] == 0x20 else struct.unpack("<I", op[1:])[0])
+        if bid != 0x96:
+            continue
+        st = spx.rfind(b"\x0b", 0, m.start()) + 1
+        seg, args, i = spx[st:m.start()], [], 0
+        while i < len(seg):
+            if seg[i] == 0x08 and i + 1 < len(seg) and seg[i + 1] in (0x10, 0x20, 0x30):
+                n = {0x10: 1, 0x20: 2, 0x30: 4}[seg[i + 1]]
+                args.append(int.from_bytes(seg[i + 2:i + 2 + n], "little"))
+                i += 2 + n
+            elif seg[i] == 0x09 and i + 1 < len(seg) and seg[i + 1] == 0x30:
+                args.append(round(struct.unpack_from("<f", seg, i + 2)[0], 3))
+                i += 6
+            else:
+                i += 1
+        out.append((m.start(), args))
+    return out
+
+
+def efectos_b2(fuente, grupo):
+    """Productor de efectos de un escenario de B2: el #SPX (llamadas 0x96) y el banco de efectos que va
+    justo DESPUES del #SPX en el AFS (#AMB con #AMT + N #AME v2). El conversor no los instala: usa el #SPX y
+    el registro de 641 casillas del donante 44. Esta funcion los deja medidos para la tabla y el sidecar."""
+    i = fuente.escenarios()[grupo]
+    mdd, mad, mas, spx = fuente.piezas(grupo)
+    banco = fuente.entrada(i + 5)
+    efectos, texturas = [], []
+    if banco[:4] == b"#AMB":
+        n, t = struct.unpack_from("<2I", banco, 0x10)
+        for k in range(n):
+            o, s, _ty, _fl = struct.unpack_from("<4I", banco, t + 16 * k)
+            if not s:
+                continue
+            if banco[o:o + 4] == b"#AME":
+                efectos.append({"slot": k, "off": o, "size": s})
+            elif banco[o:o + 4] == b"#AMT":
+                texturas.append({"slot": k, "off": o, "size": s})
+    return {"grupo": grupo, "entrada": i, "spx": len(spx or b""), "banco": len(banco) if banco[:4] == b"#AMB" else 0,
+            "efectos": efectos, "texturas": texturas, "llamadas": llamadas_efectos_b2(spx), "mas": le(mas, 4)}
+
+
+def tabla_efectos_b2(fuente, grupos=None):
+    """Texto de la tabla por escenario: llamadas al efecto del #SPX y banco #AME que se descarta."""
+    filas = ["grupo\t#SPX\tllamadas 0x96\tefectos usados\t#AME en banco\t#AMT en banco\t#MAS"]
+    for g in (grupos if grupos is not None else range(len(fuente.escenarios()))):
+        e = efectos_b2(fuente, g)
+        ids = sorted({a[2] for _o, a in e["llamadas"] if len(a) >= 3 and isinstance(a[2], int)})
+        filas.append("%d\t%d\t%d\t%s\t%d\t%d\t%d" % (g, e["spx"], len(e["llamadas"]), ",".join(map(str, ids)) or "-",
+                                                    len(e["efectos"]), len(e["texturas"]), e["mas"]))
+    return "\n".join(filas) + "\n"
+
+
+def conservar_efectos_b2(fuente, grupo, carpeta):
+    """Deja en la carpeta del mod el #SPX de B2 y su banco de efectos (convertido a #AMB/#ACE) como
+    EVIDENCIA, sin tocar el bin instalado. B3 no puede ejecutar el #SPX de B2 tal cual: sus nativas estan
+    renumeradas (0x96 de B2 no existe en B3); el registro de 641 casillas tambien es otro. El sidecar sirve
+    para medir y para un futuro traductor de llamadas; el juego sigue con el #SPX del donante."""
+    e = efectos_b2(fuente, grupo)
+    carpeta = Path(carpeta)
+    (carpeta / "efectos_b2.txt").write_text(tabla_efectos_b2(fuente, [grupo]), encoding="utf-8")
+    i = e["entrada"]
+    spx = fuente.piezas(grupo)[3]
+    if spx:
+        (carpeta / "spx_b2.bin").write_bytes(spx)
+    banco = fuente.entrada(i + 5)
+    if banco[:4] == b"#AMB":
+        (carpeta / "banco_efectos_b2.bin").write_bytes(banco)
+        try:
+            (carpeta / "banco_efectos_b2_hd.amb").write_bytes(ps2hd.convert_block(banco))
+        except ps2hd.Unsupported:
+            pass
+    return e
 
 
 def variante_raiz(mdd, s):
@@ -1245,6 +1349,12 @@ def cmd_mod(a):
     carpeta = instalar(datos, a.mods or (RAIZ / "mods"), nombre, entrada, JUEGOS[a.juego][0], id_se=a.donante + 1,
                        tema=a.tema, foto=a.foto, rotulo_txt=a.rotulo, zona_b=zona_b)
     print("mod '%s' -> %s (entradas %d y %d, %d B)" % (nombre, carpeta, entrada, entrada + 100, len(datos)))
+    try:
+        conservar_efectos_b2(IsoB2(a.iso, a.juego), a.grupo, carpeta)
+    except Exception as e:  # noqa: BLE001 (el sidecar no puede impedir instalar el escenario)
+        print("aviso: no se pudo dejar la tabla de efectos de B2: %s" % e)
+    if a.tabla_efectos:
+        print(tabla_efectos_b2(IsoB2(a.iso, a.juego), [a.grupo]))
     if a.bin and not Path(a.bin).exists():
         Path(a.bin).write_bytes(datos)
 
@@ -1274,6 +1384,8 @@ def main():
     s.add_argument("--caja-escala", type=float, default=1.0,
                    help="estira la CAJA DE COLISION del escenario en x/z (no toca y): 1.0 = original. Sirve para "
                         "un escenario cuyo suelo es mas ancho que su colision (Base Red Ribbon de B2: poco sitio).")
+    s.add_argument("--tabla-efectos", action="store_true",
+                   help="imprime las llamadas de efecto del #SPX de B2 y el banco #AME que el bin del donante no usa")
     s.set_defaults(fn=cmd_mod)
     s = sp.add_parser("comprobar")
     s.add_argument("escenarios", nargs="*", type=int)

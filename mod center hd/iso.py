@@ -101,8 +101,23 @@ class Iso:
 
 
 # juegos de origen en ps2_games, de cualquier region: '(USA)', '(Europe)', '(En,Fr,De,Es,It)'...
-GAME_RE = {"b1": r"budokai \(|budokai 1(?![0-9])", "b2": r"budokai 2", "sb1": r"shin budokai(?!.*another)", "sb2": r"another road"}
+GAME_RE = {"b1": r"budokai \(|budokai 1(?![0-9])", "b2": r"budokai 2", "iw": r"infinite world",
+           "sb1": r"shin budokai(?!.*another)", "sb2": r"another road"}
 GAME_SKIP = {"b1": "shin"}
+
+# Series (SYSTEM.CNF) de las copias medidas; sirven para rechazar una copia de otro juego renombrada (B-02).
+SERIES = {
+    "b1": ("sles_512.33",),
+    "b2": ("sles_518.39",),
+    "iw": ("slus_218.42", "sles_553.47"),
+}
+
+
+def ps2_root(root=None):
+    """Carpeta ps2_games efectiva: la que se pase, DBZ3_PS2_GAMES (pruebas) o <arbol>/ps2_games.
+    Es la misma raiz junto al ejecutable que usa el runtime (UserSettingsPath().parent_path())."""
+    return root or os.environ.get("DBZ3_PS2_GAMES") or os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "ps2_games")
 
 
 def ruta_destino(p):
@@ -118,19 +133,57 @@ def ruta_destino(p):
     return d if d and os.path.exists(d) else None
 
 
-def find_game(game, root=None):
-    """ISO de un juego de origen en ps2_games (o None): por patron, no por el nombre exacto. Vale una ISO suelta o un
-    '.ruta' (ISO elegida desde el launcher en otra carpeta)."""
+def serial_of_path(p):
+    """Serie del SYSTEM.CNF ('sles_553.47') de una ISO o de una carpeta extraida; None si no se puede leer.
+    Sirve para no confundir copias de otro juego renombradas (B-02, studies 2)."""
+    try:
+        if p and os.path.isdir(p):
+            elf = folder_elf(p)
+        elif p and p.lower().endswith(".iso") and os.path.isfile(p):
+            elf = Iso(p).boot_elf()
+        else:
+            return None
+    except (OSError, ValueError, KeyError):
+        return None
+    return os.path.basename(elf).lower() if elf else None
+
+
+def game_of_serial(serial):
+    """Juego ('b1'/'b2'/'iw') de una serie conocida, o None si no esta en la tabla (otra region)."""
+    for game, series in SERIES.items():
+        if serial in series:
+            return game
+    return None
+
+
+def find_game(game, root=None, carpetas=False):
+    """Copia de un juego de origen en ps2_games (o None), por patron y no por el nombre exacto.
+    Prioridad (B-03): '.ruta' elegido por el jugador > carpeta extraida > ISO; dentro de cada grupo, nombre
+    alfabetico sin distinguir mayusculas. Vale cualquier region y se descartan las copias cuya serie conocida es
+    de otro juego (B-02). Mismo criterio que pasarela::BuscarJuego/BuscarIW (src/pasarela_b1.cpp).
+    `carpetas=False` conserva el contrato de las herramientas que solo leen ISO/.ruta; las que leen carpetas
+    extraidas (voces.py/importar.py para IW) pasan carpetas=True."""
     import glob  # noqa: PLC0415
     import re  # noqa: PLC0415
-    root = root or os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "ps2_games")
-    for p in sorted(p for p in glob.glob(os.path.join(root, "*")) if p.lower().endswith((".iso", ".ruta"))):   # .ISO (Linux)
+    root = ps2_root(root)
+    hits = []
+    for p in glob.glob(os.path.join(root, "*")):
         low = os.path.basename(p).lower()
-        if re.search(GAME_RE[game], low) and not (GAME_SKIP.get(game) and GAME_SKIP[game] in low):
-            hit = ruta_destino(p)
-            if hit:
-                return hit
-    return None
+        es_carpeta = carpetas and os.path.isdir(p)
+        if not (es_carpeta or low.endswith((".iso", ".ruta"))):   # .ISO (Linux)
+            continue
+        if not re.search(GAME_RE[game], low) or (GAME_SKIP.get(game) and GAME_SKIP[game] in low):
+            continue
+        dest = ruta_destino(p)
+        if not dest:
+            continue
+        otro = game_of_serial(serial_of_path(dest))
+        if otro and otro != game:
+            continue
+        prioridad = 0 if low.endswith(".ruta") else 1 if os.path.isdir(dest) else 2
+        hits.append((prioridad, low, dest))
+    hits.sort(key=lambda h: (h[0], h[1]))
+    return hits[0][2] if hits else None
 
 
 def boot_elf_name(cnf, find):

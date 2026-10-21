@@ -79,11 +79,16 @@ bool Dbz3PackSwapsRedBlue(xenos::TextureFormat format) {
 }
 
 const Dbz3TexturePackEntry* Dbz3PackRevalidate(const Dbz3TexturePackEntry* cached, uint64_t hash) {
+  return Dbz3PackRevalidate(cached, hash, Dbz3TexturePacksOn(), Dbz3SideBordersHidden());
+}
+
+const Dbz3TexturePackEntry* Dbz3PackRevalidate(const Dbz3TexturePackEntry* cached, uint64_t hash,
+                                               bool packs_on, bool side_borders_hidden) {
   if (cached == nullptr || cached->hash == hash) {
     return cached;
   }
-  const Dbz3TexturePackEntry* now = Dbz3HiddenEntry(hash);
-  if (now == nullptr && Dbz3TexturePacksOn()) {
+  const Dbz3TexturePackEntry* now = Dbz3HiddenEntry(hash, side_borders_hidden);
+  if (now == nullptr && packs_on) {
     now = Dbz3TexturePackIndex::Get().Find(hash);
   }
   if (now != nullptr && now->width == cached->width && now->height == cached->height) {
@@ -1231,7 +1236,11 @@ bool Dbz3MaybeHiddenSize(uint32_t width, uint32_t height) {
 }
 
 const Dbz3TexturePackEntry* Dbz3HiddenEntry(uint64_t hash) {
-  if (!Dbz3SideBordersHidden()) {
+  return Dbz3HiddenEntry(hash, Dbz3SideBordersHidden());
+}
+
+const Dbz3TexturePackEntry* Dbz3HiddenEntry(uint64_t hash, bool side_borders_hidden) {
+  if (!side_borders_hidden) {
     return nullptr;
   }
   for (const HiddenTexture& t : Hidden()) {

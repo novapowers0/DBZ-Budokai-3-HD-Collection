@@ -34,20 +34,18 @@ En personaje.toml (fuente):
 import os
 import struct
 
+import iso
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, ".."))
 SLOTS = 50                         # situaciones de un bloque de B3
 VOICE_AFS = ("adx_usa.afs", "adx_jpn.afs")
-IW_DIR = os.path.join(ROOT, "ps2_games", "Infinite World (USA)")
 
 
 def iw_source():
-    """Infinite World en ps2_games: carpeta extraida o ISO, de cualquier region."""
-    import glob  # noqa: PLC0415
-    hits = sorted((p for p in glob.glob(os.path.join(ROOT, "ps2_games", "*"))
-                   if "infinite world" in os.path.basename(p).lower()),
-                  key=lambda p: not os.path.isdir(p))          # la carpeta primero (sin mayusculas: Linux)
-    return next((p for p in hits if os.path.isdir(p) or p.lower().endswith(".iso")), IW_DIR)
+    """Infinite World en ps2_games (DBZ3_PS2_GAMES): '.ruta' elegido por el jugador, carpeta extraida o ISO, de
+    cualquier region. Misma resolucion que importar.iw_dir e iso.find_game (B-02/B-03, studies 2)."""
+    return iso.find_game("iw", carpetas=True) or os.path.join(iso.ps2_root(), "Infinite World (USA)")
 
 
 class GameFiles:

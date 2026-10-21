@@ -283,6 +283,30 @@ const char* SufijoAfs(const std::string& lang) {
   return "data_en.afs";
 }
 
+// G01-iw-iso B-06 (studies 2): el IW europeo trae DATA_ENG/FRA/GER/ITA/SPN (1532 entradas cada uno); antes se pedia
+// siempre DATA_ENG aunque el juego estuviera en espanol, frances, aleman o italiano. Orden: idioma del jugador
+// (dbz3_language) -> DATA_ENG -> DATA_USA (copia USA). Solo se aplica a la familia DATA_USA/DATA_ENG de IW.
+std::vector<std::string> AfsIwPreferidos(const std::string& pedido) {
+  const std::string n = Lower(pedido);
+  if (n != "data_usa.afs" && n != "data_eng.afs") return {pedido};
+  std::vector<std::string> out;
+  auto anadir = [&out](const std::string& s) {
+    const std::string l = Lower(s);
+    if (std::none_of(out.begin(), out.end(), [&l](const std::string& x) { return Lower(x) == l; })) out.push_back(s);
+  };
+  switch (dbz3::settings::Language()) {
+    case 3: anadir("data_ger.afs"); break;
+    case 4: anadir("data_fra.afs"); break;
+    case 5: anadir("data_spn.afs"); break;
+    case 6: anadir("data_ita.afs"); break;
+    default: anadir("data_eng.afs"); break;   // 1 EN, 2 JP (IW no trae japones) y fuera de rango
+  }
+  anadir("data_eng.afs");
+  anadir("data_usa.afs");
+  anadir(pedido);
+  return out;
+}
+
 }  // namespace
 
 int B1aB3(int id_b1) { return id_b1 >= 0 && id_b1 < int(std::size(kB1aB3)) ? kB1aB3[id_b1] : 0; }
@@ -698,22 +722,43 @@ void CallarSonidosPs2() { ++g_snd_todo; }
 // DATA_USA.AFS de IW (USA): desde la entrada 132, un #AMB por mision [#AMT descripcion, #AMT titulo] en el orden del
 // juego (132 "Training No.1"... 142 "Defeat Raditz!"... 174 "Endure Gohan's attacks!"; medido 2026-10-15 con
 // E:/DBZ3HD_trabajo/campanas/iw_titulos.py). Vale una carpeta extraida (USR/DATA_USA.AFS) o la ISO.
+// G01-iw-iso B-03 (studies 2): fuente de un juego de PS2 en ps2_games. Antes ganaba la ruta destino que ordenara
+// antes (alfabetico) aunque el jugador hubiera elegido otra con "Elegir ISO" (.ruta). Orden ahora:
+//   1) .ruta con destino existente (la copia elegida; si hay varias, nombre alfabetico)
+//   2) carpeta extraida (alfabetico)
+//   3) ISO (alfabetico)
+// El mismo criterio esta en mod center hd/iso.py (find_game) para que runtime y Kit lean la misma copia.
+std::filesystem::path ElegirFuente(const std::filesystem::path& d, const std::string& clave) {
+  std::error_code ec;
+  const std::string c = Lower(clave);
+  std::vector<std::filesystem::path> rutas, carpetas, isos;
+  for (const auto& e : std::filesystem::directory_iterator(d, ec)) {
+    const std::string n = Lower(e.path().filename().string());
+    if (n.find(c) == std::string::npos) continue;
+    if (EsRuta(n)) {
+      if (const auto p = Destino(e.path()); !p.empty()) rutas.push_back(p);
+    } else if (e.is_directory(ec)) {
+      carpetas.push_back(e.path());
+    } else if (n.size() > 4 && n.compare(n.size() - 4, 4, ".iso") == 0) {
+      isos.push_back(e.path());
+    }
+  }
+  auto orden = [](const std::filesystem::path& a, const std::filesystem::path& b) {
+    return Lower(a.string()) < Lower(b.string());
+  };
+  for (auto* v : {&rutas, &carpetas, &isos}) {
+    std::sort(v->begin(), v->end(), orden);
+    if (!v->empty()) return v->front();
+  }
+  return {};
+}
+
 std::filesystem::path BuscarIW() {
   std::vector<std::filesystem::path> dirs;
   if (const char* e = std::getenv("DBZ3_PS2_GAMES")) dirs.emplace_back(e);
   else dirs.push_back(dbz3::settings::UserSettingsPath().parent_path() / "ps2_games");
-  std::error_code ec;
   for (const auto& d : dirs) {
-    std::vector<std::filesystem::path> hay;
-    for (const auto& e : std::filesystem::directory_iterator(d, ec)) {
-      const std::string n = Lower(e.path().filename().string());
-      if (n.find("infinite world") == std::string::npos) continue;
-      if (e.is_directory(ec) || (n.size() > 4 && n.compare(n.size() - 4, 4, ".iso") == 0) || EsRuta(n)) {
-        if (const auto p = Destino(e.path()); !p.empty()) hay.push_back(p);
-      }
-    }
-    std::sort(hay.begin(), hay.end());
-    if (!hay.empty()) return hay.front();
+    if (const auto p = ElegirFuente(d, "infinite world"); !p.empty()) return p;
   }
   return {};
 }
@@ -726,10 +771,12 @@ bool LeerMisionesIW(const std::filesystem::path& iw, const std::vector<int>& num
   std::ifstream f;
   std::string en_iso;
   std::error_code ec;
+  // G01-iw-iso B-06: mismo orden que AfsPs2::Abrir (idioma del jugador -> ENG -> USA)
+  const std::vector<std::string> packs = AfsIwPreferidos("data_usa.afs");
   if (std::filesystem::is_directory(iw, ec)) {
-    for (const char* n : {"data_usa.afs", "data_eng.afs"}) {   // data_eng: IW europeo
+    for (const std::string& nombre : packs) {
       for (const auto& e : std::filesystem::recursive_directory_iterator(iw, ec)) {
-        if (Lower(e.path().filename().string()) == n) {
+        if (Lower(e.path().filename().string()) == nombre) {
           f.open(e.path(), std::ios::binary);
           break;
         }
@@ -737,8 +784,9 @@ bool LeerMisionesIW(const std::filesystem::path& iw, const std::vector<int>& num
       if (f.is_open()) break;
     }
   } else if (iso.Open(iw)) {
-    en_iso = iso.Find("data_usa.afs");
-    if (en_iso.empty()) en_iso = iso.Find("data_eng.afs");
+    for (const std::string& nombre : packs) {
+      if (!(en_iso = iso.Find(nombre)).empty()) break;
+    }
   }
   auto leer = [&](uint64_t off, uint32_t n) -> std::vector<uint8_t> {
     if (!en_iso.empty()) return iso.ReadFile(en_iso, off, n);
@@ -750,12 +798,14 @@ bool LeerMisionesIW(const std::filesystem::path& iw, const std::vector<int>& num
     return b;
   };
   if (en_iso.empty() && !f) {
-    error = "sin DATA_USA.AFS en " + iw.string();
+    std::string nombres;
+    for (const std::string& n : packs) nombres += (nombres.empty() ? "" : "/") + n;
+    error = "sin DATA_USA/ENG/SPN/FRA/GER/ITA (" + nombres + ") en " + iw.string();
     return false;
   }
   const std::vector<uint8_t> h = leer(0, 8);
   if (h.size() < 8 || std::memcmp(h.data(), "AFS", 3) != 0) {
-    error = "DATA_USA.AFS no valido";
+    error = "AFS de textos de IW no valido";
     return false;
   }
   const uint32_t n = std::min<uint32_t>(U32(h, 4), 65536);
@@ -800,9 +850,17 @@ struct AfsPs2::Impl {
 };
 
 bool AfsPs2::Abrir(const std::filesystem::path& juego, const std::string& afs) {
-  // IW europeo (SLES_553.47): DATA_USA.AFS se llama DATA_ENG.AFS, con las mismas 1532 entradas (medido 2026-10-19)
-  if (AbrirUna(juego, afs)) return true;
-  return Lower(afs) == "data_usa.afs" && AbrirUna(juego, "data_eng.afs");
+  // G01-iw-iso B-06: IW europeo (SLES_553.47) trae DATA_ENG/FRA/GER/ITA/SPN. Se pide el del idioma del jugador y
+  // se cae a ENG y luego a USA, sin fijar DATA_ENG. Los demas AFS (B1/B2/CMN/ADX) no pasan por aqui.
+  const std::string n = Lower(afs);
+  if (n != "data_usa.afs" && n != "data_eng.afs") return AbrirUna(juego, afs);
+  for (const std::string& nombre : AfsIwPreferidos(afs)) {
+    if (AbrirUna(juego, nombre)) {
+      if (nombre != n) REXLOG_INFO("dbz3 ps2: {} usa {} (idioma {})", n, nombre, dbz3::settings::Language());
+      return true;
+    }
+  }
+  return false;
 }
 
 bool AfsPs2::AbrirUna(const std::filesystem::path& juego, const std::string& afs) {
@@ -848,18 +906,7 @@ Imagen TexturaAmt(const std::vector<uint8_t>& amt, int j) { return AmtN(amt) > 0
 std::filesystem::path BuscarJuego(const std::string& clave) {
   std::filesystem::path d = dbz3::settings::UserSettingsPath().parent_path() / "ps2_games";
   if (const char* e = std::getenv("DBZ3_PS2_GAMES")) d = e;
-  std::vector<std::filesystem::path> hay;
-  std::error_code ec;
-  const std::string c = Lower(clave);
-  for (const auto& e : std::filesystem::directory_iterator(d, ec)) {
-    const std::string n = Lower(e.path().filename().string());
-    if (n.find(c) == std::string::npos) continue;
-    if (e.is_directory(ec) || (n.size() > 4 && n.compare(n.size() - 4, 4, ".iso") == 0) || EsRuta(n)) {
-      if (const auto p = Destino(e.path()); !p.empty()) hay.push_back(p);
-    }
-  }
-  std::sort(hay.begin(), hay.end());
-  return hay.empty() ? std::filesystem::path() : hay.front();
+  return ElegirFuente(d, clave);   // G01-iw-iso B-03: .ruta elegido > carpeta > ISO
 }
 
 std::filesystem::path IsoPs2(int juego) {
@@ -884,19 +931,28 @@ static std::string SeriePs2(const std::filesystem::path& p) {
 }
 
 std::string RegistrarIsoPs2(int juego, const std::filesystem::path& iso) {
-  // series conocidas (las de las copias medidas; otra region no se rechaza, solo se avisa en el registro)
-  static const char* const kSerie[3][2] = {{"sles_512.33", ""}, {"sles_518.39", ""}, {"slus_218.42", ""}};
+  // G01-iw-iso B-02 (studies 2): series conocidas de las copias medidas. SLES_553.47 es el IW europeo; sin ella se
+  // podia registrar una ISO de IW en el slot de B1/B2 (y al reves) porque solo se avisaba de "otra region".
+  static const struct { int juego; const char* serie; } kSeries[] = {
+      {0, "sles_512.33"},   // Budokai 1 EU
+      {1, "sles_518.39"},   // Budokai 2 EU
+      {2, "slus_218.42"},   // Infinite World USA
+      {2, "sles_553.47"},   // Infinite World EU
+  };
   static const char* const kNombre[3] = {"Budokai 1", "Budokai 2", "Infinite World"};
   const std::string s = SeriePs2(iso);
   if (s.empty())
     return T::T("Ese archivo no es una ISO de PlayStation 2 legible.", "That file is not a readable PlayStation 2 ISO.");
-  for (int g = 0; g < 3; ++g) {
-    if (g != juego && s == kSerie[g][0]) {
-      return std::string(T::T("Esa ISO es de ", "That ISO is ")) + kNombre[g] + T::T(", no de ", ", not ") + kNombre[juego] +
-             ".";
+  bool conocida = false;
+  for (const auto& k : kSeries) {
+    if (s != k.serie) continue;
+    if (k.juego != juego) {
+      return std::string(T::T("Esa ISO es de ", "That ISO is ")) + kNombre[k.juego] + T::T(", no de ", ", not ") +
+             kNombre[juego] + ".";
     }
+    conocida = true;
   }
-  if (s != kSerie[juego][0]) REXLOG_INFO("dbz3 ps2: {} con serie {} (otra region?): se acepta", kNombre[juego], s);
+  if (!conocida) REXLOG_INFO("dbz3 ps2: {} con serie {} (otra region?): se acepta", kNombre[juego], s);
   std::filesystem::path d = dbz3::settings::UserSettingsPath().parent_path() / "ps2_games";
   if (const char* e = std::getenv("DBZ3_PS2_GAMES")) d = e;
   std::error_code ec;

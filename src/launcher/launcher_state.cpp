@@ -1870,8 +1870,10 @@ void LauncherDialog::OnDraw(ImGuiIO& io) {
                     "modding no se reconstruye; para cambiar personajes instala el kit)");
       }
     }
-    // R8: despues, los escenarios nuevos desde los juegos de PS2 del jugador (campos de IW, B1/B2), si esta el Kit
-    stages_pending_ = data_ok && ModPipeline::StagesToolAvailable();
+    // R8: despues, los escenarios nuevos desde los juegos de PS2 del jugador (campos de IW, B1/B2). Se intenta
+    // SIEMPRE: BuildStages deja el motivo en la pestana Mods aunque falten datos, la ISO o el Kit (G11).
+    // `data_ok` solo decide los personajes; que falle su montaje no puede impedir el diagnostico de escenarios.
+    stages_pending_ = true;
     roster_ran_ = launching_;
     if (stages_pending_) launching_ = true;
     if (!launching_) launch_now = true;
@@ -1882,12 +1884,19 @@ void LauncherDialog::OnDraw(ImGuiIO& io) {
     mod_pipeline_.BuildRoster();
   }
   if (launching_ && stages_running_ && !mod_pipeline_.IsRunning()) {
-    // R8: acabo el paso de escenarios; se juega aunque falle (sin Python, sin ISO...): solo queda en el registro
+    // R8: acabo el paso de escenarios. Si los personajes fallaron, NO se juega: se muestra su aviso con el
+    // detalle de escenarios ya recogido (G11: antes el fallo de personajes impedia correr este paso).
     mod_pipeline_.Wait();
     stages_running_ = false;
     launching_ = false;
     REXLOG_INFO("dbz3: escenarios de PS2: {}", mod_pipeline_.Output());
-    launch_now = true;
+    if (roster_failed_) {
+      repair_report_ += "\n\n" + mod_pipeline_.Output();
+      repair_popup_ = true;
+      launch_now = false;
+    } else {
+      launch_now = true;
+    }
   }
   if (launching_ && !stages_running_ && !roster_ran_ && stages_pending_ && !mod_pipeline_.IsRunning()) {
     stages_pending_ = false;   // sin personajes que montar: directamente los escenarios
@@ -1901,15 +1910,25 @@ void LauncherDialog::OnDraw(ImGuiIO& io) {
     REXLOG_INFO("dbz3: personajes nuevos: {}", mod_pipeline_.Output());
     launching_ = false;
     // A4: exit 0 no basta: el _roster publicado tiene que estar completo
-    launch_now = mod_pipeline_.State() == ModPipeline::JobState::kOk && ModPipeline::RosterArtifactsOk();
-    if (launch_now && stages_pending_) {   // R8: tras los personajes, los escenarios (luego se juega)
+    const bool roster_ok = mod_pipeline_.State() == ModPipeline::JobState::kOk && ModPipeline::RosterArtifactsOk();
+    launch_now = roster_ok;
+    if (stages_pending_) {   // R8: los escenarios van SIEMPRE, salga bien o mal el montaje de personajes
       stages_pending_ = false;
       stages_running_ = true;
       launching_ = true;
       launch_now = false;
+      if (!roster_ok) {   // G11: se guarda el aviso; se enseña al acabar los escenarios (con su detalle)
+        roster_failed_ = true;
+        repair_report_ = i18n::T("No se pudieron preparar los personajes nuevos. Puedes jugar con los de la última "
+                                 "vez (botón de abajo) o desactivar el personaje que acabas de añadir en la "
+                                 "pestaña Mods y volver a pulsar JUGAR.",
+                                 "The new characters could not be prepared. You can play with the previous ones "
+                                 "(button below) or turn off the character you just added in the Mods tab and "
+                                 "press PLAY again.");
+      }
       mod_pipeline_.BuildStages();
     }
-    if (!launch_now && !stages_running_) {
+    if (!roster_ok && !stages_running_) {
       repair_report_ = i18n::T("No se pudieron preparar los personajes nuevos. Puedes jugar con los de la última "
                                "vez (botón de abajo) o desactivar el personaje que acabas de añadir en la "
                                "pestaña Mods y volver a pulsar JUGAR.",
@@ -4039,6 +4058,36 @@ void LauncherDialog::DrawModsTab() {
       if (ImGui::IsItemClicked()) {
         mods_status_.clear();
       }
+    }
+
+    // G11: estado del paso de escenarios de PS2, visible sin abrir el registro. La linea se guarda en
+    // mods/_escenarios_ps2.txt y sobrevive al reinicio del launcher.
+    const ModPipeline::StageReport stages = mod_pipeline_.StagesReport();
+    if (stages.ran) {
+      char line[512];
+      if (stages.failed > 0) {
+        std::snprintf(line, sizeof(line),
+                      i18n::T("Escenarios de PS2: %d creados / %d fallaron: %s",
+                              "PS2 stages: %d created / %d failed: %s"),
+                      stages.created, stages.failed, stages.reason.c_str());
+      } else {
+        std::snprintf(line, sizeof(line),
+                      i18n::T("Escenarios de PS2: %d creados / 0 fallaron",
+                              "PS2 stages: %d created / 0 failed"),
+                      stages.created);
+      }
+      ImGui::PushTextWrapPos(0.0f);
+      ImGui::TextColored(stages.failed > 0 ? kGold : kOk, "%s", line);
+      ImGui::PopTextWrapPos();
+      if (ImGui::IsItemHovered()) {
+        const std::string tip = std::string(i18n::T("Registro: ", "Log: ")) +
+                                rex::path_to_utf8(ModPipeline::StagesRegistryPath());
+        ImGui::SetTooltip("%s", tip.c_str());
+      }
+    } else {
+      ImGui::TextDisabled("%s", i18n::T(
+          "Escenarios de PS2: sin datos todavia (se preparan al pulsar JUGAR).",
+          "PS2 stages: no data yet (they are prepared when you press PLAY)."));
     }
   }
   ImGui::Separator();

@@ -4,6 +4,7 @@
 #include "launcher/settings.h"
 #include "mods.h"
 #include "pasarela.h"
+#include "region.h"
 
 #include <rex/filesystem.h>
 #include <rex/logging.h>
@@ -16,6 +17,8 @@
 #include <cstring>
 #include <fstream>
 #include <mutex>
+#include <set>
+#include <sstream>
 
 namespace dbz3::opcional {
 namespace {
@@ -321,3 +324,266 @@ std::filesystem::path ArchivoDeJuegoPs2(const std::string& juego, const std::str
 }
 
 }  // namespace dbz3::opcional
+
+// ---------------------------------------------------------------------------------------------------------
+// G05: selector de musica de combate (ver mods_opcionales.h). Backend sin UI: enumera pistas ADX reales de
+// la copia del jugador y guarda la eleccion. La reproduccion usa pasarela::OirMusicaPs2 (misma via que el
+// tablero de B2 y los menus de IW), asi que no hace falta otro decodificador.
+// ---------------------------------------------------------------------------------------------------------
+namespace dbz3::musica {
+namespace {
+
+uint32_t Be32(const std::vector<uint8_t>& b, size_t o) {
+  return o + 4 <= b.size() ? uint32_t(b[o]) << 24 | uint32_t(b[o + 1]) << 16 | uint32_t(b[o + 2]) << 8 | b[o + 3] : 0;
+}
+
+bool CabeceraAdx(pasarela::AfsPs2& afs, int entrada, int& hz, int& canales, double& segundos) {
+  if (entrada < 0) return false;
+  const std::vector<uint8_t> h = afs.Entrada(size_t(entrada), 32);
+  if (h.size() < 32 || h[0] != 0x80) return false;   // firma ADX (0x8000 big-endian)
+  hz = int(Be32(h, 8));
+  canales = h[7];
+  const uint32_t muestras = Be32(h, 12);
+  if (hz < 8000 || hz > 48000 || canales < 1 || canales > 2) return false;
+  segundos = hz > 0 ? double(muestras) / hz : 0.0;
+  return true;
+}
+
+std::filesystem::path BaseDeJuego(const std::string& juego) {
+  if (juego == "b3") return dbz3::HostDataRoot();
+  if (juego == "b2") return pasarela::BuscarJuego("budokai 2");
+  if (juego == "iw") return pasarela::BuscarJuego("infinite world");
+  if (juego == "b1") return pasarela::BuscarIsoB1();
+  return {};
+}
+
+std::string NombreFuente(const std::string& juego) {
+  if (juego == "b3") return "B3 HD";
+  if (juego == "b2") return "Budokai 2";
+  if (juego == "iw") return "Infinite World";
+  if (juego == "b1") return "Budokai 1";
+  return juego;
+}
+
+std::mutex g_pistas_mu;
+std::shared_ptr<const std::vector<Pista>> g_pistas;
+std::chrono::steady_clock::time_point g_pistas_at;
+
+void AgregarJuego(std::vector<Pista>& out, std::set<std::string>& vistos, const std::string& juego,
+                  const std::string& afs_nombre, double minimo_segundos) {
+  const std::filesystem::path base = BaseDeJuego(juego);
+  if (base.empty()) return;
+  // otras regiones: mismos AFS con otro sufijo (no se reparte nada; solo se lee la copia del jugador).
+  std::vector<std::string> nombres{afs_nombre};
+  for (const char* alt : {"ADX_EU.AFS", "ADX_JP.AFS", "adx_eur.afs", "adx_jpn.afs", "ADX_CMN.AFS", "adx_usa.afs"})
+    if (afs_nombre != alt) nombres.push_back(alt);
+  pasarela::AfsPs2 afs;
+  std::string usado;
+  for (const std::string& nombre : nombres) {
+    if (afs.Abrir(base, nombre)) {
+      usado = nombre;
+      break;
+    }
+  }
+  if (usado.empty()) return;
+  for (size_t k = 0; k < afs.Cuantas(); ++k) {
+    int hz = 0, canales = 1;
+    double segundos = 0.0;
+    if (!CabeceraAdx(afs, int(k), hz, canales, segundos)) continue;
+    if (segundos < minimo_segundos) continue;   // fuera voces y efectos cortos
+    const std::string clave = juego + "|" + usado + "|" + std::to_string(k);
+    if (!vistos.insert(clave).second) continue;
+    Pista p;
+    p.fuente = juego;
+    p.afs = usado;
+    p.juego = base;
+    p.entrada = int(k);
+    p.hz = hz;
+    p.canales = canales;
+    p.segundos = segundos;
+    p.nombre = NombreFuente(juego) + " #" + std::to_string(k);
+    out.push_back(std::move(p));
+  }
+}
+
+std::string ModoName(Modo modo) {
+  switch (modo) {
+    case Modo::kFija: return "fija";
+    case Modo::kAleatoria: return "aleatoria";
+    default: return "original";
+  }
+}
+
+Modo ParseModo(const std::string& text) {
+  if (text == "fija" || text == "fixed") return Modo::kFija;
+  if (text == "aleatoria" || text == "random") return Modo::kAleatoria;
+  return Modo::kOriginal;
+}
+
+std::string Seguro(const std::string& s) {
+  std::string out;
+  for (char c : s) {
+    if (std::isalnum(static_cast<unsigned char>(c)) || c == '.' || c == '_' || c == '-') out += c;
+    if (out.size() >= 64) break;
+  }
+  return out.empty() ? "global" : out;
+}
+
+std::string Escapa(const std::string& s) {
+  std::string out;
+  for (char c : s) {
+    if (c == '"' || c == '\\') out += '\\';
+    out += c;
+  }
+  return out;
+}
+
+void LeerArchivo(const std::filesystem::path& path, Opcion& o) {
+  std::error_code ec;
+  if (!std::filesystem::is_regular_file(path, ec)) return;
+  try {
+    const toml::table t = toml::parse_file(rex::path_to_utf8(path));
+    if (const auto v = t["modo"].value<std::string>()) o.modo = ParseModo(*v);
+    if (const auto v = t["fuente"].value<std::string>()) o.fuente = *v;
+    if (const auto v = t["entrada"].value<int64_t>()) o.entrada = int(*v);
+    if (const auto v = t["partida"].value<std::string>()) o.partida = *v;
+  } catch (const std::exception& ex) {
+    REXLOG_WARN("dbz3 musica: {} no se pudo leer: {}", rex::path_to_utf8(path), ex.what());
+  }
+}
+
+bool EscribirArchivo(const std::filesystem::path& path, const Opcion& o) {
+  std::error_code ec;
+  std::filesystem::create_directories(path.parent_path(), ec);
+  auto tmp = path;
+  tmp += ".tmp";
+  {
+    std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
+    if (!out) return false;
+    out << "# dbz3: musica de combate elegida por el jugador (G05)\n";
+    out << "modo = \"" << ModoName(o.modo) << "\"\n";
+    out << "fuente = \"" << Escapa(o.fuente) << "\"\n";
+    out << "entrada = " << o.entrada << "\n";
+    out << "partida = \"" << Escapa(o.partida) << "\"\n";
+    if (!out.good()) return false;
+  }
+  std::filesystem::rename(tmp, path, ec);
+  if (ec) {
+    REXLOG_WARN("dbz3 musica: no se pudo publicar {} ({})", rex::path_to_utf8(path), ec.message());
+    return false;
+  }
+  return true;
+}
+
+}  // namespace
+
+std::vector<Pista> Pistas() {
+  {
+    std::lock_guard<std::mutex> lock(g_pistas_mu);
+    const auto now = std::chrono::steady_clock::now();
+    if (g_pistas && std::chrono::duration_cast<std::chrono::seconds>(now - g_pistas_at).count() < 5) return *g_pistas;
+  }
+  auto out = std::make_shared<std::vector<Pista>>();
+  std::set<std::string> vistos;
+  AgregarJuego(*out, vistos, "b3", "adx_usa.afs", 20.0);
+  AgregarJuego(*out, vistos, "b2", "ADX_US.AFS", 20.0);
+  AgregarJuego(*out, vistos, "iw", "ADX_CMN.AFS", 20.0);
+  AgregarJuego(*out, vistos, "b1", "ADX_JP.AFS", 20.0);
+  // Mods opcionales: [pistas] nombre = entrada, con [opcional] juego/afs (o el prefijo del id: b2.xxx).
+  for (const opcional::Mod& m : *opcional::Listar()) {
+    if (!m.activo) continue;
+    const std::vector<std::string> claves = opcional::Claves(m.id, "pistas");
+    if (claves.empty()) continue;
+    std::string juego = opcional::Texto(m.id, "juego", "");
+    if (juego.empty()) juego = m.id.substr(0, std::min<size_t>(2, m.id.size()));
+    const std::string afs_nombre = opcional::Texto(m.id, "afs", juego == "b2" ? "ADX_US.AFS"
+                                                                 : juego == "iw" ? "ADX_CMN.AFS"
+                                                                 : juego == "b1" ? "ADX_JP.AFS" : "adx_usa.afs");
+    const std::filesystem::path base = BaseDeJuego(juego);
+    if (base.empty()) continue;
+    pasarela::AfsPs2 afs;
+    if (!afs.Abrir(base, afs_nombre)) continue;
+    for (const std::string& clave : claves) {
+      const int entrada = int(opcional::Entero(m.id, "pistas." + clave, -1));
+      int hz = 0, canales = 1;
+      double segundos = 0.0;
+      if (!CabeceraAdx(afs, entrada, hz, canales, segundos)) continue;
+      const std::string id = "mod:" + m.carpeta + "|" + afs_nombre + "|" + std::to_string(entrada);
+      if (!vistos.insert(id).second) continue;
+      Pista p;
+      p.fuente = "mod:" + m.carpeta;
+      p.afs = afs_nombre;
+      p.juego = base;
+      p.entrada = entrada;
+      p.hz = hz;
+      p.canales = canales;
+      p.segundos = segundos;
+      p.nombre = clave + " (" + m.carpeta + ")";
+      out->push_back(std::move(p));
+    }
+  }
+  std::sort(out->begin(), out->end(), [](const Pista& a, const Pista& b) {
+    if (a.fuente != b.fuente) return a.fuente < b.fuente;
+    return a.entrada < b.entrada;
+  });
+  {
+    std::lock_guard<std::mutex> lock(g_pistas_mu);
+    g_pistas = out;
+    g_pistas_at = std::chrono::steady_clock::now();
+  }
+  return *out;
+}
+
+void RefrescarPistas() {
+  std::lock_guard<std::mutex> lock(g_pistas_mu);
+  g_pistas_at = std::chrono::steady_clock::time_point{};
+}
+
+std::filesystem::path RutaRegistro(const std::string& partida) {
+  const std::filesystem::path root = dbz3::settings::UserDataRoot();
+  if (partida.empty()) return root / "musica.toml";
+  return root / ("musica_partida_" + Seguro(partida) + ".toml");
+}
+
+Opcion Leer(const std::string& partida) {
+  Opcion o;
+  LeerArchivo(RutaRegistro(), o);
+  if (!partida.empty()) LeerArchivo(RutaRegistro(partida), o);
+  o.partida = partida;
+  return o;
+}
+
+void Guardar(const Opcion& opcion) {
+  EscribirArchivo(RutaRegistro(), opcion);
+  if (!opcion.partida.empty()) EscribirArchivo(RutaRegistro(opcion.partida), opcion);
+}
+
+Pista Elegir(const Opcion& opcion, uint32_t semilla) {
+  if (opcion.modo == Modo::kOriginal) return {};
+  std::vector<Pista> lista = Pistas();
+  if (!opcion.fuente.empty())
+    std::erase_if(lista, [&](const Pista& p) { return p.fuente != opcion.fuente; });
+  if (lista.empty()) return {};
+  if (opcion.modo == Modo::kFija) {
+    for (const Pista& p : lista)
+      if (p.entrada == opcion.entrada) return p;
+    return lista.front();
+  }
+  uint32_t x = semilla + 0x9E3779B9u;
+  x ^= x >> 16; x *= 0x7FEB352Du; x ^= x >> 15; x *= 0x846CA68Bu; x ^= x >> 16;
+  return lista[x % lista.size()];
+}
+
+bool ModoConMusicaNativa(const std::string& ambito) {
+  return ambito == "b2_tablero" || ambito == "b2_menu" || ambito == "iw_mapa" || ambito == "iw_menu" ||
+         ambito == "nave" || ambito == "b1_menu" || ambito == "menu";
+}
+
+void Escuchar(const Pista& pista, float volumen) {
+  if (pista.juego.empty() || pista.afs.empty() || pista.entrada < 0) return;
+  pasarela::OirMusicaPs2(pista.juego, pista.afs, pista.entrada, volumen);
+}
+
+void Parar() { pasarela::CallarMusicaPs2(); }
+
+}  // namespace dbz3::musica

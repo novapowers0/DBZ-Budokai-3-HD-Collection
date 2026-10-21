@@ -192,6 +192,10 @@ bool Dbz3PackSwapsRedBlue(xenos::TextureFormat format);
 // la memoria se reutilizo para otra textura del pack, o nullptr si ya no es del
 // pack (el recurso host tiene el tamano de `cached`, asi que no vale otro).
 const Dbz3TexturePackEntry* Dbz3PackRevalidate(const Dbz3TexturePackEntry* cached, uint64_t hash);
+// Igual, pero con el estado APLICADO del pack (D3D12 transaccional): no relee
+// las cvars vivas durante la submission.
+const Dbz3TexturePackEntry* Dbz3PackRevalidate(const Dbz3TexturePackEntry* cached, uint64_t hash,
+                                               bool packs_on, bool side_borders_hidden);
 
 // Tiras doradas de los lados de los menus del juego: textura "borde" de data_usi (128x1024, la misma en
 // 2033/2039/2043/2049/2055/2062) y la greca dorada del marco 16:9 (64x1024). Con "Bordes dorados" apagado
@@ -203,5 +207,7 @@ bool Dbz3MaybeHiddenSize(uint32_t width, uint32_t height);
 // Entrada virtual (imagen transparente) si `hash` es una tira y estan ocultas; si no, nullptr.
 // Decoded/TryDecoded la devuelven ya hecha.
 const Dbz3TexturePackEntry* Dbz3HiddenEntry(uint64_t hash);
+// Igual, con el estado aplicado de "Bordes dorados" (D3D12 transaccional).
+const Dbz3TexturePackEntry* Dbz3HiddenEntry(uint64_t hash, bool side_borders_hidden);
 
 }  // namespace rex::graphics

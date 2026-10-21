@@ -77,6 +77,18 @@ class ModPipeline {
   // Escenarios nuevos desde los juegos de PS2 del jugador (campos de IW y escenarios de B1/B2): los que falten o
   // cuya ISO cambio, en mods/ (mod center hd/campos_iw.py auto). Se genera en su equipo: nada del juego viaja.
   void BuildStages();
+  // Resultado del ultimo paso de escenarios (visible en la pestana Mods). `created` = escenarios completos en
+  // mods/; `failed` = tareas que fallaron en la ultima pasada y `reason` = primer motivo (sin prefijo).
+  struct StageReport {
+    int created = 0;
+    int failed = 0;
+    bool ran = false;          // hay un resultado (de esta sesion o del registro guardado)
+    bool up_to_date = false;   // la ultima pasada dijo "al dia"
+    std::string reason;
+  };
+  StageReport StagesReport();
+  // Registro de la ultima pasada (mods/_escenarios_ps2.txt): sobrevive al reinicio del launcher.
+  static std::filesystem::path StagesRegistryPath();
   // Capsules (skills) of a source mod: roster_build.py capsulas (--anadir NOMBRE TIPO
   // [FORMA] | --quitar N | --renombrar N NOMBRE | --subir N); edits personaje.toml.
   void EditCapsules(const std::string& mod, const std::vector<std::string>& extra);
@@ -146,6 +158,13 @@ class ModPipeline {
   void RunAsync(const std::filesystem::path& script,
                 const std::vector<std::string>& args);
   void AppendOutput(const std::string& text);
+  // G11: aparta a mods_respaldo/ las carpetas de escenario auto-generadas (origen.txt) incompletas, para que
+  // campos_iw.py las vuelva a crear en vez de darlas por buenas con el sello viejo.
+  int PruneIncompleteStages();
+  void SetStagesReport(int created, int failed, const std::string& reason);
+  void ParseStagesOutputLocked();
+  void WriteStagesRegistryLocked(const StageReport& report);
+  void LoadStagesRegistryLocked();
   // us/ folder next to the selected data_cmn.afs ("" = let the script auto-detect).
   std::string UsDir() const;
   std::vector<std::string> SwapArgs(const B3Char& src, const B3Char& dst,
@@ -167,6 +186,13 @@ class ModPipeline {
   std::string output_;
   std::string afs_path_;
   std::thread worker_;
+  // G11: solo se interpreta la salida de un trabajo de escenarios (no la del roster/swap).
+  bool stages_run_pending_ = false;
+  bool last_job_stages_ = false;
+  bool stages_parsed_ = false;
+  bool stages_report_loaded_ = false;
+  std::string stages_parsed_output_;
+  StageReport stages_report_;
 };
 
 }  // namespace dbz3::launcher

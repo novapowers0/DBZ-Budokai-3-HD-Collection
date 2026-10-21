@@ -1,4 +1,4 @@
-/**
+﻿/**
  ******************************************************************************
  * Xenia : Xbox 360 Emulator Research Project                                 *
  ******************************************************************************
@@ -143,7 +143,7 @@ REXCVAR_DEFINE_INT32(dbz3_upscale_min_size, 16, "GPU",
 // RGBA1010102). Antes solo se volcaban los DXT, asi que casi todo el HUD
 // desaparecia del volcado. Los formatos no soportados se omiten y se avisa UNA
 // vez por formato en el log (asi se ve que queda pendiente).
-// 🔴 `dbz3_texture_dump` NO se define aqui: la define el launcher
+// ðŸ”´ `dbz3_texture_dump` NO se define aqui: la define el launcher
 // (`src/launcher/settings.cpp`), que es quien la persiste en el TOML. El
 // registro de cvars es COMPARTIDO entre el exe y este plugin, y el launcher se
 // carga antes, asi que una definicion duplicada aqui se DESCARTA
@@ -154,6 +154,26 @@ REXCVAR_DEFINE_INT32(dbz3_texture_dump_max, 4096, "GPU",
                      "DBZ3: numero maximo de texturas unicas a volcar "
                      "(0 = sin limite)")
     .range(0, 1000000);
+
+// DBZ3: trazas del cambio transaccional del pack HD (estado aplicado vs
+// solicitado, generaciones, desc del recurso y omisiones). Apagado por defecto;
+// con `dbz3_diag_logging=true` tambien se activa. Las lineas son acotadas (una
+// por key/etapa y como maximo 64 omisiones), para no inundar el log.
+REXCVAR_DEFINE_BOOL(dbz3_pack_txn_debug, false, "DBZ3/Dev",
+                    "DBZ3: trazas del cambio de pack HD (generaciones, recursos, omisiones)");
+// DBZ3: imprime la lista acumulada de texturas del pack no aplicadas en el
+// siguiente BeginSubmission. Pensado para diagnostico dev; no cambia el juego.
+REXCVAR_DEFINE_BOOL(dbz3_pack_report, false, "DBZ3/Dev",
+                    "DBZ3: volcar la lista de texturas del pack no aplicadas");
+
+namespace {
+
+bool Dbz3PackTxnDebugEnabled() {
+  return REXCVAR_GET(dbz3_pack_txn_debug) ||
+         rex::cvar::GetFlagByName("dbz3_diag_logging") == "true";
+}
+
+}  // namespace
 
 namespace {
 
@@ -193,7 +213,7 @@ void Dbz3PutU32LE(uint8_t* p, uint32_t v) {
 // legacy; los formatos sin comprimir, mascaras de bits (asi el visor / Pillow /
 // el cargador de packs leen el bitmap CRUDO en el orden correcto).
 //
-// ⚠️ dwCaps va en +108, NO en +104: +104 es `dwABitMask` dentro de
+// âš ï¸ dwCaps va en +108, NO en +104: +104 es `dwABitMask` dentro de
 // DDS_PIXELFORMAT (que ocupa 76..107), asi que escribirlo ahi lo perdia y
 // ademas pisaba la mascara de alpha (critico en los formatos sin comprimir).
 bool Dbz3WriteDds(const std::filesystem::path& path, const uint8_t* data, uint32_t data_size,
@@ -831,53 +851,55 @@ void D3D12TextureCache::ClearCache() {
   srv_descriptor_cache_free_.clear();
   srv_descriptor_cache_allocated_ = 0;
   srv_descriptor_cache_.clear();
+  // Los indices de descriptor guardados apuntan a la cache recien vaciada.
+  for (D3D12TextureBinding& binding : d3d12_texture_bindings_) {
+    binding.Reset();
+  }
+
+  // DBZ3: los metadatos del pack y de la cadena de upscale describen recursos
+  // que acaban de destruirse. Se limpian AQUI (ClearCache solo se llama tras
+  // AwaitAllQueueOperationsCompletion), nunca al abrir submission. Si no, una
+  // key podia conservar un factor/entrada viejos y `upscale_chain_resources_`
+  // apuntaba a un ID3D12Resource liberado (mips basura tras recrear).
+  pack_factor_cache_.clear();
+  pack_entry_cache_.clear();
+  pack_waiting_.clear();
+  pack_retired_keys_.clear();
+  pack_retire_now_.clear();
+  pack_grant_bytes_ = 0;
+  pending_pack_uploads_.clear();
+  pack_upload_pool_.clear();
+  pack_upload_pool_bytes_ = 0;
+  upscale_granted_keys_.clear();
+  upscale_dynamic_keys_.clear();
+  upscale_chain_resources_.clear();
+  upscale_reload_counters_.clear();
+
+  MaybeLogPackReport();
 }
 
 void D3D12TextureCache::BeginSubmission(uint64_t new_submission_index) {
   TextureCache::BeginSubmission(new_submission_index);
+  pack_txn_debug_enabled_ = Dbz3PackTxnDebugEnabled();
 
-  // DBZ3: el indice de packs se construye en segundo plano; cuando acaba, lo cargado
-  // con las originales se rehace para que entren las HD.
-  const bool pack_index_ready = Dbz3TexturePackIndex::Get().active();
-  bool pack_state_changed = false;
-  if (pack_index_ready != pack_index_seen_) {
-    pack_index_seen_ = pack_index_ready;
-    pack_state_changed = true;
+  // DBZ3: el indice de packs se construye en segundo plano; el interruptor F1
+  // y "Bordes dorados" se pueden cambiar en vivo. Aqui SOLO se anota el estado
+  // solicitado. El estado aplicado (el que consultan GetTexturePackFactor y
+  // Dbz3PackRevalidate durante toda la submission) no cambia hasta que
+  // EndSubmission espera al fence y limpia caches. Un cambio rapido se coalesce
+  // quedandose con el ultimo estado pedido.
+  if (!pack_state_initialized_) {
+    pack_state_initialized_ = true;
+    pack_applied_state_.index_ready = Dbz3TexturePackIndex::Get().active();
+    pack_applied_state_.packs_on =
+        pack_applied_state_.index_ready && Dbz3TexturePacksOn();
+    pack_applied_state_.side_borders_hidden = Dbz3SideBordersHidden();
+    pack_requested_state_ = pack_applied_state_;
+    pack_generation_ = 1;
+    pack_requested_generation_ = 1;
   }
-  // DBZ3: pack HD encendido/apagado en vivo (F1): se rehacen todas las texturas (las HD
-  // ya decodificadas estan en RAM y entran repartidas en varios frames, ver abajo).
-  if (pack_index_ready) {
-    const bool packs_on = Dbz3TexturePacksOn();
-    if (packs_on != packs_on_seen_) {
-      packs_on_seen_ = packs_on;
-      pack_state_changed = true;
-    }
-  }
-  // DBZ3: "Bordes dorados" (F1) en vivo: la tira de los menus se rehace igual.
-  static bool borders_hidden_seen = Dbz3SideBordersHidden();
-  if (const bool hidden = Dbz3SideBordersHidden(); hidden != borders_hidden_seen) {
-    borders_hidden_seen = hidden;
-    pack_state_changed = true;
-  }
-  if (pack_state_changed) {
-    pack_factor_cache_.clear();
-    pack_entry_cache_.clear();
-    pack_waiting_.clear();
-    pack_retired_keys_.clear();
-    pack_retire_now_.clear();
-    command_processor_.ClearCaches();
-    // Limites de memoria de la cache con pack (como Burst Limit): 1/4 y 1/2 de la VRAM.
-    const bool pack_on = pack_index_ready && packs_on_seen_;
-    const uint64_t vram_mb = video_memory_budget_bytes() >> 20;
-    pack_memory_limit_soft_mb_ =
-        !pack_on ? 0 : vram_mb ? uint32_t(std::clamp<uint64_t>(vram_mb / 4, 512, 4096)) : 1024;
-    pack_memory_limit_hard_mb_ =
-        !pack_on ? 0 : vram_mb ? uint32_t(std::clamp<uint64_t>(vram_mb / 2, 1024, 8192)) : 2048;
-    if (pack_on) {
-      REXGPU_INFO("dbz3: pack HD: cache de texturas hasta {}/{} MB (VRAM {} MB)",
-                  pack_memory_limit_soft_mb_, pack_memory_limit_hard_mb_, vram_mb);
-    }
-  }
+  CaptureRequestedPackState(new_submission_index);
+  MaybeLogPackReport();
   // Texturas que esperaban su imagen HD: las que ya la tienen en RAM se recrean a su tamano
   // (hasta ~64 MB por submission); las ilegibles se quedan con la original.
   pack_grant_bytes_ = 0;
@@ -891,7 +913,9 @@ void D3D12TextureCache::BeginSubmission(uint64_t new_submission_index) {
   const uint64_t vram_budget_now = pack_waiting_.empty() ? 0 : video_memory_budget_bytes();
   const bool vram_full = vram_budget_now != 0 && video_memory_usage_bytes() * 100 >= vram_budget_now * 92;
   const bool rerequest = ++pack_wait_round % 60 == 0;
-  if (!pack_waiting_.empty() && !vram_full) {
+  const bool pack_applied =
+      pack_applied_state_.index_ready && pack_applied_state_.packs_on;
+  if (pack_applied && !pack_waiting_.empty() && !vram_full) {
     const Dbz3TexturePackIndex& index = Dbz3TexturePackIndex::Get();
     for (auto it = pack_waiting_.begin(); it != pack_waiting_.end();) {
       if (index.IsBroken(it->second)) {
@@ -954,6 +978,153 @@ void D3D12TextureCache::BeginSubmission(uint64_t new_submission_index) {
     }
     std::memset(scaled_resolve_1gb_buffer_indices_, UINT8_MAX,
                 sizeof(scaled_resolve_1gb_buffer_indices_));
+  }
+}
+
+void D3D12TextureCache::CaptureRequestedPackState(uint64_t submission_index) {
+  PackState requested;
+  requested.index_ready = Dbz3TexturePackIndex::Get().active();
+  requested.packs_on = requested.index_ready && Dbz3TexturePacksOn();
+  requested.side_borders_hidden = Dbz3SideBordersHidden();
+  if (requested == pack_requested_state_) {
+    return;
+  }
+  pack_requested_state_ = requested;
+  ++pack_requested_generation_;
+  if (requested == pack_applied_state_) {
+    // Encendido y apagado rapidos antes del fence: no queda nada pendiente.
+    pack_state_pending_ = false;
+    pack_state_coalesced_ = 0;
+  } else {
+    if (!pack_state_pending_) {
+      pack_state_pending_ = true;
+      pack_state_change_submission_ = submission_index;
+    } else {
+      ++pack_state_coalesced_;
+    }
+  }
+  if (pack_txn_debug_enabled_) {
+    REXGPU_INFO(
+        "dbz3: pack txn solicitud gen={} sub={} aplicado(gen={},on={},idx={},bordes={}) "
+        "pedido(on={},idx={},bordes={}) pendiente={} coalescidos={}",
+        pack_requested_generation_, submission_index, pack_generation_,
+        pack_applied_state_.packs_on ? 1 : 0, pack_applied_state_.index_ready ? 1 : 0,
+        pack_applied_state_.side_borders_hidden ? 1 : 0, requested.packs_on ? 1 : 0,
+        requested.index_ready ? 1 : 0, requested.side_borders_hidden ? 1 : 0,
+        pack_state_pending_ ? 1 : 0, pack_state_coalesced_);
+  }
+}
+
+void D3D12TextureCache::ApplyPendingPackState() {
+  if (!pack_state_pending_) {
+    return;
+  }
+  pack_applied_state_ = pack_requested_state_;
+  pack_state_pending_ = false;
+  pack_state_coalesced_ = 0;
+  ++pack_generation_;
+  pack_state_applied_submission_ = command_processor_.GetCompletedSubmission();
+  const bool pack_on = pack_applied_state_.index_ready && pack_applied_state_.packs_on;
+  const uint64_t vram_mb = video_memory_budget_bytes() >> 20;
+  pack_memory_limit_soft_mb_ =
+      !pack_on ? 0 : vram_mb ? uint32_t(std::clamp<uint64_t>(vram_mb / 4, 512, 4096)) : 1024;
+  pack_memory_limit_hard_mb_ =
+      !pack_on ? 0 : vram_mb ? uint32_t(std::clamp<uint64_t>(vram_mb / 2, 1024, 8192)) : 2048;
+  REXGPU_INFO(
+      "dbz3: pack txn aplicado gen={} (cambio sub={}, aplicado sub={}) on={} idx={} bordes={} "
+      "limites={}/{} MB vram={} MB",
+      pack_generation_, pack_state_change_submission_, pack_state_applied_submission_,
+      pack_applied_state_.packs_on ? 1 : 0, pack_applied_state_.index_ready ? 1 : 0,
+      pack_applied_state_.side_borders_hidden ? 1 : 0, pack_memory_limit_soft_mb_,
+      pack_memory_limit_hard_mb_, vram_mb);
+  if (pack_on) {
+    REXGPU_INFO("dbz3: pack HD: cache de texturas hasta {}/{} MB (VRAM {} MB)",
+                pack_memory_limit_soft_mb_, pack_memory_limit_hard_mb_, vram_mb);
+  }
+  MaybeLogPackReport();
+}
+
+void D3D12TextureCache::RecordPackOmission(const Dbz3TexturePackEntry* entry, uint64_t game_hash,
+                                           const TextureKey& key, const char* reason) const {
+  if (pack_omissions_.size() >= 64) {
+    return;
+  }
+  const uint64_t pack_hash = entry != nullptr ? entry->hash : 0;
+  const uint64_t key_signature = uint64_t(TextureKey::Hasher{}(key));
+  const uint64_t signature =
+      pack_hash ^ (game_hash * 0x9E3779B97F4A7C15ull) ^ (key_signature * 0xC2B2AE3D27D4EB4Full) ^
+      uint64_t(std::hash<const char*>{}(reason));
+  if (!pack_omission_seen_.insert(signature).second) {
+    return;
+  }
+  PackOmission omission;
+  omission.pack_hash = pack_hash;
+  omission.game_hash = game_hash;
+  omission.key_signature = key_signature;
+  omission.width = key.GetWidth();
+  omission.height = key.GetHeight();
+  omission.format = uint32_t(key.format);
+  omission.mips = key.mip_max_level + 1;
+  omission.reason = reason;
+  omission.submission = command_processor_.GetCurrentSubmission();
+  omission.generation = pack_generation_;
+  pack_omissions_.push_back(omission);
+  pack_report_emitted_ = false;
+  if (pack_txn_debug_enabled_) {
+    REXGPU_INFO(
+        "dbz3: pack omit pack={:016X} juego={:016X} key={:016X} {}x{} fmt={} mips={} motivo={} "
+        "pantalla={} sub={} gen={}",
+        pack_hash, game_hash, key_signature, omission.width, omission.height, omission.format,
+        omission.mips, reason, pack_report_screen_, omission.submission, omission.generation);
+  }
+}
+
+void D3D12TextureCache::MaybeLogPackReport() const {
+  if (!REXCVAR_GET(dbz3_pack_report) || pack_report_emitted_) {
+    return;
+  }
+  pack_report_emitted_ = true;
+  REXGPU_INFO("dbz3: pack omit list: {} entradas (pantalla={})", pack_omissions_.size(),
+              pack_report_screen_);
+  for (const PackOmission& omission : pack_omissions_) {
+    REXGPU_INFO(
+        "dbz3: pack omit[{}] pack={:016X} juego={:016X} key={:016X} {}x{} fmt={} mips={} "
+        "motivo={} pantalla={} sub={} gen={}",
+        &omission - pack_omissions_.data(), omission.pack_hash, omission.game_hash,
+        omission.key_signature, omission.width, omission.height, omission.format, omission.mips,
+        omission.reason, pack_report_screen_, omission.submission, omission.generation);
+  }
+}
+
+void D3D12TextureCache::TracePackTexture(const char* stage, const TextureKey& key, uint32_t factor,
+                                         const D3D12_RESOURCE_DESC* desc) const {
+  if (!pack_txn_debug_enabled_ || pack_trace_seen_.size() >= 96) {
+    return;
+  }
+  const uint64_t key_signature = uint64_t(TextureKey::Hasher{}(key));
+  const uint64_t signature = key_signature ^ (uint64_t(factor) << 56) ^
+                             uint64_t(std::hash<const char*>{}(stage));
+  if (!pack_trace_seen_.insert(signature).second) {
+    return;
+  }
+  const bool pack_on = pack_applied_state_.index_ready && pack_applied_state_.packs_on;
+  if (desc != nullptr) {
+    REXGPU_INFO(
+        "dbz3: pack txn {} gen={} aplicado(on={},idx={}) pedido(on={},idx={}) sub={} key={} "
+        "fmt={} mips={} factor={} desc={}x{} fmt={} mips={} flags=0x{:X}",
+        stage, pack_generation_, pack_on ? 1 : 0, pack_applied_state_.index_ready ? 1 : 0,
+        pack_requested_state_.packs_on ? 1 : 0, pack_requested_state_.index_ready ? 1 : 0,
+        command_processor_.GetCurrentSubmission(), key_signature, uint32_t(key.format),
+        key.mip_max_level + 1, factor, uint32_t(desc->Width), uint32_t(desc->Height),
+        uint32_t(desc->Format), uint32_t(desc->MipLevels), uint32_t(desc->Flags));
+  } else {
+    REXGPU_INFO(
+        "dbz3: pack txn {} gen={} aplicado(on={},idx={}) pedido(on={},idx={}) sub={} key={} "
+        "fmt={} mips={} factor={} {}x{}",
+        stage, pack_generation_, pack_on ? 1 : 0, pack_applied_state_.index_ready ? 1 : 0,
+        pack_requested_state_.packs_on ? 1 : 0, pack_requested_state_.index_ready ? 1 : 0,
+        command_processor_.GetCurrentSubmission(), key_signature, uint32_t(key.format),
+        key.mip_max_level + 1, factor, key.GetWidth(), key.GetHeight());
   }
 }
 
@@ -1863,7 +2034,7 @@ uint32_t D3D12TextureCache::GetTextureUpscaleFactor(const TextureKey& key) const
   // sube" con la mejora de texturas activa. En ese punto se dejan de conceder
   // upscales NUEVOS: el guardia se levanta solo cuando el uso baja, y las
   // texturas ya concedidas no se tocan (la decision debe ser estable por key).
-  // Comparte el cache de 1 s de RefreshVideoMemory (no añade coste por textura).
+  // Comparte el cache de 1 s de RefreshVideoMemory (no aÃ±ade coste por textura).
   const uint64_t vram_budget = video_memory_budget_bytes();
   const uint64_t vram_usage = video_memory_usage_bytes();
   if (vram_budget != 0 && vram_usage * 100 >= vram_budget * 92) {
@@ -2158,6 +2329,7 @@ std::unique_ptr<TextureCache::Texture> D3D12TextureCache::CreateTexture(TextureK
                                              resource_state, nullptr, IID_PPV_ARGS(&resource)))) {
     return nullptr;
   }
+  TracePackTexture("create", key, upscale_factor, &desc);
   return std::unique_ptr<Texture>(new D3D12Texture(*this, key, resource.Get(), resource_state));
 }
 
@@ -2166,6 +2338,32 @@ bool D3D12TextureCache::LoadTextureDataFromResidentMemoryImpl(Texture& texture, 
   D3D12Texture& d3d12_texture = static_cast<D3D12Texture&>(texture);
   TextureKey texture_key = d3d12_texture.key();
   ++texture_load_count_;
+
+  // DBZ3 (H4): la cache de decisiones es por direccion/formato/tamano, no por
+  // contenido. Si el guest reutiliza esa memoria (base_outdated) y la decision
+  // anterior era "sin pack" (0), hay que revalidarla aunque el recurso ya
+  // exista; si ahora SI hay pack, el recurso actual se creo con otro tamano y
+  // se retira para recrearlo en la proxima submission (no se sube una imagen HD
+  // en un recurso 1x/Nx ajeno).
+  if (load_base && d3d12_texture.outdated_mask() != 0) {
+    auto cached_factor = pack_factor_cache_.find(texture_key);
+    if (cached_factor != pack_factor_cache_.end() && cached_factor->second == 0) {
+      pack_factor_cache_.erase(cached_factor);
+      pack_entry_cache_.erase(texture_key);
+      if (GetTexturePackFactor(texture_key) >= 1) {
+        const Dbz3TexturePackEntry* now_entry = FindPackEntry(texture_key);
+        RecordPackOmission(now_entry, now_entry != nullptr ? now_entry->hash : 0, texture_key,
+                           "recrear_tras_contenido");
+        pack_retire_now_.push_back(texture_key);
+        if (pack_txn_debug_enabled_) {
+          REXGPU_INFO(
+              "dbz3: pack txn contenido nuevo en key {}x{} fmt={} pasa a pack; recurso retirado",
+              texture_key.GetWidth(), texture_key.GetHeight(), uint32_t(texture_key.format));
+        }
+        return true;
+      }
+    }
+  }
 
   // DBZ3: pack de texturas. Si la textura esta en un pack, se sube la imagen del
   // pack (RGBA8, con toda la cadena de mips) y no se ejecuta el load shader. Si
@@ -2256,7 +2454,7 @@ bool D3D12TextureCache::LoadTextureDataFromResidentMemoryImpl(Texture& texture, 
   }
   UINT64 copy_buffer_size = 0;
   D3D12_PLACED_SUBRESOURCE_FOOTPRINT host_slice_layout_base;
-  UINT64 host_slice_size_base;
+  UINT64 host_slice_size_base = 0;
   // Indexing is the same as for guest stored mips:
   // 1...min(level_last, level_packed) if level_packed is not 0, or only 0 if
   // level_packed == 0.
@@ -2717,9 +2915,11 @@ uint32_t D3D12TextureCache::GetTexturePackFactor(const TextureKey& key) const {
   uint32_t factor = 0;
   const Dbz3TexturePackEntry* entry = nullptr;
   do {
+    // Estado APLICADO (no la cvar viva): la respuesta debe ser estable durante
+    // toda la submission aunque el usuario encienda/apague el pack entre frames.
+    const bool packs = pack_applied_state_.index_ready && pack_applied_state_.packs_on;
     // Sin pack HD solo se mira la tira dorada de los menus (si esta oculta, ver Dbz3HiddenEntry).
-    const bool packs = Dbz3TexturePackIndex::Get().active() && Dbz3TexturePacksOn();
-    if (!packs && !Dbz3SideBordersHidden()) {
+    if (!packs && !pack_applied_state_.side_borders_hidden) {
       break;
     }
     if (!packs && !Dbz3MaybeHiddenSize(key.GetWidth(), key.GetHeight())) {
@@ -2741,7 +2941,10 @@ uint32_t D3D12TextureCache::GetTexturePackFactor(const TextureKey& key) const {
     }
     // Formato reemplazable: DXT1/3/5 (el recurso host se crea RGBA8) y k_8_8_8_8
     // (nativa RGBA8 con swizzle identidad). Ver Dbz3PackReplaceableFormat.
-    if (!Dbz3PackReplaceableFormat(key.format)) {
+    // Los formatos solo-volcables (HUD/UI de 8/16 bits) no se reemplazan, pero
+    // en modo dev se hashean igualmente para poder listarlos como omision.
+    const bool replaceable = Dbz3PackReplaceableFormat(key.format);
+    if (!replaceable && !pack_txn_debug_enabled_ && !REXCVAR_GET(dbz3_pack_report)) {
       break;
     }
     if (swap_texture_key_valid_ && swap_texture_key_.base_page == key.base_page &&
@@ -2760,7 +2963,7 @@ uint32_t D3D12TextureCache::GetTexturePackFactor(const TextureKey& key) const {
       break;
     }
     const uint64_t hash = XXH3_64bits(linear.data(), linear.size());
-    entry = Dbz3HiddenEntry(hash);
+    entry = Dbz3HiddenEntry(hash, pack_applied_state_.side_borders_hidden);
     if (entry != nullptr) {
       factor = 1;  // transparente, ya en RAM: sin guardia de VRAM ni reparto por submission
       break;
@@ -2772,6 +2975,11 @@ uint32_t D3D12TextureCache::GetTexturePackFactor(const TextureKey& key) const {
     if (entry == nullptr) {
       break;
     }
+    if (!replaceable) {
+      RecordPackOmission(entry, hash, key, "formato");
+      entry = nullptr;
+      break;
+    }
     if (entry->width % width != 0 || entry->height % height != 0) {
       static int mismatch_logged = 0;
       if (mismatch_logged < 12) {
@@ -2779,6 +2987,7 @@ uint32_t D3D12TextureCache::GetTexturePackFactor(const TextureKey& key) const {
         REXGPU_WARN("dbz3: pack '{}' {}x{} no es multiplo de {}x{} (ignorado)",
                     entry->pack_name, entry->width, entry->height, width, height);
       }
+      RecordPackOmission(entry, hash, key, "no_multiplo");
       entry = nullptr;
       break;
     }
@@ -2793,6 +3002,7 @@ uint32_t D3D12TextureCache::GetTexturePackFactor(const TextureKey& key) const {
         REXGPU_WARN("dbz3: pack '{}' proporcion distinta ({}x{} vs {}x{}; mismo factor en ancho y alto)",
                     entry->pack_name, entry->width, entry->height, width, height);
       }
+      RecordPackOmission(entry, hash, key, "proporcion");
       entry = nullptr;
       break;
     }
@@ -2809,6 +3019,7 @@ uint32_t D3D12TextureCache::GetTexturePackFactor(const TextureKey& key) const {
                       "original hasta que haya sitio", entry->pack_name);
         }
         pack_waiting_[key] = entry->hash;   // se reintenta cuando baje (BeginSubmission)
+        RecordPackOmission(entry, hash, key, "vram");
         entry = nullptr;
         break;
       }
@@ -2822,6 +3033,8 @@ uint32_t D3D12TextureCache::GetTexturePackFactor(const TextureKey& key) const {
           (pack_grant_bytes_ != 0 && pack_grant_bytes_ + bytes > kDbz3PackGrantBytesPerSubmission)) {
         index.TryDecoded(*entry);  // a la cola de los hilos de fondo, sin esperar
         pack_waiting_[key] = entry->hash;
+        RecordPackOmission(entry, hash, key,
+                           !index.IsDecoded(entry->hash) ? "decode" : "reparto");
         entry = nullptr;
         break;
       }
@@ -2840,6 +3053,11 @@ uint32_t D3D12TextureCache::GetTexturePackFactor(const TextureKey& key) const {
                   entry->height, factor);
     }
   }
+  if (entry != nullptr) {
+    TracePackTexture(factor >= 1 ? "decide_hit" : "decide_wait", key, factor, nullptr);
+  } else {
+    TracePackTexture("decide_miss", key, factor, nullptr);
+  }
   return factor;
 }
 
@@ -2856,6 +3074,7 @@ bool D3D12TextureCache::UploadPackTextureData(D3D12Texture& texture, const Textu
   if (entry == nullptr) {
     return false;
   }
+  const Dbz3TexturePackEntry* cached_entry = entry;
   // 1.4.3 EX: la cache es por direccion/formato/tamano, no por contenido. Si el
   // juego reutiliza esa memoria para OTRA textura del mismo tamano (personajes
   // de otro combate), se vuelve a mirar el hash: otra entrada del mismo tamano o,
@@ -2863,11 +3082,14 @@ bool D3D12TextureCache::UploadPackTextureData(D3D12Texture& texture, const Textu
   {
     std::vector<uint8_t> linear;
     if (LinearizeGuestTexture(key, key.GetGuestLayout(), key.base_page << 12, linear)) {
-      entry = Dbz3PackRevalidate(entry, XXH3_64bits(linear.data(), linear.size()));
+      const uint64_t game_hash = XXH3_64bits(linear.data(), linear.size());
+      entry = Dbz3PackRevalidate(entry, game_hash, pack_applied_state_.packs_on,
+                                 pack_applied_state_.side_borders_hidden);
       if (entry == nullptr) {
         // Ya no es del pack: se recrea en la proxima submission como textura normal (cargar
         // la original en el recurso del pack necesitaba la pasada de upscale, lenta, o
         // rompia el dispositivo en los x1). Mientras, un frame con la imagen anterior.
+        RecordPackOmission(cached_entry, game_hash, key, "revalidado");
         pack_retire_now_.push_back(key);
         return true;
       }
@@ -2882,6 +3104,7 @@ bool D3D12TextureCache::UploadPackTextureData(D3D12Texture& texture, const Textu
     image = index.Decoded(*entry);
   }
   if (!image) {
+    RecordPackOmission(entry, entry->hash, key, "decode_fail");
     return false;
   }
   const auto dbz3_t1 = dbz3_clock::now();
@@ -2923,12 +3146,14 @@ bool D3D12TextureCache::UploadPackTextureData(D3D12Texture& texture, const Textu
     if (FAILED(device->CreateCommittedResource(
             &ui::d3d12::util::kHeapPropertiesUpload, D3D12_HEAP_FLAG_NONE, &buffer_desc,
             D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&upload)))) {
+      RecordPackOmission(entry, entry->hash, key, "upload_alloc");
       return false;
     }
   }
   const auto dbz3_t2 = dbz3_clock::now();
   uint8_t* mapped = nullptr;
   if (FAILED(upload->Map(0, nullptr, reinterpret_cast<void**>(&mapped)))) {
+    RecordPackOmission(entry, entry->hash, key, "upload_map");
     return false;
   }
   Dbz3PackCopyLevels(*image, total_size, mapped, Dbz3PackSwapsRedBlue(key.format));
@@ -2961,6 +3186,11 @@ bool D3D12TextureCache::UploadPackTextureData(D3D12Texture& texture, const Textu
   pending_pack_uploads_.emplace_back(command_processor_.GetCurrentSubmission(), upload);
   g_dbz3_pack_uploads.fetch_add(1, std::memory_order_relaxed);
   Dbz3PackNoteUsed(entry->hash);
+  if (texture.resource() != nullptr) {
+    const D3D12_RESOURCE_DESC desc = texture.resource()->GetDesc();
+    const uint32_t factor = key.GetWidth() != 0 ? image->width / key.GetWidth() : 1;
+    TracePackTexture("upload", key, factor, &desc);
+  }
   static int upload_logged = 0;
   if (upload_logged < 48) {
     ++upload_logged;
@@ -3471,3 +3701,4 @@ xenos::ClampMode D3D12TextureCache::NormalizeClampMode(xenos::ClampMode clamp_mo
 }
 
 }  // namespace rex::graphics::d3d12
+

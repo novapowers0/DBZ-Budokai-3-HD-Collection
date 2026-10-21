@@ -457,6 +457,13 @@ bool Cargar(Datos& d, std::string& error) {
     d.m_bebida = CargarModelo(pack, 5, 4, 0);
   }
   if (d.indice == 0) d.m_meta = CargarModelo(cmn.Entrada(size_t(f->campo)), 7, 8, 0);
+  // H03 P0 (0x7D9, Namek): la meta es la nave de Freezer, DATA_CMN 900 hijo 7 (#AMO) y 8 (#AMT). Si no se puede leer,
+  // m_meta queda vacio y la meta sigue con el anillo 2D de DibujarMeta (fallback).
+  if (d.indice == 10) {
+    d.m_meta = CargarModelo(cmn.Entrada(900), 7, 8, 0);
+    if (!d.m_meta.malla)
+      REXLOG_WARN("dbz3 iwmini: 0x7D9 sin modelo de la nave de Freezer (DATA_CMN 900/7,8): anillo 2D");
+  }
   {
     const std::vector<uint8_t> pq = cmn.Entrada(934);
     d.polvo = dbz3::iwame::ame::Leer(P::HijoAmb(pq, 26));

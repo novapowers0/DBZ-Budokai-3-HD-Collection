@@ -193,6 +193,17 @@ if (Test-Path -LiteralPath $ingame_ui) {
     Write-Warning "Falta res\ingame_ui: ejecuta tools\ingame_ui.py (las pantallas propias usaran sustitutos)"
 }
 
+# Modo Heroe: sagas y catalogo real de piezas CaC (cuerpo/cara/pelo/ropa/color/voz/aura).
+# CMake ya copia res\heroe al build; el stage de release tambien tiene que llevarlo.
+$heroe_res = Join-Path $root "res\heroe"
+if (Test-Path -LiteralPath $heroe_res) {
+    $heroe_dst = Join-Path $OutDir "res\heroe"
+    New-Item -ItemType Directory -Path $heroe_dst -Force | Out-Null
+    Copy-Item -LiteralPath (Join-Path $heroe_res "*") $heroe_dst -Recurse -Force
+} else {
+    Write-Warning "Falta res\heroe: el Modo Heroe usara las sagas de codigo y el catalogo de respaldo"
+}
+
 # Modding toolkit (runtime subset)
 if (Test-Path -LiteralPath $modcenter) {
     $mcd = Join-Path $OutDir "mod center hd"

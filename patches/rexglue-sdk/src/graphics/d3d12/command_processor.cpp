@@ -18,6 +18,7 @@
 #include <mutex>
 #include <sstream>
 #include <utility>
+#include <vector>
 
 #include <rex/assert.h>
 #include <rex/chrono/clock.h>
@@ -119,6 +120,14 @@ namespace shaders {
 }  // namespace shaders
 
 namespace {
+
+// DBZ3: instrumentacion dev del pack HD. Comparte la cvar con texture_cache.cpp
+// (se consulta por nombre porque la registra el plugin) y acepta el diag logger
+// existente para no obligar a tocar el launcher.
+bool Dbz3PackTxnDebugEnabled() {
+  return rex::cvar::GetFlagByName("dbz3_pack_txn_debug") == "true" ||
+         rex::cvar::GetFlagByName("dbz3_diag_logging") == "true";
+}
 
 // Draw resolution scale the settings currently ask for (x | (y << 16)), set by
 // cvar change callbacks on any thread and taken by the command processor at
@@ -4476,6 +4485,44 @@ void D3D12CommandProcessor::CheckSubmissionFence(uint64_t await_submission) {
   texture_cache_->CompletedSubmissionUpdated(submission_completed_);
 }
 
+void D3D12CommandProcessor::LogD3D12InfoQueueMessages(const char* where) {
+  ID3D12Device* device = GetD3D12Provider().GetDevice();
+  if (device == nullptr) {
+    return;
+  }
+  Microsoft::WRL::ComPtr<ID3D12InfoQueue> info_queue;
+  if (FAILED(device->QueryInterface(IID_PPV_ARGS(&info_queue))) || !info_queue) {
+    // Capa de depuracion no disponible (d3d12_debug apagado): no se instala nada.
+    return;
+  }
+  const UINT64 stored = info_queue->GetNumStoredMessages();
+  const UINT64 first = stored > 16 ? stored - 16 : 0;
+  uint32_t emitted = 0;
+  for (UINT64 i = first; i < stored && emitted < 8; ++i) {
+    SIZE_T message_size = 0;
+    if (FAILED(info_queue->GetMessage(i, nullptr, &message_size)) || message_size == 0) {
+      continue;
+    }
+    std::vector<uint8_t> message_bytes(message_size);
+    auto* message = reinterpret_cast<D3D12_MESSAGE*>(message_bytes.data());
+    if (FAILED(info_queue->GetMessage(i, message, &message_size))) {
+      continue;
+    }
+    if (message->Severity < D3D12_MESSAGE_SEVERITY_WARNING) {
+      continue;
+    }
+    ++emitted;
+    REXGPU_ERROR("D3D12 InfoQueue [{}]: severidad={} id={} {}", where,
+                 static_cast<int>(message->Severity), static_cast<int>(message->ID),
+                 message->pDescription ? message->pDescription : "");
+  }
+  if (emitted == 0) {
+    REXGPU_INFO("D3D12 InfoQueue [{}]: sin mensajes de error/corruption almacenados", where);
+  }
+  // Se vacia para que el siguiente volcado sea el error siguiente, no el mismo.
+  info_queue->ClearStoredMessages();
+}
+
 void D3D12CommandProcessor::LogDeviceRemovalDiagnostics(ID3D12Device* device, HRESULT reason) {
   const char* reason_str = "Unknown";
   switch (reason) {
@@ -4497,6 +4544,9 @@ void D3D12CommandProcessor::LogDeviceRemovalDiagnostics(ID3D12Device* device, HR
   }
   REXGPU_ERROR("D3D12 device removed: HRESULT 0x{:08X} - {}", static_cast<unsigned>(reason),
                reason_str);
+  // El primer error de validacion suele estar en la InfoQueue antes de que DRED
+  // pueda reconstruir la operacion culpable.
+  LogD3D12InfoQueueMessages("device removed");
 
   Microsoft::WRL::ComPtr<ID3D12DeviceRemovedExtendedData> dred;
   if (FAILED(device->QueryInterface(IID_PPV_ARGS(&dred)))) {
@@ -4741,12 +4791,38 @@ bool D3D12CommandProcessor::EndSubmission(bool is_swap) {
     // happens between Xenia submissions.
     ID3D12CommandAllocator* command_allocator =
         command_allocator_writable_first_->command_allocator;
-    command_allocator->Reset();
-    command_list_->Reset(command_allocator, nullptr);
+    const HRESULT allocator_reset_hr = command_allocator->Reset();
+    const HRESULT list_reset_hr = command_list_->Reset(command_allocator, nullptr);
     deferred_command_list_.Execute(command_list_, command_list_1_);
-    command_list_->Close();
+    const HRESULT list_close_hr = command_list_->Close();
+    // DBZ3: antes se ignoraban estos HRESULT; si la capa de depuracion rechaza la
+    // operacion, el primer error se perdia y solo se veia el device removed
+    // posterior. Se registra una sola vez y se vuelca la InfoQueue.
+    if (FAILED(allocator_reset_hr) || FAILED(list_reset_hr) || FAILED(list_close_hr)) {
+      if (!submission_reset_failure_logged_) {
+        submission_reset_failure_logged_ = true;
+        REXGPU_ERROR(
+            "dbz3: fallo al preparar el command list (submission {}): allocator.Reset=0x{:08X} "
+            "list.Reset=0x{:08X} Close=0x{:08X}",
+            submission_current_, static_cast<unsigned>(allocator_reset_hr),
+            static_cast<unsigned>(list_reset_hr), static_cast<unsigned>(list_close_hr));
+        LogD3D12InfoQueueMessages("EndSubmission Reset/Close");
+      }
+    }
     ID3D12CommandList* execute_command_lists[] = {command_list_};
     direct_queue->ExecuteCommandLists(1, execute_command_lists);
+    // DBZ3: en modo dev, comprobar el motivo justo tras ejecutar (no esperar al
+    // siguiente BeginSubmission) para fechar el primer fallo con su submission.
+    if (Dbz3PackTxnDebugEnabled() && !submission_device_failure_logged_) {
+      const HRESULT device_reason = provider.GetDevice()->GetDeviceRemovedReason();
+      if (FAILED(device_reason)) {
+        submission_device_failure_logged_ = true;
+        REXGPU_ERROR(
+            "dbz3: device removed detectado en EndSubmission (submission {}): HRESULT 0x{:08X}",
+            submission_current_, static_cast<unsigned>(device_reason));
+        LogD3D12InfoQueueMessages("EndSubmission ExecuteCommandLists");
+      }
+    }
     command_allocator_writable_first_->last_usage_submission = submission_current_;
     if (command_allocator_submitted_last_) {
       command_allocator_submitted_last_->next = command_allocator_writable_first_;
@@ -4777,7 +4853,8 @@ bool D3D12CommandProcessor::EndSubmission(bool is_swap) {
     // Submission already closed now, so minus 1.
     closed_frame_submissions_[(frame_current_++) % kQueueFrames] = submission_current_ - 1;
 
-    if (cache_clear_requested_ && AwaitAllQueueOperationsCompletion()) {
+    const bool pack_state_pending = texture_cache_->HasPendingPackState();
+    if ((cache_clear_requested_ || pack_state_pending) && AwaitAllQueueOperationsCompletion()) {
       cache_clear_requested_ = false;
 
       ClearCommandAllocatorCache();
@@ -4799,6 +4876,13 @@ bool D3D12CommandProcessor::EndSubmission(bool is_swap) {
       constant_buffer_pool_->ClearCache();
 
       texture_cache_->ClearCache();
+
+      // DBZ3: solo aqui, con la GPU ya parada y la cache destruida, se aplica
+      // el estado/presupuesto del pack que se pidio en BeginSubmission. La
+      // siguiente submission crea todos los recursos con ese estado.
+      if (pack_state_pending) {
+        texture_cache_->ApplyPendingPackState();
+      }
 
       // Not clearing the root signatures as they're referenced by pipelines,
       // which are not destroyed.

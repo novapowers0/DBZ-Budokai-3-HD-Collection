@@ -213,6 +213,16 @@ add_custom_command(TARGET dbz3 POST_BUILD
     VERBATIM)
 endif()
 
+# Contenido del Modo Heroe (8 sagas de res/heroe/sagas.toml): el cargador mira
+# <exe>/res/heroe/sagas.toml (heroe.cpp Sagas). G06a.
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/res/heroe")
+add_custom_command(TARGET dbz3 POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_CURRENT_SOURCE_DIR}/res/heroe" "$<TARGET_FILE_DIR:dbz3>/res/heroe"
+    COMMENT "Staging res/heroe next to dbz3"
+    VERBATIM)
+endif()
+
 # Codegen target - run 'cmake --build . --target dbz3_codegen'
 add_custom_target(dbz3_codegen
     COMMAND $<TARGET_FILE:rex::rexglue> codegen ${CMAKE_CURRENT_SOURCE_DIR}/dbz3_manifest.toml

@@ -339,13 +339,18 @@ def cmd_mod(a):
 # los 6 campos de IW y los escenarios de B1/B2 probados en el juego. Nada del juego viaja en el Kit; un fallo no
 # para nada (sale 0 y lo dice en el registro: el launcher juega igual).
 # ---------------------------------------------------------------------------------------------------------
-VERSION = 14  # 14: caja de colision de B2 por grupo (Base Red Ribbon 1.4, medido en el juego: docs/14_frentes). 13: rotulos de B2 corregidos por el usuario (las carpetas no cambian: las usan el tablero y la nave). 12: nombres de g3/g4/g6 corregidos con PCSX2 (R7 b2_integracion). 11: B2 sin animaciones ni camaras de destruccion (R7 escenarios).   subir si cambia el resultado del conversor: se rehacen en el equipo del jugador
+VERSION = 15  # 15 (G02 studies 2): B2 grupo 1 sin la raiz #AMP que cierra al dibujar (lr 0x8208E5AC);
+              # sidecar efectos_b2.txt/spx_b2.bin/banco_efectos_b2.bin (el conversor no puede ejecutar el
+              # #SPX de B2 en B3: nativas renumeradas); sin cambios en la geometria de los grupos de B12.
+              # 14: caja de colision de B2 por grupo (Base Red Ribbon 1.4, medido en el juego: docs/14_frentes). 13: rotulos de B2 corregidos por el usuario (las carpetas no cambian: las usan el tablero y la nave). 12: nombres de g3/g4/g6 corregidos con PCSX2 (R7 b2_integracion). 11: B2 sin animaciones ni camaras de destruccion (R7 escenarios).   subir si cambia el resultado del conversor: se rehacen en el equipo del jugador
 B12 = (("b2", 2, "Templo de Kami", "Templo (B2)", 1.0),          # (juego, grupo, carpeta, rotulo, caja-escala): docs/14_frentes/
        ("b2", 7, "Montanas nevadas", "Muscle Tower (B2)", 1.0),       # escenarios.md. R7: probados en combate los B2
        ("b2", 0, "Base Red Ribbon B2", "Base de la Red Ribbon (B2)", 1.4),   # 0, 2, 3, 4, 6, 7 y 8. Fuera: g1 (se cierra
        ("b2", 3, "Namek B2", "Mundo de Kaiyoshin (B2)", 1.0),                    # al dibujar, lr 0x8208E5AC) y g5 (suelo
        ("b2", 4, "Llanura B2", "Llanura (B2)", 1.0),                        # negro). R7: escenario de B2 0-12 -> grupo
        ("b2", 6, "Islas B2", "Planeta Namek (B2)", 1.0),                            # (ELF 0x372AB0): 4 8 5 1 0 7 2 6 3 4 8 0 7
+       # G02: g1 ya convierte sin la raiz #AMP (lr 0x8208E5AC) y g5 sigue con #MAS vacio (suelo negro).
+       # Los dos quedan FUERA de B12 hasta la prueba visual; no incluirlos a ciegas.
        ("b2", 8, "Calle de la ciudad B2", "Zona urbana (B2)", 1.0),            # caja-escala: la CAJA de colision del
        ("b1", 3, "Paramo al atardecer", "Páramo al atardecer", 1.0))            # grupo (x/z; 1.0 = original de B2)
 
@@ -401,9 +406,16 @@ def _tarea(t):
             poner_niebla(carpeta, hijos(afs.entry(clave))[0])
         else:
             juego, grupo, nombre, rot, caja = next(x for x in B12 if x[:2] == clave)
-            datos = EC.escenario_b2(EC.IsoB2(None, juego), grupo, escala=caja)
+            fuente = EC.IsoB2(None, juego)
+            datos = EC.escenario_b2(fuente, grupo, escala=caja)
             carpeta = EC.instalar(datos, mods, nombre, EC.ENTRADA_BASE + (20 if juego == "b1" else 0) + grupo,
                                   EC.JUEGOS[juego][0], id_se=45, tema=16, rotulo_txt=rot)
+            # G02: el #SPX y el banco #AME de B2 se guardan como evidencia; no se instalan (nativas de B3
+            # renumeradas). La tabla por escenario queda en efectos_b2.txt dentro de la carpeta del mod.
+            try:
+                EC.conservar_efectos_b2(fuente, grupo, carpeta)
+            except Exception:  # noqa: BLE001 (un sidecar no puede tumbar la conversion)
+                pass
         (carpeta / "origen.txt").write_text(sello, encoding="utf-8")
         return "creado %s (%d B)" % (carpeta.name, len(datos))
     finally:

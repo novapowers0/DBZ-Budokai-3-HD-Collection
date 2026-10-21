@@ -12,6 +12,7 @@ namespace dbz3::heroe {
 
 // --- aspecto (Create) ---
 int Cuerpo();                 // ID del cuerpo (luchador cuyo modelo lleva el heroe)
+std::string NombreCuerpo();   // G06a: nombre de la constitución/cara del catálogo UT (100..105)
 int Traje();                  // traje del cuerpo (0..NumTrajes-1)
 int NumTrajes();              // trajes del cuerpo (tabla del select si esta en memoria)
 void PonerTraje(int t);

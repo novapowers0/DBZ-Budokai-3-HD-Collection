@@ -802,7 +802,10 @@ void CreatePanel() {
 }
 
 bool Empezar(int clave, int fila, int dificultad) {
-  if (dbz3::g_guest_eu) return false;   // ponytail: sin probar con el xex EU (el mapa sigue)
+  // I03 (studies 4): el vuelo ya se ha validado con el xex y la ISO europeos (0x7D6 y 0x7E0 PASS en EU), asi que
+  // esta disponible en las dos regiones. Si la carga falla, Empezar devuelve false y el mapa sigue.
+  const bool eu = dbz3::g_guest_eu;
+  REXLOG_INFO("dbz3 iwmini vuelo region={} clave 0x{:X}: disponible", eu ? "eu" : "us", clave);
   auto j = std::make_shared<Juego>();
   j->clave = clave;
   j->fila = fila;

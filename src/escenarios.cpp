@@ -28,6 +28,7 @@
 
 #include <rex/hook.h>
 #include <rex/cvar.h>
+#include <rex/runtime.h>
 #include <rex/logging.h>
 #include <rex/system/xmemory.h>
 
@@ -90,6 +91,7 @@ constexpr dbz3::GA kNieblas = 0x823232A0;   // entradas de niebla de 20 B (color
 uint32_t g_niebla = 0;                       // entrada de niebla prestada mientras el alta esta puesta (0 = ninguna)
 uint8_t g_orig_niebla[20];
 uint32_t g_obj_combate = 0;                  // obj del escenario del combate (sub_820C26E0): para recargarlo
+int g_fondo = -1;                            // bit 0 de G+0x4C guardado mientras el fondo esta apagado (-1 = sin guardar)
 
 std::string Limpia(std::string s) {
   const auto h = s.find('#');
@@ -186,6 +188,7 @@ bool PasarZonaB(PPCContext& ctx, uint8_t* base) {
   c.r3.u64 = g_obj_combate;
   DBZ3_CALL_EU(sub_820C26E0)(c, base);   // carga del escenario (la regenerada: sin re-entrar en el hook)
   REX_STORE_U16(g_obj_combate + 340, uint16_t(zb));   // como el hook: el combate sigue pidiendo el alta
+  dbz3::clima::EscenarioPedido();   // la zona B es otro escenario: el clima vuelve a empezar
   REXLOG_INFO("dbz3 escenarios: ring out (aviso {}): zona B '{}' (registro {}, entrada {}) cargada en el combate",
               REX_LOAD_U8(REX_LOAD_U32(kMgrPtr) + kAvisoRing), g_altas[size_t(zb - kSerie)].nombre, zb,
               g_altas[size_t(zb - kSerie)].entrada);
@@ -206,6 +209,25 @@ int PorMod(const std::string& mod) {
 }
 
 int CampoIW(int campo) { return PorMod("Campo IW " + std::to_string(campo)); }   // altas de mod center hd/campos_iw.py
+
+void OcultarFondo(bool ocultar) {
+  uint8_t* base = rex::Runtime::instance() ? rex::Runtime::instance()->virtual_membase() : nullptr;
+  if (!base) return;
+  constexpr uint32_t kFondo = 0x4C;   // G+0x4C bit0: sub_820C1E98 lo lee; sub_820C1E68/1E80 lo ponen/quitan
+  const uint32_t v = REX_LOAD_U32(kG + kFondo);
+  if (ocultar) {
+    if (g_fondo < 0) g_fondo = int(v & 1u);
+    if (v & 1u) {
+      REX_STORE_U32(kG + kFondo, v & ~1u);
+      REXLOG_INFO("dbz3 escenarios: fondo del escenario apagado (G+0x4C=0x{:08X})", v & ~1u);
+    }
+  } else if (g_fondo >= 0) {
+    const uint32_t w = (v & ~1u) | uint32_t(g_fondo);
+    REX_STORE_U32(kG + kFondo, w);
+    REXLOG_INFO("dbz3 escenarios: fondo del escenario restaurado (G+0x4C=0x{:08X})", w);
+    g_fondo = -1;
+  }
+}
 
 // Nombres oficiales: los rotulos del selector (data_<idioma>.afs 2043, textura 0, una fila por casilla),
 // copiados a texto. Fila de cada registro: las variantes (ISLAND B, TOWN B, NAMEC B, KAIOU B y EARTH, que
@@ -285,6 +307,18 @@ void CargarDeMods(rex::memory::Memory* memory) {
     return mal;
   });
   if (g_altas.size() > 23) g_altas.resize(23);
+  // Contrato de zona B (frente 07): `zona_b = <entrada del alta A>`. Si no existe esa alta, o apunta a si
+  // misma, se ignora el cambio: ComprobarZonaB nunca debe recargar un registro que no esta cargado.
+  for (auto& a : g_altas) {
+    if (!a.zona_b) continue;
+    const bool existe = std::any_of(g_altas.begin(), g_altas.end(),
+                                    [&](const Alta& b) { return b.entrada == a.zona_b; });
+    if (!existe || a.zona_b == a.entrada) {
+      REXLOG_WARN("dbz3 escenarios [{}]: zona_b={} ignorada (no hay alta con esa entrada o es la misma)", a.mod,
+                  a.zona_b);
+      a.zona_b = 0;
+    }
+  }
   // Campos de IW (campos_iw.py): llanuras para los minijuegos, no escenarios de Duelo. Las ocultas van al final
   // y las visibles caben en el carrusel de 24 (escenarios_sel_gen.inc kSelMax) = 12 del juego + 11 + el "?";
   // antes los 8 campos llenaban el carrusel y dejaban fuera las altas siguientes (Montanas nevadas de B2).
@@ -880,10 +914,18 @@ namespace dbz3::escenarios {
 void ComprobarZonaB(PPCContext& ctx, uint8_t* base);
 }
 void dbz3::escenarios::ComprobarZonaB(PPCContext& ctx, uint8_t* base) {
-  if (REXCVAR_GET(dbz3_escenarios_zonas_b)) {
-    const uint32_t mgr = REX_LOAD_U32(dbz3::escenarios::kMgrPtr);
-    if (mgr && REX_LOAD_U32(mgr + dbz3::escenarios::kEstadoCombate) == 4 &&
-        REX_LOAD_U8(mgr + dbz3::escenarios::kAvisoRing) && dbz3::escenarios::PasarZonaB(ctx, base))
-      REX_STORE_U8(mgr + dbz3::escenarios::kAvisoRing, 0);   // el aviso se consume: el combate sigue
+  if (!REXCVAR_GET(dbz3_escenarios_zonas_b)) return;
+  const uint32_t mgr = REX_LOAD_U32(dbz3::escenarios::kMgrPtr);
+  if (!mgr || !REX_LOAD_U8(mgr + dbz3::escenarios::kAvisoRing)) return;
+  // Contrato: solo se cambia con el alta de la zona A cargada (`g_activa`), su `zona_b` existente y el
+  // combate en estado 4 (pelea). Sin esto el aviso de ring out sigue su curso normal y acaba el combate.
+  if (REX_LOAD_U32(mgr + dbz3::escenarios::kEstadoCombate) == 4 && dbz3::escenarios::PasarZonaB(ctx, base)) {
+    REX_STORE_U8(mgr + dbz3::escenarios::kAvisoRing, 0);   // el aviso se consume: el combate sigue
+    return;
   }
+  static std::atomic<int> avisos{0};
+  if (avisos.fetch_add(1) < 4)
+    REXLOG_INFO("dbz3 escenarios: zona B no aplicada (alta {}, estado {}, zona_b {}; el ring out sigue normal)",
+                dbz3::escenarios::g_activa, REX_LOAD_U32(mgr + dbz3::escenarios::kEstadoCombate),
+                dbz3::escenarios::ZonaBDe(dbz3::escenarios::g_activa));
 }

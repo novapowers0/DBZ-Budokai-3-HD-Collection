@@ -15,6 +15,7 @@ static_assert(REX_PLATFORM_WIN32, "This file is Windows-only");
 
 #include <spdlog/spdlog.h>
 
+#include <atomic>
 #include <mutex>
 
 #include <timeapi.h>
@@ -30,12 +31,72 @@ typedef HANDLE (*SetThreadDescriptionFn)(HANDLE hThread, PCWSTR lpThreadDescript
 
 namespace rex::thread {
 
+namespace {
+
+std::once_flag g_affinity_cache_once;
+std::atomic<uint64_t> g_process_affinity_mask{0};
+std::atomic<uint32_t> g_available_processor_count{0};
+
+uint32_t PopCount64(uint64_t value) {
+#if defined(__clang__) || defined(__GNUC__)
+  return static_cast<uint32_t>(__builtin_popcountll(value));
+#else
+  uint32_t count = 0;
+  while (value) {
+    value &= value - 1;
+    ++count;
+  }
+  return count;
+#endif
+}
+
+void CacheAffinityInformation() {
+  std::call_once(g_affinity_cache_once, [] {
+    DWORD_PTR process_mask = 0;
+    DWORD_PTR system_mask = 0;
+    if (!GetProcessAffinityMask(GetCurrentProcess(), &process_mask, &system_mask)) {
+      const DWORD error = GetLastError();
+      spdlog::warn(
+          "GetProcessAffinityMask failed (Win32 error 0x{:08X}); host scheduling will use the "
+          "runtime-detected processor count",
+          error);
+      g_available_processor_count.store(logical_processor_count(), std::memory_order_relaxed);
+      return;
+    }
+
+    g_process_affinity_mask.store(static_cast<uint64_t>(process_mask), std::memory_order_relaxed);
+    uint32_t available = PopCount64(static_cast<uint64_t>(process_mask));
+    if (available == 0) {
+      // No usable bits in this group; fall back to the system-wide count rather
+      // than reporting a bogus zero to callers.
+      available = logical_processor_count();
+    }
+    g_available_processor_count.store(available, std::memory_order_relaxed);
+    spdlog::debug(
+        "Affinity: process mask=0x{:X} system mask=0x{:X} available logical processors={}",
+        static_cast<uint64_t>(process_mask), static_cast<uint64_t>(system_mask), available);
+  });
+}
+
+}  // namespace
+
 void EnableAffinityConfiguration() {
-  HANDLE process_handle = GetCurrentProcess();
-  DWORD_PTR process_affinity_mask;
-  DWORD_PTR system_affinity_mask;
-  GetProcessAffinityMask(process_handle, &process_affinity_mask, &system_affinity_mask);
-  SetProcessAffinityMask(process_handle, system_affinity_mask);
+  // Do not widen the process mask to the system mask: a host may have been
+  // deliberately restricted (/affinity, job object, container). P2 keeps the
+  // restriction intact and only records the information needed to report and
+  // validate affinity operations.
+  CacheAffinityInformation();
+}
+
+uint32_t available_processor_count() {
+  CacheAffinityInformation();
+  const uint32_t available = g_available_processor_count.load(std::memory_order_relaxed);
+  return available ? available : logical_processor_count();
+}
+
+uint64_t process_affinity_mask() {
+  CacheAffinityInformation();
+  return g_process_affinity_mask.load(std::memory_order_relaxed);
 }
 
 uint32_t current_thread_system_id() {
@@ -473,7 +534,42 @@ class Win32Thread : public Win32Handle<Thread> {
   }
 
   void set_affinity_mask(uint64_t new_affinity_mask) override {
-    SetThreadAffinityMask(handle_, new_affinity_mask);
+    const uint64_t allowed_mask = process_affinity_mask();
+    if (allowed_mask == 0) {
+      static std::once_flag unknown_mask_once;
+      std::call_once(unknown_mask_once, [] {
+        spdlog::warn("Process affinity mask is unknown; leaving thread affinity unchanged");
+      });
+      return;
+    }
+
+    uint64_t requested_mask = new_affinity_mask & allowed_mask;
+    if (requested_mask != new_affinity_mask) {
+      static std::once_flag outside_mask_once;
+      std::call_once(outside_mask_once, [new_affinity_mask, requested_mask, allowed_mask] {
+        spdlog::warn(
+            "Thread affinity mask 0x{:X} includes CPUs outside the process mask 0x{:X}; "
+            "requesting 0x{:X} and delegating the rest to the OS scheduler",
+            new_affinity_mask, allowed_mask, requested_mask);
+      });
+    }
+    if (requested_mask == 0) {
+      static std::once_flag empty_mask_once;
+      std::call_once(empty_mask_once, [] {
+        spdlog::warn("Thread affinity request has no CPUs allowed by the process mask; "
+                     "leaving scheduling to the OS");
+      });
+      return;
+    }
+    if (!SetThreadAffinityMask(handle_, static_cast<DWORD_PTR>(requested_mask))) {
+      static std::once_flag set_mask_failed_once;
+      const DWORD error = GetLastError();
+      std::call_once(set_mask_failed_once, [error] {
+        spdlog::error(
+            "SetThreadAffinityMask failed (Win32 error 0x{:08X}); thread affinity left unchanged",
+            error);
+      });
+    }
   }
 
   struct ApcData {

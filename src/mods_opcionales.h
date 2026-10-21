@@ -53,3 +53,54 @@ std::string Descripcion(const Mod& m, const std::string& idioma);
 std::filesystem::path ArchivoDeJuegoPs2(const std::string& juego, const std::string& ruta);
 
 }  // namespace dbz3::opcional
+
+// G05: selector de musica de combate. El backend vive aqui para que la previa de combate y Opciones solo
+// tengan que pedir/elegir una pista; la reproduccion usa el reproductor ADX que ya existe (OirMusicaPs2).
+// Nada se reparte: las pistas salen de la copia del jugador (B3 HD y sus ISO de PS2) o de sus mods opcionales.
+namespace dbz3::musica {
+
+enum class Modo {
+  kOriginal = 0,   // por defecto: la musica propia del modo (no se toca; B2/IW siguen con la suya)
+  kFija = 1,       // una pista concreta, siempre
+  kAleatoria = 2,  // una pista al azar por combate (determinista con la semilla que se pase)
+};
+
+struct Pista {
+  std::string fuente;              // "b3", "b2", "iw", "b1" o "mod:<carpeta>"
+  std::string nombre;              // texto para la lista ("Budokai 2 #17 (mod ...)")
+  std::string afs;                 // contenedor dentro del juego ("ADX_US.AFS"...)
+  std::filesystem::path juego;     // carpeta/ISO que abre pasarela::AfsPs2
+  int entrada = -1;                // indice de la pista en el AFS
+  int hz = 0;
+  int canales = 1;
+  double segundos = 0.0;
+};
+
+struct Opcion {
+  Modo modo = Modo::kOriginal;
+  std::string fuente;              // "" = cualquiera; si no, la de Pista::fuente
+  int entrada = -1;                // -1 = la primera de esa fuente
+  std::string partida;             // id de partida; "" = ajuste global
+};
+
+// Pistas ADX validas (musica) de B3 HD, de las copias de PS2 del jugador y de los mods opcionales activos
+// que declaren [pistas]. Cache de 5 s; la UI puede llamarla al abrir su pantalla.
+std::vector<Pista> Pistas();
+void RefrescarPistas();
+
+// Persistencia: user_data/dbz3/musica.toml (global) + musica_partida_<id>.toml (se guarda con la partida).
+Opcion Leer(const std::string& partida = "");
+void Guardar(const Opcion& opcion);
+std::filesystem::path RutaRegistro(const std::string& partida = "");
+
+// Pista elegida; vacia si Modo::kOriginal. `semilla` fija la eleccion aleatoria del combate.
+Pista Elegir(const Opcion& opcion, uint32_t semilla);
+
+// Ambitos con musica propia que NO se debe pisar (tablero/menus de B2 e IW, nave, menus de B1).
+bool ModoConMusicaNativa(const std::string& ambito);
+
+// Previa: reproduce en bucle y corta la anterior. `volumen` 0..1.
+void Escuchar(const Pista& pista, float volumen);
+void Parar();
+
+}  // namespace dbz3::musica

@@ -108,6 +108,7 @@ bool Lanzar(const std::wstring& cmd, DWORD* code) {
 // args: argumentos de vista_heroe.py tras --juego; hecho: fichero que debe existir al acabar.
 void GenerarCon(const std::string& clave, const std::wstring& args, const fs::path& hecho);
 void Generar(int id, int traje) {
+  if (id >= 100 && id <= 105) return;   // G06a: MallaFicha genera el cuerpo UT con sus materiales
   const std::string clave = Num(id) + "_" + Num(traje);
   GenerarCon(clave, L"--solo " + fs::path(clave).wstring(), VistaPng(id, traje));
 }
@@ -196,6 +197,7 @@ struct Modelo3D {
   dbz3::ps2::Malla malla;
   std::vector<dbz3::ps2::Tex> tx;
   float alto = 0;
+  float ancho = 0;
   fs::file_time_type cuando{};
   double visto = -1e9;
   explicit operator bool() const { return alto > 0 && !malla.tris.empty(); }
@@ -251,6 +253,12 @@ bool LeerMalla(const fs::path& f, Modelo3D& m) {
   m.tx.clear();
   for (const auto& im : imgs) m.tx.push_back(dbz3::ps2::Crear(im, false));
   m.alto = alto;
+  // Caja real en planta: la usa el encuadre para no recortar hombros ni brazos al girar.
+  float x0 = 1e9f, x1 = -1e9f, z0 = 1e9f, z1 = -1e9f;
+  for (const auto& t : m.malla.tris)
+    for (const auto& p : t.p) x0 = std::min(x0, p.x), x1 = std::max(x1, p.x), z0 = std::min(z0, p.z),
+                            z1 = std::max(z1, p.z);
+  m.ancho = std::max(x1 - x0, z1 - z0);
   return true;
 }
 
@@ -292,6 +300,7 @@ double g_ficha_cambio = 0;
 // Malla de la ficha si ya esta; si no, la pide (0,4 s despues del ultimo cambio, para no lanzar una por pulsacion).
 Modelo3D* MallaFicha(int id, int traje, const C::Heroe& h, double ahora) {
   (void)h;
+  if (id >= 100 && id <= 105) return nullptr;   // G06a: tira 384/12 (la malla completa no cabe en el batch de ImGui)
   if (H::FichaNativa()) return nullptr;
   const std::string args = H::ArgsFicha(id, traje), clave = ClaveFicha(args);
   if (clave != g_ficha_clave) {
@@ -305,7 +314,8 @@ Modelo3D* MallaFicha(int id, int traje, const C::Heroe& h, double ahora) {
   if (!m && ahora - g_ficha_cambio > 0.4) {
     const fs::path f = Juego() / "ingame_ui" / "heroe_vista" / (clave + ".malla");
     std::error_code ec;
-    if (!fs::exists(f, ec) && !Generando2(clave)) {
+    // UT: VistaUT ya esta generando la misma ficha (PNG + .malla); no lanzar dos procesos.
+    if (!fs::exists(f, ec) && !Generando2(clave) && !Generando2("ut_" + clave)) {
       REXLOG_INFO("dbz3 heroe: vista de la ficha {}: {}", clave, args);
       GenerarCon(clave, L"--ficha \"" + fs::path(args).wstring() + L"\" --clave " + fs::path(clave).wstring(), f);
     }
@@ -317,19 +327,86 @@ Modelo3D* MallaFicha(int id, int traje, const C::Heroe& h, double ahora) {
   return m;
 }
 
-// Pinta el modelo en la caja p0..p1 (px de pantalla), girado `giro` radianes.
+bool CuerpoUT() { return H::Cuerpo() >= 100 && H::Cuerpo() <= 105; }
+
+S::Pic VistaUT(int id, int traje, double ahora) {   // G06a: turntable del cuerpo completo, no una silueta sustituta
+  const std::string args = H::ArgsFicha(id, traje), clave = ClaveFicha(args);
+  Tira& t = g_tiras["ut_" + clave];
+  if (ahora - t.visto < 1.0) return t.pic;
+  t.visto = ahora;
+  const fs::path f = Juego() / "ingame_ui" / "heroe_vista" / (clave + ".png");
+  std::error_code ec;
+  const auto cuando = fs::last_write_time(f, ec);
+  if (ec) {
+    if (!t.pic && !Generando2("ut_" + clave))
+      GenerarCon("ut_" + clave, L"--ficha \"" + fs::u8path(args).wstring() + L"\" --clave " + fs::path(clave).wstring(), f);
+    return t.pic;
+  }
+  if (t.pic && cuando == t.cuando) return t.pic;
+  auto* drawer = dbz3::launcher::PreviewDrawer();
+  if (!drawer) return t.pic;
+  std::ifstream in(f, std::ios::binary);
+  const std::vector<uint8_t> data((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+  int w = 0, h = 0;
+  const auto px = rex::ui::DecodeImageRGBA(data.data(), data.size(), w, h);
+  if (px.empty()) return t.pic;
+  t.tex = drawer->CreateTexture(uint32_t(w), uint32_t(h), rex::ui::ImmediateTextureFilter::kLinear, false, px.data());
+  t.cuando = cuando;
+  t.pic = t.tex ? S::Pic{reinterpret_cast<ImTextureID>(t.tex.get()), float(w), float(h)} : S::Pic{};
+  return t.pic;
+}
+
+// Camara de la vista previa (H06): presets medidos sobre la caja real de la malla. 0 cuerpo, 1 tres cuartos (defecto),
+// 2 busto, 3 retrato. El zoom se guarda aparte para no perderlo al cambiar de preset.
+struct CamPreview {
+  const char* nombre;
+  float pitch, dist, fov, target;
+};
+constexpr CamPreview kCams[4] = {
+    {"cuerpo", 4.0f, 2.12f, 0.55f, 0.50f},
+    {"tres cuartos", 8.0f, 2.12f, 0.55f, 0.52f},
+    {"busto", 6.0f, 1.40f, 0.50f, 0.72f},
+    {"retrato", 6.0f, 1.00f, 0.22f, 0.90f},
+};
+int g_cam_preset = 1;
+float g_cam_zoom = 1.0f;
+float g_cam_yaw = 25.0f;   // grados; LB/RB y el giro automatico mueven el modelo, no la camara
+// Pinta el modelo en la caja p0..p1 (px de pantalla), girado `giro` radianes. La camara orbita el centro de la caja:
+// antes estaba fija a la altura del pecho (pitch 0), no se podia ver la coronilla y el cuerpo flotaba.
 void Pintar3D(ImDrawList* dl, const Modelo3D& m, ImVec2 p0, ImVec2 p1, float giro) {
+  if (const char* e = std::getenv("DBZ3_TEST_HEROE_CAM")) g_cam_preset = std::clamp(std::atoi(e), 0, 3);
+  const CamPreview& cp = kCams[std::clamp(g_cam_preset, 0, 3)];
   dbz3::ps2::Camara cam;
   cam.ok = true;
-  cam.fov = 0.55f;
+  cam.fov = cp.fov;
   cam.c = ImVec2((p0.x + p1.x) * 0.5f, (p0.y + p1.y) * 0.5f);
   cam.h = ImVec2((p1.x - p0.x) * 0.5f, (p1.y - p0.y) * 0.5f);
-  const float dist = m.alto / (1.8f * std::tan(cam.fov * 0.5f));
-  cam.m[0] = cam.m[5] = cam.m[10] = cam.m[15] = 1.0f;   // sin giro de camara: mira a -z
-  cam.m[13] = -m.alto * 0.5f;                            // centro de la caja = mitad del alto
-  cam.m[14] = -(dist + m.alto * 0.25f);
+  const float alto = std::max(m.alto, 0.01f);
+  // El plano cercano del proyector es 1.0: no acercar la camara por debajo de 1.05 unidades.
+  const float dist = std::max(cp.dist * alto * g_cam_zoom, 1.05f);
+  const float ty = cp.target * alto;
+  const float yaw = g_cam_yaw * 3.14159265f / 180.0f, pitch = cp.pitch * 3.14159265f / 180.0f;
+  const dbz3::ps2::V3 ojo{std::sin(yaw) * std::cos(pitch) * dist, ty + std::sin(pitch) * dist,
+                          std::cos(yaw) * std::cos(pitch) * dist};
+  const dbz3::ps2::V3 obj{0, ty, 0};
+  auto sub = [](const dbz3::ps2::V3& a, const dbz3::ps2::V3& b) { return dbz3::ps2::V3{a.x - b.x, a.y - b.y, a.z - b.z}; };
+  auto dot = [](const dbz3::ps2::V3& a, const dbz3::ps2::V3& b) { return a.x * b.x + a.y * b.y + a.z * b.z; };
+  auto norm = [&](const dbz3::ps2::V3& a) {
+    const float l = std::sqrt(dot(a, a));
+    return l > 1e-6f ? dbz3::ps2::V3{a.x / l, a.y / l, a.z / l} : dbz3::ps2::V3{0, 0, -1};
+  };
+  auto cross = [](const dbz3::ps2::V3& a, const dbz3::ps2::V3& b) {
+    return dbz3::ps2::V3{a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x};
+  };
+  const dbz3::ps2::V3 fwd = norm(sub(obj, ojo));
+  const dbz3::ps2::V3 der = norm(cross(fwd, dbz3::ps2::V3{0, 1, 0}));
+  const dbz3::ps2::V3 arr = cross(der, fwd);
+  cam.m[0] = der.x, cam.m[1] = arr.x, cam.m[2] = -fwd.x, cam.m[3] = 0;
+  cam.m[4] = der.y, cam.m[5] = arr.y, cam.m[6] = -fwd.y, cam.m[7] = 0;
+  cam.m[8] = der.z, cam.m[9] = arr.z, cam.m[10] = -fwd.z, cam.m[11] = 0;
+  cam.m[12] = -dot(der, ojo), cam.m[13] = -dot(arr, ojo), cam.m[14] = dot(fwd, ojo), cam.m[15] = 1;
   dbz3::ps2::Escena::Toon toon;
-  toon.borde = m.alto * 0.004f;
+  toon.borde = 2.0f / std::max(1.0f, cam.h.y / std::tan(cam.fov * 0.5f) / dist);
   static dbz3::ps2::Escena escena;
   escena.Empezar();
   escena.Poner(cam, m.malla, m.tx, dbz3::ps2::V3{0, 0, 0}, giro, 1.0f, toon);
@@ -392,17 +469,25 @@ const char* const kLogos[][2] = {{"Ninguno", "None"},           {"Tortuga (Kame)
 constexpr int kNumLogos = int(std::size(kLogos));
 constexpr int kNumPelos = 10;   // pelos UT del catalogo (mod center hd/cac/piezas_cac.toml: hair_000_01..hair_008_01 + base)
 
-int Filas() { return g_edit ? 4 : 8; }   // la ultima: la de los botones
+int Filas() { return CuerpoUT() ? (g_edit ? 3 : 6) : (g_edit ? 4 : 8); }   // la ultima: la de los botones
 int FilaBotones() { return Filas() - 1; }
 C::Heroe& Ficha() { return C::SlotEditable(C::SlotActivo()); }
 C::Hsv* ColorDeFila(int f) {
   C::Heroe& h = Ficha();
   if (!g_edit && f >= 1 && f <= 4) return &h.parte[f - 1];
   if (g_edit && f == 1) return &h.pelo_c1;
-  if (g_edit && f == 2) return &h.pelo_c2;
+  if (g_edit && f == 2 && !CuerpoUT()) return &h.pelo_c2;
   return nullptr;
 }
 std::string NombreColor(int f) {
+  if (!g_edit && CuerpoUT()) {
+    switch (f) {
+      case 1: return T::T("Parte de arriba", "Top");
+      case 2: return T::T("Parte de abajo", "Bottoms");
+      case 3: return T::T("Cinturón", "Belt");
+      case 4: return T::T("Calzado", "Footwear");
+    }
+  }
   if (!g_edit) return std::string(T::T("Parte ", "Part ")) + Num(f);
   return f == 1 ? T::T("Color de pelo 1", "Hair color 1") : T::T("Color de pelo 2", "Hair color 2");
 }
@@ -497,12 +582,15 @@ constexpr float kPaso = 54;
 void DibujarVista(ImDrawList* dl, const S::Area& a, float t) {
   Marco(dl, a, kPx0, kPy0, kPx1, kPy1, 235);
   const int id = H::Cuerpo(), traje = H::Traje();
-  const S::Pic p = Vista(id, traje, ImGui::GetTime());
+  const bool ut = CuerpoUT();
   const float ix0 = kPx0 + 34, ix1 = kPx1 - 34, iy0 = kPy0 + 30, iy1 = kPy1 - 104;
-  const Modelo3D* mf = MallaFicha(id, traje, Ficha(), ImGui::GetTime());   // con los colores/pelo/logo de la ficha
-  if (const Modelo3D* m3 = mf ? mf : Malla3D(id, traje, ImGui::GetTime())) {   // 3D en vivo
+  const Modelo3D* mf = ut ? nullptr : MallaFicha(id, traje, Ficha(), ImGui::GetTime());   // colores/pelo/logo de la ficha
+  const Modelo3D* m3 = ut ? nullptr : (mf ? mf : Malla3D(id, traje, ImGui::GetTime()));
+  const S::Pic p = m3 ? S::Pic{} : (ut ? VistaUT(id, traje, ImGui::GetTime()) : Vista(id, traje, ImGui::GetTime()));
+  if (m3) {   // 3D en vivo
     const float cx = (ix0 + ix1) * 0.5f;
-    dl->AddEllipseFilled(a.At(cx, iy1 - 8), ImVec2(110 * a.s, 12 * a.s), IM_COL32(0, 0, 0, 110));
+    if (g_cam_preset <= 1)   // cuerpo entero: sombra de contacto bajo los pies; en busto/retrato no hay suelo
+      dl->AddEllipseFilled(a.At(cx, iy1 - 0.16f * (iy1 - iy0)), ImVec2(62 * a.s, 8 * a.s), IM_COL32(0, 0, 0, 110));
     static bool dicho = false;
     if (!dicho) {
       dicho = true;
@@ -530,7 +618,7 @@ void DibujarVista(ImDrawList* dl, const S::Area& a, float t) {
   // nombre del heroe, cuerpo + traje y el giro
   Texto(dl, a, (kPx0 + kPx1) * 0.5f, kPy1 - 82, D::kRow, H::Nombre(), true, false, kPx1 - kPx0 - 60);
   Texto(dl, a, (kPx0 + kPx1) * 0.5f, kPy1 - 50, D::kSmall,
-        M::Nombre(id) + "  -  " + T::T("Traje ", "Costume ") + Num(traje + 1) + "/" + Num(H::NumTrajes()), false, true,
+        H::NombreCuerpo() + "  -  " + T::T("Traje ", "Costume ") + Num(traje + 1) + "/" + Num(H::NumTrajes()), false, true,
         kPx1 - kPx0 - 60);
   // studies 8 fase 2 (H2): si el combate ya lleva los colores de la ficha (mira los ficheros 1 vez por segundo)
   static double visto = -1e9;
@@ -682,6 +770,14 @@ static void FondoSinAnfitrion(ImDrawList* dl, const S::Area& a) {
   S::Sides(dl, a);
 }
 
+void DibujarAvatarUT(ImDrawList* dl, const S::Area& a) {   // G06a: selector con el cuerpo propio
+  FondoSinAnfitrion(dl, a);
+  if (const auto p = VistaUT(H::Cuerpo(), H::Traje(), ImGui::GetTime())) {
+    const float frame = p.h;   // fotogramas cuadrados: 12 giros
+    S::DrawPic(dl, p, a.At(55, 210), a.At(440, 825), ImVec4(0, 0, frame, p.h));
+  }
+}
+
 Accion Crear(ImDrawList* dl, const S::Area& a, float t, uint16_t p) {
   C::Heroe& h = Ficha();
   FondoSinAnfitrion(dl, a);
@@ -689,10 +785,26 @@ Accion Crear(ImDrawList* dl, const S::Area& a, float t, uint16_t p) {
   const double ahora = ImGui::GetTime();
   const float dt = float(std::clamp(ahora - g_t_ant, 0.0, 0.1));
   g_t_ant = ahora;
-  if (ahora - g_giro_mano > 3.0) g_giro += 1.6f * dt;
+  // H06: giro mas lento (30 grados/s), zoom con rueda, orbita con Q/E y reset con R; X cambia de preset.
+  if (ahora - g_giro_mano > 3.0) g_giro += 0.667f * dt;
   if (p & (kLb | kRb)) {
     g_giro = std::floor(g_giro) + ((p & kRb) ? 1.0f : -1.0f) + 0.01f;
     g_giro_mano = ahora;
+  }
+  ImGuiIO& io = ImGui::GetIO();
+  if (io.MouseWheel != 0.0f) {
+    g_cam_zoom = std::clamp(g_cam_zoom * std::pow(1.10f, io.MouseWheel), 0.62f, 3.20f);
+    REXLOG_INFO("dbz3 heroe: camara zoom {:.2f}", g_cam_zoom);
+  }
+  if (ImGui::IsKeyPressed(ImGuiKey_Q)) g_cam_yaw -= 5.0f;
+  if (ImGui::IsKeyPressed(ImGuiKey_E)) g_cam_yaw += 5.0f;
+  if (ImGui::IsKeyPressed(ImGuiKey_R)) {
+    g_cam_preset = 1, g_cam_zoom = 1.0f, g_cam_yaw = 25.0f;
+    REXLOG_INFO("dbz3 heroe: camara reset (tres cuartos)");
+  }
+  if (p & kX) {
+    g_cam_preset = (g_cam_preset + 1) % 4;
+    REXLOG_INFO("dbz3 heroe: camara preset={} ({}) zoom={:.2f}", g_cam_preset, kCams[g_cam_preset].nombre, g_cam_zoom);
   }
   if (g_panel >= 0) {   // panel HSV abierto: consume la entrada
     C::Hsv& c = *ColorDeFila(g_panel);
@@ -886,6 +998,82 @@ Accion MovesetsUI(ImDrawList* dl, const S::Area& a, float t, uint16_t p) {
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
+// Fichas de heroe (K): lista de cac.toml, duplicar (X) y archivar (Y). A elige y vuelve a la creacion.
+// ---------------------------------------------------------------------------------------------------------------------
+namespace {
+int g_slot_cur = 0;
+}
+void AbrirSlots() {
+  g_slot_cur = C::SlotActivo();
+  REXLOG_INFO("dbz3 heroe: fichas abiertas ({} activas, {} archivadas)", C::NumSlots(), C::NumArchivados());
+}
+Accion SlotsUI(ImDrawList* dl, const S::Area& a, float t, uint16_t p) {
+  const int n = std::max(1, C::NumSlots());
+  g_slot_cur = std::clamp(g_slot_cur, 0, n - 1);
+  if (p & kLeft) g_slot_cur = (g_slot_cur + n - 1) % n;
+  if (p & kRight) g_slot_cur = (g_slot_cur + 1) % n;
+  if (p & kUp) g_slot_cur = std::max(0, g_slot_cur - 4);
+  if (p & kDown) g_slot_cur = std::min(n - 1, g_slot_cur + 4);
+  if (p & kB) {
+    REXLOG_INFO("dbz3 heroe: fichas: atras");
+    return Accion::kVolver;
+  }
+  if (p & kX) {
+    if (C::NumSlots() >= C::kMaxSlots) {
+      REXLOG_WARN("dbz3 heroe: fichas: maximo {} fichas", C::kMaxSlots);
+    } else {
+      C::DuplicarSlot(g_slot_cur);
+      g_slot_cur = C::NumSlots() - 1;
+      REXLOG_INFO("dbz3 heroe: ficha duplicada: ahora {} fichas (activa {})", C::NumSlots(), g_slot_cur + 1);
+    }
+  }
+  if (p & kY) {
+    if (C::NumSlots() <= 1) {
+      REXLOG_WARN("dbz3 heroe: fichas: no se puede archivar la unica ficha");
+    } else {
+      C::ArchivarSlot(g_slot_cur);
+      g_slot_cur = std::clamp(g_slot_cur, 0, C::NumSlots() - 1);
+      REXLOG_INFO("dbz3 heroe: ficha archivada: quedan {} activas, {} archivadas", C::NumSlots(), C::NumArchivados());
+    }
+  }
+  if (p & kA) {
+    C::ElegirSlot(g_slot_cur);
+    REXLOG_INFO("dbz3 heroe: ficha elegida {}/{}", g_slot_cur + 1, C::NumSlots());
+    return Accion::kConfirmar;
+  }
+  FondoSinAnfitrion(dl, a);
+  S::Banner(dl, a, T::T("Fichas de héroe", "Hero slots"));
+  constexpr float gx0 = 40, gx1 = 1130, gy0 = 172, cw = (gx1 - gx0 - 3 * 18) / 4, ch = 250;
+  for (int i = 0; i < C::kMaxSlots; ++i) {
+    const float x0 = gx0 + (i % 4) * (cw + 18), y0 = gy0 + (i / 4) * (ch + 18);
+    const float x1 = x0 + cw, y1 = y0 + ch;
+    if (i >= n) {
+      Marco(dl, a, x0, y0, x1, y1, 90);
+      Texto(dl, a, (x0 + x1) * 0.5f, (y0 + y1) * 0.5f, D::kRow, T::T("(vacía)", "(empty)"), false, true, cw - 20);
+      continue;
+    }
+    const bool sel = i == g_slot_cur, act = i == C::SlotActivo();
+    Marco(dl, a, x0, y0, x1, y1, sel ? 235 : 200);
+    if (sel) D::Stripe(dl, a, x0 + 2, y0 + 4, x1 - 2, y1 - 4, t);
+    const C::Heroe& h = C::Slot(i);
+    Cara(dl, a, h.cuerpo, (x0 + x1) * 0.5f, y0 + 92, 110, sel || act ? 255 : 180);
+    Texto(dl, a, (x0 + x1) * 0.5f, y0 + 168, D::kRow, h.nombre, sel, !sel, cw - 20);
+    const std::string det = std::string(T::T("Nv ", "Lv ")) + Num(h.nivel) + "  ·  " + M::Nombre(h.cuerpo) + "  ·  " +
+                            M::Nombre(h.estilo);
+    Texto(dl, a, (x0 + x1) * 0.5f, y0 + 202, D::kSmall, det, false, true, cw - 20);
+    if (act) Texto(dl, a, (x0 + x1) * 0.5f, y0 + 228, D::kSmall, T::T("ACTIVA", "CURRENT"), true, false, cw - 20);
+  }
+  Texto(dl, a, 600, 738, D::kSmall,
+        std::string(T::T("Fichas: ", "Slots: ")) + Num(C::NumSlots()) + "/" + Num(C::kMaxSlots) + "   " +
+            T::T("Archivadas: ", "Archived: ") + Num(C::NumArchivados()),
+        false, false);
+  S::HelpLine(dl, a.At(600, 868), 38 * a.s,
+              {{"A", T::T("Elegir", "Select")}, {"X", T::T("Duplicar", "Duplicate")},
+               {"Y", T::T("Archivar", "Archive")}, {"B", T::T("Atrás", "Back")}});
+  return Accion::kNada;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
 // Mapa del mundo (studies 8 fase 2, H5): las sagas como puntos de un mapa propio (dibujado por codigo, sin arte), el
 // heroe en 3D (la malla de su ficha, ps2::Escena) vuela de un punto a otro y el radar cuenta las Esferas (una por saga
 // completada). A en la saga siguiente la empieza. Es la "alternativa barata" de heroe_pasos.md H5 (no el mapa de DU).
@@ -1007,10 +1195,17 @@ Accion MapaUI(ImDrawList* dl, const S::Area& a, float t, uint16_t p) {
   const bool vuela = std::abs(dest.x - g_mapa_x) + std::abs(dest.y - g_mapa_y) > 3;
   const float alto = vuela ? 26.0f : 8.0f + 4.0f * std::sin(t * 3);
   const Modelo3D* mf = MallaFicha(H::Cuerpo(), H::Traje(), Ficha(), ahora);
-  if (const Modelo3D* m3 = mf ? mf : Malla3D(H::Cuerpo(), H::Traje(), ahora)) {
+  if (const Modelo3D* m3 = CuerpoUT() ? nullptr : (mf ? mf : Malla3D(H::Cuerpo(), H::Traje(), ahora))) {
     dl->AddEllipseFilled(a.At(g_mapa_x, g_mapa_y - 4), ImVec2(22 * a.s, 6 * a.s), IM_COL32(0, 0, 0, 90));
     const float giro = vuela ? (dx >= 0 ? 1.5708f : -1.5708f) : 0.0f;
     Pintar3D(dl, *m3, a.At(g_mapa_x - 60, g_mapa_y - 150 - alto), a.At(g_mapa_x + 60, g_mapa_y - alto), giro);
+  } else if (CuerpoUT()) {
+    if (const auto p = VistaUT(H::Cuerpo(), H::Traje(), ahora)) {
+      const float frame = p.h;
+      const float kf = vuela ? (dx > 0 ? 3.0f : 9.0f) : 0.0f;   // 12 giros: 90/270 grados
+      S::DrawPic(dl, p, a.At(g_mapa_x - 55, g_mapa_y - 130 - alto), a.At(g_mapa_x + 55, g_mapa_y - alto),
+                 ImVec4(kf * frame, 0, (kf + 1) * frame, p.h));
+    }
   } else {
     Cara(dl, a, H::Cuerpo(), g_mapa_x, g_mapa_y - 40 - alto, 64);
   }

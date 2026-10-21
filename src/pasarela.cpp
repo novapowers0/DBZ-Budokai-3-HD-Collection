@@ -1155,6 +1155,7 @@ void Toma(dbz3::cinematica::Paso& p, std::array<float, 3> o0, std::array<float, 
 }
 // Las dos tomas cortas de cada ronda antes del "READY?": Mr. Satan desde abajo con los brazos abiertos (B1: camara a ras
 // de suelo, el cuerpo entero con las rodillas y la cabeza casi en los bordes, sube un poco) y el retador de cerca.
+// Duraciones medidas en B1 (s9b, capturas a camara lenta): 2,6 s la primera y 2,3 s la segunda (no 2,4).
 void TomasPresentacion(dbz3::cinematica::Escena& e) {
   namespace C = dbz3::cinematica;
   C::Paso p;
@@ -1165,7 +1166,7 @@ void TomasPresentacion(dbz3::cinematica::Escena& e) {
   e.pasos.push_back(p);
   p = C::Paso{};
   p.plano = C::kLado2;
-  p.segundos = 2.4f;
+  p.segundos = 2.3f;
   Toma(p, {24.0f, 8.0f, 28.0f}, {15.0f, 7.0f, 0.0f}, {23.0f, 7.5f, 29.0f}, {15.0f, 7.0f, 0.0f});
   e.pasos.push_back(p);
 }
@@ -1177,25 +1178,31 @@ void EscenaCell(dbz3::cinematica::Escena& e) {
   C::Paso p;   // S1-F03.1: el ring de lejos va ahora en la escena previa (EscenaPrevia)
   // Mr. Satan de espaldas, con la mochila, de cara al ring
   p.plano = C::kLado1;
-  p.segundos = 3.0f;
+  p.segundos = 6.66f;   // L04: corte 39,822-46,482 de la traza B1
+  p.linea = T::T("¡Ha llegado el salvador de la Tierra, Mr. Satán!", "The Earth's savior, Mr. Satan, has arrived!");
   Toma(p, {-47.0f, 9.5f, 2.5f}, {15.0f, 8.5f, 0.0f}, {-43.0f, 9.0f, 2.0f}, {15.0f, 8.5f, 0.0f});
   e.pasos.push_back(p);
   p = C::Paso{};   // plano que sube de las botas a la cara
   p.plano = C::kLado1;
-  p.segundos = 4.0f;
-  p.linea = T::T("¡Ha llegado el salvador de la Tierra, Mr. Satán!", "The Earth's savior, Mr. Satan, has arrived!");
+  p.segundos = 14.84f;   // L04: corte 46,482-61,322 de la traza B1
+  p.linea = T::T("¡Por fin, por fin ha aparecido!", "At last, at last he's shown up!");
   Toma(p, {-6.0f, 1.2f, 8.0f}, {-15.0f, 3.0f, 0.0f}, {-6.0f, 1.2f, 8.0f}, {-15.0f, 13.0f, 0.0f});
+  e.pasos.push_back(p);
+  p = C::Paso{};   // L04: plano ancho desde detras de Mr. Satan hacia el retador (61,322-63,982, 2,66 s)
+  p.plano = C::kLado1;
+  p.segundos = 2.66f;
+  Toma(p, {-31.4f, 12.5f, -36.7f}, {15.0f, 12.0f, 0.0f}, {-21.4f, 12.2f, -33.3f}, {15.0f, 12.0f, 0.0f});
   e.pasos.push_back(p);
   p = C::Paso{};   // primer plano, primera frase
   p.plano = C::kLado1;
-  p.segundos = 3.4f;
+  p.segundos = 5.66f;   // L04: corte 63,982-69,642 de la traza B1
   p.cara = kJugador;
   p.linea = T::T("¡Je, je, je! Qué ganas de un rival de verdad...", "Heh heh! I can't wait for a real opponent...");
   Toma(p, {-8.0f, 12.8f, 8.0f}, {-15.0f, 12.6f, 0.0f}, {-10.0f, 12.8f, 7.0f}, {-15.0f, 12.6f, 0.0f});
   e.pasos.push_back(p);
   p = C::Paso{};   // y la segunda, con la mano
   p.plano = C::kLado1;
-  p.segundos = 3.4f;
+  p.segundos = 5.34f;   // L04: corte 69,642-74,982 de la traza B1
   p.cara = kJugador;
   p.linea = T::T("Os acabo a todos a la vez. ¡Venid a por mí!", "I'll take you all on at once. Come and get it!");
   Toma(p, {-9.0f, 12.6f, 8.0f}, {-15.0f, 12.4f, 0.0f}, {-11.0f, 12.6f, 7.0f}, {-15.0f, 12.4f, 0.0f});

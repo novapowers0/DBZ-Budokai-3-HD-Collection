@@ -54,6 +54,7 @@ EXE = R / "out" / "build" / "win-amd64-dual" / "dbz3.exe"
 DLLS = R / "rexglue-sdk-0.10" / "out" / "win-amd64-baseline"
 GBASE = 0x200000000
 PANTALLA = GBASE + 0x824BA110                       # byte con el id de pantalla (4 titulo, 5 menu, 7 rueda...)
+PANTALLA_EU = GBASE + 0x824BA100                    # I03: el dual-region desplaza el byte 0x10 en el xex EU
 ESTRUCTAS = (0x8247A8E0, 0x824BA110)                # bloques de DU (antes en du_mem.py)
 BLOQUE, RANURA = 4624, 22
 MAX_PARALELO = 3
@@ -393,7 +394,8 @@ class Juego:
             self.h = None
 
     def pantalla(self):
-        b = leer(self.h, PANTALLA, 1)
+        addr = PANTALLA_EU if os.environ.get("DBZ3_TEST_PANTALLA_EU") == "1" else PANTALLA
+        b = leer(self.h, addr, 1)
         sc = b[0] if b else None
         if sc is not None:
             self.vistas.add(sc)
@@ -1185,11 +1187,13 @@ def _tablero(j, par):
     j.log(r"tablero b2: escena M207", 30)
     time.sleep(1.5)
     j.captura("a1b_charla")   # cabezas de B2 (CMN 1196)
+    # orden 4 del guion 301: ventana de mensaje (0 y 78) que espera a A antes de la orden 69. El test antiguo
+    # no la cerraba y se quedaba 60 s esperando la eleccion (fallo de tiempo, no del juego).
+    j.tecla_hasta_log("Space", r"tablero b2: script 301: eleccion de 1 aliado", intentos=10, seg=4)
     # orden 69 del guion 301: eleccion de 1 aliado (2 en las fases IV, V y IX); Space elige el primero
-    j.log(r"tablero b2: script 301: eleccion de 1 aliado", 60)
     time.sleep(1)
     j.captura("a2_aliado")
-    j.tecla_hasta_log("Space", r"tablero b2: aliado elegido", intentos=3, seg=3)
+    j.tecla_hasta_log("Space", r"tablero b2: aliado elegido", intentos=4, seg=3)
     j.log(r"tablero b2: guiones terminados", 60)
     time.sleep(1)
     j.captura("b_tablero")
@@ -1207,8 +1211,14 @@ def _tablero(j, par):
     j.tecla("P", 600)
     j.tecla("P", 900)
     # R7: los Saibaman de la fase I salen ahora de sus guiones (ya no hay uno fijo en la casilla 3); Raditz (movimiento
-    # 5 = sigue a la pieza 1, Goku) viene hacia Goku: se pasa turno (B) hasta el contacto
-    j.tecla_hasta_log("Backspace", r"tablero b2: combate:", intentos=12, seg=5)
+    # 5 = sigue a la pieza 1, Goku) viene hacia Goku: se pasa turno (B) hasta el contacto. A cierra antes las ventanas
+    # de mensaje del guion (ordenes 4/6): con una abierta, B no pasa turno y el test se quedaba sin contacto.
+    for _ in range(12):
+        j.tecla("Space", 500)
+        j.tecla("Backspace", 3500)
+        if re.search(r"tablero b2: combate:", j.texto_log()):
+            break
+    j.log(r"tablero b2: combate:", 20)
     j.captura("e_contacto")
     time.sleep(2)
     j.captura("f_tarjeta")
@@ -1220,13 +1230,16 @@ def _tablero(j, par):
 
 def _r2_nave(j, par):
     # frente R2 (ronda 4): Pasarela > Nave de Babidi de B2 (DBZ3_TEST_MISIONES=5,reset abre el modo con 0 Kili).
-    # Graficos de la nave de la ISO (DATA_SP 1131/1132). Pruebas -> S S elige la III (golpes 99 s) -> Space: luchador,
-    # oponente y sitio (Space en cada uno) -> tarjeta -> Space = combate -> fin a los 99 s -> resultado con el Kili.
+    # Graficos de la nave de la ISO (DATA_SP 1131/1132). A entra en la lista (empieza en 1P/2P) -> S S elige la III
+    # (golpes 99 s) -> Space: luchador, oponente y sitio (Space en cada uno) -> tarjeta -> Space = combate -> fin a
+    # los 99 s -> resultado con el Kili. Antes faltaba el A inicial y las 2 S caian en la pantalla 1P/2P.
     j.log(r"nave: entrar", 90)
     time.sleep(3)
     j.captura("a_nave")
-    j.tecla("S", 700)
-    j.tecla("S", 900)
+    j.tecla("Space", 900)
+    if "prueba" not in par:          # r2_nave: S S baja a la III; con --par prueba=N la fija el entorno
+        j.tecla("S", 600)
+        j.tecla("S", 600)
     j.captura("b_prueba3")
     j.tecla("Space", 1200)
     j.captura("c_luchador")
@@ -1235,13 +1248,14 @@ def _r2_nave(j, par):
     j.tecla("Space", 1200)
     j.captura("e_sitio")
     j.tecla("Space", 1500)
-    j.log(r"nave: prueba 3:", 10)
+    j.log(r"nave: prueba %d:" % (int(par.get("prueba", "2")) + 1), 20)
     j.captura("f_tarjeta")
     j.tecla("Space", 1000)
     j.log(r"misiones: nave combate", 20)
     time.sleep(24)
     j.captura("g_combate")
-    j.log(r"nave: fin:", 140)
+    j.log(r"nave: fin:", 720 if par.get("prueba") == "1" else 160)
+    j.log(r"nave: resultado de la prueba", 30)
     time.sleep(6)
     j.captura("h_resultado")
 
@@ -1939,8 +1953,10 @@ ESCENARIOS = {
                     "(--par desde=2: ficha de no disponibles)",
                     lambda p: {"DBZ3_TEST_MISIONES": f"4,reset,desde={p.get('desde', '0')}",
                                "DBZ3_PS2_GAMES": r"D:\DBZ3HD\ps2_games"}, _iw_misiones),
-    "r2_nave": ("Pasarela > Nave de Babidi de B2 (ISO del jugador): menu de pruebas, prueba III, combate, Kili",
-                lambda p: {"DBZ3_TEST_MISIONES": "5,reset", "DBZ3_PS2_GAMES": r"D:\DBZ3HD\ps2_games"}, _r2_nave),
+    "r2_nave": ("Pasarela > Nave de Babidi de B2 (ISO del jugador): menu de pruebas, prueba III, combate, Kili "
+                "(--par prueba=0..3: las cuatro pruebas con su duracion real)",
+                lambda p: dict({"DBZ3_TEST_MISIONES": "5,reset", "DBZ3_PS2_GAMES": r"D:\DBZ3HD\ps2_games"},
+                               **({"DBZ3_TEST_NAVE_PRUEBA": p["prueba"]} if "prueba" in p else {})), _r2_nave),
     "r2_fase1": ("Pasarela > Dragon World de B2: la fase I entera en automatico (presentacion, combates, sucesos, fin)",
                  lambda p: {"DBZ3_TEST_MISIONES": "1,auto,reset", "DBZ3_TEST_RINGOUT": "1",
                             "DBZ3_PS2_GAMES": r"D:\DBZ3HD\ps2_games"}, _r2_fase1),

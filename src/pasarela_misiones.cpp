@@ -90,8 +90,9 @@ bool dbz3_select_live();   // select_ext.cpp: la rueda del select en pantalla
 namespace dbz3::pasarela::b2 {   // Dragon World de B2 (pasarela_b2.cpp; todo con g_mu)
 bool Disponible();
 void Entrar();
-int Dibujar(ImDrawList* dl, const dbz3::ingame::style::Area& a, float t, uint16_t pressed, bool auto_on, int out[8]);
+int Dibujar(ImDrawList* dl, const dbz3::ingame::style::Area& a, float t, uint16_t pressed, bool auto_on, int out[14]);
 void Resultado(int ganador, int vida);
+int FormaTableroB3(int id_b3, int forma_b2);
 }  // namespace dbz3::pasarela::b2
 namespace dbz3::pasarela::nave {   // Nave de Babidi de B2 (pasarela_nave.cpp; todo con g_mu)
 bool Disponible();
@@ -650,12 +651,16 @@ void VolverAlTablero() {   // con g_mu
 // 4 (el ki se va gastando) = el jugador no gana ki. ponytail: 2 no vacia el ki del jugador, y 3 (la vida se va gastando)
 // y 5 (sin bloqueo) solo se avisan: hacen falta campos nuevos en Reglas (pasarela.h/.cpp, frente P3).
 bool Lanzar();   // mas abajo
-void CombateTablero(const int c[8]) {   // con g_mu
+void CombateTablero(const int c[14]) {   // con g_mu
   g_pasos.clear();
   Paso x;
   x.tipo = kCombate;
   x.jugador = c[0];
   x.rival = c[1];
+  // Forma inicial: el T2 de B2 no la trae (0 en las 9 fases). Cell y Freezer del tablero salen siempre
+  // perfecto/final; una orden 52 explicita se traduce con FormaB3.
+  x.forma1 = b2::FormaTableroB3(x.jugador, c[8]);
+  x.forma2 = b2::FormaTableroB3(x.rival, c[10]);
   if (c[2] < 0) x.escenario = -c[2] - 1;   // pasarela_b2: el alta del escenario de B2 de la casilla
   else x.mapa = c[2];
   x.vida2 = c[4];
@@ -735,6 +740,7 @@ void CombateNave(const int c[6]) {   // con g_mu
 
 // --- Dragon Mission de IW (frente P1): mapa -> ficha -> combate -> resultado -> mapa (pasarela_iw.cpp lo dibuja) ---
 int g_iw_vista = 0;          // en kMapaIW: 0 mapa, 1 ficha, 2 resultado
+std::atomic<bool> g_iw_vuelta_combate{false};   // H03: se vuelve de un combate/derrota; el mapa no repite la intro
 int g_iw_mision = 0;         // mision donde poner el cursor (-1 = la abierta); 0 = donde estaba
 int64_t g_iw_t0 = 0;         // cuando se pidio el combate (TIME de las misiones sin tiempo)
 ResultadoDM g_iw_res;
@@ -1242,6 +1248,7 @@ void GanarIW(const Paso& p, const Fin& f) {   // con g_mu
 // ---- Avance ----
 void Salir() {   // con g_mu: al menu de la pasarela (se guarda donde iba)
   if (g_modo == kIW && DM() && g_fase != kMapaIW && g_fase != kMenu) {   // IW: de la ficha o la derrota, al mapa
+    g_iw_vuelta_combate = true;   // H03: la derrota vuelve al mapa sin repetir la intro de 100 cuadros
     g_iw_vista = 0;
     return VolverAlMapa();
   }
@@ -1273,20 +1280,115 @@ void Siguiente() {   // con g_mu
   Publicar(kPantalla);
 }
 
-// M2 (mod opcional iw.video_apertura): OPENING2.SFD de la copia de IW al entrar al modo, una vez por sesion. El
+// G01-iw-iso B-04 (studies 2): la cache de video (user_data/dbz3/cache_ps2/iw) no llevaba sello de origen, asi que
+// al cambiar de ISO se servia el SFD viejo. El sello guarda ruta, tamano, fecha y una huella FNV-1a de los extremos
+// de la ISO; si no coincide, la cache se aparta a iw_viejo_<ticks> (no se borra) y se vuelve a extraer.
+std::string HuellaFuente(const std::filesystem::path& p) {
+  std::ifstream f(p, std::ios::binary);
+  if (!f) return {};
+  constexpr std::streamoff kMuestra = 64 * 1024;
+  f.seekg(0, std::ios::end);
+  const std::streamoff tam = f.tellg();
+  if (tam < 0) return {};
+  uint64_t h = 1469598103934665603ull;
+  auto leer = [&](std::streamoff off, std::streamsize n) {
+    std::vector<char> b(static_cast<size_t>(n));
+    f.clear();
+    f.seekg(off);
+    f.read(b.data(), n);
+    for (std::streamsize i = 0; i < f.gcount(); ++i) {
+      h ^= uint8_t(b[size_t(i)]);
+      h *= 1099511628211ull;
+    }
+  };
+  leer(0, std::streamsize(std::min<std::streamoff>(kMuestra, tam)));
+  if (tam > kMuestra) leer(tam - kMuestra, std::streamsize(kMuestra));
+  char hex[17] = {};
+  std::snprintf(hex, sizeof hex, "%016llx", static_cast<unsigned long long>(h));
+  return std::string(hex);
+}
+
+std::string SelloFuenteIw(const std::filesystem::path& j) {
+  std::error_code ec;
+  if (j.empty() || std::filesystem::is_directory(j, ec)) return {};   // carpeta extraida: no hay cache
+  const auto tam = std::filesystem::file_size(j, ec);
+  if (ec) return {};
+  const auto fecha = std::filesystem::last_write_time(j, ec);
+  if (ec) return {};
+  return j.string() + "|" + std::to_string(tam) + "|" + std::to_string(fecha.time_since_epoch().count()) + "|" +
+         HuellaFuente(j);
+}
+
+void PrepararCacheIw(const std::filesystem::path& j) {
+  const std::string sello = SelloFuenteIw(j);
+  if (sello.empty()) return;
+  std::error_code ec;
+  const std::filesystem::path cache = dbz3::settings::UserDataRoot() / "cache_ps2" / "iw";
+  std::ifstream f(cache / ".fuente", std::ios::binary);
+  const std::string previo((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+  if (previo == sello) return;
+  if (std::filesystem::exists(cache, ec)) {
+    const auto ticks = std::chrono::system_clock::now().time_since_epoch().count();
+    const std::filesystem::path viejo = cache.parent_path() / ("iw_viejo_" + std::to_string(ticks));
+    std::filesystem::rename(cache, viejo, ec);
+    if (ec)
+      REXLOG_WARN("dbz3 misiones: iw: no se pudo apartar la cache vieja de video ({}); se reextrae igualmente",
+                  ec.message());
+    else
+      REXLOG_INFO("dbz3 misiones: iw: la ISO de origen cambio; cache de video anterior en {}", viejo.string());
+  }
+  std::filesystem::create_directories(cache, ec);
+}
+
+void SellarCacheIw(const std::filesystem::path& j) {
+  const std::string sello = SelloFuenteIw(j);
+  if (sello.empty()) return;
+  std::error_code ec;
+  const std::filesystem::path cache = dbz3::settings::UserDataRoot() / "cache_ps2" / "iw";
+  std::filesystem::create_directories(cache, ec);
+  std::ofstream f(cache / ".fuente", std::ios::binary | std::ios::trunc);
+  f << sello;
+}
+
+// M2 (mod opcional iw.video_apertura): la apertura de la copia de IW al entrar al modo, una vez por sesion. El
 // original lo tiene junto a las etiquetas "# VS MODE #" y "# OPENING #" (R7/mapa_recursos/musica_video.md A5) y su
 // pantalla exacta sigue sin resolver [H] (opcional.toml: "modo de arranque exacto sin confirmar"); aqui se usa la
-// entrada al Dragon Mission, que es cuando el port abre IW. La ISO puede ser carpeta o .iso (cache).
+// entrada al Dragon Mission, que es cuando el port abre IW. La ISO puede ser carpeta o .iso (cache con sello).
 void VideoAperturaIW() {
   if (!dbz3::opcional::Activo("iw.video_apertura")) return;
   static bool hecho = false;
   if (hecho) return;
-  const std::string ruta = dbz3::opcional::Texto("iw.video_apertura", "ruta_iso", "USR/OPENING2.SFD");
-  const std::filesystem::path p = dbz3::opcional::ArchivoDeJuegoPs2("iw", ruta);
-  if (p.empty()) return;   // sin copia de IW (o sin el fichero): no se da por hecho (se reintenta al reentrar)
+  // G01-iw-iso B-01: IW USA trae USR/OPENING2.SFD; la ISO EU solo trae USR/OPENING.SFD. Se prueban en orden y solo
+  // se da por fallado si no esta ninguno (log claro, sin romper el modo).
+  std::vector<std::string> rutas;
+  const std::string config = dbz3::opcional::Texto("iw.video_apertura", "ruta_iso", "USR/OPENING2.SFD");
+  if (!config.empty()) rutas.push_back(config);
+  for (const char* r : {"USR/OPENING2.SFD", "USR/OPENING.SFD"})
+    if (std::find(rutas.begin(), rutas.end(), r) == rutas.end()) rutas.emplace_back(r);
+  const std::filesystem::path fuente = BuscarJuego("infinite world");
+  if (fuente.empty()) {
+    REXLOG_WARN("dbz3 misiones: iw: video de apertura: no hay copia de Infinite World en ps2_games");
+    return;
+  }
+  PrepararCacheIw(fuente);
+  std::filesystem::path p;
+  std::string usado;
+  for (const std::string& r : rutas) {
+    p = dbz3::opcional::ArchivoDeJuegoPs2("iw", r);
+    if (!p.empty()) {
+      usado = r;
+      break;
+    }
+    REXLOG_WARN("dbz3 misiones: iw: video de apertura: {} no esta en {}", r, fuente.string());
+  }
+  if (p.empty()) {   // sin copia de IW (o sin ninguno de los dos nombres): se reintenta al reentrar
+    REXLOG_WARN("dbz3 misiones: iw: video de apertura: no se reproduce (faltan USR/OPENING2.SFD y USR/OPENING.SFD)");
+    return;
+  }
+  SellarCacheIw(fuente);
   hecho = true;
   const bool ok = dbz3::video::Reproducir(p);
-  REXLOG_INFO("dbz3 misiones: iw: video de apertura (mod iw.video_apertura): {} ({})", ruta,
+  REXLOG_INFO("dbz3 misiones: iw: video de apertura (mod iw.video_apertura): {} de {} ({})", usado, fuente.string(),
               ok ? "reproduciendo" : "no se pudo abrir");
 }
 
@@ -1370,6 +1472,9 @@ bool Lanzar() {   // con g_mu
       nave::Resultado(f.ganador, f.vida[0], f.segundos, f.golpes);
       return VolverANave();
     }
+    // H03: al volver al mapa (resultado o derrota) no se repite Story_MapIntroDelayTick; las esperas del resultado
+    // (Story_MapResultDelayTick y Story_MapReloadAfterDelayTick) las lleva PantallaDM::VolverDelCombate.
+    if (g_modo == kIW && DM()) g_iw_vuelta_combate = true;
     const Paso& reto = g_pasos[size_t(g_paso)];
     bool gana = f.ganador == 0;
     if (reto.reglas.golpes > 0) gana = f.golpes >= reto.reglas.golpes;
@@ -1670,6 +1775,7 @@ class Panel : public rex::ui::ImGuiDialog {
     PantallaDM& pantalla_ = g_iw_road ? pantalla_road_ : pantalla_dm_;   // Fighter's Road: su propio cursor
     const auto textos = IW();
     if (!dm) return Salir();
+    if (g_iw_vuelta_combate.exchange(false)) pantalla_.VolverDelCombate();   // H03: vuelta de combate, sin intro
     if (iw_cambio_ != g_cambio || iw_gen_ != g_iw_gen.load()) {
       iw_cambio_ = g_cambio;
       iw_gen_ = g_iw_gen.load();
@@ -1756,6 +1862,7 @@ class Panel : public rex::ui::ImGuiDialog {
         if (c.tipo == 0 && c.clave == mr.clave && mr.superado) g_iw_despues = VideoIW(*dm, 0, c.indice, true);
       }
       g_iw_res = r;
+      g_iw_vuelta_combate = true;   // H03: vuelta de minijuego: el mapa no repite la intro de 100 cuadros
       g_iw_vista = 2;
       ++g_cambio;
       REXLOG_INFO("dbz3 misiones: iw: minijuego {:#x} acabado: {} ({} s, {} puntos)", mr.clave,
@@ -2067,7 +2174,7 @@ class Panel : public rex::ui::ImGuiDialog {
   // Tablero: Dragon World de B2 (pasarela_b2.cpp); aqui solo se piden sus combates.
   void DrawTablero(ImDrawList* dl, const S::Area& a, float t, uint16_t pressed, bool auto_on) {
     (void)auto_on;   // el tablero lleva su propio ritmo en la prueba automatica
-    int c[8] = {};
+    int c[14] = {};
     if (dbz3::ingame::tutorial::Mostrar("dragon_world")) pressed = 0;   // F3
     const int r = b2::Dibujar(dl, a, t, pressed, g_auto.load(), c);
     if (r == 1) return Salir();

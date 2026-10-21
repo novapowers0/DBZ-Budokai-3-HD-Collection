@@ -20,6 +20,24 @@ struct NewsBlock {
   int count;
 };
 
+inline constexpr NewsItem kNews1514[] = {
+    {"Budokai 2 (experimental)", "Budokai 2 (experimental)",
+     "El tablero se ve con el mismo encuadre que en PS2, con Gotenks, Vegito y Shenron, piezas animadas y diálogos con la fuente y los retratos originales. Nave de Babidi con su cielo y nubes originales.",
+     "The board uses the same framing as on PS2, with Gotenks, Vegito and Shenron, animated pieces and dialogue with the original font and portraits. Babidi's ship with its original sky and clouds."},
+    {"Infinite World (experimental)", "Infinite World (experimental)",
+     "Vuelos con la ISO europea, minijuego de la barra roja con su cámara y fondo como el original, y el mapa bien colocado en 4:3, 16:10 y 21:9.",
+     "Flight minigames with the European ISO, red bar minigame with its original camera and background, and the map correctly placed in 4:3, 16:10 and 21:9."},
+    {"Modo Héroe (beta)", "Hero Mode (beta)",
+     "Lista de personajes con duplicar y archivar, vista 3D, guardado nuevo (se convierte solo) y cambio de moveset dentro del juego sin reiniciar.",
+     "Character list with duplicate and archive, 3D preview, new save format (converted automatically) and moveset changes in game without restarting."},
+    {"Leyenda de Mr. Satán", "Legend of Mr. Satan",
+     "Ronda 1 con los tiempos y subtítulos del original.",
+     "Round 1 with the original timing and subtitles."},
+    {"Rendimiento y arreglos", "Performance and fixes",
+     "El pack HD ya no cierra el juego al activarlo y desactivarlo, nuevo modo rendimiento para gráficas modestas y aviso en el launcher si no se encuentran los escenarios de PS2.",
+     "The HD pack no longer crashes the game when toggled, new performance mode for modest GPUs and a launcher notice when PS2 stages are not found."},
+};
+
 inline constexpr NewsItem kNews1513[] = {
     {"Budokai 2 (experimental)", "Budokai 2 (experimental)",
      "Vuelta del combate con el iris de la Bola de Dragón, ficha de cápsula como el original y arreglado un cierre al empezar el tablero.",
@@ -149,6 +167,7 @@ inline constexpr NewsItem kNews145[] = {
 
 // Del mas nuevo al mas antiguo.
 inline constexpr NewsBlock kNewsBlocks[] = {
+    {"1.5.1.4", kNews1514, int(sizeof(kNews1514) / sizeof(kNews1514[0]))},
     {"1.5.1.3", kNews1513, int(sizeof(kNews1513) / sizeof(kNews1513[0]))},
     {"1.5.1.2", kNews1512, int(sizeof(kNews1512) / sizeof(kNews1512[0]))},
     {"1.5.1.1", kNews1511, int(sizeof(kNews1511) / sizeof(kNews1511[0]))},

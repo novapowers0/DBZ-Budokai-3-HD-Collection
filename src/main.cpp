@@ -1,4 +1,4 @@
-// dbz3 - ReXGlue Recompiled Project
+﻿// dbz3 - ReXGlue Recompiled Project
 // Dragon Ball Z Budokai 3 (PAL / Xbox 360 HD Collection)
 // Adapted from original Budokai 1 main.cpp
 
@@ -279,11 +279,11 @@ public:
           using dbz3::i18n::T;
           const std::string msg =
               std::string(T("No encuentro tu copia de Budokai 3 HD.\n\n"
-                            "Pon la imagen del disco (ISO de Xbox 360) junto a dbz3.exe, o elígela ahora. "
-                            "Si tienes el juego extraído en una carpeta, elige esa carpeta (la que tiene "
+                            "Pon la imagen del disco (ISO de Xbox 360) junto a dbz3.exe, o elÃ­gela ahora. "
+                            "Si tienes el juego extraÃ­do en una carpeta, elige esa carpeta (la que tiene "
                             "DBZ3, o default.xex y us/).\n\n"
-                            "Sí: elegir la imagen del disco (.iso)\n"
-                            "No: elegir la carpeta del juego extraído\n"
+                            "SÃ­: elegir la imagen del disco (.iso)\n"
+                            "No: elegir la carpeta del juego extraÃ­do\n"
                             "Cancelar: salir\n\n"
                             "Carpeta buscada:\n",
                             "I can't find your copy of Budokai 3 HD.\n\n"
@@ -605,7 +605,21 @@ public:
                 online_panel_ = std::make_unique<dbz3::ingame::OnlinePanel>(imgui_drawer_);
                 tagteam_panel_ = std::make_unique<dbz3::ingame::TagTeamPanel>(imgui_drawer_);
                 // PRUEBA (DBZ3_TEST_OVERLAY=N): abre el launcher sobre el juego a los N s (sin teclado real)
-                if (const char* t = std::getenv("DBZ3_TEST_OVERLAY")) {
+                // PRUEBA (DBZ3_TEST_PACK_TOGGLE_MS=N): alterna el pack HD cada N ms.
+                // Sirve para las 200 transiciones de G10 sin depender del foco/teclado.
+                if (const char* ms = std::getenv("DBZ3_TEST_PACK_TOGGLE_MS")) {
+                    const int delay = std::atoi(ms);
+                    if (delay > 0) {
+                        std::thread([delay]() {
+                            while (true) {
+                                std::this_thread::sleep_for(std::chrono::milliseconds(delay));
+                                const bool on = rex::cvar::GetFlagByName("dbz3_texture_packs_on") != "false";
+                                rex::cvar::SetFlagByName("dbz3_texture_packs_on", on ? "false" : "true");
+                                REXLOG_INFO("dbz3: prueba: pack HD {}", on ? "apagado" : "encendido");
+                            }
+                        }).detach();
+                    }
+                }                if (const char* t = std::getenv("DBZ3_TEST_OVERLAY")) {
                     std::thread([this, sec = std::atoi(t)]() {
                         std::this_thread::sleep_for(std::chrono::seconds(sec));
                         app_context().CallInUIThreadDeferred([this]() { OpenFullSettings(); });
@@ -640,9 +654,9 @@ public:
         auto FindGameRoot = [](const std::filesystem::path& base) -> std::filesystem::path {
             // Accept either region folder (us/ or eu/), in the flat layout
             // (base/us), the assets/ layout (base/assets/us) and the RETAIL DISC
-            // layout (base/DBZ3/us — the disc keeps Budokai 3 in DBZ3/ next to
+            // layout (base/DBZ3/us â€” the disc keeps Budokai 3 in DBZ3/ next to
             // the HD Collection's own default.xex menu). An EU-only user has eu/
-            // but no us/ — rejecting it made auto-detection fall back to the exe
+            // but no us/ â€” rejecting it made auto-detection fall back to the exe
             // folder and fail with "Entrypoint XEX not found".
             // Matches IsValidGameDataDir/banner.
             const char* kSub[] = {"", "assets", "DBZ3", "assets/DBZ3", "DBZ3/assets"};
@@ -1230,3 +1244,4 @@ REX_EXTERN(__imp__IoRemoveShareAccess);
 REX_EXTERN(__imp__XeCryptBnQwBeSigVerify);
 REX_EXTERN(__imp__XeKeysGetKey);
 REX_EXTERN(__imp__XeCryptRotSumSha);
+

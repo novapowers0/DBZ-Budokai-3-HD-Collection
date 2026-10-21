@@ -55,7 +55,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path[:0] = [HERE, os.path.join(ROOT, "awo_tools")]
 
-PS2 = os.path.join(ROOT, "ps2_games")
+PS2 = os.environ.get("DBZ3_PS2_GAMES") or os.path.join(ROOT, "ps2_games")
 RESOURCES = os.path.join(ROOT, "modding resources")
 PORTS = os.path.join(RESOURCES, "Infinite World to Budokai 3 Moveset Ports")
 CACHE = os.path.join(HERE, "__pycache__", "importar_cache.json")
@@ -108,14 +108,10 @@ def find_iso(*patterns):
 
 
 def iw_dir():
-    """Infinite World: carpeta extraida o ISO (cualquier region)."""
-    # sin distinguir mayusculas (Linux): "infinite world", ".ISO"...
-    import iso  # noqa: PLC0415  (ruta_destino: el '.ruta' que deja "Elegir ISO" del launcher)
-    hits = sorted((iso.ruta_destino(p) for p in glob.glob(os.path.join(PS2, "*")) if "infinite world" in os.path.basename(p).lower()),
-                  key=lambda p: not (p and os.path.isdir(p)))
-    hits = [p for p in hits if p]
-    return next((p for p in hits if os.path.isdir(os.path.join(p, "USR")) or os.path.isdir(os.path.join(p, "usr"))
-                 or p.lower().endswith(".iso")), None)
+    """Infinite World: '.ruta' elegido por el jugador, carpeta extraida o ISO (cualquier region).
+    Misma resolucion que voces.iw_source e iso.find_game; DBZ3_PS2_GAMES sustituye ps2_games (B-02/B-03)."""
+    import iso  # noqa: PLC0415
+    return iso.find_game("iw", carpetas=True)
 
 
 def sdbh_dir():

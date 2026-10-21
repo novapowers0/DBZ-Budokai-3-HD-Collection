@@ -330,6 +330,11 @@ class D3D12CommandProcessor : public CommandProcessor {
     return submission_completed_ + 1 >= submission_current_;
   }
   void LogDeviceRemovalDiagnostics(ID3D12Device* device, HRESULT reason);
+  // DBZ3: vuelca los ultimos mensajes de error/corruption de ID3D12InfoQueue (si
+  // la capa de depuracion esta disponible) y vacia su cola. Acotado: maximo 8
+  // mensajes. Se llama al primer fallo de submission y antes del diagnostico de
+  // device removed, para conservar el primer error real.
+  void LogD3D12InfoQueueMessages(const char* where);
 
   void UpdateDebugMarkersEnabled();
   void PushDebugMarker(const char* format, ...);
@@ -436,6 +441,9 @@ class D3D12CommandProcessor : public CommandProcessor {
   bool device_removed_ = false;
 
   bool cache_clear_requested_ = false;
+  // DBZ3: limites para no repetir el mismo error de submission/InfoQueue.
+  bool submission_reset_failure_logged_ = false;
+  bool submission_device_failure_logged_ = false;
 
   HANDLE fence_completion_event_ = nullptr;
 

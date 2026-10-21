@@ -19,6 +19,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -26,6 +27,7 @@
 #include "generated/dbz3_init.h"
 #include "iw_minijuegos.h"
 #include "pasarela.h"
+#include "pasarela_iw.h"
 #include "roster_ext.h"
 
 namespace dbz3::anim {
@@ -851,6 +853,16 @@ bool Leer(uint8_t* base) {
     REXLOG_INFO("dbz3 anim: {} poses de botones de IW leidas", leidas);
   }
   CrearTransicion(base);
+  // s10 (G01_iw_cam): dejar en el registro de que copia se leyeron los clips y en que region. Es la comprobacion de
+  // que USA/EU no se mezclan: la misma `iw` sirve DATA_CMN y DATA_ENG (europea, SLES_553.47) o DATA_USA (americana,
+  // SLUS_218.42); si hubiera dos copias en ps2_games, BuscarIW elige una y todo sale de esa misma carpeta/ISO.
+  {
+    std::error_code ec;
+    const size_t elf = P::LeerElf(iw).size();   // SLUS_218.42 = 3784752 B; SLES_553.47 = 3786800 B
+    const char* region = elf == 3786800 ? "EU (SLES_553.47)" : elf == 3784752 ? "USA (SLUS_218.42)" : "region no reconocida";
+    REXLOG_INFO("dbz3 anim: fuente IW {} [{}] {}: {} codigos propios leidos de la misma copia", iw.string(),
+                std::filesystem::is_directory(iw, ec) ? "carpeta" : "ISO", region, g_ex.size());
+  }
   g_ok = true;
   return true;
 }

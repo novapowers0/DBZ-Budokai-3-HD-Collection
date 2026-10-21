@@ -84,13 +84,17 @@ struct DragonMissionIW {
   std::vector<CasillaDM> casillas_road;
   std::vector<Imagen> frases_road;
   std::vector<std::string> videos;  // "/USR/FD01A.sfd"... (tabla del ELF USA 0x4811B0, 0x100 B cada uno)
-  std::filesystem::path raiz;       // carpeta de IW (con una ISO no hay video: se usan las escenas de respaldo)
+  // Carpeta extraida o ISO de IW. Los SFD solo se reproducen desde fichero: con una ISO, RutaVideoIW busca una carpeta
+  // extraida al lado (mismo nombre que la ISO, USR hermana o DBZ3_IW_VIDEO_DIR) y, si no la hay, extrae el SFD de la
+  // ISO a user_data/iw_video_cache (una vez); solo si eso falla quedan los subtitulos.
+  std::filesystem::path raiz;
 };
 bool LeerDragonMission(const std::filesystem::path& iw, DragonMissionIW& out, std::string& error);
 int MapaDeSaga(int saga);   // mapa (indice de piezas) de cada saga
 int PistaMinijuegoIW();     // musica (ADX_CMN) del ultimo minijuego empezado desde el mapa; -1 sin leer
 int VideoIW(const DragonMissionIW& dm, int tipo, int indice, bool despues);   // video de la historia; -1 si no hay
-std::filesystem::path RutaVideoIW(const DragonMissionIW& dm, int video);    // USR/FDxx.SFD; vacio si no esta
+// USR/FDxx.SFD resuelto (carpeta de IW, anidada o extraida junto a la ISO); vacio si no esta como fichero.
+std::filesystem::path RutaVideoIW(const DragonMissionIW& dm, int video);
 // Minijuegos de IW (frente P4): si se registra, elegir un "?" del mapa lo llama con la clave del #DMD (0x7D0-0x7E1) y su
 // fila; devuelve false si ese minijuego aun no existe (entonces el mapa avisa de que no esta disponible).
 void RegistrarMinijuegoIW(bool (*empezar)(int clave, int fila));
@@ -131,6 +135,14 @@ class PantallaDM {
   bool Resultado(ImDrawList* dl, const ImGuiIO& io, float t, uint16_t pulsado, const InfoDM& in, const ResultadoDM& r);
   int Mision(const InfoDM& in) const;   // numero de la mision del cursor (0 si no hay)
   void Elegir(const InfoDM& in, int mision);   // pone el cursor (y la camara) en esa mision
+  // Entrada al mapa: Story_MapIntroDelayTick (EU 0x2F8790). Lo llama DibujarFondo al detectar una entrada nueva
+  // (hueco de tiempo) y queda como contrato para el coordinador si algun dia hay un aviso exacto de "abrir mapa".
+  void ReiniciarMapa();
+  // H03 P0: vuelta de un combate o minijuego al mapa. No repite Story_MapIntroDelayTick; corre
+  // Story_MapResultDelayTick (60 cuadros) y Story_MapReloadAfterDelayTick (~100) para dar las casillas por recargadas.
+  void VolverDelCombate();
+  bool EnIntroMapa() const { return t_intro_ < 1.0f; }   // true mientras dura la espera de entrada
+  float IntroMapa() const { return t_intro_; }           // 0..1 (+0,01 por cuadro, como el original)
   int NivelCom() const;                 // dificultad elegida -> nivel del COM de B3 (0..2)
   int Pista(const InfoDM& in) const;    // musica del mapa: entrada de ADX_CMN.AFS (-1 sin casilla)
   int Dificultad() const { return dificultad_; }   // 0 Very Easy .. 4 Very Hard (multiplica el Zenie)
@@ -150,6 +162,15 @@ class PantallaDM {
   int sel_ = -1;                        // casilla del cursor
   float mx_ = -1, my_ = 0, cx_ = -1, cy_ = 0;   // marcador de Goku y camara (px del mapa)
   float tcam_ = 1;                        // Story_MapScrollToTargetTick +0x4A4: seguimiento 0..1 (+0,01 por cuadro)
+  // Story_MapIntroDelayTick (EU 0x2F8790): acumulador de entrada 0..1 (+0,01 por cuadro de 60 Hz; >1 -> scroll).
+  // Story_MapObjectsAppearTick (EU 0x2FCCB0): cuadros desde que acabo la intro; cada 20 revela una casilla, de la
+  // ultima de la lista a la primera, con fundido. Ver ReiniciarMapa().
+  float t_intro_ = -1;                    // -1 = mapa sin entrar todavia
+  float ap_t_ = 0;                        // cuadros desde el fin de la intro
+  // Vuelta de combate (H03): sin intro; Story_MapResultDelayTick (60 cuadros) y Story_MapReloadAfterDelayTick (~100).
+  bool volviendo_ = false;
+  float t_vuelta_ = 0;                    // cuadros desde la vuelta
+  bool res_delay_hecho_ = false, recarga_hecha_ = false;
   int dificultad_ = 2;                  // 0 Very Easy .. 4 Very Hard (lista de 334/1 t16)
   float t_ultimo_ = 0;
   bool guia_ = true;                    // SELECT: Bulma y su globo

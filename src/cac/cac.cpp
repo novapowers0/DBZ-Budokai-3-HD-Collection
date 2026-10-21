@@ -33,6 +33,7 @@ std::vector<Pieza> g_catalogo = {
     {"aura", 2, "Azul", -1, ""},     {"aura", 3, "Roja", -1, ""},
 };
 std::vector<Heroe> g_slots = {Heroe{}};
+std::vector<Heroe> g_archivados;
 int g_activo = 0;
 Camara g_cam;
 }  // namespace
@@ -105,6 +106,16 @@ void BorrarSlot(int i) {
   g_activo = std::clamp(g_activo, 0, NumSlots() - 1);
 }
 
+void ArchivarSlot(int i) {
+  if (NumSlots() <= 1) return;              // siempre queda una ficha activa
+  i = std::clamp(i, 0, NumSlots() - 1);
+  g_archivados.push_back(Slot(i));
+  g_slots.erase(g_slots.begin() + i);
+  g_activo = std::clamp(g_activo, 0, NumSlots() - 1);
+}
+const std::vector<Heroe>& Archivados() { return g_archivados; }
+int NumArchivados() { return int(g_archivados.size()); }
+
 void ClampHsv(Hsv& c) {
   c.h = std::clamp(c.h, 0, 360);
   c.s = std::clamp(c.s, -100, 100);
@@ -115,7 +126,7 @@ void AjustarSlot(int i) {
   Heroe& h = SlotEditable(i);
   // Rangos del Modo Heroe (heroe.cpp valida otra vez al importar). Sin catalogo: los IDs son del juego.
   auto n_de = [](const std::string& tipo) { return int(PiezasDe(tipo).size()); };
-  h.raza = std::clamp(h.raza, 0, 5);
+  h.raza = std::clamp(h.raza, 0, 6);   // G06a: raza 6 = catálogo UT, cuerpos 100..105
   h.cuerpo = std::max(0, h.cuerpo);
   // studies 8 fase 2: 10 peinados (Edit, heroe_ui.cpp kNumPelos: el del cuerpo + 9 piezas UT) aunque el catalogo
   // piezas_cac.toml no este cargado (sin el, solo hay 2 "nativos" y el peinado elegido se perdia al guardar)
@@ -152,8 +163,8 @@ std::string RutaPorDefecto() {
 
 namespace {
 std::string HsvTxt(const Hsv& c);
-void EscribirHeroe(std::ostream& o, const Heroe& h) {
-  o << "[[heroe]]\n";
+void EscribirHeroe(std::ostream& o, const char* tabla, const Heroe& h) {
+  o << "[[" << tabla << "]]\n";
   o << "nombre = \"" << h.nombre << "\"\n";
   o << "raza = " << h.raza << "\ncuerpo = " << h.cuerpo << "\ntraje = " << h.traje
     << "\ncara = " << h.cara << "\npelo = " << h.pelo << "\nropa = " << h.ropa
@@ -194,6 +205,48 @@ std::string Escapa(const std::string& s) {
 }
 }  // namespace
 
+Heroe LeerHeroe(const toml::table* p) {
+  Heroe h;
+  h.nombre = (*p)["nombre"].value_or(std::string{"Heroe"});
+  h.raza = int((*p)["raza"].value_or(int64_t{0}));
+  h.cuerpo = int((*p)["cuerpo"].value_or(int64_t{0}));
+  h.traje = int((*p)["traje"].value_or(int64_t{0}));
+  h.cara = int((*p)["cara"].value_or(int64_t{0}));
+  h.pelo = int((*p)["pelo"].value_or(int64_t{0}));
+  h.ropa = int((*p)["ropa"].value_or(int64_t{0}));
+  h.color = int((*p)["color"].value_or(int64_t{0}));
+  h.voz = int((*p)["voz"].value_or(int64_t{0}));
+  h.aura = int((*p)["aura"].value_or(int64_t{0}));
+  h.estilo = int((*p)["estilo"].value_or(int64_t{0}));
+  h.moveset = int((*p)["moveset"].value_or(int64_t{-1}));
+  if (auto* tec = (*p)["tecnicas"].as_array()) {
+    int k = 0;
+    for (const auto& v : *tec) {
+      if (k >= kNumTecnicas) break;
+      h.tecnicas[k++] = int(v.value_or(int64_t{0}));
+    }
+  }
+  h.xp = int((*p)["xp"].value_or(int64_t{0}));
+  h.nivel = int((*p)["nivel"].value_or(int64_t{1}));
+  h.logo = int((*p)["logo"].value_or(int64_t{0}));
+  h.scouter = int((*p)["scouter"].value_or(int64_t{0}));
+  if (auto* ps = (*p)["partes"].as_array()) {
+    for (size_t k = 0; k < ps->size() && k < kNumPartes; ++k) h.parte[k] = LeerHsv(&(*ps)[k]);
+  }
+  h.pelo_c1 = LeerHsv((*p)["pelo_color1"].node());
+  h.pelo_c2 = LeerHsv((*p)["pelo_color2"].node());
+  h.progreso = int((*p)["progreso"].value_or(int64_t{0}));
+  h.saga = int((*p)["saga"].value_or(int64_t{0}));
+  h.ph = int((*p)["ph"].value_or(int64_t{0}));
+  h.ph_vida = int((*p)["ph_vida"].value_or(int64_t{0}));
+  h.ph_dano = int((*p)["ph_dano"].value_or(int64_t{0}));
+  h.maestros = int((*p)["maestros"].value_or(int64_t{0}));
+  if (auto* en = (*p)["entreno"].as_array()) {
+    for (size_t k = 0; k < en->size() && k < size_t(kNumEntreno); ++k) h.entreno[k] = int((*en)[k].value_or(int64_t{0}));
+  }
+  return h;
+}
+
 bool Leer(const std::string& path) {
   std::error_code ec;
   if (!fs::exists(path, ec)) return false;
@@ -206,52 +259,19 @@ bool Leer(const std::string& path) {
     return false;
   }
   const int64_t ver = t["version"].value_or(int64_t{1});
-  if (ver > 1) return false;                          // version mas nueva: no se toca
+  if (ver > kVersion) return false;                   // version mas nueva: no se toca
   g_slots.clear();
+  g_archivados.clear();
   if (auto* arr = t["heroe"].as_array()) {
     for (const auto& e : *arr) {
       const toml::table* p = e.as_table();
-      if (!p) continue;
-      Heroe h;
-      h.nombre = (*p)["nombre"].value_or(std::string{"Heroe"});
-      h.raza = int((*p)["raza"].value_or(int64_t{0}));
-      h.cuerpo = int((*p)["cuerpo"].value_or(int64_t{0}));
-      h.traje = int((*p)["traje"].value_or(int64_t{0}));
-      h.cara = int((*p)["cara"].value_or(int64_t{0}));
-      h.pelo = int((*p)["pelo"].value_or(int64_t{0}));
-      h.ropa = int((*p)["ropa"].value_or(int64_t{0}));
-      h.color = int((*p)["color"].value_or(int64_t{0}));
-      h.voz = int((*p)["voz"].value_or(int64_t{0}));
-      h.aura = int((*p)["aura"].value_or(int64_t{0}));
-      h.estilo = int((*p)["estilo"].value_or(int64_t{0}));
-      h.moveset = int((*p)["moveset"].value_or(int64_t{-1}));
-      if (auto* tec = (*p)["tecnicas"].as_array()) {
-        int k = 0;
-        for (const auto& v : *tec) {
-          if (k >= kNumTecnicas) break;
-          h.tecnicas[k++] = int(v.value_or(int64_t{0}));
-        }
-      }
-      h.xp = int((*p)["xp"].value_or(int64_t{0}));
-      h.nivel = int((*p)["nivel"].value_or(int64_t{1}));
-      h.logo = int((*p)["logo"].value_or(int64_t{0}));
-      h.scouter = int((*p)["scouter"].value_or(int64_t{0}));
-      if (auto* ps = (*p)["partes"].as_array()) {
-        for (size_t k = 0; k < ps->size() && k < kNumPartes; ++k) h.parte[k] = LeerHsv(&(*ps)[k]);
-      }
-      h.pelo_c1 = LeerHsv((*p)["pelo_color1"].node());
-      h.pelo_c2 = LeerHsv((*p)["pelo_color2"].node());
-      // studies 8 H1: progreso por ficha (sin `progreso = 2`: ficha de antes, la migra rpg.cpp CargarCac)
-      h.progreso = int((*p)["progreso"].value_or(int64_t{0}));
-      h.saga = int((*p)["saga"].value_or(int64_t{0}));
-      h.ph = int((*p)["ph"].value_or(int64_t{0}));
-      h.ph_vida = int((*p)["ph_vida"].value_or(int64_t{0}));
-      h.ph_dano = int((*p)["ph_dano"].value_or(int64_t{0}));
-      h.maestros = int((*p)["maestros"].value_or(int64_t{0}));
-      if (auto* en = (*p)["entreno"].as_array()) {
-        for (size_t k = 0; k < en->size() && k < size_t(kNumEntreno); ++k) h.entreno[k] = int((*en)[k].value_or(int64_t{0}));
-      }
-      g_slots.push_back(h);
+      if (p) g_slots.push_back(LeerHeroe(p));
+    }
+  }
+  if (auto* arr = t["archivado"].as_array()) {        // v2: fichas archivadas
+    for (const auto& e : *arr) {
+      const toml::table* p = e.as_table();
+      if (p) g_archivados.push_back(LeerHeroe(p));
     }
   }
   if (g_slots.empty()) g_slots.push_back(Heroe{});
@@ -266,12 +286,18 @@ bool Guardar(const std::string& path) {
   if (fs::path(path).has_parent_path()) fs::create_directories(fs::path(path).parent_path(), ec);
   std::ofstream o(tmp, std::ios::binary);
   if (!o) return false;
-  o << "version = 1\n";
+  o << "version = 2\n";
   o << "activo = " << g_activo << "\n\n";
   for (const Heroe& h : g_slots) {
     Heroe e = h;
     e.nombre = Escapa(h.nombre);
-    EscribirHeroe(o, e);
+    EscribirHeroe(o, "heroe", e);
+    o << "\n";
+  }
+  for (const Heroe& h : g_archivados) {
+    Heroe e = h;
+    e.nombre = Escapa(h.nombre);
+    EscribirHeroe(o, "archivado", e);
     o << "\n";
   }
   o.close();

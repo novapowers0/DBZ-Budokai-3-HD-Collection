@@ -1,5 +1,12 @@
 // dbz3 - ESCENARIOS NUEVOS (altas): escenarios de mods como casillas NUEVAS del juego (solo US).
 //
+// Contrato de zona B (opcional, frente 07): un alta puede declarar `zona_b = <entrada de OTRO alta>` en su
+// stage.toml. Esa otra alta es la zona A; al caer por el borde con `dbz3_escenarios_zonas_b=true`,
+// ComprobarZonaB recarga el escenario del combate con la zona B (PasarZonaB) y consume el aviso de ring out.
+// Si `zona_b` no corresponde a ningun alta cargada, CargarDeMods lo ignora y avisa: nunca se recarga un
+// registro inexistente. El cambio nativo del motor (sub_820CC6C0) sigue bloqueado mientras haya un alta
+// cargada; no se quita esa guarda sin una medicion en el juego.
+//
 // Un mod declara en mods/<mod>/stage.toml uno o mas escenarios nuevos:
 //   [[escenario]]
 //   nombre  = "B2 ISLAS"   # nombre del registro (<= 15 letras)
@@ -46,5 +53,7 @@ int PorMod(const std::string& mod);
 std::string Nombre(int registro, int idioma);
 // Lo mismo en el idioma elegido por el jugador (dbz3::settings::Language()).
 std::string Nombre(int registro);
+// NB006 (IW): apaga SOLO la geometria/cielo del escenario (bit 0 de G+0x4C), sin tocar a los luchadores.
+void OcultarFondo(bool ocultar);
 
 }  // namespace dbz3::escenarios
