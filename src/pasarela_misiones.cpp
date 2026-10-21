@@ -1315,7 +1315,7 @@ std::string SelloFuenteIw(const std::filesystem::path& j) {
   if (ec) return {};
   const auto fecha = std::filesystem::last_write_time(j, ec);
   if (ec) return {};
-  return j.string() + "|" + std::to_string(tam) + "|" + std::to_string(fecha.time_since_epoch().count()) + "|" +
+  return j.string() + "|" + std::to_string(tam) + "|" + std::to_string(static_cast<long long>(fecha.time_since_epoch().count())) + "|" +
          HuellaFuente(j);
 }
 
