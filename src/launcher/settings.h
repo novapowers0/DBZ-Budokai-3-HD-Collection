@@ -540,7 +540,7 @@ bool DimUnfocused();
 void SetDimUnfocused(bool enabled);
 
 // --- Graphics backend ------------------------------------------------------
-// Host graphics backend: "d3d12" or "vulkan".
+// Host graphics backend: "d3d12", "vulkan" or "native_d3d12" (experimental, src/native_gpu.h).
 std::string GpuBackend();
 void SetGpuBackend(const std::string& backend);
 

@@ -12,6 +12,9 @@
 
 English · [Español](README_ES.md)
 
+Development: [experimental native D3D12 graphics laboratory](native_gpu/INTEGRATION.md)
+(Windows/EU, opt-in; not yet a replacement for the release backend).
+
 A native PC port of *Dragon Ball Z: Budokai 3 HD Collection* (Xbox 360) built
 on the [ReXGlue SDK](https://github.com/rexglue/rexglue-sdk). The game's
 original PowerPC code is statically recompiled and linked into a standalone

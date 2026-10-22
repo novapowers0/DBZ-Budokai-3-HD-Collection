@@ -11,6 +11,7 @@
 #include <rex/runtime.h>
 
 #include "settings.h"
+#include "../native_gpu.h"
 #include "i18n.h"
 #include "ui_kit.h"
 #include "update_check.h"
@@ -1585,7 +1586,9 @@ void LauncherDialog::OnDraw(ImGuiIO& io) {
                               : (dbz3::settings::Region() == "eu"
                                      ? i18n::T("Europa (PAL)", "Europe (PAL)")
                                      : i18n::T("USA (NTSC)", "USA (NTSC)")),
-                     dbz3::settings::GpuBackend() == "vulkan" ? "Vulkan" : "D3D12",
+                     dbz3::settings::GpuBackend() == "vulkan"                    ? "Vulkan"
+                     : dbz3::settings::GpuBackend() == dbz3::native_gpu::kBackend ? "D3D12 nativo"
+                                                                                   : "D3D12",
                      dbz3::settings::ResolutionScale(),
                      EffectDisplayName(dbz3::settings::PresentEffect()),
                      LanguageDisplayName(dbz3::settings::UiLanguage()));
@@ -2614,18 +2617,30 @@ void LauncherDialog::DrawVideoTab() {
     }
 
     ImGui::Spacing();
-    static const char* backends[] = {"Direct3D 12", "Vulkan (experimental)"};
-    static const char* backend_vals[] = {"d3d12", "vulkan"};
+    const char* backends[] = {"Direct3D 12", "Vulkan (experimental)",
+                              i18n::T("Direct3D 12 nativo (experimental, PAL)",
+                                      "Native Direct3D 12 (experimental, PAL)")};
+    static const char* backend_vals[] = {"d3d12", "vulkan", dbz3::native_gpu::kBackend};
+    const int backend_count = dbz3::native_gpu::Supported() ? 3 : 2;
     int backend_idx = 0;
     std::string backend = dbz3::settings::GpuBackend();
-    for (int i = 0; i < 2; i++) {
+    for (int i = 0; i < backend_count; i++) {
       if (backend == backend_vals[i]) backend_idx = i;
     }
     ui::RowLabel(i18n::T("Motor grafico", "Graphics backend"),
                  i18n::T("Direct3D 12 es el recomendado. Al cambiarlo, reinicia el juego.",
                          "Direct3D 12 is recommended. Restart the game after changing it."));
-    if (ImGui::Combo("##gpu_backend", &backend_idx, backends, 2)) {
+    if (ImGui::Combo("##gpu_backend", &backend_idx, backends, backend_count)) {
       dbz3::settings::SetGpuBackend(backend_vals[backend_idx]);
+    }
+    if (backend_idx == 2) {
+      ui::Tip(i18n::T(
+            "Renderer D3D12 propio, sin emular la GPU de Xbox 360. Solo con el juego europeo (PAL). "
+            "JUGAR abre el juego en una ventana nueva sin los menus F1/F4 ni los paneles propios. "
+            "Faltan particulas y algunos efectos. Con el escalado DLSS (RTX) lo aplica al tamano de la ventana.",
+            "Own D3D12 renderer, without emulating the Xbox 360 GPU. European (PAL) game only. "
+            "PLAY opens the game in a new window without the F1/F4 menus or the custom panels. "
+            "Particles and some effects are still missing. With DLSS upscaling (RTX) it scales to the window size."));
     }
     ui::Tip(i18n::T(
           "Vulkan es experimental: el combate 3D corre notablemente mas lento "

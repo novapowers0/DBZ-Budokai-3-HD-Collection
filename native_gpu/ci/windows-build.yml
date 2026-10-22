@@ -1,0 +1,31 @@
+# Maintainer template: copy to .github/workflows/native-d3d12.yml to activate.
+name: Experimental native D3D12 build
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'native_gpu/**'
+      - '.github/workflows/native-d3d12.yml'
+  push:
+    paths:
+      - 'native_gpu/**'
+      - '.github/workflows/native-d3d12.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-without-game-data:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check Python source syntax
+        shell: pwsh
+        run: python -m compileall -q native_gpu
+      - name: Configure independent renderer and CPU replay bridge
+        run: cmake -S native_gpu -B build/native
+      - name: Compile native binaries and numeric material registry
+        run: cmake --build build/native --config Release --parallel 2
+      # GPU image tests are run locally on a D3D12 device. This public job
+      # requires no game data, original shader programs, generated EU code or SDK.
