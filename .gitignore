@@ -1,5 +1,6 @@
 # User-provided game files (never commit - copyrighted).
 assets/
+res/
 roms/
 isos/
 *.iso
@@ -43,6 +44,7 @@ generated/*
 # ReXGlue SDK (third-party, provided separately by rexglue/rexglue-sdk)
 rexglue/
 /rexglue-sdk/
+/rexglue-sdk-*/
 
 # ...except the runtime patches distributed in patches/ (mid-insert virtual AFS).
 !patches/

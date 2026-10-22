@@ -1,0 +1,135 @@
+name: Version & Changelog
+
+on:
+  push:
+    branches:
+      - master
+    paths-ignore:
+      - '.github/workflows/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: pwsh
+
+jobs:
+  bump-version-and-changelog:
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Calculate version bump and update CHANGELOG.md
+        id: bump
+        run: |
+          # 1. Check if src/version.rc was touched manually in this push
+          $versionTouched = $false
+          try {
+            $before = "${{ github.event.before }}"
+            if ($before -and $before -ne "0000000000000000000000000000000000000000") {
+              $diffFiles = git diff --name-only $before HEAD
+            } else {
+              $diffFiles = git diff --name-only HEAD~1 HEAD
+            }
+            if ($diffFiles -match "src/version\.rc") {
+              $versionTouched = $true
+            }
+          } catch {
+            $versionTouched = $false
+          }
+
+          # 2. Parse current version.rc
+          $rc = Get-Content "src/version.rc"
+          $major = ($rc | Select-String 'VERSION_MAJOR\s+(\d+)' | ForEach-Object { $_.Matches[0].Groups[1].Value } | Select-Object -First 1)
+          $minor = ($rc | Select-String 'VERSION_MINOR\s+(\d+)' | ForEach-Object { $_.Matches[0].Groups[1].Value } | Select-Object -First 1)
+          $patch = ($rc | Select-String 'VERSION_PATCH\s+(\d+)' | ForEach-Object { $_.Matches[0].Groups[1].Value } | Select-Object -First 1)
+          $build = ($rc | Select-String 'VERSION_BUILD\s+(\d+)' | ForEach-Object { $_.Matches[0].Groups[1].Value } | Select-Object -First 1)
+          $currentStr = ($rc | Select-String 'DBZ3_VERSION_STR\s+"([^"]+)"' | ForEach-Object { $_.Matches[0].Groups[1].Value } | Select-Object -First 1)
+
+          if ($versionTouched) {
+            Write-Host "src/version.rc was modified manually. Keeping version: $currentStr"
+            $newVersion = $currentStr
+          } else {
+            $newBuild = [int]$build + 1
+            $newVersion = "$major.$minor.$patch.$newBuild"
+            Write-Host "Auto-bumping version from $currentStr to $newVersion"
+
+            $rcRaw = Get-Content "src/version.rc" -Raw
+            $rcRaw = $rcRaw -replace '(#define\s+VERSION_BUILD\s+)\d+', ('${1}' + $newBuild)
+            $rcRaw = $rcRaw -replace '(#define\s+DBZ3_VERSION_STR\s+)"[^"]+"', ('${1}"' + $newVersion + '"')
+            Set-Content -Path "src/version.rc" -Value $rcRaw -Encoding utf8
+          }
+
+          "version=$newVersion" >> $env:GITHUB_OUTPUT
+
+          # 3. Get last git tag
+          $lastTag = ""
+          try {
+            $lastTag = (git describe --tags --abbrev=0 2>$null)
+          } catch {}
+
+          Write-Host "Last git tag found: $lastTag"
+
+          # 4. Extract commits since last tag
+          if ($lastTag) {
+            $commits = git log "$lastTag..HEAD" --no-merges --pretty=format:"- %s" | Where-Object { $_ -notmatch "chore\(release\):" }
+          } else {
+            $commits = git log -n 10 --no-merges --pretty=format:"- %s" | Where-Object { $_ -notmatch "chore\(release\):" }
+          }
+
+          if (-not $commits) {
+            $commits = @("- General updates and improvements.")
+          }
+
+          # 5. Format new CHANGELOG entry
+          $today = (Get-Date -Format "yyyy-MM-dd")
+          $newEntry = "## v$newVersion ($today)`n" + ($commits -join "`n") + "`n`n"
+
+          # 6. Update CHANGELOG.md
+          if (Test-Path "CHANGELOG.md") {
+            $changelog = Get-Content "CHANGELOG.md" -Raw
+            $marker = "Downloads: [latest release](../../releases/latest).`n`n"
+            if ($changelog.Contains($marker)) {
+              $updatedChangelog = $changelog.Replace($marker, $marker + $newEntry)
+            } else {
+              $match = [regex]::Match($changelog, '(?m)^##\s+v')
+              if ($match.Success) {
+                $updatedChangelog = $changelog.Insert($match.Index, $newEntry)
+              } else {
+                $updatedChangelog = $changelog + "`n`n" + $newEntry
+              }
+            }
+            Set-Content -Path "CHANGELOG.md" -Value $updatedChangelog -Encoding utf8
+            Write-Host "Updated CHANGELOG.md with version v$newVersion"
+          }
+
+      - name: Commit version bump and create git tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          $ver = "${{ steps.bump.outputs.version }}"
+          $tag = "v$ver"
+
+          git add src/version.rc CHANGELOG.md
+          $diff = git diff --staged
+          if ($diff) {
+            git commit -m "chore(release): bump version to $tag [skip ci]"
+            Write-Host "Committed version bump to $tag"
+          }
+
+          $tagExists = $(git tag -l $tag)
+          if (-not $tagExists) {
+            git tag -a $tag -m "Release $tag"
+            Write-Host "Created tag $tag"
+          }
+
+          git push origin master --follow-tags
+          Write-Host "Pushed version bump and tag to origin master"

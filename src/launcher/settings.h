@@ -539,6 +539,10 @@ void SetMuteUnfocused(bool enabled);
 bool DimUnfocused();
 void SetDimUnfocused(bool enabled);
 
+// Saltar pantalla de cargar partida al iniciar si ya existe una partida guardada (Paso 4).
+bool SkipLoadScreen();
+void SetSkipLoadScreen(bool enabled);
+
 // --- Graphics backend ------------------------------------------------------
 // Host graphics backend: "d3d12" or "vulkan".
 std::string GpuBackend();

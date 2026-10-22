@@ -19,6 +19,7 @@
 #include "../ingame/online_panel.h"
 #include "../ingame/tagteam_panel.h"
 #include "../iw_minijuegos.h"
+#include "../save_autoload.h"
 
 namespace dbz3::tag {
 bool OnPad(PPCContext& ctx, uint8_t* base, uint32_t user, uint16_t buttons, uint8_t lt);   // tagteam.cpp
@@ -78,6 +79,7 @@ uint16_t AutoPick(uint8_t* base) {
 
 DBZ3_HOOK(sub_820902F8, dbz3eu_sub_820902C0) {
   auto& s = dbz3::net::Session::Get();
+  dbz3::save_autoload::Tick(ctx, base);
   dbz3::tag::Tick(ctx, base);
   if (!s.active()) dbz3::ingame::pilot::Tick(base);
   if (s.TakeStart(base) && s.role() == dbz3::net::Role::kHost) g_autopick = 0;   // empieza el online

@@ -1,16 +1,15 @@
-name: Linux build
+name: Linux Build & Release
 
 on:
+  workflow_run:
+    workflows: ["Version & Changelog"]
+    types:
+      - completed
+    branches:
+      - master
+  pull_request:
+    branches: [ master, main ]
   workflow_dispatch:
-  push:
-    branches: [master]
-    paths:
-      - 'src/**'
-      - 'generated/**'
-      - 'generated_eu/**'
-      - 'CMakeLists.txt'
-      - 'CMakePresets.json'
-      - '.github/workflows/linux.yml'
 
 permissions:
   contents: write
@@ -18,9 +17,14 @@ permissions:
 jobs:
   build-linux-amd64:
     runs-on: ubuntu-22.04
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+
     steps:
       - name: Check out public project
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_branch || github.ref }}
+          fetch-depth: 0
 
       - name: Resolve release version
         id: version
@@ -36,7 +40,7 @@ jobs:
       - name: Check out private generated code
         uses: actions/checkout@v4
         with:
-          repository: novapowers0/DBZ-Budokai-3-HD-Collection-generated
+          repository: Fran-Abril/DBZ-Budokai-3-HD-Collection-generated
           ssh-key: ${{ secrets.DBZ3_GENERATED_SSH_KEY }}
           path: generated-private
 
@@ -75,10 +79,18 @@ jobs:
         shell: bash
         run: |
           test -f generated-private/us/sources.cmake
-          test -f generated-private/eu/sources.cmake
           rm -rf generated generated_eu
           cp -a generated-private/us generated
-          cp -a generated-private/eu generated_eu
+          if [ -f generated-private/eu/sources.cmake ]; then
+            cp -a generated-private/eu generated_eu
+            echo "DUAL_REGION=ON" >> "$GITHUB_ENV"
+          else
+            echo "DUAL_REGION=OFF" >> "$GITHUB_ENV"
+          fi
+          if [ -d generated-private/res/ingame_ui ]; then
+            mkdir -p res
+            cp -a generated-private/res/ingame_ui res/
+          fi
 
       - name: Build and install ReXGlue SDK
         run: |
@@ -98,7 +110,8 @@ jobs:
             -DCMAKE_C_COMPILER=clang-18 \
             -DCMAKE_CXX_COMPILER=clang++-18 \
             -DCMAKE_CXX_FLAGS="-march=x86-64-v2 -stdlib=libc++ -pthread" \
-            -DCMAKE_PREFIX_PATH="$GITHUB_WORKSPACE/rexglue-linux"
+            -DCMAKE_PREFIX_PATH="$GITHUB_WORKSPACE/rexglue-linux" \
+            -DDBZ3_DUAL_REGION="${DUAL_REGION:-OFF}"
           cmake --build out/build/linux-amd64-release --config Release --parallel
 
       - name: Smoke-check ELF outputs
@@ -130,10 +143,30 @@ jobs:
           done
           patchelf --set-rpath '$ORIGIN' package/dbz3 package/*.so*
           cp README.md README_EN.md baserom.md package/
+          if [ -f gamecontrollerdb.txt ]; then
+            cp gamecontrollerdb.txt package/
+          fi
+          # Stage ingame_ui and native mods (100% save)
+          if [ -d out/build/linux-amd64-release/ingame_ui ]; then
+            cp -r out/build/linux-amd64-release/ingame_ui package/
+          elif [ -d generated-private/res/ingame_ui ]; then
+            cp -r generated-private/res/ingame_ui package/
+          fi
+          if [ -d generated-private/mods_nativos ]; then
+            cp -r generated-private/mods_nativos package/
+          fi
           printf '%s\n' 'Place your legally dumped default.xex and us/ or eu/ next to dbz3.' > package/README_LINUX.txt
           # Validate the packaged layout, not merely the build directory.
           test -f package/librexruntime.so
           test -f package/librexgpu-xenos.so
+          if [ -d generated-private/res/ingame_ui ]; then
+            test -d package/ingame_ui
+            test -f package/ingame_ui/i18n_modos.toml
+          fi
+          if [ -d generated-private/mods_nativos ]; then
+            test -d package/mods_nativos/partida_100
+            test -f package/mods_nativos/partida_100/data.bin
+          fi
           env -i PATH="$PATH" LD_LIBRARY_PATH="$GITHUB_WORKSPACE/package" \
             ldd package/dbz3 | tee package/ldd-dbz3.txt
           ! grep -E 'not found|librexruntime\.so => not found' package/ldd-dbz3.txt
@@ -147,16 +180,16 @@ jobs:
           path: DBZ-Budokai-3-HD-Collection-v${{ steps.version.outputs.version }}-linux-amd64.tar.gz
 
       - name: Attach Linux package to release
-        if: startsWith(github.ref, 'refs/heads/master')
+        if: github.event_name == 'workflow_run' || startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'push' && github.ref == 'refs/heads/master')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           tag="v${{ steps.version.outputs.version }}"
           file="DBZ-Budokai-3-HD-Collection-v${{ steps.version.outputs.version }}-linux-amd64.tar.gz"
-          # Only attach when the release for this version exists; never create it here.
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$tag" "$file" --clobber --repo "$GITHUB_REPOSITORY"
             echo "Attached $file to release $tag"
           else
-            echo "No release $tag yet; skipping asset upload (artifact retained above)."
+            gh release create "$tag" "$file" --repo "$GITHUB_REPOSITORY" --title "DBZ Budokai 3 HD Collection $tag" --notes "DBZ Budokai 3 HD Collection $tag"
+            echo "Created release $tag and attached $file"
           fi

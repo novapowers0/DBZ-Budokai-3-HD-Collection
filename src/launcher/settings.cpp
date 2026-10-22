@@ -238,6 +238,11 @@ REXCVAR_DEFINE_BOOL(dbz3_dim_unfocused, true, "DBZ3/Video",
                     "Dim the picture while the window is in the background")
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
 
+// Saltar pantalla de cargar partida al iniciar si ya existe una partida guardada (Paso 4).
+REXCVAR_DEFINE_BOOL(dbz3_skip_load_screen, true, "DBZ3/General",
+                    "Saltar pantalla de cargar partida al iniciar si ya existe una partida guardada")
+    .lifecycle(rex::cvar::Lifecycle::kHotReload);
+
 // Update check (GitHub releases). On by default; the request only reads the
 // latest release tag/URL over HTTPS and can be turned off in the Dev tab.
 REXCVAR_DEFINE_BOOL(dbz3_update_check, true, "DBZ3/Dev",
@@ -2631,6 +2636,9 @@ void SetMuteUnfocused(bool enabled) { SetSdkBool("dbz3_mute_unfocused", enabled)
 
 bool DimUnfocused() { return REXCVAR_GET(dbz3_dim_unfocused); }
 void SetDimUnfocused(bool enabled) { REXCVAR_SET(dbz3_dim_unfocused, enabled); }
+
+bool SkipLoadScreen() { return REXCVAR_GET(dbz3_skip_load_screen); }
+void SetSkipLoadScreen(bool enabled) { REXCVAR_SET(dbz3_skip_load_screen, enabled); }
 
 std::string GpuBackend() { return REXCVAR_GET(dbz3_gpu_backend); }
 void SetGpuBackend(const std::string& backend) { REXCVAR_SET(dbz3_gpu_backend, backend); }

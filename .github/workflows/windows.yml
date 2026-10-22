@@ -1,0 +1,210 @@
+name: Windows Build & Release
+
+on:
+  workflow_run:
+    workflows: ["Version & Changelog"]
+    types:
+      - completed
+    branches:
+      - master
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: pwsh
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_branch || github.ref }}
+          fetch-depth: 0
+
+      - name: Resolve project version
+        id: version
+        run: |
+          $rc = Get-Content src/version.rc
+          $version = ($rc | Select-String 'DBZ3_VERSION_STR\s+"([^"]+)"' | ForEach-Object { $_.Matches[0].Groups[1].Value } | Select-Object -First 1)
+          if (-not $version) {
+            throw "Could not resolve DBZ3_VERSION_STR from src/version.rc"
+          }
+          Write-Host "Resolved version: $version"
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Check out private generated code
+        uses: actions/checkout@v4
+        with:
+          repository: Fran-Abril/DBZ-Budokai-3-HD-Collection-generated
+          ssh-key: ${{ secrets.DBZ3_GENERATED_SSH_KEY }}
+          path: generated-private
+
+      - name: Check out ReXGlue SDK
+        uses: actions/checkout@v4
+        with:
+          repository: rexglue/rexglue-sdk
+          ref: v0.10.0
+          path: rexglue-sdk-0.10
+          submodules: recursive
+
+      - name: Apply project runtime patches to SDK
+        run: |
+          Copy-Item -Recurse -Force patches/rexglue-sdk/* rexglue-sdk-0.10/
+
+      - name: Validate generated source set & private assets
+        run: |
+          if (-not (Test-Path "generated-private/us/sources.cmake")) {
+            throw "Missing generated-private/us/sources.cmake"
+          }
+          if (Test-Path "generated") { Remove-Item -Recurse -Force "generated" }
+          if (Test-Path "generated_eu") { Remove-Item -Recurse -Force "generated_eu" }
+          Copy-Item -Recurse "generated-private/us" "generated"
+          if (Test-Path "generated-private/eu/sources.cmake") {
+            Copy-Item -Recurse "generated-private/eu" "generated_eu"
+            "DUAL_REGION=ON" >> $env:GITHUB_ENV
+          } else {
+            "DUAL_REGION=OFF" >> $env:GITHUB_ENV
+          }
+          if (Test-Path "generated-private/res/ingame_ui") {
+            New-Item -ItemType Directory -Force -Path "res" | Out-Null
+            Copy-Item -Recurse -Force "generated-private/res/ingame_ui" "res/ingame_ui"
+          }
+
+      - name: Build and install ReXGlue SDK
+        run: |
+          cmake -G Ninja -S rexglue-sdk-0.10 -B rexglue-sdk-0.10/out/build/win-amd64 `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_C_COMPILER="C:/Program Files/LLVM/bin/clang.exe" `
+            -DCMAKE_CXX_COMPILER="C:/Program Files/LLVM/bin/clang++.exe" `
+            -DCMAKE_RC_COMPILER="C:/Program Files/LLVM/bin/llvm-rc.exe" `
+            -DCMAKE_C_FLAGS="-march=x86-64-v2" `
+            -DCMAKE_CXX_FLAGS="-march=x86-64-v2" `
+            -DCMAKE_INSTALL_PREFIX="${{ github.workspace }}/rexglue-windows" `
+            -DREXGLUE_USE_D3D12=ON `
+            -DREXGLUE_USE_VULKAN=OFF `
+            -DREXGLUE_ENABLE_FIDELITYFX=OFF `
+            -DREXGLUE_ENABLE_TRACY=OFF
+          cmake --build rexglue-sdk-0.10/out/build/win-amd64 --config Release --parallel
+          cmake --install rexglue-sdk-0.10/out/build/win-amd64 --config Release
+
+      - name: Configure and build dbz3 Windows release
+        run: |
+          cmake --preset win-amd64-release `
+            -DCMAKE_PREFIX_PATH="${{ github.workspace }}/rexglue-windows" `
+            -DDBZ3_DUAL_REGION="${env:DUAL_REGION}"
+          cmake --build out/build/win-amd64-release --config Release --parallel
+
+      - name: Smoke-check Windows binary
+        run: |
+          if (-not (Test-Path "out/build/win-amd64-release/dbz3.exe")) {
+            throw "dbz3.exe was not created!"
+          }
+          $item = Get-Item "out/build/win-amd64-release/dbz3.exe"
+          Write-Host "Binary created: $($item.FullName) ($($item.Length) bytes)"
+
+      - name: Package Windows release zip
+        run: |
+          $pkgDir = "${{ github.workspace }}/package"
+          if (Test-Path $pkgDir) { Remove-Item -Recurse -Force $pkgDir }
+          New-Item -ItemType Directory -Force -Path $pkgDir | Out-Null
+
+          # Executable
+          Copy-Item "out/build/win-amd64-release/dbz3.exe" "$pkgDir/dbz3.exe"
+
+          # Runtime DLLs (from SDK install or build dir)
+          $runtimeDlls = @("rexruntime.dll", "rexgpu-xenos.dll")
+          foreach ($dll in $runtimeDlls) {
+            $src = Get-ChildItem -Recurse -Path "${{ github.workspace }}/rexglue-windows" -Filter $dll | Select-Object -First 1
+            if ($src) {
+              Copy-Item $src.FullName "$pkgDir/$dll"
+            } elseif (Test-Path "out/build/win-amd64-release/$dll") {
+              Copy-Item "out/build/win-amd64-release/$dll" "$pkgDir/$dll"
+            } else {
+              throw "Could not find $dll to package!"
+            }
+          }
+
+          # Controller mappings
+          if (Test-Path "gamecontrollerdb.txt") {
+            Copy-Item "gamecontrollerdb.txt" "$pkgDir/gamecontrollerdb.txt"
+          }
+
+          # UI assets (ingame_ui)
+          if (Test-Path "out/build/win-amd64-release/ingame_ui") {
+            Copy-Item -Recurse "out/build/win-amd64-release/ingame_ui" "$pkgDir/ingame_ui"
+          } elseif (Test-Path "generated-private/res/ingame_ui") {
+            Copy-Item -Recurse "generated-private/res/ingame_ui" "$pkgDir/ingame_ui"
+          }
+
+          # Native mods (100% save)
+          if (Test-Path "generated-private/mods_nativos") {
+            Copy-Item -Recurse "generated-private/mods_nativos" "$pkgDir/mods_nativos"
+          }
+
+          # Empty mods folder with README
+          $modsDir = "$pkgDir/mods"
+          New-Item -ItemType Directory -Force -Path $modsDir | Out-Null
+          Set-Content -Path "$modsDir/README.md" -Value "Coloca aqui tus mods. Cada mod en su carpeta: mods/<nombre>/ con manifest.txt.`nMas informacion en MODDING_README.md y en la pestana Mods del launcher."
+
+          # Documentation
+          foreach ($doc in @("README.md", "README_EN.md", "README_ES.md", "baserom.md")) {
+            if (Test-Path $doc) { Copy-Item $doc "$pkgDir/$doc" }
+          }
+          Set-Content -Path "$pkgDir/README_FIRST_RUN.txt" -Value "Coloca tu default.xex o yae3_xenon.xex (y las carpetas us/ o eu/ o el archivo .iso) junto a dbz3.exe para jugar."
+
+          # Validations
+          if (-not (Test-Path "$pkgDir/dbz3.exe")) { throw "Missing dbz3.exe in package" }
+          if (-not (Test-Path "$pkgDir/rexruntime.dll")) { throw "Missing rexruntime.dll in package" }
+          if (-not (Test-Path "$pkgDir/rexgpu-xenos.dll")) { throw "Missing rexgpu-xenos.dll in package" }
+          if (Test-Path "generated-private/res/ingame_ui") {
+            if (-not (Test-Path "$pkgDir/ingame_ui/i18n_modos.toml")) { throw "Missing ingame_ui/i18n_modos.toml in package" }
+          }
+          if (Test-Path "generated-private/mods_nativos") {
+            if (-not (Test-Path "$pkgDir/mods_nativos/partida_100/data.bin")) { throw "Missing partida_100 in package" }
+          }
+
+          # Compress to zip
+          $zipName = "DBZ-Budokai-3-HD-Collection-v${{ steps.version.outputs.version }}.zip"
+          Compress-Archive -Path "$pkgDir/*" -DestinationPath $zipName -CompressionLevel Optimal
+          Write-Host "Created release zip: $zipName ($((Get-Item $zipName).Length) bytes)"
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DBZ-Budokai-3-HD-Collection-v${{ steps.version.outputs.version }}-windows
+          path: DBZ-Budokai-3-HD-Collection-v${{ steps.version.outputs.version }}.zip
+
+      - name: Attach Windows package to release
+        if: github.event_name == 'workflow_run' || startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'push' && github.ref == 'refs/heads/master')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "v${{ steps.version.outputs.version }}"
+          $file = "DBZ-Budokai-3-HD-Collection-v${{ steps.version.outputs.version }}.zip"
+          Write-Host "Checking if release $tag exists..."
+          $releaseFound = $false
+          try {
+            gh release view $tag --repo $env:GITHUB_REPOSITORY
+            if ($LASTEXITCODE -eq 0) { $releaseFound = $true }
+          } catch {
+            $releaseFound = $false
+          }
+
+          if ($releaseFound) {
+            Write-Host "Release $tag exists. Uploading $file with clobber..."
+            gh release upload $tag $file --clobber --repo $env:GITHUB_REPOSITORY
+            Write-Host "Uploaded $file to release $tag successfully."
+          } else {
+            Write-Host "Release $tag does not exist. Creating release $tag with $file..."
+            gh release create $tag $file --repo $env:GITHUB_REPOSITORY --title "DBZ Budokai 3 HD Collection $tag" --notes "Windows game (required)"
+            Write-Host "Created release $tag and attached $file successfully."
+          }
