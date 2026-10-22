@@ -74,6 +74,7 @@ set(DBZ3_SOURCES
     src/iw_mini_botones.cpp
     src/iw_mini_vuelo.cpp
     src/iw_mini_disparo.cpp
+    src/save_autoload.cpp
 )
 
 # Codegen output directory. Default is the US/NA build (generated/); a second
