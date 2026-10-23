@@ -140,6 +140,7 @@ void RbAuto(uint8_t* base, dbz3::net::Session& s) {
     REXLOG_INFO("dbz3 rb: auto: combate pedido ({})", ok ? "ok" : "rechazado");
   }
   // PRUEBAS (DBZ3_RB_FIGHTS=n): tras cada combate, de vuelta en el menu, pide el siguiente hasta n
+#ifdef _WIN32   // g_rbs (rollback) solo existe en Windows
   {
     static const int total = std::getenv("DBZ3_RB_FIGHTS") ? std::atoi(std::getenv("DBZ3_RB_FIGHTS")) : 1;
     static uint32_t seen = 0, quiet = 0;
@@ -152,6 +153,7 @@ void RbAuto(uint8_t* base, dbz3::net::Session& s) {
       }
     }
   }
+#endif
   if (solo) return;
   if (step == 0 && menu_ticks > (host ? 60u : 120u) && calls >= retry_at) {
     std::string err;
@@ -314,7 +316,7 @@ void ResimTick(PPCContext& ctx, uint8_t* base, Dbz3GuestFn orig, uint32_t mask) 
   ctx.r30.u64 = r30;
   ctx.r1.u64 = r1;
 }
-#endif
+
 
 // R3: sub_82153FD8 y sub_82150310 (efectos / sonido: objetos en 0x8243xxxx y 0x7018xxxx fuera del gestor) gastan numeros del
 // mismo LFSR que la logica de pelea, y cuantas veces los gastan depende de su estado (no guardado): tras restaurar el LFSR de
@@ -364,7 +366,7 @@ DBZ3_HOOK_EU(sub_82150310) {
 }
 
 
-#ifdef _WIN32
+// (sigue el bloque solo Windows: el LFSR cosmetico y el rollback no existen en Linux)
 // ---------------------------------------------------------------- R4: nucleo del rollback (ver rollback.h, netplay.h)
 namespace {
 // PRUEBA (DBZ3_RB_ORACLE=3): paginas de memoria del invitado que toca el hilo del juego durante una resimulacion. Se protegen con PAGE_NOACCESS las

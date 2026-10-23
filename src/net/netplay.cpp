@@ -1543,7 +1543,7 @@ void PadLogTick(uint32_t t, bool host, const Pad& u0, const Pad& u1) {
   if (!f) {
     std::error_code ec;
     std::filesystem::create_directories("D:\\tmp\\padlog", ec);
-    f = std::fopen((std::string("D:\\tmp\\padlog\\padlog_") + (host ? "host" : "guest") + "_" + std::to_string(unsigned(::GetCurrentProcessId())) + ".csv").c_str(), "w");
+    f = std::fopen((std::string("D:\\tmp\\padlog\\padlog_") + (host ? "host" : "guest") + "_" + std::to_string(unsigned(std::chrono::steady_clock::now().time_since_epoch().count() & 0xFFFFFF)) + ".csv").c_str(), "w");
     if (!f) return;
   }
   // R7: columnas 16-17 = vblanks del guest acumulados y microsegundos de pared (un lado que pierde vblanks entre ticks se ve aqui)
