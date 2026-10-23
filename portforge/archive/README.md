@@ -9,25 +9,7 @@ entradas retiradas.
   vuelta al array `builds` de `../.forge.json`.
 - `_retired` (dentro del JSON) — motivo de retirada de cada version.
 
-## Estado actual (2026-10-04)
+## Estado actual (2026-10-24)
 
-Versiones **visibles** en PortForge (las tres ultimas funcionales):
-
-| Version | Notas |
-|---|---|
-| `1.4.0` | Actual (Latest). Default. Menu rapido en partida (F1 / Back+Start), panel de FPS F3 nuevo, video en vivo y «Mas FPS con FSR», launcher redisenado y con mando (arranque <1 s), personajes nuevos e importador (requieren la carpeta extraida: PortForge instala en modo ISO). |
-| `1.3.0` | Reparar instalacion, etiquetas de boton (Xbox/PS/Switch), DRED por defecto, `gamecontrollerdb.txt`, fix del extractor de texturas (#13), pulido y optimizacion del launcher. Respaldo inmediato. |
-| `1.2.9` | Diagnostico que se explica solo: avisos de fps sostenido, disco lento e instalacion mixta; `vram=`/`lim=` en la linea `perf`; guardia de VRAM. |
-
-**Archivadas**: `1.2.8.2`, `1.2.8.1`, `1.2.8`, `1.2.7`, `1.2.5`, `1.2.6`, `1.2.4-EX`, `1.2.4`, `1.2.3`, `1.2.2-EX`, `1.2.2` (retirada), `1.2.1`, `1.1.4`, `1.1.2`.
-
-## Como rehabilitar una version
-
-1. Abre `forge-versions-old.json` y copia el objeto de `builds` de la version.
-2. Pegalo en el array `builds` de `../.forge.json` (el orden es el de la lista;
-   la primera entrada es la que se ofrece por defecto junto a
-   `defaultVersion`).
-3. Comprueba que la URL `releases/download/<tag>/...` responde 200.
-
-> Nota: las versiones marcadas **NO reusar** en `_retired` fallan o son
-> incompatibles con el layout actual; no las rehabilites sin arreglarlas.
+Versiones **visibles** en PortForge (las tres ultimas funcionales): `1.5.5` (Latest, default), `1.4.4.5`, `1.4.2.3`.
+Retiradas al archivo el 24/10: `1.4.0`, `1.3.0`, `1.2.9`.
