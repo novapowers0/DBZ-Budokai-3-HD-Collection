@@ -744,7 +744,7 @@ bool ReproducirIW(int video) {
 
 #else   // sin Windows: no hay reproductor (el modo sigue sin video)
 namespace dbz3::video {
-bool Reproducir(const std::filesystem::path&, std::vector<pasarela::Imagen>) { return false; }
+bool Reproducir(const std::filesystem::path&, std::vector<pasarela::Imagen>, int) { return false; }
 bool Activo() { return false; }
 void Saltar() {}
 bool ReproducirIW(int) { return false; }
