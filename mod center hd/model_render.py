@@ -580,7 +580,7 @@ def _compose(layers_rgba, bg):
 
 
 def make_icon(model, px=ICON_PX, yaw=None, pitch=None, zoom=1.0, dx=0.0, dy=0.0, pose=None, art=None,
-              light=None, outline=1.1, persp=None):
+              light=None, outline=1.1, persp=None, roll=0.0):
     """Icono redondo de la rueda (RGBA px x px) a partir del modelo (o de `art`, una
     imagen RGBA del modder ya recortada a la cara, que se encaja igual)."""
     ss = 4
@@ -600,7 +600,9 @@ def make_icon(model, px=ICON_PX, yaw=None, pitch=None, zoom=1.0, dx=0.0, dy=0.0,
         lo_f, hi_f = ICON_SKULL_RANGE
         base = min(max(base, lo_f * 2 * ICON_R / h), hi_f * 2 * ICON_R / h)
         scale = base * zoom * px / ICON_PX
-        view = rot_x(pitch) @ rot_y(yaw)
+        # El giro en el plano corrige modelos cuyo rostro viene inclinado en su pose
+        # de referencia. Es independiente del yaw horizontal.
+        view = rot_z(roll) @ rot_x(pitch) @ rot_y(yaw)
         # centro del render: x = centro del craneo; y tal que el menton caiga en ICON_CHIN_Y
         cx = (lo[0] + hi[0]) / 2
         chin_px = ICON_CHIN_Y * px
@@ -666,10 +668,11 @@ def portrait_background(w, h, variant):
 
 
 def make_portraits(model, size, yaw=None, pitch=None, zoom=1.0, dx=0.0, dy=0.0, art=None, tint=True,
-                   light=None, outline=1.3, persp=None):
+                   light=None, outline=1.3, persp=None, roll=0.0):
     """Retratos del select [P1, P2] (RGBA alto x ancho = size[1] x size[0]). Desde el
-    modelo (3/4, brazos bajados; se renderiza una vez) o desde `art` (imagen del modder,
-    sin fondo o con fondo propio), que se encaja igual. P2 = espejo con fondo rojo."""
+    modelo (3/4, brazos bajados) o desde `art` (imagen del modder, sin fondo o con fondo
+    propio), que se encaja igual. P2 renderiza la cámara desde el lado contrario; nunca se
+    invierte el bitmap de P1."""
     w, h = size
     yaw = PORTRAIT_YAW if yaw is None else yaw
     if art is None:
@@ -677,7 +680,6 @@ def make_portraits(model, size, yaw=None, pitch=None, zoom=1.0, dx=0.0, dy=0.0, 
         dx, dy = dx + PORTRAIT_DX, dy + PORTRAIT_DY
         pose = model.arms_down()
         pose.update(model.mouth_closed())
-        view = rot_x(pitch) @ rot_y(yaw)
         P, _ = model.posed(pose)
         _, _, hb = head_info(model, pose)
         sel = np.isin(model.vbone, list(core_bones(model, hb))) if hb is not None else np.ones(len(P), bool)
@@ -685,33 +687,37 @@ def make_portraits(model, size, yaw=None, pitch=None, zoom=1.0, dx=0.0, dy=0.0, 
             sel &= model.skull
         if not sel.any():
             sel = _top(P)
-        C = P[sel] @ view.T
-        clo, chi = C.min(0), C.max(0)
-        # cabezas anchas (ninos, cupulas, cuernos): manda la anchura vista en 3/4
-        eff = max(chi[1] - clo[1], (chi[0] - clo[0]) / 1.1, 1e-6)
-        scale = PORTRAIT_SCALE_K * h * eff ** PORTRAIT_SCALE_E * zoom
-        cx_cam = (clo[0] + chi[0]) / 2 - (PORTRAIT_HEAD_X - 0.5) * w / scale
-        cy_cam = clo[1] + (PORTRAIT_CHIN_Y * h - h / 2) / scale
-        cam = np.array([cx_cam - dx * w / scale, cy_cam + dy * h / scale, (clo[2] + chi[2]) / 2])
-        ctr = view.T @ cam            # view es ortonormal
-        char = render(model, (w, h), view, ctr, scale, pose=pose, ss=3, outline=outline,
-                      light=PORTRAIT_LIGHT if light is None else light, persp=persp).astype(float)
+        chars = []
+        for variant, yaw_v in enumerate((yaw, -yaw)):
+            view = rot_z(roll) @ rot_x(pitch) @ rot_y(yaw_v)
+            C = P[sel] @ view.T
+            clo, chi = C.min(0), C.max(0)
+            # Cabezas anchas (niños, cúpulas, cuernos): manda la anchura vista en 3/4.
+            eff = max(chi[1] - clo[1], (chi[0] - clo[0]) / 1.1, 1e-6)
+            scale = PORTRAIT_SCALE_K * h * eff ** PORTRAIT_SCALE_E * zoom
+            head_x = PORTRAIT_HEAD_X if variant == 0 else 1.0 - PORTRAIT_HEAD_X
+            cx_cam = (clo[0] + chi[0]) / 2 - (head_x - 0.5) * w / scale
+            cy_cam = clo[1] + (PORTRAIT_CHIN_Y * h - h / 2) / scale
+            cam = np.array([cx_cam - dx * w / scale, cy_cam + dy * h / scale, (clo[2] + chi[2]) / 2])
+            ctr = view.T @ cam            # view es ortonormal
+            chars.append(render(model, (w, h), view, ctr, scale, pose=pose, ss=3, outline=outline,
+                                light=PORTRAIT_LIGHT if light is None else light, persp=persp).astype(float))
     else:
         a = art.convert("RGBA")
         s = max(w / a.width, h / a.height) * zoom
         a = a.resize((max(1, int(a.width * s)), max(1, int(a.height * s))), Image.LANCZOS)
         canvas = Image.new("RGBA", (w, h), (0, 0, 0, 0))
         canvas.alpha_composite(a, (int((w - a.width) / 2 + dx * w), int((h - a.height) / 2 + dy * h)))
-        char = np.array(canvas).astype(float)
+        chars = [np.array(canvas).astype(float)] * 2
     out = []
     for variant in (0, 1):
-        ch = char.copy()
+        ch = chars[variant].copy()
         if tint:
             g, o = PORTRAIT_TINT[variant]
             ch[..., :3] = ch[..., :3] * np.array(g) + np.array(o)
         img = _compose([ch], np.concatenate([portrait_background(w, h, variant), np.full((h, w, 1), 255.0)], 2))
         img = np.clip(img + 0.5, 0, 255).astype(np.uint8)
-        out.append(img if variant == 0 else np.ascontiguousarray(img[:, ::-1]))
+        out.append(img)
     return out
 
 
@@ -723,7 +729,9 @@ def make_portraits(model, size, yaw=None, pitch=None, zoom=1.0, dx=0.0, dy=0.0, 
 HUD_SIZE = (192, 120)
 HUD_CANVAS = (256, 128)
 HUD_PX_PER_UNIT = 30.0
-HUD_HEAD_X = 91
+# El HUD oficial de PS2 ocupa 128x80 lógicos. La cara debe quedar en su eje
+# horizontal (64 lógicos = 96 px HD en la zona útil de 192 px).
+HUD_HEAD_X = 96
 HUD_CHIN_Y = 85
 HUD_PITCH = 10.0
 HUD_YAW = 0.0
@@ -747,9 +755,11 @@ def _blur(a, sigma):
     return p[r:-r, r:-r]
 
 
-def make_hud(model, yaw=None, pitch=None, zoom=1.0, dx=0.0, dy=0.0, art=None, pose=None, outline=1.4):
+def make_hud(model, yaw=None, pitch=None, zoom=1.0, dx=0.0, dy=0.0, art=None, pose=None, outline=1.4,
+             center_ps2=True):
     """Cara de la barra de vida (RGBA 128 x 256, contenido en 120 x 192) desde el modelo o
-    desde `art` (imagen del modder, mejor sin fondo), con el halo azul de las oficiales."""
+    desde `art` (imagen del modder, mejor sin fondo), con el halo azul de las oficiales.
+    `center_ps2=True` centra la cara en el eje de la zona útil; False conserva el x=91 histórico."""
     w, h = HUD_SIZE
     if art is None:
         if pose is None:
@@ -758,7 +768,8 @@ def make_hud(model, yaw=None, pitch=None, zoom=1.0, dx=0.0, dy=0.0, art=None, po
         view = rot_x(HUD_PITCH if pitch is None else pitch) @ rot_y(HUD_YAW if yaw is None else yaw)
         lo, hi, _ = head_info(model, pose, core=True)
         scale = HUD_PX_PER_UNIT * zoom
-        cx = (lo[0] + hi[0]) / 2 - (HUD_HEAD_X - w / 2) / scale
+        head_x = HUD_HEAD_X if center_ps2 else 91  # 91 = encuadre Xbox 360 histórico
+        cx = (lo[0] + hi[0]) / 2 - (head_x - w / 2) / scale
         cy = lo[1] + (HUD_CHIN_Y - h / 2) / scale
         cam = np.array([cx - dx * w / scale, cy + dy * h / scale, (lo[2] + hi[2]) / 2])
         char = render(model, (w, h), view, view.T @ cam, scale, pose=pose, ss=3, outline=outline,
@@ -800,6 +811,7 @@ def main():
     ap.add_argument("out")
     ap.add_argument("--yaw", type=float, default=0)
     ap.add_argument("--pitch", type=float, default=0)
+    ap.add_argument("--roll", type=float, default=0, help="inclinacion de camara en grados")
     ap.add_argument("--size", type=int, default=512)
     ap.add_argument("--head", action="store_true")
     ap.add_argument("--toon", choices=("resta", "producto"), default=RAMP_MODE,
@@ -807,7 +819,7 @@ def main():
     a = ap.parse_args()
     RAMP_MODE = a.toon
     m = Model(a.bin)
-    view = rot_x(a.pitch) @ rot_y(a.yaw)
+    view = rot_z(a.roll) @ rot_x(a.pitch) @ rot_y(a.yaw)
     P, _ = m.posed()
     if a.head:
         lo, hi, _ = head_info(m)

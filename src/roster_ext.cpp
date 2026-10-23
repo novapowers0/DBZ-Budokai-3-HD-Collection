@@ -69,10 +69,12 @@
 //   u32 = [1, 2]            # o u16 = [...] / u8 = [...]
 
 #include "roster_ext.h"
+#include "ids_registry.h"
 #include "form_selection_state.h"
 #include "launcher/settings.h"
 #include "tagteam.h"
 #include "ingame/tagteam_panel.h"
+#include "modos.h"
 
 #include "mods.h"
 
@@ -88,6 +90,10 @@
 #include "guest_region.h"
 
 REXCVAR_DECLARE(std::string, dbz3_iso_path);
+REXCVAR_DEFINE_BOOL(dbz3_dynamic_roster, false, "DBZ3/Mods",
+                    "Experimental host registry for logical character IDs beyond the retail 64 (gameplay mapping in progress)");
+REXCVAR_DEFINE_INT32(dbz3_dynamic_roster_page, -1, "DBZ3/Mods",
+                     "Experimental roster page to load at boot (-1 = last page; requires dbz3_dynamic_roster)");
 
 #include <algorithm>
 #include <array>
@@ -110,6 +116,14 @@ bool PrepareNamesMod(const std::vector<std::pair<int, uint32_t>>& banks, const s
 
 namespace dbz3::roster {
 namespace {
+
+dbz3::ids::Registry g_logical_ids;
+struct PendingDynamicCharacter {
+  uint32_t logical_id = 0;
+  std::string mod;
+  toml::table config;
+};
+std::vector<PendingDynamicCharacter> g_pending_dynamic_characters;
 
 constexpr uint32_t kChar96 = 0x8234ABB8;
 constexpr uint32_t kChar372 = 0x82329CF0;
@@ -140,6 +154,8 @@ std::vector<VirtualCell> g_cells;
 rex::memory::Memory* g_memory = nullptr;
 // donante de cada ID de la plantilla extendida (-1 = ninguno)
 std::atomic<int> g_donor[kIds];
+// franja de ojos propia de la bandeja Ability (roster.toml `ojos = [tex, x0, y0, x1, y1]`; tex < 0 = ninguna)
+std::atomic<int32_t> g_ojos[kIds][5];
 std::atomic<int> g_team_size[kIds];   // Tag Team: miembros (equipo = [...])
 std::atomic<int> g_team_member[kIds][5];
 // trajes anadidos por mods a personajes del juego (traje.toml)
@@ -279,6 +295,39 @@ class Guest {
   rex::memory::Memory* m_;
 };
 
+struct GuestProxyBase {
+  uint8_t id = 0;
+  std::array<uint8_t, 96> char96{};
+  std::array<uint8_t, 372> char372{};
+  std::array<uint8_t, 4> aura{}, bsp{}, voice_ptr{}, voice_count{};
+  std::array<uint8_t, 2> hud_face{};
+  std::array<uint8_t, 56> select_pos{};
+  std::array<uint8_t, 40> aura_types{};
+  int donor = -1, team_size = 0, extra_costumes = 0, costume_count = 0;
+  std::array<int, 5> team_members{};
+};
+
+struct DynamicRosterBase {
+  bool ready = false;
+  uint64_t unlock = 0, extra_slots = 0;
+  std::vector<GuestProxyBase> proxies;
+  std::vector<VirtualCell> cells;
+  std::map<uint32_t, std::array<uint32_t, 14>> select_pos;
+  std::map<uint32_t, uint32_t> host_slot;
+  std::map<uint32_t, int32_t> hud_fid;
+  std::map<uint32_t, uint64_t> capsule_owners;
+  std::vector<SkillEntry> skill_entries;
+  std::vector<uint32_t> skill_records;
+  std::vector<uint8_t> skc_blob;
+  uint32_t skc_start = 0, skc_count = 0;
+};
+
+DynamicRosterBase g_dynamic_base;
+std::atomic<int> g_dynamic_page_current{0};
+std::atomic<int> g_dynamic_page_delta{0};
+std::atomic<bool> g_dynamic_test_page_sent{false};
+size_t g_dynamic_page_size = 0;
+
 std::vector<int64_t> Ints(const toml::node_view<const toml::node>& v) {
   std::vector<int64_t> out;
   if (auto* arr = v.as_array()) {
@@ -407,6 +456,34 @@ void ApplyExtraCostume(Guest& g, const toml::table& t, const std::string& mod, u
 void ApplyCharacter(Guest& g, const toml::table& t, const std::string& mod) {
   const int64_t id = Int(t["id"], -1);
   const int64_t donor = Int(t["donante"], -1);
+  if (id >= dbz3::ids::kFirstLogicalId) {
+    if (!REXCVAR_GET(dbz3_dynamic_roster)) {
+      REXLOG_WARN("dbz3 roster [{}]: id logico {} rechazado: activa dbz3_dynamic_roster para registrarlo", mod, id);
+      return;
+    }
+    if (uint64_t(id) > UINT32_MAX) {
+      REXLOG_WARN("dbz3 roster [{}]: id logico {} fuera de u32", mod, id);
+      return;
+    }
+    if (donor >= 0 && (!ValidId(donor) || g.U32(kChar372 + uint32_t(donor) * 372) == 0)) {
+      REXLOG_WARN("dbz3 roster [{}]: donante {} no valido para id logico {}", mod, donor, id);
+      return;
+    }
+    if (donor < 0 && Floats(t["select"]).size() != 14 && !t["traje_formas"].as_array()) {
+      REXLOG_WARN("dbz3 roster [{}]: id logico {} sin donante ni encuadre: omitido", mod, id);
+      return;
+    }
+    const std::string name = t["nombre"].value_or(std::string("id_") + std::to_string(id));
+    const std::string key = mod + ":" + name + "#" + std::to_string(id);
+    const int64_t forms = Int(t["formas"], std::max<int64_t>(1, int64_t(Ints(t["anm"]).size())));
+    if (!g_logical_ids.Register(uint32_t(id), key, mod, uint32_t(std::max<int64_t>(0, forms)))) {
+      REXLOG_WARN("dbz3 roster [{}]: id logico {} duplicado o registro invalido", mod, id);
+      return;
+    }
+    g_pending_dynamic_characters.push_back({uint32_t(id), mod, t});
+    REXLOG_INFO("dbz3 roster [{}]: id logico {} ({}) registrado para proxy guest", mod, id, key);
+    return;
+  }
   if (!ValidId(id)) {
     REXLOG_WARN("dbz3 roster [{}]: id invalido ({})", mod, id);
     return;
@@ -566,7 +643,8 @@ void ApplyCharacter(Guest& g, const toml::table& t, const std::string& mod) {
     }
   }
   // nombre interno: los IDs 44-63 no tienen registro (char96 +0 = 0)
-  if (!g.U32(c96)) {
+  const bool logical_proxy = g_logical_ids.LogicalForGuest(uint32_t(id)).has_value();
+  if (!g.U32(c96) || logical_proxy) {
     if (const uint32_t rec = g.Alloc(32)) {
       std::string nm = t["nombre"].value_or(std::string("NEW ") + std::to_string(id));
       for (auto& ch : nm) ch = char(std::toupper(uint8_t(ch)));
@@ -773,6 +851,8 @@ void ApplyCharacter(Guest& g, const toml::table& t, const std::string& mod) {
       g_host_slot[uint32_t(id)] = uint32_t(slot);
     }
   }
+  // 5b) sin celda (el Heroe, exclusivo de su modo): solo el anfitrion, para ID -> casilla (sub_82159A88) y los datos por casilla
+  if (auto a = Int(t["anfitrion"], -1); a >= 0 && a < 38 && !(t["celda"].value<bool>().value_or(false))) g_host_slot[uint32_t(id)] = uint32_t(a);
   // 5) casilla NUEVA en la rueda del select (no sustituye a nadie)
   if (auto c = t["celda"].value<bool>(); c && *c) {
     if (int(g_cells.size()) >= kMaxVirtualCells) {
@@ -792,6 +872,9 @@ void ApplyCharacter(Guest& g, const toml::table& t, const std::string& mod) {
       if (icon.size() == 5) for (int k = 0; k < 5; ++k) vc.icon[k] = int32_t(icon[k]);
       const auto name = Ints(t["rotulo"]);
       if (name.size() == 5) for (int k = 0; k < 5; ++k) vc.name[k] = int32_t(name[k]);
+      const auto ticon = Ints(t["torneo_icono"]), tname = Ints(t["torneo_rotulo"]);
+      if (ticon.size() == 5) for (int k = 0; k < 5; ++k) vc.tor_icon[k] = int32_t(ticon[k]);
+      if (tname.size() == 5) for (int k = 0; k < 5; ++k) vc.tor_name[k] = int32_t(tname[k]);
       const auto por = Ints(t["retrato"]);
       for (size_t k = 0; k < 2 && k < por.size(); ++k) vc.portrait[k] = uint32_t(por[k]);
       if (por.size() == 1) vc.portrait[1] = vc.portrait[0];
@@ -800,9 +883,20 @@ void ApplyCharacter(Guest& g, const toml::table& t, const std::string& mod) {
   }
   g_unlock.fetch_or(uint64_t(1) << id);
   g_donor[id].store(int(donor));
+  {
+    const auto oj = Ints(t["ojos"]);
+    for (int k = 0; k < 5; ++k) g_ojos[id][k].store(oj.size() == 5 ? int32_t(oj[size_t(k)]) : -1);
+  }
   const auto team = Ints(t["equipo"]);
   g_team_size[id].store(int(team.size()));
-  for (size_t k = 0; k < 5; ++k) g_team_member[id][k].store(k < team.size() ? int(team[k]) : -1);
+  for (size_t k = 0; k < 5; ++k) {
+    int member = k < team.size() ? int(team[k]) : -1;
+    if (member >= int(dbz3::ids::kFirstLogicalId)) {
+      const auto proxy = g_logical_ids.GuestForLogical(uint32_t(member));
+      member = proxy ? int(*proxy) : -1;
+    }
+    g_team_member[id][k].store(member);
+  }
   REXLOG_INFO("dbz3 roster [{}]: personaje id={} donante={} modelos={} anm={}", mod, id, donor,
               models.size(), anm.size());
 }
@@ -911,6 +1005,11 @@ void AddExtraCostumes(uint8_t* base) {
 
 bool SlotHasExtraCostumes(uint32_t slot) { return slot < 64 && ((g_extra_slots.load() >> slot) & 1); }
 
+bool EyeStrip(uint32_t id, int32_t out[5]) {
+  if (id >= uint32_t(kIds) || g_ojos[id][0].load() < 0) return false;
+  for (int k = 0; k < 5; ++k) out[k] = g_ojos[id][k].load();
+  return out[3] > out[1] && out[4] > out[2];   // sin ojos = {0,0,0,0,0} (antes del primer reset)
+}
 int DonorOf(uint32_t id) { return id < uint32_t(kIds) ? g_donor[id].load() : -1; }
 int TeamSize(uint32_t id) { return id < uint32_t(kIds) ? g_team_size[id].load() : 0; }
 int TeamMember(uint32_t id, int k) {
@@ -996,6 +1095,14 @@ void EnsureCapsules() {
   const uint32_t n = g.U32(hdr + 0x10);
   const uint32_t start = g.U32(hdr + 0x14);
   if (n == 0 || n > 4096 || g.U32(kSkcRecPtr) != hdr + start) return;
+  if (g_dynamic_base.ready && g_dynamic_base.skc_blob.empty()) {
+    const uint64_t bytes = uint64_t(start) + uint64_t(kSkcRec) * n;
+    if (bytes <= 0x100000u) {
+      g_dynamic_base.skc_blob.assign(g.P(hdr), g.P(hdr) + size_t(bytes));
+      g_dynamic_base.skc_start = start;
+      g_dynamic_base.skc_count = n;
+    }
+  }
   uint32_t total = n;
   if (!g_new_caps.empty()) total = std::max(total, g_new_caps.rbegin()->first + 1);
   if (g_unified_on.load()) total = std::max(total, forms::kUnifiedBase + 64);
@@ -1052,9 +1159,125 @@ void EnsureCapsules() {
               g_new_caps.size(), g_cap_owner_add.size());
 }
 
+void CaptureDynamicBase(Guest& g) {
+  if (g_dynamic_base.ready) return;
+  g_dynamic_base.unlock = g_unlock.load();
+  g_dynamic_base.extra_slots = g_extra_slots.load();
+  g_dynamic_base.cells = g_cells;
+  g_dynamic_base.select_pos = g_selpos;
+  g_dynamic_base.host_slot = g_host_slot;
+  g_dynamic_base.hud_fid = g_hud_fid;
+  g_dynamic_base.capsule_owners = g_cap_owner_add;
+  g_dynamic_base.skill_entries = g_skill_entries;
+  g_dynamic_base.skill_records = g_skill_recs;
+  constexpr uint32_t kAuraTypes = 0x82321A38;
+  for (uint8_t id : dbz3::ids::kProxyCandidates) {
+    GuestProxyBase p;
+    p.id = id;
+    std::memcpy(p.char96.data(), g.P(kChar96 + uint32_t(id) * 96), p.char96.size());
+    std::memcpy(p.char372.data(), g.P(kChar372 + uint32_t(id) * 372), p.char372.size());
+    std::memcpy(p.aura.data(), g.P(kAura + uint32_t(id) * 4), p.aura.size());
+    std::memcpy(p.bsp.data(), g.P(kBsp + uint32_t(id) * 4), p.bsp.size());
+    std::memcpy(p.voice_ptr.data(), g.P(kVoicePtr + uint32_t(id) * 4), p.voice_ptr.size());
+    std::memcpy(p.voice_count.data(), g.P(kVoiceCount + uint32_t(id) * 4), p.voice_count.size());
+    std::memcpy(p.hud_face.data(), g.P(kHudFace + uint32_t(id) * 2), p.hud_face.size());
+    std::memcpy(p.aura_types.data(), g.P(kAuraTypes + uint32_t(id) * 40), p.aura_types.size());
+    if (id < kSelectPosIds)
+      std::memcpy(p.select_pos.data(), g.P(kSelectPos + uint32_t(id) * 56), p.select_pos.size());
+    p.donor = g_donor[id].load();
+    p.team_size = g_team_size[id].load();
+    p.extra_costumes = g_extra_costumes[id].load();
+    p.costume_count = g_costume_count[id].load();
+    for (size_t k = 0; k < p.team_members.size(); ++k) p.team_members[k] = g_team_member[id][k].load();
+    g_dynamic_base.proxies.push_back(std::move(p));
+  }
+  g_dynamic_base.ready = true;
+}
+
+void RestoreDynamicBase(Guest& g) {
+  if (!g_dynamic_base.ready) return;
+  constexpr uint32_t kAuraTypes = 0x82321A38;
+  for (const GuestProxyBase& p : g_dynamic_base.proxies) {
+    const uint32_t id = p.id;
+    g.Write(kChar96 + id * 96, p.char96.data(), uint32_t(p.char96.size()));
+    g.Write(kChar372 + id * 372, p.char372.data(), uint32_t(p.char372.size()));
+    g.Write(kAura + id * 4, p.aura.data(), uint32_t(p.aura.size()));
+    g.Write(kBsp + id * 4, p.bsp.data(), uint32_t(p.bsp.size()));
+    g.Write(kVoicePtr + id * 4, p.voice_ptr.data(), uint32_t(p.voice_ptr.size()));
+    g.Write(kVoiceCount + id * 4, p.voice_count.data(), uint32_t(p.voice_count.size()));
+    g.Write(kHudFace + id * 2, p.hud_face.data(), uint32_t(p.hud_face.size()));
+    g.Write(kAuraTypes + id * 40, p.aura_types.data(), uint32_t(p.aura_types.size()));
+    if (id < kSelectPosIds) g.Write(kSelectPos + id * 56, p.select_pos.data(), uint32_t(p.select_pos.size()));
+    g_donor[id].store(p.donor);
+    g_team_size[id].store(p.team_size);
+    g_extra_costumes[id].store(p.extra_costumes);
+    g_costume_count[id].store(p.costume_count);
+    for (size_t k = 0; k < p.team_members.size(); ++k) g_team_member[id][k].store(p.team_members[k]);
+  }
+  g_unlock.store(g_dynamic_base.unlock);
+  g_extra_slots.store(g_dynamic_base.extra_slots);
+  g_cells = g_dynamic_base.cells;
+  g_selpos = g_dynamic_base.select_pos;
+  g_host_slot = g_dynamic_base.host_slot;
+  g_hud_fid = g_dynamic_base.hud_fid;
+  g_cap_owner_add = g_dynamic_base.capsule_owners;
+  g_skill_entries = g_dynamic_base.skill_entries;
+  g_skill_recs = g_dynamic_base.skill_records;
+  g_unified_ids.clear();
+  if (!g_dynamic_base.skc_blob.empty()) {
+    const uint32_t hdr = g.U32(kSkcHdrPtr);
+    g.Write(hdr, g_dynamic_base.skc_blob.data(), uint32_t(g_dynamic_base.skc_blob.size()));
+    g.W32(kSkcHdrPtr, hdr);
+    g.W32(kSkcRecPtr, hdr + g_dynamic_base.skc_start);
+  }
+  g_caps_done.store(false);
+  ClearPickedCells();
+}
+
+bool LoadDynamicPage(Guest& g, size_t page_index, const std::vector<dbz3::ids::ProxyBinding>& pins = {}) {   // L: pin
+  const auto range = dbz3::ids::PageRangeFor(g_pending_dynamic_characters.size(), uint32_t(page_index),
+                                              g_dynamic_page_size);
+  if (!range) return false;
+  std::vector<dbz3::ids::LogicalId> ids;
+  ids.reserve(range->count);
+  for (size_t k = 0; k < range->count; ++k)
+    ids.push_back(g_pending_dynamic_characters[range->first + k].logical_id);
+  // L: pin - los elegidos ocupan plaza: la pagina pierde las ultimas que no caben (vuelven al deshacer)
+  size_t extra = 0;
+  for (const auto& pin : pins)
+    if (std::find(ids.begin(), ids.end(), pin.logical) == ids.end()) ++extra;
+  while (!pins.empty() && ids.size() + extra > g_dynamic_page_size && !ids.empty()) ids.pop_back();
+  const auto bindings = g_logical_ids.BindPage(ids, pins);
+  if (!bindings) return false;
+  for (size_t k = 0; k < bindings->size(); ++k) {
+    const auto& binding = (*bindings)[k];
+    const auto it = std::find_if(g_pending_dynamic_characters.begin(), g_pending_dynamic_characters.end(),
+                                 [&](const PendingDynamicCharacter& c) { return c.logical_id == binding.logical; });
+    if (it == g_pending_dynamic_characters.end()) continue;
+    toml::table guest_config = it->config;
+    guest_config.insert_or_assign("id", int64_t(binding.guest));
+    ApplyCharacter(g, guest_config, it->mod);
+    REXLOG_INFO("dbz3 roster: id logico {} -> proxy guest {} (pagina {})", binding.logical, binding.guest, page_index);
+  }
+  g_dynamic_page_current.store(int(page_index));
+  REXCVAR_SET(dbz3_dynamic_roster_page, int32_t(page_index));
+  forms::RememberRosterPage(int(page_index));
+  g_caps_done.store(false);
+  EnsureCapsules();
+  return true;
+}
+
 void ApplyAtLaunch(rex::memory::Memory* memory) {
+  g_logical_ids.Reset();
+  g_pending_dynamic_characters.clear();
+  g_dynamic_base = {};
+  g_dynamic_page_current = 0;
+  g_dynamic_page_delta = 0;
+  g_dynamic_test_page_sent = false;
+  g_dynamic_page_size = 0;
   ResetForms();
   for (auto& d : g_donor) d.store(-1);
+  for (auto& o : g_ojos) o[0].store(-1);
   for (auto& c : g_extra_costumes) c.store(0);
   for (auto& c : g_costume_count) c.store(0);
   g_cells.clear();
@@ -1097,6 +1320,11 @@ void ApplyAtLaunch(rex::memory::Memory* memory) {
   const std::string iso = REXCVAR_GET(dbz3_iso_path);
   const bool sin_overrides = !iso.empty() && std::filesystem::is_regular_file(iso, ec) && !dbz3::settings::IsoDataCacheValid();
   if (sin_overrides) REXLOG_WARN("dbz3 roster: ISO sin copia de datos para mods: no se anaden casillas nuevas");
+  struct LoadedRoster {
+    std::string mod;
+    toml::table doc;
+  };
+  std::vector<LoadedRoster> rosters;
   for (const auto& info : ListMods(false)) {
     if (sin_overrides) break;
     if (!info.enabled) continue;
@@ -1112,22 +1340,61 @@ void ApplyAtLaunch(rex::memory::Memory* memory) {
       REXLOG_ERROR("dbz3 roster [{}]: roster.toml invalido: {}", info.name, e.description());
       continue;
     }
+    rosters.push_back({info.name, std::move(doc)});
+  }
+  // Reserve every legacy guest index before assigning any logical ID, so the
+  // result does not depend on whether its mod sorts before/after a legacy mod.
+  for (const auto& roster : rosters) {
+    if (auto* arr = roster.doc["personaje"].as_array()) {
+      for (auto& e : *arr) {
+        if (auto* t = e.as_table()) {
+          const int64_t id = Int((*t)["id"], -1);
+          if (id >= 0 && id < kIds) g_logical_ids.ReserveGuestId(uint32_t(id));
+        }
+      }
+    }
+  }
+  for (auto& roster : rosters) {
+    const std::string& mod = roster.mod;
+    toml::table& doc = roster.doc;
     if (auto* arr = doc["personaje"].as_array()) {
       for (auto& e : *arr) {
-        if (auto* t = e.as_table()) ApplyCharacter(g, *t, info.name);
+        if (auto* t = e.as_table()) ApplyCharacter(g, *t, mod);
       }
     }
     if (auto* arr = doc["capsula"].as_array()) {
       for (auto& e : *arr) {
-        if (auto* t = e.as_table()) ReadCapsule(*t, info.name);
+        if (auto* t = e.as_table()) ReadCapsule(*t, mod);
       }
     }
     if (auto* arr = doc["parche"].as_array()) {
       for (auto& e : *arr) {
-        if (auto* t = e.as_table()) ApplyPatch(g, *t, info.name);
+        if (auto* t = e.as_table()) ApplyPatch(g, *t, mod);
       }
     }
-    if (auto* t = doc["forma_unica"].as_table()) ReadUnified(*t, info.name);
+    if (auto* t = doc["forma_unica"].as_table()) ReadUnified(*t, mod);
+  }
+  // Step 1 proxy page: load at most the available cut guest rows. Logical IDs
+  // remain in the host registry; copied TOML records are rewritten only in the
+  // temporary guest view. L1/R1 can request a different page on the guest thread.
+  if (REXCVAR_GET(dbz3_dynamic_roster) && !g_pending_dynamic_characters.empty()) {
+    const size_t cell_room = g_cells.size() < size_t(kMaxVirtualCells) ? size_t(kMaxVirtualCells) - g_cells.size() : 0;
+    const size_t page_size = std::min(cell_room, g_logical_ids.ProxyCapacity());
+    g_dynamic_page_size = page_size;
+    CaptureDynamicBase(g);
+    const int pages = DynamicRosterPageCount();
+    int page_index = REXCVAR_GET(dbz3_dynamic_roster_page);
+    if (page_index < 0) page_index = forms::RosterPagePreference();
+    page_index = std::max(0, page_index);
+    if (pages && page_index >= pages) page_index = 0;
+    if (page_size && LoadDynamicPage(g, size_t(page_index))) {
+      REXLOG_INFO("dbz3 roster: pagina logica {}/{} activa", page_index + 1, std::max(1, pages));
+    } else if (!page_size) {
+      REXLOG_WARN("dbz3 roster: no hay proxies o casillas libres para la pagina logica {}", page_index);
+    } else {
+      REXLOG_WARN("dbz3 roster: pagina logica {} fuera del rango de {} entradas", page_index,
+                  g_pending_dynamic_characters.size());
+    }
   }
   // capsula unica: su nombre y su panel los hace el juego desde tus AFS (mods/_forma_unica, transformaciones.cpp)
   // para cada personaje con 2+ formas con capsula, con el banco de nombres que usa (los IDs >= 44, el de g_hud_fid)
@@ -1167,6 +1434,90 @@ void ApplyAtLaunch(rex::memory::Memory* memory) {
     REXLOG_INFO("dbz3 roster: {} casillas nuevas en la rueda del select", g_cells.size());
   }
   EnsureCapsules();
+  if (g_logical_ids.size()) {
+    REXLOG_INFO("dbz3 roster: {} IDs logicos registrados; {} enlazados a proxies guest en la pagina inicial",
+                g_logical_ids.size(), g_logical_ids.active_bindings().size());
+  }
+}
+
+bool DynamicRosterEnabled() { return REXCVAR_GET(dbz3_dynamic_roster); }
+int DynamicRosterPage() { return g_dynamic_page_current.load(); }
+int DynamicRosterPageCount() {
+  if (!DynamicRosterEnabled() || !g_dynamic_page_size || g_pending_dynamic_characters.empty()) return 0;
+  return int((g_pending_dynamic_characters.size() + g_dynamic_page_size - 1) / g_dynamic_page_size);
+}
+void RequestDynamicRosterPage(int delta) {
+  if (!delta || DynamicRosterPageCount() <= 1) return;
+  g_dynamic_page_delta.store(delta > 0 ? 1 : -1);
+}
+int64_t LogicalForProxy(int guest) {   // L: -1 si no es un proxy del roster dinamico
+  const auto l = guest >= 0 ? g_logical_ids.LogicalForGuest(uint32_t(guest)) : std::nullopt;
+  return l ? int64_t(*l) : -1;
+}
+bool ProcessDynamicRosterPage(uint64_t& removed_proxy_mask, uint64_t& added_proxy_mask) {
+  removed_proxy_mask = added_proxy_mask = 0;
+  const int pages = DynamicRosterPageCount();
+  if (pages <= 1 || !g_dynamic_base.ready || !g_memory) return false;
+  // L: DBZ3_TEST_DYNAMIC_ROSTER_PAGE_TRAS_ELEGIR=1 espera a que P1 tenga un port elegido (prueba del pin)
+  const bool wait_pick = std::getenv("DBZ3_TEST_DYNAMIC_ROSTER_PAGE_TRAS_ELEGIR") && g_pick_id[0].load() < 0;
+  if (const char* test_page = std::getenv("DBZ3_TEST_DYNAMIC_ROSTER_PAGE");
+      test_page && !wait_pick && !g_dynamic_test_page_sent.load()) {
+    if (!g_dynamic_test_page_sent.exchange(true)) {
+      const int wanted = std::clamp(std::atoi(test_page), 0, pages - 1);
+      const int current = g_dynamic_page_current.load();
+      if (wanted != current) g_dynamic_page_delta.store(wanted > current ? 1 : -1);
+    }
+  }
+  const int delta = g_dynamic_page_delta.exchange(0);
+  if (!delta) return false;
+  const int old_page = g_dynamic_page_current.load();
+  const int next_page = (old_page + delta + pages) % pages;
+  if (next_page == old_page) return false;
+
+  const uint64_t old_mask = g_logical_ids.ActiveProxyMask();
+  Guest g(g_memory);
+  // L: pin - los personajes ya elegidos (P1/P2 y miembros de Tag Team) conservan su proxy
+  std::vector<dbz3::ids::ProxyBinding> pins;
+  int saved_pick[2], saved_host[2];
+  for (int k = 0; k < 2; ++k) {
+    saved_pick[k] = g_pick_id[k].load();
+    saved_host[k] = g_pick_host[k].load();
+  }
+  auto add_pin = [&](int guest) {
+    const auto logical = guest >= 0 ? g_logical_ids.LogicalForGuest(uint32_t(guest)) : std::nullopt;
+    if (!logical) return;
+    for (const auto& p : pins) if (p.guest == guest) return;
+    pins.push_back({*logical, uint8_t(guest)});
+  };
+  if (std::getenv("DBZ3_TEST_PIN_FORCE") && saved_pick[0] < 0 && !g_logical_ids.active_bindings().empty()) {   // L: prueba sin navegar
+    saved_pick[0] = g_logical_ids.active_bindings().front().guest;
+    saved_host[0] = 0;
+    REXLOG_INFO("dbz3 roster: [prueba] eleccion forzada del lado 1 = proxy {}", saved_pick[0]);
+  }
+  for (int k = 0; k < 2; ++k) add_pin(saved_pick[k]);
+  for (int id : dbz3::ingame::TeamPickedIds()) add_pin(id);
+  if (std::getenv("DBZ3_NO_PIN")) pins.clear();   // L: solo para la prueba antes/despues del arreglo
+  RestoreDynamicBase(g);
+  if (!LoadDynamicPage(g, size_t(next_page), pins)) {
+    REXLOG_WARN("dbz3 roster: no se pudo activar la pagina logica {} (se conserva la pagina {})", next_page, old_page);
+    LoadDynamicPage(g, size_t(old_page), pins);
+    return false;
+  }
+  for (int k = 0; k < 2; ++k) {   // RestoreDynamicBase borra los picks: se devuelven los que siguen anclados
+    const bool pinned = std::any_of(pins.begin(), pins.end(), [&](const auto& p) { return p.guest == saved_pick[k]; });
+    if (pinned) SetPickedCell(k, saved_pick[k], saved_host[k]);
+  }
+  for (const auto& p : pins) {   // L: verificacion: el anclado conserva su fila y su id logico
+    const auto now = g_logical_ids.GuestForLogical(p.logical);
+    REXLOG_INFO("dbz3 roster: anclado id logico {} proxy {} -> {}", p.logical, p.guest, now ? int(*now) : -1);
+  }
+  if (!pins.empty()) REXLOG_INFO("dbz3 roster: {} personaje(s) elegido(s) anclado(s) al cambiar de pagina", pins.size());
+  const uint64_t new_mask = g_logical_ids.ActiveProxyMask();
+  removed_proxy_mask = old_mask & ~new_mask;
+  added_proxy_mask = new_mask & ~old_mask;
+  forms::ClearMembers();  // los proxies se reutilizan; las preferencias quedan en identidad logica
+  REXLOG_INFO("dbz3 roster: pagina logica {} -> {} de {}", old_page + 1, next_page + 1, pages);
+  return true;
 }
 
 // La tabla ID -> ficha (0x82324468) acaba en ID -1 y la lee sub_820E6D70 al empezar el
@@ -1254,9 +1605,10 @@ uint32_t UnifiedListed(int id) {
 }
 
 void GetCustomList(uint32_t id, uint16_t out[7]) {
+  const uint32_t stored_id = g_logical_ids.LogicalForGuest(id).value_or(id);
   {
     std::lock_guard<std::mutex> lk(g_custom_mu);
-    auto it = g_custom.find(id);
+    auto it = g_custom.find(stored_id);
     if (it != g_custom.end()) {
       std::copy(it->second.begin(), it->second.end(), out);
       return;
@@ -1271,14 +1623,15 @@ void GetCustomList(uint32_t id, uint16_t out[7]) {
 }
 
 void SetCustomList(uint32_t id, const uint16_t in[7]) {
+  const uint32_t stored_id = g_logical_ids.LogicalForGuest(id).value_or(id);
   std::array<uint16_t, 7> a;
   std::copy(in, in + 7, a.begin());
   std::lock_guard<std::mutex> lk(g_custom_mu);
-  auto it = g_custom.find(id);
+  auto it = g_custom.find(stored_id);
   if (it != g_custom.end() && it->second == a) return;
-  g_custom[id] = a;
+  g_custom[stored_id] = a;
   SaveCustomLists();
-  REXLOG_INFO("dbz3 roster: lista Custom de capsulas del id {} guardada", id);
+  REXLOG_INFO("dbz3 roster: lista Custom de capsulas del id logico {} (guest {}) guardada", stored_id, id);
 }
 
 bool SelectPos(uint32_t id, uint32_t player, uint32_t out[7]) {
@@ -1338,8 +1691,15 @@ thread_local int t_sel_ids[4] = {-1, -1, -1, -1};
 thread_local bool t_in_setup = false;
 }  // namespace
 
+namespace dbz3::campaigns {
+int DuFighter(uint8_t* base);   // campaigns.cpp: el luchador de una campana (el Heroe en DU), -1 = el del juego
+}
 DBZ3_HOOK(sub_820FE668, dbz3eu_sub_820FE768) {
   const uint32_t sel = ctx.r3.u32;
+  if (const int f = sel ? dbz3::campaigns::DuFighter(base) : -1; f >= 0 && int(REX_LOAD_U16(sel + 32)) != f) {   // C3: el Heroe en DU
+    REXLOG_INFO("dbz3 roster: combate de historia de una campana: jugador 1 = id {} (la seleccion decia {})", f, REX_LOAD_U16(sel + 32));
+    REX_STORE_U16(sel + 32, uint16_t(f));
+  }
   // Fase 2: BeforeBattleSetup se ejecuta tras recuperar PickedCell.
   for (uint32_t k = 0; sel && k < 2; ++k) {     // casilla nueva que la lista del rival deshizo
     const int now = int(REX_LOAD_U16(sel + 32 + 80 * k));
@@ -1348,15 +1708,50 @@ DBZ3_HOOK(sub_820FE668, dbz3eu_sub_820FE768) {
       REXLOG_INFO("dbz3 roster: jugador {}: casilla nueva -> id {} (la seleccion decia {})", k + 1, id, now);
     }
   }
+  for (uint32_t k = 0; sel && k < 4; ++k) {   // L: pin - traza de que personaje lleva cada lado
+    const int id = int(REX_LOAD_U16(sel + 32 + 80 * k));
+    if (const int64_t logical = dbz3::roster::LogicalForProxy(id); logical >= 0)
+      REXLOG_INFO("dbz3 roster: combate: lado {} = proxy {} (id logico {})", k + 1, id, logical);
+  }
   dbz3::tag::BeforeBattleSetup(base, sel);   // despues de restaurar la casilla, antes de copiar a combate
   for (uint32_t k = 0; k < 4; ++k) {
     const int id = sel ? int(REX_LOAD_U16(sel + 32 + 80 * k)) : -1;
     t_sel_ids[k] = (id >= 0 && id < 64 && dbz3::roster::DonorOf(uint32_t(id)) >= 0) ? id : -1;
   }
   dbz3::roster::EnsureCapsules();
+  if (static const bool fix = std::getenv("DBZ3_FIX_A928") != nullptr; fix && sel) {   // C7: experimento (flags del struct de DU 0x8247A8E0)
+    REXLOG_INFO("dbz3 carga-diag: A928 {:08X} A974 {:08X} -> 1 / 0", REX_LOAD_U32(0x8247A928u), REX_LOAD_U32(0x8247A974u));
+    REX_STORE_U32(0x8247A928u, 1);
+    REX_STORE_U32(0x8247A974u, 0);
+  }
   t_in_setup = true;
   orig(ctx, base);
   t_in_setup = false;
+  if (static const bool diag = std::getenv("DBZ3_CARGA_DIAG") != nullptr; diag && sel) {   // C7: parametros de carga de un combate
+    const uint32_t cfg = REX_LOAD_U32(kBattleCfgPtr);
+    std::string w;
+    for (uint32_t o = 0; o < 0x120; o += 4) w += fmt::format("{:08X} ", REX_LOAD_U32(sel + o));
+    REXLOG_INFO("dbz3 carga-diag: tras orig: r3 {:08X} mgr {:08X} estado(+35128) {:08X} modo(+2018) {:08X}", ctx.r3.u32, REX_LOAD_U32(kBattleCfgPtr),
+                REX_LOAD_U32(kBattleCfgPtr) ? REX_LOAD_U32(REX_LOAD_U32(kBattleCfgPtr) + 35128) : 0u,
+                REX_LOAD_U32(kBattleCfgPtr) ? REX_LOAD_U32(REX_LOAD_U32(kBattleCfgPtr) + 2018) : 0u);
+    REXLOG_INFO("dbz3 carga-diag: sel {:08X}: {}", sel, w);
+    std::string c;
+    if (cfg) for (uint32_t o = 320; o < 380; o += 4) c += fmt::format("{:08X} ", REX_LOAD_U32(cfg + o));
+    REXLOG_INFO("dbz3 carga-diag: cfg {:08X} +320..: {}", cfg, c);
+    std::string d;   // bloque de DU de la casilla del Heroe (36): estado de la historia en este instante
+    for (uint32_t o = 0; o < 4624; o += 4) d += fmt::format("{:08X} ", REX_LOAD_U32(0x8247A9B0u + 128 + 4624 * 36 + o));
+    REXLOG_INFO("dbz3 carga-diag: bloqueDU36: {}", d);
+    auto vol = [&](const char* nom, uint32_t ini, uint32_t n) {   // volcado de una region de memoria del guest
+      std::string t;
+      for (uint32_t o = 0; o < n; o += 4) t += fmt::format("{:08X} ", REX_LOAD_U32(ini + o));
+      REXLOG_INFO("dbz3 carga-diag: vol {} {:08X}: {}", nom, ini, t);
+    };
+    vol("mapa", 0x82479A60u, 0x4000);
+    vol("du_est", 0x8234DC00u, 0x400);
+    vol("du_glob", 0x8247A8E0u, 0x120);
+    if (cfg) vol("mgr", cfg, 0x800);
+    if (const uint32_t mgr2 = REX_LOAD_U32(kBattleCfgPtr)) vol("cfgptr", mgr2, 0x800);
+  }
 }
 
 DBZ3_HOOK(sub_821007E8, dbz3eu_sub_821008E8) {
@@ -1430,6 +1825,14 @@ bool ReadFormBytes(uint32_t address, void* out, size_t size) {
 forms::Snapshot ReadForms(int id, int suit) {
   auto snapshot = forms::Decode(ReadFormBytes, id, suit, g_forms_scope);
   if (!forms::CountValid(snapshot)) return snapshot;
+  if (id >= 0) {
+    if (const auto logical = g_logical_ids.LogicalForGuest(uint32_t(id))) {
+      const auto* entry = g_logical_ids.Find(*logical);
+      snapshot.identity = g_forms_scope + ":logical:" + std::to_string(*logical) + ":" +
+                          (entry ? entry->key : std::string()) + ":suit:" + std::to_string(suit) +
+                          ":forms:" + std::to_string(entry ? entry->forms : snapshot.count);
+    }
+  }
   std::array<uint8_t, 4> pointer{};
   const uint32_t count = CapsuleCount();
   const bool catalogue = count >= 1 && count <= 2048 &&
@@ -1488,6 +1891,27 @@ int dbz3_select_preview_max_form(int side) {
 }
 
 DBZ3_HOOK(sub_82135B00, dbz3eu_sub_82135C08) {
+  // S5-I1 (issue #33): el VS del Torneo mundial (sub_821A6270, lr 0x821A6594) carga el modelo del ID que da la tabla
+  // casilla -> ID, es decir el del anfitrion de la celda nueva (Vegeta para Baby). El combate ya recupera el ID elegido
+  // (PickedCellFor en sub_820FE668); aqui igual, solo para el lado humano de la pareja (G+36688+lado = indice del
+  // participante; objeto del cuadro en *0x824681D0, entradas de 20 B en +748, +10 = mando del humano).
+  if (uint32_t(ctx.lr) == dbz3::GuestAddr(0x821A6594, 0x821A5374) && ctx.r6.u32 >= 1 && ctx.r6.u32 <= 2) {
+    const uint32_t obj = REX_LOAD_U32(dbz3::GuestAddr(0x824681D0, 0x824681C0));
+    const int idx = int8_t(REX_LOAD_U8(dbz3::GuestAddr(0x824681C0, 0x824681B0) + (ctx.r6.u32 - 1)));
+    REXLOG_INFO("dbz3 roster: VS del torneo, lado {}: id {} del cuadro (participante {}, mando {})", ctx.r6.u32, ctx.r3.u32, idx,
+                (obj && idx >= 0 && idx < 32) ? int16_t(REX_LOAD_U16(obj + 748 + 20 * idx + 10)) : -9);
+    if (obj && idx >= 0 && idx < 32 && int16_t(REX_LOAD_U16(obj + 748 + 20 * idx + 10)) < 0) {   // COM de mod (torneo.toml)
+      if (const int id = dbz3::modos::TorneoIdReal(idx); id >= 0) ctx.r3.u64 = uint64_t(id);
+    } else if (obj && idx >= 0 && idx < 32) {
+      for (int k = 0; k < 2; ++k) {
+        if (const int id = dbz3::roster::PickedCellFor(k, int(ctx.r3.u32)); id >= 0) {
+          REXLOG_INFO("dbz3 roster: VS del torneo, lado {}: modelo del id {} (la tabla decia {})", ctx.r6.u32, id, ctx.r3.u32);
+          ctx.r3.u64 = uint64_t(id);
+          break;
+        }
+      }
+    }
+  }
   if (t_preview_result.valid && t_preview_result.applied > 0 && ctx.r4.u32 == 0 && ctx.r3.u32 == uint32_t(t_preview_id)) {
     ctx.r3.u64 = uint64_t(t_preview_result.model_id);
     ctx.r4.u64 = uint64_t(t_preview_result.model_index);
@@ -1716,7 +2140,53 @@ DBZ3_HOOK(sub_821B8FC8, dbz3eu_sub_821B7DB0) {
   const int donor = id < 64 ? dbz3::roster::DonorOf(id) : -1;
   const bool swap = donor >= 0 && (id >= 44 || REX_LOAD_U8(0x82373D38 + id) == 0xFF);
   if (swap) REX_STORE_U32(st + 28, uint32_t(donor));
+  {   // C4: DIAGNOSTICO de la franja de ojos de la bandeja Ability (DBZ3_OJOS_DIAG=1): sprite y banco que usa la funcion
+    static const bool ojos = std::getenv("DBZ3_OJOS_DIAG") != nullptr;
+    static std::atomic<int> n{0};
+    if (ojos && st && n.fetch_add(1) < 3) {
+      const uint32_t G = REX_LOAD_U32(0x8247971C), res = G ? REX_LOAD_U32(G + 16) : 0, lista = res ? REX_LOAD_U32(res + 28) : 0;
+      const uint32_t cid = swap ? uint32_t(donor) : id;
+      const uint32_t idx = cid < 64 ? REX_LOAD_U8(0x82373D38 + cid) : 0xFF;
+      const uint32_t spr = lista && idx != 0xFF ? REX_LOAD_U32(lista + 4 * idx) : 0;
+      const uint32_t bank = REX_LOAD_U32(0x8238CE10);
+      REXLOG_INFO("dbz3 ojos-diag: id {} (cara de {}) idx {} G {:08X} recurso {:08X} lista {:08X} sprite {:08X} banco {:08X} (n {} primero {}) G+20 {:08X}",
+                  id, cid, idx, G, res, lista, spr, bank, bank ? REX_LOAD_U32(bank + 16) : 0, bank ? REX_LOAD_U32(bank + 24) : 0,
+                  G ? REX_LOAD_U32(G + 20) : 0);
+      if (spr) {
+        std::string w;
+        for (uint32_t o = 0; o < 0x80; o += 4) w += fmt::format("{:08X} ", REX_LOAD_U32(spr + o));
+        REXLOG_INFO("dbz3 ojos-diag: sprite {:08X}: {}", spr, w);
+      }
+    }
+  }
+  // Franja propia (roster.toml `ojos`): se clona el descriptor del sprite del donante (208 B, bloque de textura en
+  // +0xB0 = [tex, 3, 1.0, 0, x0, y0, x1, y1]) con la textura/rect del atlas nuevo de data_usi 2064 y se pone un
+  // momento en la lista del recurso. Con un banco sin esa textura (idioma sin atlas) se queda la del donante.
+  uint32_t slot_at = 0, slot_saved = 0;
+  int32_t oj[5];
+  if (st && id < 64 && dbz3::roster::EyeStrip(id, oj)) {
+    const uint32_t G = REX_LOAD_U32(0x8247971C), res = G ? REX_LOAD_U32(G + 16) : 0, lista = res ? REX_LOAD_U32(res + 28) : 0;
+    const uint32_t cid = swap ? uint32_t(donor) : id, idx = cid < 64 ? REX_LOAD_U8(0x82373D38 + cid) : 0xFFu;
+    const uint32_t bank = REX_LOAD_U32(0x8238CE10);
+    const uint32_t src = lista && idx != 0xFF ? REX_LOAD_U32(lista + 4 * idx) : 0;
+    static uint32_t buf = 0;
+    if (!buf) buf = dbz3::roster::GuestAlloc(0x100);
+    if (src && buf && bank && uint32_t(oj[0]) < REX_LOAD_U32(bank + 16) && REX_LOAD_U32(src + 0xB0 + 4) == 3) {
+      for (uint32_t o = 0; o < 0xD0; o += 4) {   // 208 B; punteros internos al descriptor se reubican
+        uint32_t v = REX_LOAD_U32(src + o);
+        if (v >= src && v < src + 0xD0) v = v - src + buf;
+        REX_STORE_U32(buf + o, v);
+      }
+      auto f = [](float x) { uint32_t u; std::memcpy(&u, &x, 4); return u; };
+      REX_STORE_U32(buf + 0xB0, uint32_t(oj[0]));
+      for (int k = 0; k < 4; ++k) REX_STORE_U32(buf + 0xB0 + 0x10 + 4 * k, f(float(oj[1 + k])));
+      slot_at = lista + 4 * idx;
+      slot_saved = src;
+      REX_STORE_U32(slot_at, buf);
+    }
+  }
   orig(ctx, base);
+  if (slot_at) REX_STORE_U32(slot_at, slot_saved);
   if (swap) REX_STORE_U32(st + 28, id);
 }
 

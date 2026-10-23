@@ -36,6 +36,8 @@ bool TagTeamWanted();
 bool TagTeamGate();
 // Modo Tag Team activo (de la pantalla TAG TEAM al menu principal).
 bool TagTeamMode();
+// L: pin - ids ya elegidos por los dos lados (el roster dinamico los ancla al cambiar de pagina).
+std::vector<int> TeamPickedIds();
 bool FormSelectorEnabled();
 // Mando `user` (0/1) en la rueda con el modo Tag Team: Y quita el ultimo miembro.
 uint16_t TeamPickFilter(uint16_t real, int user);

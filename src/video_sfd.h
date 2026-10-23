@@ -16,10 +16,10 @@ namespace dbz3::video {
 
 // Subtitulos: los tiempos van DENTRO del SFD (bloque CRITAG "USRINFS TYPE=SUBTITLE" de los paquetes 0xBF del
 // principio: por canal CHDAT/CHNO, TUNIT=30 y TIMEDAT {INTIME, DURTIME, CONTENT = indice de la imagen}; lo lee el
-// propio IW con Movie_DrawFrameAndSubtitle, EU 0x338C10). Se usa el canal 2 (ingles, el de las imagenes de DATA_USA;
-// cuadra en los 22 videos). `subtitulos` = las imagenes del original (en IW, DATA_USA 77 + video, en orden).
+// propio IW con Movie_DrawFrameAndSubtitle, EU 0x338C10). Canal 2 = inglés; EU usa 3=alemán, 4=francés,
+// 5=español, 6=italiano según dbz3_language. `subtitulos` = imágenes de DATA_USA 77 + video (AfsPs2 resuelve idioma).
 // Empieza a reproducir (corta el que hubiera). Devuelve false si el archivo no existe. Hilo cualquiera.
-bool Reproducir(const std::filesystem::path& ruta, std::vector<pasarela::Imagen> subtitulos = {});
+bool Reproducir(const std::filesystem::path& ruta, std::vector<pasarela::Imagen> subtitulos = {}, int canal_subtitulos = 2);
 // true desde Reproducir hasta que acaba o se salta. Mientras, el juego lee un mando neutro y su sonido calla
 // (audio_gain 0); las pantallas ImGui propias (GetStateForUI) no deben leer el mando y, al acabar, esperar a que se
 // suelte la A que lo salto.

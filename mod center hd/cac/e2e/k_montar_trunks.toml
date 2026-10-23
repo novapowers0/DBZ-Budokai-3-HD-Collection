@@ -1,0 +1,28 @@
+# K: monta el heroe XV2 (Crear > Confirmar) con el moveset del hook DBZ3_TEST_HEROE_MOVESET
+descripcion = "K: heroe XV2 + moveset elegido por hook > Confirmar > se monta el heroe propio con donante"
+env = ["DBZ3_TEST_RINGOUT=1", "DBZ3_TEST_HEROE_RAZA=7", "DBZ3_TEST_HEROE_MOVESET=8"]
+pasos = [
+  "esperar 2500",
+  "tecla W 1200",
+  "tecla Space 3500",
+  "tecla S 450", "tecla S 450", "tecla S 450", "tecla S 450", "tecla S 450",
+  "tecla Space 2500",
+  "tecla S 700", "tecla S 700", "tecla S 700",
+  "tecla Space 3500",
+  "captura c4_xv2_0_heroe",
+  "esperar 1500",
+  "captura c4_xv2_1_raza_xv2",
+  "tecla S 500", "tecla S 500",
+  "tecla Space 3000",
+  "log \"Create abierto\" 20",
+  "esperar 12000",
+  "captura c4_xv2_2_create",
+  "esperar 4000",
+  "tecla W 500",
+  "captura k_montar_botones",
+  "tecla Space 2500",
+  "log \"Create: confirmar\" 20",
+  "log \"vista previa combate_\" 200",
+  "captura k_montar_ok",
+  "tecla Backspace 3000",
+]

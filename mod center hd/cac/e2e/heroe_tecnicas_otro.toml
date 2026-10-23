@@ -1,0 +1,30 @@
+# copia: s5_c2
+descripcion = "C4 (C2 #3): equipar una tecnica de otro donante pregunta Si/No y con Si cambia el moveset"
+env = ["DBZ3_TEST_RINGOUT=1", "DBZ3_TEST_HEROE_TODO=1"]
+pasos = [
+  "esperar 2500",
+  "tecla W 1200",
+  "tecla Space 3500",
+  "tecla S 450", "tecla S 450", "tecla S 450", "tecla S 450", "tecla S 450",
+  "tecla Space 2500",
+  "tecla S 700", "tecla S 700", "tecla S 700",
+  "tecla Space 3500",
+  "captura c2_tec_0_heroe",
+  "tecla 3 700", "tecla S 500",   # C4: RB = pestana Combate; S = fila Moveset
+  "captura c2_tec_1_fila_moveset",
+  "tecla Space 2500",
+  "captura c2_tec_2_movesets",
+  "tecla P 1500",
+  "log \"tecnicas abiertas\" 20",
+  "esperar 12000",
+  "captura c4_otro_0_tecnicas",
+  "tecla S 250", "tecla S 250", "tecla S 250", "tecla S 250", "tecla S 250", "tecla S 250", "tecla S 250", "tecla S 250", "tecla S 250", "tecla S 250",
+  "captura c4_otro_1_carta_de_otro",
+  "tecla Space 1200",
+  "captura c4_otro_2_aviso",
+  "tecla Space 2500",
+  "log \"moveset cambiado al donante\" 20",
+  "captura c4_otro_3_tras_si",
+  "tecla Backspace 2500",
+  "esperar 2000",
+]

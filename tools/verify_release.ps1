@@ -29,13 +29,13 @@ $errors = @()
 # v1.4.5 = 11145216 / 6537216. v1.4.5.1 = indice de packs que se rehace al cambiar la lista.
 # v1.4.5.2 = 11145216 / 6540288. 2026-10-15 ronda 2: SSAO opcional dbz3_relight (frente grafico) = 6589440. v1.4.6 = 11145216 / 6589440.
 # 2026-10-15 ronda 3 (frente C): tiras doradas nativas ocultables (dbz3_ui_side_borders) = 6594048.
-# 2026-10-22 v1.5.1.4: studies 2-4 (pack HD G10, nucleos G13, p1/p99 de la entrega J) = 11179008 / 6635520.
+# 2026-10-23 v1.5.5 (version stamp update): 11189248 / 6658560; same canonical SDK DLL sizes.
 # 2026-10-17: menu F1 nuevo (quick_menu.cpp) y volcado de audio dbz3_audio_dump (sdl_audio_driver.cpp) = 11172864 / 6596608.
 # 2026-10-16 ronda 4 (frente R15): modelos de la interfaz con el z-buffer del juego (dbz3_ui_depth) = 11158528 / 6596608.
-$canonVersion = "1.5.1"
+$canonVersion = "1.5.5"
 $canonSizes = @{
-    "rexruntime.dll"          = 11179008
-    "rexgpu-xenos.dll"        = 6635520
+    "rexruntime.dll"          = 11189248
+    "rexgpu-xenos.dll"        = 6658560
     "amd_fidelityfx_dx12.dll" = 5413888
 }
 

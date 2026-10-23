@@ -99,6 +99,10 @@ Pista Elegir(const Opcion& opcion, uint32_t semilla);
 // Ambitos con musica propia que NO se debe pisar (tablero/menus de B2 e IW, nave, menus de B1).
 bool ModoConMusicaNativa(const std::string& ambito);
 
+// X1: en cada fotograma (hilo de la interfaz): con `en_combate` suena una pista segun el cvar dbz3_musica_combate
+// ("original" no toca nada; "aleatoria[:fuente]"), una por combate; al salir del combate se corta.
+void ActualizarCombate(bool en_combate);
+
 // Previa: reproduce en bucle y corta la anterior. `volumen` 0..1.
 void Escuchar(const Pista& pista, float volumen);
 void Parar();

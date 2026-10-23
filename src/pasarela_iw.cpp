@@ -298,17 +298,52 @@ std::vector<EscenaIW> LeerEscenas(const std::vector<uint8_t>& elf) {
 }  // namespace
 
 namespace {
+std::filesystem::path ResolverRutaSinCase(const std::filesystem::path& raiz, const std::filesystem::path& rel) {
+  std::error_code ec;
+  std::filesystem::path actual = raiz;
+  for (const auto& componente : rel) {
+    if (componente == "." || componente.empty()) continue;
+    const auto directa = actual / componente;
+    if (std::filesystem::exists(directa, ec)) {
+      actual = directa;
+      continue;
+    }
+    if (!std::filesystem::is_directory(actual, ec)) return {};
+    const std::string buscada = componente.string();
+    bool encontrada = false;
+    for (const auto& entrada : std::filesystem::directory_iterator(actual, ec)) {
+      std::string nombre = entrada.path().filename().string();
+      if (nombre.size() != buscada.size()) continue;
+      const bool igual = std::equal(nombre.begin(), nombre.end(), buscada.begin(), [](unsigned char a, unsigned char b) {
+        return std::tolower(a) == std::tolower(b);
+      });
+      if (igual) {
+        actual = entrada.path();
+        encontrada = true;
+        break;
+      }
+    }
+    if (!encontrada || ec) return {};
+  }
+  return actual;
+}
+
 // Busca `rel` dentro de una carpeta extraida: tal cual (raiz/USR/FDxx) y un nivel o dos mas abajo (raiz/<juego>/USR/
 // FDxx, como queda al extraer una ISO en su propia carpeta). Sin recorrer ficheros: solo directorios, para no tardar.
 std::filesystem::path EnCarpetaIW(const std::filesystem::path& raiz, const std::filesystem::path& rel) {
   std::error_code ec;
-  if (std::filesystem::is_regular_file(raiz / rel, ec)) return raiz / rel;
+  const auto directo = ResolverRutaSinCase(raiz, rel);
+  if (!directo.empty() && std::filesystem::is_regular_file(directo, ec)) return directo;
   if (!std::filesystem::is_directory(raiz, ec)) return {};
   for (const auto& a : std::filesystem::directory_iterator(raiz, ec)) {
     if (!a.is_directory(ec)) continue;
-    if (std::filesystem::is_regular_file(a.path() / rel, ec)) return a.path() / rel;
+    const auto un_nivel = ResolverRutaSinCase(a.path(), rel);
+    if (!un_nivel.empty() && std::filesystem::is_regular_file(un_nivel, ec)) return un_nivel;
     for (const auto& b : std::filesystem::directory_iterator(a.path(), ec)) {
-      if (b.is_directory(ec) && std::filesystem::is_regular_file(b.path() / rel, ec)) return b.path() / rel;
+      if (b.is_directory(ec)) {
+        const auto dos_niveles = ResolverRutaSinCase(b.path(), rel);
+        if (!dos_niveles.empty() && std::filesystem::is_regular_file(dos_niveles, ec)) return dos_niveles;
+      }
     }
   }
   return {};
@@ -625,6 +660,7 @@ int PantallaDM::Mision(const InfoDM& in) const {
 }
 
 void PantallaDM::ReiniciarMapa() {
+  bloqueo_scroll_ = false;
   volviendo_ = false;   // una entrada nueva cancela cualquier vuelta de combate pendiente
   t_intro_ = 0;
   ap_t_ = 0;
@@ -807,6 +843,7 @@ void PantallaDM::DibujarFondo(ImDrawList* dl, const ImGuiIO& io, float t, const 
     if (t_intro_ >= 1.0f) {
       ap_t_ = 0;      // Story_MapObjectsAppearTick empieza a contar
       tcam_ = 0;      // Story_MapScrollToTargetTick arranca con su acumulador a 0
+      bloqueo_scroll_ = true;   // B3: el original recarga los mandos al pasar el scroll de 1,0 (~100 cuadros)
       REXLOG_INFO("dbz3 iw mapa: intro acabada; aparecen {} casillas", cas.size());
     }
   } else {
@@ -833,7 +870,13 @@ void PantallaDM::DibujarFondo(ImDrawList* dl, const ImGuiIO& io, float t, const 
       cx_ += (ox - cx_) * tcam_;
       cy_ += (oy - cy_) * tcam_;
     }
-    if ((tcam_ += 0.01f * dt * 60.0f) > 1.0f) tcam_ = 0;
+    if ((tcam_ += 0.01f * dt * 60.0f) > 1.0f) {
+      tcam_ = 0;
+      if (bloqueo_scroll_) {
+        bloqueo_scroll_ = false;
+        REXLOG_INFO("dbz3 iw mapa: Story_MapScrollToTargetTick 1,0 superado: mandos recargados");
+      }
+    }
     cx_ = std::clamp(cx_, kX0, kX1), cy_ = std::clamp(cy_, kY0, kY1);
   } else {
     cx_ = std::clamp(cx_, 300.0f, 980.0f), cy_ = std::clamp(cy_, 225.0f, 735.0f);
@@ -916,6 +959,21 @@ void PantallaDM::DibujarFondo(ImDrawList* dl, const ImGuiIO& io, float t, const 
 
 PantallaDM::Accion PantallaDM::Mapa(ImDrawList* dl, const ImGuiIO& io, float t, uint16_t pulsado, const InfoDM& in) {
   if (!in.dm) return kNada;
+  if (!env_mision_aplicada_) {
+    env_mision_aplicada_ = true;
+    if (!in.road) {
+      if (const char* valor = std::getenv("DBZ3_IW_MISION")) {
+        char* fin = nullptr;
+        const long mision = std::strtol(valor, &fin, 10);
+        if (fin != valor && *fin == '\0' && mision >= 1 && mision <= kMisiones) {
+          Elegir(in, static_cast<int>(mision));
+          REXLOG_INFO("dbz3 iw: prueba: DBZ3_IW_MISION={} seleccionado desde entorno", mision);
+        } else {
+          REXLOG_WARN("dbz3 iw: DBZ3_IW_MISION invalido (usa 1..{}): {}", kMisiones, valor);
+        }
+      }
+    }
+  }
   if (video_ >= 0) return Historia(dl, io, t, pulsado, in);
   DibujarFondo(dl, io, t, in);
   if (sel_ < 0) return pulsado & kB ? kSalir : kNada;
@@ -923,6 +981,7 @@ PantallaDM::Accion PantallaDM::Mapa(ImDrawList* dl, const ImGuiIO& io, float t, 
   // bloquea la espera de entrada (100 cuadros); B sigue saliendo para no dejar al jugador atrapado. [H] el bloqueo
   // durante todo el scroll, que depende del tramo recorrido y no se ha medido en pantalla.
   if (EnIntroMapa()) return pulsado & kB ? kSalir : kNada;
+  if (bloqueo_scroll_) return pulsado & kB ? kSalir : kNada;   // B3: scroll de entrada (100 cuadros)
   const auto& cas = Cas(in);
   const CasillaDM c = cas[size_t(sel_)];
   auto abierta = [&](const CasillaDM& q) { return q.tipo == 0 || (q.mision > 0 && q.mision <= in.abiertas); };

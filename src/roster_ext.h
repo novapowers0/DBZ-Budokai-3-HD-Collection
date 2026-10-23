@@ -41,9 +41,18 @@ void AddExtraCostumes(uint8_t* base);
 bool SlotHasExtraCostumes(uint32_t slot);
 // Trajes reales de un personaje anadido por roster.toml (0 = no es de un mod).
 int CostumeCountOf(uint32_t id);
+// Page registry: L1/R1 requests are queued from UI and consumed on the guest thread.
+bool DynamicRosterEnabled();
+int DynamicRosterPage();
+int DynamicRosterPageCount();
+void RequestDynamicRosterPage(int delta);
+int64_t LogicalForProxy(int guest);   // L: id logico del proxy o -1
+bool ProcessDynamicRosterPage(uint64_t& removed_proxy_mask, uint64_t& added_proxy_mask);
 
 // Donor character ID declared for `id` (-1 if none).
 int DonorOf(uint32_t id);
+// Franja de ojos propia (roster.toml `ojos`): [textura de data_usi 2064, x0, y0, x1, y1]; false si el ID no la tiene.
+bool EyeStrip(uint32_t id, int32_t out[5]);
 // Tag Team: miembros del equipo con ese ID (equipo = [...] en roster.toml); 0 si no es un equipo.
 int TeamSize(uint32_t id);
 // ID del miembro k del equipo (-1 si no hay).
@@ -66,6 +75,8 @@ struct VirtualCell {
   uint32_t after = 0;                    // va en la rueda tras esta casilla (por defecto alias)
   int32_t icon[5] = {-1, 0, 0, 0, 0};   // textura del #AZT 2027 + rect logico (x0,y0,x1,y1)
   int32_t name[5] = {-1, 0, 0, 0, 0};   // rotulo: igual
+  int32_t tor_icon[5] = {-1, 0, 0, 0, 0};   // icono en el #AZT del Torneo (2047): cuadro; igual
+  int32_t tor_name[5] = {-1, 0, 0, 0, 0};   // rotulo del VS del Torneo; igual
   uint32_t portrait[2] = {0xFFFFFFFFu, 0xFFFFFFFFu};  // fids (partition<<16|fid) P1/P2
 };
 constexpr int kMaxVirtualCells = 24;

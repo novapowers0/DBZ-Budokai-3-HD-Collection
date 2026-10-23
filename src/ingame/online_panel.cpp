@@ -28,6 +28,7 @@
 #include "../launcher/launcher_state.h"
 #include "../launcher/novas_mods.h"
 #include "../launcher/settings.h"
+#include "../mods.h"
 #include "../net/netplay.h"
 #include "../launcher/ui_kit.h"
 #include "game_style.h"
@@ -95,7 +96,10 @@ void EntryBadge(ImGuiIO& io, const char* text) {
   auto* dl = ImGui::GetForegroundDrawList();
   S::Frame(dl, p0, p1, a.s);
   dl->PushClipRect(p0, p1, true);
-  S::HelpLine(dl, a.At(966, 663.75f), 36*a.s, {{"X", text}});
+  // cabe en la caja (300 de 1200): si el idioma es largo se encoge el rotulo en vez de cortarlo con el recorte
+  const float em = ImGui::GetFont()->CalcTextSizeA(1.0f, FLT_MAX, 0, text).x;
+  const float h = std::min(36.0f * a.s, 300.0f * a.s / (1.2f + 0.62f * em * 1.15f));
+  S::HelpLine(dl, a.At(966, 663.75f), h, {{"X", text}});
   dl->PopClipRect();
 }
 
@@ -167,6 +171,13 @@ void NetBadge(ImGuiIO& io, const Session& s) {
 // de Ranking del HUB (modos.cpp): TU arriba, RIVAL debajo (llega del otro PC al conectar). Si caben, una tercera fila
 // con las reglas opcionales del combate (F1 > COMBATE): iguales en los dos = van activas; distintas = apagadas.
 using dbz3::net::CombatRules;
+// "Esperando..." con los puntos yendo y viniendo con el tiempo (la traduccion se busca con los tres puntos).
+std::string WaitDots(const char* text, float t) {
+  std::string s = text;
+  while (!s.empty() && s.back() == '.') s.pop_back();
+  return s + std::string(size_t(int(t * 2.5f) % 4), '.');
+}
+
 std::string RulesText(const CombatRules& r) {
   std::string out;
   auto add = [&out](const char* x) { out += (out.empty() ? "" : "  ") + std::string(x); };
@@ -203,7 +214,7 @@ void RoomRows(ImDrawList* dl, const dbz3::ingame::style::Area& a, float y0, int 
     if (i == 0) S::Highlight(dl, a.At(330, y - paso * 0.5f + 2), a.At(870, y + paso * 0.5f - 2), t);
     S::MenuText(dl, a.At(395, y), k, i == 0 ? T::T("TÚ", "YOU") : T::T("RIVAL", "RIVAL"), i == 0, false);
     if (i == 1 && !peer) {
-      S::MenuText(dl, a.At(640, y), k, T::T("Esperando...", "Waiting..."), false, true);
+      S::MenuText(dl, a.At(640, y), k, WaitDots(T::T("Esperando...", "Waiting..."), t).c_str(), false, true);
       continue;
     }
     if (tramo[i] < 0) {
@@ -214,7 +225,7 @@ void RoomRows(ImDrawList* dl, const dbz3::ingame::style::Area& a, float y0, int 
       const float r = paso * 0.42f;
       S::DrawPic(dl, md, a.At(470 - r, y - r), a.At(470 + r, y + r));
     }
-    S::MenuText(dl, a.At(630, y), k, nombre(tramo[i]), i == 0, false);
+    S::MenuText(dl, a.At(630, y), k, nombre(tramo[i]), i == 0, false, 150 * a.s);   // sin pisar la columna del Elo (x 800)
     char buf[16];
     std::snprintf(buf, sizeof(buf), "%d", elo[i]);
     S::MenuText(dl, a.At(800, y), k, buf, i == 0, false);
@@ -225,7 +236,7 @@ void RoomRows(ImDrawList* dl, const dbz3::ingame::style::Area& a, float y0, int 
   std::string val;
   bool on = false, off = false;
   if (!peer) {
-    val = T::T("Esperando...", "Waiting...");
+    val = WaitDots(T::T("Esperando...", "Waiting..."), t);
     off = true;
   } else if (!(reglas[0] == reglas[1])) {
     val = T::T("Distintas: combate original", "Different: original combat");
@@ -299,6 +310,31 @@ void TagTeamRow(ImGuiIO& io, bool focus) {
 // menus, asi que nuestras entradas van con X, que en esos dos menus no hace nada.
 constexpr int kMainMenuScreen = 5, kDuelMenuScreen = 14;
 std::atomic<int> g_screen{-1};
+// ---- VANILLA (V): reconexion automatica de una sesion sin mods (hilo de la interfaz). Tras reiniciar en vanilla viene del
+// fichero temporal; si este PC ya estaba en vanilla, espera a que el otro (que se reinicia) desaparezca y vuelve a llamar.
+struct VanillaAuto {
+  bool active = false, host = false, loaded = false, need_drop = false;
+  int port = 7777, delay = 0;
+  std::string target;
+  double deadline = 0, next_try = 0, agreed_at = 0;
+};
+VanillaAuto g_vn;
+void VanillaLoadPending() {   // una vez por arranque: el fichero lo dejo el PC que se reinicio
+  if (g_vn.loaded) return;
+  g_vn.loaded = true;
+  std::string txt;
+  if (!dbz3::TakeVanillaPending(txt)) return;
+  std::vector<std::string> v;
+  size_t a = 0;
+  for (size_t b; (b = txt.find('\n', a)) != std::string::npos; a = b + 1) v.push_back(txt.substr(a, b - a));
+  if (v.size() < 3) return;
+  g_vn.host = v[0] == "host";
+  g_vn.port = std::clamp(std::atoi(v[1].c_str()), 1024, 65535);
+  g_vn.delay = std::clamp(std::atoi(v[2].c_str()), 0, 8);
+  g_vn.target = v.size() > 3 ? v[3] : "";
+  g_vn.active = g_vn.host || !g_vn.target.empty();
+  REXLOG_INFO("dbz3 online: sesion vanilla, se reconecta como {}", g_vn.host ? "anfitrion" : "invitado");
+}
 std::atomic<bool> g_battle{false};
 std::atomic<bool> g_online_focus{false};   // la fila ONLINE (quinta del Duelo) tiene el cursor
 std::atomic<bool> g_tag_focus{false};      // la fila TAG TEAM (bajo el menu principal) tiene el cursor
@@ -535,6 +571,33 @@ void OnlinePanel::OnDraw(ImGuiIO& io) {
     if (native_ui::Image im; native_ui::Take("icono", im)) dbz3::SetWindowIconRgba(im.rgba.data(), im.w, im.h);
   }
   auto& s = Session::Get();
+  VanillaLoadPending();
+  // PRUEBAS (DBZ3_VANILLA_TEST=accept|decline, con DBZ3_NET_AUTO): sin pulsar nada en la pantalla ONLINE, "accept" acepta jugar
+  // vanilla cuando los mods difieren y, con los dos de acuerdo, reinicia como la pantalla; "decline" no hace nada.
+  if (static const char* vt = std::getenv("DBZ3_VANILLA_TEST");
+      vt && (std::strcmp(vt, "accept") == 0 || std::strcmp(vt, "accept_ui") == 0)) {
+    static double agreed = 0;
+    if (s.link() == Link::kConnected && !s.mods_match() && !s.MyVanilla()) s.OfferVanilla();
+    if (s.link() == Link::kConnected && s.VanillaAgreed()) {
+      if (agreed == 0) agreed = ImGui::GetTime();
+      else if (ImGui::GetTime() - agreed > 1.5 && !dbz3::VanillaSession()) {
+        if (std::strcmp(vt, "accept_ui") == 0) {   // prueba del camino real: fichero temporal + reconexion de la pantalla (sin RbAuto)
+          const char* pt = std::getenv("DBZ3_NET_PORT");
+          const bool host = s.role() == dbz3::net::Role::kHost;
+          const std::string pend = std::string(host ? "host" : "guest") + "\n" + (pt ? pt : "7777") + "\n0\n" + (host ? "" : "127.0.0.1") + "\n";
+#ifdef _WIN32
+          SetEnvironmentVariableA("DBZ3_NET_AUTO", nullptr);
+#endif
+          dbz3::RelaunchVanilla(pend, true);
+        } else {
+          dbz3::RelaunchVanilla("", true);
+        }
+      }
+    }
+  }
+  if (g_vn.active && !g_wanted.load() && s.link() == Link::kIdle &&
+      (g_screen.load() == kMainMenuScreen || g_screen.load() == kDuelMenuScreen))
+    g_wanted = true;   // ---- VANILLA (V): reconexion tras reiniciar sin mods
   // salir pedido desde la pantalla: lo ejecuta este hilo (dueno del socket salvo en partida); en
   // partida lo cierra el hilo del juego (RunTick), que es el que usa el socket
   if (g_close_req.exchange(false)) {
@@ -575,9 +638,12 @@ void OnlinePanel::OnDraw(ImGuiIO& io) {
     // aviso en la partida (el juego no tiene pantalla para esto). Antes miraba desynced() con el enlace en
     // kPlaying, que no se da nunca (Fail lo pasa a error y borra la marca): un corte en combate no avisaba
     if (lost_notice_ && g_battle.load()) {
-      ImGui::GetForegroundDrawList()->AddText(ImVec2(16, 16), IM_COL32(255, 70, 70, 255),
+      // en el area del juego y con la letra escalada; el texto largo se envuelve en vez de salirse
+      const dbz3::ingame::style::Area ar = dbz3::ingame::style::GameArea(io);
+      ImGui::GetForegroundDrawList()->AddText(ImGui::GetFont(), 22.0f * ar.s, ar.At(30, 24), IM_COL32(255, 70, 70, 255),
                                               T::T("ONLINE: se corto la partida con el otro PC. Al acabar el combate veras el motivo.",
-                                                   "ONLINE: the match with the other PC was cut. You will see why when the fight ends."));
+                                                   "ONLINE: the match with the other PC was cut. You will see why when the fight ends."),
+                                              nullptr, 900.0f * ar.s);
     }
     editing_ = false;
     if (s.link() == Link::kPlaying) NetBadge(io, s);   // retardo y ping, en menus y en combate
@@ -661,6 +727,50 @@ void OnlinePanel::DrawScreen(ImGuiIO& io, uint16_t pressed) {
     return true;
   };
 
+  // ---- VANILLA (V): reconexion automatica tras reiniciar (o esperar al otro, que se reinicia)
+  if (g_vn.active) {
+    const double now = ImGui::GetTime();
+    if (g_vn.deadline == 0) g_vn.deadline = now + 180.0;   // desde que se ve la pantalla: da tiempo a que el otro PC arranque
+    const bool up = link == Link::kConnected || link == Link::kStarting;
+    if (g_vn.need_drop && !up) g_vn.need_drop = false;   // el otro ya se fue: ahora si se reconecta
+    if (up && !g_vn.need_drop) {
+      g_vn.active = false;
+      REXLOG_INFO("dbz3 online: sesion vanilla reconectada");
+    } else if (now > g_vn.deadline) {
+      g_vn.active = false;
+      last_err_ = T::T("No se pudo reconectar tras reiniciar sin mods. Vuelve a crear/unirte a la partida.",
+                       "Could not reconnect after restarting without mods. Host/join the match again.");
+      REXLOG_WARN("dbz3 online: sesion vanilla: sin reconexion");
+      if (link != Link::kIdle) g_close_req = true;
+    } else if (idle && !g_vn.need_drop && now >= g_vn.next_try) {
+      g_vn.next_try = now + 2.0;
+      std::string err;
+      if (admission_ready()) {
+        const bool ok = g_vn.host ? s.Host(uint16_t(g_vn.port), uint8_t(g_vn.delay), &err)
+                                  : s.Join(g_vn.target, uint16_t(g_vn.port), &err);
+        REXLOG_INFO("dbz3 online: sesion vanilla: {} {}", g_vn.host ? "crear" : "unirse", ok ? "en marcha" : err);
+      }
+    }
+  }
+  // ---- VANILLA (V): los dos aceptaron "jugar vanilla": tras 1,5 s (el otro recibe mi oferta repetida) cada PC se reinicia
+  // sin mods y se reconecta solo. Si este PC ya esta en vanilla, espera a que el otro se reinicie.
+  if (link == Link::kConnected && s.VanillaAgreed()) {
+    const double now = ImGui::GetTime();
+    if (g_vn.agreed_at == 0) {
+      g_vn.agreed_at = now;
+    } else if (now - g_vn.agreed_at > 1.5) {
+      g_vn.agreed_at = 0;
+      std::string pend = std::string(host ? "host" : "guest") + "\n" + std::to_string(port_) + "\n" +
+                         std::to_string(delay_) + "\n" + (host ? "" : std::string(ip_)) + "\n";
+      if (dbz3::VanillaSession()) {
+        g_vn = {true, host, true, true, port_, delay_, host ? "" : std::string(ip_), 0, 0, 0};
+      } else if (!dbz3::RelaunchVanilla(pend, true)) {
+        last_err_ = T::T("No se pudo reiniciar el juego sin mods.", "Could not restart the game without mods.");
+        g_close_req = true;
+      }
+    }
+  }
+
   // Mods distintos: que falta en cada PC y que se puede bajar de Nova's Mods (carpeta = id del catalogo)
   using Delta = dbz3::net::Session::ModDelta;
   std::vector<Delta> diff;
@@ -690,13 +800,14 @@ void OnlinePanel::DrawScreen(ImGuiIO& io, uint16_t pressed) {
   was_installing_ = installing;
 
   // filas segun el estado
-  enum Row { kHostRow, kJoinRow, kIpRow, kPortRow, kDelayRow, kStartRow, kSyncRow, kCancelRow };
+  enum Row { kHostRow, kJoinRow, kIpRow, kPortRow, kDelayRow, kStartRow, kSyncRow, kVanillaRow, kCancelRow };
   std::vector<Row> rows;
   if (idle) {
     rows = {kHostRow, kJoinRow, kIpRow, kPortRow, kDelayRow};
   } else {
     if (host) rows.push_back(kStartRow);
     if (!installable.empty()) rows.push_back(kSyncRow);
+    if (link == Link::kConnected && !s.mods_match()) rows.push_back(kVanillaRow);   // ---- VANILLA (V)
     rows.push_back(kCancelRow);
   }
   if (!ip_[0] && !ip_loaded_) {   // la de la ultima vez
@@ -749,6 +860,7 @@ void OnlinePanel::DrawScreen(ImGuiIO& io, uint16_t pressed) {
         sync_failed_ = false;
         was_installing_ = true;   // aunque la descarga acabe antes del siguiente cuadro, se comprueba
         break;
+      case kVanillaRow: if (!s.MyVanilla()) s.OfferVanilla(); break;   // ---- VANILLA (V): yo acepto
       case kCancelRow: g_close_req = true; break;
       default: break;
     }
@@ -812,6 +924,13 @@ void OnlinePanel::DrawScreen(ImGuiIO& io, uint16_t pressed) {
                            : T::T("INSTALAR LO QUE FALTA", "INSTALL WHAT IS MISSING");
         disabled = installing || synced_;
         break;
+      case kVanillaRow:   // ---- VANILLA (V)
+        label = s.VanillaAgreed()  ? T::T("REINICIANDO SIN MODS...", "RESTARTING WITHOUT MODS...")
+                : s.MyVanilla()    ? T::T("ESPERANDO AL OTRO...", "WAITING FOR THE OTHER...")
+                : s.PeerOffersVanilla() ? T::T("ACEPTAR: JUGAR VANILLA", "ACCEPT: PLAY VANILLA")
+                                        : T::T("JUGAR VANILLA (SIN MODS)", "PLAY VANILLA (NO MODS)");
+        disabled = s.MyVanilla();
+        break;
       case kCancelRow: label = T::T("CANCELAR", "CANCEL"); break;
     }
     if (rows[size_t(i)] == kIpRow && editing_) {
@@ -834,7 +953,8 @@ void OnlinePanel::DrawScreen(ImGuiIO& io, uint16_t pressed) {
       if (f) ImGui::PopFont();
       ImGui::End();
     } else {
-      S::MenuText(dl, c, 50 * a.s, label, sel && !disabled, disabled);
+      const float ancho_vanilla = rows[size_t(i)] == kVanillaRow ? 500.0f * a.s : 0.0f;
+      S::MenuText(dl, c, 50 * a.s, label, sel && !disabled, disabled, ancho_vanilla);
     }
     if (sel && (rows[size_t(i)] == kPortRow || rows[size_t(i)] == kDelayRow)) {
       S::Arrows(dl, ImVec2(r0.x + 30 * a.s, r0.y), ImVec2(r1.x - 30 * a.s, r1.y), 40 * a.s, t);
@@ -926,6 +1046,18 @@ void OnlinePanel::DrawScreen(ImGuiIO& io, uint16_t pressed) {
                                     : d.kind == Delta::kDifferent ? T::T("Version distinta: ", "Different version: ")
                                                                   : T::T("Al otro le falta: ", "The other player is missing: ")) + d.name;
         }
+        // ---- VANILLA (V): salida cuando los mods no se pueden igualar
+        if (s.VanillaAgreed())
+          say += T::T("\nLos dos aceptasteis: el juego se reinicia sin mods y se reconecta solo.",
+                      "\nYou both accepted: the game restarts without mods and reconnects by itself.");
+        else if (s.MyVanilla())
+          say += T::T("\nHas aceptado jugar vanilla. Esperando al otro jugador...", "\nYou accepted vanilla. Waiting for the other player...");
+        else if (s.PeerOffersVanilla())
+          say += T::T("\nEl otro propone jugar vanilla (sin mods) solo esta partida. Elige JUGAR VANILLA para aceptar.",
+                      "\nThe other player offers to play vanilla (no mods) for this match only. Choose PLAY VANILLA to accept.");
+        else
+          say += T::T("\nO jugad vanilla (sin mods) solo esta partida: tus mods no se tocan. Lo tienen que aceptar los dos.",
+                      "\nOr play vanilla (no mods) for this match only: your mods are not touched. Both must accept.");
         const std::string nova = dbz3::launcher::NovaStatus();
         if (synced_ && !installing) {
           say += T::T("\nCierra el juego, pulsa JUGAR en el launcher y volved a conectar.",

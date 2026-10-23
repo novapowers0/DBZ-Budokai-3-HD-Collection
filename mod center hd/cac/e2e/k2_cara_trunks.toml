@@ -1,0 +1,3 @@
+descripcion = "K2: cara de cerca en combate (trunks), zoom por fov"
+env = ["DBZ3_TEST_BATTLE=8,7,2", "DBZ3_TEST_RINGOUT=1", "DBZ3_TEST_CAMARA_LUCHA=0 0 0 6 21 0.2"]
+pasos = ["log \"tag: empieza un combate\" 40", "esperar 15000", "captura k2_cara_trunks", "log \"hub: fin del combate nativo\" 60"]

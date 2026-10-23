@@ -28,6 +28,7 @@
 #include <filesystem>
 #include <string>
 
+#include "reloj_prueba.h"
 #include "combate.h"
 #include "generated/dbz3_init.h"
 #include "eu_map.h"
@@ -133,10 +134,7 @@ std::atomic<int> g_aviso[2] = {};   // cuadros que faltan para el golpe que va a
 std::atomic<bool> g_humano[2] = {};
 std::atomic<int64_t> g_aviso_ms[2] = {};   // ultimo aviso (para DBZ3_COMBATE_AVISO_PRUEBA: verlo en una captura)
 
-int64_t NowMs() {
-  return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch())
-      .count();
-}
+int64_t NowMs() { return dbz3::RelojMs(); }
 
 // ---------------------------------------------------------------- sonda (06, 12)
 std::FILE* g_sonda = nullptr;

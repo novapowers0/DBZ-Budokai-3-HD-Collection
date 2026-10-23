@@ -50,6 +50,7 @@ extern "C" {
 #include "eu_map.h"
 #include "launcher/launcher_state.h"
 #include "launcher/settings.h"
+#include "video_sfd_channels.h"
 
 namespace dbz3::video {
 namespace {
@@ -113,6 +114,7 @@ struct Sesion {
   std::filesystem::path ruta;
   std::vector<pasarela::Imagen> imagenes;
   std::vector<Linea> lineas;   // del CRITAG (las escribe el hilo de trabajo antes del primer fotograma)
+  int canal_subtitulos = 2;
   bool japones = false;        // voces en japones (stream "_jp.sfa"); si no, en ingles ("_us.sfa")
   std::atomic<bool> parar{false}, leido{false};
   std::mutex mu;   // todo lo de abajo
@@ -459,9 +461,15 @@ void Trabajar(std::shared_ptr<Sesion> s) {
       if (sid < 0xC0 || sid > 0xEF) return true;   // sistema, relleno...
       if (!critag) {   // primer paquete de audio o video: el CRITAG ya esta entero
         critag = true;
-        std::vector<Linea> v = LeerCritag(bf, 2);
-        REXLOG_INFO("dbz3 video: {}: {} lineas de subtitulo en el CRITAG (canal 2), {} imagenes",
-                    s->ruta.filename().string(), v.size(), s->imagenes.size());
+        std::vector<Linea> v = LeerCritag(bf, s->canal_subtitulos);
+        // Los SFD USA pueden no llevar los canales europeos 3..6: si el idioma
+        // elegido no aparece en este vídeo, conservar el subtítulo inglés del canal 2.
+        if (v.empty() && s->canal_subtitulos != 2) {
+          v = LeerCritag(bf, 2);
+          if (!v.empty()) s->canal_subtitulos = 2;
+        }
+        REXLOG_INFO("dbz3 video: {}: {} lineas de subtitulo en el CRITAG (canal {}), {} imagenes",
+                    s->ruta.filename().string(), v.size(), s->canal_subtitulos, s->imagenes.size());
         std::lock_guard<std::mutex> lk(s->mu);
         s->lineas = std::move(v);
         bf.clear();
@@ -687,7 +695,7 @@ struct Prueba {
 
 }  // namespace
 
-bool Reproducir(const std::filesystem::path& ruta, std::vector<pasarela::Imagen> subtitulos) {
+bool Reproducir(const std::filesystem::path& ruta, std::vector<pasarela::Imagen> subtitulos, int canal_subtitulos) {
   std::error_code ec;
   if (!std::filesystem::is_regular_file(ruta, ec)) {
     REXLOG_WARN("dbz3 video: no existe {}", ruta.string());
@@ -696,6 +704,7 @@ bool Reproducir(const std::filesystem::path& ruta, std::vector<pasarela::Imagen>
   auto s = std::make_shared<Sesion>();
   s->ruta = ruta;
   s->imagenes = std::move(subtitulos);
+  s->canal_subtitulos = canal_subtitulos;
   s->japones = VocesJaponesas();
   std::shared_ptr<Sesion> vieja;
   {
@@ -727,7 +736,8 @@ bool ReproducirIW(int video) {
       for (int j = 0, n = pasarela::CuantasAmt(amt); j < n; ++j) subs.push_back(pasarela::TexturaAmt(amt, j));
     }
   }
-  return Reproducir(iw / "USR" / (std::string(kVideosIW[video]) + ".SFD"), std::move(subs));
+  const int canal = CanalSubtitulosIW(dbz3::settings::Language());
+  return Reproducir(iw / "USR" / (std::string(kVideosIW[video]) + ".SFD"), std::move(subs), canal);
 }
 
 }  // namespace dbz3::video

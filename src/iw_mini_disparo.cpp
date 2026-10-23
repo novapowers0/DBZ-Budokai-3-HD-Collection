@@ -41,6 +41,7 @@
 #include <mutex>
 #include <vector>
 
+#include "reloj_prueba.h"
 #include "generated/dbz3_init.h"
 #include "anim_iw.h"
 #include "cine.h"
@@ -107,9 +108,9 @@ constexpr int kBase15[5] = {3600, 4200, 4800, 5400, 6000};
 constexpr float kAltura15 = 400.0f;
 constexpr float kEsc3 = 1.0f;   // 3: unidades de IW = las de B3 (el campo 897 de R8 va a escala 1)
 constexpr int kGoku = 0, kRaditz = 18, kLlanuras = 5;
-// ponytail: B3 no deja a los luchadores a mas de ~60 (los vuelve a juntar): las distancias del MSN009 (150 la esfera de
-// Freezer y el alcance, 5 el disco y su velocidad) van x0.4; los angulos y los radios de los huesos, tal cual.
-constexpr float kEsc9 = 0.4f, kRadioFz = 150.0f * kEsc9, kDiscoVel = 5.0f * kEsc9, kDiscoRadio = 5.0f * kEsc9;
+// MSN009 con sus distancias de IW: R16 (sub_82114910) ya no acerca a los luchadores durante el minijuego, asi que
+// no hace falta el x0.4 que compensaba el tope de B3. Los angulos y los radios de los huesos van tal cual.
+constexpr float kEsc9 = 1.0f, kRadioFz = 150.0f * kEsc9, kDiscoVel = 5.0f * kEsc9, kDiscoRadio = 5.0f * kEsc9;
 
 float LoadF(uint8_t* base, uint32_t a) {
   const uint32_t u = REX_LOAD_U32(a);
@@ -155,6 +156,7 @@ struct Datos {
   // 3 (ladrillos): el bloque del #MSS 890/4 de su dificultad
   std::vector<std::array<float, 7>> tramos;
   int n_tramos = 0, umbral[5] = {}, puntos[5] = {}, fallo = 100;
+  float lad_s = 18.0f;   // #MSS bloque +0x08: tamano que se proyecta para el radio de fijado (18/18/18/10/6)
   ps2::Modelo ladrillo;
   // efectos de IW: el paquete de los minijuegos de disparo (DATA_CMN 935 = 0x3A7, Effect_OpenBundleForMode; en el 3 su
   // copia 890/6): atlas (hijo 0) y los #AME (hijos 3..23) por indice de hijo
@@ -201,7 +203,7 @@ class Panel : public rex::ui::ImGuiDialog {
     if (!mgr) return;
     const bool pausa = dbz3::GameDimmed() || dbz3::OverlayOpen();
     if (st == 4 && !pausa) {
-      acc_ += std::min(io.DeltaTime, 0.1f);
+      acc_ += dbz3::RelojDt(std::min(io.DeltaTime, 0.1f));
       while (acc_ >= 1.0f / 60.0f) {
         acc_ -= 1.0f / 60.0f;
         Efectos();
@@ -274,6 +276,7 @@ class Panel : public rex::ui::ImGuiDialog {
       tiros_ = 7;
       aciertos_ = 0;
       quedan_ = d.n_tramos;
+      lad_s_ = d.lad_s;
       mira_x_ = 320, mira_y_ = 224;
       tramo_espera_ = 0;
       ladrillo_vivo_ = fijado_ = false;
@@ -818,8 +821,9 @@ class Panel : public rex::ui::ImGuiDialog {
   // ladrillo ITEMB03_BRICK 890/1; leidos por R12 y por mi). Bloque del #MSS por dificultad: N ladrillos (60/50/40/30/30/
   // 15), recorrido de 115 por tramo, umbrales de aciertos 7/6/5/4/3 (Z..C) y sus puntos, camara (0, 30, 100) -> (0, 35,
   // 0) a 45 grados, y 60 trayectorias (velocidad, inicio x, y, profundidad, fin x, y, profundidad) en la pantalla de PS2
-  // (640 x 448). Mira 2D con la palanca/cruceta; si la mira pasa cerca del ladrillo lo fija (12 cuadros tirando de ella
-  // hacia el); circulo = disparo (7 en total): fijado = roto. Sin tiempo: acaba con N tramos o los 7 disparos.
+  // (640 x 448). Mira 2D con la palanca/cruceta a 10 px por cuadro; si el ladrillo cae dentro de su radio proyectado
+  // (ctx+0x514: focal*S/z, con el factor de direccion del tramo) lo fija y lo imanta 5 cuadros; circulo = disparo (7 en
+  // total): fijado = roto. Sin tiempo: acaba con N tramos o los 7 disparos.
   void Cuadro3(uint8_t* base, uint32_t mgr, const Datos& d) {
     (void)base;
     (void)mgr;
@@ -839,8 +843,7 @@ class Panel : public rex::ui::ImGuiDialog {
       return;
     }
     if (fase_ != kJuego) return;
-    // mira: palanca (x*x + y*y > 0xFFF) o cruceta, a velocidad fija. ponytail: la velocidad (lista A +0x10) no esta
-    // leida: 6 px de PS2 por cuadro
+    // mira: palanca (x*x + y*y > 0xFFF) o cruceta, a la velocidad del #MSS (+0x10 = 10 px de PS2 por cuadro)
     float gx = 0, gy = 0;
     if (sx * sx + sy * sy > 0xFFF) {
       const float l = std::hypot(float(sx), float(sy));
@@ -871,16 +874,16 @@ class Panel : public rex::ui::ImGuiDialog {
     }
     const float px = mira_x_, py = mira_y_;
     if (!fijado_) {
-      mira_x_ = std::clamp(mira_x_ + gx * 6.0f, 0.0f, 640.0f);
-      mira_y_ = std::clamp(mira_y_ + gy * 6.0f, 0.0f, 448.0f);
+      mira_x_ = std::clamp(mira_x_ + gx * 10.0f, 0.0f, 640.0f);   // +0x10 del #MSS: 10 px de PS2 por cuadro
+      mira_y_ = std::clamp(mira_y_ + gy * 10.0f, 0.0f, 448.0f);
       // fijar: distancia del ladrillo al recorrido de la mira en este cuadro < su radio en pantalla
       if (ladrillo_vivo_ && lad_z_ <= 700.0f) {
         const float ax = mira_x_ - px, ay = mira_y_ - py, bx = lad_x_ - px, by = lad_y_ - py;
         const float l2 = ax * ax + ay * ay, s = l2 > 0 ? std::clamp((ax * bx + ay * by) / l2, 0.0f, 1.0f) : 0.0f;
         const float dist = std::hypot(bx - ax * s, by - ay * s);
-        if (dist < RadioLadrillo()) fijado_ = true, tiro_t_ = 12.0f;
+        if (dist < RadioLadrillo()) fijado_ = true, tiro_t_ = 5.0f;   // 0x41400000: el iman dura 5
       }
-    } else if (ladrillo_vivo_) {   // 12 cuadros hacia el ladrillo y luego encima
+    } else if (ladrillo_vivo_) {   // 5 cuadros hacia el ladrillo y luego encima
       if (tiro_t_ > 1.0f) {
         mira_x_ += (lad_x_ - mira_x_) / tiro_t_;
         mira_y_ += (lad_y_ - mira_y_) / tiro_t_;
@@ -949,12 +952,20 @@ class Panel : public rex::ui::ImGuiDialog {
     const float vx = (sx - cam.c.x) / k - m[12], vy = -(sy - cam.c.y) / k - m[13], vz = -z - m[14];
     return {m[0] * vx + m[1] * vy + m[2] * vz, m[4] * vx + m[5] * vy + m[6] * vz, m[8] * vx + m[9] * vy + m[10] * vz};
   }
-  float RadioLadrillo() const {   // ponytail: el radio de fijado de IW (ctx+0x514) depende de datos sin leer: el del
-    return std::clamp(9000.0f / std::max(lad_z_, 1.0f), 12.0f, 120.0f);   // ladrillo en pantalla, a ojo
+  float RadioLadrillo() const {
+    // MgFly_ProjectToScreen (EU 0x366480): +0x514 = (focal * S / z) * (0,5*|n.z| + hipot(n.x, n.y)), con n la normal
+    // de A->B en espacio de camara y S = bloque +0x08 (MgFly_SetupNextNode: +0x510). focal = 448/(2*tan(fov/2)) con el
+    // fov de 45 del #MSS = 540,7839 px; pantalla PS2 640x448. IW pone el radio a 0 si la profundidad pasa de 700.
+    if (lad_z_ > 700.0f) return 0.0f;
+    constexpr float kFocal = 540.78384f, kCx = 320.0f, kCy = 224.0f;
+    const V3 a{lad_a_[2] * (lad_a_[0] - kCx) / kFocal, lad_a_[2] * (lad_a_[1] - kCy) / kFocal, lad_a_[2]};
+    const V3 b{lad_b_[2] * (lad_b_[0] - kCx) / kFocal, lad_b_[2] * (lad_b_[1] - kCy) / kFocal, lad_b_[2]};
+    const V3 n = Unir(Mas(b, Por(a, -1.0f)));
+    return kFocal * lad_s_ / std::max(lad_z_, 1.0f) * (0.5f * std::fabs(n.z) + std::hypot(n.x, n.y));
   }
   void Piloto3(float& gx, float& gy, bool& fuego) {
-    gx = std::clamp((lad_x_ - mira_x_) / 6.0f, -1.0f, 1.0f);
-    gy = std::clamp((lad_y_ - mira_y_) / 6.0f, -1.0f, 1.0f);
+    gx = std::clamp((lad_x_ - mira_x_) / 10.0f, -1.0f, 1.0f);
+    gy = std::clamp((lad_y_ - mira_y_) / 10.0f, -1.0f, 1.0f);
     fuego = fijado_ && tiro_t_ <= 1.0f && ++auto_t_ % 2 == 0;
   }
 
@@ -1169,7 +1180,7 @@ class Panel : public rex::ui::ImGuiDialog {
         lp.y -= 4.8f;   // el modelo tiene la base en y = 0 (caja 0..9,6): su centro en el punto de la mira
         escena_.Poner(cam, d.ladrillo.malla, tx_lad_, lp, float(t_) * 0.05f, 1.0f);
         static int64_t log_t = 0;
-        if (const int64_t ms = int64_t(ImGui::GetTime() * 1000); ms - log_t > 1000) {   // F1: sonda (1 por segundo)
+        if (const int64_t ms = int64_t(dbz3::RelojT(ImGui::GetTime()) * 1000); ms - log_t > 1000) {   // F1: sonda (1 por segundo)
           log_t = ms;
           ImVec2 sp;
           float kk = 0;
@@ -1395,6 +1406,7 @@ class Panel : public rex::ui::ImGuiDialog {
   uint16_t antes15_ = 0;
   int quedan_ = 0, tramo_espera_ = 0;
   float mira_x_ = 320, mira_y_ = 224, progreso_ = 0, lad_vel_ = 1, lad_x_ = 0, lad_y_ = 0, lad_z_ = 0, tiro_t_ = 0;
+  float lad_s_ = 18.0f;   // tamano del ladrillo que se proyecta (#MSS +0x08) para el radio de fijado
   std::array<float, 3> lad_a_{}, lad_b_{};
   bool ladrillo_vivo_ = false, fijado_ = false;
   bool tirada_ = false, fuego_antes_ = false;
@@ -1434,8 +1446,17 @@ bool Empezar(int clave, int fila, int dificultad) {
       REXLOG_WARN("dbz3 iwdisparo: sin el #MSS de 890");
       return false;
     }
-    const size_t b = size_t(i32(0x2C + 4 * size_t(d->dif)));
+    int bdif = d->dif;
+    size_t b = size_t(i32(0x2C + 4 * size_t(bdif)));
+    while (bdif > 0 && b + 0x64 > mss.size()) {   // el #MSS EU solo trae 5 bloques (la copia USA tiene 6)
+      --bdif;
+      b = size_t(i32(0x2C + 4 * size_t(bdif)));
+    }
+    if (bdif != d->dif)
+      REXLOG_INFO("dbz3 iwdisparo: la copia de IW no tiene bloque para la dificultad {}; se usa la {}",
+                  d->dif, bdif);
     d->n_tramos = i32(b);
+    d->lad_s = f32(b + 0x08);   // MgFly_SetupNextNode: +0x510 = bloque +0x08 (tamano proyectado del ladrillo)
     for (int k = 0; k < 5; ++k) d->umbral[k] = i32(b + 0x14 + 4 * size_t(k)), d->puntos[k] = i32(b + 0x28 + 4 * size_t(k));
     d->fallo = i32(b + 0x3C);
     const int pool = std::clamp(i32(b + 0x60), 0, 200);

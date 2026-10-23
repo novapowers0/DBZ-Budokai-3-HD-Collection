@@ -1,0 +1,13 @@
+# copia: s5_c4b. C4: Shenron: DBZ3_TEST_ESFERAS=7 pone la mascara de Esferas de la casilla a 0x7F antes de que sub_8215C1B0 la compruebe;
+# DBZ3_SHENRON_DIAG registra quien dibuja el banco de 4 texturas (data_usi 1958)
+descripcion = "C4: Heroe en DU con las 7 Esferas: busca la escena de Shenron y quien la dibuja"
+env = ["DBZ3_TEST_DU_HEROE=36", "DBZ3_AUTO_TOUCH=2", "DBZ3_TEST_RINGOUT=1", "DBZ3_TEST_ESFERAS=7", "DBZ3_SHENRON_DIAG=1"]
+pasos = [
+  "esperar 9000",
+  "captura s_0",
+  "tecla Space 3500", "tecla Space 3500", "tecla Space 3500", "captura s_1",
+  "tecla Space 3500", "tecla Space 3500", "tecla Space 3500", "captura s_2",
+  "tecla Space 3500", "tecla Space 3500", "tecla Space 3500", "captura s_3",
+  "esperar 8000", "captura s_4",
+  "tecla Space 3500", "tecla Space 3500", "esperar 8000", "captura s_5",
+]

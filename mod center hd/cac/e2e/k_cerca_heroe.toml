@@ -1,0 +1,22 @@
+# copia: k_cerca_heroe (de heroe_xv2_ojos.toml). Hasta c4_xv2_2_create, luego primer plano de la vista previa (DBZ3_TEST_HEROE_CAM).
+descripcion = "K cerca: crear heroe XV2 y capturar la vista previa de cerca (CAM=3 retrato por defecto)"
+env = ["DBZ3_TEST_RINGOUT=1", "DBZ3_TEST_HEROE_RAZA=7", "DBZ3_TEST_HEROE_CAM=1"]
+pasos = [
+  "esperar 2500",
+  "tecla W 1200",
+  "tecla Space 3500",
+  "tecla S 450", "tecla S 450", "tecla S 450", "tecla S 450", "tecla S 450",
+  "tecla Space 2500",
+  "tecla S 700", "tecla S 700", "tecla S 700",
+  "tecla Space 3500",
+  "captura c4_xv2_0_heroe",
+  "esperar 1500",
+  "captura c4_xv2_1_raza_xv2",
+  "tecla S 500", "tecla S 500",
+  "tecla Space 3000",
+  "log \"Create abierto\" 20",
+  "esperar 12000",
+  "captura c4_xv2_2_create",
+  "esperar 20000",
+  "captura k_cerca_hero_cam1",
+]

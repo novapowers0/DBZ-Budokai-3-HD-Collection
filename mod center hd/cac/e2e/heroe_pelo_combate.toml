@@ -1,0 +1,21 @@
+# Peinado nativo en combate: heroe_du_e2e.toml cortado tras entrar al combate (captura ~5 s despues de empezar).
+descripcion = "PELO combate (corte tras combate 1) DU: Modo Heroe > DU directo (sin rueda) > intro > mapa > marca (auto) > combate (ring out) > nivel > victoria con progreso del heroe > marca 2"
+env = ["DBZ3_TEST_DU_HEROE=36", "DBZ3_AUTO_TOUCH=2", "DBZ3_TEST_RINGOUT=1", "DBZ3_TEST_DU_ESTADOS=1"]
+pasos = [
+  "esperar 9000",
+  "captura e2e_0_negro_o_menu",
+  "log \"escena 102 entrada 36\" 90",
+  "esperar 2500", "captura e2e_1_intro",
+  "tecla Space 3500", "captura e2e_2_intro",
+  "tecla Space 3500", "captura e2e_2b_intro",
+  "tecla Space 3500", "captura e2e_3_llegada",
+  "tecla Space 3000", "tecla Space 3000", "captura e2e_4_mapa_heroe",
+  "esperar 4000", "captura e2e_4b_mapa_heroe",
+  "log \"se toca la marca de combate\" 90",
+  "log \"jugador 1 = id 63\" 60",
+  "tecla Space 3000", "captura e2e_5a_charla_antes",
+  "tecla Space 2500", "tecla Space 2500", "tecla Space 2500", "tecla Space 2500", "tecla Space 2500",
+  "esperar 3000", "captura pelo_combate_a",
+  "esperar 1500", "captura pelo_combate_b",
+  "esperar 1500", "captura pelo_combate_c",
+]

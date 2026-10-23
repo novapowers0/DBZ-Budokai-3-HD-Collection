@@ -47,6 +47,26 @@ static uint64_t Dbz3VblankSlowdown() {
   static const bool tests = std::getenv("DBZ3_NO_DIALOGS") != nullptr;
   return tests ? uint64_t(std::max(REXCVAR_GET(dbz3_vblank_slowdown), 1)) : 1;
 }
+// dbz3 (X0g, studies 5): the opposite for N1 logic tests. Guest vblank N times
+// FASTER (turbo), only with DBZ3_NO_DIALOGS (automated tests). DBZ3_TEST_TURBO=N
+// in the environment wins over the cvar so pruebas.py can set it per instance.
+REXCVAR_DEFINE_INT32(dbz3_vblank_turbo, 1, "DBZ3/Dev",
+                     "Tests: guest vblank this many times faster (1 = normal)")
+    .range(1, 16)
+    .lifecycle(rex::cvar::Lifecycle::kHotReload);
+// Tests only: hidden-window mode. The host does not call Present() (nothing to
+// show; pruebas.py also hides the window and mutes the audio). N1 only: the
+// screenshot hook lives in the paint path and still works, it only skips Present.
+
+static uint64_t Dbz3VblankTurbo() {
+  static const bool tests = std::getenv("DBZ3_NO_DIALOGS") != nullptr;
+  if (!tests) return 1;
+  if (const char* e = std::getenv("DBZ3_TEST_TURBO")) {
+    const int v = std::atoi(e);
+    if (v >= 1 && v <= 16) return uint64_t(v);
+  }
+  return uint64_t(std::clamp(REXCVAR_GET(dbz3_vblank_turbo), 1, 16));
+}
 REXCVAR_DEFINE_STRING(swap_post_effect, "none", "GPU",
                       "Anti-aliasing of the final image: none, fxaa, fxaa_extreme")
     .allowed({"none", "fxaa", "fxaa_extreme"});
@@ -198,6 +218,7 @@ X_STATUS GraphicsSystem::SetupGuestGpu(runtime::FunctionDispatcher* function_dis
           uint64_t interval_ticks = std::max(
               REXCVAR_GET(vsync) ? vsync_interval_ticks : no_vsync_interval_ticks,
               vsync_interval_ticks) * Dbz3VblankSlowdown();
+          interval_ticks = std::max(uint64_t(1), interval_ticks / Dbz3VblankTurbo());
           while (current_time - last_frame_time >= interval_ticks) {
             MarkVblank();
             last_frame_time += interval_ticks;

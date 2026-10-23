@@ -1,0 +1,16 @@
+# copia: s5_c3 (--instantanea freezer_cap2; con mods/heroe_propio (celda = false) + historia_heroe)
+descripcion = "C3: el Heroe entra en DU directo (sin titulo, menu ni rueda de personajes): menu principal -> mapa; Heroe no sale en la rueda"
+env = ["DBZ3_TEST_DU_HEROE=36"]
+pasos = [
+  "esperar 9000",
+  "captura directo_0",
+  "esperar 4000",
+  "captura directo_1",
+  "esperar 4000",
+  "captura directo_2",
+  "tecla Space 3500", "captura directo_3",
+  "tecla Space 3500", "captura directo_4",
+  "tecla Space 3500", "captura directo_5",
+  "tecla Space 3000", "captura directo_6",
+  "esperar 6000", "captura directo_mapa",
+]

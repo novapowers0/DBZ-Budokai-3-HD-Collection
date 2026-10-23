@@ -26,15 +26,20 @@ import argparse
 import ctypes
 import ctypes.wintypes as wt
 import glob
+import hashlib
+import json
 import os
 import queue
 import re
 import shlex
 import shutil
+import struct
 import subprocess
 import sys
 import time
+import threading
 import tomllib
+import zlib
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from datetime import datetime
@@ -57,7 +62,11 @@ PANTALLA = GBASE + 0x824BA110                       # byte con el id de pantalla
 PANTALLA_EU = GBASE + 0x824BA100                    # I03: el dual-region desplaza el byte 0x10 en el xex EU
 ESTRUCTAS = (0x8247A8E0, 0x824BA110)                # bloques de DU (antes en du_mem.py)
 BLOQUE, RANURA = 4624, 22
-MAX_PARALELO = 3
+MAX_PARALELO = 3                                   # juegos a la vez con ventana (N2)
+MAX_PARALELO_N1 = 6                                 # X0g/X0h: solo con DBZ3_TEST_OCULTO=1; el tope real son las 4 plazas
+PLAZAS = R / "studies 5" / "ENTREGAS" / "_juego"      # X0h: plaza1..4 (mkdir atomico) = tope de 4 dbz3.exe a la vez
+PLAZAS_HUERFANAS = Path(r"D:\_PARA_BORRAR_CLAUDE")
+TOPE_JUEGOS = 8   # plaza1-2 con ventana, plaza3-8 solo ocultas (COLA_PRUEBAS.md); con _compilando el tope baja a 6
 LANZANDO = BASE / "_lanzando"                       # candado entre procesos: contar juegos + lanzar es atomico
 ERRORES = (r"access violation|UNHANDLED EXCEPTION|physical write fault"   # main.cpp:976, xmemory.cpp:547/628
            r"|std::terminate called")                                        # main.cpp (set_terminate)
@@ -80,6 +89,28 @@ K32.OpenProcess.restype = ctypes.c_void_p
 K32.WaitForSingleObject.argtypes = [ctypes.c_void_p, wt.DWORD]
 K32.WaitForSingleObject.restype = wt.DWORD
 K32.CloseHandle.argtypes = [ctypes.c_void_p]
+K32.GetProcessTimes.argtypes = [ctypes.c_void_p, ctypes.POINTER(wt.FILETIME), ctypes.POINTER(wt.FILETIME),
+                                ctypes.POINTER(wt.FILETIME), ctypes.POINTER(wt.FILETIME)]
+K32.QueryFullProcessImageNameW.argtypes = [ctypes.c_void_p, wt.DWORD, wt.LPWSTR, ctypes.POINTER(wt.DWORD)]
+K32.QueryFullProcessImageNameW.restype = wt.BOOL
+
+
+U32 = ctypes.WinDLL("user32", use_last_error=True)
+_ENUM = ctypes.WINFUNCTYPE(wt.BOOL, wt.HWND, wt.LPARAM)
+
+
+def _ocultar_ventanas(proc):
+    """X0g: oculta (SW_HIDE) las ventanas del juego mientras viva; el juego sigue pintando (sin Present, sin audio)."""
+    def cb(h, _):
+        pid = wt.DWORD()
+        U32.GetWindowThreadProcessId(h, ctypes.byref(pid))
+        if pid.value == proc.pid and U32.IsWindowVisible(h):
+            U32.ShowWindow(h, 0)
+        return True
+    fn = _ENUM(cb)
+    while proc.poll() is None:
+        U32.EnumWindows(fn, 0)
+        time.sleep(0.5)
 
 
 class Fallo(Exception):
@@ -88,6 +119,147 @@ class Fallo(Exception):
 
 def ts():
     return datetime.now().strftime("%Y%m%d-%H%M%S")
+
+
+def _hash_archivo(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for b in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(b)
+    return h.hexdigest()
+
+
+_ARBOLES_HASH = {}
+
+
+def _huella_arbol(path):
+    """Hash del contenido completo; memoizado por mtimes para no releer mods entre escenarios de una misma tanda."""
+    root = Path(path)
+    if not root.is_dir():
+        return "sin-carpeta"
+    archivos = []
+    firma = []
+    for f in sorted(p for p in root.rglob("*") if p.is_file()):
+        st = f.stat()
+        rel = f.relative_to(root).as_posix()
+        archivos.append((f, rel))
+        firma.append((rel, st.st_size, st.st_mtime_ns))
+    memo = (str(root.resolve()), tuple(firma))
+    if memo in _ARBOLES_HASH:
+        return _ARBOLES_HASH[memo]
+    h = hashlib.sha256()
+    for f, rel in archivos:
+        h.update(rel.encode("utf-8", "surrogateescape") + b"\0")
+        h.update(bytes.fromhex(_hash_archivo(f)))
+    result = h.hexdigest()
+    _ARBOLES_HASH[memo] = result
+    return result
+
+
+def _cache_key(dest, escenario, par, env, instantanea):
+    """Clave por binarios reales, escenario/configuración, instantánea y estado de mods."""
+    archivos = [Path(dest) / "dbz3.exe"]
+    archivos += [Path(dest) / n for n in ("rexruntime.dll", "rexgpu-xenos.dll", "amd_fidelityfx_dx12.dll")]
+    binarios = {p.name: _hash_archivo(p) for p in archivos if p.is_file()}
+    ruta = Path(escenario)
+    escenario_hash = _hash_archivo(ruta) if ruta.is_file() else "integrado:" + str(escenario)
+    snap = INST / instantanea / "user_data" if instantanea else Path(dest) / "user_data"
+    datos = {
+        "binarios": binarios,
+        "arnes_sha256": _hash_archivo(Path(__file__).resolve()),
+        "escenario": str(escenario),
+        "escenario_sha256": escenario_hash,
+        "parametros": par or {},
+        "entorno": dict(sorted(env.items())),
+        "test_cfg": os.environ.get("DBZ3_TEST_CFG", ""),
+        "instantanea": instantanea or "estado-copia",
+        "user_data": _huella_arbol(snap),
+        "mods": _huella_arbol(Path(dest) / "mods"),
+    }
+    return hashlib.sha256(json.dumps(datos, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+
+
+def _archivo_cache(clave):
+    return PRUEBAS / "_cache" / (clave + ".json")
+
+
+def _leer_cache(clave):
+    p = _archivo_cache(clave)
+    try:
+        d = json.loads(p.read_text(encoding="utf-8"))
+        run = Path(d["run"])
+        pngs = [p for p in run.glob("*.png") if p.name != "zz_sin_captura.png"]
+        if (d.get("ok") is True and (run / "dbz3.log").is_file() and (run / "escenario.toml").is_file()
+                and pngs):
+            return d
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    return None
+
+
+def _guardar_cache(clave, resultado, turbo_solicitado, turbo_real):
+    if not resultado.get("ok"):
+        return
+    p = _archivo_cache(clave)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    d = {"ok": True, "hash": clave, "run": str(resultado["run"]), "dur": resultado.get("dur", 0),
+         "menu": resultado.get("menu"), "t_escena": resultado.get("t_escena"), "t_fin": resultado.get("t_fin"),
+         "turbo_solicitado": turbo_solicitado, "turbo_real": turbo_real, "guardado": datetime.now().isoformat()}
+    tmp = p.with_name(p.name + f".{os.getpid()}.{threading.get_ident()}.tmp")
+    tmp.write_text(json.dumps(d, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+    os.replace(tmp, p)
+
+
+def _escenario_toml(run, escenario, desc, par, env, instantanea):
+    src = Path(escenario)
+    run = Path(run)
+    run.mkdir(parents=True, exist_ok=True)
+    dst = run / "escenario.toml"
+    if src.is_file():
+        shutil.copy2(src, dst)
+        (Path(run) / "ejecucion.json").write_text(json.dumps(
+            {"descripcion": desc, "parametros": par or {}, "entorno": env, "instantanea": instantanea},
+            ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    else:
+        # Es un TOML de auditoría (la familia integrada no tiene pasos DSL serializables).
+        lineas = ["# Registro reproducible de la prueba integrada", f"escenario = {json.dumps(str(escenario), ensure_ascii=False)}",
+                  f"descripcion = {json.dumps(str(desc), ensure_ascii=False)}",
+                  f"parametros_json = {json.dumps(json.dumps(par or {}, ensure_ascii=False, sort_keys=True), ensure_ascii=False)}",
+                  f"entorno_json = {json.dumps(json.dumps(env, ensure_ascii=False, sort_keys=True), ensure_ascii=False)}",
+                  f"instantanea = {json.dumps(instantanea or '', ensure_ascii=False)}"]
+        dst.write_text("\n".join(lineas) + "\n", encoding="utf-8")
+    return dst
+
+
+def _png_chunk(tipo, data):
+    return struct.pack(">I", len(data)) + tipo + data + struct.pack(">I", zlib.crc32(tipo + data) & 0xFFFFFFFF)
+
+
+def _png_sin_captura(path, motivo):
+    """PNG de aviso claro cuando el proceso ya murió antes de permitir una captura real."""
+    path = Path(path)
+    path.write_bytes(b"\x89PNG\r\n\x1a\n" + _png_chunk(b"IHDR", struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0)) +
+                     _png_chunk(b"tEXt", b"Description\0SIN CAPTURA: " + motivo.encode("utf-8", "replace")) +
+                     _png_chunk(b"IDAT", zlib.compress(b"\0\x50\x50\x50")) + _png_chunk(b"IEND", b""))
+    path.with_suffix(".txt").write_text("No se pudo capturar una pantalla del juego. Motivo: " + motivo + "\n", encoding="utf-8")
+
+
+def _hay_png_real(run):
+    return any(p.suffix.lower() == ".png" and p.name != "zz_sin_captura.png" for p in Path(run).glob("*.png"))
+
+
+def _evidencia_png(j, exito, motivo):
+    if _hay_png_real(j.run):
+        return True
+    if j.vivo():
+        try:
+            j.captura("zz_final" if exito else "zz_fallo")
+        except Exception:
+            pass
+    if _hay_png_real(j.run):
+        return True
+    _png_sin_captura(j.run / "zz_sin_captura.png", motivo or "no hubo respuesta del juego")
+    return False
 
 
 def _kv(x):
@@ -143,14 +315,33 @@ def pids_de_copia(dest):
     return pids
 
 
-def _vivo(pid):
-    h = K32.OpenProcess(0x1000, False, pid)                     # QUERY_LIMITED_INFORMATION
+def _vivo(pid, marca_tiempo=None):
+    h = K32.OpenProcess(0x1000 | 0x0400, False, pid)            # QUERY_LIMITED_INFORMATION | QUERY_INFORMATION
     if not h:
         return False
-    code = wt.DWORD()
-    K32.GetExitCodeProcess(h, ctypes.byref(code))
-    K32.CloseHandle(h)
-    return code.value == 259                                    # STILL_ACTIVE
+    try:
+        code = wt.DWORD()
+        if not K32.GetExitCodeProcess(h, ctypes.byref(code)) or code.value != 259:
+            return False
+        nombre = ctypes.create_unicode_buffer(32768)
+        largo = wt.DWORD(len(nombre))
+        if not K32.QueryFullProcessImageNameW(h, 0, nombre, ctypes.byref(largo)):
+            return False
+        if Path(nombre.value).stem.lower() not in ("python", "pythonw"):
+            return False  # PID reciclado por otro proceso (p. ej. SearchFilterHost) != dueño de la reserva
+        if marca_tiempo:
+            m = re.search(r"\d{8}-\d{6}", marca_tiempo)
+            if m:
+                creada = wt.FILETIME()
+                salida, kernel, user = wt.FILETIME(), wt.FILETIME(), wt.FILETIME()
+                if K32.GetProcessTimes(h, ctypes.byref(creada), ctypes.byref(salida), ctypes.byref(kernel), ctypes.byref(user)):
+                    ft = (creada.dwHighDateTime << 32) | creada.dwLowDateTime
+                    inicio = ft / 10_000_000 - 11_644_473_600
+                    if inicio > datetime.strptime(m.group(), "%Y%m%d-%H%M%S").timestamp() + 2:
+                        return False  # el proceso Python apareció después de la plaza: el PID ya fue reutilizado
+        return True
+    finally:
+        K32.CloseHandle(h)
 
 
 @contextmanager
@@ -161,14 +352,17 @@ def copia_en_uso(dest):
     while True:
         try:
             lock.mkdir()
-            (lock / "pid").write_text(str(os.getpid()))
+            (lock / "pid").write_text(f"{os.getpid()} {ts()}")
             break
         except FileExistsError:
             try:
-                pid = int((lock / "pid").read_text())
+                owner = (lock / "pid").read_text(encoding="utf-8").split()
+                pid = int(owner[0])
+                marca = owner[1] if len(owner) > 1 else ""
             except (OSError, ValueError):
                 pid = 0
-            viejo = not _vivo(pid) if pid else time.time() - lock.stat().st_mtime > 60
+                marca = ""
+            viejo = not _vivo(pid, marca) if pid else time.time() - lock.stat().st_mtime > 60
             if viejo:                                           # de una prueba que murio: se aparta, no se borra
                 try:
                     RESPALDO.mkdir(parents=True, exist_ok=True)
@@ -201,12 +395,34 @@ def mover(src, dst):
     print(f"  movido a respaldo: {dst}", flush=True)
 
 
+_TL = threading.local()   # X1: (ancho, alto) de la ventana de la partida (--par ventana=2560x1080), por hilo: dos corridas en paralelo no se pisan
+
+
+def dormir(s):
+    """X0h: espera en RELOJ DE JUEGO. Con turbo xN el guest corre N veces mas rapido: las esperas de los escenarios
+    (animaciones, fundidos, menus) se dividen por la velocidad real medida del juego de ESTE hilo (fps del log / 60,
+    tope N). Sin juego o a x1 es time.sleep normal. Esperas medidas con time.time() siguen en time.sleep."""
+    j = getattr(_TL, "j", None)
+    k = j.factor() if j is not None else 1.0
+    time.sleep(s if k <= 1.0 else max(min(s, 0.05), s / k))
+
+
+
+def _ventana():
+    return getattr(_TL, "v", None)
+
+
 def escribir_toml(ruta):
     ov = dict(OVERRIDES, dbz3_game_dir=f"'{R}'")
+    ov.update(_kv(x) for x in os.environ.get("DBZ3_TEST_CFG", "").split(";") if x)   # X1: p. ej. "dbz3_relight=2;present_effect=\"fsr3\""
+    if _ventana():
+        ov.update(window_width=str(_ventana()[0]), window_height=str(_ventana()[1]))
     lineas = ruta.read_text(encoding="utf-8", errors="surrogateescape").splitlines() if ruta.exists() else []
     out, vistos = [], set()
     for l in lineas:
         m = re.match(r"\s*([A-Za-z0-9_\-]+)\s*=", l)
+        if m and m.group(1) in ("window_width", "window_height") and not _ventana():
+            continue                      # el tamano forzado vale solo para esa corrida (X1)
         if m and m.group(1) in ov:
             out.append(f"{m.group(1)} = {ov[m.group(1)]}")
             vistos.add(m.group(1))
@@ -228,7 +444,7 @@ def preparar(dest, desde=None, exe=EXE):
         print(f"  copiando {src} -> {dest} (sin logs ni shader_cache)", flush=True)
         # /R:1 /W:1: si el origen tiene un juego abierto, robocopy reintentaba un archivo bloqueado 1 millon de
         # veces cada 30 s (visto 2026-10-15: smoke_b, smoke_c y hub_test colgados copiando de du_test)
-        r = subprocess.run(["robocopy", str(src), str(dest), "/E", "/R:1", "/W:1", "/XD", str(src / "logs"),
+        r = subprocess.run(["robocopy", str(src), str(dest), "/E", "/XJ", "/R:1", "/W:1", "/XD", str(src / "logs"),
                             str(src / "shader_cache"), "/NDL", "/NJH", "/NJS", "/NP"],
                            capture_output=True, text=True, errors="replace")
         if r.returncode >= 8:
@@ -242,6 +458,8 @@ def preparar(dest, desde=None, exe=EXE):
     for n in ("dbz3_input.req", "dbz3_shot.req", "dbz3_shot.bmp"):   # senales de control viejas
         (dest / n).unlink(missing_ok=True)
     escribir_toml(dest / "dbz3_user.toml")
+    if (R / "res" / "datos").is_dir():                     # X0d: datos medidos (res\datos\*.toml) que lee el juego
+        shutil.copytree(R / "res" / "datos", dest / "res" / "datos", dirs_exist_ok=True)
     # R9 (2026-10-16): las copias no pasan por JUGAR del launcher, que monta el roster; con uno viejo (modos_test del
     # 14/10, sin cam_pad_clips) Pan colgaba el juego. Igual que el launcher; no hace nada si el roster esta al dia.
     if (dest / "mods").is_dir():
@@ -317,6 +535,29 @@ class Juego:
         self.t_cupo = 0.0
         self.logs_antes = None                          # logs de la copia antes de lanzar (texto_log)
 
+    def factor(self):
+        """X0h: velocidad real del guest respecto a 60 fps (turbo pedido, tope), leida del ultimo 'perf fps=' del log (cache 2 s)."""
+        k = getattr(self, "turbo", 1)
+        if k <= 1:
+            return 1.0
+        if time.time() - getattr(self, "_f_t", 0) < 2.0:
+            return self._f_v
+        v = float(k)
+        try:
+            fs = [f for f, x in self._logs().items() if self.logs_antes is not None and self.logs_antes.get(f) != x]
+            if fs:
+                f = max(fs, key=lambda q: os.stat(q).st_mtime_ns)
+                with open(f, "rb") as fh:
+                    fh.seek(0, 2)
+                    fh.seek(max(0, fh.tell() - 65536))
+                    m = re.findall(r"perf fps=([0-9.]+)", fh.read().decode("utf-8", "replace"))
+                if m:
+                    v = min(float(k), max(1.0, float(m[-1]) / 60.0))
+        except (OSError, ValueError):
+            pass
+        self._f_t, self._f_v = time.time(), v
+        return v
+
     def info(self, msg):
         print(f"  [{time.time() - self.t0:6.1f} s] {self.nombre}: {msg}", flush=True)
 
@@ -327,9 +568,14 @@ class Juego:
         env.update(SDL_WINDOW_ACTIVATE_WHEN_SHOWN="0", SDL_WINDOW_ACTIVATE_WHEN_RAISED="0", DBZ3_NO_DIALOGS="1")
         env.update(env_extra)
         t_espera = time.time()
+        try:
+            self.turbo = max(1, min(16, int(env.get("DBZ3_TEST_TURBO", "1"))))   # X0h: para dormir() en reloj de juego
+        except ValueError:
+            self.turbo = 1
+        _TL.j = self
         while True:
-            if time.time() - t_espera > 1800:
-                raise Fallo("30 min esperando: ya hay 3 juegos abiertos")
+            if time.time() - t_espera > 3600:
+                raise Fallo("60 min esperando una plaza de juego (8 dbz3.exe como maximo; ventana: solo plaza1-2)")
             try:
                 LANZANDO.mkdir()
             except FileExistsError:
@@ -344,24 +590,89 @@ class Juego:
             try:
                 # tasklist en Windows en espanol imprime "INFORMACION: no hay tareas..." cuando no hay juego:
                 # sin errors="replace" el hilo lector moria con -X utf8 y esto contaba sobre None (tablero del frente 12).
-                n = (subprocess.run(["tasklist", "/FI", "IMAGENAME eq dbz3.exe", "/NH"], capture_output=True,
-                                    text=True, errors="replace").stdout or "").count("dbz3.exe")
-                if n < MAX_PARALELO:
+                # tope = las plazas (X0h): sin doble contabilidad con tasklist
+                if self._tomar_plaza(env.get('DBZ3_TEST_OCULTO') == '1'):
                     self.logs_antes = self._logs()      # el log de esta partida sera uno nuevo o uno que cambie
                     self.t0 = time.time()
                     # sin heredar la consola: si no, la llamada tarda hasta que el juego suelta esa salida
-                    self.proc = subprocess.Popen([str(self.dest / "dbz3.exe"), f"--game_directory={R}"],
-                                                 cwd=str(self.dest), env=env, stdin=subprocess.DEVNULL,
-                                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    try:
+                        self.proc = subprocess.Popen([str(self.dest / "dbz3.exe"), f"--game_directory={R}"],
+                                                     cwd=str(self.dest), env=env, stdin=subprocess.DEVNULL,
+                                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    except OSError:
+                        self._soltar_plaza()
+                        raise
                     break
             finally:
                 LANZANDO.rmdir()                                      # candado propio (carpeta vacia)
             time.sleep(5)
         self.t_cupo = self.t0 - t_espera
+        if env.get("DBZ3_TEST_OCULTO") == "1":
+            threading.Thread(target=_ocultar_ventanas, args=(self.proc,), daemon=True).start()
         self.h = K32.OpenProcess(0x0410, False, self.proc.pid)     # QUERY_INFORMATION | VM_READ
         if not self.h:
             raise Fallo("no pude leer la memoria del juego")
         self.base_real()
+
+    def _tomar_plaza(self, oculto=False):
+        if PLAZAS.with_name('_compilando').exists() and len(list(PLAZAS.glob('plaza*'))) >= TOPE_JUEGOS - 2:
+            return False
+        """X0h: primera _juego/plaza1..4 (studies 5/ENTREGAS) libre (mkdir atomico) con quien.txt; se quita al cerrar."""
+        try:
+            PLAZAS.mkdir(parents=True, exist_ok=True)
+        except FileExistsError:
+            # Otra corrida creó _juego entre exists() y mkdir(): no es un fallo de la prueba.
+            if not PLAZAS.is_dir():
+                return False
+        for i in (range(3, TOPE_JUEGOS + 1) if oculto else (1, 2)):
+            d = PLAZAS / f"plaza{i}"
+            try:
+                d.mkdir()
+            except FileExistsError:
+                _recuperar_plaza_huerfana(d)
+                try:
+                    d.mkdir()
+                except FileExistsError:
+                    continue
+            sello = f"{os.getpid()}:{time.time_ns()}:{threading.get_ident()}"
+            try:
+                # 'x' evita pisar el quien.txt de otra reserva si el directorio se recicla en esta carrera.
+                with (d / "quien.txt").open("x", encoding="utf-8") as f:
+                    f.write(f"pruebas.py {self.nombre} copia {self.dest.name} pid {os.getpid()} {ts()} token={sello}\n")
+            except FileExistsError:
+                continue
+            self.plaza = d
+            self.plaza_token = sello
+            return True
+        return False
+
+    def _soltar_plaza(self):
+        d = getattr(self, "plaza", None)
+        self.plaza = None
+        if d:
+            # Una reserva vieja nunca debe borrar la carpeta de quien ya reutilizó el mismo plazaN.
+            token = getattr(self, "plaza_token", "")
+            try:
+                quien = (d / "quien.txt").read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                quien = ""
+            if token and f"token={token}" in quien:
+                path = d / "quien.txt"
+                for _ in range(50):  # Windows puede mantener el lector del otro proceso abierto unos ms
+                    try:
+                        path.unlink(missing_ok=True)
+                        break
+                    except PermissionError:
+                        time.sleep(0.01)
+                else:
+                    return  # se conserva el lock; el siguiente intento lo reevalúa por PID/token
+            else:
+                return
+            try:
+                d.rmdir()
+            except (OSError, FileExistsError):
+                pass
+            self.plaza_token = ""
 
     def base_real(self, seg=20):
         """Fija DESPL con la base de la arena que dice el log de esta partida (espera hasta seg)."""
@@ -392,6 +703,8 @@ class Juego:
         if self.h:
             K32.CloseHandle(ctypes.c_void_p(self.h))
             self.h = None
+        if not self.vivo():
+            self._soltar_plaza()
 
     def pantalla(self):
         addr = PANTALLA_EU if os.environ.get("DBZ3_TEST_PANTALLA_EU") == "1" else PANTALLA
@@ -406,6 +719,10 @@ class Juego:
     def tecla(self, k, espera=600):
         if not self.vivo():
             raise Fallo("el juego se cerro")
+        if k == "F5":     # X0d: la tecla virtual no llega al bind de SDL; en pruebas el juego mira este fichero
+            (self.dest / "dbz3_datos.req").write_text("1", encoding="ascii")
+            dormir(espera / 1000)
+            return
         req = self.dest / "dbz3_input.req"
         fin = time.time() + 2.5
         while req.exists() and time.time() < fin:       # esperar a que el juego consuma la anterior
@@ -414,7 +731,22 @@ class Juego:
         tmp.write_text(k + "\n", encoding="ascii")
         os.replace(tmp, req)
         self.traza.append((round(time.time() - self.t0, 1), f"tecla {k}"))
-        time.sleep(espera / 1000)
+        dormir(espera / 1000)
+
+    def captura_estable(self, nombre, intentos=6, eps=2.0, min_lum=0.0):
+        """X1: captura y repite hasta que dos seguidas casi no cambian (fin de un fundido o de una transicion)."""
+        from PIL import ImageChops, ImageStat
+        ant, out = None, None
+        for i in range(intentos):
+            out = self.captura(f"{nombre}_t{i}")
+            im = Image.open(out).convert("L").resize((160, 90))
+            if ant is not None and ImageStat.Stat(im).mean[0] >= min_lum and sum(ImageStat.Stat(ImageChops.difference(ant, im)).mean) < eps:
+                break
+            ant = im
+            dormir(0.7)
+        final = self.run / f"{nombre}.png"
+        shutil.copyfile(out, final)
+        return final
 
     def captura(self, nombre):
         bmp = self.dest / "dbz3_shot.bmp"
@@ -508,7 +840,7 @@ class Juego:
                 if time.time() - sin_pantalla > 15 and self.vivo():   # vivo y sin pantalla: se trata como el titulo
                     self.tecla(titulo[n % len(titulo)], 0)
                     n += 1
-                    time.sleep(1.5)
+                    dormir(1.5)
             else:
                 sin_pantalla = None
             if sc == 5:
@@ -654,7 +986,7 @@ def _batalla(j, par):
 def _tienda(j, par):
     # HUB > Supervivencia > "Supervivencia con tienda": el primer combate se gana por ring out (DBZ3_TEST_RINGOUT) y
     # entre combates sale la tienda con las piezas de la Skill Shop del juego (botellas, caja de Zenie).
-    time.sleep(2.5)
+    dormir(2.5)
     j.tecla("W", 1200)
     j.tecla("Space", 3500)                              # HUB
     for _ in range(4):                                  # tagteam .. supervivencia
@@ -667,7 +999,7 @@ def _tienda(j, par):
         j.tecla_hasta_log("Space", r"hub: combate nativo", 4, 4)
         j.log(r"rival fuera del ring", 90)
         j.log(r"hub: fin del combate nativo", 40)
-        time.sleep(5)
+        dormir(5)
     j.captura("b_tienda")
     j.tecla("Space", 1500)                              # compra la cura (o avisa de que no se puede)
     j.captura("c_tienda_compra")
@@ -676,7 +1008,7 @@ def _tienda(j, par):
 def _hub_lab(j, par):
     # HUB con el fondo propio y sin tiras doradas; Laboratorio (entrada 7) con su fondo y el selector de luchador y
     # rival (izquierda/derecha en las filas 0 y 1). B vuelve al HUB.
-    time.sleep(2.5)
+    dormir(2.5)
     j.tecla("W", 1200)                                  # fila HUB (la ultima del menu principal)
     j.tecla("Space", 3500)                              # pantalla HUB (cursor en Tag Team)
     j.captura("a_hub")
@@ -697,7 +1029,7 @@ def _hub_lab(j, par):
 
 def _hub_filas(j, par):
     # HUB pagina 2: la fila Pasarela con el avance de las campanas (bocadillo) y la fila nueva Mision 100, que se abre.
-    time.sleep(2.5)
+    dormir(2.5)
     j.tecla("W", 1200)                                  # fila HUB (la ultima del menu principal)
     j.tecla("Space", 3500)                              # pantalla HUB (cursor en Tag Team)
     for _ in range(8):                                  # tagteam .. pasarela (pagina 2; escenarios y minijuegos no salen)
@@ -715,7 +1047,7 @@ def _hub_filas(j, par):
 def _heroe_crear(j, par):
     # frente G (ronda 3): HUB > Kumite > Modo Heroe > pantalla de creacion (raza, cuerpo, apariencia, maestro) >
     # Empezar: Humano (Krilin) con traje 2 y maestro Krilin (sus tecnicas) -> mision 1 contra los Saibaman.
-    time.sleep(2.5)
+    dormir(2.5)
     j.tecla("W", 1200)
     j.tecla("Space", 3500)                              # HUB
     for _ in range(5):                                  # tagteam .. kumite
@@ -739,9 +1071,9 @@ def _heroe_crear(j, par):
     j.captura("e_empezar")
     j.tecla_hasta_log("Space", r"hub: combate nativo", 4, 4)
     j.log(r"capsulas del jugador", 40)
-    time.sleep(6)
+    dormir(6)
     j.captura("f_mision1")
-    time.sleep(5)
+    dormir(5)
     j.captura("g_mision1_pelea")
     for l in [l for l in j.texto_log().splitlines() if "dbz3 rpg" in l or "capsulas" in l or "reglas" in l][-6:]:
         j.info(re.sub(r"^(\[[^\]]*\] ){3}", "", l)[:170])
@@ -751,7 +1083,7 @@ def _r5_heroe(j, par):
     # frente R5 (ronda 4): Modo Heroe con un cuerpo y el moveset (estilo) de otro luchador. La receta se escribe
     # antes en user_data/dbz3/rpg.toml (raza/cuerpo/estilo); aqui: HUB > Kumite > Modo Heroe > creacion > Empezar.
     # --par estilo=N: pulsaciones a la derecha en la fila Estilo (por defecto 0, la del rpg.toml).
-    time.sleep(2.5)
+    dormir(2.5)
     j.tecla("W", 1200)
     j.tecla("Space", 3500)                              # HUB
     for _ in range(5):                                  # tagteam .. kumite
@@ -770,30 +1102,30 @@ def _r5_heroe(j, par):
     j.captura("c_empezar")
     j.tecla_hasta_log("Space", r"hub: combate nativo", 4, 4)
     j.log(r"dbz3 heroe: estilo", 40)
-    time.sleep(float(par.get("espera", "16")))         # pasa la presentacion del escenario
+    dormir(float(par.get("espera", "16")))         # pasa la presentacion del escenario
     for k in range(int(par.get("rafaga", "0"))):        # --par rafaga=N: N capturas cada 2 s (intros, READY)
         j.captura(f"r{k:02d}")
-        time.sleep(2)
+        dormir(2)
     j.captura("d_pelea_1")
-    time.sleep(5)
+    dormir(5)
     j.captura("e_pelea_2")
     j.tecla("J", 300)                                   # un golpe (moveset del estilo)
-    time.sleep(1)
+    dormir(1)
     j.captura("f_pelea_3")
     if par.get("ringout") == "1":                       # gana por salida del ring: pantalla entre combates y sale
         j.log(r"combate 1 ganado", 60)
-        time.sleep(6)
+        dormir(6)
         j.captura("g_entre")
         if par.get("completa") == "1":                  # los 3 combates: fin de saga, nivel y saga siguiente
             for k in (2, 3):
                 j.tecla_hasta_log("Space", rf"combate {k}: pedido", 3, 4)
-                time.sleep(20)
+                dormir(20)
                 j.captura(f"h_pelea_{k}")
                 if k == 2:
                     j.log(r"combate 2 ganado", 60)
-                    time.sleep(6)
+                    dormir(6)
             j.log(r"fin de saga", 60)
-            time.sleep(4)
+            dormir(4)
             j.captura("i_fin")
         else:
             j.tecla("Backspace", 3000)                  # B: guardar y salir (el estilo vuelve a su modelo)
@@ -807,17 +1139,16 @@ def _du_continuar(j, par):
     # verificado 2026-10-15: DU (titulo, pantalla 6) -> Return -> menu (New Story) -> S = Continue -> rueda (7)
     # -> W x up (1 = Freezer desde Goku) -> Space -> mapa/escenas (8)
     j.tecla_hasta("Space", [6], 5, 4)                   # menu principal -> DU (la primera a veces no entra)
-    time.sleep(3)                                       # "Pulsa START" no responde nada mas aparecer
+    dormir(3)                                       # "Pulsa START" no responde nada mas aparecer
     j.tecla("Return", 3000)                             # "Press START" -> menu de DU
     j.tecla("S", 1500)                                  # Continue
     j.tecla("Space", 3000)
     j.esperar_pantalla([7], int(par.get("seg", 40)))
-    time.sleep(2.5)                                     # la rueda aun gira al aparecer: la W se perdia
+    dormir(2.5)                                     # la rueda aun gira al aparecer: la W se perdia
     for _ in range(int(par.get("up", 1))):
         j.tecla("W", 2000)
     j.captura("00_rueda")
-    j.tecla("Space", 4000)
-    j.esperar_pantalla([8, 9], int(par.get("seg", 40)))  # mapa, o combate directo (freezer_cap2 hoy: escena 5522)
+    j.tecla_hasta("Space", [8, 9], intentos=4, seg=max(10, int(par.get("seg", 40)) // 2))  # mapa, o combate directo (freezer_cap2 hoy: escena 5522); X0h: repite Space si se pierde
     j.captura("01_continuar")
     j.log(r"historias de mods recuperadas", 5)          # la casilla de mods vuelve de historias_extra.bin
     j.log(r"personaje del mapa al crear \(casilla 22", 40)
@@ -841,15 +1172,25 @@ def _capsulas_custom(j, abiertos, seg=25):
     while j.texto_log().count("menu de capsulas del jugador 1 abierto") < abiertos:   # el de este miembro
         if time.time() > fin:
             raise Fallo("no se abrio el menu de capsulas del jugador 1")
-        time.sleep(0.25)
-    time.sleep(1.0)                                     # su primera "opcion N" llega justo despues
+        dormir(0.25)
+    dormir(1.0)                                     # su primera "opcion N" llega justo despues
     while time.time() < fin:
         t = j.texto_log()
         if t.count("menu de capsulas del jugador 1: elegido") > ya:
             return
         ops = re.findall(r"menu de capsulas del jugador 1: opcion (\d)", t)
         cur = int(ops[-1]) if ops else 1
-        j.tecla("W" if cur > 1 else "S" if cur < 1 else "Space", 2500)
+        n_ops = len(ops)
+        j.tecla("W" if cur > 1 else "S" if cur < 1 else "Space", 0)
+        # X0h: esperar a que el juego conteste (nueva 'opcion N' o 'elegido') en vez de un tiempo fijo: con turbo el tiempo
+        # fijo mandaba la tecla siguiente antes de que el menu (de pared) hubiera movido el cursor
+        fin_k = time.time() + 3
+        while time.time() < fin_k:
+            tt = j.texto_log()
+            if tt.count("menu de capsulas del jugador 1: elegido") > ya or len(re.findall(
+                    r"menu de capsulas del jugador 1: opcion (\d)", tt)) > n_ops:
+                break
+            time.sleep(0.05)
     raise Fallo("el menu de capsulas del jugador 1 no llego a elegir Custom")
 
 
@@ -863,7 +1204,7 @@ def _esperar_pelea(j, seg=60):
         e = leer(j.h, GBASE + mgr + 35128, 4) if mgr else None
         if e and len(e) == 4 and int.from_bytes(e, "big") == 4:
             return
-        time.sleep(0.25)
+        dormir(0.25)
     raise Fallo("el combate no llego a la pelea (estado 4)")
 
 
@@ -895,7 +1236,7 @@ def _tag_swap(j, par):
         j.tecla("Space", 3000)
     j.log("tag: empieza un combate", 40)                # antes: 12 s fijos y luego el log
     _esperar_pelea(j)                                   # el SELECT durante la presentacion no releva
-    time.sleep(1)
+    dormir(1)
     j.captura("09_combate")
     if swap:
         j.tecla_hasta_log("Z", r"relevo .* -> ")        # relevo pedido con SELECT, repetido si no llega
@@ -909,36 +1250,40 @@ def _tag_swap(j, par):
     j.log(r"tag: KO de|relevo .* -> ", 15)
     for i in range(int(par.get("rafaga", 12)) + 1):
         j.captura(f"10_{i:02d}")
-        time.sleep(0.12)
-    time.sleep(3)
+        dormir(0.12)
+    dormir(3)
     j.captura("11_despues")
 
 
 def _a_duelo(j):
     """Menu principal (cursor en Dragon Universe) -> Duelo (pantalla 14). La primera tecla nada mas llegar al menu
     se pierde (medido 2026-10-15: la S se perdio y el Space de despues entro en Dragon Universe)."""
-    time.sleep(2.5)
+    dormir(2.5)
     j.tecla("S", 1200)
     j.tecla("Space", 0)
     j.esperar_pantalla([14, 6], 8)
     if j.pantalla() != 14:
         raise Fallo(f"la S no movio el cursor del menu principal: entro en la pantalla {j.pantalla()}")
-    time.sleep(1.5)
+    dormir(1.5)
+
+
+_SOLO_UNO_ONLINE = threading.Lock()
 
 
 def _online_crear(j, par):
     # Bug 2026-10-15: tras elegir un equipo en el Tag Team de 1P, CREAR PARTIDA fallaba hasta reiniciar
     # ("F4: Tag Team necesita prueba..."). DBZ3_NET_TEAM hace de ese equipo; DBZ3_NET_LOCAL: sin UPnP ni STUN
     # (la prueba cierra el juego a la fuerza y no debe dejar puertos abiertos en el router).
-    _a_duelo(j)
-    for _ in range(4):                                  # 1P VS COM ... COM VS COM -> fila ONLINE
-        j.tecla("S", 700)
-    j.captura("01_fila_online")
-    j.tecla("Space", 1500)                              # abre la pantalla ONLINE
-    j.captura("02_online")
-    j.tecla("Space", 2000)                              # CREAR PARTIDA (primera fila)
-    j.log(r"dbz3 online: (partida creada|no se pudo crear)", 10)
-    j.captura("03_crear")
+    with _SOLO_UNO_ONLINE:                              # X1: dos copias creando sala a la vez chocan en el puerto 7777
+        _a_duelo(j)
+        for _ in range(4):                              # 1P VS COM ... COM VS COM -> fila ONLINE
+            j.tecla("S", 700)
+        j.captura_estable("01_fila_online")
+        j.tecla("Space", 1500)                          # abre la pantalla ONLINE
+        j.captura_estable("02_online")
+        j.tecla("Space", 2000)                          # CREAR PARTIDA (primera fila)
+        j.log(r"dbz3 online: (partida creada|no se pudo crear)", 10)
+        j.captura_estable("03_crear")
     texto = j.texto_log()
     if "no se pudo crear" in texto:
         raise Fallo("CREAR PARTIDA fallo: " + re.findall(r"no se pudo crear la partida: (.*)", texto)[-1][:120])
@@ -957,19 +1302,19 @@ def _duelo_fundido(j, par):
     # Fallo visto por el frente HUB (2026-10-15): el recuadro ONLINE del Duelo salia sobre el negro del fundido al
     # entrar y al salir. Rafagas de capturas: entrada desde el menu principal, salida con Y (P) y con B
     # (Backspace) desde la fila ONLINE elegida.
-    time.sleep(2.5)                                     # la primera tecla en el menu principal se pierde
+    dormir(2.5)                                     # la primera tecla en el menu principal se pierde
     j.tecla("S", 1200)
     j.tecla("Space", 0)
     j.esperar_pantalla([14], 8)
     _rafaga(j, "a_entrada", float(par.get("seg", 3.5)))
-    time.sleep(1)
+    dormir(1)
     j.tecla("P", 0)                                     # Y: atras
     _rafaga(j, "b_salida_y", 2.5)
     j.esperar_pantalla([5], 10)
-    time.sleep(2.5)
+    dormir(2.5)
     j.tecla("Space", 0)                                 # el menu principal recuerda la fila del Duelo
     j.esperar_pantalla([14], 8)
-    time.sleep(3.5)
+    dormir(3.5)
     for _ in range(4):                                  # 1P VS COM ... COM VS COM -> fila ONLINE
         j.tecla("S", 700)
     j.captura("c_fila_online")
@@ -983,7 +1328,7 @@ def _duelo_fundido(j, par):
 def _hub_online_fundido(j, par):
     # HUB > Online: el Duelo llega en negro y la pantalla ONLINE se abria encima del negro; ahora espera a que el
     # Duelo se vea y entra fundida. Luego B (cierra la pantalla) e Y (sale del Duelo) con rafagas.
-    time.sleep(2.5)
+    dormir(2.5)
     j.tecla("W", 1200)                                  # desde la fila 0, arriba = fila HUB (la ultima)
     j.tecla("Space", 3500)                              # pantalla HUB (cursor en Tag Team)
     j.captura("a_hub")
@@ -992,7 +1337,7 @@ def _hub_online_fundido(j, par):
     j.esperar_pantalla([14], 10)
     _rafaga(j, "b_llegada", float(par.get("seg", 4.5)))
     j.log(r"se abre la pantalla ONLINE", 5)
-    time.sleep(1)
+    dormir(1)
     j.tecla("Backspace", 1500)                          # cierra la pantalla ONLINE
     j.captura("c_duelo")
     j.tecla("P", 0)                                     # Y: fuera del Duelo
@@ -1008,7 +1353,7 @@ def _historia_y_duelo(j, par):
     # ve el fallo de antes. Que los combates normales no tocan esa palabra lo dicen los logs: 0 "se lanza la escena".
     j.log(r"hub: combate nativo", 30)
     j.log(r"tag: empieza un combate", 40)
-    time.sleep(2)
+    dormir(2)
     j.captura("01_combate_duelo")
     texto = j.texto_log()
     despues = texto[texto.rfind("hub: combate nativo"):]
@@ -1031,21 +1376,21 @@ def _satan(j, par):
     d = int(par.get("desde", "0"))
     j.log(r"pasarela: prueba: disponible true; empieza", 90)
     j.log(rf"pasarela: paso {d + 1}/\d+", 20)
-    time.sleep(3)
+    dormir(3)
     j.captura("a_entrada")
     if d == 0:
         j.log(r"pasarela: titulo: START", 30)
-        time.sleep(3)
+        dormir(3)
         j.captura("a2_dificultad")
         j.log(r"pasarela: prologo 2/7", 40)
-        time.sleep(1)
+        dormir(1)
         j.captura("b_prologo")
     else:
         j.log(r"hub: combate nativo", 40)
         j.log(r"pasarela: final de la leyenda", 90)
-        time.sleep(2)
+        dormir(2)
         j.captura("e_final_cuenta")
-        time.sleep(6)
+        dormir(6)
         j.captura("f_final_total")
         return
     j.log(r"hub: combate nativo", 60)
@@ -1058,18 +1403,18 @@ def _satan(j, par):
     if par.get("cell") == "1":                      # s9b: escena de los Juegos de Cell (7 pasos) antes del combate 1
         for k in range(1, 8):
             j.log(rf"cinematica: paso {k}/", 90 if k == 1 else 40)
-            time.sleep(1.6)
+            dormir(1.6)
             j.captura(f"c_cell{k}")
-    time.sleep(4)
+    dormir(4)
     j.captura("c_combate")
     j.log(r"\): resultado", 150)
-    time.sleep(1)
+    dormir(1)
     j.captura("d_resultado")
     j.log(r"pasarela: paso 3/\d+ \(charla", 40)
-    time.sleep(3)
+    dormir(3)
     j.captura("e_tablero")
     j.log(r"cinematica: paso 1/", 60)                # la escena del retador va tras su tablero (RINGOUT la corta)
-    time.sleep(1.5)
+    dormir(1.5)
     j.captura("f_escena")
 
 
@@ -1082,39 +1427,39 @@ def _r3_cine(j, par):
     if par.get("prologo") == "1":
         for k in range(4):
             j.log(rf"pasarela: prologo {k + 1}/", 40)
-            time.sleep(2)
+            dormir(2)
             j.captura(f"p{k + 1}_prologo")
         return
     if d == 1:
         j.log(r"hub: combate nativo", 60)
         j.log(r"pasarela: paso \d+ estado del combate 4", 60)
-        time.sleep(6)
+        dormir(6)
         j.captura("a_yamcha_sin_escena")
         return
     if d == 2:
         j.log(r"pasarela: paso 3/\d+ \(charla", 40)
-        time.sleep(3)
+        dormir(3)
         j.captura("b_tablero")
     j.log(r"hub: combate nativo", 60)
     if par.get("ki") == "1":                        # sonda de la carga de ki: 11 combinaciones de 2,5 s
         for k in range(1, 12):
             j.log(rf"cinematica: paso {k}/", 120 if k == 1 else 30)
-            time.sleep(1.8)
+            dormir(1.8)
             j.captura(f"k{k:02d}")
         return
     if par.get("ringout") == "1":                   # victoria nativa tras la escena cortada (sonda de codigos)
         j.log(r"cinematica: (terminada|cortada)", 120)
         for i in range(4):
-            time.sleep(2)
+            dormir(2)
             j.captura(f"v{i}_victoria")
         return
     espera = {1: 1.5, 2: 3.0, 3: 1.5, 4: 1.5}
     for k in range(1, 5):
         j.log(rf"cinematica: paso {k}/", 60)
-        time.sleep(espera[k])
+        dormir(espera[k])
         j.captura(f"c{k}_paso")
     j.log(r"cinematica: terminada", 30)
-    time.sleep(3)
+    dormir(3)
     j.captura("d_pelea")
 
 
@@ -1123,10 +1468,10 @@ def _r3_golpes(j, par):
     # de Mr. Satan contra Yamcha sin escena, el rival es el muneco quieto; Y+B (P+Backspace) mantenido y luego un combo
     j.log(r"pasarela: prueba: disponible true; empieza", 90)
     j.log(r"pasarela: paso \d+ estado del combate 4", 120)
-    time.sleep(1)
+    dormir(1)
     j.tecla("P+Backspace 2500", 300)
     j.captura("a_ki")
-    time.sleep(1)
+    dormir(1)
     j.tecla("Right 700", 100)
     for k in ["L", "L", "L", "P", "L", "L", "P", "L"]:
         j.tecla(k, 220)
@@ -1144,7 +1489,7 @@ def _fusion_yamhan(j, par):
         # P+K+G en el teclado = P+L+Space (Y+X+A, botones D000 en el combate; sonda DBZ3_FUSION_SONDA). X+A+B
         # (L+Space+Backspace, E000) y Y+X+B (B000) no lo son. Se mantiene 2 s y al soltar sale la fusion
         for _ in range(3):                          # (la pulsacion del arnes a veces no llega entera)
-            time.sleep(1)
+            dormir(1)
             j.tecla("P+L+Space 2000", 800)
             if re.search(r"fusion: lado 1 mantiene", j.texto_log()):
                 break
@@ -1153,8 +1498,8 @@ def _fusion_yamhan(j, par):
     j.log(r"tag: luchador .* en combate: id \d+", 30)
     for i in range(6):
         j.captura(f"02_{i:02d}")
-        time.sleep(0.3)
-    time.sleep(4)
+        dormir(0.3)
+    dormir(4)
     j.captura("03_yamhan")
     j.log(r"tag: pose de entrada|fusion", 5)
 
@@ -1162,7 +1507,7 @@ def _fusion_yamhan(j, par):
 def _bordes(j, par):
     # frente C (SDK, dbz3_texture_pack.cpp): con "Bordes dorados" apagado la tira "borde" de los menus del juego se
     # sube transparente. --par bordes=true|false (REX_DBZ3_UI_SIDE_BORDERS). Menu principal y Duelo.
-    time.sleep(3)
+    dormir(3)
     j.captura("a_menu_principal")
     _a_duelo(j)
     j.captura("b_duelo")
@@ -1176,7 +1521,7 @@ def _tablero(j, par):
     # Preparacion (fase y companero) -> Space empieza -> W elige la casilla de arriba (2) -> Space mueve a Goku ->
     # Backspace (B, el circulo de B2) pasa con el companero -> S elige la casilla 3 (Saibaman) -> Space = contacto "!!" -> tarjeta -> Space = combate.
     j.log(r"tablero b2: fase 1 leida", 90)
-    time.sleep(3)
+    dormir(3)
     j.captura("a_preparacion")
     j.tecla("Space", 2500)
     # R7: la intro del Mundo Dragon (DATA_<idioma> 155) tapa el tablero: B la salta; luego los guiones del turno 1
@@ -1185,22 +1530,27 @@ def _tablero(j, par):
     j.tecla("Backspace", 1500)
     j.captura("a1_llegada")   # R7: efectos del banco 343 (capsulas de Raditz y Nappa)
     j.log(r"tablero b2: escena M207", 30)
-    time.sleep(1.5)
+    dormir(1.5)
     j.captura("a1b_charla")   # cabezas de B2 (CMN 1196)
     # orden 4 del guion 301: ventana de mensaje (0 y 78) que espera a A antes de la orden 69. El test antiguo
     # no la cerraba y se quedaba 60 s esperando la eleccion (fallo de tiempo, no del juego).
     j.tecla_hasta_log("Space", r"tablero b2: script 301: eleccion de 1 aliado", intentos=10, seg=4)
     # orden 69 del guion 301: eleccion de 1 aliado (2 en las fases IV, V y IX); Space elige el primero
-    time.sleep(1)
+    dormir(1)
     j.captura("a2_aliado")
-    j.tecla_hasta_log("Space", r"tablero b2: aliado elegido", intentos=4, seg=3)
+    # desde el 22/10 hay "Is this okay?" (FUN_002A1640) tras marcar, con "No" resaltado: Space marca, W pasa a Si, Space confirma
+    j.tecla_hasta_log("Space", r"tablero b2: aliado marcado", intentos=4, seg=3)
+    dormir(0.5)
+    j.tecla("W", 400)
+    j.tecla_hasta_log("Space", r"tablero b2: aliado elegido", intentos=2, seg=3)
     j.log(r"tablero b2: guiones terminados", 60)
-    time.sleep(1)
+    dormir(1)
     j.captura("b_tablero")
-    j.tecla("W", 900)
+    # pasarela_b2.cpp (~4860-4935): al empezar Goku ya va seleccionado (g_sel); W en ese paso cambia la ficha al companero,
+    # por eso ya no se pulsa. Space (A) entra en "elegir casilla" (destino = primera vecina); otro Space (A) mueve.
     j.captura("c_destino")
     j.tecla("Space", 1500)
-    j.log(r"tablero b2: turno 1: .* a la casilla", 10)
+    j.tecla_hasta_log("Space", r"tablero b2: turno 1: .* a la casilla", intentos=3, seg=4)
     j.captura("d_movimiento")
     # F4: triangulo (P = Y) abre el menu del original (Salir / Reiniciar) y su Si/No; P vuelve atras dos veces
     j.tecla("P", 900)
@@ -1213,51 +1563,58 @@ def _tablero(j, par):
     # R7: los Saibaman de la fase I salen ahora de sus guiones (ya no hay uno fijo en la casilla 3); Raditz (movimiento
     # 5 = sigue a la pieza 1, Goku) viene hacia Goku: se pasa turno (B) hasta el contacto. A cierra antes las ventanas
     # de mensaje del guion (ordenes 4/6): con una abierta, B no pasa turno y el test se quedaba sin contacto.
-    for _ in range(12):
-        j.tecla("Space", 500)
-        j.tecla("Backspace", 3500)
-        if re.search(r"tablero b2: combate:", j.texto_log()):
+    # Dos B seguidas: la primera cancela el destino (si lo hay) y la segunda pasa turno. Space (A) solo cuando el log
+    # tiene el contacto: su ventana de texto no la cierra B. Space suelto entre B y B creaba un ciclo destino/cancelar
+    # que nunca pasaba turno (pasarela_b2.cpp ~4938). 40 vueltas: el turno rival tarda varios segundos.
+    for _ in range(40):
+        j.tecla("Backspace", 2500)
+        j.tecla("Backspace", 2500)
+        txt = j.texto_log()
+        if re.search(r"tablero b2: combate:", txt):
             break
+        if re.search(r"tablero b2: contacto ", txt):
+            j.tecla("Space", 800)
     j.log(r"tablero b2: combate:", 20)
     j.captura("e_contacto")
-    time.sleep(2)
+    dormir(2)
     j.captura("f_tarjeta")
     j.tecla("Space", 1000)
     j.log(r"misiones: tablero combate", 20)
-    time.sleep(24)
+    dormir(24)
     j.captura("g_combate")
 
 
 def _r2_nave(j, par):
-    # frente R2 (ronda 4): Pasarela > Nave de Babidi de B2 (DBZ3_TEST_MISIONES=5,reset abre el modo con 0 Kili).
-    # Graficos de la nave de la ISO (DATA_SP 1131/1132). A entra en la lista (empieza en 1P/2P) -> S S elige la III
-    # (golpes 99 s) -> Space: luchador, oponente y sitio (Space en cada uno) -> tarjeta -> Space = combate -> fin a
-    # los 99 s -> resultado con el Kili. Antes faltaba el A inicial y las 2 S caian en la pantalla 1P/2P.
+    # X0h: flujo actual de la nave (A2nave, fines_nave.py): 1P/2P -> torre de plantas -> rueda 1P -> menu -> rueda COM ->
+    # burbuja -> tarjeta -> combate (acotado por DBZ3_TEST_NAVE_TIEMPO, 6 s) -> resultado. --par prueba=0..3 = planta I..IV.
+    # El flujo antiguo (lista de pruebas + S S) ya no existe: por eso fallaba hasta a x1.
     j.log(r"nave: entrar", 90)
-    time.sleep(3)
+    dormir(3.5)
     j.captura("a_nave")
-    j.tecla("Space", 900)
-    if "prueba" not in par:          # r2_nave: S S baja a la III; con --par prueba=N la fija el entorno
-        j.tecla("S", 600)
-        j.tecla("S", 600)
-    j.captura("b_prueba3")
-    j.tecla("Space", 1200)
-    j.captura("c_luchador")
-    j.tecla("Space", 1200)
-    j.captura("d_rival")
-    j.tecla("Space", 1200)
-    j.captura("e_sitio")
-    j.tecla("Space", 1500)
-    j.log(r"nave: prueba %d:" % (int(par.get("prueba", "2")) + 1), 20)
-    j.captura("f_tarjeta")
-    j.tecla("Space", 1000)
-    j.log(r"misiones: nave combate", 20)
-    time.sleep(24)
-    j.captura("g_combate")
-    j.log(r"nave: fin:", 720 if par.get("prueba") == "1" else 160)
-    j.log(r"nave: resultado de la prueba", 30)
-    time.sleep(6)
-    j.captura("h_resultado")
+    j.tecla("Space", 900)                       # 1P/2P -> torre
+    for _ in range(3):
+        j.tecla("W", 300)
+    for _ in range(int(par.get("prueba", "2"))):
+        j.tecla("S", 300)
+    j.log(r"nave: pantalla planta", 20)
+    j.tecla("Space", 1500)                      # -> rueda 1P
+    j.tecla("Space", 600)                       # -> menu
+    j.tecla("Space", 1500)                      # -> rueda COM
+    j.tecla("Space", 1200)                      # -> burbuja
+    j.captura("b_burbuja")
+    j.tecla("Space", 1800)                      # -> tarjeta
+    j.captura("c_tarjeta")
+    j.tecla("Space", 800)                       # -> combate
+    j.log(r"nave: fin:", 240)
+    # fin con 'gana el lado 0' = ganador -1: se acabo el tiempo (6 s) sin que nadie perdiera vida o salio por la pausa; el
+    # juego vuelve a la torre SIN pantalla de resultado (Resultado() en pasarela_nave.cpp). Es una salida valida, no un fallo.
+    if "nave: fin: gana el lado 0," not in j.texto_log():
+        j.log(r"nave: resultado de la prueba", 30)
+    else:
+        j.log(r"nave: pantalla planta", 30)
+        j.info("combate sin ganador (tiempo): vuelve a la torre sin resultado")
+    dormir(2)
+    j.captura("d_resultado")
 
 
 def _r2_fase1(j, par):
@@ -1265,16 +1622,16 @@ def _r2_fase1(j, par):
     # al rival mas cercano; DBZ3_TEST_RINGOUT gana cada combate a los 5 s). Presentacion del script 301, combates,
     # sucesos de contacto (T4/T5) y "Fase completada".
     j.log(r"tablero b2: script 301: mensaje", 120)
-    time.sleep(1)
+    dormir(1)
     j.captura("a_presentacion")
     j.log(r"misiones: tablero combate", 120)
-    time.sleep(20)
+    dormir(20)
     j.captura("b_combate")
     j.log(r"tablero b2: .*fase 1 completada", 1500)
-    time.sleep(0.4)   # el automatico pasa de pantalla a los 1,4 s
+    dormir(0.4)   # el automatico pasa de pantalla a los 1,4 s
     j.captura("c_fase_completada")
     j.log(r"tablero b2: fase 2 leida", 30)
-    time.sleep(1.5)
+    dormir(1.5)
     j.captura("d_fase2_presentacion")
 
 
@@ -1282,7 +1639,7 @@ def _r2_deseo(j, par):
     # frente R2 (ronda 4): los deseos de Shenron (DBZ3_TEST_B2_DESEO=1 abre su pantalla al entrar al tablero) y el
     # "Portal de la nave de Babidi", que abre la Nave en la Pasarela.
     j.log(r"tablero b2: fase 1 leida", 90)
-    time.sleep(3)
+    dormir(3)
     j.captura("a_te_concedere")
     j.tecla("Space", 1000)
     j.captura("b_lista")
@@ -1305,7 +1662,7 @@ def _r2_fases(j, par):
     hasta = int(par.get("hasta", "9"))   # --par hasta=N: para tras la fase N (una fase por prueba)
     for n in range(desde + 1, hasta + 1):
         j.log(r"tablero b2: .*fase %d completada" % n, 1200)
-        time.sleep(0.4)
+        dormir(0.4)
         j.captura("fase_%d_completada" % n)
 
 
@@ -1314,7 +1671,7 @@ def _iw_misiones(j, par):
     # principal). La lista sale de la tabla del ELF de la ISO de IW (registro "IW mision N"); ficha de la mision 1
     # (Training No.1), su combate, y con --par desde=2 la ficha "no disponibles" de los entrenamientos 2-10.
     j.log(r"misiones: iw(?: \(\d+ pasos\)|: mapa de Dragon Mission)", 90)   # con el mapa de IW (P1), el mapa
-    time.sleep(3)
+    dormir(3)
     j.captura("a_ficha")
     if par.get("desde", "0") != "0":
         return
@@ -1322,7 +1679,7 @@ def _iw_misiones(j, par):
     j.captura("b_tarjeta_combate")
     j.tecla("Space", 1500)
     j.log(r"misiones: iw combate", 40)
-    time.sleep(12)
+    dormir(12)
     j.captura("c_combate")
 
 
@@ -1331,20 +1688,20 @@ def _iw_mapa(j, par):
     # del jugador). desde=N = superadas hasta la N (por defecto 10: el cursor en la 11, Goku contra Raditz).
     # Mapa, ficha (MISSION START), combate (DBZ3_TEST_RINGOUT lo gana), resultado, mapa despues y cursor movido.
     j.log(r"misiones: iw: mapa de Dragon Mission", 90)
-    time.sleep(4)
+    dormir(4)
     j.captura("a_mapa")
     j.tecla("Space", 2500)
     j.captura("b_ficha")
     j.tecla("Space", 1500)
     j.log(r"misiones: iw combate", 40)
-    time.sleep(16)
+    dormir(16)
     j.captura("c_combate")
     j.log(r"misiones: iw: mision \d+ superada", 90)
-    time.sleep(5)
+    dormir(5)
     j.captura("d_resultado")
     j.tecla("Space", 2500)
     if re.search(r"misiones: iw: escena de la historia despues", j.texto_log()):   # R1: escena (FD02 tras la 11)
-        time.sleep(2)
+        dormir(2)
         j.captura("d2_escena_despues")
         # el video original (R7) se salta con A; la escena de respaldo, con B
         j.tecla("Space" if re.search(r"video de la historia 2 \(\S+\): reproduciendo", j.texto_log()) else "Backspace", 2500)
@@ -1360,14 +1717,14 @@ def _r1_historia(j, par):
     # el video FD01B con sus subtitulos, despues FD02 (A los salta); sin video, las escenas de respaldo (modelos de B3
     # en el combate / subtitulos sobre el mapa). desde=10: mision 11 (Goku contra Raditz).
     j.log(r"misiones: iw: mapa de Dragon Mission", 90)
-    time.sleep(4)
+    dormir(4)
     j.captura("a_mapa")
     j.tecla("Space", 2500)
     j.captura("b_ficha")
     j.tecla("Space", 1500)
     j.log(r"misiones: iw: escena de la historia antes", 20)
     if re.search(r"video de la historia \d+ \(\S+\): reproduciendo", j.texto_log()):
-        time.sleep(6)
+        dormir(6)
         j.captura("c_video_antes")
         j.tecla("Space", 1500)                       # A: salta el video
         j.log(r"misiones: iw combate", 40)
@@ -1375,16 +1732,16 @@ def _r1_historia(j, par):
     else:
         j.log(r"misiones: iw combate", 40)
         j.log(r"cinematica: paso 2/", 90)   # (DBZ3_TEST_RINGOUT acaba el combate a los 5 s de pelea: corta la escena)
-        time.sleep(0.8)
+        dormir(0.8)
         j.captura("c_escena_antes")
-        time.sleep(1.6)
+        dormir(1.6)
         j.captura("d_escena_antes2")
     j.log(r"misiones: iw: mision \d+ superada", 120)
-    time.sleep(5)
+    dormir(5)
     j.captura("e_resultado")
     j.tecla("Space", 2500)
     j.log(r"misiones: iw: escena de la historia despues", 20)
-    time.sleep(5)
+    dormir(5)
     j.captura("f_escena_despues")
     j.tecla("Space", 1500)
     j.captura("g_escena_despues2")
@@ -1399,7 +1756,7 @@ def _r7_video(j, par):
     # frente R7 (ronda 4): reproductor de videos SFD de IW (src/video_sfd.cpp, DBZ3_TEST_VIDEO=<video>,<espera s>).
     # FD01B: 22 s, subtitulos del CRITAG del SFD (canal 2) con las imagenes de DATA_USA 78: 5,9-8,3 s, 8,3-10,1 s...
     # saltar=1: A (Space) a los 9 s y se comprueba que se cierra. Empieza al escribir dbz3_video.req (ya en el menu).
-    time.sleep(3)
+    dormir(3)
     j.captura("0_menu")
     if par.get("voces") in ("jp", "en"):   # Configuracion > Idioma voces (fila 6) > japones/ingles, y vuelta al menu
         for _ in range(5):
@@ -1431,7 +1788,7 @@ def _r7_video(j, par):
         j.tecla("Space", 1500)
         j.log(r"video: .* saltado", 10)
         j.log(r"video: mando y sonido del juego devueltos", 5)
-        time.sleep(2.5)
+        dormir(2.5)
         j.captura("d_saltado")
         # la A que salta no debe llegar al menu nativo (antes entraba en Universo Dragon: estado 5)
         tras = j.texto_log().split("saltado", 1)[-1]
@@ -1445,7 +1802,7 @@ def _r7_video(j, par):
     j.log(r"video: .* acabado", 40)
     j.log(r"video: subir textura", 10)
     j.log(r"video: mando y sonido del juego devueltos", 5)
-    time.sleep(1.5)
+    dormir(1.5)
     j.captura("e_despues")
 
 
@@ -1453,7 +1810,7 @@ def _r1_road(j, par):
     # frente R1 (ronda 4): Fighter's Road de IW. Y (P) en el mapa de Dragon Mission -> eleccion del luchador
     # (D = derecha) -> A: mapa del Road (#DMD 1092) -> ficha -> combate (DBZ3_TEST_RINGOUT) -> resultado -> Y: vuelta.
     j.log(r"misiones: iw: mapa de Dragon Mission", 90)
-    time.sleep(4)
+    dormir(4)
     j.tecla("P", 2500)
     j.log(r"Fighter's Road: eleccion del luchador", 10)
     j.captura("a_eleccion")
@@ -1461,16 +1818,16 @@ def _r1_road(j, par):
     j.captura("b_eleccion2")
     j.tecla("Space", 2500)
     j.log(r"Fighter's Road con el id", 10)
-    time.sleep(2)
+    dormir(2)
     j.captura("c_mapa_road")
     j.tecla("Space", 2500)
     j.captura("d_ficha")
     j.tecla("Space", 1500)
     j.log(r"misiones: iw combate", 40)
-    time.sleep(16)
+    dormir(16)
     j.captura("e_combate")
     j.log(r"misiones: iw: mision \d+ superada", 120)
-    time.sleep(5)
+    dormir(5)
     j.captura("f_resultado")
     j.tecla("Space", 2500)
     j.captura("g_mapa_despues")
@@ -1483,13 +1840,13 @@ def _r1_traza(j, par):
     # teletransporte) con el registro de la accion (X+3244) y la animacion (X+2928) de los dos luchadores ("iw traza").
     # Guardia mantenida (Space = G), toques de guardia, guardia + direcciones; el COM ataca.
     j.log(r"misiones: iw: mapa de Dragon Mission", 90)
-    time.sleep(4)
+    dormir(4)
     j.tecla("Space", 2500)
     j.captura("a_ficha")
     j.tecla("Space", 1500)
     j.log(r"misiones: iw combate", 40)
     j.log(r"iw paso 1 estado del combate 4", 90)
-    time.sleep(1)
+    dormir(1)
     j.captura("b_pelea")
     j.tecla("Space 4000", 4500)
     for _ in range(8):
@@ -1498,7 +1855,7 @@ def _r1_traza(j, par):
         j.tecla("Space+" + k + " 300", 600)
     j.tecla("Space 3000", 3500)
     j.captura("c_guardia")
-    time.sleep(3)
+    dormir(3)
     j.log(r"iw traza: estado 4", 5)
 
 
@@ -1506,7 +1863,7 @@ def _r1_entreno9(j, par):
     # frente R1 (ronda 4): Training No.9 de IW (transformarse con 2 barras de ki o mas y ganar). Goku contra Piccolo:
     # nada mas empezar la pelea, P+K+G (P+L+Space) = transformarse (Kaioken); DBZ3_TEST_RINGOUT gana a los 5 s.
     j.log(r"misiones: iw: mapa de Dragon Mission", 90)
-    time.sleep(4)
+    dormir(4)
     j.tecla("Space", 2500)
     j.captura("a_ficha")
     j.tecla("Space", 1500)
@@ -1516,7 +1873,7 @@ def _r1_entreno9(j, par):
     j.captura("b_transformado")
     j.log(r"iw: entrenamiento: transformado", 10)
     j.log(r"misiones: iw: mision \d+ superada", 60)
-    time.sleep(5)
+    dormir(5)
     j.captura("c_resultado")
 
 
@@ -1524,16 +1881,16 @@ def _r1_road_rueda(j, par):
     # frente R1 (ronda 4): Fighter's Road con la rueda del select del juego. Y (P) en el mapa de Dragon Mission -> el
     # piloto lleva a Duelo > 1P VS COM -> A (Space) confirma el personaje del cursor -> el piloto vuelve -> mapa del Road.
     j.log(r"misiones: iw: mapa de Dragon Mission", 90)
-    time.sleep(4)
+    dormir(4)
     j.tecla("P", 1500)
     j.log(r"Fighter's Road: rueda del juego abierta", 30)
-    time.sleep(2)
+    dormir(2)
     j.captura("a_rueda")
     j.tecla("D", 1200)
     j.captura("b_rueda_cursor")
     j.tecla("Space", 1500)
     j.log(r"Fighter's Road con el id \d+ \(rueda del juego", 40)
-    time.sleep(3)
+    dormir(3)
     j.captura("c_mapa_road")
     j.tecla("Space", 2500)
     j.captura("d_ficha")
@@ -1543,7 +1900,7 @@ def _r1_traza2(j, par):
     # frente R1 (ronda 4): SONDA 2 de los entrenamientos (DBZ3_R1_TRAZA): mision 12 (Raditz, COM en Normal, ataca) y
     # guardia + direccion a rafagas cortas mientras pega, para que salgan la esquiva y el teletransporte en el registro.
     j.log(r"misiones: iw: mapa de Dragon Mission", 90)
-    time.sleep(4)
+    dormir(4)
     j.tecla("Space", 2500)
     j.tecla("Space", 1500)
     j.log(r"misiones: iw combate", 40)
@@ -1560,7 +1917,7 @@ def _r1_entreno2(j, par):
     # frente R1 (ronda 4): Training No.2 de IW (guardia, esquiva y teletransporte x5). Guardia mantenida, toques de G y
     # G + izquierda/derecha a rafagas mientras el COM ataca; se comprueba que cuenta (registro "entrenamiento 2").
     j.log(r"misiones: iw: mapa de Dragon Mission", 90)
-    time.sleep(4)
+    dormir(4)
     j.tecla("Space", 2500)
     j.captura("a_ficha")
     j.tecla("Space", 1500)
@@ -1579,19 +1936,19 @@ def _iw_minijuego(j, par):
     # el jugador salta solo de aro en aro hasta la meta. auto=0: se mueve con la palanca (W/A/S/D) y se ve la marcha.
     j.log(r"iwmini: prueba: empieza", 90)
     j.log(r"iwmini: salida puesta", 60)
-    time.sleep(2)
+    dormir(2)
     j.captura("a_salida")
     if par.get("npc") == "1":                         # Bubbles (0x7D1) o Piccolo (0x7DD): se mueven solos
         if par.get("clave") == "0x7D1":               # Bubbles sale delante (con --env DBZ3_IWMINI_NPC_QUIETO=1
             j.tecla("W 900", 950)                     # no huye): acercarse y verle correr en el sitio
             j.tecla("D 250", 300)                     # un paso al lado: que Goku no lo tape
             j.captura("b_bubbles1")
-            time.sleep(0.25)
+            dormir(0.25)
             j.captura("b_bubbles2")
         j.captura("b_npc")
         if par.get("auto", "1") == "1":
             j.log(r"iwmini: (Bubbles atrapado|Piccolo te alcanza|META|TIEMPO)", 120)
-            time.sleep(1)
+            dormir(1)
             j.captura("c_fin")
         else:
             j.tecla("W 3000", 3500)
@@ -1603,32 +1960,32 @@ def _iw_minijuego(j, par):
                 j.captura("e_fin")
         return
     if par.get("quieto") == "1":                      # para sondas: el jugador quieto 22 s
-        time.sleep(11)
+        dormir(11)
         j.captura("b_quieto1")
-        time.sleep(11)
+        dormir(11)
         j.captura("b_quieto2")
         return
     if par.get("salto") == "1":                       # cruz (A del mando = Semicolon): salto de IW, 24 fotos
         if not any((j.dest / "mods").glob("Campo IW *")):   # el salto solo corre sobre el suelo de un campo de IW (d->campo)
             raise Fallo("el salto necesita un mod 'Campo IW <n>' en la carpeta mods de la copia: sin el no hay 'codigo 829'")
         j.log(r"entrada acabada: mando al jugador", 30)
-        time.sleep(2.5)                               # el cartel del objetivo (140 cuadros) para el mando
+        dormir(2.5)                               # el cartel del objetivo (140 cuadros) para el mando
         (j.dest / "dbz3_shot.req").write_text("24 3", encoding="ascii")
-        time.sleep(0.6)
+        dormir(0.6)
         j.tecla("Semicolon", 200)
-        time.sleep(2.5)
+        dormir(2.5)
         j.log(r"codigo 829", 5)
         return
     if par.get("scatto") == "1":                      # circulo (B del mando = Quote): scatto de IW hasta agotarse
         for i in range(4):                            # 47 de energia cada uno: el 3.o agota y el 4.o no sale
             if i == 0 and par.get("rafaga"):          # 24 fotos (1 de cada 2 cuadros) del arranque: el polvo
                 j.log(r"entrada acabada: mando al jugador", 30)
-                time.sleep(2.5)                       # el cartel del objetivo
+                dormir(2.5)                       # el cartel del objetivo
                 (j.dest / "dbz3_shot.req").write_text("72 1", encoding="ascii")
-                time.sleep(0.45)
+                dormir(0.45)
             j.tecla("Quote", 600)
             j.captura(f"b_scatto{i + 1}")
-            time.sleep(1.4)
+            dormir(1.4)
         j.log(r"iwmini: scatto: sin energia", 5)
         j.captura("c_agotado")
         return
@@ -1649,7 +2006,7 @@ def _iw_minijuego(j, par):
         j.captura("c_derecha")
         if par.get("rafaga"):   # 24 fotos (1 de cada 6 cuadros) corriendo, en dbz3_shot_NNN.bmp
             (j.dest / "dbz3_shot.req").write_text("24 6", encoding="ascii")
-            time.sleep(0.6)
+            dormir(0.6)
         j.tecla("W 2500", 3000)
         j.captura("d_adelante2")
         j.log(r"iwmini: jugador", 10)
@@ -1658,29 +2015,29 @@ def _iw_minijuego(j, par):
     m = re.search(r"iwmini: curso \(dificultad \d+\): A (\d+) B \d+ C \d+ D (\d+)", j.texto_log())
     n = int(m.group(1)) + int(m.group(2)) if m else 8
     j.log(rf"iwmini: aro {min(3, n)} cogido", 40)
-    time.sleep(0.3)
+    dormir(0.3)
     j.captura("b_aros")
     j.log(rf"iwmini: aro {n} cogido", 40)
-    time.sleep(0.3)
+    dormir(0.3)
     j.captura("c_aros")
     j.log(r"iwmini: (META|TIEMPO):", 60)
     if par.get("rafaga"):   # --par rafaga=1: 24 fotos (1 de cada 10 cuadros) desde la meta, en dbz3_shot_NNN.bmp
         (j.dest / "dbz3_shot.req").write_text("24 10", encoding="ascii")
-        time.sleep(4.5)
-    time.sleep(1)
+        dormir(4.5)
+    dormir(1)
     j.captura("d_meta")
     j.log(r"iwmini: final de IW", 30)   # con --env DBZ3_IWMINI_FINAL=1: la animacion final (pantalla azul R16)
-    time.sleep(1.5)
+    dormir(1.5)
     j.captura("d_final")
     j.log(r"iwmini: prueba: resultado", 60)
-    time.sleep(3)
+    dormir(3)
     j.captura("e_menu")
 
 
 def _r6_ranking(j, par):
     # frente R6 (ronda 4): HUB > Ranking (entrada 6): pagina del perfil y la siguiente (RB), y el Kumite (entrada 5)
     # con su selector de retos. Solo mira: no empieza nada.
-    time.sleep(2.5)
+    dormir(2.5)
     j.tecla("W", 1200)
     j.tecla("Space", 3500)                              # HUB (cursor en Tag Team)
     for _ in range(6):                                  # tagteam .. ranking
@@ -1699,7 +2056,7 @@ def _r6_ranking(j, par):
 def _r6_torre(j, par):
     # frente R6 (ronda 4): HUB > Torre > primer reto: combate (marcador del piso bajo el reloj del juego), ring out
     # (DBZ3_TEST_RINGOUT) y la pantalla entre combates del HUB. No pulsa nada despues: el reto queda a medias.
-    time.sleep(2.5)
+    dormir(2.5)
     j.tecla("W", 1200)
     j.tecla("Space", 3500)                              # HUB
     for _ in range(3):                                  # tagteam .. torre
@@ -1707,11 +2064,11 @@ def _r6_torre(j, par):
     j.tecla("Space", 2500)                              # selector de retos (Torre arriba)
     j.captura("a_selector_torre")
     j.tecla_hasta_log("Space", r"hub: combate nativo", 4, 4)
-    time.sleep(14)
+    dormir(14)
     j.captura("b_combate")
     j.log(r"rival fuera del ring", 90)
     j.log(r"hub: fin del combate nativo", 40)
-    time.sleep(5)
+    dormir(5)
     j.captura("c_entre")
 
 
@@ -1720,10 +2077,10 @@ def _m100(j, par):
     # pantalla final con el rango y, con A, vuelta a sus paginas.
     j.log(r"prueba: mision 100 n \d+ con id \d+: empieza", 120)
     j.log(r"hub: combate nativo", 60)
-    time.sleep(14)
+    dormir(14)
     j.captura("a_combate")
     j.log(r"rpg: fin de", 150)
-    time.sleep(4)
+    dormir(4)
     j.captura("b_fin")
     j.tecla("Space", 2500)
     j.captura("c_paginas")
@@ -1735,7 +2092,7 @@ def _m100(j, par):
 def _r6_hud(j, par):
     # frente R6 (ronda 4): HUD de los modos en combate contra varios rivales (Modo Heroe, Saibaman 2/2: el contador
     # nativo de rivales a la derecha del reloj) y la pantalla entre combates de rpg.cpp. Mismo camino que r5_heroe.
-    time.sleep(2.5)
+    dormir(2.5)
     j.tecla("W", 1200)
     j.tecla("Space", 3500)                              # HUB
     for _ in range(5):                                  # tagteam .. kumite
@@ -1747,21 +2104,21 @@ def _r6_hud(j, par):
     for _ in range(4):                                  # .. Empezar
         j.tecla("S", 500)
     j.tecla_hasta_log("Space", r"hub: combate nativo", 4, 4)
-    time.sleep(7)
+    dormir(7)
     j.captura("a0_presentacion")                        # sin HUD del juego: tampoco el del modo
-    time.sleep(13)                                      # pasa la presentacion: HUD del juego a la vista
+    dormir(13)                                      # pasa la presentacion: HUD del juego a la vista
     j.captura("a_hud")
-    time.sleep(3)
+    dormir(3)
     j.captura("b_hud")
     j.log(r"combate \d ganado|rpg: fin de", 60)        # (una partida a medias sigue por el 2 o el 3: fin)
-    time.sleep(6)
+    dormir(6)
     j.captura("c_entre")
     if par.get("estilo") == "1":                      # RB (tecla 3): otro estilo para el combate siguiente y A
         j.tecla("3", 1500)
         j.log(r"heroe: estilo \d+ para el combate", 10)
         j.captura("d_estilo")
         j.tecla_hasta_log("Space", r"hub: combate nativo", 4, 6)
-        time.sleep(20)
+        dormir(20)
         j.captura("e_combate2")
         j.log(r"heroe: estilo \d+ \(", 30)
 
@@ -1772,7 +2129,7 @@ def _r6_pantallas(j, par):
     # HUB > Supervivencia/Kumite > Simulacion/Torneo de 4 (su primera pantalla); que=abyss: HUB > Torre > Abyss, gana
     # el primer piso (ring out) y captura las cartas.
     que = par.get("que", "entre")
-    time.sleep(3)
+    dormir(3)
     if que in ("entre", "derrota", "fin"):
         j.captura(f"a_{que}")
         return
@@ -1791,7 +2148,7 @@ def _r6_pantallas(j, par):
         j.tecla_hasta_log("Space", r"hub: combate nativo", 4, 4)
         j.log(r"rival fuera del ring", 90)
         j.log(r"hub: fin del combate nativo", 40)
-        time.sleep(6)
+        dormir(6)
         j.captura("c_cartas")
 
 
@@ -1802,7 +2159,7 @@ def _r8_limite(j, par):
     # --par clave=0x7D2: en el modo libre del minijuego de IW (P4; su campo si esta instalado), tecla W por defecto.
     import struct as _st
     j.log(r"iwmini: salida puesta" if par.get("clave") else r"tag: empieza un combate", 90)
-    time.sleep(1)
+    dormir(1)
 
     def f(a):
         b = leer(j.h, GBASE + a, 4)
@@ -1818,7 +2175,7 @@ def _r8_limite(j, par):
         b = leer(j.h, GBASE + 0x823D6CF4, 4)
         mgr = _st.unpack(">I", b)[0] if b else 0
         if not mgr:
-            time.sleep(0.05)
+            dormir(0.05)
             continue
         if not lineas:                                # camara: ojo +0x190, objetivo +0x1A0, fov +0x1C4 y vecinos
             lineas.append("camara mgr+0x180..0x1E0: " + " ".join("%.2f" % f(mgr + o) for o in range(0x180, 0x1E0, 4)))
@@ -1833,7 +2190,7 @@ def _r8_limite(j, par):
         if flag and aviso is None:
             aviso = lineas[-1]
             j.captura("b_fuera")
-        time.sleep(0.05)
+        dormir(0.05)
     j.captura("a_lejos")
     res = "radio maximo: jugador %.1f, rival %.1f; aviso de fuera del ring: %s" % (maxr[0], maxr[1], aviso)
     (j.run / "limite.txt").write_text("\n".join([res] + lineas), encoding="utf-8")
@@ -1850,12 +2207,12 @@ def _r14_botones(j, par):
         for k in ("L", "P", "Semicolon", "Quote", "1", "3", "Q", "E", "W", "D", "S", "A", "Shift+Up", "Shift+Right"):
             j.tecla(k + " 150", 500)
         return
-    time.sleep(4)
+    dormir(4)
     j.captura("b_iconos")
-    time.sleep(6)
+    dormir(6)
     j.captura("c_iconos")
     j.log(r"r14: fin: ", int(par.get("seg", "240")))   # 0x7DA (10 rondas) tarda ~4 min: --par seg=420
-    time.sleep(1.5)
+    dormir(1.5)
     j.captura("d_fin")
     j.log(r"r14: resultado ", 30)
     j.log(r"iwmini: prueba: resultado superado", 30)
@@ -1866,7 +2223,7 @@ def _r12_vuelo(j, par):
     # serie): piloto que gira hacia el punto de control mas cercano (y luego la meta) con R1 si el medidor lo permite.
     j.log(r"iwmini: prueba: empieza", 90)
     j.log(r"r12: empieza el vuelo", 90)
-    time.sleep(1.5)
+    dormir(1.5)
     j.captura("a_salida")
     if par.get("auto", "1") != "1":                   # a mano: palanca arriba y a la derecha (W / D)
         j.tecla("W 4000", 4200)
@@ -1880,13 +2237,13 @@ def _r12_vuelo(j, par):
         j.captura("e_botones")
         j.log(r"r12: \(", 10)
         return
-    time.sleep(5)
+    dormir(5)
     j.captura("b_vuelo")
     j.log(r"r12: punto de control", 60)
-    time.sleep(0.3)
+    dormir(0.3)
     j.captura("c_control")
     j.log(r"r12: fin \(", 240)
-    time.sleep(1.0)
+    dormir(1.0)
     j.captura("d_fin")
     j.log(r"r12: resultado ", 60)
     j.log(r"iwmini: prueba: resultado superado", 30)
@@ -1955,7 +2312,8 @@ ESCENARIOS = {
                                "DBZ3_PS2_GAMES": r"D:\DBZ3HD\ps2_games"}, _iw_misiones),
     "r2_nave": ("Pasarela > Nave de Babidi de B2 (ISO del jugador): menu de pruebas, prueba III, combate, Kili "
                 "(--par prueba=0..3: las cuatro pruebas con su duracion real)",
-                lambda p: dict({"DBZ3_TEST_MISIONES": "5,reset", "DBZ3_PS2_GAMES": r"D:\DBZ3HD\ps2_games"},
+                lambda p: dict({"DBZ3_TEST_MISIONES": "5,reset", "DBZ3_PS2_GAMES": r"D:\DBZ3HD\ps2_games",
+                                "DBZ3_TEST_NAVE_TIEMPO": p.get("tiempo", "6"), "DBZ3_TEST_NAVE_TODO": "1"},
                                **({"DBZ3_TEST_NAVE_PRUEBA": p["prueba"]} if "prueba" in p else {})), _r2_nave),
     "r2_fase1": ("Pasarela > Dragon World de B2: la fase I entera en automatico (presentacion, combates, sucesos, fin)",
                  lambda p: {"DBZ3_TEST_MISIONES": "1,auto,reset", "DBZ3_TEST_RINGOUT": "1",
@@ -2033,13 +2391,584 @@ ESCENARIOS = {
 }
 
 
+# ---------- X0e: saltar a una escena (DBZ3_TEST_ESCENA) ----------
+# Sintaxis: <juego>:<escena>[:<parametro>] ; varias separadas por "|" (cada una en su partida).
+#   b2:fase3        tablero de B2, fase III (auto)     b2:nave[:prueba2]   Nave de Babidi      b2:tablero  b2:deseo
+#   iw:mini:0x7D9   minijuego de IW por clave          iw:mision:5         Misiones del Dragon desde la 5
+#   satan:ronda2    Leyenda de Mr. Satan desde el paso 2                   video:FD01B         video SFD de IW
+#   batalla:0,7,2   combate nativo con esos ids        menu                menu principal (control)
+# Cada salto da el env de los ganchos DBZ3_TEST_* que ya existen y el log que prueba haber llegado. `:evento<N>`
+# (b2) se acepta pero el juego aun no tiene gancho para saltar a un evento de guion: [H], se avisa y se ignora.
+_PS2 = {"DBZ3_PS2_GAMES": r"D:\DBZ3HD\ps2_games"}
+
+
+def _salto_b2(r, extra):
+    m = re.fullmatch(r"fase(\d+)", r[0]) if r else None
+    if m:
+        n = int(m.group(1))
+        if not 1 <= n <= 9:
+            raise SystemExit(f"b2:fase{n}: la fase va de 1 a 9")
+        pre = "1,auto,reset" + (f",desde={n - 1}" if n > 1 else "")
+        return dict(_PS2, DBZ3_TEST_MISIONES=pre, DBZ3_TEST_RINGOUT="1"), rf"tablero b2: fase {n} leida"
+    if r and r[0] == "nave":
+        env = dict(_PS2, DBZ3_TEST_MISIONES="5,reset")
+        for x in extra:
+            m = re.fullmatch(r"prueba(\d)", x)
+            if m:
+                env["DBZ3_TEST_NAVE_PRUEBA"] = m.group(1)
+        return env, r"nave: entrar"
+    if r and r[0] == "tablero":
+        return dict(_PS2, DBZ3_TEST_MISIONES="1,reset"), r"tablero b2: fase 1 leida"
+    if r and r[0] == "deseo":
+        return dict(_PS2, DBZ3_TEST_MISIONES="1,reset", DBZ3_TEST_B2_DESEO="1", DBZ3_TEST_SHEN_ANIM="2"), r"tablero b2: fase 1 leida"
+    raise SystemExit(f"b2:{':'.join(r)}: usa fase<1-9>, nave[:prueba<0-3>], tablero o deseo")
+
+
+def resolver_escena(spec):
+    """'b2:fase3:evento12' -> (env, regex de llegada, aviso). SystemExit si no se entiende (antes de tocar el juego)."""
+    partes = [p.strip() for p in spec.split(":") if p.strip()]
+    if not partes:
+        raise SystemExit("escena vacia")
+    juego, resto = partes[0].lower(), partes[1:]
+    aviso = ""
+    extra = [x for x in resto if re.fullmatch(r"evento\d+", x)]
+    resto = [x for x in resto if x not in extra]
+    if juego == "b2":
+        env, rx = _salto_b2(resto, [])
+        env["DBZ3_TEST_B2_ORDENES"] = "1"             # el port escribe cada orden ejecutada (comparar_modo.py b2)
+        if extra:                                     # evento<N> = guion N de la fase, ademas del suyo (gancho de pasarela_b2.cpp)
+            env["DBZ3_TEST_B2_EVENTO"] = extra[0][6:]
+        for x in resto:                               # parametros sueltos (prueba2) para nave
+            m = re.fullmatch(r"prueba(\d)", x)
+            if m:
+                env["DBZ3_TEST_NAVE_PRUEBA"] = m.group(1)
+        return env, rx, aviso
+    if juego == "iw" and resto[:1] == ["mini"] and len(resto) == 2:
+        if not re.fullmatch(r"0x[0-9A-Fa-f]+", resto[1]):
+            raise SystemExit(f"iw:mini:<clave>: la clave es hexadecimal (0x7D9), recibido {resto[1]}")
+        return dict(_PS2, DBZ3_TEST_IWMINI=resto[1] + ",auto"), r"iwmini: salida puesta", aviso
+    if juego == "iw" and resto[:1] == ["mision"] and len(resto) == 2 and resto[1].isdigit():
+        return (dict(_PS2, DBZ3_TEST_MISIONES=f"4,reset,desde={resto[1]}", DBZ3_TEST_RINGOUT="1"),
+                r"misiones: iw(?: \(\d+ pasos\)|: mapa de Dragon Mission)", aviso)
+    if juego == "satan":
+        m = re.fullmatch(r"ronda(\d+)", resto[0]) if resto else None
+        if not m:
+            raise SystemExit("satan:ronda<N> (N=0 es el titulo)")
+        n = int(m.group(1))
+        return (dict(_PS2, DBZ3_TEST_PASARELA=f"auto,seg=8,desde={n}", DBZ3_TEST_RINGOUT="1"),
+                rf"pasarela: paso {n + 1}/\d+", aviso)
+    if juego == "video" and len(resto) == 1:
+        return dict(_PS2, DBZ3_TEST_VIDEO=resto[0]), r"video|sfd", aviso
+    if juego == "batalla":
+        ids = resto[0] if resto else "0,7,2"
+        return {"DBZ3_TEST_BATTLE": ids, "DBZ3_TEST_RINGOUT": "1"}, r"hub: combate nativo|battle", aviso
+    if juego == "menu":
+        return {}, "", aviso
+    if juego == "du" and resto == ["mapa"]:
+        return {}, "", "du:mapa: usa el escenario du_mapa (--instantanea freezer_cap2)"
+    if juego == "heroe" and resto == ["tecnicas"]:
+        return {"DBZ3_TEST_HEROE_TEC": "1", "DBZ3_TEST_RINGOUT": "1"}, "", "heroe:tecnicas: usa el escenario heroe_tecnicas"
+    raise SystemExit(f"escena desconocida '{spec}': b2:fase<N>|b2:nave|b2:tablero|b2:deseo, iw:mini:<clave>, "
+                     f"iw:mision:<N>, satan:ronda<N>, video:<id>, batalla:<ids>, menu")
+
+
+# X0g: fin de cada escena (el log que dice "acabo") y firma (lineas del log que deben salir IGUALES a x1, x2 y x4).
+FIN_ESCENA = {"b2:fase": r"tablero b2: guiones terminados",
+              "iw:mini": r"iwmini: (META|TIEMPO|Bubbles atrapado|Piccolo te alcanza)",
+              "batalla": r"hub: fin del combate nativo",
+              "satan": r"pasarela: paso \d+/\d+ \(charla",
+              "b2:nave": r"nave: (fin|resultado)|hub: fin del combate nativo",
+              "b2:tablero": r"tablero b2: guiones terminados"}
+FIRMA_ESCENA = {"b2:fase": r"tablero b2: (escena|script \d+|orden ejecutada|guiones terminados|fase)",
+                "iw:mini": r"iwmini: (curso|salida puesta|entrada acabada|aro \d+ cogido|bebida|META|TIEMPO|final de IW)",   # sin las lineas "jugador (...)": son muestras por reloj
+                "batalla": r"dbz3 (hub: combate nativo|tag: combate acabado|hub: fin del combate nativo)",
+                "b2:nave": r"nave: (pantalla|eleccion|menu|prueba \d+:|voz de Babidi|musica)|hub: (combate nativo|fin del combate)",
+                "b2:tablero": r"tablero b2: (escena|script \d+|orden ejecutada|guiones terminados|fase)",
+                "satan": r"pasarela: (paso \d+/\d+|prologo|titulo)|hub: (combate nativo|fin del combate)"}
+
+
+def _clave_escena(spec):
+    s = spec.lower().split("|")[0]
+    for k in sorted(FIN_ESCENA, key=len, reverse=True):
+        if s.startswith(k):
+            return k
+    return None
+
+
+def _escena_env(p):
+    spec = p.get("escena") or os.environ.get("DBZ3_TEST_ESCENA", "")
+    return resolver_escena(spec.split("|")[0])[0] if spec else {}
+
+
+def _escena(j, par):
+    spec = (par.get("escena") or os.environ.get("DBZ3_TEST_ESCENA", "")).split("|")[0]
+    _, rx, aviso = resolver_escena(spec)
+    if aviso:
+        j.info(aviso)
+    if spec in ("du:mapa", "heroe:tecnicas"):                # escenas que necesitan pasos de menu
+        return {"du:mapa": _du_mapa, "heroe:tecnicas": _heroe_tecnicas}[spec](j, par)
+    t_log = time.time()
+    if rx:
+        j.log(rx, float(par.get("espera", "60")))
+    # tiempo desde el lanzamiento hasta que el log prueba que la escena esta puesta (lo que pide X0e: < 30 s)
+    j.t_escena = time.time() - j.t0
+    j.info(f"escena '{spec}' puesta a los {j.t_escena:.1f} s del lanzamiento")
+    if par.get("fin") == "1":                         # X0g: dejarla correr hasta su final (prueba de igualdad)
+        k = _clave_escena(spec)
+        if not k:
+            raise Fallo(f"'{spec}' no tiene fin definido (FIN_ESCENA)")
+        j.log(FIN_ESCENA[k], float(par.get("espera_fin", "240")))
+        j.t_fin_escena = time.time() - j.t0
+        dormir(0.5)
+        return
+    if par.get("teclas"):                             # X0: el MISMO guion de teclas que el original (comparar_modo.py)
+        import comparar_modo as CM
+        if spec.startswith("b2:"):                    # lleva el tablero al estado del savestate 3 del original: pieza por elegir
+            j.tecla("Space", 2500)
+            j.log(r"tablero b2: escena T155", 20)
+            j.tecla("Backspace", 1500)
+            j.log(r"tablero b2: escena M207", 30)
+            dormir(1.5)
+            j.tecla_hasta_log("Space", r"tablero b2: script \d+: eleccion de \d+ aliado", intentos=10, seg=4)
+            j.tecla_hasta_log("Space", r"tablero b2: aliado elegido", intentos=4, seg=3)
+            j.log(r"tablero b2: guiones terminados", 60)
+        t_teclas = time.time()
+        for k, v in CM.traducir_teclas(par["teclas"]):
+            dormir(v) if k == "esperar" else j.tecla(k, 150)
+        j.info(f"guion de teclas repetido en {time.time() - t_teclas:.1f} s")
+        time.sleep(max(0.0, float(par.get("quieto", "1.5")) - (time.time() - t_teclas)))
+    else:
+        dormir(float(par.get("quieto", "1.5")))
+    if par.get("min_lum"):                            # X1: escenas que salen de un fundido a negro (Satan)
+        j.captura_estable("escena", intentos=14, min_lum=float(par["min_lum"]))
+    else:
+        j.captura("escena")
+
+
+ESCENARIOS["escena"] = ("X0e: salta a una escena (--par escena=b2:fase3|iw:mini:0x7D9|satan:ronda2|batalla:0,7,2|menu)",
+                        _escena_env, _escena)
+
+
+def escenas(spec, copias, env_extra=()):
+    """Una partida por escena (las de 'a|b|c'), repartidas entre las copias; tabla con el tiempo de salto."""
+    lista = [s for s in spec.split("|") if s.strip()]
+    for s in lista:
+        resolver_escena(s)                            # valida todas antes de lanzar nada
+    libres = queue.Queue()
+    n1 = _es_n1(env_extra)
+    for c in copias[:max(1, min(len(copias), MAX_PARALELO_N1 if n1 else MAX_PARALELO))]:
+        libres.put(c)
+
+    def una(s):
+        c = libres.get()
+        try:
+            r = correr(c, "escena", env_extra, None, {"escena": s})
+            r["escena"] = s
+            return r
+        except (Exception, SystemExit) as e:
+            return {"ok": False, "nombre": f"{c}/escena", "dur": 0.0, "msg": str(e), "run": None, "escena": s}
+        finally:
+            libres.put(c)
+
+    with ThreadPoolExecutor(libres.qsize()) as ex:
+        res = list(ex.map(una, lista))
+    print("\n== SALTO A ESCENA ==", flush=True)
+    for r in res:
+        print(f"{'PASS' if r['ok'] else 'FAIL'}  {r['escena']:<24} salto {r.get('t_escena') or 0:5.1f} s  "
+              f"{r['msg'][:90]}", flush=True)
+    return all(r["ok"] for r in res)
+
+
+# ---------- X0g: igualdad del turbo y FPS por numero de instancias (todo en N1: oculto, sin audio, x1) ----------
+_PREFIJO = re.compile(r"\[[^\]]*\] \[[^\]]*\] \[[^\]]*\] \[t\d+\] (.*)")
+
+
+def _lineas_log(run):
+    txt = (Path(run) / "dbz3.log").read_text(encoding="utf-8", errors="replace")
+    for l in txt.splitlines():
+        m = _PREFIJO.match(l)
+        yield (m.group(1) if m else l), l
+
+
+def firma(run, escena):
+    """Lineas del log de la escena que deben ser iguales a cualquier turbo (FIRMA_ESCENA), sin hora ni hilo."""
+    k = _clave_escena(escena)
+    rx = re.compile(FIRMA_ESCENA[k])
+    return [s for s, _ in _lineas_log(run) if rx.search(s)]
+
+
+def _hora(linea):
+    m = re.match(r"\[(\d{4}-\d\d-\d\d) (\d\d):(\d\d):(\d\d\.\d+)\]", linea)
+    return int(m.group(2)) * 3600 + int(m.group(3)) * 60 + float(m.group(4)) if m else None
+
+
+def fps_combate(run, ini=r"hub: combate nativo", fin=r"hub: fin del combate nativo"):
+    """(FPS medianos del hilo de GPU dentro del combate, segundos de pared del combate, n de medidas)."""
+    t_ini = t_fin = None
+    medidas = []
+    for s, l in _lineas_log(run):
+        h = _hora(l)
+        if h is None:
+            continue
+        if t_ini is None and re.search(ini, s):
+            t_ini = h
+        elif t_ini is not None and t_fin is None and re.search(fin, s):
+            t_fin = h
+        m = re.search(r"\[gpu\].*perf fps=([\d.]+)", l)
+        if m and t_ini is not None and t_fin is None:
+            medidas.append(float(m.group(1)))
+    if t_ini is None or t_fin is None:
+        return None, None, 0
+    medidas.sort()
+    return (medidas[len(medidas) // 2] if medidas else None), t_fin - t_ini, len(medidas)
+
+
+def _lote(escenas, copias, env, par_extra=None):
+    """Una partida por (escena, copia), todas a la vez; devuelve los resultados en el mismo orden."""
+    def una(a):
+        esc, cop = a
+        try:
+            return correr(cop, "escena", env, None, dict({"escena": esc}, **(par_extra or {})))
+        except (Exception, SystemExit) as e:
+            return {"ok": False, "nombre": f"{cop}/escena", "msg": str(e), "run": None, "dur": 0.0}
+    with ThreadPoolExecutor(len(copias)) as ex:
+        return list(ex.map(una, list(zip(escenas, copias))))
+
+
+_NUM = re.compile(r"-?\d+(?:\.\d+)?")
+TOL_TIEMPO = 1.5          # s: los cronometros del juego usan tambien reloj de pared; el resto de la linea debe ser identico
+
+
+def comparar_firmas(a, b, tol=TOL_TIEMPO):
+    """('igual' | 'tolerancia' | 'distinto', max diferencia numerica, primeras diferencias). Misma estructura de lineas;
+    'tolerancia' = solo cambian numeros y ninguno mas de tol (cronometros)."""
+    if len(a) != len(b):
+        return "distinto", None, [f"{len(a)} lineas frente a {len(b)}"]
+    estado, mx, difs = "igual", 0.0, []
+    for x, y in zip(a, b):
+        if x == y:
+            continue
+        if _NUM.sub("#", x) != _NUM.sub("#", y):
+            return "distinto", None, [f"{x[:90]}  <>  {y[:90]}"]
+        # solo los numeros con decimales son cronometros; un entero distinto (lado 1 / lado 2) es una diferencia real
+        d = max((abs(float(p) - float(q)) if ('.' in p or '.' in q) else (0.0 if p == q else 1e9))
+                for p, q in zip(_NUM.findall(x), _NUM.findall(y)))
+        mx = max(mx, d)
+        difs.append(f"{x[:90]}  <>  {y[:90]}")
+        estado = "tolerancia" if d <= tol and estado != "distinto" else "distinto"
+        if estado == "distinto":
+            return "distinto", mx, difs[:3]
+    return estado, mx, difs[:3]
+
+
+def igualdad(escenas, turbos, copias):
+    """Mismas escenas hasta su fin a x1, x2, x4...: la firma del log tiene que salir identica."""
+    ref, out = {}, []
+    for T in turbos:
+        env = ["DBZ3_TEST_OCULTO=1", f"DBZ3_TEST_TURBO={T}"]
+        res = _lote(escenas, copias[:len(escenas)], env, {"fin": "1"})
+        for esc, r in zip(escenas, res):
+            if not r["ok"] or not r.get("run"):
+                out.append((T, esc, "FALLO", r["msg"][:100], None))
+                continue
+            sig = firma(r["run"], esc)
+            if T == turbos[0]:
+                ref[esc] = sig
+            est, mx, difs = comparar_firmas(sig, ref[esc])
+            seg = (r["t_fin"] - r["t_escena"]) if r.get("t_fin") and r.get("t_escena") else None
+            out.append((T, esc, {"igual": "IGUAL", "tolerancia": "TOLERANCIA", "distinto": "DISTINTO"}[est],
+                        f"{len(sig)} lineas" + (f", max dif {mx:.2f}" if mx else "") + (f" | {difs[0]}" if difs else ""),
+                        seg))
+    print("\n== IGUALDAD DEL TURBO ==", flush=True)
+    for T, esc, v, d, seg in out:
+        print(f"x{T:<2} {esc:<20} {v:<9} escena->fin {seg if seg is None else round(seg, 1)} s  {d}", flush=True)
+    (PRUEBAS / f"{ts()}_igualdad.txt").write_text("\n".join(f"x{T} {e} {v} {s} {d}" for T, e, v, d, s in out), encoding="utf-8")
+    return all(v in ("IGUAL", "TOLERANCIA") for _, _, v, _, _ in out)
+
+
+SIG_GENERICA = r"dbz3 (heroe|tag|hub|nave|tablero b2|pasarela|rpg|campaigns?): (?!prueba: estado del combate)"   # el estado final depende de cuando se cierra
+
+
+def _estructura(x):
+    """Solo la estructura del suceso: sin direcciones del guest (8 hex), ni decimales (posiciones, tiempos), ni ticks."""
+    x = re.sub(r"\(\d+ ticks de carga\)", "(N ticks)", x)
+    x = re.sub(r"\b[0-9A-F]{8}\b", "HEX", x)
+    return re.sub(r"-?\d+\.\d+", "F", x)
+
+
+def igualdad_esc(items, turbos, copias, firma_rx=SIG_GENERICA, estructura=False, hasta=None, sin=None):
+    """X0h: igualdad del turbo para escenarios por nombre o .toml ('esc[@instantanea]'): PASS en todos los turbos y la
+    misma firma de log (lineas de firma_rx, sin hora). Para las familias que no son una 'escena' (Heroe, Tag Team...)."""
+    rx = re.compile(firma_rx)
+    ref, out = {}, []
+    for T in turbos:
+        env = ["DBZ3_TEST_OCULTO=1", f"DBZ3_TEST_TURBO={T}"]
+
+        def una(a):
+            it, cop = a
+            esc, _, inst = it.partition("@")
+            try:
+                return correr(cop, esc, env, inst or None, {})
+            except (Exception, SystemExit) as e:
+                return {"ok": False, "nombre": f"{cop}/{esc}", "msg": str(e), "run": None, "dur": 0.0}
+        with ThreadPoolExecutor(len(items)) as ex:
+            res = list(ex.map(una, list(zip(items, copias[:len(items)]))))
+        for it, r in zip(items, res):
+            if not r["ok"] or not r.get("run"):
+                out.append((T, it, "FALLO", r["msg"][:100], r.get("dur")))
+                continue
+            sig = [_estructura(x) if estructura else re.sub(r"\b\d+ ms\b", "N ms", re.sub(r"\(\d+ ticks de carga\)", "(N ticks de carga)", x)) for x, _ in _lineas_log(r["run"]) if rx.search(x)]   # la carga del modelo es de pared
+            if sin:      # lineas que dependen de cuantas teclas hicieron falta (p. ej. 'opcion N' del menu)
+                sig = [x for x in sig if not re.search(sin, x)]
+            if hasta:    # solo hasta el primer suceso que marca el final de lo determinista (el resto depende de la IA del COM)
+                for k, x in enumerate(sig):
+                    if re.search(hasta, x):
+                        sig = sig[:k + 1]
+                        break
+            ref.setdefault(it, sig)    # la primera corrida que acaba bien es la referencia
+            est, mx, difs = comparar_firmas(sig, ref[it])
+            out.append((T, it, {"igual": "IGUAL", "tolerancia": "TOLERANCIA", "distinto": "DISTINTO"}[est],
+                        f"{len(sig)} lineas" + (f", max dif {mx:.2f}" if mx else "") + (f" | {difs[0]}" if difs else ""),
+                        r.get("dur")))
+    print("\n== IGUALDAD DEL TURBO (escenarios) ==", flush=True)
+    for T, it, v, d, dur in out:
+        print(f"x{T:<2} {it:<28} {v:<9} dur {dur if dur is None else round(dur, 1)} s  {d}", flush=True)
+    (PRUEBAS / f"{ts()}_igualdad_esc.txt").write_text("\n".join(f"x{T} {e} {v} {s} {d}" for T, e, v, d, s in out), encoding="utf-8")
+    return all(v in ("IGUAL", "TOLERANCIA") for _, _, v, _, _ in out)
+
+
+def medir_fps(ns, turbo, escena, copias):
+    """FPS del hilo de GPU en combate con n juegos a la vez (todos oculto, sin audio, x1)."""
+    filas = []
+    for n in ns:
+        env = ["DBZ3_TEST_OCULTO=1", f"DBZ3_TEST_TURBO={turbo}"]
+        res = _lote([escena] * n, copias[:n], env, {"fin": "1"})
+        v = [fps_combate(r["run"]) for r in res if r.get("run")]
+        fps = [x[0] for x in v if x[0]]
+        seg = [x[1] for x in v if x[1]]
+        filas.append((n, sum(r["ok"] for r in res), fps, seg))
+        print(f"  n={n} turbo=x{turbo}: ok {filas[-1][1]}/{n}  fps por juego {fps}  combate {[round(s, 1) for s in seg]} s",
+              flush=True)
+    print("\n== FPS POR INSTANCIAS (turbo x%d, %s) ==" % (turbo, escena), flush=True)
+    for n, ok, fps, seg in filas:
+        print(f"{n} juegos: ok {ok}/{n}  FPS medio {sum(fps) / len(fps) if fps else 0:6.1f}  minimo {min(fps) if fps else 0:6.1f}  "
+              f"total {sum(fps):6.1f}  combate {sum(seg) / len(seg) if seg else 0:5.1f} s", flush=True)
+    return filas
+
+
+AJUSTES = {   # X1: variantes para medir el coste de una opcion marcada beta/experimental (misma escena, mismo PC)
+    "base": 'dbz3_relight=0;dbz3_present_effect="fsr"',
+    "relight1": 'dbz3_relight=1;dbz3_present_effect="fsr"',
+    "relight2": 'dbz3_relight=2;dbz3_present_effect="fsr"',
+    "fsr3": 'dbz3_relight=0;dbz3_present_effect="fsr3"',
+}
+
+
+def medir_ajustes(nombres, copia="x1_hub", instantanea="freezer_cap2", escena="batalla"):
+    """FPS / p1 / p99 del hilo de GPU en el combate de `escena` con cada ajuste de AJUSTES (uno tras otro: 1 juego)."""
+    out = {}
+    for n in nombres:
+        os.environ["DBZ3_TEST_CFG"] = AJUSTES[n]
+        try:
+            r = correr(copia, escena, (), instantanea, {})
+        finally:
+            os.environ.pop("DBZ3_TEST_CFG", None)
+        fps, p1, p99 = [], [], []
+        t_ini = t_fin = None
+        for sl, l in _lineas_log(r["run"]):
+            h = _hora(l)
+            if h is None:
+                continue
+            if t_ini is None and re.search(r"hub: combate nativo", sl):
+                t_ini = h
+            elif t_ini is not None and t_fin is None and re.search(r"hub: fin del combate nativo", sl):
+                t_fin = h
+            m = re.search(r"\[gpu\].*perf fps=([\d.]+) p1=([\d.]+) p99_ms=([\d.]+)", l)
+            if m and t_ini is not None and t_fin is None:
+                fps.append(float(m[1])); p1.append(float(m[2])); p99.append(float(m[3]))
+        med = lambda v: sorted(v)[len(v) // 2] if v else None
+        out[n] = dict(ok=r["ok"], n=len(fps), fps=med(fps), p1=med(p1), p99_ms=med(p99), min_fps=min(fps) if fps else None)
+        print(f"AJUSTE {n}: {out[n]}", flush=True)
+    os.environ["DBZ3_TEST_CFG"] = AJUSTES["base"]    # no dejar el ultimo ajuste (p. ej. fsr3) puesto en la copia
+    try:
+        escribir_toml(BASE / copia / "dbz3_user.toml")
+    finally:
+        os.environ.pop("DBZ3_TEST_CFG", None)
+    return out
+
+
+def _datos_recarga(j, par):
+    # X0d: el juego lee res\datos\*.toml y los recarga al cambiar (en pruebas) o con F5. Escribe un fichero de prueba en
+    # la copia con fov=0.5, lo cambia a 0.9 y a 1.3 sin reiniciar y mide cuanto tarda el juego en verlo (log).
+    f = j.dest / "res" / "datos" / "prueba_datos.toml"
+    f.parent.mkdir(parents=True, exist_ok=True)
+    out = {}
+    for valor in ("0.5", "0.9", "1.3"):
+        t0 = time.time()
+        f.write_text(f"[camara]\nfov = {valor}\n", encoding="utf-8")
+        j.log(rf"datos: prueba: prueba_datos camara\.fov = {re.escape(valor)}\b", 15)
+        out[valor] = time.time() - t0
+        j.info(f"fov={valor} visto en el juego tras {out[valor]:.2f} s sin reiniciar")
+    if par.get("f5") == "1":                              # tecla F5 (bind de SDL del juego): informativo, no falla
+        j.tecla("F5", 300)
+        try:
+            j.log(r"datos: F5: \d+ ficheros recargados", 3)
+            j.info("F5 de pruebas (dbz3_datos.req) recibido por el juego")
+        except Fallo:
+            j.info("F5: la tecla virtual de pruebas NO llega al bind de SDL [H]: probar F5 a mano en una ventana normal")
+    (j.run / "datos_recarga.txt").write_text("".join(f"fov {k}: {v:.2f} s\n" for k, v in out.items()), encoding="utf-8")
+
+
+ESCENARIOS["datos_recarga"] = ("X0d: un cambio en res\\datos llega al juego en marcha sin recompilar (--par f5=1 prueba tambien F5)",
+                               lambda p: {"DBZ3_TEST_DATOS": "prueba_datos:camara.fov"}, _datos_recarga)
+
+
+def _forma_ltrt(j, par):
+    # X1: selector de forma inicial LT/RT (E = RT en el teclado del juego). En la rueda, "D+E" mueve el cursor (el
+    # selector solo actua con la rueda en uso, <250 ms) y pulsa RT: debe salir el rotulo "Forma inicial" en el
+    # lado izquierdo. Medida: el recuadro del rotulo cambia mucho mas que entre dos capturas sin tocar nada.
+    _ir_a_rueda(j)
+    dormir(2)
+    a1 = j.captura("a1_sin_tocar")
+    a2 = j.captura("a2_sin_tocar")
+    pasos = int(par.get("rt", "1"))
+    ok = []
+    for i in range(pasos):
+        j.tecla("A+E" if i % 2 == 0 else "D+E", 120)
+        ok.append(j.captura(f"b{i + 1}_rt"))
+    j.info(f"capturas: {[Path(x).name for x in [a1, a2] + ok]}")
+    ref = _recuadro(a1, ZONA_FORMA)
+    ruido = _dif(ref, _recuadro(a2, ZONA_FORMA))
+    difs = [_dif(ref, _recuadro(x, ZONA_FORMA)) for x in ok]
+    j.info(f"diferencia del recuadro: ruido {ruido:.2f}, tras RT {[round(d, 2) for d in difs]}")
+    if not any(d > max(3 * ruido, 4.0) for d in difs):
+        raise Fallo(f"el rotulo de forma inicial no aparece tras RT (ruido {ruido:.2f}, medidas {difs})")
+
+
+ZONA_FORMA = (0.16, 0.305, 0.36, 0.345)   # fraccion del lienzo 1280x720: la linea "Normal form" / "Starting form N -> M" de la rueda
+
+
+def _recuadro(png, z):
+    im = Image.open(png).convert("L")
+    w, h = im.size
+    return im.crop((int(z[0] * w), int(z[1] * h), int(z[2] * w), int(z[3] * h)))
+
+
+def _dif(a, b):
+    from PIL import ImageChops
+    return sum(ImageChops.difference(a, b).getdata()) / (a.size[0] * a.size[1])
+
+
+ESCENARIOS["forma_ltrt"] = ("X1: LT/RT en la rueda muestra el rotulo de forma inicial (--instantanea freezer_cap2)",
+                            lambda p: {}, _forma_ltrt)
+
+
+def _musica_combate(j, par):
+    # X1: con dbz3_musica_combate = aleatoria[:fuente] el combate arranca una pista de la copia del jugador y al acabar
+    # la corta (log "dbz3 musica"). Sin audio real (la prueba va silenciada): se mide el log, no el sonido.
+    _batalla(j, par)
+    t = j.texto_log()
+    m = re.search(r"dbz3 musica: combate: (.+)", t)
+    if not m:
+        raise Fallo("el combate no arranco ninguna pista de musica (log 'dbz3 musica: combate:')")
+    if "no hay pistas" in m[1]:
+        raise Fallo(f"sin pistas para la fuente pedida: {m[1]}")
+    j.info(f"pista elegida: {m[1][:100]}")
+    # DBZ3_AUDIO_VERIFICA (pasarela_b1.cpp): decodifica la pista elegida y apunta su RMS por segundo (winmm no entra en el volcado)
+    j.log(r"VERIFICA musica .*RMS por segundo", 20)
+    v = re.findall(r"VERIFICA musica (\S+) (\d+): ([\d.]+) s a (\d+) Hz, RMS por segundo:([ \d]*)", j.texto_log())
+    if not v:
+        raise Fallo("la pista elegida no se pudo decodificar (VERIFICA sin datos)")
+    rms = [int(x) for x in v[-1][4].split()]
+    j.info(f"audio verificado: {v[-1][0]} #{v[-1][1]}, {v[-1][2]} s a {v[-1][3]} Hz, RMS/s {rms}")
+    if not rms or max(rms) < 200:
+        raise Fallo(f"la pista elegida suena casi en silencio (RMS {rms})")
+    j.log(r"dbz3 musica: fin del combate: musica cortada", 5)
+
+
+def _cfg_musica(p):
+    os.environ["DBZ3_TEST_CFG"] = f'dbz3_musica_combate="aleatoria:{p.get("fuente", "b3")}"'
+    return {"DBZ3_TEST_BATTLE": "0,7,2", "DBZ3_TEST_RINGOUT": "1", "DBZ3_PS2_GAMES": str(BASE / "ps2_games"), "DBZ3_AUDIO_VERIFICA": "1"}
+
+
+ESCENARIOS["musica_combate"] = ("X1: musica de combate elegida (--par fuente=b3|b2|iw|b1): suena en el combate y se corta al acabar",
+                                _cfg_musica, _musica_combate)
+
+
+def _menu_rapido(j, par):
+    # X1: abre los ajustes rapidos con el mando (Back + Start = Tab + Return del teclado virtual) y captura la seccion
+    # SONIDO Y MANDO (LB/RB cambian de seccion: Q / E no, son los gatillos; se avanza con la tecla `seccion`).
+    dormir(2)
+    j.tecla("Tab+Return", 400)
+    dormir(1)
+    j.captura("a_menu_rapido")
+    for i in range(int(par.get("secciones", "3"))):
+        j.tecla(par.get("seccion", "3"), 600)
+    dormir(1)
+    j.captura("b_seccion")
+
+
+ESCENARIOS["menu_rapido"] = ("X1: abre el menu rapido (Back+Start) y captura (--par secciones=N seccion=<tecla LB/RB>)",
+                             lambda p: {"DBZ3_PS2_GAMES": str(BASE / "ps2_games")}, _menu_rapido)
+
+
+def _heroe_a_creacion(j):
+    dormir(2.5)
+    j.tecla("W", 1200)
+    j.tecla("Space", 3500)                              # HUB
+    for _ in range(5):                                  # tagteam .. kumite
+        j.tecla("S", 450)
+    j.tecla("Space", 2500)                              # selector de retos
+    for _ in range(3):                                  # kumite .. modo heroe
+        j.tecla("S", 700)
+    j.tecla("Space", 2500)                              # pantalla de creacion
+
+
+def _heroe_tecnicas(j, par):
+    # C2: Heroe > creacion > Movesets (DBZ3_TEST_HEROE_TEC=1 lo abre en la pestana Tecnicas) > equipar 2 cartas (A, derecha =
+    # hueco siguiente, S = carta siguiente, A) > B (confirma) > Empezar > el combate arranca con las tecnicas equipadas.
+    _heroe_a_creacion(j)
+    j.captura("a_creacion")
+    for _ in range(3):                                  # raza, cuerpo, apariencia -> fila Estilo/Moveset
+        j.tecla("S", 500)
+    j.tecla_hasta_log("Space", r"heroe: pantalla de movesets abierta", 3, 5)
+    j.captura("b_tecnicas")
+    j.tecla("Space", 700)                               # A: carta 1 al hueco 1
+    j.tecla("D", 500)                                   # hueco 2
+    j.tecla("S", 500)                                   # carta 2
+    j.tecla("Space", 700)
+    j.log(r"tecnica equipada: hueco 2", 5)
+    j.captura("c_equipadas")
+    j.tecla("Backspace", 1500)                          # B: confirmar y volver a la creacion
+    j.captura("d_vuelta")
+    for _ in range(4):                                  # aura, puntos, maestros, Empezar la mision
+        j.tecla("S", 450)
+    j.tecla_hasta_log("Space", r"hub: combate nativo", 4, 4)
+    j.log(r"heroe: tecnicas equipadas en el combate", int(par.get("espera", "40")))
+    dormir(2)
+    j.captura("e_combate")
+
+
+def _du_mapa(j, par):
+    # C2: Dragon Universe hasta el mapa (pantalla 8) y captura. Con --instantanea freezer_cap2 (el SMOKE la usa).
+    _du_continuar(j, dict(par, iter="0"))
+    dormir(1.5)
+    j.captura("mapa")
+
+
+ESCENARIOS["heroe_tecnicas"] = ("C2: Heroe > Movesets > Tecnicas: equipa 2 cartas y el combate las usa",
+                                lambda p: {"DBZ3_TEST_HEROE_TEC": "1", "DBZ3_TEST_RINGOUT": "1"}, _heroe_tecnicas)
+ESCENARIOS["du_mapa"] = ("C2: DU > Continuar hasta el mapa (pantalla 8) y captura (--instantanea freezer_cap2)",
+                         lambda p: {}, _du_mapa)
+
+
 def ejecutar_dsl(j, pasos):
     for p in pasos:
         v, *a = shlex.split(p)
         if v == "tecla":
             j.tecla(a[0].replace(":", " "), int(a[1]) if len(a) > 1 else 600)
         elif v == "esperar":
-            time.sleep(int(a[0]) / 1000)
+            dormir(int(a[0]) / 1000)
         elif v == "esperar_pantalla":
             j.esperar_pantalla([int(x) for x in a[0].split(",")], int(a[1]) if len(a) > 1 else 60)
         elif v == "captura":
@@ -2071,42 +3000,100 @@ def cargar_escenario(esc, par):
     return desc, fn, env_fn(par)
 
 
-def correr(copia, escenario, env_extra=(), instantanea=None, par=None):
+def correr(copia, escenario, env_extra=(), instantanea=None, par=None, forzar=False):
     with copia_en_uso(BASE / copia):
-        return _correr(copia, escenario, env_extra, instantanea, par)
+        return _correr(copia, escenario, env_extra, instantanea, par, forzar)
 
 
-def _correr(copia, escenario, env_extra=(), instantanea=None, par=None):
+# X0h: familias que pasaron `pruebas.py igualdad` (firma del log igual a x1): corren por defecto a turbo xN y ocultas
+# (plaza 3-8). Clave = escenario, o prefijo de la escena (batalla / satan / iw). Se amplian solo con igualdad medida.
+# Medido 23/10 (igualdad x1 vs xN, firma del log): batalla, satan, iw:mini, b2:fase1 y menu a x4; campana, du_continuar y
+# heroe_fichas (sus 7 comprobaciones) a x3; tag_swap a x3 (igual hasta el primer relevo, `igualdad-esc --estructura
+# --sin opcion --hasta "relevo 0 -> 1"`: lo posterior depende de la IA del COM y no es reproducible ni a x1). NO pasan:
+# campana/du_continuar/Heroe/tag_swap a x4 (la rueda del select no acepta la tecla), r2_nave (combate con IA; sin turbo).
+FAMILIAS_RAPIDAS = {"batalla": 4, "satan": 4, "iw": 4, "b2:fase": 4, "menu": 4, "campana": 3, "tag_swap": 3, "du_continuar": 3,
+                    "heroe_fichas": 3}
+
+
+def _rapido(escenario, par):
+    if os.environ.get("DBZ3_PRUEBAS_LENTO") == "1" or par.get("ventana"):
+        return {}
+    fam = Path(escenario).stem
+    if fam == "escena":
+        sp = (par.get("escena") or os.environ.get("DBZ3_TEST_ESCENA", "")).split("|")[0].split(":")
+        fam = "b2:fase" if sp[0] == "b2" and len(sp) > 1 and sp[1].startswith("fase") else sp[0]
+    t = FAMILIAS_RAPIDAS.get(fam)
+    return {"DBZ3_TEST_TURBO": str(t), "DBZ3_TEST_OCULTO": "1"} if t else {}
+
+
+def _correr(copia, escenario, env_extra=(), instantanea=None, par=None, forzar=False):
     par = par or {}
-    desc, fn, env = cargar_escenario(escenario, par)
-    env.update(_kv(x) for x in env_extra)
     nombre = f"{copia}/{Path(escenario).stem}"
-    print(f"== {nombre}: {desc}", flush=True)
     t0 = time.time()
-    preparar(BASE / copia)
-    if instantanea:
-        cargar_instantanea(copia, instantanea)
-    else:
-        respaldar(BASE / copia)
+    _TL.v = tuple(int(x) for x in par["ventana"].split("x")) if par.get("ventana") else None
     j = Juego(copia, nombre)
-    ok, msg, t_menu, t_cupo = True, "", None, 0.0
+    desc, fn, env = str(escenario), None, {}
+    ok, msg, t_menu, t_cupo, t_cierre = True, "", None, 0.0, 0.0
+    cache_key, cache, preparado, muerto = "", None, False, False
     try:
+        desc, fn, env = cargar_escenario(escenario, par)
+        for k, v in _rapido(escenario, par).items():
+            env.setdefault(k, v)
+        env.update(_kv(x) for x in os.environ.get("DBZ3_PRUEBAS_ENV", "").split(";") if x)
+        env.update(_kv(x) for x in env_extra)
+        print(f"== {nombre}: {desc}", flush=True)
+        _escenario_toml(j.run, escenario, desc, par, env, instantanea)
+        preparar(BASE / copia)
+        preparado = True
+        cache_key = _cache_key(BASE / copia, escenario, par, env, instantanea)
+        turbo_solicitado = int(env.get("DBZ3_TEST_TURBO", "1"))
+        if not forzar:
+            cache = _leer_cache(cache_key)
+        if cache:
+            origen = Path(cache["run"])
+            for p in (origen / "dbz3.log", origen / "pantallas.txt"):
+                if p.is_file(): shutil.copy2(p, j.run / p.name)
+            for p in origen.glob("*.png"):
+                shutil.copy2(p, j.run / p.name)
+            (j.run / "cache_hit.txt").write_text(f"PASS cache hash={cache_key}\n", encoding="utf-8")
+            turbo_real = float(cache.get("turbo_real", 1))
+            previo = (j.run / "dbz3.log").read_text(encoding="utf-8", errors="replace")
+            (j.run / "dbz3.log").write_text(
+                f"dbz3: prueba hash={cache_key} turbo_solicitado={turbo_solicitado} turbo_real={turbo_real:.2f} cache=PASS\n"
+                + previo, encoding="utf-8")
+            resultado = {"ok": True, "nombre": nombre, "dur": cache.get("dur", 0), "menu": cache.get("menu"),
+                         "cierre": 0.0, "msg": "cache PASS", "run": j.run,
+                         "t_escena": cache.get("t_escena"), "t_fin": cache.get("t_fin"), "cache": True}
+            print(f"CACHE PASS {nombre} hash={cache_key} turbo={turbo_real:.2f}", flush=True)
+            print(f"      log, PNG y escenario: {j.run}", flush=True)
+            return resultado
+        if instantanea:
+            cargar_instantanea(copia, instantanea)
+        else:
+            respaldar(BASE / copia)
         j.lanzar(env)
         t_cupo = j.t_cupo
-        # --par arranque=S: espera mas al menu (R8: el paso de escenarios de PS2 corre antes de arrancar)
         t_menu = j.arrancar(float(par.get("arranque", "120")), rapido=par.get("titulo_rapido", "1") == "1")
         j.info(f"menu principal en {t_menu:.1f} s")
         fn(j, par)
         if not j.vivo():
             raise Fallo("el juego se cerro durante la prueba")
-    except Exception as e:
+        if not any(j.run.glob("*.png")):
+            try:
+                j.captura("zz_final")
+            except Exception as e:
+                j.info(f"sin captura final automatica: {e}")
+    except (Exception, SystemExit) as e:
         ok, msg = False, str(e) or type(e).__name__
         j.captura_fallo()
     finally:
-        muerto = j.proc is not None and j.proc.poll() is not None    # murio solo (no lo cerramos nosotros)
+        muerto = j.proc is not None and j.proc.poll() is not None
         t_fin = time.time()
         j.cerrar()
         t_cierre = time.time() - t_fin
+        if preparado and _ventana():
+            _TL.v = None
+            escribir_toml(BASE / copia / "dbz3_user.toml")
     texto = j.texto_log()
     malos = [l for l in texto.splitlines() if re.search(ERRORES, l)]
     if muerto:
@@ -2114,18 +3101,29 @@ def _correr(copia, escenario, env_extra=(), instantanea=None, par=None):
         ok, msg = False, f"el juego murio (codigo 0x{rc:08X}{', access violation' if rc == 0xC0000005 else ''}). {msg}"
     if malos and ok:
         ok, msg = False, f"log con errores ({len(malos)}): {malos[0][:150]}"
-    if texto:
-        (j.run / "dbz3.log").write_text(texto, encoding="utf-8")
+    if not (j.run / "escenario.toml").is_file():
+        _escenario_toml(j.run, escenario, desc, par, env, instantanea)
+    turbo_solicitado = int(env.get("DBZ3_TEST_TURBO", "1")) if env else 1
+    turbo_real = j.factor() if j.proc is not None else 1.0
+    meta = (f"dbz3: prueba hash={cache_key or 'sin-hash'} turbo_solicitado={turbo_solicitado} "
+            f"turbo_real={turbo_real:.2f} cache={'forzada' if forzar else 'MISS'}\n")
+    (j.run / "dbz3.log").write_text(meta + texto, encoding="utf-8")
     (j.run / "pantallas.txt").write_text("".join(f"{t:6.1f} s  {sc}\n" for t, sc in j.traza), encoding="utf-8")
+    evidencia_real = _evidencia_png(j, ok, msg)
     if not ok:
         extracto = informe_fallo(texto, malos)
         (j.run / "fallo.txt").write_text(f"{msg}\n\n{extracto}\n", encoding="utf-8")
         print("\n".join("      | " + l for l in extracto.splitlines()[-12:]), flush=True)
-    dur = time.time() - t0 - t_cupo
+    dur = time.time() - t0 - t_cierre - t_cupo
+    resultado = {"ok": ok, "nombre": nombre, "dur": dur, "menu": t_menu, "cierre": t_cierre, "msg": msg,
+                 "run": j.run, "t_escena": getattr(j, "t_escena", None), "t_fin": getattr(j, "t_fin_escena", None),
+                 "cache": False}
+    if cache_key and ok and evidencia_real:
+        _guardar_cache(cache_key, resultado, turbo_solicitado, turbo_real)
     print(f"{'PASS' if ok else 'FAIL'}  {nombre}  {dur:.1f} s (menu {t_menu or 0:.1f} s, cierre {t_cierre:.1f} s"
           f"{f', cola {t_cupo:.0f} s' if t_cupo > 1 else ''})  {msg}".rstrip(), flush=True)
-    print(f"      capturas y resultados: {j.run}", flush=True)
-    return {"ok": ok, "nombre": nombre, "dur": dur, "menu": t_menu, "cierre": t_cierre, "msg": msg, "run": j.run}
+    print(f"      evidencia y resultados: {j.run}", flush=True)
+    return resultado
 
 
 def informe_fallo(texto, malos):
@@ -2138,6 +3136,101 @@ def informe_fallo(texto, malos):
     return "\n".join(partes) if texto else "(sin log del juego)"
 
 
+def _es_n1(env_extra):
+    """X0g: con DBZ3_TEST_OCULTO=1 (ventana oculta, sin audio, x1) caben 6 juegos a la vez; con ventana, 3."""
+    return any(_kv(x) == ("DBZ3_TEST_OCULTO", "1") for x in env_extra)
+
+
+_RB_GUION = ["Space", "D", "Space", "A", "S", "Space", "W", "E", "Space", "D"]   # el mismo guion en las dos copias
+
+
+def _online_rb(j, par):
+    # R: una de las dos copias de un combate online (DBZ3_NET_AUTO=host|guest, src/net/netplay_hooks.cpp RbAuto): espera
+    # a que el lockstep arranque, juega el guion de teclas (el MISMO en las dos) y espera el fin del combate.
+    j.log(r"dbz3 rb: auto: empezando", int(par.get("espera", "150")))
+    j.log(r"dbz3 rb: auto: combate pedido \(ok\)", 30)         # sin teclas antes: sacarian al menu de su pantalla
+    j.log(r"tag: empieza un combate", 60)
+    fin = time.time() + float(par.get("seg", "40"))
+    i = 0
+    while time.time() < fin and j.vivo():
+        j.tecla(_RB_GUION[i % len(_RB_GUION)], 250)
+        i += 1
+    j.log(r"tag: combate acabado|hub: fin del combate nativo", int(par.get("fin", "120")))
+    t = j.texto_log()
+    ult = re.findall(r"auto tick (\d+): sumas comparadas (\d+) distintas (\d+) \(RNG: (\w+)", t)
+    j.info(f"sumas por tick (ultima medida): {ult[-1] if ult else 'sin medida (combate < 600 ticks)'}")
+    acab = [l for l in t.splitlines() if "tag: combate acabado" in l]
+    j.info("resultado: " + (re.sub(r"^(\[[^\]]*\] ){3}", "", acab[-1])[:140] if acab else "?"))
+    if ult and (int(ult[-1][2]) or ult[-1][3] != "ok"):
+        raise Fallo(f"sumas distintas {ult[-1][2]} / RNG {ult[-1][3]}")
+
+
+def _env_online_rb(p):
+    e = {"DBZ3_NET_AUTO": p["rol"], "DBZ3_NET_LOCAL": "1", "DBZ3_NET_SUMAS": "1", "DBZ3_NET_NOFAIL": "1"}
+    if p.get("puerto"):   # [H] RbAuto aun no lee estas dos variables (src/net es de la linea R): hoy el puerto es 7777
+        e["DBZ3_NET_PORT"] = p["puerto"]
+    if p.get("ringout") == "1":
+        e["DBZ3_TEST_RINGOUT"] = "1"
+    return e
+
+
+ESCENARIOS["online_rb"] = ("R: una copia del combate online de dos copias (--par rol=host|guest seg=40); se lanza con `online-rb`",
+                            _env_online_rb, _online_rb)
+
+
+def _recuperar_plaza_huerfana(plaza, cuarentena=None):
+    """Aparta una plaza ocupada solo si su PID registrado ya no existe."""
+    plaza = Path(plaza)
+    quien = plaza / "quien.txt"
+    try:
+        texto = quien.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    m = re.search(r"\bpid\s+(\d+)\b", texto, re.I)
+    marca = re.search(r"\b\d{8}-\d{6}\b", texto)
+    if not m or _vivo(int(m.group(1)), marca.group() if marca else ""):
+        return False
+    cuarentena = Path(cuarentena) if cuarentena is not None else PLAZAS_HUERFANAS
+    try:
+        cuarentena.mkdir(parents=True, exist_ok=True)
+        base = cuarentena / f"plazas_huerfanas_{datetime.now():%Y%m%d-%H%M%S}"
+        destino = base
+        n = 2
+        while destino.exists():
+            destino = base.with_name(f"{base.name}_{n}")
+            n += 1
+        shutil.move(str(plaza), str(destino))   # R6: rename falla entre volumenes (C: -> D:) y las plazas huerfanas nunca se liberaban
+        return True
+    except OSError:
+        return False
+
+
+def online_rb(copias=("rb_a", "rb_b"), seg="40", delay_ms=0, loss_every=0, instantanea="freezer_cap2", ringout="0"):
+    """Dos juegos online (anfitrion y invitado) en copias distintas, mismo guion de teclas, sumas por tick del log.
+    Con delay_ms o loss_every > 0 pasa el trafico por tools/fault_proxy.py: necesita que el juego acepte puertos
+    distintos (DBZ3_NET_PORT / DBZ3_NET_JOIN_PORT, pendiente en netplay_hooks.cpp [H])."""
+    proxy = None
+    puertos = {}
+    if delay_ms or loss_every:
+        sys.path.insert(0, str(R / "tools"))
+        from fault_proxy import FaultProxy
+        puertos = {"host": "7778", "guest": "7777"}   # el invitado se une al frontal (7777), el anfitrion escucha en 7778
+        proxy = FaultProxy(7777, 7778, delay_ms, loss_every)
+        proxy.start()
+    try:
+        pares = list(zip(("host", "guest"), copias))
+        with ThreadPoolExecutor(2) as ex:
+            fut = [ex.submit(correr, c, "online_rb", [], instantanea,
+                             dict(rol=rol, seg=seg, ringout=ringout, **({"puerto": puertos[rol]} if puertos else {})))
+                   for rol, c in pares]
+            res = [f.result() for f in fut]
+    finally:
+        if proxy:
+            proxy.close()
+    print(tabla(res), flush=True)
+    return all(r["ok"] for r in res)
+
+
 def paralelo(pares, env_extra=()):
     trabajos = []
     for p in pares:
@@ -2145,8 +3238,9 @@ def paralelo(pares, env_extra=()):
         if not esc or not cop:
             raise SystemExit(f"formato esc@copia, recibido: {p}")
         trabajos.append((cop, esc))
-    if len(trabajos) > MAX_PARALELO:
-        raise SystemExit(f"como maximo {MAX_PARALELO} a la vez")
+    tope = MAX_PARALELO_N1 if _es_n1(env_extra) else MAX_PARALELO
+    if len(trabajos) > tope:
+        raise SystemExit(f"como maximo {tope} a la vez")
     if len({c for c, _ in trabajos}) < len(trabajos):
         raise SystemExit("cada copia solo puede usarse una vez")
     with ThreadPoolExecutor(len(trabajos)) as ex:
@@ -2163,7 +3257,11 @@ SMOKE = [
     ("batalla", "freezer_cap2", {}),
     ("menu", "freezer_cap2", {}),
 ]
-COPIAS_SMOKE = ["smoke_a", "smoke_b", "smoke_c"]
+COPIAS_SMOKE = ["smoke_a", "smoke_b", "smoke_c"]          # la bateria "todo" sigue con 3
+COPIAS_N1 = COPIAS_SMOKE + ["smoke_d", "smoke_e", "smoke_f"]  # X0g: se crean copiando smoke_a (robocopy /XJ)
+if os.environ.get("DBZ3_PRUEBAS_COPIAS"):   # X0h: copias propias de una linea (6 nombres separados por comas), sin pisar smoke_*
+    COPIAS_N1 = os.environ["DBZ3_PRUEBAS_COPIAS"].split(",")
+    COPIAS_SMOKE = COPIAS_N1[:3]
 
 
 def tabla(res, total=None):
@@ -2179,7 +3277,16 @@ def tabla(res, total=None):
     return "\n".join(out)
 
 
-def todo(solo=None, maxp=MAX_PARALELO, env_extra=()):
+def comprobar_n0():
+    """N0: las copias de la bateria 'todo' no llevan window_* (un tamano forzado rompe las capturas)."""
+    malas = [c for c in COPIAS_SMOKE if (BASE / c / "dbz3_user.toml").exists()
+             and re.search(r"^\s*window_(width|height)\s*=", (BASE / c / "dbz3_user.toml").read_text(encoding="utf-8", errors="replace"), re.M)]
+    if malas:
+        raise SystemExit(f"N0: {malas} llevan window_width/height en dbz3_user.toml; quitalas (se limpian solas al correr cualquier escenario en esa copia)")
+
+
+def todo(solo=None, maxp=MAX_PARALELO, env_extra=(), forzar=False):
+    comprobar_n0()
     lista = [s for s in SMOKE if not solo or s[0] in solo]
     if not lista:
         raise SystemExit(f"nada que correr; escenarios de la bateria: {', '.join(s[0] for s in SMOKE)}")
@@ -2187,13 +3294,14 @@ def todo(solo=None, maxp=MAX_PARALELO, env_extra=()):
     if faltan:
         raise SystemExit(f"faltan instantaneas {faltan}: python tools\\pruebas.py biblioteca")
     libres = queue.Queue()
-    for c in COPIAS_SMOKE[:max(1, min(maxp, MAX_PARALELO))]:
+    n1 = _es_n1(env_extra)
+    for c in (COPIAS_N1 if n1 else COPIAS_SMOKE)[:max(1, min(maxp, MAX_PARALELO_N1 if n1 else MAX_PARALELO))]:
         libres.put(c)
 
     def uno(s):
         c = libres.get()
         try:
-            return correr(c, s[0], env_extra, s[1], dict(s[2]))
+            return correr(c, s[0], env_extra, s[1], dict(s[2]), forzar)
         except (Exception, SystemExit) as e:          # copia ocupada, exe sin compilar...
             return {"ok": False, "nombre": f"{c}/{s[0]}", "dur": 0.0, "msg": str(e), "run": None}
         finally:
@@ -2253,18 +3361,62 @@ def main(argv=None):
     a.add_argument("--env", action="append", default=[], metavar="K=V")
     a.add_argument("--par", action="append", default=[], metavar="K=V", help="parametros del escenario")
     a.add_argument("--instantanea", help="cargar esta instantanea antes de correr")
+    a.add_argument("--forzar", action="store_true", help="no reutilizar resultados PASS de la cache")
     a = sub.add_parser("paralelo", help="hasta 3 pruebas a la vez, cada una en su copia")
     a.add_argument("pares", nargs="+", help="escenario@copia")
     a.add_argument("--env", action="append", default=[], metavar="K=V")
     a = sub.add_parser("todo", help="bateria rapida (smoke) en smoke_a/b/c, tabla PASS/FAIL")
     a.add_argument("--solo", help="lista separada por comas (" + ",".join(s[0] for s in SMOKE) + ")")
-    a.add_argument("--max", type=int, default=MAX_PARALELO, help="juegos a la vez (1-3)")
+    a.add_argument("--max", type=int, default=MAX_PARALELO, help="juegos a la vez (1-3; hasta 6 con --env DBZ3_TEST_OCULTO=1)")
     a.add_argument("--env", action="append", default=[], metavar="K=V")
+    a.add_argument("--forzar", action="store_true", help="no reutilizar resultados PASS de la cache")
+    a = sub.add_parser("escena", help="X0e: salta a una o varias escenas (a|b|c), una partida por escena")
+    a.add_argument("spec", nargs="?", default=os.environ.get("DBZ3_TEST_ESCENA", ""))
+    a.add_argument("--copias", default=",".join(COPIAS_N1))
+    a.add_argument("--env", action="append", default=[], metavar="K=V")
+    a = sub.add_parser("igualdad", help="X0g: las mismas escenas a x1/x2/x4: la firma del log debe ser identica")
+    a.add_argument("--escenas", default="batalla:0,7,2|iw:mini:0x7D9|satan:ronda1")
+    a.add_argument("--turbos", default="1,2,4")
+    a = sub.add_parser("igualdad-esc", help="X0h: igualdad del turbo para escenarios por nombre o .toml ('esc[@instantanea]|...')")
+    a.add_argument("items")
+    a.add_argument("--turbos", default="1,4")
+    a.add_argument("--firma", default=SIG_GENERICA)
+    a.add_argument("--hasta", help="regex: la firma se corta en la primera linea que la cumpla")
+    a.add_argument("--sin", help="regex: lineas que se quitan de la firma")
+    a.add_argument("--estructura", action="store_true", help="compara solo la estructura (sin posiciones, direcciones ni ticks)")
+    a = sub.add_parser("fps", help="X0g: FPS en combate con 1..6 juegos a la vez (ocultos, sin audio, x1)")
+    a.add_argument("--n", default="1,3,4,5,6")
+    a.add_argument("--turbo", type=int, default=1)
+    a.add_argument("--escena", default="batalla:0,7,2")
+    a = sub.add_parser("ajustes", help="X1: coste en FPS de una opcion beta (relight1/2, fsr3) frente a base, en el combate")
+    a.add_argument("nombres", nargs="*", default=list(AJUSTES))
+    a.add_argument("--copia", default="x1_hub")
+    a = sub.add_parser("online-rb", help="R: dos juegos online (host+guest), mismo guion de teclas, sumas por tick")
+    a.add_argument("--copias", default="rb_a,rb_b")
+    a.add_argument("--seg", default="40")
+    a.add_argument("--delay-ms", type=int, default=0)
+    a.add_argument("--loss-every", type=int, default=0)
+    a.add_argument("--ringout", default="0")
     sub.add_parser("biblioteca", help="crea las instantaneas de prueba (perfil_nuevo)")
     a = p.parse_args(argv)
 
     if a.cmd == "todo":
-        return 0 if todo(a.solo.split(",") if a.solo else None, a.max, a.env) else 1
+        return 0 if todo(a.solo.split(",") if a.solo else None, a.max, a.env, a.forzar) else 1
+    if a.cmd == "escena":
+        if not a.spec:
+            raise SystemExit("falta la escena (argumento o DBZ3_TEST_ESCENA)")
+        return 0 if escenas(a.spec, a.copias.split(","), a.env) else 1
+    if a.cmd == "igualdad":
+        return 0 if igualdad(a.escenas.split("|"), [int(x) for x in a.turbos.split(",")], COPIAS_N1) else 1
+    if a.cmd == "igualdad-esc":
+        return 0 if igualdad_esc(a.items.split("|"), [int(x) for x in a.turbos.split(",")], COPIAS_N1, a.firma, a.estructura, a.hasta, a.sin) else 1
+    if a.cmd == "fps":
+        medir_fps([int(x) for x in a.n.split(",")], a.turbo, a.escena, COPIAS_N1)
+        return 0
+    if a.cmd == "ajustes":
+        return 0 if all(v["ok"] for v in medir_ajustes(a.nombres, a.copia).values()) else 1
+    if a.cmd == "online-rb":
+        return 0 if online_rb(a.copias.split(","), a.seg, a.delay_ms, a.loss_every, ringout=a.ringout) else 1
     if a.cmd == "biblioteca":
         biblioteca()
         return 0
@@ -2277,7 +3429,7 @@ def main(argv=None):
         (guardar_instantanea if a.accion == "guardar" else cargar_instantanea)(a.copia, a.nombre)
         return 0
     if a.cmd == "correr":
-        r = correr(a.copia, a.escenario, a.env, a.instantanea, dict(_kv(x) for x in a.par))
+        r = correr(a.copia, a.escenario, a.env, a.instantanea, dict(_kv(x) for x in a.par), a.forzar)
         return 0 if r["ok"] else 1
     return 0 if paralelo(a.pares, a.env) else 1
 

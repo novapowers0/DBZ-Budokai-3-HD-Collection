@@ -2262,6 +2262,7 @@ static void Dbz3LogGuestPerformance(uint64_t upscaled_textures, uint64_t upscale
   static std::chrono::steady_clock::time_point last_frame;
   static uint32_t frames_in_window = 0;
   static double max_frame_ms = 0.0;
+  static std::vector<double> frame_samples;   // I13: tiempos de frame de la ventana (1 % bajo)
   static uint64_t texture_loads_last_window = 0;
   const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
   if (last_frame.time_since_epoch().count() != 0) {
@@ -2269,6 +2270,7 @@ static void Dbz3LogGuestPerformance(uint64_t upscaled_textures, uint64_t upscale
     if (frame_ms > max_frame_ms) {
       max_frame_ms = frame_ms;
     }
+    frame_samples.push_back(frame_ms);
   }
   // v1.4.1: registro de tirones (issue #14, "se congela 6-8 frames al transformarse").
   // Cada frame del guest de mas de 50 ms deja una linea con lo que paso en ESE frame:
@@ -2334,12 +2336,19 @@ static void Dbz3LogGuestPerformance(uint64_t upscaled_textures, uint64_t upscale
     // es la GPU.
     const uint64_t texture_loads_window = texture_loads - texture_loads_last_window;
     texture_loads_last_window = texture_loads;
+    // I13: 1 % bajo = 1000 / percentil 99 del tiempo de frame de esta ventana.
+    double p99_ms = 0.0;
+    if (!frame_samples.empty()) {
+      std::sort(frame_samples.begin(), frame_samples.end());
+      p99_ms = frame_samples[size_t(double(frame_samples.size() - 1) * 0.99)];
+    }
+    const double fps1 = p99_ms > 0.0 ? 1000.0 / p99_ms : 0.0;
     REXGPU_INFO(
-        "dbz3: perf fps={:.1f} frames={} window={:.2f}s max_frame_ms={:.1f} fg={} "
+        "dbz3: perf fps={:.1f} p1={:.1f} p99_ms={:.1f} frames={} window={:.2f}s max_frame_ms={:.1f} fg={} "
         "cfg=scale:{}x{} msaa:{} hdtex:{} area:{} min:{} aniso:{} upx={} upx_dyn={} "
         "texload={} pack={} vram={}MB/{}MB lim={} gpu_wait={:.1f}ms/f syncs={} cp_wait={:.1f}ms/f "
         "relight={} (sin_post={} sin_resolve={})",
-        double(frames_in_window) / elapsed_s, frames_in_window, elapsed_s, max_frame_ms,
+        double(frames_in_window) / elapsed_s, fps1, p99_ms, frames_in_window, elapsed_s, max_frame_ms,
         foreground ? 1 : 0, rex::cvar::GetFlagByName("draw_resolution_scale_x"),
         rex::cvar::GetFlagByName("draw_resolution_scale_y"),
         rex::cvar::GetFlagByName("native_2x_msaa"),
@@ -2358,6 +2367,7 @@ static void Dbz3LogGuestPerformance(uint64_t upscaled_textures, uint64_t upscale
   window_start = now;
   frames_in_window = 0;
   max_frame_ms = 0.0;
+  frame_samples.clear();
 }
 
 // dbz3: temporal upscaling inputs (1.4.2).
@@ -3108,6 +3118,15 @@ static void Dbz3FrameTraceDraw(const RegisterFile& regs, const Shader* vs, const
       regs.Get<float>(XE_GPU_REG_PA_CL_VPORT_XSCALE), regs.Get<float>(XE_GPU_REG_PA_CL_VPORT_XOFFSET),
       regs.Get<float>(XE_GPU_REG_PA_CL_VPORT_YSCALE), regs.Get<float>(XE_GPU_REG_PA_CL_VPORT_YOFFSET),
       regs[XE_GPU_REG_RB_COLOR_MASK]);
+  // X1esc (#15): el cuadrado DF85B8 no era la capa de fundido (sus constantes no siguen la rampa). Candidato: el triangulo
+  // final de pantalla (ps ...81B87D, 3 vertices), presente en cada cuadro: se vuelcan sus constantes de pixel c0-c7.
+  if (ps && (ps->ucode_data_hash() & 0xFFFFFF) == 0x81B87D && vertex_count == 3) {
+    auto f = [&](uint32_t idx, uint32_t k) { return regs.Get<float>(XE_GPU_REG_SHADER_CONSTANT_000_X + 4 * idx + k); };
+    std::string c;
+    for (uint32_t i = 0; i < 8; ++i)
+      c += fmt::format(" c{}={:.4f},{:.4f},{:.4f},{:.4f}", i, f(256 + i, 0), f(256 + i, 1), f(256 + i, 2), f(256 + i, 3));
+    REXLOG_INFO("dbz3: ft fin blend={:08X}{}", regs[XE_GPU_REG_RB_BLENDCONTROL0], c);
+  }
 }
 static void Dbz3FrameTraceCopy(const RegisterFile& regs, uint32_t addr, uint32_t len) {
   if (g_dbz3_ft_frames <= 0) return;

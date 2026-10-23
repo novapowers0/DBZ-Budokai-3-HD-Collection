@@ -44,6 +44,7 @@
 #include <thread>
 #include <vector>
 
+#include "reloj_prueba.h"
 #include "generated/dbz3_init.h"
 #include "eu_map.h"
 #include "ingame/game_style.h"
@@ -102,10 +103,7 @@ const char* const kNombres[kTipos] = {"torre", "supervivencia", "kumite", "simul
                                       "heroe", "torres", "abyss", "jefes", "torneo4", "mision100"};
 const char* const kResNombres[] = {"derrota", "victoria", "abandono", "guardado"};
 
-int64_t NowMs() {
-  return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch())
-      .count();
-}
+int64_t NowMs() { return dbz3::RelojMs(); }
 
 int TipoDe(const std::string& s) {
   for (int k = 0; k < kTipos; ++k) {
@@ -1280,14 +1278,14 @@ class ModosPanel : public rex::ui::ImGuiDialog {
     }
     if (que != ultima_) {
       ultima_ = que;
-      abierta_ = float(ImGui::GetTime());
+      abierta_ = float(dbz3::RelojT(ImGui::GetTime()));
       esperar_suelta_ = true;
       if (que == kRankP) Refrescar();
     }
     if (que == kNinguna || tapado) return;
     uint16_t pulsado = Pad();
     if (esperar_suelta_ || fingida) {   // el boton que abrio la pantalla no cuenta hasta soltarlo todo
-      if (g_pad.load() == 0 && float(ImGui::GetTime()) - abierta_ > 0.25f) esperar_suelta_ = false;
+      if (g_pad.load() == 0 && float(dbz3::RelojT(ImGui::GetTime())) - abierta_ > 0.25f) esperar_suelta_ = false;
       pulsado = 0;
     }
     if ((que == kRpgP && dbz3::ingame::tutorial::Mostrar(dbz3::rpg::Heroe() ? "heroe" : "retos")) ||
@@ -1302,7 +1300,7 @@ class ModosPanel : public rex::ui::ImGuiDialog {
     }
     const S::Area a = S::GameArea(io);
     ImDrawList* dl = ImGui::GetForegroundDrawList();
-    const float t = float(ImGui::GetTime());
+    const float t = float(dbz3::RelojT(ImGui::GetTime()));
     const float in = std::clamp((t - abierta_) / 0.2f, 0.0f, 1.0f);
     const int v0 = dl->VtxBuffer.Size;
     // fondos propios 16:9 (assets_propios/png/add): Laboratorio, Modo Heroe y, en el resto, el del HUB (sin ellos, el
@@ -1442,7 +1440,7 @@ class ModosPanel : public rex::ui::ImGuiDialog {
     }
     if (!m || nums.empty()) {   // sin las piezas: solo la letra del menu
       const std::string txt = std::string(palabra) + " " + std::to_string(st.ganados + 1) + "/" + std::to_string(st.total);
-      S::MenuText(dl, a.At(600, D::kHudY + D::kHudH * 0.5f), 30 * a.s, txt.c_str(), true, false);
+      S::MenuText(dl, a.At(600, D::kHudY + D::kHudH * 0.5f), 30 * a.s, txt.c_str(), true, false, 360 * a.s);
       return info;
     }
     const float h = D::kHudH, k = h / 128.0f, w = 560 * k, x0 = 600 - w * 0.5f, y0 = D::kHudY;
@@ -1476,7 +1474,7 @@ class ModosPanel : public rex::ui::ImGuiDialog {
       Marco(dl, a, D::kTop, {T::T("Derrota", "Defeat"),
                          Paso(st.tipo, st.ganados + 1, st.total) + "  -  " + NombrePj(st.rival) + "  (" +
                              dbz3::escenarios::Nombre(st.escenario) + ")"},
-            float(ImGui::GetTime()));
+            float(dbz3::RelojT(ImGui::GetTime())));
       D::Bubble(dl, a, T::T("¡No te rindas! Puedes repetir este combate o dejar el reto.",
                             "Don't give up! You can retry this fight or leave the challenge."));
       D::Help(dl, a, {{"A", T::T("Reintentar", "Retry")}, {"B", T::T("Dejar el reto", "Quit")}});
@@ -1495,7 +1493,7 @@ class ModosPanel : public rex::ui::ImGuiDialog {
     if (arrastra) l.push_back(std::string(T::T("Vida ", "Health ")) + std::to_string(st.vida) + " / " +
                                      std::to_string(st.vida_max));
     if (!mods.empty()) l.push_back(mods);
-    Marco(dl, a, D::kTop, l, float(ImGui::GetTime()));
+    Marco(dl, a, D::kTop, l, float(dbz3::RelojT(ImGui::GetTime())));
     const std::string bocadillo = Paso(st.tipo, st.ganados + 1, st.total) + ". " +
                                   T::T("¡Prepárate para el siguiente combate!", "Get ready for the next fight!");
     D::Bubble(dl, a, bocadillo.c_str());
@@ -1542,7 +1540,7 @@ class ModosPanel : public rex::ui::ImGuiDialog {
       l.push_back(std::string(L("Premio: ", "Prize: ", "Prix : ", "Preis: ", "Premio: ")) + std::to_string(premio) +
                   " Zenie");
     }
-    Marco(dl, a, D::kTop, l, float(ImGui::GetTime()));
+    Marco(dl, a, D::kTop, l, float(dbz3::RelojT(ImGui::GetTime())));
     D::Bubble(dl, a, dice.c_str());
     D::Help(dl, a, {{"A", T::T("Aceptar", "OK")}});
   }
@@ -1718,7 +1716,7 @@ class ModosPanel : public rex::ui::ImGuiDialog {
     }
     if (pulsado & kB) g_lab_abierto = false;   // vuelve el HUB
     S::Banner(dl, a, T::T("Laboratorio", "Laboratory"));
-    const float t = float(ImGui::GetTime());
+    const float t = float(dbz3::RelojT(ImGui::GetTime()));
     // resumen del ultimo combate (marco compacto)
     std::vector<std::string> l;
     char buf[160];
@@ -1919,7 +1917,7 @@ const bool g_hub = dbz3::hub::RegisterMode("torre", [] { AbrirSelector(kTorre); 
                                              "Cento missioni per saga: scontri, contro il tempo, resistenza, regole speciali "
                                              "e Tag Team. Ottieni il grado S in tutte!"},
                                             [] { AbrirSelector(3); }, &RetoEnCurso) &&
-                   dbz3::hub::RegisterEntry("heroe", {"Modo Heroe", "Hero Mode", "Mode Heros", "Heldenmodus", "Modalita Eroe"},
+                   dbz3::hub::RegisterEntry("heroe", {"Modo Héroe", "Hero Mode", "Mode Héros", "Heldenmodus", "Modalità Eroe"},
                                             {"Tu heroe con su historia propia: crea su cuerpo y su estilo, entrena con "
                                              "maestros y sube de nivel. Entrada propia, fuera del Kumite.",
                                              "Your own hero and story: create his body and style, train with masters and "
@@ -1980,6 +1978,13 @@ const bool g_test = [] {
   return true;
 }();
 }  // namespace
+
+// S5-I1: ID que de verdad juega la plaza `plaza` del cuadro del Torneo cuando es un personaje de mod sin casilla propia
+// (torneo.toml); -1 = el de su casilla.
+int TorneoIdReal(int plaza) {
+  std::lock_guard<std::mutex> lk(g_mu);
+  return plaza >= 0 && plaza < 32 ? g_t_id[size_t(plaza)] : -1;
+}
 
 }  // namespace dbz3::modos
 
@@ -2137,8 +2142,14 @@ DBZ3_HOOK_EU(sub_820FF750) {
 
 // Comprobacion de cada fotograma de la pelea (sub_820FD678: KO, fuera del ring y tiempo; medido 2026-10-15 en el
 // modo 5: una llamada por fotograma del estado 4). Con `regen`, el rival del reto recupera vida mientras no ha caido.
+namespace dbz3::escenarios {
+void ComprobarZonaB(PPCContext& ctx, uint8_t* base);   // escenarios.cpp: ring out -> zona B (dbz3_escenarios_zonas_b)
+}
 DBZ3_HOOK_EU(sub_820FD678) {
   using namespace dbz3::modos;
+  // X1esc: el aviso de ring out (mgr+35569) lo consume esta funcion y pasa el combate al estado 5; el gancho de
+  // sub_82114910 llegaba ya con el estado 5 y nunca cambiaba de zona. Aqui el estado aun es 4.
+  dbz3::escenarios::ComprobarZonaB(ctx, base);
   if (dbz3::hub::OwnBattle()) {   // reglas del reto propio (antes del laboratorio: ve la vida final)
     const uint32_t mgr = REX_LOAD_U32(kMgrPtr);
     std::lock_guard<std::mutex> lk(g_mu);

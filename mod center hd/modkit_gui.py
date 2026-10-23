@@ -109,6 +109,8 @@ SOURCE_NOTES = {
            "Infinite World model, voices, yells, moves, techniques and ultimate (with hyper mode)."),
     "sdbh": ("Modelos HD de Heroes (boca, 7 caras, rampas); golpes de Shin Budokai o del donante.",
              "HD models from Heroes (mouth, 7 faces, ramps); Shin Budokai or donor moves."),
+    "xv2": ("Modelos de Dragon Ball Xenoverse 2 de tu copia de Steam (solo lectura); colores del BCS; golpes y voces del donante.",
+            "Dragon Ball Xenoverse 2 models from your Steam copy (read-only); BCS colours; donor moves and voices."),
     "psp": ("Modelos de PSP con sus formas; golpes, combos y cámara de Shin Budokai (o del donante).",
             "PSP models with their forms; Shin Budokai moves, combos and camera (or the donor's)."),
 }
@@ -654,6 +656,11 @@ CURATED = {
     "importar.py": ("personajes", "Importador de personajes de Budokai 1/2, Infinite World y la comunidad "
                     "(el mismo que usa el launcher).", "Character importer from Budokai 1/2, Infinite World "
                     "and the community (the one the launcher uses).", {"mods": "mods"}),
+    "catalogo_tecnicas.py": ("moveset", "Catálogo de técnicas por personaje (nativas e importadas) en JSON.",
+                             "Technique catalogue per character (native and imported) as JSON.", {"mods": "mods"}),
+    "retratos_pack.py": ("campanas", "Lista los retratos de hablante de tu carpeta Potraits (un PNG por personaje); en una "
+                         "historia, [[retrato]] png = «pack:Nombre».", "Lists the speaker portraits in your Potraits "
+                         "folder (one PNG per character); in a story, [[retrato]] png = 'pack:Name'.", {}),
     "roster_build.py": ("personajes", "Personajes nuevos: montar _roster, crear, vista previa, cápsulas y "
                         "plazas.", "New characters: build _roster, create, preview, capsules and slots.",
                         {"mods": "mods"}),

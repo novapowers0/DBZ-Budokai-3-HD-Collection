@@ -1,0 +1,33 @@
+# copia: s5_c3 (--instantanea freezer_cap2; mods/heroe_propio con celda = false + historia_heroe montada con heroe_sagas_a_du.py)
+descripcion = "C3 e2e DU: Modo Heroe > DU directo (sin rueda) > intro > mapa > marca (auto) > combate (ring out) > nivel > victoria con progreso del heroe > marca 2"
+env = ["DBZ3_TEST_DU_HEROE=36", "DBZ3_AUTO_TOUCH=2", "DBZ3_TEST_RINGOUT=1", "DBZ3_TEST_DU_ESTADOS=1"]
+pasos = [
+  "esperar 9000",
+  "captura e2e_0_negro_o_menu",
+  "log \"escena 102 entrada 36\" 90",
+  "esperar 2500", "captura e2e_1_intro",
+  "tecla Space 3500", "captura e2e_2_intro",
+  "tecla Space 3500", "captura e2e_2b_intro",
+  "tecla Space 3500", "captura e2e_3_llegada",
+  "tecla Space 3000", "tecla Space 3000", "captura e2e_4_mapa_heroe",
+  "esperar 4000", "captura e2e_4b_mapa_heroe",
+  "log \"se toca la marca de combate\" 90",
+  "log \"jugador 1 = id 63\" 60",
+  "tecla Space 3000", "captura e2e_5a_charla_antes",
+  "tecla Space 2500", "tecla Space 2500", "tecla Space 2500", "tecla Space 2500", "tecla Space 2500",
+  "esperar 6000", "captura e2e_5_combate_heroe",
+  "log \"tag: combate acabado\" 120",
+  "tecla Space 3500", "captura e2e_6_resultado",
+  "tecla Space 3500", "captura e2e_7_nivel",
+  "tecla Space 3500", "tecla Space 3500", "tecla Space 2500",
+  "tecla D 500", "tecla D 500", "tecla D 500",
+  "captura e2e_8_puntos",
+  "tecla Space 3000", "captura e2e_8b_confirmar",
+  "tecla Space 3500", "tecla Space 3500", "tecla Space 3500", "tecla Space 3500",
+  "log \"dbz3 heroe: DU saga\" 60",
+  "tecla Space 3500", "captura e2e_9_charla_victoria",
+  "tecla Space 3500", "tecla Space 3500",
+  "esperar 6000", "captura e2e_10_mapa_marca2",
+  "log \"se toca la marca de combate\" 90",
+  "esperar 8000", "captura e2e_11_combate_2",
+]

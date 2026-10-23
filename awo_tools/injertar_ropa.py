@@ -148,3 +148,127 @@ def injertar_ropa(amb, model, quitar, host, P, N, UV, bones, tris, rgba, presupu
     resumen["triangulos"] = len(tri_new)
     resumen["quitados"] = sum(len(v) for v in quitados.values())
     return bytes(b), resumen
+
+
+def injertar_ropa_multi(amb, model, piezas, presupuesto=WINDOW_BUDGET):
+    """Sustituye varias zonas/draws en UNA reconstruccion de la tabla y el pool de ventanas.
+
+    Cada pieza es un dict con `quitar`, `host`, `P`, `N`, `UV`, `bones`, `tris`, `rgba` y `zona`.
+    Evita que un injerto anterior cambie la clasificacion por huesos que se usa para preparar el siguiente.
+    """
+    if not piezas:
+        return bytes(amb), {}
+    td = triangulos_por_draw(model)
+    if len(td) != len(model.tris):
+        raise ValueError("DrawTable no coincide con los triangulos del modelo base")
+    avb = AwgVertexBuffer._parse(bytes(amb))
+    dt = DrawTable(avb)
+    ss = SkinSlots(avb)
+    world, _ = avb.bind_worlds()
+    invw = [np.array(minv_affine(w)) for w in world]
+    labels = avb.bone_labels()
+
+    hosts = set()
+    textures = set()
+    remove_all = np.zeros(len(model.tris), bool)
+    prepared = []
+    for pieza in piezas:
+        host = int(pieza["host"])
+        if host in hosts:
+            raise ValueError("dos piezas usan el mismo draw anfitrion %d" % host)
+        hosts.add(host)
+        quitar = np.asarray(pieza["quitar"], bool)
+        if len(quitar) != len(model.tris):
+            raise ValueError("mascara de triangulos incorrecta en %s" % pieza.get("zona", "?"))
+        remove_all |= quitar
+        d = dt.draws[host]
+        if d["prim"] != 5 and d["group_bone"] != 0:
+            raise ValueError("draw anfitrion %d no admite huesos por ventana" % host)
+        material = dt.materials[d["material"]]
+        tex = int(material["tex"])
+        if tex in textures:
+            raise ValueError("dos zonas comparten la textura anfitriona %d" % tex)
+        textures.add(tex)
+
+        P, N = np.asarray(pieza["P"], float), np.asarray(pieza["N"], float)
+        UV, bones = np.asarray(pieza["UV"], float), np.asarray(pieza["bones"], int)
+        tris = np.asarray(pieza["tris"], int)
+        usados = np.unique(tris.reshape(-1))
+        remap = {int(o): i for i, o in enumerate(usados)}
+        tris_local = [tuple(remap[int(v)] for v in t) for t in tris]
+        Pu, Nu, Uu, Bu = P[usados], N[usados], UV[usados], bones[usados]
+        eff = np.array([ss.effective_bone(int(b)) for b in Bu])
+        loc, nl, slots = np.zeros_like(Pu), np.zeros_like(Pu), np.zeros(len(Pu), int)
+        for i in range(len(Pu)):
+            m = invw[eff[i]]
+            loc[i] = m[:3, :3] @ Pu[i] + m[:3, 3]
+            nl[i] = m[:3, :3] @ Nu[i]
+            slots[i] = ss.slot_of[int(eff[i])]
+        nl /= np.maximum(np.linalg.norm(nl, axis=1), 1e-9)[:, None]
+        prepared.append({"host": host, "loc": loc, "nrm": nl, "uv": Uu, "slots": slots,
+                         "tris": tris_local, "rgba": pieza["rgba"], "zona": pieza.get("zona", "?")})
+
+    removed, kept = collections.defaultdict(list), collections.defaultdict(list)
+    for (di, tri), remove in zip(td, remove_all):
+        (removed if remove else kept)[di].append(tri)
+    refs_final = set()
+    for di, d in enumerate(dt.draws):
+        if di in removed:
+            for tri in kept[di]:
+                refs_final.update(tri)
+        else:
+            refs_final.update(v for v in _rango_draw(avb, d) if v != 0xFFFF)
+    libres = sorted({v for di in removed for tri in removed[di] for v in tri} - refs_final)
+    n_piezas = sum(len(p["loc"]) for p in prepared)
+    tope = max(presupuesto, avb.n)
+    if avb.n + max(0, n_piezas - len(libres)) > tope:
+        raise ValueError("las piezas no caben en el tope de ventanas (%d + %d - %d libres > %d)"
+                         % (avb.n, n_piezas, len(libres), tope))
+    destinos = list(libres[:n_piezas])
+    n_nuevas = max(0, n_piezas - len(destinos))
+    destinos += list(range(avb.n, avb.n + n_nuevas))
+    seqs = {}
+    tri_new = collections.defaultdict(list)
+    offset = 0
+    for p in prepared:
+        verts = destinos[offset:offset + len(p["loc"])]
+        for t in p["tris"]:
+            tri_new[p["host"]].append(tuple(verts[v] for v in t))
+        offset += len(p["loc"])
+    changed = set(removed) | set(tri_new)
+    for di in sorted(changed):
+        ts = list(kept[di]) + tri_new.get(di, [])
+        seqs[di] = stripify(ts) if ts and dt.draws[di]["prim"] == 5 else [v for tri in ts for v in tri]
+    add_ib = sum(len(s) for s in seqs.values())
+    obj = avb.grow(avb.n + n_nuevas, avb.n_ib + add_ib) if (n_nuevas or add_ib) else avb
+    dt2 = DrawTable(obj)
+    b = obj.data
+    offset = 0
+    for p in prepared:
+        for i in range(len(p["loc"])):
+            v = {"pos": tuple(p["loc"][i]), "w": 1.0, "bone": int(p["slots"][i]),
+                 "nrm": tuple(p["nrm"][i]), "uv": (float(p["uv"][i][0]), float(p["uv"][i][1]))}
+            at = obj.vb0 + destinos[offset + i] * WINDOW
+            b[at:at + WINDOW] = AwgVertexBuffer.pack_window(v)
+        offset += len(p["loc"])
+    cur = avb.n_ib
+    for di in sorted(seqs):
+        seq = seqs[di]
+        d = dt2.draws[di]
+        for k, v in enumerate(seq):
+            struct.pack_into(">H", b, obj.ib_abs + (cur + k) * 2, int(v) & 0xFFFF)
+        n_prim = max(0, len(seq) - 2) if d["prim"] == 5 else len(seq) // 3
+        a0, ac = d["A"]
+        if di in hosts and seq:
+            lo, hi = min(seq), max(seq)
+            a0, ac = min(a0, lo), max(a0 + ac, hi + 1) - min(a0, lo)
+        dt2.set_range(d, a0, ac, cur, n_prim)
+        cur += len(seq)
+
+    resumen = {"zonas": {}, "ventanas": {"piezas": n_piezas, "reutilizadas": min(n_piezas, len(libres)),
+                                           "nuevas": n_nuevas, "total": avb.n + n_nuevas}}
+    for p in prepared:
+        mat = dt2.materials[dt2.draws[p["host"]]["material"]]
+        wh = _escribir_textura(b, mat["tex"], p["rgba"])
+        resumen["zonas"][p["zona"]] = {"anfitrion": p["host"], "triangulos": len(p["tris"]), "textura": wh}
+    return bytes(b), resumen

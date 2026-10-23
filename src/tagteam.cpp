@@ -6,7 +6,7 @@
 // tagteam_slots.cpp guarda la lista y hace que el lado empiece con su primer miembro).
 //   - SELECT = relevo al siguiente miembro vivo; SELECT + L = al otro (equipos de 3).
 //   - vida por miembro: la del que sale se guarda y la del que entra se pone (X+6080).
-//   - KO con compaÃ±eros vivos: el golpe deja al luchador "casi muerto" (X+8203, el clamp de
+//   - KO con compañeros vivos: el golpe deja al luchador "casi muerto" (X+8203, el clamp de
 //     sub_8211A5A8 en vez del KO) y entra el siguiente. El ultimo cae de verdad.
 // Cambio de personaje con las rutinas del juego (estudios 11-13 de docs/10_tag_team):
 //   1. sub_821092C8 libera camara, idioma y los modelos/animaciones de las 8 formas;
@@ -16,6 +16,7 @@
 //   3. Tick espera a que esten (camara +192 y modelo de la forma 0 con +36 == 0) y hace lo que
 //      el juego al empezar: sub_8210FDE0 (golpes y camara: X+7896..), sub_82109638 (reinicio
 //      del luchador) y la forma 0 (sub_8210E690 + sub_82115270). La vida se restaura despues.
+#include "reloj_prueba.h"
 #include <rex/hook.h>
 #include <rex/logging.h>
 
@@ -1353,7 +1354,7 @@ void Tick(PPCContext& ctx, uint8_t* base) {
       // sub_82115270 -> sub_82155858 -> sub_821527C0 leyendo 0x3, 2026-10-12)
       const uint32_t fx = std::max(g_tech_seen[0].load(), g_tech_seen[1].load());
       if (loaded && now - fx < kFxQuiet && !online &&
-          (t.round_owned || now - t.since < kFxWaitMax)) loaded = false;
+          (t.round_owned || now - t.since < kFxWaitMax * uint32_t(dbz3::RelojFactor()))) loaded = false;
       if (t.round_owned) loaded = round::CommitReady(loaded, false, false, false, Free(base, x),
           t.down[size_t(t.active)] || form_quiet, now - fx >= kFxQuiet);
       // tras un ring out convertido el caido queda tumbado (18/19) sin contexto de accion (X+6048 nulo): no
@@ -1365,11 +1366,11 @@ void Tick(PPCContext& ctx, uint8_t* base) {
         FinishSwap(ctx, base, x, t);
         g_net_local &= uint16_t(~bit);
       } else if (!loaded && !online &&
-                 (now - t.since > kLoadTimeout ||
+                 (now - t.since > kLoadTimeout * uint32_t(dbz3::RelojFactor()) ||
                   // el juego solto el modelo que se estaba cargando (sus "formas sin usar", sub_82109380: tras un
                   // ring out, RingOutReset; y alguna vez con el que sale en combate, medido 2026-10-15): se pide otra
                   // vez ya (antes: 10 s de espera, y tras un ring out el asalto perdido)
-                  (t.retries == 0 && now - std::max(t.since, t.ring_at) > 30 && !REX_LOAD_U32(x + kModel0 + 4 * kLoad)))) {
+                  (t.retries == 0 && now - std::max(t.since, t.ring_at) > 30 * uint32_t(dbz3::RelojFactor()) && !REX_LOAD_U32(x + kModel0 + 4 * kLoad)))) {
         g_keep[size_t(p)] = 0;
         const uint32_t cam = t.new_cam, model = REX_LOAD_U32(x + kModel0 + 4 * kLoad);
         REXLOG_WARN("dbz3 tag: luchador {:08X}: la carga no termina (camara {:08X} +192 {:08X}, modelo {:08X} +36 {:08X})",
@@ -1579,6 +1580,7 @@ bool OnPad(PPCContext& ctx, uint8_t* base, uint32_t user, uint16_t buttons, uint
 DBZ3_HOOK(sub_82109638, dbz3eu_sub_82109738) {
   bool new_battle = false;
   const uint32_t x = ctx.r3.u32;
+  if (static const bool tz = std::getenv("DBZ3_TRAZA_ESC") != nullptr; tz) REXLOG_INFO("dbz3 traza: luchador reinicia {:08X} (desde {:08X})", x, uint32_t(ctx.lr));
   if (!dbz3::tag::g_in_swap) {
     std::lock_guard<std::mutex> lock(dbz3::tag::g_mu);
     const int p = dbz3::tag::SideOf(base, x);
@@ -1629,7 +1631,7 @@ DBZ3_HOOK(sub_82109638, dbz3eu_sub_82109738) {
   }
 }
 
-// DaÃ±o: si el golpe mataria al activo y queda alguien, "casi muerto" + relevo forzado. Durante
+// Daño: si el golpe mataria al activo y queda alguien, "casi muerto" + relevo forzado. Durante
 // la carga del que entra tampoco cae nadie.
 DBZ3_HOOK(sub_8211A5A8, dbz3eu_sub_8211A6A8) {
   const uint32_t x = ctx.r3.u32;

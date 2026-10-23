@@ -10,6 +10,7 @@
 #include <rex/input/input_system.h>
 #include <rex/runtime.h>
 
+#include "../mods.h"
 #include "settings.h"
 #include "i18n.h"
 #include "ui_kit.h"
@@ -686,6 +687,13 @@ static void DrawToolLog(const std::string& out, char* buf, size_t cap, const cha
 }
 
 // Aviso encima de JUGAR, partido en lineas al ancho del boton (una linea larga se salia de la ventana).
+// Aviso de carga con los puntos animados (la traduccion se busca con los tres puntos).
+static std::string LoadingDots(const char* text) {
+  std::string s = text;
+  while (!s.empty() && s.back() == '.') s.pop_back();
+  return s + std::string(size_t(int(ImGui::GetTime() * 2.5) % 4), '.');
+}
+
 static void TextAbovePlay(const ImVec2& play_min, float bottom_gap, ImVec4 color, const char* text) {
   const float wrap = 320.0f;
   const ImVec2 size = ImGui::CalcTextSize(text, nullptr, false, wrap);
@@ -1079,8 +1087,7 @@ void LauncherDialog::OnDraw(ImGuiIO& io) {
     (void)cur_label;  // shown as a pill next to the title
     switch (dbz3::launcher::GetUpdateState()) {
     case dbz3::launcher::UpdateState::kChecking:
-      ImGui::TextDisabled("%s", i18n::T("Buscando actualizaciones...",
-                                        "Checking for updates..."));
+      ImGui::TextDisabled("%s", LoadingDots(i18n::T("Buscando actualizaciones...", "Checking for updates...")).c_str());
       break;
     case dbz3::launcher::UpdateState::kAvailable: {
       ImGui::PushStyleColor(ImGuiCol_Text, kOk);
@@ -1639,6 +1646,7 @@ void LauncherDialog::OnDraw(ImGuiIO& io) {
                    i18n::T("Si, restablecer", "Yes, reset"))) {
     static const char* const kResetNames[] = {
         "dbz3_resolution_scale",
+        "dbz3_low_res",
         "dbz3_language",
         "dbz3_region",
         "dbz3_mod_profile",
@@ -1749,10 +1757,25 @@ void LauncherDialog::OnDraw(ImGuiIO& io) {
       (launching_ ? i18n::T("Preparando...", "Preparing...") : i18n::T("JUGAR", "PLAY")) + "###play";
   const bool play_pressed = ImGui::Button(play_label.c_str(), ImVec2(320, 62));
   const ImVec2 play_min = ImGui::GetItemRectMin();
+  const float play_w = ImGui::GetItemRectSize().x;   // la barra de progreso mide lo que JUGAR
   // antes de pintar el aviso de mods: despues el "ultimo item" ya no es JUGAR
   const bool play_hovered = ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled);
   ImGui::PopStyleVar();
   if (fonts.h2) ImGui::PopFont();
+  // Jugar sin mods (vanilla), solo esta vez: reinicia el juego con una carpeta de mods vacia; los mods del jugador ni se
+  // tocan ni se mueven, y el siguiente arranque normal los tiene como estaban. Util para pruebas y como respaldo del online.
+  if (!dbz3::VanillaSession() && !launching_ && !iso_prep_) {
+    const ImVec2 keep = ImGui::GetCursorScreenPos();
+    ImGui::SetCursorScreenPos(ImVec2(play_min.x, play_min.y + 66.0f));
+    if (ImGui::SmallButton(i18n::T("Jugar vanilla (sin mods, solo esta vez)", "Play vanilla (no mods, this time only)"))) {
+      dbz3::settings::SaveUserSettings();
+      dbz3::RelaunchVanilla("", false);
+    }
+    ImGui::SetCursorScreenPos(keep);
+  } else if (dbz3::VanillaSession()) {
+    ImGui::SetCursorScreenPos(ImVec2(play_min.x, play_min.y + 66.0f));
+    ImGui::TextColored(kGold, "%s", i18n::T("Sesion vanilla: sin mods (tus mods no se tocan)", "Vanilla session: no mods (your mods are untouched)"));
+  }
   if (!launching_ && !iso_prep_error_.empty() && dbz3::settings::IsIsoMode()) {
     // ISO + mods: la copia de los .afs fallo (espacio, ISO ilegible): se dice por que y el siguiente JUGAR juega sin mods
     const std::string warn = std::string("! ") + i18n::T("Mods desde la ISO: ", "Mods from the ISO: ") + iso_prep_error_ +
@@ -1803,17 +1826,17 @@ void LauncherDialog::OnDraw(ImGuiIO& io) {
                      "Preparing the ISO for mods and extras (first time only)...");
     }
     const ImVec2 bar_min(play_min.x, play_min.y - 10.0f);
-    const ImVec2 bar_max(play_min.x + 320.0f, play_min.y - 4.0f);
+    const ImVec2 bar_max(play_min.x + play_w, play_min.y - 4.0f);
     ImDrawList* dl = ImGui::GetWindowDrawList();
     TextAbovePlay(play_min, 14.0f, kGold, text.c_str());
     dl->AddRectFilled(bar_min, bar_max, IM_COL32(255, 255, 255, 40), 3.0f);
     if (frac >= 0.0f) {
-      dl->AddRectFilled(bar_min, ImVec2(bar_min.x + 320.0f * std::max(frac, 0.03f), bar_max.y),
+      dl->AddRectFilled(bar_min, ImVec2(bar_min.x + play_w * std::max(frac, 0.03f), bar_max.y),
                         ImGui::GetColorU32(kGold), 3.0f);
     } else {
       const float t = float(std::fmod(ImGui::GetTime() * 0.6, 1.0));
-      const float x0 = bar_min.x + 320.0f * std::max(0.0f, t - 0.25f);
-      const float x1 = bar_min.x + 320.0f * std::min(1.0f, t + 0.05f);
+      const float x0 = bar_min.x + play_w * std::max(0.0f, t - 0.25f);
+      const float x1 = bar_min.x + play_w * std::min(1.0f, t + 0.05f);
       dl->AddRectFilled(ImVec2(x0, bar_min.y), ImVec2(x1, bar_max.y), ImGui::GetColorU32(kGold), 3.0f);
     }
   }
@@ -2221,6 +2244,7 @@ void LauncherDialog::DrawModCard() {
     ui::FontScope b(ui::GetFonts().bold);
     if (ImGui::Checkbox(i18n::T("Activado", "Enabled"), &on)) {
       dbz3::SetModEnabled(mod.name, on);
+      if (on) dbz3::StampModVersion(mod.name, dbz3::launcher::CurrentVersion());
       mod.enabled = on;
       mods_loaded_ = false;
       broken_mods_ = -1;
@@ -2407,6 +2431,19 @@ void LauncherDialog::DrawVideoTab() {
           "tarjeta gráfica trabaja mucho más (cada paso cuesta más o menos el doble). Empieza por 1x.",
           "The game is drawn at a higher resolution and then scaled down: much cleaner edges, but the "
           "graphics card works much harder (each step costs roughly twice as much). Start at 1x."));
+    {   // issue #29: 480p para PCs flojos (el juego dibuja a 640x480 el solo con un modo de video no HD)
+      bool low = dbz3::settings::LowResEnabled();
+      if (ImGui::Checkbox(i18n::T("Resolucion baja 480p (PC flojo, reinicia el juego)",
+                                  "Low resolution 480p (weak PC, restart the game)"), &low)) {
+        dbz3::settings::SetLowResEnabled(low);
+        dbz3::settings::SaveUserSettings();
+      }
+      ui::Tip(i18n::T(
+            "El juego se dibuja a 640x480 (4:3, como en una Xbox 360 con tele normal) y se estira a la ventana. "
+            "Va bastante mas ligero en tarjetas graficas integradas. Beta: el menu y las barras de vida cambian de forma.",
+            "The game is drawn at 640x480 (4:3, like an Xbox 360 on a standard TV) and stretched to the window. "
+            "Much lighter on integrated GPUs. Beta: menus and health bars change layout."));
+    }
     // Aviso fuerte y accion de revertir: un usuario puede subir la escala sin
     // entender que ahi esta el coste real (no en las texturas HD). Se le da el
     // dato claro y el boton para volver a lo razonable en un clic.
@@ -3537,7 +3574,7 @@ void LauncherDialog::DrawNovasModsTab() {
                                                          "Coming in the next launcher update."));
       break;
     case NovaState::kLoading:
-      ImGui::TextDisabled("%s", i18n::T("Cargando la lista...", "Loading the list..."));
+      ImGui::TextDisabled("%s", LoadingDots(i18n::T("Cargando la lista...", "Loading the list...")).c_str());
       break;
     case NovaState::kFailed:
       ImGui::TextColored(kDragonOrangeDim, "%s", i18n::T("No se pudo cargar la lista. Comprueba tu conexion.",
@@ -4208,6 +4245,7 @@ void LauncherDialog::DrawModsTab() {
                            (row_h - ImGui::GetFrameHeight()) * 0.5f);
       if (ImGui::Checkbox(("##mod_" + mod.name).c_str(), &current)) {
         dbz3::SetModEnabled(mod.name, current);
+        if (current) dbz3::StampModVersion(mod.name, dbz3::launcher::CurrentVersion());
         for (dbz3::ModInfo& c : mods_cache_)
           if (c.name == mod.name) c.enabled = current;   // se ve ya; la lista nueva llega en segundo plano
         mods_loaded_ = false; broken_mods_ = -1;
@@ -4271,6 +4309,18 @@ ImGui::TextDisabled(i18n::T("%d archivo%s", "%d file%s"), mod.file_count,
       ImGui::TableSetColumnIndex(2);
       DrawBadge(ModTypeLabelText(mod.type), ModTypeColorVec(mod.type));
       ImGui::SameLine();
+      {   // D4: el mod se activo con otra version del juego
+        const std::string ahora = dbz3::launcher::CurrentVersion();
+        if (!mod.made_for.empty() && !ahora.empty() && mod.made_for != ahora) {
+          DrawBadge(i18n::T("OTRA VERSION", "OTHER VERSION"), ImVec4(0.55f, 0.38f, 0.10f, 1.0f));
+          if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip(i18n::T("Este mod se activo con la version %s y ahora corre la %s: si algo falla, desactivalo.",
+                                      "This mod was enabled on version %s and now version %s is running: disable it if something fails."),
+                              mod.made_for.c_str(), ahora.c_str());
+          }
+          ImGui::SameLine();
+        }
+      }
       if (mod.enabled) ImGui::TextColored(kOk, "%s", i18n::T("ACTIVO", "ON"));
       else ImGui::TextDisabled("%s", i18n::T("APAGADO", "OFF"));
       if (ImGui::IsItemHovered()) {
@@ -5960,6 +6010,32 @@ void LauncherDialog::DrawNewCharactersTab() {
     ImGui::EndChild();
     ImGui::PopStyleVar(3);
     ImGui::PopStyleColor(2);
+    ImGui::Dummy(ImVec2(0, 4));
+  }
+  {
+    ui::SectionTitle(i18n::T("Creador de personajes (Modo Héroe) (beta)", "Character creator (Hero Mode) (beta)"));
+    const bool xv2 = dbz3::settings::Xv2Instalado();
+    bool piezas = xv2 && dbz3::settings::CacXv2Piezas();
+    ImGui::BeginDisabled(!xv2);
+    if (ImGui::Checkbox(i18n::T("Usar piezas de Xenoverse 2 (opcional)", "Use Xenoverse 2 parts (optional)"),
+                        &piezas)) {
+      dbz3::settings::SetCacXv2Piezas(piezas);
+      dbz3::settings::SaveUserSettings();
+    }
+    ImGui::EndDisabled();
+    {   // piezas XV2 aun muy verdes (ojos, brazos): se marca como experimental (23/10, pedido del usuario)
+      ImGui::SameLine(0.0f, 10.0f);
+      const float pill_h = (ui::GetFonts().sm ? ui::GetFonts().sm->LegacySize : ImGui::GetFontSize()) + 6.0f;
+      ImGui::SetCursorPosY(ImGui::GetCursorPosY() + std::max(0.0f, (ImGui::GetFrameHeight() - pill_h) * 0.5f));
+      ui::Pill(nullptr, "EXPERIMENTAL", ui::kBlue);
+    }
+    ImGui::TextDisabled("%s", xv2
+        ? i18n::T("Apagado: el creador usa pelo, torso y piernas de los personajes nativos de tu Budokai 3. "
+                  "Activado: ofrece ademas las piezas de tu Xenoverse 2 instalado (nunca se reparte arte).",
+                  "Off: the creator uses hair, torso and legs from your native Budokai 3 characters. "
+                  "On: it also offers parts from your installed Xenoverse 2 (no art is shipped).")
+        : i18n::T("Xenoverse 2 no instalado: el creador usa los personajes nativos de B3 (opcion no disponible).",
+                  "Xenoverse 2 not installed: the creator uses native B3 characters (option unavailable)."));
     ImGui::Dummy(ImVec2(0, 4));
   }
   ui::SectionTitle(i18n::T("Personajes nuevos (casillas extra en el select)",

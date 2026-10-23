@@ -13,6 +13,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <vector>
 
 #include "generated/dbz3_init.h"
 #include "eu_map.h"
@@ -126,6 +127,29 @@ void TestTick(PPCContext& ctx, uint8_t* base) {
     fn(c, base);
     return c.r3.s32;
   };
+  // S5-I1 (issue #1, pruebas): DBZ3_TEST_KI=a,b,c fija el ki del jugador 1 (uno cada ~2 s, en bucle) y solo mira que
+  // forma daria la decision nativa (sub_82119108); no transforma. Con ki justo por debajo del coste de la forma
+  // siguiente debe dar la forma actual.
+  static const std::vector<float> kis = [] {
+    std::vector<float> v;
+    if (const char* e = std::getenv("DBZ3_TEST_KI")) {
+      for (const char* q = e; *q;) {
+        v.push_back(float(std::atof(q)));
+        while (*q && *q != ',') ++q;
+        if (*q == ',') ++q;
+      }
+    }
+    return v;
+  }();
+  if (!kis.empty()) {
+    static int n = 0;
+    const float ki = kis[size_t(n / 120) % kis.size()];
+    set_ki(ki);
+    if (n++ % 120 == 60)
+      REXLOG_INFO("dbz3 formas: prueba: ki fijo {:.0f}; en la forma {}; P+K+G daria la {}", ki, cur,
+                  call(DBZ3_CALL_EU(sub_82119108), 0));
+    return;
+  }
   if (ready != cur + 1) {
     ready = cur + 1;
     wait = 0;

@@ -1,0 +1,11 @@
+# copia: s5_h2
+descripcion = "Heroe: mapa con sagas 4-8 bloqueadas (En desarrollo)"
+env = ["DBZ3_TEST_MODO=heroe", "DBZ3_HUB_MODE=5", "DBZ3_TEST_HEROE_PANTALLA=mapa", "DBZ3_TEST_HEROE_SAGA=3"]
+pasos = [
+  "log \"dbz3 heroe: mapa abierto\" 240",
+  "esperar 1500",
+  "captura 01_mapa_saga4",
+  "tecla Space 1500",
+  "log \"esta en desarrollo\" 20",
+  "captura 02_aviso",
+]

@@ -2,6 +2,7 @@
 
 #include "quick_settings.h"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <filesystem>
@@ -14,6 +15,7 @@
 
 #include "../launcher/i18n.h"
 #include "../launcher/settings.h"
+#include "../mods_opcionales.h"
 
 namespace dbz3::ingame {
 namespace {
@@ -300,6 +302,27 @@ void ConfigureQuickMenu(rex::ui::QuickMenuConfig& menu, std::function<void()> op
     }
     sound.items.push_back(Toggle(T::T("Silenciar", "Mute"), "dbz3_mute",
                                  T::T("Quita todo el sonido.", "Turns all sound off.")));
+    {
+      // X1: musica de combate. Solo se ofrecen las fuentes que el jugador tiene (su copia y sus ISO de PS2, leidas al
+      // abrir el menu; las pistas se cachean 5 s). "Original" deja el combate como esta (B3 solo tiene ambiente).
+      Choices pistas = {{"original", T::T("Original (la del juego)", "Original (the game's)")}};
+      std::vector<std::string> fuentes;
+      for (const auto& p : dbz3::musica::Pistas())
+        if (std::find(fuentes.begin(), fuentes.end(), p.fuente) == fuentes.end()) fuentes.push_back(p.fuente);
+      if (fuentes.size() > 1) pistas.push_back({"aleatoria", T::T("Aleatoria (todas)", "Random (all)")});
+      for (const std::string& f : fuentes) {
+        const std::string nombre = f == "b3" ? "Budokai 3 HD" : f == "b2" ? "Budokai 2" : f == "iw" ? "Infinite World"
+                                 : f == "b1" ? "Budokai 1" : f;
+        pistas.push_back({"aleatoria:" + f, std::string(T::T("Aleatoria: ", "Random: ")) + nombre +
+                                                (f == "b3" ? "" : T::T(" (tu ISO)", " (your ISO)"))});
+      }
+      sound.items.push_back(Choice(
+          Tagged(T::T("Musica de combate", "Battle music"), kBeta), "dbz3_musica_combate", std::move(pistas),
+          T::T("Suena una pista durante los combates. Las pistas salen de tu copia y de tus ISO de PS2, leidas al "
+               "momento; no se reparte nada. Original deja el combate como esta (solo ambiente).",
+               "A track plays during battles. Tracks come from your own copy and your PS2 ISOs, read on the fly; "
+               "nothing is distributed. Original leaves battles as they are (ambience only).")));
+    }
     sound.items.push_back(Toggle(T::T("Vibracion", "Vibration"), "dbz3_rumble",
                                  T::T("Vibracion del mando.", "Controller vibration.")));
     sound.items.push_back(Choice(

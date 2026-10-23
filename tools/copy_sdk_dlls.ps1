@@ -25,8 +25,11 @@ $dst = Join-Path $root $BuildDir
 if (-not (Test-Path -LiteralPath $src)) { Write-Error "No existe el SDK baseline: $src"; exit 1 }
 if (-not (Test-Path -LiteralPath $dst)) { Write-Error "No existe el build destino: $dst"; exit 1 }
 
-if (Get-Process dbz3 -ErrorAction SilentlyContinue) {
-  Write-Error "dbz3.exe esta en ejecucion: cierralo antes de copiar las DLLs (ficheros bloqueados)"
+# Solo bloquean los dbz3.exe que corren desde $dst; las copias de prueba de D:\DBZ3HD no tienen abiertas estas DLLs.
+$dstFull = (Resolve-Path -LiteralPath $dst).Path.TrimEnd('\') + '\'
+$enDst = Get-Process dbz3 -ErrorAction SilentlyContinue | Where-Object { -not $_.Path -or $_.Path.StartsWith($dstFull, [StringComparison]::OrdinalIgnoreCase) }
+if ($enDst) {
+  Write-Error "dbz3.exe esta en ejecucion desde $BuildDir (o sin ruta legible): cierralo antes de copiar las DLLs (ficheros bloqueados)"
   exit 1
 }
 

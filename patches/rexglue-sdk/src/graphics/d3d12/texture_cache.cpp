@@ -2973,6 +2973,11 @@ uint32_t D3D12TextureCache::GetTexturePackFactor(const TextureKey& key) const {
     }
     entry = Dbz3TexturePackIndex::Get().Find(hash);
     if (entry == nullptr) {
+      // D3: con un pack activo, esta textura que el juego pide NO esta en el pack.
+      // Se guarda su original en `<pack>/update/` para que el autor complete el pack.
+      if (packs && replaceable) {
+        RecordMissingPackTexture(key, hash, linear);
+      }
       break;
     }
     if (!replaceable) {
@@ -3295,6 +3300,101 @@ void D3D12TextureCache::DumpTextureToDds(const TextureKey& key,
   }
   if (state.count == 1) {
     REXGPU_INFO("dbz3: volcado de texturas activado en '{}'", dir.string());
+  }
+}
+
+// D3: texturas que el juego pide y el pack no trae -> `<pack>/update/*.dds` para el autor.
+void D3D12TextureCache::RecordMissingPackTexture(const TextureKey& key, uint64_t hash,
+                                                 const std::vector<uint8_t>& linear) const {
+  if (rex::cvar::GetFlagByName("dbz3_pack_update") == "false") {
+    return;
+  }
+  const Dbz3DumpFormat* format = Dbz3DumpFormatFor(key.format);
+  if (format == nullptr) {   // el pack no puede reemplazar estos formatos: no son "faltantes" utiles
+    return;
+  }
+  // Frontbuffer / video: no son texturas de material y cambian de contenido cada frame.
+  if (swap_texture_key_valid_ && swap_texture_key_.base_page == key.base_page &&
+      swap_texture_key_.format == key.format && swap_texture_key_.GetWidth() == key.GetWidth() &&
+      swap_texture_key_.GetHeight() == key.GetHeight()) {
+    return;
+  }
+  struct MissingState {
+    std::unordered_set<uint64_t> seen;
+    std::map<std::tuple<uint32_t, uint32_t, uint32_t, uint32_t>, uint32_t> per_identity;
+    uint32_t count = 0;
+    uint64_t bytes = 0;
+    bool dir_logged = false;
+    bool cap_logged = false;
+    bool space_logged = false;
+  };
+  static MissingState state;
+  constexpr uint32_t kMaxFiles = 4000;                 // tope de ficheros de la carpeta update
+  constexpr uint64_t kMaxBytes = uint64_t(1024) << 20;  // 1 GB
+  if (state.count >= kMaxFiles || state.bytes >= kMaxBytes) {
+    if (!state.cap_logged) {
+      state.cap_logged = true;
+      REXGPU_INFO("dbz3: update del pack: tope alcanzado ({} texturas, {} MB); no se anaden mas",
+                  state.count, state.bytes >> 20);
+    }
+    return;
+  }
+  if (!state.seen.insert(hash).second) {
+    return;
+  }
+  // Misma identidad (direccion+formato+tamano) que cambia de contenido (video): 2 versiones y se corta.
+  const auto identity = std::make_tuple(key.base_page, uint32_t(key.format), key.GetWidth(),
+                                        key.GetHeight());
+  if (++state.per_identity[identity] > 2) {
+    return;
+  }
+  // Primera carpeta de `dbz3_texture_packs` (la del pack HD) + /update.
+  std::string list = REXCVAR_QUERY(std::string, dbz3_texture_packs);
+  const size_t sep = list.find(';');
+  if (sep != std::string::npos) {
+    list.resize(sep);
+  }
+  while (!list.empty() && (list.back() == ' ' || list.back() == '\r' || list.back() == '\n')) {
+    list.pop_back();
+  }
+  if (list.empty()) {
+    return;
+  }
+  std::error_code ec;
+  std::filesystem::path dir = rex::to_path(list) / "update";
+  std::filesystem::create_directories(dir, ec);
+  if (ec) {   // pack en solo lectura (p.ej. dentro de Program Files): copia de usuario
+    dir = std::filesystem::path("user_data") / "dbz3" / "pack_update";
+    std::filesystem::create_directories(dir, ec);
+    if (ec) {
+      return;
+    }
+  }
+  const auto space = std::filesystem::space(dir, ec);
+  if (!ec && space.available < (uint64_t(200) << 20)) {
+    if (!state.space_logged) {
+      state.space_logged = true;
+      REXGPU_INFO("dbz3: update del pack: quedan {} MB libres; no se guardan mas originales",
+                  space.available >> 20);
+    }
+    return;
+  }
+  const std::string name =
+      fmt::format("{:016X}_{}x{}_{}.dds", hash, key.GetWidth(), key.GetHeight(), format->suffix);
+  if (!Dbz3WriteDds(dir / name, linear.data(), uint32_t(linear.size()), key.GetWidth(),
+                    key.GetHeight(), *format)) {
+    return;
+  }
+  ++state.count;
+  state.bytes += linear.size();
+  if (!state.dir_logged) {
+    state.dir_logged = true;
+    REXGPU_INFO("dbz3: update del pack: texturas que faltan en '{}' (envia esta carpeta al autor)",
+                dir.string());
+  }
+  if (state.count % 250 == 0) {
+    REXGPU_INFO("dbz3: update del pack: {} texturas originales guardadas ({} MB)", state.count,
+                state.bytes >> 20);
   }
 }
 

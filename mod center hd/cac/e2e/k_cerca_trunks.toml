@@ -1,0 +1,21 @@
+# copia: k_cerca_trunks (de k_cerca_heroe.toml). Cuerpo NATIVO de Trunks (id 8 = raza Saiyan, indice 3). Primer plano en vista previa 3D en vivo.
+descripcion = "K cerca: Trunks nativo en Crear heroe, primer plano (DBZ3_TEST_HEROE_CAM)"
+env = ["DBZ3_TEST_RINGOUT=1", "DBZ3_TEST_HEROE_RAZA=0", "DBZ3_TEST_HEROE_CUERPO=3", "DBZ3_TEST_HEROE_CAM=3"]
+pasos = [
+  "esperar 2500",
+  "tecla W 1200",
+  "tecla Space 3500",
+  "tecla S 450", "tecla S 450", "tecla S 450", "tecla S 450", "tecla S 450",
+  "tecla Space 2500",
+  "tecla S 700", "tecla S 700", "tecla S 700",
+  "tecla Space 3500",
+  "captura k_cerca_trunks_0_heroe",
+  "esperar 1500",
+  "tecla S 500", "tecla S 500",
+  "tecla Space 3000",
+  "log \"Create abierto\" 20",
+  "esperar 12000",
+  "captura k_cerca_trunks_1_create",
+  "esperar 20000",
+  "captura k_cerca_trunks_cam3",
+]

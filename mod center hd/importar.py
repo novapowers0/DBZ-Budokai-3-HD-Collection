@@ -70,6 +70,7 @@ GAMES = [
     ("sb1", "Shin Budokai", "listo"),
     ("sb2", "Shin Budokai: Another Road", "listo"),
     ("sdbh", "Super Dragon Ball Heroes: World Mission", "listo"),
+    ("xv2", "Dragon Ball Xenoverse 2", "listo"),
 ]
 NOTES = {
     "b1": "Modelo, golpes, combos y gritos del Budokai 1 original; definitiva de su equivalente en B3.",
@@ -79,6 +80,7 @@ NOTES = {
     "sb1": "Modelos de PSP con sus formas; golpes de Shin Budokai (sbport) o del donante.",
     "sb2": "Modelos de PSP con sus formas; golpes de Shin Budokai (sbport) o del donante.",
     "sdbh": "Modelos HD de Heroes (boca, 7 caras, rampas); golpes de Shin Budokai o del donante.",
+    "xv2": "Modelos de Dragon Ball Xenoverse 2 de tu copia de Steam (solo lectura); colores del BCS; golpes y voces del donante.",
 }
 
 # Budokai 1: registro del ELF -> ID de B3 cuyo moveset sirve de base (agarre, modo hiper...)
@@ -171,6 +173,10 @@ def source_path(game):
         return iso.find_game("sb2")
     if game == "sdbh":
         return sdbh_dir()
+    if game == "xv2":                    # E3: data.cpk de XV2 (bibliotecas de Steam, libraryfolders.vdf)
+        sys.path.insert(0, os.path.join(HERE, "xv2"))
+        import xv2_leer  # noqa: PLC0415
+        return xv2_leer.buscar_xv2()
     return None
 
 
@@ -646,6 +652,15 @@ def sb_import(game, e, donor, work, us):
     import roster_build as rb  # noqa: PLC0415
     dn = next(x for x in rb.DB["ids"] if x["id"] == donor)
     models = []
+    if game == "xv2":                    # E3: una forma de XV2 = un traje; golpes y voces del donante
+        sys.path.insert(0, os.path.join(HERE, "xv2"))
+        import xv2_fuente  # noqa: PLC0415
+        tpl = xv2_fuente.plantilla_donante(donor, us, os.path.join(work, "plantilla.bin"))
+        for k, forma in enumerate(e["modelos"][:1]):      # las demas "formas" de XV2 son trajes alternativos, no transformaciones
+            out = os.path.join(work, "traje%d.bin" % (k + 1))
+            xv2_fuente.convertir_forma(e["clave"], forma, tpl, out)
+            models.append(out)
+        return models, 1, {"fisica": '"donante"'}, {}
     if game == "sdbh":
         import afs_pair  # noqa: PLC0415
         conv = awo_tool("sdbh_model.py")
@@ -1061,6 +1076,10 @@ def list_source(game, extra=None):
         return [e for e in sb_list(game) if e["modelos"]]
     if game == "sdbh":
         return sdbh_list()
+    if game == "xv2":
+        sys.path.insert(0, os.path.join(HERE, "xv2"))
+        import xv2_fuente  # noqa: PLC0415
+        return xv2_fuente.lista()
     raise ValueError("fuente desconocida: %s" % game)
 
 
@@ -1243,7 +1262,7 @@ def do_import(a):
             p = os.path.join(work, "traje%d.amb" % (len(models) + 1))
             open(p, "wb").write(amb_pair(b1.entry(m), b1.entry(m + 1)))
             models.append(p)
-    elif game in ("sb1", "sb2", "sdbh"):  # PSP / Heroes: formas de un traje (+ golpes de SB)
+    elif game in ("sb1", "sb2", "sdbh", "xv2"):  # PSP / Heroes: formas de un traje (+ golpes de SB)
         models, forms, sb_keys, sb_files = sb_import(game, e, donor, work, a.us)
     elif e.get("ficheros"):            # colecciones: modelo base y sus formas (un traje)
         for f in e["ficheros"][:6]:
@@ -1396,7 +1415,7 @@ def do_import(a):
             keys["definitiva_animaciones"] = '"moveset/definitiva.json"'
         if forms > 1:
             keys["formas"] = str(forms)
-    elif game in ("sb1", "sb2", "sdbh"):
+    elif game in ("sb1", "sb2", "sdbh", "xv2"):
         import shutil  # noqa: PLC0415
         for rel, src in sb_files.items():
             if rel.startswith("moveset/"):
@@ -1447,7 +1466,7 @@ def do_import(a):
     if keys:
         rb.set_toml_keys(toml, keys)
     sb_caps = False
-    if game in ("sb1", "sb2", "sdbh"):    # capsulas: tecnicas con nombre oficial (sb_tecnicas) + formas
+    if game in ("sb1", "sb2", "sdbh", "xv2"):    # capsulas: tecnicas con nombre oficial (sb_tecnicas) + formas
         extra = ""
         if sb_files.get("capsulas.toml") and not a.golpes_donante:
             with open(sb_files["capsulas.toml"], encoding="utf-8") as fh:

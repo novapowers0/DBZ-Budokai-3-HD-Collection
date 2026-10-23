@@ -468,7 +468,39 @@ bool Dbz3DecodePackImage(const std::filesystem::path& path, std::vector<uint8_t>
   }
   const bool compressed = (pf_flags & 0x4) != 0;  // DDPF_FOURCC
   const uint8_t* data = file.data() + 128;
-  const size_t data_size = file.size() - 128;
+  size_t data_size = file.size() - 128;
+  if (compressed && fourcc == 0x30315844u) {  // 'DX10': cabecera DDS_HEADER_DXT10 de 20 B
+    if (file.size() < 148) {
+      return false;
+    }
+    const uint32_t dxgi = u32(128);
+    data += 20;
+    data_size -= 20;
+    // Formatos del header DX10 que no llevan compresion (los escribe DirectXTex al
+    // guardar RGBA8). Se decodifican como 32 bits con las mascaras de su orden.
+    switch (dxgi) {
+      case 28:  // R8G8B8A8_UNORM
+      case 29:  // R8G8B8A8_UNORM_SRGB
+        return DecodeUncompressed32(data, data_size, width, height, 0x000000FFu, 0x0000FF00u,
+                                    0x00FF0000u, 0xFF000000u, rgba);
+      case 87:  // B8G8R8A8_UNORM
+      case 91:  // B8G8R8A8_UNORM_SRGB
+      case 88:  // B8G8R8X8_UNORM
+        return DecodeUncompressed32(data, data_size, width, height, 0x00FF0000u, 0x0000FF00u,
+                                    0x000000FFu, dxgi == 88 ? 0u : 0xFF000000u, rgba);
+      default: {
+        static uint32_t warned = 0;
+        if (warned != dxgi) {
+          warned = dxgi;
+          REXGPU_WARN(
+              "dbz3: pack: DDS DX10 con formato DXGI {} no soportado (BC7 = 98); exporta esa "
+              "textura como PNG (sin perdida y ya soportado)",
+              dxgi);
+        }
+        return false;
+      }
+    }
+  }
   if (compressed) {
     return DecodeBc(data, data_size, fourcc, width, height, rgba);
   }
@@ -619,9 +651,76 @@ bool ScanPack(const std::string& dir, std::string& name,
     REXGPU_WARN("dbz3: pack de texturas '{}': recorrido cortado ({}), {} texturas leidas", name,
                 ec.message(), files.size());
   }
+  // D3: alias de nombres. `alias.txt` en la raiz del pack, una linea por textura:
+  //   <hash de 16 hex> = <ruta relativa a la raiz del pack>
+  // Permite nombrar los ficheros con sentido (goku_ssj4_cara.png) sin renombrarlos al hash.
+  {
+    const std::filesystem::path alias_path = root / "alias.txt";
+    std::error_code aec;
+    if (std::filesystem::is_regular_file(alias_path, aec)) {
+      FILE* af = rex::filesystem::OpenFile(alias_path, "rb");
+      if (af) {
+        std::string text;
+        char buf[4096];
+        size_t n;
+        while ((n = std::fread(buf, 1, sizeof(buf), af)) > 0) {
+          text.append(buf, n);
+        }
+        std::fclose(af);
+        size_t pos = 0, aliases = 0;
+        while (pos < text.size()) {
+          size_t end = text.find('\n', pos);
+          if (end == std::string::npos) {
+            end = text.size();
+          }
+          std::string line = text.substr(pos, end - pos);
+          pos = end + 1;
+          if (!line.empty() && line.back() == '\r') {
+            line.pop_back();
+          }
+          const size_t eq = line.find('=');
+          if (eq == std::string::npos) {
+            continue;
+          }
+          std::string hash_text = line.substr(0, eq), rel = line.substr(eq + 1);
+          auto trim = [](std::string& s) {
+            while (!s.empty() && (s.front() == ' ' || s.front() == '\t')) s.erase(s.begin());
+            while (!s.empty() && (s.back() == ' ' || s.back() == '\t')) s.pop_back();
+          };
+          trim(hash_text);
+          trim(rel);
+          if (hash_text.size() != 16 || rel.empty() || rel[0] == '#') {
+            continue;
+          }
+          Dbz3TexturePackEntry e;
+          if (!ParsePackHash(hash_text + "_", e.hash)) {
+            continue;
+          }
+          const std::filesystem::path file = root / rex::to_path(rel);
+          std::error_code fec;
+          if (!std::filesystem::is_regular_file(file, fec)) {
+            REXGPU_WARN("dbz3: pack '{}': alias '{}' apunta a un fichero que no existe", name, rel);
+            continue;
+          }
+          if (!ReadImageSize(file, e.width, e.height)) {
+            continue;
+          }
+          e.path = file;
+          e.pack_name = name;
+          files.push_back(std::move(e));
+          ++aliases;
+        }
+        if (aliases != 0) {
+          REXGPU_INFO("dbz3: pack de texturas '{}': {} alias de alias.txt", name, aliases);
+        }
+      }
+    }
+  }
   return true;
 }
 }  // namespace
+
+void Dbz3ClearDecodeCache();   // mas abajo: imagenes ya decodificadas (clave = hash, no ruta)
 
 void Dbz3TexturePackIndex::EnsureInitialized() const {
   // Se llama en cada busqueda: la lista de packs se mira como mucho 2 veces por segundo.
@@ -652,6 +751,9 @@ void Dbz3TexturePackIndex::EnsureInitialized() const {
   if (started_) {
     REXGPU_INFO("dbz3: la lista de packs ha cambiado; se rehace el indice");
   }
+  // Lista cambiada con el juego en marcha (p. ej. un zip "update" soltado tras el pack grande): lo ya
+  // decodificado esta indexado por hash y seguiria devolviendo la imagen del pack anterior.
+  if (started_) Dbz3ClearDecodeCache();
   started_ = true;
   built_list_ = list;
   ready_.store(false, std::memory_order_release);
@@ -870,6 +972,23 @@ bool CacheFailed(uint64_t hash) {
   std::lock_guard<std::mutex> lock(c.mutex);
   return c.failed.count(hash) != 0;
 }
+
+}  // namespace
+
+void Dbz3ClearDecodeCache() {
+  std::vector<std::shared_ptr<const Dbz3TexturePackIndex::Image>> victims;   // se sueltan fuera del candado
+  {
+    PackCache& c = Cache();
+    std::lock_guard<std::mutex> lock(c.mutex);
+    for (auto& kv : c.images) victims.push_back(std::move(kv.second.first));
+    c.images.clear();
+    c.lru.clear();
+    c.failed.clear();
+    c.bytes = 0;
+  }
+}
+
+namespace {
 
 void CachePut(uint64_t hash, std::shared_ptr<const Dbz3TexturePackIndex::Image> image) {
   const bool low = RamLow();

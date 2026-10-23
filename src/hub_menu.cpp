@@ -29,6 +29,7 @@
 #include <random>
 #include <string>
 
+#include "reloj_prueba.h"
 #include "escenarios.h"
 #include "generated/dbz3_init.h"
 #include "eu_map.h"
@@ -194,10 +195,7 @@ std::atomic<int> g_se{-1};            // QueueSe: sonido pendiente para el sigui
 std::atomic<int64_t> g_se_at{0};      // ... y cuando se pidio (uno de hace mas de 0,3 s ya no suena)
 std::atomic<int> g_quick[3] = {-1, -1, -1};   // ultimo combate rapido: luchador 1, luchador 2, escenario
 
-int64_t NowMs() {
-  return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch())
-      .count();
-}
+int64_t NowMs() { return dbz3::RelojMs(); }
 
 // Estado del HUB: solo el hilo del juego.
 struct State {

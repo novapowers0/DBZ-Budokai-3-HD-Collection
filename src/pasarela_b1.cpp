@@ -581,6 +581,25 @@ void CallarAdxPs2() { ++g_adx_gen; }
 std::atomic<uint32_t> g_mus_gen{0};
 void OirMusicaPs2(const std::filesystem::path& juego, const std::string& afs, int entrada, float volumen) {
   const uint32_t gen = ++g_mus_gen;
+  // S5-A3: DBZ3_AUDIO_VERIFICA=1 decodifica la pista aunque este en silencio y apunta su RMS por segundo (la salida por winmm
+  // no entra en el volcado del SDK; asi se comprueba con numeros que la pista suena y cuando empieza), sin reproducirla.
+  static const bool verifica = std::getenv("DBZ3_AUDIO_VERIFICA") != nullptr;
+  if (verifica) {
+    std::thread([juego, afs, entrada, gen] {
+      AfsPs2 a;
+      int hz = 0;
+      const std::vector<int16_t> pcm = a.Abrir(juego, afs) ? Adx(a.Entrada(size_t(entrada)), hz, true) : std::vector<int16_t>();
+      std::string rms;
+      for (int sg = 0; hz && sg < 12 && size_t(sg + 1) * size_t(hz) * 2 <= pcm.size(); ++sg) {
+        double e = 0;
+        for (size_t i = size_t(sg) * hz * 2; i < size_t(sg + 1) * hz * 2; ++i) e += double(pcm[i]) * pcm[i];
+        rms += " " + std::to_string(int(std::sqrt(e / (2.0 * hz))));
+      }
+      REXLOG_INFO("dbz3 pasarela: VERIFICA musica {} {}: {:.1f} s a {} Hz, RMS por segundo:{} (gen {})", afs, entrada,
+                  hz ? double(pcm.size()) / 2 / hz : 0.0, hz, rms, gen);
+    }).detach();
+    return;
+  }
   if (volumen <= 0) return;
   std::thread([juego, afs, entrada, volumen, gen] {
     AfsPs2 a;

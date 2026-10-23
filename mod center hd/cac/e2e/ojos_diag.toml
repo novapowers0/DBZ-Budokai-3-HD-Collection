@@ -1,0 +1,16 @@
+# copia: s5_c4. C4: diagnostico de la franja de ojos de la bandeja Ability (Edit Skills) con Goku (DBZ3_OJOS_DIAG=1 vuelca el sprite y el banco)
+descripcion = "C4: Practica > rueda > Edit Skills con el personaje por defecto; DBZ3_OJOS_DIAG vuelca el sprite de la franja"
+env = ["DBZ3_OJOS_DIAG=1"]
+pasos = [
+  'esperar 3000',
+  'tecla S 1200', 'tecla S 1200', 'tecla S 1200',
+  'tecla Space 3000', 'tecla Space 4000',
+  'esperar_pantalla 19 30',
+  'captura o_0_rueda',
+  'tecla Space 1500', 'tecla S 800', 'tecla S 800', 'captura o_1_menu',
+  'tecla Space 3000',
+  'log "bandeja de Edit Skills del lado 1 abierta" 20',
+  'captura o_2_bandeja',
+  'tecla Space 1500', 'captura o_3_lista',
+  'esperar 1500',
+]

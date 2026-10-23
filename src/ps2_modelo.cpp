@@ -294,7 +294,7 @@ void Posar(const Esqueleto& esq, const Anim& an, float t, Malla& out) {
       const float r[9] = {cz * cy, cz * sy * sx - sz * cx, cz * sy * cx + sz * sx,   // Rz Ry Rx
                           sz * cy, sz * sy * sx + cz * cx, sz * sy * cx - cz * sx,
                           -sy,     cy * sx,                cy * cx};
-      if (an.relativa) {   // B2: giro de reposo por el de la clave
+      if (an.relativa && !an.absoluta) {   // B2: giro de reposo por el de la clave
         const M34& rep = esq.local[i];
         for (int f = 0; f < 3; ++f)
           for (int k = 0; k < 3; ++k)
@@ -312,7 +312,7 @@ void Posar(const Esqueleto& esq, const Anim& an, float t, Malla& out) {
       const float u = ks[ib][0] > ks[ia][0] ? std::clamp((fc - ks[ia][0]) / (ks[ib][0] - ks[ia][0]), 0.0f, 1.0f) : 0.0f;
       float c[4];
       for (int e = 1; e < 4; ++e) c[e] = ks[ia][size_t(e)] + u * (ks[ib][size_t(e)] - ks[ia][size_t(e)]);
-      if (an.relativa) {   // B2: la posicion de reposo mas la de la clave
+      if (an.relativa && !an.absoluta) {   // B2: la posicion de reposo mas la de la clave
         l.m[3] = esq.local[i].m[3] + c[1], l.m[7] = esq.local[i].m[7] + c[2], l.m[11] = esq.local[i].m[11] + c[3];
       } else {
         l.m[3] = c[1], l.m[7] = c[2], l.m[11] = c[3];

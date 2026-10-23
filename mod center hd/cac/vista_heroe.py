@@ -26,6 +26,7 @@ import os
 import sys
 import tempfile
 import time
+import tomllib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 for p in (HERE, os.path.join(HERE, "..")):
@@ -64,6 +65,10 @@ KFID = {
     29: [75, 76],                     # C-17
     28: [70, 71],                     # C-16
     33: [146, 149],                   # Cell: 2 x 3
+    383: [383],                       # H3: donantes de pelo (fid como clave): Trunks nino
+    235: [235],                       # Gohan saga Cell
+    252: [252],                       # Goku nino
+    298: [298],                       # Goten
 }
 
 
@@ -178,7 +183,8 @@ CERO = (0, 0, 0)
 
 def zona_de(label):
     for z, toks in ZONAS:
-        if any(t in label for t in toks):
+        # "M_" (boca) solo como prefijo de hueso: "GHM_CHEST" (Gohan Cell) no es cara (DS9, 24/10)
+        if any((label.startswith(t) or "_" + t in label) if t == "M_" else t in label for t in toks):
             return z
     return 0
 
@@ -352,21 +358,31 @@ def ajustar_pelo(model, P, zonas, pieza, pose, pelo_nativo=None, usados=None):
     return pm, PP, PN, u, esc, Q
 
 
-def ficha_malla(model, ficha, juego, path):
+def ficha_malla(model, ficha, juego, path, afs=None):
     """Exporta la malla HMV1 de la ficha (mismo formato que exportar_malla). Devuelve un resumen para el log."""
     import struct  # noqa: PLC0415
+    b3, b3_resumen = _aplicar_piezas_b3(bytes(model.data), ficha, juego, afs, tintar=False) if afs is not None else (
+        bytes(model.data), {})
+    if b3 != model.data:
+        model = mr.Model(b3)
     pose = pose_de(model)
     P, N = model.posed(pose)
     zonas = zonas_ficha(model, P)
     partes = ficha.get("partes", [CERO] * 4)
     c1, c2 = tuple(ficha.get("c1", CERO)), tuple(ficha.get("c2", CERO))
     pelo = int(ficha.get("pelo", 0))
-    pieza = buscar_pelo(juego, pelo) if pelo > 0 else None
+    pieza = buscar_pelo(juego, pelo) if pelo > 0 and _xv2_piezas_activas(juego) else None
     tris, texs, cache = [], [], {}   # tris: (3 pos, 3 nrm, 3 uv, tex, blend)
     pelo_nativo = [i for i, z in enumerate(zonas) if z == "pelo"]
+    nat = None   # H3: sin pieza UT, el pelo de un cuerpo NATIVO de B3 (el mismo injerto que el combate)
+    if not pieza and pelo > 0 and afs is not None and pelo in PELOS_NATIVOS:
+        try:
+            nat = _pelo_donante(model, P, zonas, afs.entry((KFID.get(PELOS_NATIVOS[pelo]) or KFID[0])[0]))
+        except Exception:   # noqa: BLE001 (sin injerto: pelo del cuerpo)
+            nat = None
     for i, tri in enumerate(model.tris):
         z = zonas[i]
-        if z == "pelo" and pieza:
+        if z == "pelo" and (pieza or nat):
             continue
         mi = model.tri_mat[i]
         mat = model.mats[mi]
@@ -382,7 +398,7 @@ def ficha_malla(model, ficha, juego, path):
         tris.append((P[tri], N[tri], model.uv[tri], cache[k], mat["blend"]))
     usados = np.unique(model.tris.reshape(-1))
     lo, hi = P[usados].min(0), P[usados].max(0)
-    resumen = {"pelo": "nativo"}
+    resumen = {"pelo": "nativo", "piezas_b3": b3_resumen}
     # --- peinado UT: la pieza (esqueleto de la plantilla) se ajusta a la caja del pelo nativo (o a lo alto de la
     # cabeza si el cuerpo no tiene pelo propio) [H]: el conversor UT->B3 no deja la pieza a la escala del cuerpo.
     if pieza:
@@ -404,6 +420,19 @@ def ficha_malla(model, ficha, juego, path):
             tris.append((Q[tri], PN[tri], uv, ti, False))
         resumen["pelo"] = "%s (%d triangulos, escala %.2f)" % (os.path.basename(pieza), len(pm.tris), esc)
         hi = np.maximum(hi, Q[u].max(0))
+    elif nat:
+        dm, ht, dvs, Q, QN, tn = nat
+        remap = {int(v): i for i, v in enumerate(dvs)}
+        tcache = {}
+        for t, tri in zip(ht, tn):
+            mat = dm.mats[dm.tri_mat[t]]
+            k = id(mat)
+            if k not in tcache:
+                tcache[k] = len(texs)
+                texs.append(tenir(_textura_cocida(dm, mat), c1, c2, piel=False))
+            tris.append((Q[list(tri)], QN[list(tri)], dm.uv[dm.tris[t]], tcache[k], mat["blend"]))
+        resumen["pelo"] = "nativo B3 donante %d (%d triangulos)" % (PELOS_NATIVOS[pelo], len(tn))
+        hi = np.maximum(hi, Q.max(0))
     elif pelo > 0:
         resumen["pelo"] = "pieza %d no encontrada: nativo" % pelo
     # --- logo [H]: disco con la marca en el pecho (delante del torso, a la altura del pecho)
@@ -614,7 +643,256 @@ def injertar_ficha(amb, pieza, model=None, P=None, zonas=None, c1=CERO, c2=CERO,
 PRENDAS = {1: {"item": "500", "malla": "dougi", "lod": "02", "rgb": (0.93, 0.45, 0.06)}}
 
 
-def combate_bin(amb, ficha, juego=None):
+# Sin XV2 (o sin las piezas UT del jugador) los peinados 1..8 salen de personajes NATIVOS de B3: se injerta la zona de
+# pelo de su propio bin con el mismo pipeline (awo_tools/injertar_pelo.py). La geometria se lee de su data_cmn.afs.
+PELOS_NATIVOS = {1: 0, 8: 39}   # 1.5.5: solo los perfectos (misma cabeza que Goku); el resto queda para cuando se adapte la altura. Antes: {2: 7, 4: 235, 5: 252, 6: 13, 9: 298}   # 24/10: fuera 3 Trunks nino (bola) y 7 Piccolo (antenas flotan); 4 Gohan vuelve tras arreglar zona_de |   # Goku, Vegeta, Trunks nino, Gohan (Cell), Goku nino, Yamcha, Piccolo, Bardock, Goten (= kPelosNativos de heroe_ui.cpp); H3: Trunks/Krilin/Ten/Videl no tenian pelo detectable
+
+B3_ZONAS = {"torso": 0, "piernas": 1, "guantes": 2, "botas": 3}
+B3_JSON = os.path.join(HERE, "piezas_b3_base.json")
+_B3_CATALOGO = None
+
+
+def _cargar_catalogo_b3():
+    """Solo devuelve las piezas marcadas `ok` por el ensayo contra el cuerpo base 264."""
+    global _B3_CATALOGO
+    if _B3_CATALOGO is not None:
+        return _B3_CATALOGO
+    try:
+        with open(B3_JSON, encoding="utf-8") as f:
+            raw = json.load(f)
+        _B3_CATALOGO = {z: {int(p["fid"]): p for p in raw.get(z, [])
+                            if p.get("ok") is True and isinstance(p.get("fid"), int) and p.get("nombre")}
+                        for z in B3_ZONAS}
+    except Exception as e:  # noqa: BLE001 (sin catalogo: el aspecto base sigue disponible)
+        _B3_CATALOGO = {z: {} for z in B3_ZONAS}
+        print("vista_heroe: catalogo de piezas B3 no disponible: %s" % e)
+    return _B3_CATALOGO
+
+
+def _clave_hueso_b3(label):
+    s = label.lstrip("X")
+    s = s.split("_", 1)[1] if "_" in s else s
+    return s.lstrip("_")
+
+
+def _zona_hueso_b3(label):
+    s = _clave_hueso_b3(label)
+    if "HAIR" in s:
+        return "pelo"
+    if s.startswith("M_") or any(t in s for t in ("FACE", "TEETH", "EYE", "HEAD", "MOUTH", "TONGUE")):
+        return "cara"
+    if any(t in s for t in ("FOOT", "NLF", "NRF")):
+        return "botas"
+    if any(t in s for t in ("HAND", "NLA", "NRA", "ARM2")):
+        return "guantes"
+    if "LEG" in s:
+        return "piernas"
+    if any(t in s for t in ("CHEST", "STMC", "WAIST", "OBI", "BODY", "NECK", "NW", "TAIL", "ARMROT", "ARM1", "CHN")):
+        return "torso"
+    return "accesorios"
+
+
+def _zonas_pieza_b3(model):
+    out = []
+    for tri in model.tris:
+        from collections import Counter  # noqa: PLC0415
+        c = Counter(_zona_hueso_b3(model.labels[b]) if b < len(model.labels) else "accesorios"
+                    for b in model.vbone[tri])
+        out.append(c.most_common(1)[0][0])
+    return out
+
+
+def _textura_donante_b3(donor, tri_idx, width, height):
+    """Misma textura dominante/resolucion que la prueba de compatibilidad del JSON."""
+    from collections import Counter  # noqa: PLC0415
+    tex = Counter(donor.mats[donor.tri_mat[t]]["tex"] for t in tri_idx).most_common(1)[0][0]
+    if tex == 0xFFFFFFFF or tex >= len(donor.tex):
+        ms = [donor.mats[donor.tri_mat[t]] for t in tri_idx]
+        c = np.mean([m["diffuse"] for m in ms], 0)
+        if float(np.max(c)) < 0.02:
+            c = np.array([0.5, 0.5, 0.5], np.float32)
+        rgba = np.tile(np.append(c, 1.0), (height, width, 1))
+        return (np.clip(rgba, 0, 1) * 255 + 0.5).astype(np.uint8)
+    img = (np.clip(donor.tex[tex], 0, 1) * 255 + 0.5).astype(np.uint8)
+    return np.asarray(Image.fromarray(img).resize((width, height), Image.Resampling.LANCZOS))
+
+
+def _injertar_pieza_b3(amb, fid, zona, afs, color=None, host=None, host_zones=None, td_h=None, preparar=False):
+    """Sustituye una zona del #AMB base por la zona medida de un donante B3, vía injertar_ropa."""
+    import injertar_ropa as ir  # noqa: PLC0415
+    import injertar_pelo as ip  # noqa: PLC0415
+
+    zone = zona
+    current_bytes = bytes(amb)
+    host = host or mr.Model(current_bytes)
+    donor = mr.Model(afs.entry(fid))
+    dp, dn = donor.posed()
+    hz = host_zones if host_zones is not None else _zonas_pieza_b3(host)
+    dz = _zonas_pieza_b3(donor)
+    td_h = td_h if td_h is not None else ip.triangulos_por_draw(host)
+    por_draw = {}
+    for i, (draw, _) in enumerate(td_h):
+        por_draw.setdefault(draw, []).append(i)
+    candidatos = []
+    for draw, indices in por_draw.items():
+        if host.table.draws[draw]["prim"] != 5:
+            continue
+        nz = sum(1 for i in indices if hz[i] == zone)
+        if nz:
+            candidatos.append((all(hz[i] == zone for i in indices), nz, -draw, draw))
+    candidatos.sort(reverse=True)
+    if not candidatos:
+        raise ValueError("sin draw anfitrion exclusivo para la zona %s" % zona)
+    chosen = candidatos[0][3]
+
+    src_tri_idx = np.flatnonzero(np.asarray(dz) == zone)
+    if not len(src_tri_idx):
+        raise ValueError("el donante no tiene geometria de %s" % zona)
+    src_original = donor.tris[src_tri_idx]
+    used = np.unique(src_original.reshape(-1))
+    remap = {int(v): i for i, v in enumerate(used)}
+    src_tris = np.asarray([[remap[int(v)] for v in tri] for tri in src_original], int)
+    bones_src = donor.vbone[used]
+    host_suf = {_clave_hueso_b3(label): i for i, label in enumerate(host.labels)}
+    par = donor.parent
+    bone_out = []
+    for b in bones_src:
+        seen, cur, mapped = set(), int(b), -1
+        while 0 <= cur < len(donor.labels) and cur not in seen:
+            seen.add(cur)
+            mapped = host_suf.get(_clave_hueso_b3(donor.labels[cur]), -1)
+            if mapped >= 0:
+                break
+            cur = par[cur]
+        bone_out.append(mapped)
+    bone_out = np.asarray(bone_out, int)
+    if (bone_out < 0).any():
+        raise ValueError("hay huesos de la pieza sin equivalente ni ancestro en Goku")
+    host_tex = host.table.materials[host.table.draws[chosen]["material"]]["tex"]
+    hh, ww = host.tex[host_tex].shape[:2]
+    rgba = _textura_donante_b3(donor, src_tri_idx, ww, hh)
+    if color is not None and tuple(color) != CERO:
+        rgba = np.clip(tenir(rgba.astype(np.float32) / 255.0, tuple(color), piel=True) * 255 + 0.5, 0, 255).astype(np.uint8)
+    quitar = np.asarray([(z == zone) and (draw == chosen) for (draw, _), z in zip(td_h, hz)], bool)
+    pieza = {"host": chosen, "quitar": quitar, "P": dp[used], "N": dn[used], "UV": donor.uv[used],
+             "bones": bone_out, "tris": src_tris, "rgba": rgba, "zona": zona}
+    if preparar:
+        return pieza
+    out, summary = ir.injertar_ropa(current_bytes, host, quitar, chosen, dp[used], dn[used], donor.uv[used],
+                                     bone_out, src_tris, rgba)
+    summary.update(zona=zona, fid=fid)
+    return out, summary
+
+
+def _aplicar_piezas_b3(amb, ficha, juego, afs, tintar=False):
+    """Aplica solo donantes verificados; ante cualquier fallo conserva intacto el aspecto base de esa zona."""
+    seleccion = {z: int(ficha.get("b3_" + z, -1)) for z in B3_ZONAS}
+    resumen = {}
+    if not any(fid >= 0 for fid in seleccion.values()):
+        return bytes(amb), resumen
+    if ficha.get("cuerpo", 0) != 0 or ficha.get("traje", 0) != 0 or _xv2_piezas_activas(juego):
+        return bytes(amb), {z: "Base (opciones seguras solo en Goku, traje 0, ruta B3)" for z, fid in seleccion.items() if fid >= 0}
+    catalogo = _cargar_catalogo_b3()
+    actual = bytes(amb)
+    base_model = mr.Model(actual)
+    base_zones = _zonas_pieza_b3(base_model)
+    import injertar_pelo as ip  # noqa: PLC0415
+    import injertar_ropa as ir  # noqa: PLC0415
+    base_draws = ip.triangulos_por_draw(base_model)
+    colores = ficha.get("partes", [CERO] * 4)
+    preparar = []
+    resumen = {}
+    for z, fid in seleccion.items():
+        if fid < 0:
+            continue
+        opcion = catalogo.get(z, {}).get(fid)
+        if opcion is None:
+            resumen[z] = "Base (donante no compatible o no verificado)"
+            continue
+        try:
+            color = colores[B3_ZONAS[z]] if tintar and len(colores) > B3_ZONAS[z] else None
+            item = _injertar_pieza_b3(actual, fid, z, afs, color, base_model, base_zones, base_draws, preparar=True)
+            item["nombre"] = opcion["nombre"]
+            preparar.append(item)
+        except Exception as e:  # noqa: BLE001 (una pieza fallida no impide usar las demas ni el cuerpo base)
+            resumen[z] = "Base (injerto fallido: %s: %s)" % (type(e).__name__, e)
+    # Se reconstruyen todas las zonas en un solo pase: los draw/zonas anfitrion siguen siendo los medidos sobre fid 264,
+    # aunque una prenda anterior cambie sus triangulos. Si el limite de ventanas impide el conjunto, se conserva la
+    # mayor combinacion que quepa y cada pieza descartada vuelve a Base con motivo en el resumen.
+    aplicadas = []
+    batch_summary = {}
+    if preparar:
+        from itertools import combinations  # noqa: PLC0415
+        for cantidad in range(len(preparar), 0, -1):
+            for subset in combinations(preparar, cantidad):
+                try:
+                    actual, batch_summary = ir.injertar_ropa_multi(bytes(amb), base_model, subset)
+                    aplicadas = list(subset)
+                    break
+                except Exception as e:  # noqa: BLE001 (sin geometria nueva: se mantiene el modelo anfitrion)
+                    batch_summary = {"fallo": "%s: %s" % (type(e).__name__, e)}
+            if aplicadas:
+                break
+        aplicadas_ids = {id(p) for p in aplicadas}
+        por_zona = batch_summary.get("zonas", {})
+        for p in preparar:
+            z = p["zona"]
+            if id(p) in aplicadas_ids:
+                resumen[z] = {"pieza": p["nombre"], **por_zona.get(z, {}),
+                              "ventanas": batch_summary.get("ventanas", {})}
+            else:
+                resumen[z] = "Base (fallo conjunto: %s)" % batch_summary.get("fallo", "tope de ventanas")
+    return actual, resumen
+
+
+def _pelo_donante(model, P, zonas, donor_bytes):
+    """Pelo de un cuerpo nativo ajustado a la cabeza del heroe: (dm, ht, dvs, Q, QN, tris) o None si el donante no tiene pelo.
+    Lo usan el combate (_injertar_pelo_nativo) y la vista previa del menu (ficha_malla): el mismo injerto en las dos."""
+    dm = mr.Model(bytes(donor_bytes))
+    pose = pose_de(dm)
+    Pd, Nd = dm.posed(pose)
+    zd = zonas_ficha(dm, Pd)
+    ht = [i for i, z in enumerate(zd) if z == "pelo"]
+    if not ht:
+        return None
+    dvs = np.unique(dm.tris[ht].reshape(-1))
+    plo, phi = Pd[dvs].min(0), Pd[dvs].max(0)
+    host = [i for i, z in enumerate(zonas) if z == "pelo"]
+    if host:
+        vs = np.unique(model.tris[host].reshape(-1))
+        dlo, dhi = P[vs].min(0), P[vs].max(0)
+    else:   # calvo: caja de la cabeza (mismas medidas que ajustar_pelo)
+        cara = [i for i, z in enumerate(zonas) if z == "cara"]
+        u = np.unique(model.tris[cara].reshape(-1)) if cara else np.unique(model.tris.reshape(-1))
+        clo, chi = P[u].min(0), P[u].max(0)
+        dlo = np.array([clo[0], chi[1] - (chi[1] - clo[1]) * 0.45, clo[2]])
+        dhi = np.array([chi[0], chi[1] + (chi[1] - clo[1]) * 0.25, chi[2]])
+    esc = min((dhi[0] - dlo[0]) / max(phi[0] - plo[0], 1e-6), (dhi[2] - dlo[2]) / max(phi[2] - plo[2], 1e-6)) * 1.02
+    centro_p = np.array([(plo[0] + phi[0]) / 2, plo[1], (plo[2] + phi[2]) / 2])
+    centro_d = np.array([(dlo[0] + dhi[0]) / 2, dlo[1] + (dhi[1] - dlo[1]) * 0.12, (dlo[2] + dhi[2]) / 2])
+    Q = (Pd[dvs] - centro_p) * esc + centro_d
+    QN = Nd[dvs].copy()
+    QN /= np.maximum(np.linalg.norm(QN, axis=1), 1e-9)[:, None]
+    remap = {int(v): i for i, v in enumerate(dvs)}
+    tris = [tuple(remap[int(v)] for v in dm.tris[t]) for t in ht]
+    return dm, ht, dvs, Q, QN, tris
+
+
+def _injertar_pelo_nativo(amb, model, P, zonas, donor_bytes, c1=CERO, c2=CERO):
+    """Injerta el pelo de un cuerpo nativo (donante) en el cuerpo del heroe. Devuelve (bytes, resumen)."""
+    import injertar_pelo as ip  # noqa: PLC0415
+    d = _pelo_donante(model, P, zonas, donor_bytes)
+    if d is None:
+        return bytes(amb), "donante sin zona de pelo"
+    dm, ht, dvs, Q, QN, tris = d
+    rgb = lambda c: None if tuple(c) == CERO else tuple(float(x) for x in _hsv_rgb(*[np.array(x) for x in objetivo(c)]))  # noqa: E731
+    out, r = ip.injertar(amb, model, [z == "pelo" for z in zonas], Q, QN, tris, rgb1=rgb(c1), rgb2=rgb(c2),
+                         cara_mask=[z == "cara" for z in zonas])
+    r["pelo_nativo"] = "donante %d (%d tris)" % (int(np.count_nonzero(ht)), len(tris))
+    return out, r
+
+
+def combate_bin(amb, ficha, juego=None, afs=None):
     """El #AMB HD del cuerpo con los colores de la ficha COCIDOS en sus texturas (#AZT DXT3, mismo tamano: el #AWO no
     cambia). Es la parte de H2 que el combate puede llevar ya: geometria nueva (peinado UT, logo y scouter en 3D) es la
     Via B del port (bloqueada, AGENTS.md 3.4.10). Devuelve (bytes, resumen)."""
@@ -683,7 +961,7 @@ def combate_bin(amb, ficha, juego=None):
         hechas.append(ti)
     r.update(texturas_tenidas=hechas, no_dxt3=saltadas)
     pelo = int(ficha.get("pelo", 0))
-    pieza = buscar_pelo(juego, pelo) if pelo > 0 else None
+    pieza = buscar_pelo(juego, pelo) if pelo > 0 and _xv2_piezas_activas(juego) else None
     scouter = int(ficha.get("scouter", 0))
     if pieza or scouter:   # peinado UT / scouter en el combate: geometria nueva pegada a la cabeza (TABLE de paleta intacta)
         try:
@@ -692,7 +970,14 @@ def combate_bin(amb, ficha, juego=None):
             amb, r["pelo"] = bytearray(amb2), ri
         except Exception as e:   # noqa: BLE001 (sin injerto: el combate sale con el pelo nativo tenido)
             r["pelo"] = "FALLO %s: %s" % (type(e).__name__, e)
-    if pelo > 0 and not pieza:
+    elif pelo > 0 and afs is not None and pelo in PELOS_NATIVOS:   # sin pieza UT/XV2: pelo de un personaje NATIVO de B3
+        try:
+            fids = KFID.get(PELOS_NATIVOS[pelo]) or KFID[0]
+            amb2, ri = _injertar_pelo_nativo(bytes(amb), model, P, zonas, afs.entry(fids[0]), c1, c2)
+            amb, r["pelo"] = bytearray(amb2), ri
+        except Exception as e:   # noqa: BLE001 (sin injerto: el combate sale con el pelo nativo tenido)
+            r["pelo"] = "injerto nativo FALLO %s: %s" % (type(e).__name__, e)
+    if pelo > 0 and not pieza and pelo not in PELOS_NATIVOS:
         r["pelo"] = "pieza %d no encontrada: pelo nativo" % pelo
     prenda = PRENDAS.get(int(ficha.get("ropa", 0)))
     if prenda:   # studies 9b: prenda real de Xenoverse (del data.cpk del jugador), multi-hueso, con su textura
@@ -706,6 +991,11 @@ def combate_bin(amb, ficha, juego=None):
             r["ropa"] = "sin prenda: %s" % e
         except Exception as e:   # noqa: BLE001
             r["ropa"] = "FALLO %s: %s" % (type(e).__name__, e)
+    if afs is not None:
+        amb_b3, piezas_b3 = _aplicar_piezas_b3(bytes(amb), ficha, juego, afs, tintar=True)
+        amb = bytearray(amb_b3)
+        if piezas_b3:
+            r["piezas_b3"] = piezas_b3
     return bytes(amb), r
 
 
@@ -725,7 +1015,10 @@ def escribir_personaje_propio(juego, slot, ficha, args_txt, datos, r, fid):
     nombre = "".join(c for c in str(ficha.get("nombre") or "Heroe") if c.isprintable() and c not in "\"\\")[:24] or "Heroe"
     toml = ("# Generado por vista_heroe.py --combate (Modo Heroe, ficha %d). No editar: se rehace al confirmar.\n"
             "[personaje]\nnombre = \"%s\"\nid = %d\ndonante = %d\n"
-            "modelos = [\"modelos/base.bin\"]\nformas = 1\n") % (slot, nombre, ID_HEROE, int(ficha.get("donante", 0)))
+            "modelos = [\"modelos/base.bin\"]\nformas = 1\ncelda = false\n") % (slot, nombre, ID_HEROE, int(ficha.get("donante", 0)))
+    for clave, k in (("aura_color", "aura_col"), ("ki_color", "ki_col")):   # C4: colores desbloqueados con los maestros
+        if ficha.get(k):
+            toml += '%s = "%s"\n' % (clave, ficha[k])
     with open(os.path.join(mod, "personaje.toml"), "w", encoding="utf-8", newline="\n") as fh:
         fh.write(toml)
     quitar = [x for x in args_txt.split(";") if not x.startswith("donante=")]
@@ -750,12 +1043,15 @@ def escribir_personaje_propio(juego, slot, ficha, args_txt, datos, r, fid):
 def escribir_mod_combate(juego, slot, ficha, args_txt, afs):
     """mods/heroe_ficha<slot>/: un TRAJE EXTRA del cuerpo (traje.toml de roster_build: se anade detras de los del
     juego) con el modelo tenido + ficha.txt (los valores con que se hizo: el juego solo lo usa si coinciden)."""
+    if XV2_CUERPO[0] <= ficha.get("cuerpo", 0) <= XV2_CUERPO[1]:   # C6: cuerpo propio de piezas XV2
+        datos, r = modelo_xv2(afs, ficha, juego)
+        return escribir_personaje_propio(juego, slot, ficha, args_txt, datos, r, -1)
     if 100 <= ficha.get("cuerpo", 0) <= 105:   # G06a: malla CaC completa; ninguna superficie B3
         datos, r = modelo_ut(afs, ficha, juego)
         return escribir_personaje_propio(juego, slot, ficha, args_txt, datos, r, -1)
     fids = KFID.get(ficha.get("cuerpo", 0))
     fid = fids[min(max(ficha.get("traje", 0), 0), len(fids) - 1)]
-    datos, r = combate_bin(afs.entry(fid), ficha, juego)
+    datos, r = combate_bin(afs.entry(fid), ficha, juego, afs)
     if ficha.get("nombre") is not None:
         return escribir_personaje_propio(juego, slot, ficha, args_txt, datos, r, fid)
     mod = os.path.join(juego, "mods", "heroe_ficha%d" % slot)
@@ -784,6 +1080,72 @@ def _huella_conversor():
         except OSError:
             partes.append(nombre + ":?")
     return hashlib.sha256("|".join(partes).encode()).hexdigest()[:12]
+
+
+XV2_CUERPO = (110, 115)    # C6: cuerpo = raza del CaC de XV2 (HUM HUF NMC FRI MAM MAF); piezas en ficha["xv2"]
+XV2_RAZAS = ("HUM", "HUF", "NMC", "FRI", "MAM", "MAF")
+XV2_ZONAS = ("piel", "pelo", "torso", "piernas", "botas", "guantes")
+
+
+def _modelo_nativo_sin_xv2(afs, ficha, juego):
+    """Sin Xenoverse 2 instalado: el heroe sale de un cuerpo NATIVO de B3 (el del donante o Goku), con los colores
+    de la ficha cocidos. No se empaqueta arte: la geometria se lee del data_cmn.afs del jugador."""
+    fids = KFID.get(int(ficha.get("donante", 0))) or KFID[0]
+    fid = fids[0]
+    try:
+        import xv2_leer as XL  # noqa: PLC0415
+        aviso = ("Piezas XV2 desactivadas: heroe base de B3" if XL.disponible()
+                 else "Xenoverse 2 no instalado: heroe base de B3")
+    except Exception:   # noqa: BLE001
+        aviso = "Xenoverse 2 no instalado: heroe base de B3"
+    try:
+        datos, r = combate_bin(afs.entry(fid), ficha, juego, afs)
+    except Exception as e:   # noqa: BLE001 (sin retoques: el cuerpo nativo tal cual)
+        return afs.entry(fid), {"fuente": "nativo B3 %d" % fid, "cuerpo_nativo": fid,
+                                "aviso": "%s (%s)" % (aviso, e)}
+    r["fuente"] = "nativo B3 %d" % fid
+    r["cuerpo_nativo"] = fid
+    r["aviso"] = aviso
+    return datos, r
+
+
+def _xv2_piezas_activas(juego):
+    """C8b: las piezas XV2 son una opcion del launcher (dbz3_cac_xv2), apagada por defecto. DBZ3_CAC_XV2=1/0 fuerza en pruebas."""
+    e = os.environ.get("DBZ3_CAC_XV2")
+    if e not in (None, ""):
+        return e.strip().lower() not in ("0", "false", "off", "no")
+    try:
+        with open(os.path.join(juego, "dbz3_user.toml"), "rb") as f:
+            return bool(tomllib.load(f).get("dbz3_cac_xv2", False))
+    except Exception:   # noqa: BLE001 (sin fichero o sin la clave: nativo)
+        return False
+
+
+def modelo_xv2(afs, ficha, juego):
+    """C6: el heroe armado con piezas del creador de Xenoverse 2 (xv2/xv2_cac_b3.py), leidas de la copia del jugador.
+    Plantilla = bin del donante (esqueleto y paleta); resultado en cache por ficha."""
+    import hashlib
+    sys.path.insert(0, os.path.join(os.path.dirname(HERE), "xv2"))
+    import xv2_cac_b3 as xc
+    if not xc.L.disponible() or not _xv2_piezas_activas(juego):   # sin XV2 o opcion apagada: heroe base de B3
+        return _modelo_nativo_sin_xv2(afs, ficha, juego)
+    sel = xc.leer_sel(ficha.get("xv2", ""))
+    sel["raza"] = XV2_RAZAS[ficha["cuerpo"] - XV2_CUERPO[0]]
+    hsv = {z: tuple(c) for z, c in zip(XV2_ZONAS, ficha.get("partes", [])) if tuple(c) != CERO}
+    huella = hashlib.sha256((json.dumps([sel, hsv, ficha.get("donante", 0)], sort_keys=True) + "xv2-v1" + os.environ.get("C6_DIAG", "") + os.environ.get("C6_SKIP", "") + os.environ.get("C6_HAIR_OFS", "") + os.environ.get("C6_NOSOMBRA", "") + os.environ.get("C6_LINEAS_CARA", "") + os.environ.get("C6_FLAT", "") + os.environ.get("C6_HAIR_DY", "") + os.environ.get("C6_HAIR_GAP", "") +
+                             str(os.stat(xc.__file__).st_mtime_ns) + str(os.stat(xc.X.__file__).st_mtime_ns) + str(os.stat(os.path.join(os.path.dirname(HERE), "..", "awo_tools", "sdbh_model.py")).st_mtime_ns)).encode()).hexdigest()[:24]
+    work = os.path.join(juego, "user_data", "dbz3", "cac_xv2")
+    os.makedirs(work, exist_ok=True)
+    dst = os.path.join(work, huella + ".bin")
+    if not os.path.isfile(dst):
+        tpl = os.path.join(work, "plantilla_%d.bin" % ficha.get("donante", 0))
+        fids = KFID.get(ficha.get("donante", 0)) or KFID[0]
+        with open(tpl, "wb") as fh:
+            fh.write(afs.entry(fids[0]))
+        xc.componer(sel, tpl, dst + ".tmp", hsv)
+        os.replace(dst + ".tmp", dst)
+    with open(dst, "rb") as fh:
+        return fh.read(), {"fuente": "xv2:%s %s" % (sel["raza"], ficha.get("xv2", "")), "bin": dst}
 
 
 def modelo_ut(afs, ficha, juego):
@@ -836,7 +1198,7 @@ def leer_ficha(txt):
             f[k] = [tuple(int(x) for x in p.split(",")) for p in v.split("|")]
         elif k in ("c1", "c2"):
             f[k] = tuple(int(x) for x in v.split(","))
-        elif k == "nombre":
+        elif k in ("nombre", "xv2", "aura_col", "ki_col"):
             f[k] = v
         else:
             f[k] = int(v)
@@ -872,27 +1234,38 @@ def main():
     os.makedirs(salida, exist_ok=True)
     if a.ficha and a.combate:
         f = leer_ficha(a.ficha)
-        if f.get("cuerpo", 0) not in KFID and not 100 <= f.get("cuerpo", 0) <= 105:
+        if f.get("cuerpo", 0) not in KFID and not 100 <= f.get("cuerpo", 0) <= 115:
             print("vista_heroe: cuerpo %s sin modelo" % f.get("cuerpo"))
             return 2
         t0 = time.time()
         afs = rb.Afs(os.path.join(rb.us_dir(a.us), "data_cmn.afs"), tempfile.mkdtemp(prefix="vista_heroe_"))
         r = escribir_mod_combate(a.juego, a.combate, f, a.ficha, afs)
         print("vista_heroe: combate de la ficha %d: %s (%.1f s)" % (a.combate, r, time.time() - t0))
+        # C4: la historia del Heroe en Dragon Universe se monta en el mismo momento que su cuerpo propio (al pulsar JUGAR
+        # se lee todo junto); sin estas campanas "Empezar" lanza las misiones de siempre (heroe.cpp DuDisponible)
+        try:
+            sys.path.insert(0, os.path.dirname(HERE))
+            import heroe_sagas_a_du as hs  # noqa: PLC0415
+            rc = hs.montar_si_hace_falta(os.path.join(a.juego, "mods"), rb.us_dir(a.us), None, 34 + min(max(a.combate, 1), 3), f.get("cuerpo", 0), f.get("nombre"))
+            print("vista_heroe: historia del Heroe en DU (3 casillas): %s" % ("al dia" if rc == 0 else "FALLO %s" % rc))
+        except Exception as e:   # noqa: BLE001 (sin historia: el Heroe sigue con las misiones)
+            print("vista_heroe: historia del Heroe en DU no montada: %s" % e)
         return 0
     if a.ficha:
         f = leer_ficha(a.ficha)
-        if 100 <= f.get("cuerpo", 0) <= 105:   # G06a: exportar exactamente el modelo del combate
+        if 100 <= f.get("cuerpo", 0) <= 115:   # G06a/C6: exportar exactamente el modelo del combate
             work = tempfile.mkdtemp(prefix="vista_cac_ut_")
             afs = rb.Afs(os.path.join(rb.us_dir(a.us), "data_cmn.afs"), work)
-            datos, r = modelo_ut(afs, f, a.juego)
+            datos, r = (modelo_xv2 if f["cuerpo"] >= XV2_CUERPO[0] else modelo_ut)(afs, f, a.juego)
             m = mr.Model(datos)
             dst = os.path.join(salida, (a.clave or "f_prueba") + ".malla")
             exportar_malla(m, pose_de(m), dst)
             # El avatar UT completo puede superar el presupuesto de vértices de
             # ImGui. La tira usa EXACTAMENTE esta malla, UV y materiales, sin LOD
             # ni huecos; el combate mantiene la geometría completa.
-            tira(m, a.size, a.giros).save(os.path.splitext(dst)[0] + ".png")
+            # K: la vista previa del menu pinta la .malla en 3D (Pintar3D); la tira de 12 giros (9 s de raster por software)
+            # solo es el marcador mientras carga: 1 solo fotograma pequeno (el juego deduce los giros de ancho/alto)
+            tira(m, 192, 1).save(os.path.splitext(dst)[0] + ".png")
             print("vista_heroe: cuerpo UT -> %s (%s)" % (dst, r["fuente"]))
             return 0
         fids = KFID.get(f.get("cuerpo", 0))
@@ -905,7 +1278,7 @@ def main():
         afs = rb.Afs(os.path.join(rb.us_dir(a.us), "data_cmn.afs"), work)
         m = mr.Model(afs.entry(fid))
         dst = os.path.join(salida, (a.clave or "f_prueba") + ".malla")
-        r = ficha_malla(m, f, a.juego, dst)
+        r = ficha_malla(m, f, a.juego, dst, afs)
         limpiar_fichas(salida)
         print("vista_heroe: ficha %s (fid %d) -> %s %s (%.1f s)" % (a.ficha, fid, dst, r, time.time() - t0))
         return 0

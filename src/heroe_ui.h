@@ -10,13 +10,16 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
+#include <vector>
 
 #include "ingame/game_style.h"
 
 namespace dbz3::heroe_ui {
 
-enum class Accion { kNada, kVolver, kConfirmar };
+enum class Accion { kNada, kVolver, kConfirmar, kCrear };   // kCrear: heroe nuevo -> abrir la pantalla de creacion
 
+void PedirCombate();   // C4: remonta mods/heroe_propio con la ficha actual si cambio (aura/ki de color, piezas...)
 void AbrirCrear(bool edit);   // edit = pantalla Edit (pelo); guarda una copia para Atras
 Accion Crear(ImDrawList* dl, const dbz3::ingame::style::Area& a, float t, uint16_t p);
 bool EnEdit();
@@ -33,6 +36,11 @@ Accion MovesetsUI(ImDrawList* dl, const dbz3::ingame::style::Area& a, float t, u
 // Fichas de heroe (K): lista de las 8 fichas de cac.toml, duplicar (X) y archivar (Y) sin salir del modo.
 void AbrirSlots();
 Accion SlotsUI(ImDrawList* dl, const dbz3::ingame::style::Area& a, float t, uint16_t p);
+
+// C4: pantalla principal del Heroe rehecha (secciones, vista previa del modelo, detalle legible). `filas` = H::Fila(0..8) ("Etiqueta: valor");
+// `cursor` = fila elegida; `detalle` = texto de ayuda de la fila (varias lineas); `aviso` = mensaje en rojo (o vacio).
+void Principal(ImDrawList* dl, const dbz3::ingame::style::Area& a, float t, int cursor, int tab, const std::vector<std::string>& filas,
+               const std::string& detalle, const std::string& aviso, const std::string& ficha);
 
 void AbrirMaestros();
 Accion Maestros(ImDrawList* dl, const dbz3::ingame::style::Area& a, float t, uint16_t p);

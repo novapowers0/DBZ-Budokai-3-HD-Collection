@@ -49,9 +49,15 @@ void Highlight(ImDrawList* dl, ImVec2 p0, ImVec2 p1, float t);             // fr
 // max_w > 0: la letra se reduce hasta que el texto quepa en ese ancho (px de pantalla).
 void MenuText(ImDrawList* dl, ImVec2 center, float size, const char* text, bool selected, bool disabled,
               float max_w = 0);
+// C4: texto como la bandeja "Custom Tray" / Edit Skills del juego (medido 22/10: relleno blanco 255,255,255 y perfil casi negro
+// 17,12,8); elegido = amarillo, apagado = gris. El turquesa de MenuText es el de las filas del selector.
+void MenuTextB3(ImDrawList* dl, ImVec2 center, float size, const char* text, bool selected, bool disabled, float max_w = 0);
 // Cinta del titulo arriba a la izquierda, como la del Duelo; `title` = imagen del titulo
 // (ingame_ui) o, sin ella, `text` con la fuente.
 void Banner(ImDrawList* dl, const Area& a, const char* text, const char* title = nullptr);
+// Titulo en letras doradas con perfil (las del Banner), centrado en (cx, cy) del area 1200x900 y encogido para que
+// quepa en `ancho` unidades: sobre el papel de una cinta que ya dibuja el juego. `alpha` 0..1. X1: sustituye al logo/PNG.
+void TitleText(ImDrawList* dl, const Area& a, float cx, float cy, float ancho, const char* text, float escala = 1.0f);
 // Bocadillo; tail_x = donde sale el pico (0..1 del ancho, hacia arriba) o < 0 sin pico.
 void Speech(ImDrawList* dl, ImVec2 p0, ImVec2 p1, float s, const char* text, float tail_x = 0.75f);
 // Opcion "Bordes dorados" (dbz3_ui_side_borders): con ella, tiras y fondos 4:3 como el juego.

@@ -20,6 +20,7 @@
 #include <cctype>
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <map>
@@ -342,6 +343,8 @@ int AfsFindEntry(const std::filesystem::path& host_path, uint64_t byte_offset,
 // release subfolder (dbz3_avx2/dbz3_legacy) while the mods stay next to the
 // game data, so walk up from the executable looking for a "mods" directory.
 std::filesystem::path AfsModsRoot() {
+  // Sesion vanilla online: una carpeta vacia hermana; los mods del jugador ni se tocan ni se leen.
+  if (std::getenv("DBZ3_VANILLA_SESSION")) return rex::filesystem::GetExecutableFolder() / "mods_vanilla";
   return rex::filesystem::GetExecutableFolder() / "mods";
 }
 

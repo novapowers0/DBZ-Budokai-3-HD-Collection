@@ -109,6 +109,9 @@ struct Anim {
   // de la clave). En IW (false, lo de siempre) sustituyen al de reposo. Shenron de B2 (CMN 328/3) trae posiciones 0:
   // sustituyendo, toda la cadena caia en el origen y el cuerpo quedaba en columna.
   bool relativa = false;
+  // Medido en PCSX2 (23/10, instancia gp-0x7028, bancos CMN 931): B2 aplica los giros de las pistas ABSOLUTOS (el hueso sin pista
+  // conserva el reposo) y la posicion de la pista sustituye; `absoluta` con `relativa` = piel de B2 pero claves absolutas.
+  bool absoluta = false;
   explicit operator bool() const { return cuadros > 0 && !ang.empty(); }
 };
 using AnimIW = Anim;

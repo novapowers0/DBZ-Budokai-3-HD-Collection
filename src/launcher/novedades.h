@@ -20,6 +20,30 @@ struct NewsBlock {
   int count;
 };
 
+inline constexpr NewsItem kNews155[] = {
+    {"Infinite World (experimental)", "Infinite World (experimental)",
+     "96/96 misiones disponibles en USA y Europa.",
+     "All 96 missions are playable in the US and European versions."},
+    {"Nave de Babidi (beta)", "Babidi's ship (beta)",
+     "Funcionan las cuatro plantas; puedes volver a la nave tras editar habilidades.",
+     "All four floors work, and you can return to the ship after editing skills."},
+    {"Budokai 2 (experimental)", "Budokai 2 (experimental)",
+     "El tablero arranca sin cierres y los combates con cambio de zona funcionan.",
+     "The board starts without crashes, and battles with area changes work."},
+    {"Leyenda de Mr. Satán", "Mr. Satan legend",
+     "La presentación de la ronda 3 ya funciona.",
+     "The round 3 introduction now works."},
+    {"Modo Héroe (beta)", "Hero Mode (beta)",
+     "Sagas 1-3 jugables; 4-8 en desarrollo. Piezas de Budokai 3 por defecto; piezas de XV2 opcionales (experimental).",
+     "Sagas 1-3 are playable; 4-8 are in development. Budokai 3 parts by default; optional XV2 parts (experimental)."},
+    {"Online (beta)", "Online (beta)",
+     "Las peleas se mantienen sincronizadas en las pruebas; el modo Online sigue en beta.",
+     "Fights stay in sync in testing; Online is still in beta."},
+    {"Rendimiento", "Performance",
+     "Nueva opción de resolución interna 480p (640x480) para PCs y portátiles modestos.",
+     "New 480p (640x480) internal resolution option for modest PCs and laptops."},
+};
+
 inline constexpr NewsItem kNews1514[] = {
     {"Budokai 2 (experimental)", "Budokai 2 (experimental)",
      "El tablero se ve con el mismo encuadre que en PS2, con Gotenks, Vegito y Shenron, piezas animadas y diálogos con la fuente y los retratos originales. Nave de Babidi con su cielo y nubes originales.",
@@ -167,6 +191,7 @@ inline constexpr NewsItem kNews145[] = {
 
 // Del mas nuevo al mas antiguo.
 inline constexpr NewsBlock kNewsBlocks[] = {
+    {"1.5.5", kNews155, int(sizeof(kNews155) / sizeof(kNews155[0]))},
     {"1.5.1.4", kNews1514, int(sizeof(kNews1514) / sizeof(kNews1514[0]))},
     {"1.5.1.3", kNews1513, int(sizeof(kNews1513) / sizeof(kNews1513[0]))},
     {"1.5.1.2", kNews1512, int(sizeof(kNews1512) / sizeof(kNews1512[0]))},

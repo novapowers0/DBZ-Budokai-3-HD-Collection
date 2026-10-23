@@ -1,0 +1,30 @@
+# copia: s5_ds8
+# HSX (encargo 8): creador SIN Xenoverse 2. DBZ3_XENO2_CPK apunta a una ruta inexistente -> XV2 no instalado.
+# La raza pedida es XV2 (7) y debe caer a una nativa (Saiyan) con aviso, no fallar; el combate se monta con un cuerpo de B3.
+descripcion = "HSX: sin XV2 el creador usa heroe base de B3, avisa y monta el combate"
+env = ["DBZ3_TEST_RINGOUT=1", "DBZ3_TEST_HEROE_RAZA=7", "DBZ3_XENO2_CPK=Z:\\no_existe\\data.cpk"]
+pasos = [
+  "esperar 2500",
+  "tecla W 1200",
+  "tecla Space 3500",
+  "tecla S 450", "tecla S 450", "tecla S 450", "tecla S 450", "tecla S 450",
+  "tecla Space 2500",
+  "tecla S 700", "tecla S 700", "tecla S 700",
+  "tecla Space 3500",
+  "tecla S 500", "tecla S 500",
+  "tecla Space 3000",
+  "log \"Create abierto\" 20",
+  "log \"Xenoverse 2 no instalado\" 30",
+  "esperar 12000",
+  "captura hsx_sin_xv2_create",
+  "tecla S 400", "tecla S 400", "tecla S 400", "tecla S 400", "tecla S 400", "tecla S 400", "tecla S 400",
+  "tecla Space 1500",
+  "log \"Create: confirmar\" 20",
+  "log \"se monta\" 30",
+  "captura hsx_sin_xv2_botones",
+  "esperar 45000",
+  "log \"combate de la ficha|heroe_propio\" 120",
+  "captura hsx_sin_xv2_confirmado",
+  "tecla Backspace 3000",
+  "esperar 2500",
+]

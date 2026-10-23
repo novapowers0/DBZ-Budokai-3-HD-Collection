@@ -23,7 +23,7 @@ inline Preferences ParsePreferences(std::istream& in) {
     std::istringstream row(line);
     std::string key, tail; int value = -1;
     if (!(row >> std::quoted(key) >> value) || (row >> tail) || key.empty() || key.size() > 512 ||
-        key.find_first_of("\r\n\t") != std::string::npos || value < 0 || value >= 8 || !result.emplace(key, value).second)
+        key.find_first_of("\r\n\t") != std::string::npos || value < 0 || value >= 256 || !result.emplace(key, value).second)
       throw std::runtime_error("registro de preferencias no valido");
   }
   if (in.bad()) throw std::runtime_error("error de lectura de preferencias");

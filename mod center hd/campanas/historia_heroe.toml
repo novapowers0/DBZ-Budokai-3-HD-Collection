@@ -1,0 +1,174 @@
+# GENERADO por heroe_sagas_a_du.py desde res/heroe/sagas.toml (no editar a mano: se rehace).
+[campana]
+nombre = "Modo Heroe en Dragon Universe"
+mod = "historia_heroe"
+descripcion = "Las sagas del Modo Heroe como historia de Dragon Universe: entra por la celda del Heroe."
+
+[rueda]
+casillas_virtuales = [36]
+
+[casilla_luchador]
+36 = 63
+
+[historia]
+codigo = 5136
+intro_de = "102.0"
+animacion_mapa = 0
+altura_mapa = 600
+fondo = 1411
+fondo_dialogo = 1536
+final = { contenedor = 1728, codigo = 1, entrada = 39, fondo = "heroe" }
+combates = { codigo = 5536, contenedor = 2132, plantilla = 709 }
+dialogos = { codigo = 5936, contenedor = 1659 }
+
+[[panel_limpio]]
+cmn = 1411
+filas = 17
+
+[[capitulo]]
+combate = 627
+rival = 42
+escenario = 5
+retratos = [1491, 1416]
+marca = [1, 2, 4918, 67, -4916, 1000]
+dialogo_es = ["Saibaman sale al paso.", "Voy a por ti."]
+dialogo_en = ["Saibaman blocks the way.", "I'm coming for you."]
+victoria_es = ["Impresionante...", "Sigo mi camino."]
+victoria_en = ["Impressive...", "I go on my way."]
+mapa_es = ["Sigamos."]
+mapa_en = ["Onwards."]
+salida = [4918, -4416, 600]
+es = ["Un mundo caotico: catastrofes y villanos revividos. Solo las siete Esferas pueden devolver la paz.", "Un joven saiyan sale a buscarlas. En el camino, el capitan Ginyu."]
+en = ["A chaotic world: disasters and revived villains. Only the seven Dragon Balls can restore peace.", "A young Saiyan sets out to find them. On the way, Captain Ginyu."]
+llegada_es = ["Empieza la aventura."]
+llegada_en = ["The adventure begins."]
+
+[[capitulo]]
+combate = 628
+rival = 21
+escenario = 7
+retratos = [1462, 1416]
+marca = [1, 2, 5010, 20, -5399, 1000]
+dialogo_es = ["Recoome sale al paso.", "Voy a por ti."]
+dialogo_en = ["Recoome blocks the way.", "I'm coming for you."]
+victoria_es = ["Impresionante...", "Sigo mi camino."]
+victoria_en = ["Impressive...", "I go on my way."]
+mapa_es = ["Sigamos."]
+mapa_en = ["Onwards."]
+
+[[capitulo]]
+combate = 629
+rival = 20
+escenario = 7
+retratos = [1461, 1416]
+marca = [1, 2, 5517, 39, -5053, 1000]
+dialogo_es = ["Fuerzas Especiales... ¡Ginyu en persona! Tu cuerpo sera mio.", "Voy a por ti."]
+dialogo_en = ["Ginyu Force... Captain Ginyu himself! Your body will be mine.", "I'm coming for you."]
+victoria_es = ["Impresionante...", "Sigo mi camino."]
+victoria_en = ["Impressive...", "I go on my way."]
+mapa_es = ["Sigamos."]
+mapa_en = ["Onwards."]
+
+[[capitulo]]
+combate = 630
+rival = 29
+escenario = 4
+retratos = [1469, 1416]
+marca = [1, 2, 2060, 45, -982, 1000]
+dialogo_es = ["C-17 sale al paso.", "Voy a por ti."]
+dialogo_en = ["Android 17 blocks the way.", "I'm coming for you."]
+victoria_es = ["Impresionante...", "Sigo mi camino."]
+victoria_en = ["Impressive...", "I go on my way."]
+mapa_es = ["Sigamos."]
+mapa_en = ["Onwards."]
+saga = true
+planeta = 1
+plantilla = 709
+fondo_dialogo = 1536
+cierre_es = ["Ginyu deja una Esfera de Dragon como agradecimiento."]
+cierre_en = ["Ginyu leaves a Dragon Ball as a thank-you."]
+salida = [2060, -482, 600]
+es = ["Una pareja busca las Esferas con un radar: son los Androides 17 y 18, corrompidos por el caos.", "Si los vences, recuperan la cordura y te prestan su radar."]
+en = ["A pair is hunting the Dragon Balls with a radar: Androids 17 and 18, changed by the chaos.", "If you beat them, they come back to their senses and lend you their radar."]
+llegada_es = ["Empieza la aventura."]
+llegada_en = ["The adventure begins."]
+
+[[capitulo]]
+combate = 631
+rival = 30
+escenario = 4
+retratos = [1471, 1416]
+marca = [1, 2, 2090, 45, 40, 1000]
+dialogo_es = ["C-18 sale al paso.", "Voy a por ti."]
+dialogo_en = ["Android 18 blocks the way.", "I'm coming for you."]
+victoria_es = ["Impresionante...", "Sigo mi camino."]
+victoria_en = ["Impressive...", "I go on my way."]
+mapa_es = ["Sigamos."]
+mapa_en = ["Onwards."]
+
+[[capitulo]]
+combate = 632
+rival = 7
+escenario = 5
+retratos = [1436, 1416]
+marca = [1, 2, 3384, 45, 6021, 1000]
+dialogo_es = ["Mono Gigante (Vegeta) sale al paso.", "Voy a por ti."]
+dialogo_en = ["Great Ape (Vegeta) blocks the way.", "I'm coming for you."]
+victoria_es = ["Impresionante...", "Sigo mi camino."]
+victoria_en = ["Impressive...", "I go on my way."]
+mapa_es = ["Sigamos."]
+mapa_en = ["Onwards."]
+
+[[capitulo]]
+combate = 633
+rival = 12
+escenario = 4
+retratos = [1450, 1416]
+marca = [1, 2, 4682, 45, 2366, 1000]
+dialogo_es = ["Ten Shin Han sale al paso.", "Voy a por ti."]
+dialogo_en = ["Tien blocks the way.", "I'm coming for you."]
+victoria_es = ["Impresionante...", "Sigo mi camino."]
+victoria_en = ["Impressive...", "I go on my way."]
+mapa_es = ["Sigamos."]
+mapa_en = ["Onwards."]
+saga = true
+planeta = 1
+plantilla = 709
+fondo_dialogo = 1536
+cierre_es = ["El mundo sigue sumido en el caos. Reune las Esferas."]
+cierre_en = ["The world is still in chaos. Gather the Dragon Balls."]
+salida = [4682, 2866, 600]
+es = ["El radar pierde la senal. Se dice que Piccolo, la reencarnacion del Rey Demonio, esta detras.", "Piccolo no es el culpable: pelea contigo para entrenarte y despertar tu Super Saiyan."]
+en = ["The radar loses the signal. They say Piccolo, the reincarnation of the Demon King, is behind it.", "Piccolo is not the culprit: he fights you to train you and awaken your Super Saiyan."]
+llegada_es = ["Empieza la aventura."]
+llegada_en = ["The adventure begins."]
+
+[[capitulo]]
+combate = 634
+rival = 11
+escenario = 4
+retratos = [1449, 1416]
+marca = [1, 2, -4510, 45, 354, 1000]
+dialogo_es = ["Piccolo sale al paso.", "Voy a por ti."]
+dialogo_en = ["Piccolo blocks the way.", "I'm coming for you."]
+victoria_es = ["Impresionante...", "Sigo mi camino."]
+victoria_en = ["Impressive...", "I go on my way."]
+mapa_es = ["Sigamos."]
+mapa_en = ["Onwards."]
+
+[[capitulo]]
+combate = 635
+rival = 43
+escenario = 8
+retratos = [1492, 1416]
+marca = [1, 2, -379, 45, -956, 1000]
+dialogo_es = ["Cell Jr. sale al paso.", "Voy a por ti."]
+dialogo_en = ["Cell Jr. blocks the way.", "I'm coming for you."]
+victoria_es = ["Impresionante...", "Sigo mi camino."]
+victoria_en = ["Impressive...", "I go on my way."]
+mapa_es = ["Sigamos."]
+mapa_en = ["Onwards."]
+
+[[capitulo]]
+es = ["Alguien pidio a Ultimate Shenron que la Tierra fuera un infierno."]
+en = ["Someone wished to Ultimate Shenron for Earth to become a living hell."]

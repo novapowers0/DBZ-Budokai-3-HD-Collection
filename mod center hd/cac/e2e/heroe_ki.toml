@@ -1,0 +1,21 @@
+# copia: s5_c4. C4: color de ki desbloqueado con un maestro: Combate > Ki > D; al salir se remonta el heroe propio con ki_color
+descripcion = "C4: Heroe > pestaña Combate > fila Ki > color desbloqueado; B remonta heroe_propio con ki_color"
+env = ["DBZ3_TEST_RINGOUT=1"]
+pasos = [
+  "esperar 2500",
+  "tecla W 1200",
+  "tecla Space 3500",
+  "tecla S 450", "tecla S 450", "tecla S 450", "tecla S 450", "tecla S 450",
+  "tecla Space 2500",
+  "tecla S 700", "tecla S 700", "tecla S 700",
+  "tecla Space 3500",
+  "tecla 3 700",
+  "tecla S 500", "tecla S 500", "tecla S 500",
+  "captura c4_ki_0_fila_ki",
+  "tecla D 800",
+  "captura c4_ki_1_ki_dorado",
+  "tecla Backspace 1500",
+  "log \"vista previa combate_\" 150",
+  "captura c4_ki_2_remontado",
+  "esperar 2500",
+]

@@ -1,0 +1,29 @@
+{
+ "modo": "b2",
+ "escena": "fase1",
+ "dorado": "b2_fase1.json",
+ "fuente_dorado": "b2_traza_ordenes.log",
+ "filas": [
+  {
+   "nombre": "ordenes del original vistas en el port",
+   "ok": false,
+   "detalle": "0/10; faltan [9, 7, 1, 62, 58, 75, 59, 53, 36, 84] (el port no las registra o no las ejecuta)"
+  },
+  {
+   "nombre": "mismo orden relativo de las que estan",
+   "ok": true,
+   "detalle": "original [] port []"
+  },
+  {
+   "nombre": "el port registra alguna orden de guion",
+   "ok": true,
+   "detalle": "5 lineas 'script K: orden N'"
+  },
+  {
+   "nombre": "imagenes",
+   "ok": null,
+   "detalle": "el dorado no tiene parejas de capturas [H]"
+  }
+ ],
+ "firma": "3cc4d5aa2425"
+}

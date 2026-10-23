@@ -36,7 +36,7 @@ FUENTES = ["src/hub.cpp", "src/hub_menu.cpp", "src/ingame/hub_panel.cpp", "src/i
            "src/tagteam*.cpp", "src/tagteam*.h", "src/ingame/tagteam_panel.*", "src/campaigns.cpp",
            "src/select_ext.cpp", "src/roster_ext.cpp", "src/roster_ext.h", "src/stage_ext.cpp", "src/stage_ext.h",
            # nuevos de la ronda 2 (escenarios, combate, rpg, transformaciones): tambien tendran que ir en EU
-           "src/clima.*", "src/cine.*", "src/gigantes.*", "src/combate.*", "src/rpg.*", "src/transformaciones.*",
+           "src/clima.*", "src/cine.*", "src/cinematica.*", "src/gigantes.*", "src/combate.*", "src/rpg.*", "src/transformaciones.*",
            "src/suelo_iw.*",   # frente R11: consulta de suelo y logica de luchadores (sub_8210E700)
            "src/iw_minijuegos.cpp",   # frente R16: tope de distancia entre luchadores (sub_82114910)
            # funciones del juego que copia el generador del selector de escenarios (su .inc EU las necesita)

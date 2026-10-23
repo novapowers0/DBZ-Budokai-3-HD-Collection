@@ -1,0 +1,22 @@
+# copia: s5_c3 (--instantanea freezer_cap2, con mods/heroe_propio + _roster)
+descripcion = "C3: DU > Continuar > rueda: recorre las celdas para ver si la celda del heroe (ID 63) sale en la rueda de Dragon Universe"
+pasos = [
+  "esperar 2500",
+  "tecla Space 4000",
+  "esperar_pantalla 6 30",
+  "esperar 3000",
+  "tecla Return 3000",
+  "tecla S 1500",
+  "tecla Space 3000",
+  "esperar_pantalla 7 40",
+  "esperar 2500",
+  "captura rueda_0",
+  "tecla D 1500", "captura rueda_1",
+  "tecla D 1500", "captura rueda_2",
+  "tecla D 1500", "captura rueda_3",
+  "tecla D 1500", "captura rueda_4",
+  "tecla W 1500", "tecla W 1500", "tecla W 1500", "tecla W 1500", "tecla W 1500",
+  "captura rueda_5",
+  "tecla W 1500", "captura rueda_6",
+  "tecla W 1500", "captura rueda_7",
+]

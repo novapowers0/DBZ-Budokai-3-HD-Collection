@@ -76,6 +76,8 @@ std::mutex g_mu;
 std::unordered_map<uint32_t, std::array<int8_t, kCells>> g_wheels;
 // objetos rueda creados por sub_8217E6D8 (+48 = datos de la rueda)
 std::unordered_map<uint32_t, uint32_t> g_wheel_objs;
+std::unordered_map<uint32_t, uint64_t> g_wheel_base_masks, g_wheel_page_versions;
+std::atomic<uint64_t> g_dynamic_page_version{0};
 // objeto retrato -> casilla nueva que lo pidio (-1 = ninguna)
 std::unordered_map<uint32_t, int> g_portrait_obj;
 
@@ -370,7 +372,11 @@ DBZ3_HOOK(sub_8217E410, dbz3eu_sub_8217E3C8) { DBZ3_WHEEL(8217E410)(ctx, base); 
 DBZ3_HOOK(sub_8217E6D8, dbz3eu_sub_8217E690) {
   DBZ3_WHEEL(8217E6D8)(ctx, base);
   std::lock_guard<std::mutex> lk(g_mu);
-  if (ctx.r3.u32) g_wheel_objs[ctx.r3.u32] = REX_LOAD_U32(ctx.r3.u32 + 48);
+  if (ctx.r3.u32) {
+    g_wheel_objs[ctx.r3.u32] = REX_LOAD_U32(ctx.r3.u32 + 48);
+    g_wheel_base_masks.erase(ctx.r3.u32);
+    g_wheel_page_versions.erase(ctx.r3.u32);
+  }
 }
 
 // Puts the cursor on the FIRST cell of slot r4 (r3 = wheel data); the select
@@ -402,6 +408,11 @@ DBZ3_HOOK(sub_8217E490, dbz3eu_sub_8217E448) {
   const uint64_t mask = ctx.r4.u64;
   if (!obj) return;
   const uint32_t d = REX_LOAD_U32(obj + 48);
+  {
+    std::lock_guard<std::mutex> lk(g_mu);
+    if (!g_wheel_base_masks.count(obj))
+      g_wheel_base_masks[obj] = mask & ~dbz3::roster::ExtraUnlockMask();
+  }
   int8_t cur_slot = 0;
   if (const uint32_t cur = REX_LOAD_U32(d + 40)) cur_slot = int8_t(REX_LOAD_U8(cur + 2));
   const int cur_vc = NewCellOfWheel(base, d);
@@ -433,6 +444,35 @@ DBZ3_HOOK(sub_8217E490, dbz3eu_sub_8217E448) {
   DBZ3_CALL2(sub_8217DE80, dbz3eu_sub_8217DE38)(ctx, base);
   ctx.r3.u64 = d;
   DBZ3_CALL2(sub_8217D870, dbz3eu_sub_8217D828)(ctx, base);
+  {
+    std::lock_guard<std::mutex> lk(g_mu);
+    g_wheel_page_versions[obj] = g_dynamic_page_version.load();
+  }
+}
+
+void RefreshDynamicWheelForState(PPCContext& ctx, uint8_t* base, bool nested) {
+  const uint32_t obj = ctx.r3.u32;
+  if (!GuestPtr(obj)) return;
+  uint32_t state = REX_LOAD_U32(obj + 48);
+  if (!GuestPtr(state)) return;
+  if (nested) state = REX_LOAD_U32(state + 16);
+  if (!GuestPtr(state)) return;
+  const uint32_t wheel = REX_LOAD_U32(state + 40);
+  if (!GuestPtr(wheel)) return;
+  uint64_t base_mask = 0;
+  const uint64_t generation = g_dynamic_page_version.load();
+  {
+    std::lock_guard<std::mutex> lk(g_mu);
+    const auto it = g_wheel_base_masks.find(wheel);
+    if (!g_wheel_objs.count(wheel) || it == g_wheel_base_masks.end() ||
+        g_wheel_page_versions[wheel] == generation) return;
+    base_mask = it->second;
+  }
+  const PPCContext saved = ctx;
+  ctx.r3.u64 = wheel;
+  ctx.r4.u64 = base_mask | dbz3::roster::ExtraUnlockMask();
+  DBZ3_CALL2(sub_8217E490, dbz3eu_sub_8217E448)(ctx, base);
+  ctx = saved;
 }
 
 // Assigns a slot to every cell (r3 = wheel data): available slots in order, each
@@ -514,8 +554,14 @@ DBZ3_HOOK(sub_82179880, dbz3eu_sub_82179838) {
 }
 
 // Per-player select states (r3 = task object, +48 = player state).
+void RefreshDynamicWheelForState(PPCContext& ctx, uint8_t* base, bool nested);
 #define DBZ3_SELECT_PLAYER_HANDLER(fn, eu, nested) \
   DBZ3_HOOK(fn, eu) {                              \
+    if (!(nested)) {                               \
+      uint64_t removed = 0, added = 0;              \
+      if (dbz3::roster::ProcessDynamicRosterPage(removed, added)) ++g_dynamic_page_version; \
+    }                                              \
+    RefreshDynamicWheelForState(ctx, base, nested); \
     Enter(base, ctx.r3.u32, nested);               \
     orig(ctx, base);                               \
     Leave(base);                                   \
@@ -675,7 +721,7 @@ DBZ3_HOOK(sub_8217F3F0, dbz3eu_sub_8217F3A8) {
 // el camino de siempre (con la guarda).
 DBZ3_EXTERN_EU(__imp__dbz3eu_sub_82096F88);
 namespace {
-constexpr uint32_t kTexVtable = 0x8201CAA0;   // clase de las texturas del #AZT (misma en US y EU: ver campaigns.cpp)
+constexpr dbz3::GA kTexVtable = 0x8201CAA0;   // clase de las texturas del #AZT (EU 0x8201CA94: la direccion cambia, S5-I1)
 
 // Entrada del banco global para la textura `tex` si es una textura real mas alla de lo que admite la guarda (0 si no).
 uint32_t EntradaLejana(uint8_t* base, uint32_t tex) {
@@ -687,9 +733,13 @@ uint32_t EntradaLejana(uint8_t* base, uint32_t tex) {
   const uint32_t rel = REX_LOAD_U32(idx + 4 * k);
   if (rel < 0x01000000u || rel >= 0x08000000u) return 0;   // < 16 MB: lo resuelve el camino normal
   const uint32_t e = bank + rel;
+  if (NamesDiag() && tex >= 70 && tex < 100)   // S5-I1: por que una textura lejana no se resuelve (Torneo EU)
+    REXLOG_INFO("dbz3 names: LEJANA tex {} rel {:08X} e {:08X} e[0] {} res {:08X} vt {:08X}", tex, rel, e,
+                GuestPtr(e) ? REX_LOAD_U32(e) : 0, GuestPtr(e) ? REX_LOAD_U32(e + 20) : 0,
+                GuestPtr(e) && GuestPtr(REX_LOAD_U32(e + 20)) ? REX_LOAD_U32(REX_LOAD_U32(e + 20)) : 0);
   if (!GuestPtr(e) || REX_LOAD_U32(e) != tex) return 0;    // la entrada lleva su propio indice
   const uint32_t res = REX_LOAD_U32(e + 20);
-  if (!GuestPtr(res) || REX_LOAD_U32(res) != kTexVtable) return 0;
+  if (!GuestPtr(res) || REX_LOAD_U32(res) != uint32_t(kTexVtable)) return 0;
   const uint32_t m1 = REX_LOAD_U32(REX_LOAD_U32(res) + 4);
   if (m1 < 0x82000000u || m1 >= 0x83000000u || (m1 & 3)) return 0;
   return e;

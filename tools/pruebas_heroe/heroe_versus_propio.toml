@@ -1,0 +1,36 @@
+# copia: s5_h2v (--instantanea freezer_cap2)
+# Requisito en la copia: mods/heroe_propio/personaje.toml y mods/_roster/roster.toml con `celda = true` (el Heroe sale
+# en la rueda; en el repo es `celda = false`, exclusivo de su modo).
+# Flujo: L (TAG TEAM) > A (formato 1 VS 2) > Space (rueda 1P VS COM) > S (celda "Semilla") > Space (elige) >
+# Space (capsulas Normal) > rival: Space (Goku) > Space (Normal) > S S (salta Semilla) > Space (Kid Gohan) > Space (Normal)
+# > escenario: Space > combate; L ataca.
+descripcion = "Versus 1P VS COM (1 VS 2): el heroe propio (Semilla) aparece en la rueda, se elige y entra en combate"
+env = ["DBZ3_NAMES_DIAG=1"]
+pasos = [
+  "esperar 2500",
+  "tecla L 3000",
+  "tecla A 1200",
+  "captura 00_formato",
+  "tecla Space 12000",
+  "tecla S 1500",
+  "captura 01_rueda_semilla",
+  "tecla Space 4000",
+  "tecla Space 4000",
+  "esperar 3000",
+  "tecla Space 4000",
+  "tecla Space 4000",
+  "tecla S 1500", "tecla S 1500",
+  "tecla Space 4000",
+  "tecla Space 4000",
+  "esperar 3000",
+  "captura 02_escenario",
+  "tecla Space 4000",
+  "esperar 12000",
+  "captura 03_pre_combate",
+  "tecla L 300", "tecla L 300", "tecla L 300", "tecla L 300", "tecla L 300",
+  "captura 04_combate",
+  "tecla D 700", "tecla L 300", "tecla L 300", "tecla L 300", "tecla L 300",
+  "captura 05_combate_golpe",
+  "esperar 6000",
+  "captura 06_combate",
+]

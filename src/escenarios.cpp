@@ -9,6 +9,8 @@
 //   (17+) al anfitrion y tener el registro del anfitrion con los datos del alta mientras este cargada.
 
 #include "escenarios.h"
+#include "ingame/game_style.h"
+#include "launcher/launcher_state.h"
 
 #include "clima.h"
 #include "launcher/settings.h"
@@ -18,6 +20,8 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <cstdio>
@@ -26,7 +30,9 @@
 #include <fstream>
 #include <vector>
 
+#include <imgui.h>
 #include <rex/hook.h>
+#include <rex/ui/imgui_dialog.h>
 #include <rex/cvar.h>
 #include <rex/runtime.h>
 #include <rex/logging.h>
@@ -38,9 +44,17 @@
 
 // Modo opcional "zonas B de B2" (frente 07): al caer por el borde se pasa a la zona B del escenario
 // (el mod de la zona B lo declara en su stage.toml con `zona_b = <entrada del escenario A>`).
-REXCVAR_DEFINE_BOOL(dbz3_escenarios_zonas_b, false, "DBZ3/Mods",
+REXCVAR_DEFINE_BOOL(dbz3_escenarios_base_zona_b, true, "DBZ3/Dev",
+                    "Cambio de zona en la Base Red Ribbon B2 (necesita el bin con todas las raices, campos_iw VERSION 18)");
+
+REXCVAR_DEFINE_BOOL(dbz3_escenarios_zonas_b, true, "DBZ3/Mods",
                     "Al caer por el borde se pasa a la zona B del escenario (si su mod la trae; "
                     "stage.toml `zona_b`; desactivado = el ring out acaba el combate como siempre)");
+
+// X1esc 23/10: IMITACION 2D de la nieve de B2 en Montanas nevadas (el port aun no lanza los emisores #ACE de B2: B3 no tiene el
+// builtin 0x96). Apagada: la norma es portar, no imitar.
+REXCVAR_DEFINE_BOOL(dbz3_nieve_propia, false, "DBZ3/Dev",
+                    "Copos 2D sobre Montanas nevadas (B2) mientras no haya emisores 3D (experimental)");
 
 // Frente 12: escenario nuevo en cada revancha cuando el combate salio de la casilla "?" (aleatorio).
 REXCVAR_DEFINE_BOOL(dbz3_escenarios_revancha_aleatoria, false, "DBZ3/Mods",
@@ -69,6 +83,14 @@ constexpr dbz3::GA kMgrPtr = 0x823D6CF4;
 constexpr uint32_t kAvisoRing = 35569;
 constexpr uint32_t kEstadoCombate = 35128;   // mgr+35128: 4 = pelea, 5 = fin (modos.cpp, tagteam.cpp)
 
+// X1esc 23/10: cielo y nubes de los campos de IW derivan (UV): `nubes = "firma hex (3 ventanas de 44 B),n ventanas,du,dv,tam #ZDD"`
+// en stage.toml (mod center hd/campos_iw.py). Se halla la firma en el #ZDD cargado del guest y se suma du, dv por cuadro (a 60 Hz)
+// a los UV (+36/+40 de cada ventana BE): la GPU lee los vertices de la memoria del guest en cada dibujo.
+struct Nube {
+  std::vector<uint8_t> firma;
+  uint32_t n = 0, tam = 0, guest = 0;
+  float du = 0, dv = 0, acc_u = 0, acc_v = 0;
+};
 struct Alta {
   std::string mod, nombre, titulo;   // nombre: el del registro (<= 15); titulo: el del rotulo
   uint32_t entrada = 0, id_se = 45, menu = 0;   // menu: #AZT con la bola, la vista y el rotulo (selector)
@@ -79,12 +101,14 @@ struct Alta {
   uint32_t niebla_color = 0;
   float niebla_ini = 0, niebla_fin = 0;
   uint32_t zona_b = 0;   // frente 07: esta alta es la zona B del alta cuya `entrada` es este numero (0 = no)
+  std::vector<Nube> nubes;   // X1esc: deriva UV del cielo y las nubes (campos de IW)
   bool oculta = false;   // fuera del selector del Duelo (campos de IW: solo para sus minijuegos); `selector = false`
 };
 rex::memory::Memory* g_mem = nullptr;
 std::vector<Alta> g_altas;
 uint32_t g_visibles = 0;   // altas con casilla en el selector: las primeras de g_altas (las ocultas van al final)
 int g_activa = -1;               // alta puesta en el registro anfitrion (-1 = ninguna)
+bool g_zona_motor = false;       // X1esc: PasarZonaB llama al cambio de zona del motor (el gancho de sub_820CC6C0 lo deja pasar)
 uint8_t g_orig[kRec];            // registro original del anfitrion
 uint32_t g_orig_tema = 0;
 constexpr dbz3::GA kNieblas = 0x823232A0;   // entradas de niebla de 20 B (color, 2 floats, inicio, fin): clima.cpp
@@ -180,18 +204,29 @@ int ZonaBDe(int v) {
 // del combate con el bin de la zona B (su objeto 0 es la otra zona; las camaras de su objeto 0 son las de
 // la transicion de B2). Devuelve true si ha hecho el cambio (el llamador consume el aviso de ring out).
 bool PasarZonaB(PPCContext& ctx, uint8_t* base) {
-  const int zb = ZonaBDe(g_activa);
-  if (zb < 0 || !g_obj_combate) return false;
-  const int j = Traducir(base, zb);   // pone el alta de la zona B en el anfitrion
-  REX_STORE_U16(g_obj_combate + 340, uint16_t(j));
+  // X1esc 23/10: el cambio de zona es el del propio motor (sub_820CC6C0: suceso + G+0x40 ^= 1 + regenera luz y niebla).
+  // Los bins convertidos de B2 de los grupos 0, 4, 7 y 8 ya traen la zona B como objeto 1 del #ZDD (n_obj = 2). La
+  // recarga entera del escenario (sub_820C26E0) que se probaba antes dejaba el objeto +16 a cero y cerraba el juego
+  // (lr 0x820BD300, sub_820BE2E8).
+  if (g_activa < 0) return false;
+  // Base Red Ribbon B2 (entrada 5000): el cambio cierra el juego (lectura de guest 0x294 en sub_82090820: un objeto nulo
+  // + 0x290, un cuaternio); medido 23/10 aun con 2 raices. Sin zona B hasta saber que objeto le falta. Montanas nevadas
+  // (5007), Ciudad (5008) y Llanura (5004) probados: cambian bien.
+  if (g_altas[size_t(g_activa - kSerie)].entrada == 5000 && !REXCVAR_GET(dbz3_escenarios_base_zona_b)) return false;
+  const uint32_t zdd = REX_LOAD_U32(kG + 32);
+  if (!zdd || REX_LOAD_U32(zdd + 4) < 2 || REX_LOAD_U32(kG + 64) != 0) {   // sin zona B o ya en ella
+    static std::atomic<int> nn{0};
+    if (nn.fetch_add(1) < 3)
+      REXLOG_INFO("dbz3 escenarios: sin cambio de zona: zdd=0x{:08X} n_obj={} G+64={}", zdd, zdd ? REX_LOAD_U32(zdd + 4) : 0, REX_LOAD_U32(kG + 64));
+    return false;
+  }
   PPCContext c = ctx;
-  c.r3.u64 = g_obj_combate;
-  DBZ3_CALL_EU(sub_820C26E0)(c, base);   // carga del escenario (la regenerada: sin re-entrar en el hook)
-  REX_STORE_U16(g_obj_combate + 340, uint16_t(zb));   // como el hook: el combate sigue pidiendo el alta
-  dbz3::clima::EscenarioPedido();   // la zona B es otro escenario: el clima vuelve a empezar
-  REXLOG_INFO("dbz3 escenarios: ring out (aviso {}): zona B '{}' (registro {}, entrada {}) cargada en el combate",
-              REX_LOAD_U8(REX_LOAD_U32(kMgrPtr) + kAvisoRing), g_altas[size_t(zb - kSerie)].nombre, zb,
-              g_altas[size_t(zb - kSerie)].entrada);
+  g_zona_motor = true;
+  DBZ3_CALL_EU(sub_820CC6C0)(c, base);   // pasa por el gancho (que lo bloquea en las altas) salvo con g_zona_motor
+  g_zona_motor = false;
+  dbz3::clima::EscenarioPedido();
+  REXLOG_INFO("dbz3 escenarios: ring out (aviso {}): cambio de zona del motor (alta {}, zona B = objeto 1)",
+              REX_LOAD_U8(REX_LOAD_U32(kMgrPtr) + kAvisoRing), g_activa);
   return true;
 }
 
@@ -296,6 +331,17 @@ void CargarDeMods(rex::memory::Memory* memory) {
       else if (k == "musica") a->musica = int(std::strtoul(v.c_str(), nullptr, 10));   // 12c: entrada ADX
       else if (k == "zona_b") a->zona_b = uint32_t(std::strtoul(v.c_str(), nullptr, 10));
       else if (k == "selector") a->oculta = v == "false" || v == "no" || v == "0";
+      else if (k == "nubes") {
+        Nube nb;
+        char hex[600] = {};
+        if (std::sscanf(v.c_str(), "%599[0-9A-Fa-f],%u,%f,%f,%u", hex, &nb.n, &nb.du, &nb.dv, &nb.tam) == 5) {
+          for (size_t i = 0; hex[i] && hex[i + 1]; i += 2) {
+            const char b2[3] = {hex[i], hex[i + 1], 0};
+            nb.firma.push_back(uint8_t(std::strtoul(b2, nullptr, 16)));
+          }
+          if (nb.firma.size() >= 16) a->nubes.push_back(std::move(nb));
+        }
+      }
       else if (k == "niebla")
         a->niebla = std::sscanf(v.c_str(), "%x,%f,%f", &a->niebla_color, &a->niebla_ini, &a->niebla_fin) == 3;
     }
@@ -438,6 +484,7 @@ DBZ3_HOOK_EU(sub_820C19B0) {
 // nada y devuelve 1). Los escenarios de serie no cambian: sin alta el gancho llama al original.
 // ---------------------------------------------------------------------------------------------------
 DBZ3_HOOK(sub_820CC6C0, dbz3eu_sub_820CC650) {
+  if (dbz3::escenarios::g_zona_motor) return orig(ctx, base);
   if (dbz3::escenarios::AltaActiva()) {
     const uint32_t zdd = REX_LOAD_U32(dbz3::escenarios::kG + 32);
     const uint32_t n_obj = zdd ? REX_LOAD_U32(zdd + 4) : 0;
@@ -459,6 +506,84 @@ DBZ3_HOOK(sub_820CC6C0, dbz3eu_sub_820CC650) {
 // campo 7 = el modelo, 4 = cabecera del bloque de colision [FFFFFFFF ...], 3 = [4, nodos, ...].
 // Es la medida que separo el arreglo del cuelgue de B2 (punteros PS2 sin traducir, sub_820CB0A0).
 // ---------------------------------------------------------------------------------------------------
+REXCVAR_DEFINE_BOOL(dbz3_escenarios_guardas, true, "DBZ3/Dev",
+                    "Redes de seguridad de los escenarios convertidos (camara sin clip, nombre NULL, objeto sin casillas); apagar solo para probar la raiz");
+// X1esc 23/10: red de seguridad del cierre en combates largos de los B2 convertidos (lectura de guest 0x14, lr 0x820F4680):
+// la actualizacion de camara lee *(*(cam+52)+20) y el clip (+52) es nulo cuando el escenario no tiene el recurso pedido.
+// Sin clip se salta esa actualizacion (la raiz se arregla en el conversor). EU: gemelo por tools/eu_map.py.
+DBZ3_HOOK_EU(sub_820F4678) {
+  if (ctx.r3.u32 && !REX_LOAD_U32(ctx.r3.u32 + 52)) {
+    static std::atomic<int> n{0};
+    if (n.fetch_add(1) < 5) REXLOG_INFO("dbz3 escenarios: camara sin clip (+52 nulo)");
+    if (REXCVAR_GET(dbz3_escenarios_guardas)) return;
+  }
+  orig(ctx, base);
+}
+
+// X1esc 23/10: cierre 'read of guest 0x1, lr 0x8208DF10' (ya en el exe anterior a esta noche): sub_8208DEE0 compara 3 letras
+// del nombre r3+1 con una cadena y le llega r3 = NULL. Se registra quien la llama (lr) y, sin nombre, se responde 'no coincide'.
+DBZ3_HOOK_EU(sub_8208DEE0) {
+  if (!ctx.r3.u32 && REXCVAR_GET(dbz3_escenarios_guardas)) {
+    static std::atomic<int> n{0};
+    if (n.fetch_add(1) < 20)
+      REXLOG_INFO("dbz3 escenarios: sub_8208DEE0 con nombre NULL (llamador lr=0x{:08X} r4=0x{:08X} alta={})", uint32_t(ctx.lr),
+                  ctx.r4.u32, dbz3::escenarios::AltaActiva() ? 1 : 0);
+    const uint32_t tab = REX_LOAD_U32(dbz3::GA(0x823A3D80) + 44);
+    if (tab && n.load() < 6) {
+      const uint32_t cnt = REX_LOAD_U32(tab + 16), arr = REX_LOAD_U32(tab + 20);
+      REXLOG_INFO("dbz3 escenarios:   tabla G+44=0x{:08X} n={} arr=0x{:08X} [124]={:08X} {:08X} [125]={:08X} {:08X}", tab, cnt, arr,
+                  arr ? REX_LOAD_U32(arr + 124 * 16) : 0, arr ? REX_LOAD_U32(arr + 124 * 16 + 4) : 0,
+                  arr ? REX_LOAD_U32(arr + 125 * 16) : 0, arr ? REX_LOAD_U32(arr + 125 * 16 + 4) : 0);
+    }
+    ctx.r3.s64 = 0;
+    return;
+  }
+  orig(ctx, base);
+}
+
+// X1esc 23/10: builtin de script sub_820CCAF8 (arg0 = tipo) crea el objeto de sub_820BFA20 con las casillas 124, 125 y 110+tipo del
+// registro de 641 casillas. El registro del donante 44 las trae vacias (los nativos 50 y 60 si las tienen): sin ellas el juego cierra
+// (sub_8208DEE0 con nombre NULL, lr 0x8208DF10). Se registra la llamada y, si faltan las casillas, no se crea el objeto.
+DBZ3_HOOK_EU(sub_820CCAF8) {
+  const uint32_t args = REX_LOAD_U32(ctx.r4.u32 + 44);
+  const uint32_t tipo = args ? REX_LOAD_U32(args) : 0;
+  const uint32_t tab = REX_LOAD_U32(dbz3::GA(0x823A3D80) + 44), arr = tab ? REX_LOAD_U32(tab + 20) : 0;
+  auto slot = [&](uint32_t i) { return arr ? REX_LOAD_U32(arr + i * 16) : 0u; };
+  const bool falta = !slot(124) || !slot(125) || !slot(110 + tipo);
+  static std::atomic<int> n{0};
+  if (n.fetch_add(1) < 30)
+    REXLOG_INFO("dbz3 escenarios: builtin crear-objeto(820CCAF8) tipo={} casillas 124={:08X} 125={:08X} 110+t={:08X} falta={}", tipo,
+                slot(124), slot(125), slot(110 + tipo), falta ? 1 : 0);   // sin filtro de alta: tambien los nativos
+  if (falta && dbz3::escenarios::AltaActiva() && REXCVAR_GET(dbz3_escenarios_guardas)) {
+    ctx.r3.s64 = 1;
+    return;
+  }
+  orig(ctx, base);
+}
+
+// X1esc 23/10: Base B2, cambio de zona con un bin viejo (raices de la zona B quitadas): sub_82090820 recibe r3 = 0x290 (campo +0x290
+// de un indice de hueso fuera de la tabla). Red de seguridad: se registra el llamador y no se dibuja ese nodo.
+DBZ3_HOOK_EU(sub_82090820) {
+  if (ctx.r3.u32 < 0x10000u) {
+    static std::atomic<int> n{0};
+    if (n.fetch_add(1) < 6)
+      REXLOG_INFO("dbz3 escenarios: sub_82090820 con r3=0x{:X} (objeto nulo) llamador lr=0x{:08X} r1=0x{:08X}", ctx.r3.u32, uint32_t(ctx.lr), ctx.r1.u32);
+    if (REXCVAR_GET(dbz3_escenarios_guardas)) { ctx.r3.s64 = 0; return; }
+  }
+  orig(ctx, base);
+}
+
+// X1esc 23/10: busqueda de recurso de camara (tipo/id) sub_820CF580; sonda de resultados nulos en altas.
+DBZ3_HOOK_EU(sub_820CF580) {
+  const uint32_t r3 = ctx.r3.u32, tipo = ctx.r4.u32, id = ctx.r5.u32;
+  orig(ctx, base);
+  if (dbz3::escenarios::AltaActiva()) {
+    static std::atomic<int> n{0};
+    if (ctx.r3.u32 == 0 && n.fetch_add(1) < 40)
+      REXLOG_INFO("dbz3 escenarios: RECURSO_CAMARA nulo tipo={} id={} base=0x{:08X}", tipo, int32_t(id), r3);
+  }
+}
+
 DBZ3_HOOK_EU(sub_820CBC90) {
   const uint32_t zdd = ctx.r3.u32;
   orig(ctx, base);
@@ -913,7 +1038,120 @@ DBZ3_HOOK_EU(sub_8219ECC8) {
 namespace dbz3::escenarios {
 void ComprobarZonaB(PPCContext& ctx, uint8_t* base);
 }
+namespace dbz3::escenarios {
+// NIEVE PROPIA (X1esc 23/10): B3 no tiene el efecto 0x96 de B2 (stub sub_820A3A08) ni un builtin de clima. En Montanas
+// nevadas (entrada 5007) el port dibuja copos 2D sobre la imagen del juego. Densidad, tamano y velocidad: medidos a ojo en
+// la captura de PCSX2 (b2_699391_05) [H: sin leer los #ACE de B2]. Solo mientras el combate llama a TickNubes.
+static std::atomic<int64_t> g_nieve_ms{0};
+static int64_t AhoraMs() {
+  return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+namespace S = dbz3::ingame::style;
+class NievePanel : public rex::ui::ImGuiDialog {
+ public:
+  explicit NievePanel(rex::ui::ImGuiDrawer* d) : ImGuiDialog(d) {}
+
+ protected:
+  struct Copo { float x, y, vy, fase, r, a; };
+  std::vector<Copo> copos_;
+  uint32_t rng_ = 12345;
+  float Al() { rng_ = rng_ * 1664525u + 1013904223u; return float(rng_ >> 8) / 16777216.f; }
+  void OnDraw(ImGuiIO& io) override {
+    if (AhoraMs() - g_nieve_ms.load() > 250) { copos_.clear(); return; }
+    const S::Imagen g = S::GuestImage(io);
+    const ImVec2 sz = g.Size();
+    if (sz.x < 50 || sz.y < 50) return;
+    if (copos_.empty()) {
+      for (int i = 0; i < 220; ++i) copos_.push_back({Al(), Al(), 0.10f + 0.20f * Al(), Al() * 6.28f, 1.0f + 2.2f * Al(), 0.55f + 0.4f * Al()});
+    }
+    const float dt = std::min(0.1f, io.DeltaTime);
+    ImDrawList* dl = ImGui::GetForegroundDrawList();
+    for (Copo& c : copos_) {
+      c.y += c.vy * dt;                                  // alturas de imagen por segundo
+      c.fase += dt * 1.3f;
+      c.x += std::sin(c.fase) * 0.012f * dt * 6.f + 0.012f * dt;   // vaiven y viento suave hacia la derecha
+      if (c.y > 1.f) { c.y -= 1.f; c.x = Al(); }
+      if (c.x > 1.f) c.x -= 1.f;
+      if (c.x < 0.f) c.x += 1.f;
+      const ImVec2 p(g.p0.x + c.x * sz.x, g.p0.y + c.y * sz.y);
+      dl->AddCircleFilled(p, c.r * sz.y / 540.f + 0.6f, IM_COL32(255, 255, 255, int(c.a * 255)), 8);
+    }
+  }
+};
+static void CrearNievePanel() {
+  static NievePanel* panel = nullptr;
+  auto* rt = rex::Runtime::instance();
+  if (!panel && rt && rt->imgui_drawer()) panel = new NievePanel(rt->imgui_drawer());
+}
+static void TickNieve() {
+  if (!REXCVAR_GET(dbz3_nieve_propia) || g_activa < 0 || g_altas[size_t(g_activa - kSerie)].entrada != 5007) return;
+  static bool pedido = false;
+  if (!pedido) { pedido = true; dbz3::launcher::DeferUi(&CrearNievePanel); }
+  g_nieve_ms = AhoraMs();
+}
+
+// Deriva UV de cielo y nubes del alta activa (campos de IW). Se llama cada fotograma desde los ganchos de sub_82114910 /
+// sub_820FD678 (ComprobarZonaB); la velocidad va por segundo real (du, dv por cuadro a 60 Hz).
+static void TickNubes(uint8_t* base) {
+  TickNieve();
+  if (g_activa < 0) return;
+  Alta& a = g_altas[size_t(g_activa - kSerie)];
+  if (a.nubes.empty()) return;
+  static uint32_t zdd_vista = 0;
+  static std::chrono::steady_clock::time_point t_ant;
+  static int ticks = 0;
+  const uint32_t zdd = REX_LOAD_U32(kG + 32);
+  if (!zdd || zdd < 0x40000000u) return;
+  if (zdd != zdd_vista) {   // escenario (re)cargado: se vuelven a buscar las firmas en el #ZDD
+    zdd_vista = zdd;
+    ticks = 0;
+    size_t hallados = 0;
+    for (Nube& nb : a.nubes) {
+      nb.guest = 0; nb.acc_u = nb.acc_v = 0;
+      const uint8_t* ini = base + zdd;
+      const uint8_t* fin = ini + nb.tam;
+      const uint8_t* p = std::search(ini, fin, nb.firma.begin(), nb.firma.end());
+      if (p != fin) { nb.guest = uint32_t(p - base); ++hallados; }
+    }
+    REXLOG_INFO("dbz3 escenarios: nubes: {} de {} partes halladas en el #ZDD 0x{:08X}", hallados, a.nubes.size(), zdd);
+    t_ant = std::chrono::steady_clock::now();
+    return;
+  }
+  const auto ahora = std::chrono::steady_clock::now();
+  const float dt = std::min(0.25f, std::chrono::duration<float>(ahora - t_ant).count());
+  t_ant = ahora;
+  if (dt <= 0.f) return;
+  for (Nube& nb : a.nubes) {
+    if (!nb.guest) continue;
+    static const float mult = std::getenv("DBZ3_NUBES_MULT") ? float(std::atof(std::getenv("DBZ3_NUBES_MULT"))) : 1.f;   // PRUEBAS: acelera la deriva para verla en capturas
+    float du = nb.du * 60.f * dt * mult, dv = nb.dv * 60.f * dt * mult;
+    nb.acc_u += du; nb.acc_v += dv;
+    if (nb.acc_u >= 1.f) { du -= 1.f; nb.acc_u -= 1.f; }   // envoltura: la textura se repite con periodo 1
+    if (nb.acc_v >= 1.f) { dv -= 1.f; nb.acc_v -= 1.f; }
+    for (uint32_t i = 0; i < nb.n; ++i) {
+      const uint32_t o = nb.guest + 44 * i + 36;
+      float u, v;
+      uint32_t bu = REX_LOAD_U32(o), bv = REX_LOAD_U32(o + 4);
+      std::memcpy(&u, &bu, 4); std::memcpy(&v, &bv, 4);
+      u += du; v += dv;
+      std::memcpy(&bu, &u, 4); std::memcpy(&bv, &v, 4);
+      REX_STORE_U32(o, bu); REX_STORE_U32(o + 4, bv);
+    }
+  }
+  if (++ticks == 1 || ticks == 61 || ticks == 301) {   // medida: UV de la 1.a ventana de la 1.a parte en cuadros conocidos
+    for (const Nube& nb : a.nubes) if (nb.guest) {
+      float u, v;
+      uint32_t bu = REX_LOAD_U32(nb.guest + 36), bv = REX_LOAD_U32(nb.guest + 40);
+      std::memcpy(&u, &bu, 4); std::memcpy(&v, &bv, 4);
+      REXLOG_INFO("dbz3 escenarios: nubes: tick {} uv = ({:.5f}, {:.5f}) acc = ({:.5f}, {:.5f})", ticks, u, v, nb.acc_u, nb.acc_v);
+      break;
+    }
+  }
+}
+}  // namespace dbz3::escenarios
+
 void dbz3::escenarios::ComprobarZonaB(PPCContext& ctx, uint8_t* base) {
+  TickNubes(base);
   if (!REXCVAR_GET(dbz3_escenarios_zonas_b)) return;
   const uint32_t mgr = REX_LOAD_U32(dbz3::escenarios::kMgrPtr);
   if (!mgr || !REX_LOAD_U8(mgr + dbz3::escenarios::kAvisoRing)) return;

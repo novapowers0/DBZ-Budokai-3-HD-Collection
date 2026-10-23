@@ -9,6 +9,7 @@
 #include <array>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -35,9 +36,20 @@ struct Paso {
   int cuadros = 0;
   std::vector<std::array<float, 4>> cam_ojo, cam_obj;
   std::vector<std::array<float, 2>> cam_fov, cam_roll;
+  bool estilo_b1 = false;    // A3b: sin bandas de cine y con el subtitulo de B1 (blanco con borde negro, abajo al centro de la imagen)
+  bool fov_acerca = false;   // A3b: B3 proyecta con su 0,785 fijo (escribir mgr+0x1C4 no cambia nada): el fov de cam_fov se logra acercando el ojo al objetivo en tan(fov/2)/tan(0,3925)
   // s9b: true = ojo/objetivo van en el marco de los dos luchadores (origen = punto medio, x hacia el lado 2, y arriba,
   // z = perpendicular a su izquierda) en vez de en coordenadas del mundo: asi una toma vale en cualquier escenario.
   bool rel = false;
+  std::function<void()> al_empezar;   // S5-A3: se llama al empezar el paso (hilo del juego); p.ej. la musica del combate
+};
+
+// S1 (Leyenda de Mr. Satan): cara del luchador 1 por tramos de la escena. En B1 la cara es una malla fija con textura;
+// en B3 cada expresion es una malla (XSTN_L01/L18/...). El campo del registro del luchador que elige la malla se
+// escribe desde el gancho Fotograma (hilo del juego, al empezar el dibujo) cada cuadro del tramo.
+struct TramoCara {
+  float desde = 0, hasta = 0;   // segundos desde el principio de la escena
+  int valor = 0;                // valor del campo (ver docs de la sonda DBZ3_TEST_CARA)
 };
 // Y+B mantenidos (XInput, mando virtual del lado; como la pose del relevo del Tag Team, acciones 20/21). ponytail:
 // medido 2026-10-16 al empezar la pelea: da la accion 15 unos 40 cuadros y vuelve a 0, sin carga visible. Sin usar.
@@ -51,6 +63,12 @@ struct Escena {
   std::filesystem::path iso_voces;   // ISO de B1 de las voces
   float volumen = 1.0f;
   float distancia = 0;   // > 0: los dos a esta distancia (unidades de B3) durante la escena, con su punto medio
+  // S1: cara del luchador 1 (Satan) por tramos. `campo_cara` = offset en el registro X del luchador (0 = apagado).
+  int campo_cara = 0;
+  std::vector<TramoCara> caras;
+  // S1 (A3 O3 #1): al empezar y al acabar la escena (hilo del juego). La leyenda los usa para callar la mezcla de B3
+  // mientras suena la musica de B1 (pasarela.cpp) y para devolverla.
+  std::function<void()> al_empezar_escena, al_terminar_escena;
 };
 
 // La escena se reproduce al empezar la pelea del combate siguiente (cualquier hilo).
@@ -64,5 +82,9 @@ bool Conectada();
 // iwmini::Fotograma) y tras leer cada mando (combate.cpp, sub_8208FD58 despues de orig, como iwmini::Mando).
 void Fotograma(uint8_t* base, uint32_t estado);
 void Mando(uint8_t* base, uint32_t usuario);
+// A3b: tras la funcion de camara del juego (sub_820F47E0, ver cinematica.cpp): pone la camara de la escena (ojo, objetivo, vista) sin mezcla.
+void AplicarCamaraDirecta(uint8_t* base);
+// S1: camara del primer plano de la cara de la sonda (DBZ3_TEST_CARA) en un combate nativo, sin escena.
+void AplicarCamaraSonda(uint8_t* base);
 
 }  // namespace dbz3::cinematica

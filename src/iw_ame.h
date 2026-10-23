@@ -179,13 +179,14 @@ inline void Cuadro(Instancia& in, uint32_t& sem) {
   in.vivo = queda;
 }
 // `suma`: el atlas con alfa = brillo (la mezcla de suma del GS, Cs·As + Cd, con la mezcla por alfa de ImGui).
-// ponytail: la resta (0x42) no se pinta.
+// B2: la resta (0x42, Cd - Cs·As) ya se pinta; ImGui no permite cambiar el blend por draw, asi que se aproxima
+// oscureciendo con el brillo de Cs (negro con alfa = brillo·alfa). No es 1:1 (marcado [H]).
 inline void Pintar(const Instancia& in, const ps2::Camara& cam, const std::vector<ps2::Tex>& atlas_n,
                    const std::vector<ps2::Tex>& suma, ImDrawList* dl, float tope_px) {
   for (const auto& lista : in.ps)
     for (const Particula& p : lista) {
       const Nodo& n = *p.n;
-      if (n.estado == 2 || n.tipo == 4) continue;
+      if (n.tipo == 4) continue;   // tipo 4 (modelo): lo pinta quien lo pidio; la resta (estado 2) si se pinta
       // ponytail: tambien la mezcla normal (0x44) con alfa = brillo: con el alfa de las texturas tal cual salian
       // manchas oscuras (sus texturas de efecto son grises con alfa plano); la 3 (0x06) va normal
       const std::vector<ps2::Tex>& atlas = n.estado == 3 ? atlas_n : suma;
@@ -195,6 +196,11 @@ inline void Pintar(const Instancia& in, const ps2::Camara& cam, const std::vecto
       float col[4];
       for (int i = 0; i < 4; ++i)
         col[i] = std::clamp((n.flags & 0x10) ? F[12 + i] + (F[16 + i] - F[12 + i]) * t : F[12 + i], 0.0f, 1.0f);
+      if (n.estado == 2) {   // 0x42: aproximacion de REV_SUBTRACT (ver cabecera de Pintar)
+        const float br = std::max({col[0], col[1], col[2]});
+        col[0] = col[1] = col[2] = 0.0f;
+        col[3] = std::clamp(br * col[3], 0.0f, 1.0f);
+      }
       const float tam = p.medio * (F[6] + (F[7] - F[6]) * t);
       ImVec2 s;
       float k = 0;

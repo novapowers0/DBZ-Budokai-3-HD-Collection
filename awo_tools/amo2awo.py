@@ -33,6 +33,7 @@ Uso:
     entrada: #AMO0 suelto o #AMB PS2 (se convierte el contenedor entero con ps2hd.py,
              incluidas las texturas #AMT -> #AZT)
 """
+import os
 import struct
 import sys
 
@@ -338,6 +339,9 @@ def label_bytes(flag, name, nmax):
     return bytes(r)
 
 
+build_awg_todos = []
+
+
 def build_awg(m, names):
     """PS2AMG -> bytes del #AWG (offsets relativos al propio AWG)."""
     b = m.b
@@ -347,9 +351,14 @@ def build_awg(m, names):
     for p in m.parts:
         col = struct.unpack_from("<4I", p.hdr, 0x30)
         scl = struct.unpack_from("<4I", p.hdr, 0x20)
+        # solo el ring de Cell de B1 (RING_B1_VTYPE, apagado para el resto: tablero B2...): el arbol TREE2 (vtype 0x11b4) salia como conos BLANCOS en B3
+        # (medido 2026-10-23 con capturas); con el vtype de TREE1 (0x10b6, el mismo arbol que sale verde) sale verde. A3b.
+        vt, vf = p.vtype, p.vflags
+        if RING_B1_VTYPE and vt == 0x11B4 and not p.hidden:
+            vt, vf = 0x10B6, 0x10B6
         mb = struct.pack(">20I", col[0], col[1], col[2], 0, scl[0], scl[1], scl[2], 0,
                          0, p.regs.get(8, 0) & 0xFFFFFFFF, 0, p.regs.get(9, 0) & 0xFFFFFFFF,
-                         p.tex, p.shader, p.vtype, p.vflags,
+                         p.tex, p.shader, vt, vf,
                          p.regs.get(0x42, 0) & 0xFFFFFFFF, p.regs.get(0x43, 0) & 0xFFFFFFFF, 0, 0)
         if mb not in mat_bytes:
             mat_bytes.append(mb)
@@ -485,6 +494,7 @@ def build_awg(m, names):
                       mats_off, len(mat_bytes), vb0, 44 * len(windows), ib_off, 2 * len(ib),
                       pal_off, len(pal) if windows else 0)
     o.b[0:0x40] = hdr
+    build_awg_todos.append((draws, windows))   # X1esc: campos_iw.py lee que ventanas tiene cada parte (nubes de IW)
     return bytes(o.b), {"windows": len(windows), "ib": len(ib), "draws": len(draws),
                         "materials": len(mat_bytes), "palette": len(pal) if windows else 0}
 
@@ -698,6 +708,9 @@ class _FuenteObjeto1:
         return self.EC.objetos_zona_b(mdd)[0], mad, mas, spx
 
 
+RING_B1_VTYPE = False   # lo enciende escenario_ring_cell_b1 mientras convierte
+
+
 def escenario_ring_cell_b1(EC, fuente, grupo=11, saltar=(5,), convertir=None, **k):
     """S1-F03.2: bin HD del Ring de Cell de Budokai 1 (grupo 11 de su DATA_EN.AFS) entero. Su #MDD lleva dos objetos
     (variantes por el nombre de sus huesos: 0 = BBSELA, 1 = BBSELB); el ring de la Leyenda de Mr. Satan (losas
@@ -708,8 +721,13 @@ def escenario_ring_cell_b1(EC, fuente, grupo=11, saltar=(5,), convertir=None, **
     solo asomaban las puntas de las columnas (medido en el juego, studies 1 F03)."""
     f1 = _FuenteObjeto1(EC, fuente)
     mdd = f1.piezas(grupo)[0]
-    with objeto_pegado(EC, mdd, 0, saltar=saltar):
-        return (convertir or EC.escenario_b2)(f1, grupo, **k)   # convertir: el escenario_b2 sin envolver
+    global RING_B1_VTYPE
+    RING_B1_VTYPE = True
+    try:
+        with objeto_pegado(EC, mdd, 0, saltar=saltar):
+            return (convertir or EC.escenario_b2)(f1, grupo, **k)   # convertir: el escenario_b2 sin envolver
+    finally:
+        RING_B1_VTYPE = False
 
 
 def convert_file(src, dst):

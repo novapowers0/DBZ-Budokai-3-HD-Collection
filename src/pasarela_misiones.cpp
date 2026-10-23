@@ -15,6 +15,7 @@
 // negativo, como el tablero) y la prueba I encadena (sub_820FE9B0 + hub::ChainBattleEx): ver CombateNave y el gancho.
 // Avance en user_data/dbz3/pasarela/progreso.toml (claves saga_b1, tablero_*, gotenks, buu*). US y EU.
 // Sin ganchos propios. Docs: docs/16_pasarela_modos/04_misiones_y_tablero.md.
+#include "reloj_prueba.h"
 #include "pasarela.h"
 #include "pasarela_iw.h"
 #include "iw_minijuegos.h"
@@ -62,6 +63,7 @@ namespace dbz3::net {
 void InyectarPad(uint32_t usuario, int32_t botones);   // net/netplay_hooks.cpp (-1 = el mando de verdad)
 }
 namespace dbz3::hub {
+void CustomCapsulesNext(bool on);   // hub.cpp: el siguiente combate con la lista Custom del jugador 1
 bool RequestBattleEx(int id1, int id2, int stage, bool p2_com, int time_s, int hp1, int hp2, int form1, int form2);
 bool ChainBattleEx(int id1, int id2, int stage, bool p2_com, int time_s, int hp1, int hp2, int form1, int form2);
 void HoldChain(bool hold);
@@ -106,6 +108,7 @@ bool Siguiente(int out[6], int vida);
 void Seguido(int vida);
 bool Encadenado();
 bool Seguir();
+int ListaCapsulas();   // 0 Normal, 1 Custom (menu de la rueda)
 }  // namespace dbz3::pasarela::nave
 
 namespace dbz3::pasarela::misiones {
@@ -126,10 +129,7 @@ constexpr int kMapaCamara = 58, kMapaPradera = 62, kMapaRocas = 64, kMapaCiudad 
 constexpr int kGoku = 0, kGohanJoven = 3, kGohan = 4, kGoten = 6, kKrilin = 10, kVegeta = 7, kPiccolo = 11, kRaditz = 18, kNappa = 19, kMajinBu = 34,
               kSuperBu = 35, kSaibaman = 42;
 
-int64_t NowMs() {
-  return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch())
-      .count();
-}
+int64_t NowMs() { return dbz3::RelojMs(); }
 
 // ---- Contenido ----
 enum Modo : int { kSagaB1, kTablero, kGotenks, kBuu, kIW, kNave, kModos };
@@ -287,10 +287,10 @@ const char* FaltaIW(int id_iw) {
       if (id == id_iw) n = nombre;
     char buf[256];
     std::snprintf(buf, sizeof(buf),
-                  T::T("Necesita a %s: instálalo en el lanzador > Nova's Mods > Pack Infinite World (se crea con tu "
-                       "copia de IW)",
-                       "Needs %s: install it in the launcher > Nova's Mods > Infinite World pack (built from your IW "
-                       "copy)"),
+                  T::T("Necesita a %s: lanzador > Nova's Mods > Pack Infinite World > Instalar todos (usa tu ISO de IW, "
+                       "elegida en Juego > Elegir ISO)",
+                       "Needs %s: launcher > Nova's Mods > Infinite World pack > Install all (uses your IW ISO, "
+                       "picked in Game > Pick ISO)"),
                   n);
     it = hechas.emplace(id_iw, buf).first;
   }
@@ -1446,7 +1446,8 @@ bool Lanzar() {   // con g_mu
   if (g_nave_encadenada) {   // nave: el combate ya lo encadeno el gancho (sub_820FE9B0); sale de la espera en negro
     g_nave_encadenada = false;
     dbz3::hub::HoldChain(false);
-  } else if (!dbz3::hub::RequestBattleEx(p.jugador, p.rival, escenario, true, p.tiempo, vida1, p.vida2, forma1, p.forma2)) {
+  } else if (dbz3::hub::CustomCapsulesNext(g_modo == kNave && nave::ListaCapsulas() == 1),
+             !dbz3::hub::RequestBattleEx(p.jugador, p.rival, escenario, true, p.tiempo, vida1, p.vida2, forma1, p.forma2)) {
     return false;
   }
   REXLOG_INFO("dbz3 misiones: {} combate: id {} (forma {}, traje {}) contra id {} (forma {}), escenario {}, tiempo {}, "
@@ -1560,7 +1561,7 @@ class Panel : public rex::ui::ImGuiDialog {
     const int rueda_iw = g_iw_eligiendo.load() ? PistaMenuIW(3) : -1;
     if (rueda_iw >= 0) MusicaIW(rueda_iw);
     else if (fase != kMapaIW) MusicaIW(-1);
-    const float t = float(ImGui::GetTime()), dt = std::min(io.DeltaTime, 0.1f);
+    const float t = float(dbz3::RelojT(ImGui::GetTime())), dt = dbz3::RelojDt(std::min(io.DeltaTime, 0.1f));
     alpha_ =std::clamp(alpha_ + (show ? dt * 4.0f : -dt * 8.0f), 0.0f, 1.0f);
     if (!show) {
       wait_release_ = true;
@@ -2244,6 +2245,7 @@ DBZ3_HOOK(sub_820FE9B0, dbz3eu_sub_820FEAB0) {
     if (ganador == 0 && mgr && nave::Siguiente(out, int(vida_f))) {
       const int escenario = out[2] < 0 ? -out[2] - 1 : EscenarioPorMapa(out[2]);
       const int vida1 = out[3] > 0 ? -out[3] : 0;   // solo la inicial: la barra no se recupera
+      dbz3::hub::CustomCapsulesNext(nave::ListaCapsulas() == 1);
       if (dbz3::hub::ChainBattleEx(out[0], out[1], escenario, true, out[4], vida1, 1000, 0, 0)) {
         nave::Seguido(int(vida_f));
         dbz3::hub::HoldChain(true);   // espera en negro hasta que la nave lo suelta (CombateNave -> Lanzar)

@@ -33,6 +33,7 @@
 #include "generated/dbz3_init.h"
 #include "eu_map.h"
 #include "pasarela.h"
+#include "ports_guard.h"
 
 namespace dbz3::suelo_iw {
 namespace {
@@ -688,6 +689,7 @@ DBZ3_HOOK_EU(sub_820CB0A0) {
 // tambien guarda la altura de cada luchador para el rayo de suelo. US y EU (pareja 8210E700 -> 8210E800 de
 // tools/eu_map.py: bloque de 188 funciones iguales, 0 diferencias sin explicar; docs/14_frentes/eu_mapa.txt).
 DBZ3_HOOK_EU(sub_8210E700) {
+  if (!dbz3::ports::GuardLuchadores(base)) return;   // lista/accion a medias: no se llama a un puntero basura
   dbz3::suelo_iw::Paredes(base);
   orig(ctx, base);
   dbz3::suelo_iw::Paredes(base);

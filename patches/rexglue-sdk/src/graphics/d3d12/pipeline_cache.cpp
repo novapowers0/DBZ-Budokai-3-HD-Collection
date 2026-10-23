@@ -143,7 +143,11 @@ bool PipelineCache::Initialize() {
     }
   }
 
-  uint32_t logical_processor_count = rex::thread::logical_processor_count();
+  // DBZ3 (D2): usar los procesadores DISPONIBLES para el proceso (respeta la afinidad
+  // / un job object), no los logicos del sistema. Con el juego restringido a 2 nucleos,
+  // hardware_concurrency() sigue diciendo 16 y se creaban 12 hilos de creacion de
+  // pipelines peleando por 2 nucleos (el sintoma "a 2 nucleos va a 23-25 FPS").
+  uint32_t logical_processor_count = rex::thread::available_processor_count();
   if (!logical_processor_count) {
     // Pick some reasonable amount if couldn't determine the number of cores.
     logical_processor_count = 6;
@@ -325,7 +329,8 @@ void PipelineCache::InitializeShaderStorage(const std::filesystem::path& cache_r
     }
   }
 
-  size_t logical_processor_count = rex::thread::logical_processor_count();
+  // DBZ3 (D2): disponibles para el proceso (ver Initialize).
+  size_t logical_processor_count = rex::thread::available_processor_count();
   if (!logical_processor_count) {
     // Pick some reasonable amount if couldn't determine the number of cores.
     logical_processor_count = 6;

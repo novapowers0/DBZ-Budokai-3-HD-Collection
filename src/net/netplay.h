@@ -44,8 +44,9 @@ enum class Link : uint8_t {
 struct CombatRules {
   uint8_t flags = 0;
   uint16_t reversion = 0;
-  bool operator==(const CombatRules& o) const { return flags == o.flags && reversion == o.reversion; }
-  bool any() const { return flags || reversion; }
+  // bit4 (0x10) = rollback pedido (R4): se negocia aparte, no cuenta como regla de combate
+  bool operator==(const CombatRules& o) const { return (flags & ~0x10) == (o.flags & ~0x10) && reversion == o.reversion; }
+  bool any() const { return (flags & ~0x10) || reversion; }
   static CombatRules Now();   // las del F1 de este PC
   void Apply() const;         // las pone en el F1 de este PC
 };
@@ -88,6 +89,12 @@ class Session {
   // puerto) o "local" (solo red de casa). Join() acepta el codigo o una IP.
   std::string RoomCode(std::string* how = nullptr) const;
   bool mods_match() const { return mods_match_.load(); }
+  // ---- VANILLA (V): con mods distintos, "jugar vanilla" (sin mods) si LOS DOS lo aceptan. OfferVanilla = yo acepto.
+  void OfferVanilla();
+  bool HasMods() const { return !my_mods_.empty(); }   // R6 plan B: con mods (aunque iguales) se ofrece vanilla, que sincroniza siempre
+  bool MyVanilla() const { return my_vanilla_.load(); }
+  bool PeerOffersVanilla() const { return peer_vanilla_.load(); }
+  bool VanillaAgreed() const { return my_vanilla_.load() && peer_vanilla_.load(); }
   bool save_ready() const { return save_ready_.load(); }
   // Con mods distintos la sesion sigue conectada (sin poder empezar) y se cruzan las listas.
   struct ModDelta {
@@ -137,6 +144,55 @@ class Session {
   // (medido 2026-10-11: DESINCRONIA medio segundo despues de empezar).
   void BattleBarrier();
   bool desynced() const { return desync_.load(); }
+  // R1 (cvar dbz3_net_sumas, apagada): suma por fotograma de la region del combate (5 bloques, rollback.h). Hilo del juego,
+  // antes de RunTick(tick): se guarda, se manda al otro PC y se compara con la suya cuando llegan las dos. Una
+  // diferencia solo se registra (tick y bloques: bit0 gestor, 1 luchador 0, 2 luchador 1, 3 resto del gestor, 4 RNG);
+  // no corta la partida.
+  void NoteSum(uint32_t tick, const uint32_t* b);
+  uint32_t sums_compared() const { return sum_cmp_.load(); }
+  uint32_t sums_bad() const { return sum_bad_.load(); }
+  // Al registrar una diferencia (hilo del juego): volcado de la region de ese tick, etc.
+  using SumHook = void (*)(uint32_t tick, uint32_t mask);
+  static inline SumHook sum_hook = nullptr;
+
+  // ---- R4: rollback (src/net/rollback.h, ganchos en netplay_hooks.cpp). Todo hilo del juego salvo lo indicado.
+  // El nucleo vive aqui (historial de mandos del rival, prediccion, frontera de ticks confirmados) y en los ganchos
+  // (instantaneas de memoria y resimulacion). Transporte: solo Send/Recv/OpenSocket/ResetTransport tocan el socket.
+  struct RbStats {
+    uint32_t ticks = 0, rollbacks = 0, resim_ticks = 0, stalls = 0, deepest = 0, max_unconf = 0, predicted = 0;
+    uint32_t lead_stalls = 0, repairs = 0;
+    uint32_t depth[9] = {};   // rollbacks por profundidad 1..8
+  };
+  bool rb_on() const { return rb_on_.load(); }          // acordado por los dos PCs en TakeStart
+  bool rb_mode() const { return rb_mode_.load(); }      // dentro de un combate con rollback
+  int rb_window() const { return rb_w_eff_.load(); }    // ticks sin confirmar permitidos ahora (0 = lockstep)
+  uint32_t rb_conf() const { return rb_conf_; }
+  void RbEnter(uint32_t t);                              // primer tick del combate: todo lo anterior esta confirmado
+  void RbLeave();
+  // Antes del tick t: lee la red y busca el primer tick resimulable. Devuelve UINT32_MAX si no hay diferencias.
+  uint32_t RbScan(uint32_t t);
+  int RbWait(uint32_t t, uint64_t* start_ms, bool all = false);   // 1 seguir, 0 esperar (1 ms), -1 conexion perdida
+  void RbBeginResim(uint32_t k, bool wrong = false);                         // pone el mando del tick k (real o predicho) en Applied()
+  void RbEndResim() { rb_resim_ = false; }
+  bool resimulating() const { return rb_resim_; }
+  uint32_t resim_tick() const { return rb_resim_k_; }
+  void RbNoteResim(uint32_t depth, double ms_per_tick);  // estadisticas y presupuesto
+  RbStats& rb_stats() { return rb_stats_; }
+  // Sincronia de relojes: cuantos ticks va este PC por delante del rival (> 0 = delante). Se estima con el mando mas nuevo que
+  // llego (su casilla - su retardo = su tick al mandarlo) mas lo que ha pasado desde que llego y medio ping. 0 sin datos.
+  double RbLead(uint32_t t) const;
+  // Reparacion (R4): si las sumas de un tick confirmado difieren (estado fuera de la instantanea que dependia de mandos predichos), el
+  // anfitrion manda su instantanea de ese tick en trozos (kSnap) y el invitado la adopta y resimula hasta el tick actual.
+  uint32_t RbBadTick() const { return rb_bad_first_; }              // primer tick malo sin reparar (UINT32_MAX: ninguno)
+  bool RbSnapSend(uint32_t tick, const uint8_t* data, size_t n);    // anfitrion: empieza a mandar (false si ya hay una en curso)
+  void RbSnapPump();                                                 // anfitrion, cada tick: manda los siguientes trozos hasta el ack
+  bool RbSnapTake(uint32_t* tick, std::vector<uint8_t>* data);       // invitado: instantanea completa recibida (la devuelve una vez)
+  void RbRepaired(uint32_t k);                                       // los dos al reparar: ignora sumas hasta k + 40
+  bool rb_snap_busy() const { return snap_tx_on_; }
+  uint32_t rb_repairs() const { return rb_repairs_; }
+  uint32_t rb_sum_next() const { return rb_sum_next_; }
+  void RbSumDone(uint32_t k) { rb_sum_next_ = k + 1; }
+  uint32_t rb_desyncs() const { return rb_desync_n_; }
 
   // Partida guardada: el invitado juega con la del anfitrion durante la sesion; la suya se
   // copia antes y se devuelve al volver a abrir el juego (RestoreSave al arrancar).
@@ -198,6 +254,8 @@ class Session {
   bool peer_mods_known_ = false;          // llego al menos un trozo de su lista (con mu_)
   uint64_t mod_req_ms_ = 0;
   std::atomic<bool> mods_match_{false};
+  std::atomic<bool> my_vanilla_{false}, peer_vanilla_{false};   // ---- VANILLA (V)
+  uint64_t vanilla_sent_ms_ = 0;
   std::atomic<bool> save_ready_{false};
   std::vector<uint8_t> save_;            // anfitrion: la suya; invitado: la recibida
   std::vector<uint8_t> save_have_;       // invitado: trozos recibidos
@@ -228,6 +286,32 @@ class Session {
   std::atomic<uint32_t> tick_{0};
   std::atomic<bool> armed_{false};
   std::atomic<bool> desync_{false};
+  struct SumSlot { uint32_t tick = 0xFFFFFFFFu; uint32_t b[5] = {}; };
+  std::array<SumSlot, kRing> my_sum_{}, their_sum_{};
+  std::atomic<uint32_t> sum_cmp_{0}, sum_bad_{0};
+  uint32_t sum_sent_ = 0;   // casillas de suma mandadas: hasta este tick (exclusive)
+  void CompareSum(uint32_t tick);
+  void SendSums();
+
+  // R4 rollback
+  std::atomic<bool> rb_on_{false}, rb_mode_{false};
+  std::atomic<int> rb_w_eff_{0};
+  int rb_w_ = 2;                         // ventana configurada
+  double rb_budget_ms_ = 12.0, rb_ms_tick_ = 3.5;   // presupuesto de resimulacion por cuadro y coste medio por tick (EMA)
+  uint32_t rb_conf_ = 0, rb_t0_ = 0, rb_sum_next_ = 0, rb_resim_k_ = 0, rb_desync_n_ = 0;
+  bool rb_resim_ = false;
+  Pad rb_last_{};                        // mando del rival en el ultimo tick confirmado (base de la prediccion)
+  std::array<Slot, kRing> rb_used_{};    // mando del rival realmente aplicado a cada tick
+  RbStats rb_stats_;
+  std::atomic<uint32_t> rb_bad_first_{0xFFFFFFFFu};
+  uint32_t rb_ignore_until_ = 0, rb_repairs_ = 0;
+  std::vector<uint8_t> snap_tx_, snap_rx_, snap_rx_have_;
+  uint32_t snap_tx_tick_ = 0, snap_tx_next_ = 0, snap_rx_tick_ = 0, snap_rx_got_ = 0, snap_rx_cnt_ = 0;
+  uint64_t snap_tx_start_ms_ = 0;
+  bool snap_tx_on_ = false, snap_rx_ready_ = false;
+  std::atomic<uint32_t> peer_est_{0};      // tick estimado del rival al mandar su paquete mas nuevo
+  std::atomic<uint64_t> peer_est_ms_{0};  // y cuando llego (steady_clock, ms)
+  void RbApplyW();
 
   // retardo adaptativo (ver arriba)
   bool auto_delay_ = false;              // anfitrion: AUTO elegido en la pantalla ONLINE

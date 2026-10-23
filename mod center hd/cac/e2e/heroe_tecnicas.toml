@@ -1,0 +1,36 @@
+# copia: s5_c2
+descripcion = "C2: Heroe > Moveset > Tecnicas (P=Y): equipa 2 cartas, sale, empieza la mision y el combate carga las tecnicas equipadas"
+env = ["DBZ3_TEST_RINGOUT=1", "DBZ3_TEST_HEROE_TODO=1"]
+pasos = [
+  "esperar 2500",
+  "tecla W 1200",
+  "tecla Space 3500",
+  "tecla S 450", "tecla S 450", "tecla S 450", "tecla S 450", "tecla S 450",
+  "tecla Space 2500",
+  "tecla S 700", "tecla S 700", "tecla S 700",
+  "tecla Space 3500",
+  "captura c2_tec_0_heroe",
+  "tecla 3 700", "tecla S 500",   # C4: RB = pestana Combate; S = fila Moveset
+  "captura c2_tec_1_fila_moveset",
+  "tecla Space 2500",
+  "captura c2_tec_2_movesets",
+  "tecla P 1500",
+  "log \"tecnicas abiertas\" 20",
+  "esperar 12000",
+  "captura c2_tec_3_tecnicas",
+  "tecla L 300", "tecla D 300", "tecla L 300", "tecla D 300", "tecla L 300", "tecla D 300", "tecla L 300", "tecla D 300",
+  "tecla Space 800",
+  "tecla D 500",
+  "tecla S 500",
+  "tecla Space 800",
+  "tecla S 500",
+  "captura c2_tec_4_equipadas",
+  "tecla Backspace 2500",
+  "captura c2_tec_5_vuelta_heroe",
+  "tecla S 500", "tecla S 500", "tecla S 500",   # C4: Moveset -> Aura -> Ki -> Empezar (boton fijo)
+  "captura c2_tec_6_empezar",
+  "tecla Space 4000",
+  "log \"tecnicas equipadas en el combate: [+][1-9]\" 120",
+  "esperar 4000",
+  "captura c2_tec_7_combate",
+]

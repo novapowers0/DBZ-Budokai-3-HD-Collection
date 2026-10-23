@@ -4,6 +4,7 @@
 //     juego en esa opcion del Duelo (US: via nativa, tagteam.cpp NativeEnter; EU: piloto de menus);
 //     los miembros se eligen en la rueda nativa.
 // El combate lo lleva src/tagteam.cpp. El dibujo con aspecto del juego, game_style.cpp.
+#include "../reloj_prueba.h"
 #include "tagteam_panel.h"
 #include "../form_selection_state.h"
 
@@ -42,6 +43,7 @@
 #include "../tagteam.h"
 #include "../net/netplay.h"
 #include "game_style.h"
+#include "color_panel.h"
 #include "hub_panel.h"
 #include "menu_pilot.h"
 #include "online_panel.h"
@@ -71,6 +73,7 @@ namespace S = dbz3::ingame::style;
 
 constexpr int kMainScreen = 5, kDuelScreen = 14, kDuelRow = 1;
 constexpr uint16_t kUp = 0x0001, kDown = 0x0002, kA = 0x1000, kB = 0x2000, kX = 0x4000, kY = 0x8000;
+constexpr uint16_t kRosterPrevPage = 0x0100, kRosterNextPage = 0x0200;  // L1 / R1
 
 std::atomic<bool> g_wanted{false};
 std::atomic<uint16_t> g_pad{0};
@@ -371,6 +374,12 @@ void TagTeamOpen() {
 }
 bool TagTeamWanted() { return g_wanted.load(); }
 bool TagTeamMode() { return g_team_mode.load(); }
+std::vector<int> TeamPickedIds() {   // L: pin
+  std::lock_guard<std::mutex> lock(g_mu);
+  std::vector<int> out;
+  for (const auto& p : g_picks) out.insert(out.end(), p.begin(), p.end());
+  return out;
+}
 bool FormSelectorEnabled() { return FormSelectOn(); }
 
 // Personaje confirmado en la rueda por el lado `player`: mientras al equipo le falten miembros
@@ -596,7 +605,7 @@ void DrawFormPick(ImGuiIO& io, bool team) {
     const float size = 28 * a.s * std::min(1.0f, 220 * a.s / std::max(1.0f, measured));
     S::MenuText(dl, pos, size, text, result.valid, false);
     S::Arrows(dl, a.At(cx - 120, y - 16), a.At(cx + 120, y + 16),
-              24*a.s, float(ImGui::GetTime()));
+              24*a.s, float(dbz3::RelojT(ImGui::GetTime())));
     S::HelpLine(dl, a.At(cx, y + 38), 24*a.s,
                 {{"LT", T::T("Anterior", "Previous")}, {"RT", T::T("Siguiente", "Next")}});
     const char* reason = nullptr;
@@ -610,17 +619,17 @@ void DrawFormPick(ImGuiIO& io, bool team) {
     } else if (result.reason != forms::Reason::kOk) {
       reason = T::T("Modelo o traje no disponible: forma base", "Model or costume unavailable: base form");
     }
-    if (reason) S::MenuText(dl, a.At(cx, y + 64), 18*a.s, reason, false, false);
+    if (reason) S::MenuText(dl, a.At(cx, y + 64), 18*a.s, reason, false, false, 360 * a.s);
     if (state.requested > 0 && state.requested < state.snapshot.count &&
         forms::Availability(state.snapshot, state.requested, false) == forms::Reason::kOk) {
       const int ki = state.snapshot.forms[size_t(state.requested)].required_ki_tenths;
       if (ki >= 0) {
         std::snprintf(text, sizeof(text), "%s %.1f", T::T("Ki para transformar:", "Ki to transform:"), double(ki)/10.0);
-        S::MenuText(dl, a.At(cx, y + (reason ? 90 : 64)), 18*a.s, text, false, false);
+        S::MenuText(dl, a.At(cx, y + (reason ? 90 : 64)), 18*a.s, text, false, false, 360 * a.s);
       }
     }
     if (team) S::MenuText(dl, a.At(cx, y + 115), 17*a.s,
-                          T::T("Primer luchador", "First fighter"), true, false);
+                          T::T("Primer luchador", "First fighter"), true, false, 360 * a.s);
     dl->PopClipRect();
   }
 }
@@ -646,6 +655,9 @@ uint16_t TagTeamPanel::Pad() {
           const int ly = int16_t(st.gamepad.thumb_ly);   // la palanca tambien mueve el cursor
           if (ly > 16000) b |= kUp;
           if (ly < -16000) b |= kDown;
+          const int lx = int16_t(st.gamepad.thumb_lx);   // idem a los lados (editor de colores del select)
+          if (lx > 16000) b |= 0x0008;
+          if (lx < -16000) b |= 0x0004;
         }
       }
       g_pad = b;
@@ -712,7 +724,7 @@ void TagTeamPanel::DrawMenu(ImGuiIO& io, uint16_t pressed) {
   // anfitriones (dos Kaio del menu de Duelo, sacados del juego) que hablan por turnos en el bocadillo.
   const S::Area a = S::GameArea(io);
   auto* dl = ImGui::GetForegroundDrawList();
-  const float t = float(ImGui::GetTime());
+  const float t = float(dbz3::RelojT(ImGui::GetTime()));
   // el anfitrion de la izquierda habla en las filas 1 y 3, la de la derecha en la 2 (el pico va hacia quien habla)
   const bool right = row_ == 1;
   S::Backdrop(dl, a, "fondo_duelo");
@@ -782,7 +794,7 @@ void TagTeamPanel::DrawPicking(ImGuiIO& io) {
   }
   const S::Area a = S::GameArea(io);
   auto* dl = ImGui::GetForegroundDrawList();
-  const float t = float(ImGui::GetTime());
+  const float t = float(dbz3::RelojT(ImGui::GetTime()));
   const int mode = g_mode.load();
   const int cur = mode == 1 ? -1 : (done[0] ? 1 : 0);
   const float since = float(Now() - notice.at);
@@ -824,7 +836,9 @@ void TagTeamPanel::DrawPicking(ImGuiIO& io) {
                         : notice.what == Event::kRemoved ? T::T("Quitado", "Removed")
                                                          : T::T("Anadido", "Added");
       const ImVec2 mc(hc.x, p0.y + 162 * a.s);
-      S::MenuText(dl, mc, 28 * a.s, msg, notice.what != Event::kRepeated && notice.what != Event::kPoints, false);
+      // ancho libre a los dos lados del centro del equipo (no se sale del area)
+      S::MenuText(dl, mc, 28 * a.s, msg, notice.what != Event::kRepeated && notice.what != Event::kPoints, false,
+                  2 * std::min(hc.x - a.p0.x, a.p1.x - hc.x));
     }
   }
   // ayuda segun el momento: de quien es el turno y que hace cada boton
@@ -835,7 +849,7 @@ void TagTeamPanel::DrawPicking(ImGuiIO& io) {
     who = T::T("Cada jugador elige su equipo", "Each player picks a team");
   }
   if (skills) return;
-  if (!who.empty()) S::MenuText(dl, a.At(600, 836), 30 * a.s, who.c_str(), true, false);
+  if (!who.empty()) S::MenuText(dl, a.At(600, 836), 30 * a.s, who.c_str(), true, false, 500 * a.s);
   S::HelpLine(dl, a.At(600, 878), 34 * a.s,
               {{"A", T::T("Anadir", "Add")}, {"Y", T::T("Quitar el ultimo", "Remove last")}});
 }
@@ -897,7 +911,7 @@ bool NativeCard(ImDrawList* dl, ImVec2 p0, float s, bool mirror, int id, float h
 void DrawTeamHud(ImGuiIO& io) {
   const S::Area a = S::GameArea(io);
   auto* dl = ImGui::GetForegroundDrawList();
-  const float t = float(ImGui::GetTime());
+  const float t = float(dbz3::RelojT(ImGui::GetTime()));
   for (int p = 0; p < 2; ++p) {
     const dbz3::tag::HudSide h = dbz3::tag::Hud(p);
     if (h.n < 2 || !h.shown) continue;
@@ -968,7 +982,28 @@ void TagTeamPanel::OnDraw(ImGuiIO& io) {
   }
   if (show && !shown_) wait_release_ = true;
   shown_ = show;
-  if (show) DrawMenu(io, Pad());
+  if (show) {
+    DrawMenu(io, Pad());
+  } else {   // editor de colores del traje (LB en la rueda): E1, color_panel.cpp
+    const bool sel = !battle && dbz3_select_live() && !Online() && !dbz3::ingame::pilot::Busy();
+    uint16_t pressed = 0;
+    if (sel || ColorPanelActive()) {
+      pressed = Pad();
+      const int side = dbz3_select_browse_ms(1) > dbz3_select_browse_ms(0) ? 1 : 0;
+      const int pages = sel ? dbz3::roster::DynamicRosterPageCount() : 0;
+      if (pages > 1) {
+        if (pressed & kRosterPrevPage) dbz3::roster::RequestDynamicRosterPage(-1);
+        else if (pressed & kRosterNextPage) dbz3::roster::RequestDynamicRosterPage(1);
+        pressed &= uint16_t(~(kRosterPrevPage | kRosterNextPage));
+        char label[96];
+        std::snprintf(label, sizeof(label), "%s %d/%d  L1/R1", T::T("Personajes", "Characters"),
+                      dbz3::roster::DynamicRosterPage() + 1, pages);
+        const S::Area area = S::GameArea(io);
+        S::MenuText(ImGui::GetForegroundDrawList(), area.At(600, 850), 18 * area.s, label, false, false);
+      }
+      ColorPanelTick(io, pressed, sel, forms::Copy(side).snapshot.id);
+    }
+  }
   if (g_entering.load()) {   // via nativa: TAG TEAM funde a negro con el juego mientras su menu sale
     const double age = Now() - g_entering_at;
     if (GameScreen() != kMainScreen || age > 5.0) {

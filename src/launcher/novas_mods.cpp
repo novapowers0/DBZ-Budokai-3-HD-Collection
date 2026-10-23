@@ -326,14 +326,32 @@ void InstallNovaMod(const NovaMod& mod) {
     fs::create_directories(tmp_dir, ec);
     const fs::path zip = tmp_dir / (mod.id + ".zip");
     long long got = -1;
-    try {
-      got = mod.partes.empty() ? DownloadWhole(mod, zip) : DownloadParts(mod, zip);
-    } catch (const std::exception& ex) {   // un bad_alloc en este hilo cerraba el launcher entero
-      REXLOG_WARN("dbz3: Nova's Mods: descarga de {} cortada ({})", mod.id, ex.what());
-      got = -1;
+    // D3: espacio ANTES de bajar: el zip (tamano del catalogo) y lo que ocupa extraido.
+    // Un pack HD de 2,9 GB necesita ~6 GB libres; sin esto la descarga se cortaba a medias
+    // y el mensaje culpaba a la conexion.
+    {
+      const uintmax_t need =
+          (mod.size > 0 ? uintmax_t(mod.size) : (uintmax_t(1) << 30)) * 2 + (uintmax_t(256) << 20);
+      std::error_code sec;
+      const fs::space_info sp = fs::space(ExeDir(), sec);
+      if (!sec && sp.available < need) {
+        error = i18n::T("no hay espacio libre suficiente para descargar e instalar (hacen falta ",
+                        "not enough free space to download and install (needed ") +
+                std::to_string((need + (uintmax_t(1) << 20) - 1) >> 20) + " MB)";
+        REXLOG_WARN("dbz3: Nova's Mods: {} sin espacio (libres {} MB, hacen falta {} MB)", mod.id,
+                    sp.available >> 20, need >> 20);
+      }
+    }
+    if (error.empty()) {
+      try {
+        got = mod.partes.empty() ? DownloadWhole(mod, zip) : DownloadParts(mod, zip);
+      } catch (const std::exception& ex) {   // un bad_alloc en este hilo cerraba el launcher entero
+        REXLOG_WARN("dbz3: Nova's Mods: descarga de {} cortada ({})", mod.id, ex.what());
+        got = -1;
+      }
     }
     // un zip empieza por "PK": una respuesta de error de GitHub no se instala
-    if (got < 4 || !StartsWithPK(zip) || (mod.size > 0 && got != mod.size)) {
+    if (error.empty() && (got < 4 || !StartsWithPK(zip) || (mod.size > 0 && got != mod.size))) {
       error = i18n::T("no se pudo descargar (revisa tu conexion y el espacio libre)",
                       "download failed (check your connection and free disk space)");
     } else if (BadHash(mod, zip)) {

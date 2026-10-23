@@ -1344,6 +1344,11 @@ def convert(folder, template, out, belt_deg=80.0, cap=256, hand_tris=300, hand_c
         return tx.ramp(ramp_cloth)
 
     def mat_for(sm, mats, lit=None, ramp_sd=-1):
+        if getattr(sm, "tpl_tex", None) is not None:   # K: accesorio del donante: su textura y su rampa NATIVAS, copiadas tal cual
+            m = material(True, tx.ramp(sm.tpl_tex), tx.ramp(sm.tpl_ramp))
+            if m not in mats:
+                mats.append(m)
+            return mats.index(m)
         base = sm.texdefs[0]
         lit = len(sm.texdefs) > 1 if lit is None else lit
         if len(sm.texdefs) >= 3:
@@ -1416,6 +1421,12 @@ def convert(folder, template, out, belt_deg=80.0, cap=256, hand_tris=300, hand_c
             else:
                 variants.append((int(m.group(1)), "FACE", face_b, subs))
             continue
+        m = re.fullmatch(r"rigidlocal_(\w+)", key)      # K: accesorio rigido del donante (espada de Trunks...), ya en el marco del hueso
+        if m:
+            b = tpl.bone(m.group(1))
+            if b is not None:
+                add_rigid(groups0, b, subs, mats0, np.eye(4))
+            continue
         m = re.search(r"M_(\w+)$", key)
         if m:
             b = tpl.bone("M_" + m.group(1).upper())
@@ -1431,6 +1442,12 @@ def convert(folder, template, out, belt_deg=80.0, cap=256, hand_tris=300, hand_c
                     add_rigid(groups0, hand_b[side], ss, mats0, inv[hand_b[side]])
                 else:
                     variants.append((num, "HAND", hand_b[side], ss))
+    for key, subs in parts.items():     # K: variante de mano del donante con accesorio (hoja de la espada de Trunks, L22...)
+        m = re.fullmatch(r"rigidvar_(\d+)_([LR])", key)
+        if m:
+            side = m.group(2)
+            base = (hands.get(side) or {0: parts.get("%s_hand" % side, [])}).get(0, [])
+            variants.append((int(m.group(1)), "HAND", hand_b[side], list(base) + list(subs)))
     awg0 = awg_bytes(tpl.names, rig.axes(), tpl.links, tpl.word0c, 0, groups0, mats0, tpl.palette)
     awgs = [awg0[:2]]
     stats = {"awg0": awg0[2], "aux": []}
@@ -1442,7 +1459,8 @@ def convert(folder, template, out, belt_deg=80.0, cap=256, hand_tris=300, hand_c
     for num, kind, bone, subs in variants:
         label = tpl.labels[bone].replace("L00_", "L%02d_" % num, 1)
         mats, groups = [], {}
-        add_rigid(groups, 0, subs, mats, inv[bone])
+        add_rigid(groups, 0, [s_ for s_ in subs if not getattr(s_, "local", False)], mats, inv[bone])
+        add_rigid(groups, 0, [s_ for s_ in subs if getattr(s_, "local", False)], mats, np.eye(4))   # K: ya en el marco de la mano
         groups[0] = [dict(p, label=label) for p in groups[0]]
         k = len(awgs)
         raw, ax_off, st = awg_bytes(label.encode("latin1").ljust(32, b"\0"), [tpl.aux_axis[kind]],

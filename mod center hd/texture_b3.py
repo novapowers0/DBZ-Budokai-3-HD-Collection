@@ -345,7 +345,7 @@ def cmd_extract(args):
         mods_root = dev_mods if os.path.isdir(os.path.dirname(dev_mods)) else os.path.join(ROOT, 'mods')
     os.makedirs(mods_root, exist_ok=True)
     if args.dir:
-        # Carpeta de texturas elegida por el usuario (p.ej. donde estÃ¡
+        # Carpeta de texturas elegida por el usuario (p.ej. donde está
         # editando). El meta se guarda junto a los PNG. Si contiene caracteres
         # invalidos de Windows, ignorarla y usar la automatica.
         if not _valid_custom_dir(args.dir):
@@ -522,7 +522,7 @@ def cmd_build(args):
     new_data = open(new_lzx, 'rb').read()
 
     # Padding al to_read del guest: el guest lee el bin con un buffer de
-    # tamaÃ±o = slot redondeado a 0x1000 (verificado: Krillin slot 104404 ->
+    # tamaño = slot redondeado a 0x1000 (verificado: Krillin slot 104404 ->
     # to_read 106496). Si el bin del mod es mas corto, se paddea con ceros
     # para que el guest reciba todos los bytes esperados.
     entries = read_afs_index(args.afs)

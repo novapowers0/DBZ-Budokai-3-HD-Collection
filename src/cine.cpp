@@ -290,6 +290,22 @@ void Fotograma(uint8_t* base, uint32_t estado, uint32_t frames_pelea) {
     Volcar(base, int(frames_pelea));
 
   const uint32_t mgr = REX_LOAD_U32(dbz3::GA(0x823D6CF4));
+  // K2 PRUEBA: DBZ3_TEST_CAMARA_LUCHA="lado ox oy oz alto" = camara fija en combate: objetivo = pies del luchador `lado` (0/1) + (0, alto, 0),
+  // ojo = objetivo + (ox, oy, oz) en ejes del mundo. Para primeros planos de cara, hombro y antebrazo (la vista previa del heroe XV2 es una tira 2D).
+  if (mgr && estado == 4) {
+    static const char* tl = std::getenv("DBZ3_TEST_CAMARA_LUCHA");
+    if (tl) {
+      float v[6] = {0, 0, 0, 6, 12, 0};      // v[5] = fov vertical (0 = el del juego, 0,785)
+      std::sscanf(tl, "%f %f %f %f %f %f", &v[0], &v[1], &v[2], &v[3], &v[4], &v[5]);
+      const V3 p = LeeV(base, mgr + 2096 + 8240 * (v[0] > 0.5f ? 1u : 0u) + 48);
+      const float o[3] = {p.x, p.y + v[4], p.z}, e[3] = {o[0] + v[1], o[1] + v[2], o[2] + v[3]};
+      static int nlog = 0;
+      if (nlog++ % 120 == 0) REXLOG_INFO("dbz3 cine: CAMARA_LUCHA pie ({:.1f} {:.1f} {:.1f}) ojo ({:.1f} {:.1f} {:.1f})", p.x, p.y, p.z, e[0], e[1], e[2]);
+      Camara(base, e, o);
+      if (v[5] > 0.01f) PonF(base, mgr + 0x1C4, v[5]);
+      return;
+    }
+  }
   const bool saltar = g_saltar.exchange(false);
   if (!mgr || estado != 4 || saltar) {   // A, o fuera de la pelea: se acaba
     Terminar(base, saltar ? "saltada" : "cortada");

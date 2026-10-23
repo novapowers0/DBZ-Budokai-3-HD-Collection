@@ -78,12 +78,15 @@ Imagen GuestImage(const ImGuiIO& io) {
     estirar = dbz3::settings::AspectMode() == "stretch";
   }
   if (estirar) return g;
-  if (W * 9.0f > H * 16.0f) {   // mas ancha que 16:9: bandas a los lados
-    const float w = H * 16.0f / 9.0f;
+  // S5-I1 (issue #29): con la resolucion baja (480p) el juego dibuja 640x480 (4:3), no 16:9
+  static const bool baja = dbz3::settings::LowResEnabled();
+  const float an = baja ? 4.0f : 16.0f, al = baja ? 3.0f : 9.0f;
+  if (W * al > H * an) {   // mas ancha que la imagen: bandas a los lados
+    const float w = H * an / al;
     g.p0.x = (W - w) * 0.5f;
     g.p1.x = g.p0.x + w;
-  } else {                      // mas alta (4:3, 16:10): bandas arriba y abajo
-    const float h = W * 9.0f / 16.0f;
+  } else {                      // mas alta: bandas arriba y abajo
+    const float h = W * al / an;
     g.p0.y = (H - h) * 0.5f;
     g.p1.y = g.p0.y + h;
   }
@@ -247,6 +250,19 @@ void MenuText(ImDrawList* dl, ImVec2 center, float size, const char* text, bool 
   }
 }
 
+void MenuTextB3(ImDrawList* dl, ImVec2 center, float size, const char* text, bool selected, bool disabled, float max_w) {
+  ImFont* font = MenuFont();
+  ImVec2 ts = font->CalcTextSizeA(size, FLT_MAX, 0, text);
+  if (max_w > 0 && ts.x > max_w) {
+    size *= max_w / ts.x;
+    ts = font->CalcTextSizeA(size, FLT_MAX, 0, text);
+  }
+  const ImVec2 pos(center.x - ts.x * 0.5f, center.y - ts.y * 0.5f);
+  const ImU32 top = disabled ? IM_COL32(170, 176, 188, 255) : selected ? IM_COL32(255, 232, 64, 255) : IM_COL32(255, 255, 255, 255);
+  const ImU32 bottom = disabled ? IM_COL32(140, 146, 160, 255) : selected ? IM_COL32(255, 200, 24, 255) : IM_COL32(255, 255, 255, 255);
+  OutlinedText(dl, font, size, pos, text, top, bottom, IM_COL32(17, 12, 8, 255), size * 0.075f);
+}
+
 void Banner(ImDrawList* dl, const Area& a, const char* text, const char* title) {
   // medido en el Duelo (1600x900): pergamino (data_usi 2033, recorte 4,2-452,132) a 1.35 desde
   // 12,20 del area y el titulo de unos 93 px de alto desde 44,34
@@ -278,6 +294,17 @@ void Banner(ImDrawList* dl, const Area& a, const char* text, const char* title) 
                IM_COL32(245, 120, 20, 255), IM_COL32(90, 35, 10, 255), size * 0.06f);
 }
 
+void TitleText(ImDrawList* dl, const Area& a, float cx, float cy, float ancho, const char* text, float escala) {
+  const auto& fonts = dbz3::launcher::ui::GetFonts();
+  ImFont* font = fonts.banner ? fonts.banner : ImGui::GetFont();
+  float size = 72 * a.s * escala;
+  const float w = font->CalcTextSizeA(size, FLT_MAX, 0, text).x, room = ancho * a.s * escala;
+  if (w > room) size *= room / w;
+  const ImVec2 ts = font->CalcTextSizeA(size, FLT_MAX, 0, text), c = a.At(cx, cy);
+  OutlinedText(dl, font, size, ImVec2(c.x - ts.x * 0.5f, c.y - ts.y * 0.5f), text, IM_COL32(255, 215, 60, 255),
+               IM_COL32(245, 120, 20, 255), IM_COL32(90, 35, 10, 255), size * 0.06f);
+}
+
 void Speech(ImDrawList* dl, ImVec2 p0, ImVec2 p1, float s, const char* text, float tail_x) {
   const auto& fonts = dbz3::launcher::ui::GetFonts();
   ImFont* font = fonts.speech ? fonts.speech : ImGui::GetFont();
@@ -306,12 +333,15 @@ void Speech(ImDrawList* dl, ImVec2 p0, ImVec2 p1, float s, const char* text, flo
   const float wrap = (p1.x - p0.x) - 70 * s;   // como el Duelo
   ImVec2 ts = font->CalcTextSizeA(size, FLT_MAX, wrap, text);
   // texto largo (codigo de sala + red + mods): letra mas pequena hasta que quepa en el bocadillo
-  for (const float room = (p1.y - p0.y) - 24 * s; ts.y > room && size > 24.0f * s;) {
+  for (const float room = (p1.y - p0.y) - 24 * s; ts.y > room && size > 18.0f * s;) {
     size *= 0.92f;
     ts = font->CalcTextSizeA(size, FLT_MAX, wrap, text);
   }
+  // si aun no cabe (aleman, frances, codigos largos), se recorta dentro del bocadillo y no se sale
+  dl->PushClipRect(p0, p1, true);
   dl->AddText(font, size, ImVec2(p0.x + ((p1.x - p0.x) - ts.x) * 0.5f, p0.y + ((p1.y - p0.y) - ts.y) * 0.5f),
               IM_COL32(25, 25, 25, 255), text, nullptr, wrap);
+  dl->PopClipRect();
 }
 
 namespace mode {
@@ -488,8 +518,13 @@ void PartnerCard(ImDrawList* dl, ImVec2 p0, float s, bool mirror, const char* na
   dl->AddPolyline(quad, 4, switching ? IM_COL32(255, 230, 90, int(140 + 115 * flash))
                                     : IM_COL32(150, 200, 255, 230), ImDrawFlags_Closed, 2.0f * s);
   // nombre
-  const float ns = 19 * s;
-  const ImVec2 nsz = font->CalcTextSizeA(ns, FLT_MAX, 0, name);
+  float ns = 19 * s;
+  ImVec2 nsz = font->CalcTextSizeA(ns, FLT_MAX, 0, name);
+  const float nroom = w - face - 16 * s;   // ancho libre de la ficha tras la cara
+  if (nsz.x > nroom) {
+    ns *= nroom / nsz.x;
+    nsz = font->CalcTextSizeA(ns, FLT_MAX, 0, name);
+  }
   const float nx = mirror ? X(face + 8 * s) - nsz.x : X(face + 8 * s);
   OutlinedText(dl, font, ns, ImVec2(nx, p0.y + 2 * s), name, IM_COL32(255, 255, 255, 255),
                IM_COL32(200, 225, 255, 255), IM_COL32(5, 15, 50, 255), 1.3f * s);

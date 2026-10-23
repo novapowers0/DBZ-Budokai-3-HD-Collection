@@ -34,6 +34,7 @@
 #include "gigantes.h"
 #include "ingame/game_style.h"
 #include "launcher/i18n.h"
+#include "launcher/ui_kit.h"
 #include "launcher/launcher_state.h"
 
 namespace dbz3::net {
@@ -56,6 +57,8 @@ namespace {
 namespace S = dbz3::ingame::style;
 constexpr dbz3::GA kMgrPtr = 0x823D6CF4;
 constexpr uint32_t kX0 = 2096, kXPaso = 8240, kPos = 48, kMandoIdx = 5028;
+float g_dir[7] = {};            // A3b: camara deseada (ojo, objetivo, giro) del cuadro; la aplica AplicarCamaraDirecta
+std::atomic<bool> g_dir_ok{false};
 constexpr uint32_t kPasado = 35144;
 constexpr uint16_t kAccionPose = 15;   // accion de las poses (entrada 0x280/0x281, victoria 0x2A0; sonda)
 constexpr uint32_t kCodigo = 2928;   // codigo de la animacion en curso (sub_82103C48 lo pone y sub_82114FB8 la arranca)   // cuadros de pelea pasados (float; el reloj del combate, pasarela.cpp)
@@ -63,6 +66,8 @@ constexpr float kFundido = 0.6f;   // s de paso de un plano a otro (y a la camar
 
 std::mutex g_mu;
 std::shared_ptr<const Escena> g_pedida, g_esc;   // pedida (la siguiente pelea) / en curso
+float g_son_ojo[3] = {}, g_son_obj[3] = {};      // S1 SONDA: camara de prueba en un combate nativo (sin escena)
+std::atomic<bool> g_son_ok{false};
 std::atomic<bool> g_en_curso{false}, g_saltar{false}, g_conectada{false};
 std::atomic<bool> g_siguiente{false};   // A: el paso siguiente sin esperar (START salta la escena)
 std::atomic<int> g_paso{-1};
@@ -152,6 +157,7 @@ void Encuadre(int p, V3 p1, V3 p2, V3* ojo, V3* obj, int pose = 0, float s1 = 1.
 }
 
 void Terminar(uint8_t* base, const char* por) {
+  g_dir_ok = false;
   if (!g_en_curso.exchange(false)) return;
   const uint32_t mgr = REX_LOAD_U32(kMgrPtr);
   for (uint32_t k = 0; k < 2; ++k) {
@@ -165,10 +171,13 @@ void Terminar(uint8_t* base, const char* por) {
   OcultarHud(false);
   g_paso = -1;
   g_abre = 0;
+  std::function<void()> fin;
   {
     std::lock_guard<std::mutex> lk(g_mu);
+    if (g_esc) fin = g_esc->al_terminar_escena;
     g_esc.reset();
   }
+  if (fin) fin();   // S1: fuera del cerrojo (devuelve la mezcla de B3)
   REXLOG_INFO("dbz3 cinematica: {} en el cuadro {}", por, g_frame);
 }
 
@@ -225,13 +234,34 @@ class Panel : public rex::ui::ImGuiDialog {
     const float w = io.DisplaySize.x, h = io.DisplaySize.y, abre = Suave(g_abre.load());
     const float arriba = (a.p0.y + 90.0f * a.s) * abre, abajo = (h - a.At(0, 690).y) * abre;   // el marcador ya no sale
     ImDrawList* dl = ImGui::GetForegroundDrawList();
-    dl->AddRectFilled(ImVec2(0, 0), ImVec2(w, arriba), IM_COL32(0, 0, 0, 255));
-    dl->AddRectFilled(ImVec2(0, h - abajo), ImVec2(w, h), IM_COL32(0, 0, 0, 255));
+    const bool estilo_b1 = e && paso >= 0 && paso < int(e->pasos.size()) && e->pasos[size_t(paso)].estilo_b1;   // A3b: como B1: imagen entera, sin bandas, subtitulo blanco con borde negro abajo
+    if (!estilo_b1) {
+      dl->AddRectFilled(ImVec2(0, 0), ImVec2(w, arriba), IM_COL32(0, 0, 0, 255));
+      dl->AddRectFilled(ImVec2(0, h - abajo), ImVec2(w, h), IM_COL32(0, 0, 0, 255));
+    }
     const S::Imagen g = S::GuestImage(io);   // S1-F06: la ayuda en la banda de arriba de la imagen del juego
     S::HelpLine(dl, ImVec2(g.p0.x + g.Size().x * 0.80f, g.p0.y + 45.0f * a.s * abre), S::mode::kSmall * a.s,
                 {{"A", dbz3::i18n::T("Siguiente", "Next")}, {"START", dbz3::i18n::T("Saltar", "Skip")}});
     if (abre < 0.99f || !e || paso < 0 || paso >= int(e->pasos.size())) return;
     const Paso& p = e->pasos[size_t(paso)];
+    if (estilo_b1) {
+      if (!p.linea.empty()) {
+        ImFont* fuente = dbz3::launcher::ui::GetFonts().menu ? dbz3::launcher::ui::GetFonts().menu : ImGui::GetFont();   // la fuente de los menus del juego (la de sus textos de historia)
+        const S::Imagen gi = S::GuestImage(io);
+        float tam = gi.Size().y * 0.052f;   // B1: letra de ~5 % del alto de la imagen, centrada, a ~86 % del alto
+        {
+          const float ancho = fuente->CalcTextSizeA(tam, 1e9f, 0.0f, p.linea.c_str()).x, maximo = gi.Size().x * 0.90f;
+          if (ancho > maximo) tam *= maximo / ancho;   // las lineas largas se encogen para caber
+        }
+        const ImVec2 sz = fuente->CalcTextSizeA(tam, 1e9f, 0.0f, p.linea.c_str());
+        const ImVec2 pos(gi.p0.x + (gi.Size().x - sz.x) * 0.5f, gi.p0.y + gi.Size().y * 0.86f - sz.y * 0.5f);
+        const float o = std::max(1.0f, tam * 0.06f);
+        for (const ImVec2 d : {ImVec2(-o, 0), ImVec2(o, 0), ImVec2(0, -o), ImVec2(0, o), ImVec2(-o, -o), ImVec2(o, o), ImVec2(-o, o), ImVec2(o, -o)})
+          dl->AddText(fuente, tam, ImVec2(pos.x + d.x, pos.y + d.y), IM_COL32(0, 0, 0, 255), p.linea.c_str());
+        dl->AddText(fuente, tam, pos, IM_COL32(255, 255, 255, 255), p.linea.c_str());
+      }
+      return;
+    }
     // subtitulo en la banda de abajo: retrato a la izquierda (cara del marcador) y la imagen o el texto
     const float y0 = h - abajo + S::mode::kPad * a.s, alto = abajo - 2 * S::mode::kPad * a.s;
     float x = a.At(S::mode::kX0 - 220, 0).x;
@@ -271,6 +301,7 @@ void EmpezarPaso(int k, const Escena& e) {
   g_t0_paso = AhoraMs();
   const Paso& p = e.pasos[size_t(k)];
   if (!p.voces.empty() && !e.iso_voces.empty()) pasarela::OirVozB1(e.iso_voces, p.voces, e.volumen);
+  if (p.al_empezar) p.al_empezar();
   REXLOG_INFO("dbz3 cinematica: paso {}/{} (plano {}, {:.1f} s, botones {:04X}/{:04X}, voces {})", k + 1, e.pasos.size(),
               p.plano, p.segundos, p.botones[0], p.botones[1], p.voces.size());
 }
@@ -359,8 +390,93 @@ void Tick(PPCContext& ctx, uint8_t* base) {
   }
 }
 
+// S1 SONDA: barrido del campo de la expresion de la cara del luchador 1 (Satan) con la camara en su cabeza, en
+// cualquier combate (con o sin escena: manda sobre la camara de la escena). El fotograma del dibujo escribe el campo y
+// el gancho de la camara (sub_820F47E0) pone el primer plano.
+//   DBZ3_TEST_CARA=<campo>,<ms>,<v1>,<v2>...  campo del registro X del luchador 1 y valores en ciclo
+//   DBZ3_TEST_CARA_CAMARA=0   no se toca la camara (se ve la del juego); ESPERA=<cuadros> espera al empezar la pelea
+//   DBZ3_TEST_CARA_DIST=<u>   distancia de la camara a la cabeza (def. 4,5; _LADO=<u> de lado, def. 1,2)
+// La cabeza sale de su hueso de la logica; si no hay, X+48 + 13,2. El luchador 1 mira al 2: la camara va entre los dos.
+void SondaCaraFotograma(uint8_t* base, uint32_t estado) {
+  static const char* v = std::getenv("DBZ3_TEST_CARA");   // se lee una vez (esto corre cada cuadro)
+  if (!v) return;   // la sonda manda sobre la camara de la escena (es una prueba: primer plano de la cara)
+  if (estado != 4) {   // solo en combate: el contador empieza cuando empieza la pelea (no en el menu ni en la intro)
+    g_son_ok = false;
+    return;
+  }
+  const uint32_t mgr = REX_LOAD_U32(kMgrPtr);
+  if (!mgr) return;
+  static const uint32_t espera = [] {   // la intro del combate (lineas de velocidad) dura ~2-3 s: se espera
+    const char* e = std::getenv("DBZ3_TEST_CARA_ESPERA");
+    return uint32_t(e ? std::max(0, std::atoi(e)) : 240);
+  }();
+  static uint32_t frame = 0;
+  if (frame < espera) {
+    ++frame;
+    g_son_ok = false;
+    return;
+  }
+  const V3 p1 = LeeV(base, mgr + kX0 + kPos), p2 = LeeV(base, mgr + kX0 + kXPaso + kPos);
+  // la cabeza del luchador 1 por su hueso de la logica (como gigantes.cpp: [X+2952]+1032 + 64*anclaje[3], posicion en
+  // +40/+44/+48): es la posicion que se DIBUJA (la raiz X+48 se queda en el sitio de la escena y el clip mueve el
+  // esqueleto). Si no hay huesos, se usa X+48 + la altura de siempre.
+  V3 cabeza{p1.x, p1.y + 13.2f, p1.z};
+  {
+    const uint32_t mi = REX_LOAD_U32(mgr + kX0 + 2952), anc = REX_LOAD_U32(mgr + kX0 + 2956);
+    if (mi && anc) {
+      const uint32_t h = REX_LOAD_U32(mi + 1032) + 64 * uint32_t(int16_t(REX_LOAD_U16(anc + 6)));
+      if (h > 0x40000000u && h < 0xA0000000u) {
+        auto fl = [&](uint32_t a) { const uint32_t u = REX_LOAD_U32(a); float f; std::memcpy(&f, &u, 4); return f; };
+        const V3 b{fl(h + 40), fl(h + 44), fl(h + 48)};
+        if (std::fabs(b.x) + std::fabs(b.y) + std::fabs(b.z) > 1e-3f) cabeza = b;
+      }
+    }
+  }
+  static const float dist = [] { const char* e = std::getenv("DBZ3_TEST_CARA_DIST"); return e ? float(std::atof(e)) : 4.5f; }();
+  static const float lado = [] { const char* e = std::getenv("DBZ3_TEST_CARA_LADO"); return e ? float(std::atof(e)) : 1.2f; }();
+  const V3 frente = Unit(V3{p2.x - p1.x, 0, p2.z - p1.z}), perp{-frente.z, 0, frente.x};
+  const V3 ojo = cabeza + frente * dist + perp * lado + V3{0, 0.6f, 0};
+  g_son_ojo[0] = ojo.x, g_son_ojo[1] = ojo.y, g_son_ojo[2] = ojo.z;
+  g_son_obj[0] = cabeza.x, g_son_obj[1] = cabeza.y - 0.3f, g_son_obj[2] = cabeza.z;
+  static const bool sin_camara = [] {   // DBZ3_TEST_CARA_CAMARA=0: no se toca la camara (se ve la del juego)
+    const char* e = std::getenv("DBZ3_TEST_CARA_CAMARA");
+    return e && std::atoi(e) == 0;
+  }();
+  g_son_ok = !sin_camara;
+  // el campo de la expresion, en ciclo por cuadros
+  static uint32_t campo = 0, ms = 3000;
+  static std::vector<int> vals;
+  static bool leido = false;
+  if (!leido) {
+    leido = true;
+    campo = uint32_t(std::strtoul(v, nullptr, 0));
+    if (const char* c = std::strchr(v, ',')) {
+      ms = uint32_t(std::max(200, std::atoi(c + 1)));
+      const char* d = std::strchr(c + 1, ',');
+      while (d && *d) {
+        char* fin = nullptr;
+        const long x = std::strtol(d + 1, &fin, 0);
+        if (fin == d + 1) break;
+        vals.push_back(int(x));
+        d = fin;
+      }
+    }
+  }
+  if (!campo || vals.empty()) return;
+  const uint32_t idx = uint32_t(double(frame - espera) * 16.6667 / double(ms)) % uint32_t(vals.size());
+  REX_STORE_U8(mgr + kX0 + campo, uint8_t(vals[idx] & 0xFF));
+  static uint32_t ultimo = ~0u;
+  if (idx != ultimo) {
+    ultimo = idx;
+    REXLOG_INFO("dbz3 cinematica: sonda de cara (combate) cuadro {}: X+{} = {} (ojo {:.2f} {:.2f} {:.2f} objetivo {:.2f} {:.2f} {:.2f})",
+                frame, campo, vals[idx], ojo.x, ojo.y, ojo.z, cabeza.x, cabeza.y, cabeza.z);
+  }
+  ++frame;
+}
+
 void Fotograma(uint8_t* base, uint32_t estado) {
   g_conectada = true;
+  SondaCaraFotograma(base, estado);   // S1: sonda de la cara en combates nativos (sin escena)
   const uint32_t mgr = REX_LOAD_U32(kMgrPtr);
   // SONDA (DBZ3_CINE_TRAZA=1): estado del combate, accion (X+3244) y codigo de animacion (X+2928) de cada luchador al
   // cambiar: de aqui salen los codigos de la entrada, la carga de ki y la victoria que reproducen las escenas
@@ -411,6 +527,7 @@ void Fotograma(uint8_t* base, uint32_t estado) {
     g_frame = 0;
     g_t0 = AhoraMs();
     g_en_curso = true;
+    if (e->al_empezar_escena) e->al_empezar_escena();   // S1: al empezar la escena (callar la mezcla de B3, pasarela.cpp)
     EmpezarPaso(0, *e);
   } else {
     std::lock_guard<std::mutex> lk(g_mu);
@@ -485,6 +602,7 @@ void Fotograma(uint8_t* base, uint32_t estado) {
       float fov = 0.6f;
       if (MuestraCam(p.cam_fov, tf, &fov)) {
         fov = std::clamp(fov, 0.2f, 1.3f);
+        if (p.fov_acerca) ojo = obj + (ojo - obj) * (std::tan(fov * 0.5f) / std::tan(0.785f * 0.5f));
         uint32_t u;
         std::memcpy(&u, &fov, 4);
         REX_STORE_U32(mgr + 0x1C4, u);   // fov vertical (cine.cpp)
@@ -498,8 +616,125 @@ void Fotograma(uint8_t* base, uint32_t estado) {
     ojo = Mezcla(ojo, V3{oj[0], oj[1], oj[2]}, v);
     obj = Mezcla(obj, V3{ob[0], ob[1], ob[2]}, v);
   }
-  const float eo[3] = {ojo.x, ojo.y, ojo.z}, eb[3] = {obj.x, obj.y, obj.z};
+  float eo[3] = {ojo.x, ojo.y, ojo.z}, eb[3] = {obj.x, obj.y, obj.z};
+  if (p.fov_acerca) {   // A3b: B3 dibuja 0,8 x lo puesto + 0,2 x su camara de guion (objetivo = mgr+0x160, medido); se pone TAMBIEN esa camara (ojo mgr+0x150, objetivo +0x160) igual a la deseada: la mezcla da la deseada, sin lazo
+    static const bool lazo = std::getenv("DBZ3_TEST_LAZO") != nullptr;   // el lazo cerrado filtrado (ganancia 0,3) en vez de la camara directa
+    if (!lazo) {   // camara DIRECTA: se guarda y la pone el gancho de la funcion de camara del juego (sub_820F47E0) justo despues de que ella la calcule
+      for (int i = 0; i < 3; ++i) g_dir[i] = eo[i], g_dir[3 + i] = eb[i];
+      g_dir[6] = roll;
+      g_dir_ok = true;
+    } else {
+      static float co[3], ct[3], d[6], rf[6];
+      static bool hay = false, hayr = false;
+      static const float ganancia = [] { const char* v = std::getenv("DBZ3_TEST_GANANCIA"); return v ? float(std::atof(v)) : 0.3f; }();
+      float ro[3], rt[3];
+      if (hay && cine::LeerCamara(base, ro, rt)) {
+        const float r[6] = {ro[0], ro[1], ro[2], rt[0], rt[1], rt[2]};
+        for (int i = 0; i < 6; ++i) rf[i] = hayr ? 0.5f * rf[i] + 0.5f * r[i] : r[i];
+        hayr = true;
+        float lejos = 0;
+        for (int i = 0; i < 6; ++i) lejos = std::max(lejos, std::fabs(rf[i] - d[i]));
+        for (int i = 0; i < 3; ++i) {
+          co[i] = lejos > 150.0f ? 0.0f : co[i] + ganancia * (d[i] - rf[i]);
+          ct[i] = lejos > 150.0f ? 0.0f : ct[i] + ganancia * (d[3 + i] - rf[3 + i]);
+        }
+      }
+      for (int i = 0; i < 3; ++i) d[i] = eo[i], d[3 + i] = eb[i];
+      hay = true;
+      for (int i = 0; i < 3; ++i) eo[i] += co[i], eb[i] += ct[i];
+    }
+  }
+  if (static const int sonda = [] { const char* v = std::getenv("DBZ3_TEST_CAMLOG"); return v ? std::max(1, std::atoi(v)) : 0; }(); sonda && g_frame % sonda == 0) {   // A3b: p1/p2, camara escrita (w) y camara que dibuja B3 (leida)
+    float ro[3] = {0, 0, 0}, rt[3] = {0, 0, 0};
+    cine::LeerCamara(base, ro, rt);
+    if (g_frame % (sonda * 300) == 0) {   // volcado de mgr+0x100..0x200 en floats: a ver donde guarda B3 su camara propia (N) antes de mezclarla
+      std::string v;
+      const uint32_t mg = REX_LOAD_U32(kMgrPtr);
+      auto fl = [&](uint32_t a) { const uint32_t u = REX_LOAD_U32(a); float f; std::memcpy(&f, &u, 4); return f; };
+      for (uint32_t o = 0x100; o < 0x200; o += 16) {
+        char b[160];
+        std::snprintf(b, sizeof b, " [%03X] %.2f %.2f %.2f %.2f;", o, fl(mg + o), fl(mg + o + 4), fl(mg + o + 8), fl(mg + o + 12));
+        v += b;
+      }
+      REXLOG_INFO("dbz3 cinematica: volcado mgr cuadro {}:{}", g_frame, v);
+    }
+    REXLOG_INFO("dbz3 cinematica: sonda cuadro {} paso {} t {:.3f} escrita ojo ({:.1f} {:.1f} {:.1f}) obj ({:.1f} {:.1f} {:.1f}) leida ojo ({:.1f} {:.1f} {:.1f}) obj ({:.1f} {:.1f} {:.1f})",
+                g_frame, k + 1, t, eo[0], eo[1], eo[2], eb[0], eb[1], eb[2], ro[0], ro[1], ro[2], rt[0], rt[1], rt[2]);
+  }
   cine::Camara(base, eo, eb, roll);
+  // S1 (Leyenda de Mr. Satan): cara del luchador 1 por tramos. En B1 la cara es una malla fija; en B3 cada expresion
+  // es una malla aparte (XSTN_L01/L18/...), elegida por un campo de su registro de luchador. Se escribe al empezar el
+  // dibujo (este gancho), asi que el dibujo del cuadro ya lo ve. Sonda DBZ3_TEST_CARA=<campo>,<ms>,<v1>,<v2>...: cicla
+  // los valores cada <ms> sobre ese campo del luchador 1 y los anota con el segundo de escena (barrido para localizar
+  // el selector con capturas); tiene prioridad sobre Escena::caras.
+  {
+    const float esc = float(AhoraMs() - g_t0) / 1000.0f;
+    static const char* sonda = std::getenv("DBZ3_TEST_CARA");
+    static const uint32_t campo_sonda = [] {
+      const char* v = std::getenv("DBZ3_TEST_CARA");
+      return v ? uint32_t(std::strtoul(v, nullptr, 0)) : 0u;
+    }();
+    static const int ms_sonda = [] {
+      const char* v = std::getenv("DBZ3_TEST_CARA");
+      if (!v) return 3000;
+      const char* c = std::strchr(v, ',');
+      return c ? std::max(200, std::atoi(c + 1)) : 3000;
+    }();
+    static const float desde_sonda = [] {   // DBZ3_TEST_CARA_DESDE=<s>: el ciclo empieza en ese segundo de escena
+      const char* v = std::getenv("DBZ3_TEST_CARA_DESDE");
+      return v ? float(std::atof(v)) : 0.0f;
+    }();
+    static const std::vector<int> valores = [] {
+      std::vector<int> out;
+      const char* v = std::getenv("DBZ3_TEST_CARA");
+      if (!v) return out;
+      const char* c = std::strchr(v, ',');
+      if (!c) return out;
+      c = std::strchr(c + 1, ',');
+      while (c && *c) {
+        char* fin = nullptr;
+        const long x = std::strtol(c + 1, &fin, 0);
+        if (fin == c + 1) break;
+        out.push_back(int(x));
+        c = fin;
+      }
+      return out;
+    }();
+    uint32_t campo = 0;
+    int valor = 0;
+    bool poner = false;
+    if (sonda && campo_sonda && !valores.empty()) {
+      if (esc >= desde_sonda) {   // antes de DBZ3_TEST_CARA_DESDE no se escribe nada (la cara del juego tal cual)
+        campo = campo_sonda;
+        const float t_ciclo = esc - desde_sonda;
+        valor = valores[size_t(t_ciclo * 1000.0f / float(ms_sonda)) % valores.size()];
+        poner = true;
+        static int ultimo = -12345;
+        if (valor != ultimo) {
+          ultimo = valor;
+          REXLOG_INFO("dbz3 cinematica: sonda de cara cuadro {} t {:.2f} s: X+{} = {}", g_frame, esc, campo, valor);
+        }
+      }
+    } else if (e->campo_cara && !e->caras.empty()) {
+      for (const TramoCara& c : e->caras)
+        if (esc >= c.desde && esc < c.hasta) {
+          campo = uint32_t(e->campo_cara);
+          valor = c.valor;
+          poner = true;
+        }
+    }
+    if (poner) REX_STORE_U8(mgr + kX0 + campo, uint8_t(valor & 0xFF));
+    // Sonda del marco de la escena (cada 600 cuadros): posiciones de los dos luchadores, camara escrita y X+48 leido,
+    // para situar la barra de campos sin abrir el juego a ojo (DBZ3_TEST_MARCO=1 o con DBZ3_TEST_CARA).
+    static const bool marco = std::getenv("DBZ3_TEST_CARA") != nullptr || std::getenv("DBZ3_TEST_MARCO") != nullptr;
+    if (marco && g_frame % 600 == 0) {
+      const V3 m1 = LeeV(base, mgr + kX0 + kPos);
+      REXLOG_INFO("dbz3 cinematica: sonda de cara marco cuadro {} t {:.2f}: p1 ({:.2f} {:.2f} {:.2f}) p2 ({:.2f} {:.2f} {:.2f}) ojo ({:.2f} {:.2f} {:.2f}) objetivo ({:.2f} {:.2f} {:.2f}) rel {}",
+                  g_frame, esc, p1.x, p1.y, p1.z, p2.x, p2.y, p2.z, eo[0], eo[1], eo[2], eb[0], eb[1], eb[2],
+                  p.rel ? 1 : 0);
+      REXLOG_INFO("dbz3 cinematica: sonda de cara marco cuadro {}: X+48 leido ({:.2f} {:.2f} {:.2f})", g_frame, m1.x, m1.y, m1.z);
+    }
+  }
   g_abre = std::min({1.0f, float(AhoraMs() - g_t0) / 500.0f, ultimo ? queda / 0.5f : 1.0f});
   ++g_frame;
 }
@@ -507,4 +742,24 @@ void Fotograma(uint8_t* base, uint32_t estado) {
 // Tras leer el mando: nada (los botones del paso van por XInput, InyectarPad); se queda para el gancho de combate.cpp.
 void Mando(uint8_t* /*base*/, uint32_t /*usuario*/) {}
 
+
+// A3b: lo llama el gancho de sub_820F47E0 (funcion de camara del juego: ojo +0x190, objetivo +0x1A0, vista +0x60; medido con un punto de datos,
+// herramientas/watch_camara.py: la cadena 82092848 -> 820F47E0 -> 820F43A8 escribe ojo y objetivo y 820F4300 la vista) tras calcularla ella: la camara
+// de la escena se pone ENTERA, sin mezcla ni lazo. Escribe ojo, objetivo y vista (cine::Camara).
+void AplicarCamaraDirecta(uint8_t* base) {
+  if (!g_dir_ok.load() || !g_en_curso.load()) return;
+  const float eo[3] = {g_dir[0], g_dir[1], g_dir[2]}, eb[3] = {g_dir[3], g_dir[4], g_dir[5]};
+  cine::Camara(base, eo, eb, g_dir[6]);
+}
+// S1: la camara de la sonda de la cara (combate nativo, sin escena en curso).
+void AplicarCamaraSonda(uint8_t* base) {
+  if (!g_son_ok.load()) return;
+  cine::Camara(base, g_son_ojo, g_son_obj, 0.0f);
+}
 }  // namespace dbz3::cinematica
+
+DBZ3_HOOK_EU(sub_820F47E0) {   // A3b: despues de la camara del juego
+  orig(ctx, base);
+  dbz3::cinematica::AplicarCamaraDirecta(base);
+  dbz3::cinematica::AplicarCamaraSonda(base);   // S1: primer plano de la cara en un combate nativo (sonda)
+}

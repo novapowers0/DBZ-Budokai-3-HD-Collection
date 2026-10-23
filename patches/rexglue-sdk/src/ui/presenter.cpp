@@ -51,6 +51,10 @@ REXCVAR_DEFINE_INT32(frame_cap, 0, "UI/Presenter",
                      "Maximum host present rate in FPS (0 = uncapped)")
     .range(0, 1000)
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
+// dbz3 (X0g, tests only, with DBZ3_NO_DIALOGS): hidden mode, the host swap chain is not presented.
+REXCVAR_DEFINE_BOOL(dbz3_test_oculto, false, "DBZ3/Dev",
+                    "Tests: hidden mode, the host swap chain is not presented")
+    .lifecycle(rex::cvar::Lifecycle::kHotReload);
 
 // The present_* settings change how the finished guest frame is scaled to the
 // window, so they apply live (the app re-reads them through

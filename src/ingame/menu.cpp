@@ -41,10 +41,11 @@ void InGameMenu::OnDraw(ImGuiIO& io) {
 
 void InGameMenu::DrawDevModeSection() {
   ImGui::Separator();
-  ImGui::TextColored(ImVec4(0.96f, 0.54f, 0.10f, 1.0f), "Dev mode");
+  ImGui::TextColored(ImVec4(0.96f, 0.54f, 0.10f, 1.0f), dbz3::i18n::T("Modo desarrollador", "Dev mode"));
 
   bool diag = dbz3::settings::DiagLogging();
-  if (ImGui::Checkbox("GPU diagnostic logging (dbz3_gpu_diag.log)", &diag)) {
+  if (ImGui::Checkbox(dbz3::i18n::T("Registro de diagnostico de GPU (dbz3_gpu_diag.log)",
+                                    "GPU diagnostic logging (dbz3_gpu_diag.log)"), &diag)) {
     dbz3::settings::SetDiagLogging(diag);
   }
   ImGui::TextDisabled("Per-frame GPU diagnostics. Writes a large log file.");

@@ -119,3 +119,8 @@ docs/13_assets_externos/
 # Derivado del codigo generado (lo crea CMake con tools/gen_escenarios_sel.py).
 src/escenarios_sel_gen.inc
 src/escenarios_sel_gen_eu.inc
+
+# notas internas de trabajo (no se publican)
+docs/historial/handbacks/
+# historias del heroe generadas en cada PC
+mod center hd/campanas/historia_heroe_[0-9]*.toml

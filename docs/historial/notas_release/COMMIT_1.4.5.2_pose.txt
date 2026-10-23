@@ -1,0 +1,14 @@
+Tag Team: el que entra carga ki con la pose del juego; Kit con la historia de Freezer completa
+
+- Pose de entrada: al aterrizar, ~0,5 s de carga de ki nativa (Y+B; acciones 20/21). Humanos: se
+  pulsa en su mando. COM: su hueco X+5028 (-1 = IA) apunta al mando 4 virtual (conectado solo
+  durante la pose; con el mando 4 desconectado el juego pausaba) y vuelve a -1 al acabar, al caer,
+  al recibir un golpe, en otro relevo o fuera de combate. Sin online ni EU; DBZ3_TAG_NO_POSE la quita.
+- Ring out a mitad de un relevo pedido: el reinicio del caido vaciaba la carga del que entra; se pide
+  otra vez al momento (antes 10 s y el asalto perdido).
+- Kit: lleva campanas/historia_freezer.toml (el ejemplo completo que cita la plantilla), sin el arte
+  de terceros: campana.py usa el panel del juego (ya limpio) y un retrato del juego si falta una
+  imagen; el editor lo avisa en vez de dar error. Probado montandola desde el Kit y jugandola hasta
+  el capitulo 2. Autocomprobacion del editor al dia (retrato de Mecha Freezer cambiado el 12/10).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

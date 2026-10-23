@@ -204,6 +204,9 @@ def apply(root, values):
 
 
 def _abs(p, base):
+    if str(p).startswith("pack:"):     # "pack:Zarbon" = Potraits/Zarbon.png del pack opcional del usuario (arte de terceros)
+        import retratos_pack  # noqa: PLC0415
+        return retratos_pack.buscar(str(p)[5:], exacto=True) or os.path.join(base, "(sin retrato del pack)")
     return p if os.path.isabs(p) else os.path.join(base, p)
 
 
@@ -361,8 +364,8 @@ RET_SPECS = [
      ("Márcalo si el retrato del juego está sin terminar (una sola textura) y hay que rehacerlo.",
       "Tick it if the game's portrait is unfinished (a single texture) and must be remade."), None),
     ("png", "file", ("Mi propia imagen PNG", "My own PNG image"),
-     ("Imagen PNG (fondo transparente) que sustituye al retrato; se ajusta a su caja. Vacío = retrato del juego.",
-      "PNG image (transparent background) that replaces the portrait; it fits its box. Empty = the game's portrait."), None),
+     ("Imagen PNG (fondo transparente) que sustituye al retrato; se ajusta a su caja. Vacío = retrato del juego. «pack:Nombre» = Nombre.png de tu carpeta Potraits del pack opcional.",
+      "PNG image (transparent background) that replaces the portrait; it fits its box. Empty = the game's portrait. 'pack:Name' = Name.png from your optional pack's Potraits folder."), None),
 ]
 
 # Música: palabras de música (banco << 16 | entrada). Se muestran como «2.4205» y se guardan como número.

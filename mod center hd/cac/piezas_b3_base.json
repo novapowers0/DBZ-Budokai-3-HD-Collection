@@ -1,0 +1,1572 @@
+{
+ "torso": [
+  {
+   "nombre": "Android 16 (X16G_BODY)",
+   "fid": 70,
+   "ok": true,
+   "notas": "injerto OK: 731 tris, ventanas {'prenda': 625, 'reutilizadas': 224, 'nuevas': 401, 'total': 2856}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Android 16 (Traje alternativo)",
+   "fid": 71,
+   "ok": true,
+   "notas": "injerto OK: 731 tris, ventanas {'prenda': 625, 'reutilizadas': 224, 'nuevas': 401, 'total': 2856}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Android 17 (X17G_BODY)",
+   "fid": 75,
+   "ok": true,
+   "notas": "injerto OK: 596 tris, ventanas {'prenda': 532, 'reutilizadas': 224, 'nuevas': 308, 'total': 2763}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Android 17 (Traje alternativo)",
+   "fid": 76,
+   "ok": true,
+   "notas": "injerto OK: 594 tris, ventanas {'prenda': 515, 'reutilizadas': 224, 'nuevas': 291, 'total': 2746}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Android 18 (X18G_BODY)",
+   "fid": 80,
+   "ok": true,
+   "notas": "injerto OK: 710 tris, ventanas {'prenda': 689, 'reutilizadas': 224, 'nuevas': 465, 'total': 2920}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Android 18 (Traje alternativo)",
+   "fid": 81,
+   "ok": true,
+   "notas": "injerto OK: 845 tris, ventanas {'prenda': 768, 'reutilizadas': 224, 'nuevas': 544, 'total': 2999}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Android 18 (Traje 3)",
+   "fid": 82,
+   "ok": true,
+   "notas": "injerto OK: 644 tris, ventanas {'prenda': 740, 'reutilizadas': 224, 'nuevas': 516, 'total': 2971}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Bardock (XBDK_BODY)",
+   "fid": 99,
+   "ok": false,
+   "notas": "faltan huesos: TAIL"
+  },
+  {
+   "nombre": "Bardock (Traje alternativo)",
+   "fid": 100,
+   "ok": false,
+   "notas": "faltan huesos: TAIL"
+  },
+  {
+   "nombre": "Majin Buu (Gordo)",
+   "fid": 128,
+   "ok": true,
+   "notas": "injerto OK: 772 tris, ventanas {'prenda': 695, 'reutilizadas': 224, 'nuevas': 471, 'total': 2926}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Majin Buu (Gordo (2))",
+   "fid": 129,
+   "ok": true,
+   "notas": "injerto OK: 772 tris, ventanas {'prenda': 695, 'reutilizadas': 224, 'nuevas': 471, 'total': 2926}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Kid Buu (XBUS_BODY)",
+   "fid": 141,
+   "ok": true,
+   "notas": "injerto OK: 728 tris, ventanas {'prenda': 811, 'reutilizadas': 224, 'nuevas': 587, 'total': 3042}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Kid Buu (Traje alternativo)",
+   "fid": 142,
+   "ok": true,
+   "notas": "injerto OK: 728 tris, ventanas {'prenda': 811, 'reutilizadas': 224, 'nuevas': 587, 'total': 3042}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Cell (Forma 1)",
+   "fid": 146,
+   "ok": false,
+   "notas": "faltan huesos: T_TAIL2,T_TAIL3,T_TAIL4,T_TAIL5,T_TAIL6"
+  },
+  {
+   "nombre": "Cell (Forma 1 alt)",
+   "fid": 149,
+   "ok": false,
+   "notas": "faltan huesos: T_TAIL2,T_TAIL3,T_TAIL4,T_TAIL5,T_TAIL6"
+  },
+  {
+   "nombre": "Cooler (Forma base)",
+   "fid": 166,
+   "ok": false,
+   "notas": "faltan huesos: T_TAIL1,T_TAIL2,T_TAIL3,T_TAIL4,T_TAIL5"
+  },
+  {
+   "nombre": "Cooler (Forma base alt)",
+   "fid": 169,
+   "ok": false,
+   "notas": "faltan huesos: T_TAIL1,T_TAIL2,T_TAIL3,T_TAIL4,T_TAIL5"
+  },
+  {
+   "nombre": "Freeza (Forma 1)",
+   "fid": 181,
+   "ok": false,
+   "notas": "faltan huesos: T_TAIL1,T_TAIL2,T_TAIL3,T_TAIL4,T_TAIL5"
+  },
+  {
+   "nombre": "Freeza (Forma 1 alt)",
+   "fid": 187,
+   "ok": false,
+   "notas": "faltan huesos: T_TAIL1,T_TAIL2,T_TAIL3,T_TAIL4,T_TAIL5"
+  },
+  {
+   "nombre": "Freeza (Forma 1 con nave)",
+   "fid": 193,
+   "ok": false,
+   "notas": "faltan huesos: T_TAIL2,T_TAIL3,T_TAIL4"
+  },
+  {
+   "nombre": "Gohan (Adulto (violeta))",
+   "fid": 225,
+   "ok": false,
+   "notas": "faltan huesos: LOBI1,LOBI2,LOBI3,LOBI4,ROBI1,ROBI2,ROBI3,ROBI4"
+  },
+  {
+   "nombre": "Gohan (Adulto (naranja))",
+   "fid": 228,
+   "ok": true,
+   "notas": "injerto OK: 706 tris, ventanas {'prenda': 568, 'reutilizadas': 224, 'nuevas': 344, 'total': 2799}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Gohan (Saga Cell)",
+   "fid": 235,
+   "ok": true,
+   "notas": "injerto OK: 632 tris, ventanas {'prenda': 511, 'reutilizadas': 224, 'nuevas': 287, 'total': 2742}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Goku (Nino)",
+   "fid": 252,
+   "ok": false,
+   "notas": "faltan huesos: LOBI1,LOBI2,LOBI3,LOBI4,ROBI1,ROBI2,ROBI3,ROBI4,T_TAIL1,T_TAIL2,T_TAIL3,T_TAIL4,T_TAIL5"
+  },
+  {
+   "nombre": "Goku (Normal)",
+   "fid": 264,
+   "ok": true,
+   "notas": "injerto OK: 706 tris, ventanas {'prenda': 606, 'reutilizadas': 224, 'nuevas': 382, 'total': 2837}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Goku (Normal alt)",
+   "fid": 270,
+   "ok": false,
+   "notas": "faltan huesos: LOBI1,LOBI2,LOBI3,LOBI4,OBI,ROBI1,ROBI2,ROBI3,ROBI4"
+  },
+  {
+   "nombre": "Goku (Traje roto)",
+   "fid": 276,
+   "ok": false,
+   "notas": "faltan huesos: LOBI1,LOBI2,LOBI3,LOBI4,OBI,ROBI1,ROBI2,ROBI3,ROBI4,RWCLOTH1"
+  },
+  {
+   "nombre": "Goku (Scouter (cuerpo de Ginyu))",
+   "fid": 281,
+   "ok": true,
+   "notas": "injerto OK: 706 tris, ventanas {'prenda': 606, 'reutilizadas': 224, 'nuevas': 382, 'total': 2837}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Goku (Angelic)",
+   "fid": 282,
+   "ok": true,
+   "notas": "injerto OK: 706 tris, ventanas {'prenda': 606, 'reutilizadas': 224, 'nuevas': 382, 'total': 2837}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Goten (XGTN_BODY)",
+   "fid": 298,
+   "ok": false,
+   "notas": "faltan huesos: LOBI2,LOBI3,OBI,ROBI1,ROBI2,ROBI3"
+  },
+  {
+   "nombre": "Krillin (Sin pelo / con pelo / armadura)",
+   "fid": 327,
+   "ok": false,
+   "notas": "faltan huesos: LOBI1,LOBI2,LOBI3,OBI,ROBI1,ROBI2,ROBI3"
+  },
+  {
+   "nombre": "Krillin (Con pelo)",
+   "fid": 328,
+   "ok": false,
+   "notas": "faltan huesos: OBI,OBI1,OBI2,OBI3"
+  },
+  {
+   "nombre": "Krillin (Armadura)",
+   "fid": 329,
+   "ok": false,
+   "notas": "faltan huesos: RSPAT1"
+  },
+  {
+   "nombre": "Piccolo (Normal)",
+   "fid": 350,
+   "ok": false,
+   "notas": "faltan huesos: LZARM1"
+  },
+  {
+   "nombre": "Piccolo (Nail fusion)",
+   "fid": 351,
+   "ok": false,
+   "notas": "faltan huesos: LZARM1"
+  },
+  {
+   "nombre": "Piccolo (Capa larga)",
+   "fid": 352,
+   "ok": false,
+   "notas": "faltan huesos: LSPAT1,LZARM1"
+  },
+  {
+   "nombre": "Piccolo Daimao (XPIC_BODY)",
+   "fid": 353,
+   "ok": false,
+   "notas": "faltan huesos: LZARM1"
+  },
+  {
+   "nombre": "Trunks (Nino)",
+   "fid": 383,
+   "ok": false,
+   "notas": "faltan huesos: LOBI1,LOBI2,LOBI3,OBI,ROBI1,ROBI2,ROBI3"
+  },
+  {
+   "nombre": "Trunks (Futuro espada)",
+   "fid": 390,
+   "ok": true,
+   "notas": "injerto OK: 522 tris, ventanas {'prenda': 489, 'reutilizadas': 224, 'nuevas': 265, 'total': 2720}; huesos de borde suplidos por el padre: LCOLLAR,RCOLLAR; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Trunks (Futuro espada alt)",
+   "fid": 392,
+   "ok": true,
+   "notas": "injerto OK: 730 tris, ventanas {'prenda': 632, 'reutilizadas': 224, 'nuevas': 408, 'total': 2863}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Trunks (Futuro armadura)",
+   "fid": 394,
+   "ok": true,
+   "notas": "injerto OK: 694 tris, ventanas {'prenda': 561, 'reutilizadas': 224, 'nuevas': 337, 'total': 2792}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Tenshinhan (TSH_BODY)",
+   "fid": 400,
+   "ok": true,
+   "notas": "injerto OK: 640 tris, ventanas {'prenda': 556, 'reutilizadas': 224, 'nuevas': 332, 'total': 2787}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Tenshinhan (Traje alternativo)",
+   "fid": 401,
+   "ok": true,
+   "notas": "injerto OK: 668 tris, ventanas {'prenda': 524, 'reutilizadas': 224, 'nuevas': 300, 'total': 2755}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Videl (XVDL_BODY)",
+   "fid": 410,
+   "ok": true,
+   "notas": "injerto OK: 496 tris, ventanas {'prenda': 477, 'reutilizadas': 224, 'nuevas': 253, 'total': 2708}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Videl (Traje alternativo)",
+   "fid": 411,
+   "ok": true,
+   "notas": "injerto OK: 464 tris, ventanas {'prenda': 453, 'reutilizadas': 224, 'nuevas': 229, 'total': 2684}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Vegeta (Sin armadura)",
+   "fid": 416,
+   "ok": true,
+   "notas": "injerto OK: 726 tris, ventanas {'prenda': 579, 'reutilizadas': 224, 'nuevas': 355, 'total': 2810}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Vegeta (Armadura androides)",
+   "fid": 420,
+   "ok": true,
+   "notas": "injerto OK: 696 tris, ventanas {'prenda': 583, 'reutilizadas': 224, 'nuevas': 359, 'total': 2814}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Vegeta (Armadura saga Saiyan)",
+   "fid": 424,
+   "ok": false,
+   "notas": "faltan huesos: TAIL"
+  },
+  {
+   "nombre": "Vegeta (Armadura Namek)",
+   "fid": 427,
+   "ok": true,
+   "notas": "injerto OK: 748 tris, ventanas {'prenda': 792, 'reutilizadas': 224, 'nuevas': 568, 'total': 3023}; huesos de borde suplidos por el padre: LSPAT1,RSPAT1; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Yamcha (Pelo corto)",
+   "fid": 445,
+   "ok": false,
+   "notas": "faltan huesos: LOBI1,LOBI2,LOBI3,OBI,ROBI1,ROBI2,ROBI3"
+  },
+  {
+   "nombre": "Yamcha (Vestimenta amarilla)",
+   "fid": 446,
+   "ok": false,
+   "notas": "faltan huesos: SUIT5B"
+  },
+  {
+   "nombre": "Yamcha (Pelo largo)",
+   "fid": 447,
+   "ok": false,
+   "notas": "faltan huesos: LOBI1,LOBI2,LOBI3,OBI,ROBI1,ROBI2,ROBI3"
+  }
+ ],
+ "piernas": [
+  {
+   "nombre": "Android 16 (X16G_BODY)",
+   "fid": 70,
+   "ok": true,
+   "notas": "injerto OK: 236 tris, ventanas {'prenda': 209, 'reutilizadas': 174, 'nuevas': 35, 'total': 2490}"
+  },
+  {
+   "nombre": "Android 16 (Traje alternativo)",
+   "fid": 71,
+   "ok": true,
+   "notas": "injerto OK: 236 tris, ventanas {'prenda': 209, 'reutilizadas': 174, 'nuevas': 35, 'total': 2490}"
+  },
+  {
+   "nombre": "Android 17 (X17G_BODY)",
+   "fid": 75,
+   "ok": true,
+   "notas": "injerto OK: 444 tris, ventanas {'prenda': 311, 'reutilizadas': 174, 'nuevas': 137, 'total': 2592}"
+  },
+  {
+   "nombre": "Android 17 (Traje alternativo)",
+   "fid": 76,
+   "ok": true,
+   "notas": "injerto OK: 390 tris, ventanas {'prenda': 280, 'reutilizadas': 174, 'nuevas': 106, 'total': 2561}"
+  },
+  {
+   "nombre": "Android 18 (X18G_BODY)",
+   "fid": 80,
+   "ok": true,
+   "notas": "injerto OK: 297 tris, ventanas {'prenda': 257, 'reutilizadas': 174, 'nuevas': 83, 'total': 2538}"
+  },
+  {
+   "nombre": "Android 18 (Traje alternativo)",
+   "fid": 81,
+   "ok": true,
+   "notas": "injerto OK: 254 tris, ventanas {'prenda': 253, 'reutilizadas': 174, 'nuevas': 79, 'total': 2534}"
+  },
+  {
+   "nombre": "Android 18 (Traje 3)",
+   "fid": 82,
+   "ok": true,
+   "notas": "injerto OK: 228 tris, ventanas {'prenda': 216, 'reutilizadas': 174, 'nuevas': 42, 'total': 2497}"
+  },
+  {
+   "nombre": "Bardock (XBDK_BODY)",
+   "fid": 99,
+   "ok": true,
+   "notas": "injerto OK: 280 tris, ventanas {'prenda': 190, 'reutilizadas': 174, 'nuevas': 16, 'total': 2471}"
+  },
+  {
+   "nombre": "Bardock (Traje alternativo)",
+   "fid": 100,
+   "ok": true,
+   "notas": "injerto OK: 280 tris, ventanas {'prenda': 190, 'reutilizadas': 174, 'nuevas': 16, 'total': 2471}"
+  },
+  {
+   "nombre": "Majin Buu (Gordo)",
+   "fid": 128,
+   "ok": true,
+   "notas": "injerto OK: 320 tris, ventanas {'prenda': 309, 'reutilizadas': 174, 'nuevas': 135, 'total': 2590}"
+  },
+  {
+   "nombre": "Majin Buu (Gordo (2))",
+   "fid": 129,
+   "ok": true,
+   "notas": "injerto OK: 320 tris, ventanas {'prenda': 309, 'reutilizadas': 174, 'nuevas': 135, 'total': 2590}"
+  },
+  {
+   "nombre": "Kid Buu (XBUS_BODY)",
+   "fid": 141,
+   "ok": true,
+   "notas": "injerto OK: 224 tris, ventanas {'prenda': 208, 'reutilizadas': 174, 'nuevas': 34, 'total': 2489}"
+  },
+  {
+   "nombre": "Kid Buu (Traje alternativo)",
+   "fid": 142,
+   "ok": true,
+   "notas": "injerto OK: 224 tris, ventanas {'prenda': 208, 'reutilizadas': 174, 'nuevas': 34, 'total': 2489}"
+  },
+  {
+   "nombre": "Cell (Forma 1)",
+   "fid": 146,
+   "ok": true,
+   "notas": "injerto OK: 320 tris, ventanas {'prenda': 313, 'reutilizadas': 174, 'nuevas': 139, 'total': 2594}"
+  },
+  {
+   "nombre": "Cell (Forma 1 alt)",
+   "fid": 149,
+   "ok": true,
+   "notas": "injerto OK: 320 tris, ventanas {'prenda': 313, 'reutilizadas': 174, 'nuevas': 139, 'total': 2594}"
+  },
+  {
+   "nombre": "Cooler (Forma base)",
+   "fid": 166,
+   "ok": true,
+   "notas": "injerto OK: 320 tris, ventanas {'prenda': 293, 'reutilizadas': 174, 'nuevas': 119, 'total': 2574}"
+  },
+  {
+   "nombre": "Cooler (Forma base alt)",
+   "fid": 169,
+   "ok": true,
+   "notas": "injerto OK: 320 tris, ventanas {'prenda': 293, 'reutilizadas': 174, 'nuevas': 119, 'total': 2574}"
+  },
+  {
+   "nombre": "Freeza (Forma 1)",
+   "fid": 181,
+   "ok": true,
+   "notas": "injerto OK: 328 tris, ventanas {'prenda': 278, 'reutilizadas': 174, 'nuevas': 104, 'total': 2559}"
+  },
+  {
+   "nombre": "Freeza (Forma 1 alt)",
+   "fid": 187,
+   "ok": true,
+   "notas": "injerto OK: 328 tris, ventanas {'prenda': 278, 'reutilizadas': 174, 'nuevas': 104, 'total': 2559}"
+  },
+  {
+   "nombre": "Freeza (Forma 1 con nave)",
+   "fid": 193,
+   "ok": true,
+   "notas": "injerto OK: 220 tris, ventanas {'prenda': 179, 'reutilizadas': 174, 'nuevas': 5, 'total': 2460}"
+  },
+  {
+   "nombre": "Gohan (Adulto (violeta))",
+   "fid": 225,
+   "ok": true,
+   "notas": "injerto OK: 400 tris, ventanas {'prenda': 264, 'reutilizadas': 174, 'nuevas': 90, 'total': 2545}"
+  },
+  {
+   "nombre": "Gohan (Adulto (naranja))",
+   "fid": 228,
+   "ok": true,
+   "notas": "injerto OK: 300 tris, ventanas {'prenda': 206, 'reutilizadas': 174, 'nuevas': 32, 'total': 2487}"
+  },
+  {
+   "nombre": "Gohan (Saga Cell)",
+   "fid": 235,
+   "ok": true,
+   "notas": "injerto OK: 280 tris, ventanas {'prenda': 220, 'reutilizadas': 174, 'nuevas': 46, 'total': 2501}"
+  },
+  {
+   "nombre": "Goku (Nino)",
+   "fid": 252,
+   "ok": true,
+   "notas": "injerto OK: 336 tris, ventanas {'prenda': 240, 'reutilizadas': 174, 'nuevas': 66, 'total': 2521}"
+  },
+  {
+   "nombre": "Goku (Normal)",
+   "fid": 264,
+   "ok": true,
+   "notas": "injerto OK: 300 tris, ventanas {'prenda': 224, 'reutilizadas': 174, 'nuevas': 50, 'total': 2505}"
+  },
+  {
+   "nombre": "Goku (Normal alt)",
+   "fid": 270,
+   "ok": true,
+   "notas": "injerto OK: 344 tris, ventanas {'prenda': 249, 'reutilizadas': 174, 'nuevas': 75, 'total': 2530}"
+  },
+  {
+   "nombre": "Goku (Traje roto)",
+   "fid": 276,
+   "ok": true,
+   "notas": "injerto OK: 520 tris, ventanas {'prenda': 684, 'reutilizadas': 174, 'nuevas': 510, 'total': 2965}"
+  },
+  {
+   "nombre": "Goku (Scouter (cuerpo de Ginyu))",
+   "fid": 281,
+   "ok": true,
+   "notas": "injerto OK: 300 tris, ventanas {'prenda': 224, 'reutilizadas': 174, 'nuevas': 50, 'total': 2505}"
+  },
+  {
+   "nombre": "Goku (Angelic)",
+   "fid": 282,
+   "ok": true,
+   "notas": "injerto OK: 300 tris, ventanas {'prenda': 224, 'reutilizadas': 174, 'nuevas': 50, 'total': 2505}"
+  },
+  {
+   "nombre": "Goten (XGTN_BODY)",
+   "fid": 298,
+   "ok": true,
+   "notas": "injerto OK: 312 tris, ventanas {'prenda': 211, 'reutilizadas': 174, 'nuevas': 37, 'total': 2492}"
+  },
+  {
+   "nombre": "Krillin (Sin pelo / con pelo / armadura)",
+   "fid": 327,
+   "ok": true,
+   "notas": "injerto OK: 276 tris, ventanas {'prenda': 191, 'reutilizadas': 174, 'nuevas': 17, 'total': 2472}"
+  },
+  {
+   "nombre": "Krillin (Con pelo)",
+   "fid": 328,
+   "ok": true,
+   "notas": "injerto OK: 264 tris, ventanas {'prenda': 184, 'reutilizadas': 174, 'nuevas': 10, 'total': 2465}"
+  },
+  {
+   "nombre": "Krillin (Armadura)",
+   "fid": 329,
+   "ok": true,
+   "notas": "injerto OK: 226 tris, ventanas {'prenda': 182, 'reutilizadas': 174, 'nuevas': 8, 'total': 2463}"
+  },
+  {
+   "nombre": "Piccolo (Normal)",
+   "fid": 350,
+   "ok": true,
+   "notas": "injerto OK: 332 tris, ventanas {'prenda': 253, 'reutilizadas': 174, 'nuevas': 79, 'total': 2534}"
+  },
+  {
+   "nombre": "Piccolo (Nail fusion)",
+   "fid": 351,
+   "ok": true,
+   "notas": "injerto OK: 334 tris, ventanas {'prenda': 261, 'reutilizadas': 174, 'nuevas': 87, 'total': 2542}"
+  },
+  {
+   "nombre": "Piccolo (Capa larga)",
+   "fid": 352,
+   "ok": true,
+   "notas": "injerto OK: 332 tris, ventanas {'prenda': 243, 'reutilizadas': 174, 'nuevas': 69, 'total': 2524}"
+  },
+  {
+   "nombre": "Piccolo Daimao (XPIC_BODY)",
+   "fid": 353,
+   "ok": true,
+   "notas": "injerto OK: 332 tris, ventanas {'prenda': 241, 'reutilizadas': 174, 'nuevas': 67, 'total': 2522}"
+  },
+  {
+   "nombre": "Trunks (Nino)",
+   "fid": 383,
+   "ok": true,
+   "notas": "injerto OK: 304 tris, ventanas {'prenda': 217, 'reutilizadas': 174, 'nuevas': 43, 'total': 2498}"
+  },
+  {
+   "nombre": "Trunks (Futuro espada)",
+   "fid": 390,
+   "ok": true,
+   "notas": "injerto OK: 336 tris, ventanas {'prenda': 228, 'reutilizadas': 174, 'nuevas': 54, 'total': 2509}"
+  },
+  {
+   "nombre": "Trunks (Futuro espada alt)",
+   "fid": 392,
+   "ok": true,
+   "notas": "injerto OK: 336 tris, ventanas {'prenda': 228, 'reutilizadas': 174, 'nuevas': 54, 'total': 2509}"
+  },
+  {
+   "nombre": "Trunks (Futuro armadura)",
+   "fid": 394,
+   "ok": true,
+   "notas": "injerto OK: 210 tris, ventanas {'prenda': 164, 'reutilizadas': 164, 'nuevas': 0, 'total': 2455}"
+  },
+  {
+   "nombre": "Tenshinhan (TSH_BODY)",
+   "fid": 400,
+   "ok": true,
+   "notas": "injerto OK: 442 tris, ventanas {'prenda': 356, 'reutilizadas': 174, 'nuevas': 182, 'total': 2637}"
+  },
+  {
+   "nombre": "Tenshinhan (Traje alternativo)",
+   "fid": 401,
+   "ok": true,
+   "notas": "injerto OK: 360 tris, ventanas {'prenda': 240, 'reutilizadas': 174, 'nuevas': 66, 'total': 2521}"
+  },
+  {
+   "nombre": "Videl (XVDL_BODY)",
+   "fid": 410,
+   "ok": true,
+   "notas": "injerto OK: 464 tris, ventanas {'prenda': 510, 'reutilizadas': 174, 'nuevas': 336, 'total': 2791}"
+  },
+  {
+   "nombre": "Videl (Traje alternativo)",
+   "fid": 411,
+   "ok": true,
+   "notas": "injerto OK: 468 tris, ventanas {'prenda': 476, 'reutilizadas': 174, 'nuevas': 302, 'total': 2757}"
+  },
+  {
+   "nombre": "Vegeta (Sin armadura)",
+   "fid": 416,
+   "ok": true,
+   "notas": "injerto OK: 210 tris, ventanas {'prenda': 165, 'reutilizadas': 165, 'nuevas': 0, 'total': 2455}"
+  },
+  {
+   "nombre": "Vegeta (Armadura androides)",
+   "fid": 420,
+   "ok": true,
+   "notas": "injerto OK: 210 tris, ventanas {'prenda': 164, 'reutilizadas': 164, 'nuevas': 0, 'total': 2455}"
+  },
+  {
+   "nombre": "Vegeta (Armadura saga Saiyan)",
+   "fid": 424,
+   "ok": true,
+   "notas": "injerto OK: 202 tris, ventanas {'prenda': 154, 'reutilizadas': 154, 'nuevas': 0, 'total': 2455}"
+  },
+  {
+   "nombre": "Vegeta (Armadura Namek)",
+   "fid": 427,
+   "ok": true,
+   "notas": "injerto OK: 202 tris, ventanas {'prenda': 154, 'reutilizadas': 154, 'nuevas': 0, 'total': 2455}"
+  },
+  {
+   "nombre": "Yamcha (Pelo corto)",
+   "fid": 445,
+   "ok": true,
+   "notas": "injerto OK: 352 tris, ventanas {'prenda': 286, 'reutilizadas': 174, 'nuevas': 112, 'total': 2567}"
+  },
+  {
+   "nombre": "Yamcha (Vestimenta amarilla)",
+   "fid": 446,
+   "ok": true,
+   "notas": "injerto OK: 354 tris, ventanas {'prenda': 285, 'reutilizadas': 174, 'nuevas': 111, 'total': 2566}"
+  },
+  {
+   "nombre": "Yamcha (Pelo largo)",
+   "fid": 447,
+   "ok": true,
+   "notas": "injerto OK: 352 tris, ventanas {'prenda': 257, 'reutilizadas': 174, 'nuevas': 83, 'total': 2538}"
+  }
+ ],
+ "guantes": [
+  {
+   "nombre": "Android 16 (X16G_BODY)",
+   "fid": 70,
+   "ok": true,
+   "notas": "injerto OK: 424 tris, ventanas {'prenda': 434, 'reutilizadas': 102, 'nuevas': 332, 'total': 2787}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Android 16 (Traje alternativo)",
+   "fid": 71,
+   "ok": true,
+   "notas": "injerto OK: 424 tris, ventanas {'prenda': 434, 'reutilizadas': 102, 'nuevas': 332, 'total': 2787}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Android 17 (X17G_BODY)",
+   "fid": 75,
+   "ok": true,
+   "notas": "injerto OK: 470 tris, ventanas {'prenda': 531, 'reutilizadas': 102, 'nuevas': 429, 'total': 2884}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Android 17 (Traje alternativo)",
+   "fid": 76,
+   "ok": true,
+   "notas": "injerto OK: 432 tris, ventanas {'prenda': 506, 'reutilizadas': 102, 'nuevas': 404, 'total': 2859}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Android 18 (X18G_BODY)",
+   "fid": 80,
+   "ok": true,
+   "notas": "injerto OK: 528 tris, ventanas {'prenda': 532, 'reutilizadas': 102, 'nuevas': 430, 'total': 2885}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Android 18 (Traje alternativo)",
+   "fid": 81,
+   "ok": true,
+   "notas": "injerto OK: 580 tris, ventanas {'prenda': 528, 'reutilizadas': 102, 'nuevas': 426, 'total': 2881}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Android 18 (Traje 3)",
+   "fid": 82,
+   "ok": true,
+   "notas": "injerto OK: 532 tris, ventanas {'prenda': 504, 'reutilizadas': 102, 'nuevas': 402, 'total': 2857}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Bardock (XBDK_BODY)",
+   "fid": 99,
+   "ok": true,
+   "notas": "injerto OK: 532 tris, ventanas {'prenda': 532, 'reutilizadas': 102, 'nuevas': 430, 'total': 2885}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Bardock (Traje alternativo)",
+   "fid": 100,
+   "ok": true,
+   "notas": "injerto OK: 532 tris, ventanas {'prenda': 532, 'reutilizadas': 102, 'nuevas': 430, 'total': 2885}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Majin Buu (Gordo)",
+   "fid": 128,
+   "ok": true,
+   "notas": "injerto OK: 524 tris, ventanas {'prenda': 344, 'reutilizadas': 102, 'nuevas': 242, 'total': 2697}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Majin Buu (Gordo (2))",
+   "fid": 129,
+   "ok": true,
+   "notas": "injerto OK: 524 tris, ventanas {'prenda': 344, 'reutilizadas': 102, 'nuevas': 242, 'total': 2697}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Kid Buu (XBUS_BODY)",
+   "fid": 141,
+   "ok": true,
+   "notas": "injerto OK: 572 tris, ventanas {'prenda': 612, 'reutilizadas': 102, 'nuevas': 510, 'total': 2965}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Kid Buu (Traje alternativo)",
+   "fid": 142,
+   "ok": true,
+   "notas": "injerto OK: 572 tris, ventanas {'prenda': 612, 'reutilizadas': 102, 'nuevas': 510, 'total': 2965}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Cell (Forma 1)",
+   "fid": 146,
+   "ok": true,
+   "notas": "injerto OK: 464 tris, ventanas {'prenda': 560, 'reutilizadas': 102, 'nuevas': 458, 'total': 2913}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Cell (Forma 1 alt)",
+   "fid": 149,
+   "ok": true,
+   "notas": "injerto OK: 464 tris, ventanas {'prenda': 560, 'reutilizadas': 102, 'nuevas': 458, 'total': 2913}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Cooler (Forma base)",
+   "fid": 166,
+   "ok": true,
+   "notas": "injerto OK: 584 tris, ventanas {'prenda': 645, 'reutilizadas': 102, 'nuevas': 543, 'total': 2998}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Cooler (Forma base alt)",
+   "fid": 169,
+   "ok": true,
+   "notas": "injerto OK: 584 tris, ventanas {'prenda': 645, 'reutilizadas': 102, 'nuevas': 543, 'total': 2998}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Freeza (Forma 1)",
+   "fid": 181,
+   "ok": true,
+   "notas": "injerto OK: 436 tris, ventanas {'prenda': 488, 'reutilizadas': 102, 'nuevas': 386, 'total': 2841}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Freeza (Forma 1 alt)",
+   "fid": 187,
+   "ok": true,
+   "notas": "injerto OK: 436 tris, ventanas {'prenda': 488, 'reutilizadas': 102, 'nuevas': 386, 'total': 2841}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Freeza (Forma 1 con nave)",
+   "fid": 193,
+   "ok": true,
+   "notas": "injerto OK: 436 tris, ventanas {'prenda': 488, 'reutilizadas': 102, 'nuevas': 386, 'total': 2841}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Gohan (Adulto (violeta))",
+   "fid": 225,
+   "ok": true,
+   "notas": "injerto OK: 576 tris, ventanas {'prenda': 560, 'reutilizadas': 102, 'nuevas': 458, 'total': 2913}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Gohan (Adulto (naranja))",
+   "fid": 228,
+   "ok": true,
+   "notas": "injerto OK: 576 tris, ventanas {'prenda': 560, 'reutilizadas': 102, 'nuevas': 458, 'total': 2913}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Gohan (Saga Cell)",
+   "fid": 235,
+   "ok": true,
+   "notas": "injerto OK: 536 tris, ventanas {'prenda': 535, 'reutilizadas': 102, 'nuevas': 433, 'total': 2888}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Goku (Nino)",
+   "fid": 252,
+   "ok": true,
+   "notas": "injerto OK: 504 tris, ventanas {'prenda': 518, 'reutilizadas': 102, 'nuevas': 416, 'total': 2871}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Goku (Normal)",
+   "fid": 264,
+   "ok": true,
+   "notas": "injerto OK: 576 tris, ventanas {'prenda': 576, 'reutilizadas': 102, 'nuevas': 474, 'total': 2929}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Goku (Normal alt)",
+   "fid": 270,
+   "ok": true,
+   "notas": "injerto OK: 576 tris, ventanas {'prenda': 560, 'reutilizadas': 102, 'nuevas': 458, 'total': 2913}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Goku (Traje roto)",
+   "fid": 276,
+   "ok": true,
+   "notas": "injerto OK: 576 tris, ventanas {'prenda': 616, 'reutilizadas': 102, 'nuevas': 514, 'total': 2969}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Goku (Scouter (cuerpo de Ginyu))",
+   "fid": 281,
+   "ok": true,
+   "notas": "injerto OK: 576 tris, ventanas {'prenda': 576, 'reutilizadas': 102, 'nuevas': 474, 'total': 2929}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Goku (Angelic)",
+   "fid": 282,
+   "ok": true,
+   "notas": "injerto OK: 576 tris, ventanas {'prenda': 576, 'reutilizadas': 102, 'nuevas': 474, 'total': 2929}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Goten (XGTN_BODY)",
+   "fid": 298,
+   "ok": true,
+   "notas": "injerto OK: 480 tris, ventanas {'prenda': 478, 'reutilizadas': 102, 'nuevas': 376, 'total': 2831}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Krillin (Sin pelo / con pelo / armadura)",
+   "fid": 327,
+   "ok": true,
+   "notas": "injerto OK: 576 tris, ventanas {'prenda': 560, 'reutilizadas': 102, 'nuevas': 458, 'total': 2913}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Krillin (Con pelo)",
+   "fid": 328,
+   "ok": true,
+   "notas": "injerto OK: 576 tris, ventanas {'prenda': 574, 'reutilizadas': 102, 'nuevas': 472, 'total': 2927}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Krillin (Armadura)",
+   "fid": 329,
+   "ok": true,
+   "notas": "injerto OK: 516 tris, ventanas {'prenda': 526, 'reutilizadas': 102, 'nuevas': 424, 'total': 2879}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Piccolo (Normal)",
+   "fid": 350,
+   "ok": false,
+   "notas": "faltan huesos: LZARM2"
+  },
+  {
+   "nombre": "Piccolo (Nail fusion)",
+   "fid": 351,
+   "ok": false,
+   "notas": "faltan huesos: LZARM2"
+  },
+  {
+   "nombre": "Piccolo (Capa larga)",
+   "fid": 352,
+   "ok": false,
+   "notas": "faltan huesos: LZARM2"
+  },
+  {
+   "nombre": "Piccolo Daimao (XPIC_BODY)",
+   "fid": 353,
+   "ok": false,
+   "notas": "faltan huesos: LZARM2"
+  },
+  {
+   "nombre": "Trunks (Nino)",
+   "fid": 383,
+   "ok": true,
+   "notas": "injerto OK: 548 tris, ventanas {'prenda': 542, 'reutilizadas': 102, 'nuevas': 440, 'total': 2895}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Trunks (Futuro espada)",
+   "fid": 390,
+   "ok": true,
+   "notas": "injerto OK: 486 tris, ventanas {'prenda': 510, 'reutilizadas': 102, 'nuevas': 408, 'total': 2863}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Trunks (Futuro espada alt)",
+   "fid": 392,
+   "ok": true,
+   "notas": "injerto OK: 488 tris, ventanas {'prenda': 506, 'reutilizadas': 102, 'nuevas': 404, 'total': 2859}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Trunks (Futuro armadura)",
+   "fid": 394,
+   "ok": true,
+   "notas": "injerto OK: 516 tris, ventanas {'prenda': 568, 'reutilizadas': 102, 'nuevas': 466, 'total': 2921}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Tenshinhan (TSH_BODY)",
+   "fid": 400,
+   "ok": true,
+   "notas": "injerto OK: 604 tris, ventanas {'prenda': 636, 'reutilizadas': 102, 'nuevas': 534, 'total': 2989}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Tenshinhan (Traje alternativo)",
+   "fid": 401,
+   "ok": true,
+   "notas": "injerto OK: 556 tris, ventanas {'prenda': 548, 'reutilizadas': 102, 'nuevas': 446, 'total': 2901}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Videl (XVDL_BODY)",
+   "fid": 410,
+   "ok": true,
+   "notas": "injerto OK: 500 tris, ventanas {'prenda': 536, 'reutilizadas': 102, 'nuevas': 434, 'total': 2889}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Videl (Traje alternativo)",
+   "fid": 411,
+   "ok": true,
+   "notas": "injerto OK: 500 tris, ventanas {'prenda': 536, 'reutilizadas': 102, 'nuevas': 434, 'total': 2889}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Vegeta (Sin armadura)",
+   "fid": 416,
+   "ok": true,
+   "notas": "injerto OK: 516 tris, ventanas {'prenda': 572, 'reutilizadas': 102, 'nuevas': 470, 'total': 2925}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Vegeta (Armadura androides)",
+   "fid": 420,
+   "ok": true,
+   "notas": "injerto OK: 516 tris, ventanas {'prenda': 572, 'reutilizadas': 102, 'nuevas': 470, 'total': 2925}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Vegeta (Armadura saga Saiyan)",
+   "fid": 424,
+   "ok": true,
+   "notas": "injerto OK: 516 tris, ventanas {'prenda': 568, 'reutilizadas': 102, 'nuevas': 466, 'total': 2921}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Vegeta (Armadura Namek)",
+   "fid": 427,
+   "ok": true,
+   "notas": "injerto OK: 516 tris, ventanas {'prenda': 568, 'reutilizadas': 102, 'nuevas': 466, 'total': 2921}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Yamcha (Pelo corto)",
+   "fid": 445,
+   "ok": true,
+   "notas": "injerto OK: 576 tris, ventanas {'prenda': 582, 'reutilizadas': 102, 'nuevas': 480, 'total': 2935}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Yamcha (Vestimenta amarilla)",
+   "fid": 446,
+   "ok": true,
+   "notas": "injerto OK: 432 tris, ventanas {'prenda': 452, 'reutilizadas': 102, 'nuevas': 350, 'total': 2805}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Yamcha (Pelo largo)",
+   "fid": 447,
+   "ok": true,
+   "notas": "injerto OK: 576 tris, ventanas {'prenda': 561, 'reutilizadas': 102, 'nuevas': 459, 'total': 2914}; geometria del donante sin reescalar (solo prueba estructural)"
+  }
+ ],
+ "botas": [
+  {
+   "nombre": "Android 16 (X16G_BODY)",
+   "fid": 70,
+   "ok": true,
+   "notas": "injerto OK: 100 tris, ventanas {'prenda': 126, 'reutilizadas': 42, 'nuevas': 84, 'total': 2539}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Android 16 (Traje alternativo)",
+   "fid": 71,
+   "ok": true,
+   "notas": "injerto OK: 100 tris, ventanas {'prenda': 126, 'reutilizadas': 42, 'nuevas': 84, 'total': 2539}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Android 17 (X17G_BODY)",
+   "fid": 75,
+   "ok": true,
+   "notas": "injerto OK: 316 tris, ventanas {'prenda': 328, 'reutilizadas': 42, 'nuevas': 286, 'total': 2741}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Android 17 (Traje alternativo)",
+   "fid": 76,
+   "ok": true,
+   "notas": "injerto OK: 244 tris, ventanas {'prenda': 240, 'reutilizadas': 42, 'nuevas': 198, 'total': 2653}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Android 18 (X18G_BODY)",
+   "fid": 80,
+   "ok": true,
+   "notas": "injerto OK: 156 tris, ventanas {'prenda': 174, 'reutilizadas': 42, 'nuevas': 132, 'total': 2587}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Android 18 (Traje alternativo)",
+   "fid": 81,
+   "ok": true,
+   "notas": "injerto OK: 210 tris, ventanas {'prenda': 234, 'reutilizadas': 42, 'nuevas': 192, 'total': 2647}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Android 18 (Traje 3)",
+   "fid": 82,
+   "ok": true,
+   "notas": "injerto OK: 348 tris, ventanas {'prenda': 451, 'reutilizadas': 42, 'nuevas': 409, 'total': 2864}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Bardock (XBDK_BODY)",
+   "fid": 99,
+   "ok": true,
+   "notas": "injerto OK: 228 tris, ventanas {'prenda': 266, 'reutilizadas': 42, 'nuevas': 224, 'total': 2679}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Bardock (Traje alternativo)",
+   "fid": 100,
+   "ok": true,
+   "notas": "injerto OK: 228 tris, ventanas {'prenda': 266, 'reutilizadas': 42, 'nuevas': 224, 'total': 2679}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Majin Buu (Gordo)",
+   "fid": 128,
+   "ok": true,
+   "notas": "injerto OK: 160 tris, ventanas {'prenda': 168, 'reutilizadas': 42, 'nuevas': 126, 'total': 2581}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Majin Buu (Gordo (2))",
+   "fid": 129,
+   "ok": true,
+   "notas": "injerto OK: 160 tris, ventanas {'prenda': 168, 'reutilizadas': 42, 'nuevas': 126, 'total': 2581}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Kid Buu (XBUS_BODY)",
+   "fid": 141,
+   "ok": true,
+   "notas": "injerto OK: 140 tris, ventanas {'prenda': 176, 'reutilizadas': 42, 'nuevas': 134, 'total': 2589}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Kid Buu (Traje alternativo)",
+   "fid": 142,
+   "ok": true,
+   "notas": "injerto OK: 140 tris, ventanas {'prenda': 176, 'reutilizadas': 42, 'nuevas': 134, 'total': 2589}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Cell (Forma 1)",
+   "fid": 146,
+   "ok": true,
+   "notas": "injerto OK: 132 tris, ventanas {'prenda': 190, 'reutilizadas': 42, 'nuevas': 148, 'total': 2603}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Cell (Forma 1 alt)",
+   "fid": 149,
+   "ok": true,
+   "notas": "injerto OK: 132 tris, ventanas {'prenda': 190, 'reutilizadas': 42, 'nuevas': 148, 'total': 2603}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Cooler (Forma base)",
+   "fid": 166,
+   "ok": true,
+   "notas": "injerto OK: 192 tris, ventanas {'prenda': 244, 'reutilizadas': 42, 'nuevas': 202, 'total': 2657}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Cooler (Forma base alt)",
+   "fid": 169,
+   "ok": true,
+   "notas": "injerto OK: 192 tris, ventanas {'prenda': 244, 'reutilizadas': 42, 'nuevas': 202, 'total': 2657}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Freeza (Forma 1)",
+   "fid": 181,
+   "ok": true,
+   "notas": "injerto OK: 184 tris, ventanas {'prenda': 240, 'reutilizadas': 42, 'nuevas': 198, 'total': 2653}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Freeza (Forma 1 alt)",
+   "fid": 187,
+   "ok": true,
+   "notas": "injerto OK: 184 tris, ventanas {'prenda': 240, 'reutilizadas': 42, 'nuevas': 198, 'total': 2653}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Freeza (Forma 1 con nave)",
+   "fid": 193,
+   "ok": false,
+   "notas": "sin geometria de botas"
+  },
+  {
+   "nombre": "Gohan (Adulto (violeta))",
+   "fid": 225,
+   "ok": true,
+   "notas": "injerto OK: 124 tris, ventanas {'prenda': 143, 'reutilizadas': 42, 'nuevas': 101, 'total': 2556}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Gohan (Adulto (naranja))",
+   "fid": 228,
+   "ok": true,
+   "notas": "injerto OK: 188 tris, ventanas {'prenda': 205, 'reutilizadas': 42, 'nuevas': 163, 'total': 2618}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Gohan (Saga Cell)",
+   "fid": 235,
+   "ok": true,
+   "notas": "injerto OK: 140 tris, ventanas {'prenda': 158, 'reutilizadas': 42, 'nuevas': 116, 'total': 2571}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Goku (Nino)",
+   "fid": 252,
+   "ok": true,
+   "notas": "injerto OK: 124 tris, ventanas {'prenda': 154, 'reutilizadas': 42, 'nuevas': 112, 'total': 2567}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Goku (Normal)",
+   "fid": 264,
+   "ok": true,
+   "notas": "injerto OK: 188 tris, ventanas {'prenda': 205, 'reutilizadas': 42, 'nuevas': 163, 'total': 2618}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Goku (Normal alt)",
+   "fid": 270,
+   "ok": true,
+   "notas": "injerto OK: 124 tris, ventanas {'prenda': 149, 'reutilizadas': 42, 'nuevas': 107, 'total': 2562}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Goku (Traje roto)",
+   "fid": 276,
+   "ok": true,
+   "notas": "injerto OK: 188 tris, ventanas {'prenda': 205, 'reutilizadas': 42, 'nuevas': 163, 'total': 2618}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Goku (Scouter (cuerpo de Ginyu))",
+   "fid": 281,
+   "ok": true,
+   "notas": "injerto OK: 188 tris, ventanas {'prenda': 205, 'reutilizadas': 42, 'nuevas': 163, 'total': 2618}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Goku (Angelic)",
+   "fid": 282,
+   "ok": true,
+   "notas": "injerto OK: 188 tris, ventanas {'prenda': 205, 'reutilizadas': 42, 'nuevas': 163, 'total': 2618}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Goten (XGTN_BODY)",
+   "fid": 298,
+   "ok": true,
+   "notas": "injerto OK: 148 tris, ventanas {'prenda': 182, 'reutilizadas': 42, 'nuevas': 140, 'total': 2595}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Krillin (Sin pelo / con pelo / armadura)",
+   "fid": 327,
+   "ok": true,
+   "notas": "injerto OK: 188 tris, ventanas {'prenda': 205, 'reutilizadas': 42, 'nuevas': 163, 'total': 2618}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Krillin (Con pelo)",
+   "fid": 328,
+   "ok": true,
+   "notas": "injerto OK: 176 tris, ventanas {'prenda': 204, 'reutilizadas': 42, 'nuevas': 162, 'total': 2617}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Krillin (Armadura)",
+   "fid": 329,
+   "ok": true,
+   "notas": "injerto OK: 124 tris, ventanas {'prenda': 140, 'reutilizadas': 42, 'nuevas': 98, 'total': 2553}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Piccolo (Normal)",
+   "fid": 350,
+   "ok": true,
+   "notas": "injerto OK: 180 tris, ventanas {'prenda': 190, 'reutilizadas': 42, 'nuevas': 148, 'total': 2603}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Piccolo (Nail fusion)",
+   "fid": 351,
+   "ok": true,
+   "notas": "injerto OK: 180 tris, ventanas {'prenda': 190, 'reutilizadas': 42, 'nuevas': 148, 'total': 2603}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Piccolo (Capa larga)",
+   "fid": 352,
+   "ok": true,
+   "notas": "injerto OK: 180 tris, ventanas {'prenda': 190, 'reutilizadas': 42, 'nuevas': 148, 'total': 2603}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Piccolo Daimao (XPIC_BODY)",
+   "fid": 353,
+   "ok": true,
+   "notas": "injerto OK: 188 tris, ventanas {'prenda': 193, 'reutilizadas': 42, 'nuevas': 151, 'total': 2606}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Trunks (Nino)",
+   "fid": 383,
+   "ok": true,
+   "notas": "injerto OK: 148 tris, ventanas {'prenda': 160, 'reutilizadas': 42, 'nuevas': 118, 'total': 2573}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Trunks (Futuro espada)",
+   "fid": 390,
+   "ok": true,
+   "notas": "injerto OK: 124 tris, ventanas {'prenda': 148, 'reutilizadas': 42, 'nuevas': 106, 'total': 2561}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Trunks (Futuro espada alt)",
+   "fid": 392,
+   "ok": true,
+   "notas": "injerto OK: 124 tris, ventanas {'prenda': 148, 'reutilizadas': 42, 'nuevas': 106, 'total': 2561}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Trunks (Futuro armadura)",
+   "fid": 394,
+   "ok": true,
+   "notas": "injerto OK: 112 tris, ventanas {'prenda': 126, 'reutilizadas': 42, 'nuevas': 84, 'total': 2539}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Tenshinhan (TSH_BODY)",
+   "fid": 400,
+   "ok": true,
+   "notas": "injerto OK: 124 tris, ventanas {'prenda': 120, 'reutilizadas': 42, 'nuevas': 78, 'total': 2533}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Tenshinhan (Traje alternativo)",
+   "fid": 401,
+   "ok": true,
+   "notas": "injerto OK: 188 tris, ventanas {'prenda': 172, 'reutilizadas': 42, 'nuevas': 130, 'total': 2585}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Videl (XVDL_BODY)",
+   "fid": 410,
+   "ok": true,
+   "notas": "injerto OK: 180 tris, ventanas {'prenda': 256, 'reutilizadas': 42, 'nuevas': 214, 'total': 2669}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Videl (Traje alternativo)",
+   "fid": 411,
+   "ok": true,
+   "notas": "injerto OK: 180 tris, ventanas {'prenda': 256, 'reutilizadas': 42, 'nuevas': 214, 'total': 2669}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Vegeta (Sin armadura)",
+   "fid": 416,
+   "ok": true,
+   "notas": "injerto OK: 112 tris, ventanas {'prenda': 126, 'reutilizadas': 42, 'nuevas': 84, 'total': 2539}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Vegeta (Armadura androides)",
+   "fid": 420,
+   "ok": true,
+   "notas": "injerto OK: 112 tris, ventanas {'prenda': 126, 'reutilizadas': 42, 'nuevas': 84, 'total': 2539}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Vegeta (Armadura saga Saiyan)",
+   "fid": 424,
+   "ok": true,
+   "notas": "injerto OK: 124 tris, ventanas {'prenda': 140, 'reutilizadas': 42, 'nuevas': 98, 'total': 2553}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Vegeta (Armadura Namek)",
+   "fid": 427,
+   "ok": true,
+   "notas": "injerto OK: 124 tris, ventanas {'prenda': 140, 'reutilizadas': 42, 'nuevas': 98, 'total': 2553}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Yamcha (Pelo corto)",
+   "fid": 445,
+   "ok": true,
+   "notas": "injerto OK: 136 tris, ventanas {'prenda': 152, 'reutilizadas': 42, 'nuevas': 110, 'total': 2565}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Yamcha (Vestimenta amarilla)",
+   "fid": 446,
+   "ok": true,
+   "notas": "injerto OK: 214 tris, ventanas {'prenda': 232, 'reutilizadas': 42, 'nuevas': 190, 'total': 2645}; geometria del donante sin reescalar (solo prueba estructural)"
+  },
+  {
+   "nombre": "Yamcha (Pelo largo)",
+   "fid": 447,
+   "ok": true,
+   "notas": "injerto OK: 136 tris, ventanas {'prenda': 152, 'reutilizadas': 42, 'nuevas': 110, 'total': 2565}; geometria del donante sin reescalar (solo prueba estructural)"
+  }
+ ],
+ "accesorios": [
+  {
+   "nombre": "Android 16 (X16G_BODY)",
+   "fid": 70,
+   "ok": false,
+   "notas": "huesos propios ausentes en 264: FWPAT1,LMARM,LWPAT1,RMARM,RWPAT1 (soldable al padre FWPAT0,LARM2,LWPAT0,RARM2,RWPAT0)"
+  },
+  {
+   "nombre": "Android 16 (Traje alternativo)",
+   "fid": 71,
+   "ok": false,
+   "notas": "huesos propios ausentes en 264: FWPAT1,LMARM,LWPAT1,RMARM,RWPAT1 (soldable al padre FWPAT0,LARM2,LWPAT0,RARM2,RWPAT0)"
+  },
+  {
+   "nombre": "Android 17 (X17G_BODY)",
+   "fid": 75,
+   "ok": false,
+   "notas": "huesos propios ausentes en 264: BELT,GUN,LSCARF,RSCARF (soldable al padre BELT,SCARF,WAIST)"
+  },
+  {
+   "nombre": "Android 17 (Traje alternativo)",
+   "fid": 76,
+   "ok": false,
+   "notas": "huesos propios ausentes en 264: LSCARF,RSCARF,SCARF (soldable al padre CHEST,SCARF)"
+  },
+  {
+   "nombre": "Android 18 (X18G_BODY)",
+   "fid": 80,
+   "ok": false,
+   "notas": "sin geometria de accesorios"
+  },
+  {
+   "nombre": "Android 18 (Traje alternativo)",
+   "fid": 81,
+   "ok": false,
+   "notas": "sin geometria de accesorios"
+  },
+  {
+   "nombre": "Android 18 (Traje 3)",
+   "fid": 82,
+   "ok": false,
+   "notas": "sin geometria de accesorios"
+  },
+  {
+   "nombre": "Bardock (XBDK_BODY)",
+   "fid": 99,
+   "ok": false,
+   "notas": "huesos propios ausentes en 264: BAND,BAND1,LWPAT1,RWPAT1,SCOUT1 (soldable al padre BAND,HEAD,LWPAT,RWPAT)"
+  },
+  {
+   "nombre": "Bardock (Traje alternativo)",
+   "fid": 100,
+   "ok": false,
+   "notas": "huesos propios ausentes en 264: LWPAT1,RWPAT1,SCOUT1 (soldable al padre HEAD,LWPAT,RWPAT)"
+  },
+  {
+   "nombre": "Majin Buu (Gordo)",
+   "fid": 128,
+   "ok": false,
+   "notas": "sin geometria de accesorios"
+  },
+  {
+   "nombre": "Majin Buu (Gordo (2))",
+   "fid": 129,
+   "ok": false,
+   "notas": "sin geometria de accesorios"
+  },
+  {
+   "nombre": "Kid Buu (XBUS_BODY)",
+   "fid": 141,
+   "ok": false,
+   "notas": "sin geometria de accesorios"
+  },
+  {
+   "nombre": "Kid Buu (Traje alternativo)",
+   "fid": 142,
+   "ok": false,
+   "notas": "sin geometria de accesorios"
+  },
+  {
+   "nombre": "Cell (Forma 1)",
+   "fid": 146,
+   "ok": false,
+   "notas": "huesos propios ausentes en 264: LWING1,RWING1 (soldable al padre LWING,RWING)"
+  },
+  {
+   "nombre": "Cell (Forma 1 alt)",
+   "fid": 149,
+   "ok": false,
+   "notas": "huesos propios ausentes en 264: LWING1,RWING1 (soldable al padre LWING,RWING)"
+  },
+  {
+   "nombre": "Cooler (Forma base)",
+   "fid": 166,
+   "ok": false,
+   "notas": "sin geometria de accesorios"
+  },
+  {
+   "nombre": "Cooler (Forma base alt)",
+   "fid": 169,
+   "ok": false,
+   "notas": "sin geometria de accesorios"
+  },
+  {
+   "nombre": "Freeza (Forma 1)",
+   "fid": 181,
+   "ok": false,
+   "notas": "huesos propios ausentes en 264: LCHEEK,LSPAT1,RCHEEK,RSPAT1 (soldable al padre HEAD,LSPAT,RSPAT)"
+  },
+  {
+   "nombre": "Freeza (Forma 1 alt)",
+   "fid": 187,
+   "ok": false,
+   "notas": "huesos propios ausentes en 264: LCHEEK,LSPAT1,RCHEEK,RSPAT1 (soldable al padre HEAD,LSPAT,RSPAT)"
+  },
+  {
+   "nombre": "Freeza (Forma 1 con nave)",
+   "fid": 193,
+   "ok": false,
+   "notas": "huesos propios ausentes en 264: LCHEEK,POD,RCHEEK (soldable al padre HEAD,WAIST)"
+  },
+  {
+   "nombre": "Gohan (Adulto (violeta))",
+   "fid": 225,
+   "ok": false,
+   "notas": "sin geometria de accesorios"
+  },
+  {
+   "nombre": "Gohan (Adulto (naranja))",
+   "fid": 228,
+   "ok": false,
+   "notas": "sin geometria de accesorios"
+  },
+  {
+   "nombre": "Gohan (Saga Cell)",
+   "fid": 235,
+   "ok": false,
+   "notas": "sin geometria de accesorios"
+  },
+  {
+   "nombre": "Goku (Nino)",
+   "fid": 252,
+   "ok": false,
+   "notas": "huesos propios ausentes en 264: MSOWD,SOWD,SOWDCASE (soldable al padre CHEST,RHANDROT,SOWDCASE)"
+  },
+  {
+   "nombre": "Goku (Normal)",
+   "fid": 264,
+   "ok": false,
+   "notas": "sin geometria de accesorios"
+  },
+  {
+   "nombre": "Goku (Normal alt)",
+   "fid": 270,
+   "ok": false,
+   "notas": "sin geometria de accesorios"
+  },
+  {
+   "nombre": "Goku (Traje roto)",
+   "fid": 276,
+   "ok": false,
+   "notas": "huesos propios ausentes en 264: LWCLOTH1,RWCLOTH1 (soldable al padre WAIST)"
+  },
+  {
+   "nombre": "Goku (Scouter (cuerpo de Ginyu))",
+   "fid": 281,
+   "ok": false,
+   "notas": "huesos propios ausentes en 264: SCOUT1 (soldable al padre HEAD)"
+  },
+  {
+   "nombre": "Goku (Angelic)",
+   "fid": 282,
+   "ok": false,
+   "notas": "huesos propios ausentes en 264: RING (soldable al padre HEAD)"
+  },
+  {
+   "nombre": "Goten (XGTN_BODY)",
+   "fid": 298,
+   "ok": false,
+   "notas": "sin geometria de accesorios"
+  },
+  {
+   "nombre": "Krillin (Sin pelo / con pelo / armadura)",
+   "fid": 327,
+   "ok": false,
+   "notas": "sin geometria de accesorios"
+  },
+  {
+   "nombre": "Krillin (Con pelo)",
+   "fid": 328,
+   "ok": false,
+   "notas": "sin geometria de accesorios"
+  },
+  {
+   "nombre": "Krillin (Armadura)",
+   "fid": 329,
+   "ok": false,
+   "notas": "huesos propios ausentes en 264: LSPAT1,LWPAT1,RSPAT1,RWPAT1 (soldable al padre LSPAT,LWPAT,RSPAT,RWPAT)"
+  },
+  {
+   "nombre": "Piccolo (Normal)",
+   "fid": 350,
+   "ok": false,
+   "notas": "huesos propios ausentes en 264: LZARM3,LZARM4,LZARM5,LZARM6,LZARM7 (soldable al padre LARM2,LZARM2,LZARM4,LZARM5,LZARM6)"
+  },
+  {
+   "nombre": "Piccolo (Nail fusion)",
+   "fid": 351,
+   "ok": false,
+   "notas": "huesos propios ausentes en 264: LZARM3,LZARM4,LZARM5,LZARM6,LZARM7 (soldable al padre LARM2,LZARM2,LZARM4,LZARM5,LZARM6)"
+  },
+  {
+   "nombre": "Piccolo (Capa larga)",
+   "fid": 352,
+   "ok": false,
+   "notas": "huesos propios ausentes en 264: LSPAT1,LZARM3,LZARM4,LZARM5,LZARM6,LZARM7,RSPAT1,TA (soldable al padre HEAD,LARM2,LSPAT,LZARM2,LZARM4,LZARM5,LZARM6,RSPAT)"
+  },
+  {
+   "nombre": "Piccolo Daimao (XPIC_BODY)",
+   "fid": 353,
+   "ok": false,
+   "notas": "huesos propios ausentes en 264: LZARM3,LZARM4,LZARM5,LZARM6,LZARM7 (soldable al padre LARM2,LZARM2,LZARM4,LZARM5,LZARM6)"
+  },
+  {
+   "nombre": "Trunks (Nino)",
+   "fid": 383,
+   "ok": false,
+   "notas": "sin geometria de accesorios"
+  },
+  {
+   "nombre": "Trunks (Futuro espada)",
+   "fid": 390,
+   "ok": false,
+   "notas": "huesos propios ausentes en 264: LCOLLAR,RCOLLAR,SOWD,SOWDCASE (soldable al padre CHEST,SOWDCASE)"
+  },
+  {
+   "nombre": "Trunks (Futuro espada alt)",
+   "fid": 392,
+   "ok": false,
+   "notas": "huesos propios ausentes en 264: SOWD,SOWDCASE (soldable al padre CHEST,SOWDCASE)"
+  },
+  {
+   "nombre": "Trunks (Futuro armadura)",
+   "fid": 394,
+   "ok": false,
+   "notas": "huesos propios ausentes en 264: SOWD,SOWDCASE (soldable al padre CHEST,SOWDCASE)"
+  },
+  {
+   "nombre": "Tenshinhan (TSH_BODY)",
+   "fid": 400,
+   "ok": false,
+   "notas": "sin geometria de accesorios"
+  },
+  {
+   "nombre": "Tenshinhan (Traje alternativo)",
+   "fid": 401,
+   "ok": false,
+   "notas": "sin geometria de accesorios"
+  },
+  {
+   "nombre": "Videl (XVDL_BODY)",
+   "fid": 410,
+   "ok": false,
+   "notas": "huesos propios ausentes en 264: WIG (soldable al padre HEAD)"
+  },
+  {
+   "nombre": "Videl (Traje alternativo)",
+   "fid": 411,
+   "ok": false,
+   "notas": "huesos propios ausentes en 264: OBJ1 (soldable al padre HEAD)"
+  },
+  {
+   "nombre": "Vegeta (Sin armadura)",
+   "fid": 416,
+   "ok": false,
+   "notas": "sin geometria de accesorios"
+  },
+  {
+   "nombre": "Vegeta (Armadura androides)",
+   "fid": 420,
+   "ok": false,
+   "notas": "sin geometria de accesorios"
+  },
+  {
+   "nombre": "Vegeta (Armadura saga Saiyan)",
+   "fid": 424,
+   "ok": false,
+   "notas": "huesos propios ausentes en 264: LSPAT1,LWPAT1,RSPAT1,RWPAT1,SCOUT1,SWPAT1 (soldable al padre HEAD,LSPAT,LWPAT,RSPAT,RWPAT,SWPAT)"
+  },
+  {
+   "nombre": "Vegeta (Armadura Namek)",
+   "fid": 427,
+   "ok": false,
+   "notas": "huesos propios ausentes en 264: LSPAT1,RSPAT1 (soldable al padre LSPAT,RSPAT)"
+  },
+  {
+   "nombre": "Yamcha (Pelo corto)",
+   "fid": 445,
+   "ok": false,
+   "notas": "sin geometria de accesorios"
+  },
+  {
+   "nombre": "Yamcha (Vestimenta amarilla)",
+   "fid": 446,
+   "ok": false,
+   "notas": "huesos propios ausentes en 264: SUIT1B,SUIT1C,SUIT2B,SUIT2C,SUIT3B,SUIT3C,SUIT4B,SUIT4C,SUIT5B,SUIT5C (soldable al padre SUIT1A,SUIT1B,SUIT2A,SUIT2B,SUIT3A,SUIT3B,SUIT4A,SUIT4B,SUIT5A,SUIT5B)"
+  },
+  {
+   "nombre": "Yamcha (Pelo largo)",
+   "fid": 447,
+   "ok": false,
+   "notas": "sin geometria de accesorios"
+  }
+ ]
+}

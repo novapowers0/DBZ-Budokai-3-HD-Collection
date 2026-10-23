@@ -3,12 +3,14 @@ param(
   [int]$Seconds = 1200,          # duracion maxima (minutos de margen para llegar a la demo)
   [string]$Label = "long",
   [string]$Overrides = "",       # "clave=valor;clave=valor" (se anaden a los base de abajo)
+  [string]$Dir = "",             # copia de prueba (por defecto, out\build\win-amd64-release)
+  [int]$Affinity = 0,            # mascara hexadecimal de procesadores (0 = sin tocar)
   [switch]$Unmuted,              # por defecto SILENCIADO (audio_mute=true) para no oir el opening
   [switch]$Visible,              # ventana VISIBLE en pantalla (para que el usuario pueda navegar)
   [switch]$AllowSave             # por defecto la partida guardada se copia al arrancar y se RESTAURA al parar
 )
 $ErrorActionPreference = 'Stop'
-$dst = (Resolve-Path 'out\build\win-amd64-release').Path
+$dst = if ($Dir) { (Resolve-Path -LiteralPath $Dir).Path } else { (Resolve-Path 'out\build\win-amd64-release').Path }
 $toml = Join-Path $dst 'dbz3_user.toml'
 $state = Join-Path $env:TEMP 'opencode\long_run_state.json'
 $saveDir = Join-Path $dst 'user_data\dbz3'
@@ -109,7 +111,10 @@ if (-not $AllowSave -and (Test-Path -LiteralPath $saveDir)) {
 
 $logsBefore = @(Get-ChildItem -LiteralPath "$dst\logs" -Filter 'dbz3_*.log' | Sort-Object Name)
 $style = if ($Visible) { 'Normal' } else { 'Hidden' }
+$oldAffinity = [Diagnostics.Process]::GetCurrentProcess().ProcessorAffinity
+if ($Affinity) { [Diagnostics.Process]::GetCurrentProcess().ProcessorAffinity = [IntPtr]$Affinity }
 $p = Start-Process -FilePath (Join-Path $dst 'dbz3.exe') -WorkingDirectory $dst -WindowStyle $style -PassThru
+[Diagnostics.Process]::GetCurrentProcess().ProcessorAffinity = $oldAffinity
 Start-Sleep -Seconds 6
 if (-not $Visible) { try { [WinHide2]::Hide([uint32]$p.Id) } catch {} }
 Start-Sleep -Seconds 2

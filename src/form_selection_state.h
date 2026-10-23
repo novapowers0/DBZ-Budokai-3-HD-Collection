@@ -35,8 +35,8 @@ inline void Publish(int side, const Snapshot& snapshot, bool online = false) {
   if (s.snapshot.identity != snapshot.identity || s.snapshot.id != snapshot.id) {
     s.requested = 0;
     if (!online) {
-      const auto it = preferences.find(snapshot.identity);
-      if (it != preferences.end()) s.requested = it->second;
+       const auto it = preferences.find(snapshot.identity);
+       if (it != preferences.end() && it->second < snapshot.count) s.requested = it->second;
     }
   }
   s.snapshot = snapshot; s.result = Resolve(snapshot, s.requested, true, false, online);
@@ -82,6 +82,21 @@ inline void ForgetMember(int side, int id) {
   if (side >= 0 && side < 2) members[size_t(side)].erase(id);
 }
 inline void ClearMembers() { std::lock_guard<std::mutex> lock(state_mutex); members = {}; }
+inline constexpr const char* kRosterPagePreference = "@dbz3_dynamic_roster_page";
+inline int RosterPagePreference() {
+  std::lock_guard<std::mutex> lock(state_mutex);
+  const auto it = preferences.find(kRosterPagePreference);
+  return it != preferences.end() ? it->second : 0;
+}
+inline void RememberRosterPage(int page) {
+  if (page < 0 || page >= 256) return;
+  std::lock_guard<std::mutex> lock(state_mutex);
+  if (preferences_blocked) return;
+  auto it = preferences.find(kRosterPagePreference);
+  if (it != preferences.end() && it->second == page) return;
+  preferences[kRosterPagePreference] = page;
+  preferences_dirty = true;
+}
 inline void Notice(int side, const Snapshot& snapshot, const Result& result) {
   if (side < 0 || side > 1) return;
   std::lock_guard<std::mutex> lock(state_mutex);

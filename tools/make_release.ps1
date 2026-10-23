@@ -172,6 +172,10 @@ foreach ($dll in $shared_dlls) {
     }
 }
 
+# libjuice (MPL-2.0): su licencia va en la release en cuanto se enlace (DBZ3_LIBJUICE; hoy apagado). Se copia siempre: no pesa nada.
+$juice_lic = Join-Path $root "third_party\libjuice\LICENSE"
+if (Test-Path -LiteralPath $juice_lic) { Copy-Item -LiteralPath $juice_lic (Join-Path $OutDir "LIBJUICE_LICENSE_MPL-2.0.txt") }
+
 # NVIDIA DLSS (1.4.2): DLL redistribuible del SDK oficial + su licencia (no se sube el SDK).
 $dlss_sdk = "D:\SDKs\DLSS"
 $dlss = Join-Path $root "out\build\win-amd64-release\nvngx_dlss.dll"
@@ -184,11 +188,23 @@ if (Test-Path -LiteralPath $dlss) {
     Write-Warning "Falta nvngx_dlss.dll: ejecuta tools\copy_sdk_dlls.ps1 (DLSS caera a FSR 3)"
 }
 
-# Pantallas propias (TAG TEAM, ONLINE): solo nuestros titulos (tools/ingame_ui.py); las piezas del juego
-# las saca el propio juego de los AFS del jugador (src/ingame/native_ui.cpp), no se publican
+# UI propio (TAG TEAM, ONLINE, HUB): incluir recursos diseñados para el port, pero no retratos de personajes
+# extraidos del juego; esos anfitriones se leen de los AFS del jugador en src/ingame/native_ui.cpp.
 $ingame_ui = Join-Path $root "res\ingame_ui"
 if (Test-Path -LiteralPath $ingame_ui) {
-    Copy-Item -LiteralPath $ingame_ui (Join-Path $OutDir "ingame_ui") -Recurse
+    $ingame_dst = Join-Path $OutDir "ingame_ui"
+    $game_art = @("hub\anfitrion_bulma.png", "hub\anfitrion_goku.png", "hub\anfitrion_heroe.png",
+                  "hub\anfitrion_trunks.png", "hub\anfitrion_vegeta.png", "hub\anfitrion_whis.png")
+    Get-ChildItem -LiteralPath $ingame_ui -File -Recurse | ForEach-Object {
+        $relative = $_.FullName.Substring($ingame_ui.Length).TrimStart('\')
+        if ($game_art -contains $relative) {
+            Write-Output "UI: retrato del juego omitido: $relative"
+        } else {
+            $target = Join-Path $ingame_dst $relative
+            New-Item -ItemType Directory -Path (Split-Path -Parent $target) -Force | Out-Null
+            Copy-Item -LiteralPath $_.FullName -Destination $target
+        }
+    }
 } else {
     Write-Warning "Falta res\ingame_ui: ejecuta tools\ingame_ui.py (las pantallas propias usaran sustitutos)"
 }
@@ -202,6 +218,16 @@ if (Test-Path -LiteralPath $heroe_res) {
     Copy-Item -LiteralPath (Join-Path $heroe_res "*") $heroe_dst -Recurse -Force
 } else {
     Write-Warning "Falta res\heroe: el Modo Heroe usara las sagas de codigo y el catalogo de respaldo"
+}
+
+# Datos medidos del original (src/datos.cpp lee res\datos junto al exe). xv2_cac.toml sale de la copia de XV2 del
+# jugador (no distribuir): se regenera en su PC.
+$datos_res = Join-Path $root "res\datos"
+if (Test-Path -LiteralPath $datos_res) {
+    $datos_dst = Join-Path $OutDir "res\datos"
+    New-Item -ItemType Directory -Path $datos_dst -Force | Out-Null
+    Get-ChildItem -LiteralPath $datos_res -File | Where-Object { $_.Name -ne "xv2_cac.toml" } |
+        Copy-Item -Destination $datos_dst -Force
 }
 
 # Modding toolkit (runtime subset)

@@ -6,6 +6,8 @@
 #include <toml++/toml.hpp>
 
 #include <algorithm>
+#include <chrono>
+#include <ctime>
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
@@ -35,7 +37,22 @@ std::vector<Pieza> g_catalogo = {
 std::vector<Heroe> g_slots = {Heroe{}};
 std::vector<Heroe> g_archivados;
 int g_activo = 0;
+bool g_migrado = false;
+std::string g_ruta;   // el ultimo cac.toml leido o guardado (para RespaldarCopia)
+int g_por_limite = 0;
 Camara g_cam;
+std::string NuevoId() {
+  static unsigned n = 0;
+  const auto t = static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count());
+  for (;;) {   // 24 bits: se repite hasta que ningun heroe (activo o archivado) lo lleve ya
+    char b[16];
+    std::snprintf(b, sizeof b, "h%06llx", (t * 2654435761ull + (++n) * 40503ull) & 0xFFFFFFull);
+    bool dup = false;
+    for (const Heroe& h : g_slots) dup = dup || h.id == b;
+    for (const Heroe& h : g_archivados) dup = dup || h.id == b;
+    if (!dup) return b;
+  }
+}
 }  // namespace
 
 const std::vector<Pieza>& Catalogo() { return g_catalogo; }
@@ -84,8 +101,16 @@ Heroe& SlotEditable(int i) { return g_slots[std::clamp(i, 0, NumSlots() - 1)]; }
 int SlotActivo() { return g_activo; }
 void ElegirSlot(int i) { g_activo = std::clamp(i, 0, NumSlots() - 1); }
 
+bool SlotsLlenos() { return NumSlots() >= kMaxSlots; }
+bool MigradoDeV1() { return g_migrado; }
+int ArchivadosPorLimite() { return g_por_limite; }
+
 int NuevoSlot() {
+  if (SlotsLlenos()) return -1;
   Heroe h;
+  static const int kCuerposNuevos[] = {7, 39, 8, 0};   // saiyan nativos distintos: cada heroe nuevo se distingue a la vista
+  h.cuerpo = kCuerposNuevos[g_slots.size() % 4];
+  h.id = NuevoId();
   h.nombre = "Heroe " + std::to_string(NumSlots() + 1);
   h.progreso = kProgresoFicha;   // ficha nueva: su progreso empieza de cero y ya es suyo
   g_slots.push_back(h);
@@ -94,7 +119,9 @@ int NuevoSlot() {
 }
 
 void DuplicarSlot(int i) {
+  if (SlotsLlenos()) return;
   Heroe h = Slot(i);
+  h.id = NuevoId();
   h.nombre += " x2";
   g_slots.push_back(h);
   g_activo = NumSlots() - 1;
@@ -113,6 +140,12 @@ void ArchivarSlot(int i) {
   g_slots.erase(g_slots.begin() + i);
   g_activo = std::clamp(g_activo, 0, NumSlots() - 1);
 }
+void RestaurarArchivado(int i) {
+  if (SlotsLlenos() || i < 0 || i >= int(g_archivados.size())) return;
+  g_slots.push_back(g_archivados[i]);
+  g_archivados.erase(g_archivados.begin() + i);
+  g_activo = NumSlots() - 1;
+}
 const std::vector<Heroe>& Archivados() { return g_archivados; }
 int NumArchivados() { return int(g_archivados.size()); }
 
@@ -126,7 +159,7 @@ void AjustarSlot(int i) {
   Heroe& h = SlotEditable(i);
   // Rangos del Modo Heroe (heroe.cpp valida otra vez al importar). Sin catalogo: los IDs son del juego.
   auto n_de = [](const std::string& tipo) { return int(PiezasDe(tipo).size()); };
-  h.raza = std::clamp(h.raza, 0, 6);   // G06a: raza 6 = catálogo UT, cuerpos 100..105
+  h.raza = std::clamp(h.raza, 0, 12);   // G06a: raza 6 = catálogo UT (100..105); C4: 7..12 = piezas XV2 (110..115)
   h.cuerpo = std::max(0, h.cuerpo);
   // studies 8 fase 2: 10 peinados (Edit, heroe_ui.cpp kNumPelos: el del cuerpo + 9 piezas UT) aunque el catalogo
   // piezas_cac.toml no este cargado (sin el, solo hay 2 "nativos" y el peinado elegido se perdia al guardar)
@@ -141,6 +174,7 @@ void AjustarSlot(int i) {
   ClampHsv(h.pelo_c2);
   h.logo = std::max(0, h.logo);
   h.scouter = std::clamp(h.scouter, 0, 1);
+  for (int& fid : h.b3_piezas) fid = std::clamp(fid, -1, 4095);
   h.estilo = std::max(0, h.estilo);
   h.moveset = std::clamp(h.moveset, -1, 63);
   h.traje = std::max(0, h.traje);
@@ -152,6 +186,23 @@ void AjustarSlot(int i) {
   h.ph_dano = std::max(0, h.ph_dano);
   h.maestros &= (1 << kNumEntreno) - 1;
   for (int& e : h.entreno) e = std::clamp(e, 0, 100);
+  // inventario: IDs de capsula validos (1..2047), sin repetidos; el equipo solo con capsulas del inventario
+  std::vector<int> v;
+  for (int c : h.inv) {
+    if (c >= 1 && c < 2048 && std::find(v.begin(), v.end(), c) == v.end()) v.push_back(c);
+  }
+  h.inv = v;
+  for (int& q : h.equipo) {
+    if (q != 0 && std::find(h.inv.begin(), h.inv.end(), q) == h.inv.end()) q = 0;
+  }
+  for (int a = 0; a < 4; ++a) {
+    for (int b = a + 1; b < 4; ++b) {
+      if (h.equipo[a] != 0 && h.equipo[a] == h.equipo[b]) h.equipo[b] = 0;
+    }
+  }
+  h.esferas = std::clamp(h.esferas, 0, 127);
+  h.deseos = std::clamp(h.deseos, 0, 9);
+  if (h.id.empty()) h.id = NuevoId();
 }
 
 // ---------------------------------------------------------------------------
@@ -165,18 +216,28 @@ namespace {
 std::string HsvTxt(const Hsv& c);
 void EscribirHeroe(std::ostream& o, const char* tabla, const Heroe& h) {
   o << "[[" << tabla << "]]\n";
+  o << "id = \"" << h.id << "\"\n";
+  o << "esferas = " << h.esferas << "\ndeseos = " << h.deseos << "\n";
+  o << "desbloqueos = [";
+  for (size_t i = 0; i < h.desbloqueos.size(); ++i) o << (i ? ", " : "") << '"' << h.desbloqueos[i] << '"';
+  o << "]\n";
   o << "nombre = \"" << h.nombre << "\"\n";
+  o << "inventario = [";
+  for (size_t i = 0; i < h.inv.size(); ++i) o << (i ? ", " : "") << h.inv[i];
+  o << "]\nequipo = [" << h.equipo[0] << ", " << h.equipo[1] << ", " << h.equipo[2] << ", " << h.equipo[3] << "]\n";
   o << "raza = " << h.raza << "\ncuerpo = " << h.cuerpo << "\ntraje = " << h.traje
     << "\ncara = " << h.cara << "\npelo = " << h.pelo << "\nropa = " << h.ropa
     << "\ncolor = " << h.color << "\nvoz = " << h.voz << "\naura = " << h.aura
-    << "\nestilo = " << h.estilo << "\nmoveset = " << h.moveset
+    << "\naura_col = \"" << h.aura_col << "\"\nki_col = \"" << h.ki_col << "\"\nestilo = " << h.estilo << "\nmoveset = " << h.moveset
     << "\ntecnicas = [" << h.tecnicas[0] << ", " << h.tecnicas[1] << ", " << h.tecnicas[2]
     << ", " << h.tecnicas[3] << "]\n"
     << "\nxp = " << h.xp << "\nnivel = " << h.nivel << "\n"
     << "logo = " << h.logo << "\nscouter = " << h.scouter << "\n"
-    << "partes = [" << HsvTxt(h.parte[0]) << ", " << HsvTxt(h.parte[1]) << ", " << HsvTxt(h.parte[2])
-    << ", " << HsvTxt(h.parte[3]) << "]\n"
-    << "pelo_color1 = " << HsvTxt(h.pelo_c1) << "\npelo_color2 = " << HsvTxt(h.pelo_c2) << "\n";
+     << "partes = [" << HsvTxt(h.parte[0]) << ", " << HsvTxt(h.parte[1]) << ", " << HsvTxt(h.parte[2])
+     << ", " << HsvTxt(h.parte[3]) << ", " << HsvTxt(h.parte[4]) << ", " << HsvTxt(h.parte[5]) << "]\n"
+     << "xv2 = [" << h.xv2[0] << ", " << h.xv2[1] << ", " << h.xv2[2] << ", " << h.xv2[3] << ", " << h.xv2[4] << ", " << h.xv2[5] << ", " << h.xv2[6] << "]\n"
+     << "b3_piezas = [" << h.b3_piezas[0] << ", " << h.b3_piezas[1] << ", " << h.b3_piezas[2] << ", " << h.b3_piezas[3] << "]\n"
+     << "pelo_color1 = " << HsvTxt(h.pelo_c1) << "\npelo_color2 = " << HsvTxt(h.pelo_c2) << "\n";
   // studies 8 H1: progreso del Modo Heroe de esta ficha
   o << "progreso = " << h.progreso << "\nsaga = " << h.saga << "\nph = " << h.ph << "\nph_vida = " << h.ph_vida
     << "\nph_dano = " << h.ph_dano << "\nmaestros = " << h.maestros << "\nentreno = [";
@@ -207,6 +268,20 @@ std::string Escapa(const std::string& s) {
 
 Heroe LeerHeroe(const toml::table* p) {
   Heroe h;
+  h.esferas = int((*p)["esferas"].value_or(int64_t{0}));
+  h.deseos = int((*p)["deseos"].value_or(int64_t{0}));
+  if (auto* dv = (*p)["desbloqueos"].as_array()) {
+    for (const auto& e : *dv) {
+      if (auto s = e.value<std::string>(); s && !s->empty() && s->size() < 48 && h.desbloqueos.size() < 64) h.desbloqueos.push_back(*s);
+    }
+  }
+  h.id = (*p)["id"].value_or(std::string{});
+  if (auto* iv = (*p)["inventario"].as_array()) {
+    for (const auto& v : *iv) h.inv.push_back(int(v.value_or(int64_t{0})));
+  }
+  if (auto* eq = (*p)["equipo"].as_array()) {
+    for (size_t k = 0; k < eq->size() && k < 4; ++k) h.equipo[k] = int((*eq)[k].value_or(int64_t{0}));
+  }
   h.nombre = (*p)["nombre"].value_or(std::string{"Heroe"});
   h.raza = int((*p)["raza"].value_or(int64_t{0}));
   h.cuerpo = int((*p)["cuerpo"].value_or(int64_t{0}));
@@ -217,6 +292,8 @@ Heroe LeerHeroe(const toml::table* p) {
   h.color = int((*p)["color"].value_or(int64_t{0}));
   h.voz = int((*p)["voz"].value_or(int64_t{0}));
   h.aura = int((*p)["aura"].value_or(int64_t{0}));
+  h.aura_col = (*p)["aura_col"].value_or(std::string());
+  h.ki_col = (*p)["ki_col"].value_or(std::string());
   h.estilo = int((*p)["estilo"].value_or(int64_t{0}));
   h.moveset = int((*p)["moveset"].value_or(int64_t{-1}));
   if (auto* tec = (*p)["tecnicas"].as_array()) {
@@ -232,6 +309,12 @@ Heroe LeerHeroe(const toml::table* p) {
   h.scouter = int((*p)["scouter"].value_or(int64_t{0}));
   if (auto* ps = (*p)["partes"].as_array()) {
     for (size_t k = 0; k < ps->size() && k < kNumPartes; ++k) h.parte[k] = LeerHsv(&(*ps)[k]);
+  }
+  if (auto* xs = (*p)["xv2"].as_array()) {
+    for (size_t k = 0; k < xs->size() && k < 7; ++k) h.xv2[k] = int((*xs)[k].value_or(int64_t{0}));
+  }
+  if (auto* bs = (*p)["b3_piezas"].as_array()) {
+    for (size_t k = 0; k < bs->size() && k < 4; ++k) h.b3_piezas[k] = int((*bs)[k].value_or(int64_t{-1}));
   }
   h.pelo_c1 = LeerHsv((*p)["pelo_color1"].node());
   h.pelo_c2 = LeerHsv((*p)["pelo_color2"].node());
@@ -249,6 +332,7 @@ Heroe LeerHeroe(const toml::table* p) {
 
 bool Leer(const std::string& path) {
   std::error_code ec;
+  if (path.size() < 4 || path.compare(path.size() - 4, 4, ".bak") != 0) g_ruta = path;
   if (!fs::exists(path, ec)) return false;
   toml::table t;
   try {
@@ -260,6 +344,13 @@ bool Leer(const std::string& path) {
   }
   const int64_t ver = t["version"].value_or(int64_t{1});
   if (ver > kVersion) return false;                   // version mas nueva: no se toca
+  g_migrado = false;
+  g_por_limite = 0;
+  if (ver < 2) {                                      // v1 -> v2: copia INTACTA antes de tocar nada (una sola vez)
+    const std::string v1 = path + ".v1.bak";
+    if (!fs::exists(v1, ec)) fs::copy_file(path, v1, ec);
+    g_migrado = true;
+  }
   g_slots.clear();
   g_archivados.clear();
   if (auto* arr = t["heroe"].as_array()) {
@@ -274,19 +365,57 @@ bool Leer(const std::string& path) {
       if (p) g_archivados.push_back(LeerHeroe(p));
     }
   }
+  // limite de heroes activos: el primero (el de la v1) queda en la ficha 1; los que no caben se archivan, nunca se pierden
+  int activo = int(t["activo"].value_or(int64_t{0}));
+  if (int(g_slots.size()) > kMaxSlots) {
+    if (ver >= 2) {   // un v2 con 4-8 heroes (escrito por otra build): copia aparte antes de archivar nada
+      const std::string rec = path + ".recorte.bak";
+      if (!fs::exists(rec, ec)) fs::copy_file(path, rec, ec);
+    }
+    // el heroe ACTIVO no se archiva: pasa al ultimo de los 3 (si no, su progreso se asignaba a otro heroe)
+    if (activo >= kMaxSlots && activo < int(g_slots.size())) {
+      std::swap(g_slots[size_t(activo)], g_slots[size_t(kMaxSlots - 1)]);
+      activo = kMaxSlots - 1;
+    }
+    while (int(g_slots.size()) > kMaxSlots) {
+      g_archivados.insert(g_archivados.begin(), g_slots.back());
+      g_slots.pop_back();
+      ++g_por_limite;
+    }
+  }
+  for (Heroe& h : g_archivados) {
+    if (h.id.empty()) h.id = NuevoId();
+  }
   if (g_slots.empty()) g_slots.push_back(Heroe{});
-  g_activo = std::clamp(int(t["activo"].value_or(int64_t{0})), 0, NumSlots() - 1);
+  g_activo = std::clamp(activo, 0, NumSlots() - 1);
   for (int i = 0; i < NumSlots(); ++i) AjustarSlot(i);
   return true;
 }
 
+bool RespaldarCopia(const char* motivo) {
+  std::error_code ec;
+  if (g_ruta.empty() || !fs::exists(g_ruta, ec)) return false;
+  const auto t = std::time(nullptr);
+  char f[32];
+  std::strftime(f, sizeof f, "%Y%m%d-%H%M%S", std::localtime(&t));
+  fs::copy_file(g_ruta, g_ruta + "." + motivo + "-" + f + ".bak", fs::copy_options::overwrite_existing, ec);
+  return !ec;
+}
+
 bool Guardar(const std::string& path) {
+  g_ruta = path;
+  for (Heroe& h : g_slots) {   // el heroe inicial nace sin id: se le da UNO y no cambia
+    if (h.id.empty()) h.id = NuevoId();
+  }
+  for (Heroe& h : g_archivados) {
+    if (h.id.empty()) h.id = NuevoId();
+  }
   const std::string tmp = path + ".tmp", bak = path + ".bak";
   std::error_code ec;
   if (fs::path(path).has_parent_path()) fs::create_directories(fs::path(path).parent_path(), ec);
   std::ofstream o(tmp, std::ios::binary);
   if (!o) return false;
-  o << "version = 2\n";
+  o << "version = 2\nschema = \"dbz3-cac/2\"\n";
   o << "activo = " << g_activo << "\n\n";
   for (const Heroe& h : g_slots) {
     Heroe e = h;

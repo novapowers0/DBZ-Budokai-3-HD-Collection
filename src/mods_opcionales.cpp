@@ -6,6 +6,7 @@
 #include "pasarela.h"
 #include "region.h"
 
+#include <rex/cvar.h>
 #include <rex/filesystem.h>
 #include <rex/logging.h>
 
@@ -585,5 +586,33 @@ void Escuchar(const Pista& pista, float volumen) {
 }
 
 void Parar() { pasarela::CallarMusicaPs2(); }
+
+void ActualizarCombate(bool en_combate) {
+  static bool sonando = false;
+  static uint32_t combates = 0;
+  if (!en_combate) {
+    if (sonando) {
+      sonando = false;
+      Parar();
+      REXLOG_INFO("dbz3 musica: fin del combate: musica cortada");
+    }
+    return;
+  }
+  if (sonando) return;
+  const std::string v = rex::cvar::GetFlagByName("dbz3_musica_combate");
+  if (v.rfind("aleatoria", 0) != 0) return;   // "original": no se toca nada
+  sonando = true;   // una sola vez por combate, haya pista o no
+  Opcion o;
+  o.modo = Modo::kAleatoria;
+  if (v.size() > 10 && v[9] == ':') o.fuente = v.substr(10);
+  const Pista p = Elegir(o, ++combates * 2654435761u);
+  if (p.entrada < 0) {
+    REXLOG_INFO("dbz3 musica: combate: no hay pistas de '{}' (se queda la del juego)", o.fuente);
+    return;
+  }
+  const float vol = settings::AudioMute() ? 0.0f : float(settings::MasterVolume()) * 0.6f;
+  REXLOG_INFO("dbz3 musica: combate: {} ({} {} #{})", p.nombre, p.fuente, p.afs, p.entrada);
+  Escuchar(p, vol);
+}
 
 }  // namespace dbz3::musica

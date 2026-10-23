@@ -1,0 +1,36 @@
+# Peinado nativo del heroe en combate real (ruta Budokai 3, sin piezas XV2/UT).
+# Copia de prueba con la ficha del heroe ya escrita (vista_heroe.py --combate N); el escenario entra a la DU,
+# elige la celda 63 (Heroe), entra al combate 1 y hace una captura unos segundos despues de empezar.
+descripcion = "Peinado nativo en combate: DU con el Heroe hasta el combate 1, captura a los pocos segundos"
+env = ["DBZ3_AUTO_TOUCH=2", "DBZ3_TEST_RINGOUT=1"]
+pasos = [
+  "esperar 2500",
+  "tecla Space 4000",
+  "esperar_pantalla 6 30",
+  "esperar 3000",
+  "tecla Return 3000",
+  "tecla Space 3000",
+  "esperar_pantalla 7 40",
+  "esperar 3500",
+  "tecla S 2500",
+  "tecla Space 4000",
+  "tecla Space 4000",
+  "esperar_pantalla 8 60",
+  "esperar 3000",
+  "tecla Space 3000",
+  "tecla Return 3000",
+  "tecla Space 3000",
+  "tecla Return 3000",
+  "tecla Space 3000",
+  "tecla Return 3000",
+  "tecla Space 3000",
+  "tecla Return 3000",
+  "tecla Space 3000",
+  "tecla Return 3000",
+  "captura intro_fin",
+  "esperar_pantalla 9 80",
+  "esperar 4000",
+  "captura combate_pelo_inicio",
+  "esperar 4000",
+  "captura combate_pelo",
+]

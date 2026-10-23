@@ -169,6 +169,9 @@ class PantallaDM {
   float ap_t_ = 0;                        // cuadros desde el fin de la intro
   // Vuelta de combate (H03): sin intro; Story_MapResultDelayTick (60 cuadros) y Story_MapReloadAfterDelayTick (~100).
   bool volviendo_ = false;
+  // B3: mandos bloqueados durante el primer ciclo del scroll (Story_MapScrollToTargetTick recarga los mandos
+  // cuando su acumulador pasa de 1,0; ~100 cuadros). Antes solo se bloqueaba la intro.
+  bool bloqueo_scroll_ = false;
   float t_vuelta_ = 0;                    // cuadros desde la vuelta
   bool res_delay_hecho_ = false, recarga_hecha_ = false;
   int dificultad_ = 2;                  // 0 Very Easy .. 4 Very Hard (lista de 334/1 t16)
@@ -178,6 +181,7 @@ class PantallaDM {
   std::string aviso_;                   // minijuego elegido sin portar
   int video_ = -1, linea_ = 0;          // escena de la historia en curso (Contar)
   bool probado_ = false, en_video_ = false;   // el video original (video_sfd.h, R7) ya pedido / sonando
+  bool env_mision_aplicada_ = false;          // B3f: DBZ3_IW_MISION se consume una vez por mapa
   int mini_clave_ = -1, mini_fila_ = 0; // minijuego que empieza al acabar su escena
   float res_t0_ = -1;                   // resultado: cuando empezo el conteo (-1 = sin empezar)
   int res_sonadas_ = 0;                 // filas cuyo sonido ya sono (la ultima + 1 = el del premio)

@@ -548,7 +548,29 @@ def _raiz_amm_y_adornos(mdd, s):
     return tiene_amm, adornos
 
 
-def raices_quietas_b2(mdd):
+def _quietar_raiz(mdd, out, s):
+    """Todas las claves de las pistas #AMM de la raiz `s` = la del cuadro 0 (la raiz queda quieta, como en raices_zona_b)."""
+    for j in range(le(mdd, s)):
+        blk = le(mdd, le(mdd, s + 12) + 16 * j + 4)
+        if mdd[blk:blk + 4] != b"#AMM":
+            continue
+        n_anim, t, nb, no = struct.unpack_from("<4I", mdd, blk + 0x10)
+        for a in range(n_anim):
+            fl, _v, _nf, off = struct.unpack_from("<4I", mdd, blk + t + 16 * a)
+            per = 3 if fl & 0x10 else 2
+            for b in range(nb if off else 0):
+                for i in range(per):
+                    pista = le(mdd, blk + off + 4 * (per * b + i))
+                    if not pista:
+                        continue
+                    q, n_c = blk + pista, le(mdd, blk + pista + 8)
+                    paso, ini = (8, 2) if i == 0 else (16, 4)
+                    v0 = mdd[q + 12 + ini:q + 12 + paso]
+                    for c in range(1, n_c):
+                        out[q + 12 + paso * c + ini:q + 12 + paso * (c + 1)] = v0
+
+
+def raices_quietas_b2(mdd, todas=False):
     """B2: las animaciones de las raices del escenario (#MDD +0x08 n, +0x24 lista; raiz +0 n, +0xC entradas de 16 B
     [tipo, #AMM, parametros, 0]) son TODAS de destruccion (medido en los 9 grupos por los nombres de hueso: TOWER y
     NADARE en la nieve, HAKAI, BAKUHATU, KEMURI, HBILL...). B2 las dispara en un suceso del combate; B3 repite en bucle
@@ -561,7 +583,7 @@ def raices_quietas_b2(mdd):
     rl, n_raiz = le(mdd, 0x24), le(mdd, 8)
     if not rl:
         return mdd, 0, 0
-    quedan, quietas = [], 0
+    quedan, quietas, suceso_raices = [], 0, []
     for k in range(n_raiz):
         s = le(mdd, rl + 4 * k)
         nombres = []
@@ -587,11 +609,32 @@ def raices_quietas_b2(mdd):
         tiene_amm, adornos = _raiz_amm_y_adornos(mdd, s)
         if adornos and not tiene_amm:   # grupo 1 (BUDO): raiz solo #AMP; B3 se cierra al dibujar su lista
             continue
-        suceso = any(re.match(r"BB[A-Z]{3}B\d", nm) for nm in nombres) or             any(w in nm.upper() for nm in nombres for w in SUCESO_B2)
+        # X1esc 23/10 (Base): `todas` conserva en su orden las raices de la variante B (BB<esc>B..), quietas: los huesos de las
+        # piezas de la zona B se numeran sobre TODAS las raices (id 65 > 26 huesos de las que quedaban: sub_82090820 con r3 = 0x290)
+        suceso = (not todas) and (any(re.match(r"BB[A-Z]{3}B\d", nm) for nm in nombres) or any(w in nm.upper() for nm in nombres for w in SUCESO_B2))
         if suceso:
+            suceso_raices.append(s)
             continue
         quietas += bool(nombres)
         quedan.append(s)
+    # X1esc 23/10: el cambio de zona del motor lee una segunda raiz; g0 (Base Red Ribbon) se quedaba con una sola y
+    # la segunda posicion de la lista a 0 -> cierre en sub_82090820 (guest 0x294). Se completa hasta 2 con raices de
+    # suceso NEUTRALIZADAS (los 0x20 B a cero: una raiz vacia valida, como las de g7 y g8).
+    # X1esc 23/10 (Base): la segunda raiz que lee el cambio de zona es la de la variante B (BB<esc>B..) y no una copia de
+    # la A (el objeto 1 se dibujaba con una lista de nodos ajena: sub_82090820 con r3 = 0x290 desde lr 0x8208E5AC). Si
+    # hay una raiz de variante B con #AMM se conserva, quieta en su cuadro 0.
+    if os.environ.get("X1ESC_BASE_RAIZ_B", "1") != "0":
+        for s_b in [x for x in suceso_raices if variante_raiz(mdd, x) == 1]:
+            if len(quedan) >= min(2, n_raiz):
+                break
+            _quietar_raiz(mdd, out, s_b)
+            quedan.append(s_b)
+            suceso_raices.remove(s_b)
+    for s_vacia in suceso_raices:
+        if len(quedan) >= min(2, n_raiz):
+            break
+        out[s_vacia:s_vacia + 0x20] = mdd[quedan[0]:quedan[0] + 0x20] if quedan else bytes(0x20)   # copia de una raiz valida (la de ceros daba 'UNREGISTERED indirect call target 0' al cargar, lr 0x8208018C)
+        quedan.append(s_vacia)
     for k, s in enumerate(quedan):
         struct.pack_into("<I", out, rl + 4 * k, s)
     struct.pack_into("<I", out, 8, len(quedan))
@@ -830,6 +873,100 @@ def objetos_zona_b(mdd):
     return bytes(out), True
 
 
+def _spx_tokens(b, start):
+    out, i = [], start
+    while i < len(b):
+        op = b[i]
+        if op == 0x0b:
+            out.append((i, ("SEP",))); i += 1; continue
+        if op == 0x08 and i + 1 < len(b) and b[i + 1] in (0x10, 0x20, 0x30):
+            n = {0x10: 1, 0x20: 2, 0x30: 4}[b[i + 1]]
+            out.append((i, ("PUSH", int.from_bytes(b[i + 2:i + 2 + n], "little")))); i += 2 + n; continue
+        if op == 0x09 and i + 1 < len(b) and b[i + 1] == 0x30:
+            out.append((i, ("PUSHF",))); i += 6; continue
+        if op == 0x01 and i + 1 < len(b) and b[i + 1] in (0x10, 0x20, 0x30):
+            n = {0x10: 1, 0x20: 2, 0x30: 4}[b[i + 1]]
+            out.append((i, ("CALL", int.from_bytes(b[i + 2:i + 2 + n], "little")))); i += 2 + n; continue
+        if op == 0x02 and i + 2 < len(b) and b[i + 2] == 0x02:
+            out.append((i, ("END", b[i + 1]))); i += 3; continue
+        if op in (0x12, 0x13) and i + 2 < len(b):
+            out.append((i, ("OP", op))); i += 3; continue
+        out.append((i, ("RAW", op))); i += 1
+    return out
+
+
+def completar_registro(reg, donante):
+    """X1esc 23/10: el registro de 641 casillas del donante 44 trae vacias casillas que el juego pide en combates largos
+    (el builtin sub_820CCAF8 pide 110+tipo, 124 y 125; sin ellas: nombre NULL en sub_8208DEE0 y cierre). Los nativos
+    50, 54 y 60 las traen. Se rellenan las casillas vacias del donante que traen al menos dos de esos tres (con la
+    version del 50 si la tiene, si no la del 60 o la del 54). X1ESC_REG_COMPLETO=0 lo apaga (pruebas)."""
+    if os.environ.get("X1ESC_REG_COMPLETO") == "0":
+        return reg
+    fuentes = []
+    for d in (50, 60, 54):
+        if d == donante:
+            continue
+        nat = hd_nativo(d)
+        k = hijos_amb(nat, ">")
+        r = nat[k[4][0]:k[4][0] + k[4][1]]
+        fuentes.append((r, hijos_amb(r, ">")))
+    ch = hijos_amb(reg, ">")
+    hijos = [(reg[o:o + s] if s else None, ty) for o, s, ty, _f in ch]
+    puestas = []
+    for i in range(len(hijos)):
+        if hijos[i][0] or i >= 641:
+            continue
+        con = [(r, c[i]) for r, c in fuentes if i < len(c) and c[i][1]]
+        if len(con) >= 2:
+            r, (o, sz, ty, _f) = con[0]
+            hijos[i] = (r[o:o + sz], ty)
+            puestas.append(i)
+    if puestas:
+        print("registro completado con casillas del 50/60/54: %s" % puestas)
+    return amb_hd(hijos) if puestas else reg
+
+
+def nieve_g7(fuente, spx, reg):
+    """EXPERIMENTAL (X1ESC_NIEVE=1): la nieve de Montanas nevadas (B2 grupo 7). Traduce las llamadas 0x96 de B2 a la
+    llamada 289 del #SPX de B3 (a3 = casillero #ACE del registro; medida solo la forma, el significado de a1/a2/a4 es [H])
+    para los efectos 25..34 (los 35 y 36 no tienen entrada en el banco: se omiten) y mete esos #ACE en los casilleros
+    521..530 del registro. Devuelve (spx, reg)."""
+    def push(v):
+        return bytes([0x08, 0x10, v]) if v < 256 else (bytes([0x08, 0x20]) + struct.pack("<H", v) if v < 65536 else bytes([0x08, 0x30]) + struct.pack("<I", v))
+    def c289(a0, a1, a2, a3, a4, a5):
+        return (bytes.fromhex("0b") + push(a0) + push(a1) + bytes.fromhex("0830") + struct.pack("<I", a2) + push(a3)
+                + bytes.fromhex("0930") + struct.pack("<f", a4) + push(a5) + bytes.fromhex("012021010280021210" + "18"))
+    def espera(n):
+        return bytes([0x0b]) + push(n) + bytes([0x01, 0x30, 0x5c, 0x14, 0x00, 0x00, 0x02, 0x73, 0x02, 0x12, 0x10, 0x04])
+    b2spx = fuente.piezas(7)[3]
+    llam = llamadas_efectos_b2(b2spx)
+    banco = ps2hd.convert_block(fuente.entrada(fuente.escenarios()[7] + 5))
+    kids = hijos_amb(banco, ">")
+    bloques, j = [], 0
+    for _off, a in llam:
+        if len(a) < 5 or not isinstance(a[2], int) or not 25 <= a[2] <= 34 or not kids[a[2]][1]:
+            continue
+        bloques.append(c289(0, 0, 3204 - 16 * j, 521 + a[2] - 25, 0.0, int(a[3])))
+        j += 1
+    nuevo = b"".join(bloques) + espera(30)
+    T = _spx_tokens(spx, struct.unpack_from("<I", spx, 20)[0])
+    ins = None
+    for k, (off, t) in enumerate(T):
+        if t[0] == "SEP" and k + 1 < len(T) and T[k + 1][1] == ("RAW", 0x76):
+            ins = off
+    if ins is None:
+        raise ValueError("nieve_g7: no encuentro la cola del #SPX del donante")
+    spx = spx[:ins] + nuevo + spx[ins:]
+    ch = hijos_amb(reg, ">")
+    hijos = [(reg[o:o + s] if s else None, ty) for o, s, ty, _f in ch]
+    for e in range(25, 35):
+        o, s = kids[e][0], kids[e][1]
+        if s:
+            hijos[521 + e - 25] = (banco[o:o + s], 0xFFFFFFFF)
+    print("nieve_g7 (experimental): %d llamadas 289, #SPX %d B, #ACE en casilleros 521..530" % (j, len(spx)))
+    return spx, amb_hd(hijos)
+
+
 def escenario_b2(fuente, grupo, donante=44, zona=0, escala=1.0):
     """Bin HD de un escenario de B2 (o B1): geometria, grafo, colision y camaras del juego de origen; script
     (#SPX) y registro de efectos (#AMB de 641 casillas) del escenario nativo `donante` de la HD del jugador. El
@@ -853,7 +990,7 @@ def escenario_b2(fuente, grupo, donante=44, zona=0, escala=1.0):
         nat = hd_nativo(donante)
         k = hijos_amb(nat, ">")
         spx = nat[k[3][0]:k[3][0] + k[3][1]]
-        reg = nat[k[4][0]:k[4][0] + k[4][1]]
+        reg = completar_registro(nat[k[4][0]:k[4][0] + k[4][1]], donante)
         camaras = []
         for b in transicion:
             try:
@@ -865,9 +1002,19 @@ def escenario_b2(fuente, grupo, donante=44, zona=0, escala=1.0):
         cas = nat[k[2][0]:k[2][0] + k[2][1]] if not le(mas, 4) else camara(mas, b"#CAS")   # #MAS vacio (grupo 5): el #CAS del donante
         if not le(mas, 4):
             print("arreglos B2: el #MAS del grupo %d esta vacio: se usa el #CAS del donante %d" % (grupo, donante))
-        return amb_hd([(mdd_a_zdd(mdd, pistas_min=3, camaras=camaras, escala=escala), 0xFFFFFFFF), (camara(mad, b"#CAD"), 0xFFFFFFFF),
+        return amb_hd([(mdd_a_zdd(mdd, pistas_min=3, camaras=camaras, escala=escala), 0xFFFFFFFF), (nat[k[1][0]:k[1][0] + k[1][1]] if os.environ.get("X1ESC_CAD_DONANTE") else camara(mad, b"#CAD"), 0xFFFFFFFF),
                        (cas, 0xFFFFFFFF), (spx, 8), (reg, 0xFFFFFFFF)])
-    mdd, quitadas, quietas = raices_quietas_b2(mdd)
+    if os.environ.get("X1ESC_OCULTAR"):      # DIAGNOSTICO: "10,11" oculta esas partes del #AMO grande (truco FFFFFF/FFFF)
+        mdd = bytearray(mdd)
+        for off0, tam0 in bloques_mdd(bytes(mdd)):
+            if mdd[off0:off0 + 4] != b"#AMO" or tam0 < 500000:
+                continue
+            pm = amo2awo.PS2AMO(bytes(mdd[off0:off0 + tam0]))
+            for k in os.environ["X1ESC_OCULTAR"].split(","):
+                po = pm.amgs[0].all_parts[int(k)].off
+                struct.pack_into("<II", mdd, off0 + po, 0xFFFFFF, 0xFFFF)
+        mdd = bytes(mdd)
+    mdd, quitadas, quietas = raices_quietas_b2(mdd, todas=(grupo == 0 and os.environ.get('X1ESC_BASE_RAIZ_B', '1') != '0'))
     mdd, saneadas = sanear_anims_raiz_b2(mdd)
     mdd, sucesos = sin_camaras_suceso(mdd)
     print("arreglos B2: %d piezas de destruccion quitadas, %d quietas en su cuadro 0, %d camaras de suceso "
@@ -875,12 +1022,14 @@ def escenario_b2(fuente, grupo, donante=44, zona=0, escala=1.0):
     nat = hd_nativo(donante)
     k = hijos_amb(nat, ">")
     spx = nat[k[3][0]:k[3][0] + k[3][1]]
-    reg = nat[k[4][0]:k[4][0] + k[4][1]]
+    reg = completar_registro(nat[k[4][0]:k[4][0] + k[4][1]], donante)
     camaras = camaras_hd(nat[k[0][0]:k[0][0] + k[0][1]])
+    if os.environ.get("X1ESC_NIEVE") and grupo == 7 and fuente.juego == JUEGOS["b2"][0]:
+        spx, reg = nieve_g7(fuente, spx, reg)
     cas = nat[k[2][0]:k[2][0] + k[2][1]] if not le(mas, 4) else camara(mas, b"#CAS")   # #MAS vacio (grupo 5): el #CAS del donante
     if not le(mas, 4):
         print("arreglos B2: el #MAS del grupo %d esta vacio: se usa el #CAS del donante %d" % (grupo, donante))
-    return amb_hd([(mdd_a_zdd(mdd, pistas_min=3, camaras=camaras, escala=escala), 0xFFFFFFFF), (camara(mad, b"#CAD"), 0xFFFFFFFF),
+    return amb_hd([(mdd_a_zdd(mdd, pistas_min=3, camaras=camaras, escala=escala), 0xFFFFFFFF), (nat[k[1][0]:k[1][0] + k[1][1]] if os.environ.get("X1ESC_CAD_DONANTE") else camara(mad, b"#CAD"), 0xFFFFFFFF),
                    (cas, 0xFFFFFFFF), (spx, 8), (reg, 0xFFFFFFFF)])
 
 
@@ -903,7 +1052,7 @@ menu = {menu}       # data_cmn.afs: imagenes de la casilla (circulo, vista y rot
 id_se = {id_se}       # data_cmn.afs: sonido/ambiente (del escenario nativo donante)
 tema = {tema}          # luz y cielo: funcion de tema del registro {tema} (generica)
 {zona_b_linea}"""
-ZONA_B_LINEA = "zona_b = {entrada_a}     # MOD OPCIONAL (dbz3_escenarios_zonas_b): esta variante es la zona B de la entrada {entrada_a} (al caer por el borde se pasa a ella)\n"
+ZONA_B_LINEA = "zona_b = {entrada_a}     # esta variante es la zona B de la entrada {entrada_a} (al caer por el borde se pasa a ella: dbz3_escenarios_zonas_b)" + chr(10) + "selector = false     # la zona B no sale en el selector: solo se llega a ella en el combate" + chr(10)
 
 # ---------------------------------------------------------------------------------------------------------
 # Imagenes de la casilla del selector (#AZT propio: 0 circulo, 1 vista, 2 rotulo, 3 bola), con las medidas de las

@@ -20,8 +20,10 @@
 // del ganador mgr+35136 (0 = el jugador), mgr = *0x823D6CF4 (los de tagteam.cpp LabTick). Perder: reintentar o salir;
 // el avance se guarda en user_data/dbz3/pasarela/progreso.toml.
 // Sin ganchos REX_HOOK_RAW propios. US y EU (direcciones con su pareja EU: src/eu_map.h).
+#include "reloj_prueba.h"
 #include "pasarela.h"
 
+#include <rex/cvar.h>
 #include <rex/hook.h>
 #include <rex/input/input_system.h>
 #include <rex/logging.h>
@@ -62,6 +64,7 @@
 #include "launcher/launcher_state.h"
 #include "launcher/settings.h"
 #include "mods.h"
+#include "ps2_modelo.h"
 
 namespace dbz3::hub {
 // 0 = lo normal en cada campo; time_s > 0 segundos, < 0 sin tiempo; hp > 0 vida inicial y maxima, < 0 solo la
@@ -108,10 +111,7 @@ constexpr uint32_t kX0 = 2096, kXPaso = 8240, kVida = 6080, kVidaMax = 6084, kKi
 constexpr uint32_t kNivelCom = 35573, kLimite = 2028, kPasado = 35144;
 constexpr float kKiBarra = 1000.0f;   // ki de B3 por barra (medido: ver docs/16_pasarela_modos/01 s5)
 
-int64_t NowMs() {
-  return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch())
-      .count();
-}
+int64_t NowMs() { return dbz3::RelojMs(); }
 uint8_t* Base() {
   rex::Runtime* rt = rex::Runtime::instance();
   return rt ? rt->virtual_membase() : nullptr;
@@ -207,7 +207,7 @@ constexpr Nombre kNombres[] = {
     {19, "Nappa", "Nappa"}, {20, "Ginyu", "Ginyu"}, {21, "Recoome", "Recoome"}, {27, "Freezer", "Frieza"},
     {28, "Androide 16", "Android 16"}, {29, "Androide 17", "Android 17"}, {30, "Androide 18", "Android 18"},
     {32, "Dr. Gero", "Dr. Gero"}, {33, "Cell", "Cell"}, {34, "Majin Bu", "Majin Buu"}, {35, "Súper Bu", "Super Buu"},
-    {36, "Bu (niño)", "Kid Buu"}, {37, "Dabura", "Dabura"}, {38, "Cooler", "Cooler"}, {42, "Saibaman", "Saibaman"}, {43, "Cell Jr.", "Cell Jr."}};
+    {36, "Bu (niño)", "Kid Buu"}, {37, "Dabura", "Dabura"}, {38, "Cooler", "Cooler"}, {41, "1-Star Dragon", "1-Star Dragon"}, {42, "Saibaman", "Saibaman"}, {43, "Cell Jr.", "Cell Jr."}};
 
 // Personajes de mods: mods/_roster/roster.toml ("# <Nombre> (mod <carpeta>)" + "id = N", como tagteam_panel.cpp) y el
 // origen de cada uno en mods/<carpeta>/personaje.toml (origen_fuente / origen_clave, los escribe importar.py).
@@ -1009,7 +1009,7 @@ void DibujarCara(ImDrawList* dl, const S::Area& a, int id, float x0, float y0, f
                on ? IM_COL32_WHITE : IM_COL32(120, 120, 130, 255), espejo);
     dl->PopClipRect();
   }
-  if (nombre && *nombre) S::MenuText(dl, a.At(x0 + w * 0.5f, y0 + w + 42 + bob), 44 * a.s, nombre, on, false);
+  if (nombre && *nombre) S::MenuText(dl, a.At(x0 + w * 0.5f, y0 + w + 42 + bob), 44 * a.s, nombre, on, false, w * a.s);
 }
 
 namespace {
@@ -1076,7 +1076,50 @@ void Publicar(int fase) {   // con g_mu
   ++g_cambio;
 }
 
+// S5-A3: musica de cada combate como B1. El byte +0x72 del registro es el indice de la tabla de pistas del ELF
+// (VA 0x360540, u16: entrada de ADX_JP.AFS; puntero en 0x350CE8; la rutina 0x19AE60 la toca por el canal 0 al cargar el
+// combate). MEDIDO en PCSX2 (gancho en 0x1369D0, 10 rondas, 22/10): indice de la tabla -> entrada que suena = 74, 74, 73,
+// 71, 72, 82, 75, 81, 81, 79 para las rondas 2-11 (= tabla[byte 4, 4, 3, 1, 2, 15, 5, 14, 14, 12]); la ronda 1 (byte 0 -> 70)
+// sin medir [H]. La pista arranca 0,15 s despues de empezar la carga, o sea con la primera toma del "READY?".
+constexpr int kBgmB1[17] = {70, 71, 72, 73, 74, 75, 76, 77, 78, 62, 63, 64, 79, 80, 81, 82, 83};
+std::atomic<uint32_t> g_mus_ficha{0};
+std::atomic<int> g_mus_pista{-1};
+void DetenerMusica() {
+  ++g_mus_ficha;
+  g_mus_pista = -1;
+  CallarMusicaPs2();
+}
+
+// S1 (A3 O3 #1): la mezcla de B3 durante las escenas de la leyenda. Medido en A3 ola 4 (volcado de audio del SDK +
+// traza de streams): en combate B3 NO abre ninguna pista de musica; lo que queda es el ambiente del escenario (RMS
+// 0,05, grave y tonal, centroide 614 Hz; parar todos los streams con sub_82081A48(-1) no lo cambia). Mientras dura la
+// escena y suena la musica de B1, se calla esa mezcla con la ganancia del driver SDL (`audio_gain`, la misma que usa
+// video_sfd.cpp) y se devuelve al valor que tuviera al acabar. En el combate NO se toca (callar la mezcla apagaria
+// tambien los golpes; el ambiente medido no es musica). DBZ3_SIN_CALLAR_B3=1 lo apaga.
+void CallarMezclaB3(bool si) {
+  static const bool sin = std::getenv("DBZ3_SIN_CALLAR_B3") != nullptr;
+  static double previa = -1;
+  if (sin) return;
+  if (si) {
+    if (previa < 0) {
+      const std::string v = rex::cvar::GetFlagByName("audio_gain");
+      previa = v.empty() ? double(dbz3::settings::MasterVolume()) : std::atof(v.c_str());
+      rex::cvar::SetFlagByName("audio_gain", "0");
+      REXLOG_INFO("dbz3 pasarela: mezcla de B3 callada mientras dura la escena (audio_gain {:.2f} -> 0)", previa);
+    }
+  } else if (previa >= 0) {
+    rex::cvar::SetFlagByName("audio_gain", std::to_string(previa));
+    REXLOG_INFO("dbz3 pasarela: mezcla de B3 devuelta (audio_gain {:.2f})", previa);
+    previa = -1;
+  }
+}
+void CallarB3EnEscena(dbz3::cinematica::Escena& e) {   // S1: callar la mezcla de B3 durante la escena y devolverla al acabar
+  e.al_empezar_escena = [] { CallarMezclaB3(true); };
+  e.al_terminar_escena = [] { CallarMezclaB3(false); };
+}
+
 void Salir(bool completo) {   // con g_mu
+  DetenerMusica();
   CallarVozB1();
   CallarAdxPs2();
   if (completo) {
@@ -1094,11 +1137,15 @@ void Salir(bool completo) {   // con g_mu
 }
 
 bool g_previa_vista = false;   // S1-F03.1: con g_mu; la escena previa de los Juegos de Cell ya salio en este paso
+bool g_final_vista = false;       // S5-A3: con g_mu; la escena final 3D ya salio
+bool g_final_pendiente = false;   // con g_mu; ganada la ultima ronda: Lanzar() abre la escena final 3D (mismo paso)
 std::atomic<bool> g_previa_combate{false};   // S1-F03.1: el combate en curso es el "solo escena" (sin puntos en pantalla)
 std::atomic<bool> g_previa_negro{false};     // S1-F03.1: tras la escena previa, negro hasta que B3 suelta el combate
 
 void Entrar(int paso) {   // con g_mu
   g_previa_vista = false;
+  g_final_pendiente = false;
+  if (paso == 0) g_final_vista = false;
   g_paso = paso;
   g_intentos = 0;
   Publicar(paso >= int(g_pasos.size()) ? kFin : kPantalla);
@@ -1156,18 +1203,76 @@ void Toma(dbz3::cinematica::Paso& p, std::array<float, 3> o0, std::array<float, 
 // Las dos tomas cortas de cada ronda antes del "READY?": Mr. Satan desde abajo con los brazos abiertos (B1: camara a ras
 // de suelo, el cuerpo entero con las rodillas y la cabeza casi en los bordes, sube un poco) y el retador de cerca.
 // Duraciones medidas en B1 (s9b, capturas a camara lenta): 2,6 s la primera y 2,3 s la segunda (no 2,4).
-void TomasPresentacion(dbz3::cinematica::Escena& e) {
+// S5-A3: camara del "READY?" MEDIDA en PCSX2 (B1 europeo, ronda 2, estado 4 + START; PINE ~10 000 lecturas/s de 0x5751D0:
+// +0x10 ojo, +0x20 objetivo, mundo de B1 = marco de Paso::rel con el suelo en y = 3,9). Repetida con otros dos arranques
+// (identicas al decimal; un tercero con el rival cambiado en la tabla, tambien). Cada toma son 150 cuadros de la camara
+// (PAL, 50 Hz = 3,0 s; la primera dura 151 actualizaciones, la segunda 149): una vuelta del ojo alrededor de un luchador,
+// subiendo de y = 4,2 a 13,7. Primera: Mr. Satan; segunda: el retador. Claves {cuadro de 60 Hz, x, y, z} (Douglas-Peucker,
+// error <= 0,35 u). La camara es del modo, no del retador: los dos van en x = -15 y +15 en las 11 rondas ([H]: medida
+// solo con la ronda 2, Ten Shin Han; la tabla de B1 pone las mismas posiciones y el mismo escenario en las 11).
+constexpr float kFovVerticalB1 = 0.611f;   // A3b: el 0,611 rad del #AMC es el fov HORIZONTAL (4:3): vertical = 2 atan(tan(0,3055) * 3/4) = 0,45 (confirmado a ojo con las capturas pareadas: tamano de la cabeza de Satan)
+constexpr float kFovB1 = 0.583f;   // 2 atan(0,3), medido en S1-F03
+constexpr std::array<float, 4> kReady1_ojo[] = {{0.0f, -14.5f, 4.2f, 20.3f}, {19.2f, -11.3f, 5.1f, 20.0f}, {43.2f, -7.1f, 6.4f, 18.7f}, {64.8f, -3.6f, 7.6f, 16.8f}, {88.8f, -0.3f, 8.9f, 13.9f}, {111.6f, 2.2f, 10.1f, 10.6f}, {134.4f, 4.0f, 11.3f, 6.8f}, {158.4f, 4.9f, 12.6f, 2.5f}, {180.0f, 5.0f, 13.7f, -1.2f}};
+constexpr std::array<float, 4> kReady2_ojo[] = {{0.0f, 15.3f, 4.2f, 20.0f}, {24.0f, 11.2f, 5.4f, 19.5f}, {44.4f, 7.6f, 6.5f, 18.4f}, {66.0f, 4.1f, 7.7f, 16.6f}, {87.6f, 1.1f, 8.8f, 14.0f}, {111.6f, -1.6f, 10.1f, 10.6f}, {132.0f, -3.3f, 11.2f, 7.3f}, {154.8f, -4.4f, 12.4f, 3.3f}, {177.6f, -4.7f, 13.6f, -0.7f}};
+// Objetivo por retador (r = indice de la tabla de B1, 1..10): el ojo es el mismo en todas (error <= 0,5 u entre las 8 rondas
+// medidas, 22/10, S5-A3) pero el objetivo sigue la cabeza del luchador. r = 0 (Yamcha) y r = 2 (Krilin) medidas en la ola 3 (ojo igual, error <= 0,5 u).
+constexpr std::array<float, 4> kReadyObj_1_1[] = {{0.0f, -17.1f, 15.0f, 1.6f}, {103.2f, -17.3f, 12.9f, 1.4f}, {178.8f, -15.5f, 8.8f, 1.0f}};
+constexpr std::array<float, 4> kReadyObj_1_2[] = {{0.0f, 13.4f, 12.6f, -0.5f}, {25.2f, 13.1f, 12.4f, -0.5f}, {69.6f, 11.6f, 11.5f, 0.1f}, {122.4f, 13.1f, 11.0f, -0.0f}, {177.6f, 12.7f, 8.5f, 0.4f}};
+constexpr std::array<float, 4> kReadyObj_3_1[] = {{0.0f, -15.3f, 14.6f, 0.4f}, {70.8f, -15.3f, 13.5f, 0.1f}, {178.8f, -14.6f, 10.0f, -0.0f}};
+constexpr std::array<float, 4> kReadyObj_3_2[] = {{0.0f, 16.9f, 17.6f, -1.4f}, {69.6f, 16.9f, 16.6f, -1.3f}, {177.6f, 16.9f, 12.9f, -0.9f}};
+constexpr std::array<float, 4> kReadyObj_4_1[] = {{0.0f, -17.1f, 15.0f, 1.6f}, {103.2f, -17.3f, 12.9f, 1.4f}, {178.8f, -15.5f, 8.8f, 1.0f}};
+constexpr std::array<float, 4> kReadyObj_4_2[] = {{0.0f, 14.0f, 10.3f, -0.6f}, {26.4f, 13.7f, 10.1f, -0.6f}, {70.8f, 12.1f, 9.3f, -0.1f}, {122.4f, 13.4f, 8.8f, -0.2f}, {177.6f, 12.9f, 6.6f, 0.2f}};
+constexpr std::array<float, 4> kReadyObj_5_1[] = {{0.0f, -15.3f, 14.6f, 0.4f}, {70.8f, -15.3f, 13.5f, 0.1f}, {178.8f, -14.6f, 10.0f, -0.0f}};
+constexpr std::array<float, 4> kReadyObj_5_2[] = {{0.0f, 17.2f, 12.3f, 0.4f}, {49.2f, 16.7f, 11.8f, 0.2f}, {98.4f, 15.4f, 9.8f, -0.1f}, {177.6f, 14.9f, 6.8f, -0.2f}};
+constexpr std::array<float, 4> kReadyObj_6_1[] = {{0.0f, -17.1f, 15.0f, 1.6f}, {105.6f, -17.2f, 12.8f, 1.4f}, {178.8f, -15.5f, 8.8f, 1.0f}};
+constexpr std::array<float, 4> kReadyObj_6_2[] = {{0.0f, 16.6f, 15.9f, 0.7f}, {74.4f, 16.6f, 14.7f, 0.7f}, {177.6f, 16.2f, 11.5f, 0.1f}};
+constexpr std::array<float, 4> kReadyObj_7_1[] = {{0.0f, -17.0f, 15.0f, 1.6f}, {105.6f, -17.2f, 12.8f, 1.4f}, {178.8f, -15.5f, 8.8f, 1.0f}};
+constexpr std::array<float, 4> kReadyObj_7_2[] = {{0.0f, 16.2f, 8.0f, 0.1f}, {177.6f, 16.1f, 5.3f, -0.2f}};
+constexpr std::array<float, 4> kReadyObj_8_1[] = {{0.0f, -15.3f, 14.6f, 0.4f}, {70.8f, -15.3f, 13.5f, 0.1f}, {178.8f, -14.6f, 10.0f, -0.0f}};
+constexpr std::array<float, 4> kReadyObj_8_2[] = {{0.0f, 17.1f, 13.5f, -1.6f}, {103.2f, 17.3f, 11.8f, -1.4f}, {177.6f, 15.6f, 8.2f, -0.9f}};
+constexpr std::array<float, 4> kReadyObj_9_1[] = {{0.0f, -15.3f, 14.6f, 0.4f}, {70.8f, -15.3f, 13.5f, 0.1f}, {178.8f, -14.6f, 10.0f, -0.0f}};
+constexpr std::array<float, 4> kReadyObj_9_2[] = {{0.0f, 16.8f, 8.5f, -1.1f}, {104.4f, 17.0f, 7.2f, -1.0f}, {177.6f, 15.9f, 4.7f, -0.8f}};
+constexpr std::array<float, 4> kReadyObj_10_1[] = {{0.0f, -15.3f, 14.6f, 0.4f}, {70.8f, -15.3f, 13.5f, 0.1f}, {178.8f, -14.6f, 10.0f, -0.0f}};
+constexpr std::array<float, 4> kReadyObj_10_2[] = {{0.0f, 17.2f, 16.6f, -1.6f}, {105.6f, 17.5f, 14.5f, -1.3f}, {177.6f, 15.8f, 10.4f, -0.9f}};
+constexpr std::array<float, 4> kReadyObj_0_1[] = {{0.0f, -15.3f, 14.6f, 0.4f}, {70.8f, -15.3f, 13.5f, 0.1f}, {178.8f, -14.6f, 10.0f, 0.0f}};
+constexpr std::array<float, 4> kReadyObj_0_2[] = {{0.0f, 13.7f, 11.1f, -0.7f}, {25.2f, 13.5f, 11.0f, -0.7f}, {70.8f, 11.9f, 10.1f, -0.1f}, {122.4f, 13.3f, 9.7f, -0.3f}, {177.6f, 12.9f, 7.4f, 0.2f}};
+constexpr std::array<float, 4> kReadyObj_2_1[] = {{0.0f, -17.0f, 15.0f, 1.6f}, {104.4f, -17.2f, 12.8f, 1.4f}, {178.8f, -15.4f, 8.7f, 1.0f}};
+constexpr std::array<float, 4> kReadyObj_2_2[] = {{0.0f, 16.7f, 9.3f, -1.8f}, {103.2f, 16.9f, 8.0f, -1.6f}, {176.4f, 15.4f, 5.3f, -1.1f}};
+struct ObjReady { const std::array<float, 4>* a; size_t n; };
+#define DBZ3_OBJ(r, t) ObjReady{kReadyObj_##r##_##t, std::size(kReadyObj_##r##_##t)}
+const ObjReady kObjReady[11][2] = {
+    {DBZ3_OBJ(0, 1), DBZ3_OBJ(0, 2)}, {DBZ3_OBJ(1, 1), DBZ3_OBJ(1, 2)}, {DBZ3_OBJ(2, 1), DBZ3_OBJ(2, 2)}, {DBZ3_OBJ(3, 1), DBZ3_OBJ(3, 2)},
+    {DBZ3_OBJ(4, 1), DBZ3_OBJ(4, 2)}, {DBZ3_OBJ(5, 1), DBZ3_OBJ(5, 2)}, {DBZ3_OBJ(6, 1), DBZ3_OBJ(6, 2)}, {DBZ3_OBJ(7, 1), DBZ3_OBJ(7, 2)},
+    {DBZ3_OBJ(8, 1), DBZ3_OBJ(8, 2)}, {DBZ3_OBJ(9, 1), DBZ3_OBJ(9, 2)}, {DBZ3_OBJ(10, 1), DBZ3_OBJ(10, 2)}};
+#undef DBZ3_OBJ
+// Voces de las dos tomas (ADX_JP.AFS; MEDIDAS con el gancho de 0x1369D0, canal 1 = Mr. Satan, canal 2 = el retador, 22/10):
+// {entrada de Mr. Satan, ms desde el principio de la toma 1, entrada del retador, ms desde el principio de la toma 2}. r = 0
+// (Yamcha) y r = 1 solo la 2.a ronda medida con var 1; Yamcha sin medir [H] (usa la fila 1).
+constexpr int kVozReady[11][4] = {{1303, 300, 1516, 30}, {1302, 1370, 1477, 1260}, {1307, 1580, 662, 1440}, {1299, 1670, 15, 1770},
+                                  {1302, 1330, 1456, 1130}, {1303, 320, 1493, 330}, {1307, 1600, 1160, 830},
+                                  {1302, 1330, 103, 750}, {1299, 1680, 614, 1420}, {1303, 320, 569, 1510}, {1299, 1730, 93, 2040}};
+void TomasPresentacion(dbz3::cinematica::Escena& e, int r = 1) {
   namespace C = dbz3::cinematica;
   C::Paso p;
   p.plano = C::kLado1;
-  p.segundos = 2.6f;
+  p.segundos = 3.0f;
   p.anim[0] = C::kPoseEntrada1;
-  Toma(p, {-2.0f, 1.2f, 27.0f}, {-15.0f, 8.5f, 0.0f}, {-4.0f, 4.0f, 25.0f}, {-15.0f, 9.0f, 0.0f});
+  p.rel = true;
+  p.cam_ojo.assign(std::begin(kReady1_ojo), std::end(kReady1_ojo));
+  const ObjReady& o1 = kObjReady[std::clamp(r, 0, 10)][0];
+  p.cam_obj.assign(o1.a, o1.a + o1.n);
+  p.cam_fov = {{0.0f, kFovB1}};
+  if (!e.iso_voces.empty()) p.voces = {-kVozReady[std::clamp(r, 0, 10)][1], kVozReady[std::clamp(r, 0, 10)][0]};
   e.pasos.push_back(p);
   p = C::Paso{};
   p.plano = C::kLado2;
-  p.segundos = 2.3f;
-  Toma(p, {24.0f, 8.0f, 28.0f}, {15.0f, 7.0f, 0.0f}, {23.0f, 7.5f, 29.0f}, {15.0f, 7.0f, 0.0f});
+  p.segundos = 3.0f;
+  p.rel = true;
+  p.cam_ojo.assign(std::begin(kReady2_ojo), std::end(kReady2_ojo));
+  const ObjReady& o2 = kObjReady[std::clamp(r, 0, 10)][1];
+  p.cam_obj.assign(o2.a, o2.a + o2.n);
+  p.cam_fov = {{0.0f, kFovB1}};
+  if (!e.iso_voces.empty()) p.voces = {-kVozReady[std::clamp(r, 0, 10)][3], kVozReady[std::clamp(r, 0, 10)][2]};
   e.pasos.push_back(p);
 }
 // Juegos de Cell (ronda 1): en B1 la escena 0x1C dura ~60 s con Cell, Goku, el reportero, el coche y Mr. Satan. El motor
@@ -1207,7 +1312,7 @@ void EscenaCell(dbz3::cinematica::Escena& e) {
   p.linea = T::T("Os acabo a todos a la vez. ¡Venid a por mí!", "I'll take you all on at once. Come and get it!");
   Toma(p, {-9.0f, 12.6f, 8.0f}, {-15.0f, 12.4f, 0.0f}, {-11.0f, 12.6f, 7.0f}, {-15.0f, 12.4f, 0.0f});
   e.pasos.push_back(p);
-  TomasPresentacion(e);
+  TomasPresentacion(e, 0);   // r = 0: Yamcha (camara y voces medidas en la ronda 1)
 }
 
 // S1-F03.1: escena previa de los Juegos de Cell (B1, escena 0x1C de la ronda 1, antes de Mr. Satan): Goku (SSJ) contra
@@ -1265,7 +1370,6 @@ const TomaPrevia kTomasPrevia[] = {
 // Campo de vision vertical de B1 en estas tomas: medido proyectando a Goku (suela y = 3,9 en el pixel 385, punta del pelo
 // 24,07 en el 95, captura del estado de PCSX2 a los 33,5 s, 640x480) con el ojo y el objetivo leidos: 0,579 rad, que es
 // 2 atan(0,3) = 0,583 (la camara de B1 guarda 1,2 = 4 x 0,3 en +0). B3 usa 0,785 (mgr+0x1C4, cine.cpp).
-constexpr float kFovB1 = 0.583f;
 void EscenaPrevia(dbz3::cinematica::Escena& e) {
   namespace C = dbz3::cinematica;
   for (const auto& t : kTomasPrevia) {
@@ -1287,18 +1391,355 @@ void EscenaPrevia(dbz3::cinematica::Escena& e) {
 // la escena, se da por terminado como un ring out del lado 1 (mgr+35569 = hueco del ganador + 1, como los retos de
 // VigilarCombate) para no dejar ese segundo de pelea. Sin puntos ni avance: al soltar el combate se vuelve al mismo
 // paso y DrawCombate pide el combate de Yamcha (Lanzar).
-bool LanzarPrevia(int escenario) {   // con g_mu
+// ---- S5-A3b: reportera (con su micro), tarjeta "secreto" y Cell tumbado de la escena final, portados de B1 ----
+// Todo sale en marcha de la ISO de B1 del jugador (nada va en la version): el paquete de la escena es DATA_EN.AFS #2374
+// (#AMB): hijo 1 = #AMM de Cell (THL_, 1 clip de 650 cuadros: su pose de KO), hijo 2 = #AMM de la reportera (ANS00_, 2 clips
+// de 400 y 380 cuadros: entra andando y se queda con el micro), hijos 3/4/5 = #AMO EFT_BOOK + #AMM (2 clips de 320) + #AMT
+// de la tarjeta "secreto" (256 x 256 con el sello); los modelos son DATA_EN 335/336 (Cell perfecto) y 57/58 (reportera).
+// Los clips llevan la POSICION en el mundo de B1 en la pista del hueso WAIST (Satan: (-36,13.7,-43) = su ancla medida), asi
+// que la colocacion es dato, no ajuste: se pasa al marco de la camara medida (conv de A3/herramientas/gen_final.py:
+// x' = z + 22,2, y' = y - 3,9, z' = -(x + 35)) y de ahi al mundo con los dos luchadores. Orden de los clips de Satan
+// del paquete (650, 350, 400, 380, 320, 320, 310, 440 cuadros a 60 Hz = 52,8 s) = las tomas medidas (cortes de camara a
+// 17, 24, 35 y 46 s): reportera = clips 2 y 3 de Satan, tarjeta = 4 y 5, Cell = el 0. Se pintan con ps2_modelo (toon de
+// B3, camara del combate, z-buffer del juego).
+struct ClipFinal {
+  ps2::Anim an;
+  int g0 = 0;   // cuadro global (60 Hz desde el principio de la escena) en que empieza
+};
+struct PiezaFinal {
+  ps2::Modelo m;
+  std::vector<ps2::Tex> tx;
+  std::vector<ClipFinal> clips;
+  float dx = 0, dy = 0, dz = 0, cuadros = 0;   // ajuste de prueba (marco de la escena) y desfase de cuadros
+  float alto = 0;   // altura del modelo (para el borde del toon)
+  float escala = 1.0f;   // escala del actor en B1 (la reportera: 0,81, medida en la RAM: sus huesos miden 0,81 de los del modelo)
+  int waist = -1;        // hueso WAIST (la pista de posicion lleva su sitio en el mundo; el pivote de la escala)
+  bool ok = false, subida = false;
+};
+struct PropsFinal {
+  PiezaFinal rep, cell, tarjeta;
+  std::atomic<int> estado{0};   // 0 sin pedir, 1 cargando, 2 cargado (el hilo de dibujo sube las texturas)
+  std::atomic<bool> activo{false};
+  std::atomic<int64_t> t0{0};   // ms: principio de la escena (primer paso)
+};
+PropsFinal g_pf;
+constexpr float kFinalOffsetS = 0.0f;   // el cuadro 0 de los clips es el 0 de la escena: los cortes de camara medidos (10,74 / 23,29 / 29,67 / 34,87 / 40,32 s) caen en 650 / 1400 / 1780 / 2100 / 2420 cuadros a 60 Hz
+int HuesoDe(const std::vector<uint8_t>& amo, const char* nombre) {   // indice del hueso `nombre` del #AMO de PS2 (tabla de nombres de 32 B)
+  uint32_t nb = 0, nom = 0;
+  if (amo.size() < 0x30) return -1;
+  std::memcpy(&nb, &amo[0x10], 4);
+  std::memcpy(&nom, &amo[0x24], 4);
+  for (uint32_t i = 0; i < nb && size_t(nom) + 32 * (i + 1) <= amo.size(); ++i)
+    if (std::strncmp(reinterpret_cast<const char*>(&amo[nom + 32 * i]), nombre, 32) == 0) return int(i);
+  return -1;
+}
+// Animacion `clip` de un #AMM de B1 para un #AMO cuyos huesos no son los mismos que los del #AMM (el #AMM no trae los de
+// relleno, p. ej. X<P>_BODY o los NL): cada pista va al hueso del #AMO de su mismo nombre. ps2::LeerAnim asume el mismo orden.
+ps2::Anim AnimB1(const std::vector<uint8_t>& amo, const std::vector<uint8_t>& amm, uint32_t clip, size_t nb_amo) {
+  uint32_t nb = 0, nom = 0, bn = 0, bnom = 0;
+  if (amo.size() < 0x30 || amm.size() < 0x30) return {};
+  std::memcpy(&nb, &amo[0x10], 4);
+  std::memcpy(&nom, &amo[0x24], 4);
+  std::memcpy(&bn, &amm[0x18], 4);
+  std::memcpy(&bnom, &amm[0x1C], 4);
+  ps2::Anim a = ps2::LeerAnim(amm, clip, bn);
+  if (!a || nb != nb_amo) return {};
+  ps2::Anim r;
+  r.cuadros = a.cuadros;
+  r.ang.resize(nb);
+  r.pos.resize(nb);
+  for (uint32_t j = 0; j < bn && size_t(bnom) + 32 * (j + 1) <= amm.size(); ++j) {
+    const char* n = reinterpret_cast<const char*>(&amm[bnom + 32 * j]);
+    for (uint32_t i = 0; i < nb && size_t(nom) + 32 * (i + 1) <= amo.size(); ++i)
+      if (std::strncmp(n, reinterpret_cast<const char*>(&amo[nom + 32 * i]), 32) == 0) {
+        r.ang[i] = a.ang[j];
+        r.pos[i] = a.pos[j];
+        break;
+      }
+  }
+  return r;
+}
+// Listas de pesos de B1 con casi nada de peso (p. ej. 0,004 en un solo hueso: la reportera): ps2::Posar da el resto al padre
+// del hueso en su reposo (regla de IW/B2), y con la pista del WAIST en coordenadas del mundo ese vertice se queda en el origen
+// (pincho de 100 u); con peso 0 el vertice queda en (0, 0, 0). En B1 esas listas valen 1 (normalizadas o rigidas a su hueso).
+int NormalizarPesosB1(ps2::Esqueleto& e) {
+  int n = 0;
+  for (auto& lista : e.pesos) {
+    float sw = 0;
+    for (const auto& q : lista) sw += q.w;
+    if (sw > 1e-6f && sw < 0.05f) {
+      for (auto& q : lista) q.w /= sw;
+      ++n;
+    } else if (sw <= 1e-6f && !lista.empty()) {   // peso 0 (el vertice quedaba en el origen): rigido a su hueso
+      lista[0].w = 1.0f;
+      ++n;
+    }
+  }
+  return n;
+}
+// El mod "Final Leyenda Satan (B1)" (mod center hd/final_b1.py, creado de la ISO de B1 del jugador) mete en el moveset NATIVO de
+// Cell y de Mr. Satan un clip con las poses de B1 (Cell tumbado; Satan con su animacion de la escena) en el codigo 0x2F8: con el,
+// la escena usa los luchadores de B3 y no hace falta pintar a Cell de B1.
+constexpr int kCodigoFinalB1 = 0x2F8;
+bool ModFinalB1() {
+  static const bool si = [] {
+    if (std::getenv("DBZ3_SIN_MOD_FINAL")) return false;
+    for (const auto& m : dbz3::ListMods(false))
+      if (m.name == "Final Leyenda Satan (B1)" && m.enabled) return true;
+    return false;
+  }();
+  return si;
+}
+// A3b: contorno sin puntas. El borde del toon se extruye por la normal de cada vertice y la malla de B1 repite los vertices en las costuras con
+// normales distintas (puntas en los punos de la reportera): se promedian las normales de los vertices coincidentes (a menos de 1e-3 u) cuando
+// difieren menos de 75 grados (como hizo E3 en su conversion), en la malla en reposo y en las listas de pesos (en el espacio de cada hueso).
+int SuavizarNormales(ps2::Esqueleto& e) {
+  struct Ins { size_t t, c; ps2::V3 n; };
+  std::map<std::array<int, 3>, std::vector<Ins>> grupos;
+  for (size_t t = 0; t < e.crudo.tris.size(); ++t)
+    for (size_t c = 0; c < 3; ++c) {
+      const ps2::V3& p = e.crudo.tris[t].p[c];
+      grupos[{int(std::lround(p.x * 1000.0f)), int(std::lround(p.y * 1000.0f)), int(std::lround(p.z * 1000.0f))}].push_back({t, c, e.crudo.tris[t].n[c]});
+    }
+  int cambiados = 0;
+  const float cos75 = 0.2588f;
+  for (auto& [k, g] : grupos) {
+    if (g.size() < 2) continue;
+    for (const Ins& a : g) {
+      ps2::V3 s{0, 0, 0};
+      for (const Ins& b : g)
+        if (a.n.x * b.n.x + a.n.y * b.n.y + a.n.z * b.n.z > cos75) s = {s.x + b.n.x, s.y + b.n.y, s.z + b.n.z};
+      const float l = std::sqrt(s.x * s.x + s.y * s.y + s.z * s.z);
+      if (l < 1e-6f) continue;
+      const ps2::V3 n{s.x / l, s.y / l, s.z / l};
+      e.crudo.tris[a.t].n[a.c] = n;
+      ++cambiados;
+      if (a.t * 3 + a.c < e.pesos_de.size() && e.pesos_de[a.t * 3 + a.c] >= 0)
+        for (ps2::Esqueleto::Peso& q : e.pesos[size_t(e.pesos_de[a.t * 3 + a.c])])
+          if (q.hueso < e.inv_mundo.size()) q.normal = e.inv_mundo[q.hueso].gira(n);
+    }
+  }
+  return cambiados;
+}
+// A3b: diferencias cabeza/manos de Satan entre su pose de B3 y la de B1 por cuadro global (final_b1.py deltas(): 9 floats por cuadro: cabeza B3-B1,
+// manos B3-B1, cabeza de B1; marco de la escena). La camara y la tarjeta de B1 apuntan a los huesos de B1; el cuerpo de B3 es ~0,8 u mas bajo.
+const float* DeltaFinal(int g) {
+  static std::vector<float> v = [] {
+    std::vector<float> d;
+    std::ifstream f(dbz3::ModsRoot() / "Final Leyenda Satan (B1)" / "delta_satan.bin", std::ios::binary);
+    if (!f) return d;
+    f.seekg(0, std::ios::end);
+    const auto n = size_t(f.tellg());
+    f.seekg(0);
+    d.resize(n / 4);
+    f.read(reinterpret_cast<char*>(d.data()), std::streamsize(d.size() * 4));
+    return d;
+  }();
+  if (v.size() < 9 || std::getenv("DBZ3_SIN_DELTA_FINAL")) return nullptr;
+  const size_t i = size_t(std::clamp(g, 0, int(v.size() / 9) - 1));
+  return &v[i * 9];
+}
+void CargarPropsFinal(std::filesystem::path iso) {
+  AfsPs2 afs;
+  bool abierto = false;
+  for (const char* n : {"DATA_EN.AFS", "DATA_US.AFS", "DATA_USA.AFS"}) abierto = abierto || afs.Abrir(iso, n);
+  PropsFinal& pf = g_pf;
+  if (abierto) {
+    const std::vector<uint8_t> paq = afs.Entrada(2374);   // el paquete de la escena
+    // reportera con micro: clips 0 (entra andando) y 1 (se queda), tras los de Satan 2 y 3
+    const auto amo = afs.Entrada(57), amt = afs.Entrada(58);
+    if (HuesoDe(amo, "ANS00_WAIST") >= 0 && !paq.empty()) {
+      pf.rep.m = ps2::CargarSuelto(amo, amt, true, false, false);
+      if (pf.rep.m.esq) {
+        // los vertices rigidos al hueso 0 (X<P>_BODY, que no se mueve: la pista del WAIST lleva la posicion del mundo) se quedaban
+        // en el origen al posar (pinchos hasta (0, 0, 0)): se pegan al WAIST, que los lleva con el cuerpo (medido: 0 si ya van pesados)
+        auto& e = *pf.rep.m.esq;
+        int pegados = 0;
+        for (size_t t = 0; t < e.crudo.tris.size(); ++t)
+          for (size_t c = 0; c < 3; ++c)
+            if (e.crudo.tris[t].hueso[c] == 0 && (t * 3 + c >= e.pesos_de.size() || e.pesos_de[t * 3 + c] < 0)) e.crudo.tris[t].hueso[c] = 1, ++pegados;
+        REXLOG_INFO("dbz3 pasarela: reportera: {} vertices rigidos al hueso 0 pegados al WAIST, {} listas de pesos normalizadas", pegados, NormalizarPesosB1(e));
+        if (!std::getenv("DBZ3_SIN_SUAVIZAR")) REXLOG_INFO("dbz3 pasarela: reportera: {} normales suavizadas", SuavizarNormales(e));
+        const auto amm = HijoAmb(paq, 2);
+        const size_t nb = pf.rep.m.esq->padre.size();
+        pf.rep.clips = {{AnimB1(amo, amm, 0, nb), 1000}, {AnimB1(amo, amm, 1, nb), 1400}};
+        pf.rep.ok = bool(pf.rep.m.malla) && bool(pf.rep.clips[0].an) && bool(pf.rep.clips[1].an);
+        pf.rep.escala = 0.81f;
+        pf.rep.waist = HuesoDe(amo, "ANS00_WAIST");
+      }
+    }
+    // Cell perfecto tumbado: el clip 0 (650 cuadros) y se queda en el ultimo (solo si el mod de poses no esta: si esta, Cell es el de B3)
+    const auto cao = afs.Entrada(335), cat = afs.Entrada(336);
+    if (!ModFinalB1() && HuesoDe(cao, "THL_WAIST") >= 0 && !paq.empty()) {
+      pf.cell.m = ps2::CargarSuelto(cao, cat, true, false, false);
+      if (pf.cell.m.esq) {
+        NormalizarPesosB1(*pf.cell.m.esq);
+        pf.cell.clips = {{AnimB1(cao, HijoAmb(paq, 1), 0, pf.cell.m.esq->padre.size()), 0}};
+        pf.cell.ok = bool(pf.cell.m.malla) && bool(pf.cell.clips[0].an);
+      }
+    }
+    // tarjeta "secreto": EFT_BOOK (hijo 3) con su textura (5) y sus 2 clips de 320 cuadros (4), tras los de Satan 4 y 5
+    if (const auto lib = HijoAmb(paq, 3); HuesoDe(lib, "EFT_BOOK") >= 0) {
+      pf.tarjeta.m = ps2::CargarSuelto(lib, HijoAmb(paq, 5), true, false, false);
+      if (pf.tarjeta.m.esq) {
+        const auto amm = HijoAmb(paq, 4);
+        const size_t nb = pf.tarjeta.m.esq->padre.size();
+        pf.tarjeta.clips = {{AnimB1(lib, amm, 0, nb), 1780}, {AnimB1(lib, amm, 1, nb), 2100}};
+        pf.tarjeta.ok = bool(pf.tarjeta.m.malla) && bool(pf.tarjeta.clips[0].an) && bool(pf.tarjeta.clips[1].an);
+      }
+    }
+  }
+  REXLOG_INFO("dbz3 pasarela: props del final 3D de B1: reportera {} ({} tri), Cell tumbado {} ({} tri), tarjeta {} ({} tri)", pf.rep.ok,
+              pf.rep.m.malla.tris.size(), pf.cell.ok, pf.cell.m.malla.tris.size(), pf.tarjeta.ok, pf.tarjeta.m.malla.tris.size());
+  pf.estado = 2;
+}
+// Ajuste de prueba: DBZ3_TEST_PROPS_FILE=<fichero> con lineas "rep|cell|tarjeta dx dy dz desfase_cuadros" (marco de la escena;
+// se relee cada segundo). Sin el fichero, la colocacion de los datos tal cual.
+void LeerAjusteProps() {
+  static const char* f = std::getenv("DBZ3_TEST_PROPS_FILE");
+  static int64_t ultimo = 0;
+  if (!f || NowMs() - ultimo < 1000) return;
+  ultimo = NowMs();
+  std::ifstream in(f);
+  std::string l;
+  while (std::getline(in, l)) {
+    char n[16] = {};
+    float v[4] = {};
+    if (std::sscanf(l.c_str(), "%15s %f %f %f %f", n, &v[0], &v[1], &v[2], &v[3]) < 5) continue;
+    PiezaFinal* p = !std::strcmp(n, "rep") ? &g_pf.rep : !std::strcmp(n, "cell") ? &g_pf.cell : !std::strcmp(n, "tarjeta") ? &g_pf.tarjeta : nullptr;
+    if (p) p->dx = v[0], p->dy = v[1], p->dz = v[2], p->cuadros = v[3];
+  }
+}
+void DibujarPropsFinal(ImGuiIO& io) {   // hilo de la interfaz, cada cuadro
+  PropsFinal& pf = g_pf;
+  if (!pf.activo.load() || pf.estado.load() != 2 || !dbz3::cinematica::Activa() || pf.t0.load() == 0) return;
+  uint8_t* base = Base();
+  const uint32_t mgr = base ? REX_LOAD_U32(kMgrPtr) : 0;
+  if (!mgr) return;
+  for (PiezaFinal* p : {&pf.rep, &pf.cell, &pf.tarjeta})
+    if (p->ok && !p->subida) p->tx = ps2::Texturas(p->m), p->subida = true;
+  LeerAjusteProps();
+  const ps2::Camara cam = ps2::CamaraCombate(base, io.DisplaySize);
+  if (!cam.ok) return;
+  const uint32_t x1 = mgr + kX0, x2 = mgr + kX0 + kXPaso;
+  const ps2::V3 p1{LoadF(base, x1 + 48), LoadF(base, x1 + 52), LoadF(base, x1 + 56)}, p2{LoadF(base, x2 + 48), LoadF(base, x2 + 52), LoadF(base, x2 + 56)};
+  const float dx = p2.x - p1.x, dz = p2.z - p1.z, L = std::max(std::sqrt(dx * dx + dz * dz), 1e-3f);
+  const ps2::V3 eje{dx / L, 0, dz / L}, lado{-eje.z, 0, eje.x}, c{(p1.x + p2.x) * 0.5f, p1.y, (p1.z + p2.z) * 0.5f};
+  const float ts = float(NowMs() - pf.t0.load()) / 1000.0f;
+  {   // sonda (DBZ3_TEST_PROPS_LOG=<ms>): el reloj de la escena, para capturar en el mismo instante que los savestates del original
+    static const int ms = [] { const char* v = std::getenv("DBZ3_TEST_PROPS_LOG"); const int n = v ? std::atoi(v) : 0; return n <= 0 ? 0 : n == 1 ? 1000 : std::max(n, 50); }();
+    static int64_t ult = 0;
+    if (ms && NowMs() - ult > ms) {
+      ult = NowMs();
+      REXLOG_INFO("dbz3 pasarela: prop escena t {:.1f} s (suelo de los luchadores y = {:.2f} / {:.2f})", ts, p1.y, p2.y);
+    }
+  }
+  ps2::Escena esc;
+  esc.Empezar();
+  ps2::Escena::Toon toon;
+  static ps2::Malla pose;
+  for (PiezaFinal* p : {&pf.cell, &pf.rep, &pf.tarjeta}) {
+    if (!p->ok) continue;
+    const float g = (ts - kFinalOffsetS) * 60.0f + p->cuadros;   // cuadro global de la escena
+    // clip en curso: el ultimo que ya empezo (el 1.o se espera: la reportera y la tarjeta no estan antes)
+    const ClipFinal* cl = nullptr;
+    for (const ClipFinal& k : p->clips)
+      if (g >= float(k.g0)) cl = &k;
+    if (!cl) continue;
+    const float f = std::min(g - float(cl->g0), float(cl->an.cuadros) - 1.0f);
+    ps2::Posar(*p->m.esq, cl->an, f / 60.0f, pose);
+    const ps2::V3 cen = p->m.esq->centro;
+    // la tarjeta sin posicion (clip 0 antes de su salida: EFT_BOOK en el origen) no se pinta
+    if (p == &pf.tarjeta && (g < 1956.0f || g > 2430.0f)) continue;   // B1: la tarjeta sale a los 41,8 s del video (G 1956, medido en fotogramas) y se va con el 2.o clip (acaba en 2420)
+    if (p == &pf.tarjeta) {
+      float mx = 0;
+      for (const auto& t : pose.tris) mx = std::max({mx, std::fabs(t.p[0].x + cen.x), std::fabs(t.p[0].z + cen.z)});
+      if (mx < 5.0f) continue;
+    }
+    // pivote de la escala del actor: el WAIST en el suelo (x, z de la pista del WAIST, y = suelo de B1)
+    float pvx = 0, pvz = 0;
+    if (p->escala != 1.0f && p->waist >= 0 && size_t(p->waist) < cl->an.pos.size() && !cl->an.pos[size_t(p->waist)].empty()) {
+      const auto& ks = cl->an.pos[size_t(p->waist)];
+      size_t i = 0;
+      while (i + 1 < ks.size() && ks[i + 1][0] <= f) ++i;
+      const size_t j = std::min(i + 1, ks.size() - 1);
+      const float u = ks[j][0] > ks[i][0] ? std::clamp((f - ks[i][0]) / (ks[j][0] - ks[i][0]), 0.0f, 1.0f) : 0.0f;
+      pvx = ks[i][1] + u * (ks[j][1] - ks[i][1]);
+      pvz = ks[i][3] + u * (ks[j][3] - ks[i][3]);
+    }
+    ps2::Malla w;
+    w.tris = pose.tris;
+    // mundo de B1 -> marco de la camara medida (x' = z + 22,2, y' = y - 3,9, z' = -(x + 35)) -> mundo con los luchadores
+    auto mundo = [&](const ps2::V3& v, bool punto) {
+      float bx = v.x + (punto ? cen.x : 0.0f), bz = v.z + (punto ? cen.z : 0.0f), by = v.y;
+      if (punto && p->escala != 1.0f) bx = pvx + p->escala * (bx - pvx), bz = pvz + p->escala * (bz - pvz), by = 3.9f + p->escala * (by - 3.9f);
+      float rx = bz + (punto ? 22.2f + p->dx : 0.0f), ry = by - (punto ? 3.9f - p->dy : 0.0f), rz = -bx - (punto ? 35.0f - p->dz : 0.0f);
+      if (punto && p == &pf.tarjeta)   // la tarjeta va en la mano de B3 (que esta mas baja que la de B1)
+        if (const float* d = DeltaFinal(int(g))) rx += d[3], ry += d[4], rz += d[5];
+      return ps2::V3{c.x + eje.x * rx + lado.x * rz + (punto ? 0.0f : 0.0f), c.y + ry, c.z + eje.z * rx + lado.z * rz};
+    };
+    if (p == &pf.tarjeta && !w.tris.empty()) {   // la tarjeta de B1 es mas grande que la mano de B3: se reduce sobre su centro (DBZ3_TARJETA_ESC)
+      static const float esc = [] { const char* v = std::getenv("DBZ3_TARJETA_ESC"); return v ? float(std::atof(v)) : 0.7f; }();
+      ps2::V3 cc{0, 0, 0};
+      for (const auto& t : w.tris) cc = {cc.x + t.p[0].x, cc.y + t.p[0].y, cc.z + t.p[0].z};
+      const float nt = float(w.tris.size());
+      cc = {cc.x / nt, cc.y / nt, cc.z / nt};
+      for (auto& t : w.tris)
+        for (int k = 0; k < 3; ++k) t.p[k] = {cc.x + esc * (t.p[k].x - cc.x), cc.y + esc * (t.p[k].y - cc.y), cc.z + esc * (t.p[k].z - cc.z)};
+    }
+    for (auto& t : w.tris)
+      for (int k = 0; k < 3; ++k) {
+        t.p[k] = mundo(t.p[k], true);
+        const ps2::V3 n = t.n[k];
+        const ps2::V3 r{n.z, n.y, -n.x};   // rotacion de B1 al marco de la escena (sin traslacion)
+        t.n[k] = {eje.x * r.x + lado.x * r.z, r.y, eje.z * r.x + lado.z * r.z};
+      }
+    if (p->alto <= 0)
+      for (const auto& tr : p->m.malla.tris)
+        for (const auto& v : tr.p) p->alto = std::max(p->alto, v.y);
+    toon.borde = std::max(p->alto, 1.0f) * 0.009f;   // regla de ps2_modelo (IW y las figuras de B2): borde = 0,9 % de la altura
+    esc.Poner(cam, w, p->tx, ps2::V3{0, 0, 0}, 0.0f, 1.0f, toon);
+    static const int traza_ms = [] { const char* v = std::getenv("DBZ3_TEST_PROPS_LOG"); const int n = v ? std::atoi(v) : 0; return n <= 0 ? 0 : n == 1 ? 1000 : std::max(n, 50); }();   // sonda: centro de cada pieza en pantalla, cada N ms (1 = 1000)
+    static int64_t ult[3] = {};
+    const int k = p == &pf.cell ? 0 : p == &pf.rep ? 1 : 2;
+    if (traza_ms && NowMs() - ult[k] > traza_ms) {
+      ult[k] = NowMs();
+      ps2::V3 m{};
+      for (const auto& t : w.tris) m.x += t.p[0].x, m.y += t.p[0].y, m.z += t.p[0].z;
+      const float nt = float(std::max<size_t>(w.tris.size(), 1));
+      m = {m.x / nt, m.y / nt, m.z / nt};
+      float lo[3] = {1e9f, 1e9f, 1e9f}, hi[3] = {-1e9f, -1e9f, -1e9f};
+      for (const auto& t : w.tris)
+        for (const auto& v : t.p) {
+          const float q[3] = {v.x, v.y, v.z};
+          for (int a = 0; a < 3; ++a) lo[a] = std::min(lo[a], q[a]), hi[a] = std::max(hi[a], q[a]);
+        }
+      ImVec2 sp;
+      float kk = 0;
+      const bool vis = cam.P(m, sp, kk);
+      REXLOG_INFO("dbz3 pasarela: prop {} t {:.1f} s cuadro {:.0f} clip g0 {} centro ({:.1f},{:.1f},{:.1f}) pantalla ({:.0f},{:.0f}) vis {} caja x {:.1f}..{:.1f} y {:.1f}..{:.1f} z {:.1f}..{:.1f}", k == 0 ? "cell" : k == 1 ? "reportera" : "tarjeta", ts, g, cl->g0, m.x, m.y, m.z, sp.x, sp.y, vis, lo[0], hi[0], lo[1], hi[1], lo[2], hi[2]);
+    }
+  }
+  esc.Tapar(cam, base, x1);
+  esc.Pintar(ImGui::GetBackgroundDrawList());
+}
+
+bool LanzarSolo(int escenario, int id1, int id2, int f1, int f2, dbz3::cinematica::Escena e, bool final) {   // con g_mu
   namespace C = dbz3::cinematica;
-  C::Escena e;
-  e.iso_voces = g_d->ruta;
-  e.volumen = dbz3::settings::AudioMute() ? 0.0f : float(dbz3::settings::MasterVolume());
-  e.distancia = 30;
-  EscenaPrevia(e);
-  if (!dbz3::hub::RequestBattleEx(kGokuB3, kCellB3, escenario, true, 1, 0, 0, kFormaSsj, kFormaPerfecto)) return false;
+  if (!dbz3::hub::RequestBattleEx(id1, id2, escenario, true, 1, 0, 0, f1, f2)) return false;
   C::Empezar(std::move(e));
-  g_previa_vista = true;
-  REXLOG_INFO("dbz3 pasarela: escena previa de los Juegos de Cell (paso {}): Goku (forma {}) contra Cell (forma {}), "
-              "escenario {}, sin puntos", g_paso + 1, kFormaSsj, kFormaPerfecto, escenario);
+  if (final) {
+    g_final_vista = true;
+    if (g_pf.estado.load() == 0 && !std::getenv("DBZ3_SIN_PROPS_FINAL")) {   // S5-A3b: reportera, tarjeta y Cell tumbado de B1
+      g_pf.estado = 1;
+      std::thread(CargarPropsFinal, g_d->ruta).detach();
+    }
+    g_pf.activo = true;
+  } else {
+    g_previa_vista = true;
+  }
+  REXLOG_INFO("dbz3 pasarela: escena {} (paso {}): id {} (forma {}) contra id {} (forma {}), escenario {}, sin puntos",
+              final ? "final 3D de la leyenda" : "previa de los Juegos de Cell", g_paso + 1, id1, f1, id2, f2, escenario);
   CallarVozB1();
   CallarAdxPs2();
   Publicar(kLuchando);
@@ -1355,15 +1796,281 @@ bool LanzarPrevia(int escenario) {   // con g_mu
   }).detach();
   Reglas r;
   r.capsulas = false;
-  VigilarCombate("pasarela: escena previa", r, [cambio](const Fin& f) {
+  VigilarCombate("pasarela: escena previa", r, [cambio, final](const Fin& f) {
     std::lock_guard<std::mutex> lk(g_mu);
     if (g_fase != kLuchando || g_cambio != cambio) return;
+    if (final) {
+      REXLOG_INFO("dbz3 pasarela: escena final 3D terminada (ganador {}); sigue el final de la leyenda", f.ganador + 1);
+      g_pf.activo = false;
+      DetenerMusica();
+      Entrar(g_paso + 1);
+      return;
+    }
     REXLOG_INFO("dbz3 pasarela: escena previa terminada (ganador {}); sigue el combate del paso {}", f.ganador + 1,
                 g_paso + 1);
     Publicar(kPantalla);   // mismo paso: DrawCombate pide el combate de verdad
   });
   return true;
 }
+bool LanzarPrevia(int escenario) {   // con g_mu
+  dbz3::cinematica::Escena e;
+  e.iso_voces = g_d->ruta;
+  e.volumen = dbz3::settings::AudioMute() ? 0.0f : float(dbz3::settings::MasterVolume());
+  e.distancia = 30;
+  EscenaPrevia(e);
+  return LanzarSolo(escenario, kGokuB3, kCellB3, kFormaSsj, kFormaPerfecto, std::move(e), false);
+}
+// S5-A3: escena final 3D de B1 (tras Cell), camara MEDIDA en PCSX2 (0x555B00, fov 1,2) pasada al marco de la escena sola:
+// Mr. Satan en x = -22, Cell en +22 (distancia 44; en B1 estan a ~44 u en el eje z del mundo), suelo 3,9, ancla de Satan en el mundo de B1 (-35; -44,2) [H +-1 u].
+struct PasoFinal { float seg; const std::array<float, 4>* ojo; size_t n_ojo; const std::array<float, 4>* obj; size_t n_obj; int texto; };
+// Voces de toda la escena (ms desde su principio, entrada de ADX_JP.AFS; medidas con el gancho de 0x1369D0, canal 1 y 2): un solo reproductor.
+constexpr int kVocesFinal[] = {-1, 1233, -590, 1234, -10740, 1235, -18000, 1236, -22900, 1238, -28910, 1239, -32780, 1240, -34300, 1241, -40510, 1243};
+constexpr std::array<float, 4> kFinal0_ojo[] = {{0.0f, 21.7f, 2.0f, 9.5f}, {47.0f, 21.1f, 2.2f, 9.5f}, {144.0f, 16.4f, 3.7f, 9.0f}, {297.1f, 2.9f, 8.0f, 7.5f}};
+constexpr std::array<float, 4> kFinal0_obj[] = {{0.0f, 27.6f, 1.1f, 8.7f}, {47.0f, 27.0f, 1.3f, 8.6f}, {144.0f, 22.7f, 2.6f, 8.1f}, {297.1f, 10.2f, 6.6f, 6.6f}};
+constexpr std::array<float, 4> kFinal1_ojo[] = {{8.9f, 1.7f, 8.4f, 7.4f}, {202.9f, -19.2f, 15.2f, 5.4f}, {309.4f, -28.7f, 18.4f, 4.7f}, {332.7f, -28.7f, 18.4f, 4.7f}, {344.4f, -22.5f, 15.3f, 17.1f}, {668.7f, -22.4f, 15.2f, 13.8f}};
+constexpr std::array<float, 4> kFinal1_obj[] = {{8.9f, 9.1f, 7.0f, 6.5f}, {273.7f, -16.9f, 15.7f, 3.6f}, {332.7f, -19.7f, 16.5f, 3.2f}, {344.4f, -21.8f, 14.9f, 3.2f}, {668.7f, -21.8f, 14.9f, 3.2f}};
+constexpr std::array<float, 4> kFinal2_ojo[] = {{56.8f, -33.6f, 17.1f, 49.3f}, {115.6f, -33.5f, 17.8f, 47.7f}, {365.6f, -32.3f, 21.0f, 33.5f}, {377.3f, -13.2f, 25.4f, 20.0f}, {412.4f, -12.9f, 25.2f, 18.2f}};
+constexpr std::array<float, 4> kFinal2_obj[] = {{56.8f, -17.6f, 8.2f, 4.0f}, {365.6f, -20.4f, 10.2f, 2.3f}, {377.3f, -21.3f, 12.2f, 1.4f}, {412.4f, -21.4f, 12.5f, 1.3f}};
+constexpr std::array<float, 4> kFinal3_ojo[] = {{4.2f, -12.8f, 25.0f, 17.5f}, {143.3f, -11.8f, 20.8f, 8.1f}, {259.0f, -11.2f, 17.3f, 2.0f}, {305.8f, -11.0f, 16.5f, 0.8f}, {328.5f, -11.0f, 16.4f, 0.8f}, {339.9f, -15.2f, 16.4f, 7.5f}, {561.1f, -16.4f, 16.6f, 7.5f}, {583.7f, -16.4f, 16.6f, 8.8f}, {651.9f, -15.7f, 12.2f, 7.5f}};
+constexpr std::array<float, 4> kFinal3_obj[] = {{4.2f, -21.4f, 12.6f, 1.2f}, {305.8f, -22.1f, 16.1f, 0.6f}, {583.7f, -22.4f, 17.2f, 1.0f}, {651.9f, -22.3f, 15.3f, 1.0f}};
+constexpr std::array<float, 4> kFinal4_ojo[] = {{181.9f, -13.9f, 11.5f, 7.2f}, {342.2f, -10.2f, 11.8f, 1.2f}, {472.2f, -10.5f, 13.4f, 1.3f}, {483.5f, -13.4f, 14.8f, 1.3f}, {540.8f, -14.6f, 16.1f, 0.7f}, {552.3f, -17.2f, 16.1f, 0.5f}, {586.7f, -17.2f, 16.1f, 0.4f}};
+constexpr std::array<float, 4> kFinal4_obj[] = {{181.9f, -21.9f, 15.3f, 0.5f}, {586.7f, -21.8f, 16.7f, -0.4f}};
+constexpr std::array<float, 4> kFinal5_ojo[] = {{102.1f, -17.2f, 16.1f, 0.4f}};
+constexpr std::array<float, 4> kFinal5_obj[] = {{102.1f, -21.8f, 16.7f, -0.4f}};
+const PasoFinal kPasosFinal[] = {
+    {5.00f, kFinal0_ojo, std::size(kFinal0_ojo), kFinal0_obj, std::size(kFinal0_obj), -1},
+    {12.00f, kFinal1_ojo, std::size(kFinal1_ojo), kFinal1_obj, std::size(kFinal1_obj), 0},
+    {7.00f, kFinal2_ojo, std::size(kFinal2_ojo), kFinal2_obj, std::size(kFinal2_obj), 1},
+    {11.00f, kFinal3_ojo, std::size(kFinal3_ojo), kFinal3_obj, std::size(kFinal3_obj), 3},
+    {11.00f, kFinal4_ojo, std::size(kFinal4_ojo), kFinal4_obj, std::size(kFinal4_obj), 6},
+    {1.70f, kFinal5_ojo, std::size(kFinal5_ojo), kFinal5_obj, std::size(kFinal5_obj), -1},
+};
+// ponytail: subtitulos propios (en B1 son imagenes sin localizar); los pasos de texto (5-17, 24-35 y 35-46 s) son estimados con
+// capturas cada 5 s (+-5 s). Medir cuando se localicen las imagenes.
+const char* const kTextoFinal[][2] = {
+    {"¡Lo ha conseguido! ¡La Tierra está salvada!", "He-he did it! The earth is saved!"},
+    {"¡Vaya! ¡Nos está saludando! ¿Nos llama?", "Wow! He's waving at us. Is he calling us over?"},
+    {"¡Y ahora unas palabras del héroe en persona!", "So, let's have a few words from the hero in person!"},
+    {"El Camino de Mr. Satán... Es la marca de los verdaderamente duros...", "The Way of Mr. Satan... It's the mark of the truly tough..."},
+    {"Y eso es todo...", "And it's all..."},
+    {"¡Aquí mismo!", "Right here!"},
+    {"Ya a la venta en 100 copias de edición limitada firmada.", "Now in 100 copies of a signed limited edition."},
+    {"¡Date prisa, hasta fin de existencias!", "Hurry, while stocks last!"}};   // A3b: las 8 lineas del video de B1 (voces 1233 -> L1, 1235, 1236, 1238, 1239, 1240, 1241, 1243)
+// Lineas del final (cuadros globales a 60 Hz): la voz de cada una y su subtitulo medidos en la grabacion de PCSX2 (A3b\datos\eventos_b1.json:
+// 1233 a 0, 1235 a 642, 1236 a 1034, 1238 a 1372, 1239 a 1743, 1240 a 1933, 1241 a 2058, 1243 a 2744; el subtitulo sigue a la voz ~0,1 s)
+struct SegFinal { int g0, g1, texto; };
+constexpr SegFinal kSegsFinal[] = {{0, 320, 0},    {320, 642, -1},   {642, 935, 1},    {935, 1034, -1},  {1034, 1390, 2},  {1390, 1735, 3}, {1735, 1760, -1},
+                                   {1760, 1950, 4}, {1950, 2010, 5}, {2010, 2058, -1}, {2058, 2700, 6},  {2700, 2744, -1},  {2744, 2920, 7}, {2920, 3170, -1}};
+// Voces (ADX_JP.AFS) y su cuadro de entrada (ms desde el principio: cuadro / 60)
+constexpr int kVocesFinalB1[] = {1233, -670, 1234, -10700, 1235, -17240, 1236, -22870, 1238, -29030, 1239, -32220, 1240, -34300, 1241, -45730, 1243};
+
+// Camara de la escena final: el #AMC del paquete (DATA_EN #2374, hijo 14: 9 clips = los de Satan, una clave por cuadro a 60 Hz; el
+// corte de camara es un salto entre dos cuadros), en el marco de la camara medida de A3 (x' = z + 22,2, y' = y - 3,9, z' = -(x + 35)).
+struct CamaraB1 {
+  std::vector<std::array<float, 4>> ojo, obj;   // {cuadro global, x, y, z}
+  std::vector<std::array<float, 2>> fov;        // {cuadro global, rad} (el del #AMC tal cual)
+  int cuadros = 0;
+};
+bool LeerCamaraB1(const std::vector<uint8_t>& paq, CamaraB1& c) {
+  const std::vector<uint8_t> amc = HijoAmb(paq, 14);
+  auto u32 = [&](size_t o) { uint32_t v = 0; if (o + 4 <= amc.size()) std::memcpy(&v, &amc[o], 4); return v; };
+  auto f32 = [&](size_t o) { float v = 0; if (o + 4 <= amc.size()) std::memcpy(&v, &amc[o], 4); return v; };
+  if (amc.size() < 0x40 || std::memcmp(amc.data(), "#AMC", 4) != 0) return false;
+  const uint32_t ncl = u32(0x10), tbl = u32(0x14);
+  int g0 = 0;
+  for (uint32_t k = 0; k < ncl && k < 32; ++k) {
+    const uint32_t nf = u32(tbl + 16 * k + 8), off = u32(tbl + 16 * k + 12);
+    if (off && nf > 2) {
+      auto pista = [&](uint32_t idx, int dim, auto&& poner) {
+        const uint32_t p = u32(off + 4 * idx);
+        if (!p) return;
+        const uint32_t n = std::min<uint32_t>(u32(p + 8), 8192);
+        for (uint32_t i = 0; i < n; ++i) {
+          const size_t o = p + 12 + size_t(4 * (1 + dim)) * i;
+          poner(g0 + int(u32(o)), o + 4);
+        }
+      };
+      pista(0, 3, [&](int f, size_t o) { c.ojo.push_back({float(f), f32(o + 8) + 22.2f, f32(o + 4) - 3.9f, -(f32(o) + 35.0f)}); });
+      pista(1, 3, [&](int f, size_t o) { c.obj.push_back({float(f), f32(o + 8) + 22.2f, f32(o + 4) - 3.9f, -(f32(o) + 35.0f)}); });
+      pista(3, 1, [&](int f, size_t o) { c.fov.push_back({float(f), f32(o)}); });
+    }
+    g0 += int(nf);
+  }
+  c.cuadros = g0;
+  return !c.ojo.empty() && !c.obj.empty();   // las pistas del ojo y del objetivo pueden tener claves en cuadros distintos
+}
+
+void ArrancarMusicaPista(const std::filesystem::path& ruta, int pista);   // abajo
+dbz3::cinematica::Escena EscenaFinal() {   // con g_mu
+  namespace C = dbz3::cinematica;
+  C::Escena e;
+  e.iso_voces = g_d->ruta;
+  e.volumen = dbz3::settings::AudioMute() ? 0.0f : float(dbz3::settings::MasterVolume());
+  e.distancia = 44;
+  if (const char* cara = std::getenv("DBZ3_TEST_CAMARA")) {   // PRUEBA: camara fija ("ojo x y z objetivo x y z" en el marco de la escena), p. ej. primer plano de la cara de la reportera o del contacto de Cell con el suelo
+    static std::array<float, 4> ojo{}, obj{};
+    float v[6] = {-12, 14.5f, 3, -20, 14, 10.7f};
+    std::sscanf(cara, "%f %f %f %f %f %f", &v[0], &v[1], &v[2], &v[3], &v[4], &v[5]);
+    ojo = {0.0f, v[0], v[1], v[2]};
+    obj = {0.0f, v[3], v[4], v[5]};
+    C::Paso p;
+    p.plano = C::kLado1;
+    p.segundos = 54.0f;
+    if (ModFinalB1()) p.anim[0] = p.anim[1] = kCodigoFinalB1;   // la camara fija ve los dos moveset de B1 a lo largo de toda la escena
+    p.rel = true;
+    p.cam_ojo.assign(&ojo, &ojo + 1);
+    p.cam_obj.assign(&obj, &obj + 1);
+    p.cam_fov = {{0.0f, 0.785f}};   // el de B3: k = 1, solo para que actue el lazo cerrado de la camara (cinematica.cpp, fov_acerca)
+    p.fov_acerca = true;
+    p.al_empezar = [] { g_pf.t0 = NowMs(); };
+    e.pasos.push_back(p);
+    CallarB3EnEscena(e);
+    return e;
+  }
+  // A3b: camara EXACTA del #AMC del paquete (todos los cuadros, cortes incluidos) y un paso por linea de subtitulo; si no se puede leer, los pasos medidos de A3
+  static CamaraB1 camb;
+  static int camb_estado = 0;   // 0 sin leer, 1 ok, 2 no
+  if (camb_estado == 0) {
+    camb_estado = 2;
+    AfsPs2 afs;
+    bool abierto = false;
+    for (const char* n : {"DATA_EN.AFS", "DATA_US.AFS", "DATA_USA.AFS"}) abierto = abierto || afs.Abrir(g_d->ruta, n);
+    if (abierto && LeerCamaraB1(afs.Entrada(2374), camb) && camb.cuadros >= 3000) camb_estado = 1;
+    REXLOG_INFO("dbz3 pasarela: camara del final de B1 (#AMC de DATA_EN 2374): {} ({} claves, {} cuadros)", camb_estado == 1 ? "leida" : "no disponible",
+                camb.ojo.size(), camb.cuadros);
+  }
+  static const float fov_final = [] {
+    const char* v = std::getenv("DBZ3_TEST_FOV");   // prueba: fov vertical de B1 (la banda visible de 480 de 720 filas tiene este angulo)
+    const float fb1 = v ? float(std::atof(v)) : kFovVerticalB1;
+    return std::getenv("DBZ3_FINAL_BANDAS") ? 2.0f * std::atan(std::tan(fb1 * 0.5f) * 1.5f) : fb1;   // sin bandas fb1 es el fov vertical de la imagen entera (el 0,611 del #AMC)   // con bandas de cine (las 2/3 visibles valen fb1) o sin ellas (toda la imagen vale fb1)
+  }();
+  if (camb_estado == 1) {
+    bool primero2 = true;
+    for (const SegFinal& s : kSegsFinal) {
+      C::Paso p;
+      p.plano = C::kLado1;
+      p.segundos = float(s.g1 - s.g0) / 60.0f;
+      p.rel = true;
+      // si la toma mira a la cabeza de Satan de B1 (a menos de 2,5 u), se mueve ojo y objetivo lo que la cabeza de B3 difiere
+      auto desv = [&](const std::array<float, 4>& k, const std::array<float, 4>* obj_k) {
+        const float* d = DeltaFinal(int(k[0]));
+        if (!d || !obj_k) return std::array<float, 3>{0, 0, 0};
+        const float dd = std::hypot(std::hypot((*obj_k)[1] - d[6], (*obj_k)[2] - d[7]), (*obj_k)[3] - d[8]);
+        return dd < 2.5f ? std::array<float, 3>{d[0], d[1], d[2]} : std::array<float, 3>{0, 0, 0};
+      };
+      auto cerca = [&](float g) {   // clave del objetivo mas cercana al cuadro g
+        const std::array<float, 4>* r = nullptr;
+        for (const auto& o : camb.obj)
+          if (!r || std::fabs(o[0] - g) < std::fabs((*r)[0] - g)) r = &o;
+        return r;
+      };
+      float ratio_fov = 1.0f;   // distancia real / distancia puesta en los primerisimos planos: el fov se estrecha igual
+      for (const auto& k : camb.ojo)
+        if (k[0] >= s.g0 && k[0] <= s.g1) {
+          const auto dv = desv(k, cerca(k[0]));
+          // primerisimo final (G >= 2900): la cara de B3 queda mas abajo respecto a su hueso de la cabeza que la de B1 (con el hueso centrado se ve el pelo): se baja la toma
+          static const float dy_final = [] { const char* v = std::getenv("DBZ3_L8_DY"); return v ? float(std::atof(v)) : 0.0f; }();
+          std::array<float, 4> e = {k[0] - s.g0, k[1] + dv[0], k[2] + dv[1] + (k[0] >= 2900 ? dy_final : 0.0f), k[3] + dv[2]};
+          // la cabeza (y el pelo) de Satan de B3 es mas grande que la de B1: en los primerisimos planos (< 6 u del objetivo) el ojo quedaba DENTRO del pelo (negro, L8);
+          // se aleja hasta 6 u (DBZ3_FINAL_DIST_MIN) y el fov (por distancia) se compensa en cinematica con el mismo factor
+          if (const auto* ob = cerca(k[0])) {
+            static const float dmin = [] { const char* v = std::getenv("DBZ3_FINAL_DIST_MIN"); return v ? float(std::atof(v)) : 0.0f; }();
+            const float dx = e[1] - (*ob)[1], dy = e[2] - (*ob)[2], dz = e[3] - (*ob)[3], d = std::sqrt(dx * dx + dy * dy + dz * dz);
+            if (d > 0.01f && d < dmin) {
+              e[1] = (*ob)[1] + dx * dmin / d, e[2] = (*ob)[2] + dy * dmin / d, e[3] = (*ob)[3] + dz * dmin / d;
+              ratio_fov = std::min(ratio_fov, d / dmin);
+            }
+          }
+          p.cam_ojo.push_back(e);
+        }
+      for (const auto& k : camb.obj)
+        if (k[0] >= s.g0 && k[0] <= s.g1) {
+          const auto dv = desv(k, &k);
+          static const float dy_final2 = [] { const char* v = std::getenv("DBZ3_L8_DY"); return v ? float(std::atof(v)) : 0.0f; }();
+          p.cam_obj.push_back({k[0] - s.g0, k[1] + dv[0], k[2] + dv[1] + (k[0] >= 2900 ? dy_final2 : 0.0f), k[3] + dv[2]});
+        }
+      bool primerisimo = false;   // algun ojo a menos de 6 u del objetivo: B1 pone la camara a ~2,6 u de la cara; con el fov de B1 imitado por distancia el ojo de B3 entraria en la cabeza (pelo negro): se queda el fov de B3 (k = 1, toma algo mas abierta)
+      for (const auto& k : camb.ojo)
+        if (k[0] >= s.g0 && k[0] <= s.g1)
+          if (const auto* ob = [&]() { const std::array<float, 4>* r = nullptr; for (const auto& o : camb.obj) if (!r || std::fabs(o[0] - k[0]) < std::fabs((*r)[0] - k[0])) r = &o; return r; }())
+            if (std::hypot(std::hypot(k[1] - (*ob)[1], k[2] - (*ob)[2]), k[3] - (*ob)[3]) < 6.0f) primerisimo = true;
+      p.cam_fov = {{0.0f, primerisimo && !std::getenv("DBZ3_FINAL_FOV_B1_CERCA") ? 0.785f : 2.0f * std::atan(std::tan(fov_final * 0.5f) * ratio_fov)}};
+      p.fov_acerca = true;
+      p.estilo_b1 = !std::getenv("DBZ3_FINAL_BANDAS");   // sin bandas: la imagen entera (fov vertical = el de B1, ver fov_final)
+      if (s.texto >= 0) p.linea = T::T(kTextoFinal[s.texto][0], kTextoFinal[s.texto][1]);
+      if (primero2) {
+        if (ModFinalB1()) p.anim[0] = p.anim[1] = kCodigoFinalB1;
+        p.voces.assign(std::begin(kVocesFinalB1), std::end(kVocesFinalB1));
+        p.al_empezar = [ruta = g_d->ruta] {
+          ArrancarMusicaPista(ruta, 1244);   // B1: musica 1244 de ADX_JP.AFS
+          g_pf.t0 = NowMs();
+          if (uint8_t* base = Base(); base && g_pf.cell.ok) {   // Cell tumbado de B1 como prop (sin el mod de poses): el luchador de B3 no se dibuja
+            const uint32_t x2 = REX_LOAD_U32(kMgrPtr) + kX0 + kXPaso;
+            REX_STORE_U8(x2 + 3261, 1);
+            REX_STORE_U8(x2 + 4925, 1);
+          }
+        };
+      }
+      primero2 = false;
+      e.pasos.push_back(p);
+    }
+    // SONDA S1 (DBZ3_TEST_CAMARA_CONGELA=<segundos de escena>): la camara del #AMC en ese instante, congelada en
+    // todos los pasos (un primer plano fijo para capturar la cara mientras se barre el campo de la expresion con
+    // DBZ3_TEST_CARA). Se toma la clave mas cercana de cada pista; el reloj de la escena sigue corriendo.
+    if (const char* cg = std::getenv("DBZ3_TEST_CAMARA_CONGELA")) {
+      const float g = float(std::atof(cg)) * 60.0f;
+      auto cerca = [&](const std::vector<std::array<float, 4>>& k) -> std::array<float, 4> {
+        std::array<float, 4> r = {0, -12, 14.5f, 3};
+        for (const auto& o : k)
+          if (std::fabs(o[0] - g) < std::fabs(r[0] - g)) r = o;
+        return r;
+      };
+      const auto ojo = cerca(camb.ojo), obj = cerca(camb.obj);
+      float fov = fov_final, mejor = 1e30f;
+      for (const auto& o : camb.fov)
+        if (std::fabs(o[0] - g) < mejor) mejor = std::fabs(o[0] - g), fov = o[1];
+      for (C::Paso& p : e.pasos) {
+        p.cam_ojo = {{0.0f, ojo[1], ojo[2], ojo[3]}};
+        p.cam_obj = {{0.0f, obj[1], obj[2], obj[3]}};
+        p.cam_fov = {{0.0f, fov}};
+        p.fov_acerca = true;
+        p.estilo_b1 = true;
+      }
+      REXLOG_INFO("dbz3 pasarela: SONDA camara congelada en {:.2f} s: ojo ({:.2f} {:.2f} {:.2f}) objetivo ({:.2f} {:.2f} {:.2f}) fov {:.3f}",
+                  double(g) / 60.0, ojo[1], ojo[2], ojo[3], obj[1], obj[2], obj[3], fov);
+    }
+    CallarB3EnEscena(e);
+    return e;
+  }
+  bool primero = true;
+  for (const auto& f : kPasosFinal) {
+    C::Paso p;
+    p.plano = C::kLado1;
+    p.segundos = f.seg;
+    p.rel = true;
+    p.cam_ojo.assign(f.ojo, f.ojo + f.n_ojo);
+    p.cam_obj.assign(f.obj, f.obj + f.n_obj);
+    p.cam_fov = {{0.0f, kFovB1}};
+    if (primero && ModFinalB1()) p.anim[0] = p.anim[1] = kCodigoFinalB1;   // las dos poses de B1 arrancan a la vez y duran toda la escena (3170 cuadros)
+    if (f.texto >= 0) p.linea = T::T(kTextoFinal[f.texto][0], kTextoFinal[f.texto][1]);
+
+    if (primero)
+      p.al_empezar = [ruta = g_d->ruta] {
+        ArrancarMusicaPista(ruta, 1244);   // B1: musica 1244 de ADX_JP.AFS
+        g_pf.t0 = NowMs();
+        if (uint8_t* base = Base(); base && g_pf.cell.ok) {   // Cell tumbado de B1 como prop (sin el mod de poses): el luchador de B3 no se dibuja
+          const uint32_t x2 = REX_LOAD_U32(kMgrPtr) + kX0 + kXPaso;
+          REX_STORE_U8(x2 + 3261, 1);
+          REX_STORE_U8(x2 + 4925, 1);
+        }
+      };
+    primero = false;
+    e.pasos.push_back(p);
+  }
+  CallarB3EnEscena(e);
+  return e;
+}
+
 
 // Escena del retador r (1..10) tras su tablero (B1 pone la charla en el tablero, 0x231F20-0x232A80; aqui va en 3D por
 // peticion del usuario, en el ring de B3): charla 669 par = lo que dice Mr. Satan, impar = aviso de la regla; voz 1
@@ -1417,9 +2124,31 @@ dbz3::cinematica::Escena Escena(int r, int rival) {   // con g_mu
     p.texto = g_d->charlas[ch + 1];
     e.pasos.push_back(p);
   }
-  TomasPresentacion(e);   // s9b: como B1, las dos tomas cortas antes del "READY?"
+  TomasPresentacion(e, r);   // s9b: como B1, las dos tomas cortas antes del "READY?"
+  CallarB3EnEscena(e);
   return e;
 }
+
+// Medido (S5-A3, volcado de audio del juego): en combate B3 no abre ningun stream de musica (0 aperturas en `voces: stream` entre el
+// estado 1 y el 4) y lo que queda de audio (RMS 0,05) es grave y tonal (centroide 614 Hz, 52 % por debajo de 200 Hz) = ambiente del
+// escenario; parar todos los streams (sub_82081A48(-1)) no lo cambia. No hay musica de B3 que silenciar.
+void ArrancarPista(const std::filesystem::path& ruta, int pista, float retraso_s, bool continuar) {
+  if (pista < 0 || ruta.empty()) return;
+  if (continuar && g_mus_pista.load() == pista) return;   // los Cell Jr. seguidos: la misma pista sigue
+  DetenerMusica();
+  g_mus_pista = pista;
+  const uint32_t ficha = g_mus_ficha.load();
+  const float vol = dbz3::settings::AudioMute() ? 0.0f : float(dbz3::settings::MasterVolume()) * 0.6f;
+  REXLOG_INFO("dbz3 pasarela: musica del combate: ADX_JP {} dentro de {:.1f} s", pista, retraso_s);
+  std::thread([ruta, pista, vol, retraso_s, ficha] {
+    std::this_thread::sleep_for(std::chrono::milliseconds(int(retraso_s * 1000)));
+    if (ficha == g_mus_ficha.load()) OirMusicaPs2(ruta, "adx_jp.afs", pista, vol);
+  }).detach();
+}
+void ArrancarMusica(const std::filesystem::path& ruta, int indice, float retraso_s, bool continuar) {
+  if (indice >= 0 && indice < int(std::size(kBgmB1))) ArrancarPista(ruta, kBgmB1[indice], retraso_s, continuar);
+}
+void ArrancarMusicaPista(const std::filesystem::path& ruta, int pista) { ArrancarPista(ruta, pista, 0.0f, false); }
 
 bool Lanzar() {   // con g_mu: el combate del paso actual, con las reglas del original
   const Paso& p = g_pasos[size_t(g_paso)];
@@ -1428,6 +2157,12 @@ bool Lanzar() {   // con g_mu: el combate del paso actual, con las reglas del or
   // S1-F03.1: antes del combate 1, la escena previa de los Juegos de Cell (una vez por paso; no con DBZ3_SIN_CINE)
   static const bool sin_cine = std::getenv("DBZ3_SIN_CINE") != nullptr || std::getenv("DBZ3_SIN_PREVIA") != nullptr;
   if (p.ronda == 0 && p.vez == 0 && !g_previa_vista && !sin_cine) return LanzarPrevia(escenario);
+  // PRUEBA (DBZ3_TEST_FINAL3D=1): la ultima ronda abre directamente la escena final 3D (sin pelear contra Cell)
+  static const bool prueba_final = std::getenv("DBZ3_TEST_FINAL3D") != nullptr;
+  if ((prueba_final || g_final_pendiente) && g_paso + 1 >= int(g_pasos.size()) && !g_final_vista) {
+    g_final_pendiente = false;
+    return LanzarSolo(escenario, kJugador, kCellB3, 0, kFormaPerfecto, EscenaFinal(), true);
+  }
   // vida que no se recupera (Krilin, Gohan) y los Cell Jr. seguidos: la que le quedo al ganar el anterior
   const bool arrastra = c.arrastra_vida || p.vez > 0;
   const int vida1 = arrastra && g_vida_ganada > 0 ? -g_vida_ganada : 0;   // < 0: solo la inicial (maxima de serie, como B1)
@@ -1440,15 +2175,21 @@ bool Lanzar() {   // con g_mu: el combate del paso actual, con las reglas del or
     REXLOG_INFO("dbz3 pasarela: tiempo -2 de B1 = el de las opciones: {} s ({})", op, op > 0 ? "con limite" : "sin limite");
   }
   const int forma2 = FormaB3(c.rival, c.forma);
+  static const bool sin_musica = std::getenv("DBZ3_SIN_MUSICA_B1") != nullptr;
   if (p.vez == 0 && p.ronda > 0) {
-    dbz3::cinematica::Empezar(Escena(p.ronda, c.rival));
+    dbz3::cinematica::Escena e = Escena(p.ronda, c.rival);
+    if (!sin_musica) e.pasos[e.pasos.size() - 2].al_empezar = [ruta = g_d->ruta, m = c.musica] { ArrancarMusica(ruta, m, 0.0f, false); };
+    dbz3::cinematica::Empezar(std::move(e));
   } else if (p.vez == 0) {   // ronda 1 (Yamcha): la escena de los Juegos de Cell (aproximada) y las dos tomas
     dbz3::cinematica::Escena e;
     e.iso_voces = g_d->ruta;
     e.volumen = dbz3::settings::AudioMute() ? 0.0f : float(dbz3::settings::MasterVolume());
     e.distancia = 30;
     EscenaCell(e);
+    if (!sin_musica) e.pasos[e.pasos.size() - 2].al_empezar = [ruta = g_d->ruta, m = c.musica] { ArrancarMusica(ruta, m, 0.0f, false); };
     dbz3::cinematica::Empezar(e);
+  } else if (!sin_musica) {
+    ArrancarMusica(g_d->ruta, c.musica, 0.0f, true);
   }
   Reglas r = ReglasDe(c, g_dificultad, p.ronda);
   // Ki del jugador del registro de B1 (+0x2C): 300 = 3 barras, igual que el rival; 0xFFFF (Krilin y Gohan, las mismas
@@ -1466,12 +2207,14 @@ bool Lanzar() {   // con g_mu: el combate del paso actual, con las reglas del or
     ki_de = "sin anterior (no se toca)";
   }
   r.puntos_b1 = true;
-  if (!dbz3::hub::RequestBattleEx(kJugador, c.rival, escenario, true, tiempo, vida1, vida2, 0, forma2)) return false;
+  // Decision del usuario: TODOS los combates de la leyenda en el escenario nativo de los Juegos de Cell de B3 HD (mapa 50); el ring convertido de B1 queda solo para la escena previa y la final 3D
+  const int escenario_cmb = EscenarioPorMapa(50);
+  if (!dbz3::hub::RequestBattleEx(kJugador, c.rival, escenario_cmb, true, tiempo, vida1, vida2, 0, forma2)) return false;
   r.traza = std::getenv("DBZ3_PASARELA_TRAZA") != nullptr;   // pruebas: vida y ki de los dos cada segundo
   REXLOG_INFO("dbz3 pasarela: ronda {} ({}/{}): id {} contra id {} (B1 {}, forma B1 {} -> {}), escenario {} ({}), "
               "tiempo {}, vida {} / {}; reglas: {} (COM {}), ki del rival {:.1f} barras, armadura {:.2f}, solo ki {}, "
               "ki lento {:.2f}", p.ronda + 1, p.vez + 1, c.cantidad, kJugador, c.rival, c.rival_b1, c.forma, forma2,
-              escenario, c.escenario_nombre, tiempo, vida1, vida2, kDificultad[g_dificultad], r.nivel_com, r.ki_rival,
+              escenario_cmb, c.escenario_nombre, tiempo, vida1, vida2, kDificultad[g_dificultad], r.nivel_com, r.ki_rival,
               r.armadura_rival, r.solo_ki, r.ki_lento);
   REXLOG_INFO("dbz3 pasarela: ki del jugador del original (paso {}): {:.1f} barras ({})", g_paso + 1, r.ki_jugador, ki_de);
   CallarVozB1();
@@ -1481,6 +2224,10 @@ bool Lanzar() {   // con g_mu: el combate del paso actual, con las reglas del or
   VigilarCombate(("pasarela: paso " + std::to_string(g_paso + 1)).c_str(), r, [cambio](const Fin& f) {
     std::lock_guard<std::mutex> lk(g_mu);
     if (g_fase != kLuchando || g_cambio != cambio) return;
+    {   // la musica sigue solo entre los Cell Jr. seguidos
+      const Paso& pm = g_pasos[size_t(g_paso)];
+      if (!(f.ganador == 0 && pm.vez + 1 < std::max(1, g_d->combates[size_t(pm.ronda)].cantidad))) DetenerMusica();
+    }
     REXLOG_INFO("dbz3 pasarela: fin del combate (paso {}): gana el lado {}, vida de Mr. Satan {}, combo mayor {} ({} de "
                 "dano)", g_paso + 1, f.ganador + 1, f.vida[0], f.combo_max, f.combo_dano_max);
     if (f.ganador == 0) {
@@ -1507,7 +2254,13 @@ bool Lanzar() {   // con g_mu: el combate del paso actual, con las reglas del or
       if (ultima_vez && g_paso + 1 < int(g_pasos.size())) {
         Publicar(kResultado);   // SATAN RESULT MAIN (0x1D); tras Cell va directo al final (0x1E), que cuenta igual
       } else {
-        Entrar(g_paso + 1);
+        static const bool sin_final = std::getenv("DBZ3_SIN_CINE") != nullptr || std::getenv("DBZ3_SIN_FINAL3D") != nullptr;
+        if (g_paso + 1 >= int(g_pasos.size()) && !g_final_vista && !sin_final) {
+          g_final_pendiente = true;   // como la escena previa: mismo paso en pantalla y Lanzar() pide la escena
+          Publicar(kPantalla);
+        } else {
+          Entrar(g_paso + 1);
+        }
       }
     } else {
       ++g_intentos;
@@ -1589,6 +2342,7 @@ class Panel : public rex::ui::ImGuiDialog {
 
  protected:
   void OnDraw(ImGuiIO& io) override {
+    DibujarPropsFinal(io);   // S5-A3b
     const int fase = g_fase_pub.load();
     const bool menu = dbz3::ingame::GameScreen() == kMainScreen;
     const bool show = (fase == kPantalla || fase == kPerdido || fase == kFin || fase == kResultado) && menu &&
@@ -1597,11 +2351,11 @@ class Panel : public rex::ui::ImGuiDialog {
       if (show) in->AddUIInputBlocker(); else in->RemoveUIInputBlocker();
       blocked_ = show;
     }
-    const float t = float(ImGui::GetTime()), dt = std::min(io.DeltaTime, 0.1f);
+    const float t = float(dbz3::RelojT(ImGui::GetTime())), dt = dbz3::RelojDt(std::min(io.DeltaTime, 0.1f));
     alpha_ = std::clamp(alpha_ + (show ? dt * 4.0f : -dt * 8.0f), 0.0f, 1.0f);
     // en el combate: puntos y avisos de los sucesos (como el anillo de avisos de B1)
     {   // S1-F03.1: fundido a negro tras la escena previa (tapa el ring out y la victoria de B3)
-      negro_ = std::clamp(negro_ + (g_previa_negro.load() ? 1.0f : -2.0f) * std::min(io.DeltaTime, 0.1f) * 3.0f, 0.0f, 1.0f);
+      negro_ = std::clamp(negro_ + (g_previa_negro.load() ? 1.0f : -2.0f) * dbz3::RelojDt(std::min(io.DeltaTime, 0.1f)) * 3.0f, 0.0f, 1.0f);
       if (negro_ > 0.0f)
         ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, 0), io.DisplaySize, IM_COL32(0, 0, 0, int(255 * negro_)));
     }
@@ -1789,7 +2543,9 @@ class Panel : public rex::ui::ImGuiDialog {
       }
       x += 30 * k;
     }
-    if (!c) S::MenuText(dl, a.At(x0 + 15.0f * float(s.size()) * k, cy), 40 * k * a.s, s.c_str(), true, false);
+    // sin la textura: centrada en el hueco de sus cifras (desde la primera, tras el signo), sin salirse de el
+    if (!c) S::MenuText(dl, a.At(x - 15.0f * float(s.size()) * k, cy), 40 * k * a.s, s.c_str(), true, false,
+                        30.0f * float(s.size()) * k * a.s);
     return x;
   }
 
@@ -1860,7 +2616,9 @@ class Panel : public rex::ui::ImGuiDialog {
       }
       return;
     }
-    S::MenuText(dl, a.At(x1 - 18.0f * float(s.size()) * k, cy), 52 * k * a.s, s.c_str(), true, false);
+    // sin la textura: alineada a la derecha en x1, dentro del hueco de sus cifras (40 px por cifra)
+    S::MenuText(dl, a.At(x1 - 20.0f * float(s.size()) * k, cy), 52 * k * a.s, s.c_str(), true, false,
+                40.0f * float(s.size()) * k * a.s);
   }
 
   // Fondo azul y logo de la pantalla del modo de Budokai 1; sin ellos, los del Duelo de B3.
@@ -1915,7 +2673,7 @@ class Panel : public rex::ui::ImGuiDialog {
     if (!img && texto.empty()) return;
     dl->AddRectFilled(a.At(150, cy - 42), a.At(1050, cy + 43), IM_COL32(8, 30, 48, 215), 10 * a.s);
     if (img) PicAt(dl, a, *img, 600, cy, std::min(78.0f, img->h * 1.25f));
-    else S::MenuText(dl, a.At(600, cy), 34 * a.s, texto.c_str(), true, false);
+    else S::MenuText(dl, a.At(600, cy), 34 * a.s, texto.c_str(), true, false, 880 * a.s);
   }
 
   void Ayuda(ImDrawList* dl, const S::Area& a, const std::vector<std::pair<const char*, const char*>>& items) {
@@ -2317,7 +3075,7 @@ class Panel : public rex::ui::ImGuiDialog {
         std::snprintf(t, sizeof(t), "%s%s %+d", det.empty() ? "" : "   ", k, it->second);
         det += t;
       }
-      if (!det.empty()) S::MenuText(dl, a.At(g_fase == kFin ? 600 : 430, g_fase == kFin ? 600 : 690), 26 * a.s, det.c_str(), true, false);
+      if (!det.empty()) S::MenuText(dl, a.At(g_fase == kFin ? 600 : 430, g_fase == kFin ? 600 : 690), 26 * a.s, det.c_str(), true, false, 800 * a.s);
     }
     const bool hecho = pasados >= ronda && (cuenta_ya_ || e > kEmpieza);
     if (hecho && cuenta_fin_ < 0) cuenta_fin_ = t;

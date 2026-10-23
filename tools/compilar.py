@@ -2,6 +2,8 @@ r"""Compila el juego (out/build/win-amd64-dual) de uno en uno cuando varios agen
 
   python tools\compilar.py            (espera su turno, compila y deja solo las lineas de error)
 
+Si compila bien, copia el exe dual al release y las DLL canonicas a los dos builds (DBZ3_SIN_COPIA=1 lo evita).
+
 Turno: carpeta E:\DBZ3HD_trabajo\coord\compilando (mkdir es atomico); si lleva mas de 20 min, se da por muerta y se
 aparta (nunca se borra). Codigo de salida = el de cmake. Si falla en un archivo que no es tuyo, espera y reintenta:
 otro agente lo esta editando.
@@ -67,18 +69,43 @@ def main():
                 except OSError:
                     pass
             time.sleep(3)
+    # Marca ENTREGAS\_compilando para pruebas.py (baja el tope de juegos); si ya la puso a mano otro paso, no se toca.
+    marca = R / "studies 5" / "ENTREGAS" / "_compilando"
+    puse_marca = False
+    try:
+        marca.mkdir()
+        puse_marca = True
+    except OSError:
+        pass
     try:
         print(f"turno de compilar tras {time.time() - t0:.0f} s", flush=True)
         r = subprocess.run(["cmake", "--build", str(BUILD)], capture_output=True, text=True, errors="replace")
         lineas = [l for l in (r.stdout + r.stderr).splitlines() if "error" in l.lower() or "FAILED" in l]
         print("\n".join(lineas[:40]) if lineas else "sin errores", flush=True)
         print(f"codigo {r.returncode}", flush=True)
+        if r.returncode == 0 and not os.environ.get("DBZ3_SIN_COPIA"):
+            # El exe del release sale del dual, y el build deja DLLs viejas: sin esto las pruebas miden otro runtime.
+            try:
+                shutil.copy2(BUILD / "dbz3.exe", R / "out" / "build" / "win-amd64-release" / "dbz3.exe")
+                print("exe dual copiado al release", flush=True)
+            except OSError as e:
+                print(f"AVISO: no se pudo copiar el exe al release ({e}); hay un juego abierto desde el release", flush=True)
+            for destino in ("out\\build\\win-amd64-dual", "out\\build\\win-amd64-release"):
+                p = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+                                    str(R / "tools" / "copy_sdk_dlls.ps1"), "-BuildDir", destino],
+                                   cwd=R, capture_output=True, text=True, errors="replace")
+                print(f"copy_sdk_dlls {destino}: " + ("OK" if p.returncode == 0 else "AVISO " + (p.stderr or p.stdout).strip()[:200]), flush=True)
         return r.returncode
     finally:
         try:
             TURNO.rmdir()
         except OSError:
             pass
+        if puse_marca:
+            try:
+                marca.rmdir()
+            except OSError:
+                pass
 
 
 if __name__ == "__main__":

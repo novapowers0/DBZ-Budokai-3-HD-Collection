@@ -186,8 +186,11 @@ def validar(cfg, mods, mod):
     if "codigo" not in h:
         return ["[historia] necesita `codigo` (5000 + 100*saga + casilla: Freezer 5122)"], warn
     slot = int(h["codigo"]) % 100
-    if not cfg.get("rueda", {}).get("personajes"):
+    virt = [int(v) for v in cfg.get("rueda", {}).get("casillas_virtuales", [])]   # el Heroe: entra por una celda virtual
+    if not cfg.get("rueda", {}).get("personajes") and not virt:
         err.append("falta [rueda] personajes = [ID]: sin el, la historia no sale en la rueda de Dragon Universe")
+    if virt and slot not in virt:
+        err.append("[historia] codigo %d es de la casilla %d, pero [rueda] casillas_virtuales = %s" % (int(h["codigo"]), slot, virt))
     # casilla de cada ID: la inversa de la formula del juego (sub_82156E88: casilla < 22 igual, 22-25 +5, >= 26 +6)
     slot_of = lambda i: i if i < 22 else i - 5 if 27 <= i <= 30 else i - 6 if 32 <= i <= 43 else None
     ids = cfg.get("rueda", {}).get("personajes") or []
@@ -541,6 +544,25 @@ def reservar_textos(mods, mod, need, us, keep=()):
     return b
 
 
+def portrait_entry(native, art):
+    """Retrato de dialogo (como data_cmn 1416): copia del nativo con `art` (PIL RGBA, se encaja en 416x408) en las dos
+    texturas (hablando / callado) y el resto transparente."""
+    import zlib  # noqa: PLC0415
+    art = art.convert("RGBA")
+    if art.size != (416, 408):
+        art = art.resize((416, 408), Image.LANCZOS)
+    b = bytearray(native)
+    px = np.zeros((1024, 1024, 4), np.uint8)
+    px[:408, :416] = np.array(art)
+    raw = np.ascontiguousarray(px[..., [2, 1, 0, 3]]).tobytes()
+    for e in capsulas.azt_entries(bytes(b)):
+        do, ds = struct.unpack(">II", b[e + 0x14:e + 0x1C])
+        assert ds == 128 + len(raw), "retrato nativo con otro formato (%d)" % ds
+        b[do + 128:do + 128 + len(raw)] = raw
+    struct.pack_into(">I", b, 0x1C, zlib.crc32(bytes(b[0xA0:])) & 0xFFFFFFFF)
+    return bytes(b)
+
+
 def story(cfg, us, mod, work):
     """[historia] + [[capitulo]]: historia como las del juego. Cada capitulo es un combate con su
     dialogo en el escenario antes (op 21) y despues (la escena de victoria, que deja en el mapa la
@@ -551,7 +573,16 @@ def story(cfg, us, mod, work):
     El ultimo capitulo sin combate es el final. Devuelve las entradas escritas."""
     h, chapters = cfg["historia"], cfg.get("capitulo", [])
     reg = json.load(open(os.path.join(HERE, "du_codigos.json"), encoding="utf-8"))["codigos"]
-    cont = lambda code: int(reg[str(code)])
+    codes_nuevos = cfg.setdefault("codigos", {})
+
+    def cont(code):
+        """Contenedor de un codigo: el del juego o, para los codigos virtuales (sagas 4+ de una casilla: el bloque
+        5000-6199 solo da 3-4 sagas), un contenedor propio que se registra en [codigos] (campaigns.cpp lo traduce)."""
+        if str(code) in reg:
+            return int(reg[str(code)])
+        if str(code) not in codes_nuevos:
+            codes_nuevos[str(code)] = nueva_entrada()
+        return int(codes_nuevos[str(code)])
     code = int(h["codigo"])                    # 5122: saga 1 (Namek), casilla 22
     slot, saga0 = code % 100, (code - 5000) // 100
     dlg = h["dialogos"]
@@ -581,8 +612,19 @@ def story(cfg, us, mod, work):
     s_narr, s_end = int(h.get("guion_narracion", 0xADB)), int(h.get("guion_final", 2790))
     s_fight, s_after = int(h.get("guion_combate", 2866)), int(h.get("guion_tras_combate", 2495))
     panel = int(h.get("fondo", 1411))
-    bcode = lambda s: int(h["combates"]["codigo"]) + 100 * (s - saga0)
-    dcode = lambda s: int(dlg["codigo"]) + 100 * (s - saga0)
+    # C4 (sagas 4-8 del Heroe): las 3 primeras sagas de la historia usan los codigos del juego (5100+, 5500+, 5900+...);
+    # de la 4.a en adelante, codigos VIRTUALES (el juego no los calcula: son datos de las escenas): mapa 12000+, combate
+    # 12500+ (campaigns.cpp los reconoce), dialogo 13000+, introduccion 14001+, cierre 14000+, de 100 en 100 por saga.
+    # H4: tras los 3 bloques desde saga0 (5100-5300) queda el bloque 0 (5000/5400/5800 + casilla, introduccion 100),
+    # libre en las casillas 35-37 y dentro del rango que el motor DU reproduce: es la saga 4 REAL. Lo demas, virtual.
+    blk = lambda s: s if s - saga0 < 3 else s - saga0 - 3
+    virt = lambda s: s >= 2 * saga0 + 3
+    vj = lambda s: s - 2 * saga0 - 3
+    mapc = lambda s: 12000 + 100 * vj(s) + slot if virt(s) else 5000 + 100 * blk(s) + slot
+    bcode = lambda s: 12500 + 100 * vj(s) + slot if virt(s) else int(h["combates"]["codigo"]) + 100 * (blk(s) - saga0)
+    dcode = lambda s: 13000 + 100 * vj(s) + slot if virt(s) else int(dlg["codigo"]) + 100 * (blk(s) - saga0)
+    intro_c = lambda s: 14001 + 2 * vj(s) if virt(s) else 100 + 2 * blk(s)
+    outro_c = lambda s: 14000 + 2 * vj(s) if virt(s) else 99 + 2 * blk(s)
     n = 0
 
     def text(bank, c, key, style):
@@ -622,6 +664,19 @@ def story(cfg, us, mod, work):
             return nueva_entrada()
         pics[0] += 1
         return pics[0] - 1
+
+    # C4: `retrato_heroe` = png RGBA 416x408 (o vacio/ausente = retrato transparente): el retrato del protagonista en los
+    # dialogos (en vez del de Goku), con el formato de los nativos (data_cmn 1416: 2 texturas BGRA 1024x1024, 416x408)
+    if "retrato_heroe" in h:
+        rp = str(h["retrato_heroe"])
+        rp = rp if os.path.isabs(rp) else os.path.join(TOML_DIR[0], rp)
+        art = Image.open(rp).convert("RGBA") if os.path.isfile(rp) else Image.new("RGBA", (416, 408), (0, 0, 0, 0))
+        ent = new_pic()
+        write_entry(mod, "data_cmn.afs", ent, portrait_entry(read_entry(us, "data_cmn.afs", 1416, work), art), work)
+        for c in chapters:
+            if "retratos" in c:
+                c["retratos"] = [c["retratos"][0], ent]
+        rb.log("retrato del protagonista: entrada %d (%s)" % (ent, "propio" if os.path.isfile(rp) else "vacio"))
 
     writer = []
 
@@ -722,7 +777,7 @@ def story(cfg, us, mod, work):
             maps.setdefault(s, []).append(([3, 3, 2, 2, 0, 0, 2899],
                                            [(10, 0, int(c.get("fondo_dialogo", h.get("fondo_dialogo", 1536)))),
                                             (10, 1, int(c["retratos"][1])), (10, 2, 0x10000 | bank), (13, 0, 0xFFFFFFFF),
-                                            (11, 0, 1556), (12, 0, 1557), (11, 1, 1556), (12, 1, 1557)]))
+                                            (11, 0, 1556), (12, 0, 1557), (11, 1, 1556), (12, 1, 1557)] + ([(170, 0, 0)] if h.get("esferas_en_mapa") else [])))
         if "forma_jugador" in c:                # tu personaje empieza transformado (el juego lo lee)
             START_FORMS[bword(i)] = int(c["forma_jugador"])
         # modelo y traje en el mapa mientras ese combate espera (Freezer: modelo 5 = Mecha, traje 2 =
@@ -732,8 +787,8 @@ def story(cfg, us, mod, work):
             if v is not None and v != "":
                 dst[bword(i)] = int(v)
                 if kk == 0:   # el mapa crea al personaje con la introduccion de la saga pendiente (102.22, 104.22...)
-                    dst[((100 + 2 * s) << 16) | slot] = int(v)
-                    dst[(code + 100 * (s - saga0)) << 16] = int(v)   # o con su llegada al mapa
+                    dst[(intro_c(s) << 16) | slot] = int(v)
+                    dst[mapc(s) << 16] = int(v)   # o con su llegada al mapa
 
         if "traje_rival" in c:                  # traje del rival (0 el normal; Vegeta 3 = armadura de Namek)
             RIVAL_SUITS[bword(i)] = int(c["traje_rival"])
@@ -746,6 +801,8 @@ def story(cfg, us, mod, work):
             rival = int(c.get("rival", struct.unpack_from(">I", old, 0x10)[0]))
             form = int(c.get("forma_rival", 0))
             struct.pack_into(">I", new, 0x10, rival)
+            if "escenario" in c:                # escenario propio (0..16, el del juego en +0x90); sin el, el de la plantilla
+                struct.pack_into(">I", new, 0x90, int(c["escenario"]))
             # 8 registros de 0x98 B desde 0x10 (uno por nivel): forma en +0x2c y +0x58 de cada uno y
             # sus capsulas (+0x38 cuenta) fuera: las de la plantilla salian como capsula gris al ganar
             # nivel del rival y experiencia (+0x64, +0x60 de cada registro): el juego elegia el ultimo
@@ -766,7 +823,7 @@ def story(cfg, us, mod, work):
         fights.setdefault(s, []).append(([0, 0, 0, 0, 0, 0, s_fight],
                                          [(16, 0, int(c["combate"])), (15, 0, s_after),
                                           (23, 0, bword(i)),                          # quita su marca
-                                          (21, 0, (dcode(s) << 16) | kk),             # dialogo al empezar
+                                          ] + ([] if os.environ.get("HEROE_SIN_CHARLA") and s > 1 else [(21, 0, (dcode(s) << 16) | kk)]) + [   # dialogo al empezar
                                           (20, 0, bword(i) + 1)]))                    # gana: escena de victoria
         nxt = chapters[i + 1] if i + 1 < len(chapters) else None
         if nxt is None:
@@ -784,18 +841,19 @@ def story(cfg, us, mod, work):
             villain = fin.get("fondo", "heroe") == "villano"
             src = lst_entries(read_entry(us, "data_cmn.afs", 1729, work))[20] if villain else lst_entries(b)[int(fin.get("estilo", 0))]
             hdr = list(src[0])
-            music = [e for e in src[1] if e[0] == 13][0]
+            fin_music = [e for e in src[1] if e[0] == 13][0]   # no `music`: narration() lo usa (la musica de los paneles)
             pic = (1561, 1562) if villain else (1563, 1564)
             text(narr(i + 1), nxt, "", "final")
             tail = [(20, 0, (int(fin["codigo"]) << 16) | k)]
             b = lst_replace(b, k, hdr, [(10, 0, 0x10000 | narr(i + 1)), (10, 1, 0x10000 | narr(i + 1)),
-                                        tuple(music), (11, 0, pic[0]), (12, 0, pic[1]), (11, 1, pic[0]), (12, 1, pic[1])])
+                                        tuple(fin_music), (11, 0, pic[0]), (12, 0, pic[1]), (11, 1, pic[0]), (12, 1, pic[1])])
             write_container(mod, int(fin["contenedor"]), b, work)
             n += 1
-        elif nxt.get("saga"):                           # cierre de saga -> guardar -> introduccion
+        elif nxt.get("saga") and not virt(place[i + 1][0]):   # cierre de saga -> guardar -> introduccion (las virtuales 4-8: abajo, vuelta al mapa)
             s2 = place[i + 1][0]
-            intro, outro = 100 + 2 * s2, 99 + 2 * s2
+            intro, outro = intro_c(s2), outro_c(s2)
             intros[outro] = (narration(cierre(i + 1), nxt, "cierre_"),
+                             ([(20, 0, (intro << 16) | slot)] + ([(47, 0, int(nxt.get("planeta", 0)))] if os.environ.get("HEROE_PLANETA_SIN_GUARDAR") else [])) if h.get("sin_guardar") else
                              [(20, 0, (intro << 16) | slot), (50, 0, 0), (47, 0, int(nxt.get("planeta", 0)))])
             parts = narration(narr(i + 1), nxt, "")
             # `objetos_mapa_de` = "104.0": los objetos del mapa (op 29, por nombre) de una introduccion del
@@ -804,10 +862,10 @@ def story(cfg, us, mod, work):
             if nxt.get("objetos_mapa_de"):
                 oc, oe = str(nxt["objetos_mapa_de"]).split(".")
                 objs = [e for e in lst_events(read_entry(us, "data_cmn.afs", cont(int(oc)), work), int(oe)) if e[0] == 29]
-            intros[intro] = (parts, [(22, 0, 0), tuple([44, 0] + list(nxt["salida"]))] + objs +
-                             [(54, 0, 0), tuple(mark(i + 1)),
-                              (20, 0, (code + 100 * (s2 - saga0)) << 16)])   # a su llegada al mapa
-            tail = [(22, 0, 0), (20, 0, (outro << 16) | slot)]
+            _ops = [(22, 0, 0), tuple([44, 0] + list(nxt["salida"]))] + objs +                    [(54, 0, 0), tuple(mark(i + 1)), (20, 0, mapc(s2) << 16)]   # a su llegada al mapa
+            _quitar = {int(x) for x in os.environ.get("HEROE_QUITAR_OPS", "").split(",") if x.strip()}   # C7: pruebas de bisecacion
+            intros[intro] = (parts, [e for e in _ops if e[0] not in _quitar])
+            tail = [(22, 0, 0), (20, 0, ((outro if os.environ.get("HEROE_CON_103") else intro) << 16) | slot)]   # C8: SIN la escena de cierre 103 (con ella, el 1.er combate de la saga siguiente se cuelga: la cola de cargas del juego no termina); HEROE_CON_103=1 la deja
         else:                                           # sigue la saga: la marca del combate siguiente
             # y, como el juego (2138.1 -> 5100.5), se vuelve al mapa por una escena del mapa: una frase
             # de tu personaje (`mapa_es`; guion 2899, el de 5000.8); sin ella el dialogo del combate
@@ -822,8 +880,7 @@ def story(cfg, us, mod, work):
                              (10, 2, 0x10000 | bank), (13, 0, 0xFFFFFFFF),
                              (11, 0, 1556), (12, 0, 1557), (11, 1, 1556), (12, 1, 1557)]))
             # salida a 500 de la marca (x, z, altura), como el juego: encima la tapa y la toca al aparecer
-            tail = [(44, 0, int(m[2]), int(m[4]) + 500, int(h.get("altura_mapa", 400))), (54, 0, 0), tuple(mark(i + 1)),
-                    (20, 0, ((code + 100 * (s - saga0)) << 16) | mapk)]
+            tail = [(44, 0, int(m[2]), int(m[4]) + 500, int(h.get("altura_mapa", 400))), (54, 0, 0)] +                    ([] if nxt.get("saga") else [tuple(mark(i + 1))]) + [(20, 0, (mapc(s) << 16) | mapk)]   # sagas 4-8 en desarrollo: sin marca virtual ni intro 14001, vuelve al mapa nativo
         # la escena de victoria es como 2138.1 del juego: cabecera de 28 B con el guion de despues
         # del combate (op 15 + 1) y sus imagenes en orden fondo, jugador, rival (`fondo_dialogo`:
         # 1536 Namek, 1549 la Tierra); con otro orden el guion libera lo que no es y se cuelga
@@ -841,17 +898,28 @@ def story(cfg, us, mod, work):
         if c.get("premio"):                      # capsula de premio al ganar (op 19, como 2138.x)
             ev.append((19, 0, int(c["premio"])))
         fights[s].append(([4 + 2 * nl, 5, nl + 1, 5, 0, 0, s_after + 1], ev + tail))
+    if h.get("intro_de") and chapters and "combate" in chapters[0]:
+        # La introduccion de la primera saga de esta casilla, sin [[escena]] a mano (el Heroe): el panel con el texto
+        # del primer capitulo (es/en), la salida (`salida`), los objetos del mapa (op 29) de la introduccion `intro_de`
+        # ("100.0" = la de Goku en la Tierra), la marca de su primer combate y la llegada al mapa de la saga.
+        c0, s0 = chapters[0], place[0][0]
+        oc, oe = str(h["intro_de"]).split(".")
+        objs = [(29, 0, struct.pack("<4I", *e[2:6]).rstrip(bytes(1)).decode("ascii"), e[6])   # op 29: nombre (16 B) y estado
+                for e in lst_events(read_entry(us, "data_cmn.afs", cont(int(oc)), work), int(oe)) if e[0] == 29]
+        intros[intro_c(s0)] = (narration(narr(0), c0, ""),
+                                [(22, 0, 0), tuple([44, 0] + list(c0["salida"]))] + objs + [(54, 0, 0), tuple(mark(0)),
+                                 (20, 0, mapc(s0) << 16)])
     for s in fights:
         write_entry(mod, "data_cmn.afs", cont(bcode(s)), lst_build(fights[s]), work)
         write_entry(mod, "data_cmn.afs", cont(dcode(s)), lst_build(talks[s]), work)
         n += 2
     for s in maps:                       # escenas del mapa (vuelta tras ganar)
-        write_entry(mod, "data_cmn.afs", cont(code + 100 * (s - saga0)), lst_build(maps[s]), work)
+        write_entry(mod, "data_cmn.afs", cont(mapc(s)), lst_build(maps[s]), work)
         n += 1
     # introducciones y cierres de saga: la entrada de la casilla en una copia del contenedor (lo comparten
     # todas las historias); las imagenes de mas van en entradas nuevas de la copia, encadenadas con op 20
     for ic, (parts, tail) in intros.items():
-        b = read_entry(us, "data_cmn.afs", cont(ic), work)
+        b = read_entry(us, "data_cmn.afs", cont(ic if str(ic) in reg else 106), work)   # virtual: copia de la plantilla 106
         n0 = struct.unpack_from("<I", b, 4)[0]
         chain = [[(20, 0, (ic << 16) | (n0 + j))] for j in range(len(parts) - 1)] + [tail]
         b = lst_replace(b, slot, parts[0][0], parts[0][1] + chain[0])
@@ -876,13 +944,19 @@ def portraits(cfg, us, mod, work):
     """[[retrato]] entrada = N: retrato de dialogo (#AZT de 2 texturas 1024x1024 BGRA, como 1463).
     `reparar = true`: los retratos sin terminar del juego (1464, 1465, 1486: Freezer 2.a y 3.a forma,
     Mecha) traen una sola textura y cuelgan el dialogo; se rehacen con la suya en las dos.
-    `png = "x.png"`: un retrato propio (RGBA; el arte se encaja en la caja de 541x530, abajo;
+    `png = "pack:Nombre"`: el PNG "Nombre.png" de la carpeta Potraits del pack opcional del usuario (retratos_pack.py;
+    nunca se reparte; si falta, el de `sin_png`). `png = "x.png"`: un retrato propio (RGBA; el arte se encaja en la caja de 541x530, abajo;
     `escala` 1.0 y `desplazamiento` [x, y] en px para colocarlo)."""
     n = 0
     tpl = read_entry(us, "data_cmn.afs", 1463, work)
     for c in cfg.get("retrato", []):
         out = bytearray(tpl)
         path = (c["png"] if os.path.isabs(c["png"]) else os.path.join(TOML_DIR[0], c["png"])) if c.get("png") else ""
+        if str(c.get("png", "")).startswith("pack:"):      # "pack:Zarbon" = Potraits/Zarbon.png del usuario (arte de terceros)
+            import retratos_pack  # noqa: PLC0415
+            path = retratos_pack.buscar(c["png"][5:], exacto=True) or ""
+            if not path:
+                rb.log("aviso: el retrato %s no esta en la carpeta Potraits del usuario" % c["png"])
         if path and not os.path.isfile(path):
             # sin el retrato propio (el Kit no lleva arte de terceros): el de Freezer forma final del juego
             # (`sin_png`), para que la entrada exista y el dialogo no se cuelgue
@@ -1086,14 +1160,24 @@ def cmd_montar(a):
         rb.log("aviso: data_cmn %s tambien lo cambia el mod '%s' (solo uno ganara)" % (e, other))
     codes = cfg.get("codigos", {})
     wheel = cfg.get("rueda", {}).get("personajes", [])
+    virt = cfg.get("rueda", {}).get("casillas_virtuales", [])
     with open(os.path.join(mod, "campana.toml"), "w", encoding="utf-8") as f:
         f.write("# Generado por campana.py: escenas de Dragon Universe que cambia este mod.\n[codigos]\n")
         for k, v in sorted(codes.items(), key=lambda kv: int(kv[0])):
             f.write("%d = %d\n" % (int(k), int(v)))
-        if wheel:
-            f.write("\n[rueda]\npersonajes = [%s]\n" % ", ".join(str(int(i)) for i in wheel))   # TOML valido con varios
+        if wheel or virt:
+            f.write("\n[rueda]\n")
+            if wheel:
+                f.write("personajes = [%s]\n" % ", ".join(str(int(i)) for i in wheel))   # TOML valido con varios
+            if virt:   # casillas sin celda propia: se entra por una celda virtual del roster ([celdas_rueda])
+                f.write("casillas_virtuales = [%s]\n" % ", ".join(str(int(i)) for i in virt))
             if "historia" in cfg:   # casilla de DU de la historia: dos campanas no pueden compartirla (validar)
                 f.write("casilla = %d\n" % (int(cfg["historia"]["codigo"]) % 100))
+        if virt and cfg.get("historia", {}).get("intro_de"):   # la historia empieza en la intro de su saga (102 = Namek)
+            f.write("\n[intro_casilla]\n%d = %d\n" % (int(virt[0]), int(str(cfg["historia"]["intro_de"]).split(".")[0])))
+        for sec in ("casilla_luchador",):   # casilla -> ID del luchador (mapa, menus y combate de DU)
+            if cfg.get(sec):
+                f.write("\n[%s]\n" % sec + "".join("%d = %d\n" % (int(k), int(v)) for k, v in sorted(cfg[sec].items(), key=lambda kv: int(kv[0]))))
         if START_FORMS:
             f.write("\n[forma_jugador]\n" + "".join("%d = %d\n" % kv for kv in sorted(START_FORMS.items())))
         if RIVAL_SUITS:

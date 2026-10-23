@@ -14,6 +14,8 @@ struct Area;
 
 namespace dbz3::modos {
 
+int TorneoIdReal(int plaza);   // modos.cpp (S5-I1): ID real de una plaza COM del Torneo con personaje de mod, -1 = el de su casilla
+
 // 0-2: los retos de modos.cpp; 3-10: los de rpg.cpp (StartPropio), cada uno con su record (10: Mision 100).
 enum Tipo : int {
   kTorre = 0, kSupervivencia = 1, kKumite = 2, kSimulacion = 3, kTienda = 4, kHeroe = 5, kTorres = 6, kAbyss = 7,

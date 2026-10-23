@@ -1,9 +1,11 @@
 // dbz3 - Mod manager (project-side).
 
 #include "mods.h"
+#include "mod_manifest.h"
 #include "launcher/i18n.h"
 
 #include <rex/filesystem.h>
+#include <rex/filesystem/afs.h>
 #include <rex/logging.h>
 
 #include <algorithm>
@@ -13,7 +15,9 @@
 #include <cctype>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
+#include <iterator>
 #include <map>
 #include <toml++/toml.hpp>
 #include <system_error>
@@ -32,7 +36,7 @@ namespace dbz3 {
 std::filesystem::path ModsRoot() {
   // Mods live next to the executable (where the runtime's VFS resolves them),
   // matching dbz3::settings. The build output dir is not wiped for mods.
-  return rex::filesystem::GetExecutableFolder() / "mods";
+  return rex::filesystem::AfsModsRoot();   // unico punto (vanilla online: carpeta vacia)
 }
 
 namespace {
@@ -90,6 +94,7 @@ void LoadManifest(const std::filesystem::path& dir, ModInfo& info) {
     else if (key == "description") info.description = value;
     else if (key == "author") info.author = value;
     else if (key == "version") info.version = value;
+    else if (key == "dbz3_version") info.made_for = value;
     else if (key == "type") info.type = value;
     else if (key == "source") info.source = value;
     else if (key == "target") info.target = value;
@@ -521,6 +526,14 @@ std::vector<ModInfo> ListMods(bool check_problems) {
     info.name = StripDotDisabled(raw_name);
     info.enabled = !FolderIsDisabled(mod_entry.path(), raw_name);
     LoadManifest(mod_entry.path(), info);
+    {   // D4: version del juego con la que se dejo activo el mod
+      std::ifstream ver(mod_entry.path() / ".dbz3_version");
+      std::string linea;
+      if (ver && std::getline(ver, linea)) {
+        while (!linea.empty() && (linea.back() == '\r' || linea.back() == ' ')) linea.pop_back();
+        info.made_for = linea;
+      }
+    }
     InferTypeAndCount(mod_entry.path(), info);
     if (check_problems) CheckProblems(mod_entry.path(), info);
     result.push_back(std::move(info));
@@ -536,6 +549,16 @@ std::vector<ModInfo> ListMods(bool check_problems) {
                      return a.name < b.name;
                    });
   return result;
+}
+
+void StampModVersion(const std::string& mod_name, const std::string& version) {
+  if (mod_name.empty() || version.empty()) return;
+  std::error_code ec;
+  const std::filesystem::path dir = ModsRoot() / std::filesystem::u8path(mod_name);
+  if (!std::filesystem::is_directory(dir, ec)) return;
+  std::ofstream out(dir / ".dbz3_version", std::ios::trunc);
+  if (out) out << version << "\n";
+  dbz3::mod_manifest::AppendValue(dir / "manifest.txt", "dbz3_version", version);
 }
 
 void SetModEnabled(const std::string& mod_name, bool enable) {
@@ -1091,9 +1114,77 @@ std::vector<std::string> EnabledMods() {
 }
 }  // namespace
 
-void SessionStart() { SetSessionState("en_marcha"); }
+// Sesion vanilla online: no cuenta como partida del jugador (no pisa su memoria de "ultima partida buena").
+bool VanillaSession() { return std::getenv("DBZ3_VANILLA_SESSION") != nullptr; }
+
+// Fichero de reconexion de la sesion vanilla: lo escribe el PC que se reinicia y lo lee (y borra, es nuestro temporal
+// en la carpeta temp del usuario, no un dato suyo) el arranque vanilla. Su ruta viaja en DBZ3_VANILLA_PENDING.
+bool TakeVanillaPending(std::string& out) {
+  out.clear();
+  const char* path = std::getenv("DBZ3_VANILLA_PENDING");
+  if (!path || !*path) return false;
+  std::error_code ec;
+  const std::filesystem::path p = std::filesystem::u8path(path);
+  {
+    std::ifstream f(p, std::ios::binary);
+    if (f) out.assign(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
+  }
+  std::filesystem::remove(p, ec);
+#if REX_PLATFORM_WIN32
+  SetEnvironmentVariableA("DBZ3_VANILLA_PENDING", nullptr);   // una sola vez por arranque
+#else
+  unsetenv("DBZ3_VANILLA_PENDING");
+#endif
+  return !out.empty();
+}
+
+bool RelaunchVanilla(const std::string& pending, bool skip_launcher) {
+#if REX_PLATFORM_WIN32
+  if (VanillaSession()) return false;
+  std::error_code ec;
+  std::filesystem::create_directories(ModsRoot().parent_path() / "mods_vanilla", ec);   // raiz de mods vacia de la sesion
+  std::string pend_path;
+  if (!pending.empty()) {
+    const std::filesystem::path tmp =
+        std::filesystem::temp_directory_path(ec) / ("dbz3_vanilla_" + std::to_string(GetCurrentProcessId()) + ".txt");
+    std::ofstream f(tmp, std::ios::binary);
+    f << pending;
+    f.close();
+    if (!f) return false;
+    pend_path = rex::path_to_utf8(tmp);
+  }
+  wchar_t self[MAX_PATH] = {};
+  GetModuleFileNameW(nullptr, self, MAX_PATH);
+  std::wstring cmd = GetCommandLineW();
+  if (skip_launcher && cmd.find(L"dbz3_skip_launcher") == std::wstring::npos) cmd += L" --dbz3_skip_launcher";
+  SetEnvironmentVariableA("DBZ3_VANILLA_SESSION", "1");   // lo hereda el hijo; este proceso se cierra enseguida
+  if (!pend_path.empty()) SetEnvironmentVariableA("DBZ3_VANILLA_PENDING", pend_path.c_str());
+  STARTUPINFOW si = {};
+  si.cb = sizeof(si);
+  PROCESS_INFORMATION pi = {};
+  const BOOL ok = CreateProcessW(self, cmd.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi);
+  SetEnvironmentVariableA("DBZ3_VANILLA_SESSION", nullptr);
+  SetEnvironmentVariableA("DBZ3_VANILLA_PENDING", nullptr);
+  if (!ok) {
+    if (!pend_path.empty()) std::filesystem::remove(std::filesystem::u8path(pend_path), ec);
+    return false;
+  }
+  CloseHandle(pi.hThread);
+  CloseHandle(pi.hProcess);
+  REXLOG_INFO("dbz3: reiniciando en modo vanilla (sesion online sin mods)");
+  SessionEnd(true);   // cierre normal: su memoria de "ultima partida buena" queda como estaba
+  rex::FlushLogging();
+  std::_Exit(0);
+#else
+  (void)pending; (void)skip_launcher;
+  return false;
+#endif
+}
+
+void SessionStart() { if (!VanillaSession()) SetSessionState("en_marcha"); }
 
 void SessionEnd(bool ok) {
+  if (VanillaSession()) return;
   if (SessionState() != "en_marcha") return;   // sin JUGAR desde el launcher (o ya cerrada)
   if (!ok) {   // desde el gestor de cierres: solo la marca, nada pesado
     SetSessionState("cerrado_de_golpe");
@@ -1104,6 +1195,7 @@ void SessionEnd(bool ok) {
 }
 
 std::vector<std::string> SessionSuspects() {
+  if (VanillaSession()) return {};
   const std::string st = SessionState();
   if (st.empty() || st == "ok") return {};
   const auto good = ProfileEnabledMods(kGoodProfile);

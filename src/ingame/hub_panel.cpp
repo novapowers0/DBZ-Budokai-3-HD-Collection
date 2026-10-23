@@ -10,6 +10,7 @@
 // De un pack opcional del jugador (mod center hd/packs_visuales/pack_hub.toml): hub/fondo y hub/vuelo_<n>
 // (personaje que vuela hacia la camara al entrar; sin el, solo el fundido) y hub/guardado (icono del aviso de
 // guardado; sin el pack, el nuestro CC0 de generar.py).
+#include "../reloj_prueba.h"
 #include "hub_panel.h"
 #include "tutorial.h"
 
@@ -26,6 +27,10 @@
 #include <vector>
 
 #include <imgui.h>
+
+namespace dbz3::campaigns {
+bool DuCover();   // campaigns.cpp: el Heroe entra en DU: pantalla en negro hasta su primera escena
+}
 #include <toml++/toml.hpp>
 
 #include <rex/logging.h>
@@ -37,6 +42,7 @@
 #include "../launcher/ui_kit.h"
 #include "../escenarios.h"
 #include "../modos.h"
+#include "../mods_opcionales.h"
 #include "../pasarela.h"
 #include "game_style.h"
 
@@ -342,8 +348,10 @@ class HubPanel : public rex::ui::ImGuiDialog {
       return;
     }
     if (dbz3::GameDimmed() || dbz3::OverlayOpen()) return;
+    if (dbz3::campaigns::DuCover())   // el Heroe entra en DU sin que se vean su titulo, su menu ni su rueda de personajes
+      ImGui::GetForegroundDrawList()->AddRectFilled(ImVec2(0, 0), io.DisplaySize, IM_COL32(0, 0, 0, 255));
     const View v = Snapshot();
-    const float t = float(ImGui::GetTime()), dt = std::min(io.DeltaTime, 0.1f);
+    const float t = float(dbz3::RelojT(ImGui::GetTime())), dt = dbz3::RelojDt(std::min(io.DeltaTime, 0.1f));
     const bool shown = v.menu && !v.other;
     const float el = float(ClockMs() - v.fade_t0);
     // fundido a negro de toda la ventana (como el del juego entre sus pantallas)
@@ -382,6 +390,7 @@ class HubPanel : public rex::ui::ImGuiDialog {
     if (black > 0.0f) dl->AddRectFilled(ImVec2(0, 0), io.DisplaySize, IM_COL32(0, 0, 0, int(255 * black)));
     if (v.menu && v.fade != Fade::kNone && v.fade_to_hub) DrawFlyer(dl, io, v);
     WatchSaves(t);
+    dbz3::musica::ActualizarCombate(dbz3::tag::InBattle());   // X1: musica de combate elegida por el jugador
     // el aviso, solo con el HUB o el menu principal a la vista y quietos: nunca en combate (ni en la espera en negro de
     // los encadenados), ni encima de las pantallas propias de los modos (selector, Laboratorio, entre combates,
     // pantalla final), ni en un fundido. Un guardado entonces espera y sale entero al volver (rpg.md, propuesta 2).
@@ -576,8 +585,9 @@ class HubPanel : public rex::ui::ImGuiDialog {
 
   void DrawScreen(ImDrawList* dl, const S::Area& a, const View& v, float t, float dt) {
     const int v0 = dl->VtxBuffer.Size;
-    // pack opcional del jugador: su fondo encima del menu (y entonces nuestro marco y las tiras doradas)
-    if (const S::Pic bg = S::Img("hub/fondo")) {
+    // Fondo nativo del menu principal por defecto (23/10, el usuario lo prefiere al hub/fondo de serie); solo un
+    // pack del jugador con hub/fondo_menu lo tapa (y entonces nuestro marco y las tiras doradas)
+    if (const S::Pic bg = S::Img("hub/fondo_menu")) {
       has_bg_ = true;
       const S::Imagen g = S::GuestImage(ImGui::GetIO());   // S1-F06: en la imagen del juego, no en la ventana
       const float sw = g.Size().x, sh = g.Size().y;
@@ -633,7 +643,7 @@ class HubPanel : public rex::ui::ImGuiDialog {
       const std::string key = EntryKey(e);
       const int estado = key == "pasarela" || key == "minijuegos" ? 2
                          : key == "tagteam" || key == "online" || key == "satan" || key == "mision100" ||
-                                   key == "laboratorio" || key == "escenarios"
+                                   key == "laboratorio" || key == "escenarios" || key == "heroe"
                              ? 1
                              : 0;
       const float right = Label(dl, a, EntryKey(e), EntryName(e), kLabelX + dx, y, kLabelK, tint, sel,
@@ -670,6 +680,8 @@ class HubPanel : public rex::ui::ImGuiDialog {
     if (u <= 0.0f) return;
     const float pop = 1.0f + 0.28f * (1.0f - Ease(u)) - 0.04f * std::sin(Clamp01(u * 1.4f) * 3.14159f);
     const float w = kLogoW * a.s;
+    // X1 (studies 5): el titulo se compone en marcha, letras doradas con perfil (las de los Banner del resto de pantallas)
+    // sobre el papel de la cinta del juego. El logo "Dragon HUB" (hub/logo) solo sale si un pack del jugador lo trae.
     S::Pic p = S::Img(w > 600 ? "hub/logo" : "hub/logo_512");
     if (!p) p = S::Img("hub/logo");
     const int v0 = dl->VtxBuffer.Size;
@@ -677,10 +689,8 @@ class HubPanel : public rex::ui::ImGuiDialog {
       const float h = p.h * w / p.w;
       const ImVec2 c = a.At(kLogoX, kLogoY);
       S::DrawPic(dl, p, ImVec2(c.x - w * 0.5f * pop, c.y - h * 0.5f * pop), ImVec2(c.x + w * 0.5f * pop, c.y + h * 0.5f * pop));
-    } else if (const S::Pic ti = S::Img("titulo_hub")) {
-      const float h = 118 * a.s * pop, tw = ti.w * h / ti.h;
-      const ImVec2 c = a.At(965, 90);
-      S::DrawPic(dl, ti, ImVec2(c.x - tw * 0.5f, c.y - h * 0.5f), ImVec2(c.x + tw * 0.5f, c.y + h * 0.5f));
+    } else {
+      S::TitleText(dl, a, kLogoX, kLogoY, kLogoW * 0.9f, "Dragon HUB", pop);
     }
     FadeVerts(dl, v0, Ease(u * 1.6f));
   }

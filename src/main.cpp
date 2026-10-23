@@ -33,6 +33,7 @@ extern const rex::PPCImageInfo PPCImageConfigEU;
 #include <rex/rex_app.h>
 #include <rex/hook.h>
 #include "hooks.h"
+#include "datos.h"
 
 #ifdef _WIN32
 // DBZ3 1.4.3 EX: los drivers de NVIDIA (Optimus) y AMD (PowerXpress) solo leen
@@ -279,11 +280,11 @@ public:
           using dbz3::i18n::T;
           const std::string msg =
               std::string(T("No encuentro tu copia de Budokai 3 HD.\n\n"
-                            "Pon la imagen del disco (ISO de Xbox 360) junto a dbz3.exe, o elÃ­gela ahora. "
-                            "Si tienes el juego extraÃ­do en una carpeta, elige esa carpeta (la que tiene "
+                            "Pon la imagen del disco (ISO de Xbox 360) junto a dbz3.exe, o elígela ahora. "
+                            "Si tienes el juego extraído en una carpeta, elige esa carpeta (la que tiene "
                             "DBZ3, o default.xex y us/).\n\n"
-                            "SÃ­: elegir la imagen del disco (.iso)\n"
-                            "No: elegir la carpeta del juego extraÃ­do\n"
+                            "Sí: elegir la imagen del disco (.iso)\n"
+                            "No: elegir la carpeta del juego extraído\n"
                             "Cancelar: salir\n\n"
                             "Carpeta buscada:\n",
                             "I can't find your copy of Budokai 3 HD.\n\n"
@@ -438,6 +439,7 @@ public:
         SetPriorityClass(GetCurrentProcess(), ABOVE_NORMAL_PRIORITY_CLASS);
 #endif
         SetupCrashHandler();
+        dbz3::datos::Iniciar();   // X0d: res/datos/*.toml (en pruebas se recarga sola; F5 siempre)
     }
 
     // dbz3 - Window focus. Drives the "mute while in the background" feature
@@ -552,6 +554,11 @@ public:
             REXLOG_INFO("dbz3: F2: pack HD {}", on ? "apagado" : "encendido");
         });
 
+        // F5 relee res/datos/*.toml (camaras, tiempos, ordenes medidos del original) sin recompilar.
+        rex::ui::RegisterBind("bind_dbz3_datos", "F5", "Reload res/datos", []() {
+            REXLOG_INFO("dbz3 datos: F5: {} ficheros recargados", dbz3::datos::Recargar());
+        });
+
         // F10 toggles the in-game dev overlay (only meaningful once running).
         rex::ui::RegisterBind("bind_dbz3_ingame", "F10", "Toggle in-game dev overlay", [this]() {
             if (!launched_.load(std::memory_order_acquire)) {
@@ -654,9 +661,9 @@ public:
         auto FindGameRoot = [](const std::filesystem::path& base) -> std::filesystem::path {
             // Accept either region folder (us/ or eu/), in the flat layout
             // (base/us), the assets/ layout (base/assets/us) and the RETAIL DISC
-            // layout (base/DBZ3/us â€” the disc keeps Budokai 3 in DBZ3/ next to
+            // layout (base/DBZ3/us — the disc keeps Budokai 3 in DBZ3/ next to
             // the HD Collection's own default.xex menu). An EU-only user has eu/
-            // but no us/ â€” rejecting it made auto-detection fall back to the exe
+            // but no us/ — rejecting it made auto-detection fall back to the exe
             // folder and fail with "Entrypoint XEX not found".
             // Matches IsValidGameDataDir/banner.
             const char* kSub[] = {"", "assets", "DBZ3", "assets/DBZ3", "DBZ3/assets"};

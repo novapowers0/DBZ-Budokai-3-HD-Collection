@@ -266,12 +266,34 @@ def c_extraer(a):
     if a.bpe and es_bpe(d):
         d = bpe(d)
     salida = os.path.abspath(a.salida)
-    if os.path.commonpath([salida, os.path.dirname(HERE)]) == os.path.dirname(HERE):
+    if os.path.normcase(salida).startswith(os.path.normcase(os.path.dirname(HERE)) + os.sep):
         print("aviso: la salida esta dentro del proyecto; no la subas ni la repartas")
     os.makedirs(os.path.dirname(salida) or ".", exist_ok=True)
     with open(salida, "wb") as f:
         f.write(d)
     print("OK %s (%d bytes)" % (salida, len(d)))
+
+
+def c_musica_mod(a):
+    """Escribe mods/<mod>/us/adx_usa.afs/<n> con una pista de T3 (ADX 24 kHz estereo, con bucle en la cabecera) en cada
+    entrada pedida, rellenada con ceros al tamano de la original. Se lee de la ISO del jugador; nada se reparte."""
+    t = abrir(a)
+    pista = t.afs["2"].leer(64974 + a.pista)          # zs3_00..19_US.adx
+    if pista[:2] != b"\x80\x00":
+        raise SystemExit("la entrada %d no es un ADX" % (64974 + a.pista))
+    ent = []
+    for r in a.entradas.split(","):
+        lo, _, hi = r.partition("-")
+        ent += range(int(lo), int(hi or lo) + 1)
+    with open(a.afs, "rb") as f:
+        tabla = f.read(8 + 8 * (max(ent) + 1))
+    dest = os.path.join(a.mods, a.mod, "us", "adx_usa.afs")
+    os.makedirs(dest, exist_ok=True)
+    for i in ent:
+        tam = struct.unpack_from("<I", tabla, 12 + 8 * i)[0]
+        with open(os.path.join(dest, str(i)), "wb") as f:
+            f.write(pista + b"\0" * max(0, tam - len(pista)))
+    print("OK %d entradas en %s" % (len(ent), dest))
 
 
 def _bpe_codificar_crudo(datos):
@@ -313,7 +335,7 @@ def c_prueba(a):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sp = ap.add_subparsers(dest="cmd", required=True)
-    for nm in ("info", "lista", "personajes", "musica", "extraer", "prueba"):
+    for nm in ("info", "lista", "personajes", "musica", "musica_mod", "extraer", "prueba"):
         s = sp.add_parser(nm)
         s.add_argument("--iso")
         if nm == "lista":
@@ -321,6 +343,12 @@ def main():
             s.add_argument("--filtro")
         if nm == "personajes":
             s.add_argument("--idioma", default="es", choices=sorted(IDIOMA_SUB))
+        if nm == "musica_mod":
+            s.add_argument("mods")
+            s.add_argument("--mod", default="t3_musica")
+            s.add_argument("--pista", type=int, default=0)
+            s.add_argument("--entradas", default="4187-4215")
+            s.add_argument("--afs", default=os.path.join(os.path.dirname(HERE), "us", "adx_usa.afs"))
         if nm == "extraer":
             s.add_argument("afs", choices=("1", "2"))
             s.add_argument("entrada", type=int)
@@ -330,7 +358,7 @@ def main():
     a = ap.parse_args()
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    {"info": c_info, "lista": c_lista, "personajes": c_personajes, "musica": c_musica,
+    {"info": c_info, "lista": c_lista, "personajes": c_personajes, "musica": c_musica, "musica_mod": c_musica_mod,
      "extraer": c_extraer, "prueba": c_prueba}[a.cmd](a)
 
 

@@ -1,0 +1,18 @@
+# copia: s5_c2
+descripcion = "C3: empezada la aventura, raza y cuerpo estan cerrados sin deseo de Shenron"
+env = ["DBZ3_TEST_RINGOUT=1", "DBZ3_TEST_HEROE_SAGA=1", "DBZ3_TEST_HEROE_ESFERAS=0"]
+pasos = [
+  "esperar 2500",
+  "tecla W 1200",
+  "tecla Space 3500",
+  "tecla S 450", "tecla S 450", "tecla S 450", "tecla S 450", "tecla S 450",
+  "tecla Space 2500",
+  "tecla S 700", "tecla S 700", "tecla S 700",
+  "tecla Space 3500",
+  "captura c2_deseo_cerrado_0_heroe",
+  "tecla D 700",
+  "log \"raza/cuerpo cerrados\" 20",
+  "captura c2_deseo_cerrado_1",
+  "tecla Backspace 3000",
+  "esperar 2500",
+]

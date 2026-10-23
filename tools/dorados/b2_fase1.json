@@ -1,0 +1,68 @@
+{
+ "modo": "b2",
+ "escena": "fase1",
+ "fuente": "PCSX2 PINE, A2\\sstates\\fase1.p2s (lista de aliados), 110.0 s",
+ "estado": "fase1.p2s",
+ "teclas": "cap=lista z espera2500 cap=dialogo up espera800 z espera7000 cap=aliado right espera1500 z espera2500 z espera14000 cap=p1 z espera4000 cap=p2 down espera2000 cap=p3 z espera14000 espera20000 cap=final",
+ "seg": 110.0,
+ "secuencia": [
+  9,
+  7,
+  1,
+  62,
+  58,
+  62,
+  58,
+  75,
+  62,
+  59,
+  53,
+  36,
+  1,
+  84,
+  50
+ ],
+ "recuento": {
+  "1": 2,
+  "36": 1,
+  "50": 1,
+  "53": 1,
+  "58": 2,
+  "59": 1,
+  "62": 5,
+  "7": 101,
+  "75": 1,
+  "84": 219,
+  "9": 129
+ },
+ "capturas": [
+  {
+   "original": "C:\\Users\\javie\\Desktop\\PROYECTOS IA\\DBZ Budokai 3 HD Collection\\studies 5\\ENTREGAS\\A2\\evidencias\\original_fase1_lista.png",
+   "port": "fase1_lista"
+  },
+  {
+   "original": "C:\\Users\\javie\\Desktop\\PROYECTOS IA\\DBZ Budokai 3 HD Collection\\studies 5\\ENTREGAS\\A2\\evidencias\\original_fase1_dialogo.png",
+   "port": "fase1_dialogo"
+  },
+  {
+   "original": "C:\\Users\\javie\\Desktop\\PROYECTOS IA\\DBZ Budokai 3 HD Collection\\studies 5\\ENTREGAS\\A2\\evidencias\\original_fase1_aliado.png",
+   "port": "fase1_aliado"
+  },
+  {
+   "original": "C:\\Users\\javie\\Desktop\\PROYECTOS IA\\DBZ Budokai 3 HD Collection\\studies 5\\ENTREGAS\\A2\\evidencias\\original_fase1_p1.png",
+   "port": "fase1_p1"
+  },
+  {
+   "original": "C:\\Users\\javie\\Desktop\\PROYECTOS IA\\DBZ Budokai 3 HD Collection\\studies 5\\ENTREGAS\\A2\\evidencias\\original_fase1_p2.png",
+   "port": "fase1_p2"
+  },
+  {
+   "original": "C:\\Users\\javie\\Desktop\\PROYECTOS IA\\DBZ Budokai 3 HD Collection\\studies 5\\ENTREGAS\\A2\\evidencias\\original_fase1_p3.png",
+   "port": "fase1_p3"
+  },
+  {
+   "original": "C:\\Users\\javie\\Desktop\\PROYECTOS IA\\DBZ Budokai 3 HD Collection\\studies 5\\ENTREGAS\\A2\\evidencias\\original_fase1_final.png",
+   "port": "fase1_final"
+  }
+ ]
+}

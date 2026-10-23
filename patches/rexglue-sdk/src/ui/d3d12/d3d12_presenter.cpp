@@ -14,6 +14,7 @@
 #include <climits>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <memory>
@@ -48,6 +49,17 @@ REXCVAR_DEFINE_BOOL(d3d12_allow_variable_refresh_rate_and_tearing, true, "UI/D3D
 // (compiled by every backend) to avoid a duplicate symbol when both the D3D12
 // and the Vulkan presenter are built; here we only declare it.
 REXCVAR_DECLARE(int32_t, frame_cap);
+REXCVAR_DECLARE(bool, dbz3_test_oculto);
+
+// dbz3 (X0g): hidden test mode (DBZ3_NO_DIALOGS + DBZ3_TEST_OCULTO=1 or the cvar): no Present().
+static bool Dbz3TestHidden() {
+  static const bool tests = std::getenv("DBZ3_NO_DIALOGS") != nullptr;
+  static const bool env = [] {
+    const char* e = std::getenv("DBZ3_TEST_OCULTO");
+    return e && *e == '1';
+  }();
+  return tests && (env || REXCVAR_GET(dbz3_test_oculto));
+}
 
 // DBZ3: instrumentacion de rendimiento. Escribe una linea cada 5 segundos con
 // los FPS reales de presentacion, el peor frame del intervalo y los ajustes que
@@ -1749,9 +1761,11 @@ Presenter::PaintResult D3D12Presenter::PaintAndPresentImpl(bool execute_ui_drawe
   // fullscreen is ever used in, the allow tearing flag must not be passed in
   // fullscreen, but DXGI fullscreen is largely unneeded with the flip
   // presentation model used in Direct3D 12).
-  HRESULT present_result = paint_context_.swap_chain->Present(
-      0, DXGI_PRESENT_RESTART |
-             (paint_context_.swap_chain_allows_tearing ? DXGI_PRESENT_ALLOW_TEARING : 0));
+  HRESULT present_result = Dbz3TestHidden()
+      ? S_OK
+      : paint_context_.swap_chain->Present(
+            0, DXGI_PRESENT_RESTART |
+                   (paint_context_.swap_chain_allows_tearing ? DXGI_PRESENT_ALLOW_TEARING : 0));
   // Even if presentation has failed, work might have been enqueued anyway
   // internally before the failure according to Jesse Natalie from the DirectX
   // Discord server.

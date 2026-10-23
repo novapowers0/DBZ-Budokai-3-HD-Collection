@@ -54,7 +54,7 @@ KIT_EXTRA_TOOLS = ["name_banner", "portrait_hd", "extract_azt_afs", "awg_to_obj_
                    "cri",           # voces de SDBH (importar.py lo importa dentro de una funcion: el rastreo no lo ve)
                    "comprobar_assets"]   # studies 6 frente 01: validador de bins (ventana 44 B, rampa, pesos PS2);
                                          # opcional: si no esta en mod center hd/, `find` devuelve None y se ignora
-KIT_DATA = ["catalog_b3.cat", "roster_db.json", "b1_capsulas.txt",   # b1_capsulas: nombres de B1 (importador)
+KIT_DATA = ["catalog_b3.cat", "cac/piezas_b3_base.json", "roster_db.json", "b1_capsulas.txt",   # b1_capsulas: nombres de B1 (importador)
             # sin estos el Kit fallaba en casa de los jugadores (log de un jugador, 2026-10-12): presets del
             # importador, nombres de los modelos de IW, codigos de Dragon Universe, etiquetas de texturas
             # y la lista de herramientas de la ventana
@@ -84,7 +84,8 @@ RES_FILES = ["Budokai_3_Capsules_IDs.txt", "Dragon Ball Z Infinite World Capsule
 # el Kit: si el Kit se descomprime encima nada cambia.
 GAME_ENTRIES = ["campos_iw", "escenarios_convertir", "iso", "importar", "vista_heroe", "roster_build",
                 "swap_b3", "texture_b3", "texture_pack", "texture_dump_import", "capsulas", "colores", "gritos",
-                "hornada_support", "voces", "model_render"]
+                "hornada_support", "voces", "model_render", "heroe_sagas_a_du", "nombre_levelup", "campana",
+                "retrato_anime", "tecnicas_tipo"]
 
 
 def kit_modules(entries=None):
@@ -103,7 +104,7 @@ def kit_modules(entries=None):
         if not p or p in seen:
             continue
         seen.add(p)
-        for n in ast.walk(ast.parse(open(p, encoding="utf-8").read())):
+        for n in ast.walk(ast.parse(open(p, encoding="utf-8-sig").read(), filename=p)):
             names = []
             if isinstance(n, ast.Import):
                 names = [a.name.split(".")[0] for a in n.names]

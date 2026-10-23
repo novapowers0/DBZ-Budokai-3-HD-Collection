@@ -1,0 +1,24 @@
+{
+ "modo": "b2",
+ "escena": "fase1",
+ "dorado": "b2_fase1.json",
+ "fuente_dorado": "b2_traza_ordenes.log",
+ "filas": [
+  {
+   "nombre": "ordenes del original vistas en el port",
+   "ok": false,
+   "detalle": "3/10; faltan [62, 58, 75, 59, 53, 36, 84] (el port no las registra o no las ejecuta)"
+  },
+  {
+   "nombre": "mismo orden relativo de las que estan",
+   "ok": true,
+   "detalle": "original [9, 7, 1] port [9, 7, 1]"
+  },
+  {
+   "nombre": "el port registra alguna orden de guion",
+   "ok": true,
+   "detalle": "lineas 'orden ejecutada N' en el log del port"
+  }
+ ],
+ "firma": "3760a6e81f7d"
+}

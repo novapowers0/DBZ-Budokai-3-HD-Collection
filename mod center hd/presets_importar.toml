@@ -79,3 +79,8 @@ voces = "fuente"
 descripcion = "Dragon Ball Heroes: el modelo de SDBH sobre el cuerpo del donante (sus golpes no se portan); gritos de los golpes con sus voces de Heroes si el juego de PC esta instalado"
 golpes = "donante"
 voces = "fuente"
+
+[xv2.original]
+descripcion = "Dragon Ball Xenoverse 2: el modelo de XV2 (colores del BCS) sobre el cuerpo del donante; golpes y voces del donante"
+golpes = "donante"
+voces = "donante"

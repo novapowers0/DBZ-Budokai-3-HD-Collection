@@ -1,0 +1,3 @@
+descripcion = "K: heroe propio (ID 63) con moveset Trunks contra Vegeta: capturas en reposo"
+env = ["DBZ3_TEST_BATTLE=63,7,2", "DBZ3_TEST_RINGOUT=1", "DBZ3_TEST_HEROE_MOVESET=8"]
+pasos = ["log \"tag: empieza un combate\" 40", "esperar 15000", "captura k_heroe_a", "esperar 1500", "captura k_heroe_b", "esperar 1500", "captura k_heroe_c", "log \"hub: fin del combate nativo\" 60"]

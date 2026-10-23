@@ -423,6 +423,9 @@ void CommandProcessor::WriteRegister(uint32_t index, uint32_t value) {
               gamma_ramp_256_entry_table_[gamma_ramp_rw_index.rw_index];
           // Bits 0:5 are hardwired to zero.
           uint32_t gamma_ramp_seq_color = regs.Get<reg::DC_LUT_SEQ_COLOR>().seq_color >> 6;
+          if (gamma_ramp_rw_index.rw_index == 255 || gamma_ramp_rw_index.rw_index == 128)   // X1esc (#15)
+            REXGPU_INFO("dbz3: gamma 256[{}][{}] = {}", uint32_t(gamma_ramp_rw_index.rw_index), gamma_ramp_rw_component_,
+                        gamma_ramp_seq_color);
           switch (gamma_ramp_rw_component_) {
             case 0:
               gamma_ramp_entry.color_10_red = gamma_ramp_seq_color;
@@ -464,6 +467,10 @@ void CommandProcessor::WriteRegister(uint32_t index, uint32_t value) {
           // Bits 0:5 are hardwired to zero.
           gamma_ramp_entry.base = gamma_ramp_value.base & ~UINT32_C(0x3F);
           gamma_ramp_entry.delta = gamma_ramp_value.delta & ~UINT32_C(0x3F);
+          // X1esc (#15): ultimo tramo de la rampa de gamma por componente (hipotesis: el fundido a negro va por aqui).
+          if (gamma_ramp_rw_index_pwl == 0x7F || gamma_ramp_rw_index_pwl == 0x40)
+            REXGPU_INFO("dbz3: gamma pwl[{}][{}] base={} delta={}", gamma_ramp_rw_index_pwl, gamma_ramp_rw_component_,
+                        uint32_t(gamma_ramp_entry.base), uint32_t(gamma_ramp_entry.delta));
         }
         if (++gamma_ramp_rw_component_ >= 3) {
           gamma_ramp_rw_component_ = 0;

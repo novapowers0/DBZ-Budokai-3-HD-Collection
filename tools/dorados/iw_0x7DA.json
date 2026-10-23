@@ -1,0 +1,57 @@
+{
+ "juego": "iw",
+ "fuente": "mini_0x7DA.tsv",
+ "creado": "2026-10-23T08:36:02",
+ "resumen": {
+  "n": 1,
+  "n_vivas": 1,
+  "dur_s": 0.0,
+  "origen_jugador": true,
+  "dist_ojo_jugador": {
+   "min": 21.47,
+   "mediana": 21.47,
+   "max": 21.47
+  },
+  "altura_ojo": {
+   "min": 6.77,
+   "mediana": 6.77,
+   "max": 6.77
+  },
+  "yaw_ojo_grados": {
+   "min": -24.28,
+   "mediana": -24.28,
+   "max": -24.28
+  },
+  "fov": {
+   "min": 0.602,
+   "max": 0.602
+  }
+ },
+ "muestras": [
+  {
+   "t": 0.001,
+   "fov": 0.602,
+   "eye": [
+    -8.376,
+    6.772,
+    18.572
+   ],
+   "tgt": [
+    -1.366,
+    3.829,
+    5.073
+   ],
+   "j": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "r": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "amc": 0
+  }
+ ]
+}

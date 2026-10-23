@@ -1,0 +1,20 @@
+# copia: s5_c2
+descripcion = "C3: con 7 Esferas (un deseo) la raza cambia, queda guardada y cac.toml se copia antes (.deseo-*.bak)"
+env = ["DBZ3_TEST_RINGOUT=1", "DBZ3_TEST_HEROE_SAGA=1", "DBZ3_TEST_HEROE_ESFERAS=127"]
+pasos = [
+  "esperar 2500",
+  "tecla W 1200",
+  "tecla Space 3500",
+  "tecla S 450", "tecla S 450", "tecla S 450", "tecla S 450", "tecla S 450",
+  "tecla Space 2500",
+  "tecla S 700", "tecla S 700", "tecla S 700",
+  "tecla Space 3500",
+  "captura c2_deseo_abierto_0_heroe",
+  "tecla D 700",
+  "log \"deseo concedido\" 20",
+  "captura c2_deseo_abierto_1",
+  "tecla D 700",
+  "captura c2_deseo_abierto_2",
+  "tecla Backspace 3000",
+  "esperar 2500",
+]

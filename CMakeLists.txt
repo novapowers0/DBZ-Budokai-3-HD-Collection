@@ -36,6 +36,7 @@ set(DBZ3_SOURCES
     src/ingame/menu_pilot.cpp
     src/ingame/online_panel.cpp
     src/ingame/tagteam_panel.cpp
+    src/ingame/color_panel.cpp
     src/ingame/tutorial.cpp
     src/net/netplay.cpp
     src/net/room.cpp
@@ -65,6 +66,7 @@ set(DBZ3_SOURCES
     src/iw_minijuegos.cpp
     src/cinematica.cpp
     src/ports_guard.cpp
+    src/ports_regs_luchadores.cpp
     src/combate.cpp
     src/transformaciones.cpp
     src/video_sfd.cpp
@@ -74,6 +76,7 @@ set(DBZ3_SOURCES
     src/iw_mini_botones.cpp
     src/iw_mini_vuelo.cpp
     src/iw_mini_disparo.cpp
+    src/datos.cpp
 )
 
 # Codegen output directory. Default is the US/NA build (generated/); a second
@@ -173,6 +176,18 @@ if(WIN32)
     target_link_libraries(dbz3 PRIVATE winhttp version ws2_32 ole32 oleaut32)   # ws2_32: online (src/net); ole32: UPnP del router
 endif()
 
+# libjuice v1.7.4 (ICE/STUN/TURN, MPL-2.0, third_party/libjuice sin cambios): biblioteca estatica para el transporte de R5. APAGADO por
+# defecto y sin uso en el codigo: el online sigue con el socket UDP propio de src/net (netplay.cpp: OpenSocket/Send/Recv/ResetTransport).
+option(DBZ3_LIBJUICE "Enlazar libjuice (transporte ICE de R5; aun sin usar)" OFF)
+if(DBZ3_LIBJUICE AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/libjuice/CMakeLists.txt")
+    set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+    set(NO_SERVER ON CACHE BOOL "" FORCE)
+    set(NO_TESTS ON CACHE BOOL "" FORCE)
+    add_subdirectory(third_party/libjuice ${CMAKE_BINARY_DIR}/third_party_libjuice EXCLUDE_FROM_ALL)
+    target_link_libraries(dbz3 PRIVATE juice-static)
+    target_compile_definitions(dbz3 PRIVATE DBZ3_LIBJUICE=1)
+endif()
+
 if(UNIX AND NOT APPLE)
     # Whole-archive linking for kernel hooks
     target_link_options(dbz3 PRIVATE
@@ -210,6 +225,15 @@ add_custom_command(TARGET dbz3 POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         "${CMAKE_CURRENT_SOURCE_DIR}/res/ingame_ui" "$<TARGET_FILE_DIR:dbz3>/ingame_ui"
     COMMENT "Staging ingame_ui next to dbz3"
+    VERBATIM)
+endif()
+
+# Datos medidos del original (tools/extraer_datos.py -> res/datos/*.toml; src/datos.cpp los lee y recarga con F5)
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/res/datos")
+add_custom_command(TARGET dbz3 POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_CURRENT_SOURCE_DIR}/res/datos" "$<TARGET_FILE_DIR:dbz3>/res/datos"
+    COMMENT "Staging res/datos next to dbz3"
     VERBATIM)
 endif()
 

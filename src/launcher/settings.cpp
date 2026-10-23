@@ -5,9 +5,11 @@
 
 #include <rex/cvar.h>
 #include <rex/filesystem.h>
+#include <rex/filesystem/afs.h>
 #include <rex/filesystem/devices/disc_image_device.h>
 #include <rex/filesystem/file.h>
 #include <rex/logging.h>
+#include <rex/thread.h>
 
 #include <toml++/toml.hpp>
 
@@ -45,6 +47,11 @@
 // ---------------------------------------------------------------------------
 // User-facing cvars (persisted to dbz3_user.toml)
 // ---------------------------------------------------------------------------
+// Creador de personajes: por defecto piezas NATIVAS de B3 (del AFS del jugador). Las piezas de Xenoverse 2 son una
+// opcion que el jugador activa aqui y solo si XV2 esta instalado (nunca se reparten piezas convertidas).
+REXCVAR_DEFINE_BOOL(dbz3_cac_xv2, false, "DBZ3/Launcher",
+                    "Creador de personajes: permitir piezas de Xenoverse 2 (requiere XV2 instalado)");
+
 // NOTE: dbz3_* cvars are defined here (single storage, compiled into dbz3.exe).
 // SDK cvars (resolution, vsync, present_effect, ...) are DECLAREd at global
 // scope below and read/written through the runtime's cvar registry.
@@ -98,6 +105,12 @@ REXCVAR_DEFINE_BOOL(dbz3_vrr, true, "DBZ3/Video",
                     "Variable refresh rate (G-Sync/FreeSync). Syncs the monitor "
                     "to each presented frame for even pacing on high-refresh panels.")
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
+
+// Issue #29 (S5-I1): the game asks XGetVideoMode for its back-buffer size and, if the mode is not hi-def, draws at
+// video_mode_width x video_mode_height (its own SD path, measured: 640x480 capture). So 480p needs no SDK change.
+REXCVAR_DEFINE_BOOL(dbz3_low_res, false, "DBZ3/Video",
+                    "Low internal resolution (480p, 4:3) for weak PCs. Needs a restart.")
+    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 
 REXCVAR_DEFINE_INT32(dbz3_frame_cap, 60, "DBZ3/Video",
                      "Frame cap in FPS (0 = uncapped)")
@@ -396,6 +409,13 @@ REXCVAR_DEFINE_BOOL(dbz3_texture_packs_on, true, "DBZ3/Video",
 // la ventana, sin tiras.
 REXCVAR_DEFINE_BOOL(dbz3_ui_side_borders, false, "DBZ3/Video",
                     "Golden side borders on menus (off = full-width backgrounds)")
+    .lifecycle(rex::cvar::Lifecycle::kHotReload);
+
+// X1: musica de combate del jugador: "original" (la del juego: el combate de B3 no abre ninguna pista, solo ambiente),
+// "aleatoria" (una pista al azar de todas las que hay) o "aleatoria:<fuente>" (b3, b2, iw, b1). Las pistas salen de
+// la copia del jugador y de sus ISO de PS2, leidas en marcha (mods_opcionales.cpp, namespace musica).
+REXCVAR_DEFINE_STRING(dbz3_musica_combate, "original", "DBZ3/Audio",
+                      "Battle music: original | aleatoria | aleatoria:<b3|b2|iw|b1>")
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
 
 REXCVAR_DEFINE_STRING(dbz3_gpu_backend, DBZ3_DEFAULT_GPU_BACKEND, "DBZ3/Video",
@@ -1667,7 +1687,7 @@ std::string IsoIdentity() {
 std::set<std::string> ModTouchedNames() {
   std::set<std::string> out;
   std::error_code ec;
-  const std::filesystem::path root = rex::filesystem::GetExecutableFolder() / "mods";
+  const std::filesystem::path root = rex::filesystem::AfsModsRoot();
   for (auto it = std::filesystem::directory_iterator(root, ec); !ec && it != std::filesystem::directory_iterator();
        it.increment(ec)) {
     const std::string mod = Lower(rex::path_to_utf8(it->path().filename()));
@@ -1968,8 +1988,50 @@ void SetFullscreenMode(const std::string& mode) { REXCVAR_SET(dbz3_fullscreen_mo
 bool VsyncEnabled() { return REXCVAR_GET(dbz3_vsync); }
 void SetVsyncEnabled(bool enabled) { REXCVAR_SET(dbz3_vsync, enabled); }
 
+bool LowResEnabled() { return REXCVAR_GET(dbz3_low_res); }
+void SetLowResEnabled(bool enabled) { REXCVAR_SET(dbz3_low_res, enabled); }
 bool VrrEnabled() { return REXCVAR_GET(dbz3_vrr); }
 void SetVrrEnabled(bool enabled) { REXCVAR_SET(dbz3_vrr, enabled); }
+
+bool CacXv2Piezas() { return REXCVAR_GET(dbz3_cac_xv2); }
+void SetCacXv2Piezas(bool enabled) { REXCVAR_SET(dbz3_cac_xv2, enabled); }
+
+// Misma regla que heroe.cpp y mod center hd/xv2/xv2_leer.py: DBZ3_XENO2_CPK manda (si no existe, XV2 no esta).
+bool Xv2Instalado() {
+  static const bool ok = [] {
+    namespace fs = std::filesystem;
+    auto hay = [](const fs::path& p) {
+      std::error_code ec;
+      return !p.empty() && fs::is_regular_file(p, ec);
+    };
+    if (const char* e = std::getenv("DBZ3_XENO2_CPK"); e && *e) return hay(fs::u8path(e));
+    std::vector<fs::path> bases;
+    for (char d = 'C'; d <= 'J'; ++d) {
+      bases.emplace_back(std::string(1, d) + ":/SteamLibrary");
+      bases.emplace_back(std::string(1, d) + ":/Steam");
+    }
+    bases.emplace_back("C:/Program Files (x86)/Steam");
+    bases.emplace_back("C:/Program Files/Steam");
+    for (const fs::path& b : bases) {
+      if (hay(b / "steamapps" / "common" / "DB Xenoverse 2" / "cpk" / "data.cpk")) return true;
+    }
+    for (const fs::path& b : {fs::path("C:/Program Files (x86)/Steam"), fs::path("C:/Program Files/Steam")}) {
+      std::ifstream f(b / "steamapps" / "libraryfolders.vdf");
+      std::string linea;
+      while (std::getline(f, linea)) {
+        const auto p = linea.find("\"path\"");
+        if (p == std::string::npos) continue;
+        const auto a = linea.find('"', p + 6), z = linea.find('"', a + 1);
+        if (a == std::string::npos || z == std::string::npos) continue;
+        if (hay(fs::u8path(linea.substr(a + 1, z - a - 1)) / "steamapps" / "common" / "DB Xenoverse 2" / "cpk" /
+                "data.cpk"))
+          return true;
+      }
+    }
+    return false;
+  }();
+  return ok;
+}
 
 std::string ModProfile() { return REXCVAR_GET(dbz3_mod_profile); }
 void SetModProfile(const std::string& name) { REXCVAR_SET(dbz3_mod_profile, name); }
@@ -2346,7 +2408,24 @@ void ApplyQualityPreset() {
     // Detect the GPU and apply the recommended profile in memory (not persisted:
     // "auto" re-evaluates on every launch, so it also adapts if the user later
     // moves to a different machine).
-    ApplyQualityConfig(QualityConfigForTier(DetectGpuTier()), /*persist=*/false);
+    // D2.8: con 2 nucleos (o menos) disponibles para el proceso el motor es CPU-bound
+    // (medido: 23-25 FPS con MSAA/aniso y 2 nucleos), asi que el preset automatico baja
+    // al perfil minimo aunque la GPU sea buena. Con 3+ nucleos manda la GPU.
+    // ponytail: el SDK instalado no exporta available_processor_count; se cuenta aqui la
+    // mascara de afinidad (Windows) y si no, los logicos. Usar la del SDK cuando se actualice.
+    int32_t cores = int32_t(rex::thread::logical_processor_count());
+#if REX_PLATFORM_WIN32
+    DWORD_PTR proc_mask = 0, sys_mask = 0;
+    if (GetProcessAffinityMask(GetCurrentProcess(), &proc_mask, &sys_mask) && proc_mask) {
+      cores = 0;
+      for (DWORD_PTR m = proc_mask; m; m &= m - 1) ++cores;
+    }
+#endif
+    const int32_t tier = cores > 0 && cores <= 2 ? 0 : DetectGpuTier();
+    if (cores > 0 && cores <= 2) {
+      REXLOG_INFO("dbz3: preset automatico: {} nucleo(s) disponibles -> perfil de rendimiento", cores);
+    }
+    ApplyQualityConfig(QualityConfigForTier(tier), /*persist=*/false);
     return;
   }
   ApplyQualityConfig(QualityConfigForPreset(preset), /*persist=*/true);
@@ -2482,6 +2561,7 @@ void SetTextureDumpEnabled(bool enabled) {
 // persists the list so the GPU plugin replaces those textures at runtime.
 namespace {
 std::filesystem::path LauncherModsRoot() {
+  if (std::getenv("DBZ3_VANILLA_SESSION")) return rex::filesystem::AfsModsRoot();
   std::filesystem::path probe = rex::filesystem::GetExecutableFolder();
   std::error_code ec;
   for (int depth = 0; depth < 4; ++depth) {
@@ -2680,6 +2760,15 @@ void ApplyUserSettingsToSdk() {
   int32_t scale = ResolutionScale();
   rex::cvar::SetFlagByName("draw_resolution_scale_x", std::to_string(scale));
   rex::cvar::SetFlagByName("draw_resolution_scale_y", std::to_string(scale));
+  // Low resolution (issue #29): a non hi-def guest video mode makes the game draw at 640x480 by itself. Only
+  // touched when on, or to undo our own 640x480 (the SDK cvars may have been saved in the user file).
+  if (LowResEnabled()) {
+    rex::cvar::SetFlagByName("video_mode_width", "640");
+    rex::cvar::SetFlagByName("video_mode_height", "480");
+  } else if (GetSdkInt("video_mode_width") == 640 && GetSdkInt("video_mode_height") == 480) {
+    rex::cvar::SetFlagByName("video_mode_width", "1280");
+    rex::cvar::SetFlagByName("video_mode_height", "720");
+  }
 
   // Input: backend (before the input drivers are created in Setup), deadzone
   // (applied on the merged state), rumble (gates vibration), MnK emulation

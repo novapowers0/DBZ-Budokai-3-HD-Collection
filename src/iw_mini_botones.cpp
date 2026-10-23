@@ -20,6 +20,7 @@
 //       (0.6 0.8 1.0 1.3 1.6 2.0), redondeado a la centena (Math_RoundUp100).
 //  B) "Rondas" (NB007 0x292BB0, NB012 0x3124F0 USA: secuencias por ronda tabla + ronda*10, longitud de +0xB8) y MSN019
 //     (0x2EAA20-0x2EC6A0, sin QTE_SetSequence): RE en el documento, sin portar aun.
+#include "reloj_prueba.h"
 #include "escenarios.h"
 #include "iw_minijuegos.h"
 
@@ -303,8 +304,8 @@ void StoreF(uint8_t* base, uint32_t a, float f) {
 }
 
 // ELF de IW del jugador (carpeta o ISO, USA o europeo). Europeo SLES_553.47 (medido con las dos copias, 2026-10-19): las
-// tablas de los minijuegos van 0x7B0 mas adelante (las de NB007, 0x800) y los huecos de NB012 en otra unidad (USA = EU*10+12
-// salvo 23 de 1200, que el americano retoco). Devuelve el puntero al dato de la direccion USA `a` (o nullptr).
+// tablas de los minijuegos van 0x7B0 mas adelante (las de NB007, 0x800). Los huecos de NB012 se leen tal cual: la tabla EU
+// ya esta en cuadros (2026-10-22). Devuelve el puntero al dato de la direccion USA `a` (o nullptr).
 struct ElfIW {
   std::vector<uint8_t> e;
   bool eu = false;
@@ -462,6 +463,7 @@ struct ClipCam {
   int nf = 0;
   std::vector<std::array<float, 4>> ojo, obj;   // {cuadro, x, y, z}
   std::vector<std::array<float, 2>> fov;        // {cuadro, radianes}
+  std::vector<std::array<float, 2>> roll;       // {cuadro, radianes} (3a pista del clip; antes se ignoraba)
 };
 std::vector<uint8_t> g_amc;
 std::map<int, ClipCam> g_clips;
@@ -509,9 +511,9 @@ uint32_t LeerAmc(const std::vector<uint8_t>& amc, int base, const std::vector<in
         if (k < 2) {
           const size_t o = t + 12 + 16 * size_t(i);
           (k == 0 ? c.ojo : c.obj).push_back({float(u32(o)), f32(o + 4), f32(o + 8), f32(o + 12)});
-        } else if (k == 3) {
+        } else {
           const size_t o = t + 12 + 8 * size_t(i);
-          c.fov.push_back({float(u32(o)), f32(o + 4)});
+          (k == 2 ? c.roll : c.fov).push_back({float(u32(o)), f32(o + 4)});
         }
       }
     }
@@ -818,7 +820,7 @@ class Panel : public rex::ui::ImGuiDialog {
       REXLOG_INFO("dbz3 r14: mando +12 {:04X}", ahora);
     }
     j->antes = ahora;
-    acum_ += pausa ? 0.0f : std::min(io.DeltaTime, 0.1f);
+    acum_ += pausa ? 0.0f : dbz3::RelojDt(std::min(io.DeltaTime, 0.1f));
     while (acum_ >= 1.0f / 60) {   // logica a 60 cuadros por segundo, como en la PS2
       acum_ -= 1.0f / 60;
       ++j->t;
@@ -1499,8 +1501,9 @@ bool CargarB(JuegoB& j, std::string& error) {
     if (!s || !h) return false;
     for (int i = 0; i < 10; ++i) {
       j.seq[r][i] = s[i];
+      // La tabla EU ya viene en cuadros (medido 2026-10-22 contra SLES_553.47: 1177/1200 coinciden con USA*10+12 y
+      // los 23 retocados por el americano -122->9 en 15, 130->12 en 7, 220->19 en 1- se leen tal cual). No convertir.
       if (!m.teclear) std::memcpy(&j.hueco[r][i], h + 4 * i, 4);
-      if (!m.teclear && elf.eu && j.hueco[r][i] > 0) j.hueco[r][i] = j.hueco[r][i] * 10 + 12;   // ver ElfIW
       // NB007 lleva tambien la cruceta (4 arriba, 5 derecha, 6 abajo, 7 izquierda, desde la dificultad 1)
       if (s[i] < (m.teclear ? 4 : 8) || s[i] > 15 || j.hueco[r][i] < 0 || j.hueco[r][i] > 3000) {
         error = "las tablas del ELF no son las de IW USA";
@@ -1858,7 +1861,7 @@ class PanelB : public rex::ui::ImGuiDialog {
     const uint16_t ahora = uint16_t(REX_LOAD_U16(kPads + kPadBotones) | (REX_LOAD_U16(kPads + 108) & 0x00F0));
     j->pendiente = uint16_t(j->pendiente | (ahora & ~j->antes));
     j->antes = ahora;
-    acum_ += pausa ? 0.0f : std::min(io.DeltaTime, 0.1f);
+    acum_ += pausa ? 0.0f : dbz3::RelojDt(std::min(io.DeltaTime, 0.1f));
     while (acum_ >= 1.0f / 60) {
       acum_ -= 1.0f / 60;
       ++j->t;
@@ -2406,9 +2409,9 @@ static void Colocar(uint8_t* base, uint32_t mgr, const Poses& p) {
 // la proyeccion ya esta hecha con el 0,785 de B3). Se reproduce el encuadre acercando el ojo al objetivo en la proporcion
 // tan(fov_iw/2) / tan(fov_b3/2): el sujeto del objetivo sale del mismo tamano que en IW (fov 0,52-0,62 en los clips
 // medidos frente a 0,785: los luchadores salian ~1,5 veces mas pequenos). DBZ3_S8_SIN_FOV lo quita (comparar).
-static void CamaraFov(uint8_t* base, uint32_t mgr, const float ojo[3], const float obj[3], float fov) {
+static void CamaraFov(uint8_t* base, uint32_t mgr, const float ojo[3], const float obj[3], float fov, float roll = 0.0f) {
   static const bool sin = std::getenv("DBZ3_S8_SIN_FOV") != nullptr;
-  fov = std::clamp(fov, 0.2f, 1.3f);
+  fov = std::clamp(fov, 0.08726647f, 3.0543263f);   // B2: los mismos limites que Camera_SetupFieldOfView (5..175 grados)
   const float b3 = LoadF(base, mgr + 0x1C4);
   const float k = sin || !(b3 > 0.3f && b3 < 1.4f) ? 1.0f : std::tan(fov * 0.5f) / std::tan(b3 * 0.5f);
   g_cam_fov_iw = fov, g_cam_fov_b3 = b3, g_cam_k = k;
@@ -2438,7 +2441,7 @@ static void CamaraFov(uint8_t* base, uint32_t mgr, const float ojo[3], const flo
     }
     for (int i = 0; i < 3; ++i) e[i] += co[i], t[i] += ct[i];
   }
-  dbz3::cine::Camara(base, e, t);
+  dbz3::cine::Camara(base, e, t, roll);
   std::memcpy(wo, e, sizeof wo);
   std::memcpy(wt, t, sizeof wt);
   hay = true;
@@ -2495,8 +2498,10 @@ static void PasoCamaraB(uint8_t* base) {
   Muestra(c.ojo, f, e);
   Muestra(c.obj, f, t);
   if (!c.fov.empty()) Muestra(c.fov, f, &fov);
+  float roll = 0.0f;
+  if (!c.roll.empty()) Muestra(c.roll, f, &roll);
   const float ojo[3] = {px + e[0], py + e[1], pz + e[2]}, obj[3] = {px + t[0], py + t[1], pz + t[2]};
-  CamaraFov(base, mgr, ojo, obj, fov);
+  CamaraFov(base, mgr, ojo, obj, fov, roll);
 }
 
 // Familia A: la camara de IW del clip en curso, anclada a los dos luchadores. En IW los dos objetos estan en el origen y su
@@ -2515,10 +2520,12 @@ static bool PasoCamaraA(uint8_t* base, uint32_t mgr, const Poses& p) {
     Muestra(c.ojo, f, e);
     Muestra(c.obj, f, t);
     if (!c.fov.empty()) Muestra(c.fov, f, &fov);
+    float roll = 0.0f;
+    if (!c.roll.empty()) Muestra(c.roll, f, &roll);
     if (const char* ff = std::getenv("DBZ3_S8_FOV")) fov = float(std::atof(ff));   // prueba: fov forzado
     const float ojo[3] = {g_origen[0] + e[0], g_origen[1] + e[1], g_origen[2] + e[2]};
     const float obj[3] = {g_origen[0] + t[0], g_origen[1] + t[1], g_origen[2] + t[2]};
-    CamaraFov(base, mgr, ojo, obj, fov);
+    CamaraFov(base, mgr, ojo, obj, fov, roll);
     return true;
   }
   const uint32_t x0 = mgr + kX0, x1 = x0 + kXPaso;
@@ -2542,9 +2549,11 @@ static bool PasoCamaraA(uint8_t* base, uint32_t mgr, const Poses& p) {
   Muestra(c.ojo, f, e);
   Muestra(c.obj, f, t);
   if (!c.fov.empty()) Muestra(c.fov, f, &fov);
+  float roll = 0.0f;
+  if (!c.roll.empty()) Muestra(c.roll, f, &roll);
   mundo(e, ojo);
   mundo(t, obj);
-  CamaraFov(base, mgr, ojo, obj, fov);
+  CamaraFov(base, mgr, ojo, obj, fov, roll);
   return true;
 }
 

@@ -19,7 +19,7 @@
 #include "eu_map.h"
 
 namespace dbz3::tag { void OnScreen(int screen); }
-namespace dbz3::campaigns { void ForgetStoryBattle(); }
+namespace dbz3::campaigns { void ForgetStoryBattle(); void DuAuto(int slot); void DuSesionFin(); }
 
 namespace dbz3::hub {
 namespace {
@@ -71,6 +71,23 @@ bool RequestBattle(int id1, int id2, int stage, bool p2_com) {
   return RequestBattleEx(id1, id2, stage, p2_com, 0, 0, 0, 0, 0);
 }
 bool OwnBattle() { return g_phase.load() == 3; }
+// C3: abre Dragon Universe en la casilla `slot` (la del Heroe) sin pasar por su titulo, su menu ni su rueda de
+// personajes (el Heroe es exclusivo de su modo). Lo lanza el menu principal en su siguiente tick.
+std::atomic<int> g_du_slot{-1};
+bool RequestDu(int slot) {
+  if (g_phase.load() != 0 || g_du_slot.load() >= 0) return false;
+  g_du_slot = slot;
+  return true;
+}
+
+// A2nave: abre el Edit Skills NATIVO (pantalla 22) como la fila 4 del menu principal; al salir con B el juego vuelve al
+// menu principal (5). Lo lanza el menu principal en su siguiente tick (mismo patron que RequestDu).
+std::atomic<bool> g_edit_skills{false};
+bool RequestEditSkills() {
+  if (g_phase.load() != 0 || g_edit_skills.load()) return false;
+  g_edit_skills = true;
+  return true;
+}
 
 // Durante un combate nuestro (OwnBattle): el siguiente sale al acabar este, sin cargar el menu principal (retos,
 // Torre...). Mientras HoldChain(true), espera en negro tras el combate (para una pantalla propia entre medias).
@@ -86,6 +103,10 @@ bool ChainBattleEx(int id1, int id2, int stage, bool p2_com, int time_s, int hp1
 void HoldChain(bool hold) { g_hold = hold; }
 // El siguiente combate sin capsulas (el Laboratorio mide golpes sin modificadores de dano); solo ese combate.
 void NoCapsulesNext() { g_nocaps = true; }
+// A2nave: el siguiente combate (solo el jugador 1) con su lista «Custom» del Edit Skills (partida +4928 + 4624 por casilla; vacia =
+// la Normal). Lo pide pasarela_misiones.cpp con la eleccion Normal/Custom de la rueda de la nave.
+std::atomic<bool> g_custom1{false};
+void CustomCapsulesNext(bool on) { g_custom1 = on; }
 // Deja el encadenado pedido (el combate acaba y se vuelve al menu principal como siempre). En la espera en negro
 // (fase 4) tambien: sub_821D7D18 sigue y crea el menu principal.
 void CancelChain() {
@@ -103,6 +124,7 @@ void Launch(PPCContext& ctx, uint8_t* base, bool from_menu) {
   const PPCContext saved = ctx;
   DBZ3_CALL_EU(sub_82179408)(ctx, base);   // CFG por defecto (modo 5, tiempo de las opciones)
   const bool nocaps = g_nocaps.exchange(false);
+  const bool custom1 = g_custom1.exchange(false);
   for (uint32_t k = 0; k < 2; ++k) {
     const uint32_t rec = kCfg + 16 + 80 * k;
     REX_STORE_U16(rec + 16, uint16_t(q.id[k]));
@@ -114,6 +136,23 @@ void Launch(PPCContext& ctx, uint8_t* base, bool from_menu) {
     if (q.form[k] > 0) REX_STORE_U16(rec + 22, uint16_t(q.form[k]));
     if (q.hp[k] != 0) REX_STORE_U32(rec + 36, uint32_t(q.hp[k] > 0 ? q.hp[k] : -q.hp[k]));
     if (q.hp[k] > 0) REX_STORE_U32(rec + 40, uint32_t(q.hp[k]));
+    if (custom1 && k == 0 && uint32_t(q.id[0]) < 38 && !nocaps) {   // lista Custom del jugador 1 (casilla del select = ID)
+      const dbz3::GA lst = dbz3::GA(0x824BA110) + 4928u + 4624u * uint32_t(q.id[0]);
+      if (const char* tc = std::getenv("DBZ3_TEST_CUSTOM1"); tc) {   // PRUEBA: pone esta lista Custom (hasta 7 IDs) en la partida de id 0
+        int c[7] = {-1, -1, -1, -1, -1, -1, -1};
+        std::sscanf(tc, "%d,%d,%d,%d,%d,%d,%d", &c[0], &c[1], &c[2], &c[3], &c[4], &c[5], &c[6]);
+        for (uint32_t i = 0; i < 7; ++i) REX_STORE_U16(lst + 2 * i, uint16_t(c[i] < 0 ? 0xFFFF : c[i]));
+      }
+      uint16_t ids[7] = {};
+      uint32_t n = 0;
+      for (uint32_t c = 0; c < 7; ++c)
+        if (const uint16_t cap = REX_LOAD_U16(lst + 2 * c); cap != 0xFFFF && cap != 0) ids[n++] = cap;
+      if (n) {
+        REX_STORE_U16(rec + 52, uint16_t(n));
+        for (uint32_t c = 0; c < 7; ++c) REX_STORE_U16(rec + 54 + 2 * c, ids[c]);
+      }
+      REXLOG_INFO("dbz3 hub: jugador 1 (id {}): lista Custom con {} capsulas ({} {} {})", q.id[0], n, ids[0], ids[1], ids[2]);
+    }
     // Capsulas: sub_82179408 deja las listas vacias y sin ellas nadie lanza tecnicas ni se transforma. Como en el
     // Duelo, la lista Normal del personaje (tabla 0x8234ABB8 + 96 * ID: +80 cuantas, +82 7 IDs; la que el Torneo
     // pone al COM, docs/12_conectores/12_torneo_como_motor.md s4.1; medido por el frente campanas)
@@ -193,6 +232,56 @@ bool MenuListo(uint8_t* base) {
 }
 }  // namespace
 
+// Edit Skills: lo que hace la A del menu principal en su fila 4 (sub_82179328 + escena 22) con las piezas de salida del menu.
+bool LaunchEditSkills(PPCContext& ctx, uint8_t* base) {
+  const uint32_t mgr = REX_LOAD_U32(dbz3::GA(0x8245F230)), task = mgr ? REX_LOAD_U32(mgr + 16) : 0;
+  const uint32_t obj = task ? REX_LOAD_U32(task + 48) : 0;
+  if (!obj || REX_LOAD_U32(task + 28) != dbz3::GA(0x8218C5D8)) return false;   // el menu aun no esta activo: otro tick
+  const PPCContext saved = ctx;
+  REX_STORE_U8(obj + 150, 4);
+  ctx.r3.u64 = obj;
+  DBZ3_CALL_EU(sub_8218C588)(ctx, base);
+  ctx = saved;
+  const uint32_t datos = dbz3::GA(0x82456480);
+  std::memset(base + datos, 0, 36048);   // lo que hace sub_82179328 (memset del area de trabajo de Edit Skills)
+  ctx.r3.u64 = 22;
+  ctx.r4.u64 = 0;
+  DBZ3_CALL_EU(sub_821D2778)(ctx, base);
+  ctx = saved;
+  ctx.r3.u64 = 10;
+  DBZ3_CALL_EU(sub_821D27C8)(ctx, base);
+  ctx = saved;
+  REX_STORE_U32(task + 28, dbz3::GA(0x8218C4C8));
+  REXLOG_INFO("dbz3 hub: Edit Skills nativo abierto desde la nave (escena 22)");
+  return true;
+}
+
+// Dragon Universe del Heroe: lo que hace la A del menu principal en su fila "Dragon Universe" (la 0): las piezas de salida
+// del menu (sub_8218C588, +148 = 5), la peticion de la escena 6 (titulo de DU) y el estado "saliendo" del menu
+// (sub_8218C4C8) que lo destruye al acabar la animacion. Destruir el menu a mano (sub_8218BA00) cerraba el juego al cargar
+// la 6. El resto (pasar el titulo, su menu y su rueda sin elegir a nadie): campaigns.cpp (DuAuto, sub_821D78F8, sub_821CA020).
+void LaunchDu(PPCContext& ctx, uint8_t* base, int slot) {
+  const uint32_t mgr = REX_LOAD_U32(dbz3::GA(0x8245F230)), task = mgr ? REX_LOAD_U32(mgr + 16) : 0;
+  const uint32_t obj = task ? REX_LOAD_U32(task + 48) : 0;
+  if (!obj || REX_LOAD_U32(task + 28) != dbz3::GA(0x8218C5D8)) return;   // el menu aun no esta activo: otro tick
+  const PPCContext saved = ctx;
+  REX_STORE_U8(obj + 150, 0);
+  ctx.r3.u64 = obj;
+  DBZ3_CALL_EU(sub_8218C588)(ctx, base);
+  ctx = saved;
+  ctx.r3.u64 = 6;
+  ctx.r4.u64 = 0;
+  DBZ3_CALL_EU(sub_821D2778)(ctx, base);
+  ctx = saved;
+  ctx.r3.u64 = 10;
+  DBZ3_CALL_EU(sub_821D27C8)(ctx, base);   // "salida terminada", como el Duelo y Launch
+  ctx = saved;
+  REX_STORE_U32(task + 28, dbz3::GA(0x8218C4C8));
+  dbz3::campaigns::DuAuto(slot);
+  dbz3::hub::g_du_slot = -1;
+  REXLOG_INFO("dbz3 hub: Dragon Universe del Heroe: casilla {} (sin su rueda de personajes)", slot);
+}
+
 // Espera del menu principal (G+0 = 5): aqui se lanza el combate pedido.
 DBZ3_HOOK_EU(sub_821D7C30) {
   using namespace dbz3::hub;
@@ -205,6 +294,29 @@ DBZ3_HOOK_EU(sub_821D7C30) {
       int a = 0, b = 7, st = 0, t = 0, h1 = 0, h2 = 0, f1 = 0, f2 = 0;   // ",tiempo,vida1,vida2,forma1,forma2" opcional
       std::sscanf(tb, "%d,%d,%d,%d,%d,%d,%d,%d", &a, &b, &st, &t, &h1, &h2, &f1, &f2);
       if (RequestBattleEx(a, b, st, true, t, h1, h2, f1, f2)) ++done;
+    }
+  }
+  {   // C4: en el menu principal (1,5 s seguidos) la sesion de DU del Heroe ha terminado (ya no se reanuda sola)
+    static uint32_t en_menu = 0;
+    en_menu = REX_LOAD_U8(kGame) == 5 ? en_menu + 1 : 0;
+    if (en_menu == 90) dbz3::campaigns::DuSesionFin();
+  }
+  // PRUEBA (DBZ3_TEST_DU_HEROE=casilla): a los 3 s en el menu principal abre DU del Heroe (hub::RequestDu)
+  if (static const char* td = std::getenv("DBZ3_TEST_DU_HEROE"); td) {
+    static uint32_t ticks = 0;
+    static bool done = false;
+    ticks = REX_LOAD_U8(kGame) == 5 ? ticks + 1 : 0;
+    if (!done && ticks == 180 && RequestDu(std::atoi(td))) done = true;
+  }
+  if (g_edit_skills.load()) {
+    if (int32_t(REX_LOAD_U32(kReqCur)) == 22) g_edit_skills = false;
+    else if (int32_t(REX_LOAD_U32(kReqCur)) == -1 && MenuListo(base) && LaunchEditSkills(ctx, base)) g_edit_skills = false;
+  }
+  if (const int ds = g_du_slot.load(); ds >= 0) {
+    if (int32_t(REX_LOAD_U32(kReqCur)) == 6) {
+      g_du_slot = -1;   // la fila ya pidio la escena 6
+    } else if (int32_t(REX_LOAD_U32(kReqCur)) == -1 && MenuListo(base)) {
+      LaunchDu(ctx, base, ds);   // y el despachador de este mismo estado carga la escena 6 como con la fila del menu
     }
   }
   if (g_phase.load() == 1 && int32_t(REX_LOAD_U32(kReqCur)) == -1) {

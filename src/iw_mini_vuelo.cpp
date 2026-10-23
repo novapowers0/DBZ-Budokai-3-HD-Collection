@@ -27,6 +27,7 @@
 //    escenas; aqui se le ve volar con su modelo de B3 (ponytail: posicion derivada del medidor, ver Rival()).
 //  - Resultado (Viewer_StateCheckResult/Success/Fail 0x33C190..): meta con t <= limite: rango = 4 - (primer umbral
 //    de +0x38 que supera t), puntos = monedas + puntos del rango; si no, rango -1 y +0x60 puntos.
+#include "reloj_prueba.h"
 #include "iw_minijuegos.h"
 #include "iw_mini_vuelo.h"
 
@@ -706,7 +707,7 @@ class Panel : public rex::ui::ImGuiDialog {
       fin_t_ = -1;
     }
     const Juego& j = *jp;
-    const float t = float(ImGui::GetTime());
+    const float t = float(dbz3::RelojT(ImGui::GetTime()));
     const ps2::Camara cam = ps2::CamaraCombate(base, io.DisplaySize);
     float cam_ojo[3] = {}, cam_mira[3] = {};
     const bool cam_ok = dbz3::cine::LeerCamara(base, cam_ojo, cam_mira);

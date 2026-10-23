@@ -175,6 +175,65 @@ def retint_modelo(hd_bin, giro):
     return bytes(b), k
 
 
+def _azt_texturas(b):
+    """[(posicion del #AZT, desplazamiento DDS, largo)] de las texturas DXT3 sin mipmaps de un modelo HD, en orden."""
+    out = []
+    for magic, z, _ in list(blocks(b)):
+        if magic != b"#AZT":
+            continue
+        n, idx = struct.unpack_from(">II", b, z + 0x10)
+        for t in range(n):
+            o = struct.unpack_from(">I", b, z + idx + 4 * t)[0]
+            if not o:
+                continue
+            do, dl = struct.unpack_from(">II", b, z + o + 0x14)
+            if b[z + do + 84:z + do + 88] == b"DXT3" and struct.unpack_from("<I", b, z + do + 28)[0] <= 1:
+                out.append((z + do, dl))
+    return out
+
+
+def regiones_info(hd_bin):
+    """Regiones de color de un modelo HD = sus texturas DXT3 (cuerpo, pelo, ropa... van en texturas distintas):
+    [{textura, ancho, alto, color}] con el color medio de los pixeles saturados (para rotular el editor)."""
+    from PIL import Image  # noqa: PLC0415
+    b, out = bytes(hd_bin), []
+    for i, (o, dl) in enumerate(_azt_texturas(b)):
+        img = np.array(Image.open(io.BytesIO(b[o:o + dl])).convert("RGBA"))
+        rgb = img[..., :3].astype(np.float32)
+        sat = (rgb.max(-1) - rgb.min(-1)) / np.maximum(rgb.max(-1), 1)
+        m = (sat > 0.15) & (img[..., 3] > 0)
+        col = rgb[m].mean(0) if m.any() else rgb.reshape(-1, 3).mean(0)
+        out.append({"textura": i, "ancho": img.shape[1], "alto": img.shape[0], "color": [int(x) for x in col]})
+    return out
+
+
+def recolor_regiones(hd_bin, regiones):
+    """Recolorea por region. `regiones` = [{textura: N | "todas", tono: grados (giro), sat: factor, val: factor}].
+    El tono solo gira los pixeles con saturacion >= 0,15 (lo gris no cambia, como retint_modelo); sat y val multiplican.
+    El alfa no se toca (en B3 elige la banda del sombreado toon). -> (bin, texturas cambiadas)."""
+    from PIL import Image  # noqa: PLC0415
+    from texture_b3 import encode_dxt3  # noqa: PLC0415
+    b, k = bytearray(hd_bin), 0
+    for i, (o, dl) in enumerate(_azt_texturas(bytes(b))):
+        r = [x for x in regiones if x.get("textura") in (i, "todas")]
+        if not r:
+            continue
+        dds = bytes(b[o:o + dl])
+        img = np.array(Image.open(io.BytesIO(dds)).convert("RGBA"))
+        hsv = np.array(Image.fromarray(img[..., :3]).convert("HSV")).astype(np.float32)
+        for x in r:
+            vivo = hsv[..., 1] >= 0.15 * 255
+            hsv[..., 0] = np.where(vivo, (hsv[..., 0] + float(x.get("tono", 0)) / 360.0 * 256) % 256, hsv[..., 0])
+            hsv[..., 1] = np.clip(hsv[..., 1] * float(x.get("sat", 1.0)), 0, 255)
+            hsv[..., 2] = np.clip(hsv[..., 2] * float(x.get("val", 1.0)), 0, 255)
+        rgb = np.array(Image.fromarray(hsv.astype(np.uint8), "HSV").convert("RGB"))
+        data = dds[:128] + encode_dxt3(np.concatenate([rgb, img[..., 3:]], -1))
+        if len(data) <= dl:
+            b[o:o + len(data)] = data
+            k += 1
+    return bytes(b), k
+
+
 # ---------------------------------------------------------------- colores sueltos
 def ctr_retint(b, c, hue):
     """#CTR del aura: n registros de 0x60 desde +0x10, colores RGB en +0x10 y +0x50 del registro."""

@@ -454,6 +454,15 @@ class D3D12TextureCache final : public TextureCache {
                         const texture_util::TextureGuestLayout& guest_layout,
                         uint32_t guest_address) const;
 
+  // DBZ3 HD Collection (D3): registro de las texturas que PIDE el juego y que el
+  // pack HD NO trae. Con un pack activo, guarda el bitmap ORIGINAL de cada una en
+  // `<pack>/update/` (mismo nombre `<hash>_<W>x<H>_<fmt>.dds` que el pack), para
+  // que el jugador pueda enviar esa carpeta al autor. Con tope de ficheros,
+  // espacio libre minimo y sin render targets que cambian por frame. Cvar
+  // `dbz3_pack_update` (por nombre; ausente = activado).
+  void RecordMissingPackTexture(const TextureKey& key, uint64_t hash,
+                                const std::vector<uint8_t>& linear) const;
+
   // DBZ3 HD Collection: "packs" de texturas al estilo PCSX2. Un pack es una
   // carpeta en `mods/` con ficheros `<hash>_<W>x<H>_<FOURCC>.dds` (el hash es
   // el mismo del volcado). Si la textura guest casa por hash, se sube la imagen

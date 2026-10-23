@@ -8,6 +8,7 @@
 #include "../region.h"
 
 #include <rex/filesystem.h>
+#include <rex/filesystem/afs.h>
 #include <rex/logging.h>
 
 #if REX_PLATFORM_WIN32
@@ -97,7 +98,7 @@ bool StageFolderComplete(const std::filesystem::path& dir, std::string* why) {
 int CountCompleteStages() {
   std::error_code ec;
   int count = 0;
-  const auto root = rex::filesystem::GetExecutableFolder() / "mods";
+  const auto root = rex::filesystem::AfsModsRoot();
   for (auto [it, iec] = std::pair{std::filesystem::directory_iterator(root, ec), std::error_code{}};
        !iec && it != std::filesystem::directory_iterator(); it.increment(iec)) {
     if (!it->is_directory(ec)) continue;
@@ -150,7 +151,7 @@ std::filesystem::path CatalogFile() {
 }
 
 std::filesystem::path ModsOutDir() {
-  return rex::filesystem::GetExecutableFolder() / "mods";
+  return rex::filesystem::AfsModsRoot();
 }
 
          std::string Quote(const std::string& s) {
@@ -927,7 +928,7 @@ bool ModPipeline::StagesToolAvailable() {
 }
 
 std::filesystem::path ModPipeline::StagesRegistryPath() {
-  return rex::filesystem::GetExecutableFolder() / "mods" / "_escenarios_ps2.txt";
+  return rex::filesystem::AfsModsRoot() / "_escenarios_ps2.txt";
 }
 
 void ModPipeline::SetStagesReport(int created, int failed, const std::string& reason) {

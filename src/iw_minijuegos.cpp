@@ -21,6 +21,7 @@
 // palanca relativa a la camara, y la palanca del jugador se cambia por "hacia el rival" (Mando), asi el luchador anda
 // hacia donde se empuja. La camara va detras del jugador (Fotograma, mgr+0x60 via cine::Camara). Objetos proyectados
 // con esa camara y dibujados con sus texturas originales de la copia del jugador; HUD de IW (DATA_USA 6/0).
+#include "reloj_prueba.h"
 #include "iw_ame.h"
 #include "iw_minijuegos.h"
 
@@ -197,6 +198,10 @@ struct Datos {
   float k = 0.0825f;    // por unidad de +0xB4 de IW: 0.4 en el campo; si no, 0.33 / 4 (el andar de IW = el de B3)
   float limite = 300;
   V3 salida, meta;
+  // 0x7D9: la nave de Freezer es una pieza estatica del campo 900 en world-space (900/7, horneada en sus huesos); su
+  // centro xz y su base y NO son el +0x30 del #ITM (ese es el disparador de la meta). Se dibuja ahi desde el principio.
+  V3 meta_modelo;
+  bool meta_fija = false;
   float radio_meta = 2;
   std::vector<Objeto> objetos;
   P::Imagen aro, moneda, bebida;   // texturas del paquete (#AMT hijos 0, 4 y 8)
@@ -286,10 +291,7 @@ constexpr uint16_t kBotonStart = 0x0008;    // START en el mismo registro (PS2: 
 // se guardan las proporciones andar : IA (4.5) : scatto (35).
 constexpr float kAndarB3 = 0.33f;
 
-int64_t NowMs() {
-  return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch())
-      .count();
-}
+int64_t NowMs() { return dbz3::RelojMs(); }
 uint8_t* Base() {
   rex::Runtime* rt = rex::Runtime::instance();
   return rt ? rt->virtual_membase() : nullptr;
@@ -375,8 +377,12 @@ bool LeerCurso(const std::vector<uint8_t>& itm, Datos& d) {
   };
   d.salida = b3(salida);
   d.meta = b3(meta);
+  d.meta_modelo = d.meta;
+  // Nave de Freezer (900/7): AABB real del #AMO, centro xz (-54.254, -1002.505) y base y 8.302 (hueso 1 en -150,0,-1050).
+  // En el #ITM el +0x30 es el disparador (206,55,-832), a 311 u del casco: se conserva para terminar el minijuego.
+  if (d.indice == 10) d.meta_modelo = b3({-54.254f, 8.302f, -1002.505f}), d.meta_fija = true;
   if (!d.campo) d.salida.y = d.meta.y = 0;
-  d.radio_meta = kCogerA;   // modelos y radios a su tamano de IW; solo las posiciones van juntadas
+  d.radio_meta = kCogerB;   // meta de IW: radio^2 < 180 (s_SPACE 0x31F280); antes kCogerA (24,5) era el de los aros
   d.escala = s;
   int vacios = 0;
   for (const Crudo& c : crudos) {
@@ -463,6 +469,10 @@ bool Cargar(Datos& d, std::string& error) {
     d.m_meta = CargarModelo(cmn.Entrada(900), 7, 8, 0);
     if (!d.m_meta.malla)
       REXLOG_WARN("dbz3 iwmini: 0x7D9 sin modelo de la nave de Freezer (DATA_CMN 900/7,8): anillo 2D");
+    else
+      REXLOG_INFO("dbz3 iwmini: 0x7D9 nave en ({:.1f}, {:.1f}, {:.1f}) y disparador en ({:.1f}, {:.1f}, {:.1f}) (a {:.0f} u)",
+                  d.meta_modelo.x, d.meta_modelo.y, d.meta_modelo.z, d.meta.x, d.meta.y, d.meta.z,
+                  std::hypot(d.meta_modelo.x - d.meta.x, d.meta_modelo.z - d.meta.z));
   }
   {
     const std::vector<uint8_t> pq = cmn.Entrada(934);
@@ -585,7 +595,7 @@ class Panel : public rex::ui::ImGuiDialog {
     if (st == 4 && !fin_ && g_colocado.load()) Jugar(io, base, mgr, *d, pausa);
     if (pausa) return;
     {   // R16: letreros de IW (los de R14: 5/1 t08 en el READY de B3, t00 el primer segundo de juego)
-      const float t = float(ImGui::GetTime());
+      const float t = float(dbz3::RelojT(ImGui::GetTime()));
       // START! cuando arranca el reloj, como en IW: despues de la entrada y del cartel del objetivo (no encima)
       if (st != 4 || g_reloj_parado.load()) empieza_t_ = -1;
       else if (empieza_t_ < 0) empieza_t_ = t;
@@ -600,12 +610,12 @@ class Panel : public rex::ui::ImGuiDialog {
     }
     if (!fin_ && st >= 5) {   // acabo por otra via (no deberia: el pivote es invulnerable)
       fin_ = true;
-      fin_t_ = float(ImGui::GetTime());
+      fin_t_ = float(dbz3::RelojT(ImGui::GetTime()));
     }
     Dibujar(io, base, mgr, *d);
-    if (fin_ && g_final.load() == 3 && fin_t_ > 1e29f) fin_t_ = float(ImGui::GetTime());
+    if (fin_ && g_final.load() == 3 && fin_t_ > 1e29f) fin_t_ = float(dbz3::RelojT(ImGui::GetTime()));
     if (g_cartel.load() > 0 && !fin_) DibujarCartel(io, *d);
-    if (fin_) DibujarFin(io, float(ImGui::GetTime()));
+    if (fin_) DibujarFin(io, float(dbz3::RelojT(ImGui::GetTime())));
   }
 
  private:
@@ -670,10 +680,11 @@ class Panel : public rex::ui::ImGuiDialog {
     fin_ = true;
     meta_ = meta;
     fin_t_ = 1e30f;   // R16: el fundido empieza cuando acaba la animacion final de IW (Fotograma pone kFin)
-    fin0_ = float(ImGui::GetTime());
+    fin0_ = float(dbz3::RelojT(ImGui::GetTime()));
     g_final = meta ? 1 : 2;
     const int dif1 = d.dificultad + 1;
-    const float r = float(cogidos_) / float(std::max(d.total, 1));   // G+0x165C / G+0x165A (la meta no suma)
+    // G+0x165C / G+0x165A: la meta tambien suma (s_SPACE 0x31F280: +0x165C++ y +0x16BB++ al tocarla)
+    const float r = float(cogidos_ + (meta ? 1 : 0)) / float(std::max(d.total, 1));
     const int rango = r >= 0.95f ? 4 : r >= 0.8f ? 3 : r >= 0.65f ? 2 : r >= 0.5f ? 1 : 0;
     const int puntos = (kBonusRango[rango] * dif1 * dif1 + int(std::max(restante_, 0.0f)) * dif1 * 10) / 100 * 100;
     Resultado res;
@@ -696,11 +707,10 @@ class Panel : public rex::ui::ImGuiDialog {
   void Jugar(ImGuiIO& io, uint8_t* base, uint32_t mgr, const Datos& d, bool pausa) {
     const uint32_t x0 = mgr + kX0;
     const bool parado = g_reloj_parado.load();   // R16: entrada y cartel del objetivo de IW
-    if (!pausa && !parado) restante_ -= std::min(io.DeltaTime, 0.1f);
+    if (!pausa && !parado) restante_ -= dbz3::RelojDt(std::min(io.DeltaTime, 0.1f));
     if (g_auto && !parado && NowMs() - auto_ms_ > 700) {   // prueba: a cada aro y bebida (y despues a la meta)
       auto_ms_ = NowMs();
-      while (auto_i_ < d.objetos.size() && (d.objetos[auto_i_].grupo == 1 || cogido_[auto_i_]))
-        ++auto_i_;
+      while (auto_i_ < d.objetos.size() && cogido_[auto_i_]) ++auto_i_;
       V3 p = auto_i_ < d.objetos.size() ? d.objetos[auto_i_].p : d.npc == 1 ? npc_p_ : d.meta;
       if (!d.campo) p.y = 0;   // en el campo de IW, a su altura (el Camino de la Serpiente va por arriba)
       Poner(base, x0, p);
@@ -724,7 +734,8 @@ class Panel : public rex::ui::ImGuiDialog {
       MoverNpc(io, base, mgr, d, yo);
       if (fin_) return;
     }
-    if (d.npc != 1 && aros_ >= d.num_a && DistH(yo, d.meta) < d.radio_meta) Acabar(base, mgr, d, true);
+    // s_SPACE 0x31F280: la meta se abre al recoger todos los objetos (0x165a-1 <= 0x165c; el Radar, -2), no solo los aros A
+    if (d.npc != 1 && cogidos_ >= d.total - 2 && DistH(yo, d.meta) < d.radio_meta) Acabar(base, mgr, d, true);
     else if (restante_ <= 0) Acabar(base, mgr, d, false);
   }
 
@@ -735,7 +746,7 @@ class Panel : public rex::ui::ImGuiDialog {
   // Los dos van a 4.5 (estado 9), algo mas que el andar del jugador (4.0): hay que hacer el scatto (35) para
   // alcanzar a Bubbles o huir de Piccolo, y la energia se acaba. ponytail: el +0xCAC (factor por personaje) se toma 1.
   void MoverNpc(ImGuiIO& io, uint8_t* base, uint32_t mgr, const Datos& d, const V3& yo) {
-    const float cuadros = std::min(io.DeltaTime, 0.1f) * 60.0f;
+    const float cuadros = dbz3::RelojDt(std::min(io.DeltaTime, 0.1f)) * 60.0f;
     auto azar = [this]() {
       semilla_ = semilla_ * 1103515245u + 12345u;
       return int((semilla_ >> 16) & 0x7FFF);
@@ -806,26 +817,34 @@ class Panel : public rex::ui::ImGuiDialog {
   void Dibujar(ImGuiIO& io, uint8_t* base, uint32_t mgr, const Datos& d) {
     ImDrawList* dl = ImGui::GetBackgroundDrawList();
     const Camara cam = Cam(io, base, mgr);
-    const float t = float(ImGui::GetTime());
+    const float t = float(dbz3::RelojT(ImGui::GetTime()));
     struct Cosa {
       float k;
       size_t i;   // objetos; d.objetos.size() = la meta
+      int tipo;   // 0 objeto, 1 nave fija (0x7D9), 2 meta (modelo o anillo del disparador)
     };
     std::vector<Cosa> cosas;
     ImVec2 o;
     float k;
     for (size_t i = 0; i < d.objetos.size(); ++i)
-      if (!cogido_[i] && cam.P(d.objetos[i].p, o, k)) cosas.push_back({k, i});
+      if (!cogido_[i] && cam.P(d.objetos[i].p, o, k)) cosas.push_back({k, i, 0});
+    // La nave de Freezer (0x7D9) es una pieza del campo: se dibuja en su sitio de world-space desde el principio.
+    if (d.meta_fija && d.m_meta.malla && cam.P(d.meta_modelo, o, k)) cosas.push_back({k, d.objetos.size(), 1});
     // alcanzada (fin_), la meta ya no se pinta: con el jugador quieto dentro (pose final de IW) la camara quedaba dentro
     // de su modelo y la pantalla entera salia azul (la "pantalla azul" de R16)
-    if (d.npc != 1 && aros_ >= d.num_a && !fin_ && cam.P(d.meta, o, k)) cosas.push_back({k, d.objetos.size()});
+    if (d.npc != 1 && aros_ >= d.num_a && !fin_ && cam.P(d.meta, o, k)) cosas.push_back({k, d.objetos.size(), 2});
     std::sort(cosas.begin(), cosas.end(), [](const Cosa& a, const Cosa& b) { return a.k < b.k; });
     // con los modelos 3D de IW: todos los triangulos de lejos a cerca; sin ellos, los dibujos planos de antes
     escena_.Empezar();
     for (const Cosa& c : cosas) {
-      if (c.i == d.objetos.size()) {
-        if (d.m_meta.malla) Poner3D(cam, d.m_meta, tex_meta_, d.meta, 0.0f, 1.0f);
-        else DibujarMeta(dl, cam, d.meta, d.radio_meta, t);
+      if (c.tipo) {
+        if (c.tipo == 1) {
+          Poner3D(cam, d.m_meta, tex_meta_, d.meta_modelo, 0.0f, 1.0f);
+        } else if (d.meta_fija || !d.m_meta.malla) {
+          DibujarMeta(dl, cam, d.meta, d.radio_meta, t);   // 0x7D9: el disparador no coincide con el casco; guia 2D
+        } else {
+          Poner3D(cam, d.m_meta, tex_meta_, d.meta, 0.0f, 1.0f);
+        }
         continue;
       }
       const Objeto& ob = d.objetos[c.i];
@@ -1435,7 +1454,24 @@ void Fotograma(uint8_t* base, uint32_t estado) {
   }
   const std::shared_ptr<Datos> d = Actual();
   const uint32_t mgr = REX_LOAD_U32(kMgrPtr);
-  if (!d || !mgr) return;
+  if (!d || !mgr) {
+    // B1c: serie comun jugador/ojo para los 12 minijuegos que no son de campo (botones, disparo, vuelo). El P4 ya
+    // escribe la suya al final de Fotograma. Es la linea que consume tools/lector_camara.py (serie_log_port) y, con
+    // ella, `comparar_modo.py iw <clave>` deja de dar "sin muestras" en esos 12.
+    if (g_modulo.load() && mgr && (estado == 3 || estado == 4)) {
+      static int64_t traza_mod = 0;
+      if (NowMs() - traza_mod > 2000) {
+        traza_mod = NowMs();
+        float ojo[3], obj[3];
+        if (dbz3::cine::LeerCamara(base, ojo, obj)) {
+          const V3 p = Leer(base, mgr + kX0);
+          REXLOG_INFO("dbz3 iwmini: jugador ({:.1f}, {:.1f}, {:.1f}) marcha (0.00, 0.00) anda 0 ojo ({:.1f}, {:.1f}, {:.1f})",
+                      p.x, p.y, p.z, ojo[0], ojo[1], ojo[2]);
+        }
+      }
+    }
+    return;
+  }
   const uint32_t x0 = mgr + kX0, x1 = x0 + kXPaso;
   if (estado == 3 || !g_colocado.load()) {   // todo el READY y el primer cuadro de la pelea: en la salida
     Poner(base, x0, d->salida);
@@ -2043,7 +2079,7 @@ class PanelResFuera : public rex::ui::ImGuiDialog {
       rex::input::X_INPUT_STATE st = {};
       if (in->GetStateForUI(0, &st) == 0) b = uint16_t(st.gamepad.buttons);
     }
-    const float t = float(ImGui::GetTime());
+    const float t = float(dbz3::RelojT(ImGui::GetTime()));
     if (t0_ < 0) t0_ = t, antes_ = b;   // lo que ya estaba pulsado (la A del minijuego) no cuenta
     uint16_t pulsado = uint16_t(b & ~antes_);
     antes_ = b;

@@ -50,6 +50,7 @@ Un personaje nuevo es un mod "fuente" con `personaje.toml` (sin numeros de entra
     icono_ajuste = [1.0, 0, 0, 12]     # zoom, dx, dy (fraccion), giro (grados)
     retrato_ajuste = [1.0, 0, 0, 50]
     hud_ajuste = [1.0, 0, 0, 0]    # cara de la barra de vida (render del modelo, una por forma;
+    hud_centrado_ps2 = true        # centra la cara en 64/128 px de PS2; false conserva el encuadre 360 antiguo
                                    # o ui/hud.png / ui/hud_1.png... terminadas de 256x128)
     capsulas_nativas = [6, 7]      # opcional: capsulas de B3 que pide el moveset de un port de B3
     voces = "iw:JANENBA"           # opcional: voces de combate (iw:NOMBRE | b3:ID | donante | ninguna)
@@ -147,6 +148,8 @@ IDS = {e["id"]: e for e in DB["ids"]}
 ALL_IDS = list(DB["free_ids"]) + list(DB.get("extra_ids", []))
 LZX = b"\x0f\xf5\x12\xee"
 SELECT_ENTRY = 2027            # data_usi: texturas del select (#AZT)
+TOURN_ENTRY = 2047             # data_usi: texturas del Torneo (#AZT): tex 14-21 = tiras de 5 iconos 280x56, 28-64 = rotulos x32
+TOURN_STRIP_TEX = 14           # plantilla de las tiras de iconos (DDS 512x128 A8R8G8B8)
 # El juego lee data_usi (ingles USA) o, con otro idioma, data_eng/spn/fra/ger/ita: las
 # cinco tienen la misma estructura (2709 entradas, mismas texturas del select y catalogo).
 # Todo lo que se escribe en data_usi se repite en ellas (sin esto, en espanol las casillas
@@ -563,6 +566,39 @@ def donor_moveset_fixed(cmn, dn, model_hd, out_dir, next_fid, work, name):
     return [new.get(f, 0xFFFFFFFF) for f in dn["anm"]], next_fid, first
 
 
+def donor_cam_scaled(cmn, dn, model_hd, out_dir, next_fid, work, name):
+    """solo_modelos (#36): la camara #ACC del donante esta encuadrada para sus piernas; con el modelo nuevo
+    (moveset del donante) la definitiva -Big Bang de Vegeta- pierde al luchador. Se escala igual que la
+    cadera: x/z * s e y * s + dy en las pistas ojo/objetivo, sin tocar roll, fov ni los cuadros.
+    -> (fid, next_fid) o (None, next_fid) si no hace falta / falla."""
+    if not dn.get("cam") or not dn.get("models") or not dn.get("anm") or dn["anm"][0] >= 0xFFFFFFFF:
+        return None, next_fid
+    try:
+        import altura  # noqa: PLC0415
+        s, dy = altura.correccion(altura.skeleton(model_hd), altura.skeleton(cmn.entry(dn["models"][0])),
+                                  altura.any_tracks(cmn.entry(dn["anm"][0])))
+        if abs(s - 1.0) < 0.03 and abs(dy) < 0.15:
+            return None, next_fid
+        sys.path.insert(0, os.path.join(HERE, "studio"))
+        import studio_core  # noqa: PLC0415
+        cam = studio_core.CamBin(cmn.entry(dn["cam"]))
+        n = 0
+        for clip in cam.clips:
+            for t in studio_core.VEC:
+                for k in clip.keys.get(t, []):
+                    if len(k) >= 4:
+                        k[1] = k[1] * s
+                        k[2] = k[2] * s + dy
+                        k[3] = k[3] * s
+            n += 1
+        write_entry(out_dir, "data_cmn.afs", next_fid, cam.build(), work)
+        log("   %s: camara del donante escalada x%.3f %+.2f (%d clips; #36)" % (name, s, dy, n))
+        return next_fid, next_fid + 1
+    except Exception as e:  # noqa: BLE001
+        log("   %s: aviso: camara del donante sin escalar (%s)" % (name, e))
+        return None, next_fid
+
+
 # ---------------------------------------------------------------- modelos
 def _amo_hd(b):
     """#AMB PS2 -> #AMB HD (ps2hd), recordado por contenido (la conversion es lo lento
@@ -885,6 +921,113 @@ def azt_append(b, items):
     return out, list(range(n, n + len(new)))
 
 
+# ---------------------------------------------------------------- franja de ojos (bandeja Ability de Edit Skills)
+# data_usi 2064 (#AZT de 10 texturas): las texturas 2 y 3 son atlas de 20 franjas de ojos de 168x40 (logico; 252x60 HD).
+# El juego pide la franja por el indice de sprite de la lista 2063 [tabla u8 0x82373D38[ID]]; los personajes nuevos
+# usaban la del donante. Aqui se anaden atlas propios (20 franjas por textura) y roster.toml lleva `ojos = [tex, x0,
+# y0, x1, y1]`; el gancho de sub_821B8FC8 (roster_ext.cpp) clona el descriptor del donante con esa textura y rect.
+OJOS_ENTRY = 2064
+OJOS_POR_TEX = 20
+OJOS_LOGICO = (168, 40)
+OJOS_HD = (252, 60)
+
+
+def eye_strip(img):
+    """Retrato (PIL o ndarray RGBA) -> franja de ojos RGBA de OJOS_HD (alto x ancho): recorte de la banda de los ojos
+    (ojos a ~42% del alto y 60% del ancho, 72% del ancho del retrato) con la proporcion 168:40."""
+    im = img if isinstance(img, Image.Image) else Image.fromarray(np.asarray(img))
+    im = im.convert("RGBA")
+    W, H = im.size
+    cw = 0.66 * W
+    ch = cw * OJOS_LOGICO[1] / OJOS_LOGICO[0]
+    cx, cy = 0.56 * W, 0.44 * H
+    box = (int(cx - cw / 2), int(cy - ch / 2), int(cx + cw / 2), int(cy + ch / 2))
+    out = im.crop(box).resize(OJOS_HD, Image.LANCZOS)
+    a = np.array(out)
+    a[..., 3] = 255
+    return a
+
+
+def ojos_toml(toml, tex, n):
+    """Cambia los marcadores [@oK] de las lineas `ojos` por [textura, x0, y0, x1, y1] (rect logico); sin textura, las quita."""
+    if tex is None:
+        return [ln for ln in toml if not ln.startswith("ojos = ")]
+    out = []
+    for ln in toml:
+        for k in range(n if ln.startswith("ojos = ") else 0):
+            y = OJOS_LOGICO[1] * (k % OJOS_POR_TEX)
+            ln = ln.replace("[@o%d]" % k, "[%d, 0, %d, %d, %d]" % (tex + k // OJOS_POR_TEX, y, OJOS_LOGICO[0], y + OJOS_LOGICO[1]))
+        out.append(ln)
+    return out
+
+
+def ojos_append(afs, out_dir, afs_name, strips, work):
+    """Anade a la entrada 2064 los atlas con las franjas (20 por textura, plantilla = la textura 2 si cuadra) y la
+    escribe. -> indice de la primera textura nueva o None (sin franjas, o 2064 distinta de la esperada)."""
+    if not strips:
+        return None
+    try:
+        b = bytearray(afs.entry(OJOS_ENTRY))
+        if len(azt_textures(b)) != 10:
+            return None
+        items = []
+        for k in range(0, len(strips), OJOS_POR_TEX):
+            canvas = np.zeros((2048, 256, 4), np.uint8)   # textura real de las nativas (256 x 2048); el contenido es 252 x 1200
+            for j, st in enumerate(strips[k:k + OJOS_POR_TEX]):
+                canvas[OJOS_HD[1] * j:OJOS_HD[1] * (j + 1), :OJOS_HD[0]] = st
+            t = azt_template(b, 2, 256, 2048)
+            if t is None:
+                return None
+            items.append((canvas, (OJOS_LOGICO[0], OJOS_LOGICO[1] * OJOS_POR_TEX),
+                          (OJOS_HD[0], OJOS_HD[1] * OJOS_POR_TEX), t))
+        b, idx = azt_append(b, items)
+        write_entry(out_dir, afs_name, OJOS_ENTRY, bytes(b), work)
+        return idx[0]
+    except Exception as e:  # noqa: BLE001 (sin franja propia: la del donante, como antes)
+        log("aviso: franjas de ojos (%s): %s" % (afs_name, e))
+        return None
+
+
+def tornament_append(afs, out_dir, afs_name, icons, name_items, work):
+    """Torneo (S5-I1, issue #33): anade al #AZT 2047 las tiras con los iconos de las celdas nuevas (5 por tira, plantilla
+    la tex 14) y sus rotulos de nombre, y escribe la entrada. -> (indices de tiras, indices de rotulos) o None."""
+    if not icons:
+        return None
+    try:
+        tz = bytearray(afs.entry(TOURN_ENTRY))
+        if len(azt_textures(tz)) < 40:
+            return None
+        items = []
+        for st in range((len(icons) + 4) // 5):
+            canvas = np.zeros((128, 512, 4), np.uint8)
+            for j, ic in enumerate(icons[5 * st:5 * st + 5]):
+                canvas[:ic.shape[0], 84 * j:84 * j + ic.shape[1]] = ic
+            items.append((canvas, (280, 56), (420, 84), TOURN_STRIP_TEX))
+        nst = len(items)
+        for im, lg, hd, tp in name_items:
+            t = azt_template(tz, tp, im.shape[1], im.shape[0])
+            if t is None:
+                return None
+            items.append((im, lg, hd, t))
+        tz, idx = azt_append(tz, items)
+        write_entry(out_dir, afs_name, TOURN_ENTRY, bytes(tz), work)
+        return (idx[:nst], idx[nst:])
+    except Exception as e:  # noqa: BLE001 (sin Torneo propio: el cuadro enseña el icono del anfitrion, como antes)
+        log("aviso: Torneo (%s): %s" % (afs_name, e))
+        return None
+
+
+def torneo_indices(ln, tor_idx):
+    """Cambia los marcadores [@sN, / [@tN, de las lineas torneo_* por los indices reales de textura."""
+    if ln.startswith("torneo_icono"):
+        for i, t in enumerate(tor_idx[0]):
+            ln = ln.replace("[@s%d," % i, "[%d," % t)
+    elif ln.startswith("torneo_rotulo"):
+        for i, t in enumerate(tor_idx[1]):
+            ln = ln.replace("[@t%d," % i, "[%d," % t)
+    return ln
+
+
 def azt_template(b, tpl, w, h):
     """Textura del #AZT con DDS sin comprimir de w x h: tpl si cuadra, si no la primera que
     cuadre (los rotulos nativos cambian de ancho segun el idioma). None si no hay."""
@@ -963,9 +1106,9 @@ def make_name(text, px_h, max_px_w):
 #                    aro oficiales) | "terminado" (ui/icono.png tal cual)
 #   retrato_fuente = "modelo" | "imagen" (ui/retrato.png) | "terminado" (ui/retrato_p1.png y
 #                    ui/retrato_p2.png tal cual)
-#   icono_ajuste / retrato_ajuste = [zoom, dx, dy, giro]  (dx/dy en fraccion del ancho/alto)
-ICON_ADJ = [1.0, 0.0, 0.0, 3.0]      # zoom, dx, dy, giro (relativos al encuadre calibrado)
-PORTRAIT_ADJ = [1.0, 0.0, 0.0, 35.0]
+#   icono_ajuste / retrato_ajuste = [zoom, dx, dy, giro[, roll]] (dx/dy fraccion; roll en grados)
+ICON_ADJ = [1.0, 0.0, 0.0, 3.0, 0.0]      # zoom, dx, dy, giro, inclinacion del plano
+PORTRAIT_ADJ = [1.0, 0.0, 0.0, 35.0, 0.0]
 
 
 def image_source(c, ui, kind):
@@ -995,7 +1138,7 @@ def adjust(c, kind):
     base = list(ICON_ADJ if kind == "icono" else PORTRAIT_ADJ)
     v = c.get(kind + "_ajuste")
     if isinstance(v, list):
-        for i, x in enumerate(v[:4]):
+        for i, x in enumerate(v[:5]):
             base[i] = float(x)
     return base
 
@@ -1059,7 +1202,7 @@ def _select_images(c, ui, hd_model, portrait_size, want=("icono", "retrato"), fe
         return model
     # icono
     src = image_source(c, ui, "icono") if "icono" in want else "-"
-    z, dx, dy, yaw = adjust(c, "icono")
+    z, dx, dy, yaw, roll = adjust(c, "icono")
     icon = None
     if src == "-":
         icon = np.zeros((mr.ICON_PX, mr.ICON_PX, 4), np.uint8)
@@ -1068,7 +1211,7 @@ def _select_images(c, ui, hd_model, portrait_size, want=("icono", "retrato"), fe
             (mr.ICON_PX, mr.ICON_PX), Image.LANCZOS))
     if icon is None and src == "modelo":
         try:
-            icon = mr.make_icon(get_model(), yaw=yaw, zoom=z, dx=dx, dy=dy)
+            icon = mr.make_icon(get_model(), yaw=yaw, roll=roll, zoom=z, dx=dx, dy=dy)
             # en algunos PCs el render sale vacio sin dar error (casillas con el circulo en blanco en la seleccion):
             # casi sin pixeles opacos = fallido, y se usa la imagen como si el render hubiera fallado
             if float((np.asarray(icon)[..., 3] > 32).mean()) < 0.02:
@@ -1083,7 +1226,7 @@ def _select_images(c, ui, hd_model, portrait_size, want=("icono", "retrato"), fe
         icon = mr.make_icon(None, zoom=z, dx=dx, dy=dy, art=Image.open(art))
     # retratos
     src = image_source(c, ui, "retrato") if "retrato" in want else "-"
-    z, dx, dy, yaw = adjust(c, "retrato")
+    z, dx, dy, yaw, roll = adjust(c, "retrato")
     pors = None
     if src == "-":
         return icon, None, notes
@@ -1091,7 +1234,7 @@ def _select_images(c, ui, hd_model, portrait_size, want=("icono", "retrato"), fe
         pors = [None, None]
     if pors is None and src == "modelo":
         try:
-            pors = mr.make_portraits(get_model(), portrait_size, yaw=yaw, zoom=z, dx=dx, dy=dy)
+            pors = mr.make_portraits(get_model(), portrait_size, yaw=yaw, roll=roll, zoom=z, dx=dx, dy=dy)
             if pors and all(p is not None and float((np.asarray(p)[..., 3] > 32).mean()) < 0.01 for p in pors):
                 pors = None   # render vacio (ver el icono)
                 notes.append("retrato: el render del modelo salio vacio; se usa la imagen")
@@ -1223,7 +1366,7 @@ def hud_images(c, ui, form_models, fetch=None):
         import pickle  # noqa: PLC0415
         h = hashlib.sha1(open(os.path.join(HERE, "model_render.py"), "rb").read())
         h.update(b"".join(form_models))
-        h.update(json.dumps([c.get("hud_ajuste"), fetch is not None]).encode())
+        h.update(json.dumps([c.get("hud_ajuste"), c.get("hud_centrado_ps2", True), fetch is not None]).encode())
         if os.path.isdir(ui):
             for fn in sorted(os.listdir(ui)):
                 p = os.path.join(ui, fn)
@@ -1256,6 +1399,7 @@ def _hud_images(c, ui, form_models, fetch=None):
     if isinstance(v, list):
         z, dx, dy, yaw = ([float(x) for x in v] + [1.0, 0.0, 0.0, 0.0][len(v):])[:4]
     out, cache = [], {}
+    center_ps2 = c.get("hud_centrado_ps2", True) is not False
     for f, hd in enumerate(form_models):
         ready = next((os.path.join(ui, n) for n in ("hud_%d.png" % (f + 1), "hud.png")
                       if os.path.exists(os.path.join(ui, n))), None)
@@ -1267,7 +1411,8 @@ def _hud_images(c, ui, form_models, fetch=None):
             acc = mr.native_accessory(m)
             if acc is not None and fetch is not None:
                 m.attach(fetch(acc[0]), acc[1])
-            cache[id(hd)] = mr.make_hud(m, yaw=yaw, zoom=z, dx=dx, dy=dy if isinstance(v, list) else hud_dy(m))
+            cache[id(hd)] = mr.make_hud(m, yaw=yaw, zoom=z, dx=dx,
+                                       dy=dy if isinstance(v, list) else hud_dy(m), center_ps2=center_ps2)
         out.append(cache[id(hd)])
     return out
 
@@ -1302,11 +1447,26 @@ def build_trajes(trajes, cmn, out_dir, next_fid, work, toml, manifest, ids=None)
     ID, como Goku SSJ4 = ID 91) y suma el traje al select."""
     extra_n = {}
     for name, d, c in trajes:
-        cid = int(c.get("personaje", -1))
-        if cid not in IDS or not IDS[cid].get("models"):
-            log("!! %s: traje para el personaje %r, que no es del juego original: omitido "
-                "(los trajes extra solo van sobre personajes nativos)" % (name, cid))
-            continue
+        mod_char = isinstance(c.get("personaje"), str)    # personaje = "<carpeta del mod>": un port/mod como personaje propio
+        if mod_char:
+            cid = (ids or {}).get(c["personaje"])
+            if cid is None:
+                log("!! %s: traje para el personaje de mod %r, que no esta montado: omitido" % (name, c["personaje"]))
+                continue
+            try:
+                pc = dict(toml_file(os.path.join(os.path.dirname(d), c["personaje"], "personaje.toml")).get("personaje", {}))
+                dn = {"name": str(pc.get("nombre", c["personaje"])).upper(),
+                      "costumes": max(1, len(pc.get("modelos", [])) // max(1, int(pc.get("modelos_por_traje", 1))))}
+            except (OSError, ValueError, TypeError) as exc:
+                log("!! %s: no leo el personaje.toml de %r (%s): omitido" % (name, c["personaje"], exc))
+                continue
+        else:
+            cid = int(c.get("personaje", -1))
+            if cid not in IDS or not IDS[cid].get("models"):
+                log("!! %s: traje para el personaje %r, que no es del juego original: omitido "
+                    "(los trajes extra solo van sobre personajes del juego o de mods por carpeta)" % (name, cid))
+                continue
+            dn = IDS[cid]
         files = c.get("modelos", [])
         if not files:
             log("!! %s: sin modelos" % name)
@@ -1316,18 +1476,23 @@ def build_trajes(trajes, cmn, out_dir, next_fid, work, toml, manifest, ids=None)
         try:
             for rel in files:
                 nat = rel if isinstance(rel, int) else (int(rel[6:]) if str(rel).startswith("juego:") else None)
-                tono = c.get("tono")
-                if nat is not None and tono is None:
+                tono, regs = c.get("tono"), c.get("colores")      # colores = [[traje.colores]]: HSV por region (recolorear.py)
+                if nat is not None and tono is None and not regs:
                     preparados.append((None, nat))
                     continue
-                key = ("tono", nat, float(tono)) if nat is not None else ("archivo", str(rel))
+                key = ((("colores", nat, json.dumps(regs, sort_keys=True)) if regs else ("tono", nat, float(tono)))
+                       if nat is not None else ("archivo", str(rel), json.dumps(regs, sort_keys=True)))
                 if key not in cache:
                     if nat is not None:
                         import colores  # noqa: PLC0415
-                        hd, _ = colores.retint_modelo(cmn.entry(nat), float(tono))
+                        hd, _ = (colores.recolor_regiones(cmn.entry(nat), regs) if regs
+                                 else colores.retint_modelo(cmn.entry(nat), float(tono)))
                     else:
                         with open(os.path.join(d, rel), "rb") as modelo:
                             hd = b3_ramps(to_hd(modelo.read(), work), name)
+                        if regs:     # recolor por regiones de un modelo de archivo (port/mod)
+                            import colores  # noqa: PLC0415
+                            hd, _ = colores.recolor_regiones(hd, regs)
                     cache[key] = hd
                 preparados.append((key, None))
         except Exception as exc:  # noqa: BLE001 -- error del mod, no fallo de escritura
@@ -1344,7 +1509,6 @@ def build_trajes(trajes, cmn, out_dir, next_fid, work, toml, manifest, ids=None)
                 publicados[key] = next_fid
                 next_fid += 1
             fids.append(publicados[key])
-        dn = IDS[cid]
         numero = dn.get("costumes", 1) + extra_n.get(cid, 0)     # numero del traje en el select (0 = el 1.o)
         extra_n[cid] = extra_n.get(cid, 0) + 1
         link = []
@@ -2364,6 +2528,8 @@ def build(a):
         icon_k = icon_tex["hd"][0] / icon_tex["logical"][0]
         icons = Packer(icon_tex, 56, 56, free_regions(icon_tex))
         name_items = []
+        ojos_strips = []        # franjas de ojos 252x60 por personaje (ojos = [@oK] en roster.toml)
+        tor_icons = []          # iconos 84x84 de las celdas nuevas: tiras del Torneo (S5-I1, issue #33)
         free = ALL_IDS
         toml = ["# GENERADO por mod center hd/roster_build.py (no editar: se regenera).", ""]
         manifest = []
@@ -2488,6 +2654,8 @@ def build(a):
             nw = int(np.ceil(nm.shape[1] / 1.5))
             name_items.append((canvas, (nw, 32), (nm.shape[1], 48), tpl))
             name_slot = len(name_items) - 1
+            tor_icons.append(ic)
+            tor_k = len(tor_icons) - 1
             # retratos P1/P2 (plantilla: los del slot del donante)
             por = []
             for v in (0, 1):
@@ -2497,6 +2665,12 @@ def build(a):
                 write_entry(out_dir, "data_cmn.afs", next_fid, data, work)
                 por.append(next_fid)
                 next_fid += 1
+            try:   # franja de ojos de la bandeja Ability: recorte del retrato propio
+                ojos_strips.append(eye_strip(pors[0] if pors[0] is not None else Image.open(os.path.join(ui, "retrato_p1.png"))))
+                ojos_k = len(ojos_strips) - 1
+            except Exception as e:  # noqa: BLE001
+                ojos_k = None
+                log("   %s: sin franja de ojos propia (%s)" % (name, e))
             # cara de la barra de vida: una por forma (render de su modelo o ui/hud*.png)
             hud_tpl = cmn.entry(dn.get("hud_face") or IDS[0]["hud_face"])
             nf = nforms if c.get("formas") or c.get("formas_donante") else struct.unpack(">I", hud_tpl[0x10:0x14])[0]
@@ -2512,6 +2686,7 @@ def build(a):
             # moveset / camara / tecnicas propios (si no, los del donante)
             extra = list(hud_line)
             # capsulas: propias ([[capsula]]), las del donante o las de un port de IW
+            cam_fid_esc = None
             cam = load_bin(os.path.join(d, c["camara"]), work) if c.get("camara") else None
             if cam is not None and dn.get("cam") is not None:
                 cam, npad = cam_pad_clips(cam, cmn.entry(dn["cam"]))
@@ -2698,6 +2873,8 @@ def build(a):
                     anm, next_fid, first = donor_moveset_fixed(cmn, dn, first_hd, out_dir, next_fid, work, name)
                     if first:
                         poses.append((cid, first))
+                    if cam is None:   # solo_modelos: la camara del donante, a la altura del modelo (#36)
+                        cam_fid_esc, next_fid = donor_cam_scaled(cmn, dn, first_hd, out_dir, next_fid, work, name)
                 except Exception as e:  # noqa: BLE001
                     log("   %s: aviso: altura del donante sin ajustar (%s)" % (name, e))
                     anm = []
@@ -2760,6 +2937,8 @@ def build(a):
                 write_entry(out_dir, "data_cmn.afs", next_fid, cam, work)
                 extra.append("cam = %d" % next_fid)
                 next_fid += 1
+            elif cam_fid_esc is not None:      # camara del donante ya escrita por donor_cam_scaled (arreglo E3: antes se pasaba el fid como bytes)
+                extra.append("cam = %d" % cam_fid_esc)
             extra += cap_lines
             # voces de combate: las de su juego (port), las de otro personaje o las del donante
             try:
@@ -2862,16 +3041,20 @@ def build(a):
             scale = min(1.24, max(0.88, 1.4228 - 0.0201 * h))
             s = list(dn["select"])
             s[3] = s[10] = round(scale, 3)
-            toml += ["[[personaje]]", "# %s (mod %s)" % (nombre, name), "id = %d" % cid, "donante = %d" % donor,
+            toml += (["[[personaje]]", "# %s (mod %s)" % (nombre, name), "id = %d" % cid, "donante = %d" % donor,
                      'nombre = "%s"' % "".join(ch for ch in nombre.upper() if 32 <= ord(ch) < 127 and ch != '"'),
                      "modelos = %s" % toml_list(model_fids), "bocas = %s" % toml_list(lips_fids),
-                     "modelos_por_traje = %d" % per, "celda = true",
-                     "tras_casilla = %d" % next(sl for sl in (IDS[int(c.get("despues_de", donor))]["slot"],
-                                                              dn["slot"], 0) if sl < 38),
+                     "modelos_por_traje = %d" % per] +
+                    (["anfitrion = %d" % dn["slot"]] if c.get("celda") is False else   # el Heroe: sin celda en ninguna rueda
+                     ["celda = true", "tras_casilla = %d" % next(sl for sl in (IDS[int(c.get("despues_de", donor))]["slot"],
+                                                                               dn["slot"], 0) if sl < 38)]) + [
                      "icono = %s" % toml_list([ICON_TEX, ix, iy, ix + 56, iy + 56]),
                      "rotulo = %s" % toml_list(["@%d" % name_slot, 0, 0, nw, 32]),
-                     "retrato = %s" % toml_list(por),
-                     "select = %s" % toml_list([float(x) if i % 7 < 4 else int(x) for i, x in enumerate(s)])]
+                     "torneo_icono = %s" % toml_list(["@s%d" % (tor_k // 5), 56 * (tor_k % 5), 0, 56 * (tor_k % 5) + 56, 56]),
+                     "torneo_rotulo = %s" % toml_list(["@t%d" % name_slot, 0, 0, nw, 32]),
+                     "retrato = %s" % toml_list(por)] +
+                    (["ojos = [@o%d]" % ojos_k] if ojos_k is not None else []) + [
+                     "select = %s" % toml_list([float(x) if i % 7 < 4 else int(x) for i, x in enumerate(s)])])
             toml += extra + [""]
             manifest.append("%s: id %d, donante %d (%s), modelos %s, bocas %s, retratos %s, altura %.1f -> escala %.2f"
                             % (nombre, cid, donor, dn["name"], model_fids, sorted(set(lips_fids)), por, h, scale))
@@ -2885,6 +3068,11 @@ def build(a):
         for i, t in enumerate(name_idx):   # textura real de cada rotulo
             toml = [ln.replace("[@%d," % i, "[%d," % t) if ln.startswith("rotulo") else ln for ln in toml]
         write_entry(out_dir, "data_usi.afs", SELECT_ENTRY, bytes(sel), work)
+        ojos_tex = ojos_append(usi, out_dir, "data_usi.afs", ojos_strips, work)
+        toml = ojos_toml(toml, ojos_tex, len(ojos_strips))
+        tor_idx = tornament_append(usi, out_dir, "data_usi.afs", tor_icons, name_items, work)
+        toml = ([torneo_indices(ln, tor_idx) for ln in toml] if tor_idx
+                else [ln for ln in toml if not ln.startswith("torneo_")])
         data_langs = []
         drawn = (icon_img != icon_orig).any(-1)
         for lk in DATA_LANGS:
@@ -2892,6 +3080,8 @@ def build(a):
             if not os.path.isfile(path):
                 continue
             la = Afs(path, work)
+            if ojos_append(la, out_dir, "data_%s.afs" % lk, ojos_strips, work) != ojos_tex:
+                log("aviso: data_%s.afs: franjas de ojos en otro indice (el juego protege la lectura)" % lk)
             s2 = bytearray(la.entry(SELECT_ENTRY))
             t2 = azt_textures(s2)
             if len(t2) != len(texs) or t2[ICON_TEX]["size"] != icon_tex["size"]:
@@ -2910,6 +3100,8 @@ def build(a):
                 log("aviso: data_%s.afs: rotulos en otras texturas, idioma sin casillas nuevas" % lk)
                 continue
             write_entry(out_dir, "data_%s.afs" % lk, SELECT_ENTRY, bytes(s2), work)
+            if tor_idx and tornament_append(la, out_dir, "data_%s.afs" % lk, tor_icons, name_items, work) != tor_idx:
+                log("aviso: data_%s.afs: Torneo con otros indices (iconos/rotulos del cuadro del anfitrion)" % lk)
             data_langs.append(("data_%s.afs" % lk, la))
         log("idiomas del select: usi + %s" % " ".join(n[5:8] for n, _ in data_langs))
         try:

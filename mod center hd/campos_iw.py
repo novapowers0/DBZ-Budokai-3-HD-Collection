@@ -74,6 +74,39 @@ def hijos(b):
     return [b[o:o + s] for o, s, _, _ in EC.hijos_amb(b, "<")]
 
 
+NUBES = {}   # campo -> [(firma hex, n ventanas, du, dv, tam del #ZDD)] de las partes de cielo y nubes (X1esc 23/10)
+
+
+def _nubes_de(capturas, n_tex_terreno, mcf, cuentas, tam_zdd):
+    """Partes pegadas al terreno (textura >= las del terreno): primeras 3 ventanas (132 B = firma para hallarlas en la
+    memoria del guest) y desplazamiento UV por cuadro de su capa: palabras (0x30 + 8*capa, 0x34 + 8*capa) del #MCF
+    [H: capa k = k-esimo par; la deriva por cuadro a 60 Hz es lo plausible: 1e-4 * 60 = 0,006 de textura por segundo]."""
+    out = []
+    if mcf[:4] != b"#MCF":
+        return out
+    lim, t = [], n_tex_terreno
+    for c in cuentas:
+        lim.append((t, t + c)); t += c
+    for draws, windows in capturas:
+        for d in draws:
+            tex = d["part"].tex
+            if tex < n_tex_terreno or d["A"][1] < 3:
+                continue
+            capa = next((k for k, (lo, hi) in enumerate(lim) if lo <= tex < hi), 0)
+            du, dv = struct.unpack_from("<2f", mcf, min(0x30 + 8 * capa, 0xB0))
+            a0, n = d["A"]
+            out.append(("".join("%02X" % x for x in b"".join(windows[a0:a0 + 3])), n, du, dv, tam_zdd))
+    return out
+
+
+def poner_nubes(carpeta, campo):
+    """stage.toml: una linea `nubes = "firma,n,du,dv,tam"` por parte de cielo/nubes; src/escenarios.cpp mueve sus UV."""
+    lineas = ['nubes = "%s,%d,%.7f,%.7f,%d"' % n for n in NUBES.get(campo, [])]
+    if lineas:
+        t = carpeta / "stage.toml"
+        t.write_text(t.read_text(encoding="utf-8") + chr(10).join(lineas) + chr(10), encoding="utf-8")
+
+
 def poner_niebla(carpeta, mcf):
     """Niebla del #MCF del campo (+0x1C color 0x00BBGGRR; +0x28/+0x2C inicio y fin) -> `niebla = "RRGGBBAA,ini,fin"`
     en su stage.toml (src/escenarios.cpp la pone en la entrada de niebla del registro anfitrion)."""
@@ -297,11 +330,14 @@ def bin_campo(afs, campo, solo_terreno=False, quedan=0):
     EC.bloques_mdd, EC.ps2hd.convert_block = bloques, convertir
     amo2awo.convert_amo = convertir_amo
     amo2awo.attach_rigid = lambda a, e, t: pegar(a, e, t, head=0)      # hueso 0 = raiz del campo
+    amo2awo.build_awg_todos.clear()
     try:
         zdd = EC.mdd_a_zdd(mdd, pistas_min=3)
     finally:
         EC.bloques_mdd, EC.ps2hd.convert_block = viejo, conv
         amo2awo.convert_amo, amo2awo.attach_rigid = conv_amo, pegar
+    NUBES[campo] = _nubes_de(amo2awo.build_awg_todos, le(f[t0], 0x10), hijos(afs.entry(campo))[0],
+                         [le(f[t], 0x10) for _, t in resto], len(zdd))
     nat = EC.hd_nativo(base - 4)          # mismo escenario en la HD del jugador: script, efectos y camaras
     k = [nat[o:o + s] for o, s, _, _ in EC.hijos_amb(nat, ">")]
     return EC.amb_hd([(zdd, 0xFFFFFFFF), (k[1], 0xFFFFFFFF), (k[2], 0xFFFFFFFF), (k[3], 8), (k[4], 0xFFFFFFFF)])
@@ -330,6 +366,7 @@ def cmd_mod(a):
         finally:
             EC._modelos_escenario = viejo
         poner_niebla(carpeta, hijos(afs.entry(c))[0])
+        poner_nubes(carpeta, c)
         print("campo %d '%s' -> %s (entradas %d y %d, %d B)" % (c, titulo, carpeta, entrada, entrada + 100, len(datos)))
 
 
@@ -339,11 +376,12 @@ def cmd_mod(a):
 # los 6 campos de IW y los escenarios de B1/B2 probados en el juego. Nada del juego viaja en el Kit; un fallo no
 # para nada (sale 0 y lo dice en el registro: el launcher juega igual).
 # ---------------------------------------------------------------------------------------------------------
-VERSION = 15  # 15 (G02 studies 2): B2 grupo 1 sin la raiz #AMP que cierra al dibujar (lr 0x8208E5AC);
+VERSION = 18  # 18 (X1esc 23/10): Base (g0) conserva TODAS las raices quietas, en su orden (los huesos de la zona B se numeran sobre todas): cambio de zona sin cierre. 17 (X1esc 23/10): registro de 641 casillas completado con las del 50/60/54 (sin ellas, cierre en peleas largas de los B2: nombre NULL en sub_8208DEE0); los B2 viejos se rehacen solos. 16 (X1esc): B2 g0 con 2 raices (cambio de zona del motor sin cierre). 15 (G02 studies 2): B2 grupo 1 sin la raiz #AMP que cierra al dibujar (lr 0x8208E5AC);
               # sidecar efectos_b2.txt/spx_b2.bin/banco_efectos_b2.bin (el conversor no puede ejecutar el
               # #SPX de B2 en B3: nativas renumeradas); sin cambios en la geometria de los grupos de B12.
               # 14: caja de colision de B2 por grupo (Base Red Ribbon 1.4, medido en el juego: docs/14_frentes). 13: rotulos de B2 corregidos por el usuario (las carpetas no cambian: las usan el tablero y la nave). 12: nombres de g3/g4/g6 corregidos con PCSX2 (R7 b2_integracion). 11: B2 sin animaciones ni camaras de destruccion (R7 escenarios).   subir si cambia el resultado del conversor: se rehacen en el equipo del jugador
-B12 = (("b2", 2, "Templo de Kami", "Templo (B2)", 1.0),          # (juego, grupo, carpeta, rotulo, caja-escala): docs/14_frentes/
+B12 = (("b2", 2, "Templo de Kami", "Templo (B2)", 1.0),
+       ("b2", 1, "Torneo B2", "Torneo (B2)", 1.0),         # X1esc 23/10: g1 convierte sin la raiz #AMP (G02); prueba visual en juego/PCSX2          # (juego, grupo, carpeta, rotulo, caja-escala): docs/14_frentes/
        ("b2", 7, "Montanas nevadas", "Muscle Tower (B2)", 1.0),       # escenarios.md. R7: probados en combate los B2
        ("b2", 0, "Base Red Ribbon B2", "Base de la Red Ribbon (B2)", 1.4),   # 0, 2, 3, 4, 6, 7 y 8. Fuera: g1 (se cierra
        ("b2", 3, "Namek B2", "Mundo de Kaiyoshin (B2)", 1.0),                    # al dibujar, lr 0x8208E5AC) y g5 (suelo
@@ -390,6 +428,41 @@ def _carpetas(us, ps2):
     importar.PS2 = str(ps2)
 
 
+def _apartar_base_vieja(mods):
+    """UH (23/10): la Base Red Ribbon se llamaba "Base B2" en versiones anteriores del conversor y comparte la
+    entrada 5000. Si las dos carpetas estan en mods, la vieja gana por orden alfabetico y sigue cerrando el
+    juego al cambiar de zona. Se aparta (nunca se borra) a mods/_respaldo_escenarios."""
+    import re  # noqa: PLC0415
+    import shutil  # noqa: PLC0415
+    import time  # noqa: PLC0415
+    mods = Path(mods)
+    nueva = mods / "Base Red Ribbon B2"
+    if not (nueva / "stage.toml").is_file():
+        return
+    respaldo = mods / "_respaldo_escenarios"
+    for d in sorted(mods.iterdir()):
+        if not d.is_dir() or d == nueva or d.name.startswith("_"):
+            continue
+        try:
+            t = (d / "stage.toml").read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        m = re.search(r"^\s*entrada\s*=\s*(\d+)", t, re.M)
+        if not m or int(m.group(1)) != 5000:
+            continue
+        respaldo.mkdir(parents=True, exist_ok=True)
+        destino = respaldo / ("%s_%s" % (d.name, time.strftime("%Y%m%d-%H%M%S")))
+        n = 2
+        while destino.exists():
+            destino = respaldo / ("%s_%s_%d" % (d.name, time.strftime("%Y%m%d-%H%M%S"), n))
+            n += 1
+        try:
+            shutil.move(str(d), str(destino))
+            print("escenarios: Base vieja '%s' (entrada 5000) apartada a %s" % (d.name, destino))
+        except OSError as e:  # noqa: BLE001 (un respaldo que falla no para la conversion)
+            print("escenarios: aviso: no pude apartar la Base vieja '%s': %s" % (d.name, e))
+
+
 def _tarea(t):
     """Un escenario (en un proceso aparte). t = (tipo, clave, mods, us, ps2, sello)."""
     tipo, clave, mods, us, ps2, sello = t
@@ -404,6 +477,7 @@ def _tarea(t):
             carpeta = EC.instalar(datos, mods, "Campo IW %d" % clave, ENTRADAS[clave],
                                   "Infinite World", id_se=base - 4 + 1, tema=tema, rotulo_txt=titulo)
             poner_niebla(carpeta, hijos(afs.entry(clave))[0])
+            poner_nubes(carpeta, clave)
         else:
             juego, grupo, nombre, rot, caja = next(x for x in B12 if x[:2] == clave)
             fuente = EC.IsoB2(None, juego)
@@ -427,6 +501,9 @@ def cmd_auto(a):
     import os  # noqa: PLC0415
     _carpetas(a.us, a.ps2)
     mods = Path(a.mods)
+    import final_b1  # noqa: PLC0415  S5-A3b: poses de B1 de la escena final de la Leyenda (mod en tu carpeta mods)
+    final_b1.auto(str(mods), a.us, a.ps2)
+    _apartar_base_vieja(mods)
     tareas = []
     import importar  # noqa: PLC0415
     iw = importar.source_path("iw")
@@ -443,8 +520,16 @@ def cmd_auto(a):
         if not ruta:
             print("escenarios: sin %s en %s" % (EC.JUEGOS[juego][0], a.ps2))
             continue
-        if not _al_dia(mods / nombre, _sello(ruta)):
-            tareas.append(("b12", (juego, grupo), str(mods), a.us, a.ps2, _sello(ruta)))
+        sello_b12 = _sello(ruta) + ("|arbol2" if (juego, grupo) == ("b1", 11) else "")   # A3b: el ring de Cell de B1 se rehace una vez (arboles TREE2 verdes); el resto de escenarios, no
+        if not _al_dia(mods / nombre, sello_b12):
+            try:   # X1esc: aviso si el escenario B2 instalado lleva el registro viejo (sello < v17); se regenera aqui mismo
+                viejo = (mods / nombre / "origen.txt").read_text(encoding="utf-8")
+                v = int(viejo.split("|v")[1].split("|")[0]) if "|v" in viejo else 0
+                if juego == "b2" and v < 17:
+                    print("escenarios: aviso: %s lleva el registro de efectos incompleto (v%d): puede cerrar el juego en peleas largas; se regenera ahora" % (nombre, v))
+            except (OSError, ValueError, IndexError):
+                pass
+            tareas.append(("b12", (juego, grupo), str(mods), a.us, a.ps2, sello_b12))
     if not tareas:
         print("escenarios: al dia")
         return 0

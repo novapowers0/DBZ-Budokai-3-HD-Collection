@@ -33,6 +33,9 @@ struct ModInfo {
   std::string description;
   std::string author;
   std::string version;
+  // D4: version del juego con la que se activo/instalo el mod (fichero .dbz3_version). Vacio si no
+  // hay marca (mod antiguo). El launcher avisa si no coincide con la version que corre.
+  std::string made_for;
   std::string type;     // e.g. "swap_b3", "port_b3", "audio", "moveset"
   std::string source;   // source character/bin (e.g. "Goten (bin 298)")
   std::string target;   // target slot (e.g. "Krillin (326)")
@@ -55,6 +58,9 @@ std::vector<ModInfo> ListMods(bool check_problems = true);
 
 // Enable/disable a mod (creates/removes the ".disabled" marker).
 void SetModEnabled(const std::string& mod_name, bool enable);
+
+// D4: deja en mods/<mod>/.dbz3_version la version del juego con la que se activo o instalo.
+void StampModVersion(const std::string& mod_name, const std::string& version);
 
 // Reads the raw manifest key for a mod ("" if the key is missing). Keys:
 // name, description, author, version, type, source, target.
@@ -112,5 +118,13 @@ void SessionStart();
 void SessionEnd(bool ok);   // ok=false: cierre inesperado (seguro llamarla desde el gestor)
 std::vector<std::string> SessionSuspects();
 void SessionForget();       // el jugador eligio seguir igual: no volver a preguntar
+
+// --- Sesion vanilla (online sin mods, solo esta partida) -----------------------
+// El juego se reinicia con DBZ3_VANILLA_SESSION=1: la raiz de mods pasa a una carpeta vacia ("mods_vanilla", ver
+// AfsModsRoot) y los mods del jugador no se leen, mueven ni cambian. Al cerrar, el siguiente arranque normal vuelve a
+// tener los suyos. `pending` (rol/puerto/codigo) se deja en un fichero temporal para reconectar solo al volver.
+bool VanillaSession();
+bool RelaunchVanilla(const std::string& pending, bool skip_launcher);   // no vuelve si va bien
+bool TakeVanillaPending(std::string& out);                              // lee y borra el temporal una vez
 
 }  // namespace dbz3

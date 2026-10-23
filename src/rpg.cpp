@@ -130,6 +130,8 @@ void Mision(int saga, int k, int estilo, int cuerpo, int* rival, int* vida, int*
 std::string MisionTexto(int saga, int k, int rival);
 std::vector<std::string> SagaTextos(int saga, bool intro);
 void FinRun(int ganados, bool victoria);
+void DuVictoria(int saga, int k);   // C3: combate de saga ganado en el mapa de Dragon Universe
+bool DuDisponible();                 // C3: el Heroe puede entrar en Dragon Universe
 void Sync(bool activo);
 void Exportar(dbz3::cac::Heroe& h);   // heroe.cpp: el heroe actual pasa a su ficha (cac.toml)
 void Importar(int slot);              // heroe.cpp: la ficha del slot pasa a ser el heroe actual
@@ -144,6 +146,7 @@ void PruebaPerder(bool en_combate);   // DBZ3_TEST_HEROE_PERDER
 void MigrarProgreso(int slot);        // studies 8 H1: progreso global -> ficha (una vez, progreso = 2)
 void CargarProgreso(int slot);        // studies 8 H1: progreso de la ficha -> partida
 }  // namespace dbz3::heroe
+namespace dbz3::hub { bool RequestDu(int slot); }   // hub.cpp: abre Dragon Universe del Heroe sin su rueda de personajes
 namespace dbz3::rpg {
 namespace {
 namespace M = dbz3::modos;
@@ -1121,7 +1124,7 @@ uint32_t Semilla() {
 void Empezar(int modo) {
   g_aviso.clear();
   // G06a: nunca sustituir silenciosamente el cuerpo CaC por el luchador del estilo.
-  if (modo == M::kHeroe && g_vista == kHeroeP && H::Cuerpo() >= 100 && H::Cuerpo() <= 105 && H::IdPropio() < 0) {
+  if (modo == M::kHeroe && g_vista == kHeroeP && H::CuerpoPropio(H::Cuerpo()) && H::IdPropio() < 0) {
     g_aviso = T::T("Confirma el cuerpo UT en Apariencia antes de jugar. Si acaba de montarse, reinicia el juego.",
                    "Confirm the UT body in Look before playing. If it was just installed, restart the game.");
     return;
@@ -1682,7 +1685,7 @@ void CambiarFicha(int d) {
 }
 void NuevaFicha() {
   if (dbz3::cac::NumSlots() >= dbz3::cac::kMaxSlots) {
-    g_aviso = T::T("Ya tienes 8 héroes: cambia con Y.", "You already have 8 heroes: switch with Y.");
+    g_aviso = T::T("Ya tienes 3 héroes: archiva uno en la lista de héroes.", "You already have 3 heroes: archive one in the hero list.");
     return;
   }
   if (FichaBloqueada()) return;
@@ -1692,21 +1695,43 @@ void NuevaFicha() {
 }
 
 void DibujarHeroe(ImDrawList* dl, const S::Area& a, float t, uint16_t p) {
-  if (H::Cuerpo() >= 100 && H::Cuerpo() <= 105) dbz3::heroe_ui::DibujarAvatarUT(dl, a);   // G06a
   constexpr int kFilas = 9;   // raza, cuerpo, apariencia, estilo, moveset, aura, puntos (PH), maestros, empezar
-  g_cursor = std::clamp(g_cursor, 0, kFilas - 1);
+  g_cursor = std::clamp(g_cursor, 0, kFilas + 1);   // C4: 0..8, la 9 (color del ki, en Combate) y la 10 (piezas B3/XV2, en Apariencia)
   if (p & (kUp | kDown | kLeft | kRight | kLb | kRb)) g_aviso.clear();
-  if (p & kUp) g_cursor = (g_cursor + kFilas - 1) % kFilas;
-  if (p & kDown) g_cursor = (g_cursor + 1) % kFilas;
+  static int g_tab_h = 0;   // C4: pestana (0 Apariencia, 1 Combate, 2 Progreso); "Empezar" (fila 8) es fijo en las tres
+  auto filas_tab = [&]() {
+    std::vector<int> v;
+    for (int f = g_tab_h * 3; f < std::min(g_tab_h * 3 + 3, kFilas - 1); ++f) v.push_back(f);
+    if (g_tab_h == 0) v.push_back(kFilas + 1);   // fila 10: piezas Budokai 3 / Xenoverse 2
+    if (g_tab_h == 1) v.push_back(kFilas);   // fila 9: color del ki
+    v.push_back(kFilas - 1);
+    return v;
+  };
+  {
+    std::vector<int> v = filas_tab();
+    if (std::find(v.begin(), v.end(), g_cursor) == v.end()) {
+      g_tab_h = g_cursor == kFilas + 1 ? 0 : std::clamp(g_cursor / 3, 0, 2);
+      v = filas_tab();
+    }
+    int i = int(std::find(v.begin(), v.end(), g_cursor) - v.begin());
+    const int nv = int(v.size());
+    if (p & kUp) i = (i + nv - 1) % nv;
+    if (p & kDown) i = (i + 1) % nv;
+    g_cursor = v[size_t(i)];
+  }
   if ((p & kRight) && g_cursor == kFilas - 1) {   // studies 8 fase 2 (H5): Derecha en "Empezar" abre el mapa
     dbz3::heroe_ui::AbrirMapa();
     g_vista = kHeroeMapa;
     return;
   }
+  static bool colores_cambiados = false;   // C4: aura / ki de color: el heroe propio se remonta al salir de la pantalla
+  if (p & (kLeft | kRight)) colores_cambiados = colores_cambiados || g_cursor == 5 || g_cursor == 9 || g_cursor == kFilas + 1;
   if (p & kLeft) H::Mover(g_cursor, -1);
   if (p & kRight) H::Mover(g_cursor, +1);
-  if (p & kLb) H::Mover(3, -1);   // LB/RB: el estilo (carrusel), este el cursor donde este
-  if (p & kRb) H::Mover(3, +1);
+  if (p & (kLb | kRb)) {   // C4: LB/RB cambian de pestana (Apariencia / Combate / Progreso)
+    g_tab_h = (g_tab_h + ((p & kRb) ? 1 : 2)) % 3;
+    g_cursor = g_tab_h * 3;
+  }
   if (H::CambioBloqueado()) g_aviso = T::T("Para cambiar de maestro, completa al menos el 60% del entrenamiento con el actual.",
                                           "To switch master, complete at least 60% of training with the current one.");
   if (p & kY) CambiarFicha(+1);   // ficha de heroe (cac.toml): Y la siguiente, X una nueva
@@ -1715,6 +1740,10 @@ void DibujarHeroe(ImDrawList* dl, const S::Area& a, float t, uint16_t p) {
     dbz3::heroe_ui::AbrirSlots();
     g_vista = kHeroeLista;
     return;
+  }
+  if ((p & kB) && colores_cambiados) {
+    colores_cambiados = false;
+    dbz3::heroe_ui::PedirCombate();
   }
   if (p & kB) {
     Guardar();
@@ -1737,9 +1766,15 @@ void DibujarHeroe(ImDrawList* dl, const S::Area& a, float t, uint16_t p) {
       g_vista = kHeroeMaestro;
       return;
     }
-    if (g_cursor < kFilas - 1) {
-      ++g_cursor;
+    if (g_cursor != kFilas - 1) {
+      const std::vector<int> v = filas_tab();
+      const auto it = std::find(v.begin(), v.end(), g_cursor);
+      if (it != v.end() && it + 1 != v.end()) g_cursor = *(it + 1);
     } else {
+      if (colores_cambiados) {
+        colores_cambiados = false;
+        dbz3::heroe_ui::PedirCombate();
+      }
       Guardar();   // la receta
       Empezar(M::kHeroe);
       if (g_vista != kHeroeP) return;
@@ -1747,26 +1782,9 @@ void DibujarHeroe(ImDrawList* dl, const S::Area& a, float t, uint16_t p) {
   }
   const std::string ficha = std::string(T::T("Ficha ", "Slot ")) + std::to_string(dbz3::cac::SlotActivo() + 1) +
                             "/" + std::to_string(dbz3::cac::NumSlots());
-  S::Banner(dl, a, L("Crea tu héroe (beta)", "Create your hero (beta)", "Crée ton héros (bêta)",
-                     "Erschaffe deinen Helden (Beta)", "Crea il tuo eroe (beta)"), ficha.c_str());
-  std::vector<std::string> filas;
-  for (int f = 0; f < kFilas; ++f) filas.push_back(H::Fila(f));
-  constexpr float paso = 28;   // 9 filas: mas apretada (52 al principio) para que debajo quepa el carrusel
-  const float y_lista = Lista(dl, a, D::kTop, filas, g_cursor, t, {}, D::kRow, D::kX0, D::kX1, paso);
-  if (g_cursor < kFilas - 1 && g_cursor != 3 && g_cursor != 7) {   // flechas de la fila que se cambia (el estilo, en su carrusel)
-    const float y = D::kTop + D::kPad + paso * (float(g_cursor) + 0.5f);
-    S::Arrows(dl, a.At(D::kX0 - 10, y - paso * 0.5f), a.At(D::kX1 + 10, y + paso * 0.5f), 36 * a.s, t);
-  }
-  CarruselEstilos(dl, a, y_lista + 22, std::min(y_lista + 22 + 124, D::kBottom), t, g_cursor == 3);
-  // esquina de arriba a la derecha: el cuerpo elegido y el luchador de su estilo (cara del marcador), dentro de kLine
-  const int cuerpo = H::Cuerpo(), estilo = H::EstiloId();
-  constexpr float c0 = D::kCornerY0, c1 = D::kTop - 24, cy = (c0 + c1) * 0.5f, ch = c1 - c0 - 2 * D::kLine - 4;
-  S::Frame(dl, a.At(D::kCornerX0, c0), a.At(D::kX1, c1), a.s);
-  Cara(dl, a, cuerpo, D::kCornerX0 + 90, cy, ch);
-  S::MenuText(dl, a.At(D::kCornerX0 + 220, cy), D::kSmall * a.s, "+", false, true);
-  Cara(dl, a, estilo, D::kCornerX0 + 300, cy, ch);
-  S::MenuText(dl, a.At(D::kX1 - 60, cy), D::kSmall * a.s, L("Estilo", "Style", "Style", "Stil", "Stile"), false, true);
-  std::string b = g_aviso.empty() ? (g_cursor == 7 ? H::DetalleMaestros() : H::Detalle()) : g_aviso;
+  std::vector<std::string> filas;   // C4: la pantalla la dibuja heroe_ui::Principal (antes: lista centrada + Kaio + carrusel)
+  for (int f = 0; f <= kFilas + 1; ++f) filas.push_back(H::Fila(f));
+  std::string b = g_aviso.empty() ? (g_cursor == 7 ? H::DetalleMaestros() : g_cursor == kFilas + 1 ? std::string() : H::Detalle()) : g_aviso;
   if (g_aviso.empty()) {   // F3: que es cada fila (ayudas_tutoriales.md, seccion 5)
     static const char* const kAyuda[kFilas][5] = {
         {"Raza: decide qué cuerpos y trajes puedes elegir.", "Race: decides which bodies and costumes you can pick.",
@@ -1801,8 +1819,17 @@ void DibujarHeroe(ImDrawList* dl, const S::Area& a, float t, uint16_t p) {
          "Starte die Mission. Jeder Sieg gibt Erfahrung und erhöht das Level.",
          "Inizia la missione. Ogni vittoria dà esperienza e fa salire il livello."}};
     const auto& h = kAyuda[std::clamp(g_cursor, 0, kFilas - 1)];
+    const bool fila_ki = g_cursor == kFilas;
     b += std::string(1, '\n') +
-         (g_cursor == 3 ? T::T("Estilo: cómo peleas (los golpes de otro luchador). La estrella marca a "
+         (g_cursor == kFilas + 1
+              ? (H::Xv2Instalado()
+                     ? T::T("Piezas: Budokai 3 usa las de tus personajes nativos. Xenoverse 2 usa las de tu juego (EXPERIMENTAL).",
+                            "Parts: Budokai 3 uses your native characters' parts. Xenoverse 2 uses your game's (EXPERIMENTAL).")
+                     : T::T("Piezas: Xenoverse 2 requiere tenerlo instalado. Usas las piezas de Budokai 3.",
+                            "Parts: Xenoverse 2 requires it to be installed. You are using Budokai 3 parts."))
+          : fila_ki ? T::T("Ki: el color de los efectos de tus técnicas. Se abren con los maestros (p. ej. ki dorado con Goku).",
+                          "Ki: the color of your techniques' effects. Unlocked with the masters (e.g. golden ki with Goku).")
+          : g_cursor == 3 ? T::T("Estilo: cómo peleas (los golpes de otro luchador). La estrella marca a "
                                "un maestro, que da bonus.",
                                "Style: how you fight (another fighter's moves). The star marks a "
                                "master, who gives a bonus.")
@@ -1816,12 +1843,12 @@ void DibujarHeroe(ImDrawList* dl, const S::Area& a, float t, uint16_t p) {
                                           "Dragon Ball radar).")
                                    : L(h[0], h[1], h[2], h[3], h[4]));
   }
-  Bocadillo(dl, a, b);
+  dbz3::heroe_ui::Principal(dl, a, t, g_cursor, g_tab_h, filas, b, g_aviso, ficha);
   S::HelpLine(dl, a.At(600, 868), 38 * a.s,
               {{"A", g_cursor == kFilas - 1 ? L("Empezar", "Start", "Commencer", "Starten", "Inizia") : Aceptar()},
                {"B", Atras()},
-               {"LB", T::T("Estilo -", "Style -")},
-               {"RB", T::T("Estilo +", "Style +")},
+               {"LB", T::T("Pestaña -", "Tab -")},
+               {"RB", T::T("Pestaña +", "Tab +")},
                {"X", T::T("Ficha nueva", "New slot")},
                {"Y", T::T("Ficha", "Slot")},
                {"Start", T::T("Fichas", "Slots")}});
@@ -2211,7 +2238,8 @@ void DibujarFin(ImDrawList* dl, const S::Area& a, float t, uint16_t p) {
     Cara(dl, a, H::CuerpoDe(r.extra, r.jugador), D::kCornerX0 + 200, (D::kCornerY0 + D::kTop - 24) * 0.5f, 62);
     S::MenuText(dl, a.At((D::kCornerX0 + 280 + D::kX1) * 0.5f, (D::kCornerY0 + D::kTop - 24) * 0.5f), D::kRow * a.s,
                 (std::string(T::T("Nivel ", "Level ")) + Num(H::Nivel())).c_str(), true, false);
-    Bocadillo(dl, a, std::string(T::T("Próxima saga: ", "Next saga: ")) + H::NombreSaga(H::Saga()));
+    Bocadillo(dl, a, H::Saga() >= H::kSagasJugables ? std::string(T::T("Saga 3 completada. Las siguientes sagas estan en desarrollo.", "Saga 3 cleared. The next sagas are in development."))
+                                                    : std::string(T::T("Próxima saga: ", "Next saga: ")) + H::NombreSaga(H::Saga()));
     D::Help(dl, a, {{"A", Aceptar()}});
     return;
   }
@@ -2431,6 +2459,11 @@ void Dibujar(ImDrawList* dl, const S::Area& a, float t, uint16_t pulsado) {
         H::Importar(dbz3::cac::SlotActivo());
         Guardar();
         g_vista = kHeroeP;
+      } else if (r == dbz3::heroe_ui::Accion::kCrear) {   // C2: A en "Nueva partida": el heroe nuevo abre la creacion
+        H::Importar(dbz3::cac::SlotActivo());
+        Guardar();
+        dbz3::heroe_ui::AbrirCrear(false);
+        g_vista = kHeroeCrear;
       } else if (r == dbz3::heroe_ui::Accion::kVolver) {
         Guardar();   // persiste duplicar/archivar aunque no se elija otra ficha
         g_vista = kHeroeP;
@@ -2443,6 +2476,13 @@ void Dibujar(ImDrawList* dl, const S::Area& a, float t, uint16_t pulsado) {
       g_vista = kHeroeP;
       if (r == dbz3::heroe_ui::Accion::kConfirmar) {
         Guardar();
+        // C3: el Heroe es exclusivo de su modo: con su historia instalada entra en el mapa de Dragon Universe (casilla 36)
+        // sin pasar por la rueda de personajes de DU; si no, las misiones de siempre
+        if (H::DuDisponible() && dbz3::hub::RequestDu(H::CasillaDu())) {
+          REXLOG_INFO("dbz3 rpg: el Heroe entra en el mapa de Dragon Universe");
+          g_vista = kCerrada;
+          return;
+        }
         Empezar(M::kHeroe);
       }
       return;
@@ -2499,6 +2539,14 @@ void Hud(ImDrawList* dl, const S::Area& a, float y) {
     }
   }
   if (!s.empty()) S::MenuText(dl, a.At(600, y), 24 * a.s, s.c_str(), true, false, 600 * a.s);
+}
+
+// C3: el Heroe gano el combate k de la saga `saga` en el mapa de Dragon Universe (campaigns.cpp): progreso al heroe y a disco.
+void DuVictoria(int saga, int k) {
+  std::lock_guard<std::mutex> lk(g_mu);
+  Cargar();
+  H::DuVictoria(saga, k);
+  Guardar();
 }
 
 }  // namespace dbz3::rpg
