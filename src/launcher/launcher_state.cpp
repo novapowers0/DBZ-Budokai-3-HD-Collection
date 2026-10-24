@@ -3626,7 +3626,13 @@ void LauncherDialog::DrawNovasModsTab() {
         ImGui::SameLine();
         ui::Pill(nullptr, kind, kind_col);
         ImGui::SameLine();
-        ImGui::TextDisabled("v%s  ·  %.1f MB", m.version.c_str(), double(m.size) / (1024.0 * 1024.0));
+        if (m.size >= 1000000000LL) {   // packs HD: "5,96 GB" (lo que pesa la descarga)
+          std::string gb = std::to_string(double(m.size) / 1e9).substr(0, 4);
+          if (std::string(i18n::T(",", ".")) == ",") std::replace(gb.begin(), gb.end(), '.', ',');
+          ImGui::TextDisabled("v%s  ·  %s GB", m.version.c_str(), gb.c_str());
+        } else {
+          ImGui::TextDisabled("v%s  ·  %.1f MB", m.version.c_str(), double(m.size) / (1024.0 * 1024.0));
+        }
         ImGui::PushTextWrapPos(x_btn - 16.0f);
         ImGui::TextWrapped("%s", m.description.c_str());
         ImGui::PopTextWrapPos();

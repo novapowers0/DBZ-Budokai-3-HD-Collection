@@ -3043,7 +3043,7 @@ def _correr(copia, escenario, env_extra=(), instantanea=None, par=None, forzar=F
         env.update(_kv(x) for x in env_extra)
         print(f"== {nombre}: {desc}", flush=True)
         _escenario_toml(j.run, escenario, desc, par, env, instantanea)
-        preparar(BASE / copia)
+        preparar(BASE / copia, exe=Path(os.environ.get("DBZ3_PRUEBAS_EXE") or EXE))   # CAM: biseccion con un exe viejo
         preparado = True
         cache_key = _cache_key(BASE / copia, escenario, par, env, instantanea)
         turbo_solicitado = int(env.get("DBZ3_TEST_TURBO", "1"))

@@ -129,6 +129,9 @@ void Fetch() {
               if (url.rfind("https://", 0) == 0) e.mod.enlaces.push_back(url);   // nada de rutas locales
             }
           }
+          if (const toml::array* a = (*t)["excluye"].as_array()) {
+            for (const toml::node& x : *a) e.mod.excluye.push_back(x.value_or(std::string()));
+          }
           if (const toml::array* a = (*t)["partes"].as_array()) {
             for (const toml::node& p : *a) {
               if (const long long id = p.value_or(0LL); id > 0) e.mod.partes.push_back(id);
@@ -383,6 +386,17 @@ void InstallNovaMod(const NovaMod& mod) {
         }
       }
       if (error.empty() && was_disabled) SetModEnabled(name, false);
+      // la otra version del mismo mod (pack HD V1 / V2) se aparta: dos a la vez se pisan las texturas
+      for (const std::string& other : error.empty() ? mod.excluye : std::vector<std::string>{}) {
+        const bool plain = !other.empty() && other != mod.id &&
+            std::all_of(other.begin(), other.end(), [](char c) { return std::isalnum(uint8_t(c)) || c == '_' || c == '-'; });
+        for (const std::string& dir : {other, other + ".disabled"}) {
+          if (!plain || !fs::is_directory(ModsRoot() / dir, ec)) continue;
+          fs::create_directories(ExeDir() / "mods_respaldo", ec);
+          fs::rename(ModsRoot() / dir, ExeDir() / "mods_respaldo" / (dir + "_" + Stamp()), ec);
+          REXLOG_INFO("dbz3: Nova's Mods: {} apartado a mods_respaldo ({})", dir, ec ? ec.message() : "ok");
+        }
+      }
     }
     fs::remove(zip, ec);   // el zip descargado es temporal (lo instalado queda en mods/)
     REXLOG_INFO("dbz3: Nova's Mods: {} {} -> {}", mod.id, mod.version, error.empty() ? "instalado" : error);

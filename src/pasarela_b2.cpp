@@ -77,7 +77,7 @@ int CapsulaDeB2(int id_b2);   // pasarela_nave.cpp
 int CapsulaAlAzar(int grupo, int personaje_b2);   // FUN_002835F0: 0 = ninguna
 bool CapsulaNueva(int id_b2);
 void GanarCapsula(int id_b2);
-bool DibujarFiguraB2(ImDrawList* dl, int id_b2, ImVec2 pie, float alto_px, float giro, float t, int traje = 0, int pbank = 0, int panim = 0);   // A2c: el luchador de B2 con su pose (FigDe)
+bool DibujarFiguraB2(ImDrawList* dl, int id_b2, ImVec2 pie, float alto_px, float giro, float t, int traje = 0, int pbank = 0, int panim = 0, const float* cb = nullptr);   // A2c: el luchador de B2 con su pose (FigDe)
 void DesbloquearEvento(int ev);   // pasarela_nave.cpp: sucesos de desbloqueo de b2.c (0x1CD..0x1E9 luchador, 0x1FE..0x206 escenario)
 bool VentanaPremio(ImDrawList* dl, const dbz3::ingame::style::Area& a, int id_b2, float cuadros, uint16_t pressed, bool auto_on);
 const std::vector<uint8_t>& ElfB2();   // S1-F01.2: el SLES/SLUS de la ISO del jugador (leido una vez)
@@ -2332,12 +2332,21 @@ void DibEscena(ImDrawList* dl, const S::Area& a, float t, uint16_t& pressed) {
       static const float gp = std::getenv("DBZ3_TEST_FIG_GIRO_P") ? float(std::atof(std::getenv("DBZ3_TEST_FIG_GIRO_P"))) : 0.5f;
       (void)ij;
       (void)gp;
-      // Goku del panel: modelo de B2 con el banco del panel (CMN 827, anim 4; medido en PCSX2 en p2); si no hay, la tarjeta de antes
-      if (std::getenv("DBZ3_TEST_GOKU_VIEJO") || !dbz3::pasarela::nave::DibujarFiguraB2(dl, 0, P(80, 610), 420.0f * ls, -gp, 112.0f / 60.0f, 0, 827, 4))
-        DibGoku3DTarjeta(dl, P(84, 566), 350.0f * ls, desde, 0.62f);   // medido sobre original_fase4_p2: cabeza 1,5 veces menor y 90 px mas abajo
-      if (ir >= 0 && !std::getenv("DBZ3_TEST_SIN_FIG_RIVAL")) dbz3::pasarela::nave::DibujarFiguraB2(   // pose del banco del panel (844) para el Saibaman; los demas, CMN 931 [H]
-          dl, ir, P(424, 378), 313.0f * ls, -gp, 126.0f / 60.0f, ir == kSaibaman ? (std::getenv("DBZ3_TEST_TRAJE_RIVAL") ? std::atoi(std::getenv("DBZ3_TEST_TRAJE_RIVAL")) : g_f[size_t(g_pend_r)].modo) : 0,
-          ir == kSaibaman ? 844 : 0, 0);   // el rival, dentro del recuadro; pose del Saibaman: banco CMN 844 anim 0 (medido en PCSX2 en p2)
+      // A1c: Goku y el rival con la CAMARA de B2 (medido en PCSX2, fase IV p2: objetos de camara en 0x691490 / 0x691540): Goku = #AMC
+      // 826 clip 2, rival Saibaman = #AMC 843 clip 0 (ojo, objetivo, fov 0,6109); centro de proyeccion = (320, 224) + (-240, 100) y
+      // + (100, -10) en el lienzo de 640x448; los modelos van en el mundo a escala 1 (medido: Saibaman en (-0,05, -0,12, 0); Goku (0,25, -0,54, 0) girado -0,25 rad; cuadros: Goku 0 en la
+      // 1a linea, Saibaman ~34 y en bucle).
+      // ponytail: la camara del rival no Saibaman es la de 843 [H] (cada banco de historia trae su #AMC en banco - 1).
+      static const float kEsc = std::getenv("DBZ3_TEST_CB_S") ? float(std::atof(std::getenv("DBZ3_TEST_CB_S"))) : 1.0f;
+      const float hy = 224.0f * ls;
+      const float cg[14] = {-5.377f, 7.024f, 21.458f, -0.046f, 3.923f, -0.328f, 0.6109f, P(80, 324).x, P(80, 324).y, hy, kEsc, -0.54f, -0.25f, 0.25f};
+      const float cs[14] = {0.0f, 6.731f, 29.331f, 0.0f, 1.643f, -0.381f, 0.6109f, P(420, 214).x, P(420, 214).y, hy, kEsc, -0.12f, 0.0f, -0.05f};
+      if (std::getenv("DBZ3_TEST_GOKU_VIEJO") || !dbz3::pasarela::nave::DibujarFiguraB2(dl, 0, P(80, 610), 420.0f * ls, 0.0f, e.paso == 0 ? 0.0f : desde, 0, 827, 4, cg))
+        DibGoku3DTarjeta(dl, P(84, 566), 350.0f * ls, desde, 0.62f);   // sin el banco 827 (otra ISO): la tarjeta de antes
+      (void)ij; (void)gp;
+      if (ir >= 0 && !std::getenv("DBZ3_TEST_SIN_FIG_RIVAL")) dbz3::pasarela::nave::DibujarFiguraB2(
+          dl, ir, P(424, 378), 313.0f * ls, 0.0f, 34.0f / 60.0f + desde, ir == kSaibaman ? g_f[size_t(g_pend_r)].modo : 0,
+          ir == kSaibaman ? 844 : 0, 0, ir == kSaibaman ? cs : nullptr);
       dl->PopClipRect();
     } else {
       tx(791, 4, -4, 361, 60, 401);

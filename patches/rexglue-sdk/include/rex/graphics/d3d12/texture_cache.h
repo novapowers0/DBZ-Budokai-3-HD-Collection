@@ -444,6 +444,11 @@ class D3D12TextureCache final : public TextureCache {
   };
   mutable std::unordered_map<TextureKey, UpscaleReloadCounter, TextureKey::Hasher>
       upscale_reload_counters_;
+  // Igual para el pack: textura sin reemplazo que el guest reescribe 4+ veces en 1.5 s (render
+  // target, video) -> no se vuelve a linealizar + hashear en cada recarga (H4): costaba 30-90 ms
+  // por frame en combate con el pack encendido (medido 2026-10-24, `packhash=` en la linea perf).
+  mutable std::unordered_map<TextureKey, UpscaleReloadCounter, TextureKey::Hasher>
+      pack_reload_counters_;
   mutable uint64_t upscale_dynamic_refills_ = 0;
 
   // DBZ3 HD Collection: volcado dev de texturas (autoría de "packs" al estilo

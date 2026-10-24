@@ -29,6 +29,8 @@ struct NovaMod {
   std::vector<std::string> enlaces;   // author's https:// pages, clickable on the card
   std::vector<long long> partes;      // release asset ids of a split zip (empty = `zip`)
   std::string sha256;                 // hex SHA-256 of the whole zip; "" = old catalog, not checked
+  std::vector<std::string> excluye;   // ids that are the same mod in another version (pack HD V1/V2): installing
+                                      // this one moves them to mods_respaldo, so only one is active
 };
 
 enum class NovaState { kNoKey, kLoading, kReady, kFailed };

@@ -72,6 +72,8 @@ uint32_t Dbz3DdsFourCc(xenos::TextureFormat format) {
 }
 
 std::atomic<uint64_t> g_dbz3_pack_uploads{0};
+std::atomic<uint64_t> g_dbz3_pack_hash_us{0};
+std::atomic<uint64_t> g_dbz3_pack_hash_n{0};
 
 bool Dbz3PackSwapsRedBlue(xenos::TextureFormat format) {
   return format == xenos::TextureFormat::k_8_8_8_8 ||
@@ -615,6 +617,13 @@ bool ScanPack(const std::string& dir, std::string& name,
   for (; !ec && it != end; it.increment(ec)) {
     const auto& entry = *it;
     std::error_code fec;
+    // <pack>/update/ = originales que FALTAN en el pack, volcados por el juego para el autor
+    // (RecordMissingPackTexture). No son reemplazos: indexarlos los cargaba como x1 en la
+    // siguiente sesion (videos 1280x720 resubidos cada frame, device removed INVALID_CALL).
+    if (it.depth() == 0 && entry.is_directory(fec) && Utf8(entry.path().filename()) == "update") {
+      it.disable_recursion_pending();
+      continue;
+    }
     if (!entry.is_regular_file(fec)) {
       continue;
     }

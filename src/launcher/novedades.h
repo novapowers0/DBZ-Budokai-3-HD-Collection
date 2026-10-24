@@ -20,6 +20,15 @@ struct NewsBlock {
   int count;
 };
 
+inline constexpr NewsItem kNews1553[] = {
+    {"Combate", "Battle",
+     "Arreglado: al empezar el combate la cámara se quedaba mirando al suelo (solo se veían las barras de vida) y se volvía loca al agarrar. Vuelve a ser la cámara original del juego.",
+     "Fixed: at the start of a battle the camera got stuck looking at the ground (only the health bars were visible) and went crazy on grabs. It is the game's original camera again."},
+    {"Pack HD de texturas", "HD texture pack",
+     "Nueva V2 del pack de SSGPrinceVegeta en Nova's Mods, junto a la V1 (cada una con lo que pesa). Arreglado el cierre en combate con pack HD y la bajada a unos 25 FPS.",
+     "New V2 of SSGPrinceVegeta's pack in Nova's Mods, next to V1 (each showing its download size). Fixed the in-battle crash with an HD pack and the drop to about 25 FPS."},
+};
+
 inline constexpr NewsItem kNews1552[] = {
     {"Modo Héroe (beta)", "Hero Mode (beta)",
      "Saga 4 jugable. Las sagas 2, 3 y 4 ya se juegan en el mapa de la Tierra, no en Namek.",
@@ -224,6 +233,7 @@ inline constexpr NewsItem kNews145[] = {
 
 // Del mas nuevo al mas antiguo.
 inline constexpr NewsBlock kNewsBlocks[] = {
+    {"1.5.5.3", kNews1553, int(sizeof(kNews1553) / sizeof(kNews1553[0]))},
     {"1.5.5.2", kNews1552, int(sizeof(kNews1552) / sizeof(kNews1552[0]))},
     {"1.5.5.1", kNews1551, int(sizeof(kNews1551) / sizeof(kNews1551[0]))},
     {"1.5.5", kNews155, int(sizeof(kNews155) / sizeof(kNews155[0]))},

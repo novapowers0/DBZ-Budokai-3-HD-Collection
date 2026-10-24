@@ -874,6 +874,7 @@ void D3D12TextureCache::ClearCache() {
   upscale_dynamic_keys_.clear();
   upscale_chain_resources_.clear();
   upscale_reload_counters_.clear();
+  pack_reload_counters_.clear();
 
   MaybeLogPackReport();
 }
@@ -2347,7 +2348,23 @@ bool D3D12TextureCache::LoadTextureDataFromResidentMemoryImpl(Texture& texture, 
   // en un recurso 1x/Nx ajeno).
   if (load_base && d3d12_texture.outdated_mask() != 0) {
     auto cached_factor = pack_factor_cache_.find(texture_key);
+    bool chronic_reload = false;
     if (cached_factor != pack_factor_cache_.end() && cached_factor->second == 0) {
+      // ponytail: una textura estatica escrita EN MITAD de una racha dinamica de su misma
+      // direccion se queda sin HD hasta su siguiente recarga tranquila (>1.5 s despues).
+      const uint64_t now_us = uint64_t(std::chrono::duration_cast<std::chrono::microseconds>(
+                                           std::chrono::steady_clock::now().time_since_epoch())
+                                           .count());
+      UpscaleReloadCounter& reload_counter = pack_reload_counters_[texture_key];
+      if (reload_counter.window_start_us == 0 ||
+          now_us - reload_counter.window_start_us > 1500000) {
+        reload_counter.window_start_us = now_us;
+        reload_counter.count = 0;
+      }
+      chronic_reload = ++reload_counter.count > 3;
+    }
+    if (!chronic_reload && cached_factor != pack_factor_cache_.end() &&
+        cached_factor->second == 0) {
       pack_factor_cache_.erase(cached_factor);
       pack_entry_cache_.erase(texture_key);
       if (GetTexturePackFactor(texture_key) >= 1) {
@@ -2355,6 +2372,12 @@ bool D3D12TextureCache::LoadTextureDataFromResidentMemoryImpl(Texture& texture, 
         RecordPackOmission(now_entry, now_entry != nullptr ? now_entry->hash : 0, texture_key,
                            "recrear_tras_contenido");
         pack_retire_now_.push_back(texture_key);
+        // Hasta que se retire (proxima submission) el recurso VIVO sigue siendo el original (1x,
+        // DXT): la cache tiene que seguir diciendo 0. Con >=1, una vista SRV nueva de esta textura
+        // salia RGBA8 / con los mips del Nx sobre el recurso 1x -> device removed INVALID_CALL.
+        // El retiro borra la entrada y la textura nueva vuelve a calcular su factor.
+        pack_factor_cache_[texture_key] = 0;
+        pack_entry_cache_[texture_key] = nullptr;
         if (pack_txn_debug_enabled_) {
           REXGPU_INFO(
               "dbz3: pack txn contenido nuevo en key {}x{} fmt={} pasa a pack; recurso retirado",
@@ -2959,10 +2982,15 @@ uint32_t D3D12TextureCache::GetTexturePackFactor(const TextureKey& key) const {
       break;
     }
     std::vector<uint8_t> linear;
+    const auto hash_t0 = std::chrono::steady_clock::now();
     if (!LinearizeGuestTexture(key, key.GetGuestLayout(), key.base_page << 12, linear)) {
       break;
     }
     const uint64_t hash = XXH3_64bits(linear.data(), linear.size());
+    g_dbz3_pack_hash_us.fetch_add(uint64_t(std::chrono::duration_cast<std::chrono::microseconds>(
+                                      std::chrono::steady_clock::now() - hash_t0).count()),
+                                  std::memory_order_relaxed);
+    g_dbz3_pack_hash_n.fetch_add(1, std::memory_order_relaxed);
     entry = Dbz3HiddenEntry(hash, pack_applied_state_.side_borders_hidden);
     if (entry != nullptr) {
       factor = 1;  // transparente, ya en RAM: sin guardia de VRAM ni reparto por submission
@@ -3120,6 +3148,33 @@ bool D3D12TextureCache::UploadPackTextureData(D3D12Texture& texture, const Textu
   const uint32_t pack_width = image->width, pack_height = image->height;
   const uint64_t total_size = Dbz3PackLayout(*image, key.mip_max_level + 1, layouts);
   const uint32_t levels = uint32_t(layouts.size());
+  // El recurso tiene que ser el de ESTA imagen: si se creo con otro factor (p. ej. a tamano
+  // original antes de que el pack la tuviera en RAM) o con menos mips, la copia se sale del
+  // subrecurso y el driver tira el dispositivo (INVALID_CALL). Se recrea en la proxima submission.
+  {
+    ID3D12Resource* resource = texture.resource();
+    const D3D12_RESOURCE_DESC desc =
+        resource != nullptr ? resource->GetDesc() : D3D12_RESOURCE_DESC{};
+    if (resource == nullptr || desc.Width != pack_width || desc.Height != pack_height ||
+        desc.MipLevels < levels || desc.DepthOrArraySize != 1) {
+      static int mismatch_logged = 0;
+      if (mismatch_logged < 16) {
+        ++mismatch_logged;
+        REXGPU_WARN("dbz3: pack '{}': recurso {}x{} (mips {}) no es el de la imagen {}x{} ({} "
+                    "niveles), key {}x{} fmt={}: no se copia, se recrea",
+                    entry->pack_name, uint64_t(desc.Width), desc.Height, desc.MipLevels,
+                    pack_width, pack_height, levels, key.GetWidth(), key.GetHeight(),
+                    uint32_t(key.format));
+      }
+      RecordPackOmission(entry, entry->hash, key, "recurso_distinto");
+      pack_retire_now_.push_back(key);
+      if (resource != nullptr && desc.Width == key.GetWidth()) {
+        pack_factor_cache_[key] = 0;   // vistas coherentes con el recurso 1x hasta retirarlo
+        pack_entry_cache_[key] = nullptr;
+      }
+      return true;
+    }
+  }
   // Un buffer de la reserva si hay uno que sirva (sin pasarse mucho de tamano); si no, uno
   // nuevo (redondeado a 64 KB).
   Microsoft::WRL::ComPtr<ID3D12Resource> upload;

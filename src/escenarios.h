@@ -39,7 +39,6 @@ int Visibles();   // altas con casilla en el selector (las primeras; los campos 
 // true si hay un alta de mod puesta en el registro anfitrion, o sea, el escenario cargado es un alta
 // (frente 05: lo usa el bloqueo del cambio de zona del motor en escenarios.cpp).
 bool AltaActiva();
-bool AltaActivaSinGuardaCamara();   // Ring de Cell B1: el gancho de camara sin clip no salta su actualizacion
 // Registro del alta del campo de Infinite World `campo` (DATA_CMN de IW: 881, 883, 884, 897, 900, 903, 906, 909...)
 // que crea mod center hd/campos_iw.py en la copia del jugador (carpeta "Campo IW <campo>"), o -1 si no esta
 // instalado (frente R8).

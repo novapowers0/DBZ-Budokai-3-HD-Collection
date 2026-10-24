@@ -237,11 +237,6 @@ int Visibles() { return int(g_visibles); }
 
 bool AltaActiva() { return g_activa >= 0; }
 
-// A3b 24/10: el Ring de Cell de B1 (entrada 5031) tiene el clip de camara (+52) nulo, pero su actualizacion de camara
-// (sub_820F4678) tambien pone al dia lo que se dibuja: saltarla (red de seguridad de los B2) borraba el suelo del ring y
-// a Mr. Satan en la escena final de la Leyenda. Con el original no cierra (como antes de X1esc).
-bool AltaActivaSinGuardaCamara() { return g_activa >= 0 && g_altas[size_t(g_activa - kSerie)].entrada == 5031; }
-
 int PorMod(const std::string& mod) {
   for (size_t i = 0; i < g_altas.size(); ++i)
     if (g_altas[i].mod == mod) return kSerie + int(i);
@@ -517,10 +512,21 @@ REXCVAR_DEFINE_BOOL(dbz3_escenarios_guardas, true, "DBZ3/Dev",
 // la actualizacion de camara lee *(*(cam+52)+20) y el clip (+52) es nulo cuando el escenario no tiene el recurso pedido.
 // Sin clip se salta esa actualizacion (la raiz se arregla en el conversor). EU: gemelo por tools/eu_map.py.
 DBZ3_HOOK_EU(sub_820F4678) {
-  if (ctx.r3.u32 && !REX_LOAD_U32(ctx.r3.u32 + 52)) {
+  // 24/10 CAM (issue #52, logs 1.5.5.0/1.5.5.1): el original solo lee el clip (+52) con cam+32 == 1 y cam+36 == 7 (camara
+  // por clip). En el resto de modos +52 nulo es normal (la camara de combate de serie lo tiene asi): saltar la actualizacion
+  // dejaba la camara fija tras la presentacion y loca en los agarres. Ahora en los escenarios de serie no se toca nada (camara
+  // 100 % original); en los convertidos solo se salta el caso en que el original leeria 0+20 y cerraria el juego.
+  const uint32_t cam = ctx.r3.u32;
+  if (static const bool traza = std::getenv("DBZ3_TEST_CAM_TRAZA") != nullptr; traza && cam) {   // CAM: medir los modos
+    static std::atomic<int> t{0};
+    if (t.fetch_add(1) < 200)
+      REXLOG_INFO("dbz3 cam: sub_820F4678 lr=0x{:08X} +32={} +36={} +48=0x{:X} +52=0x{:08X} +56={}", uint32_t(ctx.lr),
+                  REX_LOAD_U32(cam + 32), REX_LOAD_U32(cam + 36), REX_LOAD_U32(cam + 48), REX_LOAD_U32(cam + 52), REX_LOAD_U32(cam + 56));
+  }
+  if (dbz3::escenarios::AltaActiva() && cam && !REX_LOAD_U32(cam + 52) && REX_LOAD_U32(cam + 32) == 1 && REX_LOAD_U32(cam + 36) == 7) {
     static std::atomic<int> n{0};
-    if (n.fetch_add(1) < 5) REXLOG_INFO("dbz3 escenarios: camara sin clip (+52 nulo)");
-    if (REXCVAR_GET(dbz3_escenarios_guardas) && !dbz3::escenarios::AltaActivaSinGuardaCamara()) return;
+    if (n.fetch_add(1) < 5) REXLOG_INFO("dbz3 escenarios: camara de clip sin clip (+52 nulo, modo 7) en un escenario convertido");
+    if (REXCVAR_GET(dbz3_escenarios_guardas)) return;
   }
   orig(ctx, base);
 }

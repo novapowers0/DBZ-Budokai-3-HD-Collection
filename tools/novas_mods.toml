@@ -6,21 +6,42 @@
 
 [[mod]]
 id = "texturas_hd_pv"
-version = "2.0"
+version = "1.0"       # V1: la publicada el 14/10 (su zip lleva manifest 2.0; "1.0" no pide bajar de version)
+congelado = true      # no se reempaqueta: se quedan su zip y sus trozos de la release texturas-hd-pv-2.0
 tipo = "texturas"
 release = "texturas-hd-pv-2.0"
+excluye = ["texturas_hd_pv_v2"]
 autor = "SSGPrinceVegeta"
 enlaces = ["https://x.com/SSGPrinceVegeta", "https://linktr.ee/ssgprincevegeta"]
-nombre_es = "Pack de texturas HD (PV)"
-nombre_en = "HD Texture Pack (PV)"
-descripcion_es = "Pack HD de SSGPrinceVegeta: unas 5300 texturas del juego a x4 (algunas a x8). Ocupa unos 2,9 GB; se enciende y apaga con F1 > Pack HD de texturas."
-descripcion_en = "HD pack by SSGPrinceVegeta: about 5300 game textures at x4 (a few at x8). About 2.9 GB; turn it on and off with F1 > HD texture pack."
-nombre_it = "Pack di texture HD (PV)"
-nombre_de = "HD-Texturpaket (PV)"
-nombre_fr = "Pack de textures HD (PV)"
-descripcion_it = "Pack HD di SSGPrinceVegeta: circa 5300 texture del gioco a x4 (alcune a x8). Occupa circa 2,9 GB; si attiva e disattiva con F1 > Pack HD di texture."
-descripcion_de = "HD-Paket von SSGPrinceVegeta: rund 5300 Spieltexturen in x4 (einige in x8). Etwa 2,9 GB; mit F1 > HD-Texturpaket ein- und ausschalten."
-descripcion_fr = "Pack HD de SSGPrinceVegeta : environ 5300 textures du jeu en x4 (quelques-unes en x8). Environ 2,9 Go ; s'active et se désactive avec F1 > Pack de textures HD."
+nombre_es = "Pack de texturas HD (PV) V1"
+nombre_en = "HD Texture Pack (PV) V1"
+descripcion_es = "Primera version del pack HD de SSGPrinceVegeta: unas 5300 texturas del juego a x4 (algunas a x8). Al instalarla se aparta la V2. Se enciende y apaga con F1 > Pack HD de texturas."
+descripcion_en = "First version of SSGPrinceVegeta's HD pack: about 5300 game textures at x4 (a few at x8). Installing it moves V2 aside. Turn it on and off with F1 > HD texture pack."
+nombre_it = "Pack di texture HD (PV) V1"
+nombre_de = "HD-Texturpaket (PV) V1"
+nombre_fr = "Pack de textures HD (PV) V1"
+descripcion_it = "Prima versione del pack HD di SSGPrinceVegeta: circa 5300 texture del gioco a x4 (alcune a x8). Installandola si mette da parte la V2. Si attiva e disattiva con F1 > Pack HD di texture."
+descripcion_de = "Erste Version des HD-Pakets von SSGPrinceVegeta: rund 5300 Spieltexturen in x4 (einige in x8). Beim Installieren wird V2 beiseitegelegt. Mit F1 > HD-Texturpaket ein- und ausschalten."
+descripcion_fr = "Premiere version du pack HD de SSGPrinceVegeta : environ 5300 textures du jeu en x4 (quelques-unes en x8). L'installer met la V2 de cote. S'active et se desactive avec F1 > Pack de textures HD."
+
+[[mod]]
+id = "texturas_hd_pv_v2"
+version = "2.0"
+tipo = "texturas"
+release = "texturas-hd-pv-v2"   # publicada 24/10 (ids 671695182, 179, 180, 181). El zip (6 GB) esta en E:/DBZ3HD_trabajo/pack_v2_publicar/v2 (C lleno): copialo con su .ids.json a novas_mods_grandes/mods antes de otro "publicar".
+excluye = ["texturas_hd_pv"]
+autor = "SSGPrinceVegeta"
+enlaces = ["https://x.com/SSGPrinceVegeta", "https://linktr.ee/ssgprincevegeta"]
+nombre_es = "Pack de texturas HD (PV) V2"
+nombre_en = "HD Texture Pack (PV) V2"
+descripcion_es = "Version nueva del pack HD de SSGPrinceVegeta: casi todas las texturas del juego (unas 12300) a x4, algunas a x16. Al instalarla se aparta la V1. Se enciende y apaga con F1 > Pack HD de texturas."
+descripcion_en = "New version of SSGPrinceVegeta's HD pack: almost every game texture (about 12300) at x4, a few at x16. Installing it moves V1 aside. Turn it on and off with F1 > HD texture pack."
+nombre_it = "Pack di texture HD (PV) V2"
+nombre_de = "HD-Texturpaket (PV) V2"
+nombre_fr = "Pack de textures HD (PV) V2"
+descripcion_it = "Nuova versione del pack HD di SSGPrinceVegeta: quasi tutte le texture del gioco (circa 12300) a x4, alcune a x16. Installandola si mette da parte la V1. Si attiva e disattiva con F1 > Pack HD di texture."
+descripcion_de = "Neue Version des HD-Pakets von SSGPrinceVegeta: fast alle Spieltexturen (rund 12300) in x4, einige in x16. Beim Installieren wird V1 beiseitegelegt. Mit F1 > HD-Texturpaket ein- und ausschalten."
+descripcion_fr = "Nouvelle version du pack HD de SSGPrinceVegeta : presque toutes les textures du jeu (environ 12300) en x4, quelques-unes en x16. L'installer met la V1 de cote. S'active et se desactive avec F1 > Pack de textures HD."
 
 [[mod]]
 id = "historia_freezer"

@@ -1599,6 +1599,39 @@ void PintaExtra(ImDrawList* dl) {
   esc.Poner(cam, m->malla, m->tx, {0, 0, 0}, giro, 1.0f, toon);
   esc.Pintar(dl);
 }
+// ---- A2n: camara real de la rueda de B2. FUN_002AE570: registro 0x37ABD0 (+0x10 + id*0x2C): [0]/[1] x (1P/COM), [2] y, [3] desplazamiento
+// vertical, [4] distancia (x 8/7); giro = word de cabecera [1]/[2] (16 bits). Medido en PCSX2: matriz del luchador = Ry(giro) * T(0, [3], [4]*8/7).
+struct CamRueda { float cx = 0, cy = 0, dy = 0, dz = 0, yaw = 0, F = 0, esc = 1; bool ok = false; };
+Lienzo g_fig_L{1, 1, ImVec2(0, 0)};
+CamRueda CamDeRueda(int id, bool com) {
+  CamRueda r;
+  static float F0 = 5863.36f, dcx = 0, dcy = 0, gx = 0, ayx = 1;
+  if (static const char* fa = std::getenv("DBZ3_SEL_CAMFILE"); fa) {   // prueba: "F dcx dcy giro_extra" releido cada vez
+    if (FILE* fp = std::fopen(fa, "r")) {
+      float v[4] = {F0, 0, 0, 0};
+      if (std::fscanf(fp, "%f %f %f %f", &v[0], &v[1], &v[2], &v[3]) >= 1) { F0 = v[0]; dcx = v[1]; dcy = v[2]; gx = v[3]; }
+      std::fclose(fp);
+    }
+  }
+  const std::vector<uint8_t>& elf = ElfB2();
+  const size_t base = size_t(0x37ABD0) - 0x100000 + 0x80;
+  const size_t row = base + 0x10 + size_t(id) * 0x2C;
+  if (id < 0 || id > 0x3E || row + 0x2C > elf.size()) return r;
+  auto fl = [&](size_t o) { float v; std::memcpy(&v, elf.data() + o, 4); return v; };
+  const uint32_t w = U32(elf, base + 4 + 4 * (com ? 1 : 0));
+  r.yaw = float(int16_t(uint16_t(w & 0xFFFF))) * (6.2831853f / 65536.0f) + gx;
+  r.cx = fl(row + (com ? 4 : 0)) + dcx;
+  r.cy = fl(row + 8) + dcy;
+  r.dy = fl(row + 12);
+  r.dz = fl(row + 16) * (448.0f / 392.0f);
+  r.F = F0;
+  {   // escala del personaje: tabla de floats DAT_003892A0[id] (FUN_002AE010 la aplica a la raiz del modelo: FUN_00149E40)
+    const size_t o = size_t(0x3892A0) - 0x100000 + 0x80 + 4 * size_t(id);
+    if (o + 4 <= elf.size()) { const float e = fl(o); if (e > 0.2f && e < 3.0f) r.esc = e; }
+  }
+  r.ok = std::isfinite(r.cx) && std::isfinite(r.cy) && r.dz < -1.0f;
+  return r;
+}
 void PintaFig(ImDrawList* dl) {
   if (static const bool sin = std::getenv("DBZ3_SEL_SINMODELO") != nullptr; sin) return;
   if (g_fig_id < 0) {
@@ -1630,9 +1663,46 @@ void PintaFig(ImDrawList* dl) {
       m.tris.push_back(tr);
     }
   }
+  { static uint64_t vistos = 0; if (g_fig_id < 64 && !(vistos >> g_fig_id & 1)) { vistos |= 1ull << g_fig_id; REXLOG_INFO("dbz3 nave: figura id B2 {} alto de modelo {:.3f} ymin {:.3f} ymax {:.3f}", g_fig_id, (ymax - ymin + 1.1f), ymin, ymax);
+      if (f.m.esq->padre.size() > 1) {   // A2n: largo de pierna en reposo (cadera -> suela) para el reescalado de la pista de la cadera
+        std::vector<ps2::M34> rw(f.m.esq->padre.size());
+        float mn = 1e9f, mx = -1e9f;
+        for (size_t b = 0; b < rw.size(); ++b) { rw[b] = f.m.esq->padre[b] >= 0 ? rw[size_t(f.m.esq->padre[b])] * f.m.esq->local[b] : f.m.esq->local[b]; mn = std::min(mn, rw[b].m[7]); mx = std::max(mx, rw[b].m[7]); }
+        REXLOG_INFO("dbz3 nave: figura id B2 {} reposo-mundo y min {:.3f} max {:.3f}", g_fig_id, mn, mx);
+      }
+      if (anima && f.m.esq->padre.size() > 1) { const auto w = EjesMundo(*f.m.esq, f.an, f.cuadro / 60.0f + float(dbz3::RelojT(ImGui::GetTime()))); REXLOG_INFO("dbz3 nave: figura id B2 {} cadera mundo ({:.3f}, {:.3f}, {:.3f}) huesos {} reposo ({:.3f}, {:.3f}, {:.3f}) padre1 {}", g_fig_id, w[1].m[3], w[1].m[7], w[1].m[11], w.size(), f.m.esq->local[1].m[3], f.m.esq->local[1].m[7], f.m.esq->local[1].m[11], f.m.esq->padre[1]); } } }
+  if (!std::getenv("DBZ3_SEL_VIEJO")) {   // A2n: la camara REAL de la rueda de B2 (FUN_002AE570): registro 0x37ABD0 + id*0x2C
+    const CamRueda cr = CamDeRueda(g_fig_id, g_rueda_com);
+    if (cr.ok) {
+      const float ay = 448.0f / 392.0f;   // el diseno de B2 es 640 x 392 y la pantalla (GS) 448 filas
+      for (auto& tr : m.tris)
+        for (auto& v : tr.p) v.y *= ay;
+      ps2::Camara cam;
+      const float fd = cr.F * g_fig_L.s;
+      cam.h = ImVec2(450, 450);
+      cam.fov = 2.0f * std::atan(450.0f / fd);
+      cam.c = g_fig_L.P(320.0f + cr.cx, (196.0f + cr.cy) * ay);
+      cam.m[0] = cam.m[5] = cam.m[10] = cam.m[15] = 1;
+      cam.m[13] = cr.dy * ay;
+      cam.m[14] = cr.dz;
+      cam.ok = true;
+      ps2::Escena esc;
+      esc.Empezar();
+      ps2::Escena::Toon toon;
+      toon.borde = f.alto * 0.009f;
+      ps2::V3 desp{0, 0, 0};   // la tabla de escala solo multiplica la POSICION de la raiz (medido: cadera x 0,164 -> 0,131 en Vegeta, malla sin escalar)
+      if (anima && f.m.esq->padre.size() > 1) {
+        const auto w = EjesMundo(*f.m.esq, f.an, f.cuadro / 60.0f + float(dbz3::RelojT(ImGui::GetTime())));
+        const float k = cr.esc - 1.0f, hx = w[1].m[3] * k, hy = w[1].m[7] * k, hz = w[1].m[11] * k, cg = std::cos(cr.yaw), sg = std::sin(cr.yaw);
+        desp = {hx * cg + hz * sg, hy * ay, -hx * sg + hz * cg};
+      }
+      esc.Poner(cam, m, f.tx, desp, cr.yaw, 1.0f, toon);
+      esc.Pintar(dl);
+      return;
+    }
+  }
   // px por unidad del modelo igual para todos (el de Goku: alto de referencia), anclado por los pies
   const float alto_modelo = ymax - ymin + 1.1f;
-  { static uint64_t vistos = 0; if (g_fig_id < 64 && !(vistos >> g_fig_id & 1)) { vistos |= 1ull << g_fig_id; REXLOG_INFO("dbz3 nave: figura id B2 {} alto de modelo {:.3f} ymin {:.3f} ymax {:.3f}", g_fig_id, alto_modelo, ymin, ymax); } }
   // B2 encuadra a todos a una altura de pantalla parecida (Cell, Piccolo y Goku salen del mismo tamano): altura normalizada
   // factor de tamano medido contra B2 (PCSX2, rueda de cada uno): Goku 0,85, Vegeta 0,93, Piccolo 0,95, Cell 1,0, Frieza 0,69; el
   // resto 0,93 [H] (B2 usa para cada uno los campos [2..4] de su registro de camara 0x37ABD0, sin descifrar del todo)
@@ -1703,12 +1773,13 @@ void DibRueda(ImDrawList* dl, const Lienzo& L, float c, bool com, bool menu) {
       std::lock_guard<std::mutex> lk(g_modb3_mu);
       b3_ok = !g_modb3_fallo.count(b3_sel);
     }
-    g_fig_id = (id_b2 >= 0 && !b3_ok && c >= 25.0f) ? id_b2 : -1;
-    g_fig_b3 = (b3_ok && c >= 25.0f) ? b3_sel : -1;
+    g_fig_id = (id_b2 >= 0 && (!b3_ok || std::getenv("DBZ3_SEL_FORZAR_B2")) && c >= 25.0f) ? id_b2 : -1;
+    g_fig_b3 = (b3_ok && g_fig_id < 0 && c >= 25.0f) ? b3_sel : -1;
     static const float ref = [] { const Fig& r = FigDe(0); return r.ok ? r.alto : 8.0f; }();
     g_fig_alto_ref = ref;
     const float alto_goku = std::getenv("DBZ3_SEL_ALTO") ? float(std::atof(std::getenv("DBZ3_SEL_ALTO"))) : 450.0f;
     g_fig_px = alto_goku * L.s * L.k;
+    g_fig_L = L;
     g_fig_pie = L.P(std::getenv("DBZ3_SEL_X") ? float(std::atof(std::getenv("DBZ3_SEL_X"))) : 125.0f,
                     std::getenv("DBZ3_SEL_Y") ? float(std::atof(std::getenv("DBZ3_SEL_Y"))) : 500.0f);
     if (g_fig_id >= 0 || g_fig_b3 >= 0) {
@@ -2113,7 +2184,7 @@ void DibujarResultado(ImDrawList* dl, const Lienzo& L) {
 
 // A2c (tablero B2): el luchador `id_b2` en 3D con su modelo y su pose de B2 (el mismo cargador FigDe de la rueda), con los pies en
 // `pie` y `alto_px` de alto en pantalla, girado `giro` rad; `t` = segundos dentro de la animacion. Devuelve false si no hay modelo.
-bool DibujarFiguraB2(ImDrawList* dl, int id_b2, ImVec2 pie, float alto_px, float giro, float t, int traje, int pbank, int panim) {
+bool DibujarFiguraB2(ImDrawList* dl, int id_b2, ImVec2 pie, float alto_px, float giro, float t, int traje, int pbank, int panim, const float* cb) {
   if (g_iso.empty()) g_iso = BuscarJuego("budokai 2");   // el tablero lo usa sin haber pasado por la nave
   const Fig& f = FigDe(id_b2, traje, pbank, panim);
   if (!f.ok || f.alto <= 0 || alto_px <= 1) return false;
@@ -2126,13 +2197,20 @@ bool DibujarFiguraB2(ImDrawList* dl, int id_b2, ImVec2 pie, float alto_px, float
   }
   static ps2::Malla pose;
   const bool anima = bool(f.an);
-  if (const char* fa = std::getenv("DBZ3_TEST_FIG_ARCHIVO")) {   // prueba: segundos de la animacion desde un fichero (barrido de poses)
-    float v = -1;
+  float cbl[14];
+  // prueba: "t giro dx dy escala" desde un fichero (barrido de poses/encuadre); ARCHIVO2 = el rival (pbank 844), ARCHIVO = el resto
+  if (const char* fa = std::getenv(pbank == 844 ? "DBZ3_TEST_FIG_ARCHIVO2" : "DBZ3_TEST_FIG_ARCHIVO")) {
+    float v[6] = {-1, 1e9f, 0, 0, 1, 0};
     if (FILE* fp = std::fopen(fa, "r")) {
-      if (std::fscanf(fp, "%f", &v) != 1) v = -1;
+      if (std::fscanf(fp, "%f %f %f %f %f %f", &v[0], &v[1], &v[2], &v[3], &v[4], &v[5]) < 1) v[0] = -1;
       std::fclose(fp);
     }
-    if (v >= 0) t = v;
+    if (v[0] >= 0) {
+      t = v[0];
+      if (v[1] < 1e8f) giro = v[1];
+      if (cb) { std::memcpy(cbl, cb, sizeof(cbl)); cb = cbl; cbl[12] += v[2]; cbl[11] += v[3]; cbl[10] *= v[4]; cbl[13] += v[5]; }   // con camara: giro extra, dy mundo, x escala
+      else { pie.x += v[2] * alto_px; pie.y += v[3] * alto_px; alto_px *= v[4]; }   // dx, dy en alturas de la figura
+    }
   }
   t += f.cuadro / 60.0f + (std::getenv("DBZ3_TEST_FIG_RELOJ") ? float(dbz3::RelojT(ImGui::GetTime())) : 0.0f);   // prueba: reloj de la rueda
   ps2::Anim an_abs;   // prueba DBZ3_TEST_FIG_ABS=1: giros ABSOLUTOS (los de 931 son del esqueleto FRZ_*, no relativos al reposo de Goku)
@@ -2158,6 +2236,42 @@ bool DibujarFiguraB2(ImDrawList* dl, int id_b2, ImVec2 pie, float alto_px, float
       tr.tex = tr0.tex + base_tex;
       m.tris.push_back(tr);
     }
+  }
+  if (cb) {   // A1c: camara de B2 tal cual (ojo, objetivo, fov del #AMC del banco; centro y media pantalla en px; escala S y desplazamiento y)
+    // cb = {ojo xyz, objetivo xyz, fov, cx, cy, hy, S, dy, giro_extra, dx}; vista como la de combate.cpp: filas (d, u, -f), delante z < 0
+    float fw[3] = {cb[3] - cb[0], cb[4] - cb[1], cb[5] - cb[2]};
+    const float lf = std::sqrt(fw[0] * fw[0] + fw[1] * fw[1] + fw[2] * fw[2]);
+    for (float& v : fw) v /= lf;
+    float r[3] = {fw[1] * 0 - fw[2] * 1, fw[2] * 0 - fw[0] * 0, fw[0] * 1 - fw[1] * 0};   // f x (0,1,0)
+    const float lr = std::sqrt(r[0] * r[0] + r[1] * r[1] + r[2] * r[2]);
+    for (float& v : r) v /= lr;
+    const float u[3] = {r[1] * fw[2] - r[2] * fw[1], r[2] * fw[0] - r[0] * fw[2], r[0] * fw[1] - r[1] * fw[0]};   // r x f
+    ps2::Camara cm;
+    cm.m[0] = r[0]; cm.m[4] = r[1]; cm.m[8] = r[2];
+    cm.m[1] = u[0]; cm.m[5] = u[1]; cm.m[9] = u[2];
+    cm.m[2] = -fw[0]; cm.m[6] = -fw[1]; cm.m[10] = -fw[2];
+    cm.m[12] = -(r[0] * cb[0] + r[1] * cb[1] + r[2] * cb[2]);
+    cm.m[13] = -(u[0] * cb[0] + u[1] * cb[1] + u[2] * cb[2]);
+    cm.m[14] = fw[0] * cb[0] + fw[1] * cb[1] + fw[2] * cb[2];
+    cm.m[15] = 1;
+    cm.fov = cb[6];
+    cm.c = ImVec2(cb[7], cb[8]);
+    cm.h = ImVec2(cb[9], cb[9]);
+    cm.ok = true;
+    ps2::Escena es;
+    es.Empezar();
+    ps2::Escena::Toon tn;
+    tn.borde = f.alto * 0.009f;
+    {   // sonda A1c: caja del modelo en unidades de malla
+      static float u_a = -1e9f, u_b = -1e9f;
+      if (std::fabs(ymax - u_a) > 1e-3f || std::fabs(ymin - u_b) > 1e-3f) {
+        u_a = ymax; u_b = ymin;
+        REXLOG_INFO("dbz3 figb2cam: id {} banco {} ymin {:.3f} ymax {:.3f} S {:.3f}", id_b2, pbank, ymin, ymax, cb[10]);
+      }
+    }
+    es.Poner(cm, m, f.tx, {cb[13], cb[11], 0}, giro + cb[12], cb[10], tn);
+    es.Pintar(dl);
+    return true;
   }
   const float alto_modelo = ymax - ymin + 1.1f;
   // la camara de la rueda (fov 0,785 sobre 900 px) a ~2,9 alturas del modelo; aqui, con cualquier tamano de ventana, la misma

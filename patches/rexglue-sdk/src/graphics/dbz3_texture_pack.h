@@ -171,6 +171,9 @@ void Dbz3PackCopyLevels(const Dbz3TexturePackIndex::Image& image, uint64_t bytes
 
 // Texturas de pack subidas (acumulado; la linea `perf` lo muestra como pack=).
 extern std::atomic<uint64_t> g_dbz3_pack_uploads;
+// Coste de buscar en el pack (linealizar + XXH3 en el hilo de GPU): `packhash=` en la linea perf.
+extern std::atomic<uint64_t> g_dbz3_pack_hash_us;
+extern std::atomic<uint64_t> g_dbz3_pack_hash_n;
 
 // Bytes de VRAM de una entrada con todos sus mips (RGBA8, 4/3 de la base) y reparto de
 // texturas HD nuevas por submission: ~64 MB, para que al encender el pack o entrar a un

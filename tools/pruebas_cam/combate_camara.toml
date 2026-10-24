@@ -1,0 +1,17 @@
+# CAM 24/10 (issue #52): combate nativo real (sin RINGOUT ni turbo). Capturas a 3, 8 y 15 s tras "empieza un combate"
+# (la presentacion se salta con A/Start, como hacen los jugadores) y durante agarres (A+X = Space+L junto al rival). Despues: python tools\pruebas_cam\detector.py <carpeta del run>
+# Al final, 80 s mas de combate (combates largos: Goku contra Broly 40, escenarios B2 convertidos).
+# Uso: python tools\pruebas.py correr <copia> tools\pruebas_cam\combate_camara.toml [--env DBZ3_TEST_BATTLE=0,7,<esc>]
+descripcion = "Camara en combate nativo: personajes en pantalla tras la presentacion y en los agarres"
+env = ["DBZ3_TEST_BATTLE=0,7,2"]
+pasos = [
+  'log "tag: empieza un combate" 90',
+  "esperar 1500", "tecla Space 800", "tecla Return 800", "tecla Space 700",
+  "captura c03",
+  "esperar 5000", "captura c08",
+  "esperar 7000", "captura c15",
+  "tecla D:1500 1600", "tecla Space+L 300", "captura g1", "tecla Space+L 300", "esperar 700", "captura g2",
+  "tecla D:1500 1600", "tecla Space+L 300", "esperar 500", "captura g3", "esperar 1500", "captura g4",
+  "tecla A:1200 1300", "tecla D:2500 2600", "tecla Space+L 300", "esperar 800", "captura g5", "esperar 2000", "captura g6",
+  "esperar 40000", "captura z_largo1", "tecla D:2000 2100", "tecla Space+L 300", "esperar 40000", "captura z_largo2",
+]

@@ -2347,7 +2347,7 @@ static void Dbz3LogGuestPerformance(uint64_t upscaled_textures, uint64_t upscale
         "dbz3: perf fps={:.1f} p1={:.1f} p99_ms={:.1f} frames={} window={:.2f}s max_frame_ms={:.1f} fg={} "
         "cfg=scale:{}x{} msaa:{} hdtex:{} area:{} min:{} aniso:{} upx={} upx_dyn={} "
         "texload={} pack={} vram={}MB/{}MB lim={} gpu_wait={:.1f}ms/f syncs={} cp_wait={:.1f}ms/f "
-        "relight={} (sin_post={} sin_resolve={})",
+        "relight={} (sin_post={} sin_resolve={}) packhash={:.1f}ms/f n={}",
         double(frames_in_window) / elapsed_s, fps1, p99_ms, frames_in_window, elapsed_s, max_frame_ms,
         foreground ? 1 : 0, rex::cvar::GetFlagByName("draw_resolution_scale_x"),
         rex::cvar::GetFlagByName("draw_resolution_scale_y"),
@@ -2359,7 +2359,8 @@ static void Dbz3LogGuestPerformance(uint64_t upscaled_textures, uint64_t upscale
         upscale_dynamic_refills, texture_loads_window, g_dbz3_pack_uploads.load(),
         vram_usage >> 20, vram_budget >> 20,
         upscale_limit, gpu_wait_ms, fence_waits, cp_wait_ms, g_dbz3_relight_passes,
-        g_dbz3_relight_missed[0], g_dbz3_relight_missed[1]);
+        g_dbz3_relight_missed[0], g_dbz3_relight_missed[1],
+        double(g_dbz3_pack_hash_us.exchange(0)) / 1000.0 / frames_div, g_dbz3_pack_hash_n.exchange(0));
   }
   g_dbz3_relight_passes = 0;
   g_dbz3_relight_missed[0] = g_dbz3_relight_missed[1] = 0;

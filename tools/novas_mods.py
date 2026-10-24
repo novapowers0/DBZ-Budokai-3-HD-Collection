@@ -182,6 +182,8 @@ def cmd_publicar(a):
         out.append('sha256 = "%s"' % sha256_file(zpath))    # el zip entero (en los partidos, ya unido)
         if "autor" in m:
             out.append("autor = " + toml_str(m["autor"]))
+        if "excluye" in m:    # otra version del mismo mod (pack HD V1/V2): el launcher la aparta al instalar esta
+            out.append("excluye = [%s]" % ", ".join(toml_str(x) for x in m["excluye"]))
         if "enlaces" in m:
             out.append("enlaces = [%s]" % ", ".join(toml_str(u) for u in m["enlaces"] if u.startswith("https://")))
         for k, v in m.items():
