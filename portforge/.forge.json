@@ -1,5 +1,5 @@
 {
-  "defaultVersion": "1.5.5",
+  "defaultVersion": "1.5.5.1",
   "dependencies": [
     "unzip",
     "7z"
@@ -15,6 +15,53 @@
     }
   ],
   "builds": [
+    {
+      "versions": [
+        "1.5.5.1"
+      ],
+      "targetPlatforms": [
+        "Windows"
+      ],
+      "steps": [
+        {
+          "step": "createDir",
+          "path": ".build"
+        },
+        {
+          "step": "fetch",
+          "url": "https://github.com/novapowers0/DBZ-Budokai-3-HD-Collection/releases/download/v1.5.5.1/DBZ-Budokai-3-HD-Collection-v1.5.5.1.zip",
+          "dest": ".build/port.zip"
+        },
+        {
+          "step": "extract",
+          "src": ".build/port.zip",
+          "dest": ".build"
+        },
+        {
+          "step": "deletePath",
+          "path": ".build/port.zip"
+        },
+        {
+          "step": "copy",
+          "from": "rom",
+          "dest": ".build/game.iso"
+        },
+        {
+          "step": "move",
+          "src": "./.build",
+          "dest": "./install"
+        },
+        {
+          "step": "deletePath",
+          "path": "./.build"
+        },
+        {
+          "step": "defineExecutable",
+          "executable": "install/dbz3.exe",
+          "title": "Play"
+        }
+      ]
+    },
     {
       "versions": [
         "1.5.5"
@@ -77,53 +124,6 @@
         {
           "step": "fetch",
           "url": "https://github.com/novapowers0/DBZ-Budokai-3-HD-Collection/releases/download/v1.4.4.5/DBZ-Budokai-3-HD-Collection-v1.4.4.5.zip",
-          "dest": ".build/port.zip"
-        },
-        {
-          "step": "extract",
-          "src": ".build/port.zip",
-          "dest": ".build"
-        },
-        {
-          "step": "deletePath",
-          "path": ".build/port.zip"
-        },
-        {
-          "step": "copy",
-          "from": "rom",
-          "dest": ".build/game.iso"
-        },
-        {
-          "step": "move",
-          "src": "./.build",
-          "dest": "./install"
-        },
-        {
-          "step": "deletePath",
-          "path": "./.build"
-        },
-        {
-          "step": "defineExecutable",
-          "executable": "install/dbz3.exe",
-          "title": "Play"
-        }
-      ]
-    },
-    {
-      "versions": [
-        "1.4.2.3"
-      ],
-      "targetPlatforms": [
-        "Windows"
-      ],
-      "steps": [
-        {
-          "step": "createDir",
-          "path": ".build"
-        },
-        {
-          "step": "fetch",
-          "url": "https://github.com/novapowers0/DBZ-Budokai-3-HD-Collection/releases/download/v1.4.2.3/DBZ-Budokai-3-HD-Collection-v1.4.2.3.zip",
           "dest": ".build/port.zip"
         },
         {

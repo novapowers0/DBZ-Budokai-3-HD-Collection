@@ -11,5 +11,5 @@ entradas retiradas.
 
 ## Estado actual (2026-10-24)
 
-Versiones **visibles** en PortForge (las tres ultimas funcionales): `1.5.5` (Latest, default), `1.4.4.5`, `1.4.2.3`.
+Versiones **visibles** en PortForge (las tres ultimas funcionales): `1.5.5.1` (Latest, default), `1.5.5`, `1.4.4.5`. `1.4.2.3` retirada el 24/10.
 Retiradas al archivo el 24/10: `1.4.0`, `1.3.0`, `1.2.9`.
