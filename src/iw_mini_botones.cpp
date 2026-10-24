@@ -582,6 +582,7 @@ void CamB(int clip, bool quieto = false, bool bucle = false) {   // hilo de la i
     if (g_clips.count(v)) clip = v;
   }
   if (clip < 0 || !g_clips.count(clip)) return;
+  SerieClip(clip);
   g_cb_clip = clip;
   g_cb_frame = 0;
   g_cb_quieto = quieto;
@@ -725,8 +726,9 @@ void Paso(Juego& j, uint16_t pulsado) {
         if (l == 0) j.vida[1] -= float(j.m->ataque_jugador[j.dif]);
         PosesGolpe(j, l, true);
         j.aviso_bien = true;
-        if (l == 0 && j.punto) {   // R7: NB006, cada punto ganado: clip 0x98 (Mg_ResetRoundState) y una pausa
-          CamB(0x98);
+        if (l == 0 && j.punto) {   // R7: NB006, cada punto ganado: pausa de Mg_ResetRoundState. La 0x98 es una
+          // ANIMACION (pose del jugador), no la camara: el original mantiene la camara de juego 0x97 durante todo el
+          // minijuego (medido en PCSX2: la 0x98 tiene pista de camara pero UiAnim no la usa como camara).
           j.pausa = kPausaPunto;
         }
       } else {
@@ -824,6 +826,7 @@ class Panel : public rex::ui::ImGuiDialog {
     while (acum_ >= 1.0f / 60) {   // logica a 60 cuadros por segundo, como en la PS2
       acum_ -= 1.0f / 60;
       ++j->t;
+      SerieJuego(j->fase == 2);
       CuadroSe();
       if (g_cb_clip.load() >= 0 && !g_cb_quieto.load()) ++g_cb_frame;
       // s8 (medido en PCSX2): la entrada es [#AMC de la escena (amc_entrada, sus clips seguidos; poses 0/0)] ->
@@ -1209,6 +1212,7 @@ bool Empezar(int clave, int fila, int dificultad) {
   j->poses = m->poses;
   g_poses_a = m->poses;
   g_cb_clip = -1;
+  SeriePorClip(false);
   if (m->poses->cam_ini >= 0 && !std::getenv("DBZ3_IWMINI_CAMARA_B3")) {   // DBZ3_IWMINI_CAMARA_B3: la camara propia
     const Poses& q = *m->poses;
     PrecargarClips({q.cam_ini, q.cam_juego, q.cam_gana, q.cam_pierde, q.cam_fin_bien, q.cam_fin_mal,
@@ -1865,6 +1869,10 @@ class PanelB : public rex::ui::ImGuiDialog {
     while (acum_ >= 1.0f / 60) {
       acum_ -= 1.0f / 60;
       ++j->t;
+      // MSN019: el 879/0 es la camara de juego y dura 300 cuadros (los mismos que el original, medido: 52,0-57,0 s);
+      // despues IW pasa al plano de resultado. La serie solo mide ese tramo, no la camara retenida.
+      const auto it879 = g_clips.find(kCam879);
+      SerieJuego(j->fase == 2 && !(j->m->tipo == kBarrido && it879 != g_clips.end() && g_cb_frame.load() >= it879->second.nf));
       CuadroPose(*j);
       if (j->pb) {   // poses de IW: espera, READY y (MSN019) el tramo de filas; y sus camaras
         if (j->fase == 0 && j->t == 1) {
@@ -1888,8 +1896,13 @@ class PanelB : public rex::ui::ImGuiDialog {
       } else if (j->fase == 1 && j->t >= ((j->ronda == 0 && j->pb) ? j->pb->dur_intro : 60)) {   // READY? (la primera) o el numero de ronda
         j->fase = 2;
         j->t = 0;
-        if (j->pb && j->pb->cam_juego >= 0) CamB(j->pb->cam_juego);   // 05: camara de juego de IW (MSN019: DATA_CMN 879)
+        // 05: camara de juego de IW (MSN019: DATA_CMN 879, un solo clip de 300 cuadros para TODAS las filas: no se
+        // reinicia en cada fila, que antes la dejaba siempre en el primer tramo (ojo a 154) y no bajaba nunca).
+        if (j->pb && j->pb->cam_juego >= 0 &&
+            !(j->pb->cam_juego == kCam879 && g_cb_clip.load() == kCam879))
+          CamB(j->pb->cam_juego);
         else if (j->pb && g_entrada_b.load() > 0 && j->ronda == 0) CamB(j->pb->cam_ini);   // s8 NB007: 0xB4 en la ronda 1
+        else if (j->pb && j->ronda == 0 && j->pb->cam_ronda[0] >= 0) CamB(j->pb->cam_ronda[0]);   // NB012: 0x14B ya en la ronda 1
       } else if (j->fase == 2) {
         PasoB(*j, j->pendiente);
         j->pendiente = 0;
@@ -2059,6 +2072,9 @@ bool EmpezarRondas(int clave, int fila, int dificultad) {
   EmpezarRonda(*j);
   g_cb_clip = -1;
   if (m->poses && !std::getenv("DBZ3_IWMINI_CAMARA_B3")) PrecargarCamaras(*m->poses);   // (DBZ3_IWMINI_CAMARA_B3: sin ellas)
+  // NB012/NB007 usan una camara fija por ronda: una fila por ronda. MSN019 usa un clip animado (879/0): por tiempo.
+  SeriePorClip(m->tipo != kBarrido);
+  SerieClip(-1);
   g_entrada_b = (m->indice == 6 && m->poses && !std::getenv("DBZ3_IWMINI_CAMARA_B3")) ? PrecargarEntrada(872, 1) : 0;
   REXLOG_INFO("dbz3 r14: {} (clave 0x{:X}, dificultad {}): rondas {} {} {} {} {} {} {} {} {} {}, {} botones, velocidad {}",
               m->nombre, clave, j->dif, j->orden[0], j->orden[1], j->orden[2], j->orden[3], j->orden[4], j->orden[5],
@@ -2413,7 +2429,14 @@ static void CamaraFov(uint8_t* base, uint32_t mgr, const float ojo[3], const flo
   static const bool sin = std::getenv("DBZ3_S8_SIN_FOV") != nullptr;
   fov = std::clamp(fov, 0.08726647f, 3.0543263f);   // B2: los mismos limites que Camera_SetupFieldOfView (5..175 grados)
   const float b3 = LoadF(base, mgr + 0x1C4);
-  const float k = sin || !(b3 > 0.3f && b3 < 1.4f) ? 1.0f : std::tan(fov * 0.5f) / std::tan(b3 * 0.5f);
+  // El fov de IW (0,60) es mas estrecho que el de B3 (0,785): se compensa acercando el ojo. Las familias que ya
+  // cuadran (NB013/NB014) conservan la compensacion original; NB006 y la familia B usan el clip tal cual (abajo).
+  float k = sin || !(b3 > 0.3f && b3 < 1.4f) ? 1.0f : std::tan(fov * 0.5f) / std::tan(b3 * 0.5f);
+  // NB006: la 0x97 de IW esta medida con la camara real (ojo -57,4 / objetivo -15): el acercamiento por el fov (0,60
+  // frente a 0,785) la dejaba a 44-46 de los 53,7 del original. Aqui se usa el clip tal cual y el fov ancho de B3.
+  // Familia A menos NB006: se mantiene la compensacion (sus clips ya cuadran). Familia B y NB006: el clip tal cual, que
+  // es la camara real medida en IW; el fov ancho de B3 encoge un poco a los luchadores, pero la posicion es la original.
+  if (g_poses_a.load() == &kPosesNB006 || g_corre_b.load()) k = 1.0f;
   g_cam_fov_iw = fov, g_cam_fov_b3 = b3, g_cam_k = k;
   float e[3] = {obj[0] + (ojo[0] - obj[0]) * k, obj[1] + (ojo[1] - obj[1]) * k, obj[2] + (ojo[2] - obj[2]) * k};
   float t[3] = {obj[0], obj[1], obj[2]};
@@ -2429,14 +2452,25 @@ static void CamaraFov(uint8_t* base, uint32_t mgr, const float ojo[3], const flo
   static const bool sin_lazo = std::getenv("DBZ3_S8_ALFA") && std::atof(std::getenv("DBZ3_S8_ALFA")) < 0.01;
   static float wo[3], wt[3], co[3], ct[3];
   static bool hay = false;
-  if (!sin_lazo) {
+  // Al cambiar de clip el objetivo salta de golpe: el acumulador del lazo se reinicia (si no, en NB012 oscilaba
+  // cientos de unidades al entrar en 0x14B y la camara tardaba segundos en estabilizarse).
+  static int ult_clip = -2;
+  if (g_cb_clip.load() != ult_clip) {
+    ult_clip = g_cb_clip.load();
+    hay = false;
+    for (int i = 0; i < 3; ++i) co[i] = ct[i] = 0.0f;
+  }
+  // Familia B: sus clips son coordenadas ABSOLUTAS del mundo de IW y el lazo de correccion (pensado para el arrastre de
+  // B3 en la familia A) se desbocaba en la ronda 1 de NB012 (0x14B, ojo a 1,9 de altura): el juego ignora la camara
+  // escrita mientras dura el cambio de ronda y el acumulador se iba a -80. En B se usa el clip tal cual cada cuadro.
+  if (!sin_lazo && !g_corre_b.load()) {
     float ro[3], rt[3];
     if (hay && dbz3::cine::LeerCamara(base, ro, rt)) {
       float lejos = 0;   // otra camara (otra escena o la del juego entre medias): empezar de nuevo
       for (int i = 0; i < 3; ++i) lejos = std::max({lejos, std::fabs(ro[i] - wo[i]), std::fabs(rt[i] - wt[i])});
       for (int i = 0; i < 3; ++i) {
-        co[i] = lejos > 150.0f ? 0.0f : co[i] + 0.5f * (g_cam_d[i] - ro[i]);
-        ct[i] = lejos > 150.0f ? 0.0f : ct[i] + 0.5f * (g_cam_d[3 + i] - rt[i]);
+        co[i] = lejos > 150.0f ? 0.0f : std::clamp(co[i] + 0.5f * (g_cam_d[i] - ro[i]), -80.0f, 80.0f);
+        ct[i] = lejos > 150.0f ? 0.0f : std::clamp(ct[i] + 0.5f * (g_cam_d[3 + i] - rt[i]), -80.0f, 80.0f);
       }
     }
     for (int i = 0; i < 3; ++i) e[i] += co[i], t[i] += ct[i];

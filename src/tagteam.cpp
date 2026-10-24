@@ -1506,7 +1506,8 @@ void OnScreen(int screen) {
     g_net_local = 0;
     g_net_applied[0] = 0; g_net_applied[1] = 0;
     g_prev_buttons = {}; g_fall_x = 0;
-    for (auto& com : g_com) com = false;
+    // Este callback se repite mientras permanece en 5/14. g_com lo administra TagTeamPanel; borrarlo
+    // aqui limpiaba la orden COM cada tick antes de iniciar la rueda/el combate.
     std::lock_guard<std::mutex> lock(g_mu);
     for (auto& t : g_team) { ++t.generation; t.restore = 0; t.pending = -1; }
   }
@@ -1965,6 +1966,7 @@ DBZ3_HOOK_EU(sub_8218BBC0) {
 DBZ3_HOOK_EU(sub_821AEBA8) {
   using namespace dbz3::tag;
   const bool back = g_native.load() && ctx.r3.s16 == 0;
+  g_duel_back = false;   // H9 24/10: una apertura nueva del Duelo no hereda un "atras" sin consumir
   orig(ctx, base);
   if (!back) return;
   g_native = false;
@@ -1979,7 +1981,11 @@ DBZ3_HOOK_EU(sub_821AE520) {
     return;
   }
   using namespace dbz3::tag;
-  const uint32_t task = ctx.r3.u32, obj = REX_LOAD_U32(task + 48);
+  const uint32_t task = ctx.r3.u32, obj = task ? REX_LOAD_U32(task + 48) : 0u;
+  if (!task || !obj) {   // H9 24/10: sin tarea ni objeto no hay rama de atras que ejecutar (no leer la direccion 0)
+    orig(ctx, base);
+    return;
+  }
   Call(ctx, base, DBZ3_CALL_EU(sub_821AE440), obj, 0);
   Call(ctx, base, DBZ3_CALL_EU(sub_82081A48), REX_LOAD_U32(obj + 76), 0);
   Call(ctx, base, DBZ3_CALL_EU(sub_8217E800), REX_LOAD_U32(obj + 68), 0xFFFFFFFFu);

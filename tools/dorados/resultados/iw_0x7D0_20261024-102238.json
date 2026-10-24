@@ -1,0 +1,14 @@
+{
+ "modo": "iw",
+ "escena": "0x7D0",
+ "dorado": "iw_0x7D0.json",
+ "fuente_dorado": "iw_0x7d0.tsv",
+ "filas": [
+  {
+   "nombre": "salida del jugador",
+   "ok": false,
+   "detalle": "original [108.0, 32.0, -432.0] port [12.7, 0.0, -62.1] (dif 383.32)"
+  }
+ ],
+ "firma": "2a36ef08f438"
+}

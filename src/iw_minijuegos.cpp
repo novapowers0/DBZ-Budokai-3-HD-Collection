@@ -78,6 +78,12 @@ int GameScreen();
 }
 
 namespace dbz3::iwmini {
+std::atomic<bool> g_serie_juego{false}, g_serie_por_clip{false};
+std::atomic<int> g_serie_clip{-1};
+void SerieJuego(bool activa) { g_serie_juego = activa; }
+void SeriePorClip(bool activa) { g_serie_por_clip = activa; }
+void SerieClip(int) { static std::atomic<int> n{0}; g_serie_clip = ++n; }
+
 namespace {
 
 namespace P = dbz3::pasarela;
@@ -149,7 +155,17 @@ constexpr float kRadio = 230.0f, kCogerMin = 2.5f;
 // R16: la camara de los minijuegos de campo de IW (Camera_InitFieldDefault EU 0x297140 + Camera_UpdateFollow 0x297DE0):
 // ojo 70 detras y 15 arriba del punto seguido, mira a ese punto + 5 de alto; el punto seguido se acerca al jugador
 // 0.12 por cuadro (0.3 en la variante 2, Minigame_UpdateFollowCamera 0x299A70); el ojo no se suaviza.
-constexpr float kPivote = 40.0f, kCamAtras = 70.0f, kCamAlto = 15.0f, kCamMiraAlto = 5.0f;
+// R17 (medido en el original con PCSX2, *(0x49CBBC)): el punto seguido de IW es el pecho, 9 sobre la raiz del jugador
+// (ojo = raiz + 24, objetivo = raiz + 14; distancia 74, se repite en 0x7D0/0x7D1/0x7DD/0x7DF). Antes el port seguia la
+// raiz y la camara iba 9 mas baja que en IW.
+constexpr float kPivote = 40.0f, kCamAtras = 70.0f, kCamAlto = 24.0f, kCamMiraAlto = 14.0f;
+// R17: giro inicial de la camara de campo en IW (azimut del ojo alrededor del jugador medido en el original, en grados;
+// el delante de la camara es ese + 180). Sin mando la camara no gira, asi que es el giro de todo el minijuego. Se midio
+// con PCSX2 PINE: 0x7D1 42,97; 0x7DD 150,61; 0x7DF -39,73. -1000 = sin medida (se usa salida -> meta).
+constexpr float kGrados = 3.14159265f / 180.0f, kSinYawIW = -1000.0f;
+constexpr float kYawOjoIW[19] = {kSinYawIW, 42.97f, kSinYawIW, kSinYawIW, kSinYawIW, kSinYawIW, kSinYawIW, kSinYawIW,
+                                 kSinYawIW, kSinYawIW, kSinYawIW, kSinYawIW, kSinYawIW, kSinYawIW, 150.61f, kSinYawIW,
+                                 -39.73f, kSinYawIW, kSinYawIW};
 
 // HUD de los minijuegos: DATA_USA 6/0 (#AMT; igual en 7/0). TIME y cifras lila/azul (t03), aro plateado con cola
 // (t00) con la cara (t29 Goku, t32 Krilin, t33 Vegeta, t35 Piccolo) y su barra (marco t15, relleno amarillo t01);
@@ -231,6 +247,7 @@ std::atomic<int> g_estado{0};         // 0 nada, 1 cargando, 2 combate, 3 result
 // los modulos se registren en la dinamica). g_modulo: corre uno (los ganchos de aqui no hacen nada).
 Modulo g_modulos[32] = {};
 std::atomic<bool> g_modulo{false};
+std::atomic<int> g_clave{0};          // clave del modulo en curso (la necesitan las series de los de vuelo)
 Resultado g_res;
 bool g_auto = false;                  // prueba: el jugador salta de objeto en objeto solo
 bool g_meta_abierta = false;          // prueba ("meta"): la meta abierta desde el principio (para verla)
@@ -1188,6 +1205,7 @@ void Terminar(const Resultado& r) {
   REXLOG_INFO("dbz3 iwmini: modulo 0x{:X}: resultado listo (superado {}, rango {}, puntos {})", r.clave, r.superado,
               r.rango, r.puntos);
   g_modulo = false;
+  g_clave = 0;
   g_estado = 3;
 }
 
@@ -1259,6 +1277,7 @@ bool Empezar(int clave, int fila) {
       g_res.fila = fila;
     }
     g_modulo = true;
+    g_clave = clave;
     g_estado = 2;
     const int dif = std::clamp(g_dificultad.load(), 0, 5);
     REXLOG_INFO("dbz3 iwmini: casilla 0x{:X} (fila {}): modulo de otro frente (dificultad {})", clave, fila, dif);
@@ -1289,12 +1308,15 @@ bool Empezar(int clave, int fila) {
     g_d = d;
     g_res = Resultado{};
   }
+  g_clave = clave;
   g_colocado = false;
   g_anda = false;
   const float dx = d->meta.x - d->salida.x, dz = d->meta.z - d->salida.z, l = std::max(std::hypot(dx, dz), 1e-3f);
+  const float yaw_ojo = d->indice >= 0 && d->indice < 19 ? kYawOjoIW[d->indice] : kSinYawIW;
   g_dir_x = dx / l;
   g_dir_z = dz / l;
-  g_yaw = std::atan2(dx, dz);   // la camara mira de la salida a la meta
+  // la camara mira de la salida a la meta, salvo en los minijuegos de campo cuya camara inicial se midio en el original
+  g_yaw = yaw_ojo > kSinYawIW ? (yaw_ojo + 180.0f) * kGrados : std::atan2(dx, dz);
   dbz3::launcher::DeferUi(&CreatePanel);
   g_estado = 2;
   if (!EmpezarCombate(d)) {
@@ -1458,10 +1480,22 @@ void Fotograma(uint8_t* base, uint32_t estado) {
     // B1c: serie comun jugador/ojo para los 12 minijuegos que no son de campo (botones, disparo, vuelo). El P4 ya
     // escribe la suya al final de Fotograma. Es la linea que consume tools/lector_camara.py (serie_log_port) y, con
     // ella, `comparar_modo.py iw <clave>` deja de dar "sin muestras" en esos 12.
-    if (g_modulo.load() && mgr && (estado == 3 || estado == 4)) {
+    // R17: el vuelo (iw_mini_vuelo.cpp, que no toco) no llama a SerieJuego; se enciende aqui por su clave para que
+    // comparar_modo lo pueda medir (la camara y el jugador los escribe el propio vuelo cada cuadro).
+    if (g_modulo.load() && (g_clave.load() == 0x7D6 || g_clave.load() == 0x7E0))
+      g_serie_juego = (g_estado.load() == 2);
+    if (g_modulo.load() && mgr && (estado == 3 || estado == 4) && g_serie_juego.load()) {
       static int64_t traza_mod = 0;
-      if (NowMs() - traza_mod > 2000) {
+      static int ultimo_clip = -2;
+      bool escribe = false;
+      if (g_serie_por_clip.load()) {   // familia B: una fila por camara de ronda (como el TSV del original)
+        const int c = g_serie_clip.load();
+        if (c != ultimo_clip) ultimo_clip = c, escribe = true;
+      } else if (NowMs() - traza_mod > 250) {   // 0,25 s: el dorado del original se remuestrea a ese paso
         traza_mod = NowMs();
+        escribe = true;
+      }
+      if (escribe) {
         float ojo[3], obj[3];
         if (dbz3::cine::LeerCamara(base, ojo, obj)) {
           const V3 p = Leer(base, mgr + kX0);
@@ -1802,10 +1836,8 @@ void Fotograma(uint8_t* base, uint32_t estado) {
   // (mascara 1, la de la camara; R11) y, si corta, el ojo en el corte. IW no tiene distancia minima (a menos de 10 pinta
   // al jugador con alfa 0.1; ponytail: ese fundido y el barrido de esfera que sigue al rayo, de radio sin leer, no
   // estan; en su lugar el ojo 3 u antes del corte, para que el plano cercano no entre en la roca).
-  // cuesta arriba detras del jugador: la camara sube por encima de la loma (a su altura sobre el suelo de debajo) en
-  // vez de meterse en ella o acercarse al jugador por el rayo
-  if (const float h = d->campo && !cerca ? dbz3::suelo_iw::Altura(ojo[0], ojo[2], -1e30f) : -1e30f; ojo[1] < h + kCamAlto)
-    ojo[1] = h + kCamAlto;
+  // R17: sin subir el ojo a la altura del terreno de debajo (regla de R16): IW no la tiene y desviaba la camara de la
+  // del original (en 0x7DF la dejaba a 29,4 de alto en vez de 24). La loma se resuelve con el rayo de abajo, como IW.
   const float cab[3] = {obj[0], obj[1], obj[2]};
   // tapado (al bajar de una cornisa la loma queda entre el ojo y el jugador): primero mas alto, mirando desde encima de
   // la loma (hasta 120 u mas); solo si tampoco se ve, el ojo 3 u antes del corte (como IW, sin entrar en la roca)

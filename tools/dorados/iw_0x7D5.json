@@ -1,0 +1,27 @@
+{
+ "juego": "iw",
+ "fuente": "#AMC del original (IW USA): NB007, clips 0xb4, 0xb5, 0xb6, 0xb7, 0xb8, 0xb9, 0xba, 0xbb, 0xbc, 0xbd (una muestra por clip; MSN019 todo el clip 879/0)",
+ "creado": "2026-10-24T13:26:02",
+ "resumen": {
+  "n": 10,
+  "n_vivas": 10,
+  "dur_s": 0.0,
+  "origen_jugador": true,
+  "dist_ojo_jugador": {
+   "min": 24.57,
+   "mediana": 47.2,
+   "max": 78.05
+  },
+  "altura_ojo": {
+   "min": 5.03,
+   "mediana": 7.48,
+   "max": 31.61
+  },
+  "yaw_ojo_grados": {
+   "min": -125.85,
+   "mediana": -38.31,
+   "max": 88.38
+  }
+ },
+ "muestras": []
+}

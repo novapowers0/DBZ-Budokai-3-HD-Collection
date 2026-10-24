@@ -1,0 +1,27 @@
+{
+ "juego": "iw",
+ "fuente": "#AMC del original (IW USA): MSN019, clips 0x0 (una muestra por clip; MSN019 todo el clip 879/0)",
+ "creado": "2026-10-24T13:26:02",
+ "resumen": {
+  "n": 93,
+  "n_vivas": 93,
+  "dur_s": 0.0,
+  "origen_jugador": true,
+  "dist_ojo_jugador": {
+   "min": 42.76,
+   "mediana": 104.89,
+   "max": 156.41
+  },
+  "altura_ojo": {
+   "min": 36.08,
+   "mediana": 102.35,
+   "max": 154.71
+  },
+  "yaw_ojo_grados": {
+   "min": 84.7,
+   "mediana": 84.7,
+   "max": 84.7
+  }
+ },
+ "muestras": []
+}

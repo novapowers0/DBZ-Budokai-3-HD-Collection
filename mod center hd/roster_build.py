@@ -1885,12 +1885,15 @@ def _preview(a, c, d, ui, work):
         st = os.stat(src)
         key = "%s|%d|%d|rampas3" % (files[0], st.st_size, int(st.st_mtime))   # rampas3: B2 y SDBH con sombra
         cache, ckey = os.path.join(out, ".modelo_hd.bin"), os.path.join(out, ".modelo_hd.key")
-        if os.path.exists(cache) and os.path.exists(ckey) and open(ckey).read() == key:
+        if os.path.exists(cache) and os.path.exists(ckey) and open(ckey, encoding="utf-8").read() == key:
             hd = open(cache, "rb").read()
         else:
             hd = b3_ramps(to_hd(open(src, "rb").read(), work), a.mod, c)
-            open(cache, "wb").write(hd)
-            open(ckey, "w").write(key)
+            # H8 24/10: caché con .tmp + os.replace (si se corta a mitad no queda un .bin roto)
+            open(cache + ".tmp", "wb").write(hd)
+            os.replace(cache + ".tmp", cache)
+            open(ckey + ".tmp", "w", encoding="utf-8").write(key)
+            os.replace(ckey + ".tmp", ckey)
     want = ("icono", "retrato") if not a.solo else (a.solo,)
     if tpls is None:
         want = tuple(w for w in want if w != "retrato")
@@ -3236,7 +3239,10 @@ def write_caps(path, caps):
     text = open(path, encoding="utf-8").read()
     bk = os.path.join(os.path.dirname(path), "respaldo")
     os.makedirs(bk, exist_ok=True)
-    with open(os.path.join(bk, "personaje.toml.%s" % time.strftime("%Y%m%d_%H%M%S")), "w", encoding="utf-8") as fh:
+    # H8 24/10: uuid en el nombre de la copia para que dos guardados en el mismo segundo no se pisen
+    import uuid  # noqa: PLC0415
+    with open(os.path.join(bk, "personaje.toml.%s.%s" % (time.strftime("%Y%m%d_%H%M%S"), uuid.uuid4().hex[:8])),
+              "w", encoding="utf-8") as fh:
         fh.write(text)
     lines = text.splitlines()
     out, skip = [], False
@@ -3263,7 +3269,11 @@ def write_caps(path, caps):
                 out.append("%s = %d" % (k, v))
             else:      # cadena TOML (las descripciones llevan saltos de linea)
                 out.append("%s = %s" % (k, json.dumps(str(v), ensure_ascii=False)))
-    open(path, "w", encoding="utf-8").write(chr(10).join(out) + chr(10))
+    # H8 24/10: escritura a .tmp + os.replace para no dejar personaje.toml a medias si falla
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        fh.write(chr(10).join(out) + chr(10))
+    os.replace(tmp, path)
 
 
 # ---------------------------------------------------------------- capsulas (importar)

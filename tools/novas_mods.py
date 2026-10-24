@@ -195,6 +195,10 @@ def cmd_publicar(a):
     git = ["git", "-C", WORK]
     subprocess.run(git + ["add", "-A"], check=True)
     if subprocess.run(git + ["diff", "--cached", "--quiet"]).returncode:
+        # H8 24/10: confirmacion antes de subir al repo (--si la omite)
+        if not a.si and input("¿Publicar en Nova's Mods? s/N ").strip().lower() != "s":
+            print("cancelado: no se ha subido nada (el catalogo queda en %s)" % WORK)
+            return
         subprocess.run(git + ["commit", "-q", "-m", a.mensaje], check=True)
         subprocess.run(git + ["push", "-q", "origin", "HEAD"], check=True)
         print("subido a", REPO)
@@ -228,6 +232,7 @@ def main():
     p.add_argument("--mods", default=MODS)
     p.add_argument("--solo", nargs="*")
     p.add_argument("--mensaje", default="Actualiza Nova's Mods")
+    p.add_argument("--si", action="store_true", help="publicar sin preguntar")
     sub.add_parser("prueba")
     a = ap.parse_args()
     {"clave": cmd_clave, "publicar": cmd_publicar, "prueba": lambda _a: prueba()}[a.cmd](a)

@@ -904,7 +904,9 @@ void ApplyCharacter(Guest& g, const toml::table& t, const std::string& mod) {
 void ReadCapsule(const toml::table& t, const std::string& mod) {
   const int64_t id = Int(t["id"], -1);
   const std::string hex = t["registro"].value_or(std::string());
-  if (id < 596 || id > 4095 || hex.size() != 80) {
+  // H6 24/10: un "registro" con letras no hex hacia saltar std::stoul (excepcion sin capturar = cierre al cargar)
+  if (id < 596 || id > 4095 || hex.size() != 80 ||
+      !std::all_of(hex.begin(), hex.end(), [](unsigned char c) { return std::isxdigit(c) != 0; })) {
     REXLOG_WARN("dbz3 roster [{}]: capsula invalida (id {})", mod, id);
     return;
   }

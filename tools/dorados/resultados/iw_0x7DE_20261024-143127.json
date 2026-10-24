@@ -1,0 +1,29 @@
+{
+ "modo": "iw",
+ "escena": "0x7DE",
+ "dorado": "iw_0x7DE.json",
+ "fuente_dorado": "g_0x7DE.tsv",
+ "filas": [
+  {
+   "nombre": "dist_ojo_jugador (mediana)",
+   "ok": true,
+   "detalle": "original 447.12 port 480.15 (limite 67.07)"
+  },
+  {
+   "nombre": "altura_ojo (mediana)",
+   "ok": true,
+   "detalle": "original 399.9 port 400.0 (limite 59.98)"
+  },
+  {
+   "nombre": "yaw del ojo (mediana)",
+   "ok": true,
+   "detalle": "original 0.0 port -0.64 (dif 0.6 grados, limite 15)"
+  },
+  {
+   "nombre": "fov",
+   "ok": null,
+   "detalle": "[H] el port no escribe el fov en el log"
+  }
+ ],
+ "firma": "bd90d46d286e"
+}

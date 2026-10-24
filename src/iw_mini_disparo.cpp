@@ -93,6 +93,10 @@ constexpr float kOrbita = 60.0f, kRayoVel = 8.0f, kRayoMax = 80.0f, kRayoMira = 
 // ponytail: altura del ojo, sitio de las manos, cadencia de cada mano y los limites de altura de Piccolo no estan
 // leidos (dependen de las animaciones de IW); valores a ojo.
 constexpr float kOjo = 9.0f, kCadencia = 18.0f, kElevMax = 0.35f;
+// Camera_OrbitInputUpdate de IW (PCSX2): en 9 (rayos a Piccolo) el ojo esta a 150 (la altura de la camara del original;
+// el objeto del jugador esta en (0,0,0) y Piccolo vuela a ~148); en 8 (Kienzan a Freezer) es tercera persona: el
+// jugador vuela a 142,57 y la camara va 7,43 arriba y 18,57 detras, mirando a +Z (VISIBLE Krillin de espaldas).
+constexpr float kAltIW = 150.0f, kAltJug7 = 142.57f, kAtras7 = 18.57f, kZ7 = 355.57f;
 // MSN009 (Viewer_InitRoundTables 0x34B800, tabla 0x5D9B44 + 0x18 r): discos, % de esquiva al apuntarle (B50), paso
 // angular de la esquiva (B48); 180 s; gana con 7 aciertos; bases por banda {4000, 5000, 6000, 8000, 10000}
 constexpr int kTiros[6] = {12, 12, 11, 10, 9, 8};
@@ -107,6 +111,11 @@ constexpr float kSubida15[6] = {3.0f, 3.0f, 3.5f, 3.5f, 4.0f, 4.0f};
 constexpr int kBase15[5] = {3600, 4200, 4800, 5400, 6000};
 constexpr float kAltura15 = 400.0f;
 constexpr float kEsc3 = 1.0f;   // 3: unidades de IW = las de B3 (el campo 897 de R8 va a escala 1)
+// R17: camara del 3 medida en el original con PCSX2 (struct del modulo de disparo, *(0x49CEAC)+0x660): ojo (0,30,100),
+// objetivo (0,35,0), fov 0,785 (coincide con la camara del #MSS 890/4). Es FIJA y en IW no se ve ningun personaje
+// (galeria de tiro). El port la usaba a (0,9,0) mirando 30 delante y con Goku de espaldas: ahora es la del original; el
+// jugador va OCULTO en el punto mirado (0,35,0) y la serie de comparacion toma ese punto como referencia.
+constexpr float kOjo3[3] = {0.0f, 30.0f, 100.0f}, kMira3[3] = {0.0f, 35.0f, 0.0f};
 constexpr int kGoku = 0, kRaditz = 18, kLlanuras = 5;
 // MSN009 con sus distancias de IW: R16 (sub_82114910) ya no acerca a los luchadores durante el minijuego, asi que
 // no hace falta el x0.4 que compensaba el tope de B3. Los angulos y los radios de los huesos van tal cual.
@@ -318,11 +327,18 @@ class Panel : public rex::ui::ImGuiDialog {
     semilla_ = semilla_ * 1103515245u + 12345u;
     return semilla_ >> 8;
   }
-  V3 Ojo() const { return {0, kOjo, 0}; }
+  V3 Ojo() const {
+    if (juego_ == 8)   // tercera persona: SIEMPRE detras del jugador (la mira de IW mueve la retícula, no la camara)
+      return {0.0f, kAltJug7 + 7.43f, kZ7 - kAtras7};
+    if (juego_ == 9) return {0, kAltIW, 0};   // primera persona de Freezer, a la altura de la camara de IW
+    if (juego_ == 3) return {kOjo3[0], kOjo3[1], kOjo3[2]};   // R17: camara fija del 3 (medida en el original)
+    return {0, kOjo, 0};
+  }
 
   // Un cuadro de IW (60 por segundo).
   void Cuadro(uint8_t* base, uint32_t mgr, const Datos& d) {
     ++t_;
+    dbz3::iwmini::SerieJuego(fase_ == kJuego);
     const uint32_t m = g_mando.load();
     const uint16_t bot = uint16_t(m & 0xFFFF), dirs = uint16_t(m >> 16);
     const int pal = g_palanca.load();
@@ -399,6 +415,7 @@ class Panel : public rex::ui::ImGuiDialog {
   // cuadros de pausa. Gana con 7 aciertos; pierde si aciertos + discos < 7 o a los 180 s.
   void CuadroDisco(uint8_t* base, uint32_t mgr, const Datos& d) {
     ++t_;
+    dbz3::iwmini::SerieJuego(fase_ == kJuego);
     const uint32_t m = g_mando.load();
     const uint16_t bot = uint16_t(m & 0xFFFF), dirs = uint16_t(m >> 16);
     const int pal = g_palanca.load();
@@ -553,6 +570,7 @@ class Panel : public rex::ui::ImGuiDialog {
   // {40..160} s; al acabar p = altura / 400: <= 0,0001 Z, <= 0,1 S, <= 0,4 A, <= 0,7 B, si no C; {3600..6000} x mult.
   void Cuadro15(uint8_t* base, uint32_t mgr, const Datos& d) {
     ++t_;
+    dbz3::iwmini::SerieJuego(fase_ == kJuego);
     const uint32_t m = g_mando.load();
     const uint16_t bot = uint16_t(m & 0xFFFF), dirs = uint16_t(m >> 16);
     const bool nuevo = (bot & kDisparo) && !(antes15_ & kDisparo);
@@ -676,9 +694,9 @@ class Panel : public rex::ui::ImGuiDialog {
       g_ty = cy_ + 8.0f;
       g_tz = cz_;
     }
-    // Ten (oculto) junto a Cell, delante de su marcha: Cell mira hacia donde va (B3 encara al rival)
-    g_jx = cx_ + std::sin(rumbo_) * 20.0f;
-    g_jz = cz_ + std::cos(rumbo_) * 20.0f;
+    // Ten (oculto) en el origen de IW (+0x800 = (0, 0.1, 0)), fijo: no sigue a Cell (la camara si apunta con mx/mz).
+    g_jx = 0.0f;
+    g_jz = 0.0f;
   }
   // Rombo del Kikoho (pantalla de 600x500 de IW, centro (300, 250), media diagonal 103 px)
   bool CellEnRombo() const {
@@ -828,6 +846,7 @@ class Panel : public rex::ui::ImGuiDialog {
     (void)base;
     (void)mgr;
     ++t_;
+    dbz3::iwmini::SerieJuego(fase_ == kJuego);   // R17: el 3 tambien escribe la serie jugador/ojo de comparar_modo
     const uint32_t m = g_mando.load();
     const uint16_t bot = uint16_t(m & 0xFFFF), dirs = uint16_t(m >> 16);
     bool fuego = (bot & kDisparo) && !(antes15_ & kDisparo);
@@ -1153,7 +1172,7 @@ class Panel : public rex::ui::ImGuiDialog {
     if (cam.ok) {   // rayos, chispas y manos (modelos de IW) sobre el combate
       ImDrawList* bg = ImGui::GetBackgroundDrawList();
       escena_.Empezar();
-      for (int k = 0; k < 2; ++k) {
+      for (int k = 0; k < (juego_ == 8 ? 0 : 2); ++k) {
         const ps2::Modelo& m = k == 0 ? d.mano_i : d.mano_d;
         if (!m.malla) continue;
         ps2::Malla w = m.malla;
@@ -1602,10 +1621,15 @@ void FotogramaDisparo(uint8_t* base, uint32_t estado) {
   // muneco (no se mueve ni ataca); el mando 0 lo lee el minijuego
   g_x1 = x1;
   const bool c15 = g_cam15.load();
-  Poner(base, x0, c15 ? V3{g_jx.load(), 0, g_jz.load()} : V3{0, 0, 0});
-  const bool lad = g_juego.load() == 3;   // 3: Goku se ve (tercera persona) y el rival no
-  REX_STORE_U8(x0 + kOcultoA, lad ? 0 : 1);
-  REX_STORE_U8(x0 + kOcultoB, lad ? 0 : 1);
+  const int juego = g_juego.load();
+  // 7D7 (8): Krillin vuela a la altura de IW (142,57) y se VE (tercera persona); 7D8 (9): Freezer oculto en el origen.
+  Poner(base, x0, c15 ? V3{g_jx.load(), 0, g_jz.load()}
+                      : juego == 8 ? V3{0, kAltJug7, kZ7}
+                                   : V3{0, 0, 0});   // 3: oculto en el origen (la camara es la del original)
+  const bool lad = juego == 3;   // 3: el rival no se ve; el jugador tampoco (camara fija de galeria, como IW)
+  const bool ver_jug = juego == 8;
+  REX_STORE_U8(x0 + kOcultoA, ver_jug ? 0 : 1);
+  REX_STORE_U8(x0 + kOcultoB, ver_jug ? 0 : 1);
   if (lad) REX_STORE_U8(x1 + kOcultoA, 1), REX_STORE_U8(x1 + kOcultoB, 1);
   if (REX_LOAD_U16(x0 + kPadIdx) != 1) REX_STORE_U16(x0 + kPadIdx, 1);
   StoreF(base, x0 + kVida, LoadF(base, x0 + kVidaMax));
@@ -1620,9 +1644,18 @@ void FotogramaDisparo(uint8_t* base, uint32_t estado) {
     REXLOG_INFO("dbz3 iwdisparo: mando +12 0x{:04X} +108 0x{:04X}", visto & 0xFFFF, visto >> 16);
   }
   const V3 f = Dir(g_yaw.load(), g_polar.load());
-  const float ojo[3] = {c15 ? g_ex.load() : 0, c15 ? g_ey.load() : kOjo, c15 ? g_ez.load() : 0};
-  const float obj[3] = {c15 ? g_tx.load() : f.x * 30.0f, c15 ? g_ty.load() : kOjo + f.y * 30.0f,
-                        c15 ? g_tz.load() : f.z * 30.0f};
+  const V3 yo = juego == 8 ? V3{0.0f, kAltJug7 + 7.43f, kZ7 - kAtras7}
+                  : juego == 9 ? V3{0, kAltIW, 0}
+                  : juego == 3 ? V3{kOjo3[0], kOjo3[1], kOjo3[2]}   // R17: camara fija del 3 (la del original)
+                               : V3{0, kOjo, 0};
+  const float ojo[3] = {c15 ? g_ex.load() : yo.x, c15 ? g_ey.load() : yo.y, c15 ? g_ez.load() : yo.z};
+  // 7D7: tercera persona detras del jugador, mirando a +Z (el objetivo de IW en el cuadro de juego); 7D8: primera
+  // persona a la altura de la camara de IW; 3 (R17): la camara fija del original (0,30,100) -> (0,35,0).
+  const float obj[3] = {c15 ? g_tx.load() : juego == 3 ? kMira3[0] : juego == 8 ? 0.0f : f.x * 30.0f,
+                        c15 ? g_ty.load()
+                            : juego == 3 ? kMira3[1]
+                                         : juego == 8 ? yo.y : juego == 9 ? kAltIW + f.y * 30.0f : kOjo + f.y * 30.0f,
+                        c15 ? g_tz.load() : juego == 3 ? kMira3[2] : juego == 8 ? kZ7 + 1.0f : f.z * 30.0f};
   dbz3::cine::Camara(base, ojo, obj);
   static int64_t traza = 0;
   const int64_t ahora = std::chrono::duration_cast<std::chrono::milliseconds>(

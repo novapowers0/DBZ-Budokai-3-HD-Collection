@@ -58,6 +58,13 @@ int PalancaDerechaY();
 using Modulo = bool (*)(int clave, int fila, int dificultad);
 void RegistrarModulo(int clave, Modulo m);
 void Terminar(const Resultado& r);
+// Serie de camara del port (tools/lector_camara.py): los modulos la activan solo en la fase de juego (no en READY,
+// intro ni resultado), para que `comparar_modo.py iw` compare lo mismo que el dorado del original.
+void SerieJuego(bool activa);
+// Familia B (una camara fija por ronda): la serie se escribe solo al cambiar de clip, como el TSV del original, para
+// que cada ronda pese lo mismo (el piloto automatico tarda mas en la ronda 1 y desviaba las medianas).
+void SeriePorClip(bool activa);
+void SerieClip(int clip);
 // HUD de IW (DATA_USA 6/0 de la copia del jugador, leido la primera vez): TIME arriba a la derecha con `segundos`
 // (lo que queda) y abajo a la izquierda el aro con la cara del personaje `cara` (ID de B3) en su `forma` (PintarCara)
 // y la barra amarilla llena `barra` (0..1). Hilo de la

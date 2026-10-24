@@ -16,6 +16,11 @@ param(
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 if ($Stage -eq "") { $Stage = Join-Path $root "github\release-stage" }
+# H8 24/10: sin -Version, la version se saca de src\version.rc (DBZ3_VERSION_STR)
+if ($Version -eq "") {
+    $rcText = Get-Content -Raw -LiteralPath (Join-Path $root "src\version.rc")
+    if ($rcText -match 'define\s+DBZ3_VERSION_STR\s+"([0-9.]+)"') { $Version = "v" + $Matches[1] }
+}
 
 $baseline = Join-Path $root "rexglue-sdk-0.10\out\win-amd64-baseline"
 $errors = @()
@@ -199,7 +204,9 @@ if ($Version -ne "" -and (Test-Path -LiteralPath $zip)) {
         $z.Dispose()
     }
 } else {
-    Write-Output "zip: no verificado ($Version vacio o zip no encontrado)"
+    # H8 24/10: sin zip revisado no se puede dar el paquete por bueno
+    Write-Output "zip: no verificado ($Version vacio o zip no encontrado: $zip)"
+    $errors += "zip no verificado: no se ha revisado $zip"
 }
 
 # --- resumen -------------------------------------------------------------

@@ -1,0 +1,34 @@
+{
+ "modo": "iw",
+ "escena": "0x7DA",
+ "dorado": "iw_0x7DA.json",
+ "fuente_dorado": "g_0x7DA.tsv",
+ "filas": [
+  {
+   "nombre": "salida del jugador",
+   "ok": null,
+   "detalle": "el original juega en el origen (0,0,0): la camara se compara relativa"
+  },
+  {
+   "nombre": "dist_ojo_jugador (mediana)",
+   "ok": false,
+   "detalle": "original 30.23 port 25.17 (limite 4.53)"
+  },
+  {
+   "nombre": "altura_ojo (mediana)",
+   "ok": true,
+   "detalle": "original 9.2 port 8.9 (limite 1.38)"
+  },
+  {
+   "nombre": "yaw del ojo (mediana)",
+   "ok": false,
+   "detalle": "original 30.91 port 2.05 (dif 28.9 grados, limite 15)"
+  },
+  {
+   "nombre": "fov",
+   "ok": null,
+   "detalle": "[H] el port no escribe el fov en el log"
+  }
+ ],
+ "firma": "8065dd6891f9"
+}

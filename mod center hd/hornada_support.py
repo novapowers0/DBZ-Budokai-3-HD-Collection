@@ -46,7 +46,16 @@ class TreePublish:
             raise ValueError("Staging y destino deben estar en el mismo volumen")
         self.token = uuid.uuid4().hex
         self.lock = self.store / (self.target.name + ".lock")
-        self.lock.mkdir()  # falla si otro escritor o crash pendiente
+        try:
+            self.lock.mkdir()  # falla si otro escritor o crash pendiente
+        except FileExistsError:
+            # H7 24/10: un corte a mitad dejaba el lock para siempre (nadie llamaba a recover_tree) y ningún
+            # "Jugar" posterior reconstruía. Si su dueño ya no vive, se recupera por el diario y se reintenta.
+            owner = json.loads((self.lock / "owner.json").read_text(encoding="utf-8"))
+            if _pid_vivo(owner.get("pid", 0)):
+                raise
+            recover_tree(self.target, owner["run"], readers_stopped=True)
+            self.lock.mkdir()
         self.run = self.store / (self.target.name + "-" + self.token)
         self.run.mkdir()
         with (self.lock / "owner.json").open("x", encoding="utf-8") as stream:
@@ -215,6 +224,29 @@ def install_pack(extracted, mods, validate, *, readers_stopped=False):
     finally:
         for job in jobs:
             job.finish()
+
+
+def _pid_vivo(pid):
+    """True si el proceso existe (Windows: OpenProcess; os.kill(pid, 0) allí lo MATARÍA)."""
+    if not pid:
+        return False
+    if os.name != "nt":
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        return True
+    import ctypes
+    k = ctypes.windll.kernel32
+    h = k.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+    if not h:
+        return False
+    code = ctypes.c_ulong()
+    ok = k.GetExitCodeProcess(h, ctypes.byref(code))
+    k.CloseHandle(h)
+    return bool(ok) and code.value == 259  # STILL_ACTIVE
 
 
 def recover_tree(target, run, *, readers_stopped=False):

@@ -38,6 +38,7 @@
 #include "pasarela.h"
 #include "ps2_modelo.h"
 
+#include <rex/cvar.h>
 #include <rex/hook.h>
 #include <rex/logging.h>
 #include <rex/runtime.h>
@@ -5170,6 +5171,19 @@ void DibIris(ImDrawList* dl, const S::Area& a, float t) {
   }
 }
 
+// CM 24/10 ("se solapa una musica con la otra"): el menu principal de B3 sigue sonando por debajo del tablero (medido: la
+// mezcla del juego mantiene ~0,3 de pico en todo el tablero) y se mezcla con la ADX de B2. Mientras el tablero esta en
+// pantalla se calla la mezcla del juego (audio_gain 0, como video_sfd.cpp); la musica y los efectos del tablero salen por
+// winmm y no se ven afectados. Al salir o ir a un combate se devuelve el volumen general.
+static bool g_mezcla_callada = false;
+static void MezclaB3(bool callada) {
+  bool& puesta = g_mezcla_callada;
+  if (callada == puesta) return;
+  puesta = callada;
+  rex::cvar::SetFlagByName("audio_gain", std::to_string(callada ? 0.0 : std::clamp(dbz3::settings::MasterVolume(), 0.0, 1.0)));
+  REXLOG_INFO("dbz3 tablero b2: mezcla de B3 {} (audio_gain)", callada ? "callada" : "devuelta");
+}
+
 int Dibujar(ImDrawList* dl, const S::Area& a, float t, uint16_t pressed, bool auto_on, int out[14]) {
   static int sonando = -1;
   static float audio_anterior = -1;
@@ -5188,6 +5202,8 @@ int Dibujar(ImDrawList* dl, const S::Area& a, float t, uint16_t pressed, bool au
   if (r == 0 && g_estado == kJuego && !EscenaAbierta()) SonidosPasosB2(audio_anterior, t);
   audio_anterior = r == 0 ? t : -1;
   const bool en_video = dbz3::video::Activo();   // M1: su video va encima y deja sin musica al port mientras dura
+  if (en_video) g_mezcla_callada = false;   // el video calla y devuelve la mezcla por su cuenta: al acabar se vuelve a callar
+  else MezclaB3(r == 0);
   if (r != 0 || en_video) {
     CallarMusicaPs2();
     CallarSonidosPs2();

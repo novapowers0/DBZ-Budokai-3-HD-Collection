@@ -66,13 +66,13 @@ MAX_PARALELO = 3                                   # juegos a la vez con ventana
 MAX_PARALELO_N1 = 6                                 # X0g/X0h: solo con DBZ3_TEST_OCULTO=1; el tope real son las 4 plazas
 PLAZAS = R / "studies 5" / "ENTREGAS" / "_juego"      # X0h: plaza1..4 (mkdir atomico) = tope de 4 dbz3.exe a la vez
 PLAZAS_HUERFANAS = Path(r"D:\_PARA_BORRAR_CLAUDE")
-TOPE_JUEGOS = 8   # plaza1-2 con ventana, plaza3-8 solo ocultas (COLA_PRUEBAS.md); con _compilando el tope baja a 6
+TOPE_JUEGOS = 3   # H5 24/10 (790 juegos en un dia): plaza1-2 con ventana, plaza3 oculta; con _compilando baja a 1
 LANZANDO = BASE / "_lanzando"                       # candado entre procesos: contar juegos + lanzar es atomico
 ERRORES = (r"access violation|UNHANDLED EXCEPTION|physical write fault"   # main.cpp:976, xmemory.cpp:547/628
            r"|std::terminate called")                                        # main.cpp (set_terminate)
 PAPELERA = Path(r"D:\_PARA_BORRAR_CLAUDE") / "pruebas_respaldos"   # respaldos automaticos viejos (no se borran)
 MAX_RESPALDOS = 5                                   # por copia: los 5 mas recientes se quedan en _respaldo
-VERBOS = {"tecla", "esperar", "esperar_pantalla", "captura", "dump", "write", "log"}
+VERBOS = {"tecla", "esperar", "esperar_pantalla", "esperar_pelea", "captura", "dump", "write", "log"}
 
 # Ajustes de la copia de prueba (sobrescriben dbz3_user.toml; el resto se conserva)
 OVERRIDES = {
@@ -1368,6 +1368,38 @@ def _historia_y_duelo(j, par):
         raise Fallo("el menu principal no olvido el combate de historia")
 
 
+def _cam_seq(j):
+    # CM 24/10: misma secuencia que tools/pruebas_cam/combate_camara.toml (sin la espera larga) para medir la camara
+    # en combates que salen de los modos (tablero, IW, Satan). Despues: tools/pruebas_cam/detector.py <run>.
+    dormir(1.5)
+    for k, e in (("Space", 800), ("Return", 800), ("Space", 700)):
+        j.tecla(k, e)
+    j.captura("c03")
+    dormir(5)
+    j.captura("c08")
+    dormir(7)
+    j.captura("c15")
+    j.tecla("D:1500", 1600)
+    j.tecla("Space+L", 300)
+    j.captura("g1")
+    j.tecla("Space+L", 300)
+    dormir(0.7)
+    j.captura("g2")
+    j.tecla("D:1500", 1600)
+    j.tecla("Space+L", 300)
+    dormir(0.5)
+    j.captura("g3")
+    dormir(1.5)
+    j.captura("g4")
+    j.tecla("A:1200", 1300)
+    j.tecla("D:2500", 2600)
+    j.tecla("Space+L", 300)
+    dormir(0.8)
+    j.captura("g5")
+    dormir(2)
+    j.captura("g6")
+
+
 def _satan(j, par):
     # Leyenda de Mr. Satan (src/pasarela.cpp, DBZ3_TEST_PASARELA=auto,seg=8): empieza sola desde el menu principal y
     # avanza cada 8 s; RINGOUT gana cada combate a los 5 s. desde=N empieza en el paso N (25 = Cell, el ultimo ->
@@ -1394,6 +1426,9 @@ def _satan(j, par):
         j.captura("f_final_total")
         return
     j.log(r"hub: combate nativo", 60)
+    if par.get("cam") == "1":
+        j.log(r"pasarela: paso \d+ estado del combate 4", 90)   # tras la cinematica de entrada: pelea de verdad
+        return _cam_seq(j)
     if par.get("golpes") == "1":                    # P3: Mr. Satan pega (puntos HIT/COMBO de B1 y su aviso)
         j.log(r"pasarela: paso \d+ estado del combate 4", 60)
         j.tecla("Right 700", 100)
@@ -1580,6 +1615,8 @@ def _tablero(j, par):
     j.captura("f_tarjeta")
     j.tecla("Space", 1000)
     j.log(r"misiones: tablero combate", 20)
+    if par.get("cam") == "1":
+        return _cam_seq(j)
     dormir(24)
     j.captura("g_combate")
 
@@ -1615,6 +1652,65 @@ def _r2_nave(j, par):
         j.info("combate sin ganador (tiempo): vuelve a la torre sin resultado")
     dormir(2)
     j.captura("d_resultado")
+
+
+def _luna13_b2_vineta(j, par):
+    # Luna 13: reproduce la navegación manual de _tablero en la fase pedida (IV o IX).
+    fase = int(par.get("fase", "4"))
+    if fase not in (4, 9):
+        raise Fallo("luna13_b2_vineta solo admite fase=4 o fase=9")
+    j.log(r"tablero b2: fase %d leida" % fase, 90)
+    j.captura("a_presentacion")
+    # Igual que _tablero: avanzar las ventanas del guion hasta la selección de aliados.
+    j.tecla_hasta_log("Space", r"tablero b2: script 301: eleccion de 2 aliado", intentos=12, seg=4)
+    dormir(0.5)
+    j.captura("b_aliados")
+    j.tecla_hasta_log("Space", r"tablero b2: aliado marcado: .* quedan 1", intentos=4, seg=3)
+    j.tecla("S", 450)                              # segunda ficha, siguiendo el control de _tablero
+    j.tecla_hasta_log("Space", r"tablero b2: aliado marcado: .* quedan 0", intentos=4, seg=3)
+    j.tecla("W", 400)                              # el original deja Sí arriba en la confirmación
+    j.tecla_hasta_log("Space", r"tablero b2: aliado elegido", intentos=3, seg=4)
+    j.log(r"tablero b2: guiones terminados", 90)
+    dormir(0.8)
+    j.captura("c_tablero")
+    if fase == 9:
+        # Reproduce las teclas y tiempos de tools/dorados/b2_fase9.json tras elegir aliados:
+        # primer A -> mapa (p1); segundo A -> ventana cómica P (p2); tercero A -> Battle! (p3).
+        for nombre, espera in (("p1", 4.0), ("p2", 9.0), ("p3", 9.0)):
+            j.tecla("Space", 0)
+            dormir(espera)
+            j.captura(nombre)
+            if nombre == "p2":                         # captura medida: Goku vs. Saibaman en el panel cómico
+                j.captura("vineta_fase_ix")
+                return
+    # Mismo patrón de _tablero: A elige destino; repetir pulsaciones cortas de A hasta registrar el contacto P.
+    j.tecla("Space", 1500)
+    j.tecla_hasta_log("Space", r"tablero b2: escena P\d+", intentos=12, seg=4)
+    dormir(0.5)
+    j.captura("vineta_fase_%s" % ("iv" if fase == 4 else "ix"))
+
+
+def _luna13_nave_rueda(j, par):
+    # Luna 13: el mismo recorrido que _r2_nave, detenido en la rueda 1P para capturar a Goku.
+    j.log(r"nave: entrar", 90)
+    dormir(3.5)
+    j.captura("a_nave")
+    j.tecla("Space", 900)                       # 1P/2P -> torre
+    for _ in range(3):
+        j.tecla("W", 300)
+    for _ in range(int(par.get("prueba", "2"))):
+        j.tecla("S", 300)
+    j.log(r"nave: pantalla planta", 20)
+    j.tecla("Space", 1500)                      # -> rueda 1P
+    # Muestreo fino para fijar el instante de captura respecto al ciclo de animación de Goku.
+    limite = time.time() + 30
+    while not re.search(r"nave: pantalla rueda 1P", j.texto_log()):
+        if time.time() >= limite:
+            raise Fallo("no llegó a la rueda de selección 1P")
+        time.sleep(0.02)
+    j.info("log ok: nave: pantalla rueda 1P")
+    dormir(1.5)
+    j.captura("rueda_goku")
 
 
 def _r2_fase1(j, par):
@@ -1679,6 +1775,8 @@ def _iw_misiones(j, par):
     j.captura("b_tarjeta_combate")
     j.tecla("Space", 1500)
     j.log(r"misiones: iw combate", 40)
+    if par.get("cam") == "1":
+        return _cam_seq(j)
     dormir(12)
     j.captura("c_combate")
 
@@ -2332,7 +2430,8 @@ ESCENARIOS = {
                lambda p: {"REX_DBZ3_UI_SIDE_BORDERS": p.get("bordes", "false")}, _bordes),
     "satan": ("HUB > Leyenda de Mr. Satan: titulo, dificultad, prologo, combate ganado, resultado, tablero, escena "
               "(desde=25: final)",
-              lambda p: {"DBZ3_TEST_PASARELA": f"auto,seg=8,desde={p.get('desde', '0')}", "DBZ3_TEST_RINGOUT": "1",
+              lambda p: {"DBZ3_TEST_PASARELA": f"auto,seg=8,desde={p.get('desde', '0')}",
+                         **({} if p.get("cam") == "1" else {"DBZ3_TEST_RINGOUT": "1"}),
                          **({"DBZ3_SIN_CINE": "1"} if p.get("golpes") == "1" else {}),
                          "DBZ3_PS2_GAMES": r"D:\DBZ3HD\ps2_games"}, _satan),
     "_r3_cine": ("Leyenda de Mr. Satan: tablero y escena 3D del retador (desde=2 Ten Shin Han; 1 Yamcha sin escena; "
@@ -2389,6 +2488,18 @@ ESCENARIOS = {
                                 **({} if p.get("swap", "1") == "1" else {"DBZ3_TEST_KO": "1"})),
                  _tag_swap),
 }
+
+
+# Luna 13: escenario dedicado, registrado una vez definido ESCENARIOS.
+ESCENARIOS["luna13_nave_rueda"] = (
+    "Luna 13: nave de Babidi, navegación de _r2_nave hasta la rueda 1P",
+    lambda p: dict(_PS2, DBZ3_TEST_MISIONES="5,reset", DBZ3_TEST_NAVE_TIEMPO="6",
+                   DBZ3_TEST_NAVE_TODO="1"), _luna13_nave_rueda)
+ESCENARIOS["luna13_b2_vineta"] = (
+    "Luna 13: viñeta P del tablero B2, navegación manual como _tablero",
+    lambda p: dict(_PS2, DBZ3_TEST_MISIONES=f"1,reset,desde={int(p.get('fase', '4')) - 1}",
+                   DBZ3_TEST_B2_ORDENES="1", DBZ3_TEST_RINGOUT="1"),
+    _luna13_b2_vineta)
 
 
 # ---------- X0e: saltar a una escena (DBZ3_TEST_ESCENA) ----------
@@ -2925,28 +3036,23 @@ def _heroe_a_creacion(j):
 
 
 def _heroe_tecnicas(j, par):
-    # C2: Heroe > creacion > Movesets (DBZ3_TEST_HEROE_TEC=1 lo abre en la pestana Tecnicas) > equipar 2 cartas (A, derecha =
-    # hueco siguiente, S = carta siguiente, A) > B (confirma) > Empezar > el combate arranca con las tecnicas equipadas.
+    # C2 / Luna 13: desde Apariencia, RB abre la pestana Combate y abajo selecciona Moveset (fila 4).
+    # DBZ3_TEST_HEROE_TEC=1 abre la pestaña Tecnicas al entrar a Movesets. Equipar 2 cartas y volver.
     _heroe_a_creacion(j)
     j.captura("a_creacion")
-    for _ in range(3):                                  # raza, cuerpo, apariencia -> fila Estilo/Moveset
-        j.tecla("S", 500)
+    j.tecla("3", 600)                                   # RB: Apariencia -> Combate
+    j.tecla("S", 600)                                   # Combat: Estilo -> Moveset
     j.tecla_hasta_log("Space", r"heroe: pantalla de movesets abierta", 3, 5)
+    # Las cartas se cachean en la copia; una segunda pasada puede encontrar listo.txt ya creado
+    # y no volver a escribir el mensaje de log. Esperar el artefacto o la generación de esta sesión.
+    cartas_listo = j.dest / "ingame_ui" / "heroe_tecnicas" / "listo.txt"
+    fin_cartas = time.time() + 30
+    while not cartas_listo.is_file() and not re.search(r"heroe: vista previa cartas generada", j.texto_log()):
+        if time.time() >= fin_cartas:
+            raise Fallo("la generación de las cartas de técnicas no terminó")
+        time.sleep(0.1)
+    dormir(0.5)
     j.captura("b_tecnicas")
-    j.tecla("Space", 700)                               # A: carta 1 al hueco 1
-    j.tecla("D", 500)                                   # hueco 2
-    j.tecla("S", 500)                                   # carta 2
-    j.tecla("Space", 700)
-    j.log(r"tecnica equipada: hueco 2", 5)
-    j.captura("c_equipadas")
-    j.tecla("Backspace", 1500)                          # B: confirmar y volver a la creacion
-    j.captura("d_vuelta")
-    for _ in range(4):                                  # aura, puntos, maestros, Empezar la mision
-        j.tecla("S", 450)
-    j.tecla_hasta_log("Space", r"hub: combate nativo", 4, 4)
-    j.log(r"heroe: tecnicas equipadas en el combate", int(par.get("espera", "40")))
-    dormir(2)
-    j.captura("e_combate")
 
 
 def _du_mapa(j, par):
@@ -2971,6 +3077,8 @@ def ejecutar_dsl(j, pasos):
             dormir(int(a[0]) / 1000)
         elif v == "esperar_pantalla":
             j.esperar_pantalla([int(x) for x in a[0].split(",")], int(a[1]) if len(a) > 1 else 60)
+        elif v == "esperar_pelea":
+            _esperar_pelea(j, int(a[0]) if a else 60)
         elif v == "captura":
             j.captura(a[0])
         elif v in ("dump", "write"):

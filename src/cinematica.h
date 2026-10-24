@@ -37,6 +37,7 @@ struct Paso {
   std::vector<std::array<float, 4>> cam_ojo, cam_obj;
   std::vector<std::array<float, 2>> cam_fov, cam_roll;
   bool estilo_b1 = false;    // A3b: sin bandas de cine y con el subtitulo de B1 (blanco con borde negro, abajo al centro de la imagen)
+  bool sin_ayuda = false;    // DS13: no dibujar el rotulo "A Siguiente / START Saltar" en este paso (las tomas del READY de B1 no lo tienen)
   bool fov_acerca = false;   // A3b: B3 proyecta con su 0,785 fijo (escribir mgr+0x1C4 no cambia nada): el fov de cam_fov se logra acercando el ojo al objetivo en tan(fov/2)/tan(0,3925)
   // s9b: true = ojo/objetivo van en el marco de los dos luchadores (origen = punto medio, x hacia el lado 2, y arriba,
   // z = perpendicular a su izquierda) en vez de en coordenadas del mundo: asi una toma vale en cualquier escenario.

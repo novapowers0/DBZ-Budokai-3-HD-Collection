@@ -1,0 +1,29 @@
+{
+ "modo": "iw",
+ "escena": "0x7D3",
+ "dorado": "iw_0x7D3.json",
+ "fuente_dorado": "camara del 3 medida en el original (PCSX2: struct del modulo de disparo, *(0x49CEAC)+0x660): ojo (0,30,100)->(0,35,0), fov 0,785; punto mirado como referencia",
+ "filas": [
+  {
+   "nombre": "dist_ojo_jugador (mediana)",
+   "ok": true,
+   "detalle": "original 100.12 port 104.4 (limite 15.02)"
+  },
+  {
+   "nombre": "altura_ojo (mediana)",
+   "ok": false,
+   "detalle": "original -5.0 port 30.0 (limite 0.75)"
+  },
+  {
+   "nombre": "yaw del ojo (mediana)",
+   "ok": true,
+   "detalle": "original 0.0 port 0.0 (dif 0.0 grados, limite 15)"
+  },
+  {
+   "nombre": "fov",
+   "ok": null,
+   "detalle": "[H] el port no escribe el fov en el log"
+  }
+ ],
+ "firma": "acdc70a40bae"
+}

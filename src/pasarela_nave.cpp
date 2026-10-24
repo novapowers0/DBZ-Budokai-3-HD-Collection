@@ -41,6 +41,7 @@
 
 #include <imgui.h>
 
+#include <rex/cvar.h>
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -742,6 +743,8 @@ bool g_sonando = false;
 void Musica(bool on) {
   if (on == g_sonando || g_iso.empty()) return;
   g_sonando = on;
+  // 24/10 (como el tablero B2, CM): mientras suena la de B2 se calla la mezcla de B3 (si no, su musica de fondo suena debajo)
+  rex::cvar::SetFlagByName("audio_gain", std::to_string(on ? 0.0 : std::clamp(dbz3::settings::MasterVolume(), 0.0, 1.0)));
   if (on) {
     REXLOG_INFO("dbz3 nave: musica ADX_US 1148");
     OirMusicaPs2(g_iso, "ADX_US.AFS", 1148, Volumen());

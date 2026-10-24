@@ -1,0 +1,12 @@
+# Luna 13: acceso directo al tablero B2 en la fase IV y captura de su viñeta.
+descripcion = "B2, fase IV: viñeta de presentación del tablero"
+env = ["DBZ3_TEST_MISIONES=1,auto,reset,desde=3", "DBZ3_TEST_RINGOUT=1", "DBZ3_TEST_B2_ORDENES=1", "DBZ3_PS2_GAMES=D:\\DBZ3HD\\ps2_games"]
+pasos = [
+  'log "tablero b2: fase 4 leida" 120',
+  'log "tablero b2: script 301: eleccion de 2 aliado" 240',
+  'log "tablero b2: aliado marcado: .* quedan 1" 20',
+  "tecla S 600",
+  'log "tablero b2: aliado elegido" 30',
+  'log "tablero b2: escena P[0-9]+" 240',
+  "captura vineta_fase_iv",
+]

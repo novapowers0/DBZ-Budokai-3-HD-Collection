@@ -665,13 +665,28 @@ bool SetModManifestValue(const std::string& mod_name, const std::string& key,
   if (!value.empty()) {
     keep.push_back(key + "=" + value);
   }
-  std::ofstream out(manifest);
-  if (!out.is_open()) {
-    REXLOG_WARN("dbz3: no se pudo escribir manifest de '{}'", mod_name);
-    return false;
+  // H9 24/10: escritura atomica (manifest.txt.tmp + renombrar, como profiles.txt): un corte no deja el manifest a medias.
+  auto tmp = manifest;
+  tmp += ".tmp";
+  {
+    std::ofstream out(tmp, std::ios::trunc);
+    if (!out.is_open()) {
+      REXLOG_WARN("dbz3: no se pudo escribir manifest de '{}'", mod_name);
+      return false;
+    }
+    for (const auto& line : keep) {
+      out << line << "\n";
+    }
+    out.flush();
+    if (!out) {
+      REXLOG_WARN("dbz3: manifest de '{}' no se escribio entero (disco lleno?)", mod_name);
+      return false;
+    }
   }
-  for (const auto& line : keep) {
-    out << line << "\n";
+  std::filesystem::rename(tmp, manifest, ec);
+  if (ec) {
+    REXLOG_WARN("dbz3: no se pudo reemplazar manifest de '{}' ({})", mod_name, ec.message());
+    return false;
   }
   REXLOG_INFO("dbz3: manifest '{}' key '{}' actualizada", mod_name, key);
   return true;
@@ -987,6 +1002,43 @@ std::vector<std::string> ProfileEnabledMods(const std::string& profile) {
   return it == profiles.end() ? std::vector<std::string>{} : it->second;
 }
 
+namespace {
+// H9 24/10: escritura atomica como launcher/settings.cpp: se escribe profiles.txt.tmp, se comprueba y se
+// renombra. Si el corte o el disco lleno llega a mitad, el profiles.txt anterior queda entero.
+bool EscribirPerfiles(const std::map<std::string, std::vector<std::string>>& profiles) {
+  std::string texto = "# Perfiles de mods (generados por el launcher). 'vanilla' no se " "guarda.\n";
+  for (const auto& kv : profiles) {
+    texto += "[" + kv.first + "]\n";
+    for (const auto& mod : kv.second) {
+      texto += mod + "\n";
+    }
+  }
+  const auto path = ProfilesFile();
+  auto tmp = path;
+  tmp += ".tmp";
+  {
+    std::ofstream out(tmp, std::ios::trunc);
+    if (!out.is_open()) {
+      REXLOG_WARN("dbz3: no se pudo escribir profiles.txt");
+      return false;
+    }
+    out << texto;
+    out.flush();
+    if (!out) {
+      REXLOG_WARN("dbz3: profiles.txt no se escribio entero (disco lleno?)");
+      return false;
+    }
+  }
+  std::error_code ec;
+  std::filesystem::rename(tmp, path, ec);
+  if (ec) {
+    REXLOG_WARN("dbz3: no se pudo reemplazar profiles.txt ({})", ec.message());
+    return false;
+  }
+  return true;
+}
+}  // namespace
+
 bool SaveProfile(const std::string& name,
                  const std::vector<std::string>& enabled_mods) {
   if (name.empty() || name == "vanilla") {
@@ -998,18 +1050,8 @@ bool SaveProfile(const std::string& name,
   LoadProfiles(profiles);
   profiles[name] = enabled_mods;
 
-  std::ofstream out(ProfilesFile());
-  if (!out.is_open()) {
-    REXLOG_WARN("dbz3: no se pudo escribir profiles.txt");
+  if (!EscribirPerfiles(profiles)) {
     return false;
-  }
-  out << "# Perfiles de mods (generados por el launcher). 'vanilla' no se "
-         "guarda.\n";
-  for (const auto& kv : profiles) {
-    out << "[" << kv.first << "]\n";
-    for (const auto& mod : kv.second) {
-      out << mod << "\n";
-    }
   }
   REXLOG_INFO("dbz3: perfil '{}' guardado ({} mods)", name, enabled_mods.size());
   return true;
@@ -1024,17 +1066,8 @@ bool DeleteProfile(const std::string& name) {
   if (profiles.erase(name) == 0) {
     return false;
   }
-  std::ofstream out(ProfilesFile());
-  if (!out.is_open()) {
+  if (!EscribirPerfiles(profiles)) {   // H9 24/10: misma escritura atomica que al guardar
     return false;
-  }
-  out << "# Perfiles de mods (generados por el launcher). 'vanilla' no se "
-         "guarda.\n";
-  for (const auto& kv : profiles) {
-    out << "[" << kv.first << "]\n";
-    for (const auto& mod : kv.second) {
-      out << mod << "\n";
-    }
   }
   REXLOG_INFO("dbz3: perfil '{}' borrado", name);
   return true;

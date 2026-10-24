@@ -240,8 +240,11 @@ class Panel : public rex::ui::ImGuiDialog {
       dl->AddRectFilled(ImVec2(0, h - abajo), ImVec2(w, h), IM_COL32(0, 0, 0, 255));
     }
     const S::Imagen g = S::GuestImage(io);   // S1-F06: la ayuda en la banda de arriba de la imagen del juego
-    S::HelpLine(dl, ImVec2(g.p0.x + g.Size().x * 0.80f, g.p0.y + 45.0f * a.s * abre), S::mode::kSmall * a.s,
-                {{"A", dbz3::i18n::T("Siguiente", "Next")}, {"START", dbz3::i18n::T("Saltar", "Skip")}});
+    // DS13: los pasos que en B1 no llevan rotulo (las tomas del READY) lo apagan; el resto sigue igual
+    const bool ayuda = !(e && paso >= 0 && paso < int(e->pasos.size()) && e->pasos[size_t(paso)].sin_ayuda);
+    if (ayuda)
+      S::HelpLine(dl, ImVec2(g.p0.x + g.Size().x * 0.80f, g.p0.y + 45.0f * a.s * abre), S::mode::kSmall * a.s,
+                  {{"A", dbz3::i18n::T("Siguiente", "Next")}, {"START", dbz3::i18n::T("Saltar", "Skip")}});
     if (abre < 0.99f || !e || paso < 0 || paso >= int(e->pasos.size())) return;
     const Paso& p = e->pasos[size_t(paso)];
     if (estilo_b1) {

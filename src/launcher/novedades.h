@@ -20,6 +20,33 @@ struct NewsBlock {
   int count;
 };
 
+inline constexpr NewsItem kNews1554[] = {
+    {"Leyenda de Mr. Satán", "Mr. Satan legend",
+     "Las presentaciones de cada ronda usan ahora las cámaras de Budokai 1: los luchadores salen enteros, sin bandas negras y sin recortes.",
+     "Each round's introduction now uses Budokai 1's cameras: fighters appear whole, with no black bars and no cut-off edges."},
+    {nullptr, nullptr,
+     "Las poses se parecen más a las del original. Trunks sale con armadura, Ten Shin Han sin camiseta y Vegeta con armadura, como en Budokai 1. Sin rótulo de Siguiente o Saltar en las tomas.",
+     "Poses are closer to the original. Trunks wears his armour, Ten Shin Han has no shirt and Vegeta wears his armour, as in Budokai 1. No Next or Skip prompt during the shots."},
+    {"Infinite World (Dragon Mission)", "Infinite World (Dragon Mission)",
+     "Las cámaras de los minijuegos vuelven a ser como en el original: botones, disparo Kienzan, rayos, disparo de Ten contra Cell, el campo y el vuelo.",
+     "Minigame cameras are back to the original: buttons, Kienzan shot, energy beams, Ten's shot against Cell, the field and the flight."},
+    {"Tag Team (beta)", "Tag Team (beta)",
+     "El compañero que controla el ordenador ya cambia de luchador cuando el suyo tiene poca vida.",
+     "The partner controlled by the computer now swaps in when its fighter is low on health."},
+    {"Dragon World (Budokai 2)", "Dragon World (Budokai 2)",
+     "Arreglado que en el tablero sonara la música de fondo del juego por debajo de la de Budokai 2.",
+     "Fixed the game's background music playing underneath the Budokai 2 music on the board."},
+    {"Online (beta)", "Online (beta)",
+     "La revancha ya empieza sincronizada como un combate nuevo en los dos jugadores.",
+     "Rematches now start in sync as a new battle for both players."},
+    {"Más estable", "More stable",
+     "Si el juego se cerraba a mitad de preparar los personajes, ya no se queda bloqueado en los siguientes arranques. Un mod con una cápsula mal escrita ya no cierra el juego.",
+     "If the game closed while preparing the characters, it no longer stays stuck on the next launches. A mod with a badly written capsule no longer crashes the game."},
+    {"Aviso", "Notice",
+     "La primera vez que abras el juego tras actualizar, los escenarios de PS2 se preparan de nuevo. Tarda un poco; es normal.",
+     "The first time you open the game after updating, the PS2 stages are prepared again. It takes a little while; this is normal."},
+};
+
 inline constexpr NewsItem kNews1553[] = {
     {"Combate", "Battle",
      "Arreglado: al empezar el combate la cámara se quedaba mirando al suelo (solo se veían las barras de vida) y se volvía loca al agarrar. Vuelve a ser la cámara original del juego.",
@@ -233,6 +260,7 @@ inline constexpr NewsItem kNews145[] = {
 
 // Del mas nuevo al mas antiguo.
 inline constexpr NewsBlock kNewsBlocks[] = {
+    {"1.5.5.4", kNews1554, int(sizeof(kNews1554) / sizeof(kNews1554[0]))},
     {"1.5.5.3", kNews1553, int(sizeof(kNews1553) / sizeof(kNews1553[0]))},
     {"1.5.5.2", kNews1552, int(sizeof(kNews1552) / sizeof(kNews1552[0]))},
     {"1.5.5.1", kNews1551, int(sizeof(kNews1551) / sizeof(kNews1551[0]))},

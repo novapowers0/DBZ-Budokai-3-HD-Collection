@@ -293,8 +293,11 @@ void GuardarProgreso(const std::string& clave, int valor) {
   if (std::FILE* f = std::fopen(tmp.string().c_str(), "w")) {
     std::fprintf(f, "# Pasarela de modos: avance de cada modo (lo escribe el juego)\n");
     for (const auto& [k, v] : t) std::fprintf(f, "%s = %lld\n", k.c_str(), static_cast<long long>(v));
-    std::fclose(f);
-    std::filesystem::rename(tmp, Carpeta() / "progreso.toml", ec);
+    // H9 24/10: solo se publica si la escritura fue bien (disco lleno -> el progreso anterior queda intacto)
+    const bool ok = std::ferror(f) == 0;
+    if (std::fclose(f) == 0 && ok) {
+      std::filesystem::rename(tmp, Carpeta() / "progreso.toml", ec);
+    }
   }
 }
 
@@ -1179,6 +1182,11 @@ int NivelComB3(int dificultad, int ronda) {
 // jugador tambien (+0x2C): lo pone Lanzar (300 = 3 barras; 0xFFFF, como la vida de Krilin y Gohan, = el que traia).
 // (Los multiplicadores de B1 no estan en el ejecutable: no hay lectura de la ronda en el codigo del combate; ver
 // docs/14_frentes/pasarela.md "Reglas del original".)
+// DS13: traje del rival en la Leyenda, por ronda (indice del juego rec+18; 0 = el de serie). B1 y B3 no visten igual a
+// todos: Trunks en B1 lleva la ARMADURA saiyan (B3 traje 2), Ten Shin Han va sin camiseta (B3 traje 1) y Vegeta lleva la
+// armadura con peto amarillo (B3 traje 1; el 0 de B3 es el mono sin armadura). El resto coincide con su traje de serie
+// (comprobado con las fotos de las tomas de B1 de DS11 y el modelo de B3 de cada rival). Indice = r de la tabla de B1.
+constexpr int kTrajeRival[11] = {0, 1, 0, 0, 2, 1, 0, 0, 0, 0, 0};   // 0 Yamcha, 1 Tien, 2 Krilin, 3 A16, 4 Trunks, 5 Vegeta...
 Reglas ReglasDe(const CombateB1& c, int dificultad, int ronda) {
   Reglas r;
   r.nivel_com = NivelComB3(dificultad, ronda);
@@ -1187,6 +1195,8 @@ Reglas ReglasDe(const CombateB1& c, int dificultad, int ronda) {
   if (c.rival_b1 == 16) r.armadura_rival = 0.5f;
   if (c.rival_b1 == 5) r.solo_ki = true;
   if (c.rival_b1 == 6) r.ki_lento = 0.5f;
+  r.traje_rival = kTrajeRival[std::clamp(ronda, 0, 10)];
+  if (const char* t = std::getenv("DBZ3_DS13_TRAJE_RIVAL")) r.traje_rival = std::atoi(t);   // sonda de pruebas
   return r;
 }
 
@@ -1212,6 +1222,8 @@ void Toma(dbz3::cinematica::Paso& p, std::array<float, 3> o0, std::array<float, 
 // solo con la ronda 2, Ten Shin Han; la tabla de B1 pone las mismas posiciones y el mismo escenario en las 11).
 constexpr float kFovVerticalB1 = 0.611f;   // A3b: el 0,611 rad del #AMC es el fov HORIZONTAL (4:3): vertical = 2 atan(tan(0,3055) * 3/4) = 0,45 (confirmado a ojo con las capturas pareadas: tamano de la cabeza de Satan)
 constexpr float kFovB1 = 0.583f;   // 2 atan(0,3), medido en S1-F03
+// DS11: las dos tomas del "READY?" usan la camara de COMBATE de B1 (0x5751D0), cuyo fov vertical (0x5751D0+0x44) abre
+// de 0,611 a ~1,20 durante cada toma (medido en el PCSX2 de la copia propia; no es el 0,583 constante de la escena previa).
 constexpr std::array<float, 4> kReady1_ojo[] = {{0.0f, -14.5f, 4.2f, 20.3f}, {19.2f, -11.3f, 5.1f, 20.0f}, {43.2f, -7.1f, 6.4f, 18.7f}, {64.8f, -3.6f, 7.6f, 16.8f}, {88.8f, -0.3f, 8.9f, 13.9f}, {111.6f, 2.2f, 10.1f, 10.6f}, {134.4f, 4.0f, 11.3f, 6.8f}, {158.4f, 4.9f, 12.6f, 2.5f}, {180.0f, 5.0f, 13.7f, -1.2f}};
 constexpr std::array<float, 4> kReady2_ojo[] = {{0.0f, 15.3f, 4.2f, 20.0f}, {24.0f, 11.2f, 5.4f, 19.5f}, {44.4f, 7.6f, 6.5f, 18.4f}, {66.0f, 4.1f, 7.7f, 16.6f}, {87.6f, 1.1f, 8.8f, 14.0f}, {111.6f, -1.6f, 10.1f, 10.6f}, {132.0f, -3.3f, 11.2f, 7.3f}, {154.8f, -4.4f, 12.4f, 3.3f}, {177.6f, -4.7f, 13.6f, -0.7f}};
 // Objetivo por retador (r = indice de la tabla de B1, 1..10): el ojo es el mismo en todas (error <= 0,5 u entre las 8 rondas
@@ -1251,28 +1263,65 @@ const ObjReady kObjReady[11][2] = {
 constexpr int kVozReady[11][4] = {{1303, 300, 1516, 30}, {1302, 1370, 1477, 1260}, {1307, 1580, 662, 1440}, {1299, 1670, 15, 1770},
                                   {1302, 1330, 1456, 1130}, {1303, 320, 1493, 330}, {1307, 1600, 1160, 830},
                                   {1302, 1330, 103, 750}, {1299, 1680, 614, 1420}, {1303, 320, 569, 1510}, {1299, 1730, 93, 2040}};
+// DS13: RE de la pose de B1 en las tomas del READY. La animacion NO es la entrada de B3: es el codigo 0xC0 de B1 (lado 1,
+// Mr. Satan) y el 0xC1 (lado 2, el retador). Medido (PCSX2 propio, ronda 2, 10/2026, PINE): el clip de Satan es el anim 198
+// (180 cuadros, 60 Hz; encaja con la pose medida a 0,21 u de error) y el de Tien el 156 (1,79 u). B3 no trae ese clip: se han
+// comparado sus 107 clips propios y los 359 del almacen global (Pose::guard) y el mejor queda a 1,37-2,9 u. Se elige por
+// retador el codigo de B3 con la pose mas cercana a la de B1 en los primeros 1,2 s de la toma (medido con las posiciones
+// de los huesos de los dos esqueletos, alineadas en guinada). -1 = su guardia (es lo mas cerca que queda en Trunks).
+// Indice = r de la tabla de B1 (0 Yamcha ... 10 Cell). Valores: 0x280/0x281 = entrada del lado 2/lado 1, 0x2A0 = victoria.
+constexpr int kPoseRival[11] = {0x280, 0x280, 0x2A0, 0x2A0, -1, 0x280, 0x281, 0x280, 0x280, 0x280, 0x2A0};
 void TomasPresentacion(dbz3::cinematica::Escena& e, int r = 1) {
   namespace C = dbz3::cinematica;
   C::Paso p;
   p.plano = C::kLado1;
   p.segundos = 3.0f;
-  p.anim[0] = C::kPoseEntrada1;
+  static const int pose1 = [] {   // DS13: sonda para comparar poses sin compilar (DBZ3_DS13_POSE1=<code>, -1 = guardia)
+    const char* v = std::getenv("DBZ3_DS13_POSE1");
+    return v ? int(std::strtol(v, nullptr, 0)) : int(C::kPoseEntrada1);
+  }();
+  static const int pose2_forzada = [] {   // DS13: idem para el retador (DBZ3_DS13_POSE2); sin variable, la tabla de abajo
+    const char* v = std::getenv("DBZ3_DS13_POSE2");
+    return v ? int(std::strtol(v, nullptr, 0)) : 0x7FFFFFFF;
+  }();
+  p.anim[0] = pose1;   // DS13: el gesto de B1 (brazos abiertos, manos arriba y guardia) es el mas cercano de B3 a 0x281
   p.rel = true;
+  p.estilo_b1 = true;   // DS11: B1 ensena estas dos tomas a imagen entera (sin bandas de cine)
+  p.sin_ayuda = true;   // DS13: B1 no muestra el rotulo "A Siguiente / START Saltar" en las tomas
   p.cam_ojo.assign(std::begin(kReady1_ojo), std::end(kReady1_ojo));
   const ObjReady& o1 = kObjReady[std::clamp(r, 0, 10)][0];
   p.cam_obj.assign(o1.a, o1.a + o1.n);
-  p.cam_fov = {{0.0f, kFovB1}};
+  p.cam_fov = {{0.0f, 0.611f}, {180.0f, 1.20f}};   // DS11: B1 abre el fov de 0,611 a ~1,20 durante cada toma (medido en 0x5751D0+0x44)
   if (!e.iso_voces.empty()) p.voces = {-kVozReady[std::clamp(r, 0, 10)][1], kVozReady[std::clamp(r, 0, 10)][0]};
   e.pasos.push_back(p);
   p = C::Paso{};
   p.plano = C::kLado2;
   p.segundos = 3.0f;
   p.rel = true;
+  p.estilo_b1 = true;   // DS11: como la toma 1
+  p.sin_ayuda = true;   // DS13: B1 no muestra el rotulo en las tomas
+  p.anim[1] = pose2_forzada != 0x7FFFFFFF ? pose2_forzada : kPoseRival[std::clamp(r, 0, 10)];   // DS13: la pose de B1 de este retador (0xC1 de B1) frente a las de B3
   p.cam_ojo.assign(std::begin(kReady2_ojo), std::end(kReady2_ojo));
   const ObjReady& o2 = kObjReady[std::clamp(r, 0, 10)][1];
   p.cam_obj.assign(o2.a, o2.a + o2.n);
-  p.cam_fov = {{0.0f, kFovB1}};
+  p.cam_fov = {{0.0f, 0.611f}, {180.0f, 1.20f}};   // DS11: B1 abre el fov de 0,611 a ~1,20 durante cada toma (medido en 0x5751D0+0x44)
   if (!e.iso_voces.empty()) p.voces = {-kVozReady[std::clamp(r, 0, 10)][3], kVozReady[std::clamp(r, 0, 10)][2]};
+  e.pasos.push_back(p);
+  // DS13: tramo FIJO de B1 entre la toma 2 y el "READY?" (2,64 s, medido: la toma 2 acaba a 6,01 s y el READY llega a
+  // 8,65 s). La camara de B1 (0x5751D0) se queda quieta en la ultima clave de la toma 2 (ojo -4,68/17,55/-0,90; objetivo
+  // 12,69/12,39/0,45) y se ve un plano ancho de los dos en guardia porque B1 los ha llevado al centro del ring. El puerto
+  // los deja a +-15: con esa camara solo sale el retador de cerca, asi que se usa el plano general de la escena, de lado
+  // (los dos de perfil), con los dos vueltos a la guardia.
+  p = C::Paso{};
+  p.plano = C::kGeneral;
+  p.segundos = 2.65f;
+  p.rel = true;
+  p.estilo_b1 = true;
+  p.sin_ayuda = true;
+  p.anim[0] = p.anim[1] = 0;   // DS13: los dos vueltos a la guardia (0x2A0 puede quedarse en bucle y B1 aqui esta en guardia)
+  // plano de lado como el de B1 (los dos de perfil, Satan a la izquierda): +z = al lado de los luchadores, +x = hacia el rival
+  p.cam_ojo = {{0.0f, 0.0f, 10.0f, 50.0f}};
+  p.cam_obj = {{0.0f, 0.0f, 5.0f, 0.0f}};
   e.pasos.push_back(p);
 }
 // Juegos de Cell (ronda 1): en B1 la escena 0x1C dura ~60 s con Cell, Goku, el reportero, el coche y Mr. Satan. El motor
@@ -2178,7 +2227,7 @@ bool Lanzar() {   // con g_mu: el combate del paso actual, con las reglas del or
   static const bool sin_musica = std::getenv("DBZ3_SIN_MUSICA_B1") != nullptr;
   if (p.vez == 0 && p.ronda > 0) {
     dbz3::cinematica::Escena e = Escena(p.ronda, c.rival);
-    if (!sin_musica) e.pasos[e.pasos.size() - 2].al_empezar = [ruta = g_d->ruta, m = c.musica] { ArrancarMusica(ruta, m, 0.0f, false); };
+    if (!sin_musica) e.pasos[e.pasos.size() - 3].al_empezar = [ruta = g_d->ruta, m = c.musica] { ArrancarMusica(ruta, m, 0.0f, false); };
     dbz3::cinematica::Empezar(std::move(e));
   } else if (p.vez == 0) {   // ronda 1 (Yamcha): la escena de los Juegos de Cell (aproximada) y las dos tomas
     dbz3::cinematica::Escena e;
@@ -2186,7 +2235,7 @@ bool Lanzar() {   // con g_mu: el combate del paso actual, con las reglas del or
     e.volumen = dbz3::settings::AudioMute() ? 0.0f : float(dbz3::settings::MasterVolume());
     e.distancia = 30;
     EscenaCell(e);
-    if (!sin_musica) e.pasos[e.pasos.size() - 2].al_empezar = [ruta = g_d->ruta, m = c.musica] { ArrancarMusica(ruta, m, 0.0f, false); };
+    if (!sin_musica) e.pasos[e.pasos.size() - 3].al_empezar = [ruta = g_d->ruta, m = c.musica] { ArrancarMusica(ruta, m, 0.0f, false); };
     dbz3::cinematica::Empezar(e);
   } else if (!sin_musica) {
     ArrancarMusica(g_d->ruta, c.musica, 0.0f, true);

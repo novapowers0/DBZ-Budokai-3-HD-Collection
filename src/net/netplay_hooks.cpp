@@ -954,6 +954,13 @@ DBZ3_HOOK(sub_820902F8, dbz3eu_sub_820902C0) {
   if (s.active()) {
     const int screen = base[dbz3::GuestAddr(0x824BA110, 0x824BA100)];
     if (screen == 5 || screen == 14) dbz3::tag::OnScreen(screen);
+    // Revancha: "Battle Again?" se elige en la misma pantalla del combate (15), que no cambia; sin esto el
+    // reinicio de luchadores de la pelea siguiente no veia un combate nuevo y no alineaba los dos PCs ni
+    // sembraba el RNG (ni salia "empieza un combate"). El estado 7 es el menu final del combate.
+    if (screen == 15) {
+      const uint32_t mgr = REX_LOAD_U32(dbz3::GA(0x823D6CF4));
+      if (mgr && REX_LOAD_U32(mgr + 35128) == 7) dbz3::tag::OnScreen(5);
+    }
   }
 #ifdef _WIN32
   RbTrack(base, s);

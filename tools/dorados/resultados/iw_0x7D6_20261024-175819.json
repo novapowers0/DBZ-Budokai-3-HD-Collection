@@ -1,0 +1,29 @@
+{
+ "modo": "iw",
+ "escena": "0x7D6",
+ "dorado": "iw_0x7D6.json",
+ "fuente_dorado": "fly_7D6.tsv + camara CameraFocusWhileFlying (52,2 detras, 8 arriba, -11,25 grados) ; el giro del ojo no se compara (es el rumbo del jugador: el original esta quieto y el piloto del port gira hacia los puntos de control)",
+ "filas": [
+  {
+   "nombre": "salida del jugador",
+   "ok": null,
+   "detalle": "el original juega en el origen (0,0,0): la camara se compara relativa"
+  },
+  {
+   "nombre": "dist_ojo_jugador (mediana)",
+   "ok": true,
+   "detalle": "original 54.33 port 54.34 (limite 8.15)"
+  },
+  {
+   "nombre": "altura_ojo (mediana)",
+   "ok": true,
+   "detalle": "original 18.18 port 18.2 (limite 2.73)"
+  },
+  {
+   "nombre": "fov",
+   "ok": null,
+   "detalle": "[H] el port no escribe el fov en el log"
+  }
+ ],
+ "firma": "f81fa42e5d9d"
+}

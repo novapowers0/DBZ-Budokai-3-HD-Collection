@@ -411,8 +411,12 @@ EC.escenario_b2 = _escenario_s1f03   # S1-F03: fin
 
 
 def _sello(ruta):
+    # H8 24/10: sha1 de los primeros 4 MiB en vez de st_mtime (la fecha cambia al copiar la ISO y forzaba rehacer escenarios)
+    import hashlib  # noqa: PLC0415
     st = Path(ruta).stat()
-    return "%s|%d|%d|v%d" % (Path(ruta).name, st.st_size, int(st.st_mtime), VERSION)
+    with open(ruta, "rb") as fh:
+        h = hashlib.sha1(fh.read(4 << 20)).hexdigest()
+    return "%s|%d|%s|v%d" % (Path(ruta).name, st.st_size, h, VERSION)
 
 
 def _al_dia(carpeta, sello):

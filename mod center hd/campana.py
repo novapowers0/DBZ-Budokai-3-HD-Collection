@@ -1162,7 +1162,8 @@ def cmd_montar(a):
     codes = cfg.get("codigos", {})
     wheel = cfg.get("rueda", {}).get("personajes", [])
     virt = cfg.get("rueda", {}).get("casillas_virtuales", [])
-    with open(os.path.join(mod, "campana.toml"), "w", encoding="utf-8") as f:
+    # H8 24/10: se escribe a .tmp y luego os.replace (no queda campana.toml a medias si falla)
+    with open(os.path.join(mod, "campana.toml.tmp"), "w", encoding="utf-8") as f:
         f.write("# Generado por campana.py: escenas de Dragon Universe que cambia este mod.\n[codigos]\n")
         for k, v in sorted(codes.items(), key=lambda kv: int(kv[0])):
             f.write("%d = %d\n" % (int(k), int(v)))
@@ -1195,9 +1196,12 @@ def cmd_montar(a):
             f.write("\n[contenedores]\nbase = %d\nentradas = %d\n" % (CMN["base"], CMN_N))
         if TEXT_BLOCK:   # bloque de textos automatico: al rehacer la campana se reusa (reservar_textos)
             f.write("\n[textos]\nbase = %d\nentradas = %d\n" % (TEXT_BLOCK["base"], TEXT_BLOCK["entradas"]))
-    with open(os.path.join(mod, "manifest.txt"), "w", encoding="utf-8") as f:
+    os.replace(os.path.join(mod, "campana.toml.tmp"), os.path.join(mod, "campana.toml"))
+    # H8 24/10: manifest.txt tambien con .tmp + os.replace
+    with open(os.path.join(mod, "manifest.txt.tmp"), "w", encoding="utf-8") as f:
         f.write("name=%s\ntype=campana\ndescription=%s\n" % (info.get("nombre", "Campana"),
                                                           info.get("descripcion", "Campana de Dragon Universe")))
+    os.replace(os.path.join(mod, "manifest.txt.tmp"), os.path.join(mod, "manifest.txt"))
     print("mod %s: %d entradas, %d escenas redirigidas" % (mod, n, len(codes)))
     return 0
 
