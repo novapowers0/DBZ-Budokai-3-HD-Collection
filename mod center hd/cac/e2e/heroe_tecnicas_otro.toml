@@ -26,5 +26,10 @@ pasos = [
   "log \"moveset cambiado al donante\" 20",
   "captura c4_otro_3_tras_si",
   "tecla Backspace 2500",
-  "esperar 2000",
+  "captura c4_otro_4_vuelta_heroe",
+  "tecla S 500", "tecla S 500", "tecla S 500",
+  "tecla Space 4000",
+  "log \"moveset [0-9]+ .* para el estilo 0 en este combate\" 120",
+  "esperar 4000",
+  "captura c8m_otro_5_combate",
 ]

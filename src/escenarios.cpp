@@ -237,6 +237,11 @@ int Visibles() { return int(g_visibles); }
 
 bool AltaActiva() { return g_activa >= 0; }
 
+// A3b 24/10: el Ring de Cell de B1 (entrada 5031) tiene el clip de camara (+52) nulo, pero su actualizacion de camara
+// (sub_820F4678) tambien pone al dia lo que se dibuja: saltarla (red de seguridad de los B2) borraba el suelo del ring y
+// a Mr. Satan en la escena final de la Leyenda. Con el original no cierra (como antes de X1esc).
+bool AltaActivaSinGuardaCamara() { return g_activa >= 0 && g_altas[size_t(g_activa - kSerie)].entrada == 5031; }
+
 int PorMod(const std::string& mod) {
   for (size_t i = 0; i < g_altas.size(); ++i)
     if (g_altas[i].mod == mod) return kSerie + int(i);
@@ -515,7 +520,7 @@ DBZ3_HOOK_EU(sub_820F4678) {
   if (ctx.r3.u32 && !REX_LOAD_U32(ctx.r3.u32 + 52)) {
     static std::atomic<int> n{0};
     if (n.fetch_add(1) < 5) REXLOG_INFO("dbz3 escenarios: camara sin clip (+52 nulo)");
-    if (REXCVAR_GET(dbz3_escenarios_guardas)) return;
+    if (REXCVAR_GET(dbz3_escenarios_guardas) && !dbz3::escenarios::AltaActivaSinGuardaCamara()) return;
   }
   orig(ctx, base);
 }

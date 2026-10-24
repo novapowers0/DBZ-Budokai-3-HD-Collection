@@ -58,6 +58,7 @@ uint16_t DuelMenuFilter(uint8_t* base, uint16_t real);
 int GameScreen();
 // Mando 2 conectado o no (para saber si el Duelo salta la fila 1P VS 2P).
 void NotePad2(bool connected);
+bool BattleNow();   // hay un combate en curso
 bool Pad2Connected();
 // Fila del menu principal (0 Dragon Universe, 1 Duelo...), seguida pulsacion a pulsacion.
 int MainMenuRow();

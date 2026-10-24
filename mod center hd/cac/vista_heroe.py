@@ -645,7 +645,7 @@ PRENDAS = {1: {"item": "500", "malla": "dougi", "lod": "02", "rgb": (0.93, 0.45,
 
 # Sin XV2 (o sin las piezas UT del jugador) los peinados 1..8 salen de personajes NATIVOS de B3: se injerta la zona de
 # pelo de su propio bin con el mismo pipeline (awo_tools/injertar_pelo.py). La geometria se lee de su data_cmn.afs.
-PELOS_NATIVOS = {1: 0, 8: 39}   # 1.5.5: solo los perfectos (misma cabeza que Goku); el resto queda para cuando se adapte la altura. Antes: {2: 7, 4: 235, 5: 252, 6: 13, 9: 298}   # 24/10: fuera 3 Trunks nino (bola) y 7 Piccolo (antenas flotan); 4 Gohan vuelve tras arreglar zona_de |   # Goku, Vegeta, Trunks nino, Gohan (Cell), Goku nino, Yamcha, Piccolo, Bardock, Goten (= kPelosNativos de heroe_ui.cpp); H3: Trunks/Krilin/Ten/Videl no tenian pelo detectable
+PELOS_NATIVOS = {1: 0, 2: 7, 4: 235, 5: 252}   # 24/10: fuera Bardock (por detras se ve la cara en la nuca) |   # C7 24/10: Vegeta, Gohan Cell y Goku nino verificados frente/espalda/perfil (D:/tmp/c7); Yamcha(6) y Goten(9) siguen fuera: nuca con hueco / pelo parcial. Antes: 1.5.5: solo los perfectos (misma cabeza que Goku); el resto queda para cuando se adapte la altura. Antes: {2: 7, 4: 235, 5: 252, 6: 13, 9: 298}   # 24/10: fuera 3 Trunks nino (bola) y 7 Piccolo (antenas flotan); 4 Gohan vuelve tras arreglar zona_de |   # Goku, Vegeta, Trunks nino, Gohan (Cell), Goku nino, Yamcha, Piccolo, Bardock, Goten (= kPelosNativos de heroe_ui.cpp); H3: Trunks/Krilin/Ten/Videl no tenian pelo detectable
 
 B3_ZONAS = {"torso": 0, "piernas": 1, "guantes": 2, "botas": 3}
 B3_JSON = os.path.join(HERE, "piezas_b3_base.json")
@@ -660,8 +660,14 @@ def _cargar_catalogo_b3():
     try:
         with open(B3_JSON, encoding="utf-8") as f:
             raw = json.load(f)
+        # `ok` solo certifica que el injerto estructural funciono; no demuestra que
+        # la pieza encaje visualmente. Solo exponer opciones con aprobacion visual
+        # explicita y registrada despues de revisar frente y espalda. El modo de
+        # ensayo solo se usa para generar hojas fuera del juego; no aprueba piezas.
+        ensayo = os.environ.get("DBZ3_CAC_B3_TEST_CANDIDATOS") == "1"
         _B3_CATALOGO = {z: {int(p["fid"]): p for p in raw.get(z, [])
-                            if p.get("ok") is True and isinstance(p.get("fid"), int) and p.get("nombre")}
+                            if p.get("ok") is True and (p.get("validacion_visual") == "perfecto" or ensayo)
+                            and isinstance(p.get("fid"), int) and p.get("nombre")}
                         for z in B3_ZONAS}
     except Exception as e:  # noqa: BLE001 (sin catalogo: el aspecto base sigue disponible)
         _B3_CATALOGO = {z: {} for z in B3_ZONAS}
@@ -714,7 +720,137 @@ def _textura_donante_b3(donor, tri_idx, width, height):
         rgba = np.tile(np.append(c, 1.0), (height, width, 1))
         return (np.clip(rgba, 0, 1) * 255 + 0.5).astype(np.uint8)
     img = (np.clip(donor.tex[tex], 0, 1) * 255 + 0.5).astype(np.uint8)
-    return np.asarray(Image.fromarray(img).resize((width, height), Image.Resampling.LANCZOS))
+    return _resize_rgba_b3(img, width, height)
+
+
+def _resize_rgba_b3(img, width, height):
+    """Redimensiona cada canal DXT3 por separado: alfa es banda toon, no transparencia premultiplicada."""
+    if img.shape[1] == width and img.shape[0] == height:
+        return np.asarray(img, np.uint8)
+    chans = []
+    for c in range(4):
+        layer = Image.fromarray(np.asarray(img[..., c], np.uint8), "L")
+        chans.append(np.asarray(layer.resize((width, height), Image.Resampling.LANCZOS)))
+    return np.stack(chans, axis=2)
+
+
+def _textura_atlas_b3(donor, tris, mats, uv, width, height):
+    """Empaqueta todas las texturas/materiales del trozo; evita UV que apunten a la textura incorrecta (piernas negras)."""
+    keys, tri_keys = [], []
+    for mi in mats:
+        mat = donor.mats[int(mi)]
+        tex = int(mat["tex"])
+        key = (tex, tuple(np.asarray(mat["diffuse"]).tolist()) if tex >= len(donor.tex) else ())
+        if key not in keys:
+            keys.append(key)
+        tri_keys.append(keys.index(key))
+    if not keys:
+        raise ValueError("la zona no tiene materiales")
+    cols = int(np.ceil(np.sqrt(len(keys))))
+    rows = int(np.ceil(len(keys) / cols))
+    cell_w, cell_h = width // cols, height // rows
+    pad = 1
+    iw, ih = cell_w - 2 * pad, cell_h - 2 * pad
+    if iw < 2 or ih < 2:
+        raise ValueError("la textura anfitriona es demasiado pequeña para el atlas")
+    atlas = np.zeros((height, width, 4), np.uint8)
+    for i, (tex, diffuse) in enumerate(keys):
+        row, col = divmod(i, cols)
+        if 0 <= tex < len(donor.tex):
+            src = np.clip(donor.tex[tex] * 255.0 + 0.5, 0, 255).astype(np.uint8)
+        else:
+            c = np.clip(np.asarray(diffuse if diffuse else (0.65, 0.65, 0.65), np.float32), 0, 1)
+            src = np.tile(np.append(c, 1.0)[None, None, :], (4, 4, 1))
+            src = (src * 255.0 + 0.5).astype(np.uint8)
+        tile = _resize_rgba_b3(src, iw, ih)
+        x0, y0 = col * cell_w + pad, row * cell_h + pad
+        atlas[y0:y0 + ih, x0:x0 + iw] = tile
+    uv_out = np.asarray(uv, np.float64).copy()
+    for i, mi in enumerate(mats):
+        mat = donor.mats[int(mi)]
+        if mat["env"]:
+            nrm = donor.nrm[np.asarray(tris[i], int)]
+            uv_out[i, :, 0] = 0.5 + 0.5 * nrm[:, 0]
+            uv_out[i, :, 1] = 0.5 - 0.5 * nrm[:, 1]
+        row, col = divmod(tri_keys[i], cols)
+        u, v = np.mod(uv_out[i, :, 0], 1.0), np.mod(uv_out[i, :, 1], 1.0)
+        uv_out[i, :, 0] = (col * cell_w + pad + u * (iw - 1)) / width
+        uv_out[i, :, 1] = (row * cell_h + pad + v * (ih - 1)) / height
+    return atlas, uv_out
+
+
+def _ajustar_zona_b3(P, N, usado, base, zona):
+    """Adapta el trozo al bbox de la zona 264 y lo ancla arriba en cadera/tobillo."""
+    z = B3_ZONAS[zona]
+    host_tri = np.flatnonzero(np.asarray(_zonas_pieza_b3(base)) == zona)
+    if not len(host_tri):
+        raise ValueError("el cuerpo base no tiene la zona %s" % zona)
+    host_v = np.unique(base.tris[host_tri].reshape(-1))
+    hp, _ = base.posed()
+    src = np.asarray(P[usado], np.float64)
+    nrm = np.asarray(N[usado], np.float64)
+    lo_s, hi_s = src.min(0), src.max(0)
+    lo_h, hi_h = hp[host_v].min(0), hp[host_v].max(0)
+    ext_s = np.maximum(hi_s - lo_s, 1e-6)
+    ext_h = np.maximum(hi_h - lo_h, 1e-6)
+    # La prenda queda centrada en el eje del cuerpo; torso se ancla hombro/cintura,
+    # extremidades se anclan cadera/tobillo o muñeca, con la caja medida del fid 264.
+    scale = ext_h / ext_s
+    center_s, center_h = (lo_s + hi_s) * 0.5, (lo_h + hi_h) * 0.5
+    if zona in ("piernas", "botas"):
+        # Las piernas se anclan por la cadera (borde superior); las botas por el
+        # tobillo (borde superior de la bota). Igualar también el borde inferior
+        # de cada zona al del cuerpo evita pantalones cortos y huecos de tobillo.
+        anchor_s = np.array([center_s[0], hi_s[1], center_s[2]])
+        anchor_h = np.array([center_h[0], hi_h[1], center_h[2]])
+        out = (src - anchor_s) * scale + anchor_h
+    else:
+        out = (src - center_s) * scale + center_h
+    # Normales bajo escala no uniforme: n' = S^-T n.
+    nrm = nrm / scale[None, :]
+    nrm /= np.maximum(np.linalg.norm(nrm, axis=1), 1e-9)[:, None]
+    return out, nrm, {"scale_xyz": [round(float(x), 4) for x in scale],
+                      "donor_bbox": [lo_s.tolist(), hi_s.tolist()], "base_bbox": [lo_h.tolist(), hi_h.tolist()]}
+
+
+def _retarget_zona_huesos_b3(P, N, usado, donor, base, zona, bones_src, bones_dst):
+    """Retarget por hueso equivalente: conserva cada pivote y ajusta la forma local de la zona."""
+    zone_tris = np.flatnonzero(np.asarray(_zonas_pieza_b3(base)) == zona)
+    if not len(zone_tris):
+        raise ValueError("el cuerpo base no tiene la zona %s" % zona)
+    host_v = np.unique(base.tris[zone_tris].reshape(-1))
+    src_world = np.asarray(donor.worlds())
+    dst_world = np.asarray(base.worlds())
+    host_pos, _ = base.posed()
+    host_local = {}
+    for b in np.unique(base.vbone[host_v]):
+        b = int(b)
+        inv = np.linalg.inv(dst_world[b])
+        verts = host_v[base.vbone[host_v] == b]
+        host_local[b] = host_pos[verts] @ inv[:3, :3].T + inv[:3, 3]
+
+    points, normals, scales = np.asarray(P, float), np.asarray(N, float), {}
+    src_bones = np.asarray(bones_src, int)
+    dst_bones = np.asarray(bones_dst, int)
+    out, nrm = np.zeros_like(points), np.zeros_like(normals)
+    for sb, tb in sorted(set(zip(src_bones.tolist(), dst_bones.tolist()))):
+        mask = (src_bones == sb) & (dst_bones == tb)
+        inv_src = np.linalg.inv(src_world[sb])
+        local = points[mask] @ inv_src[:3, :3].T + inv_src[:3, 3]
+        targets = host_local.get(tb)
+        if targets is not None and len(targets) >= 3:
+            src_ext = np.maximum(local.max(0) - local.min(0), 1e-6)
+            dst_ext = np.maximum(targets.max(0) - targets.min(0), 1e-6)
+            scale = dst_ext / src_ext
+        else:
+            scale = np.ones(3)
+        scale = np.clip(scale, 0.5, 2.5)
+        transform = dst_world[tb, :3, :3] @ np.diag(scale) @ inv_src[:3, :3]
+        out[mask] = (local * scale) @ dst_world[tb, :3, :3].T + dst_world[tb, :3, 3]
+        nrm[mask] = normals[mask] @ np.linalg.inv(transform)
+        scales[base.labels[tb]] = [round(float(x), 4) for x in scale]
+    nrm /= np.maximum(np.linalg.norm(nrm, axis=1), 1e-9)[:, None]
+    return out, nrm, {"metodo": "retarget por hueso equivalente", "escala_huesos": scales}
 
 
 def _injertar_pieza_b3(amb, fid, zona, afs, color=None, host=None, host_zones=None, td_h=None, preparar=False):
@@ -750,8 +886,6 @@ def _injertar_pieza_b3(amb, fid, zona, afs, color=None, host=None, host_zones=No
         raise ValueError("el donante no tiene geometria de %s" % zona)
     src_original = donor.tris[src_tri_idx]
     used = np.unique(src_original.reshape(-1))
-    remap = {int(v): i for i, v in enumerate(used)}
-    src_tris = np.asarray([[remap[int(v)] for v in tri] for tri in src_original], int)
     bones_src = donor.vbone[used]
     host_suf = {_clave_hueso_b3(label): i for i, label in enumerate(host.labels)}
     par = donor.parent
@@ -770,12 +904,36 @@ def _injertar_pieza_b3(amb, fid, zona, afs, color=None, host=None, host_zones=No
         raise ValueError("hay huesos de la pieza sin equivalente ni ancestro en Goku")
     host_tex = host.table.materials[host.table.draws[chosen]["material"]]["tex"]
     hh, ww = host.tex[host_tex].shape[:2]
-    rgba = _textura_donante_b3(donor, src_tri_idx, ww, hh)
+    rgba, uv_tri = _textura_atlas_b3(donor, src_original, donor.tri_mat[src_tri_idx],
+                                     donor.uv[src_original], ww, hh)
     if color is not None and tuple(color) != CERO:
         rgba = np.clip(tenir(rgba.astype(np.float32) / 255.0, tuple(color), piel=True) * 255 + 0.5, 0, 255).astype(np.uint8)
+    placed, placed_nrm, placement = _retarget_zona_huesos_b3(
+        dp[used], dn[used], used, donor, host, zone, bones_src, bone_out)
+    vertex_of = {int(v): i for i, v in enumerate(used)}
+    corner_keys, tris_out = {}, []
+    P_out, N_out, B_out, U_out = [], [], [], []
+    for ti, tri in enumerate(src_original):
+        new_tri = []
+        for corner, original in enumerate(tri):
+            uvt = tuple(float(x) for x in uv_tri[ti, corner])
+            key = (int(original), uvt)
+            vi = corner_keys.get(key)
+            if vi is None:
+                vi = len(P_out)
+                corner_keys[key] = vi
+                ui = vertex_of[int(original)]
+                P_out.append(placed[ui])
+                N_out.append(placed_nrm[ui])
+                B_out.append(bone_out[ui])
+                U_out.append(uvt)
+            new_tri.append(vi)
+        tris_out.append(tuple(new_tri))
+    src_tris = np.asarray(tris_out, int)
     quitar = np.asarray([(z == zone) and (draw == chosen) for (draw, _), z in zip(td_h, hz)], bool)
-    pieza = {"host": chosen, "quitar": quitar, "P": dp[used], "N": dn[used], "UV": donor.uv[used],
-             "bones": bone_out, "tris": src_tris, "rgba": rgba, "zona": zona}
+    pieza = {"host": chosen, "quitar": quitar, "P": np.asarray(P_out), "N": np.asarray(N_out),
+             "UV": np.asarray(U_out), "bones": np.asarray(B_out), "tris": src_tris, "rgba": rgba,
+             "zona": zona, "placement": placement}
     if preparar:
         return pieza
     out, summary = ir.injertar_ropa(current_bytes, host, quitar, chosen, dp[used], dn[used], donor.uv[used],
@@ -846,8 +1004,7 @@ def _aplicar_piezas_b3(amb, ficha, juego, afs, tintar=False):
 
 
 def _pelo_donante(model, P, zonas, donor_bytes):
-    """Pelo de un cuerpo nativo ajustado a la cabeza del heroe: (dm, ht, dvs, Q, QN, tris) o None si el donante no tiene pelo.
-    Lo usan el combate (_injertar_pelo_nativo) y la vista previa del menu (ficha_malla): el mismo injerto en las dos."""
+    """Transfiere el pelo entre marcos HEAD y ajusta su escala a la cabeza del cuerpo anfitrión."""
     dm = mr.Model(bytes(donor_bytes))
     pose = pose_de(dm)
     Pd, Nd = dm.posed(pose)
@@ -856,22 +1013,36 @@ def _pelo_donante(model, P, zonas, donor_bytes):
     if not ht:
         return None
     dvs = np.unique(dm.tris[ht].reshape(-1))
-    plo, phi = Pd[dvs].min(0), Pd[dvs].max(0)
-    host = [i for i, z in enumerate(zonas) if z == "pelo"]
-    if host:
-        vs = np.unique(model.tris[host].reshape(-1))
-        dlo, dhi = P[vs].min(0), P[vs].max(0)
-    else:   # calvo: caja de la cabeza (mismas medidas que ajustar_pelo)
-        cara = [i for i, z in enumerate(zonas) if z == "cara"]
-        u = np.unique(model.tris[cara].reshape(-1)) if cara else np.unique(model.tris.reshape(-1))
-        clo, chi = P[u].min(0), P[u].max(0)
-        dlo = np.array([clo[0], chi[1] - (chi[1] - clo[1]) * 0.45, clo[2]])
-        dhi = np.array([chi[0], chi[1] + (chi[1] - clo[1]) * 0.25, chi[2]])
-    esc = min((dhi[0] - dlo[0]) / max(phi[0] - plo[0], 1e-6), (dhi[2] - dlo[2]) / max(phi[2] - plo[2], 1e-6)) * 1.02
-    centro_p = np.array([(plo[0] + phi[0]) / 2, plo[1], (plo[2] + phi[2]) / 2])
-    centro_d = np.array([(dlo[0] + dhi[0]) / 2, dlo[1] + (dhi[1] - dlo[1]) * 0.12, (dlo[2] + dhi[2]) / 2])
-    Q = (Pd[dvs] - centro_p) * esc + centro_d
-    QN = Nd[dvs].copy()
+    # La pieza se normaliza con el tamaño de la cara en espacio HEAD y luego se
+    # coloca con el transform HEAD del anfitrión. No se usa el bbox del pelo,
+    # que cambia mucho entre peinados y era la causa de que algunos flotaran.
+    dh = dm.bone("HEAD")
+    hh = model.bone("HEAD")
+    if dh is None or hh is None:
+        return None
+    dw, hw = np.asarray(dm.worlds(pose)), np.asarray(model.worlds(pose_de(model)))
+    try:
+        inv_dhead = np.linalg.inv(dw[dh])
+        inv_hhead = np.linalg.inv(hw[hh])
+    except np.linalg.LinAlgError:
+        return None
+    dface = [i for i, z in enumerate(zd) if z == "cara"]
+    hface = [i for i, z in enumerate(zonas) if z == "cara"]
+    if not dface or not hface:
+        return None
+    dv = np.unique(dm.tris[dface].reshape(-1))
+    hv = np.unique(model.tris[hface].reshape(-1))
+    dlocal = Pd[dv] @ inv_dhead[:3, :3].T + inv_dhead[:3, 3]
+    hlocal = P[hv] @ inv_hhead[:3, :3].T + inv_hhead[:3, 3]
+    ext_d = np.maximum(dlocal.max(0) - dlocal.min(0), 1e-6)
+    ext_h = np.maximum(hlocal.max(0) - hlocal.min(0), 1e-6)
+    escala = ext_h / ext_d
+    local_hair = Pd[dvs] @ inv_dhead[:3, :3].T + inv_dhead[:3, 3]
+    local_hair *= escala[None, :]
+    Q = local_hair @ hw[hh, :3, :3].T + hw[hh, :3, 3]
+    # Normales: inversa-transpuesta del cambio entre los dos marcos HEAD.
+    transform = hw[hh, :3, :3] @ np.diag(escala) @ inv_dhead[:3, :3]
+    QN = Nd[dvs] @ np.linalg.inv(transform)
     QN /= np.maximum(np.linalg.norm(QN, axis=1), 1e-9)[:, None]
     remap = {int(v): i for i, v in enumerate(dvs)}
     tris = [tuple(remap[int(v)] for v in dm.tris[t]) for t in ht]

@@ -734,6 +734,25 @@ void Fotograma(uint8_t* base, uint32_t estado) {
                   p.rel ? 1 : 0);
       REXLOG_INFO("dbz3 cinematica: sonda de cara marco cuadro {}: X+48 leido ({:.2f} {:.2f} {:.2f})", g_frame, m1.x, m1.y, m1.z);
     }
+    // A3: DBZ3_TEST_MARCO=2: cada 30 cuadros, hueso de la cabeza (tabla de huesos de la logica, como la sonda de gigantes.cpp) y
+    // banderas de "sin cuerpo" (X+3261/X+4925) de cada luchador: dice si se dibuja y donde esta su cabeza en el mundo.
+    static const bool cabeza = [] { const char* v = std::getenv("DBZ3_TEST_MARCO"); return v && v[0] == '2'; }();
+    if (cabeza && g_frame % 30 == 0) {
+      for (uint32_t s = 0; s < 2; ++s) {
+        const uint32_t x = mgr + kX0 + kXPaso * s, mi = REX_LOAD_U32(x + 2952), anc = REX_LOAD_U32(x + 2956);
+        const uint32_t h = mi && anc ? REX_LOAD_U32(mi + 1032) + 64 * uint32_t(int16_t(REX_LOAD_U16(anc + 6))) : 0;
+        const V3 c = h ? LeeV(base, h + 48) : V3{0, 0, 0}, r = LeeV(base, x + 64);
+        if (g_frame % 300 == 0) {
+          const V3 f0 = LeeV(base, x), f1 = LeeV(base, x + 16), f2 = LeeV(base, x + 32);
+          REXLOG_INFO("dbz3 cinematica: sonda matriz lado {}: filas ({:.2f} {:.2f} {:.2f}) ({:.2f} {:.2f} {:.2f}) ({:.2f} {:.2f} {:.2f}) 3260 {} 4924 {} 8208 {} 2952 {:X}",
+                      s + 1, f0.x, f0.y, f0.z, f1.x, f1.y, f1.z, f2.x, f2.y, f2.z, REX_LOAD_U8(x + 3260), REX_LOAD_U8(x + 4924),
+                      REX_LOAD_U8(x + 8208), mi);
+        }
+        REXLOG_INFO("dbz3 cinematica: sonda cabeza lado {} cuadro {} t {:.2f}: cabeza ({:.2f} {:.2f} {:.2f}) pies ({:.2f} {:.2f} {:.2f}) ocultoA {} ocultoB {} accion {} codigo {:03X} ojo ({:.2f} {:.2f} {:.2f}) obj ({:.2f} {:.2f} {:.2f})",
+                    s + 1, g_frame, esc, c.x, c.y, c.z, r.x, r.y, r.z, REX_LOAD_U8(x + 3261), REX_LOAD_U8(x + 4925),
+                    REX_LOAD_U16(x + 3244), REX_LOAD_U32(x + kCodigo) & 0xFFF, eo[0], eo[1], eo[2], eb[0], eb[1], eb[2]);
+      }
+    }
   }
   g_abre = std::min({1.0f, float(AhoraMs() - g_t0) / 500.0f, ultimo ? queda / 0.5f : 1.0f});
   ++g_frame;

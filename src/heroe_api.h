@@ -22,7 +22,7 @@ const std::string& Nombre();  // nombre del heroe
 // --- sagas para el mapa (studies 8 fase 2, H5) ---
 int Saga();                                           // la siguiente por jugar (las de antes, completadas)
 int SagasTotal();
-constexpr int kSagasJugables = 3;   // las sagas 4-8 salen bloqueadas ("En desarrollo"): sus codigos virtuales no los reproduce el motor DU
+constexpr int kSagasJugables = 4;   // las sagas 5-8 salen bloqueadas ("En desarrollo"): sus codigos virtuales no los reproduce el motor DU
 const char* NombreSaga(int saga);
 int MaestroQueEntrena(int saga);                          // ID del maestro que se entrena (-1 ninguno)
 std::vector<std::pair<int, int>> CombatesDeSaga(int saga);   // (rival, escenario) de cada combate

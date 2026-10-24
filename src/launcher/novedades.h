@@ -20,6 +20,27 @@ struct NewsBlock {
   int count;
 };
 
+inline constexpr NewsItem kNews1552[] = {
+    {"Modo Héroe (beta)", "Hero Mode (beta)",
+     "Saga 4 jugable. Las sagas 2, 3 y 4 ya se juegan en el mapa de la Tierra, no en Namek.",
+     "Saga 4 is playable. Sagas 2, 3 and 4 now take place on the Earth map, not Namek."},
+    {nullptr, nullptr,
+     "Peinados de Budokai 3 bien ajustados a la cabeza: Goku, Vegeta, Gohan (Cell) y Goku niño.",
+     "Budokai 3 hairstyles that fit the head properly: Goku, Vegeta, Gohan (Cell) and Kid Goku."},
+    {nullptr, nullptr,
+     "Arreglado: al elegir el moveset de otro luchador en el apartado, el combate seguía usando los golpes del cuerpo propio.",
+     "Fixed: choosing another fighter's moveset in the creator kept the body's own moves in battle."},
+    {"Leyenda de Mr. Satán", "Mr. Satan legend",
+     "Arreglado: en la escena final del ring de Cell no se veían Satán ni el suelo del ring.",
+     "Fixed: Mr. Satan and the ring floor were invisible in the final Cell ring scene."},
+    {nullptr, nullptr,
+     "En la escena final Satán entrecierra los ojos como en el original.",
+     "In the final scene Mr. Satan squints like in the original."},
+    {"Online (beta)", "Online (beta)",
+     "El informe de desincronía ya se guarda; aviso claro si el anfitrión no contesta; revancha y vuelta al menú probadas; si se corta en pleno combate puedes pausar y salir.",
+     "The desync report is now saved; clear message if the host doesn't answer; rematch and return to menu tested; if the connection drops mid-fight you can pause and quit."},
+};
+
 inline constexpr NewsItem kNews1551[] = {
     {"Online (beta)", "Online (beta)",
      "Pantalla online más clara: 4 pasos visibles, estado de conexión con color y ping, copiar o pegar el código con X y errores explicados con qué hacer.",
@@ -203,6 +224,7 @@ inline constexpr NewsItem kNews145[] = {
 
 // Del mas nuevo al mas antiguo.
 inline constexpr NewsBlock kNewsBlocks[] = {
+    {"1.5.5.2", kNews1552, int(sizeof(kNews1552) / sizeof(kNews1552[0]))},
     {"1.5.5.1", kNews1551, int(sizeof(kNews1551) / sizeof(kNews1551[0]))},
     {"1.5.5", kNews155, int(sizeof(kNews155) / sizeof(kNews155[0]))},
     {"1.5.1.4", kNews1514, int(sizeof(kNews1514) / sizeof(kNews1514[0]))},

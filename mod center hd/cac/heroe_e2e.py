@@ -151,7 +151,7 @@ def correr_escenario(copia, toml):
     r = subprocess.run([sys.executable, os.path.join(RAIZ, "tools", "pruebas.py"), "correr", copia, toml],
                        capture_output=True, text=True, errors="replace", cwd=RAIZ)
     out = (r.stdout or "") + (r.stderr or "")
-    m = re.search(r"capturas y resultados: (\S+)", out)
+    m = re.search(r"(?:capturas|evidencia) y resultados: (\S+)", out)
     carpeta = m.group(1) if m else None
     log = ""
     if carpeta and os.path.exists(os.path.join(carpeta, "dbz3.log")):
@@ -222,6 +222,19 @@ def etapa_juego(copia, cual):
         paso, out, carpeta, log = correr_escenario(copia, os.path.join(AQUI, "e2e", "heroe_tecnicas_otro.toml"))
         ok("otro: el escenario termina", paso, out[-300:])
         ok("otro: con Si el moveset pasa al donante de la tecnica", re.search(r"moveset cambiado al donante \d+ \(Si\)", log) is not None)
+        m = re.search(r"moveset cambiado al donante (\d+) \(Si\)", log)
+        c = re.search(r"moveset (\d+) \(.*\) para el estilo 0 en este combate", log)
+        ok("otro: el combate siguiente usa ese moveset", m is not None and c is not None and m.group(1) == c.group(1),
+           "%s / %s" % (m and m.group(1), c and c.group(1)))
+    if cual in ("moveset", "todo"):   # C8m: cambiar de moveset en el apartado -> el siguiente combate lo usa
+        reiniciar_progreso(copia)
+        paso, out, carpeta, log = correr_escenario(copia, os.path.join(AQUI, "e2e", "heroe_moveset_cambio.toml"))
+        ok("moveset: el escenario termina", paso, out[-300:])
+        m = re.search(r"moveset elegido (\d+) \(", log)
+        ok("moveset: el apartado elige otro moveset", m is not None)
+        c = re.search(r"moveset (\d+) \(.*\) para el estilo 0 en este combate", log)
+        ok("moveset: el combate usa el moveset elegido", c is not None and m is not None and c.group(1) == m.group(1),
+           "%s / %s" % (m and m.group(1), c and c.group(1)))
     if cual in ("ki", "todo"):   # C4: color de ki desbloqueado -> cac.toml y personaje.toml del heroe propio
         reiniciar_progreso(copia)
         sembrar_cac(copia)
@@ -267,7 +280,7 @@ def main():
             m = re.search(r"heroe_du_e2e: (\d+)/(\d+) PASS", r.stdout)
             print(r.stdout[-1800:])
             ok("du: heroe_du_e2e.py (%s)" % (m.group(0) if m else "sin resultado"), bool(m) and m.group(1) == m.group(2), r.stderr[-300:])
-        if a.solo in ("fichas", "tecnicas", "apariencia", "deseo", "otro", "ki", "xv2", "todo"):
+        if a.solo in ("fichas", "tecnicas", "apariencia", "deseo", "otro", "moveset", "ki", "xv2", "todo"):
             etapa_juego(a.copia, a.solo)
     fallos = [r for r in RES if not r[1]]
     print("heroe_e2e: %d pruebas, %d fallos" % (len(RES), len(fallos)))

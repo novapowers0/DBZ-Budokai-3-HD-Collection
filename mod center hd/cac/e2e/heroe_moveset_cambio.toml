@@ -1,0 +1,28 @@
+# copia: s5_c2
+descripcion = "C8m: Heroe > Moveset: elige otro moveset en el apartado y el combate siguiente lo usa"
+env = ["DBZ3_TEST_RINGOUT=1", "DBZ3_TEST_HEROE_TODO=1"]
+pasos = [
+  "esperar 2500",
+  "tecla W 1200",
+  "tecla Space 3500",
+  "tecla S 450", "tecla S 450", "tecla S 450", "tecla S 450", "tecla S 450",
+  "tecla Space 2500",
+  "tecla S 700", "tecla S 700", "tecla S 700",
+  "tecla Space 3500",
+  "captura c2_tec_0_heroe",
+  "tecla 3 700", "tecla S 500",   # C4: RB = pestana Combate; S = fila Moveset
+  "captura c2_tec_1_fila_moveset",
+  "tecla Space 2500",
+  "captura c2_tec_2_movesets",
+  "tecla D 500", "tecla D 500", "tecla D 500",
+  "captura c8m_mov_0_eleccion",
+  "tecla Space 2500",
+  "log \"moveset elegido [0-9]+ \" 20",
+  "captura c8m_mov_1_vuelta_heroe",
+  "tecla S 500", "tecla S 500", "tecla S 500",
+  "captura c8m_mov_2_empezar",
+  "tecla Space 4000",
+  "log \"moveset [0-9]+ .* para el estilo 0 en este combate\" 120",
+  "esperar 4000",
+  "captura c8m_mov_3_combate",
+]

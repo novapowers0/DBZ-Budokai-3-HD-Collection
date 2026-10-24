@@ -145,6 +145,9 @@ class Session {
   // (medido 2026-10-11: DESINCRONIA medio segundo despues de empezar).
   void BattleBarrier();
   bool desynced() const { return desync_.load(); }
+  // Corte en pleno combate: el mando 2 sigue 'conectado' y neutro hasta acabar el combate (si no, el juego pide reconectarlo y no hay salida)
+  bool cut_fight() const { return cut_fight_.load(); }
+  void ClearCutFight() { cut_fight_ = false; }
   // R1 (cvar dbz3_net_sumas, apagada): suma por fotograma de la region del combate (5 bloques, rollback.h). Hilo del juego,
   // antes de RunTick(tick): se guarda, se manda al otro PC y se compara con la suya cuando llegan las dos. Una
   // diferencia solo se registra (tick y bloques: bit0 gestor, 1 luchador 0, 2 luchador 1, 3 resto del gestor, 4 RNG);
@@ -205,6 +208,7 @@ class Session {
   // All nonblocking socket operations and the UI->guest handoff share this lock.
   // RunTick NEVER holds it while sleeping/waiting for the peer.
   mutable std::recursive_mutex io_mu_;
+  std::atomic<bool> cut_fight_{false};
   bool guest_owner_ = false;
   uint64_t generation_ = 0;
   uint32_t local_nonce_ = 0, peer_nonce_ = 0;

@@ -392,6 +392,7 @@ bool MenuRowsTracked() {
   return sc == kMainMenuScreen || (sc == kDuelMenuScreen && !dbz3_select_live() && !dbz3_select_to_stage());
 }
 void NotePad2(bool connected) { g_pad2 = connected; }
+bool BattleNow() { return g_battle.load(); }
 bool Pad2Connected() { return g_pad2.load(); }
 int MainMenuRow() {
   if (NowMs() - g_real_main_at.load() < 500 && g_real_main_row.load() >= 0) return g_real_main_row.load();
@@ -665,6 +666,7 @@ void OnlinePanel::OnDraw(ImGuiIO& io) {
   if (int(now) != last_link_ && broken) lost_notice_ = true;
   if (!broken) lost_notice_ = false;
   if (lost_notice_ && !g_battle.load()) {
+    s.ClearCutFight();
     g_wanted = true;
     lost_notice_ = false;
   }
@@ -1031,7 +1033,7 @@ void OnlinePanel::DrawScreen(ImGuiIO& io, uint16_t pressed) {
     else if (link == Link::kError)
       say += std::string(T::T("No se pudo conectar. Que hacer: comprueba que el codigo esta bien escrito y que el otro jugador ya tiene la sala creada.",
                               "Could not connect. What to do: check the code is typed right and the other player has already created the room.")) + "\n";
-    switch (cur) {
+    if (link != Link::kError && link != Link::kLost) switch (cur) {   // con un error, solo el error y que hacer (cuadro corto)
       case kHostRow:
         say += T::T("Crea la partida: te dara un codigo de sala para pasarselo al otro jugador. Necesitais la misma version y los mismos mods.",
                     "Host the match: you get a room code to give to the other player. You both need the same version and mods.");
@@ -1113,28 +1115,28 @@ void OnlinePanel::DrawScreen(ImGuiIO& io, uint16_t pressed) {
         }
         // ---- VANILLA (V): salida cuando los mods no se pueden igualar
         if (s.VanillaAgreed())
-          say += T::T("\nLos dos aceptasteis: el juego se reinicia sin mods y se reconecta solo.",
-                      "\nYou both accepted: the game restarts without mods and reconnects by itself.");
+          say += T::T("\nAceptado: reiniciando sin mods...",
+                      "\nAccepted: restarting without mods...");
         else if (s.MyVanilla())
-          say += T::T("\nHas aceptado jugar vanilla. Esperando al otro jugador...", "\nYou accepted vanilla. Waiting for the other player...");
+          say += T::T("\nHas aceptado vanilla. Esperando al otro...", "\nYou accepted vanilla. Waiting for the other...");
         else if (s.PeerOffersVanilla())
-          say += T::T("\nEl otro propone jugar vanilla (sin mods) solo esta partida. Elige JUGAR VANILLA para aceptar.",
-                      "\nThe other player offers to play vanilla (no mods) for this match only. Choose PLAY VANILLA to accept.");
+          say += T::T("\nEl otro propone vanilla (sin mods). Elige JUGAR VANILLA.",
+                      "\nThe other offers vanilla (no mods). Choose PLAY VANILLA.");
         else
-          say += T::T("\nO jugad vanilla (sin mods) solo esta partida: tus mods no se tocan. Lo tienen que aceptar los dos.",
-                      "\nOr play vanilla (no mods) for this match only: your mods are not touched. Both must accept.");
+          say += T::T("\nO jugad vanilla (sin mods), si aceptais los dos.",
+                      "\nOr play vanilla (no mods) if you both accept.");
         const std::string nova = dbz3::launcher::NovaStatus();
         if (synced_ && !installing) {
-          say += T::T("\nCierra el juego, pulsa JUGAR en el launcher y volved a conectar.",
-                      "\nClose the game, press PLAY in the launcher and reconnect.");
+          say += T::T("\nCierra el juego, pulsa JUGAR y reconecta.",
+                      "\nClose the game, press PLAY and reconnect.");
         } else if (!installable.empty()) {
-          say += T::T("\nPulsa INSTALAR LO QUE FALTA (Nova's Mods).", "\nPress INSTALL WHAT IS MISSING (Nova's Mods).");
+          say += T::T("\nPulsa INSTALAR LO QUE FALTA.", "\nPress INSTALL WHAT IS MISSING.");
         } else if (std::all_of(diff.begin(), diff.end(), [](const Delta& d) { return d.kind == Delta::kExtra; })) {
-          say += T::T("\nEl otro jugador puede instalarlo desde su pantalla, o desactivalo tu en el launcher.",
-                      "\nThe other player can install it from their screen, or disable it in your launcher.");
+          say += T::T("\nEl otro puede instalarlo, o desactivalo tu.",
+                      "\nThe other can install it, or disable it yourself.");
         } else {
-          say += T::T("\nActivad los mismos mods en el launcher y volved a conectar.",
-                      "\nEnable the same mods in the launcher and reconnect.");
+          say += T::T("\nActivad los mismos mods y reconectad.",
+                      "\nEnable the same mods and reconnect.");
         }
         if ((installing || sync_failed_) && !nova.empty()) say += "\n" + nova;   // tambien el error de una descarga
       }

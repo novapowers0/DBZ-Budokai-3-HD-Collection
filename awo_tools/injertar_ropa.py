@@ -206,7 +206,8 @@ def injertar_ropa_multi(amb, model, piezas, presupuesto=WINDOW_BUDGET):
             slots[i] = ss.slot_of[int(eff[i])]
         nl /= np.maximum(np.linalg.norm(nl, axis=1), 1e-9)[:, None]
         prepared.append({"host": host, "loc": loc, "nrm": nl, "uv": Uu, "slots": slots,
-                         "tris": tris_local, "rgba": pieza["rgba"], "zona": pieza.get("zona", "?")})
+                         "tris": tris_local, "rgba": pieza["rgba"], "zona": pieza.get("zona", "?"),
+                         "placement": pieza.get("placement", {})})
 
     removed, kept = collections.defaultdict(list), collections.defaultdict(list)
     for (di, tri), remove in zip(td, remove_all):
@@ -270,5 +271,6 @@ def injertar_ropa_multi(amb, model, piezas, presupuesto=WINDOW_BUDGET):
     for p in prepared:
         mat = dt2.materials[dt2.draws[p["host"]]["material"]]
         wh = _escribir_textura(b, mat["tex"], p["rgba"])
-        resumen["zonas"][p["zona"]] = {"anfitrion": p["host"], "triangulos": len(p["tris"]), "textura": wh}
+        resumen["zonas"][p["zona"]] = {"anfitrion": p["host"], "triangulos": len(p["tris"]), "textura": wh,
+                                         "placement": p["placement"]}
     return bytes(b), resumen

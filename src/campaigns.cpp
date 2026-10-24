@@ -224,7 +224,10 @@ uint32_t WheelSlot(uint8_t* base, int e) {
 // C4 (sagas 4-8 del Heroe): los combates de una campana son 5400-5799 (bloques del juego) y, para las sagas virtuales,
 // 12500-12999 (campana.py: 12500 + 100*(saga - 4) + casilla); (code - 5000) % 100 == casilla vale en los dos rangos.
 bool CodigoCombate(uint32_t code) { return (code >= 5400 && code < 5800) || (code >= 12500 && code < 13000); }
-int SagaDeCombate(uint32_t code) { return code < 5800 ? int((code - 5400) / 100) - 1 : 3 + int((code - 12500) / 100); }
+// H4: el bloque 5400 (+casilla) es la saga 4 REAL (indice 3: campana.py usa el bloque 0 tras 5100-5300); 5500-5700 = sagas 1-3; virtuales (saga 5+) = 4 + ...
+int SagaDeCombate(uint32_t code) { return code < 5800 ? (code < 5500 ? 3 : int((code - 5400) / 100) - 1) : 4 + int((code - 12500) / 100); }
+// Intro de la saga sig (1-based): 102/104/106 del juego; la 4.a es la 100 (bloque 0); mas alla, el mapa nativo (sin jugar aun).
+uint32_t IntroDeSaga(int sig) { return sig <= 3 ? uint32_t(100 + 2 * std::max(1, sig)) : sig == 4 ? 100u : 5336u; }
 int DuFighter(uint8_t* base) {
   if (g_slot_fighter.empty() || dbz3::g_guest_eu) return -1;
   const uint32_t w = g_last_battle.load(), code = w >> 16, slot = REX_LOAD_U8(dbz3::GA(0x824A58A0));
@@ -291,8 +294,6 @@ REX_HOOK_RAW(sub_82156E88) {
   if (const auto it = dbz3::campaigns::g_slot_fighter.find(slot); it != dbz3::campaigns::g_slot_fighter.end()) ctx.r3.u64 = it->second;
 }
 
-// Sagas 4-8 en desarrollo: sus intros virtuales (14001+) no las reproduce el motor DU (C8 PENDIENTE 00b); tras la saga 3 se vuelve al mapa nativo.
-static constexpr uint32_t kMapaNativo = 5336;
 
 // Intro de la casilla (sub_82156DC8: casilla -> codigo << 16 | casilla): una campana pide otra ([intro_casilla]
 // 36 = 102: la de Namek) para empezar su historia en esa saga.
@@ -309,7 +310,7 @@ REX_HOOK_RAW(sub_82156DC8) {
       // PRUEBA (DBZ3_TEST_DU_SAGA=4): fija la saga 1-based de la intro sin jugar las anteriores (sondas de C8/DS9).
       const char* ts = std::getenv("DBZ3_TEST_DU_SAGA");
       const int sig = ts ? std::atoi(ts) : dbz3::heroe::Saga() + 1;
-      const uint32_t intro = sig >= 4 ? kMapaNativo : uint32_t(100 + 2 * std::max(1, sig));
+      const uint32_t intro = dbz3::campaigns::IntroDeSaga(sig);
       if (sig <= 8) ctx.r3.u64 = (uint64_t(intro) << 16) | slot;
     }
   }
@@ -427,7 +428,7 @@ DBZ3_HOOK(sub_8215E9C8, dbz3eu_sub_8215E988) {
     // C4: el cierre de saga va a guardar: la escena guardada de la casilla (bloque + 4564, la que usa "Continuar") pasa a la
     // introduccion de la saga SIGUIENTE (campana.py: 100 + 2*s del juego para las 3 primeras; 14001 + 2*(s-4) las virtuales)
     const int cerrada_abs = dbz3::campaigns::g_saga_ganada.load() + 1, sig = cerrada_abs + 1;   // SAGA0 = 1: indice 0 = saga 1
-    const uint32_t intro = sig >= 4 ? kMapaNativo : uint32_t(100 + 2 * sig);
+    const uint32_t intro = dbz3::campaigns::IntroDeSaga(sig);
     const uint32_t cas = REX_LOAD_U8(dbz3::GA(0x824A58A0));
     const uint32_t blk = dbz3::GA(0x8247A9B0) + 128 + 4624 * (cas < 38 ? cas : 0);
     REXLOG_INFO("dbz3 campanas: cierre de saga {}: escena guardada {:08X} -> {:08X} (intro de la saga {})", cerrada_abs,

@@ -470,8 +470,9 @@ int MovesetCiclo(int d) {
 // indices del moveset (los ports reconstruyen el banco del donante con gritos.py); el del cuerpo tiene otro orden
 // y otro numero (55/56) y podria pedir un sonido que no existe. Altura: ver Altura().
 void Vestir(int estilo, int cuerpo, int traje) {
-  if (estilo == cuerpo || estilo < 0 || estilo >= 44 || cuerpo < 0 || cuerpo >= 44) return Quitar();
+  if (estilo < 0 || estilo >= 44 || cuerpo < 0 || cuerpo >= 44) return Quitar();
   const int donante = (g_moveset >= 0 && g_moveset != estilo && MovesetValido(g_moveset)) ? g_moveset : -1;
+  if (estilo == cuerpo && donante < 0) return Quitar();
   if (g_puesto.estilo == estilo && g_puesto.cuerpo == cuerpo && g_puesto.traje == traje &&
       g_puesto.moveset == donante) {
     return;
@@ -483,6 +484,17 @@ void Vestir(int estilo, int cuerpo, int traje) {
   const uint8_t* rc = b + kChar372 + uint32_t(cuerpo) * 372;
   if (!Be32(r) || !Be32(rc)) return;   // sin registro de combate (recortados)
   std::memcpy(g_puesto.c372, r, 372);
+  if (estilo == cuerpo) {   // C8m: cuerpo propio del estilo (formas y cara intactas) pero con el moveset de otro donante
+    const uint8_t* rd = b + kChar372 + uint32_t(donante) * 372;
+    for (uint32_t f = 0; f < 8; ++f) W32(r + 4 * f, Be32(rd + 4 * f));
+    W32(r + 0x20, Be32(rd + 0x20));
+    W32(r + 0x24, Be32(rd + 0x24));
+    W32(r + 0x28, Be32(rd + 0x28));
+    g_puesto.estilo = estilo, g_puesto.cuerpo = cuerpo, g_puesto.traje = traje, g_puesto.moveset = donante;
+    REXLOG_INFO("dbz3 heroe: moveset {} ({}) para el estilo {} en este combate (cuerpo propio)", donante,
+                M::Nombre(donante), estilo);
+    return;
+  }
   if (donante >= 0) {   // moveset del donante: sus 8 ANM por forma, su CAM (combos/camara) y su idioma (gritos)
     const uint8_t* rd = b + kChar372 + uint32_t(donante) * 372;
     for (uint32_t f = 0; f < 8; ++f) W32(r + 4 * f, Be32(rd + 4 * f));
@@ -1780,11 +1792,11 @@ const std::vector<Desbloqueo>& TablaDesbloqueos() {
     for (const std::filesystem::path& ruta : {dbz3::settings::UserDataRoot() / "heroe" / "desbloqueos.toml",
                                               dbz3::ModsRoot().parent_path() / "res" / "heroe" / "desbloqueos.toml"}) {
       std::error_code ec;
-      if (!std::filesystem::exists(ruta, ec)) continue;
+      if (!std::filesystem::exists(ruta, ec)) { REXLOG_INFO("dbz3 heroe: sin desbloqueos en {}", ruta.string()); continue; }
       try {
         const toml::table t = toml::parse_file(ruta.string());
         const toml::array* a = t["desbloqueo"].as_array();
-        if (!a) continue;
+        if (!a) { REXLOG_INFO("dbz3 heroe: {} sin tabla desbloqueo", ruta.string()); continue; }
         for (const auto& e : *a) {
           const toml::table* x = e.as_table();
           if (!x) continue;

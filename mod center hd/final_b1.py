@@ -119,8 +119,10 @@ def acm_add_clip(acm, flags, var, nframes, rot, pos):
     return bytes(out), n
 
 
-def csk_add_code(csk, codigo, anim):
-    """#CSK HD con el codigo `codigo` (libre) apuntando al clip `anim` del almacen 3 (propio), sin lineas AP."""
+def csk_add_code(csk, codigo, anim, ap6=()):
+    """#CSK HD con el codigo `codigo` (libre) apuntando al clip `anim` del almacen 3 (propio).
+    ap6: lineas AP tipo 6 (manos/cara) (cuadro, orden, parte, etiqueta): parte 0 mano izq, 1 mano der, 2 cara; etiqueta = el
+    numero Lnn del modelo (18 = XSTN_L18_FACE, ojos apretados; 0 = la de reposo). Es lo que usa el juego en sus propias animaciones."""
     nn, lst = struct.unpack_from(">2I", csk, 0x10)
     if codigo >= nn or struct.unpack_from(">I", csk, lst + 4 * codigo)[0]:
         raise ValueError("el codigo %#x no esta libre" % codigo)
@@ -128,6 +130,14 @@ def csk_add_code(csk, codigo, anim):
     out += bytes((-len(out)) % 16)
     addr = len(out)
     out += struct.pack(">HH", anim, 3) + bytes(20) + b"\xff" * 12 + struct.pack(">3I", 0, 0, 0)
+    if ap6:
+        out += bytes((-len(out)) % 16)
+        lin = len(out) + 8
+        tabla = len(out)
+        out += struct.pack(">HHI", 6, len(ap6), lin)
+        for fr, orden, parte, etq in ap6:
+            out += struct.pack(">HBBIII", fr, orden, 2, parte, etq, 0)
+        struct.pack_into(">2I", out, addr + 24 + 12 + 4, 1, tabla)   # n_ap y direccion de la tabla AP del sub-bloque
     struct.pack_into(">I", out, lst + 4 * codigo, addr)
     return bytes(out)
 
@@ -300,12 +310,22 @@ class Conversor:
             out[g0:] = out[g0 - 1]
         return out
 
+    def caras(self):
+        """Cara de Mr. Satan por tramos: ojos apretados (XSTN_L18) de 28,53 a 33,03 s de la escena (= 37,25-41,75 s del video de B1, desfase 8,72 s medido por los cortes de camara);
+        FINAL_B1_CARA="cuadro:orden:parte:etiqueta,..." lo cambia para pruebas."""
+        if self.nombre != "satan":
+            return ()
+        e = os.environ.get("FINAL_B1_CARA")
+        if e is not None:
+            return tuple(tuple(int(v) for v in t.split(":")) for t in e.split(",") if t)
+        return ((1712, 2, 2, 18), (1982, 3, 2, 0))
+
     def mod_entradas(self, paso=1):
         """-> (anm HD nuevo, indice del clip)."""
         sc = self.sc
         rot, pos = self.construir(paso)
         acm, idx = acm_add_clip(self.acm, 0x9, int(os.environ.get("FINAL_B1_VAR_" + self.nombre.upper(), 100)), FRAMES, rot, pos)   # la variable solo sirve para pruebas de cara
-        csk = csk_add_code(self.csk, CODIGO, idx)
+        csk = csk_add_code(self.csk, CODIGO, idx, self.caras())
         e, kids = ">", sc.amb_kids(self.anm, ">")
         anm = sc.amb_rebuild(self.anm, ">", 1, acm)
         anm = sc.amb_rebuild(anm, ">", 0, csk)
@@ -318,7 +338,7 @@ def iso_b1():
 
 
 MOD = "Final Leyenda Satan (B1)"
-VERSION = 1   # subir si cambia el resultado: se rehace en el equipo del jugador
+VERSION = 2   # subir si cambia el resultado: se rehace en el equipo del jugador
 
 
 def _abrir_b1(iso):

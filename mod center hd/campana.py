@@ -852,7 +852,8 @@ def story(cfg, us, mod, work):
         elif nxt.get("saga") and not virt(place[i + 1][0]):   # cierre de saga -> guardar -> introduccion (las virtuales 4-8: abajo, vuelta al mapa)
             s2 = place[i + 1][0]
             intro, outro = intro_c(s2), outro_c(s2)
-            intros[outro] = (narration(cierre(i + 1), nxt, "cierre_"),
+            if str(outro) in reg:   # H4: la 99 (cierre del bloque 0) no existe en el juego; sin 103 de todos modos (C8)
+                intros[outro] = (narration(cierre(i + 1), nxt, "cierre_"),
                              ([(20, 0, (intro << 16) | slot)] + ([(47, 0, int(nxt.get("planeta", 0)))] if os.environ.get("HEROE_PLANETA_SIN_GUARDAR") else [])) if h.get("sin_guardar") else
                              [(20, 0, (intro << 16) | slot), (50, 0, 0), (47, 0, int(nxt.get("planeta", 0)))])
             parts = narration(narr(i + 1), nxt, "")
@@ -865,7 +866,7 @@ def story(cfg, us, mod, work):
             _ops = [(22, 0, 0), tuple([44, 0] + list(nxt["salida"]))] + objs +                    [(54, 0, 0), tuple(mark(i + 1)), (20, 0, mapc(s2) << 16)]   # a su llegada al mapa
             _quitar = {int(x) for x in os.environ.get("HEROE_QUITAR_OPS", "").split(",") if x.strip()}   # C7: pruebas de bisecacion
             intros[intro] = (parts, [e for e in _ops if e[0] not in _quitar])
-            tail = [(22, 0, 0), (20, 0, ((outro if os.environ.get("HEROE_CON_103") else intro) << 16) | slot)]   # C8: SIN la escena de cierre 103 (con ella, el 1.er combate de la saga siguiente se cuelga: la cola de cargas del juego no termina); HEROE_CON_103=1 la deja
+            tail = [(22, 0, 0)] + ([(47, 0, int(nxt.get("planeta", 0)))] if h.get("sin_guardar") and not os.environ.get("HEROE_SIN_PLANETA") and int(nxt.get("planeta", 0)) != next((int(x["planeta"]) for x in reversed(chapters[:i + 1]) if "planeta" in x), 1) else []) + [(20, 0, ((outro if os.environ.get("HEROE_CON_103") else intro) << 16) | slot)]   # C8: SIN la escena de cierre 103 (con ella, el 1.er combate de la saga siguiente se cuelga: la cola de cargas del juego no termina); HEROE_CON_103=1 la deja
         else:                                           # sigue la saga: la marca del combate siguiente
             # y, como el juego (2138.1 -> 5100.5), se vuelve al mapa por una escena del mapa: una frase
             # de tu personaje (`mapa_es`; guion 2899, el de 5000.8); sin ella el dialogo del combate

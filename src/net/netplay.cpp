@@ -975,9 +975,9 @@ void Session::Poll() {
     }
     if (now - last_recv_ms_ > kLostMs) Fail(Link::kLost, T::T("sin respuesta del otro PC", "no reply from the other PC"));
   }
-  if (link_ == Link::kWaiting && role_ == Role::kGuest && now - last_recv_ms_ > 30000) {
-    Fail(Link::kError, T::T("no contesta: revisa el codigo, el puerto y el cortafuegos del anfitrion (en la misma casa, usa su IP local)",
-                            "no answer: check the code, the port and the host's firewall (in the same house, use their local IP)"));
+  if (link_ == Link::kWaiting && role_ == Role::kGuest && now - last_recv_ms_ > 15000) {
+    Fail(Link::kError, T::T("no contesta: revisa el codigo y que el anfitrion ya creo la sala",
+                            "no answer: check the code and that the host already created the room"));
   }
 }
 
@@ -1242,10 +1242,15 @@ void CombatRules::Apply() const {
 void Session::Fail(Link l, const std::string& why) {
   std::lock_guard<std::recursive_mutex> io(io_mu_);
   guest_owner_ = false;
+  // el informe se escribe ANTES de ResetTransport (que borra las sumas, el RNG y la marca de desincronia)
+  if (link_.load() == Link::kPlaying) cut_fight_ = true;
+  const bool ds = desync_.load() && l == Link::kError;
+  const std::string rep = ds ? WriteDesyncReport(why) : std::string();   // informe pequeno para que el jugador nos lo envie
   ResetTransport();
+  desync_ = ds;   // la pantalla lo usa para explicar que hacer; Host/Join lo limpian
   std::lock_guard<std::mutex> lock(mu_);
   error_ = why;
-  if (desync_.load() && l == Link::kError) error_ += " " + WriteDesyncReport(why);   // informe pequeno para que el jugador nos lo envie
+  if (!rep.empty()) error_ += " " + rep;
   link_ = l;
 }
 
@@ -1263,6 +1268,7 @@ std::string Session::WriteDesyncReport(const std::string& why) {
     std::strftime(stamp, sizeof(stamp), "%Y%m%d_%H%M%S", std::localtime(&now));
     const fs::path file = dir / (std::string("desincronia_") + stamp + ".txt");
     std::ofstream f(file, std::ios::binary);
+    if (!f) REXLOG_WARN("dbz3 online: no se pudo abrir {}", file.string());
     f << "Informe de desincronia (DBZ Budokai 3 HD) " << stamp << "\r\n" << why << "\r\n";
     f << "rol: " << (role_ == Role::kHost ? "anfitrion" : "invitado") << "  tick: " << tick_ << "  retardo: " << int(delay_.load())
       << "  ping: " << ping_ms_.load() << " ms  rollback: " << rb_on_.load() << "\r\n";
@@ -1272,7 +1278,7 @@ std::string Session::WriteDesyncReport(const std::string& why) {
     f << "\r\nRNG por segundo (tick: mio / suyo):\r\n";
     char b[64];
     for (int i = 0; i < kRing; ++i) {
-      if (!my_rng_tick_[i] || my_rng_tick_[i] != their_rng_tick_[i]) continue;
+      if (!my_rng_tick_[i] || my_rng_tick_[i] == 0xFFFFFFFFu || my_rng_tick_[i] != their_rng_tick_[i]) continue;
       std::snprintf(b, sizeof(b), "%u: %08X / %08X%s\r\n", my_rng_tick_[i], my_rng_[i], their_rng_[i], my_rng_[i] == their_rng_[i] ? "" : "  <-- distinto");
       f << b;
     }
@@ -1298,6 +1304,9 @@ std::string Session::WriteDesyncReport(const std::string& why) {
     REXLOG_WARN("dbz3 online: informe de desincronia guardado en {}", file.string());
     return std::string(T::T("Informe guardado en la carpeta informes_online del juego: enviamelo.",
                             "Report saved in the game's informes_online folder: please send it to us."));
+  } catch (const std::exception& e) {
+    REXLOG_WARN("dbz3 online: no se pudo escribir el informe de desincronia: {}", e.what());
+    return {};
   } catch (...) {
     return {};
   }
@@ -1622,6 +1631,10 @@ void Session::RunTick(const Pad& local, uint32_t rng) {
     return;
   }
   const uint32_t t = tick_;
+  if (rng) {   // SOLO PRUEBAS: DBZ3_NET_TEST_DESYNC=<tick> falsea el RNG propio desde ese tick (apagado por defecto)
+    static const long ft = std::getenv("DBZ3_NET_TEST_DESYNC") ? std::atol(std::getenv("DBZ3_NET_TEST_DESYNC")) : -1;
+    if (ft >= 0 && long(t) >= ft) rng ^= 0x5A5A5A5Au;
+  }
   if (rules_agreed_ && !(CombatRules::Now() == play_rules_)) {
     play_rules_.Apply();
     REXLOG_INFO("dbz3 online: las reglas de combate quedan fijas durante el online (las de la sala)");

@@ -1067,6 +1067,16 @@ DBZ3_HOOK(sub_8221C178, dbz3eu_sub_8221A940) {
     return;
   }
 #endif
+  if (user == 1 && out && s.cut_fight() && dbz3::ingame::BattleNow()) {   // corte en combate: P2 neutro y conectado
+    static uint32_t packet = 0;
+    REX_STORE_U32(out + 0, ++packet);
+    REX_STORE_U16(out + 4, 0);
+    REX_STORE_U16(out + 6, 0);
+    REX_STORE_U32(out + 8, 0);
+    REX_STORE_U32(out + 12, 0);
+    ctx.r3.u64 = 0;
+    return;
+  }
   if (!s.active() || user > 1 || !out) {
     orig(ctx, base);
     if (user == 1) dbz3::ingame::NotePad2(ctx.r3.u32 == 0);

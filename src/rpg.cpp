@@ -2238,7 +2238,7 @@ void DibujarFin(ImDrawList* dl, const S::Area& a, float t, uint16_t p) {
     Cara(dl, a, H::CuerpoDe(r.extra, r.jugador), D::kCornerX0 + 200, (D::kCornerY0 + D::kTop - 24) * 0.5f, 62);
     S::MenuText(dl, a.At((D::kCornerX0 + 280 + D::kX1) * 0.5f, (D::kCornerY0 + D::kTop - 24) * 0.5f), D::kRow * a.s,
                 (std::string(T::T("Nivel ", "Level ")) + Num(H::Nivel())).c_str(), true, false);
-    Bocadillo(dl, a, H::Saga() >= H::kSagasJugables ? std::string(T::T("Saga 3 completada. Las siguientes sagas estan en desarrollo.", "Saga 3 cleared. The next sagas are in development."))
+    Bocadillo(dl, a, H::Saga() >= H::kSagasJugables ? std::string(T::T("Saga completada. Las siguientes sagas estan en desarrollo.", "Saga cleared. The next sagas are in development."))
                                                     : std::string(T::T("Próxima saga: ", "Next saga: ")) + H::NombreSaga(H::Saga()));
     D::Help(dl, a, {{"A", Aceptar()}});
     return;

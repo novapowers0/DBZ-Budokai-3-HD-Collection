@@ -509,7 +509,7 @@ const char* const kLogos[][2] = {{"Ninguno", "None"},           {"Tortuga (Kame)
 constexpr int kNumLogos = int(std::size(kLogos));
 // donantes nativos sin XV2 (= PELOS_NATIVOS de mod center hd/cac/vista_heroe.py)
 // "" = sin donante nativo perfecto: 1.5.5 solo ofrece los que comparten la cabeza de Goku (el resto flotaba o se deformaba, 24/10)
-const char* const kPelosNativos[] = {"", "Goku", "", "", "", "", "", "", "Bardock", ""};
+const char* const kPelosNativos[] = {"", "Goku", "Vegeta", "", "Gohan (Cell)", "Goku niño", "", "", "", ""};
 constexpr int kNumPelos = 10;   // pelos UT del catalogo (mod center hd/cac/piezas_cac.toml: hair_000_01..hair_008_01 + base)
 
 struct DonanteB3 {
@@ -586,6 +586,7 @@ std::vector<DonanteB3> LeerDonantesB3(const std::string& zona) {
         }
         if (obj_depth) break;
         const std::string obj = arr.substr(start, q - start);
+        if (JsonCadena(obj, "validacion_visual") != "perfecto") continue;
         const std::string ok = obj.substr(obj.find("\"ok\"") == std::string::npos ? obj.size() : obj.find("\"ok\""));
         if (ok.find(": true") == std::string::npos && ok.find(":true") == std::string::npos) continue;
         const std::string fid_txt = obj.substr(obj.find("\"fid\"") == std::string::npos ? obj.size() : obj.find("\"fid\""));
