@@ -215,7 +215,7 @@ $heroe_res = Join-Path $root "res\heroe"
 if (Test-Path -LiteralPath $heroe_res) {
     $heroe_dst = Join-Path $OutDir "res\heroe"
     New-Item -ItemType Directory -Path $heroe_dst -Force | Out-Null
-    Copy-Item -LiteralPath (Join-Path $heroe_res "*") $heroe_dst -Recurse -Force
+    Copy-Item -Path (Join-Path $heroe_res "*") -Destination $heroe_dst -Recurse -Force   # -LiteralPath no expande "*": la 1.5.5 salio sin resheroe
 } else {
     Write-Warning "Falta res\heroe: el Modo Heroe usara las sagas de codigo y el catalogo de respaldo"
 }

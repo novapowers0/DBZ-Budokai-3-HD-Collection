@@ -252,6 +252,42 @@ void RoomRows(ImDrawList* dl, const dbz3::ingame::style::Area& a, float y0, int 
   S::MenuText(dl, a.At(660, y), w > max ? k * max / w : k, val.c_str(), on, off);
 }
 
+// Pasos de la pantalla ONLINE (caja a la izquierda) y estado de la conexion con color y ping:
+// 1 crear/unirse, 2 compartir el codigo, 3 esperando/conectando, 4 combate. El paso actual va iluminado.
+void StepsBox(ImDrawList* dl, const dbz3::ingame::style::Area& a, const Session& s, bool host) {
+  namespace S = dbz3::ingame::style;
+  const Link link = s.link();
+  int step = 1;   // paso en el que estas
+  if (link == Link::kWaiting) step = host ? 2 : 3;
+  else if (link == Link::kConnected) step = 3;
+  else if (link == Link::kStarting || link == Link::kPlaying) step = 4;
+  const char* names[4] = {T::T("1 CREAR O UNIRSE", "1 HOST OR JOIN"), T::T("2 PASAR EL CODIGO", "2 SHARE THE CODE"),
+                          T::T("3 CONECTANDO", "3 CONNECTING"), T::T("4 A COMBATIR", "4 FIGHT")};
+  const ImVec2 p0 = a.At(14, 215), p1 = a.At(318, 215 + 46.0f * 4 + 94);
+  S::Frame(dl, p0, p1, a.s * 0.7f);
+  for (int i = 0; i < 4; ++i) {
+    const float y = 215 + 24 + 46.0f * float(i);
+    S::MenuText(dl, a.At(166, y), 28 * a.s, names[i], i + 1 == step, i + 1 < step, 270 * a.s);
+  }
+  // estado: punto de color (gris sin conexion, ambar esperando, verde conectado, rojo error) y ping
+  const bool bad = link == Link::kError || link == Link::kLost;
+  const ImU32 col = bad ? IM_COL32(230, 60, 60, 255)
+                    : (link == Link::kConnected || link == Link::kStarting || link == Link::kPlaying) ? IM_COL32(70, 210, 90, 255)
+                    : link == Link::kWaiting ? IM_COL32(240, 190, 50, 255) : IM_COL32(150, 150, 150, 255);
+  const char* txt = bad ? T::T("SIN CONEXION", "NO CONNECTION")
+                    : link == Link::kWaiting ? T::T("ESPERANDO", "WAITING")
+                    : link == Link::kIdle ? T::T("DESCONECTADO", "OFFLINE") : T::T("CONECTADO", "CONNECTED");
+  const float y = 215 + 46.0f * 4 + 36;
+  dl->AddCircleFilled(a.At(44, y), 11 * a.s, col);
+  dl->AddCircle(a.At(44, y), 11 * a.s, IM_COL32(30, 20, 10, 255), 0, 1.5f * a.s);
+  S::MenuText(dl, a.At(176, y), 26 * a.s, txt, false, false, 220 * a.s);
+  if (s.ping_ms() >= 0 && (link == Link::kConnected || link == Link::kStarting || link == Link::kPlaying)) {
+    char pb[24];
+    std::snprintf(pb, sizeof(pb), s.ping_ms() >= 0 ? "PING %d ms" : "PING - ms", s.ping_ms());
+    S::MenuText(dl, a.At(176, y + 30), 22 * a.s, pb, false, false, 220 * a.s);
+  }
+}
+
 // Quinta fila "ONLINE" del menu de Duelo. Medidas de una captura a 1600x900 (area 4:3 desde
 // x=200): interior del marco x 340..860, filas centradas en y 245/330/410/492, borde de abajo
 // en y 538. El marco se alarga una fila (relleno del color del interior y bordes dorados).
@@ -865,6 +901,25 @@ void OnlinePanel::DrawScreen(ImGuiIO& io, uint16_t pressed) {
       default: break;
     }
   }
+  if (pressed & 0x4000) {   // X: pegar el codigo del portapapeles (sin teclado) o, si eres el anfitrion, copiarlo otra vez
+    if (idle && !editing_) {
+      const char* clip = ImGui::GetClipboardText();
+      std::string c;
+      for (const char* q = clip ? clip : ""; *q && c.size() < sizeof(ip_) - 1; ++q)
+        if (!std::isspace((unsigned char)*q)) c += char(std::toupper((unsigned char)*q));
+      if (!c.empty()) {
+        std::snprintf(ip_, sizeof(ip_), "%s", c.c_str());
+        last_err_.clear();
+        for (int k = 0; k < n; ++k) if (rows[size_t(k)] == kJoinRow) row_ = k;   // el cursor pasa a UNIRSE
+      } else {
+        last_err_ = T::T("No hay ningun codigo copiado. Copia el codigo que te paso el otro jugador y pulsa X.",
+                         "No code copied. Copy the code the other player gave you, then press X.");
+      }
+    } else if (!idle && host && !std::getenv("DBZ3_NO_DIALOGS")) {
+      const std::string code = s.RoomCode(nullptr);
+      if (!code.empty()) ImGui::SetClipboardText(code.c_str());
+    }
+  }
   if (pressed & (kB | kY)) {
     if (idle) {
       last_err_.clear();
@@ -883,6 +938,7 @@ void OnlinePanel::DrawScreen(ImGuiIO& io, uint16_t pressed) {
   S::Host(dl, a, "anfitrion_online", 781, 336, false);
   S::Sides(dl, a);
   S::Banner(dl, a, "Online", "titulo_online");
+  StepsBox(dl, a, s, host);
   constexpr float kStep = 72;
   const ImVec2 f0 = a.At(330, 175), f1 = a.At(870, 175 + kStep * n + 20);
   S::Frame(dl, f0, f1, a.s);
@@ -966,6 +1022,15 @@ void OnlinePanel::DrawScreen(ImGuiIO& io, uint16_t pressed) {
   if (!last_err_.empty()) say = last_err_ + "\n";
   if (idle) {
     if (link != Link::kIdle) say += s.Status() + "\n";
+    if (link == Link::kError && s.desynced())
+      say += std::string(T::T("Los dos juegos dejaron de ver lo mismo. Que hacer: volved a crear la sala; si se repite, enviadnos el informe.",
+                              "The two games stopped seeing the same thing. What to do: create the room again; if it repeats, send us the report.")) + "\n";
+    else if (link == Link::kLost)
+      say += std::string(T::T("Se perdio la conexion. Que hacer: mira que tu internet funciona y volved a crear la sala y unirte.",
+                              "The connection was lost. What to do: check your internet, then create the room and join again.")) + "\n";
+    else if (link == Link::kError)
+      say += std::string(T::T("No se pudo conectar. Que hacer: comprueba que el codigo esta bien escrito y que el otro jugador ya tiene la sala creada.",
+                              "Could not connect. What to do: check the code is typed right and the other player has already created the room.")) + "\n";
     switch (cur) {
       case kHostRow:
         say += T::T("Crea la partida: te dara un codigo de sala para pasarselo al otro jugador. Necesitais la misma version y los mismos mods.",
@@ -1076,8 +1141,11 @@ void OnlinePanel::DrawScreen(ImGuiIO& io, uint16_t pressed) {
     }
   }
   S::Speech(dl, a.At(195, 615), a.At(950, 845), a.s, say.c_str(), 0.78f);
-  S::HelpLine(dl, a.At(745, 870), 38 * a.s,
-              {{"A", T::T("Aceptar", "OK")}, {"B", idle ? T::T("Atras", "Back") : T::T("Cancelar", "Cancel")}});
+  std::vector<std::pair<const char*, const char*>> help = {{"A", T::T("Aceptar", "OK")},
+                                                           {"B", idle ? T::T("Atras", "Back") : T::T("Cancelar", "Cancel")}};
+  if (idle) help.push_back({"X", T::T("Pegar codigo", "Paste code")});
+  else if (host) help.push_back({"X", T::T("Copiar codigo", "Copy code")});
+  S::HelpLine(dl, a.At(idle || host ? 690 : 745, 870), 38 * a.s, help);
 }
 
 }  // namespace dbz3::ingame

@@ -20,6 +20,18 @@ struct NewsBlock {
   int count;
 };
 
+inline constexpr NewsItem kNews1551[] = {
+    {"Online (beta)", "Online (beta)",
+     "Pantalla online más clara: 4 pasos visibles, estado de conexión con color y ping, copiar o pegar el código con X y errores explicados con qué hacer.",
+     "Clearer online screen: 4 visible steps, connection status with colour and ping, copy or paste the code with X, and errors that say what to do."},
+    {nullptr, nullptr,
+     "Si hay una desincronía, el juego guarda un informe en la carpeta informes_online para que nos lo envíes.",
+     "If a desync happens, the game saves a report in the informes_online folder so you can send it to us."},
+    {"Modo Héroe (beta)", "Hero Mode (beta)",
+     "Arreglado: la 1.5.5 no instalaba los datos de las sagas (escenarios de la Tierra y catálogo de piezas).",
+     "Fixed: 1.5.5 did not install the saga data (Earth stages and parts catalogue)."},
+};
+
 inline constexpr NewsItem kNews155[] = {
     {"Infinite World (experimental)", "Infinite World (experimental)",
      "96/96 misiones disponibles en USA y Europa.",
@@ -191,6 +203,7 @@ inline constexpr NewsItem kNews145[] = {
 
 // Del mas nuevo al mas antiguo.
 inline constexpr NewsBlock kNewsBlocks[] = {
+    {"1.5.5.1", kNews1551, int(sizeof(kNews1551) / sizeof(kNews1551[0]))},
     {"1.5.5", kNews155, int(sizeof(kNews155) / sizeof(kNews155[0]))},
     {"1.5.1.4", kNews1514, int(sizeof(kNews1514) / sizeof(kNews1514[0]))},
     {"1.5.1.3", kNews1513, int(sizeof(kNews1513) / sizeof(kNews1513[0]))},

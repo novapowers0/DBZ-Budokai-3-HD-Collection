@@ -73,7 +73,7 @@ bool SinGuardas() {
 // comprueba que la lista y la accion (+3244) son validas. Con la lista a medias (cuenta 3..8, puntero 0 o
 // un valor que no es un objeto) el juego llama a un puntero basura y cae con 0xC0000005 (medido 23/10
 // 08:18, lr 0x8210E798, lectura de 0x701912EC con Goku contra Broly ID 40 en el escenario 2). Tambien se
-// repara la accion fuera de la tabla y la llamada fija. DBZ3_TEST_LUCHADOR_MALO=1/2/3 fuerza el fallo (A/B).
+// repara la accion fuera de la tabla y la llamada fija. DBZ3_TEST_LUCHADOR_MALO=1/2 fuerza el fallo (A/B).
 namespace dbz3::ports {
 bool GuardLuchadores(uint8_t* base) {
   constexpr dbz3::GA kCfg = 0x823D6CF4;   // *(0x823D6CF4) = configuracion del combate

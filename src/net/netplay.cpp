@@ -20,6 +20,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <map>
@@ -1244,7 +1245,62 @@ void Session::Fail(Link l, const std::string& why) {
   ResetTransport();
   std::lock_guard<std::mutex> lock(mu_);
   error_ = why;
+  if (desync_.load() && l == Link::kError) error_ += " " + WriteDesyncReport(why);   // informe pequeno para que el jugador nos lo envie
   link_ = l;
+}
+
+// Desincronia: guarda un informe corto (datos de la sesion + ultimas lineas del log del online) en <juego>/informes_online/
+// y devuelve la frase que se ve en pantalla. Nunca falla hacia fuera. Llamar con mu_ cogido.
+std::string Session::WriteDesyncReport(const std::string& why) {
+  try {
+    namespace fs = std::filesystem;
+    const fs::path exe_dir = rex::filesystem::GetExecutableFolder();
+    const fs::path dir = exe_dir / "informes_online";
+    std::error_code ec;
+    fs::create_directories(dir, ec);
+    char stamp[32];
+    const std::time_t now = std::time(nullptr);
+    std::strftime(stamp, sizeof(stamp), "%Y%m%d_%H%M%S", std::localtime(&now));
+    const fs::path file = dir / (std::string("desincronia_") + stamp + ".txt");
+    std::ofstream f(file, std::ios::binary);
+    f << "Informe de desincronia (DBZ Budokai 3 HD) " << stamp << "\r\n" << why << "\r\n";
+    f << "rol: " << (role_ == Role::kHost ? "anfitrion" : "invitado") << "  tick: " << tick_ << "  retardo: " << int(delay_.load())
+      << "  ping: " << ping_ms_.load() << " ms  rollback: " << rb_on_.load() << "\r\n";
+    f << "sumas comparadas: " << sum_cmp_.load() << "  distintas: " << sum_bad_.load() << "\r\n";
+    f << "mods (" << my_mods_.size() << "):";
+    for (const auto& m : my_mods_) f << " " << m;
+    f << "\r\nRNG por segundo (tick: mio / suyo):\r\n";
+    char b[64];
+    for (int i = 0; i < kRing; ++i) {
+      if (!my_rng_tick_[i] || my_rng_tick_[i] != their_rng_tick_[i]) continue;
+      std::snprintf(b, sizeof(b), "%u: %08X / %08X%s\r\n", my_rng_tick_[i], my_rng_[i], their_rng_[i], my_rng_[i] == their_rng_[i] ? "" : "  <-- distinto");
+      f << b;
+    }
+    // ultimas lineas del log mas reciente que hablan del online
+    fs::path newest;
+    fs::file_time_type nt{};
+    for (const auto& e : fs::directory_iterator(exe_dir / "logs", ec)) {
+      if (e.path().extension() != ".log") continue;
+      const auto t = e.last_write_time(ec);
+      if (newest.empty() || t > nt) { newest = e.path(); nt = t; }
+    }
+    if (!newest.empty()) {
+      std::ifstream in(newest, std::ios::binary);
+      std::vector<std::string> keep;
+      for (std::string ln; std::getline(in, ln);) {
+        if (ln.find("dbz3 online") == std::string::npos && ln.find("dbz3 rb") == std::string::npos) continue;
+        keep.push_back(ln);
+        if (keep.size() > 150) keep.erase(keep.begin());
+      }
+      f << "\r\n--- log (" << newest.filename().string() << ") ---\r\n";
+      for (const auto& ln : keep) f << ln << "\r\n";
+    }
+    REXLOG_WARN("dbz3 online: informe de desincronia guardado en {}", file.string());
+    return std::string(T::T("Informe guardado en la carpeta informes_online del juego: enviamelo.",
+                            "Report saved in the game's informes_online folder: please send it to us."));
+  } catch (...) {
+    return {};
+  }
 }
 
 std::string Session::Status() const {

@@ -83,6 +83,7 @@ class Session {
   Link link() const { return link_.load(); }
   Role role() const { return role_; }
   std::string Status() const;
+  std::string WriteDesyncReport(const std::string& why);
   std::string LocalAddresses() const;   // IPs locales de este PC (para dar al rival)
   // Codigo de sala del anfitrion (XXXXX-XXXXX, IP publica + puerto; mientras no se sabe, el de la red
   // local) y como se consiguio: "router" (UPnP abrio el puerto), "stun" (IP publica sin abrir el
