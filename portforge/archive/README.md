@@ -9,7 +9,7 @@ entradas retiradas.
   vuelta al array `builds` de `../.forge.json`.
 - `_retired` (dentro del JSON) — motivo de retirada de cada version.
 
-## Estado actual (2026-10-24)
+## Estado actual (2026-10-28)
 
-Versiones **visibles** en PortForge (las tres ultimas funcionales): `1.5.5.4` (Latest, default), `1.5.5.3`, `1.5.5.2`. Al archivo el 24/10: `1.5.5`, `1.5.5.1`. Retiradas el 24/10: `1.4.2.3`, `1.4.4.5`.
+Versiones **visibles** en PortForge (las tres ultimas funcionales): `1.5.5.5` (Latest, default), `1.5.5.4`, `1.5.5.3`. Al archivo el 28/10: `1.5.5.2`. Retiradas el 24/10: `1.4.2.3`, `1.4.4.5`.
 Retiradas al archivo el 24/10: `1.4.0`, `1.3.0`, `1.2.9`.
