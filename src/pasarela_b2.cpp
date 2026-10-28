@@ -3875,7 +3875,7 @@ int FramesVozAdx(int entrada) {
   if (const auto it = cache.find(entrada); it != cache.end()) return it->second;
   int cuadros = 0;
   AfsPs2 adx;
-  const std::filesystem::path iso = g_iso_b2.empty() ? BuscarJuego("budokai 2") : g_iso_b2;
+  const std::filesystem::path iso = g_iso_b2.empty() ? BuscarJuego("budokai 2") : std::filesystem::path(g_iso_b2);
   if (!iso.empty() && adx.Abrir(iso, "ADX_US.AFS")) {
     const std::vector<uint8_t> d = adx.Entrada(size_t(entrada), 32);   // solo la cabecera: no hace falta el PCM
     if (d.size() >= 32 && d[0] == 0x80) {
@@ -4078,7 +4078,7 @@ std::string PrefijoCuerpoB2(int id_b2, int traje) {
     uint32_t cuerpo = 0;
     if (o + 4 <= elf.size()) std::memcpy(&cuerpo, &elf[o], 4);
     AfsPs2 cmn;
-    if (cuerpo && cmn.Abrir(g_iso_b2.empty() ? BuscarJuego("budokai 2") : g_iso_b2, "DATA_CMN.AFS")) {
+    if (cuerpo && cmn.Abrir(g_iso_b2.empty() ? BuscarJuego("budokai 2") : std::filesystem::path(g_iso_b2), "DATA_CMN.AFS")) {
       const std::vector<uint8_t> amo = HijoAmb(cmn.Entrada(cuerpo), 0);
       size_t ini = 0;
       for (size_t k = 0; k + 7 < amo.size(); ++k)
@@ -4106,7 +4106,7 @@ int BancoHistoriaB2(const std::string& prefijo) {
   if (auto it = cache.find(prefijo); it != cache.end()) return it->second;
   int hallado = 0;
   AfsPs2 cmn;
-  if (cmn.Abrir(g_iso_b2.empty() ? BuscarJuego("budokai 2") : g_iso_b2, "DATA_CMN.AFS"))
+  if (cmn.Abrir(g_iso_b2.empty() ? BuscarJuego("budokai 2") : std::filesystem::path(g_iso_b2), "DATA_CMN.AFS"))
     for (uint32_t e = 801; e <= 848 && !hallado; ++e) {
       const std::vector<uint8_t> a = cmn.Entrada(e);
       if (a.size() < 0x80 || a[1] != 'A' || a[2] != 'M' || a[3] != 'M') continue;   // #AMM o !AMM
@@ -4132,7 +4132,7 @@ const CamB2& CamaraDeBancoB2(int banco, int clip) {
   if (auto it = cache.find(clave); it != cache.end()) return it->second;
   CamB2& c = cache[clave];
   AfsPs2 cmn;
-  if (banco > 0 && cmn.Abrir(g_iso_b2.empty() ? BuscarJuego("budokai 2") : g_iso_b2, "DATA_CMN.AFS")) {
+  if (banco > 0 && cmn.Abrir(g_iso_b2.empty() ? BuscarJuego("budokai 2") : std::filesystem::path(g_iso_b2), "DATA_CMN.AFS")) {
     const std::vector<uint8_t> a = cmn.Entrada(uint32_t(banco - 1));
     auto u32 = [&](size_t o) {
       uint32_t v = 0;
@@ -4244,7 +4244,7 @@ const BancoMpt* BancoMptDe(int id_ama, const std::string& ruta_ama, int id_amt, 
   BancoMpt b;
   auto* dr = dbz3::launcher::PreviewDrawer();
   AfsPs2 cmn;
-  const std::filesystem::path iso = g_iso_b2.empty() ? BuscarJuego("budokai 2") : g_iso_b2;
+  const std::filesystem::path iso = g_iso_b2.empty() ? BuscarJuego("budokai 2") : std::filesystem::path(g_iso_b2);
   if (dr && !iso.empty() && cmn.Abrir(iso, "DATA_CMN.AFS")) {
     if (ea < 0 || et < 0)
       REXLOG_INFO("dbz3 spx: celda {}: ruta sin mapear (ama {} '{}' amt {} '{}'), no se pinta", bloque, ea, ruta_ama, et, ruta_amt);
