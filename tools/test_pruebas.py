@@ -17,12 +17,16 @@ import pruebas as P  # noqa: E402
 
 # escenarios integrados y de la bateria: todos cargan y piden los hooks que tocan
 for nombre in P.ESCENARIOS:
-    desc, fn, env = P.cargar_escenario(nombre, {"rol": "host"} if nombre == "online_rb" else {})   # online_rb exige --par rol
+    par = {"rol": "host"} if nombre == "online_rb" else {"pelo": "0"} if nombre == "heroe_pieza" else {}
+    desc, fn, env, prep = P.cargar_escenario(nombre, par)   # online_rb exige --par rol; heroe_pieza, una pieza
     assert desc and callable(fn), nombre
 assert P.cargar_escenario("batalla", {})[2] == {"DBZ3_TEST_BATTLE": "0,7,2", "DBZ3_TEST_RINGOUT": "1"}
 assert P.cargar_escenario("batalla", {"ids": "3,4,1"})[2]["DBZ3_TEST_BATTLE"] == "3,4,1"
 assert P.cargar_escenario("tag_swap", {"swap": "0"})[2] == {"DBZ3_TAG_SLOW": "3", "DBZ3_TEST_KO": "1"}
 assert P.cargar_escenario("campana", {})[2] == {"DBZ3_TEST_RINGOUT": "1"}
+# DS173: el vuelo reenvía la dificultad por la misma vía que iw_minijuego (g_test de src/iw_minijuegos.cpp).
+assert P.cargar_escenario("_r12_vuelo", {"clave": "0x7E0", "dificultad": "1"})[2]["DBZ3_TEST_IWMINI_DIFICULTAD"] == "1"
+assert P.cargar_escenario("_r12_vuelo", {})[2]["DBZ3_TEST_IWMINI_DIFICULTAD"] == ""
 assert P.cargar_escenario("online_rb", {"rol": "host"})[2]["DBZ3_NET_AUTO"] == "host"
 assert P.cargar_escenario("online_rb", {"rol": "guest"})[2]["DBZ3_NET_AUTO"] == "guest"
 for familia in ("campana", "du_continuar", "tag_swap", "heroe_fichas"):

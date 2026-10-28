@@ -218,6 +218,12 @@ struct Fin {
   int puntos = 0;             // Reglas::puntos_b1: puntos de los sucesos del combate (sin LIFE ni TIME), >= 0
   int combo_max = 0;          // golpes del combo mayor del jugador (como el "N HITS" de B3; todos los combates)
   int combo_dano_max = 0;     // vida que le quito al rival ese combo
+  // Contadores exactos del rango de IW (LoadWaitBattleMainExitEnd, EU 0x208EA0): +0x24 = mayor racha de carga de ki
+  // del RIVAL (cuadros; +0x8c44, Battle_KiChargeTick EU 0x2334F0) y +0x28 = mayor dano de un combo del RIVAL
+  // (+0x8c48, HitCountFilter EU 0x233320). El +0x1c (golpe directo del jugador) es `golpes > 0` y el +0x20
+  // (jugador +0x8c3c) solo lo escriben los guiones MMI2 (RAMEvents EU 0x22F9D0): 0 en el port.
+  int rival_ki_max = 0;
+  int rival_combo_dano_max = 0;
 };
 // Vigila el combate pedido con dbz3::hub::RequestBattleEx (hilo propio): aplica las reglas mientras se pelea y llama
 // a `fin` cuando el conector suelta el combate. `quien` = prefijo del registro ("pasarela", "misiones").

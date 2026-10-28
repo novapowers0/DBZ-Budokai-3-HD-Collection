@@ -144,6 +144,81 @@ int Need(int side) {
   }
 }
 
+// 25/10 (usuario: "demasiado intrusivo, se mete en todo el medio del personaje"): lo nuestro en el panel de cada lado
+// de la rueda va en una sola linea pequena junto a la tira del equipo (a su derecha si cabe, si no justo debajo) o, sin
+// tira, bajo el nombre; nunca sobre el cuerpo del luchador. Ancho de la tira en unidades del area 1200x900
+float StripW(int need) { return need * 84.0f + (need - 1) * 8.0f; }
+// Centro y ancho de esa linea para el lado (unidades del area); la tira empieza en (30 | 1170, 285) y sus casillas van
+// de y 307 a 391 (TeamStrip: pestana 22 + casilla 84)
+void ChipPos(int side, bool team, float& cx, float& cy, float& w) {
+  const int need = team ? Need(side) : 1;
+  const float x0 = 30.0f + StripW(need) + 10.0f, x1 = 346.0f;   // de la tira al anillo de la rueda
+  if (need >= 2 && x1 - x0 >= 120.0f) {
+    w = x1 - x0, cy = 349.0f, cx = (x0 + x1) * 0.5f;
+  } else if (need >= 2) {
+    w = std::max(StripW(need), 200.0f), cy = 412.0f, cx = 30.0f + StripW(need) * 0.5f;
+  } else {
+    // sin tira: chip compacto bajo la franja del nombre (DS142: antes 300 u; con 2 lineas la caja acaba en
+    // y 335, justo por encima de la cabeza del retrato, que empieza en ~338).
+    w = 220.0f, cy = 300.0f, cx = 140.0f;
+  }
+  if (side == 1) cx = 1200.0f - cx;
+}
+// fondo oscuro translucido de esa linea (el arte se sigue viendo detras)
+void Chip(ImDrawList* dl, ImVec2 p0, ImVec2 p1, float s) {
+  dl->AddRectFilled(p0, p1, IM_COL32(8, 16, 44, 170), 10 * s);
+}
+// DS138: parte `texto` en dos lineas equilibradas que quepan en `max_px` con la letra del menu a `size_px`.
+// Primero por espacios (sin partir palabras) y, si el idioma no tiene (japones), por caracter UTF-8. Si ya
+// cabe entero, `b` queda vacio. `umbral` > 1 deja pasar textos que solo se encogerian un poco.
+// Evita que MenuText encoja un aviso largo hasta hacerlo ilegible. Lo usa el aviso de la rueda (DS138); el
+// chip de forma ya no lo necesita (DS142: textos cortos en una linea).
+void PartirEnDos(const char* texto, float size_px, float max_px, std::string& a, std::string& b, float umbral = 1.0f) {
+  a = texto ? texto : "";
+  b.clear();
+  if (a.empty() || max_px <= 0) return;
+  ImFont* f = dbz3::launcher::ui::GetFonts().menu ? dbz3::launcher::ui::GetFonts().menu : ImGui::GetFont();
+  auto ancho = [&](const std::string& s) { return f->CalcTextSizeA(size_px, FLT_MAX, 0, s.c_str()).x; };
+  if (ancho(a) <= max_px * umbral) return;
+  const char* t = a.c_str();
+  const size_t len = a.size();
+  auto siguiente = [&](size_t i) {   // siguiente caracter UTF-8
+    const unsigned char c = static_cast<unsigned char>(t[i]);
+    const size_t n = c < 0x80 ? 1 : (c >> 5) == 0x6 ? 2 : (c >> 4) == 0xe ? 3 : (c >> 3) == 0x1e ? 4 : 1;
+    return std::min(len, i + n);
+  };
+  size_t pre = 0, suf = 0;
+  float mejor = FLT_MAX;
+  auto probar = [&](size_t p, size_t s) {
+    const float wl = ancho(std::string(t, p)), wr = ancho(std::string(t + s));
+    const float sobre = std::max(0.0f, std::max(wl, wr) - max_px);
+    const float d = sobre * 1000.0f + std::fabs(wl - wr);
+    if (d < mejor) mejor = d, pre = p, suf = s;
+  };
+  for (size_t i = siguiente(0); i < len; i = siguiente(i))
+    if (t[i - 1] == ' ') probar(i - 1, i);
+  if (!pre)
+    for (size_t i = siguiente(0); i < len; i = siguiente(i)) probar(i, i);
+  if (!pre) return;
+  const std::string todo = a;
+  a.assign(todo, 0, pre);
+  b.assign(todo, suf, std::string::npos);
+}
+
+// DS142: la pantalla de la rueda tiene dos formas. 1P (Duelo 1P VS COM): una sola rueda y, a su derecha,
+// el panel de estadisticas (Salud/Ki/Ataque/...). 2P: dos ruedas simetricas y ningun panel. El chip de
+// forma solo cabe fuera del retrato en la de 1P, en la banda azul que hay sobre la lista de estadisticas.
+// Se distingue por el segundo jugador: en 2P mueve su rueda en este select (browse_ms[1] cambia); el valor
+// de antes de entrar se congela mientras la rueda no esta viva y se refresca entre selects.
+bool UnaRueda() {
+  static int64_t base1 = 0;
+  if (!dbz3_select_live()) {
+    base1 = dbz3_select_browse_ms(1);
+    return true;
+  }
+  return dbz3_select_browse_ms(1) == base1;
+}
+
 // Nombres de los personajes del juego tal como los rotula su propia rueda en cada idioma (texturas 26-64 del #AZT de
 // la entrada 2027 de data_usi / data_eng / spn / fra / ger / ita, leidas el 2026-10-15; las de EU en ingles son las
 // mismas que las de US). Antes eran nombres nuestros ("Krilin", "Freezer", "Goku (nino)"...) y en frances, aleman o
@@ -589,48 +664,85 @@ void DrawFormPick(ImGuiIO& io, bool team) {
     const auto state = forms::Copy(side); // copia coherente; UI nunca toca tablas
     if (!forms::CountValid(state.snapshot) || state.snapshot.count == 1) continue;
     const auto result = forms::Resolve(state.snapshot, state.requested);
+    // DS142: textos CORTOS. Los largos de DS138 ("Modelo o traje no disponible: forma base", 46 caracteres
+    // en fr/de/it) ya no caben en un chip de una linea: se abrevian aqui y en res/ingame_ui/i18n_modos.toml
+    // (clave = texto ingles) para fr/de/it/pt/ja; es/en van en estas cadenas.
     char text[160];
     if (state.requested == 0 && result.applied == 0) {
-      std::snprintf(text, sizeof(text), "%s", T::T("Forma normal", "Normal form"));
+      std::snprintf(text, sizeof(text), "%s", T::T("Normal", "Normal"));
+    } else if (state.requested == result.applied) {
+      std::snprintf(text, sizeof(text), "%s %d", T::T("Forma", "Form"), state.requested);
     } else {
-      std::snprintf(text, sizeof(text), "%s %d -> %d",
-                    T::T("Forma inicial", "Starting form"), state.requested, result.applied);
+      std::snprintf(text, sizeof(text), "%s %d > %d", T::T("Forma", "Form"), state.requested, result.applied);
     }
-    const float cx = side == 0 ? 210.0f : 990.0f, y = team ? 480.0f : 292.0f;
-    const auto pos = a.At(cx, y);
-    dl->PushClipRect(a.At(cx - 180, y - 20), a.At(cx + 180, y + 135), true);
-    const auto& fonts = dbz3::launcher::ui::GetFonts();
-    ImFont* font = fonts.menu ? fonts.menu : ImGui::GetFont();
-    const float measured = font->CalcTextSizeA(28 * a.s, 1.0e30f, 0, text).x;
-    const float size = 28 * a.s * std::min(1.0f, 220 * a.s / std::max(1.0f, measured));
-    S::MenuText(dl, pos, size, text, result.valid, false);
-    S::Arrows(dl, a.At(cx - 120, y - 16), a.At(cx + 120, y + 16),
-              24*a.s, float(dbz3::RelojT(ImGui::GetTime())));
-    S::HelpLine(dl, a.At(cx, y + 38), 24*a.s,
-                {{"LT", T::T("Anterior", "Previous")}, {"RT", T::T("Siguiente", "Next")}});
-    const char* reason = nullptr;
+    // Segunda linea (una sola): el motivo si la forma pedida no se puede poner o, si se puede, el ki. Son
+    // excluyentes: forms::Availability devuelve kOk justo cuando no hay motivo.
+    char info[96] = "";
     if (result.reason == forms::Reason::kCapsule) {
-      std::snprintf(text, sizeof(text), "%s %d", T::T("Falta la capsula", "Missing capsule"), result.capsule);
-      reason = text;
+      std::snprintf(info, sizeof(info), "%s %d", T::T("Sin cápsula", "Missing capsule"), result.capsule);
     } else if (result.reason == forms::Reason::kSpecial) {
-      reason = T::T("Forma especial: no disponible al iniciar", "Special form: unavailable at start");
+      std::snprintf(info, sizeof(info), "%s", T::T("No al inicio", "Not at start"));
     } else if (result.reason == forms::Reason::kCapsuleData) {
-      reason = T::T("Tabla de capsulas no disponible", "Capsule table unavailable");
+      std::snprintf(info, sizeof(info), "%s", T::T("Sin tabla", "No table"));
     } else if (result.reason != forms::Reason::kOk) {
-      reason = T::T("Modelo o traje no disponible: forma base", "Model or costume unavailable: base form");
-    }
-    if (reason) S::MenuText(dl, a.At(cx, y + 64), 18*a.s, reason, false, false, 360 * a.s);
-    if (state.requested > 0 && state.requested < state.snapshot.count &&
-        forms::Availability(state.snapshot, state.requested, false) == forms::Reason::kOk) {
+      std::snprintf(info, sizeof(info), "%s", T::T("Sin modelo", "No model"));
+    } else if (state.requested > 0 && state.requested < state.snapshot.count &&
+               forms::Availability(state.snapshot, state.requested, false) == forms::Reason::kOk) {
       const int ki = state.snapshot.forms[size_t(state.requested)].required_ki_tenths;
-      if (ki >= 0) {
-        std::snprintf(text, sizeof(text), "%s %.1f", T::T("Ki para transformar:", "Ki to transform:"), double(ki)/10.0);
-        S::MenuText(dl, a.At(cx, y + (reason ? 90 : 64)), 18*a.s, text, false, false, 360 * a.s);
-      }
+      if (ki >= 0) std::snprintf(info, sizeof(info), "%s %.1f", T::T("Ki", "Ki"), double(ki) / 10.0);
     }
-    if (team) S::MenuText(dl, a.At(cx, y + 115), 17*a.s,
-                          T::T("Primer luchador", "First fighter"), true, false, 360 * a.s);
-    dl->PopClipRect();
+    // DS142 (usuario: el chip tapaba el retrato y la 2a linea era ilegible): en la pantalla de 1P el rotulo
+    // va FUERA del aro (su interior es el retrato, cielo incluido), en la banda azul sobre la lista de
+    // estadisticas, a la derecha del aro, con la letra del texto pequeno nativo (30 u = 24 px a 720p; "Salud"
+    // y "CPU" miden ~23 px de mayuscula). Una sola linea: la forma y, si la hay, la ayuda corta.
+    if (!team && UnaRueda()) {
+      ImFont* f = dbz3::launcher::ui::GetFonts().menu ? dbz3::launcher::ui::GetFonts().menu : ImGui::GetFont();
+      std::string todo = text;
+      if (info[0]) {
+        todo += " - ";
+        todo += info;
+      }
+      const float gh = 28 * a.s, gw = S::Glyph(nullptr, "LT", ImVec2(), gh);
+      const float pad = 10 * a.s, gap = 8 * a.s;
+      float fs = 34 * a.s;   // 34 u = 27 px a 720p: mayuscula ~20 px, como el texto pequeno del juego (23)
+      float tw = f->CalcTextSizeA(fs, FLT_MAX, 0, todo.c_str()).x;
+      const float max_tw = (1110.0f - 492.0f) * a.s - 2 * (pad + gw + gap);
+      if (tw > max_tw && tw > 0) {   // solo los motivos mas largos (fr/de) se reducen un poco
+        fs *= max_tw / tw;
+        tw = f->CalcTextSizeA(fs, FLT_MAX, 0, todo.c_str()).x;
+      }
+      const float wpx = 2 * (pad + gw + gap) + tw, hpx = std::max(fs * 1.25f, gh) + 16 * a.s;
+      const ImVec2 c = a.At(492.0f, 139.0f);
+      const ImVec2 q0(c.x, c.y - hpx * 0.5f), q1(c.x + wpx, c.y + hpx * 0.5f);
+      Chip(dl, q0, q1, a.s);
+      dl->AddRect(q0, q1, IM_COL32(150, 230, 240, 80), 10 * a.s, 0, 1.5f * a.s);
+      S::Glyph(dl, "LT", ImVec2(q0.x + pad, c.y), gh);
+      S::Glyph(dl, "RT", ImVec2(q1.x - pad - gw, c.y), gh);
+      S::MenuText(dl, ImVec2((q0.x + q1.x) * 0.5f, c.y), fs, todo.c_str(), result.valid, false, 0);
+      continue;
+    }
+    // Con dos ruedas (2P / Tag Team) o con tira de equipo: chip junto a la tira o bajo la franja del nombre,
+    // como mucho 2 lineas (la caja no baja de la cabeza del retrato) y las mismas letras cortas.
+    float cx = 0, cy = 0, w = 0;
+    ChipPos(side, team, cx, cy, w);
+    const bool dos = w < 180.0f;
+    const float h = dos ? 64.0f : 30.0f, fila = 20.0f;   // sin tira: la caja acaba en y 335 (la cabeza, en ~338)
+    const int extra = info[0] ? 1 : 0;
+    Chip(dl, a.At(cx - w * 0.5f, cy - h * 0.5f), a.At(cx + w * 0.5f, cy + h * 0.5f + extra * fila), a.s);
+    const float gh = 24 * a.s, pad = 6 * a.s;
+    const float gw = S::Glyph(nullptr, "LT", ImVec2(), gh);
+    if (dos) {
+      S::MenuText(dl, a.At(cx, cy - 14), 21 * a.s, text, result.valid, false, (w - 12) * a.s);
+      const ImVec2 c2 = a.At(cx, cy + 15);
+      S::Glyph(dl, "LT", ImVec2(c2.x - gw - 3 * pad, c2.y), gh);
+      S::Glyph(dl, "RT", ImVec2(c2.x + 3 * pad, c2.y), gh);
+    } else {
+      const ImVec2 c = a.At(cx, cy), l = a.At(cx - w * 0.5f, cy), r = a.At(cx + w * 0.5f, cy);
+      S::Glyph(dl, "LT", ImVec2(l.x + pad, c.y), gh);
+      S::Glyph(dl, "RT", ImVec2(r.x - pad - gw, c.y), gh);
+      S::MenuText(dl, c, 22 * a.s, text, result.valid, false, (r.x - l.x) - 2 * (gw + 2 * pad));
+    }
+    if (info[0]) S::MenuText(dl, a.At(cx, cy + h * 0.5f + fila * 0.5f - 2), 19 * a.s, info, false, false, (w - 12) * a.s);
   }
 }
 
@@ -761,7 +873,7 @@ void TagTeamPanel::DrawMenu(ImGuiIO& io, uint16_t pressed) {
     char pts[96];
     if (tope > 0) std::snprintf(pts, sizeof(pts), T::T("LB/RB  Puntos por equipo: %d", "LB/RB  Points per team: %d"), tope);
     else std::snprintf(pts, sizeof(pts), "%s", T::T("LB/RB  Puntos: libre", "LB/RB  Points: free"));
-    S::MenuText(dl, a.At(600, 578), 28 * a.s, pts, tope > 0, tope == 0);
+    S::MenuText(dl, a.At(600, 578), 28 * a.s, pts, tope > 0, tope == 0, 700 * a.s);
   }
   std::string text = no_pad2 ? T::T("Conecta un segundo mando para jugar 1P VS 2P.",
                                      "Connect a second controller to play 1P VS 2P.")
@@ -814,31 +926,39 @@ void TagTeamPanel::DrawPicking(ImGuiIO& io) {
     const bool active = !done[size_t(side)] && (cur < 0 || cur == side);
     const ImVec2 p0 = side == 0 ? a.At(30, 285) : a.At(1170, 285);
     S::TeamStrip(dl, p0, a.s, side == 1, need, names, faces, active, done[size_t(side)], t);
-    // quien elige este equipo y cuantos lleva, bajo la tira (encima esta el nombre del juego)
-    const bool com = (mode == 0 && side == 1) || mode == 2;
-    char head[96];
-    std::snprintf(head, sizeof(head), "%s  %d/%d", com ? "COM" : side == 0 ? "1P" : "2P",
-                  int(picks[size_t(side)].size()), need);
-    if (const int tope = kPresupuestos[g_presupuesto.load()]; tope > 0) {
-      const size_t n = std::strlen(head);
-      std::snprintf(head + n, sizeof(head) - n, T::T("  -  %d/%d puntos", "  -  %d/%d points"),
-                    Puntos(picks[size_t(side)]), tope);
-    }
-    const float stripw = need * 84 + (need - 1) * 8;
-    const ImVec2 hc(side == 0 ? p0.x + stripw * 0.5f * a.s : p0.x - stripw * 0.5f * a.s, p0.y + 128 * a.s);
+    // (25/10, usuario: lo de encima del luchador era demasiado intrusivo) sin rotulo "1P 0/2": las casillas ya dicen
+    // cuantos lleva y el "1P"/"COM" lo pone el juego encima del nombre. Con tope de puntos, los puntos en letra pequena
+    // tras las pestanas de la tira; el aviso de lo ultimo que paso, 3,5 s sobre la propia tira
+    const float sw = StripW(need);
+    const float scx = side == 0 ? 30.0f + sw * 0.5f : 1170.0f - sw * 0.5f;
     // rotulo y aviso solo con la rueda de ese lado eligiendo: debajo sale el menu de capsulas del juego
     const bool browsing = dbz3_select_now_ms() - dbz3_select_browse_ms(side) < 300;
-    if (!done[size_t(side)] && browsing) S::MenuText(dl, hc, 30 * a.s, head, active, !active);
-    // aviso de lo ultimo que paso en este lado (3,5 s: el juego tarda en volver a la rueda)
+    if (const int tope = kPresupuestos[g_presupuesto.load()]; tope > 0 && !done[size_t(side)] && browsing) {
+      char pts[64];
+      std::snprintf(pts, sizeof(pts), T::T("%d/%d puntos", "%d/%d points"), Puntos(picks[size_t(side)]), tope);
+      const float x0 = 30.0f + sw + 8.0f, x1 = 346.0f;
+      const float pcx = side == 0 ? (x0 + x1) * 0.5f : 1200.0f - (x0 + x1) * 0.5f;
+      S::MenuText(dl, a.At(pcx, 296), 18 * a.s, pts, active, !active, (x1 - x0) * a.s);
+    }
     if (browsing && notice.side == side && notice.what != Event::kNone && since < 3.5f) {
       const char* msg = notice.what == Event::kPoints ? T::T("No quedan puntos para ese", "Not enough points for that one")
                         : notice.what == Event::kRepeated ? T::T("Ya esta en el equipo", "Already in the team")
                         : notice.what == Event::kRemoved ? T::T("Quitado", "Removed")
                                                          : T::T("Anadido", "Added");
-      const ImVec2 mc(hc.x, p0.y + 162 * a.s);
-      // ancho libre a los dos lados del centro del equipo (no se sale del area)
-      S::MenuText(dl, mc, 28 * a.s, msg, notice.what != Event::kRepeated && notice.what != Event::kPoints, false,
-                  2 * std::min(hc.x - a.p0.x, a.p1.x - hc.x));
+      const float mw = std::max(sw, 200.0f);
+      // DS138: "No quedan puntos para ese" mide hasta 35 caracteres (pt); en el chip de 200 u se encogia a
+      // ~10 u. Si no cabe, dos lineas (chip mas alto) a 20 u en vez de una linea ilegible.
+      std::string n1, n2;
+      PartirEnDos(msg, 22 * a.s, (mw - 12) * a.s, n1, n2);
+      const float nh = n2.empty() ? 34.0f : 54.0f;
+      Chip(dl, a.At(scx - mw * 0.5f, 349 - nh * 0.5f), a.At(scx + mw * 0.5f, 349 + nh * 0.5f), a.s);
+      const bool on = notice.what != Event::kRepeated && notice.what != Event::kPoints;
+      if (n2.empty()) {
+        S::MenuText(dl, a.At(scx, 349), 22 * a.s, n1.c_str(), on, false, (mw - 12) * a.s);
+      } else {
+        S::MenuText(dl, a.At(scx, 338), 20 * a.s, n1.c_str(), on, false, (mw - 12) * a.s);
+        S::MenuText(dl, a.At(scx, 362), 20 * a.s, n2.c_str(), on, false, (mw - 12) * a.s);
+      }
     }
   }
   // ayuda segun el momento: de quien es el turno y que hace cada boton
@@ -887,7 +1007,9 @@ bool NativeCard(ImDrawList* dl, ImVec2 p0, float s, bool mirror, int id, float h
     dl->AddRectFilledMultiColor(f0, f1, col, col, IM_COL32(20, 110, 20, 255), IM_COL32(20, 110, 20, 255));
   }
   Box(70, 2, 248, 23, &a, &b);
-  S::MenuText(dl, ImVec2((a.x + b.x) * 0.5f, (a.y + b.y) * 0.5f), 19 * s, Name(id).c_str(), !down, down);
+  // nombre: como mucho el hueco de la ficha (70..248) aunque el idioma o un mod lo alargue
+  S::MenuText(dl, ImVec2((a.x + b.x) * 0.5f, (a.y + b.y) * 0.5f), 19 * s, Name(id).c_str(), !down, down,
+              (b.x - a.x) * 0.94f);
   float x = 280;   // fuera de la ficha: aviso de relevo y boton
   if (swap) {
     const S::Pic icon = S::Img(swap > 0 ? "tt_swap_listo" : "tt_swap_espera");
@@ -907,7 +1029,8 @@ bool NativeCard(ImDrawList* dl, ImVec2 p0, float s, bool mirror, int id, float h
 
 // En combate: fichas de los compañeros bajo el marcador de cada jugador (P1 izquierda, P2
 // derecha). El marcador del juego ocupa x 15..540 / 660..1185, y 50..160 del area 4:3. Solo con el
-// marcador a la vista (no en la presentacion ni el READY).
+// marcador a la vista (no en la presentacion ni el READY). DS138: 174 (no 168) para dejar 10 u de
+// margen seguro bajo la curva del marcador nativo (medido hasta ~164).
 void DrawTeamHud(ImGuiIO& io) {
   const S::Area a = S::GameArea(io);
   auto* dl = ImGui::GetForegroundDrawList();
@@ -915,7 +1038,7 @@ void DrawTeamHud(ImGuiIO& io) {
   for (int p = 0; p < 2; ++p) {
     const dbz3::tag::HudSide h = dbz3::tag::Hud(p);
     if (h.n < 2 || !h.shown) continue;
-    float y = 168;
+    float y = 174;
     int alive_seen = 0;
     for (int s = 1; s < h.n; ++s) {   // en el orden del relevo
       const int k = (h.active + s) % h.n;
@@ -941,8 +1064,9 @@ void TagTeamPanel::OnDraw(ImGuiIO& io) {
   if (battle || !dbz3_select_live()) forms::FlushPreferences();
   const auto preference_error = forms::PreferenceError();
   if (!preference_error.empty() && !battle && dbz3_select_live()) {
-    S::MenuText(ImGui::GetForegroundDrawList(), S::GameArea(io).At(600, 810), 22*S::GameArea(io).s,
-                T::T("Preferencias de formas no guardadas", "Form preferences not saved"), false, false);
+    S::MenuText(ImGui::GetForegroundDrawList(), S::GameArea(io).At(600, 810), 22 * S::GameArea(io).s,
+                T::T("Preferencias de formas no guardadas", "Form preferences not saved"), false, false,
+                900 * S::GameArea(io).s);
   }
   if (battle) DrawTeamHud(io);
   if (g_team_mode.load()) {
@@ -999,7 +1123,7 @@ void TagTeamPanel::OnDraw(ImGuiIO& io) {
         std::snprintf(label, sizeof(label), "%s %d/%d  L1/R1", T::T("Personajes", "Characters"),
                       dbz3::roster::DynamicRosterPage() + 1, pages);
         const S::Area area = S::GameArea(io);
-        S::MenuText(ImGui::GetForegroundDrawList(), area.At(600, 850), 18 * area.s, label, false, false);
+        S::MenuText(ImGui::GetForegroundDrawList(), area.At(600, 850), 18 * area.s, label, false, false, 500 * area.s);
       }
       ColorPanelTick(io, pressed, sel, forms::Copy(side).snapshot.id);
     }

@@ -1732,6 +1732,11 @@ void DibujarHeroe(ImDrawList* dl, const S::Area& a, float t, uint16_t p) {
     g_tab_h = (g_tab_h + ((p & kRb) ? 1 : 2)) % 3;
     g_cursor = g_tab_h * 3;
   }
+  if (const int ssj = H::SsjAvisoPendiente())   // 25/10: desbloqueo Super Saiyan (victoria clave en Dragon Universe)
+    g_aviso = ssj == 1 ? T::T("¡Has despertado el Super Saiyan! Equipado en tus combates: P+K+G con el ki lleno.",
+                              "You awakened Super Saiyan! Equipped in your fights: P+K+G with full ki.")
+                       : ssj == 2 ? T::T("¡Has alcanzado el Super Saiyan 2!", "You reached Super Saiyan 2!")
+                                  : T::T("¡Has alcanzado el Super Saiyan 3!", "You reached Super Saiyan 3!");
   if (H::CambioBloqueado()) g_aviso = T::T("Para cambiar de maestro, completa al menos el 60% del entrenamiento con el actual.",
                                           "To switch master, complete at least 60% of training with the current one.");
   if (p & kY) CambiarFicha(+1);   // ficha de heroe (cac.toml): Y la siguiente, X una nueva
@@ -1754,6 +1759,11 @@ void DibujarHeroe(ImDrawList* dl, const S::Area& a, float t, uint16_t p) {
     if (g_cursor == 2) {   // studies 8 H3: Apariencia -> pantalla Create (UT); Y dentro pasa a Edit (pelo)
       dbz3::heroe_ui::AbrirCrear(false);
       g_vista = kHeroeCrear;
+      return;
+    }
+    if (g_cursor == 3) {   // DS144: Estilo -> lista de estilos desbloqueados (se aplica al combate siguiente)
+      dbz3::heroe_ui::AbrirMovesets(true);
+      g_vista = kHeroeMoveset;
       return;
     }
     if (g_cursor == 4) {   // studies 8 fase 2: Moveset -> pantalla con la lista de movesets
@@ -2536,6 +2546,11 @@ void Hud(ImDrawList* dl, const S::Area& a, float y) {
     if (g.dano_recibido != 100) {
       s += std::string(s.empty() ? "" : "  ") + Lang("Recibido ", "Taken ", "Subis ", "Erlitten ", "Subiti ") +
            Num(g.dano_recibido) + "%";
+    }
+    if (r.modo == M::kHeroe) {   // DS144: bajo el marcador se ve el estilo y el moveset con los que se pelea
+      const int mov = H::MovesetId() < 0 ? H::EstiloId() : H::MovesetId();
+      s += std::string(s.empty() ? "" : "  ") + T::T("Estilo: ", "Style: ") + M::Nombre(H::EstiloId()) + "  " +
+           T::T("Moveset: ", "Moveset: ") + M::Nombre(mov);
     }
   }
   if (!s.empty()) S::MenuText(dl, a.At(600, y), 24 * a.s, s.c_str(), true, false, 600 * a.s);

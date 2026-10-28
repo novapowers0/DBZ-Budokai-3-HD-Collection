@@ -21,6 +21,7 @@
 // y dbz3::hub::RequestBattle(id1, id2, 17, ...) la lanza igual que una de serie.
 #pragma once
 
+#include <cstdint>
 #include <string>
 
 namespace rex::memory {
@@ -53,6 +54,10 @@ int PorMod(const std::string& mod);
 std::string Nombre(int registro, int idioma);
 // Lo mismo en el idioma elegido por el jugador (dbz3::settings::Language()).
 std::string Nombre(int registro);
+// ZB 25/10: escena de camara del cambio de zona de B2 (stage.toml `zona_escena`). AplicarCamaraEscena la llama el dibujo del escenario
+// (clima.cpp) y pisa la camara del juego mientras dura; EscenaDeZona = esta en marcha.
+void AplicarCamaraEscena(uint8_t* base);
+bool EscenaDeZona();
 // NB006 (IW): apaga SOLO la geometria/cielo del escenario (bit 0 de G+0x4C), sin tocar a los luchadores.
 void OcultarFondo(bool ocultar);
 

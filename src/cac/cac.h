@@ -49,6 +49,8 @@ struct Heroe {
   int logo = 0, scouter = 0;
   // Edit (UT): pelo = pieza de pelo (ya en `pelo`); color base y color propio del pelo.
   Hsv pelo_c1, pelo_c2;
+  Hsv piel_c;                           // 25/10: tono de piel unico (cara, brazos y la piel de las prendas)
+  Hsv ojos_c;                           // 25/10: color de ojos (0,0,0 = el del rostro); `cara` = tipo de rostro (vista_heroe ROSTROS)
   int xv2[7] = {0, 0, 0, 0, 0, 0, 0};       // C4: piezas XV2 (cuerpo 110..115): modelo de Hair, FaceBase, Bust, Pants, Boots, Rist, FaceEye (0 = la primera)
   int b3_piezas[4] = {-1, -1, -1, -1};       // Luna 6: fid donante B3 por torso/piernas/guantes/botas (-1 = Base)
   int tecnicas[4] = {0, 0, 0, 0};       // capsulas de tecnica desbloqueadas con los maestros (H4; solo para mostrar)

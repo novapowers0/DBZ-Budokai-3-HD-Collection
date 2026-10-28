@@ -87,9 +87,11 @@ pulido/optimización del launcher.
 
 ### 3.0 TABLA DE RELEASES
 
+Tabla hasta v1.3.0 (2026-09-30). Las versiones publicadas después (v1.4.x-v1.5.x) están en las etiquetas del repo `github/`.
+
 | Release | Fecha | Contenido clave | FileVersion | Doc de sesión |
 |---|---|---|---|---|
-| **v1.3.0** (Latest) | 2026-09-30 | «Reparar instalación», etiquetas de botón (Xbox/PS/Switch), DRED por defecto, `gamecontrollerdb.txt`, fix del extractor de texturas (#13), pulido y optimización del launcher | 1.3.0 | SESION_LAUNCHER_V130_2026-09-30 |
+| v1.3.0 | 2026-09-30 | «Reparar instalación», etiquetas de botón (Xbox/PS/Switch), DRED por defecto, `gamecontrollerdb.txt`, fix del extractor de texturas (#13), pulido y optimización del launcher | 1.3.0 | SESION_LAUNCHER_V130_2026-09-30 |
 | v1.2.9 | 2026-09-26 | Diagnóstico autoexplicativo: avisos SIEMPRE activos (fps sostenido, disco lento, instalación mixta), `vram=`/`lim=` en `perf`, guardia de VRAM, línea `entorno`, `copy_sdk_dlls.ps1` | 1.2.9 | SESION_DIAGNOSTICO_2026-09-26 |
 | v1.2.8.2 | 2026-09-24 | La mejora de texturas deja de hundir los FPS (throttle de dinámicas: solo nivel 0) + `cfg=`/`upx_dyn=`/`texload=` | 1.2.8.2 | SESION_PERF_TEXTURAS_2026-09-24 |
 | v1.2.8.1 | 2026-09-23 | Volcado de HUD/UI sin comprimir + packs RGBA8 + tope 4 versiones/identidad (issue #11) | 1.2.8.1 | SESION_VOLCADO_FORMATOS_2026-09-23 |
@@ -455,11 +457,11 @@ launcher). Detalle: `docs/07_ports/SESION_DRAW_SEMANTICS_2026-09-11.md` §20.
 ## 4. COMANDOS ÚTILES
 
 ```powershell
-# Compilar el juego (release, usa el SDK instalado en rexglue/)
-cmake --build "out\build\win-amd64-release"
-# 🔴 DESPUES de cada build del juego: recopiar las DLL canonicas (el build las
-# sobrescribe con las stale/avx2 de rexglue/bin -> un test mediria otro runtime)
-powershell -ExecutionPolicy Bypass -File tools\copy_sdk_dlls.ps1
+# Compilar el juego: build dual -> su exe al release + DLL canonicas en los dos builds
+# (sin esa copia un test mediria otro runtime); de uno en uno si hay varios agentes
+python tools\compilar.py
+# A mano: cmake --build "out\build\win-amd64-dual" y despues, por cada build,
+# powershell -ExecutionPolicy Bypass -File tools\copy_sdk_dlls.ps1 -BuildDir <build>
 # Build dual (US+EU): cmake -B out/build/win-amd64-dual -DDBZ3_DUAL_REGION=ON ...
 # Build EU (histórico, ya no usado): -DDBZ3_GENERATED_DIR=generated_eu
 
@@ -480,7 +482,7 @@ xbdecompress <src> <dst>         # descomprimir
 # Herramientas XDK: "mod center\Xbox 360 Compression - Decompression tool..."
 
 # Hoja de ruta ACELERADA (S0-S4) y sus automatismos
-#  docs/HOJA_DE_RUTA_ACELERADA.md            <- plan de ejecución activo
+#  docs/HOJA_DE_RUTA_ACELERADA.md            <- plan de entonces (histórico)
 #  tools/lab_f0.ps1                          <- baseline: hashes+región+mods+logs clasificados
 #  awo_tools/corpus_scan.py                  <- parse-all AFS -> JSON+SQLite (Content DB)
 #  mod center hd/swap_matrix.py              <- mover CUALQUIER blob entre slots/regiones
@@ -885,7 +887,8 @@ ver; patches/ es manual).
 
 ## 12. HOJA DE RUTA ACTUAL
 
-Ver **`docs/HOJA_DE_RUTA_2026_09.md`** — 3 fases:
+Plan vigente: **`studies 5/01_ROADMAP.md`** (y sus `REVISION_ROADMAP_*`). Las hojas de ruta de `docs/` son
+históricas; la última de ellas, **`docs/HOJA_DE_RUTA_2026_09.md`**, tenía 3 fases:
 1. **Documentación ligera** (compactación 2026-09-26: AGENTS ≤ 60 KB; detalle a
    HISTORICO_RELEASES.md).
 2. **Limpieza de código muerto** (`dbz3_enabled_mods`, `PrepareRegionData` stub,
@@ -920,6 +923,8 @@ Ver **`docs/HOJA_DE_RUTA_2026_09.md`** — 3 fases:
   SDK avx2 `out/build-win-vulkan/` (se conserva `out/win-amd64/` con las DLLs
   avx2), los AFS de B1/B2/B2V/Shin Budokai PSP **y sus ISOs** (se conservan **B3
   Greatest Hits** e **Infinite World**), y dedup de `modding resources update*`.
+  Hoy las ISOs de B1 y B2 se vuelven a usar: las pasarelas y `tools/pruebas.py` las leen
+  de `DBZ3_PS2_GAMES` (fuera del proyecto).
   **Se conserva** `mods/og_music`. Barrido de `__pycache__`/`*.pyc`/`.tmp`/`.bak`.
   **Pendiente de decidir**: `modding resources` (2.2 GB) y `modding resources
   discord` (0.86 GB).

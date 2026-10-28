@@ -47,6 +47,7 @@ struct Malla {
     V3 p[3];
     ImVec2 uv[3];
     int tex = 0;
+    int parte = 0;            // EU 0x306C30 Stage_SetUvAnim: parte del #AMO para asociar su canal #MTA
     bool trans = false;      // vtype con el bit alto (barrera del aro, sombra): translucida
     uint8_t hueso[3] = {};   // hueso de cada vertice (para animar; ver Esqueleto)
     // color de cada vertice (vtype & 2: RGBA en floats 0..1 tras la normal), solo si se pidio en LeerAmo (frente R2: la
@@ -208,8 +209,12 @@ int EstadoProfundidad();
 // Triangulos de un cuadro: se ponen todos los modelos, se tapa con los luchadores y se pintan de lejos a cerca.
 class Escena {
  public:
-  void Empezar() { tris_.clear(); }
+  void Empezar() { tris_.clear(), pintados_ = ocultos_ = descartados_ = 0, tapable_ = true; }
   size_t Cuantos() const { return tris_.size(); }   // triangulos puestos en este cuadro
+  // DS179: recuento del ultimo Pintar (para saber si una figura que deberia verse se ha tirado).
+  size_t Pintados() const { return pintados_; }        // llegan a la lista de dibujo
+  size_t Ocultos() const { return ocultos_; }          // tapados por una esfera del luchador (Tapar)
+  size_t Descartados() const { return descartados_; }  // fuera por el tope de vertices de la lista (65535)
   // malla en `pos`, girada `giro` (radianes) en vertical y escalada `esc`
   void Poner(const Camara& cam, const Malla& malla, const std::vector<Tex>& tx, const V3& pos, float giro, float esc);
   // Lo mismo con toon (opcional, por modelo): 3 tonos por vertice con la luz de la camara (la de B3 en vista,
@@ -219,6 +224,11 @@ class Escena {
     float borde = 0.12f;
     float tonos[3] = {1.0f, 0.78f, 0.58f};   // luz, media, sombra
     float cortes[2] = {0.25f, -0.25f};       // n.l por encima de cortes[0]: luz; de cortes[1]: media; si no, sombra
+    // 25/10 (usuario: "las figuras de B3 salen con el sombreado y los bordes de B2"): la rampa toon REAL de B3 por textura:
+    // tramos de luz (l = 0,5 + 0,5 n.l, como model_render._shade) de menor a mayor, cada uno con su textura ya cocida
+    // (base - rampa[banda][columna del tramo]). Si la textura del triangulo trae mas de un tramo, el triangulo se corta
+    // por las lineas de cambio (borde duro, como el shader de B3) y cada trozo va con la suya, sin los 3 tonos grises
+    const std::vector<std::vector<std::pair<float, int>>>* rampa = nullptr;
   };
   void Poner(const Camara& cam, const Malla& malla, const std::vector<Tex>& tx, const V3& pos, float giro, float esc,
              const Toon& toon);
@@ -226,6 +236,10 @@ class Escena {
   // triangulo mas lejos que una esfera y con su centro dentro de ella no se pinta. Se mantiene con el
   // z-buffer del juego (R15: escenario y luchadores tapan pixel a pixel) como respaldo, por orden del coordinador.
   void Tapar(const Camara& cam, uint8_t* base, uint32_t x);
+  // DS179: lo que se ponga a continuacion NO lo tapa el luchador de `Tapar`. Es para lo que forma parte del propio
+  // luchador y no debe borrarse nunca: la aureola de IW (4,19 sobre el centro de la cabeza, y la esfera de la cabeza
+  // inflada un 30 % llega a 4,16 -> se quedaba justo en el borde y desaparecia). Se vuelve a poner en true al acabar.
+  void Tapable(bool si) { tapable_ = si; }
   void Pintar(ImDrawList* dl);
 
  private:
@@ -233,21 +247,28 @@ class Escena {
               const Toon* toon);
   struct Tri {
     ImVec2 p[3], uv[3];
+    V3 w;   // DS179: centro en MUNDO (para la prueba de tapado en 3D, no solo en pantalla)
     ImTextureID tex{};
     ImU32 col = IM_COL32_WHITE;
     bool vcol = false;   // con color por vertice (Malla::Tri::con_color)
     ImU32 cols[3] = {};
     float k = 0;   // px por unidad: mas pequeno = mas lejos
     bool prof = false;   // R15: con prueba de profundidad (vertices empaquetados, textura de Tex::prof)
+    bool tapable = true; // DS179: si lo puede tapar el luchador (Tapar)
+    bool prioritario = false; // DS179: no se tira por el tope de la lista (lo que va con Tapable(false): la aureola)
     float z[3] = {-1, -1, -1};   // R15: profundidad del juego de cada vertice (Camara::Prof)
     bool borde = false;          // del borde toon (lo primero que se deja si no caben los vertices)
   };
   struct Tapa {
     ImVec2 c;
     float r = 0, k = 0;
+    V3 c3;        // DS179: centro de la esfera en MUNDO
+    float r3 = 0; // ... y su radio (sin el 1,3 que se usa solo para el circulo en pantalla)
   };
   std::vector<Tri> tris_;
   std::vector<Tapa> tapas_;
+  size_t pintados_ = 0, ocultos_ = 0, descartados_ = 0;
+  bool tapable_ = true;
 };
 
 }  // namespace dbz3::ps2

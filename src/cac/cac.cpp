@@ -163,8 +163,8 @@ void AjustarSlot(int i) {
   h.cuerpo = std::max(0, h.cuerpo);
   // studies 8 fase 2: 10 peinados (Edit, heroe_ui.cpp kNumPelos: el del cuerpo + 9 piezas UT) aunque el catalogo
   // piezas_cac.toml no este cargado (sin el, solo hay 2 "nativos" y el peinado elegido se perdia al guardar)
-  h.pelo = std::clamp(h.pelo, 0, std::max(9, n_de("pelo") - 1));
-  h.cara = std::clamp(h.cara, 0, std::max(0, n_de("cara") - 1));
+  h.pelo = std::clamp(h.pelo, 0, std::max(10, n_de("pelo") - 1));   // 25/10: 11 peinados (vista_heroe PELOS_NATIVOS)
+  h.cara = std::clamp(h.cara, 0, std::max(13, n_de("cara") - 1));   // 25/10: tipos de rostro (0 = el del cuerpo, 1..13)
   h.ropa = std::clamp(h.ropa, 0, std::max(0, n_de("ropa") - 1));
   h.color = std::clamp(h.color, 0, 31);
   h.voz = std::clamp(h.voz, 0, 31);
@@ -172,6 +172,8 @@ void AjustarSlot(int i) {
   for (Hsv& c : h.parte) ClampHsv(c);
   ClampHsv(h.pelo_c1);
   ClampHsv(h.pelo_c2);
+  ClampHsv(h.ojos_c);
+  ClampHsv(h.piel_c);
   h.logo = std::max(0, h.logo);
   h.scouter = std::clamp(h.scouter, 0, 1);
   for (int& fid : h.b3_piezas) fid = std::clamp(fid, -1, 4095);
@@ -237,7 +239,9 @@ void EscribirHeroe(std::ostream& o, const char* tabla, const Heroe& h) {
      << ", " << HsvTxt(h.parte[3]) << ", " << HsvTxt(h.parte[4]) << ", " << HsvTxt(h.parte[5]) << "]\n"
      << "xv2 = [" << h.xv2[0] << ", " << h.xv2[1] << ", " << h.xv2[2] << ", " << h.xv2[3] << ", " << h.xv2[4] << ", " << h.xv2[5] << ", " << h.xv2[6] << "]\n"
      << "b3_piezas = [" << h.b3_piezas[0] << ", " << h.b3_piezas[1] << ", " << h.b3_piezas[2] << ", " << h.b3_piezas[3] << "]\n"
-     << "pelo_color1 = " << HsvTxt(h.pelo_c1) << "\npelo_color2 = " << HsvTxt(h.pelo_c2) << "\n";
+     << "pelo_color1 = " << HsvTxt(h.pelo_c1) << "\npelo_color2 = " << HsvTxt(h.pelo_c2) << "\n"
+     << "ojos_color = " << HsvTxt(h.ojos_c) << "\n"
+     << "piel_color = " << HsvTxt(h.piel_c) << "\n";
   // studies 8 H1: progreso del Modo Heroe de esta ficha
   o << "progreso = " << h.progreso << "\nsaga = " << h.saga << "\nph = " << h.ph << "\nph_vida = " << h.ph_vida
     << "\nph_dano = " << h.ph_dano << "\nmaestros = " << h.maestros << "\nentreno = [";
@@ -318,6 +322,8 @@ Heroe LeerHeroe(const toml::table* p) {
   }
   h.pelo_c1 = LeerHsv((*p)["pelo_color1"].node());
   h.pelo_c2 = LeerHsv((*p)["pelo_color2"].node());
+  h.ojos_c = LeerHsv((*p)["ojos_color"].node());
+  h.piel_c = LeerHsv((*p)["piel_color"].node());
   h.progreso = int((*p)["progreso"].value_or(int64_t{0}));
   h.saga = int((*p)["saga"].value_or(int64_t{0}));
   h.ph = int((*p)["ph"].value_or(int64_t{0}));

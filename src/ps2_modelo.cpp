@@ -86,6 +86,7 @@ bool LeerAmo(const std::vector<uint8_t>& b, int variante, Malla& out, Esqueleto*
   const uint32_t nb = std::min<uint32_t>(u32(a + 0x10), 255), ejes = u32(a + 0x14);
   std::vector<M34> mundo(nb);
   std::vector<uint32_t> dirs;   // (con esq) direccion de cada vertice de cada triangulo, para casar los pesos
+  int siguiente_parte = 0;
   if (esq) esq->padre.assign(nb, -1), esq->local.assign(nb, M34{});
   for (uint32_t i = 0; i < nb; ++i) {
     const size_t e = a + ejes + 80 * i;
@@ -125,7 +126,8 @@ bool LeerAmo(const std::vector<uint8_t>& b, int variante, Malla& out, Esqueleto*
                     "{:.2f} {:.2f} +0x40 {:.2f} {:.2f} {:.2f} {:.2f}", i, vtype, int32_t(tex), f32(po + 0x30), f32(po + 0x34),
                     f32(po + 0x38), f32(po + 0x3C), f32(po + 0x20), f32(po + 0x24), f32(po + 0x28), f32(po + 0x2C),
                     f32(po + 0x40), f32(po + 0x44), f32(po + 0x48), f32(po + 0x4C));
-      size_t pos = po + 0xA0;
+       const int parte_actual = siguiente_parte++;
+       size_t pos = po + 0xA0;
       const size_t fin = std::min(b.size(), pos + size_t(tam - 0x60000000) * 16);
       while (pos + 0x20 <= fin) {
         const uint32_t vif = u32(pos + 0xC), ft = u32(pos + 0x10), cnt = u32(pos + 0x14), num = (vif >> 16) & 0xFF;
@@ -169,7 +171,8 @@ bool LeerAmo(const std::vector<uint8_t>& b, int variante, Malla& out, Esqueleto*
             tr.n[c] = vn[k];
             if (esq) dirs.push_back(dv[k]);
           }
-          tr.tex = int(tex);
+           tr.tex = int(tex);
+           tr.parte = parte_actual;
           // B2 (colores): el bit alto es mezcla con el alfa de la textura (la carta de las fichas del tablero), opaca; la
           // translucidez de B2 viene del alfa del color de vertice (nubes de la escena de Shenron)
           tr.trans = (vtype & 0x80000000u) != 0 && !colores;
@@ -528,9 +531,14 @@ void Escena::PonerT(const Camara& cam, const Malla& malla, const std::vector<Tex
     Tri tp;
     bool ok = true;
     float ks = 0;
+    // DS179: centro en mundo del triangulo (media de sus 3 vertices ya colocados). Lo usa la prueba de tapado para
+    // exigir que el triangulo este DENTRO de la esfera del luchador en 3D, no solo dentro de su circulo en pantalla.
+    V3 wm{};
     for (int c = 0; c < 3 && ok; ++c) {
       float k;
-      ok = cam.P(amundo(tr.p[c]), tp.p[c], k);
+      const V3 w = amundo(tr.p[c]);
+      wm.x += w.x, wm.y += w.y, wm.z += w.z;
+      ok = cam.P(w, tp.p[c], k);
       ks += k;
       tp.uv[c] = tr.uv[c];
       tp.z[c] = ok ? cam.Prof(k) : -1.0f;
@@ -538,9 +546,12 @@ void Escena::PonerT(const Camara& cam, const Malla& malla, const std::vector<Tex
     // detras de la camara: Camara::P ya corta en el plano cercano (z de vista > -1). Antes tambien se quitaba lo que daba
     // mas de 45 px por unidad (a menos de ~19 de la camara del combate): el disco recien lanzado (R13) no se veia.
     if (!ok) continue;
+    tp.w = {wm.x / 3.0f, wm.y / 3.0f, wm.z / 3.0f};
     tp.k = ks / 3.0f;
     tp.tex = tr.tex >= 0 && tr.tex < int(tx.size()) && tx[size_t(tr.tex)] ? tx[size_t(tr.tex)].id() : ImTextureID{};
     tp.prof = tp.tex ? tx[size_t(tr.tex)].prof : prof_sin_tex;
+    tp.tapable = tapable_;   // DS179: la aureola (parte del luchador) no la tapa el propio luchador
+    tp.prioritario = !tapable_;   // ... ni se tira cuando la lista de dibujo va llena
     tp.col = tr.trans ? IM_COL32(255, 255, 255, 110) : IM_COL32_WHITE;
     tp.vcol = tr.con_color;
     for (int c = 0; c < 3; ++c) tp.cols[c] = tr.col[c];
@@ -576,19 +587,68 @@ void Escena::PonerT(const Camara& cam, const Malla& malla, const std::vector<Tex
         b.prof = tp.prof || prof_sin_tex;
         if (okb) {
           b.k = tp.k * 0.995f;
+          b.w = tp.w;   // DS179: el borde pertenece al mismo triangulo (misma prueba de tapado en 3D)
+          b.tapable = tp.tapable;
+          b.prioritario = tp.prioritario;
           b.borde = true;
           b.vcol = true;
           b.cols[0] = b.cols[1] = b.cols[2] = IM_COL32(0, 0, 0, 255);
           tris_.push_back(b);
         }
       }
+      // rampa de B3: el triangulo cortado por los cambios de tramo, cada trozo con la textura cocida de su tramo
+      const auto* tramos = (toon->rampa && normales && !tr.trans && tr.tex >= 0 && size_t(tr.tex) < toon->rampa->size())
+                               ? &(*toon->rampa)[size_t(tr.tex)] : nullptr;
+      if (tramos && tramos->size() > 1) {
+        struct Pt { ImVec2 p, uv; float z, l; };
+        Pt v[3];
+        for (int c = 0; c < 3; ++c) {
+          const float d = nv[c].x * kLuz.x + nv[c].y * kLuz.y + nv[c].z * kLuz.z;
+          v[c] = {tp.p[c], tp.uv[c], tp.z[c], 0.5f + 0.5f * d};
+        }
+        auto mezcla = [](const Pt& a, const Pt& b, float t) {
+          return Pt{ImVec2(a.p.x + (b.p.x - a.p.x) * t, a.p.y + (b.p.y - a.p.y) * t),
+                    ImVec2(a.uv.x + (b.uv.x - a.uv.x) * t, a.uv.y + (b.uv.y - a.uv.y) * t), a.z + (b.z - a.z) * t,
+                    a.l + (b.l - a.l) * t};
+        };
+        // recorte de un poligono por l >= x (arriba = true) o l < x
+        auto corta = [&](const std::vector<Pt>& in, float x, bool arriba) {
+          std::vector<Pt> out;
+          for (size_t i = 0; i < in.size(); ++i) {
+            const Pt& a = in[i];
+            const Pt& b = in[(i + 1) % in.size()];
+            const bool da = arriba ? a.l >= x : a.l < x, db = arriba ? b.l >= x : b.l < x;
+            if (da) out.push_back(a);
+            if (da != db && std::fabs(b.l - a.l) > 1e-9f) out.push_back(mezcla(a, b, (x - a.l) / (b.l - a.l)));
+          }
+          return out;
+        };
+        for (size_t s = 0; s < tramos->size(); ++s) {
+          const int ti = (*tramos)[s].second;
+          std::vector<Pt> poli(v, v + 3);
+          if (s > 0) poli = corta(poli, (*tramos)[s].first, true);
+          if (s + 1 < tramos->size() && poli.size() >= 3) poli = corta(poli, (*tramos)[s + 1].first, false);
+          if (poli.size() < 3) continue;
+          Tri q = tp;
+          q.tex = ti >= 0 && ti < int(tx.size()) && tx[size_t(ti)] ? tx[size_t(ti)].id() : tp.tex;
+          q.vcol = false;
+          for (size_t k = 1; k + 1 < poli.size(); ++k) {
+            const Pt* tri3[3] = {&poli[0], &poli[k], &poli[k + 1]};
+            for (int c = 0; c < 3; ++c) q.p[c] = tri3[c]->p, q.uv[c] = tri3[c]->uv, q.z[c] = tri3[c]->z;
+            tris_.push_back(q);
+          }
+        }
+        continue;
+      }
     }
     tris_.push_back(tp);
   }
 }
 // Oclusion por el luchador: sus 22 esferas de cuerpo (las de los golpes del juego: centros X+1616 + 16 i, radios
-// [[X+2996] + 24 + 4 i], gigantes.cpp) proyectadas; un triangulo mas lejos que una esfera y con su centro dentro de
-// ella no se pinta. ponytail: sin el z-buffer del juego el escenario de B3 no tapa los modelos.
+// [[X+2996] + 24 + 4 i], gigantes.cpp). DS179: se guarda tambien la esfera en MUNDO y la prueba exige que el
+// triangulo este dentro de ella en 3D, no solo dentro de su circulo en pantalla: con solo el circulo, un objeto
+// pegado al borde (la aureola, a 4,19 del centro de la cabeza con radio 3,2) caia dentro del 30 % de mas y se
+// borraba entero segun el cuadro. ponytail: sin el z-buffer del juego el escenario de B3 no tapa los modelos.
 void Escena::Tapar(const Camara& cam, uint8_t* base, uint32_t x) {
   tapas_.clear();
   const uint32_t rt = REX_LOAD_U32(x + 2996);
@@ -598,7 +658,11 @@ void Escena::Tapar(const Camara& cam, uint8_t* base, uint32_t x) {
     const float r = rt ? LoadF(base, rt + 24 + 4 * i) : 0.0f;
     Tapa tp;
     if (r <= 0.0f || r > 20.0f || !cam.P(c, tp.c, tp.k)) continue;
-    tp.r = r * 1.3f * tp.k;   // un poco mas: el pelo y la ropa salen de las esferas
+    tp.r = r * 1.3f * tp.k;   // circulo en pantalla: un poco mas (el pelo y la ropa salen de las esferas)
+    // DS179: la esfera en MUNDO va con su radio DE VERDAD: el 1,3 de arriba es solo el alcance en pantalla. Con el
+    // 1,3 tambien en 3D, la esfera del cuello (3,5 -> 4,55) llegaba a la aureola (4,19 sobre la cabeza) y la borraba;
+    // con el radio real, lo que se tapa esta dentro del cuerpo del luchador y no al lado.
+    tp.c3 = c, tp.r3 = r;
     tapas_.push_back(tp);
   }
 }
@@ -625,6 +689,7 @@ void Escena::Pintar(ImDrawList* dl) {
   // (abanicos enormes por toda la pantalla: el Shenron de B2 con el borde toon, 11325 triangulos + bordes, medido).
   // Si no caben, fuera primero los bordes; y si aun no, los mas lejanos.
   const size_t cabe = (65535u - std::min<size_t>(dl->_VtxCurrentIdx, 65535u)) / 3;
+  const size_t puestos = tris_.size();
   if (tris_.size() > cabe) {
     tris_.erase(std::remove_if(tris_.begin(), tris_.end(), [](const Tri& t) { return t.borde; }), tris_.end());
     static int avisos = 0;
@@ -634,7 +699,21 @@ void Escena::Pintar(ImDrawList* dl) {
     }
   }
   std::stable_sort(tris_.begin(), tris_.end(), [](const Tri& a, const Tri& b) { return a.k < b.k; });
-  if (tris_.size() > cabe) tris_.erase(tris_.begin(), tris_.begin() + std::ptrdiff_t(tris_.size() - cabe));
+  if (tris_.size() > cabe) {
+    // DS179: antes se tiraban los mas lejanos sin mirar; la aureola (mitad del cuadro) caia en ese saco si la escena
+    // venia cargada. Ahora se respeta `prioritario` (lo puesto con Tapable(false)): primero se tira lo demas.
+    size_t sobran = tris_.size() - cabe;
+    std::vector<char> fuera(tris_.size(), 0);
+    for (size_t i = 0; i < tris_.size() && sobran; ++i)
+      if (!tris_[i].prioritario) fuera[i] = 1, --sobran;
+    for (size_t i = 0; i < tris_.size() && sobran; ++i)   // si aun no cabe, tambien los prioritarios
+      if (!fuera[i]) fuera[i] = 1, --sobran;
+    size_t j = 0;
+    for (size_t i = 0; i < tris_.size(); ++i)
+      if (!fuera[i]) tris_[j++] = tris_[i];
+    tris_.resize(j);
+  }
+  descartados_ = puestos - tris_.size();   // DS179: los que se quedan fuera por el tope de la lista
   static Tex blanca;                            // 1x1 blanca para los triangulos sin textura con profundidad
   bool pedir = false;
   for (const Tri& tp : tris_) {
@@ -643,12 +722,21 @@ void Escena::Pintar(ImDrawList* dl) {
     const float cx = (tp.p[0].x + tp.p[1].x + tp.p[2].x) / 3.0f, cy = (tp.p[0].y + tp.p[1].y + tp.p[2].y) / 3.0f;
     bool tapado = false;
     // las esferas siguen (coordinador, 2026-10-16: respaldo hasta probar el z-buffer en todos los modos); con el z-buffer
-    // solo sobran alrededor del luchador
+    // solo sobran alrededor del luchador. DS179: ademas del circulo en pantalla, el triangulo tiene que estar DENTRO de
+    // la esfera en 3D: un objeto pegado por fuera de la cabeza (la aureola) caia dentro del circulo y desaparecia.
     static const bool sin_esferas = std::getenv("DBZ3_ZBUF_SIN_ESFERAS") != nullptr;   // prueba: solo el z-buffer
-    if (!(sin_esferas && probado))
+    if (tp.tapable && !(sin_esferas && probado))
     for (const Tapa& t : tapas_)
-      if (tp.k < t.k && (cx - t.c.x) * (cx - t.c.x) + (cy - t.c.y) * (cy - t.c.y) < t.r * t.r) tapado = true;
-    if (tapado) continue;
+      if (tp.k < t.k && (cx - t.c.x) * (cx - t.c.x) + (cy - t.c.y) * (cy - t.c.y) < t.r * t.r &&
+          (tp.w.x - t.c3.x) * (tp.w.x - t.c3.x) + (tp.w.y - t.c3.y) * (tp.w.y - t.c3.y) +
+                  (tp.w.z - t.c3.z) * (tp.w.z - t.c3.z) <
+              t.r3 * t.r3)
+        tapado = true;
+    if (tapado) {
+      ++ocultos_;
+      continue;
+    }
+    ++pintados_;
     if (tp.prof) {
       if (!tp.tex && !blanca) {
         P::Imagen im;

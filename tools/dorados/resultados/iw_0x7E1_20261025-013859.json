@@ -1,0 +1,14 @@
+{
+ "modo": "iw",
+ "escena": "0x7E1",
+ "dorado": "iw_0x7E1.json",
+ "fuente_dorado": "#AMC del original (IW USA): MSN019, clips 0x0 (una muestra por clip; MSN019 todo el clip 879/0)",
+ "filas": [
+  {
+   "nombre": "serie del port",
+   "ok": false,
+   "detalle": "sin muestras 'iwmini: jugador/ojo' en el log"
+  }
+ ],
+ "firma": "1f7323bba9cf"
+}

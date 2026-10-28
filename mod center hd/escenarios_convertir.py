@@ -967,6 +967,11 @@ def nieve_g7(fuente, spx, reg):
     return spx, amb_hd(hijos)
 
 
+# ZB 25/10: grupos de B2 con cambio de zona -> cuantos clips del 1.er #AMC del objeto 0 dura la escena (medido en el #SPX original:
+# camara clip 0, cambio de zona (llamada 0x40) al acabar su espera, camara clip 1...; Llanura sigue con el clip 2). Duran lo que sus clips.
+ESCENA_ZONA = {7: 2, 8: 2}   # fuera: g0 Base (su guion cambia a los 750 cuadros; clip 0 = 604 y entre medias una camara fija, builtin 0x31, sin decodificar) y g4 Llanura (sus camaras de suceso enseñan huecos negros: el mar y el horizonte de la zona B no se dibujan)
+
+
 def escenario_b2(fuente, grupo, donante=44, zona=0, escala=1.0):
     """Bin HD de un escenario de B2 (o B1): geometria, grafo, colision y camaras del juego de origen; script
     (#SPX) y registro de efectos (#AMB de 641 casillas) del escenario nativo `donante` de la HD del jugador. El
@@ -1014,6 +1019,11 @@ def escenario_b2(fuente, grupo, donante=44, zona=0, escala=1.0):
                 po = pm.amgs[0].all_parts[int(k)].off
                 struct.pack_into("<II", mdd, off0 + po, 0xFFFFFF, 0xFFFF)
         mdd = bytes(mdd)
+    # ZB 25/10: las camaras de suceso del objeto 0 (el 1.er #AMC) no se tiran: van al FINAL de la lista de camaras (tras las de
+    # presentacion del donante) como #ACC; el cambio de zona del port (src/escenarios.cpp, EscenaZona) reproduce sus primeros
+    # ESCENA_ZONA[grupo] clips con la camara del juego. X1ESC_SIN_ESCENA=1 las quita como antes (pruebas).
+    escena = camaras_transicion(mdd)[:1] if (fuente.juego == JUEGOS["b2"][0] and grupo in ESCENA_ZONA and le(mdd, 4) >= 2
+                                              and not os.environ.get("X1ESC_SIN_ESCENA")) else []
     mdd, quitadas, quietas = raices_quietas_b2(mdd, todas=(grupo == 0 and os.environ.get('X1ESC_BASE_RAIZ_B', '1') != '0'))
     mdd, saneadas = sanear_anims_raiz_b2(mdd)
     mdd, sucesos = sin_camaras_suceso(mdd)
@@ -1024,6 +1034,14 @@ def escenario_b2(fuente, grupo, donante=44, zona=0, escala=1.0):
     spx = nat[k[3][0]:k[3][0] + k[3][1]]
     reg = completar_registro(nat[k[4][0]:k[4][0] + k[4][1]], donante)
     camaras = camaras_hd(nat[k[0][0]:k[0][0] + k[0][1]])
+    for b in escena:
+        try:
+            hd = ps2hd.convert_block(b)
+        except ps2hd.Unsupported:
+            continue
+        if ps2hd.MAGIC.get(b[:4], b[:4]) == b"#ACC":
+            camaras.append(hd)
+            print("arreglos B2: camaras del suceso conservadas como clips de la escena de cambio de zona (%d)" % len(camaras))
     if os.environ.get("X1ESC_NIEVE") and grupo == 7 and fuente.juego == JUEGOS["b2"][0]:
         spx, reg = nieve_g7(fuente, spx, reg)
     cas = nat[k[2][0]:k[2][0] + k[2][1]] if not le(mas, 4) else camara(mas, b"#CAS")   # #MAS vacio (grupo 5): el #CAS del donante
@@ -1051,7 +1069,7 @@ entrada = {entrada}    # data_cmn.afs: geometria (entrada nueva)
 menu = {menu}       # data_cmn.afs: imagenes de la casilla (circulo, vista y rotulo)
 id_se = {id_se}       # data_cmn.afs: sonido/ambiente (del escenario nativo donante)
 tema = {tema}          # luz y cielo: funcion de tema del registro {tema} (generica)
-{zona_b_linea}"""
+{zona_b_linea}{escena_linea}"""
 ZONA_B_LINEA = "zona_b = {entrada_a}     # esta variante es la zona B de la entrada {entrada_a} (al caer por el borde se pasa a ella: dbz3_escenarios_zonas_b)" + chr(10) + "selector = false     # la zona B no sale en el selector: solo se llega a ella en el combate" + chr(10)
 
 # ---------------------------------------------------------------------------------------------------------
@@ -1289,7 +1307,7 @@ def plantilla_menu():
     return lzx(d, False) if d[:4] == b"\x0f\xf5\x12\xee" else d
 
 
-def instalar(datos, mods, nombre, entrada, juego, id_se=45, tema=16, foto=None, rotulo_txt=None, zona_b=0):
+def instalar(datos, mods, nombre, entrada, juego, id_se=45, tema=16, foto=None, rotulo_txt=None, zona_b=0, escena=0):
     from PIL import Image
     carpeta = Path(mods) / nombre
     menu = entrada + 100
@@ -1307,7 +1325,8 @@ def instalar(datos, mods, nombre, entrada, juego, id_se=45, tema=16, foto=None, 
     (carpeta / "stage.toml").write_text(STAGE_TOML.format(juego=juego, nombre=nombre.upper()[:15], titulo=rotulo_txt or nombre,
                                                           entrada=entrada,
                                                           menu=menu, id_se=id_se, tema=tema,
-                                                          zona_b_linea=ZONA_B_LINEA.format(entrada_a=zona_b) if zona_b else ""),
+                                                          zona_b_linea=ZONA_B_LINEA.format(entrada_a=zona_b) if zona_b else "",
+                                                          escena_linea=("zona_escena = %d     # clips de camara (ultimo #ACC de la lista del objeto 0) de la escena del cambio de zona" + chr(10)) % escena if escena else ""),
                                         encoding="utf-8")
     (carpeta / "manifest.txt").write_text(
         "name=%s\ndescription=Escenario de %s convertido desde tu ISO (casilla nueva, no sustituye nada)\n"
@@ -1496,7 +1515,8 @@ def cmd_mod(a):
     nombre = a.nombre or "%s ESCENARIO %d%s" % (a.juego.upper(), a.grupo, " ZONA B" if a.zona == "b" else "")
     zona_b = base + a.grupo if a.zona == "b" else 0      # la entrada de la variante A (la de enfrente)
     carpeta = instalar(datos, a.mods or (RAIZ / "mods"), nombre, entrada, JUEGOS[a.juego][0], id_se=a.donante + 1,
-                       tema=a.tema, foto=a.foto, rotulo_txt=a.rotulo, zona_b=zona_b)
+                       tema=a.tema, foto=a.foto, rotulo_txt=a.rotulo, zona_b=zona_b,
+                       escena=ESCENA_ZONA.get(a.grupo, 0) if a.juego == "b2" and a.zona != "b" and not os.environ.get("X1ESC_SIN_ESCENA") else 0)
     print("mod '%s' -> %s (entradas %d y %d, %d B)" % (nombre, carpeta, entrada, entrada + 100, len(datos)))
     try:
         conservar_efectos_b2(IsoB2(a.iso, a.juego), a.grupo, carpeta)

@@ -3,6 +3,9 @@
 //
 // Hecho: 9 (0x7D8) "Fire beams at Piccolo! Go easy on him, though!" (modulo MSN010). Del decomp EU de IW
 // (E:/DBZ3HD_trabajo/ghidra/salida/iw_sles55347.c, Viewer_* 0x3245D0-0x327F90 y 0x32B2A0-0x32E8xx):
+// DS126 (2026-10-27): 0x7D7 y 0x7D3 tenian la entrada mal puesta y el 0x7D7 ademas el escenario a 350 u de sus
+// propias camaras. Las tres camaras del 0x7D7 (descriptor EU 0x49A600: 950/951/952) y las del 0x7D8/0x7DE se leen
+// del #AMC 915/2 y cada una se usa en el estado que le toca; ver las constantes kOjo7/kMira7 y Empezar.
 //  - Primera persona: apuntar = girar la camara (Camera_OrbitInputUpdate 0x3245D0): 0.0165 rad por cuadro (0.01 desde
 //    el 3.er disparo), zona muerta 32 de la palanca o la cruceta; inclinacion entre 20 y 160 grados. Reticula en el
 //    centro (DATA_USA 9/1 t01), que cambia de dibujo con un hueso de Piccolo dentro (10 px + su radio en pantalla).
@@ -12,9 +15,10 @@
 //    distinta de la anterior; 2.0, o 2.25 con vida < 40 %); con vida < 25 % se queda quieto.
 //  - Vida por dificultad {900, 950, 1000, 1050, 1100, 1200}; dano por grupo de huesos (tabla 0x499A60): cabeza 40,
 //    tronco 3, brazos 12, piernas 10. A 0: derribo. Tiempo {180, 160, 140, 120, 110, 90} s (el "130" de la captura).
-//  - Rango por segundos hasta el derribo (Menu_ClassifyValueByThreshold, tabla 999/75/60/45/30): <= 30 Z (10000),
+//  - Rango por segundos jugados (Menu_ClassifyValueByThreshold, tabla 999/75/60/45/30): <= 30 Z (10000),
 //    <= 45 S (8000), <= 60 A (6000), <= 75 B (5000), si no C (3000); x {0.6, 0.8, 1.0, 1.3, 1.6, 2.0} por dificultad,
-//    redondeado a la centena. Sin derribo: fallo, 100 puntos (Viewer_StoreResultToConfig 0x324C50).
+//    redondeado a la centena. El rango/premio sale del reloj tambien sin derribo (Viewer_StoreResultToConfig 0x324C50
+//    y, en el 0x7D7, Viewer_CommitShootResult 0x3496B0); 100 solo si el valor cae fuera de la tabla (DS152).
 // En el motor de B3: combate propio (hub::RequestBattleEx) con Piccolo de B3 (el rival, muneco quieto) y el jugador
 // oculto (primera persona); las manos son los modelos de IW ITEMB04/ITEMB05 (DATA_CMN 892) y el HUD el de IW (DATA_USA
 // 9/1). Los impactos se miden contra las 22 esferas de cuerpo del Piccolo de B3 (X+1616 + 16 i; mismo orden que los
@@ -22,7 +26,17 @@
 //
 // Hecho tambien: 8 (0x7D7) "Attack Frieza with Destructo-Discs!" (MSN009; reglas en CuadroDisco) y 15 (0x7DE) "Tien!
 // Stop Cell!" (MgShoot_* + la IA de Cell; reglas en Cuadro15). Escenarios: los de B3 que IW comparte (Namek 7 para el 8 y
-// el 9, Archipielago 2 para el 15). Solo RE: 3 (0x7D3) los ladrillos (motor de vuelo MgFly_* + #MSS 890/4; con R12).
+// el 9, Archipielago 2 para el 15).
+//
+// DS123 (2026-10-27): cinematica de entrada, camara animada y cierre de los 4. Las camaras son clips REALES del #AMC
+// 915/2, no reconstrucciones: Viewer_StateIntro 0x325c30 (1000) y Viewer_StateActive 0x324e30 (1001/1002) en el 9;
+// MgShoot_St_PreIntro 0x30b410 (1300), St_Intro 0x30b1c0 (1303) y St_GameOver 0x30a3d0 (1302/1301) en el 15; y el
+// descriptor EU 0x49A600 (950/951/952) en el 8. DS126 (2026-10-27, prueba del coordinador): el 8 usaba el 952 como
+// entrada y tenia a los luchadores en (0,142.57,355.57), pero sus TRES clips estan en y ~ 72-82, z ~ 0-30: la
+// entrada es el 950, su ultimo cuadro es la camara de juego y el jugador va a sus pies. El 1003 del 9 y el #AMC
+// 890/5 del 3 estan en otro sitio (y=77 / casa de Kaio) y no se reproducen. En el 15 se cruzan 1301/1302 (sus
+// alturas lo dicen). El 3 lee de su bloque del #MSS el ojo/objetivo/fov/giro (+0x40/+0x4c/+0x58/+0x5c).
+// DBZ3_IWMINI_SIN_CINE=1 vuelve al comportamiento anterior (listo de 100 cuadros) para comparar.
 #include <rex/logging.h>
 #include <rex/runtime.h>
 #include <rex/ui/imgui_dialog.h>
@@ -37,8 +51,10 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <map>
 #include <memory>
 #include <mutex>
+#include <string>
 #include <vector>
 
 #include "reloj_prueba.h"
@@ -73,8 +89,10 @@ using ps2::V3;
 constexpr dbz3::GA kMgrPtr = 0x823D6CF4, kPads = 0x8238B780;
 constexpr uint32_t kX0 = 2096, kXPaso = 8240, kFin = 35569, kVida = 6080, kVidaMax = 6084;
 constexpr uint32_t kOcultoA = 3261, kOcultoB = 4925, kPadIdx = 5028;
+constexpr uint32_t kMiradaA = 6062, kMiradaB = 6074;   // iw_mini_vuelo: X+6062/+6074 = angulo - 15759/-15968
 constexpr uint32_t kCopias[3] = {48, 64, 80};
-constexpr int kKrilin = 10, kPiccolo = 11, kTen = 12, kFreezer = 27, kCell = 33, kNamek = 7, kIslas = 2;
+constexpr int kKrilin = 10, kPiccolo = 11, kTen = 12, kFreezer = 27, kCell = 33;
+constexpr int kStageTown = 3, kStageNamek = 7;  // Stage_BeginLoad ID2 -> TOWN; ID7 loads DATA_CMN 64 (Namek, B3 7)
 constexpr uint16_t kDisparo = 0x2000;                      // registro +12: circulo (B)
 constexpr uint16_t kArriba = 0x10, kDerecha = 0x20, kAbajo = 0x40, kIzquierda = 0x80;   // +108
 
@@ -90,13 +108,40 @@ constexpr float kRadioHueso[22] = {2.75f, 1.65f, 1.1f, 1.1f, 2.75f, 2.75f, 2.2f,
                                    1.65f, 2.2f,  2.2f,  1.65f, 1.65f, 1.76f, 1.76f, 2.2f, 2.53f, 2.2f, 2.53f};
 constexpr int kDano[6] = {40, 3, 12, 12, 10, 10};
 constexpr float kOrbita = 60.0f, kRayoVel = 8.0f, kRayoMax = 80.0f, kRayoMira = 60.0f;
-// ponytail: altura del ojo, sitio de las manos, cadencia de cada mano y los limites de altura de Piccolo no estan
-// leidos (dependen de las animaciones de IW); valores a ojo.
+// kOjo y kElevMax son el encuadre del original (PINE: ojo (0,150,37) y Piccolo a 148; ver abajo), no constantes de IW.
+// Las manos las mueve Viewer_UpdateMain (0x32C7E0): +0xA0 estado del brazo 0..4, +0xA4 mano (0/1), +0x90/+0x94 angulo y
+// pulso de cada mano (Viewer_GetParam989C por cuadro) y +0x140 contador de cuadros que se reinicia con la constante
+// 12.0 (0x4028000000000000). El port no tiene ese motor de brazos: alterna una mano por disparo y las deja ocupadas
+// kCadencia = 18 cuadros (aproximacion; [VERIFICAR] contra el original). Los limites de Piccolo estan en
+// Viewer_UpdatePoseRotationInput (0x32DC80): +-0.7853982 en el giro y velocidad que decae 1/70 por cuadro; el port
+// clampa az a +-0.7853982 y la elevacion a [-0.05, 0.35] por el suelo del campo. [VERIFICAR] la elevacion.
 constexpr float kOjo = 9.0f, kCadencia = 18.0f, kElevMax = 0.35f;
 // Camera_OrbitInputUpdate de IW (PCSX2): en 9 (rayos a Piccolo) el ojo esta a 150 (la altura de la camara del original;
 // el objeto del jugador esta en (0,0,0) y Piccolo vuela a ~148); en 8 (Kienzan a Freezer) es tercera persona: el
-// jugador vuela a 142,57 y la camara va 7,43 arriba y 18,57 detras, mirando a +Z (VISIBLE Krillin de espaldas).
-constexpr float kAltIW = 150.0f, kAltJug7 = 142.57f, kAtras7 = 18.57f, kZ7 = 355.57f;
+// (DS126: el 8 NO esta en 142,57/355,57; sus clips 950/951/952 lo ponen en y ~ 72-82, z ~ 0-30. Ver kAltJug7.)
+// 0x7D8/9: PINE EU en partida: ojo (0,150,37), objetivo (0,150,-1), fov 0.7854, #AMC 0; Piccolo inicia en (0,150,-23).
+constexpr float kAltIW = 150.0f, kOjoZ9 = 37.0f, kRadioPicc9 = 23.0f;
+// DS126: 0x7D7 (MSN009, descriptor EU 0x49A600 = tabla 0x473310[8]). Sus TRES camaras estan declaradas
+// en el propio descriptor, campos +0x88/+0x8C/+0x90 = 950/951/952 del #AMC general DATA_CMN 915/2. Leidas
+// del fichero, las tres giran sobre el jugador en (x ~ 0, y ~ 72-82, z ~ 0-30), NO en (0,142.57,355.57):
+//   950: 520 c., ojo (-4.8, 79.4, 8.4) -> (-0.0, 78.5, 24.4) / objetivo (-1.1, 78.3, 2.3) -> (0, 77.3, 3.6)
+//        = ENTRADA (retroceso desde cerca hasta la camara de juego).
+//   951: 240 c., ojo (7.1, 74.5, 16.1) -> (-0.2, 75.3, 18.8) / objetivo (2.0, 72.5, 4.6) = mira [H].
+//   952: 240 c., ojo (0, 81.6, 30.0) -> (-0.1, 81.5, 20.5) / objetivo (0, 81.6, 0) = cierre [H].
+// (DS123 uso 952 como entrada; no lo es y ademas dejo a los luchadores a 350 u de donde estan esos clips.)
+// El jugador va a los pies: el objetivo del clip esta 6 por encima (CameraFocusWhileFlying, EU 0x339AA0).
+constexpr float kAltJug7 = 71.3f, kZ7 = 3.567f;   // pies (objetivo del clip 950 - 6)
+// Ultimo cuadro del 950 tal cual (ojo (0, 78.548, 24.427) -> mira (0, 77.302, 3.567)); kMira7 es la referencia del
+// clip y kOjo7 el respaldo de la camara del 8 mientras no se lee la cintura. DS129: la camara de juego NO usa la
+// compensacion de FOV del clip (ver kSubeJ7/kDetrasJ7).
+constexpr float kOjo7[3] = {0.0f, 78.548f, 24.427f}, kMira7[3] = {0.0f, 77.302f, 3.567f};
+// DS129: la camara de JUEGO del 0x7D7 sale de la captura del ORIGINAL (tools/dorados/iw_0x7D7.json, PCSX2): ojo
+// 20,0 u del jugador (18,57 en horizontal) y 7,43 por encima de sus PIES, mirando horizontal, fov 0,785 (el de B3:
+// el 0,6024 del clip 950 es el campo de la CINEMATICA, no el del juego). Relativo a la CINTURA que se dibuja (5,76
+// sobre los pies): 18,57 detras y 1,67 por encima. A 0,785 y esa distancia el encuadre es el del original (Krillin
+// ~65 % del alto) y Freezer no encoge (el clip sin compensar daba 20,86 y 1,25: 11 % mas lejos).
+constexpr float kSubeJ7 = 1.67f, kDetrasJ7 = 18.57f;
+constexpr int kIntro7 = 950, kMira7Clip = 951, kCierre7 = 952;   // 951/952: papel exacto [H]
 // MSN009 (Viewer_InitRoundTables 0x34B800, tabla 0x5D9B44 + 0x18 r): discos, % de esquiva al apuntarle (B50), paso
 // angular de la esquiva (B48); 180 s; gana con 7 aciertos; bases por banda {4000, 5000, 6000, 8000, 10000}
 constexpr int kTiros[6] = {12, 12, 11, 10, 9, 8};
@@ -149,24 +194,103 @@ float Largo(const V3& a) { return std::sqrt(a.x * a.x + a.y * a.y + a.z * a.z); 
 V3 Dir(float yaw, float polar) {   // polar desde +Y (90 grados = horizontal); yaw 0 = +Z
   return {std::sin(polar) * std::sin(yaw), std::cos(polar), std::sin(polar) * std::cos(yaw)};
 }
+// DS129: punto de mundo del hueso `i` de los 22 de cuerpo del luchador `x` (X+1616 + 16 i; 0 cintura, 1 pecho, 2
+// cuello, 3 cabeza..., gigantes.cpp). Son los puntos que el juego saca de los huesos de la logica CADA cuadro: es
+// donde se DIBUJA el muñeco, no donde esta su X+48 (B3 lo pinta con la pose -vuelo/reposo- unos 6-7 u mas arriba).
+// false si el modelo aun no tiene la tabla (X+2996) o el punto es nulo.
+bool HuesoMundo(uint8_t* base, uint32_t x, int i, V3& p) {
+  if (!REX_LOAD_U32(x + 2996) && !REX_LOAD_U32(x + 2952)) return false;   // sin modelo/tabla de cuerpo
+  const uint32_t a = x + 1616 + 16 * uint32_t(i);
+  p = {LoadF(base, a), LoadF(base, a + 4), LoadF(base, a + 8)};
+  return std::fabs(p.x) + std::fabs(p.y) + std::fabs(p.z) > 1e-3f;
+}
 
 // ---- Efectos de IW (#AME v2): reproductor en iw_ame.h
 namespace ame = dbz3::iwame::ame;
+
+// Clip de camara de un #AMC (mismo formato que iw_minijuegos.cpp/iw_mini_vuelo.cpp):
+// cabecera +0x10 = nº clips, +0x14 = tabla de 16 B por clip; clip +8 = cuadros, +12 = offset.
+// Pistas: 0 ojo, 1 objetivo, 2 giro, 3 fov. Claves de 16 B {cuadro, x, y, z} o de 8 B {cuadro, valor}.
+// DS123: las camaras de entrada/cierre de los 4 disparos son clips reales del #AMC general (DATA_CMN 915/2).
+// DS126: el 3 NO usa el #AMC 890/5 como entrada (es la casa de Kaio, fuera del campo): usa la camara del #MSS.
+struct ClipCam {
+  int dur = 0;
+  float fov = 0.0f;   // pista 3 (radianes); 0 si el clip no la trae
+  std::vector<uint32_t> ojo_c, obj_c;
+  std::vector<std::array<float, 3>> ojo, obj;
+};
+uint32_t U32v(const std::vector<uint8_t>& b, size_t o) {
+  uint32_t v = 0;
+  if (o + 4 <= b.size()) std::memcpy(&v, &b[o], 4);
+  return v;
+}
+float F32v(const std::vector<uint8_t>& b, size_t o) {
+  const uint32_t u = U32v(b, o);
+  float f;
+  std::memcpy(&f, &u, 4);
+  return f;
+}
+// EU 0x3691a0 DestroyTheBricksMinigame (890/5) / EU 0x325c30 Viewer_StateIntro, 0x325ab0 Viewer_StateCountdown,
+// 0x324e30 Viewer_StateActive (915/2, ids 1000..1003) / EU 0x30b410 MgShoot_St_PreIntro, 0x30b1c0 MgShoot_St_Intro,
+// 0x30a3d0 MgShoot_St_GameOver (915/2, ids 1300..1303): lee del #AMC los clips que usa cada estado.
+void LeerClipsDisparo(const std::vector<uint8_t>& amc, const std::vector<int>& ids, std::map<int, ClipCam>& out) {
+  if (amc.size() < 0x20 || std::memcmp(amc.data(), "#AMC", 4) != 0) return;
+  const uint32_t n = U32v(amc, 0x10), tab = U32v(amc, 0x14);
+  for (int id : ids) {
+    if (id < 0 || uint32_t(id) >= n || out.count(id)) continue;
+    const size_t e = size_t(tab) + 16 * size_t(id);
+    ClipCam c;
+    c.dur = int(U32v(amc, e + 8));
+    const size_t off = U32v(amc, e + 12);
+    if (c.dur <= 0 || off + 16 > amc.size()) continue;
+    for (int pista = 0; pista < 4; ++pista) {
+      const size_t t = U32v(amc, off + 4 * size_t(pista));
+      if (t + 12 > amc.size()) continue;
+      const uint32_t nk = U32v(amc, t + 8);
+      if (nk == 0 || nk > 5000) continue;
+      if (pista < 2) {
+        auto& dst = pista == 0 ? c.ojo : c.obj;
+        auto& marcos = pista == 0 ? c.ojo_c : c.obj_c;
+        for (uint32_t k = 0; k < nk; ++k) {
+          const size_t o = t + 12 + 16 * size_t(k);
+          if (o + 16 > amc.size()) break;
+          uint32_t cuadro = U32v(amc, o);
+          if (cuadro == 0) cuadro = uint32_t(c.dur);   // dur mod dur
+          dst.push_back({F32v(amc, o + 4), F32v(amc, o + 8), F32v(amc, o + 12)});
+          marcos.push_back(cuadro);
+        }
+      } else if (pista == 3) {
+        const size_t o = t + 12;
+        if (o + 8 <= amc.size()) c.fov = F32v(amc, o + 4);
+      }
+    }
+    if (!c.ojo.empty() && !c.obj.empty()) out[id] = std::move(c);
+  }
+}
 
 struct Datos {
   int clave = 0, fila = 0, dif = 2;
   int juego = 9;                       // 9: MSN010 (Piccolo), 8: MSN009 (Freezer y los Kienzan), 15: MSN016
   ps2::Modelo mano_i, mano_d;          // DATA_CMN 892/1 ITEMB04 y 892/3 ITEMB05 (texturas 892/0 y 892/2)
   // Proyectil, modelo de IW: el rayo rosa de Freezer (DATA_CMN 842/7 BEAM + CORE, texturas 842/8) o el Kienzan
-  // (851/6 KIENCORE, texturas 851/2). ponytail: el minijuego los pinta con efectos #AME de su paquete (DATA_CMN 935 =
-  // 0x3A7, Effect_OpenBundleForMode con modo 15/9/8/3: atlas 935/0, mallas MODEL_L00/L01/L03_EFT 935/1 y 21 #AME) cuyo
-  // formato no esta leido: se usa el modelo de la tecnica de IW.
+  // (851/6 KIENCORE, texturas 851/2). El minijuego los pinta con los #AME del paquete 935 (Effect_OpenBundleForMode
+  // 0x348110, modos 15/9/8/3): verificado en DATA_CMN.AFS: 935/0 #AMT (atlas), 935/1 #AMO (mallas MODEL_L00/L01/L03_EFT)
+  // y 935/3..935/23 = 21 #AME; el port los reproduce con iw_ame.h y ademas deja el modelo de la tecnica como respaldo.
   ps2::Modelo efecto;
   // 3 (ladrillos): el bloque del #MSS 890/4 de su dificultad
   std::vector<std::array<float, 7>> tramos;
   int n_tramos = 0, umbral[5] = {}, puntos[5] = {}, fallo = 100;
   float lad_s = 18.0f;   // #MSS bloque +0x08: tamano que se proyecta para el radio de fijado (18/18/18/10/6)
+  // EU 0x367e30 MgFly_StateIntroSetup: camara del bloque del #MSS (+0x40 ojo, +0x4c objetivo, +0x58 fov y +0x5c giro,
+  // en grados). Son los mismos valores que se midieron a mano (0,30,100)->(0,35,0) y 45; ahora salen del fichero.
+  float mss_ojo[3] = {kOjo3[0], kOjo3[1], kOjo3[2]}, mss_obj[3] = {kMira3[0], kMira3[1], kMira3[2]};
+  float mss_fov = 0.7853982f, mss_giro = 0.0f, lad_focal = 540.78384f;   // focal = 224 / tan(fov/2)
   ps2::Modelo ladrillo;
+  // DS123: clips de camara de la entrada y del cierre por indice de clip (ver ClipCam). El orden de la entrada y el
+  // clip de cada desenlace salen de las maquinas de estado citadas en LeerClipsDisparo.
+  std::map<int, ClipCam> cams;
+  std::vector<int> intro, fin_bien, fin_mal;
+  int intro_dur = 0, fin_dur = 0;
   // efectos de IW: el paquete de los minijuegos de disparo (DATA_CMN 935 = 0x3A7, Effect_OpenBundleForMode; en el 3 su
   // copia 890/6): atlas (hijo 0) y los #AME (hijos 3..23) por indice de hijo
   std::vector<P::Imagen> atlas;
@@ -185,10 +309,19 @@ std::atomic<float> g_px{0}, g_py{kOjo}, g_pz{kOrbita};
 std::atomic<uint32_t> g_mando{0};   // +12 (16 bits) | +108 << 16
 std::atomic<int> g_palanca{0};      // +26 | +27 << 8
 std::atomic<bool> g_suelo{false};   // derribado: Piccolo cae (ya no se le sostiene en el aire)
+// DS129: camara del 8 (0x7D7) anclada al cuerpo DIBUJADO del jugador. El encuadre es el de la camara de juego del
+// original (kSubeJ7/kDetrasJ7, tools/dorados/iw_0x7D7.json) en coordenadas ABSOLUTAS de IW, pero B3 dibuja al muñeco
+// con su pose (vuelo/reposo) unos 7 u por encima de X+48: con la camara absoluta quedaba a la altura de sus pies
+// (prueba del coordinador 2026-10-27: las piernas tapaban la pantalla). Se ancla la mira a la cintura que se dibuja
+// (X+1616) y el ojo conserva el desfase. Las escribe FotogramaDisparo (hilo del juego).
+std::atomic<float> g_o8x{0.0f}, g_o8y{kOjo7[1]}, g_o8z{kOjo7[2]};    // ojo del 8
+std::atomic<float> g_m8x{0.0f}, g_m8y{kMira7[1]}, g_m8z{kMira7[2]};  // mira del 8
 // MSN016: camara libre (ojo y mirada), sitio del jugador oculto y el luchador de Cell (para anim::Corredor)
 std::atomic<bool> g_cam15{false};
 std::atomic<int> g_juego{9};   // el que corre (3: el jugador se ve y el rival se oculta)
 std::atomic<float> g_ex{0}, g_ey{0}, g_ez{0}, g_tx{0}, g_ty{0}, g_tz{0}, g_jx{0}, g_jz{0};
+// DS123: camara de un clip de IW (entrada/cierre) que manda sobre la del port mientras dura el clip.
+std::atomic<bool> g_camclip{false};
 std::atomic<uint32_t> g_x1{0};
 
 // Hilo de la interfaz: logica a 60 por segundo y dibujo.
@@ -234,6 +367,7 @@ class Panel : public rex::ui::ImGuiDialog {
   };
   enum Fase { kListo, kJuego, kDerribo, kFinal };
 
+  // EU 0x3104B0 CameraCtrl_LoadModel
   void Preparar(const Datos& d) {
     hecho_ = &d;
     tx_i_ = ps2::Texturas(d.mano_i);
@@ -252,11 +386,19 @@ class Panel : public rex::ui::ImGuiDialog {
     aura_.reset();
     datos_ = &d;
     giro_disco_ = 0;
+    // DS123: entrada y cierre con los clips del #AMC; DBZ3_IWMINI_SIN_CINE=1 los deja como estaban (para comparar).
+    sin_cine_ = std::getenv("DBZ3_IWMINI_SIN_CINE") != nullptr;
+    fin_id_ = -1;
+    fin_dur_ = 140;
+    g_camclip = false;
     tx_d_ = ps2::Texturas(d.mano_d);
     hud_.clear();
     for (const P::Imagen& im : d.hud) hud_.push_back(ps2::Crear(im));
     clear_ = ps2::Crear(d.clear);
     juego_ = d.juego;
+    res_ = iwmini::Resultado{};
+    t_fin_ = 0.0;
+    // EU 0x327590 s_MSN010_UPDATE
     vida_ = vida_max_ = kVidaPicc[d.dif];
     restante_ = float(kLimite[d.dif]);
     fase_ = kListo;
@@ -269,14 +411,14 @@ class Panel : public rex::ui::ImGuiDialog {
     rayos_.clear();
     chispas_.clear();
     az_ = 0;
-    elev_ = 0.12f;
+    elev_ = d.juego == 9 ? 0.0f : 0.12f;
     picc_fase_ = 0;
     esquiva_ = -1;
     esquiva_t_ = 60;
     semilla_ = uint32_t(std::chrono::steady_clock::now().time_since_epoch().count());
 
-    g_yaw = 0;
-    g_polar = 1.5708f - 0.06f;
+    g_yaw = d.juego == 9 ? 3.14159265f : 0.0f;
+    g_polar = d.juego == 9 ? 1.57079633f : 1.5708f - 0.06f;
     g_suelo = false;
     auto_t_ = 0;
     g_cam15 = d.juego == 15 || d.juego == 3;
@@ -290,7 +432,9 @@ class Panel : public rex::ui::ImGuiDialog {
       tramo_espera_ = 0;
       ladrillo_vivo_ = fijado_ = false;
       antes15_ = 0;
-      g_ex = 0, g_ey = 30, g_ez = 100, g_tx = 0, g_ty = 35, g_tz = 0;
+      // EU 0x367e30: la camara del #MSS del bloque de dificultad (antes iba a mano)
+      g_ex = d.mss_ojo[0], g_ey = d.mss_ojo[1], g_ez = d.mss_ojo[2];
+      g_tx = d.mss_obj[0], g_ty = d.mss_obj[1], g_tz = d.mss_obj[2];
       g_jx = 0, g_jz = 0;
       g_px = 0, g_py = 0, g_pz = -40;   // el rival (oculto) delante: Goku mira hacia los ladrillos
     }
@@ -320,7 +464,10 @@ class Panel : public rex::ui::ImGuiDialog {
       esquiva_t_ = 0;
       tirada_ = false;
       elev_ = 0.1f;
-      g_polar = 1.5708f - 0.08f;
+      // DS126: la mira arranca horizontal y hacia -Z, que es hacia donde mira el clip 950 y donde queda
+      // Freezer (delante del jugador). Antes arrancaba inclinada y el piloto se iba al suelo.
+      g_yaw = 3.14159265f;
+      g_polar = 1.57079633f;
     }
   }
   uint32_t Azar() {
@@ -328,11 +475,141 @@ class Panel : public rex::ui::ImGuiDialog {
     return semilla_ >> 8;
   }
   V3 Ojo() const {
-    if (juego_ == 8)   // tercera persona: SIEMPRE detras del jugador (la mira de IW mueve la retícula, no la camara)
-      return {0.0f, kAltJug7 + 7.43f, kZ7 - kAtras7};
-    if (juego_ == 9) return {0, kAltIW, 0};   // primera persona de Freezer, a la altura de la camara de IW
-    if (juego_ == 3) return {kOjo3[0], kOjo3[1], kOjo3[2]};   // R17: camara fija del 3 (medida en el original)
+    if (juego_ == 8)   // DS129: ojo del 0x7D7 anclado al cuerpo dibujado (lo escribe FotogramaDisparo)
+      return {g_o8x.load(), g_o8y.load(), g_o8z.load()};
+    if (juego_ == 9) return {0, kAltIW, kOjoZ9};   // PINE/#AMC: ojo (0,150,37), objetivo (0,150,-1)
+    if (juego_ == 3 && datos_)   // EU 0x367e30: la camara fija del #MSS (bloque +0x40/+0x4c)
+      return {datos_->mss_ojo[0], datos_->mss_ojo[1], datos_->mss_ojo[2]};
     return {0, kOjo, 0};
+  }
+
+  // ---- DS123: camaras de los clips del #AMC (entrada y cierre) ----
+  static void Mezcla(float a[3], const float b[3], float t) {
+    for (int i = 0; i < 3; ++i) a[i] = a[i] + (b[i] - a[i]) * t;
+  }
+  static bool MuestraPista(const std::vector<std::array<float, 3>>& k, const std::vector<uint32_t>& marcos, float f,
+                           float out[3]) {
+    if (k.empty() || k.size() != marcos.size()) return false;
+    size_t i = 0;
+    while (i + 1 < marcos.size() && float(marcos[i + 1]) <= f) ++i;
+    const size_t j = std::min(i + 1, k.size() - 1);
+    const float d = float(marcos[j]) - float(marcos[i]);
+    const float t = d > 0 ? std::clamp((f - float(marcos[i])) / d, 0.0f, 1.0f) : 0.0f;
+    for (int c = 0; c < 3; ++c) out[c] = k[i][size_t(c)] + (k[j][size_t(c)] - k[i][size_t(c)]) * t;
+    return true;
+  }
+  // Posicion del clip en el cuadro f con el FOV de IW conservado acercando el ojo (el de B3 es 45): DS92 ya usa esta
+  // compensacion en iw_minijuegos.cpp (Camera_PlayCameraAnim_, EU 0x2972D0) y en iw_mini_vuelo.cpp.
+  bool ClipPose(const Datos& d, int id, float f, uint8_t* base, uint32_t mgr, float ojo[3], float obj[3]) const {
+    const auto it = d.cams.find(id);
+    if (it == d.cams.end()) return false;
+    const ClipCam& c = it->second;
+    const float q = std::clamp(f, 0.0f, float(std::max(c.dur - 1, 0)));
+    if (!MuestraPista(c.ojo, c.ojo_c, q, ojo) || !MuestraPista(c.obj, c.obj_c, q, obj)) return false;
+    const float fj = LoadF(base, mgr + 0x1C4);   // kFov del combate
+    // DS129: el 8 NO compensa: su 0,6024 es el campo de la cinematica y el de la camara de juego del original es el
+    // de B3 (0,785, tools/dorados/iw_0x7D7.json). Compensarlo acercaba el ojo 5 u y dejaba el encuadre del clip, no
+    // el del juego (Krillin 83 % del alto frente al 65 % del original) y rompia la continuidad con el juego.
+    if (juego_ != 8 && c.fov > 0.1f && c.fov < 1.4f && fj > 0.3f && fj < 1.2f) {
+      const float k = std::tan(c.fov * 0.5f) / std::tan(fj * 0.5f);
+      for (int i = 0; i < 3; ++i) ojo[i] = obj[i] + (ojo[i] - obj[i]) * k;
+    }
+    return true;
+  }
+  // Camara de juego a la que vuelve el port al acabar la entrada (la misma que usan Ojo()/Camara15()).
+  void CamaraBase(float ojo[3], float obj[3]) const {
+    if (juego_ == 3 && datos_) {
+      std::copy(datos_->mss_ojo, datos_->mss_ojo + 3, ojo);
+      std::copy(datos_->mss_obj, datos_->mss_obj + 3, obj);
+      return;
+    }
+    if (juego_ == 8) {   // DS129: camara de juego del 0x7D7 (clip 950) anclada a la cintura que se dibuja
+      ojo[0] = g_o8x.load(), ojo[1] = g_o8y.load(), ojo[2] = g_o8z.load();
+      obj[0] = g_m8x.load(), obj[1] = g_m8y.load(), obj[2] = g_m8z.load();
+      return;
+    }
+    if (juego_ == 15) {
+      ojo[0] = mx_, ojo[1] = kAltura15, ojo[2] = mz_;
+      obj[0] = mx_, obj[1] = 15.0f, obj[2] = mz_ - 200.0f;
+      return;
+    }
+    ojo[0] = 0.0f, ojo[1] = kAltIW, ojo[2] = kOjoZ9;
+    obj[0] = 0.0f, obj[1] = kAltIW, obj[2] = kOjoZ9 - 38.0f;
+  }
+  void PonerCamara(const float ojo[3], const float obj[3]) {
+    g_camclip = true;
+    g_ex = ojo[0], g_ey = ojo[1], g_ez = ojo[2];
+    g_tx = obj[0], g_ty = obj[1], g_tz = obj[2];
+  }
+  // EU 0x3691a0 DestroyTheBricksMinigame / EU 0x325c30 Viewer_StateIntro / EU 0x30b410 MgShoot_St_PreIntro: la entrada
+  // encadena los clips del #AMC tal cual los pone el estado (los cuadros suman) y luego devuelve el mando a la camara
+  // del juego. Devuelve true mientras dura la entrada (el cuadro ya esta puesto).
+  bool HayCine(const Datos& d) const { return !sin_cine_ && !d.intro.empty() && d.intro_dur > 0; }
+  bool PasoIntro(uint8_t* base, uint32_t mgr, const Datos& d) {
+    if (!HayCine(d)) return false;
+    const int f = t_ - 1;   // t_ empieza en 1 en el primer cuadro de kListo
+    if (f < 0) return true;
+    if (f >= d.intro_dur) {
+      g_camclip = false;
+      float ojo[3], obj[3];
+      CamaraBase(ojo, obj);
+      if (juego_ == 3) PonerCamara(ojo, obj), g_camclip = false;   // el 3 usa g_ex como camara fija
+      return false;
+    }
+    int acum = 0, id = -1;
+    float local = 0;
+    for (int c : d.intro) {
+      const auto it = d.cams.find(c);
+      if (it == d.cams.end()) continue;
+      if (f < acum + it->second.dur) {
+        id = c;
+        local = float(f - acum);
+        break;
+      }
+      acum += it->second.dur;
+    }
+    if (id < 0) return false;
+    float ojo[3], obj[3];
+    if (!ClipPose(d, id, local, base, mgr, ojo, obj)) return false;
+    // DS129: los clips estan en coordenadas de IW y B3 dibuja al muñeco con su pose ~6-7 u por encima de X+48. Se
+    // traslada la camara del clip lo mismo que el cuerpo dibujado respecto de la mira del clip, para que el encuadre
+    // relativo al muñeco sea el del original (sin esto la entrada tambien lo dejaba fuera de plano).
+    if (juego_ == 8) {
+      const float cx = g_m8x.load() - kMira7[0], cy = (g_m8y.load() - kSubeJ7) - kMira7[1], cz = g_m8z.load() - kMira7[2];
+      ojo[0] += cx, ojo[1] += cy, ojo[2] += cz;
+      obj[0] += cx, obj[1] += cy, obj[2] += cz;
+    }
+    // Mezcla de la entrada con la camara del juego en los ultimos cuadros. DS129: el 8 tambien (su camara de juego
+    // es la del original, 2,3 u mas cerca que el ultimo cuadro del clip) y el 9 encadena con la cuenta atras; el
+    // 3/15 cortan al campo (sus clips acaban en otro sitio del escenario).
+    const int mezcla = (juego_ == 9 || juego_ == 8) ? 15 : 0;
+    if (mezcla > 0 && f >= d.intro_dur - mezcla) {
+      float bo[3], bm[3];
+      CamaraBase(bo, bm);
+      Mezcla(ojo, bo, float(f - (d.intro_dur - mezcla)) / float(mezcla));
+      Mezcla(obj, bm, float(f - (d.intro_dur - mezcla)) / float(mezcla));
+    }
+    PonerCamara(ojo, obj);
+    return true;
+  }
+  void ElegirFin(const Datos& d, const std::vector<int>& ids) {
+    fin_id_ = -1;
+    fin_dur_ = 140;
+    for (int id : ids)
+      if (const auto it = d.cams.find(id); it != d.cams.end()) {
+        fin_id_ = id;
+        fin_dur_ = std::max(140, it->second.dur);
+        break;
+      }
+  }
+  // EU 0x324e30 Viewer_StateActive / EU 0x30a3d0 MgShoot_St_GameOver: clip de cierre (1001/1002 o 1301/1302) mientras
+  // dura el estado de derribo; luego el port aplica el resultado como MgFly_FinishAndApplyResult (EU 0x3675f0).
+  // EU 0x324e30 Viewer_StateActive
+  // EU 0x30a3d0 MgShoot_St_GameOver
+  void PasoFinal(uint8_t* base, uint32_t mgr, const Datos& d) {
+    if (sin_cine_ || fin_id_ < 0) return;
+    float ojo[3], obj[3];
+    if (ClipPose(d, fin_id_, float(std::max(t_ - 1, 0)), base, mgr, ojo, obj)) PonerCamara(ojo, obj);
   }
 
   // Un cuadro de IW (60 por segundo).
@@ -343,9 +620,18 @@ class Panel : public rex::ui::ImGuiDialog {
     const uint16_t bot = uint16_t(m & 0xFFFF), dirs = uint16_t(m >> 16);
     const int pal = g_palanca.load();
     const int sx = int8_t(pal & 0xFF), sy = int8_t((pal >> 8) & 0xFF);
-    if (fase_ == kListo) {   // Viewer_StateReady: 100 cuadros
-      if (t_ >= 100) fase_ = kJuego, t_ = 0;
+    // EU 0x325c30 Viewer_StateIntro (clip 1000 del #AMC 915/2; DS126: el 1003 no se reproduce, esta a y=77) y despues
+    // EU 0x325840 Viewer_StateReady: 100 cuadros de espera si no hay clips.
+    if (fase_ == kListo) {
       MoverPiccolo(false);
+      if (HayCine(d)) {
+        if (PasoIntro(base, mgr, d)) return;
+      } else if (t_ < 100) {
+        return;
+      }
+      fase_ = kJuego;
+      t_ = 0;
+      REXLOG_INFO("dbz3 iwdisparo: juego 0x{:X} empieza", d.clave);
       return;
     }
     if (fase_ == kJuego) {
@@ -388,19 +674,22 @@ class Panel : public rex::ui::ImGuiDialog {
         t_ = 0;
         segundos_ = float(kLimite[d.dif]) - restante_;
         g_suelo = true;
+        ElegirFin(d, d.fin_bien);   // EU 0x324e30 Viewer_StateActive: clip 1001 (derribo)
         REXLOG_INFO("dbz3 iwdisparo: Piccolo derribado en {:.2f} s ({} disparos)", segundos_, disparos_);
       } else if (restante_ <= 0) {
         restante_ = 0;
         fase_ = kDerribo;
         t_ = 0;
         segundos_ = 0;   // Viewer_StateInput: tiempo agotado -> +0x10 = 0 -> sin rango
+        ElegirFin(d, d.fin_mal);   // clip 1002 (tiempo agotado)
         REXLOG_INFO("dbz3 iwdisparo: TIEMPO (vida de Piccolo {} de {})", vida_, vida_max_);
       }
       return;
     }
-    if (fase_ == kDerribo) {   // Viewer_StateActive: 140 cuadros y se acaba
+    if (fase_ == kDerribo) {   // Viewer_StateActive: el clip de cierre y el resultado
       Rayos(base, mgr);
-      if (t_ >= 140) {
+      PasoFinal(base, mgr, d);
+      if (t_ >= fin_dur_) {
         fase_ = kFinal;
         Acabar(base, mgr, d);
       }
@@ -413,6 +702,7 @@ class Panel : public rex::ui::ImGuiDialog {
   // punto a 150 de la camara, a 5 por cuadro; si la mira tocaba un hueso (5 + radio), se guia hacia el con un peso que
   // baja 0.04 por cuadro. Acierto: disco (5) contra hueso (5 + radio). Fallo: a mas de 150. 3 fallos seguidos: 120
   // cuadros de pausa. Gana con 7 aciertos; pierde si aciertos + discos < 7 o a los 180 s.
+  // EU 0x34B3F0 s_MSN009_UPDATE
   void CuadroDisco(uint8_t* base, uint32_t mgr, const Datos& d) {
     ++t_;
     dbz3::iwmini::SerieJuego(fase_ == kJuego);
@@ -420,16 +710,28 @@ class Panel : public rex::ui::ImGuiDialog {
     const uint16_t bot = uint16_t(m & 0xFFFF), dirs = uint16_t(m >> 16);
     const int pal = g_palanca.load();
     const int sx = int8_t(pal & 0xFF), sy = int8_t((pal >> 8) & 0xFF);
-    if (fase_ == kListo) {   // AimStart: 100 cuadros
-      if (t_ >= 100) fase_ = kJuego, t_ = 0;
+    // DS126: entrada con el clip 950 (520 c.) del #AMC 915/2, que es el que declara el descriptor EU 0x49A600; sin
+    // clip, AimStart de 100 cuadros. El 952 NO es la entrada (es la tercera camara del modulo).
+    if (fase_ == kListo) {
       MoverFreezer(d);
+      if (HayCine(d)) {
+        if (PasoIntro(base, mgr, d)) return;
+      } else if (t_ < 100) {
+        return;
+      }
+      fase_ = kJuego;
+      t_ = 0;
+      REXLOG_INFO("dbz3 iwdisparo: juego 0x{:X} empieza", d.clave);
       return;
     }
     if (fase_ != kJuego) {
       if (disco_ == 3) DiscoVuela(base, mgr);
-      if (fase_ == kDerribo && t_ >= 140) {   // ShootRecoil: 140 cuadros
-        fase_ = kFinal;
-        Acabar(base, mgr, d);
+      if (fase_ == kDerribo) {
+        PasoFinal(base, mgr, d);   // sin clip de cierre en el 8: fin_dur_ = 140
+        if (t_ >= fin_dur_) {      // ShootRecoil
+          fase_ = kFinal;
+          Acabar(base, mgr, d);
+        }
       }
       return;
     }
@@ -451,7 +753,10 @@ class Panel : public rex::ui::ImGuiDialog {
       gx = gy = 0;
     }
     const float vel = disco_ == 0 ? 0.015f : 0.010f;
-    g_yaw = std::clamp(g_yaw.load() - gx * vel, -1.1472f, 1.1472f);
+    // DS126: el giro de +-65,73 grados es alrededor de la MIRA (que en esta escena es -Z = pi), no de 0.
+    // Con el clamp viejo, el yaw inicial pi se recortaba a 1.1472 en el primer cuadro y la mira giraba 180 grados.
+    constexpr float kPi = 3.14159265f;
+    g_yaw = std::clamp(g_yaw.load() - gx * vel, kPi - 1.1472f, kPi + 1.1472f);
     g_polar = std::clamp(g_polar.load() - gy * vel, 1.5708f - 1.1472f, 1.5708f + 0.44907f);
     for (float& r : retroceso_) r = std::max(0.0f, r - 0.08f);
     if (pausa_ <= 0 && fuego && disco_ == 0) {   // AimShootA: carga (pose 9)
@@ -527,7 +832,8 @@ class Panel : public rex::ui::ImGuiDialog {
   }
   // Freezer (Char_PoseModeUpdateAll / Char_PoseInputTransition): en la esfera de 150 alrededor de la camara, giro
   // +-60 grados e inclinacion -20..60. Si la camara le apunta (producto > 0.98), una tirada (B50 %) por vez le hace
-  // esquivar 40 + azar % 80 cuadros hacia un lado (0..3). ponytail: el paso de la esquiva se toma B48 rad por cuadro
+  // esquivar 40 + azar % 80 cuadros hacia un lado (0..3). El paso angular es B48 de Viewer_InitRoundTables 0x34B800
+  // (0.021..0.023 rad/cuadro). [VERIFICAR] en pantalla la duracion 40 + azar % 80.
   // (en el decomp ese paso se trunca a entero y el movimiento visible sale de la animacion, sin seguir).
   void MoverFreezer(const Datos& d) {
     const V3 ojo = Ojo(), f = Dir(g_yaw.load(), g_polar.load());
@@ -556,7 +862,9 @@ class Panel : public rex::ui::ImGuiDialog {
       elev_ = std::clamp(elev_, -0.349f, 1.0472f);
     }
     g_px = ojo.x + kRadioFz * std::cos(elev_) * std::sin(az_);
-    g_pz = ojo.z + kRadioFz * std::cos(elev_) * std::cos(az_);
+    // DS126: la camara del 0x7D7 (clip 950) mira hacia -Z; Freezer va DELANTE de ella en ese eje. Con el
+    // signo +Z se quedaba a la espalda y el piloto (y el retículo) apuntaban al suelo para "alcanzarlo".
+    g_pz = ojo.z - kRadioFz * std::cos(elev_) * std::cos(az_);
     g_py = std::max(0.0f, ojo.y - 6.0f + kRadioFz * std::sin(elev_));
   }
 
@@ -568,6 +876,8 @@ class Panel : public rex::ui::ImGuiDialog {
   // proyectada cae en el rombo (300,147)-(403,250)-(300,353)-(197,250) de la pantalla de 600x500 (EU 0x480A10,
   // Char_IsProjectedInQuad). Peligro = altura de Cell / 400: >= 0,5 DANGER, >= 1 o energia <= 0 pierde. Tiempo
   // {40..160} s; al acabar p = altura / 400: <= 0,0001 Z, <= 0,1 S, <= 0,4 A, <= 0,7 B, si no C; {3600..6000} x mult.
+  // EU 0x30CCF0 s_MSN016_UPDATE
+  // EU 0x30CC40 Minigame_SetupScene
   void Cuadro15(uint8_t* base, uint32_t mgr, const Datos& d) {
     ++t_;
     dbz3::iwmini::SerieJuego(fase_ == kJuego);
@@ -577,14 +887,20 @@ class Panel : public rex::ui::ImGuiDialog {
     antes15_ = bot;
     const int pal = g_palanca.load();
     const int sx = int8_t(pal & 0xFF), sy = int8_t((pal >> 8) & 0xFF);
-    if (fase_ == kListo) {   // Ready: 100 cuadros, despues Cell a la pose 1 (a correr)
+    // EU 0x30b410 MgShoot_St_PreIntro + 0x30b1c0 MgShoot_St_Intro (clips 1300 y 1303 del #AMC 915/2) y, sin clips,
+    // el Ready de 100 cuadros.
+    if (fase_ == kListo) {
       if (t_ == 1 && g_x1.load()) dbz3::anim::Bucle(g_x1.load(), 0x960);   // en reposo (0x640, estado 0)
-      if (t_ >= 100) {
-        fase_ = kJuego;
-        t_ = 0;
-        CellEstado(1);
+      if (HayCine(d)) {
+        if (PasoIntro(base, mgr, d)) return;
+      } else if (t_ < 100) {
+        Camara15();
+        return;
       }
-      Camara15();
+      fase_ = kJuego;
+      t_ = 0;
+      REXLOG_INFO("dbz3 iwdisparo: juego 0x{:X} empieza", d.clave);
+      CellEstado(1);
       return;
     }
     if (fase_ == kJuego) {
@@ -659,10 +975,11 @@ class Panel : public rex::ui::ImGuiDialog {
       Camara15();
       return;
     }
-    if (fase_ == kDerribo) {   // GameOver: 140 cuadros
+    if (fase_ == kDerribo) {   // EU 0x30a3d0 MgShoot_St_GameOver: clip 1301/1302 y resultado
       if (kikoho_ > 0) --kikoho_;
       Camara15();
-      if (t_ >= 140) {
+      PasoFinal(base, mgr, d);
+      if (t_ >= fin_dur_) {
         fase_ = kFinal;
         Acabar(base, mgr, d);
       }
@@ -672,9 +989,14 @@ class Panel : public rex::ui::ImGuiDialog {
     fase_ = kDerribo;
     t_ = 0;
     segundos_ = p15_ >= 0 && p15_ < 1 ? float(kTiempo15[dif15_]) : 0;   // para el CLEAR y el registro
+    // DS126: los clips lo dicen al reves de DS123: contenido (p en [0,1), Cell a ras de suelo) -> 1302 (ojo y=3.7);
+    // Cell arriba o sin energia -> 1301 (ojo y=152). Ver Empezar.
+    // EU 0x30a3d0 MgShoot_St_GameOver
+    if (datos_) ElegirFin(*datos_, p15_ >= 0 && p15_ < 1 ? datos_->fin_bien : datos_->fin_mal);
     REXLOG_INFO("dbz3 iwdisparo: fin del 15 ({}): altura de Cell {:.1f}, p {:.4f}", por, cy_, p15_);
     if (g_x1.load()) dbz3::anim::Corredor(g_x1.load(), false);
   }
+  // EU 0x3245D0 Camera_OrbitInputUpdate
   void Camara15() {   // ojo de Ten y su mirada (la del principio, (0, 400, 200) -> (0, 15, 0), trasladada)
     g_ex = mx_;
     g_ey = kAltura15;
@@ -842,9 +1164,8 @@ class Panel : public rex::ui::ImGuiDialog {
   // (640 x 448). Mira 2D con la palanca/cruceta a 10 px por cuadro; si el ladrillo cae dentro de su radio proyectado
   // (ctx+0x514: focal*S/z, con el factor de direccion del tramo) lo fija y lo imanta 5 cuadros; circulo = disparo (7 en
   // total): fijado = roto. Sin tiempo: acaba con N tramos o los 7 disparos.
+  // EU 0x366f60 StartFunc
   void Cuadro3(uint8_t* base, uint32_t mgr, const Datos& d) {
-    (void)base;
-    (void)mgr;
     ++t_;
     dbz3::iwmini::SerieJuego(fase_ == kJuego);   // R17: el 3 tambien escribe la serie jugador/ojo de comparar_modo
     const uint32_t m = g_mando.load();
@@ -853,12 +1174,22 @@ class Panel : public rex::ui::ImGuiDialog {
     antes15_ = bot;
     const int pal = g_palanca.load();
     const int sx = int8_t(pal & 0xFF), sy = int8_t((pal >> 8) & 0xFF);
+    // EU 0x367e30 MgFly_StateIntroSetup: entrada del 3 directamente con la camara fija del #MSS (DS126: se quito el
+    // clip 0 del #AMC 890/5, que es la casa de Kaio y no acaba en la galeria); sin clip, espera de 100 cuadros.
     if (fase_ == kListo) {
-      if (t_ >= 100) fase_ = kJuego, t_ = 0, Tramo(d);
+      if (HayCine(d)) {
+        if (PasoIntro(base, mgr, d)) return;
+      } else if (t_ < 100) {
+        return;
+      }
+      fase_ = kJuego;
+      t_ = 0;
+      REXLOG_INFO("dbz3 iwdisparo: juego 0x{:X} empieza", d.clave);
+      Tramo(d);
       return;
     }
-    if (fase_ == kDerribo) {
-      if (t_ >= 140) fase_ = kFinal, Acabar(base, mgr, d);
+    if (fase_ == kDerribo) {   // EU 0x3675f0 MgFly_FinishAndApplyResult
+      if (t_ >= fin_dur_) fase_ = kFinal, Acabar(base, mgr, d);
       return;
     }
     if (fase_ != kJuego) return;
@@ -935,6 +1266,7 @@ class Panel : public rex::ui::ImGuiDialog {
     chispas_.erase(std::remove_if(chispas_.begin(), chispas_.end(), [](const auto& c) { return c.second > 20; }),
                    chispas_.end());
   }
+  // EU 0x366700 MgFly_SetupNextNode
   void Tramo(const Datos& d) {   // MgFly_SetupNextNode: una trayectoria al azar de las 60
     if (d.tramos.empty()) return;
     const auto& tr = d.tramos[Azar() % d.tramos.size()];
@@ -946,6 +1278,9 @@ class Panel : public rex::ui::ImGuiDialog {
     ladrillo_vivo_ = true;
     fijado_ = false;
   }
+  // EU 0x367990 MgFly_StateSegmentProgress
+  // EU 0x3676d0 MgFly_StateEndCutsceneLine1
+  // EU 0x367850 MgFly_StateEndCutsceneLine2
   void Fin3(const Datos& d) {
     (void)d;
     fase_ = kDerribo;
@@ -953,11 +1288,18 @@ class Panel : public rex::ui::ImGuiDialog {
     segundos_ = aciertos_ >= 3 ? 1.0f : 0.0f;   // CLEAR si hay rango
     REXLOG_INFO("dbz3 iwdisparo: fin de los ladrillos: {} aciertos", aciertos_);
   }
-  // pantalla de PS2 (640 x 448, centro 320, 224) a mundo: el punto a la profundidad z por la mira de la camara
+  // pantalla de PS2 (640 x 448, centro 320, 224) a mundo: el punto a la profundidad z por la mira de la camara del #MSS
   V3 Lad3D() const {
-    const V3 e{0, 30, 100}, f = Unir(V3{0, 5, -100}), r = Unir(V3{-f.z, 0, f.x});
+    V3 e{0, 30, 100}, f = Unir(V3{0, 5, -100});
+    float fov = 0.3926991f;   // mitad del fov de 45
+    if (datos_) {
+      e = {datos_->mss_ojo[0], datos_->mss_ojo[1], datos_->mss_ojo[2]};
+      f = Unir(Mas(V3{datos_->mss_obj[0], datos_->mss_obj[1], datos_->mss_obj[2]}, Por(e, -1.0f)));
+      fov = datos_->mss_fov * 0.5f;
+    }
+    const V3 r = Unir(V3{-f.z, 0, f.x});
     const V3 u{r.y * f.z - r.z * f.y, r.z * f.x - r.x * f.z, r.x * f.y - r.y * f.x};
-    const float k = std::tan(0.3926991f) / 224.0f * lad_z_ * kEsc3;   // unidades por px a esa profundidad
+    const float k = std::tan(fov) / 224.0f * lad_z_ * kEsc3;   // unidades por px a esa profundidad
     return Mas(e, Mas(Por(f, lad_z_ * kEsc3), Mas(Por(r, (lad_x_ - 320.0f) * k), Por(u, (224.0f - lad_y_) * k))));
   }
   // F1: el ladrillo en el mundo bajo su punto de la pantalla de PS2 (donde va la mira) a su profundidad, con la camara
@@ -971,12 +1313,15 @@ class Panel : public rex::ui::ImGuiDialog {
     const float vx = (sx - cam.c.x) / k - m[12], vy = -(sy - cam.c.y) / k - m[13], vz = -z - m[14];
     return {m[0] * vx + m[1] * vy + m[2] * vz, m[4] * vx + m[5] * vy + m[6] * vz, m[8] * vx + m[9] * vy + m[10] * vz};
   }
+  // EU 0x366480 MgFly_ProjectToScreen
   float RadioLadrillo() const {
     // MgFly_ProjectToScreen (EU 0x366480): +0x514 = (focal * S / z) * (0,5*|n.z| + hipot(n.x, n.y)), con n la normal
     // de A->B en espacio de camara y S = bloque +0x08 (MgFly_SetupNextNode: +0x510). focal = 448/(2*tan(fov/2)) con el
-    // fov de 45 del #MSS = 540,7839 px; pantalla PS2 640x448. IW pone el radio a 0 si la profundidad pasa de 700.
+    // fov del #MSS (+0x58, 45 grados en los 5 bloques) = 540,7839 px; pantalla PS2 640x448. IW pone el radio a 0 si la
+    // profundidad pasa de 700.
     if (lad_z_ > 700.0f) return 0.0f;
-    constexpr float kFocal = 540.78384f, kCx = 320.0f, kCy = 224.0f;
+    const float kFocal = datos_ ? datos_->lad_focal : 540.78384f;
+    constexpr float kCx = 320.0f, kCy = 224.0f;
     const V3 a{lad_a_[2] * (lad_a_[0] - kCx) / kFocal, lad_a_[2] * (lad_a_[1] - kCy) / kFocal, lad_a_[2]};
     const V3 b{lad_b_[2] * (lad_b_[0] - kCx) / kFocal, lad_b_[2] * (lad_b_[1] - kCy) / kFocal, lad_b_[2]};
     const V3 n = Unir(Mas(b, Por(a, -1.0f)));
@@ -990,7 +1335,8 @@ class Panel : public rex::ui::ImGuiDialog {
 
   // Camara: derecha (cine::Camara: f x arriba), arriba y delante. Las manos de IW (892/1 y 892/3) estan hechas en el
   // espacio de la camara: la mano en z = 0 y el brazo hacia -z (hasta -7.5), la izquierda en -x.
-  // ponytail: su sitio en IW lo pone la animacion de cada mano (+0xD0/+0xE0 del motor de disparo, sin leer): a ojo.
+  // Viewer_UpdateMain (0x32C7E0) mueve cada mano con sus angulos +0x90/+0x94 (Viewer_GetParam989C por cuadro) sobre el
+  // hueso del brazo; no hay un desplazamiento fijo equivalente en B3. [VERIFICAR] en pantalla el sitio de las manos.
   V3 Cam(const V3& c, float escala = 1.0f) const {
     const float yaw = g_yaw.load(), polar = g_polar.load();
     V3 f = Dir(yaw, polar), r{-std::cos(yaw), 0, std::sin(yaw)}, ojo = Ojo();
@@ -1041,9 +1387,12 @@ class Panel : public rex::ui::ImGuiDialog {
                    chispas_.end());
   }
 
-  // Piccolo en su orbita (Viewer_UpdateCharactersAndCamera / Viewer_PoseScheduler): radio 60 + 10 sin(fase), +-45
-  // grados, esquivas de lado al azar (0..3, distinta de la anterior) cada azar % 120 cuadros. ponytail: la duracion de
-  // cada esquiva y su velocidad angular (2.0 / 60 rad por cuadro, 2.25 con vida < 40 %) no estan medidas en IW.
+  // Piccolo en su orbita (Viewer_UpdateCharactersAndCamera 0x32D820 / Viewer_PoseScheduler 0x32D6B0): radio 60 + 10
+  // sin(fase), +-45 grados (0.7853982 en Viewer_UpdatePoseRotationInput 0x32DC80), esquivas de lado al azar 0..3
+  // (Viewer_PickRandomDirection 0x32D540: Memory() & 3, distinta de la anterior); el planificador del estado 1 guarda
+  // 120.0f (0x42F00000) en +0x14 y cambia de direccion cada 120 cuadros. El giro de cada esquiva es fRam005d9954 y
+  // decae (dt x Viewer_GetParamBC) / 70 por cuadro; el 2.0 / 60 rad por cuadro del port es una aproximacion.
+  // [VERIFICAR] en pantalla el ritmo de las esquivas (120 cuadros) y el angulo recorrido.
   void MoverPiccolo(bool quieto) {
     picc_fase_ += 0.1f;
     if (!quieto && fase_ == kJuego) {
@@ -1052,7 +1401,7 @@ class Panel : public rex::ui::ImGuiDialog {
         do nueva = int(Azar() & 3);
         while (nueva == esquiva_);
         esquiva_ = nueva;
-        esquiva_t_ = 20 + int(Azar() % 120);
+        esquiva_t_ = 120;   // Viewer_PoseScheduler: +0x14 = 0x42F00000 (120.0f)
       }
       const float v = (vida_ < 0.4f * vida_max_ ? 2.25f : 2.0f) / kOrbita * 0.5f;
       if (esquiva_ == 0) az_ += v;
@@ -1062,17 +1411,29 @@ class Panel : public rex::ui::ImGuiDialog {
       az_ = std::clamp(az_, -0.7853982f, 0.7853982f);
       elev_ = std::clamp(elev_, -0.05f, kElevMax);
     }
-    const float rad = kOrbita + 10.0f * std::sin(picc_fase_);   // ponytail: f(fase) de IW tomada como seno
+    const float rad = juego_ == 9 ? kRadioPicc9 : kOrbita + 10.0f * std::sin(picc_fase_);
     const V3 o = Ojo();
     g_px = o.x + rad * std::cos(elev_) * std::sin(az_);
-    g_pz = o.z + rad * std::cos(elev_) * std::cos(az_);
-    g_py = std::max(0.0f, o.y - 6.0f + rad * std::sin(elev_));
+    g_pz = juego_ == 9 ? -rad * std::cos(elev_) * std::cos(az_)
+                       : o.z + rad * std::cos(elev_) * std::cos(az_);
+    g_py = juego_ == 9 ? o.y + rad * std::sin(elev_)
+                       : std::max(0.0f, o.y - 6.0f + rad * std::sin(elev_));
   }
 
   // Prueba (DBZ3_TEST_IWMINI=0x7D8,auto): gira hacia Piccolo y dispara.
   void Piloto(uint8_t* base, uint32_t mgr, float& gx, float& gy, bool& fuego) {
-    const uint32_t pecho = mgr + kX0 + kXPaso + 1616 + 16;   // la esfera del pecho del blanco (donde esta de verdad)
-    const V3 p{LoadF(base, pecho), LoadF(base, pecho + 4), LoadF(base, pecho + 8)}, o = Ojo();
+    const V3 o = Ojo();
+    V3 p;
+    if (hecho_ && hecho_->juego == 8) {
+      // DS129: se apunta al HUESO del pecho del rival (el mismo que usa el 9), que es donde se DIBUJA Freezer. La
+      // posicion del modulo (g_px/g_py/g_pz) es la logica y B3 la pinta con la pose ~6-7 u mas arriba: apuntando a
+      // ella el disco salia "libre" al agua (prueba del coordinador: 0 aciertos). Si el modelo aun no tiene tabla,
+      // se usa la del modulo.
+      if (!HuesoMundo(base, mgr + kX0 + kXPaso, 1, p)) p = {g_px.load(), g_py.load(), g_pz.load()};
+    } else {
+      const uint32_t pecho = mgr + kX0 + kXPaso + 1616 + 16;   // la esfera del pecho del blanco (donde esta de verdad)
+      p = {LoadF(base, pecho), LoadF(base, pecho + 4), LoadF(base, pecho + 8)};
+    }
     const V3 d = Mas(p, Por(o, -1.0f));
     const float yaw = std::atan2(d.x, d.z), polar = std::acos(std::clamp(d.y / std::max(Largo(d), 1e-3f), -1.0f, 1.0f));
     float dy = yaw - g_yaw.load();
@@ -1085,15 +1446,27 @@ class Panel : public rex::ui::ImGuiDialog {
       fuego = std::abs(dy) < 0.03f && std::abs(polar - g_polar.load()) < 0.03f && auto_t_ % 2 == 0;
   }
 
+  // EU 0x3675f0 MgFly_FinishAndApplyResult / EU 0x367790 MgFly_StateApplyResultAndExit: escribe el bloque de resultado
+  // (tipo 2, rango = 4 - indice de umbral, puntos de la tabla del #MSS, premio) y Battle_ApplyResultRewards. El port lo
+  // hace con iwmini::Resultado; en el 3 el fallo es +0x3C del bloque (100) y no hay TIME.
+  // DS152: el TIME y el rango de 0x7D7/0x7D8/0x7DE salen del tiempo JUGADO, tambien cuando se acaba por tiempo o por
+  // quedarse sin tiros. Antes el 0x7D8 ponia 0'00"00 (segundos_ = 0 en el tiempo agotado) y el 0x7D7/0x7D8 un fallo
+  // "sin banda" (100). El original: Viewer_StoreResultToConfig 0x324C50 = Menu_ClassifyValueByThreshold(+0x10/60, tabla
+  // 0x5D97DC = {999,75,60,45,30,0}); Viewer_CommitShootResult 0x3496B0 = Effect_ClassifyRange (misma tabla 0x5D9AEC,
+  // leida del ELF 0x483700); MgShoot_ApplyResult 0x30A200 = MgShoot_GetRankFromTime(p). El premio es SIEMPRE el de la
+  // tabla del rango (no depende de superar): 100 solo si el valor no cae en ninguna banda (0x5D986C/0x5D9B34/0x5D9390).
   void Acabar(uint8_t* base, uint32_t mgr, const Datos& d) {
     iwmini::Resultado r;
     r.clave = d.clave;
     r.fila = d.fila;
-    const float x = segundos_;
-    int idx = -1;   // Menu_ClassifyValueByThreshold
-    if (x > 0 && x < kUmbral[0])
+    // Tiempo jugado real. Limites: 9 = Mesa/Viewer (0x480AB0, 180..90), 8 = 0x483660 (180 para las 6 dificultades),
+    // 15 = MgShoot 0x30D150 (40..160). restante_ es lo que queda en el reloj del minijuego.
+    const float limite = d.juego == 15 ? float(kTiempo15[d.dif]) : d.juego == 8 ? 180.0f : float(kLimite[d.dif]);
+    const float jugado = std::clamp(limite - std::max(restante_, 0.0f), 0.0f, limite);
+    int idx = -1;   // Menu_ClassifyValueByThreshold / Effect_ClassifyRange
+    if (d.juego != 15 && jugado > 0 && jugado < kUmbral[0])
       for (int i = 4; i >= 0; --i)
-        if (x <= kUmbral[i]) {
+        if (jugado <= kUmbral[i]) {
           idx = i;
           break;
         }
@@ -1106,7 +1479,14 @@ class Panel : public rex::ui::ImGuiDialog {
       r.superado = rr < 5;
       r.rango = rr < 5 ? 4 - rr : 0;
       r.puntos = rr < 5 ? d.puntos[rr] : d.fallo;
+      r.score = r.puntos;
+      r.zeni = r.superado ? r.puntos : 100;   // MgFly_FinishAndApplyResult: fallo = +0x3C del bloque (100)
+      r.objetos = aciertos_;
+      r.dificultad = d.dif;
+      r.con_tiempo = false;   // el resultado de ladrillos no lleva TIME (captura de DS19: BRICKS/EARNED/TOTAL)
       r.monedas = aciertos_;
+      res_ = r;   // DS129: la tabla de resultados de IW que pinta Dibujar en kFinal
+      t_fin_ = ImGui::GetTime();
       {
         std::lock_guard<std::mutex> lk(g_mu);
         g_res = r;
@@ -1120,7 +1500,14 @@ class Panel : public rex::ui::ImGuiDialog {
       const float q = p15_;
       idx = q <= 0 || q >= 1 ? -1 : q <= 0.0001f ? 4 : q <= 0.1f ? 3 : q <= 0.4f ? 2 : q <= 0.7f ? 1 : 0;
     }
-    r.superado = d.juego == 15 ? (p15_ >= 0 && p15_ < 1) : idx >= 0;
+    // Superado = se gano el minijuego (Piccolo derribado / 7 discos / Cell contenido). El rango/premio NO lo decide:
+    // son del tiempo (8/9) o de la altura (15), como en los Store/ApplyResult citados.
+    if (d.juego == 15)
+      r.superado = p15_ >= 0 && p15_ < 1;
+    else if (d.juego == 8)
+      r.superado = aciertos_ >= 7;
+    else
+      r.superado = vida_ <= 0;
     r.rango = std::max(idx, 0);
     if (idx >= 0) {
       const int raw = int(float(d.juego == 15 ? kBase15[idx] : d.juego == 8 ? kBaseDisco[idx] : kBase[idx]) * kMult[d.dif]);
@@ -1128,14 +1515,26 @@ class Panel : public rex::ui::ImGuiDialog {
     } else {
       r.puntos = 100;
     }
-    r.centesimas = int(x * 100.0f);
+    r.centesimas = int(jugado * 100.0f);
+    r.score = r.puntos;
+    r.zeni = idx >= 0 ? r.puntos : 100;   // premio de la tabla del rango; sin banda, 100 (0x5D986C)
+    // DS129: la pantalla de estos tres no lleva fila de objetos (la unica etiqueta leida, 334/1 t17 fila 2, es BRICKS
+    // DESTROYED, solo del 0x7D3): -1 = no se pinta (antes salia "BRICKS DESTROYED <disparos>"). El nº de aciertos va
+    // en `monedas`, que es lo que lee la prueba.
+    r.objetos = -1;
+    r.dificultad = d.dif;
+    // DS152: la pantalla del 0x7DE (Stop Cell!) solo lleva RANGO + ZENI (referencia del original 28:06-28:15); la de
+    // 0x7D7 y 0x7D8, RANGO + TIEMPO + ZENI (15:00-15:09 y 15:58-16:07). El 15 no pinta TIME.
+    r.con_tiempo = d.juego != 15;
     r.monedas = d.juego == 8 ? aciertos_ : disparos_;
+    res_ = r;   // DS129: la tabla de resultados de IW que pinta Dibujar en kFinal
+    t_fin_ = ImGui::GetTime();
     {
       std::lock_guard<std::mutex> lk(g_mu);
       g_res = r;
     }
-    REXLOG_INFO("dbz3 iwdisparo: fin: {} en {:.2f} s, rango {}, puntos {}", r.superado ? "DERRIBO" : "FALLO", x,
-                "CBASZ"[r.rango], r.puntos);
+    REXLOG_INFO("dbz3 iwdisparo: fin: {} en {:.2f} s (limite {:.0f}), rango {}, premio {}",
+                r.superado ? "DERRIBO" : "FALLO", jugado, limite, "CBASZ"[r.rango], r.zeni);
     REX_STORE_U8(mgr + kFin, uint8_t(r.superado ? 1 : 2));   // el combate acaba como un ring out (pasarela.cpp)
     g_fin_pedido = true;
   }
@@ -1176,13 +1575,13 @@ class Panel : public rex::ui::ImGuiDialog {
         const ps2::Modelo& m = k == 0 ? d.mano_i : d.mano_d;
         if (!m.malla) continue;
         ps2::Malla w = m.malla;
-        // 15: CameraCtrl_Create (EU 0x3105A0): a 5,5 por la mirada y (0, -1,1, -3,7) -> (0, -1,1, 1,8). ponytail: su giro
-        // (+0x50: -1, pi, 0) no se aplica (el modelo ya mira hacia +z en el espacio de la camara)
+        // 15: CameraCtrl_Create (EU 0x3105A0): a 5,5 por la mirada y (0, -1,1, -3,7) -> (0, -1,1, 1,8). Su rotacion
+        // (+0x50: -1, pi, 0) no se aplica porque el modelo ya mira a +z en el espacio de la camara. [VERIFICAR] el giro.
         const V3 o = juego_ == 15 ? V3{0, -1.1f, 1.8f} : SitioMano(k, retroceso_[k]);
         // x5 alrededor del ojo: la misma imagen, pero lejos del corte de Escena::Poner (no pinta lo pegado a la camara)
         for (auto& t : w.tris)
           for (V3& p : t.p) p = Cam({p.x + o.x, p.y + o.y, p.z + o.z}, 5.0f);
-        if (juego_ == 15)   // ponytail: el bit alto del vtype de ITEMB00 (translucido en ps2::Malla) no es de piel
+        if (juego_ == 15)   // [VERIFICAR]: el bit alto del vtype de ITEMB00 (translucido en ps2::Malla) no es de piel
           for (auto& t : w.tris) t.trans = false;
         escena_.Poner(cam, w, k == 0 ? tx_i_ : tx_d_, {0, 0, 0}, 0, 1.0f);
       }
@@ -1210,7 +1609,7 @@ class Panel : public rex::ui::ImGuiDialog {
         }
       }
       // rayos: el modelo del rayo de IW orientado a su marcha (la cabeza, z = 0, delante; la cola hacia -z)
-      for (const Rayo& r : rayos_) Orientado(cam, d.efecto, r.p, r.v, 0.6f);   // ponytail: escala a ojo (la pone su #AME)
+      for (const Rayo& r : rayos_) Orientado(cam, d.efecto, r.p, r.v, 0.6f);   // [VERIFICAR] escala 0.6 en pantalla
       // Kienzan: el modelo de IW, plano y girando; cargando, encima de la mano (x5 alrededor del ojo, como las manos)
       if (disco_ >= 1 && d.efecto.malla) {
         giro_disco_ += 0.5f;
@@ -1234,17 +1633,35 @@ class Panel : public rex::ui::ImGuiDialog {
       }
     }
     HudPantalla(io, base, mgr, cam);
-    // final: fundido a negro (tapa el final de combate de B3) con CLEAR si hubo derribo
+    // final: el clip de cierre (1001/1002 o 1301/1302) se ve entero y luego fundido a negro (tapa el final de combate
+    // de B3); fin_dur_ = 140 cuando no hay clip.
     if (fase_ == kDerribo || fase_ == kFinal) {
-      const float al = fase_ == kFinal ? 1.0f : std::clamp(float(t_ - 80) / 60.0f, 0.0f, 1.0f);
       ImDrawList* fg = ImGui::GetForegroundDrawList();
-      fg->AddRectFilled(ImVec2(0, 0), io.DisplaySize, IM_COL32(0, 0, 0, int(255 * al)));
-      if (segundos_ > 0 && clear_) {
-        const S::Area a = S::GameArea(io);
-        const float w = clear_.w * 1.6f * a.s, h = clear_.h * 1.6f * a.s;
-        const ImVec2 c(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f);
-        fg->AddImage(clear_.id(), ImVec2(c.x - w * 0.5f, c.y - h * 0.5f), ImVec2(c.x + w * 0.5f, c.y + h * 0.5f));
+      // Con clip de cierre: el clip se ve entero en kDerribo (fundido a negro al final) y la tabla va en kFinal. Sin
+      // clip (el 8): la tabla sale ya en kDerribo, que si no serian 140 cuadros de negro.
+      if (fin_id_ >= 0 && fase_ == kDerribo) {
+        const int ini = std::max(60, fin_dur_ - 40);
+        const float al = std::clamp(float(t_ - ini) / 40.0f, 0.0f, 1.0f);
+        fg->AddRectFilled(ImVec2(0, 0), io.DisplaySize, IM_COL32(0, 0, 0, int(255 * al)));
+        return;
       }
+      // DS129: en vez de dejar el negro hasta que el mapa recoja el resultado, se pinta la tabla de resultados de IW
+      // (DibujarResultadoIW, DS102) como hace el panel de los botones (MSN019). Antes c_fin/d_resultado salian
+      // NEGROS (prueba del coordinador). El reloj es de pared (ImGui), no t_: la logica solo corre en el estado 4 y
+      // t_ se congela al acabar el combate.
+      // DS152: se pinta ENTERA desde el primer cuadro (saltar = true). B3 cierra el combate ~3 s despues del estado 5
+      // (en la prueba, d_resultado cae ~0,3-0,5 s despues de Acabar) y el original tiene su propia pantalla de ~9 s
+      // (referencias: 0x7D7 15:00-15:09, 0x7D8 15:58-16:07, 0x7DE 28:06-28:15). Con el ritmo de Results_UpdateTally
+      // (1,67 s antes de la primera fila + 1 s por fila) el 0x7D8/0x7DE se quedaban en TIME o en el titulo. La tabla
+      // del mapa (PantallaDM::Resultado) sigue animando las suyas. [H] el ritmo exacto del panel propio de IW.
+      const float t_res = std::max(float(ImGui::GetTime() - t_fin_), 0.0f);
+      if (res_.clave) {
+        const S::Area a = S::GameArea(io);
+        const ImVec2 q0 = a.At(0, 0), q1 = a.At(1200, 900);
+        iwmini::DibujarResultadoIW(fg, q0.x, q0.y, q1.x - q0.x, q1.y - q0.y, res_, t_res * 4.0f, true);
+      }
+      // Sin fundido propio: la tabla se queda hasta que el combate acaba (g_on = false, lo cierra el callback de
+      // VigilarCombate) y entonces el mapa/menu ensena su pantalla de resultados.
     }
   }
 
@@ -1406,6 +1823,8 @@ class Panel : public rex::ui::ImGuiDialog {
     efx_.erase(std::remove_if(efx_.begin(), efx_.end(), [](const auto& e) { return !e->vivo; }), efx_.end());
   }
   ps2::Tex clear_;
+  iwmini::Resultado res_;   // DS129: resultado de Acabar, para la tabla de DibujarResultadoIW en kFinal
+  double t_fin_ = 0.0;      // DS129: ImGui::GetTime() al acabar (reloj de la tabla de resultados)
   int juego_ = 9;
   ps2::Escena escena_;
   Fase fase_ = kListo;
@@ -1426,6 +1845,9 @@ class Panel : public rex::ui::ImGuiDialog {
   int quedan_ = 0, tramo_espera_ = 0;
   float mira_x_ = 320, mira_y_ = 224, progreso_ = 0, lad_vel_ = 1, lad_x_ = 0, lad_y_ = 0, lad_z_ = 0, tiro_t_ = 0;
   float lad_s_ = 18.0f;   // tamano del ladrillo que se proyecta (#MSS +0x08) para el radio de fijado
+  // DS123: entrada/cierre por clips del #AMC (ver PasoIntro/PasoFinal)
+  bool sin_cine_ = false;
+  int fin_id_ = -1, fin_dur_ = 140;
   std::array<float, 3> lad_a_{}, lad_b_{};
   bool ladrillo_vivo_ = false, fijado_ = false;
   bool tirada_ = false, fuego_antes_ = false;
@@ -1444,6 +1866,23 @@ void CreatePanel() {
 }
 
 // Carga (modelos de las manos y HUD de la copia del jugador) y el combate. 0x7D8: MSN010 (Piccolo); 0x7D7: MSN009.
+// EU 0x327590 s_MSN010_UPDATE / 0x34B3F0 s_MSN009_UPDATE / 0x30CCF0 s_MSN016_UPDATE (entradas de los tres): abren el
+// trabajo, arrancan el clip 0 de la UI (`UiAnim_Start(0,1,0,1,0)`), ponen +0x14cd = 1 y +0x359d = 1 en el trabajo (los
+// dos flags de control de los luchadores), Timer_SetSlot(2.0, trabajo, 0) y GameState_SetFlag2(0). Ese slot 0 lo
+// descuenta Timer_TickSlot (EU 0x2EF990: `[trabajo+0x30+slot*4] -= 1` por cuadro) y Viewer_StateReady (0x325840) da el
+// mando al agotarlo: son 2 CUADROS, no 2 s. Aqui la carga y el estado de "listo" (kListo) los monta Empezar/Cuadro*; el
+// +0x14cd/+0x359d son los flags de ocultar al rival / jugador de B3 (Veil): `coincide`.
+// EU 0x30CC40 Minigame_SetupScene (MSN016): carga camara y modelos, engancha camara->jugador (`Get_uRam0049cda4`:
+// +0x80 / +0x40), pone al jugador la pose 10 y al rival la 0 desde auRam005d92f0 / auRam005d9320. En el port eso es
+// Cuadro15 (Ten = camara, Cell = luchador 1 con CellEstado(0/1)): los transform fijos de IW no se copian (el escenario de
+// B3 manda); `coincide` en el reparto de papeles.
+// EU 0x369150 ShootingMinigamesFunc: solo guarda el puntero del trabajo y apaga el flag de estado; `motor` (Empezar).
+// EU 0x3691A0 "DestroyTheBricks"Minigame: carga por RAMOpenDATA_CMNFolder los #AMB del 890 (ladrillo ITEMB03, #MSS por
+// dificultad) y elige el ID con MinigameIDPicker; es el juego 3 (0x7D3). DS123: ademas de los datos del #MSS/#ITM que
+// ya leia, el port saca de aqui la camara del #MSS (DS126: el #AMC 890/5 es la casa de Kaio y no se reproduce).
+// EU 0x369370 Minigame_ClearByRank: la nota de la load-wait (0xB/0xC/0xD) elige el bloque 3/1/2 del #MSS.
+// EU 0x369150 ShootingMinigamesFunc: guarda el puntero del trabajo y apaga el flag de estado; en el port lo hace Empezar.
+// EU 0x369150 ShootingMinigamesFunc
 bool Empezar(int clave, int fila, int dificultad) {
   auto d = std::make_shared<Datos>();
   d->clave = clave;
@@ -1455,6 +1894,7 @@ bool Empezar(int clave, int fila, int dificultad) {
     REXLOG_WARN("dbz3 iwdisparo: sin la copia de IW (DATA_CMN/DATA_USA)");
     return false;
   }
+  // EU 0x3691A0 DestroyTheBricksMinigame
   if (d->juego == 3) {   // DATA_CMN 890: 1 ITEMB03_BRICK (+0 #AMT), 4 #MSS (bloque por dificultad en +0x2C)
     const std::vector<uint8_t> amb = cmn.Entrada(890);
     d->ladrillo = ps2::CargarModelo(amb, 1, 0, 0);
@@ -1465,6 +1905,7 @@ bool Empezar(int clave, int fila, int dificultad) {
       REXLOG_WARN("dbz3 iwdisparo: sin el #MSS de 890");
       return false;
     }
+    // EU 0x369370 Minigame_ClearByRank (0xB/0xC/0xD -> bloque 3/1/2)
     int bdif = d->dif;
     size_t b = size_t(i32(0x2C + 4 * size_t(bdif)));
     while (bdif > 0 && b + 0x64 > mss.size()) {   // el #MSS EU solo trae 5 bloques (la copia USA tiene 6)
@@ -1478,6 +1919,23 @@ bool Empezar(int clave, int fila, int dificultad) {
     d->lad_s = f32(b + 0x08);   // MgFly_SetupNextNode: +0x510 = bloque +0x08 (tamano proyectado del ladrillo)
     for (int k = 0; k < 5; ++k) d->umbral[k] = i32(b + 0x14 + 4 * size_t(k)), d->puntos[k] = i32(b + 0x28 + 4 * size_t(k));
     d->fallo = i32(b + 0x3C);
+    // EU 0x367e30 MgFly_StateIntroSetup: la camara del 3 sale del bloque del #MSS (+0x40 ojo, +0x4c objetivo,
+    // +0x58 fov y +0x5c giro, en grados; el giro se limita a 5..175 y el port no lo aplica porque el #MSS lo trae 0).
+    for (int k = 0; k < 3; ++k) d->mss_ojo[k] = f32(b + 0x40 + 4 * size_t(k));
+    for (int k = 0; k < 3; ++k) d->mss_obj[k] = f32(b + 0x4c + 4 * size_t(k));
+    const float fov_deg = std::clamp(f32(b + 0x58), 5.0f, 175.0f);
+    d->mss_fov = fov_deg * 2.0f * 3.14159265f / 360.0f;
+    d->mss_giro = f32(b + 0x5c) * 2.0f * 3.14159265f / 360.0f;
+    d->lad_focal = 224.0f / std::tan(d->mss_fov * 0.5f);   // 448/(2 tan(fov/2))
+    REXLOG_INFO("dbz3 iwdisparo: #MSS camara ({:.2f},{:.2f},{:.2f}) -> ({:.2f},{:.2f},{:.2f}), fov {:.1f} grados, giro "
+                "{:.1f}; focal {:.2f}", d->mss_ojo[0], d->mss_ojo[1], d->mss_ojo[2], d->mss_obj[0], d->mss_obj[1],
+                d->mss_obj[2], fov_deg, d->mss_giro * 360.0f / 6.2831853f, d->lad_focal);
+    // DS126: el #AMC 890/5 (270 c.) NO es la entrada de esta galeria. Leido del fichero, su ojo va de
+    // (194.5, 7.1, -55.2) a (96.0, 7.1, -29.0) con el objetivo (101.0, 146.2, -193.5) -> (105.4, 33.2, -197.7):
+    // es la escena de la casa de Kaio, a cientos de unidades del campo 897 y nunca acaba en la camara del
+    // #MSS (0,30,100)->(0,35,0). Reproducirla sobre el campo vacio es la pantalla negra/suelo del principio.
+    // EU 0x367e30 MgFly_StateIntroSetup copia directamente la camara del #MSS: esa YA es la entrada.
+    d->intro_dur = 0;
     const int pool = std::clamp(i32(b + 0x60), 0, 200);
     for (int k = 0; k < pool; ++k) {
       std::array<float, 7> t{};
@@ -1501,6 +1959,46 @@ bool Empezar(int clave, int fila, int dificultad) {
                     t[3], t[4], t[5], t[6]);
       }
     }
+  }
+  // DS123: camaras de entrada/cierre de los otros tres. Todas salen del #AMC general DATA_CMN 915 hijo 2 (Camera_*),
+  // con el id que pone cada estado en UiAnim_Start (los valores de los INT_00499xxx leidos del ELF EU):
+  //  - 0x7D8 (MSN010): Viewer_StateIntro 0x325c30 -> 1000; Viewer_StateCountdown 0x325ab0 -> 1003; final 0x324e30 ->
+  //    1001 (derribo) / 1002 (tiempo agotado).
+  //  - 0x7DE (MSN016): MgShoot_St_PreIntro 0x30b410 -> 1300; MgShoot_St_Intro 0x30b1c0 -> 1303; MgShoot_St_GameOver
+  //    0x30a3d0 -> 1302 (Cell contenido, camara a ras de suelo) / 1301 (Cell arriba o sin energia; DS126).
+  //  - 0x7D7 (MSN009): el descriptor EU 0x49A600 declara TRES camaras (950/951/952). La entrada es la 950
+  //    (retroceso de 520 cuadros); 952 NO es la entrada. 951/952 = las camaras de la mira/lanzamiento [H].
+  if (d->juego != 3) {
+    const std::vector<int> ids = d->juego == 8  ? std::vector<int>{kIntro7, kMira7Clip, kCierre7}
+                                 : d->juego == 9 ? std::vector<int>{1000, 1001, 1002}
+                                                 : std::vector<int>{1300, 1301, 1302, 1303};
+    LeerClipsDisparo(P::HijoAmb(cmn.Entrada(915), 2), ids, d->cams);
+    auto anade = [&](std::vector<int>& v, std::initializer_list<int> l) {
+      for (int id : l)
+        if (d->cams.count(id)) v.push_back(id);
+    };
+    if (d->juego == 8) {
+      anade(d->intro, {kIntro7});   // DS126: 950 (no 952); su ultimo cuadro es la camara de juego
+    } else if (d->juego == 9) {
+      // DS126: 1000 (440 c., y=143) es la entrada y encaja con la camara de juego (0,150,37). El 1003
+      // esta a y=76.8 (a ras de suelo), NO en el escenario del 9 (y=143-150): no se reproduce hasta
+      // aclarar su papel (antes metia un salto de 70 u al suelo en la cuenta atras). [H]
+      anade(d->intro, {1000});
+      anade(d->fin_bien, {1001});
+      anade(d->fin_mal, {1002});
+    } else {
+      anade(d->intro, {1300, 1303});
+      // DS126: los clips dicen lo contrario que el comentario de DS123: 1301 tiene el ojo a y=152
+      // (Cell arriba) y 1302 a y=3.7 (Cell a ras de suelo, contenido). Se cruzan las ramas.
+      anade(d->fin_bien, {1302});
+      anade(d->fin_mal, {1301});
+    }
+    d->intro_dur = 0;
+    for (int id : d->intro) d->intro_dur += d->cams[id].dur;
+    std::string s;
+    for (int id : d->intro) s += fmt::format(" {} ({}f)", id, d->cams[id].dur);
+    REXLOG_INFO("dbz3 iwdisparo: camaras de IW (915/2): entrada{} = {} cuadros; fin bien {} / mal {}", s, d->intro_dur,
+                d->fin_bien.empty() ? -1 : d->fin_bien[0], d->fin_mal.empty() ? -1 : d->fin_mal[0]);
   }
   if (d->juego == 15) {   // manos de Ten: DATA_CMN 895 (0x37F, Minigame_LoadShootingData): 1 ITEMB00, 0 #AMT
     const std::vector<uint8_t> manos = cmn.Entrada(895);
@@ -1528,7 +2026,7 @@ bool Empezar(int clave, int fila, int dificultad) {
   }
   // Manos opacas: en las texturas de personaje de IW el alfa de la CLUT no es transparencia (elige la fila del toon) y
   // la PS2 las pinta opacas (P4: `TexturaAmt` ya pasa el alfa 0x80 -> 255, asi que proyectil y ladrillo van tal cual).
-  for (auto& t : d->ladrillo.malla.tris) t.trans = false;   // ponytail: el ladrillo es macizo (bit alto del vtype)
+  for (auto& t : d->ladrillo.malla.tris) t.trans = false;   // [VERIFICAR]: el ladrillo macizo (bit alto del vtype)
   for (ps2::Modelo* m : {&d->mano_i, &d->mano_d})
     for (P::Imagen& im : m->tex)
       for (size_t i = 3; i < im.rgba.size(); i += 4) im.rgba[i] = 255;
@@ -1564,21 +2062,26 @@ bool Empezar(int clave, int fila, int dificultad) {
   dbz3::launcher::DeferUi(&CreatePanel);
   // Jugador oculto (primera persona) y el blanco. MSN010: las manos de IW (892) tienen la piel lila y las unas oscuras de
   // Freezer (y W3 dice que Freezer dispara a Piccolo): el jugador es Freezer. MSN009: Krilin contra Freezer.
-  // ponytail: el escenario de IW (Stage_BeginLoad de ctx+0x30 / ce78+0x20) no esta identificado: Namek de B3 (saga).
-  // Escenario (Stage_BeginLoad del id que pone cada constructor: MSN016 ISLAND 2, MSN010 y MSN009 NAMEC 7; IW los
-  // comparte con B3: tabla 0x44ABC0 -> mapa 60 / 64): Archipielago y Namek de B3.
-  // 3: el campo de IW del planeta del Kaio (DATA_CMN 897, R8) si esta instalado; si no, Llanuras de B3. Goku (variante
-  // 0; Piccolo/Yamcha/Ten segun el personaje que lleva el mapa, que R1 aun no pasa) y un rival oculto.
+  // RE PCSX2/PINE EU + iw_sles55347.c: 0x7D7/0x7D8 Stage_BeginLoad ID 7 (tabla 0x44ABC0 -> DATA_CMN 64/65), pero el
+  // mundo donde se juegan es el CAMPO GRANDE de IW: Campo IW 883 (Namek en vuelo). DS126: el 0x7D8 se juega a
+  // y ~ 150 (su entrada 1000 y su primera persona coinciden); el 0x7D7, segun sus TRES clips (950/951/952), a
+  // y ~ 72-82 y z ~ 0-30, no en el (0,142.6,355.6) que se habia tomado de otra medida. El jugador va a sus pies
+  // (kAltJug7/kZ7) y la camara de juego es el encuadre del ultimo cuadro del 950 (DS129: anclada a la cintura que se
+  // dibuja, kSubeJ7/kDetrasJ7; sin la compensacion de FOV del clip, que es la de la cinematica).
+  // 0x7DE usa ID 2/TOWN -> escenario 3. 0x7D3 usa Campo IW 897 si esta instalado.
   const bool disco = d->juego == 8, ten = d->juego == 15, lad = d->juego == 3;
   const int j1 = lad ? kGoku : ten ? kTen : disco ? kKrilin : kFreezer;
   const int j2 = lad ? kRaditz : ten ? kCell : disco ? kFreezer : kPiccolo;
-  const int campo = lad ? dbz3::escenarios::CampoIW(897) : -1;
-  const int esc = lad ? (campo >= 0 ? campo : kLlanuras) : ten ? kIslas : kNamek;
+  const int campo = lad ? dbz3::escenarios::CampoIW(897)
+                        : (d->juego == 8 || d->juego == 9) ? dbz3::escenarios::CampoIW(883) : -1;
+  const int esc = lad ? (campo >= 0 ? campo : kLlanuras)
+                      : ten ? kStageTown : campo >= 0 ? campo : kStageNamek;
   // Cell en su segunda forma (semiperfecto), como en IW (MSN016; sus animaciones de 914 son de ese esqueleto)
   if (!dbz3::hub::RequestBattleEx(j1, j2, esc, true, -1, 0, 0, 0, ten ? 1 : 0)) {
     REXLOG_WARN("dbz3 iwdisparo: el conector no acepto el combate");
     return false;
   }
+  REXLOG_INFO("dbz3 iwmini: salida puesta (minijuego 0x{:X}, escenario {})", clave, esc);
   g_on = true;
   dbz3::combate::SetMuneco(1);         // el blanco quieto (mando virtual 2): lo mueve el minijuego
   dbz3::combate::OcultarHud(true);     // sin marcador de B3: el HUD es el de IW
@@ -1590,6 +2093,7 @@ bool Empezar(int clave, int fila, int dificultad) {
     if (g_x1.load()) dbz3::anim::Corredor(g_x1.load(), false);
     g_on = false;
     g_cam15 = false;
+    g_camclip = false;
     iwmini::Resultado r;
     {
       std::lock_guard<std::mutex> lk(g_mu);
@@ -1622,7 +2126,8 @@ void FotogramaDisparo(uint8_t* base, uint32_t estado) {
   g_x1 = x1;
   const bool c15 = g_cam15.load();
   const int juego = g_juego.load();
-  // 7D7 (8): Krillin vuela a la altura de IW (142,57) y se VE (tercera persona); 7D8 (9): Freezer oculto en el origen.
+  // 7D7 (8): Krillin se VE (tercera persona) en el sitio que dicen sus clips (pies ~71,3, z ~3,6); 7D8 (9):
+  // Freezer oculto en el origen.
   Poner(base, x0, c15 ? V3{g_jx.load(), 0, g_jz.load()}
                       : juego == 8 ? V3{0, kAltJug7, kZ7}
                                    : V3{0, 0, 0});   // 3: oculto en el origen (la camara es la del original)
@@ -1630,6 +2135,11 @@ void FotogramaDisparo(uint8_t* base, uint32_t estado) {
   const bool ver_jug = juego == 8;
   REX_STORE_U8(x0 + kOcultoA, ver_jug ? 0 : 1);
   REX_STORE_U8(x0 + kOcultoB, ver_jug ? 0 : 1);
+  if (juego == 8) {   // DS126: el cuerpo visible mira hacia donde apunta (la camara del 950 mira a -Z)
+    const int yaw = int(std::lround(g_yaw.load() * 65536.0f / 6.2831853f)) & 0xFFFF;
+    REX_STORE_U16(x0 + kMiradaA, uint16_t(yaw - 15759));
+    REX_STORE_U16(x0 + kMiradaB, uint16_t(yaw - 15968));
+  }
   if (lad) REX_STORE_U8(x1 + kOcultoA, 1), REX_STORE_U8(x1 + kOcultoB, 1);
   if (REX_LOAD_U16(x0 + kPadIdx) != 1) REX_STORE_U16(x0 + kPadIdx, 1);
   StoreF(base, x0 + kVida, LoadF(base, x0 + kVidaMax));
@@ -1644,22 +2154,56 @@ void FotogramaDisparo(uint8_t* base, uint32_t estado) {
     REXLOG_INFO("dbz3 iwdisparo: mando +12 0x{:04X} +108 0x{:04X}", visto & 0xFFFF, visto >> 16);
   }
   const V3 f = Dir(g_yaw.load(), g_polar.load());
-  const V3 yo = juego == 8 ? V3{0.0f, kAltJug7 + 7.43f, kZ7 - kAtras7}
-                  : juego == 9 ? V3{0, kAltIW, 0}
-                  : juego == 3 ? V3{kOjo3[0], kOjo3[1], kOjo3[2]}   // R17: camara fija del 3 (la del original)
+  // DS129: la camara de juego del 8 es el encuadre del ultimo cuadro de su clip de entrada (950) pero anclada a la
+  // CINTURA que se dibuja (X+1616 + 0), no a la posicion logica X+48: B3 pinta al muñeco con su pose (vuelo/reposo)
+  // ~7 u por encima y la camara absoluta del clip quedaba a la altura de sus pies (prueba del coordinador).
+  // Desfase del clip sin compensar FOV (kSubeJ7/kDetrasJ7): el del juego original (tools/dorados/iw_0x7D7.json).
+  if (juego == 8) {
+    V3 cintura;
+    if (HuesoMundo(base, x0, 0, cintura)) {
+      g_m8x = cintura.x, g_m8y = cintura.y + kSubeJ7, g_m8z = cintura.z;   // mira: a la altura del ojo (horizontal)
+      g_o8x = cintura.x;
+      g_o8y = cintura.y + kSubeJ7;
+      g_o8z = cintura.z + kDetrasJ7;
+    }
+  }
+  // DS126: el 8 usa la camara de juego del ultimo cuadro de su clip de entrada (950); el 9 la primera persona
+  // de IW; el 3 la fija del #MSS (R17); el resto la de siempre.
+  const V3 yo = juego == 8 ? V3{g_o8x.load(), g_o8y.load(), g_o8z.load()}
+                  : juego == 9 ? V3{0, kAltIW, kOjoZ9}
+                  : juego == 3 ? V3{kOjo3[0], kOjo3[1], kOjo3[2]}
                                : V3{0, kOjo, 0};
-  const float ojo[3] = {c15 ? g_ex.load() : yo.x, c15 ? g_ey.load() : yo.y, c15 ? g_ez.load() : yo.z};
-  // 7D7: tercera persona detras del jugador, mirando a +Z (el objetivo de IW en el cuadro de juego); 7D8: primera
-  // persona a la altura de la camara de IW; 3 (R17): la camara fija del original (0,30,100) -> (0,35,0).
-  const float obj[3] = {c15 ? g_tx.load() : juego == 3 ? kMira3[0] : juego == 8 ? 0.0f : f.x * 30.0f,
-                        c15 ? g_ty.load()
-                            : juego == 3 ? kMira3[1]
-                                         : juego == 8 ? yo.y : juego == 9 ? kAltIW + f.y * 30.0f : kOjo + f.y * 30.0f,
-                        c15 ? g_tz.load() : juego == 3 ? kMira3[2] : juego == 8 ? kZ7 + 1.0f : f.z * 30.0f};
+  // DS123: g_camclip manda mientras dura un clip del #AMC (entrada o cierre); si no, las camaras de siempre.
+  const bool cc = g_camclip.load();
+  const float ojo[3] = {cc || c15 ? g_ex.load() : yo.x, cc || c15 ? g_ey.load() : yo.y, cc || c15 ? g_ez.load() : yo.z};
+  const float obj[3] = {cc ? g_tx.load()
+                           : c15 ? g_tx.load()
+                                 : juego == 3 ? kMira3[0]
+                                              : juego == 8 ? g_m8x.load()
+                                                           : f.x * (juego == 9 ? 38.0f : 30.0f),
+                        cc ? g_ty.load()
+                           : c15 ? g_ty.load()
+                                 : juego == 3 ? kMira3[1]
+                                              : juego == 8 ? g_m8y.load()
+                                                           : juego == 9 ? kAltIW + f.y * 38.0f : kOjo + f.y * 30.0f,
+                        cc ? g_tz.load()
+                           : c15 ? g_tz.load()
+                                 : juego == 3 ? kMira3[2]
+                                              : juego == 8 ? g_m8z.load()
+                                                           : juego == 9 ? kOjoZ9 + f.z * 38.0f
+                                                                        : f.z * 30.0f};
   dbz3::cine::Camara(base, ojo, obj);
-  static int64_t traza = 0;
   const int64_t ahora = std::chrono::duration_cast<std::chrono::milliseconds>(
                             std::chrono::steady_clock::now().time_since_epoch()).count();
+  static int64_t sonda_camara = 0;
+  if (std::getenv("DBZ3_TEST_IWMINI") && ahora - sonda_camara >= 500) {
+    sonda_camara = ahora;
+    REXLOG_INFO("dbz3 iwmini: jugador ({:.2f}, {:.2f}, {:.2f}) ojo ({:.2f}, {:.2f}, {:.2f}) objetivo ({:.2f}, {:.2f}, {:.2f}) "
+                "fov {:.4f} #AMC 0",
+                LoadF(base, x0 + 64), LoadF(base, x0 + 68), LoadF(base, x0 + 72), ojo[0], ojo[1], ojo[2], obj[0], obj[1],
+                obj[2], LoadF(base, mgr + 0x1C4));
+  }
+  static int64_t traza = 0;
   if (estado == 4 && ahora - traza > 2000) {
     traza = ahora;
     REXLOG_INFO("dbz3 iwdisparo: mando 0x{:04X} +108 0x{:04X} palanca {} {}; camara {:.2f} {:.2f}; Piccolo ({:.0f}, "

@@ -87,8 +87,14 @@ Fuentes: decompilación Ghidra de B1 europeo (`E:\DBZ3HD_trabajo\ghidra\salida\b
 que usan los scripts de `E:\DBZ3HD_trabajo\P3\dis.py`). Pruebas con la copia `D:\DBZ3HD\satan_fix` y
 `DBZ3_PS2_GAMES=D:/DBZ3HD/ps2_games`.
 
-### 1. Reglas por combate (armadura de A16, Mr. Satán herido, ki lento): comprobadas, pero sus números no están en B1
-Qué hay en el juego (de la ronda 2, `pasarela.cpp` `ReglasDe` + `VigilarCombate`): A16 anula el 50 % del daño que recibe;
+### 1. Reglas por combate (armadura de A16, Mr. Satán herido, ki lento): NO existen en B1 (cerrado en DS143)
+**DS143 (2026-10-27)**: se han quitado los tres valores inventados. La revisión del decompilado confirma que son solo los
+avisos 669 #5/#7/#11 (texto de Mr. Satán): no hay ninguna comparación con los IDs 5 (Trunks), 6 (Piccolo) ni 16 (A16)
+en `b1.c` (el único caso por personaje es Cell Jr. 0x17/forma 3, en las voces/`0x1AD0D0`), el modo 3 (`+0xD0B0`) no
+entra en daño ni ki, y el daño general `0x1AD0D0` no tiene rama del modo. Lo que sigue es la investigación de la ronda 5,
+que ya no se aplica: el puerto pelea como B1.
+
+Qué había en el juego (de la ronda 2, `pasarela.cpp` `ReglasDe` + `VigilarCombate`): A16 anulaba el 50 % del daño que recibe;
 contra Trunks el daño que no viene de gastar ki en los 1,5 s anteriores se queda en un 25 % (se anula el 75 %); contra
 Piccolo Mr. Satán gana la mitad del ki. Los avisos del original (669 impares, en inglés): "You can't hurt Android 16
 easily! Don't give it a chance to attack!", "Your hands and legs are injured! Use your Ki to attack!!", "Piccolo the Evil
@@ -110,9 +116,8 @@ Dónde se buscó el original (sin encontrarlo):
   pasivas (`0x1AEA50`) y la forma; la carga de ki (`0x1A1xxx`) solo el reloj propio `+0x4EA4`.
 - Tampoco hay cadena de texto de esas reglas en el ejecutable.
 
-Conclusión: la armadura, la herida y el ki lento no están como código con la ronda como clave; si existen, son datos de
-cada personaje (fichas de golpes/movimientos de A16, Trunks y Piccolo en los AFS) que no están descifrados. Se dejan los
-valores propios (50 %, 75 %, 50 %), ajustables en `ReglasDe` (`pasarela.cpp`).
+Conclusión (DS143): al no existir en B1, el puerto **no** aplica armadura, solo-ki ni ki lento. Los valores propios
+(50 %, 75 %, 50 %) se retiraron de `ReglasDe`; los campos siguen en `Reglas` porque los usan los entrenamientos de IW.
 
 Verificado en el juego (registro `dbz3 pasarela: paso N: regla: ...`, con el muñeco quieto):
 - A16 (`20261017-060802_satan_fix__r3_golpes`, `desde=7`): "golpe de 98 al rival, se anula el 50 % (49); armadura".

@@ -29,6 +29,7 @@ import getpass
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -77,11 +78,36 @@ def manifest_with_version(path, version, name, author=None):
     return "\n".join(lines) + "\n"
 
 
+# Nombre de un volcado/reemplazo de un pack de texturas: <hash16>_<W>x<H>_<sufijo>
+PACK_TEXTURE_NAME = re.compile(r"^[0-9A-Fa-f]{16}_\d+x\d+_")
+
+
+def _looks_like_pack_dump(folder):
+    """True si `folder` tiene DDS/PNG con nombre de textura del pack (no cualquier 'update')."""
+    try:
+        for _d, _ds, fs in os.walk(folder):
+            for f in fs:
+                if f.lower().endswith((".dds", ".png")) and \
+                        PACK_TEXTURE_NAME.match(os.path.splitext(f)[0]):
+                    return True
+    except OSError:
+        return False
+    return False
+
+
 def pack(src, mod_id, version, name, out_zip, author=None):
     """Zip con la carpeta <id>/ (InstallModFromZip la desenvuelve); el manifest lleva la version."""
+    src_abs = os.path.normcase(os.path.abspath(src))
     with zipfile.ZipFile(out_zip, "w", zipfile.ZIP_DEFLATED) as z:
         for d, ds, fs in os.walk(src):
             ds[:] = [x for x in ds if x not in ("respaldo", "_respaldo")]   # copias de trabajo del mod, no van
+            if os.path.normcase(os.path.abspath(d)) == src_abs:
+                # `update/` de un pack de texturas: originales que el juego vuelca para el
+                # autor (RecordMissingPackTexture), NO reemplazos. Si viajaban en el zip, un
+                # runtime <= 1.5.5.2 los indexaba: videos 1280x720 resubidos cada frame y
+                # `device removed INVALID_CALL` con los fmt 19 a x1 (issue #50).
+                ds[:] = [x for x in ds if not (x == "update" and
+                                               _looks_like_pack_dump(os.path.join(d, x)))]
             for f in sorted(fs):
                 if f.startswith(".modelo_hd."):   # cache de la vista previa (ui/_vista): se rehace sola
                     continue

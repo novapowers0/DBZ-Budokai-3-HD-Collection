@@ -25,6 +25,10 @@ bool Reproducir(const std::filesystem::path& ruta, std::vector<pasarela::Imagen>
 // suelte la A que lo salto.
 bool Activo();
 void Saltar();
+// EU 0x18B138 s_E1122604_mwPlyPause_handle_is_in: pausa real del reproductor Sofdec (congela imagen, audio y
+// subtitulos; el reloj del video deja de avanzar y waveOut queda en pausa). Idempotente: devuelve true si cambio.
+bool Pausar(bool pausar);
+bool Pausado();
 
 // Videos de IW por indice (el de las tablas de escenas del ELF, EscenaIW::video: 0 FD01A, 1 FD01B, 2..7 FD02..FD07,
 // 8 FD08A, 9 FD08B, 10..21 FD09..FD20) o kFinalIW = ENDING.SFD (creditos del final: sin subtitulos, musica estereo

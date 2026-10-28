@@ -1,0 +1,14 @@
+{
+ "modo": "iw",
+ "escena": "0x7D8",
+ "dorado": "iw_0x7D8.json",
+ "fuente_dorado": "g_0x7D8.tsv",
+ "filas": [
+  {
+   "nombre": "serie del port",
+   "ok": false,
+   "detalle": "sin muestras 'iwmini: jugador/ojo' en el log"
+  }
+ ],
+ "firma": "1f7323bba9cf"
+}

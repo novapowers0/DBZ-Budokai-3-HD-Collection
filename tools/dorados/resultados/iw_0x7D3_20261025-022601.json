@@ -1,0 +1,14 @@
+{
+ "modo": "iw",
+ "escena": "0x7D3",
+ "dorado": "iw_0x7D3.json",
+ "fuente_dorado": "camara del 3 medida en el original (PCSX2: struct del modulo de disparo, *(0x49CEAC)+0x660): ojo (0,30,100)->(0,35,0), fov 0,785, fija; en IW no se ve personaje, la referencia es el origen del jugador",
+ "filas": [
+  {
+   "nombre": "serie del port",
+   "ok": false,
+   "detalle": "sin muestras 'iwmini: jugador/ojo' en el log"
+  }
+ ],
+ "firma": "1f7323bba9cf"
+}

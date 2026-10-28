@@ -1,0 +1,59 @@
+{
+ "modo": "b2",
+ "escena": "fase1",
+ "dorado": "b2_fase1.json",
+ "fuente_dorado": "PCSX2 PINE, A2\\sstates\\fase1.p2s (lista de aliados), 110.0 s",
+ "filas": [
+  {
+   "nombre": "ordenes del original vistas en el port",
+   "ok": false,
+   "detalle": "4/11; faltan [62, 58, 75, 59, 53, 36, 84] (el port no las registra o no las ejecuta)"
+  },
+  {
+   "nombre": "mismo orden relativo de las que estan",
+   "ok": true,
+   "detalle": "original [9, 7, 1, 50] port [9, 7, 1, 50]"
+  },
+  {
+   "nombre": "el port registra alguna orden de guion",
+   "ok": true,
+   "detalle": "lineas 'orden ejecutada N' en el log del port"
+  },
+  {
+   "nombre": "imagen fase1_lista",
+   "ok": false,
+   "detalle": "ssim 0.2894 (min 0.6) phash 28 (max 16) sin alinear"
+  },
+  {
+   "nombre": "imagen fase1_dialogo",
+   "ok": false,
+   "detalle": "ssim 0.2427 (min 0.6) phash 36 (max 16) sin alinear"
+  },
+  {
+   "nombre": "imagen fase1_aliado",
+   "ok": false,
+   "detalle": "ssim 0.3131 (min 0.6) phash 34 (max 16) sin alinear"
+  },
+  {
+   "nombre": "imagen fase1_p1",
+   "ok": false,
+   "detalle": "ssim 0.2628 (min 0.6) phash 30 (max 16) sin alinear"
+  },
+  {
+   "nombre": "imagen fase1_p2",
+   "ok": false,
+   "detalle": "ssim 0.2947 (min 0.6) phash 28 (max 16) sin alinear"
+  },
+  {
+   "nombre": "imagen fase1_p3",
+   "ok": false,
+   "detalle": "ssim 0.2827 (min 0.6) phash 28 (max 16) sin alinear"
+  },
+  {
+   "nombre": "imagen fase1_final",
+   "ok": false,
+   "detalle": "ssim 0.2951 (min 0.6) phash 30 (max 16) sin alinear"
+  }
+ ],
+ "firma": "13f4657cf077"
+}

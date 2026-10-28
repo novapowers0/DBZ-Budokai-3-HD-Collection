@@ -446,6 +446,17 @@ float Glyph(ImDrawList* dl, const char* button, ImVec2 pos, float h) {
       return w;
     }
   }
+  if (std::strcmp(button, "PAD") == 0) {   // cruceta (los juegos no traen su pieza): cruz oscura en un circulo claro
+    const float r = h * 0.42f;
+    if (dl) {
+      const ImVec2 c(pos.x + r, pos.y);
+      const ImU32 cruz = IM_COL32(65, 65, 70, 255);
+      dl->AddCircleFilled(c, r, IM_COL32(235, 235, 235, 255), 24);
+      dl->AddRectFilled(ImVec2(c.x - r * 0.26f, c.y - r * 0.78f), ImVec2(c.x + r * 0.26f, c.y + r * 0.78f), cruz);
+      dl->AddRectFilled(ImVec2(c.x - r * 0.78f, c.y - r * 0.26f), ImVec2(c.x + r * 0.78f, c.y + r * 0.26f), cruz);
+    }
+    return 2 * r;
+  }
   // sin la pieza: circulo con el nombre
   ImFont* font = MenuFont();
   const float fs = h * (std::strlen(button) > 2 ? 0.35f : 0.55f);

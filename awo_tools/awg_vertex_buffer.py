@@ -127,12 +127,15 @@ class AwgVertexBuffer:
         self.n_awg = n_awg
 
     @classmethod
-    def _parse(cls, data):
+    def _parse(cls, data, awg=0):
+        """AWG0 por defecto. `awg` >0 parsea una variante auxiliar (manos/caras): misma
+        estructura de ventana, con su propia tabla de huesos (1) y su propia region
+        [vb0, ib). 27/10 DS157 (injerto de guantes en las variantes de mano)."""
         b = data
         awo = 0x40
         n_awg = be32(b, awo + 0x18)
         awg_tbl = awo + be32(b, awo + 0x1C)
-        awg0 = awo + be32(b, awg_tbl)
+        awg0 = awo + be32(b, awg_tbl + 4 * int(awg))
         def g(o): return be32(b, awg0 + o)
         sec_rel, vb2_rel, ib_rel, end_rel = g(0x34), g(0x2C), g(0x30), g(0x38)
         mg_rel, mg_size = g(0x20), g(0x28)
@@ -154,8 +157,10 @@ class AwgVertexBuffer:
                    end_rel, mg_rel, mg_size, awg_tbl, n_awg)
 
     @classmethod
-    def load(cls, path):
-        return cls._parse(open(path, "rb").read())
+    def load(cls, path, awg=0):
+        return cls._parse(open(path, "rb").read(), awg=awg)
+
+    _parse_awg = _parse
 
     # ---------------- read ----------------
     def raw_window(self, w):
@@ -386,8 +391,13 @@ class AwgVertexBuffer:
         # vive DENTRO de [awo, awg0) y ya se ajusto arriba: hay que EXCLUIRLA o
         # sus valores (relativos) coinciden con el rango absoluto y se ajustan
         # DOS veces (bug detectado 2026-09-12 -> crash parser #AMB).
+        # 27/10 DS157: al crecer una AWG AUXILIAR (variantes de mano) `self.awg0`
+        # es su offset, pero la cabecera #AWO termina en la PRIMERA AWG (AWG0):
+        # con el limite antiguo se recorrian AWG0/AWG1 y se corrompian sus
+        # ventanas/IB (se veia basura 0x1... en los indices). Limite = AWG0 real.
+        awg0_primera = awo + be32(b, tbl)
         tbl_end = tbl + n_awg * 4
-        for o in range(awo, self.awg0 - 2, 4):
+        for o in range(awo, awg0_primera - 2, 4):
             if tbl <= o < tbl_end:
                 continue
             v = be32(b, o)

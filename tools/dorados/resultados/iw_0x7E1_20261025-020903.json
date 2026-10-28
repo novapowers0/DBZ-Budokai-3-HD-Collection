@@ -1,0 +1,29 @@
+{
+ "modo": "iw",
+ "escena": "0x7E1",
+ "dorado": "iw_0x7E1.json",
+ "fuente_dorado": "PCSX2 PINE SLES-55347 (EU): MSN019, clip #AMC 879/0; traza de 300 cuadros a 60 Hz, capturada en R7/emu/logs/luna18_0x7E1.tsv",
+ "filas": [
+  {
+   "nombre": "salida del jugador",
+   "ok": null,
+   "detalle": "el original juega en el origen (0,0,0): la camara se compara relativa"
+  },
+  {
+   "nombre": "dist_ojo_jugador (mediana)",
+   "ok": true,
+   "detalle": "original 77.68 port 76.79 (limite 11.65)"
+  },
+  {
+   "nombre": "altura_ojo (mediana)",
+   "ok": true,
+   "detalle": "original 74.21 port 72.6 (limite 11.13)"
+  },
+  {
+   "nombre": "yaw del ojo (mediana)",
+   "ok": true,
+   "detalle": "original 84.7 port 72.96 (dif 11.7 grados, limite 15)"
+  }
+ ],
+ "firma": "bff6c4e0bdac"
+}

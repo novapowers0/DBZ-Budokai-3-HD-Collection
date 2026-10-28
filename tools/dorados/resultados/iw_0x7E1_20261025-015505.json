@@ -1,0 +1,29 @@
+{
+ "modo": "iw",
+ "escena": "0x7E1",
+ "dorado": "iw_0x7E1.json",
+ "fuente_dorado": "#AMC del original (IW USA): MSN019, clips 0x0 (una muestra por clip; MSN019 todo el clip 879/0)",
+ "filas": [
+  {
+   "nombre": "salida del jugador",
+   "ok": null,
+   "detalle": "el original juega en el origen (0,0,0): la camara se compara relativa"
+  },
+  {
+   "nombre": "dist_ojo_jugador (mediana)",
+   "ok": false,
+   "detalle": "original 104.89 port 76.79 (limite 15.73)"
+  },
+  {
+   "nombre": "altura_ojo (mediana)",
+   "ok": false,
+   "detalle": "original 102.35 port 72.6 (limite 15.35)"
+  },
+  {
+   "nombre": "yaw del ojo (mediana)",
+   "ok": true,
+   "detalle": "original 84.7 port 72.96 (dif 11.7 grados, limite 15)"
+  }
+ ],
+ "firma": "8277266aa3df"
+}

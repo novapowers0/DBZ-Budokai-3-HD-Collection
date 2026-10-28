@@ -58,6 +58,7 @@ std::vector<int> g_virtual_slots;
 std::unordered_map<uint32_t, uint32_t> g_slot_fighter, g_slot_intro;
 std::atomic<int> g_du_sesion{-1};         // C4: casilla del Heroe mientras su sesion de DU sigue (para reanudar tras guardar)
 std::atomic<bool> g_du_reanudar{false};
+std::atomic<int> g_battle_saga{0};   // DS20: saga (1-based) del ultimo combate lanzado; su victoria usa SU contenedor
 std::atomic<int> g_saga_ganada{-1};      // C4: ultima saga (indice 0..) con un combate ganado en esta sesion: la que se cierra   // el cierre de saga acaba de guardar (escena 16384.5): el juego vuelve al titulo de DU
 std::atomic<bool> g_du_cover{false};   // pantalla en negro mientras la entrada directa pasa titulo, menu y rueda de DU
 std::atomic<int> g_du_auto{-1};   // casilla que la rueda de DU confirma sola (hub::RequestDu); -1 = nada
@@ -68,6 +69,13 @@ std::unordered_map<uint32_t, int> g_map_model;   // [modelo_mapa]: palabra del c
 std::unordered_map<uint32_t, int> g_map_suit;    // [traje_mapa]: palabra del combate -> traje en el mapa
 std::unordered_map<uint32_t, int> g_map_anim;    // [animacion_mapa]: palabra -> casilla cuyo vuelo del mapa se usa
 std::atomic<uint32_t> g_last_battle{0xFFFFFFFFu}; // ultimo combate lanzado (palabra)
+// [codigos_saga] (sagas 5+ del Heroe): el motor DU solo reproduce codigos nativos, asi que las sagas
+// que no caben en los 4 bloques de la casilla reutilizan el bloque 0 y cada una lleva sus contenedores.
+// casilla:saga -> {mapa, combate, dialogo, intro}; se elige por heroe::Saga() mientras se juega esa casilla.
+struct SagaCodes {
+  uint32_t casilla = 0, saga = 0, mapa = 0, combate = 0, dialogo = 0, intro = 0;
+};
+std::vector<SagaCodes> g_saga_codes;
 
 // DEPURACION (DBZ3_TEST_DU_ESTADOS=1): registra los cambios del byte de pantalla (0x824BA110) y del estado de la tarea de escenas
 // (tarea 0x8247A9A0, +28): para saber que estado del juego es el titulo de DU, su menu y la rueda (entrada directa del Heroe)
@@ -98,7 +106,7 @@ void Load() {
     std::ifstream f(dbz3::ModsRoot() / mod.name / "campana.toml");
     if (!f) continue;
     std::string line;
-    bool in_codes = false, in_story = false, in_wheel = false, in_fighter = false, in_intro = false, in_forms = false, in_suits = false, in_models = false, in_map_suits = false, in_map_anims = false;
+    bool in_codes = false, in_story = false, in_wheel = false, in_fighter = false, in_intro = false, in_forms = false, in_suits = false, in_models = false, in_map_suits = false, in_map_anims = false, in_saga_codes = false;
     int n = 0;
     g_story_codes.emplace_back();
     while (std::getline(f, line)) {
@@ -117,6 +125,26 @@ void Load() {
         in_models = line.find("[modelo_mapa]") != std::string::npos;
         in_map_suits = line.find("[traje_mapa]") != std::string::npos;
         in_map_anims = line.find("[animacion_mapa]") != std::string::npos;
+        in_saga_codes = line.find("[codigos_saga]") != std::string::npos;
+        continue;
+      }
+      if (in_saga_codes) {   // casilla:saga = mapa,combate,dialogo,intro (los contenedores de esa saga)
+        char* end = nullptr;
+        const long casilla = std::strtol(line.c_str(), &end, 10);
+        if (end == line.c_str() || *end != ':') continue;
+        const long saga = std::strtol(end + 1, &end, 10);
+        while (*end == ' ' || *end == '\t') ++end;
+        if (*end != '=') continue;
+        SagaCodes row;
+        row.casilla = uint32_t(casilla), row.saga = uint32_t(saga);
+        uint32_t* dst[4] = {&row.mapa, &row.combate, &row.dialogo, &row.intro};
+        for (uint32_t* d : dst) {
+          const long v = std::strtol(end + 1, &end, 10);
+          if (end == line.c_str()) break;
+          *d = uint32_t(v);
+          while (*end == ' ' || *end == '\t') ++end;   // el siguiente strtol empieza tras la coma
+        }
+        if (row.casilla < 64 && row.saga >= 1 && row.saga <= 64) g_saga_codes.push_back(row);
         continue;
       }
       const auto eq = line.find('=');
@@ -226,8 +254,9 @@ uint32_t WheelSlot(uint8_t* base, int e) {
 bool CodigoCombate(uint32_t code) { return (code >= 5400 && code < 5800) || (code >= 12500 && code < 13000); }
 // H4: el bloque 5400 (+casilla) es la saga 4 REAL (indice 3: campana.py usa el bloque 0 tras 5100-5300); 5500-5700 = sagas 1-3; virtuales (saga 5+) = 4 + ...
 int SagaDeCombate(uint32_t code) { return code < 5800 ? (code < 5500 ? 3 : int((code - 5400) / 100) - 1) : 4 + int((code - 12500) / 100); }
-// Intro de la saga sig (1-based): 102/104/106 del juego; la 4.a es la 100 (bloque 0); mas alla, el mapa nativo (sin jugar aun).
-uint32_t IntroDeSaga(int sig) { return sig <= 3 ? uint32_t(100 + 2 * std::max(1, sig)) : sig == 4 ? 100u : 5336u; }
+// Intro de la saga sig (1-based): 102/104/106 del juego; la 4.a y las siguientes (5-8) reutilizan la 100
+// (bloque 0 de la casilla) y [codigos_saga] elige el contenedor de cada una. Antes, 5+ caian en el mapa 5336.
+uint32_t IntroDeSaga(int sig) { return sig <= 3 ? uint32_t(100 + 2 * std::max(1, sig)) : 100u; }
 int DuFighter(uint8_t* base) {
   if (g_slot_fighter.empty() || dbz3::g_guest_eu) return -1;
   const uint32_t w = g_last_battle.load(), code = w >> 16, slot = REX_LOAD_U8(dbz3::GA(0x824A58A0));
@@ -245,6 +274,43 @@ bool IsModBattle(uint8_t* base, uint32_t word) {
     if (uint32_t(v) == (code - 5000) % 100) return true;
   }
   return false;
+}
+// Saga 0-based en curso. DBZ3_TEST_HEROE_SAGA permite entrar directo a una saga sin pasar por el menu
+// del Heroe (que es quien llama a heroe::CargarProgreso); sin la variable manda la ficha.
+int SagaActual() {
+  // La env solo FIJA la saga de entrada; al ganar el ultimo combate heroe::Saga() avanza y manda el
+  // (si no, una partida de prueba saltada a la saga 5 volveria a la intro de la 5 en bucle).
+  if (const char* e = std::getenv("DBZ3_TEST_HEROE_SAGA")) return std::max(std::atoi(e), dbz3::heroe::Saga());
+  return dbz3::heroe::Saga();
+}
+// Sagas 5+ del Heroe: el bloque 0 de la casilla se reutiliza (codigos nativos) y cada saga tiene sus
+// propios contenedores ([codigos_saga]). Se elige por la saga en curso (heroe::Saga(), 0-based).
+bool HeroSagaContainer(uint8_t* base, uint32_t code, uint32_t* out) {
+  if (g_saga_codes.empty() || dbz3::g_guest_eu) return false;
+  const uint32_t slot = REX_LOAD_U8(dbz3::GA(0x824A58A0));
+  const bool es_heroe = g_slot_fighter.count(slot) ||
+                        std::find(g_virtual_slots.begin(), g_virtual_slots.end(), int(slot)) != g_virtual_slots.end();
+  if (!es_heroe) return false;
+  const int sg = SagaActual();
+  if (sg < 0 || sg > 63) return false;
+  int row_saga = sg + 1;   // mapa/dialogo/intro/batalla: la saga en curso (o la siguiente al cerrar)
+  if (code >= 5400 && code < 5800 && code % 100 == slot) {
+    // la escena de victoria (entrada impar) de un combate se pide DESPUES de DuVictoria: si era el ultimo,
+    // g_saga ya ha avanzado y la siguiente no es la suya. Se usa la saga del combate que se lanzo.
+    const uint32_t word = g_last_battle.load();
+    if ((word >> 16) == code && (word & 1) && g_battle_saga.load() > 0) row_saga = g_battle_saga.load();
+  }
+  const auto it = std::find_if(g_saga_codes.begin(), g_saga_codes.end(),
+                               [&](const SagaCodes& r) { return r.casilla == slot && r.saga == uint32_t(row_saga); });
+  if (it == g_saga_codes.end()) return false;
+  uint32_t cont = 0;
+  if (code >= 100 && code <= 106) cont = it->intro;                              // 100/102/104/106: intro de la saga
+  else if (code >= 5000 && code < 5400 && code % 100 == slot) cont = it->mapa;   // 5x00+casilla: mapa
+  else if (code >= 5400 && code < 5800 && code % 100 == slot) cont = it->combate; // 5x00+casilla: combate
+  else if (code >= 5800 && code < 6200 && code % 100 == slot) cont = it->dialogo; // 6x00+casilla: dialogo
+  if (!cont) return false;
+  *out = cont;
+  return true;
 }
 }  // namespace dbz3::campaigns
 
@@ -265,6 +331,11 @@ DBZ3_HOOK(sub_82156F30, dbz3eu_sub_82156EF0) {
         if (dbz3::campaigns::WheelSlot(base, id) == slot) cont = st->second;
       }
     }
+  }
+  // C4/DS20: saga 5+ del Heroe: el mismo codigo nativo (bloque 0) lleva al contenedor de la saga en curso
+  if (uint32_t saga_cont = 0; dbz3::campaigns::HeroSagaContainer(base, uint32_t(code), &saga_cont)) {
+    cont = saga_cont;
+    REXLOG_INFO("dbz3 campanas: saga {}: codigo {} -> contenedor {} (del mod, por saga)", dbz3::campaigns::SagaActual() + 1, code, cont);
   }
   if (!cont) {
     orig(ctx, base);
@@ -309,7 +380,7 @@ REX_HOOK_RAW(sub_82156DC8) {
     if (slot < 38) {
       // PRUEBA (DBZ3_TEST_DU_SAGA=4): fija la saga 1-based de la intro sin jugar las anteriores (sondas de C8/DS9).
       const char* ts = std::getenv("DBZ3_TEST_DU_SAGA");
-      const int sig = ts ? std::atoi(ts) : dbz3::heroe::Saga() + 1;
+      const int sig = ts ? std::atoi(ts) : dbz3::campaigns::SagaActual() + 1;
       const uint32_t intro = dbz3::campaigns::IntroDeSaga(sig);
       if (sig <= 8) ctx.r3.u64 = (uint64_t(intro) << 16) | slot;
     }
@@ -352,7 +423,7 @@ REX_HOOK_RAW(sub_821CA020) {
     // lanza la introduccion siguiente (se queda en negro): se entra como historia nueva, que si lanza la intro de la casilla
     // (el progreso del heroe vive en su ficha; la introduccion la elige el gancho de sub_82156DC8 segun heroe::Saga())
     static const bool reanudar_nueva = std::getenv("DBZ3_DU_REANUDAR_CONTINUAR") == nullptr;
-    REX_STORE_U8(REX_LOAD_U32(ctx.r3.u32 + 48) + 85, (reanudar_nueva && dbz3::heroe::Saga() > 0) ? 1 : 0);
+    REX_STORE_U8(REX_LOAD_U32(ctx.r3.u32 + 48) + 85, (reanudar_nueva && dbz3::campaigns::SagaActual() > 0) ? 1 : 0);
   }
   __imp__sub_821CA020(ctx, base);
 }
@@ -397,10 +468,17 @@ DBZ3_HOOK(sub_8215E918, dbz3eu_sub_8215E8D8) {
   // C3: la escena de victoria (entrada impar) de un combate de la casilla del Heroe: su progreso
   if (const uint32_t code = ctx.r3.u32 >> 16, entry = ctx.r3.u32 & 0xFFFF; !dbz3::g_guest_eu && dbz3::campaigns::CodigoCombate(code) && (entry & 1) &&
       dbz3::campaigns::g_slot_fighter.count(REX_LOAD_U8(dbz3::GA(0x824A58A0))) && (code - 5000) % 100 == REX_LOAD_U8(dbz3::GA(0x824A58A0))) {
+    // DS20: las sagas 5-8 reutilizan el codigo de combate del bloque 0 (5436); la saga en curso manda
+    // (heroe::Saga() es la 0-based que se esta jugando y solo avanza al ganar el ultimo combate).
+    const int heroe_saga = dbz3::campaigns::SagaActual();
+    const int saga = heroe_saga >= 4 && heroe_saga < 8 ? heroe_saga : dbz3::campaigns::SagaDeCombate(code);
     static uint32_t last = 0;
-    dbz3::campaigns::g_saga_ganada = dbz3::campaigns::SagaDeCombate(code);
-    if (last != ctx.r3.u32) dbz3::rpg::DuVictoria(dbz3::campaigns::SagaDeCombate(code), int(entry / 2));   // bloque 5500 = saga 0 del Heroe (SAGA0 = 1)
-    last = ctx.r3.u32;
+    static int last_saga = -1;
+    dbz3::campaigns::g_saga_ganada = saga;
+    if (last != ctx.r3.u32 || last_saga != saga)
+      dbz3::rpg::DuVictoria(saga, int(entry / 2));   // bloque 5500 = saga 0 del Heroe (SAGA0 = 1)
+    last = ctx.r3.u32, last_saga = saga;
+    REXLOG_INFO("dbz3 campanas: victoria de la saga {} (codigo {} entrada {}): heroe::Saga() {}", saga + 1, code, entry, heroe_saga);
   }
   orig(ctx, base);
 }
@@ -422,6 +500,11 @@ DBZ3_HOOK(sub_82156B38, dbz3eu_sub_82156AF8) {
 // Arranque de una escena desde el mapa o la historia (r3 = codigo << 16 | entrada).
 DBZ3_HOOK(sub_8215E9C8, dbz3eu_sub_8215E988) {
   dbz3::campaigns::g_last_battle = ctx.r3.u32;
+  // DS20: recuerda a que saga pertenece el combate que se lanza (su victoria puede llegar con g_saga ya avanzado)
+  if (const uint32_t code = ctx.r3.u32 >> 16, entry = ctx.r3.u32 & 0xFFFF, slot = REX_LOAD_U8(dbz3::GA(0x824A58A0));
+      !dbz3::g_guest_eu && dbz3::campaigns::CodigoCombate(code) && !(entry & 1) &&
+      dbz3::campaigns::g_slot_fighter.count(slot) && (code - 5000) % 100 == slot)
+    dbz3::campaigns::g_battle_saga = dbz3::campaigns::SagaActual() + 1;
 
   if ((ctx.r3.u32 >> 16) == 16384 && (ctx.r3.u32 & 0xFFFF) == 5 && dbz3::campaigns::g_du_sesion.load() >= 0) dbz3::campaigns::g_du_reanudar = true;
   if ((ctx.r3.u32 >> 16) == 16384 && (ctx.r3.u32 & 0xFFFF) == 4 && dbz3::campaigns::g_du_sesion.load() >= 0 && dbz3::campaigns::g_saga_ganada.load() >= 0) {

@@ -5,8 +5,10 @@
   python heroe_sagas_a_du.py --comprobar     autocomprobacion (sin juego)
 
 El Heroe es exclusivo de su modo: entra en DU con hub::RequestDu (salta titulo, menu y rueda de personajes) en la
-casilla CASILLA (36 por defecto: libre en DU) y el juego lo crea como el ID propio (63) en el mapa y en el combate. Una casilla tiene 4 bloques de codigos de mapa (5x36), asi que
-una historia cabe en 3 sagas (empieza en el bloque 5100, Namek); el resto de sagas, pendiente (C3/PENDIENTE.md).
+casilla CASILLA (35/36/37: libres en DU) y el juego lo crea como el ID propio (63) en el mapa y en el combate.
+La casilla tiene 4 bloques nativos (sagas 1-4: 5100-5300 y bloque 0). Las sagas 5-8 NO usan codigos virtuales
+(el motor DU no los reproduce, HS4): reutilizan el bloque 0 y cada una lleva sus contenedores propios
+([codigos_saga], campana.py), que campaigns.cpp elige por la saga en curso. 8 sagas / 27 combates por casilla.
 Los combates reutilizan los #BPC sin usar del juego (data_cmn 627-653, 27: uno por combate de las 8 sagas).
 Los retratos de los rivales son los de data_cmn 1416-1499 (los de B3), el del heroe el de su estilo (1416 por defecto).
 """

@@ -116,6 +116,9 @@ def traducir_teclas(guion):
         if tok.startswith("espera"):
             out.append(("esperar", int(tok[6:]) / 1000))
             continue
+        if tok.startswith("cap="):                  # captura con nombre (pareja del dorado["capturas"][i]["port"])
+            out.append(("captura", tok[4:]))
+            continue
         rep = 1
         if "*" in tok:
             tok, r = tok.split("*")

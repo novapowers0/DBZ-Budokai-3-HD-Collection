@@ -12,7 +12,7 @@
 
 | Carpeta | Contenido |
 |---|---|
-| [HOJA_DE_RUTA_ACELERADA](HOJA_DE_RUTA_ACELERADA.md) | **Hoja de ruta activa**: ejecución acelerada (swap-first, reader-first, corpus, roster por memoria) con sprints S0-S4 y automatización |
+| [HOJA_DE_RUTA_ACELERADA](HOJA_DE_RUTA_ACELERADA.md) | Hoja de ruta de septiembre (histórica; la vigente es `studies 5/01_ROADMAP.md`): ejecución acelerada (swap-first, reader-first, corpus, roster por memoria) con sprints S0-S4 y automatización |
 | [HOJA_DE_RUTA_2026_09](HOJA_DE_RUTA_2026_09.md) | Madurez post-1.1.1 (superseded por la acelerada) |
 | [EVALUACION_2026_09_PLAN_DEPURACION](EVALUACION_2026_09_PLAN_DEPURACION.md) | **Evaluación del proyecto + plan de depuración soberbia** (crash EU #4, issues, D0-D4) |
 | [RE_MASTER_2026_09](RE_MASTER_2026_09.md) | **Plan rector de RE extremo a extremo**: laboratorio, capas, fases y validación |
@@ -69,6 +69,7 @@
 | [15_tecnicas](15_tecnicas/) | Tecnicas por dentro: codigos de energia, coste de ki, #CST/#CSE |
 | [16_pasarela_modos](16_pasarela_modos/) | **Pasarela de modos B1/B2/IW**: viabilidad por modo, Leyenda de Mr. Satan, saga B1, tablero B2, misiones y retos de IW ([04_misiones_y_tablero.md](16_pasarela_modos/04_misiones_y_tablero.md); `src/pasarela*.cpp`, `mod center hd/pasarela/pasarela.py`) |
 | [jugador/MODOS_Y_RETOS.md](jugador/MODOS_Y_RETOS.md) | Guia del jugador: HUB, retos y torre de la semana |
+| [jugador/CAMARA_LIBRE.md](jugador/CAMARA_LIBRE.md) | Guía del jugador: activar y usar la cámara libre (BETA) |
 
 ---
 

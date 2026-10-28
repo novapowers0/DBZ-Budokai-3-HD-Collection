@@ -16,6 +16,7 @@
 #include "clima.h"
 
 #include "cine.h"
+#include "escenarios.h"
 #include "gigantes.h"
 #include "iw_minijuegos.h"
 #include "cinematica.h"
@@ -107,6 +108,7 @@ DBZ3_HOOK_EU(sub_820C2058) {
   dbz3::gigantes::Fotograma(base, st == 4 ? g_frames : 0);
   dbz3::iwmini::Fotograma(base, st);   // minijuegos de IW (frente P4): modo libre con camara detras
   dbz3::cinematica::Fotograma(base, st);   // escenas 3D (frente R3)
+  dbz3::escenarios::AplicarCamaraEscena(base);   // ZB: camara de la escena del cambio de zona de B2
   if (!Activo() || !mgr) return;
   static const bool sonda = std::getenv("DBZ3_SONDA_CLIMA") != nullptr;
   if (sonda && g_frames == 1) {

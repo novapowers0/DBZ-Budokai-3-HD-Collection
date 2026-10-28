@@ -71,7 +71,7 @@ namespace T = dbz3::i18n;
 // PRUEBAS (DBZ3_NET_NOFAIL): una diferencia del RNG solo se registra (los menus de dos copias no van al mismo ritmo)
 bool NoFail() { static const bool v = std::getenv("DBZ3_NET_NOFAIL") != nullptr; return v; }
 
-constexpr uint8_t kProto = 4;   // 4: INPUT con ping y retardo (adaptativo); 3: identidad, reto y nonces
+constexpr uint8_t kProto = 5;   // 5: START lleva los dos equipos de Tag Team; 4: INPUT con ping y retardo (adaptativo)
 constexpr size_t kInputBase = 34;   // INPUT sin mandos: cabecera 6 + nonces 8 + n 1 + rng 8 + ping/retardo 11
 constexpr char kMagic[4] = {'D', 'B', 'Z', '3'};
 enum Msg : uint8_t {
@@ -89,7 +89,8 @@ constexpr uint64_t kLostMs = 10000;
 // cortaba y salia como "version distinta"). 5 por paquete: 6+8+5+5*256 = 1299 B cabe en un paquete de
 // Ethernet (1472 B de UDP) sin fragmentar; con 7 (1811 B) un router que tire fragmentos dejaba la lista colgada
 constexpr size_t kModsPerPacket = 5, kModEntry = 256, kMaxMods = 512;
-std::vector<uint8_t> StartPacket(uint32_t seed, const std::vector<uint8_t>& snap);
+std::vector<uint8_t> StartPacket(uint32_t seed, const std::vector<uint8_t>& snap,
+                                 const std::vector<int>& host_team, const std::vector<int>& guest_team);
 
 uint64_t NowMs() {
   return uint64_t(std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -144,6 +145,34 @@ struct Reader {
     return p;
   }
 };
+
+// Equipos de Tag Team en kTeam y kStart: n u8 (0-3) + n IDs u16 0-63, en el orden de la rueda.
+bool ReadTeam(Reader& r, std::vector<int>& out) {
+  out.clear();
+  const auto n = r.u8();
+  if (!r.ok || n > 3) return false;
+  for (uint8_t i = 0; i < n; ++i) {
+    const auto id = r.u16();
+    if (!r.ok || id >= 64) return false;
+    out.push_back(int(id));
+  }
+  return true;
+}
+
+void WriteTeam(Writer& w, const std::vector<int>& team) {
+  const size_t n = std::min<size_t>(team.size(), 3);
+  w.u8(uint8_t(n));
+  for (size_t i = 0; i < n; ++i) w.u16(uint16_t(team[i]));
+}
+
+std::string TeamText(const std::vector<int>& team) {
+  std::string s = "[";
+  for (size_t i = 0; i < team.size(); ++i) {
+    if (i) s += ",";
+    s += std::to_string(team[i]);
+  }
+  return s + "]";
+}
 
 // ---- huella de los mods: lo que cambia la partida (personajes, modelos, movesets, AFS).
 // Fuera solo los packs de texturas (solo aspecto). _roster y las vistas previas SI cuentan: dos
@@ -230,12 +259,15 @@ Session& Session::Get() {
 
 // F4 v3: complete structural and phase validation BEFORE peer claim or mutation.
 // Directional nonce pair rejects delayed packets from previous sessions.
-bool Session::ConfigureIdentity(const std::string& digest, bool safe_selection, bool safe_tagteam) {
+bool Session::ConfigureIdentity(const std::string& digest, bool safe_selection, bool /*safe_tagteam*/) {
   std::lock_guard<std::recursive_mutex> io(io_mu_);
   if (link_ != Link::kIdle || guest_owner_) return false;
   identity_ready_ = safe_selection && HexDigest(digest, 32);   // XXH3-128 (rex::hash_bytes)
   identity_admission_ = identity_ready_;
-  safe_tagteam_ = identity_ready_ && safe_tagteam;
+  // Tag Team 2v2: el equipo viaja en kTeam y en START, y el relevo va por el lockstep (bits 0x0400/0x0800
+  // del mando, ver tagteam.cpp). La admision ya exige el mismo exe/DLLs, asi que el antiguo flag de prueba
+  // (que solo servia para dejar el Tag Team en 1 contra 1) no hace falta.
+  safe_tagteam_ = identity_ready_;
   identity_ = identity_ready_ ? digest : "";
   return identity_ready_;
 }
@@ -294,9 +326,15 @@ bool Session::ValidPacket(const std::vector<uint8_t>& pkt) const {
           (state != Link::kConnected && state != Link::kStarting)) return false;
       const auto seed = r.u32();
       const auto n = r.u16();
-      if (!seed || n != kUiSnapSize || !r.need(n) || r.o + n != pkt.size()) return false;
+      if (!seed || n != kUiSnapSize || !r.need(n)) return false;
+      const size_t snap_at = r.o;
+      r.o += n;
+      std::vector<int> host_team, guest_team;
+      if (!ReadTeam(r, host_team) || !ReadTeam(r, guest_team) || r.o != pkt.size()) return false;
+      // el anfitrion manda los dos equipos ya acordados: si no coinciden con lo recibido en kTeam, no se empieza
+      if (host_team != peer_team_ || guest_team != local_team_) return false;
       if (state == Link::kStarting && (seed != seed_ ||
-          !std::equal(pkt.begin() + r.o, pkt.end(), ui_snap_.begin(), ui_snap_.end()))) return false;
+          !std::equal(pkt.begin() + long(snap_at), pkt.begin() + long(snap_at + n), ui_snap_.begin(), ui_snap_.end()))) return false;
       return true;
     }
     case kStartAck:
@@ -755,18 +793,29 @@ void Session::Handle(const std::vector<uint8_t>& pkt, bool) {
       save_ready_ = std::all_of(save_have_.begin(), save_have_.end(), [](uint8_t v) { return v != 0; });
       break;
     }
-    case kStart:   // semilla + estado de menu del anfitrion
+    case kStart:   // semilla + estado de menu del anfitrion + los dos equipos de Tag Team
       if (role_ == Role::kGuest && link_ != Link::kPlaying) {
         const uint32_t seed = r.u32();
         const uint16_t n = r.u16();
         if (!r.need(n)) return;
+        const size_t snap_at = r.o;
+        r.o += n;
+        std::vector<int> host_team, guest_team;
+        if (!ReadTeam(r, host_team) || !ReadTeam(r, guest_team)) return;
         Send(Writer(kStartAck).b);
         if (link_ != Link::kStarting) {
           seed_ = seed;
-          std::lock_guard<std::mutex> lock(mu_);
-          ui_snap_.assign(pkt.begin() + long(r.o), pkt.begin() + long(r.o + n));
+          {
+            std::lock_guard<std::mutex> lock(mu_);
+            ui_snap_.assign(pkt.begin() + long(snap_at), pkt.begin() + long(snap_at + n));
+            // el equipo de cada lado viaja ya montado en el mensaje de inicio (mismo orden y ids)
+            peer_team_ = host_team;
+            local_team_ = guest_team;
+            team_ready_ = true;
+          }
           link_ = Link::kStarting;
           launch_ = true;
+          REXLOG_INFO("dbz3 online: START con equipos lado 1 {} y lado 2 {}", TeamText(host_team), TeamText(guest_team));
         }
       }
       break;
@@ -947,7 +996,7 @@ void Session::Poll() {
     }
     if (role_ == Role::kHost && link_ == Link::kStarting && !launch_ && now - last_send_ms_ > 200) {
       std::lock_guard<std::mutex> lock(mu_);
-      Send(StartPacket(seed_, ui_snap_));
+      Send(StartPacket(seed_, ui_snap_, local_team_, peer_team_));
     }
     if (link_ == Link::kConnected && !mods_match_ && now - mod_req_ms_ > 1000) {
       std::vector<ModDelta> diff;
@@ -988,11 +1037,16 @@ void Session::SetUiSnapshot(const uint8_t* p, size_t n) {
 }
 
 namespace {
-std::vector<uint8_t> StartPacket(uint32_t seed, const std::vector<uint8_t>& snap) {
+std::vector<uint8_t> StartPacket(uint32_t seed, const std::vector<uint8_t>& snap,
+                                 const std::vector<int>& host_team, const std::vector<int>& guest_team) {
   Writer w(kStart);
   w.u32(seed);
   w.u16(uint16_t(snap.size()));
   w.bytes(snap.data(), snap.size());
+  // Equipos ya acordados (lado 1 anfitrion, lado 2 invitado): ids y orden, lo unico que el online usa
+  // del Tag Team (capsulas Normal y sin formas/trajes privados: forms::Resolve los rechaza en online).
+  WriteTeam(w, host_team);
+  WriteTeam(w, guest_team);
   return w.b;
 }
 }  // namespace
@@ -1009,7 +1063,8 @@ void Session::RequestStart() {
   seed_ = uint32_t(NowMs() * 2654435761u) | 1u;
   if (const char* e = std::getenv("DBZ3_NET_SEED")) seed_ = uint32_t(std::strtoul(e, nullptr, 0)) | 1u;   // PRUEBAS: corridas comparables
   std::lock_guard<std::mutex> lock(mu_);
-  Send(StartPacket(seed_, ui_snap_));
+  Send(StartPacket(seed_, ui_snap_, local_team_, peer_team_));
+  REXLOG_INFO("dbz3 online: START con equipos lado 1 {} y lado 2 {}", TeamText(local_team_), TeamText(peer_team_));
 }
 
 void Session::ReseedBattle(uint8_t* base) {
@@ -1075,11 +1130,14 @@ bool Session::TakeStart(uint8_t* base) {
   {   // Tag Team: lado 1 el anfitrion, lado 2 el invitado, igual en los dos PCs (sin COM)
     std::vector<int> mine = local_team_, peer;
     { std::lock_guard<std::mutex> lock(mu_); peer = peer_team_; }
-    dbz3::tag::SetDynamicTeam(0, role_ == Role::kHost ? mine : peer, false);   // el invitado no hace suyo el del anfitrion
-    dbz3::tag::SetDynamicTeam(1, role_ == Role::kHost ? peer : mine, false);
+    const std::vector<int> side1 = role_ == Role::kHost ? mine : peer;
+    const std::vector<int> side2 = role_ == Role::kHost ? peer : mine;
+    dbz3::tag::SetDynamicTeam(0, side1, false);   // el invitado no hace suyo el del anfitrion
+    dbz3::tag::SetDynamicTeam(1, side2, false);
     dbz3::tag::SetComSide(0, false);
     dbz3::tag::SetComSide(1, false);
-    REXLOG_INFO("dbz3 online: equipos de Tag Team {} y {} luchadores", mine.size(), peer.size());
+    REXLOG_INFO("dbz3 online: equipos de Tag Team {} y {} luchadores (lado 1 {}, lado 2 {})", mine.size(), peer.size(),
+                TeamText(side1), TeamText(side2));
   }
   tick_ = 0;
   battles_ = 0;

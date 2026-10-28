@@ -30,6 +30,22 @@ def fingerprint(root):
     return out
 
 
+def _leer_owner(lock):
+    """Dueño del lock, o None si no existe o no se puede leer (corte entre mkdir y owner.json)."""
+    try:
+        owner = json.loads((Path(lock) / "owner.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return owner if isinstance(owner, dict) else None
+
+
+def _apartar_lock(lock, store, name):
+    """Mueve un lock inservible a mods_respaldo con nombre único. Nunca se borra."""
+    destino = Path(store) / ("%s.lock.huerfano-%s" % (name, uuid.uuid4().hex[:8]))
+    os.rename(lock, destino)
+    print("aviso: lock apartado en %s (el montaje anterior sigue en mods_respaldo)" % destino)
+
+
 class TreePublish:
     """Un escritor, staging fuera de mods, backups únicos; nunca borra datos.
 
@@ -51,10 +67,26 @@ class TreePublish:
         except FileExistsError:
             # H7 24/10: un corte a mitad dejaba el lock para siempre (nadie llamaba a recover_tree) y ningún
             # "Jugar" posterior reconstruía. Si su dueño ya no vive, se recupera por el diario y se reintenta.
-            owner = json.loads((self.lock / "owner.json").read_text(encoding="utf-8"))
-            if _pid_vivo(owner.get("pid", 0)):
+            # DS193 28/10: quedaban dos caminos que seguían bloqueando "Preparando los personajes" (issue #53):
+            #   a) el corte ocurrió entre lock.mkdir() y la escritura de owner.json -> no había dueño que leer
+            #      (FileNotFoundError/JSON inválido) y roster_build moría en cada intento;
+            #   b) el diario no se podía verificar -> recover_tree lanzaba y el lock quedaba para siempre.
+            # En ambos casos el destino (mods/_roster) NO se ha tocado todavía (el commit es el que mueve el
+            # árbol), así que se aparta el lock a mods_respaldo (nunca se borra) y se sigue con uno nuevo.
+            owner = _leer_owner(self.lock)
+            if owner and _pid_vivo(owner.get("pid", 0)):
                 raise
-            recover_tree(self.target, owner["run"], readers_stopped=True)
+            recuperado = False
+            if owner and owner.get("run"):
+                try:
+                    recover_tree(self.target, owner["run"], readers_stopped=True)
+                    recuperado = True
+                except Exception as exc:  # diario truncado, lock de otro lote, respaldo cambiado...
+                    print("aviso: no se pudo recuperar el montaje anterior (%s); el lock se aparta" % exc)
+            else:
+                print("aviso: lock sin dueño legible (%s); se aparta" % self.lock)
+            if not recuperado:
+                _apartar_lock(self.lock, self.store, self.target.name)
             self.lock.mkdir()
         self.run = self.store / (self.target.name + "-" + self.token)
         self.run.mkdir()

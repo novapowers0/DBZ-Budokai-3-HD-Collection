@@ -556,6 +556,8 @@ void Ajustar() {
   g_traje = std::clamp(g_traje, 0, TrajesDe(CuerpoAct()) - 1);
   g_estilo = std::clamp(g_estilo, 0, kNumEstilos - 1);
   g_moveset = std::clamp(g_moveset, -1, 63);   // validez del donante: MovesetValido (mods instalados) al aplicarlo
+  // DS144: el moveset del propio estilo se guarda como -1 (si el estilo pasa a ser el donante, no hay injerto que hacer).
+  if (g_moveset >= 0 && g_moveset == EstiloId()) g_moveset = -1;
 }
 const Estilo& EstiloDeId(int id) {
   for (const Estilo& e : kEstilos) {
@@ -841,6 +843,9 @@ std::string ArgsFicha(int id, int traje) {
     s += ";xv2=bust:" + std::to_string(pz(2)) + ",pants:" + std::to_string(pz(3)) + ",boots:" + std::to_string(pz(4)) +
          ",rist:" + std::to_string(pz(5)) + ",cara:" + std::to_string(pz(1)) + ",pelo:" + std::to_string(pz(0)) + ",ojos:" + std::to_string(pz(6)) + ";cv=" + HuellaConversor();
   }
+  if (h.cara > 0) s += ";rostro=" + std::to_string(h.cara);   // 25/10: tipo de rostro (vista_heroe.py ROSTROS)
+  if (h.ojos_c.h || h.ojos_c.s || h.ojos_c.v) s += ";ojos=" + hsv(h.ojos_c);
+  if (h.piel_c.h || h.piel_c.s || h.piel_c.v) s += ";piel=" + hsv(h.piel_c);   // tono de piel (vista_heroe rampa_piel_tenida)
   s += ";pelo=" + std::to_string(h.pelo) + ";c1=" + hsv(h.pelo_c1) + ";c2=" + hsv(h.pelo_c2) +
        ";logo=" + std::to_string(h.logo) + ";scouter=" + std::to_string(h.scouter);
   static constexpr const char* kB3Zone[] = {"torso", "piernas", "guantes", "botas"};
@@ -860,7 +865,8 @@ bool FichaNativa() {
     if (!cero(c)) return false;
   for (int fid : h.b3_piezas)
     if (fid >= 0) return false;
-  return h.pelo == 0 && cero(h.pelo_c1) && cero(h.pelo_c2) && h.logo == 0 && h.scouter == 0 && h.ropa == 0;
+  return h.pelo == 0 && cero(h.pelo_c1) && cero(h.pelo_c2) && h.logo == 0 && h.scouter == 0 && h.ropa == 0 &&
+         h.cara == 0 && cero(h.ojos_c) && cero(h.piel_c);
 }
 int FichaNumero() { return C::SlotActivo() + 1; }
 
@@ -1033,7 +1039,20 @@ std::vector<int> Movesets() {
     if (id != estilo && MovesetValido(id) && Desbloqueado(id)) v.push_back(id);
   return v;
 }
+// DS144: estilos de lucha que ya se pueden elegir (los mismos que abre el progreso: maestros y rivales vencidos).
+// La pantalla Moveset > pestana Estilo los lista con su cara y su nombre, y PonerEstilo los aplica al combate siguiente.
+std::vector<int> Estilos() {
+  std::vector<int> v;
+  for (int i = 0; i < kNumEstilos; ++i)
+    if (Desbloqueado(kEstilos[i].id)) v.push_back(kEstilos[i].id);
+  return v;
+}
 void PonerMoveset(int id) {
+  if (id >= 0 && (id >= 64 || !MovesetValido(id))) {   // una ficha vieja o un mod desinstalado no deja el heroe sin golpes
+    REXLOG_WARN("dbz3 heroe: moveset {} no valido: se usa el del estilo", id);
+    id = -1;
+  }
+  if (id == EstiloId()) id = -1;   // el moveset del propio estilo es -1 (no hay nada que injertar)
   g_moveset = id;
   Ajustar();
   REXLOG_INFO("dbz3 heroe: moveset elegido {} ({}) para el estilo {}", g_moveset,
@@ -1221,6 +1240,16 @@ void ElegirEstilo(int id) {
     if (kEstilos[i].id == id) g_estilo = i;
   }
 }
+// DS144: el estilo elegido en la pantalla Moveset > pestana Estilo (o con izquierda/derecha en la fila Estilo).
+// Se aplica al combate siguiente (Reglas/Vestir) y lo guarda la ficha al confirmar/salir (rpg.cpp Guardar).
+void PonerEstilo(int id) {
+  ElegirEstilo(id);
+  if (g_moveset == id) g_moveset = -1;   // el moveset del estilo nuevo no se injerta a si mismo
+  g_bloqueo_maestro = 0;   // un cambio de estilo valido quita el aviso de "maestro bloqueado"
+  Ajustar();
+  REXLOG_INFO("dbz3 heroe: estilo elegido {} ({}){}", EstiloId(), M::Nombre(EstiloId()),
+              g_moveset < 0 ? ", moveset del estilo" : "");
+}
 // studies 8 H1: progreso por ficha. La ficha (cac.toml) es la fuente; los globales son el progreso de la ficha
 // activa mientras se juega (hub_heroe.toml y las claves heroe_* de rpg.toml se siguen escribiendo como respaldo).
 void ImportarProgreso(const dbz3::cac::Heroe& h) {
@@ -1302,6 +1331,9 @@ void Importar(int slot) {
               "progreso: exp {}, nivel {}, saga {}, PH {}, maestros {:02X})",
               slot, g_raza, Cuerpo(), g_traje, EstiloId(), M::Nombre(EstiloId()), g_moveset, g_aura, g_nombre, g_exp,
               Nivel(), g_saga, g_ph, g_maestros);
+  // DS130: la pieza de apariencia que lleva la ficha activa, tal cual se cargo de cac.toml. Es lo que comprueba
+  // `pruebas.py heroe_pieza` en el log (pelo 0-10 y guantes/mangas por fid B3).
+  REXLOG_INFO("dbz3 heroe: ficha {} apariencia: pelo {}, b3_guantes {}", slot + 1, h.pelo, h.b3_piezas[2]);
 }
 // Heroe actual -> su ficha (lo que se guarda en cac.toml). Es el inverso de Importar.
 void Exportar(dbz3::cac::Heroe& h) {
@@ -1402,10 +1434,15 @@ void Mover(int fila, int dir) {
       break;
     case 2: g_traje = Ciclo(g_traje, dir, TrajesDe(CuerpoAct())); break;
     case 3: {
-      int nuevo = Ciclo(g_estilo, dir, kNumEstilos);
-      for (int k = 0; k < kNumEstilos && !Desbloqueado(kEstilos[nuevo].id); ++k) nuevo = Ciclo(nuevo, dir, kNumEstilos);
+      // DS144: solo entre los estilos desbloqueados. Antes, con un solo estilo abierto, la vuelta completa terminaba
+      // en un estilo bloqueado (se podia elegir un maestro/rival que aun no tocaba).
+      const std::vector<int> lista = Estilos();
+      if (lista.empty()) break;
+      int k = 0;
+      for (size_t i = 0; i < lista.size(); ++i)
+        if (lista[i] == EstiloId()) k = int(i);
+      PonerEstilo(lista[size_t(Ciclo(k, dir, int(lista.size())))]);
       g_bloqueo_maestro = 0;   // cambio de maestro libre (C3)
-      g_estilo = nuevo;
       break;
     }
     case 4: g_moveset = MovesetCiclo(dir); break;   // frente 10: donante valido +- d (-1: el del estilo)
@@ -1480,7 +1517,8 @@ std::string Fila(int fila) {
              std::to_string(TrajesDe(CuerpoAct())) + "  (A)";   // studies 8 H3: A abre Create/Edit
     case 3:
       return std::string(L("Estilo: ", "Style: ", "Style : ", "Stil: ", "Stile: ")) + M::Nombre(EstiloId()) +
-             (g_estilo < kNumMaestros ? L(" (maestro)", " (master)", " (maître)", " (Meister)", " (maestro)") : "");
+             (g_estilo < kNumMaestros ? L(" (maestro)", " (master)", " (maître)", " (Meister)", " (maestro)") : "") +
+             "  (A)";   // DS144: A abre la lista de estilos
     case 4:
       return std::string(L("Moveset: ", "Moveset: ", "Moveset : ", "Moveset: ", "Moveset: ")) +
              (g_moveset < 0 ? M::Nombre(EstiloId()) + T::T(" (el del estilo)", " (the style's own)")
@@ -1784,7 +1822,7 @@ void FinRun(int ganados, bool victoria) {
 // variante de color, p. ej. la 6 = Kamehameha rojo). Automatico para cualquier combinacion: se evalua en cada victoria del mapa.
 struct Desbloqueo {
   std::string id, tipo, color, nombre_es, nombre_en;
-  int maestro = -1, entreno = 0, vence = -1, forma = -1, capsula = 0;
+  int maestro = -1, entreno = 0, vence = -1, forma = -1, capsula = 0, nivel = 0;   // nivel: tipo ssj (1..3)
 };
 const std::vector<Desbloqueo>& TablaDesbloqueos() {
   static const std::vector<Desbloqueo> v = [] {
@@ -1811,6 +1849,7 @@ const std::vector<Desbloqueo>& TablaDesbloqueos() {
           d.vence = int((*x)["vence"].value_or(int64_t(-1)));
           d.forma = int((*x)["forma"].value_or(int64_t(-1)));
           d.capsula = int((*x)["capsula"].value_or(int64_t(0)));
+          d.nivel = int((*x)["nivel"].value_or(int64_t(0)));
           if (!d.id.empty() && (d.tipo == "aura" || d.tipo == "ki" || d.tipo == "tecnica")) out.push_back(d);
         }
         REXLOG_INFO("dbz3 heroe: {} desbloqueos desde {}", out.size(), ruta.string());
@@ -1824,6 +1863,29 @@ const std::vector<Desbloqueo>& TablaDesbloqueos() {
   return v;
 }
 bool TieneDesbloqueo(const std::string& id) { return std::find(g_desbloqueos.begin(), g_desbloqueos.end(), id) != g_desbloqueos.end(); }
+int g_ssj_aviso = 0;   // nivel SSJ recien desbloqueado, por anunciar en la pantalla del heroe
+int SsjNivel() {   // los ssj1..ssj3 conseguidos, seguidos; solo la raza Saiyan (kRazas[0]) transforma
+  if (g_raza != 0) return 0;
+  if (const char* e = std::getenv("DBZ3_TEST_HEROE_SSJ")) return std::clamp(std::atoi(e), 0, 3);   // PRUEBA: niveles dados
+  int n = 0;
+  while (n < 3 && TieneDesbloqueo("ssj" + std::to_string(n + 1))) ++n;
+  return n;
+}
+int SsjAvisoPendiente() { return std::exchange(g_ssj_aviso, 0); }
+int IdHeroeCargado() {   // roster.toml: "# Nombre (mod heroe_propio)" + "id = N"; el roster no cambia en la sesion
+  static const int id = [] {
+    std::ifstream rf(dbz3::ModsRoot() / "_roster" / "roster.toml");
+    std::string l;
+    bool es = false;
+    while (std::getline(rf, l)) {
+      if (!l.empty() && l.back() == 13) l.pop_back();
+      if (l.rfind("#", 0) == 0) es = l.find(std::string("(mod ") + kModPropio + ")") != std::string::npos;
+      else if (es && l.rfind("id = ", 0) == 0) return std::atoi(l.c_str() + 5);
+    }
+    return -1;
+  }();
+  return id;
+}
 // Tras una victoria contra `rival` (en la forma `forma`): lo que el % de cada maestro y esa victoria abren.
 void ComprobarDesbloqueos(int rival, int forma) {
   for (const Desbloqueo& d : TablaDesbloqueos()) {
@@ -1832,7 +1894,9 @@ void ComprobarDesbloqueos(int rival, int forma) {
     if (d.maestro >= 0 && (m < 0 || (g_entreno[m] < d.entreno && !((g_maestros >> m) & 1)))) continue;
     if (d.vence >= 0 && d.vence != rival) continue;
     if (d.forma >= 0 && d.forma != forma) continue;
+    if (d.tipo == "ssj" && (g_raza != 0 || d.nivel < 1 || SsjNivel() < d.nivel - 1)) continue;   // Saiyan y en orden
     g_desbloqueos.push_back(d.id);
+    if (d.tipo == "ssj") g_ssj_aviso = d.nivel;
     REXLOG_INFO("dbz3 heroe: DESBLOQUEO {} ({} {}): maestro {} al {}%, victoria contra {} forma {}", d.id, d.tipo, d.color, d.maestro,
                 m >= 0 ? g_entreno[m] : -1, rival, forma);
   }

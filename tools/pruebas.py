@@ -113,6 +113,86 @@ def _ocultar_ventanas(proc):
         time.sleep(0.5)
 
 
+class _RECT(ctypes.Structure):
+    _fields_ = [("left", wt.LONG), ("top", wt.LONG), ("right", wt.LONG), ("bottom", wt.LONG)]
+
+
+# DS164: entrada REAL (WM_KEYDOWN / mouse_event) para la camara libre. Las teclas inyectadas por
+# dbz3_input.req llegan al mando emulado, pero no a ImGui (la camara libre lee WASD/QE/raton por ImGui):
+# para probar el camino del jugador hay que mandar eventos de ventana de verdad.
+U32.GetClientRect.argtypes = [wt.HWND, ctypes.POINTER(_RECT)]
+U32.GetClientRect.restype = wt.BOOL
+U32.ClientToScreen.argtypes = [wt.HWND, ctypes.POINTER(wt.POINT)]
+U32.ClientToScreen.restype = wt.BOOL
+U32.SetForegroundWindow.argtypes = [wt.HWND]
+U32.SetForegroundWindow.restype = wt.BOOL
+U32.SetCursorPos.argtypes = [ctypes.c_int, ctypes.c_int]
+U32.SetCursorPos.restype = wt.BOOL
+U32.mouse_event.argtypes = [ctypes.c_uint, ctypes.c_uint, ctypes.c_uint, ctypes.c_uint, ctypes.c_size_t]
+U32.mouse_event.restype = None
+U32.PostMessageW.argtypes = [wt.HWND, wt.UINT, wt.WPARAM, wt.LPARAM]
+U32.PostMessageW.restype = wt.BOOL
+
+_VK = {"Return": 0x0D, "Space": 0x20, "Escape": 0x1B, "Tab": 0x09, "Backspace": 0x08,
+       "Up": 0x26, "Down": 0x28, "Left": 0x25, "Right": 0x27, "PageUp": 0x21, "PageDown": 0x22,
+       "A": 0x41, "B": 0x42, "C": 0x43, "D": 0x44, "E": 0x45, "F": 0x46, "Q": 0x51, "R": 0x52,
+       "S": 0x53, "W": 0x57, "Z": 0x5A}
+
+
+def _hwnd_juego(pid):
+    """Ventana grande y visible del proceso (la del juego), o 0."""
+    hits = []
+
+    def cb(h, _):
+        p = wt.DWORD()
+        U32.GetWindowThreadProcessId(h, ctypes.byref(p))
+        if p.value == pid and U32.IsWindowVisible(h):
+            r = _RECT()
+            U32.GetClientRect(h, ctypes.byref(r))
+            if r.right - r.left > 320 and r.bottom - r.top > 240:
+                hits.append(((r.right - r.left) * (r.bottom - r.top), h))
+        return True
+
+    fn = _ENUM(cb)
+    U32.EnumWindows(fn, 0)
+    return max(hits)[1] if hits else 0
+
+
+class _MONINFO(ctypes.Structure):
+    _fields_ = [("cbSize", wt.DWORD), ("rcMonitor", _RECT), ("rcWork", _RECT), ("dwFlags", wt.DWORD)]
+
+
+def _pantalla_secundaria():
+    """Zona de trabajo (left, top, right, bottom) del primer monitor que NO es el principal, o None."""
+    zonas = []
+    fn_t = ctypes.WINFUNCTYPE(wt.BOOL, wt.HMONITOR, wt.HDC, ctypes.POINTER(_RECT), wt.LPARAM)
+
+    def cb(hm, _hdc, _r, _l):
+        mi = _MONINFO()
+        mi.cbSize = ctypes.sizeof(_MONINFO)
+        if U32.GetMonitorInfoW(hm, ctypes.byref(mi)) and not (mi.dwFlags & 1):   # 1 = MONITORINFOF_PRIMARY
+            r = mi.rcWork
+            zonas.append((r.left, r.top, r.right, r.bottom))
+        return True
+    U32.EnumDisplayMonitors(None, None, fn_t(cb), 0)
+    return zonas[0] if zonas else None
+
+
+def _a_pantalla_secundaria(proc, n=0):
+    """27/10 (peticion del usuario): las ventanas de prueba van a la pantalla secundaria (la de la izquierda), sin
+    robar el foco, para no molestar en la que trabaja. n escalona varias ventanas. Sin segunda pantalla no hace nada."""
+    zona = _pantalla_secundaria()
+    if not zona:
+        return
+    t = time.time()
+    while proc.poll() is None and time.time() - t < 90:
+        h = _hwnd_juego(proc.pid)
+        if h:
+            U32.SetWindowPos(h, None, zona[0] + 40 * n, zona[1] + 30 * n, 0, 0, 0x0001 | 0x0004 | 0x0010)  # NOSIZE|NOZORDER|NOACTIVATE
+            return
+        time.sleep(0.5)
+
+
 class Fallo(Exception):
     pass
 
@@ -455,11 +535,27 @@ def preparar(dest, desde=None, exe=EXE):
     shutil.copy2(exe, dest / "dbz3.exe")
     for n in ("rexruntime.dll", "rexgpu-xenos.dll"):
         shutil.copy2(DLLS / n, dest / n)
-    for n in ("dbz3_input.req", "dbz3_shot.req", "dbz3_shot.bmp"):   # senales de control viejas
+    for n in ("dbz3_input.req", "dbz3_shot.req", "dbz3_shot.bmp", "dbz3_cam.req"):   # senales de control viejas
         (dest / n).unlink(missing_ok=True)
     escribir_toml(dest / "dbz3_user.toml")
+    # 25/10: los scripts que el juego lanza (figuras de B3 en el tablero/nave de B2, Modo Heroe, cartas de tecnicas),
+    # como en el zip del juego (make_modpacks.copiar_scripts_juego); sin ellos las copias caian a los modelos de B2
+    try:
+        sys.path.insert(0, str(R / "tools"))
+        import make_modpacks  # noqa: PLC0415
+        print(f"  scripts del juego: {make_modpacks.copiar_scripts_juego(str(dest))}", flush=True)
+    except Exception as e:   # noqa: BLE001 (la copia sigue sirviendo para lo demas)
+        print(f"  aviso: scripts del juego sin copiar: {e}", flush=True)
     if (R / "res" / "datos").is_dir():                     # X0d: datos medidos (res\datos\*.toml) que lee el juego
         shutil.copytree(R / "res" / "datos", dest / "res" / "datos", dirs_exist_ok=True)
+    # 25/10: JUGAR tambien crea los escenarios convertidos (campos de IW, B1/B2); sin ellos los minijuegos de IW y los
+    # combates de B2 caian al escenario de B3 y las pruebas no veian lo que ve el jugador. Solo crea los que falten.
+    if (dest / "mods").is_dir() and (R / "us" / "data_cmn.afs").exists():
+        r = subprocess.run([sys.executable, str(R / "mod center hd" / "campos_iw.py"), "auto", "--mods", str(dest / "mods"),
+                            "--us", str(R / "us"), "--ps2", _PS2["DBZ3_PS2_GAMES"]],
+                           capture_output=True, text=True, errors="replace")
+        print(f"  escenarios convertidos: {sum('creado' in l for l in r.stdout.splitlines())} nuevos" if r.returncode == 0
+              else f"  aviso: campos_iw auto codigo {r.returncode}: {(r.stderr or r.stdout)[-300:]}", flush=True)
     # R9 (2026-10-16): las copias no pasan por JUGAR del launcher, que monta el roster; con uno viejo (modos_test del
     # 14/10, sin cam_pad_clips) Pan colgaba el juego. Igual que el launcher; no hace nada si el roster esta al dia.
     if (dest / "mods").is_dir():
@@ -609,6 +705,9 @@ class Juego:
         self.t_cupo = self.t0 - t_espera
         if env.get("DBZ3_TEST_OCULTO") == "1":
             threading.Thread(target=_ocultar_ventanas, args=(self.proc,), daemon=True).start()
+        else:
+            threading.Thread(target=_a_pantalla_secundaria, args=(self.proc, len(list(PLAZAS.glob("plaza*"))) - 1),
+                             daemon=True).start()
         self.h = K32.OpenProcess(0x0410, False, self.proc.pid)     # QUERY_INFORMATION | VM_READ
         if not self.h:
             raise Fallo("no pude leer la memoria del juego")
@@ -732,6 +831,47 @@ class Juego:
         os.replace(tmp, req)
         self.traza.append((round(time.time() - self.t0, 1), f"tecla {k}"))
         dormir(espera / 1000)
+
+    def ventana(self):
+        h = _hwnd_juego(self.proc.pid) if self.proc else 0
+        if not h:
+            raise Fallo("no encuentro la ventana del juego para la entrada real")
+        return h
+
+    def enfocar(self):
+        h = self.ventana()
+        U32.SetForegroundWindow(h)
+        time.sleep(0.25)
+        return h
+
+    def tecla_real(self, k, hold_ms=180):
+        """Tecla de VERDAD (WM_KEYDOWN/UP): llega a SDL e ImGui, no solo al mando emulado."""
+        h = self.enfocar()
+        vk = _VK.get(k)
+        if not vk:
+            raise Fallo(f"tecla_real: tecla no soportada '{k}'")
+        U32.PostMessageW(h, 0x0100, vk, 1)   # WM_KEYDOWN
+        time.sleep(max(0.02, hold_ms / 1000))
+        U32.PostMessageW(h, 0x0101, vk, 1)   # WM_KEYUP
+        self.traza.append((round(time.time() - self.t0, 1), f"tecla real {k}"))
+        time.sleep(0.15)
+
+    def raton_derecho(self, dx=90, dy=0, hold_ms=350, pasos=6):
+        """Boton derecho mantenido con movimiento real del cursor (mirar de la camara libre por ImGui)."""
+        h = self.enfocar()
+        r = _RECT()
+        U32.GetClientRect(h, ctypes.byref(r))
+        p = wt.POINT((r.left + r.right) // 2, (r.top + r.bottom) // 2)
+        U32.ClientToScreen(h, ctypes.byref(p))
+        U32.SetCursorPos(p.x, p.y)
+        time.sleep(0.2)
+        U32.mouse_event(0x0008, 0, 0, 0, 0)   # RIGHTDOWN
+        for i in range(max(1, pasos)):
+            U32.mouse_event(0x0001, dx // max(1, pasos), dy // max(1, pasos), 0, 0)   # MOVE relativo
+            time.sleep(max(0.02, hold_ms / 1000 / max(1, pasos)))
+        U32.mouse_event(0x0010, 0, 0, 0, 0)   # RIGHTUP
+        time.sleep(0.2)
+        self.traza.append((round(time.time() - self.t0, 1), "raton derecho"))
 
     def captura_estable(self, nombre, intentos=6, eps=2.0, min_lum=0.0):
         """X1: captura y repite hasta que dos seguidas casi no cambian (fin de un fundido o de una transicion)."""
@@ -966,6 +1106,140 @@ def _du_freezer_nuevo(j, par):
         j.info(re.sub(r"^(\[[^\]]*\] ){3}", "", l)[:170])
 
 
+# DS163: poses de la camara libre de prueba, en la escala del mundo (la camara del combate esta a ~50 u del objetivo:
+# ojo 0 13 50 -> objetivo 0 13 0). x,y,z = desplazamiento respecto al ojo del juego; yaw,pitch = giro en grados
+# respecto a su orientacion; fov = vertical en grados (45 es el del juego). Las tres miran a los luchadores desde
+# lados distintos (izquierda, derecha y desde arriba) para que las capturas no se confundan con la camara del juego.
+FREECAM_POSES = "-28,5,-18,-41,-13,55;30,1,-16,41,-8,50;0,42,-30,0,-68,60"
+
+
+def _freecam_env(p):
+    """Variables del escenario freecam: combate normal, IW (vuelo/minijuego) o B2; y modo teclas o poses."""
+    teclas = str(p.get("teclas", "0")) == "1"
+    modo = str(p.get("modo", "")).lower()
+    env = {"DBZ3_FREECAM_LOG": "2", "DBZ3_PS2_GAMES": rf"D:\DBZ3HD\ps2_games"}
+    if modo == "iw":
+        env["DBZ3_TEST_IWMINI"] = str(p.get("clave", "0x7D6")) + ",auto"
+    elif modo == "iwmini":
+        env["DBZ3_TEST_IWMINI"] = str(p.get("clave", "0x7D0")) + ",auto"
+    elif modo == "b2":
+        env["DBZ3_TEST_MISIONES"] = "1,reset"          # tablero B2 a mano (fight largo, sin RINGOUT)
+    else:
+        env["DBZ3_TEST_BATTLE"] = str(p.get("ids", "0,7,2"))
+    if not teclas:
+        env["DBZ3_TEST_FREECAM"] = FREECAM_POSES
+    else:
+        # Tutoriales OFF: "Ver tutoriales" es accion y se oculta, asi MODOS tiene 6 filas fijas hasta Camara libre
+        # (y no sale el tutorial de los modos nuevos encima de la escena).
+        env["REX_DBZ3_TUTORIALES"] = "false"
+    return env
+
+
+def _f1_abrir(j):
+    """Abre el F1 con el mando (Back+Start = Tab+Return); las teclas van por dbz3_input.req (llegan al pad)."""
+    j.tecla("Tab+Return", 900)
+    dormir(0.6)
+
+
+def _f1_modos_freecam(j, teclas_extra=(), encender=True):
+    """F1 > MODOS > Camara libre (+ opciones). Navega con el mando emulado: RB x4 = MODOS, abajo xN = fila."""
+    _f1_abrir(j)
+    for _ in range(4):
+        j.tecla("3", 450)                              # RB: IMAGEN -> ... -> MODOS
+    for _ in range(5):
+        j.tecla("Shift+Down", 300)                     # HUB/Tag/Online/Transformacion/Mostrar tutoriales
+    if encender:
+        j.tecla("Space", 700)                          # A: enciende "Camara libre"
+        j.log(r"Settings menu: dbz3_freecam = true", 10)
+        j.log(r"camara libre: activa", 15)
+    for nombre, filas in teclas_extra:
+        for _ in range(filas):
+            j.tecla("Shift+Down", 300)
+        j.tecla("Space", 700)
+        j.log(rf"Settings menu: {nombre} = true", 10)
+    j.tecla("Backspace", 700)                          # B: cierra el F1
+
+
+def _freecam_mem(j):
+    """(mgr, reloj de pelea) leidos de la memoria del guest (big-endian, como el resto de pruebas.py)."""
+    b = leer(j.h, GBASE + 0x823D6CF4, 4)
+    mgr = int.from_bytes(b, "big") if b and len(b) == 4 else 0
+    if not mgr:
+        return 0, None
+    c = leer(j.h, GBASE + mgr + 35144, 4)
+    return mgr, (struct.unpack(">f", c)[0] if c and len(c) == 4 else None)
+
+
+def _freecam_ojo(j, desde=0):
+    """Ultimo ojo escrito por la camara libre en el log (lineas 'escrito ojo (x y z)')."""
+    o = None
+    for l in j.texto_log()[desde:].splitlines():
+        m = re.search(r"freecam\[4300pre\].*escrito ojo \(([-\d.]+) ([-\d.]+) ([-\d.]+)\)", l)
+        if m:
+            o = tuple(float(x) for x in m.groups())
+    return o
+
+
+def _freecam(j, par):
+    # DS164: escenario de la camara libre.
+    #  - sin --par teclas=1: DBZ3_TEST_FREECAM enciende la camara sola y dbz3_freecam.req elige 3 poses (DS162/3).
+    #  - --par teclas=1: la enciende el F1 con teclas (mando emulado), mueve con teclado/raton REALES, prueba
+    #    Pausar/Ocultar HUD y la apaga con R. Nada de variables de prueba para encenderla.
+    #  - --par modo=iw|iwmini|b2: la escena es el vuelo/minijuego de IW o el combate del tablero de B2.
+    teclas = str(par.get("teclas", "0")) == "1"
+    modo = str(par.get("modo", "")).lower()
+    if modo == "b2":
+        _b2_ataque_manual(j, par)                      # tablero a mano hasta "tablero b2: combate:"
+        dormir(2)
+    elif modo in ("iw", "iwmini"):
+        j.log(r"iwmini: prueba: empieza", 120)
+        if modo == "iw":
+            j.log(r"terminado; empieza el vuelo", 120)
+        else:
+            j.log(r"iwmini: salida puesta", 120)
+        dormir(1.5)
+    else:
+        j.log(r"hub: combate nativo", 30)
+        j.log(r"tag: empieza un combate", 40)
+
+    if teclas:
+        _f1_modos_freecam(j)
+        j.captura("freecam_antes")
+        ojo0 = _freecam_ojo(j, 0)
+        # Movimiento con teclas REALES (W, A, Q) y raton derecho mantenido: el camino del jugador.
+        for k in ("W", "A", "Q"):
+            j.tecla_real(k, 450)
+        j.raton_derecho(120, 0, 400)
+        dormir(0.8)
+        j.captura("freecam_despues")
+        ojo1 = _freecam_ojo(j, 0)
+        if ojo0 and ojo1 and ojo0 == ojo1:
+            raise Fallo("la camara libre no se movio con W/A/Q/raton (ojo igual en el log)")
+        # Pausa real + HUD oculto desde el F1 (dos filas nuevas bajo "Camara libre").
+        _f1_modos_freecam(j, [("dbz3_freecam_pausa", 1), ("dbz3_freecam_hud", 1)], encender=False)
+        j.log(r"combate: marcador oculto", 10)
+        j.log(r"camara libre: juego en pausa", 10)
+        j.captura("freecam_pausa_hud")
+        _, reloj0 = _freecam_mem(j)
+        dormir(1.5)
+        _, reloj1 = _freecam_mem(j)
+        if reloj0 is not None and reloj1 is not None and reloj0 != reloj1:
+            raise Fallo(f"la pausa no congela el reloj ({reloj0} -> {reloj1})")
+        # R de verdad: vuelve la camara del juego y se suelta la pausa.
+        j.tecla_real("R", 120)
+        j.log(r"camara libre: apagada", 15)
+        j.log(r"camara libre: juego reanudado", 15)
+        dormir(0.8)
+        j.captura("freecam_vuelta")
+        return
+    j.log(r"camara libre: activa", 30)
+    for i in range(3):
+        (j.dest / "dbz3_freecam.req").write_text(str(i), encoding="ascii")
+        j.log(rf"camara libre: prueba pose {i + 1}", 20)
+        dormir(0.6)
+        j.captura(f"freecam_0{i + 1}")
+
+
 def _batalla(j, par):
     # DBZ3_TEST_BATTLE (src/hub.cpp): 3 s despues del menu principal lanza el combate; RINGOUT lo acaba a los 5 s
     j.log(r"hub: combate nativo", 30)
@@ -1132,6 +1406,351 @@ def _r5_heroe(j, par):
             j.log(r"vuelve a su modelo", 20)
             j.captura("h_fin")
     for l in [l for l in j.texto_log().splitlines() if "dbz3 rpg" in l or "dbz3 heroe" in l][-8:]:
+        j.info(re.sub(r"^(\[[^\]]*\] ){3}", "", l)[:170])
+
+
+# DS130: piezas de ropa del Modo Heroe (pelos 0-10 y guantes/mangas 70..447) vistas EN JUEGO, en movimiento.
+# La pieza se escribe en la ficha activa de cac.toml (lo que lee src/heroe.cpp) y el modelo de combate se monta
+# antes de lanzar con vista_heroe.py --combate + roster_build (lo mismo que hace JUGAR), para que el heroe propio
+# ya salga con la pieza en ESTA sesion. Nunca se toca out/build/win-amd64-release/user_data.
+# todas las piezas de la zona "guantes" del catalogo B3 (antes una lista fija de 11)
+PIEZAS_GUANTES = tuple(x["fid"] for x in json.load(open(R / "mod center hd" / "cac" / "piezas_b3_base.json",
+                                                       encoding="utf-8"))["guantes"])
+
+
+def _heroe_pieza_valores(par):
+    pelo = int(par["pelo"]) if par.get("pelo") not in (None, "") else -1
+    guante = int(par["guante"]) if par.get("guante") not in (None, "") else -1
+    if pelo < 0 and guante < 0:
+        raise SystemExit("heroe_pieza: usa --par pelo=N (0-10) y/o --par guante=N (%s)" %
+                         ", ".join(str(x) for x in PIEZAS_GUANTES))
+    if pelo >= 0 and not 0 <= pelo <= 10:
+        raise SystemExit("heroe_pieza: pelo va de 0 a 10 (0 = el del cuerpo)")
+    if guante >= 0 and guante not in PIEZAS_GUANTES:
+        raise SystemExit("heroe_pieza: guante debe ser uno de %s" % ", ".join(str(x) for x in PIEZAS_GUANTES))
+    return (pelo if pelo >= 0 else 0, guante)
+
+
+def _heroe_pieza_env(p):
+    """DS154: enciende la camara de prueba si hay que ver la cabeza (cara) o los brazos (guante y brazo!=0). Con
+    brazos la duracion es larga y la apaga el propio escenario con dbz3_cam.req=off; sin brazos, 4 s (DS141)."""
+    con_brazos = p.get("guante") not in (None, "") and p.get("brazo", "1") != "0"
+    env = {"DBZ3_CAC_B3_TEST_TODOS": "1", "DBZ3_CAC_XV2": "0"}
+    if p.get("cara", "1") == "0" and not con_brazos:
+        return env
+    env.update({"DBZ3_TEST_CARA": "0",
+                "DBZ3_TEST_CARA_DIST": p.get("cara_dist", "4.5"),
+                "DBZ3_TEST_CARA_LADO": p.get("cara_lado", "0"),
+                "DBZ3_TEST_CARA_ESPERA": p.get("cara_espera", "60"),
+                "DBZ3_TEST_CARA_HUESO": p.get("cara_hueso", "cabeza"),
+                "DBZ3_TEST_CARA_DIST_BRAZO": p.get("brazo_dist_codo", "7"),
+                "DBZ3_TEST_CARA_LADO_BRAZO": p.get("brazo_lado", "2"),
+                # DS155: con brazos, el combate se queda quieto (mandos sin pulsaciones + reloj parado) y el
+                # heroe en reposo mientras se toman las fotos. Solo en la prueba.
+                "DBZ3_TEST_CARA_QUIETO": "1" if con_brazos and p.get("quieto", "1") != "0" else "0",
+                "DBZ3_TEST_CARA_DURACION": p.get("cara_duracion", "20000" if con_brazos else "4000")})
+    return env
+
+
+def _heroe_pieza_receta(dest, pelo, guante):
+    """Escribe user_data/dbz3/cac.toml de la COPIA de pruebas con la pieza pedida. Devuelve el texto --ficha que
+    entiende vista_heroe.py. Cuerpo Goku/traje 0: es el unico caso en el que _aplicar_piezas_b3 acepta donantes."""
+    ud = Path(dest) / "user_data" / "dbz3"
+    ud.mkdir(parents=True, exist_ok=True)
+    cac = ud / "cac.toml"
+    if cac.is_file():
+        shutil.copy2(cac, ud / f"cac.toml.ds130-{ts()}.bak")
+    cac.write_text(
+        "version = 2\n"
+        "schema = \"dbz3-cac/2\"\n"
+        "activo = 0\n\n"
+        "[[heroe]]\n"
+        "id = \"h130001\"\n"
+        "esferas = 0\n"
+        "deseos = 0\n"
+        "desbloqueos = []\n"
+        "nombre = \"Heroe\"\n"
+        "inventario = []\n"
+        "equipo = [0, 0, 0, 0]\n"
+        "raza = 0\n"
+        "cuerpo = 0\n"
+        "traje = 0\n"
+        "cara = 0\n"
+        f"pelo = {pelo}\n"
+        "ropa = 0\n"
+        "color = 0\n"
+        "voz = 0\n"
+        "aura = 0\n"
+        "aura_col = \"\"\n"
+        "ki_col = \"\"\n"
+        "estilo = 0\n"
+        "moveset = -1\n"
+        "tecnicas = [0, 0, 0, 0]\n"
+        "xp = 1\n"
+        "nivel = 1\n"
+        "logo = 0\n"
+        "scouter = 0\n"
+        "partes = [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]]\n"
+        "xv2 = [0, 0, 0, 0, 0, 0, 0]\n"
+        f"b3_piezas = [-1, -1, {guante}, -1]\n"
+        "pelo_color1 = [0, 0, 0]\n"
+        "pelo_color2 = [0, 0, 0]\n"
+        "ojos_color = [0, 0, 0]\n"
+        "piel_color = [0, 0, 0]\n"
+        "progreso = 2\n"
+        "saga = 0\n"
+        "ph = 1\n"
+        "ph_vida = 0\n"
+        "ph_dano = 0\n"
+        "maestros = 0\n"
+        "entreno = [0, 0, 0, 0, 0, 0]\n",
+        encoding="utf-8", newline="\n")
+    s = ("cuerpo=0;traje=0;partes=0,0,0|0,0,0|0,0,0|0,0,0"
+         f";pelo={pelo};c1=0,0,0;c2=0,0,0;logo=0;scouter=0")
+    if guante >= 0:
+        s += f";b3_guantes={guante}"
+    return s + ";nombre=Heroe"
+
+
+def _apagar_xv2(dest):
+    """La inyeccion B3 solo se aplica al cuerpo nativo: piezas XV2 apagadas en la copia de pruebas."""
+    p = Path(dest) / "dbz3_user.toml"
+    try:
+        lineas = p.read_text(encoding="utf-8", errors="surrogateescape").splitlines()
+    except OSError:
+        return
+    if not any(l.strip().startswith("dbz3_cac_xv2") for l in lineas):
+        lineas.append("dbz3_cac_xv2 = false")
+    else:
+        lineas = [("dbz3_cac_xv2 = false" if l.strip().startswith("dbz3_cac_xv2") else l) for l in lineas]
+    p.write_text("\n".join(lineas) + "\n", encoding="utf-8", errors="surrogateescape")
+
+
+def _quitar_partida_heroe(ruta):
+    """Borra (con copia .bak) la partida a medias del Modo Heroe para que 'Empezar' cree una sesion limpia."""
+    p = Path(ruta)
+    if not p.is_file():
+        return
+    shutil.copy2(p, p.with_name(f"rpg.toml.ds130-{ts()}.bak"))
+    lineas = p.read_text(encoding="utf-8", errors="surrogateescape").splitlines()
+    salida, i = [], 0
+    while i < len(lineas):
+        if lineas[i].strip() == "[[partida]]":
+            k = i + 1
+            while k < len(lineas) and not lineas[k].lstrip().startswith("[["):
+                k += 1
+            bloque = lineas[i:k]
+            if any(re.match(r"\s*modo\s*=\s*5\b", l) for l in bloque):
+                i = k
+                continue
+            salida.extend(bloque)
+            i = k
+            continue
+        salida.append(lineas[i])
+        i += 1
+    p.write_text("\n".join(salida) + "\n", encoding="utf-8", errors="surrogateescape")
+
+
+def _heroe_pieza_prep(j, par, env):
+    """Antes de lanzar: escribe la ficha con la pieza y monta mods/heroe_propio + _roster (como JUGAR)."""
+    pelo, guante = _heroe_pieza_valores(par)
+    dest = j.dest
+    args = _heroe_pieza_receta(dest, pelo, guante)
+    _apagar_xv2(dest)
+    _quitar_partida_heroe(dest / "user_data" / "dbz3" / "rpg.toml")
+    entorno = dict(os.environ, DBZ3_CAC_XV2="0", DBZ3_CAC_B3_TEST_TODOS="1")
+    # Los scripts de la COPIA (como los lanza el juego en JUGAR/PedirCombate): asi lo generado (campanas, mods)
+    # cae en la copia de pruebas y no en el proyecto.
+    script = dest / "mod center hd" / "cac" / "vista_heroe.py"
+    if not script.is_file():
+        script = R / "mod center hd" / "cac" / "vista_heroe.py"
+    cmd = [sys.executable, "-X", "utf8", str(script), "--juego", str(dest),
+           "--ficha", args + ";donante=0", "--combate", "1"]
+    r = subprocess.run(cmd, cwd=str(dest), env=entorno, capture_output=True, text=True, errors="replace", timeout=900)
+    salida = (r.stdout or "") + (r.stderr or "")
+    (j.run / "prep_vista_heroe.log").write_text(salida, encoding="utf-8", errors="replace")
+    if r.returncode != 0:
+        raise Fallo(f"vista_heroe.py --combate fallo ({r.returncode}): {salida[-400:]}")
+    if "combate de la ficha 1" not in salida:
+        raise Fallo(f"vista_heroe.py no monto la ficha 1: {salida[-400:]}")
+    if pelo > 0 and "'pelo': '" in salida and ("'pelo': 'FALLO" in salida or "'pelo': 'injerto nativo FALLO" in salida):
+        raise Fallo("el pelo no se pudo injertar en el modelo de combate")
+    if guante >= 0:
+        if "'piezas_b3'" not in salida:
+            raise Fallo("la pieza de guantes no llego al modelo de combate (sin 'piezas_b3')")
+        if re.search(r"'guantes': '(Base|FALLO)", salida):
+            raise Fallo("la pieza de guantes no se pudo injertar (Base/FALLO)")
+    dis = dest / "mods" / "heroe_propio" / ".disabled"   # que el roster de la copia lo lea
+    if dis.is_file():
+        shutil.move(str(dis), str(j.run / "heroe_propio.disabled.bak"))
+    rb_script = dest / "mod center hd" / "roster_build.py"
+    if not rb_script.is_file():
+        rb_script = R / "mod center hd" / "roster_build.py"
+    rb = [sys.executable, str(rb_script), "construir", "--mods", str(dest / "mods")]
+    r2 = subprocess.run(rb, cwd=str(dest), env=entorno, capture_output=True, text=True, errors="replace", timeout=900)
+    (j.run / "prep_roster.log").write_text((r2.stdout or "") + (r2.stderr or ""), encoding="utf-8", errors="replace")
+    if r2.returncode != 0:
+        raise Fallo(f"roster_build.py fallo ({r2.returncode}): {(r2.stderr or r2.stdout)[-400:]}")
+    ft = dest / "mods" / "heroe_propio" / "ficha.txt"
+    if not ft.is_file():
+        raise Fallo("no se monto mods/heroe_propio/ficha.txt")
+    txt = ft.read_text(encoding="utf-8", errors="replace")
+    if f"pelo={pelo}" not in txt:
+        raise Fallo(f"la ficha montada no lleva pelo={pelo}: {txt[:160]}")
+    if guante >= 0 and f"b3_guantes={guante}" not in txt:
+        raise Fallo(f"la ficha montada no lleva b3_guantes={guante}: {txt[:160]}")
+    j.info(f"pieza preparada: pelo={pelo} guante={guante} (heroe_propio + _roster)")
+
+
+def _esperar_brazos_quietos(j, par):
+    """DS155: espera a que la sonda confirme que el combate esta quieto y el heroe en reposo. No falla si no llega:
+    las fotos se toman igual (el log de la sonda dira si engancho)."""
+    if par.get("quieto", "1") == "0":
+        return
+    seg = max(0.0, float(par.get("brazo_quieto", "2.5")))
+    fin = time.time() + seg
+    while time.time() < fin and "sonda de brazo: quieto" not in j.texto_log():
+        time.sleep(0.1)
+    if "sonda de brazo: quieto" in j.texto_log():
+        j.info("brazos: combate quieto y heroe en reposo (confirmado por la sonda)")
+    else:
+        j.info("brazos: aviso: la sonda no confirmo la pose de reposo; se toman las fotos igual")
+
+
+def _fotos_brazos(j, par):
+    """DS154/DS155: 4 planos de cada brazo (codo y mano, de frente y de espalda) para aprobar guantes/mangas.
+    La camara de prueba (src/cinematica.cpp) cambia con dbz3_cam.req sin relanzar el juego:
+    "<hueso> <vista> <dist> <lado>" (o "off" para volver a la camara del juego). DS155: antes de la primera foto se
+    espera a que el combate quede quieto (mandos sin pulsaciones) y el heroe en reposo; el encuadre nuevo abarca del
+    hombro a la mano entera y mira el brazo de lado (antes el ojo caia casi a lo largo del antebrazo). DS160: el ojo
+    va siempre del lado de FUERA del brazo (el opuesto al torso) y las 4 fotos (codo/mano, de frente y de espalda)
+    se toman de ese mismo lado; los valores por defecto son los del encuadre aprobado (lado 2, codo 7, mano 6)."""
+    req = j.dest / "dbz3_cam.req"
+    lado = par.get("brazo_lado", "2")           # DS160: los valores del encuadre aprobado (7 / 6 / 2)
+    d_codo = par.get("brazo_dist_codo", "7")
+    d_mano = par.get("brazo_dist_mano", "6")
+    espera = float(par.get("brazo_espera", "0.2"))   # la sonda relee el req cada 6 cuadros (~0,05 s)
+    vistas = (("codo", "frente", d_codo), ("codo", "espalda", d_codo),
+              ("mano", "frente", d_mano), ("mano", "espalda", d_mano))
+    primera = True
+    for etiqueta in ("der", "izq"):
+        for k, (hueso, vista, dist) in enumerate(vistas):
+            tmp = req.with_name(req.name + ".tmp")       # os.replace: la sonda nunca lee el fichero a medias
+            tmp.write_text(f"{hueso}_{etiqueta} {vista} {dist} {lado}\n", encoding="ascii")
+            os.replace(tmp, req)
+            if primera:                                  # DS155: que el combate se pare antes de la primera foto
+                primera = False
+                _esperar_brazos_quietos(j, par)
+            dormir(espera)
+            j.captura(f"h_brazo_{etiqueta}_{k:02d}")
+            dormir(0.05)
+    tmp = req.with_name(req.name + ".tmp")
+    tmp.write_text("off\n", encoding="ascii")            # devuelve la camara al juego (andar/golpear)
+    os.replace(tmp, req)
+    dormir(0.4)
+    lineas = [l for l in j.texto_log().splitlines() if "sonda de brazo" in l]
+    if not lineas:
+        raise Fallo("la camara de brazo no engancho (no hay 'sonda de brazo' en el log)")
+    for l in lineas[-8:]:
+        j.info(re.sub(r"^(\[[^\]]*\] ){3}", "", l)[:170])
+
+
+def _heroe_pieza(j, par):
+    # DS130: Modo Heroe con la ficha de la pieza pedida. Mismo camino que _r5_heroe hasta el combate; despues:
+    # presentacion (primeros planos), primer plano de frente de la cabeza al empezar la pelea (DS141, camara
+    # DBZ3_TEST_CARA), de pie, andando (D mantenido), golpeando (J) y rafaga dbz3_shot.req. Con --par guante=N
+    # (DS154) ademas 4 primeros planos de cada brazo (codo y mano, de frente y de espalda) para la pieza.
+    pelo, guante = _heroe_pieza_valores(par)
+    dormir(2.5)
+    j.tecla("W", 1200)
+    j.tecla("Space", 3500)                              # HUB
+    for _ in range(5):                                  # tagteam .. kumite
+        j.tecla("S", 450)
+    j.tecla("Space", 2500)                              # selector de retos
+    for _ in range(3):                                  # kumite .. modo heroe
+        j.tecla("S", 700)
+    j.captura("a_selector_heroe")
+    j.tecla("Space", 2500)                              # pantalla del heroe / creacion
+    j.captura("b_heroe")                                # vista previa de la ficha (primer plano)
+    for _ in range(3):
+        j.tecla("S", 500)
+    for _ in range(int(par.get("estilo", "0"))):
+        j.tecla("D", 600)
+    j.captura("b_estilo")
+    j.tecla("S", 500)
+    j.captura("c_empezar")
+    j.tecla_hasta_log("Space", r"hub: combate nativo", 6, 8)
+    j.log(r"dbz3 rpg: heroe: estilo", 40)
+    for k in range(int(par.get("intro", "6"))):          # camara de presentacion: primeros planos
+        j.captura(f"c_intro_{k:02d}")
+        dormir(1.0)
+    dormir(float(par.get("espera", "16")))              # pasa la presentacion
+    j.captura("d_de_pie")
+    # DS141: primer plano de FRENTE de la cabeza AL EMPEZAR la pelea (de pie, sin golpes: en el primer plano a los 8 s
+    # el heroe ya esta siendo derribado y la camara sigue la cabeza hasta el suelo). La camara de prueba DBZ3_TEST_CARA
+    # (src/cinematica.cpp) mira la cabeza real del luchador 1 (punto de golpe, calculado por el juego del esqueleto) a
+    # `cara_dist` de frente (`cara_lado`), y se apaga sola a los `cara_duracion` cuadros para no tapar las tomas de
+    # cuerpo. Con --par cara=0 el escenario queda exactamente como antes.
+    if par.get("cara", "1") != "0":
+        j.log(r"dbz3 cinematica: sonda de cara", 20)   # la sonda avisa en el log cuando engancha la cabeza
+        for k in range(int(par.get("cara_fotos", "4"))):
+            j.captura(f"h_cara_frente_{k:02d}")
+            dormir(0.15)
+    # DS154: con la pieza de guantes puesta, 4 primeros planos de cada brazo nada mas empezar (de pie, antes de los
+    # golpes): codo de frente/espalda y mano de frente/espalda. La sonda cambia de articulacion con dbz3_cam.req y
+    # "off" devuelve la camara del juego para e_andando/f_golpe/g_combate.
+    con_brazos = guante >= 0 and par.get("brazo", "1") != "0"
+    if con_brazos:
+        if par.get("cara", "1") == "0":
+            j.log(r"dbz3 cinematica: sonda de", 20)    # la sonda ya esta enganchada (el escenario la enciende)
+        _fotos_brazos(j, par)
+    if par.get("cara", "1") != "0" and not con_brazos:
+        dormir(4.0)                                     # que se apague la sonda (4 s) antes de andar/golpear
+    elif con_brazos:
+        dormir(0.4)
+    req = j.dest / "dbz3_input.req"
+    while req.exists():                                 # que el juego consuma la tecla anterior
+        time.sleep(0.05)
+    req.write_text("D 3000\n", encoding="ascii")        # andando (mantener)
+    dormir(0.8)
+    j.captura("e_andando")
+    dormir(2.1)
+    for k in (1, 2):                                    # golpeando
+        while req.exists():
+            time.sleep(0.05)
+        req.write_text("J 700\n", encoding="ascii")
+        dormir(0.12)
+        j.captura(f"f_golpe_{k}")
+        dormir(0.8)
+    j.captura("g_combate")
+    antes = set(j.dest.glob("dbz3_shot_*.bmp"))
+    (j.dest / "dbz3_shot.req").write_text("24 4", encoding="ascii")   # rafaga de fotos
+    dormir(0.2)
+    while req.exists():
+        time.sleep(0.05)
+    req.write_text("J 900\n", encoding="ascii")
+    dormir(4.0)
+    nuevos = sorted(set(j.dest.glob("dbz3_shot_*.bmp")) - antes)
+    for p in nuevos:
+        try:
+            if Image:
+                with Image.open(p) as im:
+                    im.save(j.run / (p.stem + ".png"))
+            else:
+                shutil.copy2(p, j.run / p.name)
+        except Exception as e:                          # noqa: BLE001 (una foto mala no tira la prueba)
+            j.info(f"rafaga: {p.name} no se pudo copiar: {e}")
+    if nuevos:
+        j.info(f"rafaga: {len(nuevos)} fotos en {j.run}")
+    log = j.texto_log()
+    patron = rf"dbz3 heroe: ficha \d+ apariencia: pelo {pelo}, b3_guantes {guante}"
+    if not re.search(patron, log):
+        raise Fallo(f"el log no confirma la pieza cargada (pelo {pelo}, b3_guantes {guante})")
+    ft = j.dest / "mods" / "heroe_propio" / "ficha.txt"
+    txt = ft.read_text(encoding="utf-8", errors="replace") if ft.is_file() else ""
+    if f"pelo={pelo}" not in txt or (guante >= 0 and f"b3_guantes={guante}" not in txt):
+        raise Fallo(f"la ficha de combate no coincide con la pieza pedida: {txt[:160]}")
+    for l in [l for l in log.splitlines() if "dbz3 heroe: ficha" in l or "b3_guantes" in l][-6:]:
         j.info(re.sub(r"^(\[[^\]]*\] ){3}", "", l)[:170])
 
 
@@ -1625,23 +2244,42 @@ def _r2_nave(j, par):
     # X0h: flujo actual de la nave (A2nave, fines_nave.py): 1P/2P -> torre de plantas -> rueda 1P -> menu -> rueda COM ->
     # burbuja -> tarjeta -> combate (acotado por DBZ3_TEST_NAVE_TIEMPO, 6 s) -> resultado. --par prueba=0..3 = planta I..IV.
     # El flujo antiguo (lista de pruebas + S S) ya no existe: por eso fallaba hasta a x1.
+    # DS131: se pulsa siguiendo las pantallas del log y sus esperas reales (DS127, 0x263A80 = 60 cuadros de rueda,
+    # 0x2629B0 = 31 de 1P/2P, burbuja 45, salida de la lista 21). Antes iba a ciegas con 1500/600 ms y un Space se
+    # perdia al entrar en la rueda (necesita 1 s); el guion acababa un pantalla antes y la tarjeta VS ("A ¡A luchar!")
+    # se quedaba esperando su A. El ultimo Space de ahora es el de la tarjeta, como en el original.
     j.log(r"nave: entrar", 90)
     dormir(3.5)
     j.captura("a_nave")
+    j.log(r"nave: pantalla modo", 20)
+    dormir(0.8)                                 # 0x265310: sin mandos hasta 31 cuadros
     j.tecla("Space", 900)                       # 1P/2P -> torre
+    j.log(r"nave: pantalla planta", 20)
+    dormir(1.1)                                 # 0x264D00: la lista no lee mandos hasta 61 cuadros (la entrada)
     for _ in range(3):
         j.tecla("W", 300)
     for _ in range(int(par.get("prueba", "2"))):
         j.tecla("S", 300)
-    j.log(r"nave: pantalla planta", 20)
-    j.tecla("Space", 1500)                      # -> rueda 1P
-    j.tecla("Space", 600)                       # -> menu
-    j.tecla("Space", 1500)                      # -> rueda COM
-    j.tecla("Space", 1200)                      # -> burbuja
+    dormir(0.3)
+    j.tecla("Space", 400)                       # -> rueda 1P (salida de la lista: 21 cuadros)
+    j.log(r"nave: pantalla rueda 1P", 20)
+    dormir(1.1)                                 # 0x263A80: la rueda no acepta hasta 60 cuadros
+    j.tecla("Space", 400)                       # -> menu
+    j.log(r"nave: pantalla menu", 20)
+    dormir(0.4)
+    j.tecla("Space", 400)                       # -> rueda COM
+    j.log(r"nave: pantalla rueda COM", 20)
+    dormir(1.1)                                 # 60 cuadros de la rueda del COM
+    j.tecla("Space", 400)                       # -> burbuja
+    j.log(r"nave: pantalla burbuja", 20)
+    dormir(0.9)                                 # la burbuja acepta desde 45 cuadros
     j.captura("b_burbuja")
-    j.tecla("Space", 1800)                      # -> tarjeta
+    j.tecla("Space", 800)                       # elige el escenario -> tarjeta VS
+    j.log(r"nave: prueba \d+:", 20)
+    j.log(r"misiones: nave paso \d+/\d+ \(combate\): pantalla", 20)
+    dormir(0.4)
     j.captura("c_tarjeta")
-    j.tecla("Space", 800)                       # -> combate
+    j.tecla("Space", 800)                       # tarjeta VS -> combate ("A ¡A luchar!")
     j.log(r"nave: fin:", 240)
     # fin con 'gana el lado 0' = ganador -1: se acabo el tiempo (6 s) sin que nadie perdiera vida o salio por la pausa; el
     # juego vuelve a la torre SIN pantalla de resultado (Resultado() en pasarela_nave.cpp). Es una salida valida, no un fallo.
@@ -1762,6 +2400,94 @@ def _r2_fases(j, par):
         j.captura("fase_%d_completada" % n)
 
 
+def _b2_fase5_derrota(j, par):
+    # B4 (DS146 §5, DS125 §3.3): fase V perdida a proposito. El guion 306 de la fase trae la orden 43 (derrota) al
+    # final; DBZ3_TEST_B2_EVENTO=306 lo arranca al cargar la fase (pasarela_b2.cpp:1306). A en el GAME OVER (404 #0,
+    # pasarela_b2.cpp:7151) reintenta la fase (pasarela_b2.cpp:7182).
+    j.log(r"tablero b2: fase 5 leida", 90)
+    dormir(2)
+    j.captura("a_fase5")
+    j.log(r"tablero b2: script 306: orden 43, fase 5 perdida", 300)   # pasarela_b2.cpp:1930
+    dormir(0.5)
+    j.captura("b_game_over")
+    j.tecla("Space", 1500)
+    j.log(r"tablero b2: reintento de la fase 5 \(A en GAME OVER\)", 30)   # pasarela_b2.cpp:7182
+    j.log(r"tablero b2: fase 5 empieza", 30)                              # pasarela_b2.cpp:1319
+    dormir(1)
+    j.captura("c_reintento")
+
+
+def _b2_fase9_final(j, par):
+    # B7 (DS146 §5, DS125 §3.5): final de la fase IX. Ganada la fase, el guion 303 pide la orden 42
+    # (pasarela_b2.cpp:1938); A en la pantalla de fase completada abre Shenron si estan las 7 Bolas
+    # (pasarela_b2.cpp:7169-7173) o borra la partida del Mundo Dragon y vuelve a la fase I si falta alguna
+    # (pasarela_b2.cpp:7176-7178). --par bolas=1 fuerza las 7 con DBZ3_TEST_B2_BOLAS (pasarela_b2.cpp:1284).
+    con_bolas = par.get("bolas", "0") == "1"
+    j.log(r"tablero b2: fase 9 leida", 90)
+    j.log(r"tablero b2: script \d+: orden 42, fase 9 completada", 900)
+    dormir(0.4)
+    j.captura("a_fase9_completada")
+    j.tecla("Space", 1500)
+    if con_bolas:
+        j.log(r"tablero b2: Shenron: \d+ deseos", 30)          # pasarela_b2.cpp:7173
+        dormir(1)
+        j.captura("b_shenron")
+    else:
+        j.log(r"tablero b2: fase 1 leida", 90)                 # pasarela_b2.cpp:995 (partida borrada)
+        dormir(1)
+        j.captura("b_partida_borrada")
+        if re.search(r"tablero b2: Shenron: \d+ deseos", j.texto_log()):
+            raise Fallo("sin las 7 Bolas salio la pantalla de Shenron")
+
+
+def _b2_ataque_manual(j, par):
+    # B8 (DS146 §5): juego normal, SIN DBZ3_TEST_RINGOUT. Fase I a mano: Goku (casilla 3) ataca a la pieza rival que
+    # el guion de la fase pone en la casilla 8 (c22; el #YDW 387 la trae en la 8 y el guion la confirma con "aparece
+    # Saibaman en la casilla 8"). A abre el cursor de destino, A elige la 8 (el #YDW 387 da vec [2,8,0,4] con la 2
+    # como primer destino) y A mueve: Mover llama a Contacto y sale el "!!" (pasarela_b2.cpp:1410, 2589-2600).
+    j.log(r"tablero b2: fase 1 leida", 90)
+    dormir(3)
+    j.captura("a_preparacion")
+    j.tecla("Space", 2500)
+    j.log(r"tablero b2: escena T155", 15)
+    j.tecla("Backspace", 1500)
+    j.captura("a1_llegada")
+    j.log(r"tablero b2: escena M207", 30)
+    dormir(1.5)
+    j.captura("a1b_charla")
+    j.tecla_hasta_log("Space", r"tablero b2: script 301: eleccion de 1 aliado", intentos=10, seg=4)
+    dormir(1)
+    j.captura("a2_aliado")
+    j.tecla_hasta_log("Space", r"tablero b2: aliado marcado", intentos=4, seg=3)
+    dormir(0.5)
+    j.tecla("W", 400)
+    j.tecla_hasta_log("Space", r"tablero b2: aliado elegido", intentos=2, seg=3)
+    j.log(r"tablero b2: guiones terminados", 60)
+    dormir(1)
+    j.captura("b_tablero")
+    j.tecla("Space", 1200)          # A: abre el cursor de destino (g_dest = primera vecina libre, la 2)
+    j.tecla("A", 500)               # izquierda: con la 2 delante, elige la rival de la 8 (la mas lejana en ese eje)
+    j.captura("c_destino_rival")
+    corte = len(j.texto_log())
+    j.tecla("Space", 1200)          # A: mover a la 8 = ataque manual con A sobre la pieza rival
+    # Con un rival en la casilla de destino, Mover no registra "turno ... a la casilla": va directo al
+    # contacto (pasarela_b2.cpp:2559-2600), que es lo que se comprueba aqui.
+    _log_nuevo(j, r"tablero b2: contacto Goku y |tablero b2: Goku ataca al ocupante de la casilla", corte, 25)  # "!!"
+    j.captura("d_contacto")
+    dormir(2)
+    j.captura("f_tarjeta")
+    # DS159: el contacto abre primero la charla del #SPX (la captura f_tarjeta la ensena: "X : Next"); un Space la cierra
+    # y otro, tras la entrada de la tarjeta "Battle!", la acepta. El combate empieza con la linea de pasarela_b2.cpp
+    # (estado 2 de la tarjeta): "tablero b2: combate: A (id N) contra B (id M), turno ..., condicion ...".
+    corte = len(j.texto_log())
+    j.tecla("Space", 1200)          # cierra la charla del contacto
+    dormir(2.0)                     # entrada de la tarjeta "Battle!" (~80 cuadros)
+    j.tecla("Space", 1200)          # tarjeta "Battle!" -> combate (sin DBZ3_TEST_RINGOUT)
+    _log_nuevo(j, r"tablero b2: combate: ", corte, 60)
+    dormir(1)
+    j.captura("g_combate")
+
+
 def _iw_misiones(j, par):
     # frente F (ronda 3): Pasarela > Misiones del Dragon de IW (DBZ3_TEST_MISIONES=4 abre el modo desde el menu
     # principal). La lista sale de la tabla del ELF de la ISO de IW (registro "IW mision N"); ficha de la mision 1
@@ -1808,6 +2534,81 @@ def _iw_mapa(j, par):
     j.captura("f_cursor")
     j.tecla("Backspace", 2000)
     j.captura("g_menu")
+
+
+def _log_nuevo(j, regex, corte, seg):
+    """Espera `regex` en el log escrito DESPUES de la posicion `corte` (evita casar una linea de antes)."""
+    fin = time.time() + seg
+    while time.time() < fin:
+        if re.search(regex, j.texto_log()[corte:]):
+            j.info(f"log ok (nuevo): {regex}")
+            return
+        time.sleep(0.5)
+    raise Fallo(f"el log no contiene '{regex}' tras {seg} s desde la marca")
+
+
+def _iw_cadena_combate(j):
+    # Rama de combate de iw_cadena (--par ruta=... hasta una mision): ficha -> MISSION START -> combate -> resultado ->
+    # escena de la historia si la hay -> mapa. DBZ3_TEST_RINGOUT (env del escenario) gana el combate.
+    j.captura("c_ficha_combate")
+    j.tecla("Space", 1800)                           # MISSION START (src/pasarela_iw.cpp, ficha)
+    j.log(r"misiones: iw combate", 60)               # src/pasarela_misiones.cpp:1711 (kClaves "iw")
+    j.captura("d_combate")
+    j.log(r"misiones: iw: mision \d+ superada", 240)  # src/pasarela_misiones.cpp:1492
+    dormir(5)
+    j.captura("e_resultado")
+    corte = len(j.texto_log())
+    j.tecla("Space", 2500)
+    if re.search(r"misiones: iw: escena de la historia despues", j.texto_log()):
+        dormir(2)
+        j.captura("f_escena_despues")
+        j.tecla("Space" if re.search(r"video de la historia 2 \(\S+\): reproduciendo", j.texto_log()) else "Backspace", 2500)
+    _log_nuevo(j, r"iw mapa: vuelta de combate: ScreenTransition_PushCommands", corte, 90)
+    j.captura("g_vuelta_mapa")
+
+
+def _iw_cadena(j, par):
+    # Recorre el mapa real de IW como jugador: mapa -> casilla -> minijuego o combate -> resultado -> mapa.
+    # Casilla por defecto: el minijuego 0x7D0 (Raditz) de la saga 0. Segun el #DMD 1093 (src/pasarela_iw.cpp:1155-1165)
+    # la mision 11 (cursor con desde=10) esta en (890,610) y 0x7D0 en (920,700), asi que una S la elige
+    # (Story_PickObjectAtCursor, src/pasarela_iw.cpp:2863-2884). Otras rutas desde la mision 11: 0x7D1 (1035,134) SDD,
+    # 0x7D2 (815,98) WW, 0x7D3 (1090,108) SDDW, 0x7D4 (692,457) WA; --par ruta=... las sustituye (vacio = no moverse).
+    j.log(r"misiones: iw: mapa de Dragon Mission", 90)
+    dormir(4)
+    j.captura("a_mapa")
+    for tecla in par.get("ruta", "S").split(","):
+        if tecla.strip():
+            j.tecla(tecla.strip(), 500)
+    j.captura("b_casilla")
+    j.tecla("Space", 1800)
+    # La casilla puede ser minijuego (tipo 0) o mision (ficha y combate): ramas distintas.
+    j.log(r"misiones: iw: ficha de la mision|misiones: iw: minijuego 0x|dbz3 iwmini: casilla 0x", 25)
+    if re.search(r"misiones: iw: ficha de la mision", j.texto_log()):
+        return _iw_cadena_combate(j)
+    # La escena previa solo existe en algunas casillas; si aparece, capturarla y esperar fin.
+    if re.search(r"misiones: iw: minijuego .* video previo", j.texto_log()):
+        j.captura("c_video_previo")
+        corte_video = len(j.texto_log())
+        j.log(r"misiones: iw: video de la historia .*: (?:reproduciendo|sin video, subtitulos sobre el mapa)", 60)
+        if re.search(r"video de la historia .*: reproduciendo", j.texto_log()[corte_video:]):
+            dormir(2.2)         # el FD01A dura ~3,3 s: fotograma real del video, no el fundido de la carga
+            j.captura("d_video_fin")
+        j.tecla("Space", 1000)  # START/A salta el video y avanza la escena previa.
+        j.log(r"misiones: iw: video previo .* acabado: empieza el minijuego", 180)
+        if not re.search(r"video de la historia .*: reproduciendo", j.texto_log()[corte_video:]):
+            j.captura("d_video_fin")
+    j.log(r"iwmini: salida puesta", 90)
+    j.captura("e_minijuego_inicio")
+    corte = len(j.texto_log())   # antes del final: sin piloto la vuelta al mapa sale en el mismo cuadro que el resultado
+    # DS159: 0x7D0 (MSNMW) es un combate: sin piloto automatico acaba con "modulo 0x...: resultado listo" y no con
+    # "META/TIEMPO" (esa linea solo la escriben los modulos de carrera/vuelo). Vale cualquiera de las dos.
+    j.log(r"iwmini: (?:META|TIEMPO): tiempo|iwmini: modulo 0x[0-9A-Fa-f]+: resultado listo", 300)
+    j.captura("f_minijuego_fin")
+    j.log(r"iwmini: modulo 0x[0-9A-Fa-f]+: resultado listo", 45)
+    j.captura("g_resultado")
+    j.tecla("Space", 2500)
+    _log_nuevo(j, r"iw mapa: vuelta de combate: ScreenTransition_PushCommands", corte, 90)
+    j.captura("h_vuelta_mapa")
 
 
 def _r1_historia(j, par):
@@ -2028,7 +2829,47 @@ def _r1_entreno2(j, par):
     j.log(r"iw: entrenamiento 2: guardia [1-9]", 5)
 
 
+def _iw_disparo(j, par):
+    """Familia de disparo de IW (src/iw_mini_disparo.cpp): 0x7D3, 0x7D7, 0x7D8 y 0x7DE.
+
+    No tienen aros: el escenario generico esperaba "iwmini: aro N cogido" y fallaba siempre. Aqui se
+    esperan los logs propios del modulo (DS126): "iwdisparo: juego 0x.... empieza" al acabar la
+    entrada y "iwdisparo: fin:" al cerrar (Acabar). Se captura el principio, a mitad de partida y el
+    final. auto=1 (de serie) deja al piloto automatico apuntando y disparando; auto=0 solo toca teclas.
+    """
+    clave = par.get("clave", "0x7D8")
+    auto = par.get("auto", "1") == "1"
+    try:                                       # el log imprime la clave en mayusculas (0x{:X})
+        clave_hex = "0x%X" % int(str(clave), 0)
+    except ValueError:
+        clave_hex = str(clave)
+    # El 0x7D7 reproduce su entrada de 520 cuadros (950); el 9 la de 440 (1000): margen de sobra.
+    j.log(rf"iwdisparo: juego {re.escape(clave_hex)} empieza", 120)
+    dormir(0.5)
+    j.captura("a_juego")
+    if auto:
+        dormir(7)                              # a mitad del minijuego, con el piloto disparando
+        j.captura("b_mitad")
+        j.log(r"iwdisparo: (fin:|Piccolo derribado|TIEMPO|7 aciertos|FALLO|fin del 15)", 220)
+        dormir(1.2)                            # deja pasar el cierre/fundido
+        j.captura("c_fin")
+        dormir(2.5)
+        j.captura("d_resultado")
+    else:
+        for i, k in enumerate(("W 800", "D 800", "Space 300", "Quote 300")):
+            j.tecla(k, 450)
+            dormir(0.4)
+            j.captura(f"b_juego{i + 1}")
+        j.log(r"iwdisparo: (fin:|Piccolo derribado|TIEMPO|7 aciertos|FALLO|fin del 15)", 220)
+        dormir(1.2)
+        j.captura("c_fin")
+
+
 def _iw_minijuego(j, par):
+    # Familia de disparo (0x7D3/0x7D7/0x7D8/0x7DE): sus propios logs y capturas.
+    if str(par.get("clave", "")).lower() in ("0x7d3", "0x7d7", "0x7d8", "0x7de"):
+        _iw_disparo(j, par)
+        return
     # frente P4 (ronda 3): minijuego del mapa de IW (src/iw_minijuegos.cpp, DBZ3_TEST_IWMINI=<clave>[,auto]) lanzado
     # desde el menu principal en modo libre (un luchador, camara detras, aros/monedas de IW y TIME). auto=1 (de serie):
     # el jugador salta solo de aro en aro hasta la meta. auto=0: se mueve con la palanca (W/A/S/D) y se ve la marcha.
@@ -2036,6 +2877,15 @@ def _iw_minijuego(j, par):
     j.log(r"iwmini: salida puesta", 60)
     dormir(2)
     j.captura("a_salida")
+    if par.get("radar") == "1":                       # SOL1: radar solo mientras se mantiene triangulo (P/Y)
+        j.log(r"iwmini: entrada acabada", 60)
+        dormir(3)
+        j.captura("b_radar_suelto")
+        j.tecla("P 3000", 1500)
+        j.captura("c_radar_pulsado")
+        dormir(2)
+        j.captura("d_radar_suelto")
+        return
     if par.get("npc") == "1":                         # Bubbles (0x7D1) o Piccolo (0x7DD): se mueven solos
         if par.get("clave") == "0x7D1":               # Bubbles sale delante (con --env DBZ3_IWMINI_NPC_QUIETO=1
             j.tecla("W 900", 950)                     # no huye): acercarse y verle correr en el sitio
@@ -2048,6 +2898,13 @@ def _iw_minijuego(j, par):
             j.log(r"iwmini: (Bubbles atrapado|Piccolo te alcanza|META|TIEMPO)", 120)
             dormir(1)
             j.captura("c_fin")
+            # SOL1: comprobar tambien la salida del minijuego (antes PASS cortaba durante CLEAR).
+            j.log(r"iwmini: prueba: resultado", 60)
+            dormir(3)
+            j.captura("e_menu")
+            if par.get("completa") == "1":
+                dormir(8)
+                j.captura("f_resultado_completo")
         else:
             j.tecla("W 3000", 3500)
             j.captura("c_npc")
@@ -2098,9 +2955,13 @@ def _iw_minijuego(j, par):
         j.captura("b_lejos")
         return
     if par.get("auto", "1") != "1":
-        j.tecla("Up 3000", 3500)
+        j.log(r"iwmini: entrada acabada", 60)          # antes de la intro el mando no mueve al jugador
+        dormir(0.5)
+        j.tecla("W 3000", 1500)   # W = palanca (las flechas son la cruceta)
+        j.captura("b_corriendo")                       # con la palanca aun pulsada: la pose de correr
+        dormir(2)
         j.captura("b_adelante")
-        j.tecla("Right 1500", 2000)
+        j.tecla("D 1500", 2000)
         j.captura("c_derecha")
         if par.get("rafaga"):   # 24 fotos (1 de cada 6 cuadros) corriendo, en dbz3_shot_NNN.bmp
             (j.dest / "dbz3_shot.req").write_text("24 6", encoding="ascii")
@@ -2111,7 +2972,9 @@ def _iw_minijuego(j, par):
         return
     # los aros (y marcas del Radar) que da el #ITM en esa dificultad: "curso (dificultad d): A n B .. C .. D m"
     m = re.search(r"iwmini: curso \(dificultad \d+\): A (\d+) B \d+ C \d+ D (\d+)", j.texto_log())
-    n = int(m.group(1)) + int(m.group(2)) if m else 8
+    # SOL1: D solo cuenta como aro en el Radar (grupo 3). En Namek son 16 recargas (grupo 4),
+    # no aros: esperar A+D provocaba FAIL aun cuando la partida ya habia llegado a META.
+    n = (int(m.group(2)) if str(par.get("clave", "")).lower() == "0x7df" else int(m.group(1))) if m else 8
     j.log(rf"iwmini: aro {min(3, n)} cogido", 40)
     dormir(0.3)
     j.captura("b_aros")
@@ -2130,6 +2993,10 @@ def _iw_minijuego(j, par):
     j.log(r"iwmini: prueba: resultado", 60)
     dormir(3)
     j.captura("e_menu")
+
+    if par.get("completa") == "1":                      # SOL1: no comparar el inicio del conteo con una tabla ya terminada
+        dormir(8)
+        j.captura("f_resultado_completo")
 
 
 def _r6_ranking(j, par):
@@ -2219,6 +3086,62 @@ def _r6_hud(j, par):
         dormir(20)
         j.captura("e_combate2")
         j.log(r"heroe: estilo \d+ \(", 30)
+
+
+def _torneo(j, par):
+    # DS193 (issue #55): Torneo Mundial NATIVO, nivel Novato, de principio a fin. Entra desde el menu principal,
+    # elige el personaje que trae la rueda, gana los tres combates con DBZ3_TEST_RINGOUT (tagteam.cpp: aviso
+    # mgr+35569 a los 5 s de pelea; sub_820FD678 lo cobra como motivo 4 en cualquier modo) y comprueba que el juego
+    # VUELVE AL MENU PRINCIPAL (pantalla 5) sin cerrarse. Es el caso del reporte: "tras ganar el torneo novato el
+    # juego se congela y deja de contar FPS".
+    # No se pulsa a ciegas dentro del combate: se avanza con Space y se esperan las marcas del log:
+    #   "VS del torneo" (roster_ext, pantalla VS), "tag: prueba: rival fuera del ring" y "tag: combate acabado".
+    dormir(3)
+    j.tecla("S", 1200)
+    j.tecla("S", 1200)                                  # menu principal: Torneo (2 filas)
+    j.tecla("Space", 3500)                              # menu del Torneo (nivel y participantes)
+    j.captura("a_torneo")
+    j.tecla("Space", 3000)                              # Novato (primera opcion; el cursor arranca ahi)
+    j.captura("b_nivel")
+    # Rueda de personajes y VS: se avanza hasta que el log diga que la pantalla VS del Torneo ya se dibujo.
+    fin = time.time() + 90
+    while time.time() < fin and j.vivo() and not re.search(r"VS del torneo", j.texto_log()):
+        j.tecla("Space", 2200)
+    if not re.search(r"VS del torneo", j.texto_log()):
+        raise Fallo("no se llego a la pantalla VS del Torneo (pantalla %s)" % j.pantalla())
+    j.captura("c_vs")
+    # Combates: Space adelanta VS/resultados; el ring out de la prueba cierra cada pelea a los 5 s.
+    combates = 0
+    fin = time.time() + 300
+    while time.time() < fin and j.vivo() and combates < 3:
+        j.tecla("Space", 1500)
+        n = len(re.findall(r"tag: combate acabado", j.texto_log()))
+        if n > combates:
+            combates = n
+            j.info("combate %d acabado (pantalla %s)" % (combates, j.pantalla()))
+            dormir(3)
+            j.captura("d_combate%d" % combates)
+        dormir(0.5)
+    if not j.vivo():
+        raise Fallo("el juego se cerro en el Torneo (combates acabados: %d)" % combates)
+    if combates < 3:
+        raise Fallo("el Torneo no llego a los 3 combates ganados (acabados: %d; pantalla %s)" % (combates, j.pantalla()))
+    # Lo que reporta el issue: tras el ultimo combate tiene que volver al menu principal, no quedarse clavado.
+    # A partir de aqui NO se pulsa a ciegas: cada Space va seguido de una espera; si la pantalla ya es la 5 se para
+    # (una tecla al entrar en el menu podia abrir otra fila y dar el test por fallido sin motivo).
+    for _ in range(15):
+        try:
+            j.esperar_pantalla([5], 6)
+            break
+        except Fallo:
+            if not j.vivo():
+                raise
+            j.tecla("Space", 1500)
+            dormir(1)
+    else:
+        raise Fallo("no volvio al menu principal tras ganar el Torneo (pantalla %s)" % j.pantalla())
+    j.captura("e_menu")
+    j.info("vuelta al menu principal tras ganar el Torneo (3 combates)")
 
 
 def _r6_pantallas(j, par):
@@ -2320,7 +3243,7 @@ def _r12_vuelo(j, par):
     # frente R12: minijuegos de vuelo de IW (src/iw_mini_vuelo.cpp: 0x7D6 Vegeta, 0x7E0 carrera con Goten). auto=1 (de
     # serie): piloto que gira hacia el punto de control mas cercano (y luego la meta) con R1 si el medidor lo permite.
     j.log(r"iwmini: prueba: empieza", 90)
-    j.log(r"r12: empieza el vuelo", 90)
+    j.log(r"terminado; empieza el vuelo", 90)
     dormir(1.5)
     j.captura("a_salida")
     if par.get("auto", "1") != "1":                   # a mano: palanca arriba y a la derecha (W / D)
@@ -2348,9 +3271,13 @@ def _r12_vuelo(j, par):
 
 
 ESCENARIOS = {
-    "_r12_vuelo": ("R12: minijuego de vuelo de IW (--par clave=0x7D6 Vegeta | 0x7E0 Goten; auto=0 sin piloto)",
+    "_r12_vuelo": ("R12: minijuego de vuelo de IW (--par clave=0x7D6 Vegeta | 0x7E0 Goten; auto=0 sin piloto; "
+                   "dificultad=N 0..5)",
                    lambda p: {"DBZ3_TEST_IWMINI": p.get("clave", "0x7D6") + (",auto" if p.get("auto", "1") == "1"
                                                                                else ""),
+                              # DS173: el vuelo toma la dificultad de iwmini::Empezar(clave,-1), que lee g_dificultad
+                              # (src/iw_minijuegos.cpp:4052, bloque g_test); sin esta variable usa el defecto 2.
+                              "DBZ3_TEST_IWMINI_DIFICULTAD": p.get("dificultad", ""),
                               "DBZ3_PS2_GAMES": r"D:\DBZ3HD\ps2_games"}, _r12_vuelo),
     "_r14_botones": ("R14: minijuego de botones de IW (--par clave=0x7DC; auto=0 sin piloto)",
                      lambda p: {"DBZ3_TEST_IWMINI": p.get("clave", "0x7DC") + (",auto" if p.get("auto", "1") == "1"
@@ -2365,6 +3292,9 @@ ESCENARIOS = {
                                     **({"DBZ3_TEST_R6_PANTALLA": p.get("que", "entre")}
                                        if p.get("que", "entre") in ("entre", "derrota", "fin") else {})),
                      _r6_pantallas),
+    "torneo": ("DS193 (issue #55): Torneo Mundial NATIVO nivel Novato: entra, gana los 3 combates "
+               "(DBZ3_TEST_RINGOUT) y espera la vuelta al menu principal (pantalla 5)",
+               lambda p: {"DBZ3_TEST_RINGOUT": "1"}, _torneo),
     "hub_filas": ("HUB pagina 2: fila Pasarela (avance de las campanas) y fila Mision 100 abierta desde el HUB",
                   lambda p: {}, _hub_filas),
     "m100": ("Mision 100 (rpg.cpp): mision n con el luchador id (--par n=5 id=0), ring out, rango y sus paginas",
@@ -2378,11 +3308,16 @@ ESCENARIOS = {
     "iw_minijuego": ("Minijuego del mapa de IW (--par clave=0x7D0: Raditz; auto=0 sin piloto automatico)",
                      lambda p: {"DBZ3_TEST_IWMINI": p.get("clave", "0x7D0") + (",auto" if p.get("auto", "1") == "1"
                                                                                  else "") +
-                                                    (",meta" if p.get("meta") == "1" else ""),
+                                                     (",meta" if p.get("meta") == "1" else ""),
+                                "DBZ3_TEST_IWMINI_DIFICULTAD": p.get("dificultad", ""),
                                 "DBZ3_PS2_GAMES": r"D:\DBZ3HD\ps2_games"}, _iw_minijuego),
     "iw_mapa": ("Pasarela > Misiones del Dragon de IW con el mapa de IW: mapa, ficha, combate, resultado (desde=N)",
-                lambda p: {"DBZ3_TEST_MISIONES": f"4,reset,desde={p.get('desde', '10')}", "DBZ3_TEST_RINGOUT": "1",
-                           "DBZ3_PS2_GAMES": r"D:\DBZ3HD\ps2_games"}, _iw_mapa),
+                 lambda p: {"DBZ3_TEST_MISIONES": f"4,reset,desde={p.get('desde', '10')}", "DBZ3_TEST_RINGOUT": "1",
+                            "DBZ3_PS2_GAMES": r"D:\DBZ3HD\ps2_games"}, _iw_mapa),
+    "iw_cadena": ("IW como jugador: mapa, casilla (por defecto el minijuego 0x7D0; --par ruta=S,D,... para otra), "
+                  "video previo opcional, minijuego o combate, resultado y vuelta al mapa",
+                  lambda p: {"DBZ3_TEST_MISIONES": f"4,reset,desde={p.get('desde', '10')}",
+                             "DBZ3_TEST_RINGOUT": "1", "DBZ3_PS2_GAMES": r"D:\DBZ3HD\ps2_games"}, _iw_cadena),
     "r1_historia": ("Pasarela > IW: escenas de la historia antes (motor de B3) y despues (mapa) de la mision 11",
                     lambda p: {"DBZ3_TEST_MISIONES": f"4,reset,desde={p.get('desde', '10')}", "DBZ3_TEST_RINGOUT": "1",
                                "DBZ3_PS2_GAMES": r"D:\DBZ3HD\ps2_games"}, _r1_historia),
@@ -2426,6 +3361,20 @@ ESCENARIOS = {
     "tablero": ("Pasarela > Dragon World de B2 (ISO del jugador): preparacion, tablero, movimiento, contacto, combate",
                 lambda p: {"DBZ3_TEST_MISIONES": "1,reset", "DBZ3_PS2_GAMES": r"D:\DBZ3HD\ps2_games",
                            "DBZ3_TEST_B2_CONDICION": p.get("condicion", "0")}, _tablero),
+    "r2_fase5_derrota": ("B4: fase V perdida a proposito con la orden 43 del guion 306 (GAME OVER 404 #0) y reintento "
+                         "con A en el GAME OVER",
+                         lambda p: {"DBZ3_TEST_MISIONES": "1,reset,desde=4", "DBZ3_TEST_B2_EVENTO": "306",
+                                    "DBZ3_PS2_GAMES": r"D:\DBZ3HD\ps2_games"}, _b2_fase5_derrota),
+    "r2_fase9_final": ("B7: final de la fase IX (--par bolas=1 con las 7 Bolas: Shenron; sin el, se borra la partida y "
+                       "vuelve la fase I)",
+                       lambda p: dict({"DBZ3_TEST_MISIONES": "1,auto,reset,desde=8", "DBZ3_TEST_RINGOUT": "1",
+                                       "DBZ3_PS2_GAMES": r"D:\DBZ3HD\ps2_games"},
+                                      **({"DBZ3_TEST_B2_BOLAS": "127"} if p.get("bolas", "0") == "1" else {})),
+                       _b2_fase9_final),
+    "tablero_ataque": ("B8: juego normal (sin DBZ3_TEST_RINGOUT); en la fase I, ataque manual con A a la pieza rival de "
+                       "la casilla 8, \"!!\" y combate",
+                       lambda p: {"DBZ3_TEST_MISIONES": "1,reset", "DBZ3_PS2_GAMES": r"D:\DBZ3HD\ps2_games"},
+                       _b2_ataque_manual),
     "bordes": ("menu principal y Duelo con las tiras doradas nativas ocultas o visibles (--par bordes=true)",
                lambda p: {"REX_DBZ3_UI_SIDE_BORDERS": p.get("bordes", "false")}, _bordes),
     "satan": ("HUB > Leyenda de Mr. Satan: titulo, dificultad, prologo, combate ganado, resultado, tablero, escena "
@@ -2454,6 +3403,9 @@ ESCENARIOS = {
     "du_continuar": ("DU > Continuar (Freezer: con --instantanea freezer_cap2)", lambda p: {}, _du_continuar),
     "batalla": ("combate nativo desde el menu (DBZ3_TEST_BATTLE) y vuelta al menu",
                 lambda p: {"DBZ3_TEST_BATTLE": p.get("ids", "0,7,2"), "DBZ3_TEST_RINGOUT": "1"}, _batalla),
+    "freecam": ("camara libre: 3 poses por variable, o el camino REAL con --par teclas=1 (F1 con teclas + WASD/QE/"
+                "raton reales, Pausar/Ocultar HUD, R); --par modo=iw|iwmini|b2 la prueba en IW o B2",
+                _freecam_env, _freecam),
     # con perfil_nuevo la rueda es otra (W x2 caia en Bardock y se quedaba en la pantalla de capsulas):
     # se reutiliza el camino verificado de du_continuar y se avanza hasta acabar el siguiente combate
     "campana": ("DU > Continuar > Freezer > hasta acabar el siguiente combate (ring out a los 5 s)",
@@ -2479,6 +3431,15 @@ ESCENARIOS = {
               lambda p: {"DBZ3_TEST_RINGOUT": "1"}, _heroe_crear),
     "r5_heroe": ("Modo Heroe (R5): cuerpo del rpg.toml con el moveset de otro luchador (estilo) en combate",
                  lambda p: {"DBZ3_TEST_RINGOUT": "1"} if p.get("ringout") == "1" else {}, _r5_heroe),
+    "heroe_pieza": ("DS130/DS133/DS154/DS155: Modo Heroe en combate con UNA pieza puesta (--par pelo=N 0-10 y/o guante=N: %s); "
+                    "presentacion, de pie, andando, golpeando, PRIMER PLANO DE FRENTE de la cabeza "
+                    "(h_cara_frente_* al empezar la pelea, camara DBZ3_TEST_CARA; --par cara=0 lo quita); con guante=N "
+                    "ademas 4 planos de cada brazo DEL HOMBRO A LA MANO (h_brazo_der_*/h_brazo_izq_*: codo y mano, de "
+                    "frente y de espalda), con el combate QUIETO y el heroe en reposo (--par quieto=0 lo quita) y "
+                    "rafaga dbz3_shot.req"
+                    % ", ".join(str(x) for x in PIEZAS_GUANTES),
+                    _heroe_pieza_env,
+                    _heroe_pieza, _heroe_pieza_prep),
     "fusion_yamhan": ("combate normal Yamcha vs Vegeta: a los 3 s se fusiona en Yamhan (src/fusion.cpp)",
                       lambda p: dict({"DBZ3_TEST_BATTLE": p.get("ids", "13,7,2")},
                                      **({} if p.get("gesto") == "1" else {"DBZ3_TEST_FUSION": p.get("seg", "3")})),
@@ -2557,7 +3518,14 @@ def resolver_escena(spec):
     if juego == "iw" and resto[:1] == ["mini"] and len(resto) == 2:
         if not re.fullmatch(r"0x[0-9A-Fa-f]+", resto[1]):
             raise SystemExit(f"iw:mini:<clave>: la clave es hexadecimal (0x7D9), recibido {resto[1]}")
-        return dict(_PS2, DBZ3_TEST_IWMINI=resto[1] + ",auto"), r"iwmini: salida puesta", aviso
+        clave = int(resto[1], 16)
+        if clave in (0x7D4, 0x7D5, 0x7DA, 0x7DB, 0x7DC):
+            llegada = r"r14: en juego"
+        elif clave in (0x7D6, 0x7E0):
+            llegada = r"terminado; empieza el vuelo"
+        else:
+            llegada = r"iwmini: salida puesta"
+        return dict(_PS2, DBZ3_TEST_IWMINI=resto[1] + ",auto"), llegada, aviso
     if juego == "iw" and resto[:1] == ["mision"] and len(resto) == 2 and resto[1].isdigit():
         return (dict(_PS2, DBZ3_TEST_MISIONES=f"4,reset,desde={resto[1]}", DBZ3_TEST_RINGOUT="1"),
                 r"misiones: iw(?: \(\d+ pasos\)|: mapa de Dragon Mission)", aviso)
@@ -2566,7 +3534,7 @@ def resolver_escena(spec):
         if not m:
             raise SystemExit("satan:ronda<N> (N=0 es el titulo)")
         n = int(m.group(1))
-        return (dict(_PS2, DBZ3_TEST_PASARELA=f"auto,seg=8,desde={n}", DBZ3_TEST_RINGOUT="1"),
+        return (dict(_PS2, DBZ3_TEST_PASARELA=f"auto,seg={os.environ.get('DBZ3_SEG_PRUEBA', '8')},desde={n}", DBZ3_TEST_RINGOUT="1"),
                 rf"pasarela: paso {n + 1}/\d+", aviso)
     if juego == "video" and len(resto) == 1:
         return dict(_PS2, DBZ3_TEST_VIDEO=resto[0]), r"video|sfd", aviso
@@ -2606,6 +3574,22 @@ def _clave_escena(spec):
     return None
 
 
+def _fin_escena(spec):
+    """Fin propio de los minijuegos de IW: R14 (botones) y R12 (vuelo) acaban con sus propias lineas; el marcador
+    generico de iw:mini solo vale para los campos (MSNMW). Asi `correr ... --par fin=1` puede esperarlos."""
+    if spec.startswith("iw:mini:"):
+        try:
+            clave = int(spec.split(":")[2], 16)
+        except (ValueError, IndexError):
+            return FIN_ESCENA.get("iw:mini")
+        if clave in (0x7D4, 0x7D5, 0x7DA, 0x7DB, 0x7DC):
+            return r"r14: (resultado|fin: )"
+        if clave in (0x7D6, 0x7E0):
+            return r"r12: (resultado|fin \()"
+    k = _clave_escena(spec)
+    return FIN_ESCENA.get(k) if k else None
+
+
 def _escena_env(p):
     spec = p.get("escena") or os.environ.get("DBZ3_TEST_ESCENA", "")
     return resolver_escena(spec.split("|")[0])[0] if spec else {}
@@ -2625,10 +3609,10 @@ def _escena(j, par):
     j.t_escena = time.time() - j.t0
     j.info(f"escena '{spec}' puesta a los {j.t_escena:.1f} s del lanzamiento")
     if par.get("fin") == "1":                         # X0g: dejarla correr hasta su final (prueba de igualdad)
-        k = _clave_escena(spec)
-        if not k:
+        rx_fin = _fin_escena(spec)
+        if not rx_fin:
             raise Fallo(f"'{spec}' no tiene fin definido (FIN_ESCENA)")
-        j.log(FIN_ESCENA[k], float(par.get("espera_fin", "240")))
+        j.log(rx_fin, float(par.get("espera_fin", "240")))
         j.t_fin_escena = time.time() - j.t0
         dormir(0.5)
         return
@@ -2645,7 +3629,12 @@ def _escena(j, par):
             j.log(r"tablero b2: guiones terminados", 60)
         t_teclas = time.time()
         for k, v in CM.traducir_teclas(par["teclas"]):
-            dormir(v) if k == "esperar" else j.tecla(k, 150)
+            if k == "esperar":
+                dormir(v)
+            elif k == "captura":
+                j.captura(f"{spec.split(':')[-1]}_{v}")    # fase1_lista: el nombre que espera el dorado
+            else:
+                j.tecla(k, 150)
         j.info(f"guion de teclas repetido en {time.time() - t_teclas:.1f} s")
         time.sleep(max(0.0, float(par.get("quieto", "1.5")) - (time.time() - t_teclas)))
     else:
@@ -2956,7 +3945,10 @@ def _forma_ltrt(j, par):
         raise Fallo(f"el rotulo de forma inicial no aparece tras RT (ruido {ruido:.2f}, medidas {difs})")
 
 
-ZONA_FORMA = (0.16, 0.305, 0.36, 0.345)   # fraccion del lienzo 1280x720: la linea "Normal form" / "Starting form N -> M" de la rueda
+# Fraccion del lienzo 1280x720: el chip de forma ("Normal - Ki x" / "Forma N - ..."). DS142 lo movio de la
+# banda bajo la franja del nombre (0.16,0.305)-(0.36,0.345) a la banda azul sobre la lista de estadisticas,
+# a la derecha del aro (x 492..1110 u, y 113..164 u del area 4:3 -> ~554..1050 x 90..133 px a 720p).
+ZONA_FORMA = (0.42, 0.12, 0.83, 0.19)
 
 
 def _recuadro(png, z):
@@ -3055,6 +4047,21 @@ def _heroe_tecnicas(j, par):
     j.captura("b_tecnicas")
 
 
+def _heroe_moveset(j, par):
+    # DS144: Heroe > Combate > Estilo (A) -> pestana Estilo > A: elige uno de los estilos desbloqueados.
+    # Con DBZ3_TEST_HEROE_TODO=1 hay varios; la prueba navega al siguiente y comprueba el log de la eleccion
+    # (rpg.cpp Guardar lo escribe en la ficha al confirmar).
+    _heroe_a_creacion(j)
+    j.captura("a_creacion")
+    j.tecla("3", 600)                                   # RB: Apariencia -> Combate (cursor en Estilo)
+    j.tecla_hasta_log("Space", r"heroe: pantalla de movesets abierta", 3, 5)   # A en Estilo abre la lista
+    j.captura("b_estilos")
+    j.tecla("D", 600)                                   # siguiente estilo (con DBZ3_TEST_HEROE_TODO hay varios)
+    j.tecla("Space", 800)                               # A: elige el estilo resaltado
+    j.log(r"heroe: estilo \d+ \(.+\) elegido en la lista", 20)
+    j.captura("c_estilo_elegido")
+
+
 def _du_mapa(j, par):
     # C2: Dragon Universe hasta el mapa (pantalla 8) y captura. Con --instantanea freezer_cap2 (el SMOKE la usa).
     _du_continuar(j, dict(par, iter="0"))
@@ -3064,6 +4071,8 @@ def _du_mapa(j, par):
 
 ESCENARIOS["heroe_tecnicas"] = ("C2: Heroe > Movesets > Tecnicas: equipa 2 cartas y el combate las usa",
                                 lambda p: {"DBZ3_TEST_HEROE_TEC": "1", "DBZ3_TEST_RINGOUT": "1"}, _heroe_tecnicas)
+ESCENARIOS["heroe_moveset"] = ("DS144: Heroe > Moveset > pestana Estilo: lista los estilos y elige uno para el combate siguiente",
+                               lambda p: {"DBZ3_TEST_HEROE_TODO": "1"}, _heroe_moveset)
 ESCENARIOS["du_mapa"] = ("C2: DU > Continuar hasta el mapa (pantalla 8) y captura (--instantanea freezer_cap2)",
                          lambda p: {}, _du_mapa)
 
@@ -3101,11 +4110,23 @@ def cargar_escenario(esc, par):
             if shlex.split(p)[0] not in VERBOS:
                 raise SystemExit(f"paso desconocido en {ruta.name}: {p!r}")
         env = dict(_kv(x) for x in d.get("env", []))
-        return d.get("descripcion", ruta.name), (lambda j, _p: ejecutar_dsl(j, pasos)), env
+        escena = d.get("escena")
+        if escena:
+            env.update(resolver_escena(escena)[0])
+        ejecutar = (lambda j, _p: ejecutar_dsl(j, pasos))
+        if escena:
+            def ejecutar_con_escena(j, _p):
+                _escena(j, {"escena": escena})
+                ejecutar_dsl(j, pasos)
+            ejecutar = ejecutar_con_escena
+        return d.get("descripcion", ruta.name), ejecutar, env, None
     if esc not in ESCENARIOS:
         raise SystemExit(f"escenario desconocido '{esc}'. Opciones: {', '.join(ESCENARIOS)} o un .toml")
-    desc, env_fn, fn = ESCENARIOS[esc]
-    return desc, fn, env_fn(par)
+    item = ESCENARIOS[esc]
+    desc, env_fn, fn = item[:3]
+    if esc == "heroe_pieza":
+        _heroe_pieza_valores(par)                        # valida antes de tocar la copia
+    return desc, fn, env_fn(par), (item[3] if len(item) > 3 else None)
 
 
 def correr(copia, escenario, env_extra=(), instantanea=None, par=None, forzar=False):
@@ -3140,11 +4161,11 @@ def _correr(copia, escenario, env_extra=(), instantanea=None, par=None, forzar=F
     t0 = time.time()
     _TL.v = tuple(int(x) for x in par["ventana"].split("x")) if par.get("ventana") else None
     j = Juego(copia, nombre)
-    desc, fn, env = str(escenario), None, {}
+    desc, fn, env, prep = str(escenario), None, {}, None
     ok, msg, t_menu, t_cupo, t_cierre = True, "", None, 0.0, 0.0
     cache_key, cache, preparado, muerto = "", None, False, False
     try:
-        desc, fn, env = cargar_escenario(escenario, par)
+        desc, fn, env, prep = cargar_escenario(escenario, par)
         for k, v in _rapido(escenario, par).items():
             env.setdefault(k, v)
         env.update(_kv(x) for x in os.environ.get("DBZ3_PRUEBAS_ENV", "").split(";") if x)
@@ -3175,8 +4196,12 @@ def _correr(copia, escenario, env_extra=(), instantanea=None, par=None, forzar=F
             print(f"CACHE PASS {nombre} hash={cache_key} turbo={turbo_real:.2f}", flush=True)
             print(f"      log, PNG y escenario: {j.run}", flush=True)
             return resultado
+        if prep:
+            prep(j, par, env)                            # DS130: ficha de la pieza + modelo de combate antes de lanzar
         if instantanea:
             cargar_instantanea(copia, instantanea)
+            if prep:                                     # la instantanea trae su user_data: se reaplica la pieza
+                prep(j, par, env)
         else:
             respaldar(BASE / copia)
         j.lanzar(env)

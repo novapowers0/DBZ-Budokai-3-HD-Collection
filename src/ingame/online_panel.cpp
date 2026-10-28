@@ -676,12 +676,19 @@ void OnlinePanel::OnDraw(ImGuiIO& io) {
     // aviso en la partida (el juego no tiene pantalla para esto). Antes miraba desynced() con el enlace en
     // kPlaying, que no se da nunca (Fail lo pasa a error y borra la marca): un corte en combate no avisaba
     if (lost_notice_ && g_battle.load()) {
-      // en el area del juego y con la letra escalada; el texto largo se envuelve en vez de salirse
+      // DS138: antes iba en ar.At(30,24) con 900 u de ancho: en de/it (97-99 caracteres) ocupaba dos
+      // lineas y tapaba el marcador nativo (y 50..160) y el reloj central. Ahora va ABAJO (base en y 846,
+      // encima de la linea de reglas de y 868), centrado y con la letra mas pequena: por debajo de los
+      // luchadores, como el resto de HUD propio (kHud*). Al perderse el enlace el NetBadge ya no se dibuja.
       const dbz3::ingame::style::Area ar = dbz3::ingame::style::GameArea(io);
-      ImGui::GetForegroundDrawList()->AddText(ImGui::GetFont(), 22.0f * ar.s, ar.At(30, 24), IM_COL32(255, 70, 70, 255),
-                                              T::T("ONLINE: se corto la partida con el otro PC. Al acabar el combate veras el motivo.",
-                                                   "ONLINE: the match with the other PC was cut. You will see why when the fight ends."),
-                                              nullptr, 900.0f * ar.s);
+      const char* msg = T::T("ONLINE: se corto la partida con el otro PC. Al acabar el combate veras el motivo.",
+                             "ONLINE: the match with the other PC was cut. You will see why when the fight ends.");
+      ImFont* font = ImGui::GetFont();
+      const float fs = 18.0f * ar.s, wrap = 900.0f * ar.s;
+      const ImVec2 ts = font->CalcTextSizeA(fs, FLT_MAX, wrap, msg);
+      const ImVec2 c = ar.At(600, 846);
+      ImGui::GetForegroundDrawList()->AddText(font, fs, ImVec2(c.x - ts.x * 0.5f, c.y - ts.y),
+                                              IM_COL32(255, 70, 70, 255), msg, nullptr, wrap);
     }
     editing_ = false;
     if (s.link() == Link::kPlaying) NetBadge(io, s);   // retardo y ping, en menus y en combate

@@ -2113,9 +2113,18 @@ DBZ3_HOOK_EU(sub_821A5A30) {
   orig(ctx, base);
   std::lock_guard<std::mutex> lk(g_mu);
   const uint32_t obj = REX_LOAD_U32(kWtScreen);
-  for (uint32_t p = 0; obj && p < 2; ++p) {
+  if (!obj) return;
+  for (uint32_t p = 0; p < 2; ++p) {
     const int i = int8_t(REX_LOAD_U8(kWt + 36688 + p));
     if (i < 0 || i >= 32 || g_t_id[size_t(i)] < 0) continue;
+    // El byte de partida (+31/+32) es un ID de casilla del juego (0-63); un ID logico fuera de ahi no se escribe.
+    if (g_t_id[size_t(i)] > 63) continue;
+    // DS193 (issue #55): este gancho corre en el tick del cuadro. Con el torneo ya terminado (obj+104 = 1, lo pone
+    // sub_821A3260 tras el ultimo combate) el objeto puede seguir vivo mientras la tarea del cuadro se apaga: no se
+    // toca `partida+31/32` ahi. Escribir un ID de otra ronda despues del final dejaba al juego cargando el modelo.
+    // (El objeto del cuadro es 1388 B y +104 es el aviso de "terminado", docs/12_conectores/12_torneo_como_motor.md s2.2.)
+    // Se mira solo con un participante de mod en juego: sin lista propia este gancho no toca nada, como antes.
+    if (REX_LOAD_U32(obj + 104)) return;
     if (REX_LOAD_U16(obj + 748 + 20 * uint32_t(i) + 8) != uint32_t(g_t_cell[size_t(i)])) continue;
     if (REX_LOAD_U8(kGame + 31 + p) != uint32_t(g_t_id[size_t(i)])) {
       REX_STORE_U8(kGame + 31 + p, uint8_t(g_t_id[size_t(i)]));

@@ -96,6 +96,20 @@ namespace {
 dbz3::net::rb::DumpRing* g_dump = nullptr;
 const char* g_who = "x";
 void OnSumBad(uint32_t tick, uint32_t) { if (g_dump) g_dump->Dump(tick, g_who); }
+// Tag Team online: al cargar el luchador que entra, el juego guarda en el bloque del luchador un puntero
+// al recurso nuevo (+0x1ED0, dentro del bloque de 8240 B) que cae en un monton distinto en cada PC. No es
+// simulacion: el mismo recurso en los dos, y el RNG/acciones/posiciones coinciden. Se mide con DBZ3_RB_DUMP
+// (primer tick del relevo: 14 dwords distintos; 13 ya estan en kMaskMgr/kMaskFighter, el resto es este).
+// Se anula solo cuando los dos equipos de Tag Team estan montados (la suma es diagnostico: el Tag Team no
+// lleva rollback, RbBegin lo excluye).
+dbz3::net::rb::Sums SumsTagTeam(uint8_t* base, uint32_t m) {
+  namespace rb = dbz3::net::rb;
+  static thread_local std::array<uint8_t, rb::kMgrLen> tmp;
+  std::memcpy(tmp.data(), base + m, rb::kMgrLen);
+  for (int f = 0; f < 2; ++f)
+    std::memset(tmp.data() + rb::kFight0 + f * rb::kFightSz + 0x1ED0, 0, 4);
+  return rb::ComputeBuf(tmp.data(), REX_LOAD_U32(rb::kRngAddr));
+}
 #ifdef _WIN32
 dbz3::net::rb::Gate g_gate;
 #endif
@@ -211,7 +225,9 @@ bool RbFrame(uint8_t* base, dbz3::net::Session& s) {
       g_who = s.role() == dbz3::net::Role::kHost ? "host" : "guest";
       dbz3::net::Session::sum_hook = &OnSumBad;
     }
-    const auto sm = dbz3::net::rb::Compute(base, m);
+    // Tag Team online: el relevo deja un puntero de monton distinto en cada PC (ver SumsTagTeam)
+    const bool tag = dbz3::tag::DynamicTeam(0).size() >= 2 || dbz3::tag::DynamicTeam(1).size() >= 2;
+    const auto sm = tag ? SumsTagTeam(base, m) : dbz3::net::rb::Compute(base, m);
     if (g_dump) g_dump->Put(base, m, s.tick());
     s.NoteSum(s.tick(), sm.b);
 #ifdef _WIN32

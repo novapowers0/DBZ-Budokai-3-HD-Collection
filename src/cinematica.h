@@ -38,20 +38,52 @@ struct Paso {
   std::vector<std::array<float, 2>> cam_fov, cam_roll;
   bool estilo_b1 = false;    // A3b: sin bandas de cine y con el subtitulo de B1 (blanco con borde negro, abajo al centro de la imagen)
   bool sin_ayuda = false;    // DS13: no dibujar el rotulo "A Siguiente / START Saltar" en este paso (las tomas del READY de B1 no lo tienen)
+  // DS16: pose de brazos de B1 compuesta sobre el hueso del luchador 1 (Mr. Satan): las direcciones de brazo y antebrazo
+  // medidas en la toma 1 de B1 (0xC0) se aplican a la tabla de huesos del dibujo cada cuadro. El resto del cuerpo sigue
+  // con el clip de B3 del paso.
+  bool brazos_b1 = false;
+  // DS16: separacion final de los dos luchadores en este paso (0 = la de la escena). Se interpola en todo el paso desde
+  // la separacion de la escena: B1 los lleva al centro del ring antes del READY (30 -> 10 unidades).
+  float distancia_final = 0.0f;
   bool fov_acerca = false;   // A3b: B3 proyecta con su 0,785 fijo (escribir mgr+0x1C4 no cambia nada): el fov de cam_fov se logra acercando el ojo al objetivo en tan(fov/2)/tan(0,3925)
+  // DS168: usa el mismo camino de camara directa que `fov_acerca` (y publica la camara para los props) pero NO acerca
+  // el ojo al objetivo. En la toma del coche de la llegada el sujeto esta al lado de la camara: acercar el ojo 39,5 %
+  // (0,491 -> 0,785) lo dejaba detras y, como el objetivo baja bajo el suelo, hundia la camara en el terreno.
+  bool fov_acerca_sin_mover = false;
+  // DS31: no dibujar el cuerpo del lado 2 (X+3261/X+4925, los flags que usa el juego para el perdedor y el relevo).
+  // En el final de B1 Cell solo existe en el primer plano (su clip dura 650 cuadros): despues no sale en ningun
+  // encuadre (el de la reportera incluido) y en el puerto el luchador de B3 seguia ahi.
+  bool ocultar_lado2 = false;
   // s9b: true = ojo/objetivo van en el marco de los dos luchadores (origen = punto medio, x hacia el lado 2, y arriba,
   // z = perpendicular a su izquierda) en vez de en coordenadas del mundo: asi una toma vale en cualquier escenario.
   bool rel = false;
+  // DS143: ancla de la camara de B1 sobre un luchador. `cam_ancla` son las posiciones de ese actor en el mundo de B1
+  // por cuadro ({cuadro, x, y, z}) y `cam_ancla_lado` el lado del port (0/1) que lo representa; la camara se desplaza
+  // cada cuadro por (posicion del luchador - posicion de B1). Asi las tomas de B1 valen con los luchadores en su sitio
+  // del escenario de B3 (sin sacarlos del ring). -1 = camara de B1 tal cual (planos del ring).
+  std::vector<std::array<float, 4>> cam_ancla;
+  int cam_ancla_lado = -1;
+  // DS185: el objetivo de B1 es un punto del CUERPO del actor, y el de B3 se DIBUJA en la pose de la escena (Satan en
+  // guardia, con la cadera ~3 u mas baja que el bind): con el `y` absoluto de B1 el luchador se hundia en el 2.o tramo
+  // del clip 5 y en el 7 (solo el pelo por el borde inferior; DS170). El objetivo se lleva a la MISMA fraccion de la
+  // recta cintura->cabeza del cuerpo DIBUJADO y el ojo se desplaza lo mismo (el angulo de la toma no cambia).
+  // Los dos puntos salen del esqueleto que pinta el juego ([X+2952]+1032, anclajes 0=cintura y 3=cabeza de X+2956);
+  // NO de la tabla X+1616, que solo se refresca en los estados 3/4/5/8 y en la llegada conserva la escena anterior.
+  // `cuerpo_suelo_b3` = altura de la cadera del modelo de B3 sobre la suela que se resto en `cam_ancla` (Satan 11,438);
+  // `cuerpo_cabeza_b1` = hueso de la cabeza de B1 sobre su cintura (STN_HEAD 6,942 - STN_WAIST -0,972 = 7,914).
+  // DS186: `cuerpo_cintura_b1` = cintura de B1 sobre el suelo de la escena en las tomas `rel` (marco de los luchadores)
+  // o cuya camara va girada sobre el ancla (previa): alli `cam_ancla` no existe y el dato va aparte. 0 = no usar.
+  bool objetivo_cuerpo_b3 = false;
+  float cuerpo_suelo_b3 = 0.0f, cuerpo_cabeza_b1 = 7.914f;
+  float cuerpo_cintura_b1 = 0.0f;
+  // DS145: giro (radianes, alrededor de Y) que se aplica al desplazamiento de la camara de B1 relativo al actor antes de
+  // llevarlo al sitio del luchador de B3. B1 coloca a los actores de la escena de los Juegos de Cell mirando a lo largo
+  // de Z (Cell en z=20,3 mira a Goku en z=-12) y B3 enfrenta a los dos lados a lo largo de X: +pi/2 lleva la toma de B1
+  // al mismo lado del cuerpo de B3 (la revision de DS145: sin el, el primer plano de Cell salia casi de perfil).
+  float cam_ancla_giro = 0.0f;
   std::function<void()> al_empezar;   // S5-A3: se llama al empezar el paso (hilo del juego); p.ej. la musica del combate
 };
 
-// S1 (Leyenda de Mr. Satan): cara del luchador 1 por tramos de la escena. En B1 la cara es una malla fija con textura;
-// en B3 cada expresion es una malla (XSTN_L01/L18/...). El campo del registro del luchador que elige la malla se
-// escribe desde el gancho Fotograma (hilo del juego, al empezar el dibujo) cada cuadro del tramo.
-struct TramoCara {
-  float desde = 0, hasta = 0;   // segundos desde el principio de la escena
-  int valor = 0;                // valor del campo (ver docs de la sonda DBZ3_TEST_CARA)
-};
 // Y+B mantenidos (XInput, mando virtual del lado; como la pose del relevo del Tag Team, acciones 20/21). ponytail:
 // medido 2026-10-16 al empezar la pelea: da la accion 15 unos 40 cuadros y vuelve a 0, sin carga visible. Sin usar.
 constexpr uint16_t kCargarKi = 0xA000;
@@ -64,9 +96,6 @@ struct Escena {
   std::filesystem::path iso_voces;   // ISO de B1 de las voces
   float volumen = 1.0f;
   float distancia = 0;   // > 0: los dos a esta distancia (unidades de B3) durante la escena, con su punto medio
-  // S1: cara del luchador 1 (Satan) por tramos. `campo_cara` = offset en el registro X del luchador (0 = apagado).
-  int campo_cara = 0;
-  std::vector<TramoCara> caras;
   // S1 (A3 O3 #1): al empezar y al acabar la escena (hilo del juego). La leyenda los usa para callar la mezcla de B3
   // mientras suena la musica de B1 (pasarela.cpp) y para devolverla.
   std::function<void()> al_empezar_escena, al_terminar_escena;
@@ -85,7 +114,22 @@ void Fotograma(uint8_t* base, uint32_t estado);
 void Mando(uint8_t* base, uint32_t usuario);
 // A3b: tras la funcion de camara del juego (sub_820F47E0, ver cinematica.cpp): pone la camara de la escena (ojo, objetivo, vista) sin mezcla.
 void AplicarCamaraDirecta(uint8_t* base);
-// S1: camara del primer plano de la cara de la sonda (DBZ3_TEST_CARA) en un combate nativo, sin escena.
+// DS178: al acabar un combate "solo escena", saltar la victoria/resultado del combate de B3 (estados 5-7: 3,0 s de
+// pose + 0,2 s) llamando a la salida al resultado del propio juego (sub_820FF820, escribe el estado 8 y rellena el
+// resultado) en cuanto el combate llega al estado 5. Una sola vez por combate; DBZ3_SIN_RESULTADO_RAPIDO=1 lo deja como
+// estaba. QuitarResultadoRapido lo desarma si el combate acaba sin pasar por el estado 5.
+void PedirResultadoRapido();
+void QuitarResultadoRapido();
+// DS30: camara exacta del paso en curso (ojo, objetivo y giro) para lo que se pinta fuera del juego (props del final de
+// la Leyenda de Mr. Satan). Evita leer mgr+0x60: la camara del guest alterna entre el valor nativo y el de la escena (la
+// mezcla 0,8/0,2) y el prop temblaba. false si no hay escena con camara fijada (`fov_acerca`).
+bool CamaraEscena(float ojo[3], float objetivo[3], float* giro);
+// DS145: desplazamiento que el ancla del paso en curso aplica a la camara de B1 (posicion del luchador de B3 menos la
+// del actor de B1). Los props que se pintan en el mundo de B1 (coche/humo de la llegada) tienen que moverse lo mismo.
+// false si el paso no tiene ancla o si el ancla lleva giro (las tomas de la previa, sin props).
+bool AnclaDelta(float d[3]);
+// S1: camara del primer plano de la cara de la sonda (DBZ3_TEST_CARA) en un combate nativo, sin escena. DS154: con
+// DBZ3_TEST_CARA_HUESO (codo/mano derecha o izquierda) y dbz3_cam.req encuadra de cerca las articulaciones del brazo.
 void AplicarCamaraSonda(uint8_t* base);
 
 }  // namespace dbz3::cinematica

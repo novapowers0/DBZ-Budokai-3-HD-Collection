@@ -30,7 +30,7 @@ void AbrirMapa();
 Accion MapaUI(ImDrawList* dl, const dbz3::ingame::style::Area& a, float t, uint16_t p);
 
 // Movesets (studies 8 fase 2): rejilla con los donantes validos (cara + nombre), el elegido marcado y su ficha.
-void AbrirMovesets();
+void AbrirMovesets(bool estilo = false);   // DS144: false = Moveset, true = pestana Estilo
 Accion MovesetsUI(ImDrawList* dl, const dbz3::ingame::style::Area& a, float t, uint16_t p);
 
 // Fichas de heroe (K): lista de las 8 fichas de cac.toml, duplicar (X) y archivar (Y) sin salir del modo.

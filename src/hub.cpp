@@ -34,12 +34,17 @@ struct Request {
   int hp[2] = {0, 0};     // 0 la normal; > 0 vida inicial y maxima (rec+36/+40, 1000 por barra); < 0 solo la
                           // inicial (-hp), la maxima la de serie (vida que no se recupera: la barra no se acorta)
   int form[2] = {0, 0};   // forma inicial (rec+20; 0 la base)
+  int mode = 0;           // DS170: modo de la CFG (CFG+338); 0 = el de siempre (1 = presentacion del Duelo)
 };
 Request g_req;
 // 0 nada; 1 pedido (lo recoge la espera del menu principal); 3 combate nuestro en curso; 4 encadenado: el
 // siguiente combate sale tras este sin pasar por el menu principal
 std::atomic<int> g_phase{0};
 std::atomic<bool> g_chain{false}, g_hold{false}, g_nocaps{false};
+// DS170: modo de la CFG para el siguiente combate pedido (0 = el de siempre). Lo usan los combates "solo escena"
+// (pasarela.cpp) para no gastar 2,65 s de vuelo de entrada que el negro tapa: con el modo 5 el combate va directo
+// al READY (hub.cpp, comentario de Launch; medido en las pruebas de D1_final). Se consume al pedir.
+std::atomic<int> g_mode_next{0};
 
 Request Make(int id1, int id2, int stage, bool p2_com, int time_s, int hp1, int hp2, int form1, int form2) {
   Request r;
@@ -64,12 +69,15 @@ bool RequestBattleEx(int id1, int id2, int stage, bool p2_com, int time_s, int h
     return false;
   }
   g_req = Make(id1, id2, stage, p2_com, time_s, hp1, hp2, form1, form2);
+  g_req.mode = g_mode_next.exchange(0);   // DS170
   g_phase = 1;
   return true;
 }
 bool RequestBattle(int id1, int id2, int stage, bool p2_com) {
   return RequestBattleEx(id1, id2, stage, p2_com, 0, 0, 0, 0, 0);
 }
+// DS170: modo de la CFG del siguiente combate pedido (0 = el de siempre).
+void BattleModeNext(int mode) { g_mode_next = mode; }
 bool OwnBattle() { return g_phase.load() == 3; }
 // C3: abre Dragon Universe en la casilla `slot` (la del Heroe) sin pasar por su titulo, su menu ni su rueda de
 // personajes (el Heroe es exclusivo de su modo). Lo lanza el menu principal en su siguiente tick.
@@ -97,6 +105,7 @@ bool ChainBattleEx(int id1, int id2, int stage, bool p2_com, int time_s, int hp1
     return false;
   }
   g_req = Make(id1, id2, stage, p2_com, time_s, hp1, hp2, form1, form2);
+  g_req.mode = g_mode_next.exchange(0);   // DS170
   g_chain = true;
   return true;
 }
@@ -183,8 +192,9 @@ void Launch(PPCContext& ctx, uint8_t* base, bool from_menu) {
   // escenario y entrada de los luchadores (START la salta). Medido 2026-10-15: estados 1 (vuelo, 14 s), 2 (entradas,
   // 6 s), 3 READY, 4 pelea; la vuelta por "Return to Main Menu" da resultado 2. Con el 5 iba directo al READY.
   // (CFG+352 != -1 en el modo 5 no sirve: es un indice y cascaba.) DBZ3_HUB_MODE=5 para probar sin presentacion.
+  // DS170: q.mode (hub::BattleModeNext) permite pedirlo por combate; el entorno sigue mandando (pruebas).
   const char* mode = std::getenv("DBZ3_HUB_MODE");
-  REX_STORE_U16(kCfg + 338, uint16_t(mode ? std::atoi(mode) : 1));
+  REX_STORE_U16(kCfg + 338, uint16_t(mode ? std::atoi(mode) : q.mode ? q.mode : 1));
   if (q.time_s) REX_STORE_U32(kCfg + 348, q.time_s > 0 ? uint32_t(q.time_s) : 0xFFFFFFFFu);
   REX_STORE_U8(kGame + 1, 6);   // G+1 = 6: la vuelta de la escena 25
   ctx = saved;
@@ -211,8 +221,9 @@ void Launch(PPCContext& ctx, uint8_t* base, bool from_menu) {
   ctx = saved;
   g_phase = 3;
   REXLOG_INFO("dbz3 hub: combate nativo{}: id {} contra id {} (escenario {}, mandos {} / {}, tiempo {}, vida {} / {}, "
-              "forma {} / {})", from_menu ? "" : " encadenado", q.id[0], q.id[1], q.stage, q.pad[0], q.pad[1],
-              q.time_s, q.hp[0], q.hp[1], q.form[0], q.form[1]);
+              "forma {} / {}, modo {})", from_menu ? "" : " encadenado", q.id[0], q.id[1], q.stage, q.pad[0], q.pad[1],
+              q.time_s, q.hp[0], q.hp[1], q.form[0], q.form[1],
+              mode ? std::atoi(mode) : q.mode ? q.mode : 1);
 }
 }  // namespace
 

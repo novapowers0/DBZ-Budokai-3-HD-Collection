@@ -50,14 +50,23 @@ float Envolver(float d, float periodo);
 
 // Camara del vuelo (CameraFocusWhileFlying EU 0x339AA0: distancia 52.2 por detras y cabeceo -0x800 = -11,25 grados,
 // girada con el personaje): ojo y objetivo para `pos` (pies) y `yaw` (u16, 1/65536 de vuelta, delante = (sin, cos)).
-// `alto`: altura del objetivo sobre los pies. Ponerla con dbz3::cine::Camara(base, ojo, obj) en el hilo del juego.
-void CamaraVuelo(const float pos[3], int yaw, float ojo[3], float obj[3], float alto = 8.0f, float dist = 52.2f,
+// `alto`: altura del objetivo sobre los pies. DS117: 6,0 (entre el 5,7755 de DS87 y el ancla (0,7,0) de 0x482ff0),
+// no el 8,0 de DS90: con la distancia corregida deja los pies al 74,9 % y la cabeza al 41,7 % (el fotograma 815s
+// mide 74,7/41,3). El FOV de IW es 40 grados HORIZONTALES de la pantalla 4:3 (Camera_InitFieldDefault EU 0x297140):
+// el vertical equivalente es 30,8 grados. DS92 midio en el port (iw_mini_botones.cpp, s8) que escribir mgr+0x1C4 al
+// empezar el dibujo NO cambia la proyeccion del juego: el 3D sale con el 0,785 de B3 y solo lo leen los overlays.
+// Por eso el vuelo no escribe ese campo y pasa a CamaraVuelo la distancia multiplicada por 0,665 (FOV) y 0,84 (la
+// silueta de la pose de B3 es mas compacta que la de IW), que deja el tamano de IW. `dist` sigue siendo la
+// distancia de CameraFocusWhileFlying (52,2 + zoom) ya compensada.
+void CamaraVuelo(const float pos[3], int yaw, float ojo[3], float obj[3], float alto = 6.0f, float dist = 52.2f,
                  int cabeceo = -0x800);
-// Punto delante de la camara del combate como la flecha del vuelo (World_CharacterLoader USA 0x33B1E8: matriz de la
-// camara por (0, -9, -45) de 0x482AA0): `adelante` por delante del ojo y `abajo` por debajo. false sin camara.
+// Punto delante de la camara del combate como la flecha de IW (World_CharacterLoader EU 0x33B580: matriz de la
+// camara por (0, -9, -45) de 0x483250): `adelante` por delante del ojo y `abajo` por debajo. false sin camara.
+// La flecha del vuelo ya no lo usa (DS119: va en mundo bajo los pies, ver iw_mini_vuelo.cpp); queda para otros modos.
 bool DelanteDeCamara(uint8_t* base, float adelante, float abajo, float out[3]);
-// Proyeccion con la camara del combate (vista mgr+0x60, fov mgr+0x1C4; ps2::CamaraCombate): punto del mundo -> pixel
-// de una pantalla ancho x alto y pixeles por unidad a esa distancia. false si queda detras.
+// Proyeccion con la camara del cuadro que B3 DIBUJA (la publica el gancho de sub_820F4300: ojo/objetivo del render +
+// balanceo; fov mgr+0x1C4 y rectangulo de la imagen del juego). Sin cuadro publicado cae a la vista mgr+0x60, como
+// antes. Punto del mundo -> pixel de una pantalla ancho x alto y pixeles por unidad a esa distancia. false si queda detras.
 bool Proyectar(uint8_t* base, float ancho, float alto, const float p[3], float& x, float& y, float& px_por_unidad);
 
 // Personaje de IW que el jugador lleva en el mapa de Dragon Mission (en IW: tabla 0x47D450 [DM+0x374] -> descriptor de la

@@ -531,7 +531,9 @@ class CombatePanel : public rex::ui::ImGuiDialog {
     const int64_t ahora = NowMs();
     if (r != ultima) ultima = r, hasta = ahora + 4000;
     hasta = std::max(hasta, g_inicio_ms.load() + 4000);
-    if (!r.empty() && ahora < hasta) S::MenuText(dl, a.At(600.0f, 868.0f), 22.0f * a.s, r.c_str(), false, false);
+    // DS138: tope de ancho (1080 u de 1200) para que las reglas no se salgan del area con idiomas largos
+    if (!r.empty() && ahora < hasta)
+      S::MenuText(dl, a.At(600.0f, 868.0f), 22.0f * a.s, r.c_str(), false, false, 1080.0f * a.s);
   }
 };
 

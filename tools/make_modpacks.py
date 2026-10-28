@@ -85,7 +85,11 @@ RES_FILES = ["Budokai_3_Capsules_IDs.txt", "Dragon Ball Z Infinite World Capsule
 GAME_ENTRIES = ["campos_iw", "escenarios_convertir", "iso", "importar", "vista_heroe", "roster_build",
                 "swap_b3", "texture_b3", "texture_pack", "texture_dump_import", "capsulas", "colores", "gritos",
                 "hornada_support", "voces", "model_render", "heroe_sagas_a_du", "nombre_levelup", "campana",
-                "retrato_anime", "tecnicas_tipo"]
+                "retrato_anime", "tecnicas_tipo",
+                # 25/10: las figuras grandes de B2 (vineta del tablero, rueda de la nave) con el modelo de B3 y la animacion
+                # de B2 (pasarela_nave.cpp CorrerVista); sin ellos el juego caia siempre al modelo de B2. Y las cartas de
+                # tecnicas del Modo Heroe (heroe_ui.cpp GenerarCon)
+                "vista_b2", "vista_nave", "tecnicas_cartas"]
 
 
 def kit_modules(entries=None):
@@ -228,8 +232,9 @@ def kit_pack(ver, stage, dry=False):
     return out
 
 
-def game_stage(stage):
-    """Anade al stage del zip del juego los scripts (con sus imports), sus datos y el Python portatil minimo."""
+def copiar_scripts_juego(stage):
+    """Los scripts que el juego lanza (GAME_ENTRIES, con sus imports) y sus datos, con las rutas del juego. Lo usan el zip
+    del juego y las copias de prueba (tools/pruebas.py prep). Devuelve cuantos scripts copio."""
     mch = os.path.join(stage, "mod center hd")
     awo = os.path.join(stage, "awo_tools")
     os.makedirs(os.path.join(mch, "cac"), exist_ok=True)
@@ -248,6 +253,13 @@ def game_stage(stage):
         shutil.copyfile(os.path.join(ROOT, "mod center hd", f), os.path.join(mch, f))
     for f in AWO_DATA:
         shutil.copyfile(os.path.join(ROOT, "awo_tools", f), os.path.join(awo, f))
+    return n
+
+
+def game_stage(stage):
+    """Anade al stage del zip del juego los scripts (con sus imports), sus datos y el Python portatil minimo."""
+    n = copiar_scripts_juego(stage)
+    mch = os.path.join(stage, "mod center hd")
     sys.path.insert(0, os.path.join(ROOT, "tools"))
     import make_python_bundle  # noqa: PLC0415
     py = os.path.join(stage, "python")

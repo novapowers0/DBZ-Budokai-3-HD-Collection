@@ -84,6 +84,7 @@ def work_dir():
 WRITTEN = set()     # (afs, entrada) escritas en este montaje: lo que sobre en su data_cmn va a mods_respaldo
 CMN = {}            # bloque de contenedores propios de data_cmn (reservar_cmn): base, siguiente
 SHARED = {}         # contenedor compartido -> su copia en el bloque propio
+SAGA_CODES = {}     # [codigos_saga] DS20: saga del Heroe -> {casilla, mapa, combate, dialogo, intro} propios
 CMN_LO, CMN_HI, CMN_N = 6000, 8192, 64   # lejos de _roster (3990+) y de los escenarios (5000+)
 NATIVE_DU = 0x400023C9D   # casillas con historia del juego (Goku 0 ... Broly 34)
 
@@ -613,19 +614,27 @@ def story(cfg, us, mod, work):
     s_fight, s_after = int(h.get("guion_combate", 2866)), int(h.get("guion_tras_combate", 2495))
     panel = int(h.get("fondo", 1411))
     # C4 (sagas 4-8 del Heroe): las 3 primeras sagas de la historia usan los codigos del juego (5100+, 5500+, 5900+...);
-    # de la 4.a en adelante, codigos VIRTUALES (el juego no los calcula: son datos de las escenas): mapa 12000+, combate
-    # 12500+ (campaigns.cpp los reconoce), dialogo 13000+, introduccion 14001+, cierre 14000+, de 100 en 100 por saga.
-    # H4: tras los 3 bloques desde saga0 (5100-5300) queda el bloque 0 (5000/5400/5800 + casilla, introduccion 100),
-    # libre en las casillas 35-37 y dentro del rango que el motor DU reproduce: es la saga 4 REAL. Lo demas, virtual.
+    # la 4.a usa el bloque 0 (5000/5400/5800 + casilla, introduccion 100), libre en las casillas 35-37. Las sagas 5+
+    # NO pueden usar codigos virtuales (el motor DU solo reproduce los rangos nativos: HS4 lo midio): reutilizan el
+    # bloque 0 y cada una tiene sus contenedores propios ([codigos_saga]), que campaigns.cpp elige por heroe::Saga().
     blk = lambda s: s if s - saga0 < 3 else s - saga0 - 3
     virt = lambda s: s >= 2 * saga0 + 3
-    vj = lambda s: s - 2 * saga0 - 3
-    mapc = lambda s: 12000 + 100 * vj(s) + slot if virt(s) else 5000 + 100 * blk(s) + slot
-    bcode = lambda s: 12500 + 100 * vj(s) + slot if virt(s) else int(h["combates"]["codigo"]) + 100 * (blk(s) - saga0)
-    dcode = lambda s: 13000 + 100 * vj(s) + slot if virt(s) else int(dlg["codigo"]) + 100 * (blk(s) - saga0)
-    intro_c = lambda s: 14001 + 2 * vj(s) if virt(s) else 100 + 2 * blk(s)
-    outro_c = lambda s: 14000 + 2 * vj(s) if virt(s) else 99 + 2 * blk(s)
+    mapc = lambda s: 5000 + slot if virt(s) else 5000 + 100 * blk(s) + slot
+    bcode = lambda s: 5400 + slot if virt(s) else int(h["combates"]["codigo"]) + 100 * (blk(s) - saga0)
+    dcode = lambda s: 5800 + slot if virt(s) else int(dlg["codigo"]) + 100 * (blk(s) - saga0)
+    intro_c = lambda s: 100 if virt(s) else 100 + 2 * blk(s)
+    outro_c = lambda s: 99 if virt(s) else 99 + 2 * blk(s)
     n = 0
+
+    def cont_s(s, code, fam):
+        """Contenedor de un codigo de una saga virtual (5+): el codigo es nativo (bloque 0) pero cada saga
+        escribe su escena en una entrada propia y campaigns.cpp la elige por la saga en curso ([codigos_saga])."""
+        if not virt(s):
+            return cont(code)
+        row = SAGA_CODES.setdefault(s, {"casilla": slot})
+        if fam not in row:
+            row[fam] = nueva_entrada()
+        return row[fam]
 
     def text(bank, c, key, style):
         """`paginas` (p. ej. dialogo_paginas = ["1252.1", 0, "1252.2"]): paginas del juego ("banco.pagina"
@@ -761,7 +770,7 @@ def story(cfg, us, mod, work):
     bword = lambda i: (bcode(place[i][0]) << 16) | (2 * place[i][1])
     # casilla 0 como las marcas sueltas del juego; el op 24 siempre lleva 9 palabras
     mark = lambda i: [24, 0, bword(i)] + list(chapters[i].get("marca", [1, 2, 5462, 54, -5448, 1000]))
-    fights, talks, intros, maps = {}, {}, {}, {}
+    fights, talks, intros, intros_s, maps = {}, {}, {}, {}, {}
     for i, c in enumerate(chapters):
         if "combate" not in c:
             continue
@@ -849,7 +858,7 @@ def story(cfg, us, mod, work):
                                         tuple(fin_music), (11, 0, pic[0]), (12, 0, pic[1]), (11, 1, pic[0]), (12, 1, pic[1])])
             write_container(mod, int(fin["contenedor"]), b, work)
             n += 1
-        elif nxt.get("saga") and not virt(place[i + 1][0]):   # cierre de saga -> guardar -> introduccion (las virtuales 4-8: abajo, vuelta al mapa)
+        elif nxt.get("saga"):   # cierre de saga -> guardar -> introduccion (la 5+ reutiliza la intro 100 con su contenedor)
             s2 = place[i + 1][0]
             intro, outro = intro_c(s2), outro_c(s2)
             if str(outro) in reg:   # H4: la 99 (cierre del bloque 0) no existe en el juego; sin 103 de todos modos (C8)
@@ -857,6 +866,13 @@ def story(cfg, us, mod, work):
                              ([(20, 0, (intro << 16) | slot)] + ([(47, 0, int(nxt.get("planeta", 0)))] if os.environ.get("HEROE_PLANETA_SIN_GUARDAR") else [])) if h.get("sin_guardar") else
                              [(20, 0, (intro << 16) | slot), (50, 0, 0), (47, 0, int(nxt.get("planeta", 0)))])
             parts = narration(narr(i + 1), nxt, "")
+            if virt(s2):   # DS20: el cierre de la saga anterior no tenia escena (99 no existe): sus paginas van
+                # delante de la intro en el MISMO panel (dos narraciones encadenadas dejaban la escena negra
+                # y el combate siguiente colgado; una sola narracion, como la intro 100 de la saga 4, si va)
+                look = dict(nxt)
+                look["es"] = list(nxt.get("cierre_es", [])) + list(nxt.get("es", []))
+                look["en"] = list(nxt.get("cierre_en", [])) + list(nxt.get("en", []))
+                parts = narration(narr(i + 1), look, "")
             # `objetos_mapa_de` = "104.0": los objetos del mapa (op 29, por nombre) de una introduccion del
             # juego, como hace la de Namek a mano. Sin ellos R1 en la Tierra cerraba el juego (2026-10-12)
             objs = []
@@ -865,7 +881,11 @@ def story(cfg, us, mod, work):
                 objs = [e for e in lst_events(read_entry(us, "data_cmn.afs", cont(int(oc)), work), int(oe)) if e[0] == 29]
             _ops = [(22, 0, 0), tuple([44, 0] + list(nxt["salida"]))] + objs +                    [(54, 0, 0), tuple(mark(i + 1)), (20, 0, mapc(s2) << 16)]   # a su llegada al mapa
             _quitar = {int(x) for x in os.environ.get("HEROE_QUITAR_OPS", "").split(",") if x.strip()}   # C7: pruebas de bisecacion
-            intros[intro] = (parts, [e for e in _ops if e[0] not in _quitar])
+            if virt(s2):
+                cont_s(s2, intro, "intro")   # asigna su entrada propia
+                intros_s[s2] = (parts, [e for e in _ops if e[0] not in _quitar])
+            else:
+                intros[intro] = (parts, [e for e in _ops if e[0] not in _quitar])
             tail = [(22, 0, 0)] + ([(47, 0, int(nxt.get("planeta", 0)))] if h.get("sin_guardar") and not os.environ.get("HEROE_SIN_PLANETA") and int(nxt.get("planeta", 0)) != next((int(x["planeta"]) for x in reversed(chapters[:i + 1]) if "planeta" in x), 1) else []) + [(20, 0, ((outro if os.environ.get("HEROE_CON_103") else intro) << 16) | slot)]   # C8: SIN la escena de cierre 103 (con ella, el 1.er combate de la saga siguiente se cuelga: la cola de cargas del juego no termina); HEROE_CON_103=1 la deja
         else:                                           # sigue la saga: la marca del combate siguiente
             # y, como el juego (2138.1 -> 5100.5), se vuelve al mapa por una escena del mapa: una frase
@@ -911,11 +931,11 @@ def story(cfg, us, mod, work):
                                 [(22, 0, 0), tuple([44, 0] + list(c0["salida"]))] + objs + [(54, 0, 0), tuple(mark(0)),
                                  (20, 0, mapc(s0) << 16)])
     for s in fights:
-        write_entry(mod, "data_cmn.afs", cont(bcode(s)), lst_build(fights[s]), work)
-        write_entry(mod, "data_cmn.afs", cont(dcode(s)), lst_build(talks[s]), work)
+        write_entry(mod, "data_cmn.afs", cont_s(s, bcode(s), "combate"), lst_build(fights[s]), work)
+        write_entry(mod, "data_cmn.afs", cont_s(s, dcode(s), "dialogo"), lst_build(talks[s]), work)
         n += 2
     for s in maps:                       # escenas del mapa (vuelta tras ganar)
-        write_entry(mod, "data_cmn.afs", cont(mapc(s)), lst_build(maps[s]), work)
+        write_entry(mod, "data_cmn.afs", cont_s(s, mapc(s), "mapa"), lst_build(maps[s]), work)
         n += 1
     # introducciones y cierres de saga: la entrada de la casilla en una copia del contenedor (lo comparten
     # todas las historias); las imagenes de mas van en entradas nuevas de la copia, encadenadas con op 20
@@ -927,6 +947,16 @@ def story(cfg, us, mod, work):
         if len(parts) > 1:
             b = lst_append(b, [(hdr, ev + ch) for (hdr, ev), ch in zip(parts[1:], chain[1:])])
         write_container(mod, cont(ic), b, work)
+        n += 1
+    for s, (parts, tail) in intros_s.items():   # DS20: intro propia de una saga 5+ (codigo 100, contenedor [codigos_saga])
+        ic = intro_c(s)
+        b = read_entry(us, "data_cmn.afs", cont(ic), work)
+        n0 = struct.unpack_from("<I", b, 4)[0]
+        chain = [[(20, 0, (ic << 16) | (n0 + j))] for j in range(len(parts) - 1)] + [tail]
+        b = lst_replace(b, slot, parts[0][0], parts[0][1] + chain[0])
+        if len(parts) > 1:
+            b = lst_append(b, [(hdr, ev + ch) for (hdr, ev), ch in zip(parts[1:], chain[1:])])
+        write_entry(mod, "data_cmn.afs", SAGA_CODES[s]["intro"], b, work)
         n += 1
     return n
 
@@ -1186,6 +1216,11 @@ def cmd_montar(a):
             f.write("\n[traje_rival]\n" + "".join("%d = %d\n" % kv for kv in sorted(RIVAL_SUITS.items())))
         if STORY_CODES:
             f.write("\n[codigos_historia]\n" + "".join("%d = %d\n" % kv for kv in sorted(STORY_CODES.items())))
+        if SAGA_CODES:   # DS20: casilla:saga = mapa,combate,dialogo,intro (sagas 5+ con el codigo nativo del bloque 0)
+            f.write("\n[codigos_saga]\n")
+            for s, row in sorted(SAGA_CODES.items()):
+                f.write("%d:%d = %d,%d,%d,%d\n" % (int(row["casilla"]), int(s), int(row.get("mapa", 0)),
+                                                  int(row.get("combate", 0)), int(row.get("dialogo", 0)), int(row.get("intro", 0))))
         if MAP_MODELS:
             f.write("\n[modelo_mapa]\n" + "".join("%d = %d\n" % kv for kv in sorted(MAP_MODELS.items())))
         if MAP_ANIMS:

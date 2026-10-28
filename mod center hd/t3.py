@@ -276,7 +276,8 @@ def c_extraer(a):
 
 def c_musica_mod(a):
     """Escribe mods/<mod>/us/adx_usa.afs/<n> con una pista de T3 (ADX 24 kHz estereo, con bucle en la cabecera) en cada
-    entrada pedida, rellenada con ceros al tamano de la original. Se lee de la ISO del jugador; nada se reparte."""
+    entrada pedida, rellenada con ceros al tamano de la original. Se lee de la ISO del jugador; nada se reparte.
+    Recomendado: t3_audio.py (crea el mod APAGADO, valida cabeceras, escribe adx_jpn y comprueba el resultado)."""
     t = abrir(a)
     pista = t.afs["2"].leer(64974 + a.pista)          # zs3_00..19_US.adx
     if pista[:2] != b"\x80\x00":

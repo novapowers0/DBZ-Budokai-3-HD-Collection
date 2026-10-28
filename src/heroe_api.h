@@ -22,7 +22,7 @@ const std::string& Nombre();  // nombre del heroe
 // --- sagas para el mapa (studies 8 fase 2, H5) ---
 int Saga();                                           // la siguiente por jugar (las de antes, completadas)
 int SagasTotal();
-constexpr int kSagasJugables = 4;   // las sagas 5-8 salen bloqueadas ("En desarrollo"): sus codigos virtuales no los reproduce el motor DU
+constexpr int kSagasJugables = 8;   // DS20: sagas 5-8 con codigos nativos del bloque 0 + [codigos_saga] (campana.py)
 const char* NombreSaga(int saga);
 int MaestroQueEntrena(int saga);                          // ID del maestro que se entrena (-1 ninguno)
 std::vector<std::pair<int, int>> CombatesDeSaga(int saga);   // (rival, escenario) de cada combate
@@ -43,6 +43,12 @@ int MovesetId();
 std::vector<int> Movesets();
 void PonerMoveset(int id);
 int CapsulasMoveset(int id);   // capsulas por defecto del donante (char96 +80)
+// DS144: estilos de lucha desbloqueados (kEstilos que ya se pueden elegir) y su seleccion desde la pantalla
+// Moveset > pestana Estilo. PonerEstilo aplica el estilo al combate siguiente y la ficha lo guarda (Guardar).
+std::vector<int> Estilos();
+void PonerEstilo(int id);
+bool EsMaestro(int id);
+std::string DetalleEstilo(int id);   // bonus y tecnicas del estilo (2 lineas), para la ficha de la pestana Estilo
 
 // --- maestros (Select Master, H4) ---
 constexpr int kMaestros = 6;
@@ -114,5 +120,10 @@ struct InfoDesbloqueo {
   bool conseguido = false;
 };
 std::vector<InfoDesbloqueo> Desbloqueos();
+// Super Saiyan del heroe (25/10): niveles desbloqueados (0..3, raza Saiyan: tipo "ssj" de desbloqueos.toml, en orden) y el
+// nivel recien desbloqueado aun sin anunciar (0 = nada; al leerlo queda anunciado).
+int SsjNivel();
+int IdHeroeCargado();   // el ID del heroe propio en el roster de ESTA sesion (sin mirar la ficha activa; -1: no hay)
+int SsjAvisoPendiente();
 
 }  // namespace dbz3::heroe

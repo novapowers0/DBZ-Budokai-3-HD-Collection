@@ -73,6 +73,9 @@ bool Dentro(const Tri& t, float x, float z) {   // (x, z) dentro del triangulo e
   return (s1 >= -1e-3f && s2 >= -1e-3f && s3 >= -1e-3f) || (s1 <= 1e-3f && s2 <= 1e-3f && s3 <= 1e-3f);
 }
 // Corte del segmento p-q con el triangulo (Moller-Trumbore): fraccion del segmento, o -1.
+// EU 0x1D6BF0 Coll_RayTriangleIntersect: el original corta el segmento con cada cara de la esfera BSP por el mismo
+// metodo (punto de corte, y el signo de los tres productos para saber si cae dentro del triangulo); aqui la
+// funcion devuelve la fraccion del segmento (0..1) y deja el punto a quien la llama.
 float Corta(const Tri& t, const float p[3], const float q[3]) {
   float e1[3], e2[3], dir[3], h[3], s[3], qv[3];
   for (int i = 0; i < 3; ++i) e1[i] = t.b[i] - t.a[i], e2[i] = t.c[i] - t.a[i], dir[i] = q[i] - p[i], s[i] = p[i] - t.a[i];
@@ -117,8 +120,19 @@ struct Terreno {
         for (uint32_t k = ini[c]; k < ini[c + 1]; ++k) f(tris[lista[k]]);
       }
   }
-  // Suelo bajo (x, z) desde la altura y0 hacia abajo: el rayo de IW (Char_UpdateMovementPhysics, decomp EU 0x2A8E20:
-  // de la cabeza a 500 por debajo, Collision_Raycast sobre el #WCF) corta primero el plano mas alto que no pasa de y0.
+  // EU 0x1E7070 Stage_GetGroundHeight: el original recorre el BSP desde la hoja de (x,z), filtra caras por bit 0
+  // del material y devuelve la primera cara que contiene el punto; en escenario 1 llama ademas a la altura tiled.
+  // No es equivalente a Suelo: este port usa #WCF/rejilla, mascara de rayo a pie y elige la superficie mas alta
+  // bajo y0, porque eso replica Collision_Raycast de los minijuegos, no la consulta de altura del BSP.
+  // Altura del suelo en (x, z) para la consulta del juego sub_820CB0A0 y los minijuegos a pie. Modela el rayo
+  // hacia abajo de Char_UpdateMovementPhysics (EU 0x2A8E20): desde la cabeza (y0) hacia abajo, mascara 7
+  // (Collision_Raycast 0x2E77D0; ELF USA 0x296774: addiu t2,7) y de los cortes se queda la superficie MAS ALTA bajo
+  // y0. NO es Stage_GetGroundHeight (0x1E7070): esa baja por el BSP (Coll_FindBspLeafXZ 0x1E4350), prueba el bit 0
+  // del material (en el #WCF solo pasa el material 7; 0x1E4DB0/0x1E5C60 usan los bits 2/1) y devuelve la PRIMERA
+  // cara valida, no la mas alta. El port sustituye el indice BSP por la rejilla (`Celdas`, ver
+  // SUSTITUIDAS_ESCENARIOS.txt) y usa la semantica del rayo de a pie, que es la que miden los minijuegos de IW.
+  // [H] el limite de 500 por debajo de la cabeza no se aplica: IW, sin corte o a mas de 500, cae al vacio; el port
+  // deja entonces el resultado de B3 (no se toca el estado del luchador a ciegas). `y0` es el limite superior.
   bool Suelo(float x, float z, float y0, float& y) const {
     bool hay = false;
     Celdas(x, z, x, z, [&](const Tri& t) {
@@ -128,7 +142,15 @@ struct Terreno {
     });
     return hay;
   }
-  // Primer triangulo (material & mascara, y que pase `vale`) que corta el segmento p-q: su fraccion en fr.
+  // Colision de un segmento con el #WCF: recorre los triangulos de la parte cuyo material pasa la mascara y se
+  // queda el corte MAS CERCANO a `desde` (Coll_RayTriangleIntersect 0x1D6BF0). Modela Collision_Raycast (EU
+  // 0x2E77D0, la que usan los minijuegos a pie: mascara 1 la camara y 7 el suelo).
+  // EU 0x1E5C60 Coll_SegmentVsStageNearest: filtra por el bit 1 del material y se queda el mas cercano; aqui la
+  // rejilla de celdas sustituye el recorrido de las hojas BSP.
+  // EU 0x1E5DD0 Coll_SegmentVsStageNearest_Frag2: segunda mitad de la misma funcion (recorrido de las caras de la
+  // hoja y afinado del corte), que es el bucle de abajo.
+  // El Collect (0x1E4DB0, bit 2, TODOS los cortes) no se necesita: B3 solo pide el primero. La rejilla solo acelera
+  // la busqueda; el orden geometrico del resultado (primer corte) es el del original.
   template <class V>
   const Tri* Rayo(const float p[3], const float q[3], uint32_t mascara, V&& vale, float& fr) const {
     const Tri* mejor = nullptr;
@@ -143,6 +165,7 @@ struct Terreno {
 };
 
 std::atomic<const Terreno*> g_terreno[6] = {};   // uno por campo, se queda cargado (pocos MB)
+std::atomic<const Terreno*> g_malla[6] = {};     // la malla que se DIBUJA del campo (todo el #AMO del terreno)
 std::atomic<bool> g_pedido[6] = {};
 std::atomic<int> g_activo{-1};                    // campo cargado (indice de kCampos) o -1
 
@@ -152,8 +175,9 @@ bool HuesoDeSuelo(const std::string& n) {
   return n.size() > 2 && n.back() == 'G' && n[n.size() - 2] >= '0' && n[n.size() - 2] <= '9';   // 900: FFNMHA1_A1G
 }
 
-// Triangulos de los huesos de suelo del #AMO de PS2 (como LeerAmo de iw_minijuegos.cpp, solo posiciones).
-void LeerSuelo(const std::vector<uint8_t>& b, std::vector<std::array<float, 9>>& out) {
+// Triangulos del #AMO de PS2 (como LeerAmo de iw_minijuegos.cpp, solo posiciones). `solo_suelo`: solo los huesos de
+// suelo (respaldo de la colision, vuelta 1); si no, TODAS las partes = la malla que se DIBUJA en el campo.
+void LeerSuelo(const std::vector<uint8_t>& b, std::vector<std::array<float, 9>>& out, bool solo_suelo = true) {
   auto u32 = [&](size_t o) -> uint32_t {
     uint32_t v = 0;
     if (o + 4 <= b.size()) std::memcpy(&v, &b[o], 4);
@@ -201,7 +225,7 @@ void LeerSuelo(const std::vector<uint8_t>& b, std::vector<std::array<float, 9>>&
     const std::string nombre(reinterpret_cast<const char*>(&b[no]), strnlen(reinterpret_cast<const char*>(&b[no]), 32));
     const uint32_t brazo = u32(a + ejes + 80 * i + 0x34);
     const uint32_t grupo = brazo ? u32(a + brazo + 4) : 0;
-    if (!grupo || !HuesoDeSuelo(nombre)) continue;
+    if (!grupo || (solo_suelo && !HuesoDeSuelo(nombre))) continue;
     const auto& m = mundo[i];
     const size_t g = a + grupo;
     const uint32_t n = std::min<uint32_t>(u32(g), 256), t = u32(g + 4);
@@ -290,68 +314,94 @@ bool LeerWcf(const std::vector<uint8_t>& w, std::vector<Tri>& out) {
   return !out.empty();
 }
 
-const Terreno* Construir(int campo) {
+// Triangulos en mundo de una lista cruda (9 floats) con la normal hacia arriba y material 7 (solido).
+void Rellenar(const std::vector<std::array<float, 9>>& crudos, std::vector<Tri>& out) {
+  for (const auto& c : crudos) {
+    Tri r{};
+    std::memcpy(r.a, &c[0], 12), std::memcpy(r.b, &c[3], 12), std::memcpy(r.c, &c[6], 12);
+    const float u[3] = {r.b[0] - r.a[0], r.b[1] - r.a[1], r.b[2] - r.a[2]};
+    const float v[3] = {r.c[0] - r.a[0], r.c[1] - r.a[1], r.c[2] - r.a[2]};
+    float nn[3] = {u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]};
+    const float l = std::sqrt(nn[0] * nn[0] + nn[1] * nn[1] + nn[2] * nn[2]);
+    if (l < 1e-6f) continue;
+    const float s = nn[1] < 0 ? -1.0f / l : 1.0f / l;   // hacia arriba
+    for (int i = 0; i < 3; ++i) r.n[i] = nn[i] * s;
+    r.d = -(r.n[0] * r.a[0] + r.n[1] * r.a[1] + r.n[2] * r.a[2]);
+    r.mat = 7;
+    out.push_back(r);
+  }
+}
+
+// Rejilla de celdas (kCelda) sobre los triangulos de `t`.
+void Rejilla(Terreno& t) {
+  float x1 = -1e30f, z1 = -1e30f;
+  t.x0 = t.z0 = 1e30f;
+  for (const Tri& r : t.tris) {
+    t.x0 = std::min({t.x0, r.a[0], r.b[0], r.c[0]}), x1 = std::max({x1, r.a[0], r.b[0], r.c[0]});
+    t.z0 = std::min({t.z0, r.a[2], r.b[2], r.c[2]}), z1 = std::max({z1, r.a[2], r.b[2], r.c[2]});
+  }
+  t.nx = int((x1 - t.x0) / kCelda) + 1;
+  t.nz = int((z1 - t.z0) / kCelda) + 1;
+  t.x1 = x1, t.z1 = z1;
+  auto celdas = [&](const Tri& r, auto&& f) {
+    const int i0 = int((std::min({r.a[0], r.b[0], r.c[0]}) - t.x0) / kCelda);
+    const int i1 = int((std::max({r.a[0], r.b[0], r.c[0]}) - t.x0) / kCelda);
+    const int j0 = int((std::min({r.a[2], r.b[2], r.c[2]}) - t.z0) / kCelda);
+    const int j1 = int((std::max({r.a[2], r.b[2], r.c[2]}) - t.z0) / kCelda);
+    for (int j = j0; j <= std::min(j1, t.nz - 1); ++j)
+      for (int i = i0; i <= std::min(i1, t.nx - 1); ++i) f(size_t(j) * size_t(t.nx) + size_t(i));
+  };
+  t.ini.assign(size_t(t.nx) * size_t(t.nz) + 1, 0);
+  for (const Tri& r : t.tris) celdas(r, [&](size_t c) { ++t.ini[c + 1]; });
+  for (size_t c = 1; c < t.ini.size(); ++c) t.ini[c] += t.ini[c - 1];
+  t.lista.resize(t.ini.back());
+  std::vector<uint32_t> llenas(t.ini.begin(), t.ini.end() - 1);
+  for (uint32_t k = 0; k < t.tris.size(); ++k) celdas(t.tris[k], [&](size_t c) { t.lista[llenas[c]++] = k; });
+}
+
+// Terreno del campo: la colision (#WCF o, sin el, la malla de suelo) y la malla que se DIBUJA (todo el #AMO del
+// terreno, hijo 5). La camara usa la malla dibujada: el #WCF y ella coinciden en el 99,9 % de las columnas (medido en
+// DS33) pero en los cantos de acantilado el #WCF da una altura que no se ve (cara vertical) y el ojo quedaba dentro.
+void Construir(int campo, std::atomic<const Terreno*>& dst_col, std::atomic<const Terreno*>& dst_dib) {
   const std::filesystem::path iw = P::BuscarIW();
   P::AfsPs2 cmn;
   if (iw.empty() || !cmn.Abrir(iw, "DATA_CMN.AFS")) {
     REXLOG_WARN("dbz3 suelo_iw: sin la copia de Infinite World en ps2_games: el campo {} queda con suelo plano", campo);
-    return nullptr;
+    return;
   }
   auto* t = new Terreno;
   t->wcf = LeerWcf(P::HijoAmb(cmn.Entrada(size_t(campo) + 1), 0), t->tris);
+  std::vector<std::array<float, 9>> dibujo;
+  LeerSuelo(P::HijoAmb(cmn.Entrada(size_t(campo)), 5), dibujo, /*solo_suelo=*/false);
   if (!t->wcf) {   // respaldo: la malla de suelo del #AMO del campo (vuelta 1)
     t->tris.clear();
-    std::vector<std::array<float, 9>> crudos;
-    LeerSuelo(P::HijoAmb(cmn.Entrada(size_t(campo)), 5), crudos);
-    for (const auto& c : crudos) {
-      Tri r{};
-      std::memcpy(r.a, &c[0], 12), std::memcpy(r.b, &c[3], 12), std::memcpy(r.c, &c[6], 12);
-      const float u[3] = {r.b[0] - r.a[0], r.b[1] - r.a[1], r.b[2] - r.a[2]};
-      const float v[3] = {r.c[0] - r.a[0], r.c[1] - r.a[1], r.c[2] - r.a[2]};
-      float nn[3] = {u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]};
-      const float l = std::sqrt(nn[0] * nn[0] + nn[1] * nn[1] + nn[2] * nn[2]);
-      if (l < 1e-6f) continue;
-      const float s = nn[1] < 0 ? -1.0f / l : 1.0f / l;   // hacia arriba
-      for (int i = 0; i < 3; ++i) r.n[i] = nn[i] * s;
-      r.d = -(r.n[0] * r.a[0] + r.n[1] * r.a[1] + r.n[2] * r.a[2]);
-      r.mat = 7;
-      t->tris.push_back(r);
-    }
+    std::vector<std::array<float, 9>> suelo;
+    LeerSuelo(P::HijoAmb(cmn.Entrada(size_t(campo)), 5), suelo, /*solo_suelo=*/true);
+    Rellenar(suelo, t->tris);
   }
   if (t->tris.empty()) {
     REXLOG_WARN("dbz3 suelo_iw: el campo {} no tiene #WCF ni malla de suelo: queda con suelo plano", campo);
     delete t;
-    return nullptr;
+    return;
   }
-  float x1 = -1e30f, z1 = -1e30f;
-  t->x0 = t->z0 = 1e30f;
-  for (const Tri& r : t->tris) {
-    t->x0 = std::min({t->x0, r.a[0], r.b[0], r.c[0]}), x1 = std::max({x1, r.a[0], r.b[0], r.c[0]});
-    t->z0 = std::min({t->z0, r.a[2], r.b[2], r.c[2]}), z1 = std::max({z1, r.a[2], r.b[2], r.c[2]});
-  }
-  t->nx = int((x1 - t->x0) / kCelda) + 1;
-  t->nz = int((z1 - t->z0) / kCelda) + 1;
-  t->x1 = x1, t->z1 = z1;
   if (const auto mcf = P::HijoAmb(cmn.Entrada(size_t(campo)), 0); mcf.size() >= 0x14 && std::memcmp(mcf.data(), "#MCF", 4) == 0)
     std::memcpy(&t->envolver, &mcf[0x10], 4), t->envolver &= 3;
-  auto celdas = [&](const Tri& r, auto&& f) {
-    const int i0 = int((std::min({r.a[0], r.b[0], r.c[0]}) - t->x0) / kCelda);
-    const int i1 = int((std::max({r.a[0], r.b[0], r.c[0]}) - t->x0) / kCelda);
-    const int j0 = int((std::min({r.a[2], r.b[2], r.c[2]}) - t->z0) / kCelda);
-    const int j1 = int((std::max({r.a[2], r.b[2], r.c[2]}) - t->z0) / kCelda);
-    for (int j = j0; j <= std::min(j1, t->nz - 1); ++j)
-      for (int i = i0; i <= std::min(i1, t->nx - 1); ++i) f(size_t(j) * size_t(t->nx) + size_t(i));
-  };
-  t->ini.assign(size_t(t->nx) * size_t(t->nz) + 1, 0);
-  for (const Tri& r : t->tris) celdas(r, [&](size_t c) { ++t->ini[c + 1]; });
-  for (size_t c = 1; c < t->ini.size(); ++c) t->ini[c] += t->ini[c - 1];
-  t->lista.resize(t->ini.back());
-  std::vector<uint32_t> llenas(t->ini.begin(), t->ini.end() - 1);
-  for (uint32_t k = 0; k < t->tris.size(); ++k) celdas(t->tris[k], [&](size_t c) { t->lista[llenas[c]++] = k; });
+  Rejilla(*t);
   REXLOG_INFO("dbz3 suelo_iw: campo {}: {} triangulos ({}), x {:.0f}..{:.0f}, z {:.0f}..{:.0f}, rejilla {}x{}, envuelve {}",
-              campo, t->tris.size(), t->wcf ? "#WCF" : "malla del #AMO, sin #WCF", t->x0, x1, t->z0, z1, t->nx, t->nz,
+              campo, t->tris.size(), t->wcf ? "#WCF" : "malla del #AMO, sin #WCF", t->x0, t->x1, t->z0, t->z1, t->nx, t->nz,
               t->envolver);
-  return t;
+  dst_col = t;
+  auto* m = new Terreno;   // la malla dibujada: todas las partes del terreno (sin filtro de huesos)
+  Rellenar(dibujo, m->tris);
+  if (m->tris.empty()) {
+    REXLOG_WARN("dbz3 suelo_iw: el campo {} no tiene malla del #AMO (hijo 5): la camara usa solo la colision", campo);
+    delete m;
+    return;
+  }
+  Rejilla(*m);
+  REXLOG_INFO("dbz3 suelo_iw: campo {}: malla dibujada {} triangulos, x {:.0f}..{:.0f}, z {:.0f}..{:.0f}, rejilla {}x{}",
+              campo, m->tris.size(), m->x0, m->x1, m->z0, m->z1, m->nx, m->nz);
+  dst_dib = m;
 }
 
 // Campo de IW cargado: el alta de campos_iw.py esta en el registro anfitrion y es el escenario cargado (G+0).
@@ -367,8 +417,14 @@ const Terreno* Activo(uint8_t* base) {
   g_activo = k;
   if (k < 0) return nullptr;
   if (!g_pedido[k].exchange(true))
-    std::thread([k] { g_terreno[k] = Construir(kCampos[k]); }).detach();
+    std::thread([k] { Construir(kCampos[k], g_terreno[k], g_malla[k]); }).detach();
   return g_terreno[k].load();
+}
+
+// La malla que se dibuja del campo cargado (nullptr mientras se lee o sin campo).
+const Terreno* ActivoDibujo() {
+  const int k = g_activo.load();
+  return k >= 0 ? g_malla[k].load() : nullptr;
 }
 
 float LoadF(uint8_t* base, uint32_t a) {
@@ -494,15 +550,20 @@ void Cercano(const Tri& t, const float p[3], float c[3]) {
   return en(t.a, vb * den, ab, vc * den, ac);
 }
 
-// Barrido de la esfera de IW (Collision_MoveSphere -> Collision_SweepSphereVsModel, decomp EU 0x2E7640, contra el #WCF
-// con mascara 2; radio = Char_GetActionSpeedScale(H - 1): H - 1 al andar). `p` = centro de la esfera, apoyada en los
-// pies (centro a pies + r). ponytail: el centro de IW (+0x640 del personaje) no esta medido; con el centro en los pies
-// (el rayo de IW sale de +0x640.y + H) las caras empinadas de debajo frenaban al bajar una cuesta (medido con
-// E:\DBZ3HD_trabajo\R11\barrer.py). Paso horizontal `d`: en el destino, el contacto mas profundo de una cara que se opone al
-// paso (normal del punto mas cercano, en horizontal) quita al paso esa componente y se vuelve a probar (hasta 4
-// contactos). Solo cuentan las caras empinadas (|ny| < kParedNy): con el centro en los pies, los bordes de los
-// triangulos de suelo dan normales horizontales y frenaban al pie de las rampas (medido, E:\DBZ3HD_trabajo\R11\barrer.py);
-// el suelo andable lo lleva el rayo. ponytail: la respuesta exacta de Collision_SweepSphereVsModel no esta leida.
+// EU 0x2E63B0 Collision_SweepSphereVsModel: barrido de la esfera contra las caras del MODELO de colision (el
+// modulo que recorren Collision_MoveSphere/SweepSphereVsModel): contactos con su distancia y su normal.
+// EU 0x1E63B0 Coll_SphereSweepVsStageCollect: barrido de esfera contra la colision del escenario (mascara 2 en
+// Collision_MoveSphere, EU 0x2E7640). El original barre la esfera de `desde` a `hasta`, junta los contactos de las
+// caras y devuelve la penetracion de cada uno; Collision_MoveSphere quita al paso la componente que se opone a la
+// normal y vuelve a probar. Aqui, `p` = centro de la esfera, apoyada en los pies (centro a pies + r); ponytail: el
+// centro de IW (+0x640 del personaje) no esta medido; con el centro en los pies (el rayo de IW sale de
+// +0x640.y + H) las caras empinadas de debajo frenaban al bajar una cuesta (medido con
+// E:\DBZ3HD_trabajo\R11\barrer.py). Paso horizontal `d`: en el destino, el contacto mas profundo de una cara que se
+// opone al paso (normal del punto mas cercano, en horizontal) quita al paso esa componente y se vuelve a probar
+// (hasta 4 contactos). Solo cuentan las caras empinadas (|ny| < kParedNy): con el centro en los pies, los bordes de
+// los triangulos de suelo dan normales horizontales y frenaban al pie de las rampas (medido,
+// E:\DBZ3HD_trabajo\R11\barrer.py); el suelo andable lo lleva el rayo. ponytail: IW junta todos los contactos y aqui
+// se aplica el mas profundo de cada pasada (la respuesta exacta de Collision_SweepSphereVsModel no esta leida).
 // Devuelve el sitio final en x/z (la y la pone el suelo).
 void Barrer(const Terreno* t, const float p[3], float dx, float dz, float r, float& ox, float& oz) {
   float d[3] = {dx, 0, dz};
@@ -542,6 +603,53 @@ void Barrer(const Terreno* t, const float p[3], float dx, float dz, float r, flo
   ox = p[0], oz = p[2];   // sin salida en 4 contactos: se queda
 }
 
+// EU 0x225780 Battle_PushOutOfStageCollision (iw_sles55347.c l.235362): saca al luchador de la colision del escenario
+// con un barrido de esfera. Si char+0x2063 (lo pone el movimiento del cuadro, l.219603 y siguientes) esta puesto:
+//  - centro = char+0x640 y desplazamiento = char+0x640 - char+0x7A0 (lo que se movio en el cuadro, l.235372-235382);
+//  - Coll_SphereSweepVsStageCollect(centro, desplazamiento, 0) junta los contactos; entre medias pone y quita el flag
+// EU 0x1E1090 Stage_ClearFlag2 y EU 0x1E10B0 Stage_SetFlag2: son operaciones distintas del port; el original
+// limpia/activa respectivamente el bit 0x2 de la palabra global de flags del stage (0x4DB2CC). En el port no hay
+// estado equivalente ni se escribe esa palabra: el ciclo de vida y las propiedades de escena se gestionan en B3.
+//    2 del escenario (Stage_SetFlag2/Stage_ClearFlag2, l.235385-235388);
+//  - por cada contacto de tipo 1 (l.235401): penetracion = 8,0 - distancia (local_10 = 0x41000000) y push = normal *
+//    penetracion; los que van en contra de los anteriores se descartan (l.235410-235434) y los demas se suman;
+//  - la suma se divide por el numero de contactos (CameraAdjustment(1/n), l.235488) y se suma a char+0x40 (posicion,
+//    l.235490-235494); Char_SyncPositionFromCameraLocation (l.235495) propaga el cambio;
+//  - si iRam0049ca70+0x8d24 esta puesto, el mismo empuje va tambien al companero (char+0x1384, l.235509-235516).
+// Aqui, el mismo calculo sobre las caras del #WCF: se miran las caras empinadas a menos de 8,0 del centro (el
+// desplazamiento del cuadro solo acota la busqueda, kEmpujeMax), cada una aporta su normal por la penetracion (8,0 -
+// distancia al punto mas cercano) si se opone al movimiento y se aplica la media de los contactos, que es lo que hace
+// CameraAdjustment(1/n). Devuelve true si movio. Lo llama Paredes cuando el luchador viene colocado a mano (no hay
+// paso que barrer): es el caso del original, en el que +0x2063 marca "hay que sacarlo".
+constexpr float kEmpujeRadio = 8.0f;    // local_10 = 0x41000000 (l.235371)
+constexpr float kEmpujeMax = 64.0f;     // local_c = 0x42800000 (l.235371)
+bool Empujar(const Terreno* t, const float p[3], const float antes[3], float& ox, float& oz) {
+  const float r2 = kEmpujeRadio * kEmpujeRadio;
+  const float d[3] = {p[0] - antes[0], 0, p[2] - antes[2]};
+  const float largo = std::sqrt(d[0] * d[0] + d[2] * d[2]);
+  float suma[3] = {0, 0, 0};
+  int n = 0;
+  const float busca = kEmpujeRadio + (largo < kEmpujeMax ? largo : kEmpujeMax);
+  t->Celdas(p[0] - busca, p[2] - busca, p[0] + busca, p[2] + busca, [&](const Tri& tr) {
+    if (!(tr.mat & kMascaraPared) || std::fabs(tr.n[1]) >= kParedNy) return;   // el suelo andable no empuja
+    float c[3];
+    Cercano(tr, p, c);
+    const float v[3] = {p[0] - c[0], p[1] - c[1], p[2] - c[2]};
+    const float dist2 = v[0] * v[0] + v[1] * v[1] + v[2] * v[2];
+    if (dist2 >= r2) return;
+    if (largo > 1e-4f && v[0] * d[0] + v[2] * d[2] >= 0.0f) return;   // solo lo que se opone al movimiento
+    const float dist = std::sqrt(dist2);
+    const float pen = kEmpujeRadio - dist;
+    if (pen <= 0.0f) return;
+    for (int i = 0; i < 3; ++i) suma[i] += tr.n[i] * pen;
+    ++n;
+  });
+  if (!n) return false;
+  ox = p[0] + suma[0] / float(n);
+  oz = p[2] + suma[2] / float(n);
+  return std::fabs(ox - p[0]) > 1e-4f || std::fabs(oz - p[2]) > 1e-4f;
+}
+
 // Paredes de IW en la logica de luchadores (sub_8210E700): el paso de cada luchador (lo que movio el minijuego antes de
 // la logica y lo que movio el juego en ella) pasa por Barrer con radio H - 1 (H de su modelo de B3). DBZ3_SUELO_PAREDES=0
 // las quita.
@@ -569,21 +677,33 @@ void Paredes(uint8_t* base) {
     float nx = px, ny = py, nz = pz;
     const bool barre = b.vale && activas && std::hypot(px - b.x, pz - b.z) <= kSalto;   // si no: puesto a mano o sin paredes
     const float r = kRadioPared, centro[3] = {b.x, b.y + kBajoEsfera + r, b.z};
-    if (barre) Barrer(t, centro, px - b.x, pz - b.z, r, nx, nz);
-    if (barre && (std::fabs(nx - px) > 1e-3f || std::fabs(nz - pz) > 1e-3f)) {
-      ny = b.y;
-      t->Suelo(nx, nz, b.y + b.alto, ny);
+    if (barre) {
+      Barrer(t, centro, px - b.x, pz - b.z, r, nx, nz);
+    } else if (activas) {
+      // EU 0x225780 Battle_PushOutOfStageCollision: sin paso que barrer (puesto a mano: salida, relevo, prueba), el
+      // original lo saca igual de la colision con su barrido de esfera de radio 8 y la media de los contactos.
+      const float pos[3] = {px, py + kBajoEsfera + kEmpujeRadio, pz};
+      const float antes[3] = {b.vale ? b.x : px, py, b.vale ? b.z : pz};
+      Empujar(t, pos, antes, nx, nz);
+    }
+    if (std::fabs(nx - px) > 1e-3f || std::fabs(nz - pz) > 1e-3f) {
+      ny = barre ? b.y : py;
+      t->Suelo(nx, nz, ny + alto, ny);
       for (const uint32_t o : kCopias)
         StoreF(base, x + o, nx), StoreF(base, x + o + 4, ny), StoreF(base, x + o + 8, nz);
       static int avisos = 0;
       if (avisos < 40 && ++avisos)
-        REXLOG_INFO("dbz3 suelo_iw: pared: luchador {} (H {:.1f}) de ({:.0f}, {:.0f}) a ({:.0f}, {:.0f}) queda en ({:.0f}, {:.0f})",
-                    k, b.alto, b.x, b.z, px, pz, nx, nz);
+        REXLOG_INFO("dbz3 suelo_iw: {}: luchador {} (H {:.1f}) de ({:.0f}, {:.0f}) a ({:.0f}, {:.0f}) queda en ({:.0f}, {:.0f})",
+                    barre ? "pared" : "empuje", k, alto, b.x, b.z, px, pz, nx, nz);
     }
-    // Node_WrapPositionInGrid: fuera de [lo, hi) se suma o resta un periodo (un salto, no un tope). Como va sobre el
-    // sitio del luchador tras la logica, cubre el andar, el scatto y el desplazamiento de la raiz de las poses
-    // (Char_ApplyPoseRootMotion tambien envuelve). ponytail: sin las copias vecinas del campo en pantalla (IW pinta la
-    // rejilla envuelta, Node_RenderVisibleGrid): se ve el borde del terreno antes del salto.
+    // EU 0x305150 ObjectsCountEffect: calcula la extension de la rejilla en x/z y, si el bit de eje esta activo,
+    // desplaza la coordenada una extension cuando rebasa el limite de media extension. Aqui se aplica el mismo
+    // criterio de wrap a la posicion del campo; no se cuenta ni reordena la lista de efectos del original.
+    // EU 0x305300 Node_WrapPositionInGrid: con el mundo que da la vuelta (bits 1 = x y 2 = z del #MCF +0x10,
+    // iRam0049cdb8+0x630) y fuera de [lo, lo + extension) se suma o resta un periodo (un salto, no un tope). Como va
+    // sobre el sitio del luchador tras la logica, cubre el andar, el scatto y el desplazamiento de la raiz de las
+    // poses (Char_ApplyPoseRootMotion tambien envuelve). ponytail: sin las copias vecinas del campo en pantalla (IW
+    // pinta la rejilla envuelta, Node_RenderVisibleGrid): se ve el borde del terreno antes del salto.
     bool envuelto = false;
     auto envuelve = [&](float& v, float lo, float hi) {
       const float p = hi - lo;
@@ -636,6 +756,46 @@ float Altura(float x, float z, float sin_suelo) {
   return y;
 }
 
+// Altura de la MALLA QUE SE DIBUJA del campo en (x, z): la superficie horizontal mas alta del #AMO del terreno. En un
+// canto de acantilado (solo caras verticales) no hay superficie en planta y devuelve `sin_suelo`; es justo lo que hay
+// que distinguir de Altura() (el #WCF da alli una altura que no se ve).
+float AlturaMalla(float x, float z, float sin_suelo) {
+  const Terreno* t = ActivoDibujo();
+  float y = sin_suelo;
+  if (t) t->Suelo(x, z, 1e9f, y);
+  return y;
+}
+
+// Rayo contra la MALLA QUE SE DIBUJA (todas sus caras, verticales incluidas): punto de corte mas cercano a `desde`.
+// Es lo que necesita la camara del minijuego (IW Camera_UpdateFollow, EU 0x297DE0: MiniGame_DrawPromptSingle), que
+// colisiona con lo que se ve, no con el mapa de alturas.
+bool RayoMalla(const float desde[3], const float hasta[3], float corte[3]) {
+  const Terreno* t = ActivoDibujo();
+  float fr;
+  if (!t || !t->Rayo(desde, hasta, 7, [](const Tri&) { return true; }, fr)) return false;
+  for (int i = 0; i < 3; ++i) corte[i] = desde[i] + (hasta[i] - desde[i]) * fr;
+  return true;
+}
+
+// Punto a menos de `radio` de la malla dibujada (la camara pegada a una cara: el plano cercano entra en la roca).
+bool CercaMalla(const float p[3], float radio) {
+  const Terreno* t = ActivoDibujo();
+  if (!t || radio <= 0) return false;
+  const float r2 = radio * radio;
+  bool cerca = false;
+  t->Celdas(p[0] - radio, p[2] - radio, p[0] + radio, p[2] + radio, [&](const Tri& tr) {
+    if (cerca) return;
+    float c[3];
+    Cercano(tr, p, c);
+    const float dx = p[0] - c[0], dy = p[1] - c[1], dz = p[2] - c[2];
+    if (dx * dx + dy * dy + dz * dz < r2) cerca = true;
+  });
+  return cerca;
+}
+
+// EU 0x2E7640 Collision_MoveSphere: mueve una esfera de `desde` a `hasta` contra la colision del escenario (mascara
+// 7 en los minijuegos a pie) y devuelve el sitio resultante; el paso se recorta al chocar y la altura la fija el rayo
+// de suelo desde la cabeza. Aqui se usa desde los minijuegos con el sitio llevado a mano (P4) y `escala` = radio.
 bool Mover(const float desde[3], const float hasta[3], float salida[3], float escala) {
   const int k = g_activo.load();
   const Terreno* t = k >= 0 ? g_terreno[k].load() : nullptr;
@@ -650,6 +810,9 @@ bool Mover(const float desde[3], const float hasta[3], float salida[3], float es
   return true;
 }
 
+// EU 0x2E77D0 Collision_Raycast: rayo de `desde` a `hasta` contra la colision del escenario con la mascara de
+// materiales; devuelve el corte mas cercano a `desde` (la camara del minijuego lo usa con la mascara 1, el rayo de
+// suelo con la 7). La logica del corte y del filtro de materiales es la de Coll_SegmentVsStageNearest (0x1E5C60).
 bool Rayo(const float desde[3], const float hasta[3], uint32_t mascara, float corte[3]) {
   const int k = g_activo.load();
   const Terreno* t = k >= 0 ? g_terreno[k].load() : nullptr;

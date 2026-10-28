@@ -34,6 +34,7 @@
 #include "generated/dbz3_init.h"
 #include "eu_map.h"
 #include "roster_ext.h"
+#include "cinematica.h"
 #include "tagteam.h"
 #include "iw_minijuegos.h"
 #include "tagteam_round.h"
@@ -767,6 +768,10 @@ void StartSwap(PPCContext& ctx, uint8_t* base, uint32_t x, Team& t, int k) {
   }
   REXLOG_INFO("dbz3 tag: luchador {:08X} relevo {} -> {} (id {}, camara {:08X}, sale en forma {}, entra en forma {})", x,
               t.active, k, id, t.new_cam, t.form[size_t(t.active)], t.spare);
+  // online: los dos PCs ejecutan ESTE mismo StartSwap en el mismo tick del lockstep (SELECT viaja como
+  // una entrada mas); sirve para comparar los dos logs si alguna vez se cuelga un relevo
+  if (const auto& net = dbz3::net::Session::Get(); net.active())
+    REXLOG_INFO("dbz3 tag online: relevo lado {} {} -> {} en el tick {}", SideOf(base, x) + 1, t.active, k, net.tick());
 }
 
 // Ficheros del que entra cargados: en este tick sale el de pantalla (sub_821092C8 libera su
@@ -1088,16 +1093,29 @@ void Tick(PPCContext& ctx, uint8_t* base) {
   // PRUEBA (DBZ3_TEST_RINGOUT=1): a los 5 s de pelea (no de presentacion: antes saltaba en la intro)
   // el rival aparece fuera del ring (para medir el ring out)
   static const bool test_ro = std::getenv("DBZ3_TEST_RINGOUT") != nullptr;
-  if (test_ro && battle_frames == 300) {
+  static bool ro_logged = false;
+  // DS131: el aviso se repite cada 0,5 s mientras dure la pelea. Un unico aviso podia consumirse (p. ej. el cambio
+  // de zona de B2, ver escenarios.cpp) y el piloto automatico se quedaba sin ganar el combate y perdia por KO.
+  // DS168: NO se dispara mientras corre una cinematica "solo escena" (previa/presentacion de la Leyenda). Esas
+  // escenas piden un combate al motor solo para tener camara/modelos y el aviso las cortaba a los 5 s (log 27/10:
+  // "prueba: rival fuera del ring" -> "combate acabado ... motivo 4" -> "cinematica: cortada en el cuadro 301"),
+  // dejando la previa en 5,5 s de 33,83 s. El combate de verdad, sin escena, sigue ganandose igual a los 5 s.
+  if (test_ro && !dbz3::cinematica::Activa() && battle_frames >= 300 && (battle_frames - 300) % 30 == 0) {
     // como el juego al caer fuera del ring (medido 2026-10-14): aviso pendiente mgr+35569 = hueco del
     // GANADOR + 1 (el manejador del modo, sub_820FD678, lo da como "motivo 4"). 1 = gana el jugador 1, cae
     // el rival. Mover al rival no siempre lo provocaba: no todos los escenarios tienen ring.
     if (const uint32_t mgr = REX_LOAD_U32(dbz3::GA(0x823D6CF4))) {
       REX_STORE_U8(mgr + 35569, 1);
-      REXLOG_INFO("dbz3 tag: prueba: rival fuera del ring");
+      if (!ro_logged) {
+        ro_logged = true;
+        REXLOG_INFO("dbz3 tag: prueba: rival fuera del ring");
+      }
     }
   }
-  if (test_ro) battle_frames = BattleState(base) == 4 ? battle_frames + 1 : 0;   // cada combate (Dragon Universe no sale del modo combate)
+  if (test_ro) {
+    battle_frames = BattleState(base) == 4 ? battle_frames + 1 : 0;   // cada combate (Dragon Universe no sale del modo combate)
+    if (battle_frames == 0) ro_logged = false;                        // el siguiente combate vuelve a avisar una vez
+  }
   if (static uint32_t last_st = 0; test_ro && BattleState(base) != last_st) {   // para las pruebas: cada estado
     last_st = BattleState(base);
     REXLOG_INFO("dbz3 tag: prueba: estado del combate {}", last_st);
@@ -1561,6 +1579,11 @@ bool OnPad(PPCContext& ctx, uint8_t* base, uint32_t user, uint16_t buttons, uint
   if (pressed && !Over(base) && !PreFight(base)) {
     const uint32_t now = g_frame.load();
     const int k = Pick(*t, (buttons & kLb) || lt > 64);
+    // online: SELECT llega por el mando aplicado del lockstep (el mismo en los dos PCs); este aviso
+    // sale en los dos con el mismo tick, que es lo que demuestra que el relevo no es un evento local
+    if (const auto& net = dbz3::net::Session::Get(); net.active())
+      REXLOG_INFO("dbz3 tag online: SELECT del lado {} en el tick {} (miembro {} -> {})", int(user) + 1, net.tick(),
+                  t->active, k);
     // se apunta aunque el luchador este a mitad de un golpe o en el aire: el relevo llega en cuanto
     // quede libre dentro del margen (antes solo valia pulsar quieto y casi siempre parpadeaba)
     if (k >= 0 && t->phase == Phase::kIdle && Cooled(*t, now)) {

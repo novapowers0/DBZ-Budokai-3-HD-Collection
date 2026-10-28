@@ -415,10 +415,13 @@ class TrajePanel : public rex::ui::ImGuiDialog {
       const auto it = Enlaces().find({snap.id, snap.suit});
       if (it == Enlaces().end()) continue;
       const float cx = side == 0 ? 210.0f : 990.0f, y = 400.0f;   // bajo la ayuda LT/RT de la forma (292-330)
-      if (!it->second.nombre.empty()) S::MenuText(dl, a.At(cx, y), 26.0f * a.s, it->second.nombre.c_str(), true, false);
+      // DS138: tope de ancho (380 u) para que el nombre y la linea de traje de época no salgan del area
+      // (en de/it la traduccion pasa de 45 caracteres y el texto centrado en 210 se salia por la izquierda).
+      if (!it->second.nombre.empty())
+        S::MenuText(dl, a.At(cx, y), 26.0f * a.s, it->second.nombre.c_str(), true, false, 380.0f * a.s);
       S::MenuText(dl, a.At(cx, y + 28.0f), 18.0f * a.s,
                   dbz3::i18n::T("Traje de época: golpes y cápsulas propios", "Era costume: own moves and capsules"),
-                  false, false);
+                  false, false, 380.0f * a.s);
     }
   }
 };

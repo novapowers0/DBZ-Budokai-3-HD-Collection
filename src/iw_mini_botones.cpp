@@ -23,6 +23,7 @@
 #include "reloj_prueba.h"
 #include "escenarios.h"
 #include "iw_minijuegos.h"
+#include "iw_mini_extra.h"
 
 #include <rex/logging.h>
 #include <rex/runtime.h>
@@ -84,11 +85,10 @@ namespace S = dbz3::ingame::style;
 
 constexpr dbz3::GA kMgrPtr = 0x823D6CF4, kPads = 0x8238B780;   // iw_minijuegos.cpp (P4)
 std::atomic<bool> g_nave880{false};   // NB007 en el campo 880 (la nave por dentro)
-// NB007: lado del pivote invisible (+1 = +X, giro 0x4000; -1 = -X, giro 0xC000). s9, cotejado con IW en la ronda 1: con
-// +1 Goku sale de frente a la camara como en IW; con -1 (s8) de espaldas. DBZ3_S9_NAVE_LADO=-1 para comparar.
+std::atomic<float> g_nave_lado{1.0f};   // lado del pivote por minijuego, contrastado con la cámara original
 static float NaveLado() {
-  static const float l = std::getenv("DBZ3_S9_NAVE_LADO") ? float(std::atof(std::getenv("DBZ3_S9_NAVE_LADO"))) : 1.0f;
-  return l;
+  static const char* e = std::getenv("DBZ3_S9_NAVE_LADO");   // sonda temporal para contrastar la cara del personaje
+  return e ? float(std::atof(e)) : g_nave_lado.load();
 }
 constexpr uint32_t kX0 = 2096, kXPaso = 8240, kVida = 6080, kVidaMax = 6084, kFin = 35569;
 // Registro del mando 0 (+12, botones mantenidos) con los bits del mando de PS2, medido con el teclado de pruebas: X del
@@ -140,9 +140,12 @@ struct Poses {
   uint16_t r_ataca[4], r_herido[4], r_esquiva[4];
   uint16_t gana[2], pierde[2];          // [jugador, rival]
   uint16_t fin_bien, fin_mal;           // el jugador al acabar el resultado
-  bool azar;                            // NB006: el contador sale al azar. sep: las poses de IW van en el sitio (raiz < 6 u salvo
-                                        // las finales) y en los videos (mosaico 230 s) los dos van a un par de cuerpos. ponytail: sin leer
-  float aire, dist, sep;                // altura a la que luchan (la cadera de sus poses), distancia de la camara y entre los dos
+  bool azar;                            // NB006: el contador sale al azar
+  // aire/dist/sep: altura de la cadera, distancia de la camara y separacion de los dos. IW no los mueve: los pone en el
+  // ORIGEN (Mg_InitCharactersForRound EU 0x356D80 escribe +0x40/+0x44/+0x48 = 0 en los dos) y no aplica la raiz de la
+  // pose (el modo +0x18E8 solo lo escriben los estados de combate -Dash/Slide-, nunca los minijuegos), asi que la
+  // separacion sale de la cadera que trae la propia pose; los valores de abajo son los de sus raices en la copia.
+  float aire, dist, sep;
   // Camaras de IW (clips del #AMC de DATA_CMN 915, ver "Camaras de IW"; -1 = la propia). READY (dur_intro cuadros, los del
   // clip), juego (plano fijo), resultado (gana / pierde) y final del jugador (rango > 0 / 0). ancla = {x, z del centro del par
   // y eje jugador -> rival} en el mundo de IW (de las raices de sus poses: docs/14_frentes/iw_camaras_minijuegos.md).
@@ -213,22 +216,59 @@ struct Modulo2 {
 constexpr Modulo2 kModulos[] = {
     {5, 0x7D4, "MSN_NB006", 0x484720, 0x485670, {2.0f, 2.5f, 3.0f, 3.5f, 4.0f, 4.7f}, {15, 15, 10, 10, 5, 5},
      {35, 45, 55, 65, 75, 85}, 2, 11, 0, 0, 4, &kPosesNB006},
+    // EU 0x3581A0 s_MSN_NB013_Updata
     {12, 0x7DB, "MSN_NB013", 0x483060, 0x483F40, {2.0f, 2.5f, 3.0f, 3.5f, 4.0f, 4.7f}, {20, 20, 15, 15, 10, 10},
      {25, 35, 45, 55, 65, 75}, 7, 8, 1, 1, 1, &kPosesNB013},   // s8: Trunks SSJ (captura del original, iw_nb013_c)
     // s8: NB014 en el original (capturas nb014_020/036): Goku SSJ (forma 2 de B3) y Gohan adolescente SSJ (forma 1),
     // pasarela.cpp kFormas (medido). El bloque de IW dice formas 0/0: su forma 0 de estos dos ya es la SSJ.
+    // EU 0x333E40 s_MSN_NB014_Updata
     {13, 0x7DC, "MSN_NB014", 0x480530, 0x481170, {1.7f, 2.1f, 2.6f, 3.2f, 3.8f, 4.4f}, {50, 35, 25, 20, 15, 10},
      {15, 25, 35, 45, 55, 65}, 0, 3, 2, 1, 1, &kPosesNB014},
 };
+// EU 0x37CFC0 s_MSN_NB006_Updata (entrada de NB006): ponen la tabla de rangos, llaman a Mg_SetLevelScaleValue /
+// Mg_SetLevelTimerValue / Mg_InitParamTable / Mg_SetupRoundParams / Mg_CountPositiveCells / Mg_CountNegativeCells y
+// GameState_SetFlag2(0). Sus constantes son las de kModulos (velocidad, ataques) y las de arriba: `coincide`.
+// EU 0x333E40 s_MSN_NB014_Updata y 0x3581A0 s_MSN_NB013_Updata escriben justo esta tabla en el contexto del minijuego:
+// +0x310 = 0x5f (95), +0x314 = 100, +0x318 = 0x51 (81), +0x31c = 0x5e (94), +0x320 = 0x45 (69), +0x324 = 0x50 (80),
+// +0x328 = 0x38 (56), +0x32c = 0x44 (68), +0x330 = 1, +0x334 = 0x37 (55) y +0x338 = 0. Los pares (min, max) son los de
+// abajo: `coincide`.
+// EU 0x350B60 Mg_InitDifficultyParams / 0x350C40 Mg_SetupRoundTargetsByLevel (NB013) y 0x376790 Mg_InitParamTable /
+// 0x3768F0 Mg_SetupRoundParams (NB006) dejan los ataques por dificultad en +0x228c (jugador) y +0x435c (rival), y
+// 0x350F70 Mg_SetupRoundSpeedByLevel / 0x376CE0 Mg_SetLevelScaleValue la velocidad en +0x35c/+0x360 (2.0, 2.5, 3.0,
+// 3.5, 4.0, 4.7 = 0x40000000, 0x40200000, 0x40400000, 0x40600000, 0x40800000, 0x40966666); los valores de kModulos
+// salen de ahi. +0x354/+0x358 (Mg_SetupRoundTimingByLevel 0x350EC0 y Mg_SetLevelTimerValue 0x376C30: 24, 30 y 80 en
+// NB006) no se leen en este decompilado: [H].
+// EU 0x32EA90 QteMg_ResetField354ByLevel (NB014/NB013): +0x354 y +0x358 a 0 en todas las dificultades; el port no
+// usa esos campos (ver [H] de arriba).
+// EU 0x377390 Mg_CountPositiveCells (NB006): por dificultad cuenta las celdas no negativas de las dos filas de 0x32
+// entradas de la tabla de botones (una por carril) y las deja en +0x34/+0x38; es el numero de pulsaciones de cada
+// carril, que aqui se cuenta al vuelo (nota = aciertos / iconos x 100): `coincide`.
+// EU 0x3609F0 MinigameHideNSeekPiccolo_sCPU_PiccoloJumpAnim y 0x363D10 ..._sCPU: la CPU de Piccolo del pilla-pilla
+// (estados de pose 0..0xf por palanca, Char_CheckGroundProximity y Char_EnterStateHitReaction2). En el port el rival de
+// NB006 es el pivote invisible y no hay pilla-pilla: `motor` (lo cubre la IA/pivote de B3); [H] si se quiere el original.
+// EU 0x333E40 s_MSN_NB014_Updata / 0x3581A0 s_MSN_NB013_Updata / 0x37CFC0 s_MSN_NB006_Updata
 constexpr int kUmbral[6][2] = {{0, 0}, {1, 55}, {56, 68}, {69, 80}, {81, 94}, {95, 100}};   // +0x310..+0x338
 
 // Pantalla de IW (640 x 448) y medidas del codigo
 constexpr float kW = 640, kH = 448, kCarrilY[2] = {366, 409}, kIcono = 32;
 constexpr float kAcepta = kW / 2 + 50, kFalla = kW / 2 + 150, kQuita = 495;
-// ponytail: el objetivo (objetos 1 y 2 de la UI del modulo) no esta leido; se pinta entre aceptar y fallar.
-constexpr float kObjetivo = (kAcepta + kFalla) / 2;
+// El objetivo de los QTE de DOS carriles (familia A: NB006/NB013/NB014) son los objetos 1 (jugador) y 2 (rival) del
+// modulo: Mg_SetupUiObjects EU 0x3575B0 -> UI_SetObjectPosVec(pantalla/2 + 150, 366 / 409, 0, 1 / 2) = x 470, con caja
+// UI_SetObjectRect(-28, -28, 7, 28) (35 x 56). El fallo es pasarse de ese x (QteMg_UpdatePlayerButtons EU 0x332270:
+// pantalla/2 + 150 < x -> QteMg_PlayHitPoses(...,0)), que es justo kFalla = 470; los carriles van en y = 43 x jugador +
+// 366 (misma funcion), que es kCarrilY.
+constexpr float kObjetivo = kW / 2 + 150;
 constexpr float kAroX = 480;          // s8: centro del aro medido en la captura del original (600 de 800 -> 480 de 640)
 constexpr float kAutoX = kAroX - 40;  // prueba (auto): pulsa con el icono casi en el aro (borde izquierdo en 440 < kFalla)
+
+// EU 0x2EEE80 QTE_GetPressedButton: con la tabla 0x498690 del ELF EU ({1,2,4,...,0x8000}) el original devuelve el
+// ULTIMO bit pulsado (el mas alto) y -1 si la mascara es 0. Es la misma resolucion que QTE_CheckPressedMatch compara
+// con el boton esperado de la secuencia. `mascara` es el registro PS2 del mando (bits 0..15).
+int BotonPulsado(uint16_t mascara) {
+  for (int i = 15; i >= 0; --i)
+    if (mascara & (1u << i)) return i;
+  return -1;
+}
 
 struct Icono {
   int boton = 0;
@@ -246,8 +286,10 @@ struct Juego {
   const Modulo2* m = nullptr;
   int clave = 0, fila = 0, dif = 2;
   Carril c[2];
+  // EU 0x32E8D0 QteMg_SetCharStatsByLevel
   float vel = 2, vida[2] = {1000, 1000};
   int fase = 0, t = 0, cuadros = 0, rango = 0, puntos = 100, nota = 0;   // fase 0 espera, 1 READY, 2 juego, 3 fin
+  int zeni = 0, saldo = 0;   // premio ZENI y monedero tras sumarlo (QteMg_FinalizeResult); `nota` = puntuacion
   int aviso_t = 0;
   int pausa = 0;      // R7: cuadros de pausa (clip 0x98 de NB006 al punto ganado; choque de NB013)
   bool punto = false; // R7: NB006 -> al ganar un punto se reproduce el clip 0x98 (Mg_ResetRoundState) y hay pausa
@@ -270,9 +312,18 @@ struct Juego {
   // s9: el panel de resultado del minijuego de IW (cotejado con iw_nb013_d de PCSX2): rotulos 5/7 t20-22 (OFFENCE /
   // DEFENSE SUCCESS RATE, TOTAL SCORE), cifras cian 5/5 t05 (5x4, % en la fila 2), cifras naranjas 5/5 t04 (11 de 32)
   // y EARNED! / TOTAL / ZENI de 333/0 (t19, t20, t07)
-  P::Imagen rot[3], cif_c, cif_n, earned, total, zeni;
+  P::Imagen rot[3], cif_c, cif_n, earned, total, zeni_img;
   P::Imagen titulo;   // s1 F04.3: titulo del minijuego (DATA_USA 335 + clave - 0x7D0, hijo 1)
   P::Imagen cif_e;    // s1 F04.3: 5/5 t06, cifras cian de 32 x 40 (EARNED en iw_nb013_d)
+  // DS72: panel de resultado con el arte de interfaz de IW (DATA_USA 334/1): t00 relleno azul oscuro y t08 el
+  // triangulo azul que marca cada fila (los tres rotulos ya eran 5/7). La banda clara de EARNED/TOTAL es 5/5 t03
+  // (560x48), no una caja propia. El marco fino azul se queda como trazo medido [H]: 334/1 t03 es el bisel grueso
+  // del panel del mapa y al estirarlo a 640x448 engorda ~6x.
+  P::Imagen panel_fill, row_arrow, row_band;
+  // DS156: fila RANK del panel de dos carriles. QteMg_FinalizeResult (EU 0x32F0F0) escribe la fila de rango (tipo 2,
+  // +0x40: rank +0x48 y premio +0x4C) y el original la ensena entre TOTAL SCORE y EARNED. Rotulo y letra del mismo
+  // #AMA que el panel del mapa (334/1 t17 fila 1 "RANK" y t24 "C B A S Z").
+  P::Imagen row_labels, row_ranks;
 };
 
 int Azar();   // mas abajo
@@ -335,10 +386,14 @@ bool LeerElf(Juego& j, std::string& error) {
       return false;
     }
     for (int i = 0; i < 50; ++i) {
+      // EU 0x2EEC60 QTE_SetSequence
       j.c[l].seq[i] = s[i];
       std::memcpy(&j.c[l].hueco[i], h + 4 * i, 4);
       const bool ok = l == 0 ? (s[i] >= 12 && s[i] <= 15) : (s[i] >= 8 && s[i] <= 11);
-      if (j.c[l].hueco[i] < 0 && i > 0 && j.c[l].n == 50) j.c[l].n = i;   // ponytail: fin del carril; IW no la mira
+      // El negativo de la tabla de separaciones es el centinela del final del carril (relleno de la tabla): el
+      // QteMg_UpdateButtonDisplay (0x32EDF0) recorre los 50 codigos (iVar7 < 0x32) y la ronda la cierra
+      // QTE_IsSequenceDone, no el hueco. Aqui solo sirve para no pintar los huecos de cola.
+      if (j.c[l].hueco[i] < 0 && i > 0 && j.c[l].n == 50) j.c[l].n = i;
       if (!ok || (j.c[l].hueco[i] < 0 && j.c[l].n == 50) || j.c[l].hueco[i] > 2000) {
         error = "las tablas del ELF no son las de IW USA";
         return false;
@@ -385,12 +440,24 @@ bool Cargar(Juego& j, std::string& error) {
       j.cif_c = P::TexturaAmt(r5, 5);
       j.cif_n = P::TexturaAmt(r5, 4);
       if (P::CuantasAmt(r5) > 6) j.cif_e = P::TexturaAmt(r5, 6);   // s1 F04.3: cifras cian grandes de EARNED
+      if (P::CuantasAmt(r5) > 3) j.row_band = P::TexturaAmt(r5, 3);   // DS72: banda clara 560x48 de EARNED/TOTAL
+    }
+    // DS72: el panel del resultado usa el arte de interfaz de IW (334/1 #AMT): t00 relleno y t08 triangulo.
+    const std::vector<uint8_t> ui334 = P::HijoAmb(usa.Entrada(334), 1);
+    if (P::CuantasAmt(ui334) > 8) {
+      j.panel_fill = P::TexturaAmt(ui334, 0);
+      j.row_arrow = P::TexturaAmt(ui334, 8);
+    }
+    // DS156: rotulo RANK (t17, 152x160: cinco filas de 32) y letras de rango (t24, 96x80: C B A / S Z -).
+    if (P::CuantasAmt(ui334) > 24) {
+      j.row_labels = P::TexturaAmt(ui334, 17);
+      j.row_ranks = P::TexturaAmt(ui334, 24);
     }
     const std::vector<uint8_t> r333 = P::HijoAmb(usa.Entrada(333), 0);
     if (P::CuantasAmt(r333) > 20) {
       j.earned = P::TexturaAmt(r333, 19);
       j.total = P::TexturaAmt(r333, 20);
-      j.zeni = P::TexturaAmt(r333, 7);
+      j.zeni_img = P::TexturaAmt(r333, 7);
     }
     if (j.clave >= 0x7D0 && j.clave <= 0x7E1)   // s1 F04.3
       j.titulo = P::TexturaAmt(P::HijoAmb(usa.Entrada(size_t(P::kTituloMini0 + j.clave - 0x7D0)), 1), 0);
@@ -401,9 +468,12 @@ bool Cargar(Juego& j, std::string& error) {
     j.aro4 = P::TexturaAmt(h4, 17);
     j.marco4 = P::TexturaAmt(h4, 18);
     j.verde4 = P::TexturaAmt(h4, 19);
-    // siluetas de cada par (NB013 cotejado: Vegeta t43 a la izquierda, Trunks t44 a la derecha). [H] NB014 / NB006
-    const int s0 = j.m->poses == &kPosesNB013 ? 43 : j.m->poses == &kPosesNB006 ? 48 : 39;
-    const int s1 = j.m->poses == &kPosesNB013 ? 44 : j.m->poses == &kPosesNB006 ? 50 : 47;
+    // Siluetas de cada par, del atlas DATA_USA 4/0 (h4): NB013 cotejado con la captura del original (Vegeta t43 a la
+    // izquierda, Trunks t44 a la derecha). Las otras dos parejas se sacan del propio atlas: NB006 = t47 (Gohan nino,
+    // 48x72, la figura mas baja) y t48 (Piccolo, 48x64, cabeza con el turbante), NB014 = t39 (Goku, 72x96, pelo en pico)
+    // y t49 (Gohan adolescente, 72x96). t50 (80x88) no es de estos tres pares y no se pinta.
+    const int s0 = j.m->poses == &kPosesNB013 ? 43 : j.m->poses == &kPosesNB006 ? 47 : 39;
+    const int s1 = j.m->poses == &kPosesNB013 ? 44 : j.m->poses == &kPosesNB006 ? 48 : 49;
     j.sil[0] = P::TexturaAmt(h4, s0);
     j.sil[1] = P::TexturaAmt(h4, s1);
     // caras de t53 (3x3 de 64): 0 Goku SSJ, 1 Vegeta SSJ, 2 Gohan joven SSJ, 3 Trunks SSJ, 4 Piccolo, 5 Krilin,
@@ -468,6 +538,9 @@ struct ClipCam {
 std::vector<uint8_t> g_amc;
 std::map<int, ClipCam> g_clips;
 std::atomic<int> g_cb_clip{-1}, g_cb_frame{0};   // clip en curso y cuadros desde que empezo (hilo de la interfaz -> del juego)
+std::atomic<int> g_cb_amc{915}, g_cb_amc_entrada{0};   // AMC real de la camara (entrada, general 915 o MSN019 879)
+std::atomic<bool> g_cb_comparable{false};        // clip de juego incluido en la serie del comparador, no entrada/READY/resultado
+std::atomic<int> g_cb_ultimo_clip_log{-1};        // una muestra por ronda, como los dorados del original
 std::atomic<bool> g_cb_quieto{false};
 std::atomic<const Poses*> g_poses_a{nullptr};   // las poses (y camaras) del minijuego de la familia A en curso            // se queda en su primer cuadro (UiAnim_Start con play = 0)
 std::atomic<bool> g_cb_bucle{false};   // s8: el clip vuelve a empezar al acabar (la camara de juego de IW: 900 cuadros en bucle)
@@ -574,7 +647,8 @@ void Muestra(const std::vector<std::array<float, N>>& k, float f, float* out) {
   const float d = k[j][0] - k[i][0], t = d > 0 ? std::clamp((f - k[i][0]) / d, 0.0f, 1.0f) : 0.0f;
   for (size_t c = 1; c < N; ++c) out[c - 1] = k[i][c] + (k[j][c] - k[i][c]) * t;
 }
-void CamB(int clip, bool quieto = false, bool bucle = false) {   // hilo de la interfaz: este clip desde el cuadro 0
+void CamB(int clip, bool quieto = false, bool bucle = false, bool comparable = false) {   // hilo de la interfaz: este clip desde el cuadro 0
+  g_cb_comparable = comparable;
   // s10 PRUEBA (DBZ3_S10_CLIP=BB): fuerza un clip concreto (p. ej. la ronda 8 de NB007) para medir su camara sin
   // recorrer las diez rondas. Solo actua si el clip existe en la copia del jugador.
   if (const char* c = std::getenv("DBZ3_S10_CLIP")) {
@@ -582,6 +656,7 @@ void CamB(int clip, bool quieto = false, bool bucle = false) {   // hilo de la i
     if (g_clips.count(v)) clip = v;
   }
   if (clip < 0 || !g_clips.count(clip)) return;
+  g_cb_amc = clip >= kCamEntrada ? g_cb_amc_entrada.load() : clip >= kCam879 ? 879 : 915;
   SerieClip(clip);
   g_cb_clip = clip;
   g_cb_frame = 0;
@@ -658,9 +733,11 @@ void PosesGolpe(Juego& j, int carril, bool acierto) {
 }
 
 // Fallo del carril 1: el rival golpea (vida del jugador; la pose la pone PosesGolpe).
+// EU 0x3301C0 QteMg_ApplyHitDamage
 void Golpe(Juego& j) { j.vida[0] -= float(j.m->ataque_rival[j.dif]); }
 
 // Un cuadro de 60 Hz de la logica de IW (QteMg_UpdatePlayerButtons / ProcessPlayerInput / ApplyHitDamage).
+// EU 0x332270 QteMg_UpdatePlayerButtons
 void Paso(Juego& j, uint16_t pulsado) {
   ++j.cuadros;
   if (j.aviso_t > 0) --j.aviso_t;
@@ -699,6 +776,10 @@ void Paso(Juego& j, uint16_t pulsado) {
     }
     while (c.actual < c.sale && c.ic[c.actual].resuelto) ++c.actual;
     // prueba (auto): pulsa el boton correcto cuando el icono esta en el objetivo
+    // EU 0x2EEE80 QTE_GetPressedButton: la tabla de mascaras 0x498690 es 1<<i (comprobado en el ELF EU), la recorre
+    // 0..15 y se queda con el ULTIMO bit pulsado; -1 si no hay ninguno. Aqui se aplica esa resolucion al mando del
+    // cuadro, separando por carril (0 = botones, 1 = gatillos). El estado de la QTE (habilitada +0x110 y flags de
+    // slot +0x100) no se replica: la fase del port ya filtra cuando no se acepta entrada (estructura).
     uint16_t p = pulsado & (l == 0 ? 0xF000 : 0x0F00);
     if (j.auto_ && c.actual < c.sale && c.ic[c.actual].x >= kAutoX && !c.ic[c.actual].pedido) {
       Icono& k = c.ic[c.actual];
@@ -719,7 +800,7 @@ void Paso(Juego& j, uint16_t pulsado) {
         ++c.llegaron;
       }
       j.aviso_t = 30;
-      if (p & (1u << k.boton)) {
+      if (BotonPulsado(p) == k.boton) {   // QTE_CheckPressedMatch: el boton resuelto, no la mera pertenencia
         ++c.aciertos;
         k.vivo = false;
         golpe[l] = true;
@@ -738,10 +819,12 @@ void Paso(Juego& j, uint16_t pulsado) {
       }
     }
   }
-  // R7 (05_iw_minijuegos_pendientes): choque de NB013 (Mg_StartClashSequence / Mg_CheckClashOutcome). Si los dos carriles
-  // aciertan en el mismo cuadro, las poses del choque (jugador 0x11 / rival 0x21) y el clip 0x188; despues vuelven a la
-  // espera de pelea. ponytail [H]: IW decide el ganador del choque con la pose (3 vs 2) y deja los dos a 100 de vida; aqui
-  // es solo visual (no cambia vida), a falta de medir contra el original.
+  // R7 (05_iw_minijuegos_pendientes): choque de NB013 (Mg_StartClashSequence 0x352A50 / Mg_CheckClashOutcome
+  // 0x352760). Empieza con las poses 0x11 (jugador) y 0x21 (rival) y el clip 0x188 (Mg_StartClashSequence); luego es un
+  // pulso de botones (Mg_UpdateClashPhase 0x353090) y gana quien llega a la pose 3 contra la 2 (Mg_CheckClashOutcome:
+  // si jugador 3 y rival 2, efecto + UiAnim 0x187 y reinicia la ronda). Al montar el choque pone la ENERGIA de los dos
+  // (+0x185C, el medidor del scatto, no la vida) a 100 (0x42C80000). Aqui, sin fase de pulso, se mantiene el choque
+  // visual (poses del choque + clip) y no cambia la vida; falta la fase de pulsos y el reinicio de ronda.
   static const int choque_t = std::getenv("DBZ3_IWMINI_CHOQUE") ? std::atoi(std::getenv("DBZ3_IWMINI_CHOQUE")) : 0;   // prueba
   if (choque_t && j.cuadros == choque_t) golpe[0] = golpe[1] = true;   // prueba: fuerza el choque en el cuadro choque_t
   if (golpe[0] && golpe[1] && j.poses->cam_choque >= 0) {
@@ -752,9 +835,11 @@ void Paso(Juego& j, uint16_t pulsado) {
     j.pausa = kPausaChoque;
     REXLOG_INFO("dbz3 r7: choque (los dos carriles aciertan): clip 0x{:X}", q.cam_choque);
   }
+  // EU 0x2EE9E0 QTE_IsSequenceDone
   const bool gastado = j.c[0].actual >= j.c[0].n && j.c[1].actual >= j.c[1].n;
   if (gastado || j.vida[0] <= 0 || j.vida[1] <= 0) {   // QteMg_ClassifyResult + FinalizeResult
     const int ac = j.c[0].aciertos + j.c[1].aciertos, ll = j.c[0].llegaron + j.c[1].llegaron;
+    // EU 0x32FA20 QteMg_ClassifyResult
     j.nota = ll > 0 ? int(float(ac) / float(ll) * 100.0f) : 0;
     j.rango = 0;
     if (j.vida[0] > 0)
@@ -765,6 +850,10 @@ void Paso(Juego& j, uint16_t pulsado) {
         }
     const float v = j.rango == 0 ? 100.0f : j.pts[j.rango] * j.mult[j.dif];
     j.puntos = (int(v) + 99) / 100 * 100;
+    // EU 0x32F0F0 QteMg_FinalizeResult: `puntos` es el premio ZENI (tabla del rango x dificultad); la puntuacion de
+    // la pantalla es `nota` (0..100), separada. TOTAL ZENI = lo que queda en el monedero al sumarlo.
+    j.zeni = j.puntos;
+    j.saldo = P::LeerProgreso("iw_zeni", 0) + j.zeni;
     j.fase = 3;
     if (j.poses == &kPosesNB006) g_fondo_off = false;
     j.t = 0;
@@ -869,7 +958,7 @@ class Panel : public rex::ui::ImGuiDialog {
         j->t = 0;
         // s8: la camara de juego de IW NO esta quieta: el clip (0x187 / 0x1A5 / 0x97, 900 cuadros) se mueve despacio y
         // vuelve a empezar (medido: cuadro 885 -> 1,2 en PCSX2)
-        CamB(j->poses->cam_juego, false, true);
+        CamB(j->poses->cam_juego, false, true, true);
         Poner(*j->poses, 0, j->poses->pelea[0], true);   // START!: la espera de pelea (jugador 3 / rival 2)
         Poner(*j->poses, 1, j->poses->pelea[1], true);
       } else if (j->fase == 2 && std::getenv("DBZ3_R14_POSES")) {
@@ -972,9 +1061,14 @@ class Panel : public rex::ui::ImGuiDialog {
     cif_n_ = ps2::Crear(j.cif_n);
     earned_ = ps2::Crear(j.earned);
     total_ = ps2::Crear(j.total);
-    zeni_ = ps2::Crear(j.zeni);
+    zeni_ = ps2::Crear(j.zeni_img);
     titulo_ = ps2::Crear(j.titulo);
     cif_e_ = ps2::Crear(j.cif_e);
+    panel_fill_ = ps2::Crear(j.panel_fill);
+    row_arrow_ = ps2::Crear(j.row_arrow);
+    row_band_ = ps2::Crear(j.row_band);
+    row_labels_ = ps2::Crear(j.row_labels);   // DS156
+    row_ranks_ = ps2::Crear(j.row_ranks);
   }
   static void Pieza(ImDrawList* dl, const ps2::Tex& t, ImVec2 c, float k) {
     if (t) dl->AddImage(t.id(), ImVec2(c.x - t.w * k / 2, c.y - t.h * k / 2), ImVec2(c.x + t.w * k / 2, c.y + t.h * k / 2));
@@ -984,7 +1078,15 @@ class Panel : public rex::ui::ImGuiDialog {
   // hasta x 470 y ZENI en x 532. El titulo del minijuego, arriba (s1 F04.3)
   template <class At>
   void DibujarResultado(ImDrawList* fg, At at, const Juego& j) {
-    fg->AddRectFilled(at(16, 10), at(624, 438), IM_COL32(8, 40, 72, 175), 14);
+    // DS72: el relleno del panel es el arte de interfaz de IW (DATA_USA 334/1 t00), no un color propio.
+    // t00 se pinta con alfa 175 como la caja anterior: el original deja ver al luchador por detras (iw_nb013_d).
+    if (panel_fill_)
+      fg->AddImageRounded(panel_fill_.id(), at(16, 10), at(624, 438), ImVec2(0, 0), ImVec2(1, 1),
+                          IM_COL32(255, 255, 255, 175), 26.0f);
+    else
+      fg->AddRectFilled(at(16, 10), at(624, 438), IM_COL32(8, 40, 72, 175), 14);
+    // El marco fino azul del original no es un sprite unico: el unico marco grande de 334/1 (t03) es el bisel grueso del
+    // panel del mapa y aqui quedaria 6 veces mas grueso. Se conserva el trazo medido [H].
     fg->AddRect(at(16, 10), at(624, 438), IM_COL32(110, 200, 255, 230), 14, 0, 3);
     // s1 F04.3: el titulo del minijuego arriba, centrado (medido en iw_nb013_d, 800x600: la letra azul de la textura 346/1
     // (visible x 2..338, y 11..43 de 340x46) ocupa x 180..620 e y 34..65 -> en 640x448, 1,065 de ancho por 0,91 de alto
@@ -1020,31 +1122,87 @@ class Panel : public rex::ui::ImGuiDialog {
       fg->AddImage(grandes->id(), at(xd - 32, cy - 20), at(xd, cy + 20), ImVec2(g * 32 / 352.0f, 0), ImVec2((g + 1) * 32 / 352.0f, 1));
       return 32.0f;
     };
-    auto numero = [&](int v, float xd, float cy, bool pct) {
+    auto numero = [&](int v, float xd, float cy, bool pct, int min_dig = 1) {
       if (pct) xd -= cian(10, xd, cy);
+      int ds[12], n = 0;
       do {
-        xd -= pct ? cian(v % 10, xd, cy) : naranja(v % 10, xd, cy);
+        ds[n++] = v % 10;
         v /= 10;
       } while (v > 0);
+      while (n < min_dig && n < 12) ds[n++] = 0;   // DS156: las cifras aun ocultas de EARNED/TOTAL dejan su hueco
+      for (int i = 0; i < n; ++i) xd -= pct ? cian(ds[i], xd, cy) : naranja(ds[i], xd, cy);
     };
     auto pct = [&](const Carril& c) { return c.llegaron > 0 ? c.aciertos * 100 / c.llegaron : 0; };
     const float cy[3] = {73, 138, 202};
     const int val[3] = {pct(j.c[0]), pct(j.c[1]), j.nota};
     for (int i = 0; i < 3; ++i) {
-      fg->AddTriangleFilled(at(42, cy[i] - 8), at(42, cy[i] + 8), at(54, cy[i]), IM_COL32(110, 200, 255, 255));   // el triangulo de IW
+      if (row_arrow_)   // DS72: el triangulo azul es 334/1 t08 (24x24), no un triangulo dibujado
+        fg->AddImage(row_arrow_.id(), at(38, cy[i] - 10), at(58, cy[i] + 10));
+      else
+        fg->AddTriangleFilled(at(42, cy[i] - 8), at(42, cy[i] + 8), at(54, cy[i]), IM_COL32(110, 200, 255, 255));
       img(rot_[i], 68, cy[i]);
       numero(val[i], 604, cy[i] + 22, true);
       fg->AddLine(at(40, cy[i] + 40), at(604, cy[i] + 40), IM_COL32(110, 200, 255, 200), 2);
     }
-    for (float y : {347.0f, 403.0f})   // las franjas claras de EARNED y TOTAL
-      fg->AddRectFilled(at(28, y - 24), at(612, y + 24), IM_COL32(200, 215, 230, 70), 18);
+    // DS156: RANK. QteMg_FinalizeResult (EU 0x32F0F0) escribe la fila de rango en el bloque de resultados (tipo 2 en
+    // +0x40, indice en +0x48 y premio en +0x4C): el original la pinta entre TOTAL SCORE y EARNED. Solo sale al superar
+    // el minijuego: en las capturas del original con 0 % (iw_nb013_d, nb006_100, nb014_108) no hay fila. Arte del
+    // mismo #AMA que el panel del mapa (334/1 t17 fila 1 RANK y t24 C B A S Z).
+    if (j.rango > 0) {
+      const float yr = 267;
+      if (row_arrow_)   // el mismo triangulo de las otras filas (334/1 t08)
+        fg->AddImage(row_arrow_.id(), at(38, yr - 10), at(58, yr + 10));
+      else
+        fg->AddTriangleFilled(at(42, yr - 8), at(42, yr + 8), at(54, yr), IM_COL32(110, 200, 255, 255));
+      if (row_labels_) {   // 334/1 t17: 152x160, cinco filas de 32 (0 TIME, 1 RANK, 2 BRICKS, 3 SCORE, 4 TOTAL SCORE)
+        const float alto = 34, sy = 32, an = 152.0f * alto / 32.0f;   // misma altura que los rotulos 5/7
+        fg->AddImage(row_labels_.id(), at(68, yr - alto / 2), at(68 + an, yr + alto / 2),
+                     ImVec2(0, sy / row_labels_.h), ImVec2(152.0f / row_labels_.w, (sy + 32.0f) / row_labels_.h));
+      }
+      if (row_ranks_) {   // 334/1 t24 (96x80): C B A / S Z -; j.rango 1..5 -> 0..4 (C..Z)
+        const int rg = std::clamp(j.rango - 1, 0, 4);
+        const int col = rg >= 3 ? rg - 3 : rg, fil = rg >= 3 ? 1 : 0;
+        const float alto = 34, an = alto * 32.0f / 40.0f;
+        fg->AddImage(row_ranks_.id(), at(604 - an, yr - alto / 2), at(604, yr + alto / 2),
+                     ImVec2(col * 32.0f / row_ranks_.w, fil * 40.0f / row_ranks_.h),
+                     ImVec2((col + 1) * 32.0f / row_ranks_.w, (fil + 1) * 40.0f / row_ranks_.h));
+      }
+      fg->AddLine(at(40, yr + 40), at(604, yr + 40), IM_COL32(110, 200, 255, 200), 2);
+    }
+    for (float y : {347.0f, 403.0f}) {   // DS72: franjas claras de EARNED y TOTAL con 5/5 t03 (560x48)
+      if (row_band_)
+        fg->AddImage(row_band_.id(), at(28, y - 24), at(612, y + 24), ImVec2(0, 0), ImVec2(1, 1),
+                     IM_COL32(255, 255, 255, 200));
+      else
+        fg->AddRectFilled(at(28, y - 24), at(612, y + 24), IM_COL32(200, 215, 230, 70), 18);
+    }
+    // EARNED y TOTAL ZENI: `puntos` es el premio (QteMg_FinalizeResult), `nota` la puntuacion. Ritmo del original
+    // (EU 0x285F30 LoadWaitRewardScreen): EARNED empieza en el cuadro 120 y TOTAL en el 320, y cada cifra aparece 20
+    // cuadros despues que la de su derecha (los nodos de cifras van de unidades hacia arriba). La captura d_fin del
+    // 11:32:16 (2,3 s despues del fin) pillo el conteo a medias: 5760 de 10800 con TOTAL aun sin empezar, no un
+    // monedero menor que el premio. Aqui las cifras se escriben ya con su valor final (como el original) y solo se
+    // descubren de derecha a izquierda.
+    auto digitos = [](int v) {
+      int n = 1;
+      while (v >= 10) {
+        v /= 10;
+        ++n;
+      }
+      return n;
+    };
+    auto revelar = [&](int valor, int desde, float y, const ps2::Tex* cif) {
+      if (j.fase != 3 || j.t < desde) return;
+      const int vis = std::min(1 + (j.t - desde) / 20, digitos(valor));
+      int pot = 1;
+      for (int i = 0; i < vis; ++i) pot *= 10;
+      grandes = cif;
+      numero(valor % pot, 470, y, false, vis);
+    };
     img(earned_, 38, 347, 34);
-    if (cif_e_) grandes = &cif_e_;
-    numero(j.puntos, 470, 347, false);
-    grandes = &cif_n_;
+    revelar(j.zeni, 120, 347, cif_e_ ? &cif_e_ : &cif_n_);
     img(zeni_, 520, 347, 28);
     img(total_, 38, 403, 34);
-    numero(j.puntos, 470, 403, false);
+    revelar(j.saldo, 320, 403, &cif_n_);
     img(zeni_, 520, 403, 28);
   }
   void Dibujar(ImGuiIO& io, const Juego& j) {
@@ -1053,9 +1211,9 @@ class Panel : public rex::ui::ImGuiDialog {
     const S::Area a = S::GameArea(io);
     auto at = [&](float x, float y) { return a.At(x * 1200 / kW, y * 900 / kH); };   // pantalla de IW -> 1200x900
     const float k = a.s * 900 / kH;
-    // Vida de los dos (UiFade 0 y 1 del modulo). ponytail: la pieza propia del modulo no esta leida; van las del HUD
-    // de los minijuegos de IW (6/0: aro con la cara, marco t15 y relleno amarillo t01, medidas de P4) arriba, el
-    // jugador a la izquierda y el rival a la derecha (en espejo).
+    // Vida de los dos (UiFade 0 y 1 del modulo). s9: el HUD propio de estos minijuegos (DATA_USA 4/0) es el que se
+    // pinta cuando esta (banda t38, marcos t17/t18, relleno t19 y caras t53, medido en nb013_030); si faltara, se cae
+    // al de los minijuegos de campo (6/0: aro con la cara, marco t15 y relleno amarillo t01).
     // s9: con el HUD de IW (4/0), sus piezas donde las pone IW (medido en nb013_030, 800x600 -> 640x448): aro con la cara
     // centrado en (42, 49), marco t18 en (80, 22) y relleno verde t19 en (96, 26); el rival en espejo (x -> 640 - x).
     auto rect = [&](const ps2::Tex& t, float x0, float y0, float w, float h, bool espejo) {
@@ -1124,6 +1282,8 @@ class Panel : public rex::ui::ImGuiDialog {
       // la muesca blanca del boton entrante.
       const float len = std::min(kW, j.vel * 240.0f - 48.0f);
       const ImVec2 r0 = at(0, 376), r1 = at(len, 416);
+      // DS72: la barra roja de NB006 NO tiene sprite: UiBar_DrawGauge (EU 0x372950) pinta un rectangulo de color con
+      // el borde y la muesca; el 4/0 t42 (480x8) es el carril gris translucido, no el relleno. Se deja como esta [H].
       fg->AddRectFilled(r0, r1, IM_COL32(198, 62, 88, 255), 7 * k);
       fg->AddRect(r0, r1, IM_COL32(38, 78, 148, 255), 7 * k, 0, 2 * k);
       fg->AddRectFilled(at(len - 42, 378), at(len - 30, 414), IM_COL32(245, 245, 245, 235), 2 * k);
@@ -1190,6 +1350,8 @@ class Panel : public rex::ui::ImGuiDialog {
   ps2::Tex banda_, aro4_, marco4_, verde4_, sil_[2], caras_;   // s9: HUD de IW (DATA_USA 4/0)
   ps2::Tex rot_[3], cif_c_, cif_n_, earned_, total_, zeni_;     // s9: panel de resultado de IW
   ps2::Tex titulo_, cif_e_;                                     // s1 F04.3
+  ps2::Tex panel_fill_, row_arrow_, row_band_;    // DS72: relleno/triangulo/banda nativos
+  ps2::Tex row_labels_, row_ranks_;               // DS156: rotulo RANK y letras de rango (334/1 t17/t24)
 };
 
 void CreatePanel() {
@@ -1211,6 +1373,7 @@ bool Empezar(int clave, int fila, int dificultad) {
   j->vel = m->velocidad[j->dif];
   j->poses = m->poses;
   g_poses_a = m->poses;
+  g_cb_amc_entrada = m->poses->amc_entrada;
   g_cb_clip = -1;
   SeriePorClip(false);
   if (m->poses->cam_ini >= 0 && !std::getenv("DBZ3_IWMINI_CAMARA_B3")) {   // DBZ3_IWMINI_CAMARA_B3: la camara propia
@@ -1272,18 +1435,30 @@ bool Empezar(int clave, int fila, int dificultad) {
     Resultado res;
     res.clave = j->clave;
     res.fila = j->fila;
+    // EU 0x28AA40 GameState_GetConfigBlock
+    // EU 0x28A9E0 GameState_CopyConfigBlock
     res.superado = j->fase == 3 && j->rango > 0;
     res.centesimas = j->cuadros * 100 / 60;
     res.puntos = j->fase == 3 ? j->puntos : 0;
-    res.rango = std::max(j->rango - 1, 0);   // IW 1..5 -> 0 C .. 4 Z
+    res.score = j->fase == 3 ? j->nota : 0;   // TOTAL SCORE del panel (0..100), separado del premio
+    res.zeni = j->fase == 3 ? j->zeni : 0;
+    res.rango = j->rango > 0 ? j->rango - 1 : -1;   // IW 1..5 -> 0 C .. 4 Z; sin superar = sin rango (DS156)
     res.monedas = j->c[0].aciertos + j->c[1].aciertos;
-    REXLOG_INFO("dbz3 r14: resultado {} superado {} rango {} puntos {}", j->m->nombre, res.superado, res.rango,
-                res.puntos);
+    res.dificultad = j->dif;
+    // DS153: los tres valores del bloque (EU 0x32F0F0 QteMg_FinalizeResult: +0x4C/+0x50/+0x54) para el panel de
+    // OFFENCE/DEFENCE/TOTAL SCORE (el modulo los pinta en vivo; esto queda en el resultado por si lo usa el mapa).
+    auto pct = [](const Carril& c) { return c.llegaron > 0 ? c.aciertos * 100 / c.llegaron : 0; };
+    res.offence = pct(j->c[0]), res.defence = pct(j->c[1]);
+    res.con_tiempo = false;   // el panel de dos carriles no lleva TIME
+    REXLOG_INFO("dbz3 r14: resultado {} superado {} rango {} score {} zeni {}", j->m->nombre, res.superado, res.rango,
+                res.score, res.zeni);
     Terminar(res);
   });
   return true;
 }
 
+// El resto de profundidad 1 de esta familia (motor de UI/poses/QTE de la PS2) esta en
+// MAPAS_CODIGO/SUSTITUIDAS_IW_MINIJUEGOS.txt, con el archivo:funcion del port que lo cubre.
 // ---- Familia B, "10 rondas" (11 MSN_NB012; la lista 1-10 de la captura 88) ----
 // RE (decomp EU, nombres Mg_*; USA = EU - 0x7B0 en los datos):
 //  - 10 rondas: orden barajado de 20 filas (Mg_ShuffleRoundOrder: 5 de las filas 0-9 y 5 de las 10-19). Cada fila son
@@ -1344,8 +1519,9 @@ constexpr PosesB kPosesMSN019 = {930, 0x7BC, {0x76C, 0x76E, 0x770}, {0, 0x76D, 0
                                  -1, -1, {-1, -1, -1, -1, -1, -1, -1, -1, -1}, 0x5AA, 0x5AA, 60, kCam879};
 // MSN019: el clip de resultado de Videl (Results_StateFinishOutcome: tabla USA 0x497DA0 = 0x5AA..0x5AF, el de Videl el primero;
 // plano fijo alrededor de ella en el origen). Camara de juego: el #AMC de DATA_CMN 879 (clip 0, 300 cuadros) que carga
-// w_Camera_LoadMotionFile (motion 0x36F) y monta Minigame_SetupPlayerModels (ancla +0x840 = Videl); ponytail [H]: IW la
-// ancla al jugador con el +0x840; aqui va ancorada al luchador (PasoCamaraB), como el resto de la familia B.
+// w_Camera_LoadMotionFile (motion 0x36F) y monta Minigame_SetupPlayerModels. El ancla +0x840 sale de #ITM +0x20 (punto 0,
+// la salida del jugador) y se copia a la camara (+0x90) y a la escena (+0x1620/0x1630): IW la ancla a la SALIDA, no al
+// luchador; en el barrido Videl no se mueve, asi que anclarla al luchador da lo mismo (PasoCamaraB).
 struct ModuloB {
   int indice, clave;
   const char* nombre;
@@ -1357,14 +1533,31 @@ struct ModuloB {
   int jugador, escenario_iw;
   const PosesB* poses;
 };
+// EU 0x32EB30 QteMg_SetSpeedByLevel
+// EU 0x350C40 Mg_SetupRoundTargetsByLevel
+// EU 0x350EC0 Mg_SetupRoundTimingByLevel
+// EU 0x350F70 Mg_SetupRoundSpeedByLevel
+// EU 0x376790 Mg_InitParamTable
+// EU 0x3768F0 Mg_SetupRoundParams
+// EU 0x376C30 Mg_SetLevelTimerValue
+// EU 0x376CE0 Mg_SetLevelScaleValue
 constexpr ModuloB kModulosB[] = {
+    // Escenario 4 (ROCK): Mg_InitStageByChar (EU 0x3169E0) escribe +0x7C6 = 12 si el personaje es 13 o 10 (Ten/Krilin)
+    // y 4 en cualquier otro caso; NB012 juega con Vegeta (7) en el original -> 4. No era una suposicion.
     {11, 0x7DA, "MSN_NB012", kDesplazar, false, 0x47DB10, 0x47DFF0, 0x47F2D0, {1.5f, 2.5f, 3.5f, 4.5f, 5.5f, 6.5f},
      {3, 4, 5, 6, 7, 9}, {4, 5, 6, 7, 8, 10}, 7, 4, &kPosesNB012},
-    // ponytail: la escena de IW es el interior de la nave (DATA_CMN 880, modelo de IW); va el escenario 0 de IW (BUDO)
+    // RE/PINE (2026-10-25): la escena de IW es el interior de la nave (DATA_CMN 880). Con el mod Campo IW 880
+    // instalado se usa esa alta (log: "escenario 31"); sin el, cae a MapaIW(0). Escenario del modulo = 0 (BUDO).
+    // EU 0x295C10 s_MSN_NB007_Update
     {6, 0x7D5, "MSN_NB007", kTeclear, true, 0x472F30, 0, 0x473680, {0, 0, 0, 0, 0, 0}, {3, 5, 6, 8, 9, 9}, {4, 6, 7, 9, 10, 10}, 0,
      0, &kPosesNB007},
-    // ponytail: el escenario de MSN019 (Stage_BeginLoad del modulo) sin leer; va el 5 de IW (PLANE). IW no tiene cara de
-    // Videl en 6/0: va la nativa de B3 (PintarCara)
+    // RE PCSX2/PINE EU (SLES-55347): w_Stage_BeginLoad pasa el ID IW 5 (PLANE; global 0x4DB280). La misma ruta va a
+    // MapaIW(5) -> mapa 62 de B3; captura del original con las lomas y molinos cotejada con la escena del port. IW no trae
+    // cara de Videl en 6/0: va la nativa de B3 (PintarCara).
+    // EU 0x2EC440 s_MSN019_UPDATE: la entrada del minijuego 18 pone el trabajo, arranca el clip 0 de la UI
+    // (UiAnim_Start(0,1,0,1,0)), escribe +0x30 = 2, limpia el flag de estado (GameState_SetFlag2(0)) y no toca el
+    // mando. Aqui la entrada es la fase 0 (camara de entrada / cam_ini y la espera de la pose); el clip 0 de la UI y el
+    // campo +0x30 no estan identificados en los datos del jugador: `[H]`. El juego en si es kBarrido.
     {18, 0x7E1, "MSN019", kBarrido, false, 0, 0, 0, {2.0f, 3.5f, 4.0f, 4.5f, 5.0f, 5.2f}, {4, 5, 7, 8, 9, 10},
      {4, 5, 7, 8, 9, 10}, 15, 5, &kPosesMSN019},
 };
@@ -1372,8 +1565,15 @@ constexpr uint16_t kMascaraBarrido[6] = {0xF000, 0xF000, 0xF000, 0xFC00, 0xFC00,
 constexpr float kAnchoBarrido[6] = {0.5f, 0.6f, 0.75f, 0.8f, 0.85f, 0.9f};
 constexpr int kTipoBoton[8] = {15, 12, 13, 14, 10, 11, 8, 9};   // tipo de objeto -> codigo de boton (0x8000 = 1 << 15...)
 constexpr float kUmbralT[6] = {1e9f, 55.0f, 45.0f, 40.0f, 35.0f, 25.0f};   // NB007: total de segundos <= umbral
-constexpr float kYB = 395, kObjB = kW / 2 + 60;   // ponytail: x del objetivo (objeto 0x20 de la UI) sin leer
-constexpr float kObjAncho = 48;                    // ponytail: ancho de su caja sin leer (el icono mide 32)
+// EU 0x295C10 s_MSN_NB007_Update: +0xF8 = 0x40E00000 (7,0 s); es el limite de la QTE de cada ronda
+// (QTE_SetTimeLimit 0x2EE700 lo copia a +0xfc) y el corte de "ronda lenta" de MiniGame_CalcRank.
+constexpr float kLimiteTeclear = 7.0f;
+// Objetivo de la familia B (un carril): el objeto 0x20 de la UI de Mg_UI_CreateObjects (EU 0x316060),
+// UI_SetObjectPosVec(pantalla/2, 395, 0, 0x20) con UI_SetObjectRect(-28, -28, 28, 28, 0x20): centro x 320 y caja de 56.
+// El juego lo juzga por solape (UI_CheckTwoObjectsOverlap(0x20, icono) en Mg_UpdateScrollingIcons EU 0x315540) y da el
+// fallo al pasar de pantalla/2 + 150 (Mg_UpdateQteInput EU 0x314060).
+constexpr float kYB = 395, kObjB = kW / 2;
+constexpr float kObjAncho = 56;
 constexpr int kJuicioPts[3] = {100, 70, 50};       // +0x108, +0x10C, +0x110
 constexpr int kUmbralB[6] = {0, 301, 601, 751, 801, 901};
 
@@ -1396,8 +1596,17 @@ struct JuegoB {
   Icono ic[10];
   bool pulsado[10] = {};
   float nota[10] = {};
+  // DS153: suma por juicio (EU 0x313100 Mg_ApplyQteJudgeScore: +0x48/+0x4C/+0x50 += puntos[juicio]/botones de la ronda;
+  // Mg_FinishAndWriteResults 0x312D90 las vuelca como GREAT/GOOD/NORMAL). Solo las usa NB012 (0x7DA).
+  float cat[3] = {};
   int fase = 0, t = 0, cuadros = 0, rango = 0, puntos = 100, total = 0;
+  int zeni = 0, saldo = 0;   // premio ZENI y monedero tras sumarlo; `total` = TOTAL SCORE (Results_ComputeTotalsAndRewards)
   int juicio = -1, juicio_t = 0;
+  // EU 0x312280 Mg_BuildShuffledCharIdTable (NB012) y MiniGame_UpdateCountdown 0x294D60 (NB007, tabla 0x473700):
+  // el original BAR AJA los 9 clips de camara de ronda (9 IDs consecutivos desde el del personaje: 0x14B Vegeta,
+  // 0x155 Yamcha, 0x15F Trunks, 0x169 Krilin) con 8 intercambios `i <-> (Memory() & 7)`; no salen en orden. Aqui el
+  // mismo barajado sobre `cam_r`; MSN019 no tiene camara por ronda (cam_ronda = -1) y se queda igual.
+  int cam_r[9] = {};
   bool auto_ = false;
   uint16_t antes = 0, pendiente = 0;
   int32_t inyecta = 0;
@@ -1489,6 +1698,9 @@ void CuadroPose(JuegoB& j) {
   }
 }
 
+// EU 0x37D150 RAM_OpenDataCMNMinigameAnims: abre los #AMM/#BSK de animacion de los minijuegos desde DATA_CMN (por
+// eso los codigos de pose salen de ahi). En el port los carga anim_iw (CodigoQte) a partir del #BSK de cada personaje:
+// `motor`.
 bool CargarB(JuegoB& j, std::string& error) {
   const ModuloB& m0 = *j.m;
   if (m0.tipo == kBarrido) {   // todo constantes del codigo; los pts del premio tambien
@@ -1545,18 +1757,45 @@ bool CargarB(JuegoB& j, std::string& error) {
   if (P::CuantasAmt(hud) > 38) {
     j.aro = P::TexturaAmt(hud, 0);
   }
-  // Mg_ShuffleRoundOrder: 0-9 barajadas (rondas 1-5) y 10-19 barajadas (rondas 6-10)
-  int a[10], b[10];
-  for (int i = 0; i < 10; ++i) a[i] = i, b[i] = 10 + i;
-  for (int i = 0; i < 10; ++i) {
-    std::swap(a[i], a[Azar() % 10]);
-    std::swap(b[i], b[Azar() % 10]);
+  if (j.m->tipo == kTeclear) {
+    // EU 0x292F80 MiniGame_ShuffleOrderTable: la tabla de NB007 son 20 filas 0..19; se barajan las 10 primeras y
+    // las 10 siguientes (cada una con `i <-> Memory()%10`) y despues las filas 10..14 se copian sobre 5..9. Las
+    // rondas leen las 10 primeras: 5 de la mitad 0..9 y 5 de la mitad 10..19. Solo cambia el generador: `Memory()`
+    // (EU 0x127CA0, registro de desplazamiento con semilla del motor) no existe en el port; `Azar()` es un mt19937
+    // propio. El reparto y la copia son los del original (estructura, DS68).
+    uint8_t t[20];
+    for (int i = 0; i < 20; ++i) t[i] = uint8_t(i);
+    for (int i = 0; i < 10; ++i) std::swap(t[i], t[Azar() % 10]);
+    for (int i = 0; i < 10; ++i) std::swap(t[10 + i], t[10 + Azar() % 10]);
+    for (int i = 0; i < 5; ++i) t[5 + i] = t[10 + i];
+    for (int i = 0; i < 10; ++i) j.orden[i] = t[i];
+  } else {
+    // Mg_ShuffleRoundOrder: 0-9 barajadas (rondas 1-5) y 10-19 barajadas (rondas 6-10)
+    // EU 0x312900 Mg_ShuffleRoundOrder
+    int a[10], b[10];
+    for (int i = 0; i < 10; ++i) a[i] = i, b[i] = 10 + i;
+    for (int i = 0; i < 10; ++i) {
+      std::swap(a[i], a[Azar() % 10]);
+      std::swap(b[i], b[Azar() % 10]);
+    }
+    for (int i = 0; i < 5; ++i) j.orden[i] = a[i], j.orden[5 + i] = b[i];
   }
-  for (int i = 0; i < 5; ++i) j.orden[i] = a[i], j.orden[5 + i] = b[i];
+  // Camaras de ronda: copia de las 9 del modulo y el barajado de 0x312280 / 0x294D60 (`i <-> (azar & 7)`, 9 veces).
+  for (int i = 0; i < 9; ++i) j.cam_r[i] = j.pb ? j.pb->cam_ronda[i] : -1;
+  if (j.pb && j.pb->cam_ronda[0] >= 0)
+    for (int i = 0; i < 9; ++i) std::swap(j.cam_r[i], j.cam_r[Azar() & 7]);
   return true;
 }
 
+// EU 0x312760 Mg_SetupRoundQteSequence: lo mismo que SetPatternByType para el contexto +0x5d9460 (el indice de la
+// fila sale de `[+0x54*4 + 0x5d9460]`), con las tablas 0x47E2C0..0x47E6D0 por tipo. En el port el indice de la fila es
+// j.orden[ronda] y las tablas m.seq: `coincide`.
+// EU 0x292DE0 MiniGame_SetPatternByType: elige el patron por TIPO (byte +0x14 del trabajo: la tabla de su minijuego) y
+// fija la longitud de la secuencia de la ronda en +0xB8 = +0xBC (rondas normales) o +0xC0 (ultima, Minigame_IsLastRound_).
+// Aqui el patron son las tablas m.seq del modulo (0x472F30 de NB007 / 0x47DB10 de NB012, leidas en CargarB) y la
+// longitud es por_ronda[dificultad] / ultima[dificultad]: `coincide`.
 void EmpezarRonda(JuegoB& j) {
+  // EU 0x292DE0 MiniGame_SetPatternByType
   j.n = j.ronda == 9 ? j.m->ultima[j.dif] : j.m->por_ronda[j.dif];
   j.sale = 0;
   j.cuenta = 0;
@@ -1583,9 +1822,16 @@ void EmpezarRonda(JuegoB& j) {
   j.rebotes = 0;
 }
 
+// EU 0x315350 Mg_JudgeIconOverlap: compara la caja del icono con la del objetivo 0x20 y deja 0 si esta dentro, si no
+// el porcentaje del borde que falta (25 %/50 % -> 1/2, mas -> 3). Es la funcion de este Juicio. Su auxiliar de
+// solape 0x2F3770 Math_RectsOverlap se tradujo en src/iw_mini_extra.cpp y se usa como salida temprana (el resultado
+// no cambia: fuera del todo ya daba 3).
 // Juicio del icono k contra el objetivo (Mg_JudgeIconOverlap).
 int Juicio(float x) {
   const float i0 = x, i1 = x + kIcono, o0 = kObjB - kObjAncho / 2, o1 = kObjB + kObjAncho / 2;
+  const float ir[4] = {i0, 0, i1, 0}, objetivo[4] = {o0, 0, o1, 0};
+  // EU 0x2F3770 Math_RectsOverlap (traduccion en src/iw_mini_extra.cpp): sin solape en X, el icono quedo fuera.
+  if (!extra::MathRectsOverlap(ir, objetivo, 0)) return 3;
   if (i0 >= o0 && i1 <= o1) return 0;
   const int pct = int((i0 < o0 ? o0 - i0 : i1 - o1) / kIcono * 100);
   return pct < 25 ? 1 : pct < 50 ? 2 : 3;
@@ -1599,7 +1845,22 @@ void PasoTeclear(JuegoB& j, uint16_t pulsado) {
     j.sale = j.n;
     j.actual = 0;
   }
+  // EU 0x293AB0/0x294300 MiniGame_FinishRound: al cerrar la ronda guarda el tiempo de su QTE en la lista
+  // (`+0x54` = ronda: `work+0x1c + ronda*4`) y en `UI_GetObjectDataPtr(0x16)`; si se agoto el tiempo pone el tiempo
+  // limite (+0xf8) y pasa a la ronda siguiente (+0x54 < 9) o calcula el rango. Este `j.nota[]` es la lista de tiempos:
+  // una casilla por ronda, como el array +0x1c del original (`Timer_SetSlot` EU 0x2EF9D0: `[base + 0x30 + slot*4]`).
+  // EU 0x2EEFB0 QTE_Update
+  // EU 0x293D10 MiniGame_UpdateTimer
+  // EU 0x294300 MiniGame_FinishRound
   j.nota[j.ronda] += 1.0f / 60;   // QTE_Update: segundos
+  // Limite de la QTE (7,0 s en NB007, +0xF8) y MiniGame_FinishRound (EU 0x294300): al agotarse la QTE la ronda se
+  // cierra igual y a la lista va el limite, no el tiempo que se tardo. El original tiene ademas el setter
+  // QTE_SetTimeLimit (EU 0x2EE700, copia el valor a +0xFC para QTE_IsTimeUp 0x2EE6D0); el port no tiene objeto QTE y
+  // aplica el mismo limite con esta comparacion (estructura, DIFIERE de LUNA_IWMINI3_0; no se pone a ojo).
+  if (j.nota[j.ronda] >= kLimiteTeclear) {
+    j.nota[j.ronda] = kLimiteTeclear;
+    j.actual = j.n;
+  }
   uint16_t p = pulsado & 0xFFF0;
   if (j.auto_ && j.actual < j.n && j.inyecta_t == 0 && j.t % 12 == 6) {   // prueba: una pulsacion cada 12 cuadros
     int bt = j.ic[j.actual].boton;
@@ -1615,7 +1876,8 @@ void PasoTeclear(JuegoB& j, uint16_t pulsado) {
     }
   }
   if (p && j.actual < j.n) {
-    if (p & (1u << j.ic[j.actual].boton)) {
+    // EU 0x293EF0 MiniGame_CheckInputStep
+    if (BotonPulsado(p) == j.ic[j.actual].boton) {
       j.ic[j.actual].resuelto = true;
       ++j.actual;
       j.juicio = -1;
@@ -1627,6 +1889,7 @@ void PasoTeclear(JuegoB& j, uint16_t pulsado) {
     }
   }
   if (j.actual < j.n) return;
+  // EU 0x294750 MiniGame_StartNextRound
   REXLOG_INFO("dbz3 r14: ronda {} (fila {}): {:.2f} s", j.ronda + 1, fila, j.nota[j.ronda]);
   if (++j.ronda < 10) {
     EmpezarRonda(j);
@@ -1644,15 +1907,18 @@ void PasoTeclear(JuegoB& j, uint16_t pulsado) {
   j.rango = 0;
   if (lentas < 10)
     for (int r = 5; r >= 1; --r)
+      // EU 0x293820 MiniGame_CalcRank
       if (total <= kUmbralT[r]) {
         j.rango = r;
         break;
       }
   const float v = j.rango == 0 ? 100.0f : j.pts[j.rango] * j.mult[j.dif];
   j.puntos = (int(v) + 99) / 100 * 100;
+  j.zeni = j.puntos;
+  j.saldo = P::LeerProgreso("iw_zeni", 0) + j.zeni;
   j.fase = 3;
   j.t = 0;
-  REXLOG_INFO("dbz3 r14: fin: total {:.2f} s, rango {}, puntos {}", total, j.rango, j.puntos);
+  REXLOG_INFO("dbz3 r14: fin: total {:.2f} s, rango {}, zeni {} (monedero {})", total, j.rango, j.zeni, j.saldo);
 }
 
 void PasoBarrido(JuegoB& j, uint16_t pulsado) {
@@ -1677,7 +1943,7 @@ void PasoBarrido(JuegoB& j, uint16_t pulsado) {
       p = uint16_t(1u << j.ic[bajo].boton);
     }
   }
-  if (p && bajo >= 0 && (p & (1u << j.ic[bajo].boton))) {
+  if (p && bajo >= 0 && BotonPulsado(p) == j.ic[bajo].boton) {
     j.ic[bajo].resuelto = true;
     j.juicio = -1;
   }
@@ -1699,16 +1965,15 @@ void PasoBarrido(JuegoB& j, uint16_t pulsado) {
   }
   j.total = 0;
   for (float v : j.nota) j.total += int(v);
-  constexpr int kUmbral19[6] = {0, 60, 70, 80, 90, 100};   // (umbral[k], umbral[k+1]] -> indice k (0..4)
-  int indice = -1;
-  for (int k = 0; k < 5; ++k)
-    if (j.total > kUmbral19[k] && j.total <= kUmbral19[k + 1]) indice = k;
-  j.rango = indice + 1;   // como los otros: 0 = no superado, 1..5
-  const int v = indice < 0 ? 100 : int(j.pts[indice + 1] * j.mult[j.dif]);
-  j.puntos = indice < 0 ? 100 : (v % 100 < 50 ? v / 100 : v / 100 + 1) * 100;   // Results_ComputeTotalsAndRewards
+  // EU 0x2E92F0 GetRankIndexByThresholds y EU 0x2E9AF0 Results_ComputeTotalsAndRewards (tablas 0x5D919A premio y
+  // 0x5D91A4 multiplicador por dificultad): el mismo calculo que usa el original para esta pantalla.
+  j.rango = RangoResultadoIW(j.total) + 1;   // -1 (sin rango) -> 0; 0..4 -> 1..5
+  j.puntos = PremioResultadoIW(j.total, j.dif);
+  j.zeni = j.puntos;
+  j.saldo = P::LeerProgreso("iw_zeni", 0) + j.zeni;
   j.fase = 3;
   j.t = 0;
-  REXLOG_INFO("dbz3 r14: fin: total {} rango {} puntos {}", j.total, j.rango, j.puntos);
+  REXLOG_INFO("dbz3 r14: fin: total {} rango {} zeni {} (monedero {})", j.total, j.rango, j.zeni, j.saldo);
 }
 
 void PasoB(JuegoB& j, uint16_t pulsado) {
@@ -1766,9 +2031,14 @@ void PasoB(JuegoB& j, uint16_t pulsado) {
   if (p && j.actual >= 0 && j.ic[j.actual].x >= kObjB - kObjAncho / 2 - 80) {   // Mg_UpdateQteInput
     Icono& k = j.ic[j.actual];
     k.resuelto = true;
-    if (p & (1u << k.boton)) {
+    if (BotonPulsado(p) == k.boton) {
       j.juicio = Juicio(k.x);
-      if (j.juicio < 3) j.nota[j.ronda] += float(kJuicioPts[j.juicio] / j.n);
+      // EU 0x312680 Mg_StoreRoundScore y EU 0x313100 Mg_ApplyQteJudgeScore: el golpe suma a la ronda y a su categoria
+      // (+0x48/+0x4C/+0x50 = GREAT/GOOD/NORMAL; DS153).
+      if (j.juicio < 3) {
+        j.nota[j.ronda] += float(kJuicioPts[j.juicio] / j.n);
+        j.cat[j.juicio] += float(kJuicioPts[j.juicio] / j.n);
+      }
       k.vivo = false;
       EventoPose(j, kEvGolpe);
     } else {
@@ -1785,6 +2055,8 @@ void PasoB(JuegoB& j, uint16_t pulsado) {
       j.t = 0;
       return;
     }
+    // EU 0x312D90 Mg_FinishAndWriteResults
+    // EU 0x313500 Mg_ComputeTotalAndRank
     j.total = 0;
     for (float v : j.nota) j.total += int(v);
     j.rango = 0;
@@ -1793,11 +2065,14 @@ void PasoB(JuegoB& j, uint16_t pulsado) {
         j.rango = r;
         break;
       }
+    // EU 0x32F0F0 QteMg_FinalizeResult
     const float v = j.rango == 0 ? 100.0f : j.pts[j.rango] * j.mult[j.dif];
     j.puntos = (int(v) + 99) / 100 * 100;
+    j.zeni = j.puntos;
+    j.saldo = P::LeerProgreso("iw_zeni", 0) + j.zeni;
     j.fase = 3;
     j.t = 0;
-    REXLOG_INFO("dbz3 r14: fin: total {} rango {} puntos {}", j.total, j.rango, j.puntos);
+    REXLOG_INFO("dbz3 r14: fin: total {} rango {} zeni {} (monedero {})", j.total, j.rango, j.zeni, j.saldo);
   }
 }
 
@@ -1821,6 +2096,20 @@ void PiezaB(ImDrawList* dl, const ps2::Tex& t, ImVec2 c, float k) {
   if (t) dl->AddImage(t.id(), ImVec2(c.x - t.w * k / 2, c.y - t.h * k / 2), ImVec2(c.x + t.w * k / 2, c.y + t.h * k / 2));
 }
 
+// EU 0x3136B0 Mg_UpdateEndPhase (NB012): la fase final: a los 60 cuadros saca el READY, y a los 180 (o con
+// Camera_IsTimerElapsed) llama a Mg_FinishAndWriteResults; despues solo queda QTE_Update y los premios cuando el combate
+// esta en 3/4. Son los mismos 60/180 de CheckReadyStart/UpdateMain: `coincide` (fases 1 y 3 de PanelB).
+// EU 0x293AB0 MiniGame_UpdateMain / 0x293D10 MiniGame_UpdateTimer / 0x294990 MiniGame_UpdateIntroPhase /
+// 0x295030 MiniGame_UpdateDispatch: la maquina de estados del minijuego de rondas. Dispatch reparte por +0x0/+0x4
+// (0 = MiniGame_UpdateCountdown, 1 = rondas: 0 intro -> 1 input -> 2 reloj -> 3 espera, 2 = UpdateMain) y
+// UpdateIntroPhase lleva la intro con tiempos de 30.0 (0x41f00000), 50.0 (0x42480000) y 1.0 (0x3f800000) por fase,
+// llamando a MiniGame_StartNextRound. UpdateTimer resta el reloj y, con +0x8 <= 0 y el combate en los estados 3/4/8, lo
+// vuelve a 30.0 (no termina el minijuego). UpdateMain, con +0xc == 1, da el resultado a los 180.0 cuadros (o con
+// Camera_IsTimerElapsed) y aplica premios cuando el combate esta en 3/4.
+// En el port esta maquina es la de PanelB (fase 0 espera, 1 READY, 2 juego, 3 fin) y la de PasoTeclear/PasoBarrido (la
+// ronda acaba al gastar la secuencia o al llegar a los 10, y el reloj por ronda es el de la QTE: 7.0 s, +0xF8 de
+// s_MSN_NB007_Update 0x295C10). Coincide en estados y tiempos; los 180 cuadros de UpdateMain son del minijuego de un
+// solo reto (el de 10 rondas no los usa): `coincide`.
 class PanelB : public rex::ui::ImGuiDialog {
  public:
   explicit PanelB(rex::ui::ImGuiDrawer* drawer) : ImGuiDialog(drawer) {}
@@ -1844,8 +2133,10 @@ class PanelB : public rex::ui::ImGuiDialog {
     for (uint32_t x : {x0, x1}) StoreF(base, x + kVida, LoadF(base, x + kVidaMax));
     REX_STORE_U8(x1 + 3261, 1);   // el pivote sin cuerpo (como P4: sub_82109D90, tagteam.cpp Veil)
     REX_STORE_U8(x1 + 4925, 1);
-    // NB007 en la camara de gravedad (campo 880): B3 pone a los luchadores lejos del centro y quedaban fuera de la sala;
-    // en IW el objeto esta en el origen. DBZ3_R14_POS=x,z para medir. ponytail: centro de la sala sin medir [H]
+    // NB007 en la camara de gravedad (campo 880): B3 pone a los luchadores lejos del centro y quedaban fuera de la sala.
+    // En IW los dos objetos estan en el ORIGEN (Mg_InitCharactersForRound EU 0x356D80: +0x40/+0x44/+0x48 = 0), que es el
+    // centro de la sala del campo 880 (el mod lo instala 1:1, sin recentrar: "mod center hd/campos_iw.py", campo 880 con
+    // las piezas en sus coordenadas de IW). DBZ3_R14_POS=x,z sigue sirviendo para moverlo a mano si hiciera falta.
     if (j->m->indice == 6 && g_nave880) {
       static float px = 0, pz = 0;
       static const bool leido = [] {
@@ -1883,13 +2174,19 @@ class PanelB : public rex::ui::ImGuiDialog {
           CamB(j->pb->cam_intro);
           EventoPose(*j, kEvIntro);
         } else if (j->fase == 1 && j->ronda > 0 && j->ronda <= 9 && j->t == 1) {
-          CamB(j->pb->cam_ronda[j->ronda - 1]);
+          CamB(j->cam_r[j->ronda - 1], false, false, true);
         } else if (j->fase == 2 && j->t == 1 && j->m->tipo == kBarrido && j->ronda > 0) {
           EventoPose(*j, kEvNivel);
         }
       }
+      // EU 0x295030 MiniGame_UpdateDispatch
       if (j->fase <= 1) j->pendiente = 0;
+      // EU 0x294990 MiniGame_UpdateIntroPhase
       if (j->fase == 0 && j->t >= std::max(30, g_entrada_b.load())) {
+        // EU 0x293970 MiniGame_CheckReadyStart: a los 60.0 cuadros del reloj del minijuego (+8) saca el READY
+        // (s_MSN_CV_ReadyStart: 2, o 1 si +0x88 != 0) y pasa a +0xc = 1. Aqui el READY es la fase 1: 180 cuadros de
+        // clip en la primera ronda (dur_intro, medido en el TSV del original) y 60 en las siguientes, y la salida sin
+        // clip espera 30 cuadros como el clip 0xB4 quieto. `coincide`.
         j->fase = 1;
         j->t = 0;
         REXLOG_INFO("dbz3 r14: en juego ({} dificultad {})", j->m->nombre, j->dif);
@@ -1900,9 +2197,11 @@ class PanelB : public rex::ui::ImGuiDialog {
         // reinicia en cada fila, que antes la dejaba siempre en el primer tramo (ojo a 154) y no bajaba nunca).
         if (j->pb && j->pb->cam_juego >= 0 &&
             !(j->pb->cam_juego == kCam879 && g_cb_clip.load() == kCam879))
-          CamB(j->pb->cam_juego);
-        else if (j->pb && g_entrada_b.load() > 0 && j->ronda == 0) CamB(j->pb->cam_ini);   // s8 NB007: 0xB4 en la ronda 1
-        else if (j->pb && j->ronda == 0 && j->pb->cam_ronda[0] >= 0) CamB(j->pb->cam_ronda[0]);   // NB012: 0x14B ya en la ronda 1
+          CamB(j->pb->cam_juego, false, false, true);
+        else if (j->pb && g_entrada_b.load() > 0 && j->ronda == 0)
+          CamB(j->pb->cam_ini, false, false, true);   // s8 NB007: 0xB4 en la ronda 1
+        else if (j->pb && j->ronda == 0 && j->pb->cam_ronda[0] >= 0)
+          CamB(j->cam_r[0], false, false, true);   // NB012: 0x14B (barajado) ya en la ronda 1
       } else if (j->fase == 2) {
         PasoB(*j, j->pendiente);
         j->pendiente = 0;
@@ -1913,6 +2212,7 @@ class PanelB : public rex::ui::ImGuiDialog {
       } else if (j->fase == 3 && j->t == 1) {
         if (std::getenv("DBZ3_IWMINI_RAFAGA_FIN")) std::ofstream("dbz3_shot.req") << "40 15";   // prueba
         if (j->auto_) dbz3::net::InyectarPad(0, -1);
+        // EU 0x293530 MiniGame_ShowResult
         if (j->pb) CamB(j->rango > 0 ? j->pb->cam_gana : j->pb->cam_pierde);
         EventoPose(*j, kEvFin);
         if (!fin_) {
@@ -2032,8 +2332,34 @@ class PanelB : public rex::ui::ImGuiDialog {
     if (j.fase == 3) {
       const float t = std::min(1.0f, j.t / 30.0f);
       fg->AddRectFilled(ImVec2(0, 0), io.DisplaySize, IM_COL32(0, 0, 0, int(160 * t)));
-      PiezaB(fg, j.rango > 0 ? clear_ : failed_, at(kW / 2, 200), k * 1.5f * (0.8f + 0.2f * t));
-      if (const float neg = std::clamp((j.t - 228) / 36.0f, 0.0f, 1.0f); neg > 0)   // a negro hasta el mapa
+      const bool panel = j.m->tipo == kBarrido && j.t >= 60;   // MSN019: la tabla de Results_* (GREAT/GOOD/NORMAL)
+      if (!panel) PiezaB(fg, j.rango > 0 ? clear_ : failed_, at(kW / 2, 200), k * 1.5f * (0.8f + 0.2f * t));
+      if (panel) {
+        Resultado r;
+        r.clave = j.clave;
+        r.fila = j.fila;
+        r.superado = j.rango > 0;
+        r.centesimas = j.cuadros * 100 / 60;
+        r.puntos = j.puntos;   // valor historico del mapa; la pantalla usa score/zeni separados
+        r.score = j.total;
+        r.zeni = j.zeni;
+        r.saldo = j.saldo;
+        r.rango = j.rango > 0 ? j.rango - 1 : -1;   // DS156: sin superar (rango 0) no hay fila RANK
+        r.dificultad = j.dif;
+        r.con_tiempo = false;
+        int grande = 0, bueno = 0, normal = 0;
+        for (float v : j.nota) {
+          const int nota = int(v);
+          if (nota >= 10) grande += 10;
+          else if (nota >= 5) bueno += 5;
+          else if (nota >= 3) normal += 3;
+        }
+        r.great = grande, r.good = bueno, r.normal = normal;
+        const ImVec2 q0 = at(0, 0), q1 = at(kW, kH);
+        DibujarResultadoIW(fg, q0.x, q0.y, q1.x - q0.x, q1.y - q0.y, r, float(j.t - 60) / 30.0f, false);
+      }
+      const int fin = j.m->tipo == kBarrido ? 420 : 228;   // 30 cuadros/fila en el juego: la tabla cabe antes del final de B3
+      if (const float neg = std::clamp((j.t - fin) / 36.0f, 0.0f, 1.0f); neg > 0)   // a negro hasta el mapa
         fg->AddRectFilled(ImVec2(0, 0), io.DisplaySize, IM_COL32(0, 0, 0, int(255 * neg)));
     }
   }
@@ -2061,6 +2387,8 @@ bool EmpezarRondas(int clave, int fila, int dificultad) {
   j->dif = std::clamp(dificultad, 0, 5);
   j->vel = m->velocidad[j->dif];
   j->pb = m->poses;
+  g_nave_lado = (m->indice == 6 || m->indice == 18) ? -1.0f : 1.0f;
+  g_cb_amc_entrada = m->indice == 6 ? 872 : 0;
   const char* t = std::getenv("DBZ3_TEST_IWMINI");
   j->auto_ = t && std::strstr(t, "auto");
   j->fallos = t && std::strstr(t, "fallos");
@@ -2092,6 +2420,9 @@ bool EmpezarRondas(int clave, int fila, int dificultad) {
     REXLOG_WARN("dbz3 r14: el conector no acepto el combate");
     return false;
   }
+  // Contrato de llegada de tools/pruebas.py escena: las escenas IW de campo lo emiten al poner la salida;
+  // para estos minijuegos la escena queda lista al aceptar el combate en su escenario real.
+  REXLOG_INFO("dbz3 iwmini: salida puesta (minijuego 0x{:X}, escenario {})", clave, escenario);
   dbz3::combate::SetMuneco(1);
   dbz3::combate::OcultarHud(true);
   g_corre_b = true;
@@ -2109,10 +2440,26 @@ bool EmpezarRondas(int clave, int fila, int dificultad) {
     res.superado = j->fase == 3 && j->rango > 0;
     res.centesimas = j->cuadros * 100 / 60;
     res.puntos = j->fase == 3 ? j->puntos : 0;
-    res.rango = std::max(j->rango - 1, 0);
+    res.score = j->fase == 3 ? j->total : 0;
+    res.zeni = j->fase == 3 ? j->zeni : 0;
+    res.rango = j->rango > 0 ? j->rango - 1 : -1;   // DS156: sin superar (rango 0) no hay fila RANK
+    res.dificultad = j->dif;
     res.monedas = j->total;
-    REXLOG_INFO("dbz3 r14: resultado {} superado {} rango {} puntos {}", j->m->nombre, res.superado, res.rango,
-                res.puntos);
+    res.con_tiempo = j->m->tipo != kBarrido;   // MSN019 no ensena TIME; NB007/NB012 si
+    if (j->m->tipo == kBarrido) {   // Results_ComputeTotalsAndRewards: GREAT = 10, GOOD = 5, NORMAL = 3 por fila
+      int grande = 0, bueno = 0, normal = 0;
+      for (float v : j->nota) {
+        const int nota = int(v);
+        if (nota >= 10) grande += 10;
+        else if (nota >= 5) bueno += 5;
+        else if (nota >= 3) normal += 3;
+      }
+      res.great = grande, res.good = bueno, res.normal = normal;
+    } else if (j->m->tipo == kDesplazar) {   // NB012: Mg_FinishAndWriteResults 0x312D90 (+0x48/+0x4C/+0x50, DS153)
+      res.great = int(j->cat[0]), res.good = int(j->cat[1]), res.normal = int(j->cat[2]);
+    }
+    REXLOG_INFO("dbz3 r14: resultado {} superado {} rango {} score {} zeni {}", j->m->nombre, res.superado, res.rango,
+                res.score, res.zeni);
     Terminar(res);
   });
   return true;
@@ -2175,6 +2522,7 @@ void MandoBotones(uint8_t* base, uint32_t usuario, bool leido) {
   g.p27 = REX_LOAD_U8(r + 27);
   g.b16 = REX_LOAD_U32(r + 16);
   for (uint32_t k = 0; k < 16; ++k) g.cuenta[k] = REX_LOAD_U32(r + 0x28 + 4 * k);
+  // EU 0x2EE790 DragonMissionQTEInputs
   g_raw12 = g.b12;
   g_raw_ok = true;
   constexpr uint16_t kDeja = 0x0009;   // SELECT 0x01 y START 0x08 (la pausa); el resto son golpes, ki, guardia...
@@ -2308,26 +2656,53 @@ static void SondaMatriz(uint8_t* base, uint32_t mgr) {
 static void Sonda(uint8_t* base, uint32_t mgr, const char* quien) {
   static const bool on = std::getenv("DBZ3_S8_SONDA") != nullptr;
   static const bool mat = std::getenv("DBZ3_S10_MATRIZ") != nullptr;
+  static const bool serie = std::getenv("DBZ3_TEST_IWMINI") != nullptr;
   static uint32_t n = 0;
-  if ((!on && !mat) || (n++ % 30) != 0) return;
+  const bool clip_continuo = serie && g_cb_comparable.load() && g_cb_amc.load() == 879;
+  if ((!on && !mat && !serie) || (!clip_continuo && (n++ % 30) != 0)) return;
   if (mat) SondaMatriz(base, mgr);
-  if (!on) return;
   float ojo[3] = {0, 0, 0}, obj[3] = {0, 0, 0};
   dbz3::cine::LeerCamara(base, ojo, obj);
-  for (int rol = 0; rol < 2; ++rol) {
-    const uint32_t x = mgr + kX0 + kXPaso * uint32_t(rol);
-    float r[3] = {0, 0, 0};
-    const bool ok = dbz3::anim::RaizActual(base, x, r);
-    REXLOG_INFO("dbz3 s8 sonda {}: rol {} pos ({:.2f}, {:.2f}, {:.2f}) giro 0x{:04X} cadera {} ({:.2f}, {:.2f}, {:.2f})"
-                " clip 0x{:X} cuadro {} dibujo ({:.2f}, {:.2f}, {:.2f}) m00 {:.2f} m02 {:.2f}",
-                quien, rol, LoadF(base, x + 64), LoadF(base, x + 68), LoadF(base, x + 72),
-                uint16_t(REX_LOAD_U16(x + kMiradaA) + 15759), ok, r[0], r[1], r[2], g_cb_clip.load(), g_cb_frame.load(),
-                LoadF(base, x + 48), LoadF(base, x + 52), LoadF(base, x + 56), LoadF(base, x + 0), LoadF(base, x + 8));
+  if (on) {
+    for (int rol = 0; rol < 2; ++rol) {
+      const uint32_t x = mgr + kX0 + kXPaso * uint32_t(rol);
+      float r[3] = {0, 0, 0};
+      const bool ok = dbz3::anim::RaizActual(base, x, r);
+      REXLOG_INFO("dbz3 s8 sonda {}: rol {} pos ({:.2f}, {:.2f}, {:.2f}) giro 0x{:04X} cadera {} ({:.2f}, {:.2f}, {:.2f})"
+                  " clip 0x{:X} cuadro {} dibujo ({:.2f}, {:.2f}, {:.2f}) m00 {:.2f} m02 {:.2f}",
+                  quien, rol, LoadF(base, x + 64), LoadF(base, x + 68), LoadF(base, x + 72),
+                  uint16_t(REX_LOAD_U16(x + kMiradaA) + 15759), ok, r[0], r[1], r[2], g_cb_clip.load(), g_cb_frame.load(),
+                  LoadF(base, x + 48), LoadF(base, x + 52), LoadF(base, x + 56), LoadF(base, x + 0), LoadF(base, x + 8));
+    }
+    REXLOG_INFO("dbz3 s8 sonda {}: camara ojo ({:.2f}, {:.2f}, {:.2f}) obj ({:.2f}, {:.2f}, {:.2f}) fov {:.3f} origen ({:.2f}, "
+                "{:.2f}, {:.2f})",
+                quien, ojo[0], ojo[1], ojo[2], obj[0], obj[1], obj[2], LoadF(base, mgr + 0x1C4), g_origen[0], g_origen[1],
+                g_origen[2]);
   }
-  REXLOG_INFO("dbz3 s8 sonda {}: camara ojo ({:.2f}, {:.2f}, {:.2f}) obj ({:.2f}, {:.2f}, {:.2f}) fov {:.3f} origen ({:.2f}, "
-              "{:.2f}, {:.2f})",
-              quien, ojo[0], ojo[1], ojo[2], obj[0], obj[1], obj[2], LoadF(base, mgr + 0x1C4), g_origen[0], g_origen[1],
-              g_origen[2]);
+  const uint32_t jugador = mgr + kX0;
+  bool clip_activo = true;
+  if (g_cb_amc.load() == 879) {
+    const int clip = g_cb_clip.load();
+    const auto it = g_clips.find(clip);
+    clip_activo = it != g_clips.end() && g_cb_frame.load() <= it->second.nf;
+  }
+  const int clip = g_cb_clip.load();
+  bool emitir = false;
+  if (serie && g_cb_comparable.load() && clip_activo) {
+    if (g_cb_bucle.load() || g_cb_amc.load() == 879) {
+      emitir = true;
+    } else {
+      emitir = clip >= 0 && g_cb_ultimo_clip_log.exchange(clip) != clip;
+    }
+  } else if (!g_cb_comparable.load()) {
+    g_cb_ultimo_clip_log = -1;
+  }
+  if (emitir)
+    REXLOG_INFO("dbz3 iwmini: jugador ({:.2f}, {:.2f}, {:.2f}) clip 0x{:X} cuadro {} ojo ({:.2f}, {:.2f}, {:.2f}) fov {:.4f} "
+                "fov_clip {:.4f} #AMC {}",
+                LoadF(base, jugador + 64), LoadF(base, jugador + 68), LoadF(base, jugador + 72), clip,
+                g_cb_frame.load(), ojo[0], ojo[1], ojo[2], LoadF(base, mgr + 0x1C4), g_cam_fov_iw, g_cb_amc.load());
+  if (!on) return;
   REXLOG_INFO("dbz3 s9 sonda {}: camara pedida ojo ({:.2f}, {:.2f}, {:.2f}) obj ({:.2f}, {:.2f}, {:.2f})", quien, g_cam_d[0],
               g_cam_d[1], g_cam_d[2], g_cam_d[3], g_cam_d[4], g_cam_d[5]);
   // s10 (NB007 ronda 8, clip 0xBB): fov del clip 0,3295 (medido en el #AMC), k = tan(fov/2)/tan(0,785/2) = 0,401. Si

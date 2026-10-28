@@ -234,6 +234,7 @@ S::Pic Vista(int id, int traje, double ahora) {
 struct Modelo3D {
   dbz3::ps2::Malla malla;
   std::vector<dbz3::ps2::Tex> tx;
+  std::vector<std::vector<std::pair<float, int>>> rampa;   // 25/10: tramos de la rampa de B3 (Escena::Toon::rampa)
   float alto = 0;
   float ancho = 0;
   fs::file_time_type cuando{};
@@ -288,6 +289,24 @@ bool LeerMalla(const fs::path& f, Modelo3D& m) {
     t.trans = (fl & 1) != 0;
   }
   m.malla = std::move(malla);
+  m.rampa.clear();   // 25/10: "RMP1" tras los triangulos: tramos de la rampa toon de B3 por textura (vista_heroe.py)
+  uint32_t n_orig = 0;
+  if (o + 8 <= d.size() && std::memcmp(d.data() + o, "RMP1", 4) == 0 && (o += 4, u32(n_orig)) && n_orig <= ntex) {
+    m.rampa.resize(n_orig);
+    bool bien = true;
+    for (auto& fila : m.rampa) {
+      uint32_t n = 0;
+      if (!u32(n) || n > 8) { bien = false; break; }
+      for (uint32_t k = 0; k < n && bien; ++k) {
+        float l0 = 0;
+        uint32_t ti = 0;
+        if (!f32(l0) || !u32(ti) || ti >= ntex) bien = false;
+        else fila.emplace_back(l0, int(ti));
+      }
+      if (!bien) break;
+    }
+    if (!bien) m.rampa.clear();
+  }
   m.tx.clear();
   for (const auto& im : imgs) m.tx.push_back(dbz3::ps2::Crear(im, false));
   m.alto = alto;
@@ -447,6 +466,10 @@ void Pintar3D(ImDrawList* dl, const Modelo3D& m, ImVec2 p0, ImVec2 p1, float gir
   cam.m[12] = -dot(der, ojo), cam.m[13] = -dot(arr, ojo), cam.m[14] = dot(fwd, ojo), cam.m[15] = 1;
   dbz3::ps2::Escena::Toon toon;
   toon.borde = 2.0f / std::max(1.0f, cam.h.y / std::tan(cam.fov * 0.5f) / dist);
+  if (!m.rampa.empty() && !std::getenv("DBZ3_FIG_TOON_B2")) {   // 25/10: la rampa toon de B3 y su borde fino
+    toon.rampa = &m.rampa;
+    toon.borde *= 0.6f;
+  }
   static dbz3::ps2::Escena escena;
   escena.Empezar();
   escena.Poner(cam, m.malla, m.tx, dbz3::ps2::V3{0, 0, 0}, giro, 1.0f, toon);
@@ -509,8 +532,22 @@ const char* const kLogos[][2] = {{"Ninguno", "None"},           {"Tortuga (Kame)
 constexpr int kNumLogos = int(std::size(kLogos));
 // donantes nativos sin XV2 (= PELOS_NATIVOS de mod center hd/cac/vista_heroe.py)
 // "" = sin donante nativo perfecto: 1.5.5 solo ofrece los que comparten la cabeza de Goku (el resto flotaba o se deformaba, 24/10)
-const char* const kPelosNativos[] = {"", "Goku", "Vegeta", "", "Gohan (Cell)", "Goku niño", "", "", "", ""};
-constexpr int kNumPelos = 10;   // pelos UT del catalogo (mod center hd/cac/piezas_cac.toml: hair_000_01..hair_008_01 + base)
+// 25/10: con la calva completa (vista_heroe._calva: craneo y cuello de Krilin) Bardock, Trunks y Goten ya no dejan ver la cara
+// por la nuca ni huecos en el cuello: entran
+// 25/10: + Yamcha (corto y largo) y Krilin con pelo (traje alternativo)
+const char* const kPelosNativos[] = {"", "Goku", "Vegeta", "Bardock", "Gohan (Cell)", "Goku niño", "Trunks", "Goten",
+                                     "Yamcha", "Yamcha (largo)", "Krilin"};   // 25/10: Krilin (10) vuelve: con la escala por los ojos encaja (medido 0,92-0,95)
+// 25/10: tipos de rostro (= vista_heroe.py ROSTROS; Heroe::cara): la cara de un personaje de B3 en todas sus expresiones,
+// o un rostro propio (ojos reales de B3 con otro gesto). Las cejas siguen al color del pelo; en Super Saiyan manda el juego
+const char* const kRostros[][2] = {{"Del cuerpo", "Body's own"},          {"Goku", "Goku"},
+                                   {"Vegeta", "Vegeta"},                   {"Gohan", "Gohan"},
+                                   {"Gohan joven", "Young Gohan"},         {"Trunks", "Trunks"},
+                                   {"Bardock", "Bardock"},                 {"Yamcha", "Yamcha"},
+                                   {"Ten Shin Han", "Tien Shinhan"},       {"Tipo A: confiado", "Type A: confident"},
+                                   {"Tipo B: desafiante", "Type B: defiant"}, {"Tipo C: sereno", "Type C: calm"},
+                                   {"Tipo D: feroz", "Type D: fierce"},     {"Tipo E: burlón", "Type E: smug"}};
+constexpr int kNumRostros = int(std::size(kRostros));
+constexpr int kNumPelos = 11;   // pelos UT del catalogo (mod center hd/cac/piezas_cac.toml: hair_000_01..hair_008_01 + base)
 
 struct DonanteB3 {
   int fid = -1;
@@ -536,6 +573,13 @@ std::string JsonCadena(const std::string& obj, const char* clave) {
     }
   }
   return {};
+}
+bool JsonVerdadero(const std::string& obj, const char* clave) {   // DS144: el valor exacto de "ok", no un ": true" posterior
+  const std::string marca = std::string("\"") + clave + "\"";
+  size_t p = obj.find(marca);
+  if (p == std::string::npos || (p = obj.find(':', p + marca.size())) == std::string::npos) return false;
+  while (++p < obj.size() && std::isspace(static_cast<unsigned char>(obj[p]))) {}
+  return obj.compare(p, 4, "true") == 0;
 }
 std::vector<DonanteB3> LeerDonantesB3(const std::string& zona) {
   static const auto todos = [] {
@@ -586,9 +630,8 @@ std::vector<DonanteB3> LeerDonantesB3(const std::string& zona) {
         }
         if (obj_depth) break;
         const std::string obj = arr.substr(start, q - start);
-        if (JsonCadena(obj, "validacion_visual") != "perfecto") continue;
-        const std::string ok = obj.substr(obj.find("\"ok\"") == std::string::npos ? obj.size() : obj.find("\"ok\""));
-        if (ok.find(": true") == std::string::npos && ok.find(":true") == std::string::npos) continue;
+        // DS144: solo las piezas aprobadas (ok = true y validacion_visual = perfecto). Las no aprobadas NO se listan.
+        if (JsonCadena(obj, "validacion_visual") != "perfecto" || !JsonVerdadero(obj, "ok")) continue;
         const std::string fid_txt = obj.substr(obj.find("\"fid\"") == std::string::npos ? obj.size() : obj.find("\"fid\""));
         const size_t colon = fid_txt.find(':');
         if (colon == std::string::npos) continue;
@@ -609,7 +652,8 @@ std::vector<DonanteB3> LeerDonantesB3(const std::string& zona) {
 }
 
 // 1.5.5: torso/piernas/guantes/botas B3 ocultos hasta adaptarlos al cuerpo (salian negros, despegados o deformes: hojas 24/10)
-constexpr bool kPiezasB3Listas = false;
+// 25/10: injerto nuevo (huesos sin estirar, textura exclusiva, rampa cocida, bordes soldados) y catalogo revisado: visibles
+constexpr bool kPiezasB3Listas = true;
 bool PiezasB3UI() { return kPiezasB3Listas && !g_edit && !Xv2() && !CuerpoUT() && !H::Xv2PiezasActivas(); }
 int ZonaB3Fila(int fila) { return PiezasB3UI() && fila >= 5 && fila <= 8 ? fila - 5 : -1; }
 std::vector<DonanteB3> OpcionesB3(int zona) {
@@ -635,7 +679,7 @@ void MoverPiezaB3(C::Heroe& h, int zona, int dir) {
   REXLOG_INFO("dbz3 heroe: pieza B3 {} = {}", kB3ZonaEn[zona], NombrePiezaB3(zona, h.b3_piezas[zona]));
 }
 
-int Filas() { return Xv2() ? 14 : CuerpoUT() ? (g_edit ? 3 : 6) : (g_edit ? 4 : 8) + (PiezasB3UI() ? 4 : 0); }   // la ultima: la de los botones
+int Filas() { return Xv2() ? 14 : CuerpoUT() ? (g_edit ? 3 : 6) : (g_edit ? 7 : 8) + (PiezasB3UI() ? 4 : 0); }   // la ultima: la de los botones
 int FilaBotones() { return Filas() - 1; }
 C::Heroe& Ficha() { return C::SlotEditable(C::SlotActivo()); }
 C::Hsv* ColorDeFila(int f) {
@@ -644,6 +688,8 @@ C::Hsv* ColorDeFila(int f) {
   if (!g_edit && f >= 1 && f <= 4) return &h.parte[f - 1];
   if (g_edit && f == 1) return &h.pelo_c1;
   if (g_edit && f == 2 && !CuerpoUT()) return &h.pelo_c2;
+  if (g_edit && f == 4 && !CuerpoUT()) return &h.ojos_c;
+  if (g_edit && f == 5 && !CuerpoUT()) return &h.piel_c;
   return nullptr;
 }
 std::string NombreColor(int f) {
@@ -661,6 +707,8 @@ std::string NombreColor(int f) {
     }
   }
   if (!g_edit) return std::string(T::T("Parte ", "Part ")) + Num(f);
+  if (f == 4) return T::T("Color de ojos", "Eye color");
+  if (f == 5) return T::T("Color de piel", "Skin color");
   return f == 1 ? T::T("Color de pelo 1", "Hair color 1") : T::T("Color de pelo 2", "Hair color 2");
 }
 std::string HsvTxt(const C::Hsv& c) { return Num(c.h) + " / " + Num(c.s) + " / " + Num(c.v); }
@@ -668,8 +716,8 @@ std::string HsvTxt(const C::Hsv& c) { return Num(c.h) + " / " + Num(c.s) + " / "
 void Restablecer() {
   C::Heroe& h = Ficha();
   if (g_edit) {
-    h.pelo = 0;
-    h.pelo_c1 = h.pelo_c2 = C::Hsv{};
+    h.pelo = h.cara = 0;
+    h.pelo_c1 = h.pelo_c2 = h.ojos_c = h.piel_c = C::Hsv{};
   } else {
     H::PonerTraje(0);
     for (C::Hsv& c : h.parte) c = C::Hsv{};
@@ -685,6 +733,7 @@ void Descartar() {
   for (int i = 0; i < 7; ++i) h.xv2[i] = g_antes.xv2[i];
   h.logo = g_antes.logo, h.scouter = g_antes.scouter, h.pelo = g_antes.pelo;
   h.pelo_c1 = g_antes.pelo_c1, h.pelo_c2 = g_antes.pelo_c2;
+  h.cara = g_antes.cara, h.ojos_c = g_antes.ojos_c, h.piel_c = g_antes.piel_c;
   for (int i = 0; i < 4; ++i) h.b3_piezas[i] = g_antes.b3_piezas[i];
   H::PonerTraje(g_traje_antes);
 }
@@ -708,8 +757,11 @@ std::string Ayuda() {
                : T::T("Los donantes están medidos para Goku, traje 1.", "Donors are measured for Goku, costume 1.");
   if (g_edit) {
     return g_fila == 0 ? T::T("Elige el peinado.", "Select a hairstyle.")
-         : g_fila == 1 ? T::T("Elige el color base del pelo.", "Select the base hair color.")
-                        : T::T("Elige el color propio del pelo.", "Select the custom hair color.");
+         : g_fila == 1 ? T::T("Elige el color base del pelo (las cejas lo siguen).", "Select the base hair color (eyebrows follow it).")
+         : g_fila == 2 ? T::T("Elige el color propio del pelo.", "Select the custom hair color.")
+         : g_fila == 3 ? T::T("Elige el rostro (en todas sus expresiones).", "Select the face (in all its expressions).")
+         : g_fila == 4 ? T::T("Elige el color de ojos (en Super Saiyan, turquesa).", "Select the eye color (teal as Super Saiyan).")
+                        : T::T("Elige el tono de piel (cara, brazos y prendas a la vez).", "Select the skin tone (face, arms and clothes at once).");
   }
   if (Xv2() && g_fila < 7) return T::T("Elige la pieza (izquierda / derecha).", "Select the part (left / right).");
   if (g_fila == (PiezasB3UI() ? 9 : 5)) return T::T("Elige la marca del logo.", "Select a logo mark.");
@@ -855,6 +907,10 @@ void DibujarLista(ImDrawList* dl, const S::Area& a, float t) {
       } else if (b3 >= 0) {
         et = T::T(kB3ZonaEs[b3], kB3ZonaEn[b3]);
         val = NombrePiezaB3(b3, h.b3_piezas[b3]);
+      } else if (g_edit && f == 3) {
+        et = T::T("Rostro", "Face");
+        const int k = std::clamp(h.cara, 0, kNumRostros - 1);
+        val = T::T(kRostros[k][0], kRostros[k][1]);
       } else if (g_edit) {
         et = T::T("Pelo", "Hair");
         // studies 8 fase 2: el 1 es el pelo propio del cuerpo; 2..10 = piezas UT (vista_heroe.py buscar_pelo)
@@ -1043,8 +1099,12 @@ Accion Crear(ImDrawList* dl, const S::Area& a, float t, uint16_t p) {
           h.xv2[g_fila] = lst[size_t((k + d + int(lst.size())) % int(lst.size()))];
           REXLOG_INFO("dbz3 heroe: XV2: {} = modelo {}", H::NombreTipoXv2(g_fila), h.xv2[g_fila]);
         }
+      } else if (g_edit && g_fila == 3 && !CuerpoUT()) {
+        h.cara = (h.cara + d + kNumRostros) % kNumRostros;
+        REXLOG_INFO("dbz3 heroe: Edit: rostro {} ({})", h.cara, kRostros[h.cara][1]);
       } else if (g_edit && g_fila == 0) {
-        do h.pelo = (h.pelo + d + kNumPelos) % kNumPelos;
+        const int np = H::Xv2PiezasActivas() ? 10 : kNumPelos;   // piezas UT: 10 (los nativos 8-10 son solo B3)
+        do h.pelo = (h.pelo + d + np) % np;
         while (h.pelo != 0 && !H::Xv2PiezasActivas() && !*kPelosNativos[h.pelo]);
       } else if (!g_edit && g_fila == 0) {
         const int nt = std::max(1, H::NumTrajes());
@@ -1136,6 +1196,9 @@ Accion Crear(ImDrawList* dl, const S::Area& a, float t, uint16_t p) {
 namespace {
 std::vector<int> g_movs;
 int g_mov_cur = 0, g_mov_scroll = 0, g_mov_antes = -1;
+int g_mov_tab = 0;   // DS144: 0 = movesets (donantes), 1 = estilos de lucha
+std::vector<int> g_estilos;
+int g_est_cur = 0, g_est_scroll = 0;
 constexpr int kMovCols = 5, kMovFilas = 4;
 }  // namespace
 
@@ -1468,12 +1531,18 @@ void Principal(ImDrawList* dl, const S::Area& a, float t, int cursor, int tab_se
     Texto(dl, a, (40 + x1) * 0.5f, dy0 + 22 + 25.0f * float(i), D::kSmall * 0.82f, ls[i], !aviso.empty(), false, x1 - 90);
 }
 
-void AbrirMovesets() {
+namespace {
+std::vector<std::string> Parrafo(const std::string& s, size_t ancho);   // definida abajo (pantalla principal)
+}
+
+void AbrirMovesets(bool estilo) {
   g_tab = 0;
+  g_mov_tab = estilo ? 1 : 0;   // DS144: A en la fila Estilo abre directo la pestana Estilo; LB/RB cambia
+  g_tec_cambio = false;
+  g_pregunta_cap = 0;
   if (const char* e = std::getenv("DBZ3_TEST_HEROE_TEC"); e && *e == '1') {   // pruebas: abre directo en Tecnicas
     g_tab = 1;
     g_tec_cur = g_tec_scroll = 0;
-    g_tec_cambio = false;
     ReordenarTecnicas();
   }
   g_movs = H::Movesets();
@@ -1482,8 +1551,13 @@ void AbrirMovesets() {
   for (size_t i = 0; i < g_movs.size(); ++i)
     if (g_movs[i] == g_mov_antes) g_mov_cur = int(i);
   g_mov_scroll = std::max(0, g_mov_cur / kMovCols - kMovFilas + 1);
-  REXLOG_INFO("dbz3 heroe: pantalla de movesets abierta ({} opciones, actual {}, estilo {})", g_movs.size(), g_mov_antes,
-              H::EstiloId());
+  g_estilos = H::Estilos();
+  g_est_cur = 0;
+  for (size_t i = 0; i < g_estilos.size(); ++i)
+    if (g_estilos[i] == H::EstiloId()) g_est_cur = int(i);
+  g_est_scroll = std::max(0, g_est_cur / kMovCols - kMovFilas + 1);
+  REXLOG_INFO("dbz3 heroe: pantalla de movesets abierta ({} movesets, {} estilos, actual {}, estilo {})", g_movs.size(),
+              g_estilos.size(), g_mov_antes, H::EstiloId());
 }
 
 Accion MovesetsUI(ImDrawList* dl, const S::Area& a, float t, uint16_t p) {
@@ -1492,75 +1566,124 @@ Accion MovesetsUI(ImDrawList* dl, const S::Area& a, float t, uint16_t p) {
     g_tab = 1;
     g_tec_cur = g_tec_scroll = 0;
     g_tec_cambio = false;
+    g_pregunta_cap = 0;
     ReordenarTecnicas();
     REXLOG_INFO("dbz3 heroe: tecnicas abiertas ({} en el inventario, donante {}, equipo {} {} {} {})", g_tec_inv.size(),
                 H::DonanteEfectivo(), H::Equipada(0), H::Equipada(1), H::Equipada(2), H::Equipada(3));
     return Accion::kNada;
   }
-  const int n = std::max(1, int(g_movs.size()));
-  if (p & kLeft) g_mov_cur = (g_mov_cur + n - 1) % n;
-  if (p & kRight) g_mov_cur = (g_mov_cur + 1) % n;
-  if (p & kUp) g_mov_cur = std::max(0, g_mov_cur - kMovCols);
-  if (p & kDown) g_mov_cur = std::min(n - 1, g_mov_cur + kMovCols);
-  const int fila = g_mov_cur / kMovCols;
-  if (fila < g_mov_scroll) g_mov_scroll = fila;
-  if (fila >= g_mov_scroll + kMovFilas) g_mov_scroll = fila - kMovFilas + 1;
+  if (p & (kLb | kRb)) {   // DS144: LB/RB cambian entre la lista de movesets y la de estilos de lucha
+    g_mov_tab = (g_mov_tab + 1) % 2;
+    p &= uint16_t(~(kLb | kRb));
+  }
+  const bool est = g_mov_tab == 1;
+  const std::vector<int>& lista = est ? g_estilos : g_movs;
+  int& cur = est ? g_est_cur : g_mov_cur;
+  int& scroll = est ? g_est_scroll : g_mov_scroll;
+  const int n = std::max(1, int(lista.size()));
+  cur = std::clamp(cur, 0, n - 1);
+  if (p & kLeft) cur = (cur + n - 1) % n;
+  if (p & kRight) cur = (cur + 1) % n;
+  if (p & kUp) cur = std::max(0, cur - kMovCols);
+  if (p & kDown) cur = std::min(n - 1, cur + kMovCols);
+  const int fila = cur / kMovCols;
+  if (fila < scroll) scroll = fila;
+  if (fila >= scroll + kMovFilas) scroll = fila - kMovFilas + 1;
   if (p & kB) {
-    REXLOG_INFO("dbz3 heroe: movesets: atras (sigue {})", g_mov_antes);
+    REXLOG_INFO("dbz3 heroe: {}: atras (sigue estilo {}, moveset {})", est ? "estilos" : "movesets", H::EstiloId(),
+                g_mov_antes);
     return Accion::kVolver;
   }
-  if ((p & kA) && !g_movs.empty()) {
-    H::PonerMoveset(g_movs[size_t(g_mov_cur)]);
+  if ((p & kA) && !lista.empty()) {
+    const int id = lista[size_t(cur)];
+    if (est) {
+      H::PonerEstilo(id);
+      REXLOG_INFO("dbz3 heroe: estilo {} ({}) elegido en la lista (combate siguiente; la ficha lo guarda al confirmar)",
+                  id, M::Nombre(id));
+    } else {
+      H::PonerMoveset(id);
+    }
     return Accion::kConfirmar;
   }
   FondoSinAnfitrion(dl, a);
-  S::Banner(dl, a, T::T("Elige moveset", "Select moveset"));
+  S::Banner(dl, a, T::T("Elige estilo o moveset", "Choose style or moveset"));
+  // pestanas (DS144): Moveset / Estilo; la franja marca la activa, como en la pantalla principal
+  constexpr float tx0 = 40, tx1 = 760, ty0 = 140, ty1 = 180;
+  const float tw = (tx1 - tx0) * 0.5f;
+  static const char* const kTabEs[2] = {"MOVESET", "ESTILO"};
+  static const char* const kTabEn[2] = {"MOVESET", "STYLE"};
+  for (int i = 0; i < 2; ++i) {
+    const float a0 = tx0 + tw * i + 4, a1 = tx0 + tw * (i + 1) - 4;
+    Fondo(dl, a, a0, ty0, a1, ty1, i == g_mov_tab ? 240 : 150);
+    if (i == g_mov_tab) D::Stripe(dl, a, a0 + 2, ty0 + 3, a1 - 2, ty1 - 3, t);
+    S::Frame(dl, a.At(a0, ty0), a.At(a1, ty1), a.s * 0.55f);
+    Texto(dl, a, (a0 + a1) * 0.5f, (ty0 + ty1) * 0.5f, D::kRow * 0.9f, T::T(kTabEs[i], kTabEn[i]), i == g_mov_tab,
+          i != g_mov_tab, a1 - a0 - 20);
+  }
   // rejilla (izquierda)
-  constexpr float gx0 = 40, gx1 = 760, gy0 = 172, celda_w = (gx1 - gx0 - 2 * 24) / kMovCols, celda_h = 128;
+  constexpr float gx0 = 40, gx1 = 760, gy0 = 190, celda_w = (gx1 - gx0 - 2 * 24) / kMovCols, celda_h = 128;
   const float gy1 = gy0 + 2 * 24 + celda_h * kMovFilas;
   Marco(dl, a, gx0, gy0, gx1, gy1, 235);
   for (int k = 0; k < kMovFilas * kMovCols; ++k) {
-    const int i = g_mov_scroll * kMovCols + k;
-    if (i >= int(g_movs.size())) break;
-    const int id = g_movs[size_t(i)];
+    const int i = scroll * kMovCols + k;
+    if (i >= int(lista.size())) break;
+    const int id = lista[size_t(i)];
     const float cx = gx0 + 24 + celda_w * (k % kMovCols + 0.5f), cy = gy0 + 24 + celda_h * (k / kMovCols + 0.5f);
-    const bool sel = i == g_mov_cur, actual = id == g_mov_antes;
+    const bool sel = i == cur, actual = est ? id == H::EstiloId() : id == g_mov_antes;
     if (sel) D::Stripe(dl, a, cx - celda_w * 0.5f + 2, cy - celda_h * 0.5f + 4, cx + celda_w * 0.5f - 2, cy + celda_h * 0.5f - 4, t);
-    const int cara = id < 0 ? H::EstiloId() : id;
+    const int cara = est ? id : (id < 0 ? H::EstiloId() : id);
     Cara(dl, a, cara, cx, cy - 18, 64, sel || actual ? 255 : 170);
-    Texto(dl, a, cx, cy + 34, 18, id < 0 ? std::string(T::T("Del estilo", "Style's own")) : M::Nombre(id), sel, !sel,
-          celda_w - 12);
+    std::string nombre = (!est && id < 0) ? std::string(T::T("Del estilo", "Style's own")) : std::string(M::Nombre(id));
+    if (est && H::EsMaestro(id)) nombre += " *";
+    Texto(dl, a, cx, cy + 34, 18, nombre, sel, !sel, celda_w - 12);
     if (actual) Texto(dl, a, cx, cy - 56, 15, T::T("ACTUAL", "CURRENT"), true, false, celda_w - 10);
   }
-  if (g_mov_scroll > 0) S::Arrows(dl, a.At(gx0 + 300, gy0 - 30), a.At(gx0 + 420, gy0 + 10), 26 * a.s, t);
+  if (scroll > 0) S::Arrows(dl, a.At(gx0 + 300, gy0 - 30), a.At(gx0 + 420, gy0 + 10), 26 * a.s, t);
   // ficha del elegido (derecha)
-  const int id = g_movs.empty() ? -1 : g_movs[size_t(g_mov_cur)];
-  constexpr float px0 = 790, px1 = 1130, py0 = 172;
+  const int id = lista.empty() ? (est ? H::EstiloId() : -1) : lista[size_t(cur)];
+  constexpr float px0 = 790, px1 = 1130, py0 = 190;
   const float py1 = gy1;
   Marco(dl, a, px0, py0, px1, py1, 235);
-  const int cara = id < 0 ? H::EstiloId() : id;
+  const int cara = est ? id : (id < 0 ? H::EstiloId() : id);
   Cara(dl, a, cara, (px0 + px1) * 0.5f, py0 + 110, 130);
-  Texto(dl, a, (px0 + px1) * 0.5f, py0 + 200, D::kHead, id < 0 ? M::Nombre(H::EstiloId()) : M::Nombre(id), true, false,
-        px1 - px0 - 60);
-  Texto(dl, a, (px0 + px1) * 0.5f, py0 + 240, D::kSmall,
-        id < 0 ? std::string(T::T("(el moveset del estilo)", "(the style's own moveset)"))
-               : std::string(T::T("Cápsulas propias: ", "Own capsules: ")) + Num(H::CapsulasMoveset(id)),
-        false, false, px1 - px0 - 60);
-  Texto(dl, a, (px0 + px1) * 0.5f, py0 + 290, D::kSmall, T::T("Golpes, combos y cámara:", "Moves, combos and camera:"),
-        false, true, px1 - px0 - 60);
-  Texto(dl, a, (px0 + px1) * 0.5f, py0 + 320, D::kSmall, T::T("los de este luchador.", "this fighter's."), false, true,
-        px1 - px0 - 60);
-  Texto(dl, a, (px0 + px1) * 0.5f, py0 + 360, D::kSmall, T::T("Vida, daño y formas:", "Health, damage and forms:"), false,
-        true, px1 - px0 - 60);
-  Texto(dl, a, (px0 + px1) * 0.5f, py0 + 390, D::kSmall,
-        std::string(T::T("los del estilo (", "the style's (")) + M::Nombre(H::EstiloId()) + ").", false, true,
-        px1 - px0 - 60);
+  std::string titulo = est ? std::string(M::Nombre(id)) : (id < 0 ? M::Nombre(H::EstiloId()) : M::Nombre(id));
+  if (est && H::EsMaestro(id)) titulo += T::T(" (maestro)", " (master)");
+  Texto(dl, a, (px0 + px1) * 0.5f, py0 + 200, D::kHead, titulo, true, false, px1 - px0 - 60);
+  if (est) {
+    Texto(dl, a, (px0 + px1) * 0.5f, py0 + 240, D::kSmall, T::T("Estilo de lucha", "Fighting style"), false, false,
+          px1 - px0 - 60);
+    const std::vector<std::string> ls = Parrafo(H::DetalleEstilo(id), 34);
+    float yy = py0 + 280;
+    for (size_t i = 0; i < ls.size() && i < 7 && yy < py1 - 40; ++i, yy += 28)
+      Texto(dl, a, (px0 + px1) * 0.5f, yy, D::kSmall * 0.85f, ls[i], false, false, px1 - px0 - 50);
+    if (H::EsMaestro(id))
+      Texto(dl, a, (px0 + px1) * 0.5f, py1 - 46, D::kSmall * 0.8f,
+            T::T("Estilo maestro: da un bonus y su cápsula.", "Master style: gives a bonus and its capsule."), false,
+            false, px1 - px0 - 50);
+  } else {
+    Texto(dl, a, (px0 + px1) * 0.5f, py0 + 240, D::kSmall,
+          id < 0 ? std::string(T::T("(el moveset del estilo)", "(the style's own moveset)"))
+                 : std::string(T::T("Cápsulas propias: ", "Own capsules: ")) + Num(H::CapsulasMoveset(id)),
+          false, false, px1 - px0 - 60);
+    Texto(dl, a, (px0 + px1) * 0.5f, py0 + 290, D::kSmall, T::T("Golpes, combos y cámara:", "Moves, combos and camera:"),
+          false, true, px1 - px0 - 60);
+    Texto(dl, a, (px0 + px1) * 0.5f, py0 + 320, D::kSmall, T::T("los de este luchador.", "this fighter's."), false, true,
+          px1 - px0 - 60);
+    Texto(dl, a, (px0 + px1) * 0.5f, py0 + 360, D::kSmall, T::T("Vida, daño y formas:", "Health, damage and forms:"),
+          false, true, px1 - px0 - 60);
+    Texto(dl, a, (px0 + px1) * 0.5f, py0 + 390, D::kSmall,
+          std::string(T::T("los del estilo (", "the style's (")) + M::Nombre(H::EstiloId()) + ").", false, true,
+          px1 - px0 - 60);
+  }
   Marco(dl, a, gx0, gy1 + 16, px1, gy1 + 74, 200);
   Texto(dl, a, (gx0 + px1) * 0.5f, gy1 + 45, D::kSmall,
-        std::string(Num(g_mov_cur + 1)) + " / " + Num(n) + "   " +
+        std::string(Num(cur + 1)) + " / " + Num(n) + "   " +
             T::T("Se aplica en el combate siguiente.", "Applies from the next fight."),
         false, false, px1 - gx0 - 70);
-  S::HelpLine(dl, a.At(600, 868), 38 * a.s, {{"A", T::T("Elegir", "Select")}, {"Y", T::T("Técnicas", "Techniques")}, {"B", T::T("Atrás", "Back")}});
+  S::HelpLine(dl, a.At(600, 868), 38 * a.s,
+              {{"A", T::T("Elegir", "Select")}, {"LB", T::T("Cambiar lista", "Switch list")},
+               {"RB", T::T("Cambiar lista", "Switch list")}, {"Y", T::T("Técnicas", "Techniques")},
+               {"B", T::T("Atrás", "Back")}});
   return Accion::kNada;
 }
 

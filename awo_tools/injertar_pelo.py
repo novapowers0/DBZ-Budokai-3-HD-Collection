@@ -202,7 +202,7 @@ def _soldar(ex):
 
 
 def injertar(amb, model, pelo_mask, Q, QN, tris_ut, presupuesto=WINDOW_BUDGET, rgb1=None, rgb2=None, cara_mask=None,
-             extras=None):
+             extras=None, uvs=None, tex_destino=None, tex_rgba=None):
     """amb: #AMB del cuerpo (bytes, con las texturas ya tenidas). model: model_render.Model del cuerpo (del bin
     ORIGINAL; fija el orden de triangulos de pelo_mask). pelo_mask: bool por triangulo de model.tris (True = pelo
     nativo, se quita). Q/QN: posiciones/normales (n x 3, espacio modelo del cuerpo) de los vertices de la pieza y
@@ -210,7 +210,11 @@ def injertar(amb, model, pelo_mask, Q, QN, tris_ut, presupuesto=WINDOW_BUDGET, r
     de arriba) ya cocidos en la textura; None = el que haya. cara_mask: bool por triangulo (zona "cara"): si el cuerpo es
     CALVO (sin pelo nativo) el peinado va al draw de la cara y su color se pinta en un bloque libre de esa textura.
     extras: piezas rigidas a la cabeza ademas del pelo (scouter): [{"P", "N", "tris", "rgb"}] (espacio modelo, color liso
-    en un bloque libre de la textura del anfitrion). Sin pieza de pelo (tris_ut vacio) no se quita ni se anade pelo. Devuelve (bytes, resumen)."""
+    en un bloque libre de la textura del anfitrion). Sin pieza de pelo (tris_ut vacio) no se quita ni se anade pelo.
+    uvs (27/10 DS111): UV por vertice de Q (n x 2) en la textura del anfitrion: se usa tal cual en las ventanas
+    (a trozos en las costuras de UV) en vez del texel unico del pelo. tex_destino/tex_rgba: textura del #AZT que
+    recibe `rgba` (h,w,4 uint8, misma resolucion) y a la que se reapunta el material del anfitrion; sirve para llevar
+    el ATLAS del pelo del donante con sus lineas oscuras (Trunks) sin pintar un bloque liso. Devuelve (bytes, resumen)."""
     import model_render as mr  # noqa: PLC0415
     td = triangulos_por_draw(model)
     assert len(td) == len(model.tris), "orden de triangulos distinto del Model (%d != %d)" % (len(td), len(model.tris))
@@ -263,7 +267,13 @@ def injertar(amb, model, pelo_mask, Q, QN, tris_ut, presupuesto=WINDOW_BUDGET, r
     m2 = mr.Model(bytes(amb))
     mat = dt.materials[hd["material"]]
     u2 = v2 = None
-    if calvo:                      # sin pelo nativo: bloques libres de la textura de la cara, pintados lisos
+    atlas = tex_rgba is not None and tex_destino is not None and uvs is not None and not calvo
+    if atlas:
+        # 27/10 DS111: UV por vertice (atlas del donante con sus lineas); el material del anfitrion pasa a la textura
+        # nueva. No se pinta ningun bloque: los colores van cocidos en el atlas.
+        u0 = v0 = 0.5
+        resumen["atlas"] = "tex %d %dx%d" % (int(tex_destino), np.asarray(tex_rgba).shape[1], np.asarray(tex_rgba).shape[0])
+    elif calvo:                      # sin pelo nativo: bloques libres de la textura de la cara, pintados lisos
         u0 = v0 = 0.5
         tx = m2.tex[mat["tex"]] if mat["tex"] < len(m2.tex) else None
         col1 = rgb1 or (0.13, 0.09, 0.06)
@@ -285,6 +295,17 @@ def injertar(amb, model, pelo_mask, Q, QN, tris_ut, presupuesto=WINDOW_BUDGET, r
         uvs = [tuple(model.uv[v]) for t in tris_h for v in t]
         tuv = [[tuple(model.uv[v]) for v in t] for t in tris_h]
         u0, v0 = _texel_pelo(m2.tex[mat["tex"]], uvs, rgb1, tuv)
+        if rgb1 is not None:   # 25/10: la textura no tiene ese color (rubio SSJ o lila de Trunks sobre el negro de Goku): bloque liso
+            tx = m2.tex[mat["tex"]]
+            h_, w_ = tx.shape[:2]
+            got = tx[min(int(v0 * h_), h_ - 1), min(int(u0 * w_), w_ - 1), :3]
+            mask = getattr(_texel_pelo, "mask", None)
+            # exacto: con un texel "parecido" el rubio SSJ salia blanco (brillo) o color piel (borde de la zona)
+            if float(np.abs(got - np.array(rgb1)).sum()) > 0.06 and mask is not None:
+                bl = _bloque_libre(tx, mask, set())
+                if bl and _pintar_bloque_dxt3(avb.data, mat["tex"], bl[0], bl[1], rgb1):
+                    u0, v0 = (bl[0] * 4 + 2) / w_, (bl[1] * 4 + 2) / h_
+                    resumen["base_pintada"] = True
         if rgb2 is not None:
             u2, v2 = _texel_pelo(m2.tex[mat["tex"]], uvs, rgb2, tuv)
             tx = m2.tex[mat["tex"]]
@@ -300,7 +321,19 @@ def injertar(amb, model, pelo_mask, Q, QN, tris_ut, presupuesto=WINDOW_BUDGET, r
         u0, v0 = 0.5, 0.5
     resumen["uv"] = tuple(round(float(x), 4) for x in ((u0, v0) + (() if u2 is None else (u2, v2))))
     uv_extra = []
-    if extras:                     # color liso de cada pieza extra (scouter): bloques libres de la textura del anfitrion
+    if atlas and extras:           # DS111: piezas extra (calva) -> bloques 4x4 en la banda reservada del ATLAS
+        _a = np.asarray(tex_rgba, np.uint8)
+        _lado = int(_a.shape[0])
+        _med = np.median(_a[:_lado - 16, :, :3].reshape(-1, 3), 0)   # color medio del atlas (piel/pelo cocidos)
+        for k in range(len(extras)):
+            bx, by = 4 * k, _lado - 8
+            col = np.clip(np.asarray(extras[k]["rgb"], float), 0.0, 1.0)
+            if col.min() > 0.80:   # la piel de B3 es blanca y el tono lo ponía la rampa: en el atlas (banda 15) seria blanca
+                col = np.clip(_med / 255.0, 0.0, 1.0)
+            _a[by:by + 4, bx:bx + 4, :3] = np.clip(np.round(col * 255), 0, 255).astype(np.uint8)
+            _a[by:by + 4, bx:bx + 4, 3] = 255
+            uv_extra.append(((bx + 2) / _lado, (by + 2) / _lado))
+    if extras and not atlas:       # color liso de cada pieza extra (scouter): bloques libres de la textura del anfitrion
         tx = m2.tex[mat["tex"]] if mat["tex"] < len(m2.tex) else None
         usadas = (2 if rgb2 is not None else 1) if (calvo and len(tris_ut)) else 0
         bls = []
@@ -334,15 +367,20 @@ def injertar(amb, model, pelo_mask, Q, QN, tris_ut, presupuesto=WINDOW_BUDGET, r
     Pu, Nu = Q[usados], QN[usados]
     tu = [tuple(remap0[int(v)] for v in t) for t in tris_ut]
     tu = [t for t in tu if len(set(t)) == 3]
+    uv_u = np.asarray(uvs, float)[usados] if (atlas and uvs is not None) else None
     uniq, keys = {}, []
     rep = np.zeros(len(Pu), int)
     for i in range(len(Pu)):
-        k = (tuple(np.round(Pu[i], 4)), tuple(np.round(Nu[i], 2)))
+        k = (tuple(np.round(Pu[i], 4)), tuple(np.round(Nu[i], 2)),
+             (round(float(uv_u[i][0]), 5), round(float(uv_u[i][1]), 5)) if uv_u is not None else None)
         rep[i] = uniq.setdefault(k, len(uniq))
     nP = np.zeros((len(uniq), 3))
     nN = np.zeros((len(uniq), 3))
+    nUV = np.zeros((len(uniq), 2)) if uv_u is not None else None
     for i, r in enumerate(rep):
         nP[r], nN[r] = Pu[i], Nu[i]
+        if nUV is not None:
+            nUV[r] = uv_u[i]
     tu = [t for t in ((rep[a], rep[b], rep[c]) for a, b, c in tu) if len(set(t)) == 3]
 
     # --- reparto de ventanas: refs tras quitar el pelo nativo
@@ -400,7 +438,11 @@ def injertar(amb, model, pelo_mask, Q, QN, tris_ut, presupuesto=WINDOW_BUDGET, r
     H = len(loc)
     ventanas = []
     for i in range(H):
-        ventanas.append({"pos": tuple(loc[i]), "w": 1.0, "bone": slot, "nrm": tuple(nl[i]), "uv": (u0, v0) if grupo[i] == 0 else (u2, v2) if grupo[i] == 1 else uv_extra[grupo[i] - 2]})
+        if nUV is not None and i < len(nUV):
+            uv_i = (float(nUV[i][0]), float(nUV[i][1]))
+        else:
+            uv_i = (u0, v0) if grupo[i] == 0 else (u2, v2) if grupo[i] == 1 else uv_extra[grupo[i] - 2]
+        ventanas.append({"pos": tuple(loc[i]), "w": 1.0, "bone": slot, "nrm": tuple(nl[i]), "uv": uv_i})
     destino = list(libres[:H])
     n_nuevas = max(0, H - len(destino))
     base_nueva = avb.n
@@ -424,6 +466,11 @@ def injertar(amb, model, pelo_mask, Q, QN, tris_ut, presupuesto=WINDOW_BUDGET, r
     obj = avb.grow(new_n, new_nib) if (n_nuevas or add_ib) else avb
     dt2 = DrawTable(obj)
     b = obj.data
+    if atlas:
+        import injertar_ropa as _ir  # noqa: PLC0415
+        wh = _ir._escribir_textura(b, int(tex_destino), np.asarray(tex_rgba, np.uint8))
+        dt2.set_material(hd["material"], tex=int(tex_destino))
+        resumen["atlas"] = "tex %d %dx%d (material %d)" % (int(tex_destino), wh[0], wh[1], hd["material"])
     for i, w in enumerate(ventanas):
         o = obj.vb0 + destino[i] * WINDOW
         b[o:o + WINDOW] = AwgVertexBuffer.pack_window(w)
@@ -447,6 +494,15 @@ def injertar(amb, model, pelo_mask, Q, QN, tris_ut, presupuesto=WINDOW_BUDGET, r
     if all(i in quitados for i in usan) and all(not kept[i] for i in usan if i != host):
         cuenta = collections.Counter(m["shader"] for i, m in enumerate(dt.materials)
                                      if i != hd["material"] and m["shader"] != 0xFFFFFFFF)
+        # 25/10: solo rampas GRISES (las de la ropa). El toon RESTA la rampa a la base y la de la piel es azul: el pelo
+        # lila de Trunks (y cualquier color claro) salia color carne y el heroe parecia calvo
+        def gris(r):
+            tx = m2.tex[r] if r < len(m2.tex) else None
+            if tx is None:
+                return False
+            rgb = np.asarray(tx[..., :3], float)
+            return float((rgb.max(-1) - rgb.min(-1)).mean()) < 0.06
+        cuenta = collections.Counter({r: c for r, c in cuenta.items() if gris(r)}) or cuenta
         if cuenta:
             ramp = cuenta.most_common(1)[0][0]
             dt2.set_material(hd["material"], ramp=ramp)

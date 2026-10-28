@@ -126,9 +126,10 @@ Sin las imágenes del banco (ISO de otra región con otra disposición) el modo 
 | ~~Vida que no se recupera, 5 Cell Jr. de 1000, 60 s, sin tiempo, formas~~ | hecho con `RequestBattleEx` (2026-10-15) | — |
 | ~~Ki inicial del rival (300-700 en B1)~~ | hecho (ronda 2): `VigilarCombate` lo escribe al llegar al READY (`X+6100`; 1 barra = 1000 en B3, B1 300 = 3 barras) | — |
 | ~~La vida arrastrada acorta también la barra~~ | hecho antes: vida `< 0` = solo la inicial | — |
-| ~~Reglas en código (armadura de A16, Mr. Satán herido, ki lento)~~ | hecho (ronda 2) por memoria, sin ganchos: A16 anula la mitad del daño que recibe; contra Trunks el daño que no viene de gastar ki en los 1,5 s anteriores se queda en un 25 %; contra Piccolo Mr. Satán gana la mitad de ki. Los multiplicadores de B1 están en `satanmode.c` sin descifrar: los valores son nuestros | — |
+| ~~Reglas en código (armadura de A16, Mr. Satán herido, ki lento)~~ | **DS143: no existen en B1**. Son los avisos 669 #5 (A16), #7 (Trunks) y #11 (Piccolo), texto de Mr. Satán: en `b1.c` no hay ninguna comparación con los IDs 5/6/16 (el único caso por personaje es Cell Jr. 0x17/forma 3) y el daño pasa por la fórmula general `0x1AD0D0` sin multiplicadores del modo. El puerto ya no inventa armadura/solo-ki/ki lento | — |
 | ~~Dificultad Novato/Experto/Avanzado~~ | hecho (ronda 2): el título lleva el letrero de B1 (666 #6) con las 3 dificultades (666 #7-9); la elegida es el **nivel de la IA del COM** (`mgr+35573`: `sub_820FC9B0` lo pone de las opciones en el Duelo y del nivel en el Torneo; lo leen las tablas por personaje de `sub_8213E6C8`, como B1 `charfile+0x48[dificultad]`) | — |
 | ~~Puntos y pantalla de resultado~~ | hecho (ronda 2): puntos como B1 (`0x198E18`: LIFE = vida del ganador − la del otro, TIME = segundos que sobran × 20; la leyenda suma la mitad, `0x198F00`) y pantalla de resultado con las piezas de la 668 (#15 tablón y NEXT BATTLE, #16 "Challenger Nth", #19 "Now!!", #21 "You have", #22 cifras, #24 caras de los 11: vencidos en color, el resto en silueta) y total con récord al final (#18). Sin los puntos por golpe de B1 (HIT, COMBO FIN, THROW...: 14 sucesos más con `0x1AF6F0`; necesitan ganchos en el combate) | — |
+| ~~Escena larga de la ronda 1 / charla 3D~~ | **DS143**: la ronda 1 usa los **11 clips reales** del `#AMC` de `DATA_EN 2372` hijo 20 (5322 cuadros = 88,70 s) con la cámara y las trayectorias `#AMM` de B1 (`GOK/THL/STN_WAIST`), leídas en marcha de la ISO; los actores son modelos de B3. La **charla 3D añadida** de las rondas 2-11 se quitó (no existe en B1: la charla va en el tablero 0x1C y antes del READY solo están las dos tomas de `FUN_001920b0`) | — |
 | ~~Cinemáticas de entrada y final~~ | revisado (ronda 3): la ISO europea **no trae ningún vídeo** (ni PSS/SFD/IPU/M2V, ni dentro de los AFS; el ELF no nombra ninguno; listado en `E:\DBZ3HD_trabajo\D\`). La "entrada" (`SATAN DEMO MAIN`) y el final (`SATAN CLEAR MAIN`, "# CLEAR #") son pantallas del motor con las imágenes 666/668/669, que ya se enseñan: título con "Pulsa START" (666 #5) → letrero de dificultad → charlas → resultado → total (668 #18). Los créditos (`endcredits.c`) son los generales del juego, no del modo. La 669 #20 ("Estos son tus puntos y la contraseña") y #21 (web de 2002) no se usan: la contraseña era para una web que ya no existe | — |
 | ~~Voces de Mr. Satán en las charlas~~ | hecho (P3, 2026-10-16): la voz japonesa del original (mapa en §2.1) suena en cada charla y en el título (ADX decodificado en marcha; Windows, por winmm, aparte de la mezcla del juego) | — |
 | ISO americana de B1 | probar la firma de la tabla y del banco (no hay copia en disco) | bajo |
@@ -137,9 +138,21 @@ Sin las imágenes del banco (ISO de otra región con otra disposición) el modo 
 La entrada de B1 sí tiene escenas 3D (la nota "no trae vídeos" de arriba solo habla de vídeos). La ronda 1 lleva la escena larga de
 los Juegos de Cell (~60 s: reportero, ring, Cell, Goku, el coche y Mr. Satán con mochila y humo) y de la 2 a la 11 el combate trae la
 presentación normal de B1: Mr. Satán desde abajo con los brazos abiertos (~2,6 s, sube desde negro) y el retador de cerca (~2,3 s) y
-"READY?". En el puerto (`pasarela.cpp`, `EscenaCell`, `TomasPresentacion`): las dos tomas van al final de cada escena (tras la
-charla en 3D) con la cámara en el marco de los luchadores (`cinematica::Paso::rel`); la ronda 1 lleva una versión recortada de los
-Juegos de Cell con solo Mr. Satán y el ring (el motor de B3 tiene dos luchadores por combate: faltan Cell, Goku, el reportero y el
-coche). Pendiente: Cell/Goku con un combate previo "solo escena" (Goku contra Cell) y el ring de Cell intacto de B1
-(`escenarios_convertir.py mod 11 --juego b1` ya convierte; el juego solo pinta el objeto 0 de las altas: faltan el suelo del ring y
-las columnas, que van en el objeto 1).
+"READY?". En el puerto (`pasarela.cpp`, `TomasPresentacion`): de la 2 a la 11 van solo esas dos tomas (sin charla 3D: B1 la
+pone en el tablero) con la cámara de `FUN_001920b0`; la ronda 1 lleva la escena larga completa (88,70 s) con los 11 clips del
+`#AMC` de `DATA_EN 2372` hijo 20 y la trayectoria de cada actor (Goku/Cell en la previa, Satan en la llegada), con la cámara
+anclada al luchador para no sacarlo del ring. **DS145**: la llegada dibuja el **coche** (hijos 10/11/12: `#AMO STC_`, su
+`#AMM` de 400 cuadros y su `#AMT`) y el **humo** (13/14/15/16: `#AMO KEMURI_`, `#AMT`, `#AMM` y `#AMP` con el tramo
+119..399) leídos en marcha de la misma ISO; las pistas de los huesos quietos son cero y se dejan en su eje de reposo
+(si no, el coche se desmonta). **DS148**: coche y humo son la **toma 4** del `#AMC` (cuadros globales 2030..2430; los
+dos `#AMM` duran 400 y el `#AMP` da 119..399), así que se cortan en el cuadro 400 y no siguen en las tomas de Satan; la
+entrada de B3 (estados 1-3, Cell de espaldas con las alas en primer plano) se tapa a negro hasta que manda la cámara de
+B1. El objeto negro en V de las tomas del ring es el **ala de Cell perfecto** del modelo de B3 (`XCEL_LWING/RWING`, rígida
+al hueso 0), como en la toma 1 de B1; no es el coche ni el humo. Sus pistas de posición son un desplazamiento sobre el eje
+de reposo (el coche está modelado en la carretera, `STC_BASE` p = (-368,2; 11,5; 155,1)): `SumarReposo()` las suma para
+que `ps2::Posar` no mande el coche al origen del ring. También se corrigió el **encuadre de Cell**: su cadera de B1 (16,63) es su altura, no una
+plataforma, así que el ancla resta la altura real del modelo de B3 (Cell 15,49; Goku 10,45; Satan 11,44) en vez de 10,0
+para todos (antes la cámara de sus tomas iba 6,6 u alta), y el primer plano se gira +90° con el eje de B1 (Cell mira a lo
+largo de Z) al de B3 (los lados se miran a lo largo de X). Queda el arte del ring de B1
+(`escenarios_convertir.py mod 11 --juego b1`) y la posición del coche/humo en pantalla, que es `[VERIFICAR]`: se puede
+mover sin compilar con `DBZ3_TEST_PROPS_LLEGADA_FILE` (`car dx dy dz`, `humo dx dy dz`).

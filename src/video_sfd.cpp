@@ -127,10 +127,16 @@ struct Sesion {
   uint64_t enviadas = 0;          // muestras (por canal) entregadas a waveOut
   bool sonando = false, reloj_audio = false;
   int64_t t0_us = 0, t_fin_us = 0;
+  // EU 0x18B138: pausa real (mwPlyPause). `t_pausa` es el segundo congelado; `pausa_t0_us` el instante de la pausa
+  // para descontarlo del reloj de pared al reanudar (el de audio ya se congela solo con waveOutPause).
+  bool pausado = false;
+  double t_pausa = 0;
+  int64_t pausa_t0_us = 0;
   std::deque<std::unique_ptr<Bloque>> bloques;
 
   // segundos de video que tocan ahora (con s.mu): el del audio si suena, si no el de pared
   double Reloj() {
+    if (pausado) return t_pausa;
     if (!sonando) return 0;
     if (reloj_audio && wo && hz > 0) {
       MMTIME mt = {};
@@ -409,7 +415,10 @@ void Trabajar(std::shared_ptr<Sesion> s) {
     if (s->sonando || (!ya && s->cola.size() < kColaArranque)) return;
     s->sonando = true;
     s->t0_us = AhoraUs();
-    if (s->wo) waveOutRestart(s->wo);
+    if (s->wo) {
+      waveOutRestart(s->wo);
+      if (s->pausado) waveOutPause(s->wo);   // SELECT antes del primer fotograma: el audio tambien espera
+    }
   };
 
   // Lectura y decodificacion por separado: el video comprimido espera en `es_cola` y se decodifica solo con hueco en la
@@ -567,6 +576,7 @@ class Panel : public rex::ui::ImGuiDialog {
       for (auto& t : tex_) t.reset();
       sub_tex_.clear();
       antes_ = true;   // un boton que ya estaba pulsado no salta
+      sel_antes_ = true;
       n_tex_ = 0, ms_tex_ = 0, ms_tex_max_ = 0;
       if (s) {   // al final de la lista de dialogos: encima de todo (el dibujante lo vuelve a llamar este fotograma)
         imgui_drawer()->RemoveDialog(this);
@@ -578,7 +588,12 @@ class Panel : public rex::ui::ImGuiDialog {
     if (auto* rt = rex::Runtime::instance())
       if (auto* in = static_cast<rex::input::InputSystem*>(rt->input_system())) {
         rex::input::X_INPUT_STATE st = {};
-        const bool b = in->GetStateForUI(0, &st) == 0 && (st.gamepad.buttons & (0x1000 | 0x0010));   // A, START
+        const bool ok = in->GetStateForUI(0, &st) == 0;
+        const bool b = ok && (st.gamepad.buttons & (0x1000 | 0x0010));   // A, START
+        // EU 0x18B138: SELECT (Back) pausa/reanuda el Sofdec (mwPlyPause); el original lo hace desde el reproductor.
+        const bool sel = ok && (st.gamepad.buttons & 0x0020);
+        if (sel && !sel_antes_) Pausar(!Pausado());
+        sel_antes_ = sel;
         if (b && !antes_) {
           Terminar(s, "saltado");
           return;
@@ -652,6 +667,7 @@ class Panel : public rex::ui::ImGuiDialog {
   int uno_ = 0, n_tex_ = 0;
   double ms_tex_ = 0, ms_tex_max_ = 0;
   bool antes_ = true;
+  bool sel_antes_ = true;
 };
 void CrearPanel() {
   static Panel* panel = nullptr;   // vive lo que el juego
@@ -725,6 +741,40 @@ bool Activo() { return Actual() != nullptr; }
 void Saltar() {
   if (auto s = Actual()) Terminar(s, "saltado");
 }
+// EU 0x18B138 s_E1122604_mwPlyPause_handle_is_in: estado +0x82 idempotente y pausa real del reproductor. Aqui la pausa
+// congela el reloj (imagen y subtitulos) y el audio de waveOut; al reanudar se descuenta el tiempo parado del reloj de
+// pared (el de audio de waveOut ya continua donde estaba).
+bool Pausar(bool pausar) {
+  auto s = Actual();
+  if (!s) return false;
+  std::lock_guard<std::mutex> lk(s->mu);
+  if (s->pausado == pausar) return false;
+  if (pausar) {
+    s->t_pausa = s->sonando ? s->Reloj() : 0;
+    s->pausado = true;
+    s->pausa_t0_us = AhoraUs();
+    if (s->wo) waveOutPause(s->wo);
+  } else {
+    const int64_t ahora = AhoraUs();
+    const int64_t parado = ahora - s->pausa_t0_us;
+    s->pausado = false;
+    // Si el reloj arranco DURANTE la pausa (arrancar() fijo t0_us), empieza a contar ahora; si ya corria, se le
+    // descuenta el tiempo parado. El reloj de audio de waveOut ya se congela solo con waveOutPause.
+    if (s->t0_us) s->t0_us = s->t0_us >= s->pausa_t0_us ? ahora : s->t0_us + parado;
+    if (s->t_fin_us) s->t_fin_us = s->t_fin_us >= s->pausa_t0_us ? ahora : s->t_fin_us + parado;
+    if (s->wo) waveOutRestart(s->wo);
+  }
+  REXLOG_INFO("dbz3 video: {} mwPlyPause {} (EU 0x18B138; byte +0x82 = {}, reloj {:.2f} s)",
+              s->ruta.filename().string(), pausar ? "pausa" : "reanuda", pausar ? 1 : 0,
+              pausar ? s->t_pausa : s->Reloj());
+  return true;
+}
+bool Pausado() {
+  auto s = Actual();
+  if (!s) return false;
+  std::lock_guard<std::mutex> lk(s->mu);
+  return s->pausado;
+}
 bool ReproducirIW(int video) {
   if (video < 0 || video > kFinalIW) return false;
   const std::filesystem::path iw = pasarela::BuscarIW();
@@ -747,6 +797,8 @@ namespace dbz3::video {
 bool Reproducir(const std::filesystem::path&, std::vector<pasarela::Imagen>, int) { return false; }
 bool Activo() { return false; }
 void Saltar() {}
+bool Pausar(bool) { return false; }
+bool Pausado() { return false; }
 bool ReproducirIW(int) { return false; }
 }  // namespace dbz3::video
 #endif

@@ -13,6 +13,9 @@
 #include <rex/cvar.h>
 #include <rex/logging.h>
 
+#if !defined(DBZ3_EU_VARIANT)
+#include "../freecam.h"
+#endif
 #include "../launcher/i18n.h"
 #include "../launcher/settings.h"
 #include "../mods_opcionales.h"
@@ -111,6 +114,9 @@ int AyudasGeneracion() { return g_ayudas_gen.load(); }
 
 void ConfigureQuickMenu(rex::ui::QuickMenuConfig& menu, std::function<void()> open_full_settings) {
   namespace T = dbz3::i18n;
+#if !defined(DBZ3_EU_VARIANT)
+  dbz3::freecam::IniciarSesion();   // DS162: opciones de sesion (nunca se guardan) + panel de la camara libre
+#endif
   g_menu_language = dbz3::settings::Language();
   T::SetLanguage(g_menu_language);
 
@@ -370,6 +376,29 @@ void ConfigureQuickMenu(rex::ui::QuickMenuConfig& menu, std::function<void()> op
       again.shown_if_cvar = "dbz3_tutoriales";
       again.shown_if_values = {"true"};
       modes.items.push_back(std::move(again));
+    }
+    // DS162: camara libre de pruebas. Apagada siempre al arrancar y no se guarda (freecam.cpp la devuelve a la
+    // fuente "linea de comandos" para que SaveConfig no la escriba).
+    modes.items.push_back(Toggle(
+        Tagged(T::T("Camara libre", "Free camera"), kBeta), "dbz3_freecam",
+        T::T("Herramienta de pruebas: WASD mueve, Q/E baja y sube, el raton (boton derecho) o la palanca derecha mira, "
+             "Mayus o los gatillos van mas rapido y la rueda o LB/RB cambian el zoom. R vuelve a la camara del juego. "
+             "No se guarda.",
+             "Testing tool: WASD moves, Q/E lowers and raises, the mouse (right button) or the right stick looks, "
+             "Shift or the triggers go faster and the wheel or LB/RB change the zoom. R returns to the game camera. "
+             "It is not saved.")));
+    {
+      Item& pausa = modes.items.emplace_back(Toggle(
+          T::T("Pausar el juego", "Pause the game"), "dbz3_freecam_pausa",
+          T::T("Congela el reloj del combate mientras mueves la camara.",
+               "Freezes the fight clock while you move the camera.")));
+      pausa.shown_if_cvar = "dbz3_freecam";
+      pausa.shown_if_values = {"true"};
+      Item& hud = modes.items.emplace_back(Toggle(
+          T::T("Ocultar HUD", "Hide HUD"), "dbz3_freecam_hud",
+          T::T("Oculta el marcador mientras mueves la camara.", "Hides the HUD while you move the camera.")));
+      hud.shown_if_cvar = "dbz3_freecam";
+      hud.shown_if_values = {"true"};
     }
   }
 

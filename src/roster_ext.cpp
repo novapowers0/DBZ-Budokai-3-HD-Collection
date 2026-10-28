@@ -1902,9 +1902,14 @@ DBZ3_HOOK(sub_82135B00, dbz3eu_sub_82135C08) {
     const int idx = int8_t(REX_LOAD_U8(dbz3::GuestAddr(0x824681C0, 0x824681B0) + (ctx.r6.u32 - 1)));
     REXLOG_INFO("dbz3 roster: VS del torneo, lado {}: id {} del cuadro (participante {}, mando {})", ctx.r6.u32, ctx.r3.u32, idx,
                 (obj && idx >= 0 && idx < 32) ? int16_t(REX_LOAD_U16(obj + 748 + 20 * idx + 10)) : -9);
-    if (obj && idx >= 0 && idx < 32 && int16_t(REX_LOAD_U16(obj + 748 + 20 * idx + 10)) < 0) {   // COM de mod (torneo.toml)
+    // DS193 (issue #55): con el Torneo ya terminado (obj+104 = 1, sub_821A3260) el cuadro se apaga y la celebracion
+    // vuelve a pedir un modelo con este mismo camino: no se cambia por un ID de mod. Antes, una celda elegida en un
+    // Duelo anterior (PickedCellFor sigue puesta hasta la rueda siguiente) podia mandar a cargar el modelo de un
+    // personaje que ya no esta en el cuadro y dejar el juego esperando.
+    const bool torneo_vivo = obj && !REX_LOAD_U32(obj + 104);
+    if (torneo_vivo && idx >= 0 && idx < 32 && int16_t(REX_LOAD_U16(obj + 748 + 20 * idx + 10)) < 0) {   // COM de mod (torneo.toml)
       if (const int id = dbz3::modos::TorneoIdReal(idx); id >= 0) ctx.r3.u64 = uint64_t(id);
-    } else if (obj && idx >= 0 && idx < 32) {
+    } else if (torneo_vivo && idx >= 0 && idx < 32) {
       for (int k = 0; k < 2; ++k) {
         if (const int id = dbz3::roster::PickedCellFor(k, int(ctx.r3.u32)); id >= 0) {
           REXLOG_INFO("dbz3 roster: VS del torneo, lado {}: modelo del id {} (la tabla decia {})", ctx.r6.u32, id, ctx.r3.u32);

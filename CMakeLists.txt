@@ -65,6 +65,7 @@ set(DBZ3_SOURCES
     src/pasarela_nave.cpp
     src/iw_minijuegos.cpp
     src/cinematica.cpp
+    src/freecam.cpp
     src/ports_guard.cpp
     src/ports_regs_luchadores.cpp
     src/combate.cpp
@@ -76,6 +77,7 @@ set(DBZ3_SOURCES
     src/iw_mini_botones.cpp
     src/iw_mini_vuelo.cpp
     src/iw_mini_disparo.cpp
+    src/iw_mini_extra.cpp
     src/datos.cpp
 )
 
@@ -121,7 +123,7 @@ if(DBZ3_GENERATED_DIR STREQUAL "generated_eu" AND NOT DBZ3_DUAL_REGION)
     list(REMOVE_ITEM DBZ3_SOURCES src/iw_mini_vuelo.cpp)
     list(REMOVE_ITEM DBZ3_SOURCES src/iw_mini_disparo.cpp)
     list(REMOVE_ITEM DBZ3_SOURCES src/roster_ext.cpp src/select_ext.cpp src/stage_ext.cpp)
-    list(REMOVE_ITEM DBZ3_SOURCES src/net/netplay_hooks.cpp src/tagteam.cpp src/tagteam_slots.cpp src/campaigns.cpp src/hub.cpp src/escenarios.cpp src/clima.cpp src/cine.cpp src/gigantes.cpp src/pasarela.cpp src/pasarela_b1.cpp src/pasarela_misiones.cpp src/hub_menu.cpp src/ingame/hub_panel.cpp src/ingame/tutorial.cpp src/modos.cpp src/rpg.cpp src/heroe.cpp src/heroe_ui.cpp src/cac/cac.cpp src/fusion.cpp src/pasarela_iw.cpp src/pasarela_b2.cpp src/pasarela_nave.cpp src/iw_minijuegos.cpp src/cinematica.cpp)
+    list(REMOVE_ITEM DBZ3_SOURCES src/net/netplay_hooks.cpp src/tagteam.cpp src/tagteam_slots.cpp src/campaigns.cpp src/hub.cpp src/escenarios.cpp src/clima.cpp src/cine.cpp src/gigantes.cpp src/pasarela.cpp src/pasarela_b1.cpp src/pasarela_misiones.cpp src/hub_menu.cpp src/ingame/hub_panel.cpp src/ingame/tutorial.cpp src/modos.cpp src/rpg.cpp src/heroe.cpp src/heroe_ui.cpp src/cac/cac.cpp src/fusion.cpp src/pasarela_iw.cpp src/pasarela_b2.cpp src/pasarela_nave.cpp src/iw_minijuegos.cpp src/cinematica.cpp src/freecam.cpp)
 endif()
 
 # src/escenarios_sel_gen.inc sale del codigo generado (US) y no va al repo publico: si falta, se crea aqui

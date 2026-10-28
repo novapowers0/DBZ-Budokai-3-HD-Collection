@@ -1824,6 +1824,13 @@ void LauncherDialog::OnDraw(ImGuiIO& io) {
       frac = float(iso_prep_->progress.load()) / 1000.0f;
       text = i18n::T("Preparando la ISO para mods y extras (solo la primera vez)...",
                      "Preparing the ISO for mods and extras (first time only)...");
+    } else if (stages_running_) {
+      // DS193 (issue #53): el paso de escenarios de PS2 (campos_iw.py) tambien se hacia bajo "Preparando los
+      // personajes nuevos", y en la primera partida tras actualizar tarda minutos (una vez por version). El
+      // jugador lo leia como un cuelgue. El texto dice ahora que son escenarios y que es solo la primera vez;
+      // campos_iw no publica "@progreso", asi que la barra sigue animandose sin porcentaje.
+      text = i18n::T("Preparando los escenarios de PS2 (solo la primera vez; puede tardar unos minutos)...",
+                     "Preparing the PS2 stages (first time only; this can take a few minutes)...");
     }
     const ImVec2 bar_min(play_min.x, play_min.y - 10.0f);
     const ImVec2 bar_max(play_min.x + play_w, play_min.y - 4.0f);
@@ -3268,10 +3275,16 @@ bool FeatureRow(const Feature& f) {
 void LauncherDialog::DrawPs2Box() {
   namespace Pa = dbz3::pasarela;
   ui::SectionTitle(i18n::T("Contenido de tus juegos de PS2", "Content from your PS2 games"));
+  // Issue #49: no son juegos aparte y se entra por JUGAR (Budokai 3) > Pasarela. Sin esta frase el jugador
+  // elegia las ISO de B2/IW y esperaba verlos como juegos sueltos en el launcher.
   ui::Hint(i18n::T("Algunos modos nuevos usan tu copia de otros juegos de Dragon Ball Z de PlayStation 2. Pulsa «Elegir "
-                   "ISO» y busca el archivo .iso de ese juego: no se copia ni se cambia nada, solo se recuerda dónde está.",
+                   "ISO» y busca el archivo .iso de ese juego: no se copia ni se cambia nada, solo se recuerda dónde está. "
+                   "No son juegos aparte y el launcher no los abre: pulsa JUGAR (Budokai 3), entra en HUB desde el menú "
+                   "principal y elige Pasarela, donde están sus historias y minijuegos.",
                    "Some new modes use your copy of other Dragon Ball Z PlayStation 2 games. Press 'Pick ISO' and find "
-                   "that game's .iso file: nothing is copied or changed, it only remembers where it is."));
+                   "that game's .iso file: nothing is copied or changed, it only remembers where it is. They are not "
+                   "separate games and the launcher does not open them: press PLAY (Budokai 3), open HUB from the main "
+                   "menu and choose Gateway, where their stories and minigames are."));
   struct Juego {
     const char* nombre;
     const char* es;

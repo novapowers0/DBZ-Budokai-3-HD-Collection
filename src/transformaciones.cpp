@@ -20,6 +20,7 @@
 #include "form_selection.h"
 #include "net/netplay.h"
 #include "roster_ext.h"
+#include "heroe_api.h"   // Modo Heroe: niveles Super Saiyan del heroe propio
 
 namespace {
 
@@ -253,6 +254,14 @@ DBZ3_HOOK(sub_82112260, dbz3eu_sub_82112360) {
   }
   orig(ctx, base);
   GrantForms(base, x);
+  // Super Saiyan del Modo Heroe (25/10): el heroe propio sube a las formas que ha despertado (heroe::SsjNivel, por
+  // victorias clave) sin capsula: aqui, como lo haria su capsula. El ki de cada forma y la subida son los nativos.
+  if (const int id = int32_t(REX_LOAD_U32(x + 7420)); id >= 0 && id == dbz3::heroe::IdHeroeCargado() &&
+                                                       dbz3::net::Session::Get().link() == dbz3::net::Link::kIdle) {
+    const int niv = dbz3::heroe::SsjNivel();
+    for (int f = 1; f <= niv && f < 8; ++f) REX_STORE_U8(x + 8156 + uint32_t(f), 1);
+    if (niv > 0) REXLOG_INFO("dbz3 formas: heroe id {}: Super Saiyan hasta el nivel {}", id, niv);
+  }
 }
 
 // Primer paso de cada luchador en el fotograma de combate (r3 = X; lo llama sub_821100B0, que es de
