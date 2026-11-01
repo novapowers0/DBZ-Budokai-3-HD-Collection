@@ -120,6 +120,7 @@ class D3D12ImmediateDrawer final : public ImmediateDrawer {
 
   Microsoft::WRL::ComPtr<ID3D12PipelineState> pipeline_triangle_;
   Microsoft::WRL::ComPtr<ID3D12PipelineState> pipeline_line_;
+  Microsoft::WRL::ComPtr<ID3D12PipelineState> pipeline_triangle_additive_;
   // dbz3 (R15): triangles of kDbz3LinearDepth textures (dbz3_ui_depth.vs/ps).
   Microsoft::WRL::ComPtr<ID3D12PipelineState> pipeline_triangle_dbz3_depth_;
 
@@ -169,6 +170,7 @@ class D3D12ImmediateDrawer final : public ImmediateDrawer {
   // dbz3 (R15): scene depth of the current paint (null if none) and the current pipeline mode.
   ID3D12Resource* dbz3_scene_depth_ = nullptr;
   bool current_dbz3_depth_mode_ = false;
+  bool current_additive_ = false;
 };
 
 }  // namespace rex::ui::d3d12

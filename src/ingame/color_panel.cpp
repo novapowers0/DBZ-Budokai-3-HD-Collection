@@ -202,6 +202,7 @@ void PedirVista(int id) {
                           L"\" --salida \"" + png.wstring() + L"\" --juego \"" + Juego().wstring() + L"\" --mods \"" +
                           dbz3::ModsRoot().wstring() + L"\" --ss 2");
     if (ok) g_png_nuevo = n;
+    else REXLOG_WARN("dbz3 color: Python no genero la vista previa del personaje {}: queda la imagen anterior o ninguna", id);
     g_generando = false;
   }).detach();
 }
@@ -213,7 +214,10 @@ void CargarPng(int n) {
   const std::vector<uint8_t> data((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
   int w = 0, h = 0;
   const std::vector<uint8_t> px = rex::ui::DecodeImageRGBA(data.data(), data.size(), w, h);
-  if (px.empty()) return;
+  if (px.empty()) {
+    REXLOG_WARN("dbz3 color: no se pudo abrir o decodificar vista_{}.png: la vista previa no se actualiza", Num(n));
+    return;
+  }
   g_tex = drawer->CreateTexture(uint32_t(w), uint32_t(h), rex::ui::ImmediateTextureFilter::kLinear, false, px.data());
   g_pic = g_tex ? S::Pic{reinterpret_cast<ImTextureID>(g_tex.get()), float(w), float(h)} : S::Pic{};
 }

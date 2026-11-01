@@ -27,7 +27,8 @@ def lista(raza, tipo):
             d = tomllib.load(f)
     except OSError:
         return []
-    return sorted({p["modelo"] for p in d["raza"][raza]["parte"] if p["tipo"] == tipo and p["existe"]})
+    return sorted({p["modelo"] for p in d.get('raza', {}).get(raza, {}).get('parte', [])
+                   if p.get("tipo") == tipo and p.get("existe") and p.get('modelo', -1) >= 0})
 
 
 def minimo(raza):

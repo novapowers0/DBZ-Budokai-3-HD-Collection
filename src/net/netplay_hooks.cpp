@@ -20,7 +20,14 @@
 #include "../eu_map.h"
 #include "netplay.h"
 #include "rollback.h"
+#include "rb_audit.h"
+#include "rb_undo.h"
+#include "rb_snapshot.h"
+#include "rb_effects.h"
+#include "rb_wlog.h"
 #include "../tagteam.h"
+#include "../roster_ext.h"
+bool dbz3_select_live();   // select_ext.cpp
 #include "../ingame/menu_pilot.h"
 #include "../ingame/online_panel.h"
 #include "../ingame/tagteam_panel.h"
@@ -123,6 +130,7 @@ struct RbState {
   std::chrono::steady_clock::time_point last{};
   std::vector<float> frame_ms, resim_ms;
   uint32_t sums_cmp0 = 0, sums_bad0 = 0;
+  uint32_t pure_samples = 0, pure_bad = 0;
 };
 RbState g_rbs;
 dbz3::net::rb::SumCsv g_csv;
@@ -147,10 +155,13 @@ void RbAuto(uint8_t* base, dbz3::net::Session& s) {
   const bool in_menu = base[dbz3::GuestAddr(0x824BA110, 0x824BA100)] == 5;
   menu_ticks = in_menu ? menu_ticks + 1 : 0;
   if ((s.active() || solo) && in_menu) ++act_ticks;
-  if ((s.active() || solo) && !fired && act_ticks > 150) {
+  static const bool rueda = std::getenv("DBZ3_NET_RUEDA") != nullptr;   // PRUEBAS: los dos van a la rueda con sus teclas
+  if ((s.active() || solo) && !fired && act_ticks > 150 && !rueda) {
     fired = true;
     const char* ts = std::getenv("DBZ3_RB_TIME");
-    const bool ok = dbz3::hub::RequestBattleEx(0, 7, 2, solo ? std::getenv("DBZ3_RB_COM") != nullptr : true, ts ? std::atoi(ts) : 0, 0, 0, 0, 0);
+    int id1 = 0, id2 = 7;   // PRUEBAS: DBZ3_RB_IDS="id1,id2"
+    if (const char* ids = std::getenv("DBZ3_RB_IDS")) std::sscanf(ids, "%d,%d", &id1, &id2);
+    const bool ok = dbz3::hub::RequestBattleEx(id1, id2, 2, solo ? std::getenv("DBZ3_RB_COM") != nullptr : true, ts ? std::atoi(ts) : 0, 0, 0, 0, 0);
     REXLOG_INFO("dbz3 rb: auto: combate pedido ({})", ok ? "ok" : "rechazado");
   }
   // PRUEBAS (DBZ3_RB_FIGHTS=n): tras cada combate, de vuelta en el menu, pide el siguiente hasta n
@@ -200,8 +211,10 @@ void RbAuto(uint8_t* base, dbz3::net::Session& s) {
     s.Poll();
     if (s.active() && s.tick() >= last_log + 600) {
       last_log = s.tick();
-      REXLOG_INFO("dbz3 rb: auto tick {}: sumas comparadas {} distintas {} (RNG: {})", s.tick(), s.sums_compared(), s.sums_bad(),
-                  s.desynced() ? "DESINCRONIA" : "ok");
+      const uint32_t mg = dbz3::net::rb::Fight(base);
+      const auto f32 = [&](uint32_t a) { const uint32_t v = REX_LOAD_U32(a); float f; std::memcpy(&f, &v, 4); return f; };
+      REXLOG_INFO("dbz3 rb: auto tick {}: sumas comparadas {} distintas {} (RNG: {}), estado del combate {}, fundido {:.3f}, reloj {:.0f}", s.tick(), s.sums_compared(), s.sums_bad(),
+                  s.desynced() ? "DESINCRONIA" : "ok", mg ? REX_LOAD_U32(mg + 35128) : 0xFFFFFFFFu, mg ? f32(mg + 35184) : 0.f, f32(0x823CCE60));
     }
   }
 }
@@ -266,7 +279,148 @@ DBZ3_HOOK(sub_82084A78, dbz3eu_sub_82084A78) {
   if (g_gate.rngcalls() && !g_in_cosm) g_gate.NoteRng(ctx.lr);
   if (g_calls_mode && !g_in_cosm) ++(g_calls_mode == 2 ? g_calls_res : g_calls_fwd[g_calls_idx & 3])[uint32_t(ctx.lr)];
   if (g_ticklog_on && !g_in_cosm && g_exec_tick != 0xFFFFFFFFu) ++g_ticklog[g_exec_tick & 63].c[uint32_t(ctx.lr)];
+  if (ctx.lr == 0x82165C68) { dbz3::net::rb::WLog::Scope wsc; orig(ctx, base); return; }   // Opus R5: paso del LFSR del bucle principal (se resimula)
   orig(ctx, base);
+}
+// sol-R2: el reloj que delimita cada callback del despachador. Observacion US opt-in.
+REX_HOOK_RAW(sub_822F6A00) {
+  if (!dbz3::g_guest_eu) {
+    dbz3::net::rb::Snapshot::Boundary();
+    dbz3::net::rb::Audit::Clock(ctx, base);
+    dbz3::net::rb::WLog::Task(uint32_t(ctx.lr), ctx.r30.u32, ctx, base);
+  }
+  __imp__sub_822F6A00(ctx, base);
+}
+#define RB_AUDIT_PROBE(fn, addr) REX_HOOK_RAW(fn) { dbz3::net::rb::Audit::Probe(addr, ctx, base, __imp__##fn); }
+RB_AUDIT_PROBE(sub_821114F8, 0x821114F8)
+RB_AUDIT_PROBE(sub_82114B40, 0x82114B40)
+RB_AUDIT_PROBE(sub_82114650, 0x82114650)
+RB_AUDIT_PROBE(sub_821109D0, 0x821109D0)
+RB_AUDIT_PROBE(sub_82116978, 0x82116978)
+RB_AUDIT_PROBE(sub_82112478, 0x82112478)
+RB_AUDIT_PROBE(sub_8208D380, 0x8208D380)
+RB_AUDIT_PROBE(sub_8208C7A8, 0x8208C7A8)
+RB_AUDIT_PROBE(sub_8211B1F0, 0x8211B1F0)
+RB_AUDIT_PROBE(sub_82110AB8, 0x82110AB8)
+#undef RB_AUDIT_PROBE
+// API del motor de sonido, no el wrapper de RtlEnterCriticalSection.
+// generated: 8209E008 -> 822EB450 (out r8), 8209DA08 -> 822EAD00
+// (out r4); firmas completas y limites en EVIDENCIA_4.md.
+#define RB_AUDIO(fn, addr, gp, fp, out) REX_HOOK_RAW(fn) { if (!dbz3::net::rb::WLog::Audio(addr,ctx,base,__imp__##fn,gp,fp,out)) dbz3::net::rb::Effects::CallApi(addr,ctx,base,__imp__##fn,gp,fp,out); }
+RB_AUDIO(sub_822EB450,0x822EB450,0x13,0x6,8)
+RB_AUDIO(sub_822EAFB0,0x822EAFB0,1,0,0)
+RB_AUDIO(sub_822EAFC0,0x822EAFC0,1,0,0)
+RB_AUDIO(sub_822EAF78,0x822EAF78,1,2,0)
+RB_AUDIO(sub_822EAF88,0x822EAF88,1,2,0)
+RB_AUDIO(sub_822EB578,0x822EB578,1,0,0)
+RB_AUDIO(sub_822EB580,0x822EB580,1,0,0)
+RB_AUDIO(sub_822EAD00,0x822EAD00,1,0,4)
+RB_AUDIO(sub_822EB0C0,0x822EB0C0,1,0,0)
+RB_AUDIO(sub_822EAC90,0x822EAC90,0,2,0)
+RB_AUDIO(sub_822EACA0,0x822EACA0,1,0,0)
+#undef RB_AUDIO
+REX_HOOK_RAW(sub_820927E0) { dbz3::net::rb::WLog::Scope wsc; dbz3::net::rb::Effects::Dispatch(ctx,base,__imp__sub_820927E0); }
+// Frontera renderer -> D3D. Se mantiene el codigo CPU de DRAW; este journal
+// diagnostico descarta solo la llamada backend. Map, creacion y getters con
+// memoria externa NO se falsean: siguen rechazados por las sentries.
+#define RB_GPU(fn, addr) REX_HOOK_RAW(fn) { dbz3::net::rb::Effects::GpuApi(addr,ctx,base,__imp__##fn); }
+RB_GPU(sub_8222D790,0x8222D790)
+RB_GPU(sub_8222D7F0,0x8222D7F0)
+RB_GPU(sub_8222D828,0x8222D828)
+RB_GPU(sub_8222D8B8,0x8222D8B8)
+RB_GPU(sub_8222D948,0x8222D948)
+RB_GPU(sub_8222D9D8,0x8222D9D8)
+RB_GPU(sub_8222DAD8,0x8222DAD8)
+RB_GPU(sub_8222DB48,0x8222DB48)
+RB_GPU(sub_8222DBB8,0x8222DBB8)
+RB_GPU(sub_8222DC50,0x8222DC50)
+RB_GPU(sub_8222DCB0,0x8222DCB0)
+RB_GPU(sub_8222DE88,0x8222DE88)
+RB_GPU(sub_8222DEB8,0x8222DEB8)
+RB_GPU(sub_8222DEF8,0x8222DEF8)
+RB_GPU(sub_8222DF28,0x8222DF28)
+RB_GPU(sub_8222DF60,0x8222DF60)
+RB_GPU(sub_8222DFD8,0x8222DFD8)
+RB_GPU(sub_8222E008,0x8222E008)
+RB_GPU(sub_8222E040,0x8222E040)
+RB_GPU(sub_8222E078,0x8222E078)
+RB_GPU(sub_8222E178,0x8222E178)
+RB_GPU(sub_8222E198,0x8222E198)
+RB_GPU(sub_8222E1B8,0x8222E1B8)
+RB_GPU(sub_8222E298,0x8222E298)
+RB_GPU(sub_8222E360,0x8222E360)
+RB_GPU(sub_8222E458,0x8222E458)
+RB_GPU(sub_8222E9C0,0x8222E9C0)
+RB_GPU(sub_8222ED18,0x8222ED18)
+RB_GPU(sub_8222EEB8,0x8222EEB8)
+RB_GPU(sub_8222EEE8,0x8222EEE8)
+RB_GPU(sub_8222EF50,0x8222EF50)
+RB_GPU(sub_8222EF80,0x8222EF80)
+RB_GPU(sub_8222F010,0x8222F010)
+RB_GPU(sub_8222FA58,0x8222FA58)
+RB_GPU(sub_8222FB50,0x8222FB50)
+RB_GPU(sub_8222FC70,0x8222FC70)
+RB_GPU(sub_822302B8,0x822302B8)
+RB_GPU(sub_822334D0,0x822334D0)
+RB_GPU(sub_822335A8,0x822335A8)
+RB_GPU(sub_82233AD8,0x82233AD8)
+RB_GPU(sub_82238EB8,0x82238EB8)
+RB_GPU(sub_82230788,0x82230788)
+RB_GPU(sub_82230A60,0x82230A60)
+RB_GPU(sub_822336B8,0x822336B8)
+RB_GPU(sub_822338C0,0x822338C0)
+RB_GPU(sub_82238258,0x82238258)
+RB_GPU(sub_8223AE78,0x8223AE78)
+RB_GPU(sub_8223B058,0x8223B058)
+RB_GPU(sub_8223B1C8,0x8223B1C8)
+RB_GPU(sub_8223B538,0x8223B538)
+RB_GPU(sub_8223BEC0,0x8223BEC0)
+RB_GPU(sub_8223BF08,0x8223BF08)
+RB_GPU(sub_8223DF08,0x8223DF08)
+RB_GPU(sub_82235D20,0x82235D20)
+RB_GPU(sub_82239AE8,0x82239AE8)
+RB_GPU(sub_822327A0,0x822327A0)
+RB_GPU(sub_82234670,0x82234670)
+RB_GPU(sub_82234730,0x82234730)
+RB_GPU(sub_822362F8,0x822362F8)
+RB_GPU(sub_8222FDC8,0x8222FDC8)
+#undef RB_GPU
+// Sentries de publicacion/reserva. No son no-ops: un contrato no modelado
+// aborta ANTES de llamar al original. No acredita cobertura de todo D3D.
+#define RB_EXTERNAL_GUARD(fn, addr) REX_HOOK_RAW(fn) { if constexpr (addr == 0x82230EE0) dbz3::net::rb::Snapshot::Device(ctx.r3.u32,base); dbz3::net::rb::Effects::Guard(addr,ctx); __imp__##fn(ctx,base); }
+RB_EXTERNAL_GUARD(sub_82230EE0,0x82230EE0)
+RB_EXTERNAL_GUARD(sub_822321B0,0x822321B0)
+RB_EXTERNAL_GUARD(sub_82231FB0,0x82231FB0)
+RB_EXTERNAL_GUARD(sub_82231580,0x82231580)
+RB_EXTERNAL_GUARD(sub_82230C50,0x82230C50)
+RB_EXTERNAL_GUARD(sub_82231288,0x82231288)
+RB_EXTERNAL_GUARD(sub_82244538,0x82244538)
+RB_EXTERNAL_GUARD(sub_822385E0,0x822385E0)
+RB_EXTERNAL_GUARD(sub_82237D40,0x82237D40)
+RB_EXTERNAL_GUARD(sub_82237E18,0x82237E18)
+RB_EXTERNAL_GUARD(sub_82233BE0,0x82233BE0)
+RB_EXTERNAL_GUARD(sub_82233EA8,0x82233EA8)
+RB_EXTERNAL_GUARD(sub_82234090,0x82234090)
+RB_EXTERNAL_GUARD(sub_822345A8,0x822345A8)
+RB_EXTERNAL_GUARD(sub_82234680,0x82234680)
+RB_EXTERNAL_GUARD(sub_82237ED8,0x82237ED8)
+RB_EXTERNAL_GUARD(sub_82237FF8,0x82237FF8)
+RB_EXTERNAL_GUARD(sub_822360E8,0x822360E8)
+RB_EXTERNAL_GUARD(sub_82235228,0x82235228)
+RB_EXTERNAL_GUARD(sub_82235C98,0x82235C98)
+RB_EXTERNAL_GUARD(sub_82240278,0x82240278)
+RB_EXTERNAL_GUARD(sub_8222FD88,0x8222FD88)
+RB_EXTERNAL_GUARD(sub_8227E460,0x8227E460)
+RB_EXTERNAL_GUARD(sub_8227ECB0,0x8227ECB0)
+RB_EXTERNAL_GUARD(sub_8227DD40,0x8227DD40)
+// No son void: 82235418 devuelve r23 (puntero escribible). Nunca devolver
+// el puntero historico del recurso real como si fuera un sumidero privado.
+RB_EXTERNAL_GUARD(sub_82235788,0x82235788)
+RB_EXTERNAL_GUARD(sub_822357D8,0x822357D8)
+#undef RB_EXTERNAL_GUARD
+REX_HOOK_RAW(sub_8228FC28) {
+  dbz3::net::rb::Snapshot::AudioSource(ctx.r3.u32,base);
+  __imp__sub_8228FC28(ctx,base);
 }
 #endif
 
@@ -292,6 +446,12 @@ RB_EXT(sub_82084AC0);
 RB_EXT(sub_82084820);
 RB_EXT(sub_8208B3E0);
 void ResimTick(PPCContext& ctx, uint8_t* base, Dbz3GuestFn orig, uint32_t mask) {
+  using Snapshot = dbz3::net::rb::Snapshot;
+  Snapshot::Begin(dbz3::net::Session::Get().resim_tick(), true);
+  const PPCContext entry_ctx = ctx;
+  try {
+  dbz3::net::rb::WLog::Scope wsc;   // Opus R5: lo que se resimula es lo que se registra
+  dbz3::net::rb::Effects::Begin(dbz3::net::Session::Get().resim_tick(), true);
   struct Step { void (*fn)(PPCContext&, uint8_t*); int r3; };   // r3: 0 nada, 1 = 32, 2 = [r31+25184], 3 = [r1+80]
   const Step kSteps[16] = {   // sin static: la direccion depende de la imagen (US/EU) que arranco
       {DBZ3_CALL_EU(sub_820860B8), 0}, {DBZ3_CALL_EU(sub_82308398), 0}, {DBZ3_CALL_EU(sub_820927E0), 0}, {DBZ3_CALL_EU(sub_821DA2B0), 0}, {DBZ3_CALL_EU(sub_820921E0), 0}, {DBZ3_CALL_EU(sub_82084A78), 1},
@@ -331,6 +491,14 @@ void ResimTick(PPCContext& ctx, uint8_t* base, Dbz3GuestFn orig, uint32_t mask) 
   ctx.r31.u64 = r31;
   ctx.r30.u64 = r30;
   ctx.r1.u64 = r1;
+  Snapshot::End();
+  dbz3::net::rb::Effects::End();
+  } catch (const dbz3::net::rb::Effects::Stop&) {
+    ctx = entry_ctx;
+    dbz3::net::rb::Effects::Abort();
+    Snapshot::End();
+    throw;
+  }
 }
 
 
@@ -436,6 +604,29 @@ uint32_t RbMask() {
 using Clk = std::chrono::steady_clock;
 double MsSince(Clk::time_point t) { return std::chrono::duration<double, std::milli>(Clk::now() - t).count(); }
 
+// DBZ3_RB_MEMMAP (diagnostico): al entrar y salir de cada combate guarda los datos estaticos tal cual y una huella por 64 B del monton,
+// para comparar los dos PCs y ver que sobrevive a un combate fuera de lo que se suma.
+void RbMemMap(uint8_t* base, dbz3::net::Session& s, const char* tag) {
+#ifdef _WIN32
+  static const bool on = std::getenv("DBZ3_RB_MEMMAP") != nullptr;
+  if (!on) return;
+  const std::string name = std::string(g_who_name(s)) + "_" + std::to_string(g_rbs.fights) + "_" + tag;
+  constexpr uint32_t kData = 0x82290000u, kDataEnd = 0x826D0000u, kHeap = 0x40000000u, kHeapEnd = 0x48000000u;
+  std::ofstream(dbz3::net::rb::OutDir() / ("mem_" + name + ".bin"), std::ios::binary).write(reinterpret_cast<const char*>(base + kData), kDataEnd - kData);
+  std::vector<uint32_t> h((kHeapEnd - kHeap) / 64, 0);
+  for (uint32_t a = kHeap; a < kHeapEnd; a += 0x10000) {
+    MEMORY_BASIC_INFORMATION mi{};
+    if (!VirtualQuery(base + a, &mi, sizeof mi) || mi.State != MEM_COMMIT || (mi.Protect & (PAGE_NOACCESS | PAGE_GUARD))) continue;
+    for (uint32_t o = 0; o < 0x10000; o += 64) {
+      uint32_t v = 2166136261u;
+      for (uint32_t i = 0; i < 64; ++i) v = (v ^ base[a + o + i]) * 16777619u;
+      h[(a - kHeap + o) / 64] = v;
+    }
+  }
+  std::ofstream(dbz3::net::rb::OutDir() / ("heap_" + name + ".bin"), std::ios::binary).write(reinterpret_cast<const char*>(h.data()), h.size() * 4);
+#endif
+}
+
 void RbWriteSummary(dbz3::net::Session& s) {
   auto& R = g_rbs;
   const auto& st = s.rb_stats();
@@ -495,23 +686,64 @@ void OnSumBadRb(uint32_t tick, uint32_t mask) {   // DBZ3_RB_DUMP: vuelca la ins
   }
 }
 
+// Opus R5: deshace con el registro y comprueba que el gestor/luchadores (lo que se suma y se intercambia) queda igual que la instantanea
+// del mismo tick. Las diferencias son escrituras de la logica que el registro no ve (host, otros hilos, tareas de dibujo).
+uint32_t g_wchk_n = 0, g_wchk_bad = 0;
+bool WRestore(uint8_t* base, uint32_t u, uint32_t t) {
+  using WLog = dbz3::net::rb::WLog;
+  if (!WLog::Restore(u, t)) return false;
+  const uint8_t* d = g_rbs.core.Get(u);
+  if (!d) return true;
+  std::vector<uint8_t> live;
+  g_rbs.core.Live(base, live);
+  const size_t n = std::min(live.size(), g_rbs.core.size());
+  size_t bad = 0;
+  std::string txt;
+  for (size_t i = 0; i < n; ++i)
+    if (live[i] != d[i]) {
+      if (bad++ < 12) { char b[32]; std::snprintf(b, sizeof b, " +0x%zX", i); txt += b; }
+    }
+  ++g_wchk_n;
+  g_wchk_bad += bad != 0;
+  static int shown = 0;
+  if (bad && shown++ < 40) REXLOG_WARN("dbz3 rb: WLOG tras deshacer {}..{}: {} bytes del gestor distintos de la instantanea:{}", u, t, bad, txt);
+  static const bool core = std::getenv("DBZ3_RB_WLOG_CORE") != nullptr;
+  if (core) g_rbs.core.Restore(base, u);
+  return true;
+}
+
 void RbBegin(PPCContext& ctx, uint8_t* base, Dbz3GuestFn orig, dbz3::net::Session& s) {
   auto& R = g_rbs;
+  using Audit = dbz3::net::rb::Audit;
+  using Undo = dbz3::net::rb::Undo;
+  using Snapshot = dbz3::net::rb::Snapshot;
+  using WLog = dbz3::net::rb::WLog;
+  Audit::Watch::Stop();
   static const bool dump = std::getenv("DBZ3_RB_DUMP") != nullptr;
   // R7: antes pisaba sum_hook en cada tick tambien en lockstep -> OnSumBad (volcado de RbFrame) nunca se llamaba y DBZ3_RB_DUMP no escribia nada
   if (dump && s.active() && s.rb_on()) { dbz3::net::Session::sum_hook = &OnSumBadRb; g_ticklog_on = true; }
-  if (!s.active() || !s.rb_on()) return;
+  if (!s.active() || !s.rb_on()) { Snapshot::Release(); WLog::Release(); return; }
   const uint32_t m = dbz3::net::rb::Fight(base);
   const uint32_t t = s.tick();
   bool leaving = false;
   if (!s.rb_mode()) {
     if (!m || dbz3::tag::DynamicTeam(0).size() >= 2 || dbz3::tag::DynamicTeam(1).size() >= 2) return;   // Tag Team (relevos): sin rollback
-    R.core.Init(m);
+    R.core.Init(m, base, std::getenv("DBZ3_RB_COSMSTATE") ? &g_cosm_rng : nullptr);
+    dbz3::net::rb::Effects::Init(R.fights);
+    if (dbz3::net::rb::Effects::On() && std::getenv("DBZ3_RB_ORACLE")) {
+      REXLOG_ERROR("dbz3 rb: EFFECTS bloqueado: los oraculos antiguos no estan adaptados al journal");
+      s.RequestLeave(); return;
+    }
+    if (!Snapshot::Init(base, R.fights, &g_cosm_rng)) { s.RequestLeave(); return; }
+    if (WLog::On() && !WLog::Init(base, &g_cosm_rng)) { s.RequestLeave(); return; }
+    R.pure_samples = R.pure_bad = 0;
     R.mgr = m;
+    if (WLog::On()) REXLOG_INFO("dbz3 rb: gestor del combate en {:08X}", m);
     R.frame_ms.clear(); R.resim_ms.clear();
     R.sums_cmp0 = s.sums_compared(); R.sums_bad0 = s.sums_bad();
     R.last = {};
     R.t0_rb = t;
+    RbMemMap(base, s, "ini");
     s.RbEnter(t);
   } else if (!m) {
     leaving = true;   // el combate acabo: antes de seguir en lockstep, todo lo anterior tiene que estar confirmado
@@ -541,23 +773,27 @@ void RbBegin(PPCContext& ctx, uint8_t* base, Dbz3GuestFn orig, dbz3::net::Sessio
   // vuelve a la instantanea del tick u y resimula hasta t; false si ya no esta en el anillo
   auto resim = [&](uint32_t u, const char* why) {
     const auto t0 = Clk::now();
-    if (!R.core.Restore(base, u)) return false;
-    for (uint32_t k = u; k < t; ++k) {
+    if (WLog::On()) { if (!WRestore(base, u, t)) return false; }
+    else if (Snapshot::On() || Undo::On()) { if (!Snapshot::Restore(u, t)) return false; }
+    else if (!R.core.Restore(base, u)) return false;
+    try { for (uint32_t k = u; k < t; ++k) {
       s.RbBeginResim(k);
       if (g_ticklog_on) { g_exec_tick = k; g_ticklog[k & 63].tick = k; g_ticklog[k & 63].c.clear(); }
+      WLog::Begin(k, true);
       ResimTick(ctx, base, orig, RbMask());   // mandos + sub_820927E0 + paso del LFSR
+      WLog::End();
       R.core.Save(base, k + 1);
-    }
+    } } catch (const dbz3::net::rb::Effects::Stop&) { s.RbEndResim(); return false; }
     s.RbEndResim();
     const double ms = MsSince(t0);
     R.resim_ms.push_back(float(ms / double(t - u)));
     s.RbNoteResim(t - u, ms / double(t - u));
     static int logged = 0;
-    if (logged++ < 40) REXLOG_INFO("dbz3 rb: {} en el tick {} desde {} ({} ticks, {:.2f} ms, confirmado hasta {})", why, t, u, t - u, ms, s.rb_conf());
+    if (logged++ < 3000) REXLOG_INFO("dbz3 rb: {} en el tick {} desde {} ({} ticks, {:.2f} ms, confirmado hasta {})", why, t, u, t - u, ms, s.rb_conf());
     return true;
   };
   // Reparacion: el anfitrion manda su instantanea del primer tick malo; el invitado la adopta y resimula
-  if (!leaving) {
+  if (!leaving && !std::getenv("DBZ3_RB_NOREPAIR")) {   // prueba de pureza aislada: no mezclar reparaciones de red
     if (s.role() == dbz3::net::Role::kHost) {
       s.RbSnapPump();
       const uint32_t bad = s.RbBadTick();
@@ -603,13 +839,60 @@ void RbBegin(PPCContext& ctx, uint8_t* base, Dbz3GuestFn orig, dbz3::net::Sessio
     if (w < 0) { s.RbLeave(); return; }
     if (w > 0) break;
   }
+  // sol-R2: pureza EXCLUSIVAMENTE con mandos verdaderos; no ejecuta los oraculos con mandos falsos.
+  if (Audit::On() && !leaving && !dbz3::g_guest_eu) {
+    Audit::game_tid = GetCurrentThreadId(); Audit::tick = t; Audit::rel = t - R.t0; Audit::fight = R.fights;
+    if (t >= R.t0 + 4 && t % 5 == 0 && s.rb_conf() >= t && R.core.Get(t - 2) && R.core.HasXr(t - 2) && (WLog::On() ? WLog::Has(t - 2, t) : Snapshot::Ready(t - 2))) {
+      std::vector<uint8_t> ref, after;
+      R.core.Live(base, ref);
+      static uint32_t samples = 0, bad = 0, dumped = 0;
+      const bool map = std::getenv("DBZ3_RB_PURE_MAP") && samples < 12;
+      Audit::Blocks blocks;
+      if (map) blocks = Audit::Grab(base);
+      const bool restored = WLog::On() ? WRestore(base, t - 2, t) : (Snapshot::On() || Undo::On()) ? Snapshot::Restore(t - 2, t) : R.core.Restore(base, t - 2);
+      if (!restored) {
+        REXLOG_ERROR("dbz3 rb: PURE restauracion fallida en el tick {}", t - 2);
+        s.RequestLeave(); return;
+      }
+      Audit::phase = 1;
+      try {
+        for (uint32_t k = t - 2; k < t; ++k) { Audit::tick = k; s.RbBeginResim(k, false); WLog::Begin(k, true); ResimTick(ctx, base, orig, RbMask()); WLog::End(); }
+      } catch (const dbz3::net::rb::Effects::Stop&) {
+        s.RbEndResim(); Audit::phase = 0;
+        REXLOG_ERROR("dbz3 rb: PURE interrumpida: replay externo incompleto; no se cuenta como muestra");
+        s.RequestLeave(); return;
+      }
+      s.RbEndResim(); Audit::phase = 0; Audit::tick = t;
+      R.core.Live(base, after);
+      if (map) Audit::DiffBlocks(blocks, Audit::Grab(base), R.mgr);
+      std::string text;
+      const size_t n = R.core.Describe(ref, after, &text);
+      const auto path = dbz3::net::rb::OutDir() / (std::string("pure_") + g_who_name(s) + ".csv");
+      const bool fresh = !std::filesystem::exists(path);
+      std::ofstream csv(path, std::ios::app);
+      if (fresh) csv << "combate,tick,rel,replay_bytes\n";
+      csv << R.fights << ',' << t << ',' << t - R.t0 << ',' << n << '\n';
+      if (n && dumped++ < 8) {
+        const std::string stem = std::string("pure_") + g_who_name(s) + "_" + std::to_string(t);
+        for (const auto& item : {std::make_pair("ref", &ref), std::make_pair("true", &after)})
+          std::ofstream(dbz3::net::rb::OutDir() / (stem + "_" + item.first + ".bin"), std::ios::binary)
+              .write(reinterpret_cast<const char*>(item.second->data()), std::streamsize(item.second->size()));
+      }
+      ++samples; bad += n != 0;
+      ++R.pure_samples; R.pure_bad += n != 0;
+      if (samples <= 24 || samples % 30 == 0)
+        REXLOG_INFO("dbz3 rb: PURE tick {} rel {}: {} bytes distintos ({} pruebas, {} malas){}", t, t - R.t0, n, samples, bad, text);
+      if (WLog::On() && samples <= 3) WLog::Cross();
+    }
+    if (!Undo::On()) Audit::Watch::Start(base);
+  }
   // ORACULO 4 (DBZ3_RB_ORACLE=4): conjunto de escrituras de UN tick de simulacion. Hash por bloque de 128 B de toda la memoria comprometida antes
   // y despues de resimular un tick (solo mandos + sub_820927E0 + LFSR); los bloques que cambian son lo que la simulacion escribe. Se cuentan las
   // muestras en que cada uno cambia; el informe (escrituras_<pid>.txt) separa lo que ya se guarda (region) de lo que no.
   {
     static const bool oracle4 = std::getenv("DBZ3_RB_ORACLE") && std::atoi(std::getenv("DBZ3_RB_ORACLE")) == 4;
     static uint32_t muestras4 = 0;
-    if (oracle4 && !leaving && t >= R.t0 + 8 && t % 10 == 0 && s.rb_conf() >= t && R.core.Get(t - 1) && muestras4 < 24) {
+    if (!Audit::On() && oracle4 && !leaving && t >= R.t0 + 8 && t % 10 == 0 && s.rb_conf() >= t && R.core.Get(t - 1) && muestras4 < 24) {
       struct Blocks { std::vector<uint64_t> h; std::vector<uint32_t> a; };
       auto grab = [&](Blocks& out) {
         out.h.clear(); out.a.clear();
@@ -666,7 +949,7 @@ void RbBegin(PPCContext& ctx, uint8_t* base, Dbz3GuestFn orig, dbz3::net::Sessio
   // PRUEBA DE PUREZA (DBZ3_RB_ORACLE=1, red sin retraso: todo confirmado): vuelve 2 ticks, resimula con mandos FALSOS, vuelve otra vez
   // y resimula con los verdaderos; el resultado tiene que ser el estado de partida. Si no, hay estado que depende del mando y no se restaura.
   static const bool oracle = std::getenv("DBZ3_RB_ORACLE") != nullptr && std::atoi(std::getenv("DBZ3_RB_ORACLE")) != 4;
-  if (oracle && !leaving && t >= R.t0 + 4 && t % 5 == 0 && s.rb_conf() >= t && R.core.Get(t - 2) && R.core.HasXr(t - 2)) {
+  if (!Audit::On() && oracle && !leaving && t >= R.t0 + 4 && t % 5 == 0 && s.rb_conf() >= t && R.core.Get(t - 2) && R.core.HasXr(t - 2)) {
     static uint32_t runs = 0, bad = 0;
     // PRUEBA (DBZ3_RB_XR=HEAP): aprende, en 8 muestras, que bloques de 128 B del monton 0x40100000..0x40180000 escribe la simulacion en un tick
     // y los anade al anillo (restaurarlos). Tras aprender, el anillo se vacia y la prueba sigue sola cuando vuelve a haber instantaneas.
@@ -706,6 +989,16 @@ void RbBegin(PPCContext& ctx, uint8_t* base, Dbz3GuestFn orig, dbz3::net::Sessio
     if (!learning_now) {
     std::vector<uint8_t> ref, after;
     R.core.Live(base, ref);
+    // sol-R: control verdadero->verdadero separado de la contaminacion por mandos falsos.
+    // Solo con ORACLE_CONTROL: una repeticion ordinaria que ya falla no demuestra una fuga del mando.
+    static const bool oracle_control = std::getenv("DBZ3_RB_ORACLE_CONTROL") != nullptr;
+    std::vector<uint8_t> control;
+    if (oracle_control) {
+      R.core.Restore(base, t - 2);
+      for (uint32_t k = t - 2; k < t; ++k) { s.RbBeginResim(k, false); ResimTick(ctx, base, orig, RbMask()); }
+      s.RbEndResim();
+      R.core.Live(base, control);
+    }
     // ORACULO 2 (DBZ3_RB_ORACLE=2): que memoria FUERA de la region guardada cambia por culpa de los mandos falsos. Se compara
     // 'resimular con los verdaderos' dos veces (ruido: relojes) contra 'falsos y luego verdaderos' en 3 MB de estaticos + 512 KB de monton.
     static const bool oracle2 = std::getenv("DBZ3_RB_ORACLE") && std::atoi(std::getenv("DBZ3_RB_ORACLE")) == 2;
@@ -927,6 +1220,25 @@ void RbBegin(PPCContext& ctx, uint8_t* base, Dbz3GuestFn orig, dbz3::net::Sessio
     R.core.Live(base, after);
     std::string txt;
     const size_t n = R.core.Describe(ref, after, &txt);
+    if (oracle_control) {
+      const size_t normal = R.core.Describe(ref, control, nullptr);
+      const size_t polluted = R.core.Describe(control, after, nullptr);
+      const auto csv = dbz3::net::rb::OutDir() / (std::string("oracle_") + g_who_name(s) + ".csv");
+      const bool nuevo = !std::filesystem::exists(csv);
+      std::ofstream report(csv, std::ios::app);
+      if (nuevo) report << "combate,tick,rel,replay_bytes,contaminacion_bytes,total_bytes\n";
+      report << R.fights << ',' << t << ',' << t - R.t0 << ',' << normal << ',' << polluted << ',' << n << '\n';
+      static uint32_t dumped = 0;
+      if ((normal || polluted) && dumped < 8) {
+        const std::string stem = std::string("oracle_") + g_who_name(s) + "_" + std::to_string(t);
+        for (const auto& item : {std::make_pair("ref", &ref), std::make_pair("true", &control), std::make_pair("false_true", &after)})
+          std::ofstream(dbz3::net::rb::OutDir() / (stem + "_" + item.first + ".bin"), std::ios::binary)
+              .write(reinterpret_cast<const char*>(item.second->data()), std::streamsize(item.second->size()));
+        ++dumped;
+      }
+      if (runs < 24 || runs % 8 == 0)
+        REXLOG_INFO("dbz3 rb: ORACULO control tick {}: replay verdadero {} bytes, contaminacion {} bytes", t, normal, polluted);
+    }
     ++runs;
     bad += n != 0;
     if ((n && bad <= 30) || runs % 8 == 0 || runs == 1)
@@ -949,15 +1261,28 @@ void RbBegin(PPCContext& ctx, uint8_t* base, Dbz3GuestFn orig, dbz3::net::Sessio
     s.RbSumDone(k);
   }
   if (leaving) {
+    if (WLog::On()) { const PPCContext keep = ctx; WLog::FlushFrees(ctx, 0, true); ctx = keep; }
+    Snapshot::Release();
+    if (WLog::On()) { WLog::Report(); REXLOG_INFO("dbz3 rb: WLOG comprobacion del gestor tras deshacer: {} restauraciones, {} con bytes distintos", g_wchk_n, g_wchk_bad); }
+    WLog::Release();
+    if (Audit::On()) REXLOG_INFO("dbz3 rb: PURE resumen combate {}: {} pruebas, {} malas", R.fights, R.pure_samples, R.pure_bad);
+    RbMemMap(base, s, "fin");
     s.RbLeave();
     RbWriteSummary(s);
     g_csv.Flush();
   }
+  if (!leaving && WLog::On() && t >= WLog::kTicks + 1) { const PPCContext keep = ctx; WLog::FlushFrees(ctx, t - WLog::kTicks - 1); ctx = keep; }
+  if (!leaving) { Snapshot::Begin(t, false); dbz3::net::rb::Effects::Begin(t, false); WLog::Begin(t, false); }
 }
 }  // namespace
 #endif
 
 DBZ3_HOOK(sub_820902F8, dbz3eu_sub_820902C0) {
+#ifdef _WIN32
+  dbz3::net::rb::Effects::End();
+  dbz3::net::rb::Snapshot::End();
+  dbz3::net::rb::WLog::End();
+#endif
   auto& s = dbz3::net::Session::Get();
   dbz3::tag::Tick(ctx, base);
   if (!s.active()) dbz3::ingame::pilot::Tick(base);
@@ -1000,7 +1325,14 @@ DBZ3_HOOK(sub_820902F8, dbz3eu_sub_820902C0) {
   }
 #endif
   const auto rb_t0 = std::chrono::steady_clock::now();
+#ifdef _WIN32
+  {
+    dbz3::net::rb::WLog::Scope wsc;   // Opus R5: los mandos del tick (se resimulan)
+    orig(ctx, base);
+  }
+#else
   orig(ctx, base);
+#endif
 #ifdef _WIN32
   if (g_gate.active())
     g_gate.OrigMs(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - rb_t0).count(), rb_fight);
@@ -1168,6 +1500,11 @@ DBZ3_HOOK(sub_8221C178, dbz3eu_sub_8221A940) {
       uint16_t b = 0;
       int16_t lx = 0, ly = 0;
       dbz3::net::rb::ScriptPad(s.role() == dbz3::net::Role::kHost ? 0 : 1, s.tick() - g_rbs.t0, b, lx, ly);
+      // PRUEBAS (DBZ3_RB_PKG): cada 5 s, un tercio de segundo con tres botones de cara: prueba las cuatro ternas (transformarse)
+      if (static const bool pkg = std::getenv("DBZ3_RB_PKG") != nullptr; pkg && (s.tick() - g_rbs.t0) % 300 < 20) {
+        static const uint16_t kTerna[4] = {0x7000, 0xB000, 0xD000, 0xE000};
+        b = kTerna[((s.tick() - g_rbs.t0) / 300) & 3];
+      }
       local = {};
       local.buttons = b;
       local.lx = lx;
@@ -1186,6 +1523,14 @@ DBZ3_HOOK(sub_8221C178, dbz3eu_sub_8221A940) {
   WritePad(base, out, s.Applied(user), s.tick());
   dbz3::tag::NetApplied(user, s.Applied(user).buttons);   // el juego no ve los bits del relevo
   REX_STORE_U16(out + 4, uint16_t(REX_LOAD_U16(out + 4) & ~0x0C00));
+  // Paginas de la rueda: L1/R1 de cualquiera de los dos, en el mismo tick y en los dos PC; la rueda no los ve
+  if (user <= 1 && dbz3_select_live() && dbz3::roster::DynamicRosterPageCount() > 1) {
+    static uint16_t prev[2] = {};
+    const uint16_t now = uint16_t(s.Applied(user).buttons & 0x0300), pulsado = uint16_t(now & ~prev[user]);
+    prev[user] = now;
+    if (pulsado) dbz3::roster::RequestDynamicRosterPage(pulsado & 0x0100 ? -1 : 1);
+    REX_STORE_U16(out + 4, uint16_t(REX_LOAD_U16(out + 4) & ~0x0300));
+  }
   dbz3::ingame::FormPickPad(int(user), REX_LOAD_U8(out + 6), REX_LOAD_U8(out + 7));   // misma forma inicial
   TagPad(ctx, base, user, out);                          // mismo mando en los dos PCs: mismo relevo
   ctx.r3.u64 = 0;                                        // X_ERROR_SUCCESS: los dos conectados

@@ -96,6 +96,8 @@ class ModPipeline {
   // Output(): "fuentes" -> "fuente	ID	NAME	STATE	PATH	NOTE", "lista ID" ->
   // "personaje	KEY	NAME	DONOR	NOTE". ImportCharacter creates the source mod.
   void ImporterQuery(const std::vector<std::string>& args);
+  // nova_recetas.py (lista / construir): mods de Nova's Mods hechos con las ISO del jugador. Antes de JUGAR, en mods/.
+  void NovaRecetas(const std::vector<std::string>& args);
   struct ImportRequest {
     std::string source;  // b1, b2, b3, iw...
     std::string key;     // character key from "lista"
@@ -110,6 +112,10 @@ class ModPipeline {
   // IW del jugador: no se reparte nada del juego) y aparta a mods_respaldo/ las de `remove` (activas o desactivadas;
   // nunca se borra). Con un trabajo en curso no hace nada.
   void RunOfficialPorts(const std::vector<std::string>& install, const std::vector<std::string>& remove);
+  // Musica de Tenkaichi 3 (Nova's Mods): crea mods/t3_musica con t3_audio.py desde la ISO de T3 del jugador (no se
+  // reparte nada del juego) o la aparta a mods_respaldo/. Con un trabajo en curso no hace nada.
+  void RunT3Music(bool install);
+  static bool T3MusicInstalled();
   // Tag Team: equipo de 2-4 personajes de B3 (roster_build.py equipo -> mods/equipo_*).
   void CreateTeam(const std::vector<int>& members, const std::string& name);
   void ClearOutput();

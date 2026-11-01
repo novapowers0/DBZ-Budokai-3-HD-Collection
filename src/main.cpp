@@ -48,7 +48,11 @@ __declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
 #include "roster_ext.h"
 #include "stage_ext.h"
 #endif
+#ifndef DBZ3_EU_VARIANT
+namespace dbz3::tactics { void CrearPruebaFiguras(rex::ui::ImGuiDrawer* drawer); }   // tactics/prueba_figuras.cpp
+#endif
 #include "region.h"
+#include "plugins.h"
 #include "mods.h"
 #include "launcher/settings.h"
 #if REX_PLATFORM_WIN32
@@ -485,6 +489,9 @@ public:
             debug_overlay_ = std::make_unique<DebugOverlayDialog>(drawer);
         }
         imgui_drawer_ = drawer;
+#ifndef DBZ3_EU_VARIANT
+        if (std::getenv("DBZ3_TEST_TACTICS_FIGURAS")) dbz3::tactics::CrearPruebaFiguras(drawer);   // prueba de Dragon Tactics (pruebas.py)
+#endif
         // nombre del juego en la ventana (el SDK pone "dbz3" y su sello de compilacion)
         if (window()) {
             window()->SetTitle("Dragon Ball Z Budokai 3 HD");
@@ -601,6 +608,7 @@ public:
             dbz3::stages::ApplyAtLaunch(rt->memory());
         }
 #endif
+        dbz3::plugins::CargarTodos();   // issue #23: region ya detectada, el guest aun no ha ejecutado nada
         if (auto* rt = runtime()) {
             if (window()) {
                 rt->set_display_window(window());
@@ -780,6 +788,9 @@ public:
                         std::filesystem::rename(tmp, dst, ec);
                         REXLOG_INFO("dbz3: cache de shaders inicial copiada: {}{}",
                                     f.path().filename().string(), ec ? " (ERROR al renombrar)" : "");
+                    } else if (f.is_regular_file(ec) && !std::filesystem::exists(dst, ec)) {
+                        REXLOG_WARN("dbz3: no se pudo copiar la cache de shaders {}: el juego compilara shaders en uso (tirones iniciales)",
+                                    f.path().filename().string());
                     }
                 }
             }
@@ -923,6 +934,7 @@ public:
     void OnShutdown() override {
         REXLOG_INFO("OnShutdown called");
         dbz3::SessionEnd(true);   // partida cerrada bien: sus mods pasan a "ultima partida buena"
+        dbz3::plugins::CerrarTodos();
         if (drop_listener_added_ && window()) {
             window()->RemoveListener(&drop_listener_);
             drop_listener_added_ = false;
@@ -1040,6 +1052,7 @@ protected:
         // salida normal del jugador (OnShutdown no llega: _Exit): sus mods pasan a "ultima partida buena"
         try { dbz3::SessionEnd(true); } catch (...) {}
         dbz3::net::UpnpCloseMapped();   // _Exit no pasa por atexit: el puerto del router se cierra aqui
+        dbz3::plugins::CerrarTodos();
         rex::FlushLogging();
         std::_Exit(0);
     }
@@ -1103,7 +1116,8 @@ private:
             // the guest register state that matters for indirect dispatches.
             if (ep->ContextRecord && ep->ContextRecord->ContextFlags & CONTEXT_AMD64) {
                 auto* c = ep->ContextRecord;
-                REXLOG_CRITICAL("fault ctx: RIP={:p} RSP={:p} RBP={:p}", (void*)c->Rip, (void*)c->Rsp, (void*)c->Rbp);
+                REXLOG_CRITICAL("fault ctx: RIP={:p} (exe+0x{:X}) RSP={:p} RBP={:p}", (void*)c->Rip,
+                                c->Rip - reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr)), (void*)c->Rsp, (void*)c->Rbp);
                 REXLOG_CRITICAL("fault ctx: RAX=0x{:016X} RCX=0x{:016X} RDX=0x{:016X} R8=0x{:016X} R9=0x{:016X}",
                                 c->Rax, c->Rcx, c->Rdx, c->R8, c->R9);
                 REXLOG_CRITICAL("fault ctx: RDI=0x{:016X} RSI=0x{:016X} R10=0x{:016X} R11=0x{:016X}", c->Rdi, c->Rsi, c->R10, c->R11);
@@ -1126,7 +1140,8 @@ private:
                 const struct { const char* n; uint64_t v; } cands[] = {
                     {"RCX", c->Rcx}, {"RDI", c->Rdi}, {"RSI", c->Rsi}, {"RDX", c->Rdx},
                     {"R8", c->R8},   {"R9", c->R9},   {"R10", c->R10}, {"R11", c->R11},
-                    {"RAX", c->Rax}, {"RBX", c->Rbx}, {"RBP", c->Rbp},
+                    {"RAX", c->Rax}, {"RBX", c->Rbx}, {"RBP", c->Rbp}, {"R12", c->R12}, {"R13", c->R13},
+                    {"R14", c->R14}, {"R15", c->R15},
                 };
                 for (const auto& cd : cands) {
                   const uint8_t* g = reinterpret_cast<const uint8_t*>(cd.v);

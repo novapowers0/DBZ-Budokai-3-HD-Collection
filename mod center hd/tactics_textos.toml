@@ -1,0 +1,282 @@
+# Dragon Tactics H5: textos nuevos (tutorial y capsulas) en los siete idiomas de la interfaz del juego: es, en, fr, de, it, pt, ja.
+# Los lee src/tactics/entrada.cpp (Texto): clave -> idioma; si falta el idioma sale el ingles. Los textos antiguos de Tactics siguen en entrada.cpp (es/en).
+version = 1
+
+[tut_titulo_1]
+es = "1/4  Comprar"
+en = "1/4  Buy"
+fr = "1/4  Acheter"
+de = "1/4  Kaufen"
+it = "1/4  Comprare"
+pt = "1/4  Comprar"
+ja = "1/4  購入"
+
+[tut_texto_1]
+es = "Gasta tu oro en la tienda de abajo para fichar luchadores. Tres copias iguales se fusionan en una unidad con más estrellas y más fuerte. \"Actualizar\" cambia las cartas y \"Comprar EXP\" sube de nivel para poner más unidades en el tablero."
+en = "Spend your gold in the shop below to sign fighters. Three identical copies merge into a stronger unit with more stars. \"Refresh\" changes the cards and \"Buy EXP\" raises your level so you can field more units."
+fr = "Dépense ton or dans la boutique en bas pour recruter des combattants. Trois copies identiques fusionnent en une unité plus forte avec plus d'étoiles. \" Actualiser \" change les cartes et \" Acheter EXP \" fait monter ton niveau pour aligner plus d'unités."
+de = "Gib dein Gold im Shop unten aus, um Kämpfer zu verpflichten. Drei gleiche Kopien verschmelzen zu einer stärkeren Einheit mit mehr Sternen. \"Aktualisieren\" tauscht die Karten, \"EXP kaufen\" erhöht deine Stufe für mehr Einheiten auf dem Feld."
+it = "Spendi il tuo oro nel negozio in basso per ingaggiare combattenti. Tre copie uguali si fondono in un'unità più forte con più stelle. \"Aggiorna\" cambia le carte e \"Compra EXP\" fa salire di livello per schierare più unità."
+pt = "Gaste seu ouro na loja abaixo para contratar lutadores. Três cópias iguais se fundem em uma unidade mais forte, com mais estrelas. \"Atualizar\" troca as cartas e \"Comprar EXP\" sobe seu nível para colocar mais unidades no tabuleiro."
+ja = "下のショップでゴールドを使って戦士を雇いましょう。同じカード3枚は星の多い強いユニットに合体します。「更新」でカードを入れ替え、「EXP購入」でレベルを上げると盤面に出せる数が増えます。"
+
+[tut_titulo_2]
+es = "2/4  Colocar"
+en = "2/4  Place"
+fr = "2/4  Placer"
+de = "2/4  Aufstellen"
+it = "2/4  Schierare"
+pt = "2/4  Posicionar"
+ja = "2/4  配置"
+
+[tut_texto_2]
+es = "Pasa las unidades del banquillo al tablero: delante las de cuerpo a cuerpo y detrás las de distancia. Con el mando, A coge y suelta y X vende. Con el ratón, clic para coger y soltar y clic derecho para vender."
+en = "Move units from the bench to the board: melee fighters in front, ranged ones behind. With a gamepad, A picks up and drops and X sells. With the mouse, click to pick up and drop and right-click to sell."
+fr = "Déplace les unités du banc vers le plateau : les combattants au corps à corps devant, ceux à distance derrière. À la manette, A prend et pose, X vend. À la souris, clic pour prendre et poser, clic droit pour vendre."
+de = "Bringe Einheiten von der Bank aufs Feld: Nahkämpfer vorne, Fernkämpfer hinten. Mit dem Controller nimmt und setzt A, X verkauft. Mit der Maus nimmst und setzt du per Klick, Rechtsklick verkauft."
+it = "Sposta le unità dalla panchina al campo: i combattenti da mischia davanti, quelli a distanza dietro. Col controller A prende e posa, X vende. Col mouse clicca per prendere e posare, clic destro per vendere."
+pt = "Passe as unidades do banco para o tabuleiro: corpo a corpo na frente e distância atrás. No controle, A pega e solta e X vende. No mouse, clique para pegar e soltar e clique direito para vender."
+ja = "ベンチのユニットを盤面へ移しましょう。近接は前、遠距離は後ろです。パッドではAで持つ・置く、Xで売却。マウスはクリックで持つ・置く、右クリックで売却します。"
+
+[tut_titulo_3]
+es = "3/4  Sinergias y cápsulas"
+en = "3/4  Synergies and capsules"
+fr = "3/4  Synergies et capsules"
+de = "3/4  Synergien und Kapseln"
+it = "3/4  Sinergie e capsule"
+pt = "3/4  Sinergias e cápsulas"
+ja = "3/4  シナジーとカプセル"
+
+[tut_texto_3]
+es = "Las unidades comparten sinergias (panel de la izquierda): con 2, 4 o 6 miembros distintos dan bonificaciones. Cada unidad lleva hasta 2 cápsulas con mejoras: ganas una cada 3 rondas y también puedes comprarlas. Coge una en el panel de cápsulas y suéltala sobre una unidad."
+en = "Units share synergies (left panel): with 2, 4 or 6 different members they give bonuses. Each unit carries up to 2 capsules with upgrades: you win one every 3 rounds and you can also buy them. Pick one in the capsule panel and drop it on a unit."
+fr = "Les unités partagent des synergies (panneau de gauche) : avec 2, 4 ou 6 membres différents, elles donnent des bonus. Chaque unité porte jusqu'à 2 capsules d'amélioration : tu en gagnes une toutes les 3 manches et tu peux aussi en acheter. Prends-en une dans le panneau et dépose-la sur une unité."
+de = "Einheiten teilen Synergien (linkes Feld): Mit 2, 4 oder 6 verschiedenen Mitgliedern geben sie Boni. Jede Einheit trägt bis zu 2 Kapseln mit Verbesserungen: Alle 3 Runden bekommst du eine, du kannst sie auch kaufen. Nimm eine im Kapselfeld und setze sie auf eine Einheit."
+it = "Le unità condividono sinergie (pannello a sinistra): con 2, 4 o 6 membri diversi danno bonus. Ogni unità porta fino a 2 capsule con potenziamenti: ne vinci una ogni 3 round e puoi anche comprarle. Prendine una nel pannello e posala su un'unità."
+pt = "As unidades compartilham sinergias (painel da esquerda): com 2, 4 ou 6 membros diferentes dão bônus. Cada unidade leva até 2 cápsulas com melhorias: você ganha uma a cada 3 rodadas e também pode comprá-las. Pegue uma no painel e solte sobre uma unidade."
+ja = "ユニットはシナジーを共有します(左のパネル)。異なる2・4・6体でボーナスが付きます。各ユニットは強化カプセルを最大2個持て、3ラウンドごとに1個もらえ、購入もできます。パネルでカプセルを選び、ユニットの上に置きましょう。"
+
+[tut_titulo_4]
+es = "4/4  ¡Listo!"
+en = "4/4  Ready!"
+fr = "4/4  Prêt !"
+de = "4/4  Bereit!"
+it = "4/4  Pronto!"
+pt = "4/4  Pronto!"
+ja = "4/4  準備完了!"
+
+[tut_texto_4]
+es = "Cuando tu equipo esté preparado, pulsa ¡LISTO! y mira el combate. Ganar da oro extra; quien pierde pierde vida. Sé el último entrenador en pie. Puedes volver a ver esta ayuda con Select / T o con el botón \"Tutorial\"."
+en = "When your team is set, press READY! and watch the fight. Winning gives extra gold; the loser loses health. Be the last trainer standing. You can see this help again with Select / T or the \"Tutorial\" button."
+fr = "Quand ton équipe est prête, appuie sur PRÊT ! et regarde le combat. Gagner donne de l'or en plus ; le perdant perd de la vie. Sois le dernier dresseur debout. Tu peux revoir cette aide avec Select / T ou le bouton \" Tutoriel \"."
+de = "Wenn dein Team bereit ist, drücke BEREIT! und sieh dem Kampf zu. Siege bringen Extra-Gold, der Verlierer verliert Leben. Sei der letzte Trainer, der steht. Diese Hilfe siehst du wieder mit Select / T oder über \"Tutorial\"."
+it = "Quando la squadra è pronta, premi PRONTO! e guarda il combattimento. Vincere dà oro extra; chi perde perde vita. Sii l'ultimo allenatore in piedi. Puoi rivedere questo aiuto con Select / T o col pulsante \"Tutorial\"."
+pt = "Quando sua equipe estiver pronta, aperte PRONTO! e veja a luta. Vencer dá ouro extra; quem perde, perde vida. Seja o último treinador de pé. Você pode rever esta ajuda com Select / T ou no botão \"Tutorial\"."
+ja = "チームの準備ができたら「準備完了!」を押して戦いを見守りましょう。勝つと追加ゴールドがもらえ、負けた側はライフが減ります。最後まで残ったトレーナーが優勝です。このヘルプは Select / T か「チュートリアル」ボタンでいつでも見られます。"
+
+[tut_sig]
+es = "A / clic: siguiente"
+en = "A / click: next"
+fr = "A / clic : suivant"
+de = "A / Klick: weiter"
+it = "A / clic: avanti"
+pt = "A / clique: próximo"
+ja = "A / クリック: 次へ"
+
+[tut_fin]
+es = "A / clic: empezar"
+en = "A / click: start"
+fr = "A / clic : commencer"
+de = "A / Klick: starten"
+it = "A / clic: inizia"
+pt = "A / clique: começar"
+ja = "A / クリック: 開始"
+
+[tut_saltar]
+es = "B / Esc: saltar"
+en = "B / Esc: skip"
+fr = "B / Échap : passer"
+de = "B / Esc: überspringen"
+it = "B / Esc: salta"
+pt = "B / Esc: pular"
+ja = "B / Esc: スキップ"
+
+[tut_boton]
+es = "Tutorial"
+en = "Tutorial"
+fr = "Tutoriel"
+de = "Tutorial"
+it = "Tutorial"
+pt = "Tutorial"
+ja = "チュートリアル"
+
+[caps_titulo]
+es = "CÁPSULAS"
+en = "CAPSULES"
+fr = "CAPSULES"
+de = "KAPSELN"
+it = "CAPSULE"
+pt = "CÁPSULAS"
+ja = "カプセル"
+
+[caps_comprar]
+es = "Comprar cápsula"
+en = "Buy capsule"
+fr = "Acheter capsule"
+de = "Kapsel kaufen"
+it = "Compra capsula"
+pt = "Comprar cápsula"
+ja = "カプセル購入"
+
+[caps_ayuda]
+es = "A: coger la cápsula y soltarla sobre una unidad  ·  Q / LB / clic central: quitar"
+en = "A: pick a capsule and drop it on a unit  ·  Q / LB / middle click: remove"
+fr = "A : prendre la capsule et la poser sur une unité  ·  Q / LB / clic central : retirer"
+de = "A: Kapsel nehmen und auf eine Einheit setzen  ·  Q / LB / Mausrad-Klick: entfernen"
+it = "A: prendi la capsula e posala su un'unità  ·  Q / LB / clic centrale: rimuovi"
+pt = "A: pegar a cápsula e soltar sobre uma unidade  ·  Q / LB / clique central: remover"
+ja = "A: カプセルを選んでユニットに置く  ·  Q / LB / 中クリック: 外す"
+
+[caps_vacia]
+es = "Sin cápsulas: ganas una cada 3 rondas o la compras"
+en = "No capsules: you win one every 3 rounds or buy one"
+fr = "Aucune capsule : une toutes les 3 manches ou à l'achat"
+de = "Keine Kapseln: eine alle 3 Runden oder kaufen"
+it = "Nessuna capsula: una ogni 3 round o comprandola"
+pt = "Sem cápsulas: uma a cada 3 rodadas ou comprando"
+ja = "カプセルなし: 3ラウンドごとに入手、または購入"
+
+[caps_tienes]
+es = "Tienes"
+en = "You have"
+fr = "Tu en as"
+de = "Du hast"
+it = "Ne hai"
+pt = "Você tem"
+ja = "所持数"
+
+[caps_sin_oro]
+es = "Una cápsula cuesta"
+en = "A capsule costs"
+fr = "Une capsule coûte"
+de = "Eine Kapsel kostet"
+it = "Una capsula costa"
+pt = "Uma cápsula custa"
+ja = "カプセルの価格"
+
+[ef_vida]
+es = "vida"
+en = "health"
+fr = "vie"
+de = "Leben"
+it = "vita"
+pt = "vida"
+ja = "体力"
+
+[ef_ataque]
+es = "ataque"
+en = "attack"
+fr = "attaque"
+de = "Angriff"
+it = "attacco"
+pt = "ataque"
+ja = "攻撃"
+
+[ef_defensa]
+es = "defensa"
+en = "defense"
+fr = "défense"
+de = "Verteidigung"
+it = "difesa"
+pt = "defesa"
+ja = "防御"
+
+[ef_velocidad]
+es = "velocidad"
+en = "speed"
+fr = "vitesse"
+de = "Tempo"
+it = "velocità"
+pt = "velocidade"
+ja = "速度"
+
+[ef_ki_inicial]
+es = "ki inicial"
+en = "starting ki"
+fr = "ki initial"
+de = "Start-Ki"
+it = "ki iniziale"
+pt = "ki inicial"
+ja = "初期気力"
+
+[ef_ki_max]
+es = "ki que pide la técnica"
+en = "ki needed for the skill"
+fr = "ki requis pour la technique"
+de = "Ki für die Technik"
+it = "ki per la tecnica"
+pt = "ki para a técnica"
+ja = "技に必要な気力"
+
+[ef_alcance]
+es = "alcance"
+en = "range"
+fr = "portée"
+de = "Reichweite"
+it = "raggio"
+pt = "alcance"
+ja = "射程"
+
+[ef_tecnica]
+es = "daño de la técnica"
+en = "skill damage"
+fr = "dégâts de la technique"
+de = "Technikschaden"
+it = "danno della tecnica"
+pt = "dano da técnica"
+ja = "技のダメージ"
+
+[sube_est]
+es = "¡Sube a"
+en = "Upgrades to"
+fr = "Passe à"
+de = "Wird"
+it = "Sale a"
+pt = "Sobe para"
+ja = "進化"
+
+[por_que_sin]
+es = "Sinergia a una unidad de activarse:"
+en = "Synergy missed by one unit:"
+fr = "Synergie à une unité près :"
+de = "Synergie um eine Einheit verfehlt:"
+it = "Sinergia a un'unità dall'attivarsi:"
+pt = "Sinergia a uma unidade de ativar:"
+ja = "あと1体で発動したシナジー:"
+
+[por_que_caido]
+es = "Primero en caer:"
+en = "First to fall:"
+fr = "Premier à tomber :"
+de = "Zuerst gefallen:"
+it = "Primo a cadere:"
+pt = "Primeiro a cair:"
+ja = "最初に倒れた:"
+
+[soltar_vender]
+es = "Suelta aquí para vender"
+en = "Drop here to sell"
+fr = "Lâcher ici pour vendre"
+de = "Hier ablegen zum Verkaufen"
+it = "Rilascia qui per vendere"
+pt = "Solte aqui para vender"
+ja = "ここにドロップで売却"
+
+[previa_sin]
+es = "Sinergias:"
+en = "Synergies:"
+fr = "Synergies :"
+de = "Synergien:"
+it = "Sinergie:"
+pt = "Sinergias:"
+ja = "シナジー:"

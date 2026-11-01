@@ -5,6 +5,34 @@
 
 ---
 
+## 0. SHORTCUT FOR PLAYERS: THE MOD KIT WIZARDS (phase 2)
+
+If you do not want to touch bins or a console, the Mod Kit home page has four "guided" cards. Each one asks step by
+step, shows a summary with "Change" on every line (the preset and the base character are shown there) and has a
+single **Build and try** button:
+
+- **Add a character**: source game -> character -> name, preset and base character -> imports and builds.
+- **Change look and aura**: game character -> aura and ki colour -> (optional) your PNGs; the wizard can export the
+  PNGs for you. It creates a colours mod and a textures mod.
+- **Give someone a costume**: game character -> model (an already imported character or your `.amb`/`.bin`) -> name.
+- **Install a mod (.zip)**: pick the zip, tick which mods you want and it installs. If you already had one with that
+  name the old one is kept in `modkit_backups`. Program files in the zip (`.dll`, `.py`, `.exe`...) are NOT installed
+  unless you tick that you trust the author. Zips with unsafe paths are refused.
+
+Everything can be **Undone** (wizard button): new mods are moved to `modkit_backups` and the previous build
+(`_roster`) is put back; nothing is ever deleted. They are installed in `mods/`; the game uses them when you press PLAY.
+Headless test: `python modkit_gui.py --selftest-asistentes <copy of us> <new folder>`.
+
+**Build and try, for real (phase 3).** When the build ends, the wizard starts the game and tells you in one sentence
+whether the mod loaded ("It works..." or the cause of the failure, no jargon). It presses nothing in the game: it stays
+on the start menu, so **your saved games are not touched**. If the game is already open it asks you to close it. On the
+developer PC the test runs on the fixed copy `D:\DBZ3HD\smoke_c` through `tools/pruebas.py` (what it adds goes back to
+`D:\_PARA_BORRAR_CLAUDE\kit`); on a player's PC it starts their own `dbz3.exe` with no test variables.
+
+**Expert mode.** The old "Tools" tab (every tool with its options; Textures, Create and Hex repeat what the wizards
+do) is now called **Expert**, in Advanced mode. No common task needs it. More in [TOOLS.md](../04_herramientas/TOOLS.md),
+[texture packs](PACKS_DE_TEXTURAS_EN.md) and [model swap](MODEL_SWAP_EN.md).
+
 ## 1. THE TWO KINDS OF MOD
 
 ### 1.1 Whole-file override (replaces an entire AFS)
@@ -148,6 +176,8 @@ Sources: the PSP ISOs in `ps2_games/` (Shin Budokai = `sb1`, Another Road = `sb2
 better HD models, the Super Dragon Ball Heroes World Mission folder in `modding resources/`
 (`sdbh`). Formats and differences: `docs/03_formatos/SB_VS_B3_MOVESET.md`.
 
+Budokai 2 models: when the roster is built, the Kit automatically converts their shading ramps to the B3 style (`awo_tools/rampas.py`), so skin no longer comes out white or with black patches. Nothing to do.
+
 ### 5.1 The quick way (no console)
 Launcher → **New characters** → "Import a character" → *Shin Budokai: Another Road* → the
 character → name → **Import** → PLAY. In the Mod Kit it is the "Import a character" card.
@@ -208,3 +238,35 @@ User guide: `docs/02_mods/STUDIO_CAMARAS.md`. Format: `docs/03_formatos/CAMARA_A
   restart the game.
 - Console: `python "mod center hd/studio/studio_core.py" info 0` (Goku's clips and scripts),
   `exportar-glb`, `importar-glb`, `selftest`.
+
+
+## Adding your own music (Mod Kit)
+In the Mod Kit, "Add music": pick your own mp3, wav, ogg, flac or adx file, give it a name and the Kit converts it (with ffmpeg if it is not .adx) and saves it as a new `musica_<name>` mod in `mods/` (with "Undo"). To hear it, press L1/R1 (or `[` `]`) on the fight selector, or use F1 > Fight music and pick "Mi música"; `dbz3_musica_combate = fija:propia:<n>` also works. It only adds: the game's original music is never touched. Use only songs you have the right to use; the project does not distribute game audio.
+
+## PS2 mode: mods for PS2 Budokai 3
+
+In the Mod Kit, top right, **Game > B3 PS2**. It creates mods for your PS2 copy (Greatest Hits USA, SLUS-20998: an .iso or the folder extracted from the disc; a .chd must be converted first) and builds a new ISO. Your copy is never changed and nothing is distributed.
+
+1. **Texture**: pick character and form, 'Extract textures', edit the PNGs without changing their size and 'Create mod with my changes'. PS2 uses 16 or 256-colour palettes: your image's colours are reduced on save; what you do not touch stays the same.
+2. **Character**: a character with another's look. It keeps name, icon and moves. It does not add characters to the wheel.
+3. **Music**: replaces a track (you can listen first) and repeats when it ends.
+4. Enable your mods and press **Build ISO** (a few seconds, 2.4 GB). Open it in PCSX2. Tested on PCSX2 2.9; real consoles were not tested.
+
+Not available: new characters, capsules, aura colours, stories, Studio and HD packs. They need the port's engine; the screen explains it. From the command line: `python "mod center hd/ps2_b3.py"`.
+
+## Optional art and lessons from the 31/10 round
+**Check this mod (Mod Kit, My mods):** reports missing files, typing errors in `personaje.toml` or `traje.toml`, unusable `.wav` files and mods inside an extra folder. It does not open the game, so it does not test how the mod looks.
+
+**Optional art (Mod Kit):** pick the folder with your PNGs; it says which piece each one is, warns about shape, size and transparency, fixes double extensions (`x.png.png`) and suggests the name for a near miss. It installs to `mods/pack_hub_mio/ui_ingame/hub/`: a normal mod you can turn off and undo. Any mod can carry `ui_ingame/hub/<piece>.png`.
+
+**Costumes from DAE:** `awo_tools/dae_a_b3.py` converts a DAE model with Xenoverse/Legends-style bones to a costume (`--mod FOLDER` writes `traje.toml` and `modelo.lzx`). The mouth is reweighted to `M_JAW`; always check it in game, especially if the model wears a mask.
+
+**Wheel and locked costumes:** an extra costume goes after the native ones. If native costumes are locked in that save, the selector skips them and reaches the added one. Test with a save that does not have everything unlocked.
+
+**Checking a character:**
+- A fight photo does not prove floating: it may be mid-jump. Measure the feet or use a side view at rest.
+- A flat arm is not always the shading's fault: first check whether the texture itself is flat.
+- A metric against your own render proves nothing: compare with a capture of the game or the original.
+- Without its own moveset, a character moves like its donor. Renaming the donor's techniques does not make them its own.
+
+**Voices:** `voces = "t3:<bank>|ninguna"` takes voices from your Tenkaichi 3 and stays silent without the ISO. Those clips have no situation table: assigning them by length can play a line at the wrong moment, so check each one. Silent beats a wrong line.

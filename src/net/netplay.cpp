@@ -10,6 +10,7 @@
 #include "netplay.h"
 #include "room.h"
 #include "../tagteam.h"
+#include "../roster_ext.h"
 
 #include "../launcher/i18n.h"
 
@@ -97,6 +98,24 @@ uint64_t NowMs() {
                       std::chrono::steady_clock::now().time_since_epoch()).count());
 }
 
+// #51: etiqueta opcional en el relleno de build[40]; lectores viejos paran en el NUL.
+constexpr const char* kMyOs =
+#ifdef _WIN32
+    "windows";
+#else
+    "linux";
+#endif
+std::string PeerOs(const std::vector<uint8_t>& pkt) {
+  if (pkt.size() < 46 || pkt[38] != 0) return {};
+  std::string s(reinterpret_cast<const char*>(pkt.data() + 39), 7);
+  s.resize(s.find('\0') == std::string::npos ? s.size() : s.find('\0'));
+  return s == "windows" || s == "linux" ? s : std::string();
+}
+const char* OtherOsMessage() {
+  return T::T("el otro PC usa otro sistema operativo (Windows/Linux): el online requiere el mismo sistema y version",
+              "the other PC runs another operating system (Windows/Linux): online requires the same system and version");
+}
+
 struct Writer {
   std::vector<uint8_t> b;
   explicit Writer(uint8_t type) {
@@ -146,14 +165,15 @@ struct Reader {
   }
 };
 
-// Equipos de Tag Team en kTeam y kStart: n u8 (0-3) + n IDs u16 0-63, en el orden de la rueda.
+// Equipos de Tag Team en kTeam y kStart: n u8 (0-3) + n IDs u16 (0-63 o logico si es de pagina), en el orden de la rueda.
+bool TeamIdOk(int id) { return (id >= 0 && id < 64) || dbz3::roster::IsLogicalRosterId(id); }
 bool ReadTeam(Reader& r, std::vector<int>& out) {
   out.clear();
   const auto n = r.u8();
   if (!r.ok || n > 3) return false;
   for (uint8_t i = 0; i < n; ++i) {
     const auto id = r.u16();
-    if (!r.ok || id >= 64) return false;
+    if (!r.ok || !TeamIdOk(int(id))) return false;
     out.push_back(int(id));
   }
   return true;
@@ -310,7 +330,7 @@ bool Session::ValidPacket(const std::vector<uint8_t>& pkt) const {
       if (n > 3) return false;
       if (n >= 2 && !safe_tagteam_) return false;
       std::vector<int> ids;
-      for (int i = 0; i < n; ++i) { const auto id = r.u16(); if (id >= 64) return false; ids.push_back(id); }
+      for (int i = 0; i < n; ++i) { const auto id = r.u16(); if (!TeamIdOk(int(id))) return false; ids.push_back(id); }
       if (team_ready_ && ids != peer_team_) return false;
       return r.ok && r.o == pkt.size();
     }
@@ -350,7 +370,7 @@ bool Session::ValidPacket(const std::vector<uint8_t>& pkt) const {
         const auto pad = r.pad();
         // small window prevents poisoning another modulo slot; no rollover session.
         if (t == 0xFFFFFFFFu || (i && t <= prev) ||
-            uint64_t(t) + 8 < now || uint64_t(t) > uint64_t(now) + 32) return false;
+            uint64_t(t) + 16 < now || uint64_t(t) > uint64_t(now) + 32) return false;   // 16: 8 repetidas + ventana de rollback de hasta 6 + margen
         const auto& slot = theirs_[t % kRing];
         if (slot.tick == t && (slot.pad.buttons != pad.buttons || slot.pad.lt != pad.lt ||
             slot.pad.rt != pad.rt || slot.pad.lx != pad.lx || slot.pad.ly != pad.ly ||
@@ -473,8 +493,12 @@ bool Session::Recv(std::vector<uint8_t>& pkt) {
       }
       return true;
     }
-    if (buf[4] == kReject && n == 10 && reply.u32() == local_nonce_) {
-      Fail(Link::kError, T::T("el otro PC tiene otra version del juego", "the other PC has another game version"));
+    if (buf[4] == kReject && (n == 10 || n == 18) && reply.u32() == local_nonce_) {
+      const std::string os = n == 18 ? reply.str(8) : std::string();
+      const char* why = (os == "windows" || os == "linux") && os != kMyOs ? OtherOsMessage() :
+          T::T("el otro PC tiene otra version del juego", "the other PC has another game version");
+      REXLOG_INFO("dbz3 online: rechazo del anfitrion: {}", why);
+      Fail(Link::kError, why);
       return true;
     }
   }
@@ -488,7 +512,14 @@ bool Session::Recv(std::vector<uint8_t>& pkt) {
     const auto nonce = hello.u32(), echo = hello.u32();
     if (!hello.ok || !nonce || delay < 1 || delay > 10 || save || region > 1 || !HexDigest(mods, 32)) return true;   // region 0 US, 1 EU
     if (identity != identity_) {
+      const std::string os = PeerOs(candidate);
+      if (!os.empty() && os != kMyOs) {
+        std::lock_guard<std::mutex> lock(mu_);
+        peer_os_notice_ = OtherOsMessage();
+        REXLOG_INFO("dbz3 online: invitado {}, anfitrion {}: identidad distinta, se rechaza", os, kMyOs);
+      }
       Writer reject(kReject); reject.u32(nonce);
+      if (!os.empty()) reject.str(kMyOs, 8);   // sin etiqueta (version vieja): exactamente los 10 bytes anteriores
       ::sendto(decltype(::socket(0, 0, 0))(sock_), reinterpret_cast<const char*>(reject.b.data()),
                int(reject.b.size()), 0, reinterpret_cast<const sockaddr*>(&from), len);
       return true;
@@ -528,13 +559,14 @@ bool Session::Host(uint16_t port, uint8_t delay, std::string* error) {
   identity_admission_ = false;
   local_nonce_ = NewNonce();
   local_team_ = dbz3::tag::MyLastTeam();
+  for (int& id : local_team_) id = dbz3::roster::OnlineWireId(id);
   if (local_team_.size() >= 2 && !safe_tagteam_) {
     // Tag Team online sin autorizar: se juega 1 contra 1. Antes el ultimo equipo del Tag Team de 1P (que no
     // se borra) dejaba CREAR y UNIRSE fallando hasta reiniciar el juego (2026-10-15)
     REXLOG_INFO("dbz3 online: el equipo de Tag Team ({} luchadores) no viaja al online: 1 contra 1", local_team_.size());
     local_team_.clear();
   }
-  if (local_team_.size() > 3 || std::any_of(local_team_.begin(), local_team_.end(), [](int x) { return x < 0 || x >= 64; })) {
+  if (local_team_.size() > 3 || std::any_of(local_team_.begin(), local_team_.end(), [](int x) { return !TeamIdOk(x); })) {
     if (error) *error = T::T("Online: equipo de Tag Team no valido", "Online: invalid Tag Team team");
     return false;
   }
@@ -614,13 +646,14 @@ bool Session::Join(const std::string& ip, uint16_t port, std::string* error) {
   identity_admission_ = false;
   local_nonce_ = NewNonce();
   local_team_ = dbz3::tag::MyLastTeam();
+  for (int& id : local_team_) id = dbz3::roster::OnlineWireId(id);
   if (local_team_.size() >= 2 && !safe_tagteam_) {
     // Tag Team online sin autorizar: se juega 1 contra 1. Antes el ultimo equipo del Tag Team de 1P (que no
     // se borra) dejaba CREAR y UNIRSE fallando hasta reiniciar el juego (2026-10-15)
     REXLOG_INFO("dbz3 online: el equipo de Tag Team ({} luchadores) no viaja al online: 1 contra 1", local_team_.size());
     local_team_.clear();
   }
-  if (local_team_.size() > 3 || std::any_of(local_team_.begin(), local_team_.end(), [](int x) { return x < 0 || x >= 64; })) {
+  if (local_team_.size() > 3 || std::any_of(local_team_.begin(), local_team_.end(), [](int x) { return !TeamIdOk(x); })) {
     if (error) *error = T::T("Online: equipo de Tag Team no valido", "Online: invalid Tag Team team");
     return false;
   }
@@ -691,6 +724,7 @@ void Session::SendHello(uint8_t type) {
   if (my_build_.empty()) return;   // StartModScan aun calcula la huella de los mods propios
   Writer w(type);
   w.str(my_build_, 40);
+  if (HexDigest(my_build_, 32)) std::memcpy(w.b.data() + 39, kMyOs, std::strlen(kMyOs));
   w.str(my_mods_hash_, 40);
   w.u8(delay_);
   w.u32(save_size_);
@@ -877,7 +911,7 @@ void Session::Handle(const std::vector<uint8_t>& pkt, bool) {
       std::vector<int> ids;
       for (uint8_t i = 0; i < n && i < 3 && r.need(2); ++i) {
         const int id = int(r.u16());
-        if (id < 64) ids.push_back(id);   // IDs del juego 0-43 y extra 44-63: otro valor se saldria de la tabla
+        if (TeamIdOk(id)) ids.push_back(id);   // otro valor se saldria de la tabla
       }
       std::lock_guard<std::mutex> lock(mu_);
       if (team_ready_ && peer_team_ != ids) return; // frozen agreement
@@ -1130,8 +1164,12 @@ bool Session::TakeStart(uint8_t* base) {
   {   // Tag Team: lado 1 el anfitrion, lado 2 el invitado, igual en los dos PCs (sin COM)
     std::vector<int> mine = local_team_, peer;
     { std::lock_guard<std::mutex> lock(mu_); peer = peer_team_; }
-    const std::vector<int> side1 = role_ == Role::kHost ? mine : peer;
-    const std::vector<int> side2 = role_ == Role::kHost ? peer : mine;
+    std::vector<int> side1 = role_ == Role::kHost ? mine : peer;
+    std::vector<int> side2 = role_ == Role::kHost ? peer : mine;
+    // de IDs del protocolo a plazas, en el mismo orden en los dos PC; la rueda abre en la pagina 1 con esos anclados
+    for (int& id : side1) id = dbz3::roster::OnlineGuestId(id);
+    for (int& id : side2) id = dbz3::roster::OnlineGuestId(id);
+    dbz3::roster::RequestDynamicRosterPageAbs(0);
     dbz3::tag::SetDynamicTeam(0, side1, false);   // el invitado no hace suyo el del anfitrion
     dbz3::tag::SetDynamicTeam(1, side2, false);
     dbz3::tag::SetComSide(0, false);
@@ -1192,6 +1230,7 @@ void Session::ResetTransport() {
   have_peer_ = false;
   link_ = Link::kIdle;
   dbz3::tag::ClearDynamicTeams();   // los equipos de la partida online no pasan a los combates normales
+  dbz3::roster::ClearOnlinePins();
   {
     std::lock_guard<std::mutex> lock(mu_);
     if (upnp_port_) std::thread(UpnpClose, upnp_port_).detach();   // se cierra el puerto del router
@@ -1219,6 +1258,7 @@ void Session::ResetTransport() {
   their_rng_tick_.fill(0xFFFFFFFFu);
   desync_ = false;
   my_build_.clear();
+  { std::lock_guard<std::mutex> lock(mu_); peer_os_notice_.clear(); }
   ++generation_;
   guest_owner_ = false;
   local_nonce_ = peer_nonce_ = 0;
@@ -1286,7 +1326,7 @@ CombatRules CombatRules::Now() {
   r.flags = uint8_t((on("dbz3_combate_reglas_v0") ? 1 : 0) | (on("dbz3_combate_definitiva_directa") ? 2 : 0) |
                     (c == "lb" ? 4 : c == "rb" ? 8 : 0));
   r.reversion = uint16_t(std::clamp(std::atoi(rex::cvar::GetFlagByName("dbz3_combate_reversion").c_str()), 0, 65535));
-  if (on("dbz3_net_rollback") || std::getenv("DBZ3_RB_ON")) r.flags |= 0x10;   // R4: pide rollback (se acuerda en TakeStart)
+  if ((on("dbz3_net_rollback") || std::getenv("DBZ3_RB_ON")) && !dbz3::g_guest_eu) r.flags |= 0x10;   // R4: pide rollback (se acuerda en TakeStart). Solo US: EU sigue en lockstep
   return r;
 }
 
@@ -1374,7 +1414,9 @@ std::string Session::Status() const {
   std::lock_guard<std::mutex> lock(mu_);
   switch (link_.load()) {
     case Link::kIdle: return "";
-    case Link::kWaiting: return role_ == Role::kHost ? T::T("Esperando al rival...", "Waiting for the other player...") : T::T("Llamando al anfitrion...", "Calling the host...");
+    case Link::kWaiting:
+      if (!peer_os_notice_.empty()) return peer_os_notice_;
+      return role_ == Role::kHost ? T::T("Esperando al rival...", "Waiting for the other player...") : T::T("Llamando al anfitrion...", "Calling the host...");
     case Link::kConnected: return T::T("conectados", "connected");
     case Link::kStarting: return T::T("Empezando...", "Starting...");
     case Link::kPlaying: return T::T("jugando", "playing");
@@ -1523,11 +1565,11 @@ void Session::CompareSum(uint32_t tick) {
   if (!mask) return;
   const uint32_t bad = ++sum_bad_;
   if (rb_mode_.load() && tick > rb_ignore_until_ && (rb_bad_first_.load() == 0xFFFFFFFFu || tick < rb_bad_first_.load())) rb_bad_first_ = tick;
-  if (bad <= 20 || bad % 100 == 0)
+  if (bad <= 80 || bad % 100 == 0)
     REXLOG_WARN("dbz3 online: SUMA distinta en el tick {} (bloques {:05b}: gestor/luch0/luch1/resto/rng; propios {:08X} {:08X} {:08X} {:08X} {:08X}; "
                 "del otro {:08X} {:08X} {:08X} {:08X} {:08X}; {} iguales antes)", tick, mask, a.b[0], a.b[1], a.b[2], a.b[3], a.b[4],
                 b.b[0], b.b[1], b.b[2], b.b[3], b.b[4], sum_cmp_.load() - bad);
-  if (sum_hook && bad <= 8) sum_hook(tick, mask);
+  if (sum_hook && bad <= 80) sum_hook(tick, mask);
 }
 
 void Session::SendSums() {
@@ -1559,9 +1601,18 @@ void Session::SendInputs() {
   if (sched_ == 0) return;   // aun sin mandos propios
   Writer w(kInput);
   const uint32_t last = sched_ - 1;   // la casilla mas nueva (con D recien bajado puede pasar de tick + D)
-  const uint32_t first = last >= 7 ? last - 7 : 0;
+  uint32_t first = last >= 7 ? last - 7 : 0;
+  // Con retardo > 7 una casilla que se pierde en un corte de red sale de los 8 ultimos sin llegar nunca: los dos PCs se quedaban
+  // esperando hasta "conexion perdida". Un paquete de cada dos repite desde donde va el otro PC (medido con DBZ3_PROXY_BURST).
+  static bool flip = false;
+  const uint32_t est = peer_est_.load();
+  if (peer_est_ms_.load() && est + 8 <= last && NowMs() - peer_est_ms_.load() > 100 && (flip = !flip)) {   // el otro lleva parado 100 ms
+    const uint32_t back = rb_mode_.load() ? uint32_t(rb_w_eff_.load()) : 0u;
+    first = est - std::min(est, back);
+  }
   std::vector<const Slot*> v;
-  for (uint32_t t = first; t <= last; ++t) {
+  const uint32_t top = std::min(last, first + 7);
+  for (uint32_t t = first; t <= top; ++t) {
     const Slot& s = mine_[t % kRing];
     if (s.tick == t) v.push_back(&s);
   }
@@ -1569,8 +1620,10 @@ void Session::SendInputs() {
   w.u8(uint8_t(v.size()));
   for (const Slot* s : v) { w.u32(s->tick); w.pad(s->pad); }
   const int i = int((tick_ / 60) % kRing);
-  w.u32(my_rng_tick_[i]);
-  w.u32(my_rng_[i]);
+  // el anillo da la vuelta a los 256 s: una casilla sin escribir este segundo guarda un tick viejo, y el otro PC rechazaria el paquete entero
+  const bool rng_now = my_rng_tick_[i] != 0xFFFFFFFFu && my_rng_tick_[i] / 60 == tick_ / 60;
+  w.u32(rng_now ? my_rng_tick_[i] : 0xFFFFFFFFu);
+  w.u32(rng_now ? my_rng_[i] : 0u);
   const uint64_t now = NowMs();
   w.u32(uint32_t(now) | 1u);   // marca (nunca 0: 0 = sin eco)
   w.u32(peer_stamp_);
@@ -1665,8 +1718,9 @@ void PadLogTick(uint32_t t, bool host, const Pad& u0, const Pad& u1) {
   static FILE* f = nullptr;
   if (!f) {
     std::error_code ec;
-    std::filesystem::create_directories("D:\\tmp\\padlog", ec);
-    f = std::fopen((std::string("D:\\tmp\\padlog\\padlog_") + (host ? "host" : "guest") + "_" + std::to_string(unsigned(std::chrono::steady_clock::now().time_since_epoch().count() & 0xFFFFFF)) + ".csv").c_str(), "w");
+    const std::filesystem::path dir = std::filesystem::temp_directory_path(ec) / "dbz3_padlog";
+    std::filesystem::create_directories(dir, ec);
+    f = std::fopen(((dir / "padlog_").string() + (host ? "host" : "guest") + "_" + std::to_string(unsigned(std::chrono::steady_clock::now().time_since_epoch().count() & 0xFFFFFF)) + ".csv").c_str(), "w");
     if (!f) return;
   }
   // R7: columnas 16-17 = vblanks del guest acumulados y microsegundos de pared (un lado que pierde vblanks entre ticks se ve aqui)
@@ -1816,6 +1870,8 @@ void Session::RbEnter(uint32_t t) {
   rb_sum_next_ = t;
   rb_resim_ = false;
   rb_stats_ = {};
+  rb_w_eff_ = rb_w_;   // a 0 ya no se resimula y no se mediria nada: cada combate vuelve a probar
+  rb_ms_tick_ = 3.5;
   rb_bad_first_ = 0xFFFFFFFFu; rb_ignore_until_ = 0; rb_repairs_ = 0; snap_tx_on_ = false; snap_rx_cnt_ = 0; snap_rx_ready_ = false;
   peer_est_ms_ = 0;
   // base de la prediccion: el mando del rival del tick anterior (ya confirmado por el lockstep)
@@ -1866,6 +1922,13 @@ int Session::RbWait(uint32_t t, uint64_t* start_ms, bool all) {
   if (leave_req_.load()) { std::lock_guard<std::recursive_mutex> io(io_mu_); guest_owner_ = false; ResetTransport(); return -1; }
   const uint64_t now = NowMs();
   if (now - last_send_ms_ > 15) SendInputs();
+  static uint64_t last_diag = 0;
+  if (now - *start_ms > 1000 && now - last_diag > 2000) {   // espera larga: que falta exactamente
+    last_diag = now;
+    const Slot& h = theirs_[rb_conf_ % kRing];
+    REXLOG_WARN("dbz3 online: rollback: espera de {} ms en el tick {} (all {}, ventana {}): confirmado {}, casilla {}, su reloj {}, mis mandos hasta {}, recibido hace {} ms",
+                now - *start_ms, t, all, w, rb_conf_, h.tick, peer_est_.load(), sched_, now - last_recv_ms_);
+  }
   if (now - *start_ms > kLostMs) {
     Fail(Link::kLost, T::T("sin respuesta del otro PC", "no reply from the other PC"));
     REXLOG_WARN("dbz3 online: conexion perdida en el tick {} (rollback)", t);

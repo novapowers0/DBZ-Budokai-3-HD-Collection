@@ -61,7 +61,7 @@ descripcion_fr = "L'histoire coupee de Freezer dans Dragon Universe : parcours l
 
 [[mod]]
 id = "cut_zarbon"
-version = "1.0"
+version = "1.1"
 tipo = "personaje"
 nombre_es = "Zarbon"
 nombre_en = "Zarbon"
@@ -76,7 +76,7 @@ descripcion_fr = "Zarbon avec sa forme monstre et les coups de Budokai 1. Modèl
 
 [[mod]]
 id = "cut_dodoria"
-version = "1.0"
+version = "1.1"
 tipo = "personaje"
 nombre_es = "Dodoria"
 nombre_en = "Dodoria"
@@ -403,7 +403,7 @@ descripcion_ja = "インフィニットワールドのジャネンバを専用�
 
 [[mod]]
 id = "cut_guldo"
-version = "1.1"
+version = "1.2"
 tipo = "personaje"
 nombre_es = "Guldo"
 nombre_en = "Guldo"
@@ -422,7 +422,7 @@ descripcion_ja = "ギニュー特戦隊のグルド。モデル：@ArielPVB。�
 
 [[mod]]
 id = "cut_jeice"
-version = "1.1"
+version = "1.2"
 tipo = "personaje"
 nombre_es = "Jeice"
 nombre_en = "Jeice"
@@ -441,7 +441,7 @@ descripcion_ja = "ギニュー特戦隊のジース。モデル：@ArielPVB。�
 
 [[mod]]
 id = "cut_burter"
-version = "1.1"
+version = "1.2"
 tipo = "personaje"
 nombre_es = "Burter"
 nombre_en = "Burter"
@@ -457,3 +457,25 @@ nombre_pt = "Burter"
 descripcion_pt = "Burter das Forças Especiais Ginyu. Modelo de @ArielPVB. Grita com as suas vozes de Heroes World Mission (incluídas no mod)."
 nombre_ja = "バータ"
 descripcion_ja = "ギニュー特戦隊のバータ。モデル：@ArielPVB。ヒーローズ ワールドミッションの掛け声入り（MODに同梱）。"
+
+[[mod]]
+id = "cut_goku_ui"
+version = "0.1"
+tipo = "personaje"
+exe_nuevo = true   # [[capsula]] reemplaza + voces/gritos WAV (31/10/2026); BETA sin terminar
+autor = "Joaofury"
+enlaces = ["https://github.com/Joaofury/GOKU-ULTRA-INSTINCT-BUDOKAI-3"]
+nombre_es = "Goku Ultra Instinto (BETA)"
+nombre_en = "Ultra Instinct Goku (BETA)"
+nombre_it = "Goku Ultra Istinto (BETA)"
+nombre_de = "Ultra-Instinkt-Goku (BETA)"
+nombre_fr = "Goku Ultra Instinct (BETA)"
+nombre_pt = "Goku Ultra Instinto (BETA)"
+nombre_ja = "身勝手の極意 悟空 (BETA)"
+descripcion_es = "BETA, sin terminar pero jugable. Goku Ultra Instinto de Joaofury en su propia plaza: modelo, movimientos, tecnicas, la definitiva Strike of Fury de Heroes y voces. Puede tener fallos. Creditos: Joaofury (enlace en la ficha)."
+descripcion_en = "BETA, unfinished but playable. Joaofury's Ultra Instinct Goku in his own slot: model, moves, techniques, Heroes' Strike of Fury ultimate and voices. May have bugs. Credit: Joaofury (link on the card)."
+descripcion_it = "BETA, non finito ma giocabile. Il Goku Ultra Istinto di Joaofury nel suo slot: modello, mosse, tecniche, la finale Strike of Fury di Heroes e voci. Puo avere errori. Crediti: Joaofury (link nella scheda)."
+descripcion_de = "BETA, unfertig, aber spielbar. Joaofurys Ultra-Instinkt-Goku auf eigenem Platz: Modell, Angriffe, Techniken, das Heroes-Finale Strike of Fury und Stimmen. Kann Fehler haben. Credit: Joaofury (Link auf der Karte)."
+descripcion_fr = "BETA, inacheve mais jouable. Le Goku Ultra Instinct de Joaofury a sa propre place : modele, coups, techniques, l'ultime Strike of Fury de Heroes et voix. Peut contenir des bugs. Credit : Joaofury (lien sur la fiche)."
+descripcion_pt = "BETA, inacabado mas jogavel. O Goku Ultra Instinto do Joaofury no seu proprio slot: modelo, golpes, tecnicas, a final Strike of Fury do Heroes e vozes. Pode ter falhas. Creditos: Joaofury (link na ficha)."
+descripcion_ja = "BETA版(未完成ですがプレイ可能)。Joaofury作の身勝手の極意悟空を専用枠で追加:モデル、技、Heroesの必殺技Strike of Fury、ボイス。不具合があるかもしれません。制作:Joaofury(リンクはカード内)。"

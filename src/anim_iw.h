@@ -72,6 +72,23 @@ constexpr uint32_t kCellPrep = 0xC05, kCellSube = 0xC06, kCellAire = 0xC07, kCel
 // rodillas recogidas). kCaer (0x104) es el alias viejo; en 204/0x104 es la animacion 24 (subida, la misma que pide el
 // estado 0x0D), no una caida: desde DS89 el salto completo usa kSaltoPrep/kSaltoSube/kSaltoAire/kSaltoCae/kAterrizar.
 constexpr uint32_t kAndar = 0x815, kCaer = 0xA04, kSubir = 0x829;
+// 30/10: los codigos de la maquina de tierra (+0xB60 de Minigame_State*) se resuelven en el #BSK COMUN de campo,
+// DATA_CMN 915/3 -> #AMM 915/0 (PINE en el original: 0x01 = 220 cuadros, 0x16 = 10, 0x1A = 15), NO en 204/3, que es la
+// postura y la locomocion de COMBATE de IW. Los alias de arriba apuntan ahora a 915; el resto de la maquina:
+// reposo 0x0B (tras 0x01; Char_UpdateState_AnimThenTransition EU 0x2A46F0) y carrera 0x17 (tras 0x16; EU 0x2A3F50).
+constexpr uint32_t kReposo2 = 0x80B, kCorrer2 = 0x817;
+// Indice 1 (Capture Bubbles, planeta de Kaio): la gravedad cambia la postura; cada estado pide su codigo 0xFA-0x108.
+constexpr uint32_t kKaioReady = 0x970, kKaioReposo = 0x971, kKaioReposo2 = 0x972, kKaioAndar = 0x973, kKaioCorrer = 0x974,
+                   kKaioCorrer2 = 0x975, kKaioParar = 0x976, kKaioPrep = 0x977, kKaioSube = 0x978, kKaioCae = 0x979,
+                   kKaioAterrizar = 0x97A, kKaioVuelo = 0x97B, kKaioDespegue = 0x97C, kKaioAire = 0x97D;
+// Indice 10 (Nave de Freezer): reposo propio 0x44D/0x44E del #BSK de 922 (EU 0x2A4820 / 0x2A46F0).
+constexpr uint32_t kNamekReposo = 0x980, kNamekReposo2 = 0x981;
+// Cell (914): lo que faltaba de su maquina; kCellScatto..+5 = 0x19..0x1E.
+constexpr uint32_t kCellReposo = 0x990, kCellReposo2 = 0x991, kCellCorrer2 = 0x992, kCellScatto = 0x993, kCellDespegue2 = 0x999,
+                   kCellChoque = 0x99A, kCellChoqueAire = 0x99B;
+// Duracion real del clip del scatto (fase kInicio/kBucle/kFin) con el banco activo. ScattoCell: usar los de 914.
+int CuadrosScatto(Fase f, bool aire);
+void ScattoCell(bool on);
 // DS37 (0x7DD): el minijuego 14 de IW lo juega Cell semiperfecto (SONNET1 §4), no Gohan nino: su #BSK es DATA_CMN
 // 914 y trae su propia locomocion en los mismos codigos que el comun (0x00 reposo, 0x15 andar, 0x16 correr, 0x22 y
 // 0x29 salto). Se instalan con estos alias para no pisar las del #BSK comun (kQuieto/kAndar/kCorrer/0x822/kSubir).
@@ -87,6 +104,9 @@ void Cansado(uint32_t x, bool on);
 // una vez; al acabar, a la guardia, o sujeta en su ultimo cuadro (sujetar). codigo 0: quitarla.
 // tope > 0: se queda quieta en ese cuadro (una pose de la animacion, p. ej. el salto con las rodillas recogidas)
 void Reproducir(uint32_t x, uint32_t codigo, bool sujetar = false, uint32_t tope = 0, uint32_t luego = 0);
+// Entrada de estado IW: reinicia incluso si el codigo coincide. No usar para
+// rearmar una pose pisada por B3 (ese caso debe conservar su reloj y AP).
+void ReiniciarPose(uint32_t x, uint32_t codigo, bool sujetar = true);
 // luego != 0: al acabar la pose pasa sola a ese codigo en bucle (el reposo de IW; los minijuegos de botones).
 // 0 nada pedido, 1 en curso, 2 acabada (o sin esa animacion en la copia del jugador).
 int EstadoPose();
@@ -100,6 +120,13 @@ uint32_t CodigoQte(uint32_t cmn, uint32_t codigo);
 float AlturaRaiz(uint8_t* base, uint32_t x);
 // Lo mismo con la posicion entera de la cadera (x, y, z; el salto de superado de IW va 50 u hacia delante, z): false si no hay.
 bool RaizActual(uint8_t* base, uint32_t x, float out[3]);
+// 31/10: el codigo de IW de un alias de kExtras (0xFA6 -> 0x3B6); si no es alias, el mismo.
+uint32_t CodigoOriginalIW(uint32_t codigo);
+// AP9 del modelo principal IW: factor persistente y velocidad real de299EE0.
+// Seguro entre hilo de juego/interfaz. Sin AP9 vigente usa0.4, no un offset B3.
+float VelocidadAP(uint32_t x,float velocidad,float paso = 1.0f,float cac = 1.0f);
+// Lector externo5 tras la logica/poses; el campo lo llama antes de dibujar.
+void ConsumirImpactosAP(uint8_t* base);
 // DS103: estado REAL del motor de animacion de un cuerpo del luchador x (0 = A, X+0x650; 1 = B, X+0xCD0), para la
 // traza del minijuego. `codigo` = A+0x520 (lo que pide la accion), `clip` = A+0x604 (almacen<<16 | animacion, lo
 // que resolvio el #CSK), `cuadro` = A+0x608 (reloj), `reloj` = A+0x63C (DS105: reloj del TERCER clip A+0x638, NO el

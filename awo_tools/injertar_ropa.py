@@ -391,8 +391,9 @@ def injertar_variantes_mano(amb, variantes):
     equivalente del donante (misma etiqueta; si no la tiene, la mano L00 del donante del mismo
     lado), con las UV ya remapeadas al atlas comun.
 
-    variantes: lista de dicts {awg, P, N, UV, tris, tex, ramp}. P/N/UV en el marco LOCAL del
-    hueso de la mano (el mismo que el AWG; medido: variante y cuerpo comparten marco)."""
+    variantes: lista de dicts {awg, P, N, UV, tris, tex, ramp}. P/N en el marco LOCAL del
+    hueso de la mano. DS192: si trae `marco` (world de group_bone), P/N llegan en espacio
+    del cuerpo y se convierten aqui al local de la mano; UV ya pertenece al atlas comun."""
     data = bytearray(amb)
     hechas = []
     conservadas = []
@@ -406,6 +407,14 @@ def injertar_variantes_mano(amb, variantes):
             continue
         P = np.asarray(v["P"], float)
         N = np.asarray(v["N"], float)
+        if v.get("marco") is not None:
+            # DS192 / DS166: la reserva L00 llega en espacio del cuerpo, pero
+            # la variante es rigida en el marco de group_bone de la MANO;
+            # nunca en el del antebrazo efectivo de SkinSlots.
+            inv = np.asarray(minv_affine(v["marco"]), float)
+            P = P @ inv[:3, :3].T + inv[:3, 3]
+            N = N @ inv[:3, :3].T
+            N /= np.maximum(np.linalg.norm(N, axis=1), 1e-9)[:, None]
         UV = np.asarray(v["UV"], float)
         tris = np.asarray(v["tris"], int)
         if not len(tris):

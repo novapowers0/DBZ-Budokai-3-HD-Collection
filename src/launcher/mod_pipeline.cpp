@@ -806,6 +806,18 @@ void ModPipeline::ImporterQuery(const std::vector<std::string>& args) {
   RunAsync(ImporterScript(), args);
 }
 
+void ModPipeline::NovaRecetas(const std::vector<std::string>& args) {
+  std::vector<std::string> a = args;
+  if (!a.empty() && a[0] == "construir") {
+    const std::string us = UsDir();
+    if (!us.empty()) {
+      a.push_back("--us");
+      a.push_back(us);
+    }
+  }
+  RunAsync(ProjectRoot() / "mod center hd" / "nova_recetas.py", a);
+}
+
 void ModPipeline::RunOfficialPorts(const std::vector<std::string>& install, const std::vector<std::string>& remove) {
   if (IsRunning()) return;
   auto valido = [](const std::string& id) {   // id de receta: letras, cifras y _ (nunca una opcion ni una ruta)
@@ -884,6 +896,37 @@ void ModPipeline::CreateTeam(const std::vector<int>& members, const std::string&
     args.push_back(us);
   }
   RunAsync(RosterScript(), args);
+}
+
+void ModPipeline::RunT3Music(bool install) {
+  if (IsRunning()) return;
+  ClearOutput();
+  const std::filesystem::path root = ModsOutDir();
+  if (install) {
+    std::vector<std::string> args = {"mod", "--mods", Utf8(root), "--activar", "--forzar"};
+    if (const std::string us = UsDir(); !us.empty()) {   // la musica de B3 del jugador (tamanos de las entradas)
+      args.push_back("--afs");
+      args.push_back(Utf8(std::filesystem::u8path(us) / "adx_usa.afs"));
+    }
+    RunAsync(ProjectRoot() / "mod center hd" / "t3_audio.py", args);
+    return;
+  }
+  std::error_code ec;
+  const auto respaldo = root.parent_path() / "mods_respaldo";
+  const std::string marca = std::to_string(
+      std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count());
+  for (const std::string dir : {"t3_musica", "t3_musica.disabled"}) {
+    if (!std::filesystem::is_directory(root / dir, ec)) continue;
+    std::filesystem::create_directories(respaldo, ec);
+    std::filesystem::rename(root / dir, respaldo / (dir + "_" + marca), ec);
+    AppendOutput(ec ? "ERROR: " + ec.message() + "\n" : "OK\n");
+  }
+  generation_.fetch_add(1);
+}
+
+bool ModPipeline::T3MusicInstalled() {
+  std::error_code ec;
+  return std::filesystem::is_directory(ModsOutDir() / "t3_musica", ec);
 }
 
 bool ModPipeline::RosterToolAvailable() {

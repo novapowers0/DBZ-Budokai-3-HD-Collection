@@ -1,6 +1,6 @@
 # copia: s5_c4 (sin instantanea). C4: cuerpo propio de piezas XV2: Raza > XV2 humano, Apariencia > piezas y color, Confirmar
 descripcion = "C4: Heroe > raza XV2 (HUM) > Apariencia: pelo, cara y torso de XV2 + color del torso > Confirmar; se monta el heroe propio"
-env = ["DBZ3_TEST_RINGOUT=1", "DBZ3_TEST_HEROE_RAZA=7"]
+env = ["DBZ3_TEST_RINGOUT=1", "DBZ3_TEST_HEROE_RAZA=7", "DBZ3_CAC_XV2=1"]
 pasos = [
   "esperar 2500",
   "tecla W 1200",
@@ -22,7 +22,7 @@ pasos = [
   "tecla S 400", "tecla D 900",
   "esperar 12000",
   "captura c4_xv2_3_piezas",
-  "tecla S 400", "tecla S 400", "tecla S 400", "tecla S 400", "tecla S 400", "tecla S 400",
+  "tecla S 400", "tecla S 400", "tecla S 400", "tecla S 400", "tecla S 400", "tecla S 400", "tecla S 400",   # 7: Hair..Torso -> Torso color (Gloves/Eyes se anyadieron el 25/10)
   "tecla Space 1500",
   "tecla D 400", "tecla D 400", "tecla D 400",
   "captura c4_xv2_4_color_torso",

@@ -89,6 +89,21 @@ def etapa_cartas():
         ok("cartas: ancho de carta >= 584 (mide sus tiras de texto)", im.width >= 584, "ancho=%d" % im.width)
     except Exception as e:  # noqa: BLE001
         ok("cartas: abre cap_6.png", False, str(e))
+    # d: capsula de un mod (ID >= 596): roster.toml con el registro de la #6 como id 700 -> cap_700.png
+    try:
+        sys.path[:0] = [os.path.join(RAIZ, "mod center hd"), AQUI]
+        import roster_build as rb
+        import capsulas as cp
+        w = tempfile.mkdtemp(prefix="e2e_skc_", dir="D:/tmp" if os.path.isdir("D:/tmp") else None)
+        rec = cp.skc_records(rb.Afs(os.path.join(rb.us_dir(None), "data_usi.afs"), w).entry(4))[6]
+        os.makedirs(os.path.join(juego, "mods", "_roster"), exist_ok=True)
+        with open(os.path.join(juego, "mods", "_roster", "roster.toml"), "w") as f:
+            f.write('[[capsula]]\nid = 700\nregistro = "%s"\n' % rec.hex())
+        subprocess.run([sys.executable, "-I", os.path.join(AQUI, "tecnicas_cartas.py"), "--juego", juego, "--solo", "cap_700"],
+                       capture_output=True, text=True, errors="replace")
+        ok("cartas: capsula de mod (id 700) tiene carta", os.path.exists(os.path.join(d, "cap_700.png")))
+    except Exception as e:  # noqa: BLE001
+        ok("cartas: capsula de mod", False, str(e))
     # texto cortado: ningun pixel de texto (oscuro en el cuerpo, claro en la cabecera) pegado al borde derecho de la carta
     try:
         from PIL import Image
@@ -140,14 +155,28 @@ def reiniciar_progreso(copia):
             shutil.move(p, os.path.join(dst, f))
 
 
-def sembrar_cac(copia):
+def sembrar_cac(copia, extra=()):
     """Un cac.toml minimo (1 heroe) para que el juego lo LEA y aplique los DBZ3_TEST_HEROE_* (con perfil nuevo no se aplican)."""
     ud = os.path.join(BASE, copia, "user_data", "dbz3")
     with open(os.path.join(ud, "cac.toml"), "w", encoding="utf8") as f:
-        f.write("\n".join(["version = 2", "activo = 0", "", "[[heroe]]", 'id = "h000001"', 'nombre = "Semilla"', "progreso = 2", ""]))
+        f.write("\n".join(["version = 2", "activo = 0", "", "[[heroe]]", 'id = "h000001"', 'nombre = "Semilla"', "progreso = 2", *extra, ""]))
+
+
+def esperar_montaje(copia, seg=420):
+    """El juego lanza vista_heroe/heroe_sagas al confirmar y siguen al cerrarlo: la prueba siguiente leia sus ficheros a medio escribir."""
+    fin = time.time() + seg
+    cmd = ["powershell", "-NoProfile", "-Command",
+           "(Get-CimInstance Win32_Process -Filter \"name like 'python%%'\" | Where-Object { $_.CommandLine -match 'vista_heroe|heroe_sagas_a_du|nombre_levelup|campana.py' -and $_.CommandLine -match '%s' }).Count" % copia]
+    while time.time() < fin:
+        r = subprocess.run(cmd, capture_output=True, text=True, errors="replace")
+        if r.stdout.strip() in ("", "0"):
+            return
+        time.sleep(5)
+    print("  aviso: montaje de %s sin acabar tras %d s" % (copia, seg))
 
 
 def correr_escenario(copia, toml):
+    esperar_montaje(copia)
     r = subprocess.run([sys.executable, os.path.join(RAIZ, "tools", "pruebas.py"), "correr", copia, toml],
                        capture_output=True, text=True, errors="replace", cwd=RAIZ)
     out = (r.stdout or "") + (r.stderr or "")
@@ -163,6 +192,8 @@ def etapa_juego(copia, cual):
     if not os.path.isdir(os.path.join(BASE, copia)):
         ok("juego: existe la copia %s (python tools/pruebas.py prep %s --desde D:\\DBZ3HD\\smoke_a)" % (copia, copia), False)
         return
+    # `prep` no copia res/heroe (desbloqueos.toml, sagas.toml): sin ello la copia no tiene desbloqueos de ki ni sagas
+    shutil.copytree(os.path.join(RAIZ, "res", "heroe"), os.path.join(BASE, copia, "res", "heroe"), dirs_exist_ok=True)
     if cual in ("fichas", "todo"):
         reiniciar_progreso(copia)
         paso, out, carpeta, log = correr_escenario(copia, os.path.join(AQUI, "e2e", "heroe_fichas.toml"))
@@ -179,18 +210,46 @@ def etapa_juego(copia, cual):
            and len(set(ids)) == 3, "heroes=%d ids=%s" % (txt.count("[[heroe]]"), ids))
     ud = os.path.join(BASE, copia, "user_data", "dbz3")
     leer = lambda: open(os.path.join(ud, "cac.toml"), encoding="utf8").read() if os.path.exists(os.path.join(ud, "cac.toml")) else ""
+    if cual in ("v1", "todo"):   # C3: partida v1 REAL (rpg.toml que escribio el juego, sin cac.toml) -> ficha 1 en cac.toml v2
+        reiniciar_progreso(copia)
+        origen = os.path.join(BASE, "luna13_heroe", "user_data", "dbz3", "rpg.toml")
+        if not os.path.exists(origen):
+            print("  (sin rpg.toml real en luna13_heroe: se salta v1)")
+        else:
+            shutil.copy2(origen, os.path.join(ud, "rpg.toml"))   # copia de prueba, nunca la partida del usuario
+            paso, out, carpeta, log = correr_escenario(copia, os.path.join(AQUI, "e2e", "heroe_apariencia.toml"))
+            ok("v1: el escenario termina", paso, out[-300:])
+            ok("v1: el heroe v1 pasa a la ficha 1", re.search(r"pasan a la ficha 1", log) is not None)
+            t = leer()
+            ok("v1: cac.toml v2 con progreso = 2", t.startswith("version = 2") and re.search(r"^progreso = 2$", t, re.M) is not None)
     if cual in ("apariencia", "todo"):
         reiniciar_progreso(copia)
         paso, out, carpeta, log = correr_escenario(copia, os.path.join(AQUI, "e2e", "heroe_apariencia.toml"))
         ok("apariencia: el escenario termina", paso, out[-300:])
         ok("apariencia: Create confirma un traje nuevo", re.search(r"Create: confirmar \(traje 2", log) is not None)
         ok("apariencia: cac.toml guarda traje = 1", re.search(r"^traje = 1$", leer(), re.M) is not None)
+    if cual in ("nombre", "todo"):
+        reiniciar_progreso(copia)
+        sembrar_cac(copia)
+        paso, out, carpeta, log = correr_escenario(copia, os.path.join(AQUI, "e2e", "heroe_nombre.toml"))
+        ok("nombre: la rejilla escribe y acepta", paso and "nombre = BC" in log, out[-200:])
+        ok("nombre: cac.toml guarda el nombre con acento", re.search(r'^nombre = "BCÑ"$', open(os.path.join(BASE, copia, "user_data", "dbz3", "cac.toml"), encoding="utf8").read(), re.M) is not None)
     if cual in ("deseo", "todo"):
         reiniciar_progreso(copia)
         sembrar_cac(copia)
         paso, out, carpeta, log = correr_escenario(copia, os.path.join(AQUI, "e2e", "heroe_deseo_cerrado.toml"))
         ok("deseo: sin deseo la raza queda cerrada", paso and "raza/cuerpo cerrados" in log, out[-200:])
         ok("deseo: cac.toml sigue con raza = 0", re.search(r"^raza = 0$", leer(), re.M) is not None)
+        # el candado tal cual lo vive el jugador: ninguna variable de prueba, solo la ficha guardada con combates ganados
+        sembrar_cac(copia, ["exp = 3", "saga = 1", "raza = 0"])
+        paso, out, carpeta, log = correr_escenario(copia, os.path.join(AQUI, "e2e", "heroe_candado_real.toml"))
+        ok("candado real: sin variables de prueba y con aventura empezada, raza cerrada", paso and "raza/cuerpo cerrados" in log, out[-200:])
+        ok("candado real: cac.toml sigue con raza = 0", re.search(r"^raza = 0$", leer(), re.M) is not None)
+        reiniciar_progreso(copia)
+        sembrar_cac(copia, ["exp = 3", "saga = 8", "raza = 0", "deseos = 1"])
+        paso, out, carpeta, log = correr_escenario(copia, os.path.join(AQUI, "e2e", "heroe_candado_real_deseo.toml"))
+        ok("candado real: con un deseo en la ficha se abre sin variables", paso and "deseo concedido" in log, out[-200:])
+        reiniciar_progreso(copia)
         reiniciar_progreso(copia)
         sembrar_cac(copia)
         antes = set(glob.glob(os.path.join(ud, "cac.toml.deseo-*.bak")))
@@ -246,9 +305,15 @@ def etapa_juego(copia, cual):
         ok("ki: cac.toml guarda ki_col", re.search(r'^ki_col = "#F0C020"$', leer(), re.M) is not None)
         pt = os.path.join(mods, "heroe_propio", "personaje.toml")
         ok("ki: personaje.toml del heroe propio lleva ki_color", os.path.exists(pt) and 'ki_color = "#F0C020"' in open(pt, encoding="utf8").read())
-    if cual in ("xv2", "todo"):   # C4: raza XV2 + piezas + color; se monta el heroe propio con xv2=
+    if cual in ("xv2", "todo"):
+        shutil.copytree(os.path.join(RAIZ, "mod center hd", "xv2"), os.path.join(BASE, copia, "mod center hd", "xv2"), dirs_exist_ok=True)   # prep no la copia
+        shutil.copy2(os.path.join(RAIZ, "mod center hd", "cac", "vista_heroe.py"), os.path.join(BASE, copia, "mod center hd", "cac", "vista_heroe.py"))   # C4: raza XV2 + piezas + color; se monta el heroe propio con xv2=
         reiniciar_progreso(copia)
         sembrar_cac(copia)
+        ft0 = os.path.join(mods, "heroe_propio", "ficha.txt")
+        if os.path.exists(ft0):   # no se borra: a respaldo (si no, un ficha.txt viejo daria un falso PASS)
+            os.makedirs(os.path.join(ud, "_c2_respaldo"), exist_ok=True)
+            shutil.move(ft0, os.path.join(ud, "_c2_respaldo", "ficha_%s.txt" % time.strftime("%H%M%S")))
         paso, out, carpeta, log = correr_escenario(copia, os.path.join(AQUI, "e2e", "heroe_xv2.toml"))
         ok("xv2: el escenario termina", paso, out[-300:])
         ok("xv2: se eligen pelo, cara y torso de XV2", all(re.search(q, log) for q in (r"XV2: Hair = modelo", r"XV2: Face = modelo", r"XV2: Torso = modelo")))
@@ -280,7 +345,7 @@ def main():
             m = re.search(r"heroe_du_e2e: (\d+)/(\d+) PASS", r.stdout)
             print(r.stdout[-1800:])
             ok("du: heroe_du_e2e.py (%s)" % (m.group(0) if m else "sin resultado"), bool(m) and m.group(1) == m.group(2), r.stderr[-300:])
-        if a.solo in ("fichas", "tecnicas", "apariencia", "deseo", "otro", "moveset", "ki", "xv2", "todo"):
+        if a.solo in ("fichas", "v1", "tecnicas", "apariencia", "deseo", "nombre", "otro", "moveset", "ki", "xv2", "todo"):
             etapa_juego(a.copia, a.solo)
     fallos = [r for r in RES if not r[1]]
     print("heroe_e2e: %d pruebas, %d fallos" % (len(RES), len(fallos)))

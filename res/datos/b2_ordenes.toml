@@ -1,0 +1,521 @@
+# GENERADO por tools\extraer_datos.py b2_ordenes -- no editar a mano (en modo pruebas se recarga con F5).
+
+fuente = "ELF SLES_518.39 (B2 EU), tabla 0x379ec0 en RAM de savestate; codigo: ghidra\\salida\\b2.c"
+entradas = 86
+
+[orden.1]
+funcion = "0x00295E80"
+lineas = 0
+llama = []
+sonido = false
+
+[orden.2]
+funcion = "0x00295E20"
+lineas = 0
+llama = []
+sonido = false
+
+[orden.3]
+funcion = "0x00295DD0"
+lineas = 0
+llama = []
+sonido = false
+
+[orden.4]
+funcion = "0x00295DC0"
+lineas = 0
+llama = []
+sonido = false
+
+[orden.5]
+funcion = "0x00295DB0"
+lineas = 0
+llama = []
+sonido = false
+
+[orden.6]
+funcion = "0x00295DA0"
+lineas = 0
+llama = []
+sonido = false
+
+[orden.7]
+funcion = "0x00295D50"
+lineas = 14
+llama = ["0x001485F0"]
+sonido = false
+
+[orden.8]
+funcion = "0x00295C10"
+lineas = 46
+llama = ["0x002A42B0", "0x002A43E0", "0x001485F0", "0x00245DD0", "0x002835F0", "0x002A44C0", "0x002A4410"]
+sonido = false
+
+[orden.9]
+funcion = "0x00295BD0"
+lineas = 16
+llama = ["0x00273050", "0x001485F0"]
+sonido = false
+
+[orden.10]
+funcion = "0x00295B90"
+lineas = 16
+llama = ["0x00273000", "0x001485F0"]
+sonido = false
+
+[orden.11]
+funcion = "0x00295B50"
+lineas = 16
+llama = ["0x00276EC0", "0x001485F0"]
+sonido = false
+
+[orden.12]
+funcion = "0x00295B10"
+lineas = 16
+llama = ["0x00276E80", "0x001485F0"]
+sonido = false
+
+[orden.13]
+funcion = "0x00295AA0"
+lineas = 20
+llama = ["0x00273100", "0x001485F0"]
+sonido = false
+
+[orden.14]
+funcion = "0x00295A30"
+lineas = 20
+llama = ["0x002730B0", "0x001485F0"]
+sonido = false
+
+[orden.15]
+funcion = "0x002959C0"
+lineas = 20
+llama = ["0x00276FF0", "0x001485F0"]
+sonido = false
+
+[orden.16]
+funcion = "0x00295950"
+lineas = 20
+llama = ["0x00276F10", "0x001485F0"]
+sonido = false
+
+[orden.17]
+funcion = "0x00295860"
+lineas = 30
+llama = ["0x0023B900", "0x00245C00", "0x001485F0"]
+sonido = false
+
+[orden.18]
+funcion = "0x00295780"
+lineas = 25
+llama = ["0x00273AD0", "0x0023B900", "0x00245C00", "0x001485F0"]
+sonido = false
+
+[orden.19]
+funcion = "0x002956A0"
+lineas = 25
+llama = ["0x0027A790", "0x0023B900", "0x00245C00", "0x001485F0"]
+sonido = false
+
+[orden.20]
+funcion = "0x00295590"
+lineas = 35
+llama = ["0x0023B900", "0x00245C00", "0x001485F0"]
+sonido = false
+
+[orden.21]
+funcion = "0x002954A0"
+lineas = 30
+llama = ["0x00273AD0", "0x0023B900", "0x00245C00", "0x001485F0"]
+sonido = false
+
+[orden.22]
+funcion = "0x002953B0"
+lineas = 30
+llama = ["0x0027A790", "0x0023B900", "0x00245C00", "0x001485F0"]
+sonido = false
+
+[orden.23]
+funcion = "0x002952A0"
+lineas = 36
+llama = ["0x0023B900", "0x00245C00", "0x001485F0"]
+sonido = false
+
+[orden.24]
+funcion = "0x002951B0"
+lineas = 31
+llama = ["0x00273AD0", "0x0023B900", "0x00245C00", "0x001485F0"]
+sonido = false
+
+[orden.25]
+funcion = "0x002950C0"
+lineas = 31
+llama = ["0x0027A790", "0x0023B900", "0x00245C00", "0x001485F0"]
+sonido = false
+
+[orden.26]
+funcion = "0x00294FC0"
+lineas = 31
+llama = ["0x0023B900", "0x00245C00", "0x001485F0"]
+sonido = false
+
+[orden.27]
+funcion = "0x00294EE0"
+lineas = 26
+llama = ["0x00273AD0", "0x0023B900", "0x00245C00", "0x001485F0"]
+sonido = false
+
+[orden.28]
+funcion = "0x00294E00"
+lineas = 26
+llama = ["0x0027A790", "0x0023B900", "0x00245C00", "0x001485F0"]
+sonido = false
+
+[orden.29]
+funcion = "0x00294CE0"
+lineas = 37
+llama = ["0x0023B900", "0x00245C00", "0x001485F0"]
+sonido = false
+
+[orden.30]
+funcion = "0x00294BE0"
+lineas = 32
+llama = ["0x00273AD0", "0x0023B900", "0x00245C00", "0x001485F0"]
+sonido = false
+
+[orden.31]
+funcion = "0x00294AE0"
+lineas = 32
+llama = ["0x0027A790", "0x0023B900", "0x00245C00", "0x001485F0"]
+sonido = false
+
+[orden.32]
+funcion = "0x00294AB0"
+lineas = 11
+llama = ["0x0027A6E0", "0x001485F0"]
+sonido = false
+
+[orden.33]
+funcion = "0x00294A80"
+lineas = 11
+llama = ["0x0027A4B0", "0x001485F0"]
+sonido = false
+
+[orden.34]
+funcion = "0x00294A40"
+lineas = 11
+llama = ["0x0027A290", "0x001485F0"]
+sonido = false
+
+[orden.35]
+funcion = "0x00294A00"
+lineas = 11
+llama = ["0x00276E10", "0x001485F0"]
+sonido = false
+
+[orden.36]
+funcion = "0x002949C0"
+lineas = 11
+llama = ["0x00276DE0", "0x001485F0"]
+sonido = false
+
+[orden.37]
+funcion = "0x00294970"
+lineas = 17
+llama = ["0x001485F0"]
+sonido = false
+
+[orden.38]
+funcion = "0x00294840"
+lineas = 47
+llama = ["0x0026FD80", "0x002460D0", "0x00270140", "0x0012BC60", "0x00270130", "0x001485F0", "0x00246190"]
+sonido = false
+
+[orden.39]
+funcion = "0x002947B0"
+lineas = 0
+llama = []
+sonido = false
+
+[orden.40]
+funcion = "0x002947A0"
+lineas = 0
+llama = []
+sonido = false
+
+[orden.41]
+funcion = "0x00294660"
+lineas = 35
+llama = ["0x00270920", "0x00270950", "0x00232E50", "0x00232E10", "0x0024A120", "0x00246190", "0x002A7F50", "0x00232E40", "0x00238320", "0x00270C40", "0x00270A50"]
+sonido = false
+
+[orden.42]
+funcion = "0x00294510"
+lineas = 35
+llama = ["0x00270920", "0x00270950", "0x00232E50", "0x00232E10", "0x0024A120", "0x00246190", "0x00232E40", "0x002A7F50", "0x00238320", "0x00123C18", "0x00270C40", "0x00270A50"]
+sonido = false
+
+[orden.43]
+funcion = "0x002944A0"
+lineas = 0
+llama = []
+sonido = false
+
+[orden.44]
+funcion = "0x00294450"
+lineas = 0
+llama = []
+sonido = false
+
+[orden.45]
+funcion = "0x00294360"
+lineas = 30
+llama = ["0x0023B640", "0x00245C00", "0x001485F0"]
+sonido = false
+
+[orden.46]
+funcion = "0x00294250"
+lineas = 35
+llama = ["0x0023B640", "0x00245C00", "0x001485F0"]
+sonido = false
+
+[orden.47]
+funcion = "0x00294140"
+lineas = 36
+llama = ["0x0023B640", "0x00245C00", "0x001485F0"]
+sonido = false
+
+[orden.48]
+funcion = "0x00294040"
+lineas = 31
+llama = ["0x0023B640", "0x00245C00", "0x001485F0"]
+sonido = false
+
+[orden.49]
+funcion = "0x00293F20"
+lineas = 37
+llama = ["0x0023B640", "0x00245C00", "0x001485F0"]
+sonido = false
+
+[orden.50]
+funcion = "0x00293EE0"
+lineas = 15
+llama = ["0x00276D80", "0x001485F0"]
+sonido = false
+
+[orden.51]
+funcion = "0x00293EA0"
+lineas = 11
+llama = ["0x00276D60", "0x001485F0"]
+sonido = false
+
+[orden.52]
+funcion = "0x00293E60"
+lineas = 15
+llama = ["0x00276D30", "0x001485F0"]
+sonido = false
+
+[orden.53]
+funcion = "0x00293E20"
+lineas = 11
+llama = ["0x00276D10", "0x001485F0"]
+sonido = false
+
+[orden.54]
+funcion = "0x00293DE0"
+lineas = 11
+llama = ["0x00276CF0", "0x001485F0"]
+sonido = false
+
+[orden.55]
+funcion = "0x00293DA0"
+lineas = 11
+llama = ["0x0027A370", "0x001485F0"]
+sonido = false
+
+[orden.56]
+funcion = "0x00293D20"
+lineas = 11
+llama = ["0x00276CD0", "0x001485F0"]
+sonido = false
+
+[orden.57]
+funcion = "0x00293D60"
+lineas = 11
+llama = ["0x0027A3F0", "0x001485F0"]
+sonido = false
+
+[orden.58]
+funcion = "0x00293CE0"
+lineas = 11
+llama = ["0x00277700", "0x001485F0"]
+sonido = false
+
+[orden.59]
+funcion = "0x00293CA0"
+lineas = 11
+llama = ["0x00277780", "0x001485F0"]
+sonido = false
+
+[orden.60]
+funcion = "0x00293C60"
+lineas = 11
+llama = ["0x00277740", "0x001485F0"]
+sonido = false
+
+[orden.61]
+funcion = "0x00293C20"
+lineas = 11
+llama = ["0x00277630", "0x001485F0"]
+sonido = false
+
+[orden.62]
+funcion = "0x00293BE0"
+lineas = 11
+llama = ["0x002775F0", "0x001485F0"]
+sonido = false
+
+[orden.63]
+funcion = "0x00293B60"
+lineas = 25
+llama = ["0x00277670", "0x00277540", "0x001485F0"]
+sonido = false
+
+[orden.64]
+funcion = "0x00293AD0"
+lineas = 26
+llama = ["0x00277670", "0x00277540", "0x001485F0"]
+sonido = false
+
+[orden.65]
+funcion = "0x00293A50"
+lineas = 25
+llama = ["0x00277670", "0x002774F0", "0x001485F0"]
+sonido = false
+
+[orden.66]
+funcion = "0x002939C0"
+lineas = 26
+llama = ["0x00277670", "0x002774F0", "0x001485F0"]
+sonido = false
+
+[orden.67]
+funcion = "0x00293980"
+lineas = 15
+llama = ["0x002776A0", "0x001485F0"]
+sonido = false
+
+[orden.68]
+funcion = "0x00293940"
+lineas = 11
+llama = ["0x002775D0", "0x001485F0"]
+sonido = false
+
+[orden.69]
+funcion = "0x002938A0"
+lineas = 27
+llama = ["0x002A3E30", "0x002A3DE0", "0x002A3DD0", "0x002A3C70", "0x001485F0"]
+sonido = false
+
+[orden.70]
+funcion = "0x00293740"
+lineas = 50
+llama = ["0x002A42B0", "0x002A43E0", "0x001485F0", "0x00278DE0", "0x00245DD0", "0x002835F0", "0x002A44C0", "0x002A4410"]
+sonido = false
+
+[orden.71]
+funcion = "0x00293700"
+lineas = 12
+llama = ["0x00246190", "0x001485F0"]
+sonido = false
+
+[orden.72]
+funcion = "0x002936C0"
+lineas = 11
+llama = ["0x00276B30", "0x001485F0"]
+sonido = false
+
+[orden.73]
+funcion = "0x00293680"
+lineas = 11
+llama = ["0x00276AD0", "0x001485F0"]
+sonido = false
+
+[orden.74]
+funcion = "0x00293630"
+lineas = 12
+llama = ["0x00147420", "0x00147260", "0x001485F0"]
+sonido = true
+
+[orden.75]
+funcion = "0x002935E0"
+lineas = 12
+llama = ["0x00147420", "0x00147260", "0x001485F0"]
+sonido = true
+
+[orden.76]
+funcion = "0x00293590"
+lineas = 12
+llama = ["0x00147420", "0x00147260", "0x001485F0"]
+sonido = true
+
+[orden.77]
+funcion = "0x002934F0"
+lineas = 23
+llama = ["0x00147420", "0x00147260", "0x001485F0"]
+sonido = true
+
+[orden.78]
+funcion = "0x00293450"
+lineas = 23
+llama = ["0x00147420", "0x00147260", "0x001485F0"]
+sonido = true
+
+[orden.79]
+funcion = "0x002933B0"
+lineas = 23
+llama = ["0x00147420", "0x00147260", "0x001485F0"]
+sonido = true
+
+[orden.80]
+funcion = "0x00293370"
+lineas = 11
+llama = ["0x0027A140", "0x001485F0"]
+sonido = false
+
+[orden.81]
+funcion = "0x00293330"
+lineas = 11
+llama = ["0x0027A100", "0x001485F0"]
+sonido = false
+
+[orden.82]
+funcion = "0x00293140"
+lineas = 61
+llama = ["0x0013BE30", "0x0012A680", "0x0012D280", "0x00140810", "0x0013E460", "0x0013E900", "0x00148D60", "0x001485F0", "0x0012D100"]
+sonido = false
+
+[orden.83]
+funcion = "0x00292EA0"
+lineas = 76
+llama = ["0x0027A790", "0x00147420", "0x00147260", "0x001485F0", "0x00245C00", "0x0023BAC0", "0x001484A0", "0x0027BD00"]
+sonido = true
+
+[orden.84]
+funcion = "0x00292C00"
+lineas = 76
+llama = ["0x0027A790", "0x00147420", "0x00147260", "0x001485F0", "0x00245C00", "0x0023BAC0", "0x001484A0", "0x0027BD00"]
+sonido = true
+
+[orden.85]
+funcion = "0x00292BD0"
+lineas = 11
+llama = ["0x00277400", "0x001485F0"]
+sonido = false
+
+[orden.86]
+funcion = "0x00292BA0"
+lineas = 11
+llama = ["0x00277270", "0x001485F0"]
+sonido = false
+

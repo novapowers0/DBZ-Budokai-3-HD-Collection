@@ -171,12 +171,23 @@ struct Camara {
   float fov = 0.785f;
   ImVec2 c, h;   // centro y media pantalla (px)
   bool ok = false;
-  bool P(const V3& p, ImVec2& o, float& k) const {
+  float periodo_x = 0, periodo_z = 0;   // IW296370: imagen mas proxima a la camara (cero en otros modos)
+  float Foco() const { return h.y / std::tan(fov * 0.5f); }   // px por unidad a distancia 1 (se calcula una vez por modelo: tan es caro)
+  bool P(const V3& p, ImVec2& o, float& k) const { return P(p, o, k, Foco()); }
+  bool P(const V3& punto, ImVec2& o, float& k, float f) const {   // f = Foco()
+    V3 p=punto;
+    if(periodo_x>0) {
+      const float ojo=-(m[12]*m[0]+m[13]*m[1]+m[14]*m[2]);
+      p.x-=std::floor((p.x-ojo+periodo_x*.5f)/periodo_x)*periodo_x;
+    }
+    if(periodo_z>0) {
+      const float ojo=-(m[12]*m[8]+m[13]*m[9]+m[14]*m[10]);
+      p.z-=std::floor((p.z-ojo+periodo_z*.5f)/periodo_z)*periodo_z;
+    }
     const float xv = m[0] * p.x + m[4] * p.y + m[8] * p.z + m[12];
     const float yv = m[1] * p.x + m[5] * p.y + m[9] * p.z + m[13];
     const float zv = m[2] * p.x + m[6] * p.y + m[10] * p.z + m[14];
     if (!(zv <= -1.0f) || !std::isfinite(xv) || !std::isfinite(yv) || !std::isfinite(zv)) return false;   // y NaN fuera
-    const float f = h.y / std::tan(fov * 0.5f);
     k = f / -zv;   // px por unidad a esa distancia
     o = ImVec2(c.x + xv * k, c.y - yv * k);
     return true;
@@ -186,9 +197,10 @@ struct Camara {
   // Medido con la sonda DBZ3_ZBUF_DEBUG contra las esferas de Goku (d 25-31: z de la escena 0.964-0.968, d ~ 1 / (1 - z))
   // y el cielo (0.9997). za = 0 (otra camara): -1, sin prueba de profundidad.
   float za = 0, zb = 0;   // cerca, lejos
-  float Prof(float k) const {   // k de P()
+  float Prof(float k) const { return Prof(k, Foco()); }   // k de P()
+  float Prof(float k, float f) const {   // f = Foco()
     if (za <= 0) return -1.0f;
-    const float d = h.y / std::tan(fov * 0.5f) / k;   // distancia en vista
+    const float d = f / k;   // distancia en vista
     return std::clamp(zb / (zb - za) * (1.0f - za / d), 0.0f, 1.0f);
   }
 };
@@ -209,12 +221,14 @@ int EstadoProfundidad();
 // Triangulos de un cuadro: se ponen todos los modelos, se tapa con los luchadores y se pintan de lejos a cerca.
 class Escena {
  public:
-  void Empezar() { tris_.clear(), pintados_ = ocultos_ = descartados_ = 0, tapable_ = true; }
+  void Empezar() { tris_.clear(), pintados_ = ocultos_ = 0, tandas_ = 0, tapable_ = true; }
   size_t Cuantos() const { return tris_.size(); }   // triangulos puestos en este cuadro
   // DS179: recuento del ultimo Pintar (para saber si una figura que deberia verse se ha tirado).
   size_t Pintados() const { return pintados_; }        // llegan a la lista de dibujo
   size_t Ocultos() const { return ocultos_; }          // tapados por una esfera del luchador (Tapar)
-  size_t Descartados() const { return descartados_; }  // fuera por el tope de vertices de la lista (65535)
+  size_t Descartados() const { return 0; }             // ya no se tira nada: pasados 65535 vertices, el cuadro va en tandas
+  size_t Vertices() const { return vertices_; }       // vertices del ultimo Pintar (los de la lista dada + los puestos)
+  int Tandas() const { return tandas_; }               // listas de dibujo (ventanas de ImGui) del ultimo Pintar; 1 = cabe en la dada
   // malla en `pos`, girada `giro` (radianes) en vertical y escalada `esc`
   void Poner(const Camara& cam, const Malla& malla, const std::vector<Tex>& tx, const V3& pos, float giro, float esc);
   // Lo mismo con toon (opcional, por modelo): 3 tonos por vertice con la luz de la camara (la de B3 en vista,
@@ -229,6 +243,10 @@ class Escena {
     // (base - rampa[banda][columna del tramo]). Si la textura del triangulo trae mas de un tramo, el triangulo se corta
     // por las lineas de cambio (borde duro, como el shader de B3) y cada trozo va con la suya, sin los 3 tonos grises
     const std::vector<std::vector<std::pair<float, int>>>* rampa = nullptr;
+    // Dragon Tactics: varias figuras en una Escena. El orden de pintor se hace por figura (por la distancia media de la pieza) y, dentro
+    // de ella, por triangulo: sin esto los triangulos de figuras en la misma fila se intercalan y cada cambio de textura abre una orden
+    // de dibujo (Pintar de 12 figuras: 16 ms). Mantiene el orden interior de la pieza (k' = kc + (k - kc) * 1e-3).
+    bool agrupar = false;
   };
   void Poner(const Camara& cam, const Malla& malla, const std::vector<Tex>& tx, const V3& pos, float giro, float esc,
              const Toon& toon);
@@ -255,9 +273,7 @@ class Escena {
     float k = 0;   // px por unidad: mas pequeno = mas lejos
     bool prof = false;   // R15: con prueba de profundidad (vertices empaquetados, textura de Tex::prof)
     bool tapable = true; // DS179: si lo puede tapar el luchador (Tapar)
-    bool prioritario = false; // DS179: no se tira por el tope de la lista (lo que va con Tapable(false): la aureola)
     float z[3] = {-1, -1, -1};   // R15: profundidad del juego de cada vertice (Camara::Prof)
-    bool borde = false;          // del borde toon (lo primero que se deja si no caben los vertices)
   };
   struct Tapa {
     ImVec2 c;
@@ -266,8 +282,11 @@ class Escena {
     float r3 = 0; // ... y su radio (sin el 1,3 que se usa solo para el circulo en pantalla)
   };
   std::vector<Tri> tris_;
+  std::vector<uint32_t> orden_;   // indices de tris_ de lejos a cerca (orden de pintor), reusado cada cuadro
   std::vector<Tapa> tapas_;
-  size_t pintados_ = 0, ocultos_ = 0, descartados_ = 0;
+  size_t pintados_ = 0, ocultos_ = 0;
+  size_t vertices_ = 0;
+  int tandas_ = 0;
   bool tapable_ = true;
 };
 

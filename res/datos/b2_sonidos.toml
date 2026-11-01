@@ -1,0 +1,41 @@
+# GENERADO por tools\extraer_datos.py b2_sonidos -- no editar a mano (en modo pruebas se recarga con F5).
+
+fuente = "b2.c: ordenes 74-79 llaman FUN_00147260(tipo, 0, id, 0); el id viene del guion (arg +0x34)"
+# repite = true: la orden vuelve a sonar cada +0x38 cuadros (contador en +0x30)
+
+[sonido.74]
+funcion = "0x00293630"
+tipo = 0
+id_en = "arg+0x34"
+repite = false
+
+[sonido.75]
+funcion = "0x002935E0"
+tipo = 3
+id_en = "arg+0x34"
+repite = false
+
+[sonido.76]
+funcion = "0x00293590"
+tipo = 4
+id_en = "arg+0x34"
+repite = false
+
+[sonido.77]
+funcion = "0x002934F0"
+tipo = 0
+id_en = "arg+0x34"
+repite = true
+
+[sonido.78]
+funcion = "0x00293450"
+tipo = 3
+id_en = "arg+0x34"
+repite = true
+
+[sonido.79]
+funcion = "0x002933B0"
+tipo = 4
+id_en = "arg+0x34"
+repite = true
+

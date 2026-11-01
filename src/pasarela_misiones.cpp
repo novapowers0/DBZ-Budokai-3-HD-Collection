@@ -17,6 +17,7 @@
 // Sin ganchos propios. Docs: docs/16_pasarela_modos/04_misiones_y_tablero.md.
 #include "reloj_prueba.h"
 #include "pasarela.h"
+#include "iw_nave_hud_b2.h"
 #include "pasarela_iw.h"
 #include "iw_minijuegos.h"
 #include "iw_mini_vuelo.h"
@@ -48,6 +49,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <random>
 #include <string>
 #include <thread>
 #include <vector>
@@ -89,6 +91,10 @@ void RegistrarEleccion(void (*aviso)(int jugador, int id));  // tagteam_panel.h 
 }
 #include "ingame/menu_pilot.h"
 bool dbz3_select_live();   // select_ext.cpp: la rueda del select en pantalla
+namespace dbz3::ingame {
+uint32_t MainMenuObj();
+void SetMainMenuRow(int row);
+}
 namespace dbz3::pasarela::b2 {   // Dragon World de B2 (pasarela_b2.cpp; todo con g_mu)
 bool Disponible();
 void Entrar();
@@ -108,6 +114,7 @@ void Resultado(int ganador, int vida, int segundos, int golpes);
 // (EU 0x264F60 / 0x260630) lee los dos mandos por separado y solo deja 2P si ambos estan conectados
 // (0x3B43A0 / 0x3B4458 == 3). Como b2::Mantenidos: la llama pasarela_misiones.cpp antes de Dibujar.
 void Mandos(uint16_t p1, uint16_t p2, bool dos_mandos);
+void Mantenidos(uint16_t m);
 bool DosJugadores();   // la partida de la nave va en 2P (humano contra humano)
 // Prueba I encadenada (frente 08): el combate siguiente se pide en el fin del actual (gancho de abajo) y CombateNave
 // lo arranca sin volver a pedirlo.
@@ -116,6 +123,7 @@ void Seguido(int vida);
 bool Encadenado();
 bool Seguir();
 int ListaCapsulas();   // 0 Normal, 1 Custom (menu de la rueda)
+int DibujarPrincipalB2(ImDrawList* dl, const dbz3::ingame::style::Area& a, float t, uint16_t pressed, int& cursor);
 }  // namespace dbz3::pasarela::nave
 
 namespace dbz3::pasarela {
@@ -465,8 +473,10 @@ Paso PasoIW(const MisionTablaIW& t, std::string& regla) {
 // --- Tablero: Dragon World de B2 (pasarela_b2.cpp lee la ISO, lo dibuja y aplica sus reglas) ---
 
 // ---- Estado (g_mu) ----
-enum Fase : int { kNada = 0, kMenu, kPantalla, kLuchando, kPerdido, kTableroF, kMapaIW, kNaveF };
-const char* const kFaseNombre[] = {"nada", "menu", "pantalla", "combate", "perdido", "tablero", "mapa de IW", "nave"};
+enum Fase : int { kNada = 0, kMenu, kPantalla, kLuchando, kPerdido, kTableroF, kMapaIW, kNaveF, kMenuB2 };
+const char* const kFaseNombre[] = {"nada", "menu", "pantalla", "combate", "perdido", "tablero", "mapa de IW", "nave", "menu principal B2"};
+int g_cursor_b2 = 6;   // el original conserva la fila de la Nave al volver (FUN_0023F980)
+bool g_desde_menu_b2 = false;
 
 std::mutex g_mu;
 int g_fase = kNada, g_modo = 0, g_cursor = 0, g_intentos = 0;
@@ -730,6 +740,8 @@ void CombateTablero(const int c[14]) {   // con g_mu
   // el resto, c[9]/c[11] es el indice crudo de B2 de la orden 52 y no es un traje de B3
   if (x.jugador == 35 && c[9] > 0) x.reglas.traje_jugador = c[9];
   if (x.rival == 35 && c[11] > 0) x.reglas.traje_rival = c[11];
+  if (c[9] >= 1000) x.reglas.traje_jugador = c[9] - 1000;   // Freezer y Cell con la M de Majin (TrajeMajinB2)
+  if (c[11] >= 1000) x.reglas.traje_rival = c[11] - 1000;
   if (c[2] < 0) x.escenario = -c[2] - 1;   // pasarela_b2: el alta del escenario de B2 de la casilla
   else x.mapa = c[2];
   x.vida2 = c[4];
@@ -810,6 +822,9 @@ void CombateNave(const int c[7]) {   // con g_mu
     if (Lanzar()) return;
     g_nave_encadenada = false;
   }
+  // B2 (medido en PCSX2, 31/10): tras elegir escenario el original carga y pelea; no hay tarjeta VS. Si el conector
+  // esta ocupado (otro combate pendiente) queda la tarjeta como reintento.
+  if (Lanzar()) return;
   Publicar(kPantalla);
 }
 
@@ -1461,23 +1476,17 @@ void GanarIW(const Paso& p, const Fin& f) {   // con g_mu
   // Bolas del dragon del mapa: son una mascara de 7 bits (una por Bola). Minigame_StartButton_PauseMenu (EU 0x289880)
   // hace `+0x16c |= tabla[FUN_0011fb78() % 7]` al ganar un combate y Battle_ApplyResultRewards (EU 0x28A020) copia ese
   // byte a bRam005c1d78 (CloudSprites_SavedDragonballs, EU 0x2FFAB0, pinta un sprite por bit). Al cerrar la historia
-  // FUN_00133cd0(7) pone la mascara a 0x7F (las 7). El port guarda la mascara en `iw_bolas` y, como el bit de IW es
-  // aleatorio, elige de forma estable la primera Bola que falte desde un indice que depende de la mision (n*37+11
-  // mod 7 recorre las 7 en 7 misiones); al acabar la 96 enciende las 7. Fighter's Road no toca esta mascara (su
+  // FUN_00133cd0(7) pone la mascara a 0x7F (las 7). El port guarda la mascara en `iw_bolas` y, como IW, enciende una
+  // Bola al azar (FUN_0011fb78 = rand de newlib; puede caer en una que ya tiene); al acabar la 96 enciende las 7.
+  // IW no entra en online (sin lockstep), asi que el azar local no desincroniza. Fighter's Road no toca esta mascara (su
   // guardado es aparte, 0x5c518c) [VERIFICAR] que el original tampoco la cambie en el Road.
   if (n >= 1 && n <= kMisionesDM) {
     int bolas = LeerProgreso("iw_bolas", 0) & 0x7F;
     if (n == kMisionesDM) {
       bolas = 0x7F;
-    } else if (bolas != 0x7F) {
-      const int inicio = (n * 37 + 11) % 7;
-      for (int k = 0; k < 7; ++k) {
-        const int bit = 1 << ((inicio + k) % 7);
-        if (!(bolas & bit)) {
-          bolas |= bit;
-          break;
-        }
-      }
+    } else {
+      static std::mt19937 azar{std::random_device{}()};
+      bolas |= 1 << (azar() % 7);
     }
     GuardarProgreso("iw_bolas", bolas);
     REXLOG_INFO("dbz3 misiones: iw: Bolas del dragon {:#04x} (mision {})", bolas, n);
@@ -1784,6 +1793,7 @@ bool Start() {
   std::lock_guard<std::mutex> lk(g_mu);
   if (g_fase != kNada) return false;
   g_cursor = 0;
+  g_desde_menu_b2 = false;
   Publicar(kMenu);
   return true;
 }
@@ -1808,20 +1818,48 @@ float Ease(float t) {
 class Panel : public rex::ui::ImGuiDialog {
  public:
   explicit Panel(rex::ui::ImGuiDrawer* drawer) : ImGuiDialog(drawer) {}
+  ~Panel() override {
+    std::lock_guard<std::mutex> lk(g_mu);
+    nave::SoltarMarcadorB2();
+  }
 
  protected:
   void OnDraw(ImGuiIO& io) override {
     const int fase = g_fase_pub.load();
+    {
+      std::lock_guard<std::mutex> lk(g_mu);
+      nave::MarcadorCombateB2(io,
+          g_fase == kLuchando && g_modo == kNave && dbz3::ingame::GameScreen() == 25,
+          g_hud_golpes.load());
+    }
     if (fase == kLuchando && g_hud_tipo.load() && dbz3::ingame::GameScreen() == 25 &&
         (EstadoCombate() == 3 || EstadoCombate() == 4)) {
       Marcador(io);   // solo con la pelea en marcha (no sobre el menu del final)
     }
-    const bool menu = dbz3::ingame::GameScreen() == kMainScreen;
-    const bool show = fase != kNada && fase != kLuchando && menu && !dbz3::GameDimmed() && !dbz3::OverlayOpen() &&
+    // sonnetB2 (cuelgue de la planta I): tras ganar un combate encadenado el HUB espera en negro (HoldChain) a que la nave pida el
+    // siguiente; esa espera no es el menu principal (GameScreen != 5), asi que la nave no se dibujaba, nunca llegaba a
+    // Seguir()/Lanzar() y la pantalla se quedaba negra para siempre. Con la cadena armada la nave se muestra igual.
+    const bool menu = dbz3::ingame::GameScreen() == kMainScreen || (fase == kNaveF && nave::Encadenado());
+    if (b2_nativo_) {
+      if (!menu) b2_fuera_ = true;
+      if (b2_fuera_ && menu && !dbz3::ingame::pilot::Busy()) {
+        b2_nativo_ = b2_fuera_ = false;
+        wait_release_ = true;
+        alpha_ = 0;
+        visto_ = ~0ull;   // el regreso nativo inicia de nuevo los relojes del menú B2
+        REXLOG_INFO("dbz3 misiones: vuelve al menu principal B2 desde el menu nativo");
+      }
+    }
+    const bool show = !b2_nativo_ && fase != kNada && fase != kLuchando && menu && !dbz3::GameDimmed() && !dbz3::OverlayOpen() &&
                       !g_iw_eligiendo.load();   // Fighter's Road: la rueda del juego por debajo
     if (auto* in = Input(); in && show != blocked_) {
       if (show) in->AddUIInputBlocker(); else in->RemoveUIInputBlocker();
       blocked_ = show;
+    }
+    if (b2_nativo_) {   // el piloto y los menus B3 deben recibir el mando sin nuestra capa ni musica
+      wait_release_ = true;
+      alpha_ = 0;
+      return;
     }
     // M6 (mod opcional iw.musica_menus): la rueda del juego (Fighter's Road) suena con la pista de rueda de IW
     // (81, Char_WheelOpenUpdate); la pasarela esta oculta mientras se elige y el mapa no manda su pista.
@@ -1858,6 +1896,8 @@ class Panel : public rex::ui::ImGuiDialog {
     const bool auto_on = g_auto.load() && t - cambio_at_ > kAutoSeg;
     if (g_fase == kMenu) {
       DrawMenu(dl, a, t, pressed, auto_on);
+    } else if (g_fase == kMenuB2) {
+      DrawMenuB2(dl, a, t, pressed);
     } else if (g_fase == kTableroF) {
       DrawTablero(dl, a, t, pressed, auto_on);
     } else if (g_fase == kNaveF) {
@@ -1905,6 +1945,16 @@ class Panel : public rex::ui::ImGuiDialog {
         }
         g_pad = b1;
         g_pad2 = b2;
+        if (std::getenv("DBZ3_TEST_NAVE_CUADRO")) {
+          static uint32_t anterior = ~0u;
+          const uint32_t ahora = uint32_t(b1) | (uint32_t(b2) << 16);
+          if (ahora != anterior) {
+            anterior = ahora;
+            REXLOG_INFO("dbz3 b2t: mando 1 {} mando 2 {} mnk {} fondo {} A '{}'", b1, b2,
+                        rex::cvar::GetFlagByName("mnk_mode"), rex::cvar::GetFlagByName("mnk_background_input"),
+                        rex::cvar::GetFlagByName("keybind_a"));
+          }
+        }
         g_pad2_ok = dos;
         g_pad_pending = false;
       });
@@ -1943,8 +1993,12 @@ class Panel : public rex::ui::ImGuiDialog {
   // Menu de la pasarela: los cuatro modos en el marco del juego; los que no estan listos, en gris con el motivo.
   void DrawMenu(ImDrawList* dl, const S::Area& a, float t, uint16_t pressed, bool auto_on) {
     S::Banner(dl, a, T::T("Pasarela", "Gateway"));
+    // Gohan del Futuro (pack Dragon HUB) es quien habla en el bocadillo: de pie a la izquierda y el marco a su lado
+    const bool gohan = bool(S::Img("hub/anfitrion_gohan_futuro"));
+    if (gohan) S::Host(dl, a, "hub/anfitrion_gohan_futuro", S::mode::kHostX, S::mode::kHostY, false);
+    const float fx0 = gohan ? S::mode::kX0 : 150.0f, fx1 = gohan ? S::mode::kX1 : 1050.0f;
     const float y0 = 140, paso = 470.0f / float(kModos);   // el marco acaba antes del bocadillo (640)
-    S::Frame(dl, a.At(150, y0), a.At(1050, y0 + 30 + paso * float(kModos)), a.s);
+    S::Frame(dl, a.At(fx0, y0), a.At(fx1, y0 + 30 + paso * float(kModos)), a.s);
     std::string motivo[kModos];
     bool listo[kModos];
     for (int m = 0; m < kModos; ++m) listo[m] = Listo(m, &motivo[m]);
@@ -1952,8 +2006,8 @@ class Panel : public rex::ui::ImGuiDialog {
     if (pressed & kDown) g_cursor = (g_cursor + 1) % kModos;
     for (int m = 0; m < kModos; ++m) {
       const float y = y0 + 15 + paso * (float(m) + 0.5f);
-      if (m == g_cursor) S::Highlight(dl, a.At(165, y - paso * 0.5f + 6), a.At(1035, y + paso * 0.5f - 6), t);
-      S::MenuText(dl, a.At(600, y), 40 * a.s, kTitulos[m](), m == g_cursor, !listo[m]);
+      if (m == g_cursor) S::Highlight(dl, a.At(fx0 + 15, y - paso * 0.5f + 6), a.At(fx1 - 15, y + paso * 0.5f - 6), t);
+      S::MenuText(dl, a.At((fx0 + fx1) * 0.5f, y), 40 * a.s, kTitulos[m](), m == g_cursor, !listo[m]);
     }
     // sin la ISO de PS2 que pide la campana: A abre el dialogo para elegirla (en un hilo; el juego sigue)
     const int falta = listo[g_cursor] ? -1
@@ -2499,17 +2553,54 @@ class Panel : public rex::ui::ImGuiDialog {
     if (dbz3::ingame::tutorial::Mostrar("dragon_world")) pressed = 0;   // F3
     b2::Mantenidos(g_pad.load());
     const int r = b2::Dibujar(dl, a, t, pressed, g_auto.load(), c);
-    if (r == 1) return Salir();
+    if (r == 1) {
+      if (g_desde_menu_b2) { g_cursor_b2 = 0; return Publicar(kMenuB2); }
+      return Salir();
+    }
     if (r == 2) CombateTablero(c);
   }
   // Nave de Babidi de B2 (pasarela_nave.cpp); aqui solo se piden sus combates.
   void DrawNave(ImDrawList* dl, const S::Area& a, float t, uint16_t pressed) {
     int c[7] = {};   // {jugador, rival, mapa, vida, tiempo, prueba, P2 humano}
     if (dbz3::ingame::tutorial::Mostrar("nave_babidi")) pressed = 0;   // F3
+    nave::Mantenidos(g_pad.load());
     nave::Mandos(ent1_, ent2_, dos_mandos_);   // entrada por mando (1P/2P y rueda del 2P)
     const int r = nave::Dibujar(dl, a, t, pressed, g_auto.load(), c);
-    if (r == 1) return Salir();
+    if (r == 1) {
+      g_pasos.clear();
+      g_paso = 0;
+      g_cursor_b2 = 6;
+      g_desde_menu_b2 = true;
+      REXLOG_INFO("dbz3 misiones: salida de la nave al menu principal B2");
+      return Publicar(kMenuB2);
+    }
     if (r == 2) CombateNave(c);
+  }
+
+  void DrawMenuB2(ImDrawList* dl, const S::Area& a, float t, uint16_t pressed) {
+    const int r = nave::DibujarPrincipalB2(dl, a, t - cambio_at_, pressed, g_cursor_b2);
+    if (r < 0) {
+      // Busy pasa a false: el conector que abrio la Pasarela recupera el HUB.
+      REXLOG_INFO("dbz3 misiones: menu principal B2 -> HUB");
+      g_desde_menu_b2 = false;
+      return Publicar(kNada);
+    }
+    if (r == 1) { g_desde_menu_b2 = true; return Entrar(kTablero); }
+    if (r == 7) { g_desde_menu_b2 = true; return Entrar(kNave); }
+    if (r > 1 && r < 7) {
+      // Inventario P5: Duelo, Torneo, Training (0x261540), Edit Skills y Options
+      // no tienen escena B2 portada. Training nativo B3 no es una escena B2.
+      // Tablero y Nave sí están portados y se resuelven arriba, nunca por B3.
+      const uint32_t obj = dbz3::ingame::MainMenuObj();
+      if (!obj) return;
+      const int fila = r - 1;
+      using namespace dbz3::ingame::pilot;
+      b2_nativo_ = true;
+      b2_fuera_ = false;
+      dbz3::ingame::SetMainMenuRow(fila);
+      Run({Poke(obj + 150, uint8_t(fila)), PressToLeave(kA, kMainScreen)});
+      REXLOG_INFO("dbz3 misiones: menu principal B2 fila {} -> equivalente nativo B3", g_cursor_b2);
+    }
   }
 
   struct Tex {
@@ -2531,6 +2622,7 @@ class Panel : public rex::ui::ImGuiDialog {
   uint16_t p1_press_ = 0, p2_press_ = 0;        // pulsaciones de este cuadro
   uint16_t ent1_ = 0, ent2_ = 0;                // las que ve la nave (nave::Mandos)
   bool p2_ok_ = false, dos_mandos_ = false;     // mando 2 conectado
+  bool b2_nativo_ = false, b2_fuera_ = false;
   uint64_t visto_ = ~0ull;
   float cambio_at_ = 0, alpha_ = 0;
 };
@@ -2642,7 +2734,15 @@ const bool g_test = [] {
         r.traza = true;
         const int caps[] = {3, 123, 124, 125};   // Absorcion (definitiva), Ill Flash, Ill Ball Attack
         std::copy(std::begin(caps), std::end(caps), r.capsulas_rival);
-        const bool ok = dbz3::hub::RequestBattleEx(kGoku, kSuperBu, EscenarioPorMapa(kMapaCamara), true, 60, 7000, 0, 0, 0);
+        static const int rival_t = std::getenv("DBZ3_TEST_TECNICA_RIVAL") ? std::atoi(std::getenv("DBZ3_TEST_TECNICA_RIVAL")) : kGoku;
+        static const int bu_t = std::getenv("DBZ3_TEST_TECNICA_BU") ? std::atoi(std::getenv("DBZ3_TEST_TECNICA_BU")) : kSuperBu;
+        if (bu_t != kSuperBu) {   // PRUEBA: Bu absorbido del COM con las capsulas que hereda (DBZ3_TEST_TECNICA_CAPS=a,b,c)
+          std::fill(std::begin(r.capsulas_rival), std::end(r.capsulas_rival), 0);
+          int n_cap = 0;
+          for (const char* c = std::getenv("DBZ3_TEST_TECNICA_CAPS"); c && n_cap < 4; c = std::strchr(c, ','), c = c ? c + 1 : nullptr)
+            r.capsulas_rival[n_cap++] = std::atoi(c);
+        }
+        const bool ok = dbz3::hub::RequestBattleEx(rival_t, bu_t, EscenarioPorMapa(kMapaCamara), true, 60, 7000, 0, 0, 0);
         REXLOG_INFO("dbz3 misiones: prueba: tecnica {}: {} (traje {}) {}", i + 1,
                     kAbsorciones[std::clamp(ks[i], 0, kNAbsorciones - 1)].nombre.es, r.traje_rival,
                     ok ? "pedido" : "no aceptado");
@@ -2677,6 +2777,10 @@ const bool g_test = [] {
         GuardarProgreso(kClaves[modo], 0);
         if (modo == kTablero) {
           for (const char* k : {"tablero_b2_fase", "tablero_b2_bolas"}) GuardarProgreso(k, 0);
+          // deseos de Shenron ya pedidos (pasarela_b2.cpp SortearDeseos): la prueba empieza como una partida nueva
+          for (int f : {503, 505, 506, 507, 508, 509, 237, 266, 279, 290, 301}) GuardarProgreso("tablero_b2_dw" + std::to_string(f), 0);
+          for (int f = 314; f <= 342; ++f) GuardarProgreso("tablero_b2_dw" + std::to_string(f), 0);
+          GuardarProgreso("tablero_b2_nave", 0);
         }
         if (modo == kBuu) GuardarProgreso("buu_absorbidos", 1);
         if (modo == kNave) GuardarProgreso("nave_kili", 0);

@@ -1100,6 +1100,28 @@ def amm_tracks(anim):
     return out
 
 
+def cam_escalada(cam, s, dy):
+    """CAM bin con ojo, objetivo y colocaciones del guion escalados como la cadera: x/z * s, y * s + dy."""
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "mod center hd", "studio"))
+    import studio_core  # noqa: PLC0415
+    c = studio_core.CamBin(cam)
+    for clip in c.clips:
+        for t in studio_core.VEC:
+            for k in clip.keys.get(t, []):
+                if len(k) >= 4:
+                    k[1], k[2], k[3] = k[1] * s, k[2] * s + dy, k[3] * s
+    out = bytearray(c.build())
+    # el guion coloca a los luchadores con la orden 32 (x, y, z fijos): misma escala que su cadera
+    spx = c.kid(studio_core.SPX_KID)
+    at = bytes(out).find(spx)
+    for st in studio_core.spx_tokens(spx)[0]:
+        if st[-1][1:] == ("builtin", 32):
+            for t in st:
+                if t[1] == "pushf":      # sin dy: ya va en la cadera, que se suma a esta posicion
+                    struct.pack_into("<f", out, at + t[0] + 2, t[2] * s)
+    return bytes(out)
+
+
 def port(b1, rec, donor_anm, donor_cam, report, models=(), drop_effects=(), donor_model=None, ult_out=None):
     """ult_out (dict): se rellena con la definitiva de B1 traducida (receta de cinematica.py
     sobre la cinematica del donante, capsula de B1) y sus animaciones entran en el moveset."""
@@ -1351,6 +1373,11 @@ def port(b1, rec, donor_anm, donor_cam, report, models=(), drop_effects=(), dono
     # el SPX es el del donante: los guiones de B1 usan ordenes que el de B3 no tiene
     cam = amb_build([(bcm, t) if d[:4] == b"#BCM" else (d_spx_new, t) if d[:4] == b"#SPX" else (d, t)
                      for d, t in ck])
+    # la cadera del donante ya va escalada a este modelo (retarget): la camara, igual, o la definitiva
+    # encuadra donde estaria el donante (Zarbon sin cabeza, Dodoria fuera de plano; medido 31/10)
+    if models and (abs(hips[1][0] - 1.0) >= 0.03 or abs(hips[1][1]) >= 0.15):
+        cam = cam_escalada(cam, *hips[1])
+        report.append("camara del donante x%.3f %+.2f" % hips[1])
     return anm, cam
 
 

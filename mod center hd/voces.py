@@ -476,6 +476,16 @@ def resolve(spec, writer, iw=None, log=print, donor=None, base=None):
     if game == "t3":
         import math  # noqa: PLC0415
         t3 = T3Voices()
+        if "@" in who:   # "t3:Zarbon@5=57122;1=57117": solo esas situaciones (ranura=indice del AFS en el 2.º juego, ingles); el resto mudo
+            _, _, mapa = who.partition("@")
+            block = [-1] * SLOTS
+            gap = T3Voices.JUEGOS[2][0] - T3Voices.JUEGOS[1][0]   # el japones es el mismo indice en el 1.er juego
+            for par in mapa.split(";"):
+                if "=" in par:
+                    sl, _, ix = par.partition("=")
+                    block[int(sl)] = writer.add(t3.adx(int(ix)), t3.adx(int(ix) - gap))
+            return (["voces = [%s]" % ", ".join(map(str, block))],
+                    "voces de Tenkaichi 3 elegidas por sentido: %d frases, el resto mudo" % sum(v >= 0 for v in block))
         who2, _, cual = who.partition("#")
         if not who2.strip():
             raise ValueError("voces t3: sin personaje (t3:BABY_V; #1/#2 fija el juego de bancos)")

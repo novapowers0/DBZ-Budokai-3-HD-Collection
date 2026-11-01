@@ -688,7 +688,63 @@ IW_CINE = range(0x480, 0x500)
 # ports de IW cuyo BSP de tecnicas no prepara los efectos de la definitiva del donante (guion del donante): Baby
 # (definitiva de Vegeta: la orden de efecto 13/banco 1 encontraba su objeto sin preparar, +148 = 0, y el juego se
 # cerraba en lr 0x820CFF1C; con el BSP de Vegeta la definitiva va entera, R9 2026-10-16)
-IW_TECNICAS_DONANTE = {"c:super baby vegeta 2"}      # codigos de agarre/definitiva que piden los guiones del donante
+# 30/10: la causa era el recurso de la raiz que pide el guion (iw_recursos_guion lo copia); Baby ya no necesita la lista
+IW_TECNICAS_DONANTE = set()
+
+
+# Ordenes de IW que B3 no tiene (su fila de la tabla 0x82332670 es mas corta y el interprete no lo mira: caerian en otro
+# manejador). Decompilado de IW -> lo que hace falta en B3: valor de retorno fijo (r0) o nada.
+# 0x86 nivel por capsulas equipadas y 0x88 nivel de la capsula actual (1 sin capsula; solo escala el dano); 0x35 nivel
+# de carga (2 = multiplicador 1.0); 0x37 lee mgr+0x8BEC (0 fuera de sus minijuegos); 0x84 suelo y 0x99 tabla de pareja
+# (float en f0 = 0); 0x9A valor con +20 % si la capsula esta activa (devuelve su 3er argumento, [r11+8]); el resto no
+# devuelve nada (0x36 mgr+0x8BE8, 0x39 X+0x2094, 0x3A X+0x1AD8.., 0x3B X+0x2068, 0x0E brillo, 0x87 ranuras, 0x1E0).
+IW_ORDEN_B3 = {0x86: 1, 0x88: 1, 0x35: 2, 0x37: 0, 0x84: "f", 0x99: "f", 0x9A: "arg",
+               0x0E: None, 0x36: None, 0x39: None, 0x3A: None, 0x3B: None, 0x87: None, 0x1E0: None}
+_SPX_ORDEN = re.compile(rb"\x01(?:\x10(.)|\x20(..))\x02\x80\x02", re.S)
+
+
+def iw_spx_traducir(spx):
+    """#SPX de IW -> el mismo con cada llamada a una orden de IW_ORDEN_B3 cambiada por instrucciones de la VM del mismo
+    largo (los saltos son absolutos): `mov r2, r2` (01 02 02) y `clr r2` (02 02) rellenan. -> (bytes, {orden: n})."""
+    out, n = bytearray(spx), {}
+    base = struct.unpack_from("<I", spx, 0x14)[0]
+    for m in _SPX_ORDEN.finditer(spx, base):
+        orden = m.group(1)[0] if m.group(1) is not None else struct.unpack("<H", m.group(2))[0]
+        if orden not in IW_ORDEN_B3:
+            continue
+        v, largo = IW_ORDEN_B3[orden], m.end() - m.start()
+        ins = (b"\x04\x00" if v == "f" else            # fclr f0
+               b"\x01\x5B\x08\x00" if v == "arg" else  # mov [r11+8], r0
+               b"" if v is None else bytes((1, 0x10, v, 0)))   # mov #v, r0
+        pad = {0: b"", 2: b"\x02\x02", 3: b"\x01\x02\x02", 4: b"\x02\x02\x02\x02", 5: b"\x01\x02\x02\x02\x02",
+               6: b"\x01\x02\x02\x01\x02\x02", 7: b"\x01\x02\x02\x02\x02\x02\x02"}[largo - len(ins)]
+        out[m.start():m.end()] = ins + pad
+        n[orden] = n.get(orden, 0) + 1
+    return bytes(out), n
+
+
+def iw_guion_propio(cam, definitivas):
+    """Ports de IW: su guion, sus camaras y sus animaciones de victima (issue #58: con el guion del donante la definitiva
+    de Gogeta pedia 0x4A0-0x4B6 de Goku sobre los codigos de IW, que ahi son otra cosa: su definitiva empieza en 0x492 y
+    la 2a en 0x4B0). Traduce las ordenes y pone en la llamada de las ranuras de definitiva (cap, primer codigo, x) la
+    capsula de B3 en vez de la de IW. -> (cam, notas)."""
+    kids = capsulas.amb_children(cam)
+    k = next((i for i, e in enumerate(kids) if e[1] and cam[e[0]:e[0] + 4] == b"#SPX"), None)
+    if k is None:
+        return cam, []
+    spx, n = iw_spx_traducir(cam[kids[k][0]:kids[k][0] + kids[k][1]])
+    spx = bytearray(spx)
+    base, ns = struct.unpack_from("<II", spx, 0x14)
+    usadas = 0
+    for t in struct.unpack_from("<%dI" % ns, spx, 0x20):
+        # sub(capsula, codigo 0x480-0x4FF, x): 08 20 <capsula>, 08 20 <codigo>, ...
+        o = base + t if t != 0xFFFFFFFF else None
+        if (o is not None and definitivas and spx[o:o + 2] == b"\x08\x20" and spx[o + 4:o + 6] == b"\x08\x20"
+                and 0x480 <= struct.unpack_from("<H", spx, o + 6)[0] < 0x500):
+            struct.pack_into("<H", spx, o + 2, definitivas[min(usadas, len(definitivas) - 1)])
+            usadas += 1
+    notas = ["guion de IW: %s" % (", ".join("orden %#x x%d" % x for x in sorted(n.items())) or "sin ordenes que traducir")]
+    return capsulas.amb_rebuild(cam, {k: bytes(spx)}), notas
 
 
 def iw_guion_donante(cam, anm_bins, dcam, danm):
@@ -763,6 +819,159 @@ def iw_guion_donante(cam, anm_bins, dcam, danm):
             rep.append("%d codigos de agarre/definitiva del donante injertados (%s..%s)" % (
                 len(grafted), hex(grafted[0]), hex(grafted[-1])))
     return cam, out, rep
+
+
+# Ordenes del #SPX de B3 que toman un recurso de la ranura de tecnicas del lado (empujan objeto, lado, banco, indice):
+# 355 = instancia del modelo (#AWO) en el objeto de efecto (sub_821288E0 -> sub_820CF680, objeto +148), 356 = su
+# textura (#AZT), 358 = su animacion (#ACM; sub_82128A38 -> sub_820CFEC8, que lee el +148). Banco 1 = hijo k de la
+# raiz del BSP (k >= 2). Medido en los #SPX de Goku (355 1/5, 1/9; 358 1/10) y Vegeta (355 1/12; 358 1/13), 30/10.
+SPX_RECURSO = re.compile(rb"\x08\x10([\x00-\x02])\x08\x10(.)\x01\x20([\x63\x64\x66])\x01\x02\x80\x02", re.S)
+
+
+def iw_recursos_guion(cam, bsp, dbsp):
+    """Ports de IW con el guion del donante (iw_guion_donante) y su BSP de tecnicas de IW: las ordenes 355/356/358 del
+    guion piden los recursos del donante por su posicion en la raiz de SU BSP. En el de IW en esa posicion hay otra
+    cosa (Gogeta/Vegito de IW sobre Goku: un #ACE donde Goku tiene el modelo del Dragon) -> sub_820CF680 devuelve 0, el
+    objeto de efecto queda sin modelo (+148 = 0) y la orden 358 cerraba el juego (lr 0x820CFF1C, issues #57/#58; Baby
+    en R9). Arreglo: los recursos que pide el guion se copian del BSP del donante al final de la raiz del de IW y el
+    guion pasa a pedirlos ahi; los efectos propios de IW no cambian de indice. -> (cam, bsp, notas)."""
+    kids = capsulas.amb_children(cam)
+    k_spx = next((k for k, e in enumerate(kids) if e[1] and cam[e[0]:e[0] + 4] == b"#SPX"), None)
+    if k_spx is None or not bsp or not dbsp:
+        return cam, bsp, []
+    spx = bytearray(cam[kids[k_spx][0]:kids[k_spx][0] + kids[k_spx][1]])
+    top, dtop = capsulas.amb_children(bsp), capsulas.amb_children(dbsp)
+
+    def child(b, e):
+        return b[e[0]:e[0] + e[1]]
+    nuevos, sitio, otros = [], {}, set()
+    for m in SPX_RECURSO.finditer(bytes(spx)):
+        banco, idx = m.group(1)[0], m.group(2)[0]
+        if banco != 1:
+            otros.add((banco, idx))
+            continue
+        if not 2 <= idx < len(dtop) or not dtop[idx][1]:
+            continue
+        if idx < len(top) and child(bsp, top[idx]) == child(dbsp, dtop[idx]):
+            continue                                   # el mismo recurso en el mismo sitio
+        if idx not in sitio:
+            sitio[idx] = len(top) + len(nuevos)
+            nuevos.append(dtop[idx])
+        spx[m.start(2)] = sitio[idx]
+    notas = []
+    if otros:
+        notas.append("aviso: el guion del donante pide recursos de los bancos 0/2 %s (sin copiar)" % sorted(otros))
+    if not nuevos:
+        return cam, bsp, notas
+    if max(sitio.values()) > 0xFF:
+        return cam, bsp, notas + ["aviso: recursos del guion del donante sin copiar (indice > 255)"]
+    # #AMB con los hijos nuevos al final (cabecera: +0x10 n, +0x14 tabla, +0x18 inicio de los datos)
+    n, tbl = struct.unpack_from(">II", bsp, 0x10)
+    total = n + len(nuevos)
+    start = (tbl + 16 * total + 0x1F) // 0x20 * 0x20
+    out = bytearray(bsp[:tbl]) + bytes(start - tbl)
+    struct.pack_into(">II", out, 0x10, total, tbl)
+    struct.pack_into(">I", out, 0x18, start)
+    ents = []
+    for b, e in [(bsp, e) for e in top] + [(dbsp, e) for e in nuevos]:
+        data = child(b, e) if e[1] else b""
+        out += bytes((-len(out)) % 0x20)
+        ents.append((len(out) if data else 0, len(data), e[2], e[3]))
+        out += data
+    out += bytes((-len(out)) % 0x20)
+    for k, e in enumerate(ents):
+        struct.pack_into(">4I", out, tbl + 16 * k, *e)
+    out = bytes(out)
+    cam = capsulas.amb_rebuild(cam, {k_spx: bytes(spx)})
+    notas.append("definitiva: %d recursos del BSP del donante para su guion (raiz %s -> %s)" % (
+        len(nuevos), sorted(sitio), [sitio[k] for k in sorted(sitio)]))
+    return cam, out, notas
+
+
+# Port -> de que otros ports salen sus formas si estan activos (por clave de importar.py; "" = la forma es suya).
+FORMAS_PORT_AUTO = {"c:gogeta": ["", "c:gogeta ss4"]}
+
+
+def formas_port(name, c, montados, anm, extra, out_dir, next_fid, work):
+    """formas_port = ["", "imp_iw_gogeta_ss4"] en personaje.toml: esa forma lleva el moveset, el guion y las tecnicas de
+    otro port ya montado (src/tecnicas_ext.inl los intercambia al transformarse: no comparten indices ni el tope de
+    recursos). Sus golpes se ligan a las capsulas propias (misma tecnica: tipo + clave IW o nombre) y recibe la entrada
+    de transformarse y sus animaciones de este personaje. -> next_fid; toca anm y extra."""
+    pedido = c.get("formas_port") or []
+    if not pedido:
+        return next_fid
+    yo = montados[name]
+    tec, gui = [-1] * len(pedido), [-1] * len(pedido)
+
+    def clave(o):
+        return (o["tipo"], o.get("iw") if o.get("iw") is not None else o["nombre"])
+    for f, mod in enumerate(pedido):
+        b = montados.get(mod) if mod else None
+        if mod and (not b or b["anm"] is None or b["cam"] is None or not 0 < f < len(anm)):
+            log("   %s: aviso: forma %d sin los ficheros de %s (no esta activo, o sin moveset propio)" % (name, f, mod))
+        if not mod or not b or b["anm"] is None or b["cam"] is None or not 0 < f < len(anm):
+            continue
+        cam, banm = b["cam"], b["anm"]
+        mias = {clave(o): o["id"] for o in yo["own"]}
+        mapa = {o["id"]: mias[clave(o)] for o in b["own"] if clave(o) in mias}
+        at = capsulas.ccm_child(cam)
+        kids = capsulas.amb_children(cam)
+        k_ccm = next(k for k, e in enumerate(kids) if e[0] == at[0] and e[1] == at[1])
+        ccm = bytearray(cam[at[0]:at[0] + at[1]])
+        n = capsulas.remap_caps(ccm, mapa)
+        notas = ["%d golpes ligados a sus capsulas" % n]
+        if yo["cam"] is not None and capsulas.has_transform(yo["cam"]):
+            ya = capsulas.ccm_child(yo["cam"])
+            ccm, rep = capsulas.add_b3_transform(bytes(ccm), yo["cam"][ya[0]:ya[0] + ya[1]])
+            notas += rep
+            cam = capsulas.amb_rebuild(cam, {k_ccm: bytes(ccm)})
+            _, so, ss = capsulas.csk_child(yo["anm"])
+            src = yo["anm"][so:so + ss]
+            ck, do, ds = capsulas.csk_child(banm)
+            csk = banm[do:do + ds]
+            for code in capsulas.TRANSFORM_CODES:
+                if capsulas.csk_block_at(src, code):
+                    csk = capsulas.csk_graft(csk, code, src, code)
+            banm = capsulas.amb_rebuild(banm, {ck: csk})
+        else:
+            cam = capsulas.amb_rebuild(cam, {k_ccm: bytes(ccm)})
+        cam = spx_remap_caps(cam, mapa)
+        write_entry(out_dir, "data_cmn.afs", next_fid, banm, work)
+        anm[f] = next_fid
+        write_entry(out_dir, "data_cmn.afs", next_fid + 1, cam, work)
+        gui[f] = next_fid + 1
+        next_fid += 2
+        if b["bsp"] is not None:
+            write_entry(out_dir, "data_cmn.afs", next_fid, b["bsp"], work)
+            tec[f] = next_fid
+            next_fid += 1
+        log("   %s: forma %d con moveset, guion y tecnicas de %s (%d recursos; %s)" % (
+            name, f, mod, bsp_resources(b["bsp"]) if b["bsp"] else 0, "; ".join(notas)))
+    extra[:] = [("anm = %s" % toml_list(anm)) if ln.startswith("anm = ") else ln for ln in extra]
+    if any(x >= 0 for x in tec):
+        extra.append("tecnicas_forma = %s" % toml_list(tec))
+    if any(x >= 0 for x in gui):
+        extra.append("cam_forma = %s" % toml_list(gui))
+    return next_fid
+
+
+def spx_remap_caps(cam, mapa):
+    """El guion comprueba la capsula de su definitiva: sub(capsula, codigo 0x480-0x4FF, x), como en iw_guion_propio. Con otra
+    capsula en el arbol de golpes (formas_port) no coincidiria. No basta: Gogeta en forma SS4 sigue cortandose (0 de 10, 31/10), causa sin encontrar."""
+    kids = capsulas.amb_children(cam)
+    k = next((i for i, e in enumerate(kids) if e[1] and cam[e[0]:e[0] + 4] == b"#SPX"), None)
+    if k is None:
+        return cam
+    spx = bytearray(cam[kids[k][0]:kids[k][0] + kids[k][1]])
+    base, ns = struct.unpack_from("<II", spx, 0x14)
+    for t in struct.unpack_from("<%dI" % ns, spx, 0x20):
+        o = base + t if t != 0xFFFFFFFF else None
+        if (o is not None and spx[o:o + 2] == b" " and spx[o + 4:o + 6] == b" "
+                and 0x480 <= struct.unpack_from("<H", spx, o + 6)[0] < 0x500):
+            cap = struct.unpack_from("<H", spx, o + 2)[0]
+            if cap in mapa:
+                struct.pack_into("<H", spx, o + 2, mapa[cap])
+    return capsulas.amb_rebuild(cam, {k: bytes(spx)})
 
 
 def bsp_resources(bsp):
@@ -1040,6 +1249,23 @@ def azt_template(b, tpl, w, h):
         hdr = b[z + tdo:z + tdo + 128]
         return struct.unpack("<II", hdr[12:20]) == (h, w) and struct.unpack("<I", hdr[84:88])[0] == 0
     return next((t for t in [tpl] + list(range(n)) if fits(t)), None)
+
+
+ATLAS_LOGICO = (682, 682)
+ATLAS_CELDAS = 11     # por lado: 56 logicos + 2 de separacion
+
+
+def icono_extra(atlas, ic):
+    """Coloca un icono en el ultimo atlas extra (RGBA 1024x1024, x1.5). -> (x, y, marcador de textura)."""
+    k = 1024 / ATLAS_LOGICO[0]
+    if not atlas or atlas[-1]["n"] >= ATLAS_CELDAS ** 2:
+        atlas.append(dict(n=0, img=np.zeros((1024, 1024, 4), dtype=np.uint8)))
+    a = atlas[-1]
+    x, y = 2 + 58 * (a["n"] % ATLAS_CELDAS), 2 + 58 * (a["n"] // ATLAS_CELDAS)
+    px, py = int(round(x * k)), int(round(y * k))
+    a["img"][py:py + ic.shape[0], px:px + ic.shape[1]] = ic
+    a["n"] += 1
+    return x, y, "@a%d" % (len(atlas) - 1)
 
 
 class Packer:
@@ -1585,6 +1811,11 @@ def assign_ids(srcs):
 IDS_FILE = "roster_ids.toml"
 AVISOS_FILE = "roster_avisos.txt"
 MAX_CELDAS = 24        # casillas nuevas de la rueda (src/roster_ext.h kMaxVirtualCells = 64 - 40)
+# Mas personajes que casillas: los primeros FIJOS conservan ID y casilla y el resto van por paginas (L1/R1 en la rueda).
+# Un ID >= LOGICO_BASE no es una fila del juego: el runtime lo presta a una plaza libre mientras su pagina esta activa
+# (src/ids_registry.h). Los que necesitan un ID estable (Heroe sin celda, equipos) van siempre entre los fijos.
+FIJOS = 14
+LOGICO_BASE = 10000
 
 
 def ids_del_roster(mods_dir):
@@ -1603,6 +1834,36 @@ def ids_del_roster(mods_dir):
     return out
 
 
+def plan_ids_paginas(srcs, mapa, trajes):
+    """Mas personajes que casillas (ver FIJOS): mismos 3 retornos que plan_ids. Quien tiene ID y cabe lo conserva."""
+    log("%d personajes: mas que casillas (%d): los que pasan de %d van por paginas (L1/R1 en la rueda)" % (
+        len(srcs), MAX_CELDAS, FIJOS))
+    orden = sorted(srcs, key=lambda s: (s[2].get("celda") is not False and not s[2].get("equipo"),
+                                        s[0] not in mapa or mapa[s[0]] not in ALL_IDS))
+    ids, usados = {}, set()
+    for n, _, c in orden:
+        if len(usados) >= FIJOS and c.get("celda") is not False and not c.get("equipo"):
+            continue
+        i = mapa.get(n)
+        if i not in ALL_IDS or i in usados:
+            i = next((x for x in ALL_IDS if x not in usados), None)
+        if i is not None:
+            ids[n] = i
+            usados.add(i)
+    logicos = {v for v in mapa.values() if v >= LOGICO_BASE}
+    siguiente = max(logicos, default=LOGICO_BASE - 1) + 1
+    for n, _, _ in orden:
+        if n in ids:
+            continue
+        i = mapa.get(n, 0)
+        if i < LOGICO_BASE:
+            i, siguiente = siguiente, siguiente + 1
+        ids[n] = i
+    nuevo = dict(mapa)
+    nuevo.update(ids)
+    return ids, nuevo, trajes
+
+
 def plan_ids(mods_dir, srcs):
     """(ids {carpeta activa: ID o None}, mapa nuevo {carpeta: ID} en orden de llegada, orden de trajes)."""
     path = os.path.join(mods_dir, IDS_FILE)
@@ -1618,8 +1879,10 @@ def plan_ids(mods_dir, srcs):
     else:
         mapa = {str(k): v for k, v in doc.get("ids", {}).items() if isinstance(v, int)}
         trajes = {str(k): v for k, v in doc.get("trajes", {}).items() if isinstance(v, int)}
-    mapa = {k: v for k, v in mapa.items() if v in ALL_IDS}
     activos = [n for n, _, _ in srcs]
+    if len(activos) > MAX_CELDAS:
+        return plan_ids_paginas(srcs, mapa, trajes)
+    mapa = {k: v for k, v in mapa.items() if v in ALL_IDS}
     req = {n: c.get("id") for n, _, c in srcs if c.get("id") in ALL_IDS}
     ids, dueno = {}, {}
     for n in sorted(activos, key=lambda n: list(mapa).index(n) if n in mapa else len(mapa)):
@@ -1883,7 +2146,7 @@ def _preview(a, c, d, ui, work):
     if files:   # cache del modelo convertido (la conversion PS2->HD es lo mas lento)
         src = os.path.join(d, files[0])
         st = os.stat(src)
-        key = "%s|%d|%d|rampas3" % (files[0], st.st_size, int(st.st_mtime))   # rampas3: B2 y SDBH con sombra
+        key = "%s|%d|%d|rampas5" % (files[0], st.st_size, int(st.st_mtime))   # rampas3: B2 y SDBH con sombra
         cache, ckey = os.path.join(out, ".modelo_hd.bin"), os.path.join(out, ".modelo_hd.key")
         if os.path.exists(cache) and os.path.exists(ckey) and open(ckey, encoding="utf-8").read() == key:
             hd = open(cache, "rb").read()
@@ -1987,10 +2250,12 @@ class Capsules:
         self.next_usi = len(usi.index)
         self.banks = []               # [(fid data_usi, bytes | f(afs, idioma) -> bytes)]
         self._names = {}
+        self._owner_banks = {}        # banco nativo de un dueno ajeno (fusion_de) -> {capsula: rotulo}: sin el, su lista de Edit Skills la dibuja sin nombre
         self.hyper = None             # (suelo, aire) del modo hiper convertido de un port IW
         self.grafts = {}              # forma -> {codigo: codigo de su variante} (IW, 0x1000)
         self.nforms = 1
         self.desc = {}                # id -> fid data_usi del panel de descripcion
+        self.buu_extra = set()        # capsulas que Super Bu hereda al absorber (src/fusion.cpp): su banco no trae sus nombres
 
     @staticmethod
     def _bank_ids(b):
@@ -2054,7 +2319,8 @@ class Capsules:
             k, do, ds = capsulas.csk_child(anm)
             csk = anm[do:do + ds]
             for code in capsulas.TRANSFORM_CODES:
-                csk = capsulas.csk_graft(csk, code, src, code)
+                if capsulas.csk_block_at(src, code):
+                    csk = capsulas.csk_graft(csk, code, src, code)
             out.append(capsulas.amb_rebuild(anm, {k: csk}))
         if out:
             rep.append("animaciones %s del donante en %d moveset(s)" % (
@@ -2077,6 +2343,9 @@ class Capsules:
             if kind not in CAP_TEMPLATES:
                 notes.append("capsula '%s': tipo desconocido (%s)" % (cc.get("nombre"), kind))
                 continue
+            if self.next_id >= capsulas.ID_MAX_NUEVA:
+                notes.append("capsula '%s' omitida: catalogo lleno (IDs nuevas hasta %d)" % (cc.get("nombre"), capsulas.ID_MAX_NUEVA - 1))
+                continue
             nid = self.next_id
             self.next_id += 1
             req = last_tr if kind == "transformacion" else 0
@@ -2084,8 +2353,12 @@ class Capsules:
             tpl = CAP_TEMPLATES[kind]
             if kind == "transformacion" and 0 < forma < len(dforms) and 0 < dforms[forma] < len(self.recs):
                 tpl = dforms[forma]               # la nativa del donante para esa forma (rareza, ki)
-            rec = bytearray(capsulas.make_record(self.recs[tpl], [cid], req))
+            # un ID de pagina (>= LOGICO_BASE) no cabe en la mascara de dueno: el runtime pone el bit de la plaza (hereda)
+            # fusion_de = [IDs]: capsula de fusion que equipan otros personajes (src/fusion.cpp); tambien es de ellos
+            rec = bytearray(capsulas.make_record(self.recs[tpl], ([cid] if cid < LOGICO_BASE else []) + [int(x) for x in cc.get("fusion_de", [])], req))
             ki = None
+            if cc.get("fusion_de"):
+                rec[8] = 0x17                     # clase de las fusiones nativas (Vegito: 187)
             if kind == "transformacion":
                 rec[20:28] = bytes(8)             # +20 sin RE (Freeza/Cooler 0x0b, Trunks 0x0e...):
                 #                                   0 como Goku, Gohan, Vegeta y la plantilla 140
@@ -2101,10 +2374,16 @@ class Capsules:
                 if cc.get("ki") is not None:
                     rec[15] = 10 * max(0, min(7, int(cc["ki"])))
                     ki = int(cc["ki"])
-            own.append(dict(id=nid, tipo=kind, nombre=str(cc.get("nombre", "?"))[:40], forma=forma, ki=ki,
+            nm = str(cc.get("nombre") or "").strip()
+            if not nm or re.fullmatch(r"\?+|(special|ultimate|transformation|especial|definitiva)( ?\d+)?", nm, re.I):
+                # sin nombre propio (importaciones sin lista de nombres): el del dueno + el generico, nunca un hueco ni "?"
+                nm = ("%s %s" % (c.get("nombre") or mod, nm.strip("?") or {"transformacion": "Transformation", "definitiva": "Ultimate"}.get(kind, "Special"))).strip()
+            own_owners = [int(x) for x in cc.get("fusion_de", [])]
+            own.append(dict(id=nid, tipo=kind, nombre=nm[:40], forma=forma, ki=ki, fusion=bool(cc.get("fusion_de")), duenos=own_owners,
                             equipada=bool(cc.get("equipada", True)), reemplaza=cc.get("reemplaza"), iw=cc.get("iw"),
                             textos={k: cc[k] for k in ("quien", "descripcion", "botones", "nota") if cc.get(k)}))
             self.new.append((nid, bytes(rec), own[-1]["nombre"]))
+        self.own = own
         # moveset: BCM propio (port) o el del donante
         iw = False
         if cam is not None:
@@ -2130,7 +2409,8 @@ class Capsules:
                             if bcm_key is not None and bcm_key != real:
                                 key_map[bcm_key] = real
                             skill_caps.setdefault(int(real), o["id"])
-                    ccm, self.grafts, rep = capsulas.adapt_iw_bcm(ccm, skill_caps, self.nforms, key_map)
+                    ccm, self.grafts, rep = capsulas.adapt_iw_bcm(ccm, skill_caps, self.nforms, key_map,
+                                                                  {int(x) for x in c.get("iw_ajenos", [])}, c.get("iw_fila"))
                     notes += ["BCM de Infinite World adaptado: " + r for r in rep]
                     dsrc = cmn.entry(dn["cam"])
                     dat = capsulas.ccm_child(dsrc)
@@ -2185,7 +2465,27 @@ class Capsules:
                     notes.append("no hereda las tecnicas del donante %s" % dropped)
         # capsulas de B3 que pide el moveset de un port de B3 (capsulas --importar b3)
         nativas = [int(x) for x in c.get("capsulas_nativas", []) if 0 < int(x) < len(self.recs)]
+        if c.get("origen_clave") in BU_ABSORBIDO_CLAVES:
+            self.buu_extra |= set(nativas)
         inherit += [x for x in nativas if x not in inherit]
+        if not own and not iw and capsulas.UNUSED_CAP in nativas and cam and dn.get("cam") is not None:
+            # Port de B2 sin capsula propia: su definitiva quedo en la capsula vacia 595 (coste 0, nadie la lleva) y no salia
+            # nunca (Goku B2, 31/10). Va con la definitiva del donante, cuya cinematica usa.
+            dsrc = cmn.entry(dn["cam"])
+            dat, at = capsulas.ccm_child(dsrc), capsulas.ccm_child(cam)
+            ult = lambda ccm, o: capsulas.w(ccm, o, 5) & 8 and capsulas.w(ccm, o, 6) & 0x8000
+            if dat and at:
+                dccm, occm = dsrc[dat[0]:dat[0] + dat[1]], cam[at[0]:at[0] + at[1]]
+                duct = next((capsulas.w(dccm, o, 8) for o, _ in capsulas.ccm_blocks(dccm) if ult(dccm, o)), None)
+                if duct:
+                    cam = bytearray(cam)
+                    for o, _ in capsulas.ccm_blocks(occm):
+                        if ult(occm, o) and capsulas.w(occm, o, 8) == capsulas.UNUSED_CAP:
+                            struct.pack_into(">H", cam, at[0] + o + 16, duct)
+                    cam = bytes(cam)
+                    nativas = [x for x in nativas if x != capsulas.UNUSED_CAP]
+                    inherit = [x for x in inherit if x != capsulas.UNUSED_CAP]
+                    notes.append("definitiva con la capsula del donante (%d)" % duct)
         if not own and not iw:
             # con una sola forma (formas = 1: Fat Gotenks, Ghost Gotenks, sin modelo de Super Saiyan) las
             # transformaciones del donante no se heredan: se podian equipar y "transformaban" sin cambiar de modelo
@@ -2202,6 +2502,11 @@ class Capsules:
             if dn.get("skills"):        # su ficha de habilidades (pausa y rotulos en combate)
                 lines.append("habilidades_indice = %d" % dn["skills"]["indice"])
             notes.append("capsulas: las del donante (%s)" % dn["name"])
+            # sin banco propio usaria el del donante, que no trae las que hereda de otros (Tenshinhan B2, Yamhan: sin rotulo)
+            bk = dn.get("bank", 0xFFFF)
+            if bk != 0xFFFF and not set(inherit) <= set(self._bank_ids(self.usi.entry(bk))):
+                self._add_hud(lines, dn, cid, set(inherit) | set(dn.get("caps", [])) | set(dn.get("form_caps", [])), todo_donante=True)
+                notes.append("banco de nombres propio: heredaba capsulas que el del donante no trae")
             return lines, cam, notes
         # solo caben 7: primero transformaciones y definitivas (Goku GT: 3 + 2 + 3 especiales;
         # sin esto la Spirit Bomb, la unica definitiva en SSJ4, quedaba fuera)
@@ -2219,23 +2524,64 @@ class Capsules:
                 while len(fcaps) <= o["forma"]:
                     fcaps.append(0)
                 fcaps[o["forma"]] = o["id"]
+        # Tecnica de serie solo en formas altas (Krillin SB1: definitiva en la forma 2): sin su transformacion de serie no sale nunca
+        for cc in c.get("_capsulas", []):
+            fs = [int(f) for f in cc.get("formas", [])]
+            if cc.get("equipada", True) and fs and 1 not in fs:
+                faltan = [x for x in fcaps[1:min(fs)] if x and x not in defaults]
+                if faltan:
+                    defaults = (faltan + defaults)[:7]
+                    notes.append("capsula '%s' (formas %s): de serie tambien %s" % (cc.get("nombre"), fs, faltan))
         lines += ["capsulas = %s" % toml_list(defaults), "capsulas_forma = %s" % toml_list(fcaps)]
+        if cid >= LOGICO_BASE:
+            inherit += [o["id"] for o in own]
         if inherit:
             lines.append("hereda = %s" % toml_list(inherit))
-        # banco de nombres propio: [base .. id mas alto] con todo lo que puede llevar
-        mine = set(inherit) | {o["id"] for o in own}
-        for i, r in enumerate(self.recs):
-            m = capsulas.skc_owner(r)
-            if m >> cid & 1 or (m & EVERYONE) == EVERYONE:
-                mine.add(i)
-        mine.discard(0)
-        base = min(mine)
+        # banco de nombres propio: [base .. id mas alto] con todo lo que puede llevar (tambien las de la lista por defecto
+        # y las de cada forma: antes, una nativa ajena al personaje, como el Kaio Ken de Goku B1, salia sin rotulo)
         own_imgs = {}
         for o in own:
             own_imgs[o["id"]] = capsulas.render_name(o["nombre"])
             self._names[o["id"]] = own_imgs[o["id"]]
+            for ow in o.get("duenos", []):      # el banco del dueno nativo (Goku, Satan...) lleva tambien su nombre
+                bk = IDS.get(ow, {}).get("bank", 0xFFFF) if ow != cid else 0xFFFF
+                if bk != 0xFFFF:
+                    self._owner_banks.setdefault(bk, {})[o["id"]] = own_imgs[o["id"]]
+        self._add_hud(lines, dn, cid, set(inherit) | {o["id"] for o in own} | set(defaults) | set(fcaps), own_imgs)
+        lines += self._skills(dn, own, iw, repl, fcaps, cam, dmoves)
+        # panel de descripcion de "Edit Skills" (textos propios o al estilo de las nativas)
+        who = str(c.get("nombre") or mod)
+        for o in own:
+            ki = o["ki"] if o["ki"] is not None else (
+                capsulas.KI.get(o["id"]) or {"especial": 1, "definitiva": 4, "transformacion": 3}[o["tipo"]])
+            fid = self.next_usi
+            self.next_usi += 1
+            self.banks.append((fid, lambda afs, lang, o=o, ki=ki: capsulas.build_desc(
+                o["nombre"], *capsulas.desc_texts(o["tipo"], o["nombre"], who, ki, o["textos"], lang))))
+            self.desc[o["id"]] = fid
+        for o in own:
+            notes.append("capsula %d: %s (%s%s)" % (o["id"], o["nombre"], o["tipo"],
+                                                     " forma %d" % o["forma"] if o["tipo"] == "transformacion" else ""))
+        return lines, cam, notes
 
-        def hud_bank(afs, lang, mine=sorted(mine), bank=dn.get("bank", 0xFFFF), base=base, own_imgs=own_imgs):
+    def _add_hud(self, lines, dn, cid, mine, own_imgs=None, todo_donante=False):
+        """Banco de nombres de combate propio del personaje (linea `hud`): los rotulos nativos (de su idioma)
+        de `mine` + los de las capsulas propias. todo_donante: tambien todo lo que trae el banco del donante."""
+        mine = {int(i) for i in mine if i}
+        for i, r in enumerate(self.recs):
+            m = capsulas.skc_owner(r)
+            if m >> cid & 1 or (m & EVERYONE) == EVERYONE:
+                mine.add(i)
+        bank = dn.get("bank", 0xFFFF)
+        if todo_donante and bank != 0xFFFF:
+            mine |= set(self._bank_ids(self.usi.entry(bank)))
+        mine.discard(0)
+        if not mine:
+            return
+        base = min(mine)
+        own_imgs = own_imgs or {}
+
+        def hud_bank(afs, lang, mine=sorted(mine), bank=bank, base=base, own_imgs=own_imgs):
             # los rotulos de las capsulas nativas, del data del MISMO idioma (antes, siempre
             # los ingleses de data_usi en todos los idiomas)
             srcb = []
@@ -2256,21 +2602,6 @@ class Capsules:
         self.next_usi += 1
         self.banks.append((fid, hud_bank))
         lines.append("hud = %s" % toml_list([fid >> 8, fid & 0xFF]))
-        lines += self._skills(dn, own, iw, repl, fcaps, cam, dmoves)
-        # panel de descripcion de "Edit Skills" (textos propios o al estilo de las nativas)
-        who = str(c.get("nombre") or mod)
-        for o in own:
-            ki = o["ki"] if o["ki"] is not None else (
-                capsulas.KI.get(o["id"]) or {"especial": 1, "definitiva": 4, "transformacion": 3}[o["tipo"]])
-            fid = self.next_usi
-            self.next_usi += 1
-            self.banks.append((fid, lambda afs, lang, o=o, ki=ki: capsulas.build_desc(
-                o["nombre"], *capsulas.desc_texts(o["tipo"], o["nombre"], who, ki, o["textos"], lang))))
-            self.desc[o["id"]] = fid
-        for o in own:
-            notes.append("capsula %d: %s (%s%s)" % (o["id"], o["nombre"], o["tipo"],
-                                                     " forma %d" % o["forma"] if o["tipo"] == "transformacion" else ""))
-        return lines, cam, notes
 
     def _skills(self, dn, own, iw, repl, fcaps, cam, dmoves=()):
         """Ficha de habilidades propia (data_usi nueva): nombres + condicion y botones,
@@ -2335,7 +2666,11 @@ class Capsules:
                 elif i is not None and 2 * i < len(dimgs):
                     name = dimgs[2 * i]
                 else:   # la ficha del donante tiene menos rotulos que capsulas (Androide 18)
-                    name = capsulas.render_name(b3_cap_names().get(c, "?"), 24)
+                    sh = afs.entry(capsulas.NAMES_SHORT)         # su rotulo nativo (de este idioma) y, si no, el nombre del texto/dueno
+                    sids = self._bank_ids(sh)
+                    name = capsulas.azt_read(sh, sids[c]) if c in sids else None
+                    if name is None:
+                        name = capsulas.render_name(b3_cap_names().get(c) or "%s %d" % (dn["name"], c), 24)
                 if c in ownby:                        # propia: su coste, sin notas del donante
                     kk = ownby[c]["ki"] if ownby[c]["ki"] is not None else (
                         capsulas.KI.get(c) or {"especial": 1, "definitiva": 4}.get(kind, 3))
@@ -2359,6 +2694,14 @@ class Capsules:
             lang = capsulas.lang_of(afs_name)
             for fid, b in self.banks:      # bytes, o una funcion (afs, idioma) -> bytes
                 write_entry(out_dir, afs_name, fid, b(afs, lang) if callable(b) else b, work)
+            if self.buu_extra:     # Bu absorbido pide sus capsulas ajenas: banco nativo + sus rotulos (del mismo idioma)
+                b, sh = afs.entry(BU_BANCO), afs.entry(capsulas.NAMES_SHORT)
+                ids, sids = self._bank_ids(b), self._bank_ids(sh)
+                items = {i: capsulas.azt_read(b, k) for i, k in ids.items()}
+                items.update({i: capsulas.azt_read(sh, sids[i]) for i in self.buu_extra if i in sids and i not in items})
+                write_entry(out_dir, afs_name, BU_BANCO, capsulas.build_bank(min(items), items), work)
+            for bk, items in self._owner_banks.items():   # banco nativo del dueno de una fusion + el nombre de la capsula
+                write_entry(out_dir, afs_name, bk, capsulas.extend_bank(afs.entry(bk), items), work)
             if self._names:
                 for e in (capsulas.NAMES_SHORT, capsulas.NAMES_LONG):
                     write_entry(out_dir, afs_name, e,
@@ -2370,6 +2713,10 @@ class Capsules:
                 out.append("descripcion = %d" % self.desc[nid])
             out.append("")
         return out
+
+
+BU_ABSORBIDO_CLAVES = ("XBVG", "XBCL", "XBFR", "XBYM")   # importar.BU_ABSORBIDO: Bu absorbiendo a Vegeta, Cell, Freezer, Ten+Yamcha
+BU_BANCO = 2667                                         # banco de nombres de combate de Super Bu (IDs 123+)
 
 
 def csk_copy_codes(anm, moves):
@@ -2443,6 +2790,9 @@ def forms_config(c, dn, per, donor, name):
         nforms = len(fdon)
     elif c.get("formas"):
         want = max(1, int(c["formas"]))
+        if want > 8:   # dato del juego: filas, modelos y codigos de transformacion son 8 (studies 5/ESTUDIO_SLOTS/INFORME.md)
+            log("   %s: aviso: formas = %d: el juego admite 8; para mas, un traje enlazado (traje.toml enlazado)" % (name, want))
+            want = 8
         if want > nforms:
             log("   %s: aviso: formas = %d pero %s solo tiene %d" % (name, want, dn["name"], nforms))
         nforms = min(want, nforms)
@@ -2458,6 +2808,8 @@ def forms_config(c, dn, per, donor, name):
     kib = [max(0, min(7, int(x))) for x in c.get("ki_base", [])][:nforms]
     if kib:
         lines.append("ki_base = %s" % toml_list(kib))
+    if len(c.get("fx_tabla", [])) == 12:
+        lines.append("fx_tabla = %s" % toml_list([int(x) & 0xFF for x in c["fx_tabla"]]))
     af = [max(0, min(5, int(x))) for x in c.get("aura_formas", [])][:nforms]
     if af:
         lines.append("aura_formas = %s" % toml_list(af))
@@ -2498,6 +2850,11 @@ def build(a):
         return 0
     ids, mapa, orden = plan_ids(mods, srcs)
     trajes, orden = ordenar_trajes(trajes, orden)
+    try:      # ports de IW importados antes: barras de ki y golpes ajenos del ejecutable de IW (una vez, queda en su toml)
+        import importar  # noqa: PLC0415
+        importar.iw_actualizar_mods(srcs)
+    except Exception as e:  # noqa: BLE001
+        log("aviso: datos de IW sin actualizar (%s)" % e)
     digest = inputs_hash(srcs + [(n, d, None) for n, d, _ in trajes])
     # el reparto entra en el sello: si cambia un ID u orden de trajes, se vuelve a montar
     digest = hashlib.sha1((digest + json.dumps([ids, [t[0] for t in trajes]], sort_keys=True)).encode()).hexdigest()
@@ -2531,6 +2888,7 @@ def build(a):
         icon_k = icon_tex["hd"][0] / icon_tex["logical"][0]
         icons = Packer(icon_tex, 56, 56, free_regions(icon_tex))
         name_items = []
+        atlas_extra = []        # atlas de iconos cuando el nativo se llena
         ojos_strips = []        # franjas de ojos 252x60 por personaje (ojos = [@oK] en roster.toml)
         tor_icons = []          # iconos 84x84 de las celdas nuevas: tiras del Torneo (S5-I1, issue #33)
         free = ALL_IDS
@@ -2545,6 +2903,13 @@ def build(a):
         poses = []
         next_lang = max(len(x.index) for x in langs.values())
         steps = len(srcs) + 2
+        ports_montados = {}     # lo montado de cada port, para formas_port de los que vienen detras
+        por_clave = {c.get("origen_clave"): n for n, _, c in srcs if c.get("origen_clave")}
+        for n, _, c in srcs:       # parejas conocidas con los dos ports activos (un toml puede pedir otra cosa)
+            auto = FORMAS_PORT_AUTO.get(c.get("origen_clave"))
+            if auto and "formas_port" not in c and all(not k or k in por_clave for k in auto):
+                c["formas_port"] = [por_clave.get(k, "") for k in auto]
+        srcs = sorted(srcs, key=lambda s: bool(s[2].get("formas_port")))   # estable: solo mueve a los que lo usan
         for k_src, (name, d, c) in enumerate(srcs):
             nombre = c.get("nombre", name)
             progress(k_src, steps, nombre)
@@ -2645,9 +3010,13 @@ def build(a):
                 continue
             for n_ in notes:
                 log("   %s: %s" % (name, n_))
-            ix, iy = icons.take()
-            px, py = int(round(ix * icon_k)), int(round(iy * icon_k))
-            icon_img[py:py + ic.shape[0], px:px + ic.shape[1]] = ic
+            try:
+                ix, iy = icons.take()
+                icon_tex_id = ICON_TEX
+                px, py = int(round(ix * icon_k)), int(round(iy * icon_k))
+                icon_img[py:py + ic.shape[0], px:px + ic.shape[1]] = ic
+            except RuntimeError:       # atlas nativo lleno: texturas nuevas del mismo tamano, solo iconos
+                ix, iy, icon_tex_id = icono_extra(atlas_extra, ic)
             # <= 256 px: la plantilla ancha (512) no se ve en la rueda (nombres largos sin rotulo, visto 2026-10-18);
             # un nombre largo se estrecha para caber en la de 256
             nm = np.array(make_name(nombre, 48, 256))
@@ -2725,12 +3094,8 @@ def build(a):
                     log("   %s: tecnicas: %d efectos del banco 6 (que su donante no carga) con los del primer rayo"
                         % (name, n6))
                 nres = bsp_resources(bsp)
-                if nres > 64:
-                    # la ranura de tecnicas del juego guarda 64 recursos (los nativos llegan a 52): con mas, el
-                    # ultimo pisa la lista de instancias y al acabar el combate el juego liberaba un bloque del
-                    # fichero y se cerraba (Vegeta GT de IW: 65). src/ports_guard.cpp lo evita desde 2026-10-15.
-                    log("   %s: aviso: tecnicas con %d recursos (el juego admite 64); necesita el exe con la "
-                        "guarda de ports (2026-10-15 o posterior)" % (name, nres))
+                if nres > 64:      # la ranura guarda 64; el resto va a la tabla ampliada (src/tecnicas_ext.inl, 31/10)
+                    log("   %s: tecnicas con %d recursos: necesita el exe de 31/10 o posterior" % (name, nres))
             if anm_bins and c.get("moveset"):
                 # efectos del banco de grupo (AP7 clase 4 >= 300) que el donante no carga: puntero
                 # nulo y el juego se cerraba (Final Flash de Vegeta GT pedia 352, del banco de
@@ -2840,12 +3205,21 @@ def build(a):
                     notes.append("definitiva con animaciones propias: %d codigos de la cinematica" % len(done[0][1]))
                 except Exception as e:  # noqa: BLE001
                     notes.append("aviso: definitiva con las animaciones del donante (%s)" % e)
-            # IW: guiones del donante (sus ordenes de IW colgaban o cerraban la definitiva); guion = "propio" lo evita
+            # IW: su propio guion (#SPX) con las ordenes que B3 no tiene traducidas; guion = "donante" usa el del donante
             if (c.get("origen_fuente") == "iw" and cam is not None and anm_bins
-                    and str(c.get("guion", "donante")).lower() != "propio"):
+                    and str(c.get("guion", "propio")).lower() != "donante"):
+                try:
+                    cam, rep = iw_guion_propio(cam, [o["id"] for o in caps.own if o["tipo"] == "definitiva"])
+                    notes += rep
+                except Exception as e:  # noqa: BLE001
+                    notes.append("aviso: guion de IW sin traducir (%s)" % e)
+            elif c.get("origen_fuente") == "iw" and cam is not None and anm_bins:
                 try:
                     cam, anm_bins, rep = iw_guion_donante(cam, anm_bins, cmn.entry(dn["cam"]), cmn.entry(dn["anm"][0]))
                     notes += list(dict.fromkeys(rep))
+                    if bsp:
+                        cam, bsp, rep = iw_recursos_guion(cam, bsp, cmn.entry(dn["bsp"]))
+                        notes += rep
                 except Exception as e:  # noqa: BLE001
                     notes.append("aviso: guion de IW sin cambiar por el del donante (%s)" % e)
             # todos (ports de IW incluidos) deben poder entrar en modo hiper y lanzar su definitiva
@@ -2943,6 +3317,8 @@ def build(a):
             elif cam_fid_esc is not None:      # camara del donante ya escrita por donor_cam_scaled (arreglo E3: antes se pasaba el fid como bytes)
                 extra.append("cam = %d" % cam_fid_esc)
             extra += cap_lines
+            ports_montados[name] = dict(anm=anm_bins[0] if anm_bins else None, cam=cam, bsp=bsp, own=list(caps.own))
+            next_fid = formas_port(name, c, ports_montados, anm, extra, out_dir, next_fid, work)
             # voces de combate: las de su juego (port), las de otro personaje o las del donante
             try:
                 spec = c.get("voces", "donante")
@@ -3048,10 +3424,11 @@ def build(a):
                      'nombre = "%s"' % "".join(ch for ch in nombre.upper() if 32 <= ord(ch) < 127 and ch != '"'),
                      "modelos = %s" % toml_list(model_fids), "bocas = %s" % toml_list(lips_fids),
                      "modelos_por_traje = %d" % per] +
+                    ["capsula_fusion = %d" % o["id"] for o in caps.own if o.get("fusion")][:1] +
                     (["anfitrion = %d" % dn["slot"]] if c.get("celda") is False else   # el Heroe: sin celda en ninguna rueda
                      ["celda = true", "tras_casilla = %d" % next(sl for sl in (IDS[int(c.get("despues_de", donor))]["slot"],
                                                                                dn["slot"], 0) if sl < 38)]) + [
-                     "icono = %s" % toml_list([ICON_TEX, ix, iy, ix + 56, iy + 56]),
+                     "icono = %s" % toml_list([icon_tex_id, ix, iy, ix + 56, iy + 56]),
                      "rotulo = %s" % toml_list(["@%d" % name_slot, 0, 0, nw, 32]),
                      "torneo_icono = %s" % toml_list(["@s%d" % (tor_k // 5), 56 * (tor_k % 5), 0, 56 * (tor_k % 5) + 56, 56]),
                      "torneo_rotulo = %s" % toml_list(["@t%d" % name_slot, 0, 0, nw, 32]),
@@ -3066,10 +3443,14 @@ def build(a):
         next_fid = build_trajes(trajes, cmn, out_dir, next_fid, work, toml, manifest, ids)
         azt_write(sel, icon_tex, icon_img)
         # plantilla que cuadre en ESTE #AZT (con data_usi es la fija; con data_eng de base, EU, otra)
+        items_extra = [(a["img"], ATLAS_LOGICO, (1024, 1024), ICON_TEX) for a in atlas_extra]
         sel, name_idx = azt_append(sel, [(im, lg, hd, azt_template(sel, tp, im.shape[1], im.shape[0]))
-                                         for im, lg, hd, tp in name_items])
-        for i, t in enumerate(name_idx):   # textura real de cada rotulo
+                                         for im, lg, hd, tp in name_items + items_extra])
+        for i, t in enumerate(name_idx):   # textura real de cada rotulo (y de los atlas de iconos, detras)
             toml = [ln.replace("[@%d," % i, "[%d," % t) if ln.startswith("rotulo") else ln for ln in toml]
+        for a in range(len(atlas_extra)):
+            t = name_idx[len(name_items) + a]
+            toml = [ln.replace("[@a%d," % a, "[%d," % t) if ln.startswith("icono") else ln for ln in toml]
         write_entry(out_dir, "data_usi.afs", SELECT_ENTRY, bytes(sel), work)
         ojos_tex = ojos_append(usi, out_dir, "data_usi.afs", ojos_strips, work)
         toml = ojos_toml(toml, ojos_tex, len(ojos_strips))
@@ -3094,7 +3475,7 @@ def build(a):
             img2[drawn] = icon_img[drawn]
             azt_write(s2, t2[ICON_TEX], img2)
             items2 = [(im, lg, hd, azt_template(s2, tp, im.shape[1], im.shape[0]))
-                      for im, lg, hd, tp in name_items]
+                      for im, lg, hd, tp in name_items + items_extra]
             if any(it[3] is None for it in items2):
                 log("aviso: data_%s.afs: sin plantilla para los rotulos, idioma sin casillas nuevas" % lk)
                 continue

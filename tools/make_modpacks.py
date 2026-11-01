@@ -42,13 +42,14 @@ KIT_ENTRIES = ["t3", "inventario_copias",   # studies 1 F08/F09: Tenkaichi 3 e i
                "campana", "editor_historias",   # Historias page (montar) and its story editor
                "modos_reto",      # challenge modes card (run as a subprocess: no import reaches it)
                "retos_predefinidos",   # "Retos predefinidos" row (HUB challenges, tower of the week)
+               "nova_recetas",   # mods de Nova's Mods que se construyen con la copia del jugador
                "forma_unica",   # respaldo de la capsula "Todas las transformaciones" (hoy la crea el juego)
                "campos_iw"]     # escenarios de los juegos de PS2 del jugador (campos de IW, B1/B2) al pulsar
                                 # Jugar (ModPipeline::BuildStages); trae escenarios_convertir. Solo el conversor:
                                 # los escenarios se generan en el equipo del jugador desde sus ISOs
 # Standalone modder tools the Mod Kit window also exposes (advanced mode > Tools), with the
 # local modules they import (kit_modules follows them).
-KIT_EXTRA_TOOLS = ["name_banner", "portrait_hd", "extract_azt_afs", "awg_to_obj_b3", "awg0_export",
+KIT_EXTRA_TOOLS = ["dae_a_b3", "name_banner", "portrait_hd", "extract_azt_afs", "awg_to_obj_b3", "awg0_export",
                    "awg_cara_export", "swap_matrix", "texture_upscale_b3", "psp_amo", "sb_amm", "csk_edit",
                    "acm_parse", "sbport", "sb_tablas", "sdbh_model", "sb_tecnicas", "sb_voces",
                    "cri",           # voces de SDBH (importar.py lo importa dentro de una funcion: el rastreo no lo ve)
@@ -60,7 +61,7 @@ KIT_DATA = ["catalog_b3.cat", "cac/piezas_b3_base.json", "roster_db.json", "b1_c
             # y la lista de herramientas de la ventana
             "presets_importar.toml", "iw_modelos.json", "du_codigos.json", "texturas_etiquetas.json",
             "tools_manifest.json",
-            "ports_oficiales.toml",   # recetas de la tarjeta "4. Ports oficiales" (importar.py oficial)
+            "ports_oficiales.toml", "tactics_manifest.toml", "tactics_units.toml", "tactics_economia.toml", "tactics_capsulas.toml", "tactics_textos.toml",   # recetas de la tarjeta "4. Ports oficiales" (importar.py oficial)
             "ports_vision.toml"]      # tarjeta "5. Personajes de la vision" (importar.py oficial --recetas)
 # editor de historias y modos de reto: solo los .toml (globs valen). NUNCA las imagenes de campanas/imagenes
 # ni campanas/retratos (arte de terceros): campana.py usa el panel / retrato del juego si faltan.
@@ -85,11 +86,13 @@ RES_FILES = ["Budokai_3_Capsules_IDs.txt", "Dragon Ball Z Infinite World Capsule
 GAME_ENTRIES = ["campos_iw", "escenarios_convertir", "iso", "importar", "vista_heroe", "roster_build",
                 "swap_b3", "texture_b3", "texture_pack", "texture_dump_import", "capsulas", "colores", "gritos",
                 "hornada_support", "voces", "model_render", "heroe_sagas_a_du", "nombre_levelup", "campana",
-                "retrato_anime", "tecnicas_tipo",
+                "retrato_anime", "tecnicas_tipo", "nova_recetas",   # recetas locales: necesitan la ISO B1/B2 del jugador
                 # 25/10: las figuras grandes de B2 (vineta del tablero, rueda de la nave) con el modelo de B3 y la animacion
                 # de B2 (pasarela_nave.cpp CorrerVista); sin ellos el juego caia siempre al modelo de B2. Y las cartas de
                 # tecnicas del Modo Heroe (heroe_ui.cpp GenerarCon)
-                "vista_b2", "vista_nave", "tecnicas_cartas"]
+                "vista_b2", "vista_nave", "tecnicas_cartas",
+                # Dragon Tactics: clips de B3 horneados para sus figuras (pasarela_nave.cpp TkEstado)
+                "vista_tactics"]
 
 
 def kit_modules(entries=None):
@@ -168,6 +171,9 @@ def kit_pack(ver, stage, dry=False):
     studio = os.path.join(ROOT, "mod center hd", "studio")   # Studio de camaras (paquete)
     if os.path.isdir(studio):
         shutil.copytree(studio, os.path.join(mch, "studio"), ignore=shutil.ignore_patterns("__pycache__"))
+    kit = os.path.join(ROOT, "mod center hd", "kit")         # modulos del Mod Kit (portada, asistente, errores)
+    if os.path.isdir(kit):
+        shutil.copytree(kit, os.path.join(mch, "kit"), ignore=shutil.ignore_patterns("__pycache__"))
     fonts = os.path.join(ROOT, "mod center hd", "fonts")      # fuente propia: nunca "cannot open resource"
     if os.path.isdir(fonts):
         shutil.copytree(fonts, os.path.join(mch, "fonts"))
@@ -245,7 +251,7 @@ def copiar_scripts_juego(stage):
         dst = os.path.join(mch, "cac") if d == "cac" else mch if d == "mod center hd" else awo
         shutil.copyfile(p, os.path.join(dst, os.path.basename(p)))
         n += 1
-    for sub in ("studio", "fonts"):
+    for sub in ("studio", "fonts", "kit", "xv2"):   # xv2: vista_heroe lo importa con piezas XV2 activas (solo codigo; se convierte en el PC del jugador)
         src = os.path.join(ROOT, "mod center hd", sub)
         if os.path.isdir(src):
             shutil.copytree(src, os.path.join(mch, sub), dirs_exist_ok=True, ignore=shutil.ignore_patterns("__pycache__"))
@@ -257,7 +263,7 @@ def copiar_scripts_juego(stage):
 
 
 def game_stage(stage):
-    """Anade al stage del zip del juego los scripts (con sus imports), sus datos y el Python portatil minimo."""
+    """Anade al stage del juego los scripts, sus datos y Python con sus dependencias de ejecucion."""
     n = copiar_scripts_juego(stage)
     mch = os.path.join(stage, "mod center hd")
     sys.path.insert(0, os.path.join(ROOT, "tools"))
@@ -265,10 +271,12 @@ def game_stage(stage):
     py = os.path.join(stage, "python")
     if os.path.isdir(py):
         raise SystemExit("ya existe %s" % py)
-    make_python_bundle.build(stage, slim=True)
-    if not make_python_bundle.check(py, slim=True):
+    # xeno_a_b3 (CaC XV2) usa scipy.spatial.cKDTree para faldon/pantalon. El paquete
+    # minimo numpy+Pillow falla ahi: usar el mismo Python comprobado que el Kit.
+    make_python_bundle.build(stage)
+    if not make_python_bundle.check(py):
         raise SystemExit("python portatil: la comprobacion fallo")
-    print("zip del juego: %d scripts + python portatil (numpy+Pillow)" % n)
+    print("zip del juego: %d scripts + python portatil (numpy+Pillow+scipy+tkinter)" % n)
 
 
 def main():

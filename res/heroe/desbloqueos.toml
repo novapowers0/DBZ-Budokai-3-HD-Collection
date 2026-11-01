@@ -1,0 +1,84 @@
+# Desbloqueos del Heroe con los maestros (C3): maestro -> condicion -> desbloqueo. Por datos: se evalua en cada victoria del
+# mapa de Dragon Universe y vale para cualquier combinacion de heroe/maestro. Los consigue la ficha (cac.toml `desbloqueos`).
+#   maestro  ID del luchador-maestro (0 Goku, 7 Vegeta, 11 Piccolo, 10 Krillin, 27 Freezer, 33 Cell, 40 Broly*)
+#   entreno  % minimo con ese maestro (o maestro ya entrenado del todo)
+#   vence / forma   (opcional) ganar un combate contra ese rival (y esa forma: 0 normal 1 Kaioken 2 SSJ 3 SSJ2 4 SSJ3 5 SSJ4)
+#   tipo     aura | ki | tecnica (cartas del inventario con el estilo nativo; la variante usa colores.py: aura_color / ki_color)
+#   color    "#RRGGBB"      capsula  (tecnica con variante de color) numero de capsula del juego (#SKC)
+# * Broly aun no es maestro (kEstilos de heroe.cpp: 6): su entrada espera a que lo sea.
+version = 1
+
+[[desbloqueo]]
+id = "ki_dorado_goku"
+tipo = "ki"
+color = "#F0C020"
+maestro = 0
+entreno = 20
+nombre_es = "Ki dorado (maestro Goku)"
+nombre_en = "Golden ki (master Goku)"
+
+[[desbloqueo]]
+id = "kamehameha_rojo"
+tipo = "tecnica"
+capsula = 6
+color = "#E02020"
+maestro = 0
+entreno = 60
+vence = 0
+forma = 5
+nombre_es = "Kamehameha rojo (Goku al 60 % y vencer a su SSJ4)"
+nombre_en = "Red Kamehameha (Goku 60% and beat his SSJ4)"
+
+[[desbloqueo]]
+id = "aura_verde_broly"
+tipo = "aura"
+color = "#30D040"
+maestro = 40
+entreno = 100
+nombre_es = "Aura verde (entrenar con Broly)"
+nombre_en = "Green aura (train with Broly)"
+
+[[desbloqueo]]
+id = "aura_violeta_piccolo"
+tipo = "aura"
+color = "#8040D0"
+maestro = 11
+entreno = 100
+nombre_es = "Aura violeta (maestro Piccolo)"
+nombre_en = "Violet aura (master Piccolo)"
+
+[[desbloqueo]]
+id = "ki_rojo_vegeta"
+tipo = "ki"
+color = "#D02020"
+maestro = 7
+entreno = 60
+nombre_es = "Ki rojo (maestro Vegeta al 60 %)"
+nombre_en = "Red ki (master Vegeta 60%)"
+
+# Super Saiyan (25/10, raza Saiyan, en orden): tipo "ssj" + nivel. Se despierta al vencer en Dragon Universe a quien lo
+# provoco en la historia: Freezer (SSJ), Cell (SSJ2) y Kid Bu (SSJ3). Da la capsula de transformacion del estilo en cada
+# combate (heroe.cpp Reglas); el modelo de cada forma (cara SSJ y el pelo SSJ de su peinado) lo monta vista_heroe.py.
+[[desbloqueo]]
+id = "ssj1"
+tipo = "ssj"
+nivel = 1
+vence = 27
+nombre_es = "Super Saiyan (vencer a Freezer)"
+nombre_en = "Super Saiyan (beat Frieza)"
+
+[[desbloqueo]]
+id = "ssj2"
+tipo = "ssj"
+nivel = 2
+vence = 33
+nombre_es = "Super Saiyan 2 (vencer a Cell)"
+nombre_en = "Super Saiyan 2 (beat Cell)"
+
+[[desbloqueo]]
+id = "ssj3"
+tipo = "ssj"
+nivel = 3
+vence = 36
+nombre_es = "Super Saiyan 3 (vencer a Kid Bu)"
+nombre_en = "Super Saiyan 3 (beat Kid Buu)"

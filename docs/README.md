@@ -48,7 +48,7 @@
 | [02_mods/STUDIO_CAMARAS.md](02_mods/STUDIO_CAMARAS.md) | **Studio de cámaras**: editar las cámaras de técnicas, plantillas, ida y vuelta a Blender, guardar como mod |
 | [03_formatos](03_formatos/AMO_AWO.md) | Formato del modelo PS2 (#AMO0) vs HD (#AWO) |
 | [03_formatos/BIN_LAYOUT.md](03_formatos/BIN_LAYOUT.md) | Layout del bin HD (headers, buffers, vértice) |
-| [03_formatos/AWO_FORMAT.md](03_formatos/AWO_FORMAT.md) | Formato #AWO HD campo a campo |
+| [03_formatos/AWO_FORMAT.md](../AWO_FORMAT.md) | Formato #AWO HD campo a campo |
 | [03_formatos/ACM_FORMAT.md](03_formatos/ACM_FORMAT.md) | Formato moveset HD (#AMB→#CSK→#ACM) + edición de habilidades |
 | [03_formatos/STAGES_FORMAT.md](03_formatos/STAGES_FORMAT.md) | Bins de stage (#AMB→#ZDD/#CAD/#CAS/#SPX) + contenedor PS2 (ports IW) |
 | [03_formatos/CAPSULAS_B3.md](03_formatos/CAPSULAS_B3.md) | Cápsulas: catálogo #SKC, fichas de habilidades, plazas extra 44-63 y ports de IW (modo hiper) |
@@ -70,6 +70,11 @@
 | [16_pasarela_modos](16_pasarela_modos/) | **Pasarela de modos B1/B2/IW**: viabilidad por modo, Leyenda de Mr. Satan, saga B1, tablero B2, misiones y retos de IW ([04_misiones_y_tablero.md](16_pasarela_modos/04_misiones_y_tablero.md); `src/pasarela*.cpp`, `mod center hd/pasarela/pasarela.py`) |
 | [jugador/MODOS_Y_RETOS.md](jugador/MODOS_Y_RETOS.md) | Guia del jugador: HUB, retos y torre de la semana |
 | [jugador/CAMARA_LIBRE.md](jugador/CAMARA_LIBRE.md) | Guía del jugador: activar y usar la cámara libre (BETA) |
+| [02_mods/PLUGINS.md](02_mods/PLUGINS.md) | Plugins de código (DLL en `plugins/`, API `rex_mod_init`): vía oficial para mods como Budokai3Access |
+| [Kit modo PS2](../studies%205/ENTREGAS/KIT_PS2_31-10.md) | **Modding Kit, modo Budokai 3 PS2** (ISO nueva con texturas, intercambio de modelos y música; probado solo en PCSX2 US). Reglas de ISO/AFS en [HOJA_DE_RUTA_PORT_PS2_B3](07_ports/HOJA_DE_RUTA_PORT_PS2_B3.md) |
+| [Vídeos HD](../studies%205/ENTREGAS/VIDEOS_HD_31-10.md) | **Vídeos HD opcionales** (apertura y final, descarga aparte, solo Windows): qué se midió y qué no |
+| [Rollback R5](../studies%205/ENTREGAS/ROLLBACK_R5.md) / [Online rework](../studies%205/ENTREGAS/ONLINE_REWORK.md) | Rollback (apagado por defecto, 50/50 medido en un PC) y búsqueda de partida sin servidor |
+| [Pendientes tras 1.5.5.6](../studies%205/PENDIENTES_TRAS_1556.md) | **Lista priorizada de lo abierto por frente**, con su informe y causa medida |
 
 ---
 

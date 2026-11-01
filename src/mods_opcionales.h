@@ -66,7 +66,7 @@ enum class Modo {
 };
 
 struct Pista {
-  std::string fuente;              // "b3", "b2", "iw", "b1" o "mod:<carpeta>"
+  std::string fuente;              // "b3", "b2", "iw", "b1", "t3", "propia" (mods/*/musica.afs del Kit) o "mod:<carpeta>"
   std::string nombre;              // texto para la lista ("Budokai 2 #17 (mod ...)")
   std::string afs;                 // contenedor dentro del juego ("ADX_US.AFS"...)
   std::filesystem::path juego;     // carpeta/ISO que abre pasarela::AfsPs2
@@ -102,6 +102,16 @@ bool ModoConMusicaNativa(const std::string& ambito);
 // X1: en cada fotograma (hilo de la interfaz): con `en_combate` suena una pista segun el cvar dbz3_musica_combate
 // ("original" no toca nada; "aleatoria[:fuente]"), una por combate; al salir del combate se corta.
 void ActualizarCombate(bool en_combate);
+// Online, los primeros 8 s del combate: 1 = suena la musica elegida por este jugador (el otro oye la suya); 2 = no tiene esa
+// musica instalada. 0 = nada que avisar.
+int AvisoOnline();
+
+// Fase 2-4: cvar dbz3_musica_combate admite tambien "fija:<fuente>:<n>" (n = posicion en la lista de esa fuente; t3: pista 0..19).
+// La eleccion se guarda en musica.toml y se recupera al arrancar. Solo local (no entra en el estado del online).
+// CambiarEleccion(+1/-1): siguiente/anterior (ciclo Original -> todas las pistas); TextoEleccion: lo que se muestra.
+void CambiarEleccion(int delta);
+std::string TextoEleccion();
+int DeltaTeclado();   // +1 al pulsar ], -1 al pulsar [ (solo con la ventana del juego en primer plano); 0 si nada
 
 // Previa: reproduce en bucle y corta la anterior. `volumen` 0..1.
 void Escuchar(const Pista& pista, float volumen);

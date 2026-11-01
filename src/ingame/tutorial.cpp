@@ -75,6 +75,9 @@ void Leer() {   // con g_mu
     for (const auto& [k, v] : t)
       if (v.value_or(false)) g_vistos.insert(std::string(k.str()));
   } catch (...) {   // sin archivo o roto: todo sin ver
+    std::error_code ec;
+    if (std::filesystem::exists(Ruta(), ec))
+      REXLOG_WARN("dbz3 tutorial: {} no se puede leer: los tutoriales apareceran como no vistos", Ruta().string());
   }
 }
 
@@ -96,6 +99,8 @@ void Guardar(const std::string& id) {   // con g_mu: anade las claves de `id` y 
     std::fclose(f);
     std::filesystem::rename(tmp, Ruta(), ec);
     if (ec) REXLOG_WARN("dbz3 tutorial: no se pudo guardar {}: {}", Ruta().string(), ec.message());
+  } else {
+    REXLOG_WARN("dbz3 tutorial: no se pudo crear {}: los tutoriales pueden volver a aparecer", tmp);
   }
 }
 

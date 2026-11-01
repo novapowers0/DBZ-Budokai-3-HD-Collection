@@ -188,6 +188,49 @@ MAGICS_MDD = (b"#AMT", b"#AMO", b"#AME", b"#AMC", b"#AMM", b"#AMP", b"#AML")
 ORDEN_ZDD = {b"#AZT": 0, b"#ACC": 1, b"#AWO": 2, b"#ACM": 3, b"#ACL": 4}
 
 
+def amp_visibilidad(b):
+    """#AMP de raíces: claves [cuadro u16, estado s16], NO palabras u32.
+
+    144E60 (PS2) y820904C8 (HD) leen el estado en clave+2. El conversor
+    genérico de BSP intercambiaba cuadro/estado: Llanura seleccionaba209
+    en vez de-1 y acababa dibujando un puntero float fuera de su tabla.
+    Solo se usa dentro del #MDD; los #AMP de movesets conservan su conversor.
+    """
+    if len(b) < 32 or b[:4] != b"#AMP":
+        raise ValueError("pistas de visibilidad sin #AMP")
+    n, tabla, nb, nombres = struct.unpack_from("<4I", b, 16)
+    if not (0 < n <= 64 and 0 < nb <= 256 and 32 <= tabla <= len(b) - 16*n
+            and 32 <= nombres <= len(b) - 32*nb):
+        raise ValueError("cabecera #AMP de escenario invalida")
+    out = ps2hd.swap32_all(b)
+    out[:4] = b"#ACP"
+    out[nombres:nombres+32*nb] = b[nombres:nombres+32*nb]
+    hechas = set()
+    for i in range(n):
+        _, _, cuadros, ptrs = struct.unpack_from("<4I", b, tabla+16*i)
+        if not cuadros or ptrs < 32 or ptrs + 4*nb > len(b):
+            raise ValueError("clip #AMP de escenario invalido")
+        for j in range(nb):
+            q = le(b, ptrs+4*j)
+            if not q or q in hechas:
+                continue
+            if q < 32 or q+12 > len(b):
+                raise ValueError("pista #AMP fuera de limites")
+            nk = le(b, q+8)
+            if not 0 < nk <= 20000 or q+12+4*nk > len(b):
+                raise ValueError("claves #AMP fuera de limites")
+            anterior = -1
+            for k in range(nk):
+                p = q+12+4*k
+                cuadro, estado = struct.unpack_from("<Hh", b, p)
+                if cuadro < anterior or cuadro >= cuadros:
+                    raise ValueError("cuadros #AMP desordenados o fuera del clip")
+                out[p:p+4] = struct.pack(">Hh", cuadro, estado)
+                anterior = cuadro
+            hechas.add(q)
+    return bytes(out)
+
+
 def bloques_mdd(mdd):
     """Bloques de nivel superior de un #MDD PS2 en orden fisico (tamano = hasta el siguiente magic)."""
     ini = le(mdd, 0x1C)
@@ -369,7 +412,7 @@ def camaras_hd(zdd):
     return out
 
 
-def mdd_a_zdd(mdd, pistas_min=0, camaras=(), escala=1.0):
+def mdd_a_zdd(mdd, pistas_min=0, camaras=(), escala=1.0, visibilidad_b2=False):
     """#MDD PS2 -> #ZDD HD: cabecera 0x40, bloques convertidos (orden HD, alineados a 32), grafo.
     pistas_min: el primer #AMC del objeto 0 (camaras de la presentacion) con al menos esas pistas.
     camaras: bloques #ACC HD para el objeto 0 si no trae ninguno (B1: su objeto acaba en +0xD4, sin camaras)."""
@@ -391,6 +434,8 @@ def mdd_a_zdd(mdd, pistas_min=0, camaras=(), escala=1.0):
         datos = sustituto.get(off, mdd[off:off + tam])
         if datos[:4] == b"#AMO":
             hd, mp = amo_a_awo(datos, escala)
+        elif datos[:4] == b"#AMP" and visibilidad_b2:
+            hd, mp = amp_visibilidad(datos), {}
         else:
             try:
                 hd, mp = ps2hd.convert_block(datos), {}
@@ -732,7 +777,7 @@ def efectos_b2(fuente, grupo):
     el registro de 641 casillas del donante 44. Esta funcion los deja medidos para la tabla y el sidecar."""
     i = fuente.escenarios()[grupo]
     mdd, mad, mas, spx = fuente.piezas(grupo)
-    banco = fuente.entrada(i + 5)
+    banco = fuente.entrada(i - 3)   # descriptor372AB0: el banco pertenece a ESTE escenario
     efectos, texturas = [], []
     if banco[:4] == b"#AMB":
         n, t = struct.unpack_from("<2I", banco, 0x10)
@@ -771,7 +816,7 @@ def conservar_efectos_b2(fuente, grupo, carpeta):
     spx = fuente.piezas(grupo)[3]
     if spx:
         (carpeta / "spx_b2.bin").write_bytes(spx)
-    banco = fuente.entrada(i + 5)
+    banco = fuente.entrada(i - 3)
     if banco[:4] == b"#AMB":
         (carpeta / "banco_efectos_b2.bin").write_bytes(banco)
         try:
@@ -1007,7 +1052,7 @@ def escenario_b2(fuente, grupo, donante=44, zona=0, escala=1.0):
         cas = nat[k[2][0]:k[2][0] + k[2][1]] if not le(mas, 4) else camara(mas, b"#CAS")   # #MAS vacio (grupo 5): el #CAS del donante
         if not le(mas, 4):
             print("arreglos B2: el #MAS del grupo %d esta vacio: se usa el #CAS del donante %d" % (grupo, donante))
-        return amb_hd([(mdd_a_zdd(mdd, pistas_min=3, camaras=camaras, escala=escala), 0xFFFFFFFF), (nat[k[1][0]:k[1][0] + k[1][1]] if os.environ.get("X1ESC_CAD_DONANTE") else camara(mad, b"#CAD"), 0xFFFFFFFF),
+        return amb_hd([(mdd_a_zdd(mdd, pistas_min=3, camaras=camaras, escala=escala, visibilidad_b2=True), 0xFFFFFFFF), (nat[k[1][0]:k[1][0] + k[1][1]] if os.environ.get("X1ESC_CAD_DONANTE") else camara(mad, b"#CAD"), 0xFFFFFFFF),
                        (cas, 0xFFFFFFFF), (spx, 8), (reg, 0xFFFFFFFF)])
     if os.environ.get("X1ESC_OCULTAR"):      # DIAGNOSTICO: "10,11" oculta esas partes del #AMO grande (truco FFFFFF/FFFF)
         mdd = bytearray(mdd)
@@ -1019,12 +1064,17 @@ def escenario_b2(fuente, grupo, donante=44, zona=0, escala=1.0):
                 po = pm.amgs[0].all_parts[int(k)].off
                 struct.pack_into("<II", mdd, off0 + po, 0xFFFFFF, 0xFFFF)
         mdd = bytes(mdd)
+    # La lista del donante conserva SOLO la cámara por compatibilidad con packs viejos. solGP1: instalar()
+    # conserva aparte ambos AMC, SPX y MDD originales en transicion_b2.b2t, con papeles explícitos.
     # ZB 25/10: las camaras de suceso del objeto 0 (el 1.er #AMC) no se tiran: van al FINAL de la lista de camaras (tras las de
     # presentacion del donante) como #ACC; el cambio de zona del port (src/escenarios.cpp, EscenaZona) reproduce sus primeros
     # ESCENA_ZONA[grupo] clips con la camara del juego. X1ESC_SIN_ESCENA=1 las quita como antes (pruebas).
     escena = camaras_transicion(mdd)[:1] if (fuente.juego == JUEGOS["b2"][0] and grupo in ESCENA_ZONA and le(mdd, 4) >= 2
                                               and not os.environ.get("X1ESC_SIN_ESCENA")) else []
-    mdd, quitadas, quietas = raices_quietas_b2(mdd, todas=(grupo == 0 and os.environ.get('X1ESC_BASE_RAIZ_B', '1') != '0'))
+    # La máquina común conserva índices de raíz; las pistas siguen quietas hasta
+    # que el consumidor de94las restituye y activa. No renumerar NADARE/TOWER.
+    mdd, quitadas, quietas = raices_quietas_b2(mdd, todas=(grupo in (0, 2, 4, 7, 8) and
+                                                        (grupo != 0 or os.environ.get('X1ESC_BASE_RAIZ_B', '1') != '0')))
     mdd, saneadas = sanear_anims_raiz_b2(mdd)
     mdd, sucesos = sin_camaras_suceso(mdd)
     print("arreglos B2: %d piezas de destruccion quitadas, %d quietas en su cuadro 0, %d camaras de suceso "
@@ -1047,7 +1097,7 @@ def escenario_b2(fuente, grupo, donante=44, zona=0, escala=1.0):
     cas = nat[k[2][0]:k[2][0] + k[2][1]] if not le(mas, 4) else camara(mas, b"#CAS")   # #MAS vacio (grupo 5): el #CAS del donante
     if not le(mas, 4):
         print("arreglos B2: el #MAS del grupo %d esta vacio: se usa el #CAS del donante %d" % (grupo, donante))
-    return amb_hd([(mdd_a_zdd(mdd, pistas_min=3, camaras=camaras, escala=escala), 0xFFFFFFFF), (nat[k[1][0]:k[1][0] + k[1][1]] if os.environ.get("X1ESC_CAD_DONANTE") else camara(mad, b"#CAD"), 0xFFFFFFFF),
+    return amb_hd([(mdd_a_zdd(mdd, pistas_min=3, camaras=camaras, escala=escala, visibilidad_b2=True), 0xFFFFFFFF), (nat[k[1][0]:k[1][0] + k[1][1]] if os.environ.get("X1ESC_CAD_DONANTE") else camara(mad, b"#CAD"), 0xFFFFFFFF),
                    (cas, 0xFFFFFFFF), (spx, 8), (reg, 0xFFFFFFFF)])
 
 
@@ -1517,6 +1567,9 @@ def cmd_mod(a):
     carpeta = instalar(datos, a.mods or (RAIZ / "mods"), nombre, entrada, JUEGOS[a.juego][0], id_se=a.donante + 1,
                        tema=a.tema, foto=a.foto, rotulo_txt=a.rotulo, zona_b=zona_b,
                        escena=ESCENA_ZONA.get(a.grupo, 0) if a.juego == "b2" and a.zona != "b" and not os.environ.get("X1ESC_SIN_ESCENA") else 0)
+    if a.juego == "b2" and a.zona != "b":
+        import escenarios_transicion_b2
+        escenarios_transicion_b2.instalar(IsoB2(a.iso, a.juego), a.grupo, carpeta)
     print("mod '%s' -> %s (entradas %d y %d, %d B)" % (nombre, carpeta, entrada, entrada + 100, len(datos)))
     try:
         conservar_efectos_b2(IsoB2(a.iso, a.juego), a.grupo, carpeta)

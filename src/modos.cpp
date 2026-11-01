@@ -50,6 +50,7 @@
 #include "ingame/game_style.h"
 #include "ingame/hub_panel.h"
 #include "ingame/tutorial.h"
+#include "heroe_ui.h"
 #include "launcher/i18n.h"
 #include "launcher/launcher_state.h"
 #include "launcher/settings.h"

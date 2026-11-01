@@ -631,7 +631,12 @@ bool Xv2Instalado() {
 // que una partida antigua no se pierda. El prefijo hub_ hace que el HUB enseñe su aviso de guardado.
 void LeerPropio() {
   std::ifstream f(PropioPath(), std::ios::binary);
-  if (!f) return;
+  if (!f) {
+    std::error_code ec;
+    if (std::filesystem::exists(PropioPath(), ec))
+      REXLOG_WARN("dbz3 heroe: no se puede abrir {}: se usa rpg.toml o valores iniciales", PropioPath().string());
+    return;
+  }
   std::stringstream ss;
   ss << f.rdbuf();
   try {
@@ -673,7 +678,10 @@ void EscribirPropio() {
   if (path.empty()) return;
   const auto tmp = path.string() + ".tmp";
   std::ofstream o(tmp, std::ios::binary | std::ios::trunc);
-  if (!o) return;
+  if (!o) {
+    REXLOG_WARN("dbz3 heroe: no se pudo abrir {}: el progreso del Modo Heroe puede no guardarse", tmp);
+    return;
+  }
   o << "# Modo Heroe (src/heroe.cpp): guardado propio del modo, separado de la partida del juego.\n"
        "version = 1\n"
     << "heroe_raza = " << g_raza << "\nheroe_cuerpo = " << g_cuerpo << "\nheroe_traje = " << g_traje
@@ -683,7 +691,10 @@ void EscribirPropio() {
     << g_entreno[0] << ", " << g_entreno[1] << ", " << g_entreno[2] << ", " << g_entreno[3] << ", "
     << g_entreno[4] << ", " << g_entreno[5] << "]\n";
   o.close();
-  if (!o) return;
+  if (!o) {
+    REXLOG_WARN("dbz3 heroe: escritura incompleta de {}: el progreso del Modo Heroe puede no guardarse", tmp);
+    return;
+  }
   std::filesystem::rename(tmp, path, ec);
   if (ec) REXLOG_WARN("dbz3 heroe: no se pudo escribir {} ({})", path.string(), ec.message());
 }
@@ -715,7 +726,7 @@ void AplicarHooksDePrueba() {
   }
   if (std::getenv("DBZ3_TEST_HEROE_ESFERAS")) {   // mascara de Esferas recogidas; 127 = las 7 -> un deseo
     g_esferas = HookEntero("DBZ3_TEST_HEROE_ESFERAS", g_esferas, 0, 127);
-    if (g_esferas == 127) {
+    if (g_esferas == 127 && !std::getenv("DBZ3_TEST_HEROE_FINAL")) {   // HEROE_FINAL: las 7 llegan hasta Shenron
       g_esferas = 0;
       g_deseos = std::max(g_deseos, 1);
     }
@@ -1166,20 +1177,28 @@ std::string ArgsCartas() {
   }
   return r;
 }
-// C3: Esferas del Dragon del mapa y deseos. Las 7 recogidas llaman a Shenron (la escena nativa de B3 la pone el DU; aqui solo
-// la contabilidad): se apunta un deseo y las esferas vuelven a esconderse.
+// C3: Esferas del Dragon y deseos. Se gana una por saga completada. Las 7 esperan al final de la historia: su guion nativo llama
+// a sub_8215C1B0 (nativa 0x115 de la VM de #SPX), que abre Shenron (pantalla 11) con la mascara de la casilla (campaigns.cpp la
+// copia de aqui) y ahi se concede el deseo. Sin historia DU montada no hay Shenron: se concede al momento.
 int Esferas() { return g_esferas; }
 int Deseos() { return g_deseos; }
 bool RazaCerrada() { return g_raza_cerrada; }
 void GanarEsfera(int i) {
-  if (i < 0 || i >= 7) return;
+  if (i < 0 || i >= 7 || (g_esferas >> i & 1)) return;
   g_esferas |= 1 << i;
   REXLOG_INFO("dbz3 heroe: esfera {} recogida ({}/7)", i + 1, __builtin_popcount(unsigned(g_esferas)));
-  if (g_esferas == 127) {
-    g_esferas = 0;
-    g_deseos = std::min(g_deseos + 1, 9);
-    REXLOG_INFO("dbz3 heroe: 7 Esferas: Shenron concede un deseo (deseos {})", g_deseos);
+  if (g_esferas == 127 && !DuDisponible()) {
+    ShenronAparece();
+    ConcederDeseo();
   }
+}
+void ShenronAparece() {
+  g_esferas = 0;
+  REXLOG_INFO("dbz3 heroe: 7 Esferas: aparece Shenron (se gastan)");
+}
+void ConcederDeseo() {
+  g_deseos = std::min(g_deseos + 1, 9);
+  REXLOG_INFO("dbz3 heroe: Shenron concede el deseo de raza (deseos {})", g_deseos);
 }
 int Saga() { return g_saga; }
 // Frente 02 (studies 6): nombre, color de piel, voz y aura del heroe creado. El nombre se
@@ -1262,6 +1281,7 @@ void ImportarProgreso(const dbz3::cac::Heroe& h) {
   for (int i = 0; i < kNumMaestros; ++i) g_entreno[i] = std::clamp(h.entreno[i], 0, 100);
   g_esferas = std::clamp(h.esferas, 0, 127);
   g_deseos = std::clamp(h.deseos, 0, 9);
+  if (g_esferas == 0 && g_deseos == 0 && g_saga >= 1 && g_saga <= 7) g_esferas = (1 << g_saga) - 1;   // fichas anteriores a las Esferas por saga
   g_desbloqueos = h.desbloqueos;
   g_deseo_sesion = false;
   g_bloqueo_maestro = 0;
@@ -1390,17 +1410,13 @@ bool Desbloqueado(int id) {
 // C3: el 60 % (kEntrenoMinimo) es el escalon de recompensa de cada maestro (su tecnica clave); ya no bloquea el cambio.
 // [H] kEntrenoPorCombate = 20: 3 combates ganados = 60%.
 constexpr int kEntrenoMinimo = 60, kEntrenoPorCombate = 20;
+constexpr int kEntrenoMaestro = 40;   // [H] combate de la marca de maestro: 40 % + 20 % por combate de la saga = su tecnica clave
 
 // C3: la raza y el cuerpo se eligen libres al CREAR al heroe; empezada la aventura (algun combate o saga hecha) solo cambian
 // con un DESEO de Shenron (7 Esferas). El primer paso tras tener un deseo lo gasta y abre la "sesion de deseo" (varios pasos
 // seguidos) hasta guardar; antes se copia cac.toml a cac.toml.deseo-<fecha>.bak. La apariencia (traje, colores, pelo) NO pasa
 // por aqui: se edita siempre en la pantalla Create/Edit.
-// ponytail: mientras las Esferas no se recojan en el mapa DU (nada llama a GanarEsfera fuera de la prueba), cerrar la raza
-// dejaria al heroe sin salida: el candado solo se activa con DBZ3_TEST_HEROE_ESFERAS (pruebas). Al cablear los pickups: true.
-bool AventuraEmpezada() {
-  static const bool candado = std::getenv("DBZ3_TEST_HEROE_ESFERAS") != nullptr;
-  return candado && (g_exp > 0 || g_saga > 0);
-}
+bool AventuraEmpezada() { return g_exp > 0 || g_saga > 0; }
 bool PermiteCambioProfundo() {
   g_raza_cerrada = false;
   if (!AventuraEmpezada() || g_deseo_sesion) return true;
@@ -1556,9 +1572,21 @@ std::string LineaNivel(int pendientes) {
   if (pendientes > 0) s += "  (+" + std::to_string(pendientes) + " " + T::T("al acabar la saga", "when the saga ends") + ")";
   return s;
 }
+// Texto de la historia en fr/de/it/pt/ja: es y en vienen del TOML; el resto, por la clave inglesa (i18n_modos.toml).
+// Sin entrada queda `l` (el campo del TOML o el ingles).
+const char* Hist(const std::string& en, const char* l) {
+  if (!std::strcmp(T::LangCode(), "es")) return l;
+  const char* x = T::T(en.c_str(), en.c_str());
+  return x != en.c_str() ? x : l;
+}
+std::vector<std::string> HistLineas(const std::vector<std::string>& en) {
+  std::vector<std::string> v;
+  for (const std::string& l : en) v.push_back(Hist(l, l.c_str()));
+  return v;
+}
 const char* NombreSaga(int saga) {
   const SagaDef& sg = SagaDe(saga);
-  return L(sg.es.c_str(), sg.en.c_str(), sg.fr.c_str(), sg.de.c_str(), sg.it.c_str());
+  return Hist(sg.en, L(sg.es.c_str(), sg.en.c_str(), sg.fr.c_str(), sg.de.c_str(), sg.it.c_str()));
 }
 // studies 8 fase 2 (H5, heroe_api.h): datos de las sagas para el mapa.
 int SagasTotal() { return NumSagas(); }
@@ -1734,8 +1762,8 @@ void Mision(int saga, int k, int estilo, int cuerpo, int* rival, int* vida, int*
 std::string MisionTexto(int saga, int k, int rival) {
   const SagaDef& sg = SagaDe(saga);
   const Lucha& p = LuchaDe(saga, k);
-  return std::string(L(sg.es.c_str(), sg.en.c_str(), sg.fr.c_str(), sg.de.c_str(), sg.it.c_str())) + ": " +
-         (rival == p.rival ? L(p.es.c_str(), p.en.c_str(), p.fr.c_str(), p.de.c_str(), p.it.c_str())
+  return std::string(NombreSaga(saga)) + ": " +
+         (rival == p.rival ? Hist(p.en, L(p.es.c_str(), p.en.c_str(), p.fr.c_str(), p.de.c_str(), p.it.c_str()))
                            : T::T("¡Un rival inesperado se cruza en tu camino!", "An unexpected rival crosses your path!"));
 }
 
@@ -1744,7 +1772,8 @@ std::vector<std::string> SagaTextos(int saga, bool intro) {
   const SagaDef& sg = SagaDe(saga);
   const bool es = std::string(T::T("1", "0")) == "1";
   const auto& v = intro ? (es ? sg.intro_es : sg.intro_en) : (es ? sg.cierre_es : sg.cierre_en);
-  return v.empty() ? (intro ? sg.intro_en : sg.cierre_en) : v;
+  if (v.empty()) return HistLineas(intro ? sg.intro_en : sg.cierre_en);
+  return es ? v : HistLineas(v);
 }
 
 // studies 8 H6: datos del guion de cada combate y el epilogo.
@@ -1759,12 +1788,12 @@ std::string NotaCombate(int saga, int k) { return LuchaDe(saga, k).nota; }
 std::string TextoJefe(int saga, int k) {
   const Lucha& p = LuchaDe(saga, k);
   const bool es = std::string(T::T("1", "0")) == "1";
-  return es ? (p.jefe_es.empty() ? p.jefe_en : p.jefe_es) : p.jefe_en;
+  return es ? (p.jefe_es.empty() ? p.jefe_en : p.jefe_es) : std::string(Hist(p.jefe_en, p.jefe_en.c_str()));
 }
 std::vector<std::string> Epilogo() {
   Sagas();   // se lee con las sagas
   const bool es = std::string(T::T("1", "0")) == "1";
-  return es && !g_epilogo_es.empty() ? g_epilogo_es : g_epilogo_en;
+  return es && !g_epilogo_es.empty() ? g_epilogo_es : es ? g_epilogo_en : HistLineas(g_epilogo_en);
 }
 // PRUEBA (studies 8 H6, DBZ3_TEST_HEROE_PERDER=1): a los ~6 s de pelea gana el rival (aviso de ring out con el hueco
 // del ganador + 1 = 2, como DBZ3_TEST_RINGOUT en tagteam.cpp pero al reves). Para probar la nota "pierde" del guion.
@@ -1807,6 +1836,7 @@ void FinRun(int ganados, bool victoria) {
     g_ph += 2;                    // bonus de saga
     const int m = SagaDe(g_saga).maestro;   // el maestro de esa saga queda entrenado (sagas.toml)
     if (m >= 0 && m < kNumMaestros) g_maestros |= 1 << m;
+    GanarEsfera(g_saga % NumSagas());
     ++g_saga;
   }
   REXLOG_INFO("dbz3 heroe: fin de saga ({} ganados, {}): exp {}, nivel {} -> {}, PH {} -> {} (+{}), maestros {:02X}, "
@@ -1927,6 +1957,17 @@ bool DuDisponible() {
 // libre y el progreso va por maestro); al ganar el ultimo combate de la saga: bonus, maestro entrenado y la saga siguiente.
 void DuVictoria(int saga, int k) {
   if (saga < 0 || saga >= NumSagas()) return;
+  if (k >= int(SagaDe(saga).combates.size())) {   // marca de maestro del mapa (detras de los combates de la saga): solo entrena
+    const int m = SagaDe(saga).maestro;
+    ++g_exp, ++g_ph;
+    if (m >= 0 && m < kNumMaestros) {
+      g_entreno[m] = std::min(100, g_entreno[m] + kEntrenoMaestro);
+      if (g_entreno[m] >= 100) g_maestros |= 1 << m;
+      ComprobarDesbloqueos(kEstilos[m].id, 0);
+    }
+    REXLOG_INFO("dbz3 heroe: DU saga {}: entrenamiento con el maestro {} ganado: {}%, exp {}, PH {}", saga, m, m >= 0 && m < kNumMaestros ? g_entreno[m] : -1, g_exp, g_ph);
+    return;
+  }
   const bool ultimo = k + 1 >= int(SagaDe(saga).combates.size());
   const int antes = Nivel(), m = SagaDe(saga).maestro;
   ++g_exp, ++g_ph;
@@ -1937,7 +1978,10 @@ void DuVictoria(int saga, int k) {
   if (ultimo) {
     g_ph += 2;
     if (m >= 0 && m < kNumMaestros) g_maestros |= 1 << m;
-    if (g_saga <= saga) g_saga = saga + 1;
+    if (g_saga <= saga) {
+      GanarEsfera(saga);
+      g_saga = saga + 1;
+    }
   }
   {
     const int rival = LuchaDe(saga, k).rival;

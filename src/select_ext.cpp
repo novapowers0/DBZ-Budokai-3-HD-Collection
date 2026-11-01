@@ -624,6 +624,11 @@ void dbz3_select_refresh_preview(PPCContext& ctx, uint8_t* base);   // roster_ex
 // desde las tablas casilla -> ID, cambiadas mientras esta en una casilla nueva): se
 // recuerda la eleccion para el inicio del combate (dbz3::roster::PickedCellFor).
 DBZ3_HOOK(sub_8217CC68, dbz3eu_sub_8217CC20) {
+  {   // L1/R1: este es el estado de elegir en la rueda; la peticion de pagina se atiende aqui (hilo del juego)
+    uint64_t removed = 0, added = 0;
+    if (dbz3::roster::ProcessDynamicRosterPage(removed, added)) ++g_dynamic_page_version;
+    RefreshDynamicWheelForState(ctx, base, false);
+  }
   dbz3_select_refresh_preview(ctx, base);   // LT/RT: la vista previa en la forma elegida
   constexpr dbz3::GA kPicked = 0x824BA12F;   // EU 0x824BA11F (tools/eu_map.py)
   uint8_t before[2] = {REX_LOAD_U8(kPicked), REX_LOAD_U8(kPicked + 1)};

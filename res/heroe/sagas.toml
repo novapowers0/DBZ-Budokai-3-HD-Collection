@@ -1,0 +1,360 @@
+# Sagas del Modo Heroe (studies 7, frente 02). Generado desde studies 6 datos/heroe_sagas.json.
+# Colocar en res/heroe/sagas.toml (junto al exe) o en la carpeta de datos del usuario heroe/sagas.toml.
+# [H] = no medido: vida por nivel (1000 + 500*nivel, escala de heroe.cpp kSagas 1500..5000), escenario por saga (studies 8 fase 2: registro 0..16 = CFG+340, escenarios.cpp),
+#       maestro entrenado por saga, textos de combate generados ('X sale al paso.').
+version = 1
+
+[[saga]]
+nombre_es = "Saga de Ginyu"
+nombre_en = "Ginyu Saga"
+maestro = 0   # [H] design
+intro_es = ["Un mundo caotico: catastrofes y villanos revividos. Solo las siete Esferas pueden devolver la paz.", "Un joven saiyan sale a buscarlas. En el camino, el capitan Ginyu."]
+intro_en = ["A chaotic world: disasters and revived villains. Only the seven Dragon Balls can restore peace.", "A young Saiyan sets out to find them. On the way, Captain Ginyu."]
+cierre_es = ["Ginyu deja una Esfera de Dragon como agradecimiento."]
+cierre_en = ["Ginyu leaves a Dragon Ball as a thank-you."]
+
+[[saga.combate]]
+rival = 42   # Saibaman (JSON studies 6, ID nativo)
+alt = 43
+alt2 = 42
+vida = 1500   # [H] nivel 1
+escenario = 5   # Llanuras: los Saibaman salen en el llano [H] canon
+es = "Saibaman sale al paso."
+en = "Saibaman blocks the way."
+
+[[saga.combate]]
+rival = 21   # Recoome (JSON studies 6, ID nativo)
+alt = 43
+alt2 = 42
+vida = 2000   # [H] nivel 2
+escenario = 7   # Planeta Namek: Fuerzas Especiales [H] canon
+es = "Recoome sale al paso."
+en = "Recoome blocks the way."
+
+[[saga.combate]]
+rival = 20   # Ginyu (JSON studies 6, ID nativo)
+alt = 43
+alt2 = 42
+vida = 2500   # [H] nivel 3
+escenario = 7   # Planeta Namek [H] canon
+es = "Ginyu sale al paso."
+en = "Ginyu blocks the way."
+nota = "jefe"   # studies 6 heroe_sagas.json
+jefe_es = "Fuerzas Especiales... ¡Ginyu en persona! Tu cuerpo sera mio."   # [H] texto propio
+jefe_en = "Ginyu Force... Captain Ginyu himself! Your body will be mine."
+
+
+[[saga]]
+nombre_es = "Saga de los Androides"
+nombre_en = "Androids Saga"
+planeta = 0   # H3: mapa de la Tierra (las demas, Namek)
+maestro = 5   # [H] design
+intro_es = ["Una pareja busca las Esferas con un radar: son los Androides 17 y 18, corrompidos por el caos.", "Si los vences, recuperan la cordura y te prestan su radar."]
+intro_en = ["A pair is hunting the Dragon Balls with a radar: Androids 17 and 18, changed by the chaos.", "If you beat them, they come back to their senses and lend you their radar."]
+cierre_es = ["El mundo sigue sumido en el caos. Reune las Esferas."]
+cierre_en = ["The world is still in chaos. Gather the Dragon Balls."]
+
+[[saga.combate]]
+rival = 29   # C-17 (JSON studies 6, ID nativo)
+alt = 43
+alt2 = 42
+vida = 2500   # [H] nivel 3
+escenario = 4   # Montanas rocosas: los Androides [H] canon
+es = "C-17 sale al paso."
+en = "Android 17 blocks the way."
+
+[[saga.combate]]
+rival = 30   # C-18 (JSON studies 6, ID nativo)
+alt = 43
+alt2 = 42
+vida = 3000   # [H] nivel 4
+escenario = 4   # Montanas rocosas [H] canon
+es = "C-18 sale al paso."
+en = "Android 18 blocks the way."
+
+[[saga.combate]]
+rival = 7   # Mono Gigante (Vegeta) (JSON studies 6, ID nativo)
+alt = 43
+alt2 = 42
+vida = 3500   # [H] nivel 5
+escenario = 5   # Llanuras: Vegeta mono gigante [H] canon
+es = "Mono Gigante (Vegeta) sale al paso."
+en = "Great Ape (Vegeta) blocks the way."
+nota = "gigante"   # studies 6 heroe_sagas.json
+
+
+[[saga]]
+nombre_es = "Saga de Piccolo"
+nombre_en = "Piccolo Saga"
+planeta = 0   # H3: mapa de la Tierra (las demas, Namek)
+maestro = 2   # [H] design
+intro_es = ["El radar pierde la senal. Se dice que Piccolo, la reencarnacion del Rey Demonio, esta detras.", "Piccolo no es el culpable: pelea contigo para entrenarte y despertar tu Super Saiyan."]
+intro_en = ["The radar loses the signal. They say Piccolo, the reincarnation of the Demon King, is behind it.", "Piccolo is not the culprit: he fights you to train you and awaken your Super Saiyan."]
+cierre_es = ["Alguien pidio a Ultimate Shenron que la Tierra fuera un infierno."]
+cierre_en = ["Someone wished to Ultimate Shenron for Earth to become a living hell."]
+relevo = 11   # Piccolo entra de relevo en su combate (JSON nota 'maestro')
+relevo_k = 1
+
+[[saga.combate]]
+rival = 12   # Ten Shin Han (JSON studies 6, ID nativo)
+alt = 43
+alt2 = 42
+vida = 3000   # [H] nivel 4
+escenario = 4   # Montanas rocosas: entreno con Piccolo [H] canon
+es = "Ten Shin Han sale al paso."
+en = "Tien blocks the way."
+
+[[saga.combate]]
+rival = 11   # Piccolo (JSON studies 6, ID nativo)
+alt = 43
+alt2 = 42
+vida = 3500   # [H] nivel 5
+escenario = 4   # Montanas rocosas [H] canon
+es = "Piccolo sale al paso."
+en = "Piccolo blocks the way."
+nota = "maestro"   # studies 6 heroe_sagas.json
+
+[[saga.combate]]
+rival = 43   # Cell Jr. (JSON studies 6, ID nativo)
+alt = 43
+alt2 = 42
+vida = 4000   # [H] nivel 6
+escenario = 8   # Ring de Cell: Cell Jr. [H] canon
+es = "Cell Jr. sale al paso."
+en = "Cell Jr. blocks the way."
+
+[[saga]]
+nombre_es = "Saga de Baby"
+nombre_en = "Baby Saga"
+planeta = 0   # H4: la ciudad (Tierra), no Namek
+maestro = 1   # [H] design
+intro_es = ["El mono gigante que hirio a Piccolo esta en la ciudad, con el control de los villanos.", "Es Baby en su forma de mono gigante dorado. Quien lo derrote sabra la verdad."]
+intro_en = ["The Great Ape that hurt Piccolo is in the city, controlling the villains.", "It is Baby in his Golden Great Ape form. Whoever beats him will learn the truth."]
+cierre_es = ["El mono gigante dorado revela: tras todo esta Omega Shenron."]
+cierre_en = ["The Golden Great Ape reveals: Omega Shenron is behind all of it."]
+
+[[saga.combate]]
+rival = 21   # Recoome (JSON studies 6, ID nativo)
+alt = 43
+alt2 = 42
+vida = 4000   # [H] nivel 6
+escenario = 3   # Zona urbana: intro 'esta en la ciudad' (fuente: intro de la saga)
+es = "Recoome sale al paso."
+en = "Recoome blocks the way."
+
+[[saga.combate]]
+rival = 20   # Ginyu (JSON studies 6, ID nativo)
+alt = 43
+alt2 = 42
+vida = 4500   # [H] nivel 7
+escenario = 3   # Zona urbana (fuente: intro de la saga)
+es = "Ginyu sale al paso."
+en = "Ginyu blocks the way."
+
+[[saga.combate]]
+rival = 7   # Baby Vegeta Oozaru Dorado (JSON studies 6, ID nativo)
+alt = 43
+alt2 = 42
+vida = 5000   # [H] nivel 8
+escenario = 12   # Zona urbana B, la ciudad destruida: Baby (fuente: intro) [H] variante
+es = "Baby Vegeta Oozaru Dorado sale al paso."
+en = "Golden Great Ape Baby blocks the way."
+nota = "gigante"   # studies 6 heroe_sagas.json
+jefe_es = "Soy Baby. Este mundo de caos es mio... ¡y tu tambien!"   # [H] texto propio
+jefe_en = "I am Baby. This world of chaos is mine... and so are you!"
+
+
+[[saga]]
+nombre_es = "Saga de Omega Shenron"
+nombre_en = "Omega Shenron Saga"
+maestro = 4   # [H] design
+intro_es = ["El radar marca tres Esferas en un mismo lugar: alli espera Omega Shenron.", "La pelea parece imposible... y al final Omega dispersa las Esferas por el mundo."]
+intro_en = ["The radar marks three Dragon Balls in one place: Omega Shenron waits there.", "The fight seems impossible... and in the end Omega scatters the Dragon Balls across the world."]
+cierre_es = ["Omega dispersa las Esferas: hay que volver a encontrarlas."]
+cierre_en = ["Omega scatters the Dragon Balls: you must find them again."]
+
+[[saga.combate]]
+rival = 41   # Omega Shenron (studies 8: el 40 es Broly; medido en char96 0x8234ABB8: 41 = bins 86/87 Syn/Omega Shenron)
+alt = 43
+alt2 = 42
+vida = 5000   # [H] nivel 8
+escenario = 12   # Zona urbana B: Omega [H] canon GT
+es = "Omega Shenron sale al paso."
+en = "Omega Shenron blocks the way."
+nota = "pierde"   # studies 6 heroe_sagas.json
+jefe_es = "Siete Esferas, siete poderes. No puedes vencerme."   # [H] texto propio
+jefe_en = "Seven Dragon Balls, seven powers. You cannot beat me."
+
+
+[[saga]]
+nombre_es = "Reunion de las Esferas"
+nombre_en = "Gathering the Dragon Balls"
+maestro = 3   # [H] design
+intro_es = ["Villanos revividos guardan las Esferas: Saibaman, Cooler, Cell, Freezer, Ginyu y Raditz.", "La ultima, la de cuatro estrellas, brilla lejos, donde se celebro el torneo de Cell."]
+intro_en = ["Revived villains hold the Dragon Balls: Saibamen, Cooler, Cell, Frieza, Ginyu and Raditz.", "The last one, the four-star ball, shines far away, where Cell's tournament was held."]
+cierre_es = ["Falta la Esfera de cuatro estrellas: en el estadio de Cell."]
+cierre_en = ["The four-star ball is still missing: at the Cell Games Arena."]
+
+[[saga.combate]]
+rival = 42   # Saibaman (JSON studies 6, ID nativo)
+alt = 43
+alt2 = 42
+vida = 4000   # [H] nivel 6
+escenario = 5   # Llanuras [H] canon
+es = "Saibaman sale al paso."
+en = "Saibaman blocks the way."
+
+[[saga.combate]]
+rival = 38   # Cooler (JSON studies 6, ID nativo)
+alt = 43
+alt2 = 42
+vida = 4500   # [H] nivel 7
+escenario = 2   # Archipielago [H]
+es = "Cooler sale al paso."
+en = "Cooler blocks the way."
+
+[[saga.combate]]
+rival = 33   # Cell (JSON studies 6, ID nativo)
+alt = 43
+alt2 = 42
+vida = 5000   # [H] nivel 8
+escenario = 8   # Ring de Cell [H] canon
+es = "Cell sale al paso."
+en = "Cell blocks the way."
+
+[[saga.combate]]
+rival = 27   # Freezer (JSON studies 6, ID nativo)
+alt = 43
+alt2 = 42
+vida = 5000   # [H] nivel 8
+escenario = 14   # Namek B (el que explota): Freezer [H] canon
+es = "Freezer sale al paso."
+en = "Frieza blocks the way."
+
+[[saga.combate]]
+rival = 20   # Ginyu (JSON studies 6, ID nativo)
+alt = 43
+alt2 = 42
+vida = 5000   # [H] nivel 8
+escenario = 7   # Planeta Namek: Ginyu [H] canon
+es = "Ginyu sale al paso."
+en = "Ginyu blocks the way."
+
+[[saga.combate]]
+rival = 18   # Raditz (JSON studies 6, ID nativo)
+alt = 43
+alt2 = 42
+vida = 5000   # [H] nivel 8
+escenario = 6   # Casa del abuelo: Raditz [H] canon
+es = "Raditz sale al paso."
+en = "Raditz blocks the way."
+
+[[saga.combate]]
+rival = 72   # fusion nativa de B3 (char372, studies 7 frente 06)
+forma = 2
+alt = 43
+alt2 = 42
+vida = 5500   # [H]
+escenario = 10   # Dentro de Bu: Vegito [H] canon
+es = "Vegito guarda la ultima Esfera de la reunion."
+en = "Vegito guards the last ball of the gathering."
+nota = "jefe"   # [H] diseno s8
+jefe_es = "La Esfera es mía. Gánamela... si puedes seguirme el ritmo."   # [H] texto propio
+jefe_en = "A Dragon Ball? Win it from me... if you can keep up."
+
+[[saga]]
+nombre_es = "Torneo Mundial"
+nombre_en = "World Tournament"
+maestro = -1   # [H] design
+intro_es = ["En el estadio, un torneo de villanos: Cell, Freezer, Ginyu y Raditz.", "Gana el torneo para atraer a Omega Shenron a la final."]
+intro_en = ["In the stadium, a tournament of villains: Cell, Frieza, Ginyu and Raditz.", "Win the tournament to draw Omega Shenron to the final."]
+cierre_es = ["El torneo era una trampa: Omega te espera en la arena de Cell."]
+cierre_en = ["The tournament was a trap: Omega waits at the Cell Games Arena."]
+
+[[saga.combate]]
+rival = 33   # Cell (JSON studies 6, ID nativo)
+alt = 43
+alt2 = 42
+vida = 5000   # [H] nivel 8
+escenario = 0   # Torneo (fuente: intro 'En el estadio, un torneo')
+es = "Cell sale al paso."
+en = "Cell blocks the way."
+
+[[saga.combate]]
+rival = 27   # Freezer (JSON studies 6, ID nativo)
+alt = 43
+alt2 = 42
+vida = 5000   # [H] nivel 8
+escenario = 0   # Torneo (fuente: intro)
+es = "Freezer sale al paso."
+en = "Frieza blocks the way."
+
+[[saga.combate]]
+rival = 20   # Ginyu (JSON studies 6, ID nativo)
+alt = 43
+alt2 = 42
+vida = 5000   # [H] nivel 8
+escenario = 0   # Torneo (fuente: intro)
+es = "Ginyu sale al paso."
+en = "Ginyu blocks the way."
+
+[[saga.combate]]
+rival = 18   # Raditz (JSON studies 6, ID nativo)
+alt = 43
+alt2 = 42
+vida = 5000   # [H] nivel 8
+escenario = 0   # Torneo (fuente: intro)
+es = "Raditz sale al paso."
+en = "Raditz blocks the way."
+
+[[saga.combate]]
+rival = 64   # fusion nativa de B3 (char372, studies 7 frente 06)
+forma = 3
+alt = 43
+alt2 = 42
+vida = 5500   # [H]
+escenario = 0   # Torneo: la final (fuente: intro)
+es = "Gotenks llega a la final del torneo."
+en = "Gotenks reaches the tournament final."
+nota = "jefe"   # [H] diseno s8
+jefe_es = "¡Soy el gran Gotenks! ¡Prepárate para mi ataque más fuerte!"   # [H] texto propio
+jefe_en = "I am the great Gotenks! Get ready for my strongest attack!"
+
+[[saga]]
+nombre_es = "Omega Shenron, la ultima batalla"
+nombre_en = "Omega Shenron, the Last Battle"
+maestro = -1   # [H] design
+intro_es = ["Con las siete Esferas, Omega Shenron es casi invencible. Es la batalla decisiva.", "Vence a Omega y recupera la Esfera de cuatro estrellas."]
+intro_en = ["With all seven Dragon Balls, Omega Shenron is nearly invincible. This is the decisive fight.", "Beat Omega and take back the four-star ball."]
+cierre_es = ["Omega cae, pero avisa: el mundo ya es un infierno y la de cuatro estrellas lo retiene."]
+cierre_en = ["Omega falls, but warns: the world is already a hell and the four-star ball holds it."]
+
+[[saga.combate]]
+rival = 70   # fusion nativa de B3 (char372, studies 7 frente 06)
+forma = 4
+alt = 43
+alt2 = 42
+vida = 6000   # [H]
+escenario = 12   # Zona urbana B: Gogeta SS4 [H] canon GT
+es = "Gogeta SS4 te pone a prueba antes de Omega."
+en = "SS4 Gogeta tests you before Omega."
+nota = "jefe"   # [H] diseno s8
+jefe_es = "Si no puedes conmigo, no podrás con Omega. ¡Vamos!"   # [H] texto propio
+jefe_en = "If you can't beat me, you can't beat Omega. Let's go!"
+
+[[saga.combate]]
+rival = 41   # Omega Shenron (studies 8: el 40 es Broly; medido en char96 0x8234ABB8: 41 = bins 86/87 Syn/Omega Shenron)
+alt = 43
+alt2 = 42
+vida = 5000   # [H] nivel 8
+escenario = 8   # Ring de Cell: 'Omega te espera en la arena de Cell' (fuente: cierre de la saga anterior)
+es = "Omega Shenron sale al paso."
+en = "Omega Shenron blocks the way."
+nota = "jefe"   # studies 6 heroe_sagas.json
+jefe_es = "¡Esta vez no habra piedad! ¡Ven, si te atreves!"   # [H] texto propio
+jefe_en = "This time there will be no mercy! Come, if you dare!"
+
+# studies 8 H6: epilogo tras la ultima saga (studies 6 heroe_sagas.json "epilogo")
+[epilogo]
+es = ["Ultimate Shenron no puede devolver el mundo tal como era: el caos supera su poder.", "Entonces el heroe pide que vuelvan los caidos y promete arreglar el mundo con sus propias manos."]
+en = ["Ultimate Shenron cannot restore the world as it was: the chaos exceeds his power.", "So the hero wishes the fallen back and promises to fix the world with his own two hands."]

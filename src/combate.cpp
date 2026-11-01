@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <map>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -27,6 +28,7 @@
 #include <cstring>
 #include <filesystem>
 #include <string>
+#include <vector>
 
 #include "reloj_prueba.h"
 #include "combate.h"
@@ -39,6 +41,7 @@
 #include "launcher/launcher_state.h"
 #include "net/netplay.h"
 #include "tagteam.h"
+#include "t3_crusher_ball.h"
 
 REXCVAR_DEFINE_BOOL(dbz3_combate_reglas_v0, false, "DBZ3/Combate",
                     "Reglas competitivas v0: dos golpes de Goku con otro dano (no online)");
@@ -424,6 +427,7 @@ struct Ult {
   uint16_t cap = 0, code = 0, aire = 0;   // capsula y codigos de suelo y aire (w8, w12, w13) de la definitiva
 };
 std::array<Ult, 2> g_ult{};
+std::array<std::array<Ult, 8>, 2> g_ults{};   // todas las vistas en este combate (g_ult = la ultima)
 bool Equipada(uint8_t* base, uint32_t x, uint16_t cap) {   // lista de capsulas del luchador: *(X+7412) +52 n, +54
   const uint32_t sel = REX_LOAD_U32(x + 7412);
   if (!sel) return false;
@@ -448,25 +452,55 @@ void DefinitivaLog(uint8_t* base) {
   static uint32_t code[2] = {};
   static bool en[2] = {};
   static float cobrado[2] = {};
+  static float vida_rival[2] = {};
+  static uint32_t cuadro0[2] = {};
+  static std::vector<uint32_t> cadena[2];   // codigos por los que pasa (para saber si salio entera)
+  if (BattleState(base) < 4) g_ults = {};
   for (int k = 0; k < 2; ++k) {
     const uint32_t x = Fighter(base, k), c = REX_LOAD_U32(x + kCode), act = REX_LOAD_U16(x + kAct);
     const float now = LoadF(base, x + kKi);
+    // astraDIF: traza por cuadro para comparar una forma con el personaje separado.
+    // Solo la activa el escenario de pruebas; no modifica el combate.
+    if (static const bool trace = std::getenv("DBZ3_TEST_DIF") != nullptr; trace && k == 0 && (act == 15 || en[k])) {
+      REXLOG_INFO("dbz3 dif: frame {} form {} code {:X} act {} ki {:.0f} hp2 {:.0f} cam {:08X} ccm {:08X} "
+                  "anim {:08X} {:08X} {:08X} {:08X} flags {:08X} {:08X} af {:.2f} hf {} csk {:08X} hit {:08X} {}",
+                  g_frame.load(), REX_LOAD_U32(x + kForm), c, act, now, LoadF(base, Fighter(base, 1) + kHp),
+                  REX_LOAD_U32(x + 7896), REX_LOAD_U32(x + 5444),
+                  REX_LOAD_U32(x + 2932), REX_LOAD_U32(x + 2936), REX_LOAD_U32(x + 2940), REX_LOAD_U32(x + 2944),
+                  REX_LOAD_U32(x + 3248), REX_LOAD_U32(x + 3252), LoadF(base, x + kAnimFrame),
+                  REX_LOAD_U16(x + kHitFrame), REX_LOAD_U32(x + kCsk),
+                  REX_LOAD_U32(Fighter(base, 1) + kHitHr), REX_LOAD_U16(Fighter(base, 1) + kHitPending));
+    }
     if (act == 15 && c) g_ultima_code[size_t(k)] = c;
-    if (g_ult[size_t(k)].code && (c == g_ult[size_t(k)].code || c == g_ult[size_t(k)].aire) && code[k] != c) {
+    const Ult* ini = nullptr;   // un moveset puede traer varias entradas de definitiva (por forma, suelo y aire)
+    if (code[k] != c)
+      for (const Ult& u : g_ults[size_t(k)])
+        if (u.code && (c == u.code || c == u.aire)) { ini = &u; break; }
+    if (ini) {
       REXLOG_INFO("dbz3 combate: 15 definitiva {:X} del lado {} (capsula {}, coste {:.0f}): empieza con ki {:.0f}, "
-                  "modo hiper {}", c, k + 1, g_ult[size_t(k)].cap, Coste(base, g_ult[size_t(k)].cap), now,
-                  REX_LOAD_U8(x + kHyper));
+                  "modo hiper {}, distancia {:.1f}", c, k + 1, ini->cap, Coste(base, ini->cap), now, REX_LOAD_U8(x + kHyper),
+                  std::hypot(LoadF(base, x + 64) - LoadF(base, Fighter(base, 1 - k) + 64),
+                             LoadF(base, x + 72) - LoadF(base, Fighter(base, 1 - k) + 72)));
       en[k] = true;
       cobrado[k] = 0;
+      vida_rival[k] = LoadF(base, Fighter(base, 1 - k) + kHp);
+      cuadro0[k] = g_frame.load();
+      cadena[k].assign(1, c);
     } else if (en[k]) {
+      if (c != code[k] && cadena[k].size() < 48) cadena[k].push_back(c);
       if (ki[k] - now > 500.0f) {
         cobrado[k] += ki[k] - now;
         REXLOG_INFO("dbz3 combate: 15 cobro de {:.0f} de ki al lado {} (cuadro {}, codigo {:X}): {:.0f} -> {:.0f}",
                     ki[k] - now, k + 1, g_frame.load(), c, ki[k], now);
       }
       if (act != 15 || BattleState(base) != 4) {
-        REXLOG_INFO("dbz3 combate: 15 fin de la definitiva del lado {}: accion {}, vida {:.0f}, estado {}, cobrado {:.0f}",
-                    k + 1, act, LoadF(base, x + kHp), BattleState(base), cobrado[k]);
+        std::string lista;
+        for (uint32_t v : cadena[k]) { char t[12]; std::snprintf(t, sizeof(t), "%X ", v); lista += t; }
+        const uint32_t rival = Fighter(base, 1 - k);
+        REXLOG_INFO("dbz3 combate: 15 fin de la definitiva del lado {}: accion {}, vida {:.0f}, estado {}, cobrado {:.0f}, "
+                    "cuadros {}, dano al rival {:.0f} (accion {}), codigos {}",
+                    k + 1, act, LoadF(base, x + kHp), BattleState(base), cobrado[k], g_frame.load() - cuadro0[k],
+                    vida_rival[k] - LoadF(base, rival + kHp), REX_LOAD_U16(rival + kAct), lista);
         en[k] = false;
       }
     }
@@ -500,6 +534,7 @@ class CombatePanel : public rex::ui::ImGuiDialog {
  protected:
   void OnDraw(ImGuiIO& io) override {
     if (NowMs() - g_tick_ms.load() > 250 || dbz3::GameDimmed() || dbz3::OverlayOpen()) return;
+    dbz3::t3cb::Draw(io);
     const S::Area a = S::GameArea(io);
     ImDrawList* dl = ImGui::GetForegroundDrawList();
     if (REXCVAR_GET(dbz3_combate_aviso)) {
@@ -545,6 +580,240 @@ void CrearPanel() {
 
 }  // namespace dbz3::combate
 
+// SONDA (DBZ3_TEST_BANCOS=1): cada carga de banco de efectos (sub_8209E650: r4 = descriptor en memoria del juego)
+DBZ3_HOOK_EU(sub_8209E650) {
+  static const bool bancos = std::getenv("DBZ3_TEST_BANCOS") != nullptr;
+  if (bancos) {
+    const uint32_t d = ctx.r4.u32;
+    std::string s;
+    for (uint32_t o = 0; o < 28; o += 4) { char t[16]; std::snprintf(t, sizeof t, " %08X", REX_LOAD_U32(d + o)); s += t; }
+    const uint32_t bp = REX_LOAD_U32(d + 4), sp = REX_LOAD_U32(d + 12);
+    REXLOG_INFO("dbz3 combate: carga banco lr={:08X} slot {} desc{} bank@{:08X}:{:08X} sq@{:08X}:{:08X}", uint32_t(ctx.lr), REX_LOAD_U32(d), s,
+                bp, bp ? REX_LOAD_U32(bp) : 0u, sp, sp ? REX_LOAD_U32(sp) : 0u);
+  }
+  orig(ctx, base);
+}
+
+// SONDA (DBZ3_TEST_BANCOS=1): estado de las 16 ranuras de bancos de efectos (9320 B cada una, +1564 = 3 cargada, +1560 = handle) cada 300
+// llamadas al vigilante del gestor (sub_8209DA08, vivo tambien fuera del combate: sirve para ver que no queda nada despues)
+DBZ3_HOOK_EU(sub_8209DA08) {
+  static const bool bancos = std::getenv("DBZ3_TEST_BANCOS") != nullptr;
+  static uint32_t cuadros = 0;
+  static std::string ultimo;
+  if (bancos) {
+    ++cuadros;
+    if (const uint32_t g = REX_LOAD_U32(dbz3::GA(0x82386260))) {
+      std::string s;
+      for (uint32_t i = 0; i < 16; ++i) {
+        const uint32_t e = g + 808 + i * 9320;
+        char t[48];
+        std::snprintf(t, sizeof t, " %u:%u/%X/%X", i, REX_LOAD_U32(e + 1564), REX_LOAD_U32(e + 1560), REX_LOAD_U32(e + 1568) != 0);
+        s += t;
+      }
+      if (s != ultimo || cuadros % 600 == 0) REXLOG_INFO("dbz3 combate: bancos de efectos{}", s);   // al cambiar y cada 10 s
+      ultimo = s;
+    }
+  }
+  orig(ctx, base);
+}
+
+// SONDA (DBZ3_TEST_BANCOS=1): liberacion de todas las ranuras del gestor al acabar el combate (sub_8209D988, solo si +1540 != 0)
+DBZ3_HOOK_EU(sub_8209D988) {
+  static const bool bancos = std::getenv("DBZ3_TEST_BANCOS") != nullptr;
+  auto estado = [&]() {
+    std::string s;
+    for (uint32_t i = 0; i < 16; ++i) {
+      const uint32_t e = ctx.r3.u32 + i * 9320;
+      char t[32];
+      std::snprintf(t, sizeof t, " %u:%d", i, REX_LOAD_U32(e + 1568) != 0 ? 1 : 0);
+      s += t;
+    }
+    return s;
+  };
+  const uint32_t mgr = ctx.r3.u32;
+  const bool activa = bancos && REX_LOAD_U8(mgr + 1540) != 0;
+  if (activa) REXLOG_INFO("dbz3 combate: liberacion de bancos: antes (copia en memoria){}", estado());
+  orig(ctx, base);
+  if (activa) REXLOG_INFO("dbz3 combate: liberacion de bancos: despues{}", estado());
+}
+
+// Sonidos pedidos desde otros hilos (Dragon Tactics): una cola de 16 (un productor, el hilo de la interfaz; un consumidor, este gancho) que
+// suena por el gestor de efectos del propio juego (sub_820922A0: banco e id, como los de un combate normal). Como mucho 4 por cuadro;
+// si la cola se llena, el sonido nuevo se descarta (la mezcla de Tactics ya limita lo que pide).
+namespace {
+constexpr uint32_t kColaSe = 16, kSeCuadro = 4;
+std::atomic<uint32_t> g_cola_se[kColaSe], g_se_in{0}, g_se_out{0};
+
+// VOCES PROPIAS (Dragon Tactics, H7): el combate carga en las ranuras 3 y 4 del gestor de efectos el banco de gritos de sus dos
+// luchadores (sub_821221F8: fid lang = char372 +0x24 | 0x30000, nodo AFS en el hilo de E/S; sub_821226A8 lo parte en los hijos del #AMB y
+// sub_8209E938 arma el descriptor de sub_8209E650). Aqui se repite lo mismo para otros personajes en las ranuras libres 5..15: pedir el
+// fichero (sub_82083968), esperar su nodo, descriptor {ranura, hijo0, hijo1, 0, tam0, tam1, -1} y sub_8209E650. De una en una: el gestor
+// solo vigila (sub_8209DA08) la ultima ranura cargada (+1544). Lo que ya no se pide se suelta (como sub_8209D988, pero por ranura).
+constexpr uint32_t kRanuraIni = 5, kRanuras = 11, kSlotSz = 9320;
+constexpr dbz3::GA kGestorPtr = 0x82386260, kChar372Voz = 0x82329CF0;
+std::atomic<uint64_t> g_voces_mask{0};
+std::atomic<int8_t> g_voz_slot[64];
+struct RanuraVoz { int ch = -1; int estado = 0; uint32_t nodo = 0; uint32_t desde = 0; };   // estado: 0 libre, 1 leyendo, 2 cargando, 3 lista
+RanuraVoz g_rv[kRanuras];
+uint32_t g_rv_cuadro = 0;
+const bool g_voz_init = [] { for (auto& s : g_voz_slot) s.store(-1); return true; }();
+
+uint32_t Gcall(PPCContext& ctx, uint8_t* base, Dbz3GuestFn f, uint32_t a, uint32_t b = 0, uint32_t c = 0) {
+  const PPCContext guardado = ctx;
+  ctx.r3.u64 = a, ctx.r4.u64 = b, ctx.r5.u64 = c;
+  f(ctx, base);
+  const uint32_t r = ctx.r3.u32;
+  ctx = guardado;
+  return r;
+}
+
+void SoltarRanuraVoz(PPCContext& ctx, uint8_t* base, uint32_t k) {
+  RanuraVoz& r = g_rv[k];
+  const uint32_t g = REX_LOAD_U32(kGestorPtr);
+  if (r.estado == 1 && r.nodo) Gcall(ctx, base, DBZ3_CALL_EU(sub_82083D08), r.nodo, 0);   // pedido que no llego a usarse
+  if (r.estado >= 2 && g) {
+    const uint32_t e = g + 808 + (kRanuraIni + k) * kSlotSz;
+    if (const uint32_t m = REX_LOAD_U32(e + 1568)) {   // (si el fin del combate ya la soltio, +1568 vale 0: nada que hacer)
+      if (const uint32_t h = REX_LOAD_U32(e + 1560)) Gcall(ctx, base, DBZ3_CALL_EU(sub_822EB318), h);
+      Gcall(ctx, base, DBZ3_CALL_EU(sub_8221CED8), m);
+    }
+    if (const uint32_t q = REX_LOAD_U32(e + 1576)) {
+      Gcall(ctx, base, DBZ3_CALL_EU(sub_820A1B50), q);
+      Gcall(ctx, base, DBZ3_CALL_EU(sub_8221CED8), q);
+    }
+    REX_STORE_U32(e + 1560, 0), REX_STORE_U32(e + 1564, 0), REX_STORE_U32(e + 1568, 0), REX_STORE_U32(e + 1576, 0);
+  }
+  REXLOG_INFO("dbz3 combate: voz: personaje {} suelta (ranura {}, estado {})", r.ch, kRanuraIni + k, r.estado);
+  if (r.ch >= 0 && r.ch < 64) g_voz_slot[r.ch].store(-1);
+  r = RanuraVoz{};
+}
+
+void VocesCuadro(PPCContext& ctx, uint8_t* base) {
+  ++g_rv_cuadro;
+  const uint32_t g = REX_LOAD_U32(kGestorPtr);
+  const uint64_t pedidas = g_voces_mask.load();
+  if (!g) {   // el gestor ya no existe (fin del combate): todo lo suyo se fue con el
+    for (RanuraVoz& r : g_rv) if (r.estado) { if (r.ch >= 0) g_voz_slot[r.ch].store(-1); r = RanuraVoz{}; }
+    return;
+  }
+  // 1) lo que ya no se pide se suelta; lo que el fin del combate soltio (handle a 0) se olvida
+  for (uint32_t k = 0; k < kRanuras; ++k) {
+    RanuraVoz& r = g_rv[k];
+    if (!r.estado) continue;
+    const uint32_t e = g + 808 + (kRanuraIni + k) * kSlotSz;
+    if (r.estado >= 2 && !REX_LOAD_U32(e + 1568)) {
+      REXLOG_INFO("dbz3 combate: voz: personaje {} perdida con el combate (ranura {})", r.ch, kRanuraIni + k);
+      g_voz_slot[r.ch].store(-1);
+      r = RanuraVoz{};
+      continue;
+    }
+    if (!(pedidas >> r.ch & 1)) SoltarRanuraVoz(ctx, base, k);
+  }
+  // 2) la que se esta cargando: esperar el nodo, cargar, esperar el estado 3 del gestor
+  bool ocupado = int32_t(REX_LOAD_U32(g + 808 + 1544)) >= 0;   // sub_8209DA08 aun vigila una carga
+  for (uint32_t k = 0; k < kRanuras; ++k) {
+    RanuraVoz& r = g_rv[k];
+    const uint32_t e = g + 808 + (kRanuraIni + k) * kSlotSz;
+    if (r.estado == 2) {
+      if (REX_LOAD_U32(e + 1564) == 3) {
+        r.estado = 3;
+        g_voz_slot[r.ch].store(int8_t(kRanuraIni + k));
+        REXLOG_INFO("dbz3 combate: voz: personaje {} lista en la ranura {} ({} cuadros)", r.ch, kRanuraIni + k, g_rv_cuadro - r.desde);
+      } else if (g_rv_cuadro - r.desde > 600) {
+        REXLOG_WARN("dbz3 combate: voz: personaje {} no llego a estado 3 (ranura {})", r.ch, kRanuraIni + k);
+        SoltarRanuraVoz(ctx, base, k);
+      }
+    } else if (r.estado == 1 && !ocupado) {
+      const uint32_t nodo = r.nodo, data = nodo ? REX_LOAD_U32(nodo + 192) : 0;
+      if (!nodo || REX_LOAD_U8(nodo + 1) || !data || data == 0xFFFFFFFFu) {
+        if (g_rv_cuadro - r.desde > 1200) {
+          REXLOG_WARN("dbz3 combate: voz: personaje {}: el fichero no llega", r.ch);
+          SoltarRanuraVoz(ctx, base, k);
+        }
+        continue;
+      }
+      const uint32_t raiz = REX_LOAD_U32(data + 208);
+      Gcall(ctx, base, DBZ3_CALL_EU(sub_820800A8), raiz);
+      const uint32_t c0 = Gcall(ctx, base, DBZ3_CALL_EU(sub_820B0CC8), raiz, 0);
+      const uint32_t c1 = Gcall(ctx, base, DBZ3_CALL_EU(sub_820B0CC8), raiz, 1);
+      const uint32_t sp = ctx.r1.u32;
+      ctx.r1.u32 = sp - 256;
+      const uint32_t d = ctx.r1.u32 + 32;
+      REX_STORE_U32(d + 0, kRanuraIni + k), REX_STORE_U32(d + 4, REX_LOAD_U32(c0)), REX_STORE_U32(d + 8, REX_LOAD_U32(c1)), REX_STORE_U32(d + 12, 0);
+      REX_STORE_U32(d + 16, REX_LOAD_U32(c0 + 4)), REX_STORE_U32(d + 20, REX_LOAD_U32(c1 + 4)), REX_STORE_U32(d + 24, 0xFFFFFFFFu);
+      REXLOG_INFO("dbz3 combate: voz: personaje {} -> ranura {}: banco {:08X} ({:X} B) nombres {:08X} ({:X} B)", r.ch, kRanuraIni + k,
+                  REX_LOAD_U32(d + 4), REX_LOAD_U32(d + 16), REX_LOAD_U32(d + 8), REX_LOAD_U32(d + 20));
+      Gcall(ctx, base, DBZ3_CALL_EU(sub_8209E650), g + 808, d);
+      ctx.r1.u32 = sp;
+      Gcall(ctx, base, DBZ3_CALL_EU(sub_82083D08), nodo, 0);   // el banco ya esta copiado: el fichero se va con su nodo
+      r.nodo = 0, r.estado = 2, r.desde = g_rv_cuadro;
+      ocupado = true;
+    }
+  }
+  // 3) una peticion nueva por cuadro, si no hay otra a medias
+  for (const RanuraVoz& r : g_rv) if (r.estado == 1 || r.estado == 2) return;
+  for (int ch = 0; ch < 64; ++ch) {
+    if (!(pedidas >> ch & 1) || g_voz_slot[ch].load() >= 0) continue;
+    uint32_t libre = kRanuras;
+    for (uint32_t k = 0; k < kRanuras; ++k) if (!g_rv[k].estado) { libre = k; break; }
+    if (libre == kRanuras) return;   // sin ranuras: los demas se quedan con la voz del banco por defecto
+    const uint32_t fid = REX_LOAD_U32(kChar372Voz + 372 * uint32_t(ch) + 0x24);
+    if (fid == 0xFFFFFFFFu) continue;
+    const uint32_t nodo = Gcall(ctx, base, DBZ3_CALL_EU(sub_82083968), fid | 0x30000u, 0, 1);
+    if (nodo == 0xFFFFFFFFu || !nodo) return;
+    g_rv[libre] = RanuraVoz{ch, 1, nodo, g_rv_cuadro};
+    REXLOG_INFO("dbz3 combate: voz: personaje {} pide lang {} (nodo {:08X}) para la ranura {}", ch, fid, nodo, kRanuraIni + libre);
+    return;
+  }
+}
+
+void SonarPedidos(PPCContext& ctx, uint8_t* base) {
+  VocesCuadro(ctx, base);
+  for (uint32_t n = 0; n < kSeCuadro && g_se_out.load() != g_se_in.load(std::memory_order_acquire); ++n) {
+    const uint32_t v = g_cola_se[g_se_out.load() % kColaSe].load();
+    g_se_out.fetch_add(1);
+    const PPCContext guardado = ctx;
+    if ((v >> 16) == 0) {   // subTAC: banco del sistema = el del menu; su volumen se fija antes (sub_82092570, como PlaySe de hub_menu.cpp) o el efecto abre voz pero no suena
+      constexpr dbz3::GA kJuego = 0x824BA110, kSePiso = 0x8201F60C;
+      constexpr dbz3::GA kSeVol = kJuego + 0x2C0C0;   // volumen de efectos y su minimo (los de hub_menu.cpp)
+      auto cf = [&](uint32_t a) { const uint32_t u = REX_LOAD_U32(a); float f; std::memcpy(&f, &u, 4); return f; };
+      const float vol = cf(kSeVol);
+      ctx.r3.u64 = 0, ctx.r4.u64 = 0, ctx.f1.f64 = vol;
+      DBZ3_CALL_EU(sub_82092570)(ctx, base);
+      ctx = guardado;
+      if (!(vol > cf(kSePiso))) continue;
+    }
+    ctx.r3.u64 = v >> 16;
+    ctx.r4.u64 = 0;
+    ctx.r5.u64 = v & 0xFFFF;
+    ctx.r6.u64 = 0;
+    DBZ3_CALL_EU(sub_820922A0)(ctx, base);
+    if (static const bool sonda = std::getenv("DBZ3_TEST_TACTICS_PRUEBA") != nullptr; sonda && (v >> 16) == 0) {   // subTAC: sonda de las voces del gestor tras pedir un efecto del banco 0 (misma lectura que hub_menu.cpp)
+      const uint32_t sm = REX_LOAD_U32(dbz3::GA(0x82386260)) + 808;
+      int voces = 0, mias = 0;
+      for (uint32_t i = 0; i < 64; ++i) {
+        const uint32_t w = sm + 8 + 24 * i;
+        if (!REX_LOAD_U8(w + 8)) continue;
+        ++voces;
+        mias += REX_LOAD_U32(w - 8) == 0 && REX_LOAD_U32(w - 4) == (v & 0xFFFF);
+      }
+      REXLOG_INFO("dbz3 combate: prueba: efecto de sistema {} pedido (voces {}, suyas {})", v & 0xFFFF, voces, mias);
+    }
+    ctx = guardado;
+  }
+}
+}  // namespace
+namespace dbz3::combate {
+void CargarVoces(uint64_t mascara) { g_voces_mask.store(mascara); }
+int SlotVoz(int personaje) { return personaje >= 0 && personaje < 64 ? int(g_voz_slot[personaje].load()) : -1; }
+void PedirSonido(int banco, int id) {
+  const uint32_t in = g_se_in.load();
+  if (in - g_se_out.load() >= kColaSe) return;
+  g_cola_se[in % kColaSe].store((uint32_t(banco) << 16) | uint32_t(id));
+  g_se_in.store(in + 1, std::memory_order_release);
+}
+}  // namespace dbz3::combate
+
 // Paso de pelea de los dos luchadores (sub_821100B0: entradas, golpes, acciones; sin otro gancho en src/).
 DBZ3_HOOK_EU(sub_821100B0) {
   using namespace dbz3::combate;
@@ -569,6 +838,7 @@ DBZ3_HOOK_EU(sub_821100B0) {
     last = st;
     g_frame.fetch_add(1);
     g_tick_ms = NowMs();
+    SonarPedidos(ctx, base);
     static bool panel = false;
     if (!panel) panel = true, dbz3::launcher::DeferUi(&CrearPanel);
     MunecoCuadro(base, st);
@@ -579,7 +849,8 @@ DBZ3_HOOK_EU(sub_821100B0) {
     Sonda(base, st);
     Volcado(base);
   }
-  orig(ctx, base);
+  if(!dbz3::t3cb::Frozen()) orig(ctx, base);
+  dbz3::t3cb::Tick(ctx, base);
 }
 
 // Golpe recibido (sub_8210ED48, r3 = victima): 05 dano del bloque HR, 18 reversion, sonda de golpes.
@@ -688,7 +959,20 @@ DBZ3_HOOK_EU(sub_820F7758) {
   }
   const uint16_t c5 = REX_LOAD_U16(node + 10), c6 = REX_LOAD_U16(node + 12);
   const bool ult = (c5 & 0x0008) && (c6 & 0x8000);
-  if (ult) g_ult[size_t(lado)] = {REX_LOAD_U16(node + 16), REX_LOAD_U16(node + 24), REX_LOAD_U16(node + 26)};
+  // PRUEBA (DBZ3_TEST_ULT): en modo hiper solo cuentan las entradas P+K+G+E: el pulsar a la vez de la prueba elegia otras (P+K...),
+  // tambien con el personaje nativo; hace falta para medir la definitiva heredada
+  if (static const bool prueba_ult = std::getenv("DBZ3_TEST_ULT") != nullptr; prueba_ult && lado == 0 && REX_LOAD_U8(x + kHyper) && REX_LOAD_U16(node + 2) != 15) {
+    ctx.r3.u64 = 0;
+    return;
+  }
+  if (ult) {
+    const Ult u{REX_LOAD_U16(node + 16), REX_LOAD_U16(node + 24), REX_LOAD_U16(node + 26)};
+    g_ult[size_t(lado)] = u;
+    for (Ult& h : g_ults[size_t(lado)]) {
+      if (h.code == u.code && h.aire == u.aire && h.cap == u.cap) break;
+      if (!h.code) { h = u; break; }
+    }
+  }
   const bool on = REXCVAR_GET(dbz3_combate_definitiva_directa) && Rules() && REX_LOAD_U8(x + kHyper) == 0 &&
                   BattleState(base) == 4;   // solo en plena pelea (no tras un KO ni en el fin de tiempo)
   if (on && (c5 & 0x0400)) {
@@ -707,6 +991,23 @@ DBZ3_HOOK_EU(sub_820F7758) {
   }
   if (!on || !ult) {
     orig(ctx, base);
+    if (static const bool esp = std::getenv("DBZ3_TEST_ESP") != nullptr; esp && lado == 0 && !ult) {   // PRUEBA: que entradas ve y por que fallan (una linea por cambio)
+      static std::map<uint32_t, uint32_t> visto;
+      const uint32_t clave = REX_LOAD_U16(node + 16) << 16 | REX_LOAD_U16(node + 26), val = ctx.r3.u32 << 24 | (REX_LOAD_U16(x + kMask) & 0xFFFF);
+      if (auto it = visto.find(clave); it == visto.end() || it->second != val) {
+        visto[clave] = val;
+        REXLOG_INFO("dbz3 combate: prueba esp: entrada tipo {} cod {:X} cap {} c5 {:04X} c6 {:04X} w {} -> {} (estado {:04X}, ki {:.0f}, equipada {}) [{:04X} {:04X} {:04X} {:04X} {:04X} {:04X} {:04X} {:04X} {:04X} {:04X} {:04X} {:04X} {:04X} {:04X} {:04X} {:04X}]", REX_LOAD_U16(node + 2),
+                    REX_LOAD_U16(node + 16), REX_LOAD_U16(node + 26), c5, c6, REX_LOAD_U16(node + 24), ctx.r3.u32, REX_LOAD_U16(x + kMask), LoadF(base, x + kKi), Equipada(base, x, REX_LOAD_U16(node + 26)),
+                    REX_LOAD_U16(node), REX_LOAD_U16(node + 2), REX_LOAD_U16(node + 4), REX_LOAD_U16(node + 6), REX_LOAD_U16(node + 8), REX_LOAD_U16(node + 10), REX_LOAD_U16(node + 12), REX_LOAD_U16(node + 14),
+                    REX_LOAD_U16(node + 16), REX_LOAD_U16(node + 18), REX_LOAD_U16(node + 20), REX_LOAD_U16(node + 22), REX_LOAD_U16(node + 24), REX_LOAD_U16(node + 26), REX_LOAD_U16(node + 28), REX_LOAD_U16(node + 30));
+      }
+    }
+    if (static const bool traza = std::getenv("DBZ3_TEST_ULT") != nullptr; traza && ult && lado == 0 && REX_LOAD_U8(x + kHyper)) {
+      static uint32_t n = 0;   // PRUEBA: la entrada de la definitiva, si el juego la da por buena
+      if (n++ % 120 == 0)
+        REXLOG_INFO("dbz3 combate: prueba: entrada de definitiva (capsula {}): resultado {}, condiciones {:04X} {:04X}, estado {:04X}, ki {:.0f}, coste {:.0f}, equipada {}", REX_LOAD_U16(node + 16),
+                    ctx.r3.u32, c5, c6, REX_LOAD_U16(x + kMask), LoadF(base, x + kKi), Coste(base, REX_LOAD_U16(node + 16)), Equipada(base, x, REX_LOAD_U16(node + 16)));
+    }
     return;
   }
   const uint16_t mask = REX_LOAD_U16(x + kMask);
@@ -718,6 +1019,7 @@ DBZ3_HOOK_EU(sub_820F7758) {
 // Mando de cada usuario (sub_8208FD58: r3 = usuario 0..3, lee XInput y rellena su registro). 16: el boton de
 // cancelacion (LB/RB) deja de hacer su atajo y, al pulsarlo, el registro trae adelante + el boton que da E en ese
 // cuadro (como pulsarlos a la vez a mano; mantenerlo no repite).
+namespace dbz3::fusion { void PruebaMando(uint8_t* base, uint32_t user); }   // fusion.cpp (prueba)
 namespace dbz3::formas { void PruebaMando(uint8_t* base, uint32_t user); }   // transformaciones.cpp (prueba)
 DBZ3_HOOK_EU(sub_8208FD58) {
   using namespace dbz3::combate;
@@ -732,6 +1034,7 @@ DBZ3_HOOK_EU(sub_8208FD58) {
   dbz3::cinematica::Mando(base, user);   // escenas 3D (frente R3)
   if (user > 3 || BattleState(base) != 4) return;
   dbz3::formas::PruebaMando(base, user);   // frente transformaciones: P+K+G de prueba (DBZ3_TEST_PKG)
+  dbz3::fusion::PruebaMando(base, user);   // Nova's Mods: definitiva a voluntad (DBZ3_TEST_ULT)
   const int bit = CancelButton();
   if (!bit || !Rules()) return;
   uint32_t x = 0;

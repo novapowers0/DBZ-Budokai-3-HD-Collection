@@ -20,6 +20,9 @@ namespace dbz3::heroe_ui {
 enum class Accion { kNada, kVolver, kConfirmar, kCrear };   // kCrear: heroe nuevo -> abrir la pantalla de creacion
 
 void PedirCombate();   // C4: remonta mods/heroe_propio con la ficha actual si cambio (aura/ki de color, piezas...)
+void AvisarMenuDeseo(int fila, int filas);
+bool FaltaRotuloNombre();   // ficha montada sin mods/heroe_nombres
+bool MontajeFallido();      // el ultimo montaje del heroe fallo (sin Python, sin sagas...): aviso en pantalla
 void AbrirCrear(bool edit);   // edit = pantalla Edit (pelo); guarda una copia para Atras
 Accion Crear(ImDrawList* dl, const dbz3::ingame::style::Area& a, float t, uint16_t p);
 bool EnEdit();

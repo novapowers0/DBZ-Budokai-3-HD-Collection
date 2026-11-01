@@ -254,6 +254,7 @@ class Session {
 
   // emparejamiento
   std::string my_build_, my_mods_hash_;
+  std::string peer_os_notice_;           // #51, con mu_: explica el rechazo; no participa en la admision
   std::vector<std::string> my_mods_;      // "nombre|hash" por mod
   std::vector<std::string> peer_mods_;
   bool peer_mods_known_ = false;          // llego al menos un trozo de su lista (con mu_)

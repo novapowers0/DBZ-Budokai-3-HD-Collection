@@ -1,6 +1,7 @@
 // dbz3 - Update check implementation (GitHub releases API).
 
 #include "update_check.h"
+#include "linux_env.h"
 
 #include <rex/cvar.h>  // REX_PLATFORM_WIN32 (via rex/platform.h)
 #include <rex/logging.h>
@@ -22,6 +23,9 @@
 #include <winhttp.h>
 #pragma comment(lib, "winhttp.lib")
 #pragma comment(lib, "version.lib")
+#else
+#include <sys/wait.h>
+#include <unistd.h>
 #endif
 
 namespace dbz3::launcher {
@@ -457,6 +461,14 @@ long long CurlDownloadWin(const std::string& url, const std::string& headers, co
 }
 }  // namespace
 
+long long HttpDownloadReanudable(const std::string& url, const std::string& headers, const std::filesystem::path& out,
+                                 const std::function<void(long long)>& progress) {
+  std::string why;
+  const long long n = CurlDownloadWin(url, headers, out, progress, why);
+  if (n < 0) SetNetError(why);
+  return n;
+}
+
 long long HttpDownload(const std::string& url, const std::wstring& headers,
                        const std::filesystem::path& out, bool append,
                        const std::function<void(long long)>& progress) {
@@ -581,6 +593,11 @@ long long HttpDownload(const std::string& url, const std::wstring& headers,
 }
 
 #else
+
+long long HttpDownloadReanudable(const std::string&, const std::string&, const std::filesystem::path&,
+                                 const std::function<void(long long)>&) {
+  return -1;   // los videos HD solo existen en Windows
+}
 
 std::string HttpGet(const wchar_t* host, const wchar_t* path, const wchar_t* headers) {
   std::string why;
@@ -864,7 +881,7 @@ void LogEnvironmentOnce(const std::vector<InstalledComponent>& components,
     line += " ram=" + std::to_string(ram_mb) + "MB";
   }
 #else
-  line += "?";
+  line += "linux " + LinuxEnvSummary();   // distro, nucleo, RAM, sesion grafica, Steam/Flatpak (linux_env.h)
 #endif
   for (const InstalledComponent& component : components) {
     line += " " + component.file_name + "=";
@@ -934,17 +951,55 @@ std::string InstalledVersionMismatch() {
   return g_component_mismatch;
 }
 
+#if !REX_PLATFORM_WIN32
+// fork+exec de xdg-open sin pasar por /bin/sh; un hilo recoge al hijo para no dejar zombis.
+static void SpawnXdgOpen(const std::string& arg) {
+  const pid_t pid = fork();
+  if (pid == 0) {
+    execlp("xdg-open", "xdg-open", arg.c_str(), static_cast<char*>(nullptr));
+    _exit(127);   // sin xdg-open: no hace nada, como antes
+  }
+  if (pid > 0) {
+    std::thread([pid] { int st = 0; waitpid(pid, &st, 0); }).detach();
+  }
+}
+#endif
+
 void OpenUrl(const std::string& url) {
-#if REX_PLATFORM_WIN32
   // Solo https: los enlaces de autor vienen del catalogo de Nova's Mods y un texto como
-  // "C:\\algo.exe" no debe poder abrir un fichero local.
+  // "C:\algo.exe" no debe poder abrir un fichero local.
   if (url.rfind("https://", 0) != 0) {
     return;
   }
+#if REX_PLATFORM_WIN32
   ShellExecuteA(nullptr, "open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
 #else
-  (void)url;
+  SpawnXdgOpen(url);   // argv directo, sin shell
 #endif
+}
+
+void OpenFolder(const std::filesystem::path& dir) {
+#if REX_PLATFORM_WIN32
+  std::system(("explorer \"" + dir.string() + "\"").c_str());   // identico a los 7 botones de antes
+#else
+  SpawnXdgOpen(dir.string());
+#endif
+}
+
+bool HttpGetUrl(const std::string& url, std::string& body) {
+  body.clear();
+  if (url.rfind("http://", 0) == 0) {   // solo para el servidor falso de las pruebas
+    std::string why;
+    body = CurlGet(url, {}, nullptr, why);
+    SetNetError(why);
+    return why.empty();
+  }
+  if (url.rfind("https://", 0) != 0) return false;
+  const size_t slash = url.find('/', 8);
+  const std::string host = url.substr(8, slash == std::string::npos ? std::string::npos : slash - 8);
+  const std::string path = slash == std::string::npos ? "/" : url.substr(slash);
+  body = HttpGet(std::wstring(host.begin(), host.end()).c_str(), std::wstring(path.begin(), path.end()).c_str());
+  return LastNetworkError().empty();
 }
 
 }  // namespace dbz3::launcher

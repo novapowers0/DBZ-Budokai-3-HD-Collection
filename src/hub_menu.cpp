@@ -547,6 +547,7 @@ const char* EntryName(int e) {
   Extras& x = Ext();
   if (e < kEntries || e >= kEntries + x.n.load()) return "";
   const Extra& r = x.e[e - kEntries];
+  if (const char* o = dbz3::i18n::Otro(r.name[1].c_str())) return o;   // pt / ja (i18n_modos.toml, clave = el texto ingles)
   return r.name[Lang()].empty() ? r.name[1].c_str() : r.name[Lang()].c_str();
 }
 
@@ -555,6 +556,7 @@ const char* EntryHelp(int e) {
   Extras& x = Ext();
   if (e < kEntries || e >= kEntries + x.n.load()) return "";
   const Extra& r = x.e[e - kEntries];
+  if (const char* o = dbz3::i18n::Otro(r.help[1].c_str())) return o;
   return r.help[Lang()].empty() ? r.help[1].c_str() : r.help[Lang()].c_str();
 }
 

@@ -77,11 +77,11 @@ voces = "iw:GREAT SAIYAMAN2|donante"
 [imp_iw_gogeta_ss4]
 nombre = "Gogeta SS4"
 fuente = "iw"
-clave = "c:gogeta"
+clave = "c:gogeta ss4"
 donante = 0
 preset = "original"
 voces = "iw:GOGITA SS4 (GOKOU)|donante"
-extra = { formas = 2 }
+extra = { formas = 1 }
 
 # El mod publicado usa el modelo y las bocas del port de la comunidad (modelos/janemba.bin); la
 # receta da el modelo de Infinite World con los golpes de ese port.
@@ -92,7 +92,7 @@ clave = "c:janemba"
 donante = 10
 despues_de = 37
 preset = "original"
-extra = { formas = 1, ki_base = [5], aura_color = "#AA00FF" }   # sin transformaciones (la 2a forma del port era la de Krillin); ki base 5 (pedido del usuario, 2026-10-18); aura morada (TABLA_AURAS.md)
+extra = { formas = 1, ki_base = [6], aura_color = "#AA00FF" }   # sin transformaciones (la 2a forma del port era la de Krillin); ki base 6 como en IW (decision del usuario, 2026-10-31; antes 5); aura morada (TABLA_AURAS.md)
 
 [port_trunks_espada_sb2]
 nombre = "Trunks SB2"

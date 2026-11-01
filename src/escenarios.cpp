@@ -8,7 +8,12 @@
 //   Todo lo demas lee el registro con G+0. Por eso basta con traducir en esos dos ganchos el alta
 //   (17+) al anfitrion y tener el registro del anfitrion con los datos del alta mientras este cargada.
 
+#include "ports_guard.h"
 #include "escenarios.h"
+#include "escenarios_b2_recursos.h"
+#include "b2_transicion.h"
+#include "../tests/iw_ap_prueba.h" // conversor AP0..6 ya usado por anim_iw, mismo formato B2
+#include "b2_colision.h"
 #include "ingame/game_style.h"
 #include "launcher/launcher_state.h"
 
@@ -17,6 +22,7 @@
 #include "combate.h"   // ZB: marcador oculto durante la escena
 #include "launcher/settings.h"
 #include "mods.h"
+#include "mods_opcionales.h"   // Fase 3: eleccion de musica de combate con L1/R1 en el selector
 #include "pasarela.h"   // seguimiento 12c: reproductor ADX de los modos (OirMusicaPs2/CallarMusicaPs2); DS63: AFS de IW
 #include "ps2_modelo.h" // DS63: ps2::Escena / ps2::CamaraCombate / ps2::Tex (clima y suelo en mosaico de IW)
 #include "region.h"     // seguimiento 12c: HostDataRoot() (carpeta con los .afs del jugador)
@@ -35,6 +41,12 @@
 #include <mutex>
 #include <fstream>
 #include <vector>
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
 
 #include <imgui.h>
 #include <rex/hook.h>
@@ -52,6 +64,8 @@
 // (el mod de la zona B lo declara en su stage.toml con `zona_b = <entrada del escenario A>`).
 REXCVAR_DEFINE_BOOL(dbz3_escenarios_base_zona_b, true, "DBZ3/Dev",
                     "Cambio de zona en la Base Red Ribbon B2 (necesita el bin con todas las raices, campos_iw VERSION 18)");
+REXCVAR_DEFINE_BOOL(dbz3_escenarios_b2_tres_provisional, false, "DBZ3/Dev",
+                    "Diagnostico offline de cortes/camaras parciales de Base, Llanura y Ciudad B2; no son transiciones completas");
 
 REXCVAR_DEFINE_BOOL(dbz3_escenarios_zonas_b, true, "DBZ3/Mods",
                     "Al caer por el borde se pasa a la zona B del escenario (si su mod la trae; "
@@ -62,6 +76,11 @@ REXCVAR_DEFINE_BOOL(dbz3_escenarios_zonas_b, true, "DBZ3/Mods",
 REXCVAR_DEFINE_BOOL(dbz3_escenarios_zona_escena, true, "DBZ3/Mods",
                     "Al pasar de zona en los escenarios de B2, escena de camara del original (stage.toml `zona_escena`); "
                     "apagado = corte directo");
+
+// solESC2 31/10: reloj verificado en nieve, sin regresion visual frente a la
+// camara parcial anterior. No porta el guion B2 ni habilita escenas online.
+REXCVAR_DEFINE_BOOL(dbz3_escenarios_zona_paso_guest, true, "DBZ3/Dev",
+                    "Experimental: avanzar la camara parcial de nieve B2 con pasos del guest y conservar ki");
 
 // X1esc 23/10: IMITACION 2D de la nieve de B2 en Montanas nevadas (el port aun no lanza los emisores #ACE de B2: B3 no tiene el
 // builtin 0x96). Apagada: la norma es portar, no imitar.
@@ -252,6 +271,7 @@ struct Alta {
   float niebla_a = 0, niebla_b = 0;
   bool niebla_extra = false;
   uint32_t escena = 0;   // ZB: clips de camara de la escena del cambio de zona (ultimo #ACC del objeto 0); 0 = corte directo
+  std::string transicion_b2;   // solGP1: recurso original separado; nunca confundir trayectoria con cámara
   uint32_t zona_b = 0;   // frente 07: esta alta es la zona B del alta cuya `entrada` es este numero (0 = no)
   std::vector<Nube> nubes;   // X1esc: deriva UV del cielo y las nubes (campos de IW)
   // DS40: animacion del escenario (campos de IW). `capas` = 8 capas UV del #MCF; `arrastre` = el original le pasa el
@@ -279,6 +299,8 @@ rex::memory::Memory* g_mem = nullptr;
 std::vector<Alta> g_altas;
 uint32_t g_visibles = 0;   // altas con casilla en el selector: las primeras de g_altas (las ocultas van al final)
 int g_activa = -1;               // alta puesta en el registro anfitrion (-1 = ninguna)
+bool g_b2_leido = false;
+b2::Recurso g_b2;
 bool g_zona_motor = false;       // X1esc: PasarZonaB llama al cambio de zona del motor (el gancho de sub_820CC6C0 lo deja pasar)
 uint8_t g_orig[kRec];            // registro original del anfitrion
 uint32_t g_orig_tema = 0;
@@ -376,6 +398,8 @@ void Activar(uint8_t* base, int v) {
   if (g_activa == v) return;
   Restaurar(base);
   Alta& a = g_altas[size_t(v - kSerie)];
+  g_b2 = {};
+  g_b2_leido = false;
   const uint32_t rec = kRecs + kAnfitrion * kRec;
   std::memcpy(g_orig, base + rec, kRec);
   g_orig_tema = REX_LOAD_U32(kTemas + 4 * kAnfitrion);
@@ -455,6 +479,9 @@ struct Clip {
 struct Escena {
   bool activa = false, cambiada = false;
   uint32_t frame = 0, total = 0;
+  bool paso_guest = false;
+  uint32_t cuadro_origen = 0;
+  uint32_t gestor_ki = 0, ki_inicio[2] = {};
   std::vector<Clip> clips;
   std::vector<uint32_t> inicio;        // cuadro de la escena en que empieza cada clip (el cambio de zona va en inicio[1])
 };
@@ -476,12 +503,60 @@ float LeeFl(uint32_t a) {
   return f;
 }
 
+// Sonda existente de pruebas: mide ambos espacios de posicion, no supone que
+// el vector de dibujo (+48) y el de simulacion (+64) sean intercambiables.
+void MedirEscena(const char* fase) {
+  if (!std::getenv("DBZ3_TEST_ESCENA_VOLCADO")) return;
+  uint8_t* base = BaseGuest();
+  const uint32_t mgr = base ? REX_LOAD_U32(kMgrPtr) : 0;
+  if (!mgr) return;
+  for (uint32_t k = 0; k < 2; ++k) {
+    const uint32_t x = mgr + 2096 + 8240 * k;
+    REXLOG_INFO("dbz3 escenarios: medida zona {} cuadro={} guest={} zona={} lado={} "
+                "pos=({:.3f},{:.3f},{:.3f}) dibujo=({:.3f},{:.3f},{:.3f}) vida={:.3f} ki={:.3f}",
+                fase, g_esc.frame, REX_LOAD_U32(0x8238D6B4), REX_LOAD_U32(kG + 64), k,
+                LeeFl(x + 64), LeeFl(x + 68), LeeFl(x + 72),
+                LeeFl(x + 48), LeeFl(x + 52), LeeFl(x + 56), LeeFl(x + 6080), LeeFl(x + 6100));
+  }
+}
+
 // Puntero del #ZDD cargado: el reubicador del juego deja direcciones absolutas; por si quedaran desplazamientos, los < base se suman.
 uint32_t Abs(uint32_t base, uint32_t v) { return v < base ? base + v : v; }
 
+void B2AuditarVm();
 bool LeerClips(uint32_t cuantos, std::vector<Clip>& out) {
   uint8_t* base = BaseGuest();
   if (!base) return false;
+  // Los packs nuevos conservan AMBOS AMC con roles explícitos fuera de la
+  // lista del donante. Un pack viejo sigue usando el último ACC, como antes.
+  if (g_activa >= kSerie && g_activa < Total()) {
+    const Alta& alta = g_altas[size_t(g_activa - kSerie)];
+    if (!alta.transicion_b2.empty() && !g_b2_leido) {
+      g_b2_leido = true;
+      std::string error;
+      if (!b2::Cargar(ModsRoot() / alta.mod / alta.transicion_b2, g_b2, error) ||
+          alta.entrada != 5000 + g_b2.grupo) {
+        g_b2 = {};
+        REXLOG_WARN("dbz3 escenarios [{}]: recurso de transición B2 inválido: {}", alta.mod, error);
+      } else {
+        REXLOG_INFO("dbz3 escenarios [{}]: B2 grupo {}: {} clips de cámara y {} de trayectoria; guion/raíces/efectos conservados",
+                    alta.mod, g_b2.grupo, g_b2.camara.size(), g_b2.trayectoria.size());
+        B2AuditarVm();
+      }
+    }
+    if (!g_b2.camara.empty()) {
+      if (cuantos > g_b2.camara.size()) return false;
+      for (uint32_t i = 0; i < cuantos; ++i) {
+        Clip c;
+        c.n = g_b2.camara[i].cuadros;
+        for (size_t j = 0; j < 4; ++j)
+          for (const auto& k : g_b2.camara[i].pistas[j])
+            c.pista[j].push_back(Clave{k.cuadro, {k.valor[0], k.valor[1], k.valor[2]}});
+        out.push_back(std::move(c));
+      }
+      return true;
+    }
+  }
   const uint32_t z = REX_LOAD_U32(kG + 32);
   if (!z) return false;
   const uint32_t ol = Abs(z, REX_LOAD_U32(z + 0x20));
@@ -526,6 +601,8 @@ bool LeerClips(uint32_t cuantos, std::vector<Clip>& out) {
   }
   return true;
 }
+
+#include "escenarios_b2_auditoria.inl"
 
 // Valor de una pista en el cuadro f (lineal; fuera de rango = la ultima clave).
 void Muestra(const std::vector<Clave>& k, float f, float v[3], int comp) {
@@ -766,8 +843,21 @@ void QuietarLuchadores() {
   }
 }
 
+// solESC2: anular entradas no detiene la actualizacion de ki de B3. Conservar
+// los bits originales solo durante el candidato de nieve; nunca escribir en
+// otro gestor ni despues de salir de la pelea. No simula el guion B2 pendiente.
+void ConservarKiEscena() {
+  uint8_t* base = BaseGuest();
+  if (!base || !g_esc.gestor_ki || REX_LOAD_U32(kMgrPtr) != g_esc.gestor_ki ||
+      REX_LOAD_U32(g_esc.gestor_ki + kEstadoCombate) != 4) return;
+  for (uint32_t k = 0; k < 2; ++k)
+    REX_STORE_U32(g_esc.gestor_ki + 2096 + 8240 * k + 6100, g_esc.ki_inicio[k]);
+}
+
 void TerminarEscena(const char* por) {
   if (!g_esc.activa) return;
+  ConservarKiEscena();
+  MedirEscena(por);
   g_esc.activa = false;
   g_esc_cam = false;
   SoltarLuchadores();
@@ -777,9 +867,21 @@ void TerminarEscena(const char* por) {
   g_esc.clips.clear();
 }
 
+#include "escenarios_b2_motor.inl"
+
 bool EmpezarEscena(uint32_t cuantos) {
   Escena e;
   if (!LeerClips(cuantos, e.clips)) return false;
+  uint8_t* base = BaseGuest();
+  e.paso_guest = REXCVAR_GET(dbz3_escenarios_zona_paso_guest) && g_activa >= kSerie &&
+                 g_altas[size_t(g_activa - kSerie)].entrada == 5007;
+  e.cuadro_origen = REX_LOAD_U32(0x8238D6B4);  // contador del bucle guest (sub_820921E0)
+  if (e.paso_guest) {
+    e.gestor_ki = REX_LOAD_U32(kMgrPtr);
+    if (e.gestor_ki)
+      for (uint32_t k = 0; k < 2; ++k)
+        e.ki_inicio[k] = REX_LOAD_U32(e.gestor_ki + 2096 + 8240 * k + 6100);
+  }
   uint32_t t = 0;
   for (const Clip& c : e.clips) {
     e.inicio.push_back(t);
@@ -791,6 +893,7 @@ bool EmpezarEscena(uint32_t cuantos) {
   g_esc_dibujos = 0;
   QuietarLuchadores();
   dbz3::combate::OcultarHud(true);
+  MedirEscena("inicio");
   std::string d;
   for (const Clip& c : g_esc.clips) d += " " + std::to_string(c.n);
   REXLOG_INFO("dbz3 escenarios: escena de zona: empieza ({} clips de camara:{} cuadros; {:.1f} s)", g_esc.clips.size(), d,
@@ -807,7 +910,8 @@ void TickEscena(PPCContext& ctx, uint8_t* base) {
     TerminarEscena("cortada");
     return;
   }
-  g_esc.frame = g_esc_dibujos.load();
+  g_esc.frame = g_esc.paso_guest ? REX_LOAD_U32(0x8238D6B4) - g_esc.cuadro_origen : g_esc_dibujos.load();
+  ConservarKiEscena();
   if (g_esc.frame >= g_esc.total) {
     TerminarEscena("terminada");
     return;
@@ -815,6 +919,8 @@ void TickEscena(PPCContext& ctx, uint8_t* base) {
   if (!g_esc.cambiada && g_esc.frame >= g_esc.inicio[1]) {
     g_esc.cambiada = true;
     CambiarZonaMotor(ctx, base);
+    ConservarKiEscena();
+    MedirEscena("cambio");
     REXLOG_INFO("dbz3 escenarios: escena de zona: cambio de zona del motor en el cuadro {} (G+64={})", g_esc.frame,
                 REX_LOAD_U32(kG + 64));
   }
@@ -848,11 +954,18 @@ bool PasarZonaB(PPCContext& ctx, uint8_t* base) {
   // Los bins convertidos de B2 de los grupos 0, 4, 7 y 8 ya traen la zona B como objeto 1 del #ZDD (n_obj = 2). La
   // recarga entera del escenario (sub_820C26E0) que se probaba antes dejaba el objeto +16 a cero y cerraba el juego
   // (lr 0x820BD300, sub_820BE2E8).
-  if (g_activa < 0) return false;
-  // Base Red Ribbon B2 (entrada 5000): el cambio cierra el juego (lectura de guest 0x294 en sub_82090820: un objeto nulo
-  // + 0x290, un cuaternio); medido 23/10 aun con 2 raices. Sin zona B hasta saber que objeto le falta. Montanas nevadas
-  // (5007), Ciudad (5008) y Llanura (5004) probados: cambian bien.
-  if (g_altas[size_t(g_activa - kSerie)].entrada == 5000 && !REXCVAR_GET(dbz3_escenarios_base_zona_b)) return false;
+  if (g_activa < kSerie || size_t(g_activa - kSerie) >= g_altas.size()) return false;
+  const int entrada = g_altas[size_t(g_activa - kSerie)].entrada;
+  // Ronda nocturna: los cortes heredados no equivalen a escenas aceptadas.
+  // La máquina común de laboratorio no depende del aviso de ring out.
+  if (entrada == 5000 || entrada == 5002 || entrada == 5004 || entrada == 5007 || entrada == 5008) {
+    if (dbz3::net::Session::Get().active() || !std::getenv("DBZ3_TEST_B2_LEGACY")) return false;
+    if (entrada != 5007 && !REXCVAR_GET(dbz3_escenarios_b2_tres_provisional)) return false;
+  }
+  // Base: el conversor viejo eliminaba raices y cambiaba los indices de hueso
+  // de la zona B (r3=0x290 -> lectura0x294). Desde v18 conserva TODAS las raices;
+  // una copia antigua duplicada puede seguir sirviendo el bin viejo (UH_final).
+  if (entrada == 5000 && !REXCVAR_GET(dbz3_escenarios_base_zona_b)) return false;
   const uint32_t zdd = REX_LOAD_U32(kG + 32);
   if (!zdd || REX_LOAD_U32(zdd + 4) < 2 || REX_LOAD_U32(kG + 64) != 0) {   // sin zona B o ya en ella
     static std::atomic<int> nn{0};
@@ -880,6 +993,11 @@ int Total() { return kSerie + int(g_altas.size()); }
 int Visibles() { return int(g_visibles); }
 
 bool AltaActiva() { return g_activa >= 0; }
+std::atomic<int64_t> g_selector_visto{0};   // ms (steady_clock) del ultimo fotograma del selector
+bool SelectorVisible() {
+  return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count() -
+             g_selector_visto.load() < 400;
+}
 
 int PorMod(const std::string& mod) {
   for (size_t i = 0; i < g_altas.size(); ++i)
@@ -974,6 +1092,10 @@ void CargarDeMods(rex::memory::Memory* memory) {
       else if (k == "variante") a->variante = std::atoi(v.c_str());   // 12b: registro del Circle
       else if (k == "musica") a->musica = int(std::strtoul(v.c_str(), nullptr, 10));   // 12c: entrada ADX
       else if (k == "zona_escena") a->escena = uint32_t(std::strtoul(v.c_str(), nullptr, 10));
+      else if (k == "transicion_b2") {
+        // El conversor usa un nombre fijo dentro del propio mod.
+        if (v == "transicion_b2.b2t") a->transicion_b2 = v;
+      }
       else if (k == "zona_b") a->zona_b = uint32_t(std::strtoul(v.c_str(), nullptr, 10));
       else if (k == "selector") a->oculta = v == "false" || v == "no" || v == "0";
       else if (k == "nubes") {
@@ -1208,6 +1330,40 @@ DBZ3_HOOK_EU(sub_820C19B0) {
   orig(ctx, base);
 }
 
+// solGP1: captura el contacto de la actualización del LUCHADOR, no consultas
+// de cámara ni el aviso de fin de pelea. Parejas EU aún sin medir: solo US.
+REX_HOOK_RAW(sub_82101CC8) {
+  const uint32_t antes = dbz3::escenarios::g_b2_actor_colision;
+  dbz3::escenarios::B2ConsultarLanzamiento(ctx, base, ctx.r3.u32);
+  dbz3::escenarios::g_b2_actor_colision =
+      dbz3::escenarios::NieveB2Activa() && std::getenv("DBZ3_TEST_ESCENA_VOLCADO") ? ctx.r3.u32 : 0;
+  __imp__sub_82101CC8(ctx, base);
+  dbz3::escenarios::g_b2_actor_colision = antes;
+}
+REX_HOOK_RAW(sub_820BC418) {
+  const uint32_t actor = dbz3::escenarios::g_b2_actor_colision, tri = ctx.r7.u32;
+  const uint32_t superficie = actor && tri >= 0x10000u ? REX_LOAD_U32(tri + 16) : ~0u;
+  float producto = 0;
+  if (actor && tri >= 0x10000u)
+    for (unsigned k = 0; k < 3; ++k)
+      producto += dbz3::escenarios::LeeFl(tri + 4*k) * dbz3::escenarios::LeeFl(actor + 208 + 4*k);
+  __imp__sub_820BC418(ctx, base);
+  if (actor && ctx.r3.s32 > 0 && producto < 0 && int8_t(REX_LOAD_U8(actor+8184)) != -1)
+    dbz3::escenarios::B2ContactoReal(base, actor, superficie, ctx.r3.u32);
+}
+REX_HOOK_RAW(sub_820BD998) {
+  if (!dbz3::escenarios::B2ActualizarFx(ctx, base)) __imp__sub_820BD998(ctx, base);
+}
+REX_HOOK_RAW(sub_820BEDE0) {
+  auto& motor=dbz3::escenarios::g_b2_motor;
+  if(motor.activo&&motor.fondo.tareas_fx.contains(ctx.r3.u32))++motor.fondo.dibujos_fx;
+  __imp__sub_820BEDE0(ctx,base);
+}
+REX_HOOK_RAW(sub_820BD328) {
+  __imp__sub_820BD328(ctx,base);
+  dbz3::escenarios::g_b2_motor.DibujarPantallas(ctx,base);
+}
+
 // ---------------------------------------------------------------------------------------------------
 // SIN CAMBIO DE ZONA EN LAS ALTAS (frente 05, 2026-10-18). El "cambio de zona" del motor es cambiar el
 // objeto activo del escenario cargado: G = 0x823A3D80 lleva el indice en G+0x40 (clima.cpp lo llama
@@ -1358,7 +1514,7 @@ DBZ3_HOOK_EU(sub_8208F3A0) {
       }
     }
   }
-  orig(ctx, base);
+  if (!dbz3::suelo_iw::DibujarRejillaNativa(ctx, base, orig)) orig(ctx, base);
 }
 
 // ESC 24/10: transicion de escenario (builtin sub_820CC870 -> sub_820C1908 crea la tarea sub_820C1418). El guion del donante la llama
@@ -1383,6 +1539,7 @@ DBZ3_HOOK_EU(sub_820CC870) {
 }
 // X1esc 23/10: busqueda de recurso de camara (tipo/id) sub_820CF580; sonda de resultados nulos en altas.
 DBZ3_HOOK_EU(sub_820CF580) {
+  if (dbz3::ports::RecursoAmpliado(ctx, base)) return;   // BSP de mas de 64 recursos (tecnicas_ext.inl)
   const uint32_t r3 = ctx.r3.u32, tipo = ctx.r4.u32, id = ctx.r5.u32;
   orig(ctx, base);
   if (dbz3::escenarios::AltaActiva()) {
@@ -1501,7 +1658,12 @@ uint32_t AztSel(uint8_t* base, uint32_t c) {
 }
 
 // ---------------------------------------------------------------------------------------------------
-// 12c (seguimiento): musica de combate con vista previa en el selector. La pista la arranca EL JUEGO al
+// FASE 0 (musica, 30/10, MEDIDO con DBZ3_TEST_VOCES, smoke_a/batalla escenario 2): sub_820F3980(handle, id, situacion) es el
+// sistema de VOCES (122 ids = personajes, no playlists de musica): en el arranque del combate solo abre la entrada 290 por ella
+// (lr 820F3A0C). El combate de B3 NO abre ninguna pista de musica por el mezclador del juego; las 4267-4337 que se abren van
+// antes, en los menus. Por tanto "Original" = sin musica de combate, y anadir una pista no sustituye nada. El texto de abajo
+// que habla de playlists de musica es la hipotesis ANTERIOR, refutada; kMusicaRegistro sigue en -1 porque no hay nada que mapear.
+// 12c (seguimiento, hipotesis anterior): musica de combate con vista previa en el selector. La pista la arranca EL JUEGO al
 // empezar la pelea por sub_820F3980(handle, playlist, track): lee el numero de pistas de la playlist
 // (*(0x82328298 + playlist*4)) y el indice ADX del item (*(*(0x823280B0 + playlist*4) + track*4)) y lo
 // reproduce con sub_82081FE8(item | 0x20000, -3) (generated/dbz3_recomp.30.cpp:6253-6344). El
@@ -1520,6 +1682,25 @@ int MusicaDeRegistro(int r) {
   if (r >= dbz3::escenarios::kSerie && r - dbz3::escenarios::kSerie < int(g_altas.size()))
     return g_altas[size_t(r - dbz3::escenarios::kSerie)].musica;
   return -1;
+}
+
+// Fase 3: eleccion de la musica de combate en el selector de escenarios. L1/R1 (bits 0x0400/0x0800 del registro del mando 0,
+// medidos en IW) o las teclas [ y ] pasan a la pista anterior/siguiente (Original -> pistas). El cvar dbz3_musica_combate guarda
+// la eleccion (y musica.toml); la reproduccion es la de siempre (OirMusicaPs2, fuera del mezclador: no toca el online).
+// [H] que L1/R1 estan libres en esta pantalla (la sonda DBZ3_SONDA_ESCENARIO no los ha visto usados).
+int64_t AhoraMs() {
+  return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+void EleccionMusical(uint8_t* base) {
+  dbz3::escenarios::g_selector_visto = AhoraMs();
+  static uint16_t antes = 0;
+  const uint16_t ahora = REX_LOAD_U16(dbz3::GA(0x8238B780) + 12);
+  const uint16_t pulsado = uint16_t(ahora & ~antes);
+  antes = ahora;
+  int delta = (pulsado & 0x0800) ? 1 : (pulsado & 0x0400) ? -1 : 0;
+  if (const int k = dbz3::musica::DeltaTeclado()) delta = k;
+  if (delta) dbz3::musica::CambiarEleccion(delta);
 }
 
 int g_mus_sonando = -1;   // pista de la vista previa que esta sonando (-1 = ninguna)
@@ -1828,6 +2009,7 @@ DBZ3_HOOK_EU(sub_8219ECC8) {
     orig(ctx, base);
   if (REXCVAR_GET(dbz3_selector_musica))
     VistaPreviaMusica(base, tarea ? REX_LOAD_U32(tarea + 48) : 0);
+  EleccionMusical(base);
 }
 
 // ---------------------------------------------------------------------------------------------------
@@ -2898,7 +3080,7 @@ void dbz3::escenarios::AplicarCamaraEscena(uint8_t* base) {
     }
   }
   if (!g_esc_cam.load()) return;
-  g_esc_dibujos.fetch_add(1);   // al acabar este dibujo
+  if (!g_esc.paso_guest) g_esc_dibujos.fetch_add(1);   // camino previo; el candidato no cuenta dibujos
   dbz3::cine::Camara(base, g_esc_ojo, g_esc_obj, g_esc_giro);
   const uint32_t mgr = REX_LOAD_U32(kMgrPtr);
   if (mgr && g_esc_fov > 0.05f) {
@@ -2908,10 +3090,25 @@ void dbz3::escenarios::AplicarCamaraEscena(uint8_t* base) {
   }
 }
 
-bool dbz3::escenarios::EscenaDeZona() { return g_esc.activa; }
+void dbz3::escenarios::AplicarCamaraB2AntesDelDibujo(uint8_t* base) {
+  if(!g_b2_motor.activo||!g_esc_cam.load()||dbz3::net::Session::Get().active())return;
+  const uint32_t mgr=REX_LOAD_U32(kMgrPtr);if(mgr!=g_b2_motor.mgr)return;
+  uint32_t p=REX_LOAD_U32(mgr+0x264);
+  if(p<0x82000000u||p>=0x83000000u)p=REX_LOAD_U32(mgr+0x260);
+  if(p<0x82000000u||p>=0x83000000u)p=mgr+0x190;
+  for(unsigned i=0;i<3;++i) {
+    B2MotorHD::Fl(base,p+4*i,g_esc_ojo[i]);B2MotorHD::Fl(base,p+16+4*i,g_esc_obj[i]);
+  }
+  B2MotorHD::Fl(base,p+12,1);B2MotorHD::Fl(base,p+28,1);
+  B2MotorHD::Fl(base,p+0x30,g_esc_giro);B2MotorHD::Fl(base,p+0x34,g_esc_fov);
+  REX_STORE_U32(p+0x38,REX_LOAD_U32(p+0x38)|1u);
+}
+bool dbz3::escenarios::EscenaDeZona() { return g_esc.activa||g_b2_motor.activo; }
+bool dbz3::escenarios::TransicionB2Activa() { return g_b2_motor.activo; }
 
 void dbz3::escenarios::ComprobarZonaB(PPCContext& ctx, uint8_t* base) {
   PasoCapas(base);
+  if (B2PasoMotor(ctx, base)) return;
   TickEscena(ctx, base);
   if (!REXCVAR_GET(dbz3_escenarios_zonas_b)) return;
   const uint32_t mgr = REX_LOAD_U32(dbz3::escenarios::kMgrPtr);

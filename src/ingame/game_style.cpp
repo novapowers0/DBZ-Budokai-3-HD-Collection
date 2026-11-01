@@ -13,6 +13,7 @@
 #include <map>
 #include <memory>
 
+#include <rex/logging.h>
 #include <rex/cvar.h>
 #include <rex/ui/image_decode.h>
 #include <rex/ui/immediate_drawer.h>
@@ -150,6 +151,7 @@ Pic Img(const char* name) {
     }
   }
   cands.push_back(root.parent_path() / "ingame_ui" / file);
+  cands.push_back(root.parent_path() / "ingame_ui" / (file + ".png"));   // pack del jugador con doble extension (x.png.png)
   for (const auto& f : cands) {
     std::ifstream in(f, std::ios::binary);
     if (!in) continue;
@@ -160,6 +162,7 @@ Pic Img(const char* name) {
     upload(px.data(), w, h);
     break;
   }
+  if (!it->second.pic) REXLOG_WARN("dbz3 estilo: imagen de interfaz '{}' no encontrada o ilegible: se usa otra o un panel simple", name);
   return it->second.pic;
 }
 
@@ -263,6 +266,15 @@ void MenuTextB3(ImDrawList* dl, ImVec2 center, float size, const char* text, boo
   OutlinedText(dl, font, size, pos, text, top, bottom, IM_COL32(17, 12, 8, 255), size * 0.075f);
 }
 
+void BannerBeta(ImDrawList* dl, const Area& a, const char* text, const char* title) {
+  Banner(dl, a, text, title);
+  if (const Pic b = Img("beta")) {
+    const float h = 30 * a.s, w = b.w * h / b.h;
+    const ImVec2 p0 = a.At(470, 112);
+    DrawPic(dl, b, p0, ImVec2(p0.x + w, p0.y + h));
+  }
+}
+
 void Banner(ImDrawList* dl, const Area& a, const char* text, const char* title) {
   // medido en el Duelo (1600x900): pergamino (data_usi 2033, recorte 4,2-452,132) a 1.35 desde
   // 12,20 del area y el titulo de unos 93 px de alto desde 44,34
@@ -362,6 +374,19 @@ bool Borders() { return rex::cvar::GetFlagByName("dbz3_ui_side_borders") == "tru
 void Backdrop(ImDrawList* dl, const Area& a, const char* image) {
   // fondos del juego: dibujo 4:3 en la esquina de una textura de 1024 (900x672 o 912x684); los nuestros, 16:9
   // enteros. Sin bordes (o con un fondo ancho) llenan toda la ventana, recortando lo que sobra.
+  {   // franjas fuera de la imagen 16:9 (ventana 4:3 / 16:10): en negro, que no asome el menu nativo de debajo
+    const ImVec2 ds = ImGui::GetIO().DisplaySize;
+    const Imagen g0 = GuestImage(ImGui::GetIO());
+    const ImU32 neg = IM_COL32(0, 0, 0, 255);
+    if (g0.p0.y > 0.5f) {
+      dl->AddRectFilled(ImVec2(0, 0), ImVec2(ds.x, g0.p0.y), neg);
+      dl->AddRectFilled(ImVec2(0, g0.p1.y), ds, neg);
+    }
+    if (g0.p0.x > 0.5f) {
+      dl->AddRectFilled(ImVec2(0, 0), ImVec2(g0.p0.x, ds.y), neg);
+      dl->AddRectFilled(ImVec2(g0.p1.x, 0), ds, neg);
+    }
+  }
   if (const Pic p = image ? Img(image) : Pic{}) {
     const bool wide = p.w > p.h * 1.5f;
     const float w = wide ? p.w : p.w == p.h ? 900.0f : p.w, h = wide ? p.h : w * 0.75f;

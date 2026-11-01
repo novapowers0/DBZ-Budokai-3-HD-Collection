@@ -36,11 +36,13 @@ $errors = @()
 # 2026-10-15 ronda 3 (frente C): tiras doradas nativas ocultables (dbz3_ui_side_borders) = 6594048.
 # 2026-10-23 v1.5.5 (version stamp update): 11189248 / 6658560; same canonical SDK DLL sizes.
 # 2026-10-24 v1.5.5.3: rexgpu-xenos rebuilt by PACK (pack update/ skip + dynamic re-hash limit, pack SRV fix): 6664192.
+# 2026-10-30 v1.5.5.6: rexruntime rebuilt for additive UI blending (Shenron glow, D3D12/Vulkan): 11189760.
 # 2026-10-17: menu F1 nuevo (quick_menu.cpp) y volcado de audio dbz3_audio_dump (sdl_audio_driver.cpp) = 11172864 / 6596608.
 # 2026-10-16 ronda 4 (frente R15): modelos de la interfaz con el z-buffer del juego (dbz3_ui_depth) = 11158528 / 6596608.
-$canonVersion = "1.5.5"
+# 2026-11-01 v1.5.6: DLL canonicas SIN cambios (11189760 / 6664192 / 5413888, medidas en el stage D:\tmp\rel156); solo cambia la etiqueta de referencia.
+$canonVersion = "1.5.6"
 $canonSizes = @{
-    "rexruntime.dll"          = 11189248
+    "rexruntime.dll"          = 11189760
     "rexgpu-xenos.dll"        = 6664192
     "amd_fidelityfx_dx12.dll" = 5413888
 }
@@ -175,7 +177,8 @@ if ($Version -ne "" -and (Test-Path -LiteralPath $zip)) {
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $z = [System.IO.Compression.ZipFile]::OpenRead($zip)
     try {
-        $bad = $z.Entries | Where-Object { $_.FullName -match "default\.xex|(^|/)us/|(^|/)eu/|\.afs$|\.xex$|\.iso$" }
+        # us/eu son las carpetas de juego en la raiz; Tcl trae su propia zona horaria tzdata/US (no es un asset).
+        $bad = $z.Entries | Where-Object { $_.FullName -match "default\.xex|^(us|eu)[/\\]|(^|[/\\])(pack_hub|mods_ps2)([/\\])|\.(afs|xex|iso|xiso|chd|cpk|amb|awo|amo|amg|azt|adx|sfd|mp4|mkv|avi|mp3|wav|ogg|flac)$|xv2_cac\.toml$" }
         if ($bad) {
             $errors += "el zip contiene assets del juego: $($bad.FullName -join ', ')"
         } else {
@@ -186,8 +189,12 @@ if ($Version -ne "" -and (Test-Path -LiteralPath $zip)) {
         }
         # 1.5.1.2: escenarios de PS2 y Modo Heroe sin Kit ni Python instalados
         foreach ($need in @("python[/\\]python\.exe$", "mod center hd[/\\]campos_iw\.py$", "mod center hd[/\\]escenarios_convertir\.py$",
-                            "mod center hd[/\\]iso\.py$", "mod center hd[/\\]importar\.py$", "mod center hd[/\\]cac[/\\]vista_heroe\.py$",
-                            "awo_tools[/\\]amo2awo\.py$", "awo_tools[/\\]ps2hd\.py$", "python[/\\]Lib[/\\]site-packages[/\\]PIL[/\\]Image\.py$")) {
+                            "mod center hd[/\\]iso\.py$", "mod center hd[/\\]importar\.py$", "mod center hd[/\\]cac[/\\]vista_heroe\.py$", "res[/\\]heroe[/\\]sagas\.toml$", "mod center hd[/\\]heroe_sagas_a_du\.py$", "mod center hd[/\\]xv2[/\\]xv2_cac_b3\.py$","mod center hd[/\\]cac[/\\]nombre_levelup\.py$",
+                            "awo_tools[/\\]amo2awo\.py$", "awo_tools[/\\]ps2hd\.py$", "python[/\\]Lib[/\\]site-packages[/\\]PIL[/\\]Image\.py$",
+                            "python[/\\]Lib[/\\]site-packages[/\\]scipy[/\\]spatial[/\\]__init__\.py$",
+                            "mod center hd[/\\]nova_recetas\.py$", "awo_tools[/\\]xeno_a_b3\.py$", "awo_tools[/\\]xeno_fisica\.py$",
+                            "awo_tools[/\\]dae_lector\.py$", "awo_tools[/\\]dae_a_b3\.py$", "mod center hd[/\\]tactics_manifest\.toml$",
+                            "mod center hd[/\\]tactics_textos\.toml$", "ingame_ui[/\\]i18n_modos\.toml$", "^novas_mods\.key$")) {
             if (-not ($z.Entries | Where-Object { $_.FullName -match $need })) { $errors += "el zip no lleva '$need' (escenarios de PS2 / Modo Heroe sin Kit)" }
         }
         # Residuos de ejecucion: una carpeta de datos/user_data/logs/iso_cache

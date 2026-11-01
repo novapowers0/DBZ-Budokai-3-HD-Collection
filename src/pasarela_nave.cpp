@@ -35,7 +35,7 @@
 //   0x264670 FUN_00264670 / 0x264710 FUN_00264710: esperan a los objetos y ceden a 0x2644E0 (seleccion) / 0x265410.
 //     PORTADO por DS127: clips 0x11/0x14/0x3F/0x42/0x2F+4p y 0x699D60 0x4B (max(+0x20,+0x24), 21 cuadros); B no espera 0x11/0x14.
 // Mas funciones de pantalla, leidas: EU 0x261880 FUN_00261880 (cuando el objeto 1P/2P llega a su bucle, arranca el fundido uGpffff8c2c y la voz de
-//   Babidi 1149 con FUN_0012BA00(1, DAT_00378370): el port la suena al abrir la pantalla `Voz(1149)` [H: unos cuadros antes que el original]); EU 0x263990 FUN_00263990 (carga de la pantalla de resultado: espera a los 3 objetos y a 0x699DC0, y construye 0x2624F0, 0x2621F0
+//   Babidi 1149 con FUN_0012BA00(1, DAT_00378370): el port espera g_c_burb >= DurDe(18), al pasar al bucle (g_voz_modo); EU 0x263990 FUN_00263990 (carga de la pantalla de resultado: espera a los 3 objetos y a 0x699DC0, y construye 0x2624F0, 0x2621F0
 //   0x262640 -> 0x263900 = kResultado); EU 0x263700 FUN_00263700 (cuenta del resultado: +1 cada 3 cuadros de 60 Hz, `dt` PAL ya aplicado
 //   dentro: 1,2 / 1,0; el port usa 3 cuadros de 60 Hz) y cede a 0x263670 (no leida).
 // Pegamento de la rueda (b2.c; FUN_002B4430 = estado del motor de la rueda 3D: 3 abierta, 5 y 6 elegido, 7 lista, 8 cerrada hacia atras,
@@ -59,6 +59,8 @@
 //   - los escenarios son los de B2 que instala el launcher (escenarios::PorMod), con mapa de B3 de respaldo.
 #include "reloj_prueba.h"
 #include "pasarela.h"
+#include "iw_nave_hud_b2.h"
+#include "combate.h"
 
 #include <rex/hook.h>
 #include <rex/logging.h>
@@ -82,6 +84,7 @@
 #include <set>
 #include <string>
 #include <thread>
+#include <tuple>
 #include <mutex>
 #include <vector>
 
@@ -94,6 +97,7 @@
 #include <windows.h>
 #endif
 #include "mods.h"
+#include "region.h"
 #include "generated/dbz3_init.h"
 #include "escenarios.h"
 #include "eu_map.h"
@@ -171,10 +175,13 @@ std::vector<uint8_t> Leer(std::ifstream& f, uint64_t off, uint32_t n) {
   b.resize(size_t(std::max<std::streamsize>(0, f.gcount())));
   return b;
 }
+std::atomic<int> g_hz_b2{50};   // resultado: SLES PAL; SLUS conserva sus 60 campos/s
 std::vector<uint8_t> LeerElf(const std::filesystem::path& juego) {
   auto es_elf = [](std::string n) {
     for (auto& c : n) c = char(std::toupper(static_cast<unsigned char>(c)));
-    return n.size() >= 11 && (n.rfind("SLUS_", 0) == 0 || n.rfind("SLES_", 0) == 0) && n[8] == '.';
+    const bool ok = n.size() >= 11 && (n.rfind("SLUS_", 0) == 0 || n.rfind("SLES_", 0) == 0) && n[8] == '.';
+    if (ok) g_hz_b2 = n.rfind("SLES_", 0) == 0 ? 50 : 60;
+    return ok;
   };
   std::error_code ec;
   if (std::filesystem::is_directory(juego, ec)) {
@@ -282,6 +289,9 @@ std::atomic<bool> g_enc_armado{false};   // prueba I: pasarela_misiones.cpp ya e
 // el mando 2 esta conectado. El original lee los cuatro registros de mando 0x3B43B2/0x4412/0x446A/0x44CA y exige
 // 0x3B43A0 == 0x3B4458 == 3 para ofrecer 2P (EU 0x264F60 / 0x260630).
 std::atomic<uint16_t> g_ent1{0}, g_ent2{0};
+std::atomic<uint16_t> g_mant{0};   // botones mantenidos del mando 1 (L1 / R1 + cruceta)
+uint16_t g_sol_ant = 0;            // L1 / R1 mantenidos el cuadro anterior
+bool g_sol_uso = false;            // la cruceta se uso con L1 / R1 mantenido (no es un cambio de pagina)
 std::atomic<bool> g_dos_mandos{false};
 std::atomic<bool> g_2p{false};   // cGpffff8c38 del original: 0 = 1P, 1 = 2P (humano contra humano)
 
@@ -338,6 +348,11 @@ void ConstruirCasillas() {
 }
 std::vector<std::vector<Entrada>> g_pags(1);
 int g_pag = 0, g_j3 = 0, g_r3 = 0;   // pagina de la rueda y luchadores de B3 elegidos
+// solP3: B2 conserva por lado la eleccion CONFIRMADA en 0x69D3E4/+0x430
+// (FUN_002B3F60/002AD490); cancelar la rueda no guarda. No es parte de la tarjeta.
+struct EleccionNave { int id = 0, traje = 0, lista = 0; };
+EleccionNave g_recordada[2] = {{0, 0, 0}, {3, 0, 0}}, g_elegida[2];
+std::atomic<uint64_t> g_trajes_pendientes{0};
 bool EsHeroe(int id, const std::string& n) {
   std::string l = n;
   for (auto& c : l) c = char(std::tolower(static_cast<unsigned char>(c)));
@@ -368,34 +383,34 @@ void ConstruirPaginas() {
 }
 const std::vector<Entrada>& Pag() { return g_pags[size_t(std::clamp(g_pag, 0, int(g_pags.size()) - 1))]; }
 
-// Prueba II: segundos de pelea (estado 4 del combate vigilado), sin las entradas ni el final. La pausa no cuenta:
-// el reloj del juego esta oculto (mgr+35253 = 1, lo mismo que apaga las barras y el reloj del HUD) o la ventana no
-// tiene el foco (GameDimmed) o el F1 esta encima (OverlayOpen). El corte a los 600 s lo hace el propio combate
-// (kPruebas[1].tiempo): B2 0x1D2620 case 7 con 36000 cuadros.
-std::atomic<int> g_ms_lucha{0};
+// Prueba II: cuadros del RELOJ DEL COMBATE (mgr+35144, como VigilarCombate), no tiempo de pared.
+// Las pausas, tecnicas y ralentizaciones pueden dejar el combate en estado 4 sin avanzar su reloj.
+// B2 paga (cuadros+60)/60; contar milisegundos host daba Kili de mas (37 s frente a 21 del juego).
+std::atomic<int> g_cuadros_lucha{0};
 std::atomic<unsigned> g_reloj{0};
 void Reloj() {
   const unsigned gen = ++g_reloj;
-  g_ms_lucha = 0;
+  g_cuadros_lucha = 0;
   std::thread([gen] {
     using C = std::chrono::steady_clock;
     const auto fin = C::now() + std::chrono::minutes(32);
     bool empezo = false;
-    auto antes = C::now();
     while (g_reloj.load() == gen && C::now() < fin) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(50));
-      const auto ahora = C::now();
+      std::this_thread::sleep_for(std::chrono::milliseconds(8));
       const int e = EstadoCombate();
       uint8_t* base = rex::Runtime::instance() ? rex::Runtime::instance()->virtual_membase() : nullptr;
       const uint32_t mgr = base ? REX_LOAD_U32(dbz3::GA(0x823D6CF4)) : 0;
-      const bool pausa = base && mgr != 0 && REX_LOAD_U8(mgr + 35253) == 1;   // el juego esconde su reloj al pausar
-      if (e == 4 && !pausa && !dbz3::GameDimmed() && !dbz3::OverlayOpen()) {
+      if (base && mgr && e >= 4 && e <= 7) {
+        const uint32_t bits = REX_LOAD_U32(mgr + 35144);
+        float cuadros = 0;
+        std::memcpy(&cuadros, &bits, sizeof(cuadros));
+        if (std::isfinite(cuadros) && cuadros >= 0 && cuadros <= kTopeII * 60)
+          g_cuadros_lucha = std::max(g_cuadros_lucha.load(), int(cuadros));
         empezo = true;
-        g_ms_lucha += int(std::chrono::duration_cast<std::chrono::milliseconds>(ahora - antes).count());
-      } else if (empezo && (e == 0 || e >= 5)) {
+      }
+      if (empezo && (e == 0 || e >= 5)) {
         break;
       }
-      antes = ahora;
     }
   }).detach();
 }
@@ -500,6 +515,8 @@ std::vector<Tex> g_pzv;                          // ventana de premio: DATA_<idi
                                                  // 1 estrella, 2 emblema, 3 "BOOM!!")
 std::vector<Tex> g_cielo_tx;                     // cielo: DATA_CMN 912 (#AMT: 2 texturas de nube 256x256, blancas con alfa)
 std::vector<Anim> g_anim, g_animv;               // 905 (nave) y 933 (ventana de premio)
+std::vector<Tex> g_resultado_tx;                // Kili: textura * RGB del #AMA y despues FOGCOL (GS)
+std::map<int, int> g_resultado_tex;             // clip 96..117 -> variante compartida, solo para el resultado
 std::map<int, Tex> g_nombres;                    // nombre de cada premio: DATA_<idioma> (542 + ID), textura 0
 std::vector<Tex> g_ficha;                        // "Skill Z Sheet": DATA_<idioma> 541 (fondos, rotulos, iconos, "New")
 std::map<int, Tex> g_textos_capsula;             // textos de cada capsula: DATA_<idioma> (542 + ID), texturas 1-4 (clave ID * 8 + j)
@@ -558,6 +575,7 @@ std::vector<Anim> LeerAma(const std::vector<uint8_t>& d) {
 // ---- A2nave: #AMA completo (varias piezas, z) para la rueda y la burbuja (ver el bloque grande mas abajo)
 struct Pz2 {
   float t = 0, alpha = 1;
+  uint32_t niebla = 0x01000000;   // +0x0C: FOGCOL RGB + cantidad (FUN_001A7020 -> FUN_00138710)
   int tex = 0;
   float m[3] = {1, 1, 1};   // multiplicador de color (+0x10..+0x18: 0,5 = oscurecida)
   float u0 = 0, v0 = 0, u1 = 0, v1 = 0;
@@ -576,7 +594,10 @@ struct Ama2 {
   std::vector<Tex> tex;
   bool ok() const { return !a.empty() && !tex.empty(); }
 };
-Ama2 g_rueda, g_burb;
+Ama2 g_rueda, g_burb, g_cab_seleccion;
+std::vector<Imagen> g_burb_cpu;
+std::vector<Tex> g_burb_niebla;
+std::vector<uint32_t> g_burb_color;
 std::vector<Tex> g_ayuda;   // DATA_<idioma> 1145: las tiras ya compuestas de la barra de ayuda (11 Quick select, 27 Confirm, 32 Back, 3 Select Character)
 
 std::vector<Anim2> LeerAma2(const std::vector<uint8_t>& d) {
@@ -610,6 +631,7 @@ std::vector<Anim2> LeerAma2(const std::vector<uint8_t>& d) {
       Pz2 p;
       p.t = float(u32(q));
       p.tex = int(u32(q + 4));
+      p.niebla = u32(q + 0xC);
       p.alpha = f32(q + 0x1C);
       p.m[0] = f32(q + 0x10);
       p.m[1] = f32(q + 0x14);
@@ -642,16 +664,28 @@ struct CieloV {
 };
 std::vector<std::array<CieloV, 3>> g_cielo_tri;   // triangulos del domo ya subdivididos (cada uno de 4x4 para la perspectiva)
 std::vector<int> g_cielo_tex;                     // textura (-1 = solo color de vertice) de cada uno
+std::vector<std::array<CieloV, 3>> g_principal_cielo_tri;
+std::vector<int> g_principal_cielo_tex;
+std::vector<Tex> g_principal_cielo_tx;
+Ama2 g_principal;
+std::vector<Tex> g_principal_ayuda;
+std::vector<Tex> g_principal_botones;
+ps2::Modelo g_principal_avion;
+std::vector<ps2::Tex> g_principal_avion_tx;
+std::array<ps2::Anim, 9> g_principal_avion_an;
 
 // EU 0x23D520 FUN_0023d520 (carga los dos recursos del domo)
 // EU 0x23DAE0 FUN_0023dae0 (pide los ids de la tabla gp-0x7E48 con FUN_0012D100, una vez)
 // EU 0x23D960 FUN_0023d960 (crea la tarea del domo con la variante: la nave pide la 2)
-bool CargarCielo(AfsPs2& cmn, rex::ui::ImmediateDrawer* dr) {
+bool CargarCielo(AfsPs2& cmn, rex::ui::ImmediateDrawer* dr, int variante = 2,
+                 std::vector<std::array<CieloV, 3>>& g_cielo_tri = ::dbz3::pasarela::nave::g_cielo_tri,
+                 std::vector<int>& g_cielo_tex = ::dbz3::pasarela::nave::g_cielo_tex,
+                 std::vector<Tex>& g_cielo_tx = ::dbz3::pasarela::nave::g_cielo_tx) {
   g_cielo_tri.clear();
   g_cielo_tex.clear();
   g_cielo_tx.clear();
   ps2::Malla m;
-  if (!ps2::LeerAmo(cmn.Entrada(911), 2, m, nullptr, true) || !m) {
+  if (!ps2::LeerAmo(cmn.Entrada(911), variante, m, nullptr, true) || !m) {
     REXLOG_WARN("dbz3 nave cielo: DATA_CMN 911 (#AMO) no disponible (fondo liso)");
     return false;
   }
@@ -696,7 +730,7 @@ bool CargarCielo(AfsPs2& cmn, rex::ui::ImmediateDrawer* dr) {
         }
       }
   }
-  REXLOG_INFO("dbz3 nave cielo: DATA_CMN 911 #AMG 2 + 912: {} triangulos de {}, {} texturas", g_cielo_tri.size(), m.tris.size(),
+  REXLOG_INFO("dbz3 nave cielo: DATA_CMN 911 #AMG {} + 912: {} triangulos de {}, {} texturas", variante, g_cielo_tri.size(), m.tris.size(),
               g_cielo_tx.size());
   return true;
 }
@@ -750,10 +784,42 @@ void Cargar() {
       }
     };
     g_rueda.a = LeerAma2(cmn.Entrada(901));
+    g_cab_seleccion.a = LeerAma2(cmn.Entrada(905));   // salida 120/123: el alfa tambien esta en la lista B
+    // El lector simple de #AMA no consumia RGB/FOGCOL de la lista B: los Kili salian blancos.
+    // Conservar el alfa y cocer una sola vez cada combinacion real del original (sin superponer capas).
+    const auto resultado_amt = loc.Entrada(1131);
+    std::map<std::tuple<int, uint32_t, float, float, float>, int> tonos;
+    for (int k = 96; k <= 117 && k < int(g_cab_seleccion.a.size()); ++k) {
+      const auto& piezas = g_cab_seleccion.a[size_t(k)].p;
+      if (piezas.empty()) continue;
+      const Pz2& p = piezas.front();
+      const auto clave = std::make_tuple(p.tex, p.niebla, p.m[0], p.m[1], p.m[2]);
+      if (auto it = tonos.find(clave); it != tonos.end()) { g_resultado_tex[k] = it->second; continue; }
+      Imagen im = TexturaAmt(resultado_amt, p.tex);
+      if (!im) continue;
+      const float f = float(p.niebla >> 24) / 255.0f;
+      for (size_t b = 0; b + 3 < im.rgba.size(); b += 4) for (int ch = 0; ch < 3; ++ch) {
+        const float rgb = float(im.rgba[b + ch]) * p.m[ch];
+        im.rgba[b + ch] = uint8_t(std::clamp(rgb * (1 - f) + float((p.niebla >> (8 * ch)) & 255) * f, 0.0f, 255.0f));
+      }
+      Tex tx;
+      tx.t = dr->CreateTexture(uint32_t(im.w), uint32_t(im.h), rex::ui::ImmediateTextureFilter::kLinear, false, im.rgba.data());
+      tx.w = float(im.w); tx.h = float(im.h);
+      if (!tx.t) continue;
+      const int id = int(g_resultado_tx.size());
+      tonos[clave] = id; g_resultado_tex[k] = id;
+      g_resultado_tx.push_back(std::move(tx));
+    }
     texs(loc.Entrada(1127), g_rueda.tex);
     texs(loc.Entrada(1145), g_ayuda);
     g_burb.a = LeerAma2(cmn.Entrada(897));
-    texs(cmn.Entrada(898), g_burb.tex);
+    const auto burb_amt = cmn.Entrada(898);
+    texs(burb_amt, g_burb.tex);
+    for (int j = 0; j < int(g_burb.tex.size()); ++j) {
+      g_burb_cpu.push_back(TexturaAmt(burb_amt, j));
+    }
+    g_burb_niebla.resize(g_burb.tex.size());
+    g_burb_color.resize(g_burb.tex.size());
     REXLOG_INFO("dbz3 nave: rueda {} animaciones / {} texturas, burbuja {} / {}", g_rueda.a.size(), g_rueda.tex.size(), g_burb.a.size(),
                 g_burb.tex.size());
   }
@@ -911,7 +977,10 @@ void DibC(ImDrawList* dl, const Lienzo& L, int k, float c, bool vuelta, float gi
     return L.P(q.x + dx + lx * cs - ly * sn, q.y + dy + lx * sn + ly * cs);
   };
   const ImU32 cc = (col & 0x00FFFFFF) | (ImU32(float(col >> 24) * std::min(1.0f, q.a)) << 24);
-  dl->AddImageQuad(reinterpret_cast<ImTextureID>(p.t.get()), v(a.x0, a.y0), v(a.x1 + 1, a.y0), v(a.x1 + 1, a.y1 + 1),
+  ImTextureID tex = reinterpret_cast<ImTextureID>(p.t.get());
+  if (!set && !pzs) if (auto it = g_resultado_tex.find(k); it != g_resultado_tex.end())
+    tex = reinterpret_cast<ImTextureID>(g_resultado_tx[size_t(it->second)].t.get());
+  dl->AddImageQuad(tex, v(a.x0, a.y0), v(a.x1 + 1, a.y0), v(a.x1 + 1, a.y1 + 1),
                    v(a.x0, a.y1 + 1), ImVec2(a.u0 / p.w, a.v0 / p.h), ImVec2(a.u1 / p.w, a.v0 / p.h),
                    ImVec2(a.u1 / p.w, a.v1 / p.h), ImVec2(a.u0 / p.w, a.v1 / p.h), cc);
 }
@@ -952,7 +1021,10 @@ void Numero(ImDrawList* dl, const Lienzo& L, int primera, int n) {
 
 // Pinta el domo del cielo (CargarCielo) en la pantalla de 640x448 de `L`; `t` en segundos. Camara y proyeccion: ver CargarCielo.
 // EU 0x140970 FUN_00140970 (dibuja el #AMO del domo)
-void DibCielo(ImDrawList* dl, const Lienzo& L, float t) {
+void DibCielo(ImDrawList* dl, const Lienzo& L, float t, bool principal = false) {
+  const auto& triangulos = principal ? g_principal_cielo_tri : g_cielo_tri;
+  const auto& texturas = principal ? g_principal_cielo_tex : g_cielo_tex;
+  const auto& imagenes = principal ? g_principal_cielo_tx : g_cielo_tx;
   // EU 0x23CD00 FUN_0023cd00
   static const float kDy = [] {
     const uint32_t b = 0x3E13E814;   // FUN_0023CD00: componente y del punto al que mira
@@ -960,10 +1032,14 @@ void DibCielo(ImDrawList* dl, const Lienzo& L, float t) {
     std::memcpy(&f, &b, 4);
     return f;
   }();
-  const float kCs = 1.0f / std::sqrt(1.0f + kDy * kDy), kSn = kDy * kCs;
+  const float dy = principal ? 0.0f : kDy;
+  const float kCs = 1.0f / std::sqrt(1.0f + dy * dy), kSn = dy * kCs;
   // EU 0x131450 FUN_00131450
   // EU 0x1317A0 FUN_001317a0
-  constexpr float kFx = 512.0f, kFy = 512.0f * 448.0f / 480.0f, kCerca = 1.0f;
+  // FUN_0023CD00 cambia el limite de recorte a 1977, NO el foco (param[15], 512).
+  // El desplazamiento de 70 esta en coordenadas GS: factores .8 y 16/15 del original.
+  const float kFx = 512.0f, kFy = kFx * 448.0f / 480.0f;
+  constexpr float kCerca = 1.0f;
   // EU 0x23D300 FUN_0023d300
   const float sc = std::fmod(0.03f * t, 1.0f);   // FUN_0023D300: +0,0005 * dt por cuadro (0,03 por segundo) en u y v
   const ImVec2 blanco = ImGui::GetFontTexUvWhitePixel();
@@ -971,14 +1047,14 @@ void DibCielo(ImDrawList* dl, const Lienzo& L, float t) {
     float x, y, z, u, v, c[4];
   };
   int tex_ant = -1;
-  for (size_t i = 0; i < g_cielo_tri.size(); ++i) {
-    const int tx = g_cielo_tex[i];
+  for (size_t i = 0; i < triangulos.size(); ++i) {
+    const int tx = texturas[i];
     Q q[4];
     int n = 0;
     {   // vertices en el espacio de la camara (x a la derecha, y hacia abajo, z hacia delante) y recorte contra z >= kCerca
       Q a[3];
       for (int k = 0; k < 3; ++k) {
-        const CieloV& p = g_cielo_tri[i][size_t(k)];
+        const CieloV& p = triangulos[i][size_t(k)];
         a[k] = {p.x, -(kCs * p.y + kSn * p.z), kSn * p.y - kCs * p.z, p.u + (tx >= 0 ? sc : 0.0f), p.v + (tx >= 0 ? sc : 0.0f),
                 {p.c[0], p.c[1], p.c[2], p.c[3]}};
       }
@@ -1003,14 +1079,15 @@ void DibCielo(ImDrawList* dl, const Lienzo& L, float t) {
     ImVec2 s[4];
     float x0 = 1e9f, x1 = -1e9f, y0 = 1e9f, y1 = -1e9f;
     for (int k = 0; k < n; ++k) {
-      const float sx = 320.0f + kFx * q[k].x / q[k].z, sy = 224.0f + kFy * q[k].y / q[k].z;
+      const float sx = 320.0f + (principal ? 70.0f / 0.8f : 0.0f) + kFx * q[k].x / q[k].z,
+                  sy = 224.0f + (principal ? 70.0f / (16.0f / 15.0f) : 0.0f) + kFy * q[k].y / q[k].z;
       s[k] = L.P(sx, sy);
       x0 = std::min(x0, sx), x1 = std::max(x1, sx), y0 = std::min(y0, sy), y1 = std::max(y1, sy);
     }
     if (x1 < 0 || x0 > 640 || y1 < 0 || y0 > 448) continue;
     if (tx != tex_ant) {
       if (tex_ant >= 0) dl->PopTexture();
-      if (tx >= 0) dl->PushTexture(ImTextureRef(reinterpret_cast<ImTextureID>(g_cielo_tx[size_t(tx)].t.get())));
+      if (tx >= 0) dl->PushTexture(ImTextureRef(reinterpret_cast<ImTextureID>(imagenes[size_t(tx)].t.get())));
       tex_ant = tx;
     }
     auto col = [](const Q& v) {
@@ -1141,7 +1218,7 @@ void AyudaB2(ImDrawList* dl, const Lienzo& L, float t) {
   dl->PopClipRect();
 }
 
-void Babidi(ImDrawList* dl, const Lienzo& L, int frase, bool arriba) {
+void Babidi(ImDrawList* dl, const Lienzo& L, int frase, bool arriba, float frase_alfa = 1.0f) {
   // 36 es la entrada y 37 el gesto hablado de reposo. Mantener el reloj propio
   // del personaje (independiente de los cambios de pantalla) evita congelarlo
   // cuando la frase del bocadillo no cambia.
@@ -1157,7 +1234,8 @@ void Babidi(ImDrawList* dl, const Lienzo& L, int frase, bool arriba) {
   const Tex& f = g_frases[size_t(frase)];
   const float cx = q.x + (b.x0 + b.x1) * 0.5f, cy = q.y + (b.y0 + b.y1) * 0.5f;
   dl->AddImage(reinterpret_cast<ImTextureID>(f.t.get()), L.P(cx - f.w * 0.5f, cy - f.h * 0.5f),
-               L.P(cx + f.w * 0.5f, cy + f.h * 0.5f));
+               L.P(cx + f.w * 0.5f, cy + f.h * 0.5f), ImVec2(0, 0), ImVec2(1, 1),
+               IM_COL32(255, 255, 255, int(std::clamp(frase_alfa, 0.0f, 1.0f) * 255)));
 }
 
 // ===================================================================================================================
@@ -1209,6 +1287,7 @@ void VaciarCapas(ImDrawList* dl) {
 }
 struct Pose2 {
   float x = 0, y = 0, z = 0, sx = 1, sy = 1, rot = 0, a = 1;
+  uint32_t niebla = 0x01000000;
   float m[3] = {1, 1, 1};
 };
 // Pose de la animacion en el cuadro c: claves (lineal) y alfa de la linea de piezas; bucle = vuelve al principio.
@@ -1243,20 +1322,45 @@ Pose2 PoseAma2(const Anim2& A, float c, bool bucle) {
   float pa = 1.0f;
   if (!A.p.empty()) {
     pa = A.p.front().alpha;
+    q.niebla = A.p.front().niebla;
     for (int j = 0; j < 3; ++j) q.m[j] = A.p.front().m[j];
     for (size_t i = 0; i < A.p.size(); ++i) {
       if (cp < A.p[i].t) break;
       pa = A.p[i].alpha;
+      q.niebla = A.p[i].niebla;
       for (int j = 0; j < 3; ++j) q.m[j] = A.p[i].m[j];
       if (i + 1 < A.p.size() && A.p[i + 1].t > A.p[i].t) {
         const float g = std::clamp((cp - A.p[i].t) / (A.p[i + 1].t - A.p[i].t), 0.0f, 1.0f);
         pa += (A.p[i + 1].alpha - A.p[i].alpha) * g;
+        q.niebla = 0;
+        for (int ch = 0; ch < 4; ++ch) {
+          const int de = int((A.p[i].niebla >> (8 * ch)) & 255), hasta = int((A.p[i + 1].niebla >> (8 * ch)) & 255);
+          q.niebla |= uint32_t(de + int(float(hasta - de) * g)) << (8 * ch);
+        }
         for (int j = 0; j < 3; ++j) q.m[j] += (A.p[i + 1].m[j] - A.p[i].m[j]) * g;
       }
     }
   }
   q.a *= pa;
   return q;
+}
+ImTextureID TexturaBurbuja(int id, uint32_t color) {
+  if (id < 0 || id >= int(g_burb_cpu.size()) || !g_burb_cpu[size_t(id)]) return 0;
+  Tex& tx = g_burb_niebla[size_t(id)];
+  if (!tx.t || g_burb_color[size_t(id)] != color) {
+    Imagen im = g_burb_cpu[size_t(id)];
+    const float f = float(color >> 24) / 255.0f;
+    // GS FOG: mezcla RGB con FOGCOL, conservando el alfa de la textura. Una
+    // capa blanca translucida por encima NO equivale a esto en los bordes.
+    for (size_t k = 0; k + 3 < im.rgba.size(); k += 4) for (int ch = 0; ch < 3; ++ch)
+      im.rgba[k + ch] = uint8_t(float(im.rgba[k + ch]) * (1 - f) + float((color >> (8 * ch)) & 255) * f);
+    if (auto* dr = dbz3::launcher::PreviewDrawer()) {
+      tx.t = dr->CreateTexture(uint32_t(im.w), uint32_t(im.h), rex::ui::ImmediateTextureFilter::kLinear, false, im.rgba.data());
+      tx.w = float(im.w); tx.h = float(im.h);
+      g_burb_color[size_t(id)] = color;
+    }
+  }
+  return reinterpret_cast<ImTextureID>(tx.t.get());
 }
 // Pone la animacion k de `set` en el cuadro c. pos/esc/z/alfa opcionales: pos = (x, y) final en lugar del de las claves
 // (si hay), `d` = desplazamiento, esc = escala extra, z < 0: el de las claves.
@@ -1267,8 +1371,9 @@ void Spr2(const Lienzo& L, const Ama2& set, int k, float c, bool bucle, ImVec2 d
   if (A.p.empty()) return;
   const Pose2 q = PoseAma2(A, c, bucle);
   const Pz2& p = A.p.front();
-  if (p.tex < 0 || p.tex >= int(set.tex.size()) || !set.tex[size_t(p.tex)].t) return;
-  const Tex& t = set.tex[size_t(p.tex)];
+  const auto& texturas = &set == &g_cab_seleccion ? g_pz : set.tex;
+  if (p.tex < 0 || p.tex >= int(texturas.size()) || !texturas[size_t(p.tex)].t) return;
+  const Tex& t = texturas[size_t(p.tex)];
   const float al = q.a * alfa;
   if (al <= 0.001f || q.sx == 0 || q.sy == 0) return;
   const float sx = q.sx * esc, sy = q.sy * esc;
@@ -1276,6 +1381,7 @@ void Spr2(const Lienzo& L, const Ama2& set, int k, float c, bool bucle, ImVec2 d
   Capa cp;
   cp.z = z > -1e8f ? z : q.z;
   cp.tex = reinterpret_cast<ImTextureID>(t.t.get());
+  if (&set == &g_burb) if (auto tex = TexturaBurbuja(p.tex, q.niebla)) cp.tex = tex;
   cp.p[0] = L.P(x + A.x0 * sx, y + A.y0 * sy);
   cp.p[1] = L.P(x + (A.x1 + 1) * sx, y + A.y0 * sy);
   cp.p[2] = L.P(x + (A.x1 + 1) * sx, y + (A.y1 + 1) * sy);
@@ -1372,12 +1478,76 @@ struct Giro2 {
   }
 };
 Giro2 g_giro_rueda, g_giro_burb;
+int g_traje_rueda = 0;
+int TrajesDe(const Entrada& e) {
+  if (e.b2 < 0) return 1;   // los extras conservan su selector de B3
+  const auto& elf = ElfB2();
+  const size_t o = 0x37AB10 - 0x100000 + 0x80 + size_t(e.b2);
+  return o < elf.size() ? std::max(1, int(elf[o])) : 1;
+}
+void RestaurarRueda(int lado) {
+  const auto& e = g_elegida[lado];
+  g_pag = 0;
+  int casilla = 0;
+  bool hallada = false;
+  for (size_t p = 0; p < g_pags.size() && !hallada; ++p)
+    for (size_t i = 0; i < g_pags[p].size(); ++i)
+      if (g_pags[p][i].b3 == e.id) { g_pag = int(p); casilla = int(i); hallada = true; break; }
+  g_giro_rueda.Fijar(casilla);
+  g_traje_rueda = casilla < int(Pag().size()) ? std::clamp(e.traje, 0, TrajesDe(Pag()[size_t(casilla)]) - 1) : 0;
+  // IV excluye el personaje; las otras plantas solo la pareja personaje/traje.
+  if (lado == 1 && casilla < int(Pag().size()) && Pag()[size_t(casilla)].b3 == g_j3) {
+    if (g_prueba == 3) { g_giro_rueda.Fijar((casilla + 1) % (int(Pag().size()) + 1)); g_traje_rueda = 0; }
+    else if (g_traje_rueda == g_elegida[0].traje)
+      g_traje_rueda = (g_traje_rueda + 1) % TrajesDe(Pag()[size_t(casilla)]);
+  }
+  REXLOG_INFO("dbz3 nave: restaura {} id {} traje {} pagina {} casilla {}", lado ? "COM/2P" : "1P",
+              g_giro_rueda.obj < int(Pag().size()) ? Pag()[size_t(g_giro_rueda.obj)].b3 : -1,
+              g_traje_rueda, g_pag + 1, g_giro_rueda.obj);
+}
 float g_t_rueda = 0, g_t_esfera = 0, g_t_menu = 0;   // reloj (s) de la entrada de cada pantalla
 int g_sitio_vis = 0;                                  // casilla de la burbuja (0..9; 9 = "?")
 int g_menu_sel = 0;           // Normal / Custom / Edit Skills
 int g_lista_capsulas = 0;     // FUN_00260CF0: 0 Normal, 1 Custom; Edit Skills abre su pantalla aparte.
 float g_c_rueda = 0;          // cuadros desde que entro la rueda (el menu la deja puesta)
 bool g_rueda_com = false;     // false: elige el jugador (1P), true: el rival (COM)
+
+// solP: PCSX2 2.9.103/PINE, SLES-51839: confirmacion de personaje 52 campos PAL
+// (60 cuadros de animacion + despacho), burbuja 67 campos (AMA 19: 81), salida
+// 25 campos (30). Antes las tres rutas cambiaban de pantalla en el mismo dibujo.
+enum class SelFase { quieta, menuConfirma, ruedaConfirma, ruedaSale, burbujaConfirma, burbujaSale, menuSale };
+struct SelTransicion {
+  SelFase fase = SelFase::quieta;
+  float t0 = 0, c = 0;
+  int destino = kPrueba;
+  bool combate = false;
+  struct Punto { float x, y, z, vx, vy; };
+  std::vector<Punto> puntos;
+} g_sel;
+float g_burb_imagen_t = 0;
+float g_fig_flash = 0, g_fig_salida_x = 0;
+bool g_rueda_continua = false;
+bool SaliendoRueda() { return g_sel.fase == SelFase::ruedaSale; }
+bool SaliendoBurbuja() { return g_sel.fase == SelFase::burbujaSale; }
+void SalidaSeleccion(bool burbuja, int destino, bool combate, float t) {
+  g_sel.fase = burbuja ? SelFase::burbujaSale : SelFase::ruedaSale;
+  g_sel.t0 = t; g_sel.c = 0; g_sel.destino = destino; g_sel.combate = combate;
+  g_sel.puntos.clear();
+  const auto& r = burbuja ? kAnilloBurb : kAnilloRueda;
+  const auto& g = burbuja ? g_giro_burb : g_giro_rueda;
+  const int n = burbuja ? int(g_cel.size()) : int(Pag().size()) + 1;
+  for (int i = 0; i < n; ++i) {
+    float d = float(i) - g.pos;
+    if (!burbuja) d -= float(n) * std::round(d / float(n));
+    SelTransicion::Punto p;
+    AnilloPos(r, r.R0, r.th0, r.arco * d / float(n), p.x, p.y, p.z);
+    const float ang = float(std::rand() % 65535) * (kPi2 / 65536.0f);
+    // FUN_002A9F60 / FUN_002AF720: velocidad 26 px/cuadro (31,2 en PAL).
+    p.vx = 26.0f * std::cos(ang); p.vy = 26.0f * std::sin(ang);
+    g_sel.puntos.push_back(p);
+  }
+  REXLOG_INFO("dbz3 nave: transicion {} salida 30 cuadros", burbuja ? "burbuja" : "rueda");
+}
 
 
 // ---- El modelo 3D grande del luchador elegido (A2nave). B2 (FUN_002AE010/002AE9B0, b2.c): cuerpo = #AMB[#AMO,#AMT] de la tabla
@@ -1400,7 +1570,7 @@ std::vector<uint8_t> g_amm931;
 int g_fig_id = -1;
 ImVec2 g_fig_pie(0, 0);
 float g_fig_px = 0, g_fig_alto_ref = 0;
-const uint8_t kPose37B8B0[40] = {1, 1, 0, 3, 3, 0, 2, 1, 0, 3, 2, 2, 3, 1, 1, 5, 2, 3, 4, 1, 1, 2, 1, 1, 1, 3, 0, 3, 1, 1, 1, 1, 1, 3, 1, 1, 6, 1, 1, 0};
+const uint8_t kPose37B8B0[40] = {1, 1, 0, 3, 3, 0, 2, 1, 0, 3, 2, 2, 3, 1, 1, 5, 2, 3, 4, 1, 1, 2, 1, 1, 1, 3, 0, 3, 1, 1, 1, 1, 1, 3, 1, 1, 1, 1, 1, 0};   // [36] el ELF trae 6 (T-pose en el cuadro 0, medido en la hoja 31/10); el id 36 no es del plantel de B2: 1, la guardia comun
 // prueba DBZ3_SEL_REL: 0 absoluto (por defecto), 1 giro relativo al reposo, 2 giro y posicion
 int modo_rel() { static const int m = std::getenv("DBZ3_SEL_REL") ? std::atoi(std::getenv("DBZ3_SEL_REL")) : 0; return m; }
 std::vector<ps2::M34> EjesMundo(const ps2::Esqueleto& esq, const ps2::Anim& an, float t) {
@@ -1702,18 +1872,30 @@ bool CorrerVista(const char* script_nombre, const std::wstring& args) {
   namespace fs = std::filesystem;
   const fs::path juego = dbz3::ModsRoot().parent_path(), script = juego / "mod center hd" / "cac" / script_nombre;
   std::error_code ec;
-  if (!fs::exists(script, ec)) return false;
+  if (!fs::exists(script, ec)) {
+    REXLOG_WARN("dbz3 nave: falta {} (sin modelo B3: cara grande)", script.string());
+    return false;
+  }
+  // La carpeta us/ (eu/) que usa el juego, para que el script no dependa de encontrarla solo (dbz3_user.toml, rutas)
+  std::wstring datos;
+  if (const fs::path root = dbz3::HostDataRoot(); !root.empty()) {
+    const fs::path us = root / (dbz3::settings::Region() == "eu" ? "eu" : "us");
+    if (fs::exists(us / "data_cmn.afs", ec)) datos = L" --us \"" + us.wstring() + L"\"";
+  }
   std::vector<std::wstring> pys;
   if (const char* e = std::getenv("DBZ3_PYTHON"); e && *e) pys.push_back(L"\"" + fs::path(e).wstring() + L"\"");
   if (fs::exists(juego / "python" / "python.exe", ec)) pys.push_back(L"\"" + (juego / "python" / "python.exe").wstring() + L"\"");
   pys.push_back(L"py -3");
   pys.push_back(L"python");
   for (const std::wstring& py : pys) {
-    const std::wstring cmd = py + L" -I -X utf8 \"" + script.wstring() + L"\" --juego \"" + juego.wstring() + L"\" " + args;
+    const std::wstring cmd = py + L" -I -X utf8 \"" + script.wstring() + L"\" --juego \"" + juego.wstring() + L"\"" + datos + L" " + args;
     DWORD code = 1;
     if (!LanzarOculto(cmd, &code) || code == 9009) continue;
+    if (code != 0)
+      REXLOG_WARN("dbz3 nave: {} {} salio con {} (sin modelo B3: cara grande)", script_nombre, fs::path(args).string(), code);
     return code == 0;
   }
+  REXLOG_WARN("dbz3 nave: sin Python para {} (ni python\\ del juego ni del sistema): sin modelo B3", script_nombre);
 #else
   (void)script_nombre; (void)args;
 #endif
@@ -1776,8 +1958,12 @@ struct SkB3 {
   std::vector<pasarela::Imagen> imgs;   // las texturas en CPU (para recolorear)
   float alto = 0;
   std::vector<std::vector<std::pair<float, int>>> rampa;   // HMS3: tramos de la rampa de B3 por textura (Escena::Toon::rampa)
+  // malla posada (Dragon Tactics T4): se reescriben solo p / n de la copia fija (lo demas de cada Tri no cambia) y, si piden la misma
+  // animacion en el mismo instante, sigue valida sin volver a posar. Se usa en el acto (Poner), no se guarda nada entre figuras.
+  mutable ps2::Malla posada;
+  mutable const Fig* posada_de = nullptr;
+  mutable float posada_t = 0;
 };
-const std::vector<std::vector<std::pair<float, int>>>* g_rampa_fig = nullptr;   // la de la ultima FiguraB3 lista
 std::map<int, SkB3> g_sk;   // por fid
 std::set<int> g_sk_pidiendo, g_sk_fallo;
 std::filesystem::path RutaSk(int fid) { return dbz3::ModsRoot().parent_path() / "ingame_ui" / "nave_vista" / ("sk_" + std::to_string(fid) + ".sk"); }
@@ -1857,6 +2043,10 @@ bool LeerSk(const std::filesystem::path& f, SkB3& m) {
       if (!bien) break;
     }
     if (!bien) m.rampa.clear();
+  }
+  {   // utileria de escena de B3 (Mr. Satan: CAMERA = camara con tripode, GAME = consola): B3 la oculta en el combate y B2 no la anima
+    auto util = [&](uint8_t h) { return h < m.suf.size() && (m.suf[h] == "CAMERA" || m.suf[h] == "GAME"); };
+    m.malla.tris.erase(std::remove_if(m.malla.tris.begin(), m.malla.tris.end(), [&](const ps2::Malla::Tri& t) { return util(t.hueso[0]) || util(t.hueso[1]) || util(t.hueso[2]); }), m.malla.tris.end());
   }
   m.tx.clear();
   for (const auto& im : imgs) m.tx.push_back(ps2::Crear(im, false));
@@ -1942,25 +2132,45 @@ const ps2::Anim& AnimSk(const SkB3& sk, const Fig& f) {
         break;
       }
   REXLOG_INFO("dbz3 nave: B3 con huesos: {} de {} huesos de B3 con pista de B2 ({} huesos), escala de cadera {:.3f}", hechos, sk.suf.size(), f.suf.size(), k);
+  // Las placas de armadura saiyan (*PAT: hombreras y faldon) no tienen pista en B2 ni giro nativo en B3: con el giro de reposo (el
+  // del T-pose de B3, ejes cambiados 90 grados) quedaban como discos planos; con giro cero (absoluto) cuelgan de su padre
+  // (medido en la hoja del roster 31/10, ids 9-12). DBZ3_TEST_SK_SINPISTA=2: lo mismo para todo hueso sin pista (prueba).
+  const char* sinpista = std::getenv("DBZ3_TEST_SK_SINPISTA");
+  for (size_t j = 0; j < sk.suf.size(); ++j)
+    if (a.ang[j].empty() && ((sinpista && sinpista[0] == '2') || sk.suf[j].find("PAT") != std::string::npos)) a.ang[j] = {{0, 0, 0, 0}};
+  if (hechos < int(sk.suf.size()) && std::getenv("DBZ3_TEST_B2_HOJA")) {   // prueba: que huesos quedan sin pista (se quedan en el reposo de B3)
+    std::string sin, ocio;
+    for (size_t j = 0; j < sk.suf.size(); ++j)
+      if (j < a.ang.size() && a.ang[j].empty()) sin += sk.suf[j] + " ";
+    for (const auto& n2 : f.suf)
+      if (std::find(sk.suf.begin(), sk.suf.end(), n2) == sk.suf.end()) ocio += n2 + " ";
+    REXLOG_INFO("dbz3 hoja: sin pista B3 [{}] | B2 sin pareja [{}]", sin, ocio);
+  }
   return a;
 }
 // Malla de B3 posada con la animacion de B2 de `f` en el segundo `t`; mismo marco que la de B2 (Posar: x/z menos el centro de
 // la malla de B2). false si no se puede (sin pistas): se queda el modelo de B2.
-bool PosarSk(const SkB3& sk, const Fig& f, float t, ps2::Malla& out) {
+bool PosarSk(const SkB3& sk, const Fig& f, float t, const ps2::Malla*& out) {
   const ps2::Anim& a = AnimSk(sk, f);
   if (!a) return false;
+  out = &sk.posada;
+  if (sk.posada_de == &f && sk.posada_t == t && sk.posada.tris.size() == sk.malla.tris.size()) return true;
   const std::vector<ps2::M34> w = EjesMundo(sk.esq, a, t);
   static const bool sin_centro = std::getenv("DBZ3_SEL_SK_SINCENTRO") != nullptr;   // prueba: B3 en coordenadas crudas del modelo (como el juego)
   const ps2::V3 c = (f.m.esq && !sin_centro) ? f.m.esq->centro : ps2::V3{};
   { static bool dicho = false; if (!dicho && f.m.esq) { dicho = true; REXLOG_INFO("dbz3 nave: B3 con huesos: centro de la malla de B2 ({:.3f}, {:.3f})", f.m.esq->centro.x, f.m.esq->centro.z); } }
-  out.tris = sk.malla.tris;
-  for (auto& tr : out.tris)
+  if (sk.posada.tris.size() != sk.malla.tris.size()) sk.posada.tris = sk.malla.tris;
+  for (size_t i = 0; i < sk.malla.tris.size(); ++i) {
+    const ps2::Malla::Tri& src = sk.malla.tris[i];
+    ps2::Malla::Tri& tr = sk.posada.tris[i];
     for (int k = 0; k < 3; ++k) {
-      const ps2::M34& W = w[tr.hueso[k]];
-      ps2::V3 p = W.por(tr.p[k]);
+      const ps2::M34& W = w[src.hueso[k]];
+      const ps2::V3 p = W.por(src.p[k]);
       tr.p[k] = {p.x - c.x, p.y, p.z - c.z};
-      tr.n[k] = W.gira(tr.n[k]);
+      tr.n[k] = W.gira(src.n[k]);
     }
+  }
+  sk.posada_de = &f, sk.posada_t = t;
   return true;
 }
 // ---- B3M: colores del Saibaman. B2 trae 5 (modo = traje: 0 verde, 1 salmon, 2 azul, 3 amarillo, 4 rosa) y B3 solo 2 (los modos 0 y 1,
@@ -2027,8 +2237,10 @@ const SkB3* SkTinte(const SkB3& base, const Fig& f, int modo) {
   REXLOG_INFO("dbz3 nave: Saibaman B3 recoloreado al modo {} de B2 (piel h {:.0f} s {:.2f} v {:.2f}, armadura h {:.0f} s {:.2f} v {:.2f})", modo, piel2.h, piel2.s, piel2.v, arma2.h, arma2.s, arma2.v);
   return &o;
 }
-// 0 = no aplica (se queda el modelo de B2), 1 = el de B3 se esta generando (no se dibuja nada), 2 = `m` / `tx` / `alto` son los de B3
-int FiguraB3(int id_b2, int traje, const Fig& f, float t, ps2::Malla& m, const std::vector<ps2::Tex>*& tx, float& alto) {
+// 0 = no aplica (se queda el modelo de B2), 1 = el de B3 se esta generando (no se dibuja nada), 2 = `m` (malla posada, valida hasta la
+// siguiente figura del mismo modelo) / `tx` / `alto` / `rampa` (la toon de esa figura) son los de B3
+int FiguraB3(int id_b2, int traje, const Fig& f, float t, const ps2::Malla*& m, const std::vector<ps2::Tex>*& tx, float& alto,
+             const std::vector<std::vector<std::pair<float, int>>>*& rampa) {
   const int b3 = B3DeB2(id_b2);
   if (b3 < 0 || !f.ok || std::getenv("DBZ3_SEL_FORZAR_B2")) return 0;
   const SkB3* sk = nullptr;
@@ -2038,7 +2250,7 @@ int FiguraB3(int id_b2, int traje, const Fig& f, float t, ps2::Malla& m, const s
   if (!PosarSk(*sk, f, t, m)) return 0;
   tx = &sk->tx;
   alto = sk->alto;
-  g_rampa_fig = sk->rampa.empty() || std::getenv("DBZ3_FIG_TOON_B2") ? nullptr : &sk->rampa;
+  rampa = sk->rampa.empty() || std::getenv("DBZ3_FIG_TOON_B2") ? nullptr : &sk->rampa;
   return 2;
 }
 // alto (ymax - ymin) de los modelos de B2 de la rueda, para dar a un extra el tamano del de altura parecida
@@ -2095,6 +2307,9 @@ void PintaExtra(ImDrawList* dl) {
   ps2::Escena::Toon toon;
   toon.borde = m->alto * (m->rampa.empty() || std::getenv("DBZ3_FIG_TOON_B2") ? 0.009f : BordeFig(2));
   toon.rampa = m->rampa.empty() || std::getenv("DBZ3_FIG_TOON_B2") ? nullptr : &m->rampa;   // 25/10: la rampa de B3
+  // HMS3 ya lleva cocido base-rampa, tambien cuando la rampa tiene UN solo
+  // tramo (ojos, cara, pelo). Escena solo recorta con >1: no sombrear dos veces.
+  if (toon.rampa) for (float& tono : toon.tonos) tono = 1.0f;
   static const float giro = std::getenv("DBZ3_SEL_GIRO") ? float(std::atof(std::getenv("DBZ3_SEL_GIRO"))) : 0.35f;
   esc.Poner(cam, m->malla, m->tx, {0, 0, 0}, giro, 1.0f, toon);
   esc.Pintar(dl);
@@ -2134,13 +2349,47 @@ CamRueda CamDeRueda(int id, bool com) {
   r.ok = std::isfinite(r.cx) && std::isfinite(r.cy) && r.dz < -1.0f;
   return r;
 }
+void PonerFiguraRueda(ps2::Escena& esc, ps2::Camara cam, const ps2::Malla& m, const std::vector<ps2::Tex>& tx,
+                     ps2::V3 pos, float giro, const ps2::Escena::Toon& toon) {
+  cam.c.x += g_fig_salida_x * g_fig_L.s;
+  // FUN_002AABA0: blanco -> material nativo. Mezclar el material, no superponer
+  // triangulos translucidos (las caras ocultas acumularian alfa y crearían facetas).
+  const std::vector<Imagen>* imgs = nullptr;
+  if (g_fig_flash > 0) for (const auto& [id, sk] : g_sk) if (&sk.tx == &tx) { imgs = &sk.imgs; break; }
+  if (!imgs || imgs->size() != tx.size()) { esc.Poner(cam, m, tx, pos, giro, 1.0f, toon); return; }
+  static const void* de = nullptr;
+  static int paso = -1;
+  static std::vector<ps2::Tex> claras;
+  const int actual = int(std::round(g_fig_flash * 60));
+  const float f = float(actual) / 60.0f;
+  if (de != imgs || paso != actual) {
+    claras.clear();
+    for (const auto& im0 : *imgs) {
+      Imagen im = im0;
+      for (size_t k = 0; k + 3 < im.rgba.size(); k += 4)
+        for (int ch = 0; ch < 3; ++ch) im.rgba[k + ch] = uint8_t(float(im.rgba[k + ch]) * (1 - f) + 255 * f);
+      claras.push_back(ps2::Crear(im));
+    }
+    de = imgs; paso = actual;
+  }
+  ps2::Malla clara = m;
+  for (auto& tr : clara.tris) if (tr.con_color) for (auto& col : tr.col) {
+    ImU32 nuevo = col & IM_COL32_A_MASK;
+    for (int ch = 0; ch < 3; ++ch) nuevo |= ImU32(float((col >> (ch * 8)) & 255) * (1 - f) + 255 * f) << (ch * 8);
+    col = nuevo;
+  }
+  auto luz = toon;
+  luz.borde *= 1 - f;
+  for (auto& tono : luz.tonos) tono = tono * (1 - f) + f;
+  esc.Poner(cam, clara, claras, pos, giro, 1.0f, luz);
+}
 void PintaFig(ImDrawList* dl) {
   if (static const bool sin = std::getenv("DBZ3_SEL_SINMODELO") != nullptr; sin) return;
   if (g_fig_id < 0) {
     if (g_fig_b3 >= 0) PintaExtra(dl);
     return;
   }
-  const Fig& f = FigDe(g_fig_id);
+  const Fig& f = FigDe(g_fig_id, g_traje_rueda);
   if (!f.ok || f.alto <= 0) return;
   static ps2::Malla pose;
   const bool anima = bool(f.an);
@@ -2148,8 +2397,22 @@ void PintaFig(ImDrawList* dl) {
   ps2::Malla m = anima ? pose : f.m.malla;
   const std::vector<ps2::Tex>* txp = &f.tx;
   float alto_f = f.alto;
-  const int estado_b3 = anima ? FiguraB3(g_fig_id, 0, f, f.cuadro / 60.0f + float(dbz3::RelojT(ImGui::GetTime())), m, txp, alto_f) : 0;   // B3M
+  const std::vector<std::vector<std::pair<float, int>>>* rampa = nullptr;
+  const ps2::Malla* pm = nullptr;
+  const int estado_b3 = anima ? FiguraB3(g_fig_id, g_traje_rueda, f, f.cuadro / 60.0f + float(dbz3::RelojT(ImGui::GetTime())), pm, txp, alto_f, rampa) : 0;   // B3M
+  if (estado_b3 == 2) m = *pm;
   if (estado_b3 == 1) return;   // el de B3 se esta generando (primer uso)
+  // Nunca el modelo de B2 de un luchador que tiene B3 (peticion del usuario): sin modelo B3, su cara grande de B3 HD
+  if (const int b3 = B3DeB2(g_fig_id); estado_b3 == 0 && b3 >= 0 && !std::getenv("DBZ3_SEL_FORZAR_B2")) {
+    static std::set<int> avisados;
+    if (avisados.insert(g_fig_id).second) REXLOG_WARN("dbz3 nave: id B2 {} sin modelo B3 en la rueda: cara grande de B3 HD", g_fig_id);
+    if (const ImTextureID tex = CaraDe(b3)) {
+      const float t = g_fig_px * 0.55f;
+      const ImVec2 c(g_fig_pie.x, g_fig_pie.y - g_fig_px * 0.62f);
+      dl->AddImage(tex, ImVec2(c.x - t * 0.5f, c.y - t * 0.5f), ImVec2(c.x + t * 0.5f, c.y + t * 0.5f));
+    }
+    return;
+  }
   float ymin = 1e9f, ymax = -1e9f;
   for (const auto& tr : m.tris)
     for (const auto& v : tr.p) ymin = std::min(ymin, v.y), ymax = std::max(ymax, v.y);
@@ -2202,14 +2465,15 @@ void PintaFig(ImDrawList* dl) {
       esc.Empezar();
       ps2::Escena::Toon toon;
       toon.borde = alto_f * BordeFig(estado_b3);
-      toon.rampa = estado_b3 == 2 ? g_rampa_fig : nullptr;
+      toon.rampa = estado_b3 == 2 ? rampa : nullptr;
+      if (toon.rampa) for (float& tono : toon.tonos) tono = 1.0f;
       ps2::V3 desp{0, 0, 0};   // la tabla de escala solo multiplica la POSICION de la raiz (medido: cadera x 0,164 -> 0,131 en Vegeta, malla sin escalar)
       if (anima && f.m.esq->padre.size() > 1) {
         const auto w = EjesMundo(*f.m.esq, f.an, f.cuadro / 60.0f + float(dbz3::RelojT(ImGui::GetTime())));
         const float k = cr.esc - 1.0f, hx = w[1].m[3] * k, hy = w[1].m[7] * k, hz = w[1].m[11] * k, cg = std::cos(cr.yaw), sg = std::sin(cr.yaw);
         desp = {hx * cg + hz * sg, hy * ay_m, -hx * sg + hz * cg};
       }
-      esc.Poner(cam, m, *txp, desp, cr.yaw, 1.0f, toon);
+      PonerFiguraRueda(esc, cam, m, *txp, desp, cr.yaw, toon);
       esc.Pintar(dl);
       return;
     }
@@ -2233,9 +2497,10 @@ void PintaFig(ImDrawList* dl) {
   esc.Empezar();
   ps2::Escena::Toon toon;
   toon.borde = alto_f * BordeFig(estado_b3);
-  toon.rampa = estado_b3 == 2 ? g_rampa_fig : nullptr;
+  toon.rampa = estado_b3 == 2 ? rampa : nullptr;
+  if (toon.rampa) for (float& tono : toon.tonos) tono = 1.0f;
   static const float giro = std::getenv("DBZ3_SEL_GIRO") ? float(std::atof(std::getenv("DBZ3_SEL_GIRO"))) : 0.35f;
-  esc.Poner(cam, m, *txp, {0, -ymin, 0}, giro, 1.0f, toon);
+  PonerFiguraRueda(esc, cam, m, *txp, {0, -ymin, 0}, giro, toon);
   esc.Pintar(dl);
 }
 
@@ -2258,6 +2523,10 @@ void DibRueda(ImDrawList* dl, const Lienzo& L, float c, int rotulo, bool menu) {
     d -= float(n) * std::round(d / float(n));
     float x, y, z;
     AnilloPos(kAnilloRueda, R, cab, kAnilloRueda.arco * d / float(n) + roll, x, y, z);
+    if (SaliendoRueda() && i < int(g_sel.puntos.size())) {
+      const auto& p = g_sel.puntos[size_t(i)];
+      x = p.x + p.vx * g_sel.c; y = p.y + p.vy * g_sel.c; z = p.z;
+    }
     float s = 1.0f - (z - kAnilloRueda.z0) * 0.0002f;
     if (i == g.obj && c >= 60.0f && s >= 0.97f) s = 1.2f;   // la elegida (FUN_002A97C0)
     const ImVec2 p(x, y);
@@ -2292,7 +2561,7 @@ void DibRueda(ImDrawList* dl, const Lienzo& L, float c, int rotulo, bool menu) {
     int sk_est = 0;
     if (id_b2 >= 0 && b3_ok && c >= 25.0f && !std::getenv("DBZ3_SEL_FORZAR_B2")) {
       const SkB3* sk_ = nullptr;
-      sk_est = SkEstado(FidB3(b3_sel, 0, FormaFigB3(b3_sel)), &sk_, IdFormaB3(b3_sel, FormaFigB3(b3_sel)));
+      sk_est = SkEstado(FidB3(b3_sel, g_traje_rueda, FormaFigB3(b3_sel)), &sk_, IdFormaB3(b3_sel, FormaFigB3(b3_sel)));
     }
     g_fig_id = (id_b2 >= 0 && (!b3_ok || sk_est >= 1 || std::getenv("DBZ3_SEL_FORZAR_B2")) && c >= 25.0f) ? id_b2 : -1;
     g_fig_b3 = (b3_ok && g_fig_id < 0 && c >= 25.0f) ? b3_sel : -1;
@@ -2312,6 +2581,14 @@ void DibRueda(ImDrawList* dl, const Lienzo& L, float c, int rotulo, bool menu) {
   }
   const ImVec2 o(161, 0);
   const float cc = std::max(0.0f, c - 20.0f);   // los rotulos entran tras media entrada del anillo (FUN_002AA280: 60 cuadros)
+  if (SaliendoRueda()) {
+    Spr2(L, g_rueda, 19, g_sel.c, false, o);
+    Spr2(L, g_rueda, 23, g_sel.c, false, o);
+    const int sel = g.obj, cara = sel == n - 1 ? 29 : pg[size_t(sel)].cara;
+    const float alfa = PoseAma2(g_rueda.a[23], g_sel.c, false).a;
+    if (cara >= 0) Spr2(L, g_rueda, cara == 0 ? 67 : 68 + cara, 0, false, o, nullptr, 1, alfa);
+    return;
+  }
   Obj2(L, g_rueda, 17, 18, cc, o);               // circulo azul bajo la cara (FUN_002AB* tabla 0x37AB50)
   Obj2(L, g_rueda, 21, 22, cc, o);               // la banda oscura del nombre
   const int i = g.obj;
@@ -2339,6 +2616,7 @@ void Spr2b(const Lienzo& L, const Ama2& set, int img, int mot, float c, bool buc
   Capa cp;
   cp.z = q.z;
   cp.tex = reinterpret_cast<ImTextureID>(t.t.get());
+  if (&set == &g_burb) if (auto tex = TexturaBurbuja(p.tex, q.niebla)) cp.tex = tex;
   cp.p[0] = L.P(x + I.x0 * q.sx, y + I.y0 * q.sy);
   cp.p[1] = L.P(x + (I.x1 + 1) * q.sx, y + I.y0 * q.sy);
   cp.p[2] = L.P(x + (I.x1 + 1) * q.sx, y + (I.y1 + 1) * q.sy);
@@ -2356,19 +2634,22 @@ void Spr2b(const Lienzo& L, const Ama2& set, int img, int mot, float c, bool buc
 void DibMenuRueda(const Lienzo& L, float c, int sel) {
   if (!g_rueda.ok()) return;
   const ImVec2 o(161, 0);
-  Obj2(L, g_rueda, 10, 11, c, o);
+  const bool confirma = g_sel.fase == SelFase::menuConfirma;
+  const bool cierra = confirma || g_sel.fase == SelFase::menuSale;
+  if (cierra) Spr2(L, g_rueda, 12, g_sel.c, false, o);
+  else Obj2(L, g_rueda, 10, 11, c, o);
   const int img[3] = {0, 8, 9};
   const float de = DurAma2(g_rueda, 0);
   for (int k = 0; k < 3; ++k) {
-    if (c < de) Spr2b(L, g_rueda, img[k], 0, c, false, o, 160.0f, 1.0f);
+    if (cierra) Spr2b(L, g_rueda, img[k], k == sel ? 3 : 4, g_sel.c, false, o, 160.0f, 1.0f);
+    else if (c < de) Spr2b(L, g_rueda, img[k], 0, c, false, o, 160.0f, 1.0f);
     else Spr2b(L, g_rueda, img[k], k == sel ? 6 : 2, c - de, k == sel, o, 160.0f, 1.0f);
   }
 }
 
 // ---- La burbuja de escenarios
-// casillas desbloqueadas (todas: el desbloqueo por avance del original no esta portado [H]); `k` = la elegida
+// Casillas de g_cel, filtradas por ConstruirCasillas() con nave_esc (eventos 0x1FE..0x206); solo las pruebas abren todas.
 void DibBurbuja(const Lienzo& L, float c, float t_ant_dummy) {
-  (void)t_ant_dummy;
   if (!g_burb.ok()) return;
   const Giro2& g = g_giro_burb;
   const int n = int(g_cel.size());
@@ -2383,18 +2664,34 @@ void DibBurbuja(const Lienzo& L, float c, float t_ant_dummy) {
   for (int i = 0; i < n; ++i) {
     float x, y, z;
     AnilloPos(kAnilloBurb, R, cab, kAnilloBurb.arco * (float(i) - g.pos) / float(n) + roll, x, y, z);
+    if (SaliendoBurbuja() && i < int(g_sel.puntos.size())) {
+      const auto& p = g_sel.puntos[size_t(i)];
+      x = p.x + p.vx * g_sel.c; y = p.y + p.vy * g_sel.c; z = p.z;
+    }
     const float s = 1.0f - (z - kAnilloBurb.z0) * 0.0001f;
     const ImVec2 p(x, y);
     Spr2(L, g_burb, 29 + g_cel[size_t(i)], 0, false, ImVec2(0, 0), &p, s, 1.0f, z);
   }
-  Obj2(L, g_burb, 6, 7, c, off, nullptr, 1.0f, 0.6f);          // la bola (tex 2): entra fundiendo 50 cuadros
+  const int imagen = 19 + g_cel[size_t(std::clamp(g.obj, 0, n - 1))];
+  if (SaliendoBurbuja()) {
+    // Tabla ELF 0x37B940: bola 8, cristal 11, flash 14, marco 5, imagen 18, flechas 2/41.
+    for (int anim : {8, 11, 14, 5}) Spr2(L, g_burb, anim, g_sel.c, false, off);
+    Spr2b(L, g_burb, imagen, 18, g_sel.c, false, off, 216, 1);
+    if (g.obj > 0) Spr2(L, g_burb, 2, g_sel.c, false, off);
+    if (g.obj < n - 1) Spr2(L, g_burb, 41, g_sel.c, false, off);
+    return;
+  }
+  Obj2(L, g_burb, 6, 7, c, off);          // la bola (tex 2): alfa y destello del AMA, sin multiplicador inventado
   const float c2 = c - 45.0f;
   if (c < 45.0f) {
     // slot 4 (anim 12, 3 piezas con alfa 0 -> 1 -> 0): destello de la imagen mientras gira el anillo
-    const Pose2 q = PoseAma2(g_burb.a[12], c, false);
-    Spr2(L, g_burb, 19 + g_cel[size_t(std::clamp(g.obj, 0, n - 1))], 80, false, off, nullptr, 1.0f, 0.45f * q.a, 1200.0f);
+    Spr2b(L, g_burb, imagen, 12, c, false, off, 216, 1);
   } else {
-    Spr2(L, g_burb, 19 + g_cel[size_t(std::clamp(g.obj, 0, n - 1))], c2, false, off, nullptr, 1.0f, 0.45f);   // la imagen del escenario (anim 0x13 + k, slot 8)
+    const float ci = std::max(0.0f, t_ant_dummy - g_burb_imagen_t) * 60.0f;
+    const bool confirma = g_sel.fase == SelFase::burbujaConfirma;
+    const float de = DurAma2(g_burb, 16);
+    Spr2b(L, g_burb, imagen, confirma ? 19 : ci < de ? 16 : 17,
+          confirma ? g_sel.c : ci < de ? ci : ci - de, !confirma && ci >= de, off, 216, 1);
     Obj2(L, g_burb, 3, 4, c2, off);                              // el marco naranja de la casilla elegida
     Obj2(L, g_burb, 9, 10, c2, off);                             // el cristal (tex 3): 0,7
     if (g.obj > 0) Obj2(L, g_burb, 0, 1, c2, off);               // flecha izquierda (se esconde en el primero)
@@ -2402,10 +2699,13 @@ void DibBurbuja(const Lienzo& L, float c, float t_ant_dummy) {
   }
 }
 
-// ---- Resultado (escena 0x1A): cuenta -> 40 cuadros -> barra de la nave con los premios -> 40 cuadros -> prueba.
+// ---- Resultado (escena 0x1A): cuenta -> 41 campos -> barra con premios -> 41 campos -> prueba.
 struct Res {
   int fase = 0;            // 0 cuenta, 1 espera, 2 barra, 3 premio, 4 espera final
   float acc = 0, espera = 0;
+  double campos = 0;
+  bool ok_pendiente = false;
+  int campo = 0;
   int total = 0;           // Kili ganado (cuenta x pago)
   int ganado = 0;          // el que se ve en la linea del medio (sube y luego pasa a la barra)
   int cuenta = 0;          // la que se ve arriba (baja)
@@ -2467,9 +2767,11 @@ void AcabarBarra() {
   g_res.espera = 0;
   REXLOG_INFO("dbz3 nave: barra de la nave: {} Kili", g_kili);
 }
-// Un cuadro de la pantalla de resultado; true = vuelve a la prueba.
-bool PasoResultado(float cuadros, bool ok) {
+// Un campo PAL del original: el acumulador de Kili suma 1,2, pero los callbacks
+// 0x263670/0x262C50 incrementan un BYTE en 1, no dt (b2.c:211112/210783).
+bool PasoResultadoCampo(bool ok) {
   auto& r = g_res;
+  const float cuadros = 60.0f / float(g_hz_b2.load());
   const int pago = kPruebas[g_prueba].pago;
   switch (r.fase) {
     case 0:   // 0x263700: 1 Kili cada 3 cuadros; la cuenta baja uno cada `pago`
@@ -2488,8 +2790,8 @@ bool PasoResultado(float cuadros, bool ok) {
       }
       break;
     // EU 0x263670 FUN_00263670
-    case 1:   // 0x263670: 40 cuadros; sin Kili se acaba
-      if ((r.espera += cuadros) > 40) {
+    case 1:   // 0x263670: 41 campos; sin Kili se acaba
+      if (++r.espera > 40) {
         if (r.total < 1) return true;
         if (r.barra > 9999) Vuelta();
         r.sig = Siguiente();
@@ -2553,8 +2855,26 @@ bool PasoResultado(float cuadros, bool ok) {
       break;
     // EU 0x262CC0 FUN_00262cc0
     // EU 0x262C50 FUN_00262c50
-    default:   // 0x262CC0 / 0x262C50: guardado y 40 cuadros
-      if ((r.espera += cuadros) > 40) return true;
+    default:   // 0x262CC0 / 0x262C50: guardado y 41 campos
+      if (++r.espera > 40) return true;
+  }
+  return false;
+}
+// Separar los campos PAL de los Hz del monitor. Asi no se adelanta una pausa ni
+// se emiten varios pasos de sonido en el mismo campo cuando baja el framerate.
+bool PasoResultado(float cuadros, bool ok) {
+  auto& r = g_res;
+  r.ok_pendiente |= ok;
+  r.campos += double(cuadros) * (double(g_hz_b2.load()) / 60.0);
+  while (r.campos >= 1.0 - 1e-5) {
+    r.campos = std::max(0.0, r.campos - 1.0);
+    ++r.campo;
+    const bool fin = PasoResultadoCampo(r.ok_pendiente);
+    r.ok_pendiente = false;
+    if (std::getenv("DBZ3_TEST_NAVE_CUADRO"))
+      REXLOG_INFO("dbz3 b2t: resultado campo {} fase {} cuenta {} ganado {} barra {} espera {} fin {}",
+                  r.campo, r.fase, r.cuenta, r.ganado, r.barra, int(r.espera), fin);
+    if (fin) return true;
   }
   return false;
 }
@@ -2704,15 +3024,214 @@ void DibujarResultado(ImDrawList* dl, const Lienzo& L) {
     const Premio& p = Premios()[size_t(g_res.premio)];
     const float c = std::max(0.0f, g_cuadro - g_res.premio_t);
     DibVentanaPremio(dl, L, p.id, p.nombre.c_str(), c, g_res.nuevo);
-    if (c < g_cartel) {
-      char li[48];
-      std::snprintf(li, sizeof(li), "%d Kili%s", p.kili, g_res.nuevo ? T::T("  ¡Nuevo!", "  New!") : "");
-      S::MenuText(dl, L.P(320, 300), 15 * L.s, li, false, false);
-    }
+    // El original no superpone otra linea de Kili al cartel/humo.
   }
 }
 
 }  // namespace
+
+// solP4: salida real de la Nave -> menu principal de B2, no al Gateway.
+// Recursos de FUN_0023FA30: tabla ELF 0x377DC0 = loc 1136, CMN 913, loc 1137.
+// Etiquetas/posiciones/color de FUN_0023E8E0: patrones 23/28..33; elegida 22,
+// cinta 13, titulo 16 y bocadillo 19. Se leen de la ISO, no se distribuyen.
+int DibujarPrincipalB2(ImDrawList* dl, const S::Area& a, float t, uint16_t pressed, int& cursor) {
+  static bool cargado = false;
+  static bool sonando = false;
+  static int destino = 0, cursor_anterior = -1;
+  static float salida = -1, fila_desde = 0;
+  auto salir = [&](int r) {
+    if (sonando) {
+      CallarMusicaPs2();
+      rex::cvar::SetFlagByName("audio_gain", std::to_string(std::clamp(dbz3::settings::MasterVolume(), 0.0, 1.0)));
+      sonando = false;
+    }
+    return r;
+  };
+  if (!cargado) {
+    auto* dr = dbz3::launcher::PreviewDrawer();
+    AfsPs2 cmn, loc;
+    const auto iso = BuscarJuego("budokai 2");
+    const std::string lc = T::LangCode();
+    const std::string afs = lc == "es" ? "DATA_SP.AFS" : lc == "fr" ? "DATA_FR.AFS" : lc == "it" ? "DATA_IT.AFS"
+                            : lc == "de" ? "DATA_DU.AFS" : "DATA_UK.AFS";
+    if (!dr || !cmn.Abrir(iso, "DATA_CMN.AFS") || (!loc.Abrir(iso, afs) && !loc.Abrir(iso, "DATA_UK.AFS"))) return salir(-1);
+    auto texturas = [&](int entrada, std::vector<Tex>& dst) {
+      const auto amt = loc.Entrada(size_t(entrada));
+      for (int k = 0; k < std::min(64, CuantasAmt(amt)); ++k) {
+        const Imagen im = TexturaAmt(amt, k);
+        Tex tx;
+        if (im) {
+          tx.t = dr->CreateTexture(uint32_t(im.w), uint32_t(im.h), rex::ui::ImmediateTextureFilter::kLinear, false, im.rgba.data());
+          tx.w = float(im.w); tx.h = float(im.h);
+        }
+        dst.push_back(std::move(tx));
+      }
+    };
+    g_principal.a = LeerAma2(cmn.Entrada(913));
+    texturas(1136, g_principal.tex);
+    texturas(1137, g_principal_ayuda);
+    texturas(1145, g_principal_botones);
+    CargarCielo(cmn, dr, 0, g_principal_cielo_tri, g_principal_cielo_tex, g_principal_cielo_tx);
+    // Avion del menu: tabla 0x377D90 (908 #AMO, 909 #AMT, 907 #AMM),
+    // FUN_0023CE20: traslacion (-80,-20,-145), giro -2000/65536 de vuelta.
+    g_principal_avion = ps2::CargarSuelto(cmn.Entrada(908), cmn.Entrada(909), true, true);
+    g_principal_avion_tx = ps2::Texturas(g_principal_avion);
+    if (g_principal_avion.esq) {
+      const auto amm = cmn.Entrada(907);
+      for (size_t k = 0; k < g_principal_avion_an.size(); ++k) {
+        auto& an = g_principal_avion_an[k];
+        an = ps2::LeerAnim(amm, uint32_t(k), g_principal_avion.esq->padre.size());
+        an.relativa = true;
+      }
+    }
+    cargado = true;
+    REXLOG_INFO("dbz3 nave: menu principal B2: CMN 913 + loc 1136/1137 cargados");
+  }
+  const bool nave = LeerProgreso("tablero_b2_nave", 0) != 0;
+  const int n = nave ? 7 : 6;
+  cursor = std::clamp(cursor, 0, n - 1);
+  if (!sonando) {
+    destino = 0; salida = -1; fila_desde = DurAma2(g_principal, 0); cursor_anterior = cursor;
+    // FUN_0023F4B0: indice 13 de la tabla 0x377E90 = ADX_US 1155.
+    sonando = true;
+    rex::cvar::SetFlagByName("audio_gain", "0");
+    OirMusicaPs2(BuscarJuego("budokai 2"), "ADX_US.AFS", 1155, Volumen());
+  }
+  // FUN_0023CE20: el #AMM avanza UN cuadro por campo (PAL = 50 Hz).
+  // FUN_0023F430 espera al clip 0 (30 campos) antes de montar el #AMA.
+  float campo = std::floor(std::max(0.0f, t) * 50.0f + 0.001f);
+  // Arnés PINE: mismo índice entero de campo, sin depender del tiempo de una captura.
+  if (const char* ruta = std::getenv("DBZ3_TEST_B2_MENU_CAMPO")) if (FILE* fp = std::fopen(ruta, "r")) {
+    int fijo = -1;
+    if (std::fscanf(fp, "%d", &fijo) == 1 && fijo >= 0) campo = float(fijo);
+    std::fclose(fp);
+  }
+  // PINE: clip 0 en campo 61 -> interfaz en 90 (29 campos), mando en 133.
+  const float entrada_avion = float(std::max(1, g_principal_avion_an[0].cuadros - 1));
+  const float c = std::max(0.0f, (campo - entrada_avion) * 1.2f);
+  if (!destino && campo >= entrada_avion && c >= DurAma2(g_principal, 0)) {
+    if (pressed & kB) return salir(-1);   // adaptacion PC: desde este menu se vuelve al HUB
+    const int anterior = cursor;
+    if (pressed & kUp) cursor = (cursor + n - 1) % n;
+    if (pressed & kDown) cursor = (cursor + 1) % n;
+    if (cursor != anterior) { Efecto(0, 2); cursor_anterior = anterior; fila_desde = c; }
+    if (pressed & (kA | kStart)) {
+      Efecto(0, 3);   // FUN_0023EDC0: aceptar usa 3, no el sonido 5 de Start/demo
+      destino = cursor + 1;
+      salida = campo;
+      REXLOG_INFO("dbz3 nave: menu B2 salida fila {} campo {:.0f}", cursor, campo);
+    }
+  }
+  const float cs = salida >= 0 ? (campo - salida) * 1.2f : -1;
+  const float fin_ui = DurAma2(g_principal, 8);
+  const float campo_salida = cs >= fin_ui ? campo - salida - std::ceil(fin_ui / 1.2f) : -1;
+  const int clip = campo_salida >= 0 ? destino + 1 : campo < entrada_avion ? 0 : 1;
+  if (destino && campo_salida >= float(std::max(1, g_principal_avion_an[size_t(clip)].cuadros) - 1))
+    return salir(destino);
+  Lienzo L = LienzoDe(a);
+  const ImVec2 ds = ImGui::GetIO().DisplaySize;
+  dl->AddRectFilled(ImVec2(0, 0), ds, IM_COL32_BLACK);
+  dl->PushClipRect(L.P(0, 0), L.P(640, 448), true);
+  DibCielo(dl, L, t, true);
+  if (g_principal_avion.malla) {
+    ps2::Malla pose;
+    const auto esq = g_principal_avion.esq;
+    const auto& an = g_principal_avion_an[size_t(clip)];
+    // Posar recibe segundos de 60 Hz; el reloj del avión es el contador de campos.
+    const float ca = campo_salida >= 0 ? campo_salida : clip == 0 ? campo : std::fmod(campo - entrada_avion, float(std::max(1, an.cuadros - 1)));
+    if (esq && an) ps2::Posar(*esq, an, std::min(ca, float(std::max(1, an.cuadros) - 1)) / 60.0f, pose);
+    ps2::Camara cam;
+    cam.m[0] = cam.m[5] = cam.m[10] = cam.m[15] = 1;
+    // Misma proyección que el cielo: sesgo GS +70 en ambos ejes, dividido
+    // por 0,8 y 16/15 (RAM 0x3A43B8/BC); foco 512, no un encuadre a ojo.
+    cam.c = L.P(320 + 70.0f / 0.8f, 224 + 70.0f / (16.0f / 15.0f));
+    cam.h = ImVec2(224 * L.s, 224 * L.s);
+    cam.fov = 2.0f * std::atan(224.0f / 512.0f); cam.ok = true;
+    ps2::Escena escena;
+    escena.Empezar();
+    const ps2::V3 centro = esq ? esq->centro : ps2::V3{};
+    // FUN_0023CE20: segunda pasada negra, expansión 0x3ECCCCCD = 0,4.
+    // El contorno usa el camino de caras traseras ya disponible en Escena.
+    ps2::Escena::Toon contorno;
+    contorno.borde = 0.4f;
+    contorno.tonos[0] = contorno.tonos[1] = contorno.tonos[2] = 1.0f;
+    escena.Poner(cam, pose ? pose : g_principal_avion.malla, g_principal_avion_tx,
+                 {centro.x - 80, -20, centro.z - 145}, -2000.0f * 6.28318531f / 65536.0f, 1, contorno);
+    const int v0 = dl->VtxBuffer.Size;
+    escena.Pintar(dl);
+    for (int v = v0; v < dl->VtxBuffer.Size; ++v)
+      dl->VtxBuffer[v].pos.y = cam.c.y + (dl->VtxBuffer[v].pos.y - cam.c.y) * L.k * (448.0f / 480.0f);
+  }
+  const bool ui = campo >= entrada_avion && (cs < 0 || cs < fin_ui);
+  if (ui) {
+    // FUN_0023E740: salida 8..11, 14, 17, 20 y 24/25, sin saltar de pantalla.
+    for (int k = 0; k < 4; ++k) {
+      if (destino) Spr2(L, g_principal, 8 + k, cs, false);
+      else Obj2(L, g_principal, k, 4 + k, c);
+    }
+    if (destino) {
+      Spr2(L, g_principal, 14, cs, false);
+      Spr2(L, g_principal, 17, cs, false);
+      Spr2(L, g_principal, 20, cs, false);
+    } else {
+      Obj2(L, g_principal, 12, 13, c);
+      Obj2(L, g_principal, 15, 16, c);
+      Obj2(L, g_principal, 18, 19, c);
+    }
+  }
+  if (ui && g_principal.a.size() > 36) for (int k = 0; k < n; ++k) {
+    const int base = k == 0 ? 23 : 27 + k;
+    const bool entrando = c < DurAma2(g_principal, 21);
+    const float cf = c - fila_desde;
+    const int patron = destino ? (k == cursor ? 24 : 25) : entrando ? 21 : c < DurAma2(g_principal, 0) ? 23 :
+                       k == cursor ? (cf < DurAma2(g_principal, 27) ? 27 : 22) :
+                       k == cursor_anterior && cf < DurAma2(g_principal, 26) ? 26 : 23;
+    if (!g_principal.a[size_t(patron)].p.empty() && !g_principal.a[size_t(base)].k.empty()) {
+      auto& sp = g_principal.a[size_t(patron)];
+      const Anim2 copia = sp;
+      const auto& fila = g_principal.a[size_t(base)];
+      const float dy = fila.k[0].y - g_principal.a[23].k[0].y;
+      sp.x0 = fila.x0; sp.y0 = fila.y0; sp.x1 = fila.x1; sp.y1 = fila.y1;
+      sp.p[0].tex = 4 + k;
+      sp.p[0].u0 = fila.p[0].u0; sp.p[0].v0 = fila.p[0].v0;
+      sp.p[0].u1 = fila.p[0].u1; sp.p[0].v1 = fila.p[0].v1;
+      Spr2(L, g_principal, patron, destino ? cs : entrando ? c : cf, patron == 22, ImVec2(0, dy));
+      sp = copia;
+    }
+  }
+  // FUN_0023DFE0: la Bola sigue la fila con su oscilacion de 100/65536 vueltas por cuadro.
+  if (ui && c >= DurAma2(g_principal, 0) && g_principal.a.size() > 36) {
+    const int base = cursor == 0 ? 23 : 27 + cursor;
+    if (!g_principal.a[size_t(base)].k.empty()) {
+      const float ang = (campo - entrada_avion) * 100.0f * 6.28318531f / 65536.0f;
+      const ImVec2 pos(64.0f + (1.0f - std::cos(ang)) * 46.0f,
+                      g_principal.a[size_t(base)].k[0].y + std::sin(2.0f * ang) * 5.0f);
+      const float cb = c - DurAma2(g_principal, 0);
+      Spr2(L, g_principal, destino ? 36 : cb < 51 ? 34 : 35, destino ? cs : cb, !destino && cb >= 51, ImVec2(0, 0), &pos);
+    }
+  }
+  VaciarCapas(dl);
+  if (ui && !destino && c >= DurAma2(g_principal, 18) && cursor < int(g_principal_ayuda.size())) {
+    const Tex& tx = g_principal_ayuda[size_t(cursor)];
+    if (tx.t) dl->AddImage(reinterpret_cast<ImTextureID>(tx.t.get()), L.P(492 - tx.w / 2, 230 - tx.h / 2),
+                            L.P(492 + tx.w / 2, 230 + tx.h / 2));
+  }
+  // FUN_0023F290, máscara 0x108000001: Select / Confirm / Back. La ayuda
+  // original se mantiene quieta porque sus 432 px caben en el rectángulo 512.
+  if (ui && !destino && c >= DurAma2(g_principal, 0) && g_principal_botones.size() > 32) {
+    const int ids[] = {0, 27, 32};
+    float ancho = 0;
+    for (int id : ids) ancho += g_principal_botones[size_t(id)].w + 32;
+    float x = 64 + std::max(0.0f, 512 - (ancho - 32));
+    for (int id : ids) {
+      const Tex& tx = g_principal_botones[size_t(id)];
+      if (tx.t) dl->AddImage(reinterpret_cast<ImTextureID>(tx.t.get()), L.P(x, 392), L.P(x + tx.w, 424));
+      x += tx.w + 32;
+    }
+  }
+  dl->PopClipRect();
+  return 0;
+}
 
 // A2c (tablero B2): el luchador `id_b2` en 3D con su modelo y su pose de B2 (el mismo cargador FigDe de la rueda), con los pies en
 // `pie` y `alto_px` de alto en pantalla, girado `giro` rad; `t` = segundos dentro de la animacion. Devuelve false si no hay modelo.
@@ -2738,7 +3257,9 @@ int BancoHistoria(const Fig& f) {
   REXLOG_INFO("dbz3 nave: banco de historia de {}: {}", f.prefijo, hallado);
   return hallado;
 }
-bool DibujarFiguraB2(ImDrawList* dl, int id_b2, ImVec2 pie, float alto_px, float giro, float t, int traje, int pbank, int panim, const float* cb) {
+// `comp` (Dragon Tactics, prueba de figuras): una Escena de fuera donde se anade la figura SIN Empezar ni Pintar (el que la da lo hace), para
+// pintar varias figuras en un solo orden de pintor; nullptr = una Escena propia, como siempre.
+bool DibujarFiguraB2En(ps2::Escena* comp, ImDrawList* dl, int id_b2, ImVec2 pie, float alto_px, float giro, float t, int traje, int pbank, int panim, const float* cb) {
   if (g_iso.empty()) g_iso = BuscarJuego("budokai 2");   // el tablero lo usa sin haber pasado por la nave
   if (pbank == 0 && !cb && !std::getenv("DBZ3_SEL_TARJ_931")) {   // B3M: la tarjeta usa la guardia (anim 0) del banco de historia del personaje
     const int b = BancoHistoria(FigDe(id_b2, traje));
@@ -2775,12 +3296,29 @@ bool DibujarFiguraB2(ImDrawList* dl, int id_b2, ImVec2 pie, float alto_px, float
   ps2::Anim an_abs;   // prueba DBZ3_TEST_FIG_ABS=1: giros ABSOLUTOS (los de 931 son del esqueleto FRZ_*, no relativos al reposo de Goku)
   const ps2::Anim* an = &f.an;
   if (anima && std::getenv("DBZ3_TEST_FIG_ABS")) { an_abs = f.an; an_abs.relativa = false; an = &an_abs; }
-  if (anima) ps2::Posar(*f.m.esq, *an, t, pose);
-  ps2::Malla m = anima ? pose : f.m.malla;
   const std::vector<ps2::Tex>* txp = &f.tx;
   float alto_f = f.alto;
-  const int estado_b3 = anima ? FiguraB3(id_b2, traje, f, t, m, txp, alto_f) : 0;   // B3M: el modelo de B3 con la animacion de B2
+  const std::vector<std::vector<std::pair<float, int>>>* rampa = nullptr;   // la rampa toon de ESTA figura (por instancia)
+  const ps2::Malla* mb3 = nullptr;
+  const int estado_b3 = anima ? FiguraB3(id_b2, traje, f, t, mb3, txp, alto_f, rampa) : 0;   // B3M: el modelo de B3 con la animacion de B2
   if (estado_b3 == 1) return true;   // generandose (primer uso): nada, no el de B2
+  // Nunca el modelo de B2 de un luchador que tiene B3 (como en la rueda): sin modelo B3, su cara grande de B3 HD
+  if (const int b3 = B3DeB2(id_b2); estado_b3 == 0 && b3 >= 0 && !std::getenv("DBZ3_SEL_FORZAR_B2")) {
+    static std::set<int> avisados;
+    if (avisados.insert(id_b2).second) REXLOG_WARN("dbz3 nave: id B2 {} sin modelo B3 en el tablero: cara grande de B3 HD", id_b2);
+    if (const ImTextureID tex = CaraDe(b3)) {
+      const float tc = alto_px * 0.55f;
+      const ImVec2 c(pie.x, pie.y - alto_px * 0.62f);
+      dl->AddImage(tex, ImVec2(c.x - tc * 0.5f, c.y - tc * 0.5f), ImVec2(c.x + tc * 0.5f, c.y + tc * 0.5f));
+    }
+    return true;
+  }
+  ps2::Malla m_b2;   // el modelo de B2 solo se posa si no se usa el de B3
+  if (estado_b3 != 2) {
+    if (anima) ps2::Posar(*f.m.esq, *an, t, pose);
+    m_b2 = anima ? pose : f.m.malla;
+  }
+  const ps2::Malla& m = estado_b3 == 2 ? *mb3 : m_b2;
   float ymin = 1e9f, ymax = -1e9f;
   for (const auto& tr : m.tris)
     for (const auto& v : tr.p) ymin = std::min(ymin, v.y), ymax = std::max(ymax, v.y);
@@ -2804,7 +3342,7 @@ bool DibujarFiguraB2(ImDrawList* dl, int id_b2, ImVec2 pie, float alto_px, float
       if (id_b2 == 0 && tr0.tex == 2) {   // B2G 24/10: la cara de Goku (textura 2) sin el tinte de color: salia naranja y sin blancos de ojos
         tr.con_color = false; for (auto& cc : tr.col) cc = IM_COL32_WHITE; }
       if (cara_b2_vineta) cabeza_b2.tris.push_back(tr);
-      else m.tris.push_back(tr);
+      else m_b2.tris.push_back(tr);
     }
   }
   if (cb) {   // A1c: camara de B2 tal cual (ojo, objetivo, fov del #AMC del banco; centro y media pantalla en px; escala S y desplazamiento y)
@@ -2828,11 +3366,12 @@ bool DibujarFiguraB2(ImDrawList* dl, int id_b2, ImVec2 pie, float alto_px, float
     cm.c = ImVec2(cb[7], cb[8]);
     cm.h = ImVec2(cb[9], cb[9]);
     cm.ok = true;
-    ps2::Escena es;
-    es.Empezar();
+    ps2::Escena es_propia;
+    ps2::Escena& es = comp ? *comp : es_propia;
+    if (!comp) es.Empezar();
     ps2::Escena::Toon tn;
     tn.borde = alto_f * BordeFig(estado_b3);
-    tn.rampa = estado_b3 == 2 ? g_rampa_fig : nullptr;
+    tn.rampa = estado_b3 == 2 ? rampa : nullptr;
     {   // sonda A1c: caja del modelo en unidades de malla
       static float u_a = -1e9f, u_b = -1e9f;
       if (std::fabs(ymax - u_a) > 1e-3f || std::fabs(ymin - u_b) > 1e-3f) {
@@ -2843,7 +3382,7 @@ bool DibujarFiguraB2(ImDrawList* dl, int id_b2, ImVec2 pie, float alto_px, float
     es.Poner(cm, m, *txp, {cb[13], cb[11], 0}, giro + cb[12], cb[10], tn);
     if (!cabeza_b2.tris.empty())
       es.Poner(cm, cabeza_b2, f.tx, {cb[13], cb[11], 0}, giro + cb[12], cb[10], tn);
-    es.Pintar(dl);
+    if (!comp) es.Pintar(dl);
     return true;
   }
   const float alto_modelo = ymax - ymin + 1.1f;
@@ -2857,13 +3396,143 @@ bool DibujarFiguraB2(ImDrawList* dl, int id_b2, ImVec2 pie, float alto_px, float
   cam.m[0] = cam.m[5] = cam.m[10] = cam.m[15] = 1;
   cam.m[14] = -d;
   cam.ok = true;
-  ps2::Escena esc;
-  esc.Empezar();
+  ps2::Escena esc_propia;
+  ps2::Escena& esc = comp ? *comp : esc_propia;
+  if (!comp) esc.Empezar();
   ps2::Escena::Toon toon;
   toon.borde = alto_f * BordeFig(estado_b3);
-  toon.rampa = estado_b3 == 2 ? g_rampa_fig : nullptr;
+  toon.rampa = estado_b3 == 2 ? rampa : nullptr;
+  if (toon.rampa) for (float& tono : toon.tonos) tono = 1.0f;
   esc.Poner(cam, m, *txp, {0, -ymin, 0}, giro, 1.0f, toon);
-  esc.Pintar(dl);
+  if (!comp) esc.Pintar(dl);
+  return true;
+}
+bool DibujarFiguraB2(ImDrawList* dl, int id_b2, ImVec2 pie, float alto_px, float giro, float t, int traje, int pbank, int panim, const float* cb) {
+  return DibujarFiguraB2En(nullptr, dl, id_b2, pie, alto_px, giro, t, traje, pbank, panim, cb);
+}
+// Alto del modelo de B2 del luchador (unidades de B2; Goku 14,05) para escalar una figura con camara fija como el original; 0 si no hay
+float AltoModeloB2(int id_b2) {
+  if (g_iso.empty()) g_iso = BuscarJuego("budokai 2");
+  const Fig& f = FigDe(id_b2);
+  return f.ok ? f.alto : 0.0f;
+}
+// ---- Dragon Tactics: figuras de B3 HD SOLAS (sin ISO ni registro de B2). El modelo es el sk_<fid>.sk de vista_b2.py y las animaciones
+// las hornea vista_tactics.py (tk_<fid>.tk: matriz local de cada hueso por cuadro de los clips del manifiesto); aqui solo se reproducen.
+namespace {
+struct Tk {
+  uint32_t nb = 0;
+  struct Clip { uint32_t cuadros = 0; bool bucle = false; std::vector<ps2::M34> m; } clip[4];   // espera, andar, ataque, tecnica
+};
+std::map<int, Tk> g_tk;
+std::set<int> g_tk_pidiendo, g_tk_fallo;
+bool LeerTk(const std::filesystem::path& f, Tk& t) {
+  std::ifstream in(f, std::ios::binary);
+  const std::vector<uint8_t> d((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+  size_t o = 4;
+  auto u32 = [&](uint32_t& v) { if (o + 4 > d.size()) return false; std::memcpy(&v, d.data() + o, 4); o += 4; return true; };
+  uint32_t ncl = 0;
+  if (d.size() < 12 || std::memcmp(d.data(), "TKB2", 4) != 0 || !u32(t.nb) || !u32(ncl) || ncl != 4 || t.nb == 0 || t.nb > 256) return false;
+  for (auto& c : t.clip) {
+    uint32_t n = 0, bucle = 0;
+    if (!u32(n) || !u32(bucle) || n > 1000 || o + size_t(n) * t.nb * 48 > d.size()) return false;
+    c.cuadros = n, c.bucle = bucle != 0;
+    c.m.resize(size_t(n) * t.nb);
+    if (!c.m.empty()) std::memcpy(c.m.data(), d.data() + o, c.m.size() * 48);
+    o += c.m.size() * 48;
+  }
+  return true;
+}
+// hilo de dibujo: 0 = no hay (falta algo de B3 HD), 1 = preparandose, 2 = listo (`sk`, `tk`)
+// `fid_pedido` >= 0: el modelo exacto que dice el catalogo de Tactics; la tabla del juego no siempre lo da (Vegeta forma 4 trae el modelo 0 -> 416)
+int TkEstado(int b3, int forma, const SkB3** sk, const Tk** tk, int fid_pedido = -1) {
+  const int fid = fid_pedido >= 0 ? fid_pedido : FidB3(b3, 0, forma);
+  if (fid < 0) return 0;
+  const int e = SkEstado(fid, sk, IdFormaB3(b3, forma));
+  if (e != 2) return e;
+  if (auto it = g_tk.find(fid); it != g_tk.end()) {
+    *tk = &it->second;
+    return it->second.nb == (*sk)->suf.size() ? 2 : 0;
+  }
+  {
+    std::lock_guard<std::mutex> lk(g_modb3_mu);
+    if (g_tk_fallo.count(fid)) return 0;
+    if (g_tk_pidiendo.count(fid)) return 1;
+  }
+  const std::filesystem::path ruta = RutaSk(fid).parent_path() / ("tk_" + std::to_string(fid) + ".tk");
+  std::error_code ec;
+  // H14: la cache se rehace si el manifiesto de clips es mas nuevo que ella (una actualizacion cambia clips: antes seguia el Yamcha viejo)
+  if (std::filesystem::exists(ruta, ec)) {
+    const auto man = dbz3::ModsRoot().parent_path() / "mod center hd" / "tactics_manifest.toml";
+    std::error_code e1, e2;
+    const auto tm = std::filesystem::last_write_time(man, e1), tt = std::filesystem::last_write_time(ruta, e2);
+    if (!e1 && !e2 && tt < tm) {
+      REXLOG_INFO("dbz3 tactics: clips de B3 fid {}: cache anterior al manifiesto, se rehace", fid);
+      std::filesystem::remove(ruta, ec);
+    }
+  }
+  if (std::filesystem::exists(ruta, ec)) {
+    Tk& t = g_tk[fid];
+    if (LeerTk(ruta, t)) {
+      REXLOG_INFO("dbz3 tactics: clips de B3 fid {} cargados ({} huesos)", fid, t.nb);
+      return TkEstado(b3, forma, sk, tk, fid);
+    }
+    g_tk.erase(fid);
+    std::filesystem::remove(ruta, ec);   // fichero roto: se rehace (es una cache)
+  }
+  {
+    std::lock_guard<std::mutex> lk(g_modb3_mu);
+    g_tk_pidiendo.insert(fid);
+  }
+  std::thread([fid, b3, forma] {
+    const bool ok = CorrerVista("vista_tactics.py", L"--fid " + std::to_wstring(fid) + L" --b3 " + std::to_wstring(b3) + L" --forma " + std::to_wstring(forma) + L" --id " + std::to_wstring(IdFormaB3(b3, forma)));
+    REXLOG_INFO("dbz3 tactics: clips de B3 fid {} {}", fid, ok ? "generados" : "no se pudieron generar");
+    std::lock_guard<std::mutex> lk(g_modb3_mu);
+    g_tk_pidiendo.erase(fid);
+    if (!ok) g_tk_fallo.insert(fid);
+  }).detach();
+  return 1;
+}
+}  // namespace
+#include "iw_nave_hud_b2.inl"
+int EstadoFiguraB3(int b3, int forma, int fid) {
+  const SkB3* sk = nullptr;
+  const Tk* tk = nullptr;
+  return TkEstado(b3, forma, &sk, &tk, fid);
+}
+// La figura de pie en `suelo` (mundo) con `alto` de alto, girada `giro` (0 = de cara a +z), vista con la camara `cam` del tablero y puesta en la
+// `esc` comun (todas las figuras se ordenan juntas); clip 0 espera, 1 andar, 2 ataque, 3 tecnica; `t` = segundos dentro del clip (60 cuadros
+// por segundo; los que se repiten dan la vuelta, el resto se queda en el ultimo cuadro). false si no esta lista.
+bool DibujarFiguraB3En(ps2::Escena* esc, const ps2::Camara& cam, int b3, int forma, ps2::V3 suelo, float alto, float giro, int clip, float t, int fid) {
+  const SkB3* sk = nullptr;
+  const Tk* tk = nullptr;
+  if (!esc || alto <= 0 || TkEstado(b3, forma, &sk, &tk, fid) != 2) return false;
+  const Tk::Clip* c = &tk->clip[std::clamp(clip, 0, 3)];
+  if (c->cuadros == 0) c = &tk->clip[0];
+  if (c->cuadros == 0) return false;
+  const uint32_t f = c->bucle ? uint32_t(std::max(t, 0.0f) * 60.0f) % c->cuadros : std::min(uint32_t(std::max(t, 0.0f) * 60.0f), c->cuadros - 1);
+  const ps2::M34* loc = c->m.data() + size_t(f) * tk->nb;
+  static std::vector<ps2::M34> w;   // hilo de dibujo: sin reservar memoria en cada figura
+  w.resize(tk->nb);
+  for (size_t i = 0; i < w.size(); ++i) w[i] = sk->esq.padre[i] >= 0 ? w[size_t(sk->esq.padre[i])] * loc[i] : loc[i];
+  if (sk->posada.tris.size() != sk->malla.tris.size()) sk->posada.tris = sk->malla.tris;
+  float ymin = 1e9f;
+  for (size_t i = 0; i < sk->malla.tris.size(); ++i) {
+    const ps2::Malla::Tri& src = sk->malla.tris[i];
+    ps2::Malla::Tri& tr = sk->posada.tris[i];
+    for (int k = 0; k < 3; ++k) {
+      const ps2::M34& W = w[src.hueso[k]];
+      tr.p[k] = W.por(src.p[k]);
+      tr.n[k] = W.gira(src.n[k]);
+      ymin = std::min(ymin, tr.p[k].y);
+    }
+  }
+  sk->posada_de = nullptr;   // la cache de la nave (por animacion de B2) ya no vale
+  const float e = alto / std::max(sk->alto, 1e-3f);   // escala fija por modelo (no la altura de cada pose)
+  ps2::Escena::Toon toon;
+  toon.borde = sk->alto * BordeFig(2);
+  toon.rampa = sk->rampa.empty() ? nullptr : &sk->rampa;
+  toon.agrupar = true;
+  esc->Poner(cam, sk->posada, sk->tx, {suelo.x, suelo.y - ymin * e, suelo.z}, giro, e, toon);
   return true;
 }
 
@@ -2876,6 +3545,7 @@ bool Disponible() { return b2::Disponible(); }
 // Entrada por mando de este cuadro y conexion del mando 2 (pasarela_misiones.cpp la llama antes de Dibujar, como
 // b2::Mantenidos). Es la entrada que leen las pantallas 1P/2P del original: 0x264F60/0x260630 miran los cuatro
 // registros de mando (0x3B43B2/0x4412/0x446A/0x44CA) y solo dejan 2P con los dos mandos conectados (0x3B43A0/0x3B4458 == 3).
+void Mantenidos(uint16_t m) { g_mant = m; }
 void Mandos(uint16_t p1, uint16_t p2, bool dos_mandos) {
   g_ent1 = p1;
   g_ent2 = p2;
@@ -2895,12 +3565,17 @@ void Entrar() {
 // EU 0x2654A0 FUN_002654A0
   g_estado = kModo;   // la primera vez, la pantalla de 1P/2P (0x2654A0 con 0x8C44 = 0)
   g_2p = false;       // 0x264F60: sin los dos mandos el original fuerza 1P (y al abrir se empieza en 1P)
-  g_luch = g_riv = g_sitio = g_sitio_vis = g_menu_sel = g_lista_capsulas = g_pag = g_j3 = 0;
-  g_r3 = 3;
+  g_luch = g_riv = g_sitio = g_sitio_vis = g_menu_sel = g_pag = 0;
+  g_elegida[0] = g_recordada[0];
+  g_elegida[1] = g_recordada[1];
+  g_j3 = g_elegida[0].id;
+  g_r3 = g_elegida[1].id;
+  g_lista_capsulas = g_elegida[0].lista;
+  g_trajes_pendientes = 0;
   // La planta en curso: B2 la guarda con el resto de su estado (cRam003a492c, cursor de 0x264790) y al volver a la
   // nave sigue donde se quedo. Aqui se persiste en progreso.toml para no perderla al salir (N3, DS151).
   g_prueba = std::clamp(LeerProgreso("nave_planta", 0), 0, 3);
-  ConstruirPaginas();   // A2nave: las ruedas arrancan en el primero (Goku), como B2
+  ConstruirPaginas();   // se restaura por ID: el roster puede cambiar con los mods
   REXLOG_INFO("dbz3 nave: entrar ({} Kili)", g_kili);
 }
 
@@ -2932,6 +3607,14 @@ bool Seguir() { return g_enc_armado.exchange(false); }   // CombateNave: lo cons
 // 0 nada, 1 salir, 2 combate pedido en out = {jugador, rival, mapa, vida inicial, tiempo, prueba, P2 humano}.
 int Dibujar(ImDrawList* dl, const S::Area& a, float t, uint16_t pressed, bool auto_on, int out[7]) {
   Cargar();
+  const char* reloj_prueba = std::getenv("DBZ3_TEST_NAVE_CUADRO");
+  if (reloj_prueba) {   // arnes: reloj explicito de 60 Hz; ausente no hay E/S ni cambio de reloj
+    if (FILE* f = std::fopen(reloj_prueba, "r")) {
+      float cuadro = 0;
+      if (std::fscanf(f, "%f", &cuadro) == 1 && std::isfinite(cuadro) && cuadro >= 0) t = cuadro / 60.0f;
+      std::fclose(f);
+    }
+  }
   const uint16_t e1 = g_ent1.load(), e2 = g_ent2.load();
   const bool dos = g_dos_mandos.load();
   static int antes = -1;
@@ -2947,20 +3630,22 @@ int Dibujar(ImDrawList* dl, const S::Area& a, float t, uint16_t pressed, bool au
       if (cab(antes) != cab(g_estado)) d_tit = t;    // titulo / "Selecc. Person." / "Seleccion Fase"
     }
     const int prev = antes;
+    if (prev < 0) g_sel = SelTransicion();
     antes = g_estado;
     desde = t;
     // EU 0x2644E0 FUN_002644e0 (de la pantalla de pruebas a la rueda: ruedas del jugador y del COM)
     if (g_estado == kJugador && prev != kMenu) {   // la rueda de 1P entra (60 cuadros); desde el menu ya esta puesta
       ConstruirPaginas();                          // el roster cambia con los mods: se lee al entrar
-      g_pag = 0;
-      g_giro_rueda.Fijar(0);
+      g_elegida[0] = g_recordada[0];
+      g_elegida[1] = g_recordada[1];
+      RestaurarRueda(0);
       g_t_rueda = t;
       g_rueda_com = false;
     }
     if (g_estado == kRival) {                       // la del COM (misma pantalla, rotulo COM); en 2P la del mando 2
-      g_pag = 0;
-      g_giro_rueda.Fijar(0);
-      g_t_rueda = t;
+      RestaurarRueda(1);
+      g_t_rueda = g_rueda_continua ? t - 1.0f : t;
+      g_rueda_continua = false;
       g_rueda_com = !g_2p.load();                   // 2P: la camara de la rueda es la del jugador (1P)
     }
     if (g_estado == kSitio) {                       // la burbuja entra (45 cuadros)
@@ -2968,8 +3653,13 @@ int Dibujar(ImDrawList* dl, const S::Area& a, float t, uint16_t pressed, bool au
       g_sitio_vis = 0;
       g_giro_burb.Fijar(0);
       g_t_esfera = t;
+      g_burb_imagen_t = t + 45.0f / 60.0f;
     }
-    if (g_estado == kMenu) g_t_menu = t;
+    if (g_estado == kJugador && prev == kMenu) RestaurarRueda(0);
+    if (g_estado == kMenu) {
+      g_t_menu = t;
+      if (prev == kRival) RestaurarRueda(0);
+    }
     if (g_estado != prev)
       REXLOG_INFO("dbz3 nave: pantalla {}{}", g_estado == kModo ? "modo" : g_estado == kPrueba ? "planta" : g_estado == kJugador ? "rueda 1P"
                   : g_estado == kMenu ? "menu" : g_estado == kRival ? (g_2p.load() ? "rueda 2P" : "rueda COM") : g_estado == kSitio ? "burbuja" : g_estado == kResultado ? "resultado" : "otra",
@@ -2997,12 +3687,57 @@ int Dibujar(ImDrawList* dl, const S::Area& a, float t, uint16_t pressed, bool au
     Musica(false);
     CallarAdxPs2();
     antes = -1;
+    if (r == 1) g_trajes_pendientes = 0;
     return r;
   };
   if (g_estado == kSigue) {   // prueba I: el mismo rival se levanta (vidas sin fin) y sigue con la vida que quedo
     Pedir(out);
     g_estado = kPrueba;
     return salir(2);
+  }
+  if (g_sel.fase != SelFase::quieta) {
+    g_sel.c = std::max(0.0f, (t - g_sel.t0) * 60.0f);
+    const float dur = g_sel.fase == SelFase::burbujaConfirma ? DurAma2(g_burb, 19) : 60.0f;
+    if (g_sel.fase == SelFase::menuSale && g_sel.c + 0.001f >= DurAma2(g_rueda, 12)) {
+      g_sel = SelTransicion();
+      g_estado = kJugador;
+      return 0;
+    }
+    if (g_sel.fase == SelFase::menuConfirma && g_sel.c + 0.001f >= dur) {
+      g_sel = SelTransicion();
+      g_rueda_continua = true;
+      g_estado = kRival;
+      return 0;
+    }
+    if ((g_sel.fase == SelFase::ruedaConfirma || g_sel.fase == SelFase::burbujaConfirma) && g_sel.c + 0.001f >= dur) {
+      const bool burbuja = g_sel.fase == SelFase::burbujaConfirma;
+      SalidaSeleccion(burbuja, burbuja ? kPrueba : kSitio, burbuja, g_sel.t0 + dur / 60.0f);
+      g_sel.c = std::max(0.0f, (t - g_sel.t0) * 60.0f);
+    }
+    if ((SaliendoRueda() || SaliendoBurbuja()) && g_sel.c + 0.001f >= 30.0f) {
+      const bool combate = g_sel.combate;
+      const int destino = g_sel.destino;
+      REXLOG_INFO("dbz3 nave: transicion salida acabada a {:.3f} cuadros", g_sel.c);
+      g_sel = SelTransicion();
+      g_estado = destino;
+      if (combate) { Pedir(out); return salir(2); }
+      return 0;
+    }
+  }
+  g_fig_flash = (g_sel.fase == SelFase::menuConfirma || g_sel.fase == SelFase::ruedaConfirma)
+                    ? std::clamp(1.0f - g_sel.c / 60.0f, 0.0f, 1.0f) : 0;
+  g_fig_salida_x = SaliendoRueda() ? -14.0f * g_sel.c : 0;
+  if (reloj_prueba) {
+    static float ult = -1;
+    static int estado_ult = -1, fase_ult = -1, res_ult = -1;
+    if (ult != t || estado_ult != int(g_estado) || fase_ult != int(g_sel.fase) || res_ult != g_res.fase) {
+      ult = t;
+      estado_ult = int(g_estado); fase_ult = int(g_sel.fase);
+      res_ult = g_res.fase;
+      REXLOG_INFO("dbz3 nave: solP cuadro {:.3f} estado {} fase {} c {:.3f} res {} premio_c {:.3f} salida {:.3f}",
+                  t * 60.0f, int(g_estado), int(g_sel.fase), g_sel.c, g_res.fase,
+                  g_estado == kResultado && g_res.fase == 3 ? g_cuadro - g_res.premio_t : -1.0f, g_ficha_sale_c);
+    }
   }
   Musica(true);
   Fondo(dl, L, g_estado == kJugador || g_estado == kRival || g_estado == kSitio || g_estado == kMenu, t);
@@ -3024,19 +3759,19 @@ int Dibujar(ImDrawList* dl, const S::Area& a, float t, uint16_t pressed, bool au
       // la cierran con su animacion; la ventana se da por cerrada cuando acaba (PremioCerrado).
       const float c = g_cuadro - g_res.premio_t;
       if (c < g_cartel) {
-        if (ok) g_res.premio_t = g_cuadro - g_cartel;   // salta el cartel
+        // FUN_002A3E90 espera los objetos: A no adelanta el cartel.
         ok = false;
         FichaReset();
       } else {
-        if (pressed & (kX | kLeft | kRight)) FichaGirar(c - g_cartel);
-        else if (pressed & (kA | kStart | kY)) CerrarFicha(c);
+        const bool lista = c - g_cartel >= 20.0f;
+        if (lista && (pressed & (kX | kLeft | kRight))) FichaGirar(c - g_cartel);
+        else if (lista && (pressed & (kA | kStart | kY))) CerrarFicha(c);
         ok = PremioCerrado(c);
       }
     }
     // EU 0x263700 FUN_00263700
     const bool fin = PasoResultado(dt * 60.0f, ok);
     DibujarResultado(dl, L);
-    M::Help(dl, a, {{"A", T::T("Seguir", "Continue")}});
     // EU 0x262AF0 FUN_00262af0 (vuelta del combate: de la pantalla de resultado a la de pruebas, 0x264DE0)
     if (fin) {
       g_estado = kPrueba;
@@ -3143,9 +3878,10 @@ int Dibujar(ImDrawList* dl, const S::Area& a, float t, uint16_t pressed, bool au
     if (salm) {
       const float cs = g_cuadro - salm_c0;
       DibC(dl, L, 26, cs, false);
-      DibC(dl, L, 30, cs, false);
-      if (cs >= DurTarea(30)) DibC(dl, L, 34, cs - DurTarea(30), false);
-      if (cs >= std::max({DurTarea(26), DurTarea(30) + DurTarea(34), DurTarea(31)}) || auto_on) {
+      // FUN_00264F60: 30 en estado 0 y enseguida 34 en estado 8; NO encadena 11+21.
+      // PINE II/III/IV: aceptar -> 0x264DE0 en 18 campos PAL, mas el despacho de entrada.
+      DibC(dl, L, 34, cs, false);
+      if (cs + 0.001f >= std::max({DurTarea(26), DurTarea(34), DurTarea(31)}) || auto_on) {
         salm = false;
         g_estado = kPrueba;
       }
@@ -3222,7 +3958,8 @@ int Dibujar(ImDrawList* dl, const S::Area& a, float t, uint16_t pressed, bool au
       if (g_prueba != 3) DibC(dl, L, 44, cs, false);
     }
     Babidi(dl, L, 1 + g_prueba, false);                // frase de la prueba (1P: 1-4)
-    M::Help(dl, a, {{"A", T::T("Elegir", "Select")}, {"B", T::T("Volver", "Back")}});
+    S::HelpLine(dl, L.P(320, 425), 22 * L.s * L.k,
+                {{"PAD", T::T("Seleccionar", "Select")}, {"A", T::T("Confirmar", "Confirm")}, {"B", T::T("Atrás", "Back")}});
     if (!sal && (pressed & kB)) {
       sal = true;
       sal_c0 = g_cuadro;
@@ -3253,21 +3990,28 @@ int Dibujar(ImDrawList* dl, const S::Area& a, float t, uint16_t pressed, bool au
   // Seleccion nativa de B2 (A2nave): rueda de personajes (1P y COM), menu del jugador y burbuja de escenarios. La cabecera
   // ("Select Characters" 118 -> 119, "Stage Selection" 121 -> 122) y Babidi con su bocadillo de arriba son los de siempre.
   const float dt_c = dt * 60.0f;
-  if (g_estado == kSitio) Obj(dl, L, 121, 122, g_cuadro - g_c_tit);
+  if (SaliendoBurbuja() && !g_sel.combate) Spr2(L, g_cab_seleccion, 123, g_sel.c, false);
+  else if (SaliendoRueda() && g_sel.destino != kMenu) Spr2(L, g_cab_seleccion, 120, g_sel.c, false);
+  else if (g_estado == kSitio) Obj(dl, L, 121, 122, g_cuadro - g_c_tit);
   else Obj(dl, L, 118, 119, g_cuadro - g_c_tit);
   dl->PushClipRect(L.P(0, 0), L.P(640, 448), true);
   if (g_estado == kSitio) {
     Giro2& g = g_giro_burb;
     g.Paso(dt_c);
     const float cs = (t - g_t_esfera) * 60.0f;
-    DibBurbuja(L, cs, 0);
+    DibBurbuja(L, cs, t);
     VaciarCapas(dl);
     dl->PopClipRect();
-    Babidi(dl, L, g_frase_sitio, true);
-    M::Help(dl, a, {{"A", T::T("Elegir", "Select")}, {"B", T::T("Volver", "Back")}});
-    if (pressed & kB) {
+    const float frase_alfa = SaliendoBurbuja() && !g_sel.combate && g_cab_seleccion.a.size() > 23
+                                ? PoseAma2(g_cab_seleccion.a[23], g_sel.c, false).a : 1;
+    Babidi(dl, L, g_frase_sitio, true, frase_alfa);
+    // La burbuja original lleva cruceta / confirmar / atras, igual que la pantalla 1P/2P.
+    S::HelpLine(dl, L.P(320, 425), 22 * L.s * L.k,
+                {{"PAD", T::T("Seleccionar", "Select")}, {"A", T::T("Confirmar", "Confirm")}, {"B", T::T("Atrás", "Back")}});
+    if (g_sel.fase != SelFase::quieta) return 0;
+    if ((pressed & kB) && cs >= 45.0f && !g.Girando()) {
       Efecto(0, 3);
-      g_estado = kRival;
+      SalidaSeleccion(true, kRival, false, t);
       return 0;
     }
     if (cs >= 45.0f && !g.Girando()) {
@@ -3282,8 +4026,9 @@ int Dibujar(ImDrawList* dl, const S::Area& a, float t, uint16_t pressed, bool au
         if (g.Girando()) Efecto(0, 2);
       }
     }
+    if (g_sitio_vis != g.obj) g_burb_imagen_t = t;
     g_sitio_vis = g.obj;
-    if (ok && cs >= 45.0f) {
+    if (ok && cs >= 45.0f && !g.Girando()) {
       Efecto(0, 5);
       const bool azar = g.obj == int(g_cel.size()) - 1;
       g_sitio = azar ? g_cel[size_t(std::rand() % std::max(1, int(g_cel.size()) - 1))] : g_cel[size_t(g.obj)];   // el "?" elige uno al azar
@@ -3291,9 +4036,9 @@ int Dibujar(ImDrawList* dl, const S::Area& a, float t, uint16_t pressed, bool au
       g_vencidos = 0;
       REXLOG_INFO("dbz3 nave: eleccion jugador {} rival {} escenario {} (id B2 {}){} planta {}", g_j3, g_r3, g_sitio,
                   kEscenas2[g_sitio].id_b2, azar ? " al azar" : "", g_prueba + 1);
-      Pedir(out);
-      g_estado = kPrueba;
-      return salir(2);
+      g_sel.fase = SelFase::burbujaConfirma; g_sel.t0 = t; g_sel.c = 0;
+      REXLOG_INFO("dbz3 nave: transicion burbuja confirmacion {} cuadros", DurAma2(g_burb, 19));
+      return 0;
     }
     return 0;
   }
@@ -3324,12 +4069,16 @@ int Dibujar(ImDrawList* dl, const S::Area& a, float t, uint16_t pressed, bool au
     if (g_pags.size() > 1)
       S::MenuText(dl, L.P(520, 30), 14 * L.s, (std::string("L1 / R1  ") + std::to_string(g_pag + 1) + "/" + std::to_string(g_pags.size())).c_str(), false, false);
   }
-  Babidi(dl, L, g_frase_sel, true);
+  const float frase_alfa = SaliendoRueda() && g_sel.destino != kMenu && g_cab_seleccion.a.size() > 23
+                              ? PoseAma2(g_cab_seleccion.a[23], g_sel.c, false).a : 1;
+  Babidi(dl, L, g_frase_sel, true, frase_alfa);
   AyudaB2(dl, L, t);
+  if (g_sel.fase != SelFase::quieta) return 0;
   if (g_estado == kMenu) {
+    if ((t - g_t_menu) * 60.0f < std::max(DurAma2(g_rueda, 0), DurAma2(g_rueda, 10))) return 0;
     if (pressed & kB) {
       Efecto(0, 3);
-      g_estado = kJugador;
+      g_sel.fase = SelFase::menuSale; g_sel.t0 = t; g_sel.c = 0;
       return 0;
     }
     // EU 0x25F7D0 FUN_0025F7D0 (lista vertical de cGpffff8be0 filas, 0x699D30): abajo en la ultima fila vuelve a la primera y arriba
@@ -3354,24 +4103,36 @@ int Dibujar(ImDrawList* dl, const S::Area& a, float t, uint16_t pressed, bool au
       // EU 0x2640E0 FUN_002640e0
       // FUN_00260CF0 (b2.c): seleccion 0/1 elige Normal/Custom; la opcion 2 es Edit Skills y no altera esta eleccion.
       g_lista_capsulas = g_menu_sel == 1 ? 1 : 0;
+      g_elegida[0].lista = g_lista_capsulas;
+      g_recordada[0] = g_elegida[0];
       REXLOG_INFO("dbz3 nave: menu {} (lista de capsulas {})", g_menu_sel == 0 ? "Normal" : "Custom",
                   g_lista_capsulas ? "Custom" : "Normal");
-      g_estado = kRival;
+      g_sel.fase = SelFase::menuConfirma; g_sel.t0 = t; g_sel.c = 0;
+      REXLOG_INFO("dbz3 nave: transicion menu confirmacion 60 cuadros");
     }
     return 0;
   }
   // EU 0x25FE30 FUN_0025fe30
-  if (pressed & kB) {
+  if ((pressed & kB) && cr >= 60.0f && !g.Girando()) {
     Efecto(0, 3);
-    g_estado = g_estado == kJugador ? kPrueba : (g_2p.load() ? kJugador : kMenu);   // 2P: la rueda del mando 2 vuelve a la del 1P
+    // 1P: el triangulo del COM termina toda la seleccion (motor 6 -> 8),
+    // FUN_002640E0 -> 0x264DE0 -> 0x264790. No vuelve al menu ni a otra rueda.
+    SalidaSeleccion(false, g_estado == kRival && g_2p.load() ? kJugador : kPrueba, false, t);
     return 0;
   }
   const int n = int(Pag().size()) + 1;
   if (cr >= 60.0f && !g.Girando()) {
-    if (g_pags.size() > 1 && (pressed & (kLB | kRB))) {   // L1 / R1: otra pagina del roster
+    // L1 / R1 + cruceta = "Quick select" de B2 (giro de 5 cuadros en vez de 10); solo L1 / R1, al soltarlo sin cruceta: otra pagina del roster
+    const uint16_t sol = g_mant & (kLB | kRB), suelto = g_sol_ant & uint16_t(~sol);
+    g_sol_ant = sol;
+    if (sol && (pressed & (kLeft | kRight))) g_sol_uso = true;
+    if (!sol && !suelto) g_sol_uso = false;
+    if (g_pags.size() > 1 && suelto && !g_sol_uso) {
+      g_sol_uso = false;
       const int np = int(g_pags.size());
-      g_pag = ((g_pag + ((pressed & kRB) ? 1 : -1)) % np + np) % np;
+      g_pag = ((g_pag + ((suelto & kRB) ? 1 : -1)) % np + np) % np;
       g.Fijar(0);
+      g_traje_rueda = 0;
       g_t_rueda = t;
       Efecto(0, 2);
       REXLOG_INFO("dbz3 nave: pagina {}/{} de la rueda", g_pag + 1, np);
@@ -3383,16 +4144,35 @@ int Dibujar(ImDrawList* dl, const S::Area& a, float t, uint16_t pressed, bool au
       if (g_estado == kRival && g_prueba == 3 && sig < n - 1 && Pag()[size_t(sig)].b3 == g_j3) a *= 2;
       return a;
     };
+    const float giro = sol ? 5.0f : 10.0f;
     if (pressed & kLeft) {
-      g.Mover(paso(-1), n, true);
+      g.Mover(paso(-1), n, true, giro);
       if (g.Girando()) Efecto(0, 2);
     } else if (pressed & kRight) {
-      g.Mover(paso(1), n, true);
+      g.Mover(paso(1), n, true, giro);
       if (g.Girando()) Efecto(0, 2);
+    }
+    if (g.Girando()) {
+      g_traje_rueda = 0;   // FUN_002AB8C0: otro luchador vuelve al primer traje
+      if (g_estado == kRival && g.obj < n - 1 && Pag()[size_t(g.obj)].b3 == g_j3 && g_elegida[0].traje == 0)
+        g_traje_rueda = TrajesDe(Pag()[size_t(g.obj)]) > 1 ? 1 : 0;
+    } else if (g.obj < n - 1 && (pressed & (kUp | kDown))) {
+      const int nt = TrajesDe(Pag()[size_t(g.obj)]), dir = (pressed & kUp) ? 1 : -1;
+      int tr = g_traje_rueda;
+      for (int i = 0; i < nt; ++i) {
+        tr = (tr + nt + dir) % nt;
+        if (g_estado != kRival || Pag()[size_t(g.obj)].b3 != g_j3 || tr != g_elegida[0].traje) break;
+      }
+      if (tr != g_traje_rueda) {
+        g_traje_rueda = tr;
+        Efecto(0, 2);
+        REXLOG_INFO("dbz3 nave: traje {} id {} -> {} de {}", g_estado == kRival ? "COM/2P" : "1P",
+                    Pag()[size_t(g.obj)].b3, tr, nt);
+      }
     }
   }
   // EU 0x263A80 FUN_00263a80 (rueda lista -> elegido: guarda el luchador, sonido y paso a la pantalla siguiente)
-  if (ok && cr >= 60.0f) {
+  if (ok && cr >= 60.0f && !g.Girando()) {
     const bool azar = g.obj == n - 1;
     int casilla = azar ? std::rand() % (n - 1) : g.obj;   // el "?" elige uno al azar de la pagina
     Efecto(0, 5);
@@ -3400,15 +4180,22 @@ int Dibujar(ImDrawList* dl, const S::Area& a, float t, uint16_t pressed, bool au
     if (g_estado == kJugador) {
       g_luch = casilla;
       g_j3 = e.b3;
+      g_elegida[0] = {e.b3, g_traje_rueda, g_lista_capsulas};
       REXLOG_INFO("dbz3 nave: eleccion 1P {} (casilla {}, id B2 {}, id B3 {}, pagina {}){}", NombreDe(e.b3), casilla, e.b2, e.b3, g_pag + 1, azar ? " al azar" : "");
       g_estado = kMenu;
     } else {
-      if (e.b3 == g_j3) casilla = (casilla + 1) % (n - 1);   // el rival no es el mismo luchador
+      if (e.b3 == g_j3 && g_prueba == 3) casilla = (casilla + 1) % (n - 1);
       const Entrada e2 = Pag()[size_t(casilla)];
       g_riv = casilla;
       g_r3 = e2.b3;
+      const int nt = TrajesDe(e2);
+      int tr = azar ? std::rand() % nt : g_traje_rueda;
+      if (g_r3 == g_j3 && tr == g_elegida[0].traje) tr = (tr + 1) % nt;
+      g_elegida[1] = {e2.b3, tr, 0};
+      g_recordada[1] = g_elegida[1];
       REXLOG_INFO("dbz3 nave: eleccion {} {} (casilla {}, id B2 {}, id B3 {}, pagina {}){}", g_2p.load() ? "2P" : "COM", NombreDe(e2.b3), casilla, e2.b2, e2.b3, g_pag + 1, azar ? " al azar" : "");
-      g_estado = kSitio;
+      g_sel.fase = SelFase::ruedaConfirma; g_sel.t0 = t; g_sel.c = 0;
+      REXLOG_INFO("dbz3 nave: transicion rueda confirmacion 60 cuadros");
     }
   }
   return 0;
@@ -3416,12 +4203,16 @@ int Dibujar(ImDrawList* dl, const S::Area& a, float t, uint16_t pressed, bool au
 
 // Fin del combate de la prueba (lado 0 = jugador): segundos que sobraban (-1 sin limite) y golpes que quitaron vida.
 void Resultado(int ganador, int vida, int segundos, int golpes) {
+  g_trajes_pendientes = 0;
   combate::OndasModo(false);
-  const int ms = g_ms_lucha.load();
+  const int cuadros = g_cuadros_lucha.load();
   ++g_reloj;   // para el reloj de la prueba II
-  REXLOG_INFO("dbz3 nave: fin: gana el lado {}, vida {}, {} s de sobra, {} golpes, {} ondas devueltas, {} ms de pelea",
-              ganador + 1, vida, segundos, golpes, combate::OndasDevueltas(0), ms);
-  if (ganador < 0) {   // salio desde la pausa: sin Kili
+  REXLOG_INFO("dbz3 nave: fin: gana el lado {}, vida {}, {} s de sobra, {} golpes, {} ondas devueltas, {} cuadros de pelea",
+              ganador + 1, vida, segundos, golpes, combate::OndasDevueltas(0), cuadros);
+  // B3 devuelve -1 tambien en un empate al agotarse el reloj. En II-IV es un resultado valido de la prueba;
+  // salir desde la pausa conserva segundos=-1 (Fin no capturo el final) y no da Kili.
+  const bool fin_por_tiempo = g_prueba >= 1 && segundos == 0;
+  if (ganador < 0 && !fin_por_tiempo) {
     g_estado = kPrueba;
     return;
   }
@@ -3441,7 +4232,7 @@ void Resultado(int ganador, int vida, int segundos, int golpes) {
       g_cuenta = g_vencidos;
     }
   } else if (g_prueba == 1) {
-    g_cuenta = (std::min(ms, kTopeII * 1000) * 60 / 1000 + 60) / 60;   // (cuadros + 60) / 60
+    g_cuenta = (std::min(cuadros, kTopeII * 60) + 60) / 60;
   } else if (g_prueba == 2) {
     g_cuenta = golpes;
   } else {
@@ -3469,7 +4260,28 @@ void DesbloquearEvento(int ev) {
   }
 }
 // FUN_00260CF0 (b2.c): Custom es una lista de combate distinta; Edit Skills es la tercera opcion separada.
-int ListaCapsulas() { return g_lista_capsulas; }
+int ListaCapsulas() {
+  // Justo antes de RequestBattleEx/ChainBattleEx; el despacho aplica los trajes
+  // en el hilo guest DESPUES de que hub rellene la CFG (sin carrera entre hilos).
+  g_trajes_pendientes = (uint64_t(1) << 63) | uint64_t(g_j3 & 0xFF) | (uint64_t(g_r3 & 0xFF) << 8)
+                       | (uint64_t(g_elegida[0].traje & 0xFF) << 16) | (uint64_t(g_elegida[1].traje & 0xFF) << 24);
+  return g_lista_capsulas;
+}
+void AplicarTrajesNave(PPCContext& ctx, uint8_t* base) {
+  if (ctx.r3.u32 != 10 || !g_trajes_pendientes.load()) return;
+  const uint64_t p = g_trajes_pendientes.exchange(0);
+  constexpr dbz3::GA cfg = 0x8245EFC0;
+  if (REX_LOAD_U16(cfg + 32) != (p & 0xFF) || REX_LOAD_U16(cfg + 112) != ((p >> 8) & 0xFF)) return;
+  int tr[2] = {};
+  for (uint32_t lado = 0; lado < 2; ++lado) {
+    const uint32_t id = uint32_t((p >> (8 * lado)) & 0xFF);
+    const uint32_t nt = REX_LOAD_U8(dbz3::GA(0x8234ABB8) + 96u * id + 4);
+    const uint32_t elegido = uint32_t((p >> (16 + 8 * lado)) & 0xFF);
+    tr[lado] = elegido < nt ? int(elegido) : 0;
+    REX_STORE_U16(cfg + 34 + 80u * lado, uint16_t(tr[lado]));
+  }
+  REXLOG_INFO("dbz3 nave: trajes en CFG {} / {} (seleccion {} / {})", tr[0], tr[1], (p >> 16) & 0xFF, (p >> 24) & 0xFF);
+}
 
 // Para el tablero de B2 (cápsula al azar de sus casillas): la de B3 equivalente a una de B2, 0 si no hay.
 int CapsulaDeB2(int id_b2) { return CapsulaB3(id_b2); }
@@ -3547,3 +4359,10 @@ bool VentanaPremio(ImDrawList* dl, const S::Area& a, int id_b2, float cuadros, u
 }
 
 }  // namespace dbz3::pasarela::nave
+
+// hub.cpp despacha sub_821D27C8(10) tras completar ambos registros de combate.
+// El original se llama siempre; sin una peticion de la Nave no hay cambios.
+DBZ3_HOOK_EU(sub_821D27C8) {
+  dbz3::pasarela::nave::AplicarTrajesNave(ctx, base);
+  orig(ctx, base);
+}

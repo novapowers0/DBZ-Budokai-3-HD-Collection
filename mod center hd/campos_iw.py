@@ -1121,6 +1121,9 @@ def _tarea(t):
             carpeta = EC.instalar(datos, mods, nombre, EC.ENTRADA_BASE + (20 if juego == "b1" else 0) + grupo,
                                   EC.JUEGOS[juego][0], id_se=45, tema=16, rotulo_txt=rot,
                                   escena=EC.ESCENA_ZONA.get(grupo, 0) if juego == "b2" and not EC.os.environ.get("X1ESC_SIN_ESCENA") else 0)
+            if juego == "b2":
+                import escenarios_transicion_b2
+                escenarios_transicion_b2.instalar(fuente, grupo, carpeta)
             # G02: el #SPX y el banco #AME de B2 se guardan como evidencia; no se instalan (nativas de B3
             # renumeradas). La tabla por escenario queda en efectos_b2.txt dentro de la carpeta del mod.
             try:
@@ -1158,6 +1161,10 @@ def cmd_auto(a):
             print("escenarios: sin %s en %s" % (EC.JUEGOS[juego][0], a.ps2))
             continue
         sello_b12 = _sello(ruta) + ("|arbol2" if (juego, grupo) == ("b1", 11) else "")   # A3b: el ring de Cell de B1 se rehace una vez (arboles TREE2 verdes); el resto de escenarios, no
+        if juego == "b2" and grupo in (0, 2, 4, 7, 8):
+            sello_b12 += "|b2tz2fxampbsk"   # solGP1: visibilidad u16/s16 + metadatos BSK originales
+            if grupo == 2:
+                sello_b12 += "|templo1"   # solCBT: añadir B2TZ a packs de una zona ya marcados b2tz2fx
         if not _al_dia(mods / nombre, sello_b12):
             try:   # X1esc: aviso si el escenario B2 instalado lleva el registro viejo (sello < v17); se regenera aqui mismo
                 viejo = (mods / nombre / "origen.txt").read_text(encoding="utf-8")

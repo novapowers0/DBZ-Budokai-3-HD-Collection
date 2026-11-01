@@ -42,6 +42,8 @@ struct Paso {
   // medidas en la toma 1 de B1 (0xC0) se aplican a la tabla de huesos del dibujo cada cuadro. El resto del cuerpo sigue
   // con el clip de B3 del paso.
   bool brazos_b1 = false;
+  // Satan 30/10 (c): pose estatica del #AMM STN anim 0 de B1 (de pie, de espaldas a la camara) sobre el lado 1 (toma del coche)
+  bool pose_satan_b1 = false;
   // DS16: separacion final de los dos luchadores en este paso (0 = la de la escena). Se interpola en todo el paso desde
   // la separacion de la escena: B1 los lleva al centro del ring antes del READY (30 -> 10 unidades).
   float distancia_final = 0.0f;

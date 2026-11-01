@@ -50,4 +50,20 @@ bool NovaBusy(const std::string& id);
 // Last result line for the status bar ("" = nothing new).
 std::string NovaStatus();
 
+// Videos HD de SSGPrinceVegeta (opening y final): descarga opcional, fuera del zip. Lista en videos_hd.toml en
+// dbz3_videos_hd_url (por defecto, el repositorio de Nova's Mods); los ficheros van a <exe>/videos_hd/.
+struct VideosHdEstado {
+  bool lista = false;        // videos_hd.toml leido
+  bool fallo_lista = false;
+  bool instalados = false;   // todos los de la lista (o, sin lista, alguno en disco)
+  bool trabajando = false;
+  long long total = 0, hecho = 0;   // bytes de la lista / ya descargados
+  long long en_disco = 0;
+  std::string mensaje;
+};
+VideosHdEstado GetVideosHd();
+void VideosHdLeerLista();    // una vez; no bloquea
+void VideosHdInstalar();     // descarga lo que falte (sigue los trozos), comprueba SHA-256 y coloca
+void VideosHdDesinstalar();  // aparta la carpeta a mods_respaldo
+
 }  // namespace dbz3::launcher

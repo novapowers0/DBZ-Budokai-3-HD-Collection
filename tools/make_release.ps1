@@ -194,7 +194,7 @@ $ingame_ui = Join-Path $root "res\ingame_ui"
 if (Test-Path -LiteralPath $ingame_ui) {
     $ingame_dst = Join-Path $OutDir "ingame_ui"
     $game_art = @("hub\anfitrion_bulma.png", "hub\anfitrion_goku.png", "hub\anfitrion_heroe.png",
-                  "hub\anfitrion_trunks.png", "hub\anfitrion_vegeta.png", "hub\anfitrion_whis.png")
+                  "hub\anfitrion_vegeta.png", "hub\anfitrion_whis.png")   # Trunks, Paikuhan y Gohan del Futuro: arte del autor, si van
     Get-ChildItem -LiteralPath $ingame_ui -File -Recurse | ForEach-Object {
         $relative = $_.FullName.Substring($ingame_ui.Length).TrimStart('\')
         if ($game_art -contains $relative) {

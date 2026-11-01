@@ -3,6 +3,7 @@
 #include "mods.h"
 #include "mod_manifest.h"
 #include "launcher/i18n.h"
+#include "roster_ext.h"
 
 #include <rex/filesystem.h>
 #include <rex/filesystem/afs.h>
@@ -19,6 +20,7 @@
 #include <fstream>
 #include <iterator>
 #include <map>
+#include <mutex>
 #include <toml++/toml.hpp>
 #include <system_error>
 
@@ -502,6 +504,8 @@ bool FixNestedMod(const std::string& mod_name) {
 }
 
 std::vector<ModInfo> ListMods(bool check_problems) {
+  static std::once_flag curar;   // marcas de un escaneo cortado por un cierre (roster_ext.cpp)
+  std::call_once(curar, [] { dbz3::roster::CurarMarcasEscaneo(); });
   std::vector<ModInfo> result;
   std::error_code ec;
   const std::filesystem::path mods_root = ModsRoot();

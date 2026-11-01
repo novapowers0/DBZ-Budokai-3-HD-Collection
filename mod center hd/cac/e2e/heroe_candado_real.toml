@@ -1,0 +1,18 @@
+# copia: s5_c2
+descripcion = "Candado real: sin variables de prueba del heroe, ficha con combates ganados: raza cerrada"
+env = ["DBZ3_TEST_RINGOUT=1"]
+pasos = [
+  "esperar 2500",
+  "tecla W 1200",
+  "tecla Space 3500",
+  "tecla S 450", "tecla S 450", "tecla S 450", "tecla S 450", "tecla S 450",
+  "tecla Space 2500",
+  "tecla S 700", "tecla S 700", "tecla S 700",
+  "tecla Space 3500",
+  "captura c2_deseo_cerrado_0_heroe",
+  "tecla D 700",
+  "log \"raza/cuerpo cerrados\" 20",
+  "captura c2_deseo_cerrado_1",
+  "tecla Backspace 3000",
+  "esperar 2500",
+]

@@ -58,10 +58,20 @@ constexpr float kRadioPared = 4.0f;
 constexpr float kBajoEsfera = 8.0f;
 constexpr float kCerca = 30.0f;    // consulta de suelo a menos de esto de un luchador = la suya
 
+// Node_RenderVisibleGrid: validado con PCSX2astra2 (KaioX/Z/esquina) y
+// cruces de los5campos periodicos. El campo884 no repite (flags8).
+bool RejillaHabilitada() {
+  static const bool activa=[] {const char* v=std::getenv("DBZ3_IW_REJILLA");return !v || *v!='0';}();
+  return activa;
+}
+int CampoCargado(uint8_t* base);
+#include "suelo_iw_rejilla.inl"
+
 struct Tri {
   float a[3], b[3], c[3];
   float n[3], d;   // plano en mundo, n.p + d = 0: el del registro del #WCF (en la malla, el de sus vertices)
   uint32_t mat;    // material del #WCF: 7 solido (suelo, troncos, vallas), 6 copas y casa, 8 agua; la malla: 7
+  uint32_t tipo = 0;   // tipo de superficie (u16 en grupo +6); 0 en la malla dibujada
 };
 constexpr uint32_t kMascara = 7;   // rayo de suelo: Collision_Raycast con mascara 7 (ELF USA 0x296774: addiu t2, 7)
 constexpr uint32_t kMascaraPared = 2;   // paredes: Collision_MoveSphere con mascara 2 (ELF USA 0x2967E4: addiu t1, 2)
@@ -106,10 +116,11 @@ struct Terreno {
   // terreno lo cubren entero), no la rejilla de nombres de piezas.
   uint32_t envolver = 0;
   float x1 = 0, z1 = 0;
+  RejillaIw periodica;
   std::vector<uint32_t> ini, lista;
   std::vector<Tri> tris;
   template <class F>
-  void Celdas(float xa, float za, float xb, float zb, F&& f) const {
+  void CeldasLocal(float xa, float za, float xb, float zb, F&& f) const {
     const int i0 = std::max(0, int(std::floor((std::min(xa, xb) - x0) / kCelda)));
     const int i1 = std::min(nx - 1, int(std::floor((std::max(xa, xb) - x0) / kCelda)));
     const int j0 = std::max(0, int(std::floor((std::min(za, zb) - z0) / kCelda)));
@@ -119,6 +130,30 @@ struct Terreno {
         const size_t c = size_t(j) * size_t(nx) + size_t(i);
         for (uint32_t k = ini[c]; k < ini[c + 1]; ++k) f(tris[lista[k]]);
       }
+  }
+  template<class F>
+  void Celdas(float xa,float za,float xb,float zb,F&& f) const {
+    if(!periodica.valida() || !periodica.flags || !RejillaHabilitada()) {
+      CeldasLocal(xa,za,xb,zb,std::forward<F>(f));return;
+    }
+    // Una consulta puede cruzar la costura: no envolver solo su centro.
+    // Consultar las copias que intersectan su caja y devolver caras en el
+    // mismo espacio que el rayo/esfera, incluidas las constantes de plano.
+    const auto& r=periodica;
+    const int ix0=(r.flags&1)?int(std::ceil((std::min(xa,xb)-x1)/r.ex)):0;
+    const int ix1=(r.flags&1)?int(std::floor((std::max(xa,xb)-x0)/r.ex)):0;
+    const int iz0=(r.flags&2)?int(std::ceil((std::min(za,zb)-z1)/r.ez)):0;
+    const int iz1=(r.flags&2)?int(std::floor((std::max(za,zb)-z0)/r.ez)):0;
+    for(int iz=iz0;iz<=iz1;++iz) for(int ix=ix0;ix<=ix1;++ix) {
+      const float dx=ix*r.ex,dz=iz*r.ez;
+      CeldasLocal(xa-dx,za-dz,xb-dx,zb-dz,[&](const Tri& tr) {
+        if(!ix&&!iz) {f(tr);return;}
+        Tri t=tr;
+        for(auto* v:{t.a,t.b,t.c}) {v[0]+=dx;v[2]+=dz;}
+        t.d-=t.n[0]*dx+t.n[2]*dz;
+        f(t);
+      });
+    }
   }
   // EU 0x1E7070 Stage_GetGroundHeight: el original recorre el BSP desde la hoja de (x,z), filtra caras por bit 0
   // del material y devuelve la primera cara que contiene el punto; en escenario 1 llama ademas a la altura tiled.
@@ -142,6 +177,19 @@ struct Terreno {
     });
     return hay;
   }
+  // 31/10: EU 0x296A00: la superficie la da el rayo de los pies hacia abajo: la primera por debajo de `tope`, no la mas alta de la columna.
+  int Tipo(float x, float z, float tope = 1e30f) const {
+    bool hay = false;
+    float y = 0;
+    int tipo = 0;
+    Celdas(x, z, x, z, [&](const Tri& t) {
+      if (!t.tipo || !(t.mat & kMascara) || std::fabs(t.n[1]) < 1e-3f || !Dentro(t, x, z)) return;
+      const float h = -(t.n[0] * x + t.n[2] * z + t.d) / t.n[1];
+      if (h > tope) return;
+      if (!hay || h > y) y = h, hay = true, tipo = int(t.tipo);
+    });
+    return tipo;
+  }
   // Colision de un segmento con el #WCF: recorre los triangulos de la parte cuyo material pasa la mascara y se
   // queda el corte MAS CERCANO a `desde` (Coll_RayTriangleIntersect 0x1D6BF0). Modela Collision_Raycast (EU
   // 0x2E77D0, la que usan los minijuegos a pie: mascara 1 la camara y 7 el suelo).
@@ -152,13 +200,13 @@ struct Terreno {
   // El Collect (0x1E4DB0, bit 2, TODOS los cortes) no se necesita: B3 solo pide el primero. La rejilla solo acelera
   // la busqueda; el orden geometrico del resultado (primer corte) es el del original.
   template <class V>
-  const Tri* Rayo(const float p[3], const float q[3], uint32_t mascara, V&& vale, float& fr) const {
-    const Tri* mejor = nullptr;
+  bool Rayo(const float p[3], const float q[3], uint32_t mascara, V&& vale, float& fr) const {
+    bool mejor = false;
     fr = 2;
     Celdas(p[0], p[2], q[0], q[2], [&](const Tri& t) {
       if (!(t.mat & mascara) || !vale(t)) return;
       const float f = Corta(t, p, q);
-      if (f >= 0 && f < fr) fr = f, mejor = &t;
+      if (f >= 0 && f < fr) fr = f, mejor = true;
     });
     return mejor;
   }
@@ -298,6 +346,7 @@ bool LeerWcf(const std::vector<uint8_t>& w, std::vector<Tri>& out) {
       for (int i = 0; i < 3; ++i) t.n[i] = f32(q + 4 * size_t(i));
       t.d = f32(q + 12);
       t.mat = mat;
+      t.tipo = u32(g + 4) >> 16;
       for (uint32_t j = 0; j < ng; ++j) {
         float* v[3] = {t.a, t.b, t.c};
         bool bien = true;
@@ -370,6 +419,9 @@ void Construir(int campo, std::atomic<const Terreno*>& dst_col, std::atomic<cons
     return;
   }
   auto* t = new Terreno;
+  const auto paquete=cmn.Entrada(size_t(campo));
+  const auto rejilla=LeerRejillaIw(P::HijoAmb(paquete,5),P::HijoAmb(paquete,0));
+  t->periodica=rejilla;
   t->wcf = LeerWcf(P::HijoAmb(cmn.Entrada(size_t(campo) + 1), 0), t->tris);
   std::vector<std::array<float, 9>> dibujo;
   LeerSuelo(P::HijoAmb(cmn.Entrada(size_t(campo)), 5), dibujo, /*solo_suelo=*/false);
@@ -392,6 +444,7 @@ void Construir(int campo, std::atomic<const Terreno*>& dst_col, std::atomic<cons
               t->envolver);
   dst_col = t;
   auto* m = new Terreno;   // la malla dibujada: todas las partes del terreno (sin filtro de huesos)
+  m->periodica=rejilla;
   Rellenar(dibujo, m->tris);
   if (m->tris.empty()) {
     REXLOG_WARN("dbz3 suelo_iw: el campo {} no tiene malla del #AMO (hijo 5): la camara usa solo la colision", campo);
@@ -445,11 +498,23 @@ struct Bueno {
   float alto = kCabeza;   // H del luchador de B3 (Alto), para el rayo de suelo y el radio de la esfera
 };
 Bueno g_bueno[2];   // ultimo sitio bueno de cada luchador (paredes) y su altura (inicio del rayo de suelo)
+bool g_prueba_envuelta=false;
 
 // Prueba (DBZ3_SUELO_PRUEBA="x,z;x,z;..."): 6 s despues de que el minijuego ponga al luchador 0 en la salida, se le
 // lleva a la primera marca y anda (0,2 por cuadro) por las demas, sin mando ni camara: rampas y paredes por un camino
 // conocido del #WCF (E:\DBZ3HD_trabajo\R11\rampa.py). Las paredes y el suelo actuan igual que al andar.
 void Prueba(uint8_t* base, uint32_t x) {
+  static const char* armar=std::getenv("DBZ3_TEST_IW_REJILLA_ARMAR");
+  static bool armado=false;
+  bool inicio=false;
+  if(armar && !armado) {
+    FILE* f=std::fopen(armar,"r");
+    if(!f) return;
+    const int c=std::fgetc(f);std::fclose(f);
+    if(c!='1') return;
+    armado=inicio=true;g_prueba_envuelta=false;
+  }
+  if(g_prueba_envuelta && std::getenv("DBZ3_TEST_IW_REJILLA_PARAR")) return;
   static const std::vector<std::array<float, 2>> marcas = [] {
     std::vector<std::array<float, 2>> m;
     const char* v = std::getenv("DBZ3_SUELO_PRUEBA");
@@ -466,6 +531,7 @@ void Prueba(uint8_t* base, uint32_t x) {
   static float sx = 1e9f, sz = 1e9f;
   static int quieto = -1;
   static size_t sig = 0;
+  if(inicio) quieto=0,sig=0;
   float px = LoadF(base, x + 64), pz = LoadF(base, x + 72);
   if (quieto < 0) {   // espera el salto a la salida
     if (sx < 1e8f && std::hypot(px - sx, pz - sz) > kSalto) quieto = 0;
@@ -711,9 +777,13 @@ void Paredes(uint8_t* base) {
       if (v < lo) v += p, envuelto = true;
       else if (v >= hi) v -= p, envuelto = true;
     };
-    if (t->envolver & 1) envuelve(nx, t->x0, t->x1);
-    if (t->envolver & 2) envuelve(nz, t->z0, t->z1);
+    const bool rejilla_real=RejillaHabilitada() && t->periodica.valida();
+    if (t->envolver & 1) envuelve(nx, rejilla_real?t->periodica.x0:t->x0,
+                                rejilla_real?t->periodica.x0+t->periodica.ex:t->x1);
+    if (t->envolver & 2) envuelve(nz, rejilla_real?t->periodica.z0:t->z0,
+                                rejilla_real?t->periodica.z0+t->periodica.ez:t->z1);
     if (envuelto) {
+      if(k==0) g_prueba_envuelta=true;
       t->Suelo(nx, nz, ny + alto, ny);
       for (const uint32_t o : kCopias)
         StoreF(base, x + o, nx), StoreF(base, x + o + 4, ny), StoreF(base, x + o + 8, nz);
@@ -754,6 +824,101 @@ float Altura(float x, float z, float sin_suelo) {
   float y = sin_suelo;
   if (t) t->Suelo(x, z, 1e9f, y);
   return y;
+}
+
+// 31/10: EU 0x296A70 MiniGame_CheckAnimEvent (+0x1F0): tipo de la cara mas cercana que toca la esfera del cuerpo. Medido en
+// PINE (0x7D9, 39 muestras, sin fallos): centro = cadera (pies + H, H = 9), radio H - 1 = 8.
+// ponytail: esfera quieta, sin el barrido ni la escala por estado de Char_GetActionSpeedScale (0,5 en scatto, 1,8 cayendo).
+int ToqueEsfera(float x, float y, float z, float r) {
+  const int k = g_activo.load();
+  const Terreno* t = k >= 0 ? g_terreno[k].load() : nullptr;
+  if (!t) return 0;
+  const float q[3] = {x, y, z};
+  float mejor = r;
+  int tipo = 0;
+  t->Celdas(x - r, z - r, x + r, z + r, [&](const Tri& tr) {
+    if (!(tr.mat & kMascaraPared)) return;
+    float c[3];
+    Cercano(tr, q, c);
+    const float d = std::sqrt((q[0] - c[0]) * (q[0] - c[0]) + (q[1] - c[1]) * (q[1] - c[1]) + (q[2] - c[2]) * (q[2] - c[2]));
+    if (d < mejor) mejor = d, tipo = int(tr.tipo);
+  });
+  return tipo;
+}
+
+void EnvolverReferencia(float& x,float& z,float jugador_x,float jugador_z) {
+  const int k=g_activo.load();
+  const auto* t=k>=0?g_terreno[k].load():nullptr;
+  if(!RejillaHabilitada() || !t || !t->periodica.valida()) return;
+  const auto& r=t->periodica;
+  auto eje=[](float& valor,float jugador,float periodo) {
+    const float delta=valor-jugador;
+    if(std::isfinite(delta)) valor-=std::floor((delta+periodo*.5f)/periodo)*periodo;
+  };
+  if(r.flags&1) eje(x,jugador_x,r.ex);
+  if(r.flags&2) eje(z,jugador_z,r.ez);
+}
+
+void Periodos(uint8_t* base,float& x,float& z) {
+  x=z=0;
+  if(!base || !RejillaHabilitada()) return;
+  const int k=CampoCargado(base);
+  const auto* t=k>=0?g_terreno[k].load():nullptr;
+  if(!t || !t->periodica.valida()) return;
+  if(t->periodica.flags&1) x=t->periodica.ex;
+  if(t->periodica.flags&2) z=t->periodica.ez;
+}
+
+bool DibujarRejillaNativa(PPCContext& ctx,uint8_t* base,void (*dibujar)(PPCContext&,uint8_t*)) {
+  if(!RejillaHabilitada()) return false;
+  const int k=CampoCargado(base);
+  const auto* d=k>=0?g_terreno[k].load():nullptr;
+  if(!d || !d->periodica.valida() || !d->periodica.flags) return false;
+  const uint32_t obj=ctx.r3.u32;
+  if(obj<0x10000 || obj>0xBFFFFFF0) return false;
+  const uint32_t awo=REX_LOAD_U32(obj);
+  // El cargador sustituye # por ! al reubicar los punteros (medido enRAM).
+  if(awo<0x10000 || awo>0xBFFFFFD0 || REX_LOAD_U32(awo)!=0x2141574Fu) return false;
+  const uint32_t nombres=REX_LOAD_U32(awo+36);
+  static const char* raices[6]={"FFHEMA02_ROOT","XFFKOSA02_ROOT","FFNMHA02_ROOT","XFFPLNA02_ROOT","FFPLNB02_ROOT","FFRCKA02_ROOT"};
+  if(nombres<0x10000 || nombres>0xBFFFFFE0 || std::strncmp(reinterpret_cast<const char*>(base+nombres),raices[k],32)) return false;
+  // 8208E518 siempre aplica el eje antes de comprobar la visibilidad del
+  // hueso. Trasladar ROOT mueve sus hijos por el pipeline nativo completo;
+  // cambiar la copia global de vista no sirve (8208A328/A3A0 la intercambian).
+  const uint32_t huesos=REX_LOAD_U32(awo+20);
+  const uint32_t lista=REX_LOAD_U32(huesos+4);
+  const uint32_t eje=REX_LOAD_U32(lista+8);
+  if(eje<0x10000 || eje>0xBFFFFFD0) return false;
+  const uint32_t bx=REX_LOAD_U32(eje+16),bz=REX_LOAD_U32(eje+24);
+  const float x=LoadF(base,eje+16),z=LoadF(base,eje+24);
+  const PPCContext entrada=ctx;
+  dibujar(ctx,base);
+  const PPCContext salida=ctx;
+  const uint32_t raiz=REX_LOAD_U32(obj+8);
+  // Auditoria de los6AMO: ROOT no tiene partes. Las partes de ROOT en el
+  // AWO son el cielo adjunto por campos_iw.py; no repetirlo con el terreno.
+  REX_STORE_U32(obj+8,0xFFFFFFFFu);
+  const auto& r=d->periodica;
+  for(int iz=(r.flags&2)?-1:0;iz<=((r.flags&2)?1:0);++iz)
+    for(int ix=(r.flags&1)?-1:0;ix<=((r.flags&1)?1:0);++ix) {
+      if(!ix&&!iz) continue;
+      StoreF(base,eje+16,x+float(ix)*r.ex);
+      StoreF(base,eje+24,z+float(iz)*r.ez);
+      ctx=entrada;
+      dibujar(ctx,base);
+    }
+  REX_STORE_U32(eje+16,bx);REX_STORE_U32(eje+24,bz);
+  REX_STORE_U32(obj+8,raiz);
+  ctx=salida;
+  static bool anunciado[6]{};
+  if(!anunciado[k]) {anunciado[k]=true;REXLOG_INFO("dbz3 suelo_iw: rejilla nativa campo {} objeto {:X}, periodo {}/{}",kCampos[k],obj,r.ex,r.ez);}
+  return true;
+}
+
+int TipoSuelo(float x, float z, float tope) {
+  const int k = g_activo.load();
+  const Terreno* t = k >= 0 ? g_terreno[k].load() : nullptr;
+  return t ? t->Tipo(x, z, tope) : 0;
 }
 
 // Altura de la MALLA QUE SE DIBUJA del campo en (x, z): la superficie horizontal mas alta del #AMO del terreno. En un
@@ -826,10 +991,19 @@ bool Rayo(const float desde[3], const float hasta[3], uint32_t mascara, float co
 namespace {
 std::atomic<bool> g_fijo_on{false};
 std::atomic<float> g_fijo{0.0f};
+std::atomic<bool> g_actores_on{false};
+std::atomic<float> g_actor[2][3]{};
 }  // namespace
 void SueloFijo(float altura, bool on) {
   g_fijo = altura;
   g_fijo_on = on;
+}
+
+void SueloActores(const float a[3], const float b[3], bool on) {
+  if (on) {
+    for (int i = 0; i < 3; ++i) g_actor[0][i] = a[i], g_actor[1][i] = b[i];
+  }
+  g_actores_on = on;
 }
 
 }  // namespace dbz3::suelo_iw
@@ -838,6 +1012,13 @@ void SueloFijo(float altura, bool on) {
 DBZ3_HOOK_EU(sub_820CB0A0) {
   const float x = float(ctx.f1.f64), z = float(ctx.f2.f64);
   orig(ctx, base);
+  if (dbz3::suelo_iw::g_actores_on.load()) {
+    using namespace dbz3::suelo_iw;
+    const float ax = x - g_actor[0][0].load(), az = z - g_actor[0][2].load();
+    const float bx = x - g_actor[1][0].load(), bz = z - g_actor[1][2].load();
+    ctx.f1.f64 = double(g_actor[ax * ax + az * az <= bx * bx + bz * bz ? 0 : 1][1].load());
+    return;
+  }
   if (dbz3::suelo_iw::g_fijo_on.load()) {   // R12: vuelo de IW (SueloFijo)
     ctx.f1.f64 = double(dbz3::suelo_iw::g_fijo.load());
     return;
@@ -853,6 +1034,7 @@ DBZ3_HOOK_EU(sub_820CB0A0) {
 // tools/eu_map.py: bloque de 188 funciones iguales, 0 diferencias sin explicar; docs/14_frentes/eu_mapa.txt).
 DBZ3_HOOK_EU(sub_8210E700) {
   if (!dbz3::ports::GuardLuchadores(base)) return;   // lista/accion a medias: no se llama a un puntero basura
+  dbz3::ports::TecnicasTick(ctx, base);
   dbz3::suelo_iw::Paredes(base);
   orig(ctx, base);
   dbz3::suelo_iw::Paredes(base);

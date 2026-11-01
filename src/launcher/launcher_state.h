@@ -156,6 +156,18 @@ class LauncherDialog : public rex::ui::ImGuiDialog {
     bool listo = false, instalado = false;
   };
   void DrawPackIW();
+  void DrawRecetasNova();   // Nova's Mods: mods que se construyen con las ISO del jugador (nova_recetas.py)
+  struct RecetaNova {
+    std::string id, nombre_es, nombre_en, falta;
+    bool instalado = false;
+    std::string desc_es, desc_en;
+  };
+  std::vector<RecetaNova> nrec_filas_;
+  int nrec_estado_ = 0;   // 0 sin leer, 1 leyendo la lista, 2 lista leida, 3 construyendo
+  std::string nrec_msg_;
+  void DrawVideosHd();   // Nova's Mods: opening y final HD (descarga opcional)
+  void DrawMusicaT3();   // Nova's Mods: musica de Tenkaichi 3 creada con la ISO del jugador
+  std::string t3_msg_;
   std::vector<PackFila> pack_filas_;
   std::map<std::string, bool> pack_quiero_;
   bool pack_consulta_ = false;

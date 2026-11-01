@@ -513,6 +513,200 @@ def injertar(amb, model, pelo_mask, Q, QN, tris_ut, presupuesto=WINDOW_BUDGET, r
     return bytes(b), resumen
 
 
+def _tex_usadas(amb):
+    """Texturas del #AZT que algun material de algun AWG usa como imagen O como rampa toon (campo shader)."""
+    be = lambda o: struct.unpack(">I", amb[o:o + 4])[0]  # noqa: E731
+    awo = 0x40
+    n_awg, tbl = be(awo + 0x18), awo + be(awo + 0x1C)
+    usadas = set()
+    for k in range(n_awg):
+        a = awo + be(tbl + 4 * k)
+        n_mat, mt = be(a + 0x24), a + be(a + 0x20)
+        for i in range(min(n_mat, 256)):
+            usadas.update(v for v in (be(mt + i * 0x50 + 0x30), be(mt + i * 0x50 + 0x34)) if v != 0xFFFFFFFF)
+    return usadas
+
+
+def injertar_nativo(amb, ex, donor, ddraw):
+    """1/11 Scouter NATIVO: anade al cuerpo un DRAW NUEVO con el material PROPIO del donante (textura + rampa + flags del
+    material del draw `ddraw` del #AMB `donor`, p. ej. el XGOK_SCOUT1 del modelo 281). El resto del injerto comparte el
+    material del anfitrion (y su rampa), y por eso el color salia como el del cuerpo.
+    ex: {"P","N","UV","tris"} en espacio modelo del cuerpo (como las piezas extra). Es una lista rigida del grupo BODY con el
+    slot de la cabeza (igual que el pelo de Jeice): un draw mas en el array del hueso 0, ventanas nuevas, y los bloques DXT3
+    de la textura del donante copiados a un hueco libre de una textura del cuerpo (rampa identica o la mas parecida). La
+    tabla de draws del hueso 0 y la de materiales se REUBICAN en bytes insertados al final de la cabecera del AWG0.
+    Devuelve (bytes, resumen); sin textura libre / rampa identica / cabeza devuelve el #AMB intacto con la causa."""
+    import texture_b3 as tb  # noqa: PLC0415
+    amb, donor = bytes(amb), bytes(donor)
+    be = lambda d, o: struct.unpack(">I", d[o:o + 4])[0]  # noqa: E731
+    avb = AwgVertexBuffer._parse(amb)
+    dt = DrawTable(avb)
+    davb = AwgVertexBuffer._parse(donor)
+    ddt = DrawTable(davb)
+    dd = ddt.draws[ddraw]
+    dmat = ddt.materials[dd["material"]]
+    d0 = [d for d in dt.draws if d["group_bone"] == 0]
+    if len(d0) < 2:
+        return amb, {"scouter": "sin array de draws del grupo BODY"}
+    labels = avb.bone_labels()
+    ss = SkinSlots(avb)
+    world, parents = avb.bind_worlds()
+    cab = _hueso_cabeza(labels)
+    eff, seen = cab, set()
+    while eff is not None and eff not in ss.slot_of and eff >= 0 and eff not in seen:
+        seen.add(eff)
+        eff = parents[eff]
+    if cab is None or eff not in ss.slot_of:
+        return amb, {"scouter": "sin hueso HEAD / slot de paleta"}
+    slot, inv = ss.slot_of[eff], np.array(minv_affine(world[eff]))
+    # --- textura del donante (bloques DXT3 copiados tal cual) -> hueco libre 16x16 bloques (+1 de margen) de una textura
+    # grande del cuerpo que ningun triangulo de ningun AWG cubre; rampa identica (o la mas parecida) ya presente en el cuerpo
+    _, th = tb.parse_azt(amb)
+    _, td = tb.parse_azt(donor)
+    Td = {t["idx"]: t for t in td}
+    src, rsrc = Td[dmat["tex"]], Td[dmat["shader"]]
+    bits = lambda d, t: bytes(d[t["bitmap_abs"]:t["bitmap_abs"] + t["w"] * t["h"]])  # noqa: E731
+    if src["size"] - 128 != src["w"] * src["h"] or src["w"] % 4 or src["h"] % 4:
+        return amb, {"scouter": "textura del donante no DXT3 sin mips"}
+    if float(np.min(ex["UV"])) < -0.001 or float(np.max(ex["UV"])) > 1.001:
+        return amb, {"scouter": "UV del scouter fuera de 0..1"}
+    sbw, sbh = src["w"] // 4, src["h"] // 4
+    usadas_shader = set()
+    for m_ in dt.materials:
+        if m_["shader"] != 0xFFFFFFFF:
+            usadas_shader.add(m_["shader"])
+    rb_ = bits(donor, rsrc)
+    same = [t for t in th if (t["w"], t["h"], t["size"]) == (rsrc["w"], rsrc["h"], rsrc["size"]) and t["idx"] in usadas_shader]
+    ident = [t for t in same if bits(amb, t) == rb_]
+    if ident:
+        ramp = ident[0]["idx"]
+    elif same:     # sin la identica: la rampa del cuerpo mas parecida (mismo tamano)
+        ra = np.frombuffer(rb_, np.uint8).astype(int)
+        ramp = min(same, key=lambda t: int(np.abs(np.frombuffer(bits(amb, t), np.uint8).astype(int) - ra).sum()))["idx"]
+    else:
+        return amb, {"scouter": "el cuerpo no tiene rampa de %dx%d" % (rsrc["w"], rsrc["h"])}
+    cub = {t["idx"]: np.zeros((t["h"] // 4, t["w"] // 4), bool) for t in th if t["size"] - 128 == t["w"] * t["h"]}
+    n_awg = be(amb, 0x40 + 0x18)
+    from PIL import Image, ImageDraw  # noqa: PLC0415
+    import model_render as mr  # noqa: PLC0415
+    for k in range(n_awg):
+        try:
+            mk = mr.Model(amb, awg=k)
+        except Exception:  # noqa: BLE001
+            continue
+        por_tex = {}
+        for i, tri in enumerate(mk.tris):
+            por_tex.setdefault(mk.mats[mk.tri_mat[i]]["tex"], []).append(tri)
+        for ti, tris_ in por_tex.items():
+            if ti not in cub:
+                continue
+            bh_, bw_ = cub[ti].shape
+            im = Image.new("L", (bw_ * 4, bh_ * 4), 0)
+            d_ = ImageDraw.Draw(im)
+            for tri in tris_:
+                d_.polygon([(float((u % 1) * bw_ * 4), float((v % 1) * bh_ * 4)) for u, v in mk.uv[tri]], fill=1)
+            cub[ti] |= (np.asarray(im) > 0).reshape(bh_, 4, bw_, 4).any(axis=(1, 3))
+    def buscar(need_w, need_h):
+        for t in sorted((t for t in th if t["idx"] in cub and t["idx"] not in usadas_shader and t["w"] // 4 >= need_w
+                         and t["h"] // 4 >= need_h), key=lambda t: -(cub[t["idx"]].size - int(cub[t["idx"]].sum()))):
+            c_ = cub[t["idx"]]
+            ii = np.pad(np.cumsum(np.cumsum(c_.astype(int), 0), 1), ((1, 0), (1, 0)))
+            bh_, bw_ = c_.shape
+            for y0 in range(bh_ - need_h, -1, -1):          # de abajo arriba: relleno del final de la textura
+                for x0 in range(bw_ - need_w + 1):
+                    if ii[y0 + need_h, x0 + need_w] - ii[y0, x0 + need_w] - ii[y0 + need_h, x0] + ii[y0, x0] == 0:
+                        return t, x0 + 1, y0 + 1
+        return None
+    sb = bits(donor, src)
+    sitio = buscar(sbw + 2, sbh + 2)
+    if sitio is None and sbw % 2 == 0 and sbh % 2 == 0:   # sin hueco entero: la textura a la mitad (cada pixel = media 2x2)
+        import io  # noqa: PLC0415
+        a_ = src["bitmap_abs"]   # con la cabecera DDS del propio #AZT (la de texture_b3.decode_dxt3_bitmap falla con Pillow 11+)
+        im4 = np.asarray(Image.open(io.BytesIO(donor[a_ - 128:a_ + src["w"] * src["h"]])).convert("RGBA"), np.float32)
+        im4 = im4.reshape(src["h"] // 2, 2, src["w"] // 2, 2, 4).mean(axis=(1, 3))
+        sb = tb.encode_dxt3(np.clip(im4 + 0.5, 0, 255).astype(np.uint8))
+        src = dict(src, w=src["w"] // 2, h=src["h"] // 2)
+        sbw, sbh = sbw // 2, sbh // 2
+        sitio = buscar(sbw + 2, sbh + 2)
+        mitad = True
+    else:
+        mitad = False
+    if sitio is None:
+        return amb, {"scouter": "sin hueco libre de %dx%d bloques en ninguna textura del cuerpo" % (sbw + 2, sbh + 2)}
+    tdst, bx0, by0 = sitio
+    dest = tdst["idx"]
+    wd, hd_ = tdst["w"], tdst["h"]
+    UVn = np.asarray(ex["UV"], float).copy()
+    UVn[:, 0] = (bx0 * 4 + UVn[:, 0] * src["w"]) / wd
+    UVn[:, 1] = (by0 * 4 + UVn[:, 1] * src["h"]) / hd_
+    ex = dict(ex, UV=UVn)
+    # --- geometria soldada (pos + normal + uv) en el espacio local de la cabeza
+    P, N, UV = np.asarray(ex["P"], float), np.asarray(ex["N"], float), np.asarray(ex["UV"], float)
+    uniq, idx = {}, []
+    for p_, n_, u_ in zip(P, N, UV):
+        idx.append(uniq.setdefault((tuple(np.round(p_, 4)), tuple(np.round(n_, 2)), tuple(np.round(u_, 5))), len(uniq)))
+    nv = len(uniq)
+    nP, nN, nU = np.zeros((nv, 3)), np.zeros((nv, 3)), np.zeros((nv, 2))
+    for i, r in enumerate(idx):
+        nP[r], nN[r], nU[r] = P[i], N[i], UV[i]
+    tris = [tuple(idx[v] for v in t) for t in ex["tris"]]
+    tris = [t for t in tris if len(set(t)) == 3]
+    R = inv[:3, :3]
+    loc = nP @ R.T + inv[:3, 3]
+    nl = nN @ R.T
+    nl /= np.maximum(np.linalg.norm(nl, axis=1), 1e-9)[:, None]
+    # --- espacio: ventanas + indices + (draws del hueso 0 + materiales) reubicados
+    n_mat, nd = len(dt.materials), len(d0)
+    need = 0x60 * (nd + 1) + 0x50 * (n_mat + 1) + 16
+    pre = -(-need // 16) * 16
+    new_n, new_nib = avb.n + nv, avb.n_ib + 3 * len(tris)
+    obj = avb.grow(new_n, new_nib, pre=pre)   # `pre` bytes al final de la cabecera del AWG0 (mesh group): ahi van las tablas
+    b, a0 = obj.data, obj.awg0
+    for i in range(nv):
+        o = obj.vb0 + (avb.n + i) * WINDOW
+        b[o:o + WINDOW] = AwgVertexBuffer.pack_window(
+            {"pos": tuple(loc[i]), "w": 1.0, "bone": slot, "nrm": tuple(nl[i]), "uv": (float(nU[i][0]), float(nU[i][1]))})
+    cur = avb.n_ib
+    for k, v in enumerate(v for t in tris for v in t):
+        struct.pack_into(">H", b, obj.ib_abs + (cur + k) * 2, (avb.n + int(v)) & 0xFFFF)
+    # bloques de la textura del donante + anillo de margen (copia del borde) en el hueco elegido
+    t_dst = next(t for t in tb.parse_azt(bytes(b))[1] if t["idx"] == dest)   # el #AZT se desplazo con grow
+    bwd = wd // 4
+    blq = lambda by, bx: sb[(by * sbw + bx) * 16:(by * sbw + bx) * 16 + 16]  # noqa: E731
+    for r_ in range(-1, sbh + 1):
+        for c_ in range(-1, sbw + 1):
+            o = t_dst["bitmap_abs"] + ((by0 + r_) * bwd + bx0 + c_) * 16
+            b[o:o + 16] = blq(min(max(r_, 0), sbh - 1), min(max(c_, 0), sbw - 1))
+    # array de draws del hueso 0 (+1) y tabla de materiales (+1) reubicados tras las ventanas
+    tab = avb.vb0                                  # donde empezaban las ventanas: ahora es el hueco de la cabecera
+    axes = a0 + be(b, a0 + 0x14)
+    arm = be(b, axes + 0x34)
+    hdr = a0 + be(b, a0 + arm + 4)
+    assert be(b, hdr) == nd, "el array de draws del hueso 0 no tiene los %d draws esperados" % nd
+    nuevo = bytearray(b[hdr:hdr + 0x60 * nd]) + bytearray(b[hdr + 0x60:hdr + 0xC0])     # plantilla: draw 1 (lista BODY)
+    struct.pack_into(">I", nuevo, 0, nd + 1)
+    o = 0x60 * nd
+    c = (nP.min(0) + nP.max(0)) / 2
+    struct.pack_into(">3f", nuevo, o + 0x10, *c)
+    struct.pack_into(">f", nuevo, o + 0x20, 0.0)
+    struct.pack_into(">I", nuevo, o + 0x24, n_mat << 16)
+    struct.pack_into(">I", nuevo, o + 0x30, 4)                          # prim 4 = lista de triangulos
+    struct.pack_into(">4I", nuevo, o + 0x38, avb.n, nv, cur, len(tris))
+    b[tab:tab + len(nuevo)] = nuevo
+    set32(b, a0 + arm + 4, tab - a0)
+    tab2 = (tab + len(nuevo) + 15) & ~15
+    mt = a0 + be(b, a0 + 0x20)
+    mats = bytearray(b[mt:mt + 0x50 * n_mat]) + bytearray(donor[davb.awg0 + be(donor, davb.awg0 + 0x20) + dd["material"] * 0x50:][:0x50])
+    struct.pack_into(">II", mats, 0x50 * n_mat + 0x30, dest, ramp)
+    b[tab2:tab2 + len(mats)] = mats
+    assert tab2 + len(mats) <= obj.vb0, "las tablas no caben en la cabecera ampliada"
+    set32(b, a0 + 0x20, tab2 - a0)
+    set32(b, a0 + 0x24, n_mat + 1)
+    set32(b, a0 + 0x18, max(be(b, a0 + 0x18), dest + 1, ramp + 1))
+    return bytes(b), {"scouter": "draw %d material %d (tex %d bloque %d,%d%s, rampa %d), %d ventanas, %d triangulos" % (
+        nd, n_mat, dest, bx0, by0, " a la mitad" if mitad else "", ramp, nv, len(tris)), "ventanas_total": new_n}
+
+
 def _selftest(cuerpo, pelo, salida):
     import model_render as mr  # noqa: PLC0415
     import vista_heroe as vh  # noqa: PLC0415

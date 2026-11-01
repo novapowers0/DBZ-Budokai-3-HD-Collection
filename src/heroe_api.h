@@ -18,6 +18,7 @@ int Traje();                  // traje del cuerpo (0..NumTrajes-1)
 int NumTrajes();              // trajes del cuerpo (tabla del select si esta en memoria)
 void PonerTraje(int t);
 const std::string& Nombre();  // nombre del heroe
+void PonerNombre(const std::string& n);   // sanea y limita a 16 bytes
 
 // --- sagas para el mapa (studies 8 fase 2, H5) ---
 int Saga();                                           // la siguiente por jugar (las de antes, completadas)
@@ -91,7 +92,9 @@ std::string ArgsCartas();                         // "ID:entrada,..." de las car
 int Esferas();                // mascara de 7 bits de las Esferas recogidas
 int Deseos();                 // deseos de Shenron pendientes
 bool RazaCerrada();           // el ultimo intento de cambiar raza/cuerpo se rechazo
-void GanarEsfera(int i);      // 0..6; a la septima se apunta un deseo
+void GanarEsfera(int i);      // 0..6: una por saga completada
+void ShenronAparece();        // Shenron (pantalla 11 nativa) aparece: se gastan las 7 Esferas
+void ConcederDeseo();         // fila "cambiar raza y cuerpo" de su menu: se apunta un deseo
 
 inline bool CuerpoPropio(int id) { return (id >= 100 && id <= 105) || (id >= 110 && id <= 115); }   // UT (100..105) o XV2 (110..115)
 inline bool CuerpoXv2(int id) { return id >= 110 && id <= 115; }

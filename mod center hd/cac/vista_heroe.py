@@ -98,7 +98,7 @@ def tira(model, size, giros, pitch=6.0):
     for k in range(giros):
         yaw = 360.0 * k / giros
         view = mr.rot_x(pitch) @ mr.rot_y(yaw)
-        img = mr.render(model, (size, size), view, ctr, esc, pose=pose, outline=1.4, ss=2)
+        img = mr.render(model, (size, size), view, ctr, esc, pose=pose, outline=1.2 if size >= 400 else 1.4, ss=2)
         out.alpha_composite(Image.fromarray(img), (size * k, 0))
     return out
 
@@ -191,6 +191,8 @@ def exportar_malla(model, pose, path):
     out += struct.pack("<IIf", len(texs), len(tris), float(hi[1] - lo[1]))
     for t in texs:
         img = (np.clip(t, 0, 1) * 255 + 0.5).astype(np.uint8)
+        while max(img.shape[:2]) > 256:   # piezas XV2 de 1024: la vista previa no las necesita (un .malla llego a 252 MB)
+            img = img[::2, ::2]
         out += struct.pack("<II", img.shape[1], img.shape[0]) + img.tobytes()
     blend = [model.mats[mi]["blend"] for mi in model.tri_mat]
     for i, tri in enumerate(tris):
@@ -357,27 +359,6 @@ def buscar_pelo(juego, pelo):
     return None
 
 
-def _caja(c, ex, ey, ez):
-    """12 triangulos de una caja (centro c, semiejes ex/ey/ez) con normales planas y uv 0..1."""
-    tris = []
-    for ax in range(3):
-        for sg in (-1, 1):
-            n = np.zeros(3)
-            n[ax] = sg
-            u, v = [a for a in range(3) if a != ax]
-            e = np.array([ex, ey, ez])
-            q = []
-            for a, b in ((-1, -1), (1, -1), (1, 1), (-1, 1)):
-                p = np.array(c, float)
-                p[ax] += sg * e[ax]
-                p[u] += a * e[u]
-                p[v] += b * e[v]
-                q.append((p, (a * 0.5 + 0.5, b * 0.5 + 0.5)))
-            tris.append((q[0], q[1], q[2], n))
-            tris.append((q[0], q[2], q[3], n))
-    return tris
-
-
 def ajustar_pelo(model, P, zonas, pieza, pose, pelo_nativo=None, usados=None):
     """Ajusta la pieza UT a la caja del pelo nativo (o a lo alto de la cabeza si el cuerpo no tiene pelo propio) [H]:
     el conversor UT->B3 no deja la pieza a la escala del cuerpo. Devuelve (pm, PP, PN, usados_pm, escala, Q) con Q las
@@ -539,28 +520,18 @@ def ficha_malla(model, ficha, juego, path, afs=None):
                       (0.5 + 0.5 * np.cos(a1), 0.5 - 0.5 * np.sin(a1))]
                 tris.append((np.array(pts), np.array([n] * 3), np.array(uv), ti, False))
             resumen["logo"] = logo
-    # --- scouter [H]: lente verde translucida delante del ojo izquierdo + la pieza de la oreja
+    # --- scouter NATIVO de B3 (el del "Goku con scouter", fid 281): su propia malla y los colores de su textura
     if int(ficha.get("scouter", 0)):
-        cara = [i for i, z in enumerate(zonas) if z == "cara"]
-        if cara:
-            vs = np.unique(model.tris[cara].reshape(-1))
-            flo, fhi = P[vs].min(0), P[vs].max(0)
-            w = fhi[0] - flo[0]
-            y = flo[1] + (fhi[1] - flo[1]) * 0.55
-            ojo = np.array([flo[0] + w * 0.22, y, fhi[2] + w * 0.04])
-            texs.append(_liso((0.15, 0.95, 0.35), 0.55))
-            tl = len(texs) - 1
-            texs.append(_liso((0.75, 0.75, 0.8)))
-            tm = len(texs) - 1
-            for (a, b, c, n) in _caja(ojo, w * 0.2, w * 0.13, w * 0.015):
-                tris.append((np.array([a[0], b[0], c[0]]), np.array([n] * 3), np.array([a[1], b[1], c[1]]), tl, True))
-            oreja = np.array([flo[0] - w * 0.02, y, (flo[2] + fhi[2]) / 2 + w * 0.12])
-            for (a, b, c, n) in _caja(oreja, w * 0.06, w * 0.16, w * 0.14):
-                tris.append((np.array([a[0], b[0], c[0]]), np.array([n] * 3), np.array([a[1], b[1], c[1]]), tm, False))
-            brazo = (oreja + ojo) / 2
-            for (a, b, c, n) in _caja(brazo, abs(ojo[0] - oreja[0]) / 2, w * 0.02, abs(ojo[2] - oreja[2]) / 2 + w * 0.02):
-                tris.append((np.array([a[0], b[0], c[0]]), np.array([n] * 3), np.array([a[1], b[1], c[1]]), tm, False))
-            resumen["scouter"] = 1
+        sc = scouter_extras(model, P, zonas, afs)
+        if sc:
+            ex, raw_sc, dd_sc = sc
+            dm_sc = mr.Model(raw_sc)
+            texs.append(np.asarray(dm_sc.tex[dm_sc.mats[dm_sc.table.draws[dd_sc]["material"]]["tex"]], np.float32))
+            ts = len(texs) - 1
+            for (i0, i1, i2) in ex["tris"]:
+                tris.append((np.array([ex["P"][i0], ex["P"][i1], ex["P"][i2]]), np.array([ex["N"][i0], ex["N"][i1], ex["N"][i2]]),
+                             np.array([ex["UV"][i0], ex["UV"][i1], ex["UV"][i2]]), ts, False))
+        resumen["scouter"] = len(sc[0]["tris"]) if sc else "sin donante: sin scouter"
     off = np.array([(lo[0] + hi[0]) / 2, lo[1], (lo[2] + hi[2]) / 2])
     n_orig, tabla = len(texs), []
     for i in range(n_orig):
@@ -787,36 +758,58 @@ def pintar_logo(out, model, P, zonas, ti, logo, disco):
     return n
 
 
-def scouter_extras(model, P, zonas):
-    """El scouter de la vista previa (lente + pieza de la oreja + brazo: tres cajas) como piezas rigidas a la cabeza
-    para injertar_pelo (color liso: la lente es verde opaca, no translucida). Mismas medidas que ficha_malla."""
-    cara = [i for i, z in enumerate(zonas) if z == "cara"]
-    if not cara:
-        return []
-    vs = np.unique(model.tris[cara].reshape(-1))
-    flo, fhi = P[vs].min(0), P[vs].max(0)
-    w = fhi[0] - flo[0]
-    y = flo[1] + (fhi[1] - flo[1]) * 0.55
-    ojo = np.array([flo[0] + w * 0.22, y, fhi[2] + w * 0.04])
-    oreja = np.array([flo[0] - w * 0.02, y, (flo[2] + fhi[2]) / 2 + w * 0.12])
-    brazo = (oreja + ojo) / 2
-    cajas = [((0.15, 0.95, 0.35), _caja(ojo, w * 0.2, w * 0.13, w * 0.015)),
-             ((0.75, 0.75, 0.8), _caja(oreja, w * 0.06, w * 0.16, w * 0.14)),
-             ((0.75, 0.75, 0.8), _caja(brazo, abs(ojo[0] - oreja[0]) / 2, w * 0.02,
-                                       abs(ojo[2] - oreja[2]) / 2 + w * 0.02))]
-    out = []
-    for rgb, tris in cajas:
-        Pp, Nn, tt = [], [], []
-        for (a, b, c, n) in tris:
-            k = len(Pp)
-            Pp += [a[0], b[0], c[0]]
-            Nn += [n, n, n]
-            tt.append((k, k + 1, k + 2))
-        out.append({"P": np.array(Pp), "N": np.array(Nn, float), "tris": tt, "rgb": rgb})
-    return out
+# 1/11: el scouter va como DRAW NUEVO con el material propio del modelo 281 (textura + rampa + flags), no como piezas de color
+# liso dentro del draw del pelo/cara (ese draw pasaba el color por la rampa del cuerpo). awo_tools/injertar_pelo.injertar_nativo.
+SCOUTER_NATIVO_ACTIVO = True
+SCOUTER_DONANTE = 281   # catalog_b3.cat: "Goku con scouter"; su scouter es un material propio (92 triangulos) tras los del cuerpo de Goku
 
 
-def injertar_ficha(amb, pieza, model=None, P=None, zonas=None, c1=CERO, c2=CERO, scouter=0, reserva=0, calva=None):
+def scouter_extras(model, P, zonas, afs=None):
+    """El scouter NATIVO de B3: la malla del material extra del modelo 281, rigida a la cabeza (marco HEAD, escala por el
+    ancho del craneo, centrada en la cara). Devuelve (ex, bytes del donante, draw del scouter) con ex = {"P","N","UV","tris"}
+    en espacio modelo del cuerpo, o None (sin afs, sin donante o sin cabeza: nunca se inventa geometria)."""
+    if afs is None or not SCOUTER_NATIVO_ACTIVO:
+        return None
+    try:
+        raw = bytes(afs.entry(SCOUTER_DONANTE))
+        dm = mr.Model(raw)
+        n_base = len(mr.Model(bytes(afs.entry(KFID[0][0]))).mats)
+        pose_d = pose_de(dm)
+        Pd, Nd = dm.posed(pose_d)
+        tm = np.asarray(dm.tri_mat)
+        idx = np.where(tm >= n_base)[0]
+        dh, hh = dm.bone("HEAD"), model.bone("HEAD")
+        if not 0 < len(idx) < 400 or dh is None or hh is None:
+            return None
+        ddraw = next(i for i, d in enumerate(dm.table.draws) if d["material"] == int(tm[idx[0]]))
+        dw, hw = np.asarray(dm.worlds(pose_d)), np.asarray(model.worlds(pose_de(model)))
+        inv_d, inv_h = np.linalg.inv(dw[dh]), np.linalg.inv(hw[hh])
+        zd = zonas_ficha(dm, Pd, pelo_color=True)
+        loc = lambda Pp, inv, v: Pp[v] @ inv[:3, :3].T + inv[:3, 3]  # noqa: E731
+        fd = np.unique(dm.tris[[i for i, z in enumerate(zd) if z == "cara"]].reshape(-1))
+        fh = np.unique(model.tris[[i for i, z in enumerate(zonas) if z == "cara"]].reshape(-1))
+        ld, lh = loc(Pd, inv_d, fd), loc(P, inv_h, fh)
+        cd, ch = (ld.max(0) + ld.min(0)) / 2, (lh.max(0) + lh.min(0)) / 2
+        ad, ah = _ancho_cabeza(dm, Pd, zd), _ancho_cabeza(model, P, zonas)
+        s = ah / ad if ad and ah and 0.5 < ah / ad < 1.8 else 1.0
+        Rh = hw[hh][:3, :3]
+        Pp, Nn, UU, tt = [], [], [], []
+        for i in idx:
+            v = dm.tris[i]
+            lp = (loc(Pd, inv_d, v) - cd) * s + ch
+            nn = (Nd[v] @ inv_d[:3, :3].T) @ Rh.T
+            b0 = len(Pp)
+            Pp += list(lp @ Rh.T + hw[hh][:3, 3])
+            Nn += list(nn / np.maximum(np.linalg.norm(nn, axis=1, keepdims=True), 1e-9))
+            UU += [tuple(dm.uv[k]) for k in v]
+            tt.append((b0, b0 + 1, b0 + 2))
+        return {"P": np.array(Pp), "N": np.array(Nn, float), "UV": np.array(UU, float), "tris": tt}, raw, ddraw
+    except Exception as e:   # noqa: BLE001 (sin scouter, nunca uno inventado)
+        print("vista_heroe: scouter nativo no disponible: %s: %s" % (type(e).__name__, e))
+        return None
+
+
+def injertar_ficha(amb, pieza, model=None, P=None, zonas=None, c1=CERO, c2=CERO, scouter=0, reserva=0, calva=None, afs=None):
     """Combate: el peinado UT (pieza) pegado a la cabeza del #AMB del cuerpo, con el pelo nativo quitado
     (awo_tools/injertar_pelo.py). `amb` ya lleva los colores de la ficha cocidos. Devuelve (bytes, resumen)."""
     import injertar_pelo as ip  # noqa: PLC0415
@@ -836,8 +829,7 @@ def injertar_ficha(amb, pieza, model=None, P=None, zonas=None, c1=CERO, c2=CERO,
     rgb = lambda c: None if tuple(c) == CERO else tuple(float(x) for x in _hsv_rgb(*[np.array(x) for x in objetivo(c)]))  # noqa: E731
     return ip.injertar(amb, model, [z == "pelo" for z in zonas], Q, PN, tris_ut, rgb1=rgb(c1), rgb2=rgb(c2),
                        cara_mask=[z == "cara" for z in zonas], presupuesto=ip.WINDOW_BUDGET - reserva,
-                       extras=((scouter_extras(model, P, zonas) if scouter else [])
-                               + (_extras_calva(calva, rgb(c1) or (0.16, 0.16, 0.19)) if pieza else [])) or None)
+                       extras=(_extras_calva(calva, rgb(c1) or (0.16, 0.16, 0.19)) if pieza else []) or None)
 
 
 # ficha.ropa -> prenda de Xenoverse (HUM_<item>_Bust del data.cpk del jugador); 0 = la nativa del cuerpo
@@ -1874,6 +1866,26 @@ def _compactar_vertices_b3(P, N, tris, uv_tri):
             np.asarray(nuevos, int))
 
 
+def _alargar_boca_guante_b3(P, aro):
+    """DS192: prolonga solo la boca del guante hasta la piel, sin mover dedos ni palma.
+
+    Freeza/Cooler tienen la mano anclada correctamente, pero el antebrazo de Goku sin su
+    munequera termina antes. El ajuste es local al hueso de mano y sirve tambien
+    para las variantes; la extension se anula al llegar al pivote (x=0).
+    """
+    P = np.asarray(P, float).copy()
+    x0 = float(P[:, 0].min())
+    destino_x = float(aro[:, 0].max())
+    if destino_x < x0 < 0.0:
+        from scipy.spatial import cKDTree  # noqa: PLC0415
+        peso = np.clip(P[:, 0] / x0, 0.0, 1.0)
+        _, cerca = cKDTree(aro[:, 1:]).query(P[:, 1:])
+        # La boca se suelda al aro de piel tambien radialmente: solo alargar
+        # X dejaba aun 0,30 u entre superficies de distinto grosor.
+        P += (aro[cerca] - P) * peso[:, None]
+    return P
+
+
 def _injertar_pieza_b3(amb, fid, zona, afs, color=None, host=None, host_zones=None, td_h=None, preparar=False):
     """Sustituye una zona del #AMB base por la zona medida de un donante B3, vía injertar_ropa."""
     import injertar_ropa as ir  # noqa: PLC0415
@@ -1883,6 +1895,11 @@ def _injertar_pieza_b3(amb, fid, zona, afs, color=None, host=None, host_zones=No
     current_bytes = bytes(amb)
     host = host or mr.Model(current_bytes)
     donor = mr.Model(afs.entry(fid))
+    # DS192: solo piezas rechazadas por el coordinador; las 38 aprobadas son
+    # una referencia binaria inmutable. Una reserva con piel no sirve para un
+    # guante que cubre la mano. 141 corrige solo el lado de HANDROT; 427 queda intacto.
+    reserva_guante = zona == "guantes" and fid in (81, 128, 129, 169, 181, 187, 193, 350, 351, 352, 353, 394)
+    cadena_brazo = zona == "guantes" and any("ZARM" in l for l in donor.labels)
     dp, dn = donor.posed()
     hz = host_zones if host_zones is not None else _zonas_pieza_b3(host)
     dz = _alinear_zonas(donor, _zonas_pieza_b3(donor), host, hz)
@@ -2150,6 +2167,32 @@ def _injertar_pieza_b3(amb, fid, zona, afs, color=None, host=None, host_zones=No
         escala_guante = max(1.0, hd_hero / max(hd_don, 1e-6)) if hd_don > 0 else 1.0
     placed, placed_nrm, placement = _retarget_zona_huesos_b3(
         dp[used], dn[used], used, donor, host, zone, bones_src, bone_out, unica=escala_guante)
+    if cadena_brazo:
+        # DS192: ZARM1..3 cuelgan de ARM1, ZARM4..7 de ARM2. Retargetear
+        # cada rama por separado abre la costura; estirar despues solo los
+        # triangulos clasificados ARM2 desplaza ZARM4 hasta 1,97 u (351).
+        # Un unico mapa continuo codo->muneca, tambien para los duplicados UV.
+        Wd, Wh = np.asarray(donor.worlds()), np.asarray(host.worlds())
+        for lado in ("R", "L"):
+            sd, sh = donor.bone(lado + "ARM2"), host.bone(lado + "ARM2")
+            md, mh = donor.bone("L00_" + lado + "HAND"), host.bone("L00_" + lado + "HAND")
+            od, oh = Wd[sd, :3, 3], Wh[sh, :3, 3]
+            ad, ah = Wd[md, :3, 3] - od, Wh[mh, :3, 3] - oh
+            ld, lh = np.linalg.norm(ad), np.linalg.norm(ah)
+            ad, ah = ad / ld, ah / lh
+            rot = Wh[sh, :3, :3] @ np.linalg.inv(Wd[sd, :3, :3])
+            esc = float(escala_guante or 1.0)
+            tr = rot * esc + np.outer(ah * (lh / ld) - (rot @ ad) * esc, ad)
+            ids_manga = [i for i, t in enumerate(src_tri_idx)
+                         if "HAND" not in _clave_tri(donor, int(t))
+                         and _clave_tri(donor, int(t)).startswith((lado + "ARM", lado + "ZARM"))]
+            sel = np.unique(np.searchsorted(used, src_original[ids_manga]).reshape(-1))
+            rel = dp[used[sel]] - od
+            placed[sel] = oh + rel @ tr.T
+            nn = dn[used[sel]] @ np.linalg.inv(tr)
+            placed_nrm[sel] = nn / np.maximum(np.linalg.norm(nn, axis=1), 1e-9)[:, None]
+            bone_out[sel] = np.where(rel @ ad >= 0.0, sh, host.bone(lado + "ARM1"))
+        manga_larga_ = True
     placed = _empalmar_alto(placed, host, hz, zone)
     loc_tris = np.asarray([[np.searchsorted(used, v) for v in t] for t in src_original])
     if not guantes_molde:   # (guantes: nada de piezas rigidas; la manga va por hueso, y el camino rigido la encogia
@@ -2282,6 +2325,8 @@ def _injertar_pieza_b3(amb, fid, zona, afs, color=None, host=None, host_zones=No
                 # (solo la prenda del ANTEBRAZO, y solo en radial: la mano queda fuera del molde y ceñirla la empujaba
                 # por el eje del brazo, despegándola de la muñeca)
                 es_arm2 = np.asarray([_clave_tri(donor, int(t)) in ("RARM2", "LARM2") for t in src_tri_idx], bool)
+                if cadena_brazo:
+                    es_arm2[:] = False  # ya ajustado continuamente; no estirar una segunda vez
                 tela_arm = np.unique(loc_tris[~piel_d & es_arm2].reshape(-1)) if (~piel_d & es_arm2).any() else np.zeros(0, int)
                 if len(tela_arm):
                     Wh_ = np.asarray(host.worlds())
@@ -2389,7 +2434,7 @@ def _injertar_pieza_b3(amb, fid, zona, afs, color=None, host=None, host_zones=No
             sel = np.flatnonzero(rot_)[hombro]
             bone_out = bone_out.copy()
             bone_out[sel] = nuevo[hombro]
-    if guantes_molde and not len(tela_arm):
+    if guantes_molde and not len(tela_arm) and not cadena_brazo:
         # 26/10 DS74 (128/129, guante SIN manga: Majin Buu). Medido: el donante solo trae la MANO y su malla deja un ojo
         # de fondo entre el pulgar y la palma (20/18 px con la pose del retrato); ademas su boca de puño es mas ancha que
         # el antebrazo del heroe. Se conserva la mano del heroe debajo (rellena el ojo; el guante la tapa), se suelda el
@@ -2532,7 +2577,7 @@ def _injertar_pieza_b3(amb, fid, zona, afs, color=None, host=None, host_zones=No
     # nivel del codo (mediana de la mitad del aro mas cercana al codo). No se quita piel ni se abre nada: la tela pasa a
     # cubrir la V. Se mide con el rango del aro: si ya es plano (424: 0,27 u; umbral 0,13 del antebrazo) no se toca.
     piel_tri = np.asarray(piel_d[quedan], bool) if len(quedan) == len(piel_d) else None
-    if manga_larga_ and piel_tri is not None and len(src_tris):
+    if manga_larga_ and not cadena_brazo and piel_tri is not None and len(src_tris):
         from collections import Counter as _C94  # noqa: PLC0415
         P_arr = np.asarray(P_out, float).copy()
         cloth_t = np.asarray(src_tris)[~piel_tri]
@@ -2628,6 +2673,10 @@ def _injertar_pieza_b3(amb, fid, zona, afs, color=None, host=None, host_zones=No
             P_arr[ids_] += (nivel_dst - tv[grupo])[:, None] * ax_[None, :]
         P_out = P_arr
     quitar = (np.asarray([z == zone for z in hz], bool) & ~piel_h) | tapada
+    if zona == "guantes" and fid in (128, 129):
+        # DS192: la mano nativa bajo el guante no puede quedar dibujada
+        # junto con su reserva L00 (doble mano en golpe/caida).
+        quitar |= np.asarray(["HAND" in _clave_tri(host, i) for i in range(len(host.tris))])
     if guantes_molde:
         # 27/10 DS187: si el donante NO trae manga en un antebrazo, el antebrazo del heroe se
         # queda ENTERO (piel y munequera). Antes la munequera se borraba por ser "de la zona
@@ -2662,6 +2711,31 @@ def _injertar_pieza_b3(amb, fid, zona, afs, color=None, host=None, host_zones=No
         host_hand = np.asarray(["HAND" in str(k) for k in claves_h], bool)
         lados_h = np.asarray([("R" if str(k).endswith("RHAND") else "L") if "HAND" in str(k) else "" for k in claves_h])
         lados_q = [("R" if str(k).endswith("RHAND") else "L") if "HAND" in str(k) else "" for k in claves_q]
+        if reserva_guante or fid == 141:
+            # DS192: HANDROT tambien es parte de la boca del guante. El
+            # endswith(RHAND) mandaba el manguito DERECHO a la mano IZQUIERDA
+            # (128/129/141: vertices a -13,3 u en local, fragmento flotante).
+            lados_q = [("R" if "RHAND" in str(k) else "L") if "HAND" in str(k) else "" for k in claves_q]
+        bocas = {}
+        if fid in (169, 181, 187, 193):
+            # DS192: distancia medida de 0,43 u: la mano no flota por un marco
+            # incorrecto; falta la union con la piel tras quitar la munequera.
+            W = np.asarray(host.worlds())
+            P_out = np.asarray(P_out, float).copy()
+            for lado in ("R", "L"):
+                gb = int(host.table.draws[hand_draws[lado]]["group_bone"])
+                inv = np.linalg.inv(W[gb])
+                piel_lado = piel_molde & np.asarray([_clave_tri(host, i) == lado + "ARM2" for i in range(len(host.tris))])
+                ref = hp_[np.unique(host.tris[piel_lado])]
+                if not len(ref):
+                    continue
+                ref = ref @ inv[:3, :3].T + inv[:3, 3]
+                bocas[lado] = ref[ref[:, 0] >= ref[:, 0].max() - 1e-4]
+                ts = np.flatnonzero(mano_q & np.asarray([l == lado for l in lados_q], bool))
+                vv = np.unique(src_tris[ts])
+                local = P_out[vv] @ inv[:3, :3].T + inv[:3, 3]
+                local = _alargar_boca_guante_b3(local, bocas[lado])
+                P_out[vv] = local @ W[gb, :3, :3].T + W[gb, :3, 3]
         partes = []
         # manga/antebrazo -> draw del antebrazo del cuerpo
         sel_manga = np.flatnonzero(~mano_q)
@@ -2701,11 +2775,26 @@ def _injertar_pieza_b3(amb, fid, zona, afs, color=None, host=None, host_zones=No
                 dm = vs["dm"]
                 esc = float(escala_guante) if escala_guante else 1.0
                 Pv = np.asarray(dm.pos, float) * esc
+                if vs["side"] in bocas:
+                    Pv = _alargar_boca_guante_b3(Pv, bocas[vs["side"]])
                 Nv = np.asarray(dm.nrm, float)
                 uv_tri_v = uv_var_mapped[vi]
                 Pv, Nv, UVv, tris_v = _compactar_vertices_b3(Pv, Nv, dm.tris, uv_tri_v)
                 fuente = "variante %s" % vs["host_label"]
             else:
+                if reserva_guante:
+                    lado = vs["side"]
+                    sel = np.flatnonzero(mano_q & np.asarray([l == lado for l in lados_q], bool))
+                    gb = int(host.table.draws[hand_draws[lado]]["group_bone"])
+                    vv = np.unique(src_tris[sel])
+                    remap = {int(v): i for i, v in enumerate(vv)}
+                    variantes.append({"awg": int(vs["host_awg"]), "P": np.asarray(P_out)[vv],
+                                      "N": np.asarray(N_out)[vv], "UV": np.asarray(U_out)[vv],
+                                      "tris": np.asarray([[remap[int(v)] for v in t] for t in src_tris[sel]], int),
+                                      "marco": np.asarray(host.worlds())[gb],
+                                      "tex": tex_destino, "ramp": rampa_guante,
+                                      "fuente": "mano L00 del donante, marco group_bone %d" % gb})
+                    continue
                 # 27/10 DS161 + coordinador: el donante no tiene esta pose. Copiar su mano L00 (abierta)
                 # sacaba la mano SUELTA en todas las poses (reposo L38 y las de golpe/salto, 99 y 447 en
                 # combate): el juego dibuja la variante con la pose del hueso de la mano de esa etiqueta.
@@ -3095,6 +3184,8 @@ def rostro_texturas(model, P, dm, gesto=None, acum=None, n0=None):
                 g = lambda yy, xx: src[np.clip(yy, 0, sh - 1), np.clip(xx, 0, sw - 1)]  # noqa: E731
                 c[mm] = ((1 - ay) * ((1 - ax) * g(y0, x0) + ax * g(y0, x0 + 1))
                          + ay * ((1 - ax) * g(y0 + 1, x0) + ax * g(y0 + 1, x0 + 1)))
+                # alfa = banda de la rampa, no se interpola: una banda intermedia salia como parches claros en la piel
+                c[mm, 3] = g(np.rint(fy).astype(int), np.rint(fx).astype(int))[:, 3]
             col[m_h] = c
         # la rampa de la piel del donante -> la del cuerpo (por banda: el alfa es la banda toon)
         rd, rh = _rampa_piel(dm), _rampa_piel(model)
@@ -3102,13 +3193,25 @@ def rostro_texturas(model, P, dm, gesto=None, acum=None, n0=None):
             col[:, :3] = np.clip(col[:, :3] - rd + rh, 0, 1)
         base = th % n0
         out = np.asarray(acum.get(base, model.tex[th]), np.float32).copy()
+        # Solo la franja de ojos y cejas: boca, nariz, orejas y linea del pelo se quedan los del cuerpo. La proyeccion por
+        # posicion las emborronaba y traia parches (oreja) y trozos del pelo del donante a la frente (queja del usuario, 31/10).
+        franja = np.ones(len(ys), bool)
+        if mh:
+            ojo_y = (mh[0][0][1] + mh[0][1][1]) / 2
+            alto_cara = max(ojo_y - mh[1][1], 1e-6)
+            ojo_x = abs(mh[0][0][0] - mh[0][1][0]) / 2
+            X0 = np.einsum("ij,ijk->ik", bs, Lh[v3])
+            franja = (X0[:, 1] > ojo_y - FRANJA_ABAJO * alto_cara) & (X0[:, 1] < ojo_y + FRANJA_ARRIBA * alto_cara) & (np.abs(X0[:, 0]) < FRANJA_X * ojo_x)
         # piel primero y la placa encima: en Goku las dos capas usan la MISMA zona de textura para los ojos y la piel (que en
         # el juego queda detras) pisaba los ojos de la placa
         for capa in (False, True):
-            m_ = capa_h == capa
+            m_ = (capa_h == capa) & franja
             out[ys[m_], xs[m_]] = col[m_]
         acum[base] = out
     return acum
+
+
+FRANJA_ABAJO, FRANJA_ARRIBA, FRANJA_X = 0.42, 0.75, 1.9   # respecto a la distancia ojos-boca y a la mitad entre ojos
 
 
 # Rostros PROPIOS (25/10): ojos REALES de B3 (los del juego del jugador) con otro gesto. El usuario pidio tipos tipo
@@ -4415,12 +4518,12 @@ def combate_bin(amb, ficha, juego=None, afs=None):
     r.update(texturas_tenidas=hechas, no_dxt3=saltadas)
     pelo = int(ficha.get("pelo", 0))
     pieza = buscar_pelo(juego, pelo) if pelo > 0 and _xv2_piezas_activas(juego) else None
-    scouter = int(ficha.get("scouter", 0))
-    if pieza or scouter:   # peinado UT / scouter en el combate: geometria nueva pegada a la cabeza (TABLE de paleta intacta)
+    scouter = int(ficha.get("scouter", 0)) if SCOUTER_NATIVO_ACTIVO else 0
+    if pieza:   # peinado UT en el combate: geometria nueva pegada a la cabeza (TABLE de paleta intacta)
         try:
             amb2, ri = injertar_ficha(bytes(amb), pieza, model, P, zonas, c1, c2, scouter,
-                                      reserva=450 if int(ficha.get("ropa", 0)) in PRENDAS else 0,   # ventanas para la prenda
-                                      calva=_calva(model, P, zonas, afs) if pieza and afs is not None else None)
+                                      reserva=(450 if int(ficha.get("ropa", 0)) in PRENDAS else 0) + (160 if scouter else 0),   # prenda + scouter
+                                      calva=_calva(model, P, zonas, afs) if pieza and afs is not None else None, afs=afs)
             amb, r["pelo"] = bytearray(amb2), ri
         except Exception as e:   # noqa: BLE001 (sin injerto: el combate sale con el pelo nativo tenido)
             r["pelo"] = "FALLO %s: %s" % (type(e).__name__, e)
@@ -4451,6 +4554,17 @@ def combate_bin(amb, ficha, juego=None, afs=None):
         amb = bytearray(amb_b3)
         if piezas_b3:
             r["piezas_b3"] = piezas_b3
+        if scouter:   # el ultimo: sus tablas reubicadas van al final del buffer de ventanas
+            try:
+                sc = scouter_extras(model, P, zonas, afs)
+                if sc:
+                    import injertar_pelo as ip  # noqa: PLC0415
+                    amb2, rs = ip.injertar_nativo(bytes(amb), *sc)
+                    amb, r["scouter"] = bytearray(amb2), rs
+                else:
+                    r["scouter"] = "sin donante: sin scouter"
+            except Exception as e:   # noqa: BLE001 (sin scouter, nunca uno mal puesto)
+                r["scouter"] = "FALLO %s: %s" % (type(e).__name__, e)
     return bytes(amb), r
 
 
@@ -4616,19 +4730,22 @@ def _xv2_piezas_activas(juego):
         return False
 
 
-def modelo_xv2(afs, ficha, juego):
+def modelo_xv2(afs, ficha, juego, previa=False):
     """C6: el heroe armado con piezas del creador de Xenoverse 2 (xv2/xv2_cac_b3.py), leidas de la copia del jugador.
     Plantilla = bin del donante (esqueleto y paleta); resultado en cache por ficha."""
     import hashlib
     sys.path.insert(0, os.path.join(os.path.dirname(HERE), "xv2"))
-    import xv2_cac_b3 as xc
+    try:
+        import xv2_cac_b3 as xc
+    except ImportError:   # release sin la carpeta xv2/: heroe base de B3 en vez de fallar
+        return _modelo_nativo_sin_xv2(afs, ficha, juego)
     if not xc.L.disponible() or not _xv2_piezas_activas(juego):   # sin XV2 o opcion apagada: heroe base de B3
         return _modelo_nativo_sin_xv2(afs, ficha, juego)
     sel = xc.leer_sel(ficha.get("xv2", ""))
     sel["raza"] = XV2_RAZAS[ficha["cuerpo"] - XV2_CUERPO[0]]
     hsv = {z: tuple(c) for z, c in zip(XV2_ZONAS, ficha.get("partes", [])) if tuple(c) != CERO}
-    huella = hashlib.sha256((json.dumps([sel, hsv, ficha.get("donante", 0)], sort_keys=True) + "xv2-v1" + os.environ.get("C6_DIAG", "") + os.environ.get("C6_SKIP", "") + os.environ.get("C6_HAIR_OFS", "") + os.environ.get("C6_NOSOMBRA", "") + os.environ.get("C6_LINEAS_CARA", "") + os.environ.get("C6_FLAT", "") + os.environ.get("C6_HAIR_DY", "") + os.environ.get("C6_HAIR_GAP", "") +
-                             str(os.stat(xc.__file__).st_mtime_ns) + str(os.stat(xc.X.__file__).st_mtime_ns) + str(os.stat(os.path.join(os.path.dirname(HERE), "..", "awo_tools", "sdbh_model.py")).st_mtime_ns)).encode()).hexdigest()[:24]
+    huella = hashlib.sha256((json.dumps([sel, hsv, ficha.get("donante", 0)], sort_keys=True) + "xv2-v2" + str(previa) + os.environ.get("C6_DIAG", "") + os.environ.get("C6_SKIP", "") + os.environ.get("C6_HAIR_OFS", "") + os.environ.get("C6_NOSOMBRA", "") + os.environ.get("C6_LINEAS_CARA", "") + os.environ.get("C6_FLAT", "") + os.environ.get("C6_HAIR_DY", "") + os.environ.get("C6_HAIR_GAP", "") +
+                             str(os.stat(xc.__file__).st_mtime_ns) + str(os.stat(xc.X.__file__).st_mtime_ns) + "".join(str(os.stat(os.path.join(os.path.dirname(HERE), "..", "awo_tools", n)).st_mtime_ns) for n in ("sdbh_model.py", "xeno_a_b3.py", "xeno_gestos.py"))).encode()).hexdigest()[:24]
     work = os.path.join(juego, "user_data", "dbz3", "cac_xv2")
     os.makedirs(work, exist_ok=True)
     dst = os.path.join(work, huella + ".bin")
@@ -4637,7 +4754,7 @@ def modelo_xv2(afs, ficha, juego):
         fids = KFID.get(ficha.get("donante", 0)) or KFID[0]
         with open(tpl, "wb") as fh:
             fh.write(afs.entry(fids[0]))
-        xc.componer(sel, tpl, dst + ".tmp", hsv)
+        xc.componer(sel, tpl, dst + ".tmp", hsv, previa=previa)
         os.replace(dst + ".tmp", dst)
     with open(dst, "rb") as fh:
         return fh.read(), {"fuente": "xv2:%s %s" % (sel["raza"], ficha.get("xv2", "")), "bin": dst}
@@ -4728,6 +4845,11 @@ def main():
     salida = os.path.join(a.juego, "ingame_ui", "heroe_vista")
     os.makedirs(salida, exist_ok=True)
     if a.ficha and a.combate:
+        # el juego lo lanza sin consola: todo (tambien los procesos hijos) a un fichero, o un fallo no deja rastro
+        fd = os.open(os.path.join(salida, "montaje.log"), os.O_WRONLY | os.O_CREAT | os.O_TRUNC)
+        os.dup2(fd, 1)
+        os.dup2(fd, 2)
+        sys.stdout = sys.stderr = open(fd, "w", encoding="utf-8", buffering=1)
         f = leer_ficha(a.ficha)
         if f.get("cuerpo", 0) not in KFID and not 100 <= f.get("cuerpo", 0) <= 115:
             print("vista_heroe: cuerpo %s sin modelo" % f.get("cuerpo"))
@@ -4745,13 +4867,14 @@ def main():
             print("vista_heroe: historia del Heroe en DU (3 casillas): %s" % ("al dia" if rc == 0 else "FALLO %s" % rc))
         except Exception as e:   # noqa: BLE001 (sin historia: el Heroe sigue con las misiones)
             print("vista_heroe: historia del Heroe en DU no montada: %s" % e)
-        return 0
+            rc = 1
+        return 3 if rc else 0   # el juego lo avisa en su registro (heroe_ui.cpp)
     if a.ficha:
         f = leer_ficha(a.ficha)
         if 100 <= f.get("cuerpo", 0) <= 115:   # G06a/C6: exportar exactamente el modelo del combate
             work = tempfile.mkdtemp(prefix="vista_cac_ut_")
             afs = rb.Afs(os.path.join(rb.us_dir(a.us), "data_cmn.afs"), work)
-            datos, r = (modelo_xv2 if f["cuerpo"] >= XV2_CUERPO[0] else modelo_ut)(afs, f, a.juego)
+            datos, r = (modelo_xv2(afs, f, a.juego, previa=True) if f["cuerpo"] >= XV2_CUERPO[0] else modelo_ut(afs, f, a.juego))
             m = mr.Model(datos)
             dst = os.path.join(salida, (a.clave or "f_prueba") + ".malla")
             exportar_malla(m, pose_de(m), dst)
@@ -4760,7 +4883,7 @@ def main():
             # ni huecos; el combate mantiene la geometría completa.
             # K: la vista previa del menu pinta la .malla en 3D (Pintar3D); la tira de 12 giros (9 s de raster por software)
             # solo es el marcador mientras carga: 1 solo fotograma pequeno (el juego deduce los giros de ancho/alto)
-            tira(m, 192, 1).save(os.path.splitext(dst)[0] + ".png")
+            tira(m, 512, 1).save(os.path.splitext(dst)[0] + ".png")   # lo que ve el jugador al elegir: a 192 px salia borrosa, con cara y pelo en manchas
             print("vista_heroe: cuerpo UT -> %s (%s)" % (dst, r["fuente"]))
             return 0
         fids = KFID.get(f.get("cuerpo", 0))

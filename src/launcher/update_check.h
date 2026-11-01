@@ -54,6 +54,11 @@ std::string LatestReleaseUrl();
 // headers, each ending in CRLF. Returns the body of a 200 response, or "".
 std::string HttpGet(const wchar_t* host, const wchar_t* path, const wchar_t* headers = nullptr);
 
+// GET de una URL completa (matchmaking del online). https:// usa las mismas vias que HttpGet (3 de WinHTTP, luego curl);
+// http:// (solo servidor de pruebas local) va con curl. Devuelve false si no llego al servidor o no fue un 200;
+// un 200 sin cuerpo es true con body vacio. Solo hilos de fondo.
+bool HttpGetUrl(const std::string& url, std::string& body);
+
 // Motivo del ultimo fallo de red ("auto: error 12007, sistema: error 12029, curl: ...") o "" si la ultima
 // peticion salio bien. Para el aviso del launcher y para que el jugador lo copie al pedir ayuda.
 std::string LastNetworkError();
@@ -66,8 +71,16 @@ long long HttpDownload(const std::string& url, const std::wstring& headers,
                        const std::filesystem::path& out, bool append,
                        const std::function<void(long long)>& progress);
 
-// Opens a URL in the user's default browser (no-op off Windows).
+// Descarga con curl.exe del sistema (http/https, reintentos, `-C -`): si `out` ya tiene un trozo, sigue por ahi, tambien
+// tras cerrar el launcher. `headers` como en HttpDownload (solo al primer host). Devuelve el tamano de `out` o -1.
+long long HttpDownloadReanudable(const std::string& url, const std::string& headers, const std::filesystem::path& out,
+                                 const std::function<void(long long)>& progress);
+
+// Opens an https URL in the user's default browser (ShellExecute / xdg-open).
 void OpenUrl(const std::string& url);
+
+// Opens a folder in the file manager (explorer / xdg-open): one helper for every "Abrir carpeta" button.
+void OpenFolder(const std::filesystem::path& dir);
 
 // --- Installed-file consistency --------------------------------------------
 // Every release replaces dbz3.exe AND the runtime DLLs together. Users routinely

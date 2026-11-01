@@ -4,6 +4,7 @@
 
 #include "../mods.h"
 #include "i18n.h"
+#include "settings.h"
 #include "update_check.h"
 
 #include <rex/filesystem.h>
@@ -405,6 +406,189 @@ void InstallNovaMod(const NovaMod& mod) {
     g_status = error.empty() ? mod.name + i18n::T(": instalado. Se aplica al pulsar JUGAR.", ": installed. It applies when you press PLAY.")
                              : mod.name + ": " + error;
   }).detach();
+}
+
+// ---- Videos HD (ver novas_mods.h) ----
+namespace {
+struct VideoHd {
+  std::string nombre, url, sha256;
+  long long size = 0;
+};
+std::mutex g_vhd_mu;
+std::vector<VideoHd> g_vhd;
+std::string g_vhd_msg;
+std::atomic<bool> g_vhd_lista{false}, g_vhd_fallo{false}, g_vhd_leyendo{false}, g_vhd_busy{false};
+std::atomic<long long> g_vhd_hecho{0};
+
+fs::path VhdDir() { return ExeDir() / "videos_hd"; }
+void VhdMsg(const std::string& s) {
+  std::lock_guard<std::mutex> lock(g_vhd_mu);
+  g_vhd_msg = s;
+}
+// Token solo hacia la API de GitHub (repositorio privado de Nova's Mods); un alojamiento normal no lo ve.
+std::string VhdCabeceras(const std::string& url, const char* accept) {
+  if (url.rfind("https://api.github.com/", 0) != 0) return {};
+  const std::string token = Token();
+  return token.empty() ? std::string() : "Authorization: Bearer " + token + "\r\nAccept: " + accept + "\r\n";
+}
+// https, o http solo en este PC (la prueba local); la huella SHA-256 de la lista protege los ficheros.
+bool VhdUrlValida(const std::string& u) {
+  return u.rfind("https://", 0) == 0 || u.rfind("http://127.0.0.1", 0) == 0 || u.rfind("http://localhost", 0) == 0;
+}
+bool VhdPlano(const std::string& s) {
+  return !s.empty() && s.find("..") == std::string::npos &&
+         std::all_of(s.begin(), s.end(), [](char c) { return std::isalnum(uint8_t(c)) || c == '_' || c == '-' || c == '.'; });
+}
+bool VhdLeer() {
+  const std::string url = dbz3::settings::VideosHdUrl();
+  if (!VhdUrlValida(url)) return false;
+  std::error_code ec;
+  const fs::path tmp = ExeDir() / "novas_tmp";
+  fs::create_directories(tmp, ec);
+  const fs::path f = tmp / "videos_hd.toml";
+  fs::remove(f, ec);
+  if (HttpDownloadReanudable(url, VhdCabeceras(url, "application/vnd.github.raw"), f, nullptr) <= 0) return false;
+  std::vector<VideoHd> v;
+  try {
+    const toml::table tbl = toml::parse_file(rex::path_to_utf8(f));
+    const std::string dir = url.substr(0, url.rfind('/') + 1);
+    if (const toml::array* a = tbl["video"].as_array()) {
+      for (const toml::node& n : *a) {
+        const toml::table* e = n.as_table();
+        if (!e) continue;
+        VideoHd h;
+        h.nombre = (*e)["nombre"].value_or(std::string());
+        h.url = (*e)["url"].value_or(dir + h.nombre);
+        h.sha256 = (*e)["sha256"].value_or(std::string());
+        h.size = (*e)["size"].value_or(0LL);
+        std::transform(h.sha256.begin(), h.sha256.end(), h.sha256.begin(), [](unsigned char c) { return char(std::tolower(c)); });
+        if (!VhdPlano(h.nombre) || !VhdUrlValida(h.url) || h.size <= 0 || h.sha256.size() != 64) return false;
+        v.push_back(std::move(h));
+      }
+    }
+  } catch (const std::exception& ex) {
+    REXLOG_WARN("dbz3 videos HD: lista ilegible ({})", ex.what());
+    return false;
+  }
+  fs::remove(f, ec);
+  if (v.empty()) return false;
+  std::lock_guard<std::mutex> lock(g_vhd_mu);
+  g_vhd = std::move(v);
+  return true;
+}
+}  // namespace
+
+void VideosHdLeerLista() {
+  if (g_vhd_lista || g_vhd_fallo || g_vhd_leyendo.exchange(true)) return;
+  std::thread([] {
+    const bool ok = VhdLeer();
+    g_vhd_lista = ok;
+    g_vhd_fallo = !ok;
+    if (!ok) REXLOG_WARN("dbz3 videos HD: no se pudo leer la lista de {}", dbz3::settings::VideosHdUrl());
+    g_vhd_leyendo = false;
+  }).detach();
+}
+
+VideosHdEstado GetVideosHd() {
+  VideosHdEstado e;
+  e.lista = g_vhd_lista;
+  e.fallo_lista = g_vhd_fallo;
+  e.trabajando = g_vhd_busy;
+  std::error_code ec;
+  for (fs::directory_iterator it(VhdDir(), ec), end; !ec && it != end; it.increment(ec))
+    if (it->path().extension() == ".mp4") e.en_disco += (long long)it->file_size(ec);
+  std::lock_guard<std::mutex> lock(g_vhd_mu);
+  e.mensaje = g_vhd_msg;
+  e.instalados = e.en_disco > 0;
+  for (const VideoHd& h : g_vhd) {
+    e.total += h.size;
+    if (!fs::exists(VhdDir() / h.nombre, ec)) e.instalados = false;
+  }
+  e.hecho = g_vhd_hecho;
+  return e;
+}
+
+void VideosHdInstalar() {
+  if (g_vhd_busy.exchange(true)) return;
+  std::thread([] {
+    std::string error;
+    std::error_code ec;
+    std::vector<VideoHd> lista;
+    if (VhdLeer()) {
+      g_vhd_lista = true, g_vhd_fallo = false;
+      std::lock_guard<std::mutex> lock(g_vhd_mu);
+      lista = g_vhd;
+    } else {
+      error = i18n::T("no se pudo leer la lista de vídeos (revisa tu conexión)", "could not read the video list (check your connection)");
+    }
+    fs::create_directories(VhdDir(), ec);
+    long long falta = 0, base = 0;
+    for (const VideoHd& h : lista) {   // lo que queda por bajar: sin lo ya colocado ni los trozos
+      const fs::path d = VhdDir() / h.nombre, parte = VhdDir() / (h.nombre + ".parte");
+      falta += fs::exists(d, ec) ? 0 : h.size - (fs::exists(parte, ec) ? (long long)fs::file_size(parte, ec) : 0LL);
+    }
+    const fs::space_info sp = fs::space(ExeDir(), ec);
+    if (error.empty() && !ec && (long long)sp.available < falta + (64LL << 20))
+      error = i18n::T("no hay espacio libre suficiente", "not enough free space");
+    g_vhd_hecho = 0;
+    for (const VideoHd& h : lista) {
+      if (!error.empty()) break;
+      const fs::path dest = VhdDir() / h.nombre, parte = VhdDir() / (h.nombre + ".parte");
+      if (fs::exists(dest, ec) && (long long)fs::file_size(dest, ec) == h.size) {
+        base += h.size;
+        g_vhd_hecho = base;
+        continue;
+      }
+      // Dos intentos: el segundo solo si la huella no coincide (el trozo era malo: se empieza de cero).
+      for (int intento = 0; intento < 2; ++intento) {
+        error.clear();
+        VhdMsg(h.nombre);
+        const auto tam = [&] { std::error_code e2; return fs::exists(parte, e2) ? (long long)fs::file_size(parte, e2) : 0LL; };
+        if (tam() > h.size) fs::remove(parte, ec);
+        long long n = tam();
+        // curl no reintenta un corte a medias: mientras avance, sigue solo por donde iba
+        for (long long antes = -1; n != h.size && n > antes;) {
+          antes = n;
+          HttpDownloadReanudable(h.url, VhdCabeceras(h.url, "application/octet-stream"), parte,
+                                 [&](long long b) { g_vhd_hecho = base + b; });
+          n = tam();
+        }
+        if (n != h.size) {   // el trozo se queda: el siguiente intento sigue por donde iba
+          error = i18n::T("descarga cortada; pulsa Reintentar y seguirá por donde iba",
+                          "download interrupted; press Retry and it will carry on");
+          break;
+        }
+        VhdMsg(std::string(i18n::T("Comprobando ", "Checking ")) + h.nombre + "...");
+        const std::string got = Sha256File(parte);
+        if (got == h.sha256) {
+          error.clear();
+          break;
+        }
+        REXLOG_WARN("dbz3 videos HD: {} no coincide (esperado {}, bajado '{}')", h.nombre, h.sha256, got);
+        fs::remove(parte, ec);
+        error = i18n::T("el archivo llegó dañado; no se instala", "the file arrived damaged; not installed");
+      }
+      if (!error.empty()) break;
+      fs::rename(parte, dest, ec);
+      if (ec) error = i18n::T("no se pudo colocar el archivo", "could not place the file");
+      base += h.size;
+      g_vhd_hecho = base;
+    }
+    REXLOG_INFO("dbz3 videos HD: instalar -> {}", error.empty() ? "ok" : error);
+    VhdMsg(error);
+    g_vhd_busy = false;
+  }).detach();
+}
+
+void VideosHdDesinstalar() {
+  if (g_vhd_busy) return;
+  std::error_code ec;
+  fs::create_directories(ExeDir() / "mods_respaldo", ec);
+  fs::rename(VhdDir(), ExeDir() / "mods_respaldo" / ("videos_hd_" + Stamp()), ec);
+  REXLOG_INFO("dbz3 videos HD: apartados a mods_respaldo ({})", ec ? ec.message() : "ok");
+  dbz3::settings::SetVideosHd(false);
+  VhdMsg(ec ? i18n::T("no se pudo apartar la carpeta (¿juego abierto?)", "could not move the folder (is the game open?)") : "");
+  g_vhd_hecho = 0;
 }
 
 }  // namespace dbz3::launcher

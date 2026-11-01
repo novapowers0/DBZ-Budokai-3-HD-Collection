@@ -40,6 +40,8 @@ int Visibles();   // altas con casilla en el selector (las primeras; los campos 
 // true si hay un alta de mod puesta en el registro anfitrion, o sea, el escenario cargado es un alta
 // (frente 05: lo usa el bloqueo del cambio de zona del motor en escenarios.cpp).
 bool AltaActiva();
+// Fase 3 (musica): true mientras el selector de escenarios del Duelo esta en pantalla (hilo del juego -> hilo de la interfaz).
+bool SelectorVisible();
 // Registro del alta del campo de Infinite World `campo` (DATA_CMN de IW: 881, 883, 884, 897, 900, 903, 906, 909...)
 // que crea mod center hd/campos_iw.py en la copia del jugador (carpeta "Campo IW <campo>"), o -1 si no esta
 // instalado (frente R8).
@@ -57,7 +59,10 @@ std::string Nombre(int registro);
 // ZB 25/10: escena de camara del cambio de zona de B2 (stage.toml `zona_escena`). AplicarCamaraEscena la llama el dibujo del escenario
 // (clima.cpp) y pisa la camara del juego mientras dura; EscenaDeZona = esta en marcha.
 void AplicarCamaraEscena(uint8_t* base);
+// Fuente real del render: struct activa antes de820F4300, no solo mgr+60.
+void AplicarCamaraB2AntesDelDibujo(uint8_t* base);
 bool EscenaDeZona();
+bool TransicionB2Activa(); // el límite de distancia nativo se omite durante una escena, como mgr+35204
 // NB006 (IW): apaga SOLO la geometria/cielo del escenario (bit 0 de G+0x4C), sin tocar a los luchadores.
 void OcultarFondo(bool ocultar);
 

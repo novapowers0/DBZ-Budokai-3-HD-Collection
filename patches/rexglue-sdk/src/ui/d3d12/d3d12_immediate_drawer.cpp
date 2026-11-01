@@ -193,6 +193,13 @@ bool D3D12ImmediateDrawer::Initialize() {
     REXLOG_ERROR("D3D12ImmediateDrawer: Failed to create the triangle pipeline");
     return false;
   }
+  // dbz3: additive triangle pipeline (optional, falls back to alpha if it fails).
+  pipeline_blend_desc.DestBlend = D3D12_BLEND_ONE;
+  if (FAILED(device->CreateGraphicsPipelineState(&pipeline_desc,
+                                                 IID_PPV_ARGS(&pipeline_triangle_additive_)))) {
+    pipeline_triangle_additive_.Reset();
+  }
+  pipeline_blend_desc.DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
   pipeline_desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_LINE;
   if (FAILED(device->CreateGraphicsPipelineState(&pipeline_desc, IID_PPV_ARGS(&pipeline_line_)))) {
     REXLOG_ERROR("D3D12ImmediateDrawer: Failed to create the line pipeline");
@@ -438,6 +445,7 @@ void D3D12ImmediateDrawer::Begin(UIDrawContext& ui_draw_context, float coordinat
 
   // dbz3 (R15): scene depth of this paint for the depth-tested draws.
   current_dbz3_depth_mode_ = false;
+  current_additive_ = false;
   dbz3_scene_depth_ = pipeline_triangle_dbz3_depth_ ? d3d12_ui_draw_context.dbz3_depth : nullptr;
   if (pipeline_triangle_dbz3_depth_) {
     float c[8] = {};
@@ -634,15 +642,20 @@ void D3D12ImmediateDrawer::Draw(const ImmediateDraw& draw) {
     case ImmediatePrimitiveType::kTriangles:
       primitive_topology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
       pipeline = dbz3_depth_mode ? pipeline_triangle_dbz3_depth_.Get() : pipeline_triangle_.Get();
+      if (draw.additive && !dbz3_depth_mode && pipeline_triangle_additive_) {
+        pipeline = pipeline_triangle_additive_.Get();
+      }
       break;
     default:
       assert_unhandled_case(draw.primitive_type);
       return;
   }
+  const bool additive = pipeline == pipeline_triangle_additive_.Get();
   if (current_primitive_topology_ != primitive_topology ||
-      current_dbz3_depth_mode_ != dbz3_depth_mode) {
+      current_dbz3_depth_mode_ != dbz3_depth_mode || current_additive_ != additive) {
     current_primitive_topology_ = primitive_topology;
     current_dbz3_depth_mode_ = dbz3_depth_mode;
+    current_additive_ = additive;
     command_list->IASetPrimitiveTopology(primitive_topology);
     command_list->SetPipelineState(pipeline);
   }

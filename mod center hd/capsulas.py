@@ -265,7 +265,7 @@ def _lowbit(m):
     return (m & -m).bit_length() if m else 99
 
 
-def adapt_iw_bcm(ccm, skill_caps, nforms=1, key_map=None):
+def adapt_iw_bcm(ccm, skill_caps, nforms=1, key_map=None, ajenos=(), fila=None):
     """BCM de Infinite World -> mecanica de Budokai 3. skill_caps = {clave IW: capsula B3}.
     key_map = {clave del BCM: clave real de IW}: los ports de la comunidad a veces dejan en
     w11 un ID que en la hoja de IW es un objeto (p.ej. Janemba: 884 Senzu Bean, 887 Super Holy
@@ -276,7 +276,9 @@ def adapt_iw_bcm(ccm, skill_caps, nforms=1, key_map=None):
       - aura burst -> modo hiper (P+K+G+E / LT), transformarse (arriba+E) -> P+K+G
       - tecnicas: una entrada por capsula en >E (en orden) y en <E (al reves): con dos
         equipadas, cada direccion da una; las de 'tras combo' las pone add_combo_specials
-      - definitivas: P+K+G+E en modo hiper, cada una con su capsula"""
+      - definitivas: P+K+G+E en modo hiper, cada una con su capsula
+    ajenos = IDs de forma de otros personajes (fusiones: el moveset de Gogeta trae tambien los golpes de Goku, Vegeta y
+    Veku con 0x0010 + ese ID en w10): esos golpes se quitan, no valen para el port."""
     KI.clear()
     st, bl = ccm_parse(ccm)
     nodes = {o: [bytearray(b), list(k)] for o, (b, k) in bl.items()}
@@ -324,6 +326,19 @@ def adapt_iw_bcm(ccm, skill_caps, nforms=1, key_map=None):
             setw(nodes[canon][0], 0, 10, 0)
         return [k for k in keys if k not in drop]
 
+    def ajeno(k):
+        if k not in nodes:
+            return False
+        # 0x1000 + mascara sin la fila de la fusion: Gogeta SS4 trae asi los golpes del SS4 de Goku (w10 = 2)
+        return ((wn(k, COND) & 0x0010 and wn(k, 10) in ajenos) or
+                (fila is not None and wn(k, COND) & IW_FORM_MASK and not wn(k, 10) >> fila & 1))
+    if ajenos or fila is not None:
+        nq = len({x for k in nodes for x in nodes[k][1] if ajeno(x)} | {k for k in st if ajeno(k)})
+        for k in nodes:
+            nodes[k][1] = [x for x in nodes[k][1] if not ajeno(x)]
+        st = [k for k in st if not ajeno(k)]
+        if nq:
+            rep.append("%d golpes de otros personajes de la fusion (IDs %s) quitados" % (nq, sorted(ajenos)))
     order, todo = [], list(st)
     done = set()
     while todo:                         # recorre todo el arbol una vez
@@ -357,6 +372,9 @@ def adapt_iw_bcm(ccm, skill_caps, nforms=1, key_map=None):
     nid = 0
     for k in nodes:
         if needs_id(k):
+            # 30/10 (#54): antes w10 = 0 con 0x0010 puesto = "solo en la forma con ID de personaje 0" (la de Goku): el
+            # port solo la cumplia en una forma prestada de Goku y al transformarse perdia especiales y definitiva
+            setw(nodes[k][0], 0, COND, wn(k, COND) & ~0x0010)
             setw(nodes[k][0], 0, 10, 0)
             nid += 1
     if ndrop:
@@ -393,6 +411,10 @@ def adapt_iw_bcm(ccm, skill_caps, nforms=1, key_map=None):
         rep.append("golpes en los codigos del modo hiper movidos: %s" % ", ".join(
             "%#x->%#x" % x for x in sorted(moved.items())))
     out, specials, first_sp = [], {}, None
+    otra_ranura = {}
+    # fusiones de IW: tecnicas y definitiva con la misma clave; la tecnica lleva la capsula de tecnica, no la de la definitiva
+    caps_ult = {skill_caps.get(bkey(nodes[k][0])) for k in st
+                if w(nodes[k][0], 0, COND) & 0x8000 and w(nodes[k][0], 0, COND) & 0x0008}
     for k in st:
         b = nodes[k][0]
         c1 = w(b, 0, COND)
@@ -413,6 +435,9 @@ def adapt_iw_bcm(ccm, skill_caps, nforms=1, key_map=None):
             setw(b, 0, 1, 0x07)
             setw(b, 0, TYPE, 0)
             setw(b, 0, 9, 0)
+            # sin el bit 0x0001 (coste de ki): sub_82101... mira primero ese y ya no pregunta si hay forma a la que subir
+            # (sub_82119108): con 5 el COM de Vegito repetia P+K+G en su ultima forma (accion 50, 42 % del combate)
+            setw(b, 0, COND, c1 & ~0x0001)
             rep.append("transformarse: arriba+E de IW -> P+K+G (sus animaciones %#x/%#x)" % (
                 w(b, 0, 12), w(b, 0, 13)))
         elif c1 & 0x8000 and c1 & 0x0008:                # definitiva
@@ -428,7 +453,11 @@ def adapt_iw_bcm(ccm, skill_caps, nforms=1, key_map=None):
             if first_sp is None:
                 first_sp = len(out)
             key = bkey(b)
-            if w(b, 0, TYPE) & 0x10 or key in specials:   # tras combo / la de la otra ranura
+            if w(b, 0, TYPE) & 0x10:                      # tras combo
+                continue
+            if key in specials:                           # la de la otra ranura: su golpe, si es otro (Gogeta <E)
+                if w(b, 0, 12) != w(nodes[specials[key]][0], 0, 12):
+                    otra_ranura[key] = k
                 continue
             specials[key] = k
             continue
@@ -437,8 +466,11 @@ def adapt_iw_bcm(ccm, skill_caps, nforms=1, key_map=None):
     new = []
     for d, keys in ((1, sp_order), (2, sp_order[::-1])):
         for key in keys:
-            k = specials[key]
-            cid = skill_caps.get(key, 0) or UNUSED_CAP
+            k = otra_ranura.get(key, specials[key]) if d == 2 else specials[key]
+            cid = skill_caps.get(key, 0)
+            if cid in caps_ult:
+                cid = next((v for v in skill_caps.values() if v not in caps_ult), cid)
+            cid = cid or UNUSED_CAP
             b = bytearray(nodes[k][0])
             ki = (w(b, 0, 9) + 500) // 1000
             setw(b, 0, 0, d)
@@ -554,7 +586,12 @@ def ccm_build(head, starters, nodes):
     return bytes(out)
 
 
-TRANSFORM_CODES = (0x2E0, 0x3E0)      # animaciones de la transformacion de B3 (suelo, aire)
+# animaciones de la transformacion de B3 (suelo, aire), una por forma destino: la accion 50 pide base + forma
+# (sub_8210E100). Sin 0x2E1.. el luchador se quedaba 3 s en la accion 50 sin animacion ni transformarse (Gogeta de
+# IW en COM, issue #58)
+# y tres fases por forma (sub_8210E250 suma 8 al acabar cada una: arranque, espera, final)
+ID_MAX_NUEVA = 1984    # el inventario de la partida acaba en 2048 y 1984+ son las capsulas unicas (src/form_selection.h)
+TRANSFORM_CODES = tuple(range(0x2E0, 0x2F8)) + tuple(range(0x3E0, 0x3F8))
 
 
 def is_transform_entry(blk):

@@ -102,7 +102,7 @@ class Iso:
 
 # juegos de origen en ps2_games, de cualquier region: '(USA)', '(Europe)', '(En,Fr,De,Es,It)'...
 GAME_RE = {"b1": r"budokai \(|budokai 1(?![0-9])", "b2": r"budokai 2", "iw": r"infinite world",
-           "sb1": r"shin budokai(?!.*another)", "sb2": r"another road"}
+           "sb1": r"shin budokai(?! ?2)(?!.*another)", "sb2": r"another road|shin budokai ?2"}
 GAME_SKIP = {"b1": "shin"}
 
 # Series (SYSTEM.CNF) de las copias medidas; sirven para rechazar una copia de otro juego renombrada (B-02).
@@ -156,6 +156,21 @@ def game_of_serial(serial):
     return None
 
 
+def psp_game(path):
+    """'sb1' / 'sb2' / None de una ISO de PSP por UMD_DATA.BIN (ULUS-10081 / ULUS-10234) y el titulo de PARAM.SFO
+    (Another Road en Europa = "Shin Budokai 2"). Mismo criterio que pasarela::JuegoPsp (src/pasarela_b1.cpp)."""
+    try:
+        i = Iso(path)
+        t = b"".join(i.read(f)[:2048] for f in (i.find("UMD_DATA.BIN"), i.find("PARAM.SFO")) if f).lower()
+    except (OSError, ValueError, KeyError, struct.error):
+        return None
+    if b"ulus-10234" in t or b"another road" in t or b"budokai 2" in t:
+        return "sb2"
+    if b"ulus-10081" in t or b"shin budokai" in t:
+        return "sb1"
+    return None
+
+
 def find_game(game, root=None, carpetas=False):
     """Copia de un juego de origen en ps2_games (o None), por patron y no por el nombre exacto.
     Prioridad (B-03): '.ruta' elegido por el jugador > carpeta extraida > ISO; dentro de cada grupo, nombre
@@ -173,7 +188,9 @@ def find_game(game, root=None, carpetas=False):
         if not (es_carpeta or low.endswith((".iso", ".ruta"))):   # .ISO (Linux)
             continue
         if not re.search(GAME_RE[game], low) or (GAME_SKIP.get(game) and GAME_SKIP[game] in low):
-            continue
+            # PSP con otro nombre ("ULUS-10234.iso", "DBZ_AR.iso"): por su contenido (#57, 30/10)
+            if not (game in ("sb1", "sb2") and low.endswith(".iso") and "shin" not in low and psp_game(p) == game):
+                continue
         dest = ruta_destino(p)
         if not dest:
             continue

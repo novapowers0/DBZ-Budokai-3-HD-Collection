@@ -18,6 +18,7 @@
 #include "generated/dbz3_init.h"
 #include "eu_map.h"
 #include "launcher/launcher_state.h"
+#include "suelo_iw.h"
 
 namespace dbz3::ps2 {
 namespace {
@@ -453,6 +454,7 @@ Camara CamaraCombate(uint8_t* base, ImVec2 pantalla) {
   c.c = ImVec2(p0.x + pantalla.x * 0.5f, p0.y + pantalla.y * 0.5f);
   c.h = ImVec2(pantalla.x * 0.5f, pantalla.y * 0.5f);
   c.ok = true;
+  dbz3::suelo_iw::Periodos(base,c.periodo_x,c.periodo_z);
   return c;
 }
 
@@ -510,6 +512,7 @@ void Escena::Poner(const Camara& cam, const Malla& malla, const std::vector<Tex>
 }
 void Escena::PonerT(const Camara& cam, const Malla& malla, const std::vector<Tex>& tx, const V3& pos, float giro,
                     float esc, const Toon* toon) {
+  const size_t i0 = tris_.size();
   const float cg = std::cos(giro), sg = std::sin(giro);
   auto amundo = [&](const V3& v) {
     return V3{pos.x + (v.x * cg + v.z * sg) * esc, pos.y + v.y * esc, pos.z + (-v.x * sg + v.z * cg) * esc};
@@ -527,6 +530,7 @@ void Escena::PonerT(const Camara& cam, const Malla& malla, const std::vector<Tex
   };
   // R15: los triangulos sin textura (y el borde toon) se prueban contra el z-buffer con una textura blanca
   const bool prof_sin_tex = cam.za > 0 && EstadoProfundidad() >= 1;
+  const float foco = cam.Foco();   // una vez por modelo (antes: una tan por vertice y otra por su profundidad)
   for (const Malla::Tri& tr : malla.tris) {
     Tri tp;
     bool ok = true;
@@ -538,10 +542,10 @@ void Escena::PonerT(const Camara& cam, const Malla& malla, const std::vector<Tex
       float k;
       const V3 w = amundo(tr.p[c]);
       wm.x += w.x, wm.y += w.y, wm.z += w.z;
-      ok = cam.P(w, tp.p[c], k);
+      ok = cam.P(w, tp.p[c], k, foco);
       ks += k;
       tp.uv[c] = tr.uv[c];
-      tp.z[c] = ok ? cam.Prof(k) : -1.0f;
+      tp.z[c] = ok ? cam.Prof(k, foco) : -1.0f;
     }
     // detras de la camara: Camara::P ya corta en el plano cercano (z de vista > -1). Antes tambien se quitaba lo que daba
     // mas de 45 px por unidad (a menos de ~19 de la camara del combate): el disco recien lanzado (R13) no se veia.
@@ -551,7 +555,6 @@ void Escena::PonerT(const Camara& cam, const Malla& malla, const std::vector<Tex
     tp.tex = tr.tex >= 0 && tr.tex < int(tx.size()) && tx[size_t(tr.tex)] ? tx[size_t(tr.tex)].id() : ImTextureID{};
     tp.prof = tp.tex ? tx[size_t(tr.tex)].prof : prof_sin_tex;
     tp.tapable = tapable_;   // DS179: la aureola (parte del luchador) no la tapa el propio luchador
-    tp.prioritario = !tapable_;   // ... ni se tira cuando la lista de dibujo va llena
     tp.col = tr.trans ? IM_COL32(255, 255, 255, 110) : IM_COL32_WHITE;
     tp.vcol = tr.con_color;
     for (int c = 0; c < 3; ++c) tp.cols[c] = tr.col[c];
@@ -579,8 +582,8 @@ void Escena::PonerT(const Camara& cam, const Malla& malla, const std::vector<Tex
           const V3 n = gira(tr.n[c]), w = amundo(tr.p[c]);
           float k;
           okb = cam.P(V3{w.x + n.x * toon->borde * esc, w.y + n.y * toon->borde * esc, w.z + n.z * toon->borde * esc},
-                      b.p[c], k);
-          b.z[c] = okb ? cam.Prof(k) : -1.0f;
+                      b.p[c], k, foco);
+          b.z[c] = okb ? cam.Prof(k, foco) : -1.0f;
         }
         // por el mismo camino que su triangulo: con camara sin profundidad (za = 0, p. ej. la de R2 para Shenron) el borde
         // iba con AddTriangleFilled entre triangulos de vertices empaquetados (R15) y salian abanicos por toda la pantalla
@@ -589,8 +592,6 @@ void Escena::PonerT(const Camara& cam, const Malla& malla, const std::vector<Tex
           b.k = tp.k * 0.995f;
           b.w = tp.w;   // DS179: el borde pertenece al mismo triangulo (misma prueba de tapado en 3D)
           b.tapable = tp.tapable;
-          b.prioritario = tp.prioritario;
-          b.borde = true;
           b.vcol = true;
           b.cols[0] = b.cols[1] = b.cols[2] = IM_COL32(0, 0, 0, 255);
           tris_.push_back(b);
@@ -611,29 +612,32 @@ void Escena::PonerT(const Camara& cam, const Malla& malla, const std::vector<Tex
                     ImVec2(a.uv.x + (b.uv.x - a.uv.x) * t, a.uv.y + (b.uv.y - a.uv.y) * t), a.z + (b.z - a.z) * t,
                     a.l + (b.l - a.l) * t};
         };
+        // poligono convexo en un array fijo (un triangulo cortado por 2 planos: <= 5 vertices); sin memoria dinamica por triangulo
+        struct Poli { Pt v[8]; int n = 0; };
         // recorte de un poligono por l >= x (arriba = true) o l < x
-        auto corta = [&](const std::vector<Pt>& in, float x, bool arriba) {
-          std::vector<Pt> out;
-          for (size_t i = 0; i < in.size(); ++i) {
-            const Pt& a = in[i];
-            const Pt& b = in[(i + 1) % in.size()];
+        auto corta = [&](const Poli& in, float x, bool arriba) {
+          Poli out;
+          for (int i = 0; i < in.n; ++i) {
+            const Pt& a = in.v[i];
+            const Pt& b = in.v[(i + 1) % in.n];
             const bool da = arriba ? a.l >= x : a.l < x, db = arriba ? b.l >= x : b.l < x;
-            if (da) out.push_back(a);
-            if (da != db && std::fabs(b.l - a.l) > 1e-9f) out.push_back(mezcla(a, b, (x - a.l) / (b.l - a.l)));
+            if (da) out.v[out.n++] = a;
+            if (da != db && std::fabs(b.l - a.l) > 1e-9f) out.v[out.n++] = mezcla(a, b, (x - a.l) / (b.l - a.l));
           }
           return out;
         };
         for (size_t s = 0; s < tramos->size(); ++s) {
           const int ti = (*tramos)[s].second;
-          std::vector<Pt> poli(v, v + 3);
+          Poli poli;
+          for (int c = 0; c < 3; ++c) poli.v[poli.n++] = v[c];
           if (s > 0) poli = corta(poli, (*tramos)[s].first, true);
-          if (s + 1 < tramos->size() && poli.size() >= 3) poli = corta(poli, (*tramos)[s + 1].first, false);
-          if (poli.size() < 3) continue;
+          if (s + 1 < tramos->size() && poli.n >= 3) poli = corta(poli, (*tramos)[s + 1].first, false);
+          if (poli.n < 3) continue;
           Tri q = tp;
           q.tex = ti >= 0 && ti < int(tx.size()) && tx[size_t(ti)] ? tx[size_t(ti)].id() : tp.tex;
           q.vcol = false;
-          for (size_t k = 1; k + 1 < poli.size(); ++k) {
-            const Pt* tri3[3] = {&poli[0], &poli[k], &poli[k + 1]};
+          for (int k = 1; k + 1 < poli.n; ++k) {
+            const Pt* tri3[3] = {&poli.v[0], &poli.v[k], &poli.v[k + 1]};
             for (int c = 0; c < 3; ++c) q.p[c] = tri3[c]->p, q.uv[c] = tri3[c]->uv, q.z[c] = tri3[c]->z;
             tris_.push_back(q);
           }
@@ -642,6 +646,12 @@ void Escena::PonerT(const Camara& cam, const Malla& malla, const std::vector<Tex
       }
     }
     tris_.push_back(tp);
+  }
+  if (toon && toon->agrupar && tris_.size() > i0) {   // la pieza entera va junta en el orden de pintor (ver Toon::agrupar)
+    float kc = 0;
+    for (size_t i = i0; i < tris_.size(); ++i) kc += tris_[i].k;
+    kc /= float(tris_.size() - i0);
+    for (size_t i = i0; i < tris_.size(); ++i) tris_[i].k = kc + (tris_[i].k - kc) * 1e-3f;
   }
 }
 // Oclusion por el luchador: sus 22 esferas de cuerpo (las de los golpes del juego: centros X+1616 + 16 i, radios
@@ -687,36 +697,60 @@ static ImVec2 Empaquetar(ImVec2 uv, float z) {
 void Escena::Pintar(ImDrawList* dl) {
   // Indices de ImGui de 16 bits: una lista de dibujo pasada de 65535 vertices da la vuelta y une vertices que no son
   // (abanicos enormes por toda la pantalla: el Shenron de B2 con el borde toon, 11325 triangulos + bordes, medido).
-  // Si no caben, fuera primero los bordes; y si aun no, los mas lejanos.
-  const size_t cabe = (65535u - std::min<size_t>(dl->_VtxCurrentIdx, 65535u)) / 3;
-  const size_t puestos = tris_.size();
-  if (tris_.size() > cabe) {
-    tris_.erase(std::remove_if(tris_.begin(), tris_.end(), [](const Tri& t) { return t.borde; }), tris_.end());
-    static int avisos = 0;
-    if (avisos < 3) {
-      ++avisos;
-      REXLOG_WARN("dbz3 ps2: {} triangulos no caben en la lista de dibujo (caben {}): sin borde toon", tris_.size(), cabe);
+  // Si no caben en la lista que se da, TODO el cuadro va en tandas consecutivas del orden de pintor (de lejos a cerca),
+  // cada una en su propia ventana de ImGui sin entrada ni fondo (cada ventana tiene su lista y su buffer de vertices);
+  // las ventanas se dibujan en el orden en que se crean (sin NoBringToFrontOnFocus: con esa bandera ImGui las mete al FONDO de
+  // la pila y salen al reves). Sin tirar nada: antes se perdian los bordes y los lejanos.
+  // Orden de pintor = estable por k creciente, sobre una lista de indices (mover los Tri de ~120 B costaba el 25 % del cuadro): radix LSD
+  // de 3 pasadas de 11 bits sobre los bits de k (float -> uint ordenable); estable, o sea, el mismo orden que std::stable_sort.
+  {
+    const size_t n = tris_.size();
+    static std::vector<uint32_t> clave, clave2, orden2;
+    clave.resize(n), clave2.resize(n), orden2.resize(n), orden_.resize(n);
+    for (size_t i = 0; i < n; ++i) {
+      uint32_t u;
+      std::memcpy(&u, &tris_[i].k, 4);
+      clave[i] = u ^ ((u >> 31) ? 0xFFFFFFFFu : 0x80000000u);
+      orden_[i] = uint32_t(i);
+    }
+    for (int pasada = 0; pasada < 3; ++pasada) {
+      const int sh = pasada * 11;
+      uint32_t cuenta[2049] = {};
+      for (size_t i = 0; i < n; ++i) ++cuenta[((clave[i] >> sh) & 2047u) + 1];
+      for (int b = 0; b < 2048; ++b) cuenta[b + 1] += cuenta[b];
+      for (size_t i = 0; i < n; ++i) {
+        const uint32_t d = cuenta[(clave[i] >> sh) & 2047u]++;
+        clave2[d] = clave[i], orden2[d] = orden_[i];
+      }
+      clave.swap(clave2), orden_.swap(orden2);
     }
   }
-  std::stable_sort(tris_.begin(), tris_.end(), [](const Tri& a, const Tri& b) { return a.k < b.k; });
-  if (tris_.size() > cabe) {
-    // DS179: antes se tiraban los mas lejanos sin mirar; la aureola (mitad del cuadro) caia en ese saco si la escena
-    // venia cargada. Ahora se respeta `prioritario` (lo puesto con Tapable(false)): primero se tira lo demas.
-    size_t sobran = tris_.size() - cabe;
-    std::vector<char> fuera(tris_.size(), 0);
-    for (size_t i = 0; i < tris_.size() && sobran; ++i)
-      if (!tris_[i].prioritario) fuera[i] = 1, --sobran;
-    for (size_t i = 0; i < tris_.size() && sobran; ++i)   // si aun no cabe, tambien los prioritarios
-      if (!fuera[i]) fuera[i] = 1, --sobran;
-    size_t j = 0;
-    for (size_t i = 0; i < tris_.size(); ++i)
-      if (!fuera[i]) tris_[j++] = tris_[i];
-    tris_.resize(j);
-  }
-  descartados_ = puestos - tris_.size();   // DS179: los que se quedan fuera por el tope de la lista
+  // vertices de cada triangulo: 3 por PrimReserve (con textura o con profundidad); AddTriangleFilled (sin textura: los bordes toon) con el
+  // antialiasing de relleno de ImGui saca 6 (los 3 y su franja). Medido: con 3 por triangulo los bordes hacian dar la vuelta a los indices.
+  const size_t sin_tex = (dl->Flags & ImDrawListFlags_AntiAliasedFill) ? 6 : 3;
+  auto coste = [&](const Tri& t) { return t.prof || t.tex ? size_t(3) : sin_tex; };
+  size_t vert = dl->_VtxCurrentIdx;
+  for (const Tri& t : tris_) vert += coste(t);   // (la suma no depende del orden)
+  vertices_ = vert;
+  tandas_ = 1;
   static Tex blanca;                            // 1x1 blanca para los triangulos sin textura con profundidad
   bool pedir = false;
-  for (const Tri& tp : tris_) {
+  auto pinta = [&](ImDrawList* dl, size_t i0, size_t i1) {
+  // la textura se cambia solo cuando cambia (un Push/Pop por triangulo abria una orden de dibujo por triangulo)
+  ImTextureID puesta{};
+  bool hay = false;
+  auto usa = [&](ImTextureID id) {
+    if (hay && puesta == id) return;
+    if (hay) dl->PopTextureID();
+    dl->PushTextureID(id);
+    puesta = id, hay = true;
+  };
+  auto suelta = [&] {
+    if (hay) dl->PopTextureID();
+    hay = false;
+  };
+  for (size_t it = i0; it < i1; ++it) {
+    const Tri& tp = tris_[orden_[it]];
     const bool probado = tp.prof && tp.z[0] >= 0;
     pedir |= probado;
     const float cx = (tp.p[0].x + tp.p[1].x + tp.p[2].x) / 3.0f, cy = (tp.p[0].y + tp.p[1].y + tp.p[2].y) / 3.0f;
@@ -746,24 +780,50 @@ void Escena::Pintar(ImDrawList* dl) {
       }
       const ImTextureID id = tp.tex ? tp.tex : blanca.id();
       if (id) {
-        dl->PushTextureID(id);
+        usa(id);
         dl->PrimReserve(3, 3);
         for (int c = 0; c < 3; ++c) {
           const ImU32 col = !tp.tex ? (tp.vcol ? tp.cols[0] : IM_COL32(200, 200, 200, 255)) : tp.vcol ? tp.cols[c] : tp.col;
           dl->PrimVtx(tp.p[c], Empaquetar(tp.tex ? tp.uv[c] : ImVec2(0.5f, 0.5f), tp.z[c]), col);
         }
-        dl->PopTextureID();
         continue;
       }
     }
     if (!tp.tex) {
+      suelta();
       dl->AddTriangleFilled(tp.p[0], tp.p[1], tp.p[2], tp.vcol ? tp.cols[0] : IM_COL32(200, 200, 200, 255));
       continue;
     }
-    dl->PushTextureID(tp.tex);
+    usa(tp.tex);
     dl->PrimReserve(3, 3);
     for (int c = 0; c < 3; ++c) dl->PrimVtx(tp.p[c], tp.uv[c], tp.vcol ? tp.cols[c] : tp.col);
-    dl->PopTextureID();
+  }
+  suelta();
+  };
+  if (vert <= 65535) {
+    pinta(dl, 0, tris_.size());
+  } else {
+    static int cuadro = -1, n_ventana = 0;   // nombre propio por tanda y cuadro: dos Pintar en un cuadro no comparten lista
+    if (cuadro != ImGui::GetFrameCount()) cuadro = ImGui::GetFrameCount(), n_ventana = 0;
+    tandas_ = 0;
+    for (size_t i0 = 0, i1 = 0; i0 < tris_.size(); i0 = i1) {
+      for (size_t v = 0; i1 < tris_.size() && v + coste(tris_[orden_[i1]]) <= 65535; ++i1) v += coste(tris_[orden_[i1]]);
+      char nombre[32];
+      std::snprintf(nombre, sizeof nombre, "##dt_tanda%d", n_ventana++);
+      ++tandas_;
+      ImGui::SetNextWindowPos(ImVec2(0, 0));
+      ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize);
+      ImGui::Begin(nombre, nullptr,
+                   ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoBackground |
+                       ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav);
+      pinta(ImGui::GetWindowDrawList(), i0, i1);
+      ImGui::End();
+    }
+    static int dicho = 0;
+    if (dicho != tandas_) {
+      dicho = tandas_;
+      REXLOG_INFO("dbz3 ps2: {} triangulos, {} vertices no caben en una lista: {} tandas, descartados 0", tris_.size(), vert, tandas_);
+    }
   }
   // El SDK copia el z-buffer de cada cuadro solo desde que alguien lo pide. ponytail: se queda pedido toda la sesion
   // (una copia de la profundidad por cuadro, barata); apagarlo al salir del minijuego si algun dia cuenta.

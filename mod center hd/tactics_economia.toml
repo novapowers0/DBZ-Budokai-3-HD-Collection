@@ -1,0 +1,280 @@
+# Dragon Tactics H3/H4: economia, tienda, niveles, sinergias, torneo y daño al entrenador. Numeros NUESTROS y PROVISIONALES (sin equilibrar).
+# Lo carga y valida src/tactics/partida.cpp (CargarEconomia): rangos, ids de tactics_units.toml, sinergias existentes y que cada
+# umbral tenga suficientes unidades DISTINTAS (los duplicados y las estrellas no suman miembros).
+version = 1
+
+[economia]
+jugadores = 8              # entrenadores del torneo: tu y 7 bots (2 a 8)
+calidad_bots = [30, 45, 55, 65, 75, 85, 95]   # dificultad de los bots 1..7: calidad de decision en % (ver Partida::Jugar); no ven nada del futuro ni del rival
+oro_inicial = 8
+ingreso_ronda = 5
+ingreso_victoria = 1
+interes_cada = 10          # interes = min(interes_tope, oro al cerrar la preparacion / interes_cada), una vez por ronda
+interes_tope = 5
+racha_desde = 3            # H10: 3 victorias (o derrotas) seguidas dan +1 oro al acabar la ronda, +1 mas cada 2 seguidas, hasta racha_tope
+racha_cada = 2
+racha_tope = 3
+neutral_desde = 3          # H10: rondas neutrales (3, 9, 15...): todos contra personajes de coste 1 sin dano a nadie; ganar da oro y una capsula; 0 en neutral_cada = nunca
+neutral_cada = 6
+neutral_oro = 2
+neutral_pct = 45           # % de vida y ataque del equipo neutral = neutral_pct + neutral_pct_ronda * ronda
+neutral_pct_ronda = 3
+tienda = 5                 # cartas en la tienda (maximo 5)
+precio_actualizar = 2
+precio_exp = 4
+exp_compra = 4             # EXP que da "Comprar EXP"
+exp_ronda = 2              # EXP gratis al acabar cada ronda
+capsula_cada = 3           # una capsula gratis (al azar, al inventario) al acabar cada 3 rondas; 0 = nunca. Catalogo: tactics_capsulas.toml
+precio_capsula = 5         # "Comprar capsula": otra al azar en la tienda
+exp_subir = [4, 8, 16]     # EXP para pasar del nivel 1 al 2, del 2 al 3 y del 3 al 4
+tope_unidades = [3, 4, 5, 6]   # unidades en el tablero por nivel
+# peso de que una carta sea de coste 1, 2, 3, 4 segun el nivel (los costes sin copias libres no salen)
+peso_coste = [[75, 25, 0, 0], [55, 35, 10, 0], [35, 35, 25, 5], [20, 30, 30, 20]]
+copias_coste = [45, 36, 30, 27]   # copias de cada unidad en la reserva compartida segun su coste (8 entrenadores comparten la reserva); H9: una 4 estrellas vale 27 copias, asi que cada reserva llega a 27 o mas (rara pero posible)
+mult_estrella = [100, 180, 324, 583]  # % de vida y ataque con 1, 2, 3 y 4 estrellas (x1,8 por estrella)
+vida_entrenador = 100
+# dano al perder = dano_base + (ronda-1)/dano_cada_rondas + dano_superviviente * unidades vivas del ganador (tope dano_tope); un empate quita dano_base+ a los dos
+# contra una copia (numero impar de vivos) solo pierde vida quien la enfrenta
+dano_base = 4
+dano_cada_rondas = 3
+dano_superviviente = 1
+dano_tope = 25
+
+[[sinergia]]
+id = "saiyan"
+es = "Saiyan"
+en = "Saiyan"
+umbral = [{ n = 2, vida = 6, ataque = 12, defensa = 0 }, { n = 4, vida = 12, ataque = 22, defensa = 2 }, { n = 6, vida = 20, ataque = 32, defensa = 4 }]
+
+[[sinergia]]
+id = "terricolas"
+es = "Terrícolas"
+en = "Earthlings"
+umbral = [{ n = 2, vida = 27, ataque = 12, defensa = 6 }, { n = 4, vida = 48, ataque = 28, defensa = 16 }]
+
+[[sinergia]]
+id = "freezer"
+es = "Ejército de Freezer"
+en = "Frieza Force"
+umbral = [{ n = 2, vida = 5, ataque = 18, defensa = 6 }, { n = 3, vida = 10, ataque = 30, defensa = 10 }]
+
+[[sinergia]]
+id = "androides"
+es = "Androides"
+en = "Androids"
+umbral = [{ n = 2, vida = 15, ataque = 0, defensa = 15 }, { n = 4, vida = 30, ataque = 10, defensa = 30 }]
+
+[[sinergia]]
+id = "misticos"
+es = "Místicos"
+en = "Mystics"
+umbral = [{ n = 2, vida = 15, ataque = 10, defensa = 5 }, { n = 3, vida = 30, ataque = 20, defensa = 10 }]
+
+[[sinergia]]
+id = "guerreros_z"
+es = "Guerreros Z"
+en = "Z Fighters"
+umbral = [{ n = 2, vida = 10, ataque = 0, defensa = 10 }, { n = 4, vida = 25, ataque = 15, defensa = 20 }, { n = 6, vida = 35, ataque = 25, defensa = 25 }]
+
+[[sinergia]]
+id = "fuerza_bruta"
+es = "Fuerza bruta"
+en = "Brawlers"
+umbral = [{ n = 2, vida = 6, ataque = 10, defensa = 8 }, { n = 4, vida = 15, ataque = 18, defensa = 12 }]
+
+[[sinergia]]
+id = "guardianes"
+es = "Guardianes"
+en = "Guardians"
+umbral = [{ n = 2, vida = 20, ataque = 0, defensa = 20 }, { n = 3, vida = 35, ataque = 5, defensa = 35 }]
+
+[[sinergia]]
+id = "artilleros"
+es = "Artilleros de ki"
+en = "Ki Blasters"
+umbral = [{ n = 2, vida = 0, ataque = 25, defensa = 0 }, { n = 4, vida = 10, ataque = 40, defensa = 5 }]
+
+[[sinergia]]
+id = "veloces"
+es = "Veloces"
+en = "Swift"
+umbral = [{ n = 2, vida = 5, ataque = 15, defensa = 0 }, { n = 3, vida = 10, ataque = 28, defensa = 5 }]
+
+[[sinergia]]
+id = "regeneradores"
+es = "Regeneradores"
+en = "Regenerators"
+umbral = [{ n = 2, vida = 20, ataque = 0, defensa = 5 }, { n = 3, vida = 28, ataque = 8, defensa = 10 }]
+
+# Dos ejes: LINAJE (saiyan, terricolas, freezer, androides, misticos: de donde viene) y CLASE (guerreros_z, fuerza_bruta, guardianes,
+# artilleros, veloces, regeneradores: como lucha). Cada unidad lleva exactamente un linaje y una clase. coste 1..4 (rango: marco de color).
+
+[[unidad]]
+id = "goku"
+coste = 3
+sinergias = ["saiyan", "guerreros_z"]
+
+[[unidad]]
+id = "vegeta"
+coste = 3
+sinergias = ["saiyan", "artilleros"]
+
+[[unidad]]
+id = "gohan"
+coste = 3
+sinergias = ["saiyan", "guerreros_z"]
+
+[[unidad]]
+id = "trunks"
+coste = 2
+sinergias = ["saiyan", "veloces"]
+
+[[unidad]]
+id = "goten"
+coste = 1
+sinergias = ["saiyan", "veloces"]
+
+[[unidad]]
+id = "bardock"
+coste = 1
+sinergias = ["saiyan", "fuerza_bruta"]
+
+[[unidad]]
+id = "broly"
+coste = 4
+sinergias = ["saiyan", "fuerza_bruta"]
+
+[[unidad]]
+id = "nappa"
+coste = 2
+sinergias = ["saiyan", "guardianes"]
+
+[[unidad]]
+id = "gohankid"
+coste = 1
+sinergias = ["saiyan", "guerreros_z"]
+
+[[unidad]]
+id = "gokukid"
+coste = 1
+sinergias = ["saiyan", "guerreros_z"]
+
+[[unidad]]
+id = "trunkskid"
+coste = 1
+sinergias = ["saiyan", "guerreros_z"]
+
+[[unidad]]
+id = "krilin"
+coste = 1
+sinergias = ["terricolas", "guerreros_z"]
+
+[[unidad]]
+id = "tenshinhan"
+coste = 2
+sinergias = ["terricolas", "guerreros_z"]
+
+[[unidad]]
+id = "videl"
+coste = 1
+sinergias = ["terricolas", "guerreros_z"]
+
+[[unidad]]
+id = "satan"
+coste = 1
+sinergias = ["terricolas", "guardianes"]
+
+[[unidad]]
+id = "piccolo"
+coste = 2
+sinergias = ["misticos", "regeneradores"]
+
+[[unidad]]
+id = "freezer"
+coste = 4
+sinergias = ["freezer", "artilleros"]
+
+[[unidad]]
+id = "cooler"
+coste = 3
+sinergias = ["freezer", "fuerza_bruta"]
+
+[[unidad]]
+id = "recoome"
+coste = 1
+sinergias = ["freezer", "fuerza_bruta"]
+
+[[unidad]]
+id = "saibaman"
+coste = 1
+sinergias = ["saiyan", "veloces"]
+
+[[unidad]]
+id = "a16"
+coste = 2
+sinergias = ["androides", "guardianes"]
+
+[[unidad]]
+id = "a17"
+coste = 2
+sinergias = ["androides", "veloces"]
+
+[[unidad]]
+id = "a18"
+coste = 2
+sinergias = ["androides", "artilleros"]
+
+[[unidad]]
+id = "gero"
+coste = 2
+sinergias = ["androides", "artilleros"]
+
+[[unidad]]
+id = "cell"
+coste = 4
+sinergias = ["androides", "regeneradores"]
+
+[[unidad]]
+id = "celljr"
+coste = 3
+sinergias = ["androides", "regeneradores"]
+
+[[unidad]]
+id = "superbuu"
+coste = 3
+sinergias = ["misticos", "fuerza_bruta"]
+
+[[unidad]]
+id = "buuninio"
+coste = 3
+sinergias = ["misticos", "regeneradores"]
+
+[[unidad]]
+id = "dabura"
+coste = 3
+sinergias = ["misticos", "guardianes"]
+
+[[unidad]]
+id = "kaioshin"
+coste = 4
+sinergias = ["misticos", "artilleros"]
+
+[[unidad]]
+id = "yamcha"
+coste = 1
+sinergias = ["terricolas", "guerreros_z"]
+
+[[unidad]]
+id = "raditz"
+coste = 2
+sinergias = ["saiyan", "artilleros"]
+
+[[unidad]]
+id = "uub"
+coste = 3
+sinergias = ["terricolas", "veloces"]
+
+[[unidad]]
+id = "ginyu"
+coste = 2
+sinergias = ["freezer", "veloces"]

@@ -16,13 +16,14 @@ Un port de *Dragon Ball Z: Budokai 3 HD Collection* (Xbox 360) a PC, hecho con
 el [ReXGlue SDK](https://github.com/rexglue/rexglue-sdk). El código PowerPC del
 juego se recompila de forma estática y queda integrado en un solo ejecutable
 con su propio launcher y sistema de mods. No es un emulador: el juego corre
-nativo en Windows y Linux (Vulkan).
+nativo en Windows y, en Linux, con Vulkan y SDL3.
 
 [![Release](https://img.shields.io/github/v/release/novapowers0/DBZ-Budokai-3-HD-Collection?sort=semver&style=flat-square&color=orange&label=Release)](https://github.com/novapowers0/DBZ-Budokai-3-HD-Collection/releases/latest)
 [![Plataforma](https://img.shields.io/badge/Plataforma-Windows%20%7C%20Linux-0078D6?style=flat-square)](https://github.com/novapowers0/DBZ-Budokai-3-HD-Collection/releases/latest)
 [![Licencia](https://img.shields.io/github/license/novapowers0/DBZ-Budokai-3-HD-Collection?style=flat-square)](LICENSE)
 [![Estrellas](https://img.shields.io/github/stars/novapowers0/DBZ-Budokai-3-HD-Collection?style=flat-square&color=yellow)](https://github.com/novapowers0/DBZ-Budokai-3-HD-Collection)
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-Ap%C3%B3yame-FF5E5B?style=flat-square&logo=ko-fi&logoColor=white)](https://ko-fi.com/novapowers)
+[![Hecho con](https://img.shields.io/badge/hecho%20con-ReXGlue-8A2BE2?style=flat-square)](https://github.com/rexglue/rexglue-sdk)
 
 | | |
 |---|---|
@@ -30,7 +31,7 @@ nativo en Windows y Linux (Vulkan).
 | Plataforma | Windows / Linux |
 | Motor | Xbox 360 (ReXGlue SDK) |
 | Género | Lucha 3D |
-| Versión | v1.5.0 |
+| Versión | v1.5.6 |
 
 Copyright (c) 2026 **NovaPowers**. Licencia MIT (ver `LICENSE`).
 
@@ -39,6 +40,36 @@ Copyright (c) 2026 **NovaPowers**. Licencia MIT (ver `LICENSE`).
 [Mods y personajes nuevos](#mods-y-personajes-nuevos)
 
 ---
+
+## Novedades de la 1.5.6
+
+- **Dragon Tactics (beta):** torneo de combates automáticos contra siete rivales, con 34 luchadores de B3, 11 sinergias, tienda, cápsulas, partidas guardadas y mejoras hasta cuatro estrellas.
+- **Personajes:** páginas L1/R1 para más de 24 luchadores añadidos, trajes extra aunque haya nativos bloqueados, y nombres de técnicas completados.
+- **Shin Budokai:** corregido el cuerpo rígido de SB1 y recuperados los nombres oficiales. Los personajes que existen en B3 HD usan ese cuerpo con movimientos de SB.
+- **Infinite World (experimental):** los campos se repiten sin borde visible y hay más cámaras y correcciones. Aún hay diferencias con el original.
+- **Budokai 2 y nave de Babidi (experimental):** mejoras de menús y figuras. Las transiciones de escenario siguen apagadas.
+- **Modo Héroe (beta):** nombre propio, eventos de mapa, deseo de Shenron y Scouter del juego.
+- **Fusiones y Editar Habilidades:** las cápsulas de mod aparecen en la lista y una fusión fallida de Yamhan ya no cierra el juego.
+- **Gogeta SS4 y Vegito:** sus definitivas llegan al final. La de Baby midió 1081 de daño contra un rival quieto.
+- **Online (beta):** panel renovado. Medido en un PC con el servicio público y red mala simulada; sin probar entre dos PC reales.
+- **Linux (beta):** ajustes sin ejecutar en Linux real.
+
+## Novedades de la 1.5.5.5
+
+- **Infinite World (Dragon Mission):** la historia enlaza sin cortes el mapa, el vídeo, el minijuego, el resultado y la vuelta al mapa; los minijuegos de tierra de Raditz y Bubbles se pueden completar; vuelos, nubes, niebla y música de combate como en el original.
+- **Dragon World (Budokai 2):** las nueve fases del tablero se completan, y atacar a un rival en el tablero empieza el combate directamente. **Nave de Babidi:** se entra y se cambia de planta, sale la ventana «Get skill!» y la prueba de combate empieza con su tarjeta VS.
+- **Leyenda de Mr. Satán (beta):** la ronda 1 se ve entera con subtítulos y la Leyenda avanza por sus rondas de principio a fin.
+- **Modo Héroe (beta):** 38 de los 52 guantes encajan en las poses y la lista de estilos de lucha muestra los 23 estilos.
+- **Cámara libre (beta)** en el menú F1. Viene apagada y no se guarda.
+
+## Novedades de la 1.5.5
+
+- **Infinite World (experimental):** las 96 misiones se juegan en las versiones USA y europea. **Budokai 2 (experimental):** tablero y nave de Babidi estables.
+- **Modo Héroe (beta):** sagas 1-3 jugables; piezas y peinados de Budokai 3 (las piezas de Xenoverse 2 son experimentales y necesitan tu propia copia).
+- **Online (beta):** los combates se mantienen sincronizados en las pruebas y se reconectan solos si los mods no coinciden.
+- Resolución interna de 480p para PCs modestos.
+
+Conocido: el online no se ha probado en partidas largas entre dos casas, Linux no está probado a fondo y algunos personajes añadidos aún no muestran aura.
 
 ## Novedades de la 1.5.0
 
@@ -94,24 +125,7 @@ Copyright (c) 2026 **NovaPowers**. Licencia MIT (ver `LICENSE`).
 - **Personajes de Shin Budokai:** voces, Burning Attack y ráfagas de ki arreglados.
 - La 1.4.2 trajo **NVIDIA DLSS y AMD FSR 3 (beta)**, brillo HD regulable y el importador de Shin Budokai.
 
-## Novedades de la v1.4.1
-
-- **Arreglos contra los 30 FPS clavados en equipos potentes** (issue #8): temporización precisa y
-  Windows deja de poner el juego en modo ahorro (núcleos de eficiencia).
-- El diagnóstico de fallos de la gráfica (DRED) ya no cuesta rendimiento: solo
-  se activa en la partida siguiente a un fallo de la gráfica.
-- El registro dice dónde se va el tiempo (`gpu_wait`, `cp_wait`) y apunta los
-  tirones de más de 50 ms.
-- Aviso en el launcher si tu juego es la versión europea y tienes personajes
-  nuevos (solo funcionan con la versión US/NA).
-- Arreglado el cierre al cambiar de traje sobre un personaje nuevo (Janemba) y la
-  música que se apagaba con el mod de personajes y un pack de música.
-- Kit de modding 1.4.1: página **Diagnóstico** que lee el registro del juego y
-  explica qué pasa y qué hacer.
-
-El pack de personajes sigue siendo `DBZ3HD-1.4.0-Personajes.zip` (vale tal cual).
-
-## Novedades de la v1.4.0
+## Novedades de la 1.4.0
 
 - **Menú rápido dentro del juego**: pulsa **F1** o **Back + Start** en el mando y
   cambia la imagen, el sonido o la pantalla sin salir del combate. Los cambios se
@@ -131,18 +145,6 @@ Lista completa en el [CHANGELOG](CHANGELOG.md).
 ---
 
 ## Capturas
-
-<!--
-TODO(capturas v1.4.0): guardar las capturas como .jpg en docs/screenshots/ (las .png
-estan en .gitignore y publish_check las marca como FAIL) y quitar este comentario.
-
-![Launcher v1.4.0](docs/screenshots/launcher_inicio.jpg)
-![Pestaña Personajes nuevos con el importador](docs/screenshots/launcher_personajes_nuevos.jpg)
-![Menú rápido dentro del juego (F1 / Back + Start)](docs/screenshots/menu_rapido.jpg)
-![Contador de FPS (F3)](docs/screenshots/fps_f3.jpg)
-![Select con los personajes nuevos](docs/screenshots/select_personajes_nuevos.jpg)
-![Combate con un personaje nuevo](docs/screenshots/combate_personaje_nuevo.jpg)
--->
 
 *Capturas próximamente.*
 
@@ -175,20 +177,20 @@ En la página de [**Releases**](../../releases/latest):
 
 | Archivo | Para qué |
 |---|---|
-| `DBZ-Budokai-3-HD-Collection-v1.5.0.zip` | **El juego para Windows** (obligatorio). |
-| `DBZ-Budokai-3-HD-Collection-v1.5.0-linux-amd64.tar.gz` | El juego para Linux (Vulkan). |
+| `DBZ-Budokai-3-HD-Collection-v1.5.6.zip` | **El juego para Windows** (obligatorio). |
+| `DBZ-Budokai-3-HD-Collection-v1.5.6-linux-amd64.tar.gz` | El juego para Linux (Vulkan, beta). |
 | [`DBZ3HD-1.4.3-Personajes.zip`](https://drive.google.com/file/d/1jDRwzd_idmeIxwAMN4q4bC89JKFiGXX7/view?usp=sharing) | Opcional: los 7 personajes nuevos (**Google Drive**, actualizado en la 1.4.3; WIP). |
-| `DBZ3HD-1.5.0-Kit-Modding.zip` | Opcional: herramientas para crear e importar personajes. |
+| `DBZ3HD-1.5.5-Kit-Modding.zip` | Opcional: herramientas para crear e importar personajes. |
 
 ### Windows
 
-1. **Descomprime** `DBZ-Budokai-3-HD-Collection-v1.5.0.zip` en una carpeta, por
+1. **Descomprime** `DBZ-Budokai-3-HD-Collection-v1.5.6.zip` en una carpeta, por
    ejemplo `C:\Juegos\DBZ3\`.
 2. **Añade los datos de tu copia del juego** de una de estas dos formas:
    - **Lo más fácil — el ISO**: deja el `.iso` del juego junto a `dbz3.exe`. No
-     hace falta extraer nada. (Los mods y los personajes nuevos necesitan la
-     forma siguiente.)
-   - **La carpeta extraída** (necesaria para mods): pon junto a `dbz3.exe` la
+     hace falta extraer nada. (Los mods también funcionan desde el ISO; la
+     primera vez se preparan en unos segundos.)
+   - **La carpeta extraída** (alternativa): pon junto a `dbz3.exe` la
      carpeta `DBZ3\` tal cual sale del disco, o bien `default.xex` + la carpeta
      `us\` (o `eu\`).
 3. **Abre `dbz3.exe`**. El launcher comprueba qué tienes y, si falta algo, te
@@ -273,8 +275,7 @@ El botón **Primeros pasos** de arriba lo resume en cuatro pasos.
 
 ## Mods y personajes nuevos
 
-> Los mods necesitan los datos del juego en una **carpeta** (en modo ISO se
-> juega tal cual). Los personajes nuevos necesitan además la **versión USA**.
+> Los mods también funcionan en modo ISO (se preparan la primera vez). Los personajes nuevos necesitan la **versión USA**.
 
 ### Pack de personajes (`DBZ3HD-1.4.3-Personajes.zip`)
 
@@ -295,7 +296,7 @@ gritos de su versión de Budokai 1, y Zarbon, Dodoria y Androide 19 su definitiv
 Para quitar uno, desmárcalo en **Personajes → Instalados**. Tus partidas
 guardadas no se tocan.
 
-### Kit de modding (`DBZ3HD-1.5.0-Kit-Modding.zip`)
+### Kit de modding (`DBZ3HD-1.5.5-Kit-Modding.zip`)
 
 Las herramientas que hay detrás de las pestañas de modding del launcher: crear
 e **importar personajes** (Budokai 1, Budokai 2, Infinite World y modelos de la
@@ -379,7 +380,7 @@ launcher lo reconstruye solo al pulsar JUGAR.
 - Diseño nuevo con tarjetas e iconos, botón **JUGAR** grande y **arranque en
   menos de un segundo**.
 - **Navegable con el mando** y con barra de ayudas según el dispositivo.
-- **5 idiomas** (ES/EN/IT/DE/FR; el de Windows en el primer arranque), mensajes
+- **7 idiomas** (ES/EN/IT/DE/FR/PT/JA; el de Windows en el primer arranque), mensajes
   claros si el ejecutable no es el correcto, **Reparar instalación** en un clic
   con el resultado en palabras sencillas, guía de **Primeros pasos** y aviso de
   nueva versión.
@@ -412,7 +413,7 @@ launcher lo reconstruye solo al pulsar JUGAR.
 | Mod de texturas B3 HD | Funcional (override por entrada) |
 | 2+ mods de modelo/textura simultáneos | Funcional (mid-insert virtual) |
 | Mod de música (og_music) | Funcional |
-| Jugar desde el ISO (modo disco) | Funcional (juego base; mods requieren carpeta) |
+| Jugar desde el ISO (modo disco) | Funcional (mods también, preparados en el primer arranque) |
 | Núcleo dual USA/EU (un solo binario) | Funcional (validado en juego) |
 | Personajes nuevos en casillas propias | Funcional, experimental (versión USA) |
 | Port de personajes B1 / B2 / IW → B3 | Funcional, experimental (importador) |
@@ -471,16 +472,17 @@ overlay aplicado.
 > funcionan los swaps grandes, los personajes nuevos ni el menú rápido.
 
 ```
-git clone --recurse-submodules https://github.com/novapowers0/DBZ-Budokai-3-HD-Collection.git
+git clone https://github.com/novapowers0/DBZ-Budokai-3-HD-Collection.git
 cd DBZ-Budokai-3-HD-Collection
 
 # 1) pon tu .xex legal en default.xex
-# 2) regenera el código derivado del xex
-cmake --build out/build/win-amd64-release --target dbz3_codegen
-# 3) compila
+# 2) configura
 cmake -S . -B out/build/win-amd64-release
+# 3) regenera el código derivado del xex
+cmake --build out/build/win-amd64-release --target dbz3_codegen
+# 4) compila
 cmake --build out/build/win-amd64-release
-# 4) ejecuta
+# 5) ejecuta
 out\build\win-amd64-release\dbz3.exe
 ```
 

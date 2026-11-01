@@ -67,6 +67,7 @@
 #include "launcher/settings.h"
 #include "mods.h"
 #include "ps2_modelo.h"
+#include "roster_ext.h"
 
 namespace dbz3::hub {
 // 0 = lo normal en cada campo; time_s > 0 segundos, < 0 sin tiempo; hp > 0 vida inicial y maxima, < 0 solo la
@@ -1194,6 +1195,11 @@ bool g_final_vista = false;       // S5-A3: con g_mu; la escena final 3D ya sali
 bool g_final_pendiente = false;   // con g_mu; ganada la ultima ronda: Lanzar() abre la escena final 3D (mismo paso)
 std::atomic<bool> g_previa_combate{false};   // S1-F03.1: el combate en curso es el "solo escena" (sin puntos en pantalla)
 std::atomic<bool> g_previa_negro{false};     // S1-F03.1: tras la escena previa, negro hasta que B3 suelta el combate
+std::atomic<int64_t> g_previa_inicio{0};    // solSAT: inicio REAL de la toma 1, no el cuadro de la interfaz
+std::atomic<float> g_sat_muestra{-1.0f};    // solo arnes: cuadro global congelado para comparar imagenes
+std::atomic<int> g_sat_alfa_fondo{-1};
+bool MideSatan() { return std::getenv("DBZ3_NO_DIALOGS") && std::getenv("DBZ3_TEST_SAT_MUESTRAS"); }
+void CrearFundidoSatan();
 
 void Entrar(int paso) {   // con g_mu
   g_previa_vista = false;
@@ -1441,10 +1447,9 @@ const ObjReady kObjReady[11][2] = {
 #undef DBZ3_OBJ
 // Voces de las dos tomas (ADX_JP.AFS; MEDIDAS con el gancho de 0x1369D0, canal 1 = Mr. Satan, canal 2 = el retador, 22/10):
 // {entrada de Mr. Satan, ms desde el principio de la toma 1, entrada del retador, ms desde el principio de la toma 2}.
-// Las 10 rondas 2-11 estan medidas (DS11). La fila 0 (Yamcha) es la unica sin volver a medir: B1 no le da charla ni
-// tablero (la tabla 0x3507F0 del ELF tiene 16 entradas, 1269-1284, para r=1..10) y sus dos tomas van al final de la
-// escena larga de los Juegos de Cell. Se conservan 1303/1516 de la primera sonda [VERIFICAR en pantalla: que la voz de
-// la toma 2 sea la de Yamcha].
+// Las rondas 2-11 estan medidas (DS11). Yamcha tambien: A3/datos/r1_yamcha.log (PCSX2/PINE, gancho 0x1369D0),
+// 1303 en canal 1 a 94,52 s y 1516 en canal 2 durante la segunda toma. B1 no le da charla ni tablero previo:
+// las dos tomas van al final de la escena larga de los Juegos de Cell. No confundir esa ausencia de charla con voz sin medir.
 constexpr int kVozReady[11][4] = {{1303, 300, 1516, 30}, {1302, 1370, 1477, 1260}, {1307, 1580, 662, 1440}, {1299, 1670, 15, 1770},
                                   {1302, 1330, 1456, 1130}, {1303, 320, 1493, 330}, {1307, 1600, 1160, 830},
                                   {1302, 1330, 103, 750}, {1299, 1680, 614, 1420}, {1303, 320, 569, 1510}, {1299, 1730, 93, 2040}};
@@ -1492,7 +1497,8 @@ void TomasPresentacion(dbz3::cinematica::Escena& e, int r = 1) {
   p.cam_obj.assign(o1.a, o1.a + o1.n);
   // Sin el ajuste provisional de LUNA20 (ojo Y-1,2/Z+14 y objetivo X+4): FUN_001920b0 da la camara exacta y las
   // claves medidas de DS11 la confirman. El encuadre de la toma 1 y el de la 2 son el mismo tipo de orbita.
-  p.cam_fov = {{0.0f, 0.610865f}, {180.0f, 1.2025f}};   // FUN_001920b0: fov = (35 + 35*t/186) grados; a 180 cuadros 1,2025 rad
+  p.cam_fov = {{0.0f, 0.610865f}, {180.0f, 1.2025f}};
+  if (!std::getenv("DBZ3_SIN_FOV_READY")) p.fov_acerca = true;   // Satan 30/10 (d): B3 proyecta con 0,785 fijo; sin esto la rampa de fov 35->69 grados de B1 no se ve   // FUN_001920b0: fov = (35 + 35*t/186) grados; a 180 cuadros 1,2025 rad
   if (!e.iso_voces.empty()) p.voces = {-kVozReady[std::clamp(r, 0, 10)][1], kVozReady[std::clamp(r, 0, 10)][0]};
   e.pasos.push_back(p);
   p = C::Paso{};
@@ -1508,7 +1514,8 @@ void TomasPresentacion(dbz3::cinematica::Escena& e, int r = 1) {
   p.cam_ojo = ojo2;
   const ObjReady& o2 = kObjReady[std::clamp(r, 0, 10)][1];
   p.cam_obj.assign(o2.a, o2.a + o2.n);
-  p.cam_fov = {{0.0f, 0.610865f}, {180.0f, 1.2025f}};   // FUN_001920b0, igual que la toma 1
+  p.cam_fov = {{0.0f, 0.610865f}, {180.0f, 1.2025f}};
+  if (!std::getenv("DBZ3_SIN_FOV_READY")) p.fov_acerca = true;   // Satan 30/10 (d): B3 proyecta con 0,785 fijo; sin esto la rampa de fov 35->69 grados de B1 no se ve   // FUN_001920b0, igual que la toma 1
   if (!e.iso_voces.empty()) p.voces = {-kVozReady[std::clamp(r, 0, 10)][3], kVozReady[std::clamp(r, 0, 10)][2]};
   e.pasos.push_back(p);
   // DS13: tramo FIJO de B1 entre la toma 2 y el "READY?" (2,64 s, medido: la toma 2 acaba a 6,01 s y el READY llega a
@@ -1757,6 +1764,7 @@ struct PaqueteRonda1 {
   bool leido = false, ok = false;
   CamaraCruda cam;
   TrayectoriaB1 gok, thl, stn;
+  std::vector<uint8_t> pose_stn;   // 2372/3: se instala en el ACM nativo; no se gira la paleta ya dibujada
 };
 PaqueteRonda1& PaqueteRonda1De(const std::filesystem::path& ruta) {
   static PaqueteRonda1 p;
@@ -1779,10 +1787,138 @@ PaqueteRonda1& PaqueteRonda1De(const std::filesystem::path& ruta) {
   LeerTrayectoriaB1(HijoAmb(paq, 1), "GOK_WAIST", p.gok);   // Goku
   LeerTrayectoriaB1(HijoAmb(paq, 0), "THL_WAIST", p.thl);   // Cell
   LeerTrayectoriaB1(HijoAmb(paq, 3), "STN_WAIST", p.stn);   // Mr. Satan
+  p.pose_stn = HijoAmb(paq, 3);
   REXLOG_INFO("dbz3 pasarela: ronda 1: escena larga de B1 (#AMC 2372/20): {} ({} cuadros, {} claves); trayectorias: "
               "Goku {} clips, Cell {} clips, Satan {} clips", p.ok ? "leida" : "no disponible", p.cam.cuadros,
               p.cam.ojo.size(), p.gok.clips.size(), p.thl.clips.size(), p.stn.clips.size());
   return p;
+}
+// solSAT2: el clip 0 de 2372/3 tiene DOS cuadros, una pose estatica. Sus giros
+// absolutos son compatibles con STN HD (oraculo FK: brazos 16,34/16,50 y piernas
+// 4,93/4,95 grados). La correccion delta de reposo empeora esa correspondencia.
+// Se anade al almacen propio y a un CSK combinado, como el cargador nativo: el
+// skinning recibe el clip ANTES del dibujo y mueve tambien la piel del cuerpo.
+constexpr uint32_t kPoseLlegadaB1 = 0x2F9;   // 2F7 es el jetpack; 2F8 pertenece al mod del final
+void InstalarPoseLlegadaB1() {
+  uint8_t* base = Base();
+  if (!base || !g_d) return;
+  const auto& a = PaqueteRonda1De(g_d->ruta).pose_stn;
+  auto le = [&](size_t p) { uint32_t v = 0; if (p + 4 <= a.size()) std::memcpy(&v, a.data() + p, 4); return v; };
+  auto abs = [](uint32_t p, uint32_t h) { return p && p < 0x1000000u ? h + p : p; };
+  auto valido = [](uint32_t p) { return p >= 0x10000000u && p < 0xF0000000u; };
+  auto nombre = [](const char* p, size_t n) {
+    std::string s(p, strnlen(p, n));
+    const size_t k = s.find('_');
+    return k == std::string::npos ? s : s.substr(k + 1);
+  };
+  if (a.size() < 32 || std::memcmp(a.data(), "#AMM", 4)) return;
+  const uint32_t ent = le(0x14), nb1 = le(0x18), nm1 = le(0x1C), pistas = le(ent + 12);
+  const uint32_t per = (le(ent) & 0x10) ? 3 : 2;
+  if (MideSatan()) REXLOG_INFO("dbz3 solSAT2: fuente pose {} bytes, tabla {} huesos {} nombres {} pistas {}", a.size(), ent, nb1, nm1, pistas);
+  if (!nb1 || nb1 > 128 || nm1 + 32ull * nb1 > a.size() || pistas + 4ull * per * nb1 > a.size()) return;
+  const uint32_t mgr = REX_LOAD_U32(kMgrPtr);
+  if (!mgr) return;
+  for (const uint32_t off : {0x650u, 0xCD0u}) {
+    const uint32_t A = mgr + kX0 + off, m = REX_LOAD_U32(A + 0x538);
+    if (!valido(m)) continue;
+    const uint32_t acm = REX_LOAD_U32(m + 0x46C + 12);
+    uint32_t O = REX_LOAD_U32(A + 0x2C0);
+    // B3 puede dejar el hueco 0 vacio y cargar el CSK propio en 1 o 2.
+    // El CSK combinado va al primer hueco que consulta el motor.
+    for (uint32_t k = 1; !valido(O) && k < 3; ++k) O = REX_LOAD_U32(A + 0x2C0 + 4 * k);
+    if (MideSatan()) REXLOG_INFO("dbz3 solSAT2: instalar A {:#x} modelo {:#x} pool0 {:#x} pool3 {:#x} CSK {:#x}", A, m, REX_LOAD_U32(m + 0x46C), acm, O);
+    if (!valido(acm) || !valido(O) || (REX_LOAD_U32(acm) & 0xFFFFFF) != 0x41434D) continue;
+    const uint32_t nO = REX_LOAD_U32(O + 16), lstO = abs(REX_LOAD_U32(O + 20), O);
+    if (!nO || nO > 4096 || !valido(lstO)) continue;
+    // Nunca pisar un codigo ocupado (incluida una instalacion nuestra anterior).
+    if (kPoseLlegadaB1 < nO && REX_LOAD_U32(lstO + 4 * kPoseLlegadaB1)) continue;
+    const uint32_t n = REX_LOAD_U32(acm + 16), nb = REX_LOAD_U32(acm + 24);
+    const uint32_t tbl = abs(REX_LOAD_U32(acm + 20), acm), nm = abs(REX_LOAD_U32(acm + 28), acm);
+    if (!n || n > 4096 || !nb || nb > 128 || !valido(tbl) || !valido(nm)) continue;
+    const uint32_t nt = dbz3::roster::GuestAlloc(16 * (n + 1));
+    const uint32_t bp = dbz3::roster::GuestAlloc(8 * nb);
+    const uint32_t nc = std::max(nO, kPoseLlegadaB1 + 1), cs = dbz3::roster::GuestAlloc(32 + 4 * nc + 48);
+    if (!nt || !bp || !cs) return;
+    for (uint32_t k = 0; k < 4 * n; ++k) REX_STORE_U32(nt + 4 * k, REX_LOAD_U32(tbl + 4 * k));
+    // El almacen puede tener offsets relativos o punteros (ya reubicado).
+    const uint32_t viejo = abs(REX_LOAD_U32(tbl + 12), acm);
+    bool rel = true;
+    for (uint32_t k = 0; k < 8; ++k)
+      if (const uint32_t p = REX_LOAD_U32(viejo + 4 * k)) { rel = p < 0x1000000u; break; }
+    uint32_t casados = 0;
+    for (uint32_t j = 0; j < nb; ++j) {
+      REX_STORE_U32(bp + 8 * j, 0); REX_STORE_U32(bp + 8 * j + 4, 0);
+      char n3[33]{};
+      for (uint32_t k = 0; k < 32; ++k) n3[k] = char(REX_LOAD_U8(nm + 32 * j + k));
+      for (uint32_t i = 0; i < nb1; ++i) {
+        if (nombre(n3, 32) != nombre(reinterpret_cast<const char*>(a.data() + nm1 + 32 * i), 32)) continue;
+        const uint32_t p = le(pistas + 4 * per * i), nk = le(p + 8), tam = 12 + 8 * nk;
+        if (!p || !nk || nk > 4096 || p + uint64_t(tam) > a.size()) break;
+        const uint32_t g = dbz3::roster::GuestAlloc(tam + 8);
+        if (!g) return;
+        for (uint32_t k = 0; k < 12; k += 4) REX_STORE_U32(g + k, le(p + k));
+        for (uint32_t k = 12; k < tam; k += 2) {
+          uint16_t v; std::memcpy(&v, a.data() + p + k, 2); REX_STORE_U16(g + k, v);
+        }
+        if (nombre(n3, 32) == "WAIST") {
+          // El AMM lleva giro en mundo B1; quitar el de la instancia B3 para
+          // mantener el mismo marco que la camara y el coche (solo trasladados).
+          constexpr float u = 9.5873799e-5f;
+          for (uint32_t k = 0; k < nk; ++k) {
+            const uint32_t q = g + 12 + 8 * k;
+            const float x = REX_LOAD_U16(q + 2) * u, y = REX_LOAD_U16(q + 4) * u, z = REX_LOAD_U16(q + 6) * u;
+            const float cx=std::cos(x), sx=std::sin(x), cy=std::cos(y), sy=std::sin(y), cz=std::cos(z), sz=std::sin(z);
+            const float r[9] = {cz*cy, cz*sy*sx-sz*cx, cz*sy*cx+sz*sx, sz*cy, sz*sy*sx+cz*cx, sz*sy*cx-cz*sx, -sy, cy*sx, cy*cx};
+            float v[9]{};
+            for (int row = 0; row < 3; ++row)
+              for (int col = 0; col < 3; ++col)
+                for (int t = 0; t < 3; ++t) v[3*row+col] += LoadF(base, mgr+kX0+16*uint32_t(row)+4*uint32_t(t)) * r[3*t+col];
+            const float yy = std::asin(std::clamp(-v[6], -1.0f, 1.0f));
+            const float xx = std::abs(std::cos(yy)) > 1e-6f ? std::atan2(v[7], v[8]) : 0.0f;
+            const float zz = std::abs(std::cos(yy)) > 1e-6f ? std::atan2(v[3], v[0]) : std::atan2(-v[1], v[4]);
+            REX_STORE_U16(q+2, uint16_t(std::lround(xx/u))); REX_STORE_U16(q+4, uint16_t(std::lround(yy/u))); REX_STORE_U16(q+6, uint16_t(std::lround(zz/u)));
+          }
+        }
+        // ACM interpola hasta el final declarado del clip. Repetir la ultima
+        // clave original en 399 evita leer un intervalo de longitud cero al
+        // mantener una pose de solo dos cuadros durante toda la toma.
+        REX_STORE_U32(g + 8, nk + 1);
+        REX_STORE_U16(g + tam, 399);
+        for (uint32_t k = 2; k < 8; k += 2) REX_STORE_U16(g + tam + k, REX_LOAD_U16(g + tam - 8 + k));
+        REX_STORE_U32(bp + 8 * j, rel ? g - acm : g);
+        if (nombre(n3, 32) == "WAIST") {
+          // Suelo del modelo HD 377 posado con ESTE clip: -9,965531 (FK de
+          // todos sus vertices, sol2_clip.json). La pista original lleva XYZ
+          // de mundo; X/Z ya van en el ancla de la camara, no en el cuerpo.
+          const uint32_t pp = dbz3::roster::GuestAlloc(44);
+          if (!pp) return;
+          REX_STORE_U32(pp, 0); REX_STORE_U32(pp + 4, 1); REX_STORE_U32(pp + 8, 2);
+          REX_STORE_U32(pp + 12, 0);
+          StoreF(base, pp + 16, 0.0f); StoreF(base, pp + 20, 9.965531f); StoreF(base, pp + 24, 0.0f);
+          REX_STORE_U32(pp + 28, 399);
+          StoreF(base, pp + 32, 0.0f); StoreF(base, pp + 36, 9.965531f); StoreF(base, pp + 40, 0.0f);
+          REX_STORE_U32(bp + 8 * j + 4, rel ? pp - acm : pp);
+        }
+        ++casados;
+        break;
+      }
+    }
+    REX_STORE_U32(nt + 16 * n, le(ent) & ~0x10u);
+    REX_STORE_U32(nt + 16 * n + 4, le(ent + 4));
+    REX_STORE_U32(nt + 16 * n + 8, 400);   // mantener el ultimo cuadro durante la toma del coche
+    REX_STORE_U32(nt + 16 * n + 12, rel ? bp - acm : bp);
+    for (uint32_t k = 0; k < 32; k += 4) REX_STORE_U32(cs + k, REX_LOAD_U32(O + k));
+    REX_STORE_U32(cs + 16, nc); REX_STORE_U32(cs + 20, cs + 32);
+    const uint32_t b = cs + 32 + 4 * nc;
+    for (uint32_t k = 0; k < nc; ++k) REX_STORE_U32(cs + 32 + 4 * k, k < nO ? REX_LOAD_U32(lstO + 4 * k) : 0);
+    REX_STORE_U32(cs + 32 + 4 * kPoseLlegadaB1, b);
+    REX_STORE_U16(b, uint16_t(n)); REX_STORE_U16(b + 2, 3);
+    for (uint32_t k = 0; k < 11; ++k) REX_STORE_U32(b + 4 + 4 * k, k >= 5 && k <= 7 ? 0xFFFFFFFFu : 0);
+    REX_STORE_U32(acm + 20, REX_LOAD_U32(acm + 20) < 0x1000000u ? nt - acm : nt);
+    REX_STORE_U32(acm + 16, n + 1);
+    REX_STORE_U32(A + 0x2C0, cs);
+    REXLOG_INFO("dbz3 solSAT2: pose 2372/3 clip 0 -> cuerpo {:#x} ACM {:#x} clip {} codigo 2F9, {} pistas originales; relativos {} tabla {:#x} bloque {:#x}", A, acm, n, casados, rel, nt, bp);
+  }
 }
 // Copia las claves de camara del tramo [g0,g1) de la escena, con el cuadro relativo al paso.
 // DS170: ademas de las claves de dentro del tramo se copian la ULTIMA de antes de g0 y la PRIMERA de despues de g1
@@ -1879,6 +2015,60 @@ void PasoEscenaLarga(cinematica::Paso& p, const CamaraCruda& cam, const std::vec
   if (ancla) AnadirAncla(p, ancla_lado, *ancla, g0, g1);
 }
 // Escena larga de los Juegos de Cell: camara y actores de B1 en coordenadas del mundo (vacio = no se pudo leer).
+// solSAT: muestreo visual del MISMO #AMC, sin interpolar entre capturas de instantes distintos.
+// Solo pruebas.py (NO_DIALOGS + TEST); conserva las camaras/anclas originales en los cuadros indicados.
+void MuestrasSatan(cinematica::Escena& e, bool llegada) {
+  if (!MideSatan()) return;
+  const float antes[] = {1.2f, 12.0f, 72.0f};
+  const float despues[] = {2109.6f, 2209.2f, 2317.2f};
+  std::vector<cinematica::Paso> pasos;
+  for (float g : llegada ? despues : antes) {
+    float ini = llegada ? 2030.0f : 0.0f;
+    for (const auto& paso : e.pasos) {
+      const float nf = paso.cuadros > 0 ? float(paso.cuadros) : paso.segundos * 60.0f;
+      if (g >= ini && g < ini + nf) {
+        auto p = paso;
+        const float f = g - ini;
+        auto fijar = [f](auto& claves) {
+          if (claves.empty()) return;
+          size_t i = 0;
+          while (i + 1 < claves.size() && claves[i + 1][0] <= f) ++i;
+          const size_t j = std::min(i + 1, claves.size() - 1);
+          const float d = claves[j][0] - claves[i][0];
+          const float u = d > 0 ? std::clamp((f - claves[i][0]) / d, 0.0f, 1.0f) : 0.0f;
+          auto k = claves[i];
+          for (size_t c = 1; c < k.size(); ++c) k[c] += u * (claves[j][c] - k[c]);
+          k[0] = 0.0f;
+          claves.assign(1, k);
+        };
+        fijar(p.cam_ojo); fijar(p.cam_obj); fijar(p.cam_fov); fijar(p.cam_roll); fijar(p.cam_ancla);
+        p.cuadros = 180; p.segundos = 3.0f;
+        const auto empezar = p.al_empezar;
+        p.al_empezar = [g, empezar] {
+          if (empezar) empezar();
+          g_sat_muestra = g;
+          REXLOG_INFO("dbz3 solSAT: muestra G {:.1f}", g);
+        };
+        pasos.push_back(std::move(p));
+        break;
+      }
+      ini += nf;
+    }
+  }
+  if (llegada && pasos.size() == 3 && std::getenv("DBZ3_TEST_SAT_ALFA")) {
+    for (int fondo : {0, 255}) {
+      auto p = pasos[1];
+      const auto empezar = p.al_empezar;
+      p.al_empezar = [empezar, fondo] {
+        if (empezar) empezar();
+        g_sat_alfa_fondo = fondo;
+        REXLOG_INFO("dbz3 solSAT2: alfa fondo {}", fondo);
+      };
+      pasos.push_back(std::move(p));
+    }
+  }
+  e.pasos = std::move(pasos);
+}
 bool EscenaPreviaLarga(cinematica::Escena& e) {
   PaqueteRonda1& q = PaqueteRonda1De(g_d->ruta);
   if (!q.ok || q.gok.clips.empty() || q.thl.clips.empty()) return false;
@@ -1945,6 +2135,7 @@ bool EscenaPreviaLarga(cinematica::Escena& e) {
   // dibuja la misma ala en su toma 1 (captura PCSX2 originales_b1/cell1_g1 frames 001/002).
   REXLOG_INFO("dbz3 pasarela: previa: sin props de la llegada (coche/humo solo en la toma del clip 4, G 2030..2430); "
               "el objeto negro en V es el ala de Cell perfecto del modelo de B3 (XCEL_LWING/XCEL_RWING)");
+  MuestrasSatan(e, false);
   return true;
 }
 // Llegada de Mr. Satan (clips 4-10, 54,87 s): camara de B1 anclada a la trayectoria de Satan; el retador no esta en la
@@ -1961,6 +2152,19 @@ bool EscenaCellLarga(cinematica::Escena& e) {
   AnadirTrayectoria(q.stn, 4, 3820, 3820, 4480, sat);   // 660: primer plano
   AnadirTrayectoria(q.stn, 5, 4480, 4480, 5100, sat);   // 620: primer plano
   AnadirTrayectoria(q.stn, 6, 5100, 5100, 5322, sat);   // 222: retrato
+  // Satan 30/10: en la toma del coche (G 2030..2430) Satan esta quieto. Medido en el original (PCSX2, ISO EU, estado de
+  // la escena de los Juegos de Cell, campos 1680..2900): su nodo en RAM esta en (-396,0,136,77) y el apoyo de sus botas
+  // en pantalla (camara de 0x555B00, fov 1,2) cae en (-392,6; 139,7), a 3-4 u. La pista WAIST del #AMM da (-345,35; 112,74)
+  // (50 u mas lejos): con ella la camara anclada quedaba a ~100 u de Satan (en B1, a 45) y el luchador salia diminuto.
+  // Se corrige solo esa toma (medida); el resto de clips conserva la pista [H].
+  for (auto& k : sat)
+    if (k[0] < 2430.0f) k[1] += -396.0f + 345.35f, k[3] += 136.77f - 112.74f;
+  if (!sat.empty())   // Satan 30/10: B1 (RAM de PCSX2, campo 1960) = raiz (-396,0,136,77); sirve para comparar el ancla
+    REXLOG_INFO("dbz3 pasarela: ancla de Satan B1: primera clave G {:.0f} ({:.2f},{:.2f},{:.2f}), {} claves", sat.front()[0],
+                sat.front()[1], sat.front()[2], sat.front()[3], sat.size());
+  for (const int gq : {2030, 2200, 2430, 2600, 2790, 3000, 3320, 3480, 3820})
+    for (const auto& k : sat)
+      if (int(k[0]) == gq) { REXLOG_INFO("dbz3 pasarela: ancla de Satan B1 G {} = ({:.2f},{:.2f},{:.2f})", gq, k[1], k[2], k[3]); break; }
   // Lineas medidas de la traza de B1 (cortes en s -> cuadro global): 39,822 / 46,482 / 61,322 / 63,982 / 69,642 / 74,982
   // DS168: la toma del coche (2030..2389) tambien va anclada a Satan. Antes iba sin ancla, con la camara en
   // coordenadas del mundo de B1: el coche (mundo de B1) quedaba junto a la camara pero Satan de B3 estaba en el ring
@@ -2001,7 +2205,11 @@ bool EscenaCellLarga(cinematica::Escena& e) {
     // el objetivo del clip 4 acaba en y = -3,55, el ojo bajaba de 13,1 a 8,3 y se metia bajo la hierba del escenario
     // de B3 (fotos c041-c044). Sin acercar, la camara se queda en el ojo y la altura de B1 (12,8..16,0) y el coche
     // vuelve a entrar por la derecha como en el original (frames 104-122 de cell1_g7).
-    if (t.g0 < 2430) p.fov_acerca_sin_mover = true;   // toda la toma del coche
+    if (t.g0 < 2430) {
+      p.fov_acerca_sin_mover = true;
+      p.anim[0] = int(kPoseLlegadaB1);
+      p.al_empezar = InstalarPoseLlegadaB1;
+    }
     if (t.linea >= 0) p.linea = T::T(kLineas[t.linea][0], kLineas[t.linea][1]);
     e.pasos.push_back(p);
   }
@@ -2344,6 +2552,9 @@ struct PropsLlegada {
   std::atomic<bool> activo{false};
   std::atomic<int64_t> t0{0};        // ms del primer paso de EscenaCellLarga (cuadro global 2030 del #AMC)
   int humo_g0 = 119, humo_g1 = 399;  // #AMP hijo 16 (cuadros locales del clip 4)
+  // Satan 30/10: tercera pista del #AMM (escala por hueso, {cuadro, sx, sy, sz}; ps2::LeerAnim solo lee giro y posicion).
+  // Las 16 nubes del humo nacen con ~0,04..0,3 en el cuadro 119 y crecen a ~0,6..1,3 en el 399: sin ella salian ya enteras.
+  std::vector<std::vector<std::array<float, 4>>> humo_esc;
 };
 PropsLlegada g_pl;
 // DS145: en estos #AMM de props (flags 0x19) las pistas de los huesos que no se mueven son todo ceros: si se aplican
@@ -2378,6 +2589,117 @@ void SumarReposo(ps2::Anim& a, const ps2::Esqueleto& esq) {
         k[3] += esq.local[i].m[11];
       }
 }
+// Escalas (tercera pista) de la animacion 0 de un #AMM de B1, por hueso del #AMO (mismo emparejamiento por nombre que AnimB1).
+std::vector<std::vector<std::array<float, 4>>> EscalasB1(const std::vector<uint8_t>& amo, const std::vector<uint8_t>& amm) {
+  std::vector<std::vector<std::array<float, 4>>> r;
+  auto u32 = [&](size_t o) { uint32_t v = 0; if (o + 4 <= amm.size()) std::memcpy(&v, &amm[o], 4); return v; };
+  if (amo.size() < 0x30 || amm.size() < 0x30) return r;
+  uint32_t nb = 0, nom = 0;
+  std::memcpy(&nb, &amo[0x10], 4);
+  std::memcpy(&nom, &amo[0x24], 4);
+  const uint32_t bn = u32(0x18), bnom = u32(0x1C), e = u32(0x14);
+  const uint32_t fl = u32(e), off = u32(e + 12);
+  if (!(fl & 0x10) || !off) return r;
+  r.resize(nb);
+  for (uint32_t j = 0; j < bn && size_t(bnom) + 32 * (j + 1) <= amm.size(); ++j) {
+    const uint32_t p = u32(off + 4 * (3 * j + 2));
+    if (!p) continue;
+    const uint32_t nk = std::min<uint32_t>(u32(p + 8), 4096);
+    const char* n = reinterpret_cast<const char*>(&amm[bnom + 32 * j]);
+    for (uint32_t i = 0; i < nb && size_t(nom) + 32 * (i + 1) <= amo.size(); ++i)
+      if (std::strncmp(n, reinterpret_cast<const char*>(&amo[nom + 32 * i]), 32) == 0) {
+        for (uint32_t k = 0; k < nk && p + 12 + 16 * (k + 1) <= amm.size(); ++k) {
+          std::array<float, 4> c;
+          std::memcpy(c.data(), &amm[p + 12 + 16 * k], 16);
+          c[0] = float(u32(p + 12 + 16 * k));
+          r[i].push_back(c);
+        }
+        break;
+      }
+  }
+  return r;
+}
+// Inversa afin (las nubes del #AMG tienen escala no uniforme ya en reposo).
+bool InversaAfinSatan(const ps2::M34& matriz, ps2::M34& inversa) {
+  const auto& m = matriz.m;
+  const float a = m[0], b = m[1], c = m[2], d = m[4], e = m[5], f = m[6], g = m[8], h = m[9], j = m[10];
+  const float det = a * (e * j - f * h) - b * (d * j - f * g) + c * (d * h - e * g);
+  if (std::abs(det) <= 1e-12f) return false;
+  auto& v = inversa.m;
+  const float cof[9] = {e*j-f*h, c*h-b*j, b*f-c*e, f*g-d*j, a*j-c*g, c*d-a*f, d*h-e*g, b*g-a*h, a*e-b*d};
+  for (int r = 0; r < 3; ++r) {
+    for (int k = 0; k < 3; ++k) v[4*r+k] = cof[3*r+k] / det;
+    v[4*r+3] = -(v[4*r] * m[3] + v[4*r+1] * m[7] + v[4*r+2] * m[11]);
+  }
+  return true;
+}
+// Aplica las escalas del cuadro `fc` a una malla ya posada: cada vertice rigido se pasa al espacio de su hueso (matriz de
+// mundo recalculada igual que ps2::Posar: giro y posicion absolutos de la pista), se escala y se devuelve.
+void EscalarPose(const ps2::Esqueleto& esq, const ps2::Anim& an, const std::vector<std::vector<std::array<float, 4>>>& esc, float fc,
+                 ps2::Malla& pose) {
+  const size_t nb = esq.padre.size();
+  std::vector<ps2::M34> w(nb), destino(nb), inversa(nb);
+  std::vector<bool> invertible(nb, false);
+  std::vector<std::array<float, 3>> sc(nb, {1.0f, 1.0f, 1.0f});
+  for (size_t i = 0; i < nb; ++i) {
+    ps2::M34 l = esq.local[i];
+    if (i < an.ang.size() && !an.ang[i].empty()) {
+      const auto& ks = an.ang[i];
+      size_t ia = 0;
+      while (ia + 1 < ks.size() && float(ks[ia + 1][0]) <= fc) ++ia;
+      const size_t ib = ia + 1 < ks.size() ? ia + 1 : ia;
+      const float fa = float(ks[ia][0]), fb = float(ks[ib][0]);
+      const float u = fb > fa ? std::clamp((fc - fa) / (fb - fa), 0.0f, 1.0f) : 0.0f;
+      auto ang = [&](int e) {
+        const int d = int(int16_t(uint16_t(ks[ib][size_t(e)] - ks[ia][size_t(e)])));
+        return (float(ks[ia][size_t(e)]) + u * float(d)) * 9.5873799e-5f;
+      };
+      const float x = ang(1), y = ang(2), z = ang(3);
+      const float cx = std::cos(x), sx = std::sin(x), cy = std::cos(y), sy = std::sin(y), cz = std::cos(z), sz = std::sin(z);
+      const float r[9] = {cz * cy, cz * sy * sx - sz * cx, cz * sy * cx + sz * sx, sz * cy, sz * sy * sx + cz * cx, sz * sy * cx - cz * sx,
+                          -sy,     cy * sx,                cy * cx};
+      for (int f = 0; f < 3; ++f)
+        for (int k = 0; k < 3; ++k) l.m[f * 4 + k] = r[f * 3 + k];
+    }
+    if (i < an.pos.size() && !an.pos[i].empty()) {
+      const auto& ks = an.pos[i];
+      size_t ia = 0;
+      while (ia + 1 < ks.size() && ks[ia + 1][0] <= fc) ++ia;
+      const size_t ib = ia + 1 < ks.size() ? ia + 1 : ia;
+      const float u = ks[ib][0] > ks[ia][0] ? std::clamp((fc - ks[ia][0]) / (ks[ib][0] - ks[ia][0]), 0.0f, 1.0f) : 0.0f;
+      l.m[3] = ks[ia][1] + u * (ks[ib][1] - ks[ia][1]);
+      l.m[7] = ks[ia][2] + u * (ks[ib][2] - ks[ia][2]);
+      l.m[11] = ks[ia][3] + u * (ks[ib][3] - ks[ia][3]);
+    }
+    w[i] = esq.padre[i] >= 0 ? w[size_t(esq.padre[i])] * l : l;
+    if (i < esc.size() && !esc[i].empty()) {
+      const auto& ks = esc[i];
+      size_t ia = 0;
+      while (ia + 1 < ks.size() && ks[ia + 1][0] <= fc) ++ia;
+      const size_t ib = ia + 1 < ks.size() ? ia + 1 : ia;
+      const float u = ks[ib][0] > ks[ia][0] ? std::clamp((fc - ks[ia][0]) / (ks[ib][0] - ks[ia][0]), 0.0f, 1.0f) : 0.0f;
+      for (int e = 0; e < 3; ++e) sc[i][size_t(e)] = ks[ia][size_t(e) + 1] + u * (ks[ib][size_t(e) + 1] - ks[ia][size_t(e) + 1]);
+      // solSAT: el #AMG guarda YA la escala del ultimo cuadro (no es identidad).
+      // Las claves son ABSOLUTAS: sustituirla, no multiplicarla otra vez.
+      for (int e = 0; e < 3; ++e) {
+        const float s = std::sqrt(l.m[e] * l.m[e] + l.m[4 + e] * l.m[4 + e] + l.m[8 + e] * l.m[8 + e]);
+        if (s > 1e-8f)
+          for (int f = 0; f < 3; ++f) l.m[4 * f + e] *= sc[i][size_t(e)] / s;
+      }
+    }
+    destino[i] = esq.padre[i] >= 0 ? destino[size_t(esq.padre[i])] * l : l;
+    // M34::Inversa es R^T: solo vale para matrices RIGIDAS. Aqui hay escala no uniforme.
+    invertible[i] = InversaAfinSatan(w[i], inversa[i]);
+  }
+  for (auto& t : pose.tris)
+    for (int c = 0; c < 3; ++c) {
+      const size_t b = t.hueso[c];
+      if (b >= nb || !invertible[b]) continue;
+      const ps2::V3 q = inversa[b].por({t.p[c].x + esq.centro.x, t.p[c].y, t.p[c].z + esq.centro.z});   // Posar resto el centro x/z
+      const ps2::V3 r = destino[b].por(q);
+      t.p[c] = {r.x - esq.centro.x, r.y, r.z - esq.centro.z};
+    }
+}
 void CargarPropsLlegada(std::filesystem::path iso) {
   AfsPs2 afs;
   bool abierto = false;
@@ -2406,8 +2728,19 @@ void CargarPropsLlegada(std::filesystem::path iso) {
         if (HuesoDe(amo, "KEMURI_NULL") >= 0) {
           pl.humo.m = ps2::CargarSuelto(amo, amt, true, false, false);
           if (pl.humo.m.esq) {
+            // solSAT: LeerAmo construye inversas rigidas. Solo este prop tiene S != 1:
+            // sin corregirlas, Posar introduce S_reposo^2 antes de aplicar el #AMM.
+            if (!(std::getenv("DBZ3_NO_DIALOGS") && std::getenv("DBZ3_TEST_SAT_ANTES"))) {
+              auto& esq = *pl.humo.m.esq;
+              std::vector<ps2::M34> mundo(esq.local.size());
+              for (size_t i = 0; i < mundo.size(); ++i) {
+                mundo[i] = esq.padre[i] >= 0 ? mundo[size_t(esq.padre[i])] * esq.local[i] : esq.local[i];
+                InversaAfinSatan(mundo[i], esq.inv_mundo[i]);
+              }
+            }
             NormalizarPesosB1(*pl.humo.m.esq);
             pl.humo.clips = {{AnimB1(amo, HijoAmb(paq, 15), 0, pl.humo.m.esq->padre.size()), 0}};
+            pl.humo_esc = EscalasB1(amo, HijoAmb(paq, 15));
             LimpiarPistasVacias(pl.humo.clips[0].an);
             SumarReposo(pl.humo.clips[0].an, *pl.humo.m.esq);
             pl.humo.ok = bool(pl.humo.m.malla) && bool(pl.humo.clips[0].an);
@@ -2682,12 +3015,58 @@ TomaLlegada TomaDeLlegada(float g) {
 // pintan con ps2_modelo (texturas del #AMT del paquete y z-buffer del juego) y solo durante la escena de la llegada
 // (54,87 s). DS148 deja una linea por toma y objeto (posicion, tamano y si se dibuja) y corta el humo en el ultimo
 // cuadro del #AMP (399): B1 no lo dibuja despues de la toma del coche.
+// Satan 30/10: opacidad del humo del original (PCSX2, 28 capturas de los campos 1791..1931; media del parche de hierba de la
+// izquierda, (I - I_limpia) / (I_humo - I_limpia) con I_humo ~ 250 estimado de dos parches, el cielo y la hierba, que dan
+// el mismo 0,45). Cuadro del clip (60 Hz) -> alfa. Sin humo hasta el 128; sube en ~10 cuadros; baja de 204 a 282.
+const float kHumoAlfa[][2] = {{128, 0.00f}, {132, 0.03f}, {134.4f, 0.35f}, {136.8f, 0.43f}, {140.4f, 0.47f}, {144, 0.45f}, {156, 0.42f},
+                              {168, 0.43f}, {180, 0.29f}, {192, 0.47f}, {199, 0.53f}, {210, 0.52f}, {221, 0.46f}, {232, 0.33f},
+                              {240, 0.23f}, {252, 0.11f}, {264, 0.04f}, {282, 0.0f}};
+float HumoAlfa(float g) {
+  constexpr int n = int(sizeof(kHumoAlfa) / sizeof(kHumoAlfa[0]));
+  if (g <= kHumoAlfa[0][0] || g >= kHumoAlfa[n - 1][0]) return 0.0f;
+  for (int i = 0; i + 1 < n; ++i)
+    if (g <= kHumoAlfa[i + 1][0]) return kHumoAlfa[i][1] + (kHumoAlfa[i + 1][1] - kHumoAlfa[i][1]) * (g - kHumoAlfa[i][0]) / (kHumoAlfa[i + 1][0] - kHumoAlfa[i][0]);
+  return 0.0f;
+}
+// La UI interpola UV en pantalla, el GS interpola ST/Q. Las nubes originales
+// son planos oblicuos: una sola pareja de triangulos daba alfa 0,4147 (CPU
+// afin) / 0,4142 (GPU) frente a 0,42149 con perspectiva, mismo campo 1841.
+// Dividir el MISMO plano/UV en celdas pequenas aproxima ST/Q sin tocar el SDK,
+// la opacidad ni la silueta. Solo 32*64 triangulos durante la toma del coche.
+void PerspectivaHumoSatan(ps2::Malla& m) {
+  ps2::Malla fina;
+  constexpr int n = 8;
+  fina.tris.reserve(m.tris.size() * n * n);
+  for (const auto& t : m.tris) {
+    auto poner = [&](float u0, float v0, float u1, float v1, float u2, float v2) {
+      auto q = t;
+      const float u[3] = {u0, u1, u2}, v[3] = {v0, v1, v2};
+      for (int c = 0; c < 3; ++c) {
+        const float w = 1.0f - u[c] - v[c];
+        q.p[c] = {w*t.p[0].x+u[c]*t.p[1].x+v[c]*t.p[2].x,
+                  w*t.p[0].y+u[c]*t.p[1].y+v[c]*t.p[2].y,
+                  w*t.p[0].z+u[c]*t.p[1].z+v[c]*t.p[2].z};
+        q.uv[c] = ImVec2(w*t.uv[0].x+u[c]*t.uv[1].x+v[c]*t.uv[2].x,
+                         w*t.uv[0].y+u[c]*t.uv[1].y+v[c]*t.uv[2].y);
+      }
+      fina.tris.push_back(q);
+    };
+    for (int i = 0; i < n; ++i)
+      for (int j = 0; j < n - i; ++j) {
+        const float u = float(i)/n, v = float(j)/n, d = 1.0f/n;
+        poner(u,v,u+d,v,u,v+d);
+        if (i+j < n-1) poner(u+d,v,u+d,v+d,u,v+d);
+      }
+  }
+  m = std::move(fina);
+}
 void DibujarPropsLlegada(ImGuiIO& io) {
   PropsLlegada& pl = g_pl;
   if (!pl.activo.load() || pl.estado.load() != 2 || !dbz3::cinematica::Activa()) return;
   const int64_t t0 = pl.t0.load();
   if (!t0) return;
-  const float ts = float(NowMs() - t0) / 1000.0f;
+  const float ts = MideSatan() && g_sat_muestra.load() >= 2030.0f
+                       ? (g_sat_muestra.load() - 2030.0f) / 60.0f : float(NowMs() - t0) / 1000.0f;
   if (ts < 0.0f || ts > 55.0f) return;   // 5322-2030 = 3292 cuadros = 54,87 s; despues van las tomas del READY
   uint8_t* base = Base();
   const uint32_t mgr = base ? REX_LOAD_U32(kMgrPtr) : 0;
@@ -2706,23 +3085,63 @@ void DibujarPropsLlegada(ImGuiIO& io) {
   const bool con_ancla = dbz3::cinematica::AnclaDelta(ancla);
   const float g = ts * 60.0f;   // cuadro local del clip 4 (el primero es el 2030 del #AMC)
   const TomaLlegada toma = TomaDeLlegada(g);
+  // Satan 30/10: proyeccion REAL de B1 para la toma del coche. Medida en el original (PCSX2, campo 1753): la matriz de
+  // proyeccion de B1 (0x4DB9D0) escala x 1645,9 e y 877,8 (x2 por ser campo = 1755,6 por cuadro de 480 lineas) con centro
+  // en la imagen; el coche del original encaja con ella (IoU 0,76 contra la mascara). B3 proyecta con su 0,785 (3x mas
+  // ancho): el coche, dibujado con el, salia mas pequeno y no se iba de pantalla. Se dibuja con la de B1 (fov vertical
+  // y estrechado en x) y sin recortar contra el z-buffer de B3 (cuya perspectiva es otra).
+  const bool proy_b1 = toma.clip == 4 && !std::getenv("DBZ3_SIN_PROY_B1_COCHE");
+  if (proy_b1) {
+    const float fy = 1755.6f * (2.0f * cam.h.y) / 480.0f;
+    cam.fov = 2.0f * std::atan(cam.h.y / fy);
+    const float sx = 1645.9f / 1755.6f;
+    for (int i : {0, 4, 8, 12}) cam.m[i] *= sx;
+    // La proyeccion de B1 NO comparte z-buffer con la camara nativa de B3.
+    // Sin esto la hierba cortaba las nubes en una linea horizontal y la piel
+    // atravesaba el humo, aunque el oraculo de geometria/alfa fuese correcto.
+    cam.za = cam.zb = 0.0f;
+  }
   // DS148: el coche y el humo son la toma 4 del #AMC (G 2030..2430): el #AMM 11 y el #AMM 15 duran 400 cuadros y el
   // #AMP 16 da el tramo 119..399. En el cuadro 400 B1 corta a la toma de Satan (2430) y ya no los dibuja: se cortan
   // los dos ahi (no se quedan en las tomas siguientes, que es lo que hacia DS145 con el humo).
   auto pintar = [&](PiezaFinal& p, int g0, int g1, bool translucido, int k) -> bool {
+    if (MideSatan() && g_sat_alfa_fondo.load() >= 0 && k == 0) return false;
     if (!p.ok) return false;
     if (g < float(g0) || g > float(g1)) return false;
     const float f = std::clamp(g - float(p.clips[0].g0), 0.0f, float(p.clips[0].an.cuadros) - 1.0f);
     ps2::Malla pose;
     ps2::Posar(*p.m.esq, p.clips[0].an, f / 60.0f, pose);
+    // solSAT: las 16 capas NO son una pantalla blanca de alfa HumoAlfa/0,53.
+    // #AMT: alfa CLUT 0..87 (0..174/255); material RGBA=(128,128,128,128), unidad GS.
+    // #AMM: escala por nube. Oraculo CPU con camara PINE, campo 1841: alfa del parche
+    // 0,42949 con escala; SIN escala 0,99887. Se conserva la ruta vieja SOLO para cotejo.
+    const bool humo_antes = std::getenv("DBZ3_NO_DIALOGS") && std::getenv("DBZ3_TEST_SAT_ANTES");
+    if (k == 1 && !pl.humo_esc.empty() && !humo_antes)
+      EscalarPose(*p.m.esq, p.clips[0].an, pl.humo_esc, std::fmod(f, float(std::max(p.clips[0].an.cuadros, 1))), pose);
     // Posar quita el centro x/z del modelo de reposo (los actores lo tienen en 0; el coche y el humo no): se devuelve
     const ps2::V3 ce = p.m.esq->centro;
     for (auto& t : pose.tris)
       for (int c = 0; c < 3; ++c)
         t.p[c] = {t.p[c].x + ce.x + p.dx + (con_ancla ? ancla[0] : 0.0f), t.p[c].y + p.dy + (con_ancla ? ancla[1] : 0.0f),
                   t.p[c].z + ce.z + p.dz + (con_ancla ? ancla[2] : 0.0f)};
-    if (translucido)
-      for (auto& t : pose.tris) t.trans = true;   // el humo del #AMT lleva alfa (Escena::Poner lo mezcla)
+    if (translucido) {
+      static const float gan = [] {
+        const char* v = std::getenv("DBZ3_NO_DIALOGS") ? std::getenv("DBZ3_TEST_HUMO_G") : nullptr;
+        return v ? float(std::atof(v)) : 1.0f;
+      }();
+      const float a = std::clamp((humo_antes ? HumoAlfa(g) / 0.53f : 1.0f) * gan, 0.0f, 1.0f);
+      if (a <= 0.0f) return false;
+      // El lector convierte CLUT 0..128 a bytes multiplicando por 2. El GS
+      // mezcla con A/128, el host con byte/255: corregir esa unidad 255/256,
+      // no ajustar una ganancia a la captura (p. ej. 87/128 == 174/256).
+      const float unidad_gs = humo_antes ? 1.0f : 255.0f / 256.0f;
+      const ImU32 col = IM_COL32(255, 255, 255, int(255.0f * a * unidad_gs + 0.5f));
+      for (auto& t : pose.tris) {   // alfa absoluto del #AMT; no volver a modular la opacidad agregada de las 16 capas
+        t.trans = true;
+        t.con_color = true;
+        t.col[0] = t.col[1] = t.col[2] = col;
+      }
+    }
     // DS148: caja y centro reales de lo que se va a pintar (posicion y escala en unidades del mundo de B3).
     float lo[3] = {1e9f, 1e9f, 1e9f}, hi[3] = {-1e9f, -1e9f, -1e9f};
     for (const auto& t : pose.tris)
@@ -2734,6 +3153,45 @@ void DibujarPropsLlegada(ImGuiIO& io) {
     ImVec2 sp{};
     float kk = 0;
     const bool vis = cam.P(cen, sp, kk);
+    {   // Satan 30/10: centro de la pieza en el mundo de B1 (sin el ancla) cada 100 ms con DBZ3_TEST_PROPS_LLEGADA_LOG
+      static const bool sonda = std::getenv("DBZ3_TEST_PROPS_LLEGADA_LOG") != nullptr;
+      static int64_t ult_s[2] = {0, 0};
+      if (sonda && NowMs() - ult_s[k] >= 100) {
+        ult_s[k] = NowMs();
+        const float d0 = con_ancla ? ancla[0] : 0.0f, d1 = con_ancla ? ancla[1] : 0.0f, d2 = con_ancla ? ancla[2] : 0.0f;
+        REXLOG_INFO("dbz3 pasarela: sonda {} g {:.0f} centro B1 ({:.2f},{:.2f},{:.2f}) caja x {:.1f}..{:.1f} z {:.1f}..{:.1f} pantalla ({:.0f},{:.0f}) vis {}",
+                    k == 0 ? "coche" : "humo", g, cen.x - d0, cen.y - d1, cen.z - d2, lo[0] - d0, hi[0] - d0, lo[2] - d2, hi[2] - d2, sp.x, sp.y, vis);
+        if (const char* fv = std::getenv("DBZ3_TEST_COCHE_VERTS"); fv && k == 0 && g > 20.0f) {   // 30/10: malla del coche (mundo B1)
+          static bool hecho = false;
+          if (!hecho) {
+            hecho = true;
+            std::ofstream o(fv);
+            for (const auto& t : pose.tris)
+              for (const auto& v : t.p) o << v.x - d0 << ' ' << v.y - d1 << ' ' << v.z - d2 << '\n';
+          }
+        }
+        {   // 30/10: caja en pantalla del objeto como fraccion de la imagen 4:3 del juego (comparable con capturas del original)
+          const S::Imagen gi = S::GuestImage(io);
+          float mnx = 1e9f, mxx = -1e9f, mny = 1e9f, mxy = -1e9f;
+          for (const auto& t : pose.tris)
+            for (const auto& v : t.p) {
+              ImVec2 q;
+              float kq;
+              if (!cam.P(v, q, kq)) continue;
+              mnx = std::min(mnx, q.x), mxx = std::max(mxx, q.x), mny = std::min(mny, q.y), mxy = std::max(mxy, q.y);
+            }
+          const float W = gi.p1.x - gi.p0.x, H = gi.p1.y - gi.p0.y;
+          REXLOG_INFO("dbz3 pasarela: sonda {} g {:.0f} caja pantalla x {:.3f}..{:.3f} y {:.3f}..{:.3f}", k == 0 ? "coche" : "humo", g,
+                      (mnx - gi.p0.x) / W, (mxx - gi.p0.x) / W, (mny - gi.p0.y) / H, (mxy - gi.p0.y) / H);
+          if (k == 0) {
+            float oj[3], ob[3], gi2 = 0;
+            if (dbz3::cinematica::CamaraEscena(oj, ob, &gi2))
+              REXLOG_INFO("dbz3 pasarela: sonda camara g {:.1f} cuadro-AMM {:.1f} ojo B1 ({:.2f},{:.2f},{:.2f}) obj ({:.2f},{:.2f},{:.2f})", g, f, oj[0] - d0, oj[1] - d1, oj[2] - d2,
+                          ob[0] - d0, ob[1] - d1, ob[2] - d2);
+          }
+        }
+      }
+    }
     static int ult[2] = {-1, -1};
     if (ult[k] != toma.clip) {
       ult[k] = toma.clip;
@@ -2751,6 +3209,7 @@ void DibujarPropsLlegada(ImGuiIO& io) {
                   k == 0 ? "coche" : "humo", toma.clip, g, sp.x, sp.y);
     }
     if (!vis && visto[k] == toma.clip) visto[k] = -1;   // si vuelve a salir, la proxima entrada se registra
+    if (k == 1 && !humo_antes) PerspectivaHumoSatan(pose);
     esc.Poner(cam, pose, p.tx, ps2::V3{0, 0, 0}, 0.0f, 1.0f);
     return true;
   };
@@ -2768,8 +3227,23 @@ void DibujarPropsLlegada(ImGuiIO& io) {
                     !existe ? "no cargado" : k == 1 ? "fuera del tramo del #AMP" : "fuera de su toma");
       }
   }
-  esc.Tapar(cam, base, mgr + kX0);
-  esc.Pintar(ImGui::GetBackgroundDrawList());
+  if (!proy_b1) esc.Tapar(cam, base, mgr + kX0);
+  {   // Satan 30/10 (d): el original es 4:3 y a la derecha del coche no hay nada; en 16:9 el coche asomaba por la franja
+      // ancha. Con la proyeccion de B1 (4:3) se recorta al centro 4:3 de la imagen del juego (DBZ3_SIN_RECORTE_43_COCHE lo quita).
+    ImDrawList* bg = ImGui::GetBackgroundDrawList();
+    if (MideSatan() && g_sat_alfa_fondo.load() >= 0) {
+      const int c = g_sat_alfa_fondo.load();
+      bg->AddRectFilled(ImVec2(0, 0), io.DisplaySize, IM_COL32(c, c, c, 255));
+    }
+    const bool recorta = proy_b1 && !std::getenv("DBZ3_SIN_RECORTE_43_COCHE");
+    if (recorta) {
+      const S::Imagen gi = S::GuestImage(io);
+      const float w43 = (gi.p1.y - gi.p0.y) * 4.0f / 3.0f, cx = (gi.p0.x + gi.p1.x) * 0.5f;
+      bg->PushClipRect(ImVec2(std::max(gi.p0.x, cx - w43 * 0.5f), gi.p0.y), ImVec2(std::min(gi.p1.x, cx + w43 * 0.5f), gi.p1.y), true);
+    }
+    esc.Pintar(bg);
+    if (recorta) bg->PopClipRect();
+  }
   {   // sonda: centro de cada prop en pantalla (DBZ3_TEST_PROPS_LLEGADA_LOG=<ms>)
     static const int ms = [] { const char* v = std::getenv("DBZ3_TEST_PROPS_LLEGADA_LOG"); const int n = v ? std::atoi(v) : 0; return n <= 0 ? 0 : n == 1 ? 1000 : std::max(n, 50); }();
     static int64_t ult = 0;
@@ -2778,8 +3252,8 @@ void DibujarPropsLlegada(ImGuiIO& io) {
       float ojo[3] = {}, obj[3] = {}, giro = 0.0f;   // DS168: ojo real aplicado (para ver que no baja bajo el suelo)
       const bool cam_ok = dbz3::cinematica::CamaraEscena(ojo, obj, &giro);
       REXLOG_INFO("dbz3 pasarela: props llegada t {:.1f} s (cuadro local {:.0f}, toma {}); camara escena activa {} ojo "
-                  "({:.1f},{:.1f},{:.1f}) objetivo ({:.1f},{:.1f},{:.1f})", ts, g, toma.clip, cam_ok, ojo[0], ojo[1],
-                  ojo[2], obj[0], obj[1], obj[2]);
+                  "({:.1f},{:.1f},{:.1f}) objetivo ({:.1f},{:.1f},{:.1f}) delta ancla {} ({:.1f},{:.1f},{:.1f})", ts, g,
+                  toma.clip, cam_ok, ojo[0], ojo[1], ojo[2], obj[0], obj[1], obj[2], con_ancla, ancla[0], ancla[1], ancla[2]);
     }
   }
 }
@@ -2931,12 +3405,22 @@ bool LanzarPrevia(int escenario) {   // con g_mu
   e.volumen = dbz3::settings::AudioMute() ? 0.0f : float(dbz3::settings::MasterVolume());
   e.distancia = 30;
   if (!EscenaPreviaLarga(e)) EscenaPrevia(e);   // DS143: los 4 clips reales del #AMC de B1; si no, el resumen medido
+  g_previa_inicio = 0;
+  if (!e.pasos.empty()) {
+    const auto empezar = e.pasos.front().al_empezar;
+    e.pasos.front().al_empezar = [empezar] {
+      g_previa_inicio = NowMs();
+      dbz3::launcher::DeferUi(&CrearFundidoSatan);
+      if (empezar) empezar();
+    };
+  }
   return LanzarSolo(escenario, kGokuB3, kCellB3, kFormaSsj, kFormaPerfecto, std::move(e), kSueltaPrevia);
 }
 // DS30: la cinematica de presentacion de la ronda (en B1 solo las dos tomas de FUN_001920b0; DS143 quito la charla 3D)
 // va en un combate "solo escena" ANTES del combate de verdad. Asi el READY? nativo de B3 (estado 3) sale despues de la
 // cinematica, como en B1 (tomas -> tramo fijo -> READY -> FIGHT), y no antes. El combate de verdad arranca luego sin escena.
 bool LanzarPresentacion(int escenario, const CombateB1& c, int ronda) {   // con g_mu
+  g_previa_inicio = 0;
   dbz3::cinematica::Escena e;
   e.iso_voces = g_d->ruta;
   e.volumen = dbz3::settings::AudioMute() ? 0.0f : float(dbz3::settings::MasterVolume());
@@ -2948,7 +3432,8 @@ bool LanzarPresentacion(int escenario, const CombateB1& c, int ronda) {   // con
     } else if (!std::getenv("DBZ3_SIN_PROPS_LLEGADA")) {
       // DS145: coche y humo de la llegada (paquete #2372 de la ISO, en un hilo). El primer paso fija el reloj: el
       // cuadro global 2030 del #AMC es el 0 de la llegada.
-      e.pasos[0].al_empezar = [] { g_pl.t0 = NowMs(); g_pl.activo = true; };
+      const auto empezar = e.pasos[0].al_empezar;
+      e.pasos[0].al_empezar = [empezar] { if (empezar) empezar(); g_pl.t0 = NowMs(); g_pl.activo = true; };
       if (g_pl.estado.load() == 0) {
         g_pl.estado = 1;
         std::thread(CargarPropsLlegada, g_d->ruta).detach();
@@ -2962,6 +3447,16 @@ bool LanzarPresentacion(int escenario, const CombateB1& c, int ronda) {   // con
   static const bool sin_musica = std::getenv("DBZ3_SIN_MUSICA_B1") != nullptr;
   if (!sin_musica && e.pasos.size() >= 3)
     e.pasos[e.pasos.size() - 3].al_empezar = [ruta = g_d->ruta, m = c.musica] { ArrancarMusica(ruta, m, 0.0f, false); };
+  if (ronda == 0 && MideSatan()) {
+    MuestrasSatan(e, true);
+    if (!e.pasos.empty()) {
+      const auto empezar = e.pasos.front().al_empezar;
+      e.pasos.front().al_empezar = [empezar] {
+        g_pl.t0 = NowMs(); g_pl.activo = true;
+        if (empezar) empezar();
+      };
+    }
+  }
   Reglas r = ReglasDe(c, g_dificultad, ronda);
   r.capsulas = false;   // la escena no pide capsulas (las del combate las pone VigilarCombate en el combate de verdad)
   const int forma = FormaB3(c.rival, c.forma);
@@ -3553,6 +4048,31 @@ float EscalaDificultad(int opt, int clip, float f) {
 
 
 
+// Registrado al empezar la toma (despues del panel de cinematica). El fundido
+// original cubre TAMBIEN los subtitulos: en Background quedaban blancos desde
+// el primer cuadro, aunque la imagen ya tuviera el alfa correcto.
+bool AperturaSatan() {
+  return g_previa_inicio.load() && g_previa_combate.load() && dbz3::cinematica::Activa() && !g_previa_negro.load();
+}
+float AlfaAperturaSatan() {
+  const float ms = MideSatan() ? g_sat_muestra.load() * (1000.0f / 60.0f) : float(NowMs() - g_previa_inicio.load());
+  return std::clamp(1.0f - ms / 2000.0f, 0.0f, 1.0f);
+}
+class FundidoSatan : public rex::ui::ImGuiDialog {
+ public:
+  explicit FundidoSatan(rex::ui::ImGuiDrawer* d) : ImGuiDialog(d) {}
+ protected:
+  void OnDraw(ImGuiIO& io) override {
+    if (!AperturaSatan()) return;
+    const float alfa = AlfaAperturaSatan();
+    if (alfa > 0) ImGui::GetForegroundDrawList()->AddRectFilled(ImVec2(0, 0), io.DisplaySize, IM_COL32(0, 0, 0, int(255 * alfa)));
+  }
+};
+void CrearFundidoSatan() {
+  static FundidoSatan* panel = nullptr;
+  if (!panel)
+    if (auto* rt = rex::Runtime::instance(); rt && rt->imgui_drawer()) panel = new FundidoSatan(rt->imgui_drawer());
+}
 class Panel : public rex::ui::ImGuiDialog {
  public:
   explicit Panel(rex::ui::ImGuiDrawer* drawer) : ImGuiDialog(drawer) {}
@@ -3574,7 +4094,11 @@ class Panel : public rex::ui::ImGuiDialog {
     // en el combate: puntos y avisos de los sucesos (como el anillo de avisos de B1)
     {   // S1-F03.1: fundido a negro tras la escena previa (tapa el ring out y la victoria de B3)
       negro_ = std::clamp(negro_ + (g_previa_negro.load() ? 1.0f : -2.0f) * dbz3::RelojDt(std::min(io.DeltaTime, 0.1f)) * 3.0f, 0.0f, 1.0f);
-      if (negro_ > 0.0f)
+      // solSAT: PINE 0x361E64/68 y FUN_001EAB10: 1 - campo*0,01.
+      // La ISO PAL avanza 50 campos/s (120 cuadros de animacion = 2 s).
+      // Antes se restaban 6/s desde el cuadro de la UI: la toma aparecia en 0,167 s.
+      if (AperturaSatan()) negro_ = AlfaAperturaSatan();
+      if (negro_ > 0.0f && !AperturaSatan())
         ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, 0), io.DisplaySize, IM_COL32(0, 0, 0, int(255 * negro_)));
     }
     if (const int st = EstadoCombate(); fase == kLuchando && st >= 3 && st <= 6 && !dbz3::GameDimmed() && !dbz3::cinematica::Activa() &&
@@ -3674,6 +4198,15 @@ class Panel : public rex::ui::ImGuiDialog {
     tex_gen_ = g_generacion.load();
     tex_src_ = g_d.get();
     tex_.clear();
+    // solB2S: el tablero usa los quads/UV de su #AMA, del MISMO AFS que
+    // las texturas. No deducir sus centros/tamanos de una captura estirada.
+    ama_tablero_.clear();
+    const size_t sep = g_d->afs.rfind(" #");
+    if (sep != std::string::npos) {
+      const int banco = std::atoi(g_d->afs.c_str() + sep + 2);
+      AfsPs2 afs;
+      if (banco >= 2 && afs.Abrir(g_d->ruta, g_d->afs.substr(0, sep))) ama_tablero_ = afs.Entrada(banco - 2);
+    }
     auto subir = [&](int key, const Imagen& img) {
       if (!img) return;
       Tex t;
@@ -4166,10 +4699,44 @@ class Panel : public rex::ui::ImGuiDialog {
   // es 667 #AMA 81 (48x56, copiada a la cara vencida por 0x232140) y el letrero 667 #AMA 49+r (136x72) va a su derecha.
   // EU 0x231AC0 SatanResult_ShowScore: pinta la cifra del marcador de la ronda con FUN_00234570 y el letrero.
   // EU 0x231E60 SatanResult_NextBoard: letreros 0x17/0x14 y vuelve al tablero del siguiente retador.
+  bool SpriteTableroB1(ImDrawList* dl, const S::Area& a, int registro, float escala, ImU32 col,
+                       bool ancla = false, float x = 0.0f, float y = 0.0f) {
+    const auto& b = ama_tablero_;
+    auto cabe = [&](size_t p, size_t n) { return p <= b.size() && n <= b.size() - p; };
+    auto u32 = [&](size_t p) { uint32_t v = 0; if (cabe(p, 4)) std::memcpy(&v, b.data() + p, 4); return v; };
+    auto f32 = [&](size_t p) { float v = 0; if (cabe(p, 4)) std::memcpy(&v, b.data() + p, 4); return v; };
+    if (b.size() < 16 || std::memcmp(b.data(), "#AMA", 4) || registro < 0 || uint32_t(registro) >= u32(8)) return false;
+    const size_t r = size_t(u32(12)) + size_t(registro) * 64;
+    if (!cabe(r, 64) || !u32(r + 48) || !u32(r + 56)) return false;
+    const size_t clave = u32(r + 52), parte = u32(r + 60);
+    if (!cabe(clave, 32) || !cabe(parte, 48)) return false;
+    const uint32_t textura = u32(parte + 4);
+    const Tex* tx = Img(textura == 24 ? kChibis : textura == 16 ? kRetadores : textura == 17 ? kCruz : -1);
+    if (!tx || tx->w <= 0 || tx->h <= 0) return false;
+    if (!ancla) x = f32(clave + 16), y = f32(clave + 20);
+    // B1: 001448F0 cuantiza XY a 1/16 sobre el campo 640x256 (Y*64/7).
+    // El GS muestrea en enteros; la UI host en centros de pixel. Se conserva
+    // ese origen de medio pixel GS; el campo PAL de referencia suma una linea
+    // de barrido (1,875 px a 480), que no es un cambio de escala del sprite.
+    auto sx = [](float v) { return (std::floor(v * 16.0f + 0.5f) / 16.0f + 0.5f) * kB1; };
+    auto sy = [](float v) { return (std::floor(v * (64.0f / 7.0f) + 0.5f) / 16.0f + 1.5f) * (480.0f / 256.0f) * kB1; };
+    const ImVec2 p0 = a.At(sx(x + escala * f32(r)), sy(y + escala * f32(r + 4)));
+    const ImVec2 p1 = a.At(sx(x + escala * f32(r + 16)), sy(y + escala * f32(r + 20)));
+    // 001FA0E0: +0,5 en UV iniciales, -0,5 en finales (RAM 72,5..143,5 / 144,5..214,5).
+    Pic(dl, *tx, p0, p1, col, false,
+        ImVec2((f32(parte + 32) + 0.5f) / tx->w, (f32(parte + 36) + 0.5f) / tx->h),
+        ImVec2((f32(parte + 40) - 0.5f) / tx->w, (f32(parte + 44) - 0.5f) / tx->h));
+    if (medir_tablero_)
+      REXLOG_INFO("dbz3 b2s: tablero AMA {} escala {:.6f} ancla {:.6f} {:.6f} quad {:.6f} {:.6f} {:.6f} {:.6f}",
+                  registro, escala, x, y, escala * f32(r), escala * f32(r + 4),
+                  escala * f32(r + 16), escala * f32(r + 20));
+    return true;
+  }
   void DrawResumenB1(ImDrawList* dl, const S::Area& a, float t, uint16_t pressed, bool auto_on) {
     const Paso& p = g_pasos[size_t(g_paso)];
     const int r = p.ronda, n = std::min(int(g_d->combates.size()), 11);
     const float e = t - cambio_at_;
+    medir_tablero_ = e > 2.0f && tablero_medido_ != g_cambio && std::getenv("DBZ3_TEST_B2S_TABLERO");
     // EU 0x232060 SatanBoard_FadeIn / EU 0x232140 SatanBoard_Faces: fundido lineal de 0,05 por cuadro (20
     // cuadros = 0,33 s), no una curva Ease.
     const ImU32 col = IM_COL32(255, 255, 255, int(255 * std::clamp(e / (20.0f / 60.0f), 0.0f, 1.0f)));
@@ -4181,48 +4748,22 @@ class Panel : public rex::ui::ImGuiDialog {
       if (const Tex* tx = Img(2 * (r - 1))) Spr(dl, a, *tx, 87, 122, 1.0f, col);
       if (const Tex* av = Img(2 * (r - 1) + 1)) Spr(dl, a, *av, 160, 337, 1.0f, col);
     }
-    if (const Tex* ch = Img(kChibis)) {
-      // DS97: fila de 11 caras en x = 80+48k, y = 408 (667 #AMA 60+k / 70+k, 72x72; centro de la animacion).
-      // Las vencidas llevan el aspa 667 #AMA 81 (48x56) en la misma posicion. La del retador actual (r) sale de
-      // la fila (0x232660) y se dibuja grande con su letrero.
-      auto At448 = [&](float x, float y) { return a.At(x * kB1, y * kB1 * kB1Alto); };
-      auto caraCentro = [&](int celda, float cx, float cy, float s, ImU32 tint, const Tex& tex, float tw, float th) {
-        const float sx = float((celda % 7) * 72), sy = float((celda / 7) * 72);
-        if (tw > 72.0f) {   // 668 #16 tiene celdas de 136x72 (3 columnas x 4 filas)
-          const float u = float((celda % 3) * 136), v = float((celda / 3) * 72);
-          Pic(dl, tex, At448(cx - tw * s * 0.5f, cy - th * s * 0.5f), At448(cx + tw * s * 0.5f, cy + th * s * 0.5f),
-              tint, false, ImVec2(u / tex.w, v / tex.h), ImVec2((u + tw) / tex.w, (v + th) / tex.h));
-          return;
-        }
-        Pic(dl, tex, At448(cx - 36.0f * s, cy - 36.0f * s), At448(cx + 36.0f * s, cy + 36.0f * s), tint, false,
-            ImVec2(sx / tex.w, sy / tex.h), ImVec2((sx + 72) / tex.w, (sy + 72) / tex.h));
-      };
-      for (int k = 0; k < n; ++k) {
-        if (k == r) continue;   // EU 0x232660 SatanBoard_RemoveCurrentFace: la suya va en grande
-        const bool vencida = k < r;
-        caraCentro(vencida ? k : k + 10, 80.0f + 48.0f * float(k), 408.0f, 1.0f, col, *ch, 72, 72);
-        if (vencida)
-          if (const Tex* cz = Img(kCruz); cz)
-            Pic(dl, *cz, At448(80.0f + 48.0f * float(k) - 24, 408.0f - 28), At448(80.0f + 48.0f * float(k) + 24, 408.0f + 28));
-      }
-      // EU 0x2327E0 SatanBoard_GrowPair: el par grande crece 0,7 -> 1 (0,01/cuadro, 30 cuadros) tras el fundido.
-      const float kGrow = 0.7f + 0.3f * std::clamp((e - 20.0f / 60.0f) / 0.5f, 0.0f, 1.0f);
-      if (r < n) caraCentro(r, 80.0f + 48.0f * float(r), 408.0f, kGrow, col, *ch, 72, 72);
+    for (int k = 0; k < n; ++k) {
+      if (k == r) continue;   // EU 0x232660: el retador actual sale de la fila
+      // EU 0x232140 FUN_00232140: escala 0x3f333333 = 0,7 EN AMBOS
+      // casos. RAM del estado B1 .04: quads (-25,2,-33,6)..(24,5,16,1).
+      SpriteTableroB1(dl, a, (k < r ? 60 : 70) + k, 0.7f, col);
+      if (k < r) SpriteTableroB1(dl, a, 81, 1.0f, col, true, 80.0f + 48.0f * float(k), 408.0f);
     }
+    const float kGrow = 0.7f + 0.3f * std::clamp((e - 20.0f / 60.0f) / 0.5f, 0.0f, 1.0f);
+    if (r < n) SpriteTableroB1(dl, a, 60 + r, kGrow, col);
     // EU 0x232920 SatanBoard_Pulse (y 0x232A80): late = 0,975 + 0,025*sin((cuadro % 30)*2pi/30) con el
     // contador ENTERO de cuadros del callback (no el tiempo continuo: la fase es la del cuadro).
     const int cuadro = int(std::max(0.0f, e) * 60.0f);
     const float late = 0.975f + 0.025f * std::sin(float(cuadro % 30) * (2.0f * 3.14159265f / 30.0f));
-    if (const Tex* rt = Img(kRetadores); rt && r < 11) {
-      // EU 0x232140 SatanBoard_Faces: el letrero (sprite 0x1C) se crea con el par. 667 #AMA 49+r (136x72) tiene
-      // sus claves atadas a la cara de la ronda (x=80+48r, y=432, caja +24..+160 / -43..+28) y es el que late
-      // (0x232920/0x232A80). En la ronda 1 el centro medido es 223,436: el mismo desfase se conserva al avanzar
-      // de ronda (paso 48). La celda r de 668 #16 es el mismo arte.
-      const float lx = float((r % 3) * 136), ly = float((r / 3) * 72);
-      const float cx = 223.0f + 48.0f * float(std::max(0, r - 1)), cy = 436.0f, hw = 68.0f * late, hh = 36.0f * late;
-      Pic(dl, *rt, a.At((cx - hw) * kB1, (cy - hh) * kB1 * kB1Alto), a.At((cx + hw) * kB1, (cy + hh) * kB1 * kB1Alto),
-          col, false, ImVec2(lx / rt->w, ly / rt->h), ImVec2((lx + 136) / rt->w, (ly + 72) / rt->h));
-    }
+    // EU 0x232140 copia el ancla de la cara al letrero: NO su clave y=432.
+    if (r < n) SpriteTableroB1(dl, a, 49 + r, late, col, true, 80.0f + 48.0f * float(r), 408.0f);
+    if (medir_tablero_) tablero_medido_ = g_cambio, medir_tablero_ = false;
     Ayuda(dl, a, {{"A", T::T("Siguiente", "Next")}, {"B", T::T("Salir", "Quit")}});
     if (auto_on && e > g_auto_seg) pressed |= kA;
     if (pressed & kB) return Salir(false);
@@ -4823,6 +5364,9 @@ class Panel : public rex::ui::ImGuiDialog {
                kPulsa, kDif, kBarra = kDif + 3, kTienesPeq, kCifrasPeq, kClave, kLetras, kEstilo = kLetras + 2,
                kCaraSatan, kConsejo, kCopy = kConsejo + 6, kGradRes };
   std::map<int, Tex> tex_;
+  std::vector<uint8_t> ama_tablero_;
+  uint64_t tablero_medido_ = ~0ull;
+  bool medir_tablero_ = false;
   uint32_t tex_gen_ = ~0u;
   const DatosB1* tex_src_ = nullptr;
   bool blocked_ = false, wait_release_ = true;

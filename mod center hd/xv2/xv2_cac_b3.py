@@ -12,11 +12,12 @@ Se lee del data.cpk de XV2 del jugador (solo lectura); nada se guarda en el repo
 """
 import argparse
 import os
+import struct
 import sys
 import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, HERE)
+sys.path[:0] = [HERE, os.path.join(HERE, "..", "..", "awo_tools")]
 import numpy as np  # noqa: E402
 import xv2_leer as L  # noqa: E402
 import xv2_a_b3 as X  # noqa: E402
@@ -142,7 +143,17 @@ def _calib_guardar(v):
 LIM_BIN = 1000 * 1024      # tope de tamano del bin (los nativos pesan ~948 KB)
 
 
-def componer(sel, plantilla, salida, hsv=None, lim=LIM_BIN):
+def componer(sel, plantilla, salida, hsv=None, lim=LIM_BIN, previa=False):
+    from xeno_importar import proteger_fuente
+    source = L.buscar_xv2()
+    if not source:
+        raise FileNotFoundError('No encuentro Xenoverse 2; el creador conserva las piezas B3.')
+    proteger_fuente(source, [salida, _calib_ruta()])
+    sel = dict(DEFECTO, **sel)
+    if sel['raza'] not in PIEL_RAZA:
+        raise ValueError('raza CaC de XV2 no admitida')
+    if not os.environ.get("C6_VIEJO"):
+        return componer_xeno(sel, plantilla, salida, hsv, previa)
     c = L.cpk_xv2()
     piel = np.array(PIEL_RAZA.get(sel.get("raza", "HUM"), PIEL_DEF), np.float32)       # el grupo SKIN_ del BCS son 112 tonos de fantasia (fila 0 = gris): piel humana fija
     if hsv and "piel" in hsv and tuple(hsv["piel"]) != (0, 0, 0):
@@ -171,11 +182,211 @@ def componer(sel, plantilla, salida, hsv=None, lim=LIM_BIN):
             break
         decim *= max(0.35, min(0.9, lim / tam * 0.88))      # el AWO (geometria) es ~70 % del bin
         print("C6: bin %d KB > %d KB: recorte de triangulos a x%.2f" % (tam // 1024, lim // 1024, decim))
+    if tam > lim:
+        raise ValueError('CaC XV2 excede el presupuesto: %d B > %d B; no se instala' % (tam, lim))
     return r
+
+
+TIPOS_BCS = {"bust": "Bust", "pants": "Pants", "boots": "Boots", "rist": "Rist", "pelo": "Hair", "cara": "Face_base",
+             "frente": "Face_forehead", "ojos": "Face_eye", "nariz": "Face_nose", "oreja": "Face_ear"}
+ZONA_HSV = {"Hair": "pelo", "Bust": "torso", "Pants": "piernas", "Boots": "botas", "Rist": "guantes"}
+
+
+def _rgb_bcs(bcs, grupo, fila):
+    return np.clip(np.array(bcs["colors"][grupo]["entries"][fila]["rgba"][0][:3], float), 0, 1)
+
+
+def _tinte(bcs, parte, skin_def, hsv):
+    """Color de cada material, por nombre: grupo BCS cuyo nombre es prefijo (CC00_BUST_, SKIN_A_...), con el color que trae el
+    partset o el HSV de la ficha. None = la curva DYT del material tal cual."""
+    grupos = {bcs["colors"][s["group"]]["name"].upper().rstrip("_"): _rgb_bcs(bcs, s["group"], s["color"]) for s in parte.get("color_selectors", [])
+              if s["group"] < len(bcs["colors"]) and s["color"] < len(bcs["colors"][s["group"]]["entries"])
+              and not bcs["colors"][s["group"]]["name"].upper().startswith("SKIN")}   # la piel no la decide la prenda: la mano salia marron
+    zona = ZONA_HSV.get(parte["type"])
+    bcs_raza = parte.get("chara", "")
+
+    def tinte(nombre):
+        n, c = nombre.upper(), (np.array(X.IRIS_CAC) if nombre.lower().startswith("eye") and bcs_raza in ("HUM", "HUF") else None)
+        for g, rgb in list(grupos.items()) + list(skin_def.items()):
+            if n.startswith(g):
+                c = rgb
+                break
+        h = (hsv or {}).get("piel" if n.startswith("SKIN") else zona)
+        if h and tuple(h) != (0, 0, 0):
+            c = X.hsv_region(c if c is not None else np.array((.85, .6, .5)), h)
+        return c
+    return tinte
+
+
+def fuente_cac(c, sel, hsv=None, lod=0):
+    """Seleccion del creador -> (esk, piezas) para xeno_a_b3: mismo camino que GOK/VGT/PIC (tinta, rampas, gestos y manos)."""
+    import xeno_a_b3 as XA
+    import xeno_bcs as XB
+    from xeno_gestos import FaceEan
+    raza = sel.get("raza", "HUM")
+    if raza == "MAM" and sel.get("cara", 0) == 0:     # la cara 0 de la Majin macho es la de ojos cerrados (sin ojos, medido en juego): la 1 los abre
+        sel = dict(sel, cara=1)
+
+    def get(ruta):
+        r = X._ci(c, ruta)
+        if not r:
+            raise KeyError(ruta)
+        return c.get(r)
+    bcs = XB.leer_bcs(get("data/chara/%s/%s.bcs" % (raza, raza)))
+    # Colores de piel por defecto de la raza: los del primer partset que los elige (FRI: SKIN_A/C/D).
+    skin = {}
+    for ps in bcs["part_sets"]:
+        for p in ps["parts"]:
+            for s in (p or {}).get("color_selectors", []):
+                g = bcs["colors"][s["group"]]["name"].upper().rstrip("_") if s["group"] < len(bcs["colors"]) else ""
+                if g.startswith("SKIN") and g not in skin and s["color"] < len(bcs["colors"][s["group"]]["entries"]) and raza == "FRI":
+                    skin[g] = _rgb_bcs(bcs, s["group"], s["color"])
+    if raza == "FRI":     # cara y manos claras, como las capturas reales de la raza (el partset 0 las trae rojas)
+        skin["SKIN_A"] = np.array(PIEL_RAZA["FRI"], float)
+    pedidas = {t: sel.get(k, sel.get("cara", 0) if t.startswith("Face") else 0) for k, t in TIPOS_BCS.items()}
+    if sel.get("ojos", -1) < 0:
+        pedidas["Face_eye"] = sel.get("cara", 0)
+    partes = []
+    for tipo, modelo in pedidas.items():
+        if modelo < 0:
+            continue
+        p = next((q for ps in bcs["part_sets"] for q in ps["parts"] if q and q["type"] == tipo and q["model"] == modelo), None)
+        if p is None or not X._ci(c, "data/chara/%s/%s_%03d_%s.emd" % (p["chara"] or raza, p["chara"] or raza, modelo, tipo)):
+            p = dict(type=tipo, model=0, model2=0, texture=0, chara=raza, physics=[], color_selectors=[], hide_flags=0, hide_materials=0,
+                     paths=dict(emd="", emm="", emb="", ean=""))
+            if not X._ci(c, "data/chara/%s/%s_000_%s.emd" % (raza, raza, tipo)):
+                continue
+        partes.append(dict(p, tint=_tinte(bcs, p, skin, hsv)))
+    if not {"Bust", "Face_base"} <= {p["type"] for p in partes}:
+        raise ValueError("CaC XV2: faltan piezas de %s" % raza)
+    n = sel.get("cara", 0)
+    u, l = "data/chara/%s/%s%03d%%s.fce.ean" % (raza, raza, n), "data/chara/%s/%s000%%s.fce.ean" % (raza, raza)
+    ean = FaceEan(get(u % "U" if X._ci(c, u % "U") else l % "U")).mezclar(FaceEan(get(u % "L" if X._ci(c, u % "L") else l % "L")))
+    esk = xm.Esk(get("data/chara/%s/%s_000.esk" % (raza, raza)))
+    esk, piezas, fisica = XA.load_source(get, lod, raza, parts=partes, face_ean=ean, esk=esk)
+    tipo = sel.get("tipo", 0)
+    if 0 <= tipo < len(bcs["bodies"]) and bcs["bodies"][tipo]["scales"]:     # constitucion: mismas cuentas que aplicar_cuerpo
+        escalas = {e["bone"]: e["scale"] for e in bcs["bodies"][tipo]["scales"]}
+        crudo = dict(cuerpos=[list(escalas.items())])
+        partes_c = {"x": {"subs": list({id(q["sm"]): q["sm"] for q in piezas if not q["attachment"]}.values())}}
+        aplicar_cuerpo(esk, crudo, partes_c, 0)
+        for w, m in zip(esk.world, esk.world_matrix):
+            m[:3, 3] = w
+    return esk, piezas, fisica
+
+
+# Razas con el largo de pierna de XV2 (piernas al 32 % de la altura en la Majin macho frente al 62 % de Goku; HUM/NMC/FRI al 80-84 %). Con la
+# compensacion de guardia (GUARDIA) los pies quedan donde los de Goku en la guardia, medido en juego (SUB_XV2_1-11.md). "0" = ninguna,
+# "todas" o "HUM,NMC,..." para elegir.
+PROPORCIONES = os.environ.get("DBZ3_XV2_PROPORCIONES", "MAM")   # ponytail: HUM,NMC,FRI solo vistas en guardia; encender tras verlas en vuelo y caidas
+# Caida de la cadera en guardia (unidades B3; medida en juego: reposo 9,44 sobre el suelo, guardia 6,7-7,2). Las pistas bajan la cadera
+# esa cantidad en valor absoluto: con piernas mas cortas los pies se hunden (1-k)*caida. 0 = sin compensar (como hasta ahora).
+GUARDIA = float(os.environ.get("DBZ3_XV2_GUARDIA", "2.4"))
+
+
+OJOS_ADELANTE = {"MAM": float(os.environ.get("DBZ3_XV2_OJO_MAM", "0"))}     # unidades XV2 hacia delante (+z)
+
+
+def adelantar_ojos(piezas, raza):
+    """La Majin macho no mostraba ojos (medido en juego y en render): el rectangulo del ojo queda 0,07-0,16 bajo la piel
+    abultada de la cara. Se adelanta el ojo para que asome sobre la piel; las demas razas no lo necesitan (ojos visibles)."""
+    d = OJOS_ADELANTE.get(raza, 0.0)
+    if not d:
+        return
+    for q in piezas:
+        if q["part"] == "Face_eye":
+            pos = q["sm"].pos.copy()
+            pos[:, 2] += d
+            q["sm"].pos = pos
+
+
+def proporciones_piernas(tpl, esk, raza):
+    """Largo de pierna de la raza (relacion pierna/torso de su esqueleto XV2) sobre el esqueleto de Goku de la plantilla.
+    Todas las razas llevaban las piernas de Goku (62 % de la altura; la Majin de XV2 tiene el 32 %). Las posiciones de las
+    pistas de animacion se SUMAN al reposo (altura.py), asi que bajar la cadera lo mismo que se acortan las piernas deja los pies
+    en el suelo. Solo piernas; brazos, hombros y torso siguen los de Goku (rayos, agarres y camara usan esos huesos).
+    Devuelve el factor aplicado (1.0 = sin cambio)."""
+    if PROPORCIONES in ("0", "") or (PROPORCIONES != "todas" and raza not in PROPORCIONES.replace("1", "MAM").split(",")):
+        return 1.0
+    ix = esk.index
+    p = lambda n: np.array(esk.world[ix[n]], float)
+    pierna = p("b_L_Leg1")[1] - p("b_L_Foot")[1]
+    torso = p("b_C_Head")[1] - p("b_L_Leg1")[1]
+    W = tpl.world()
+    b = tpl.bone
+    g_pierna = W[b("LLEG1")][1, 3] - W[b("LFOOT1")][1, 3]
+    g_torso = W[b("HEAD")][1, 3] - W[b("LLEG1")][1, 3]
+    k = float(np.clip((pierna / torso) / (g_pierna / g_torso), 0.45, 1.0))
+    if k > 0.99:
+        return 1.0
+    suela = W[b("LLEG1")][1, 3] - W[b("LFOOT2")][1, 3]     # cadera -> punta del pie (el suelo del reposo)
+    for lado in ("R", "L"):
+        raiz = b(lado + "LEG1")
+        hijos = [i for i in range(tpl.nb) if raiz in set(SM_ancestros(tpl, i)) and i != raiz]
+        for i in hijos:
+            t = tpl.local[i][:3, 3] * k
+            tpl.local[i] = tpl.local[i].copy()
+            tpl.local[i][:3, 3] = t
+            tpl.axes[i][16:28] = struct.pack(">3f", *t)
+    w = b("WAIST")
+    t = tpl.local[w][:3, 3].copy()
+    t[1] -= (1.0 - k) * (suela - GUARDIA)
+    tpl.local[w] = tpl.local[w].copy()
+    tpl.local[w][:3, 3] = t
+    tpl.axes[w][16:28] = struct.pack(">3f", *t)
+    return k
+
+
+def SM_ancestros(tpl, i):
+    while i != -1:
+        yield i
+        i = tpl.parent[i]
+
+
+def componer_xeno(sel, plantilla, salida, hsv=None, previa=False):
+    """previa: para la vista del menu (cada cambio de pieza): LOD 1, 256 px, sin gestos; 8 veces mas ligero que el de combate."""
+    import xeno_a_b3 as XA
+    import sdbh_model as SM
+    from xeno_gestos import native_lists
+    c = L.cpk_xv2()
+    esk, piezas, _fisica = fuente_cac(c, sel, hsv, 1 if previa else 0)
+    tpl = SM.Template(plantilla)
+    tpl.gesture_lists = native_lists(open(plantilla, "rb").read(), tpl)
+    prop = proporciones_piernas(tpl, esk, sel.get("raza", "HUM"))
+    rig = XA.Retarget(esk, tpl)
+    adelantar_ojos(piezas, sel.get("raza", "HUM"))
+    conv, _red = XA.prepare_pieces(rig, piezas, 1.0, gestos=not previa)
+    datos, stats = XA.build_model(tpl, rig, conv, 256 if previa else 1024)
+    with open(salida, "wb") as fh:
+        fh.write(datos)
+    errores = SM.verify(salida)
+    if errores:
+        raise ValueError("CaC XV2: bin invalido: %s" % errores[:3])
+    return dict(stats, bin=len(datos))
+
+
+def selftest():
+    from unittest.mock import patch
+    from xeno_binary import rejects
+    assert leer_sel('raza=NMC,bust=300;pelo=2')['raza'] == 'NMC'
+    assert leer_sel('bust=300')['bust'] == 300
+    before = dict(DEFECTO)
+    with patch.object(L, 'buscar_xv2', return_value=None):
+        try:
+            componer({}, 'no_se_abre.bin', 'no_se_escribe.bin')
+            raise AssertionError('ausencia aceptada')
+        except FileNotFoundError:
+            pass
+    with patch.object(L, 'buscar_xv2', return_value='X:/Steam/common/XV2/cpk/data.cpk'):
+        rejects(lambda: componer({'raza': 'NO'}, 'no.bin', 'Y:/salida.bin'))
+        rejects(lambda: componer({}, 'no.bin', 'X:/Steam/common/XV2/prohibido.bin'))
+    assert DEFECTO == before
+    print('xv2_cac_b3: N0 OK (seleccion, ausencia, raza y Steam solo lectura; sin juego)')
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument('--selftest', action='store_true')
     s = ap.add_subparsers(dest="cmd")
     a = s.add_parser("componer")
     a.add_argument("plantilla")
@@ -187,6 +398,8 @@ def main(argv=None):
         p.add_argument("--sel", default="")
         p.add_argument("--hsv", default="")
     x = ap.parse_args(argv)
+    if x.selftest:
+        selftest(); return
     hsv = {k: tuple(int(v) for v in r.split(",")) for k, r in (q.split("=") for q in x.hsv.split(";") if "=" in q)}
     sel = leer_sel(x.sel)
     if x.cmd == "componer":

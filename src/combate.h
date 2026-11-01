@@ -18,4 +18,12 @@ void OcultarHud(bool ocultar);
 // (modos, retos) salgan y se vayan con el. Solo lectura; cualquier hilo.
 bool HudNativoVisible();
 
+// Efecto de sonido del propio juego (gestor de efectos sub_820922A0: banco e id; p. ej. 2/2 = impacto): lo reproduce el hilo del juego en el
+// siguiente cuadro de pelea. Cualquier hilo, pero un solo productor; hasta 4 por cuadro y 16 en cola (el resto se descarta).
+void PedirSonido(int banco, int id);
+// Voces propias de otros personajes (Dragon Tactics): bit N = que el banco de gritos del personaje B3 N este cargado en una ranura libre del
+// gestor de efectos (5..15; los que ya no se piden se sueltan). SlotVoz = ranura lista para PedirSonido(ranura, id) o -1. Cualquier hilo.
+void CargarVoces(uint64_t mascara);
+int SlotVoz(int personaje);
+
 }  // namespace dbz3::combate

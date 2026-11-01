@@ -3,15 +3,34 @@
 #pragma once
 
 #include <cstdint>
+#include <cmath>
 
 struct ImDrawList;
 
 namespace dbz3::iwmini {
 
+// Solo camaras de CAMPO (Camera_UpdateFollow EU298170 ->126F50): IW calcula
+// focal=480/(2*tan(fov/2)), pero su lienzo logico es600x450. La camara de B3
+// recibe un angulo VERTICAL relativo a toda la altura, no ese parametro480.
+// Igualar la focal en el lienzo da tan(vertical/2)=(450/480)*tan(original/2).
+// No se aplica al vuelo ni se compensa moviendo el ojo.
+inline float FovVerticalCampoIW(float original_radianes) {
+  return 2.0f*std::atan((450.0f/480.0f)*std::tan(original_radianes*0.5f));
+}
+
 // Empieza el minijuego de la casilla del #DMD 1093 (clave 0x7D0-0x7E1, fila). false = aun no portado.
 bool Empezar(int clave, int fila);
 // Cargando, en su combate o con el resultado sin recoger.
 bool Activo();
+// Escena IW del MSNMW:20E3D0 borra el trabajo al entrar (8B8C=0).
+// -1 fuera del campo: no reinterpretar estados de B3/modulos como escenas IW.
+int EscenaApCampo();
+// AP5 verificables0/1: generadores de813/1 y813/6, no indices AME inventados.
+// true solo cuando el recurso y la vista son validos y se encola su instancia.
+bool EventoApImpacto(uint8_t* base,uint32_t x,int tipo,const float posicion[3]);
+// AP7 tipo6 del campo: usa la superficie #WCF y los anclajes12/13 del
+// cuerpo. true = consumidor aplicable; sonido938 >=0 lo reproduce anim_iw.
+bool EventoApCampo(uint8_t* base, uint32_t x, int valor, int& sonido938);
 // Gancho de sub_82103908 (tagteam.cpp, cambiar la accion del luchador): true = no dejar que el jugador entre en el
 // andar de combate de B3 (acciones 2/3) durante el andar libre de IW; sus pasos reiniciaban cada cuadro la carrera
 // de IW (auditoria7/A). La marcha entera la pone Fotograma.
@@ -19,6 +38,11 @@ bool AnularAndar(uint8_t* base, uint32_t x, uint32_t accion);
 // Dificultad de la ficha del mapa para el siguiente minijuego (PantallaDM::Dificultad: 0 Very Easy .. 4 Very Hard),
 // tal cual: es el mismo indice que el descriptor +0xC del MSNMW (0..5, 5 = Z; lista de 334/1 t16).
 void Dificultad(int ficha);
+// Seleccion de la ficha (#DMD +2C, ID de la tabla de 29 del ELF, NO indice de menu).
+// Se consume una vez al empezar ESA clave, tambien tras el video previo. false deja
+// el mapa abierto: MotivoPersonaje explica la animacion que falta, sin sustituir actor.
+bool PersonajeDelMapa(int clave, int personaje);
+const char* MotivoPersonaje(int clave, int personaje);
 
 struct Resultado {
   int clave = 0, fila = 0;
@@ -69,6 +93,32 @@ bool ClaveConPanelPropioIW(int clave);
 //    {0.6,0.8,1.0,1.3,1.6,2.0}[dificultad], a la centena (resto < 50 abajo, si no arriba); sin rango = 100.
 int RangoResultadoIW(int puntuacion);
 int PremioResultadoIW(int puntuacion, int dificultad);
+// EU 0x285F30: reloj de recompensa, NO Results_UpdateTally de MSN019.
+// A salta a 420 (salvo en el cuadro cero); otra pulsacion confirma. El
+// consumidor conserva la pantalla mientras no se confirme, incluso al terminar.
+struct RelojRecompensaIW {
+  float cuadro = 0;
+  bool cerrado = false;
+  void Avanzar(float cuadros, bool confirmar) {
+    if (cerrado) return;
+    if (confirmar) {
+      if (cuadro >= 420.0f) cerrado = true;
+      else if (cuadro > 0) cuadro = 420.0f;
+    }
+    if (cuadro < 420.0f && cuadros > 0) cuadro += cuadros;
+  }
+  // EARNED usa >120; TOTAL usa >=320. Los ceros internos conservan su hueco.
+  int Cifras(int valor, bool total) const {
+    int visibles = 0;
+    for (int umbral = total ? 320 : 120; ; umbral += 20) {
+      if (total ? cuadro < float(umbral) : cuadro <= float(umbral)) break;
+      ++visibles;
+      valor /= 10;
+      if (valor <= 0) break;
+    }
+    return visibles;
+  }
+};
 // Pantalla de resultados de IW con los sprites #AMA (DATA_USA 334/1, 333/0, 335+titulo y 4/0 para GREAT/GOOD/NORMAL):
 // titulo, TIME (centesimas), letra de rango, objetos o GREAT/GOOD/NORMAL segun el tipo, EARNED ZENI contando y TOTAL
 // ZENI (monedero). Dibuja en el rectangulo de pantalla (x0,y0,w,h) que representa el lienzo 640x448 del original.
@@ -83,10 +133,13 @@ void Fotograma(uint8_t* base, uint32_t estado);
 // gancho de sub_820F4300 (iw_mini_vuelo.cpp) la escribe en la struct de camara ACTIVA antes del original (DS163: es la
 // fuente de la vista; escribir mgr+0x60 despues no cambia el 3D) y publica la foto del cuadro. `activa` = false la
 // suelta y devuelve el fov de la struct (vuelve la camara del juego). `fov` = el que fija FovIW en mgr+0x1C4.
-void CamaraMinijuego(bool activa, const float ojo[3], const float obj[3], float fov);
+void CamaraMinijuego(bool activa, const float ojo[3], const float obj[3], float fov, float roll = 0.0f);
+// s_UTL_CHRFADE sobre el rival durante `cuadros`, para los modulos que no son de botones (iw_mini_botones.cpp).
+void FadeRival(int cuadros);
+void PasoFade(uint8_t* base, uint32_t mgr);
 // DS177: vista (4x4) y fov vertical (rad) con los que el juego DIBUJO el ultimo cuadro (foto publicada tras
 // sub_820F4300, ya con la vista aplicada). La escena 3D del panel debe usar ESTA, no mgr+0x60/+0x1C4. false = sin foto
-// (EU o antes del primer dibujo): se sigue con ps2::CamaraCombate.
+// (antes del primer dibujo): se sigue con ps2::CamaraCombate. Gancho dual US/EU.
 bool CamaraDelRenderIw(float m[16], float* fov);
 // combate.cpp sub_8208FD58, antes (leido = false: devuelve el registro como lo dejo el juego) y despues de leer el
 // mando `usuario` (leido = true: la palanca pasa a ser relativa a la camara).
@@ -104,12 +157,13 @@ int PalancaDerechaY();
 // ---- Minijuegos de otros frentes (R12 vuelo 7/17, R13 disparo 3/8/9/15, R14 botones 5/6/11/12/13/18) ----
 // Registro (en la inicializacion estatica de su archivo, p. ej.
 //   const bool g_reg = (dbz3::iwmini::RegistrarModulo(0x7D7, &MiEmpezar), true);
-// ): elegir esa casilla del mapa llama a `Modulo(clave, fila, dificultad 0..5 del MSNMW)`, que monta su minijuego y
+// ): elegir esa casilla del mapa llama a `Modulo(clave, fila, dificultad 0..5, personaje IW)`, que monta su minijuego y
 // devuelve false si no puede (el mapa sigue). Mientras corre, Activo() es true (y la palanca derecha y la cruceta no le
 // llegan al luchador de B3: ver PalancaDerecha); los ganchos de P4 (Fotograma, Mando, panel) no hacen nada. Al acabar
 // llama UNA vez a Terminar(r) con r.clave/r.fila de su Empezar; el mapa lo recoge con TomarResultado (TIME, RANK, SCORE).
 // Un modulo registrado tiene preferencia sobre el de P4 en esa clave.
-using Modulo = bool (*)(int clave, int fila, int dificultad);
+// personaje = -1 en las entradas directas de pruebas/historia: usar el actor original del modulo.
+using Modulo = bool (*)(int clave, int fila, int dificultad, int personaje);
 void RegistrarModulo(int clave, Modulo m);
 void Terminar(const Resultado& r);
 // Serie de camara del port (tools/lector_camara.py): los modulos la activan solo en la fase de juego (no en READY,

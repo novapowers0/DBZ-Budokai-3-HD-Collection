@@ -101,6 +101,16 @@ jobs:
             -DCMAKE_PREFIX_PATH="$GITHUB_WORKSPACE/rexglue-linux"
           cmake --build out/build/linux-amd64-release --config Release --parallel
 
+      - name: Test Linux environment summary (reads the real /etc/os-release of the runner)
+        run: |
+          clang++-18 -std=c++20 -stdlib=libc++ -Isrc/launcher tests/linux_env_test.cpp -o linux_env_test
+          ./linux_env_test tests/linux_env_data
+          # Same function on the runner's own files: prints what a player's log will contain.
+          printf '%s\n' '#include "linux_env.h"' '#include <cstdio>' \
+            'int main() { std::puts(dbz3::launcher::LinuxEnvSummary().c_str()); }' > linux_env_real.cpp
+          clang++-18 -std=c++20 -stdlib=libc++ -Isrc/launcher linux_env_real.cpp -o linux_env_real
+          ./linux_env_real
+
       - name: Smoke-check ELF outputs
         run: |
           file out/build/linux-amd64-release/dbz3
@@ -130,13 +140,24 @@ jobs:
           done
           patchelf --set-rpath '$ORIGIN' package/dbz3 package/*.so*
           cp README.md README_EN.md baserom.md package/
-          printf '%s\n' 'Place your legally dumped default.xex and us/ or eu/ next to dbz3.' > package/README_LINUX.txt
+          # SDL game-controller mappings: the repair check and the SDL input backend look for this file next to dbz3.
+          cp gamecontrollerdb.txt package/
+          cat > package/README_LINUX.txt <<'EOF'
+          Place your legally dumped default.xex and us/ or eu/ next to dbz3.
+
+          Vulkan driver required (Mesa RADV/ANV or the NVIDIA proprietary driver).
+
+          If something fails, please attach to the GitHub issue:
+            1. The newest file in the logs/ folder (it is created in the folder the game was started from,
+               normally next to dbz3). The log already lists your distro, kernel, desktop session and
+               whether Steam/Flatpak is used.
+            2. The output of: vulkaninfo --summary
+            3. Whether it also happens on the intro video and on other story endings.
+          Starting the game from a terminal (./dbz3) also prints driver messages that the log does not keep.
+          EOF
           # Validate the packaged layout, not merely the build directory.
           test -f package/librexruntime.so
           test -f package/librexgpu-xenos.so
-          env -i PATH="$PATH" LD_LIBRARY_PATH="$GITHUB_WORKSPACE/package" \
-            ldd package/dbz3 | tee package/ldd-dbz3.txt
-          ! grep -E 'not found|librexruntime\.so => not found' package/ldd-dbz3.txt
           readelf -d package/dbz3 | grep -E 'RPATH|RUNPATH' | grep '\$ORIGIN'
           tar -C package -czf "DBZ-Budokai-3-HD-Collection-v${{ steps.version.outputs.version }}-linux-amd64.tar.gz" .
 

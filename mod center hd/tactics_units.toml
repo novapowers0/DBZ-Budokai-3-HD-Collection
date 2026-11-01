@@ -1,0 +1,518 @@
+# Dragon Tactics H2/T9 + H4: las 16 unidades. Numeros NUESTROS y PROVISIONALES (sin equilibrar), no copiados de ningun otro juego.
+# Los carga y valida src/tactics/catalogo.cpp; el id debe existir en tactics_manifest.toml (modelo y clips).
+# velocidad: casillas cada 10 s. ataque_ticks / tecnica_ticks: duracion de la accion a 60 Hz (iguales a los cuadros del clip del manifiesto, con tope 60).
+# tecnica.dano: % del ataque. forma: objetivo | linea (area casillas en la direccion del objetivo) | circulo (radio area alrededor del objetivo).
+# formas: ids de modelo B3 de las estrellas 1..4 (cada una es la siguiente transformacion nativa; deben estar en tactics_manifest.toml).
+# pasiva.tipo: ninguna | ki_inicial | furia | perfora | resistentes | coraza | ki_regular | remate | regenera; valor en % (ki_regular: ki por segundo).
+version = 1
+
+[[unidad]]
+id = "goku"
+formas = [264, 265, 266, 267]   # H9: modelo B3 de cada estrella (1 a 4); con menos formas se queda en la ultima
+vida = 1065
+ataque = 55
+defensa = 20
+velocidad = 11
+alcance = 1
+ki_max = 100
+ataque_ticks = 36
+tecnica_ticks = 120
+tecnica = { forma = "objetivo", dano = 300, alcance = 3, area = 0 }
+pasiva = { tipo = "ki_inicial", valor = 40 }   # empieza con 40 % de ki: lanza antes su primera tecnica
+voz = { banco = 4, ataque = [42, 45, 48], ko = [19, 21, 23] }   # banco = respaldo si su banco propio no esta cargado (H7: combate.cpp CargarVoces); ids de ataque 42..50, de KO 19..25
+
+[[unidad]]
+id = "vegeta"
+formas = [416, 417, 419]   # H9: modelo B3 de cada estrella (1 a 4); con menos formas se queda en la ultima
+vida = 1075
+ataque = 64
+defensa = 18
+velocidad = 10
+alcance = 2
+ki_max = 100
+ataque_ticks = 54
+tecnica_ticks = 120
+tecnica = { forma = "linea", dano = 220, alcance = 4, area = 4 }
+pasiva = { tipo = "furia", valor = 30 }   # tecnica en linea que atraviesa; +30 % de ataque por debajo de la mitad de vida
+voz = { banco = 4, ataque = [44, 47, 50], ko = [20, 22, 24] }   # banco = respaldo si su banco propio no esta cargado (H7: combate.cpp CargarVoces); ids de ataque 42..50, de KO 19..25
+
+[[unidad]]
+id = "piccolo"
+formas = [350]   # H9: modelo B3 de cada estrella (1 a 4); con menos formas se queda en la ultima
+vida = 895
+ataque = 40
+defensa = 30
+velocidad = 9
+alcance = 1
+ki_max = 100
+ataque_ticks = 30
+tecnica_ticks = 120
+tecnica = { forma = "objetivo", dano = 250, alcance = 3, area = 0 }
+pasiva = { tipo = "perfora", valor = 50 }   # sus golpes basicos ignoran el 50 % de la defensa
+voz = { banco = 4, ataque = [46, 49, 43], ko = [21, 23, 25] }   # banco = respaldo si su banco propio no esta cargado (H7: combate.cpp CargarVoces); ids de ataque 42..50, de KO 19..25
+
+[[unidad]]
+id = "krilin"
+formas = [327]   # H9: modelo B3 de cada estrella (1 a 4); con menos formas se queda en la ultima
+vida = 885
+ataque = 42
+defensa = 12
+velocidad = 12
+alcance = 2
+ki_max = 80
+ataque_ticks = 60
+tecnica_ticks = 41
+tecnica = { forma = "objetivo", dano = 280, alcance = 3, area = 0 }
+pasiva = { tipo = "resistentes", valor = 60 }   # su tecnica hace +60 % a quien tenga mas vida maxima que el
+voz = { banco = 4, ataque = [48, 42, 45], ko = [22, 24, 19] }   # banco = respaldo si su banco propio no esta cargado (H7: combate.cpp CargarVoces); ids de ataque 42..50, de KO 19..25
+
+[[unidad]]
+id = "a16"
+formas = [70]   # H9: modelo B3 de cada estrella (1 a 4); con menos formas se queda en la ultima
+vida = 960
+ataque = 40
+defensa = 35
+velocidad = 7
+alcance = 1
+ki_max = 120
+ataque_ticks = 57
+tecnica_ticks = 120
+tecnica = { forma = "circulo", dano = 180, alcance = 2, area = 1 }
+pasiva = { tipo = "coraza", valor = 20 }   # recibe un 20 % menos de dano; el mas lento y duro
+voz = { banco = 4, ataque = [50, 44, 47], ko = [23, 25, 20] }   # banco = respaldo si su banco propio no esta cargado (H7: combate.cpp CargarVoces); ids de ataque 42..50, de KO 19..25
+
+[[unidad]]
+id = "a18"
+formas = [80]   # H9: modelo B3 de cada estrella (1 a 4); con menos formas se queda en la ultima
+vida = 880
+ataque = 48
+defensa = 18
+velocidad = 11
+alcance = 2
+ki_max = 90
+ataque_ticks = 36
+tecnica_ticks = 120
+tecnica = { forma = "objetivo", dano = 220, alcance = 3, area = 0 }
+pasiva = { tipo = "ki_regular", valor = 8 }   # gana 8 de ki por segundo ademas de los golpes
+voz = { banco = 4, ataque = [43, 46, 49], ko = [24, 19, 21] }   # banco = respaldo si su banco propio no esta cargado (H7: combate.cpp CargarVoces); ids de ataque 42..50, de KO 19..25
+
+[[unidad]]
+id = "freezer"
+formas = [182, 183, 184, 185]   # H9: modelo B3 de cada estrella (1 a 4); con menos formas se queda en la ultima
+vida = 1110
+ataque = 60
+defensa = 22
+velocidad = 10
+alcance = 2
+ki_max = 100
+ataque_ticks = 51
+tecnica_ticks = 120
+tecnica = { forma = "circulo", dano = 240, alcance = 3, area = 1 }
+pasiva = { tipo = "remate", valor = 50 }   # +50 % de dano a quien tenga menos del 30 % de vida
+voz = { banco = 4, ataque = [45, 48, 42], ko = [25, 20, 22] }   # banco = respaldo si su banco propio no esta cargado (H7: combate.cpp CargarVoces); ids de ataque 42..50, de KO 19..25
+
+[[unidad]]
+id = "cell"
+formas = [146, 147, 148]   # H9: modelo B3 de cada estrella (1 a 4); con menos formas se queda en la ultima
+vida = 1245
+ataque = 54
+defensa = 24
+velocidad = 9
+alcance = 1
+ki_max = 100
+ataque_ticks = 51
+tecnica_ticks = 120
+tecnica = { forma = "objetivo", dano = 260, alcance = 2, area = 0 }
+pasiva = { tipo = "regenera", valor = 3 }   # recupera el 3 % de vida por segundo, hasta el 25 % de su vida maxima por ronda
+voz = { banco = 4, ataque = [47, 50, 44], ko = [19, 21, 23] }   # banco = respaldo si su banco propio no esta cargado (H7: combate.cpp CargarVoces); ids de ataque 42..50, de KO 19..25
+
+# H4: 8 unidades mas (los ids estan en el manifiesto con sus clips). Mismos criterios: ataque_ticks = cuadros del clip (tope 60), tecnica_ticks = cuadros del clip.
+[[unidad]]
+id = "gohan"
+formas = [235, 236, 237]   # H9: modelo B3 de cada estrella (1 a 4); con menos formas se queda en la ultima
+vida = 1185
+ataque = 58
+defensa = 22
+velocidad = 11
+alcance = 1
+ki_max = 100
+ataque_ticks = 51
+tecnica_ticks = 120
+tecnica = { forma = "objetivo", dano = 260, alcance = 3, area = 0 }
+pasiva = { tipo = "furia", valor = 25 }   # +25 % de ataque por debajo de la mitad de vida
+voz = { banco = 4, ataque = [49, 43, 46], ko = [20, 22, 24] }   # banco = respaldo si su banco propio no esta cargado (H7: combate.cpp CargarVoces); ids de ataque 42..50, de KO 19..25
+
+[[unidad]]
+id = "trunks"
+formas = [390, 391]   # H9: modelo B3 de cada estrella (1 a 4); con menos formas se queda en la ultima
+vida = 985
+ataque = 53
+defensa = 20
+velocidad = 12
+alcance = 1
+ki_max = 90
+ataque_ticks = 43
+tecnica_ticks = 120
+tecnica = { forma = "linea", dano = 200, alcance = 3, area = 3 }
+pasiva = { tipo = "perfora", valor = 40 }   # sus golpes basicos ignoran el 40 % de la defensa
+voz = { banco = 4, ataque = [42, 45, 48], ko = [21, 23, 25] }   # banco = respaldo si su banco propio no esta cargado (H7: combate.cpp CargarVoces); ids de ataque 42..50, de KO 19..25
+
+[[unidad]]
+id = "goten"
+formas = [298, 299]   # H9: modelo B3 de cada estrella (1 a 4); con menos formas se queda en la ultima
+vida = 985
+ataque = 41
+defensa = 10
+velocidad = 13
+alcance = 1
+ki_max = 70
+ataque_ticks = 36
+tecnica_ticks = 120
+tecnica = { forma = "objetivo", dano = 240, alcance = 2, area = 0 }
+pasiva = { tipo = "ki_inicial", valor = 60 }   # empieza con 60 % de ki: el mas rapido en lanzar su tecnica
+voz = { banco = 4, ataque = [44, 47, 50], ko = [22, 24, 19] }   # banco = respaldo si su banco propio no esta cargado (H7: combate.cpp CargarVoces); ids de ataque 42..50, de KO 19..25
+
+[[unidad]]
+id = "superbuu"
+formas = [133]   # H9: modelo B3 de cada estrella (1 a 4); con menos formas se queda en la ultima
+vida = 1135
+ataque = 41
+defensa = 26
+velocidad = 8
+alcance = 1
+ki_max = 100
+ataque_ticks = 60
+tecnica_ticks = 50
+tecnica = { forma = "circulo", dano = 200, alcance = 2, area = 1 }
+pasiva = { tipo = "regenera", valor = 4 }   # recupera el 4 % de vida por segundo, hasta el 25 % de su vida maxima por ronda
+voz = { banco = 4, ataque = [46, 49, 43], ko = [23, 25, 20] }   # banco = respaldo si su banco propio no esta cargado (H7: combate.cpp CargarVoces); ids de ataque 42..50, de KO 19..25
+
+[[unidad]]
+id = "broly"
+formas = [119, 120]   # H9: modelo B3 de cada estrella (1 a 4); con menos formas se queda en la ultima
+vida = 1150
+ataque = 56
+defensa = 28
+velocidad = 8
+alcance = 1
+ki_max = 120
+ataque_ticks = 51
+tecnica_ticks = 116
+tecnica = { forma = "circulo", dano = 220, alcance = 2, area = 1 }
+pasiva = { tipo = "coraza", valor = 15 }   # recibe un 15 % menos de dano
+voz = { banco = 4, ataque = [48, 42, 45], ko = [24, 19, 21] }   # banco = respaldo si su banco propio no esta cargado (H7: combate.cpp CargarVoces); ids de ataque 42..50, de KO 19..25
+
+[[unidad]]
+id = "bardock"
+formas = [99]   # H9: modelo B3 de cada estrella (1 a 4); con menos formas se queda en la ultima
+vida = 950
+ataque = 49
+defensa = 14
+velocidad = 11
+alcance = 1
+ki_max = 80
+ataque_ticks = 51
+tecnica_ticks = 120
+tecnica = { forma = "objetivo", dano = 230, alcance = 3, area = 0 }
+pasiva = { tipo = "remate", valor = 40 }   # +40 % de dano a quien tenga menos del 30 % de vida
+voz = { banco = 4, ataque = [50, 44, 47], ko = [25, 20, 22] }   # banco = respaldo si su banco propio no esta cargado (H7: combate.cpp CargarVoces); ids de ataque 42..50, de KO 19..25
+
+[[unidad]]
+id = "cooler"
+formas = [166, 167, 168]   # H9: modelo B3 de cada estrella (1 a 4); con menos formas se queda en la ultima
+vida = 1210
+ataque = 61
+defensa = 22
+velocidad = 10
+alcance = 2
+ki_max = 100
+ataque_ticks = 51
+tecnica_ticks = 120
+tecnica = { forma = "linea", dano = 210, alcance = 3, area = 3 }
+pasiva = { tipo = "ki_regular", valor = 6 }   # gana 6 de ki por segundo ademas de los golpes
+voz = { banco = 4, ataque = [43, 46, 49], ko = [19, 21, 23] }   # banco = respaldo si su banco propio no esta cargado (H7: combate.cpp CargarVoces); ids de ataque 42..50, de KO 19..25
+
+[[unidad]]
+id = "recoome"
+formas = [366]   # H9: modelo B3 de cada estrella (1 a 4); con menos formas se queda en la ultima
+vida = 925
+ataque = 44
+defensa = 24
+velocidad = 8
+alcance = 1
+ki_max = 90
+ataque_ticks = 53
+tecnica_ticks = 119
+tecnica = { forma = "objetivo", dano = 270, alcance = 2, area = 0 }
+pasiva = { tipo = "resistentes", valor = 40 }   # su tecnica hace +40 % a quien tenga mas vida maxima que el
+voz = { banco = 4, ataque = [45, 48, 42], ko = [20, 22, 24] }   # banco = respaldo si su banco propio no esta cargado (H7: combate.cpp CargarVoces); ids de ataque 42..50, de KO 19..25
+
+[[unidad]]
+id = "saibaman"
+formas = [371]
+vida = 800
+ataque = 44
+defensa = 10
+velocidad = 12
+alcance = 1
+ki_max = 70
+ataque_ticks = 54
+tecnica_ticks = 120
+tecnica = { forma = "circulo", dano = 260, alcance = 1, area = 1 }
+pasiva = { tipo = "remate", valor = 30 }   # +30 % de dano a quien tenga menos del 30 % de vida
+voz = { banco = 4, ataque = [42, 45, 48], ko = [19, 21, 23] }
+
+[[unidad]]
+id = "gokukid"
+formas = [252]
+vida = 880
+ataque = 43
+defensa = 12
+velocidad = 12
+alcance = 1
+ki_max = 80
+ataque_ticks = 36
+tecnica_ticks = 120
+tecnica = { forma = "objetivo", dano = 250, alcance = 3, area = 0 }
+pasiva = { tipo = "ki_inicial", valor = 50 }   # empieza con 50 % de ki
+voz = { banco = 4, ataque = [44, 47, 50], ko = [20, 22, 24] }
+
+[[unidad]]
+id = "trunkskid"
+formas = [383]
+vida = 840
+ataque = 42
+defensa = 10
+velocidad = 13
+alcance = 1
+ki_max = 80
+ataque_ticks = 36
+tecnica_ticks = 120
+tecnica = { forma = "objetivo", dano = 230, alcance = 3, area = 0 }
+pasiva = { tipo = "perfora", valor = 30 }   # sus golpes basicos ignoran el 30 % de la defensa
+voz = { banco = 4, ataque = [46, 49, 43], ko = [21, 23, 25] }
+
+[[unidad]]
+id = "gohankid"
+formas = [246]
+vida = 960
+ataque = 46
+defensa = 12
+velocidad = 11
+alcance = 1
+ki_max = 80
+ataque_ticks = 60
+tecnica_ticks = 120
+tecnica = { forma = "objetivo", dano = 260, alcance = 3, area = 0 }
+pasiva = { tipo = "furia", valor = 30 }   # +30 % de ataque por debajo de la mitad de vida
+voz = { banco = 4, ataque = [48, 42, 45], ko = [22, 24, 19] }
+
+[[unidad]]
+id = "videl"
+formas = [410]
+vida = 920
+ataque = 44
+defensa = 14
+velocidad = 12
+alcance = 1
+ki_max = 70
+ataque_ticks = 36
+tecnica_ticks = 120
+tecnica = { forma = "objetivo", dano = 220, alcance = 2, area = 0 }
+pasiva = { tipo = "ki_regular", valor = 5 }   # gana 5 de ki por segundo ademas de los golpes
+voz = { banco = 4, ataque = [42, 45, 48], ko = [19, 21, 23] }
+
+[[unidad]]
+id = "satan"
+formas = [377]
+vida = 980
+ataque = 34
+defensa = 30
+velocidad = 7
+alcance = 1
+ki_max = 80
+ataque_ticks = 60
+tecnica_ticks = 120
+tecnica = { forma = "objetivo", dano = 200, alcance = 2, area = 0 }
+pasiva = { tipo = "coraza", valor = 15 }   # recibe un 15 % menos de dano
+voz = { banco = 4, ataque = [44, 47, 50], ko = [20, 22, 24] }
+
+[[unidad]]
+id = "tenshinhan"
+formas = [400]
+vida = 1040
+ataque = 54
+defensa = 20
+velocidad = 10
+alcance = 2
+ki_max = 100
+ataque_ticks = 51
+tecnica_ticks = 120
+tecnica = { forma = "linea", dano = 230, alcance = 4, area = 4 }
+pasiva = { tipo = "perfora", valor = 30 }   # sus golpes basicos ignoran el 30 % de la defensa
+voz = { banco = 4, ataque = [46, 49, 43], ko = [21, 23, 25] }
+
+[[unidad]]
+id = "nappa"
+formas = [345]
+vida = 1000
+ataque = 44
+defensa = 26
+velocidad = 8
+alcance = 1
+ki_max = 100
+ataque_ticks = 56
+tecnica_ticks = 120
+tecnica = { forma = "circulo", dano = 200, alcance = 2, area = 1 }
+pasiva = { tipo = "coraza", valor = 12 }   # recibe un 12 % menos de dano
+voz = { banco = 4, ataque = [48, 42, 45], ko = [22, 24, 19] }
+
+[[unidad]]
+id = "a17"
+formas = [75]
+vida = 990
+ataque = 56
+defensa = 18
+velocidad = 11
+alcance = 2
+ki_max = 90
+ataque_ticks = 49
+tecnica_ticks = 120
+tecnica = { forma = "objetivo", dano = 230, alcance = 3, area = 0 }
+pasiva = { tipo = "ki_regular", valor = 6 }   # gana 6 de ki por segundo ademas de los golpes
+voz = { banco = 4, ataque = [42, 45, 48], ko = [19, 21, 23] }
+
+[[unidad]]
+id = "gero"
+formas = [91]
+vida = 1050
+ataque = 49
+defensa = 22
+velocidad = 8
+alcance = 2
+ki_max = 100
+ataque_ticks = 51
+tecnica_ticks = 120
+tecnica = { forma = "circulo", dano = 200, alcance = 3, area = 1 }
+pasiva = { tipo = "regenera", valor = 2 }   # recupera el 2 % de vida por segundo, hasta el 25 % de su vida maxima por ronda
+voz = { banco = 4, ataque = [44, 47, 50], ko = [20, 22, 24] }
+
+[[unidad]]
+id = "dabura"
+formas = [176]
+vida = 1180
+ataque = 58
+defensa = 26
+velocidad = 8
+alcance = 1
+ki_max = 110
+ataque_ticks = 51
+tecnica_ticks = 120
+tecnica = { forma = "objetivo", dano = 250, alcance = 2, area = 0 }
+pasiva = { tipo = "perfora", valor = 40 }   # sus golpes basicos ignoran el 40 % de la defensa
+voz = { banco = 4, ataque = [46, 49, 43], ko = [21, 23, 25] }
+
+[[unidad]]
+id = "buuninio"
+formas = [141]
+vida = 980
+ataque = 49
+defensa = 16
+velocidad = 13
+alcance = 1
+ki_max = 90
+ataque_ticks = 49
+tecnica_ticks = 71
+tecnica = { forma = "circulo", dano = 220, alcance = 2, area = 1 }
+pasiva = { tipo = "regenera", valor = 3 }   # recupera el 3 % de vida por segundo, hasta el 25 % de su vida maxima por ronda
+voz = { banco = 4, ataque = [48, 42, 45], ko = [22, 24, 19] }
+
+[[unidad]]
+id = "celljr"
+formas = [160]
+vida = 1120
+ataque = 62
+defensa = 18
+velocidad = 12
+alcance = 1
+ki_max = 80
+ataque_ticks = 47
+tecnica_ticks = 120
+tecnica = { forma = "objetivo", dano = 250, alcance = 2, area = 0 }
+pasiva = { tipo = "remate", valor = 40 }   # +40 % de dano a quien tenga menos del 30 % de vida
+voz = { banco = 4, ataque = [42, 45, 48], ko = [19, 21, 23] }
+
+[[unidad]]
+id = "kaioshin"
+formas = [339]
+vida = 1320
+ataque = 63
+defensa = 28
+velocidad = 10
+alcance = 2
+ki_max = 120
+ataque_ticks = 51
+tecnica_ticks = 120
+tecnica = { forma = "linea", dano = 260, alcance = 4, area = 4 }
+pasiva = { tipo = "ki_inicial", valor = 50 }   # empieza con 50 % de ki
+voz = { banco = 4, ataque = [44, 47, 50], ko = [20, 22, 24] }
+
+[[unidad]]
+id = "yamcha"
+formas = [445]
+vida = 900
+ataque = 43
+defensa = 13
+velocidad = 11
+alcance = 1
+ki_max = 90
+ataque_ticks = 47
+tecnica_ticks = 100
+tecnica = { forma = "objetivo", dano = 250, alcance = 3, area = 0 }
+pasiva = { tipo = "perfora", valor = 20 }
+voz = { banco = 4, ataque = [42, 45, 48], ko = [19, 21, 23] }
+
+[[unidad]]
+id = "raditz"
+formas = [360]
+vida = 1045
+ataque = 53
+defensa = 22
+velocidad = 9
+alcance = 1
+ki_max = 100
+ataque_ticks = 54
+tecnica_ticks = 120
+tecnica = { forma = "linea", dano = 220, alcance = 3, area = 3 }
+pasiva = { tipo = "furia", valor = 25 }
+voz = { banco = 4, ataque = [46, 49, 43], ko = [21, 23, 25] }
+
+[[unidad]]
+id = "uub"
+formas = [405]
+vida = 1145
+ataque = 60
+defensa = 20
+velocidad = 11
+alcance = 1
+ki_max = 100
+ataque_ticks = 56
+tecnica_ticks = 61
+tecnica = { forma = "objetivo", dano = 300, alcance = 3, area = 0 }
+pasiva = { tipo = "ki_inicial", valor = 40 }
+voz = { banco = 4, ataque = [44, 47, 50], ko = [20, 22, 24] }
+
+[[unidad]]
+id = "ginyu"
+formas = [258]
+vida = 1000
+ataque = 50
+defensa = 20
+velocidad = 10
+alcance = 1
+ki_max = 100
+ataque_ticks = 48
+tecnica_ticks = 120
+tecnica = { forma = "circulo", dano = 200, alcance = 2, area = 1 }
+pasiva = { tipo = "perfora", valor = 30 }
+voz = { banco = 4, ataque = [45, 48, 42], ko = [25, 20, 22] }

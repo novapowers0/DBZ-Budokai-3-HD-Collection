@@ -81,12 +81,44 @@ struct MaskRange { uint32_t off, len; };
 // gestor +0x2D4/+0x354/+0x358/+0x5C0: contadores de peticiones de sonido/efecto (+1 en la repeticion cuando el canal 0x823A5B10 estaba
 // libre); medido: no cambian ni el LFSR ni los luchadores en 8 ticks [H: tampoco mas alla].
 constexpr MaskRange kMaskMgr[] = {{0x22C, 4}, {0x200, 80}, {0x600, 0x80}, {0x82C, 4}, {0x891C, 8}, {0x2D4, 8}, {0x354, 4}, {0x358, 4}, {0x5C0, 4}, {0x3C0, 4}, {0x424, 4}};   // R4: +0x66C (16 B, se corrige solo en 3 ticks); R7: +0x64C..0x67B (antes solo 0x66C) (FFFFFFFF vs 2/3/1, transitorio 3 ticks, aparece en 1 de los dos lados segun el momento) // R7: +0x22C (4 B, basura transitoria: 5EE10100 / 00650000 vs 0) // R7: +0x208..0x24F basura transitoria (FFFFFFFF, 1AA, valores absurdos) // R7b: +0x200..0x24F y +0x600..0x67F (tabla de ranuras con paso 0x20: 0x60C/0x62C/0x64C, mismo latch transitorio)
-constexpr MaskRange kMaskFighter[] = {{0x13A8, 16}, {0x1A6C, 4}, {0x1AF0, 12}, {0x1E0C, 4}, {0x1EEC, 4}, {0x1EF4, 8}};   // R7: +0x1A6C (2 B: 0 vs 0x491B0000 en los dos luchadores a la vez, estable 8 ticks, nada mas diverge; no es mando ni vblank)
+// R5: +0xBC0 (16 B) solo lo escribe [PLY] DRAW (cb 8210E9D0 -> sub_82092CB8, medido con WLOG_WATCHA); al resimular el dibujo no corre
+// y la suma de los ticks intermedios de un rollback de 2 salia distinta (se arreglaba sola al tick siguiente).
+// R5: +0x1DB8 (8 B): punteros a bloques del monton (0x4E00xxxx); la colocacion depende de la historia de rollbacks (0x4E00DAE0 vs
+// 0x4E00D9A0, 0x140 de diferencia, resto del estado igual 517 ticks). Medido en 2 de ~75 combates, siempre desde el tick relativo 660.
+constexpr MaskRange kMaskFighter[] = {{0x13A8, 16}, {0x1A6C, 4}, {0x1AF0, 12}, {0x1E0C, 4}, {0x1EEC, 4}, {0x1EF4, 8}, {0xBC0, 16}, {0x1DB8, 8}};   // R7: +0x1A6C (2 B: 0 vs 0x491B0000 en los dos luchadores a la vez, estable 8 ticks, nada mas diverge; no es mando ni vblank)
+
+// R5: la colocacion en el monton depende de la historia de rollbacks de cada PC (siempre 0x140 de diferencia, resto del estado igual):
+// medidos +0x1DB8, +0xB7C y +0xB84; salen campos nuevos segun la semilla, asi que se filtra por valor. Un float de 5e8 no aparece en la pelea.
+// ponytail: rango fijo medido en US; si el monton cambia de sitio, volveran las falsas alarmas.
+inline bool IsHeapWord(const uint8_t* p) { return p[0] == 0x4E || (p[0] == 0x4D && p[1] >= 0xF0); }
+// Una direccion vale 1 (no 0): direccion contra nulo sigue saliendo distinto.
+inline void MaskHeapWords(uint8_t* mgr) {
+  static const uint8_t kMark[4] = {0, 0, 0, 1};
+  for (uint32_t i = kFight0; i + 4 <= kFight0 + 2 * kFightSz; i += 4)
+    if (IsHeapWord(mgr + i)) std::memcpy(mgr + i, kMark, 4);
+  // 1/11 (subONLN, Bu 35 con su definitiva absorbiendo, dos copias, DBZ3_RB_DUMP): la tabla de recursos del luchador recibe punteros del
+  // monton del invitado (0x4014xxxx-0x401Fxxxx) al cargar el recurso del absorbido, en +0x1E28 o +0x1E60 segun la partida; unica diferencia
+  // entre los dos PC (resto del estado y RNG iguales). Medido en los volcados: el resto de la tabla (+0x1E00..0x1EF8) guarda punteros 0x44xx/0x47xx
+  // IGUALES en los dos PC, y +0x1E0C/+0x1EEC/+0x1EF4 ya van en kMaskFighter. Se filtra solo la ventana +0x1E20..0x1E70, solo valores 0x401Xxxxx alineados a 4.
+  for (uint32_t f = 0; f < 2; ++f)
+    for (uint32_t i = kFight0 + f * kFightSz + 0x1E20; i < kFight0 + f * kFightSz + 0x1E70; i += 4)
+      if (mgr[i] == 0x40 && (mgr[i + 1] & 0xF0) == 0x10 && !(mgr[i + 3] & 3)) std::memcpy(mgr + i, kMark, 4);
+  // 1/11 (subONLN, mismo caso): luchador +0x1B0C = campo +28 de la entrada 0 de la lista de 16 entradas de 32 B en +0x1AF0 (la construye sub_82117250
+  // con sub_82120BB8: copia 64 B de un nodo preparado en la pila del llamador; entrada+28 = nodo+36, que el unico lector medido, sub_82140BF8, solo
+  // compara con 1). Anfitrion 0 / invitado 0xBD2C7B00 (basura de pila no inicializada), 4 rafagas de ~10 ticks, se auto-corrige, mismo ganador.
+  // Se normaliza a 0 salvo el valor 1, el unico que el codigo distingue; [H: no hay otro lector de nodo+36].
+  for (uint32_t f = 0; f < 2; ++f)
+    for (uint32_t k = 0; k < 16; ++k) {
+      uint8_t* w = mgr + kFight0 + f * kFightSz + 0x1B0C + 32 * k;
+      if (!(w[0] == 0 && w[1] == 0 && w[2] == 0 && w[3] == 1)) std::memset(w, 0, 4);
+    }
+}
 
 // Suma de una copia de la region (gestor kMgrLen bytes) y el RNG que tenia entonces.
 inline Sums ComputeBuf(const uint8_t* mgr, uint32_t rng) {
   static thread_local uint8_t tmp[kMgrLen];
   std::memcpy(tmp, mgr, kMgrLen);
+  MaskHeapWords(tmp);
   for (const auto& r : kMaskMgr) std::memset(tmp + r.off, 0, r.len);
   for (int f = 0; f < 2; ++f)
     for (const auto& r : kMaskFighter) std::memset(tmp + kFight0 + f * kFightSz + r.off, 0, r.len);
@@ -102,8 +134,8 @@ inline Sums Compute(uint8_t* base, uint32_t m) { return ComputeBuf(base + m, REX
 
 inline std::filesystem::path OutDir() {
   const char* o = std::getenv("DBZ3_RB_OUT");
-  std::filesystem::path d = o && *o ? o : "D:\\tmp\\rb";
   std::error_code ec;
+  const std::filesystem::path d = o && *o ? std::filesystem::path(o) : std::filesystem::temp_directory_path(ec) / "dbz3_rb";
   std::filesystem::create_directories(d, ec);
   return d;
 }
@@ -683,12 +715,59 @@ class Core {
   struct Run { uint32_t a, n; };
   using Clock = std::chrono::steady_clock;
 
-  void Init(uint32_t mgr) {
+  void Init(uint32_t mgr, uint8_t* base = nullptr, uint32_t* cosm = nullptr) {
+    cosm_ = cosm;   // sol-R2: ensayo opt-in del LFSR visual host (fuera de la memoria del invitado)
     using dbz3::GA;
     runs_ = {{mgr, kMgrLen}, {kRngAddr, 4}, {GA(0x8238B670), 80}, {GA(0x8238B6C0), 192}, {GA(0x8238B780), 736}, {GA(0x8238D6D8), 4}, {GA(0x8238D6B4), 4},
              {GA(0x823212B4), 4}, {GA(0x82321434), 4}, {GA(0x823212EC), 8}, {GA(0x8232146C), 8}};
     base_total_ = 0;
     for (const auto& r : runs_) base_total_ += r.n;   // sin los tramos de pruebas (XR): la prueba de pureza solo compara estos
+    // sol-R2: candidato con dueno: instancia de modelo/animacion en luchador+2952.
+    // Modo 1 = ensayo de cabecera 1040 B. Modo 2 = objeto completo: constructor
+    // sub_8208D9D8 / sizeof sub_8208C550 (9392 B + matrices de 64/128 B por hueso).
+    if (base && !dbz3::g_guest_eu && std::getenv("DBZ3_RB_MODELSTATE")) {
+      const int level = std::atoi(std::getenv("DBZ3_RB_MODELSTATE"));
+      // El luchador tiene DOS controladores (X+1616 y X+3280); ambos pasan
+      // por sub_820FB0D0 en sub_821114F8. Nivel 3 incorpora la segunda instancia.
+      for (uint32_t f = 0; f < (level >= 3 ? 4u : 2u); ++f) {
+        const uint32_t p = REX_LOAD_U32(mgr + kFight0 + (f % 2) * kFightSz + 2952 + (f / 2) * 1664);
+        if (!p || std::any_of(runs_.begin(), runs_.end(), [&](const Run& r) { return r.a == p; })) continue;
+        if (p >= 0x40000000u && p < 0x70000000u - 1040 && !(p & 3)) {
+          uint32_t len = 1040;
+          if (level >= 2) {
+            const uint32_t n = REX_LOAD_U32(p + 1048);
+            uint64_t end = uint64_t(p) + 9392;
+            bool valid = n && n <= 256;
+            for (uint32_t off : {1032u, 1068u, 1100u, 1116u, 1120u, 1124u, 1128u}) {
+              const uint32_t q = REX_LOAD_U32(p + off);
+              if (!q) continue;
+              const uint64_t z = uint64_t(q) + n * ((off == 1116 || off == 1120) ? 128u : 64u);
+              valid &= q >= p + 9392 && z < uint64_t(p) + 512 * 1024;
+              end = std::max(end, z);
+            }
+            if (!valid) { REXLOG_WARN("dbz3 rb: MODELSTATE completo rechazado para {:08X}", p); continue; }
+            len = uint32_t(end - p);
+          }
+          runs_.push_back({p, len});
+          REXLOG_INFO("dbz3 rb: MODELSTATE luchador {} {:08X}+{}", f, p, len);
+        } else REXLOG_WARN("dbz3 rb: MODELSTATE luchador {} sin instancia valida", f);
+      }
+    }
+    // sol-R2: pool FIJO propiedad del despachador (sub_82092638), no el monton general.
+    // Solo US y opt-in; contiene nodos libres tambien: restaurar solo los activos deja rota la lista libre.
+    if (base && !dbz3::g_guest_eu && std::getenv("DBZ3_RB_TASKSTATE")) {
+      const uint32_t payload = REX_LOAD_U32(0x8238CDE0), count = REX_LOAD_U32(0x8238CDE4);
+      const uint32_t pool = REX_LOAD_U32(0x8238CDE8), free = REX_LOAD_U32(0x8238CDEC);
+      const uint64_t len = (uint64_t(payload) + 80) * count;
+      if (count && count <= 4096 && payload <= 4096 && len <= 1024 * 1024 &&
+          pool >= 0x40000000u && uint64_t(pool) + len < 0x70000000u &&
+          free >= 0x40000000u && uint64_t(free) + count * 4 < 0x70000000u) {
+        runs_.push_back({0x8238CD50, 168});
+        runs_.push_back({pool, uint32_t(len)});
+        runs_.push_back({free, count * 4});
+        REXLOG_INFO("dbz3 rb: TASKSTATE pool {:08X}+{} ({} nodos, payload {}), libres {:08X}+{}", pool, len, count, payload, free, count * 4);
+      } else REXLOG_WARN("dbz3 rb: TASKSTATE no aplicado: cabecera fuera de limites");
+    }
     // PRUEBAS: DBZ3_RB_XR="dir:len,dir:len" (hex:dec) tramos extra de estado fuera del gestor que el rollback tiene que restaurar
     if (const char* ex = std::getenv("DBZ3_RB_XR"))
       if (std::strcmp(ex, "HEAP") != 0)
@@ -724,6 +803,8 @@ class Core {
     for (const auto& r : kMaskMgr) std::memcpy(sl.d.data() + r.off, keep.data() + r.off, r.len);
     for (int f = 0; f < 2; ++f)
       for (const auto& r : kMaskFighter) std::memcpy(sl.d.data() + kFight0 + f * kFightSz + r.off, keep.data() + kFight0 + f * kFightSz + r.off, r.len);
+    for (uint32_t i = kFight0; i + 4 <= kFight0 + 2 * kFightSz && i + 4 <= n; i += 4)
+      if (IsHeapWord(keep.data() + i) || IsHeapWord(remote + i)) std::memcpy(sl.d.data() + i, keep.data() + i, 4);
     return true;
   }
   void Save(uint8_t* base, uint32_t tick) {
@@ -737,6 +818,7 @@ class Core {
     }
     sl.tick = tick;
     sl.xr = true;
+    if (cosm_) sl.cosm = *cosm_;
     if (ptr_len_) SavePtrs(base, sl);
     if (save_ms_.size() < 4096) save_ms_.push_back(float(std::chrono::duration<double, std::milli>(Clock::now() - t0).count()));
   }
@@ -749,6 +831,7 @@ class Core {
     const uint8_t* d = Get(tick);
     if (!d) return false;
     const auto t0 = Clock::now();
+    if (cosm_) *cosm_ = slot_[tick % kSlots].cosm;
     size_t o = 0;
     bool ok = true;
     const bool with_xr = slot_[tick % kSlots].xr;
@@ -791,16 +874,21 @@ class Core {
   size_t Describe(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b, std::string* txt) const {
     std::vector<uint8_t> x = a, y = b;
     for (auto* v : {&x, &y}) {
+      if (v->size() >= kMgrLen) MaskHeapWords(v->data());
       for (const auto& r : kMaskMgr) std::memset(v->data() + r.off, 0, r.len);
       for (int f = 0; f < 2; ++f)
         for (const auto& r : kMaskFighter) std::memset(v->data() + kFight0 + f * kFightSz + r.off, 0, r.len);
+      // Contador de altas del monton 820A2550 (8238D6D8): solo estadistica, nadie lo lee, y el hilo del cargador lo sube a la vez que
+      // se compara (una muestra de pureza de 692 salia mala por +8 altas del cargador entre las dos lecturas).
+      size_t off = 0;
+      for (const auto& r : runs_) { if (r.a == dbz3::GA(0x8238D6D8u) && off + 4 <= v->size()) std::memset(v->data() + off, 0, 4); off += r.n; }
     }
     size_t n = 0, groups = 0;
     for (size_t i = 0; i < std::min(x.size(), base_total_); ++i) {
       if (x[i] == y[i]) continue;
-      ++n;
       size_t j = i;
-      while (j + 1 < x.size() && j - i < 8 && x[j + 1] != y[j + 1]) ++j;
+      while (j + 1 < std::min(x.size(), base_total_) && j - i < 8 && x[j + 1] != y[j + 1]) ++j;
+      n += j - i + 1;
       if (groups++ < 24 && txt) {
         char l[96];
         if (i < kMgrLen) {
@@ -820,7 +908,8 @@ class Core {
 
  private:
   struct PtrRun { uint32_t a; std::vector<uint8_t> d; };
-  struct Slot { uint32_t tick = 0xFFFFFFFFu; std::vector<uint8_t> d; std::vector<PtrRun> ptrs; bool xr = true; };
+  struct Slot { uint32_t tick = 0xFFFFFFFFu, cosm = 0; std::vector<uint8_t> d; std::vector<PtrRun> ptrs; bool xr = true; };
+  uint32_t* cosm_ = nullptr;
   size_t xr_from_ = SIZE_MAX;   // indice del primer tramo aprendido en marcha (HEAP); las instantaneas anteriores no lo tienen
   // PRUEBA (DBZ3_RB_PTR=bytes): ademas de la region, copia `bytes` a partir de cada puntero de monton (0x40000000-0x7FFFFFFF) que hay en el
   // gestor y los dos luchadores (controladores de animacion y demas objetos del combate que no viven en la region)

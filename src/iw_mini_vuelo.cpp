@@ -74,7 +74,10 @@
 
 #include "generated/dbz3_init.h"
 #include "anim_iw.h"
+#include "iw_camaras_gp2.h"
 #include "iw_ame.h"
+#include <chrono>
+#include "iw_gs.h"
 #include "cine.h"
 #include "combate.h"
 #include "escenarios.h"
@@ -162,8 +165,10 @@ constexpr float kFovVueloIW = 0.6981317f;         // 40 grados HORIZONTALES de I
 // silueta vertical del Krilin de B3 en el vuelo mide 8,0 u y la del IW 9,6 u (fotograma 815s, D 52,2, 40 horizontal);
 // con 52,2 x 0,665 x 0,84 = 29,1 y el objetivo 6,0 los pies caen al 74,9 % y la cabeza al 41,7 %, y el original mide
 // 74,7 % / 41,3 %. Sin el 0,84 (solo FOV) Krilin quedaba un 15 % pequeno (era la pose retarget de B3, mas compacta).
-constexpr float kRaizVueloIW = 6.0f;
-constexpr float kCercaniaPoseVuelo = 0.84f;
+// solIW9: proyeccion activaG+690 (EU12A820/12AC30/12C9E0):
+// u=300+512*X/Z;v=225+512*Y/Z. No es el40 de297140.
+constexpr float kRaizVueloIW = 7.0f; // vector482FF0, sin ajuste de silueta
+constexpr float kFovVueloReal = 0.82809721896f; // 2*atan(225/512)
 // DS113: altura de la cadera del modelo de IW (= B3; 1,83 u, medido en AGENTS §3.2 / DS87). El objetivo de los clips
 // de cutscene (Cutscene_GotoLine 0x3424F0 -> FUN_00127280) encuadra el centro del cuerpo, no los pies.
 constexpr float kCinturaVuelo = 1.83f;
@@ -234,6 +239,7 @@ struct Obj {
 // El cutscene de vuelo (0x3424F0) usa el indice de la linea como clip y la duracion del clip (+8) como fin de linea.
 struct ClipVuelo {
   int dur = 0;
+  float fov = 0.0f;   // 31/10: pista 3 del #AMC
   // DS113: el 4.o u32 de cada clave del #AMC es su cuadro (1..dur; el ultimo viene como 0 porque es dur mod dur).
   // Antes se repartian las claves por igual, lo que solo coincidia cuando n_claves == dur (900 tiene 83 claves en
   // 160 cuadros: la camara iba a la mitad de velocidad).
@@ -427,6 +433,10 @@ struct Juego {
   // = +0x61C (-10); si no, al acabar la transicion vuelve al estado 0 (Viewer_StatePoseDive, caso 4).
   float freno_picado = 0.95f;
   int giro_picado = 128, anim_picado = 0x800, picado_t = 0;
+  bool pose_aro = false;
+  int estado_aro = 0;
+  uint32_t codigo_vuelo = 0;
+  bool retorno_reposo = false;
   float dur2 = 180, dur3 = 180;
   float radio[16] = {};
   float medidor0 = 0, sube[3] = {0, 0, 0}, congela = 300, reaparece = 120;
@@ -457,6 +467,7 @@ struct Juego {
   // carga (0x33D900: 4,6,8,0xB,0x11 fijos).
   std::vector<ame::Efecto> efx;
   std::vector<P::Imagen> fx_atlas;   // #AMT hijo 0 del paquete (47 texturas)
+  std::vector<ps2::Malla> fx_modelos;
   struct FxVivo {
     int id = -1;      // indice del #AME (0..17)
     int slot = -1;    // hueco de efecto del original (para matarlo como Viewer_KillEffectAt)
@@ -470,6 +481,19 @@ struct Juego {
   // DS118: READY? de IW. Al acabar la intro, Viewer_StateCutsceneInput (EU 0x33CB80) deja el vuelo parado y
   // +0x52c = 0x42B40000 (90 cuadros) esperando al sprite; luego arrancan los scripts del vuelo (0x33C660).
   int listo_t = 0;
+  anim::ama::Obra avisos;
+  std::vector<P::Imagen> aviso_atlas;
+  // EU342F90/3462B0: CMN936 (no es el HUD7 ni un retrato del cuerpo3D).
+  anim::ama::Obra dialogo_ama;
+  std::vector<P::Imagen> dialogo_atlas;
+  P::Imagen dialogo_textos[4];
+  float dialogo_pos[2] = {195,312};
+  V3 dialogo_marco{};
+  int dialogo_voz[4] = {600,600,600,600};
+  std::deque<int> dialogos;
+  int dialogo = -1, dialogo_t = 0, dialogo_salida = -1;
+  int aviso_id = -1, aviso_t = 0;
+  bool derrota_espera = false, derrota_vista = false;
   bool voz_inicio = false;   // frase del jugador al pasar de 1 s de vuelo (EU 0x33C660, ver PasoVuelo)
   uint8_t eventos = 0;       // dialogos del rival ya disparados (EU 0x33C660 / 0x33AFA0; bit = indice de evento)
   int voz_aro = 0;           // contador para el `Memory() % 3` de la frase de los aros (EU 0x33AFA0)
@@ -499,6 +523,12 @@ struct Juego {
   bool mus_intro = false;
   bool cierre = false;
   int cierre_t = 0, cierre_dur = 0;
+  // 31/10: EU285F30: la tabla encima de la pose de la escena 2/3, sujeta (PCSX2: 15.000 Zenies sobre Krilin), no en negro
+  RelojRecompensaIW recompensa;
+  bool en_panel = false;
+  uint16_t panel_antes = 0xFFFF;
+  int escena_cierre = 1;   // Cutscene_GotoLine: 1 meta, 2 victoria, 3 derrota
+  bool resultado_visto = false;
   // modelos de IW
   Modelo m_aro, m_moneda, m_casa, m_item[4];   // item: 2, 3, 8, 10
   Modelo m_flecha;                             // DS117: ITEMA04_ARROW (891/1 + #AMT 0), colores por vertice
@@ -561,6 +591,7 @@ bool g_fog_flags_guardado = false;
 std::mutex g_cv_mu;
 float g_cv_ojo[3] = {}, g_cv_obj[3] = {}, g_cv_roll = 0.0f;
 bool g_cv_on = false;
+std::atomic<float> g_cv_fov_clip{0};   // 31/10: guion: FOV del clip; 0 = el del vuelo
 void PublicarCamaraVuelo(const float ojo[3], const float obj[3], float roll) {
   std::lock_guard<std::mutex> lk(g_cv_mu);
   for (int i = 0; i < 3; ++i) g_cv_ojo[i] = ojo[i], g_cv_obj[i] = obj[i];
@@ -571,6 +602,7 @@ std::atomic<bool> g_render_on{false};   // DS137: hay cuadro del render publicad
 void ApagarCamaraVuelo() {
   std::lock_guard<std::mutex> lk(g_cv_mu);
   g_cv_on = false;
+  g_cv_fov_clip = 0.0f;
   g_render_on = false;
 }
 // DS177: camara del minijuego de campo (iw_minijuegos.cpp: entrada, carrera y final). Se aplica como la del vuelo
@@ -580,7 +612,7 @@ void ApagarCamaraVuelo() {
 // mgr+0x1C4 no cambia el 3D, DS92); mgr+0x60 es la SALIDA de sub_8208A168 y la entrada de sub_82087500 (el dibujo).
 std::atomic<bool> g_mc_on{false};
 std::mutex g_mc_mu;
-float g_mc_ojo[3] = {}, g_mc_obj[3] = {}, g_mc_fov = 0.785f;
+float g_mc_ojo[3] = {}, g_mc_obj[3] = {}, g_mc_fov = 0.785f, g_mc_roll = 0;
 bool g_mc_estaba = false;            // el cuadro anterior se aplico la camara del minijuego
 uint32_t g_mc_cam = 0;               // struct activa en la que se escribio
 float g_mc_fov_guardado = 0.785f;    // su fov antes de pisarlo (se devuelve al salir)
@@ -598,6 +630,7 @@ float g_rv_fov = 0.785f;
 // sin leer estado vivo (mover 2 u/cuadro cambia 100 px entre dos lecturas de OnDraw).
 struct RenderCuadro {
   bool ok = false;
+  float fov = 0.7853981634f;
   float ojo[3] = {}, obj[3] = {}, roll = 0.0f;   // camara del cuadro que se pinta
   float matriz[16] = {};                          // su vista (mgr+0x60 antes del pisa, copia de la del render)
   float pies[3] = {};                             // X+48 del luchador en ese cuadro
@@ -647,6 +680,11 @@ void StoreF(uint8_t* base, uint32_t a, float f) {
 float FovJuegoVuelo(uint8_t* base) {
   const uint32_t mgr = REX_LOAD_U32(kMgrPtr);
   if (!base || !mgr) return 0.7853981634f;
+  const uint32_t cam=REX_LOAD_U32(mgr+0x264);
+  if(cam>=0x82000000u&&cam<0x83000000u) {
+    const float actual=LoadF(base,cam+0x34);
+    if(actual>.1f&&actual<3) return actual;
+  }
   const float f = LoadF(base, mgr + kFovMgr);
   return (f > 0.3f && f < 1.2f) ? f : 0.7853981634f;
 }
@@ -657,6 +695,7 @@ float CompensacionFovVuelo(float fov_juego) {
   return std::clamp(k, 0.4f, 1.5f);
 }
 const char* NombreFov(float fov) {
+  if(std::fabs(fov-kFovVueloReal)<.001f) return "IW-focal512";
   return std::fabs(fov - kFovVueloIW) < 0.02f ? "IW40" : std::fabs(fov - 0.7853981634f) < 0.02f ? "B3-45" : "otro";
 }
 // DS92: la intro y el cierre del #AMC tambien se venian dibujando con el 40 de IW: como el juego pinta con el FOV de
@@ -831,6 +870,10 @@ void Mirar(uint8_t* base, uint32_t x, int yaw) {
   REX_STORE_U16(x + kMiradaA, uint16_t(yaw - 15759));
   REX_STORE_U16(x + kMiradaB, uint16_t(yaw - 15968));
 }
+void ColocarActorGuion(uint8_t* base,uint32_t x) {
+  for (uint32_t i=0;i<16;++i) StoreF(base,x+4*i,i%5==0 ? 1.0f : 0.0f);
+  Poner(base,x,{0,0,0});
+}
 float Ang(int yaw) { return float(yaw & 0xFFFF) / 65536.0f * 6.2831853f; }
 // DS147: el rumbo del MODELO no lo dan X+6062/+6074. Esos dos campos son la "mirada" que usa la IA/los pases de
 // animacion: con el cuerpo del vuelo (poses 0x320-0x32E) no giran al luchador. El que se dibuja sale de su MATRIZ
@@ -881,6 +924,12 @@ std::vector<float> LeerDerivasMta(const std::vector<uint8_t>& b) {
 // #AMC de camara de 891 (formato del vuelo: pista +8 = nº claves, claves de 16 B x,y,z,bandera desde +16).
 // DS113: `libro` = indice del #AMC dentro del bundle (0 = hijo 25, 1 = hijo 26); la clave del mapa es libro<<16|clip.
 void LeerClipsVuelo(const std::vector<uint8_t>& amc, int libro, const std::vector<int>& ids, std::map<int, ClipVuelo>& out) {
+  // GP2 noche:127280 usa claves {tiempo,x,y,z} desde+12. El lector
+  // anterior leia XYZ bien, pero tomaba el tiempo de la SIGUIENTE clave.
+  // Verificado (kTiemposVueloVerificados = true): el interruptor de prueba queda solo como respaldo.
+  constexpr bool kTiemposVueloVerificados = true;
+  const bool tiempos_originales = kTiemposVueloVerificados ||
+      (std::getenv("DBZ3_TEST_IWMINI") && std::getenv("TEST_GP2_AMC_TIEMPOS"));
   if (amc.size() < 0x20 || std::memcmp(amc.data(), "#AMC", 4) != 0) return;
   const uint32_t n = U32(amc, 0x10), tab = U32(amc, 0x14);
   for (int id : ids) {
@@ -904,12 +953,14 @@ void LeerClipsVuelo(const std::vector<uint8_t>& amc, int libro, const std::vecto
       for (uint32_t k = 0; k < nk; ++k) {
         const size_t o = t + 16 + 16 * size_t(k);
         if (o + 16 > amc.size()) break;
-        uint32_t cuadro = U32(amc, o + 12);
-        if (cuadro == 0) cuadro = uint32_t(dur);   // dur mod dur
+        uint32_t cuadro = U32(amc, tiempos_originales ? o - 4 : o + 12);
+        if (!tiempos_originales && cuadro == 0) cuadro = uint32_t(dur);
         dst.push_back({F32(amc, o), F32(amc, o + 4), F32(amc, o + 8)});
         marcos.push_back(cuadro);
       }
     }
+    if (const size_t t3 = U32(amc, off + 12); t3 + 20 <= amc.size() && U32(amc, t3 + 8) > 0 && U32(amc, t3 + 8) < 5000)
+      c.fov = F32(amc, t3 + 16);
     if (!c.ojo.empty() && !c.obj.empty()) out[clave] = std::move(c);
   }
 }
@@ -932,8 +983,13 @@ bool MuestraClip(const std::vector<std::array<float, 3>>& k, const std::vector<u
 bool CamaraClip(const Juego& j, int libro, int clip, float f, float ojo[3], float obj[3]) {
   const auto it = j.cams.find((libro << 16) | (clip & 0xFFFF));
   if (it == j.cams.end()) return false;
-  return MuestraClip(it->second.ojo, it->second.ojo_c, f, it->second.dur, ojo) &&
-         MuestraClip(it->second.obj, it->second.obj_c, f, it->second.dur, obj);
+  const bool ok = MuestraClip(it->second.ojo, it->second.ojo_c, f, it->second.dur, ojo) &&
+                  MuestraClip(it->second.obj, it->second.obj_c, f, it->second.dur, obj);
+  if (ok && dbz3::gp2cam::Activo())
+    dbz3::gp2cam::Evaluada("vuelo", 891, 25 + libro, libro, clip, f, it->second.dur,
+        j.intro ? 0 : j.cierre ? j.escena_cierre : -1, j.intro ? j.guion_linea : -1,
+        ojo, obj, it->second.fov, 0.0f, (libro << 16) | clip);
+  return ok;
 }
 
 // ---- DS113: audio de la intro (musica + voces del #AMB 891) ----
@@ -1036,6 +1092,27 @@ void VozBanco3(const Juego& j, int entrada, const char* motivo) {
   const float vol = dbz3::settings::AudioMute() ? 0.0f : float(dbz3::settings::MasterVolume());
   REXLOG_INFO("dbz3 r12: voz {} entrada {} de {} (EU 0x31B3C0 Audio_GetFilteredTableEntry)", motivo, entrada, afs);
   P::OirAdxPs2(P::BuscarIW(), afs, entrada, vol);
+}
+
+void CuadroDialogo(Juego& j) {
+  if (j.dialogo<0&&!j.dialogos.empty()) {
+    j.dialogo=j.dialogos.front();j.dialogos.pop_front();j.dialogo_t=0;j.dialogo_salida=-1;
+    VozBanco3(j,1111+j.dialogo,"cola del retrato rival (EU342F90)");
+    REXLOG_INFO("dbz3 solIW7: retrato rival evento {} entrada cuadro {}",j.dialogo,j.cuadros);
+  }
+  if (j.dialogo<0) return;
+  ++j.dialogo_t;
+  const int nodo=j.dialogo_ama.Objeto(15);
+  const int entrada=nodo>=0 ? int(anim::ama::MaxCuadros(anim::ama::CrearArbol(j.dialogo_ama,nodo))) : 26;
+  // El reloj de600 empieza al terminar la entrada; la voz comienza al encolar.
+  if (j.dialogo_salida<0&&j.dialogo_t>=entrada&&
+      (j.dialogo_t>=j.dialogo_voz[j.dialogo-1]||j.dialogo_t>=entrada+600)) {
+    j.dialogo_salida=j.dialogo_t;
+    REXLOG_INFO("dbz3 solIW7: retrato rival evento {} salida cuadro {}",j.dialogo,j.dialogo_t);
+  }
+  const int salida=j.dialogo_ama.Objeto(16);
+  const int dur_salida=salida>=0 ? int(anim::ama::MaxCuadros(anim::ama::CrearArbol(j.dialogo_ama,salida))) : 27;
+  if (j.dialogo_salida>=0&&j.dialogo_t-j.dialogo_salida>=dur_salida) j.dialogo=-1;
 }
 
 // DS118: voz del jugador de la tabla del ELF. EU 0x31B3C0 Audio_GetFilteredTableEntry(clave, i) devuelve
@@ -1173,13 +1250,31 @@ bool Cargar(Juego& j, std::string& error) {
     if (paq.size() > 0x20 && std::memcmp(paq.data(), "#AMB", 4) == 0) {
       const std::vector<uint8_t> at = P::HijoAmb(paq, 0);
       for (int k = 0, n = P::CuantasAmt(at); k < n; ++k) j.fx_atlas.push_back(P::TexturaAmt(at, k));
+      const auto amo=P::HijoAmb(paq,1);
+      uint32_t nm=0;
+      if(amo.size()>=0x20) std::memcpy(&nm,amo.data()+0x18,4);
+      j.fx_modelos.resize(std::min<uint32_t>(nm,64));
+      for(size_t i=0;i<j.fx_modelos.size();++i) ps2::LeerAmo(amo,int(i),j.fx_modelos[i],nullptr,true);
       j.efx.resize(18);
       int n_efx = 0;
       for (uint32_t h = 3; h <= 20; ++h) {
-        j.efx[h - 3] = ame::Leer(P::HijoAmb(paq, h));
+        j.efx[h - 3] = ame::Leer(P::HijoAmb(paq, h),true);
         n_efx += j.efx[h - 3] ? 1 : 0;
       }
       j.fx_ok = n_efx > 0;
+      int afectores[6]={}, anidados=0;
+      std::function<void(const ame::Efecto&)> contar=[&](const ame::Efecto& e) {
+        auto nodo=[&](const ame::Nodo& n) { for(const auto& a:n.afectores)
+          if(a.tipo>=0&&a.tipo<6) ++afectores[a.tipo]; };
+        for(const auto& n:e.raices) nodo(n);
+        for(const auto& g:e.grupos) {
+          for(const auto& n:g.parts) nodo(n);
+          for(const auto& h:g.hijos) { ++anidados;contar(*h); }
+        }
+      };
+      for(const auto& e:j.efx) contar(e);
+      REXLOG_INFO("dbz3 iw vuelo9: afectores tipos0..5 {}/{}/{}/{}/{}/{}; emisores anidados {}",
+                  afectores[0],afectores[1],afectores[2],afectores[3],afectores[4],afectores[5],anidados);
       REXLOG_INFO("dbz3 r12: efectos del visor (891/28): {} #AME, atlas de {} texturas, #MCF color {:08X} rango "
                   "{:.0f}..{:.0f}; aros id 0xE/0xA, auras de impulso 0/1/2, fijos 4/6/8/B/11",
                   n_efx, j.fx_atlas.size(), j.fog_rgb, j.fog_ini, j.fog_fin);
@@ -1187,7 +1282,46 @@ bool Cargar(Juego& j, std::string& error) {
       REXLOG_WARN("dbz3 r12: 891/28 no es el #AMB de efectos ({} B)", paq.size());
     }
   }
-  if (P::AfsPs2 usa; usa.Abrir(P::BuscarIW(), "DATA_USA.AFS")) j.clear = P::TexturaAmt(P::HijoAmb(usa.Entrada(334), 3), 69);
+  if (P::AfsPs2 usa; usa.Abrir(P::BuscarIW(), "DATA_USA.AFS")) {
+    j.clear = P::TexturaAmt(P::HijoAmb(usa.Entrada(334), 3), 69);
+    const auto paquete=usa.Entrada(5), atlas=P::HijoAmb(paquete,1);
+    j.avisos.Cargar(P::HijoAmb(paquete,0));
+    for (int i=0,n=P::CuantasAmt(atlas);i<n;++i) j.aviso_atlas.push_back(P::TexturaAmt(atlas,i));
+    if (j.v==1) {
+      const auto paquete_dialogo=cmn.Entrada(936), obra=P::HijoAmb(paquete_dialogo,0);
+      j.dialogo_ama.Cargar(obra);
+      if (const int n=j.dialogo_ama.Objeto(0);n>=0) {
+        const int seg=j.dialogo_ama.Nodo(n).anim;
+        if (seg>=0) {
+          int clave=-1;float posicion[4]={};
+          anim::ama::MuestrearPosicion(j.dialogo_ama.Seg(seg).a.c2,0,clave,posicion);
+          j.dialogo_marco={posicion[0],posicion[1],0};
+        }
+      }
+      const auto retratos=P::HijoAmb(paquete_dialogo,1), textos=P::HijoAmb(paquete,11);
+      for (int i=0,n=P::CuantasAmt(retratos);i<n;++i) j.dialogo_atlas.push_back(P::TexturaAmt(retratos,i));
+      for (int i=0;i<4;++i) j.dialogo_textos[i]=P::TexturaAmt(textos,i+1);
+      // MgFly_State_ShowAndLoadNext toma el centro de la secuencia34.
+      const size_t tabla=U32(obra,0x1C);
+      if (tabla+35*4<=obra.size()) {
+        const size_t seg=U32(obra,tabla+34*4), pista=U32(obra,seg+4), claves=U32(obra,pista+0x1C);
+        if (claves+16<=obra.size()) { j.dialogo_pos[0]=F32(obra,claves);j.dialogo_pos[1]=F32(obra,claves+4); }
+      }
+      uint8_t* base=Base();
+      const bool jp=base&&REX_LOAD_U8(dbz3::GA(0x824BA110)+0x2C0C9)==0;
+      P::AfsPs2 voces;
+      if (voces.Abrir(P::BuscarIW(),jp ? "ADX_JPN.AFS" : "ADX_USA.AFS"))
+        for (int i=0;i<4;++i) {
+          const auto adx=voces.Entrada(1112+i);
+          if (adx.size()<16) continue;
+          auto be=[&](size_t o) { return (uint32_t(adx[o])<<24)|(uint32_t(adx[o+1])<<16)|(uint32_t(adx[o+2])<<8)|adx[o+3]; };
+          const uint32_t hz=be(8), muestras=be(12);
+          if (hz) j.dialogo_voz[i]=int((uint64_t(muestras)*60+hz-1)/hz);
+        }
+      REXLOG_INFO("dbz3 solIW7: ventana rival CMN936, AMA15/16, texto ({:.0f},{:.0f}), voces {}/{}/{}/{} cuadros",
+          j.dialogo_pos[0],j.dialogo_pos[1],j.dialogo_voz[0],j.dialogo_voz[1],j.dialogo_voz[2],j.dialogo_voz[3]);
+    }
+  }
   // EU 0x33D900: el cutscene de vuelo toma sus clips del primer hijo "AMC" de 891 (RAMFlyingMinigamesRelated,
   // 0x306A20) y del segundo (libro 1). DS113: la escena 0 de Cutscene_GotoLine (EU 0x3424F0) empieza en el libro 1
   // (hijo 26, su unico clip 0 = 300 cuadros de presentacion del campo) y sigue con el libro 0 (hijo 25).
@@ -1279,7 +1413,12 @@ bool Cargar(Juego& j, std::string& error) {
 // El origen: el cuerpo del luchador (el original pasa la posicion en vf0; Aura_Dash la guarda en el hueco y
 // Viewer_UpdateEffectSlots la mueve/mata). El slot conserva el indice del original para poder matarlo igual.
 namespace Fx {
-V3 Cuerpo(const Juego& j) { return V3{j.x, kAltura + 3.0f, j.z}; }
+// EU339E20..339EB8: el id no siempre coincide con la ranura. s_WAIST
+// dibuja estas cinco instancias en CADA objeto, no encima del luchador.
+int TipoObjeto(int id) {
+  switch (id) { case 4:return 0;case 6:return 2;case 8:return 3;case 0xB:return 8;case 0x11:return 1;default:return -1; }
+}
+V3 Cuerpo(const Juego& j) { return V3{j.x, kAltura, j.z}; } // G+5D0, no un ancla403 ajustada
 V3 Rumbo(int yaw) {
   const float a = Ang(yaw);
   return V3{std::sin(a), 0.0f, std::cos(a)};
@@ -1289,9 +1428,13 @@ std::shared_ptr<ame::Instancia> Lanzar(Juego& j, int id, int slot, const V3& pos
   if (!j.fx_ok || id < 0 || id >= int(j.efx.size()) || !j.efx[size_t(id)]) return nullptr;
   auto in = std::make_shared<ame::Instancia>();
   in->ef = &j.efx[size_t(id)];
-  in->origen = pos;
-  in->dir = dir;
+  // Los efectos que siguen al cuerpo se SIMULAN en el marco local y se
+  // transforman solo al dibujar (RAM original025: contexto y emisores en0).
+  in->origen = sigue ? V3{} : pos;
+  in->dir = sigue ? V3{0,0,1} : dir;
   in->esc = esc;
+  in->mezcla_gs = true;
+  in->modelos = !j.fx_modelos.empty();
   Juego::FxVivo v;
   v.id = id;
   v.slot = slot;
@@ -1308,25 +1451,9 @@ void Matar(Juego& j, int slot) {
 // Viewer_UpdateEffectSlots (EU 0x33A000) + EffectDrawRegulator: avanza un cuadro los efectos vivos.
 void Cuadro(Juego& j) {
   if (j.fx.empty()) return;
-  const V3 pos = Cuerpo(j), dir = Rumbo(j.yaw);
-  // DS184: el efecto cuelga del cuerpo, asi que TODAS sus particulas viajan con el: el slot recibe cada cuadro la
-  // matriz del hueso (Effect_Init*Particle EU 0x2739d0 y cia. suman la velocidad del emisor a la de la particula al
-  // nacer, o sea que el sistema vive en el marco del hueso). El desplazamiento del cuerpo en este cuadro es el mismo
-  // dx/dz de Viewer_StateFlyUpdate (dx = sin(giro) * vel). Sin esto, a ~1.000 u/s (log: vel 17,1 u/cuadro) las
-  // particulas se quedaban atras: las rayas de velocidad del efecto 8 (vida 40 cuadros) acababan detras de la camara
-  // (29 u tras el cuerpo) y no se veian; los destellos, de pocos cuadros, si salian. Se hace aqui (no en iw_ame.h)
-  // para no tocar el reproductor que comparten el disparo y los minijuegos.
-  const float a = Ang(j.yaw);
-  const V3 paso{std::sin(a) * j.vel, 0.0f, std::cos(a) * j.vel};
+  // Simular en el marco original; su traslacion y giro se aplican al pintar.
   for (Juego::FxVivo& f : j.fx) {
-    if (f.sigue) {
-      for (auto& lista : f.in->ps)
-        for (ame::Particula& p : lista) {
-          p.p.x += paso.x;
-          p.p.z += paso.z;
-        }
-      f.in->origen = pos, f.in->dir = dir;
-    }
+    if (!f.in||!f.in->vivo) continue; // Matar no debe reactivar un emisor infinito al actualizarlo
     ame::Cuadro(*f.in, j.fx_sem);
   }
   j.fx.erase(std::remove_if(j.fx.begin(), j.fx.end(), [](const Juego::FxVivo& f) { return !f.in || !f.in->vivo; }),
@@ -1337,28 +1464,26 @@ void Limpiar(Juego& j) {
   j.fx_iniciado = false;
   j.fx_estado = -1;
 }
-// 0x33D900: los cinco efectos fijos del vuelo, colgados del cuerpo (no de un punto del mundo).
+// EU33CFA0: plantillas de los cinco efectos de objetos; el dibujo las repite en cada nodo activo.
 void Iniciar(Juego& j) {
   if (!j.fx_ok) return;
-  const V3 p = Cuerpo(j), d = Rumbo(j.yaw);
-  for (int id : {4, 6, 8, 0xB, 0x11}) Lanzar(j, id, id, p, d, true);
+  const V3 p{}, d{0,0,1};
+  for (int id : {4, 6, 8, 0xB, 0x11}) Lanzar(j, id, id, p, d, false);
   j.fx_iniciado = true;
   j.fx_estado = j.estado;
-  REXLOG_INFO("dbz3 r12: efectos fijos del vuelo lanzados (4, 6, 8, 0xB, 0x11) en ({:.0f}, {:.0f}, {:.0f})", p.x, p.y,
-              p.z);
+  REXLOG_INFO("dbz3 solIW7: efectos fijos 4/6/8/B/11 en objetos 0/2/3/8/1; no en el cuerpo");
 }
 // Transiciones de los estados de impulso (0x33F040/0x33ECC0/0x33F2C0/0x33F5E0).
 void Estado(Juego& j, int estado) {
   if (!j.fx_ok || estado == j.fx_estado) return;
   const V3 p = Cuerpo(j), d = Rumbo(j.yaw);
-  if (estado == 5) {   // Viewer_StatePoseBank5: KillEffectAt(1) + Aura 0 y 2
-    Matar(j, 1);
+  if (estado == 5) {   // EU33F040:0/3→5 solo0;6→5 mata1 y lanza0+2
     Lanzar(j, 0, 0, p, d, true);
-    Lanzar(j, 2, 2, p, d, true);
+    if(j.fx_estado==6) {Matar(j,1);Lanzar(j,2,2,p,d,true);} // EU33F040: solo6→5 lleva2
   } else if (estado == 6) {   // Viewer_StatePoseBank6: KillEffectAt(0) + Aura 1 y 2
-    Matar(j, 0);
     Lanzar(j, 1, 1, p, d, true);
-    Lanzar(j, 2, 2, p, d, true);
+    if(j.fx_estado==5) Matar(j,0);
+    Lanzar(j,2,2,p,d,true); // EU33ECC0: tanto0/3→6 como5→6
   } else if (estado == 3 || estado == 4) {   // Viewer_StatePoseTurn / PoseDive: KillEffectAt(0/1/2)
     Matar(j, 0);
     Matar(j, 1);
@@ -1369,7 +1494,7 @@ void Estado(Juego& j, int estado) {
 }  // namespace Fx
 
 // Pone la partida en la salida (READY y primer cuadro)
-void Reiniciar(Juego& j) {
+void Reiniciar(Juego& j,bool reiniciar_efectos=true) {
   j.x = j.ux = j.sx;
   j.z = j.uz = j.sz;
   j.yaw = j.salida_giro;
@@ -1392,6 +1517,8 @@ void Reiniciar(Juego& j) {
   j.cam_x = j.cam_y = 0;
   j.virada = j.media = 0;
   j.picado_t = 0;
+  j.pose_aro = false;
+  j.codigo_vuelo = 0;
   j.espera_cam = 0;
   j.cam_ped_ok = false;
   j.cam_esc_ok = false;
@@ -1401,8 +1528,12 @@ void Reiniciar(Juego& j) {
   j.siguiente = 0;
   j.abierta = j.fin = j.superado = false;
   j.aura = 0;
-  Fx::Limpiar(j);
+  if(reiniciar_efectos) {
+    Fx::Limpiar(j);
+    Fx::Iniciar(j); // EU33CE40: nacen antes de la intro, no al terminar READY
+  }
   j.listo_t = 0;
+  j.aviso_id=-1;j.aviso_t=0;j.derrota_espera=j.derrota_vista=false;
   j.voz_inicio = false;
   j.eventos = 0;
   j.voz_aro = 0;
@@ -1496,16 +1627,57 @@ V3 AB3(const Juego& j, float x, float z) {
 
 // EU 0x33C190 Viewer_StateResultSuccess
 // EU 0x33C420 Viewer_StateResultFail
+bool FinAviso(const Juego& j) {
+  const int nodo=j.avisos.Objeto(uint32_t(j.aviso_id));
+  if (nodo<0) return j.aviso_t>= (j.aviso_id==0 ? 90 : 121);
+  // EU342C20/1B7AF0 consulta la RAIZ, no MaxCuadros del arbol:
+  // READY92 acaba aunque su hijo START siga hasta134.
+  return anim::ama::BanderasFin(j.avisos,j.avisos.Nodo(nodo).anim,float(j.aviso_t))==0xFF;
+}
 void Acabar(uint8_t* base, uint32_t mgr, Juego& j, bool meta, const char* por) {
+  const bool superado = meta && j.t_ms <= float(j.rango_s[4]) * 1000.0f;
+  if (!meta&&!j.derrota_vista&&!j.resultado_visto&&j.vuelo_real) {
+    if (!j.derrota_espera) {
+      j.derrota_espera=true;j.aviso_id=8;j.aviso_t=0;
+      if (j.estado==3||j.estado==5||j.estado==6) {
+        j.estado=4;j.anim_picado=0x32E;j.vel=j.vfreno;j.zoom_meta=-10;
+        j.pose_aro=false;dbz3::anim::Bucle(mgr+kX0,0x32E);
+      }
+      REXLOG_INFO("dbz3 solIW6: vuelo derrota frenazo32E estado {} espera AMA8",j.estado);
+    }
+    return;
+  }
+  // EU 0x33C340 Viewer_StateCheckResult / 0x33C550 LoadWaitWinLoseScreenFlyingMinigame:
+  // la escena 2/3 se reproduce ANTES de escribir el resultado. DATA_CMN 924
+  // trae los codigos 0x371/0x372 (240 cuadros) ya cargados por anim_iw.
+  // Cada pareja conserva su propio #BSK y sus clips (ELF EU 0x483220).
+  if (!j.resultado_visto && j.vuelo_real) {
+    j.resultado_visto = true;
+    const int clip = (j.v == 0 ? (j.pj == 0 ? 902 : 905) : (j.pj == 0 ? 1402 : 1405)) + (superado ? 0 : 1);
+    if (j.cams.count(clip)) {
+      j.escena_cierre = superado ? 2 : 3;
+      j.cierre = true;
+      j.cierre_t = 0;
+      j.superado = superado;
+      if (meta) { j.aviso_id=superado ? 7 : 8;j.aviso_t=0; }
+      Fx::Limpiar(j);
+      if (!meta) VozCorta(j, 1250);
+      REXLOG_INFO("dbz3 r12: resultado de IW: escena {} clip {} anim 0x{:X}, {} cuadros antes de salir",
+                  j.escena_cierre, clip, j.v == 0 ? (superado ? 0x371 : 0x372) : (superado ? 0x759 : 0x75A),
+                  j.cams.at(clip).dur);
+      return;
+    }
+    REXLOG_WARN("dbz3 r12: falta el clip {} de resultado de IW; se entrega el resultado sin escena", clip);
+  }
   j.fin = true;
   // EU 0x33C340 Viewer_StateCheckResult
-  j.superado = meta && j.t_ms <= float(j.rango_s[4]) * 1000.0f;   // Viewer_StateCheckResult
+  j.superado = superado;   // Viewer_StateCheckResult
   REX_STORE_U8(mgr + kFin, uint8_t(j.superado ? 1 : 2));          // el combate acaba como un ring out
   // EU 0x33C660 FlyingMinigameSpritesScripts_MissionObjectiveScripts
   // DS118: al perder, la rama `bVar2` corta la musica del canal 2 y lanza
   // CharacterDialoguesStart_(2, Table_Lookup480450(SemaParam.count)|0x30000) = 1250 (ADX_USA/JPN). La victoria ya
   // la lanza Viewer_BeginFinalPhase (1253/1250) en PasoCierre.
-  if (!meta) VozCorta(j, 1250);
+  if (!meta && !j.resultado_visto) VozCorta(j, 1250);
   REXLOG_INFO("dbz3 r12: fin ({}): tiempo {:.2f} s, medidor {:.3f}, monedas {} ({} puntos), superado {}", por,
               j.t_ms / 1000.0f, j.medidor, j.monedas, j.puntos, j.superado);
 }
@@ -1518,8 +1690,10 @@ void Acabar(uint8_t* base, uint32_t mgr, Juego& j, bool meta, const char* por) {
 // pantalla el arranque/parada (0x323/0x32E) y la vuelta al reposo.
 // EU 0x341770 FlyingMinigameCharacterHeightPosition
 uint32_t PoseVuelo(const Juego& j, float h, float v) {
-  if (j.media > 0) return 0x32D;
-  if (j.virada > 0) return 0x321;
+  if (j.retorno_reposo) return 0x320;
+  if (j.pose_aro) return 0x330;
+  if (j.estado == 7) return 0x32D;
+  if (j.estado == 2) return 0x321;
   if (j.estado == 4) return uint32_t(j.anim_picado);
   if (j.estado == 5 || j.estado == 6) return 0x32C;
   if (j.estado == 3) return v >= 0.25f ? 0x322 : 0x323;
@@ -1527,6 +1701,15 @@ uint32_t PoseVuelo(const Juego& j, float h, float v) {
   if (v < 0) return 0x324;
   if (h != 0) return h > 0 ? 0x329 : 0x32A;
   return 0x320;
+}
+void AplicarPoseVuelo(uint32_t x,Juego& j,uint32_t codigo) {
+  if (codigo==j.codigo_vuelo) return;
+  j.codigo_vuelo=codigo;
+  // Las transiciones no son ciclos. El camino sujeto conserva el avance
+  // nativo a60Hz, sin el reloj de respaldo de las poses en bucle.
+  if (codigo==0x321||codigo==0x32D||codigo==0x323||codigo==0x32E||codigo==0x330)
+    dbz3::anim::Reproducir(x,codigo,true);
+  else dbz3::anim::Bucle(x,codigo);
 }
 
 // Un cuadro de vuelo (hilo del juego): Viewer_StateFlyUpdate0/3/5/6 con los numeros del #MSF.
@@ -1553,7 +1736,28 @@ uint32_t PoseVuelo(const Juego& j, float h, float v) {
 // EU 0x33FEF0 Viewer_StateFlyUpdate5
 // EU 0x33FA10 Viewer_StateFlyUpdate6
 // EU 0x340CB0 Viewer_StateFlyUpdate7
-void Volar(Juego& j, float h, float v, bool r1) {
+void Volar(uint8_t* base, uint32_t x, Juego& j, float h, float v, bool r1) {
+  j.retorno_reposo=false;
+  auto acabada = [&](uint32_t codigo) {
+    dbz3::anim::EstadoCuerpo e;
+    const bool fin=dbz3::anim::LeerEstadoCuerpo(base,x,0,e) && e.hay &&
+        e.codigo==codigo && e.cuadros>0 && (e.vueltas || e.cuadro>=float(e.cuadros-1));
+    if (fin&&std::getenv("DBZ3_TEST_IWMINI"))
+      REXLOG_INFO("dbz3 solIW6: vuelo fin pose {:X} cuadro {:.1f}/{} estado {}",codigo,e.cuadro,e.cuadros,j.estado);
+    return fin;
+  };
+  if (j.pose_aro && acabada(0x330)) j.pose_aro=false;
+  if (j.estado==7) {
+    // EU340CB0: no corre la fisica de crucero durante la media vuelta.
+    if (!acabada(0x32D)) return;
+    j.yaw^=0x8000;
+    j.estado=0;
+    j.retorno_reposo=true;
+    return;   // EU340CB0 -> PoseDive: instala800 ANTES de aceptar otra media vuelta
+  }
+  if (j.estado==2 && acabada(0x321)) j.estado=3;
+  const int estado_antes=j.estado;
+  const float rumbo_antes=Ang(j.yaw);
   if (v < 0 && j.estado == 0) v *= 0.8f;
   if (j.estado == 4) {
     // Viewer_StateFlyUpdate4 0x3407D0: giro del estado 2 (+0x48), +0x560 *= +0x2C (0,95); con la palanca abajo y
@@ -1566,26 +1770,30 @@ void Volar(Juego& j, float h, float v, bool r1) {
       j.vel = j.vfreno;
       j.anim_picado = 0x32E;
       j.zoom_meta = -10.0f;
-    } else if (--j.picado_t <= 0) {
+    } else if (acabada(uint32_t(j.anim_picado))) {
       j.estado = 0;
-      j.anim_picado = 0x800;
+      j.anim_picado = 0x320;
+      j.retorno_reposo=true;
     }
   } else {
     // cambios de estado: R1 = 5 (6 con el objeto 2), sin R1 vuelve a 3; el objeto 3 impide R1
     const bool impulso = r1 && j.t56c <= 0 && v >= -0.75f;
+    if (j.estado==0&&r1&&v< -0.75f&&h==0) {
+      j.estado=7;
+      j.pose_aro=false;
+      return;
+    }
     if (impulso) j.estado = j.t568 > 0 ? 6 : 5;
     else if (j.estado == 5 || j.estado == 6) j.estado = 3;
-    else if (j.estado == 0 && v > 0.5f) j.estado = 3, j.virada = 22;   // la virada (estado 2, 0x321) y al crucero
-    // media vuelta (estado 7, auditoria7/J): R1 con la palanca atras y sin lado; al acabar 0x32D, el rumbo da la vuelta
-    if (j.media == 0 && j.estado == 3 && r1 && v < -0.75f && h == 0) j.media = 44;
-    if (j.media > 0 && --j.media == 0) j.yaw ^= 0x8000;
-    if (j.virada > 0) --j.virada;
-    const int tasa = j.estado == 0 ? j.giro0 : j.giro[j.estado == 3 ? 0 : j.estado == 5 ? 1 : 2];
+    else if (j.estado == 0 && v > 0.5f) j.estado = 2;
+    const int tasa = estado_antes == 0 ? j.giro0 : j.estado==2 ? j.giro_picado : j.giro[j.estado == 3 ? 0 : j.estado == 5 ? 1 : 2];
     j.yaw = (j.yaw - int(h * float(tasa))) & 0xFFFF;
-    if (j.estado == 0) {
+    if (estado_antes == 0) {
+      // EU340D70: primero desplaza con el hover del estado0 y DESPUES
+      // instala el impulso. Cambiar antes a5 adelantaba34 en vez de16.
       j.vel = j.hover * v * std::fabs(v);
     } else {
-      const int k = j.estado == 3 ? 0 : j.estado == 5 ? 1 : 2;
+      const int k = j.estado == 3 || j.estado==2 ? 0 : j.estado == 5 ? 1 : 2;
       const float empuje = v > 0 ? j.empuje[k] * v * v : 0.0f;
       j.vel = std::max(j.vel * j.freno[k], empuje);
       bool frena = false;
@@ -1595,13 +1803,15 @@ void Volar(Juego& j, float h, float v, bool r1) {
       }
       if (j.estado == 3 && v < 0.25f) {   // Viewer_StatePoseDive (casos 3/5/6): planeo 0x323 o frenazo 0x32E
         j.estado = 4;
-        j.picado_t = 5;   // 1/5 de mezcla de CharModel_SetAnimBlend
         j.anim_picado = frena ? 0x32E : 0x323;
         if (frena) j.zoom_meta = -10.0f;
       }
     }
   }
-  const float a = Ang(j.yaw), dx = std::sin(a) * j.vel, dz = std::cos(a) * j.vel;
+  if (j.pose_aro && j.estado!=j.estado_aro) j.pose_aro=false;
+  if (estado_antes!=j.estado && std::getenv("DBZ3_TEST_IWMINI"))
+    REXLOG_INFO("dbz3 solIW6: vuelo estado {} -> {}",estado_antes,j.estado);
+  const float a = estado_antes==0 ? rumbo_antes : Ang(j.yaw), dx = std::sin(a) * j.vel, dz = std::cos(a) * j.vel;
   j.ux += dx;
   j.uz += dz;
   j.x = Envolver(j.x + dx, j.periodo);
@@ -1667,6 +1877,10 @@ void Recoger(uint8_t* base, uint32_t mgr, Juego& j, float x0, float z0) {
         const V3 p = Fx::Cuerpo(j), d = Fx::Rumbo(j.yaw);
         Fx::Lanzar(j, 0xE, 0xE, p, d, false);
         Fx::Lanzar(j, 0xA, 0xA, p, d, true);
+        j.pose_aro=true;
+        j.estado_aro=j.estado;
+        AplicarPoseVuelo(mgr+kX0,j,0x330);
+        if (std::getenv("DBZ3_TEST_IWMINI")) REXLOG_INFO("dbz3 solIW6: aro pose330 efectosE/A");
       }
     } else if (EsMoneda(o.tipo)) {
       ++j.monedas;
@@ -1700,6 +1914,7 @@ void Recoger(uint8_t* base, uint32_t mgr, Juego& j, float x0, float z0) {
     if (!j.cierre) {
       j.cierre = true;
       j.cierre_t = 0;
+      j.aviso_id=2;j.aviso_t=0;
     }
   }
 }
@@ -1742,12 +1957,9 @@ void AplicarCamaraVueloTrasB3(uint8_t* base) {
   // (lo que hace el resto de esta funcion) devolveria la camara del minijuego y seria como no tenerla.
   if (dbz3::freecam::Activa()) return;
   if (!g_corre.load()) return;   // fuera del vuelo, la vista del juego no se toca (evita quedarse con la ultima)
-  float ojo[3], obj[3], roll = 0;
   {
     std::lock_guard<std::mutex> lk(g_cv_mu);
     if (!g_cv_on) return;
-    for (int i = 0; i < 3; ++i) ojo[i] = g_cv_ojo[i], obj[i] = g_cv_obj[i];
-    roll = g_cv_roll;
   }
   const uint32_t mgr = REX_LOAD_U32(kMgrPtr);
   if (!mgr || !base) return;
@@ -1757,6 +1969,14 @@ void AplicarCamaraVueloTrasB3(uint8_t* base) {
   // estado vivo mezclaba cuadros distintos (~2 u por cuadro = ~100 px) y ademas proyectaba con la camara pedida.
   {
     RenderCuadro r;
+    const uint32_t cam_activa=REX_LOAD_U32(mgr+0x264);
+    if(cam_activa>=0x82000000u&&cam_activa<0x83000000u) r.fov=LoadF(base,cam_activa+0x34);
+    static bool proyeccion_medida=false;
+    if(!proyeccion_medida&&std::getenv("DBZ3_TEST_IWMINI")) {
+      proyeccion_medida=true;
+      const float y=1/std::tan(r.fov*.5f);
+      REXLOG_INFO("dbz3 iw vuelo9: camara real fovy {:.9f} pxx {:.6f} pyy {:.6f}",r.fov,y*.75f,y);
+    }
     const uint32_t xg = mgr + kX0;
     for (int c = 0; c < 3; ++c) {
       r.ojo[c] = LoadF(base, mgr + 0x190 + 4 * uint32_t(c));
@@ -1807,49 +2027,28 @@ void AplicarCamaraVueloTrasB3(uint8_t* base) {
     r.cuadro = ++n_cuadro;
     PublicarCuadroRender(r);
   }
-  // Misma matriz que cine::Camara (src/cine.cpp): columnas derecha/arriba/atras y traslacion en la ultima columna,
-  // con el balanceo aplicado alrededor del eje de vision.
-  float f[3] = {obj[0] - ojo[0], obj[1] - ojo[1], obj[2] - ojo[2]};
-  const float lf = std::sqrt(f[0] * f[0] + f[1] * f[1] + f[2] * f[2]);
-  if (!(lf > 1e-4f)) return;
-  for (float& v : f) v /= lf;
-  float d0[3] = {f[1] * 0.0f - f[2] * 1.0f, f[2] * 0.0f - f[0] * 0.0f, f[0] * 1.0f - f[1] * 0.0f};   // f x (0,1,0)
-  const float ld = std::sqrt(d0[0] * d0[0] + d0[1] * d0[1] + d0[2] * d0[2]);
-  if (!(ld > 1e-4f)) return;
-  for (float& v : d0) v /= ld;
-  const float u0[3] = {d0[1] * f[2] - d0[2] * f[1], d0[2] * f[0] - d0[0] * f[2], d0[0] * f[1] - d0[1] * f[0]};
-  const float cg = std::cos(roll), sg = std::sin(roll);
-  const float d[3] = {d0[0] * cg - u0[0] * sg, d0[1] * cg - u0[1] * sg, d0[2] * cg - u0[2] * sg};
-  const float u[3] = {u0[0] * cg + d0[0] * sg, u0[1] * cg + d0[1] * sg, u0[2] * cg + d0[2] * sg};
-  const float a[3] = {-f[0], -f[1], -f[2]};
-  const float m[16] = {d[0],
-                       u[0],
-                       a[0],
-                       0,
-                       d[1],
-                       u[1],
-                       a[1],
-                       0,
-                       d[2],
-                       u[2],
-                       a[2],
-                       0,
-                       -(d[0] * ojo[0] + d[1] * ojo[1] + d[2] * ojo[2]),
-                       -(u[0] * ojo[0] + u[1] * ojo[1] + u[2] * ojo[2]),
-                       -(a[0] * ojo[0] + a[1] * ojo[1] + a[2] * ojo[2]),
-                       1};
-  for (int i = 0; i < 16; ++i) StoreF(base, mgr + 0x60 + 4 * uint32_t(i), m[i]);
+  // La entrada real ya se aplico antes del original. No pisar solamente
+  // mgr+60 despues: esa salida no modifica la proyeccion ni el escenario.
 }
 
 // DS177: camara del minijuego de campo, publicada por iw_minijuegos.cpp cada cuadro (entrada, carrera y final).
-void CamaraMinijuego(bool activa, const float ojo[3], const float obj[3], float fov) {
+static int g_mc_llamadas = 0;
+static float g_mc_dif = 0;
+void CamaraMinijuego(bool activa, const float ojo[3], const float obj[3], float fov, float roll) {
   std::lock_guard<std::mutex> lk(g_mc_mu);
   if (!activa || !ojo || !obj) {
     g_mc_on = false;
     return;
   }
+  if (g_mc_on) for (int i = 0; i < 3; ++i) g_mc_dif += std::fabs(g_mc_ojo[i] - ojo[i]);   // prueba: escrituras que compiten
+  ++g_mc_llamadas;
   for (int i = 0; i < 3; ++i) g_mc_ojo[i] = ojo[i], g_mc_obj[i] = obj[i];
   g_mc_fov = fov;
+  // GP2: seis vistas efectivas por650/1050 coinciden con RAM PS2;
+  // error de base<3e-7 y traslacion<3.5e-5. No perder el roll del AMC.
+  constexpr bool kRollOriginalVerificado = true;
+  g_mc_roll = (kRollOriginalVerificado ||
+      (std::getenv("DBZ3_TEST_IWMINI") && std::getenv("DBZ3_TEST_GP2_ROLL"))) ? roll : 0.0f;
   g_mc_on = true;
 }
 
@@ -1880,10 +2079,48 @@ void PublicarCamaraRender(uint8_t* base) {
   if (!(fov > 0.1f && fov < 3.0f)) fov = 0.785f;
   float m[16];
   for (int i = 0; i < 16; ++i) m[i] = LoadF(base, mgr + 0x60 + 4u * uint32_t(i));
+  if (dbz3::gp2cam::Activo()) dbz3::gp2cam::Dibujo(m, fov);
   {
     std::lock_guard<std::mutex> lk(g_rv_mu);
     for (int i = 0; i < 16; ++i) g_rv_m[i] = m[i];
     g_rv_fov = fov;
+  }
+  // Prueba (DBZ3_TEST_IWCAMTRAZA=fichero): la vista con que se dibuja, cuadro a cuadro: ojo y frente, lo que publico CamaraMinijuego y cuantas veces.
+  if (static const char* traza = std::getenv("DBZ3_TEST_IWCAMTRAZA"); traza) {
+    static FILE* f = std::fopen(traza, "w");
+    if (f) {
+      const float e[3] = {-(m[12] * m[0] + m[13] * m[1] + m[14] * m[2]), -(m[12] * m[4] + m[13] * m[5] + m[14] * m[6]), -(m[12] * m[8] + m[13] * m[9] + m[14] * m[10])};
+      const uint32_t x0 = mgr + 2096;
+      static const auto t0 = std::chrono::steady_clock::now();
+      const auto ms = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - t0).count() / 1000.0;
+      std::lock_guard<std::mutex> lk(g_mc_mu);
+      std::fprintf(f, "%.1f,%.3f,%.3f,%.3f,%.4f,%.4f,%.4f,%.3f,%d,%d,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%X,%.1f\n", ms, e[0], e[1], e[2], m[2], m[6], m[10], fov, int(g_mc_on), g_mc_llamadas,
+                   g_mc_dif, g_mc_ojo[0], g_mc_ojo[1], g_mc_ojo[2], g_mc_obj[0], g_mc_obj[1], g_mc_obj[2], REX_LOAD_U32(x0 + 0x650 + 0x520) & 0xFFF, LoadF(base, x0 + 0x650 + 0x608));
+      std::fflush(f);
+      g_mc_llamadas = 0, g_mc_dif = 0;
+    }
+  }
+  // solGP2: evidencia de un MISMO cuadro del hilo guest, tambien en intro
+  // (el reloj de pelea permanece parado ahi). No usar milisegundos host para
+  // emparejarla con PS2: se guardan codigo/clip/cuadro de ambos actores.
+  if (static const char* gp2 = std::getenv("DBZ3_TEST_GP2_CUADROS");
+      gp2 && std::getenv("DBZ3_TEST_IWMINI")) {
+    static FILE* f2 = std::fopen(gp2, "w");
+    static unsigned long long secuencia = 0;
+    if (f2) {
+      if (secuencia == 0) {
+        std::fprintf(f2, "secuencia,reloj,codigo0,clip0,cuadro0,duracion0,codigo1,clip1,cuadro1,duracion1,fov");
+        for (int i=0;i<16;++i) std::fprintf(f2, ",m%d",i);
+        std::fprintf(f2, "\n");
+      }
+      const uint32_t a0=mgr+2096+0x650,a1=a0+8240;
+      std::fprintf(f2,"%llu,%.6f,%u,%u,%.6f,%u,%u,%u,%.6f,%u,%.9f",
+          ++secuencia,LoadF(base,mgr+35144),
+          REX_LOAD_U32(a0+0x520)&0xFFF,REX_LOAD_U32(a0+0x604),LoadF(base,a0+0x608),REX_LOAD_U32(a0+0x60C),
+          REX_LOAD_U32(a1+0x520)&0xFFF,REX_LOAD_U32(a1+0x604),LoadF(base,a1+0x608),REX_LOAD_U32(a1+0x60C),fov);
+      for(float v:m) std::fprintf(f2,",%.9g",double(v));
+      std::fprintf(f2,"\n");std::fflush(f2);
+    }
   }
   g_rv_on = true;
 }
@@ -1897,18 +2134,25 @@ void AplicarCamaraMinijuegoAntes(uint8_t* base) {
   // Prueba A/B: DBZ3_IWMINI_CAM_JUEGO=0 deja el render con la camara de B3 (solo se arregla la proyeccion del panel).
   static const bool forzar = std::getenv("DBZ3_IWMINI_CAM_JUEGO") == nullptr;
   if (!forzar) return;
-  // La camara libre y el vuelo mandan. No se toca nada (ni el fov guardado): si el minijuego sigue, se reanuda luego.
-  if (dbz3::freecam::Activa() || g_corre.load()) return;
+  // La camara libre tiene prioridad. El vuelo usa el mismo punto de entrada
+  // real, pero toma ojo/objetivo/balanceo de su canalCV independiente.
+  if (dbz3::freecam::Activa()) return;
   const uint32_t mgr = REX_LOAD_U32(kMgrPtr);
   if (!mgr) return;
-  float ojo[3], obj[3], fov = 0.0f;
+  float ojo[3], obj[3], fov = 0.0f,roll=0;
   bool on = false;
-  {
+  if(g_corre.load()) {
+    std::lock_guard<std::mutex> lk(g_cv_mu);
+    if(g_cv_on) {
+      on=true;fov=g_cv_fov_clip.load()>0.1f ? g_cv_fov_clip.load() : kFovVueloReal;roll=g_cv_roll;
+      for(int i=0;i<3;++i) {ojo[i]=g_cv_ojo[i];obj[i]=g_cv_obj[i];}
+    }
+  } else {
     std::lock_guard<std::mutex> lk(g_mc_mu);
     if (g_mc_on) {
       on = true;
       for (int i = 0; i < 3; ++i) ojo[i] = g_mc_ojo[i], obj[i] = g_mc_obj[i];
-      fov = g_mc_fov;
+      fov = g_mc_fov;roll = g_mc_roll;
     }
   }
   if (on) {
@@ -1941,7 +2185,7 @@ void AplicarCamaraMinijuegoAntes(uint8_t* base) {
   }
   StoreF(base, cam + 0x0C, 1.0f);   // w
   StoreF(base, cam + 0x1C, 1.0f);
-  StoreF(base, cam + 0x30, 0.0f);   // balanceo 0 (cine::Camara no lo usa en IW)
+  StoreF(base, cam + 0x30, roll);
   const float f = (fov > 0.1f && fov < 1.6f) ? fov : LoadF(base, mgr + 0x1C4);
   if (f > 0.1f && f < 1.6f) StoreF(base, cam + 0x34, f);
   REX_STORE_U32(cam + 0x38, REX_LOAD_U32(cam + 0x38) | 1u);   // sub_82082970: deriva la orientacion de ojo->objetivo
@@ -1960,6 +2204,7 @@ bool CamaraDelRender(uint8_t* base, float ancho, float alto, ps2::Camara& cam) {
   const RenderCuadro r = CuadroRender();
   if (!r.ok) return false;
   cam = ps2::CamaraCombate(base, ImVec2(ancho, alto));
+  if(r.fov>0.1f&&r.fov<3) cam.fov=r.fov;
   bool finito = true;
   for (int i = 0; i < 16; ++i) finito = finito && std::isfinite(r.matriz[i]);
   const float d[3] = {r.matriz[0], r.matriz[4], r.matriz[8]};
@@ -2031,6 +2276,15 @@ void MandoVuelo(uint8_t* base, uint32_t usuario, bool leido) {
   g_pad = {true,          REX_LOAD_U16(r + 12), REX_LOAD_U16(r + 14), REX_LOAD_U16(r + 108), REX_LOAD_U16(r + 110),
            REX_LOAD_U8(r + 26), REX_LOAD_U8(r + 27)};
   g_pad.b16 = REX_LOAD_U32(r + 16);
+  if(std::getenv("DBZ3_SOLIW9_VUELO_PASOS")) {
+    static bool mando_medido=false;
+    const uint16_t dirs=uint16_t(g_pad.d108|(g_pad.d108>>8));
+    if(!mando_medido&&(g_pad.b12&kR1)&&((dirs&kArriba)||int8_t(g_pad.p27)<-64)) {
+      mando_medido=true;
+      REXLOG_INFO("dbz3 iw vuelo9: mando arriba+R1 confirmado antes de avanzar, b12 {:04x} d108 {:04x} p27 {}",
+                  g_pad.b12,g_pad.d108,int(int8_t(g_pad.p27)));
+    }
+  }
   for (uint32_t k = 0; k < 16; ++k) g_pad.cuenta[k] = REX_LOAD_U32(r + 0x28 + 4 * k);
   g_dejado = g_pad;
   if (static const bool sonda = std::getenv("DBZ3_R12_SONDA") != nullptr; sonda && (g_pad.b12 & 0xFFF0)) {
@@ -2078,12 +2332,13 @@ bool AvanzarIntro(uint8_t* base, uint32_t mgr, Juego& j) {
     REX_STORE_U8(x0 + kOcultoB, 0);
     REX_STORE_U8(x1 + kOcultoA, 1);
     REX_STORE_U8(x1 + kOcultoB, 1);
-    Reiniciar(j);
+    Reiniciar(j,false); // salida nueva, pero los efectos cargados NO vuelven a nacer
     // EU 0x33CB80: al saltar al vuelo, CharacterDialoguesStart_(2, 1248|0x30000, 0) en el canal de voz y
     // +0x52c = 0x42B40000 (90 cuadros) antes de pasar a los scripts del vuelo (Viewer_StateEndingWait
     // 0x33CA90 -> FlyingMinigameSpritesScripts 0x33C660). Ese es el READY? de IW: el vuelo no avanza.
     VozCorta(j, 1248);
     j.listo_t = 90;
+    j.aviso_id=0;j.aviso_t=0;
     REXLOG_INFO("dbz3 r12: intro terminada ({} cuadros); READY? {} cuadros y empieza el vuelo", j.intro_t, j.listo_t);
   };
   // Cutscene_Update EU 0x342170: avanza el cuadro +0xC; cuando llega a la duracion del clip (+0x10) pasa a la linea
@@ -2104,6 +2359,8 @@ bool AvanzarIntro(uint8_t* base, uint32_t mgr, Juego& j) {
     j.guion_f = 0;
   }
   float ojo[3], obj[3];
+  const auto cl_it = j.cams.find((L->libro << 16) | L->clip);
+  const float cl_fov = cl_it == j.cams.end() ? 0.0f : cl_it->second.fov;
   const bool hay = CamaraClip(j, L->libro, L->clip, float(j.guion_f), ojo, obj);
   if (!hay) {   // clip sin pistas (raro): se salta la linea
     ++j.guion_linea;
@@ -2131,24 +2388,36 @@ bool AvanzarIntro(uint8_t* base, uint32_t mgr, Juego& j) {
   ++j.intro_t;
   j.intro_ojo[0] = ojo[0], j.intro_ojo[1] = ojo[1], j.intro_ojo[2] = ojo[2];
   // DS92: la proyeccion del juego es la de B3 (45 grados); se acerca el ojo para conservar el 40 del clip de IW.
-  AcercarPorFov(base, ojo, obj);
+  // 31/10: como disparo: cine::Camara solo no manda en el dibujo y los actores del guion quedaban fuera de plano.
+  if (cl_fov > 0.1f) {
+    g_cv_fov_clip = cl_fov;
+    PublicarCamaraVuelo(ojo, obj, 0.0f);
+  } else {
+    AcercarPorFov(base, ojo, obj);
+  }
   dbz3::cine::Camara(base, ojo, obj, 0.0f);
   // DS128/DS132: la intro y el cierre no se tocan (se ven bien con lo que hay). La mezcla 0,8/0,2 de B3 se anula solo
   // en la camara del vuelo (InvertirMezcla): al empezar el vuelo, el 2.o cuadro ya es la pedida.
+  if (std::getenv("DBZ3_TEST_IWMINI") && j.guion_f % 60 == 2) {
+    float r0[3] = {}, r1[3] = {};
+    dbz3::anim::RaizActual(base, x0, r0);
+    dbz3::anim::RaizActual(base, x1, r1);
+    {
+      dbz3::anim::EstadoCuerpo ea{}, eb{};
+      dbz3::anim::LeerEstadoCuerpo(base, x0, 0, ea);
+      dbz3::anim::LeerEstadoCuerpo(base, x1, 0, eb);
+      REXLOG_INFO("dbz3 r12: cuerpos A hay {} cod {:X} f {:.0f} ocu {}/{} id {} pos ({:.0f},{:.0f},{:.0f}) | B hay {} cod {:X} f {:.0f} ocu {}/{} id {} pos ({:.0f},{:.0f},{:.0f})",
+                  ea.hay, ea.codigo, ea.cuadro, ea.oculto1, ea.oculto2, REX_LOAD_U32(x0 + 7420), LoadF(base, x0 + 48), LoadF(base, x0 + 52), LoadF(base, x0 + 56),
+                  eb.hay, eb.codigo, eb.cuadro, eb.oculto1, eb.oculto2, REX_LOAD_U32(x1 + 7420), LoadF(base, x1 + 48), LoadF(base, x1 + 52), LoadF(base, x1 + 56));
+    }
+    REXLOG_INFO("dbz3 r12: guion linea {} f {} ojo ({:.1f},{:.1f},{:.1f}) obj ({:.1f},{:.1f},{:.1f}) raiz A ({:.1f},{:.1f},{:.1f}) B ({:.1f},{:.1f},{:.1f}) fov {:.3f}", j.guion_linea, j.guion_f,
+                ojo[0], ojo[1], ojo[2], obj[0], obj[1], obj[2], r0[0], r0[1], r0[2], r1[0], r1[1], r1[2], cl_fov);
+  }
   // El actor del plano: 2 = Vegeta (x1), 1 = Krilin del guion (x0). El resto de la escena queda oculto (el original
   // dibuja solo los actores del mask de la linea; World_CharacterLoader 0x33B580).
   const bool ver_p1 = L->actor == 1, ver_p2 = L->actor == 2;
-  V3 p{obj[0], obj[1] - kCinturaVuelo, obj[2]};
-  // los que no salen van al mismo sitio, ocultos (Tapar/Veil sobre el cuerpo, como en el vuelo)
-  Poner(base, x0, p);
-  Poner(base, x1, p);
-  // rumbo: de cara a la camara del plano (los dos planos de la intro son frontales/laterales sobre el personaje)
-  const int yaw = int(std::lround(std::atan2(ojo[0] - p.x, ojo[2] - p.z) / 6.2831853f * 65536.0f)) & 0xFFFF;
-  Mirar(base, x0, yaw);
-  Mirar(base, x1, yaw);
-  // DS147: el cuerpo tambien (matriz de mundo); Mirar solo no gira al actor de la intro (ver Orientar).
-  Orientar(base, x0, yaw);
-  Orientar(base, x1, yaw);
+  ColocarActorGuion(base,x0);
+  ColocarActorGuion(base,x1);
   REX_STORE_U8(x0 + kOcultoA, uint8_t(ver_p1 ? 0 : 1));
   REX_STORE_U8(x0 + kOcultoB, uint8_t(ver_p1 ? 0 : 1));
   REX_STORE_U8(x1 + kOcultoA, uint8_t(ver_p2 ? 0 : 1));
@@ -2159,55 +2428,88 @@ bool AvanzarIntro(uint8_t* base, uint32_t mgr, Juego& j) {
     // Goten, 923), 1885 (0x75D, Gohan 919 / Trunks nino 927) y 1886 (0x75E, Goten, 923), con el almacen propio
     // (hijo 1, alm 3) de cada #BSK. 0x370/0x375 estan en kExtras desde DS116; los tres de v1 hay que anadirlos alli.
     // DS122: el 0x75D de Trunks nino (927, 52 huesos) va con alias 0x9E0 para no pisar el de Gohan (919)
-    const uint32_t porte = (j.v == 1 && j.pj == 1 && L->anim == 0x75D) ? 0x9E0u
+    const uint32_t porte = (j.v == 0 && j.pj == 1 && L->actor == 1 && L->anim == 0x375) ? 0x9E1u
+                           : (j.v == 1 && j.pj == 1 && L->anim == 0x75D) ? 0x9E0u
                            : L->anim ? L->anim : uint32_t(L->actor == 2 ? 0x370 : 0x375);
-    if (ver_p2) dbz3::anim::Bucle(x1, porte);
-    if (ver_p1) dbz3::anim::Bucle(x0, porte);
+    // 31/10: como el cierre: la pista absoluta (AMM y AMC en par); en Bucle el actor quedaba fuera de plano
+    if (ver_p2) dbz3::anim::Reproducir(x1, porte, true, uint32_t(std::max(dur - 1, 1)));
+    if (ver_p1) dbz3::anim::Reproducir(x0, porte, true, uint32_t(std::max(dur - 1, 1)));
     REXLOG_INFO("dbz3 r12: intro linea {} (libro {} clip {}, {} cuadros): actor {} anim {} de IW -> 0x{:X}",
                 j.guion_linea, L->libro, L->clip, dur, L->actor, L->anim, porte);
   }
+  // 31/10: el actor del guion cruza el mundo a 45 u por cuadro con el clip; la pista va sin esa recta (anim_iw) y el
+  // actor se pone en el objetivo del clip cada cuadro (PINE/log: cadera = objetivo +-6): un cuadro de desfase lo sacaba de plano.
+  if (ver_p1 || ver_p2) Poner(base, x0, {obj[0], obj[1], obj[2]}), Poner(base, x1, {obj[0], obj[1], obj[2]});   // B3 acota la distancia entre los dos
   StoreF(base, x0 + kVida, LoadF(base, x0 + kVidaMax));
   StoreF(base, x1 + kVida, LoadF(base, x1 + kVidaMax));
   return false;
 }
 
 // Parte 1 del guion (escena 1: clip 210/211 en v0, 540/541 en v1; 200 cuadros): el aterrizaje con pose de victoria
-// antes de CLEAR. Al acabar se llama a Viewer_StateResultSuccess (Acabar) como en el original.
+// antes de la escena 2/3. Solo despues Viewer_StateResultSuccess/Fail escribe el resultado.
 void PasoCierre(uint8_t* base, uint32_t mgr, Juego& j) {
-  const auto cl = j.cams.find(j.clip_meta);
+  const bool meta = j.escena_cierre == 1;
+  const int clip = meta ? j.clip_meta
+      : (j.v == 0 ? (j.pj == 0 ? 902 : 905) : (j.pj == 0 ? 1402 : 1405)) + (j.escena_cierre == 2 ? 0 : 1);
+  const auto cl = j.cams.find(clip);
   const int dur = cl == j.cams.end() ? 0 : cl->second.dur;
   float ojo[3], obj[3];
-  const bool hay = CamaraClip(j, 0, j.clip_meta, float(j.cierre_t), ojo, obj);
+  const bool hay = CamaraClip(j, 0, clip, float(j.cierre_t), ojo, obj);
   ++j.cierre_t;
   const uint32_t x0 = mgr + kX0, x1 = x0 + kXPaso;
   if (j.cierre_t == 1) {
-    dbz3::anim::Bucle(x0, 0x32F);   // EU 0x33EB30 Viewer_StateEnterFinalPose (0x32F)
+    // EU 0x3424F0: actor 1, no el visor 915/0x32F. Codigos propios por
+    // variante y alias por personaje para no mezclar 924/921 ni 919/927.
+    const uint32_t codigo = j.v == 0
+        ? (j.pj == 0 ? (meta ? 0x366u : j.escena_cierre == 2 ? 0x371u : 0x372u)
+                     : (meta ? 0x9E2u : j.escena_cierre == 2 ? 0x9E3u : 0x9E4u))
+        : (j.pj == 0 ? (meta ? 0x74Eu : j.escena_cierre == 2 ? 0x759u : 0x75Au)
+                     : (meta ? 0x9E5u : j.escena_cierre == 2 ? 0x9E6u : 0x9E7u));
+    const int banco = j.v == 0 ? (j.pj == 0 ? 924 : 921) : (j.pj == 0 ? 919 : 927);
+    dbz3::anim::Reproducir(x0, codigo, true, uint32_t(std::max(dur - 1, 1)));
+    REXLOG_INFO("dbz3 r12: actor final de IW (escena {}, #BSK {}, anim 0x{:X}, clip {}, {} cuadros)",
+                j.escena_cierre, banco, codigo, clip, dur);
     // EU 0x33B2C0 Viewer_BeginFinalPhase: Audio_PlayDialogueOnChannel(3, 891, 0x49C462[v*3]) = hijo 31. Es el audio
     // de la meta (no de la intro; la misma pista para v0 y v1: 0x49C462 = 0x1F y 0x49C465 = 0x1F). Ademas, por el
     // canal de voz: 1253 si se llego dentro del limite, 1250 si no (bytes 0x49C46A = 5 y SemaParam.count = 2 en la
     // tabla EU 0x480450 = 1248 + indice).
-    VozVuelo(j, 2);
-    VozCorta(j, j.t_ms <= float(j.rango_s[4]) * 1000.0f ? 1253 : 1250);
+    if (meta) {
+      VozVuelo(j, 2);
+      VozCorta(j, j.t_ms <= float(j.rango_s[4]) * 1000.0f ? 1253 : 1250);
+    }
   }
   if (hay) {
-    AcercarPorFov(base, ojo, obj);
+    if (cl != j.cams.end() && cl->second.fov > 0.1f) {
+      g_cv_fov_clip = cl->second.fov;
+      PublicarCamaraVuelo(ojo, obj, 0.0f);
+    } else {
+      AcercarPorFov(base, ojo, obj);
+    }
     dbz3::cine::Camara(base, ojo, obj, 0.0f);
-    j.x = obj[0];
-    j.z = obj[2];
-    V3 p = AB3(j, j.x, j.z);
-    p.y = obj[1] - kCinturaVuelo;
-    Poner(base, x0, p);
-    Poner(base, x1, p);
-    Mirar(base, x0, j.yaw);
+    ColocarActorGuion(base,x0);
+    ColocarActorGuion(base,x1);
+    if (std::getenv("DBZ3_TEST_IWMINI") && j.cierre_t % 60 == 1)
+      REXLOG_INFO("dbz3 r12: cierre t {} ojo ({:.1f},{:.1f},{:.1f}) obj ({:.1f},{:.1f},{:.1f}) cintura ({:.1f},{:.1f},{:.1f})", j.cierre_t, ojo[0], ojo[1], ojo[2],
+                  obj[0], obj[1], obj[2], LoadF(base, x0 + 1616), LoadF(base, x0 + 1620), LoadF(base, x0 + 1624));
     REX_STORE_U8(x0 + kOcultoA, 0);
     REX_STORE_U8(x0 + kOcultoB, 0);
     REX_STORE_U8(x1 + kOcultoA, 1);
     REX_STORE_U8(x1 + kOcultoB, 1);
     StoreF(base, x0 + kVida, LoadF(base, x0 + kVidaMax));
   }
-  if (!hay || j.cierre_t >= dur) {
+  if ((!hay || j.cierre_t >= dur) && FinAviso(j)) {
+    if (!meta && hay && !j.recompensa.cerrado) {
+      j.en_panel = true;
+      j.cierre_t = dur;
+      const uint16_t b = REX_LOAD_U16(kPads + 12);
+      const bool prueba = j.auto_ || std::getenv("DBZ3_TEST_IWMINI");
+      j.recompensa.Avanzar(1.0f, (b & ~j.panel_antes & 0x4000) != 0 || (prueba && j.recompensa.cuadro >= 420));
+      j.panel_antes = b;
+      if (!j.recompensa.cerrado) return;
+    }
+    j.en_panel = false;
     j.cierre = false;
-    Acabar(base, mgr, j, true, "META");
+    Acabar(base, mgr, j, meta || j.superado, meta ? "META" : "ESCENA DE RESULTADO");
   }
 }
 
@@ -2221,16 +2523,23 @@ void PasoVuelo(uint8_t* base) {
   }
   const uint32_t mgr = REX_LOAD_U32(kMgrPtr);
   if (!jp || !mgr) return;
+  if (jp->colocado && jp->intro_done && jp->listo_t<=0 && std::getenv("DBZ3_SOLIW9_VUELO_PASOS")) {
+    int objetivo=0;
+    std::ifstream f("iw9_vuelo_cuadro.req");f>>objetivo;
+    if(int(std::lround(jp->t_ms*.06f))>=objetivo) return; // solo escena de medida; camara publicada conservada
+  }
   // DS132: por defecto el gancho de dibujo no pisa la vista; solo la camara del vuelo la publica (mas abajo).
   ApagarCamaraVuelo();
   // DS92: el juego dibuja con el FOV que trae B3 (0,785); no se escribe mgr+0x1C4. Se compensa la distancia.
   const float fov_juego = FovJuegoVuelo(base);
-  const float k_fov = CompensacionFovVuelo(fov_juego);
+  const float k_fov = 1.0f; // proyeccion activa real; sin compensacion de distancia
   Juego& j = *jp;
   const uint32_t estado = REX_LOAD_U32(mgr + kEstado);
   if (estado != 3 && estado != 4) return;
   const uint32_t x0 = mgr + kX0, x1 = x0 + kXPaso;
   std::lock_guard<std::mutex> lk(g_mu);
+  if (j.colocado && (j.intro && !j.intro_done || j.listo_t>0) &&
+      !dbz3::GameDimmed() && !dbz3::OverlayOpen()) Fx::Cuadro(j);
   // DS117: niebla del #MCF. El alta del campo (registro anfitrion 16, R&R BASE) no trae el bit 0x20 de G+76 y la
   // niebla no se pintaba; se enciende mientras dura el vuelo y se reponen los +4/+8 del #MCF (883: 0/255), que
   // escenarios.cpp no escribe (DS88). Al acabar se devuelve el valor de G+76 (el alta siguiente pone el suyo).
@@ -2271,6 +2580,8 @@ void PasoVuelo(uint8_t* base) {
   if (!j.intro_done) {
     if (!AvanzarIntro(base, mgr, j)) return;
   }
+  if (j.aviso_id>=0) ++j.aviso_t;
+  CuadroDialogo(j);
   if (!j.poses) {
     j.poses = true;
     // vuelo: el scatto en el aire de IW (0x1D, R10). [VERIFICAR] el 0x320 del #BSK de 915 (auditoria7/F, visor)
@@ -2307,51 +2618,44 @@ void PasoVuelo(uint8_t* base) {
   // nada (es un puntero; prueba 27/10 05:04: "al tope (4 cuadros)"). DS132 invierte la mezcla (InvertirMezcla), asi
   // que la vista es la pedida desde el 2.o cuadro; la comprobacion sigue como red de seguridad y solo informa.
   if (j.listo_t > 0) {
-    bool arrancar = true;
-    if (j.listo_t == 1) {
-      float cab_v = 0, cab_p = 0;
-      const bool asentada = VistaAsentada(base, mgr, j, cab_v, cab_p);
-      if (!asentada && j.espera_cam < kEsperaCamara) {
-        arrancar = false;
-        ++j.espera_cam;
-        if (j.espera_cam == 1 || j.espera_cam % 15 == 0) {
-          REXLOG_INFO("dbz3 r12: READY? alargado ({} cuadros): cabeceo dibujado {:.2f} / pedido {:.2f}", j.espera_cam,
-                      cab_v, cab_p);
-        }
-      } else if (!asentada && j.espera_cam == kEsperaCamara) {
-        ++j.espera_cam;   // ya avisado: una sola linea, no una por cuadro
-        REXLOG_INFO("dbz3 r12: READY? al tope ({} cuadros) con la vista sin asentar: cabeceo dibujado {:.2f} / pedido "
-                    "{:.2f}; arranca igual",
-                    kEsperaCamara, cab_v, cab_p);
-      } else if (asentada && j.espera_cam > 0) {
-        REXLOG_INFO("dbz3 r12: camara asentada tras {} cuadros de espera (cabeceo {:.2f} / pedido {:.2f})", j.espera_cam,
-                    cab_v, cab_p);
-      } else if (asentada) {
-        REXLOG_INFO("dbz3 r12: camara del vuelo ya es la pedida en el primer cuadro (cabeceo {:.2f} / pedido {:.2f}); "
-                    "READY? sin alargar",
-                    cab_v, cab_p);
-      }
-    }
-    if (arrancar && --j.listo_t == 0) {
+    // Los90 regulan voz, no la duracion del nodo ni una espera de camara.
+    if (FinAviso(j)) {
+      j.listo_t=0;
       dbz3::anim::Bucle(x0, 0x320);
+      REXLOG_INFO("dbz3 solIW6: READY fin raiz AMA0 cuadro {}",j.aviso_t);
       REXLOG_INFO("dbz3 r12: READY? terminado; empieza el vuelo en ({:.0f}, {:.0f}) giro {} y arranca el reloj", j.x,
                   j.z, j.yaw);
+    }
+  }
+  if (j.derrota_espera) {
+    Volar(base,x0,j,0,0,false);
+    AplicarPoseVuelo(x0,j,PoseVuelo(j,0,0));
+    if (FinAviso(j)) {
+      j.derrota_espera=false;j.derrota_vista=true;
+      REXLOG_INFO("dbz3 solIW6: FAILED fin raiz AMA8 cuadro {}",j.aviso_t);
+      Acabar(base,mgr,j,false,"DERROTA");
     }
   }
   if (j.cierre) {
     PasoCierre(base, mgr, j);
     return;
   }
-  if (!j.fin && j.listo_t <= 0 && !dbz3::GameDimmed() && !dbz3::OverlayOpen()) {
-    // DS182: al empezar el vuelo, los cinco efectos fijos de 0x33D900 (4, 6, 8, 0xB, 0x11).
+  int objetivo9=0;
+  const bool pasos9=std::getenv("DBZ3_SOLIW9_VUELO_PASOS")!=nullptr;
+  if(pasos9) {std::ifstream f("iw9_vuelo_cuadro.req");f>>objetivo9;}
+  const bool avanzar9=!pasos9||int(std::lround(j.t_ms*.06f))<objetivo9;
+  if (!j.fin && !j.derrota_espera && j.listo_t <= 0 && avanzar9 && !dbz3::GameDimmed() && !dbz3::OverlayOpen()) {
+    // Reintento solo si no habia datos en la carga; su edad normal viene de la intro.
     if (!j.fx_iniciado) Fx::Iniciar(j);
     // mando del jugador (registro 0): palanca +26/+27 (s8, arriba negativo) o direcciones +108 (teclado)
     // (lo guarda MandoVuelo al leer el juego el mando, antes de quitarselo al luchador de B3)
     const uint16_t d108 = g_pad.d108, dd = uint16_t(d108 | (d108 >> 8));
     int px = int(int8_t(g_pad.p26)), py = -int(int8_t(g_pad.p27));
     if (dd & (kArriba | kAbajo | kDerecha | kIzquierda)) {
-      px = (dd & kDerecha) ? 127 : (dd & kIzquierda) ? -127 : 0;
-      py = (dd & kArriba) ? 127 : (dd & kAbajo) ? -127 : 0;
+      px = (dd & kDerecha) ? 127 : (dd & kIzquierda) ? -128 : 0;
+      // PS2: el extremo negativo del s8 es-128. Arriba invierte ese eje;
+      // 127 daba63/64 y reducia al cuadrado el empuje original.
+      py = (dd & kArriba) ? 128 : (dd & kAbajo) ? -127 : 0;
     }
     float h = iwvuelo::EjeIW(px), v = iwvuelo::EjeIW(py);
     bool r1 = (g_pad.b12 & kR1) != 0;
@@ -2372,8 +2676,8 @@ void PasoVuelo(uint8_t* base) {
     // se le da esa misma X para que la camara se ladee con el giro como en el video del original.
     if (j.auto_ && j.cam_x == 0.0f && j.cam_y == 0.0f) j.cam_x = h;
     const float ax = j.x, az = j.z;
-    Volar(j, h, v, r1);
-    if (static const bool poses = !std::getenv("DBZ3_IW_VUELO"); poses) dbz3::anim::Bucle(x0, PoseVuelo(j, h, v));
+    Volar(base, x0, j, h, v, r1);
+    if (static const bool poses = !std::getenv("DBZ3_IW_VUELO"); poses) AplicarPoseVuelo(x0, j, PoseVuelo(j, h, v));
     j.rastro.push_back({j.ux, 0, j.uz});
     if (j.rastro.size() > 2400) j.rastro.pop_front();
     j.t568 = std::max(0.0f, j.t568 - 1.0f);
@@ -2390,13 +2694,12 @@ void PasoVuelo(uint8_t* base) {
       // DS118: dialogos del rival en v1 (param 3..6 de Timelapse_Vegeta_GotenMeter_ObjectsCountVisuals, uno por
       // partida). Se mira el valor ANTERIOR de +0x51c, como el original, y el orden del else-if (solo el umbral mas
       // alto de ese cuadro): >=1,0 -> evento 1 (ADX 1112), >=0,9 -> 4 (1115), >=0,7 -> 2 (1113) y >=0,1 -> 3 (1114)
-      // de la fila 4 de la tabla 0x4803B0 (clave 6; EU 0x47FD20 = 1112..1115). La ventana con el retrato (eventos
-      // 1..4: objetos 0x800F/0x8010 de la cola de dibujo) queda [H]: no hay lector de ese #AMA.
+      // de la fila 4 de la tabla0x4803B0. La cola conserva retrato, texto y voz juntos.
       if (j.v == 1) {
-        if (medidor_antes >= 1.0f && !(j.eventos & 1)) j.eventos |= 1, VozBanco3(j, 1112, "dialogo rival 1 (EU 0x33C660)");
-        else if (medidor_antes >= 0.9f && !(j.eventos & 8)) j.eventos |= 8, VozBanco3(j, 1115, "dialogo rival 4 (EU 0x33C660)");
-        else if (medidor_antes >= 0.7f && !(j.eventos & 4)) j.eventos |= 4, VozBanco3(j, 1113, "dialogo rival 2 (EU 0x33C660)");
-        else if (medidor_antes >= 0.1f && !(j.eventos & 2)) j.eventos |= 2, VozBanco3(j, 1114, "dialogo rival 3 (EU 0x33C660)");
+        if (medidor_antes >= 1.0f && !(j.eventos & 1)) j.eventos |= 1, j.dialogos.push_back(1);
+        else if (medidor_antes >= 0.9f && !(j.eventos & 8)) j.eventos |= 8, j.dialogos.push_back(4);
+        else if (medidor_antes >= 0.7f && !(j.eventos & 4)) j.eventos |= 4, j.dialogos.push_back(2);
+        else if (medidor_antes >= 0.1f && !(j.eventos & 2)) j.eventos |= 2, j.dialogos.push_back(3);
       }
     }
     // EU 0x33C660 FlyingMinigameSpritesScripts_MissionObjectiveScripts
@@ -2414,8 +2717,16 @@ void PasoVuelo(uint8_t* base) {
     // DS182: auras de los estados de impulso (0x33F040/0x33ECC0/0x33F2C0/0x33F5E0) y un cuadro de los #AME.
     Fx::Estado(j, j.estado);
     Fx::Cuadro(j);
-    if (!j.fin && j.medidor >= 1.0f) Acabar(base, mgr, j, false, j.v == 0 ? "Vegeta te atrapa" : "Goten llega antes");
-    if (!j.fin && j.v == 0 && j.t_ms >= float(j.rango_s[4]) * 1000.0f) Acabar(base, mgr, j, false, "TIEMPO");
+    if (std::getenv("DBZ3_SOLIW9_VUELO_PASOS")) {
+      const int edad=int(std::lround(j.t_ms*.06f));
+      if(edad<=120&&edad%30==0)
+        REXLOG_INFO("dbz3 iw vuelo9: edad {} tiempo_ms {:.4f} estado {} posicion ({:.6f},{:.6f}) fx_edad {:.3f}",
+                    edad,j.t_ms,j.estado,j.x,j.z,j.fx.empty() ? -1 : j.fx.front().in->edad);
+    }
+    if (!j.fin && !j.cierre && j.medidor >= 1.0f)
+      Acabar(base, mgr, j, false, j.v == 0 ? "Vegeta te atrapa" : "Goten llega antes");
+    if (!j.fin && !j.cierre && j.v == 0 && j.t_ms >= float(j.rango_s[4]) * 1000.0f)
+      Acabar(base, mgr, j, false, "TIEMPO");
     static int traza = 0;
     static const bool traza_log = std::getenv("DBZ3_TEST_IWMINI") || std::getenv("DBZ3_R12_SONDA");
     if (traza_log && ++traza % 120 == 0) {
@@ -2498,14 +2809,14 @@ void PasoVuelo(uint8_t* base) {
     j.zoom = j.zoom < j.zoom_meta ? std::min(j.zoom + sube, j.zoom_meta) : std::max(j.zoom - baja, j.zoom_meta);
     j.est_cam = j.estado;
   }
-  // Distancia 52,2 + zoom (CameraFocusWhileFlying EU 0x339AA0) y objetivo kRaizVueloIW sobre los pies (DS117: 6,0;
-  // DS90 usaba 8,0). Cabeceo -0x800 = -11,25 grados, unidades 1/65536 de vuelta (FUN_00127a10: 0x4000 = 90 grados),
-  // signo: -0x604 = +0x800 pone la camara por encima del objetivo y mirando abajo, como el original. DS117: la
-  // distancia se multiplica por k_fov = tan(30,8/2)/tan(fov_B3/2) = 0,665 (el 40 de IW es horizontal en 4:3; DS92
-  // usaba tan(20)/tan(fov/2) = 0,879) y por kCercaniaPoseVuelo = 0,84 (silueta de B3 / IW en el vuelo). Total 0,56:
-  // 52,2 x 0,56 = 29,1; Krilin ~1,57 veces mas grande y los pies al 75 % (fotograma 815s: 75 %).
-  const float dist_iw = (kDistVueloIW + j.zoom) * kEscalaModeloVuelo;
-  iwvuelo::CamaraVuelo(pie, j.cam_yaw, ojo, obj, kRaizVueloIW, dist_iw * k_fov * kCercaniaPoseVuelo, j.cabeceo);
+  // solIW9:52,2 y ancla7 originales, con proyeccion512/600x450 real.
+  // La antigua aproximacion40H/30,8V y los factores0,665/0,84 no se aplican.
+  const float dist_iw=kDistVueloIW*kEscalaModeloVuelo;
+  iwvuelo::CamaraVuelo(pie,j.cam_yaw,ojo,obj,kRaizVueloIW,dist_iw,j.cabeceo);
+  // EU339620: T(-D),roll,pitch,T(-zoom),yaw,T(ancla),T(pos).
+  // Zoom va por el eje horizontal, no dentro de la orbita inclinada.
+  const float zsx=std::sin(Ang(j.cam_yaw))*j.zoom,zsz=std::cos(Ang(j.cam_yaw))*j.zoom;
+  ojo[0]-=zsx;ojo[2]-=zsz;obj[0]-=zsx;obj[2]-=zsz;
   // FlyingZaxis(-roll): Viewer_UpdateOrbitCamera 0x339620 llama FlyingZaxis(-*(int*)(G+0x608)) (L427329) y
   // CameraFocusWhileFlying 0x339AA0 igual (L427407); el port pasa -balanceo, mismo signo que el motor.
   const float roll = -float(j.balanceo) / 65536.0f * 6.2831853f;
@@ -2523,7 +2834,8 @@ void PasoVuelo(uint8_t* base) {
   const float leido6[6] = {leo[0], leo[1], leo[2], lob[0], lob[1], lob[2]};
   const float ped6[6] = {ojo_ped[0], ojo_ped[1], ojo_ped[2], obj_ped[0], obj_ped[1], obj_ped[2]};
   float esc6[6], n_est[6];
-  const bool mezcla_inv = leido && InvertirMezcla(leido6, j.cam_esc, j.cam_esc_ok, ped6, esc6, n_est);
+  const bool mezcla_inv=false;
+  std::copy(ped6,ped6+6,esc6);std::copy(leido6,leido6+6,n_est);
   const float esc_ojo[3] = {esc6[0], esc6[1], esc6[2]}, esc_obj[3] = {esc6[3], esc6[4], esc6[5]};
   dbz3::cine::Camara(base, esc_ojo, esc_obj, roll);
   // DS132: la pedida de este cuadro va tambien al gancho de dibujo (sub_820F4300), que la aplica DESPUES de la camara
@@ -2635,11 +2947,12 @@ void VeloHorizonte(const Juego& j, const ps2::Camara& cam, const ImVec2& sz) {
 
 const ps2::Escena::Toon kToon{};   // toon de IW en los objetos (R8 / ps2_modelo)
 
-class Panel : public rex::ui::ImGuiDialog {
+class Panel : public iwgs::Drawer {
  public:
-  explicit Panel(rex::ui::ImGuiDrawer* drawer) : ImGuiDialog(drawer) {}
+  Panel() = default;
 
  protected:
+  bool Visible() const override { return g_corre.load(); }
   void OnDraw(ImGuiIO& io) override {
     if (!g_corre.load()) return;
     std::shared_ptr<Juego> jp;
@@ -2654,6 +2967,12 @@ class Panel : public rex::ui::ImGuiDialog {
     if (st < 3 || st > 8 || !mgr) return;   // iw_fix: hasta el 8: B3 pintaba su menu azul "Luchar otra vez?" ~1,7 s tras el fundido
     if (jp.get() != hecho_) {
       hecho_ = jp.get();
+      ComenzarAtlas();
+      aviso_tx_.clear();
+      for (const auto& im:jp->aviso_atlas) aviso_tx_.push_back(ps2::Crear(im));
+      dialogo_tx_.clear();
+      for (const auto& im:jp->dialogo_atlas) dialogo_tx_.push_back(ps2::Crear(im));
+      for (int i=0;i<4;++i) dialogo_textos_[i]=ps2::Crear(jp->dialogo_textos[i]);
       tx_aro_ = ps2::Texturas(jp->m_aro);
       tx_moneda_ = ps2::Texturas(jp->m_moneda);
       tx_casa_ = ps2::Texturas(jp->m_casa);
@@ -2677,6 +2996,7 @@ class Panel : public rex::ui::ImGuiDialog {
       tx_suma_.clear();
       for (const P::Imagen& im : jp->fx_atlas) {
         tx_atlas_.push_back(ps2::Crear(im));
+        RegistrarTextura(tx_atlas_.back().id(),im);
         P::Imagen su = im;
         for (size_t i = 0; i + 3 < su.rgba.size(); i += 4)
           su.rgba[i + 3] = uint8_t(std::max({su.rgba[i], su.rgba[i + 1], su.rgba[i + 2]}) * su.rgba[i + 3] / 255);
@@ -2760,7 +3080,7 @@ class Panel : public rex::ui::ImGuiDialog {
         const float ancla[3] = {s.x, y, s.z};
         const float d_obj = cam_ok ? DistanciaCamara(cam_ojo, ancla) : 1.0f;
         if (mo->malla)
-          escena_.Poner(cam, mo->malla, tx, {s.x, y, s.z}, giro, camara_vuelo ? EscalaObjetoVuelo(d_obj, dif_cam) : 1.0f, kToon);
+          escena_.Poner(cam, mo->malla, tx, {s.x, y, s.z}, giro, 1.0f, kToon);
       }
       if (j.meta.activo) {
         V3 s = sitio(j.meta.x, j.meta.z);
@@ -2782,7 +3102,7 @@ class Panel : public rex::ui::ImGuiDialog {
           AplicarDerivaUvCasa(casa, j.uv_casa_dv, t * 60.0f);
           const float ancla[3] = {s.x, s.y, s.z};
           const float d_obj = cam_ok ? DistanciaCamara(cam_ojo, ancla) : 1.0f;
-          escena_.Poner(cam, casa, tx_casa_, s, 0, camara_vuelo ? EscalaObjetoVuelo(d_obj, dif_cam) : 1.0f, kToon);
+          escena_.Poner(cam, casa, tx_casa_, s, 0, 1.0f, kToon);
         }
       }
       // DS119: el objeto 10 del #MSF (tipo 0xA) NO es un aura que se cuelga del jugador. Viewer_UpdateObjectCollection
@@ -2836,8 +3156,7 @@ class Panel : public rex::ui::ImGuiDialog {
         const BaseVista bv = BaseDeVista(cam);
         if (bv.ok) {
           const float px = pies.x - bv.ojo[0], py = pies.y - bv.ojo[1], pz = pies.z - bv.ojo[2];
-          const float zf =
-              std::clamp(px * bv.del[0] + py * bv.del[1] + pz * bv.del[2], kFlechaDistMin, kFlechaDistMax);
+          const float zf=45.0f; // vector483250, en espacio de camara
           // 27/10 (coordinador): como el original, la flecha va en el punto FIJO de camara (0,-9,-45) de EU 0x483250
           // (centrada, 11,31 grados bajo el eje). Atarla a los pies fallaba: el cuadro del gancho no llega
           // ("esfera no vale") y X+48/yo quedan ~100 px a la izquierda/abajo de donde B3 pinta a Krilin. Con la camara ya
@@ -2845,14 +3164,14 @@ class Panel : public rex::ui::ImGuiDialog {
           const float xf = 0.0f;
           const float yf = -9.0f / 45.0f + kFlechaBajoPies;   // se resta kFlechaBajoPies abajo
           (void)px; (void)py; (void)pz;
-          const float z = zf + kFlechaDetras;
+          const float z = zf;
           const V3 fpos{bv.ojo[0] + bv.der[0] * (xf * z) + bv.arr[0] * ((yf - kFlechaBajoPies) * z) + bv.del[0] * z,
                         bv.ojo[1] + bv.der[1] * (xf * z) + bv.arr[1] * ((yf - kFlechaBajoPies) * z) + bv.del[1] * z,
                         bv.ojo[2] + bv.der[2] * (xf * z) + bv.arr[2] * ((yf - kFlechaBajoPies) * z) + bv.del[2] * z};
           const int yaw_obj = int(std::lround(
               std::atan2(flecha_a->x - pies.x, flecha_a->z - pies.z) / 6.2831853f * 65536.0f));
           // el modelo apunta a -z (punta en z=-3,75): giro = rumbo + pi para que la punta mire al objeto.
-          escena_.Poner(cam, jp->m_flecha.malla, tx_flecha_, fpos, Ang(yaw_obj) + 3.14159265f, kFlechaPantalla * z,
+          escena_.Poner(cam, jp->m_flecha.malla, tx_flecha_, fpos, Ang(yaw_obj) + 3.14159265f, 1.0f,
                         kToon);
           flecha_mundo = fpos;
           flecha_puesta = true;
@@ -2908,13 +3227,41 @@ class Panel : public rex::ui::ImGuiDialog {
     // Apagada otra vez por el coordinador (27/10 22:06): sale una banda turquesa OPACA de borde recto que tapa la costa;
     // la del original es suave. DBZ3_IWVUELO_BRUMA=1 la enciende para arreglarla.
     if (static const bool bruma = std::getenv("DBZ3_IWVUELO_BRUMA") != nullptr; bruma) VeloHorizonte(j, cam, io.DisplaySize);
-    // Apagados por el coordinador (27/10 22:03): los #AME de DS182/DS184 tapaban al luchador con esferas amarillas/rojas
-    // de estrellas que el original no tiene. DBZ3_IWVUELO_FX=1 los enciende para arreglarlos.
-    if (static const bool fx = std::getenv("DBZ3_IWVUELO_FX") != nullptr; fx) {
+    // solIW7: los efectos fijos pertenecen a los objetos del curso. La suma
+    // usa ahora el backend aditivo; no se imita con alfa=brillo.
+    {
+      static const char* env_fx=std::getenv("DBZ3_IWVUELO_FX");
+      static const bool fx=!env_fx||env_fx[0]!='0';
       std::lock_guard<std::mutex> lk(g_mu);
       ImDrawList* bg = ImGui::GetBackgroundDrawList();
-      for (const Juego::FxVivo& f : j.fx)
-        if (f.in) ame::Pintar(*f.in, cam, tx_atlas_, tx_suma_, bg, 160.0f * io.DisplaySize.y / 720.0f);
+      auto pintar=[&](const ame::Instancia& in,const V3& desplazamiento,bool sigue=false) {
+        auto mundo=in;
+        const float a=Ang(j.yaw),c=std::cos(a),s=std::sin(a);
+        auto rotar=[&](V3 v) {return V3{c*v.x+s*v.z,v.y,-s*v.x+c*v.z};};
+        if(sigue) mundo.giro_dibujo=a;
+        for (auto& lista:mundo.ps) for (auto& p:lista) {
+          V3 w=p.p;
+          if(sigue) {w=iwame::Mas(rotar(w),Fx::Cuerpo(j));p.v=rotar(p.v);}
+          w=iwame::Mas(w,desplazamiento);
+          p.p=AB3(j,w.x,w.z);p.p.y+=(w.y-kAltura)*j.escala;
+          p.medio*=j.escala;p.v=iwame::Por(p.v,j.escala);
+        }
+        ame::Pintar(mundo,cam,tx_atlas_,tx_suma_,bg,160.0f*io.DisplaySize.y/720.0f,true);
+        const size_t tris=ame::PintarModelos(mundo,cam,j.fx_modelos,tx_atlas_,bg);
+        static bool medido=false;
+        if(tris&&!medido&&std::getenv("DBZ3_TEST_IWMINI")) {
+          medido=true;
+          REXLOG_INFO("dbz3 solIW8: vuelo AME modelo: {} triangulos dibujados, {} variantes AMG",tris,j.fx_modelos.size());
+        }
+      };
+      for (const Juego::FxVivo& f : j.fx) {
+        if (!f.in||(!fx&&f.id!=0xE&&f.id!=0xA)) continue;
+        const int tipo=Fx::TipoObjeto(f.id);
+        if (tipo<0) pintar(*f.in,{},f.sigue);
+        else for (const Obj& o:j.objs)
+          if (o.activo&&(o.tipo&0xFF)==tipo) pintar(*f.in,{o.x,kAltura,o.z});
+        if (tipo==0&&j.meta.activo) pintar(*f.in,{j.meta.x,kAltura,j.meta.z});
+      }
     }
     // DS68: HUD del vuelo con el sprite del rival (DATA_USA 7/1 obj 0x07/0x08, cabeza t4 Vegeta / t5 Goten); antes
     // se pintaba el HUD generico con la cara del jugador, que no es el del original. DS81: ademas el contador de aros
@@ -2924,38 +3271,26 @@ class Panel : public rex::ui::ImGuiDialog {
     const bool en_listo = j.listo_t > 0;
     if (!en_intro && !en_listo && !en_cierre)
       HudVuelo(segundos, medidor, j.v, j.n_control - j.restantes, j.n_control + 1, 0);
+    if (!en_intro&&!en_cierre&&j.dialogo>=0) DibujarDialogo(io,j);
     // READY? durante la espera tras la intro y START! al empezar el vuelo (como IW; texturas DATA_USA 5/1 t08/t00).
     // DS118: el READY? va DESPUES de la escena (EU 0x33CB80 -> Viewer_StateEndingWait, +0x52c = 90 cuadros) sobre la
     // camara del vuelo, no en el ultimo segundo de la intro; el START! dura los primeros ~2 s (fotogramas del video
     // 32:19-32:21). Antes el READY? se pintaba sobre el ultimo plano del guion.
-    {
-      const Tex* cartel = en_listo ? &ready_
-                       : !en_intro && !en_cierre && j.poses && j.cuadros < 120 ? &start_ : nullptr;
-      if (cartel && *cartel) {
-        const auto a = dbz3::ingame::style::GameArea(io);
-        const float k = a.s * 900.0f / 448.0f;
-        const ImVec2 m = a.At(600, 200 * 900 / 448);
-        ImGui::GetForegroundDrawList()->AddImage(cartel->id(), ImVec2(m.x - cartel->w * k / 2, m.y - cartel->h * k / 2),
-                                                 ImVec2(m.x + cartel->w * k / 2, m.y + cartel->h * k / 2));
-      }
-    }
-    if (en_cierre && cierre_t < 100) {
-      // DS84: GOAL! con su sprite real de DATA_USA 5/1 t03 (232x88), no texto dibujado a mano. [VERIFICAR] el
-      // encuadre exacto (el original lo saca en el centro en los primeros cuadros de la parte 1 del guion).
-      ImDrawList* fg = ImGui::GetForegroundDrawList();
+    DibujarAviso(io,j);
+    if (j.en_panel) {
+      Resultado r;
+      r.clave = j.clave;
+      r.fila = j.fila;
+      r.superado = j.superado;
+      r.centesimas = int(j.t_ms / 10.0f);
+      int i = 0;
+      while (i < 4 && int(j.t_ms / 1000.0f) >= j.rango_s[i]) ++i;
+      r.rango = r.superado ? 4 - i : 0;
+      r.puntos = r.superado ? j.puntos + j.puntos_rango[i] : j.puntos_fallo;
+      r.monedas = j.monedas;
       const auto a = dbz3::ingame::style::GameArea(io);
-      if (goal_) {
-        const float e = 3.0f * a.s;
-        const ImVec2 m = a.At(600, 300);
-        fg->AddImage(goal_.id(), ImVec2(m.x - goal_.w * e * 0.5f, m.y - goal_.h * e * 0.5f),
-                     ImVec2(m.x + goal_.w * e * 0.5f, m.y + goal_.h * e * 0.5f));
-      } else {
-        const char* s = "GOAL!";
-        const float k = 60.0f * a.s;
-        const ImVec2 m = a.At(600, 300);
-        const ImVec2 ts = ImGui::GetFont()->CalcTextSizeA(k, FLT_MAX, 0, s);
-        fg->AddText(ImGui::GetFont(), k, ImVec2(m.x - ts.x * 0.5f, m.y - ts.y * 0.5f), IM_COL32(255, 214, 60, 255), s);
-      }
+      const ImVec2 q0 = a.At(0, 0), q1 = a.At(1200, 900);
+      DibujarResultadoIW(ImGui::GetForegroundDrawList(), q0.x, q0.y, q1.x - q0.x, q1.y - q0.y, r, j.recompensa.cuadro / 60.0f, false);
     }
     // Al acabar: fundido a negro sobre el final de combate de B3 ("RING OUT!") con CLEAR si llego a la meta, como P4
     bool fin = false, meta = false;
@@ -2965,18 +3300,61 @@ class Panel : public rex::ui::ImGuiDialog {
       meta = j.superado;
     }
     if (!fin) return;
-    if (fin_t_ < 0) fin_t_ = t;
-    ImDrawList* fg = ImGui::GetForegroundDrawList();
-    fg->AddRectFilled(ImVec2(0, 0), io.DisplaySize, IM_COL32(0, 0, 0, int(255 * std::clamp((t - fin_t_) / 0.6f, 0.0f, 1.0f))));
-    if (!meta || !clear_) return;
-    const auto a = dbz3::ingame::style::GameArea(io);
-    const float e = 6.0f * a.s * (0.8f + 0.2f * std::min(1.0f, (t - fin_t_) * 2.0f));
-    const ImVec2 c = a.At(600, 430);
-    fg->AddImage(clear_.id(), ImVec2(c.x - clear_.w * e * 0.5f, c.y - clear_.h * e * 0.5f),
-                 ImVec2(c.x + clear_.w * e * 0.5f, c.y + clear_.h * e * 0.5f));
+    // El anuncio nativo ya termino ANTES de entregar resultado. Solo se
+    // oculta el transito del combate anfitrion, sin fundido0,6s/CLEAR propio.
+    if (st>=5) ImGui::GetForegroundDrawList()->AddRectFilled(ImVec2(0,0),io.DisplaySize,IM_COL32(0,0,0,255));
   }
 
  private:
+  void DibujarAviso(ImGuiIO& io,const Juego& j) {
+    DibujarObra(io,j.avisos,aviso_tx_,j.aviso_id,float(j.aviso_t),600,450);
+  }
+  void DibujarDialogo(ImGuiIO& io,const Juego& j) {
+    int t=j.dialogo_t;
+    if (std::getenv("DBZ3_TEST_IWMINI"))
+      if (const char* fijo=std::getenv("DBZ3_SOLIW7_DIALOGO_CUADRO")) t=std::max(0,std::atoi(fijo));
+    // La raiz sin rect aporta el offset del contenedor (936: y175).
+    // El muestreador de FX no propaga esa pista A por si solo.
+    DibujarObra(io,j.dialogo_ama,dialogo_tx_,0,float(t),600,450,j.dialogo_marco);
+    DibujarObra(io,j.dialogo_ama,dialogo_tx_,j.dialogo_salida<0 ? 15 : 16,
+        float(j.dialogo_salida<0 ? t : std::max(0,t-j.dialogo_salida)),600,450);
+    const auto& tx=dialogo_textos_[j.dialogo-1];
+    const int nodo=j.dialogo_ama.Objeto(15);
+    const int entrada=nodo>=0 ? int(anim::ama::MaxCuadros(anim::ama::CrearArbol(j.dialogo_ama,nodo))) : 26;
+    if (tx&&t>=entrada&&j.dialogo_salida<0) {
+      const auto a=dbz3::ingame::style::GameArea(io);
+      const float x=j.dialogo_pos[0],y=j.dialogo_pos[1];
+      ImGui::GetForegroundDrawList()->AddImage(tx.id(),a.At((x-tx.w*.5f)*2,(y-tx.h*.5f)*2),
+          a.At((x+tx.w*.5f)*2,(y+tx.h*.5f)*2));
+    }
+  }
+  void DibujarObra(ImGuiIO& io,const anim::ama::Obra& obra,const std::vector<Tex>& atlas,
+      int objeto,float tiempo,float ancho,float alto,V3 desplazamiento={}) {
+    const int nodo=obra.Objeto(uint32_t(objeto));
+    if (nodo<0) return;
+    auto arbol=anim::ama::CrearArbol(obra,nodo,tiempo);
+    anim::ama::MarcarArbol(arbol,tiempo); // CrearArbol solo fija el reloj de la raiz
+    std::vector<anim::ama::Entrada> entradas;
+    anim::ama::Contexto contexto;
+    contexto.pos[0]=desplazamiento.x;contexto.pos[1]=desplazamiento.y;
+    anim::ama::ActualizarNodo(arbol,arbol.raiz,contexto,entradas);
+    const auto area=dbz3::ingame::style::GameArea(io);
+    auto at=[&](float x,float y) { return area.At(x*1200/ancho,y*900/alto); };
+    ImDrawList* dl=ImGui::GetForegroundDrawList();
+    for (const auto& e:entradas) {
+      if (e.SinTextura()||e.textura>=atlas.size()||!atlas[e.textura]) continue;
+      const auto& tx=atlas[e.textura];
+      anim::ama::Quad q;anim::ama::DibujarEntrada(e,q);
+      auto color=[&](int i) { return std::clamp(int(e.tinte[i]*255+e.rgba[i]+.5f),0,255); };
+      const ImU32 col=IM_COL32(color(0),color(1),color(2),color(3));
+      dl->AddImageQuad(tx.id(),at(q.xy[0][0],q.xy[0][1]),at(q.xy[1][0],q.xy[1][1]),at(q.xy[2][0],q.xy[2][1]),at(q.xy[3][0],q.xy[3][1]),
+          ImVec2(q.uv[0][0]/tx.w,q.uv[0][1]/tx.h),ImVec2(q.uv[1][0]/tx.w,q.uv[1][1]/tx.h),
+          ImVec2(q.uv[2][0]/tx.w,q.uv[2][1]/tx.h),ImVec2(q.uv[3][0]/tx.w,q.uv[3][1]/tx.h),col);
+    }
+  }
+  std::vector<Tex> aviso_tx_;
+  std::vector<Tex> dialogo_tx_;
+  Tex dialogo_textos_[4];
   const Juego* hecho_ = nullptr;
   std::vector<Tex> tx_aro_, tx_moneda_, tx_casa_, tx_item_[4];
   std::vector<Tex> tx_flecha_;   // DS117: ITEMA04_ARROW (891/1 + #AMT 0)
@@ -2989,12 +3367,15 @@ class Panel : public rex::ui::ImGuiDialog {
 void CreatePanel() {
   static Panel* panel = nullptr;   // vive lo que el juego
   auto* rt = rex::Runtime::instance();
-  if (!panel && rt && rt->imgui_drawer()) panel = new Panel(rt->imgui_drawer());
+  if (!panel && rt && rt->imgui_drawer() && rt->graphics_system() && rt->graphics_system()->presenter()) {
+    panel = new Panel();
+    rt->graphics_system()->presenter()->AddUIDrawerFromUIThread(panel,63);
+  }
 }
 
 // EU 0x33E830 Viewer_BeginMinigameLoad
 // EU 0x33E870 Viewer_BeginMinigameLoadAlt
-bool Empezar(int clave, int fila, int dificultad) {
+bool Empezar(int clave, int fila, int dificultad, int personaje) {
   // I03 (studies 4): el vuelo ya se ha validado con el xex y la ISO europeos (0x7D6 y 0x7E0 PASS en EU), asi que
   // esta disponible en las dos regiones. Si la carga falla, Empezar devuelve false y el mapa sigue.
   const bool eu = dbz3::g_guest_eu;
@@ -3010,7 +3391,8 @@ bool Empezar(int clave, int fila, int dificultad) {
   // (v1) cambian: con cualquier otro van Krilin (v0) y Gohan (v1). El mapa (pasarela_misiones.cpp) lo pasa con
   // PersonajeDelMapa; DBZ3_IWVUELO_PJ=0/1 (pruebas) lo fuerza.
   const char* pj = std::getenv("DBZ3_IWVUELO_PJ");
-  j->pj = pj ? std::clamp(std::atoi(pj), 0, 1) : g_pj_mapa.load() == (j->v == 0 ? 2 : 9) ? 1 : 0;
+  j->pj = pj ? std::clamp(std::atoi(pj), 0, 1) :
+      (personaje >= 0 ? personaje : g_pj_mapa.load()) == (j->v == 0 ? 2 : 9) ? 1 : 0;
   constexpr int kJugador[2][2] = {{10, 2}, {4, 9}}, kRival[2] = {7, 6};
   j->jugador = kJugador[j->v][j->pj];
   j->rival = kRival[j->v];
@@ -3253,16 +3635,18 @@ void PersonajeDelMapa(int id_iw) { dbz3::iwmini::g_pj_mapa = id_iw; }
 // volver se reescribe SOLO esa vista con la camara del vuelo, anulando de hecho la mezcla 0,8/0,2 de B3 sin tocar su
 // entrada (+0x190/+0x1A0). Es la misma receta medida en cinematica.cpp A3b (gancho tras la camara del juego), pero en
 // el ultimo punto antes del dibujo y sin definir otra vez sub_820F47E0 (que ya engancha cinematica.cpp).
-// Nota: la pareja EU de sub_820F4300 no esta verificada en src/eu_map_gen.h (esa funcion solo se llama asi en la
-// imagen US); en el xex europeo el gancho no se ejecuta y queda la inversion de la mezcla (InvertirMezcla). [H]
-REX_HOOK_RAW(sub_820F4300) {
+// La pareja EU se verifico contra el cuerpo PPC completo y sus llamadores.
+// Pareja verificada:28 instrucciones PPC, mismos offsets264/250 y llamada82082A08;
+// EUgenerated_eu/dbz3_eu_recomp.42.cpp:6319..6389.
+DBZ3_HOOK(sub_820F4300,dbz3eu_sub_820F43F0) {
+  dbz3::escenarios::AplicarCamaraB2AntesDelDibujo(base); // fuente activa B2, sin modificar las cámaras IW
   // DS163: la camara libre escribe la struct que copia sub_820F4300 ANTES del original (es la ultima escritura
   // que ve el dibujo; escribir despues solo cambia mgr+0x60, que ya no es la camara del render).
   dbz3::freecam::AplicarAntesDelDibujo(base);
   // DS177: la camara del minijuego de campo se escribe en la struct activa (la fuente del dibujo; DS163), justo antes
   // del original, que es el ultimo punto que ve el render.
   dbz3::iwmini::AplicarCamaraMinijuegoAntes(base);
-  __imp__sub_820F4300(ctx, base);
+  orig(ctx, base);
   dbz3::iwmini::AplicarCamaraVueloTrasB3(base);
   // DS177: foto del cuadro que el juego acaba de dibujar (vista + fov real) para que la escena 3D de la interfaz use
   // EXACTAMENTE la misma camara: aureola, platanos, monedas y polvo caen sobre lo que pinta B3.

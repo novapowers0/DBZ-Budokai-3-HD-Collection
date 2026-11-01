@@ -131,6 +131,8 @@ std::string MisionTexto(int saga, int k, int rival);
 std::vector<std::string> SagaTextos(int saga, bool intro);
 void FinRun(int ganados, bool victoria);
 void DuVictoria(int saga, int k);   // C3: combate de saga ganado en el mapa de Dragon Universe
+void ShenronAparece();
+void ConcederDeseo();
 bool DuDisponible();                 // C3: el Heroe puede entrar en Dragon Universe
 void Sync(bool activo);
 void Exportar(dbz3::cac::Heroe& h);   // heroe.cpp: el heroe actual pasa a su ficha (cac.toml)
@@ -523,6 +525,7 @@ void CargarCac() {   // con g_mu
   }
   H::Exportar(dbz3::cac::SlotEditable(0));   // sin cac.toml: el heroe y su progreso pasan a la ficha 1
   REXLOG_INFO("dbz3 heroe: sin cac.toml: el heroe actual y su progreso pasan a la ficha 1 (progreso = 2)");
+  H::CargarProgreso(0);   // las pruebas fijan su progreso tambien sin cac.toml; sin ellas no cambia nada
   g_cac_ok = dbz3::cac::Guardar(ruta);
 }
 
@@ -798,6 +801,8 @@ Vista g_vista = kCerrada;
 int g_entrada = 0, g_sel = 0, g_cursor = 0, g_cursor2 = 0;   // selector, pantallas, torre
 int g_jugador = 0, g_traje = 0;
 std::string g_aviso;          // lo que dice el bocadillo tras una accion
+constexpr const char* kAvisoMontajeEs = "La historia del héroe no se pudo montar (hace falta Python y los archivos del juego). Pulsa A otra vez para jugar solo las misiones; detalle en ingame_ui/heroe_vista/montaje.log.";
+constexpr const char* kAvisoMontajeEn = "The hero story could not be built (Python and the game files are needed). Press A again to play missions only; details in ingame_ui/heroe_vista/montaje.log.";
 std::string g_rango;          // rango del jugador (ficha 01), al abrir el selector
 int g_reto_visto = -1;        // Estado::ganados ya contado (resultados)
 bool g_fin = false;           // pantalla final de un reto propio
@@ -1528,6 +1533,7 @@ void DibujarSelector(ImDrawList* dl, const S::Area& a, float t, uint16_t p) {
   std::vector<std::string> filas;
   for (const int m : lista) {
     std::string f = M::NombreModo(m);
+    if (m == M::kHeroe) f += " (beta)";   // el Heroe se anuncia como beta tambien en la lista del Kumite
     int gid = 0, gg = 0;
     if (g_runs.count(m) || (m <= M::kKumite && M::Guardado(m, &gid, &gg))) f += Lang("  (a medias)", "  (in progress)", "  (en cours)", "  (läuft)", "  (in corso)");
     filas.push_back(f);
@@ -1696,6 +1702,21 @@ void NuevaFicha() {
 
 void DibujarHeroe(ImDrawList* dl, const S::Area& a, float t, uint16_t p) {
   constexpr int kFilas = 9;   // raza, cuerpo, apariencia, estilo, moveset, aura, puntos (PH), maestros, empezar
+  {   // PRUEBA (solo pruebas.py): DBZ3_TEST_HEROE_ABRIR=1 entra en Select Master, =2 en el creador, sin teclear el camino
+    static const char* ab = std::getenv("DBZ3_TEST_HEROE_ABRIR");
+    static bool hecho = false;
+    if (ab && !hecho) {
+      hecho = true;
+      if (*ab == '1') {
+        dbz3::heroe_ui::AbrirMaestros();
+        g_vista = kHeroeMaestro;
+      } else {
+        dbz3::heroe_ui::AbrirCrear(false);
+        g_vista = kHeroeCrear;
+      }
+      return;
+    }
+  }
   g_cursor = std::clamp(g_cursor, 0, kFilas + 1);   // C4: 0..8, la 9 (color del ki, en Combate) y la 10 (piezas B3/XV2, en Apariencia)
   if (p & (kUp | kDown | kLeft | kRight | kLb | kRb)) g_aviso.clear();
   static int g_tab_h = 0;   // C4: pestana (0 Apariencia, 1 Combate, 2 Progreso); "Empezar" (fila 8) es fijo en las tres
@@ -1781,13 +1802,19 @@ void DibujarHeroe(ImDrawList* dl, const S::Area& a, float t, uint16_t p) {
       const auto it = std::find(v.begin(), v.end(), g_cursor);
       if (it != v.end() && it + 1 != v.end()) g_cursor = *(it + 1);
     } else {
-      if (colores_cambiados) {
-        colores_cambiados = false;
-        dbz3::heroe_ui::PedirCombate();
-      }
+      // fichas montadas antes de existir el rotulo del nombre (mods/heroe_nombres): se monta (se ve en la sesion siguiente)
+      if (colores_cambiados || dbz3::heroe_ui::FaltaRotuloNombre()) dbz3::heroe_ui::PedirCombate();
+      colores_cambiados = false;
       Guardar();   // la receta
-      Empezar(M::kHeroe);
-      if (g_vista != kHeroeP) return;
+      static bool avisado = false;   // montaje fallido: el primer A avisa, el segundo sigue con las misiones
+      if (dbz3::heroe_ui::MontajeFallido() && !avisado) {
+        avisado = true;   // se queda en esta pantalla con el aviso en rojo; otro A sigue con las misiones
+        g_aviso = T::T(kAvisoMontajeEs, kAvisoMontajeEn);
+      } else {
+        avisado = false;
+        Empezar(M::kHeroe);
+        if (g_vista != kHeroeP) return;
+      }
     }
   }
   const std::string ficha = std::string(T::T("Ficha ", "Slot ")) + std::to_string(dbz3::cac::SlotActivo() + 1) +
@@ -1853,7 +1880,9 @@ void DibujarHeroe(ImDrawList* dl, const S::Area& a, float t, uint16_t p) {
                                           "Dragon Ball radar).")
                                    : L(h[0], h[1], h[2], h[3], h[4]));
   }
-  dbz3::heroe_ui::Principal(dl, a, t, g_cursor, g_tab_h, filas, b, g_aviso, ficha);
+  // el montaje corre aparte y puede fallar tras salir a las misiones: al volver a esta pantalla el aviso sigue ahi
+  const std::string aviso_montaje = g_aviso.empty() && dbz3::heroe_ui::MontajeFallido() ? std::string(T::T(kAvisoMontajeEs, kAvisoMontajeEn)) : g_aviso;
+  dbz3::heroe_ui::Principal(dl, a, t, g_cursor, g_tab_h, filas, b, aviso_montaje, ficha);
   S::HelpLine(dl, a.At(600, 868), 38 * a.s,
               {{"A", g_cursor == kFilas - 1 ? L("Empezar", "Start", "Commencer", "Starten", "Inizia") : Aceptar()},
                {"B", Atras()},
@@ -2222,7 +2251,7 @@ void DibujarFin(ImDrawList* dl, const S::Area& a, float t, uint16_t p) {
       g_fin_pagina = 1;
       return;
     }
-    S::Banner(dl, a, H::NombreSaga(g_fin_saga));
+    S::BannerBeta(dl, a, H::NombreSaga(g_fin_saga));
     std::vector<std::string> l = {g_fin_epilogo ? T::T("Fin de la historia", "The end of the story")
                                                 : T::T("Fin de la saga", "End of the saga")};
     if (g_fin_pierde)
@@ -2561,6 +2590,32 @@ void DuVictoria(int saga, int k) {
   std::lock_guard<std::mutex> lk(g_mu);
   Cargar();
   H::DuVictoria(saga, k);
+  Guardar();
+}
+// Evento 38 del mapa (la Esfera de la saga, campaigns.cpp): la de la saga en curso; si no se recoge, DuVictoria la da al acabarla.
+void EsferaDelMapa() {
+  std::lock_guard<std::mutex> lk(g_mu);
+  Cargar();
+  H::GanarEsfera(H::Saga());
+  Guardar();
+}
+int EsferasDeCasilla(int casilla) {
+  std::lock_guard<std::mutex> lk(g_mu);
+  Cargar();   // se puede llegar al DU sin haber abierto el Modo Heroe
+  return casilla == H::CasillaDu() ? H::Esferas() : -1;
+}
+// Shenron nativo con las 7 Esferas en la historia del Heroe (campaigns.cpp, hook de sub_8215C1B0): se gastan.
+void ShenronDeseo() {
+  std::lock_guard<std::mutex> lk(g_mu);
+  Cargar();
+  H::ShenronAparece();
+  Guardar();
+}
+// Fila "cambiar raza y cuerpo" del menu de deseos nativo: el deseo queda en la ficha.
+void DeseoRaza() {
+  std::lock_guard<std::mutex> lk(g_mu);
+  Cargar();
+  H::ConcederDeseo();
   Guardar();
 }
 

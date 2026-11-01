@@ -23,9 +23,14 @@
 #include "reloj_prueba.h"
 #include "escenarios.h"
 #include "iw_minijuegos.h"
+#include "iw_recompensa.h"
+#include "iw_msn019_estados.h"
+#include "iw_gs.h"
+#include "iw_iop.h"
 #include "iw_mini_extra.h"
 
 #include <rex/logging.h>
+#include <rex/cvar.h>
 #include <rex/runtime.h>
 #include <rex/ui/imgui_dialog.h>
 #include <rex/ui/immediate_drawer.h>
@@ -51,6 +56,7 @@
 
 #include "generated/dbz3_init.h"
 #include "anim_iw.h"
+#include "iw_camaras_gp2.h"
 #include "cine.h"
 #include "combate.h"
 #include "eu_map.h"
@@ -59,6 +65,7 @@
 #include "pasarela.h"
 #include "pasarela_iw.h"
 #include "ps2_modelo.h"
+#include "iw_ame.h"
 
 namespace dbz3::hub {
 bool RequestBattleEx(int id1, int id2, int stage, bool p2_com, int time_s, int hp1, int hp2, int form1, int form2);
@@ -78,6 +85,8 @@ bool OverlayOpen();
 }  // namespace dbz3
 
 namespace dbz3::iwmini {
+int PalancaDerechaX();
+int PalancaDerechaY();
 namespace {
 
 namespace P = dbz3::pasarela;
@@ -165,8 +174,6 @@ struct Poses {
   int amc_entrada, n_entrada, cam_presenta, dur_presenta;
   uint16_t yaw[2];
 };
-// R7 (05_iw_minijuegos_pendientes): pausas (cuadros) del clip 0x98 de NB006 al ganar un punto y del choque de NB013.
-constexpr int kPausaPunto = 30, kPausaChoque = 40;
 // R7 (05_iw_minijuegos_pendientes): la camara de juego de MSN019 es el #AMC propio de DATA_CMN 879 (clip 0, 300 cuadros;
 // w_Camera_LoadMotionFile carga el motion 0x36F y Minigame_SetupPlayerModels monta la escena). Id reservado en g_clips
 // para no chocar con los indices de clips de 915 (1456).
@@ -190,13 +197,16 @@ constexpr Poses kPosesNB006 = {{921, 925},
                                {0x2AD, 0x2A8}, {0x258, 0x259}, {0x258, 0x259},
                                {0x262, 0x265, 0x268, 0x26B}, {0x278, 0x27B, 0x27E, 0x281}, {0x277, 0x27A, 0x27D, 0x280},
                                {0x276, 0x279, 0x27C, 0x27F}, {0x263, 0x266, 0x269, 0x26C}, {0x264, 0x267, 0x26A, 0x26D},
-                               {0x289, 0x28A}, {0x287, 0x288}, 0x2A9, 0x2AA, true, 14, 50, 15,   // NB006 pelea en el suelo (cadera a y = 4-10)
-                               0x96, 0x97, 0x9A, 0x9A, 0x322, 0x323, 100, {-15, -0.5f, 0, 1, 7}, {0, 0}, -1,   // Mg_UpdateIntroSequence / EnterResultPhase
+                                {0x258, 0x29E}, {0x29F, 0x2A0}, 0x2A9, 0x2AA, true, 14, 50, 15,
+                                // EU 0x377F10 Mg_IntroScreenSetup (resultado global), NO Mg_EnterResultPhase (punto).
+                                 0x96, 0x97, 0x97, 0x97, 0x322, 0x323, 230, {-15, -0.5f, 0, 1, 7}, {0, 0}, -1,
                                871, 2, 0x321, 300, {0x4000, 0xC002}};  // s8: entrada 871 (2 clips, 630 cuadros; L02)
-// R7 quinta tanda (NB006): el resultado es 0x9A gane o pierda (Mg_EnterResultPhase EU L467302/467309) y el final del
+// NB006: 0x9A es el resultado de UN PUNTO (Mg_EnterResultPhase), no el cierre del minijuego.
+// Mg_IntroScreenSetup (EU 0x377F10) conserva 0x97 en bucle con poses 0x16/0x12 o 0x17/0x13;
+// Mg_UpdateReadyPhase (0x3781B0) espera 180 cuadros al perder o fin de la animacion 0x29E (180) al ganar.
+// El final del
 // jugador 0x322 con rango > 0 / 0x323 con rango 0 (Mg_StartResultAnim L466793-466901, por iRam0049cebc + 0x1C).
-// 05_iw_minijuegos_pendientes: 0x98 = el clip del punto ganado (Mg_ResetRoundState L467467: jugador con la pose 0x10);
-// en Paso, al acertar en el carril 0, se reproduce el clip y hay una pausa (kPausaPunto) entre puntos.
+// 0x98 es la camara del especial (Mg_ResetRoundState); no entra por cada acierto.
 // (el final del rango 0 de NB006 es 0x2AA para los dos y el del resto 0x2A9: Mg_StartResultAnim; aqui el jugador)
 
 
@@ -274,6 +284,9 @@ struct Icono {
   int boton = 0;
   float x = 0;
   bool vivo = false, resuelto = false, contado = false, pedido = false;
+  bool salida = false, cruz = false;
+  int anim_t = 0;
+  bool especial = false, preparado = false;
 };
 struct Carril {
   uint8_t seq[50] = {};
@@ -290,9 +303,23 @@ struct Juego {
   float vel = 2, vida[2] = {1000, 1000};
   int fase = 0, t = 0, cuadros = 0, rango = 0, puntos = 100, nota = 0;   // fase 0 espera, 1 READY, 2 juego, 3 fin
   int zeni = 0, saldo = 0;   // premio ZENI y monedero tras sumarlo (QteMg_FinalizeResult); `nota` = puntuacion
+  RelojRecompensaIW recompensa;
+  float recompensa_anim_salto = 0;
   int aviso_t = 0;
-  int pausa = 0;      // R7: cuadros de pausa (clip 0x98 de NB006 al punto ganado; choque de NB013)
-  bool punto = false; // R7: NB006 -> al ganar un punto se reproduce el clip 0x98 (Mg_ResetRoundState) y hay pausa
+  // Maquinas NB013/NB006: -1=carriles,0=ventana,1=evaluar,2=desenlace.
+  int especial_fase = -1, especial_lado = 0, especial_indice = -1, pulsos = 0, especial_t = 0;
+  int objetivo_pulsos = 0, rondas = 0, ciclos = 0;
+  uint8_t especiales[2][50] = {};
+  float marca[3] = {}, marca_ancho = 0;
+  bool marca_activa = false, marca_entrada = false, marca_gate = false;
+  bool especial_bien = false, dano_aplicado = false, reaccion_pulso = false;
+  int pose_estado[2] = {3,2};
+  uint32_t pose_codigo[2] = {};
+  uint16_t palanca_antes = 0;
+  int remate_boton = -1, remate_t = 0;
+  float remate_x = 0;
+  bool remate_resuelto = false;
+  int espera_doble = -1, entrada_reposo = 0;
   const Poses* poses = nullptr;   // R14
   int ent = 0;                    // s8: cuadros de la entrada de la escena (#AMC amc_entrada); 0 = sin ella
   int k = 0;                      // contador de las filas de poses (QteMg_PlayHitPoses: +0x2F4)
@@ -304,7 +331,8 @@ struct Juego {
   P::Imagen ready, start, hit, miss, clear, failed;   // DATA_USA 5/1 t08 t00 t07 t02 t09 t10
   P::Imagen objetivo;                                 // DATA_USA 0/1 t10: aro rojo y amarillo con la flecha
   P::Imagen aro, relleno, barra;                       // DATA_USA 6/0 t00, t01, t15 (HUD de P4)
-  P::Imagen barra06;                                  // I03: DATA_USA 4/0 t42 (480x8): barra roja de NB006
+  P::Imagen barra06;                                  // DATA_USA 4/0 t42 (480x8): guia translucida de NB006
+  P::Imagen botones06, objetivo06;   // solIW3: glifos y objetivo propios de NB006 (4/0 t01/t02)
   // s9: el HUD propio de los minijuegos de botones de IW (DATA_USA 4/0, cotejado con nb013_030 de PCSX2): banda azul
   // t38 (800x168), siluetas t39..t50, aro con engranaje t17, marco t18 y relleno verde t19 de la vida.
   P::Imagen banda, sil[2], aro4, marco4, verde4, caras;   // caras: t53, 3x3 de 64 (ver CaraIW)
@@ -320,10 +348,29 @@ struct Juego {
   // (560x48), no una caja propia. El marco fino azul se queda como trazo medido [H]: 334/1 t03 es el bisel grueso
   // del panel del mapa y al estirarlo a 640x448 engorda ~6x.
   P::Imagen panel_fill, row_arrow, row_band;
+  anim::ama::Obra resultado_ama;
+  std::vector<P::Imagen> resultado_atlas;
   // DS156: fila RANK del panel de dos carriles. QteMg_FinalizeResult (EU 0x32F0F0) escribe la fila de rango (tipo 2,
   // +0x40: rank +0x48 y premio +0x4C) y el original la ensena entre TOTAL SCORE y EARNED. Rotulo y letra del mismo
   // #AMA que el panel del mapa (334/1 t17 fila 1 "RANK" y t24 "C B A S Z").
   P::Imagen row_labels, row_ranks;
+  iwame::ame::Efecto antenas;
+  ps2::Modelo antena_modelo;
+  std::vector<P::Imagen> antena_atlas;
+  std::vector<iwame::ame::Instancia> antena_fx;
+  uint32_t antena_sem = 29;
+  int antena_pendiente = -1;
+  uint32_t antena_codigo = 0;
+  anim::ama::Obra botones_ama;
+  std::vector<P::Imagen> botones_atlas;
+  int salida_dur = 1, destello[2] = {-1, -1}, aviso_carril = 0;
+  std::array<uint32_t,20> luz06{};
+  std::array<uint32_t,5> niebla06{};
+  bool ambiente06 = false;
+  iwame::ame::Efecto combo_ef;
+  std::vector<iwame::ame::Instancia> combo_fx;
+  float campo_original = 1;
+  iwiop::Voz combo_voz;
 };
 
 int Azar();   // mas abajo
@@ -335,8 +382,15 @@ std::atomic<bool> g_raw_ok{false};
 std::atomic<float> g_cam_alto{14}, g_cam_dist{62};
 std::atomic<bool> g_cam_reset{true};
 std::atomic<int> g_fase_a{0};   // s9: fase del minijuego A (0 espera, 1 READY, 2 juego, 3 fin) para Colocar
-std::atomic<bool> g_fondo_off{false};   // NB006: fondo del escenario apagado mientras dure el minijuego
 std::atomic<float> g_cam_lado{1};   // 1: la camara a un lado; -1: al otro (la pose final, de frente)   // lo que pide el panel a la camara (PasoBotones la acerca poco a poco)
+// EU330410 -> 2EDC70/2EDBA0: delta10 grados/duracion5 en A y B;
+// 2EDF00 resta primero y2EDDD0 repone despues. No son clips5 y10.
+std::atomic<int> g_combo_zoom{-1};
+std::atomic<float> g_combo_fov{-1},g_combo_delta{1};
+std::atomic<int> g_chr_fade[2]{};
+std::atomic<float> g_chr_color[2]{};
+std::atomic<bool> g_chr_activo[2]{};
+std::atomic<int> g_chr_total{15};
 
 uint8_t* Base() {
   rex::Runtime* rt = rex::Runtime::instance();
@@ -376,6 +430,7 @@ bool AbrirElfIW(ElfIW& x, std::string& error) {
 bool LeerElf(Juego& j, std::string& error) {
   ElfIW elf;
   if (!AbrirElfIW(elf, error)) return false;
+  j.campo_original=elf.eu ? 1.2f : 1.0f;
   auto off = [&](uint32_t a) { return elf.Off(a); };
   const Modulo2& m = *j.m;
   for (int l = 0; l < 2; ++l) {
@@ -398,6 +453,14 @@ bool LeerElf(Juego& j, std::string& error) {
         error = "las tablas del ELF no son las de IW USA";
         return false;
       }
+    }
+  }
+  if (j.poses == &kPosesNB013 || j.poses == &kPosesNB006) {
+    const uint32_t tabla = j.poses == &kPosesNB013 ? 0x483C60u : 0x485320u;
+    for (int l = 0; l < 2; ++l) {
+      const auto* especiales = off(tabla + uint32_t(j.dif)*0x70 + uint32_t(l)*0x32);
+      if (!especiales) { error = "ELF corto (celdas especiales)"; return false; }
+      std::memcpy(j.especiales[l], especiales, 50);
     }
   }
   const uint8_t* p = off(m.puntos);
@@ -435,6 +498,8 @@ bool Cargar(Juego& j, std::string& error) {
   }
   {
     const std::vector<uint8_t> e5 = usa.Entrada(5), r7 = P::HijoAmb(e5, 7), r5 = P::HijoAmb(e5, 5);
+    j.resultado_ama.Cargar(P::HijoAmb(e5,4));
+    for (int i=0,n=P::CuantasAmt(r5);i<n;++i) j.resultado_atlas.push_back(P::TexturaAmt(r5,i));
     if (P::CuantasAmt(r7) > 22 && P::CuantasAmt(r5) > 5) {
       for (int i = 0; i < 3; ++i) j.rot[i] = P::TexturaAmt(r7, 20 + i);
       j.cif_c = P::TexturaAmt(r5, 5);
@@ -482,7 +547,70 @@ bool Cargar(Juego& j, std::string& error) {
     const bool b13 = j.m->poses == &kPosesNB013, b06 = j.m->poses == &kPosesNB006;
     j.cara[0] = b13 ? 1 : b06 ? 6 : 0;
     j.cara[1] = b13 ? 3 : b06 ? 4 : 2;
-    if (b06) j.barra06 = P::TexturaAmt(h4, 0x2A);   // I03: barra roja de NB006 (Mg_LayoutHud, fila 0, y 366)
+    {
+      j.barra06 = P::TexturaAmt(h4, 0x2A);   // guia translucida, no el rectangulo rojo provisional
+      j.botones06 = P::TexturaAmt(h4, 1);
+      j.objetivo06 = P::TexturaAmt(h4, 2);
+      j.botones_ama.Cargar(P::HijoAmb(usa.Entrada(4), 1));
+      for (int i = 0, n = P::CuantasAmt(h4); i < n; ++i)
+        j.botones_atlas.push_back(P::TexturaAmt(h4, i));
+      if (j.botones_ama.Valida())
+        j.salida_dur = std::max(1, int(anim::ama::MaxCuadros(anim::ama::CrearArbol(j.botones_ama, j.botones_ama.Objeto(0x0C)))));
+    }
+  }
+  if (j.poses == &kPosesNB014 || j.poses == &kPosesNB013) {
+    P::AfsPs2 cmn;
+    if(!cmn.Abrir(P::BuscarIW(),"DATA_CMN.AFS")) { error="sin banco de efectos de combo IW";return false; }
+    const auto amb=cmn.Entrada(933),amt=P::HijoAmb(amb,0);
+    j.combo_ef=iwame::ame::Leer(P::HijoAmb(amb,15),true);
+    j.combo_voz=iwiop::Leer(cmn.Entrada(954),0x21);
+    for(int i=0,n=P::CuantasAmt(amt);i<n;++i) j.antena_atlas.push_back(P::TexturaAmt(amt,i));
+    REXLOG_INFO("dbz3 iw combo9: billboard0F=933/15, {} grupos; atlas933/0 {}; reloj original {}",
+                j.combo_ef.grupos.size(),j.antena_atlas.size(),j.campo_original);
+  }
+  if (j.poses == &kPosesNB006) {
+    ElfIW elf;
+    if (!AbrirElfIW(elf, error)) return false;
+    auto palabra = [&](uint32_t a) { uint32_t v=0; if (const auto* p=elf.Off(a)) std::memcpy(&v,p,4); return v; };
+    const uint32_t li = palabra(0x44A3CC + 4 * 0x5C), ni = palabra(0x44A3D0 + 4 * 0x5C);
+    if (li >= 64 || ni >= 64) { error="tabla de ambiente de IW fuera de rango"; return false; }
+    for (uint32_t i=0;i<20;++i) j.luz06[i]=palabra(0x4497A0 + li*80 + i*4);
+    for (uint32_t i=0;i<5;++i) j.niebla06[i]=palabra(0x449F20 + ni*20 + i*4);
+    j.ambiente06 = true;
+    P::AfsPs2 cmn;
+    if (!cmn.Abrir(P::BuscarIW(), "DATA_CMN.AFS")) {
+      error = "sin DATA_CMN.AFS para las antenas de Piccolo";
+      return false;
+    }
+    const auto amb = cmn.Entrada(933), amt = P::HijoAmb(amb, 0);
+    j.antenas = iwame::ame::Leer(P::HijoAmb(amb, 29), true);
+    // EU138830 ->139DC0:5 es el SELECTOR del nodo, no indice de AMG.
+    // Tabla del nodo0:selector5 -> ejes de AMG3 (violeta); clamping5 aAMG4
+    // dibujaba una llama amarilla de otro efecto.
+    const auto amo = P::HijoAmb(amb, 1);
+    auto u = [&](size_t o) { uint32_t v = 0; if (o + 4 <= amo.size()) std::memcpy(&v, amo.data()+o, 4); return v; };
+    const uint32_t ejes = u(u(u(0x14) + 4) + 5 * 16 + 8);
+    int variante = -1;
+    for (uint32_t i = 0; i < u(0x18); ++i) {
+      const uint32_t a = u(u(0x1C) + i * 4);
+      if (a + u(a + 0x14) == ejes) variante = int(i);
+    }
+    if (variante >= 0) ps2::LeerAmo(amo, variante, j.antena_modelo.malla, nullptr, true);
+    ps2::V3 minimo{1e9f,1e9f,1e9f}, maximo{-1e9f,-1e9f,-1e9f};
+    for (const auto& tr:j.antena_modelo.malla.tris) for (const auto& v:tr.p) {
+      minimo={std::min(minimo.x,v.x),std::min(minimo.y,v.y),std::min(minimo.z,v.z)};
+      maximo={std::max(maximo.x,v.x),std::max(maximo.y,v.y),std::max(maximo.z,v.z)};
+    }
+    REXLOG_INFO("dbz3 solIW4: modelo selector5 -> AMG{}, limites ({:.2f},{:.2f},{:.2f})..({:.2f},{:.2f},{:.2f})",variante,
+                minimo.x,minimo.y,minimo.z,maximo.x,maximo.y,maximo.z);
+    for (int i = 0, n = P::CuantasAmt(amt); i < n; ++i)
+      j.antena_atlas.push_back(P::TexturaAmt(amt, i));
+    REXLOG_INFO("dbz3 solIW4: antenas IW933/29: {} raices, modelo selector5 {} triangulos, atlas {}",
+                j.antenas.raices.size(), j.antena_modelo.malla.tris.size(), j.antena_atlas.size());
+    if (j.antenas.raices.size() != 6 || !j.antena_modelo.malla || j.antena_atlas.size() <= 62) {
+      error = "recurso original de las antenas incompleto (933/29, 933/1, 933/0)";
+      return false;
+    }
   }
   return true;
 }
@@ -506,6 +634,7 @@ ImVec4 Glifo(int boton) {
 
 uint32_t AliasPose(const Poses& p, int rol, uint32_t codigo) {
   if (!codigo) return 0;
+  if (&p==&kPosesNB013 && codigo==0x57A) return 0xF20; // copia sin yaw; NB014 conserva su alias anterior
   const uint32_t cmn = codigo >= 0x57A && codigo <= 0x57D ? 915u : uint32_t(p.cmn[rol]);   // las de espera son de 915
   return dbz3::anim::CodigoQte(cmn, codigo);
 }
@@ -515,12 +644,61 @@ uint32_t Luchador(int rol) {
   const uint32_t mgr = base ? REX_LOAD_U32(kMgrPtr) : 0;
   return mgr ? mgr + kX0 + kXPaso * uint32_t(rol) : 0;
 }
+extern float g_origen[3];
+// EU1F0100: NH (selector logico21), matriz completa hueso * objeto.
+bool AnclaAntenas(uint8_t* base, ps2::M34& out) {
+  const uint32_t x = Luchador(1);
+  auto valido = [](uint32_t p) { return p >= 0x40000000u && p < 0xA0000000u - 4096; };
+  if (!base || !x) return false;
+  const uint32_t mi = REX_LOAD_U32(x + 2952), anc = REX_LOAD_U32(x + 2956);
+  if (!valido(mi) || !valido(anc)) return false;
+  const uint32_t tb = REX_LOAD_U32(mi + 1032);
+  const int idx = int16_t(REX_LOAD_U16(anc + 42));
+  if (!valido(tb) || idx < 0 || idx > 255) return false;
+  const uint32_t h = tb + uint32_t(idx) * 64;
+  // Colocar fija IDENTIDAD + origen en el pase de dibujo deNB006. El bucle
+  // de combate vuelve a girar X entre pases; leer X desde la UI tomaba esa
+  // matriz transitoria (medida: yaw90, x2.855), distinta de la que se dibuja.
+  for (int i = 0; i < 3; ++i) {
+    for (int c = 0; c < 3; ++c) out.m[c*4+i]=LoadF(base,h+uint32_t(i*16+c*4));
+    out.m[i*4+3]=LoadF(base,h+48+uint32_t(i*4))+g_origen[i];
+  }
+  for (float f : out.m) if (!std::isfinite(f)) return false;
+  return true;
+}
+void CuadroAntenas(Juego& j) {
+  if (j.poses != &kPosesNB006) return;
+  if (j.antena_pendiente >= 0) {
+    anim::EstadoCuerpo e;
+    if (anim::LeerEstadoCuerpo(Base(), Luchador(1), 0, e)) {
+      if (e.codigo == j.antena_codigo && e.cuadro >= float(j.antena_pendiente) &&
+          (j.antena_pendiente != 0 || e.cuadro <= 3)) {
+        ps2::M34 ancla;
+        if (AnclaAntenas(Base(), ancla)) {
+          iwame::ame::Instancia in;
+          in.ef = &j.antenas;
+          in.modelos = true;
+          j.antena_fx.push_back(std::move(in));
+          REXLOG_INFO("dbz3 solIW4: antenas comando14 NH, pose 0x{:X}, cuadro {:.1f}, origen ({:.3f},{:.3f},{:.3f})",
+                      e.codigo, e.cuadro, ancla.m[3], ancla.m[7], ancla.m[11]);
+          j.antena_pendiente = -1;
+        }
+      }
+    }
+  }
+  for (auto& f : j.antena_fx) iwame::ame::Cuadro(f, j.antena_sem);
+  j.antena_fx.erase(std::remove_if(j.antena_fx.begin(), j.antena_fx.end(), [](const auto& f) { return !f.vivo; }), j.antena_fx.end());
+}
 // Una pose una vez y luego la espera de pelea en bucle; `espera` = true: solo la espera (bucle).
-void Poner(const Poses& p, int rol, uint32_t codigo, bool bucle, uint32_t luego = 0) {
+void Poner(const Poses& p, int rol, uint32_t codigo, bool bucle, uint32_t luego = 0, uint32_t tope = 0) {
   const uint32_t x = Luchador(rol), a = AliasPose(p, rol, codigo);
   if (!x || !a) return;
   if (bucle) dbz3::anim::Bucle(x, a);
-  else dbz3::anim::Reproducir(x, a, false, 0, luego ? AliasPose(p, rol, luego) : 0);
+  // EU 0x334530/0x336740 Char_PoseTickFinishAnim: las poses sin sucesora mantienen
+  // el ultimo cuadro. Volver a la guardia de B3 cambiaba la pose durante el resultado.
+  // La sucesora se ejecuta tambien en una pose sujeta. Sujetarla hasta ese
+  // corte usa solo el reloj nativo (el respaldo no inventa otro avance).
+  else dbz3::anim::Reproducir(x, a, true, tope, luego ? AliasPose(p, rol, luego) : 0);
 }
 
 // ---- Camaras de IW (familias A y B) ----
@@ -537,7 +715,9 @@ struct ClipCam {
 };
 std::vector<uint8_t> g_amc;
 std::map<int, ClipCam> g_clips;
+std::atomic<bool> g_cb_videl{false};   // 31/10: MSN019 en juego: camara fija del original
 std::atomic<int> g_cb_clip{-1}, g_cb_frame{0};   // clip en curso y cuadros desde que empezo (hilo de la interfaz -> del juego)
+std::atomic<int> g_cb_fase_b{-1};  // GP2: fase real del controlador B, nunca del actor.
 std::atomic<int> g_cb_amc{915}, g_cb_amc_entrada{0};   // AMC real de la camara (entrada, general 915 o MSN019 879)
 std::atomic<bool> g_cb_comparable{false};        // clip de juego incluido en la serie del comparador, no entrada/READY/resultado
 std::atomic<int> g_cb_ultimo_clip_log{-1};        // una muestra por ronda, como los dorados del original
@@ -672,6 +852,26 @@ float CuadroClip(const ClipCam& c) {
   return std::min(f, float(c.nf - 1));
 }
 
+// EU 0x32FB40 QteMg_UpdateResultPhase / 0x3520D0 Mg_UpdateResultPhase:
+// el segundo plano empieza al acabar SU clip. NB006 usa su propio temporizador
+// de 180 cuadros (0x3781B0), no el clip 0x9A de los puntos. NB014 malo dura 300.
+int CuadrosResultado(const Juego& j, bool final = false) {
+  if (!final && j.poses == &kPosesNB006) return 180;
+  const Poses& p = *j.poses;
+  const int clip = final ? (j.rango > 0 ? p.cam_fin_bien : p.cam_fin_mal)
+                         : (j.rango > 0 ? p.cam_gana : p.cam_pierde);
+  const auto it = g_clips.find(clip);
+  if (it != g_clips.end()) return it->second.nf;
+  if (!final) return kFinRes;
+  return j.poses == &kPosesNB006 && j.rango > 0 ? 220
+       : j.poses == &kPosesNB014 && j.rango == 0 ? 300 : kFinRes;
+}
+int InicioPanelResultado(const Juego& j) {
+  // PINE NB014: la tabla aparece al terminar TAMBIEN la pose final5C9/5CA,
+  // no al entrar en ella (EU32FB40: +C74 del actor, despues de FinalizeResult).
+  return CuadrosResultado(j)+(j.poses==&kPosesNB013 ? 0 : CuadrosResultado(j,true));
+}
+
 // ---- Sonidos de golpe ----
 // El codigo de IW de estos minijuegos no tiene un efecto de impacto propio: sus voces (Hit_PlayHealthTierSound,
 // Minigame_PlayEventVoice, Audio_PlayCharacterVoice) salen por el sistema de ids del IOP de la PS2, sin traducir a las ADX de
@@ -720,11 +920,31 @@ void SeGolpe(int atacante, bool conecta) {   // atacante 0 = el jugador; conecta
 void PosesGolpe(Juego& j, int carril, bool acierto) {
   const Poses& p = *j.poses;
   const int k = j.k;
-  if (carril == 0) {
+  // EU352D40: tambien NB013 ejecuta CHRFADE sobre quien recibe el golpe.
+  if (j.poses == &kPosesNB013 && ((!acierto && carril != 0) || (acierto && carril == 0)))
+    g_chr_total=15;g_chr_fade[acierto ? 1 : 0] = 15;
+  if (carril == 2 && acierto) {
+    // EU330410 / EU352D40: una sola accion conjunta, estados10/F del banco915.
+    Poner(p, 0, 0x57C, false, p.pelea[0]);
+    Poner(p, 1, 0x57D, false, p.pelea[1]);
+    iwiop::Oir(j.combo_voz);
+    // Consumidor comun de Effect_DispatchCommandById(1D): EU352D40 y
+    // EU330410 piden el mismo efecto, no dos impactos independientes.
+    g_combo_zoom=0;g_combo_fov=-1;g_combo_delta=j.campo_original;
+    iwame::ame::Instancia in;
+    in.ef=&j.combo_ef;in.mezcla_gs=true;
+    in.origen={1.423900008f,41.864269257f,0};
+    j.combo_fx.push_back(std::move(in));
+    REXLOG_INFO("dbz3 iw combo9: comando1D -> billboard0F en (1.423900,41.864269,0), zoom A/B5/5");
+  } else if (carril == 0) {
     Poner(p, 0, p.j_ataca[k], false, p.pelea[0]);
     Poner(p, 1, acierto ? p.r_herido[k] : p.r_esquiva[k], false, p.pelea[1]);
     SeGolpe(0, acierto);
   } else {
+    if (j.poses == &kPosesNB006) {
+      j.antena_pendiente = 0;
+      j.antena_codigo = AliasPose(p, 1, p.r_ataca[k]);
+    }
     Poner(p, 1, p.r_ataca[k], false, p.pelea[1]);
     Poner(p, 0, acierto ? p.j_esquiva[k] : p.j_herido[k], false, p.pelea[0]);
     SeGolpe(1, !acierto);
@@ -736,32 +956,549 @@ void PosesGolpe(Juego& j, int carril, bool acierto) {
 // EU 0x3301C0 QteMg_ApplyHitDamage
 void Golpe(Juego& j) { j.vida[0] -= float(j.m->ataque_rival[j.dif]); }
 
+void FinalizarBotones(Juego& j) {
+  const int ac = j.c[0].aciertos+j.c[1].aciertos, ll=j.c[0].llegaron+j.c[1].llegaron;
+  j.nota = ll ? int(float(ac)/float(ll)*100.0f) : 0;
+  j.rango = 0;
+  if (j.vida[0]>0)
+    for (int r=5;r>=1;--r) if (j.nota>=kUmbral[r][0]) { j.rango=r; break; }
+  const float v=j.rango ? j.pts[j.rango]*j.mult[j.dif] : 100.0f;
+  j.puntos=(int(v)+99)/100*100;
+  j.zeni=j.puntos;
+  j.saldo=P::LeerProgreso("iw_zeni",0)+j.zeni;
+  j.fase=3;
+  j.t=0;
+  const Poses& p=*j.poses;
+  const uint32_t ultimo=uint32_t(CuadrosResultado(j)-1);
+  Poner(p,0,j.rango ? p.gana[0] : p.pierde[0],false,0,ultimo);
+  Poner(p,1,j.rango ? p.gana[1] : p.pierde[1],false,0,ultimo);
+  if (j.poses==&kPosesNB006 && !j.rango) {
+    j.antena_pendiente=4;
+    j.antena_codigo=AliasPose(p,1,0x2A0);
+  }
+  REXLOG_INFO("dbz3 r14: fin: aciertos {}/{} (carril 0 {}/{}, carril 1 {}/{}), vida {} / {}, nota {}, rango {}, puntos {}",
+              ac,ll,j.c[0].aciertos,j.c[0].llegaron,j.c[1].aciertos,j.c[1].llegaron,
+              int(j.vida[0]),int(j.vida[1]),j.nota,j.rango,j.puntos);
+}
+
+// Colision del original EU2F03C0: rectangulos truncados a enteros,
+// objetivo(-28..7) en470; NO la ventana aproximada370..470 del port antiguo.
+bool SolapaObjetivo(float x, float izq, float der) {
+  return int(x+der)>=442 && int(x+izq)<=477;
+}
+bool SolapaMarca(const Juego& j) {
+  return SolapaObjetivo(j.marca[0],-12,12) || SolapaObjetivo(j.marca[1],-12,12) ||
+         SolapaObjetivo(j.marca[2],-4,j.marca_ancho);
+}
+void ReiniciarMarca(Juego& j, int l, int indice) {
+  const bool nb13=j.poses==&kPosesNB013;
+  const int a=int(std::nearbyint(j.vel*(nb13 ? 180.0f : 240.0f))), b=int(std::nearbyint(j.vel*60));
+  j.marca[0]=float(-a-b-48);
+  j.marca[1]=float(-b-72);
+  j.marca[2]=j.marca[0]+16;
+  j.marca_ancho=float(a-48);
+  j.marca_activa=true;
+  j.marca_entrada=false;
+  j.especial_lado=l;
+  j.especial_indice=indice;
+  if (nb13 && l==1) for (float& x:j.marca) x-=50;
+}
+uint32_t CodigoEstado13(int rol,int s) {
+  if (s==(rol ? 2 : 3)) return rol ? 0x57B : 0x57A;
+  if (s==(rol ? 0x10 : 0x11)) return 0x541;
+  const int ciclo=rol ? 0x11 : 0x12, reaccion=rol ? 0x19 : 0x1A;
+  if (s>=ciclo && s<ciclo+8) return uint32_t(0x543+s-ciclo);
+  if (s>=reaccion && s<reaccion+16) return uint32_t(0x54B+s-reaccion);
+  if (!rol) {
+    switch(s) { case 0x2A:return 0x55B; case 0x2B:return 0x55D; case 0x2C:case 0x2D:return 0x55F;
+                case 0x2E:return 0x55C; case 0x2F:return 0x55E; }
+  } else {
+    switch(s) { case 0x29:return 0x55B; case 0x2A:return 0x55D; case 0x2B:case 0x2C:return 0x560;
+                case 0x2D:return 0x55C; case 0x2E:return 0x55E; }
+  }
+  return 0;
+}
+void Estado13(Juego& j,int rol,int s) {
+  j.pose_estado[rol]=s;
+  const uint32_t c=CodigoEstado13(rol,s);
+  j.pose_codigo[rol]=c;
+  Poner(*j.poses,rol,c,s==(rol ? 2 : 3));
+}
+bool FinPoseBotones(const Juego& j,int rol) {
+  anim::EstadoCuerpo e;
+  for (int cuerpo=0;cuerpo<2;++cuerpo)
+    if (anim::LeerEstadoCuerpo(Base(),Luchador(rol),cuerpo,e) && e.hay &&
+        e.codigo==AliasPose(*j.poses,rol,j.pose_codigo[rol]) && e.cuadros && e.cuadro>=float(e.cuadros-1)) return true;
+  return false;
+}
+float CuadroPoseBotones(const Juego& j,int rol) {
+  anim::EstadoCuerpo e;
+  for (int cuerpo=0;cuerpo<2;++cuerpo)
+    if (anim::LeerEstadoCuerpo(Base(),Luchador(rol),cuerpo,e) && e.hay &&
+        e.codigo==AliasPose(*j.poses,rol,j.pose_codigo[rol])) return e.cuadro;
+  return -1;
+}
+void IniciarChoque13(Juego& j,int l,int variante) {
+  static constexpr int objetivos[6]={10,15,15,20,20,25}; // EU350B60
+  j.especial_fase=0;
+  j.especial_lado=l;
+  j.objetivo_pulsos=objetivos[j.dif];
+  j.pulsos=0;
+  j.especial_t=0;
+  j.reaccion_pulso=false;
+  if (l) {
+    ++j.c[1].llegaron; // StartClashSequence incrementa+48, aparte del icono
+    Estado13(j,0,variante ? 0x22 : 0x1A);
+    Estado13(j,1,0x10);
+  } else {
+    Estado13(j,0,0x11);
+    if (!variante) Estado13(j,1,0x21);
+  }
+  CamB(l ? (variante ? 0x18B : 0x188) : (variante ? 0x188 : 0x18A));
+  REXLOG_INFO("dbz3 solIW5: NB013 choque inicio lado {} variante {} celda {} objetivo {} marca {:.1f}/{:.1f}",
+              l,variante,j.especial_indice,j.objetivo_pulsos,j.marca[0],j.marca[1]);
+}
+void PosesChoque13(Juego& j) {
+  // Los pasos de8cuadros avanzan por fin REAL del actor, no por pausa visual.
+  for (int rol=0;rol<2;++rol) {
+    const int s=j.pose_estado[rol], ini=rol ? 0x10 : 0x11, ciclo=rol ? 0x11 : 0x12;
+    if (!FinPoseBotones(j,rol)) continue;
+    if (s==ini) {
+      Estado13(j,rol,ciclo);
+      Estado13(j,1-rol,rol ? 0x1A : 0x19);
+    } else if (s>=ciclo && s<ciclo+8) {
+      const int k=(s-ciclo+1)%8;
+      Estado13(j,rol,ciclo+k);
+      const int reaccion=rol ? (j.reaccion_pulso ? 0x1A : 0x22) : (j.reaccion_pulso ? 0x21 : 0x19);
+      Estado13(j,1-rol,reaccion+k);
+      j.reaccion_pulso=false; // 1AAC consumido por el siguiente paso
+    }
+  }
+}
+void ResolverChoque13(Juego& j) {
+  j.especial_bien=j.pulsos>=j.objetivo_pulsos;
+  const bool b=j.especial_bien;
+  const int l=j.especial_lado;
+  Estado13(j,0,l ? (b ? 0x2D : 0x2E) : (b ? 0x2A : 0x2C));
+  Estado13(j,1,l ? (b ? 0x2B : 0x29) : (b ? 0x2D : 0x2C));
+  CamB(l ? (b ? 0x18A : 0x18C) : (b ? 0x189 : 0x18A),false,!l&&!b);
+  if (b) ++j.c[l].aciertos;
+  j.especial_fase=2;
+  j.dano_aplicado=false;
+  ++j.rondas;
+  REXLOG_INFO("dbz3 solIW5: NB013 choque resultado lado {} pulsos {}/{} acierto {} ronda {}",
+              l,j.pulsos,j.objetivo_pulsos,b,j.rondas);
+}
+void PasoChoque13(Juego& j,uint16_t pulsado) {
+  ++j.especial_t;
+  if (j.especial_fase==0) {
+    for (float& x:j.marca) x+=j.vel;
+    j.marca_gate=SolapaMarca(j);
+    const int boton=j.c[j.especial_lado].seq[j.especial_indice];
+    // QTE_CheckPressedMatch compara el ULTIMO bit del pad completo.
+    if (j.marca_gate && (BotonPulsado(pulsado)==boton ||
+        (j.auto_ && !(j.fallos && j.especial_lado==1) && j.especial_t%4==0))) {
+      ++j.pulsos;
+      j.reaccion_pulso=true;
+    }
+    PosesChoque13(j);
+    if (!j.marca_gate && j.marca[0]>=kObjetivo) {
+      j.especial_fase=1;
+      REXLOG_INFO("dbz3 solIW5: NB013 choque salida solape pulsos {} marca {:.1f}",j.pulsos,j.marca[0]);
+    }
+  } else if (j.especial_fase==1) ResolverChoque13(j);
+  else {
+    const bool golpe=j.especial_lado ? !j.especial_bien : j.especial_bien;
+    const int atacante=j.especial_lado;
+    if (golpe && !j.dano_aplicado && CuadroPoseBotones(j,atacante)>=36) {
+      static constexpr int dano[2][6]={{300,300,200,200,100,100},{100,200,200,300,300,300}};
+      j.vida[1-atacante]-=float(dano[atacante][j.dif]);
+      j.dano_aplicado=true;
+      REXLOG_INFO("dbz3 solIW5: NB013 dano especial rol {} cuadro {:.1f} vida {:.0f}/{:.0f}",
+                  atacante,CuadroPoseBotones(j,atacante),j.vida[0],j.vida[1]);
+    }
+    for (int rol=0;rol<2;++rol) if (FinPoseBotones(j,rol)) {
+      const int s=j.pose_estado[rol];
+      if (s==(rol ? 0x29 : 0x2A)) {
+        // 191C es KO y solo se publica al acabar el golpe55B.
+        if (j.vida[1-rol]<=0) { FinalizarBotones(j); return; }
+        Estado13(j,rol,rol ? 0x2A : 0x2B);
+      } else if (s==(rol ? 0x2D : 0x2E)) Estado13(j,rol,rol ? 0x2E : 0x2F);
+      else if (s>=0x29) Estado13(j,rol,rol ? 2 : 3);
+    }
+    if (j.pose_estado[0]==3 && j.pose_estado[1]==2) {
+      Icono& ic=j.c[j.especial_lado].ic[j.especial_indice];
+      ic.resuelto=true;
+      ic.salida=true;
+      ic.anim_t=0;
+      j.especial_fase=-1;
+      j.marca_activa=false;
+      CamB(0x187,false,true,true);
+      REXLOG_INFO("dbz3 solIW5: NB013 vuelve187 ronda {} vida {:.0f}/{:.0f}",j.rondas,j.vida[0],j.vida[1]);
+    }
+  }
+}
+
+void PasoNB013(Juego& j,uint16_t pulsado) {
+  ++j.cuadros;
+  if (j.entrada_reposo>0) --j.entrada_reposo;
+  if (j.aviso_t>0) --j.aviso_t;
+  for (int& t:j.destello) if (t>=0) ++t;
+  if (j.especial_fase>=0) { PasoChoque13(j,pulsado); return; }
+  if (j.vida[0]<=0 || j.vida[1]<=0) { FinalizarBotones(j); return; }
+  const bool barra=j.marca_activa && j.marca[1]>=0 && j.marca[0]<=kW;
+  bool especial_vivo=false;
+  for (auto& c:j.c) for (const auto& ic:c.ic) especial_vivo|=ic.vivo&&ic.especial&&!ic.resuelto;
+  for (int l=0;l<2;++l) {
+    Carril& c=j.c[l];
+    if (!barra && !especial_vivo) --c.cuenta;
+    if (c.cuenta<=0 && c.sale<c.n) {
+      Icono& ic=c.ic[c.sale];
+      ic=Icono{c.seq[c.sale],-16-j.vel,true};
+      ic.especial=j.especiales[l][c.sale]!=0;
+      if (ic.especial) ReiniciarMarca(j,l,c.sale);
+      ++c.sale;
+      c.cuenta=c.sale<c.n ? c.hueco[c.sale] : 0;
+    }
+    for (int i=0;i<c.sale;++i) {
+      Icono& ic=c.ic[i];
+      if (!ic.vivo) continue;
+      if (ic.salida) { if (++ic.anim_t>=j.salida_dur) ic.vivo=false; continue; }
+      if (ic.cruz) ++ic.anim_t;
+      ic.x+=j.vel;
+      const bool solapa=SolapaObjetivo(ic.x,-16,16);
+      if (!ic.contado && solapa && !ic.resuelto) { ic.contado=true; ++c.llegaron; }
+      if (!ic.resuelto && !solapa && ic.x>kObjetivo) {
+        if (!ic.contado) { ic.contado=true; ++c.llegaron; }
+        if (ic.especial && l==0 && ic.preparado) { IniciarChoque13(j,0,1); return; }
+        ic.resuelto=true;
+        ic.cruz=true;
+        ic.anim_t=20;
+        if (l==1 || !ic.especial) {
+          PosesGolpe(j,l,false);
+          if (l==1) Golpe(j);
+        } else j.marca_activa=false;
+      }
+      if (ic.x>=kQuita && !ic.especial) { ic.salida=true; ic.anim_t=0; }
+      if (ic.x>=kW+43) ic.vivo=false;
+    }
+    // Mg_FindNearestMarker: el activo mas cercano a x_objetivo+7.
+    float distancia=1e9f;
+    c.actual=c.sale;
+    for (int i=0;i<c.sale;++i) if (c.ic[i].vivo&&!c.ic[i].resuelto) {
+      const float d=std::fabs(kObjetivo+7-c.ic[i].x);
+      if (d<distancia) distancia=d,c.actual=i;
+    }
+  }
+  // Solo el carril mas cercano resuelve la presion; dos iconos solapados>=10
+  // requieren las DOS teclas mantenidas (Mg_UpdateHeldInputResolution).
+  Icono* ic[2]={j.c[0].actual<j.c[0].sale ? &j.c[0].ic[j.c[0].actual] : nullptr,
+                j.c[1].actual<j.c[1].sale ? &j.c[1].ic[j.c[1].actual] : nullptr};
+  int l=!ic[0] ? 1 : !ic[1] ? 0 : std::fabs(477-ic[0]->x)<std::fabs(477-ic[1]->x) ? 0 : 1;
+  const bool doble=ic[0]&&ic[1]&&std::fabs(ic[0]->x-ic[1]->x)<=22;
+  const bool gate=ic[l]&&SolapaObjetivo(ic[l]->x,-16,16);
+  uint16_t entrada=pulsado;
+  if (j.auto_ && gate && !(j.fallos && l==1 && j.c[l].actual%5==2)) {
+    entrada=uint16_t(1u<<ic[l]->boton);
+    if (doble) entrada|=uint16_t(1u<<ic[1-l]->boton);
+  }
+  // EU353490: dos teclas mantenidas, tolerancia10cuadros desde el primer
+  // solape y5cuadros de enfriamiento. No exigir dos flancos simultaneos.
+  if (doble) entrada|=uint16_t(j.antes&0xFF00);
+  const bool bien=gate&&(doble ? ((j.antes|entrada)&(1u<<ic[0]->boton))&&((j.antes|entrada)&(1u<<ic[1]->boton))
+                              : ic[l]&&BotonPulsado(entrada)==ic[l]->boton);
+  bool esperar=false;
+  if (doble&&gate&&!bien&&entrada) {
+    if (j.espera_doble<0) j.espera_doble=0;
+    esperar=j.espera_doble++<=10;
+  } else if (!doble) j.espera_doble=-1;
+  if (ic[l] && ic[l]->x>kAcepta && entrada && !ic[l]->preparado && !esperar && !j.entrada_reposo) {
+    const bool combo = doble && !ic[0]->especial && !ic[1]->especial;
+    const float vida_antes[2] = {j.vida[0],j.vida[1]};
+    for (int q=0;q<(doble ? 2 : 1);++q) {
+      const int lado=doble ? q : l;
+      Icono& k=*ic[lado];
+      if (!k.contado) { k.contado=true; ++j.c[lado].llegaron; }
+      if (k.especial && lado==0) {
+        if (bien) k.preparado=true;
+        else k.resuelto=true,j.marca_activa=false;
+      } else {
+        k.resuelto=true;
+        k.salida=bien;
+        k.cruz=!bien;
+        k.anim_t=bien ? 0 : 20;
+        if (bien) ++j.c[lado].aciertos;
+        // Mg_ApplyHitDamage(2,1) NO resta HP por acertar un combo.
+        if (lado==0 && bien && !combo) j.vida[1]-=float(j.m->ataque_jugador[j.dif]);
+        if (lado==1 && !bien) Golpe(j);
+        if (!combo) PosesGolpe(j,lado,bien);
+      }
+      j.destello[lado]=bien ? 0 : j.destello[lado];
+      j.aviso_t=30;j.aviso_bien=bien;j.aviso_carril=lado;
+    }
+    if (combo) {
+      PosesGolpe(j,2,bien);
+      j.aviso_carril=2;
+      if (std::getenv("DBZ3_TEST_IWMINI"))
+        REXLOG_INFO("dbz3 solIWA: NB013 combo acierto {} vida {:.0f}/{:.0f} -> {:.0f}/{:.0f}",
+                    bien,vida_antes[0],vida_antes[1],j.vida[0],j.vida[1]);
+    }
+    j.espera_doble=-1;
+    j.entrada_reposo=5;
+  }
+  if (j.marca_activa) {
+    for (float& x:j.marca) x+=j.vel;
+    const float trigger=kObjetivo-j.vel*60-j.marca_ancho-48;
+    if (j.especial_lado==1 && !j.marca_entrada && j.marca[0]>trigger) {
+      j.marca_entrada=true;
+      IniciarChoque13(j,1,1);
+      return;
+    }
+    if (j.marca[0]>kW) j.marca_activa=false;
+  }
+  bool gastado=true;
+  for (auto& c:j.c) {
+    gastado&=c.sale>=c.n;
+    for (const auto& k:c.ic) gastado&=!k.vivo;
+  }
+  if (gastado) {
+    // Mg_AdvanceQteSequence recarga, no concede victoria por agotar50 iconos.
+    ++j.ciclos;
+    for (auto& c:j.c) { c.sale=c.actual=0;c.cuenta=c.hueco[0];for(auto& k:c.ic) k={}; }
+    REXLOG_INFO("dbz3 solIW5: NB013 recarga secuencias ciclo {}",j.ciclos);
+  }
+}
+
+void Pose06(Juego& j,int rol,uint32_t codigo) {
+  j.pose_codigo[rol]=codigo;
+  Poner(*j.poses,rol,codigo,false);
+}
+void IniciarRonda06(Juego& j) {
+  static constexpr int objetivos[6]={30,35,40,50,50,70}; // EU376790
+  j.especial_fase=0;
+  j.pulsos=0;
+  j.objetivo_pulsos=objetivos[j.dif];
+  j.especial_t=0;
+  j.remate_boton=-1;
+  j.remate_resuelto=false;
+  j.especial_bien=false;
+  ++j.c[0].llegaron;
+  Pose06(j,0,0x285); // estado10; al rival no se le cambia el codigo
+  CamB(0x98);
+  REXLOG_INFO("dbz3 solIW5: NB006 ronda98 celda {} objetivo {} marca {:.1f}/{:.1f}",
+              j.especial_indice,j.objetivo_pulsos,j.marca[0],j.marca[1]);
+}
+void PasoRonda06(Juego& j,uint16_t pulsado,uint16_t palanca) {
+  ++j.especial_t;
+  if (j.remate_resuelto) ++j.remate_t;
+  if (j.especial_fase==0) {
+    for (float& x:j.marca) x+=j.vel;
+    j.marca_gate=SolapaMarca(j);
+    if (j.marca_gate && (palanca || (j.auto_&&!j.fallos&&j.especial_t%3==0))) ++j.pulsos;
+    if (j.pose_codigo[0]==0x285 && FinPoseBotones(j,0) && j.pulsos) Pose06(j,0,0x286);
+    if (!j.marca_gate && j.marca[0]>=kObjetivo) {
+      j.especial_fase=1;
+      REXLOG_INFO("dbz3 solIW5: NB006 salida solape pulsos {}/{}",j.pulsos,j.objetivo_pulsos);
+    }
+  } else if (j.especial_fase==1) {
+    if (j.pulsos<j.objetivo_pulsos) j.especial_fase=3;
+    else {
+      static constexpr int botones[4]={13,15,12,14}; // EU485E10 comprobadaUSA/EU
+      static constexpr int anticipa[6]={80,70,60,50,40,30};
+      j.remate_boton=botones[Azar()&3];
+      j.remate_x=kObjetivo-float(anticipa[j.dif])*j.vel;
+      j.remate_t=0;
+      j.especial_fase=2;
+      REXLOG_INFO("dbz3 solIW5: NB006 remate boton {} x {:.1f}",j.remate_boton,j.remate_x);
+    }
+  } else if (j.especial_fase==2) {
+    ++j.remate_t;
+    j.remate_x+=j.vel;
+    const bool solapa=SolapaObjetivo(j.remate_x,-16,16);
+    uint16_t p=pulsado;
+    if (j.auto_&&solapa&&!j.fallos) p=uint16_t(1u<<j.remate_boton);
+    if ((solapa&&p) || (!solapa&&j.remate_x>kObjetivo)) {
+      j.especial_bien=solapa&&BotonPulsado(p)==j.remate_boton;
+      j.remate_resuelto=true;
+      j.remate_t=0;
+      if (j.especial_bien) { ++j.c[0].aciertos;j.destello[0]=0; }
+      j.especial_fase=3;
+    }
+  } else if (j.especial_fase==3) {
+    if (j.remate_resuelto || FinPoseBotones(j,0)) {
+      Pose06(j,0,j.especial_bien ? 0x287 : 0x289);
+      Pose06(j,1,j.especial_bien ? 0x288 : 0x28A);
+      j.especial_fase=4;
+      j.dano_aplicado=false;
+      ++j.rondas;
+      CamB(0x9A);
+      REXLOG_INFO("dbz3 solIW5: NB006 ronda9A acierto {} pulsos {}/{} ronda {}",
+                  j.especial_bien,j.pulsos,j.objetivo_pulsos,j.rondas);
+    }
+  } else if (j.especial_fase==4) {
+    if (j.especial_bien&&!j.dano_aplicado&&CuadroPoseBotones(j,0)>=8) {
+      static constexpr int dano[6]={400,350,300,250,200,150};
+      j.vida[1]-=float(dano[j.dif]);
+      j.dano_aplicado=true;
+      REXLOG_INFO("dbz3 solIW5: NB006 dano especial cuadro {:.1f} vida {:.0f}/{:.0f}",CuadroPoseBotones(j,0),j.vida[0],j.vida[1]);
+    }
+    if (FinPoseBotones(j,0)&&FinPoseBotones(j,1)) {
+      if (j.vida[0]<=0||j.vida[1]<=0) { FinalizarBotones(j);return; }
+      j.especial_fase=-1;
+      j.marca_activa=false;
+      Poner(*j.poses,0,0x258,true);
+      Poner(*j.poses,1,0x259,true);
+      CamB(0x97,false,true,true);
+      REXLOG_INFO("dbz3 solIW5: NB006 vuelve97 ronda {} vida {:.0f}/{:.0f}",j.rondas,j.vida[0],j.vida[1]);
+    }
+  }
+}
+
+// Ensayo causal opt-in A/B/A, solo en la copia de pruebas. Lee una peticion
+// explicita, confirma la cvar CONSUMIDA porGPU y restaura su valor al salir.
+void EnsayoLuzNB006(bool activo) {
+  static const char* ruta=std::getenv("DBZ3_SOLIW5_RIM");
+  static bool guardado=false;
+  static double anterior=1, aplicado=-1;
+  if (!ruta) return;
+  if (!activo) {
+    if (guardado) rex::cvar::SetFlagByName("dbz3_rim_light_scale",std::to_string(anterior));
+    guardado=false;
+    aplicado=-1;
+    return;
+  }
+  if (!guardado) { anterior=rex::cvar::Query<double>("dbz3_rim_light_scale");guardado=true; }
+  double v=-1;
+  if (std::ifstream in(ruta);in>>v && (v==0||v==1) && v!=aplicado) {
+    rex::cvar::SetFlagByName("dbz3_rim_light_scale",std::to_string(v));
+    const double real=rex::cvar::Query<double>("dbz3_rim_light_scale");
+    REXLOG_INFO("dbz3 solIW5: luz rim solicitado {:.1f} efectivo {:.1f} clip 0x{:X} cuadro {}",
+                v,real,g_cb_clip.load(),g_cb_frame.load());
+    if (real==v) aplicado=v;
+  }
+}
+
+// NB014, EU332270/332CA0/330760: primero mueve ambos carriles, elige
+// el icono mas proximo y resuelve UNA accion (individual o combo mantenido).
+void PasoNB014(Juego& j, uint16_t pulsado) {
+  ++j.cuadros;
+  if (j.aviso_t > 0) --j.aviso_t;
+  if (j.entrada_reposo > 0) --j.entrada_reposo;
+  for (int& t:j.destello) if (t>=0) ++t;
+  Icono* elegidos[2]={};
+  for (int l=0;l<2;++l) {
+    Carril& c=j.c[l];
+    if (--c.cuenta<=0 && c.sale<c.n) {
+      c.ic[c.sale]=Icono{c.seq[c.sale],-16-j.vel,true};
+      ++c.sale;
+      c.cuenta=c.sale<c.n ? c.hueco[c.sale] : 0;
+    }
+    float cerca=1e9f;
+    c.actual=c.sale;
+    for (int i=0;i<c.sale;++i) {
+      Icono& k=c.ic[i];
+      if (!k.vivo) continue;
+      if (k.salida) { if (++k.anim_t>=j.salida_dur) k.vivo=false; continue; }
+      k.x+=j.vel;
+      if (k.cruz) ++k.anim_t;
+      if (!k.contado&&!k.resuelto&&SolapaObjetivo(k.x,-16,16)) { k.contado=true;++c.llegaron; }
+      if (k.x>=kQuita) { k.salida=true;k.anim_t=0; }
+      if (!k.resuelto) {
+        const float d=std::fabs(477-k.x);
+        if (d<cerca) { cerca=d;c.actual=i;elegidos[l]=&k; }
+      }
+    }
+  }
+  int lado=!elegidos[0] ? 1 : !elegidos[1] ? 0 :
+      std::fabs(477-elegidos[0]->x)<std::fabs(477-elegidos[1]->x) ? 0 : 1;
+  const bool doble=elegidos[0]&&elegidos[1]&&std::fabs(elegidos[0]->x-elegidos[1]->x)<=22;
+  Icono* k=elegidos[lado];
+  uint16_t entrada=pulsado;
+  const bool gate=k&&SolapaObjetivo(k->x,-16,16);
+  if (j.auto_&&gate&&!(j.fallos&&lado==1&&j.c[lado].actual%5==2)) {
+    entrada=uint16_t(1u<<k->boton);
+    if (doble) entrada|=uint16_t(1u<<elegidos[1-lado]->boton);
+  }
+  const uint16_t held=uint16_t(j.antes|entrada);
+  const bool bien=gate&&(doble ? SolapaObjetivo(elegidos[1-lado]->x,-16,16)&&
+      (held&(1u<<elegidos[0]->boton))&&(held&(1u<<elegidos[1]->boton)) :
+      BotonPulsado(entrada)==k->boton);
+  const bool pasada=k&&!gate&&k->x>477;
+  bool esperar=false;
+  if (doble&&gate&&!bien&&(held&0xFF00)) {
+    if (j.espera_doble<0) j.espera_doble=0;
+    esperar=j.espera_doble++<=10;
+  } else if (!doble) j.espera_doble=-1;
+  if (k && (pasada || (k->x>kAcepta&&(doble ? (held&0xFF00)!=0 : entrada!=0))) &&
+      !esperar&&!j.entrada_reposo) {
+    const bool acierto=!pasada&&bien;
+    for (int q=0;q<(doble ? 2 : 1);++q) {
+      const int l=doble ? q : lado;
+      Icono& ic=*elegidos[l];
+      if (!ic.contado) { ic.contado=true;++j.c[l].llegaron; }
+      ic.resuelto=true;ic.salida=acierto;ic.cruz=!acierto;ic.anim_t=acierto ? 0 : 20;
+      if (acierto) { ++j.c[l].aciertos;j.destello[l]=0; }
+    }
+    // EU3301C0: un combo acertado NO resta HP; el fallo conjunto resta
+    // un solo ataque del rival, no uno por carril.
+    if (!acierto&&(doble||lado==1)) Golpe(j);
+    if (acierto&&!doble&&lado==0) j.vida[1]-=float(j.m->ataque_jugador[j.dif]);
+    PosesGolpe(j,doble ? 2 : lado,acierto);
+    if ((!acierto&&(doble||lado==1)) || (acierto&&!doble&&lado==0))
+      g_chr_total=15;g_chr_fade[acierto ? 1 : 0]=15; // EU330410: no se aplica al combo acertado
+    j.aviso_t=30;j.aviso_bien=acierto;j.aviso_carril=doble ? 2 : lado;
+    j.espera_doble=-1;j.entrada_reposo=doble ? 10 : 0;
+    if (doble&&std::getenv("DBZ3_TEST_IWMINI"))
+      REXLOG_INFO("dbz3 solIW6: NB014 combo acierto {} cuadros {} vida {:.0f}/{:.0f} poses57C/57D {}",acierto,j.cuadros,j.vida[0],j.vida[1],acierto);
+  }
+  bool gastado=true;
+  for (const auto& c:j.c) for (int i=0;i<c.n;++i) gastado&=i<c.sale&&c.ic[i].resuelto;
+  if (gastado||j.vida[0]<=0||j.vida[1]<=0) FinalizarBotones(j);
+}
+
 // Un cuadro de 60 Hz de la logica de IW (QteMg_UpdatePlayerButtons / ProcessPlayerInput / ApplyHitDamage).
 // EU 0x332270 QteMg_UpdatePlayerButtons
 void Paso(Juego& j, uint16_t pulsado) {
+  if (j.poses==&kPosesNB013) { PasoNB013(j,pulsado); return; }
+  if (j.poses==&kPosesNB014) { PasoNB014(j,pulsado); return; }
   ++j.cuadros;
   if (j.aviso_t > 0) --j.aviso_t;
-  if (j.pausa > 0) {   // R7: pausa del clip 0x98 de NB006 (punto ganado) o del choque de NB013: los iconos no avanzan
-    --j.pausa;
-    return;
+  for (int& t : j.destello) if (t >= 0) ++t;
+  const bool nb06=j.poses==&kPosesNB006;
+  uint16_t palanca=0;
+  if (nb06) {
+    const int x=PalancaDerechaX(),y=PalancaDerechaY();
+    const uint16_t dir=uint16_t((x>16384 ? 0x2000 : x< -16384 ? 0x8000 : 0) |
+                              (y>16384 ? 0x1000 : y< -16384 ? 0x4000 : 0));
+    palanca=uint16_t(dir&~j.palanca_antes);
+    j.palanca_antes=dir;
+    if (j.especial_fase>=0) { PasoRonda06(j,pulsado,palanca);return; }
   }
-  bool golpe[2] = {false, false};   // R7: acierto en cada carril este cuadro (para el choque de NB013)
   for (int l = 0; l < 2; ++l) {
     Carril& c = j.c[l];
-    if (--c.cuenta <= 0 && c.sale < c.n) {   // sale el siguiente icono
+    const bool barra=nb06&&j.marca_activa&&j.marca[1]>=0&&j.marca[0]<=kW;
+    if (!barra) --c.cuenta;
+    if (c.cuenta <= 0 && c.sale < c.n) {   // sale el siguiente icono
       c.ic[c.sale] = Icono{c.seq[c.sale], -16 - j.vel, true};
+      if (nb06 && j.especiales[l][c.sale]) ReiniciarMarca(j,l,c.sale);
       ++c.sale;
       c.cuenta = c.sale < c.n ? c.hueco[c.sale] : 0;
     }
     for (int i = 0; i < c.sale; ++i) {
       Icono& k = c.ic[i];
       if (!k.vivo) continue;
+      if (k.salida) {
+        if (++k.anim_t >= j.salida_dur) k.vivo = false;
+        continue;
+      }
+      if (k.cruz) ++k.anim_t;
       k.x += j.vel;
-      if (!k.resuelto && !k.contado && std::fabs(k.x - kObjetivo) < kIcono) {   // entra en el objetivo
+      const bool solapa=nb06 ? SolapaObjetivo(k.x,-16,16) : std::fabs(k.x-kObjetivo)<kIcono;
+      if (!k.resuelto && !k.contado && solapa && (!nb06||i==c.actual)) {   // solo la celda actual suma oportunidad
         k.contado = true;
         ++c.llegaron;
       }
-      if (!k.resuelto && k.x > kFalla) {   // se paso: fallo
+      if (!k.resuelto && k.x > kFalla && (!nb06||!solapa)) {   // se paso: fallo
         k.resuelto = true;
         if (!k.contado) {
           k.contado = true;
@@ -771,8 +1508,14 @@ void Paso(Juego& j, uint16_t pulsado) {
         if (l == 1) Golpe(j);
         j.aviso_t = 30;
         j.aviso_bien = false;
+        j.aviso_carril = l;
+        k.cruz = j.poses == &kPosesNB006;
+        k.anim_t = 20;   // EU37ADE0: cruz Objeto7 desde cuadro20
       }
-      if (k.x >= kQuita) k.vivo = false;
+      if (k.x >= kQuita) {
+        if (j.poses == &kPosesNB006) k.salida = true, k.anim_t = 0;
+        else k.vivo = false;
+      }
     }
     while (c.actual < c.sale && c.ic[c.actual].resuelto) ++c.actual;
     // prueba (auto): pulsa el boton correcto cuando el icono esta en el objetivo
@@ -800,81 +1543,56 @@ void Paso(Juego& j, uint16_t pulsado) {
         ++c.llegaron;
       }
       j.aviso_t = 30;
-      if (BotonPulsado(p) == k.boton) {   // QTE_CheckPressedMatch: el boton resuelto, no la mera pertenencia
+      j.aviso_carril = l;
+      if (BotonPulsado(p) == k.boton && (!nb06||SolapaObjetivo(k.x,-16,16))) {   // QTE_CheckPressedMatch
         ++c.aciertos;
-        k.vivo = false;
-        golpe[l] = true;
+        if (j.poses == &kPosesNB006) {
+          k.salida = true;
+          k.anim_t = 0;
+          j.destello[l] = 0;
+        } else k.vivo = false;
         if (l == 0) j.vida[1] -= float(j.m->ataque_jugador[j.dif]);
         PosesGolpe(j, l, true);
         j.aviso_bien = true;
-        if (l == 0 && j.punto) {   // R7: NB006, cada punto ganado: pausa de Mg_ResetRoundState. La 0x98 es una
-          // ANIMACION (pose del jugador), no la camara: el original mantiene la camara de juego 0x97 durante todo el
-          // minijuego (medido en PCSX2: la 0x98 tiene pista de camara pero UiAnim no la usa como camara).
-          j.pausa = kPausaPunto;
-        }
       } else {
         PosesGolpe(j, l, false);   // boton malo: PlayHitPoses(carril, 0)
         if (l == 1) Golpe(j);
         j.aviso_bien = false;
+        k.cruz = j.poses == &kPosesNB006;
+        k.anim_t = 20;
       }
     }
   }
-  // R7 (05_iw_minijuegos_pendientes): choque de NB013 (Mg_StartClashSequence 0x352A50 / Mg_CheckClashOutcome
-  // 0x352760). Empieza con las poses 0x11 (jugador) y 0x21 (rival) y el clip 0x188 (Mg_StartClashSequence); luego es un
-  // pulso de botones (Mg_UpdateClashPhase 0x353090) y gana quien llega a la pose 3 contra la 2 (Mg_CheckClashOutcome:
-  // si jugador 3 y rival 2, efecto + UiAnim 0x187 y reinicia la ronda). Al montar el choque pone la ENERGIA de los dos
-  // (+0x185C, el medidor del scatto, no la vida) a 100 (0x42C80000). Aqui, sin fase de pulso, se mantiene el choque
-  // visual (poses del choque + clip) y no cambia la vida; falta la fase de pulsos y el reinicio de ronda.
-  static const int choque_t = std::getenv("DBZ3_IWMINI_CHOQUE") ? std::atoi(std::getenv("DBZ3_IWMINI_CHOQUE")) : 0;   // prueba
-  if (choque_t && j.cuadros == choque_t) golpe[0] = golpe[1] = true;   // prueba: fuerza el choque en el cuadro choque_t
-  if (golpe[0] && golpe[1] && j.poses->cam_choque >= 0) {
-    const Poses& q = *j.poses;
-    Poner(q, 0, q.choque[0], false, q.pelea[0]);
-    Poner(q, 1, q.choque[1], false, q.pelea[1]);
-    CamB(q.cam_choque);
-    j.pausa = kPausaChoque;
-    REXLOG_INFO("dbz3 r7: choque (los dos carriles aciertan): clip 0x{:X}", q.cam_choque);
+  if (nb06 && j.marca_activa) {
+    for (float& x:j.marca) x+=j.vel;
+    if (!j.marca_entrada&&SolapaObjetivo(j.marca[1],-12,12)) {
+      j.marca_entrada=true;
+      IniciarRonda06(j);
+      return;
+    }
+    if (j.marca[0]>kW) j.marca_activa=false;
   }
   // EU 0x2EE9E0 QTE_IsSequenceDone
   const bool gastado = j.c[0].actual >= j.c[0].n && j.c[1].actual >= j.c[1].n;
+  if (nb06&&gastado&&j.vida[0]>0&&j.vida[1]>0) {
+    ++j.ciclos;
+    for (auto& c:j.c) { c.sale=c.actual=0;c.cuenta=c.hueco[0];for(auto& k:c.ic) k={}; }
+    REXLOG_INFO("dbz3 solIW5: NB006 recarga secuencias ciclo {}",j.ciclos);
+    return;
+  }
   if (gastado || j.vida[0] <= 0 || j.vida[1] <= 0) {   // QteMg_ClassifyResult + FinalizeResult
-    const int ac = j.c[0].aciertos + j.c[1].aciertos, ll = j.c[0].llegaron + j.c[1].llegaron;
-    // EU 0x32FA20 QteMg_ClassifyResult
-    j.nota = ll > 0 ? int(float(ac) / float(ll) * 100.0f) : 0;
-    j.rango = 0;
-    if (j.vida[0] > 0)
-      for (int r = 5; r >= 1; --r)
-        if (j.nota >= kUmbral[r][0]) {
-          j.rango = r;
-          break;
-        }
-    const float v = j.rango == 0 ? 100.0f : j.pts[j.rango] * j.mult[j.dif];
-    j.puntos = (int(v) + 99) / 100 * 100;
-    // EU 0x32F0F0 QteMg_FinalizeResult: `puntos` es el premio ZENI (tabla del rango x dificultad); la puntuacion de
-    // la pantalla es `nota` (0..100), separada. TOTAL ZENI = lo que queda en el monedero al sumarlo.
-    j.zeni = j.puntos;
-    j.saldo = P::LeerProgreso("iw_zeni", 0) + j.zeni;
-    j.fase = 3;
-    if (j.poses == &kPosesNB006) g_fondo_off = false;
-    j.t = 0;
-    {   // QteMg_StartResultPhase: poses de victoria o derrota (la del jugador al acabar sale en el panel)
-      const Poses& p = *j.poses;
-      Poner(p, 0, j.rango > 0 ? p.gana[0] : p.pierde[0], false);
-      Poner(p, 1, j.rango > 0 ? p.gana[1] : p.pierde[1], false);
-    }
-    REXLOG_INFO("dbz3 r14: fin: aciertos {}/{} (carril 0 {}/{}, carril 1 {}/{}), vida {} / {}, nota {}, rango {}, "
-                "puntos {}",
-                ac, ll, j.c[0].aciertos, j.c[0].llegaron, j.c[1].aciertos, j.c[1].llegaron, int(j.vida[0]),
-                int(j.vida[1]), j.nota, j.rango, j.puntos);
+    FinalizarBotones(j);
   }
 }
 
-class Panel : public rex::ui::ImGuiDialog {
+class Panel : public iwgs::Drawer {
  public:
-  explicit Panel(rex::ui::ImGuiDrawer* drawer) : ImGuiDialog(drawer) {}
+  Panel() = default;
 
  protected:
+  bool Visible() const override { return g_corre.load(); }
   void OnDraw(ImGuiIO& io) override {
+    EnsayoLuzNB006(g_corre.load()&&g_poses_a.load()==&kPosesNB006);
     if (!g_corre.load()) return;
     std::shared_ptr<Juego> j;
     {
@@ -897,14 +1615,17 @@ class Panel : public rex::ui::ImGuiDialog {
     {
       const float aire = j->poses->aire, d = j->poses->dist;
       g_cam_alto = j->fase == 0 ? (aire > 20 ? kAlto0 : aire) : j->fase == 1 ? (aire > 20 ? kAlto0 + 0.5f * (aire - kAlto0) : aire) : j->fase == 2 ? aire
-                   : j->t < kFinRes ? (aire > 20 ? aire + 8 : aire - 4) : std::min(18.0f, aire);
-      g_cam_dist = j->fase == 3 ? (j->t < kFinRes ? d * 1.5f : d * 0.65f) : d;
+                   : j->t < CuadrosResultado(*j) ? (aire > 20 ? aire + 8 : aire - 4) : std::min(18.0f, aire);
+      g_cam_dist = j->fase == 3 ? (j->t < CuadrosResultado(*j) ? d * 1.5f : d * 0.65f) : d;
     }
-    g_cam_lado = j->fase == 3 && j->t >= kFinRes ? -1.0f : 1.0f;
+    g_cam_lado = j->fase == 3 && j->t >= CuadrosResultado(*j) ? -1.0f : 1.0f;
     if (const char* e = std::getenv("DBZ3_R14_CAMD")) g_cam_dist = float(std::atof(e));   // prueba
     const bool pausa = dbz3::GameDimmed() || dbz3::OverlayOpen();
     // el mando que ve el minijuego (MandoBotones guarda lo que leyo el juego antes de quitarle los botones a B3)
     const uint16_t ahora = g_raw_ok.load() ? g_raw12.load() : REX_LOAD_U16(kPads + kPadBotones);
+    // Conservar el flanco hasta un tick logico, tambien con presentaciones
+    // mas rapidas que60Hz o con el reloj de medida retenido.
+    bool confirma_resultado = ((j->pendiente | (ahora & ~j->antes)) & 0x4000) != 0;
     j->pendiente = uint16_t(j->pendiente | (ahora & ~j->antes));   // hasta el siguiente cuadro de la logica
     if (ahora != j->antes && sondas_ < 40) {   // registro: los 40 primeros cambios del mando (sonda de teclas)
       ++sondas_;
@@ -913,8 +1634,35 @@ class Panel : public rex::ui::ImGuiDialog {
     j->antes = ahora;
     acum_ += pausa ? 0.0f : dbz3::RelojDt(std::min(io.DeltaTime, 0.1f));
     while (acum_ >= 1.0f / 60) {   // logica a 60 cuadros por segundo, como en la PS2
+      if(j->fase==3&&std::getenv("DBZ3_SOLIW9_PANEL_PASOS")) {
+        int objetivo=0;std::ifstream f("iw9_panel_cuadro.req");f>>objetivo;
+        const int edad=j->t-InicioPanelResultado(*j);
+        if(edad>=objetivo && !confirma_resultado) {
+          static int anterior=-1;
+          if(anterior!=edad) {anterior=edad;REXLOG_INFO("dbz3 iw panel9: detenido edad {}",edad);}
+          acum_=0;break;
+        }
+      }
       acum_ -= 1.0f / 60;
       ++j->t;
+      // EU2EDC70/2EDBA0: dos fases de5, conversion angular original.
+      // El primer campo del cuerpo aun conserva el FOV previo. PAL tiene
+      // campos1.2; no se avanza una vez por presentacion del host.
+      static float combo_acum=0;
+      static int combo_anterior=-1;
+      if(g_combo_zoom.load()==0 && combo_anterior!=0) combo_acum=0;
+      if(g_combo_zoom.load()>=0) {
+        combo_acum+=1;
+        if(combo_acum>=g_combo_delta.load()) {
+          combo_acum-=g_combo_delta.load();
+          if(++g_combo_zoom>=11) g_combo_zoom=-1;
+        }
+      }
+      combo_anterior=g_combo_zoom.load();
+      if (std::getenv("DBZ3_TEST_IWMINI") && ((j->fase==1&&j->t==60)||
+          (j->fase==3&&(j->t==115||j->t==CuadrosResultado(*j)))))
+        REXLOG_INFO("dbz3 solIW6: QTE clave {:X} fase {} cuadro {} HUD {} READY {} panel {}",j->clave,j->fase,j->t,
+                    j->fase==1,j->fase==1&&j->t>=60,j->fase==3&&j->t>=CuadrosResultado(*j));
       SerieJuego(j->fase == 2);
       CuadroSe();
       if (g_cb_clip.load() >= 0 && !g_cb_quieto.load()) ++g_cb_frame;
@@ -925,7 +1673,11 @@ class Panel : public rex::ui::ImGuiDialog {
       const bool pre = q0.cam_presenta >= 0 && g_clips.count(q0.cam_presenta);
       const int t_pre = pre ? q0.dur_presenta : 30;
       if (j->fase == 0) {
-        if (j->t == 1 && j->ent > 0) CamB(kCamEntrada);   // primer clip de la entrada
+        if (j->t == 1 && j->ent > 0) {
+          CamB(kCamEntrada);
+          Poner(q0,0,q0.ini[0],false);
+          Poner(q0,1,q0.ini[1],false);
+        }
         for (int i = 1, acum = 0; i < q0.n_entrada && j->ent > 0; ++i) {   // los siguientes, seguidos
           const auto it = g_clips.find(kCamEntrada + i - 1);
           acum += it == g_clips.end() ? 0 : it->second.nf;
@@ -936,6 +1688,9 @@ class Panel : public rex::ui::ImGuiDialog {
           else if (j->ent == 0) CamB(q0.cam_ini, true);   // sin clip: el plano de salida, quieto
           if (const uint32_t x = Luchador(0), a = AliasPose(q0, 0, q0.ini[0]); x && a)
             dbz3::anim::Reproducir(x, a, true);   // sujeta en su ultimo cuadro hasta el READY
+          // EU 0x37A2D0, paso3: ambos actores se reinician con la 0x321.
+          // Piccolo no debe continuar el reloj de los 630 cuadros de paisaje.
+          Poner(q0, 1, q0.ini[1], false);
         }
       }
       if (j->fase <= 1) {
@@ -1016,17 +1771,54 @@ class Panel : public rex::ui::ImGuiDialog {
         if (j->t == 1) {
           if (std::getenv("DBZ3_IWMINI_RAFAGA_FIN")) std::ofstream("dbz3_shot.req") << "40 15";   // prueba
           if (j->auto_) dbz3::net::InyectarPad(0, -1);
-          if (!fin_) {   // el combate de B3 acaba ya (como el ring out de P4): su final (~11 s) corre bajo el resultado
-            fin_ = true;
-            REX_STORE_U8(mgr + kFin, uint8_t(j->rango > 0 ? 1 : 2));
-          }
-          CamB(j->rango > 0 ? j->poses->cam_gana : j->poses->cam_pierde);   // QteMg_StartResultPhase
+          // B3 no debe entrar aun en su victoria/derrota: al cambiar 5->6
+          // reinicia el reloj del ganador y pisa el ultimo cuadro de IW.
+          CamB(j->rango > 0 ? j->poses->cam_gana : j->poses->cam_pierde,
+               false, j->poses == &kPosesNB006);   // NB006 conserva 0x97 en bucle (Mg_IntroScreenSetup)
         }
-        if (j->t == kFinRes) {   // QteMg_FinalizeResult: la pose final del jugador (s8: a los 240 cuadros, medido)
-          Poner(*j->poses, 0, j->rango > 0 ? j->poses->fin_bien : j->poses->fin_mal, false);
+        if (j->t == CuadrosResultado(*j)) {   // acaba el primer clip -> QteMg_FinalizeResult / Mg_StartResultAnim
+          // Duraciones de sus #AMM propios: NB006 220/240, NB013 240/240,
+          // NB014 240/300. anim_iw acota tambien DESPUES del avance de B3,
+          // en ambos cuerpos: el ultimo cuadro es dur-1, como IW.
+          const uint32_t dur = uint32_t(CuadrosResultado(*j, true));
+          const uint32_t codigo = j->rango > 0 ? j->poses->fin_bien : j->poses->fin_mal;
+          Poner(*j->poses, 0, codigo, false, 0, dur - 1);
+          // EU 0x377A00 Mg_StartResultAnim: NB006 cambia AMBOS actores a los
+          // estados 0x18/0x14 (0x2A9) o 0x19/0x15 (0x2AA). NB013/014 solo el jugador.
+          if (j->poses == &kPosesNB006)
+            Poner(*j->poses, 1, j->rango > 0 ? j->poses->fin_bien : j->poses->fin_mal, false, 0, dur - 1);
           CamB(j->rango > 0 ? j->poses->cam_fin_bien : j->poses->cam_fin_mal);
+          REXLOG_INFO("dbz3 r14: pose final de IW (clave 0x{:X}, jugador 0x{:X}, ambos {}, sujeta, inicio {} duracion {})",
+                      j->clave, j->rango > 0 ? j->poses->fin_bien : j->poses->fin_mal,
+                      j->poses == &kPosesNB006, j->t, dur);
+        }
+        const int panel = j->t-InicioPanelResultado(*j);
+        if(panel<0) j->pendiente=uint16_t(j->pendiente&~0x4000);
+        const bool propio = j->poses==&kPosesNB006 || j->poses==&kPosesNB014;
+        if (propio && panel >= 0) {
+          const bool piloto = j->auto_ && j->recompensa.cuadro >= 420;
+          const float antes = j->recompensa.cuadro;
+          j->recompensa.Avanzar(panel ? 1.0f : 0.0f, confirma_resultado || piloto);
+          j->pendiente=uint16_t(j->pendiente&~0x4000);
+          confirma_resultado = false;
+          if (antes < 420 && j->recompensa.cuadro >= 420 && panel < 420)
+            j->recompensa_anim_salto = 420-float(panel);
+          if (!panel || panel==120 || panel==320 || panel==420)
+            REXLOG_INFO("dbz3 iw panel: clave {:#x} edad {} reloj {:.0f} filas tipo3 {},{},{} retenido {}",
+                        j->clave,panel,j->recompensa.cuadro,j->c[0].aciertos,j->c[1].aciertos,j->nota,
+                        !j->recompensa.cerrado);
+        }
+        const bool salir_resultado = propio ? j->recompensa.cerrado :
+            j->t >= CuadrosResultado(*j) + CuadrosResultado(*j, true) + 8;
+        if (!fin_ && salir_resultado) {
+          fin_ = true;
+          REX_STORE_U8(mgr + kFin, uint8_t(j->rango > 0 ? 1 : 2));
+          REXLOG_INFO("dbz3 r14: secuencia de resultado de IW completa; sale al resultado del mapa");
         }
       }
+      CuadroAntenas(*j);
+      for(auto& in:j->combo_fx) iwame::ame::Cuadro(in,j->antena_sem);
+      j->combo_fx.erase(std::remove_if(j->combo_fx.begin(),j->combo_fx.end(),[](const auto& in) {return !in.vivo;}),j->combo_fx.end());
     }
     Dibujar(io, *j);
   }
@@ -1034,6 +1826,8 @@ class Panel : public rex::ui::ImGuiDialog {
  private:
   void Preparar(const Juego& j) {
     hecho_ = &j;
+    ComenzarAtlas();
+    for(int rol=0;rol<2;++rol) {g_chr_fade[rol]=0;g_chr_activo[rol]=false;g_chr_color[rol]=0;}
     fin_ = false;
     acum_ = 0;
     g_cam_reset = true;
@@ -1050,6 +1844,8 @@ class Panel : public rex::ui::ImGuiDialog {
     relleno_ = ps2::Crear(j.relleno);
     barra_ = ps2::Crear(j.barra);
     barra06_ = ps2::Crear(j.barra06);
+    botones06_ = ps2::Crear(j.botones06);
+    objetivo06_ = ps2::Crear(j.objetivo06);
     banda_ = ps2::Crear(j.banda);
     aro4_ = ps2::Crear(j.aro4);
     marco4_ = ps2::Crear(j.marco4);
@@ -1069,6 +1865,20 @@ class Panel : public rex::ui::ImGuiDialog {
     row_band_ = ps2::Crear(j.row_band);
     row_labels_ = ps2::Crear(j.row_labels);   // DS156
     row_ranks_ = ps2::Crear(j.row_ranks);
+    antena_tx_.clear();
+    antena_suma_.clear();
+    for (const auto& im : j.antena_atlas) {
+      antena_tx_.push_back(ps2::Crear(im));
+      RegistrarTextura(antena_tx_.back().id(),im);
+      P::Imagen su = im;
+      for (size_t i = 0; i + 3 < su.rgba.size(); i += 4)
+        su.rgba[i + 3] = uint8_t(std::max({su.rgba[i], su.rgba[i + 1], su.rgba[i + 2]}) * su.rgba[i + 3] / 255);
+      antena_suma_.push_back(ps2::Crear(su));
+    }
+    botones_tx_.clear();
+    resultado_tx_.clear();
+    for (const auto& im:j.resultado_atlas) resultado_tx_.push_back(ps2::Crear(im));
+    for (const auto& im : j.botones_atlas) botones_tx_.push_back(ps2::Crear(im));
   }
   static void Pieza(ImDrawList* dl, const ps2::Tex& t, ImVec2 c, float k) {
     if (t) dl->AddImage(t.id(), ImVec2(c.x - t.w * k / 2, c.y - t.h * k / 2), ImVec2(c.x + t.w * k / 2, c.y + t.h * k / 2));
@@ -1078,16 +1888,26 @@ class Panel : public rex::ui::ImGuiDialog {
   // hasta x 470 y ZENI en x 532. El titulo del minijuego, arriba (s1 F04.3)
   template <class At>
   void DibujarResultado(ImDrawList* fg, At at, const Juego& j) {
+    Resultado r;
+    r.clave = j.clave;
+    r.offence = j.c[0].llegaron > 0 ? j.c[0].aciertos * 100 / j.c[0].llegaron : 0;
+    r.defence = j.c[1].llegaron > 0 ? j.c[1].aciertos * 100 / j.c[1].llegaron : 0;
+    r.score = j.nota; r.zeni = j.zeni; r.saldo = j.saldo; r.rango = j.rango - 1;
+    const ImVec2 p0 = at(0, 0), p1 = at(640, 448);
+    if (recompensa::Dibujar(fg, p0.x, p0.y, p1.x-p0.x, p1.y-p0.y, r,
+                          j.recompensa.cuadro, &titulo_,
+                          float(std::max(0, j.t-InicioPanelResultado(j)))+j.recompensa_anim_salto)) return;
+    const bool marco_nativo=MarcoResultado(fg,at,j);
     // DS72: el relleno del panel es el arte de interfaz de IW (DATA_USA 334/1 t00), no un color propio.
     // t00 se pinta con alfa 175 como la caja anterior: el original deja ver al luchador por detras (iw_nb013_d).
-    if (panel_fill_)
+    if (!marco_nativo&&panel_fill_)
       fg->AddImageRounded(panel_fill_.id(), at(16, 10), at(624, 438), ImVec2(0, 0), ImVec2(1, 1),
                           IM_COL32(255, 255, 255, 175), 26.0f);
-    else
+    else if (!marco_nativo)
       fg->AddRectFilled(at(16, 10), at(624, 438), IM_COL32(8, 40, 72, 175), 14);
     // El marco fino azul del original no es un sprite unico: el unico marco grande de 334/1 (t03) es el bisel grueso del
     // panel del mapa y aqui quedaria 6 veces mas grueso. Se conserva el trazo medido [H].
-    fg->AddRect(at(16, 10), at(624, 438), IM_COL32(110, 200, 255, 230), 14, 0, 3);
+    if (!marco_nativo) fg->AddRect(at(16, 10), at(624, 438), IM_COL32(110, 200, 255, 230), 14, 0, 3);
     // s1 F04.3: el titulo del minijuego arriba, centrado (medido en iw_nb013_d, 800x600: la letra azul de la textura 346/1
     // (visible x 2..338, y 11..43 de 340x46) ocupa x 180..620 e y 34..65 -> en 640x448, 1,065 de ancho por 0,91 de alto
     // y centro de la parte visible en (320, 37))
@@ -1169,6 +1989,10 @@ class Panel : public rex::ui::ImGuiDialog {
       }
       fg->AddLine(at(40, yr + 40), at(604, yr + 40), IM_COL32(110, 200, 255, 200), 2);
     }
+    // NB006: PINE, plano terminal323/239. Esta pantalla solo muestra las
+    // tasas; EARNED/TOTAL pertenecen al paso de recompensa, tras confirmar.
+    // Ese paso lo entrega el conector al resultado comun del mapa.
+    if (j.poses == &kPosesNB006) return;
     for (float y : {347.0f, 403.0f}) {   // DS72: franjas claras de EARNED y TOTAL con 5/5 t03 (560x48)
       if (row_band_)
         fg->AddImage(row_band_.id(), at(28, y - 24), at(612, y + 24), ImVec2(0, 0), ImVec2(1, 1),
@@ -1191,8 +2015,9 @@ class Panel : public rex::ui::ImGuiDialog {
       return n;
     };
     auto revelar = [&](int valor, int desde, float y, const ps2::Tex* cif) {
-      if (j.fase != 3 || j.t < desde) return;
-      const int vis = std::min(1 + (j.t - desde) / 20, digitos(valor));
+      const int cuadro_panel=j.t-InicioPanelResultado(j);
+      if (j.fase != 3 || cuadro_panel < desde) return;
+      const int vis = std::min(1 + (cuadro_panel - desde) / 20, digitos(valor));
       int pot = 1;
       for (int i = 0; i < vis; ++i) pot *= 10;
       grandes = cif;
@@ -1205,12 +2030,142 @@ class Panel : public rex::ui::ImGuiDialog {
     revelar(j.saldo, 320, 403, &cif_n_);
     img(zeni_, 520, 403, 28);
   }
+  template<class At>
+  bool MarcoResultado(ImDrawList* dl,At at,const Juego& j) {
+    const int nodo=j.resultado_ama.Objeto(0);
+    if (nodo<0||resultado_tx_.empty()) return false;
+    auto arbol=anim::ama::CrearArbol(j.resultado_ama,nodo,float(std::max(0,j.t-InicioPanelResultado(j))));
+    anim::ama::MarcarArbol(arbol,float(std::max(0,j.t-InicioPanelResultado(j))));
+    std::vector<anim::ama::Entrada> entradas;
+    anim::ama::ActualizarNodo(arbol,arbol.raiz,{},entradas);
+    auto punto=[&](float x,float y) { return at(x*640/600,y*448/450); };
+    for (const auto& e:entradas) {
+      anim::ama::Quad q;anim::ama::DibujarEntrada(e,q);
+      auto c=[&](int i) { return std::clamp(int(e.tinte[i]*255+e.rgba[i]+.5f),0,255); };
+      const ImU32 col=IM_COL32(c(0),c(1),c(2),c(3));
+      // La entrada sin textura es el sitio del titulo, que el consumidor
+      // sustituye por DATA_USA335+clave. No es una banda blanca de fondo.
+      if (!e.SinTextura()&&e.textura<resultado_tx_.size()&&resultado_tx_[e.textura]) {
+        const auto& tx=resultado_tx_[e.textura];
+        dl->AddImageQuad(tx.id(),punto(q.xy[0][0],q.xy[0][1]),punto(q.xy[1][0],q.xy[1][1]),
+            punto(q.xy[2][0],q.xy[2][1]),punto(q.xy[3][0],q.xy[3][1]),
+            ImVec2(q.uv[0][0]/tx.w,q.uv[0][1]/tx.h),ImVec2(q.uv[1][0]/tx.w,q.uv[1][1]/tx.h),
+            ImVec2(q.uv[2][0]/tx.w,q.uv[2][1]/tx.h),ImVec2(q.uv[3][0]/tx.w,q.uv[3][1]/tx.h),col);
+      }
+    }
+    return true;
+  }
+  template<class At>
+  void BotonAma(ImDrawList* dl, At at, const Juego& j, int id, float t, float x = 0, float y = 0, int boton = -1) {
+    if (!j.botones_ama.Valida()) return;
+    const int nodo = j.botones_ama.Objeto(uint32_t(id));
+    if (nodo < 0) return;
+    auto arbol = anim::ama::CrearArbol(j.botones_ama, nodo, t);
+    if (t >= float(anim::ama::MaxCuadros(arbol)) && id != 0x0B) return;
+    anim::ama::Contexto ctx;
+    ctx.pos[0] = x;
+    ctx.pos[1] = y;
+    std::vector<anim::ama::Entrada> entradas;
+    anim::ama::ActualizarNodo(arbol, arbol.raiz, ctx, entradas);
+    for (auto e : entradas) {
+      if (e.SinTextura() || e.textura >= botones_tx_.size() || !botones_tx_[e.textura]) continue;
+      if (id==0x44) e.rect[2]=e.rect[0]+j.marca_ancho; // consumidor EU372950
+      // EU373630 cambia UV del glifo, manteniendo escala/color/giro de0B/0C.
+      if (boton >= 0 && e.textura == 1) {
+        const int celda = boton >= 12 ? (boton == 15 ? 0 : boton == 12 ? 1 : boton == 13 ? 2 : 3)
+                                     : (boton == 10 ? 0 : boton == 11 ? 1 : boton == 8 ? 2 : 3);
+        e.uv[0] = float(celda * 32);
+        e.uv[1] = boton >= 12 ? 64.0f : 100.0f;
+        e.uv[2] = e.uv[0] + 32;
+        e.uv[3] = e.uv[1] + 32;
+      }
+      anim::ama::Quad q;
+      anim::ama::DibujarEntrada(e, q);
+      const auto& tx = botones_tx_[e.textura];
+      auto color = [&](int c) { return std::clamp(int(e.tinte[c] * 255 + e.rgba[c] + 0.5f), 0, 255); };
+      const ImU32 col = IM_COL32(color(0), color(1), color(2), color(3));
+      dl->AddImageQuad(tx.id(), at(q.xy[0][0],q.xy[0][1]), at(q.xy[1][0],q.xy[1][1]),
+                       at(q.xy[2][0],q.xy[2][1]), at(q.xy[3][0],q.xy[3][1]),
+                       ImVec2(q.uv[0][0]/tx.w,q.uv[0][1]/tx.h), ImVec2(q.uv[1][0]/tx.w,q.uv[1][1]/tx.h),
+                       ImVec2(q.uv[2][0]/tx.w,q.uv[2][1]/tx.h), ImVec2(q.uv[3][0]/tx.w,q.uv[3][1]/tx.h), col);
+    }
+  }
+  void DibujarAntenas(ImGuiIO& io, const Juego& j) {
+    if(!j.combo_fx.empty()) {
+      ps2::Camara cam=ps2::CamaraCombate(Base(),io.DisplaySize);
+      float vista[16],fov=0;
+      if(CamaraDelRenderIw(vista,&fov)) {std::copy(vista,vista+16,cam.m);cam.fov=fov;cam.ok=true;}
+      for(const auto& in:j.combo_fx) {
+        auto mundo=in;
+        for(auto& lista:mundo.ps) for(auto& p:lista) {
+          p.p.x+=g_origen[0];p.p.y+=g_origen[1];p.p.z+=g_origen[2];
+        }
+        iwame::ame::Pintar(mundo,cam,antena_tx_,antena_suma_,ImGui::GetBackgroundDrawList(),160*io.DisplaySize.y/720,true);
+      }
+    }
+    if (j.antena_fx.empty()) return;
+    ps2::M34 ancla;
+    if (!AnclaAntenas(Base(), ancla)) return;
+    ps2::Camara cam = ps2::CamaraCombate(Base(), io.DisplaySize);
+    // DS177: el renderer toma FOV de CamaraMinijuego, no mgr+1C4.
+    // Usar el45grados nativo desplazaba NH decenas de pixeles hacia el centro.
+    if (const auto it=g_clips.find(g_cb_clip.load()); it!=g_clips.end() && !it->second.fov.empty())
+      Muestra(it->second.fov,CuadroClip(it->second),&cam.fov);
+    if (!cam.ok) return;
+    auto* dl = ImGui::GetBackgroundDrawList();
+    antena_escena_.Empezar();
+    for (const auto& in : j.antena_fx) {
+      auto mundo = in;
+      for (auto& lista : mundo.ps)
+        for (auto& p : lista) p.p = ancla.por(p.p);
+      iwame::ame::Pintar(mundo, cam, antena_tx_, antena_suma_, dl, io.DisplaySize.y);
+      for (const auto& lista : in.ps)
+        for (const auto& p : lista) {
+          if (p.n->tipo != 4 || p.edad <= 0) continue;
+          const auto& n = *p.n;
+          const float t = std::clamp(p.edad / p.vida, 0.0f, 1.0f);
+          const ps2::V3 sc{n.f[8] + (n.f[12] - n.f[8]) * t,
+                           n.f[9] + (n.f[13] - n.f[9]) * t,
+                           n.f[10] + (n.f[14] - n.f[10]) * t};
+          const float x = n.q[0], y = n.q[1], z = n.q[2], w = n.q[3];
+          const ps2::M34 rot{{1-2*(y*y+z*z), 2*(x*y-z*w), 2*(x*z+y*w), 0,
+                             2*(x*y+z*w), 1-2*(x*x+z*z), 2*(y*z-x*w), 0,
+                             2*(x*z-y*w), 2*(y*z+x*w), 1-2*(x*x+y*y), 0}};
+          ps2::Malla m = j.antena_modelo.malla;
+          float c[4];
+          for (int i = 0; i < 4; ++i) c[i] = std::clamp(n.f[16+i] + (n.f[20+i]-n.f[16+i])*t, 0.0f, 1.0f);
+          for (auto& tr : m.tris) {
+            tr.trans = true;
+            tr.con_color = true;
+            for (int i = 0; i < 3; ++i) {
+              const auto v = tr.p[i];
+              const auto r = rot.gira({v.x * sc.x, v.y * sc.y, v.z * sc.z});
+              tr.p[i] = ancla.por(iwame::Mas(p.p, r));
+              tr.uv[i].x += n.f[25] * p.edad / 60;
+              tr.uv[i].y += n.f[26] * p.edad / 60;
+              const ImU32 vc = tr.col[i];
+              tr.col[i] = IM_COL32(int(c[0]*float(vc & 255)), int(c[1]*float((vc >> 8) & 255)),
+                                  int(c[2]*float((vc >> 16) & 255)), int(c[3]*float(vc >> 24)));
+            }
+          }
+          antena_escena_.Poner(cam, m, antena_suma_, {}, 0, 1);
+        }
+    }
+    antena_escena_.Pintar(dl);
+  }
   void Dibujar(ImGuiIO& io, const Juego& j) {
     g_fase_a = j.fase;
+    DibujarAntenas(io, j);
     ImDrawList* fg = ImGui::GetForegroundDrawList();
     const S::Area a = S::GameArea(io);
     auto at = [&](float x, float y) { return a.At(x * 1200 / kW, y * 900 / kH); };   // pantalla de IW -> 1200x900
     const float k = a.s * 900 / kH;
+    // NB006/PINE: los dos clips de paisaje871 y la presentacion321 no llevan
+    // HUD. Mg_SetupOpeningUI lo descubre al comenzar la cuenta de READY.
+    if (j.fase == 0) return;
+    // EU377F10 oculta los48 objetos al entrar en29F/2A0; el efecto de
+    // antenas se ve sin FAILED ni panel durante esos180 cuadros.
+    if (j.poses == &kPosesNB006 && j.fase == 3 && j.t < CuadrosResultado(j)) return;
     // Vida de los dos (UiFade 0 y 1 del modulo). s9: el HUD propio de estos minijuegos (DATA_USA 4/0) es el que se
     // pinta cuando esta (banda t38, marcos t17/t18, relleno t19 y caras t53, medido en nb013_030); si faltara, se cae
     // al de los minijuegos de campo (6/0: aro con la cara, marco t15 y relleno amarillo t01).
@@ -1265,7 +2220,8 @@ class Panel : public rex::ui::ImGuiDialog {
         fg->AddRectFilled(b0, ImVec2(b0.x + (p1.x - b0.x) * v, p1.y), IM_COL32(255, 210, 40, 255));
       }
     }
-    if (j.fase == 1) Pieza(fg, ready_, at(kW / 2, 200), k);
+    // EU 0x379E30: 60 cuadros previos y luego170 de anuncio, no100 en total.
+    if (j.fase == 1 && j.t >= 60) Pieza(fg, ready_, at(kW / 2, 200), k);
     if (j.fase == 2 && j.t < 60 && j.cuadros < 60) Pieza(fg, start_, at(kW / 2, 200), k);
     if (j.fase >= 1 && hud4 && !panel_res) {   // s9: la banda azul de IW abajo (ya en el READY, como IW) (t38 a lo ancho, 640 x 134) y las dos siluetas
       fg->AddImage(banda_.id(), at(0, kH - 134), at(kW, kH));
@@ -1275,27 +2231,25 @@ class Panel : public rex::ui::ImGuiDialog {
           fg->AddImage(sil_[i].id(), at(cx - w / 2, cy - h / 2), at(cx + w / 2, cy + h / 2));
         }
     }
-    if (j.fase >= 2 && !panel_res && j.m->poses == &kPosesNB006) {
-      // I03: barra roja de NB006 (Mg_LayoutHud 0x376FB0: fila 0, y 366, largo vel*240-48). Va debajo de los
-      // iconos, sobre la banda azul; el original la apaga en el resultado (panel_res). Se dibuja con primitivas
-      // (la textura 4/0 t42 es el carril gris y al estirarla solo asomaba una linea): relleno rojo, borde azul y
-      // la muesca blanca del boton entrante.
-      const float len = std::min(kW, j.vel * 240.0f - 48.0f);
-      const ImVec2 r0 = at(0, 376), r1 = at(len, 416);
-      // DS72: la barra roja de NB006 NO tiene sprite: UiBar_DrawGauge (EU 0x372950) pinta un rectangulo de color con
-      // el borde y la muesca; el 4/0 t42 (480x8) es el carril gris translucido, no el relleno. Se deja como esta [H].
-      fg->AddRectFilled(r0, r1, IM_COL32(198, 62, 88, 255), 7 * k);
-      fg->AddRect(r0, r1, IM_COL32(38, 78, 148, 255), 7 * k, 0, 2 * k);
-      fg->AddRectFilled(at(len - 42, 378), at(len - 30, 414), IM_COL32(245, 245, 245, 235), 2 * k);
-    }
-    if (j.fase >= 2 && !panel_res) {
+    // La franja roja opaca anterior era una aproximacion que tapaba el carril1.
+    // NB006/PINE muestra las dos guias del propio atlas, incluso antes del START.
+    if (j.fase >= 1 && !panel_res && barra06_)
+      for (float y : kCarrilY)
+        fg->AddImage(barra06_.id(), at(80, y - 4), at(560, y + 4));
+    if (j.fase >= 1 && !panel_res) {
       fg->PushClipRect(at(0, 0), at(kW, kH), true);   // s9: los iconos entran desde el borde de la pantalla de IW (4:3)
       for (int l = 0; l < 2; ++l) {
         // s8: medido en la captura del original (nb013_030, 800x600 de 640x448): los aros en x 480 y en y 366 / 409,
         // es decir, kCarrilY son los CENTROS de los carriles (antes se dibujaban 16 px mas abajo y el aro en 420)
         const float y = kCarrilY[l];
         if (!hud4) fg->AddRectFilled(at(0, y - 18), at(kW, y + 18), IM_COL32(0, 0, 0, 110));
-        if (objetivo_) {   // el aro de IW (72 x 56; el centro del aro en (38, 28))
+        if (objetivo06_) {
+          // 4/0 t02: disco(0..56), objetivo con flechas(56..112), cruz(112..152).
+          // El aro rojo de 0/1 t10 pertenece a otra interfaz, no a NB006.
+          fg->AddImage(objetivo06_.id(), at(kAroX - 28, y - 28), at(kAroX + 28, y + 28),
+                       ImVec2(56.0f / 152, 0), ImVec2(112.0f / 152, 1));
+          if (j.destello[l] >= 0) BotonAma(fg, at, j, 0x2A, float(j.destello[l]), kAroX, y);
+        } else if (objetivo_) {   // el aro de IW (72 x 56; el centro del aro en (38, 28))
           const ImVec2 c = at(kAroX, y);
           fg->AddImage(objetivo_.id(), ImVec2(c.x - 38 * k, c.y - 28 * k), ImVec2(c.x + 34 * k, c.y + 28 * k));
         } else {
@@ -1307,6 +2261,24 @@ class Panel : public rex::ui::ImGuiDialog {
           if (!ic.vivo) continue;
           const ImU32 col = ic.resuelto ? IM_COL32(120, 120, 120, 200) : IM_COL32(255, 255, 255, 255);
           const ImVec2 c = at(ic.x + kIcono / 2, kCarrilY[l]);
+          if (botones06_) {
+            if (j.botones_ama.Valida()) {
+              BotonAma(fg, at, j, ic.salida ? 0x0C : 0x0B, ic.salida ? float(ic.anim_t) : 0, ic.x, y, ic.boton);
+              if (ic.cruz) BotonAma(fg, at, j, ic.salida ? 8 : 7, float(ic.anim_t), ic.x, y);
+              continue;
+            }
+            // Glifos del propio atlas IW, con los mismos codigos PS2 que la secuencia.
+            // Fila64: cuadrado,triangulo,circulo,equis; fila100: L1,R1,L2,R2.
+            const int boton = ic.boton & 15;
+            const int celda = boton >= 12 ? (boton == 15 ? 0 : boton == 12 ? 1 : boton == 13 ? 2 : 3)
+                                        : (boton == 10 ? 0 : boton == 11 ? 1 : boton == 8 ? 2 : 3);
+            const float yy = boton >= 12 ? 64.0f : 100.0f;
+            // UI_SetObjectPosVec usa el CENTRO (rect -16..16), no su borde.
+            fg->AddImage(botones06_.id(), at(ic.x - 16, y - 16), at(ic.x + 16, y + 16),
+                         ImVec2(celda * 32.0f / 168, yy / 208),
+                         ImVec2((celda + 1) * 32.0f / 168, (yy + 32) / 208), col);
+            continue;
+          }
           if (!pic) {   // sin la pieza de la HD: el nombre del boton
             S::Glyph(fg, kNombre[ic.boton & 15], ImVec2(c.x - kIcono * k / 2, c.y), kIcono * k);
             continue;
@@ -1316,19 +2288,52 @@ class Panel : public rex::ui::ImGuiDialog {
           S::DrawPic(fg, pic, ImVec2(c.x - w / 2, c.y - h / 2), ImVec2(c.x + w / 2, c.y + h / 2), r, col);
         }
       }
+      if (j.marca_activa && j.poses!=&kPosesNB014 && j.especial_fase<=1) {
+        const float y=kCarrilY[j.especial_lado];
+        BotonAma(fg,at,j,0x43,0,j.marca[0],y);
+        BotonAma(fg,at,j,0x44,0,j.marca[2],y);
+        BotonAma(fg,at,j,0x45,0,j.marca[1],y);
+        if (j.poses==&kPosesNB013) {
+          const int boton=j.c[j.especial_lado].seq[j.especial_indice];
+          BotonAma(fg,at,j,0x0B,0,j.marca[0],y,boton);
+          BotonAma(fg,at,j,0x0B,0,j.marca[1],y,boton);
+        }
+        if (j.especial_fase==0) {
+          BotonAma(fg,at,j,j.poses==&kPosesNB006 ? 0x54 : 0x56,float(j.especial_t),300,325);
+          if (j.poses==&kPosesNB013) BotonAma(fg,at,j,0x47,float(std::max(0,j.objetivo_pulsos-j.pulsos)),kObjetivo,y);
+        }
+      }
+      if (j.poses==&kPosesNB006 && j.remate_boton>=0 && j.especial_fase>=2 &&
+          (!j.remate_resuelto||j.remate_t<j.salida_dur)) {
+        BotonAma(fg,at,j,j.remate_resuelto ? 0x0C : 0x46,float(j.remate_resuelto ? j.remate_t : 0),
+                 j.remate_x,kCarrilY[0],j.remate_boton);
+      }
       fg->PopClipRect();
-      if (j.aviso_t > 0) Pieza(fg, j.aviso_bien ? hit_ : miss_, at(kAroX, 330), k * 0.8f);
+      if (j.aviso_t > 0) {
+        if (j.botones_ama.Valida()) {
+          const int id=j.poses==&kPosesNB014 ?
+              (j.aviso_carril==2 ? 0x3E : j.aviso_carril==0 ? (j.aviso_bien ? 0x40 : 0x42) : (j.aviso_bien ? 0x31 : 0x32)) :
+              j.poses==&kPosesNB013 ?
+              (j.aviso_carril==0 ? (j.aviso_bien ? 0x3C : 0x3A) : (j.aviso_bien ? 0x35 : 0x36)) :
+              (j.aviso_carril==0 ? (j.aviso_bien ? 0x53 : 0x51) : (j.aviso_bien ? 0x4C : 0x4D));
+          BotonAma(fg,at,j,id,float(30-j.aviso_t),j.aviso_carril==0 ? 592.0f : 52.0f,384);
+        } else Pieza(fg, j.aviso_bien ? hit_ : miss_, at(kAroX, 330), k * 0.8f);
+      }
     }
     if (j.fase == 3) {
       const float t = std::min(1.0f, j.t / 30.0f);
-      fg->AddRectFilled(ImVec2(0, 0), io.DisplaySize, IM_COL32(0, 0, 0, int(160 * t)));
       // CLEAR del juego (como P4); la nota, el rango y los puntos los ensena el mapa (PantallaDM::Resultado)
-      if (!panel_res || j.t < 90) Pieza(fg, j.rango > 0 ? clear_ : failed_, at(kW / 2, 200), k * 1.5f * (0.8f + 0.2f * t));
-      if (panel_res && j.t >= 90) DibujarResultado(fg, at, j);
-      // s8 (medido): resultado 240 cuadros + final del jugador 240; despues a negro (tapa lo que quede del final de B3
-      // hasta el mapa o la tabla de resultados)
-      if (const float neg = std::clamp((j.t - 2 * kFinRes + 12) / 36.0f, 0.0f, 1.0f); neg > 0)
-        fg->AddRectFilled(ImVec2(0, 0), io.DisplaySize, IM_COL32(0, 0, 0, int(255 * neg)));
+      // EU32FB40 suma delta DOS veces a+0xC: el umbral228 no equivale
+      // a228 cuadros. La tabla espera la camara final, no90 inventados.
+      const int anuncio = j.poses!=&kPosesNB006 ? 115 : CuadrosResultado(j);
+      if (j.t>=anuncio && j.t<CuadrosResultado(j))
+        Pieza(fg, j.rango > 0 ? clear_ : failed_, at(kW / 2, 200), k * 1.5f * (0.8f + 0.2f * t));
+      if (panel_res && j.t >= InicioPanelResultado(j)) DibujarResultado(fg, at, j);
+      // IW mantiene la pose detras de la tabla (PINE NB006: 0x2AA/239).
+      // Solo se tapa DESPUES de la secuencia completa, al salir por B3 (5+),
+      // cuyo cambio de estado recoloca el actor y reinicia el reloj del ganador.
+      if (P::EstadoCombate() >= 5)
+        fg->AddRectFilled(ImVec2(0, 0), io.DisplaySize, IM_COL32(0, 0, 0, 255));
     }
   }
   // El rival se pone a `sep` delante del jugador (en la linea que los une).
@@ -1347,20 +2352,27 @@ class Panel : public rex::ui::ImGuiDialog {
   bool fin_ = false;
   float acum_ = 0;
   ps2::Tex objetivo_, ready_, start_, hit_, miss_, clear_, failed_, aro_, relleno_, barra_, barra06_;
+  ps2::Tex botones06_, objetivo06_;
+  std::vector<ps2::Tex> antena_tx_, antena_suma_;
+  ps2::Escena antena_escena_;
+  std::vector<ps2::Tex> botones_tx_;
   ps2::Tex banda_, aro4_, marco4_, verde4_, sil_[2], caras_;   // s9: HUD de IW (DATA_USA 4/0)
   ps2::Tex rot_[3], cif_c_, cif_n_, earned_, total_, zeni_;     // s9: panel de resultado de IW
   ps2::Tex titulo_, cif_e_;                                     // s1 F04.3
   ps2::Tex panel_fill_, row_arrow_, row_band_;    // DS72: relleno/triangulo/banda nativos
+  std::vector<ps2::Tex> resultado_tx_;
   ps2::Tex row_labels_, row_ranks_;               // DS156: rotulo RANK y letras de rango (334/1 t17/t24)
 };
 
 void CreatePanel() {
   static Panel* panel = nullptr;   // vive lo que el juego
   auto* rt = rex::Runtime::instance();
-  if (!panel && rt && rt->imgui_drawer()) panel = new Panel(rt->imgui_drawer());
+  if (!panel && rt && rt->imgui_drawer() && rt->graphics_system() && rt->graphics_system()->presenter()) {
+    panel=new Panel();rt->graphics_system()->presenter()->AddUIDrawerFromUIThread(panel,63);
+  }
 }
 
-bool Empezar(int clave, int fila, int dificultad) {
+bool Empezar(int clave, int fila, int dificultad, int personaje) {
   const Modulo2* m = nullptr;
   for (const Modulo2& x : kModulos)
     if (x.clave == clave) m = &x;
@@ -1375,13 +2387,19 @@ bool Empezar(int clave, int fila, int dificultad) {
   g_poses_a = m->poses;
   g_cb_amc_entrada = m->poses->amc_entrada;
   g_cb_clip = -1;
+  g_combo_zoom = -1;
   SeriePorClip(false);
   if (m->poses->cam_ini >= 0 && !std::getenv("DBZ3_IWMINI_CAMARA_B3")) {   // DBZ3_IWMINI_CAMARA_B3: la camara propia
     const Poses& q = *m->poses;
     PrecargarClips({q.cam_ini, q.cam_juego, q.cam_gana, q.cam_pierde, q.cam_fin_bien, q.cam_fin_mal,
                     m->poses == &kPosesNB006 ? 0x321 : -1,   // NB006 abre con el clip 0x321 (Mg_UpdateIntroSequence)
                     m->poses == &kPosesNB006 ? 0x98 : -1,    // NB006 punto ganado (Mg_ResetRoundState)
+                    m->poses == &kPosesNB006 ? 0x9A : -1,
                     m->poses == &kPosesNB013 ? 0x188 : -1,   // NB013 choque (Mg_StartClashSequence)
+                    m->poses == &kPosesNB013 ? 0x189 : -1,
+                    m->poses == &kPosesNB013 ? 0x18A : -1,
+                    m->poses == &kPosesNB013 ? 0x18B : -1,
+                    m->poses == &kPosesNB013 ? 0x18C : -1,
                     q.cam_presenta});                        // s8: la presentacion (0x47E / 0x4B0 / 0x321)
     j->ent = PrecargarEntrada(q.amc_entrada, q.n_entrada);  // s8: entrada de la escena (DATA_CMN 876 / 877)
   }
@@ -1389,8 +2407,6 @@ bool Empezar(int clave, int fila, int dificultad) {
   const char* t = std::getenv("DBZ3_TEST_IWMINI");
   j->auto_ = t && std::strstr(t, "auto");
   j->fallos = t && std::strstr(t, "fallos");
-  // R7: NB006 pausa entre puntos con el clip 0x98 (DBZ3_IWMINI_NB006_SIN_PUNTO=1 lo desactiva)
-  j->punto = m->poses == &kPosesNB006 && !std::getenv("DBZ3_IWMINI_NB006_SIN_PUNTO");
   std::string error;
   if (!Cargar(*j, error)) {
     REXLOG_WARN("dbz3 r14: {}: {}", m->nombre, error);
@@ -1407,11 +2423,13 @@ bool Empezar(int clave, int fila, int dificultad) {
   }
   dbz3::launcher::DeferUi(&CreatePanel);
   const int escenario = std::max(P::EscenarioPorMapa(P::MapaIW(m->escenario_iw)), 0);
-  if (!dbz3::hub::RequestBattleEx(m->jugador, m->rival, escenario, true, -1, 0, 0, m->forma_jugador, m->forma_rival)) {
+  if (!dbz3::hub::RequestBattleEx(personaje >= 0 ? personaje : m->jugador, m->rival, escenario, true, -1, 0, 0,
+                                 m->forma_jugador, m->forma_rival)) {
     REXLOG_WARN("dbz3 r14: el conector no acepto el combate");
     return false;
   }
-  g_fondo_off = (m->poses == &kPosesNB006);   // NB006: el original sale sobre negro
+  if (m->poses == &kPosesNB006)
+    REXLOG_INFO("dbz3 solIW3: NB006 conserva el escenario visible en intro, READY, juego y resultado");
   dbz3::combate::SetMuneco(1);       // el rival quieto, sin IA (le pegan los aciertos del minijuego)
   dbz3::combate::OcultarHud(true);   // sin marcador de B3
   g_corre = true;
@@ -1426,7 +2444,6 @@ bool Empezar(int clave, int fila, int dificultad) {
   }
   P::VigilarCombate("r14", r, [j](const P::Fin&) {
     g_corre = false;
-    g_fondo_off = false;
     if (j->poses == &kPosesNB006) dbz3::escenarios::OcultarFondo(false);
     g_cb_clip = -1;
     if (j->auto_) dbz3::net::InyectarPad(0, -1);
@@ -1504,19 +2521,42 @@ struct PosesB {
   // del final (el ultimo clip se queda en su ultimo cuadro, como el juego). cam_juego: la del juego (fase 2); -1 = la que
   // hubiera (MSN019 la saca del #AMC de DATA_CMN 879, no de 915: id kCam879).
   int cam_ini, cam_intro, cam_ronda[9], cam_gana, cam_pierde, dur_intro, cam_juego;
+  int cam_fin_bien=-1,cam_fin_mal=-1;
+  int dur_recupera=0;
 };
 constexpr PosesB kPosesNB012 = {931, 0x500, {0x4B0, 0x4B0, 0x4B0}, {0, 0, 0}, {0x4BA, 0x4BA, 0x4BA}, {0x4B1, 0x4B2, 0x4B3},
-                                0x4C4, 0x4B1, {0x501, 0x502}, 198, {25, 39},
+                                0x4C4, 0x4B1, {0x501, 0x502}, 198, {24, 120},
                                 // Mg_UpdateGameIntro 0x14A / 0x44C (Vegeta; 0x44F Ten, 0x452 Krilin, 0x455 Yamcha), Mg_StartNextRound
                                 // (tabla 0x47E290 EU), Mg_CheckLastRoundEnd 0x154, Mg_StartResultAnimByChar 0x44E
-                                0x14A, 0x44C, {0x14B, 0x14C, 0x14D, 0x14E, 0x14F, 0x150, 0x151, 0x152, 0x153}, 0x154, 0x44E, 180, -1};
+                                0x14A, 0x44C, {0x14B, 0x14C, 0x14D, 0x14E, 0x14F, 0x150, 0x151, 0x152, 0x153}, 0x154, 0x44E, 180, -1,0x44D,0x44E,34};
 constexpr PosesB kPosesNB007 = {922, 0x30C, {0x2BC, 0x2BC, 0x2BC}, {0, 0, 0}, {0x2C6, 0x2C6, 0x2C6}, {0x2BD, 0x2BE, 0x2BF},
-                                0x2D0, 0x2BD, {0x30D, 0x30E}, 130, {25, 40},
+                                0x2D0, 0x2BD, {0x30D, 0x30E}, 130, {24, 83},
                                 // MiniGame_UpdateCountdown 0xB4 / 0x352, MiniGame_StartNextRound (tabla USA 0x472F00), 0xBE, ShowResult 0x354
-                                0xB4, 0x352, {0xB5, 0xB6, 0xB7, 0xB8, 0xB9, 0xBA, 0xBB, 0xBC, 0xBD}, 0xBE, 0x354, 180, -1};
+                                0xB4, 0x352, {0xB5, 0xB6, 0xB7, 0xB8, 0xB9, 0xBA, 0xBB, 0xBC, 0xBD}, 0xBE, 0x354, 180, -1, 0x353, 0x354, 33};
 constexpr PosesB kPosesMSN019 = {930, 0x7BC, {0x76C, 0x76E, 0x770}, {0, 0x76D, 0x76F}, {0x776, 0x777, 0x778}, {0x780, 0, 0},
-                                 0x7BC, 0x7BC, {0x7BC, 0x7BC}, 45, {0, 0},   // el final es el estado 4 (Results_BeginOutcome / FinishOutcome)
-                                 -1, -1, {-1, -1, -1, -1, -1, -1, -1, -1, -1}, 0x5AA, 0x5AA, 60, kCam879};
+                                 0x7BD, 0x7BE, {0x7BD, 0x7BE}, 45, {0, 0},
+                                 kCam879, 0x5AA, {-1, -1, -1, -1, -1, -1, -1, -1, -1}, 0x5AB, 0x5AC, 200, -1};
+const PosesB* PosesAlternativasB(int clave,int personaje) {
+  struct VarianteB { int personaje; PosesB poses; };
+  static const std::array<VarianteB,3> nb012=[] {
+    std::array<VarianteB,3> a{};
+    constexpr int actores[]={10,12,13}, bancos[]={924,929,932}, ready[]={0x452,0x44F,0x455}, rondas[]={0x169,0x15F,0x155};
+    for(int i=0;i<3;++i) {
+      a[i]={actores[i],kPosesNB012};auto& p=a[i].poses;p.cmn=bancos[i];
+      p.cam_intro=ready[i];p.cam_gana=rondas[i]+9;p.cam_pierde=ready[i]+2;
+      p.cam_fin_bien=ready[i]+1;p.cam_fin_mal=ready[i]+2;
+      for(int r=0;r<9;++r) p.cam_ronda[r]=rondas[i]+r;
+      p.dur_golpe=i==0 ? 66 : i==1 ? 123 : 185;
+      p.dur_mal[0]=i==0 ? 36 : 25;p.dur_mal[1]=i==0 ? 36 : 39;
+      p.dur_recupera=i==0 ? 36 : 34;
+    }
+    return a;
+  }();
+  static const PosesB satan=[] {auto p=kPosesMSN019;p.cmn=926;p.cam_intro=0x5AD;p.cam_gana=0x5AE;p.cam_pierde=0x5AF;return p;}();
+  if(clave==0x7DA) for(const auto& a:nb012) if(a.personaje==personaje) return &a.poses;
+  if(clave==0x7E1&&personaje==14) return &satan;
+  return nullptr;
+}
 // MSN019: el clip de resultado de Videl (Results_StateFinishOutcome: tabla USA 0x497DA0 = 0x5AA..0x5AF, el de Videl el primero;
 // plano fijo alrededor de ella en el origen). Camara de juego: el #AMC de DATA_CMN 879 (clip 0, 300 cuadros) que carga
 // w_Camera_LoadMotionFile (motion 0x36F) y monta Minigame_SetupPlayerModels. El ancla +0x840 sale de #ITM +0x20 (punto 0,
@@ -1545,7 +2585,7 @@ constexpr ModuloB kModulosB[] = {
     // Escenario 4 (ROCK): Mg_InitStageByChar (EU 0x3169E0) escribe +0x7C6 = 12 si el personaje es 13 o 10 (Ten/Krilin)
     // y 4 en cualquier otro caso; NB012 juega con Vegeta (7) en el original -> 4. No era una suposicion.
     {11, 0x7DA, "MSN_NB012", kDesplazar, false, 0x47DB10, 0x47DFF0, 0x47F2D0, {1.5f, 2.5f, 3.5f, 4.5f, 5.5f, 6.5f},
-     {3, 4, 5, 6, 7, 9}, {4, 5, 6, 7, 8, 10}, 7, 4, &kPosesNB012},
+     {3, 4, 5, 6, 7, 9}, {4, 5, 6, 7, 8, 10}, 7, 0, &kPosesNB012},   // 31/10: PINE 0x4DB280 = 0 (la misma sala que NB007)
     // RE/PINE (2026-10-25): la escena de IW es el interior de la nave (DATA_CMN 880). Con el mod Campo IW 880
     // instalado se usa esa alta (log: "escenario 31"); sin el, cae a MapaIW(0). Escenario del modulo = 0 (BUDO).
     // EU 0x295C10 s_MSN_NB007_Update
@@ -1583,6 +2623,20 @@ int Azar() {
   return int(g() & 0x7FFFFFFF);
 }
 
+// Candidato aislado: CC8 portado por cuadro guest, nunca por tiempo de ImGui.
+constexpr bool kMSN019EstadosNormal = false;
+struct PruebaMSN019 {
+  std::mutex mutex; // serializa el paso guest y la proyeccion del panel
+  bool activa = false, iniciada = false, bloqueada = false;
+  iwmsn019::Actor actor;
+  iwmsn019::Resultados resultados;
+  std::array<iwmsn019::Objeto, 10> objetos{};
+  uint32_t alias = 0, clip = 0, objeto_cuerpo = 0, vueltas = 0;
+  bool instalada = false, fin_actor = false;
+  bool hay_cuadro_guest = false;
+  uint32_t cuadro_guest = 0;
+  float cuadro = 0, ancla_cursor = 0, sentido_ancla = 1;
+};
 struct JuegoB {
   const ModuloB* m = nullptr;
   const PosesB* pb = nullptr;
@@ -1619,6 +2673,13 @@ struct JuegoB {
   P::Imagen palabra[4];   // DATA_USA 4/0: t15 GREAT!, t08 GOOD!, t09 NORMAL, t10 BAD (juicio 0..3)
   bool fallos = false, mal_hecho = false;   // prueba: el piloto falla una vez en la ronda 2 (poses del fallo)
   int pose_t = 0, cola_t = 0, cola_k = 0, nivel = -1, variante = 0;   // poses de IW (PosesB): cuadros, cadena del fallo, tramo
+  bool final_pendiente = false;
+  int espera_ronda = 0;           // 31/10: tiempo agotado: la cadena de fallo antes de la ronda siguiente (PINE 2,35 s)
+  RelojRecompensaIW recompensa;   // 31/10: EU285F30 sobre la pose sujeta (NB007/NB012)
+  bool confirma_fin = false;
+  bool final_activo = false;
+  int final_t=0,final_dur=0;
+  PruebaMSN019 msn019;
 };
 std::shared_ptr<JuegoB> g_jb;
 std::atomic<bool> g_corre_b{false};
@@ -1640,8 +2701,98 @@ void PonerB(const PosesB& p, uint32_t codigo, bool bucle, uint32_t luego = 0) {
   else dbz3::anim::Reproducir(x, a, false, 0, AliasB(p, luego));
 }
 enum EventoB { kEvIntro, kEvNivel, kEvGolpe, kEvMal, kEvFin };
+bool UsaEstadosMSN019(const JuegoB& j) {
+  return j.clave == 0x7E1 && j.m->tipo == kBarrido && j.msn019.activa;
+}
+int PersonajeEstadosMSN019(const JuegoB& j) { return j.pb->cmn == 926 ? 14 : 15; }
+void BloquearEstadosMSN019(JuegoB& j, const char* motivo) {
+  if (!j.msn019.bloqueada) REXLOG_WARN("dbz3 MSN019 estados: candidato detenido: {}", motivo);
+  j.msn019.bloqueada = true;
+  j.msn019.fin_actor = false;
+}
+void ReiniciarClipMSN019(JuegoB& j) {
+  auto& s = j.msn019;
+  s.instalada = false;
+  s.objeto_cuerpo = s.clip = s.vueltas = 0;
+  // Fuerza ambos cuerpos y AP aun con igual codigo. No apagar+reproducir.
+  // Sujetar evita perder el fin entre muestras del hilo guest; el consumidor
+  // decide si reentra en estado o si empieza otra vuelta SIN reiniciar CC8.
+  anim::ReiniciarPose(Luchador(0), s.alias, true);
+}
+
+void AplicarActorMSN019(JuegoB& j, const iwmsn019::OrdenActor& orden) {
+  auto& s = j.msn019;
+  // Camara, audio y efectos quedan en sus propietarios; no ejecutar orden.camara.
+  if (!orden.reproducir) return;
+  const uint32_t alias = AliasB(*j.pb, s.actor.codigo), x = Luchador(0);
+  if (!x || !alias) { BloquearEstadosMSN019(j, "sin actor o alias IW"); return; }
+  // EntrarActor ya puso CC8=0; toda entrada fuerza reinicio, incluso mismo alias.
+  s.fin_actor = false;
+  s.alias = alias;
+  ReiniciarClipMSN019(j);
+  REXLOG_INFO("dbz3 MSN019 estados: actor={} anterior={} repeticion={} destino={} codigo={:#x} generacion={}",
+              s.actor.estado, s.actor.anterior, s.actor.repeticion, s.actor.destino,
+              s.actor.codigo, s.actor.generacion);
+}
+void ReaccionMSN019(JuegoB& j, int peticion) {
+  AplicarActorMSN019(j, iwmsn019::PedirReaccion(j.msn019.actor, peticion,
+                                              j.msn019.resultados.fila, PersonajeEstadosMSN019(j)));
+}
+void CuadroActorMSN019(JuegoB& j) {
+  auto& s = j.msn019;
+  s.fin_actor = false;
+  if (!s.iniciada || s.bloqueada) return;
+  const uint32_t x = Luchador(0);
+  if (!Base() || !x) return;
+  anim::EstadoCuerpo e;
+  bool encontrada = false;
+  for (int cuerpo = 0; cuerpo < 2; ++cuerpo) {
+    if (anim::LeerEstadoCuerpo(Base(), x, cuerpo, e) && e.hay && e.codigo == s.alias && e.cuadros &&
+        std::isfinite(e.cuadro) && (!s.instalada || e.objeto == s.objeto_cuerpo)) {
+      encontrada = true; break;
+    }
+  }
+  if (!encontrada) return; // recurso ausente no equivale a fin
+  if (!s.instalada) {
+    // Esperar el arranque efectivo: alias correcto, sin vueltas y antes del
+    // ultimo cuadro. Un final retenido anterior NO confirma el nuevo pedido.
+    if (anim::EstadoPose() != 1 || e.vueltas != 0 || e.cuadro < 0 ||
+        e.cuadro >= float(e.cuadros - 1)) return;
+    s.instalada = true; s.objeto_cuerpo = e.objeto; s.clip = e.clip;
+    s.vueltas = e.vueltas; s.cuadro = e.cuadro;
+    return;
+  }
+  if (e.clip != s.clip) { BloquearEstadosMSN019(j, "cambio de clip dentro de la generacion"); return; }
+  const bool ciclo = e.vueltas > s.vueltas;
+  const bool retenida = anim::EstadoPose() == 2 && e.cuadro >= float(e.cuadros - 1);
+  if (e.vueltas < s.vueltas) { BloquearEstadosMSN019(j, "reinicio de ciclos sin acuse"); return; }
+  s.vueltas = e.vueltas; s.cuadro = e.cuadro;
+  iwmsn019::FinAnimacion fin;
+  fin.generacion = s.actor.generacion; fin.codigo = s.actor.codigo;
+  fin.terminada = ciclo || retenida; fin.cc8 = s.actor.cc8; fin.cc8_valido = true;
+  const auto generacion = s.actor.generacion;
+  if (fin.terminada)
+    REXLOG_INFO("dbz3 MSN019 estados: fin real codigo={:#x} cc8={} cac={} cuadro={} longitud={} vueltas={} guest={}",
+                s.actor.codigo, s.actor.cc8, s.actor.cac, e.cuadro, e.cuadros, e.vueltas, s.cuadro_guest);
+  const auto orden = iwmsn019::ActualizarActor(s.actor, fin, PersonajeEstadosMSN019(j));
+  s.fin_actor = fin.terminada && generacion == s.actor.generacion;
+  AplicarActorMSN019(j, orden);
+  if (s.fin_actor && (s.actor.estado == 0 || s.actor.estado == 4 ||
+                     (s.actor.estado == 1 && s.actor.codigo == 0x777 && s.actor.destino == 7))) {
+    // AnimationFramesLink original vuelve a dar ciclos sin ejecutar Enter.
+    // En777 aun no autorizado: reiniciar SOLO clip; conservar CC0/CC4/CC8.
+    ReiniciarClipMSN019(j);
+    s.fin_actor = false;
+  }
+}
 void EventoPose(JuegoB& j, int ev) {
   if (!j.pb) return;
+  if (UsaEstadosMSN019(j)) {
+    // Results es el unico dueno de reacciones/niveles/final. La presentacion
+    // anterior se conserva hasta entrar en juego, fuera de este candidato.
+    if (ev == kEvIntro && !j.msn019.iniciada) PonerB(*j.pb, j.pb->intro, true);
+    return;
+  }
   const PosesB& p = *j.pb;
   const int n = j.m->tipo == kBarrido ? (j.ronda < 3 ? 0 : j.ronda < 6 ? 1 : 2) : 0;
   switch (ev) {
@@ -1664,26 +2815,65 @@ void EventoPose(JuegoB& j, int ev) {
     case kEvMal:     // fallo: cae (5), se queda (6) y se levanta (7); luego la espera
       PonerB(p, p.mal[0], false, p.espera[n]);
       if (j.m->tipo != kBarrido) SeGolpe(1, true);   // el fallo: le dan
-      j.pose_t = p.dur_mal[0] + p.dur_mal[1] + 40;
+      j.pose_t = p.dur_mal[0] + p.dur_mal[1] + (p.dur_recupera ? p.dur_recupera : 40);
       j.cola_k = p.mal[1] ? 1 : 0;
       j.cola_t = j.cola_k ? p.dur_mal[0] : 0;
       break;
     case kEvFin:     // resultado: el final (8) y luego el 1 o el 2 en bucle
       j.cola_t = j.cola_k = 0;
-      PonerB(p, j.rango > 0 ? p.gana : p.pierde, false, p.fin[j.rango > 0 ? 0 : 1]);
+      if(j.m->tipo==kBarrido) {
+        // la pose de la ultima fila sigue 3 s (CuadroPose t 180)
+      } else if (j.rango > 0) {
+        PonerB(p, p.gana, false, p.fin[0]);
+      } else {   // EU Mg_UpdateEndPhase / MiniGame_UpdateMain: 5, 6 y a los 180 de +8 el estado 2
+        PonerB(p, p.mal[0], false, p.mal[1]);
+      }
       break;
   }
 }
 void PrecargarCamaras(const PosesB& p) {
-  std::vector<int> ids = {p.cam_ini, p.cam_intro, p.cam_gana, p.cam_pierde, p.cam_juego};
+  std::vector<int> ids = {p.cam_ini, p.cam_intro, p.cam_gana, p.cam_pierde, p.cam_juego,p.cam_fin_bien,p.cam_fin_mal};
+  if(p.cmn==926||p.cmn==930) ids.push_back(p.cmn==926 ? 0x5AD : 0x5AA);
   ids.insert(ids.end(), std::begin(p.cam_ronda), std::end(p.cam_ronda));
   PrecargarClips(ids);
 }
 // Un cuadro de 60 Hz: la cadena del fallo y el temporizador de la pose.
 void CuadroPose(JuegoB& j) {
+  g_cb_fase_b = j.fase;
   CuadroSe();
   if (g_cb_clip.load() >= 0 && !g_cb_quieto.load()) ++g_cb_frame;
+  // 31/10: EU 0x2EBE20 Results_SetupCameraLight: en juego MSN019 usa la camara 0 de su tabla (EU 0x5D9120/0x5D9140/0x5D91C8),
+  // PINE: ojo (0; 10,816; 28,07), objetivo (0; 8,253; 0), 36 grados. La aplica CamaraFov.
+  g_cb_videl = j.pb && j.m->tipo == kBarrido && g_cb_clip.load() == j.pb->cam_intro && j.fase >= 2;   // PINE: 0x5AA en su ultimo cuadro hasta 0x7BE/0x5AB; la cambia CamB del final
   if (!j.pb) return;
+  if (UsaEstadosMSN019(j)) return; // actor/CC8 avanzan solo en PasoLogicoMSN019
+  if(j.final_pendiente && anim::EstadoPose()==2) {
+    const auto& p=*j.pb;
+    PonerB(p,j.rango>0 ? p.gana : p.pierde,true);
+    CamB(j.rango>0 ? p.cam_gana : p.cam_pierde);
+    j.final_pendiente=false;
+    REXLOG_INFO("dbz3 iw alternativa9: MSN019 banco {} desenlace codigo {:#x}",p.cmn,j.rango>0 ? p.gana : p.pierde);
+  }
+  if(j.fase==3&&j.t==214&&j.rango<=0&&j.m->tipo!=kBarrido) PonerB(*j.pb,j.pb->fin[1],false);
+  if(j.fase==3&&j.t==180&&j.m->tipo==kBarrido) {
+    PonerB(*j.pb,j.rango>0 ? j.pb->gana : j.pb->pierde,false);
+    CamB(j.rango>0 ? j.pb->cam_gana : j.pb->cam_pierde);
+  }
+  if(j.fase==3&&!j.final_activo&&(j.m->tipo==kDesplazar||j.m->tipo==kBarrido||j.m->tipo==kTeclear)) {
+    const auto& p=*j.pb;
+    const uint32_t codigo=j.m->tipo==kBarrido ? (j.rango>0 ? p.gana : p.pierde) : p.fin[j.rango>0 ? 0 : 1];
+    const uint32_t alias=AliasB(p,codigo);
+    anim::EstadoCuerpo e;
+    for(int cuerpo=0;cuerpo<2;++cuerpo)
+      if(anim::LeerEstadoCuerpo(Base(),Luchador(0),cuerpo,e)&&e.hay&&e.codigo==alias&&e.cuadros>0) {
+        j.final_activo=true;j.final_t=j.t;j.final_dur=int(e.cuadros);
+        dbz3::anim::Reproducir(Luchador(0),alias,true,uint32_t(std::max(int(e.cuadros)-1,1)));   // 31/10: sujeta en dur-1 bajo la tabla
+        if(j.m->tipo!=kBarrido) CamB(j.rango>0 ? p.cam_fin_bien : p.cam_fin_mal);
+        REXLOG_INFO("dbz3 iw alternativa9: final real banco {} BSK{:#x} alias{:#x} duracion {} t {}",
+                    p.cmn,codigo,alias,e.cuadros,j.t);
+        break;
+      }
+  }
   if (j.pose_t > 0) --j.pose_t;
   if (j.cola_t > 0 && --j.cola_t == 0 && j.cola_k) {
     const PosesB& p = *j.pb;
@@ -1720,6 +2910,9 @@ bool CargarB(JuegoB& j, std::string& error) {
       // La tabla EU ya viene en cuadros (medido 2026-10-22 contra SLES_553.47: 1177/1200 coinciden con USA*10+12 y
       // los 23 retocados por el americano -122->9 en 15, 130->12 en 7, 220->19 en 1- se leen tal cual). No convertir.
       if (!m.teclear) std::memcpy(&j.hueco[r][i], h + 4 * i, 4);
+      // 31/10: medido contra PCSX2: fila NB012 de 5 botones 6,7 s; leida tal cual duraba 20 s. La USA esta en decimas
+      // de cuadro (262; EU 25 cuadros de 50 Hz). A cuadros de 60 Hz:
+      if (!m.teclear && j.hueco[r][i] > 0) j.hueco[r][i] = elf.eu ? j.hueco[r][i] * 6 / 5 : j.hueco[r][i] / 10;
       // NB007 lleva tambien la cruceta (4 arriba, 5 derecha, 6 abajo, 7 izquierda, desde la dificultad 1)
       if (s[i] < (m.teclear ? 4 : 8) || s[i] > 15 || j.hueco[r][i] < 0 || j.hueco[r][i] > 3000) {
         error = "las tablas del ELF no son las de IW USA";
@@ -1852,13 +3045,21 @@ void PasoTeclear(JuegoB& j, uint16_t pulsado) {
   // EU 0x2EEFB0 QTE_Update
   // EU 0x293D10 MiniGame_UpdateTimer
   // EU 0x294300 MiniGame_FinishRound
-  j.nota[j.ronda] += 1.0f / 60;   // QTE_Update: segundos
+  if (j.espera_ronda <= 0) j.nota[j.ronda] += 1.0f / 60;   // QTE_Update: segundos
   // Limite de la QTE (7,0 s en NB007, +0xF8) y MiniGame_FinishRound (EU 0x294300): al agotarse la QTE la ronda se
   // cierra igual y a la lista va el limite, no el tiempo que se tardo. El original tiene ademas el setter
   // QTE_SetTimeLimit (EU 0x2EE700, copia el valor a +0xFC para QTE_IsTimeUp 0x2EE6D0); el port no tiene objeto QTE y
   // aplica el mismo limite con esta comparacion (estructura, DIFIERE de LUNA_IWMINI3_0; no se pone a ojo).
-  if (j.nota[j.ronda] >= kLimiteTeclear) {
+  if (j.espera_ronda > 0) {
+    if (--j.espera_ronda > 0) return;
+    j.actual = j.n;
+  } else if (j.nota[j.ronda] >= kLimiteTeclear) {
     j.nota[j.ronda] = kLimiteTeclear;
+    if (j.ronda < 9) {   // EU 0x294300: +4 = 3: la cadena 5-6-7 y luego la ronda siguiente (PINE: 2,35 s)
+      EventoPose(j, kEvMal);
+      j.espera_ronda = 141;
+      return;
+    }
     j.actual = j.n;
   }
   uint16_t p = pulsado & 0xFFF0;
@@ -1921,12 +3122,180 @@ void PasoTeclear(JuegoB& j, uint16_t pulsado) {
   REXLOG_INFO("dbz3 r14: fin: total {:.2f} s, rango {}, zeni {} (monedero {})", total, j.rango, j.zeni, j.saldo);
 }
 
+void PrepararFilaMSN019(JuegoB& j, bool excluir) {
+  auto& s = j.msn019;
+  j.n = iwmsn019::kObjetos[j.dif]; j.sale = j.n;
+  const float medio = kAnchoBarrido[j.dif] * kW / 2, hueco = 2 * medio / j.n;
+  j.b0 = kW / 2 - medio; j.b1 = kW / 2 + medio;
+  const int azar = Azar(), omitido = excluir ? azar % j.n : -1;
+  // Se conserva el distribuidor espacial del port. No se afirma que mt19937 sea
+  // Memory() de IW; solo se restaura el objeto excluido y el estado de cada item.
+  for (int i = 0; i < j.n; ++i) {
+    int tipo;
+    do tipo = Azar() % 8; while (!(iwmsn019::MascaraTipo(tipo) & s.resultados.mascara));
+    j.ic[i] = Icono{kTipoBoton[tipo], j.b0 + i * hueco + hueco / 4 * float(Azar() % 2), i != omitido};
+    s.objetos[i] = iwmsn019::Objeto{};
+    s.objetos[i].estado = i == omitido ? 3 : 0; s.objetos[i].tipo = tipo;
+  }
+}
+void ActivarBounceMSN019(JuegoB& j) {
+  j.rebotes = 1;
+  j.msn019.ancla_cursor = j.cursor;
+  j.msn019.sentido_ancla = j.sentido;
+}
+bool SolapaMSN019(const JuegoB& j, int i) {
+  return j.ic[i].vivo && std::fabs(j.ic[i].x + kIcono / 2 - j.cursor) < kIcono / 2;
+}
+void PasoBarridoEstadosMSN019(JuegoB& j, uint16_t pulsado) {
+  auto& s = j.msn019;
+  if (s.bloqueada) return;
+  if (!s.iniciada) {
+    if (!iwmsn019::IniciarResultados(s.resultados, j.dif)) return;
+    // La entrada/READY existente ya termino. No modificar la secuencia de GP2
+    // ni anadir otra espera100: este candidato empieza en la frontera de juego.
+    s.resultados.fase = iwmsn019::Fase::Evaluar;
+    s.iniciada = true;
+    PrepararFilaMSN019(j, true);
+    ActivarBounceMSN019(j);
+    s.actor.destino = -1;
+    ReaccionMSN019(j, 0);
+    return;
+  }
+  iwmsn019::EntradaResultados entrada;
+  entrada.pulsaciones = pulsado;
+  entrada.estado_actor = s.instalada ? s.actor.estado : -1;
+  entrada.fin_actor = s.fin_actor;
+  entrada.vueltas_antes_mover = j.rebotes;
+  const auto fase = s.resultados.fase;
+  if (iwmsn019::ActualizaInterfaz(fase)) {
+    entrada.objetos_terminados = true;
+    for (int i = 0; i < j.n; ++i) {
+      const auto orden = iwmsn019::ActualizarObjeto(s.objetos[i], SolapaMSN019(j, i),
+                                                   fase == iwmsn019::Fase::Recheck);
+      entrada.objetos_terminados &= !orden.pendiente;
+      if (orden.ocultar) j.ic[i].vivo = false;
+    }
+  }
+  if (iwmsn019::DebeMoverCursor(fase, entrada.objetos_terminados, entrada.vueltas_antes_mover)) {
+    const float paso = j.vel * kW / 600.0f, borde = 24.0f * kW / 600.0f;
+    j.cursor += j.sentido * paso;
+    if (j.cursor > kW - borde || j.cursor < borde) {
+      j.cursor = std::clamp(j.cursor, borde, kW - borde); j.sentido = -j.sentido;
+    }
+    // Bounce+40 cuenta el retorno al ancla en la MISMA direccion, no cada borde.
+    if (j.sentido == s.sentido_ancla && std::fabs(j.cursor - s.ancla_cursor) <= paso / 2) ++j.rebotes;
+  }
+  std::array<iwmsn019::SolapeEntrada, 10> solapes{};
+  for (int i = 0; i < j.n; ++i) {
+    solapes[i].hay_datos = true;
+    solapes[i].solapa = SolapaMSN019(j, i);
+    solapes[i].tipo = s.objetos[i].tipo;
+    if (!solapes[i].solapa) j.ic[i].pedido = false;
+  }
+  entrada.objetos = solapes.data(); entrada.cantidad = static_cast<size_t>(j.n);
+  // Las mascaras originales normales no habilitan F0; no inventar un ABI de ejes.
+  if ((s.resultados.mascara & 0xF0) != 0) {
+    BloquearEstadosMSN019(j, "mascara analogica sin ABI de ejes"); return;
+  }
+  if (j.auto_ && fase == iwmsn019::Fase::Evaluar && !(j.fallos && j.ronda == 1)) {
+    for (int i = 0; i < j.n; ++i) if (solapes[i].solapa && !j.ic[i].pedido &&
+                                     (s.objetos[i].estado == 0 || s.objetos[i].estado == 4)) {
+      j.ic[i].pedido = true;
+      if (const int32_t pad = XboxDe(j.ic[i].boton)) { j.inyecta = pad; j.inyecta_t = 4; }
+      else entrada.pulsaciones |= iwmsn019::MascaraTipo(s.objetos[i].tipo);
+      break;
+    }
+  }
+  const int fila_anterior = s.resultados.fila;
+  const auto orden = iwmsn019::PasoResultados(s.resultados, entrada);
+  if (orden.objeto_acertado >= 0) {
+    iwmsn019::AcertarObjeto(s.objetos[orden.objeto_acertado]);
+    j.ic[orden.objeto_acertado].resuelto = true;
+    j.juicio = -1;
+  }
+  if (orden.error_individual) { j.juicio = 3; j.juicio_t = 30; }
+  if (orden.fila_cerrada) {
+    j.nota[fila_anterior] = float(iwmsn019::kPuntos[orden.categoria]);
+    j.juicio = orden.mostrar_banner ? orden.categoria : -1; j.juicio_t = 40;
+  }
+  if (orden.ocultar_pendientes) for (int i = 0; i < j.n; ++i) {
+    s.objetos[i].estado = 3; j.ic[i].vivo = false;
+  }
+  if (orden.preparar_objetos) PrepararFilaMSN019(j, orden.excluir_un_objeto);
+  if (orden.activar_bounce) ActivarBounceMSN019(j);
+  j.ronda = s.resultados.fila;
+  if (orden.reaccion != iwmsn019::kSinPeticion) ReaccionMSN019(j, orden.reaccion);
+  if (orden.desenlace) {
+    j.total = iwmsn019::TotalPuntos(s.resultados);
+    j.rango = RangoResultadoIW(j.total) + 1;
+    j.fase = 3; j.t = 0;
+    for (int i = 0; i < j.n; ++i) j.ic[i].vivo = false;
+  }
+  if (orden.calcular_premios) {
+    j.puntos = PremioResultadoIW(j.total, j.dif); j.zeni = j.puntos;
+    j.saldo = P::LeerProgreso("iw_zeni", 0) + j.zeni;
+    // El panel existente puede abrirse AHORA; cero es un plazo ya satisfecho,
+    // no la duracion inventada de una animacion.
+    j.final_activo = true; j.final_t = j.t; j.final_dur = 0;
+  }
+  if (orden.error_individual || orden.fila_cerrada || orden.desenlace || orden.calcular_premios)
+    REXLOG_INFO("dbz3 MSN019 estados: fase={} fila={} reaccion={} intentos={} aciertos={} total={}",
+                int(s.resultados.fase), s.resultados.fila, s.resultados.reaccion,
+                s.resultados.intentos, s.resultados.aciertos, iwmsn019::TotalPuntos(s.resultados));
+}
+// Llamado por PasoBotones desde el fotograma guest del escenario, no OnDraw.
+void PasoLogicoMSN019(uint8_t* base) {
+  std::shared_ptr<JuegoB> j;
+  { std::lock_guard<std::mutex> lk(g_mu); j = g_jb; }
+  if (!j || !UsaEstadosMSN019(*j)) return;
+  std::lock_guard<std::mutex> lk(j->msn019.mutex);
+  if (!g_corre_b.load()) return;
+  auto& s = j->msn019;
+  // Contador del bucle guest sub_820921E0, mismo dato US/EU (eu_map_gen).
+  // Dedupe, NO reloj de pared ni multiplicacion por el numero de renders.
+  const uint32_t cuadro = REX_LOAD_U32(dbz3::GA(0x8238D6B4));
+  if (s.hay_cuadro_guest && s.cuadro_guest == cuadro) return;
+  s.hay_cuadro_guest = true; s.cuadro_guest = cuadro;
+  const uint32_t mgr = REX_LOAD_U32(kMgrPtr);
+  if (!mgr) return;
+  const uint32_t est = REX_LOAD_U32(mgr + 35128);
+  if (j->fase < 2 || (est != 4 && !(j->fase == 3 && est >= 5 && est <= 8)) ||
+      dbz3::GameDimmed() || dbz3::OverlayOpen() || s.bloqueada ||
+      s.resultados.fase == iwmsn019::Fase::Entregada) return;
+  // Un cuadro logico del port: dt=1. CAC portado de MSN019 inicia en1;
+  // ninguno de sus Enter modifica CAC. CB4/AP/velocidad de clip NO son CAC.
+  constexpr float dt = 1.0f;
+  const uint16_t ahora = uint16_t(REX_LOAD_U16(kPads + kPadBotones) | (REX_LOAD_U16(kPads + 108) & 0xF0));
+  const uint16_t pulsado = uint16_t(ahora & ~j->antes);
+  j->antes = ahora;
+  CuadroActorMSN019(*j); // Update: fin real y contador anterior; puede ejecutar Enter
+  if (s.bloqueada) return;
+  ++j->cuadros;
+  if (j->juicio_t > 0) --j->juicio_t;
+  PasoBarridoEstadosMSN019(*j, pulsado); // Results puede pedir otra entrada
+  if (s.bloqueada) return;
+  // PreExec: Tick ve el CC8 reiniciado si hubo Enter; Animations2 suma AL FINAL.
+  iwmsn019::TickActor(s.actor, s.actor.cc8, dt, PersonajeEstadosMSN019(*j));
+  if (!iwmsn019::AvanzarContadorActor(s.actor, dt, s.actor.cac))
+    BloquearEstadosMSN019(*j, "incremento logico dt*CAC invalido");
+  if (j->auto_) {
+    if (j->fase == 3) dbz3::net::InyectarPad(0, -1);
+    else {
+      dbz3::net::InyectarPad(0, j->inyecta_t > 0 ? j->inyecta : 0);
+      if (j->inyecta_t > 0 && --j->inyecta_t == 0) j->inyecta = 0;
+    }
+  }
+}
 void PasoBarrido(JuegoB& j, uint16_t pulsado) {
-  j.cursor += j.sentido * j.vel;   // Bounce_UpdateMove
-  if (j.cursor >= j.b1 || j.cursor <= j.b0) {
-    j.cursor = std::clamp(j.cursor, j.b0, j.b1);
+  if (UsaEstadosMSN019(j)) { PasoBarridoEstadosMSN019(j, pulsado); return; }
+  // 31/10: PINE: Bounce rebota en los bordes de la pantalla (24..576 de 600, velocidad 4,8 a 50 Hz) y cuenta una vez por vuelta
+  // completa (fila sin pulsar: 35,7 s en dificultad 2; antes 16 s).
+  const float borde = 24.0f * kW / 600.0f;
+  j.cursor += j.sentido * j.vel * kW / 600.0f;   // Bounce_UpdateMove
+  if (j.cursor >= kW - borde || j.cursor <= borde) {
+    if (j.cursor >= kW - borde) ++j.rebotes;
+    j.cursor = std::clamp(j.cursor, borde, kW - borde);
     j.sentido = -j.sentido;
-    ++j.rebotes;
   }
   int bajo = -1;   // el objeto que pisa el cursor
   for (int i = 0; i < j.n; ++i) {
@@ -2125,6 +3494,8 @@ class PanelB : public rex::ui::ImGuiDialog {
     if (!j) return;
     uint8_t* base = Base();
     const int est = P::EstadoCombate();   // el final de B3 (5-8) corre bajo el resultado y se tapa con negro (como PanelA)
+    std::unique_lock<std::mutex> lk_msn019(j->msn019.mutex, std::defer_lock);
+    if (UsaEstadosMSN019(*j)) lk_msn019.lock();
     if (!base || (est != 4 && !(j->fase == 3 && est >= 5 && est <= 8))) return;
     const uint32_t mgr = REX_LOAD_U32(kMgrPtr);
     if (!mgr) return;
@@ -2154,8 +3525,10 @@ class PanelB : public rex::ui::ImGuiDialog {
     // abajo, 0x80 izquierda, medido por P4: los mismos bits que los codigos 4..7 de IW). La cruceta de la HD llega como
     // palanca en los minijuegos (net/netplay_hooks.cpp); +12 no lleva direcciones (sonda de R14).
     const uint16_t ahora = uint16_t(REX_LOAD_U16(kPads + kPadBotones) | (REX_LOAD_U16(kPads + 108) & 0x00F0));
-    j->pendiente = uint16_t(j->pendiente | (ahora & ~j->antes));
-    j->antes = ahora;
+    if (!UsaEstadosMSN019(*j) || j->fase < 2 || j->msn019.resultados.fase == iwmsn019::Fase::Entregada) {
+      j->pendiente = uint16_t(j->pendiente | (ahora & ~j->antes));
+      j->antes = ahora;
+    }
     acum_ += pausa ? 0.0f : dbz3::RelojDt(std::min(io.DeltaTime, 0.1f));
     while (acum_ >= 1.0f / 60) {
       acum_ -= 1.0f / 60;
@@ -2168,11 +3541,14 @@ class PanelB : public rex::ui::ImGuiDialog {
       if (j->pb) {   // poses de IW: espera, READY y (MSN019) el tramo de filas; y sus camaras
         if (j->fase == 0 && j->t == 1) {
           CamB(g_entrada_b.load() > 0 ? kCamEntrada : j->pb->cam_ini);
-          if (j->m->tipo == kBarrido) EventoPose(*j, kEvNivel);
+          if (j->m->tipo == kBarrido) PonerB(*j->pb, j->pb->intro, false, j->pb->intro);   // PINE: 0x7BC durante 879/0
           else PonerB(*j->pb, j->pb->espera[0], true);
         } else if (j->fase == 1 && j->ronda == 0 && j->t == 1) {
           CamB(j->pb->cam_intro);
           EventoPose(*j, kEvIntro);
+        } else if (j->fase == 1 && j->ronda == 0 && j->m->teclear && j->t == 181) {
+          CamB(j->pb->cam_ini, false, false, true);   // PINE: 0xB4 3,1 s antes de contar
+          PonerB(*j->pb, j->pb->espera[0], true);
         } else if (j->fase == 1 && j->ronda > 0 && j->ronda <= 9 && j->t == 1) {
           CamB(j->cam_r[j->ronda - 1], false, false, true);
         } else if (j->fase == 2 && j->t == 1 && j->m->tipo == kBarrido && j->ronda > 0) {
@@ -2182,7 +3558,7 @@ class PanelB : public rex::ui::ImGuiDialog {
       // EU 0x295030 MiniGame_UpdateDispatch
       if (j->fase <= 1) j->pendiente = 0;
       // EU 0x294990 MiniGame_UpdateIntroPhase
-      if (j->fase == 0 && j->t >= std::max(30, g_entrada_b.load())) {
+      if (j->fase == 0 && j->t >= (j->m->tipo == kBarrido ? 300 : std::max(30, g_entrada_b.load()))) {
         // EU 0x293970 MiniGame_CheckReadyStart: a los 60.0 cuadros del reloj del minijuego (+8) saca el READY
         // (s_MSN_CV_ReadyStart: 2, o 1 si +0x88 != 0) y pasa a +0xc = 1. Aqui el READY es la fase 1: 180 cuadros de
         // clip en la primera ronda (dur_intro, medido en el TSV del original) y 60 en las siguientes, y la salida sin
@@ -2190,7 +3566,8 @@ class PanelB : public rex::ui::ImGuiDialog {
         j->fase = 1;
         j->t = 0;
         REXLOG_INFO("dbz3 r14: en juego ({} dificultad {})", j->m->nombre, j->dif);
-      } else if (j->fase == 1 && j->t >= ((j->ronda == 0 && j->pb) ? j->pb->dur_intro : 60)) {   // READY? (la primera) o el numero de ronda
+      } else if (j->fase == 1 && j->t >= (j->m->teclear ? (j->ronda == 0 ? 180 + 186 : 37)   // 31/10: PINE NB007 3 s + 3,1 s y 0,62 s
+                                          : (j->ronda == 0 && j->pb) ? j->pb->dur_intro : 60)) {   // READY? (la primera) o el numero de ronda
         j->fase = 2;
         j->t = 0;
         // 05: camara de juego de IW (MSN019: DATA_CMN 879, un solo clip de 300 cuadros para TODAS las filas: no se
@@ -2202,23 +3579,40 @@ class PanelB : public rex::ui::ImGuiDialog {
           CamB(j->pb->cam_ini, false, false, true);   // s8 NB007: 0xB4 en la ronda 1
         else if (j->pb && j->ronda == 0 && j->pb->cam_ronda[0] >= 0)
           CamB(j->cam_r[0], false, false, true);   // NB012: 0x14B (barajado) ya en la ronda 1
-      } else if (j->fase == 2) {
-        PasoB(*j, j->pendiente);
-        j->pendiente = 0;
-        if (j->auto_) {
-          dbz3::net::InyectarPad(0, j->inyecta_t > 0 ? j->inyecta : 0);
-          if (j->inyecta_t > 0 && --j->inyecta_t == 0) j->inyecta = 0;
+      } else if (j->fase == 2 || (UsaEstadosMSN019(*j) && j->fase == 3 &&
+                                 j->msn019.resultados.fase != iwmsn019::Fase::Entregada)) {
+        if (!UsaEstadosMSN019(*j)) {
+          PasoB(*j, j->pendiente);
+          j->pendiente = 0;
+          if (j->auto_) {
+            dbz3::net::InyectarPad(0, j->inyecta_t > 0 ? j->inyecta : 0);
+            if (j->inyecta_t > 0 && --j->inyecta_t == 0) j->inyecta = 0;
+          }
         }
       } else if (j->fase == 3 && j->t == 1) {
         if (std::getenv("DBZ3_IWMINI_RAFAGA_FIN")) std::ofstream("dbz3_shot.req") << "40 15";   // prueba
         if (j->auto_) dbz3::net::InyectarPad(0, -1);
         // EU 0x293530 MiniGame_ShowResult
-        if (j->pb) CamB(j->rango > 0 ? j->pb->cam_gana : j->pb->cam_pierde);
+        // 31/10: PINE: en derrota sigue el clip de la ultima ronda hasta la pose (cam_fin_mal)
+        if (j->pb && j->rango > 0 && j->m->tipo != kBarrido) CamB(j->pb->cam_gana);
         EventoPose(*j, kEvFin);
-        if (!fin_) {
+      }
+      // 31/10: EU285F30 al acabar la pose final (PINE: 0x30E/0x502 240, 0x30D/0x501 300/240), encima de ella. A avanza y cierra
+      if (!fin_ && j->fase == 3 && j->final_activo && j->t >= j->final_t + j->final_dur) {
+        const bool prueba = j->auto_ || std::getenv("DBZ3_TEST_IWMINI");
+        j->recompensa.Avanzar(1.0f, ((j->pendiente & 0x4000) != 0) || (prueba && j->recompensa.cuadro >= 420));
+        j->pendiente = uint16_t(j->pendiente & ~0x4000);
+        if (j->recompensa.cerrado) {
           fin_ = true;
+          REXLOG_INFO("dbz3 iw alternativa9: tabla cerrada; entrega al conector");
           REX_STORE_U8(mgr + kFin, uint8_t(j->rango > 0 ? 1 : 2));
         }
+      }
+      if(false) {
+        fin_=true;
+        REXLOG_INFO("dbz3 iw alternativa9: desenlace completo banco {} duracion {} retenida; entrega al conector",
+                    j->pb->cmn,j->final_dur);
+        REX_STORE_U8(mgr+kFin,uint8_t(j->rango>0 ? 1 : 2));
       }
     }
     Dibujar(io, *j);
@@ -2247,7 +3641,7 @@ class PanelB : public rex::ui::ImGuiDialog {
     const float k = a.s * 900 / kH;
     // s9: NB007 con las piezas de IW (cotejado con la ronda 1 de PCSX2): sin aro ni cara arriba; la tabla de las 10
     // rondas a la izquierda (caja t16 y cifras t06, filas cada 30 px como MiniGame_SetupSprites) y la banda t38 abajo
-    const bool iw4 = j.m->teclear && banda_ && fila_ && cifras_;
+    const bool iw4 = banda_ && fila_ && cifras_;   // NB012 tambien usa tabla izquierda y banda originales
     auto cifra = [&](int g, float x, float y, float h) {   // g: 0-9, 10 = ', 11 = "
       const float cw = 128 / 5.0f, ch = 88 / 4.0f;
       const int col = g < 10 ? g % 5 : 3, row = g < 10 ? g / 5 : g == 10 ? 2 : 3;
@@ -2257,7 +3651,8 @@ class PanelB : public rex::ui::ImGuiDialog {
                    ImVec2((col + f) * cw / 128, (row + 1) * ch / 88));
       return w;
     };
-    if (iw4) {
+    const bool hud_fuera = j.fase == 3 && j.t >= 60;   // Mg_UpdateEndPhase: 60 del reloj +8
+    if (iw4 && !hud_fuera) {
       for (int r = 0; r < 10; ++r) {
         const float y = 22 + 30 * r;
         fg->AddImage(fila_.id(), at(14, y), at(14 + 144, y + 28), ImVec2(0, 0), ImVec2(1, 1),
@@ -2267,6 +3662,10 @@ class PanelB : public rex::ui::ImGuiDialog {
         x += cifra((r + 1) % 10, x, y + 5, 18) + 14;
         const bool hecha = r < j.ronda || (r == j.ronda && j.fase == 3);
         const int cs = hecha ? int(std::lround(j.nota[r] * 100)) : 0;   // centesimas: SS"CC como IW
+        if (!j.m->teclear) {   // NB012/MSN019: puntos, no centesimas de NB007
+          if (hecha) { const int n = int(j.nota[r]); if(n>=100)x+=cifra(n/100%10,x,y+5,18); if (n >= 10) x += cifra(n / 10 % 10, x, y + 5, 18); cifra(n % 10, x, y + 5, 18); }
+          continue;
+        }
         const int d[4] = {cs / 1000 % 10, cs / 100 % 10, cs / 10 % 10, cs % 10};
         x += cifra(d[0], x, y + 5, 18);
         x += cifra(d[1], x, y + 5, 18);
@@ -2276,7 +3675,7 @@ class PanelB : public rex::ui::ImGuiDialog {
       }
       if (j.fase == 2) fg->AddImage(banda_.id(), at(0, kH - 134), at(kW, kH));
     }
-    for (int r = 0; !iw4 && r < 10; ++r) {
+    for (int r = 0; !iw4 && !hud_fuera && r < 10; ++r) {
       char txt[32];
       if ((r < j.ronda || (r == j.ronda && j.fase == 3)) && j.m->teclear)
         std::snprintf(txt, sizeof txt, "%2d  %5.2f\"", r + 1, j.nota[r]);
@@ -2289,7 +3688,7 @@ class PanelB : public rex::ui::ImGuiDialog {
     if (j.fase == 1) {
       if (j.ronda == 0) PiezaB(fg, ready_, at(kW / 2, 200), k);   // las demas: la fila de la lista se ilumina
     }
-    if (j.fase == 2 && j.t < 60) PiezaB(fg, start_, at(kW / 2, 200), k);
+    if (j.fase == 2 && j.t < 60 && j.ronda == 0) PiezaB(fg, start_, at(kW / 2, 200), k);
     if (j.fase == 2) {
       const float y = kYB + kIcono / 2;
       if (!iw4) fg->AddRectFilled(at(0, y - 18), at(kW, y + 18), IM_COL32(0, 0, 0, 110));
@@ -2330,6 +3729,38 @@ class PanelB : public rex::ui::ImGuiDialog {
       if (j.juicio_t > 0 && j.juicio >= 0) PiezaB(fg, palabra_[j.juicio], at(j.m->teclear ? kW / 2 : kObjB, kYB - 40), k);
     }
     if (j.fase == 3) {
+      // 31/10: PINE (NB007/NB012): sin velo; a los 60 cuadros se va el HUD y sale CLEAR!/FAILED! hasta la pose final;
+      // al acabar esta, la tabla encima de ella.
+      if (j.t >= 60 && !j.final_activo) PiezaB(fg, j.rango > 0 ? clear_ : failed_, at(kW / 2, 200), k);
+      if (j.final_activo && j.t >= j.final_t + j.final_dur) {
+        Resultado r;
+        r.clave = j.clave;
+        r.fila = j.fila;
+        r.superado = j.rango > 0;
+        r.centesimas = j.cuadros * 100 / 60;
+        r.puntos = j.puntos;
+        r.score = j.total;
+        r.zeni = j.zeni;
+        r.saldo = j.saldo;
+        r.rango = j.rango > 0 ? j.rango - 1 : -1;
+        r.monedas = j.total;
+        r.dificultad = j.dif;
+        r.con_tiempo = j.m->tipo != kBarrido;
+        if (j.m->tipo == kDesplazar) r.great = int(j.cat[0]), r.good = int(j.cat[1]), r.normal = int(j.cat[2]);
+        if (j.m->tipo == kBarrido) {
+          int grande = 0, bueno = 0, normal = 0;
+          for (float v : j.nota) {
+            const int nota = int(v);
+            if (nota >= 10) grande += 10;
+            else if (nota >= 5) bueno += 5;
+            else if (nota >= 3) normal += 3;
+          }
+          r.great = grande, r.good = bueno, r.normal = normal;
+        }
+        const ImVec2 q0 = at(0, 0), q1 = at(kW, kH);
+        DibujarResultadoIW(fg, q0.x, q0.y, q1.x - q0.x, q1.y - q0.y, r, j.recompensa.cuadro / 60.0f, false);
+      }
+    } else if (false) {
       const float t = std::min(1.0f, j.t / 30.0f);
       fg->AddRectFilled(ImVec2(0, 0), io.DisplaySize, IM_COL32(0, 0, 0, int(160 * t)));
       const bool panel = j.m->tipo == kBarrido && j.t >= 60;   // MSN019: la tabla de Results_* (GREAT/GOOD/NORMAL)
@@ -2358,7 +3789,7 @@ class PanelB : public rex::ui::ImGuiDialog {
         const ImVec2 q0 = at(0, 0), q1 = at(kW, kH);
         DibujarResultadoIW(fg, q0.x, q0.y, q1.x - q0.x, q1.y - q0.y, r, float(j.t - 60) / 30.0f, false);
       }
-      const int fin = j.m->tipo == kBarrido ? 420 : 228;   // 30 cuadros/fila en el juego: la tabla cabe antes del final de B3
+      const int fin=j.final_activo ? j.final_t+j.final_dur : 1000000;
       if (const float neg = std::clamp((j.t - fin) / 36.0f, 0.0f, 1.0f); neg > 0)   // a negro hasta el mapa
         fg->AddRectFilled(ImVec2(0, 0), io.DisplaySize, IM_COL32(0, 0, 0, int(255 * neg)));
     }
@@ -2375,7 +3806,7 @@ void CreatePanelB() {
   if (!panel && rt && rt->imgui_drawer()) panel = new PanelB(rt->imgui_drawer());
 }
 
-bool EmpezarRondas(int clave, int fila, int dificultad) {
+bool EmpezarRondas(int clave, int fila, int dificultad, int personaje) {
   const ModuloB* m = nullptr;
   for (const ModuloB& x : kModulosB)
     if (x.clave == clave) m = &x;
@@ -2387,8 +3818,11 @@ bool EmpezarRondas(int clave, int fila, int dificultad) {
   j->dif = std::clamp(dificultad, 0, 5);
   j->vel = m->velocidad[j->dif];
   j->pb = m->poses;
+  const int jugador=personaje>=0 ? personaje : m->jugador;
+  if(const auto* p=PosesAlternativasB(clave,jugador)) j->pb=p;
+  REXLOG_INFO("dbz3 iw alternativa9: clave {:#x} actor {} banco {} intro {:#x}",clave,jugador,j->pb->cmn,j->pb->intro);
   g_nave_lado = (m->indice == 6 || m->indice == 18) ? -1.0f : 1.0f;
-  g_cb_amc_entrada = m->indice == 6 ? 872 : 0;
+  g_cb_amc_entrada = m->indice == 6 ? 872 : m->indice == 11 ? 875 : 0;   // 31/10: PINE NB012: 875/0, 300 cuadros
   const char* t = std::getenv("DBZ3_TEST_IWMINI");
   j->auto_ = t && std::strstr(t, "auto");
   j->fallos = t && std::strstr(t, "fallos");
@@ -2397,13 +3831,20 @@ bool EmpezarRondas(int clave, int fila, int dificultad) {
     REXLOG_WARN("dbz3 r14: {}: {}", m->nombre, error);
     return false;
   }
+  if (clave == 0x7E1) {
+    const char* estados = std::getenv("DBZ3_TEST_MSN019_ESTADOS");
+    const bool solicitado = t && *t && std::strcmp(t, "0") != 0 && estados && std::strcmp(estados, "1") == 0;
+    j->msn019.activa = kMSN019EstadosNormal || solicitado;
+    if (j->msn019.activa)
+      REXLOG_INFO("dbz3 MSN019 estados: prueba activa; CC8 logico dt*CAC y ReiniciarPose; pendiente de verificacion");
+  }
   EmpezarRonda(*j);
   g_cb_clip = -1;
-  if (m->poses && !std::getenv("DBZ3_IWMINI_CAMARA_B3")) PrecargarCamaras(*m->poses);   // (DBZ3_IWMINI_CAMARA_B3: sin ellas)
+  if (j->pb && !std::getenv("DBZ3_IWMINI_CAMARA_B3")) PrecargarCamaras(*j->pb);
   // NB012/NB007 usan una camara fija por ronda: una fila por ronda. MSN019 usa un clip animado (879/0): por tiempo.
   SeriePorClip(m->tipo != kBarrido);
   SerieClip(-1);
-  g_entrada_b = (m->indice == 6 && m->poses && !std::getenv("DBZ3_IWMINI_CAMARA_B3")) ? PrecargarEntrada(872, 1) : 0;
+  g_entrada_b = ((m->indice == 6 || m->indice == 11) && m->poses && !std::getenv("DBZ3_IWMINI_CAMARA_B3")) ? PrecargarEntrada(m->indice == 6 ? 872 : 875, 1) : 0;
   REXLOG_INFO("dbz3 r14: {} (clave 0x{:X}, dificultad {}): rondas {} {} {} {} {} {} {} {} {} {}, {} botones, velocidad {}",
               m->nombre, clave, j->dif, j->orden[0], j->orden[1], j->orden[2], j->orden[3], j->orden[4], j->orden[5],
               j->orden[6], j->orden[7], j->orden[8], j->orden[9], j->n, j->vel);
@@ -2413,10 +3854,11 @@ bool EmpezarRondas(int clave, int fila, int dificultad) {
   }
   dbz3::launcher::DeferUi(&CreatePanelB);
   // NB007: la camara de gravedad de la nave de IW (DATA_CMN 880, mod center hd/campos_iw.py) si esta instalada
-  const int nave = m->indice == 6 ? dbz3::escenarios::CampoIW(880) : -1;
+  const int nave = m->indice == 6 || (m->indice == 11 && jugador != 10 && jugador != 13) ? dbz3::escenarios::CampoIW(880) : -1;
   g_nave880 = nave >= 0;
-  const int escenario = nave >= 0 ? nave : std::max(P::EscenarioPorMapa(P::MapaIW(m->escenario_iw)), 0);
-  if (!dbz3::hub::RequestBattleEx(m->jugador, 18, escenario, true, -1, 0, 0, 0, 0)) {   // 18: pivote invisible (P4)
+  const int mapa=clave==0x7DA&&(jugador==10||jugador==13) ? 12 : m->escenario_iw;
+  const int escenario = nave >= 0 ? nave : std::max(P::EscenarioPorMapa(P::MapaIW(mapa)), 0);
+  if (!dbz3::hub::RequestBattleEx(jugador, 18, escenario, true, -1, 0, 0, 0, 0)) {
     REXLOG_WARN("dbz3 r14: el conector no acepto el combate");
     return false;
   }
@@ -2428,8 +3870,11 @@ bool EmpezarRondas(int clave, int fila, int dificultad) {
   g_corre_b = true;
   P::Reglas r;
   r.capsulas = false;
+  if (clave == 0x7E1 && personaje < 0) r.traje_jugador = 1;   // Videl de IW: camiseta blanca de Orange Star (B3 fid 411)
   P::VigilarCombate("r14", r, [j](const P::Fin&) {
     g_corre_b = false;
+    std::unique_lock<std::mutex> lk_msn019(j->msn019.mutex, std::defer_lock);
+    if (UsaEstadosMSN019(*j)) lk_msn019.lock();
     g_cb_clip = -1;
     if (j->auto_) dbz3::net::InyectarPad(0, -1);
     dbz3::combate::SetMuneco(-1);
@@ -2460,6 +3905,7 @@ bool EmpezarRondas(int clave, int fila, int dificultad) {
     }
     REXLOG_INFO("dbz3 r14: resultado {} superado {} rango {} score {} zeni {}", j->m->nombre, res.superado, res.rango,
                 res.score, res.zeni);
+    if (lk_msn019.owns_lock()) lk_msn019.unlock();
     Terminar(res);
   });
   return true;
@@ -2732,6 +4178,28 @@ static void Colocar(uint8_t* base, uint32_t mgr, const Poses& p) {
                 g_origen[2], p.yaw[0], p.yaw[1]);
   }
   static const bool sin_comp = std::getenv("DBZ3_S8_SIN_RAIZ") != nullptr;   // prueba: sin la correccion de la raiz
+  if (&p == &kPosesNB006 || &p == &kPosesNB013 || &p == &kPosesNB014) {
+    // PINE SLES-55347, sol-IW2: ambos objetos tienen MATRIZ IDENTIDAD,
+    // posicion0 y las pistas de WAIST ya dan el mundo (final Gohan0,2.701,-4.568;
+    // Piccolo-0.678,13.993,7.209). El yaw1834 NO es la matriz de dibujo.
+    // solIW5 confirma NB013; solIW7 lo mide tambien en NB014 (intro,READY,
+    // golpe597/596 y final): las32 componentes de ambas matrices = identidad.
+    // No girar las pistas ni sumar una compensacion empirica.
+    for (int rol = 0; rol < 2; ++rol) {
+      const uint32_t x = rol ? x1 : x0;
+      for (uint32_t o : {64u, 80u}) {
+        StoreF(base, x + o, g_origen[0] + (rol ? kMedio : -kMedio));
+        StoreF(base, x + o + 4, g_origen[1]);
+        StoreF(base, x + o + 8, g_origen[2]);
+      }
+      for (uint32_t i = 0; i < 16; ++i)
+        StoreF(base, x + i * 4, i == 0 || i == 5 || i == 10 || i == 15 ? 1.0f : 0.0f);
+      StoreF(base, x + 48, g_origen[0]);
+      StoreF(base, x + 52, g_origen[1]);
+      StoreF(base, x + 56, g_origen[2]);
+    }
+    return;
+  }
   static int conv = -1;   // s9: convencion de la matriz de mundo (0: fila, x' = x M00 + z M20; 1: columna), ver abajo
   for (int rol = 0; rol < 2; ++rol) {
     const uint32_t x = rol ? x1 : x0;
@@ -2800,9 +4268,41 @@ static void Colocar(uint8_t* base, uint32_t mgr, const Poses& p) {
 // la proyeccion ya esta hecha con el 0,785 de B3). Se reproduce el encuadre acercando el ojo al objetivo en la proporcion
 // tan(fov_iw/2) / tan(fov_b3/2): el sujeto del objetivo sale del mismo tamano que en IW (fov 0,52-0,62 en los clips
 // medidos frente a 0,785: los luchadores salian ~1,5 veces mas pequenos). DBZ3_S8_SIN_FOV lo quita (comparar).
-static void CamaraFov(uint8_t* base, uint32_t mgr, const float ojo[3], const float obj[3], float fov, float roll = 0.0f) {
+static void CamaraFov(uint8_t* base, uint32_t mgr, const float ojo[3], const float obj[3], float fov, float roll = 0.0f,
+    float cuadro_evaluado = -1.0f, int duracion_evaluada = -1, int clave_evaluada = -1) {
+  if (dbz3::gp2cam::Activo()) {
+    // Pasados por quien acaba de muestrear: no releer un reloj que el panel
+    // puede haber avanzado ya entre Muestra() y esta publicacion.
+    const int id = clave_evaluada, cmn = g_cb_amc.load();
+    dbz3::gp2cam::Evaluada("qte", cmn, cmn == 915 ? 2 : -1,
+        id >= kCamEntrada ? 1 : 0, id >= kCamEntrada ? id - kCamEntrada : id >= kCam879 ? id - kCam879 : id,
+        cuadro_evaluado, duracion_evaluada,
+        g_corre_b.load() ? g_cb_fase_b.load() : g_fase_a.load(), -1, ojo, obj, fov, roll, id);
+  }
   static const bool sin = std::getenv("DBZ3_S8_SIN_FOV") != nullptr;
+  if (g_cb_videl.load()) {
+    static constexpr float ojo_v[3] = {0, 10.816f, 28.07f}, obj_v[3] = {0, 8.253f, 0};
+    CamaraMinijuego(true, ojo_v, obj_v, 0.62832f);
+    dbz3::cine::Camara(base, ojo_v, obj_v, 0.0f);
+    return;
+  }
   fov = std::clamp(fov, 0.08726647f, 3.0543263f);   // B2: los mismos limites que Camera_SetupFieldOfView (5..175 grados)
+  if (g_poses_a.load() == &kPosesNB014) {
+    const int t = g_combo_zoom.load();
+    if (t >= 0) {
+      if(g_combo_fov.load()<0) g_combo_fov=fov;
+      const float grados = t<=5 ? -2.0f*float(t) : -10.0f+2.0f*float(t-5);
+      fov=std::clamp(g_combo_fov.load()+grados*0.017444444444444446f,0.08726647f,3.0543263f);
+    }
+  }
+  if (g_corre_b.load() || g_poses_a.load() == &kPosesNB006 || g_poses_a.load()==&kPosesNB013 || g_poses_a.load()==&kPosesNB014) {
+    // 31/10: familia B tambien (NB007/NB012/MSN019). sol-IW2: cine::Camara escribe una entrada que B3 mezcla, NO su camara
+    // activa de dibujo. DS177 ya ofrece la via exacta antes de sub_820F4300:
+    // mismo ojo/objetivo/FOV del #AMC, sin acercamiento ni lazo empirico.
+    CamaraMinijuego(true, ojo, obj, fov, roll);
+    dbz3::cine::Camara(base, ojo, obj, roll);
+    return;
+  }
   const float b3 = LoadF(base, mgr + 0x1C4);
   // El fov de IW (0,60) es mas estrecho que el de B3 (0,785): se compensa acercando el ojo. Las familias que ya
   // cuadran (NB013/NB014) conservan la compensacion original; NB006 y la familia B usan el clip tal cual (abajo).
@@ -2910,7 +4410,7 @@ static void PasoCamaraB(uint8_t* base) {
   float roll = 0.0f;
   if (!c.roll.empty()) Muestra(c.roll, f, &roll);
   const float ojo[3] = {px + e[0], py + e[1], pz + e[2]}, obj[3] = {px + t[0], py + t[1], pz + t[2]};
-  CamaraFov(base, mgr, ojo, obj, fov, roll);
+  CamaraFov(base, mgr, ojo, obj, fov, roll, f, c.nf, id);
 }
 
 // Familia A: la camara de IW del clip en curso, anclada a los dos luchadores. En IW los dos objetos estan en el origen y su
@@ -2934,7 +4434,7 @@ static bool PasoCamaraA(uint8_t* base, uint32_t mgr, const Poses& p) {
     if (const char* ff = std::getenv("DBZ3_S8_FOV")) fov = float(std::atof(ff));   // prueba: fov forzado
     const float ojo[3] = {g_origen[0] + e[0], g_origen[1] + e[1], g_origen[2] + e[2]};
     const float obj[3] = {g_origen[0] + t[0], g_origen[1] + t[1], g_origen[2] + t[2]};
-    CamaraFov(base, mgr, ojo, obj, fov, roll);
+    CamaraFov(base, mgr, ojo, obj, fov, roll, f, c.nf, id);
     return true;
   }
   const uint32_t x0 = mgr + kX0, x1 = x0 + kXPaso;
@@ -2962,20 +4462,59 @@ static bool PasoCamaraA(uint8_t* base, uint32_t mgr, const Poses& p) {
   if (!c.roll.empty()) Muestra(c.roll, f, &roll);
   mundo(e, ojo);
   mundo(t, obj);
-  CamaraFov(base, mgr, ojo, obj, fov, roll);
+  CamaraFov(base, mgr, ojo, obj, fov, roll, f, c.nf, id);
   return true;
 }
 
+// EU1E11C0/1E0DA0: comprobar el ambiente autorado, no corregir el color
+// con un filtro empirico. Medido IW/B3: los20 campos de luz son identicos.
+void AmbienteNB006(uint8_t* base) {
+  static const Juego* visto=nullptr;
+  std::shared_ptr<Juego> j;
+  { std::lock_guard<std::mutex> lk(g_mu); j=g_j; }
+  const bool activo=g_corre.load() && j && j->poses==&kPosesNB006 && j->ambiente06;
+  if (!activo) { visto=nullptr; return; }
+  if (visto==j.get()) return;
+  const uint32_t g=GA(0x823A3D80), id=REX_LOAD_U32(g), var=REX_LOAD_U32(g+64);
+  if (id>=17 || var>1) return;
+  const uint32_t rec=uint32_t(GA(0x82323760))+id*92;
+  const uint32_t li=REX_LOAD_U32(rec+0x1C+var*32), ni=REX_LOAD_U32(rec+0x20+var*32);
+  if (li>=64 || ni>=64) return;
+  // US820C1DA8 / EU820C1D88: misma tabla82322B20, a780h de
+  // la tabla de niebla ya verificada en eu_map_gen.h.
+  const uint32_t luz=uint32_t(GA(0x823232A0))-0x780u+li*80;
+  const uint32_t niebla=uint32_t(GA(0x823232A0))+ni*20;
+  int distintos=0, fog_distintos=0;
+  for (uint32_t i=0;i<20;++i) distintos+=REX_LOAD_U32(luz+4*i)!=j->luz06[i];
+  // B3 usa +4/+8 como fondo; IW los complementa: no compararlos como
+  // si fueran los mismos parametros ni escribirlos en la tabla nativa.
+  for (uint32_t i:{0u,3u,4u}) fog_distintos+=REX_LOAD_U32(niebla+4*i)!=j->niebla06[i];
+  REXLOG_INFO("dbz3 solIW4: ambiente IW/B3: luz {} de20 distinta, color/distancias niebla {} de3 distintos; A ({:.3f},{:.3f},{:.3f}), fog {:08X} {:.1f}..{:.1f}",
+              distintos,fog_distintos,LoadF(base,luz),LoadF(base,luz+4),LoadF(base,luz+8),REX_LOAD_U32(niebla),
+              LoadF(base,niebla+12),LoadF(base,niebla+16));
+  visto=j.get();
+}
 void PasoBotones(uint8_t* base) {
-  if (g_poses_a.load() == &kPosesNB006) dbz3::escenarios::OcultarFondo(g_fondo_off.load());
+  AmbienteNB006(base);
   if (g_corre_b.load()) {
-    if (const uint32_t mgr = REX_LOAD_U32(kMgrPtr)) Sonda(base, mgr, "B");
+    PasoLogicoMSN019(base);
+    if (const uint32_t mgr = REX_LOAD_U32(kMgrPtr)) {
+      Sonda(base, mgr, "B");
+    }
     PasoCamaraB(base);
+    if (const uint32_t mgr = REX_LOAD_U32(kMgrPtr)) {
+      // 31/10: PINE MSN019: el actor en el origen con matriz identidad en toda la escena; sin esto salia de perfil.
+      const uint32_t x0 = mgr + kX0;
+      static constexpr float kId[12] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0};
+      for (uint32_t i = 0; i < 12; ++i) StoreF(base, x0 + 4 * i, kId[i]);
+      for (uint32_t o : {48u, 64u, 80u}) StoreF(base, x0 + o, 0), StoreF(base, x0 + o + 4, 0), StoreF(base, x0 + o + 8, 0);
+    }
     return;
   }
   if (!g_corre.load()) return;
   const uint32_t mgr = REX_LOAD_U32(kMgrPtr);
   if (!mgr) return;
+  PasoFade(base,mgr);
   const uint32_t st = REX_LOAD_U32(mgr + 35128);
   if (st < 3 || st > 8) return;   // el final de B3 (5-8) tambien: la camara del resultado se mantiene
   if (const Poses* pp = g_poses_a.load(); pp && !std::getenv("DBZ3_R14_SEP")) Colocar(base, mgr, *pp);
@@ -3001,4 +4540,40 @@ void PasoBotones(uint8_t* base) {
   const float ojo[3] = {mx + sx * dist * lado, y + alto + 6, mz + sz * dist * lado}, obj[3] = {mx, y + alto, mz};
   dbz3::cine::Camara(base, ojo, obj);
 }
+void FadeRival(int cuadros) { g_chr_total=cuadros; g_chr_fade[1]=cuadros; }
+void PasoFade(uint8_t* base,uint32_t mgr) {
+  for(int rol=0;rol<2;++rol) {
+    const int t=g_chr_fade[rol].load();
+    if(t<=0) {g_chr_activo[rol]=false;continue;}
+    const uint32_t x=mgr+kX0+rol*kXPaso;
+    const float intensidad=.95f*float(t-1)/float(g_chr_total.load());
+    g_chr_color[rol]=intensidad;g_chr_activo[rol]=true;
+    StoreF(base,x+6260,intensidad);
+    REX_STORE_U32(x+6264,0);REX_STORE_U32(x+6268,0xFFFFFFFF);REX_STORE_U32(x+6272,0xFFFFFFFF);
+    g_chr_fade[rol]=t-1;
+    if(std::getenv("DBZ3_TEST_IWMINI"))
+      REXLOG_INFO("dbz3 iw CHRFADE9: actor {} restante {} intensidad {:.6f} campos6260/6264/6268/6272",rol,t-1,intensidad);
+  }
+}
+// Se reaplica DESPUES de la transicion de color nativa y ANTES de que el
+// dibujado del personaje lea los campos. Es el consumidor de CHRFADE, no
+// una captura de geometria pasada (EU2F2D70 ->2F4450).
+void AplicarCHRFADE9(uint8_t* base,uint32_t x) {
+  if(!g_chr_activo[0].load()&&!g_chr_activo[1].load()) return;
+  const uint32_t mgr=REX_LOAD_U32(kMgrPtr);
+  for(int rol=0;rol<2;++rol) if(x==mgr+kX0+rol*kXPaso&&g_chr_activo[rol].load()) {
+    const float v=g_chr_color[rol].load();
+    StoreF(base,x+6260,v);REX_STORE_U32(x+6264,0);
+    REX_STORE_U32(x+6268,0xFFFFFFFF);REX_STORE_U32(x+6272,0xFFFFFFFF);
+    if(std::getenv("DBZ3_TEST_IWMINI"))
+      REXLOG_INFO("dbz3 iw CHRFADE9: consumidor dibujo actor {} intensidad {:.6f} cuadrado {:.6f}",rol,v,v*v);
+  }
+}
 }  // namespace dbz3::iwmini
+
+// Pareja contrastada en los llamadores US82109D90/EU82109E90.
+DBZ3_HOOK(sub_82111D58,dbz3eu_sub_82111E58) {
+  const uint32_t x=ctx.r3.u32;
+  orig(ctx,base);
+  dbz3::iwmini::AplicarCHRFADE9(base,x);
+}

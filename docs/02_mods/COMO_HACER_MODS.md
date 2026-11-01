@@ -5,6 +5,35 @@
 
 ---
 
+## 0. ATAJO PARA JUGADORES: LOS ASISTENTES DEL MOD KIT (fase 2)
+
+Si no quieres tocar bins ni consola, la portada del Mod Kit tiene cuatro tarjetas «guiadas». Cada una pregunta
+paso a paso, enseña un resumen con «Cambiar» en cada línea (el ajuste/preset y el personaje base se ven ahí) y
+tiene un único botón **Montar y probar**:
+
+- **Añadir un personaje**: juego de origen → personaje → nombre, ajuste y personaje base → importa y monta.
+- **Cambiar aspecto y aura**: personaje del juego → color de aura y de ki → (opcional) tus PNG; puedes sacar los PNG
+  desde el propio asistente. Crea un mod de colores y otro de texturas.
+- **Dar un traje a alguien**: personaje del juego → modelo (de un personaje ya importado o tu `.amb`/`.bin`) → nombre.
+- **Instalar un mod (.zip)**: elige el zip, marca qué mods quieres y se instala. Si ya tenías uno con ese nombre, el
+  viejo se guarda en `modkit_backups`. Los archivos de programa del zip (`.dll`, `.py`, `.exe`...) NO se instalan salvo
+  que marques que confías en el autor. Rechaza zips con rutas peligrosas.
+
+Todo se puede **Deshacer** (botón del asistente): los mods nuevos se apartan a `modkit_backups` y el montaje
+anterior (`_roster`) vuelve a su sitio; nunca se borra nada. Se instalan en `mods/`; el juego los usa al pulsar JUGAR.
+Prueba sin ventanas: `python modkit_gui.py --selftest-asistentes <copia de us> <carpeta nueva>`.
+
+**Montar y probar de verdad (fase 3).** Al terminar el montaje, el asistente arranca el juego y te dice en una frase si
+el mod ha cargado («Funciona…» o la causa del fallo, sin jerga). No pulsa nada en el juego: se queda en el menú
+inicial, así que **tus partidas guardadas no se tocan**. Si el juego ya está abierto te pide cerrarlo. En el equipo de
+desarrollo la prueba va a la copia fija `D:\DBZ3HD\smoke_c` mediante `tools/pruebas.py` (lo que añade vuelve a
+`D:\_PARA_BORRAR_CLAUDE\kit`); en el de un jugador arranca su propio `dbz3.exe` sin variables de prueba.
+
+**Modo Experto.** La antigua pestaña «Herramientas» (todas las herramientas con sus opciones; Texturas, Crear y
+Hex duplican lo que hacen los asistentes) ahora se llama **Experto**, en el modo Avanzado. Ninguna tarea común la
+necesita. Más detalle en [TOOLS.md](../04_herramientas/TOOLS.md), [packs de texturas](PACKS_DE_TEXTURAS.md) y
+[cambio de modelo](MODEL_SWAP.md).
+
 ## 1. LOS DOS TIPOS DE MOD
 
 ### 1.1 Override de archivo completo (reemplaza un AFS entero)
@@ -143,6 +172,12 @@ activos simultáneamente.
 
 ---
 
+## 4b. MAS PERSONAJES Y FORMAS CON MOVESET PROPIO (31/10)
+
+- **Mas de 24 personajes nuevos:** no hay que hacer nada. Los 14 primeros quedan fijos y el resto va por paginas: L1/R1 en la rueda (tecla 1/3 con teclado). Lo elegido sigue valiendo al cambiar de pagina. Online solo se ve la pagina 1.
+- **Una forma con el moveset de otro port:** en `personaje.toml`, `formas_port = ["", "imp_iw_gogeta_ss4"]` (una entrada por forma, `""` = la suya). Esa forma usa el moveset, el guion y las tecnicas del otro port, que debe estar activo. Las capsulas se emparejan por tipo y clave IW (o nombre).
+- **Mas de 64 recursos en un BSP:** ya no es un problema, el juego los guarda en una tabla ampliada.
+
 ## 5. PORTAR UN PERSONAJE DE SHIN BUDOKAI (de principio a fin)
 
 Fuentes: las ISOs de PSP en `ps2_games/` (Shin Budokai = `sb1`, Another Road = `sb2`) y, para
@@ -182,6 +217,8 @@ personaje (`--opcion clave=valor`):
 | Shin Budokai (`sb1`) / Another Road (`sb2`) | formas, golpes, técnicas que evolucionan, definitiva y voces | solo los modelos (voces de SB) |
 | Infinite World (`iw`) | formas, golpes, técnicas, hiper, definitiva y voces de IW | solo los modelos y sus formas |
 | Budokai 3 comunidad (`b3`), Heroes (`sdbh`) | lo que traiga el port / el modelo sobre el donante | — |
+
+> Modelos de Budokai 2: al montar el roster, el Kit convierte solos sus rampas de sombreado al estilo de B3 (`awo_tools/rampas.py`); la piel ya no sale blanca ni con manchas negras. No hay que hacer nada.
 
 Opciones: `golpes` (fuente/donante), `voces` (fuente/donante/ninguna), `fisica`
 (auto/donante/ninguna), `altura`, `pose_select`, `combos_tecnica`. El preset y las opciones usadas
@@ -253,3 +290,35 @@ Novedades para historias propias (la plantilla trae ejemplos comentados de cada 
 - **Estilo del texto**: `[historia.estilos.dialogo]`, `narracion` y `final` cambian fuente, tamaño, color y borde de cada tipo de texto. Por defecto narración y final salen como los del juego.
 - **Fondo del final**: `fondo = "heroe"` (Goku) o `"villano"` (Broly).
 - **Editor de historias**: en el Mod Kit, pestaña «Historias». Tiene selector de idioma, el botón «Rellenar traducciones que faltan» (marca como pendientes las que copia), la pestaña «Estilos de texto» con vista previa en vivo, selector de imagen para la narración y vista previa de los retratos.
+
+
+## Poner música propia (Mod Kit)
+En el Mod Kit, «Poner música»: eliges un mp3, wav, ogg, flac o adx tuyo, le das un nombre y el Kit lo convierte (con ffmpeg si no es .adx) y lo deja como un mod nuevo `musica_<nombre>` en `mods/` (con «Deshacer»). Para oírla, en el selector de combate pulsa L1/R1 (o `[` `]`) o usa F1 > Música de combate y elige «Mi música»; también vale `dbz3_musica_combate = fija:propia:<n>`. Solo se añade: la música original del juego no se toca. Usa solo canciones que tengas derecho a usar; el proyecto no reparte audio de juegos.
+
+## Modo PS2: mods para el Budokai 3 de PS2
+
+En el Mod Kit, arriba a la derecha, **Juego > B3 PS2**. Crea mods para tu copia de PS2 (Greatest Hits USA, SLUS-20998: una .iso o la carpeta extraída del disco; un .chd hay que convertirlo antes) y genera una ISO nueva. Tu copia nunca se modifica ni se reparte nada.
+
+1. **Textura**: elige personaje y forma, «Sacar texturas», edita los PNG sin cambiar su tamaño y «Crear mod con mis cambios». La PS2 usa paletas de 16 o 256 colores: al guardar se reducen los colores de tu imagen; lo que no toques queda igual.
+2. **Personaje**: un personaje con el aspecto de otro. Conserva nombre, icono y golpes. No añade personajes a la rueda.
+3. **Música**: sustituye una pista (se puede escuchar antes) y se repite al acabar.
+4. Enciende tus mods y pulsa **Montar ISO** (unos segundos, 2,4 GB). Ábrela en PCSX2. Probado en PCSX2 2.9; en consola real no se ha probado.
+
+Qué no está: personajes nuevos, cápsulas, colores de aura, historias, Studio y packs HD. Necesitan el motor del port; la pantalla lo explica. Por línea de comandos: `python "mod center hd/ps2_b3.py"`.
+
+## Arte opcional y lo aprendido en la ronda 31/10
+**Revisar este mod (Mod Kit, Mis mods):** avisa de archivos que faltan, errores de escritura en `personaje.toml` o `traje.toml`, `.wav` que no sirven y mods metidos en una carpeta de más. No abre el juego, así que no prueba cómo se ve.
+
+**Arte opcional (Mod Kit):** elige la carpeta con tus PNG; dice qué pieza es cada uno, avisa de forma, tamaño y transparencia, corrige la doble extensión (`x.png.png`) y sugiere el nombre si te has equivocado por poco. Instala en `mods/pack_hub_mio/ui_ingame/hub/`: es un mod normal, se apaga y se deshace. Cualquier mod puede traer `ui_ingame/hub/<pieza>.png`.
+
+**Trajes desde DAE:** `awo_tools/dae_a_b3.py` convierte un modelo DAE con huesos de estilo Xenoverse/Legends a traje (`--mod CARPETA` escribe `traje.toml` y `modelo.lzx`). La boca se repesa a `M_JAW`; compruébala siempre en juego, sobre todo si el modelo lleva máscara.
+
+**Rueda y trajes bloqueados:** un traje extra se añade detrás de los nativos. Si en esa partida hay nativos bloqueados, el selector se los salta y llega al añadido. Pruébalo con una partida que no lo tenga todo desbloqueado.
+
+**Comprobar un personaje:**
+- Una foto en combate no demuestra que flote: puede estar saltando. Mide los pies o usa un plano lateral en reposo.
+- Un brazo plano no siempre es culpa del sombreado: mira primero si la textura ya viene plana.
+- Una métrica contra tu propio render no prueba nada: compara con una captura del juego o del original.
+- Sin moveset propio, un personaje se mueve como su donante. Renombrar las técnicas del donante no las hace propias.
+
+**Voces:** `voces = "t3:<banco>|ninguna"` toma las voces de tu Tenkaichi 3 y sigue mudo sin la ISO. Esos clips no traen tabla de situaciones: asignarlos por duración puede soltar una frase a destiempo, así que comprueba cada uno. Mejor mudo que una frase equivocada.

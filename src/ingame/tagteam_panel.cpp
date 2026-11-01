@@ -288,6 +288,11 @@ const std::map<int, PortInfo>& PortRoster() {
   const auto file = dbz3::ModsRoot() / "_roster" / "roster.toml";
   const auto t = std::filesystem::last_write_time(file, ec);
   if (ec) {
+    static bool avisado = false;
+    if (!avisado) {
+      avisado = true;
+      REXLOG_WARN("dbz3 tag: no se puede consultar {}: los luchadores anadidos pueden salir con nombre generico", file.string());
+    }
     roster.clear();
     return roster;
   }
@@ -351,6 +356,7 @@ ImTextureID PortFace(int id) {
     REXLOG_INFO("dbz3 tag: cara del id {} desde {} ({}x{})", id, (dir / file).string(), w, h);
     break;
   }
+  if (!tex) REXLOG_WARN("dbz3 tag: id {} sin hud.png ni icono.png legibles en {}: sin cara personalizada", id, dir.string());
   return tex ? reinterpret_cast<ImTextureID>(tex.get()) : ImTextureID{};
 }
 
@@ -706,14 +712,18 @@ void DrawFormPick(ImGuiIO& io, bool team) {
       const float pad = 10 * a.s, gap = 8 * a.s;
       float fs = 34 * a.s;   // 34 u = 27 px a 720p: mayuscula ~20 px, como el texto pequeno del juego (23)
       float tw = f->CalcTextSizeA(fs, FLT_MAX, 0, todo.c_str()).x;
-      const float max_tw = (1110.0f - 492.0f) * a.s - 2 * (pad + gw + gap);
+      // Duelo (pantalla 14): el titulo nativo «Select Characters» ocupa el centro arriba (y 50..175 u); el chip va
+      // centrado debajo, en el hueco entre las dos ruedas (x 425..775 u), sobre el icono del bicho.
+      const bool duelo = GameScreen() == kDuelScreen;
+      const float max_tw = (duelo ? 340.0f : 1110.0f - 492.0f) * a.s - 2 * (pad + gw + gap);
       if (tw > max_tw && tw > 0) {   // solo los motivos mas largos (fr/de) se reducen un poco
         fs *= max_tw / tw;
         tw = f->CalcTextSizeA(fs, FLT_MAX, 0, todo.c_str()).x;
       }
       const float wpx = 2 * (pad + gw + gap) + tw, hpx = std::max(fs * 1.25f, gh) + 16 * a.s;
-      const ImVec2 c = a.At(492.0f, 139.0f);
-      const ImVec2 q0(c.x, c.y - hpx * 0.5f), q1(c.x + wpx, c.y + hpx * 0.5f);
+      const ImVec2 c = duelo ? a.At(600.0f, 215.0f) : a.At(492.0f, 139.0f);
+      const float x0 = duelo ? c.x - wpx * 0.5f : c.x;
+      const ImVec2 q0(x0, c.y - hpx * 0.5f), q1(x0 + wpx, c.y + hpx * 0.5f);
       Chip(dl, q0, q1, a.s);
       dl->AddRect(q0, q1, IM_COL32(150, 230, 240, 80), 10 * a.s, 0, 1.5f * a.s);
       S::Glyph(dl, "LT", ImVec2(q0.x + pad, c.y), gh);
@@ -1110,6 +1120,14 @@ void TagTeamPanel::OnDraw(ImGuiIO& io) {
     DrawMenu(io, Pad());
   } else {   // editor de colores del traje (LB en la rueda): E1, color_panel.cpp
     const bool sel = !battle && dbz3_select_live() && !Online() && !dbz3::ingame::pilot::Busy();
+    // online: L1/R1 van por el mando comun y cambian la pagina en los dos PC a la vez (netplay_hooks.cpp); aqui solo el rotulo
+    if (!battle && dbz3_select_live() && Online() && !dbz3::ingame::pilot::Busy() && dbz3::roster::DynamicRosterPageCount() > 1) {
+      char label[96];
+      std::snprintf(label, sizeof(label), "%s %d/%d  L1/R1", T::T("Personajes", "Characters"),
+                    dbz3::roster::DynamicRosterPage() + 1, dbz3::roster::DynamicRosterPageCount());
+      const S::Area area = S::GameArea(io);
+      S::MenuText(ImGui::GetForegroundDrawList(), area.At(600, 215), 18 * area.s, label, false, false, 500 * area.s);
+    }
     uint16_t pressed = 0;
     if (sel || ColorPanelActive()) {
       pressed = Pad();
@@ -1123,7 +1141,7 @@ void TagTeamPanel::OnDraw(ImGuiIO& io) {
         std::snprintf(label, sizeof(label), "%s %d/%d  L1/R1", T::T("Personajes", "Characters"),
                       dbz3::roster::DynamicRosterPage() + 1, pages);
         const S::Area area = S::GameArea(io);
-        S::MenuText(ImGui::GetForegroundDrawList(), area.At(600, 850), 18 * area.s, label, false, false, 500 * area.s);
+        S::MenuText(ImGui::GetForegroundDrawList(), area.At(600, 215), 18 * area.s, label, false, false, 500 * area.s);
       }
       ColorPanelTick(io, pressed, sel, forms::Copy(side).snapshot.id);
     }

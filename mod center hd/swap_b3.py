@@ -112,7 +112,11 @@ def find_us(prefer=None, roots=()):
     de datos del launcher (dbz3_game_dir), `roots` y la carpeta del Kit, subiendo hasta 4 niveles;
     en cada una us, DBZ3/us (volcado del disco), assets/us, assets/DBZ3/us y sus eu."""
     exe_dirs = [r for r in roots if r] + [ROOT, os.path.join(ROOT, 'out', 'build', 'win-amd64-release')]
-    game_dir, region = _launcher_cfg(exe_dirs)
+    # si la carpeta del juego no deja escribir, el launcher guarda dbz3_user.toml en Documentos\dbz3 (UserSettingsPath)
+    # (UserDataRoot: <juego>\user_data\dbz3 o la carpeta del usuario\dbz3)
+    home = os.path.expanduser('~')
+    game_dir, region = _launcher_cfg(exe_dirs + [os.path.join(r, 'user_data', 'dbz3') for r in exe_dirs] +
+                                     [os.path.join(home, 'Documents', 'dbz3'), os.path.join(home, 'dbz3')])
     eu = [l.replace('us', 'eu') for l in _LAYOUTS]
     layouts = eu + list(_LAYOUTS) if region == 'eu' else list(_LAYOUTS) + eu
     seen = []

@@ -67,6 +67,7 @@ std::unordered_map<uint32_t, int> g_start_form;  // [forma_jugador]: palabra del
 std::unordered_map<uint32_t, int> g_rival_suit;  // [traje_rival]: palabra del combate -> traje del rival
 std::unordered_map<uint32_t, int> g_map_model;   // [modelo_mapa]: palabra del combate -> modelo en el mapa
 std::unordered_map<uint32_t, int> g_map_suit;    // [traje_mapa]: palabra del combate -> traje en el mapa
+std::unordered_map<uint32_t, uint32_t> g_retrato_busqueda;   // [retrato_busqueda]: casilla -> entrada de data_cmn con su busto (R1 en el mapa)
 std::unordered_map<uint32_t, int> g_map_anim;    // [animacion_mapa]: palabra -> casilla cuyo vuelo del mapa se usa
 std::atomic<uint32_t> g_last_battle{0xFFFFFFFFu}; // ultimo combate lanzado (palabra)
 // [codigos_saga] (sagas 5+ del Heroe): el motor DU solo reproduce codigos nativos, asi que las sagas
@@ -106,7 +107,7 @@ void Load() {
     std::ifstream f(dbz3::ModsRoot() / mod.name / "campana.toml");
     if (!f) continue;
     std::string line;
-    bool in_codes = false, in_story = false, in_wheel = false, in_fighter = false, in_intro = false, in_forms = false, in_suits = false, in_models = false, in_map_suits = false, in_map_anims = false, in_saga_codes = false;
+    bool in_codes = false, in_story = false, in_wheel = false, in_fighter = false, in_intro = false, in_forms = false, in_suits = false, in_bust = false, in_models = false, in_map_suits = false, in_map_anims = false, in_saga_codes = false;
     int n = 0;
     g_story_codes.emplace_back();
     while (std::getline(f, line)) {
@@ -125,6 +126,7 @@ void Load() {
         in_models = line.find("[modelo_mapa]") != std::string::npos;
         in_map_suits = line.find("[traje_mapa]") != std::string::npos;
         in_map_anims = line.find("[animacion_mapa]") != std::string::npos;
+        in_bust = line.find("[retrato_busqueda]") != std::string::npos;
         in_saga_codes = line.find("[codigos_saga]") != std::string::npos;
         continue;
       }
@@ -183,6 +185,10 @@ void Load() {
           }
           p = end;
         }
+        continue;
+      }
+      if (in_bust && eq != std::string::npos) {
+        g_retrato_busqueda[uint32_t(std::strtoul(line.c_str(), nullptr, 10))] = uint32_t(std::strtoul(line.c_str() + eq + 1, nullptr, 10));
         continue;
       }
       if ((in_forms || in_suits || in_models || in_map_suits || in_map_anims) && eq != std::string::npos) {   // palabra = forma / traje / modelo
@@ -260,7 +266,9 @@ uint32_t IntroDeSaga(int sig) { return sig <= 3 ? uint32_t(100 + 2 * std::max(1,
 int DuFighter(uint8_t* base) {
   if (g_slot_fighter.empty() || dbz3::g_guest_eu) return -1;
   const uint32_t w = g_last_battle.load(), code = w >> 16, slot = REX_LOAD_U8(dbz3::GA(0x824A58A0));
-  if (w == 0xFFFFFFFFu || !CodigoCombate(code) || (code - 5000) % 100 != slot) return -1;
+  // tambien en los combates opcionales nativos del mapa (2400-2404, puntos del Heroe): en la casilla manda su luchador
+  const bool opcional = code >= 2400 && code < 2405;
+  if (w == 0xFFFFFFFFu || (!opcional && (!CodigoCombate(code) || (code - 5000) % 100 != slot))) return -1;
   const auto it = g_slot_fighter.find(slot);
   return it == g_slot_fighter.end() ? -1 : int(it->second);
 }
@@ -459,6 +467,10 @@ DBZ3_HOOK(sub_8217AD68, dbz3eu_sub_8217AD20) {
 // Escena que arranca: r3 = codigo << 16 | entrada del contenedor (la entrada no llega al registro).
 namespace dbz3::rpg {
 void DuVictoria(int saga, int k);   // rpg.cpp
+void ShenronDeseo();                // rpg.cpp: Shenron aparece: se gastan las 7 Esferas del Heroe
+void DeseoRaza();                   // rpg.cpp: fila de cambiar raza elegida en el menu de deseos
+void EsferaDelMapa();               // rpg.cpp
+int EsferasDeCasilla(int casilla);  // rpg.cpp: Esferas del Heroe si la casilla es la suya; si no, -1
 }
 std::chrono::steady_clock::time_point g_ultima_escena{};   // C7: cuando se lanzo la ultima escena de la historia (el toque de prueba espera a que acabe su charla)
 DBZ3_HOOK(sub_8215E918, dbz3eu_sub_8215E8D8) {
@@ -500,6 +512,15 @@ DBZ3_HOOK(sub_82156B38, dbz3eu_sub_82156AF8) {
 // Arranque de una escena desde el mapa o la historia (r3 = codigo << 16 | entrada).
 DBZ3_HOOK(sub_8215E9C8, dbz3eu_sub_8215E988) {
   dbz3::campaigns::g_last_battle = ctx.r3.u32;
+  // Heroe: sus Esferas (una por saga, heroe.cpp) se copian a la mascara nativa de la casilla, la que comprueba sub_8215C1B0 y pinta el DU
+  if (const uint32_t cas = REX_LOAD_U8(dbz3::GA(0x824A58A0)); !dbz3::g_guest_eu && dbz3::campaigns::g_slot_fighter.count(cas)) {
+    if (const int esf = dbz3::rpg::EsferasDeCasilla(int(cas)); esf >= 0) REX_STORE_U8(0x8247AA30u + 4624u * cas + 4580u, uint8_t(esf));
+  }
+  // PRUEBA (DBZ3_TEST_HEROE_FINAL=1): la llegada al mapa del Heroe salta a su final (1.39), para medir el camino a Shenron sin 27 combates
+  if (static const bool salto = std::getenv("DBZ3_TEST_HEROE_FINAL") != nullptr; salto) {
+    const uint32_t cas = REX_LOAD_U8(dbz3::GA(0x824A58A0));
+    if (dbz3::campaigns::g_slot_fighter.count(cas) && ctx.r3.u32 == (((5100u + cas) << 16) | 0u)) ctx.r3.u64 = (1u << 16) | 39u;
+  }
   // DS20: recuerda a que saga pertenece el combate que se lanza (su victoria puede llegar con g_saga ya avanzado)
   if (const uint32_t code = ctx.r3.u32 >> 16, entry = ctx.r3.u32 & 0xFFFF, slot = REX_LOAD_U8(dbz3::GA(0x824A58A0));
       !dbz3::g_guest_eu && dbz3::campaigns::CodigoCombate(code) && !(entry & 1) &&
@@ -597,8 +618,10 @@ DBZ3_HOOK_EU(sub_821C4DA0) {
     const uint32_t slot = REX_LOAD_U8(dbz3::GA(0x824A58A0));
     const uint32_t marks = dbz3::GA(0x8247A9B0) + 128 + 4624 * (slot < 38 ? slot : 0) + 128;
     uint32_t mark = 0;
-    for (uint32_t i = 0; i < 64 && !mark; ++i) {
-      if (IsModBattle(base, REX_LOAD_U32(marks + 64 * i))) mark = marks + 64 * i;
+    static const bool del_final = std::getenv("DBZ3_AUTO_TOUCH_ULTIMA") != nullptr;   // PRUEBA: toca del ultimo hueco al primero y cualquier tipo de marca
+    for (uint32_t i = 0; i < 64 && (!mark || del_final); ++i) {
+      const uint32_t w = REX_LOAD_U32(marks + 64 * i);
+      if (del_final ? (w != 0xFFFFFFFFu && w != 0u) : IsModBattle(base, w)) mark = marks + 64 * i;
     }
     if (!mark) {
       g_map_since = {};
@@ -609,7 +632,7 @@ DBZ3_HOOK_EU(sub_821C4DA0) {
       g_map_since = {};
       --auto_touch;
       const uint32_t task = ctx.r3.u32, word = REX_LOAD_U32(mark);
-      REXLOG_INFO("dbz3 campanas: se toca la marca de combate {} entrada {}", word >> 16, word & 0xFFFF);
+      REXLOG_INFO("dbz3 campanas: se toca la marca de combate {} entrada {} (hueco {}, icono {})", word >> 16, word & 0xFFFF, (mark - marks) / 64, REX_LOAD_U32(mark + 4));
       constexpr dbz3::GA kMap = 0x82479A60, kScr = 0x824BA110;
       auto f32 = [&](uint32_t a) { const uint32_t v = REX_LOAD_U32(a); float f; std::memcpy(&f, &v, 4); return f; };
       auto put = [&](uint32_t a, float f) { uint32_t v; std::memcpy(&v, &f, 4); REX_STORE_U32(a, v); };
@@ -697,6 +720,10 @@ MapLook PickLook(uint8_t* base, const char* how, bool quiet = false) {
 template <class F>
 void WithLook(uint8_t* base, uint32_t rec, const MapLook& l, F&& create) {
   constexpr dbz3::GA kFlight = 0x823742C8;
+  // Esta tabla (casilla * 5 + traje) es el fichero del busto de R1 (3852 = Goku), no el vuelo. Con busto propio queda fijo en la casilla.
+  for (const auto& [cas, ent] : g_retrato_busqueda) {
+    if (cas < 38) for (uint32_t k = 0; k < 5; ++k) REX_STORE_U32(kFlight + (cas * 5 + k) * 4, ent);
+  }
   if (!rec) {
     create();
     return;
@@ -712,9 +739,11 @@ void WithLook(uint8_t* base, uint32_t rec, const MapLook& l, F&& create) {
     const uint32_t slot = REX_LOAD_U8(rec + 4577);
     const uint32_t k = REX_LOAD_U8(rec + 4578) < 3 ? REX_LOAD_U8(rec + 4579) : 4;
     if (slot < 38 && k < 5) {
-      entry = kFlight + (slot * 5 + k) * 4;
-      old_entry = REX_LOAD_U32(entry);
-      REX_STORE_U32(entry, REX_LOAD_U32(kFlight + (uint32_t(l.anim) * 5 + k) * 4));
+      if (!g_retrato_busqueda.count(slot)) {
+        entry = kFlight + (slot * 5 + k) * 4;
+        old_entry = REX_LOAD_U32(entry);
+        REX_STORE_U32(entry, REX_LOAD_U32(kFlight + (uint32_t(l.anim) * 5 + k) * 4));
+      }
       anims = kAnims + slot * 4;
       old_anims = REX_LOAD_U32(anims);
       REX_STORE_U32(anims, REX_LOAD_U32(kAnims + uint32_t(l.anim) * 4));
@@ -841,9 +870,74 @@ DBZ3_HOOK_EU(sub_820A5820) {
 // que no esta en el banco y el juego llamo a una funcion basura del recurso (vtable[1]): parada del
 // juego (0x80000003). Se comprueba lo mismo que el juego va a leer (entrada, recurso, su vtable[1]) y,
 // si no es posible, se hace lo que la funcion hace sin banco: 32 bytes a 0 en objeto+224.
-// C4 (Shenron): sub_8215C1B0 comprueba la mascara de Esferas del Dragon de la casilla (u8 en bloque+4580; bloque = 0x8247AA30 +
-// 4624 * casilla) y con las 7 (0x7F) lanza la escena de Shenron. DBZ3_TEST_ESFERAS=7 las pone antes de comprobar (prueba: ver
-// con DBZ3_SHENRON_DIAG quien dibuja el banco data_usi 1958). Solo US (sin entrada EU).
+// Shenron: sub_8215C1B0 = nativa 0x115 (grupo 17, indice 5) de la VM de guiones #SPX (sub_8209F568, op 0x80). La llaman al acabar los guiones
+// de los finales (codigos 1 y 2; scripts data_cmn 2800-2865). Con la mascara de Esferas de la casilla (u8 en 0x8247AA30 + 4624 * casilla + 4580)
+// a 0x7F pide la pantalla 11 (Shenron y deseos, luego 12 creditos); si no, la 12. Las gana el evento 38 del #LST (sub_8215A258, al azar).
+// DBZ3_TEST_ESFERAS=7 las pone antes de comprobar. Solo US (sin entrada EU).
+// Evento 38 del #LST: Esfera al azar en la mascara nativa. El Heroe cuenta las suyas por saga (la mascara se rehace en la escena siguiente).
+REX_HOOK_RAW(sub_8215A258) {
+  __imp__sub_8215A258(ctx, base);
+  if (dbz3::rpg::EsferasDeCasilla(REX_LOAD_U8(dbz3::GA(0x824A58A0))) >= 0) dbz3::rpg::EsferaDelMapa();
+}
+
+// Menu de deseos (pantalla 11): objeto en 0x8243A260, +20 filas, +24.. capsula de cada fila (la ultima, sin limite de veces), +36 cursor.
+// En la historia del Heroe la ultima fila es "cambiar raza y cuerpo": no da su capsula y se pinta con su textura propia.
+namespace dbz3::heroe_ui { void AvisarMenuDeseo(int fila, int filas); }
+// sub_82162420 = estado del menu (cursor y A). Al elegir, el estado pasa a 0x82162350 (BOOM y carta de la capsula): la fila de raza no da
+// capsula, asi que hace lo mismo que 0x821622A8 al cerrar la carta y sigue a la despedida (0x82162260).
+REX_HOOK_RAW(sub_82162420) {
+  const uint32_t tarea = ctx.r3.u32, obj = REX_LOAD_U32(0x8243A260u);
+  const bool heroe = obj && dbz3::rpg::EsferasDeCasilla(REX_LOAD_U8(dbz3::GA(0x824A58A0))) >= 0;
+  if (heroe) dbz3::heroe_ui::AvisarMenuDeseo(int(REX_LOAD_U32(obj + 36)), int(REX_LOAD_U32(obj + 20)));
+  __imp__sub_82162420(ctx, base);
+  if (heroe && REX_LOAD_U32(tarea + 28) == 0x82162350u && REX_LOAD_U32(obj + 36) + 1 == REX_LOAD_U32(obj + 20)) {
+    const PPCContext saved = ctx;
+    ctx.r3.u64 = 1;
+    sub_82081A48(ctx, base);
+    ctx.r3.u64 = 15;
+    sub_820924C0(ctx, base);
+    sub_821BA820(ctx, base);
+    ctx.r3.u64 = 9, ctx.r4.u64 = 0;
+    sub_821652D0(ctx, base);
+    ctx.r3.u64 = REX_LOAD_U32(obj + 4);
+    sub_8209ECE0(ctx, base);
+    ctx = saved;
+    REX_STORE_U32(tarea + 28, 0x82162260u);
+    REXLOG_INFO("dbz3 shenron: fila de raza: sin carta de capsula");
+  }
+}
+// sub_82161B78 pinta cada fila con sub_82161548(pos, color, banco = obj+244 = data_usi 2684, textura = capsula, r7 = 0x700000 + 1280 * fila).
+// Ultima fila del Heroe: la textura 1983 que transformaciones.cpp anade al banco, con el texto en cada idioma.
+REX_HOOK_RAW(sub_82161548) {
+  const uint32_t obj = REX_LOAD_U32(0x8243A260u);
+  if (obj && ctx.r5.u32 == REX_LOAD_U32(obj + 244) && dbz3::rpg::EsferasDeCasilla(REX_LOAD_U8(dbz3::GA(0x824A58A0))) >= 0 &&
+      ctx.r7.u32 == 0x700000u + 1280u * (REX_LOAD_U32(obj + 20) - 1u)) {
+    constexpr uint32_t kFila = 1983;   // forms::kUnifiedBase - 1
+    const uint32_t banco = ctx.r5.u32;
+    if (REX_LOAD_U32(banco + 16) > kFila && REX_LOAD_U32(banco + REX_LOAD_U32(banco + 20) + 4 * kFila)) ctx.r6.u64 = kFila;
+    else {
+      static int avisos = 0;
+      if (!avisos++) REXLOG_WARN("dbz3 shenron: banco de nombres sin la textura de la fila de raza (n {})", REX_LOAD_U32(banco + 16));
+    }
+  }
+  __imp__sub_82161548(ctx, base);
+}
+REX_HOOK_RAW(sub_821618D8) {
+  const uint32_t obj = REX_LOAD_U32(0x8243A260u);
+  if (obj && dbz3::rpg::EsferasDeCasilla(REX_LOAD_U8(dbz3::GA(0x824A58A0))) >= 0) {
+    const uint32_t fila = REX_LOAD_U32(obj + 36), filas = REX_LOAD_U32(obj + 20), cap = REX_LOAD_U32(obj + 24 + 4 * fila);
+    REXLOG_INFO("dbz3 shenron: deseo elegido: fila {} de {} (capsula {})", fila + 1, filas, cap);
+    if (fila + 1 == filas) {
+      dbz3::rpg::DeseoRaza();
+      const uint32_t cuenta = 0x8247A9B0u + 0x30000u - 20711u + cap, antes = REX_LOAD_U8(cuenta);
+      __imp__sub_821618D8(ctx, base);
+      REX_STORE_U8(cuenta, antes);
+      return;
+    }
+  }
+  __imp__sub_821618D8(ctx, base);
+}
+
 REX_HOOK_RAW(sub_8215C1B0) {
   static const int esf = std::getenv("DBZ3_TEST_ESFERAS") ? std::atoi(std::getenv("DBZ3_TEST_ESFERAS")) : 0;
   const uint32_t cas = REX_LOAD_U8(dbz3::GA(0x824A58A0));
@@ -851,8 +945,10 @@ REX_HOOK_RAW(sub_8215C1B0) {
   const uint32_t dir = 0x8247AA30u + 4624u * cas + 4580u;
   const uint32_t antes = REX_LOAD_U8(dir);
   if (esf >= 7) REX_STORE_U8(dir, 0x7F);
+  const bool shenron = REX_LOAD_U8(dir) == 0x7F;   // clrlwi 25 (7 bits), igual que la nativa
   REXLOG_INFO("dbz3 shenron: sub_8215C1B0 (comprueba las Esferas) casilla {} / {}, mascara antes {:02X}{} (desde {:08X})", cas, cas2,
               antes, esf >= 7 ? " -> 7F (prueba)" : "", uint32_t(ctx.lr));
+  if (shenron && dbz3::rpg::EsferasDeCasilla(int(cas)) >= 0) dbz3::rpg::ShenronDeseo();
   __imp__sub_8215C1B0(ctx, base);
 }
 
@@ -862,9 +958,12 @@ DBZ3_HOOK_EU(sub_82096FF0) {
   // C4: rotulo de nombre de la pantalla de subida de nivel de DU (data_usi 1974, textura 27+casilla; 36 = 'Saibamen'): con la
   // historia del Heroe en las casillas 35-37 se pide la textura propia (casilla + 30) que anade mods/heroe_nombres
   // (cac/nombre_levelup.py): el banco pasa de 65 a 68 texturas.
-  if (bank && id >= 62 && id <= 64 && REX_LOAD_U32(bank + 16) >= 68) {
+  // Sin mods/heroe_nombres cargado (banco de 65: ficha montada antes de existir el rotulo, o nombre recien cambiado) el id 62 es el
+  // nativo 'Super Yi-Shin-Long' de la casilla 35: mejor sin rotulo (un id fuera de la tabla no dibuja nada) que el nombre de otro.
+  if (bank && id >= 62 && id <= 64) {
     const uint32_t cas = REX_LOAD_U8(dbz3::GA(0x824A58A0));
-    if (int32_t(cas) == id - 27 && dbz3::campaigns::g_slot_fighter.count(cas)) ctx.r5.s64 = id + 3;
+    const uint32_t n = REX_LOAD_U32(bank + 16);   // 65 = data_usi 1974 nativo; otros bancos tienen sus propios ids 62-64
+    if (int32_t(cas) == id - 27 && dbz3::campaigns::g_slot_fighter.count(cas) && (n >= 68 || n == 65)) ctx.r5.s64 = n >= 68 ? id + 3 : 0x7FFF;
   }
   {   // C4: DIAGNOSTICO de la escena de Shenron (DBZ3_SHENRON_DIAG=1): el banco de texto data_usi 1958 tiene 4 texturas
     static const bool shdiag = std::getenv("DBZ3_SHENRON_DIAG") != nullptr;
@@ -891,7 +990,7 @@ DBZ3_HOOK_EU(sub_82096FF0) {
     // juego se cerraba (2026-10-12, lectura de 0x06A459B2): fuera de la tabla, sin efecto
     auto code = [](uint32_t a) { return a >= 0x82000000u && a < 0x83000000u && !(a & 3); };
     const uint32_t offs = REX_LOAD_U32(dbz3::GA(0x8238CE14));
-    const int32_t idx = id - int32_t(REX_LOAD_U32(bank + 24));
+    const int32_t idx = ctx.r5.s32 - int32_t(REX_LOAD_U32(bank + 24));   // el id ya cambiado por el rotulo del Heroe
     const uint32_t rel = offs >= 0x10000 && idx >= 0 && idx < 4096 ? REX_LOAD_U32(offs + 4 * uint32_t(idx)) : 0xFFFFFFFFu;
     const uint32_t entry = rel < 0x01000000u ? bank + rel : 0;
     const uint32_t res = entry ? REX_LOAD_U32(entry + 20) : 0;
@@ -918,9 +1017,18 @@ DBZ3_HOOK_EU(sub_82096FF0) {
     }
     if (!ok) {
       static int warned = 0;
-      if (warned++ < 8)
-        REXLOG_WARN("dbz3: efecto {} que no esta en el banco {:08X} (entrada {:08X}, recurso {:08X}, desde {:08X}): sin efecto", id,
-                    bank, entry, res, uint32_t(ctx.lr));
+      if (warned++ < 8) {
+        // pila de llamadas (4 niveles) y datos del banco: de que modelo/efecto es la textura que falta
+        uint32_t fr = ctx.r1.u32, up[5] = {0, 0, 0, 0, 0};
+        for (int k = 0; k < 5 && fr >= 0x70000000u && fr < 0x80000000u; ++k) {
+          fr = REX_LOAD_U32(fr);
+          if (fr < 0x70000000u || fr >= 0x80000000u) break;
+          up[k] = REX_LOAD_U32(fr - 8);
+        }
+        REXLOG_WARN("dbz3: efecto {} que no esta en el banco {:08X} (entrada {:08X}, recurso {:08X}, desde {:08X}): sin efecto"
+                    " [n {} primera {} pila {:08X} {:08X} {:08X} {:08X} {:08X}]", id,
+                    bank, entry, res, uint32_t(ctx.lr), REX_LOAD_U32(bank + 16), REX_LOAD_U32(bank + 24), up[0], up[1], up[2], up[3], up[4]);
+      }
       std::memset(base + ctx.r3.u32 + 224, 0, 32);
       return;
     }

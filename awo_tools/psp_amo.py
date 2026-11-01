@@ -77,6 +77,17 @@ class PSPAMG:
             if not w or not w[3]:
                 continue
             s = a + w[3]
+            if le(b, s) == 0 and le(b, s + 12):
+                # Shin Budokai 1 (issue #57): otro formato. Piel [0, 0, 0, nconj] + nconj x [peso, n, ptr, 0];
+                # entrada de 48 B: [pos xyz 1][normal xyz, dir. en el grupo][dir. en la copia, 0, 0, 0]
+                for c in range(le(b, s + 12)):
+                    st = s + 16 + 16 * c
+                    wt = struct.unpack_from("<f", b, st)[0]
+                    for k in range(le(b, st + 4)):
+                        e = a + le(b, st + 8) + 48 * k
+                        self.skin.append((i, wt, list(struct.unpack_from("<3f", b, e)),
+                                          list(struct.unpack_from("<3f", b, e + 16)), le(b, e + 32)))
+                continue
             for c in range(le(b, s)):
                 st = a + le(b, s + 4 + 4 * c)
                 wt = struct.unpack_from("<f", b, st)[0]
@@ -200,6 +211,8 @@ class PSPAMO:
             struct.unpack_from("<6I", b, 0x10)
         self.amg_off = [le(b, self.amg_tbl + 4 * i) for i in range(self.namg)]
         self.amgs = [PSPAMG(b, o) for o in self.amg_off]
+        if self.amgs and not self.amgs[0].skin:   # cuerpo sin piel = T-pose en combate: que falle aqui y no en el juego
+            raise A.ConvError("modelo PSP sin piel: formato desconocido")
 
 
 def convert_amo(b):

@@ -441,9 +441,10 @@ bool PickFile(std::string& out, const char* filter_desc, const char* filter_ext,
     dlg->SetOptions(opts | FOS_FORCEFILESYSTEM);
     const std::wstring wdesc = Utf8ToWide(filter_desc);
     const std::wstring wext = Utf8ToWide(filter_ext);
+    const std::wstring wtodos = Utf8ToWide(i18n::T("Todos los archivos", "All files"));
     COMDLG_FILTERSPEC spec[2] = {
         {wdesc.c_str(), wext.c_str()},
-        {L"Todos los archivos", L"*.*"},
+        {wtodos.c_str(), L"*.*"},
     };
     dlg->SetFileTypes(2, spec);
     if (!initial.empty()) {
@@ -817,6 +818,17 @@ void LauncherDialog::HandleDroppedFiles() {
     }
     test_nova = nullptr;
   }
+  // DBZ3_TEST_VIDEOSHD=1 (con DBZ3_TEST_TAB=5, tools/pruebas.py videos_hd_descarga): pulsa Descargar; dbz3_videos_hd.req pide Desinstalar
+  static const char* test_vhd = std::getenv("DBZ3_TEST_VIDEOSHD");
+  if (test_vhd) {
+    if (test_vhd[0]) VideosHdInstalar();
+    test_vhd = "";
+    std::error_code vec;
+    if (std::filesystem::exists("dbz3_videos_hd.req", vec)) {
+      std::filesystem::rename("dbz3_videos_hd.req", "dbz3_videos_hd.req.usado", vec);
+      VideosHdDesinstalar();
+    }
+  }
   std::vector<std::filesystem::path> files;
   {
     std::lock_guard<std::mutex> lock(g_drop_mutex);
@@ -1014,11 +1026,7 @@ void LauncherDialog::OnDraw(ImGuiIO& io) {
                                 ImGui::GetColorU32(ImVec4(0.96f, 0.55f, 0.11f, 0.0f)));
     dl->AddRectFilled(ImVec2(wp.x, wp.y + 86.0f), ImVec2(wp.x + ww, wp.y + 88.0f),
                       ImGui::GetColorU32(kDragonOrange));
-    if (const auto logo = dbz3::ingame::style::Img("hub/logo_512")) {
-      const float h = 70.0f, w = logo.w * h / logo.h;
-      dbz3::ingame::style::DrawPic(dl, logo, ImVec2(wp.x + ww - 24.0f - w, wp.y + 8.0f),
-                                   ImVec2(wp.x + ww - 24.0f, wp.y + 8.0f + h));
-    }
+    // 30/10: sin el logo de Dragon HUB en la cabecera (peticion del usuario); el HUB lo sigue usando dentro del juego
   }
   ImGui::BeginGroup();
   {
@@ -2093,6 +2101,8 @@ void LauncherDialog::DrawNews() {
     ImGui::Text(i18n::T("Novedades de la version %s", "What's new in version %s"), news->version);
   }
   ImGui::Separator();
+  // la lista va en su propio cuadro con scroll: el foco del boton "Entendido" ya no la deja abierta por el final
+  ImGui::BeginChild("##news_list", ImVec2(670.0f, ImGui::GetMainViewport()->Size.y * 0.62f), false);
   ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + 640.0f);
   for (int i = 0; i < news->count; ++i) {
     const NewsItem& item = news->items[i];
@@ -2102,6 +2112,7 @@ void LauncherDialog::DrawNews() {
     ImGui::TextUnformatted(i18n::T(item.es, item.en));
   }
   ImGui::PopTextWrapPos();
+  ImGui::EndChild();
   ImGui::Spacing();
   ImGui::Separator();
   bool close = CloseKeyPressed();
@@ -2296,7 +2307,7 @@ void LauncherDialog::DrawModCard() {
   ImGui::Spacing();
   ImGui::Separator();
   if (ui::IconButton(ICON_FOLDER, i18n::T("Abrir carpeta", "Open folder"))) {
-    std::system(("explorer \"" + (dbz3::ModsRoot() / mod.name).string() + "\"").c_str());
+    OpenFolder(dbz3::ModsRoot() / mod.name);
   }
   if (mod.type == "personaje") {
     ImGui::SameLine();
@@ -3142,6 +3153,13 @@ constexpr FeatureText kFeatureTexts[] = {
      "La definitiva sin entrar en el modo hiper: su misma entrada, pagando una vez el ki de su capsula. No se "
      "usa en el online.",
      "The ultimate without entering hyper mode: same input, paying its capsule's ki once. Not used online.", false},
+    {"dbz3_plugins", "Plugins de codigo", "Code plugins",
+     "AVISO: carga las DLL de la carpeta plugins junto a dbz3.exe (p. ej. el mod de accesibilidad para "
+     "jugadores ciegos). Son codigo de terceros con el mismo acceso que el juego: activalo solo con plugins "
+     "que conozcas. Se aplica al reiniciar el juego; lo cargado sale en el log.",
+     "WARNING: loads the DLLs in the plugins folder next to dbz3.exe (e.g. the accessibility mod for blind "
+     "players). They are third-party code with the same access as the game: only enable it with plugins you "
+     "trust. Applies after restarting the game; what is loaded is written to the log.", false},
     {"dbz3_combate_sonda", "Sonda del laboratorio", "Lab probe",
      "Guarda cada cuadro y cada golpe del combate en logs/combate_*.csv para medir los golpes (frame data).",
      "Saves every frame and hit of the fight to logs/combate_*.csv to measure moves (frame data).", false},
@@ -3290,20 +3308,24 @@ void LauncherDialog::DrawPs2Box() {
     const char* es;
     const char* en;
   };
-  static const Juego kJuegos[3] = {
+  static const Juego kJuegos[] = {
       {"Dragon Ball Z Budokai (PS2)", "Leyenda de Mr. Satán y saga de Namek", "Mr. Satan's legend and the Namek saga"},
       {"Dragon Ball Z Budokai 2 (PS2)", "Campaña de Budokai 2 (tablero) y Nave de Babidi",
        "Budokai 2 campaign (board) and Babidi's ship"},
       {"Dragon Ball Z Infinite World (PS2)", "Campaña de Infinite World, sus minijuegos y animaciones",
        "Infinite World campaign, its minigames and animations"},
+      {"Dragon Ball Z Shin Budokai (PSP)", "Personajes para el importador", "Characters for the importer"},
+      {"Shin Budokai: Another Road (PSP)", "Personajes para el importador", "Characters for the importer"},
+      {"Dragon Ball Z Budokai Tenkaichi 3 (PS2)", "Música de Tenkaichi 3 (Nova's Mods)", "Tenkaichi 3 music (Nova's Mods)"},
   };
+  constexpr int kN = int(std::size(kJuegos));
   static double leido = -10;
-  static std::string ruta[3];
+  static std::string ruta[kN];
   if (ImGui::GetTime() - leido > 2.0) {   // mirar ps2_games no cuesta, pero no en cada fotograma
     leido = ImGui::GetTime();
-    for (int i = 0; i < 3; ++i) ruta[i] = rex::path_to_utf8(Pa::IsoPs2(i).filename());
+    for (int i = 0; i < kN; ++i) ruta[i] = rex::path_to_utf8(Pa::IsoPs2(i).filename());
   }
-  for (int i = 0; i < 3; ++i) {
+  for (int i = 0; i < kN; ++i) {
     ImGui::PushID(i);
     ImGui::AlignTextToFramePadding();
     ImGui::TextColored(kGold, "%s", kJuegos[i].nombre);
@@ -3580,7 +3602,10 @@ void LauncherDialog::DrawNovasModsTab() {
       if (ImGui::SmallButton(i18n::T("Ver en Mods", "See in Mods"))) request_tab_ = 1;
     }
   }
+  DrawVideosHd();
+  if (ModPipeline::RosterToolAvailable()) DrawRecetasNova();   // antes que el pack: lee su consulta antes de que el pack lance la suya
   if (ModPipeline::RosterToolAvailable()) DrawPackIW();   // necesita el Kit (importar.py)
+  if (ModPipeline::RosterToolAvailable()) DrawMusicaT3();
   switch (GetNovaState()) {
     case NovaState::kNoKey:
       ImGui::TextColored(kDragonOrangeDim, "%s", i18n::T("Llega en la proxima actualizacion del launcher.",
@@ -3816,7 +3841,7 @@ void LauncherDialog::DrawModsTab() {
     auto open_dir = [](const std::filesystem::path& d) {
       std::error_code ec;
       std::filesystem::create_directories(d, ec);
-      std::system(("explorer \"" + d.string() + "\"").c_str());
+      OpenFolder(d);
     };
     // el resultado se recoge aunque la seccion este plegada
     if (tex_easy_job_ && !mod_pipeline_.IsRunning()) {
@@ -3944,8 +3969,7 @@ void LauncherDialog::DrawModsTab() {
       const std::filesystem::path mods_dir = dbz3::ModsRoot();
       std::error_code ec;
       std::filesystem::create_directories(mods_dir, ec);
-      std::string cmd = "explorer \"" + mods_dir.string() + "\"";
-      std::system(cmd.c_str());
+      OpenFolder(mods_dir);
     }
     ImGui::Spacing();
   }
@@ -4179,8 +4203,7 @@ void LauncherDialog::DrawModsTab() {
       const std::filesystem::path mods_dir = dbz3::ModsRoot();
       std::error_code ec;
       std::filesystem::create_directories(mods_dir, ec);
-      std::string cmd = "explorer \"" + mods_dir.string() + "\"";
-      std::system(cmd.c_str());
+      OpenFolder(mods_dir);
     }
     ImGui::SameLine();
     if (ImGui::Button(i18n::T("Instalar mod (.zip)...", "Install mod (.zip)..."),
@@ -4357,8 +4380,7 @@ ImGui::TextDisabled(i18n::T("%d archivo%s", "%d file%s"), mod.file_count,
 
       ImGui::TableSetColumnIndex(3);
       if (ImGui::SmallButton((std::string(i18n::T("Carpeta", "Folder")) + "##folder_" + mod.name).c_str())) {
-        std::string cmd = "explorer \"" + (dbz3::ModsRoot() / mod.name).string() + "\"";
-        std::system(cmd.c_str());
+        OpenFolder(dbz3::ModsRoot() / mod.name);
       }
       if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip("%s", i18n::T("Abrir carpeta del mod", "Open mod folder"));
@@ -5121,8 +5143,8 @@ void LauncherDialog::DrawSlotTable(const std::map<std::string, int>& slots) {
     auto it = slots.find(cs.folder);
     const int got = it == slots.end() ? -1 : it->second;
     if (got < 0) {
-      ImGui::TextColored(kError, i18n::T("%s no cabe: no quedan plazas (desactiva otro).",
-                                         "%s does not fit: no slots left (disable another)."),
+      ImGui::TextColored(kWarn, i18n::T("%s va en otra pagina de la rueda (L1/R1 para cambiar).",
+                                        "%s goes on another page of the wheel (L1/R1 to switch)."),
                          cs.folder.c_str());
     } else if (cs.req_id >= 0 && cs.req_id != got) {
       ImGui::TextColored(kWarn, i18n::T("%s pide la plaza %d (ocupada): usara la %d.",
@@ -5488,6 +5510,209 @@ std::vector<std::string> SplitTabs(const std::string& line);
 // crearlo con la copia de IW del jugador (importar.py oficial); desmarcar = apartarlo a mods_respaldo/. Sin catalogo:
 // el pack no trae nada del juego, solo las recetas del Kit. Hace falta para cubrir las misiones de IW con personajes
 // que B3 no tiene (Goku GT, Baby, Super 17, Janemba, Pikkon, Vegeta GT, Gran Saiyaman 2, Pan).
+// Videos HD de SSGPrinceVegeta: tarjeta con descarga, progreso, interruptor y desinstalar (novas_mods.h).
+void LauncherDialog::DrawVideosHd() {
+#ifdef _WIN32
+  VideosHdLeerLista();
+  const VideosHdEstado e = GetVideosHd();
+  const auto mb = [](long long b) { return (b + (1LL << 19)) >> 20; };
+  ImGui::PushStyleColor(ImGuiCol_ChildBg, ui::kCard);
+  ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 10.0f);
+  ImGui::BeginChild("##videos_hd", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_AlwaysUseWindowPadding);
+  {
+    ui::FontScope f(ui::GetFonts().bold);
+    ImGui::TextColored(kGold, "%s", i18n::T("Vídeos HD: opening y final", "HD videos: opening and ending"));
+  }
+  ImGui::SameLine();
+  if (e.instalados) ui::Pill(ICON_OK, i18n::T("Instalado", "Installed"), kOk);
+  else ui::Pill(nullptr, i18n::T("No instalado", "Not installed"), kTextDim);
+  ImGui::PushTextWrapPos(0.0f);
+  ImGui::TextDisabled("%s", i18n::T(
+      "El opening y el vídeo del final reescalados por SSGPrinceVegeta. Se ven en lugar de los originales cuando "
+      "enciendes la opción; con ella apagada, el juego no cambia. El sonido sigue siendo el de tu juego.",
+      "The opening and the ending video, upscaled by SSGPrinceVegeta. They replace the originals when you turn the "
+      "option on; with it off, the game does not change. The sound is still your game's."));
+  ImGui::PopTextWrapPos();
+  ImGui::TextDisabled("%s SSGPrinceVegeta", i18n::T("Autor:", "Author:"));
+  for (const char* u : {"https://x.com/SSGPrinceVegeta", "https://linktr.ee/ssgprincevegeta"}) {
+    ImGui::SameLine();
+    if (ImGui::SmallButton(std::strstr(u, "x.com") ? "X" : "Linktree")) OpenUrl(u);
+  }
+  if (e.total > 0) ImGui::TextDisabled(i18n::T("Tamaño: %lld MB", "Size: %lld MB"), mb(e.total));
+  else if (e.en_disco > 0) ImGui::TextDisabled(i18n::T("Tamaño: %lld MB", "Size: %lld MB"), mb(e.en_disco));
+  if (e.trabajando) {
+    const float frac = e.total > 0 ? float(double(e.hecho) / double(e.total)) : 0.0f;
+    ImGui::ProgressBar(frac, ImVec2(-1.0f, 0.0f), (std::to_string(mb(e.hecho)) + " / " + std::to_string(mb(e.total)) + " MB").c_str());
+    if (!e.mensaje.empty()) ImGui::TextDisabled("%s", e.mensaje.c_str());
+  } else {
+    if (!e.instalados) {
+      if (ImGui::Button(e.hecho > 0 || !e.mensaje.empty() ? i18n::T("Reintentar", "Retry") : i18n::T("Descargar", "Download"), ImVec2(160.0f, 34.0f)))
+        VideosHdInstalar();
+    } else {
+      bool on = dbz3::settings::VideosHd();
+      if (ImGui::Checkbox(i18n::T("Usar los vídeos HD", "Use the HD videos"), &on)) dbz3::settings::SetVideosHd(on);
+      ImGui::SameLine();
+      if (ImGui::Button(i18n::T("Desinstalar", "Uninstall"))) VideosHdDesinstalar();
+    }
+    if (e.fallo_lista && !e.instalados) ImGui::TextColored(kGold, "%s", i18n::T("Lista no disponible ahora mismo.", "List not available right now."));
+    if (!e.mensaje.empty()) ImGui::TextColored(kGold, "%s %s", ICON_WARN, e.mensaje.c_str());
+  }
+  ImGui::EndChild();
+  ImGui::PopStyleVar();
+  ImGui::PopStyleColor();
+  ImGui::Spacing();
+#endif
+}
+
+void LauncherDialog::DrawMusicaT3() {
+  const bool trabajo = mod_pipeline_.IsRunning();
+  const bool instalado = ModPipeline::T3MusicInstalled();
+  const bool iso = !dbz3::pasarela::IsoPs2(5).empty();
+  ImGui::PushStyleColor(ImGuiCol_ChildBg, ui::kCard);
+  ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 10.0f);
+  ImGui::BeginChild("##musica_t3", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_AlwaysUseWindowPadding);
+  {
+    ui::FontScope f(ui::GetFonts().bold);
+    ImGui::TextColored(kGold, "%s", i18n::T("Música de Tenkaichi 3", "Tenkaichi 3 music"));
+  }
+  ImGui::SameLine();
+  ui::Pill(nullptr, "BETA", ui::kBlue);
+  ImGui::SameLine();
+  if (instalado) ui::Pill(ICON_OK, i18n::T("Instalado", "Installed"), kOk);
+  else ui::Pill(nullptr, i18n::T("No instalado", "Not installed"), kTextDim);
+  ImGui::PushTextWrapPos(0.0f);
+  ImGui::TextDisabled("%s", i18n::T(
+      "Cambia la música de menús y combates por la de Budokai Tenkaichi 3. Se crea aquí con TU copia de Tenkaichi 3 "
+      "(Juego > Elegir ISO): el mod no trae nada del juego. Se apaga en la pestaña Mods.",
+      "Replaces menu and fight music with Budokai Tenkaichi 3's. It is built here from YOUR Tenkaichi 3 copy (Game > "
+      "Pick ISO): the mod ships nothing from the game. Turn it off in the Mods tab."));
+  ImGui::PopTextWrapPos();
+  if (!iso) ImGui::TextColored(kGold, "%s", i18n::T("Falta tu copia de Tenkaichi 3", "Your Tenkaichi 3 copy is missing"));
+  if (trabajo) ImGui::BeginDisabled();
+  if (!instalado) {
+    if (!iso) ImGui::BeginDisabled();
+    if (ImGui::Button(i18n::T("Instalar", "Install"), ImVec2(160.0f, 34.0f))) {
+      t3_msg_ = i18n::T("Creando la música con tu copia...", "Building the music from your copy...");
+      mod_pipeline_.RunT3Music(true);
+    }
+    if (!iso) ImGui::EndDisabled();
+  } else if (ImGui::Button(i18n::T("Quitar", "Remove"), ImVec2(160.0f, 34.0f))) {
+    t3_msg_ = i18n::T("Apartado en mods_respaldo.", "Moved to mods_respaldo.");
+    mod_pipeline_.RunT3Music(false);
+  }
+  if (trabajo) ImGui::EndDisabled();
+  if (!t3_msg_.empty() && !trabajo) {   // al acabar: la ultima linea del script (OK o su error en claro)
+    std::string ultima;
+    std::istringstream in(mod_pipeline_.Output());
+    for (std::string l; std::getline(in, l);) {
+      if (!l.empty() && l.back() == '\r') l.pop_back();
+      if (!l.empty()) ultima = l;
+    }
+    ImGui::TextDisabled("%s", ultima.empty() ? t3_msg_.c_str() : ultima.c_str());
+  } else if (!t3_msg_.empty()) {
+    ImGui::TextColored(kInfo, "%s %s", ICON_DOWNLOAD, t3_msg_.c_str());
+  }
+  ImGui::EndChild();
+  ImGui::PopStyleVar();
+  ImGui::PopStyleColor();
+  ImGui::Spacing();
+}
+
+// Mods que se construyen con la copia del jugador (mod center hd/nova_recetas.py): sin descargas ni arte de juegos.
+void LauncherDialog::DrawRecetasNova() {
+  const bool trabajo = mod_pipeline_.IsRunning();
+  auto ultima_linea = [this] {
+    std::string ultima;
+    std::istringstream in(mod_pipeline_.Output());
+    for (std::string l; std::getline(in, l);) {
+      if (!l.empty() && l.back() == '\r') l.pop_back();
+      if (!l.empty()) ultima = l;
+    }
+    return ultima;
+  };
+  if (nrec_estado_ == 1 && !trabajo) {   // la consulta acabo: leer sus filas
+    nrec_estado_ = 2;
+    nrec_filas_.clear();
+    std::istringstream in(mod_pipeline_.Output());
+    for (std::string l; std::getline(in, l);) {
+      if (!l.empty() && l.back() == '\r') l.pop_back();
+      std::vector<std::string> c;
+      std::istringstream cols(l);
+      for (std::string v; std::getline(cols, v, '\t');) c.push_back(v);
+      if (c.size() >= 8 && c[0] == "receta") {
+        nrec_filas_.push_back({c[1], c[2], c[3], c[4], c[5] == "instalado", c[6], c[7]});
+        REXLOG_INFO("dbz3 recetas: {} falta '{}' {}", c[1], c[4], c[5]);
+      }
+    }
+  }
+  if (nrec_estado_ == 3 && !trabajo) {   // el mod ya esta en mods/: se monta al pulsar JUGAR
+    const std::string fin = ultima_linea();
+    REXLOG_INFO("dbz3 recetas: fin -> {}", fin);
+    nrec_msg_ = fin.rfind("construido", 0) == 0
+                    ? i18n::T("Hecho. Se aplica al pulsar JUGAR; en la pestana Mods se desactiva.",
+                              "Done. It applies when you press PLAY; turn it off in the Mods tab.")
+                    : fin;
+    nrec_estado_ = 0;
+    mods_loaded_ = false;
+    broken_mods_ = -1;
+  }
+  if (nrec_estado_ == 0 && !trabajo && !pack_consulta_) {
+    nrec_estado_ = 1;
+    mod_pipeline_.NovaRecetas({"lista", "--mods", ModPipeline::ModsDir().string()});
+  }
+  ImGui::PushStyleColor(ImGuiCol_ChildBg, ui::kCard);
+  ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 10.0f);
+  ImGui::BeginChild("##recetas_nova", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_AlwaysUseWindowPadding);
+  {
+    ui::FontScope f(ui::GetFonts().bold);
+    ImGui::TextColored(kGold, "%s", i18n::T("Con tu copia", "From your copy"));
+  }
+  ImGui::PushTextWrapPos(0.0f);
+  ImGui::TextDisabled("%s", i18n::T("Estos mods se crean aqui con TUS ISO de Budokai 1 y 2 (Juego > Elegir ISO): no traen nada de los juegos.",
+                                    "These mods are built here from YOUR Budokai 1 and 2 ISOs (Game > Pick ISO): they ship nothing from the games."));
+  ImGui::PopTextWrapPos();
+  if (nrec_estado_ == 1) ImGui::TextDisabled("%s", LoadingDots(i18n::T("Cargando la lista...", "Loading the list...")).c_str());
+  if (nrec_estado_ == 2 && nrec_filas_.empty())   // antes salia la tarjeta vacia, sin aviso
+    ImGui::TextDisabled("%s", i18n::T("No se pudo leer la lista. Comprueba la instalacion en el Kit de Modding.", "Could not read the list. Check the installation in the Modding Kit."));
+  if (trabajo) ImGui::BeginDisabled();
+  for (const RecetaNova& r : nrec_filas_) {
+    ImGui::PushID(r.id.c_str());
+    ImGui::Spacing();
+    static const char* test_receta = std::getenv("DBZ3_TEST_RECETA");   // pulsa "Crear" de esa receta
+    if (test_receta && r.id == test_receta && r.falta.empty() && !trabajo) {
+      test_receta = nullptr;
+      nrec_msg_ = i18n::T("Creando el mod...", "Building the mod...");
+      nrec_estado_ = 3;
+      mod_pipeline_.NovaRecetas({"construir", r.id, "--mods", ModPipeline::ModsDir().string()});
+    }
+    ImGui::TextUnformatted(i18n::T(r.nombre_es.c_str(), r.nombre_en.c_str()));
+    ImGui::SameLine();
+    if (r.instalado) ui::Pill(ICON_OK, i18n::T("Instalado", "Installed"), kOk);
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextDisabled("%s", i18n::T(r.desc_es.c_str(), r.desc_en.c_str()));
+    ImGui::PopTextWrapPos();
+    if (!r.falta.empty()) {
+      const std::string juego = r.falta == "b1" ? "Budokai 1" : r.falta == "b2" ? "Budokai 2" : "Budokai 1 + Budokai 2";
+      ImGui::TextColored(kGold, "%s %s", i18n::T("Falta tu ISO de", "Your ISO is missing:"), juego.c_str());
+    } else if (ImGui::Button(r.instalado ? i18n::T("Volver a crear", "Rebuild") : i18n::T("Crear", "Build"), ImVec2(160.0f, 30.0f))) {
+      nrec_msg_ = i18n::T("Creando el mod...", "Building the mod...");
+      nrec_estado_ = 3;
+      mod_pipeline_.NovaRecetas({"construir", r.id, "--mods", ModPipeline::ModsDir().string()});
+    }
+    ImGui::PopID();
+  }
+  if (trabajo) ImGui::EndDisabled();
+  if (!nrec_msg_.empty()) {
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextColored(trabajo ? kInfo : kOk, "%s", nrec_msg_.c_str());
+    ImGui::PopTextWrapPos();
+  }
+  ImGui::EndChild();
+  ImGui::PopStyleVar();
+  ImGui::PopStyleColor();
+  ImGui::Spacing();
+}
+
 void LauncherDialog::DrawPackIW() {
   const bool trabajo = mod_pipeline_.IsRunning();
   if (pack_consulta_ && !trabajo) {   // la consulta acabo: leer sus filas
@@ -5705,7 +5930,7 @@ void LauncherDialog::DrawImporter() {
         "without the kit."));
     ImGui::PopTextWrapPos();
     if (ImGui::Button(i18n::T("Abrir la carpeta del juego", "Open the game folder"))) {
-      std::system(("explorer \"" + ModPipeline::ModsDir().parent_path().string() + "\"").c_str());
+      OpenFolder(ModPipeline::ModsDir().parent_path());
     }
     ui::EndCard();
     return;
@@ -6513,8 +6738,7 @@ void LauncherDialog::DrawTexturesTab() {
     ImGui::SameLine();
     if (ImGui::Button(i18n::T("Abrir carpeta de texturas", "Open textures folder"),
                       ImVec2(220, 0))) {
-      std::string cmd = "explorer \"" + active_tex_dir + "\"";
-      std::system(cmd.c_str());
+      OpenFolder(active_tex_dir);
     }
     ImGui::TextDisabled(i18n::T("Edita los PNG en: %s", "Edit the PNGs in: %s"),
                         active_tex_dir.c_str());

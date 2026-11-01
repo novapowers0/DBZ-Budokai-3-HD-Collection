@@ -40,6 +40,9 @@ class OnlinePanel : public rex::ui::ImGuiDialog {
   bool was_installing_ = false;  // para comprobar las versiones instaladas una vez al acabar (no cada cuadro)
   std::string lan_;           // IP local del anfitrion (cacheada: LocalAddresses hace DNS)
   double lan_at_ = 0;
+  int mode_ = 0;   // 0 nada, 1 buscar partida, 2 crear sala, 3 unirme con codigo
+  bool adv_ = false, consent_ask_ = false, join_after_edit_ = false, test_mm_started_ = false, test_mm_restart_ = false;
+  double auto_start_at_ = 0;
   int port_ = 7777;
   int delay_ = 0;   // 0 = AUTO (se ajusta solo durante la partida), 1-8 = fijo
 };

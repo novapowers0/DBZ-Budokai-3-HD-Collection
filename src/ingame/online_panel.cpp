@@ -13,6 +13,11 @@
 #include <vector>
 
 #include <filesystem>
+#include <functional>
+#include <memory>
+#include <mutex>
+#include <set>
+#include <thread>
 
 #include <rex/cvar.h>
 #include <rex/filesystem.h>
@@ -26,6 +31,9 @@
 #include "generated/dbz3_init.h"
 #include "../launcher/i18n.h"
 #include "../launcher/launcher_state.h"
+#include "../launcher/mod_pipeline.h"
+#include "../launcher/update_check.h"
+#include "matchmaking.h"
 #include "../launcher/novas_mods.h"
 #include "../launcher/settings.h"
 #include "../mods.h"
@@ -42,6 +50,10 @@
 
 // La ultima IP a la que se unio el jugador: la pantalla ONLINE la trae escrita la proxima vez.
 REXCVAR_DEFINE_STRING(dbz3_net_last_ip, "", "DBZ3/Online", "Last host IP joined from the ONLINE screen");
+// Matchmaking sin servidor propio (ntfy.sh por defecto): aceptacion de privacidad, URL del servicio e interruptor.
+REXCVAR_DEFINE_BOOL(dbz3_mm_consent, false, "DBZ3/Online", "Player accepted publishing the room code on the public matchmaking service");
+REXCVAR_DEFINE_STRING(dbz3_mm_url, "https://ntfy.sh", "DBZ3/Online", "Matchmaking service URL (ntfy-compatible)");
+REXCVAR_DEFINE_BOOL(dbz3_mm_enabled, true, "DBZ3/Online", "FIND A MATCH option on the ONLINE screen");
 // Mods nativos del launcher: se pueden quitar (sin la fila del menu ni su pantalla)
 REXCVAR_DEFINE_BOOL(dbz3_tag_team_enabled, true, "DBZ3/Mods", "TAG TEAM entry in the main menu");
 REXCVAR_DEFINE_BOOL(dbz3_online_enabled, true, "DBZ3/Mods", "ONLINE entry in the Duel menu");
@@ -61,7 +73,9 @@ bool dbz3_select_to_stage();   // los dos confirmaron: escenario (misma pantalla
 void dbz3_select_reset_flow();
 
 namespace dbz3::hub {
-bool RowActive();   // hub_menu.cpp: la fila HUB ocupa el sitio de la fila TAG TEAM (Tag Team sigue con X)
+bool RowActive();
+bool OwnBattle();
+bool RequestBattleEx(int id1, int id2, int stage, bool p2_com, int time_s, int hp1, int hp2, int form1, int form2);   // hub_menu.cpp: la fila HUB ocupa el sitio de la fila TAG TEAM (Tag Team sigue con X)
 }
 namespace dbz3::campaigns {
 void Trace(uint8_t* base);   // campaigns.cpp
@@ -252,38 +266,41 @@ void RoomRows(ImDrawList* dl, const dbz3::ingame::style::Area& a, float y0, int 
   S::MenuText(dl, a.At(660, y), w > max ? k * max / w : k, val.c_str(), on, off);
 }
 
+#include "matchmaking.inl"
+
 // Pasos de la pantalla ONLINE (caja a la izquierda) y estado de la conexion con color y ping:
 // 1 crear/unirse, 2 compartir el codigo, 3 esperando/conectando, 4 combate. El paso actual va iluminado.
-void StepsBox(ImDrawList* dl, const dbz3::ingame::style::Area& a, const Session& s, bool host) {
+void StepsBox(ImDrawList* dl, const dbz3::ingame::style::Area& a, const Session& s, bool host, int mode) {
   namespace S = dbz3::ingame::style;
   const Link link = s.link();
   int step = 1;   // paso en el que estas
-  if (link == Link::kWaiting) step = host ? 2 : 3;
-  else if (link == Link::kConnected) step = 3;
-  else if (link == Link::kStarting || link == Link::kPlaying) step = 4;
-  const char* names[4] = {T::T("1 CREAR O UNIRSE", "1 HOST OR JOIN"), T::T("2 PASAR EL CODIGO", "2 SHARE THE CODE"),
-                          T::T("3 CONECTANDO", "3 CONNECTING"), T::T("4 A COMBATIR", "4 FIGHT")};
-  const ImVec2 p0 = a.At(14, 215), p1 = a.At(318, 215 + 46.0f * 4 + 94);
+  if (link == Link::kWaiting) step = host ? 1 : 2;
+  else if (link == Link::kConnected) step = s.mods_match() ? 3 : 2;
+  else if (link == Link::kStarting || link == Link::kPlaying) step = 3;
+  const char* first = mode == 1 ? T::T("BUSCANDO RIVAL", "LOOKING FOR A RIVAL")
+                      : mode == 3 ? T::T("LLAMANDO A LA SALA", "CALLING THE ROOM")
+                                  : T::T("PASA EL CODIGO", "SHARE THE CODE");
+  const char* names[3] = {first, T::T("CONECTANDO", "CONNECTING"), T::T("LISTO PARA LUCHAR", "READY TO FIGHT")};
+  const ImVec2 p0 = a.At(14, 215), p1 = a.At(318, 215 + 46.0f * 3 + 94);
   S::Frame(dl, p0, p1, a.s * 0.7f);
-  for (int i = 0; i < 4; ++i) {
+  for (int i = 0; i < 3; ++i) {
     const float y = 215 + 24 + 46.0f * float(i);
     S::MenuText(dl, a.At(166, y), 28 * a.s, names[i], i + 1 == step, i + 1 < step, 270 * a.s);
   }
-  // estado: punto de color (gris sin conexion, ambar esperando, verde conectado, rojo error) y ping
   const bool bad = link == Link::kError || link == Link::kLost;
   const ImU32 col = bad ? IM_COL32(230, 60, 60, 255)
                     : (link == Link::kConnected || link == Link::kStarting || link == Link::kPlaying) ? IM_COL32(70, 210, 90, 255)
-                    : link == Link::kWaiting ? IM_COL32(240, 190, 50, 255) : IM_COL32(150, 150, 150, 255);
+                    : (link == Link::kWaiting || g_mm.Active()) ? IM_COL32(240, 190, 50, 255) : IM_COL32(150, 150, 150, 255);
   const char* txt = bad ? T::T("SIN CONEXION", "NO CONNECTION")
-                    : link == Link::kWaiting ? T::T("ESPERANDO", "WAITING")
+                    : (link == Link::kWaiting || g_mm.Active()) ? T::T("ESPERANDO", "WAITING")
                     : link == Link::kIdle ? T::T("DESCONECTADO", "OFFLINE") : T::T("CONECTADO", "CONNECTED");
-  const float y = 215 + 46.0f * 4 + 36;
+  const float y = 215 + 46.0f * 3 + 36;
   dl->AddCircleFilled(a.At(44, y), 11 * a.s, col);
   dl->AddCircle(a.At(44, y), 11 * a.s, IM_COL32(30, 20, 10, 255), 0, 1.5f * a.s);
   S::MenuText(dl, a.At(176, y), 26 * a.s, txt, false, false, 220 * a.s);
   if (s.ping_ms() >= 0 && (link == Link::kConnected || link == Link::kStarting || link == Link::kPlaying)) {
     char pb[24];
-    std::snprintf(pb, sizeof(pb), s.ping_ms() >= 0 ? "PING %d ms" : "PING - ms", s.ping_ms());
+    std::snprintf(pb, sizeof(pb), "PING %d ms", s.ping_ms());
     S::MenuText(dl, a.At(176, y + 30), 22 * a.s, pb, false, false, 220 * a.s);
   }
 }
@@ -632,6 +649,42 @@ void OnlinePanel::OnDraw(ImGuiIO& io) {
       }
     }
   }
+  if (static const bool test_mm = std::getenv("DBZ3_TEST_MM") != nullptr; test_mm && !g_wanted.load() &&
+      s.link() == Link::kIdle && g_screen.load() == kMainMenuScreen && NowMs() > 4000)
+    g_wanted = true;   // PRUEBAS (solo pruebas.py): la pantalla ONLINE se abre sola y busca
+  if (static const char* tmm = std::getenv("DBZ3_TEST_MM"); tmm && std::strcmp(tmm, "pantalla") != 0) {   // PRUEBAS (solo pruebas.py)
+    // En OnDraw (corre siempre) y no en OnlineTick: con la sesion activa el gancho de mandos no llama a OnlineTick (el combate pedido no salia nunca).
+    static uint32_t last = 0;
+    static bool fired = false;
+    // DBZ3_TEST_MM_TEAM2 = "id": dos salas seguidas. Al acabar el combate 1 se cierra la sala, se pone ese equipo
+    // (DBZ3_NET_TEAM) y se vuelve a buscar partida: la plaza de cada id logico ha de salir como en una sala nueva.
+    static bool saw_fight = false, closing = false;
+    static uint32_t room = 1;
+    if (const char* t2 = std::getenv("DBZ3_TEST_MM_TEAM2"); t2 && room == 1) {
+      if (dbz3::hub::OwnBattle()) saw_fight = true;
+      if (saw_fight && !dbz3::hub::OwnBattle() && !closing) {   // el otro lado puede cerrar antes: aqui basta con que acabe el combate
+        closing = true;
+        REXLOG_INFO("dbz3 mm: sala 1 terminada: se cierra y se busca otra con el equipo {}", t2);
+        if (s.link() != Link::kIdle) g_close_req = true;
+      }
+      if (closing && s.link() == Link::kIdle) {
+        _putenv_s("DBZ3_NET_TEAM", t2);
+        room = 2;
+        fired = false;
+        last = 0;
+        test_mm_restart_ = true;
+      }
+    }
+    if (s.active() && !fired && s.tick() > 150) {
+      fired = true;
+      const bool ok = dbz3::hub::RequestBattleEx(0, 7, 2, true, 15, 0, 0, 0, 0);
+      REXLOG_INFO("dbz3 mm: combate pedido ({})", ok ? "ok" : "rechazado");
+    }
+    if (s.active() && s.tick() >= last + 300) {
+      last = s.tick();
+      REXLOG_INFO("dbz3 mm: tick {} sumas comparadas {} distintas {} desync {}", s.tick(), s.sums_compared(), s.sums_bad(), s.desynced());
+    }
+  }
   if (g_vn.active && !g_wanted.load() && s.link() == Link::kIdle &&
       (g_screen.load() == kMainMenuScreen || g_screen.load() == kDuelMenuScreen))
     g_wanted = true;   // ---- VANILLA (V): reconexion tras reiniciar sin mods
@@ -750,14 +803,15 @@ void OnlinePanel::DrawScreen(ImGuiIO& io, uint16_t pressed) {
     for (const auto& p : files) {
       const std::string h = rex::hash_file(p);
       if (h.empty()) {
-        admission_reason = T::T("Online: no se pudo verificar el programa: ", "Online: could not verify the program: ") +
+        admission_reason = T::T("Online: no se puede leer un archivo del juego. Prueba Reparar instalacion en el launcher: ", "Online: a game file cannot be read. Try Repair install in the launcher: ") +
                            rex::path_to_utf8(p.filename());
         return false;
       }
       acc += h;
     }
     Session::Get().Close();   // tras un error/perdida la sesion vuelve a reposo antes de fijar identidad
-    if (!Session::Get().ConfigureIdentity(rex::hash_bytes(acc), true, false)) {
+    g_build_digest = rex::hash_bytes(acc);
+    if (!Session::Get().ConfigureIdentity(g_build_digest, true, false)) {
       admission_reason = T::T("Online: cierra la sesion anterior y vuelve a intentarlo.",
                               "Online: close the previous session and try again.");
       return false;
@@ -816,6 +870,56 @@ void OnlinePanel::DrawScreen(ImGuiIO& io, uint16_t pressed) {
     }
   }
 
+  // ---- Buscar partida: el matchmaking avanza aqui, un paso por cuadro (mode_ 1 buscar, 2 crear, 3 unirse con codigo)
+  const std::function<bool()> admit = [&]() { return admission_ready(); };
+  const bool test_mm = std::getenv("DBZ3_TEST_MM") != nullptr;   // PRUEBAS (solo pruebas.py): busca sin pulsar nada
+  auto cancel_all = [&]() {
+    g_mm.Cancel();
+    mode_ = 0;
+    auto_start_at_ = 0;
+    g_close_req = true;
+  };
+  auto start_search = [&]() {
+    last_err_.clear();
+    if (!REXCVAR_GET(dbz3_mm_enabled)) { last_err_ = T::T("La busqueda de partida no esta disponible.", "Matchmaking is not available."); return; }
+    if (!admission_ready()) { last_err_ = admission_reason; return; }
+    mode_ = 1;
+    g_mm.Start();
+  };
+  auto do_join = [&]() {
+    if (!ip_[0]) return;
+    if (!admission_ready()) { last_err_ = admission_reason; return; }
+    const bool joined = s.Join(ip_, uint16_t(port_), &last_err_);
+    if (!joined) REXLOG_WARN("dbz3 online: no se pudo unir a la partida: {}", last_err_);
+    else mode_ = 3;
+    if (joined && REXCVAR_GET(dbz3_net_last_ip) != ip_) {
+      rex::cvar::SetFlagByName("dbz3_net_last_ip", ip_);
+      dbz3::settings::SaveUserSettings();
+    }
+    row_ = 0;
+  };
+  if (join_after_edit_) {
+    join_after_edit_ = false;
+    do_join();
+  }
+  if (test_mm_restart_) { test_mm_restart_ = false; test_mm_started_ = false; }
+  if (test_mm && std::strcmp(std::getenv("DBZ3_TEST_MM"), "pantalla") != 0 && mode_ == 0 && idle && !test_mm_started_) {
+    test_mm_started_ = true;
+    if (const char* pt = std::getenv("DBZ3_TEST_MM_PORT")) port_ = std::atoi(pt);   // dos copias en un PC: puertos distintos
+    start_search();
+  }
+  if (mode_ == 1) {
+    g_mm.Tick(s, ImGui::GetTime(), port_, delay_, admit);
+    if (g_mm.st == Mm::kFail) {
+      last_err_ = g_mm.fail_msg;
+      g_mm.st = Mm::kOff;
+      mode_ = 0;
+    }
+  }
+  const bool searching = mode_ == 1 && g_mm.Active();
+  if (mode_ != 0 && link == Link::kIdle && !searching) mode_ = 0;
+  if (idle && !searching && link != Link::kError && link != Link::kLost) auto_start_at_ = 0;
+
   // Mods distintos: que falta en cada PC y que se puede bajar de Nova's Mods (carpeta = id del catalogo)
   using Delta = dbz3::net::Session::ModDelta;
   std::vector<Delta> diff;
@@ -845,12 +949,17 @@ void OnlinePanel::DrawScreen(ImGuiIO& io, uint16_t pressed) {
   was_installing_ = installing;
 
   // filas segun el estado
-  enum Row { kHostRow, kJoinRow, kIpRow, kPortRow, kDelayRow, kStartRow, kSyncRow, kVanillaRow, kCancelRow };
+  enum Row { kSearchRow, kHostRow, kJoinRow, kAdvRow, kPortRow, kDelayRow, kStartRow, kSyncRow, kVanillaRow, kCancelRow, kConsentYes, kConsentNo };
   std::vector<Row> rows;
-  if (idle) {
-    rows = {kHostRow, kJoinRow, kIpRow, kPortRow, kDelayRow};
+  if (consent_ask_ && idle && !searching) {
+    rows = {kConsentYes, kConsentNo};
+  } else if (idle && !searching) {
+    rows = {kSearchRow, kHostRow, kJoinRow, kAdvRow};
+    if (adv_) { rows.push_back(kPortRow); rows.push_back(kDelayRow); }
+  } else if (searching && link == Link::kIdle) {
+    rows.push_back(kCancelRow);
   } else {
-    if (host) rows.push_back(kStartRow);
+    if (host && mode_ != 1) rows.push_back(kStartRow);
     if (!installable.empty()) rows.push_back(kSyncRow);
     if (link == Link::kConnected && !s.mods_match()) rows.push_back(kVanillaRow);   // ---- VANILLA (V)
     rows.push_back(kCancelRow);
@@ -868,33 +977,36 @@ void OnlinePanel::DrawScreen(ImGuiIO& io, uint16_t pressed) {
   if (cur == kPortRow && step) port_ = std::clamp(port_ + step, 1024, 65535);
   if (cur == kDelayRow && step) delay_ = std::clamp(delay_ + step, 0, 8);   // 0 = AUTO
   const bool can_start = link == Link::kConnected && s.mods_match();
+  if (mode_ == 1 && host && can_start) {   // Buscar partida: sin boton, empieza solo a los 2 s de verse los dos
+    if (auto_start_at_ == 0) auto_start_at_ = ImGui::GetTime();
+    else if (ImGui::GetTime() - auto_start_at_ > 2.0) s.RequestStart();
+  }
   if (pressed & kA) {
     last_err_.clear();   // una accion nueva borra el error anterior
     switch (cur) {
+      case kSearchRow:
+        if (!REXCVAR_GET(dbz3_mm_consent)) { consent_ask_ = true; row_ = 0; }
+        else start_search();
+        break;
+      case kConsentYes:
+        rex::cvar::SetFlagByName("dbz3_mm_consent", "true");
+        dbz3::settings::SaveUserSettings();
+        consent_ask_ = false;
+        start_search();
+        break;
+      case kConsentNo: consent_ask_ = false; row_ = 0; break;
       case kHostRow:
         if (!admission_ready()) { last_err_ = admission_reason; break; }
-        if (s.Host(uint16_t(port_), uint8_t(delay_), &last_err_))
+        if (s.Host(uint16_t(port_), uint8_t(delay_), &last_err_)) {
+          mode_ = 2;
           REXLOG_INFO("dbz3 online: partida creada en el puerto {}", port_);
-        else
+        } else {
           REXLOG_WARN("dbz3 online: no se pudo crear la partida: {}", last_err_);
+        }
         row_ = 0;
         break;
-      case kJoinRow:
-        if (!admission_ready()) { last_err_ = admission_reason; break; }
-        if (ip_[0]) {
-          const bool joined = s.Join(ip_, uint16_t(port_), &last_err_);
-          if (!joined) REXLOG_WARN("dbz3 online: no se pudo unir a la partida: {}", last_err_);
-          if (joined && REXCVAR_GET(dbz3_net_last_ip) != ip_) {
-            rex::cvar::SetFlagByName("dbz3_net_last_ip", ip_);
-            dbz3::settings::SaveUserSettings();
-          }
-          row_ = 0;
-        } else {
-          row_ = 2;
-          editing_ = true;   // sin IP: a escribirla
-        }
-        break;
-      case kIpRow: editing_ = true; break;
+      case kJoinRow: editing_ = true; break;   // escribe el codigo; Intro se une
+      case kAdvRow: adv_ = !adv_; break;
       case kStartRow:
         if (can_start) s.RequestStart();
         break;
@@ -906,7 +1018,7 @@ void OnlinePanel::DrawScreen(ImGuiIO& io, uint16_t pressed) {
         was_installing_ = true;   // aunque la descarga acabe antes del siguiente cuadro, se comprueba
         break;
       case kVanillaRow: if (!s.MyVanilla()) s.OfferVanilla(); break;   // ---- VANILLA (V): yo acepto
-      case kCancelRow: g_close_req = true; break;
+      case kCancelRow: cancel_all(); break;
       default: break;
     }
   }
@@ -919,7 +1031,7 @@ void OnlinePanel::DrawScreen(ImGuiIO& io, uint16_t pressed) {
       if (!c.empty()) {
         std::snprintf(ip_, sizeof(ip_), "%s", c.c_str());
         last_err_.clear();
-        for (int k = 0; k < n; ++k) if (rows[size_t(k)] == kJoinRow) row_ = k;   // el cursor pasa a UNIRSE
+        do_join();   // pegar el codigo y entrar, en un solo paso
       } else {
         last_err_ = T::T("No hay ningun codigo copiado. Copia el codigo que te paso el otro jugador y pulsa X.",
                          "No code copied. Copy the code the other player gave you, then press X.");
@@ -930,7 +1042,11 @@ void OnlinePanel::DrawScreen(ImGuiIO& io, uint16_t pressed) {
     }
   }
   if (pressed & (kB | kY)) {
-    if (idle) {
+    if (consent_ask_) {
+      consent_ask_ = false;
+    } else if (searching || mode_ == 1) {
+      cancel_all();
+    } else if (idle) {
       last_err_.clear();
       g_wanted = false;   // cerrar (una sesion perdida vuelve a quedar libre)
       if (link != Link::kIdle) g_close_req = true;
@@ -942,16 +1058,22 @@ void OnlinePanel::DrawScreen(ImGuiIO& io, uint16_t pressed) {
   const S::Area a = S::GameArea(io);
   auto* dl = ImGui::GetBackgroundDrawList();
   const float t = float(ImGui::GetTime());
-  // como el Duelo, del que sale: su fondo, el Kaio del Norte donde esta alli y las tiras doradas encima
-  S::Backdrop(dl, a, "fondo_duelo");
-  S::Host(dl, a, "anfitrion_online", 781, 336, false);
+  // Torneo del Otro Mundo y Paikuhan (pack Dragon HUB, arte del autor); sin el pack, como el Duelo, del que sale:
+  // su fondo y el Kaio del Norte donde esta alli. Las tiras doradas, encima
+  S::Backdrop(dl, a, S::Img("hub/fondo_online") ? "hub/fondo_online" : "fondo_duelo");
+  S::Host(dl, a, S::Img("hub/anfitrion_paikuhan") ? "hub/anfitrion_paikuhan" : "anfitrion_online", 781, 336, false);
   S::Sides(dl, a);
   S::Banner(dl, a, "Online", "titulo_online");
-  StepsBox(dl, a, s, host);
+  if (mode_ != 0 || link != Link::kIdle) StepsBox(dl, a, s, host, mode_);   // en el menu inicial aun no hay pasos que ensenar
+  {   // etiqueta beta (el online siempre se presenta como beta)
+    const ImVec2 b0 = a.At(1030, 128), b1 = a.At(1180, 176);
+    S::Frame(dl, b0, b1, a.s * 0.6f);
+    S::MenuText(dl, ImVec2((b0.x + b1.x) * 0.5f, (b0.y + b1.y) * 0.5f), 30 * a.s, "BETA", false, false);
+  }
   constexpr float kStep = 72;
   const ImVec2 f0 = a.At(330, 175), f1 = a.At(870, 175 + kStep * n + 20);
   S::Frame(dl, f0, f1, a.s);
-  if (!idle) RoomRows(dl, a, 175 + kStep * n + 44, n >= 3 ? 2 : 3, s, t);   // sala: rango y reglas de los dos
+  if (!idle && !(searching && link == Link::kIdle)) RoomRows(dl, a, 175 + kStep * n + 44, n >= 3 ? 2 : 3, s, t);   // sala: rango y reglas de los dos
   char buf[96];
   for (int i = 0; i < n; ++i) {
     const ImVec2 r0(f0.x, f0.y + (10 + kStep * i) * a.s), r1(f1.x, r0.y + (kStep - 2) * a.s);
@@ -961,15 +1083,12 @@ void OnlinePanel::DrawScreen(ImGuiIO& io, uint16_t pressed) {
     const char* label = "";
     bool disabled = false;
     switch (rows[size_t(i)]) {
-      case kHostRow: label = T::T("CREAR PARTIDA", "HOST A MATCH"); break;
-      case kJoinRow:
-        label = T::T("UNIRSE", "JOIN");
-        disabled = !ip_[0];
-        break;
-      case kIpRow:
-        std::snprintf(buf, sizeof(buf), T::T("CODIGO  %s", "CODE  %s"), ip_[0] ? ip_ : "- - -");
-        label = buf;
-        break;
+      case kSearchRow: label = T::T("BUSCAR PARTIDA", "FIND A MATCH"); break;
+      case kHostRow: label = T::T("CREAR SALA", "CREATE A ROOM"); break;
+      case kJoinRow: label = T::T("UNIRME CON CODIGO", "JOIN WITH A CODE"); break;
+      case kAdvRow: label = T::T("AJUSTES AVANZADOS", "ADVANCED"); break;
+      case kConsentYes: label = T::T("ACEPTAR Y BUSCAR", "ACCEPT AND SEARCH"); break;
+      case kConsentNo: label = T::T("NO, USAR CODIGO", "NO, USE A CODE"); break;
       case kPortRow:
         std::snprintf(buf, sizeof(buf), T::T("PUERTO  %d", "PORT  %d"), port_);
         label = buf;
@@ -998,7 +1117,7 @@ void OnlinePanel::DrawScreen(ImGuiIO& io, uint16_t pressed) {
         break;
       case kCancelRow: label = T::T("CANCELAR", "CANCEL"); break;
     }
-    if (rows[size_t(i)] == kIpRow && editing_) {
+    if (rows[size_t(i)] == kJoinRow && editing_) {
       // la IP se escribe con el teclado en la misma fila (Intro o Esc terminan)
       ImGui::SetNextWindowPos(ImVec2(r0.x + 40 * a.s, c.y - 26 * a.s), ImGuiCond_Always);
       ImGui::SetNextWindowSize(ImVec2(r1.x - r0.x - 80 * a.s, 0), ImGuiCond_Always);
@@ -1013,7 +1132,10 @@ void OnlinePanel::DrawScreen(ImGuiIO& io, uint16_t pressed) {
       ImGui::SetNextItemWidth(-1);
       if (!ImGui::IsAnyItemActive()) ImGui::SetKeyboardFocusHere();
       ImGui::InputTextWithHint("##ip", "XXXXX-XXXXX", ip_, sizeof(ip_), ImGuiInputTextFlags_CharsNoBlank | ImGuiInputTextFlags_CharsUppercase);
-      if (ImGui::IsItemDeactivated()) editing_ = false;
+      if (ImGui::IsItemDeactivated()) {
+        editing_ = false;
+        if (ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter)) join_after_edit_ = true;
+      }
       ImGui::PopStyleColor(2);
       if (f) ImGui::PopFont();
       ImGui::End();
@@ -1029,7 +1151,23 @@ void OnlinePanel::DrawScreen(ImGuiIO& io, uint16_t pressed) {
   // el anfitrion explica la fila elegida; con una partida en marcha, el estado
   std::string say;
   if (!last_err_.empty()) say = last_err_ + "\n";
-  if (idle) {
+  if (consent_ask_ && idle && !searching) {
+    say = T::T("Para encontrar rival, tu codigo de sala se publica en un servicio gratuito (ntfy.sh). Ese codigo incluye tu direccion de internet (IP), y cualquiera que lo lea puede verla. Solo se envia eso, la version del juego y un resumen de tus mods. Si prefieres que no, juega con un amigo usando un codigo.",
+               "To find an opponent, your room code is posted on a free service (ntfy.sh). That code includes your internet address (IP), and anyone reading it can see it. Only that, the game version and a summary of your mods are sent. If you would rather not, play with a friend using a code.");
+  } else if (searching) {
+    if (!last_err_.empty()) say = last_err_ + "\n";
+    say += (g_mm.st == Mm::kJoin ? T::T("Rival encontrado. Conectando...", "Opponent found. Connecting...")
+            : g_mm.st == Mm::kHost ? T::T("Esperando a que otro jugador busque. Puedes cancelar cuando quieras.", "Waiting for another player to search. You can cancel any time.")
+                                   : T::T("Buscando rival...", "Looking for an opponent..."));
+    static double host_desde = 0;   // sin rival tras un rato: decir que hacer
+    if (g_mm.st != Mm::kHost) host_desde = 0;
+    else if (host_desde == 0) host_desde = ImGui::GetTime();
+    if (host_desde != 0 && ImGui::GetTime() - host_desde > 45.0)
+      say += T::T("\nNo hay nadie buscando ahora mismo. Puedes seguir esperando o cancelar y jugar con un amigo usando CREAR SALA.",
+                  "\nNobody else is searching right now. You can keep waiting, or cancel and play with a friend using CREATE A ROOM.");
+    if (g_mm.st == Mm::kHost && g_mm.poll_fails >= 2)
+      say += T::T("\nSin respuesta del servicio: tu sala sigue abierta, pasa el codigo a mano.", "\nNo answer from the service: your room is still open, give the code by hand.");
+  } else if (idle) {
     if (link != Link::kIdle) say += s.Status() + "\n";
     if (link == Link::kError && s.desynced())
       say += std::string(T::T("Los dos juegos dejaron de ver lo mismo. Que hacer: volved a crear la sala; si se repite, enviadnos el informe.",
@@ -1041,14 +1179,19 @@ void OnlinePanel::DrawScreen(ImGuiIO& io, uint16_t pressed) {
       say += std::string(T::T("No se pudo conectar. Que hacer: comprueba que el codigo esta bien escrito y que el otro jugador ya tiene la sala creada.",
                               "Could not connect. What to do: check the code is typed right and the other player has already created the room.")) + "\n";
     if (link != Link::kError && link != Link::kLost) switch (cur) {   // con un error, solo el error y que hacer (cuadro corto)
+      case kSearchRow:
+        say += T::T("Te empareja con otro jugador que este buscando ahora. Solo pulsa A.", "Matches you with another player searching right now. Just press A.");
+        break;
       case kHostRow:
-        say += T::T("Crea la partida: te dara un codigo de sala para pasarselo al otro jugador. Necesitais la misma version y los mismos mods.",
-                    "Host the match: you get a room code to give to the other player. You both need the same version and mods.");
+        say += T::T("Crea una sala y pasale el codigo a un amigo. Necesitais la misma version y los mismos mods.",
+                    "Create a room and give the code to a friend. You both need the same version and mods.");
         break;
       case kJoinRow:
-      case kIpRow:
-        say += T::T("Escribe el codigo de sala del anfitrion (pulsa A y usa el teclado; tambien vale su IP) y unete.",
-                    "Type the host's room code (press A and use the keyboard; their IP also works), then join.");
+        say += T::T("Escribe el codigo que te paso tu amigo y pulsa Intro (o copialo y pulsa X para pegarlo).",
+                    "Type the code your friend gave you and press Enter (or copy it and press X to paste it).");
+        break;
+      case kAdvRow:
+        say += T::T("Para problemas de conexion: puerto y retardo.", "For connection problems: port and delay.");
         break;
       case kPortRow:
         say += T::T("Puerto UDP. Al crear la partida el juego intenta abrirlo en tu router; si no puede, abrelo a mano.",
@@ -1073,8 +1216,8 @@ void OnlinePanel::DrawScreen(ImGuiIO& io, uint16_t pressed) {
         if (!std::getenv("DBZ3_NO_DIALOGS")) ImGui::SetClipboardText(code.c_str());
         copied_code_ = code;
       }
-      say += T::T("\nCodigo de sala: ", "\nRoom code: ") + code + T::T("  (copiado)", "  (copied)");
-      if (link == Link::kWaiting && how != "local") {
+      if (mode_ != 1) say += T::T("\nCodigo de sala: ", "\nRoom code: ") + code + T::T("  (copiado: pegalo en un mensaje a tu amigo)", "  (copied: paste it in a message to your friend)");
+      if (link == Link::kWaiting && how != "local" && adv_) {
         // el codigo lleva la IP publica: desde la misma casa muchos routers no dejan entrar por ella
         if (lan_.empty() || ImGui::GetTime() - lan_at_ > 5.0) {   // gethostname + DNS: no en cada fotograma
           lan_ = s.LocalAddresses();
@@ -1087,16 +1230,25 @@ void OnlinePanel::DrawScreen(ImGuiIO& io, uint16_t pressed) {
       if (link == Link::kConnected && !s.mods_match()) {
         // sin la nota de red: el bocadillo no da para ella y la lista de mods
       } else if (how == "router") {
-        say += T::T("\nPuerto abierto en tu router: vale por internet.", "\nPort opened on your router: works over the internet.");
-      } else if (how == "stun") {
-        say += T::T("\nPor internet puede necesitar abrir el puerto UDP en el router.",
-                    "\nOver the internet the UDP port may need to be forwarded on the router.");
-      } else {
-        say += T::T("\nCodigo de red local (buscando la IP publica...).", "\nLocal network code (looking for the public IP...).");
+        if (adv_) say += T::T("\nPuerto abierto en tu router: vale por internet.", "\nPort opened on your router: works over the internet.");
+      } else if (mode_ != 1 && link == Link::kWaiting) {
+        say += T::T("\nSi no consigue entrar, probad al reves: que cree la sala tu amigo y te unes tu.",
+                    "\nIf they cannot get in, try the other way round: your friend creates the room and you join.");
       }
     }
     if (link == Link::kConnected || link == Link::kStarting) {
       if (s.mods_match()) {
+        if (s.ping_ms() >= 0) {
+          char qb[64];
+          std::snprintf(qb, sizeof(qb), s.ping_ms() < 60 ? T::T("\nConexion: buena (%d ms)", "\nConnection: good (%d ms)")
+                                        : s.ping_ms() < 130 ? T::T("\nConexion: regular (%d ms)", "\nConnection: fair (%d ms)")
+                                                            : T::T("\nConexion: mala (%d ms)", "\nConnection: poor (%d ms)"),
+                        s.ping_ms());
+          say += qb;
+        }
+        if (mode_ == 1) say += host ? T::T("\nListo. El combate empieza solo...", "\nReady. The fight starts by itself...")
+                                    : T::T("\nListo. Esperando a que empiece el combate...", "\nReady. Waiting for the fight to start...");
+        else
         say += host ? T::T("\nMods iguales. Pulsa EMPEZAR: los dos ireis a la eleccion de personajes (1P VS 2P).",
                            "\nSame mods. Press START: you both go to character select (1P VS 2P).")
                     : T::T("\nMods iguales. Esperando a que el anfitrion empiece...",
@@ -1152,9 +1304,9 @@ void OnlinePanel::DrawScreen(ImGuiIO& io, uint16_t pressed) {
   S::Speech(dl, a.At(195, 615), a.At(950, 845), a.s, say.c_str(), 0.78f);
   std::vector<std::pair<const char*, const char*>> help = {{"A", T::T("Aceptar", "OK")},
                                                            {"B", idle ? T::T("Atras", "Back") : T::T("Cancelar", "Cancel")}};
-  if (idle) help.push_back({"X", T::T("Pegar codigo", "Paste code")});
-  else if (host) help.push_back({"X", T::T("Copiar codigo", "Copy code")});
-  S::HelpLine(dl, a.At(idle || host ? 690 : 745, 870), 38 * a.s, help);
+  if (idle && !searching && !consent_ask_) help.push_back({"X", T::T("Pegar codigo", "Paste code")});
+  else if (host && mode_ != 1) help.push_back({"X", T::T("Copiar codigo", "Copy code")});
+  S::HelpLine(dl, a.At(idle || (host && mode_ != 1) ? 690 : 745, 870), 38 * a.s, help);
 }
 
 }  // namespace dbz3::ingame

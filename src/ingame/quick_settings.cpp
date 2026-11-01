@@ -318,9 +318,17 @@ void ConfigureQuickMenu(rex::ui::QuickMenuConfig& menu, std::function<void()> op
       if (fuentes.size() > 1) pistas.push_back({"aleatoria", T::T("Aleatoria (todas)", "Random (all)")});
       for (const std::string& f : fuentes) {
         const std::string nombre = f == "b3" ? "Budokai 3 HD" : f == "b2" ? "Budokai 2" : f == "iw" ? "Infinite World"
-                                 : f == "b1" ? "Budokai 1" : f;
+                                 : f == "b1" ? "Budokai 1" : f == "t3" ? "Tenkaichi 3" : f;
         pistas.push_back({"aleatoria:" + f, std::string(T::T("Aleatoria: ", "Random: ")) + nombre +
                                                 (f == "b3" ? "" : T::T(" (tu ISO)", " (your ISO)"))});
+      }
+      {   // pistas fijas de Tenkaichi 3 (20): se eligen aqui o con L1/R1 en el selector de escenarios del Duelo
+        int n = 0;
+        for (const auto& p : dbz3::musica::Pistas()) {
+          if (p.fuente != "t3") continue;
+          pistas.push_back({"fija:t3:" + std::to_string(n), std::string(T::T("Fija: ", "Fixed: ")) + p.nombre});
+          ++n;
+        }
       }
       sound.items.push_back(Choice(
           Tagged(T::T("Musica de combate", "Battle music"), kBeta), "dbz3_musica_combate", std::move(pistas),

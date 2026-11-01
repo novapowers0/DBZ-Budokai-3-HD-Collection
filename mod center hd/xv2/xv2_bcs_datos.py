@@ -23,6 +23,7 @@ RAZAS = ("HUM", "HUF", "NMC", "FRI", "MAM", "MAF")
 
 def volcar(salida):
     c = L.cpk_xv2()
+    paths = {n.casefold() for n in c.toc}
     out = ["# generado por mod center hd/xv2/xv2_bcs_datos.py desde la copia de Xenoverse 2 del jugador (no distribuir)"]
     for r in RAZAS:
         b = L.leer_bcs(c.get("data/chara/%s/%s.bcs" % (r, r)))
@@ -43,7 +44,7 @@ def volcar(salida):
                 out += ["", "[[raza.%s.parte]]" % r, 'tipo = "%s"' % tipo, "set = %d" % i, "modelo = %d" % p["modelo"],
                         "textura = %d" % p["textura"], "shader = %d" % p["shader"],
                         "colores = [%s]" % ", ".join("[%d, %d]" % t for t in p["colores"]),
-                        "ocultar = %d" % p["ocultar"], "existe = %d" % (1 if ruta in c.toc else 0)]
+                        "ocultar = %d" % p["ocultar"], "existe = %d" % (1 if ruta.casefold() in paths else 0)]
     os.makedirs(os.path.dirname(salida), exist_ok=True)
     open(salida, "w", encoding="utf-8").write("\n".join(out) + "\n")
     print("OK -> %s (%d lineas)" % (salida, len(out)))

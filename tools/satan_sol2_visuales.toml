@@ -1,0 +1,13 @@
+descripcion = "solSAT2: fundido completo, clip original en piel y alfa GPU por diferencia blanco-negro"
+env = ["DBZ3_TEST_PASARELA=auto,seg=8,desde=1", "DBZ3_PS2_GAMES=D:/DBZ3HD/ps2_games", "DBZ3_TEST_RINGOUT=1", "DBZ3_TEST_SAT_MUESTRAS=1", "DBZ3_TEST_B2S_TABLERO=1", "DBZ3_TEST_SAT_ALFA=1"]
+pasos = [
+  'log "solSAT: muestra G 1.2" 200', 'esperar 400', 'captura toma1_campo1',
+  'log "solSAT: muestra G 12.0" 20', 'esperar 400', 'captura toma1_campo10',
+  'log "solSAT: muestra G 72.0" 20', 'esperar 400', 'captura toma1_campo60',
+  'log "solSAT: muestra G 2109.6" 100', 'esperar 400', 'captura coche_campo1758',
+  'log "solSAT: muestra G 2209.2" 20', 'esperar 400', 'captura humo_campo1841',
+  'log "solSAT: muestra G 2317.2" 20', 'esperar 400', 'captura pose_campo1931',
+  'log "solSAT2: alfa fondo 0" 20', 'esperar 400', 'captura alfa_negro',
+  'log "solSAT2: alfa fondo 255" 20', 'esperar 400', 'captura alfa_blanco',
+  'log "pasarela: paso 3/" 150', 'esperar 3000', 'captura e_tablero',
+]

@@ -50,6 +50,7 @@ extern "C" {
 #include "eu_map.h"
 #include "launcher/launcher_state.h"
 #include "launcher/settings.h"
+#include "mods.h"
 #include "video_sfd_channels.h"
 
 namespace dbz3::video {
@@ -791,6 +792,8 @@ bool ReproducirIW(int video) {
 }
 
 }  // namespace dbz3::video
+
+#include "video_hd.inl"
 
 #else   // sin Windows: no hay reproductor (el modo sigue sin video)
 namespace dbz3::video {

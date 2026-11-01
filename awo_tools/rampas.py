@@ -119,12 +119,23 @@ def rampa_nueva(ramp, bases):
     out = np.zeros_like(ramp)
     out[..., 3] = 255
     a = ramp[..., 3].astype(np.float64) / 255.0 * K_SOMBRA
+    tinte = ramp[..., :3].astype(np.float64)
+    coloreada = (ramp[..., :3].max(2) > 24).mean() > 0.5   # B2 "metal": base x (1 - alfa) + color x alfa (M dorada)
     for r in range(h):
         L = min(15, r * 16 // h)
-        c = bandas[L] / cuenta[L] if cuenta[L] else media
-        f = np.clip(D_LUZ + a[r][:, None] * PESOS[None, :], 0.0, 1.0)
-        out[r, :, :3] = np.clip(np.rint(f * c[None, :]), 0, 255).astype(np.uint8)
+        # una banda con cuatro pixeles sueltos no da color: la fila vecina se mezcla al muestrear (Bu con Freezer: blanco -> cara roja)
+        c = bandas[L] / cuenta[L] if cuenta[L] >= 0.005 * cuenta.sum() else media
+        if coloreada:                         # base - rampa = base x (1 - D_LUZ) - alfa x (base - color)
+            fila = D_LUZ * c[None, :] + a[r][:, None] * (c[None, :] - tinte[r])
+        else:
+            fila = np.clip(D_LUZ + a[r][:, None] * _pesos(c)[None, :], 0.0, 1.0) * c[None, :]
+        out[r, :, :3] = np.clip(np.rint(fila), 0, 255).astype(np.uint8)
     return out
+
+
+def _pesos(c):
+    """La sombra calida (PESOS) es de la piel; en ropa con R ~ B (morado de Bu con Freezer) la volvia marron."""
+    return PESOS if c[0] >= c[1] and c[0] > 1.3 * c[2] else np.ones(3)      # piel: R/B 1.5-1.7; morado: 1.0-1.2
 
 
 def _dds(img, plantilla):
@@ -185,7 +196,8 @@ def convertir(hd, info=None):
     for mo, base, ramp in mats:
         if ramp in tex and base in tex:
             r = img(ramp)
-            if r is not None and es_rampa_b2(r):
+            # rampa coloreada de B2 (M dorada; RGB marron con alfa): sin el bit 0x2000 (solo B2) seria nativa, 4 de B3 traen alfa 0
+            if r is not None and (es_rampa_b2(r) or (_be(b, mo + 0x38) & 0x2000 and int(r[..., 3].min()) < 255)):
                 pares.setdefault(ramp, {}).setdefault(base, []).append(mo)
     if not pares:
         return bytes(hd), "sin rampas de Budokai 2"
@@ -314,7 +326,28 @@ def sombrear_planas(hd):
     return bytes(b), n
 
 
+def _prueba():
+    """python rampas.py --prueba: M dorada (no verde), morado sin marron, piel con sombra calida."""
+    def banda(rgb):
+        return np.dstack([np.full((16, 16, 3), rgb, np.uint8), np.zeros((16, 16, 1), np.uint8)])
+    oro = np.dstack([np.full((64, 64, 3), (107, 44, 8), np.uint8), np.full((64, 64, 1), 102, np.uint8)])
+    amarillo = np.array((255, 220, 80))
+    final = amarillo - rampa_nueva(oro, [banda(amarillo)])[0, 0, :3].astype(int)
+    assert final[0] > final[1] > final[2], final      # dorado: R > G > B (antes verde: G > R)
+    negra = np.dstack([np.zeros((64, 64, 3), np.uint8), np.full((64, 64, 1), 136, np.uint8)])
+    morado = np.array((155, 91, 131))
+    final = morado - rampa_nueva(negra, [banda(morado)])[0, 0, :3].astype(int)
+    assert final[2] > final[1], final                 # sigue morado
+    piel = np.array((255, 146, 148))
+    r = rampa_nueva(negra, [banda(piel)])[0, 0, :3].astype(float) / piel
+    assert r[2] > r[0], r                             # la sombra de la piel come mas azul que rojo
+    print("rampas: prueba OK")
+
+
 def main(argv):
+    if argv == ["--prueba"]:
+        _prueba()
+        return 0
     if len(argv) >= 2 and argv[0] == "--info":
         sys.path.insert(0, os.path.join(HERE, "..", "mod center hd"))
         import roster_build as rb  # noqa: PLC0415

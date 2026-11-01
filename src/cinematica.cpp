@@ -326,6 +326,127 @@ void AplicaBrazosB1(uint8_t* base, uint32_t x, float t) {
   }
 }
 
+
+// Satan 30/10 (c): pose ESTATICA de Mr. Satan de B1 (#AMM STN anim 0, de espaldas junto al coche) sobre el esqueleto de B3.
+// Direcciones de segmento medidas con fk_b1.py (clip 0, cuadro 0; el marco de B1: adelante = +x, arriba = +y) y llevadas
+// al marco de B3 girando alrededor de Y hasta que "adelante" sea el de los pies del esqueleto de B3. Como AplicaBrazosB1,
+// gira cadenas de huesos de la tabla ya animada; despues baja/sube todo para que los tobillos queden donde estaban y gira
+// el cuerpo alrededor de la vertical para que mire en sentido contrario a la camara (en B1 se le ve de espaldas).
+void AplicaPoseSatanB1Cuerpo(uint8_t* base, uint32_t x, uint32_t off_modelo, const float ojo[3]) {
+  const uint32_t mi = REX_LOAD_U32(x + off_modelo);
+  const uint32_t tb = mi ? REX_LOAD_U32(mi + 1032) : 0;
+  if (tb < 0x40000000u || tb >= 0xA0000000u) return;
+  auto T = [&](int i, double v[3]) { for (int c = 0; c < 3; ++c) v[c] = LeeBoneF(base, tb + 64 * uint32_t(i) + 48 + 4 * uint32_t(c)); };
+  // Medido en el volcado de la tabla (DBZ3_SATAN_SONDA): matrices POR FILAS (fila i = imagen del eje i, traslacion en la
+  // fila 3; la fila 0 de un hueso de brazo es la direccion del hueso). Girar el mundo por R = M * R^T (GiraHueso de los
+  // brazos usa R * M, que no es eso; aqui se hace bien).
+  auto GiraUno = [&](int i, const double R[9], const double pv[3]) {
+    const uint32_t m0 = tb + 64 * uint32_t(i);
+    double M[9], tt[3], Rn[9];
+    for (int r = 0; r < 3; ++r)
+      for (int c = 0; c < 3; ++c) M[3 * r + c] = LeeBoneF(base, m0 + 16 * uint32_t(r) + 4 * uint32_t(c));
+    T(i, tt);
+    for (int r = 0; r < 3; ++r)
+      for (int c = 0; c < 3; ++c) Rn[3 * r + c] = M[3 * r] * R[3 * c] + M[3 * r + 1] * R[3 * c + 1] + M[3 * r + 2] * R[3 * c + 2];
+    for (int r = 0; r < 3; ++r)
+      for (int c = 0; c < 3; ++c) PonBoneF(base, m0 + 16 * uint32_t(r) + 4 * uint32_t(c), float(Rn[3 * r + c]));
+    for (int r = 0; r < 3; ++r) {
+      double v = pv[r];
+      for (int c = 0; c < 3; ++c) v += R[3 * r + c] * (tt[c] - pv[c]);
+      PonBoneF(base, m0 + 48 + 4 * uint32_t(r), float(v));
+    }
+  };
+  auto Gira = [&](int raiz, int hasta, int pivote, int fin, const double t[3]) {   // gira los huesos [raiz..hasta] sobre `pivote` para que pivote->fin vaya en t
+    double pv[3], fn[3], a[3], R[9];
+    T(pivote, pv); T(fin, fn);
+    for (int c = 0; c < 3; ++c) a[c] = fn[c] - pv[c];
+    const double l = std::sqrt(a[0] * a[0] + a[1] * a[1] + a[2] * a[2]);
+    if (l < 1e-6) return;
+    for (int c = 0; c < 3; ++c) a[c] /= l;
+    RotDe(a, t, R);
+    for (int i = raiz; i <= hasta; ++i) GiraUno(i, R, pv);
+  };
+  static const bool sonda_s = std::getenv("DBZ3_SATAN_SONDA") != nullptr;
+  static int n_sonda = 0;
+  if (sonda_s && n_sonda++ < 1)   // volcado de la tabla (antes de tocarla): 60 matrices de 64 B
+    for (int i = 0; i < 60; ++i) {
+      float m[16];
+      for (int k = 0; k < 16; ++k) m[k] = LeeBoneF(base, tb + 64 * uint32_t(i) + 4 * uint32_t(k));
+      REXLOG_INFO("dbz3 sonda satan hueso {}: f0 ({:.3f} {:.3f} {:.3f}) f1 ({:.3f} {:.3f} {:.3f}) f2 ({:.3f} {:.3f} {:.3f}) t ({:.2f} {:.2f} {:.2f})",
+                  i, m[0], m[1], m[2], m[4], m[5], m[6], m[8], m[9], m[10], m[12], m[13], m[14]);
+    }
+  // frente del esqueleto de B3 (marco del modelo) = (izquierda - derecha) x arriba, con los hombros (huesos 32 y 11)
+  double hl[3], hr[3];
+  T(32, hl); T(11, hr);
+  double f3[3] = {-(hl[2] - hr[2]), 0.0, hl[0] - hr[0]};
+  const double lf = std::sqrt(f3[0] * f3[0] + f3[2] * f3[2]);
+  if (lf < 1e-4) return;
+  f3[0] /= lf; f3[2] /= lf;
+  const double f1[3] = {1.0, 0.0, 0.0};   // frente de B1 (pies hacia +x en el #AMM STN anim 0)
+  double Rf[9];
+  RotDe(f1, f3, Rf);
+  auto Dir = [&](double x1, double y1, double z1, double out[3]) {   // direccion de B1 -> marco de B3
+    out[0] = Rf[0] * x1 + Rf[1] * y1 + Rf[2] * z1;
+    out[1] = Rf[3] * x1 + Rf[4] * y1 + Rf[5] * z1;
+    out[2] = Rf[6] * x1 + Rf[7] * y1 + Rf[8] * z1;
+  };
+  double tmp[3], ankle0 = 1e9;
+  { double t1[3], t2[3]; T(5, t1); T(53, t2); ankle0 = std::min(t1[1], t2[1]); }
+  const double up[3] = {0, 1, 0};
+  Gira(8, 37, 1, 9, up);                                   // columna: cintura -> pecho
+  Gira(17, 27, 17, 18, up);                                // cabeza
+  struct Brazo { int raiz, codo, muneca, hasta; double d1[3], d2[3]; };
+  static const Brazo brazos[2] = {{32, 34, 35, 37, {-0.165, -0.960, -0.227}, {0.287, -0.905, -0.312}},
+                                  {11, 13, 14, 16, {0.170, -0.959, 0.228}, {0.397, -0.916, 0.058}}};
+  for (const Brazo& b : brazos) {
+    Dir(b.d1[0], b.d1[1], b.d1[2], tmp); Gira(b.raiz, b.hasta, b.raiz, b.codo, tmp);
+    Dir(b.d2[0], b.d2[1], b.d2[2], tmp); Gira(b.codo, b.hasta, b.codo, b.muneca, tmp);
+  }
+  struct Pierna { int cadera, rodilla, tobillo, punta, hasta; double d1[3], d2[3], d3[3]; };
+  static const Pierna piernas[2] = {{2, 4, 5, 6, 7, {0.026, -0.996, 0.082}, {-0.062, -0.991, 0.119}, {0.721, -0.689, -0.073}},
+                                    {50, 52, 53, 54, 55, {-0.040, -0.996, -0.076}, {-0.161, -0.986, -0.030}, {0.555, -0.689, -0.466}}};
+  for (const Pierna& l : piernas) {
+    Dir(l.d1[0], l.d1[1], l.d1[2], tmp); Gira(l.cadera, l.hasta, l.cadera, l.rodilla, tmp);
+    Dir(l.d2[0], l.d2[1], l.d2[2], tmp); Gira(l.rodilla, l.hasta, l.rodilla, l.tobillo, tmp);
+    Dir(l.d3[0], l.d3[1], l.d3[2], tmp); Gira(l.tobillo, l.hasta, l.tobillo, l.punta, tmp);
+  }
+  { double t1[3], t2[3]; T(5, t1); T(53, t2);   // tobillos a su altura anterior
+    const float dy = float(ankle0 - std::min(t1[1], t2[1]));
+    for (int i = 0; i < 56; ++i) {
+      const uint32_t a = tb + 64 * uint32_t(i) + 52;
+      PonBoneF(base, a, LeeBoneF(base, a) + dy);
+    }
+  }
+  // de espaldas a la camara: el frente del cuerpo en el MUNDO (su frente de modelo por la matriz del luchador, filas 0..2)
+  // se gira alrededor de la vertical hasta apuntar en sentido contrario a la camara (en B1 se le ve de espaldas)
+  const float fw_x = float(f3[0]) * LeeBoneF(base, x + 0) + float(f3[2]) * LeeBoneF(base, x + 32);
+  const float fw_z = float(f3[0]) * LeeBoneF(base, x + 8) + float(f3[2]) * LeeBoneF(base, x + 40);
+  const float px = LeeBoneF(base, x + 48), pz = LeeBoneF(base, x + 56);
+  const V3 fw = Unit(V3{fw_x, 0, fw_z}), lejos = Unit(V3{px - ojo[0], 0, pz - ojo[2]});
+  static const float giro_extra = [] { const char* v = std::getenv("DBZ3_SATAN_GIRO"); return v ? float(std::atof(v)) : 0.0f; }();
+  const double ea[3] = {fw.x, 0, fw.z}, eb[3] = {lejos.x, 0, lejos.z};
+  double Ry[9], pw[3];
+  RotDe(ea, eb, Ry);
+  if (giro_extra != 0.0f) {   // prueba: giro adicional en grados
+    const double c = std::cos(giro_extra * 0.0174533), s = std::sin(giro_extra * 0.0174533);
+    const double Rg[9] = {c, 0, s, 0, 1, 0, -s, 0, c};
+    double Rt[9];
+    for (int r = 0; r < 3; ++r) for (int k = 0; k < 3; ++k) Rt[3 * r + k] = Rg[3 * r] * Ry[k] + Rg[3 * r + 1] * Ry[3 + k] + Rg[3 * r + 2] * Ry[6 + k];
+    std::memcpy(Ry, Rt, sizeof Rt);
+  }
+  T(1, pw);
+  for (int i = 0; i < 56; ++i) GiraUno(i, Ry, pw);   // pivote en la cintura
+  static int traza = 0;
+  if (traza++ % 60 == 0)
+    REXLOG_INFO("dbz3 cinematica: pose de Satan de B1 (modelo +{}): frente modelo ({:.2f} {:.2f}) mundo ({:.2f} {:.2f}) lejos ({:.2f} {:.2f}) tobillo0 {:.2f}",
+                off_modelo, f3[0], f3[2], fw.x, fw.z, lejos.x, lejos.z, ankle0);
+}
+// B3 lleva dos cuerpos por luchador (A: modelo en X+2952, B: en X+4616; el visible depende de la forma): se pone la pose a los dos.
+void AplicaPoseSatanB1(uint8_t* base, uint32_t x, const V3& /*p1*/, const V3& /*p2*/, const float ojo[3]) {
+  AplicaPoseSatanB1Cuerpo(base, x, 2952, ojo);
+  AplicaPoseSatanB1Cuerpo(base, x, 4616, ojo);
+}
+
 // Marcador del combate (barras, caras, reloj): lo esconde el propio juego (combate.h, frente P4).
 void OcultarHud(bool ocultar) { dbz3::combate::OcultarHud(ocultar); }
 
@@ -626,6 +747,7 @@ constexpr BrazoSlot kBrazoSlots[] = {
     {"mano_der", 11, +1},  {"mano_derecha", 11, +1},
     {"codo_izq", 8, -1},   {"antebrazo_izq", 8, -1},   {"codo_izquierdo", 8, -1}, {"antebrazo_izquierdo", 8, -1},
     {"mano_izq", 10, -1},  {"mano_izquierda", 10, -1},
+    {"cadera_der", 0, +1}, {"cadera_izq", 0, -1},   // xvcara: cintura (anclaje 0), para ver faldon y pantalon desde un lado
 };
 struct CamaraModo {
   bool apagada = false;
@@ -634,6 +756,9 @@ struct CamaraModo {
   bool espalda = false;   // vista por detras (solo brazo)
   float dist = 0.0f;      // 0 = defecto
   float lado_u = 0.0f;    // 0 = defecto
+  bool cabeza_fija = false;   // solo prueba (xv2_cerca.py): "cabeza frente dist lado alto" en dbz3_cam.req: encuadre y combate quieto
+  float alto = 0.0f;
+  bool punto = false;
   std::string hueso = "cabeza";
 };
 std::string Minus(std::string s) {
@@ -658,7 +783,10 @@ CamaraModo ParseModo(const std::string& texto, const CamaraModo& base) {
   m.apagada = false;
   if (is >> vista) m.espalda = (Minus(vista) == "espalda");
   if (is >> ds) { const float f = float(std::atof(ds.c_str())); if (f > 0.1f) m.dist = f; }
-  if (is >> ls) { const float f = float(std::atof(ls.c_str())); if (f >= 0.0f) m.lado_u = f; }
+  if (is >> ls) { const float f = float(std::atof(ls.c_str())); if (f >= 0.0f || m.slot < 0) m.lado_u = f; }
+  std::string as;
+  if (m.slot < 0 && (is >> as)) m.cabeza_fija = true, m.alto = float(std::atof(as.c_str()));
+  if (m.slot >= 0 && (is >> as) && Minus(as) == "punto") m.punto = true;   // solo prueba: mirar a la articulacion, no al brazo
   return m;
 }
 // DS155: durante las fotos de brazos el combate se queda quieto (solo prueba). Mismo metodo que las escenas
@@ -723,6 +851,22 @@ struct QuietoBrazo {
 QuietoBrazo g_quieto;
 }  // namespace
 void SondaCaraFotograma(uint8_t* base, uint32_t estado) {
+  // Prueba de pies (solo pruebas.py, DBZ3_TEST_PIES=1): cada ~40 cuadros de combate, altura de cintura (slot 0) y de
+  // los dos tobillos (6, 7) de los puntos de cuerpo X+1616 respecto a la raiz del luchador, para los dos luchadores.
+  static const bool pies = std::getenv("DBZ3_TEST_PIES") != nullptr;
+  if (pies && estado == 4) {
+    static uint32_t n_pies = 0;
+    const uint32_t mg = REX_LOAD_U32(kMgrPtr);
+    if (mg && (n_pies++ % 40) == 0) {
+      auto f1 = [&](uint32_t a) { const uint32_t u = REX_LOAD_U32(a); float f; std::memcpy(&f, &u, 4); return f; };
+      for (uint32_t k = 0; k < 2; ++k) {
+        const uint32_t x = mg + kX0 + k * kXPaso;
+        REXLOG_INFO("dbz3 pies: luchador {} raiz y {:.3f} cintura {:.3f} tobilloL {:.3f} tobilloR {:.3f} (relativos a la raiz)",
+                    k + 1, f1(x + kPos + 4), f1(x + 1616 + 4) - f1(x + kPos + 4), f1(x + 1616 + 6 * 16 + 4) - f1(x + kPos + 4),
+                    f1(x + 1616 + 7 * 16 + 4) - f1(x + kPos + 4));
+      }
+    }
+  }
   static const char* v = std::getenv("DBZ3_TEST_CARA");   // se lee una vez (esto corre cada cuadro)
   if (!v) return;   // la sonda manda sobre la camara de la escena (es una prueba: primer plano de la cara)
   const uint32_t mgr = REX_LOAD_U32(kMgrPtr);
@@ -930,12 +1074,12 @@ void SondaCaraFotograma(uint8_t* base, uint32_t estado) {
     const bool con_mano = punto_brazo(mano_slot, &mano);
     if (!con_hombro) hombro = brazo;
     if (!con_mano) mano = brazo;
-    const V3 medio = (hombro + mano) * 0.5f;
+    const V3 medio = modo.punto ? brazo : (hombro + mano) * 0.5f;
     const float largo = std::sqrt((mano.x - hombro.x) * (mano.x - hombro.x) +
                                   (mano.y - hombro.y) * (mano.y - hombro.y) +
                                   (mano.z - hombro.z) * (mano.z - hombro.z));
     objetivo = medio + (brazo - medio) * 0.15f;
-    dist = std::max(modo.dist > 0.0f ? modo.dist : dist_brazo, std::max(2.0f, largo * 1.35f));
+    dist = modo.punto ? modo.dist : std::max(modo.dist > 0.0f ? modo.dist : dist_brazo, std::max(2.0f, largo * 1.35f));
     lado = modo.lado_u > 0.0f ? modo.lado_u : lado_brazo;
     // DS155: quieto para la foto (solo prueba): mandos sin pulsaciones (el COM pierde la IA), reloj de pelea
     // parado y se espera a que los dos esten en la accion 0 (guardia/reposo) antes de disparar.
@@ -1004,8 +1148,14 @@ void SondaCaraFotograma(uint8_t* base, uint32_t estado) {
                   modo.lado > 0 ? "derecho" : "izquierdo", fuera > 0.0f ? "derecho" : "izquierdo", fov, dist,
                   ojo.x, ojo.y, ojo.z, objetivo.x, objetivo.y, objetivo.z);
   } else {
-    g_quieto.Soltar(base, mgr);   // DS155: fuera del modo brazo no se queda nada quieto
-    ojo = cabeza + frente * dist + perp * lado + V3{0, 0.3f, 0};
+    if (modo.cabeza_fija) {
+      if (!g_quieto.activo) g_quieto.Empezar(base, mgr);
+      g_quieto.Tick(base, mgr);
+      dist = modo.dist, lado = modo.lado_u, objetivo.y += modo.alto;
+    } else {
+      g_quieto.Soltar(base, mgr);   // DS155: fuera del modo brazo no se queda nada quieto
+    }
+    ojo = cabeza + frente * dist + perp * lado + V3{0, 0.3f + modo.alto, 0};
     ojo.y = std::max(ojo.y, p1.y + 0.5f);
     if ((nlog++ % 30) == 0)
       REXLOG_INFO("dbz3 cinematica: sonda de cara cuadro {}: cabeza ({:.2f} {:.2f} {:.2f}) fuente {} hueso-cabeza {} ({:.2f} {:.2f} {:.2f}) d {:.2f} golpe ({:.2f} {:.2f} {:.2f}) cuello ({:.2f} {:.2f} {:.2f}) anclaje {} ({:.2f} {:.2f} {:.2f}) fov {:.3f} dist {:.2f} ojo ({:.2f} {:.2f} {:.2f}) objetivo ({:.2f} {:.2f} {:.2f})",
@@ -1344,6 +1494,7 @@ void Fotograma(uint8_t* base, uint32_t estado) {
   cine::Camara(base, eo, eb, roll);
   // DS16: la pose de brazos de B1 sobre el cuerpo del clip de B3 (solo el luchador 1, solo en el paso marcado)
   if (p.brazos_b1 && !std::getenv("DBZ3_DS16_SIN_BRAZOS")) AplicaBrazosB1(base, mgr + kX0, t);
+  if (p.pose_satan_b1 && !std::getenv("DBZ3_SATAN_SIN_POSE")) AplicaPoseSatanB1(base, mgr + kX0, p1, p2, eo);
   g_abre = std::min({1.0f, float(AhoraMs() - g_t0) / 500.0f, ultimo ? queda / 0.5f : 1.0f});
   ++g_frame;
 }

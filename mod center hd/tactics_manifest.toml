@@ -1,0 +1,2563 @@
+# Generado por tactics_manifest.py generar (no editar a mano). Ver el docstring del script.
+version = 1
+
+[reglas]
+# Python (studio_core.anim_locals) SUMA la posicion de la pista al reposo; C++ (pasarela_nave.cpp EjesMundo, modo_rel 0) la SUSTITUYE.
+# Tactics usa el C++: la raiz de la animacion NO se suma al movimiento del tablero. La figura se coloca en su casilla con
+# Escena::Poner y el desplazamiento horizontal (x, z) de la pista de la cadera se anula; el avance entre casillas lo da el tablero.
+raiz = "ignorar_xz"
+cuadros_por_segundo = 60
+
+[[unidad]]
+id = "goku"
+b3 = 0
+b2 = 0
+forma = 0
+traje = 0
+modelo = 264
+anm_forma = 292
+banco = 292
+[unidad.clips.espera]
+codigo = 0
+anim = 0
+frames = 50
+bucle = true
+estado = "medido"
+nota = "neutro 0 (RONDA4_PULIDO.md)"
+[unidad.clips.andar]
+codigo = 15
+anim = 6
+frames = 16
+bucle = true
+estado = "medido"
+nota = "andar por el suelo (altura.py GROUND_CODES)"
+[unidad.clips.ataque]
+codigo = 539
+anim = 31
+frames = 36
+bucle = false
+estado = "medido"
+nota = "combo >P (ACM_FORMAT.md)"
+[unidad.clips.tecnica]
+codigo = 600
+anim = 9
+frames = 120
+bucle = false
+estado = "inferido"
+nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.dano]
+estado = "pendiente"
+nota = "accion 20 del motor, sin codigo BSK confirmado"
+[unidad.clips.derrota]
+estado = "pendiente"
+nota = "sin evidencia de codigo"
+[unidad.clips.carga_ki]
+estado = "pendiente"
+nota = "accion 21 del motor; codigo sin medir"
+[unidad.clips.transformacion]
+estado = "pendiente"
+nota = "0x2E0/0x3E0 apunta a otro banco (pool 0) en casi todos: no resuelto aqui"
+
+[[unidad]]
+id = "goku_2"
+b3 = 0
+b2 = 0
+forma = 1
+traje = 0
+modelo = 265
+anm_forma = 292
+banco = 292
+[unidad.clips.espera]
+codigo = 0
+anim = 0
+frames = 50
+bucle = true
+estado = "medido"
+nota = "neutro 0 (RONDA4_PULIDO.md)"
+[unidad.clips.andar]
+codigo = 15
+anim = 6
+frames = 16
+bucle = true
+estado = "medido"
+nota = "andar por el suelo (altura.py GROUND_CODES)"
+[unidad.clips.ataque]
+codigo = 539
+anim = 31
+frames = 36
+bucle = false
+estado = "medido"
+nota = "combo >P (ACM_FORMAT.md)"
+[unidad.clips.tecnica]
+codigo = 600
+anim = 9
+frames = 120
+bucle = false
+estado = "inferido"
+nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.dano]
+estado = "pendiente"
+nota = "accion 20 del motor, sin codigo BSK confirmado"
+[unidad.clips.derrota]
+estado = "pendiente"
+nota = "sin evidencia de codigo"
+[unidad.clips.carga_ki]
+estado = "pendiente"
+nota = "accion 21 del motor; codigo sin medir"
+[unidad.clips.transformacion]
+estado = "pendiente"
+nota = "0x2E0/0x3E0 apunta a otro banco (pool 0) en casi todos: no resuelto aqui"
+
+[[unidad]]
+id = "goku_3"
+b3 = 0
+b2 = 0
+forma = 2
+traje = 0
+modelo = 266
+anm_forma = 292
+banco = 292
+[unidad.clips.espera]
+codigo = 0
+anim = 0
+frames = 50
+bucle = true
+estado = "medido"
+nota = "neutro 0 (RONDA4_PULIDO.md)"
+[unidad.clips.andar]
+codigo = 15
+anim = 6
+frames = 16
+bucle = true
+estado = "medido"
+nota = "andar por el suelo (altura.py GROUND_CODES)"
+[unidad.clips.ataque]
+codigo = 539
+anim = 31
+frames = 36
+bucle = false
+estado = "medido"
+nota = "combo >P (ACM_FORMAT.md)"
+[unidad.clips.tecnica]
+codigo = 600
+anim = 9
+frames = 120
+bucle = false
+estado = "inferido"
+nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.dano]
+estado = "pendiente"
+nota = "accion 20 del motor, sin codigo BSK confirmado"
+[unidad.clips.derrota]
+estado = "pendiente"
+nota = "sin evidencia de codigo"
+[unidad.clips.carga_ki]
+estado = "pendiente"
+nota = "accion 21 del motor; codigo sin medir"
+[unidad.clips.transformacion]
+estado = "pendiente"
+nota = "0x2E0/0x3E0 apunta a otro banco (pool 0) en casi todos: no resuelto aqui"
+
+[[unidad]]
+id = "goku_4"
+b3 = 0
+b2 = 0
+forma = 3
+traje = 0
+modelo = 267
+anm_forma = 292
+banco = 292
+[unidad.clips.espera]
+codigo = 0
+anim = 0
+frames = 50
+bucle = true
+estado = "medido"
+nota = "neutro 0 (RONDA4_PULIDO.md)"
+[unidad.clips.andar]
+codigo = 15
+anim = 6
+frames = 16
+bucle = true
+estado = "medido"
+nota = "andar por el suelo (altura.py GROUND_CODES)"
+[unidad.clips.ataque]
+codigo = 539
+anim = 31
+frames = 36
+bucle = false
+estado = "medido"
+nota = "combo >P (ACM_FORMAT.md)"
+[unidad.clips.tecnica]
+codigo = 600
+anim = 9
+frames = 120
+bucle = false
+estado = "inferido"
+nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.dano]
+estado = "pendiente"
+nota = "accion 20 del motor, sin codigo BSK confirmado"
+[unidad.clips.derrota]
+estado = "pendiente"
+nota = "sin evidencia de codigo"
+[unidad.clips.carga_ki]
+estado = "pendiente"
+nota = "accion 21 del motor; codigo sin medir"
+[unidad.clips.transformacion]
+estado = "pendiente"
+nota = "0x2E0/0x3E0 apunta a otro banco (pool 0) en casi todos: no resuelto aqui"
+
+[[unidad]]
+id = "vegeta"
+b3 = 7
+b2 = 3
+forma = 0
+traje = 0
+modelo = 416
+anm_forma = 435
+banco = 435
+[unidad.clips.espera]
+codigo = 0
+anim = 0
+frames = 128
+bucle = true
+estado = "medido"
+nota = "neutro 0 (RONDA4_PULIDO.md)"
+[unidad.clips.andar]
+codigo = 2
+anim = 1
+frames = 128
+bucle = true
+estado = "medido"
+nota = "andar por el suelo, codigo 2 (altura.py GROUND_CODES): el andar real de los que no traen 0xF"
+[unidad.clips.ataque]
+codigo = 539
+anim = 23
+frames = 54
+bucle = false
+estado = "medido"
+nota = "combo >P (ACM_FORMAT.md)"
+[unidad.clips.tecnica]
+codigo = 600
+anim = 81
+frames = 120
+bucle = false
+estado = "inferido"
+nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.dano]
+estado = "pendiente"
+nota = "accion 20 del motor, sin codigo BSK confirmado"
+[unidad.clips.derrota]
+estado = "pendiente"
+nota = "sin evidencia de codigo"
+[unidad.clips.carga_ki]
+estado = "pendiente"
+nota = "accion 21 del motor; codigo sin medir"
+[unidad.clips.transformacion]
+estado = "pendiente"
+nota = "0x2E0/0x3E0 apunta a otro banco (pool 0) en casi todos: no resuelto aqui"
+
+[[unidad]]
+id = "vegeta_2"
+b3 = 7
+b2 = 3
+forma = 1
+traje = 0
+modelo = 417
+anm_forma = 435
+banco = 435
+[unidad.clips.espera]
+codigo = 0
+anim = 0
+frames = 128
+bucle = true
+estado = "medido"
+nota = "neutro 0 (RONDA4_PULIDO.md)"
+[unidad.clips.andar]
+codigo = 2
+anim = 1
+frames = 128
+bucle = true
+estado = "medido"
+nota = "andar por el suelo, codigo 2 (altura.py GROUND_CODES): el andar real de los que no traen 0xF"
+[unidad.clips.ataque]
+codigo = 539
+anim = 23
+frames = 54
+bucle = false
+estado = "medido"
+nota = "combo >P (ACM_FORMAT.md)"
+[unidad.clips.tecnica]
+codigo = 600
+anim = 81
+frames = 120
+bucle = false
+estado = "inferido"
+nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.dano]
+estado = "pendiente"
+nota = "accion 20 del motor, sin codigo BSK confirmado"
+[unidad.clips.derrota]
+estado = "pendiente"
+nota = "sin evidencia de codigo"
+[unidad.clips.carga_ki]
+estado = "pendiente"
+nota = "accion 21 del motor; codigo sin medir"
+[unidad.clips.transformacion]
+estado = "pendiente"
+nota = "0x2E0/0x3E0 apunta a otro banco (pool 0) en casi todos: no resuelto aqui"
+
+[[unidad]]
+id = "vegeta_3"
+b3 = 7
+b2 = 3
+forma = 4
+traje = 0
+modelo = 419
+anm_forma = 434
+banco = 435
+[unidad.clips.espera]
+codigo = 0
+anim = 2
+frames = 64
+bucle = true
+estado = "medido"
+nota = "neutro 0 (RONDA4_PULIDO.md)"
+[unidad.clips.andar]
+codigo = 2
+anim = 1
+frames = 128
+bucle = true
+estado = "medido"
+nota = "andar por el suelo, codigo 2 (altura.py GROUND_CODES): el andar real de los que no traen 0xF"
+[unidad.clips.ataque]
+codigo = 539
+anim = 23
+frames = 54
+bucle = false
+estado = "medido"
+nota = "combo >P (ACM_FORMAT.md)"
+[unidad.clips.tecnica]
+codigo = 600
+anim = 81
+frames = 120
+bucle = false
+estado = "inferido"
+nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.dano]
+estado = "pendiente"
+nota = "accion 20 del motor, sin codigo BSK confirmado"
+[unidad.clips.derrota]
+estado = "pendiente"
+nota = "sin evidencia de codigo"
+[unidad.clips.carga_ki]
+estado = "pendiente"
+nota = "accion 21 del motor; codigo sin medir"
+[unidad.clips.transformacion]
+estado = "pendiente"
+nota = "0x2E0/0x3E0 apunta a otro banco (pool 0) en casi todos: no resuelto aqui"
+
+[[unidad]]
+id = "piccolo"
+b3 = 11
+b2 = 6
+forma = 0
+traje = 0
+modelo = 350
+anm_forma = 358
+banco = 358
+[unidad.clips.espera]
+codigo = 0
+anim = 0
+frames = 60
+bucle = true
+estado = "medido"
+nota = "neutro 0 (RONDA4_PULIDO.md)"
+[unidad.clips.andar]
+codigo = 15
+anim = 8
+frames = 20
+bucle = true
+estado = "medido"
+nota = "andar por el suelo (altura.py GROUND_CODES)"
+[unidad.clips.ataque]
+codigo = 539
+anim = 21
+frames = 30
+bucle = false
+estado = "medido"
+nota = "combo >P (ACM_FORMAT.md)"
+[unidad.clips.tecnica]
+codigo = 600
+anim = 14
+frames = 120
+bucle = false
+estado = "inferido"
+nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.dano]
+estado = "pendiente"
+nota = "accion 20 del motor, sin codigo BSK confirmado"
+[unidad.clips.derrota]
+estado = "pendiente"
+nota = "sin evidencia de codigo"
+[unidad.clips.carga_ki]
+estado = "pendiente"
+nota = "accion 21 del motor; codigo sin medir"
+[unidad.clips.transformacion]
+estado = "pendiente"
+nota = "0x2E0/0x3E0 apunta a otro banco (pool 0) en casi todos: no resuelto aqui"
+
+[[unidad]]
+id = "krilin"
+b3 = 10
+b2 = 4
+forma = 0
+traje = 0
+modelo = 327
+anm_forma = 333
+banco = 333
+[unidad.clips.espera]
+codigo = 0
+anim = 4
+frames = 100
+bucle = true
+estado = "medido"
+nota = "neutro 0 (RONDA4_PULIDO.md)"
+[unidad.clips.andar]
+codigo = 2
+anim = 6
+frames = 60
+bucle = true
+estado = "medido"
+nota = "andar por el suelo, codigo 2 (altura.py GROUND_CODES): el andar real de los que no traen 0xF"
+[unidad.clips.ataque]
+codigo = 539
+anim = 48
+frames = 79
+bucle = false
+estado = "medido"
+nota = "combo >P (ACM_FORMAT.md)"
+[unidad.clips.tecnica]
+codigo = 600
+anim = 2
+frames = 41
+bucle = false
+estado = "inferido"
+nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.dano]
+estado = "pendiente"
+nota = "accion 20 del motor, sin codigo BSK confirmado"
+[unidad.clips.derrota]
+estado = "pendiente"
+nota = "sin evidencia de codigo"
+[unidad.clips.carga_ki]
+estado = "pendiente"
+nota = "accion 21 del motor; codigo sin medir"
+[unidad.clips.transformacion]
+estado = "pendiente"
+nota = "0x2E0/0x3E0 apunta a otro banco (pool 0) en casi todos: no resuelto aqui"
+
+[[unidad]]
+id = "a16"
+b3 = 28
+b2 = 16
+forma = 0
+traje = 0
+modelo = 70
+anm_forma = 74
+banco = 74
+[unidad.clips.espera]
+codigo = 0
+anim = 0
+frames = 120
+bucle = true
+estado = "medido"
+nota = "neutro 0 (RONDA4_PULIDO.md)"
+[unidad.clips.andar]
+codigo = 15
+anim = 5
+frames = 15
+bucle = true
+estado = "medido"
+nota = "andar por el suelo (altura.py GROUND_CODES)"
+[unidad.clips.ataque]
+codigo = 539
+anim = 46
+frames = 57
+bucle = false
+estado = "medido"
+nota = "combo >P (ACM_FORMAT.md)"
+[unidad.clips.tecnica]
+codigo = 600
+anim = 8
+frames = 120
+bucle = false
+estado = "inferido"
+nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.dano]
+estado = "pendiente"
+nota = "accion 20 del motor, sin codigo BSK confirmado"
+[unidad.clips.derrota]
+estado = "pendiente"
+nota = "sin evidencia de codigo"
+[unidad.clips.carga_ki]
+estado = "pendiente"
+nota = "accion 21 del motor; codigo sin medir"
+[unidad.clips.transformacion]
+estado = "pendiente"
+nota = "0x2E0/0x3E0 apunta a otro banco (pool 0) en casi todos: no resuelto aqui"
+
+[[unidad]]
+id = "a18"
+b3 = 30
+b2 = 18
+forma = 0
+traje = 0
+modelo = 80
+anm_forma = 85
+banco = 85
+[unidad.clips.espera]
+codigo = 0
+anim = 0
+frames = 70
+bucle = true
+estado = "medido"
+nota = "neutro 0 (RONDA4_PULIDO.md)"
+[unidad.clips.andar]
+codigo = 15
+anim = 6
+frames = 15
+bucle = true
+estado = "medido"
+nota = "andar por el suelo (altura.py GROUND_CODES)"
+[unidad.clips.ataque]
+codigo = 539
+anim = 30
+frames = 36
+bucle = false
+estado = "medido"
+nota = "combo >P (ACM_FORMAT.md)"
+[unidad.clips.tecnica]
+codigo = 600
+anim = 87
+frames = 120
+bucle = false
+estado = "inferido"
+nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.dano]
+estado = "pendiente"
+nota = "accion 20 del motor, sin codigo BSK confirmado"
+[unidad.clips.derrota]
+estado = "pendiente"
+nota = "sin evidencia de codigo"
+[unidad.clips.carga_ki]
+estado = "pendiente"
+nota = "accion 21 del motor; codigo sin medir"
+[unidad.clips.transformacion]
+estado = "pendiente"
+nota = "0x2E0/0x3E0 apunta a otro banco (pool 0) en casi todos: no resuelto aqui"
+
+[[unidad]]
+id = "freezer"
+b3 = 27
+b2 = 15
+forma = 1
+traje = 0
+modelo = 182
+anm_forma = 199
+banco = 202
+[unidad.clips.espera]
+codigo = 0
+anim = 4
+frames = 50
+bucle = true
+estado = "medido"
+nota = "neutro 0 (RONDA4_PULIDO.md)"
+[unidad.clips.andar]
+codigo = 244
+anim = 78
+frames = 55
+bucle = true
+estado = "inferido"
+nota = "sin andar en el suelo: bucle de 60 cuadros de la familia 0xF4-0xFF (vuelo); sin confirmar en juego"
+[unidad.clips.ataque]
+codigo = 539
+anim = 27
+frames = 51
+bucle = false
+estado = "medido"
+nota = "combo >P (ACM_FORMAT.md)"
+[unidad.clips.tecnica]
+codigo = 600
+anim = 0
+frames = 120
+bucle = false
+estado = "inferido"
+nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.dano]
+estado = "pendiente"
+nota = "accion 20 del motor, sin codigo BSK confirmado"
+[unidad.clips.derrota]
+estado = "pendiente"
+nota = "sin evidencia de codigo"
+[unidad.clips.carga_ki]
+estado = "pendiente"
+nota = "accion 21 del motor; codigo sin medir"
+[unidad.clips.transformacion]
+estado = "pendiente"
+nota = "0x2E0/0x3E0 apunta a otro banco (pool 0) en casi todos: no resuelto aqui"
+
+[[unidad]]
+id = "freezer_2"
+b3 = 27
+b2 = 15
+forma = 2
+traje = 0
+modelo = 183
+anm_forma = 200
+banco = 202
+[unidad.clips.espera]
+codigo = 0
+anim = 5
+frames = 50
+bucle = true
+estado = "medido"
+nota = "neutro 0 (RONDA4_PULIDO.md)"
+[unidad.clips.andar]
+codigo = 15
+anim = 9
+frames = 18
+bucle = true
+estado = "medido"
+nota = "andar por el suelo (altura.py GROUND_CODES)"
+[unidad.clips.ataque]
+codigo = 539
+anim = 27
+frames = 51
+bucle = false
+estado = "medido"
+nota = "combo >P (ACM_FORMAT.md)"
+[unidad.clips.tecnica]
+codigo = 600
+anim = 0
+frames = 120
+bucle = false
+estado = "inferido"
+nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.dano]
+estado = "pendiente"
+nota = "accion 20 del motor, sin codigo BSK confirmado"
+[unidad.clips.derrota]
+estado = "pendiente"
+nota = "sin evidencia de codigo"
+[unidad.clips.carga_ki]
+estado = "pendiente"
+nota = "accion 21 del motor; codigo sin medir"
+[unidad.clips.transformacion]
+estado = "pendiente"
+nota = "0x2E0/0x3E0 apunta a otro banco (pool 0) en casi todos: no resuelto aqui"
+
+[[unidad]]
+id = "freezer_3"
+b3 = 27
+b2 = 15
+forma = 3
+traje = 0
+modelo = 184
+anm_forma = 201
+banco = 202
+[unidad.clips.espera]
+codigo = 0
+anim = 12
+frames = 50
+bucle = true
+estado = "medido"
+nota = "neutro 0 (RONDA4_PULIDO.md)"
+[unidad.clips.andar]
+codigo = 15
+anim = 20
+frames = 14
+bucle = true
+estado = "medido"
+nota = "andar por el suelo (altura.py GROUND_CODES)"
+[unidad.clips.ataque]
+codigo = 539
+anim = 27
+frames = 51
+bucle = false
+estado = "medido"
+nota = "combo >P (ACM_FORMAT.md)"
+[unidad.clips.tecnica]
+codigo = 600
+anim = 0
+frames = 120
+bucle = false
+estado = "inferido"
+nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.dano]
+estado = "pendiente"
+nota = "accion 20 del motor, sin codigo BSK confirmado"
+[unidad.clips.derrota]
+estado = "pendiente"
+nota = "sin evidencia de codigo"
+[unidad.clips.carga_ki]
+estado = "pendiente"
+nota = "accion 21 del motor; codigo sin medir"
+[unidad.clips.transformacion]
+estado = "pendiente"
+nota = "0x2E0/0x3E0 apunta a otro banco (pool 0) en casi todos: no resuelto aqui"
+
+[[unidad]]
+id = "freezer_4"
+b3 = 27
+b2 = 15
+forma = 4
+traje = 0
+modelo = 185
+anm_forma = 201
+banco = 202
+[unidad.clips.espera]
+codigo = 0
+anim = 12
+frames = 50
+bucle = true
+estado = "medido"
+nota = "neutro 0 (RONDA4_PULIDO.md)"
+[unidad.clips.andar]
+codigo = 15
+anim = 20
+frames = 14
+bucle = true
+estado = "medido"
+nota = "andar por el suelo (altura.py GROUND_CODES)"
+[unidad.clips.ataque]
+codigo = 539
+anim = 27
+frames = 51
+bucle = false
+estado = "medido"
+nota = "combo >P (ACM_FORMAT.md)"
+[unidad.clips.tecnica]
+codigo = 600
+anim = 0
+frames = 120
+bucle = false
+estado = "inferido"
+nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.dano]
+estado = "pendiente"
+nota = "accion 20 del motor, sin codigo BSK confirmado"
+[unidad.clips.derrota]
+estado = "pendiente"
+nota = "sin evidencia de codigo"
+[unidad.clips.carga_ki]
+estado = "pendiente"
+nota = "accion 21 del motor; codigo sin medir"
+[unidad.clips.transformacion]
+estado = "pendiente"
+nota = "0x2E0/0x3E0 apunta a otro banco (pool 0) en casi todos: no resuelto aqui"
+
+[[unidad]]
+id = "cell"
+b3 = 33
+b2 = 20
+forma = 0
+traje = 0
+modelo = 146
+anm_forma = 159
+banco = 159
+[unidad.clips.espera]
+codigo = 0
+anim = 0
+frames = 120
+bucle = true
+estado = "medido"
+nota = "neutro 0 (RONDA4_PULIDO.md)"
+[unidad.clips.andar]
+codigo = 2
+anim = 1
+frames = 70
+bucle = true
+estado = "medido"
+nota = "andar por el suelo, codigo 2 (altura.py GROUND_CODES): el andar real de los que no traen 0xF"
+[unidad.clips.ataque]
+codigo = 539
+anim = 33
+frames = 51
+bucle = false
+estado = "medido"
+nota = "combo >P (ACM_FORMAT.md)"
+[unidad.clips.tecnica]
+codigo = 600
+anim = 24
+frames = 120
+bucle = false
+estado = "inferido"
+nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.dano]
+estado = "pendiente"
+nota = "accion 20 del motor, sin codigo BSK confirmado"
+[unidad.clips.derrota]
+estado = "pendiente"
+nota = "sin evidencia de codigo"
+[unidad.clips.carga_ki]
+estado = "pendiente"
+nota = "accion 21 del motor; codigo sin medir"
+[unidad.clips.transformacion]
+estado = "pendiente"
+nota = "0x2E0/0x3E0 apunta a otro banco (pool 0) en casi todos: no resuelto aqui"
+
+[[unidad]]
+id = "cell_2"
+b3 = 33
+b2 = 20
+forma = 1
+traje = 0
+modelo = 147
+anm_forma = 156
+banco = 159
+[unidad.clips.espera]
+codigo = 0
+anim = 2
+frames = 110
+bucle = true
+estado = "medido"
+nota = "neutro 0 (RONDA4_PULIDO.md)"
+[unidad.clips.andar]
+codigo = 2
+anim = 3
+frames = 90
+bucle = true
+estado = "medido"
+nota = "andar por el suelo, codigo 2 (altura.py GROUND_CODES): el andar real de los que no traen 0xF"
+[unidad.clips.ataque]
+codigo = 539
+anim = 33
+frames = 51
+bucle = false
+estado = "medido"
+nota = "combo >P (ACM_FORMAT.md)"
+[unidad.clips.tecnica]
+codigo = 600
+anim = 24
+frames = 120
+bucle = false
+estado = "inferido"
+nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.dano]
+estado = "pendiente"
+nota = "accion 20 del motor, sin codigo BSK confirmado"
+[unidad.clips.derrota]
+estado = "pendiente"
+nota = "sin evidencia de codigo"
+[unidad.clips.carga_ki]
+estado = "pendiente"
+nota = "accion 21 del motor; codigo sin medir"
+[unidad.clips.transformacion]
+estado = "pendiente"
+nota = "0x2E0/0x3E0 apunta a otro banco (pool 0) en casi todos: no resuelto aqui"
+
+[[unidad]]
+id = "cell_3"
+b3 = 33
+b2 = 20
+forma = 2
+traje = 0
+modelo = 148
+anm_forma = 157
+banco = 159
+[unidad.clips.espera]
+codigo = 0
+anim = 4
+frames = 70
+bucle = true
+estado = "medido"
+nota = "neutro 0 (RONDA4_PULIDO.md)"
+[unidad.clips.andar]
+codigo = 2
+anim = 5
+frames = 60
+bucle = true
+estado = "medido"
+nota = "andar por el suelo, codigo 2 (altura.py GROUND_CODES): el andar real de los que no traen 0xF"
+[unidad.clips.ataque]
+codigo = 539
+anim = 33
+frames = 51
+bucle = false
+estado = "medido"
+nota = "combo >P (ACM_FORMAT.md)"
+[unidad.clips.tecnica]
+codigo = 600
+anim = 24
+frames = 120
+bucle = false
+estado = "inferido"
+nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.dano]
+estado = "pendiente"
+nota = "accion 20 del motor, sin codigo BSK confirmado"
+[unidad.clips.derrota]
+estado = "pendiente"
+nota = "sin evidencia de codigo"
+[unidad.clips.carga_ki]
+estado = "pendiente"
+nota = "accion 21 del motor; codigo sin medir"
+[unidad.clips.transformacion]
+estado = "pendiente"
+nota = "0x2E0/0x3E0 apunta a otro banco (pool 0) en casi todos: no resuelto aqui"
+
+[[unidad]]
+id = "gohan"
+b3 = 3
+b2 = -1
+forma = 0
+traje = 0
+modelo = 235
+anm_forma = 245
+banco = 245
+[unidad.clips.espera]
+codigo = 0
+anim = 0
+frames = 80
+bucle = true
+estado = "medido"
+nota = "neutro 0 (RONDA4_PULIDO.md)"
+[unidad.clips.andar]
+codigo = 15
+anim = 9
+frames = 16
+bucle = true
+estado = "medido"
+nota = "andar por el suelo (altura.py GROUND_CODES)"
+[unidad.clips.ataque]
+codigo = 539
+anim = 34
+frames = 51
+bucle = false
+estado = "medido"
+nota = "combo >P (ACM_FORMAT.md)"
+[unidad.clips.tecnica]
+codigo = 600
+anim = 13
+frames = 120
+bucle = false
+estado = "inferido"
+nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.dano]
+estado = "pendiente"
+nota = "accion 20 del motor, sin codigo BSK confirmado"
+[unidad.clips.derrota]
+estado = "pendiente"
+nota = "sin evidencia de codigo"
+[unidad.clips.carga_ki]
+estado = "pendiente"
+nota = "accion 21 del motor; codigo sin medir"
+[unidad.clips.transformacion]
+estado = "pendiente"
+nota = "0x2E0/0x3E0 apunta a otro banco (pool 0) en casi todos: no resuelto aqui"
+
+[[unidad]]
+id = "gohan_2"
+b3 = 3
+b2 = -1
+forma = 1
+traje = 0
+modelo = 236
+anm_forma = 245
+banco = 245
+[unidad.clips.espera]
+codigo = 0
+anim = 0
+frames = 80
+bucle = true
+estado = "medido"
+nota = "neutro 0 (RONDA4_PULIDO.md)"
+[unidad.clips.andar]
+codigo = 15
+anim = 9
+frames = 16
+bucle = true
+estado = "medido"
+nota = "andar por el suelo (altura.py GROUND_CODES)"
+[unidad.clips.ataque]
+codigo = 539
+anim = 34
+frames = 51
+bucle = false
+estado = "medido"
+nota = "combo >P (ACM_FORMAT.md)"
+[unidad.clips.tecnica]
+codigo = 600
+anim = 13
+frames = 120
+bucle = false
+estado = "inferido"
+nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.dano]
+estado = "pendiente"
+nota = "accion 20 del motor, sin codigo BSK confirmado"
+[unidad.clips.derrota]
+estado = "pendiente"
+nota = "sin evidencia de codigo"
+[unidad.clips.carga_ki]
+estado = "pendiente"
+nota = "accion 21 del motor; codigo sin medir"
+[unidad.clips.transformacion]
+estado = "pendiente"
+nota = "0x2E0/0x3E0 apunta a otro banco (pool 0) en casi todos: no resuelto aqui"
+
+[[unidad]]
+id = "gohan_3"
+b3 = 3
+b2 = -1
+forma = 2
+traje = 0
+modelo = 237
+anm_forma = 244
+banco = 245
+[unidad.clips.espera]
+codigo = 0
+anim = 1
+frames = 80
+bucle = true
+estado = "medido"
+nota = "neutro 0 (RONDA4_PULIDO.md)"
+[unidad.clips.andar]
+codigo = 15
+anim = 9
+frames = 16
+bucle = true
+estado = "medido"
+nota = "andar por el suelo (altura.py GROUND_CODES)"
+[unidad.clips.ataque]
+codigo = 539
+anim = 34
+frames = 51
+bucle = false
+estado = "medido"
+nota = "combo >P (ACM_FORMAT.md)"
+[unidad.clips.tecnica]
+codigo = 600
+anim = 13
+frames = 120
+bucle = false
+estado = "inferido"
+nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.dano]
+estado = "pendiente"
+nota = "accion 20 del motor, sin codigo BSK confirmado"
+[unidad.clips.derrota]
+estado = "pendiente"
+nota = "sin evidencia de codigo"
+[unidad.clips.carga_ki]
+estado = "pendiente"
+nota = "accion 21 del motor; codigo sin medir"
+[unidad.clips.transformacion]
+estado = "pendiente"
+nota = "0x2E0/0x3E0 apunta a otro banco (pool 0) en casi todos: no resuelto aqui"
+
+[[unidad]]
+id = "trunks"
+b3 = 8
+b2 = -1
+forma = 0
+traje = 0
+modelo = 390
+anm_forma = 399
+banco = 399
+[unidad.clips.espera]
+codigo = 0
+anim = 0
+frames = 119
+bucle = true
+estado = "medido"
+nota = "neutro 0 (RONDA4_PULIDO.md)"
+[unidad.clips.andar]
+codigo = 2
+anim = 1
+frames = 119
+bucle = true
+estado = "medido"
+nota = "andar por el suelo, codigo 2 (altura.py GROUND_CODES): el andar real de los que no traen 0xF"
+[unidad.clips.ataque]
+codigo = 539
+anim = 11
+frames = 43
+bucle = false
+estado = "medido"
+nota = "combo >P (ACM_FORMAT.md)"
+[unidad.clips.tecnica]
+codigo = 600
+anim = 85
+frames = 120
+bucle = false
+estado = "inferido"
+nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.dano]
+estado = "pendiente"
+nota = "accion 20 del motor, sin codigo BSK confirmado"
+[unidad.clips.derrota]
+estado = "pendiente"
+nota = "sin evidencia de codigo"
+[unidad.clips.carga_ki]
+estado = "pendiente"
+nota = "accion 21 del motor; codigo sin medir"
+[unidad.clips.transformacion]
+estado = "pendiente"
+nota = "0x2E0/0x3E0 apunta a otro banco (pool 0) en casi todos: no resuelto aqui"
+
+[[unidad]]
+id = "trunks_2"
+b3 = 8
+b2 = -1
+forma = 1
+traje = 0
+modelo = 391
+anm_forma = 399
+banco = 399
+[unidad.clips.espera]
+codigo = 0
+anim = 0
+frames = 119
+bucle = true
+estado = "medido"
+nota = "neutro 0 (RONDA4_PULIDO.md)"
+[unidad.clips.andar]
+codigo = 2
+anim = 1
+frames = 119
+bucle = true
+estado = "medido"
+nota = "andar por el suelo, codigo 2 (altura.py GROUND_CODES): el andar real de los que no traen 0xF"
+[unidad.clips.ataque]
+codigo = 539
+anim = 11
+frames = 43
+bucle = false
+estado = "medido"
+nota = "combo >P (ACM_FORMAT.md)"
+[unidad.clips.tecnica]
+codigo = 600
+anim = 85
+frames = 120
+bucle = false
+estado = "inferido"
+nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.dano]
+estado = "pendiente"
+nota = "accion 20 del motor, sin codigo BSK confirmado"
+[unidad.clips.derrota]
+estado = "pendiente"
+nota = "sin evidencia de codigo"
+[unidad.clips.carga_ki]
+estado = "pendiente"
+nota = "accion 21 del motor; codigo sin medir"
+[unidad.clips.transformacion]
+estado = "pendiente"
+nota = "0x2E0/0x3E0 apunta a otro banco (pool 0) en casi todos: no resuelto aqui"
+
+[[unidad]]
+id = "goten"
+b3 = 6
+b2 = -1
+forma = 0
+traje = 0
+modelo = 298
+anm_forma = 304
+banco = 304
+[unidad.clips.espera]
+codigo = 0
+anim = 0
+frames = 45
+bucle = true
+estado = "medido"
+nota = "neutro 0 (RONDA4_PULIDO.md)"
+[unidad.clips.andar]
+codigo = 2
+anim = 1
+frames = 59
+bucle = true
+estado = "medido"
+nota = "andar por el suelo, codigo 2 (altura.py GROUND_CODES): el andar real de los que no traen 0xF"
+[unidad.clips.ataque]
+codigo = 539
+anim = 30
+frames = 36
+bucle = false
+estado = "medido"
+nota = "combo >P (ACM_FORMAT.md)"
+[unidad.clips.tecnica]
+codigo = 600
+anim = 8
+frames = 120
+bucle = false
+estado = "inferido"
+nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.dano]
+estado = "pendiente"
+nota = "accion 20 del motor, sin codigo BSK confirmado"
+[unidad.clips.derrota]
+estado = "pendiente"
+nota = "sin evidencia de codigo"
+[unidad.clips.carga_ki]
+estado = "pendiente"
+nota = "accion 21 del motor; codigo sin medir"
+[unidad.clips.transformacion]
+estado = "pendiente"
+nota = "0x2E0/0x3E0 apunta a otro banco (pool 0) en casi todos: no resuelto aqui"
+
+[[unidad]]
+id = "goten_2"
+b3 = 6
+b2 = -1
+forma = 1
+traje = 0
+modelo = 299
+anm_forma = 304
+banco = 304
+[unidad.clips.espera]
+codigo = 0
+anim = 0
+frames = 45
+bucle = true
+estado = "medido"
+nota = "neutro 0 (RONDA4_PULIDO.md)"
+[unidad.clips.andar]
+codigo = 2
+anim = 1
+frames = 59
+bucle = true
+estado = "medido"
+nota = "andar por el suelo, codigo 2 (altura.py GROUND_CODES): el andar real de los que no traen 0xF"
+[unidad.clips.ataque]
+codigo = 539
+anim = 30
+frames = 36
+bucle = false
+estado = "medido"
+nota = "combo >P (ACM_FORMAT.md)"
+[unidad.clips.tecnica]
+codigo = 600
+anim = 8
+frames = 120
+bucle = false
+estado = "inferido"
+nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.dano]
+estado = "pendiente"
+nota = "accion 20 del motor, sin codigo BSK confirmado"
+[unidad.clips.derrota]
+estado = "pendiente"
+nota = "sin evidencia de codigo"
+[unidad.clips.carga_ki]
+estado = "pendiente"
+nota = "accion 21 del motor; codigo sin medir"
+[unidad.clips.transformacion]
+estado = "pendiente"
+nota = "0x2E0/0x3E0 apunta a otro banco (pool 0) en casi todos: no resuelto aqui"
+
+[[unidad]]
+id = "superbuu"
+b3 = 35
+b2 = -1
+forma = 0
+traje = 0
+modelo = 133
+anm_forma = 140
+banco = 140
+[unidad.clips.espera]
+codigo = 0
+anim = 0
+frames = 60
+bucle = true
+estado = "medido"
+nota = "neutro 0 (RONDA4_PULIDO.md)"
+[unidad.clips.andar]
+codigo = 15
+anim = 6
+frames = 15
+bucle = true
+estado = "medido"
+nota = "andar por el suelo (altura.py GROUND_CODES)"
+[unidad.clips.ataque]
+codigo = 539
+anim = 53
+frames = 91
+bucle = false
+estado = "medido"
+nota = "combo >P (ACM_FORMAT.md)"
+[unidad.clips.tecnica]
+codigo = 600
+anim = 46
+frames = 50
+bucle = false
+estado = "inferido"
+nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.dano]
+estado = "pendiente"
+nota = "accion 20 del motor, sin codigo BSK confirmado"
+[unidad.clips.derrota]
+estado = "pendiente"
+nota = "sin evidencia de codigo"
+[unidad.clips.carga_ki]
+estado = "pendiente"
+nota = "accion 21 del motor; codigo sin medir"
+[unidad.clips.transformacion]
+estado = "pendiente"
+nota = "0x2E0/0x3E0 apunta a otro banco (pool 0) en casi todos: no resuelto aqui"
+
+[[unidad]]
+id = "broly"
+b3 = 40
+b2 = -1
+forma = 0
+traje = 0
+modelo = 119
+anm_forma = 127
+banco = 127
+[unidad.clips.espera]
+codigo = 0
+anim = 1
+frames = 80
+bucle = true
+estado = "medido"
+nota = "neutro 0 (RONDA4_PULIDO.md)"
+[unidad.clips.andar]
+codigo = 15
+anim = 4
+frames = 16
+bucle = true
+estado = "medido"
+nota = "andar por el suelo (altura.py GROUND_CODES)"
+[unidad.clips.ataque]
+codigo = 539
+anim = 49
+frames = 51
+bucle = false
+estado = "medido"
+nota = "combo >P (ACM_FORMAT.md)"
+[unidad.clips.tecnica]
+codigo = 600
+anim = 87
+frames = 116
+bucle = false
+estado = "inferido"
+nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.dano]
+estado = "pendiente"
+nota = "accion 20 del motor, sin codigo BSK confirmado"
+[unidad.clips.derrota]
+estado = "pendiente"
+nota = "sin evidencia de codigo"
+[unidad.clips.carga_ki]
+estado = "pendiente"
+nota = "accion 21 del motor; codigo sin medir"
+[unidad.clips.transformacion]
+estado = "pendiente"
+nota = "0x2E0/0x3E0 apunta a otro banco (pool 0) en casi todos: no resuelto aqui"
+
+[[unidad]]
+id = "broly_2"
+b3 = 40
+b2 = -1
+forma = 1
+traje = 0
+modelo = 120
+anm_forma = 126
+banco = 127
+[unidad.clips.espera]
+codigo = 0
+anim = 7
+frames = 100
+bucle = true
+estado = "medido"
+nota = "neutro 0 (RONDA4_PULIDO.md)"
+[unidad.clips.andar]
+codigo = 15
+anim = 17
+frames = 16
+bucle = true
+estado = "medido"
+nota = "andar por el suelo (altura.py GROUND_CODES)"
+[unidad.clips.ataque]
+codigo = 539
+anim = 49
+frames = 51
+bucle = false
+estado = "medido"
+nota = "combo >P (ACM_FORMAT.md)"
+[unidad.clips.tecnica]
+codigo = 600
+anim = 87
+frames = 116
+bucle = false
+estado = "inferido"
+nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.dano]
+estado = "pendiente"
+nota = "accion 20 del motor, sin codigo BSK confirmado"
+[unidad.clips.derrota]
+estado = "pendiente"
+nota = "sin evidencia de codigo"
+[unidad.clips.carga_ki]
+estado = "pendiente"
+nota = "accion 21 del motor; codigo sin medir"
+[unidad.clips.transformacion]
+estado = "pendiente"
+nota = "0x2E0/0x3E0 apunta a otro banco (pool 0) en casi todos: no resuelto aqui"
+
+[[unidad]]
+id = "bardock"
+b3 = 39
+b2 = -1
+forma = 0
+traje = 0
+modelo = 99
+anm_forma = 103
+banco = 103
+[unidad.clips.espera]
+codigo = 0
+anim = 0
+frames = 59
+bucle = true
+estado = "medido"
+nota = "neutro 0 (RONDA4_PULIDO.md)"
+[unidad.clips.andar]
+codigo = 2
+anim = 1
+frames = 59
+bucle = true
+estado = "medido"
+nota = "andar por el suelo, codigo 2 (altura.py GROUND_CODES): el andar real de los que no traen 0xF"
+[unidad.clips.ataque]
+codigo = 539
+anim = 5
+frames = 51
+bucle = false
+estado = "medido"
+nota = "combo >P (ACM_FORMAT.md)"
+[unidad.clips.tecnica]
+codigo = 600
+anim = 69
+frames = 120
+bucle = false
+estado = "inferido"
+nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.dano]
+estado = "pendiente"
+nota = "accion 20 del motor, sin codigo BSK confirmado"
+[unidad.clips.derrota]
+estado = "pendiente"
+nota = "sin evidencia de codigo"
+[unidad.clips.carga_ki]
+estado = "pendiente"
+nota = "accion 21 del motor; codigo sin medir"
+[unidad.clips.transformacion]
+estado = "pendiente"
+nota = "0x2E0/0x3E0 apunta a otro banco (pool 0) en casi todos: no resuelto aqui"
+
+[[unidad]]
+id = "cooler"
+b3 = 38
+b2 = -1
+forma = 0
+traje = 0
+modelo = 166
+anm_forma = 175
+banco = 175
+[unidad.clips.espera]
+codigo = 0
+anim = 0
+frames = 90
+bucle = true
+estado = "medido"
+nota = "neutro 0 (RONDA4_PULIDO.md)"
+[unidad.clips.andar]
+codigo = 2
+anim = 1
+frames = 80
+bucle = true
+estado = "medido"
+nota = "andar por el suelo, codigo 2 (altura.py GROUND_CODES): el andar real de los que no traen 0xF"
+[unidad.clips.ataque]
+codigo = 539
+anim = 8
+frames = 51
+bucle = false
+estado = "medido"
+nota = "combo >P (ACM_FORMAT.md)"
+[unidad.clips.tecnica]
+codigo = 600
+anim = 2
+frames = 120
+bucle = false
+estado = "inferido"
+nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.dano]
+estado = "pendiente"
+nota = "accion 20 del motor, sin codigo BSK confirmado"
+[unidad.clips.derrota]
+estado = "pendiente"
+nota = "sin evidencia de codigo"
+[unidad.clips.carga_ki]
+estado = "pendiente"
+nota = "accion 21 del motor; codigo sin medir"
+[unidad.clips.transformacion]
+estado = "pendiente"
+nota = "0x2E0/0x3E0 apunta a otro banco (pool 0) en casi todos: no resuelto aqui"
+
+[[unidad]]
+id = "cooler_2"
+b3 = 38
+b2 = -1
+forma = 1
+traje = 0
+modelo = 167
+anm_forma = 174
+banco = 175
+[unidad.clips.espera]
+codigo = 0
+anim = 118
+frames = 100
+bucle = true
+estado = "medido"
+nota = "neutro 0 (RONDA4_PULIDO.md)"
+[unidad.clips.andar]
+codigo = 2
+anim = 1
+frames = 80
+bucle = true
+estado = "medido"
+nota = "andar por el suelo, codigo 2 (altura.py GROUND_CODES): el andar real de los que no traen 0xF"
+[unidad.clips.ataque]
+codigo = 539
+anim = 8
+frames = 51
+bucle = false
+estado = "medido"
+nota = "combo >P (ACM_FORMAT.md)"
+[unidad.clips.tecnica]
+codigo = 600
+anim = 2
+frames = 120
+bucle = false
+estado = "inferido"
+nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.dano]
+estado = "pendiente"
+nota = "accion 20 del motor, sin codigo BSK confirmado"
+[unidad.clips.derrota]
+estado = "pendiente"
+nota = "sin evidencia de codigo"
+[unidad.clips.carga_ki]
+estado = "pendiente"
+nota = "accion 21 del motor; codigo sin medir"
+[unidad.clips.transformacion]
+estado = "pendiente"
+nota = "0x2E0/0x3E0 apunta a otro banco (pool 0) en casi todos: no resuelto aqui"
+
+[[unidad]]
+id = "cooler_3"
+b3 = 38
+b2 = -1
+forma = 2
+traje = 0
+modelo = 168
+anm_forma = 175
+banco = 175
+[unidad.clips.espera]
+codigo = 0
+anim = 0
+frames = 90
+bucle = true
+estado = "medido"
+nota = "neutro 0 (RONDA4_PULIDO.md)"
+[unidad.clips.andar]
+codigo = 2
+anim = 1
+frames = 80
+bucle = true
+estado = "medido"
+nota = "andar por el suelo, codigo 2 (altura.py GROUND_CODES): el andar real de los que no traen 0xF"
+[unidad.clips.ataque]
+codigo = 539
+anim = 8
+frames = 51
+bucle = false
+estado = "medido"
+nota = "combo >P (ACM_FORMAT.md)"
+[unidad.clips.tecnica]
+codigo = 600
+anim = 2
+frames = 120
+bucle = false
+estado = "inferido"
+nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.dano]
+estado = "pendiente"
+nota = "accion 20 del motor, sin codigo BSK confirmado"
+[unidad.clips.derrota]
+estado = "pendiente"
+nota = "sin evidencia de codigo"
+[unidad.clips.carga_ki]
+estado = "pendiente"
+nota = "accion 21 del motor; codigo sin medir"
+[unidad.clips.transformacion]
+estado = "pendiente"
+nota = "0x2E0/0x3E0 apunta a otro banco (pool 0) en casi todos: no resuelto aqui"
+
+[[unidad]]
+id = "recoome"
+b3 = 21
+b2 = -1
+forma = 0
+traje = 0
+modelo = 366
+anm_forma = 370
+banco = 370
+[unidad.clips.espera]
+codigo = 0
+anim = 0
+frames = 100
+bucle = true
+estado = "medido"
+nota = "neutro 0 (RONDA4_PULIDO.md)"
+[unidad.clips.andar]
+codigo = 15
+anim = 4
+frames = 16
+bucle = true
+estado = "medido"
+nota = "andar por el suelo (altura.py GROUND_CODES)"
+[unidad.clips.ataque]
+codigo = 539
+anim = 46
+frames = 53
+bucle = false
+estado = "medido"
+nota = "combo >P (ACM_FORMAT.md)"
+[unidad.clips.tecnica]
+codigo = 600
+anim = 8
+frames = 119
+bucle = false
+estado = "inferido"
+nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.dano]
+estado = "pendiente"
+nota = "accion 20 del motor, sin codigo BSK confirmado"
+[unidad.clips.derrota]
+estado = "pendiente"
+nota = "sin evidencia de codigo"
+[unidad.clips.carga_ki]
+estado = "pendiente"
+nota = "accion 21 del motor; codigo sin medir"
+[unidad.clips.transformacion]
+estado = "pendiente"
+nota = "0x2E0/0x3E0 apunta a otro banco (pool 0) en casi todos: no resuelto aqui"
+
+[[unidad]]
+id = "saibaman"
+b3 = 42
+b2 = -1
+forma = 0
+traje = 0
+modelo = 371
+anm_forma = 375
+banco = 375
+[unidad.clips.espera]
+codigo = 0
+anim = 0
+frames = 60
+bucle = true
+estado = "medido"
+nota = "neutro 0 (RONDA4_PULIDO.md)"
+[unidad.clips.andar]
+codigo = 15
+anim = 5
+frames = 16
+bucle = true
+estado = "medido"
+nota = "andar por el suelo (altura.py GROUND_CODES)"
+[unidad.clips.ataque]
+codigo = 539
+anim = 32
+frames = 54
+bucle = false
+estado = "medido"
+nota = "combo >P (ACM_FORMAT.md)"
+[unidad.clips.tecnica]
+codigo = 600
+anim = 8
+frames = 120
+bucle = false
+estado = "inferido"
+nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.dano]
+estado = "pendiente"
+nota = "accion 20 del motor, sin codigo BSK confirmado"
+[unidad.clips.derrota]
+estado = "pendiente"
+nota = "sin evidencia de codigo"
+[unidad.clips.carga_ki]
+estado = "pendiente"
+nota = "accion 21 del motor; codigo sin medir"
+[unidad.clips.transformacion]
+estado = "pendiente"
+nota = "0x2E0/0x3E0 apunta a otro banco (pool 0) en casi todos: no resuelto aqui"
+
+[[unidad]]
+id = "tenshinhan"
+b3 = 12
+b2 = -1
+forma = 0
+traje = 0
+modelo = 400
+anm_forma = 404
+banco = 404
+[unidad.clips.espera]
+codigo = 0
+anim = 0
+frames = 90
+bucle = true
+estado = "medido"
+nota = "neutro 0 (RONDA4_PULIDO.md)"
+[unidad.clips.andar]
+codigo = 2
+anim = 1
+frames = 60
+bucle = true
+estado = "medido"
+nota = "andar por el suelo, codigo 2 (altura.py GROUND_CODES): el andar real de los que no traen 0xF"
+[unidad.clips.ataque]
+codigo = 539
+anim = 34
+frames = 51
+bucle = false
+estado = "medido"
+nota = "combo >P (ACM_FORMAT.md)"
+[unidad.clips.tecnica]
+codigo = 600
+anim = 3
+frames = 120
+bucle = false
+estado = "inferido"
+nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.dano]
+estado = "pendiente"
+nota = "accion 20 del motor, sin codigo BSK confirmado"
+[unidad.clips.derrota]
+estado = "pendiente"
+nota = "sin evidencia de codigo"
+[unidad.clips.carga_ki]
+estado = "pendiente"
+nota = "accion 21 del motor; codigo sin medir"
+[unidad.clips.transformacion]
+estado = "pendiente"
+nota = "0x2E0/0x3E0 apunta a otro banco (pool 0) en casi todos: no resuelto aqui"
+
+[[unidad]]
+id = "nappa"
+b3 = 19
+b2 = -1
+forma = 0
+traje = 0
+modelo = 345
+anm_forma = 349
+banco = 349
+[unidad.clips.espera]
+codigo = 0
+anim = 0
+frames = 90
+bucle = true
+estado = "medido"
+nota = "neutro 0 (RONDA4_PULIDO.md)"
+[unidad.clips.andar]
+codigo = 15
+anim = 5
+frames = 15
+bucle = true
+estado = "medido"
+nota = "andar por el suelo (altura.py GROUND_CODES)"
+[unidad.clips.ataque]
+codigo = 539
+anim = 21
+frames = 56
+bucle = false
+estado = "medido"
+nota = "combo >P (ACM_FORMAT.md)"
+[unidad.clips.tecnica]
+codigo = 600
+anim = 9
+frames = 120
+bucle = false
+estado = "inferido"
+nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.dano]
+estado = "pendiente"
+nota = "accion 20 del motor, sin codigo BSK confirmado"
+[unidad.clips.derrota]
+estado = "pendiente"
+nota = "sin evidencia de codigo"
+[unidad.clips.carga_ki]
+estado = "pendiente"
+nota = "accion 21 del motor; codigo sin medir"
+[unidad.clips.transformacion]
+estado = "pendiente"
+nota = "0x2E0/0x3E0 apunta a otro banco (pool 0) en casi todos: no resuelto aqui"
+
+[[unidad]]
+id = "a17"
+b3 = 29
+b2 = -1
+forma = 0
+traje = 0
+modelo = 75
+anm_forma = 79
+banco = 79
+[unidad.clips.espera]
+codigo = 0
+anim = 0
+frames = 79
+bucle = true
+estado = "medido"
+nota = "neutro 0 (RONDA4_PULIDO.md)"
+[unidad.clips.andar]
+codigo = 15
+anim = 6
+frames = 16
+bucle = true
+estado = "medido"
+nota = "andar por el suelo (altura.py GROUND_CODES)"
+[unidad.clips.ataque]
+codigo = 539
+anim = 43
+frames = 49
+bucle = false
+estado = "medido"
+nota = "combo >P (ACM_FORMAT.md)"
+[unidad.clips.tecnica]
+codigo = 600
+anim = 80
+frames = 120
+bucle = false
+estado = "inferido"
+nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.dano]
+estado = "pendiente"
+nota = "accion 20 del motor, sin codigo BSK confirmado"
+[unidad.clips.derrota]
+estado = "pendiente"
+nota = "sin evidencia de codigo"
+[unidad.clips.carga_ki]
+estado = "pendiente"
+nota = "accion 21 del motor; codigo sin medir"
+[unidad.clips.transformacion]
+estado = "pendiente"
+nota = "0x2E0/0x3E0 apunta a otro banco (pool 0) en casi todos: no resuelto aqui"
+
+[[unidad]]
+id = "dabura"
+b3 = 37
+b2 = -1
+forma = 0
+traje = 0
+modelo = 176
+anm_forma = 180
+banco = 180
+[unidad.clips.espera]
+codigo = 0
+anim = 0
+frames = 80
+bucle = true
+estado = "medido"
+nota = "neutro 0 (RONDA4_PULIDO.md)"
+[unidad.clips.andar]
+codigo = 15
+anim = 10
+frames = 20
+bucle = true
+estado = "medido"
+nota = "andar por el suelo (altura.py GROUND_CODES)"
+[unidad.clips.ataque]
+codigo = 539
+anim = 31
+frames = 51
+bucle = false
+estado = "medido"
+nota = "combo >P (ACM_FORMAT.md)"
+[unidad.clips.tecnica]
+codigo = 600
+anim = 16
+frames = 120
+bucle = false
+estado = "inferido"
+nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.dano]
+estado = "pendiente"
+nota = "accion 20 del motor, sin codigo BSK confirmado"
+[unidad.clips.derrota]
+estado = "pendiente"
+nota = "sin evidencia de codigo"
+[unidad.clips.carga_ki]
+estado = "pendiente"
+nota = "accion 21 del motor; codigo sin medir"
+[unidad.clips.transformacion]
+estado = "pendiente"
+nota = "0x2E0/0x3E0 apunta a otro banco (pool 0) en casi todos: no resuelto aqui"
+
+[[unidad]]
+id = "gero"
+b3 = 32
+b2 = -1
+forma = 0
+traje = 0
+modelo = 91
+anm_forma = 95
+banco = 95
+[unidad.clips.espera]
+codigo = 0
+anim = 0
+frames = 60
+bucle = true
+estado = "medido"
+nota = "neutro 0 (RONDA4_PULIDO.md)"
+[unidad.clips.andar]
+codigo = 15
+anim = 6
+frames = 16
+bucle = true
+estado = "medido"
+nota = "andar por el suelo (altura.py GROUND_CODES)"
+[unidad.clips.ataque]
+codigo = 539
+anim = 31
+frames = 51
+bucle = false
+estado = "medido"
+nota = "combo >P (ACM_FORMAT.md)"
+[unidad.clips.tecnica]
+codigo = 600
+anim = 9
+frames = 120
+bucle = false
+estado = "inferido"
+nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.dano]
+estado = "pendiente"
+nota = "accion 20 del motor, sin codigo BSK confirmado"
+[unidad.clips.derrota]
+estado = "pendiente"
+nota = "sin evidencia de codigo"
+[unidad.clips.carga_ki]
+estado = "pendiente"
+nota = "accion 21 del motor; codigo sin medir"
+[unidad.clips.transformacion]
+estado = "pendiente"
+nota = "0x2E0/0x3E0 apunta a otro banco (pool 0) en casi todos: no resuelto aqui"
+
+[[unidad]]
+id = "celljr"
+b3 = 43
+b2 = -1
+forma = 0
+traje = 0
+modelo = 160
+anm_forma = 164
+banco = 164
+[unidad.clips.espera]
+codigo = 0
+anim = 0
+frames = 60
+bucle = true
+estado = "medido"
+nota = "neutro 0 (RONDA4_PULIDO.md)"
+[unidad.clips.andar]
+codigo = 2
+anim = 1
+frames = 45
+bucle = true
+estado = "medido"
+nota = "andar por el suelo, codigo 2 (altura.py GROUND_CODES): el andar real de los que no traen 0xF"
+[unidad.clips.ataque]
+codigo = 539
+anim = 15
+frames = 47
+bucle = false
+estado = "medido"
+nota = "combo >P (ACM_FORMAT.md)"
+[unidad.clips.tecnica]
+codigo = 600
+anim = 3
+frames = 120
+bucle = false
+estado = "inferido"
+nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.dano]
+estado = "pendiente"
+nota = "accion 20 del motor, sin codigo BSK confirmado"
+[unidad.clips.derrota]
+estado = "pendiente"
+nota = "sin evidencia de codigo"
+[unidad.clips.carga_ki]
+estado = "pendiente"
+nota = "accion 21 del motor; codigo sin medir"
+[unidad.clips.transformacion]
+estado = "pendiente"
+nota = "0x2E0/0x3E0 apunta a otro banco (pool 0) en casi todos: no resuelto aqui"
+
+[[unidad]]
+id = "satan"
+b3 = 14
+b2 = -1
+forma = 0
+traje = 0
+modelo = 377
+anm_forma = 382
+banco = 382
+[unidad.clips.espera]
+codigo = 0
+anim = 0
+frames = 119
+bucle = true
+estado = "medido"
+nota = "neutro 0 (RONDA4_PULIDO.md)"
+[unidad.clips.andar]
+codigo = 15
+anim = 11
+frames = 16
+bucle = true
+estado = "medido"
+nota = "andar por el suelo (altura.py GROUND_CODES)"
+[unidad.clips.ataque]
+codigo = 539
+anim = 48
+frames = 60
+bucle = false
+estado = "medido"
+nota = "combo >P (ACM_FORMAT.md)"
+[unidad.clips.tecnica]
+codigo = 600
+anim = 83
+frames = 120
+bucle = false
+estado = "inferido"
+nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.dano]
+estado = "pendiente"
+nota = "accion 20 del motor, sin codigo BSK confirmado"
+[unidad.clips.derrota]
+estado = "pendiente"
+nota = "sin evidencia de codigo"
+[unidad.clips.carga_ki]
+estado = "pendiente"
+nota = "accion 21 del motor; codigo sin medir"
+[unidad.clips.transformacion]
+estado = "pendiente"
+nota = "0x2E0/0x3E0 apunta a otro banco (pool 0) en casi todos: no resuelto aqui"
+
+[[unidad]]
+id = "kaioshin"
+b3 = 16
+b2 = -1
+forma = 0
+traje = 0
+modelo = 339
+anm_forma = 343
+banco = 343
+[unidad.clips.espera]
+codigo = 0
+anim = 0
+frames = 180
+bucle = true
+estado = "medido"
+nota = "neutro 0 (RONDA4_PULIDO.md)"
+[unidad.clips.andar]
+codigo = 15
+anim = 6
+frames = 16
+bucle = true
+estado = "medido"
+nota = "andar por el suelo (altura.py GROUND_CODES)"
+[unidad.clips.ataque]
+codigo = 539
+anim = 35
+frames = 51
+bucle = false
+estado = "medido"
+nota = "combo >P (ACM_FORMAT.md)"
+[unidad.clips.tecnica]
+codigo = 600
+anim = 14
+frames = 120
+bucle = false
+estado = "inferido"
+nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.dano]
+estado = "pendiente"
+nota = "accion 20 del motor, sin codigo BSK confirmado"
+[unidad.clips.derrota]
+estado = "pendiente"
+nota = "sin evidencia de codigo"
+[unidad.clips.carga_ki]
+estado = "pendiente"
+nota = "accion 21 del motor; codigo sin medir"
+[unidad.clips.transformacion]
+estado = "pendiente"
+nota = "0x2E0/0x3E0 apunta a otro banco (pool 0) en casi todos: no resuelto aqui"
+
+[[unidad]]
+id = "videl"
+b3 = 15
+b2 = -1
+forma = 0
+traje = 0
+modelo = 410
+anm_forma = 414
+banco = 414
+[unidad.clips.espera]
+codigo = 0
+anim = 0
+frames = 60
+bucle = true
+estado = "medido"
+nota = "neutro 0 (RONDA4_PULIDO.md)"
+[unidad.clips.andar]
+codigo = 15
+anim = 9
+frames = 15
+bucle = true
+estado = "medido"
+nota = "andar por el suelo (altura.py GROUND_CODES)"
+[unidad.clips.ataque]
+codigo = 539
+anim = 29
+frames = 36
+bucle = false
+estado = "medido"
+nota = "combo >P (ACM_FORMAT.md)"
+[unidad.clips.tecnica]
+codigo = 600
+anim = 88
+frames = 120
+bucle = false
+estado = "inferido"
+nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.dano]
+estado = "pendiente"
+nota = "accion 20 del motor, sin codigo BSK confirmado"
+[unidad.clips.derrota]
+estado = "pendiente"
+nota = "sin evidencia de codigo"
+[unidad.clips.carga_ki]
+estado = "pendiente"
+nota = "accion 21 del motor; codigo sin medir"
+[unidad.clips.transformacion]
+estado = "pendiente"
+nota = "0x2E0/0x3E0 apunta a otro banco (pool 0) en casi todos: no resuelto aqui"
+
+[[unidad]]
+id = "buuninio"
+b3 = 36
+b2 = -1
+forma = 0
+traje = 0
+modelo = 141
+anm_forma = 145
+banco = 145
+[unidad.clips.espera]
+codigo = 0
+anim = 0
+frames = 80
+bucle = true
+estado = "medido"
+nota = "neutro 0 (RONDA4_PULIDO.md)"
+[unidad.clips.andar]
+codigo = 15
+anim = 10
+frames = 12
+bucle = true
+estado = "medido"
+nota = "andar por el suelo (altura.py GROUND_CODES)"
+[unidad.clips.ataque]
+codigo = 539
+anim = 45
+frames = 49
+bucle = false
+estado = "medido"
+nota = "combo >P (ACM_FORMAT.md)"
+[unidad.clips.tecnica]
+codigo = 600
+anim = 60
+frames = 71
+bucle = false
+estado = "inferido"
+nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.dano]
+estado = "pendiente"
+nota = "accion 20 del motor, sin codigo BSK confirmado"
+[unidad.clips.derrota]
+estado = "pendiente"
+nota = "sin evidencia de codigo"
+[unidad.clips.carga_ki]
+estado = "pendiente"
+nota = "accion 21 del motor; codigo sin medir"
+[unidad.clips.transformacion]
+estado = "pendiente"
+nota = "0x2E0/0x3E0 apunta a otro banco (pool 0) en casi todos: no resuelto aqui"
+
+[[unidad]]
+id = "gohankid"
+b3 = 2
+b2 = -1
+forma = 0
+traje = 0
+modelo = 246
+anm_forma = 251
+banco = 251
+[unidad.clips.espera]
+codigo = 0
+anim = 0
+frames = 80
+bucle = true
+estado = "medido"
+nota = "neutro 0 (RONDA4_PULIDO.md)"
+[unidad.clips.andar]
+codigo = 0
+anim = 0
+frames = 80
+bucle = true
+estado = "medido"
+nota = "sin andar de suelo en su banco: se desliza en su espera"
+[unidad.clips.ataque]
+codigo = 539
+anim = 19
+frames = 71
+bucle = false
+estado = "medido"
+nota = "combo >P (ACM_FORMAT.md)"
+[unidad.clips.tecnica]
+codigo = 600
+anim = 1
+frames = 120
+bucle = false
+estado = "inferido"
+nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.dano]
+estado = "pendiente"
+nota = "accion 20 del motor, sin codigo BSK confirmado"
+[unidad.clips.derrota]
+estado = "pendiente"
+nota = "sin evidencia de codigo"
+[unidad.clips.carga_ki]
+estado = "pendiente"
+nota = "accion 21 del motor; codigo sin medir"
+[unidad.clips.transformacion]
+estado = "pendiente"
+nota = "0x2E0/0x3E0 apunta a otro banco (pool 0) en casi todos: no resuelto aqui"
+
+[[unidad]]
+id = "trunkskid"
+b3 = 9
+b2 = -1
+forma = 0
+traje = 0
+modelo = 383
+anm_forma = 389
+banco = 389
+[unidad.clips.espera]
+codigo = 0
+anim = 0
+frames = 50
+bucle = true
+estado = "medido"
+nota = "neutro 0 (RONDA4_PULIDO.md)"
+[unidad.clips.andar]
+codigo = 9
+anim = 1
+frames = 30
+bucle = true
+estado = "inferido"
+nota = "codigo 9 (serie 9-0xB de los ninos: Goku, Trunks, Gohan ninos): andar del suelo"
+[unidad.clips.ataque]
+codigo = 539
+anim = 28
+frames = 36
+bucle = false
+estado = "medido"
+nota = "combo >P (ACM_FORMAT.md)"
+[unidad.clips.tecnica]
+codigo = 600
+anim = 3
+frames = 120
+bucle = false
+estado = "inferido"
+nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.dano]
+estado = "pendiente"
+nota = "accion 20 del motor, sin codigo BSK confirmado"
+[unidad.clips.derrota]
+estado = "pendiente"
+nota = "sin evidencia de codigo"
+[unidad.clips.carga_ki]
+estado = "pendiente"
+nota = "accion 21 del motor; codigo sin medir"
+[unidad.clips.transformacion]
+estado = "pendiente"
+nota = "0x2E0/0x3E0 apunta a otro banco (pool 0) en casi todos: no resuelto aqui"
+
+[[unidad]]
+id = "gokukid"
+b3 = 1
+b2 = -1
+forma = 0
+traje = 0
+modelo = 252
+anm_forma = 256
+banco = 256
+[unidad.clips.espera]
+codigo = 0
+anim = 0
+frames = 120
+bucle = true
+estado = "medido"
+nota = "neutro 0 (RONDA4_PULIDO.md)"
+[unidad.clips.andar]
+codigo = 9
+anim = 1
+frames = 5
+bucle = true
+estado = "inferido"
+nota = "codigo 9 (serie 9-0xB de los ninos: Goku, Trunks, Gohan ninos): andar del suelo"
+[unidad.clips.ataque]
+codigo = 539
+anim = 27
+frames = 36
+bucle = false
+estado = "medido"
+nota = "combo >P (ACM_FORMAT.md)"
+[unidad.clips.tecnica]
+codigo = 600
+anim = 4
+frames = 120
+bucle = false
+estado = "inferido"
+nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.dano]
+estado = "pendiente"
+nota = "accion 20 del motor, sin codigo BSK confirmado"
+[unidad.clips.derrota]
+estado = "pendiente"
+nota = "sin evidencia de codigo"
+[unidad.clips.carga_ki]
+estado = "pendiente"
+nota = "accion 21 del motor; codigo sin medir"
+[unidad.clips.transformacion]
+estado = "pendiente"
+nota = "0x2E0/0x3E0 apunta a otro banco (pool 0) en casi todos: no resuelto aqui"
+
+[[unidad]]
+id = "yamcha"
+b3 = 13
+b2 = -1
+forma = 0
+traje = 0
+modelo = 445
+anm_forma = 450
+banco = 450
+[unidad.clips.espera]
+codigo = -1
+anim = 5
+frames = 61
+bucle = true
+banco = 3881
+estado = "inferido"
+nota = "sin espera propia: espera generica del select (banco 3881 anim 5)"
+[unidad.clips.andar]
+codigo = -1
+anim = 5
+frames = 61
+bucle = true
+banco = 3881
+estado = "inferido"
+nota = "sin andar propio: se desliza en la espera generica del select (banco 3881 anim 5)"
+[unidad.clips.ataque]
+codigo = 539
+anim = 26
+frames = 47
+bucle = false
+estado = "medido"
+nota = "combo >P (ACM_FORMAT.md)"
+[unidad.clips.tecnica]
+codigo = 600
+anim = 59
+frames = 100
+bucle = false
+estado = "inferido"
+nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.dano]
+estado = "pendiente"
+nota = "accion 20 del motor, sin codigo BSK confirmado"
+[unidad.clips.derrota]
+estado = "pendiente"
+nota = "sin evidencia de codigo"
+[unidad.clips.carga_ki]
+estado = "pendiente"
+nota = "accion 21 del motor; codigo sin medir"
+[unidad.clips.transformacion]
+estado = "pendiente"
+nota = "0x2E0/0x3E0 apunta a otro banco (pool 0) en casi todos: no resuelto aqui"
+
+[[unidad]]
+id = "raditz"
+b3 = 18
+b2 = -1
+forma = 0
+traje = 0
+modelo = 360
+anm_forma = 364
+banco = 364
+[unidad.clips.espera]
+codigo = 0
+anim = 0
+frames = 70
+bucle = true
+estado = "medido"
+nota = "neutro 0 (RONDA4_PULIDO.md)"
+[unidad.clips.andar]
+codigo = 2
+anim = 1
+frames = 80
+bucle = true
+estado = "medido"
+nota = "andar por el suelo, codigo 2 (altura.py GROUND_CODES): el andar real de los que no traen 0xF"
+[unidad.clips.ataque]
+codigo = 538
+anim = 32
+frames = 54
+bucle = false
+estado = "inferido"
+nota = "sin 0x21B: golpe vecino de la serie"
+[unidad.clips.tecnica]
+codigo = 600
+anim = 3
+frames = 120
+bucle = false
+estado = "inferido"
+nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.dano]
+estado = "pendiente"
+nota = "accion 20 del motor, sin codigo BSK confirmado"
+[unidad.clips.derrota]
+estado = "pendiente"
+nota = "sin evidencia de codigo"
+[unidad.clips.carga_ki]
+estado = "pendiente"
+nota = "accion 21 del motor; codigo sin medir"
+[unidad.clips.transformacion]
+estado = "pendiente"
+nota = "0x2E0/0x3E0 apunta a otro banco (pool 0) en casi todos: no resuelto aqui"
+
+[[unidad]]
+id = "uub"
+b3 = 17
+b2 = -1
+forma = 0
+traje = 0
+modelo = 405
+anm_forma = 409
+banco = 409
+[unidad.clips.espera]
+codigo = 0
+anim = 0
+frames = 80
+bucle = true
+estado = "medido"
+nota = "neutro 0 (RONDA4_PULIDO.md)"
+[unidad.clips.andar]
+codigo = 9
+anim = 1
+frames = 5
+bucle = true
+estado = "inferido"
+nota = "codigo 9 (serie 9-0xB de los ninos: Goku, Trunks, Gohan ninos): andar del suelo"
+[unidad.clips.ataque]
+codigo = 540
+anim = 38
+frames = 56
+bucle = false
+estado = "inferido"
+nota = "sin 0x21B: golpe vecino de la serie"
+[unidad.clips.tecnica]
+codigo = 600
+anim = 18
+frames = 61
+bucle = false
+estado = "inferido"
+nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.dano]
+estado = "pendiente"
+nota = "accion 20 del motor, sin codigo BSK confirmado"
+[unidad.clips.derrota]
+estado = "pendiente"
+nota = "sin evidencia de codigo"
+[unidad.clips.carga_ki]
+estado = "pendiente"
+nota = "accion 21 del motor; codigo sin medir"
+[unidad.clips.transformacion]
+estado = "pendiente"
+nota = "0x2E0/0x3E0 apunta a otro banco (pool 0) en casi todos: no resuelto aqui"
+
+[[unidad]]
+id = "ginyu"
+b3 = 20
+b2 = -1
+forma = 0
+traje = 0
+modelo = 258
+anm_forma = 262
+banco = 262
+[unidad.clips.espera]
+codigo = -1
+anim = 5
+frames = 61
+bucle = true
+banco = 3881
+estado = "inferido"
+nota = "sin espera propia: espera generica del select (banco 3881 anim 5)"
+[unidad.clips.andar]
+codigo = -1
+anim = 5
+frames = 61
+bucle = true
+banco = 3881
+estado = "inferido"
+nota = "sin andar propio: se desliza en la espera generica del select (banco 3881 anim 5)"
+[unidad.clips.ataque]
+codigo = 539
+anim = 16
+frames = 48
+bucle = false
+estado = "medido"
+nota = "combo >P (ACM_FORMAT.md)"
+[unidad.clips.tecnica]
+codigo = 600
+anim = 1
+frames = 120
+bucle = false
+estado = "inferido"
+nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.dano]
+estado = "pendiente"
+nota = "accion 20 del motor, sin codigo BSK confirmado"
+[unidad.clips.derrota]
+estado = "pendiente"
+nota = "sin evidencia de codigo"
+[unidad.clips.carga_ki]
+estado = "pendiente"
+nota = "accion 21 del motor; codigo sin medir"
+[unidad.clips.transformacion]
+estado = "pendiente"
+nota = "0x2E0/0x3E0 apunta a otro banco (pool 0) en casi todos: no resuelto aqui"

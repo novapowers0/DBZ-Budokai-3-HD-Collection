@@ -178,6 +178,14 @@ void Launch(PPCContext& ctx, uint8_t* base, bool from_menu) {
                   REX_LOAD_U16(rec + 54), REX_LOAD_U16(rec + 56), REX_LOAD_U16(rec + 58));
     }
   }
+  // PRUEBA (DBZ3_TEST_TRAJES="t1,t2"): traje de cada lado (nova_recetas: trajes y absorciones)
+  if (static const char* tt = std::getenv("DBZ3_TEST_TRAJES"); tt) {
+    int t1 = 0, t2 = 0;
+    std::sscanf(tt, "%d,%d", &t1, &t2);
+    REX_STORE_U16(kCfg + 16 + 18, uint16_t(t1));
+    REX_STORE_U16(kCfg + 96 + 18, uint16_t(t2));
+    REXLOG_INFO("dbz3 hub: prueba: trajes {} y {}", t1, t2);
+  }
   // PRUEBA (DBZ3_TEST_CAPS="c1,c2,..." hasta 7): capsulas del jugador 1 (rec+52 cuantas, rec+54 IDs; >= 595 las
   // resuelve roster_ext) para probar tecnicas, definitivas y transformaciones de los ports
   if (static const char* tc = std::getenv("DBZ3_TEST_CAPS"); tc) {
@@ -305,6 +313,36 @@ DBZ3_HOOK_EU(sub_821D7C30) {
       int a = 0, b = 7, st = 0, t = 0, h1 = 0, h2 = 0, f1 = 0, f2 = 0;   // ",tiempo,vida1,vida2,forma1,forma2" opcional
       std::sscanf(tb, "%d,%d,%d,%d,%d,%d,%d,%d", &a, &b, &st, &t, &h1, &h2, &f1, &f2);
       if (RequestBattleEx(a, b, st, true, t, h1, h2, f1, f2)) ++done;
+    }
+  }
+  // PRUEBA (DBZ3_TEST_CREDITOS=1, tools/pruebas.py videos_hd): a los 2 s en el menu principal, la escena 12 (creditos, Ending00.sfd)
+  if (static const char* tc = std::getenv("DBZ3_TEST_CREDITOS"); tc) {
+    static uint32_t ticks = 0;
+    static bool done = false;
+    ticks = REX_LOAD_U8(kGame) == 5 ? ticks + 1 : 0;
+    if (!done && ticks >= 120 && int32_t(REX_LOAD_U32(kReqCur)) == -1 && MenuListo(base)) {
+      // lo que hace LaunchDu (salida del menu y peticion de escena) con la 12
+      const uint32_t mgr = REX_LOAD_U32(dbz3::GA(0x8245F230)), task = mgr ? REX_LOAD_U32(mgr + 16) : 0;
+      const uint32_t obj = task ? REX_LOAD_U32(task + 48) : 0;
+      if (obj && REX_LOAD_U32(task + 28) == dbz3::GA(0x8218C5D8)) {
+        done = true;
+        const PPCContext saved = ctx;
+        REX_STORE_U8(obj + 150, 0);
+        ctx.r3.u64 = obj;
+        DBZ3_CALL_EU(sub_8218C588)(ctx, base);
+        ctx = saved;
+        ctx.r3.u64 = 12;
+        ctx.r4.u64 = 0;
+        DBZ3_CALL_EU(sub_821D2778)(ctx, base);
+        ctx = saved;
+        ctx.r3.u64 = 10;
+        DBZ3_CALL_EU(sub_821D27C8)(ctx, base);
+        ctx = saved;
+        DBZ3_CALL_EU(sub_821CC308)(ctx, base);   // el cargador de la escena 12: el despachador del menu no lo tiene
+        ctx = saved;
+        REX_STORE_U32(task + 28, dbz3::GA(0x8218C4C8));
+        REXLOG_INFO("dbz3 hub: prueba: creditos (escena 12)");
+      }
     }
   }
   {   // C4: en el menu principal (1,5 s seguidos) la sesion de DU del Heroe ha terminado (ya no se reanuda sola)

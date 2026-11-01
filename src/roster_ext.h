@@ -6,6 +6,7 @@
 // roster_ext.cpp for the table map and the file format.
 #pragma once
 
+#include <array>
 #include <string>
 
 #include <cstdint>
@@ -23,6 +24,7 @@ namespace dbz3::roster {
 // the cvar dbz3_afs_append). Without it the mod is disabled (.disabled) so the
 // game still boots; it is re-enabled once a capable runtime is installed.
 void GuardGeneratedMod();
+void CurarMarcasEscaneo();   // quita las marcas ".disabled" propias de un escaneo cortado por un cierre
 
 // Reads every enabled mod's roster.toml and patches the guest tables. Safe to
 // call once per launch; does nothing (and logs why) on an unknown image.
@@ -46,8 +48,24 @@ bool DynamicRosterEnabled();
 int DynamicRosterPage();
 int DynamicRosterPageCount();
 void RequestDynamicRosterPage(int delta);
+// Online: los dos PC van a la misma pagina con los mismos anclados. Un equipo viaja con el ID estable del personaje
+// (el logico si es de pagina) porque la plaza depende de la pagina de cada PC.
+void RequestDynamicRosterPageAbs(int page);
+bool IsLogicalRosterId(int id);
+int OnlineWireId(int guest);
+int OnlineGuestId(int wire);
+void ClearOnlinePins();   // al cerrar la sesion: la sala siguiente reparte plazas desde cero en los dos PC
 int64_t LogicalForProxy(int guest);   // L: id logico del proxy o -1
 bool ProcessDynamicRosterPage(uint64_t& removed_proxy_mask, uint64_t& added_proxy_mask);
+
+// Tecnicas (BSP) y guion (cam) propios de cada forma: fid por forma, -1 = los de la forma 0.
+struct FormFiles {
+  std::array<int32_t, 8> tech{}, cam{};
+};
+bool AnyFormFiles();
+const FormFiles* FormFilesOf(int id);
+void SetFormFile(int id, int form, int tech, int cam);   // tecnicas y guion de una forma, puestos en pleno combate (absorciones de Bu)
+void ClearFormFiles(int id);
 
 // Donor character ID declared for `id` (-1 if none).
 int DonorOf(uint32_t id);
@@ -59,6 +77,9 @@ int TeamSize(uint32_t id);
 int TeamMember(uint32_t id, int k);
 // Nombre interno del ID (registro de char96: "GOKOU", "JANEMBA"...); vacio si no hay.
 std::string InternalName(uint32_t id);
+// Capsula que hay que llevar para fusionarse en este ID (roster.toml capsula_fusion); 0 si no pide ninguna (fusion.cpp)
+int FusionCapsule(uint32_t id);
+int IdPorNombre(const std::string& nombre);   // ID de un personaje de roster.toml por su nombre; -1 si no esta
 // Casilla nueva elegida por el jugador k (0 = 1P): el ID nuevo y el de su anfitrion. En
 // "1P VS COM" / Practica la lista del rival vuelve a escribir los IDs por casilla (sale
 // el anfitrion); el inicio del combate lo corrige. id < 0 = ninguna.

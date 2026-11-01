@@ -63,12 +63,18 @@ set(DBZ3_SOURCES
     src/pasarela_iw.cpp
     src/pasarela_b2.cpp
     src/pasarela_nave.cpp
+    src/tactics/prueba_figuras.cpp
+    src/tactics/entrada.cpp
+    src/tactics/sim.cpp
+    src/tactics/catalogo.cpp
+    src/tactics/partida.cpp
     src/iw_minijuegos.cpp
     src/cinematica.cpp
     src/freecam.cpp
     src/ports_guard.cpp
     src/ports_regs_luchadores.cpp
     src/combate.cpp
+    src/plugins.cpp
     src/transformaciones.cpp
     src/video_sfd.cpp
     src/anim_iw.cpp
@@ -98,6 +104,13 @@ if(DBZ3_DUAL_REGION OR DBZ3_GENERATED_DIR STREQUAL "generated")
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/generated/sources.cmake")
         include(${CMAKE_CURRENT_SOURCE_DIR}/generated/sources.cmake)
         list(APPEND DBZ3_SOURCES ${GENERATED_SOURCES})
+        # Opus R5 (rollback): escrituras vectoriales/dcbz/atomicas del codigo US al registro de deshacer (src/net/rb_store.h)
+        set_source_files_properties(${GENERATED_SOURCES} PROPERTIES COMPILE_DEFINITIONS DBZ3_RBW_TU=1)
+        # El PCH se regenera sin el registro de escrituras: se anade al configurar, solo si falta (si no, no se recompila nada)
+        file(READ "${CMAKE_CURRENT_SOURCE_DIR}/generated/dbz3_pch.h" DBZ3_PCH_TEXTO)
+        if(NOT DBZ3_PCH_TEXTO MATCHES "net/rb_store\\.h")
+            file(APPEND "${CMAKE_CURRENT_SOURCE_DIR}/generated/dbz3_pch.h" "\n#include \"../src/net/rb_store.h\"\n")
+        endif()
     endif()
 endif()
 if(DBZ3_DUAL_REGION OR DBZ3_GENERATED_DIR STREQUAL "generated_eu")
@@ -123,7 +136,7 @@ if(DBZ3_GENERATED_DIR STREQUAL "generated_eu" AND NOT DBZ3_DUAL_REGION)
     list(REMOVE_ITEM DBZ3_SOURCES src/iw_mini_vuelo.cpp)
     list(REMOVE_ITEM DBZ3_SOURCES src/iw_mini_disparo.cpp)
     list(REMOVE_ITEM DBZ3_SOURCES src/roster_ext.cpp src/select_ext.cpp src/stage_ext.cpp)
-    list(REMOVE_ITEM DBZ3_SOURCES src/net/netplay_hooks.cpp src/tagteam.cpp src/tagteam_slots.cpp src/campaigns.cpp src/hub.cpp src/escenarios.cpp src/clima.cpp src/cine.cpp src/gigantes.cpp src/pasarela.cpp src/pasarela_b1.cpp src/pasarela_misiones.cpp src/hub_menu.cpp src/ingame/hub_panel.cpp src/ingame/tutorial.cpp src/modos.cpp src/rpg.cpp src/heroe.cpp src/heroe_ui.cpp src/cac/cac.cpp src/fusion.cpp src/pasarela_iw.cpp src/pasarela_b2.cpp src/pasarela_nave.cpp src/iw_minijuegos.cpp src/cinematica.cpp src/freecam.cpp)
+    list(REMOVE_ITEM DBZ3_SOURCES src/net/netplay_hooks.cpp src/tagteam.cpp src/tagteam_slots.cpp src/campaigns.cpp src/hub.cpp src/escenarios.cpp src/clima.cpp src/cine.cpp src/gigantes.cpp src/pasarela.cpp src/pasarela_b1.cpp src/pasarela_misiones.cpp src/hub_menu.cpp src/ingame/hub_panel.cpp src/ingame/tutorial.cpp src/modos.cpp src/rpg.cpp src/heroe.cpp src/heroe_ui.cpp src/cac/cac.cpp src/fusion.cpp src/pasarela_iw.cpp src/pasarela_b2.cpp src/pasarela_nave.cpp src/tactics/prueba_figuras.cpp src/tactics/entrada.cpp src/tactics/sim.cpp src/tactics/catalogo.cpp src/tactics/partida.cpp src/iw_minijuegos.cpp src/cinematica.cpp src/freecam.cpp)
 endif()
 
 # src/escenarios_sel_gen.inc sale del codigo generado (US) y no va al repo publico: si falta, se crea aqui
@@ -149,6 +162,17 @@ if(WIN32)
 else()
     add_executable(dbz3 ${DBZ3_SOURCES})
 endif()
+
+# Dragon Tactics H2 (T8/T9): simulacion de combate + catalogo + pruebas, sin el juego ni el SDK. No entra en "all":
+#   cmake --build <build> --target tactics_sim_test   y luego   tactics_sim_test "mod center hd" D:/tmp   (desde la raiz del repo)
+add_executable(tactics_sim_test EXCLUDE_FROM_ALL tests/tactics_sim_test.cpp src/tactics/sim.cpp src/tactics/catalogo.cpp)
+target_include_directories(tactics_sim_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/rexglue/include)
+# Dragon Tactics H3: partida (economia, tienda, copias, sinergias, bot). Mismo uso:   tactics_partida_test "mod center hd" D:/tmp [partidas]
+add_executable(tactics_partida_test EXCLUDE_FROM_ALL tests/tactics_partida_test.cpp src/tactics/partida.cpp src/tactics/sim.cpp src/tactics/catalogo.cpp)
+target_include_directories(tactics_partida_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/rexglue/include)
+# Dragon Tactics H5: equilibrio (bots contra bots: victorias por unidad, sinergia y coste, y duracion de la partida).   tactics_equilibrio "mod center hd" [duelos] [torneos]
+add_executable(tactics_equilibrio EXCLUDE_FROM_ALL tests/tactics_equilibrio.cpp src/tactics/partida.cpp src/tactics/sim.cpp src/tactics/catalogo.cpp)
+target_include_directories(tactics_equilibrio PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/rexglue/include)
 
 target_include_directories(dbz3 PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}

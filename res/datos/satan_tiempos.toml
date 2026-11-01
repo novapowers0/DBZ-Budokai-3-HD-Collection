@@ -1,0 +1,23 @@
+# GENERADO por tools\extraer_datos.py satan_tiempos -- no editar a mano (en modo pruebas se recarga con F5).
+
+fuente = "PCSX2 + PINE (studies 1 F03, AUDITORIA_MODOS 4.5); Ghidra [H]: b1.c FUN_0015f870 usa la camara 0x555B00"
+# segundos de cada toma de la previa (ronda 1)
+[previa]
+ring_reportero = 9.98
+cell = 5.80
+goku_abajo = 3.80
+hombro_espera = 14.42
+hombro = 10.62
+espera = 3.80
+
+# combate rondas 2-11, segundos tras Start (aproximado, [H] hasta medir con cuadros)
+[combate]
+satan = 5.0
+otro_plano = 6.0
+rival = 8.0
+ready = 10.0
+
+# subtitulos de la ronda 1: [H] no localizados (imagenes del guion de B1 en DATA_<idioma>.AFS)
+[subtitulos]
+estado = "H"
+

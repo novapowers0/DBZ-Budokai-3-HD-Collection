@@ -1,0 +1,102 @@
+# GENERADO por tools\extraer_datos.py iw_minijuegos -- no editar a mano (en modo pruebas se recarga con F5).
+
+fuente = "ELF SLES-55347 (IW EU), tabla 0x473310 en RAM de savestate; clips #AMC y entrada: studies 5/referencias/INV_IW_MINIJUEGOS.md 2.3 (medido en studies 8)"
+# fov: [H] no esta en una tabla estatica (se mide en marcha: C+0xB4 de la camara); ver PENDIENTE.md
+
+[minijuego.0]
+descriptor = "0x00497160"
+clave = "0x7D0"
+modulo = "MSNMW"
+amc_915_clips = []
+
+[minijuego.1]
+descriptor = "0x00497160"
+clave = "0x7D1"
+modulo = "MSNMW"
+amc_915_clips = []
+
+[minijuego.2]
+descriptor = "0x00497160"
+clave = "0x7D2"
+modulo = "MSNMW"
+amc_915_clips = []
+
+[minijuego.3]
+descriptor = "0x0049B3E8"
+
+[minijuego.4]
+descriptor = "0x00497160"
+
+[minijuego.5]
+descriptor = "0x0049B7A0"
+clave = "0x7D4"
+modulo = "MSN_NB006"
+amc_915_clips = ["0x96", "0x97", "0x9A", "0x322", "0x323"]
+amc_entrada = 2
+
+[minijuego.6]
+descriptor = "0x00496F60"
+clave = "0x7D5"
+modulo = "MSN_NB007"
+amc_915_clips = ["0xB4", "0x352", "0xB5", "0xBD", "0xBE", "0x354"]
+amc_entrada = 872
+
+[minijuego.7]
+descriptor = "0x0049A3E0"
+
+[minijuego.8]
+descriptor = "0x0049A600"
+
+[minijuego.9]
+descriptor = "0x00499870"
+
+[minijuego.10]
+descriptor = "0x00497160"
+clave = "0x7D9"
+modulo = "MSNMW"
+amc_915_clips = []
+
+[minijuego.11]
+descriptor = "0x00499330"
+clave = "0x7DA"
+modulo = "MSN_NB012"
+amc_915_clips = ["0x14A", "0x44C", "0x14B", "0x153", "0x154", "0x44E"]
+
+[minijuego.12]
+descriptor = "0x0049AA40"
+clave = "0x7DB"
+modulo = "MSN_NB013"
+amc_915_clips = ["0x186", "0x187", "0x190", "0x191", "0x47F", "0x480"]
+amc_entrada = 876
+
+[minijuego.13]
+descriptor = "0x00499CF0"
+clave = "0x7DC"
+modulo = "MSN_NB014"
+amc_915_clips = ["0x1A4", "0x1A5", "0x1AE", "0x1AF", "0x4B1", "0x4B2"]
+amc_entrada = 877
+
+[minijuego.14]
+descriptor = "0x00497160"
+clave = "0x7DD"
+modulo = "MSNMW"
+amc_915_clips = []
+
+[minijuego.15]
+descriptor = "0x00499020"
+
+[minijuego.16]
+descriptor = "0x00497160"
+clave = "0x7DF"
+modulo = "MSNMW"
+amc_915_clips = []
+
+[minijuego.17]
+descriptor = "0x0049A3E8"
+
+[minijuego.18]
+descriptor = "0x00498510"
+clave = "0x7E1"
+modulo = "MSN019"
+amc_915_clips = []
+

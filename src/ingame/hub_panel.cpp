@@ -391,6 +391,14 @@ class HubPanel : public rex::ui::ImGuiDialog {
     if (v.menu && v.fade != Fade::kNone && v.fade_to_hub) DrawFlyer(dl, io, v);
     WatchSaves(t);
     dbz3::musica::ActualizarCombate(dbz3::tag::InBattle());   // X1: musica de combate elegida por el jugador
+    if (dbz3::escenarios::SelectorVisible()) DrawMusica(ImGui::GetForegroundDrawList(), S::GameArea(io), t);
+    if (const int aviso = dbz3::musica::AvisoOnline()) {
+      const S::Area ga = S::GameArea(io);
+      S::MenuText(ImGui::GetForegroundDrawList(), ga.At(250, 150), 22 * ga.s,
+                  aviso == 1 ? T::T("Musica: solo la oyes tu; tu rival oye la suya", "Music: only you hear it; your opponent hears their own")
+                             : T::T("Musica: no tienes esa pista instalada; suena la del juego", "Music: you do not have that track; game music plays"),
+                  false, false, 700 * ga.s);
+    }
     // el aviso, solo con el HUB o el menu principal a la vista y quietos: nunca en combate (ni en la espera en negro de
     // los encadenados), ni encima de las pantallas propias de los modos (selector, Laboratorio, entre combates,
     // pantalla final), ni en un fundido. Un guardado entonces espera y sale entero al volver (rpg.md, propuesta 2).
@@ -408,6 +416,24 @@ class HubPanel : public rex::ui::ImGuiDialog {
   }
 
  private:
+  // Fase 3 (musica): tira bajo el selector de escenarios del Duelo: "L1 < MUSICA: <eleccion> > R1" con el marco, las flechas, los
+  // botones y la tipografia del juego (game_style: salen de lo extraido del juego del jugador). L1/R1 o [ y ] cambian la pista.
+  // [H] posicion (abajo, centrada) sin medir contra la pantalla original.
+  void DrawMusica(ImDrawList* dl, const S::Area& a, float t) {
+    static const char* const kMus[5] = {"MÚSICA", "MUSIC", "MUSIQUE", "MUSIK", "MUSICA"};   // es, en, fr, de, it (pt y ja: i18n_modos.toml)
+    const char* lc = T::LangCode();
+    const char* mus = T::Otro("MUSIC") ? T::Otro("MUSIC") : kMus[lc[0] == 'e' && lc[1] == 's' ? 0 : lc[0] == 'f' ? 2 : lc[0] == 'd' ? 3 : lc[0] == 'i' ? 4 : 1];
+    const std::string txt = std::string(mus) + "  " + dbz3::musica::TextoEleccion();
+    const ImVec2 p0 = a.At(250, 812), p1 = a.At(770, 858);   // acaba antes del mono de la derecha (su borde izquierdo ronda x 820)
+    S::Frame(dl, p0, p1, a.s);
+    const float gh = 30 * a.s, cy = (p0.y + p1.y) * 0.5f;
+    S::Glyph(dl, "LB", ImVec2(p0.x + 12 * a.s, cy), gh);
+    const float rb = S::Glyph(nullptr, "RB", ImVec2(0, 0), gh);
+    S::Glyph(dl, "RB", ImVec2(p1.x - 12 * a.s - rb, cy), gh);
+    S::MenuTextB3(dl, ImVec2((p0.x + p1.x) * 0.5f, cy), 30 * a.s, txt.c_str(), true, false, (p1.x - p0.x) - 110 * a.s);
+    S::Arrows(dl, ImVec2(p0.x + 70 * a.s, p0.y), ImVec2(p1.x - 70 * a.s, p1.y), 26 * a.s, t);
+  }
+
   // Recuadro de la fila HUB bajo la lista (donde estaba el de TAG TEAM): marco del juego, agua si es la
   // elegida y la etiqueta con la letra del menu. En la pantalla HUB con varias paginas: LB < 1/2 > RB.
   void DrawRow(ImDrawList* dl, const S::Area& a, const View& v, float t) {
@@ -567,7 +593,7 @@ class HubPanel : public rex::ui::ImGuiDialog {
         }
         FadeVerts(dl, v1, alpha * k_alpha);
       };
-      placa(Pa::RangoNivel(pe), a.At(662, 646), 256 * a.s, 1.0f);
+      placa(Pa::RangoNivel(pe), a.At(662, 624), 256 * a.s, 1.0f);   // y 624: su borde (656) queda sobre el 1er renglon de 4 (664)
       if (ascenso > 0 && t < aviso_hasta) {
         const float u = Clamp01(float(t - (aviso_hasta - 6.0)) / 0.35f), fuera = Clamp01(float(aviso_hasta - t) / 0.5f);
         placa(ascenso - 1, a.At(600, 330), 640 * a.s * (1.0f + 0.35f * (1.0f - Ease(u))), Ease(u) * fuera);
@@ -643,7 +669,7 @@ class HubPanel : public rex::ui::ImGuiDialog {
       const std::string key = EntryKey(e);
       const int estado = key == "pasarela" || key == "minijuegos" ? 2
                          : key == "tagteam" || key == "online" || key == "satan" || key == "mision100" ||
-                                   key == "laboratorio" || key == "escenarios" || key == "heroe"
+                                   key == "laboratorio" || key == "escenarios" || key == "heroe" || key == "tactics"
                              ? 1
                              : 0;
       const float right = Label(dl, a, EntryKey(e), EntryName(e), kLabelX + dx, y, kLabelK, tint, sel,

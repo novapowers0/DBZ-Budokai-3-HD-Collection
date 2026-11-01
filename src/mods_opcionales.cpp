@@ -3,9 +3,15 @@
 
 #include "launcher/settings.h"
 #include "mods.h"
+#include "net/netplay.h"
 #include "pasarela.h"
 #include "region.h"
 
+#if defined(_WIN32)
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#endif
 #include <rex/cvar.h>
 #include <rex/filesystem.h>
 #include <rex/logging.h>
@@ -14,6 +20,7 @@
 #include <cctype>
 #include <chrono>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
@@ -355,6 +362,7 @@ std::filesystem::path BaseDeJuego(const std::string& juego) {
   if (juego == "b2") return pasarela::BuscarJuego("budokai 2");
   if (juego == "iw") return pasarela::BuscarJuego("infinite world");
   if (juego == "b1") return pasarela::BuscarIsoB1();
+  if (juego == "t3") return pasarela::IsoPs2(5);   // ISO de Tenkaichi 3 del jugador (solo lectura)
   return {};
 }
 
@@ -363,6 +371,8 @@ std::string NombreFuente(const std::string& juego) {
   if (juego == "b2") return "Budokai 2";
   if (juego == "iw") return "Infinite World";
   if (juego == "b1") return "Budokai 1";
+  if (juego == "t3") return "Tenkaichi 3";
+  if (juego == "propia") return "Mi musica";
   return juego;
 }
 
@@ -404,6 +414,85 @@ void AgregarJuego(std::vector<Pista>& out, std::set<std::string>& vistos, const 
     p.segundos = segundos;
     p.nombre = NombreFuente(juego) + " #" + std::to_string(k);
     out.push_back(std::move(p));
+  }
+}
+
+// Fase 1: Tenkaichi 3 como fuente. Su musica son 20 ADX (zs3_00..19, estereo 24 kHz) en PZS3xx2.AFS, entradas 64974..64993
+// (t3_audio.py, medido en studies 5/ENTREGAS/E2). Solo se miran esas 20 (el AFS tiene 65201 entradas). Se lee la ISO del
+// jugador; no se copia ni se reparte nada.
+void AgregarT3(std::vector<Pista>& out, std::set<std::string>& vistos) {
+  constexpr int kPrimera = 64974, kNum = 20;
+  const std::filesystem::path base = BaseDeJuego("t3");
+  if (base.empty()) return;
+  pasarela::AfsPs2 afs;
+  std::string usado;
+  for (const char* nombre : {"PZS3EU2.AFS", "PZS3US2.AFS", "PZS3JP2.AFS", "PZS3JA2.AFS"})
+    if (afs.Abrir(base, nombre)) {
+      usado = nombre;
+      break;
+    }
+  if (usado.empty()) return;
+  for (int n = 0; n < kNum && size_t(kPrimera + n) < afs.Cuantas(); ++n) {
+    int hz = 0, canales = 1;
+    double segundos = 0.0;
+    if (!CabeceraAdx(afs, kPrimera + n, hz, canales, segundos)) continue;
+    if (!vistos.insert("t3|" + usado + "|" + std::to_string(kPrimera + n)).second) continue;
+    Pista p;
+    p.fuente = "t3";
+    p.afs = usado;
+    p.juego = base;
+    p.entrada = kPrimera + n;
+    p.hz = hz;
+    p.canales = canales;
+    p.segundos = segundos;
+    char num[8];
+    std::snprintf(num, sizeof num, "%02d", n);
+    p.nombre = std::string("Tenkaichi 3 - Pista ") + num;
+    out.push_back(std::move(p));
+  }
+}
+
+// Fase 4 del Kit: musica PROPIA del jugador. Cada carpeta mods/<x>/ con un musica.afs (la crea el asistente «Poner musica»
+// del Kit: un AFS con el ADX ya convertido) aporta sus pistas a la fuente "propia". Se lee con el mismo AfsPs2 y se reproduce con
+// OirMusicaPs2 que las demas: no se toca la musica nativa. La carpeta desactivada (.disabled) no cuenta. Nombre = pistas.txt
+// (una linea por entrada) o el de la carpeta.
+void AgregarPropias(std::vector<Pista>& out, std::set<std::string>& vistos) {
+  std::error_code ec;
+  std::vector<std::filesystem::path> dirs;
+  for (auto [it, iec] = std::pair{std::filesystem::directory_iterator(ModsRoot(), ec), std::error_code{}};
+       !iec && it != std::filesystem::directory_iterator(); it.increment(iec)) {
+    const std::string carpeta = rex::path_to_utf8(it->path().filename());
+    if (carpeta.empty() || carpeta[0] == '.' || !it->is_directory(ec) || carpeta.ends_with(".disabled")) continue;
+    if (std::filesystem::exists(it->path() / ".disabled", ec) || !std::filesystem::exists(it->path() / "musica.afs", ec)) continue;
+    dirs.push_back(it->path());
+  }
+  std::sort(dirs.begin(), dirs.end());
+  for (const std::filesystem::path& dir : dirs) {
+    pasarela::AfsPs2 afs;
+    if (!afs.Abrir(dir, "musica.afs")) continue;
+    std::vector<std::string> nombres;
+    std::ifstream in(dir / "pistas.txt");
+    for (std::string ln; std::getline(in, ln);) {
+      while (!ln.empty() && (ln.back() == '\r' || ln.back() == ' ')) ln.pop_back();
+      nombres.push_back(ln);
+    }
+    const std::string carpeta = rex::path_to_utf8(dir.filename());
+    for (size_t k = 0; k < afs.Cuantas(); ++k) {
+      int hz = 0, canales = 1;
+      double segundos = 0.0;
+      if (!CabeceraAdx(afs, int(k), hz, canales, segundos) || segundos < 1.0) continue;
+      if (!vistos.insert("propia|" + carpeta + "|" + std::to_string(k)).second) continue;
+      Pista p;
+      p.fuente = "propia";
+      p.afs = "musica.afs";
+      p.juego = dir;
+      p.entrada = int(k);
+      p.hz = hz;
+      p.canales = canales;
+      p.segundos = segundos;
+      p.nombre = k < nombres.size() && !nombres[k].empty() ? nombres[k] : carpeta;
+      out.push_back(std::move(p));
+    }
   }
 }
 
@@ -490,6 +579,8 @@ std::vector<Pista> Pistas() {
   AgregarJuego(*out, vistos, "b2", "ADX_US.AFS", 20.0);
   AgregarJuego(*out, vistos, "iw", "ADX_CMN.AFS", 20.0);
   AgregarJuego(*out, vistos, "b1", "ADX_JP.AFS", 20.0);
+  AgregarT3(*out, vistos);
+  AgregarPropias(*out, vistos);
   // Mods opcionales: [pistas] nombre = entrada, con [opcional] juego/afs (o el prefijo del id: b2.xxx).
   for (const opcional::Mod& m : *opcional::Listar()) {
     if (!m.activo) continue;
@@ -587,9 +678,163 @@ void Escuchar(const Pista& pista, float volumen) {
 
 void Parar() { pasarela::CallarMusicaPs2(); }
 
+namespace {
+
+// Valor del cvar dbz3_musica_combate: "original" | "aleatoria[:fuente]" | "fija:<fuente>:<n>" (n = posicion en la lista de esa
+// fuente, ordenada por entrada: para t3 es el numero de pista 0..19).
+struct Eleccion {
+  Modo modo = Modo::kOriginal;
+  std::string fuente;
+  int ordinal = -1;
+};
+
+Eleccion ParseCvar(const std::string& v) {
+  Eleccion e;
+  if (v.rfind("aleatoria", 0) == 0) {
+    e.modo = Modo::kAleatoria;
+    if (v.size() > 10 && v[9] == ':') e.fuente = v.substr(10);
+  } else if (v.rfind("fija:", 0) == 0) {
+    const size_t c = v.find(':', 5);
+    if (c != std::string::npos) {
+      e.modo = Modo::kFija;
+      e.fuente = v.substr(5, c - 5);
+      e.ordinal = std::atoi(v.c_str() + c + 1);
+    }
+  }
+  return e;
+}
+
+// Pista n de la fuente (posicion en la lista filtrada); vacia (entrada -1) si no existe.
+Pista PistaDe(const std::string& fuente, int ordinal) {
+  std::vector<Pista> lista = Pistas();
+  std::erase_if(lista, [&](const Pista& p) { return p.fuente != fuente; });
+  return ordinal >= 0 && size_t(ordinal) < lista.size() ? lista[size_t(ordinal)] : Pista{};
+}
+
+// Fase 4: musica.toml refleja siempre el cvar (lo escribe el selector y el menu F1) y, al arrancar con el cvar en "original",
+// restaura la eleccion guardada. Solo local: nada de esto entra en el estado compartido del online.
+void SincronizarRegistro() {
+  static bool inicio = true;
+  static std::string ultimo;
+  const std::string v = rex::cvar::GetFlagByName("dbz3_musica_combate");
+  if (inicio) {
+    inicio = false;
+    ultimo = v;
+    if (v == "original") {
+      const Opcion o = Leer();
+      std::string nuevo;
+      if (o.modo == Modo::kFija && !o.fuente.empty() && o.entrada >= 0) {
+        std::vector<Pista> lista = Pistas();
+        std::erase_if(lista, [&](const Pista& p) { return p.fuente != o.fuente; });
+        for (size_t k = 0; k < lista.size(); ++k)
+          if (lista[k].entrada == o.entrada) nuevo = "fija:" + o.fuente + ":" + std::to_string(k);
+      } else if (o.modo == Modo::kAleatoria) {
+        nuevo = o.fuente.empty() ? "aleatoria" : "aleatoria:" + o.fuente;
+      }
+      if (!nuevo.empty()) {
+        ultimo = nuevo;
+        rex::cvar::SetFlagByName("dbz3_musica_combate", nuevo);
+        REXLOG_INFO("dbz3 musica: eleccion recuperada de musica.toml: {}", nuevo);
+      }
+    } else {   // el cvar ya trae una eleccion (config o linea de comandos): musica.toml la refleja
+      const Eleccion e = ParseCvar(v);
+      Opcion o;
+      o.modo = e.modo;
+      o.fuente = e.fuente;
+      if (e.modo == Modo::kFija) o.entrada = PistaDe(e.fuente, e.ordinal).entrada;
+      Guardar(o);
+      REXLOG_INFO("dbz3 musica: eleccion guardada en musica.toml: {}", v);
+    }
+    return;
+  }
+  if (v == ultimo) return;
+  ultimo = v;
+  const Eleccion e = ParseCvar(v);
+  Opcion o;
+  o.modo = e.modo;
+  o.fuente = e.fuente;
+  if (e.modo == Modo::kFija) o.entrada = PistaDe(e.fuente, e.ordinal).entrada;
+  Guardar(o);
+  REXLOG_INFO("dbz3 musica: eleccion guardada en musica.toml: {}", v);
+}
+
+}  // namespace
+
+int DeltaTeclado() {
+#if defined(_WIN32)
+  static bool antes[2] = {false, false};
+  const bool ahora[2] = {(GetAsyncKeyState(VK_OEM_4) & 0x8000) != 0, (GetAsyncKeyState(VK_OEM_6) & 0x8000) != 0};
+  DWORD pid = 0;
+  GetWindowThreadProcessId(GetForegroundWindow(), &pid);
+  int d = 0;
+  if (pid == GetCurrentProcessId()) {
+    if (ahora[1] && !antes[1]) d = 1;
+    if (ahora[0] && !antes[0]) d = -1;
+  }
+  antes[0] = ahora[0];
+  antes[1] = ahora[1];
+  return d;
+#else
+  return 0;
+#endif
+}
+
+std::string TextoEleccion() {
+  const Eleccion e = ParseCvar(rex::cvar::GetFlagByName("dbz3_musica_combate"));
+  if (e.modo == Modo::kOriginal) return "Original";
+  if (e.modo == Modo::kAleatoria) return e.fuente.empty() ? "Aleatoria" : "Aleatoria: " + NombreFuente(e.fuente);
+  const Pista p = PistaDe(e.fuente, e.ordinal);
+  return p.entrada < 0 ? "Original" : p.nombre;
+}
+
+void CambiarEleccion(int delta) {
+  // Ciclo: Original, luego cada pista de cada fuente (Pistas() ya viene ordenada por fuente y entrada).
+  const std::vector<Pista> todas = Pistas();
+  if (todas.empty()) return;
+  SincronizarRegistro();   // la primera vez recupera lo guardado antes de moverse
+  const Eleccion e = ParseCvar(rex::cvar::GetFlagByName("dbz3_musica_combate"));
+  const int n = int(todas.size()) + 1;   // 0 = Original
+  int pos = 0;
+  if (e.modo == Modo::kFija) {
+    int ord = 0;
+    for (size_t k = 0; k < todas.size(); ++k) {
+      if (todas[k].fuente != e.fuente) continue;
+      if (ord++ == e.ordinal) pos = int(k) + 1;
+    }
+  }
+  pos = ((pos + delta) % n + n) % n;
+  std::string nuevo = "original";
+  if (pos > 0) {
+    const Pista& p = todas[size_t(pos - 1)];
+    int ord = 0;
+    for (int k = 0; k < pos - 1; ++k)
+      if (todas[size_t(k)].fuente == p.fuente) ++ord;
+    nuevo = "fija:" + p.fuente + ":" + std::to_string(ord);
+    REXLOG_INFO("dbz3 musica: eleccion musical: {} #{} ({})", p.fuente, ord, p.nombre);
+  } else {
+    REXLOG_INFO("dbz3 musica: eleccion musical: original");
+  }
+  rex::cvar::SetFlagByName("dbz3_musica_combate", nuevo);
+  dbz3::settings::SaveUserSettings();
+  SincronizarRegistro();   // escribe musica.toml ya, sin esperar al siguiente fotograma
+}
+
+namespace {
+struct AvisoOnlineEstado { int tipo = 0; std::chrono::steady_clock::time_point at{}; };
+AvisoOnlineEstado g_aviso_online;   // solo hilo de la interfaz
+}  // namespace
+
+int AvisoOnline() {
+  if (!g_aviso_online.tipo) return 0;
+  const auto seg = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - g_aviso_online.at).count();
+  if (seg >= 8 || !dbz3::net::Session::Get().active()) g_aviso_online.tipo = 0;
+  return g_aviso_online.tipo;
+}
+
 void ActualizarCombate(bool en_combate) {
   static bool sonando = false;
   static uint32_t combates = 0;
+  SincronizarRegistro();
   if (!en_combate) {
     if (sonando) {
       sonando = false;
@@ -599,19 +844,33 @@ void ActualizarCombate(bool en_combate) {
     return;
   }
   if (sonando) return;
-  const std::string v = rex::cvar::GetFlagByName("dbz3_musica_combate");
-  if (v.rfind("aleatoria", 0) != 0) return;   // "original": no se toca nada
+  const Eleccion e = ParseCvar(rex::cvar::GetFlagByName("dbz3_musica_combate"));
+  if (e.modo == Modo::kOriginal) return;   // "original": no se toca nada
   sonando = true;   // una sola vez por combate, haya pista o no
-  Opcion o;
-  o.modo = Modo::kAleatoria;
-  if (v.size() > 10 && v[9] == ':') o.fuente = v.substr(10);
-  const Pista p = Elegir(o, ++combates * 2654435761u);
+  auto& red = dbz3::net::Session::Get();
+  const bool online = red.active();
+  Pista p;
+  if (e.modo == Modo::kFija) {
+    p = PistaDe(e.fuente, e.ordinal);
+  } else {
+    Opcion o;
+    o.modo = Modo::kAleatoria;
+    o.fuente = e.fuente;
+    // online: misma semilla en los dos PC: con las mismas pistas instaladas, la misma pista
+    p = Elegir(o, online ? red.AzarCompartido(0x6D75) : ++combates * 2654435761u);
+  }
+  // La eleccion es de cada jugador y el protocolo no la lleva: el aviso lo dice en pantalla (hub_panel.cpp).
+  if (online) g_aviso_online = {p.entrada < 0 ? 2 : 1, std::chrono::steady_clock::now()};
   if (p.entrada < 0) {
-    REXLOG_INFO("dbz3 musica: combate: no hay pistas de '{}' (se queda la del juego)", o.fuente);
+    REXLOG_INFO("dbz3 musica: combate: no hay pistas de '{}' (se queda la del juego)", e.fuente);
     return;
   }
+  if (online) REXLOG_INFO("dbz3 musica: online: {} {} entrada {}: solo la oye este jugador", p.fuente, p.afs, p.entrada);
   const float vol = settings::AudioMute() ? 0.0f : float(settings::MasterVolume()) * 0.6f;
-  REXLOG_INFO("dbz3 musica: combate: {} ({} {} #{})", p.nombre, p.fuente, p.afs, p.entrada);
+  if (e.modo == Modo::kFija)
+    REXLOG_INFO("dbz3 musica: combate: {} ({} {} #{} entrada {})", p.nombre, p.fuente, p.afs, e.ordinal, p.entrada);
+  else
+    REXLOG_INFO("dbz3 musica: combate: {} ({} {} #{})", p.nombre, p.fuente, p.afs, p.entrada);
   Escuchar(p, vol);
 }
 

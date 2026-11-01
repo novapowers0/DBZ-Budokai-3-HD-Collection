@@ -89,7 +89,7 @@ std::filesystem::path BuscarIsoB1();
 
 // Juegos de PS2 del jugador elegidos con un boton (launcher o el propio juego): ps2_games/<nombre>.ruta guarda la ruta de
 // su ISO (no se copia nada) y los buscadores la aceptan como si estuviera ahi. juego: 0 = Budokai 1, 1 = Budokai 2,
-// 2 = Infinite World. Registrar: "" si vale; si no, el motivo para el jugador (su ISO es de otro juego...).
+// 2 = Infinite World, 3 = Shin Budokai (PSP), 4 = Another Road (PSP). Registrar: "" si vale; si no, el motivo para el jugador (su ISO es de otro juego...).
 std::filesystem::path IsoPs2(int juego);   // la que usara el juego (vacia = falta)
 std::string RegistrarIsoPs2(int juego, const std::filesystem::path& iso);
 // Dialogo para elegirla (Windows); bloquea hasta que el jugador cierra. "" = elegida y valida, "-" = cancelado.

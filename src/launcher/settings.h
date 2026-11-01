@@ -296,6 +296,9 @@ void SetLowResEnabled(bool enabled);
 bool VrrEnabled();
 void SetVrrEnabled(bool enabled);
 // Creador de personajes (Modo Heroe): piezas de Xenoverse 2 (opcion, apagada por defecto; requiere XV2 instalado).
+bool VideosHd();
+void SetVideosHd(bool on);
+std::string VideosHdUrl();
 bool CacXv2Piezas();
 void SetCacXv2Piezas(bool enabled);
 bool Xv2Instalado();   // data.cpk de Xenoverse 2 localizado (DBZ3_XENO2_CPK o bibliotecas de Steam)

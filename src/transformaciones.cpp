@@ -308,7 +308,7 @@ namespace {
 
 namespace fs = std::filesystem;
 using Bytes = std::vector<uint8_t>;
-constexpr const char* kVersion = "forma_unica 1";
+constexpr const char* kVersion = "forma_unica 2";   // 2: fila del deseo del Heroe (campaigns.cpp, sub_82161548)
 constexpr uint32_t kNamesShort = 2663, kNamesLong = 2684;
 
 struct Texts {
@@ -332,6 +332,12 @@ const std::map<std::string, Texts> kTexts = {
             "P+K+G\nMit dem Ki jeder Form", "Braucht die H\xC3\xA4lfte der Pl\xC3\xA4tze\nseiner einzelnen Kapseln"}},
     {"it", {"Tutte le trasformazioni", "Personaggi che si trasformano", "Pu\xC3\xB2 usare tutte le\ntrasformazioni sbloccate",
             "P+K+G\nCon il Ki di ogni forma", "Occupa met\xC3\xA0 degli spazi\ndelle sue capsule separate"}},
+};
+
+// Nombre propio de la ultima fila del menu de deseos del Heroe: textura 1983 del banco general 2684 (justo antes de las capsulas unicas)
+const std::map<std::string, const char*> kFilaDeseo = {
+    {"en", "Change race and body"}, {"es", "Cambiar raza y cuerpo"}, {"fr", "Changer de race et de corps"},
+    {"de", "Rasse und KÃ¶rper Ã¤ndern"}, {"it", "Cambia razza e corpo"},
 };
 
 uint32_t Be32(const uint8_t* p) { return uint32_t(p[0]) << 24 | uint32_t(p[1]) << 16 | uint32_t(p[2]) << 8 | p[3]; }
@@ -821,6 +827,7 @@ bool PrepareNamesMod(const std::vector<std::pair<int, uint32_t>>& banks, const s
       std::map<uint32_t, Image> items;
       for (const auto& [id, fid] : banks)
         if (p.ids.empty() || std::find(p.ids.begin(), p.ids.end(), id) != p.ids.end()) items[forms::UnifiedId(id)] = name;
+      if (p.from == kNamesLong) items[forms::kUnifiedBase - 1] = RenderName(name_font, kFilaDeseo.at(LangOf(afs_name)));
       Bytes bank = ModEntry(roster, afs_name, p.from);   // el del _roster gana, como en el juego
       p.from_roster = p.from_roster || !bank.empty();
       if (bank.empty()) bank = ReadEntry(path, p.from);

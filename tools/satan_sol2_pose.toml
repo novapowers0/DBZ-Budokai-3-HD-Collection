@@ -1,0 +1,3 @@
+descripcion = "solSAT2: clip original 2372/3 en ACM nativo y angulos efectivos de la piel"
+env = ["DBZ3_TEST_PASARELA=auto,seg=8,desde=1", "DBZ3_PS2_GAMES=D:/DBZ3HD/ps2_games", "DBZ3_TEST_RINGOUT=1", "DBZ3_TEST_SAT_MUESTRAS=1"]
+pasos = ['log "solSAT: muestra G 2317.2" 200', 'esperar 400', 'captura pose_campo1931']

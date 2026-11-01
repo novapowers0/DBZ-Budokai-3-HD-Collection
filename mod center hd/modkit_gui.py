@@ -56,6 +56,7 @@ KIT = os.path.dirname(HERE)                                  # carpeta del kit (
 AWO = os.path.join(KIT, "awo_tools")
 sys.path.insert(0, HERE)
 import swap_b3  # noqa: E402  (deteccion validada del data_cmn.afs del Budokai 3 HD, la misma que las herramientas)
+from kit import asistente, ayudas, errores, pagina_arte, pagina_ps2, portada, prueba, revisar, vistas  # noqa: E402,F401  (fase 0: piezas sacadas de este fichero)
 IS_WIN = os.name == "nt"
 NO_WINDOW = 0x08000000 if IS_WIN else 0                      # CREATE_NO_WINDOW
 SELF_NAME = os.path.basename(os.path.abspath(__file__))
@@ -708,6 +709,8 @@ CURATED = {
                    "PS2 #AMO0 / #AMB model → HD #AWO (no template).", {}),
     "b3_gateway.py": ("modelos", "Pasarela de modelos 3D (OBJ / glTF / PS2) → bin #AMB de B3 HD.",
                       "3D model gateway (OBJ / glTF / PS2) → B3 HD #AMB bin.", {}),
+    "dae_a_b3.py": ("modelos", "Modelo DAE con huesos de estilo Xenoverse/Legends → traje de B3 HD (--mod crea el mod).",
+                    "DAE model with Xenoverse/Legends-style bones → B3 HD costume (--mod creates the mod).", {}),
     "altura.py": ("modelos", "Altura de los pies con una animación (corrige personajes que flotan).",
                   "Foot height with an animation (fixes floating characters).", {}),
     "awg_to_obj_b3.py": ("modelos", "Exporta un bin HD de B3 a OBJ.", "Exports a B3 HD bin to OBJ.", {}),
@@ -1384,24 +1387,40 @@ def leer_indice(env):
 
 def deshacer_ultimo(env):
     """Restaura el ultimo lote de copias que aun no se ha deshecho. Lo que habia antes de deshacer se
-    guarda en modkit_backups/<fecha>-antes-de-deshacer (nada se pierde). Devuelve los ficheros restaurados."""
+    guarda en modkit_backups/<fecha>-antes-de-deshacer (nada se pierde). Devuelve los ficheros restaurados.
+    Tipos del indice: «copia» (fichero editado), «nuevo» (carpeta creada por un asistente: se aparta) y
+    «movido» (carpeta o fichero apartado por un asistente: vuelve a su sitio)."""
     filas = leer_indice(env)
     hechos = {f[0] for f in filas if f[1] == "deshecho"}
-    lotes = [f for f in filas if f[1] == "copia" and f[0] not in hechos]
+    lotes = [f for f in filas if f[1] in ("copia", "nuevo", "movido") and f[0] not in hechos]
     if not lotes:
         return []
     stamp = lotes[-1][0]
     antes = os.path.join(env.backups, time.strftime("%Y%m%d-%H%M%S") + "-antes-de-deshacer")
     restaurados = []
-    for _, _, original, rel in (f for f in lotes if f[0] == stamp):
+
+    def apartar(path):
+        os.makedirs(antes, exist_ok=True)
+        os.replace(path, os.path.join(antes, "%d_%s" % (len(os.listdir(antes)), os.path.basename(path))))
+
+    mias = [f for f in lotes if f[0] == stamp]
+    for _, tipo, original, _rel in mias:          # lo que creo el asistente, primero (libera el sitio)
+        if tipo == "nuevo" and os.path.exists(original):
+            apartar(original)
+            restaurados.append(original)
+    for _, tipo, original, rel in mias:
         origen = os.path.join(env.backups, rel)
-        if not os.path.isfile(origen):
-            continue
-        if os.path.isfile(original):
-            os.makedirs(antes, exist_ok=True)
-            shutil.copy2(original, os.path.join(antes, "%d_%s" % (len(restaurados), os.path.basename(original))))
-        shutil.copy2(origen, original)
-        restaurados.append(original)
+        if tipo == "movido" and os.path.exists(origen):
+            if os.path.exists(original):
+                apartar(original)
+            os.replace(origen, original)
+            restaurados.append(original)
+        elif tipo == "copia" and os.path.isfile(origen):
+            if os.path.isfile(original):
+                os.makedirs(antes, exist_ok=True)
+                shutil.copy2(original, os.path.join(antes, "%d_%s" % (len(restaurados), os.path.basename(original))))
+            shutil.copy2(origen, original)
+            restaurados.append(original)
     anotar_indice(env, stamp, "deshecho", "", "")
     return restaurados
 
@@ -1562,6 +1581,8 @@ ICONS = {  # (Segoe MDL2 / Fluent, alternativa)
     "setup": ("\uE9D9", "⚙"), "mods": ("\uE8F1", "▤"), "importer": ("\uE896", "⇩"),
     "characters": ("\uE716", "☺"), "create": ("\uE8FA", "✚"), "textures": ("\uE790", "✎"),
     "swap": ("\uE8AB", "⇄"), "help": ("\uE897", "?"), "tools": ("\uE90F", "⚒"), "home": ("\uE80F", "⌂"),
+    "w_personaje": ("", "✚"), "w_aspecto": ("", "✎"), "w_traje": ("", "♟"),
+    "w_zip": ("", "⇩"), "w_musica": ("", "♪"),
     "diag": ("\uE9D2", "♥"), "studio": ("\uE714", "◉"), "hex": ("\uE943", "#"), "stories": ("\uE8A5", "\u00B6"),
 }
 
@@ -1735,6 +1756,7 @@ class ScrollFrame(tk.Frame):
 class Tooltip:
     def __init__(self, widget, text):
         self.w, self.text, self.tip, self.job = widget, text, None, None
+        widget._con_tip = True     # kit/ayudas.py no le pone otro
         widget.bind("<Enter>", self._sched, add="+")
         widget.bind("<Leave>", self._hide, add="+")
         widget.bind("<ButtonPress>", self._hide, add="+")
@@ -2055,6 +2077,9 @@ class Page(tk.Frame):
             tf.bind("<Configure>", lambda e: sub.configure(wraplength=max(320, e.width - 10)), add="+")
         self.header_right = tk.Frame(h, bg=C["bg"])
         self.header_right.pack(side="right", anchor="n")
+        if self.key in ayudas.COMO:
+            ttk.Button(self.header_right, text="?  " + T("¿Cómo se hace?", "How is it done?"), style="Small.TButton",
+                       command=lambda: ayudas.abrir_como(self, sys.modules[__name__])).pack(side="right")
         return h
 
     def scroll_body(self):
@@ -2089,100 +2114,17 @@ class Page(tk.Frame):
 
 
 # --------------------------------------------------------------------------------- inicio
-PAGE_DEFS = [
-    ("setup", "Comprobar instalación", "Check installation",
-     "Python, librerías, carpeta del juego y tus juegos de PS2.", "Python, libraries, game folder and your PS2 games."),
-    ("mods", "Mis mods", "My mods",
-     "Activa, desactiva y revisa los mods instalados.", "Enable, disable and inspect installed mods."),
-    ("importer", "Importar personaje", "Import a character",
-     "Trae personajes de Budokai 1, 2, Infinite World o de la comunidad, y los ports del proyecto.",
-     "Bring characters from Budokai 1, 2, Infinite World or the community, and the project's ports."),
-    ("characters", "Personajes nuevos", "New characters",
-     "Nombre, plaza en la rueda, imágenes y cápsulas de tus personajes.",
-     "Name, wheel slot, images and capsules of your characters."),
-    ("create", "Crear con mis modelos", "Create from my models",
-     "Un personaje nuevo a partir de tus propios archivos de modelo.",
-     "A new character from your own model files."),
-    ("stories", "Historias", "Stories",
-     "Crea tu campaña o un modo de reto (torre, supervivencia, kumite) y móntalo en tus mods.",
-     "Create your campaign or a challenge mode (tower, survival, kumite) and build it into your mods."),
-    ("textures", "Texturas", "Textures",
-     "Saca las texturas de un personaje a PNG, edítalas y vuelve a montarlas.",
-     "Export a character's textures to PNG, edit them and rebuild."),
-    ("swap", "Cambio de modelo", "Model swap",
-     "Pon el modelo de un personaje en el sitio de otro.", "Put one character's model in another's slot."),
-    ("studio", "Studio de cámaras", "Camera Studio",
-     "Rehaz las cámaras de las técnicas: línea de tiempo, plantillas, vista previa y Blender.",
-     "Redo technique cameras: timeline, templates, preview and Blender."),
-    ("diag", "Diagnóstico", "Diagnostics",
-     "¿Va lento o se cierra? Analiza el registro del juego y te dice qué hacer.",
-     "Slow or crashing? Analyse the game log and get what to do."),
-    ("help", "Ayuda y comunidad", "Help & community",
-     "Guías, primeros pasos y el Discord de la comunidad.", "Guides, first steps and the community Discord."),
-]
+PAGE_DEFS = portada.PAGE_DEFS
 
 
 class HomePage(Page):
     key = "home"
 
     def build(self):
-        sf, body = self.scroll_body()
-        self.sf = sf
-        top = Card(body, accent=True)
-        top.pack(fill="x", pady=(12, 14))
-        label(top.body, T("¡Hola! ¿Qué quieres hacer hoy?", "Hi! What do you want to do today?"),
-              font=F["h1"]).pack(fill="x")
-        label(top.body, T("Elige una tarjeta. Cada paso explica lo que hace y no toca tus partidas guardadas. "
-                          "Los personajes nuevos se añaden al juego al pulsar JUGAR en el launcher.",
-                          "Pick a card. Every step explains what it does and never touches your saves. New "
-                          "characters are added to the game when you press PLAY in the launcher."),
-              fg=C["dim"], wrap=860).pack(fill="x", pady=(4, 10))
-        row = tk.Frame(top.body, bg=C["card"])
-        row.pack(fill="x")
-        self.dot = tk.Label(row, text="●", bg=C["card"], fg=C["dim"], font=F["h3"])
-        self.dot.pack(side="left")
-        self.summary = label(row, "", font=F["bold"], bg=C["card"])
-        self.summary.pack(side="left", padx=(6, 12))
-        ttk.Button(row, text=T("Ver detalles", "Details"), style="Small.TButton",
-                   command=lambda: self.app.goto("setup")).pack(side="left")
-        grid = tk.Frame(body, bg=C["bg"])
-        grid.pack(fill="both", expand=True)
-        cols = 4
-        for c in range(cols):
-            grid.columnconfigure(c, weight=1, uniform="cards")
-        for i, (key, es, en, des, den) in enumerate(PAGE_DEFS):
-            card = tk.Frame(grid, bg=C["card"], highlightthickness=1, highlightbackground=C["line"])
-            card.grid(row=i // cols, column=i % cols, sticky="nsew", padx=(0 if i % cols == 0 else 7, 0 if
-                                                                           i % cols == cols - 1 else 7), pady=7)
-            tk.Label(card, text=icon(key), bg=C["card"], fg=C["accent"], font=F["icon"]).pack(anchor="w", padx=18,
-                                                                                            pady=(18, 6))
-            tk.Label(card, text=T(es, en), bg=C["card"], fg=C["text"], font=F["h3"], anchor="w").pack(
-                fill="x", padx=18)
-            tk.Label(card, text=T(des, den), bg=C["card"], fg=C["dim"], font=F["small"], anchor="nw",
-                     justify="left", wraplength=200).pack(fill="both", expand=True, padx=18, pady=(4, 18))
-            make_clickable(card, lambda k=key: self.app.goto(k), C["card"], C["card_hi"])
-        tip = tk.Frame(body, bg=C["bg"])
-        tip.pack(fill="x", pady=(10, 6))
-        hint(tip, T("¿Ya sabes modear? Cambia arriba a «Avanzado»: todas las herramientas del kit con todas sus "
-                    "opciones, el registro completo y las rutas.",
-                    "Already a modder? Switch to 'Advanced' at the top: every kit tool with all its options, the "
-                    "full log and raw paths."), wrap=860).pack(fill="x")
+        portada.construir(self, sys.modules[__name__])
 
     def on_show(self):
-        checks = self.app.checks()
-        bad = [c for c in checks if c["level"] == "err"]
-        warn = [c for c in checks if c["level"] == "warn"]
-        if bad:
-            self.dot.configure(fg=C["err"])
-            self.summary.configure(text=T("Falta algo: %s", "Something is missing: %s") % ", ".join(
-                c["title"] for c in bad))
-        elif warn:
-            self.dot.configure(fg=C["warn"])
-            self.summary.configure(text=T("Casi listo. Revisa: %s", "Almost ready. Check: %s") % ", ".join(
-                c["title"] for c in warn))
-        else:
-            self.dot.configure(fg=C["ok"])
-            self.summary.configure(text=T("Todo listo para modear.", "All set for modding."))
+        portada.al_mostrar(self, sys.modules[__name__])
 
 
 # --------------------------------------------------------------------------------- comprobar
@@ -2393,26 +2335,17 @@ class SetupPage(Page):
 
 
 def install_requirements(app):
-    bat = first_existing(os.path.join(KIT, "instalar_requisitos.bat"),
-                         os.path.join(KIT, "tools", "modpacks", "instalar_requisitos.bat"))
-    if not bat:
-        app.info(T("No encuentro instalar_requisitos.bat junto al kit. Instala a mano con:\n\n"
-                   "py -3 -m pip install --user numpy Pillow scipy",
-                   "instalar_requisitos.bat was not found next to the kit. Install manually with:\n\n"
-                   "py -3 -m pip install --user numpy Pillow scipy"))
+    """Boton «Instalar librerias»: pip en segundo plano con el Python del kit (sin terminal)."""
+    if not app.ask(T("Se descargarán e instalarán numpy, Pillow y scipy desde internet (solo para tu usuario). "
+                     "Tarda un par de minutos. ¿Continuar?",
+                     "numpy, Pillow and scipy will be downloaded and installed from the internet (for your user "
+                     "only). It takes a couple of minutes. Continue?")):
         return
-    if not app.ask(T("Se abrirá una ventana que descarga e instala numpy, Pillow y scipy desde internet "
-                     "(pip, solo para tu usuario). ¿Continuar?",
-                     "A window will open that downloads and installs numpy, Pillow and scipy from the internet "
-                     "(pip, for your user only). Continue?")):
-        return
-    try:
-        flags = subprocess.CREATE_NEW_CONSOLE if IS_WIN else 0
-        subprocess.Popen(["cmd", "/c", bat] if IS_WIN else ["sh", bat], cwd=os.path.dirname(bat), creationflags=flags)
-        app.log_text(T("Abierto %s. Cuando termine, pulsa «Comprobar de nuevo».\n",
-                       "Opened %s. When it finishes, press 'Check again'.\n") % bat, "ok")
-    except OSError as ex:
-        app.info(str(ex))
+    cmd = [app.env.python, "-m", "pip", "install", "--user", "--disable-pip-version-check",
+           "numpy", "Pillow", "scipy"]
+    app.run(cmd, T("Instalar librerías", "Install libraries"),
+            done=lambda job: (app.info(T("Librerías instaladas. Pulsa «Comprobar de nuevo».",
+                                         "Libraries installed. Press 'Check again'.")) if job.rc == 0 else None))
 
 
 # --- Validador de modelos (opcional): usa awo_tools/comprobar_assets.py del frente 01 ------------
@@ -2466,9 +2399,9 @@ def collect_checks(app):
     out.append({"key": "libs", "title": T("Librerías numpy, Pillow y scipy", "numpy, Pillow and scipy libraries"),
                 "level": "ok" if not missing else "err",
                 "detail": T("Instaladas.", "Installed.") if not missing else
-                T("Faltan: %s. Pulsa «Instalar requisitos» (una sola vez).",
-                  "Missing: %s. Press 'Install requirements' (only once).") % ", ".join(missing),
-                "action": (T("Instalar requisitos", "Install requirements"), lambda: install_requirements(app))})
+                T("Faltan: %s. Pulsa «Instalar librerías» (una sola vez).",
+                  "Missing: %s. Press 'Install libraries' (only once).") % ", ".join(missing),
+                "action": (T("Instalar librerías", "Install libraries"), lambda: install_requirements(app))})
     out.append({"key": "game", "title": T("Carpeta del juego", "Game folder"),
                 "level": "ok" if env.game else "err",
                 "detail": env.game if env.game else T(
@@ -2704,6 +2637,8 @@ class ModsPage(Page):
                    style="Accent.TButton", command=self.toggle).pack(fill="x")
         ttk.Button(bf, text=T("Abrir carpeta", "Open folder"), command=lambda: open_path(m["dir"])).pack(
             fill="x", pady=(6, 0))
+        ttk.Button(bf, text=T("Revisar este mod", "Check this mod"), command=lambda: self.revisar_mod(m)).pack(
+            fill="x", pady=(6, 0))
         if m["type"] == "personaje":
             ttk.Button(bf, text=T("Editar personaje", "Edit character"),
                        command=lambda: self.app.goto("characters", mod=m["name"])).pack(fill="x", pady=(6, 0))
@@ -2720,6 +2655,13 @@ class ModsPage(Page):
                 ttk.Button(bf, text=T("Editar texto…", "Edit text…"),
                            command=lambda: TextEditor(self.app, [os.path.join(m["dir"], f) for f in files],
                                                       self.refresh)).pack(fill="x", pady=(6, 0))
+
+    def revisar_mod(self, m):
+        r = revisar.revisar(m["dir"], LANG != "es")
+        marca = {"error": "✖ ", "aviso": "! "}
+        self.app.info("\n\n".join(marca[n] + x for n, x in r) if r else
+                      "✔ " + T("No he encontrado problemas en los archivos del mod. Esto no prueba cómo se ve en el juego.",
+                               "I found no problems in the mod's files. This does not test how it looks in the game."))
 
     def as_costume(self, mod):
         """importar.py traje: el port como traje extra de su donante (mod nuevo traje_<mod>; el port no cambia)."""
@@ -3808,7 +3750,8 @@ class CharactersPage(Page):
         if self.adv:
             ttk.Button(top, text=T("Ajustes…", "Settings…"), style="Small.TButton",
                        command=lambda: TomlFormDialog(self.app, m["toml"], self.reload)).pack(side="right", padx=6)
-        sb = ttk.Button(top, text=icon("studio") + "  " + T("Cámaras (Studio)", "Cameras (Studio)"),
+        # sin icono: buscar ese simbolo privado en las fuentes del sistema costaba 1-3 s al abrir la pantalla
+        sb = ttk.Button(top, text=T("Cámaras (Studio)", "Cameras (Studio)"),
                         style="Small.TButton", command=lambda: self.app.open_studio(m["name"]))
         sb.pack(side="right", padx=(0, 6))
         if not own:
@@ -3971,6 +3914,10 @@ class CharactersPage(Page):
                         t += T(", %s barras", ", %s bars") % cp["ki"]
                 ct.insert("", "end", iid=str(i), text="  %d. %s" % (i, cp.get("nombre", "?")), values=(t,))
             ct.pack(fill="x", pady=(8, 4))
+            ficha = vistas.FichaCapsula(g, sys.modules[__name__])
+            ficha.pack(fill="x", pady=(0, 6))
+            ct.bind("<<TreeviewSelect>>", lambda _e: ct.selection() and ficha.mostrar(
+                caps[int(ct.selection()[0])], ct.item(ct.selection()[0], "values")[0]))
             cb_ = tk.Frame(g, bg=C["card"])
             cb_.pack(fill="x")
 
@@ -4215,6 +4162,8 @@ class CharactersPage(Page):
         vals = [donor] + [x[1] for x in names] + [custom]
         st = self.status_label(g)
         chosen = {}
+        aura_vista = vistas.MuestraAura(g, sys.modules[__name__])
+        aura_vista.grid(row=50, column=0, columnspan=3, sticky="w", pady=(8, 0))
         for r, (key, txt) in enumerate((("aura_color", T("Aura", "Aura")), ("ki_color", T("Ki y técnicas",
                                                                                          "Ki and techniques")))):
             cur = d.get(key)
@@ -4246,8 +4195,10 @@ class CharactersPage(Page):
                 else:
                     chosen[k] = names[i - 1][0]
                 sw.configure(bg=swatch_hex(chosen[k]))
+                aura_vista.pintar(swatch_hex(chosen.get("aura_color")), swatch_hex(chosen.get("ki_color")))
             cb.bind("<<ComboboxSelected>>", picked)
 
+        aura_vista.pintar(swatch_hex(chosen.get("aura_color")), swatch_hex(chosen.get("ki_color")))
         # aura de otro personaje (aura_de): fusiones del juego o cualquier personaje
         specials = [("gogeta", "Gogeta"), ("gogeta_ssj4", "Gogeta SSJ4"), ("vegito", "Vegito")]
         avals = [T("La suya (la de su personaje base)", "Its own (its base character's)")] + [x[1] for x in specials] + donor_values()
@@ -4578,6 +4529,13 @@ class TexturesPage(Page):
         self.status.pack(fill="x", pady=(8, 0))
         self.files_lbl = hint(c2.body, "", bg=C["card"], wrap=900)
         self.files_lbl.pack(fill="x", pady=(6, 0))
+        self.galeria = vistas.Galeria(c2.body, sys.modules[__name__], columnas=7, lado=104)
+        self.galeria.pack(fill="x", pady=(8, 0))
+        c4 = Card(body, T("Ver cómo queda una imagen tuya", "See how an image of yours looks"),
+                  T("Fondos de saga y escenarios: se recorta igual que al montar el mod.",
+                    "Saga backgrounds and stages: cropped the same way as when the mod is built."))
+        c4.pack(fill="x", pady=(0, 12))
+        vistas.VistaImagen(c4.body, sys.modules[__name__]).pack(fill="x")
         if self.adv:
             c3 = Card(body, T("Más herramientas de texturas", "More texture tools"))
             c3.pack(fill="x", pady=(0, 12))
@@ -4620,6 +4578,8 @@ class TexturesPage(Page):
         self.b_build.state(["!disabled"] if ok_dir else ["disabled"])
         self.def_lbl.configure(text=(T("por defecto: %s", "default: %s") % self.default_dir()) if
                                self.default_dir() and not self.folder.get().strip() else "")
+        if ok_dir and not self.app.selftest:
+            self.galeria.cargar(d, vistas.tamanos_de_meta(d))
         if ok_dir:
             pngs = sorted(f for f in os.listdir(d) if f.lower().endswith(".png"))
             self.files_lbl.configure(text=T("Edita los PNG en: %s  (%d imágenes: %s)", "Edit the PNGs in: %s  (%d "
@@ -4727,8 +4687,27 @@ class SwapPage(Page):
         if same:
             label(self.preview, T("Origen y destino son el mismo personaje.", "Source and destination are the same "
                                   "character."), fg=C["warn"], bg=C["frame"]).pack(fill="x", padx=12)
+        fotos = tk.Frame(self.preview, bg=C["frame"])
+        fotos.pack(fill="x", padx=12, pady=(6, 0))
+        for c in (s, d):
+            if c:
+                self._cuerpo(fotos, c)
         tk.Frame(self.preview, bg=C["frame"], height=8).pack()
         self.b_swap.state(["!disabled"] if s and d and not same else ["disabled"])
+
+    def _cuerpo(self, parent, c):
+        """Cuerpo del personaje con el render toon del juego; la primera vez se genera en segundo plano."""
+        if not self.env.us or self.app.selftest:
+            return
+        png = vistas.png_modelo(self.env.us, c["bin"])
+        if os.path.isfile(png):
+            w = vistas.foto_fija(sys.modules[__name__], parent, png, 180)
+            if w:
+                w.pack(side="left", padx=(0, 12))
+            return
+        label(parent, T("Dibujando…", "Drawing…"), fg=C["dim"], bg=C["frame"]).pack(side="left", padx=(0, 12))
+        self.app.run(vistas.cmd_modelo(self.env.python, self.env.us, c["bin"], png), T("Vista previa", "Preview"),
+                     lambda _j: self.alive and os.path.isfile(png) and self.update_preview(), quiet=True)
 
     def swap(self):
         s, d = self.src.get(), self.dst.get()
@@ -4941,7 +4920,7 @@ class ToolsPage(Page):
     key = "tools"
 
     def build(self):
-        self.header(T("Todas las herramientas", "All tools"),
+        self.header(T("Modo experto: todas las herramientas", "Expert mode: all tools"),
                     T("Cada herramienta de «mod center hd» y «awo_tools» con sus opciones. Las de investigación "
                       "son para usuarios que saben lo que hacen.", "Every tool in 'mod center hd' and 'awo_tools' "
                       "with its options. The research ones are for users who know what they do."))
@@ -5802,8 +5781,8 @@ class HelpPage(Page):
         s.pack(fill="x", pady=(0, 12))
         steps = [T("Copia TODO el kit junto a dbz3.exe (deben quedar «mod center hd» y «awo_tools» al lado).",
                    "Copy the WHOLE kit next to dbz3.exe ('mod center hd' and 'awo_tools' must sit beside it)."),
-                 T("«Comprobar instalación» → «Instalar requisitos» (una sola vez).",
-                   "'Check installation' → 'Install requirements' (only once)."),
+                 T("«Comprobar instalación» → «Instalar librerías» (una sola vez).",
+                   "'Check installation' → 'Install libraries' (only once)."),
                  T("Para personajes de otros juegos, pon TUS copias en ps2_games y usa «Importar personaje».",
                    "For characters from other games, put YOUR copies in ps2_games and use 'Import a character'."),
                  T("Abre el juego y pulsa JUGAR: los personajes nuevos se montan solos.",
@@ -6078,9 +6057,32 @@ ADV_TABS = [("setup", "Entorno", "Environment"), ("mods", "Mods", "Mods"), ("imp
             ("stories", "Historias", "Stories"),
             ("textures", "Texturas", "Textures"), ("swap", "Cambio de modelo", "Model swap"),
             ("biblioteca", "Biblioteca", "Library"),
-            ("tools", "Herramientas", "Tools"), ("hex", "Hex", "Hex"), ("diag", "Diagnóstico", "Diagnostics"),
+            ("tools", "Experto", "Expert"), ("hex", "Hex", "Hex"), ("diag", "Diagnóstico", "Diagnostics"),
             ("help", "Ayuda", "Help")]
-PAGE_CLASSES = {"home": HomePage, "setup": SetupPage, "mods": ModsPage, "importer": ImporterPage,
+class ArtePage(Page):
+    key = "arte"
+
+    def build(self):
+        self.arte = pagina_arte.PaginaArte(self, sys.modules[__name__])
+
+    def on_show(self):
+        self.arte.refrescar()
+
+
+class Ps2Page(Page):
+    key = "ps2"
+
+    def __init__(self, master, app, _adv):
+        super().__init__(master, app, True)     # sin boton de Inicio: el selector de arriba hace de salida
+
+    def build(self):
+        self.ps2 = pagina_ps2.PaginaPs2(self, sys.modules[__name__])
+
+    def on_show(self):
+        self.ps2.refrescar()
+
+
+PAGE_CLASSES = {"ps2": Ps2Page, "arte": ArtePage, "home": HomePage, "setup": SetupPage, "mods": ModsPage, "importer": ImporterPage,
                 "characters": CharactersPage, "create": CreatePage, "stories": StoriesPage,
                 "textures": TexturesPage, "swap": SwapPage,
                 "tools": ToolsPage, "hex": HexPage, "diag": DiagPage, "help": HelpPage}
@@ -6099,6 +6101,7 @@ class App:
         self.env = Env(self.settings)
         LANG = lang or self.settings.get("lang") or detect_lang(self.env.game)
         self.adv = (mode or self.settings.get("mode") or "basic") == "advanced"
+        self.juego = self.settings.get("juego", "hd")      # "hd" o "ps2" (kit/pagina_ps2.py)
         self.jobs = JobRunner(self)
         self.cache, self.state, self.log_buffer, self.selftest_cmds = {}, {}, [], []
         self.pages = {}
@@ -6114,6 +6117,7 @@ class App:
         except tk.TclError:
             pass
         root.bind_all("<MouseWheel>", self._wheel, add="+")
+        ayudas.instalar(root, sys.modules[__name__])
         root.bind("<F5>", lambda _e: self.visible_page() and self.visible_page().on_show())
         root.protocol("WM_DELETE_WINDOW", self.close)
         self.build()
@@ -6139,7 +6143,7 @@ class App:
         self.run(cmd_importer(self.env, ["fuentes"]), T("Buscando juegos", "Looking for games"), done, quiet=True)
 
     def visible_page(self):
-        if self.adv:
+        if self.adv and self.juego != "ps2":
             try:
                 return self.pages[ADV_TABS[self.nb.index(self.nb.select())][0]]
             except (tk.TclError, KeyError, IndexError, AttributeError):
@@ -6161,7 +6165,10 @@ class App:
         self.log.pack(side="bottom", fill="x", padx=14, pady=(0, 8))
         self.content = tk.Frame(self.root, bg=C["bg"])
         self.content.pack(fill="both", expand=True)
-        if self.adv:
+        if self.juego == "ps2":
+            self._basic_current = None
+            self.show_basic("ps2")
+        elif self.adv:
             self.nb = ttk.Notebook(self.content)
             self.nb.pack(fill="both", expand=True, pady=(4, 0))
             for key, es, en in ADV_TABS:
@@ -6189,7 +6196,9 @@ class App:
                     "Budokai 3 HD Collection · every modding tool, no console needed"), fg=C["dim"]).pack(anchor="w")
         right = tk.Frame(h, bg=C["bg"])
         right.pack(side="right")
-        for title, opts, val, cmd in ((T("Idioma", "Language"), [("es", "ES"), ("en", "EN")], LANG, self.set_lang),
+        for title, opts, val, cmd in ((T("Juego", "Game"), [("hd", "B3 HD"), ("ps2", "B3 PS2")], self.juego,
+                                       self.set_juego),
+                                      (T("Idioma", "Language"), [("es", "ES"), ("en", "EN")], LANG, self.set_lang),
                                       (T("Modo", "Mode"), [("basic", T("Básico", "Basic")),
                                                            ("advanced", T("Avanzado", "Advanced"))],
                                        "advanced" if self.adv else "basic", self.set_mode)):
@@ -6197,10 +6206,15 @@ class App:
             col.pack(side="right", padx=(14, 0))
             label(col, title, fg=C["dim"], font=F["small"]).pack(anchor="e")
             Segmented(col, opts, val, cmd).pack(anchor="e")
+            if cmd == self.set_juego:
+                Tooltip(col, T("B3 HD: el port con todas las herramientas. B3 PS2: crea mods para tu copia de PS2 y una ISO "
+                               "para el emulador; ahí se explica qué no está disponible.",
+                               "B3 HD: the port with every tool. B3 PS2: creates mods for your PS2 copy and an ISO for the "
+                               "emulator; it explains what is not available there."))
         tk.Frame(self.root, bg=C["accent"], height=2).pack(fill="x")
 
     def show_basic(self, key):
-        if key not in PAGE_CLASSES or key == "tools":
+        if key not in PAGE_CLASSES or key == "tools" or (key == "ps2" and self.juego != "ps2"):
             key = "home"
         if getattr(self, "_basic_current", None) is not None:
             try:
@@ -6238,6 +6252,12 @@ class App:
         self.save()
         self.rebuild()
 
+    def set_juego(self, juego):
+        self.juego = juego
+        self.settings["juego"] = juego
+        self.save()
+        self.rebuild()
+
     def set_mode(self, mode):
         self.adv = mode == "advanced"
         self.settings["mode"] = mode
@@ -6272,6 +6292,11 @@ class App:
             self.info(T("No se pudo abrir el editor: %s", "Could not open the editor: %s") % ex)
 
     def goto(self, key, **kw):
+        if self.juego == "ps2":
+            self.show_basic("ps2")
+            return
+        if key in asistente.ASISTENTES:               # asistentes guiados (ventana aparte, ambos modos)
+            return asistente.abrir(self, key, sys.modules[__name__])
         if key == "studio":
             self.open_studio(kw.get("personaje"))
             return
@@ -6334,8 +6359,8 @@ class App:
                             "not work). Install Python 3.11+ from python.org.\n"), "err")
         elif "No module named" in job.text:
             self.log_text(T("Falta una librería de Python (numpy / Pillow / scipy): «Comprobar instalación» → "
-                            "«Instalar requisitos».\n", "A Python library is missing (numpy / Pillow / scipy): "
-                            "'Check installation' → 'Install requirements'.\n"), "warn")
+                            "«Instalar librerías».\n", "A Python library is missing (numpy / Pillow / scipy): "
+                            "'Check installation' → 'Install libraries'.\n"), "warn")
         dt = time.time() - job.t0
         if job.cancelled:
             self.log_text(T("[%s: cancelado]\n", "[%s: cancelled]\n") % job.title, "warn")
@@ -6366,29 +6391,8 @@ class App:
             return "warn", T("Cancelado.", "Cancelled.")
         if job.rc == 0:
             return "ok", ok_text or T("Hecho.", "Done.")
-        if "No module named" in job.text:
-            return "err", T("Falta una librería de Python (numpy / Pillow / scipy). Ve a «Comprobar instalación» y "
-                            "pulsa «Instalar requisitos».", "A Python library is missing (numpy / Pillow / scipy). "
-                            "Go to 'Check installation' and press 'Install requirements'.")
-        # los fallos mas comunes, dichos con su solucion (antes solo "Algo falló (código N)" y la ultima linea)
-        text = job.text
-        if re.search(r"PermissionError|Permission denied|WinError (5|32)\b|being used by another process", text):
-            return "err", T("Un archivo está en uso o protegido. Cierra el juego (dbz3.exe) y cualquier programa que "
-                            "tenga abierta la carpeta de mods, y vuelve a intentarlo.",
-                            "A file is in use or protected. Close the game (dbz3.exe) and any program that has "
-                            "the mods folder open, then try again.")
-        if re.search(r"No space left|WinError 112\b|Errno 28\b", text):
-            return "err", T("No queda espacio en el disco. Libera espacio y vuelve a intentarlo.",
-                            "The disk is full. Free up some space and try again.")
-        if re.search(r"FileNotFoundError|No such file or directory|WinError [23]\b", text):
-            return "err", T("Falta un archivo que la herramienta necesita. Mira en «Comprobar instalación» que la "
-                            "carpeta del juego y los datos (us) estén bien. Detalle: %s",
-                            "A file the tool needs is missing. Check in 'Check installation' that the game "
-                            "folder and its data (us) are right. Detail: %s") % last_line(text)[:160]
-        return "err", T("Algo falló: %s. El detalle completo está en el registro de abajo (puedes copiarlo para "
-                        "pedir ayuda en el Discord).",
-                        "Something failed: %s. The full detail is in the log below (you can copy it to ask for "
-                        "help on Discord).") % last_line(text)[:200]
+        que, hacer, _acc = errores.explicar(job.text, LANG == "en")
+        return "err", "%s %s" % (que, hacer)
 
     def log_text(self, text, tag=None):
         text = text.replace("\r\n", "\n").replace("\r", "\n")
@@ -6531,6 +6535,59 @@ def selftest(lang=None):
                     ok = False
                     say("FAIL: Historias: pestañas en otro idioma (%s/%s)" % (lg, mode))
         say("screens built: " + ", ".join(built))
+        for lg in ("es", "en"):        # ayudas: cada boton de cada pantalla tiene la suya; modo PS2 construye
+            LANG = lg
+            app.adv = False
+            app.rebuild()
+            faltan = set()
+            for key, *_ in PAGE_DEFS:
+                app.goto(key)
+                root.update_idletasks()
+                if app.pages.get(key) is not None:
+                    faltan |= set(ayudas.sin_tip(app.pages[key], lg))
+            if faltan:
+                ok = False
+                say("FAIL: botones sin ayuda (%s): %s" % (lg, sorted(faltan)))
+            else:
+                say("OK: ayudas en todos los botones (%s)" % lg)
+            app.juego = "ps2"
+            app.rebuild()
+            root.update_idletasks()
+            if app.visible_page().key != "ps2" or ayudas.sin_tip(app.visible_page(), lg):
+                ok = False
+                say("FAIL: modo PS2 (%s): %s" % (lg, ayudas.sin_tip(app.visible_page(), lg)))
+            else:
+                say("OK: modo PS2 (%s)" % lg)
+            app.juego = "hd"
+        app.adv = True
+        app.rebuild()
+        import ps2_b3
+        ps2_b3.prueba()
+        say("OK: ps2_b3 prueba")
+        from PIL import Image as _I
+        png = os.path.join(vistas.cache_dir(), "prueba_formato.png")
+        _I.new("RGB", (1000, 300), (200, 30, 30)).save(png)
+        tam = [[(i.width, i.height) for i, _e, _n in vistas.imagenes_formato(png, f)] for f in ("saga", "escenario")]
+        if tam != [[(660, 420)], [(228, 228), (512, 372)]]:
+            ok = False
+            say("FAIL: vistas.imagenes_formato %s" % tam)
+        rojo = vistas.foto_aura("#ff0000", "#00ff00").getpixel((75, 22))
+        if rojo[0] <= rojo[1] or vistas.foto_aura("#ff0000").size != (150, 190):
+            ok = False
+            say("FAIL: vistas.foto_aura %s" % (rojo,))
+        import wave
+        wav = os.path.join(vistas.cache_dir(), "prueba_picos.wav")
+        with wave.open(wav, "wb") as w:
+            w.setnchannels(2)
+            w.setsampwidth(2)
+            w.setframerate(44100)
+            w.writeframes(b"\x00\x40" * 88200)
+        picos, seg = vistas.picos_wav(wav)
+        if abs(seg - 1) > 0.01 or abs(max(picos) - 0.5) > 0.01:
+            ok = False
+            say("FAIL: vistas.picos_wav %s %s" % (seg, max(picos)))
+        say("tabs basic: " + ", ".join(k for k, *_ in PAGE_DEFS))
+        say("tabs advanced: " + ", ".join(k for k, _, _ in ADV_TABS))
         LANG = lang or "es"
         # diagnostico: un log sintetico con 30 FPS sostenidos en una version antigua
         import diagnostico
@@ -6576,6 +6633,19 @@ def selftest(lang=None):
                 say("FAIL: argparse spec of %s not read" % (t.name if t else "?"))
             else:
                 say("%s subcommands: %s" % (t.name, ", ".join(t.spec.sub["parsers"])))
+        # errores en llano: trazas reales de los docs (si estan) + ejemplos; ninguna debe dar "Traceback"
+        extra = []
+        for doc in ("qol.md", "modkit.md"):
+            dp = os.path.join(KIT, "docs", "14_frentes", doc)
+            if os.path.isfile(dp):
+                extra += re.findall(r"\b\w+Error\b[^`\n|]*", open(dp, encoding="utf-8", errors="replace").read())
+        try:
+            say("errores en llano: %d textos sin 'Traceback' (%d de los docs)" % (errores.prueba(extra), len(extra)))
+        except AssertionError as ex:
+            ok = False
+            say("ERRORES FAIL: %s" % (ex,))
+        if "Mod Kit" not in errores.informe(app):
+            ok = False
         # utilidades puras
         checks = [
             (mod_slug("b1", "Zarbon (Monster)") == "imp_b1_zarbon_monster", "mod_slug"),
@@ -6743,6 +6813,7 @@ def selftest(lang=None):
             ok = False
             say("FAIL: importar.py / roster_build.py not found next to the GUI")
         ok = probar_deshacer(say) and ok
+        ok = prueba.rapido(app, sys.modules[__name__], say) and ok
         root.update_idletasks()
     except Exception:  # noqa: BLE001
         ok = False
@@ -6763,7 +6834,15 @@ def main(argv=None):
     ap.add_argument("--advanced", action="store_true", help="abrir en modo avanzado")
     ap.add_argument("--basic", action="store_true", help="abrir en modo basico")
     ap.add_argument("--selftest", action="store_true", help="construir todo sin mostrar la ventana y salir")
+    ap.add_argument("--selftest-asistentes", nargs=2, metavar=("US", "CARPETA"),
+                    help="prueba completa de los 4 asistentes sin ventanas, con US = COPIA de los datos del juego")
     a = ap.parse_args(argv)
+    if a.selftest_asistentes:
+        us, base = a.selftest_asistentes
+        okk = prueba.real(sys.modules[__name__], os.path.abspath(us), os.path.abspath(base),
+                          lambda m: print("[asistentes] " + m, flush=True))
+        print("[asistentes] RESULT: %s" % ("OK" if okk else "FAILED"))
+        return 0 if okk else 1
     if a.selftest:
         return selftest(a.lang)
     if IS_WIN:

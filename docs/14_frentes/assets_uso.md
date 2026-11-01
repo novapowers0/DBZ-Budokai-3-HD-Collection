@@ -8,7 +8,8 @@ del jugador**; lo que va en el release es arte propio (del autor o generado por 
 |---|---|---|---|
 | Marcos, paneles, caras, cintas del menú de B3 | AFS del jugador (data_usi/data_cmn) | HUB, Tag Team, Online, modos | `native_ui.cpp` los extrae al arrancar (también desde la ISO: copia `iso_datos`) |
 | Fondos por pantalla (HUB, Héroe, Lab, Ranking, Misión 100, retos) | Pack Dragon HUB del autor (`assets_propios/png/add`, `dragon_hub/`) | `modos.cpp` (fondo + anfitrión por pantalla), `hub_panel.cpp` | `generar.py --al-juego` → `res/ingame_ui/hub/` |
-| Anfitriones (Goku, Vegeta, Whis, Trunks, héroe CC) | Pack Dragon HUB | pantallas de modos | idem (recortados a 437 px como el Kaio del Duelo) |
+| Fondo de Online (Torneo del Otro Mundo) y `hub/fondo` (torneo, Tournament Background; Torre, Supervivencia, Kumite, Pasarela) | Pack Dragon HUB | `online_panel.cpp`, `modos.cpp`, `pasarela_misiones.cpp` | idem |
+| Anfitriones (Goku, Vegeta, Whis, Trunks, héroe CC; Paikuhan en Online, Gohan del Futuro en el menú de Pasarela) | Pack Dragon HUB | pantallas de modos | idem (recortados a 437 px como el Kaio del Duelo). En el release van Trunks, Paikuhan y Gohan; `make_release.ps1` omite Goku, Vegeta, Bulma, Whis y héroe |
 | Placas de rango KYU 5 … MAESTRO | Pack Dragon HUB | HUB (placa + ascenso) | `hub/rango_NN(.png/_vacia)` |
 | Vuelos a cámara (Trunks, C17), icono de guardado SSJ4 | Pack Dragon HUB | entrada al HUB, aviso de guardado | `hub/vuelo_N`, `hub/guardado*` |
 | Etiquetas, insignias, BETA, logo | Generadas por código (CC0) + logo del autor | HUB, launcher (cabecera) | `assets_propios/generar.py` |

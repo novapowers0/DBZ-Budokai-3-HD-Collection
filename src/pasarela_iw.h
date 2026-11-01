@@ -1,9 +1,11 @@
 // dbz3 - Misiones del Dragon de Infinite World: tabla de misiones del ELF de la copia del jugador y pantalla del mapa
 // (Dragon Mission) con sus graficos leidos en marcha (pasarela_iw.cpp).
 #pragma once
+#include <array>
 #include <cstdint>
 #include <filesystem>
 #include <memory>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -25,10 +27,12 @@ struct MisionTablaIW {
   int premio = 0;        // +0x0E: 10..400; Zenie = premio x 50/80/100/130/160 segun la dificultad (EU 0x2ABB80)
   int jugador = 0, forma1 = 0;   // +0x14/+0x16 (IDs de IW)
   int rival = 0, forma2 = 0;     // +0x3A/+0x3C
-  // +0x1E/+0x20/+0x22: capsulas que da la mision al ganarla (IDs del catalogo de IW; 0 y 0xFFFF = ninguna).
-  // Las usa StoryModeLockedCapsules (EU 0x2ABEC0) y las entrega Battle_ApplyResultRewards (EU 0x28A020); el port las
-  // traduce a las de B3 con el mismo nombre (ver kCapsulaIWAB3 en pasarela_misiones.cpp) [VERIFICAR].
+  // Compatibilidad con el lector antiguo: primeras tres técnicas equipadas,
+  // convertidas a IDs de cápsula. NO son recompensas ni acreditan posesión.
   int caps[3] = {0, 0, 0};
+  // EU 0x2FAD10: ocho posiciones SCD SIGNADAS. Negativo = editable;
+  // cero también es fijo. No compactar huecos ni confundirlas con premios.
+  std::array<int, 8> habilidades{};
 };
 // Lee la tabla del ELF de la carpeta extraida o de la ISO (busca la tabla por su numeracion; vale USA y PAL).
 std::vector<MisionTablaIW> LeerTablaIW(const std::filesystem::path& iw, std::string& error);
@@ -60,6 +64,11 @@ struct CasillaDM {
   // +0x10 crudo: en los eventos tipo 3 es el subtipo del destello (0x68 Fujo, 0x66 Iceto, 0x65 Kid Bu, EU
   // 0x2F8830: sonidos 0x1C/0x1B/0x1A). En las misiones es la insignia del rival (30..87).
   int cara = 0;
+  // +0x14 crudo: argumento del menu que se abre al acabar el destello en Fighter's Road (_StartUnlock___Func,
+  // EU 0x2F8830: sVar1 = sprite+0x14 -> comando 0xC Story_MapDrawMenu). 0 = ninguno. En el #DMD USA: el evento
+  // del Road (clave 0x8CF) lo lleva a 0x75 (117); en Dragon Mission solo el 0x8D1 de la saga 2 lo lleva a 1.
+  int extra = 0;
+  std::array<uint8_t, 29> personajes{};   // #DMD +0x2C; 1 siempre, >1 con cápsula 2126 desbloqueada
 };
 // Escenas de la historia (frente R1, 2026-10-16): en IW son 22 videos (USR/FD01A..FD20.SFD; nombres en la tabla del ELF
 // USA 0x4811B0, 0x100 B cada uno) con los subtitulos en imagenes (DATA_USA 77 + video: tabla del ELF 0x4827B0; una
@@ -82,6 +91,7 @@ struct DragonMissionIW {
   // azul con borde blanco). Cotejado: 346 = "Hyperbolic Time Chamber (Trunks)" (NB013, captura iw_nb013_d), 340 =
   // "1, 2, 3, 4!" (NB007, nb007fin_200). DATA_ENG (IW europeo) tiene las mismas entradas.
   std::vector<Imagen> titulos_mini;
+  std::array<int, 29> ids_mini{};        // tabla del ELF (EU 0x47DC00 / USA 0x47D450)
   std::vector<CasillaDM> casillas;
   // Casillas de evento (tipos 3 y 4 del #DMD) de Dragon Mission y de Fighter's Road. NO entran en `casillas` (no las
   // recorre el cursor): el original las crea aparte (LoadWaitGeneralDragonMissionIcons_PlayerCommands 0x2FD0F0 y
@@ -98,6 +108,8 @@ struct DragonMissionIW {
   // Edit: fondo, marcos, frascos de capsula y el Shenron de los deseos), DATA_USA 370 (opciones: fondo, rotulos y
   // deslizador del brillo) y DATA_USA 62 (frases de los deseos de Shenron, una textura por indice del banco).
   std::vector<Imagen> sala;
+  std::vector<Imagen> skill_ui;                // DATA_USA/ENG372, bandeja nativa (NO Warrior's Room65)
+  std::array<int, 57> skill_bancos{};          // SkillEditCharacterIDs del ELF
   std::vector<Imagen> opciones;
   std::vector<Imagen> deseos;
   std::vector<std::string> videos;  // "/USR/FD01A.sfd"... (tabla del ELF USA 0x4811B0, 0x100 B cada uno)
@@ -277,7 +289,14 @@ class PantallaDM {
   bool probado_ = false, en_video_ = false;   // el video original (video_sfd.h, R7) ya pedido / sonando
   bool pausado_ = false;                      // EU 0x18B138 mwPlyPause: escena pausada (SELECT)
   bool env_mision_aplicada_ = false;          // B3f: DBZ3_IW_MISION se consume una vez por mapa
+  int test_solicitud_mision_ = 0;            // IPC de la corrida continua, exclusivamente con DBZ3_TEST_IW_CADENA
   int mini_clave_ = -1, mini_fila_ = 0; // minijuego que empieza al acabar su escena
+  bool mini_ficha_ = false;
+  bool mini_ajustes_ = false;
+  int mini_campo_ = 0;
+  int mini_personaje_ = 0, mini_opcion_ = 2;   // índice en ids_mini; dificultad, personaje, empezar
+  Accion FichaMinijuego(ImDrawList* dl, const ImGuiIO& io, float t, uint16_t pulsado, const InfoDM& in);
+  Accion EmpezarMinijuego(const InfoDM& in, const CasillaDM& q, float t);
   int esfera_video_ = -1;               // DS104: marca tipo 2 cuya escena SFD(+0x1C) suena; se marca al acabar
   // DS104: video final del minijuego que se acaba de jugar (tabla de despues, EU 0x473090). Se pide al volver al
   // mapa, como la salida normal del original (EU 0x20D800), sin exigir haberlo superado; si pasarela_misiones ya lo
@@ -293,10 +312,18 @@ class PantallaDM {
   // (EU 0x2F86B0) que solo hace el tipo 3.
   int ev_ = -1, ev_fase_ = 0;
   float ev_t_ = 0, ev_espera_ = 0;
+  // Temblor del mapa al abrir un evento tipo 3 (no hay zoom): _StartUnlock___Func pone +0xAB = 1, posicion +0xAC =
+  // (25, 0), amortiguacion +0xB4 = 0,98 y rigidez +0xB5 = 0,8. Story_MapCameraUpdate (EU 0x2F9280) lo mueve como un
+  // muelle por cuadro (vel -= pos*0,8; vel *= 0,98; pos += vel) y copia pos.xy en +0xB8/+0xB9, que suman los
+  // sprites del mapa (StoryMg_PositionAdjust, Story_SpriteApplyWorldScreenPos); el Goku 3D no. Se apaga cuando
+  // |vel|^2 y |pos|^2 <= 0,01, o en el cuadro 420 de _StartUnlock___Func2.
+  bool ev_temblor_ = false;
+  float ev_off_x_ = 0, ev_off_y_ = 0, ev_vel_x_ = 0, ev_vel_y_ = 0, ev_acc_ = 0;
   int ev_saga_ = -1;                              // saga cuyos eventos ya se han puesto en cola (cambia con LB/RB)
   bool EmpezarEventos(const InfoDM& in);          // arranca el siguiente evento pendiente de la saga; false si no hay
   void TerminarEvento(const InfoDM& in);          // apunta la clave como aplicada y pasa al siguiente o al scroll
   void SonidoEvento(const CasillaDM& e);          // sonidos de _StartUnlock___Func (banco del IOP: solo se registran)
+  void RefrescarSpriteEvento(const InfoDM& in);   // EU 0x31B960 Story_RefreshSpriteNode(node,0,0): rehace el sprite
   // --- Cola de ordenes del mapa (EU 0x2F9FE0 / 0x2FA030 / 0x2FF3E0 / 0x2F98D0 / 0x300F80) ---
   void EmpujarOrden(int cmd, int arg);                    // EU 0x2F9FE0 Story_PushMapState
   void SacarOrdenYRecargar();                             // EU 0x2FA030 Story_PopMapStateAndReload
@@ -320,8 +347,8 @@ class PantallaDM {
   // de IW no portada).
   Accion MenuMapa(ImDrawList* dl, const ImGuiIO& io, float t, uint16_t pulsado, const InfoDM& in);
   // Pantallas nuevas de DS55 (art. del AFS del jugador; funciones del decompilado citadas en cada una):
-  // - Skill Edit / capsulas: EU 0x2E3F40 SkillEditFunc1 (+ GeneralCapsuleProperties 0x2ACA10 y
-  //   StoryModeLockedCapsules 0x2ABEC0). Se abre con A en la entrada SKILL EDIT de la ficha.
+  // - Skill Edit: EU 0x2E3F40/0x2FAD10; bandeja y lista de AMA371/AMT372,
+  //   nombres por personaje/AMT1490 y propiedad de CMN1127. A en SKILL EDIT.
   // - Deseos de Shenron: EU 0x2B1220 CapsulePick_Start_LoadCmnFiles, 0x2B1210 LoadWaitShenronWishEndGameFunc y
   //   0x381A30 LoadWaitShenronWishMainMenuFunc. Se abre al entrar al mapa con las 7 Bolas (bRam005c1d78 = 0x7F).
   // - Brillo: EU 0x143920 GameBrightnessFunc y 0x2CEF20 Options_BrightnessInput_ (0..128, defecto 26).
@@ -336,7 +363,20 @@ class PantallaDM {
   void AbrirCapsulas(const InfoDM& in);
   void AbrirShenron(const InfoDM& in);
   bool edit_abierto_ = false;                    // Skill Edit (EU 0x2E3F40)
-  int edit_sel_ = 0, edit_tab_ = 0;              // 0 capsulas, 1 tabla de bloqueadas (EU 0x2ABEC0)
+  int edit_sel_ = 0, edit_tab_ = 0;              // posición / 0 bandeja, 1 selección de inventario
+  int edit_mision_ = 0, edit_personaje_ = 0, edit_candidato_ = 0;
+  bool edit_cambiado_ = false;
+  bool edit_preparado_ = false;                 // equipo temporal del contexto DM; no un perfil por misión
+  bool edit_recuperar_ultima_ = true;
+  int edit_ultima_mision_ = 0;
+  std::array<int, 8> edit_ultimo_equipo_{};      // globals temporales 5C54EE.., solo se actualizan al empezar combate
+  std::array<int, 8> edit_equipo_{};
+  std::array<bool, 8> edit_fija_{}, edit_habilitada_{};
+  std::vector<int> edit_opciones_;
+  std::string edit_aviso_;
+  std::vector<uint8_t> edit_banco_personaje_, edit_banco_comun_;
+  std::map<int, Imagen> edit_nombres_;
+  const Imagen& NombreCapsula(int id);
   std::vector<CapsulaIW> edit_caps_;
   int shenron_fase_ = -1;                        // -1 cerrado, 0 presentacion, 1 elegir, 2 conseguida
   int shenron_sel_ = 0;

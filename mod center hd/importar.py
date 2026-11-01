@@ -15,11 +15,15 @@ Fuentes:
   iw         Infinite World (carpeta del juego PS2): modelos, voces y gritos de IW, y su moveset
              original (golpes, tecnicas, definitiva; tabla del ejecutable, iw_movesets) o el del
              port de la comunidad si lo hay; --golpes-donante = los del donante
-  sb1 / sb2  Shin Budokai / Another Road (ISO PSP): modelos BC<XXX>B0n (formas, psp_amo.py);
+  sb1 / sb2  Shin Budokai / Another Road (ISO PSP): el modelo de B3 HD si el personaje existe alli
+             (SB_MODELOS_B3; preset solo_modelos: el de SB); si no, modelos BC<XXX>B0n (formas, psp_amo.py);
              golpes, camara y tecnicas de SB si awo_tools/sbport.py y sb_tecnicas.py estan
              listos (si no, los del donante, como b2)
   sdbh       Super Dragon Ball Heroes World Mission (PC): modelos HD model/bc<xxx>/bc<xxx>bNN
              (awo_tools/sdbh_model.py); golpes de SB si el personaje esta en SB y sbport listo
+  xv2        Xenoverse 2 (Steam local): importar.py xv2 GOK --sobre 0 (GOK/VGT/PIC)
+             Catalogo CaC opcional: importar.py xv2 --cac --juego <carpeta B3>
+              modelo base, movimientos B3, mod local desactivable; nunca distribuir el resultado
 
 Modelos de un AFS de PS2: entradas #AMB cuyos dos primeros hijos son #AMO y #AMT; el
 prefijo de los huesos (X16G_, XFRZ_...) da el personaje (catalog_b3.cat) y el donante.
@@ -173,10 +177,9 @@ def source_path(game):
         return iso.find_game("sb2")
     if game == "sdbh":
         return sdbh_dir()
-    if game == "xv2":                    # E3: data.cpk de XV2 (bibliotecas de Steam, libraryfolders.vdf)
-        sys.path.insert(0, os.path.join(HERE, "xv2"))
-        import xv2_leer  # noqa: PLC0415
-        return xv2_leer.buscar_xv2()
+    if game == "xv2":                    # Registro y bibliotecas Steam del jugador, solo lectura
+        from xeno_importar import buscar_xv2  # noqa: PLC0415
+        return buscar_xv2()
     return None
 
 
@@ -202,10 +205,11 @@ EXTRA_NAMES = {  # personajes que B3 no tiene (prefijos de B2 / IW)
     "XBAB": "Babidi", "XGKG": "Goku GT", "XGKT": "Goku GT", "XVGB": "Baby Vegeta",
     "XS17": "Super 17", "XJNB": "Janemba", "XPKN": "Pikkon", "XPAN": "Pan",
     "XGVT": "Vegeta GT", "XGS2": "Great Saiyaman 2", "XBBR": "Broly Super",
-    "XGTA": "Gogeta", "XVTO": "Vegito", "XGXL": "Gotenks (adulto)", "XGXG": "Gotenks fantasma",
+    "XGTA": "Gotan", "XVTO": "Vegito", "XGXL": "Gotenks (adulto)", "XGXG": "Gotenks fantasma",
     "XKBT": "Kibito", "XKOK": "Kibito Kai", "BCDBR": "Dabura (alternativo)", "SNR": "Shenron",
     # fusiones de Yamcha y Tenshinhan (render 2026-10-15: tercer ojo, mechon de Yamcha, chaleco de fusion);
-    # XYHS es la version delgada de la fusion fallida, como Fat Gotenks. Gokule no tiene modelo en B2.
+    # XYHS es la version delgada de la fusion fallida, como Fat Gotenks. XGTA = GOTAN (Goku + Mr. Satan, el Gokule de los fans;
+    # fila 39 del ELF, modelos 185/186): no es Gogeta.
     "XYMH": "Yamhan", "XYHS": "Yamhan (fusion fallida)",
 }
 EXTRA_DONORS = {"XRCM": ("Recoome", 21), "XSBM": ("Saibaman", 42), "TSH": ("Tenshinhan", 12)}
@@ -499,6 +503,17 @@ SB_CHARS = {
     "GKB": ("Goku Black", 0), "KMS": ("Master Roshi", 10), "BLS": ("Beerus", 16), "ZMS": ("Zamasu", 16),
     "ZMU": ("Fused Zamasu", 16),
 }
+# Regla del usuario (31/10, igual que IW y B2): el personaje de SB que ya existe en B3 HD lleva de serie el modelo de B3
+# HD del mismo traje, forma a forma, con los golpes de SB. Entradas de data_cmn del jugador, comparadas una a una con los
+# modelos de SB (BCxxxB00, B01...). Fuera de la tabla (GHF, JNB, PKH), el modelo de SB.
+SB_MODELOS_B3 = {
+    "GOK": [264, 265, 266, 267, 268], "VGT": [416, 417, 419], "PIC": [350, 350], "KLL": [327],
+    "GHM": [235, 236, 237], "GHL": [228, 229, 230], "TRX": [390, 391], "TRF": [394, 395],
+    "FRZ": [184, 185], "CEL": [148], "COO": [166, 167, 168], "BRL": [119, 120], "18G": [80],
+    "BUS": [141], "BUL": [128], "BUM": [133], "BDK": [99], "DBR": [176], "GGT": [217],
+    "VTO": [438, 439], "GTX": [305, 306, 307],
+}
+SB_MODELO_V = 2
 SB_NEW = {"GHF", "TRF", "GGT", "VTO", "GTX", "JNB", "PKH", "GKB", "KMS", "BLS", "ZMS", "ZMU"}  # sin casilla en B3
 # El resto de SDBH (solo modelo; golpes del donante). Nombres identificados mirando el render de cada codigo
 # (2026-10-15, hojas en E:\DBZ3HD_trabajo\modkit\sdbh\hoja_*.png); variantes dudosas = "Personaje (CODIGO)". Los que
@@ -646,20 +661,26 @@ def voice_key(sb_game, code):
     return '"%s:%s"' % (sb_game, code) if sb_game in ("sb1", "sb2") and code else None
 
 
-def sb_import(game, e, donor, work, us):
+def sb_import(game, e, donor, work, us, solo_modelos=False):
     """Modelos (+ golpes, camara y tecnicas de SB si sbport esta listo) -> (modelos, formas,
     claves toml, {ruta en el mod: fichero})."""
     import roster_build as rb  # noqa: PLC0415
     dn = next(x for x in rb.DB["ids"] if x["id"] == donor)
     models = []
     if game == "xv2":                    # E3: una forma de XV2 = un traje; golpes y voces del donante
+        if e["clave"] in ("GOK", "VGT", "PIC"):
+            from xeno_importar import convert  # noqa: PLC0415
+            out, report, entry = convert(e["clave"], donor, os.path.join(us or rb.default_us(), "data_cmn.afs"), work)
+            return [str(out)], 1, {}, {}  # SCD horneadas, no fisica del donante
         sys.path.insert(0, os.path.join(HERE, "xv2"))
         import xv2_fuente  # noqa: PLC0415
-        tpl = xv2_fuente.plantilla_donante(donor, us, os.path.join(work, "plantilla.bin"))
-        for k, forma in enumerate(e["modelos"][:1]):      # las demas "formas" de XV2 son trajes alternativos, no transformaciones
-            out = os.path.join(work, "traje%d.bin" % (k + 1))
-            xv2_fuente.convertir_forma(e["clave"], forma, tpl, out)
-            models.append(out)
+        from xeno_importar import fuente_legacy  # noqa: PLC0415
+        with fuente_legacy():
+            tpl = xv2_fuente.plantilla_donante(donor, us, os.path.join(work, "plantilla.bin"))
+            for k, forma in enumerate(e["modelos"][:1]):      # las demas "formas" de XV2 son trajes alternativos, no transformaciones
+                out = os.path.join(work, "traje%d.bin" % (k + 1))
+                xv2_fuente.convertir_forma(e["clave"], forma, tpl, out)
+                models.append(out)
         return models, 1, {"fisica": '"donante"'}, {}
     if game == "sdbh":
         import afs_pair  # noqa: PLC0415
@@ -677,13 +698,21 @@ def sb_import(game, e, donor, work, us):
     else:
         import psp_amo  # noqa: PLC0415
         afs = SbAfs(source_path(game))
+        # "solo_modelos" es la opcion de ver el cuerpo de SB (con B3 HD y golpes del donante seria el nativo repetido)
+        nat = None if solo_modelos else SB_MODELOS_B3.get(e["clave"])
+        cmn = rb.Afs(os.path.join(us or rb.default_us(), "data_cmn.afs"), work) if nat else None
         for k, i in enumerate(e["modelos"][:MAX_FORMS]):
+            if nat and k >= len(nat):
+                break
             out = os.path.join(work, "traje%d.bin" % (k + 1))
             with open(out, "wb") as fh:
-                fh.write(psp_amo.convert_model(afs.entry(i)))
+                fh.write(cmn.entry(nat[k]) if nat else psp_amo.convert_model(afs.entry(i)))
             models.append(out)
+        if nat:
+            rb.log("modelo de Budokai 3 HD (%s) con los golpes de Shin Budokai" % nat[:len(models)])
     keys, files = {}, {}
     sbg = (game if game != "sdbh" else sb_game_of(e["clave"])) if sb_moveset_ready() else None
+    modelo_b3 = {"modelo_b3": "true"} if game != "sdbh" and not solo_modelos and SB_MODELOS_B3.get(e["clave"]) else {}
     if sbg:
         try:
             out = os.path.join(work, "sbport")
@@ -733,6 +762,7 @@ def sb_import(game, e, donor, work, us):
             if len(models) > 1:          # claves del agente de formas (docs/03_formatos/FORMAS_Y_KI.md)
                 keys.update(formas=str(len(models)), transformacion='"donante"')
             keys["fisica"] = '"donante"'    # colas del cinturon y pelo con la fisica del donante
+            keys.update(modelo_b3)
             vk = voice_key(sbg, e["clave"])
             if vk:
                 keys["voces"] = vk
@@ -745,7 +775,7 @@ def sb_import(game, e, donor, work, us):
     forms = max(1, min(len(models), int(dn.get("forms") or 1)))   # el runtime solo reduce las del donante
     if forms < len(models):
         rb.log("el donante tiene %d formas: se usan los %d primeros modelos" % (forms, forms))
-    return models[:forms], forms, keys, files
+    return models[:forms], forms, dict(keys, **modelo_b3), files
 
 
 def iw_donor_forms(donor, fnames):
@@ -818,6 +848,10 @@ def b1_list():
         ms = [m for m in dict.fromkeys(r["models"]) if m > 0]
         out.append({"clave": str(i), "nombre": nm, "modelos": ms, "donante": B1_DONOR[i]})
     return out
+
+
+# Bu absorbido de B2: prefijo de huesos -> (fila del ELF, entrada del paquete en DATA_CMN). Solo el modelo: el moveset, del donante.
+BU_ABSORBIDO = {"XBVG": (49, 120), "XBCL": (50, 97), "XBFR": (51, 99), "XBYM": (52, 122)}
 
 
 def b2_wigs(clave):
@@ -974,6 +1008,194 @@ def iw_id_of_model(model, iw=None, ms=None):
     return after[0][1] if after else None
 
 
+# Modelos compartidos: el de Gogeta SSJ4 esta en los juegos 68 y 70; el 70 (Gogeta SS4, moveset 69 + 1) tiene su moveset,
+# su guion y sus tecnicas. La camara que sigue al modelo en el AFS es la del 68. ponytail: lista a mano, es el unico caso.
+B2_MOVESET_DE = {"YHS": "YMH"}   # modelo de B2 sin moveset propio -> el de su personaje (misma fusion, mismos 51 huesos)
+IW_MOVESET_DE = {"c:gogeta ss4": 69, "c:gogeta ss4 (alt colour pallete)": 69}
+COLAS = ("LOBI1", "ROBI1", "OBI1")   # raices de las colas del cinturon (OBI1 = Gotenks de SB)
+
+
+def iw_form_data(cid, iw=None):
+    """Datos por forma del ejecutable de IW del personaje `cid` (fila de la tabla: el moveset k de iw_movesets es el de
+    cid = k + 1). Decompilado: X+0x1D78 = registro - 0x70, +0xF8 = puntero por forma a {u16 potencia, u16 barras de ki,
+    u16, u16}; barras x 1000 = ki al empezar y al que tiende. Antes, en el registro +8, las filas de formas (16 B: u16
+    capsula, ID, indice, u8 tipo). Tipos 1/4/7/8 de otro ID = el resto de la fusion; 3 = la fusion, cuyo ki 0 es "baja
+    hasta deshacerse" (sin dato para un port normal). -> (barras por forma, IDs ajenos)."""
+    iw = iw or source_path("iw")
+    import voces  # noqa: PLC0415
+    v = voces.IwVoices(iw)
+    d, (off, va) = v.elf, v._seg
+    r = iw_tables(d, iw_afs(iw))[0] + IW_REC_SIZE * cid
+    nf = min(8, struct.unpack_from("<H", d, r + 6)[0])
+    filas = [struct.unpack_from("<HHHB", d, r + 8 + 16 * f) for f in range(nf)]
+    ajenos = sorted({i for _, i, _, t in filas if i != cid and t in (1, 4, 7, 8)} -
+                    {i for _, i, _, t in filas if t in (3, 5, 9)})
+    fusion = {i for _, i, _, t in filas if t == 3}
+    if fusion:          # todo lo que no es la fusion (tambien el SS4 de Goku o Vegeta, tipo 6) es de otro
+        ajenos = sorted({i for _, i, _, _ in filas} - fusion)
+    ki = []
+    for f, (_, i, _, t) in enumerate(filas):
+        p = struct.unpack_from("<I", d, r + 0x88 + 4 * f)[0]
+        b = struct.unpack_from("<h", d, p - va + off + 2)[0] if p else 0
+        if t not in (3, 4, 7, 8) and i not in ajenos and 1 <= b <= 7:
+            ki.append(b)
+    return ki, ajenos
+
+
+def iw_fila_fusion(cid, iw=None):
+    """Indice de la fila de formas de la fusion (tipo 3) del personaje `cid`, o None."""
+    iw = iw or source_path("iw")
+    import voces  # noqa: PLC0415
+    d = voces.IwVoices(iw).elf
+    r = iw_tables(d, iw_afs(iw))[0] + IW_REC_SIZE * cid
+    return next((f for f in range(min(8, struct.unpack_from("<H", d, r + 6)[0]))
+                 if d[r + 8 + 16 * f + 6] == 3), None)
+
+
+def iw_fx_tabla(cid, iw=None):
+    """Fila (12 B) del personaje `cid` en la tabla de la orden 0x19C del ejecutable de IW (EU 0x4496E0, USA 0x448EE0;
+    se busca por su contenido: las filas de Goku y Vegeta son las de B3). None si no se encuentra."""
+    import voces  # noqa: PLC0415
+    d = voces.IwVoices(iw or source_path("iw")).elf
+    t = d.find(bytes.fromhex("0617071a061807ff00000000"))
+    if t < 0 or d[t + 84:t + 88] != bytes.fromhex("061b071f"):
+        return None
+    return list(d[t + 12 * cid:t + 12 * cid + 12])
+
+
+def iw_claves_toml(modelo, k=None):
+    """Claves de personaje.toml que salen del ejecutable de IW para un modelo suyo ({} si no se encuentra)."""
+    k = iw_id_of_model(modelo) if k is None else k
+    if k is None:
+        return {}
+    ki, ajenos = iw_form_data(k + 1)
+    claves = {"iw_ajenos": ajenos}
+    fila = iw_fila_fusion(k + 1)
+    if fila is not None:
+        claves["iw_fila"] = fila
+    if ki:
+        claves["ki_base"] = ki
+    fx = iw_fx_tabla(k + 1)
+    if fx:
+        claves["fx_tabla"] = fx
+    return claves
+
+
+def colgar_colas(rb, d, c, toml):
+    """Modelos de SB importados antes: cuelga las colas del cinturon (una vez, los originales van a respaldo/)."""
+    import shutil  # noqa: PLC0415
+    import altura  # noqa: PLC0415
+    n = 0
+    for m in c.get("modelos", []):
+        p = os.path.join(d, m)
+        with open(p, "rb") as fh:
+            h = altura.hang_tails(fh.read(), roots=COLAS)
+        if h:
+            os.makedirs(os.path.join(d, "respaldo"), exist_ok=True)
+            shutil.copy2(p, os.path.join(d, "respaldo", os.path.basename(m)))
+            with open(p, "wb") as fh:
+                fh.write(h)
+            n += 1
+    rb.set_toml_keys(toml, {"colas_colgadas": "true"})
+    if n:
+        rb.log("   %s: colas del cinturon colgadas en %d modelos" % (os.path.basename(d), n))
+
+
+def sb_rehacer_modelo(rb, name, d, cfg, c, toml):
+    """Ports de SB importados antes del 31/10 (una vez): los de SB1 tenian el cuerpo sin piel (T-pose, issue #57) y los
+    que existen en B3 HD pasan a su modelo. Se rehacen de su receta; el mod anterior queda en mods_respaldo y las claves
+    sueltas que anadio el usuario se conservan. Sin la ISO de PSP no se toca nada (se reintenta al montar)."""
+    fuente = c.get("origen_fuente")
+    if fuente not in ("sb1", "sb2") or "modelo_sb_v" in c:
+        return False
+    solo = str(c.get("preset", "")).endswith(".solo_modelos") or c.get("origen_golpes_donante")
+    if fuente != "sb1" and (solo or c.get("origen_clave") not in SB_MODELOS_B3):
+        rb.set_toml_keys(toml, {"modelo_sb_v": str(SB_MODELO_V)})     # SB2 con su modelo: estaba bien
+        return False
+    if not source_path(fuente):
+        return False
+    mods = os.path.dirname(d)
+    try:
+        rehacer(argparse.Namespace(mods=mods, mod=name, carpeta=None, us=None, preset=None, opcion=None))
+    except (Exception, SystemExit) as ex:  # noqa: BLE001 -- reimportar ya ha dejado el mod como estaba
+        rb.log("aviso: %s sin rehacer con el modelo nuevo (%s)" % (name, ex))
+        return False
+    with open(toml, "rb") as fh:
+        nuevo = rb.tomllib.load(fh).get("personaje", {})
+    faltan = {k: toml_value(v) for k, v in c.items() if k not in nuevo and k != "colas_colgadas"}
+    if faltan:
+        rb.set_toml_keys(toml, faltan)
+        nuevo.update({k: c[k] for k in faltan})
+    cfg.clear()
+    cfg.update(nuevo)
+    rb.log("   %s: rehecho (modelo arreglado o de B3 HD); el anterior queda en mods_respaldo" % name)
+    return True
+
+
+def sb_actualizar_nombres(rb, name, c, toml):
+    """Nombres oficiales sobre capsulas genericas con su codigo SB; conserva cambios manuales y respaldo."""
+    if c.get("origen_fuente") not in ("sb1", "sb2"):
+        return
+    import shutil  # noqa: PLC0415
+    from sb_nombres import actualizar_toml  # noqa: PLC0415
+    with open(toml, "r", encoding="utf-8-sig", newline="") as fh:
+        text = fh.read()
+    updated, count = actualizar_toml(text, c.get("origen_clave", ""), c.get("nombre"))
+    if not count:
+        return
+    parsed = rb.tomllib.loads(updated)      # validar antes de cambiar el archivo del jugador
+    backup, i = toml + ".antes_nombres_sb", 1
+    while os.path.exists(backup):
+        i += 1
+        backup = toml + ".antes_nombres_sb.%d" % i
+    shutil.copy2(toml, backup)
+    with open(toml, "w", encoding="utf-8", newline="") as fh:
+        fh.write(updated)
+    rb.log("   %s: %d nombres oficiales de SB (configuracion anterior conservada)" % (name, count))
+    return parsed.get("capsula", [])
+
+
+def iw_actualizar_mods(srcs):
+    """Ports de IW importados antes de leer estos datos: los anade a su personaje.toml (solo una vez; un ki_base
+    escrito a mano se respeta). Sin el juego de IW no hace nada."""
+    import roster_build as rb  # noqa: PLC0415
+    recetas = oficiales() if os.path.isfile(OFICIALES) else {}
+    for name, d, cfg in srcs:
+        toml = os.path.join(d, "personaje.toml")
+        with open(toml, "rb") as fh:
+            c = rb.tomllib.load(fh).get("personaje", {})
+        # ki de la receta oficial: si cambia, llega tambien a quien ya lo tenia importado (una vez por valor; despues de
+        # eso un cambio a mano se respeta)
+        r = next((x for x in recetas.values() if x.get("clave") == c.get("origen_clave") and
+                  x.get("fuente") == c.get("origen_fuente")), {})
+        ki = (r.get("extra") or {}).get("ki_base")
+        if ki and c.get("ki_receta") != ki:
+            rb.set_toml_keys(toml, {"ki_base": str(ki), "ki_receta": str(ki)})
+            cfg.update(ki_base=ki, ki_receta=ki)
+            c.update(ki_base=ki, ki_receta=ki)
+            rb.log("   %s: barras de ki de la receta oficial: %s" % (name, ki))
+        if sb_rehacer_modelo(rb, name, d, cfg, c, toml):
+            with open(toml, "rb") as fh:
+                c = rb.tomllib.load(fh).get("personaje", {})
+        capsulas_sb = sb_actualizar_nombres(rb, name, c, toml)
+        if capsulas_sb is not None:
+            cfg["_capsulas"] = capsulas_sb   # source_mods ya habia leido los nombres viejos: usar los nuevos AHORA
+        if c.get("origen_fuente") in ("sb1", "sb2") and "colas_colgadas" not in c:
+            colgar_colas(rb, d, c, toml)
+        if (c.get("origen_fuente") != "iw" or ("iw_ajenos" in c and "fx_tabla" in c) or not c.get("modelos")
+                or not source_path("iw")):
+            continue
+        with open(os.path.join(d, c["modelos"][0]), "rb") as fh:
+            claves = iw_claves_toml(fh.read(), IW_MOVESET_DE.get(c.get("origen_clave")))
+        for ya in ("ki_base", "iw_ajenos", "iw_fila"):
+            if ya in c:
+                claves.pop(ya, None)
+        if claves:
+            rb.set_toml_keys(toml, {k: str(v) for k, v in claves.items()})
+            cfg.update(claves)             # este montaje ya las usa
+            rb.log("   %s: datos de IW al dia (%s)" % (name, ", ".join("%s = %s" % x for x in claves.items())))
+
+
 def iw_spx_sonidos(spx, delta=-1913):
     """Guion #SPX de Infinite World -> el mismo con los IDs de sonido globales de B3.
 
@@ -1079,7 +1301,13 @@ def list_source(game, extra=None):
     if game == "xv2":
         sys.path.insert(0, os.path.join(HERE, "xv2"))
         import xv2_fuente  # noqa: PLC0415
-        return xv2_fuente.lista()
+        from xeno_importar import fuente_legacy  # noqa: PLC0415
+        with fuente_legacy():
+            entries = xv2_fuente.lista()
+        for e in entries:
+            if e["clave"] in ("GOK", "VGT", "PIC"):
+                e["donante"] = {"GOK": 0, "VGT": 7, "PIC": 11}[e["clave"]]
+        return entries
     raise ValueError("fuente desconocida: %s" % game)
 
 
@@ -1243,9 +1471,23 @@ def do_import(a):
         a.golpes_donante = True
     pname = preset_name(game, getattr(a, "preset", None))
     rb.log("preset %s: %s" % (pname, ", ".join("%s=%s" % kv for kv in sorted(opt.items()) if kv[0] != "descripcion")))
-    work = rb.work_dir("importar_")
+    if game == "xv2":
+        from xeno_importar import proteger_fuente, MISSING  # noqa: PLC0415
+        source = source_path("xv2")
+        if not source:
+            raise SystemExit(MISSING)
+        mods = a.mods or rb.default_mods()
+        base = os.environ.get("DBZ3_TMP") or os.path.join(os.path.dirname(os.path.abspath(mods)),
+                                                       "user_data", "dbz3", "xv2_conversion")
+        proteger_fuente(source, [mods, base])
+        os.makedirs(base, exist_ok=True)
+        work = tempfile.mkdtemp(prefix="importar_xv2_", dir=base)  # conserva el diagnostico, sin borrado al salir
+    else:
+        work = rb.work_dir("importar_")
     lst = list_source(game, a.carpeta)
     e = next((x for x in lst if x["clave"] == a.clave), None)
+    if e is None and game == "b2" and a.clave in BU_ABSORBIDO:   # no son modelos sueltos: van dentro de su paquete de absorcion
+        e = {"clave": a.clave, "nombre": a.nombre, "modelos": [BU_ABSORBIDO[a.clave][1]]}
     if e is None:
         raise SystemExit("ERROR: no encuentro %r en %s" % (a.clave, game))
     donor = a.donante if a.donante is not None else (e.get("donante") if e.get("donante") is not None else 21)
@@ -1263,7 +1505,7 @@ def do_import(a):
             open(p, "wb").write(amb_pair(b1.entry(m), b1.entry(m + 1)))
             models.append(p)
     elif game in ("sb1", "sb2", "sdbh", "xv2"):  # PSP / Heroes: formas de un traje (+ golpes de SB)
-        models, forms, sb_keys, sb_files = sb_import(game, e, donor, work, a.us)
+        models, forms, sb_keys, sb_files = sb_import(game, e, donor, work, a.us, opt.get("golpes") == "donante" or a.golpes_donante)
     elif e.get("ficheros"):            # colecciones: modelo base y sus formas (un traje)
         for f in e["ficheros"][:6]:
             p = os.path.join(work, "traje%d.amb" % (len(models) + 1))
@@ -1282,6 +1524,11 @@ def do_import(a):
             for w in ([wigs[0], wigs[1]] if b2_pairs else [wigs.get(0)]):
                 p = os.path.join(work, "traje%d.amb" % (len(models) + 1))
                 data = afs.entry(m)
+                if a.clave in BU_ABSORBIDO:   # el primer #AMO grande del paquete es Bu absorbido; su #AMT le sigue
+                    import b1port  # noqa: PLC0415
+                    h = [x for x, _ in b1port.amb_kids(data)]
+                    k = next(i for i, x in enumerate(h) if x[:4] == b"#AMO" and len(x) > 100000)
+                    data = amb_pair(h[k], h[k + 1])
                 ps2_bodies.append(data)   # el puerto de golpes lee el esqueleto PS2 (sin peluca)
                 if w is not None:
                     import ps2hd  # noqa: PLC0415
@@ -1294,13 +1541,14 @@ def do_import(a):
         if wigs.get(0) is not None:
             rb.log("Budokai 2: pelo y cara pegados a la cabeza%s" % (" (normal y transformado)" if b2_pairs else ""))
         port = e.get("port")
-    if game in ("b1", "b2", "iw"):
+    if game in ("b1", "b2", "iw", "sb1", "sb2") and not (game in ("sb1", "sb2") and sb_keys.get("modelo_b3")):
         # colas del cinturon colgadas en el reposo: sin pista en el moveset salian en horizontal
-        # (hojas blancas junto a la mano de Fat Gotenks); SB/SDBH ya las cuelga sdbh_model
+        # (hojas blancas junto a la mano de Fat Gotenks; en SB1 Gogeta, Krillin y Gotenks: la "T" del issue #57);
+        # SDBH ya las cuelga sdbh_model
         import altura  # noqa: PLC0415
         hung = 0
         for p in models:
-            h = altura.hang_tails(open(p, "rb").read())
+            h = altura.hang_tails(open(p, "rb").read(), roots=COLAS)
             if h:
                 open(p, "wb").write(h)
                 hung += 1
@@ -1337,7 +1585,7 @@ def do_import(a):
             rb.log("aviso: port de la comunidad sin comprobar (%s)" % ex)
     if game == "iw" and not files.get("anm") and models and not a.golpes_donante:
         try:                          # golpes, tecnicas y definitiva originales de IW
-            cid = iw_id_of_model(open(models[0], "rb").read())
+            cid = IW_MOVESET_DE.get(e["clave"]) or iw_id_of_model(open(models[0], "rb").read())
             files = iw_moveset_files(cid, work) if cid is not None else {}
             if files.get("anm"):
                 port = "iw"
@@ -1351,7 +1599,9 @@ def do_import(a):
     if game == "b2" and not a.golpes_donante:
         import b1port  # noqa: PLC0415
         b1 = b1port.B2(source_path("b2"))
-        b2_rec = (b1.movesets().get(e["clave"].lstrip("X")) or [None])[0]   # clave = prefijo de huesos (XGOK)
+        # clave = prefijo de huesos (XGOK). Yamhan fallida (YHS, el delgado de la fusion) no tiene moveset propio en B2: su esqueleto
+        # es el mismo de Yamhan (51 huesos iguales, medido) y B2 no trae otros golpes para el, asi que usa el de Yamhan (YMH)
+        b2_rec = (b1.movesets().get(B2_MOVESET_DE.get(e["clave"].lstrip("X"), e["clave"].lstrip("X"))) or [None])[0]
         if b2_rec is None:
             rb.log("aviso: %s no tiene moveset propio en Budokai 2: golpes del donante" % e["clave"])
     if game == "b1" or b2_rec is not None:   # golpes, combos (y gritos de B1) sobre el moveset del donante
@@ -1394,8 +1644,12 @@ def do_import(a):
             ", ".join(form_pretty(f) if f else "normal" for f in e["formas"][:forms]), iw_forms))
     if game == "iw" and port == "iw" and not iw_forms:
         keys["formas"] = "1"          # sin transformaciones (si no, las del donante: Baby con las de Vegeta)
+    if game in ("sb1", "sb2"):
+        keys["colas_colgadas"] = "true"   # ya colgadas arriba
+        keys["modelo_sb_v"] = str(SB_MODELO_V)   # sb_rehacer_modelo no lo vuelve a rehacer
     if game == "iw":
         keys["nombre_iw"] = json.dumps(re.sub(r"\s*\(alt colou?r pall?ete\)", "", e["nombre"], flags=re.I))
+        keys.update({k: str(v) for k, v in iw_claves_toml(open(models[0], "rb").read(), IW_MOVESET_DE.get(e["clave"])).items()})
     ns = argparse.Namespace(mods=a.mods, us=a.us, mod=a.mod, nombre=a.nombre, donante=donor, id=a.id,
                             modelo=models, cara=None, icono=None, retrato=None, retrato_p1=None,
                             retrato_p2=None, captura=None, despues_de=a.despues_de, por_traje=forms)
@@ -1707,6 +1961,11 @@ def traje_desde_port(a):
 
 
 def main():
+    # Atajo local XV2: no crea un personaje nuevo ni necesita montaje de roster.
+    # La interfaz previa del launcher (importar xv2 ...) sigue disponible.
+    if len(sys.argv) > 1 and sys.argv[1] == "xv2":
+        from xeno_importar import main as xv2_main  # noqa: PLC0415
+        return xv2_main(sys.argv[2:])
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("fuentes")

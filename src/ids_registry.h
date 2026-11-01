@@ -119,6 +119,8 @@ class Registry {
     return active_bindings_;
   }
 
+  bool IsReserved(uint8_t guest) const { return reserved_guest_.contains(guest); }
+
   const Character* Find(LogicalId id) const {
     const auto it = characters_.find(id);
     return it == characters_.end() ? nullptr : &it->second;

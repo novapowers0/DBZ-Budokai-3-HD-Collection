@@ -52,6 +52,7 @@ import struct
 import sys
 
 import numpy as np
+from sb_nombres import oficial as nombre_oficial
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -297,10 +298,12 @@ def receta_de(code, techs, receta=None, donor=None):
         r = dict(base.get(t["codigo"], {}))
         if not base.get(t["codigo"]):
             if t is main:
-                r.update(nombre="Ultimate", definitivo=True)
+                r.update(nombre=nombre_oficial(code, t["codigo"]) or "Ultimate", definitivo=True)
+                r["_placeholder_nombre"] = "Ultimate"
             else:
                 k += 1
-                r.update(nombre="Special %d" % k)
+                r.update(nombre=nombre_oficial(code, t["codigo"]) or "Special %d" % k)
+                r["_placeholder_nombre"] = "Special %d" % k
                 if t in ults:
                     r.update(especial=1)
         r.setdefault("ki", (t["entrada"]["ki"] + 500) // 1000 * 10)
@@ -344,7 +347,9 @@ def cadena_principal(chain, receta):
 def placeholders(techs, receta):
     """Capsula provisional (en el BCM) de cada tecnica: la fija de PLACEHOLDER por nombre o la
     siguiente de la reserva (registros sin dueno: si no se reemplaza, el golpe no sale)."""
-    names = [receta[t["codigo"]].get("nombre") for t in techs]
+    # Los nombres oficiales son cosmeticos: no deben reasignar la capsula provisional
+    # (varias formas de Goku se llaman Kamehameha, pero tienen codigos distintos).
+    names = [receta[t["codigo"]].get("_placeholder_nombre", receta[t["codigo"]].get("nombre")) for t in techs]
     fixed = {PLACEHOLDER[n] for n in names if n in PLACEHOLDER}
     pool = [x for x in (589, 590, 591, 592, 593, 594, 585, 586, 587, 588) if x not in fixed]
     return {t["codigo"]: PLACEHOLDER.get(n) or pool.pop(0) for t, n in zip(techs, names)}
@@ -874,7 +879,10 @@ def nombres(code, game="sb2", out_dir=None, bc=None):
             continue
         techs.setdefault(e["codigos"][0], e)
     out = {}
-    for k in range(4):
+    # Goku de Another Road tiene tambien m4/m5. El limite fijo de cuatro listas
+    # dejaba sin rotulo x10 Kamehameha y Dragon Fist aunque estan en su ISO.
+    nforms = max((e["booster"].bit_length() for e in techs.values()), default=1)
+    for k in range(max(1, nforms)):
         name = "bf%s%s.amt" % (code.lower(), "m%d" % k if k else "")
         if name.upper() not in a.names:
             continue
@@ -1647,4 +1655,3 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-

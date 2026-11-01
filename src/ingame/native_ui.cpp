@@ -33,6 +33,7 @@ struct Piece {
   int entry;        // data_usi.afs
   uint64_t hash;    // XXH3 del nivel base (nombre de la textura en el pack HD)
   bool trim;        // recortar al dibujo (los anfitriones se colocan por los pies)
+  bool cmn = false; // H11: la entrada es de data_cmn.afs (efectos de combate) y no de data_usi.afs
 };
 constexpr Piece kPieces[] = {
     {"fondo_duelo", 2055, 0x13AF5A36B28A0842ull, false},  // Duelo: cielo rosa y arboles
@@ -51,6 +52,7 @@ constexpr Piece kPieces[] = {
     {"anfitrion_tagteam_b", 2055, 0x44657FFB8C1D8B3Full, true},   // Kaio del Duelo
     {"anfitrion_online", 2055, 0x107B679B010365CDull, true},      // Kaio del Norte
     {"icono", 2045, 0x7E84F2B3B86A667Dull, true},                 // bola de 1 estrella: icono de la ventana
+    {"bola_estrella", 2045, 0x7E84F2B3B86A667Dull, true},         // H11: la misma bola para Dragon Tactics (la de arriba la consume el icono de la ventana)
     // Skill Shop (tiendas de los retos, rpg.cpp)
     {"capsulas", 2064, 0x109EBFC124CBEB25ull, false},      // botellas roja, verde, amarilla y gris (31x83, cada 36 px)
     {"caja_zenie", 2053, 0xE607F676540C0AF1ull, false},    // caja del dinero con monedas (1,3-323,105)
@@ -60,6 +62,19 @@ constexpr Piece kPieces[] = {
     // caras del contador de rivales, "/" (124,76-139,94), "V" y "%"; el juego las tine (el "2/2", naranja). Frente R6
     {"cifras_hud", 0, 0x38CE22710151CFA1ull, false},
     {"vs_torneo", 2047, 0xEEC9E52D040DC990ull, false},     // "VS" naranja del Torneo Mundial (0,4-236,103). R6
+    // H11 (Dragon Tactics): texturas de efectos del combate del juego (data_cmn, DXT3). 504 = efectos comunes; 553 = efectos de Vegeta.
+    {"fx_impacto", 504, 0x40AF1EBA62CD4A73ull, false, true},   // estallido radial blanco 256x256
+    {"fx_anillo", 504, 0xC5C95EF10DC7667Dull, false, true},    // onda de choque 64x64
+    {"fx_nucleo", 504, 0xBC4107469032B90Full, false, true},    // punto blanco 32x32
+    {"fx_rayo", 504, 0xA85E604E0EA9A4C9ull, false, true},      // chorro de energia azul 64x64
+    {"fx_halo", 553, 0x9E585F231E5CD258ull, false, true},      // ovalo blanco suave 64x64
+    {"fx_brillo", 553, 0x0F42A9F23C423FC0ull, false, true},    // bola de brillo rosa 64x64
+    {"fx_chispas", 531, 0xC8611BC86718688Bull, false, true},   // chispas de golpe 128x128
+    // Dragon Tactics: bola y rayo de la tecnica de energia de cada unidad, tal como los liga el juego nativo (BSP del personaje en data_cmn;
+    // tabla generada por mod center hd/tactics_fx.py: solo entrada y hash, la imagen sale de la copia del jugador). Nombres tkfx/<id>/bola|rayo.
+#define TKFX(id, entrada, hbola, hrayo, r, g, b)     {"tkfx/" id "/bola", entrada, hbola, false, true}, {"tkfx/" id "/rayo", entrada, hrayo, false, true},
+#include "../tactics/fx_nativo.inc"
+#undef TKFX
 };
 // Cara del marcador: ID -> entrada de data_cmn (#AZT hud_face; textura 0 = forma normal).
 constexpr std::pair<int, int> kFaces[] = {
@@ -130,6 +145,37 @@ std::vector<uint8_t> ReadEntry(const std::filesystem::path& afs, int n) {
   return out;
 }
 
+// DXT3 (BC2): bloques de 4x4 con alfa de 4 bits (8 B) y color 565 (8 B).
+void DecodeDxt3(const uint8_t* src, int w, int h, uint8_t* dst) {
+  for (int by = 0; by < (h + 3) / 4; ++by) {
+    for (int bx = 0; bx < (w + 3) / 4; ++bx, src += 16) {
+      uint8_t c[4][3];
+      for (int k = 0; k < 2; ++k) {
+        const uint16_t v = uint16_t(src[8 + 2 * k] | src[9 + 2 * k] << 8);
+        c[k][0] = uint8_t((v >> 11) * 255 / 31);
+        c[k][1] = uint8_t(((v >> 5) & 63) * 255 / 63);
+        c[k][2] = uint8_t((v & 31) * 255 / 31);
+      }
+      for (int j = 0; j < 3; ++j) {
+        c[2][j] = uint8_t((2 * c[0][j] + c[1][j]) / 3);
+        c[3][j] = uint8_t((c[0][j] + 2 * c[1][j]) / 3);
+      }
+      const uint32_t cbits = Le32(src + 12);
+      for (int i = 0; i < 16; ++i) {
+        const int x = bx * 4 + i % 4, y = by * 4 + i / 4;
+        if (x >= w || y >= h) continue;
+        uint8_t* o = dst + (size_t(y) * w + x) * 4;
+        const int ci = (cbits >> (2 * i)) & 3;
+        o[0] = c[ci][0];
+        o[1] = c[ci][1];
+        o[2] = c[ci][2];
+        const int a4 = (src[i / 2] >> (4 * (i & 1))) & 15;
+        o[3] = uint8_t(a4 * 17);
+      }
+    }
+  }
+}
+
 // DXT5 (BC3): bloques de 4x4 con alfa interpolado (8 B) y color 565 (8 B).
 void DecodeDxt5(const uint8_t* src, int w, int h, uint8_t* dst) {
   for (int by = 0; by < (h + 3) / 4; ++by) {
@@ -184,7 +230,7 @@ size_t DdsSize(const uint8_t* d, size_t avail) {
   const uint32_t flags = Le32(d + 80), bits = Le32(d + 88);
   if (w <= 0 || h <= 0 || w > 4096 || h > 4096) return 0;
   const size_t size = !(flags & 4) && bits == 32                           ? size_t(w) * h * 4
-                      : (flags & 4) && std::memcmp(d + 84, "DXT5", 4) == 0 ? size_t((w + 3) / 4) * ((h + 3) / 4) * 16
+                      : (flags & 4) && (std::memcmp(d + 84, "DXT5", 4) == 0 || std::memcmp(d + 84, "DXT3", 4) == 0) ? size_t((w + 3) / 4) * ((h + 3) / 4) * 16
                                                                             : 0;
   return 128 + size <= avail ? size : 0;
 }
@@ -193,12 +239,12 @@ bool DecodeDds(const uint8_t* d, size_t avail, Image& img) {
   const size_t size = DdsSize(d, avail);
   if (!size) return false;
   const int h = int(Le32(d + 12)), w = int(Le32(d + 16));
-  const bool dxt5 = Le32(d + 80) & 4;
+  const bool dxt5 = Le32(d + 80) & 4, dxt3 = dxt5 && std::memcmp(d + 84, "DXT3", 4) == 0;
   img.w = w;
   img.h = h;
   img.rgba.assign(size_t(w) * h * 4, 0);
   if (dxt5) {
-    DecodeDxt5(d + 128, w, h, img.rgba.data());
+    (dxt3 ? DecodeDxt3 : DecodeDxt5)(d + 128, w, h, img.rgba.data());
     return true;
   }
   uint32_t m[4] = {Le32(d + 92), Le32(d + 96), Le32(d + 100), Le32(d + 104)};
@@ -238,11 +284,7 @@ void Trim(Image& img) {
 }
 
 void Extract(std::filesystem::path dir) {
-  int found = 0, faces = 0;
-  std::vector<int> entries;
-  for (const Piece& p : kPieces) {
-    if (std::find(entries.begin(), entries.end(), p.entry) == entries.end()) entries.push_back(p.entry);
-  }
+  int found = 0, faces = 0, fx_tecnicas = 0;
   // EU no trae data_usi.afs: la de US si esta al lado, si no su data_eng.afs. Las piezas se
   // reconocen por el hash de la textura, asi que un archivo que no las tenga solo no las da.
   std::filesystem::path usi = dir / "data_usi.afs";
@@ -251,20 +293,26 @@ void Extract(std::filesystem::path dir) {
     if (std::filesystem::exists(usi, ec)) break;
     usi = alt;
   }
-  for (const int n : entries) {
-    const std::vector<uint8_t> b = ReadEntry(usi, n);
-    for (size_t i = 0; i + 128 <= b.size(); ++i) {
-      if (std::memcmp(&b[i], "DDS |", 5) != 0) continue;
-      const size_t size = DdsSize(&b[i], b.size() - i);
-      if (!size) continue;
-      const uint64_t hash = XXH3_64bits(&b[i + 128], size);
-      for (const Piece& p : kPieces) {
-        Image img;
-        if (p.entry != n || p.hash != hash || !DecodeDds(&b[i], b.size() - i, img)) continue;
-        if (p.trim) Trim(img);
-        std::lock_guard<std::mutex> lock(g_mu);
-        g_images[p.name] = std::move(img);
-        ++found;
+  for (const bool cmn : {false, true}) {   // H11: primero las de data_usi, luego las de data_cmn
+    std::vector<int> entries;
+    for (const Piece& p : kPieces)
+      if (p.cmn == cmn && std::find(entries.begin(), entries.end(), p.entry) == entries.end()) entries.push_back(p.entry);
+    for (const int n : entries) {
+      const std::vector<uint8_t> b = ReadEntry(cmn ? dir / "data_cmn.afs" : usi, n);
+      for (size_t i = 0; i + 128 <= b.size(); ++i) {
+        if (std::memcmp(&b[i], "DDS |", 5) != 0) continue;
+        const size_t size = DdsSize(&b[i], b.size() - i);
+        if (!size) continue;
+        const uint64_t hash = XXH3_64bits(&b[i + 128], size);
+        for (const Piece& p : kPieces) {
+          Image img;
+          if (p.cmn != cmn || p.entry != n || p.hash != hash || !DecodeDds(&b[i], b.size() - i, img)) continue;
+          if (p.trim) Trim(img);
+          std::lock_guard<std::mutex> lock(g_mu);
+          if (std::strncmp(p.name, "tkfx/", 5) == 0) ++fx_tecnicas;
+          g_images[p.name] = std::move(img);
+          ++found;
+        }
       }
     }
   }
@@ -284,7 +332,7 @@ void Extract(std::filesystem::path dir) {
       ++faces;
     }
   }
-  REXLOG_INFO("dbz3 ui: {} de {} piezas y {} caras sacadas del juego ({})", found, std::size(kPieces), faces,
+  REXLOG_INFO("dbz3 ui: {} de {} piezas ({} de tecnicas de Tactics) y {} caras sacadas del juego ({})", found, std::size(kPieces), fx_tecnicas, faces,
               dir.string());
 }
 

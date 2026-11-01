@@ -55,6 +55,8 @@ void MenuTextB3(ImDrawList* dl, ImVec2 center, float size, const char* text, boo
 // Cinta del titulo arriba a la izquierda, como la del Duelo; `title` = imagen del titulo
 // (ingame_ui) o, sin ella, `text` con la fuente.
 void Banner(ImDrawList* dl, const Area& a, const char* text, const char* title = nullptr);
+// Banner con la etiqueta BETA (pieza `beta`) en el borde derecho del pergamino: pantallas del Modo Heroe.
+void BannerBeta(ImDrawList* dl, const Area& a, const char* text, const char* title = nullptr);
 // Titulo en letras doradas con perfil (las del Banner), centrado en (cx, cy) del area 1200x900 y encogido para que
 // quepa en `ancho` unidades: sobre el papel de una cinta que ya dibuja el juego. `alpha` 0..1. X1: sustituye al logo/PNG.
 void TitleText(ImDrawList* dl, const Area& a, float cx, float cy, float ancho, const char* text, float escala = 1.0f);

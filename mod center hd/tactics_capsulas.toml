@@ -1,0 +1,63 @@
+# Dragon Tactics H5: catalogo de capsulas. Cada unidad lleva hasta 2. Numeros NUESTROS y PROVISIONALES (equilibrio: tests/tactics_equilibrio.cpp).
+# Los carga y valida src/tactics/partida.cpp (CargarEconomia, junto a tactics_economia.toml); la descripcion que ve el jugador se
+# genera de estos mismos numeros, asi que nunca puede contradecirlos. Todo en %, salvo alcance (casillas); se suma con las sinergias.
+# vida, ataque, defensa, velocidad, tecnica: +% (pueden ser negativos). ki_inicial: +% de ki al empezar. ki_max: -% de ki necesario para
+# la tecnica (negativo = la lanza antes). alcance: +casillas del ataque basico.
+version = 1
+
+[[capsula]]
+id = "vigor"
+es = "Vigor"
+en = "Vigor"
+vida = 25
+
+[[capsula]]
+id = "fuerza"
+es = "Fuerza"
+en = "Power"
+ataque = 25
+
+[[capsula]]
+id = "guardia"
+es = "Guardia"
+en = "Guard"
+defensa = 35
+
+[[capsula]]
+id = "viento"
+es = "Viento"
+en = "Wind"
+velocidad = 30
+
+[[capsula]]
+id = "ki"
+es = "Ki"
+en = "Ki"
+ki_inicial = 50
+
+[[capsula]]
+id = "foco"
+es = "Foco"
+en = "Focus"
+ki_max = -25
+
+[[capsula]]
+id = "alcance"
+es = "Alcance"
+en = "Reach"
+alcance = 1
+
+[[capsula]]
+id = "tecnica"
+es = "Técnica"
+en = "Skill"
+tecnica = 50
+
+[[capsula]]
+id = "equilibrio"
+es = "Equilibrio"
+en = "Balance"
+vida = 10
+ataque = 10
+defensa = 10
+velocidad = 10

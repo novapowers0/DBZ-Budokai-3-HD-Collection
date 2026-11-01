@@ -1,0 +1,3 @@
+descripcion = "solSAT: tablero 0x1D estable (ronda 2), sin turbo ni avance automatico durante la medida"
+env = ["DBZ3_TEST_PASARELA=auto,seg=60,desde=2", "DBZ3_PS2_GAMES=D:/DBZ3HD/ps2_games", "DBZ3_TEST_B2S_TABLERO=1"]
+pasos = ['log "pasarela: paso 3/" 90', 'esperar 3000', 'captura e_tablero']

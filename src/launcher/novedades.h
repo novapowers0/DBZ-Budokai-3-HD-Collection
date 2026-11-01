@@ -20,6 +20,54 @@ struct NewsBlock {
   int count;
 };
 
+inline constexpr NewsItem kNews156[] = {
+    {"Dragon Tactics (beta)", "Dragon Tactics (beta)",
+     "Nuevo modo de combates automáticos contra 7 rivales: 34 luchadores de Budokai 3, tienda, cápsulas, 11 sinergias y mejoras hasta 4 estrellas con sus transformaciones.",
+     "New auto-battler against 7 opponents: 34 Budokai 3 fighters, a shop, capsules, 11 synergies and upgrades up to 4 stars with their transformations."},
+    {nullptr, nullptr,
+     "Puedes guardar la partida, jugar con ratón o mando, bloquear la tienda y consultar el daño y el último duelo. El reloj de preparación es opcional.",
+     "Save your match, play with mouse or controller, lock the shop and inspect damage and the last duel. The preparation timer is optional."},
+    {"Más personajes y trajes", "More characters and costumes",
+     "La selección tiene páginas con L1/R1 para más personajes. Los trajes añadidos ya se pueden elegir aunque queden trajes nativos bloqueados.",
+     "The select screen has L1/R1 pages for more characters. Added costumes can now be selected even when native costumes are still locked."},
+    {nullptr, nullptr,
+     "Al reconstruir los personajes se completan los rótulos que faltaban en técnicas heredadas y absorciones de Bu. Los nombres genéricos indican el personaje.",
+     "Rebuilding the characters fills missing labels for inherited techniques and Buu absorptions. Generic names identify the character."},
+    {"Infinite World (experimental)", "Infinite World (experimental)",
+     "Los campos se repiten sin borde visible, más animaciones y cámaras, arreglos de definitivas y ki. Freezer y Krilin conservan su altura en 7D7; aún hay diferencias con el original.",
+     "Fields repeat without a visible edge, more animations and cameras, ultimate and ki fixes. Frieza and Krillin retain their own height in 7D7; differences from the original remain."},
+    {"Shin Budokai", "Shin Budokai",
+     "Corregido el cuerpo rígido de Shin Budokai 1 y recuperados los nombres oficiales de sus técnicas. Los personajes que existen en B3 HD usan su modelo nativo con los movimientos de Shin Budokai; los mods anteriores se rehacen al jugar si tienes la ISO.",
+     "Fixed rigid Shin Budokai 1 bodies and restored official technique names. Characters already in B3 HD use their native model with Shin Budokai moves; older mods rebuild on Play when their ISO is available."},
+    {"Budokai 2 y Leyenda de Mr. Satán", "Budokai 2 and Mr. Satan legend",
+     "Mejoras de menús y figuras del tablero y de la nave: alturas según el modelo y correcciones de hombreras y utilería. Quitada la tarjeta VS extra antes del combate.",
+     "Board and ship menu and figure improvements: model-based heights, shoulder and prop fixes. Removed the extra VS card before battle."},
+    {nullptr, nullptr,
+     "La llegada del coche de Satán, el humo, los fundidos y el resumen de ronda se acercan más al original.",
+     "Satan's car arrival, smoke, fades and round summary are closer to the original."},
+    {"Modo Héroe (beta)", "Hero Mode (beta)",
+     "Nombre propio en diálogos y selección, eventos en los mapas, deseo de Shenron, Scouter del juego y más guantes corregidos. Piezas de Xenoverse 2 opcionales con tu copia; traducción de historia aún parcial.",
+     "Your name in dialogue and selection, map events, Shenron's wish, the game's own Scouter and more corrected gloves. Optional Xenoverse 2 parts require your copy; story translation is still partial."},
+    {"Kit de modding", "Modding Kit",
+     "Asistentes y vistas de modelos, texturas y sonido. Modo Budokai 3 PS2 para crear otra ISO; Arte opcional revisa tus imágenes del HUB y las instala como mod. Conversor DAE; sin arte incluido.",
+     "Assistants and model, texture and sound previews. Budokai 3 PS2 mode builds a separate ISO; Optional art checks your HUB images and installs them as a mod. DAE converter; no artwork included."},
+    {"Online (beta)", "Online (beta)",
+     "Probado el cambio de páginas de personajes en pareja; se avisa si el otro jugador usa otro sistema operativo. La música elegida por cada uno solo se oye en su PC.",
+     "Paired character-page selection tested; the lobby warns when the other player uses a different operating system. Each player's music choice is heard only on their own PC."},
+    {"Personajes importados", "Imported characters",
+     "Cámaras ajustadas al tamaño de Zarbon y Dodoria en el conversor B1. Sus mods y el de Burter tienen voces WAV preparadas por separado; no se incluyen en el juego.",
+     "B1 converter cameras adjusted to Zarbon and Dodoria's size. Their mods and Burter's have separately prepared WAV voices; they are not included with the game."},
+    {"Interfaz y reparación", "Interface and repair",
+     "Más textos de novedades y recetas traducidos. En Linux, Reparar instalación comprueba bibliotecas .so y los botones de carpeta y enlace usan xdg-open; cambios revisados en código, sin prueba en Linux.",
+     "More translated news and recipe text. On Linux, Repair installation checks .so libraries and folder and link buttons use xdg-open; reviewed in code, not tested on Linux."},
+    {"Online (beta)", "Online (beta)",
+     "Panel renovado y búsqueda compatible tras aceptar el servicio. Emparejamiento y combate probados en un PC, con el servicio público y con red mala simulada; entre dos PC reales sin verificar.",
+     "Revised panel and compatible search after accepting the service. Pairing and battle tested on one PC, with the public service and a simulated bad network; not verified between two real PCs."},
+    {"Nova's Mods", "Nova's Mods",
+     "Recetas beta desde tus copias de Budokai 1 y 2: Kuriza, Majin, Cellin y absorciones ampliadas de Bu. Las cápsulas de fusión de mods salen en Editar Habilidades y una fusión fallida de mod sin movimientos ya no cierra el juego. Varios detalles visuales siguen sin verificar.",
+     "Beta recipes from your Budokai 1 and 2 copies: Kuriza, Majin, Cellin and extended Buu absorptions. Mod fusion capsules appear in Edit Skills and a failed fusion from a mod without moves no longer crashes the game. Several visual details remain unverified."},
+};
+
 inline constexpr NewsItem kNews1555[] = {
     {"Infinite World (Dragon Mission)", "Infinite World (Dragon Mission)",
      "La historia ya enlaza sin cortes el mapa, el vídeo, el minijuego, el resultado y la vuelta al mapa.",
@@ -311,6 +359,7 @@ inline constexpr NewsItem kNews145[] = {
 
 // Del mas nuevo al mas antiguo.
 inline constexpr NewsBlock kNewsBlocks[] = {
+    {"1.5.6", kNews156, int(sizeof(kNews156) / sizeof(kNews156[0]))},
     {"1.5.5.5", kNews1555, int(sizeof(kNews1555) / sizeof(kNews1555[0]))},
     {"1.5.5.4", kNews1554, int(sizeof(kNews1554) / sizeof(kNews1554[0]))},
     {"1.5.5.3", kNews1553, int(sizeof(kNews1553) / sizeof(kNews1553[0]))},

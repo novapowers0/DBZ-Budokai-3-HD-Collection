@@ -301,14 +301,17 @@ class AwgVertexBuffer:
         open(out_path, "wb").write(bytes(self.data))
 
     # ---------------- grow ----------------
-    def grow(self, new_n, new_nib=None):
+    def grow(self, new_n, new_nib=None, pre=0):
         """Expande la region de ventanas (capacidad new_n >= n) y opcionalmente
         el IB (new_nib >= n_ib). Reconstruye [vb0, end) como
         [ventanas new_n*44][IB new_nib*2] y desplaza el resto (AWGs posteriores).
         Las ventanas viejas se conservan al inicio; las nuevas van a cero.
         Devuelve un NUEVO objeto con n=new_n, n_ib=new_nib.
         Despues: emite las new_n ventanas y un IB de new_nib indices (max = new_n-1
-        para que N se derive bien)."""
+        para que N se derive bien).
+        pre (1/11): bytes (multiplo de 16) que se insertan ANTES de las ventanas, al final de la cabecera del AWG0
+        (mesh group): AWG0+0x28 crece en `pre` y el espacio queda a cero, dentro de la cabecera, para reubicar tablas
+        (draws, materiales). Devuelve vb0 ya desplazado."""
         if new_nib is None:
             new_nib = self.n_ib
         if new_n < self.n:
@@ -325,7 +328,7 @@ class AwgVertexBuffer:
         # tabla[k]; si +0x38 apunta a otra cosa (p.ej. el relleno de alineacion)
         # la tabla se lee a CEROS, la paleta queda sin escribir y el cuerpo
         # skinneado desaparece (select y/o combate). La tabla se mueve pegada al IB.
-        new_ib_abs = self.vb0 + new_n * WINDOW
+        new_ib_abs = self.vb0 + pre + new_n * WINDOW
         if (new_ib_abs + new_nib * 2) % 4:
             new_nib += 1                            # tabla alineada a 4
         ib = bytearray(self.data[self.ib_abs:self.ib_abs + self.n_ib * 2])
@@ -336,14 +339,14 @@ class AwgVertexBuffer:
             list_len = be32(self.data, self.awg0 + 0x3C) * 4
         pal_list = self.data[old_end_abs:old_end_abs + list_len]
         tail = self.data[old_end_abs + list_len:]
-        total_delta = len(region) - old_win + (new_nib - self.n_ib) * 2
+        total_delta = pre + len(region) - old_win + (new_nib - self.n_ib) * 2
         # ALINEACION: lo posterior a la tabla (AWG1..n, #AZT) se desplaza un
         # multiplo de 0x1000 (relleno de ceros DESPUES de la tabla de paleta).
         pad = (-total_delta) % GROW_ALIGN
         total_delta += pad
-        new_data = (bytearray(self.data[:self.vb0]) + region + ib + pal_list +
+        new_data = (bytearray(self.data[:self.vb0]) + bytes(pre) + region + ib + pal_list +
                     bytes(pad) + tail)
-        new_ib_abs = self.vb0 + new_n * WINDOW
+        new_ib_abs = self.vb0 + pre + new_n * WINDOW
         new_end_abs = new_ib_abs + new_nib * 2
         b = new_data
         awo = 0x40
@@ -355,6 +358,8 @@ class AwgVertexBuffer:
         # actualizarlo o solo lee las ventanas viejas (bug 2026-09-12: geometria
         # del port correcta pero render "explotado").
         set32(b, self.awg0 + 0x2C, new_n * WINDOW)
+        if pre:
+            set32(b, self.awg0 + 0x28, be32(b, self.awg0 + 0x28) + pre)
         # AWG0 +0x34 = TAMANO del IB en bytes (== 2*n_ib en todos los AWGs de la
         # plantilla: AWG1 816=2*408, AWG2 912=2*456, ...). El guest dimensiona su
         # copia del IB con este campo -> si no se actualiza solo sirve el IB viejo
@@ -424,7 +429,7 @@ class AwgVertexBuffer:
         o = AwgVertexBuffer.__new__(AwgVertexBuffer)
         o.data = b
         o.awg0 = self.awg0
-        o.vb0 = self.vb0
+        o.vb0 = self.vb0 + pre
         o.n = new_n
         o.ib_abs = new_ib_abs
         o.n_ib = new_nib
@@ -432,7 +437,7 @@ class AwgVertexBuffer:
         o.vb2_rel = self.vb2_rel
         o.end_rel = new_end_abs - self.awg0
         o.mg_rel = self.mg_rel
-        o.mg_size = self.mg_size
+        o.mg_size = self.mg_size + pre
         o.awg_tbl = self.awg_tbl
         o.n_awg = self.n_awg
         return o

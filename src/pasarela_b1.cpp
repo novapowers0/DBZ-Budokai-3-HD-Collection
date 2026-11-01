@@ -928,7 +928,73 @@ std::filesystem::path BuscarJuego(const std::string& clave) {
   return ElegirFuente(d, clave);   // G01-iw-iso B-03: .ruta elegido > carpeta > ISO
 }
 
+static const char* const kRutaPs2[6] = {"Dragon Ball Z Budokai 1.ruta", "Dragon Ball Z Budokai 2.ruta",
+                                        "Dragon Ball Z Infinite World.ruta", "Dragon Ball Z Shin Budokai.ruta",
+                                        "Dragon Ball Z Shin Budokai Another Road.ruta",
+                                        "Dragon Ball Z Budokai Tenkaichi 3.ruta"};   // 5: la lee t3_audio.py
+
+// 30/10 (issue #57, "no detecta Another Road", ISO USA y EU): antes solo valia el nombre del archivo con "another road"
+// (la europea se llama "Shin Budokai 2") y, con las dos elegidas, el .ruta de Another Road casaba tambien con "shin
+// budokai" y ordenaba antes que el de Shin Budokai. Ahora: el .ruta elegido para ESE juego > nombre > contenido
+// (UMD_DATA.BIN: ULUS-10081 Shin Budokai, ULUS-10234 Another Road; PARAM.SFO: titulo). -> 3, 4 o -1.
+static int JuegoPsp(const std::filesystem::path& p) {
+  static std::mutex mu;
+  static std::map<std::string, std::pair<int64_t, int>> cache;   // ruta -> (tamano, juego): IsoPs2 se llama a menudo
+  std::error_code ec;
+  const int64_t tam = int64_t(std::filesystem::file_size(p, ec));
+  const std::string clave = p.string();
+  {
+    std::lock_guard<std::mutex> lk(mu);
+    if (auto it = cache.find(clave); it != cache.end() && it->second.first == tam) return it->second.second;
+  }
+  const std::string n = Lower(p.filename().string());
+  int j = -1;
+  if (n.find("another") != std::string::npos || n.find("shin budokai 2") != std::string::npos) j = 4;
+  else if (n.find("shin budokai") != std::string::npos) j = 3;
+  if (j < 0) {
+    Iso iso;
+    std::string t;
+    if (iso.Open(p)) {
+      for (const char* f : {"umd_data.bin", "psp_game/param.sfo"}) {
+        const std::string r = iso.Find(f);
+        if (r.empty()) continue;
+        const std::vector<uint8_t> b = iso.ReadFile(r, 0, 2048);
+        t += Lower(std::string(b.begin(), b.end()));
+      }
+    }
+    if (t.find("ulus-10234") != std::string::npos || t.find("another road") != std::string::npos ||
+        t.find("budokai 2") != std::string::npos)
+      j = 4;
+    else if (t.find("ulus-10081") != std::string::npos || t.find("shin budokai") != std::string::npos)
+      j = 3;
+  }
+  std::lock_guard<std::mutex> lk(mu);
+  cache[clave] = {tam, j};
+  return j;
+}
+
+static std::filesystem::path BuscarPsp(int juego) {
+  std::filesystem::path d = dbz3::settings::UserSettingsPath().parent_path() / "ps2_games";
+  if (const char* e = std::getenv("DBZ3_PS2_GAMES")) d = e;
+  std::error_code ec;
+  if (std::filesystem::exists(d / kRutaPs2[juego], ec)) {   // la ISO que el jugador eligio para este juego
+    if (const auto p = Destino(d / kRutaPs2[juego]); !p.empty()) return p;
+  }
+  std::vector<std::filesystem::path> isos;
+  for (const auto& e : std::filesystem::directory_iterator(d, ec)) {
+    const std::string n = Lower(e.path().filename().string());
+    if (e.is_regular_file(ec) && n.size() > 4 && n.compare(n.size() - 4, 4, ".iso") == 0) isos.push_back(e.path());
+  }
+  std::sort(isos.begin(), isos.end());
+  for (const auto& p : isos) {
+    if (JuegoPsp(p) == juego) return p;
+  }
+  return {};
+}
+
 std::filesystem::path IsoPs2(int juego) {
+  if (juego == 5) return BuscarJuego("tenkaichi 3");
+  if (juego == 3 || juego == 4) return BuscarPsp(juego);
   return juego == 0 ? BuscarIsoB1() : juego == 1 ? BuscarJuego("budokai 2") : BuscarIW();
 }
 
@@ -957,11 +1023,16 @@ std::string RegistrarIsoPs2(int juego, const std::filesystem::path& iso) {
       {1, "sles_518.39"},   // Budokai 2 EU
       {2, "slus_218.42"},   // Infinite World USA
       {2, "sles_553.47"},   // Infinite World EU
+      {5, "sles_549.45"},   // Tenkaichi 3 EU
+      {5, "slus_216.78"},   // Tenkaichi 3 USA
   };
-  static const char* const kNombre[3] = {"Budokai 1", "Budokai 2", "Infinite World"};
+  static const char* const kNombre[6] = {"Budokai 1", "Budokai 2", "Infinite World", "Shin Budokai",
+                                         "Shin Budokai: Another Road", "Budokai Tenkaichi 3"};
   const std::string s = SeriePs2(iso);
   if (s.empty())
-    return T::T("Ese archivo no es una ISO de PlayStation 2 legible.", "That file is not a readable PlayStation 2 ISO.");
+    return T::T("Ese archivo no es una ISO legible.", "That file is not a readable ISO.");
+  if ((juego == 3 || juego == 4) && s != "?")   // las ISO de PSP no traen SYSTEM.CNF
+    return T::T("Esa es una ISO de PlayStation 2; aquí hace falta la de PSP.", "That is a PlayStation 2 ISO; the PSP one is needed here.");
   bool conocida = false;
   for (const auto& k : kSeries) {
     if (s != k.serie) continue;
@@ -976,9 +1047,7 @@ std::string RegistrarIsoPs2(int juego, const std::filesystem::path& iso) {
   if (const char* e = std::getenv("DBZ3_PS2_GAMES")) d = e;
   std::error_code ec;
   std::filesystem::create_directories(d, ec);
-  static const char* const kRuta[3] = {"Dragon Ball Z Budokai 1.ruta", "Dragon Ball Z Budokai 2.ruta",
-                                       "Dragon Ball Z Infinite World.ruta"};
-  std::ofstream f(d / kRuta[juego], std::ios::binary | std::ios::trunc);
+  std::ofstream f(d / kRutaPs2[juego], std::ios::binary | std::ios::trunc);
   f << dbz3::launcher::PathUtf8(std::filesystem::absolute(iso, ec));
   f.close();
   if (f.fail()) return T::T("No se pudo guardar la eleccion (carpeta ps2_games).", "Could not save the choice (ps2_games folder).");
@@ -1016,8 +1085,10 @@ std::string AvisoEleccionPs2() {
 }
 
 std::string ElegirIsoPs2(int juego) {
-  static const char* const kDesc[3] = {"Dragon Ball Z Budokai (PS2) .iso", "Dragon Ball Z Budokai 2 (PS2) .iso",
-                                       "Dragon Ball Z Infinite World (PS2) .iso"};
+  static const char* const kDesc[6] = {"Dragon Ball Z Budokai (PS2) .iso", "Dragon Ball Z Budokai 2 (PS2) .iso",
+                                       "Dragon Ball Z Infinite World (PS2) .iso", "Dragon Ball Z Shin Budokai (PSP) .iso",
+                                       "Dragon Ball Z Shin Budokai Another Road (PSP) .iso",
+                                       "Dragon Ball Z Budokai Tenkaichi 3 (PS2) .iso"};
   std::string out;
   if (!dbz3::launcher::PickFileDialog(out, kDesc[juego], "*.iso")) return "-";
   return RegistrarIsoPs2(juego, std::filesystem::u8path(out));

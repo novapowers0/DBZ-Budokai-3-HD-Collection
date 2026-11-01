@@ -49,6 +49,11 @@
 // ---------------------------------------------------------------------------
 // Creador de personajes: por defecto piezas NATIVAS de B3 (del AFS del jugador). Las piezas de Xenoverse 2 son una
 // opcion que el jugador activa aqui y solo si XV2 esta instalado (nunca se reparten piezas convertidas).
+REXCVAR_DEFINE_BOOL(dbz3_videos_hd, false, "DBZ3/Launcher",
+                    "Opening y final reescalados por SSGPrinceVegeta (descarga opcional en videos_hd/)");
+REXCVAR_DEFINE_STRING(dbz3_videos_hd_url, "https://api.github.com/repos/novapowers0/DBZ3HD-Novas-Mods/contents/videos_hd.toml", "DBZ3/Launcher",
+                      "Direccion de videos_hd.toml (lista de los videos HD); sus ficheros, junto a ella si no llevan url");
+
 REXCVAR_DEFINE_BOOL(dbz3_cac_xv2, false, "DBZ3/Launcher",
                     "Creador de personajes: permitir piezas de Xenoverse 2 (requiere XV2 instalado)");
 
@@ -412,10 +417,10 @@ REXCVAR_DEFINE_BOOL(dbz3_ui_side_borders, false, "DBZ3/Video",
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
 
 // X1: musica de combate del jugador: "original" (la del juego: el combate de B3 no abre ninguna pista, solo ambiente),
-// "aleatoria" (una pista al azar de todas las que hay) o "aleatoria:<fuente>" (b3, b2, iw, b1). Las pistas salen de
+// "aleatoria" (una pista al azar de todas las que hay), "aleatoria:<fuente>" (b3, b2, iw, b1, t3) o "fija:<fuente>:<n>" (la n-esima de esa fuente; t3 = Tenkaichi 3, pista 0..19). Las pistas salen de
 // la copia del jugador y de sus ISO de PS2, leidas en marcha (mods_opcionales.cpp, namespace musica).
 REXCVAR_DEFINE_STRING(dbz3_musica_combate, "original", "DBZ3/Audio",
-                      "Battle music: original | aleatoria | aleatoria:<b3|b2|iw|b1>")
+                      "Battle music: original | aleatoria | aleatoria:<b3|b2|iw|b1|t3> | fija:<fuente>:<n>")
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
 
 REXCVAR_DEFINE_STRING(dbz3_gpu_backend, DBZ3_DEFAULT_GPU_BACKEND, "DBZ3/Video",
@@ -829,9 +834,14 @@ std::string RepairInstallation() {
     bool required;
   };
   const DllCheck dlls[] = {
+#ifdef _WIN32
       {"rexruntime.dll", true},
       {"rexgpu-xenos.dll", true},
       {"amd_fidelityfx_dx12.dll", false},
+#else
+      {"librexruntime.so", true},
+      {"librexgpu-xenos.so", true},
+#endif
   };
   for (const DllCheck& d : dlls) {
     const auto file = exe_dir / d.name;
@@ -873,10 +883,17 @@ std::string RepairInstallation() {
   // detras de una linea en blanco (el launcher la pliega en "Detalle tecnico").
   std::string summary;
   if (missing_required) {
+#ifdef _WIN32
     summary = i18n::T("Falta una parte del juego (archivos .dll). Descomprime otra vez el zip completo del "
                       "juego en una carpeta nueva y copia ahí tus carpetas mods y user_data (tus partidas).",
                       "A part of the game is missing (.dll files). Unzip the full game package again into a "
                       "new folder and copy your mods and user_data folders (your saves) there.");
+#else   // Linux (#62): el paquete es un .tar.gz con bibliotecas .so junto a dbz3
+    summary = i18n::T("Falta una parte del juego (bibliotecas .so junto a dbz3). Extrae otra vez el paquete "
+                      ".tar.gz completo en una carpeta nueva y copia ahí tus carpetas mods y user_data (tus partidas).",
+                      "A part of the game is missing (.so libraries next to dbz3). Extract the full .tar.gz package "
+                      "again into a new folder and copy your mods and user_data folders (your saves) there.");
+#endif
   } else if (!settings_ok_to_write) {
     summary = i18n::T("No se pudo arreglar el archivo de ajustes: puede que la carpeta del juego sea de solo "
                       "lectura. Mueve el juego a una carpeta tuya (por ejemplo, Documentos) y vuelve a "
@@ -1992,6 +2009,10 @@ bool LowResEnabled() { return REXCVAR_GET(dbz3_low_res); }
 void SetLowResEnabled(bool enabled) { REXCVAR_SET(dbz3_low_res, enabled); }
 bool VrrEnabled() { return REXCVAR_GET(dbz3_vrr); }
 void SetVrrEnabled(bool enabled) { REXCVAR_SET(dbz3_vrr, enabled); }
+
+bool VideosHd() { return REXCVAR_GET(dbz3_videos_hd); }
+void SetVideosHd(bool on) { REXCVAR_SET(dbz3_videos_hd, on); }
+std::string VideosHdUrl() { return REXCVAR_GET(dbz3_videos_hd_url); }
 
 bool CacXv2Piezas() { return REXCVAR_GET(dbz3_cac_xv2); }
 void SetCacXv2Piezas(bool enabled) { REXCVAR_SET(dbz3_cac_xv2, enabled); }

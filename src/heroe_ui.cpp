@@ -80,7 +80,7 @@ std::map<std::string, Tira> g_tiras;
 std::mutex g_gen_mu;
 std::set<std::string> g_generando, g_fallidas;   // con g_gen_mu
 
-bool Lanzar(const std::wstring& cmd, DWORD* code) {
+bool Lanzar(const std::wstring& cmd, DWORD* code, DWORD limite_ms = 180000) {
 #if defined(_WIN32)
   STARTUPINFOW si{};
   si.cb = sizeof(si);
@@ -92,7 +92,7 @@ bool Lanzar(const std::wstring& cmd, DWORD* code) {
   if (!CreateProcessW(nullptr, buf.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi))
     return false;
   *code = 1;
-  if (WaitForSingleObject(pi.hProcess, 180000) == WAIT_OBJECT_0) {
+  if (WaitForSingleObject(pi.hProcess, limite_ms) == WAIT_OBJECT_0) {
     GetExitCodeProcess(pi.hProcess, code);
   } else {
     TerminateProcess(pi.hProcess, 1);
@@ -117,6 +117,7 @@ void Generar(int id, int traje) {
   const std::string clave = Num(id) + "_" + Num(traje);
   GenerarCon(clave, L"--solo " + fs::path(clave).wstring(), VistaPng(id, traje));
 }
+std::atomic<bool> g_montaje_fallo{false};   // el ultimo montaje del heroe (combate_*) fallo: aviso al jugador
 std::mutex g_ut_mu, g_ut_turno;   // C4: ver GenerarCon
 std::string g_ultimo_ut;
 void GenerarCon(const std::string& clave, const std::wstring& args, const fs::path& hecho, const char* script_py) {
@@ -167,9 +168,13 @@ void GenerarCon(const std::string& clave, const std::wstring& args, const fs::pa
         const std::wstring cmd =
             py + L" -X utf8 \"" + script.wstring() + L"\" --juego \"" + Juego().wstring() + L"\" " + args;
         DWORD code = 1;
-        if (!Lanzar(cmd, &code)) continue;
+        // El montaje del heroe (cuerpo, 3 historias y rotulo) tarda 112 s medidos en un PC rapido y va en este mismo proceso: con el limite de
+        // 180 s de las vistas previas, un PC algo mas lento lo mataba a medias y se quedaba sin historia o sin nombre.
+        if (!Lanzar(cmd, &code, clave.rfind("combate_", 0) == 0 ? 1200000 : 180000)) continue;
         if (code == 9009) continue;   // alias de la Microsoft Store
         ok = code == 0 && fs::exists(hecho, ec);
+        if (!ok && clave.rfind("combate_", 0) == 0)
+          REXLOG_ERROR("dbz3 heroe: el montaje del heroe fallo (codigo {}): detalle en ingame_ui/heroe_vista/montaje.log", code);
         break;
       }
       const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count();
@@ -177,6 +182,7 @@ void GenerarCon(const std::string& clave, const std::wstring& args, const fs::pa
       else REXLOG_WARN("dbz3 heroe: vista previa {} no se pudo generar (sin Python o sin data_cmn.afs): se queda la "
                        "anterior o el retrato", clave);
     }
+    if (clave.rfind("combate_", 0) == 0) g_montaje_fallo = !ok;   // el aviso en pantalla (MontajeFallido)
     std::lock_guard<std::mutex> lk(g_gen_mu);
     g_generando.erase(clave);
     if (!ok) g_fallidas.insert(clave);
@@ -679,6 +685,8 @@ void MoverPiezaB3(C::Heroe& h, int zona, int dir) {
   REXLOG_INFO("dbz3 heroe: pieza B3 {} = {}", kB3ZonaEn[zona], NombrePiezaB3(zona, h.b3_piezas[zona]));
 }
 
+// Scouter nativo (1/11): draw propio con el material del modelo 281 (vista_heroe.py SCOUTER_NATIVO_ACTIVO). Es la ultima
+// fila de Create; los botones y la navegacion comparten este recuento. Si se apaga alli, volver a 7 en Create.
 int Filas() { return Xv2() ? 14 : CuerpoUT() ? (g_edit ? 3 : 6) : (g_edit ? 7 : 8) + (PiezasB3UI() ? 4 : 0); }   // la ultima: la de los botones
 int FilaBotones() { return Filas() - 1; }
 C::Heroe& Ficha() { return C::SlotEditable(C::SlotActivo()); }
@@ -736,6 +744,8 @@ void Descartar() {
   h.cara = g_antes.cara, h.ojos_c = g_antes.ojos_c, h.piel_c = g_antes.piel_c;
   for (int i = 0; i < 4; ++i) h.b3_piezas[i] = g_antes.b3_piezas[i];
   H::PonerTraje(g_traje_antes);
+  h.nombre = g_antes.nombre;
+  H::PonerNombre(g_antes.nombre);
 }
 
 std::string Ayuda() {
@@ -747,6 +757,7 @@ std::string Ayuda() {
   if (g_fila == FilaBotones()) {
     return g_boton == 0 ? T::T("Guarda los cambios en la ficha.", "Save the changes to the slot.")
          : g_boton == 1 ? T::T("Vuelve sin guardar los cambios.", "Go back without saving.")
+         : g_boton == 3 ? T::T("Ponle nombre a tu héroe: sale en toda su historia.", "Name your hero: it appears across their story.")
                          : T::T("Deja los valores por defecto.", "Restore the default values.");
   }
   const int b3 = ZonaB3Fila(g_fila);
@@ -887,6 +898,7 @@ void DibujarLista(ImDrawList* dl, const S::Area& a, float t) {
     if (sel) D::Stripe(dl, a, kLx0, y - Paso() * 0.5f + 2, kLx1, y + Paso() * 0.5f - 2, t);
     std::string et, val;
     bool flechas = true;
+    const char* icono = nullptr;   // pack Dragon HUB (opcional): ingame_ui/hub/heroe_icono_*.png
     if (const C::Hsv* c = ColorDeFila(f)) {
       et = NombreColor(f);
       val = c->h == 0 && c->s == 0 && c->v == 0 ? std::string(T::T("Original", "Original"))
@@ -918,24 +930,29 @@ void DibujarLista(ImDrawList* dl, const S::Area& a, float t) {
                           : std::string(T::T("Peinado ", "Hairstyle ")) + Num(h.pelo + 1) + " (" + (H::Xv2PiezasActivas() ? "UT" : kPelosNativos[h.pelo]) + (H::Xv2PiezasActivas() ? "" : ", beta") + ") / " + Num(kNumPelos);
       } else if (f == 0) {
         et = T::T("Traje", "Costume");
+        icono = "hub/heroe_icono_traje";
         val = std::string(T::T("Traje nativo ", "Native costume ")) + Num(H::Traje() + 1);
       } else if (f == (PiezasB3UI() ? 9 : 5)) {
         et = T::T("Logo", "Logo mark");
+        icono = S::Img("hub/heroe_icono_emblema_estrella") ? "hub/heroe_icono_emblema_estrella" : "hub/heroe_icono_logo";
         const int k = std::clamp(h.logo, 0, kNumLogos - 1);
         val = T::T(kLogos[k][0], kLogos[k][1]);
       } else {
         et = "Scouter";
+        icono = "hub/heroe_icono_scouter";
         val = h.scouter ? "ON" : "OFF";
       }
       Texto(dl, a, xv, y, D::kRow, val, sel, false, kLx1 - xm - 120);
     }
+    if (icono)
+      if (const S::Pic ic = S::Img(icono)) S::DrawPic(dl, ic, a.At(kLx0 + 14, y - 24), a.At(kLx0 + 62, y + 24), ImVec4(0, 0, 0, 0), sel ? IM_COL32_WHITE : IM_COL32(255, 255, 255, 190));
     Texto(dl, a, (kLx0 + xm) * 0.5f + 10, y, D::kRow, et, sel, !sel, xm - kLx0 - 30);
     if (sel && flechas) S::Arrows(dl, a.At(xm + 20, y - Paso() * 0.5f), a.At(kLx1 - 14, y + Paso() * 0.5f), 32 * a.s, t);
   }
   // botones Confirmar / Atras / Reset
-  const float by0 = y1 + 18, by1 = by0 + 62, bw = (kLx1 - kLx0 - 40) / 3;
-  const char* nb[3] = {T::T("Confirmar", "Confirm"), T::T("Atrás", "Back"), T::T("Reset", "Reset")};
-  for (int b = 0; b < 3; ++b) {
+  const float by0 = y1 + 18, by1 = by0 + 62, bw = (kLx1 - kLx0 - 60) / 4;
+  const char* nb[4] = {T::T("Confirmar", "Confirm"), T::T("Atrás", "Back"), T::T("Reset", "Reset"), T::T("Nombre", "Name")};
+  for (int b = 0; b < 4; ++b) {
     const float x0 = kLx0 + (bw + 20) * b, x1 = x0 + bw;
     const bool sel = g_fila == FilaBotones() && g_boton == b && g_panel < 0;
     Marco(dl, a, x0, by0, x1, by1);
@@ -972,6 +989,63 @@ void DibujarPanel(ImDrawList* dl, const S::Area& a, float t) {
   }
 }
 
+// Nombre del heroe: rejilla de letras con el mando (A escribe, X borra, Y acepta, B cancela). Hasta 16 bytes (PonerNombre).
+bool g_nom_abierto = false;
+std::string g_nom_txt;
+int g_nom_cur = 0;
+const std::vector<std::string>& LetrasNombre() {
+  static const std::vector<std::string> v = [] {
+    std::vector<std::string> r;
+    for (char c = 'A'; c <= 'Z'; ++c) r.push_back(std::string(1, c));
+    for (const char* s : {"\xC3\x91", "\xC3\x81", "\xC3\x89", "\xC3\x8D"}) r.push_back(s);
+    for (char c = 'a'; c <= 'z'; ++c) r.push_back(std::string(1, c));
+    for (const char* s : {"\xC3\xB1", "\xC3\xA1", "\xC3\xA9", "\xC3\xAD"}) r.push_back(s);
+    for (const char* s : {"\xC3\x93", "\xC3\x9A", "\xC3\xB3", "\xC3\xBA", "\xC3\xBC", " ", "-", ".", "'", "!"}) r.push_back(s);
+    for (char c = '0'; c <= '9'; ++c) r.push_back(std::string(1, c));
+    return r;
+  }();
+  return v;
+}
+void BorrarLetra(std::string& s) {
+  while (!s.empty() && (static_cast<unsigned char>(s.back()) & 0xC0) == 0x80) s.pop_back();
+  if (!s.empty()) s.pop_back();
+}
+void NombreEntrada(uint16_t p) {
+  const int n = int(LetrasNombre().size());
+  constexpr int kCols = 10;
+  if (p & kLeft) g_nom_cur = (g_nom_cur + n - 1) % n;
+  if (p & kRight) g_nom_cur = (g_nom_cur + 1) % n;
+  if (p & kUp) g_nom_cur = (g_nom_cur + n - kCols) % n;
+  if (p & kDown) g_nom_cur = (g_nom_cur + kCols) % n;
+  if (p & kA) {
+    const std::string& l = LetrasNombre()[size_t(g_nom_cur)];
+    if (g_nom_txt.size() + l.size() <= 16) g_nom_txt += l;
+  }
+  if (p & kX) BorrarLetra(g_nom_txt);
+  if (p & kB) g_nom_abierto = false;
+  if ((p & kY) && !g_nom_txt.empty() && g_nom_txt.find_first_not_of(' ') != std::string::npos) {
+    H::PonerNombre(g_nom_txt);
+    Ficha().nombre = H::Nombre();
+    REXLOG_INFO("dbz3 heroe: nombre = {}", H::Nombre());
+    g_nom_abierto = false;
+  }
+}
+void NombreDibujo(ImDrawList* dl, const S::Area& a, float t) {
+  constexpr int kCols = 10;
+  const auto& v = LetrasNombre();
+  const int filas = (int(v.size()) + kCols - 1) / kCols;
+  const float y1 = kLy0 + 2 * D::kPad + Paso() * (Filas() - 1);
+  Marco(dl, a, kLx0, kLy0, kLx1, y1, 245);
+  Texto(dl, a, (kLx0 + kLx1) * 0.5f, kLy0 + 44, D::kHead, g_nom_txt + (std::fmod(t, 1.0f) < 0.5f ? "_" : " "), true, false, kLx1 - kLx0 - 60);
+  const float gy0 = kLy0 + 90, cw = (kLx1 - kLx0 - 40) / kCols, ch = std::min(56.0f, (y1 - gy0 - 16) / filas);
+  for (int i = 0; i < int(v.size()); ++i) {
+    const float x = kLx0 + 20 + cw * (i % kCols), y = gy0 + ch * (i / kCols);
+    const bool sel = i == g_nom_cur;
+    if (sel) D::Stripe(dl, a, x + 2, y + 2, x + cw - 2, y + ch - 2, t);
+    Texto(dl, a, x + cw * 0.5f, y + ch * 0.5f, D::kRow, v[size_t(i)], sel, !sel, cw);
+  }
+}
+
 }  // namespace
 
 bool EnEdit() { return g_edit; }
@@ -986,16 +1060,28 @@ void PedirVista(int id, int traje) {
 // studies 9: monta mods/heroe_propio = el heroe de la ficha como PERSONAJE NUEVO (ID propio en el roster: nombre de la
 // ficha, modelo con los colores, el logo y el peinado UT, moveset del estilo). El juego lo carga al arrancar (roster_build
 // en JUGAR): hasta reiniciar, el combate sale como antes (estilo + cuerpo). Antes: traje extra heroe_fichaN (studies 8).
+// Menu nativo de deseos en la historia del Heroe (campaigns.cpp avisa cada cuadro del menu): solo el registro de la fila
+std::atomic<int> g_deseo_fila{-1};
+void AvisarMenuDeseo(int fila, int filas) {
+  if (g_deseo_fila.exchange(fila) != fila) REXLOG_INFO("dbz3 heroe: menu de deseos: fila {} de {}", fila + 1, filas);
+}
+bool MontajeFallido() { return g_montaje_fallo; }
+bool FaltaRotuloNombre() {
+  std::error_code ec;
+  return H::IdPropio() >= 0 && (!H::HistoriaMontada() || !fs::exists(dbz3::ModsRoot() / "heroe_nombres" / "nombres.json", ec));
+}
 void PedirCombate() {
   const std::string args = H::ArgsPropio();
   const fs::path hecho = dbz3::ModsRoot() / "heroe_propio" / "ficha.txt";
   std::error_code ec;
-  if (fs::exists(hecho, ec)) {
+  const char* sin_py = std::getenv("DBZ3_TEST_SIN_PYTHON");   // prueba (pruebas.py): sin cache, para ver el aviso del montaje fallido
+  if (!(sin_py && *sin_py == '1') && fs::exists(hecho, ec)) {
     std::ifstream f(hecho);
     std::string l;
     std::getline(f, l);
     while (!l.empty() && (l.back() == 13 || l.back() == ' ')) l.pop_back();
-    if (l == args && H::HistoriaMontada()) return;   // ya esta hecho con estos valores (y su historia de DU montada)
+    if (l == args && H::HistoriaMontada() && fs::exists(dbz3::ModsRoot() / "heroe_nombres" / "nombres.json", ec))
+      return;   // ya esta hecho con estos valores (y su historia de DU y el rotulo del nombre montados)
   }
   REXLOG_INFO("dbz3 heroe: el heroe propio de la ficha {}: se monta ({})", H::FichaNumero(), args);
   const std::string con_donante = args + ";donante=" + Num(H::DonanteCombate());
@@ -1019,14 +1105,21 @@ void AbrirCrear(bool edit) {
 
 // Fondo del Modo Heroe otra vez encima del anfitrion (lo dibuja modos.cpp antes): estas pantallas usan toda el area,
 // como las de UT, y la vista previa / la lista no deben tener al anfitrion asomando por detras.
-static void FondoSinAnfitrion(ImDrawList* dl, const S::Area& a) {
-  const char* fondo = S::Img("hub/fondo_heroe") ? "hub/fondo_heroe" : S::Img("hub/fondo") ? "hub/fondo" : "fondo_duelo";
+// `propio`: fondo opcional del pack Dragon HUB (ingame_ui/hub/heroe_fondo_*.png, 16:9). Sin el pack queda el de siempre.
+// Con el: un velo oscuro suave (los fondos son claros) para que el texto se lea.
+static void FondoSinAnfitrion(ImDrawList* dl, const S::Area& a, const char* propio = nullptr) {
+  const bool con_pack = propio && S::Img(propio);
+  const char* fondo = con_pack ? propio : S::Img("hub/fondo_heroe") ? "hub/fondo_heroe" : S::Img("hub/fondo") ? "hub/fondo" : "fondo_duelo";
   S::Backdrop(dl, a, fondo);
+  if (con_pack) {
+    const auto g = S::GuestImage(ImGui::GetIO());
+    dl->AddRectFilled(g.p0, g.p1, IM_COL32(0, 8, 28, 110));
+  }
   S::Sides(dl, a);
 }
 
 void DibujarAvatarUT(ImDrawList* dl, const S::Area& a) {   // G06a: selector con el cuerpo propio
-  FondoSinAnfitrion(dl, a);
+  FondoSinAnfitrion(dl, a, "hub/heroe_fondo_creador");
   if (const auto p = VistaUT(H::Cuerpo(), H::Traje(), dbz3::RelojT(ImGui::GetTime()))) {
     const float frame = p.h;   // fotogramas cuadrados: 12 giros
     S::DrawPic(dl, p, a.At(55, 210), a.At(440, 825), ImVec4(0, 0, frame, p.h));
@@ -1035,7 +1128,7 @@ void DibujarAvatarUT(ImDrawList* dl, const S::Area& a) {   // G06a: selector con
 
 Accion Crear(ImDrawList* dl, const S::Area& a, float t, uint16_t p) {
   C::Heroe& h = Ficha();
-  FondoSinAnfitrion(dl, a);
+  FondoSinAnfitrion(dl, a, "hub/heroe_fondo_creador");
   // giro de la vista previa: automatico (1,6 giros por segundo) salvo 3 s despues de girar a mano (LB/RB)
   const double ahora = dbz3::RelojT(ImGui::GetTime());
   const float dt = float(std::clamp(ahora - g_t_ant, 0.0, 0.1));
@@ -1057,11 +1150,13 @@ Accion Crear(ImDrawList* dl, const S::Area& a, float t, uint16_t p) {
     g_cam_preset = 1, g_cam_zoom = 1.0f, g_cam_yaw = 25.0f;
     REXLOG_INFO("dbz3 heroe: camara reset (tres cuartos)");
   }
-  if (p & kX) {
+  if ((p & kX) && !g_nom_abierto) {
     g_cam_preset = (g_cam_preset + 1) % 4;
     REXLOG_INFO("dbz3 heroe: camara preset={} ({}) zoom={:.2f}", g_cam_preset, kCams[g_cam_preset].nombre, g_cam_zoom);
   }
-  if (g_panel >= 0) {   // panel HSV abierto: consume la entrada
+  if (g_nom_abierto) {
+    NombreEntrada(p);
+  } else if (g_panel >= 0) {   // panel HSV abierto: consume la entrada
     C::Hsv& c = *ColorDeFila(g_panel);
     if (p & kUp) g_canal = (g_canal + 2) % 3;
     if (p & kDown) g_canal = (g_canal + 1) % 3;
@@ -1089,7 +1184,7 @@ Accion Crear(ImDrawList* dl, const S::Area& a, float t, uint16_t p) {
         MoverPiezaB3(h, b3, d);
       } else
       if (g_fila == FilaBotones()) {
-        g_boton = (g_boton + d + 3) % 3;
+        g_boton = (g_boton + d + 4) % 4;
       } else if (Xv2() && g_fila < 7) {   // C4: cambia de pieza (la 1.a vez genera el modelo: ~6-12 s)
         const auto lst = H::PiezasXv2(H::Cuerpo(), g_fila);
         if (!lst.empty()) {
@@ -1149,6 +1244,12 @@ Accion Crear(ImDrawList* dl, const S::Area& a, float t, uint16_t p) {
           REXLOG_INFO("dbz3 heroe: {}: atras (sin guardar)", g_edit ? "Edit" : "Create");
           return Accion::kVolver;
         }
+        if (g_boton == 3) {
+          g_nom_abierto = true;
+          g_nom_txt = H::Nombre();
+          g_nom_cur = 0;
+          return Accion::kNada;
+        }
         Restablecer();
       } else {
         g_fila = std::min(g_fila + 1, FilaBotones());
@@ -1156,15 +1257,15 @@ Accion Crear(ImDrawList* dl, const S::Area& a, float t, uint16_t p) {
     }
   }
   // --- dibujo ---
-  S::Banner(dl, a, g_edit ? T::T("Editar héroe", "Edit hero") : T::T("Crear héroe", "Create hero"));
+  S::BannerBeta(dl, a, g_edit ? T::T("Editar héroe", "Edit hero") : T::T("Crear héroe", "Create hero"));
   if (!g_edit && (!H::Xv2Instalado() || !H::Xv2PiezasActivas()))   // C8b: aviso claro; las piezas XV2 son opcionales
-    Texto(dl, a, kLx0, kLy0 - 26, D::kSmall,
+    Texto(dl, a, 578, 826, D::kSmall,   // bajo la ayuda: arriba lo tapaban el banner y los marcos
           H::Xv2Instalado()
               ? T::T("Piezas XV2 desactivadas: héroe base de B3 (se activan en el launcher)",
                      "XV2 parts off: B3 base hero (enable them in the launcher)")
               : T::T("Xenoverse 2 no instalado: héroe base de B3 (personajes nativos)",
                      "Xenoverse 2 not installed: B3 base hero (native characters)"),
-          false, true, kLx1 - kLx0);
+          false, true, 1100);
   // esquina: ficha y nivel
   {
     constexpr float c0 = D::kCornerY0, c1 = D::kTop - 24;
@@ -1176,7 +1277,11 @@ Accion Crear(ImDrawList* dl, const S::Area& a, float t, uint16_t p) {
   DibujarVista(dl, a, t);
   DibujarLista(dl, a, t);
   if (g_panel >= 0) DibujarPanel(dl, a, t);
-  if (g_panel >= 0) {
+  if (g_nom_abierto) {
+    NombreDibujo(dl, a, t);
+    S::HelpLine(dl, a.At(600, 868), 38 * a.s,
+                {{"A", T::T("Escribir", "Type")}, {"X", T::T("Borrar", "Delete")}, {"Y", T::T("Aceptar", "OK")}, {"B", T::T("Cancelar", "Cancel")}});
+  } else if (g_panel >= 0) {
     S::HelpLine(dl, a.At(600, 868), 38 * a.s,
                 {{"A", T::T("Aceptar", "OK")}, {"B", T::T("Cancelar", "Cancel")}});
   } else {
@@ -1253,7 +1358,17 @@ void ReordenarTecnicas() {
 }
 void AsegurarCartas() {
   std::error_code ec;
-  if (fs::exists(CartasListo(), ec)) return;
+  // d: si un roster.toml de mods/ es mas nuevo que listo.txt (se montaron capsulas >= 596), se rehacen las cartas
+  if (fs::exists(CartasListo(), ec)) {
+    const auto listo = fs::last_write_time(CartasListo(), ec);
+    bool viejo = false;
+    for (const auto& m : fs::directory_iterator(Juego() / "mods", ec)) {
+      const fs::path r = m.path() / "roster.toml";
+      std::error_code e2;
+      if (fs::exists(r, e2) && fs::last_write_time(r, e2) > listo) viejo = true;
+    }
+    if (!viejo) return;
+  }
   const std::string caras = H::ArgsCartas();
   GenerarCon("cartas", L"--caras " + std::wstring(caras.begin(), caras.end()), CartasListo(), "tecnicas_cartas.py");
 }
@@ -1344,7 +1459,7 @@ Accion TecnicasUI(ImDrawList* dl, const S::Area& a, float t, uint16_t p) {
   AsegurarCartas();
   if (!H::TiposListos()) GenerarCon("tipos", L"", H::TiposRutaPublica(), "tecnicas_tipo.py");   // C4: tipo de cada tecnica
   FondoSinAnfitrion(dl, a);
-  S::Banner(dl, a, T::T("Técnicas", "Techniques"));
+  S::BannerBeta(dl, a, T::T("Técnicas", "Techniques"));
   const int ef = H::DonanteEfectivo();
   // lista (izquierda): cabecera de cada carta
   constexpr float lx0 = 40, lx1 = 420, ly0 = 172;
@@ -1606,7 +1721,7 @@ Accion MovesetsUI(ImDrawList* dl, const S::Area& a, float t, uint16_t p) {
     return Accion::kConfirmar;
   }
   FondoSinAnfitrion(dl, a);
-  S::Banner(dl, a, T::T("Elige estilo o moveset", "Choose style or moveset"));
+  S::BannerBeta(dl, a, T::T("Elige estilo o moveset", "Choose style or moveset"));
   // pestanas (DS144): Moveset / Estilo; la franja marca la activa, como en la pantalla principal
   constexpr float tx0 = 40, tx1 = 760, ty0 = 140, ty1 = 180;
   const float tw = (tx1 - tx0) * 0.5f;
@@ -1751,7 +1866,7 @@ Accion SlotsUI(ImDrawList* dl, const S::Area& a, float t, uint16_t p) {
     return Accion::kConfirmar;
   }
   FondoSinAnfitrion(dl, a);
-  S::Banner(dl, a, T::T("Tus héroes", "Your heroes"));
+  S::BannerBeta(dl, a, T::T("Tus héroes", "Your heroes"));
   constexpr float gx0 = 40, gx1 = 1130, gy0 = 172, ch = 470;
   const float cw = (gx1 - gx0 - 2 * 20) / total;
   for (int i = 0; i < total; ++i) {
@@ -1910,7 +2025,7 @@ Accion MapaUI(ImDrawList* dl, const S::Area& a, float t, uint16_t p) {
     }
   }
   FondoSinAnfitrion(dl, a);
-  S::Banner(dl, a, T::T("Mapa del mundo", "World map"));
+  S::BannerBeta(dl, a, T::T("Mapa del mundo", "World map"));
   Marco(dl, a, kMx0, kMy0, kMx1, kMy1, 235);
   Tierra(dl, a);
   // camino entre sagas (completado: dorado; por hacer: discontinuo)
@@ -1975,7 +2090,7 @@ Accion MapaUI(ImDrawList* dl, const S::Area& a, float t, uint16_t p) {
   const float barrido = t * 2.0f;
   dl->AddLine(rc, ImVec2(rc.x + std::cos(barrido) * rr, rc.y + std::sin(barrido) * rr), IM_COL32(180, 255, 190, 220),
               2.5f * a.s);
-  const int esferas = std::min(hechas, 7);
+  const int esferas = __builtin_popcount(unsigned(H::Esferas()));
   for (int i = 0; i < 7; ++i) {   // recogidas: en el centro; por recoger: puntos que parpadean donde estan sus sagas
     const float ang = 6.2831853f * i / 7 - 1.5708f;
     if (i < esferas) {
@@ -2051,8 +2166,8 @@ Accion Maestros(ImDrawList* dl, const S::Area& a, float t, uint16_t p) {
     else g_maviso = T::T("No se pudo cambiar de maestro.", "The master could not be changed.");
   }
   const int act = H::MaestroActual();
-  FondoSinAnfitrion(dl, a);
-  S::Banner(dl, a, T::T("Elige maestro", "Select Master"));
+  FondoSinAnfitrion(dl, a, "hub/heroe_fondo_maestros");
+  S::BannerBeta(dl, a, T::T("Elige maestro", "Select Master"));
   // lista de maestros con su retrato (izquierda)
   constexpr float lx0 = 40, lx1 = 470, ly0 = 172, paso = 76;
   const float ly1 = ly0 + 2 * D::kPad + paso * n;
@@ -2061,7 +2176,15 @@ Accion Maestros(ImDrawList* dl, const S::Area& a, float t, uint16_t p) {
     const H::InfoMaestro m = H::Maestro(i);
     const float y = ly0 + D::kPad + paso * (i + 0.5f);
     const bool sel = i == g_mcur;
-    if (sel) D::Stripe(dl, a, lx0, y - paso * 0.5f + 3, lx1, y + paso * 0.5f - 3, t);
+    if (const S::Pic pm = S::Img("hub/heroe_panel_maestro")) {   // pack Dragon HUB (opcional): placa 1983x793, caja util (28,41)-(1951,706)
+      const float y0 = y - paso * 0.5f + 3, y1p = y + paso * 0.5f - 3;
+      const ImU32 tin = sel ? IM_COL32_WHITE : IM_COL32(255, 255, 255, 150);
+      const float k = (y1p - y0) / 665.0f, cap = 300 * k;   // escala por el alto; tapas izquierda y derecha, centro estirado
+      const float x0 = lx0 + 4, x1 = lx1 - 4;
+      S::DrawPic(dl, pm, a.At(x0, y0), a.At(x0 + cap, y1p), ImVec4(28, 41, 328, 706), tin);
+      S::DrawPic(dl, pm, a.At(x0 + cap, y0), a.At(x1 - cap, y1p), ImVec4(328, 41, 1651, 706), tin);
+      S::DrawPic(dl, pm, a.At(x1 - cap, y0), a.At(x1, y1p), ImVec4(1651, 41, 1951, 706), tin);
+    } else if (sel) D::Stripe(dl, a, lx0, y - paso * 0.5f + 3, lx1, y + paso * 0.5f - 3, t);
     Cara(dl, a, m.id, lx0 + 78, y, 60, !m.desbloqueado ? 60 : sel ? 255 : 190);   // s9: bloqueado, en sombra
     Texto(dl, a, lx0 + 230, y - 12, D::kRow, m.desbloqueado ? M::Nombre(m.id) : std::string("???"), sel, !sel, 190);
     // barra fina de entrenamiento bajo el nombre
@@ -2076,7 +2199,7 @@ Accion Maestros(ImDrawList* dl, const S::Area& a, float t, uint16_t p) {
   const H::InfoMaestro m = H::Maestro(g_mcur);
   constexpr float px0 = 500, px1 = 1130, py0 = 172, py1 = 700;
   Marco(dl, a, px0, py0, px1, py1, 235);
-  Texto(dl, a, (px0 + px1) * 0.5f, py0 + 44, D::kHead, "MASTER SKILL", true, false, px1 - px0 - 80);
+  Texto(dl, a, (px0 + px1) * 0.5f, py0 + 44, D::kHead, T::T("HABILIDAD DEL MAESTRO", "MASTER SKILL"), true, false, px1 - px0 - 80);
   Cara(dl, a, m.id, px0 + 110, py0 + 140, 120, m.desbloqueado ? 255 : 60);   // s9: bloqueado, sin desvelarlo
   Texto(dl, a, px0 + 380, py0 + 104, D::kHead, m.desbloqueado ? M::Nombre(m.id) : std::string("???"), true, false, 380);
   Texto(dl, a, px0 + 380, py0 + 146, D::kSmall,

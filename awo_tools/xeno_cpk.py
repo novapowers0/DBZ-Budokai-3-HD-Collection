@@ -11,14 +11,14 @@ y los formatos son los MISMOS que los de SDBH Heroes (familia #EMD/#ESK/#EMM/#EM
   .emd geometria | .esk esqueleto | .emm material | .emb texturas | .ean animacion
 (lo confirma LibXenoverse: https://github.com/DarioSamo/LibXenoverse).
 
-OJO: los ficheros del CPK van comprimidos con CRILAYLA (los 8 primeros bytes son "CRILAYLA").
-Sin descomprimir solo se puede LEER el indice (nombres y tamanos); `extraer` deja el blob tal
-cual y lo avisa. No forma parte de este frente escribir un descompresor CRILAYLA.
+OJO: los ficheros del CPK pueden ir comprimidos con CRILAYLA. `extraer` conserva el blob
+tal cual y lo avisa; `extraer --descomprimir` usa el lector de xeno_model.
 
   python xeno_cpk.py info <cpk...>
   python xeno_cpk.py catalogo <cpk> <salida.tsv>
   python xeno_cpk.py buscar <cpk> <regex>
   python xeno_cpk.py extraer <cpk> <ruta interna> <salida>
+  python -B xeno_cpk.py --selftest
 """
 import argparse
 import collections
@@ -37,9 +37,14 @@ except ImportError:                     # prueba desde otra carpeta
 
 
 def _leer(cpk, nombre, size, off):
+    if size < 0 or off < 0:
+        raise ValueError("CPK: rango invalido para %s" % nombre)
     with open(cpk, "rb") as f:
         f.seek(off)
-        return f.read(size)
+        data = f.read(size)
+    if len(data) != size:
+        raise ValueError("CPK: entrada truncada: %s" % nombre)
+    return data
 
 
 def cmd_info(cpks):
@@ -62,7 +67,7 @@ def cmd_info(cpks):
 
 def cmd_catalogo(cpk, out):
     rows = cri.cpk_toc(cpk)
-    with open(out, "w", encoding="utf-8") as fh:
+    with open(out, "x", encoding="utf-8") as fh:
         fh.write("ruta\ttamano\toffset\tcomprimido\n")
         for n, s, o in rows:
             comp = _leer(cpk, n, 8, o) == b"CRILAYLA"
@@ -80,20 +85,54 @@ def cmd_buscar(cpk, patron):
     print("%d coincidencias" % n)
 
 
-def cmd_extraer(cpk, nombre, out):
-    for ruta, s, o in cri.cpk_toc(cpk):
-        if ruta.lower() == nombre.lower() or os.path.basename(ruta).lower() == nombre.lower():
-            d = _leer(cpk, ruta, s, o)
-            open(out, "wb").write(d)
-            comp = " CRILAYLA (hay que descomprimir)" if d[:8] == b"CRILAYLA" else ""
-            print("OK -> %s (%d B) %s%s" % (out, len(d), d[:4], comp))
-            return 0
-    print("no encontrado: %s" % nombre)
-    return 1
+def cmd_extraer(cpk, nombre, out, descomprimir=False):
+    rows = cri.cpk_toc(cpk)
+    matches = [(n, s, o) for n, s, o in rows if n.lower() == nombre.lower()]
+    if not matches:
+        matches = [(n, s, o) for n, s, o in rows if n.rsplit("/", 1)[-1].lower() == nombre.lower()]
+    if len(matches) != 1:
+        print("%s: %s" % ("nombre ambiguo; indica ruta completa" if matches else "no encontrado", nombre))
+        return 1
+    ruta, size, offset = matches[0]
+    data = _leer(cpk, ruta, size, offset)
+    if descomprimir:
+        from xeno_model import descomprimir as decode
+        data = decode(data)
+    with open(out, "xb") as target:
+        target.write(data)
+    comp = " CRILAYLA (hay que descomprimir)" if data[:8] == b"CRILAYLA" else ""
+    print("OK -> %s (%d B) %s%s" % (out, len(data), data[:4], comp))
+    return 0
+
+
+def selftest():
+    import contextlib
+    import io
+    from unittest.mock import patch
+    from xeno_binary import _test_cpk, _test_utf, rejects
+    blob = _test_cpk()
+    with patch("builtins.open", side_effect=lambda *a, **kw: io.BytesIO(blob)):
+        rows = cri.cpk_toc("synthetic.cpk")
+        assert rows == [("data/chara/TST/test.emm", 5, 0x800), ("raw.dat", 3, 0x808)]
+        assert _leer("synthetic.cpk", rows[0][0], 5, 0x800) == b"#EMM!"
+        rejects(lambda: _leer("synthetic.cpk", "bad", 16, 0x808))
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            cmd_buscar("synthetic.cpk", r"TST/.*\.emm$")
+        assert "1 coincidencias" in output.getvalue()
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            cmd_info(["synthetic.cpk"])
+        assert "2 entradas" in output.getvalue() and "TST=1" in output.getvalue()
+    table = _test_utf("N0", [("n", 2), ("s", 10)], [(7, "uno"), (9, "dos")])
+    expected = ("N0", [dict(n=7, s="uno"), dict(n=9, s="dos")])
+    assert cri.utf(table) == expected and cri.utf(cri._xor(table)) == expected
+    with patch("builtins.open", side_effect=lambda *a, **kw: io.BytesIO(b"not a CPK")):
+        rejects(lambda: cri.cpk_toc("invalid.cpk"))
+    print("xeno_cpk: N0 OK (@UTF claro/cifrado, TOC/rutas/offsets, busqueda, resumen, truncado)")
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("--selftest", action="store_true")
     sub = ap.add_subparsers(dest="cmd")
     a = sub.add_parser("info")
     a.add_argument("cpks", nargs="+")
@@ -107,7 +146,11 @@ def main(argv=None):
     a.add_argument("cpk")
     a.add_argument("nombre")
     a.add_argument("salida")
+    a.add_argument("--descomprimir", action="store_true")
     x = ap.parse_args(argv)
+    if x.selftest:
+        selftest()
+        return 0
     if x.cmd == "info":
         cmd_info(x.cpks)
     elif x.cmd == "catalogo":
@@ -115,7 +158,7 @@ def main(argv=None):
     elif x.cmd == "buscar":
         cmd_buscar(x.cpk, x.patron)
     elif x.cmd == "extraer":
-        return cmd_extraer(x.cpk, x.nombre, x.salida)
+        return cmd_extraer(x.cpk, x.nombre, x.salida, x.descomprimir)
     else:
         ap.print_help()
     return 0

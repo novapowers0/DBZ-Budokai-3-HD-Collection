@@ -22,6 +22,8 @@
 
 #include "generated/dbz3_init.h"
 
+#include "xv2_fisica_runtime.inl"
+
 REX_HOOK_RAW(sub_820F2280) {
     // r3 = original index, r4 = argument passed to the handler
     uint32_t index = ctx.r3.u32;

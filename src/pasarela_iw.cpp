@@ -3,10 +3,13 @@
 // juego (mapa del mundo, insignias, ficha y resultado), leidos en marcha; nada del juego va en la version. Docs:
 // docs/16_pasarela_modos/03_infinite_world.md §2.
 #include "pasarela_iw.h"
+#include "generated/dbz3_init.h"
 #include "anim_iw.h"
 #include "guest_region.h"
 #include "ingame/tutorial.h"
 #include "iw_minijuegos.h"
+#include "iw_mini_vuelo.h"
+#include "iw_spx_capsulas.h"
 #include "ps2_modelo.h"
 #include "video_sfd.h"
 
@@ -16,6 +19,7 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <chrono>
 #include <cmath>
 #include <cstdarg>
 #include <cstdint>
@@ -26,12 +30,18 @@
 #include <fstream>
 #include <map>
 #include <mutex>
+#include <stdexcept>
 #include <random>
+#include <sstream>
 #include <unordered_map>
+#include <toml++/toml.hpp>
 
 #include "launcher/i18n.h"
 #include "launcher/launcher_state.h"
 #include "launcher/settings.h"
+
+namespace dbz3::pasarela::misiones { bool Busy(); }
+namespace dbz3::rpg { void Premio(int zeni); }
 
 namespace dbz3::pasarela {
 namespace ama = dbz3::anim::ama;
@@ -74,6 +84,249 @@ struct CapsulaSCD {
   int nivel = 0;        // byte +0x05
 };
 std::vector<CapsulaSCD> g_caps_iw;
+
+// Catálogo distinto de Capsules_SCDindexes: DATA_CMN 1127, #SCD. Lo carga
+// READ_GameFolders (EU 0x2ADE30) y Capsule_LoadAndInitData (EU 0x2AB8E0).
+struct PropiedadCapsulaIW {
+  int id = 0, tipo = 0, excluida = 0, propietario = -1, sustituta = -1;
+  std::array<int, 3> requisitos{};
+  uint8_t inicial = 0;
+};
+std::vector<PropiedadCapsulaIW> g_catalogo_iw;
+std::vector<int> g_deseos_iw;   // CMN967: 127 u32, imagen correspondiente en DATA_USA/ENG62
+std::map<int, int> g_estado_iw;
+// Conservación del formato provisional antiguo. El DM original NO recupera
+// perfiles por misión: estos registros se preservan, pero no se aplican.
+std::map<int, std::array<int, 8>> g_equipos_iw;
+std::array<int, 8> g_tipos_ranura_iw = {2, 3, 3, 1, 0, 0, 0, 0};
+std::array<std::array<int, 57>, 2> g_verdes_iw{};
+ama::Obra g_skill_obra;
+std::map<int, std::vector<ama::Entrada>> g_skill_reposo;
+ama::Obra g_ficha_obra;
+std::map<int, std::vector<ama::Entrada>> g_ficha_reposo;
+std::array<int, 9> g_skill_filas = {149, 179, 207, 236, 267, 295, 323, 352, 383};
+std::array<float, 4> g_skill_rect_nombre = {-137, -14, 137, 14};
+// EU 0x1B3D50: bits 08/10/20 heredan la muestra del nodo AUN SIN claves FX.
+// El lector compartido solo marca tiene_fx si hay claves; se normaliza la obra
+// de esta pantalla sin modificar anim_iw.* (propiedad de otro frente).
+void ActivarFxHeredadosIW(ama::Obra& obra) {
+  for (auto& s : obra.Segs())
+    if (s.efectos_crudo && (s.fx.flags & 0x38)) s.tiene_fx = true;
+}
+bool g_habilidades_validas = true;
+std::string g_error_habilidades;
+struct EquipoCombateIW {
+  bool armado = false;
+  int mision = 0, jugador = -1, rival = -1, cantidad = 0;
+  std::array<uint16_t, 7> capsulas{};
+};
+std::mutex g_equipo_combate_mu;
+EquipoCombateIW g_equipo_combate;
+int ActivacionFijaIW(int activacion, size_t posicion);
+
+void CancelarEquipoIW() {
+  std::lock_guard<std::mutex> lock(g_equipo_combate_mu);
+  g_equipo_combate = {};
+}
+
+// Mismas equivalencias de efecto documentadas en pasarela_misiones.cpp
+// (CapsulaIWAB3). Una cápsula sin port NO se reemplaza por una aproximación.
+int EquivalenteCapsulaIW(int id) {
+  static constexpr std::pair<int, int> tabla[] = {
+    {1,6},{13,6},{34,20},{43,26},{61,33},{106,54},{133,66},{232,117},{415,28},{418,28},
+    {7,12},{25,17},{64,34},{67,38},{70,40},{85,42},{100,51},{103,52},{112,55},{115,59},
+    {121,60},{136,67},{145,74},{148,75},{202,103},{208,105},{211,106},{220,109},{244,118},
+    {247,120},{250,121},{292,137},{295,138},{376,10},{397,10},{430,43},{445,43},{451,49},
+    {466,62},{469,61},{475,68},{481,76},{508,104},{511,107},{526,122},{550,400},{885,254},
+    {384,175},{387,187},{426,150},{529,123},{559,146},{857,407}};
+  for (const auto& [iw, b3] : tabla) if (iw == id) return b3;
+  return 0;
+}
+
+bool PrepararEquipoIW(const MisionTablaIW& m, const std::array<int, 8>* equipo) {
+  CancelarEquipoIW();
+  if (!g_habilidades_validas) return true;   // fichero conservado: permite jugar con el equipo de serie
+  if (!equipo) return true;
+  EquipoCombateIW q;
+  q.mision = m.numero; q.jugador = IWaB3(m.jugador); q.rival = IWaB3(m.rival);
+  for (size_t k = 0; k < 8; ++k) {
+    int id = (*equipo)[k];
+    if (m.habilidades[k] >= 0) {
+      id = 0;
+      const int activacion = ActivacionFijaIW(m.habilidades[k], k);
+      if (activacion > 0)
+        for (const auto& c : g_caps_iw) if (c.activacion == activacion) { id = c.id; break; }
+    }
+    if (!id) continue;
+    const int b3 = EquivalenteCapsulaIW(id);
+    if (!b3 || q.cantidad == 7) {
+      REXLOG_WARN("dbz3 iw capsulas: mision {} no lanzada: capsula {} sin equivalente o mas de siete; no se trunca el equipo",
+                  m.numero, id);
+      return false;
+    }
+    q.capsulas[size_t(q.cantidad++)] = uint16_t(b3);
+  }
+  q.armado = true;
+  std::lock_guard<std::mutex> lock(g_equipo_combate_mu);
+  g_equipo_combate = q;
+  return true;
+}
+
+std::filesystem::path RutaHabilidadesIW() {
+  return dbz3::settings::UserDataRoot() / "pasarela" / "iw_habilidades.toml";
+}
+
+void CargarHabilidadesIW(const std::vector<uint8_t>& scd) {
+  g_catalogo_iw.clear();
+  g_estado_iw.clear();
+  g_equipos_iw.clear();
+  g_habilidades_validas = true;
+  g_error_habilidades.clear();
+  if (scd.size() < 0x20 || std::memcmp(scd.data(), "#SCD", 4)) return;
+  const size_t n = U32(scd, 4), registros = U32(scd, 0x18);
+  if (n > 0x580 || 0x20 + n * 2 > scd.size() || registros > scd.size() || n * 16 > scd.size() - registros) return;
+  for (size_t i = 0; i < n; ++i) {
+    const size_t p = registros + i * 16;
+    PropiedadCapsulaIW c;
+    c.id = U16(scd, 0x20 + i * 2);
+    c.tipo = scd[p]; c.excluida = scd[p + 1]; c.inicial = scd[p + 3];
+    c.propietario = int16_t(U16(scd, p + 4));
+    for (int k = 0; k < 3; ++k) c.requisitos[size_t(k)] = int16_t(U16(scd, p + 6 + size_t(k) * 2));
+    c.sustituta = int16_t(U16(scd, p + 12));
+    g_catalogo_iw.push_back(c);
+    g_estado_iw[c.id] = c.inicial;
+  }
+  const auto ruta = RutaHabilidadesIW();
+  std::error_code ec;
+  if (std::filesystem::exists(ruta, ec)) {
+    try {
+      const auto tabla = toml::parse_file(ruta.string());
+      if (tabla["version"].value<int>() != 1) throw std::runtime_error("version de habilidades desconocida");
+      if (const auto* estados = tabla["estado"].as_table())
+        for (const auto& [clave, nodo] : *estados) {
+          const int id = std::stoi(std::string(clave.str()));
+          const auto valor = nodo.value<int>();
+          if (!g_estado_iw.count(id) || !valor || *valor < 0 || *valor > 255) throw std::runtime_error("estado de capsula invalido");
+          g_estado_iw[id] = *valor;
+        }
+      if (const auto* equipos = tabla["equipo"].as_table())
+        for (const auto& [clave, nodo] : *equipos) {
+          const int mision = std::stoi(std::string(clave.str()));
+          const auto* valores = nodo.as_array();
+          if (mision < 1 || mision > kRegistros || !valores || valores->size() != 8) throw std::runtime_error("equipo invalido");
+          std::array<int, 8> equipo{};
+          for (size_t k = 0; k < 8; ++k) {
+            const auto valor = (*valores)[k].value<int>();
+            if (!valor || *valor < 0 || (*valor && !g_estado_iw.count(*valor))) throw std::runtime_error("capsula de equipo invalida");
+            equipo[k] = *valor;
+          }
+          g_equipos_iw[mision] = equipo;
+        }
+    } catch (const std::exception& e) {
+      g_habilidades_validas = false;
+      g_error_habilidades = e.what();
+      g_equipos_iw.clear();
+      for (const auto& c : g_catalogo_iw) g_estado_iw[c.id] = c.inicial;
+      REXLOG_WARN("dbz3 iw habilidades: no se modifica {}: {}", ruta.string(), e.what());
+    }
+  }
+  REXLOG_INFO("dbz3 iw habilidades: #SCD {} fichas, {} poseidas; {} perfiles antiguos conservados; lectura {}",
+              g_catalogo_iw.size(), std::count_if(g_estado_iw.begin(), g_estado_iw.end(),
+              [](const auto& c) { return (c.second & 0xE0) == 0xE0; }), g_equipos_iw.size(), g_habilidades_validas);
+}
+
+int EstadoCapsulaIW(int id) {
+  const auto it = g_estado_iw.find(id);
+  return it == g_estado_iw.end() ? 0 : it->second;
+}
+
+// EU 0x2ABEC0 + 0x2AC810/0x2AC8D0: la cápsula fija conserva su nivel
+// exigido o usa la variante superior POSEÍDA de la misma familia. La cuarta
+// posición evita expresamente esta sustitución en DragonMissionSkillEditScreen.
+int ActivacionFijaIW(int activacion, size_t posicion) {
+  if (activacion <= 0 || posicion == 3) return activacion;
+  size_t p = 0;
+  while (p < g_caps_iw.size() && g_caps_iw[p].activacion != activacion) ++p;
+  if (p == g_caps_iw.size()) return activacion;
+  size_t primero = p, ultimo = p;
+  if (g_caps_iw[p].nivel > 1)
+    while (primero > 0 && g_caps_iw[primero].nivel != 1) --primero;
+  while (ultimo + 1 < g_caps_iw.size() && g_caps_iw[ultimo + 1].nivel != 1) ++ultimo;
+  for (int nivel = g_caps_iw[ultimo].nivel; nivel > g_caps_iw[primero].nivel; --nivel) {
+    const int candidato = g_caps_iw[primero].activacion + nivel - 1;
+    if (candidato == activacion) return activacion;
+    for (const auto& c : g_caps_iw)
+      if (c.activacion == candidato && (EstadoCapsulaIW(c.id) & 0xE0) == 0xE0) return candidato;
+  }
+  return activacion;
+}
+
+void ActualizarInventarioIW() {
+  // Solo los resultados acreditan haber completado una misión. iw_hecho puede
+  // ser el máximo abierto y los iw_cap_* antiguos eran EQUIPO, no posesión.
+  for (int n = 1; n <= kMisiones; ++n)
+    if (LeerProgreso("iw_rango_" + std::to_string(n), 0) > 0 && g_estado_iw.count(0x7E1 + n))
+      g_estado_iw[0x7E1 + n] |= 0xE0;
+  // rango_iw_mini_* (sin el prefijo iw_rango) solo mejora al SUPERAR el
+  // minijuego. iw_rango_mini_* también existe tras una derrota: no sirve aquí.
+  for (int clave = 0x7D0; clave <= 0x7E1; ++clave)
+    if (LeerProgreso("rango_iw_mini_" + std::to_string(clave), 0) > 0 && g_estado_iw.count(clave))
+      g_estado_iw[clave] |= 0xE0;
+  // EU 0x2AB590: tipo 6 = cualquiera; el resto todos, y al menos uno válido.
+  for (const auto& c : g_catalogo_iw) {
+    if (EstadoCapsulaIW(c.id)) continue;
+    int total = 0, hechos = 0;
+    for (const int id : c.requisitos) if (id >= 0 && g_estado_iw.count(id)) {
+      ++total;
+      if ((EstadoCapsulaIW(id) & 0xF0) == 0xE0) ++hechos;
+    }
+    if (c.tipo == 6 ? hechos != 0 : total != 0 && hechos == total) g_estado_iw[c.id] = 0x80;
+  }
+}
+
+bool GuardarHabilidadesIW() {
+  if (!g_habilidades_validas || g_catalogo_iw.empty()) return false;
+  toml::table estados, equipos;
+  for (const auto& [id, estado] : g_estado_iw) estados.insert(std::to_string(id), estado);
+  for (const auto& [mision, equipo] : g_equipos_iw) {
+    toml::array a;
+    for (const int id : equipo) a.push_back(id);
+    equipos.insert(std::to_string(mision), std::move(a));
+  }
+  toml::table tabla;
+  tabla.insert("version", 1);
+  tabla.insert("estado", std::move(estados));
+  tabla.insert("equipo", std::move(equipos));
+  const auto ruta = RutaHabilidadesIW();
+  const auto sello = std::to_string(std::chrono::system_clock::now().time_since_epoch().count());
+  const auto temporal = ruta.string() + ".nuevo." + sello;
+  std::error_code ec;
+  std::filesystem::create_directories(ruta.parent_path(), ec);
+  if (ec) return false;
+  {
+    std::ofstream f(temporal, std::ios::binary);
+    f << tabla;
+    f.flush();
+    if (!f) return false;
+  }
+  try { (void)toml::parse_file(temporal); }
+  catch (const toml::parse_error&) { return false; }
+  // No se borra ni se sobrescribe la revisión anterior; tampoco progreso.toml.
+  const bool anterior = std::filesystem::exists(ruta, ec);
+  const auto respaldo = ruta.string() + ".anterior." + sello;
+  if (anterior) {
+    std::filesystem::rename(ruta, respaldo, ec);
+    if (ec) return false;
+  }
+  std::filesystem::rename(temporal, ruta, ec);
+  if (ec) {
+    if (anterior) { std::error_code restaurar; std::filesystem::rename(respaldo, ruta, restaurar); }
+    return false;
+  }
+  REXLOG_INFO("dbz3 iw habilidades: inventario guardado {} ({} perfiles antiguos conservados; anterior conservado {})", ruta.string(),
+              g_equipos_iw.size(), anterior);
+  return true;
+}
 
 std::vector<CapsulaSCD> LeerTablaCapsulasIW(const std::vector<uint8_t>& elf) {
   for (size_t p = 0; p + 16 * 127 <= elf.size(); p += 2) {
@@ -258,6 +511,7 @@ std::vector<MisionTablaIW> TablaMisionesIW(const std::vector<uint8_t>& elf, std:
     int primera = 0;
     for (int k = 0; k < 8; ++k) {
       const int scd = U16(elf, r + size_t(kSlot[k]));
+      m.habilidades[size_t(k)] = int16_t(scd);
       if (scd == 0 || scd == 0xFFFF) continue;
       const auto it = scd2cap.find(scd);
       if (it == scd2cap.end()) continue;   // SCD sin ficha: no se inventa la capsula
@@ -1106,6 +1360,33 @@ bool LeerDragonMission(const std::filesystem::path& iw, DragonMissionIW& out, st
     error = "sin DATA_USA.AFS o DATA_CMN.AFS en " + iw.string();
     return false;
   }
+  CargarHabilidadesIW(cmn.Entrada(1127));
+  g_deseos_iw.clear();
+  const auto deseos = cmn.Entrada(967);
+  if (deseos.size() == 127 * 4 && !U32(deseos, 0))
+    for (size_t i = 0; i < 127; ++i) g_deseos_iw.push_back(int(U32(deseos, i * 4)));
+  REXLOG_INFO("dbz3 iw habilidades: lista de deseos CMN967: {} IDs", g_deseos_iw.size());
+  // Tabla del ejecutable del jugador, reconocida por los primeros siete IDs.
+  // No se reparte una copia ni se confunde el índice del menú con el ID.
+  for (size_t p = 0; p + 29 * 4 <= elf.size(); p += 4) {
+    if (U32(elf, p) || U32(elf, p + 4) != 44 || U32(elf, p + 8) != 2 ||
+        U32(elf, p + 12) != 3 || U32(elf, p + 16) != 4 || U32(elf, p + 20) != 6 || U32(elf, p + 24) != 7) continue;
+    bool valida = true;
+    for (size_t i = 0; i < 29; ++i) valida = valida && U32(elf, p + i * 4) <= 100;
+    if (!valida) continue;
+    for (size_t i = 0; i < 29; ++i) out.ids_mini[i] = int(U32(elf, p + i * 4));
+    if (p >= 0x3A0) for (size_t i = 0; i < 8; ++i) g_tipos_ranura_iw[i] = int(U32(elf, p - 0x3A0 + i * 4));
+    if (p >= 0x440 && U16(elf, p - 0x440 + 22) == 1513)
+      for (size_t i = 0; i < 57; ++i) out.skill_bancos[i] = U16(elf, p - 0x440 + i * 2);
+    if (p >= 0x2F0 && U32(elf, p - 0x2F0) == 149)
+      for (size_t i = 0; i < 9; ++i) g_skill_filas[i] = int(U32(elf, p - 0x2F0 + i * 4));
+    const size_t verdes = p == 0x37DC80 ? 0x37C160 : p == 0x37D4D0 ? 0x37B960 : 0;
+    if (verdes && verdes + 0x80 + 57 * 2 <= elf.size() && U16(elf, verdes) == 1174 && U16(elf, verdes + 0x80) == 1216)
+      for (size_t k = 0; k < 2; ++k) for (size_t i = 0; i < 57; ++i)
+        g_verdes_iw[k][i] = U16(elf, verdes + k * 0x80 + i * 2);
+    REXLOG_INFO("dbz3 iw seleccion: 29 IDs de personaje del ELF en {:#x}", p);
+    break;
+  }
   auto todas = [](const std::vector<uint8_t>& amt) {
     std::vector<Imagen> v;
     for (int j = 0, n = CuantasAmt(amt); j < n; ++j) v.push_back(TexturaAmt(amt, j));
@@ -1157,11 +1438,41 @@ bool LeerDragonMission(const std::filesystem::path& iw, DragonMissionIW& out, st
   out.goku = Escala2x(Escala2x(De(out.iconos, kGokuMapa)));
   out.frases = todas(HijoAmb(b334, 6));
   out.ui = todas(HijoAmb(b334, 1));
+  g_ficha_reposo.clear();
+  if (g_ficha_obra.Cargar(HijoAmb(b334, 0))) {
+    ActivarFxHeredadosIW(g_ficha_obra);
+    for (const int grupo : {19, 21, 24, 27, 30, 33, 36, 39, 42, 45, 50, 81, 84, 87, 117}) {
+      if (uint32_t(grupo) >= g_ficha_obra.NumObjetos()) continue;
+      auto arbol = ama::CrearArbol(g_ficha_obra, g_ficha_obra.Objeto(uint32_t(grupo)));
+      ama::MarcarArbol(arbol, 0);
+      ama::Contexto ctx;
+      if (arbol.raiz >= 0) ama::ActualizarNodo(arbol, arbol.raiz, ctx, g_ficha_reposo[grupo]);
+    }
+  }
   out.road = todas(HijoAmb(b333, 0));
   // DS55: arte de las pantallas que faltaban, del AFS del jugador y con los mismos lectores (#AMT directo).
   // 65 = Warrior's Room / Skill Edit (fondo 600x450, marcos, frascos de capsula y el Shenron de los deseos);
   // 370 = opciones (rotulo de brillo y deslizador); 62 = frases del deseo de Shenron (una textura por indice).
   out.sala = todas(usa.Entrada(65));
+  out.skill_ui = todas(usa.Entrada(372));
+  g_skill_reposo.clear();
+  if (g_skill_obra.Cargar(usa.Entrada(371))) {
+    ActivarFxHeredadosIW(g_skill_obra);
+    for (const int grupo : {2, 8, 17, 23, 32, 35, 38, 41}) {
+      if (uint32_t(grupo) >= g_skill_obra.NumObjetos()) continue;
+      auto arbol = ama::CrearArbol(g_skill_obra, g_skill_obra.Objeto(uint32_t(grupo)));
+      ama::MarcarArbol(arbol, 0);
+      ama::Contexto ctx;
+      ama::ActualizarNodo(arbol, arbol.raiz, ctx, g_skill_reposo[grupo]);
+      if (grupo == 41) for (const auto& n : arbol.nodos) {
+        if (n.seg < 0 || !g_skill_obra.Seg(n.seg).TieneRect()) continue;
+        std::copy_n(g_skill_obra.Seg(n.seg).rect, 4, g_skill_rect_nombre.begin());
+        break;
+      }
+    }
+    REXLOG_INFO("dbz3 iw capsulas: bandeja nativa AMA371/AMT372, {} grupos; banco Piccolo {}",
+                g_skill_reposo.size(), out.skill_bancos[11]);
+  }
   out.opciones = todas(usa.Entrada(370));
   out.deseos = todas(usa.Entrada(62));
   REXLOG_INFO("dbz3 misiones: iw: pantallas DS55: sala {} texturas (DATA_USA 65), opciones {} (370), deseos {} (62)",
@@ -1197,11 +1508,13 @@ bool LeerDragonMission(const std::filesystem::path& iw, DragonMissionIW& out, st
     c.y = float(U32(d, o + 0x0C));
     c.indice = int(U32(d, o + 0x1C));
     c.cara = int(cara & 0xFFFF);
+    c.extra = int(U32(d, o + 0x14));
     if (tipo == 1 && clave > 0x7E1 && clave <= 0x7E1 + kMisiones) {
       c.mision = int(clave - 0x7E1);
       c.icono = icono_de(cara);
     } else if (tipo == 0) {
       c.icono = kInterrogante;   // minijuego (frente P4)
+      if (size_t(o) + 0x49 <= d.size()) std::copy_n(d.begin() + o + 0x2C, 29, c.personajes.begin());
       ++n_mini;
     } else if (tipo == 2) {
       c.icono = kEsfera;
@@ -1244,6 +1557,7 @@ bool LeerDragonMission(const std::filesystem::path& iw, DragonMissionIW& out, st
         e.x = float(U32(d2, o + 0x08));
         e.y = float(U32(d2, o + 0x0C));
         e.cara = int(cara & 0xFFFF);
+        e.extra = int(U32(d2, o + 0x14));   // 0x75 (117): menu de Story_MapDrawMenu tras el destello del Road
         out.eventos_road.push_back(e);
         continue;
       }
@@ -1456,25 +1770,134 @@ std::vector<PantallaDM::CapsulaIW> PantallaDM::CapsulasDeMisiones(const InfoDM& 
   return v;
 }
 
+namespace {
+int IdActivacionIW(int activacion) {
+  if (activacion <= 0) return 0;
+  for (const auto& c : g_caps_iw) if (c.activacion == activacion) return c.id;
+  return 0;
+}
+// EU 0x2ABAE0: el editor usa el propietario base, también para fusiones y
+// absorciones; el registro de COMBATE conserva el ID original de la misión.
+int PersonaCapsulasIW(int id) {
+  switch (id) {
+    case 84: case 79: case 78: return 36;
+    case 75: case 71: case 69: return 7;
+    case 74: case 70: case 68: return 0;
+    case 73: return 54;
+    case 65: return 9;
+    case 64: return 6;
+    default: return id;
+  }
+}
+int FamiliaCapsulaIW(int id) {
+  for (const auto& c : g_caps_iw) if (c.id == id) return c.activacion - std::max(c.nivel - 1, 0);
+  return -id;
+}
+bool EntreIW(int v, int a, int b) { return v >= a && v <= b; }
+// EU 0x2E1030 + 0x2E29C0: categoría, propietario, posesión, sustitución y
+// exclusiones de fusión. Son IDs de cápsula, no índices SCD ni slots B3.
+bool AdmiteCapsulaIW(const PropiedadCapsulaIW& c, int personaje, int ranura, const std::array<int, 8>& equipo) {
+  const int categoria = g_tipos_ranura_iw[size_t(ranura)];
+  if (c.tipo != categoria || c.excluida == 4 || (c.propietario != personaje && c.propietario != 255) ||
+      (EstadoCapsulaIW(c.id) & 0xF0) != 0xE0 ||
+      (c.sustituta >= 0 && (EstadoCapsulaIW(c.sustituta) & 0xF0) == 0xE0)) return false;
+  if (categoria <= 1 ? !EntreIW(c.id, 700, 1099) : !EntreIW(c.id, 0, 699)) return false;
+  if (categoria == 0) for (size_t i = 4; i < 8; ++i)
+    if (equipo[i] > 0 && FamiliaCapsulaIW(equipo[i]) == FamiliaCapsulaIW(c.id)) return false;
+  auto verdes = [&](int a, int b) { return std::any_of(equipo.begin() + 4, equipo.end(),
+      [&](int id) { return EntreIW(id, a, b); }); };
+  auto rojas = [&](int a, int b) { return EntreIW(equipo[1], a, b) || EntreIW(equipo[2], a, b); };
+  if (personaje == 0) {
+    if (EntreIW(equipo[0], 379, 387) && ((categoria == 0 && EntreIW(c.id, 793, 797)) ||
+        (categoria == 3 && !EntreIW(c.id, 1, 3)))) return false;
+    if ((verdes(793, 797) || rojas(7, 9)) && EntreIW(c.id, 379, 387)) return false;
+  } else if (personaje == 7) {
+    if (EntreIW(equipo[0], 433, 441) && ((categoria == 0 && (EntreIW(c.id, 808, 810) || EntreIW(c.id, 853, 857))) ||
+        (categoria == 3 && !EntreIW(c.id, 67, 69)))) return false;
+    if ((verdes(808, 810) || verdes(853, 857) || rojas(70, 72)) && EntreIW(c.id, 433, 441)) return false;
+  } else if (personaje == 54) {
+    if (EntreIW(equipo[0], 448, 450) && ((categoria == 0 && EntreIW(c.id, 811, 812)) ||
+        (categoria == 3 && !EntreIW(c.id, 85, 87)))) return false;
+    if ((verdes(811, 812) || rojas(82, 84)) && EntreIW(c.id, 448, 450)) return false;
+  } else if (personaje == 6) {
+    if ((EntreIW(equipo[0], 424, 426) && categoria == 0 && c.id == 807) ||
+        (verdes(807, 807) && EntreIW(c.id, 424, 426))) return false;
+  } else if (personaje == 9) {
+    if ((EntreIW(equipo[0], 457, 459) && categoria == 0 && c.id == 815) ||
+        (verdes(815, 815) && EntreIW(c.id, 457, 459))) return false;
+  }
+  return true;
+}
+}  // namespace
+
 void PantallaDM::AbrirCapsulas(const InfoDM& in) {
-  // EU 0x2E3F40 SkillEditFunc1: alta de la pantalla (contexto, 4 carpetas CMN y estado). Aqui: se listan las capsulas
-  // de las misiones con su estado y la tabla de bloqueadas (StoryModeLockedCapsules EU 0x2ABEC0).
-  edit_caps_ = CapsulasDeMisiones(in);
+  const int n = Mision(in);
+  if (!in.tabla || n < 1 || n > int(in.tabla->size()) || g_catalogo_iw.empty()) return;
+  if (!in.road && n <= 10) return;   // EU 0x2FAD10: los entrenamientos no abren el editor
+  ActualizarInventarioIW();
+  const auto& m = (*in.tabla)[size_t(n - 1)];
+  if (edit_mision_ != n) {
+    edit_equipo_.fill(0);
+    edit_preparado_ = false;
+  }
+  edit_mision_ = n; edit_personaje_ = PersonaCapsulasIW(m.jugador);
+  edit_nombres_.clear();
+  AfsPs2 nombres;
+  if (nombres.Abrir(in.dm->raiz, "DATA_USA.AFS")) {
+    edit_banco_comun_ = nombres.Entrada(1490);
+    edit_banco_personaje_ = edit_personaje_ >= 0 && edit_personaje_ < 57 && in.dm->skill_bancos[size_t(edit_personaje_)] > 0
+        ? nombres.Entrada(size_t(in.dm->skill_bancos[size_t(edit_personaje_)])) : std::vector<uint8_t>{};
+  }
+  std::string mascara, ids;
+  for (size_t k = 0; k < 8; ++k) {
+    edit_fija_[k] = m.habilidades[k] >= 0;
+    edit_habilitada_[k] = k < 6 || (edit_personaje_ >= 0 && edit_personaje_ < 57 &&
+        (EstadoCapsulaIW(g_verdes_iw[k - 6][size_t(edit_personaje_)]) & 0xE0) == 0xE0);
+    if (edit_fija_[k]) edit_equipo_[k] = IdActivacionIW(ActivacionFijaIW(m.habilidades[k], k));
+    else if (!edit_habilitada_[k]) edit_equipo_[k] = 0;
+    mascara += edit_fija_[k] ? '1' : '0';
+    ids += (k ? "," : "") + std::to_string(edit_equipo_[k]);
+  }
   edit_sel_ = 0;
+  while (edit_sel_ < 8 && (edit_fija_[size_t(edit_sel_)] || !edit_habilitada_[size_t(edit_sel_)])) ++edit_sel_;
   edit_tab_ = 0;
+  edit_cambiado_ = false;
+  edit_aviso_ = g_habilidades_validas ? std::string() :
+      std::string(T::T("no se pudo guardar ", "could not save ")) + "iw_habilidades.toml";
   edit_abierto_ = true;
-  REXLOG_INFO("dbz3 iw capsulas: Skill Edit con {} capsulas de mision ({} conseguidas)", edit_caps_.size(),
-              std::count_if(edit_caps_.begin(), edit_caps_.end(), [](const CapsulaIW& c) { return c.tiene; }));
+  REXLOG_INFO("dbz3 iw capsulas: Skill Edit mision {}, personaje {}, fijas {}, equipo {} (EU 0x2FAD10)",
+              n, m.jugador, mascara, ids);
+}
+
+const Imagen& PantallaDM::NombreCapsula(int id) {
+  auto [it, nuevo] = edit_nombres_.try_emplace(id);
+  if (nuevo && id > 0) {
+    const auto& banco = id >= 700 ? edit_banco_comun_ : edit_banco_personaje_;
+    if (banco.size() >= 0x20) {
+      const int primero = int(U32(banco, 0x18));
+      if (id >= primero && id - primero < CuantasAmt(banco)) it->second = TexturaAmt(banco, id - primero);
+    }
+  }
+  return it->second;
 }
 
 // EU 0x2B1220 CapsulePick_Start_LoadCmnFiles
 void PantallaDM::AbrirShenron(const InfoDM& in) {
-  // De la lista de capsulas, descarta las que ya estan (byte de estado 0xE0; el port, `tiene`) y saca tres al azar
-  // sin repetir. Aqui la lista es la de premios de mision y el estado, `iw_cap_*`.
-  const std::vector<CapsulaIW> todas = CapsulasDeMisiones(in);
+  (void)in;
+  if (g_deseos_iw.size() != 127 || g_catalogo_iw.empty() || !g_habilidades_validas) {
+    shenron_fase_ = -1;
+    REXLOG_WARN("dbz3 iw shenron: sin lista CMN967 o inventario valido; no se inventa un premio");
+    return;
+  }
+  ActualizarInventarioIW();
+  // EU 0x280990: índices 1..126 de CMN967, no las técnicas de las misiones
+  // ni todas las fichas del #SCD. Los huecos a cero son 100000 zení.
   std::vector<CapsulaIW> libres;
-  for (const CapsulaIW& c : todas)
-    if (!c.tiene) libres.push_back(c);
+  for (size_t i = 1; i < g_deseos_iw.size(); ++i) {
+    const int id = g_deseos_iw[i];
+    if (g_estado_iw.count(id) && (EstadoCapsulaIW(id) & 0xE0) != 0xE0)
+      libres.push_back({id, 0, int(i), false});
+  }
   shenron_3_.clear();   // el original limpia los tres destinos (+0x14/+0x18/+0x1c = 0)
   std::mt19937 rng{std::random_device{}()};
   // EU 0x280990 CapsuleSelect_PickRandomThree_
@@ -1483,6 +1906,8 @@ void PantallaDM::AbrirShenron(const InfoDM& in) {
     shenron_3_.push_back(libres[i]);
     libres.erase(libres.begin() + std::ptrdiff_t(i));
   }
+  const size_t elegidas = shenron_3_.size();
+  while (shenron_3_.size() < 3) shenron_3_.push_back({0, 0, 0, false});
   shenron_sel_ = 0;
   shenron_t_ = 0;
   // El original configura y muestra la pantalla aunque queden menos de tres capsulas (AMA_MenuScreenShowUp_ y
@@ -1491,94 +1916,135 @@ void PantallaDM::AbrirShenron(const InfoDM& in) {
   std::string ids;
   for (const CapsulaIW& c : shenron_3_) ids += (ids.empty() ? "" : ",") + std::to_string(c.id);
   REXLOG_INFO("dbz3 iw shenron: CapsulePick_Start_LoadCmnFiles (EU 0x2B1220): {} capsulas {} de {} libres",
-              shenron_3_.size(), ids, libres.size() + shenron_3_.size());
+              elegidas, ids, libres.size() + elegidas);
 }
 
-// Skill Edit (EU 0x2E3F40) con el arte de DATA_USA 65. Dos vistas: las capsulas de mision y la tabla de bloqueadas
-// (EU 0x2ABEC0 StoryModeLockedCapsules). La sustitucion de una capsula bloqueada por su variante libre necesita
-// Capsules_SCDindexes (0x319 filas del bloque de datos de arranque), que no esta en el AFS: se marca [H].
+// Skill Edit: ocho posiciones con máscara fija del registro de misión y selección
+// del inventario #SCD real. El guardado añadido no reinterpreta iw_cap_* como posesión.
 PantallaDM::Accion PantallaDM::PantallaCapsulas(ImDrawList* dl, const ImGuiIO& io, float t, uint16_t pulsado,
                                                 const InfoDM& in) {
-  (void)t;
   const auto a = S::GameArea(io);
-  const auto& sala = in.dm->sala;
-  dl->AddRectFilled(ImVec2(0, 0), io.DisplaySize, IM_COL32(0, 0, 0, 255));
-  Imagen2(dl, 12000 + kSalaFondo, De(sala, kSalaFondo), a.At(0, 0), a.At(1200, 900));
-  Imagen2(dl, 12000 + kSalaTitulo, De(sala, kSalaTitulo), a.At(40, 22), a.At(340, 168));
-  Imagen2(dl, 12100 + kSalaSkillEdit, De(sala, kSalaSkillEdit), a.At(900, 38), a.At(1150, 155));
-  // panel central (marco del juego) y categorias decorativas de la pantalla original (t16)
-  Imagen2(dl, 12000 + kSalaMarco, De(sala, kSalaMarco), a.At(350, 150), a.At(1150, 700));
-  Imagen2(dl, 12000 + kSalaCategorias, De(sala, kSalaCategorias), a.At(50, 250), a.At(300, 660));
-  Imagen2(dl, 12000 + kSalaFrascos, De(sala, kSalaFrascos), a.At(70, 700), a.At(300, 800));
-  // pestanas: CAPSULAS / BLOQUEADAS (LB/RB o izquierda/derecha)
-  if (pulsado & (kLB | kRB | kLeft | kRight)) {
-    edit_tab_ ^= 1;
-    edit_sel_ = 0;
-  }
-  const char* tab0 = T::T("CAPSULAS", "CAPSULES");
-  const char* tab1 = T::T("BLOQUEADAS", "LOCKED");
-  S::MenuText(dl, a.At(560, 190), S::mode::kHead * a.s, tab0, edit_tab_ == 0, false, 220 * a.s);
-  S::MenuText(dl, a.At(860, 190), S::mode::kHead * a.s, tab1, edit_tab_ == 1, false, 260 * a.s);
-  // EU 0x2ABEC0 StoryModeLockedCapsules: capsulas bloqueadas del modo historia (las que no tienen el byte de
-  // estado 0xE0). El original sustituye cada una por su variante libre buscandola en Capsules_SCDindexes; esa
-  // tabla no esta en el AFS, asi que el port se queda en la lista filtrada por `!tiene` (marcado [H]).
-  // filas visibles (8); la tabla de bloqueadas es la misma lista filtrada por !tiene
-  std::vector<const CapsulaIW*> filas;
-  for (const CapsulaIW& c : edit_caps_)
-    if (edit_tab_ == 0 || !c.tiene) filas.push_back(&c);
-  if (filas.empty()) {
-    S::MenuText(dl, a.At(750, 430), S::mode::kRow * a.s,
-                edit_tab_ == 0 ? T::T("Sin capsulas de mision en esta partida.", "No mission capsules in this save.")
-                               : T::T("No queda ninguna capsula bloqueada.", "No locked capsules left."),
-                false, false, 700 * a.s);
+  // La bandeja de misión NO es Warrior's Room65: usa AMA371 y AMT372
+  // sobre la ficha. El motor AMA compartido resuelve posición, escala y giro.
+  FichaMinijuego(dl, io, t, 0, in);
+  if (edit_tab_ == 0) {
+    if (pulsado & (kUp | kDown)) {
+      const int antes = edit_sel_, dir = pulsado & kUp ? -1 : 1;
+      do { edit_sel_ = (edit_sel_ + dir + 9) % 9; }
+      while (edit_sel_ != 8 && (edit_fija_[size_t(edit_sel_)] || !edit_habilitada_[size_t(edit_sel_)]));
+      REXLOG_INFO("dbz3 iw capsulas: cursor de bandeja {} -> {}", antes, edit_sel_);
+    }
+    if ((pulsado & kA) && edit_sel_ < 8) {
+      if (edit_fija_[size_t(edit_sel_)] || !edit_habilitada_[size_t(edit_sel_)] || !g_habilidades_validas) {
+        REXLOG_INFO("dbz3 iw capsulas: posicion {} protegida (fija {}, habilitada {})", edit_sel_,
+                    edit_fija_[size_t(edit_sel_)], edit_habilitada_[size_t(edit_sel_)]);
+      } else {
+        edit_opciones_ = {0};
+        for (const auto& c : g_catalogo_iw)
+          if (AdmiteCapsulaIW(c, edit_personaje_, edit_sel_, edit_equipo_)) edit_opciones_.push_back(c.id);
+        edit_candidato_ = 0;
+        edit_tab_ = 1;
+        REXLOG_INFO("dbz3 iw capsulas: posicion {}: {} opciones poseidas (EU 0x2E29C0)", edit_sel_, edit_opciones_.size() - 1);
+      }
+    }
+    if ((pulsado & kB) || ((pulsado & kA) && edit_sel_ == 8)) {
+      bool guardado = true;
+      if (edit_cambiado_) {
+        guardado = GuardarHabilidadesIW();
+        if (!guardado) {
+          edit_aviso_ = std::string(T::T("no se pudo guardar ", "could not save ")) + "iw_habilidades.toml";
+        } else edit_preparado_ = true;
+      }
+      if (guardado) {
+        edit_abierto_ = false;
+        REXLOG_INFO("dbz3 iw capsulas: Skill Edit cerrado, mision {}, cambios {} (EU 0x2FA0B0)", edit_mision_, edit_cambiado_);
+      }
+    }
   } else {
-    if (pulsado & kUp) edit_sel_ = (edit_sel_ + int(filas.size()) - 1) % int(filas.size());
-    if (pulsado & kDown) edit_sel_ = (edit_sel_ + 1) % int(filas.size());
-    const int visibles = 8;
-    const int primero = std::clamp(edit_sel_ - visibles / 2, 0, std::max(0, int(filas.size()) - visibles));
-    for (int i = 0; i < visibles && primero + i < int(filas.size()); ++i) {
-      const CapsulaIW& c = *filas[size_t(primero + i)];
-      const bool sel = primero + i == edit_sel_;
-      const float y = 245.0f + 50.0f * float(i);
-      if (sel)
-        Imagen2(dl, 12000 + kSalaBarra, De(sala, kSalaBarra), a.At(390, y - 22), a.At(1090, y + 22), ImVec4(0, 0, 0, 0),
-                IM_COL32(255, 255, 255, 190));
-      Imagen2(dl, 12000 + kSalaCapsulaRoja, De(sala, kSalaCapsulaRoja), a.At(405, y - 29), a.At(425, y + 29));
-      char linea[128];
-      std::snprintf(linea, sizeof(linea), T::T("Cápsula %d  ·  misión %d", "Capsule %d  ·  mission %d"), c.id, c.mision);
-      S::MenuText(dl, a.At(450, y), S::mode::kRow * a.s, linea, sel, false, 620 * a.s);
-      S::MenuText(dl, a.At(980, y), S::mode::kSmall * a.s,
-                  c.tiene ? T::T("CONSEGUIDA", "OBTAINED") : T::T("BLOQUEADA", "LOCKED"), false, !c.tiene, 170 * a.s);
-    }
-    const CapsulaIW& c = *filas[size_t(std::clamp(edit_sel_, 0, int(filas.size()) - 1))];
-    // detalle: titulo y texto de la mision que la entrega (imagenes del AFS, las mismas de la ficha)
-    if (in.textos && c.mision >= 1 && c.mision - 1 < int(in.textos->misiones.size())) {
-      const MisionIW& mi = in.textos->misiones[size_t(c.mision - 1)];
-      ImVec2 p0, p1;
-      const ImVec4 rt = Recorte(mi.titulo);
-      Encajar(rt.z - rt.x, rt.w - rt.y, 750, 690, 690, 44, 1.8f, p0, p1);
-      Imagen2(dl, 15000 + c.mision, mi.titulo, a.At(p0.x, p0.y), a.At(p1.x, p1.y), rt);
-    }
-    if (edit_tab_ == 1) {
-      S::MenuText(dl, a.At(750, 742), S::mode::kSmall * a.s,
-                  T::T("Variante libre: [H] Capsules_SCDindexes (0x319 filas) no está en el AFS.",
-                       "Free variant: [H] Capsules_SCDindexes (0x319 rows) is not in the AFS."),
-                  false, true, 760 * a.s);
+    const int n = int(edit_opciones_.size());
+    if (pulsado & kUp) edit_candidato_ = (edit_candidato_ + n - 1) % n;
+    if (pulsado & kDown) edit_candidato_ = (edit_candidato_ + 1) % n;
+    if (pulsado & kB) edit_tab_ = 0;
+    if (pulsado & kA) {
+      const int id = edit_opciones_[size_t(edit_candidato_)];
+      edit_equipo_[size_t(edit_sel_)] = id;
+      edit_cambiado_ = true;
+      edit_tab_ = 0;
+      REXLOG_INFO("dbz3 iw capsulas: mision {} posicion {} equipada {}", edit_mision_, edit_sel_, id);
     }
   }
-  S::mode::Help(dl, a, {{"LB/RB", T::T("Vista", "View")}, {"B", T::T("Volver", "Back")}});
-  if (pulsado & kB) {
-    // EU 0x2E3E10 WarriorsRoomSkillEditScreen_SkillTrayMenuClear
-    edit_abierto_ = false;
-    REXLOG_INFO("dbz3 iw capsulas: Skill Edit cerrado (WariorsRoomSkillEditScreen_SkillTrayMenuClear EU 0x2E3E10)");
+  auto pintar = [&](const ama::Entrada& e, const Imagen& im, int clave) {
+    if (!im) return;
+    ama::Quad q;
+    ama::DibujarEntrada(e, q);
+    ImVec2 p[4], uv[4];
+    for (int k = 0; k < 4; ++k) {
+      p[k] = a.At(q.xy[k][0] * 2, q.xy[k][1] * 2);
+      uv[k] = ImVec2(q.uv[k][0] / float(im.w), q.uv[k][1] / float(im.h));
+    }
+    const auto tex = Tex(clave, im);
+    const ImU32 color = IM_COL32(int(std::clamp(e.tinte[0], 0.f, 1.f) * 255),
+        int(std::clamp(e.tinte[1], 0.f, 1.f) * 255), int(std::clamp(e.tinte[2], 0.f, 1.f) * 255),
+        std::clamp(int(std::clamp(e.tinte[3], 0.f, 1.f) * 255 + e.rgba[3]), 0, 255));
+    if (tex) dl->AddImageQuad(tex, p[0], p[1], p[2], p[3], uv[0], uv[1], uv[2], uv[3], color);
+  };
+  auto grupo = [&](int g) {
+    const auto it = g_skill_reposo.find(g);
+    if (it != g_skill_reposo.end()) for (const auto& e : it->second)
+      if (!e.SinTextura()) pintar(e, De(in.dm->skill_ui, e.textura), 35000 + e.textura);
+  };
+  auto nombre = [&](int grupo, int id, int fila) {
+    const auto& im = NombreCapsula(id);
+    if (!im || !g_skill_reposo.count(grupo)) return;
+    for (auto e : g_skill_reposo.at(grupo)) {
+      if (e.SinTextura()) continue;
+      const float rx = g_skill_rect_nombre[2] - g_skill_rect_nombre[0];
+      const float ry = g_skill_rect_nombre[3] - g_skill_rect_nombre[1];
+      if (rx == 0 || ry == 0) continue;
+      const float sx = (e.rect[2] - e.rect[0]) / rx, sy = (e.rect[3] - e.rect[1]) / ry;
+      e.rect[2] = e.rect[0] + float(im.w) * sx; e.rect[3] = e.rect[1] + float(im.h) * sy;
+      e.pos[1] += float(g_skill_filas[size_t(fila)] - g_skill_filas[0]);
+      e.uv[0] = e.uv[1] = 0; e.uv[2] = float(im.w); e.uv[3] = float(im.h);
+      pintar(e, im, 37000 + id);
+    }
+  };
+  grupo(17);
+  for (size_t i = 0; i < 8; ++i) {
+    nombre(41, edit_equipo_[i], int(i));
+    if (!edit_habilitada_[i] || edit_equipo_[i]) {
+      const int icono = !edit_habilitada_[i] ? 4 : g_tipos_ranura_iw[i] >= 2 ? 0 : g_tipos_ranura_iw[i] == 1 ? 2 : 1;
+      for (auto e : g_skill_reposo[23]) {
+        if (e.SinTextura()) continue;
+        e.pos[1] += 29.0f * float(i);
+        e.uv[0] = float(icono * 40); e.uv[1] = 0; e.uv[2] = float((icono + 1) * 40); e.uv[3] = 64;
+        pintar(e, De(in.dm->skill_ui, 2), 35002);
+      }
+    }
   }
+  auto selector = [&](int g, int fila) {
+    for (auto e : g_skill_reposo[g]) {
+      if (e.SinTextura()) continue;
+      e.pos[1] += float(g_skill_filas[size_t(fila)] - g_skill_filas[0]);
+      if (g == 35 && fila == 8) { e.rect[0] *= 1.10f / 1.15f; e.rect[2] *= 1.10f / 1.15f; }
+      pintar(e, De(in.dm->skill_ui, e.textura), 35000 + e.textura);
+    }
+  };
+  selector(35, edit_sel_);
+  if (edit_tab_) {
+    grupo(2);
+    const int n = int(edit_opciones_.size()), primero = std::clamp(edit_candidato_ - 4, 0, std::max(0, n - 9));
+    for (int i = primero; i < std::min(n, primero + 9); ++i) nombre(38, edit_opciones_[size_t(i)], i - primero);
+    selector(32, edit_candidato_ - primero);
+  }
+  if (!edit_aviso_.empty()) S::MenuText(dl, a.At(750, 730), S::mode::kSmall * a.s, edit_aviso_.c_str(), false, true, 760 * a.s);
+  // OK y SELECT/Guide proceden de las texturas nativas; no se superpone otra barra de botones.
   return kNada;
 }
 
 // EU 0x381A30 LoadWaitShenronWishMainMenuFunc
 // Deseos de Shenron (EU 0x2B1220 / 0x2B1210 / 0x381A30). Arte: DATA_USA 65 (ventana, Shenron, dialogos, aros y
-// capsulas) y las tres frases del banco 62. La lista son tres capsulas de mision que aun no se tienen, sorteadas como
-// CapsuleSelect_PickRandomThree_ (EU 0x280990). Al elegir se entrega (iw_cap_<mision>_<ranura>) y se apunta el deseo.
+// capsulas) y los nombres del banco 62, indexados por la lista CMN967. La concesión
+// de EU 0x280D00 conserva los bits bajos del estado, recalcula desbloqueos y dispersa las Bolas.
 PantallaDM::Accion PantallaDM::PantallaShenron(ImDrawList* dl, const ImGuiIO& io, float t, uint16_t pulsado,
                                                const InfoDM& in) {
   (void)t;
@@ -1609,7 +2075,8 @@ PantallaDM::Accion PantallaDM::PantallaShenron(ImDrawList* dl, const ImGuiIO& io
             ImVec4(0, 64, 192, 96));
     const CapsulaIW& c = shenron_3_[size_t(std::clamp(shenron_sel_, 0, int(shenron_3_.size()) - 1))];
     char linea[128];
-    std::snprintf(linea, sizeof(linea), T::T("Cápsula %d conseguida", "Capsule %d obtained"), c.id);
+    if (c.id) std::snprintf(linea, sizeof(linea), T::T("Cápsula %d conseguida", "Capsule %d obtained"), c.id);
+    else std::snprintf(linea, sizeof(linea), "100000 ZENI");
     S::MenuText(dl, a.At(760, 800), S::mode::kRow * a.s, linea, true, false, 700 * a.s);
     if (shenron_t_ > 1.4f || (pulsado & (kA | kB))) shenron_fase_ = -1;
     return kNada;
@@ -1626,30 +2093,56 @@ PantallaDM::Accion PantallaDM::PantallaShenron(ImDrawList* dl, const ImGuiIO& io
     }
     return kNada;
   }
-  if (pulsado & kUp) shenron_sel_ = (shenron_sel_ + int(shenron_3_.size()) - 1) % int(shenron_3_.size());
-  if (pulsado & kDown) shenron_sel_ = (shenron_sel_ + 1) % int(shenron_3_.size());
+  if (shenron_fase_ == 3 && ((pulsado & kStart) || shenron_t_ >= 960.0f / 60.0f)) {
+    const auto& c = shenron_3_[size_t(shenron_sel_)];
+    const auto anteriores = g_estado_iw;
+    if (c.id) g_estado_iw[c.id] |= 0xE0;
+    ActualizarInventarioIW();
+    if (!GuardarHabilidadesIW()) {
+      g_estado_iw = anteriores;
+      aviso_ = std::string(T::T("no se pudo guardar ", "could not save ")) + "iw_habilidades.toml";
+      return kNada;
+    }
+    if (!c.id) {
+      const int saldo = std::clamp(LeerProgreso("iw_zeni", 0), 0, 999900);
+      const int premio = std::min(100000, 999900 - saldo);
+      GuardarProgreso("iw_zeni", saldo + premio);
+      dbz3::rpg::Premio(premio);
+    }
+    GuardarProgreso("iw_bolas", 0);
+    GuardarProgreso("iw_deseo", LeerProgreso("iw_deseo", 0) + 1);
+    deseo_postpuesto_ = false;
+    deseo_bolas_ = 0;
+    t_deseo_ = -1;
+    shenron_fase_ = 2;
+    shenron_t_ = 0;
+    REXLOG_INFO("dbz3 iw shenron: deseo {}: capsula {}, estado {:#x}, Bolas 0; concesion EU 0x280D00",
+                LeerProgreso("iw_deseo", 0), c.id, EstadoCapsulaIW(c.id));
+    return kNada;
+  }
+  if (shenron_fase_ == 1 && (pulsado & kUp)) shenron_sel_ = (shenron_sel_ + int(shenron_3_.size()) - 1) % int(shenron_3_.size());
+  if (shenron_fase_ == 1 && (pulsado & kDown)) shenron_sel_ = (shenron_sel_ + 1) % int(shenron_3_.size());
   for (size_t i = 0; i < shenron_3_.size(); ++i) {
     const CapsulaIW& c = shenron_3_[i];
     const float y = 320.0f + 120.0f * float(i);
     const bool sel = int(i) == shenron_sel_;
     if (sel) Imagen2(dl, 12000 + kSalaBarra, De(sala, kSalaBarra), a.At(420, y - 36), a.At(1120, y + 36));
     Imagen2(dl, 12000 + kSalaCapsulaAmarilla, De(sala, kSalaCapsulaAmarilla), a.At(450, y - 30), a.At(560, y + 30));
-    char linea[128];
-    std::snprintf(linea, sizeof(linea), T::T("Cápsula %d  ·  misión %d", "Capsule %d  ·  mission %d"), c.id, c.mision);
-    S::MenuText(dl, a.At(770, y), S::mode::kHead * a.s, linea, sel, false, 620 * a.s);
+    const auto& nombre = De(in.dm->deseos, c.ranura);
+    if (nombre) {
+      ImVec2 p0, p1;
+      const auto r = Recorte(nombre);
+      Encajar(r.z - r.x, r.w - r.y, 820, y, 600, 100, 2, p0, p1);
+      Imagen2(dl, 27000 + c.ranura, nombre, a.At(p0.x, p0.y), a.At(p1.x, p1.y), r);
+    }
   }
-  S::mode::Help(dl, a, {{"A", T::T("Elegir", "Select")}, {"B", T::T("Luego", "Later")}});
-  if (pulsado & kA) {
-    const CapsulaIW& c = shenron_3_[size_t(shenron_sel_)];
-    GuardarProgreso("iw_cap_" + std::to_string(c.mision) + "_" + std::to_string(c.ranura), c.id);
-    GuardarProgreso("iw_cap_id_" + std::to_string(c.id), 1);   // aunque la mision aun no se haya jugado
-    GuardarProgreso("iw_deseo", LeerProgreso("iw_deseo", 0) + 1);
-    // EU 0x2B1210 LoadWaitShenronWishEndGameFunc: cierre del deseo (ayuda fuera, subtask muerto). La dispersion de
-    // las Bolas al acabar no esta en esa funcion: no se toca iw_bolas ([H]).
-    shenron_fase_ = 2;
+  S::mode::Help(dl, a, {{shenron_fase_ == 3 ? "START" : "A", T::T("Elegir", "Select")}, {"B", T::T("Luego", "Later")}});
+  if (!aviso_.empty()) S::MenuText(dl, a.At(750, 730), S::mode::kSmall * a.s, aviso_.c_str(), false, true, 760 * a.s);
+  if (shenron_fase_ == 1 && (pulsado & kA)) {
+    shenron_fase_ = 3;   // información: aún no concede (0x281400 -> 0x280D00)
     shenron_t_ = 0;
-    REXLOG_INFO("dbz3 iw shenron: deseo {}: capsula {} de la mision {} entregada (EU 0x28A020)", LeerProgreso("iw_deseo", 0),
-                c.id, c.mision);
+    REXLOG_INFO("dbz3 iw shenron: opcion {} (capsula {}): informacion, aun sin conceder; START o 960 cuadros",
+                shenron_sel_, shenron_3_[size_t(shenron_sel_)].id);
   }
   if (pulsado & kB) {
     deseo_postpuesto_ = true;
@@ -1717,6 +2210,7 @@ void PantallaDM::ReiniciarMapa() {
   tcam_ = 0;
   menu_mapa_ = 0;       // una entrada nueva cierra el menu START
   ev_ = -1; ev_fase_ = 0; ev_t_ = 0; ev_espera_ = 0; ev_saga_ = -1;   // cola de _StartUnlock___Func desde el principio
+  ev_temblor_ = false, ev_off_x_ = ev_off_y_ = 0;
   ordenes_.clear();     // la cola del mapa (0x5D9220) empieza vacia: la llena PrepararEntradaMapa
   estado_ = 7;
   t_orden_ = 0;
@@ -1724,6 +2218,11 @@ void PantallaDM::ReiniciarMapa() {
   cambio_t_ = 0;
   cambio_saga_ = cambio_mision_ = -1;
   edit_abierto_ = false;          // una entrada nueva cierra las pantallas DS55
+  edit_mision_ = 0;
+  edit_equipo_.fill(0);
+  edit_preparado_ = false;
+  edit_recuperar_ultima_ = true;
+  mini_ficha_ = mini_ajustes_ = false;
   brillo_abierto_ = false;
   esfera_video_ = -1;             // DS104: no arrastrar una marca tipo 2 de una entrada anterior
   mini_final_ = -1;               // DS104: ni un video final de minijuego pendiente
@@ -1923,11 +2422,12 @@ void PantallaDM::DespacharOrden(const InfoDM& in) {
       SalirDelCombate();
       estado_ = 4;   // la orden se saca al acabar Story_MapReloadAfterDelayTick (100 cuadros)
       return;
-    case 5:   // entrar en una saga: +0xE5 = saga, area en DAT_0049C348/50, musica, dialogo y cuenta de misiones
+    case 5:   // entrar en una saga: +0xE5 = saga, area en DAT_0049C348/50, musica y cuenta de misiones. El
+              // CharacterDialoguesStart_(0, 0x47DC80[area] | 0x20000) de l.385748 es la MUSICA (canal 0, banco 2), no
+              // una voz: la pone PantallaDM::Pista cada cuadro (MusicaIW).
       saga_actual_ = o.arg;
       ev_saga_ = o.arg;
-      REXLOG_INFO("dbz3 iw mapa: comando 5: saga {} (musica de la tabla 0x47DC80, dialogo de entrada y cuenta de "
-                  "misiones de la saga)", o.arg);
+      REXLOG_INFO("dbz3 iw mapa: comando 5: saga {} (musica de la tabla 0x47DC80 via Pista)", o.arg);
       SacarOrdenYRecargar();
       return;
     case 8:   // Bulma y las Bolas: el port las pinta siempre con la guia, no hay sprites que crear
@@ -2160,7 +2660,7 @@ void PantallaDM::Elegir(const InfoDM& in, int mision) {
   if (!in.dm) return;
   const auto& cas = Cas(in);
   for (size_t j = 0; j < cas.size(); ++j) {
-    if (cas[j].mision == mision) {
+    if ((mision >= 0x7D0 && mision <= 0x7E1) ? cas[j].tipo == 0 && cas[j].clave == mision : cas[j].mision == mision) {
       if (sel_ < 0 || cas[size_t(std::max(sel_, 0))].saga != cas[j].saga) mx_ = -1;   // otro mapa: sin paseo
       sel_ = int(j);
       ReiniciarMapa();   // entrar al mapa: Story_MapIntroDelayTick + aparicion de casillas
@@ -2462,6 +2962,7 @@ void PantallaDM::DibujarFondo(ImDrawList* dl, const ImGuiIO& io, float t, const 
           if (e.tipo == 3) {   // _StartUnlock___Func2: 420 cuadros (1,0 por cuadro) y ExecuteScript_MMI2
             ev_fase_ = 1;
             ev_espera_ = 0;
+            ev_temblor_ = true, ev_off_x_ = 25.0f, ev_off_y_ = ev_vel_x_ = ev_vel_y_ = ev_acc_ = 0;   // +0xAB..+0xB5
           } else {             // tipo 4: Story_RefreshSpriteNode(1,1) + sonido 0x16 y a seguir, sin espera
             TerminarEvento(in);
           }
@@ -2469,7 +2970,10 @@ void PantallaDM::DibujarFondo(ImDrawList* dl, const ImGuiIO& io, float t, const 
       } else {
         // EU 0x2F86B0 "StartUnlock!!"Func2: 420 cuadros (+0x34 > 420, fRam0049c7dc = 1,0) y luego el guion (MMI2)
         ev_espera_ += dt * 60.0f;
-        if (ev_espera_ > 420.0f) TerminarEvento(in);
+        if (ev_espera_ > 420.0f) {
+          ev_temblor_ = false, ev_off_x_ = ev_off_y_ = 0;   // +0xAB = 0, +0xB8/+0xB9 = 0
+          TerminarEvento(in);
+        }
       }
       cx_ = std::clamp(cx_, kX0, kX1), cy_ = std::clamp(cy_, kY0, kY1);
     } else {
@@ -2499,6 +3003,17 @@ void PantallaDM::DibujarFondo(ImDrawList* dl, const ImGuiIO& io, float t, const 
   } else {
     cx_ = std::clamp(cx_, kX0, kX1), cy_ = std::clamp(cy_, kY0, kY1);
   }
+  // EU 0x2F9280 Story_MapCameraUpdate: el muelle del temblor, un paso por cuadro de 60 Hz
+  if (ev_temblor_) {
+    for (ev_acc_ += dt * 60.0f; ev_temblor_ && ev_acc_ >= 1.0f; ev_acc_ -= 1.0f) {
+      ev_vel_x_ = (ev_vel_x_ - ev_off_x_ * 0.8f) * 0.98f;
+      ev_vel_y_ = (ev_vel_y_ - ev_off_y_ * 0.8f) * 0.98f;
+      ev_off_x_ += ev_vel_x_, ev_off_y_ += ev_vel_y_;
+      if (ev_vel_x_ * ev_vel_x_ + ev_vel_y_ * ev_vel_y_ <= 0.010000001f &&
+          ev_off_x_ * ev_off_x_ + ev_off_y_ * ev_off_y_ <= 0.010000001f)
+        ev_temblor_ = false, ev_off_x_ = ev_off_y_ = 0;   // y ExecuteScript_MMI2 (no portado)
+    }
+  }
   const S::Imagen gi = S::GuestImage(io);   // L05: la imagen del juego (21:9/16:10/4:3), no la ventana
   const ImVec2 D = gi.Size();
   // I03 (studies 4): 1:1 con la pantalla de 640x480 del original (640 px de mapa a lo alto).
@@ -2519,7 +3034,9 @@ void PantallaDM::DibujarFondo(ImDrawList* dl, const ImGuiIO& io, float t, const 
   // EU 0x2F8370 Story_WorldToScreenX
   // EU 0x2F8350 Story_WorldToScreenY
   // EU 0x31B5A0 Story_SpriteApplyWorldScreenPos (mundo -> pantalla: se resta la camara y se suma la mitad del lienzo)
-  auto P = [&](float x, float y) { return ImVec2(gi.p0.x + D.x * 0.5f + (x - camx) * s, gi.p0.y + D.y * 0.5f + (y - camy) * s); };
+  // P0 = Goku 3D (matriz de vista, sin temblor); P = sprites del mapa, con el temblor +0xB8/+0xB9
+  auto P0 = [&](float x, float y) { return ImVec2(gi.p0.x + D.x * 0.5f + (x - camx) * s, gi.p0.y + D.y * 0.5f + (y - camy) * s); };
+  auto P = [&](float x, float y) { return P0(x + ev_off_x_, y + ev_off_y_); };
   dl->AddRectFilled(gi.p0, gi.p1, IM_COL32(0, 0, 0, 255));
   // Pinta las Entradas que devuelve ama::Pool: se respeta la ventana de textura en texeles (e.uv), el tinte y el
   // alfa que salen de las pistas del #AMA (el tinte[3] de la pista de color es el alfa de la entrada original).
@@ -2706,13 +3223,13 @@ void PantallaDM::DibujarFondo(ImDrawList* dl, const ImGuiIO& io, float t, const 
   // DATA_CMN 1093, andando mientras va a la casilla); sin el, el dibujo t90 a 4x con Scale2x
   const float gh = 0.21f * 480.0f / kZoom, gw = gh * 0.8f, gx = mx_ - 48, gy = my_ + 34;
   const bool anda = std::hypot(c.x - mx_, c.y - my_) > 2.0f;
-  dl->AddEllipseFilled(P(gx, gy), ImVec2(gw * 0.4f * s, gw * 0.12f * s), IM_COL32(0, 0, 0, 90));
+  dl->AddEllipseFilled(P0(gx, gy), ImVec2(gw * 0.4f * s, gw * 0.12f * s), IM_COL32(0, 0, 0, 90));
   // el Goku 3D de IW (1093): con la piel, las texturas opacas y los pesos bien leidos (auditoria10/B y E) sale como el
   // original; DBZ3_IW_SIN_GOKU3D=1 vuelve al dibujo 2D
   static const bool goku3d = std::getenv("DBZ3_IW_SIN_GOKU3D") == nullptr;
-  if (!goku3d || !DibGokuMapa(dl, P(gx, gy), gh * s, t, anda, c.x - mx_, c.y - my_)) {
+  if (!goku3d || !DibGokuMapa(dl, P0(gx, gy), gh * s, t, anda, c.x - mx_, c.y - my_)) {
     const float bob = std::fabs(std::sin(t * 7.0f)) * 2.0f;
-    Imagen2(dl, 8000, in.dm->goku, P(gx - gw * 0.5f, gy - gh - bob), P(gx + gw * 0.5f, gy - bob));
+    Imagen2(dl, 8000, in.dm->goku, P0(gx - gw * 0.5f, gy - gh - bob), P0(gx + gw * 0.5f, gy - bob));
   }
   // Fundido del cambio de saga (EU 0x2FDF80 -> s_Start_Stage_Out -> Transition_StartWithCallback(10,
   // Story_MapExitWithFade 0x2FDC80), a Transition_SetSpeed(fRam0049c7dc * 0,02) = 0,02 por cuadro (50 cuadros).
@@ -2790,6 +3307,14 @@ PantallaDM::Accion PantallaDM::MenuMapa(ImDrawList* dl, const ImGuiIO& io, float
         // EU 0x2D75F0 MemCardDlg_Start: el original abre el dialogo de tarjeta en modo guardado; el port escribe el
         // bloque del registro en su fichero de progreso (GuardarProgreso) y muestra el aviso.
         guardado_antes_ = ya_guardado;
+        if (!g_catalogo_iw.empty()) {
+          ActualizarInventarioIW();
+          if (!GuardarHabilidadesIW()) {
+            aviso_ = std::string(T::T("no se pudo guardar ", "could not save ")) + "iw_habilidades.toml";
+            REXLOG_WARN("dbz3 iw habilidades: guardado del menu rechazado; fichero anterior conservado");
+            return kNada;
+          }
+        }
         ActualizarRegistro(in, true);
         GuardarProgreso("iw_guardado", 1);   // cRam005c1d88 = 1: a partir de aqui el menu ofrece 2 opciones
         REXLOG_INFO("dbz3 iw mapa: menu START: partida guardada (MemCardDlg_Start EU 0x2D75F0)");
@@ -2822,20 +3347,546 @@ PantallaDM::Accion PantallaDM::MenuMapa(ImDrawList* dl, const ImGuiIO& io, float
       sel_mapa_ = 0;
     }
   }
+  if (!aviso_.empty()) S::MenuText(dl, a.At(640, 690), S::mode::kSmall * a.s, aviso_.c_str(), false, true, 500 * a.s);
   return kNada;
 }
+
+PantallaDM::Accion PantallaDM::EmpezarMinijuego(const InfoDM& in, const CasillaDM& q, float t) {
+  const int personaje = in.dm->ids_mini[size_t(std::clamp(mini_personaje_, 0, 28))];
+  const int permiso = q.personajes[size_t(std::clamp(mini_personaje_, 0, 28))];
+  if (!permiso || (permiso != 1 && !(EstadoCapsulaIW(2126) & 0x80))) return kNada;
+  if (!dbz3::iwmini::PersonajeDelMapa(q.clave, personaje)) {
+    aviso_ = NombreDe(IWaB3(personaje)) + ": " + dbz3::iwmini::MotivoPersonaje(q.clave, personaje);
+    return kNada;
+  }
+  dbz3::iwmini::Dificultad(dificultad_);
+  REXLOG_INFO("dbz3 iw seleccion: empezar {:#x}, indice {}, personaje {}, dificultad {} (EU 0x2FA200)",
+              q.clave, mini_personaje_, personaje, dificultad_);
+  const VideosMinijuegoIW vv = VideosDeMinijuegoIW(*in.dm, q.clave);
+  if (vv.previo >= 0 && g_minijuego) {
+    const int v = vv.previo;
+    const std::filesystem::path ruta = v < int(in.dm->videos.size()) ? in.dm->videos[size_t(v)] : std::string();
+    REXLOG_INFO("dbz3 misiones: iw: minijuego {:#x} (indice {}): video previo {} ({}) antes de READY "
+                "(EU 0x289C20; tabla antes EU 0x473030)", q.clave, q.indice, v, ruta.filename().string());
+    esfera_video_ = -1;
+    mini_final_ = vv.final;
+    mini_final_t0_ = t;
+    Contar(v);
+    mini_clave_ = q.clave;
+    mini_fila_ = q.fila;
+    mini_ficha_ = false;
+    return kNada;
+  }
+  if (g_minijuego && g_minijuego(q.clave, q.fila)) {
+    esfera_video_ = -1;
+    mini_final_ = vv.final;
+    mini_final_t0_ = t;
+    mini_ficha_ = false;
+    return g_mini_clave = q.clave, kMinijuego;
+  }
+  aviso_ = MotivoMinijuegoIW(q.clave);
+  return kNada;
+}
+
+PantallaDM::Accion PantallaDM::FichaMinijuego(ImDrawList* dl, const ImGuiIO& io, float t, uint16_t pulsado,
+                                            const InfoDM& in) {
+  DibujarFondo(dl, io, t, in);
+  if (sel_ < 0 || sel_ >= int(Cas(in).size())) { mini_ficha_ = false; return kNada; }
+  const auto& q = Cas(in)[size_t(sel_)];
+  const auto a = S::GameArea(io);
+  const auto& ui = in.dm->ui;
+  dl->AddRectFilled(ImVec2(0, 0), io.DisplaySize, IM_COL32(0, 0, 0, 215));
+  // Lienzo original 600x450 -> GameArea 1200x900. Medido en la captura
+  // PCSX2 original_ficha.png: monitor a la izquierda; ajustes a la derecha.
+  auto at = [&](float x, float y) { return a.At(x * 2, y * 2); };
+  const Imagen* titulo = q.clave >= 0x7D0 && q.clave <= 0x7E1 ? &De(in.dm->titulos_mini, q.clave - 0x7D0) :
+      in.textos && q.mision > 0 && q.mision <= int(in.textos->misiones.size())
+      ? &in.textos->misiones[size_t(q.mision - 1)].titulo : nullptr;
+  if (titulo && *titulo) {
+    const auto& ti = *titulo;
+    const auto r = Recorte(ti);
+    ImVec2 p0, p1;
+    Encajar(r.z - r.x, r.w - r.y, 600, 55, 1000, 80, 1.5f, p0, p1);
+    Imagen2(dl, q.tipo == 0 ? 40000 + q.clave : 41000 + q.mision, ti, a.At(p0.x, p0.y), a.At(p1.x, p1.y), r);
+  }
+  Imagen2(dl, 3000 + kMarco, De(ui, kMarco), at(0, 48), at(296, 304));
+  if (pulsado & kB) {
+    mini_ficha_ = false;
+    return kNada;
+  }
+  if (mini_ajustes_) {
+    if (pulsado & kUp) mini_campo_ = (mini_campo_ + 2) % 3;
+    if (pulsado & kDown) mini_campo_ = (mini_campo_ + 1) % 3;
+    if (pulsado & (kLeft | kRight)) {
+      const int dir = pulsado & kLeft ? -1 : 1;
+      if (!mini_campo_) dificultad_ = (dificultad_ + dir + 5) % 5;
+      else if (mini_campo_ == 1) {
+        const bool desbloqueado = g_habilidades_validas && (EstadoCapsulaIW(2126) & 0x80);
+        const int anterior = mini_personaje_;
+        int candidato = anterior;
+        for (int k = 0; k < 30; ++k) {
+          candidato = (candidato + dir + 29) % 29;
+          const int permiso = q.personajes[size_t(candidato)];
+          if (desbloqueado ? permiso != 0 : permiso == 1) { mini_personaje_ = candidato; break; }
+        }
+        REXLOG_INFO("dbz3 iw seleccion: {:#x} {} -> {} (personaje {}, capsula 2126={:#x})", q.clave, anterior,
+                    mini_personaje_, in.dm->ids_mini[size_t(mini_personaje_)], EstadoCapsulaIW(2126));
+      }
+    }
+    if ((pulsado & kA) && mini_campo_ == 2) return EmpezarMinijuego(in, q, t);
+  }
+  // Geometría REAL de 334/0. Los callbacks originales solo cambian UV,
+  // desplazamiento de flechas y luz; no se vuelve a maquetar la ficha.
+  auto pintar = [&](const ama::Entrada& e) {
+    if (e.SinTextura()) return;
+    const auto& im = De(ui, e.textura);
+    if (!im) return;
+    ama::Quad q;
+    ama::DibujarEntrada(e, q);
+    ImVec2 p[4], uv[4];
+    for (int k = 0; k < 4; ++k) {
+      p[k] = at(q.xy[k][0], q.xy[k][1]);
+      uv[k] = ImVec2(q.uv[k][0] / float(im.w), q.uv[k][1] / float(im.h));
+    }
+    const auto tex = Tex(3000 + e.textura, im);
+    const auto color = IM_COL32(int(std::clamp(e.tinte[0], 0.f, 1.f) * 255),
+        int(std::clamp(e.tinte[1], 0.f, 1.f) * 255), int(std::clamp(e.tinte[2], 0.f, 1.f) * 255),
+        std::clamp(int(std::clamp(e.tinte[3], 0.f, 1.f) * 255 + e.rgba[3]), 0, 255));
+    if (tex) dl->AddImageQuad(tex, p[0], p[1], p[2], p[3], uv[0], uv[1], uv[2], uv[3], color);
+  };
+  for (const int g : {19, 21, 27}) for (const auto& e : g_ficha_reposo[g]) pintar(e);
+  const int azules[] = {24, 30, 33};
+  for (const auto& e : g_ficha_reposo[azules[std::clamp(mini_campo_, 0, 2)]]) pintar(e);
+  for (auto e : g_ficha_reposo[81]) {
+    e.pos[0] = 444; e.pos[1] = mini_campo_ == 0 ? 113.0f : mini_campo_ == 1 ? 187.0f : 242.0f;
+    pintar(e);
+  }
+  for (const int g : {50, 117}) for (const auto& e : g_ficha_reposo[g]) pintar(e);
+  for (auto e : g_ficha_reposo[84]) {
+    e.textura = 20; e.uv[0] = 0; e.uv[1] = float(dificultad_ * 40); e.uv[2] = 152; e.uv[3] = float((dificultad_ + 1) * 40);
+    pintar(e);
+  }
+  int idx = std::clamp(mini_personaje_, 0, 28);
+  if (q.mision > 0 && in.tabla && q.mision <= int(in.tabla->size())) {
+    const int id = (*in.tabla)[size_t(q.mision - 1)].jugador;
+    for (size_t i = 0; i < 29; ++i) if (in.dm->ids_mini[i] == id) { idx = int(i); break; }
+  }
+  for (auto e : g_ficha_reposo[87]) {
+    e.textura = uint16_t(idx < 8 ? 26 : idx < 16 ? 28 : idx < 24 ? 29 : 30);
+    e.uv[0] = 0; e.uv[1] = float((idx % 8) * 40); e.uv[2] = 232; e.uv[3] = float((idx % 8 + 1) * 40);
+    pintar(e);
+  }
+  const bool libre = g_habilidades_validas && (EstadoCapsulaIW(2126) & 0x80);
+  for (int campo = 0; campo < 2; ++campo) {
+    if (campo && (q.tipo != 0 || std::count_if(q.personajes.begin(), q.personajes.end(),
+        [&](uint8_t p) { return libre ? p != 0 : p == 1; }) <= 1)) continue;
+    const bool activa = mini_campo_ == campo;
+    for (int lado = 0; lado < 2; ++lado) for (auto e : g_ficha_reposo[lado ? activa ? 45 : 42 : activa ? 39 : 36]) {
+      e.pos[0] += lado ? 558.0f : 305.0f;
+      e.pos[1] += campo ? 175.0f : 101.0f;
+      pintar(e);
+    }
+  }
+  for (int i = 0; i < 3; ++i) {
+    const float y = 100 + 50.0f * i;
+    if (i == (edit_abierto_ ? 1 : 0))
+      Imagen2(dl, 3009, De(ui, 9), at(30, y), at(254, y + 40));
+    Imagen2(dl, 3011, De(ui, 11), at(30, y), at(238, y + 40), ImVec4(0, 40.0f * i, 208, 40.0f * (i + 1)),
+            i == (edit_abierto_ ? 1 : 0) ? IM_COL32_WHITE : IM_COL32(255, 255, 255, 120));
+  }
+  Imagen2(dl, 3012, De(ui, 12), at(24, 420), at(150, 444));
+  if (!aviso_.empty()) S::MenuText(dl, a.At(890, 580), S::mode::kSmall * a.s, aviso_.c_str(), false, true, 570 * a.s);
+  return kNada;
+}
+
+// solIWV: ruta aislada de CapsulePick. Solo DBZ3_IW_SPX_PRUEBA=993 o994,
+// desde la UI; no usa SkillEdit ni escribe progreso/premios. Ningun arranque
+// normal entra aqui. El SDK/3D se consume en el hilo UI, nunca en la prueba CLI.
+} // namespace dbz3::pasarela (los includes conservan sus namespaces globales)
+#include "iw_ame.h"
+#include "iw_iop.h"
+#include "iw_midi.h"
+#include "iw_adx.h"
+#include "iw_azar.h"
+#include "iw_capsulas_render.h"
+namespace dbz3::pasarela {
+namespace {
+namespace SPXC = dbz3::iw::spx::capsulas;
+struct AmeCapsulasSpx final : SPXC::ObjetoAme {
+  dbz3::iwame::ame::Efecto definicion;
+  dbz3::iwame::ame::Instancia estado;
+  std::string limite;
+  int nodos = 0;
+  uint32_t* azar = nullptr;
+  std::function<bool(const dbz3::iwame::ame::Instancia&)> capturar;
+  std::function<void(const std::string&)> informar;
+  AmeCapsulasSpx(const SPXC::Bytes& b,uint32_t& sem) : limite(SPXC::LimiteMotorAme(b)),azar(&sem) {
+    definicion=dbz3::iwame::ame::Leer(b,true);
+    // La vida negativa original es FLT_MAX (274200), nunca los60 del modo
+    // reducido. Solo se modifica nuestra copia de las definiciones.
+    std::function<void(dbz3::iwame::ame::Efecto&)> vidas=[&](auto& e) {
+      for(auto& n:e.raices) if(n.f[0]<0) n.f[0]=std::numeric_limits<float>::max();
+      for(auto& g:e.grupos) {
+        for(auto& n:g.parts) if(n.f[0]<0) n.f[0]=std::numeric_limits<float>::max();
+        for(auto& h:g.hijos) vidas(*h);
+      }
+    };
+    vidas(definicion);estado.ef=&definicion;estado.mezcla_gs=true;
+    nodos=int(definicion.grupos.size()+definicion.raices.size());
+  }
+  bool Admitido() const { if(!limite.empty()) {if(informar)informar(limite);return false;}return true; }
+  bool Dibujar() override {return nodos<=0 || (Admitido()&&capturar&&capturar(estado));}
+  bool Regular() override {
+    if(nodos>0) {
+      if(!Admitido()||!azar)return false;
+      dbz3::iwame::ame::Cuadro(estado,*azar);
+      if(!estado.vivo)nodos=-1;
+    }
+    return true;
+  }
+  bool Retirar() override {nodos=-1;estado.ps.clear();estado.hijas.clear();estado.vivo=false;return true;}
+  int Nodos() const override {return nodos;}
+};
+struct PruebaCapsulasSpx {
+  SPXC::Escena motor;
+  AfsPs2 cmn, local;
+  struct ModeloSpx {
+    ps2::Modelo modelo;
+    ps2::Malla pose;
+    std::vector<ps2::Tex> texturas;
+    std::map<uint32_t,ps2::Anim> clips;
+    bool cargado = false;
+  };
+  std::array<ModeloSpx,4> modelos;
+  std::array<SPXC::Luz,2> luces;
+  SPXC::CicloAme efectos;
+  uint32_t azar = 0; bool azar_valido = false;
+  std::vector<ps2::Tex> atlas_ame;
+  // Memoria durable de los bancos transferidos por71/72. El secuenciador IOP
+  // no se sustituye por un VAG al azar; solo se acepta la preparacion de bancos.
+  std::array<SPXC::Bytes,3> bancos_iop;
+  dbz3::iwmidi::Sesion midi;
+  SPXC::Fundido10 fundido;
+  // RPC1D/AMSOUND2A7C escribe MVOL L/R de AMBOS cores (980/A80/981/A81).
+  // No es volumen MIDI por handle ni el MasterVolume de preferencias host.
+  std::function<bool(uint16_t)> volumen_spu2;
+  // ToDefine(-1), EU126880, detiene los ADX heredados, NO mata tasks SPX.
+  // Ese registro global pertenece al coordinador; no silenciar todo B3 ni
+  // todas las voces del mezclador para imitarlo.
+  std::function<bool()> detener_adx_anteriores;
+  ps2::Escena dibujo;
+  ImDrawList* dl = nullptr;
+  ps2::Camara cam;
+  float ultimo_t = -1, acumulado = 0;
+  uint16_t entrada_pendiente = 0;
+  int frame = -1;
+  bool carga = false, figuras_medidas = false, pase_informado = false;
+  size_t triangulos_ultimo = 0;
+
+  bool RpcCapsulas(uint32_t op,uint32_t slot) {
+    const bool ok=op==0x13?midi.Rpc13(slot):op==0x14?midi.Rpc14(slot):false;
+    if(!ok)motor.Bloquear(midi.Error().empty()?"RPC CapsulePick no soportado":midi.Error());
+    return ok;
+  }
+  bool PasoCapsulas(uint16_t pulsado) {
+    const bool avanzar_fundido=fundido.iniciado;
+    const bool ok=motor.Tick(pulsado);
+    if(midi.Handle() && dbz3::iwsonido::Salida().ErrorSalida())
+      motor.Bloquear("MIDI CapsulePick: fallo real de salida PCM="+std::to_string(dbz3::iwsonido::Salida().ErrorSalida()));
+    if(ok && !motor.vm.Bloqueada() && avanzar_fundido) {
+      const auto p=fundido.Actualizar();
+      if(p.enviar_volumen) {
+        const uint16_t registro=uint16_t(uint32_t(p.volumen*16383.f)&0x7fff);
+        if(!volumen_spu2 || !volumen_spu2(registro))motor.Bloquear("transicion10: falta consumidor RPC1D/MVOL de ambos cores");
+      }
+      if(p.liberar_anterior && (!detener_adx_anteriores || !detener_adx_anteriores()))
+        motor.Bloquear("transicion10: falta consumidor ToDefine(-1)/registro ADX anterior");
+    }
+    if(motor.vm.Bloqueada())midi.Abortar(); // cancela solo nuestra voz al aparcar una escena incompleta.
+    else if(ok && azar_valido)(void)dbz3::iwazar::Global().Memory(32); // kernel14993C, DESPUES de tasks/D5; no en D6.
+    return ok && !motor.vm.Bloqueada();
+  }
+
+  ps2::Camara CamaraSpx(const SPXC::Camara& c) const {
+    auto out=cam;out.ok=false;if(!c.valida)return out;
+    ps2::V3 f{c.objetivo[0]-c.ojo[0],c.objetivo[1]-c.ojo[1],c.objetivo[2]-c.ojo[2]};
+    const float fl=std::sqrt(f.x*f.x+f.y*f.y+f.z*f.z);if(fl==0)return out;
+    f={f.x/fl,f.y/fl,f.z/fl};ps2::V3 r{-f.z,0,f.x};const float rl=std::sqrt(r.x*r.x+r.z*r.z);if(rl==0)return out;
+    r={r.x/rl,0,r.z/rl};ps2::V3 u{r.y*f.z-r.z*f.y,r.z*f.x-r.x*f.z,r.x*f.y-r.y*f.x};
+    const float co=std::cos(c.giro),si=std::sin(c.giro);const ps2::V3 rr{r.x*co+u.x*si,r.y*co+u.y*si,r.z*co+u.z*si};
+    u={u.x*co-r.x*si,u.y*co-r.y*si,u.z*co-r.z*si};r=rr;
+    auto dot=[&](ps2::V3 v){return v.x*c.ojo[0]+v.y*c.ojo[1]+v.z*c.ojo[2];};
+    const float m[16]={r.x,u.x,-f.x,0,r.y,u.y,-f.y,0,r.z,u.z,-f.z,0,-dot(r),-dot(u),dot(f),1};
+    std::memcpy(out.m,m,sizeof(m));out.fov=c.fov;out.ok=true;return out;
+  }
+
+  bool Modelo(int s) {
+    auto& cache=modelos.at(size_t(s));
+    if(cache.cargado) return bool(cache.modelo.malla) && bool(cache.modelo.esq) && !cache.texturas.empty();
+    cache.cargado=true;
+    const auto& a=motor.actores.at(size_t(s));
+    cache.modelo=ps2::CargarSuelto(motor.Banco(a.modelo),motor.Banco(a.texturas),true,true,true);
+    if(!cache.modelo.malla || !cache.modelo.esq) return false;
+    cache.texturas=ps2::Texturas(cache.modelo);
+    return !cache.texturas.empty();
+  }
+  bool CapturarAme(const std::weak_ptr<AmeCapsulasSpx>& propietario,const dbz3::iwame::ame::Instancia& in) {
+    const auto vivo=propietario.lock();if(!vivo||!azar_valido)return false;
+    if(atlas_ame.empty()) {
+      //974 es el objeto de enlace de modelos, sin malla visible. El atlas973
+      // se carga por si mismo; CargarSuelto(974,973) descartaria sus texturas.
+      const auto& amt=motor.Banco(motor.efectos.texturas);
+      for(int j=0,n=CuantasAmt(amt);j<n;++j)atlas_ame.push_back(ps2::Crear(TexturaAmt(amt,j),false));
+    }
+    if(atlas_ame.empty())return false;
+    const auto copia=std::make_shared<dbz3::iwame::ame::Instancia>(in);const auto vista=CamaraSpx(motor.camara);
+    motor.EncolarPase([this,copia,vista,vivo] {
+      // vivo conserva las definiciones referenciadas por Particula::n aunque
+      // D4 retire el slot antes de presentar esta captura (sin ciclo fuerte).
+      if(!vivo||!dl||!vista.ok)return false;
+      for(const auto& lista:copia->ps)for(const auto& p:lista) {
+        if(p.n->estado>=2)return false; // resta/inversa: requieren renderer propio.
+        if(p.edad>0 && (p.n->tex<0 || size_t(p.n->tex)>=atlas_ame.size() || !atlas_ame[size_t(p.n->tex)]))return false;
+      }
+      dbz3::iwame::ame::Pintar(*copia,vista,atlas_ame,atlas_ame,dl,std::numeric_limits<float>::max(),true);return true;
+    });return true;
+  }
+  bool CapturarAmeNativo(const dbz3::iw::capsrender::Ame& in) {
+    // Copia autocontenida: D4 puede retirar el objeto antes de presentar D6.
+    // La simulacion no se sustituye por el motor reducido del dibujante viejo.
+    const auto copia=std::make_shared<dbz3::iw::capsrender::Ame>(in);
+    motor.EncolarPase([this,copia] {
+      for(const auto& n:copia->nodos)if(!n.retirado)for(const auto& p:n.particulas)if(!(p.flags&1)) {
+        motor.Bloquear("AME972: simulacion nativa disponible; falta dibujo GS de particulas/atlas contrastado");
+        return false;
+      }
+      return true; // ningun vertice en el dibujo original de este instante.
+    });return true;
+  }
+  explicit PruebaCapsulasSpx(const std::filesystem::path& raiz,int id) {
+    motor.capturar_pases=true;
+    volumen_spu2=[](uint16_t valor) {
+      auto& mezcla=dbz3::iwsonido::Salida().Mezcla();
+      const bool core0=mezcla.VolumenSpu2(0,valor,valor);
+      const bool core1=mezcla.VolumenSpu2(1,valor,valor);
+      return core0&&core1;
+    };
+    detener_adx_anteriores=[] {return dbz3::iwadx::PararTodos();};
+    motor.host.log=[](const std::string& s) { REXLOG_INFO("dbz3 iw spx capsulas: {}",s); };
+    motor.host.preparar_iop=[this](const SPXC::Escena& e,bool ab) {
+      const auto& a=e.audio;
+      // RPC13EFA0 carga la secuencia;13ED70 cuerpo/indice. La copia se
+      // completa sincronicamente; no hay retraso supuesto de X cuadros.
+      if(ab) {
+        if(!SPXC::Magic(e.Banco(a.indice),"IECS")) return false;
+        bancos_iop[0]=e.Banco(a.cuerpo); bancos_iop[1]=e.Banco(a.indice);
+      } else {
+        if(!SPXC::Magic(e.Banco(a.secuencia),"IECS")) return false;
+        bancos_iop[2]=e.Banco(a.secuencia);
+      }
+      if(!bancos_iop[0].empty() && !bancos_iop[1].empty() && !bancos_iop[2].empty() && !midi.Preparada()) {
+        if(!midi.Preparar(bancos_iop[0],bancos_iop[1],bancos_iop[2])){motor.Bloquear(midi.Error());return false;}
+      }
+      return true;
+    };
+    motor.host.iop_ocupado=[] { return false; }; // todas las copias anteriores son sincronicas.
+    // RPC13 ahora tiene parser/HSYN/PCM reales. RPC14 se expone por el mismo
+    // puente (sin inventar un builtin SPX): necesita cursor del AUDIO.
+    motor.host.parar_iop=[this](uint32_t secuencia) {
+      dbz3::iwiop::ConfigurarSalidaLauncher();return RpcCapsulas(0x13,secuencia);
+    };
+    motor.host.transicion=[this](int tipo) {
+      if(tipo!=10)return false;
+      if(!volumen_spu2){motor.Bloquear("transicion10: falta API de MVOL SPU2, RPC1D de ambos cores");return false;}
+      if(!detener_adx_anteriores){motor.Bloquear("transicion10: falta puente ToDefine(-1) de los ADX anteriores");return false;}
+      fundido.velocidad=.01f; //27DA90, paso logico60Hz=1; conserva fundido.valor heredado.
+      return fundido.Iniciar();
+    };
+    motor.host.pose=[this](const SPXC::Escena& e,int s,uint32_t entrada,float f,bool material) {
+      if(!Modelo(s)) return false;
+      auto& cache=modelos.at(size_t(s));
+      const auto& actor=e.actores.at(size_t(s));
+      if(material) {
+        ps2::Malla visible;
+        return actor.amp.Aplicar(cache.pose?cache.pose:cache.modelo.malla,visible);
+      }
+      const size_t banco=size_t((entrada>>16)-1);
+      if(banco>=actor.movimiento.size()) return false;
+      auto it=cache.clips.find(entrada);
+      if(it==cache.clips.end()) {
+        auto an=ps2::LeerAnim(e.Banco(actor.movimiento[banco]),entrada&65535,cache.modelo.esq->padre.size());
+        if(!an) return false;
+        it=cache.clips.emplace(entrada,std::move(an)).first;
+      }
+      ps2::Posar(*cache.modelo.esq,it->second,f/60.f,cache.pose);
+      return bool(cache.pose);
+    };
+    motor.host.luz=[this](const SPXC::Escena&,int s,const SPXC::Luz& l) {
+      if(!l.valida)return false;
+      luces.at(size_t(s))=l;return true; // matriz normalizada, no vector crudo.
+    };
+    motor.host.capturar_actor=[this](const SPXC::Escena& e,int s,const SPXC::Actor& a,const SPXC::Trabajo& w) -> SPXC::Consumidores::Pase {
+      if(!Modelo(s))throw std::runtime_error("AMO CapsulePick no cargado");
+      auto& c=modelos.at(size_t(s));
+      ps2::Malla seleccion,visible;const auto& base=c.pose?c.pose:c.modelo.malla;
+      if(a.amp.canales.empty())seleccion=base;
+      else if(!a.amp.Aplicar(base,seleccion))throw std::runtime_error("variante AMO AMP fuera del consumidor");
+      SPXC::AplicarUV(seleccion,visible,w.u,w.v);
+      const auto muestra=std::make_shared<ps2::Malla>(std::move(visible));
+      const auto vista=CamaraSpx(e.camara);const auto ambiente=e.ambiente;const auto aml=e.luces;
+      // Captura a.niebla (=habilita matrices de luz, EU2835D0), no inferir
+      // que cualquier AML muestreada implica iluminar todos los actores.
+      const auto matrices=a.niebla!=0?SPXC::PrepararLuces(aml,ambiente):SPXC::MatricesLuz{};
+      const auto niebla=SPXC::PasesNieblaGS({});
+      return [this,s,a,w,muestra,vista,matrices,niebla]() {
+        if(!vista.ok||!dl)return false;
+        // Escena::Poner no consume matrices VU ni doble contexto GS. No dar
+        // por consumidos esos estados pintando un AMO plano ni dos copias.
+        if(a.niebla!=0 || !w.sin_niebla || a.param_c8 || a.param_cc) {
+          if(!pase_informado) {
+            pase_informado=true;
+            REXLOG_WARN("dbz3 iw spx capsulas: GS slot {} exige VU luz={} ambiente {:.3f}/{:.3f}/{:.3f}, doble contexto={} alpha {:#x}/{:#x} expansion {:.3f}; renderer pendiente",
+                s,a.niebla,matrices.colores[3][0],matrices.colores[3][1],matrices.colores[3][2],!w.sin_niebla,
+                niebla[0].alpha[0],niebla[0].alpha[1],niebla[1].expansion);
+          }
+          motor.Bloquear(a.niebla!=0?"GS CapsulePick: falta shader VU de luz/AML":
+                         !w.sin_niebla?"GS CapsulePick: falta renderer de doble contexto44/42 y expansion0.025":
+                         "GS CapsulePick: falta consumidor de enlace AMT c8/cc");
+          return false;
+        }
+        auto& cache=modelos.at(size_t(s));const auto centro=cache.modelo.esq?cache.modelo.esq->centro:ps2::V3{};
+        dibujo.Empezar();dibujo.Poner(vista,*muestra,cache.texturas,centro,0,1);dibujo.Pintar(dl);
+        triangulos_ultimo+=dibujo.Pintados();return true;
+      };
+    };
+    motor.host.rectangulo=[this](const SPXC::Escena&,int,const SPXC::Rectangulo& r) {
+      if(!dl || r.alpha!=0x44 || r.test) return false;
+      const float sx=cam.h.x/320.f,sy=cam.h.y/224.f;
+      auto p=[&](float x,float y) { return ImVec2(cam.c.x-cam.h.x+x*sx,cam.c.y-cam.h.y+y*sy); };
+      const ImVec4 rgba(std::clamp(r.color[0],0.f,1.f),std::clamp(r.color[1],0.f,1.f),
+                        std::clamp(r.color[2],0.f,1.f),std::clamp(r.color[3],0.f,1.f));
+      dl->AddRectFilled(p(r.rect[0],r.rect[1]),p(r.rect[2],r.rect[3]),ImGui::ColorConvertFloat4ToU32(rgba));
+      return true;
+    };
+    motor.host.capturar_rectangulo=[this](const SPXC::Escena&,int s,const SPXC::Rectangulo& r) -> SPXC::Consumidores::Pase {
+      return [this,s,r] {return motor.host.rectangulo(motor,s,r);};
+    };
+    motor.host.particulas=[this](const SPXC::Escena&,uint32_t op,int slot) {
+      return efectos.Consumir(op,slot,motor.vm.Estado()==3);
+    };
+    if(!cmn.Abrir(raiz,"DATA_CMN.AFS") || !local.Abrir(raiz,"DATA_USA.AFS")) {
+      motor.Bloquear("AFS CapsulePick no disponibles"); return;
+    }
+    const auto elf=LeerElf(raiz);azar_valido=dbz3::iwazar::Global().Iniciar(elf);
+    if(azar_valido)azar=dbz3::iwazar::Global().Estado(); // solo compatibilidad del arnes anterior.
+    carga=motor.Cargar(elf,[this](uint32_t clave) {
+      return (clave>>16)?local.Entrada(clave&65535):cmn.Entrada(clave&65535);
+    },id);
+    if(carga&&motor.efectos.arranque_solicitado) {
+      if(!azar_valido){motor.Bloquear("AME972: no se pudo iniciar el Contexto RNG compartido");carga=false;return;}
+      std::shared_ptr<dbz3::iw::capsrender::ObjetoAme> efecto;
+      try{efecto=std::make_shared<dbz3::iw::capsrender::ObjetoAme>(motor.Banco(motor.efectos.definicion));}
+      catch(const std::exception& error){motor.Bloquear(std::string("AME972: ")+error.what());carga=false;return;}
+      efecto->informar=[this](const std::string& razon){motor.Bloquear(razon);};
+      efecto->avanzar=[](dbz3::iw::capsrender::Ame& in){dbz3::iwazar::Global().ConEstado([&](uint32_t& sem){in.Cuadro(sem);});};
+      efecto->capturar=[this](const dbz3::iw::capsrender::Ame& in){return CapturarAmeNativo(in);};
+      if(!efectos.Instalar(0,efecto)){motor.Bloquear("no se pudo instalar AME CapsulePick");carga=false;}
+    }
+  }
+  void Cuadro(ImDrawList* lista,const ImGuiIO& io,float t,uint16_t pulsado) {
+    dl=lista;
+    const auto a=S::GameArea(io);
+    cam.c=a.At(600,450); cam.h=ImVec2(600*a.s,450*a.s);
+    dl->AddRectFilled(a.p0,a.p1,IM_COL32_BLACK);
+    entrada_pendiente|=uint16_t((pulsado&kStart?8:0)|(pulsado&kSelect?1:0));
+    if(frame!=ImGui::GetFrameCount()) {
+      frame=ImGui::GetFrameCount();
+      acumulado+=ultimo_t<0?1.f:std::clamp(t-ultimo_t,0.f,0.25f)*60.f; ultimo_t=t;
+      while(acumulado>=1.f && carga && !motor.vm.Bloqueada()) {
+        PasoCapsulas(entrada_pendiente); entrada_pendiente=0; acumulado-=1.f;
+      }
+      if(motor.vm.Bloqueada()) acumulado=0;
+    }
+    const auto& c=motor.camara;
+    if(c.valida) {
+      ps2::V3 f{c.objetivo[0]-c.ojo[0],c.objetivo[1]-c.ojo[1],c.objetivo[2]-c.ojo[2]};
+      const float len=std::sqrt(f.x*f.x+f.y*f.y+f.z*f.z);
+      if(len>1.e-6f) {
+        f={f.x/len,f.y/len,f.z/len};
+        ps2::V3 r{-f.z,0,f.x}; const float rl=std::sqrt(r.x*r.x+r.z*r.z);
+        if(rl>1.e-6f) {
+          r={r.x/rl,0,r.z/rl}; ps2::V3 u{r.y*f.z-r.z*f.y,r.z*f.x-r.x*f.z,r.x*f.y-r.y*f.x};
+          const float co=std::cos(c.giro),si=std::sin(c.giro);
+          const ps2::V3 rr{r.x*co+u.x*si,r.y*co+u.y*si,r.z*co+u.z*si};
+          u={u.x*co-r.x*si,u.y*co-r.y*si,u.z*co-r.z*si}; r=rr;
+          auto dot=[&](ps2::V3 v) { return v.x*c.ojo[0]+v.y*c.ojo[1]+v.z*c.ojo[2]; };
+          const float m[16]={r.x,u.x,-f.x,0,r.y,u.y,-f.y,0,r.z,u.z,-f.z,0,-dot(r),-dot(u),dot(f),1};
+          std::memcpy(cam.m,m,sizeof(m)); cam.fov=c.fov; cam.ok=true;
+        }
+      }
+    }
+    dibujo.Empezar();triangulos_ultimo=0;
+    if(carga) motor.Dibujar();
+    if(motor.vm.Bloqueada())midi.Abortar();
+    if(fundido.iniciado) {
+      const ImVec4 negro(0,0,0,std::clamp(fundido.valor,0.f,1.f));
+      dl->AddRectFilled(a.p0,a.p1,ImGui::ColorConvertFloat4ToU32(negro)); //27B5C0, ALPHA44.
+    }
+    if(triangulos_ultimo && !figuras_medidas) {
+      REXLOG_INFO("dbz3 iw spx capsulas: geometria real {} triangulos, cuadro {}",triangulos_ultimo,motor.vm.Cuadro());
+      figuras_medidas=true;
+    }
+    std::string estado="CapsulePick SPX"+std::to_string(motor.guion)+" / cuadro "+std::to_string(motor.vm.Cuadro())+
+      " / B: salir de la prueba";
+    if(motor.vm.Bloqueada()) estado+="\nBLOQUEADO: "+motor.vm.Error();
+    dl->AddText(a.At(16,20),IM_COL32_WHITE,estado.c_str());
+  }
+};
+bool PruebaCapsulasSpxActiva(ImDrawList* dl,const ImGuiIO& io,float t,uint16_t pulsado,const DragonMissionIW& datos) {
+  // El mezclador vive mas que el holder de la escena: su destructor cancela
+  // handles propios, tambien durante la salida ordenada del proceso.
+  (void)dbz3::iwsonido::Salida();
+  static std::unique_ptr<PruebaCapsulasSpx> prueba;
+  static bool cerrada=false;
+  const char* valor=std::getenv("DBZ3_IW_SPX_PRUEBA");
+  if(!valor) return false;
+  const int id=!std::strcmp(valor,"993")?993:!std::strcmp(valor,"994")?994:0;
+  if(!id || cerrada) return false;
+  if(pulsado&kB) { if(prueba) prueba->motor.vm.Parar(); prueba.reset(); cerrada=true; return true; }
+  if(!prueba) prueba=std::make_unique<PruebaCapsulasSpx>(datos.raiz,id);
+  prueba->Cuadro(dl,io,t,pulsado);
+  return true;
+}
+}  // namespace (solo arnes SPX CapsulePick)
 
 PantallaDM::Accion PantallaDM::Mapa(ImDrawList* dl, const ImGuiIO& io, float t, uint16_t pulsado, const InfoDM& in) {
   // EU 0x2B13B0 DragonMissionCutscenesFuncLink: la transicion a Historia usa el reproductor del port.
   if (!in.dm) return kNada;
+  if (PruebaCapsulasSpxActiva(dl,io,t,pulsado,*in.dm)) return kNada;
+  CancelarEquipoIW();   // vuelta o cancelación: nunca heredar equipo en un combate ajeno
+  // Arnés N1: una instancia recorre toda la tabla sin reiniciar el juego.
+  // La petición solo se acepta ya en el mapa y acabados sus vídeos; nunca
+  // altera una batalla ni los datos de la copia real del jugador.
+  if (!in.road && video_ < 0 && !dbz3::video::Activo() && std::getenv("DBZ3_TEST_IW_CADENA")) {
+    std::ifstream f(dbz3::settings::UserSettingsPath().parent_path() / "dbz3_iw_mision.req");
+    int n = 0;
+    if ((f >> n) && n >= 1 && n <= kMisiones && n != test_solicitud_mision_) {
+      test_solicitud_mision_ = n;
+      GuardarProgreso("iw_bolas", 0);   // misma preparación aislada que TEST_MISIONES=reset
+      deseo_bolas_ = 0; t_deseo_ = -1;
+      Elegir(in, n);
+      REXLOG_INFO("dbz3 iw cadena: solicitud mision {} aceptada en el mapa", n);
+    }
+  }
   // Pantallas DS55: tapan el mapa por completo y llevan su propio mando (se dibujan antes de todo lo demas).
   if (edit_abierto_) return PantallaCapsulas(dl, io, t, pulsado, in);
+  if (mini_ficha_) return FichaMinijuego(dl, io, t, pulsado, in);
   if (brillo_abierto_) return PantallaBrillo(dl, io, t, pulsado, in);
   if (shenron_fase_ >= 0) return PantallaShenron(dl, io, t, pulsado, in);
   // Deseo de Shenron: el original lo abre al volver de un combate con las 7 Bolas (LoadWaitDragonMissionMinigame_Battle
   // 0x289C20: bRam005c1d78 & 0x7F == 0x7F y salida 0xF -> 0xD; ShenronSystemFunc 0x2AF360 -> CapsulePick). En el port
   // la mascara es `iw_bolas` y el deseo se apunta en `iw_deseo` (un deseo por partida).
-  if (!in.road && video_ < 0 && menu_mapa_ == 0 && !deseo_postpuesto_ && LeerProgreso("iw_deseo", 0) == 0) {
+  if (!in.road && video_ < 0 && menu_mapa_ == 0 && !deseo_postpuesto_) {
     if (t - t_deseo_ > 0.5f) {
       t_deseo_ = t;
       deseo_bolas_ = LeerProgreso("iw_bolas", 0) & 0x7F;
@@ -2850,6 +3901,14 @@ PantallaDM::Accion PantallaDM::Mapa(ImDrawList* dl, const ImGuiIO& io, float t, 
   if (!env_mision_aplicada_) {
     env_mision_aplicada_ = true;
     if (!in.road) {
+      if (const char* valor = std::getenv("DBZ3_TEST_IW_CASILLA")) {
+        char* fin = nullptr;
+        const long clave = std::strtol(valor, &fin, 0);
+        if (fin != valor && !*fin && clave >= 0x7D0 && clave <= 0x7E1) {
+          Elegir(in, int(clave));
+          REXLOG_INFO("dbz3 iw seleccion: prueba casilla {:#x}", clave);
+        }
+      }
       if (const char* valor = std::getenv("DBZ3_IW_MISION")) {
         char* fin = nullptr;
         const long mision = std::strtol(valor, &fin, 10);
@@ -3130,31 +4189,14 @@ PantallaDM::Accion PantallaDM::Mapa(ImDrawList* dl, const ImGuiIO& io, float t, 
       }
     } else if (q.tipo == 0) {   // minijuego: lo hace el frente P4 (RegistrarMinijuegoIW)
       if (dbz3::ingame::tutorial::MostrarMinijuego(q.clave)) return kNada;   // F3: la primera vez, sus controles
-      // EU 0x289C20 LoadWaitDragonMissionMinigame_Battle: si la tabla de antes (EU 0x473030) tiene (tipo 0, +0x1C),
-      // el original pasa por la escena y solo despues entra al minijuego (target 0x10 = Scene_GotoMinigames). Es
-      // decir, el video va ANTES del READY del minijuego. DS104: se resuelven las 18 claves (0x7D0 -> FD01A previo;
-      // 0x7D9 -> FD08B final); las otras 16 no tienen fila tipo 0 en ninguna de las dos tablas del ELF.
-      const VideosMinijuegoIW vv = VideosDeMinijuegoIW(*in.dm, q.clave);
-      if (vv.previo >= 0 && g_minijuego) {
-        const int v = vv.previo;
-        const std::filesystem::path ruta = v < int(in.dm->videos.size()) ? in.dm->videos[size_t(v)] : std::string();
-        REXLOG_INFO("dbz3 misiones: iw: minijuego {:#x} (indice {}): video previo {} ({}) antes de READY "
-                    "(EU 0x289C20; tabla antes EU 0x473030)", q.clave, q.indice, v, ruta.filename().string());
-        esfera_video_ = -1;
-        mini_final_ = vv.final;
-        mini_final_t0_ = t;
-        Contar(v);
-        mini_clave_ = q.clave;
-        mini_fila_ = q.fila;
-        return kNada;
-      }
-      if (g_minijuego && g_minijuego(q.clave, q.fila)) {
-        esfera_video_ = -1;
-        mini_final_ = vv.final;
-        mini_final_t0_ = t;
-        return g_mini_clave = q.clave, kMinijuego;
-      }
-      aviso_ = MotivoMinijuegoIW(q.clave);
+      ActualizarInventarioIW();
+      mini_personaje_ = 0;
+      for (size_t i = 0; i < 29; ++i) if (q.personajes[i] == 1) { mini_personaje_ = int(i); break; }
+      mini_opcion_ = 0; mini_campo_ = 0;
+      mini_ficha_ = true; mini_ajustes_ = true;
+      aviso_.clear();
+      REXLOG_INFO("dbz3 iw seleccion: ficha minijuego {:#x}, personaje {} (EU 0x2FC330)",
+                  q.clave, in.dm->ids_mini[size_t(mini_personaje_)]);
     } else if (q.mision > 0 && q.mision <= in.abiertas && !no_b3) {
       return kElegir;
     } else if (q.mision > 0 && no_b3) {   // bloqueada: el motivo (p. ej. "Necesita a Super 17...") en el globo
@@ -3217,6 +4259,11 @@ PantallaDM::Accion PantallaDM::Historia(ImDrawList* dl, const ImGuiIO& io, float
       const int clave = mini_clave_;
       mini_clave_ = -1;
       REXLOG_INFO("dbz3 misiones: iw: video previo {} acabado: empieza el minijuego {:#x} (antes de READY)", visto, clave);
+      dbz3::iwmini::Dificultad(dificultad_);
+      if (!dbz3::iwmini::PersonajeDelMapa(clave, in.dm->ids_mini[size_t(std::clamp(mini_personaje_, 0, 28))])) {
+        mini_final_ = -1;
+        return kNada;
+      }
       if (g_minijuego && g_minijuego(clave, mini_fila_)) return g_mini_clave = clave, kMinijuego;
       mini_final_ = -1;   // no empezo: no hay salida de la que pedir el video de despues
       aviso_ = MotivoMinijuegoIW(clave);
@@ -3249,6 +4296,15 @@ PantallaDM::Accion PantallaDM::Ficha(ImDrawList* dl, const ImGuiIO& io, float t,
   dl->AddRectFilled(ImVec2(0, 0), io.DisplaySize, IM_COL32(0, 0, 0, 215));
   const int n = Mision(in);
   if (n <= 0) return kVolver;
+  // EU 0x2FE888/0x2FE89C: cambiar de misión limpia las posiciones libres;
+  // cerrar/reabrir el editor de la misma conserva el contexto, no un archivo.
+  if (edit_mision_ != n) {
+    edit_mision_ = n;
+    const bool recuperar = edit_recuperar_ultima_ && edit_ultima_mision_ == n;
+    edit_equipo_ = recuperar ? edit_ultimo_equipo_ : std::array<int, 8>{};
+    edit_preparado_ = recuperar;
+    edit_recuperar_ultima_ = false;
+  }
   const CasillaDM& q = Cas(in)[size_t(sel_)];
   const auto a = S::GameArea(io);
   const auto& ui = in.dm->ui;
@@ -3335,8 +4391,7 @@ PantallaDM::Accion PantallaDM::Ficha(ImDrawList* dl, const ImGuiIO& io, float t,
       y += 130;
     }
   } else {   // SKILL EDIT: pantalla de capsulas (EU 0x2E3F40 SkillEditFunc1; DS55)
-    parrafo(T::T("Abre la lista de cápsulas de misión y la tabla de bloqueadas.",
-                 "Opens the mission capsule list and the locked-capsule table."),
+    parrafo(T::T("Pulsa A para abrir SKILL EDIT", "Press A to open SKILL EDIT"),
             280, lin, 24);
     S::MenuText(dl, a.At(320, 520), S::mode::kHead * a.s, T::T("Pulsa A para abrir SKILL EDIT", "Press A to open SKILL EDIT"),
                 true, false, 440 * a.s);
@@ -3395,11 +4450,22 @@ PantallaDM::Accion PantallaDM::Ficha(ImDrawList* dl, const ImGuiIO& io, float t,
           menu_ == 4 ? IM_COL32_WHITE : IM_COL32(255, 255, 255, 120));
   S::mode::Help(dl, a, {{"A", menu_ == 4 ? T::T("Empezar", "Start") : T::T("Elegir", "Select")},
                         {"B", T::T("Volver", "Back")}});
+  if (!aviso_.empty()) S::MenuText(dl, a.At(600, 870), S::mode::kSmall * a.s, aviso_.c_str(), false, true, 1050 * a.s);
   if (pulsado & kB) {
     menu_ = 4;
     return kVolver;
   }
   if ((pulsado & kStart) || ((pulsado & kA) && menu_ == 4)) {
+    if (mt && !PrepararEquipoIW(*mt, edit_preparado_ ? &edit_equipo_ : nullptr)) {
+      aviso_ = T::T("Falta una cápsula", "Missing capsule");
+      return kNada;
+    }
+    if (mt) {   // EU 0x2FA200: última selección global, NO forma parte del archivo de guardado
+      edit_ultima_mision_ = n;
+      edit_ultimo_equipo_ = edit_equipo_;
+      for (size_t k = 0; k < 8; ++k)
+        if (mt->habilidades[k] >= 0) edit_ultimo_equipo_[k] = IdActivacionIW(ActivacionFijaIW(mt->habilidades[k], k));
+    }
     menu_ = 4;
     // EU 0x20E860 LoadWaitEndDragonMissionSelectionBattleFunc -> EU 0x20E630 LoadWaitVsStageBattleFunc:
     // Audio_PickRandomVoiceVariant (EU 0x1FC660) elige la variante de voz al montar el combate de la mision; en
@@ -3597,4 +4663,34 @@ bool PantallaDM::Resultado(ImDrawList* dl, const ImGuiIO& io, float t, uint16_t 
   return false;
 }
 
+// US 0x82109BA0 / EU 0x82109CA0: entrada de los dos registros de selección,
+// ANTES de que sub_82112260 los lea. Se consume una sola petición explícita de
+// MISSION START; no se escribe la partida B3 ni la tabla por defecto de luchadores.
+void AplicarEquipoCombateIW(uint8_t* base, uint32_t seleccion) {
+  EquipoCombateIW q;
+  {
+    std::lock_guard<std::mutex> lock(g_equipo_combate_mu);
+    if (!g_equipo_combate.armado) return;
+    q = g_equipo_combate;
+    g_equipo_combate = {};
+  }
+  if (!misiones::Busy() || seleccion < 0x80000000u || seleccion > 0xFFFFFF00u) return;
+  const uint32_t rec = seleccion + 16;
+  if (int(REX_LOAD_U16(rec + 16)) != q.jugador || int(REX_LOAD_U16(rec + 96)) != q.rival) {
+    REXLOG_WARN("dbz3 iw capsulas: peticion de mision {} descartada: seleccion ajena", q.mision);
+    return;
+  }
+  REX_STORE_U16(rec + 52, uint16_t(q.cantidad));
+  for (uint32_t i = 0; i < 7; ++i) REX_STORE_U16(rec + 54 + 2 * i, q.capsulas[i]);
+  REXLOG_INFO("dbz3 iw capsulas: mision {}, jugador {}: {} capsulas aplicadas antes del lector ({} {} {})",
+              q.mision, q.jugador, q.cantidad, q.capsulas[0], q.capsulas[1], q.capsulas[2]);
+}
+
 }  // namespace dbz3::pasarela
+
+REX_EXTERN(sub_82109BA0);
+REX_EXTERN(__imp__sub_82109BA0);
+DBZ3_HOOK(sub_82109BA0, dbz3eu_sub_82109CA0) {
+  dbz3::pasarela::AplicarEquipoCombateIW(base, ctx.r3.u32);
+  orig(ctx, base);
+}

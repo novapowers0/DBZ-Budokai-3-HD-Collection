@@ -8,7 +8,7 @@
 // pero al acabar sub_821266A8 libera las 64 "instancias" con sub_82089C10 y libera ese bloque del fichero:
 // lectura de 0x10 y el juego se cierra (D:\DBZ3HD\_pruebas\20261015-015446_modos_test_vegeta_gt_sin_modos,
 // lr 0x82089C34, r31 = el #CWV en +0xA1700 del BSP).
-// Arreglo: antes de liberar, las entradas desbordadas (punteros a datos del BSP, no instancias) se ponen a 0.
+// Arreglo (31/10, tecnicas_ext.inl, sustituye al de 2026-10-15): los recursos de mas van a una tabla ampliada; sin tope.
 // US y EU (la base y las funciones EU, de src/eu_map_gen.h). roster_build.py avisa de los BSP de mas de 64.
 //
 // Traje de epoca enlazado (ficha 07, 2026-10-15): un traje extra de traje.toml con `enlazado = "<mod>"` lleva en
@@ -153,28 +153,6 @@ bool GuardLuchadores(uint8_t* base) {
 }
 }  // namespace dbz3::ports
 
-DBZ3_HOOK_EU(sub_821266A8) {
-  if (!SinGuardas()) {
-    const uint32_t base0 = REX_LOAD_U32(kSlotsBase);
-    const uint32_t k = ctx.r3.u32, j = ctx.r4.u32;
-    if (base0 && k < 2 && j < 2) {
-      const uint32_t slot = base0 + 1152 * k + 544 * j + 80;
-      const uint32_t bin = REX_LOAD_U32(slot + 4);
-      if (bin) {
-        const uint32_t n01 = REX_LOAD_U32(slot + 16);   // recursos de [0] y [1]
-        const uint32_t ntop = REX_LOAD_U32(bin + 16);  // hijos de la raiz
-        const uint32_t total = n01 + (ntop > 2 ? ntop - 2 : 0);
-        if (total > kCap && total < 2 * kCap) {
-          for (uint32_t g = kCap; g < total; ++g) REX_STORE_U32(slot + 32 + 4 * g, 0);
-          REXLOG_WARN("dbz3 ports: tecnicas del lado {} con {} recursos (el juego admite {}): {} sin liberar "
-                      "(eran datos del fichero, no instancias)", k, total, kCap, total - kCap);
-        }
-      }
-    }
-  }
-  orig(ctx, base);
-}
-
 // Efecto de tecnica sin funcion (s9, 2026-10-19): sub_82130DA0(luchador r3, ...) busca con sub_820CD6C0(*(r3+4944) como
 // s16, 1) el registro del efecto y llama por la tabla 0x823339A0[tipo] (tipo = s16 en *(registro+32+12)+16) sin mirar si
 // la entrada existe. Con Paikuhan (port de IW, capsulas 616-618) el tipo no tiene funcion: llamada a 0 y cierre
@@ -286,6 +264,45 @@ DBZ3_HOOK_EU(sub_8211E6F8) { if (!SaltaOrdenIW(ctx, base, 9, 10)) orig(ctx, base
 DBZ3_HOOK_EU(sub_8211E578) { if (!SaltaOrdenIW(ctx, base, 8, 7)) orig(ctx, base); }   // Vegeta saga Saiyan de IW
 DBZ3_HOOK_EU(sub_8211E2B8) { if (!SaltaOrdenIW(ctx, base, 3, 11)) orig(ctx, base); }
 
+// Ordenes de canal de sonido con canal -1 (31/10, Goku GT de IW: definitiva entera contra rival quieto, cierre lr
+// 0x8211F15C): el guion de IW guarda en una variable lo que devuelve la orden de sonido y la pasa a 0xC9/0xCC/0xCD; con -1
+// el canal cae en mgr+1444, que no es un canal, y sub_820F3FE0 escribe en un puntero basura (la PS2 lo tolera).
+namespace {
+bool CanalValido(PPCContext& ctx, uint8_t* base, uint32_t arg) {
+  const int32_t c = int32_t(REX_LOAD_U32(REX_LOAD_U32(ctx.r4.u32 + 44) + 4 * arg));
+  if (c >= 0) return true;
+  static std::atomic<int> avisos{0};
+  if (avisos.fetch_add(1) < 16)
+    REXLOG_WARN("dbz3 ports: orden de canal {:X} con canal {} (pc {:08X}): se salta", ctx.r10.u32 / 4 * 16 + ctx.r9.u32 / 4, c,
+                REX_LOAD_U32(ctx.r4.u32 + 36));
+  ctx.r3.u64 = 1;
+  return false;
+}
+}  // namespace
+// Orden 0xC8 (sonido en canal libre: p[0] situacion, p[1] ID; -1 = 107 y -2 = 108): sub_820F3980 calla si la lista del ID no
+// tiene esa situacion o vale -1. Aqui solo se avisa, para saber si a un port le falta un sonido.
+DBZ3_HOOK_EU(sub_8211EF60) {
+  const uint32_t p = ctx.r4.u32 ? REX_LOAD_U32(ctx.r4.u32 + 44) : 0;
+  if (p) {
+    const int32_t sit = int32_t(REX_LOAD_U32(p));
+    int32_t id = int32_t(REX_LOAD_U32(p + 4));
+    if (id == -1) id = 107;
+    else if (id == -2) id = 108;
+    bool ok = id >= 0 && id < 122 && sit >= 0;
+    if (ok) {
+      const int32_t n = int32_t(REX_LOAD_U32(dbz3::GA(0x82328298) + 4 * uint32_t(id)));
+      ok = sit < n && int32_t(REX_LOAD_U32(REX_LOAD_U32(dbz3::GA(0x823280B0) + 4 * uint32_t(id)) + 4 * uint32_t(sit))) != -1;
+    }
+    static std::atomic<int> avisos{0};
+    if (!ok && avisos.fetch_add(1) < 16)
+      REXLOG_WARN("dbz3 ports: orden de sonido C8 sin sonido: id {} situacion {} (pc {:08X})", id, sit, REX_LOAD_U32(ctx.r4.u32 + 36));
+  }
+  orig(ctx, base);
+}
+DBZ3_HOOK_EU(sub_8211F018) { if (CanalValido(ctx, base, 0)) orig(ctx, base); }
+DBZ3_HOOK_EU(sub_8211F0C0) { if (CanalValido(ctx, base, 1)) orig(ctx, base); }
+DBZ3_HOOK_EU(sub_8211F108) { if (CanalValido(ctx, base, 2)) orig(ctx, base); }
+
 // Nodo de efecto reutilizado en uso (R9, 2026-10-16): sub_82155990 coge el siguiente de un anillo de 128 nodos
 // (punteros en 0x824370B0, indice en 0x823EE81C) sin mirar si sigue enlazado en la lista ordenada (centinela
 // 0x823EE820; nodo: +0 siguiente, +4 anterior, +12 prioridad), lo pone a cero y lo vuelve a insertar: si seguia
@@ -294,6 +311,28 @@ DBZ3_HOOK_EU(sub_8211E2B8) { if (!SaltaOrdenIW(ctx, base, 3, 11)) orig(ctx, base
 // se saca de la lista; el efecto que lo tenia pierde ese nodo, como antes, pero la lista queda bien.
 DBZ3_HOOK_EU(sub_82155990) {
   constexpr dbz3::GA kIdx = 0x823EE81C, kPool = 0x824370B0;
+  {   // 30/10 (Gogeta de IW COM contra COM, cierre al acabar el combate: lectura de 0x164, lr 0x82155A58): al final la funcion
+      // hace r30 = r3 + [r3+12] y llama a sub_82090B90 con ello; con un objeto r3 ya liberado ([r3+12] basura) r30 = 0x160.
+      // Sin objeto valido no se encola el nodo (el efecto queda sin dibujar).
+    const uint32_t o = ctx.r3.u32, d = o ? REX_LOAD_U32(o + 12) : 0;
+    const uint32_t t = o + d;
+    if (!o || o < 0x00100000u || o >= 0xF0000000u || t < 0x00100000u || t >= 0xF0000000u) {
+      static std::atomic<int> av{0};
+      if (av.fetch_add(1) < 4) REXLOG_WARN("dbz3 ports: sub_82155990 con objeto {:08X} invalido (destino {:08X}): sin efecto", o, t);
+      return;
+    }
+    // 31/10 (Bu con Vegeta, definitiva heredada: lectura de 0xF4780, lr 0x82155A58): la funcion recorre esa lista por +40; un enlace
+    // malo cerraba el juego. Se comprueba antes: sin efecto, nunca un cierre.
+    uint32_t paso = t;
+    for (int k = 0; paso && k < 512; ++k) {
+      if (paso < 0x00100000u || paso >= 0xF0000000u) {
+        static std::atomic<int> av{0};
+        if (av.fetch_add(1) < 8) REXLOG_WARN("dbz3 ports: sub_82155990: enlace {:08X} malo en la lista de {:08X} (llamador {:08X}): sin efecto", paso, o, uint32_t(ctx.lr));
+        return;
+      }
+      paso = REX_LOAD_U32(paso + 40);
+    }
+  }
   const uint32_t i = REX_LOAD_U32(kIdx);
   if (const uint32_t node = i < 128 ? REX_LOAD_U32(kPool + 4 * i) : 0) {
     const uint32_t nx = REX_LOAD_U32(node), pv = REX_LOAD_U32(node + 4);
@@ -705,13 +744,14 @@ void SpxInstalar(uint32_t vm, uint8_t* base) {
   std::map<uint32_t, int> por_manejador;
   for (uint32_t c = 0; c < 64; ++c) {
     const uint32_t fila = REX_LOAD_U32(tab + 4 * c);
-    if (!(fila >= 0x40000000u && fila < 0xA0000000u)) break;
+    if (!(fila >= 0x40000000u && fila < 0xA0000000u)) continue;
     for (uint32_t r = 0; r < 16; ++r) {
       const uint32_t h = REX_LOAD_U32(fila + 4 * r);
       if (!code(h)) continue;
       auto it = por_manejador.find(h);
       if (it == por_manejador.end() && g_spx_n < kSpxMax) it = por_manejador.emplace(h, g_spx_n++).first;
       if (it != por_manejador.end()) g_spx_ids[it->second].push_back(int(c * 16 + r));
+      REXLOG_INFO("dbz3 spx: orden {:X} = {:08X}", c * 16 + r, h);
     }
   }
   for (const auto& [h, i] : por_manejador) {
@@ -729,3 +769,5 @@ DBZ3_HOOK_EU(sub_8209F568) {
   if (traza && !g_spx_on.exchange(true)) SpxInstalar(ctx.r3.u32, base);
   orig(ctx, base);
 }
+
+#include "tecnicas_ext.inl"

@@ -89,6 +89,9 @@ struct ImmediateDraw {
   float scissor_top = 0.0f;
   float scissor_right = 0.0f;
   float scissor_bottom = 0.0f;
+
+  // dbz3: true to draw triangles with additive blending (src alpha, dst one) instead of alpha.
+  bool additive = false;
 };
 
 class ImmediateDrawer {

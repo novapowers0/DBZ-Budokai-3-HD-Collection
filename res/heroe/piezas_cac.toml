@@ -1,0 +1,885 @@
+# Catalogo del creador de personaje (frente 02, studies 6).
+# Generado por mod center hd/cac/piezas_cac.py. NO editar a mano.
+
+[[pieza]]
+tipo = "cuerpo"
+id = 0
+nombre = "a0_01p"
+idx_afs = 6929
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 1
+nombre = "a0_02p"
+idx_afs = 6932
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 2
+nombre = "a0_03p"
+idx_afs = 6935
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 3
+nombre = "a0_04p"
+idx_afs = 6938
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 4
+nombre = "a0_05p"
+idx_afs = 6941
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 5
+nombre = "a0_06p"
+idx_afs = 6944
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 6
+nombre = "a0_07p"
+idx_afs = 6947
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 7
+nombre = "a0_08p"
+idx_afs = 6950
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 8
+nombre = "a0_09p"
+idx_afs = 6953
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 9
+nombre = "a0_10p"
+idx_afs = 6956
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 10
+nombre = "a0_11p"
+idx_afs = 6959
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 11
+nombre = "a0_12p"
+idx_afs = 6962
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 12
+nombre = "a0_13p"
+idx_afs = 6965
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 13
+nombre = "a0_14p"
+idx_afs = 6968
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 14
+nombre = "a0_15p"
+idx_afs = 6971
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 15
+nombre = "a0_16p"
+idx_afs = 6974
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 16
+nombre = "a0_17p"
+idx_afs = 6977
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 17
+nombre = "a1_01p"
+idx_afs = 6980
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 18
+nombre = "a1_02p"
+idx_afs = 6983
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 19
+nombre = "a1_03p"
+idx_afs = 6986
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 20
+nombre = "a1_04p"
+idx_afs = 6989
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 21
+nombre = "a1_05p"
+idx_afs = 6992
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 22
+nombre = "a1_06p"
+idx_afs = 6995
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 23
+nombre = "a1_07p"
+idx_afs = 6998
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 24
+nombre = "a1_08p"
+idx_afs = 7001
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 25
+nombre = "a1_09p"
+idx_afs = 7004
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 26
+nombre = "a1_10p"
+idx_afs = 7007
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 27
+nombre = "a1_11p"
+idx_afs = 7010
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 28
+nombre = "a1_12p"
+idx_afs = 7013
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 29
+nombre = "a1_13p"
+idx_afs = 7016
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 30
+nombre = "a1_14p"
+idx_afs = 7019
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 31
+nombre = "a1_15p"
+idx_afs = 7022
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 32
+nombre = "a1_16p"
+idx_afs = 7025
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 33
+nombre = "a1_17p"
+idx_afs = 7028
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 34
+nombre = "b0_01p"
+idx_afs = 7031
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 35
+nombre = "b0_02p"
+idx_afs = 7034
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 36
+nombre = "b0_03p"
+idx_afs = 7037
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 37
+nombre = "b0_04p"
+idx_afs = 7040
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 38
+nombre = "b0_05p"
+idx_afs = 7043
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 39
+nombre = "b0_06p"
+idx_afs = 7046
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 40
+nombre = "b0_07p"
+idx_afs = 7049
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 41
+nombre = "b0_08p"
+idx_afs = 7052
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 42
+nombre = "b0_09p"
+idx_afs = 7055
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 43
+nombre = "b0_10p"
+idx_afs = 7058
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 44
+nombre = "b0_11p"
+idx_afs = 7061
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 45
+nombre = "b0_12p"
+idx_afs = 7064
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 46
+nombre = "b0_13p"
+idx_afs = 7067
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 47
+nombre = "b0_14p"
+idx_afs = 7070
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 48
+nombre = "b0_15p"
+idx_afs = 7073
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 49
+nombre = "b0_16p"
+idx_afs = 7076
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 50
+nombre = "b0_17p"
+idx_afs = 7079
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 51
+nombre = "b1_01p"
+idx_afs = 7082
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 52
+nombre = "b1_02p"
+idx_afs = 7085
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 53
+nombre = "b1_03p"
+idx_afs = 7088
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 54
+nombre = "b1_04p"
+idx_afs = 7091
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 55
+nombre = "b1_05p"
+idx_afs = 7094
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 56
+nombre = "b1_06p"
+idx_afs = 7097
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 57
+nombre = "b1_07p"
+idx_afs = 7100
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 58
+nombre = "b1_08p"
+idx_afs = 7103
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 59
+nombre = "b1_09p"
+idx_afs = 7106
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 60
+nombre = "b1_10p"
+idx_afs = 7109
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 61
+nombre = "b1_11p"
+idx_afs = 7112
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 62
+nombre = "b1_12p"
+idx_afs = 7115
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 63
+nombre = "b1_13p"
+idx_afs = 7118
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 64
+nombre = "b1_14p"
+idx_afs = 7121
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 65
+nombre = "b1_15p"
+idx_afs = 7124
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 66
+nombre = "b1_16p"
+idx_afs = 7127
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 67
+nombre = "b1_17p"
+idx_afs = 7130
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 68
+nombre = "c0_01p"
+idx_afs = 7133
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 69
+nombre = "c0_02p"
+idx_afs = 7136
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 70
+nombre = "c0_03p"
+idx_afs = 7139
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 71
+nombre = "c0_04p"
+idx_afs = 7142
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 72
+nombre = "c0_05p"
+idx_afs = 7145
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 73
+nombre = "c0_06p"
+idx_afs = 7148
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 74
+nombre = "c0_07p"
+idx_afs = 7151
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 75
+nombre = "c0_08p"
+idx_afs = 7154
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 76
+nombre = "c0_09p"
+idx_afs = 7157
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 77
+nombre = "c0_10p"
+idx_afs = 7160
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 78
+nombre = "c0_11p"
+idx_afs = 7163
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 79
+nombre = "c0_12p"
+idx_afs = 7166
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 80
+nombre = "c0_13p"
+idx_afs = 7169
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 81
+nombre = "c0_14p"
+idx_afs = 7172
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 82
+nombre = "c0_15p"
+idx_afs = 7175
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 83
+nombre = "c0_16p"
+idx_afs = 7178
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 84
+nombre = "c0_17p"
+idx_afs = 7181
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 85
+nombre = "c1_01p"
+idx_afs = 7184
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 86
+nombre = "c1_02p"
+idx_afs = 7187
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 87
+nombre = "c1_03p"
+idx_afs = 7190
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 88
+nombre = "c1_04p"
+idx_afs = 7193
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 89
+nombre = "c1_05p"
+idx_afs = 7196
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 90
+nombre = "c1_06p"
+idx_afs = 7199
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 91
+nombre = "c1_07p"
+idx_afs = 7202
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 92
+nombre = "c1_08p"
+idx_afs = 7205
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 93
+nombre = "c1_09p"
+idx_afs = 7208
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 94
+nombre = "c1_10p"
+idx_afs = 7211
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 95
+nombre = "c1_11p"
+idx_afs = 7214
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 96
+nombre = "c1_12p"
+idx_afs = 7217
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 97
+nombre = "c1_13p"
+idx_afs = 7220
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 98
+nombre = "c1_14p"
+idx_afs = 7223
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 99
+nombre = "c1_15p"
+idx_afs = 7226
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 100
+nombre = "c1_16p"
+idx_afs = 7229
+archivo = ""
+
+[[pieza]]
+tipo = "cuerpo"
+id = 101
+nombre = "c1_17p"
+idx_afs = 7232
+archivo = ""
+
+[[pieza]]
+tipo = "pelo"
+id = 0
+nombre = "hair_000_01"
+idx_afs = 7307
+archivo = ""
+
+[[pieza]]
+tipo = "pelo"
+id = 1
+nombre = "hair_000_02"
+idx_afs = 7310
+archivo = ""
+
+[[pieza]]
+tipo = "pelo"
+id = 2
+nombre = "hair_002_01"
+idx_afs = 7322
+archivo = ""
+
+[[pieza]]
+tipo = "pelo"
+id = 3
+nombre = "hair_003_01"
+idx_afs = 7328
+archivo = ""
+
+[[pieza]]
+tipo = "pelo"
+id = 4
+nombre = "hair_004_01"
+idx_afs = 7334
+archivo = ""
+
+[[pieza]]
+tipo = "pelo"
+id = 5
+nombre = "hair_005_01"
+idx_afs = 7340
+archivo = ""
+
+[[pieza]]
+tipo = "pelo"
+id = 6
+nombre = "hair_006_01"
+idx_afs = 7346
+archivo = ""
+
+[[pieza]]
+tipo = "pelo"
+id = 7
+nombre = "hair_007_01"
+idx_afs = 7352
+archivo = ""
+
+[[pieza]]
+tipo = "pelo"
+id = 8
+nombre = "hair_008_01"
+idx_afs = 7358
+archivo = ""
+
+[[pieza]]
+tipo = "color"
+id = 0
+nombre = "color_pl"
+idx_afs = -1
+archivo = ""
+
+[[pieza]]
+tipo = "voz"
+id = 0
+nombre = "p_cph_voice_pl"
+idx_afs = -1
+archivo = ""
+
+[[pieza]]
+tipo = "voz"
+id = 1
+nombre = "AS_%03d%03d_%s.adx"
+idx_afs = -1
+archivo = ""
+
+[[pieza]]
+tipo = "logo"
+id = 0
+nombre = "model_logo_%03d"
+idx_afs = -1
+archivo = ""
+
+[[pieza]]
+tipo = "ropa"
+id = 0
+nombre = "Gi naranja"
+idx_afs = -1
+archivo = ""
+
+[[pieza]]
+tipo = "ropa"
+id = 1
+nombre = "Armadura Saiyan"
+idx_afs = -1
+archivo = ""
+
+[[pieza]]
+tipo = "ropa"
+id = 2
+nombre = "Gi de Namek"
+idx_afs = -1
+archivo = ""
+
+[[pieza]]
+tipo = "ropa"
+id = 3
+nombre = "Ropa de calle"
+idx_afs = -1
+archivo = ""
+
+[[pieza]]
+tipo = "aura"
+id = 0
+nombre = "Blanca"
+idx_afs = -1
+archivo = ""
+
+[[pieza]]
+tipo = "aura"
+id = 1
+nombre = "Dorada"
+idx_afs = -1
+archivo = ""
+
+[[pieza]]
+tipo = "aura"
+id = 2
+nombre = "Azul"
+idx_afs = -1
+archivo = ""
+
+[[pieza]]
+tipo = "aura"
+id = 3
+nombre = "Roja"
+idx_afs = -1
+archivo = ""
+
+[[pieza]]
+tipo = "aura"
+id = 4
+nombre = "Violeta"
+idx_afs = -1
+archivo = ""
+
+[[pieza]]
+tipo = "pelo"
+id = 9
+nombre = "Pelo 01 (UT)"
+idx_afs = -1
+archivo = "hair000_01_b3.bin"
+
+[[pieza]]
+tipo = "cara"
+id = 0
+nombre = "Cabeza a0 (UT)"
+idx_afs = -1
+archivo = "head_a0_01p_b3.bin"
+

@@ -62,6 +62,41 @@ def catalogo(skc):
     return out
 
 
+def mods_capsulas(mods, work):
+    """Capsulas >= 596 de mods/*/roster.toml ([[capsula]] con su registro #SKC y, si hay, el panel 'descripcion' y el banco
+    de nombres 2663 de ese mod). -> [(rec, panel_bytes|None, nombre_img|None)]"""
+    import glob
+    import tomllib
+    out = []
+    for f in sorted(glob.glob(os.path.join(mods, "*", "roster.toml"))):
+        try:
+            with open(f, "rb") as fh:
+                caps = tomllib.load(fh).get("capsula", [])
+        except Exception:  # noqa: BLE001 (roster ilegible: se omite)
+            continue
+        base = os.path.join(os.path.dirname(f), "us", "data_usi.afs")
+
+        def leer(n):
+            p = os.path.join(base, str(n), "geom.bin")
+            return rb.unlzx(open(p, "rb").read(), work) if os.path.exists(p) else None
+        nombres = leer(cp.NAMES_SHORT)
+        nt = rb.azt_textures(nombres) if nombres else {}
+        for c in caps:
+            try:
+                r = bytes.fromhex(c["registro"])
+                d = duenyos(cp.skc_owner(r))
+                if r[8] != 0x21 or not d:
+                    continue
+                cid = int(c["id"])
+                rec = dict(id=cid, donante=d[0], ki=r[15], rareza=r[10] >> 4, clase=r[8])
+                nom = Image.fromarray(recorte_logico(rb.azt_read(nombres, nt[cid]), nt[cid])) if cid in nt else None
+                panel = leer(c["descripcion"]) if "descripcion" in c else None
+                out.append((rec, panel, nom))
+            except Exception:  # noqa: BLE001 (una capsula rota no tumba las demas)
+                continue
+    return out
+
+
 def recorte_logico(img, t):
     """La textura del juego va rellenada hasta potencia de 2; el dibujo mide `hd` (ancho, alto): se recorta a eso."""
     w, h = t["hd"]
@@ -143,6 +178,7 @@ def main():
     ap.add_argument("--solo", default="")
     ap.add_argument("--caras", default="", help="ID:entrada de data_cmn,... (tabla de fichas del juego)")
     ap.add_argument("--lista", action="store_true")
+    ap.add_argument("--mods", default="", help="carpeta mods/ (por defecto <juego>/mods)")
     a = ap.parse_args()
     work = tempfile.mkdtemp(prefix="tec_cartas_", dir="D:/tmp" if os.path.isdir("D:/tmp") else None)   # no llenar el C:
     us = rb.us_dir(a.us)
@@ -182,6 +218,20 @@ def main():
             cache_caras[d] = cara_png(cmn, caras[d]) if d in caras else None
         carta(rec, nom, panel, cache_caras[d]).save(dst)
         hechas += 1
+    # capsulas de mods (IDs >= 596): registro, panel y nombre salen de mods/*/roster.toml
+    extra = mods_capsulas(a.mods or os.path.join(a.juego, "mods"), work)
+    for rec, panel, nom in extra:
+        if solo is not None and rec["id"] != solo:
+            continue
+        d = rec["donante"]
+        if d not in cache_caras:
+            cache_caras[d] = cara_png(cmn, caras[d]) if d in caras else None
+        carta(rec, nom, panel, cache_caras[d]).save(os.path.join(salida, "cap_%d.png" % rec["id"]))
+        cat.append(rec)
+        hechas += 1
+    if extra:
+        with open(os.path.join(salida, "catalogo.json"), "w", encoding="utf8") as f:
+            json.dump(cat, f)
     if solo is None:
         with open(os.path.join(salida, "listo.txt"), "w", encoding="utf8") as f:
             f.write("%d\n" % hechas)

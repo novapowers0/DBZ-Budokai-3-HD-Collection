@@ -69,6 +69,7 @@ LANG_AFS = {"en": ("data_usi.afs", "data_eng.afs"), "es": ("data_spn.afs",), "fr
 RIVAL_SUITS = {}   # [traje_rival] del campana.toml: palabra del combate -> traje del rival
 START_FORMS = {}   # [forma_jugador] del campana.toml: palabra del combate -> forma inicial
 STORY_CODES = {}   # [codigos_historia]: codigo -> contenedor, solo mientras se juega una historia de [rueda]
+RETRATO_BUSQUEDA = {}   # [retrato_busqueda]: entrada de data_cmn con el busto de R1 en el mapa (la casilla, la del codigo de la historia)
 MAP_ANIMS = {}     # [animacion_mapa]: palabra -> ID cuyo vuelo del mapa se usa (Mecha Freezer: 38 Cooler)
 MAP_SUITS = {}     # [traje_mapa]: palabra del combate -> traje en el mapa (Freezer 2 = en su nave)
 MAP_MODELS = {}    # [modelo_mapa] del campana.toml: palabra del combate -> modelo con el que vuelas hacia el
@@ -564,6 +565,26 @@ def portrait_entry(native, art):
     return bytes(b)
 
 
+def bust_entry(native, art):
+    """Busto del modo busqueda (R1 en el mapa; como data_cmn 3852, el de Goku: textura BGRA 512x512, zona visible 360x312 con el
+    corte abajo): copia del nativo con `art` (PIL RGBA del retrato) a lo ancho de esa zona."""
+    import zlib  # noqa: PLC0415
+    art = art.convert("RGBA")
+    art = art.resize((360, art.height * 360 // art.width), Image.LANCZOS)
+    b = bytearray(native)
+    px = np.zeros((512, 512, 4), np.uint8)
+    top = (art.getbbox() or (0, 0, 0, 0))[1]   # la cabeza arriba, como la de Goku (y 11)
+    h = min(301, art.height - top)
+    px[11:11 + h, :360] = np.array(art)[top:top + h]
+    raw = np.ascontiguousarray(px[..., [2, 1, 0, 3]]).tobytes()
+    e = capsulas.azt_entries(bytes(b))[0]
+    do, ds = struct.unpack(">II", b[e + 0x14:e + 0x1C])
+    assert ds == 128 + len(raw), "busto nativo con otro formato (%d)" % ds
+    b[do + 128:do + 128 + len(raw)] = raw
+    struct.pack_into(">I", b, 0x1C, zlib.crc32(bytes(b[0xA0:])) & 0xFFFFFFFF)
+    return bytes(b)
+
+
 def story(cfg, us, mod, work):
     """[historia] + [[capitulo]]: historia como las del juego. Cada capitulo es un combate con su
     dialogo en el escenario antes (op 21) y despues (la escena de victoria, que deja en el mapa la
@@ -601,6 +622,8 @@ def story(cfg, us, mod, work):
             rb.log("aviso: `textos_desde` va en [historia] y en dialogos a la vez; con uno solo se reparten solos")
         # y uno por cada imagen de mas de las narraciones con `imagenes` (cada parte lleva su banco)
         xn = sum(max(0, len(c.get(k) or []) - 1) for c in chapters for k in ("imagenes", "cierre_imagenes"))
+        xn += 3 * len(cfg.get("maestro_marca", []))   # charla, victoria y vuelta al mapa de cada marca de maestro
+        xn += 2   # el icono de premio transparente
         base = reservar_textos(os.path.dirname(mod), mod, 6 * st + xn, us, {int(t["entrada"]) for t in cfg.get("texto", [])})
         TEXT_BLOCK.update(base=base, entradas=6 * st + xn)
         extra_b = lambda j: base + 6 * st + j
@@ -682,10 +705,15 @@ def story(cfg, us, mod, work):
         art = Image.open(rp).convert("RGBA") if os.path.isfile(rp) else Image.new("RGBA", (416, 408), (0, 0, 0, 0))
         ent = new_pic()
         write_entry(mod, "data_cmn.afs", ent, portrait_entry(read_entry(us, "data_cmn.afs", 1416, work), art), work)
-        for c in chapters:
+        for c in chapters + cfg.get("maestro_marca", []):
             if "retratos" in c:
                 c["retratos"] = [c["retratos"][0], ent]
+        if "eventos_mapa" in h:   # map_events() corre despues: los puntos del mapa con la misma cara
+            h["eventos_mapa"]["retrato"] = ent
         rb.log("retrato del protagonista: entrada %d (%s)" % (ent, "propio" if os.path.isfile(rp) else "vacio"))
+        # R1 en el mapa: el busto de la casilla (tabla nativa 0x823742C8); el Heroe vuela con la animacion de Goku y no debe salir su cara
+        RETRATO_BUSQUEDA["entrada"] = new_pic()
+        write_entry(mod, "data_cmn.afs", RETRATO_BUSQUEDA["entrada"], bust_entry(read_entry(us, "data_cmn.afs", 3852, work), art), work)
 
     writer = []
 
@@ -771,6 +799,68 @@ def story(cfg, us, mod, work):
     # casilla 0 como las marcas sueltas del juego; el op 24 siempre lleva 9 palabras
     mark = lambda i: [24, 0, bword(i)] + list(chapters[i].get("marca", [1, 2, 5462, 54, -5448, 1000]))
     fights, talks, intros, intros_s, maps = {}, {}, {}, {}, {}
+
+    # El guion de victoria (2496) dibuja siempre la imagen 4, el icono de la capsula de premio, y sin ella cae (0x82159738). Sin premio
+    # en la escena salia tras CADA combate una capsula gris sin nombre: se le da el mismo banco con las texturas transparentes.
+    icono_vacio = []
+
+    def icono_de(c):
+        if c.get("premio"):
+            return 0x10756
+        if not icono_vacio:
+            icono_vacio.extend([extra_b(xb[0]), extra_b(xb[0] + 1)])
+            xb[0] += 2
+            for afss in LANG_AFS.values():
+                for afs in afss:
+                    if os.path.exists(afs_path(us, afs)):
+                        b = bytearray(read_entry(us, afs, 0x756, work))
+                        for o in capsulas.azt_entries(b):
+                            if o:
+                                do, ds = struct.unpack(">II", b[o + 0x14:o + 0x1C])
+                                assert b[do:do + 4] == b"DDS ", "icono 1878: se esperaba DDS"
+                                n = ds - 128   # alfa 0 y color blanco: algunas de estas texturas se dibujan multiplicando (en negro quedaba un cuadro oscuro)
+                                fmt = b[do + 84:do + 88]
+                                b[do + 128:do + ds] = (bytes(8) + bytes([255, 255, 255, 255]) + bytes(4)) * (n // 16) if fmt in (b"DXT3", b"DXT5") else (bytes([255, 255, 255, 0]) * (n // 4))
+                        write_entry(mod, afs, icono_vacio[0], bytes(b), work)
+                        g = bytearray(read_entry(us, afs, 0x755, work))   # su geometria (#ACA) sin cuadros: tiene uno sin textura que oscurecia
+                        g[0xCE0:] = bytes(len(g) - 0xCE0)
+                        write_entry(mod, afs, icono_vacio[1], bytes(g), work)
+        return 0x10000 | icono_vacio[0] if icono_vacio else 0x10756
+
+    def bpc_propio(c, entrada, lv):
+        """#BPC `entrada` rehecho sobre `plantilla` con `rival`, `forma_rival`, `escenario` y el nivel `lv`."""
+        nonlocal n
+        new = bytearray(read_entry(us, "data_cmn.afs", int(c.get("plantilla", h["combates"].get("plantilla", 0))), work))
+        rival = int(c["rival"]) if "rival" in c else struct.unpack_from(">I", read_entry(us, "data_cmn.afs", entrada, work), 0x10)[0]
+        form = int(c.get("forma_rival", 0))
+        struct.pack_into(">I", new, 0x10, rival)
+        if "escenario" in c:                # escenario propio (0..16, el del juego en +0x90); sin el, el de la plantilla
+            struct.pack_into(">I", new, 0x90, int(c["escenario"]))
+        # 8 registros de 0x98 B desde 0x10 (uno por nivel): forma en +0x2c y +0x58 de cada uno y
+        # sus capsulas (+0x38 cuenta) fuera: las de la plantilla salian como capsula gris al ganar
+        # nivel del rival y experiencia (+0x64, +0x60 de cada registro): el juego elegia el ultimo
+        # (nivel 99, 100.000 de experiencia); todos pasan a uno progresivo por capitulo (0..4, o
+        # `nivel` en el capitulo)
+        lv = max(0, min(7, lv))             # solo hay 8 registros (la historia del Heroe pedia nivel 8)
+        exp, level = struct.unpack_from(">2I", new, 0x10 + 0x98 * lv + 0x60)
+        for r in range(0x10, 0x10 + 8 * 0x98, 0x98):
+            struct.pack_into(">2I", new, r + 0x60, exp, level)
+            struct.pack_into(">I", new, r + 0x2c, form)
+            struct.pack_into(">I", new, r + 0x58, form)
+            struct.pack_into(">I", new, r + 0x38, 0)
+        write_entry(mod, "data_cmn.afs", entrada, bytes(new), work)
+        n += 1
+
+    # [[maestro_marca]] (Heroe): combate opcional de la saga `saga` (0..), con su marca en el mapa desde la introduccion. Va
+    # detras de los combates de la saga: su entrada par da k >= combates a DuVictoria (entrenamiento, no avance de saga).
+    mm = {saga0 + int(m["saga"]): m for m in cfg.get("maestro_marca", [])}
+    mm_word = {s: (bcode(s) << 16) | 2 * sum(1 for i, p in enumerate(place) if "combate" in chapters[i] and p[0] == s) for s in mm}
+    # [[punto_mapa]] (Heroe): marcas de escenas que ya existen en el juego (`palabra`: esfera, objeto, Zeni, combate opcional)
+    # desde la introduccion de la saga `saga`; `marca` = hueco, icono, zona, x, y, z, escala
+    puntos = {}
+    for p in cfg.get("punto_mapa", []):
+        puntos.setdefault(saga0 + int(p["saga"]), []).append((24, int(p["marca"][0]), word(p["palabra"]), *p["marca"][1:]))
+    mm_marca = lambda s: puntos.get(s, []) + ([tuple([24, 5, mm_word[s]] + list(mm[s]["marca"]))] if s in mm else [])
     for i, c in enumerate(chapters):
         if "combate" not in c:
             continue
@@ -805,29 +895,8 @@ def story(cfg, us, mod, work):
             # los #BPC sin usar (654-667) son de un formato anterior (1216 B; el juego lee 1248 B) y
             # dan escenario equivocado y cuelgues: el combate se rehace sobre uno del juego
             # (`plantilla`: su escenario, +0x90) con el rival (+0x10) del viejo y `forma_rival` (+0x3c)
-            old = read_entry(us, "data_cmn.afs", int(c["combate"]), work)
-            new = bytearray(read_entry(us, "data_cmn.afs", int(c.get("plantilla", h["combates"].get("plantilla", 0))), work))
-            rival = int(c.get("rival", struct.unpack_from(">I", old, 0x10)[0]))
-            form = int(c.get("forma_rival", 0))
-            struct.pack_into(">I", new, 0x10, rival)
-            if "escenario" in c:                # escenario propio (0..16, el del juego en +0x90); sin el, el de la plantilla
-                struct.pack_into(">I", new, 0x90, int(c["escenario"]))
-            # 8 registros de 0x98 B desde 0x10 (uno por nivel): forma en +0x2c y +0x58 de cada uno y
-            # sus capsulas (+0x38 cuenta) fuera: las de la plantilla salian como capsula gris al ganar
-            # nivel del rival y experiencia (+0x64, +0x60 de cada registro): el juego elegia el ultimo
-            # (nivel 99, 100.000 de experiencia); todos pasan a uno progresivo por capitulo (0..4, o
-            # `nivel` en el capitulo)
             nb = sum(1 for x in chapters if "combate" in x)
-            lv = int(c.get("nivel", min(4, len([x for x in chapters[:i] if "combate" in x]) * 5 // max(1, nb))))
-            lv = max(0, min(7, lv))             # solo hay 8 registros (la historia del Heroe pedia nivel 8)
-            exp, level = struct.unpack_from(">2I", new, 0x10 + 0x98 * lv + 0x60)
-            for r in range(0x10, 0x10 + 8 * 0x98, 0x98):
-                struct.pack_into(">2I", new, r + 0x60, exp, level)
-                struct.pack_into(">I", new, r + 0x2c, form)
-                struct.pack_into(">I", new, r + 0x58, form)
-                struct.pack_into(">I", new, r + 0x38, 0)
-            write_entry(mod, "data_cmn.afs", int(c["combate"]), bytes(new), work)
-            n += 1
+            bpc_propio(c, int(c["combate"]), int(c.get("nivel", min(4, len([x for x in chapters[:i] if "combate" in x]) * 5 // max(1, nb)))))
         talks.setdefault(s, []).append(talk(talk_b(i), c, "dialogo_"))
         fights.setdefault(s, []).append(([0, 0, 0, 0, 0, 0, s_fight],
                                          [(16, 0, int(c["combate"])), (15, 0, s_after),
@@ -879,7 +948,7 @@ def story(cfg, us, mod, work):
             if nxt.get("objetos_mapa_de"):
                 oc, oe = str(nxt["objetos_mapa_de"]).split(".")
                 objs = [e for e in lst_events(read_entry(us, "data_cmn.afs", cont(int(oc)), work), int(oe)) if e[0] == 29]
-            _ops = [(22, 0, 0), tuple([44, 0] + list(nxt["salida"]))] + objs +                    [(54, 0, 0), tuple(mark(i + 1)), (20, 0, mapc(s2) << 16)]   # a su llegada al mapa
+            _ops = [(22, 0, 0), tuple([44, 0] + list(nxt["salida"]))] + objs +                    [(54, 0, 0), tuple(mark(i + 1))] + mm_marca(s2) + [(20, 0, mapc(s2) << 16)]   # a su llegada al mapa
             _quitar = {int(x) for x in os.environ.get("HEROE_QUITAR_OPS", "").split(",") if x.strip()}   # C7: pruebas de bisecacion
             if virt(s2):
                 cont_s(s2, intro, "intro")   # asigna su entrada propia
@@ -914,7 +983,8 @@ def story(cfg, us, mod, work):
                (10, 3, 0x10000 | bank), (10, 4, 0x10000 | bank),
                # musica de la charla tras ganar (`musica_dialogo`, por capitulo o en [historia]; 2.4205 como el juego)
                (13, 0, int(c.get("musica_dialogo", h.get("musica_dialogo", 0x2106D))))] +
-              [e for k in range(4) for e in ((11, k, 1556), (12, k, 1557))] + [(11, 4, 0x10755), (12, 4, 0x10756)] +
+              [e for k in range(4) for e in ((11, k, 1556), (12, k, 1557))] +
+              [(11, 4, 0x10755 if c.get("premio") else (icono_de(c), 0x10000 | icono_vacio[1])[1]), (12, 4, icono_de(c))] +
               voices(c, "victoria_"))
         if c.get("premio"):                      # capsula de premio al ganar (op 19, como 2138.x)
             ev.append((19, 0, int(c["premio"])))
@@ -928,8 +998,27 @@ def story(cfg, us, mod, work):
         objs = [(29, 0, struct.pack("<4I", *e[2:6]).rstrip(bytes(1)).decode("ascii"), e[6])   # op 29: nombre (16 B) y estado
                 for e in lst_events(read_entry(us, "data_cmn.afs", cont(int(oc)), work), int(oe)) if e[0] == 29]
         intros[intro_c(s0)] = (narration(narr(0), c0, ""),
-                                [(22, 0, 0), tuple([44, 0] + list(c0["salida"]))] + objs + [(54, 0, 0), tuple(mark(0)),
-                                 (20, 0, mapc(s0) << 16)])
+                                [(22, 0, 0), tuple([44, 0] + list(c0["salida"]))] + objs + [(54, 0, 0), tuple(mark(0))] + mm_marca(s0) +
+                                [(20, 0, mapc(s0) << 16)])
+    for s, m in mm.items():
+        entrada = nueva_entrada()
+        bpc_propio(m, entrada, int(m.get("nivel", 2)))
+        word_m = mm_word[s]
+        bancos = [extra_b(xb[0] + j) for j in range(3)]
+        xb[0] += 3
+        kk = len(talks[s])
+        talks[s].append(talk(bancos[0], m, "dialogo_"))
+        fights[s].append(([0, 0, 0, 0, 0, 0, s_fight], [(16, 0, entrada), (15, 0, s_after), (23, 0, word_m), (21, 0, (dcode(s) << 16) | kk), (20, 0, word_m + 1)]))
+        text(bancos[2], {"mapa_es": m["mapa_es"], "mapa_en": m["mapa_en"]}, "mapa_", "dialogo")
+        fondo = int(m.get("fondo_dialogo", h.get("fondo_dialogo", 1536)))
+        mapk = len(maps.setdefault(s, []))
+        maps[s].append(([3, 3, 2, 2, 0, 0, 2899], [(10, 0, fondo), (10, 1, int(m["retratos"][1])), (10, 2, 0x10000 | bancos[2]), (13, 0, 0xFFFFFFFF),
+                                                    (11, 0, 1556), (12, 0, 1557), (11, 1, 1556), (12, 1, 1557)]))
+        nl = text(bancos[1], m, "victoria_", "dialogo")
+        fights[s].append(([4 + 2 * nl, 5, nl + 1, 5, 0, 0, s_after + 1],
+                          [(10, 0, fondo), (10, 1, int(m["retratos"][0])), (10, 2, int(m["retratos"][1])), (10, 3, 0x10000 | bancos[1]), (10, 4, 0x10000 | bancos[1]),
+                           (13, 0, int(h.get("musica_dialogo", 0x2106D)))] + [e for k in range(4) for e in ((11, k, 1556), (12, k, 1557))] + [(11, 4, (icono_de(m), 0x10000 | icono_vacio[1])[1]), (12, 4, icono_de(m)),
+                           (44, 0, int(m["marca"][2]), int(m["marca"][4]) + 500, int(h.get("altura_mapa", 400))), (54, 0, 0), (20, 0, (mapc(s) << 16) | mapk)]))
     for s in fights:
         write_entry(mod, "data_cmn.afs", cont_s(s, bcode(s), "combate"), lst_build(fights[s]), work)
         write_entry(mod, "data_cmn.afs", cont_s(s, dcode(s), "dialogo"), lst_build(talks[s]), work)
@@ -1223,6 +1312,8 @@ def cmd_montar(a):
                                                   int(row.get("combate", 0)), int(row.get("dialogo", 0)), int(row.get("intro", 0))))
         if MAP_MODELS:
             f.write("\n[modelo_mapa]\n" + "".join("%d = %d\n" % kv for kv in sorted(MAP_MODELS.items())))
+        if RETRATO_BUSQUEDA:
+            f.write("\n[retrato_busqueda]\n%d = %d\n" % (int(cfg["historia"]["codigo"]) % 100, RETRATO_BUSQUEDA["entrada"]))
         if MAP_ANIMS:
             f.write("\n[animacion_mapa]\n" + "".join("%d = %d\n" % kv for kv in sorted(MAP_ANIMS.items())))
         if MAP_SUITS:

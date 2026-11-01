@@ -50,7 +50,7 @@ donante = 0
 preset = "original"
 
 # ---- Ficha 20 (fusiones hipoteticas de Budokai 2) ------------------------------------------
-# Fusiones hipoteticas que SI estan en B2. Yamhan estaba sin nombre (XYMH); Gokule no existe en B2.
+# Fusiones hipoteticas que SI estan en B2. Yamhan estaba sin nombre (XYMH); Gokule = Gotan (nova_recetas.py).
 [vis_b2_fat_gotenks]
 nombre = "Fat Gotenks"
 fuente = "b2"
@@ -88,11 +88,11 @@ clave = "XYHS"
 donante = 12
 preset = "original"
 
-# Gokule (Goku + Mr. Satan): ningun modelo de B2 lo es (los dos sin nombre eran Yamhan). Sin receta.
+# Gokule (Goku + Mr. Satan) es GOTAN en B2 (prefijo XGTA, fila 39 del ELF): receta en nova_recetas.py (nova_fusion_gotan).
 
 # ---- Ficha 21 (absorciones de Super Buu) ---------------------------------------------------
 # Super Buu absorbidos (Gohan, Gotenks, Piccolo): ya son variantes de B3 segun la ficha; no se duplican aqui.
-# Freezer, Cell, Vegeta, Tenshinhan y Yamcha absorbidos: no aparecen en ninguna fuente (sin receta).
+# Freezer, Cell, Vegeta y Ten + Yamcha absorbidos SI estan en B2 (DATA_CMN 97-100, 120-123): nova_recetas.py.
 
 # ---- Ficha 08 (Super): Goku Black de SDBH World Mission (model/bcgkb: b00 normal, b01 Super Saiyan Rose;
 # identificado por render el 2026-10-15). Golpes de Goku; la forma Rose usa los del Super Saiyan; aura rosa.
