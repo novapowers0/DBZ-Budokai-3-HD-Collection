@@ -350,6 +350,11 @@ void Posar(const Esqueleto& esq, const Anim& an, float t, Malla& out) {
           nn = {nn.x + rn.x * k, nn.y + rn.y * k, nn.z + rn.z * k};
         } else if (sw > 1e-6f) {
           p = {p.x / sw, p.y / sw, p.z / sw};
+        } else if (an.relativa && esq.peso0_al_padre && !esq.pesos[size_t(lp)].empty()) {   // bigotes: primer anillo, peso 0 en la lista
+          const int h0 = esq.pesos[size_t(lp)][0].hueso < nb ? esq.pesos[size_t(lp)][0].hueso : 0, pa = esq.padre[h0];
+          const M34& rp = piel[pa >= 0 && size_t(pa) < nb ? size_t(pa) : size_t(h0)];
+          p = rp.por(tr.p[c]);
+          nn = rp.gira(tr.n[c]);
         } else if (an.relativa) {   // B2 (frente R2): lista sin peso: rigido a su hueso (si no, iba al origen: picos)
           p = rig.por(tr.p[c]);
           nn = rig.gira(tr.n[c]);

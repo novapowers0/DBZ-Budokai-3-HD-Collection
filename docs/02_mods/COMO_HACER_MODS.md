@@ -178,6 +178,17 @@ activos simultáneamente.
 - **Una forma con el moveset de otro port:** en `personaje.toml`, `formas_port = ["", "imp_iw_gogeta_ss4"]` (una entrada por forma, `""` = la suya). Esa forma usa el moveset, el guion y las tecnicas del otro port, que debe estar activo. Las capsulas se emparejan por tipo y clave IW (o nombre).
 - **Mas de 64 recursos en un BSP:** ya no es un problema, el juego los guarda en una tabla ampliada.
 
+## 4c. EXPORTAR TU HEROE COMO PERSONAJE (1.5.6, solo PC)
+
+En el creador del Modo Heroe, el boton **Exportar** deja `mods/heroe_<nombre>/` como un mod normal (activo, con su celda y nombre en la
+seleccion tras JUGAR): el aspecto, las formas Super Saiyan, el moveset (donante) y las tecnicas equipadas (la definitiva primero).
+Es independiente del heroe (no toca su guardado); dos nombres distintos conviven y el mismo nombre da `heroe_<nombre>_2`. Si no queda
+plaza de personaje nuevo, el mod queda con `.disabled` y la pantalla lo dice.
+- **No compartas esa carpeta**: el modelo lleva partes de tu juego (y quiza de Xenoverse 2 convertido). Comparte **`receta.toml`**
+  (IDs de piezas, colores, donante, tecnicas; sin arte).
+- Rehacerlo desde una receta, con el juego de quien la abre: `python "mod center hd/cac/vista_heroe.py" --juego <carpeta> --receta receta.toml`
+  (si la receta usa Xenoverse 2 y no esta instalado, usa piezas de B3 y lo apunta en `ingame_ui/heroe_vista/montaje.log`).
+
 ## 5. PORTAR UN PERSONAJE DE SHIN BUDOKAI (de principio a fin)
 
 Fuentes: las ISOs de PSP en `ps2_games/` (Shin Budokai = `sb1`, Another Road = `sb2`) y, para

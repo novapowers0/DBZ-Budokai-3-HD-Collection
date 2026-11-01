@@ -56,6 +56,7 @@
 #include <cstring>
 #include <deque>
 #include <map>
+#include <set>
 #include <unordered_map>
 #include <memory>
 #include <random>
@@ -5125,9 +5126,12 @@ std::vector<ps2::Tex> g_shen_bolas_tx;
 ps2::Amp g_shen_bolas_amp, g_shen_luz_amp;
 ps2::Modelo g_shen_luz;
 std::vector<ps2::Tex> g_shen_luz_tx;
-// Pese al nombre, false = NO validado: sin pareja original/port por contador, la entrega normal usa los 2D de brillo y haz.
-// Poner true solo desde el arnes, sin cambiar formas ni cuerpos de los personajes.
-constexpr bool kShenAmpValidado = false;
+// true: las ranuras 5/6 (Bolas y columna de luz) se dibujan con su #AMP de la ISO; ya no hay 2D de brillo inventados.
+constexpr bool kShenAmpValidado = true;
+// false: la ranura 6 (columna de luz, CMN 328 hijos 11-14) apagada. Medido a los 9 s (cuadro 119 de su clip): los huesos
+// EF_ORA02/03/ORAORA/ORA01 miden de 536 a 9960 unidades (la camara esta a 180 del suelo) y suman alfa 1,6 aditivo: velo
+// amarillo a pantalla llena; ni la textura (alfa 24-180) ni el #AMP (estado 0 = visibles de 33 a 359) lo evitan.
+constexpr bool kShenLuz = false;
 // Camara de la escena: #AMC del hijo 18 (5 clips: 420 Bolas, 360 subida con la luz, 290 y 240 Shenron, 2 final), que el
 // #SPX 329 encadena con 0x50 (FUN_0022b070 -> FUN_0012c370) en su hilo 2: clip 0 en el cuadro 1, 1 en 421, espera 100,
 // 2 en 881, 3 en 1171 y 4 en 1411. Claves {cuadro, ojo xyz} / {cuadro, objetivo xyz} / {cuadro, fov rad}, como el lector
@@ -5145,6 +5149,8 @@ std::vector<ClipCam> g_shen_cam;
 // ponen la animacion de la ranura, 0x30 = FUN_0022e430 su actualizador, 0x36/0x37 = FUN_0022d000/0022cfb0 sus campos
 // +0x10b4..0x10bc; 0xF0 = FUN_00226100 desplaza el UV de la ranura que lo pide (u +0,1 y v +0,01 por cuadro, 180 cuadros).
 bool g_shen_cargado = false;
+ps2::Modelo g_shen_hige[2];   // bigotes izquierdo/derecho: CMN 327 hijos 2/3 (#AMO LHIGE/RHIGE de 13 huesos, textura 0 del hijo 1)
+ps2::Anim g_shen_hige_anim[2][3];   // sus animaciones: CMN 328 hijos 4 (izq.) y 5 (der.), 290/240/400 cuadros
 ps2::Anim g_shen_anim[3];   // anims 0/1/2 del #AMM de CMN 328 hijo 3
 int g_shen = 0;   // 0 "Te concedere un deseo", 1 la lista, 2 "Si, eso es aceptable", 3 "Ahora debo irme..."
 // Deseo -> capsula de B3 (por nombre: SkillList.dson). Orden de la lista: 540 #0-5 (portal, trajes de Bulma 2-6), 539 #0-4
@@ -7535,6 +7541,18 @@ int DibujarTablero(ImDrawList* dl, const S::Area& a, float t, uint16_t pressed, 
       if (cmn.Abrir(BuscarJuego("budokai 2"), "DATA_CMN.AFS")) {
         const std::vector<uint8_t> a327 = cmn.Entrada(327), a328 = cmn.Entrada(328);
         g_shen_mod = ps2::CargarSuelto(HijoAmb(a327, 0), HijoAmb(a327, 1), true);
+        for (int l = 0; l < 2 && g_shen_mod.esq; ++l) {   // los bigotes no van en el modelo del cuerpo: son otro #AMO cada uno
+          g_shen_hige[l] = ps2::CargarSuelto(HijoAmb(a327, uint32_t(2 + l)), HijoAmb(a327, 1), true);
+          if (!g_shen_hige[l].esq) continue;
+          g_shen_hige[l].esq->centro = g_shen_mod.esq->centro;   // mismo origen que el cuerpo
+          g_shen_hige[l].esq->peso0_al_padre = true;   // el anillo de la raiz trae peso 0 y sigue a la cabeza
+          for (int k = 0; k < 3; ++k) {
+            g_shen_hige_anim[l][k] = ps2::LeerAnim(HijoAmb(a328, uint32_t(4 + l)), uint32_t(k), g_shen_hige[l].esq->padre.size());
+            g_shen_hige_anim[l][k].relativa = true;
+          }
+          REXLOG_INFO("dbz3 tablero b2: bigote {}: {} triangulos, anim {} cuadros", l, g_shen_hige[l].malla.tris.size(),
+                      g_shen_hige_anim[l][2].cuadros);
+        }
         // Las claves de B2 van sobre el eje de reposo (Anim::relativa; sustituyendo, el cuerpo quedaba en columna: medido
         // 2026-10-16, RONDA4_PULIDO R2 octava vuelta). La 2 (400 cuadros) en bucle. PRUEBA: DBZ3_TEST_SHEN_ANIM=N (-1 quieto)
         const int na = std::getenv("DBZ3_TEST_SHEN_ANIM") ? std::atoi(std::getenv("DBZ3_TEST_SHEN_ANIM")) : 2;
@@ -7591,7 +7609,7 @@ int DibujarTablero(ImDrawList* dl, const S::Area& a, float t, uint16_t pressed, 
           for (int j = 0, n = CuantasAmt(sitio); j < n; ++j) g_shen_sitio.tex.push_back(TexturaAmt(sitio, j));
           g_shen_sitio_tx = ps2::Texturas(g_shen_sitio);
         }
-        g_shen_bolas = ps2::CargarSuelto(HijoAmb(a328, 7), HijoAmb(a328, 8), true);
+        g_shen_bolas = ps2::CargarSuelto(HijoAmb(a328, 7), HijoAmb(a328, 8), true, false);
         if (g_shen_bolas.esq) {
           g_shen_bolas.anim = ps2::LeerAnim(HijoAmb(a328, 9), 0, g_shen_bolas.esq->padre.size());
           g_shen_bolas.anim.relativa = true;
@@ -7602,7 +7620,7 @@ int DibujarTablero(ImDrawList* dl, const S::Area& a, float t, uint16_t pressed, 
         // el dibujo de ese hueso; 0 selecciona su primera variante.
         g_shen_bolas_amp = ps2::LeerAmp(HijoAmb(a328, 10), HijoAmb(a328, 7));
         g_shen_luz_amp = ps2::LeerAmp(HijoAmb(a328, 14), HijoAmb(a328, 11));
-        if (kShenAmpValidado) {
+        if (kShenAmpValidado && kShenLuz) {
           g_shen_luz = ps2::CargarSuelto(HijoAmb(a328, 11), HijoAmb(a328, 12), true, true);
           if (g_shen_luz.esq) {
             g_shen_luz.anim = ps2::LeerAnim(HijoAmb(a328, 13), 0, g_shen_luz.esq->padre.size());
@@ -7720,11 +7738,6 @@ int DibujarTablero(ImDrawList* dl, const S::Area& a, float t, uint16_t pressed, 
       auto mezcla = [&](int c0, int c1) { return int(float(c0) + (float(c1) - float(c0)) * n); };
       const ImU32 base = bolas ? IM_COL32(16, 20, 30, 255) : IM_COL32(mezcla(47, 15), mezcla(58, 21), mezcla(68, 32), 255);   // fondo medido en PCSX2 (31/10): (47,58,68) con la cabeza de lado, (14,20,31) con la frase
       dl->AddRectFilled(ImVec2(0, 0), ds, base);
-      if (g_shen_nubes && ve_shen) {
-        const float lado = 256 * a.s * 1.6f, desp = std::fmod(t * 6.0f, 1.0f);
-        dl->AddImage(g_shen_nubes.id(), ImVec2(0, 0), ds, ImVec2(desp, 0), ImVec2(desp + ds.x / lado, ds.y / lado),
-                     IM_COL32(70, 80, 120, int(22 + 18 * n)));
-      }
     }
     if (g_shen_mod.malla) {   // encuadre (una vez): del 2 % al 98 % de los vertices; Shenron llena la escena por encima de la
       // ventana (alto ~ 520 de los 900 del area), sin salirse
@@ -7827,7 +7840,15 @@ int DibujarTablero(ImDrawList* dl, const S::Area& a, float t, uint16_t pressed, 
       };
       if (kShenAmpValidado && pose_bolas)
         aplicar_amp(pose_bolas, g_shen_bolas_amp, std::clamp(cg - 1.0f, 0.0f, 419.0f));
-      static ps2::Malla pose;
+      // Reflejos de las Bolas (hijos del hueso 28, grupo espejado): salen como medias cupulas ppalidas con recta, no como el
+      // espejo tenue completo del original (medido 1/11, hoja3); apagados hasta explicar la malla. DBZ3_TEST_SHEN_REFLEJO=1 los pinta.
+      if (pose_bolas && g_shen_bolas.esq && !std::getenv("DBZ3_TEST_SHEN_REFLEJO")) {
+        const auto& pd = g_shen_bolas.esq->padre;
+        pose_bolas.tris.erase(std::remove_if(pose_bolas.tris.begin(), pose_bolas.tris.end(), [&](const auto& tr) {
+          return tr.hueso[0] < pd.size() && pd[tr.hueso[0]] == 28 && tr.hueso[0] != 35;
+        }), pose_bolas.tris.end());
+      }
+      static ps2::Malla pose, pose_hige[2];
       const bool anima = g_shen_mod.esq && g_shen_mod.anim;
       // [H] el #SPX 329 pone las anims 0 (290) y 1 (240) del hijo 3 a los 881 y 1169 (0x60); probadas con la camara del juego
       // dejaban picos sueltos y bajaban la nota (0,389 -> 0,378), asi que sigue la 2 en bucle
@@ -7847,6 +7868,11 @@ int DibujarTablero(ImDrawList* dl, const S::Area& a, float t, uint16_t pressed, 
           tl = std::clamp(tl, 0.0f, float(an->cuadros - 1));
         }
         ps2::Posar(*g_shen_mod.esq, *an, tl / 60.0f, pose);
+        for (int l = 0; l < 2; ++l)
+          if (g_shen_hige[l].esq && g_shen_hige_anim[l][k]) {
+            const float tb = (an == &g_shen_anim[k] ? tl : f) / 60.0f;
+            ps2::Posar(*g_shen_hige[l].esq, g_shen_hige_anim[l][k], tb, pose_hige[l]);
+          }
       }
       ps2::Escena esc;
       esc.Empezar();
@@ -7855,7 +7881,10 @@ int DibujarTablero(ImDrawList* dl, const S::Area& a, float t, uint16_t pressed, 
         return cam_juego && m.esq ? ps2::V3{m.esq->centro.x, 0, m.esq->centro.z} : ps2::V3{0, 0, 0};
       };
       if (bolas && g_shen_sitio.malla) esc.Poner(cam, g_shen_sitio.malla, g_shen_sitio_tx, centro(g_shen_mod), 0.0f, 1.0f);
-      if (bolas && g_shen_bolas.malla)
+      // Las Bolas (ranura 5) acaban con su clip de 420 cuadros (cuadro 421 del guion). Medido a los 9 s con su ultimo estado
+      // del #AMP: el hueso 19 es un cuadrado de +-6741 x +-4500 (textura 3) y los 23/27/39/43/47/51/55 de +-220: velo
+      // amarillo a pantalla llena. Pasado el clip no se dibujan (supuesto: el original las suelta; no visto en la ISO).
+      if (bolas && cg < 421.0f && g_shen_bolas.malla)
         esc.Poner(cam, pose_bolas ? pose_bolas : g_shen_bolas.malla, g_shen_bolas_tx, centro(g_shen_bolas), 0.0f, 1.0f);
       // sin toon: con el toon de P4 (Toon{}, borde 0.15) Shenron animado salia roto (triangulos enormes por toda la
       // pantalla; captura D:/DBZ3HD/_pruebas/20261016-074244_escenarios_test3_r2_deseo). Avisado a P4 en RONDA4_PULIDO.
@@ -7869,8 +7898,11 @@ int DibujarTablero(ImDrawList* dl, const S::Area& a, float t, uint16_t pressed, 
       } else {
         esc.Poner(cam, anima ? pose : g_shen_mod.malla, g_shen_tx, centro(g_shen_mod), 0.0f, 1.0f);
       }
+      if (ve_shen)
+        for (int l = 0; l < 2; ++l)
+          if (pose_hige[l]) esc.Poner(cam, pose_hige[l], g_shen_tx, centro(g_shen_mod), 0.0f, 1.0f);
       esc.Pintar(dl);
-      if (kShenAmpValidado && cg >= 421.0f && cg < 781.0f && g_shen_luz.esq && g_shen_luz.anim && g_shen_luz_amp) {
+      if (kShenAmpValidado && kShenLuz && cg >= 421.0f && cg < 781.0f && g_shen_luz.esq && g_shen_luz.anim && g_shen_luz_amp) {
         ps2::Malla luz;
         ps2::Posar(*g_shen_luz.esq, g_shen_luz.anim, (cg - 421.0f) / 60.0f, luz);
         aplicar_amp(luz, g_shen_luz_amp, cg - 421.0f);
@@ -7882,24 +7914,9 @@ int DibujarTablero(ImDrawList* dl, const S::Area& a, float t, uint16_t pressed, 
         dl->AddCallback(rex::ui::kImDrawBlendAlpha, nullptr);
       }
     }
-    {   // brillo de las Bolas, columna de luz, blancos y negro de la carga (2D, sobre la escena)
-      // [H] el brillo y la columna del original son las ranuras 5 y 6 (CMN 328 hijos 7-10 y 11-14) con mezcla aditiva y
-      // visibilidad #AMP; la ranura 6 dibujada con Escena (camara del juego, alfa = brillo) salia como un velo blanco que no
-      // se parece a las estrias del original, asi que se quedan estos 2D (REVISION_IW_B2, quinta vuelta).
-      const ImVec2 c(ds.x * 0.5f, ds.y * 0.5f);
-      const float brillo = kShenAmpValidado ? 0.0f : tramo(te, 4.0f, 9.0f) * (1 - tramo(te, 12.0f, 13.0f));
-      static const bool sin_aditiva = std::getenv("DBZ3_TEST_SIN_ADITIVA") != nullptr;   // PRUEBA: medir antes/despues
-      if (!sin_aditiva) dl->AddCallback(rex::ui::kImDrawBlendAdditive, nullptr);   // mezcla aditiva del original (SDK: ImmediateDraw::additive)
-      for (int k = 6; k >= 1 && brillo > 0; --k)
-        dl->AddCircleFilled(c, ds.y * (0.06f + 0.05f * float(k)) * (0.6f + 0.6f * brillo), IM_COL32(255, 240, 170, int(13 * brillo)), 48);
-      const float haz = kShenAmpValidado ? 0.0f : tramo(te, 9.0f, 11.5f) * (1 - tramo(te, 13.0f, 13.5f));
-      if (haz > 0) {
-        const float w = ds.x * (0.05f + 0.25f * haz);
-        const ImU32 borde = IM_COL32(200, 230, 120, 0), medio = IM_COL32(250, 255, 210, int(150 * haz));
-        dl->AddRectFilledMultiColor(ImVec2(c.x - w, 0), ImVec2(c.x, ds.y), borde, medio, medio, borde);
-        dl->AddRectFilledMultiColor(ImVec2(c.x, 0), ImVec2(c.x + w, ds.y), medio, borde, borde, medio);
-      }
-      if (!sin_aditiva) dl->AddCallback(rex::ui::kImDrawBlendAlpha, nullptr);
+    {   // blancos y negro de la carga (2D, sobre la escena). El brillo de las Bolas y la columna de luz son la ranura 5/6
+      // (CMN 328 hijos 7-14) con #AMP, ya dibujadas arriba; los circulos y el haz 2D que habia eran inventados y se quitaron.
+      const ImVec2 c(ds.x * 0.5f, ds.y * 0.5f); (void)c;
       // #SPX 329 (builtin 0x47 = FUN_0022BDE0 sobre el sprite blanco de 640x448): a blanco en 3 cuadros a los 778, se
       // mantiene 100 y vuelve a 0 en 60 (878-938)
       const float blanco = std::max({1 - tramo(te, 1.5f, 3.5f), tramo(te, 778.0f / 60.0f, 781.0f / 60.0f) * (1 - tramo(te, 878.0f / 60.0f, 938.0f / 60.0f))});

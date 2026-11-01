@@ -195,6 +195,7 @@ struct Reglas {
   bool traza = false;         // pruebas: vida y ki de los dos cada segundo en el registro
   bool capsulas = true;       // cada lado con la lista Normal de capsulas de su personaje (tecnicas, como el Duelo)
   int capsulas_rival[8] = {}; // pruebas: [cuantas, 7 IDs] en lugar de la lista Normal del rival
+  int capsulas_jugador[8] = {}; // igual para el jugador (Mr. Satan: todas las suyas, sin desbloqueos)
   int golpes = 0;             // reto: golpes al rival para cumplirlo (al llegar, el combate acaba a favor)
   bool sin_atacar = false;    // reto: si el jugador quita vida al rival, falla (el combate acaba en contra)
   std::atomic<int>* contador = nullptr;   // golpes al rival en vivo (marcador del reto en pantalla)

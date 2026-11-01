@@ -9,6 +9,8 @@
 #include <cstdlib>
 #include <map>
 #include <mutex>
+#include <cstring>
+#include <cstdlib>
 #include <vector>
 
 #include "generated/dbz3_init.h"
@@ -54,6 +56,9 @@ bool ReadMemberCapsules(uint8_t* base, int side, int id, std::array<uint16_t, 8>
     std::lock_guard<std::mutex> lock(g_mu);
     const auto it = g_caps[size_t(side)].find(id);
     if (it != g_caps[size_t(side)].end()) { c = it->second; custom = true; }
+  } else {   // online: la lista Custom que cada lado acordo al conectar (igual en los dos PC)
+    custom = dbz3::net::Session::Get().AgreedCaps(side, id, c);
+    REXLOG_INFO("dbz3 online: capsulas (relevo) lado {} id {}: {} {} {} {} {}", side + 1, id, custom ? "Custom" : "Normal", c[0], c[1], c[2], c[3]);
   }
   if (!custom) {
     const uint32_t address = dbz3::GA(0x8234ABB8u) + 96u * uint32_t(id) + 80u;
@@ -77,6 +82,9 @@ void PutCapsules(uint8_t* base, uint32_t rec, int side, int id) {
       c = it->second;
       custom = true;
     }
+  } else if (side >= 0 && side < 2) {   // online: la lista Custom acordada de ese lado y miembro
+    custom = dbz3::net::Session::Get().AgreedCaps(side, id, c);
+    REXLOG_INFO("dbz3 online: capsulas (inicio) lado {} id {}: {} lista [{} {} {} {}]", side + 1, id, custom ? "Custom" : "Normal", c[0], c[1], c[2], c[3]);
   }
   if (!custom) {   // las suyas por defecto (char96 +80: n y 7 IDs)
     const uint32_t c96 = dbz3::GA(0x8234ABB8) + 96 * uint32_t(id);
@@ -108,6 +116,51 @@ std::vector<int> MyLastTeam() {
     }
   }
   return g_mine;
+}
+
+std::array<uint16_t, 8> OwnCustomCapsules(int id) {
+  std::array<uint16_t, 8> out{};
+  if (id < 0) return out;
+  uint16_t ids[7];
+  std::fill(ids, ids + 7, uint16_t(0xFFFF));
+  if (id < 38) {   // lista Custom guardada en la partida (casilla del select = ID), como hub.cpp
+    if (!dbz3::roster::SaveCustomList(uint32_t(id), ids)) return out;
+  } else {   // celda nueva: mods/capsulas_custom.txt (sin lista propia devuelve la Normal)
+    dbz3::roster::GetCustomList(uint32_t(id), ids);
+  }
+  if (const char* te = std::getenv("DBZ3_TEST_CAPS_ONLINE")) {   // PRUEBAS (solo pruebas.py): "id:c1,c2;id:c1,c2" en vez de la partida
+    for (const char* q = te; *q;) {
+      const int tid = std::atoi(q);
+      const char* col = std::strchr(q, ':');
+      const char* semi = std::strchr(q, ';');
+      if (col && (!semi || col < semi) && tid == id) {
+        std::fill(ids, ids + 7, uint16_t(0xFFFF));
+        int k = 0;
+        for (const char* d = col + 1; *d && *d != ';' && k < 7;) {
+          ids[k++] = uint16_t(std::atoi(d));
+          while (*d && *d != ',' && *d != ';') ++d;
+          if (*d == ',') ++d;
+        }
+        break;
+      }
+      if (!semi) break;
+      q = semi + 1;
+    }
+  }
+  const uint32_t count = dbz3::roster::CapsuleCount();
+  uint16_t n = 0;
+  for (uint32_t i = 0; i < 7; ++i) {
+    if (ids[i] == 0xFFFF || ids[i] == 0) continue;
+    if (ids[i] >= count) return {};   // valor invalido: la Normal
+    out[1 + n++] = ids[i];
+  }
+  out[0] = n;
+  return out;
+}
+
+void SetMyOnlineTeam(const std::vector<int>& members) {
+  std::lock_guard<std::mutex> lock(g_mu);
+  g_mine = members.size() >= 2 ? members : std::vector<int>{};
 }
 
 void ClearDynamicTeams() {
@@ -164,7 +217,29 @@ void BeforeBattleSetup(uint8_t* base, uint32_t sel) {
       }
       SetDynamicTeam(k, team);
     }
-    if (team.size() < 2) continue;
+    if (team.size() < 2) {
+      // Online 1 contra 1: la lista de la rueda sale de la partida guardada de CADA PC (kUiSnap solo copia 0x100 B; las listas estan
+      // en +0x1340). Se escribe la lista Custom del dueño de cada lado (la mandaron al conectar, kTeam) o la Normal: igual en los dos PC.
+      if (dbz3::net::Session::Get().link() != dbz3::net::Link::kIdle) {
+        const uint32_t rec1 = sel + 16 + 80 * uint32_t(k);
+        const uint32_t id1 = REX_LOAD_U16(rec1 + 16);
+        if (const char* tc = std::getenv("DBZ3_TEST_REC_CAPS"); tc && k == 0) {   // PRUEBA: simula una lista Custom distinta en cada PC
+          int c[7] = {0, 0, 0, 0, 0, 0, 0}, n = 0;
+          for (const char* q = tc; *q && n < 7; ++n) { c[n] = std::atoi(q); while (*q && *q != ',') ++q; if (*q) ++q; }
+          REX_STORE_U16(rec1 + 52, uint16_t(n));
+          for (int i = 0; i < n; ++i) REX_STORE_U16(rec1 + 54 + 2 * i, uint16_t(c[i]));
+        }
+        if (id1 < 105 && !std::getenv("DBZ3_TEST_SIN_NORMAL")) {
+          PutCapsules(base, rec1, int(k), int(id1));
+          REXLOG_INFO("dbz3 online: 1 contra 1, lado {} id {}: capsulas acordadas [{} {} {} {}]", k + 1, id1, REX_LOAD_U16(rec1 + 52),
+                      REX_LOAD_U16(rec1 + 54), REX_LOAD_U16(rec1 + 56), REX_LOAD_U16(rec1 + 58));
+        } else {
+          REXLOG_INFO("dbz3 online: 1 contra 1, lado {} id {}: capsulas SIN forzar [{} {} {} {}]", k + 1, id1, REX_LOAD_U16(rec1 + 52),
+                      REX_LOAD_U16(rec1 + 54), REX_LOAD_U16(rec1 + 56), REX_LOAD_U16(rec1 + 58));
+        }
+      }
+      continue;
+    }
     // su ID y sus capsulas, las elegidas para el (Normal / Custom) en el menu del juego (la seleccion
     // trae las del ultimo confirmado en la rueda: sin esto el primero peleaba con las de otro)
     const uint32_t rec = sel + 16 + 80 * uint32_t(k);

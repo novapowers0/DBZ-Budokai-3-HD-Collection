@@ -35,6 +35,8 @@ struct Entry {
 };
 
 static const Entry kTable[] = {
+    // Dragon Tactics (dsTAC): banda del paso de preparacion a combate
+    {"¡COMBATE!", "COMBATTIMENTO!", "KAMPF!", "COMBAT !"},
     // Widescreen (frente 05, studies 6): aspecto en pantallas anchas
     {"Mantener proporcion (franjas)", "Mantieni proporzioni (barre)", "Seitenverhältnis halten (Balken)", "Conserver les proportions (barres)"},
     {"Estirar (llenar, deformado)", "Allunga (riempi, deformato)", "Dehnen (füllen, verzerrt)", "Étirer (remplir, déformé)"},

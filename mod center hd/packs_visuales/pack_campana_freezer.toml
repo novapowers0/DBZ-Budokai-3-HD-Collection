@@ -1,11 +1,11 @@
-# Pack visual opcional: imagenes de narracion y retrato de Mecha Freezer para la Historia de
+# Pack visual opcional: imagenes de narracion para la Historia de
 # Freezer (campanas/historia_freezer.toml). Copia esa campana dentro del pack con sus imagenes
 # cambiadas; con --montar sale el mod historia_freezer (el anterior va a mods_respaldo/).
 #   python construir_pack.py pack_campana_freezer.toml --mods <mods> [--montar]
 [pack]
 nombre = "pack_campana_freezer"
 titulo = "Arte: Historia de Freezer"
-descripcion = "Imagenes de narracion y retrato de Mecha Freezer (arte de terceros, solo uso personal)."
+descripcion = "Imagenes de narracion (arte de terceros, solo uso personal)."
 
 [campana]
 toml = "campanas/historia_freezer.toml"
@@ -38,10 +38,3 @@ modo = "ajustar"
 alinear = "abajo"
 fondo = "Dragon Ball BG -BackGrounds-/[2020-03-07] Frieza's spaceship (Broly Movie)BG [Dokkan Battle] by Maxiuchiha22 - 832970882.png"
 reemplaza = "imagenes/FriezaKingColdNV.webp"
-
-# Retrato de dialogo de Mecha Freezer ([[retrato]] entrada 4501; campana.py lo encaja en 541x530)
-[[asset]]
-fuente = "Dragon Ball Z/Mecha Frieza Saga/[2018-05-31] Mecha Frieza render [Dokkan Battle] by Maxiuchiha22 - 747460688.png"
-destino = "campana/retratos/mecha_freezer.png"
-tipo = "retrato_campana"
-reemplaza = "retratos/mecha_freezer.png"

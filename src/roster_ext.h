@@ -144,6 +144,7 @@ uint32_t UnifiedListed(int id);
 // this list in while the new character is being processed. Default: its Normal
 // list. Changes are kept in mods/capsulas_custom.txt (the save is not touched).
 void GetCustomList(uint32_t id, uint16_t out[7]);
+bool SaveCustomList(uint32_t id, uint16_t out[7]);   // la guardada en la partida (ID < 38); false si no se puede leer
 void SetCustomList(uint32_t id, const uint16_t in[7]);
 
 }  // namespace dbz3::roster

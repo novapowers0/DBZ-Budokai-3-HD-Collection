@@ -55,6 +55,16 @@ CANDIDATOS = {
               (0x0F4, "inferido", "sin andar en el suelo: bucle de 60 cuadros de la familia 0xF4-0xFF (vuelo); sin confirmar en juego")],
     "ataque": [(0x21B, "medido", "combo >P (ACM_FORMAT.md)")],
     "tecnica": [(0x258, "inferido", "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica")],
+    # dsTAC: pose del ganador al acabar la ronda (sonda de combate: estado 6, accion 15 codigo 0x2A1; 120 cuadros, bucle al final)
+    "victoria": [(0x2A1, "medido", "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)")],
+}
+# dsTAC: clips de reaccion del banco COMUN (entrada 165 de data_cmn; tabla compartida de 2172 codigos). Medido con la sonda de
+# combate 1/11 (accion/codigo por cuadro) y visto en el render offline: 0x9A = golpe recibido, 0x24 = KO tumbado, 0x25 = se levanta.
+BANCO_COMUN = 165
+COMUNES = {
+    "dano": (0x9A, "golpe recibido (accion 20/22 del motor)"),
+    "derrota": (0x24, "KO tumbado boca abajo (accion 18)"),
+    "levantarse": (0x25, "se levanta desde el suelo (accion 19)"),
 }
 # H12: causa real de que se descartaran en H11: sus bancos no traen todos los codigos comunes (medido con code_info sobre su #CSK, banco propio = pool 3):
 # Yamcha y Ginyu no definen ningun codigo de suelo (0-0x20: ni espera ni andar), Uub no tiene 0xF/0xF4 (andar) ni 0x21B, Raditz no tiene 0x21B.
@@ -67,8 +77,6 @@ EXTRA = {
     "raditz": {"ataque": [(0x21A, "inferido", "sin 0x21B: golpe vecino de la serie")]},
 }
 PENDIENTES = {
-    "dano": "accion 20 del motor, sin codigo BSK confirmado",
-    "derrota": "sin evidencia de codigo",
     "carga_ki": "accion 21 del motor; codigo sin medir",
     "transformacion": "0x2E0/0x3E0 apunta a otro banco (pool 0) en casi todos: no resuelto aqui",
 }
@@ -96,6 +104,10 @@ def _clip(csk0, cskf, acm, en, codigo):
 
 def construir():
     out = []
+    # dsTAC: banco comun de reacciones (una sola lectura para las 51 entradas)
+    comun = sc.hd_entry(BANCO_COMUN)
+    csk_c, ec = sc.csk_of(comun)
+    acm_c, enc = sc.anim_pool(comun)
     for uid, bid, b2, forma, fid in UNIDADES:
         a0, af, csk0, cskf, acm, en = _datos(uid, bid, forma)
         u = dict(id=uid, b3=bid, b2=b2, forma=forma, traje=0, modelo=fid, anm_forma=af, banco=a0, clips={})
@@ -111,6 +123,14 @@ def construir():
         an = u["clips"].get("andar")
         if an and an["codigo"] == 0xF4 and uid != "freezer" and "espera" in u["clips"]:   # H14: sin andar de suelo y no vuela por naturaleza: se desliza en su espera (el bucle de vuelo inclina y abre las piernas)
             u["clips"]["andar"] = dict(u["clips"]["espera"], nota="sin andar de suelo en su banco: se desliza en su espera")
+        for nom, (cod, nota) in COMUNES.items():   # dsTAC: golpe recibido, KO y levantarse del banco comun
+            info = sc.code_info(csk_c, ec, cod)
+            anim = info[0] if info else None
+            fr = ba.frames_de(acm_c, enc, anim) if anim is not None else None
+            if anim is not None and fr:
+                u["clips"][nom] = dict(codigo=cod, anim=anim, frames=fr, bucle=False, banco=BANCO_COMUN, estado="medido", nota=nota)
+            else:
+                u["clips"][nom] = dict(estado="pendiente", nota=nota + " (no resuelto en el banco comun)")
         for nom, nota in PENDIENTES.items():
             u["clips"][nom] = dict(estado="pendiente", nota=nota)
         out.append(u)

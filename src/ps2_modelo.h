@@ -75,12 +75,17 @@ struct M34 {
         r.m[i * 4 + j] = m[i * 4] * o.m[j] + m[i * 4 + 1] * o.m[4 + j] + m[i * 4 + 2] * o.m[8 + j] + (j == 3 ? m[i * 4 + 3] : 0);
     return r;
   }
-  M34 Inversa() const {   // rigida (sin escala): R^T | -R^T t
+  M34 Inversa() const {   // afin general (con escala); en rigidas da R^T | -R^T t
+    const float a = m[0], b = m[1], c = m[2], d = m[4], e = m[5], f = m[6], g = m[8], h = m[9], i = m[10];
+    const float A = e * i - f * h, B = f * g - d * i, C = d * h - e * g;
+    float det = a * A + b * B + c * C;
+    if (std::abs(det) < 1e-12f) det = det < 0 ? -1e-12f : 1e-12f;
+    const float id = 1.0f / det;
     M34 r;
-    for (int i = 0; i < 3; ++i) {
-      for (int j = 0; j < 3; ++j) r.m[i * 4 + j] = m[j * 4 + i];
-      r.m[i * 4 + 3] = -(m[i] * m[3] + m[4 + i] * m[7] + m[8 + i] * m[11]);
-    }
+    r.m[0] = A * id; r.m[1] = (c * h - b * i) * id; r.m[2] = (b * f - c * e) * id;
+    r.m[4] = B * id; r.m[5] = (a * i - c * g) * id; r.m[6] = (c * d - a * f) * id;
+    r.m[8] = C * id; r.m[9] = (b * g - a * h) * id; r.m[10] = (a * e - b * d) * id;
+    for (int k = 0; k < 3; ++k) r.m[k * 4 + 3] = -(r.m[k * 4] * m[3] + r.m[k * 4 + 1] * m[7] + r.m[k * 4 + 2] * m[11]);
     return r;
   }
 };
@@ -97,6 +102,7 @@ struct Esqueleto {
   std::vector<M34> local, inv_mundo;
   Malla crudo;
   V3 centro;                                // lo que quito Centrar en x/z
+  bool peso0_al_padre = false;              // lista de peso 0: el vertice sigue al padre del hueso de la lista (bigotes de Shenron), no al hueso de la parte
   std::vector<std::vector<Peso>> pesos;     // listas de pesos (una por vertice pesado)
   std::vector<int32_t> pesos_de;            // por vertice de triangulo (t * 3 + c): su lista, o -1 (rigido)
 };

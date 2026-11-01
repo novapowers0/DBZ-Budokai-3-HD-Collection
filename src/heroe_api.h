@@ -35,6 +35,7 @@ int FichaNumero();                          // 1..N (mods/heroe_fichaN)
 int TrajeCombate(int* estado);
 std::string ArgsPropio();                   // studies 9: ArgsFicha + nombre: lo que monta mods/heroe_propio (el heroe con ID propio)
 int IdPropio();                             // su ID real en el roster de esta sesion (-1: no esta montado)
+std::string ArgsExportar();                 // 1.5.6: ArgsPropio + donante y tecnicas equipadas: lo que "Exportar como personaje" manda a vista_heroe.py --exportar
 int DonanteCombate();                       // donante (moveset) con el que se monta el heroe propio
 int Luchador(int estilo);                   // el que pelea: IdPropio() o, sin el, el estilo              // 0 nativa, 1 en combate, 2 al reiniciar, 3 sin hacer
 

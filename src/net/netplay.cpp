@@ -72,7 +72,7 @@ namespace T = dbz3::i18n;
 // PRUEBAS (DBZ3_NET_NOFAIL): una diferencia del RNG solo se registra (los menus de dos copias no van al mismo ritmo)
 bool NoFail() { static const bool v = std::getenv("DBZ3_NET_NOFAIL") != nullptr; return v; }
 
-constexpr uint8_t kProto = 5;   // 5: START lleva los dos equipos de Tag Team; 4: INPUT con ping y retardo (adaptativo)
+constexpr uint8_t kProto = 7;   // 7: kTeam lleva ademas las listas Custom de las 38 plazas (1 contra 1); 6: kTeam lleva la lista Custom de cada miembro; // 5: START lleva los dos equipos de Tag Team; 4: INPUT con ping y retardo (adaptativo)
 constexpr size_t kInputBase = 34;   // INPUT sin mandos: cabecera 6 + nonces 8 + n 1 + rng 8 + ping/retardo 11
 constexpr char kMagic[4] = {'D', 'B', 'Z', '3'};
 enum Msg : uint8_t {
@@ -331,6 +331,20 @@ bool Session::ValidPacket(const std::vector<uint8_t>& pkt) const {
       if (n >= 2 && !safe_tagteam_) return false;
       std::vector<int> ids;
       for (int i = 0; i < n; ++i) { const auto id = r.u16(); if (!TeamIdOk(int(id))) return false; ids.push_back(id); }
+      for (int i = 0; i < n; ++i) {   // lista Custom de cada miembro: n (0-7) y esos IDs
+        const auto nc = r.u8();
+        if (nc > 7) return false;
+        for (int k = 0; k < nc; ++k) r.u16();
+      }
+      {   // listas Custom de las plazas (1 contra 1): m u8 y por cada una id u8 (< 38), n u8 (1-7) y n IDs
+        const auto m = r.u8();
+        if (m > 38) return false;
+        for (int q = 0; q < m; ++q) {
+          const auto pid = r.u8(), nc = r.u8();
+          if (pid >= 38 || nc == 0 || nc > 7) return false;
+          for (int k = 0; k < nc; ++k) r.u16();
+        }
+      }
       if (team_ready_ && ids != peer_team_) return false;
       return r.ok && r.o == pkt.size();
     }
@@ -559,12 +573,18 @@ bool Session::Host(uint16_t port, uint8_t delay, std::string* error) {
   identity_admission_ = false;
   local_nonce_ = NewNonce();
   local_team_ = dbz3::tag::MyLastTeam();
+  local_caps_.clear();
+  for (int id : local_team_) local_caps_.push_back(dbz3::tag::OwnCustomCapsules(id));   // antes de pasar a ids de protocolo
+  local_all_.clear();
+  for (int id = 0; id < 38; ++id)
+    if (const auto c = dbz3::tag::OwnCustomCapsules(id); c[0]) local_all_[id] = c;
   for (int& id : local_team_) id = dbz3::roster::OnlineWireId(id);
   if (local_team_.size() >= 2 && !safe_tagteam_) {
     // Tag Team online sin autorizar: se juega 1 contra 1. Antes el ultimo equipo del Tag Team de 1P (que no
     // se borra) dejaba CREAR y UNIRSE fallando hasta reiniciar el juego (2026-10-15)
     REXLOG_INFO("dbz3 online: el equipo de Tag Team ({} luchadores) no viaja al online: 1 contra 1", local_team_.size());
     local_team_.clear();
+    local_caps_.clear();
   }
   if (local_team_.size() > 3 || std::any_of(local_team_.begin(), local_team_.end(), [](int x) { return !TeamIdOk(x); })) {
     if (error) *error = T::T("Online: equipo de Tag Team no valido", "Online: invalid Tag Team team");
@@ -646,12 +666,18 @@ bool Session::Join(const std::string& ip, uint16_t port, std::string* error) {
   identity_admission_ = false;
   local_nonce_ = NewNonce();
   local_team_ = dbz3::tag::MyLastTeam();
+  local_caps_.clear();
+  for (int id : local_team_) local_caps_.push_back(dbz3::tag::OwnCustomCapsules(id));   // antes de pasar a ids de protocolo
+  local_all_.clear();
+  for (int id = 0; id < 38; ++id)
+    if (const auto c = dbz3::tag::OwnCustomCapsules(id); c[0]) local_all_[id] = c;
   for (int& id : local_team_) id = dbz3::roster::OnlineWireId(id);
   if (local_team_.size() >= 2 && !safe_tagteam_) {
     // Tag Team online sin autorizar: se juega 1 contra 1. Antes el ultimo equipo del Tag Team de 1P (que no
     // se borra) dejaba CREAR y UNIRSE fallando hasta reiniciar el juego (2026-10-15)
     REXLOG_INFO("dbz3 online: el equipo de Tag Team ({} luchadores) no viaja al online: 1 contra 1", local_team_.size());
     local_team_.clear();
+    local_caps_.clear();
   }
   if (local_team_.size() > 3 || std::any_of(local_team_.begin(), local_team_.end(), [](int x) { return !TeamIdOk(x); })) {
     if (error) *error = T::T("Online: equipo de Tag Team no valido", "Online: invalid Tag Team team");
@@ -913,9 +939,26 @@ void Session::Handle(const std::vector<uint8_t>& pkt, bool) {
         const int id = int(r.u16());
         if (TeamIdOk(id)) ids.push_back(id);   // otro valor se saldria de la tabla
       }
+      std::vector<std::array<uint16_t, 8>> caps(ids.size());
+      for (size_t i = 0; i < ids.size(); ++i) {
+        const uint8_t nc = r.u8();
+        for (uint8_t k = 0; k < nc && k < 7; ++k) caps[i][1 + k] = r.u16();
+        caps[i][0] = std::min<uint8_t>(nc, 7);
+      }
+      std::map<int, std::array<uint16_t, 8>> all;
+      for (uint8_t q = 0, m = r.u8(); q < m && q < 38; ++q) {
+        const int pid = r.u8();
+        const uint8_t nc = r.u8();
+        std::array<uint16_t, 8> c{};
+        for (uint8_t k = 0; k < nc && k < 7; ++k) c[1 + k] = r.u16();
+        c[0] = std::min<uint8_t>(nc, 7);
+        all[pid] = c;
+      }
       std::lock_guard<std::mutex> lock(mu_);
-      if (team_ready_ && peer_team_ != ids) return; // frozen agreement
+      if (team_ready_ && (peer_team_ != ids || peer_caps_ != caps || peer_all_ != all)) return; // frozen agreement
       peer_team_ = ids;
+      peer_caps_ = caps;
+      peer_all_ = all;
       team_ready_ = true;
       break;
     }
@@ -1045,6 +1088,17 @@ void Session::Poll() {
       Writer w(kTeam);
       w.u8(uint8_t(std::min<size_t>(team.size(), 3)));
       for (size_t i = 0; i < team.size() && i < 3; ++i) w.u16(uint16_t(team[i]));
+      for (size_t i = 0; i < team.size() && i < 3; ++i) {
+        const auto c = i < local_caps_.size() ? local_caps_[i] : std::array<uint16_t, 8>{};
+        w.u8(uint8_t(c[0]));
+        for (uint16_t k = 0; k < c[0]; ++k) w.u16(c[1 + k]);
+      }
+      w.u8(uint8_t(local_all_.size()));
+      for (const auto& [pid, c] : local_all_) {
+        w.u8(uint8_t(pid));
+        w.u8(uint8_t(c[0]));
+        for (uint16_t k = 0; k < c[0]; ++k) w.u16(c[1 + k]);
+      }
       Send(w.b);
       Writer pf(kRoom);   // y mi rango y mis reglas de combate para la sala (tambien cada medio segundo)
       {
@@ -1266,6 +1320,7 @@ void Session::ResetTransport() {
   peer_len_ = 0;
   std::memset(peer_addr_, 0, sizeof(peer_addr_));
   local_team_.clear(); peer_team_.clear(); ui_snap_.clear();
+  local_caps_.clear(); peer_caps_.clear(); local_all_.clear(); peer_all_.clear();
   team_ready_ = false;
   tick_ = 0; battles_ = seed_ = 0; armed_ = false; rb_mode_ = false; rb_on_ = false;
   applied_[0] = {}; applied_[1] = {};
@@ -1408,6 +1463,41 @@ std::string Session::WriteDesyncReport(const std::string& why) {
   } catch (...) {
     return {};
   }
+}
+
+bool Session::AgreedCaps(int side, int guest_id, std::array<uint16_t, 8>& out) const {
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!team_ready_ || side < 0 || side > 1) return false;
+  const bool host = role_ == Role::kHost;
+  const bool mine = (side == 0) == host;   // el lado 0 es el equipo del anfitrion
+  const std::vector<int>& team = mine ? local_team_ : peer_team_;
+  const auto& caps = mine ? local_caps_ : peer_caps_;
+  const uint32_t count = dbz3::roster::CapsuleCount();
+  auto valid = [&](const std::array<uint16_t, 8>& c) {
+    if (c[0] == 0 || c[0] > 7 || !count || count > 2048) return false;
+    for (uint32_t k = 1; k <= c[0]; ++k) if (c[k] >= count) return false;
+    return true;
+  };
+  for (size_t i = 0; i < team.size() && i < caps.size(); ++i) {
+    if (dbz3::roster::OnlineGuestId(team[i]) != guest_id) continue;
+    if (!valid(caps[i])) return false;
+    out = caps[i];
+    return true;
+  }
+  const auto& all = mine ? local_all_ : peer_all_;   // sin equipo (1 contra 1): la lista del dueño del lado para esa plaza
+  if (team.size() < 2) {
+    const auto it = all.find(guest_id);
+    if (it != all.end() && valid(it->second)) { out = it->second; return true; }
+  }
+  return false;
+}
+
+bool Session::Teams(std::vector<int>* mine, std::vector<int>* peer) const {
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!team_ready_) return false;
+  if (mine) *mine = local_team_;
+  if (peer) *peer = peer_team_;
+  return true;
 }
 
 std::string Session::Status() const {

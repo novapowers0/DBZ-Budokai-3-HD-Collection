@@ -1189,4 +1189,15 @@ void TagTeamPanel::OnDraw(ImGuiIO& io) {
   if (g_gate_out > 0 && now - g_gate_out >= 0.4) g_gate = Gate::kNone;
 }
 
+const std::vector<int>& TeamFighterIds() {
+  static const std::vector<int> ids = [] {
+    std::vector<int> v;
+    for (const auto& f : kFighters) v.push_back(f.id);
+    return v;
+  }();
+  return ids;
+}
+std::string TeamFighterName(int id) { return Name(id); }
+ImTextureID TeamFighterFace(int id) { return FaceOf(id); }
+
 }  // namespace dbz3::ingame

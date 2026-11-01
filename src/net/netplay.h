@@ -20,6 +20,7 @@
 #pragma once
 
 #include <array>
+#include <map>
 #include <atomic>
 #include <cstdint>
 #include <mutex>
@@ -110,6 +111,11 @@ class Session {
   void SetProfile(int elo, int tramo);
   void MyRoom(int* elo, int* tramo, CombatRules* rules) const;
   bool PeerRoom(int* elo, int* tramo, CombatRules* rules) const;
+  // Equipos acordados (ids del protocolo): solo para mostrarlos en la sala. false hasta que llega el del otro.
+  bool Teams(std::vector<int>* mine, std::vector<int>* peer) const;
+  // Lista Custom acordada del luchador `guest_id` (id de plaza) del lado `side` (0 = el del anfitrion): {n, 7 IDs}.
+  // false = sin lista propia (se usa la Normal). Igual en los dos PC.
+  bool AgreedCaps(int side, int guest_id, std::array<uint16_t, 8>& out) const;
   // Jugando online: las reglas opcionales del combate valen si las dos fotos eran iguales (combate.cpp, Rules()).
   // Durante la partida se quedan fijas: si alguien las cambia en F1, vuelven a las de la sala.
   bool CombatRulesAgreed() const { return active() && rules_agreed_.load(); }
@@ -272,6 +278,8 @@ class Session {
   uint32_t seed_ = 0;
   uint32_t battles_ = 0;   // combates empezados en esta partida online
   std::vector<uint8_t> ui_snap_;          // anfitrion: la suya; invitado: la recibida
+  std::map<int, std::array<uint16_t, 8>> local_all_, peer_all_;   // listas Custom propias por plaza (ID < 38), para el 1 contra 1
+  std::vector<std::array<uint16_t, 8>> local_caps_, peer_caps_;   // listas Custom de cada miembro (kTeam)
   std::vector<int> peer_team_;           // equipo de Tag Team del otro (kTeam)
   int my_elo_ = 1000, my_tramo_ = -1;    // rango propio y del otro (kProfile; con mu_)
   int peer_elo_ = 0, peer_tramo_ = -1;

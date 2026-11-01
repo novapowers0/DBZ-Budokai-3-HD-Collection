@@ -26,16 +26,16 @@ Copyright (c) 2026 **NovaPowers**. MIT License (see `LICENSE`).
 
 ## What's new in 1.5.6
 
-- **Dragon Tactics (beta):** an auto-battler tournament against seven bots, with 34 B3 fighters, 11 synergies, shop, capsules, saved matches and upgrades to four stars. Mouse/controller support; optional preparation timer, off by default. Some fighters can still get trapped behind allies.
+- **Dragon Tactics (experimental):** an auto-battler tournament against seven bots, with 34 B3 fighters, 11 synergies, shop, capsules, saved matches and upgrades to four stars. Mouse/controller support; optional preparation timer, off by default. Some fighters can still get trapped behind allies.
 - **Characters:** L1/R1 select pages for more than 24 added fighters, selectable extra costumes even with locked native costumes, and repaired missing technique labels when rebuilding the roster.
 - **Shin Budokai:** fixed SB1 skin references that left the body rigid with floating head/hands. Characters with a B3 HD equivalent use that native body with SB moves. Krillin, Vegeta and Janemba SB1 were checked in battle; other models were checked offline. Rebuild requires the PSP source ISO; the previous mod is backed up.
 - **Infinite World / Dragon Mission (experimental):** targeted intro/result, timing, HUD, ultimate and ki corrections. Freezer and Krillin retain their own height in 7D7. Full camera, movement and effect parity remains unfinished.
 - **Budokai 2 and Babidi's Ship (experimental):** menu/figure corrections and removal of the extra pre-battle VS card. The original floor-specific HUD and complete original result comparisons remain unfinished.
 - **Mr. Satan legend (beta):** targeted improvements to the car, smoke, fades, READY shots and round-summary layout.
-- **Hero mode (beta):** your name in dialogue and selection, saga-map events, Dragon Balls and Shenron's wish; more glove corrections and optional XV2 parts from your copy. Story translation is partial.
+- **Hero mode (beta):** an Export button saves your hero as a separate character (PC only) with an art-free recipe; your name in dialogue and selection, saga-map events, Dragon Balls and Shenron's wish; more glove corrections and optional XV2 parts from your copy. Story translation is partial.
 - **Modding Kit:** assistants and previews, a B3 PS2 mode that builds a separate ISO from your copy, Optional art for your own HUB images, and a DAE costume converter. No third-party art is included.
 - **Interface:** more translated news and recipe text. Linux Repair installation checks `.so` libraries instead of Windows DLLs (#62); this branch was reviewed in source, not tested on Linux.
-- **Online (beta):** revised room/search panel with consent before using the rendezvous service. Measured on one PC: lockstep with up to 200 ms latency and 20 % lost inputs kept every checksum equal; matchmaking paired two copies in 7 s. Two real PCs and Windows-Linux were not tested; rollback stays experimental and off by default.
+- **Online (beta):** a simpler screen: choose 1 vs 1 or Tag Team, and each player fights with their own Custom list. Builds from before 1.5.6 cannot join. Consent is asked before using the rendezvous service. Measured on one PC: lockstep with up to 200 ms latency and 20 % lost inputs kept every checksum equal; matchmaking paired two copies in 7 s. Two real PCs and Windows-Linux were not tested; rollback stays experimental and off by default.
 - **Fusion and Edit Skills:** Potara (Gotan) and mod capsules now appear in Edit Skills; a failed Yamhan fusion no longer closes the game. The real fusion button sequence was not seen.
 - **Gogeta SS4 / Vegito:** their ultimates play to the end (measured damage after the fix). Baby's ultimate measured 1081 damage against a still opponent.
 - **Interface:** the Select Characters box no longer covers the title, 4:3 bands are cleaner and What's New scrolls.

@@ -1378,6 +1378,56 @@ def _batalla(j, par):
     j.captura("02_vuelta_menu")
 
 
+def _tactics_sonda(j, par):
+    # dsTAC: combate nativo 1P vs COM (sin RINGOUT) con la sonda de combate encendida: el CSV de la copia
+    # (logs/combate_sonda.csv) trae accion y codigo por cuadro de los dos luchadores. El COM ataca al jugador quieto,
+    # asi que salen el golpe recibido (accion 20), la caida (25) y la victoria del ganador.
+    j.log(r"hub: combate nativo", 90)
+    _esperar_pelea(j, 120)
+    j.info("pelea: sonda encendida")
+    dormir(2.0)
+    try:   # dsTAC: volcado de la tabla de animaciones del luchador (X+704, tres ranuras: n en +0x10, tabla en +0x14)
+        b = leer(j.h, GBASE + 0x823D6CF4, 4)
+        mgr = int.from_bytes(b, "big") if b and len(b) == 4 else 0
+        out = ["mgr %08X" % mgr]
+        for k in range(2):
+            x = mgr + 2096 + 8240 * k
+            b = leer(j.h, GBASE + x + 2320, 12)   # animador = X+0x650; ranuras de animacion = animador+0x2C0 = X+0x910
+            ptrs = [int.from_bytes(b[i:i + 4], "big") for i in (0, 4, 8)] if b and len(b) == 12 else []
+            out.append("lado %d X=%08X ranuras %s" % (k + 1, x, [hex(p) for p in ptrs]))
+            for s, p in enumerate(ptrs):
+                if not p:
+                    continue
+                hb = leer(j.h, GBASE + p + 0x10, 8)
+                if not hb or len(hb) < 8:
+                    continue
+                n = int.from_bytes(hb[0:4], "big")
+                tbl = int.from_bytes(hb[4:8], "big")
+                out.append("  ranura %d n=%d tabla=%08X" % (s, n, tbl))
+                for code in (0x24, 0x25, 0x2A, 0x2B, 0x2D, 0x48, 0x49, 0x54, 0x8A, 0x8D, 0x90, 0x9A, 0xA0, 0x2A0):
+                    if code >= n:
+                        continue
+                    e = leer(j.h, GBASE + tbl + 4 * code, 4)
+                    if not e or len(e) < 4:
+                        continue
+                    ep = int.from_bytes(e, "big")
+                    if not ep:
+                        continue
+                    v = leer(j.h, GBASE + ep, 4)
+                    if not v or len(v) < 4:
+                        continue
+                    bank = int.from_bytes(v[0:2], "big")
+                    anim = int.from_bytes(v[2:4], "big")
+                    out.append("    code %#04x -> entrada %08X banco %d anim %d" % (code, ep, bank, anim + 1))
+        os.makedirs(r"D:/tmp/dsTAC", exist_ok=True)
+        open(r"D:/tmp/dsTAC/tabla_anim.txt", "w", encoding="utf-8").write("\n".join(out))
+        j.info("tabla de animaciones volcada")
+    except Exception as ex:  # noqa: BLE001
+        j.info("volcado de la tabla: %s" % ex)
+    dormir(float(par.get("seg", "90")))
+    j.captura("sonda_fin")
+
+
 def _batalla_cara(j, par):
     # 1/11: como _heroe_pieza pero en un combate nativo (DBZ3_TEST_BATTLE): fotos seguidas mientras la sonda de cara esta enganchada
     j.log(r"hub: combate nativo", 30)
@@ -1405,6 +1455,29 @@ def _heroe_creador(j, par):
     j.tecla("D", 600)
     dormir(float(par.get("vista", "6")))                 # la vista previa se rehace
     j.captura("c_scouter_on")
+
+
+def _heroe_exportar(j, par):
+    # 1.5.6: creador del Heroe > fila de botones (W da la vuelta) > Exportar (4.o boton) > A: mods/heroe_<nombre> + exportar.json.
+    dormir(2.5)
+    j.tecla("W", 1200)
+    j.tecla("Space", 3500)                              # HUB
+    for _ in range(5):
+        j.tecla("S", 450)
+    j.tecla("Space", 2500)                              # selector de retos
+    for _ in range(3):
+        j.tecla("S", 700)
+    j.tecla("Space", 2500)                              # DBZ3_TEST_HEROE_ABRIR=2: entra directo en el creador
+    j.tecla("W", 600)                                   # de la primera fila a la de botones
+    for _ in range(4):
+        j.tecla("D", 400)
+    j.captura("a_boton_exportar")                       # el aviso legal en la linea de ayuda
+    j.tecla("Space", 600)
+    dormir(1.0)
+    j.captura("b_exportando")
+    j.log(r"exportar como personaje: ok \(mod heroe_", float(par.get("seg", "240")))
+    dormir(1.0)
+    j.captura("c_exportado")
 
 
 def _tienda(j, par):
@@ -1481,6 +1554,16 @@ def _tactics_entrada(j, par):
         raise Fallo("algun ciclo no llego a la arena")
     if len(re.findall(r"tactics: arena cerrada", j.texto_log())) != n:
         raise Fallo("las aperturas y los cierres no coinciden")
+
+
+def _tactics_hoja_tam(j, par):
+    # subTAC: hoja de tamanos con todos los luchadores del catalogo (DBZ3_TEST_TACTICS_HOJA=1 proporcion real, 2 = criterio anterior)
+    modo = par.get("modo", "1")
+    j.log(r"tactics hoja: lista", seg=900)
+    dormir(1.0)
+    png = j.captura("hoja_%s" % modo)
+    os.makedirs(r"D:/tmp/subTAC", exist_ok=True)
+    shutil.copyfile(png, r"D:/tmp/subTAC/hoja_modo%s.png" % modo)
 
 
 def _tactics_hub(j, par):
@@ -3012,7 +3095,7 @@ def _du_continuar(j, par):
     j.log(r"personaje del mapa al crear \(casilla 22", 40)
     for i in range(1, int(par.get("iter", 10)) + 1):
         j.tecla("Space", int(par.get("paso_ms", 3000)))
-        if i % 3 == 0:
+        if i % int(par.get("cada", 3)) == 0:
             j.captura(f"{i:03d}")
         if par.get("hasta_combate") and "tag: combate acabado" in j.texto_log():
             j.info(f"combate de la campana acabado en el paso {i}")
@@ -3640,6 +3723,15 @@ def _r2_deseo(j, par):
     j.captura("e_debo_irme")
     j.tecla("Space", 2500)
     j.captura("f_fase_1")
+
+
+def _r2_shen_foto(j, par):
+    # DBZ3_TEST_SHEN_T="s1,s2,..." congela la escena de Shenron en esos segundos; Espacio pasa al siguiente (hoja lado a lado)
+    j.log(r"tablero b2: fase 1 leida", 90)
+    dormir(3)
+    for i in range(len(par.get("t", "").split(",")) if par.get("t") else 1):
+        j.captura("t%02d" % i)
+        j.tecla("Space", 1000)
 
 
 def _r2_fases(j, par):
@@ -4588,6 +4680,8 @@ ESCENARIOS = {
                         lambda p: dict(_tactics_sin_b2(p), DBZ3_TEST_TACTICS_SEMILLA="2024", DBZ3_TEST_TACTICS_AUTO=p.get("n", "3"), DBZ3_TEST_TACTICS_SIN_FOCO="1"), _tactics_partida),
     "tactics_mando": ("Dragon Tactics H4: una ronda jugada solo con el mando (cruceta/palanca, A, X): comprar, colocar, vender y ¡Listo!, sin piloto automatico",
                       lambda p: dict(_tactics_sin_b2(p), DBZ3_TEST_TACTICS_SEMILLA="2024", DBZ3_TEST_TACTICS_SIN_FOCO="1"), _tactics_mando),
+    "tactics_hoja_tam": ("subTAC: hoja de tamanos de todos los luchadores (--par modo=1 real | 2 anterior)",
+                     lambda p: {"DBZ3_TEST_TACTICS_FIGURAS": "1", "DBZ3_TEST_TACTICS_HOJA": p.get("modo", "1")}, _tactics_hoja_tam),
     "tactics_formas": ("Dragon Tactics H9: una unidad de 1 estrella pasa a N (--par est=4 unidad=goku): cambia el modelo a su transformacion nativa; capturas antes/despues 0,5",
                        lambda p: dict(_tactics_sin_b2(p), DBZ3_TEST_TACTICS_SEMILLA="2024", DBZ3_TEST_TACTICS_SIN_FOCO="1", DBZ3_TEST_TACTICS_ESTRELLAS=p.get("est", "4"),
                                       DBZ3_TEST_TACTICS_ESTRELLAS_UNIDAD=p.get("unidad", "goku")), _tactics_formas),
@@ -4685,6 +4779,9 @@ ESCENARIOS = {
                  lambda p: {"DBZ3_TEST_MISIONES": "1,reset", "DBZ3_TEST_B2_DESEO": "1",
                             "DBZ3_TEST_SHEN_ANIM": p.get("anim", "2"),
                             "DBZ3_PS2_GAMES": r"D:\DBZ3HD\ps2_games"}, _r2_deseo),
+    "r2_shen_foto": ("Shenron: fotos fijas en los segundos de --par t=a,b,c",
+                    lambda p: {"DBZ3_TEST_MISIONES": "1,reset", "DBZ3_TEST_B2_DESEO": "2", "DBZ3_TEST_SHEN_T": p.get("t", "30"),
+                               "DBZ3_PS2_GAMES": r"D:\DBZ3HD\ps2_games"}, _r2_shen_foto),
     "r2_fases": ("Pasarela > Dragon World de B2: fases seguidas en automatico hasta la IX (--par desde=1 = la II)",
                  lambda p: {"DBZ3_TEST_MISIONES": "1,auto,reset,desde=%s" % p.get("desde", "1"),
                             "DBZ3_TEST_RINGOUT": "1", "DBZ3_PS2_GAMES": r"D:\DBZ3HD\ps2_games"}, _r2_fases),
@@ -4733,10 +4830,16 @@ ESCENARIOS = {
     "du_continuar": ("DU > Continuar (Freezer: con --instantanea freezer_cap2)", lambda p: {}, _du_continuar),
     "batalla": ("combate nativo desde el menu (DBZ3_TEST_BATTLE) y vuelta al menu",
                 lambda p: {"DBZ3_TEST_BATTLE": p.get("ids", "0,7,2"), "DBZ3_TEST_RINGOUT": "1"}, _batalla),
+    "tactics_sonda": ("dsTAC: combate nativo 1P vs COM sin ring out con la sonda de combate (DBZ3_COMBATE_SONDA): "
+                      "vuelca accion/codigo/cuadro de animacion por cuadro para sacar los clips de golpe, KO y victoria",
+                      lambda p: {"DBZ3_TEST_BATTLE": p.get("ids", "0,7,2"), "DBZ3_COMBATE_SONDA": "1",
+                                 "DBZ3_TEST_OCULTO": "1", "DBZ3_TEST_TURBO": "1"}, _tactics_sonda),
     "batalla_cara": ("combate nativo con la camara de prueba pegada a la cabeza del luchador 1 (--par ids=18,0 --par cara_lado=-7 cara_dist=4 cara_fotos=6): primeros planos de un accesorio nativo (scouter de Raditz) en la misma luz que el del heroe",
                       lambda p: dict(_heroe_pieza_env(dict(p, guante="")), DBZ3_TEST_BATTLE=p.get("ids", "18,0")), _batalla_cara),
     "heroe_creador": ("Modo Heroe: abre el creador (DBZ3_TEST_HEROE_ABRIR=2), baja a la fila Scouter (--par filas=10) y la pone ON: fotos de la lista y de la vista previa",
                       lambda p: {"DBZ3_TEST_HEROE_ABRIR": "2"}, _heroe_creador),
+    "heroe_exportar": ("1.5.6: creador del Heroe > boton Exportar > A: exporta el heroe como mod aparte (comprueba exportar.json en el log y mods/heroe_*)",
+                       lambda p: {"DBZ3_TEST_HEROE_ABRIR": "2", "DBZ3_CAC_XV2": "0"}, _heroe_exportar),
     "freecam": ("camara libre: 3 poses por variable, o el camino REAL con --par teclas=1 (F1 con teclas + WASD/QE/"
                 "raton reales, Pausar/Ocultar HUD, R); --par modo=iw|iwmini|b2 la prueba en IW o B2",
                 _freecam_env, _freecam),
@@ -5922,6 +6025,17 @@ def _online_rb(j, par):
     pareja = _RB_PARES.setdefault(par.get("puerto", "25458"), {})
     pareja[par.get("rol", "host")] = j
     j.log(r"dbz3 rb: auto: empezando", int(par.get("espera", "150")))
+    if os.environ.get("DBZ3_NET_RUEDA"):   # subOnline: sin RequestBattleEx, la sala empezada lleva a la rueda de personajes
+        dormir(4)
+        for t in ("S", "Space", "S", "Space"):   # menu principal -> Duelo -> 1P VS 2P (la rueda)
+            j.tecla(t, 1800)
+        for k in range(3):
+            dormir(6)
+            j.info("pantalla %s" % j.pantalla())
+            _tactics_reducir(j, "rueda_%s_%d" % (par.get("rol", "host"), k))
+        if re.search(r"combate pedido", j.texto_log()):
+            raise Fallo("se pidio el combate sin pasar por la rueda")
+        return
     j.log(r"dbz3 rb: auto: combate pedido \(ok\)", 30)         # sin teclas antes: sacarian al menu de su pantalla
     j.log(r"tag: empieza un combate", 60)
     if par.get("automatico") == "1":
@@ -6087,9 +6201,24 @@ def online_rb(copias=("rb_a", "rb_b"), seg="40", delay_ms=0, loss_every=0, insta
     return all(r["ok"] for r in res)
 
 
+def _online_mm_rueda(j, par):
+    rol = par.get("puerto", "7777")
+    j.log(r"dbz3 online: START con equipos", 60)
+    for k in range(8):
+        dormir(3)
+        j.info("pantalla %s" % j.pantalla())
+        _tactics_reducir(j, "obs_%s_%02d" % (rol, k))
+
+
 def _online_mm(j, par):
     # Matchmaking: la pantalla ONLINE se abre sola y BUSCA PARTIDA (DBZ3_TEST_MM); se espera el emparejamiento, el combate
     # lockstep y las sumas comparadas sin diferencias. par: solo=1 -> el servicio no responde / el hash no empareja (no hay pareja).
+    if os.environ.get("DBZ3_NET_RUEDA"):   # ruta real: la pantalla ONLINE se abre desde el menu de Duelo
+        dormir(6)
+        j.tecla("S", 1500)
+        j.tecla("Space", 2500)          # menu principal -> Duelo
+        for _ in range(4):
+            j.tecla("S", 500)           # hasta la fila ONLINE, que abre la pantalla
     dormir(8)
     j.captura("mm_buscando")
     if par.get("solo") == "1":
@@ -6109,6 +6238,8 @@ def _online_mm(j, par):
         j.captura("mm_resultado")
         return
     j.log(r"dbz3 mm: emparejados", 90)
+    if os.environ.get("DBZ3_NET_RUEDA"):   # subOnline: ruta real (START desde la pantalla ONLINE), sin combate pedido
+        return _online_mm_rueda(j, par)
     j.log(r"dbz3 mm: combate pedido \(ok\)", 120)
     k = float(os.environ.get("DBZ3_MM_ESPERA_X", "1"))   # PC lento simulado: los ticks tardan k veces mas
     j.log(r"dbz3 mm: tick \d+ sumas comparadas [1-9]", int(90 * k))
@@ -6140,21 +6271,43 @@ def _online_mm(j, par):
         pl = re.findall(r"dbz3 roster: online: (id \d+ -> plaza \d+|\d+ plaza\(s\) anclada\(s\) liberada\(s\))", t)
         j.info(f"salas: equipos {eq}; plazas {pl}")
         (j.run / "salas.txt").write_text(f"{eq}\n{pl}\n", encoding="utf-8")
-def _online_pantalla(j, par):
-    # Pantalla ONLINE nueva sin buscar (DBZ3_TEST_MM=pantalla): menu de tres opciones, aviso de privacidad y ajustes avanzados.
-    dormir(8)
-    j.captura_estable("p0_menu")
-    j.tecla("Space", 1200)
-    j.captura_estable("p1_aviso")
-    j.tecla("S", 500)
-    j.tecla("Space", 1200)   # NO, USAR CODIGO: vuelve al menu
+def _online_flujo(j, pre, reducir=True):
+    # Flujo nuevo (1/11, subOnline): modo (1 contra 1 / Tag Team) -> equipo de dos -> caminos -> aviso, sala y avanzado.
+    cap = (lambda n: _tactics_reducir(j, pre + n)) if reducir else (lambda n: j.captura_estable(pre + n))
+    cap("_1_modo")
+    j.tecla("S", 500)                 # TAG TEAM 2 CONTRA 2
+    j.tecla("Space", 1200)            # abre la eleccion del equipo
+    cap("_2_equipo_primero")
+    j.tecla("Space", 900)             # primer luchador (Goku)
+    j.tecla("D", 400)
+    cap("_3_equipo_segundo")
+    j.tecla("Space", 1200)            # segundo luchador (Chico Goku) -> caminos
+    cap("_4_caminos")
+    j.tecla("S", 400)
+    j.tecla("Space", 2500)            # CREAR SALA (puerto propio de la prueba, sin UPnP)
+    cap("_5_sala_espera")
+    j.tecla("Backspace", 1500)        # cancelar la sala
     for _ in range(3):
-        j.tecla("S", 400)
-    j.tecla("Space", 1200)   # AJUSTES AVANZADOS
-    j.captura_estable("p2_avanzado")
+        j.tecla("S", 400)             # BUSCAR PARTIDA
+    j.tecla("Space", 1200)
+    cap("_6_aviso")
+    j.tecla("S", 500)
+    j.tecla("Space", 1200)            # NO, USAR CODIGO: vuelve a los caminos
+    for _ in range(4):
+        j.tecla("S", 400)             # AJUSTES AVANZADOS
+    j.tecla("Space", 1200)
+    cap("_7_avanzado")
+    j.tecla("Backspace", 1200)        # atras: elegir modo
+    j.tecla("Backspace", 800)
 
 
-ESCENARIOS["online_pantalla"] = ("Pantalla ONLINE nueva: menu, aviso, avanzados (capturas)", lambda p: {"DBZ3_TEST_MM": "pantalla"}, _online_pantalla)
+def _online_pantalla(j, par):
+    # Pantalla ONLINE nueva sin buscar (DBZ3_TEST_MM=pantalla): modo, equipo, caminos, sala, aviso de privacidad y avanzados.
+    dormir(8)
+    _online_flujo(j, "p", reducir=False)
+
+
+ESCENARIOS["online_pantalla"] = ("Pantalla ONLINE nueva: menu, aviso, avanzados (capturas)", lambda p: {"DBZ3_TEST_MM": "pantalla", "DBZ3_NET_LOCAL": "1", "DBZ3_TEST_MM_PORT": "7791"}, _online_pantalla)
 
 
 def _cfg_goku_ui(p):
@@ -6338,6 +6491,48 @@ def _goku_ui_rueda(j, par):
 ESCENARIOS["goku_ui_rueda"] = ("1/11: llegar a la celda de Goku UI en la rueda del Duelo (smoke_e; --par dir=D pasos=1 elegir=1)",
                                lambda p: {}, _goku_ui_rueda)   # la rueda de 1P ya esta activa al abrir la pantalla; con elegir=1 un Space confirma la celda
 
+def _ver_rueda_id(j, par):
+    # 1/11 verificar: mueve el cursor de 1P por la rueda (dir=S|W) hasta que el log diga "casilla nueva -> id N" (--par id=N) y captura.
+    dormir(2.5)
+    j.tecla("S", 1200)
+    j.tecla("Space", 0)
+    j.esperar_pantalla([14], 10)
+    dormir(2.5)
+    j.tecla("Space", 8000)
+    meta = par.get("id", "23")
+    d = par.get("dir", "S")
+    for i in range(int(par.get("max", "16"))):
+        if re.search(rf"casilla nueva -> id {meta}", j.texto_log()):
+            break
+        j.tecla(d, 1300)
+    else:
+        raise Fallo(f"el cursor no llego al id {meta}")
+    dormir(1.5)
+    j.captura("v_celda")
+    _tactics_reducir(j, "v_celda_r")
+
+
+ESCENARIOS["ver_rueda_id"] = ("1/11: cursor de 1P hasta el id N de una casilla nueva y foto (--par id=23 dir=S max=16)",
+                              lambda p: {}, _ver_rueda_id)
+
+def _ver_satan(j, par):
+    # 1/11 verificar: Leyenda de Mr. Satan desde el paso N (desde=1), sin ring out; DBZ3_TEST_ULT=1 pulsa P+K+G+E (High Tension y definitiva).
+    # Fotos cada 4 s durante el combate. Dificultad con --env DBZ3_TEST_PASARELA=auto,seg=8,desde=1,dificultad=N.
+    j.log(r"pasarela: prueba: disponible true; empieza", 90)
+    j.log(r"hub: combate nativo", 90)
+    j.log(r"pasarela: paso \d+ estado del combate 4", 90)
+    for i in range(int(par.get("fotos", "8"))):
+        dormir(float(par.get("paso", "4")))
+        j.captura(f"s{i}")
+
+
+ESCENARIOS["ver_satan"] = ("1/11: Leyenda de Satan, combate con DBZ3_TEST_ULT=1 y fotos (--par fotos=8 paso=4; dificultad por --env)",
+                           lambda p: {"DBZ3_TEST_PASARELA": f"auto,seg=8,desde={p.get('desde', '1')},dificultad={p.get('dif', '0')}",
+                                      "DBZ3_SIN_CINE": "1", "DBZ3_COMBATE_SONDA": "1",
+                                      **({} if p.get("forma") == "1" else {"DBZ3_TEST_ULT": "1"}),
+                                      **({"DBZ3_TEST_FORMAS": "1", "DBZ3_TEST_PKG": "1"} if p.get("forma") == "1" else {}),
+                                      "DBZ3_PS2_GAMES": r"D:\DBZ3HD\ps2_games"}, _ver_satan)
+
 
 def _goku_ui_aura(j, par):
     # 1/11 subFusion: aura de Goku UI (aura = 4021, aura_color #80B3FF) al entrar en modo hiper (P+K+G+E de DBZ3_TEST_ULT: explosion de aura).
@@ -6418,35 +6613,84 @@ def _online_formatos(j, par):
     U32.GetWindowRect(h, ctypes.byref(rw))
     U32.GetClientRect(h, ctypes.byref(rc))
     bx, by = (rw.right - rw.left) - rc.right, (rw.bottom - rw.top) - rc.bottom
-    for nombre, w, hh in (("a43", 1024, 768), ("b219", 1280, 544)):
+    for nombre, w, hh in (("a169", 1280, 720), ("a43", 1024, 768), ("b219", 1280, 544)):
         U32.SetWindowPos(h, None, rw.left, rw.top, w + bx, hh + by, 0x0004 | 0x0010)
         dormir(2.0)
         r2 = _RECT()
         U32.GetClientRect(h, ctypes.byref(r2))
         j.info("%s: area cliente %dx%d" % (nombre, r2.right, r2.bottom))
-        _tactics_reducir(j, nombre + "_menu")
-        j.tecla("Space", 1200)
-        _tactics_reducir(j, nombre + "_aviso")
-        j.tecla("S", 500)
-        j.tecla("Space", 1200)   # NO, USAR CODIGO: vuelve al menu
-        for _ in range(3):
-            j.tecla("S", 400)
-        j.tecla("Space", 1200)   # AJUSTES AVANZADOS
-        _tactics_reducir(j, nombre + "_avanzado")
-        j.tecla("Backspace", 1200)
-        j.tecla("Backspace", 800)
+        _online_flujo(j, nombre)
 
 
-ESCENARIOS["online_formatos"] = ("Panel ONLINE en 4:3 y 21:9 (ventana redimensionada, capturas 0,5)", lambda p: {"DBZ3_TEST_MM": "pantalla"}, _online_formatos)
+ESCENARIOS["online_formatos"] = ("Panel ONLINE en 4:3 y 21:9 (ventana redimensionada, capturas 0,5)", lambda p: {"DBZ3_TEST_MM": "pantalla", "DBZ3_NET_LOCAL": "1", "DBZ3_TEST_MM_PORT": "7791"}, _online_formatos)
+
+def _sub_ui_formatos(j, par):
+    # 1/11 subUI 1.5.6: select de personajes (que=sel), HUB con la fila Dragon Tactics (que=hub) o Kumite (que=kumite) en 16:9, 4:3 y 21:9 (capturas 0,5).
+    que = par.get("que", "sel")
+    if que == "pill":
+        # estado de la pildora "Normal" sobre el titulo: pasos del select, 1P confirmado, cambio de traje (teclas 1/3 = L1/R1, W/S)
+        _a_duelo(j)
+        h = j.enfocar()
+        rw, rc = _RECT(), _RECT()
+        U32.GetWindowRect(h, ctypes.byref(rw))
+        U32.GetClientRect(h, ctypes.byref(rc))
+        bx, by = (rw.right - rw.left) - rc.right, (rw.bottom - rw.top) - rc.bottom
+        for nombre, w, hh in (("16x9", 1280, 720), ("21x9", 1280, 544)):
+            U32.SetWindowPos(h, None, rw.left, rw.top, w + bx, hh + by, 0x0004 | 0x0010)
+            dormir(1.5)
+            _tactics_reducir(j, "pill_" + nombre + "_0")
+        for i, t in enumerate(par.get("teclas", "Space,Space,S,S,D,1,3,Backspace").split(",")):
+            j.tecla(t, 1800)
+            for nombre, w, hh in (("16x9", 1280, 720), ("21x9", 1280, 544)):
+                U32.SetWindowPos(h, None, rw.left, rw.top, w + bx, hh + by, 0x0004 | 0x0010)
+                dormir(0.8)
+                _tactics_reducir(j, "pill_%s_%d_%s" % (nombre, i + 1, t))
+        return
+    if que == "sel":
+        _a_duelo(j)
+        for _ in range(int(par.get("n", "2"))):
+            j.tecla("Space", 3500)
+    else:
+        dormir(2.5)
+        j.tecla("W", 1200)
+        j.tecla("Space", 3500)                          # HUB (cursor en Tag Team)
+        if que == "hub":
+            j.tecla("W", 600)                           # de la primera pasa a la ultima: Dragon Tactics
+        else:
+            for _ in range(5):
+                j.tecla("S", 450)
+            j.tecla("Space", 2500)                      # selector del Kumite
+    h = j.enfocar()
+    rw, rc = _RECT(), _RECT()
+    U32.GetWindowRect(h, ctypes.byref(rw))
+    U32.GetClientRect(h, ctypes.byref(rc))
+    bx, by = (rw.right - rw.left) - rc.right, (rw.bottom - rw.top) - rc.bottom
+    for nombre, w, hh in (("a_16x9", 1280, 720), ("b_4x3", 1024, 768), ("c_21x9", 1280, 544)):
+        U32.SetWindowPos(h, None, rw.left, rw.top, w + bx, hh + by, 0x0004 | 0x0010)
+        dormir(2.0)
+        _tactics_reducir(j, que + "_" + nombre)
+
+
+ESCENARIOS["sub_ui_formatos"] = ("1/11 subUI: select / HUB (que=hub) / Kumite (que=kumite) en 16:9, 4:3 y 21:9 (--par n=2 pulsaciones de Space en el select; capturas 0,5)", lambda p: {}, _sub_ui_formatos)
+
 
 
 def _env_online_mm(p):
     e = {"DBZ3_TEST_MM": "1", "DBZ3_NET_LOCAL": "1", "DBZ3_NET_SUMAS": "1", "DBZ3_TEST_MM_URL": p["url"],
          "DBZ3_TEST_MM_PORT": p.get("puerto", "7777"), "DBZ3_TEST_MM_TOPIC": p.get("topic", "t1")}
+    if os.environ.get("DBZ3_NET_RUEDA"):
+        e["DBZ3_NET_RUEDA"] = "1"
+    if p.get("reccaps"):
+        e["DBZ3_TEST_REC_CAPS"] = p["reccaps"]   # 1 contra 1: simula la lista Custom de la rueda, distinta en cada copia
+    if os.environ.get("DBZ3_TEST_SIN_NORMAL"):
+        e["DBZ3_TEST_SIN_NORMAL"] = "1"
+    if p.get("caps"):
+        e["DBZ3_TEST_CAPS_ONLINE"] = p["caps"]
+        e["DBZ3_RB_SELECT"] = "900"   # SELECT por guion: relevo real del anfitrion y, a media vuelta, del invitado
     if p.get("equipo1"):
         e["DBZ3_NET_TEAM"] = p["equipo1"]
         e["DBZ3_TEST_MM_TEAM2"] = p["equipo2"]
-    if p.get("solo") != "1":
+    if p.get("solo") != "1" and not os.environ.get("DBZ3_NET_RUEDA"):
         e.update(DBZ3_RB_SCRIPT="1", DBZ3_TEST_OCULTO="0", DBZ3_TEST_TURBO="1")   # pelea con guion hasta el fin
     return e
 
@@ -6480,6 +6724,8 @@ def online_mm(copias=("rb_a", "rb_b"), url=None, topic="t1", retraso=12, solo=Fa
             return correr(c, "online_mm", (), None,
                           dict(url=url, topic=(topic_b if (i and topic_b) else topic), puerto=str(7777 + i),
                                **({"equipo1": equipos[i][0], "equipo2": equipos[i][1]} if equipos else {}),
+                               **({"caps": equipos[i][2]} if equipos and len(equipos[i]) > 2 else {}),
+                               **({"reccaps": equipos[i][3]} if equipos and len(equipos[i]) > 3 else {}),
                                solo="1" if (solo or caida or cancel or topic_b) else "0", cancel="1" if cancel else "0"), True)
         n = 1 if (solo or caida or cancel) else 2
         with ThreadPoolExecutor(n) as ex:

@@ -44,6 +44,12 @@ class OnlinePanel : public rex::ui::ImGuiDialog {
   bool adv_ = false, consent_ask_ = false, join_after_edit_ = false, test_mm_started_ = false, test_mm_restart_ = false;
   double auto_start_at_ = 0;
   int port_ = 7777;
+  int step_ = 0;   // 0 elegir 1 contra 1 / Tag Team, 1 elegir el equipo de dos, 2 crear / unirse / buscar
+  bool tag_ = false;   // Tag Team elegido
+  int team_[2] = {-1, -1};   // mi equipo (ids de serie)
+  double copied_at_ = -10;   // cuando se pulso COPIAR CODIGO (aviso "Copiado")
+  int pick_n_ = 0, pick_cur_ = 0;   // miembros ya elegidos y casilla del cursor
+  std::string err_detail_;   // el motivo tecnico del ultimo error (solo en AVANZADO)
   int delay_ = 0;   // 0 = AUTO (se ajusta solo durante la partida), 1-8 = fijo
 };
 

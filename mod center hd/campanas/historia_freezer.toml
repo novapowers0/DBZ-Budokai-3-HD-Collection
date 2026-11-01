@@ -72,9 +72,18 @@ reparar = true
 # Mecha Freezer: la 1486 del juego es Metal Cooler; este es un retrato aportado (campanas/retratos/CREDITOS.txt)
 [[retrato]]
 entrada = 4501
-png = "retratos/mecha_freezer.png"
-escala = 1.15                     # retrato nuevo del usuario (2026-10-12): mismo tamaño que los oficiales
-desplazamiento = [0, 0]
+png = "retratos/mecha_freezer_frown.png"   # ceño: amenaza a Goku antes del combate
+sin_png = 1466
+[[retrato]]
+entrada = 4502
+png = "retratos/mecha_freezer_smirk.png"   # sonrisa: se burla de Trunks y celebra al ganar
+sin_png = 1466
+[[retrato]]
+entrada = 4503
+png = "retratos/goku_ssj_sin_camiseta.png"  # Goku SSJ con la camiseta rota, contra Freezer al 100% en Namek
+sin_png = 1417
+escala = 0.92                     # la cara a la altura y tamaño del Goku SSJ oficial (1417)
+desplazamiento = [0, -30]
 
 [[panel_limpio]]
 cmn = 1411
@@ -302,7 +311,7 @@ premio = 102
 forma_jugador = 4                 # Freezer al 100%
 forma_rival = 2                   # Super Saiyan
 plantilla = 715                   # Namek a punto de explotar (escenario 14, el de Goku SSJ contra Freezer)
-retratos = [1417, 1466]
+retratos = [4503, 1466]
 marca = [1, 1, -2800, 11, 2650, 1000]
 dialogo_es = ["He nacido de la ira y la calma. ¡Soy Super Saiyan!",
               "¡¿El Super Saiyan de la leyenda?! ¡Imposible!",
@@ -331,7 +340,7 @@ animacion_mapa = 0                # vuela de pie con el vuelo del mapa de la cas
 rival = 8
 premio = 405
 forma_rival = 1                   # Super Saiyan
-retratos = [1443, 4501]
+retratos = [1443, 4502]
 marca = [1, 25, 3213, 48, -6083, 1500]   # la de Trunks en el juego (104.0, zona 25)
 plantilla = 717                   # un combate de Goku en la Tierra (saga de los androides)
 fondo_dialogo = 1549              # fondo de la charla de despues (la Tierra)
@@ -371,7 +380,8 @@ animacion_mapa = 0                # vuela de pie con el vuelo del mapa de la cas
 rival = 0
 premio = 432
 forma_rival = 2                   # Super Saiyan
-retratos = [1417, 4501]
+retratos_dialogo = [1417, 4501]
+retratos = [1417, 4502]
 marca = [1, 4, 1821, 20, 2954, 1500]   # zona 4 del mapa de la Tierra (104.0)
 plantilla = 717
 fondo_dialogo = 1549

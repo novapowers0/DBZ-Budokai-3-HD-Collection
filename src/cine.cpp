@@ -34,6 +34,7 @@
 #include <rex/runtime.h>
 #include <rex/ui/imgui_dialog.h>
 
+#include "combate.h"
 #include "escenarios.h"
 #include "generated/dbz3_init.h"
 #include "gigantes.h"
@@ -62,6 +63,8 @@ uint32_t g_frame = 0;                // fotograma de la intro (0 = no ha empezad
 bool g_hecha = false;                // ya se vio (o se salto) en este combate
 int16_t g_mando[2] = {-1, -1};       // X+5028 (16 bits; -1 = COM) de cada luchador antes de la intro
 bool g_cambiado[2] = {};             // la intro le cambio el mando (era el COM)
+uint32_t g_vitrina_frame = 0;        // fotogramas de la camara de vitrina (DBZ3_TEST_VITRINA)
+bool g_vitrina_hud = false;          // la vitrina oculto el marcador (se devuelve al salir)
 
 struct V3 {
   float x, y, z;
@@ -106,6 +109,20 @@ bool Encendida() {
   static const bool prueba = std::getenv("DBZ3_CINE") != nullptr;
   return (prueba || g_pedido.load() || REXCVAR_GET(dbz3_cine_intro)) &&
          !dbz3::net::Session::Get().active();
+}
+
+// PRUEBA (DBZ3_TEST_VITRINA="segundos_por_vuelta distancia alto"): camara de vitrina para los clips del video:
+// orbita despacio alrededor del luchador 1 (pose de espera, rival quieto con DBZ3_COMBATE_MUNECO) y oculta el
+// marcador. Solo con la variable; no toca la simulacion.
+bool Vitrina(float* vuelta, float* dist, float* alto) {
+  static const char* v = std::getenv("DBZ3_TEST_VITRINA");
+  if (!v) return false;
+  *vuelta = 14.0f;
+  *dist = 22.0f;
+  *alto = 8.0f;
+  std::sscanf(v, "%f %f %f", vuelta, dist, alto);
+  *vuelta = std::max(*vuelta, 1.0f);
+  return true;
 }
 
 // SONDA (DBZ3_SONDA_VOLCADO=f1,f2,...): vuelca .data/.bss (0x82300000, 2 MB) en esos fotogramas de pelea. Con ella
@@ -281,6 +298,7 @@ void NuevoCombate() {
   g_hecha = false;
   g_en_curso = false;
   g_frame = 0;
+  g_vitrina_frame = 0;
 }
 
 void Fotograma(uint8_t* base, uint32_t estado, uint32_t frames_pelea) {
@@ -292,6 +310,29 @@ void Fotograma(uint8_t* base, uint32_t estado, uint32_t frames_pelea) {
   const uint32_t mgr = REX_LOAD_U32(dbz3::GA(0x823D6CF4));
   // K2 PRUEBA: DBZ3_TEST_CAMARA_LUCHA="lado ox oy oz alto" = camara fija en combate: objetivo = pies del luchador `lado` (0/1) + (0, alto, 0),
   // ojo = objetivo + (ox, oy, oz) en ejes del mundo. Para primeros planos de cara, hombro y antebrazo (la vista previa del heroe XV2 es una tira 2D).
+  if (mgr && estado == 4) {
+    float vuelta = 0, dist = 0, alto = 0;
+    if (Vitrina(&vuelta, &dist, &alto)) {
+      const V3 p = LeeV(base, mgr + 2096 + 48);
+      const V3 rival = LeeV(base, mgr + 2096 + 8240 + 48);
+      const V3 frente = Unit(V3{rival.x - p.x, 0, rival.z - p.z});   // de cara al luchador: se empieza viendole la cara
+      const float a = std::atan2(frente.z, frente.x) + 6.2831853f * (float(g_vitrina_frame) / 60.0f) / vuelta;
+      const V3 o{p.x, p.y + alto, p.z};
+      const V3 e{o.x + dist * std::cos(a), o.y, o.z + dist * std::sin(a)};
+      const float ef[3] = {e.x, e.y, e.z}, of[3] = {o.x, o.y, o.z};
+      Camara(base, ef, of);
+      dbz3::combate::OcultarHud(true);
+      g_vitrina_hud = true;
+      if (g_vitrina_frame++ == 0)
+        REXLOG_INFO("dbz3 cine: vitrina empieza (vuelta {:.1f} s, distancia {:.1f}, alto {:.1f})", vuelta, dist, alto);
+      return;
+    }
+  }
+  if (estado != 4 && g_vitrina_hud) {   // se acabo la pelea: el marcador vuelve
+    g_vitrina_hud = false;
+    g_vitrina_frame = 0;
+    dbz3::combate::OcultarHud(false);
+  }
   if (mgr && estado == 4) {
     static const char* tl = std::getenv("DBZ3_TEST_CAMARA_LUCHA");
     if (tl) {

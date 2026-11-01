@@ -17462,3 +17462,354 @@ de = "Ein Teil des Spiels fehlt (.so-Bibliotheken neben dbz3). Entpacke das komp
 it = "Manca una parte del gioco (librerie .so accanto a dbz3). Estrai di nuovo il pacchetto .tar.gz completo in una nuova cartella e copiaci le cartelle mods e user_data (i tuoi salvataggi)."
 pt = "Parte do jogo está faltando (bibliotecas .so ao lado de dbz3). Extraia o pacote .tar.gz completo de novo em uma pasta nova e copie para lá suas pastas mods e user_data (seus saves)."
 ja = "ゲームの一部（dbz3の隣にある.soライブラリ）が不足しています。完全な.tar.gzパッケージを新しいフォルダに展開し直し、modsフォルダとuser_dataフォルダ（セーブデータ）をそこにコピーしてください。"
+
+["COMBAT!"]
+es = "¡COMBATE!"
+en = "COMBAT!"
+fr = "COMBAT !"
+de = "KAMPF!"
+it = "COMBATTIMENTO!"
+pt = "COMBATE!"
+ja = "戦闘開始！"
+
+["Export"]
+es = "Exportar"
+en = "Export"
+fr = "Exporter"
+de = "Exportieren"
+it = "Esporta"
+pt = "Exportar"
+ja = "書き出し"
+
+["Creates a separate character from this hero. Only its recipe is shared, never the model."]
+es = "Crea un personaje aparte con este héroe. Se comparte solo su receta, nunca el modelo."
+en = "Creates a separate character from this hero. Only its recipe is shared, never the model."
+fr = "Crée un personnage à part avec ce héros. Seule sa recette se partage, jamais le modèle."
+de = "Erstellt mit diesem Helden eine eigene Figur. Geteilt wird nur das Rezept, nie das Modell."
+it = "Crea un personaggio a parte con questo eroe. Si condivide solo la ricetta, mai il modello."
+pt = "Cria um personagem à parte com este herói. Só a receita é compartilhada, nunca o modelo."
+ja = "このヒーローを別キャラクターとして作成します。共有するのはレシピだけで、モデルは共有しません。"
+
+["Exporting character... this may take a minute."]
+es = "Exportando personaje... puede tardar un minuto."
+en = "Exporting character... this may take a minute."
+fr = "Exportation du personnage... cela peut prendre une minute."
+de = "Figur wird exportiert... das kann eine Minute dauern."
+it = "Esportazione del personaggio... può richiedere un minuto."
+pt = "Exportando personagem... pode levar um minuto."
+ja = "キャラクターを書き出し中です... 1分ほどかかることがあります。"
+
+["Could not export the character (details in montaje.log)."]
+es = "No se pudo exportar el personaje (detalle en montaje.log)."
+en = "Could not export the character (details in montaje.log)."
+fr = "Impossible d'exporter le personnage (détails dans montaje.log)."
+de = "Die Figur konnte nicht exportiert werden (Details in montaje.log)."
+it = "Impossibile esportare il personaggio (dettagli in montaje.log)."
+pt = "Não foi possível exportar o personagem (detalhes em montaje.log)."
+ja = "キャラクターを書き出せませんでした（詳細は montaje.log）。"
+
+["Exported to mods/"]
+es = "Exportado en mods/"
+en = "Exported to mods/"
+fr = "Exporté dans mods/"
+de = "Exportiert nach mods/"
+it = "Esportato in mods/"
+pt = "Exportado em mods/"
+ja = "書き出し先: mods/"
+
+[". It shows in character select after PLAY. Share the recipe, not the model."]
+es = ". Sale en la selección al pulsar JUGAR. Se comparte la receta, no el modelo."
+en = ". It shows in character select after PLAY. Share the recipe, not the model."
+fr = ". Il apparaît dans la sélection après JOUER. Partagez la recette, pas le modèle."
+de = ". Er erscheint nach SPIELEN in der Auswahl. Teilt das Rezept, nicht das Modell."
+it = ". Appare nella selezione dopo GIOCA. Condividi la ricetta, non il modello."
+pt = ". Aparece na seleção depois de JOGAR. Compartilhe a receita, não o modelo."
+ja = "。PLAY後にキャラ選択に表示されます。共有するのはレシピで、モデルではありません。"
+
+["No free new-character slots: disable another one and export again."]
+es = "No quedan plazas de personajes nuevos: desactiva otro y vuelve a exportar."
+en = "No free new-character slots: disable another one and export again."
+fr = "Plus de place pour de nouveaux personnages : désactive-en un et réexporte."
+de = "Keine freien Plätze für neue Figuren: Deaktiviere eine andere und exportiere erneut."
+it = "Nessun posto libero per nuovi personaggi: disattivane uno ed esporta di nuovo."
+pt = "Não há vagas para novos personagens: desative outro e exporte de novo."
+ja = "新キャラの空きがありません。ほかのキャラを無効にしてから再度書き出してください。"
+
+["1 VS 1"]
+es = "1 CONTRA 1"
+en = "1 VS 1"
+fr = "1 CONTRE 1"
+de = "1 GEGEN 1"
+it = "1 CONTRO 1"
+pt = "1 CONTRA 1"
+ja = "1対1"
+
+["TAG TEAM  2 VS 2"]
+es = "TAG TEAM  2 CONTRA 2"
+en = "TAG TEAM  2 VS 2"
+fr = "TAG TEAM  2 CONTRE 2"
+de = "TAG TEAM  2 GEGEN 2"
+it = "TAG TEAM  2 CONTRO 2"
+pt = "TAG TEAM  2 CONTRA 2"
+ja = "タッグ 2対2"
+
+["TEAM: "]
+es = "EQUIPO: "
+en = "TEAM: "
+fr = "ÉQUIPE : "
+de = "TEAM: "
+it = "SQUADRA: "
+pt = "EQUIPE: "
+ja = "チーム: "
+
+["COPIED"]
+es = "COPIADO"
+en = "COPIED"
+fr = "COPIÉ"
+de = "KOPIERT"
+it = "COPIATO"
+pt = "COPIADO"
+ja = "コピー済み"
+
+["COPY CODE"]
+es = "COPIAR CODIGO"
+en = "COPY CODE"
+fr = "COPIER LE CODE"
+de = "CODE KOPIEREN"
+it = "COPIA IL CODICE"
+pt = "COPIAR CÓDIGO"
+ja = "コードをコピー"
+
+["That code does not look right. Check you typed it exactly like your friend."]
+es = "Ese codigo no parece correcto. Revisa que lo has escrito igual que tu amigo."
+en = "That code does not look right. Check you typed it exactly like your friend."
+fr = "Ce code semble incorrect. Vérifie que tu l'as saisi exactement comme ton ami."
+de = "Dieser Code scheint falsch zu sein. Prüfe, ob du ihn genau wie dein Freund eingegeben hast."
+it = "Questo codice sembra errato. Controlla di averlo scritto esattamente come il tuo amico."
+pt = "Esse código parece errado. Confira se você o digitou igual ao do seu amigo."
+ja = "コードが正しくないようです。友達のコードと同じに入力したか確認してください。"
+
+["The room could not be created. Close other copies of the game and try again."]
+es = "No se pudo crear la sala. Cierra otras copias del juego y vuelve a intentarlo."
+en = "The room could not be created. Close other copies of the game and try again."
+fr = "La salle n'a pas pu être créée. Ferme les autres copies du jeu et réessaie."
+de = "Der Raum konnte nicht erstellt werden. Schließe andere Kopien des Spiels und versuche es erneut."
+it = "Non è stato possibile creare la stanza. Chiudi le altre copie del gioco e riprova."
+pt = "Não foi possível criar a sala. Feche outras cópias do jogo e tente de novo."
+ja = "ルームを作成できませんでした。他のゲームを閉じてからもう一度お試しください。"
+
+["That fighter is already on your team. Pick another one."]
+es = "Ese luchador ya esta en tu equipo. Elige otro."
+en = "That fighter is already on your team. Pick another one."
+fr = "Ce combattant est déjà dans ton équipe. Choisis-en un autre."
+de = "Dieser Kämpfer ist schon in deinem Team. Wähle einen anderen."
+it = "Questo combattente è già nella tua squadra. Sceglierne un altro."
+pt = "Esse lutador já está na sua equipe. Escolha outro."
+ja = "そのキャラはすでにチームにいます。別のキャラを選んでください。"
+
+["First, how do you want to play? Pick one and I will explain each step."]
+es = "Primero, como quereis jugar? Elige una opcion: despues os explico cada paso."
+en = "First, how do you want to play? Pick one and I will explain each step."
+fr = "D'abord, comment voulez-vous jouer ? Choisis une option, je t'expliquerai chaque étape."
+de = "Zuerst: Wie wollt ihr spielen? Wähle eine Option, dann erkläre ich jeden Schritt."
+it = "Prima di tutto, come volete giocare? Scegli un'opzione e vi spiego ogni passaggio."
+pt = "Primeiro, como vocês querem jogar? Escolha uma opção e eu explico cada passo."
+ja = "まず、どちらで遊びますか？ 選ぶと、各ステップを説明します。"
+
+["Each of you brings a team of two fighters and you swap them mid-fight."]
+es = "Cada uno lleva un equipo de dos luchadores y se relevan en pleno combate."
+en = "Each of you brings a team of two fighters and you swap them mid-fight."
+fr = "Chacun amène une équipe de deux combattants et vous les échangez en plein combat."
+de = "Jeder bringt ein Team aus zwei Kämpfern mit und ihr wechselt sie mitten im Kampf."
+it = "Ognuno porta una squadra di due combattenti e li cambiate durante lo scontro."
+pt = "Cada um leva uma equipe de dois lutadores e vocês os trocam durante a luta."
+ja = "それぞれ2人のチームで戦い、戦闘中に交代できます。"
+
+["One fighter against another, like the classic Duel."]
+es = "Un luchador contra otro, como el Duelo de siempre."
+en = "One fighter against another, like the classic Duel."
+fr = "Un combattant contre un autre, comme le Duel classique."
+de = "Ein Kämpfer gegen einen anderen, wie das klassische Duell."
+it = "Un combattente contro un altro, come il classico Duello."
+pt = "Um lutador contra o outro, como o Duelo de sempre."
+ja = "1人対1人。いつものデュエルです。"
+
+["Pick your first fighter"]
+es = "Elige a tu primer luchador"
+en = "Pick your first fighter"
+fr = "Choisis ton premier combattant"
+de = "Wähle deinen ersten Kämpfer"
+it = "Scegli il tuo primo combattente"
+pt = "Escolha seu primeiro lutador"
+ja = "1人目のキャラを選んでください"
+
+["Pick your second fighter"]
+es = "Elige a tu segundo luchador"
+en = "Pick your second fighter"
+fr = "Choisis ton deuxième combattant"
+de = "Wähle deinen zweiten Kämpfer"
+it = "Scegli il tuo secondo combattente"
+pt = "Escolha seu segundo lutador"
+ja = "2人目のキャラを選んでください"
+
+["A: pick, B: back"]
+es = "A: elegir, B: atras"
+en = "A: pick, B: back"
+fr = "A : choisir, B : retour"
+de = "A: wählen, B: zurück"
+it = "A: scegli, B: indietro"
+pt = "A: escolher, B: voltar"
+ja = "A: 決定、B: 戻る"
+
+["Mode: Tag Team (team of two). "]
+es = "Modo: Tag Team (equipo de dos). "
+en = "Mode: Tag Team (team of two). "
+fr = "Mode : Tag Team (équipe de deux). "
+de = "Modus: Tag Team (Team aus zwei). "
+it = "Modalità: Tag Team (squadra di due). "
+pt = "Modo: Tag Team (equipe de dois). "
+ja = "モード: タッグ（2人チーム）。"
+
+["Mode: 1 vs 1. "]
+es = "Modo: 1 contra 1. "
+en = "Mode: 1 vs 1. "
+fr = "Mode : 1 contre 1. "
+de = "Modus: 1 gegen 1. "
+it = "Modalità: 1 contro 1. "
+pt = "Modo: 1 contra 1. "
+ja = "モード: 1対1。"
+
+["Could not connect. What to do: create the room again and send the code again; you both need the same game version."]
+es = "No se pudo conectar. Que hacer: crea la sala otra vez y pasale el codigo de nuevo; los dos necesitais la misma version del juego."
+en = "Could not connect. What to do: create the room again and send the code again; you both need the same game version."
+fr = "Connexion impossible. Que faire : recrée la salle et renvoie le code ; vous avez besoin de la même version du jeu."
+de = "Verbindung fehlgeschlagen. Was tun: Erstelle den Raum neu und schicke den Code erneut; ihr braucht beide dieselbe Spielversion."
+it = "Impossibile connettersi. Cosa fare: crea di nuovo la stanza e rimanda il codice; servono la stessa versione del gioco."
+pt = "Não foi possível conectar. O que fazer: crie a sala de novo e envie o código outra vez; vocês dois precisam da mesma versão do jogo."
+ja = "接続できませんでした。ルームを作り直してコードをもう一度送ってください。二人とも同じバージョンが必要です。"
+
+["Your friend does not show up: check the code and that they already created the room. You both need the same game version."]
+es = "Tu amigo no aparece: comprueba el codigo y que ya haya creado la sala. Los dos necesitais la misma version del juego."
+en = "Your friend does not show up: check the code and that they already created the room. You both need the same game version."
+fr = "Ton ami n'apparaît pas : vérifie le code et qu'il a déjà créé la salle. Vous avez besoin de la même version du jeu."
+de = "Dein Freund taucht nicht auf: Prüfe den Code und ob er den Raum schon erstellt hat. Ihr braucht beide dieselbe Spielversion."
+it = "Il tuo amico non compare: controlla il codice e che abbia già creato la stanza. Serve la stessa versione del gioco."
+pt = "Seu amigo não aparece: confira o código e se ele já criou a sala. Vocês dois precisam da mesma versão do jogo."
+ja = "友達が見つかりません。コードと、相手がすでにルームを作ったか確認してください。二人とも同じバージョンが必要です。"
+
+["Create a room: we give you a code to send to your friend."]
+es = "Crea una sala: te damos un codigo para pasarselo a tu amigo."
+en = "Create a room: we give you a code to send to your friend."
+fr = "Crée une salle : nous te donnons un code à envoyer à ton ami."
+de = "Erstelle einen Raum: Du bekommst einen Code, den du deinem Freund schickst."
+it = "Crea una stanza: ti diamo un codice da mandare al tuo amico."
+pt = "Crie uma sala: damos a você um código para enviar ao seu amigo."
+ja = "ルームを作ると、友達に送るコードが発行されます。"
+
+["Type the code your friend gave you (or copy it and press X to paste it). The room will show its mode."]
+es = "Escribe el codigo que te paso tu amigo (o copialo y pulsa X para pegarlo). La sala te dira su modo."
+en = "Type the code your friend gave you (or copy it and press X to paste it). The room will show its mode."
+fr = "Saisis le code de ton ami (ou copie-le et appuie sur X pour le coller). La salle t'indiquera son mode."
+de = "Gib den Code deines Freundes ein (oder kopiere ihn und drücke X zum Einfügen). Der Raum zeigt dir seinen Modus."
+it = "Scrivi il codice del tuo amico (o copialo e premi X per incollarlo). La stanza ti mostrerà la sua modalità."
+pt = "Digite o código do seu amigo (ou copie e aperte X para colar). A sala mostrará o modo dela."
+ja = "友達のコードを入力してください（コピーしてXで貼り付けも可）。ルームのモードが表示されます。"
+
+["They use your Custom list; if a fighter has none, the Normal one."]
+es = "Usan tu lista Custom; si un luchador no tiene, la Normal."
+en = "They use your Custom list; if a fighter has none, the Normal one."
+fr = "Ils utilisent ta liste Custom ; si un combattant n'en a pas, la Normal."
+de = "Es wird deine Custom-Liste benutzt; hat ein Kämpfer keine, die Normal-Liste."
+it = "Usano la tua lista Custom; se un combattente non ne ha, la Normal."
+pt = "Usam a sua lista Custom; se um lutador não tiver, a Normal."
+ja = "あなたのカスタムリストを使います。ないキャラは標準(Normal)になります。"
+
+["This is your team. Press A to change it."]
+es = "Este es tu equipo. Pulsa A si quieres cambiarlo."
+en = "This is your team. Press A to change it."
+fr = "Voici ton équipe. Appuie sur A pour la changer."
+de = "Das ist dein Team. Drücke A, um es zu ändern."
+it = "Questa è la tua squadra. Premi A per cambiarla."
+pt = "Esta é a sua equipe. Aperte A para mudá-la."
+ja = "これがあなたのチームです。Aで変更できます。"
+
+["\nGive this code to your friend: "]
+es = "\nPasa este codigo a tu amigo: "
+en = "\nGive this code to your friend: "
+fr = "\nDonne ce code à ton ami : "
+de = "\nGib diesen Code deinem Freund: "
+it = "\nDai questo codice al tuo amico: "
+pt = "\nEnvie este código ao seu amigo: "
+ja = "\nこのコードを友達に伝えてください: "
+
+["\nIt is already copied: paste it in a message."]
+es = "\nYa esta copiado: pegalo en un mensaje."
+en = "\nIt is already copied: paste it in a message."
+fr = "\nIl est déjà copié : colle-le dans un message."
+de = "\nEr ist schon kopiert: Füge ihn in eine Nachricht ein."
+it = "\nÈ già copiato: incollalo in un messaggio."
+pt = "\nJá está copiado: cole em uma mensagem."
+ja = "\nコピー済みです。メッセージに貼り付けてください。"
+
+["\nTag Team room (2 vs 2). Your team: "]
+es = "\nSala Tag Team (2 contra 2). Tu equipo: "
+en = "\nTag Team room (2 vs 2). Your team: "
+fr = "\nSalle Tag Team (2 contre 2). Ton équipe : "
+de = "\nTag-Team-Raum (2 gegen 2). Dein Team: "
+it = "\nStanza Tag Team (2 contro 2). La tua squadra: "
+pt = "\nSala Tag Team (2 contra 2). Sua equipe: "
+ja = "\nタッグルーム（2対2）。あなたのチーム: "
+
+[". Opponents: "]
+es = ". Rivales: "
+en = ". Opponents: "
+fr = ". Adversaires : "
+de = ". Gegner: "
+it = ". Avversari: "
+pt = ". Rivais: "
+ja = "。相手: "
+
+["\n1 vs 1 room. They use your Custom list (set it up in Edit Skills before joining); if a fighter has none, the Normal one."]
+es = "\nSala de 1 contra 1. Usan tu lista Custom (preparala en Editar Habilidades antes de entrar); si un luchador no tiene, la Normal."
+en = "\n1 vs 1 room. They use your Custom list (set it up in Edit Skills before joining); if a fighter has none, the Normal one."
+fr = "\nSalle 1 contre 1. Ils utilisent ta liste Custom (prépare-la dans Modifier les compétences avant d'entrer) ; si un combattant n'en a pas, la Normal."
+de = "\n1-gegen-1-Raum. Es wird deine Custom-Liste benutzt (bereite sie vor dem Beitritt in Fähigkeiten bearbeiten vor); hat ein Kämpfer keine, die Normal-Liste."
+it = "\nStanza 1 contro 1. Usano la tua lista Custom (preparala in Modifica abilità prima di entrare); se un combattente non ne ha, la Normal."
+pt = "\nSala 1 contra 1. Usam a sua lista Custom (prepare-a em Editar habilidades antes de entrar); se um lutador não tiver, a Normal."
+ja = "\n1対1のルームです。あなたのカスタムリストを使います（入室前にスキル編集で用意してください）。ないキャラは標準(Normal)になります。"
+
+["\nHeads up: one of you picked Tag Team and the other 1 vs 1, so it will be 2 vs 1. To match, cancel and join again with the same mode."]
+es = "\nOjo: uno de vosotros eligio Tag Team y el otro 1 contra 1, asi que se jugara 2 contra 1. Para igualarlo, cancelad y volved a entrar con el mismo modo."
+en = "\nHeads up: one of you picked Tag Team and the other 1 vs 1, so it will be 2 vs 1. To match, cancel and join again with the same mode."
+fr = "\nAttention : l'un de vous a choisi Tag Team et l'autre 1 contre 1, ce sera donc du 2 contre 1. Pour égaliser, annulez et rejoignez avec le même mode."
+de = "\nAchtung: Einer von euch hat Tag Team gewählt, der andere 1 gegen 1, also wird es 2 gegen 1. Zum Angleichen: abbrechen und mit demselben Modus neu beitreten."
+it = "\nAttenzione: uno di voi ha scelto Tag Team e l'altro 1 contro 1, quindi sarà 2 contro 1. Per pareggiare, annullate e rientrate con la stessa modalità."
+pt = "\nAtenção: um de vocês escolheu Tag Team e o outro 1 contra 1, então será 2 contra 1. Para igualar, cancelem e entrem de novo com o mesmo modo."
+ja = "\n注意: 片方がタッグ、もう片方が1対1を選んだため、2対1になります。揃えるには、キャンセルして同じモードで入り直してください。"
+
+["\nAll set. Press START when you are ready."]
+es = "\nTodo listo. Pulsa EMPEZAR cuando querais."
+en = "\nAll set. Press START when you are ready."
+fr = "\nTout est prêt. Appuie sur COMMENCER quand vous voulez."
+de = "\nAlles bereit. Drücke START, wenn ihr so weit seid."
+it = "\nTutto pronto. Premi INIZIA quando volete."
+pt = "\nTudo pronto. Aperte INICIAR quando quiserem."
+ja = "\n準備完了です。いつでも「開始」を押してください。"
+
+["\nAll set. Waiting for your friend to press START..."]
+es = "\nTodo listo. Esperando a que tu amigo pulse EMPEZAR..."
+en = "\nAll set. Waiting for your friend to press START..."
+fr = "\nTout est prêt. En attente que ton ami appuie sur COMMENCER..."
+de = "\nAlles bereit. Warte, bis dein Freund START drückt..."
+it = "\nTutto pronto. In attesa che il tuo amico prema INIZIA..."
+pt = "\nTudo pronto. Esperando seu amigo apertar INICIAR..."
+ja = "\n準備完了です。友達が「開始」を押すのを待っています..."
+
+["\nIn the fight, SELECT swaps in your partner."]
+es = "\nEn combate, SELECT releva a tu companero."
+en = "\nIn the fight, SELECT swaps in your partner."
+fr = "\nEn combat, SELECT fait entrer ton partenaire."
+de = "\nIm Kampf wechselt SELECT zu deinem Partner."
+it = "\nIn combattimento, SELECT fa entrare il tuo compagno."
+pt = "\nNa luta, SELECT troca para o seu parceiro."
+ja = "\n戦闘中はSELECTで相棒と交代できます。"

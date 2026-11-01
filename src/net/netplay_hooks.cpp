@@ -1505,6 +1505,11 @@ DBZ3_HOOK(sub_8221C178, dbz3eu_sub_8221A940) {
         static const uint16_t kTerna[4] = {0x7000, 0xB000, 0xD000, 0xE000};
         b = kTerna[((s.tick() - g_rbs.t0) / 300) & 3];
       }
+      // PRUEBAS (DBZ3_RB_SELECT=N): SELECT unos ticks cada N: relevo real; el anfitrion al principio, el invitado a media vuelta
+      if (static const uint32_t sel = std::getenv("DBZ3_RB_SELECT") ? uint32_t(std::atoi(std::getenv("DBZ3_RB_SELECT"))) : 0; sel) {
+        const uint32_t rt = (s.tick() - g_rbs.t0 + (s.role() == dbz3::net::Role::kHost ? 0 : sel / 2)) % sel;
+        if (rt >= 300 && rt < 306) b |= 0x0020;
+      }
       local = {};
       local.buttons = b;
       local.lx = lx;

@@ -42,6 +42,7 @@
 #include "game_style.h"
 #include "native_ui.h"
 #include "tagteam_panel.h"
+#include "../tagteam.h"
 #ifndef DBZ3_EU_VARIANT
 #include "../modos.h"   // rango del ranking local (modos.cpp no entra en la build solo EU)
 #endif
@@ -650,7 +651,7 @@ void OnlinePanel::OnDraw(ImGuiIO& io) {
     }
   }
   if (static const bool test_mm = std::getenv("DBZ3_TEST_MM") != nullptr; test_mm && !g_wanted.load() &&
-      s.link() == Link::kIdle && g_screen.load() == kMainMenuScreen && NowMs() > 4000)
+      s.link() == Link::kIdle && (std::getenv("DBZ3_NET_RUEDA") ? (g_screen.load() == kDuelMenuScreen && DuelMenuRow() == 4) : g_screen.load() == kMainMenuScreen) && NowMs() > 4000)
     g_wanted = true;   // PRUEBAS (solo pruebas.py): la pantalla ONLINE se abre sola y busca
   if (static const char* tmm = std::getenv("DBZ3_TEST_MM"); tmm && std::strcmp(tmm, "pantalla") != 0) {   // PRUEBAS (solo pruebas.py)
     // En OnDraw (corre siempre) y no en OnlineTick: con la sesion activa el gancho de mandos no llama a OnlineTick (el combate pedido no salia nunca).
@@ -675,7 +676,7 @@ void OnlinePanel::OnDraw(ImGuiIO& io) {
         test_mm_restart_ = true;
       }
     }
-    if (s.active() && !fired && s.tick() > 150) {
+    if (s.active() && !fired && s.tick() > 150 && !std::getenv("DBZ3_NET_RUEDA")) {   // DBZ3_NET_RUEDA: sin combate pedido, la prueba recorre la rueda con teclas
       fired = true;
       const bool ok = dbz3::hub::RequestBattleEx(0, 7, 2, true, 15, 0, 0, 0, 0);
       REXLOG_INFO("dbz3 mm: combate pedido ({})", ok ? "ok" : "rechazado");
@@ -792,7 +793,7 @@ void OnlinePanel::DrawScreen(ImGuiIO& io, uint16_t pressed) {
   // Admision: los dos PCs tienen que llevar el mismo programa (exe + runtime + GPU); los mods se
   // comparan aparte en el HELLO. 1 contra 1: Tag Team online sigue sin autorizar (falta el relevo guest).
   std::string admission_reason;
-  auto admission_ready = [&admission_reason]() {
+  auto admission_ready = [this, &admission_reason]() {
     const std::filesystem::path exe = rex::filesystem::GetExecutablePath();
     std::vector<std::filesystem::path> files = {exe};
 #ifdef _WIN32
@@ -823,6 +824,9 @@ void OnlinePanel::DrawScreen(ImGuiIO& io, uint16_t pressed) {
 #endif
     Session::Get().SetProfile(elo, tramo);
     REXLOG_INFO("dbz3 online: rango propio para la sala: elo {}, tramo {}", elo, tramo);
+    // el modo elegido arriba decide el equipo que viaja (1 contra 1 = ninguno: un equipo de un Tag Team anterior no se cuela)
+    if (tag_ && team_[0] >= 0 && team_[1] >= 0) dbz3::tag::SetMyOnlineTeam({team_[0], team_[1]});
+    else if (!tag_) dbz3::tag::SetMyOnlineTeam({});
     return true;
   };
 
@@ -890,7 +894,12 @@ void OnlinePanel::DrawScreen(ImGuiIO& io, uint16_t pressed) {
     if (!ip_[0]) return;
     if (!admission_ready()) { last_err_ = admission_reason; return; }
     const bool joined = s.Join(ip_, uint16_t(port_), &last_err_);
-    if (!joined) REXLOG_WARN("dbz3 online: no se pudo unir a la partida: {}", last_err_);
+    if (!joined) {
+      REXLOG_WARN("dbz3 online: no se pudo unir a la partida: {}", last_err_);
+      err_detail_ = last_err_;
+      last_err_ = T::T("Ese codigo no parece correcto. Revisa que lo has escrito igual que tu amigo.",
+                       "That code does not look right. Check you typed it exactly like your friend.");
+    }
     else mode_ = 3;
     if (joined && REXCVAR_GET(dbz3_net_last_ip) != ip_) {
       rex::cvar::SetFlagByName("dbz3_net_last_ip", ip_);
@@ -902,10 +911,15 @@ void OnlinePanel::DrawScreen(ImGuiIO& io, uint16_t pressed) {
     join_after_edit_ = false;
     do_join();
   }
+  static bool port_env_done = false;
+  if (test_mm && !port_env_done && std::strcmp(std::getenv("DBZ3_TEST_MM"), "pantalla") == 0 && (port_env_done = true))   // PRUEBAS: otro puerto en la pantalla
+    if (const char* pt = std::getenv("DBZ3_TEST_MM_PORT")) port_ = std::atoi(pt);
   if (test_mm_restart_) { test_mm_restart_ = false; test_mm_started_ = false; }
   if (test_mm && std::strcmp(std::getenv("DBZ3_TEST_MM"), "pantalla") != 0 && mode_ == 0 && idle && !test_mm_started_) {
     test_mm_started_ = true;
     if (const char* pt = std::getenv("DBZ3_TEST_MM_PORT")) port_ = std::atoi(pt);   // dos copias en un PC: puertos distintos
+    tag_ = std::getenv("DBZ3_NET_TEAM") != nullptr;   // la prueba salta los pasos de elegir modo y equipo: el equipo viene del entorno
+    step_ = 2;
     start_search();
   }
   if (mode_ == 1) {
@@ -949,16 +963,25 @@ void OnlinePanel::DrawScreen(ImGuiIO& io, uint16_t pressed) {
   was_installing_ = installing;
 
   // filas segun el estado
-  enum Row { kSearchRow, kHostRow, kJoinRow, kAdvRow, kPortRow, kDelayRow, kStartRow, kSyncRow, kVanillaRow, kCancelRow, kConsentYes, kConsentNo };
+  enum Row { kSearchRow, kHostRow, kJoinRow, kAdvRow, kPortRow, kDelayRow, kStartRow, kSyncRow, kVanillaRow, kCancelRow, kConsentYes, kConsentNo,
+             kModeSolo, kModeTag, kTeamRow, kCopyRow, kPickRow };
   std::vector<Row> rows;
   if (consent_ask_ && idle && !searching) {
     rows = {kConsentYes, kConsentNo};
   } else if (idle && !searching) {
-    rows = {kSearchRow, kHostRow, kJoinRow, kAdvRow};
-    if (adv_) { rows.push_back(kPortRow); rows.push_back(kDelayRow); }
+    if (step_ == 0) {
+      rows = {kModeSolo, kModeTag};
+    } else if (step_ == 1) {
+      rows = {kPickRow};
+    } else {
+      if (tag_) rows.push_back(kTeamRow);
+      rows.insert(rows.end(), {kHostRow, kJoinRow, kSearchRow, kAdvRow});
+      if (adv_) { rows.push_back(kPortRow); rows.push_back(kDelayRow); }
+    }
   } else if (searching && link == Link::kIdle) {
     rows.push_back(kCancelRow);
   } else {
+    if (host && mode_ != 1 && link == Link::kWaiting) rows.push_back(kCopyRow);
     if (host && mode_ != 1) rows.push_back(kStartRow);
     if (!installable.empty()) rows.push_back(kSyncRow);
     if (link == Link::kConnected && !s.mods_match()) rows.push_back(kVanillaRow);   // ---- VANILLA (V)
@@ -970,6 +993,50 @@ void OnlinePanel::DrawScreen(ImGuiIO& io, uint16_t pressed) {
   }
   const int n = int(rows.size());
   row_ = std::clamp(row_, 0, n - 1);
+  const S::Area a = S::GameArea(io);
+  const float kStep = n >= 6 ? 58.0f : 72.0f;   // con la lista larga (equipo + avanzado) las filas se aprietan
+  const bool picker = step_ == 1 && idle && !searching && !consent_ask_;
+  const std::vector<int>& fighters = dbz3::ingame::TeamFighterIds();
+  constexpr int kCols = 7;
+  const int nf = int(fighters.size());
+  // casilla i de la rejilla de luchadores (px de pantalla)
+  auto cell_rect = [&](int i, ImVec2* c0, ImVec2* c1) {
+    *c0 = a.At(341 + 74.0f * float(i % kCols), 232 + 50.0f * float(i / kCols));
+    *c1 = a.At(341 + 74.0f * float(i % kCols) + 72, 232 + 50.0f * float(i / kCols) + 48);
+  };
+  // ratón: pasar por encima elige y un clic acepta (clic derecho = atras); el mando y el teclado siguen igual
+  if (!editing_ && !wait_release_) {
+    const bool moved = io.MouseDelta.x != 0 || io.MouseDelta.y != 0;
+    const bool click = ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+    if (picker) {
+      for (int i = 0; i < nf; ++i) {
+        ImVec2 c0, c1;
+        cell_rect(i, &c0, &c1);
+        if (ImGui::IsMouseHoveringRect(c0, c1, false)) {
+          if (moved || click) pick_cur_ = i;
+          if (click) pressed |= kA;
+        }
+      }
+    } else {
+      const ImVec2 q0 = a.At(330, 175);
+      for (int i = 0; i < n; ++i) {
+        const ImVec2 r0(q0.x, q0.y + (10 + kStep * float(i)) * a.s), r1(a.At(870, 0).x, r0.y + (kStep - 2) * a.s);
+        if (ImGui::IsMouseHoveringRect(r0, r1, false)) {
+          if (moved || click) row_ = i;
+          if (click) pressed |= kA;
+        }
+      }
+    }
+    if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) pressed |= kB;
+  }
+  if (picker) {   // rejilla de luchadores: la cruceta mueve el cursor
+    if (pressed & kLeft) pick_cur_ = (pick_cur_ + nf - 1) % nf;
+    if (pressed & kRight) pick_cur_ = (pick_cur_ + 1) % nf;
+    if (pressed & kUp) pick_cur_ = pick_cur_ >= kCols ? pick_cur_ - kCols : std::min(nf - 1, pick_cur_ + ((nf - 1) / kCols) * kCols);
+    if (pressed & kDown) pick_cur_ = pick_cur_ + kCols < nf ? pick_cur_ + kCols : pick_cur_ % kCols;
+    pick_cur_ = std::clamp(pick_cur_, 0, nf - 1);
+    pressed &= uint16_t(~(kUp | kDown));
+  }
   if (pressed & kUp) row_ = (row_ + n - 1) % n;
   if (pressed & kDown) row_ = (row_ + 1) % n;
   const Row cur = rows[size_t(row_)];
@@ -995,6 +1062,34 @@ void OnlinePanel::DrawScreen(ImGuiIO& io, uint16_t pressed) {
         start_search();
         break;
       case kConsentNo: consent_ask_ = false; row_ = 0; break;
+      case kModeSolo: tag_ = false; step_ = 2; row_ = 0; break;
+      case kModeTag: {
+        tag_ = true;
+        if (team_[0] < 0 || team_[1] < 0) {   // el ultimo equipo del Tag Team de 1P, si lo hay
+          const std::vector<int> last = dbz3::tag::MyLastTeam();
+          if (last.size() == 2) { team_[0] = last[0]; team_[1] = last[1]; }
+        }
+        if (team_[0] >= 0 && team_[1] >= 0) { step_ = 2; row_ = 0; }
+        else { step_ = 1; pick_n_ = 0; pick_cur_ = 0; row_ = 0; }
+        break;
+      }
+      case kTeamRow: step_ = 1; pick_n_ = 0; team_[0] = team_[1] = -1; row_ = 0; break;
+      case kPickRow: {
+        const int id = fighters[size_t(pick_cur_)];
+        if (pick_n_ == 1 && team_[0] == id) {
+          last_err_ = T::T("Ese luchador ya esta en tu equipo. Elige otro.", "That fighter is already on your team. Pick another one.");
+          break;
+        }
+        team_[pick_n_++] = id;
+        if (pick_n_ >= 2) { step_ = 2; row_ = 0; }
+        break;
+      }
+      case kCopyRow: {
+        const std::string code = s.RoomCode(nullptr);
+        if (!code.empty() && !std::getenv("DBZ3_NO_DIALOGS")) ImGui::SetClipboardText(code.c_str());
+        copied_at_ = ImGui::GetTime();
+        break;
+      }
       case kHostRow:
         if (!admission_ready()) { last_err_ = admission_reason; break; }
         if (s.Host(uint16_t(port_), uint8_t(delay_), &last_err_)) {
@@ -1002,6 +1097,9 @@ void OnlinePanel::DrawScreen(ImGuiIO& io, uint16_t pressed) {
           REXLOG_INFO("dbz3 online: partida creada en el puerto {}", port_);
         } else {
           REXLOG_WARN("dbz3 online: no se pudo crear la partida: {}", last_err_);
+          err_detail_ = last_err_;
+          last_err_ = T::T("No se pudo crear la sala. Cierra otras copias del juego y vuelve a intentarlo.",
+                           "The room could not be created. Close other copies of the game and try again.");
         }
         row_ = 0;
         break;
@@ -1023,7 +1121,7 @@ void OnlinePanel::DrawScreen(ImGuiIO& io, uint16_t pressed) {
     }
   }
   if (pressed & 0x4000) {   // X: pegar el codigo del portapapeles (sin teclado) o, si eres el anfitrion, copiarlo otra vez
-    if (idle && !editing_) {
+    if (idle && !editing_ && step_ == 2) {
       const char* clip = ImGui::GetClipboardText();
       std::string c;
       for (const char* q = clip ? clip : ""; *q && c.size() < sizeof(ip_) - 1; ++q)
@@ -1046,6 +1144,13 @@ void OnlinePanel::DrawScreen(ImGuiIO& io, uint16_t pressed) {
       consent_ask_ = false;
     } else if (searching || mode_ == 1) {
       cancel_all();
+    } else if (idle && step_ == 1) {
+      last_err_.clear();
+      if (pick_n_ > 0) { team_[--pick_n_] = -1; } else { step_ = 0; row_ = 1; }
+    } else if (idle && step_ == 2) {
+      last_err_.clear();
+      step_ = 0;
+      row_ = tag_ ? 1 : 0;
     } else if (idle) {
       last_err_.clear();
       g_wanted = false;   // cerrar (una sesion perdida vuelve a quedar libre)
@@ -1055,7 +1160,6 @@ void OnlinePanel::DrawScreen(ImGuiIO& io, uint16_t pressed) {
     }
   }
 
-  const S::Area a = S::GameArea(io);
   auto* dl = ImGui::GetBackgroundDrawList();
   const float t = float(ImGui::GetTime());
   // Torneo del Otro Mundo y Paikuhan (pack Dragon HUB, arte del autor); sin el pack, como el Duelo, del que sale:
@@ -1070,12 +1174,38 @@ void OnlinePanel::DrawScreen(ImGuiIO& io, uint16_t pressed) {
     S::Frame(dl, b0, b1, a.s * 0.6f);
     S::MenuText(dl, ImVec2((b0.x + b1.x) * 0.5f, (b0.y + b1.y) * 0.5f), 30 * a.s, "BETA", false, false);
   }
-  constexpr float kStep = 72;
   const ImVec2 f0 = a.At(330, 175), f1 = a.At(870, 175 + kStep * n + 20);
+  if (picker) {
+    // rejilla de luchadores con su cara; la elegida lleva el numero de su puesto en el equipo
+    S::Frame(dl, a.At(325, 170), a.At(875, 590), a.s);
+    for (int i = 0; i < nf; ++i) {
+      ImVec2 c0, c1;
+      cell_rect(i, &c0, &c1);
+      const int id = fighters[size_t(i)];
+      const bool mine = (pick_n_ > 0 && team_[0] == id);
+      if (i == pick_cur_) S::Highlight(dl, ImVec2(c0.x - 1, c0.y - 1), ImVec2(c1.x + 1, c1.y + 1), t);
+      if (const ImTextureID face = dbz3::ingame::TeamFighterFace(id)) {
+        dl->AddImage(face, c0, c1, ImVec2(0.05f, 0.0f), ImVec2(0.80f, 0.75f), mine ? IM_COL32(110, 110, 120, 255) : IM_COL32_WHITE);
+      } else {
+        dl->AddRectFilled(c0, c1, IM_COL32(10, 15, 30, 230));
+        S::MenuText(dl, ImVec2((c0.x + c1.x) * 0.5f, (c0.y + c1.y) * 0.5f), 17 * a.s, dbz3::ingame::TeamFighterName(id).c_str(), i == pick_cur_, false, 68 * a.s);
+      }
+      dl->AddRect(c0, c1, i == pick_cur_ ? IM_COL32(240, 190, 50, 255) : IM_COL32(30, 20, 10, 255), 0, 0, (i == pick_cur_ ? 3.0f : 1.5f) * a.s);
+      if (mine) S::MenuText(dl, ImVec2((c0.x + c1.x) * 0.5f, (c0.y + c1.y) * 0.5f), 34 * a.s, "1", true, false);
+    }
+    // cabecera: los dos puestos del equipo
+    for (int k = 0; k < 2; ++k) {
+      char tb[96];
+      const std::string nm = team_[k] >= 0 ? dbz3::ingame::TeamFighterName(team_[k]) : std::string("?");
+      std::snprintf(tb, sizeof(tb), "%d  %s", k + 1, nm.c_str());
+      S::MenuText(dl, a.At(450 + 300.0f * float(k), 200), 30 * a.s, tb, k == pick_n_, false, 270 * a.s);
+    }
+  } else {
   S::Frame(dl, f0, f1, a.s);
-  if (!idle && !(searching && link == Link::kIdle)) RoomRows(dl, a, 175 + kStep * n + 44, n >= 3 ? 2 : 3, s, t);   // sala: rango y reglas de los dos
+  }
+  if (!picker && !idle && !(searching && link == Link::kIdle)) RoomRows(dl, a, 175 + kStep * n + 44, n >= 3 ? 2 : 3, s, t);   // sala: rango y reglas de los dos
   char buf[96];
-  for (int i = 0; i < n; ++i) {
+  for (int i = 0; i < (picker ? 0 : n); ++i) {
     const ImVec2 r0(f0.x, f0.y + (10 + kStep * i) * a.s), r1(f1.x, r0.y + (kStep - 2) * a.s);
     const ImVec2 c((r0.x + r1.x) * 0.5f, (r0.y + r1.y) * 0.5f);
     const bool sel = i == row_;
@@ -1086,6 +1216,16 @@ void OnlinePanel::DrawScreen(ImGuiIO& io, uint16_t pressed) {
       case kSearchRow: label = T::T("BUSCAR PARTIDA", "FIND A MATCH"); break;
       case kHostRow: label = T::T("CREAR SALA", "CREATE A ROOM"); break;
       case kJoinRow: label = T::T("UNIRME CON CODIGO", "JOIN WITH A CODE"); break;
+      case kModeSolo: label = T::T("1 CONTRA 1", "1 VS 1"); break;
+      case kModeTag: label = T::T("TAG TEAM  2 CONTRA 2", "TAG TEAM  2 VS 2"); break;
+      case kTeamRow: {
+        const std::string tn = std::string(T::T("EQUIPO: ", "TEAM: ")) + (team_[0] >= 0 ? dbz3::ingame::TeamFighterName(team_[0]) + " + " + dbz3::ingame::TeamFighterName(team_[1]) : "?");
+        std::snprintf(buf, sizeof(buf), "%s", tn.c_str());
+        label = buf;
+        break;
+      }
+      case kCopyRow: label = ImGui::GetTime() - copied_at_ < 2.0 ? T::T("COPIADO", "COPIED") : T::T("COPIAR CODIGO", "COPY CODE"); break;
+      case kPickRow: break;
       case kAdvRow: label = T::T("AJUSTES AVANZADOS", "ADVANCED"); break;
       case kConsentYes: label = T::T("ACEPTAR Y BUSCAR", "ACCEPT AND SEARCH"); break;
       case kConsentNo: label = T::T("NO, USAR CODIGO", "NO, USE A CODE"); break;
@@ -1167,8 +1307,24 @@ void OnlinePanel::DrawScreen(ImGuiIO& io, uint16_t pressed) {
                   "\nNobody else is searching right now. You can keep waiting, or cancel and play with a friend using CREATE A ROOM.");
     if (g_mm.st == Mm::kHost && g_mm.poll_fails >= 2)
       say += T::T("\nSin respuesta del servicio: tu sala sigue abierta, pasa el codigo a mano.", "\nNo answer from the service: your room is still open, give the code by hand.");
+  } else if (idle && step_ == 0) {
+    say += T::T("Primero, como quereis jugar? Elige una opcion: despues os explico cada paso.",
+                "First, how do you want to play? Pick one and I will explain each step.");
+    say += "\n";
+    say += cur == kModeTag ? T::T("Cada uno lleva un equipo de dos luchadores y se relevan en pleno combate.",
+                                  "Each of you brings a team of two fighters and you swap them mid-fight.")
+                           : T::T("Un luchador contra otro, como el Duelo de siempre.", "One fighter against another, like the classic Duel.");
+  } else if (idle && step_ == 1) {
+    say += pick_n_ == 0 ? T::T("Elige a tu primer luchador", "Pick your first fighter")
+                        : T::T("Elige a tu segundo luchador", "Pick your second fighter");
+    say += "\n" + dbz3::ingame::TeamFighterName(fighters[size_t(pick_cur_)]) + "  (" + T::T("A: elegir, B: atras", "A: pick, B: back") + ")";
   } else if (idle) {
-    if (link != Link::kIdle) say += s.Status() + "\n";
+    if (link != Link::kIdle && adv_) say += s.Status() + "\n";
+    if (adv_ && !err_detail_.empty() && !last_err_.empty()) say += "[" + err_detail_ + "]\n";
+    if (step_ == 2 && link == Link::kIdle && !adv_) {
+      say += tag_ ? T::T("Modo: Tag Team (equipo de dos). ", "Mode: Tag Team (team of two). ")
+                  : T::T("Modo: 1 contra 1. ", "Mode: 1 vs 1. ");
+    }
     if (link == Link::kError && s.desynced())
       say += std::string(T::T("Los dos juegos dejaron de ver lo mismo. Que hacer: volved a crear la sala; si se repite, enviadnos el informe.",
                               "The two games stopped seeing the same thing. What to do: create the room again; if it repeats, send us the report.")) + "\n";
@@ -1176,19 +1332,26 @@ void OnlinePanel::DrawScreen(ImGuiIO& io, uint16_t pressed) {
       say += std::string(T::T("Se perdio la conexion. Que hacer: mira que tu internet funciona y volved a crear la sala y unirte.",
                               "The connection was lost. What to do: check your internet, then create the room and join again.")) + "\n";
     else if (link == Link::kError)
-      say += std::string(T::T("No se pudo conectar. Que hacer: comprueba que el codigo esta bien escrito y que el otro jugador ya tiene la sala creada.",
-                              "Could not connect. What to do: check the code is typed right and the other player has already created the room.")) + "\n";
+      say += std::string(host ? T::T("No se pudo conectar. Que hacer: crea la sala otra vez y pasale el codigo de nuevo; los dos necesitais la misma version del juego.",
+                                     "Could not connect. What to do: create the room again and send the code again; you both need the same game version.")
+                              : T::T("Tu amigo no aparece: comprueba el codigo y que ya haya creado la sala. Los dos necesitais la misma version del juego.",
+                                     "Your friend does not show up: check the code and that they already created the room. You both need the same game version.")) + "\n";
     if (link != Link::kError && link != Link::kLost) switch (cur) {   // con un error, solo el error y que hacer (cuadro corto)
       case kSearchRow:
         say += T::T("Te empareja con otro jugador que este buscando ahora. Solo pulsa A.", "Matches you with another player searching right now. Just press A.");
         break;
       case kHostRow:
-        say += T::T("Crea una sala y pasale el codigo a un amigo. Necesitais la misma version y los mismos mods.",
-                    "Create a room and give the code to a friend. You both need the same version and mods.");
+        say += T::T("Crea una sala: te damos un codigo para pasarselo a tu amigo.",
+                    "Create a room: we give you a code to send to your friend.");
         break;
       case kJoinRow:
-        say += T::T("Escribe el codigo que te paso tu amigo y pulsa Intro (o copialo y pulsa X para pegarlo).",
-                    "Type the code your friend gave you and press Enter (or copy it and press X to paste it).");
+        say += T::T("Escribe el codigo que te paso tu amigo (o copialo y pulsa X para pegarlo). La sala te dira su modo.",
+                    "Type the code your friend gave you (or copy it and press X to paste it). The room will show its mode.");
+        break;
+      case kTeamRow:
+        say += T::T("Este es tu equipo. Pulsa A si quieres cambiarlo.", "This is your team. Press A to change it.");
+        say += " ";
+        say += T::T("Usan tu lista Custom; si un luchador no tiene, la Normal.", "They use your Custom list; if a fighter has none, the Normal one.");
         break;
       case kAdvRow:
         say += T::T("Para problemas de conexion: puerto y retardo.", "For connection problems: port and delay.");
@@ -1216,7 +1379,7 @@ void OnlinePanel::DrawScreen(ImGuiIO& io, uint16_t pressed) {
         if (!std::getenv("DBZ3_NO_DIALOGS")) ImGui::SetClipboardText(code.c_str());
         copied_code_ = code;
       }
-      if (mode_ != 1) say += T::T("\nCodigo de sala: ", "\nRoom code: ") + code + T::T("  (copiado: pegalo en un mensaje a tu amigo)", "  (copied: paste it in a message to your friend)");
+      if (mode_ != 1) say += std::string(T::T("\nPasa este codigo a tu amigo: ", "\nGive this code to your friend: ")) + code + T::T("\nYa esta copiado: pegalo en un mensaje.", "\nIt is already copied: paste it in a message.");
       if (link == Link::kWaiting && how != "local" && adv_) {
         // el codigo lleva la IP publica: desde la misma casa muchos routers no dejan entrar por ella
         if (lan_.empty() || ImGui::GetTime() - lan_at_ > 5.0) {   // gethostname + DNS: no en cada fotograma
@@ -1238,6 +1401,25 @@ void OnlinePanel::DrawScreen(ImGuiIO& io, uint16_t pressed) {
     }
     if (link == Link::kConnected || link == Link::kStarting) {
       if (s.mods_match()) {
+        {   // el modo de la sala (lo que lleva cada uno) en palabras normales
+          std::vector<int> mine, peer;
+          if (s.Teams(&mine, &peer)) {
+            auto names = [](const std::vector<int>& v) {
+              std::string o;
+              for (size_t i = 0; i < v.size(); ++i) o += (i ? " + " : "") + dbz3::ingame::TeamFighterName(v[i]);
+              return o;
+            };
+            const bool tm = mine.size() >= 2, tp = peer.size() >= 2;
+            if (tm && tp)
+              say += std::string(T::T("\nSala Tag Team (2 contra 2). Tu equipo: ", "\nTag Team room (2 vs 2). Your team: ")) + names(mine) +
+                     T::T(". Rivales: ", ". Opponents: ") + names(peer) + ".";
+            else if (!tm && !tp)
+              say += T::T("\nSala de 1 contra 1. Usan tu lista Custom (preparala en Editar Habilidades antes de entrar); si un luchador no tiene, la Normal.", "\n1 vs 1 room. They use your Custom list (set it up in Edit Skills before joining); if a fighter has none, the Normal one.");
+            else
+              say += T::T("\nOjo: uno de vosotros eligio Tag Team y el otro 1 contra 1, asi que se jugara 2 contra 1. Para igualarlo, cancelad y volved a entrar con el mismo modo.",
+                          "\nHeads up: one of you picked Tag Team and the other 1 vs 1, so it will be 2 vs 1. To match, cancel and join again with the same mode.");
+          }
+        }
         if (s.ping_ms() >= 0) {
           char qb[64];
           std::snprintf(qb, sizeof(qb), s.ping_ms() < 60 ? T::T("\nConexion: buena (%d ms)", "\nConnection: good (%d ms)")
@@ -1249,10 +1431,10 @@ void OnlinePanel::DrawScreen(ImGuiIO& io, uint16_t pressed) {
         if (mode_ == 1) say += host ? T::T("\nListo. El combate empieza solo...", "\nReady. The fight starts by itself...")
                                     : T::T("\nListo. Esperando a que empiece el combate...", "\nReady. Waiting for the fight to start...");
         else
-        say += host ? T::T("\nMods iguales. Pulsa EMPEZAR: los dos ireis a la eleccion de personajes (1P VS 2P).",
-                           "\nSame mods. Press START: you both go to character select (1P VS 2P).")
-                    : T::T("\nMods iguales. Esperando a que el anfitrion empiece...",
-                           "\nSame mods. Waiting for the host to start...");
+        say += host ? T::T("\nTodo listo. Pulsa EMPEZAR cuando querais.", "\nAll set. Press START when you are ready.")
+                    : T::T("\nTodo listo. Esperando a que tu amigo pulse EMPEZAR...",
+                           "\nAll set. Waiting for your friend to press START...");
+        if (tag_) say += T::T("\nEn combate, SELECT releva a tu companero.", "\nIn the fight, SELECT swaps in your partner.");
         int e0, t0, e1, t1;
         CombatRules r0, r1;
         s.MyRoom(&e0, &t0, &r0);
@@ -1304,7 +1486,7 @@ void OnlinePanel::DrawScreen(ImGuiIO& io, uint16_t pressed) {
   S::Speech(dl, a.At(195, 615), a.At(950, 845), a.s, say.c_str(), 0.78f);
   std::vector<std::pair<const char*, const char*>> help = {{"A", T::T("Aceptar", "OK")},
                                                            {"B", idle ? T::T("Atras", "Back") : T::T("Cancelar", "Cancel")}};
-  if (idle && !searching && !consent_ask_) help.push_back({"X", T::T("Pegar codigo", "Paste code")});
+  if (idle && !searching && !consent_ask_ && step_ == 2) help.push_back({"X", T::T("Pegar codigo", "Paste code")});
   else if (host && mode_ != 1) help.push_back({"X", T::T("Copiar codigo", "Copy code")});
   S::HelpLine(dl, a.At(idle || (host && mode_ != 1) ? 690 : 745, 870), 38 * a.s, help);
 }

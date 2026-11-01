@@ -1088,6 +1088,13 @@ def portraits(cfg, us, mod, work):
             im = im.resize((max(1, round(im.width * k)), max(1, round(im.height * k))), Image.LANCZOS)
             canvas = Image.new("RGBA", (1024, 1024), (0, 0, 0, 0))
             dx, dy = c.get("desplazamiento", [0, 0])      # x, y en px (y positivo = mas abajo)
+            if dy < 0:   # subir el arte dejaria un hueco abajo: se rellena con las filas de abajo reflejadas (pecho/hombros)
+                h = min(-int(dy), im.height)
+                ext = Image.new("RGBA", (im.width, im.height + h))
+                ext.paste(im, (0, 0))
+                ext.paste(im.crop((0, im.height - h, im.width, im.height)).transpose(Image.FLIP_TOP_BOTTOM), (0, im.height))
+                im, dy = ext, 0   # el arte ampliado queda con su borde de abajo en el de la caja
+            canvas.paste(im, ((541 - im.width) // 2 + int(dx), 530 - im.height + int(dy)), im)
             canvas.paste(im, ((541 - im.width) // 2 + int(dx), 530 - im.height + int(dy)), im)
             canvas = canvas.crop((0, 0, 1024, 1024))
             pix = np.ascontiguousarray(np.array(canvas)[..., [2, 1, 0, 3]]).tobytes()

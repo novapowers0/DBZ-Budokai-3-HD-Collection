@@ -3421,7 +3421,8 @@ float AltoModeloB2(int id_b2) {
 namespace {
 struct Tk {
   uint32_t nb = 0;
-  struct Clip { uint32_t cuadros = 0; bool bucle = false; std::vector<ps2::M34> m; } clip[4];   // espera, andar, ataque, tecnica
+  // espera, andar, ataque, tecnica, dano (golpe recibido), derrota (KO), levantarse, victoria
+  struct Clip { uint32_t cuadros = 0; bool bucle = false; std::vector<ps2::M34> m; } clip[8];
 };
 std::map<int, Tk> g_tk;
 std::set<int> g_tk_pidiendo, g_tk_fallo;
@@ -3431,8 +3432,9 @@ bool LeerTk(const std::filesystem::path& f, Tk& t) {
   size_t o = 4;
   auto u32 = [&](uint32_t& v) { if (o + 4 > d.size()) return false; std::memcpy(&v, d.data() + o, 4); o += 4; return true; };
   uint32_t ncl = 0;
-  if (d.size() < 12 || std::memcmp(d.data(), "TKB2", 4) != 0 || !u32(t.nb) || !u32(ncl) || ncl != 4 || t.nb == 0 || t.nb > 256) return false;
-  for (auto& c : t.clip) {
+  if (d.size() < 12 || std::memcmp(d.data(), "TKB2", 4) != 0 || !u32(t.nb) || !u32(ncl) || ncl < 4 || ncl > 8 || t.nb == 0 || t.nb > 256) return false;
+  for (uint32_t k = 0; k < ncl; ++k) {
+    auto& c = t.clip[k];
     uint32_t n = 0, bucle = 0;
     if (!u32(n) || !u32(bucle) || n > 1000 || o + size_t(n) * t.nb * 48 > d.size()) return false;
     c.cuadros = n, c.bucle = bucle != 0;
@@ -3441,6 +3443,46 @@ bool LeerTk(const std::filesystem::path& f, Tk& t) {
     o += c.m.size() * 48;
   }
   return true;
+}
+// Mezcla de dos poses locales (3x4 rigidas): traslacion lineal y giro con quaternion (slerp). Las transiciones entre clips
+// duran ~0,18 s; sin esto el cambio de clip cortaba a media pose (corte seco).
+struct Quat { float x, y, z, w; };
+Quat QuatDe(const ps2::M34& a) {
+  const float tr = a.m[0] + a.m[5] + a.m[10];
+  Quat q;
+  if (tr > 0.0f) {
+    const float s = std::sqrt(tr + 1.0f) * 2.0f;
+    q.w = 0.25f * s, q.x = (a.m[9] - a.m[6]) / s, q.y = (a.m[2] - a.m[8]) / s, q.z = (a.m[4] - a.m[1]) / s;
+  } else if (a.m[0] > a.m[5] && a.m[0] > a.m[10]) {
+    const float s = std::sqrt(1.0f + a.m[0] - a.m[5] - a.m[10]) * 2.0f;
+    q.w = (a.m[9] - a.m[6]) / s, q.x = 0.25f * s, q.y = (a.m[1] + a.m[4]) / s, q.z = (a.m[2] + a.m[8]) / s;
+  } else if (a.m[5] > a.m[10]) {
+    const float s = std::sqrt(1.0f + a.m[5] - a.m[0] - a.m[10]) * 2.0f;
+    q.w = (a.m[2] - a.m[8]) / s, q.x = (a.m[1] + a.m[4]) / s, q.y = 0.25f * s, q.z = (a.m[6] + a.m[9]) / s;
+  } else {
+    const float s = std::sqrt(1.0f + a.m[10] - a.m[0] - a.m[5]) * 2.0f;
+    q.w = (a.m[4] - a.m[1]) / s, q.x = (a.m[2] + a.m[8]) / s, q.y = (a.m[6] + a.m[9]) / s, q.z = 0.25f * s;
+  }
+  return q;
+}
+ps2::M34 MezclaM34(const ps2::M34& a, const ps2::M34& b, float t) {
+  Quat qa = QuatDe(a), qb = QuatDe(b);
+  float d = qa.x * qb.x + qa.y * qb.y + qa.z * qb.z + qa.w * qb.w;
+  if (d < 0.0f) qb.x = -qb.x, qb.y = -qb.y, qb.z = -qb.z, qb.w = -qb.w, d = -d;
+  float wa = 1.0f - t, wb = t;
+  if (d < 0.9995f) {   // slerp; casi iguales -> lineal (evita division por 0)
+    const float th = std::acos(std::clamp(d, -1.0f, 1.0f)), s = std::sin(th);
+    wa = std::sin((1.0f - t) * th) / s, wb = std::sin(t * th) / s;
+  }
+  const Quat q{qa.x * wa + qb.x * wb, qa.y * wa + qb.y * wb, qa.z * wa + qb.z * wb, qa.w * wa + qb.w * wb};
+  const float n = std::sqrt(q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w);
+  const float x = q.x / n, y = q.y / n, z = q.z / n, w = q.w / n;
+  ps2::M34 r;
+  r.m[0] = 1 - 2 * (y * y + z * z), r.m[1] = 2 * (x * y - z * w), r.m[2] = 2 * (x * z + y * w);
+  r.m[4] = 2 * (x * y + z * w), r.m[5] = 1 - 2 * (x * x + z * z), r.m[6] = 2 * (y * z - x * w);
+  r.m[8] = 2 * (x * z - y * w), r.m[9] = 2 * (y * z + x * w), r.m[10] = 1 - 2 * (x * x + y * y);
+  r.m[3] = a.m[3] + (b.m[3] - a.m[3]) * t, r.m[7] = a.m[7] + (b.m[7] - a.m[7]) * t, r.m[11] = a.m[11] + (b.m[11] - a.m[11]) * t;
+  return r;
 }
 // hilo de dibujo: 0 = no hay (falta algo de B3 HD), 1 = preparandose, 2 = listo (`sk`, `tk`)
 // `fid_pedido` >= 0: el modelo exacto que dice el catalogo de Tactics; la tabla del juego no siempre lo da (Vegeta forma 4 trae el modelo 0 -> 416)
@@ -3499,21 +3541,47 @@ int EstadoFiguraB3(int b3, int forma, int fid) {
   const Tk* tk = nullptr;
   return TkEstado(b3, forma, &sk, &tk, fid);
 }
+// Dragon Tactics: la altura de cada modelo respecto a la de un luchador normal (Goku, sk->alto ~19,6), medida del propio modelo y acotada para que
+// ni Krilin ni Freezer salgan ilegibles. 0 = el modelo aun no esta listo.
+float AltoRelFiguraB3(int b3, int forma, int fid) {
+  const SkB3* sk = nullptr;
+  const Tk* tk = nullptr;
+  if (TkEstado(b3, forma, &sk, &tk, fid) != 2) return 0.0f;
+  return std::clamp(sk->alto / 19.6f, 0.62f, 1.3f);
+}
 // La figura de pie en `suelo` (mundo) con `alto` de alto, girada `giro` (0 = de cara a +z), vista con la camara `cam` del tablero y puesta en la
-// `esc` comun (todas las figuras se ordenan juntas); clip 0 espera, 1 andar, 2 ataque, 3 tecnica; `t` = segundos dentro del clip (60 cuadros
-// por segundo; los que se repiten dan la vuelta, el resto se queda en el ultimo cuadro). false si no esta lista.
-bool DibujarFiguraB3En(ps2::Escena* esc, const ps2::Camara& cam, int b3, int forma, ps2::V3 suelo, float alto, float giro, int clip, float t, int fid) {
+// `esc` comun (todas las figuras se ordenan juntas); clip 0 espera, 1 andar, 2 ataque, 3 tecnica, 4 dano, 5 derrota, 6 levantarse, 7 victoria;
+// `t` = segundos dentro del clip (60 cuadros por segundo; los que se repiten dan la vuelta, el resto se queda en el ultimo cuadro).
+// `ciclo` >= 0 (andar): el clip recorre una vuelta entera con el avance entre casillas (los pies no se deslizan).
+// `clip_prev` + `t_prev` + `mezcla` (0..1): mezcla con la pose del clip anterior (transiciones suaves). false si no esta lista.
+bool DibujarFiguraB3En(ps2::Escena* esc, const ps2::Camara& cam, int b3, int forma, ps2::V3 suelo, float alto, float giro, int clip, float t, int fid, float dura,
+                       float ciclo, int clip_prev, float t_prev, float mezcla) {
   const SkB3* sk = nullptr;
   const Tk* tk = nullptr;
   if (!esc || alto <= 0 || TkEstado(b3, forma, &sk, &tk, fid) != 2) return false;
-  const Tk::Clip* c = &tk->clip[std::clamp(clip, 0, 3)];
+  const Tk::Clip* c = &tk->clip[std::clamp(clip, 0, 7)];
   if (c->cuadros == 0) c = &tk->clip[0];
   if (c->cuadros == 0) return false;
-  const uint32_t f = c->bucle ? uint32_t(std::max(t, 0.0f) * 60.0f) % c->cuadros : std::min(uint32_t(std::max(t, 0.0f) * 60.0f), c->cuadros - 1);
-  const ps2::M34* loc = c->m.data() + size_t(f) * tk->nb;
+  const auto marco = [&](const Tk::Clip* cl, float tt, float dur) -> const ps2::M34* {
+    if (!cl || cl->cuadros == 0) return nullptr;
+    if (!cl->bucle && dur > 0.0f && float(cl->cuadros) > dur * 60.0f) tt *= float(cl->cuadros) / (dur * 60.0f);   // el clip acaba con la accion
+    const uint32_t f = cl->bucle ? uint32_t(std::max(tt, 0.0f) * 60.0f) % cl->cuadros : std::min(uint32_t(std::max(tt, 0.0f) * 60.0f), cl->cuadros - 1);
+    return cl->m.data() + size_t(f) * tk->nb;
+  };
+  float t_uso = t;
+  if (ciclo >= 0.0f && c->cuadros > 0) t_uso = std::max(ciclo, 0.0f) * float(c->cuadros) / 60.0f;   // andar: las vueltas del clip van con el avance entre casillas
+  const ps2::M34* loc = marco(c, t_uso, dura);
+  const ps2::M34* loc_prev = nullptr;
+  if (clip_prev >= 0 && mezcla > 0.0f && mezcla < 1.0f && clip_prev != clip) {
+    const Tk::Clip* cp = &tk->clip[std::clamp(clip_prev, 0, 7)];
+    if (cp->cuadros) loc_prev = marco(cp, t_prev, 0.0f);
+  }
   static std::vector<ps2::M34> w;   // hilo de dibujo: sin reservar memoria en cada figura
   w.resize(tk->nb);
-  for (size_t i = 0; i < w.size(); ++i) w[i] = sk->esq.padre[i] >= 0 ? w[size_t(sk->esq.padre[i])] * loc[i] : loc[i];
+  for (size_t i = 0; i < w.size(); ++i) {
+    const ps2::M34 L = loc_prev ? MezclaM34(loc_prev[i], loc[i], mezcla) : loc[i];
+    w[i] = sk->esq.padre[i] >= 0 ? w[size_t(sk->esq.padre[i])] * L : L;
+  }
   if (sk->posada.tris.size() != sk->malla.tris.size()) sk->posada.tris = sk->malla.tris;
   float ymin = 1e9f;
   for (size_t i = 0; i < sk->malla.tris.size(); ++i) {
@@ -3527,7 +3595,7 @@ bool DibujarFiguraB3En(ps2::Escena* esc, const ps2::Camara& cam, int b3, int for
     }
   }
   sk->posada_de = nullptr;   // la cache de la nave (por animacion de B2) ya no vale
-  const float e = alto / std::max(sk->alto, 1e-3f);   // escala fija por modelo (no la altura de cada pose)
+  const float e = alto * std::clamp(sk->alto / 19.6f, 0.62f, 1.3f) / std::max(sk->alto, 1e-3f);   // escala fija por modelo (no la altura de cada pose); `alto` = la de un luchador normal, cada modelo guarda su proporcion real
   ps2::Escena::Toon toon;
   toon.borde = sk->alto * BordeFig(2);
   toon.rampa = sk->rampa.empty() ? nullptr : &sk->rampa;

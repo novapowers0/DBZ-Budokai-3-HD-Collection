@@ -6,6 +6,9 @@
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
+#include <cstdio>
+#include <string>
+#include <vector>
 
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -14,8 +17,13 @@
 #include <rex/ui/imgui_dialog.h>
 
 #include "../ps2_modelo.h"
+#include "../mods.h"
+#include "catalogo.h"
 
 namespace dbz3::pasarela::nave {
+float AltoRelFiguraB3(int b3, int forma, int fid);
+bool DibujarFiguraB3En(dbz3::ps2::Escena* esc, const dbz3::ps2::Camara& cam, int b3, int forma, dbz3::ps2::V3 suelo, float alto, float giro, int clip, float t, int fid, float dura = 0.0f,
+                       float ciclo = -1.0f, int clip_prev = -1, float t_prev = 0.0f, float mezcla = 0.0f);
 bool DibujarFiguraB2En(dbz3::ps2::Escena* comp, ImDrawList* dl, int id_b2, ImVec2 pie, float alto_px, float giro, float t, int traje,
                        int pbank, int panim, const float* cb);   // pasarela_nave.cpp
 }
@@ -31,7 +39,53 @@ class Prueba : public rex::ui::ImGuiDialog {
   Prueba(rex::ui::ImGuiDrawer* d, int n) : ImGuiDialog(d), n_(n) {}
 
  protected:
+  // DBZ3_TEST_TACTICS_HOJA=1|2: todos los luchadores del catalogo en fila (1 = proporcion real de cada modelo, 2 = el criterio anterior: todos a la misma altura)
+  void Hoja(ImGuiIO& io, int modo) {
+    if (!hoja_cargada_) {
+      hoja_cargada_ = true;
+      const std::string datos = (dbz3::ModsRoot().parent_path() / "mod center hd").string();
+      std::string err;
+      if (!CargarCatalogo(datos + "/tactics_units.toml", datos + "/tactics_manifest.toml", &cat_, &err)) REXLOG_ERROR("dbz3 tactics hoja: {}", err);
+    }
+    dbz3::ps2::Camara cam;
+    const float w = io.DisplaySize.x, h = io.DisplaySize.y, D = 300.0f;
+    cam.m[0] = cam.m[5] = cam.m[10] = cam.m[15] = 1.0f, cam.m[14] = -D;   // ojo en (0,0,D) mirando a -z; las figuras miran a +z
+    cam.fov = 0.6f, cam.c = ImVec2(w * 0.5f, h * 0.5f), cam.h = cam.c, cam.ok = true, cam.za = cam.zb = 0;
+    ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, 0), io.DisplaySize, IM_COL32(40, 44, 56, 255));
+    ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, 0), io.DisplaySize, IM_COL32(40, 44, 56, 255));
+    esc_.Empezar();
+    int listas = 0, total = 0;
+    const int cols = 12;
+    for (size_t i = 0; i < cat_.unidades.size() && i < cat_.formas.size(); ++i) {
+      if (cat_.formas[i].empty()) continue;
+      ++total;
+      const auto f = cat_.Forma(i, 1);
+      const float rel = dbz3::pasarela::nave::AltoRelFiguraB3(f[0], f[1], f[2]);   // 0 = aun no esta lista (la pide)
+      const int c = int(i) % cols, r = int(i) / cols;
+      const float alto = 27.5f * (modo == 2 && rel > 0 ? 1.0f / rel : 1.0f);
+      if (dbz3::pasarela::nave::DibujarFiguraB3En(&esc_, cam, f[0], f[1], {(float(c) - 5.5f) * 26.0f, 45.0f - 62.0f * float(r), 0.0f}, alto, 0.0f, 0, float(ImGui::GetTime()), f[2])) {
+        ++listas;
+        ImVec2 o;
+        float k;
+        if (cam.P({(float(c) - 5.5f) * 26.0f, 45.0f - 62.0f * float(r) - 5.0f, 0.0f}, o, k)) {
+          char t[48];
+          std::snprintf(t, sizeof t, "%s %.2f", cat_.unidades[i].id.c_str(), rel);
+          txt_.push_back({o, t});
+        }
+        if (rel > 0 && !dicho_[i]) {
+          dicho_[i] = true;
+          REXLOG_INFO("dbz3 tactics hoja: {} rel {:.3f}", cat_.unidades[i].id, rel);
+        }
+      }
+    }
+    esc_.Pintar(ImGui::GetBackgroundDrawList());
+    for (const auto& e : txt_) ImGui::GetBackgroundDrawList()->AddText(ImVec2(e.first.x - 28, e.first.y), IM_COL32(255, 255, 255, 255), e.second.c_str());
+    txt_.clear();
+    if (listas == total && total > 0 && ++hoja_ok_ == 90) REXLOG_INFO("dbz3 tactics hoja: lista ({} luchadores, modo {})", total, modo);
+  }
+
   void OnDraw(ImGuiIO& io) override {
+    if (const char* hv = std::getenv("DBZ3_TEST_TACTICS_HOJA")) return Hoja(io, std::atoi(hv));
     const auto t0 = std::chrono::steady_clock::now();
     static const bool solape = std::getenv("DBZ3_TEST_TACTICS_SOLAPE") != nullptr;
     const int cols = std::min(n_, 6), filas = (n_ + cols - 1) / cols;
@@ -74,6 +128,10 @@ class Prueba : public rex::ui::ImGuiDialog {
 
  private:
   dbz3::ps2::Escena esc_;
+  Catalogo cat_;
+  bool hoja_cargada_ = false, dicho_[64] = {};
+  int hoja_ok_ = 0;
+  std::vector<std::pair<ImVec2, std::string>> txt_;
   int n_;
   double media_ = 0, poner_ = 0;
   int cuadros_ = 0;

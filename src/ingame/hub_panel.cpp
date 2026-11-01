@@ -665,11 +665,11 @@ class HubPanel : public rex::ui::ImGuiDialog {
                    ImVec4(0, 0, 0, 0), ready ? (sel ? IM_COL32_WHITE : kDim) : kOff);
       }
       // estado de cada modo junto a su nombre: BETA (jugable, aun se pule) o EXPERIMENTAL (en construccion: las
-      // campanas portadas de IW/B2 y los minijuegos de IW). Los demas, sin marca.
+      // campanas portadas de IW/B2, los minijuegos de IW y Dragon Tactics). Los demas, sin marca.
       const std::string key = EntryKey(e);
-      const int estado = key == "pasarela" || key == "minijuegos" ? 2
+      const int estado = key == "pasarela" || key == "minijuegos" || key == "tactics" ? 2
                          : key == "tagteam" || key == "online" || key == "satan" || key == "mision100" ||
-                                   key == "laboratorio" || key == "escenarios" || key == "heroe" || key == "tactics"
+                                   key == "laboratorio" || key == "escenarios" || key == "heroe"
                              ? 1
                              : 0;
       const float right = Label(dl, a, EntryKey(e), EntryName(e), kLabelX + dx, y, kLabelK, tint, sel,

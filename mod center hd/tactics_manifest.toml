@@ -45,12 +45,37 @@ frames = 120
 bucle = false
 estado = "inferido"
 nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.victoria]
+codigo = 673
+anim = 136
+frames = 120
+bucle = false
+estado = "medido"
+nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
 [unidad.clips.dano]
-estado = "pendiente"
-nota = "accion 20 del motor, sin codigo BSK confirmado"
+codigo = 154
+anim = 167
+frames = 10
+bucle = false
+banco = 165
+estado = "medido"
+nota = "golpe recibido (accion 20/22 del motor)"
 [unidad.clips.derrota]
-estado = "pendiente"
-nota = "sin evidencia de codigo"
+codigo = 36
+anim = 153
+frames = 60
+bucle = false
+banco = 165
+estado = "medido"
+nota = "KO tumbado boca abajo (accion 18)"
+[unidad.clips.levantarse]
+codigo = 37
+anim = 154
+frames = 40
+bucle = false
+banco = 165
+estado = "medido"
+nota = "se levanta desde el suelo (accion 19)"
 [unidad.clips.carga_ki]
 estado = "pendiente"
 nota = "accion 21 del motor; codigo sin medir"
@@ -95,12 +120,37 @@ frames = 120
 bucle = false
 estado = "inferido"
 nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.victoria]
+codigo = 673
+anim = 136
+frames = 120
+bucle = false
+estado = "medido"
+nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
 [unidad.clips.dano]
-estado = "pendiente"
-nota = "accion 20 del motor, sin codigo BSK confirmado"
+codigo = 154
+anim = 167
+frames = 10
+bucle = false
+banco = 165
+estado = "medido"
+nota = "golpe recibido (accion 20/22 del motor)"
 [unidad.clips.derrota]
-estado = "pendiente"
-nota = "sin evidencia de codigo"
+codigo = 36
+anim = 153
+frames = 60
+bucle = false
+banco = 165
+estado = "medido"
+nota = "KO tumbado boca abajo (accion 18)"
+[unidad.clips.levantarse]
+codigo = 37
+anim = 154
+frames = 40
+bucle = false
+banco = 165
+estado = "medido"
+nota = "se levanta desde el suelo (accion 19)"
 [unidad.clips.carga_ki]
 estado = "pendiente"
 nota = "accion 21 del motor; codigo sin medir"
@@ -145,12 +195,37 @@ frames = 120
 bucle = false
 estado = "inferido"
 nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.victoria]
+codigo = 673
+anim = 136
+frames = 120
+bucle = false
+estado = "medido"
+nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
 [unidad.clips.dano]
-estado = "pendiente"
-nota = "accion 20 del motor, sin codigo BSK confirmado"
+codigo = 154
+anim = 167
+frames = 10
+bucle = false
+banco = 165
+estado = "medido"
+nota = "golpe recibido (accion 20/22 del motor)"
 [unidad.clips.derrota]
-estado = "pendiente"
-nota = "sin evidencia de codigo"
+codigo = 36
+anim = 153
+frames = 60
+bucle = false
+banco = 165
+estado = "medido"
+nota = "KO tumbado boca abajo (accion 18)"
+[unidad.clips.levantarse]
+codigo = 37
+anim = 154
+frames = 40
+bucle = false
+banco = 165
+estado = "medido"
+nota = "se levanta desde el suelo (accion 19)"
 [unidad.clips.carga_ki]
 estado = "pendiente"
 nota = "accion 21 del motor; codigo sin medir"
@@ -195,12 +270,37 @@ frames = 120
 bucle = false
 estado = "inferido"
 nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.victoria]
+codigo = 673
+anim = 136
+frames = 120
+bucle = false
+estado = "medido"
+nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
 [unidad.clips.dano]
-estado = "pendiente"
-nota = "accion 20 del motor, sin codigo BSK confirmado"
+codigo = 154
+anim = 167
+frames = 10
+bucle = false
+banco = 165
+estado = "medido"
+nota = "golpe recibido (accion 20/22 del motor)"
 [unidad.clips.derrota]
-estado = "pendiente"
-nota = "sin evidencia de codigo"
+codigo = 36
+anim = 153
+frames = 60
+bucle = false
+banco = 165
+estado = "medido"
+nota = "KO tumbado boca abajo (accion 18)"
+[unidad.clips.levantarse]
+codigo = 37
+anim = 154
+frames = 40
+bucle = false
+banco = 165
+estado = "medido"
+nota = "se levanta desde el suelo (accion 19)"
 [unidad.clips.carga_ki]
 estado = "pendiente"
 nota = "accion 21 del motor; codigo sin medir"
@@ -245,12 +345,37 @@ frames = 120
 bucle = false
 estado = "inferido"
 nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.victoria]
+codigo = 673
+anim = 127
+frames = 120
+bucle = false
+estado = "medido"
+nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
 [unidad.clips.dano]
-estado = "pendiente"
-nota = "accion 20 del motor, sin codigo BSK confirmado"
+codigo = 154
+anim = 167
+frames = 10
+bucle = false
+banco = 165
+estado = "medido"
+nota = "golpe recibido (accion 20/22 del motor)"
 [unidad.clips.derrota]
-estado = "pendiente"
-nota = "sin evidencia de codigo"
+codigo = 36
+anim = 153
+frames = 60
+bucle = false
+banco = 165
+estado = "medido"
+nota = "KO tumbado boca abajo (accion 18)"
+[unidad.clips.levantarse]
+codigo = 37
+anim = 154
+frames = 40
+bucle = false
+banco = 165
+estado = "medido"
+nota = "se levanta desde el suelo (accion 19)"
 [unidad.clips.carga_ki]
 estado = "pendiente"
 nota = "accion 21 del motor; codigo sin medir"
@@ -295,12 +420,37 @@ frames = 120
 bucle = false
 estado = "inferido"
 nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.victoria]
+codigo = 673
+anim = 127
+frames = 120
+bucle = false
+estado = "medido"
+nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
 [unidad.clips.dano]
-estado = "pendiente"
-nota = "accion 20 del motor, sin codigo BSK confirmado"
+codigo = 154
+anim = 167
+frames = 10
+bucle = false
+banco = 165
+estado = "medido"
+nota = "golpe recibido (accion 20/22 del motor)"
 [unidad.clips.derrota]
-estado = "pendiente"
-nota = "sin evidencia de codigo"
+codigo = 36
+anim = 153
+frames = 60
+bucle = false
+banco = 165
+estado = "medido"
+nota = "KO tumbado boca abajo (accion 18)"
+[unidad.clips.levantarse]
+codigo = 37
+anim = 154
+frames = 40
+bucle = false
+banco = 165
+estado = "medido"
+nota = "se levanta desde el suelo (accion 19)"
 [unidad.clips.carga_ki]
 estado = "pendiente"
 nota = "accion 21 del motor; codigo sin medir"
@@ -345,12 +495,37 @@ frames = 120
 bucle = false
 estado = "inferido"
 nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.victoria]
+codigo = 673
+anim = 127
+frames = 120
+bucle = false
+estado = "medido"
+nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
 [unidad.clips.dano]
-estado = "pendiente"
-nota = "accion 20 del motor, sin codigo BSK confirmado"
+codigo = 154
+anim = 167
+frames = 10
+bucle = false
+banco = 165
+estado = "medido"
+nota = "golpe recibido (accion 20/22 del motor)"
 [unidad.clips.derrota]
-estado = "pendiente"
-nota = "sin evidencia de codigo"
+codigo = 36
+anim = 153
+frames = 60
+bucle = false
+banco = 165
+estado = "medido"
+nota = "KO tumbado boca abajo (accion 18)"
+[unidad.clips.levantarse]
+codigo = 37
+anim = 154
+frames = 40
+bucle = false
+banco = 165
+estado = "medido"
+nota = "se levanta desde el suelo (accion 19)"
 [unidad.clips.carga_ki]
 estado = "pendiente"
 nota = "accion 21 del motor; codigo sin medir"
@@ -395,12 +570,37 @@ frames = 120
 bucle = false
 estado = "inferido"
 nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.victoria]
+codigo = 673
+anim = 129
+frames = 120
+bucle = false
+estado = "medido"
+nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
 [unidad.clips.dano]
-estado = "pendiente"
-nota = "accion 20 del motor, sin codigo BSK confirmado"
+codigo = 154
+anim = 167
+frames = 10
+bucle = false
+banco = 165
+estado = "medido"
+nota = "golpe recibido (accion 20/22 del motor)"
 [unidad.clips.derrota]
-estado = "pendiente"
-nota = "sin evidencia de codigo"
+codigo = 36
+anim = 153
+frames = 60
+bucle = false
+banco = 165
+estado = "medido"
+nota = "KO tumbado boca abajo (accion 18)"
+[unidad.clips.levantarse]
+codigo = 37
+anim = 154
+frames = 40
+bucle = false
+banco = 165
+estado = "medido"
+nota = "se levanta desde el suelo (accion 19)"
 [unidad.clips.carga_ki]
 estado = "pendiente"
 nota = "accion 21 del motor; codigo sin medir"
@@ -445,12 +645,37 @@ frames = 41
 bucle = false
 estado = "inferido"
 nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.victoria]
+codigo = 673
+anim = 93
+frames = 120
+bucle = false
+estado = "medido"
+nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
 [unidad.clips.dano]
-estado = "pendiente"
-nota = "accion 20 del motor, sin codigo BSK confirmado"
+codigo = 154
+anim = 167
+frames = 10
+bucle = false
+banco = 165
+estado = "medido"
+nota = "golpe recibido (accion 20/22 del motor)"
 [unidad.clips.derrota]
-estado = "pendiente"
-nota = "sin evidencia de codigo"
+codigo = 36
+anim = 153
+frames = 60
+bucle = false
+banco = 165
+estado = "medido"
+nota = "KO tumbado boca abajo (accion 18)"
+[unidad.clips.levantarse]
+codigo = 37
+anim = 154
+frames = 40
+bucle = false
+banco = 165
+estado = "medido"
+nota = "se levanta desde el suelo (accion 19)"
 [unidad.clips.carga_ki]
 estado = "pendiente"
 nota = "accion 21 del motor; codigo sin medir"
@@ -495,12 +720,37 @@ frames = 120
 bucle = false
 estado = "inferido"
 nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.victoria]
+codigo = 673
+anim = 98
+frames = 120
+bucle = false
+estado = "medido"
+nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
 [unidad.clips.dano]
-estado = "pendiente"
-nota = "accion 20 del motor, sin codigo BSK confirmado"
+codigo = 154
+anim = 167
+frames = 10
+bucle = false
+banco = 165
+estado = "medido"
+nota = "golpe recibido (accion 20/22 del motor)"
 [unidad.clips.derrota]
-estado = "pendiente"
-nota = "sin evidencia de codigo"
+codigo = 36
+anim = 153
+frames = 60
+bucle = false
+banco = 165
+estado = "medido"
+nota = "KO tumbado boca abajo (accion 18)"
+[unidad.clips.levantarse]
+codigo = 37
+anim = 154
+frames = 40
+bucle = false
+banco = 165
+estado = "medido"
+nota = "se levanta desde el suelo (accion 19)"
 [unidad.clips.carga_ki]
 estado = "pendiente"
 nota = "accion 21 del motor; codigo sin medir"
@@ -545,12 +795,37 @@ frames = 120
 bucle = false
 estado = "inferido"
 nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.victoria]
+codigo = 673
+anim = 121
+frames = 120
+bucle = false
+estado = "medido"
+nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
 [unidad.clips.dano]
-estado = "pendiente"
-nota = "accion 20 del motor, sin codigo BSK confirmado"
+codigo = 154
+anim = 167
+frames = 10
+bucle = false
+banco = 165
+estado = "medido"
+nota = "golpe recibido (accion 20/22 del motor)"
 [unidad.clips.derrota]
-estado = "pendiente"
-nota = "sin evidencia de codigo"
+codigo = 36
+anim = 153
+frames = 60
+bucle = false
+banco = 165
+estado = "medido"
+nota = "KO tumbado boca abajo (accion 18)"
+[unidad.clips.levantarse]
+codigo = 37
+anim = 154
+frames = 40
+bucle = false
+banco = 165
+estado = "medido"
+nota = "se levanta desde el suelo (accion 19)"
 [unidad.clips.carga_ki]
 estado = "pendiente"
 nota = "accion 21 del motor; codigo sin medir"
@@ -595,12 +870,37 @@ frames = 120
 bucle = false
 estado = "inferido"
 nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.victoria]
+codigo = 673
+anim = 133
+frames = 120
+bucle = false
+estado = "medido"
+nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
 [unidad.clips.dano]
-estado = "pendiente"
-nota = "accion 20 del motor, sin codigo BSK confirmado"
+codigo = 154
+anim = 167
+frames = 10
+bucle = false
+banco = 165
+estado = "medido"
+nota = "golpe recibido (accion 20/22 del motor)"
 [unidad.clips.derrota]
-estado = "pendiente"
-nota = "sin evidencia de codigo"
+codigo = 36
+anim = 153
+frames = 60
+bucle = false
+banco = 165
+estado = "medido"
+nota = "KO tumbado boca abajo (accion 18)"
+[unidad.clips.levantarse]
+codigo = 37
+anim = 154
+frames = 40
+bucle = false
+banco = 165
+estado = "medido"
+nota = "se levanta desde el suelo (accion 19)"
 [unidad.clips.carga_ki]
 estado = "pendiente"
 nota = "accion 21 del motor; codigo sin medir"
@@ -645,12 +945,37 @@ frames = 120
 bucle = false
 estado = "inferido"
 nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.victoria]
+codigo = 673
+anim = 133
+frames = 120
+bucle = false
+estado = "medido"
+nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
 [unidad.clips.dano]
-estado = "pendiente"
-nota = "accion 20 del motor, sin codigo BSK confirmado"
+codigo = 154
+anim = 167
+frames = 10
+bucle = false
+banco = 165
+estado = "medido"
+nota = "golpe recibido (accion 20/22 del motor)"
 [unidad.clips.derrota]
-estado = "pendiente"
-nota = "sin evidencia de codigo"
+codigo = 36
+anim = 153
+frames = 60
+bucle = false
+banco = 165
+estado = "medido"
+nota = "KO tumbado boca abajo (accion 18)"
+[unidad.clips.levantarse]
+codigo = 37
+anim = 154
+frames = 40
+bucle = false
+banco = 165
+estado = "medido"
+nota = "se levanta desde el suelo (accion 19)"
 [unidad.clips.carga_ki]
 estado = "pendiente"
 nota = "accion 21 del motor; codigo sin medir"
@@ -695,12 +1020,37 @@ frames = 120
 bucle = false
 estado = "inferido"
 nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.victoria]
+codigo = 673
+anim = 133
+frames = 120
+bucle = false
+estado = "medido"
+nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
 [unidad.clips.dano]
-estado = "pendiente"
-nota = "accion 20 del motor, sin codigo BSK confirmado"
+codigo = 154
+anim = 167
+frames = 10
+bucle = false
+banco = 165
+estado = "medido"
+nota = "golpe recibido (accion 20/22 del motor)"
 [unidad.clips.derrota]
-estado = "pendiente"
-nota = "sin evidencia de codigo"
+codigo = 36
+anim = 153
+frames = 60
+bucle = false
+banco = 165
+estado = "medido"
+nota = "KO tumbado boca abajo (accion 18)"
+[unidad.clips.levantarse]
+codigo = 37
+anim = 154
+frames = 40
+bucle = false
+banco = 165
+estado = "medido"
+nota = "se levanta desde el suelo (accion 19)"
 [unidad.clips.carga_ki]
 estado = "pendiente"
 nota = "accion 21 del motor; codigo sin medir"
@@ -745,12 +1095,37 @@ frames = 120
 bucle = false
 estado = "inferido"
 nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.victoria]
+codigo = 673
+anim = 133
+frames = 120
+bucle = false
+estado = "medido"
+nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
 [unidad.clips.dano]
-estado = "pendiente"
-nota = "accion 20 del motor, sin codigo BSK confirmado"
+codigo = 154
+anim = 167
+frames = 10
+bucle = false
+banco = 165
+estado = "medido"
+nota = "golpe recibido (accion 20/22 del motor)"
 [unidad.clips.derrota]
-estado = "pendiente"
-nota = "sin evidencia de codigo"
+codigo = 36
+anim = 153
+frames = 60
+bucle = false
+banco = 165
+estado = "medido"
+nota = "KO tumbado boca abajo (accion 18)"
+[unidad.clips.levantarse]
+codigo = 37
+anim = 154
+frames = 40
+bucle = false
+banco = 165
+estado = "medido"
+nota = "se levanta desde el suelo (accion 19)"
 [unidad.clips.carga_ki]
 estado = "pendiente"
 nota = "accion 21 del motor; codigo sin medir"
@@ -795,12 +1170,37 @@ frames = 120
 bucle = false
 estado = "inferido"
 nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.victoria]
+codigo = 673
+anim = 140
+frames = 120
+bucle = false
+estado = "medido"
+nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
 [unidad.clips.dano]
-estado = "pendiente"
-nota = "accion 20 del motor, sin codigo BSK confirmado"
+codigo = 154
+anim = 167
+frames = 10
+bucle = false
+banco = 165
+estado = "medido"
+nota = "golpe recibido (accion 20/22 del motor)"
 [unidad.clips.derrota]
-estado = "pendiente"
-nota = "sin evidencia de codigo"
+codigo = 36
+anim = 153
+frames = 60
+bucle = false
+banco = 165
+estado = "medido"
+nota = "KO tumbado boca abajo (accion 18)"
+[unidad.clips.levantarse]
+codigo = 37
+anim = 154
+frames = 40
+bucle = false
+banco = 165
+estado = "medido"
+nota = "se levanta desde el suelo (accion 19)"
 [unidad.clips.carga_ki]
 estado = "pendiente"
 nota = "accion 21 del motor; codigo sin medir"
@@ -845,12 +1245,37 @@ frames = 120
 bucle = false
 estado = "inferido"
 nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.victoria]
+codigo = 673
+anim = 140
+frames = 120
+bucle = false
+estado = "medido"
+nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
 [unidad.clips.dano]
-estado = "pendiente"
-nota = "accion 20 del motor, sin codigo BSK confirmado"
+codigo = 154
+anim = 167
+frames = 10
+bucle = false
+banco = 165
+estado = "medido"
+nota = "golpe recibido (accion 20/22 del motor)"
 [unidad.clips.derrota]
-estado = "pendiente"
-nota = "sin evidencia de codigo"
+codigo = 36
+anim = 153
+frames = 60
+bucle = false
+banco = 165
+estado = "medido"
+nota = "KO tumbado boca abajo (accion 18)"
+[unidad.clips.levantarse]
+codigo = 37
+anim = 154
+frames = 40
+bucle = false
+banco = 165
+estado = "medido"
+nota = "se levanta desde el suelo (accion 19)"
 [unidad.clips.carga_ki]
 estado = "pendiente"
 nota = "accion 21 del motor; codigo sin medir"
@@ -895,12 +1320,37 @@ frames = 120
 bucle = false
 estado = "inferido"
 nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.victoria]
+codigo = 673
+anim = 140
+frames = 120
+bucle = false
+estado = "medido"
+nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
 [unidad.clips.dano]
-estado = "pendiente"
-nota = "accion 20 del motor, sin codigo BSK confirmado"
+codigo = 154
+anim = 167
+frames = 10
+bucle = false
+banco = 165
+estado = "medido"
+nota = "golpe recibido (accion 20/22 del motor)"
 [unidad.clips.derrota]
-estado = "pendiente"
-nota = "sin evidencia de codigo"
+codigo = 36
+anim = 153
+frames = 60
+bucle = false
+banco = 165
+estado = "medido"
+nota = "KO tumbado boca abajo (accion 18)"
+[unidad.clips.levantarse]
+codigo = 37
+anim = 154
+frames = 40
+bucle = false
+banco = 165
+estado = "medido"
+nota = "se levanta desde el suelo (accion 19)"
 [unidad.clips.carga_ki]
 estado = "pendiente"
 nota = "accion 21 del motor; codigo sin medir"
@@ -945,12 +1395,37 @@ frames = 120
 bucle = false
 estado = "inferido"
 nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.victoria]
+codigo = 673
+anim = 116
+frames = 120
+bucle = false
+estado = "medido"
+nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
 [unidad.clips.dano]
-estado = "pendiente"
-nota = "accion 20 del motor, sin codigo BSK confirmado"
+codigo = 154
+anim = 167
+frames = 10
+bucle = false
+banco = 165
+estado = "medido"
+nota = "golpe recibido (accion 20/22 del motor)"
 [unidad.clips.derrota]
-estado = "pendiente"
-nota = "sin evidencia de codigo"
+codigo = 36
+anim = 153
+frames = 60
+bucle = false
+banco = 165
+estado = "medido"
+nota = "KO tumbado boca abajo (accion 18)"
+[unidad.clips.levantarse]
+codigo = 37
+anim = 154
+frames = 40
+bucle = false
+banco = 165
+estado = "medido"
+nota = "se levanta desde el suelo (accion 19)"
 [unidad.clips.carga_ki]
 estado = "pendiente"
 nota = "accion 21 del motor; codigo sin medir"
@@ -995,12 +1470,37 @@ frames = 120
 bucle = false
 estado = "inferido"
 nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.victoria]
+codigo = 673
+anim = 116
+frames = 120
+bucle = false
+estado = "medido"
+nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
 [unidad.clips.dano]
-estado = "pendiente"
-nota = "accion 20 del motor, sin codigo BSK confirmado"
+codigo = 154
+anim = 167
+frames = 10
+bucle = false
+banco = 165
+estado = "medido"
+nota = "golpe recibido (accion 20/22 del motor)"
 [unidad.clips.derrota]
-estado = "pendiente"
-nota = "sin evidencia de codigo"
+codigo = 36
+anim = 153
+frames = 60
+bucle = false
+banco = 165
+estado = "medido"
+nota = "KO tumbado boca abajo (accion 18)"
+[unidad.clips.levantarse]
+codigo = 37
+anim = 154
+frames = 40
+bucle = false
+banco = 165
+estado = "medido"
+nota = "se levanta desde el suelo (accion 19)"
 [unidad.clips.carga_ki]
 estado = "pendiente"
 nota = "accion 21 del motor; codigo sin medir"
@@ -1045,12 +1545,37 @@ frames = 120
 bucle = false
 estado = "inferido"
 nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.victoria]
+codigo = 673
+anim = 116
+frames = 120
+bucle = false
+estado = "medido"
+nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
 [unidad.clips.dano]
-estado = "pendiente"
-nota = "accion 20 del motor, sin codigo BSK confirmado"
+codigo = 154
+anim = 167
+frames = 10
+bucle = false
+banco = 165
+estado = "medido"
+nota = "golpe recibido (accion 20/22 del motor)"
 [unidad.clips.derrota]
-estado = "pendiente"
-nota = "sin evidencia de codigo"
+codigo = 36
+anim = 153
+frames = 60
+bucle = false
+banco = 165
+estado = "medido"
+nota = "KO tumbado boca abajo (accion 18)"
+[unidad.clips.levantarse]
+codigo = 37
+anim = 154
+frames = 40
+bucle = false
+banco = 165
+estado = "medido"
+nota = "se levanta desde el suelo (accion 19)"
 [unidad.clips.carga_ki]
 estado = "pendiente"
 nota = "accion 21 del motor; codigo sin medir"
@@ -1095,12 +1620,37 @@ frames = 120
 bucle = false
 estado = "inferido"
 nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.victoria]
+codigo = 673
+anim = 114
+frames = 120
+bucle = false
+estado = "medido"
+nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
 [unidad.clips.dano]
-estado = "pendiente"
-nota = "accion 20 del motor, sin codigo BSK confirmado"
+codigo = 154
+anim = 167
+frames = 10
+bucle = false
+banco = 165
+estado = "medido"
+nota = "golpe recibido (accion 20/22 del motor)"
 [unidad.clips.derrota]
-estado = "pendiente"
-nota = "sin evidencia de codigo"
+codigo = 36
+anim = 153
+frames = 60
+bucle = false
+banco = 165
+estado = "medido"
+nota = "KO tumbado boca abajo (accion 18)"
+[unidad.clips.levantarse]
+codigo = 37
+anim = 154
+frames = 40
+bucle = false
+banco = 165
+estado = "medido"
+nota = "se levanta desde el suelo (accion 19)"
 [unidad.clips.carga_ki]
 estado = "pendiente"
 nota = "accion 21 del motor; codigo sin medir"
@@ -1145,12 +1695,37 @@ frames = 120
 bucle = false
 estado = "inferido"
 nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.victoria]
+codigo = 673
+anim = 114
+frames = 120
+bucle = false
+estado = "medido"
+nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
 [unidad.clips.dano]
-estado = "pendiente"
-nota = "accion 20 del motor, sin codigo BSK confirmado"
+codigo = 154
+anim = 167
+frames = 10
+bucle = false
+banco = 165
+estado = "medido"
+nota = "golpe recibido (accion 20/22 del motor)"
 [unidad.clips.derrota]
-estado = "pendiente"
-nota = "sin evidencia de codigo"
+codigo = 36
+anim = 153
+frames = 60
+bucle = false
+banco = 165
+estado = "medido"
+nota = "KO tumbado boca abajo (accion 18)"
+[unidad.clips.levantarse]
+codigo = 37
+anim = 154
+frames = 40
+bucle = false
+banco = 165
+estado = "medido"
+nota = "se levanta desde el suelo (accion 19)"
 [unidad.clips.carga_ki]
 estado = "pendiente"
 nota = "accion 21 del motor; codigo sin medir"
@@ -1195,12 +1770,37 @@ frames = 120
 bucle = false
 estado = "inferido"
 nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.victoria]
+codigo = 673
+anim = 87
+frames = 120
+bucle = false
+estado = "medido"
+nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
 [unidad.clips.dano]
-estado = "pendiente"
-nota = "accion 20 del motor, sin codigo BSK confirmado"
+codigo = 154
+anim = 167
+frames = 10
+bucle = false
+banco = 165
+estado = "medido"
+nota = "golpe recibido (accion 20/22 del motor)"
 [unidad.clips.derrota]
-estado = "pendiente"
-nota = "sin evidencia de codigo"
+codigo = 36
+anim = 153
+frames = 60
+bucle = false
+banco = 165
+estado = "medido"
+nota = "KO tumbado boca abajo (accion 18)"
+[unidad.clips.levantarse]
+codigo = 37
+anim = 154
+frames = 40
+bucle = false
+banco = 165
+estado = "medido"
+nota = "se levanta desde el suelo (accion 19)"
 [unidad.clips.carga_ki]
 estado = "pendiente"
 nota = "accion 21 del motor; codigo sin medir"
@@ -1245,12 +1845,37 @@ frames = 120
 bucle = false
 estado = "inferido"
 nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.victoria]
+codigo = 673
+anim = 87
+frames = 120
+bucle = false
+estado = "medido"
+nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
 [unidad.clips.dano]
-estado = "pendiente"
-nota = "accion 20 del motor, sin codigo BSK confirmado"
+codigo = 154
+anim = 167
+frames = 10
+bucle = false
+banco = 165
+estado = "medido"
+nota = "golpe recibido (accion 20/22 del motor)"
 [unidad.clips.derrota]
-estado = "pendiente"
-nota = "sin evidencia de codigo"
+codigo = 36
+anim = 153
+frames = 60
+bucle = false
+banco = 165
+estado = "medido"
+nota = "KO tumbado boca abajo (accion 18)"
+[unidad.clips.levantarse]
+codigo = 37
+anim = 154
+frames = 40
+bucle = false
+banco = 165
+estado = "medido"
+nota = "se levanta desde el suelo (accion 19)"
 [unidad.clips.carga_ki]
 estado = "pendiente"
 nota = "accion 21 del motor; codigo sin medir"
@@ -1295,12 +1920,37 @@ frames = 50
 bucle = false
 estado = "inferido"
 nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.victoria]
+codigo = 673
+anim = 97
+frames = 120
+bucle = false
+estado = "medido"
+nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
 [unidad.clips.dano]
-estado = "pendiente"
-nota = "accion 20 del motor, sin codigo BSK confirmado"
+codigo = 154
+anim = 167
+frames = 10
+bucle = false
+banco = 165
+estado = "medido"
+nota = "golpe recibido (accion 20/22 del motor)"
 [unidad.clips.derrota]
-estado = "pendiente"
-nota = "sin evidencia de codigo"
+codigo = 36
+anim = 153
+frames = 60
+bucle = false
+banco = 165
+estado = "medido"
+nota = "KO tumbado boca abajo (accion 18)"
+[unidad.clips.levantarse]
+codigo = 37
+anim = 154
+frames = 40
+bucle = false
+banco = 165
+estado = "medido"
+nota = "se levanta desde el suelo (accion 19)"
 [unidad.clips.carga_ki]
 estado = "pendiente"
 nota = "accion 21 del motor; codigo sin medir"
@@ -1345,12 +1995,37 @@ frames = 116
 bucle = false
 estado = "inferido"
 nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.victoria]
+codigo = 673
+anim = 104
+frames = 120
+bucle = false
+estado = "medido"
+nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
 [unidad.clips.dano]
-estado = "pendiente"
-nota = "accion 20 del motor, sin codigo BSK confirmado"
+codigo = 154
+anim = 167
+frames = 10
+bucle = false
+banco = 165
+estado = "medido"
+nota = "golpe recibido (accion 20/22 del motor)"
 [unidad.clips.derrota]
-estado = "pendiente"
-nota = "sin evidencia de codigo"
+codigo = 36
+anim = 153
+frames = 60
+bucle = false
+banco = 165
+estado = "medido"
+nota = "KO tumbado boca abajo (accion 18)"
+[unidad.clips.levantarse]
+codigo = 37
+anim = 154
+frames = 40
+bucle = false
+banco = 165
+estado = "medido"
+nota = "se levanta desde el suelo (accion 19)"
 [unidad.clips.carga_ki]
 estado = "pendiente"
 nota = "accion 21 del motor; codigo sin medir"
@@ -1395,12 +2070,37 @@ frames = 116
 bucle = false
 estado = "inferido"
 nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.victoria]
+codigo = 673
+anim = 104
+frames = 120
+bucle = false
+estado = "medido"
+nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
 [unidad.clips.dano]
-estado = "pendiente"
-nota = "accion 20 del motor, sin codigo BSK confirmado"
+codigo = 154
+anim = 167
+frames = 10
+bucle = false
+banco = 165
+estado = "medido"
+nota = "golpe recibido (accion 20/22 del motor)"
 [unidad.clips.derrota]
-estado = "pendiente"
-nota = "sin evidencia de codigo"
+codigo = 36
+anim = 153
+frames = 60
+bucle = false
+banco = 165
+estado = "medido"
+nota = "KO tumbado boca abajo (accion 18)"
+[unidad.clips.levantarse]
+codigo = 37
+anim = 154
+frames = 40
+bucle = false
+banco = 165
+estado = "medido"
+nota = "se levanta desde el suelo (accion 19)"
 [unidad.clips.carga_ki]
 estado = "pendiente"
 nota = "accion 21 del motor; codigo sin medir"
@@ -1445,12 +2145,37 @@ frames = 120
 bucle = false
 estado = "inferido"
 nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.victoria]
+codigo = 673
+anim = 93
+frames = 90
+bucle = false
+estado = "medido"
+nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
 [unidad.clips.dano]
-estado = "pendiente"
-nota = "accion 20 del motor, sin codigo BSK confirmado"
+codigo = 154
+anim = 167
+frames = 10
+bucle = false
+banco = 165
+estado = "medido"
+nota = "golpe recibido (accion 20/22 del motor)"
 [unidad.clips.derrota]
-estado = "pendiente"
-nota = "sin evidencia de codigo"
+codigo = 36
+anim = 153
+frames = 60
+bucle = false
+banco = 165
+estado = "medido"
+nota = "KO tumbado boca abajo (accion 18)"
+[unidad.clips.levantarse]
+codigo = 37
+anim = 154
+frames = 40
+bucle = false
+banco = 165
+estado = "medido"
+nota = "se levanta desde el suelo (accion 19)"
 [unidad.clips.carga_ki]
 estado = "pendiente"
 nota = "accion 21 del motor; codigo sin medir"
@@ -1495,12 +2220,37 @@ frames = 120
 bucle = false
 estado = "inferido"
 nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.victoria]
+codigo = 673
+anim = 90
+frames = 120
+bucle = false
+estado = "medido"
+nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
 [unidad.clips.dano]
-estado = "pendiente"
-nota = "accion 20 del motor, sin codigo BSK confirmado"
+codigo = 154
+anim = 167
+frames = 10
+bucle = false
+banco = 165
+estado = "medido"
+nota = "golpe recibido (accion 20/22 del motor)"
 [unidad.clips.derrota]
-estado = "pendiente"
-nota = "sin evidencia de codigo"
+codigo = 36
+anim = 153
+frames = 60
+bucle = false
+banco = 165
+estado = "medido"
+nota = "KO tumbado boca abajo (accion 18)"
+[unidad.clips.levantarse]
+codigo = 37
+anim = 154
+frames = 40
+bucle = false
+banco = 165
+estado = "medido"
+nota = "se levanta desde el suelo (accion 19)"
 [unidad.clips.carga_ki]
 estado = "pendiente"
 nota = "accion 21 del motor; codigo sin medir"
@@ -1545,12 +2295,37 @@ frames = 120
 bucle = false
 estado = "inferido"
 nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.victoria]
+codigo = 673
+anim = 90
+frames = 120
+bucle = false
+estado = "medido"
+nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
 [unidad.clips.dano]
-estado = "pendiente"
-nota = "accion 20 del motor, sin codigo BSK confirmado"
+codigo = 154
+anim = 167
+frames = 10
+bucle = false
+banco = 165
+estado = "medido"
+nota = "golpe recibido (accion 20/22 del motor)"
 [unidad.clips.derrota]
-estado = "pendiente"
-nota = "sin evidencia de codigo"
+codigo = 36
+anim = 153
+frames = 60
+bucle = false
+banco = 165
+estado = "medido"
+nota = "KO tumbado boca abajo (accion 18)"
+[unidad.clips.levantarse]
+codigo = 37
+anim = 154
+frames = 40
+bucle = false
+banco = 165
+estado = "medido"
+nota = "se levanta desde el suelo (accion 19)"
 [unidad.clips.carga_ki]
 estado = "pendiente"
 nota = "accion 21 del motor; codigo sin medir"
@@ -1595,12 +2370,37 @@ frames = 120
 bucle = false
 estado = "inferido"
 nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.victoria]
+codigo = 673
+anim = 90
+frames = 120
+bucle = false
+estado = "medido"
+nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
 [unidad.clips.dano]
-estado = "pendiente"
-nota = "accion 20 del motor, sin codigo BSK confirmado"
+codigo = 154
+anim = 167
+frames = 10
+bucle = false
+banco = 165
+estado = "medido"
+nota = "golpe recibido (accion 20/22 del motor)"
 [unidad.clips.derrota]
-estado = "pendiente"
-nota = "sin evidencia de codigo"
+codigo = 36
+anim = 153
+frames = 60
+bucle = false
+banco = 165
+estado = "medido"
+nota = "KO tumbado boca abajo (accion 18)"
+[unidad.clips.levantarse]
+codigo = 37
+anim = 154
+frames = 40
+bucle = false
+banco = 165
+estado = "medido"
+nota = "se levanta desde el suelo (accion 19)"
 [unidad.clips.carga_ki]
 estado = "pendiente"
 nota = "accion 21 del motor; codigo sin medir"
@@ -1645,12 +2445,37 @@ frames = 119
 bucle = false
 estado = "inferido"
 nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.victoria]
+codigo = 673
+anim = 104
+frames = 120
+bucle = false
+estado = "medido"
+nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
 [unidad.clips.dano]
-estado = "pendiente"
-nota = "accion 20 del motor, sin codigo BSK confirmado"
+codigo = 154
+anim = 167
+frames = 10
+bucle = false
+banco = 165
+estado = "medido"
+nota = "golpe recibido (accion 20/22 del motor)"
 [unidad.clips.derrota]
-estado = "pendiente"
-nota = "sin evidencia de codigo"
+codigo = 36
+anim = 153
+frames = 60
+bucle = false
+banco = 165
+estado = "medido"
+nota = "KO tumbado boca abajo (accion 18)"
+[unidad.clips.levantarse]
+codigo = 37
+anim = 154
+frames = 40
+bucle = false
+banco = 165
+estado = "medido"
+nota = "se levanta desde el suelo (accion 19)"
 [unidad.clips.carga_ki]
 estado = "pendiente"
 nota = "accion 21 del motor; codigo sin medir"
@@ -1695,12 +2520,37 @@ frames = 120
 bucle = false
 estado = "inferido"
 nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.victoria]
+codigo = 673
+anim = 86
+frames = 120
+bucle = false
+estado = "medido"
+nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
 [unidad.clips.dano]
-estado = "pendiente"
-nota = "accion 20 del motor, sin codigo BSK confirmado"
+codigo = 154
+anim = 167
+frames = 10
+bucle = false
+banco = 165
+estado = "medido"
+nota = "golpe recibido (accion 20/22 del motor)"
 [unidad.clips.derrota]
-estado = "pendiente"
-nota = "sin evidencia de codigo"
+codigo = 36
+anim = 153
+frames = 60
+bucle = false
+banco = 165
+estado = "medido"
+nota = "KO tumbado boca abajo (accion 18)"
+[unidad.clips.levantarse]
+codigo = 37
+anim = 154
+frames = 40
+bucle = false
+banco = 165
+estado = "medido"
+nota = "se levanta desde el suelo (accion 19)"
 [unidad.clips.carga_ki]
 estado = "pendiente"
 nota = "accion 21 del motor; codigo sin medir"
@@ -1745,12 +2595,37 @@ frames = 120
 bucle = false
 estado = "inferido"
 nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.victoria]
+codigo = 673
+anim = 104
+frames = 120
+bucle = false
+estado = "medido"
+nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
 [unidad.clips.dano]
-estado = "pendiente"
-nota = "accion 20 del motor, sin codigo BSK confirmado"
+codigo = 154
+anim = 167
+frames = 10
+bucle = false
+banco = 165
+estado = "medido"
+nota = "golpe recibido (accion 20/22 del motor)"
 [unidad.clips.derrota]
-estado = "pendiente"
-nota = "sin evidencia de codigo"
+codigo = 36
+anim = 153
+frames = 60
+bucle = false
+banco = 165
+estado = "medido"
+nota = "KO tumbado boca abajo (accion 18)"
+[unidad.clips.levantarse]
+codigo = 37
+anim = 154
+frames = 40
+bucle = false
+banco = 165
+estado = "medido"
+nota = "se levanta desde el suelo (accion 19)"
 [unidad.clips.carga_ki]
 estado = "pendiente"
 nota = "accion 21 del motor; codigo sin medir"
@@ -1795,12 +2670,37 @@ frames = 120
 bucle = false
 estado = "inferido"
 nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.victoria]
+codigo = 673
+anim = 107
+frames = 120
+bucle = false
+estado = "medido"
+nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
 [unidad.clips.dano]
-estado = "pendiente"
-nota = "accion 20 del motor, sin codigo BSK confirmado"
+codigo = 154
+anim = 167
+frames = 10
+bucle = false
+banco = 165
+estado = "medido"
+nota = "golpe recibido (accion 20/22 del motor)"
 [unidad.clips.derrota]
-estado = "pendiente"
-nota = "sin evidencia de codigo"
+codigo = 36
+anim = 153
+frames = 60
+bucle = false
+banco = 165
+estado = "medido"
+nota = "KO tumbado boca abajo (accion 18)"
+[unidad.clips.levantarse]
+codigo = 37
+anim = 154
+frames = 40
+bucle = false
+banco = 165
+estado = "medido"
+nota = "se levanta desde el suelo (accion 19)"
 [unidad.clips.carga_ki]
 estado = "pendiente"
 nota = "accion 21 del motor; codigo sin medir"
@@ -1845,12 +2745,37 @@ frames = 120
 bucle = false
 estado = "inferido"
 nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.victoria]
+codigo = 673
+anim = 105
+frames = 120
+bucle = false
+estado = "medido"
+nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
 [unidad.clips.dano]
-estado = "pendiente"
-nota = "accion 20 del motor, sin codigo BSK confirmado"
+codigo = 154
+anim = 167
+frames = 10
+bucle = false
+banco = 165
+estado = "medido"
+nota = "golpe recibido (accion 20/22 del motor)"
 [unidad.clips.derrota]
-estado = "pendiente"
-nota = "sin evidencia de codigo"
+codigo = 36
+anim = 153
+frames = 60
+bucle = false
+banco = 165
+estado = "medido"
+nota = "KO tumbado boca abajo (accion 18)"
+[unidad.clips.levantarse]
+codigo = 37
+anim = 154
+frames = 40
+bucle = false
+banco = 165
+estado = "medido"
+nota = "se levanta desde el suelo (accion 19)"
 [unidad.clips.carga_ki]
 estado = "pendiente"
 nota = "accion 21 del motor; codigo sin medir"
@@ -1895,12 +2820,37 @@ frames = 120
 bucle = false
 estado = "inferido"
 nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.victoria]
+codigo = 673
+anim = 108
+frames = 120
+bucle = false
+estado = "medido"
+nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
 [unidad.clips.dano]
-estado = "pendiente"
-nota = "accion 20 del motor, sin codigo BSK confirmado"
+codigo = 154
+anim = 167
+frames = 10
+bucle = false
+banco = 165
+estado = "medido"
+nota = "golpe recibido (accion 20/22 del motor)"
 [unidad.clips.derrota]
-estado = "pendiente"
-nota = "sin evidencia de codigo"
+codigo = 36
+anim = 153
+frames = 60
+bucle = false
+banco = 165
+estado = "medido"
+nota = "KO tumbado boca abajo (accion 18)"
+[unidad.clips.levantarse]
+codigo = 37
+anim = 154
+frames = 40
+bucle = false
+banco = 165
+estado = "medido"
+nota = "se levanta desde el suelo (accion 19)"
 [unidad.clips.carga_ki]
 estado = "pendiente"
 nota = "accion 21 del motor; codigo sin medir"
@@ -1945,12 +2895,37 @@ frames = 120
 bucle = false
 estado = "inferido"
 nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.victoria]
+codigo = 673
+anim = 99
+frames = 90
+bucle = false
+estado = "medido"
+nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
 [unidad.clips.dano]
-estado = "pendiente"
-nota = "accion 20 del motor, sin codigo BSK confirmado"
+codigo = 154
+anim = 167
+frames = 10
+bucle = false
+banco = 165
+estado = "medido"
+nota = "golpe recibido (accion 20/22 del motor)"
 [unidad.clips.derrota]
-estado = "pendiente"
-nota = "sin evidencia de codigo"
+codigo = 36
+anim = 153
+frames = 60
+bucle = false
+banco = 165
+estado = "medido"
+nota = "KO tumbado boca abajo (accion 18)"
+[unidad.clips.levantarse]
+codigo = 37
+anim = 154
+frames = 40
+bucle = false
+banco = 165
+estado = "medido"
+nota = "se levanta desde el suelo (accion 19)"
 [unidad.clips.carga_ki]
 estado = "pendiente"
 nota = "accion 21 del motor; codigo sin medir"
@@ -1995,12 +2970,37 @@ frames = 120
 bucle = false
 estado = "inferido"
 nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.victoria]
+codigo = 673
+anim = 74
+frames = 120
+bucle = false
+estado = "medido"
+nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
 [unidad.clips.dano]
-estado = "pendiente"
-nota = "accion 20 del motor, sin codigo BSK confirmado"
+codigo = 154
+anim = 167
+frames = 10
+bucle = false
+banco = 165
+estado = "medido"
+nota = "golpe recibido (accion 20/22 del motor)"
 [unidad.clips.derrota]
-estado = "pendiente"
-nota = "sin evidencia de codigo"
+codigo = 36
+anim = 153
+frames = 60
+bucle = false
+banco = 165
+estado = "medido"
+nota = "KO tumbado boca abajo (accion 18)"
+[unidad.clips.levantarse]
+codigo = 37
+anim = 154
+frames = 40
+bucle = false
+banco = 165
+estado = "medido"
+nota = "se levanta desde el suelo (accion 19)"
 [unidad.clips.carga_ki]
 estado = "pendiente"
 nota = "accion 21 del motor; codigo sin medir"
@@ -2045,12 +3045,37 @@ frames = 120
 bucle = false
 estado = "inferido"
 nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.victoria]
+codigo = 673
+anim = 112
+frames = 120
+bucle = false
+estado = "medido"
+nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
 [unidad.clips.dano]
-estado = "pendiente"
-nota = "accion 20 del motor, sin codigo BSK confirmado"
+codigo = 154
+anim = 167
+frames = 10
+bucle = false
+banco = 165
+estado = "medido"
+nota = "golpe recibido (accion 20/22 del motor)"
 [unidad.clips.derrota]
-estado = "pendiente"
-nota = "sin evidencia de codigo"
+codigo = 36
+anim = 153
+frames = 60
+bucle = false
+banco = 165
+estado = "medido"
+nota = "KO tumbado boca abajo (accion 18)"
+[unidad.clips.levantarse]
+codigo = 37
+anim = 154
+frames = 40
+bucle = false
+banco = 165
+estado = "medido"
+nota = "se levanta desde el suelo (accion 19)"
 [unidad.clips.carga_ki]
 estado = "pendiente"
 nota = "accion 21 del motor; codigo sin medir"
@@ -2095,12 +3120,37 @@ frames = 120
 bucle = false
 estado = "inferido"
 nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.victoria]
+codigo = 673
+anim = 97
+frames = 120
+bucle = false
+estado = "medido"
+nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
 [unidad.clips.dano]
-estado = "pendiente"
-nota = "accion 20 del motor, sin codigo BSK confirmado"
+codigo = 154
+anim = 167
+frames = 10
+bucle = false
+banco = 165
+estado = "medido"
+nota = "golpe recibido (accion 20/22 del motor)"
 [unidad.clips.derrota]
-estado = "pendiente"
-nota = "sin evidencia de codigo"
+codigo = 36
+anim = 153
+frames = 60
+bucle = false
+banco = 165
+estado = "medido"
+nota = "KO tumbado boca abajo (accion 18)"
+[unidad.clips.levantarse]
+codigo = 37
+anim = 154
+frames = 40
+bucle = false
+banco = 165
+estado = "medido"
+nota = "se levanta desde el suelo (accion 19)"
 [unidad.clips.carga_ki]
 estado = "pendiente"
 nota = "accion 21 del motor; codigo sin medir"
@@ -2145,12 +3195,37 @@ frames = 120
 bucle = false
 estado = "inferido"
 nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.victoria]
+codigo = 673
+anim = 129
+frames = 120
+bucle = false
+estado = "medido"
+nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
 [unidad.clips.dano]
-estado = "pendiente"
-nota = "accion 20 del motor, sin codigo BSK confirmado"
+codigo = 154
+anim = 167
+frames = 10
+bucle = false
+banco = 165
+estado = "medido"
+nota = "golpe recibido (accion 20/22 del motor)"
 [unidad.clips.derrota]
-estado = "pendiente"
-nota = "sin evidencia de codigo"
+codigo = 36
+anim = 153
+frames = 60
+bucle = false
+banco = 165
+estado = "medido"
+nota = "KO tumbado boca abajo (accion 18)"
+[unidad.clips.levantarse]
+codigo = 37
+anim = 154
+frames = 40
+bucle = false
+banco = 165
+estado = "medido"
+nota = "se levanta desde el suelo (accion 19)"
 [unidad.clips.carga_ki]
 estado = "pendiente"
 nota = "accion 21 del motor; codigo sin medir"
@@ -2195,12 +3270,37 @@ frames = 71
 bucle = false
 estado = "inferido"
 nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.victoria]
+codigo = 673
+anim = 114
+frames = 120
+bucle = false
+estado = "medido"
+nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
 [unidad.clips.dano]
-estado = "pendiente"
-nota = "accion 20 del motor, sin codigo BSK confirmado"
+codigo = 154
+anim = 167
+frames = 10
+bucle = false
+banco = 165
+estado = "medido"
+nota = "golpe recibido (accion 20/22 del motor)"
 [unidad.clips.derrota]
-estado = "pendiente"
-nota = "sin evidencia de codigo"
+codigo = 36
+anim = 153
+frames = 60
+bucle = false
+banco = 165
+estado = "medido"
+nota = "KO tumbado boca abajo (accion 18)"
+[unidad.clips.levantarse]
+codigo = 37
+anim = 154
+frames = 40
+bucle = false
+banco = 165
+estado = "medido"
+nota = "se levanta desde el suelo (accion 19)"
 [unidad.clips.carga_ki]
 estado = "pendiente"
 nota = "accion 21 del motor; codigo sin medir"
@@ -2245,12 +3345,37 @@ frames = 120
 bucle = false
 estado = "inferido"
 nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.victoria]
+codigo = 673
+anim = 76
+frames = 120
+bucle = false
+estado = "medido"
+nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
 [unidad.clips.dano]
-estado = "pendiente"
-nota = "accion 20 del motor, sin codigo BSK confirmado"
+codigo = 154
+anim = 167
+frames = 10
+bucle = false
+banco = 165
+estado = "medido"
+nota = "golpe recibido (accion 20/22 del motor)"
 [unidad.clips.derrota]
-estado = "pendiente"
-nota = "sin evidencia de codigo"
+codigo = 36
+anim = 153
+frames = 60
+bucle = false
+banco = 165
+estado = "medido"
+nota = "KO tumbado boca abajo (accion 18)"
+[unidad.clips.levantarse]
+codigo = 37
+anim = 154
+frames = 40
+bucle = false
+banco = 165
+estado = "medido"
+nota = "se levanta desde el suelo (accion 19)"
 [unidad.clips.carga_ki]
 estado = "pendiente"
 nota = "accion 21 del motor; codigo sin medir"
@@ -2295,12 +3420,37 @@ frames = 120
 bucle = false
 estado = "inferido"
 nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.victoria]
+codigo = 673
+anim = 84
+frames = 120
+bucle = false
+estado = "medido"
+nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
 [unidad.clips.dano]
-estado = "pendiente"
-nota = "accion 20 del motor, sin codigo BSK confirmado"
+codigo = 154
+anim = 167
+frames = 10
+bucle = false
+banco = 165
+estado = "medido"
+nota = "golpe recibido (accion 20/22 del motor)"
 [unidad.clips.derrota]
-estado = "pendiente"
-nota = "sin evidencia de codigo"
+codigo = 36
+anim = 153
+frames = 60
+bucle = false
+banco = 165
+estado = "medido"
+nota = "KO tumbado boca abajo (accion 18)"
+[unidad.clips.levantarse]
+codigo = 37
+anim = 154
+frames = 40
+bucle = false
+banco = 165
+estado = "medido"
+nota = "se levanta desde el suelo (accion 19)"
 [unidad.clips.carga_ki]
 estado = "pendiente"
 nota = "accion 21 del motor; codigo sin medir"
@@ -2345,12 +3495,37 @@ frames = 120
 bucle = false
 estado = "inferido"
 nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.victoria]
+codigo = 673
+anim = 120
+frames = 120
+bucle = false
+estado = "medido"
+nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
 [unidad.clips.dano]
-estado = "pendiente"
-nota = "accion 20 del motor, sin codigo BSK confirmado"
+codigo = 154
+anim = 167
+frames = 10
+bucle = false
+banco = 165
+estado = "medido"
+nota = "golpe recibido (accion 20/22 del motor)"
 [unidad.clips.derrota]
-estado = "pendiente"
-nota = "sin evidencia de codigo"
+codigo = 36
+anim = 153
+frames = 60
+bucle = false
+banco = 165
+estado = "medido"
+nota = "KO tumbado boca abajo (accion 18)"
+[unidad.clips.levantarse]
+codigo = 37
+anim = 154
+frames = 40
+bucle = false
+banco = 165
+estado = "medido"
+nota = "se levanta desde el suelo (accion 19)"
 [unidad.clips.carga_ki]
 estado = "pendiente"
 nota = "accion 21 del motor; codigo sin medir"
@@ -2397,12 +3572,37 @@ frames = 100
 bucle = false
 estado = "inferido"
 nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.victoria]
+codigo = 673
+anim = 102
+frames = 120
+bucle = false
+estado = "medido"
+nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
 [unidad.clips.dano]
-estado = "pendiente"
-nota = "accion 20 del motor, sin codigo BSK confirmado"
+codigo = 154
+anim = 167
+frames = 10
+bucle = false
+banco = 165
+estado = "medido"
+nota = "golpe recibido (accion 20/22 del motor)"
 [unidad.clips.derrota]
-estado = "pendiente"
-nota = "sin evidencia de codigo"
+codigo = 36
+anim = 153
+frames = 60
+bucle = false
+banco = 165
+estado = "medido"
+nota = "KO tumbado boca abajo (accion 18)"
+[unidad.clips.levantarse]
+codigo = 37
+anim = 154
+frames = 40
+bucle = false
+banco = 165
+estado = "medido"
+nota = "se levanta desde el suelo (accion 19)"
 [unidad.clips.carga_ki]
 estado = "pendiente"
 nota = "accion 21 del motor; codigo sin medir"
@@ -2447,12 +3647,37 @@ frames = 120
 bucle = false
 estado = "inferido"
 nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.victoria]
+codigo = 673
+anim = 74
+frames = 120
+bucle = false
+estado = "medido"
+nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
 [unidad.clips.dano]
-estado = "pendiente"
-nota = "accion 20 del motor, sin codigo BSK confirmado"
+codigo = 154
+anim = 167
+frames = 10
+bucle = false
+banco = 165
+estado = "medido"
+nota = "golpe recibido (accion 20/22 del motor)"
 [unidad.clips.derrota]
-estado = "pendiente"
-nota = "sin evidencia de codigo"
+codigo = 36
+anim = 153
+frames = 60
+bucle = false
+banco = 165
+estado = "medido"
+nota = "KO tumbado boca abajo (accion 18)"
+[unidad.clips.levantarse]
+codigo = 37
+anim = 154
+frames = 40
+bucle = false
+banco = 165
+estado = "medido"
+nota = "se levanta desde el suelo (accion 19)"
 [unidad.clips.carga_ki]
 estado = "pendiente"
 nota = "accion 21 del motor; codigo sin medir"
@@ -2497,12 +3722,37 @@ frames = 61
 bucle = false
 estado = "inferido"
 nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.victoria]
+codigo = 673
+anim = 91
+frames = 120
+bucle = false
+estado = "medido"
+nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
 [unidad.clips.dano]
-estado = "pendiente"
-nota = "accion 20 del motor, sin codigo BSK confirmado"
+codigo = 154
+anim = 167
+frames = 10
+bucle = false
+banco = 165
+estado = "medido"
+nota = "golpe recibido (accion 20/22 del motor)"
 [unidad.clips.derrota]
-estado = "pendiente"
-nota = "sin evidencia de codigo"
+codigo = 36
+anim = 153
+frames = 60
+bucle = false
+banco = 165
+estado = "medido"
+nota = "KO tumbado boca abajo (accion 18)"
+[unidad.clips.levantarse]
+codigo = 37
+anim = 154
+frames = 40
+bucle = false
+banco = 165
+estado = "medido"
+nota = "se levanta desde el suelo (accion 19)"
 [unidad.clips.carga_ki]
 estado = "pendiente"
 nota = "accion 21 del motor; codigo sin medir"
@@ -2549,12 +3799,37 @@ frames = 120
 bucle = false
 estado = "inferido"
 nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
+[unidad.clips.victoria]
+codigo = 673
+anim = 90
+frames = 120
+bucle = false
+estado = "medido"
+nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
 [unidad.clips.dano]
-estado = "pendiente"
-nota = "accion 20 del motor, sin codigo BSK confirmado"
+codigo = 154
+anim = 167
+frames = 10
+bucle = false
+banco = 165
+estado = "medido"
+nota = "golpe recibido (accion 20/22 del motor)"
 [unidad.clips.derrota]
-estado = "pendiente"
-nota = "sin evidencia de codigo"
+codigo = 36
+anim = 153
+frames = 60
+bucle = false
+banco = 165
+estado = "medido"
+nota = "KO tumbado boca abajo (accion 18)"
+[unidad.clips.levantarse]
+codigo = 37
+anim = 154
+frames = 40
+bucle = false
+banco = 165
+estado = "medido"
+nota = "se levanta desde el suelo (accion 19)"
 [unidad.clips.carga_ki]
 estado = "pendiente"
 nota = "accion 21 del motor; codigo sin medir"

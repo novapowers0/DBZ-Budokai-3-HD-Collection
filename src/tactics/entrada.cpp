@@ -75,8 +75,10 @@ bool OwnBattle();
 }  // namespace dbz3::hub
 
 namespace dbz3::pasarela::nave {
+float AltoRelFiguraB3(int b3, int forma, int fid);   // pasarela_nave.cpp: altura relativa del modelo (0 = no listo)
 int EstadoFiguraB3(int b3, int forma, int fid = -1);   // pasarela_nave.cpp: 0 falta algo de B3 HD, 1 preparandose, 2 lista
-bool DibujarFiguraB3En(dbz3::ps2::Escena* esc, const dbz3::ps2::Camara& cam, int b3, int forma, dbz3::ps2::V3 suelo, float alto, float giro, int clip, float t, int fid = -1);
+bool DibujarFiguraB3En(dbz3::ps2::Escena* esc, const dbz3::ps2::Camara& cam, int b3, int forma, dbz3::ps2::V3 suelo, float alto, float giro, int clip, float t, int fid = -1, float dura = 0.0f,
+                       float ciclo = -1.0f, int clip_prev = -1, float t_prev = 0.0f, float mezcla = 0.0f);
 }  // namespace dbz3::pasarela::nave
 
 namespace dbz3::tactics {
@@ -168,16 +170,26 @@ std::array<int, 3> FormaDe(const Modelo* m, int est) {
   return {m->b3, m->forma, -1};
 }
 // La figura de `m` con la forma de sus `est` estrellas; si esa forma aun se esta horneando (o fallo), la de la estrella anterior.
-bool DibujarEstrellas(dbz3::ps2::Escena* esc, const dbz3::ps2::Camara& cam, const Modelo* m, int est, dbz3::ps2::V3 suelo, float alto, float giro, int clip, float t) {
+bool DibujarEstrellas(dbz3::ps2::Escena* esc, const dbz3::ps2::Camara& cam, const Modelo* m, int est, dbz3::ps2::V3 suelo, float alto, float giro, int clip, float t, float dura = 0.0f,
+                      float ciclo = -1.0f, int clip_prev = -1, float t_prev = 0.0f, float mezcla = 0.0f) {
   static std::set<std::string> dicho;
   for (int e = std::clamp(est, 1, 4); e >= 1; --e) {
     const std::array<int, 3> f = FormaDe(m, e);
-    if (!pasarela::nave::DibujarFiguraB3En(esc, cam, f[0], f[1], suelo, alto, giro, clip, t, f[2])) continue;
+    if (!pasarela::nave::DibujarFiguraB3En(esc, cam, f[0], f[1], suelo, alto, giro, clip, t, f[2], dura, ciclo, clip_prev, t_prev, mezcla)) continue;
     if (dicho.insert(std::string(m->id) + "#" + std::to_string(est) + "#" + std::to_string(e)).second)
       REXLOG_INFO("dbz3 tactics: forma: {} estrella {} dibuja B3 {} forma {} fid {}{}", m->id, est, f[0], f[1], f[2], e == est ? "" : " (la de la estrella anterior: la pedida aun no esta lista)");
     return true;
   }
   return false;
+}
+
+// Altura del modelo de `m` con `est` estrellas respecto a un luchador normal (1 si aun no esta listo): la usan barras y estrellas para ir sobre la cabeza.
+float AltoRel(const Modelo* m, int est) {
+  for (int e = std::clamp(est, 1, 4); e >= 1; --e) {
+    const std::array<int, 3> f = FormaDe(m, e);
+    if (const float r = pasarela::nave::AltoRelFiguraB3(f[0], f[1], f[2]); r > 0.0f) return r;
+  }
+  return 1.0f;
 }
 
 // Lienzo de 1600x900 sobre la imagen del juego (16:9): la maqueta pone los paneles en los bordes de la imagen, no en el area 4:3 de los menus.
@@ -376,7 +388,7 @@ class Arena : public rex::ui::ImGuiDialog {
         S::Backdrop(fondo, a, "fondo_duelo");
         fondo->AddRectFilled(ImVec2(0, 0), io.DisplaySize, IM_COL32(6, 8, 24, 150));
       }
-      S::TitleText(arriba, a, 600, 60, 640, "Dragon Tactics (beta)");
+      S::TitleText(arriba, a, 600, 60, 640, "Dragon Tactics (experimental)");
     }
     if (!error_.empty()) return Mensaje(arriba, a, error_.c_str());
     if (!lista_) return Cargar(arriba, a);
@@ -694,17 +706,20 @@ class Arena : public rex::ui::ImGuiDialog {
       if (k >= 1.0f) { destellos_.erase(destellos_.begin() + long(i)); continue; }
       const int s = destellos_[i].slot;
       const int a = int(255 * (1.0f - k));
+      const ImU32 col = destellos_[i].tipo ? IM_COL32(255, 110, 100, a) : IM_COL32(255, 235, 90, a);
+      const ImU32 relleno = destellos_[i].tipo ? IM_COL32(255, 140, 120, a / 3) : IM_COL32(255, 245, 160, a / 3);
       if (s >= kBanco) {
         float x, z, esc;
         ImVec2 o;
         Pos(3 + (s - kBanco) / 6, (s - kBanco) % 6, x, z);
         if (Proy(x, kAltoFigura * 0.5f, z, o, esc)) {
-          arriba->AddCircle(o, (0.25f + 0.9f * k) * esc, IM_COL32(255, 235, 90, a), 0, 4.0f);
-          arriba->AddCircleFilled(o, (0.9f * (1.0f - k)) * esc * 0.5f, IM_COL32(255, 245, 160, a / 3));
+          arriba->AddCircle(o, (0.25f + 0.9f * k) * esc, col, 0, 4.0f);
+          arriba->AddCircleFilled(o, (0.9f * (1.0f - k)) * esc * 0.5f, relleno);
         }
       } else {
         const float x0 = 400 + 100.0f * float(s), y0 = 714;
-        dl->AddRectFilled(q.At(x0, y0), q.At(x0 + 94, y0 + 62), IM_COL32(255, 235, 90, a / 2), 6 * q.s);
+        dl->AddRectFilled(q.At(x0, y0), q.At(x0 + 94, y0 + 62), relleno, 6 * q.s);
+        dl->AddRect(q.At(x0, y0), q.At(x0 + 94, y0 + 62), col, 6 * q.s, 0, 2.5f * q.s);
       }
       ++i;
     }
@@ -740,6 +755,8 @@ class Arena : public rex::ui::ImGuiDialog {
     IniciarPres(ms, est);
     mano_ = capmano_ = -1;
     aplicado_ = false;
+    transicion_t0_ = ImGui::GetTime();   // banda de "COMBATE" al pasar de preparacion a combate
+    Sonar(ImGui::GetTime(), PrioSe::Tecnica, 0.3, 0, 3);   // el "aceptar" del sistema, como al empezar un combate del juego
     const auto rival = std::count_if(partida_->Combatientes().begin(), partida_->Combatientes().end(), [](const Combatiente& c) { return c.jugador == 1; });
     REXLOG_INFO("dbz3 tactics: combate ronda {}: {} contra {} unidades a x{}", partida_->Ronda(), ms.size() - size_t(rival), rival, vel_);
   }
@@ -955,17 +972,33 @@ class Arena : public rex::ui::ImGuiDialog {
     const Modelo* m = nullptr;
     float x = 0, z = 0, x1 = 0, z1 = 0, giro = 0;   // (x, z): centro de su casilla; (x1, z1): destino si anda
     bool anda = false, muerta = false;
-    int clip = 0, mira = -1, est = 1;                // clip 0 espera, 1 andar, 2 ataque, 3 tecnica; est = estrellas
+    int clip = 0, mira = -1, est = 1;                // clip 0 espera, 1 andar, 2 ataque, 3 tecnica, 4 dano, 5 derrota, 6 levantarse, 7 victoria; est = estrellas
     uint32_t t0 = 0, t1 = 0, t_muerte = 0;           // ticks: inicio del clip, fin del paso, caida
     float t_golpe = -100;                            // tick del ultimo golpe recibido
+    int clip_prev = -1;                              // clip anterior (mezcla al cambiar: sin corte seco)
+    float t_prev = 0;                                // segundos dentro del clip anterior cuando se cambio
+    double mezcla_t0 = -100;                         // cuando se cambio (segundos de ImGui)
+    uint32_t t_reaccion = 0;                         // tick del golpe recibido si seguia andando (t0 es el del paso)
+    uint32_t clip_fin = 0;                           // tick en que el clip de golpe vuelve a la espera
+    uint32_t derribo_t = 0;                          // tick del derribo (dano > derrota > levantarse); 0 = ninguno
   };
   struct Flota { float x, z, dx; uint32_t tick; int valor, tipo; float dy; };   // numero de dano flotante; tipo 0 basico, 1 tecnica, 2 desgaste
   // Instantanea inmutable de un cuadro: todo lo que hace falta para pintarlo, sin tocar la simulacion ni el estado de presentacion.
   struct Foto {
-    struct U { const Modelo* m; int equipo; float x, z, giro, esc, vida, ki, t; int clip; bool viva, oculta; int est; int c0 = -1, c1 = -1; float golpe = 0; };
+    struct U { const Modelo* m; int equipo; float x, z, giro, esc, vida, ki, t; int clip; bool viva, oculta; int est; int c0 = -1, c1 = -1; float golpe = 0, dura = 0;
+               float ciclo = -1; int clip_prev = -1; float t_prev = 0, mezcla = 0; };
     std::vector<U> u;
     float tp = 0;   // tick de simulacion con fraccion (interpolacion)
   };
+  static uint32_t ClipT0(const Pres& p) { return p.clip == 4 && p.anda ? p.t_reaccion : p.t0; }
+  // Cambia el clip de una unidad mezclando desde el anterior (0,18 s). `tick` = tick de simulacion del cambio.
+  void CambiarClip(Pres& p, int nuevo, uint32_t tick) {
+    if (nuevo == p.clip) return;
+    p.clip_prev = p.clip;
+    p.t_prev = std::max(0.0f, float(int64_t(tick) - int64_t(ClipT0(p))) / 60.0f);
+    p.mezcla_t0 = ImGui::GetTime();
+    p.clip = nuevo;
+  }
 
   static void PosEn(const Pres& p, float tp, float& x, float& z) {
     float k = 0;
@@ -993,14 +1026,18 @@ class Arena : public rex::ui::ImGuiDialog {
       const float tk = float(e.tick);
       Pres* p = e.unidad >= 0 ? &p_[size_t(e.unidad)] : nullptr;
       switch (e.tipo) {
-        case sim::Tipo::Inicio:
+        case sim::Tipo::Inicio: {
+          const int nuevo = e.accion == sim::Accion::Mover ? 1 : e.accion == sim::Accion::Tecnica ? 3 : 2;
+          CambiarClip(*p, nuevo, e.tick);
           p->t0 = e.tick;
+          p->clip_fin = 0;
+          p->derribo_t = 0;   // una accion nueva corta el derribo
           if (e.accion == sim::Accion::Mover) {
-            p->clip = 1, p->anda = true;
+            p->anda = true;
             Pos(e.objetivo / sim::kAncho, e.objetivo % sim::kAncho, p->x1, p->z1);
             p->t1 = e.tick + uint32_t(std::max(1, 600 / std::max(1, sim_->Unidades()[size_t(e.unidad)].def.velocidad)));
           } else {
-            p->clip = e.accion == sim::Accion::Tecnica ? 3 : 2, p->mira = e.objetivo;
+            p->mira = e.objetivo;
             if (e.accion == sim::Accion::Tecnica) {   // H11: efecto de la tecnica con texturas de efectos del propio juego (ver PintarFx)
               const auto& d = sim_->Unidades()[size_t(e.unidad)].def;
               fx_.push_back({e.tick + uint32_t(d.tecnica_ticks * 18 / 100), e.tick + uint32_t(d.tecnica_ticks / 2), e.unidad, e.objetivo, 1 + int(d.tecnica.forma), d.tecnica.alcance, d.tecnica.area});
@@ -1008,9 +1045,11 @@ class Arena : public rex::ui::ImGuiDialog {
             if (e.accion == sim::Accion::Tecnica) { const auto& d = sim_->Unidades()[size_t(e.unidad)].def; Sonar(ahora, PrioSe::Tecnica, 0.9, d.voz_banco, d.voz_ataque[(e.tick / 7 + uint32_t(e.unidad)) % 3], e.unidad); }
           }
           break;
+        }
         case sim::Tipo::Recuperacion:
           if (e.accion == sim::Accion::Mover) Pos(e.valor / sim::kAncho, e.valor % sim::kAncho, p->x, p->z), p->anda = false;
-          p->clip = 0, p->t0 = e.tick;
+          CambiarClip(*p, 0, e.tick);
+          p->t0 = e.tick;
           break;
         case sim::Tipo::Impacto: {
           Pres& v = p_[size_t(e.objetivo)];
@@ -1024,19 +1063,39 @@ class Arena : public rex::ui::ImGuiDialog {
           }
           flota_.push_back(f);
           v.t_golpe = tk;
+          const auto& ud = sim_->Unidades()[size_t(e.objetivo)];
+          if (ud.viva()) {   // golpe recibido: clip nativo de reaccion del propio personaje (banco comun) y, si el golpe es fuerte
+                             // y la unidad estaba quieta, derribo corto (dano > derrota > levantarse)
+            CambiarClip(v, 4, e.tick);
+            v.t_reaccion = e.tick;
+            if (!v.anda) v.t0 = e.tick;   // t0 tambien es el inicio del paso: andando no se toca, o volveria a su casilla
+            v.clip_fin = e.tick + 16;
+            if (v.clip_prev == 0 && !v.derribo_t && (e.accion == sim::Accion::Tecnica || int64_t(e.valor) * 100 >= int64_t(ud.def.vida) * 15)) v.derribo_t = e.tick;
+          }
           if (e.unidad >= 0 && e.accion != sim::Accion::Tecnica) fx_.push_back({e.tick, e.tick + 10, e.unidad, e.objetivo, 0, 0, 0});   // chispas del golpe basico
           if (e.unidad >= 0) Sonar(ahora, e.accion == sim::Accion::Tecnica ? PrioSe::Tecnica : PrioSe::Golpe, 0.35, kSeImpacto[0], kSeImpacto[1]);
           break;
         }
         case sim::Tipo::Muerte:
           PosEn(*p, tk, p->x, p->z);
-          p->anda = false, p->muerta = true, p->clip = 0, p->t_muerte = e.tick;
+          p->anda = false, p->muerta = true;
+          CambiarClip(*p, 5, e.tick);   // KO: cae y queda tumbado (clip nativo) antes de hundirse
+          p->t0 = e.tick;
+          p->t_muerte = e.tick + 45;   // primero se ve el KO (clip de 60 cuadros) y luego se hunde
+          p->clip_fin = 0, p->derribo_t = 0;
           if (!demo_ && !caido_ && sim_->Unidades()[size_t(e.unidad)].equipo == 0) caido_ = ModeloDe(sim_->Unidades()[size_t(e.unidad)].def.id);
           { const auto& d = sim_->Unidades()[size_t(e.unidad)].def; Sonar(ahora, PrioSe::Muerte, 0.9, d.voz_banco, d.voz_ko[(e.tick / 5 + uint32_t(e.unidad)) % 3], e.unidad); }
           break;
         case sim::Tipo::FinRonda: {
           fin_t_ = ahora;
           const sim::Resultado r = sim_->Resumen();
+          victoria_t0_ = ahora;   // pose de victoria de los que quedan en pie del equipo ganador (clip nativo)
+          if (r.ganador >= 0)
+            for (size_t i = 0; i < p_.size(); ++i)
+              if (sim_->Unidades()[i].viva() && sim_->Unidades()[i].equipo == r.ganador) {
+                CambiarClip(p_[i], 7, sim_->Tick());
+                p_[i].t0 = sim_->Tick();
+              }
           REXLOG_INFO("dbz3 tactics: sonidos: golpes {} (descartados {}), tecnicas {} ({}), KO {} ({}), como mucho {} voces a la vez", se_.Sonados(PrioSe::Golpe), se_.Descartados(PrioSe::Golpe),
                       se_.Sonados(PrioSe::Tecnica), se_.Descartados(PrioSe::Tecnica), se_.Sonados(PrioSe::Muerte), se_.Descartados(PrioSe::Muerte), int(MezclaSe::kVoces));
           REXLOG_INFO("dbz3 tactics: ritmo del combate: {} cuadros, {:.0f} FPS de media, peor cuadro {:.1f} ms, {} cuadros de mas de 25 ms ({} unidades)", cc_, cc_ ? double(cc_) / dt_suma_ : 0.0,
@@ -1128,18 +1187,44 @@ class Arena : public rex::ui::ImGuiDialog {
       p.giro += std::clamp(da, -9.0f * dt, 9.0f * dt);
     }
   }
-  Foto Instantanea() const {
+  Foto Instantanea() {
     Foto f;
-    f.tp = float(sim_->Tick()) + alpha_;
+    const uint32_t tick = sim_->Tick();
+    f.tp = float(tick) + alpha_;
     for (size_t i = 0; i < p_.size(); ++i) {
-      const Pres& p = p_[i];
+      Pres& p = p_[i];
       const sim::Unidad& u = sim_->Unidades()[i];
+      // fin del clip de golpe: vuelve a andar (si seguia andando) o a la espera (con mezcla)
+      if (p.clip == 4 && p.clip_fin && tick >= p.clip_fin && !p.derribo_t) {
+        CambiarClip(p, p.anda ? 1 : 0, p.clip_fin);
+        if (!p.anda) p.t0 = p.clip_fin;
+        p.clip_fin = 0;
+      }
+      // derribo: golpe recibido > tumbado (KO) > levantarse, y vuelve a la espera
+      if (p.derribo_t) {
+        const uint32_t dt = tick - p.derribo_t;
+        const int fase = dt < 10 ? 4 : dt < 34 ? 5 : dt < 94 ? 6 : 0;
+        if (fase != p.clip) {
+          CambiarClip(p, fase, tick);
+          p.t0 = p.derribo_t + (fase == 4 ? 0 : fase == 5 ? 10 : fase == 6 ? 34 : 94);
+        }
+        if (fase == 0) p.derribo_t = 0;
+      }
       Foto::U o{p.m, u.equipo, 0, 0, p.giro, 1.0f, 0, 0, 0, p.clip, u.viva(), false, p.est};
       PosEn(p, f.tp, o.x, o.z);
       o.vida = std::clamp(float(u.vida) / float(u.def.vida), 0.0f, 1.0f);
       o.ki = std::clamp(float(u.ki) / float(u.def.ki_max), 0.0f, 1.0f);
-      o.t = p.clip <= 1 ? f.tp / 60.0f + 0.37f * float(i) : std::max(0.0f, f.tp - float(p.t0)) / 60.0f;
-      if (p.muerta) o.esc = std::max(0.0f, 1.0f - (f.tp - float(p.t_muerte)) / float(kTicksHundir));   // sin clip de caida: se hunde
+      o.dura = p.clip == 2 ? u.def.ataque_ticks / 60.0f : p.clip == 3 ? u.def.tecnica_ticks / 60.0f : p.clip == 4 ? 0.27f : p.clip == 6 ? 1.0f : 0.0f;
+      if (p.clip == 7) o.t = float(ImGui::GetTime() - victoria_t0_);   // victoria: reloj de pared (la simulacion ya acabo)
+      else o.t = p.clip <= 1 ? f.tp / 60.0f + 0.37f * float(i) : std::max(0.0f, f.tp - float(ClipT0(p))) / 60.0f;
+      if (p.clip == 1 && p.anda && !p.muerta) {   // andar sin deslizar: el clip va con el avance (una vuelta cada ~0,4 s)
+        const float prog = std::clamp((f.tp - float(p.t0)) / float(std::max<uint32_t>(1, p.t1 - p.t0)), 0.0f, 1.0f);
+        o.ciclo = prog * std::clamp(float(p.t1 - p.t0) / 24.0f, 1.0f, 8.0f);
+      }
+      o.clip_prev = p.clip_prev;
+      o.t_prev = p.t_prev;
+      o.mezcla = std::clamp(float((ImGui::GetTime() - p.mezcla_t0) / 0.18), 0.0f, 1.0f);
+      if (p.muerta) o.esc = std::clamp(1.0f - (f.tp - float(p.t_muerte)) / float(kTicksHundir), 0.0f, 1.0f);   // tras el KO, se hunde
       else o.golpe = std::clamp(1.0f - (f.tp - p.t_golpe) / 9.0f, 0.0f, 1.0f);   // H11: destello suave al recibir un golpe (antes la figura se ocultaba cada 2 ticks)
       f.u.push_back(o);
     }
@@ -1338,6 +1423,7 @@ class Arena : public rex::ui::ImGuiDialog {
       int sb = 0, si = accion[0] == 'c' ? 3 : 2;
       if (const char* t = std::getenv("DBZ3_TEST_TACTICS_SE_COMPRA")) std::sscanf(t, "%d,%d", &sb, &si);   // pruebas.py: otro (banco,id) para medir cual suena
       Sonar(ImGui::GetTime(), PrioSe::Tecnica, 0.3, sb, si);
+      if (accion[0] == 'v') destellos_.push_back({a, ImGui::GetTime(), 1});   // venta: aro rojo en el hueco que se vacia
     }
     return r;
   }
@@ -1468,14 +1554,17 @@ class Arena : public rex::ui::ImGuiDialog {
     esc_.Empezar();
     for (const Foto::U& u : foto.u)
       if (!u.oculta && u.esc > 0.0f)
-        DibujarEstrellas(&esc_, cam_, u.m, u.est, Mundo(u.x, 0, u.z), kAltoFigura * kEscala * u.esc, u.giro + giro_mundo, clip >= 0 ? clip : u.clip, u.t);
+        DibujarEstrellas(&esc_, cam_, u.m, u.est, Mundo(u.x, 0, u.z), kAltoFigura * kEscala * u.esc, u.giro + giro_mundo, clip >= 0 ? clip : u.clip, u.t, u.dura,
+                         u.ciclo, u.clip_prev, u.t_prev, u.mezcla);
     esc_.Pintar(dl);
     PintarFx(dl, foto.tp, 1);
     // estrellas, y vida y ki reales sobre cada unidad en pie, por encima de todo
+    const float y_techo = LienzoDe(ImGui::GetIO()).At(0, 100).y;   // en 4:3 las barras de los mas altos rozaban el rotulo Rival (y=80)
     for (const Foto::U& u : foto.u) {
       ImVec2 o;
       float k;
-      if (!u.viva || !Proy(u.x, kAltoFigura + 0.3f, u.z, o, k)) continue;
+      if (!u.viva || !Proy(u.x, kAltoFigura * AltoRel(u.m, u.est) + 0.3f, u.z, o, k)) continue;
+      o.y = std::max(o.y, y_techo);
       const float w = 0.8f * k, h = 0.08f * k;
       Estrellas(arriba, ImVec2(o.x, o.y - 0.17f * k), 0.075f * k, u.est);
       for (int h = 0; h < 2; ++h)
@@ -1768,6 +1857,16 @@ class Arena : public rex::ui::ImGuiDialog {
     Txt(dl, q, 745, 32, 30, fase, 1, true);
     Txt(dl, q, 925, 32, 26, tiempo, 1, prep && opc_.reloj > 0 && prep_resto_ < 10.0f);
     Txt(dl, q, 1040, 32, 26, std::to_string(pa.EnTablero(0)) + "/" + std::to_string(pa.TopeTablero(0)), 1);
+    // dsTAC: paso de preparacion a combate: banda con "COMBATE" que se apaga en 1,2 s (transicion, no corte)
+    if (transicion_t0_ > 0 && ahora - transicion_t0_ < 1.2) {
+      const float k = float(ahora - transicion_t0_);
+      const int al = int(235 * std::clamp(1.0f - (k - 0.55f) / 0.65f, 0.0f, 1.0f));
+      dl->AddRectFilled(ImVec2(0, q.At(0, 372).y), ImVec2(io.DisplaySize.x, q.At(0, 478).y), IM_COL32(0, 0, 0, al / 2));
+      const char* txt = T::T("¡COMBATE!", "COMBAT!");
+      const float fs = 70 * q.s;
+      const ImVec2 sz = ImGui::GetFont()->CalcTextSizeA(fs, 1e9f, 0, txt), c = q.At(800, 425);
+      TextoSuave(dl, fs, ImVec2(c.x - sz.x / 2, c.y - sz.y / 2), IM_COL32(255, 220, 60, al), txt, 0, float(al) / 255.0f);
+    }
     // arriba a la izquierda: titulo y salida (H12: mas pequenos, pegados al borde)
     Txt(dl, q, 16, 26, 34, "Dragon Tactics", 0, true);
     Txt(dl, q, 300, 36, 18, "BETA", 0, false, true);
@@ -1948,6 +2047,7 @@ class Arena : public rex::ui::ImGuiDialog {
       const Pieza& z = yo.pz[i];
       const bool el = Elegido(Zona::Banco, i);
       Caja(dl, q, x0, y0, x1, y1, el ? amarillo : mano_ == i ? IM_COL32(90, 230, 255, 255) : z.hay() ? ColorRango(eco.unidades[size_t(z.unidad)].coste) : IM_COL32(120, 130, 170, 255), IM_COL32(0, 0, 0, 0), el || mano_ == i ? 4.0f : 1.5f);
+      if (el) dl->AddRectFilled(q.At(x0 + 3, y0 + 3), q.At(x1 - 3, y1 - 3), IM_COL32(255, 255, 255, 22), 5 * q.s);   // respuesta al pasar por encima
       if (z.hay() && !mini[i]) cara(z.unidad, q.At(x0 + 3, y0 + 3), q.At(x1 - 3, y1 - 3));
       if (z.hay()) Estrellas(dl, q.At((x0 + x1) * 0.5f, y0 + 9), 6 * q.s, z.estrellas);
       for (int h = 0; h < 2; ++h)
@@ -2011,6 +2111,7 @@ class Arena : public rex::ui::ImGuiDialog {
       const UnidadEco& ue = eco.unidades[size_t(u)];
       const bool puede = yo.oro >= ue.coste;
       Caja(dl, q, x0, y0, x1, y1, el ? amarillo : yo.bloq ? IM_COL32(90, 230, 255, 255) : ColorRango(ue.coste), IM_COL32(18, 28, 62, 235), el ? 4.0f : yo.bloq ? 3.0f : 2.5f + 0.5f * float(ue.coste));
+      if (el) dl->AddRectFilled(q.At(x0 + 3, y0 + 3), q.At(x1 - 3, y1 - 3), IM_COL32(255, 255, 255, 22), 5 * q.s);   // respuesta al pasar por encima
       cara(u, q.At(x0 + 6, y0 + 6), q.At(x0 + 6 + 88, y0 + 6 + 55), puede ? IM_COL32_WHITE : IM_COL32(150, 150, 150, 255));
       Txt(dl, q, x0 + 102, y0 + 20, 20, nombre(u), 0, el, !puede, 102);
       bool en_tablero = false;
@@ -2027,6 +2128,7 @@ class Arena : public rex::ui::ImGuiDialog {
       }
       Moneda(dl, q.At(x1 - 20, y1 - 16), 11 * q.s);
       Txt(dl, q, x1 - 34, y1 - 16, 24, std::to_string(ue.coste), 2, false, !puede);
+      if (!puede) TextoSuave(dl, 16 * q.s, q.At(x0 + 44, y1 - 25), IM_COL32(255, 120, 110, 255), (Texto("faltan_oro") + " " + std::to_string(ue.coste - yo.oro)).c_str(), 100 * q.s);   // subTAC: por que no se puede comprar, de un vistazo
       int tengo = 0;
       for (const Pieza& z : yo.pz) tengo += z.unidad == u ? pa.Peso(z.estrellas) : 0;
       if (tengo) Txt(dl, q, x0 + 10, y1 - 16, 20, "x" + std::to_string(tengo), 0, true, false, 80);
@@ -2340,6 +2442,8 @@ class Arena : public rex::ui::ImGuiDialog {
   float centro_[2] = {}, suelo_ = 0, eje_[2] = {1, 0}, alpha_ = 0;   // marco del tablero en el mundo: centro (x, z), suelo (y) y eje x del tablero (x, z)
   const Modelo* caido_ = nullptr;   // H13: primera unidad propia caida en el combate (para la pantalla de derrota)
   double abierta_ = 0, media_ = 0, ultimo_t_ = 0, acc_ = 0, fin_t_ = -1, prep_t_ = -1, salir_t_ = -10, aviso_t_ = -10;
+  double victoria_t0_ = -100;   // cuando empezo la pose de victoria (reloj de pared)
+  double transicion_t0_ = -100; // cuando empezo el paso preparacion -> combate
   uint64_t semilla_ = 2024;
   size_t leidos_ = 0;   // eventos de la simulacion ya leidos
   Catalogo cat_;
@@ -2348,7 +2452,7 @@ class Arena : public rex::ui::ImGuiDialog {
   size_t forma_sig_ = 0;                      // H9: siguiente forma de estrella 2..4 por hornear en segundo plano
   int prueba_est_ = 0, prueba_slot_ = -1;     // H9 pruebas: fase de DBZ3_TEST_TACTICS_ESTRELLAS
   double prueba_t_ = 0;
-  struct Destello { int slot; double t0; };   // H9: una pieza acaba de subir de estrella
+  struct Destello { int slot; double t0; int tipo = 0; };   // H9: una pieza acaba de subir de estrella (tipo 0) o se ha vendido (1)
   std::vector<Destello> destellos_;
   bool sin_destello_compra_ = false;   // (reservado: apagar el destello de compra)
   int arr_ = -1;                       // H14: slot de la unidad cogida con el raton (para arrastrarla) y donde se pulso

@@ -143,6 +143,12 @@ def piezas(dae, png_cuerpo, png_cara, ratios, tono_piel=True, jaw=True):
         if s.name not in ("face_01", "faceparts_01_Shape", "PiccoloSH_03_Body"):
             continue
         s = alisar_normales(s)
+        if s.name == "face_01":
+            # la tira del menton (y < cabeza+0,30) queda dentro del pasamontanas, pero con el casco reducido sus vertices
+            # de abajo (medido: 12 de 60 sin casco por delante) asomaban como una mancha verde sobre la mascara gris
+            ycut = esk.world[esk.index["b_C_Head"]][1] + .30
+            s = tomar(s, s.tris[s.pos[s.tris][..., 1].mean(1) >= ycut])
+            info["tira_menton_quitada"] = True
         partes = []
         if s.name == "PiccoloSH_03_Body":
             manos, resto = separar_manos(s, esk)

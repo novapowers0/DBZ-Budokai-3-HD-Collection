@@ -1151,6 +1151,14 @@ bool TecnicaActiva(int cap) {
     if (t.cap == cap) return t.donante == DonanteEfectivo();
   return false;
 }
+// 1.5.6 Exportar como personaje: la ficha de ahora + el moveset (donante) + las tecnicas equipadas que tienen golpe en ese
+// moveset (la definitiva es el hueco 0). Las de otro donante no se exportan: el personaje nuevo no podria lanzarlas.
+std::string ArgsExportar() {
+  std::string caps;
+  for (int k = 0; k < 3; ++k)
+    if (g_equipo[k] > 0 && TecnicaActiva(g_equipo[k])) caps += (caps.empty() ? "" : ",") + std::to_string(g_equipo[k]);
+  return ArgsPropio() + ";donante=" + std::to_string(DonanteCombate()) + (caps.empty() ? "" : ";capsulas=" + caps);
+}
 void Equipar(int k, int cap) {
   if (k < 0 || k >= 3) return;
   if (cap != 0 && TipoTecnica(cap) != k) {   // C4: cada hueco admite solo su tipo

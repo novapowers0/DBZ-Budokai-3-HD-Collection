@@ -58,6 +58,10 @@ bool TakeFormDirty(int side);
 // Para otros modos (frente R1): piloto del menu principal al Duelo (fila 0 = 1P VS COM) y su rueda; aviso del personaje
 // confirmado en la rueda por el lado `jugador` (select_ext.cpp lo da tambien fuera del Tag Team; nullptr lo quita).
 void PilotarAlDuelo(int fila);
+// Pantalla ONLINE: luchadores de serie que se pueden elegir para el equipo, con su nombre y su cara (nullptr = sin cara).
+const std::vector<int>& TeamFighterIds();
+std::string TeamFighterName(int id);
+ImTextureID TeamFighterFace(int id);
 void RegistrarEleccion(void (*aviso)(int jugador, int id));
 void AvisarEleccion(int jugador, int id);
 

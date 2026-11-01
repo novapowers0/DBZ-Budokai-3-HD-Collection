@@ -12,11 +12,14 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
+#include <string>
 
 #include "generated/dbz3_init.h"
 #include "eu_map.h"
+#include "pasarela.h"
 
 namespace dbz3::tag { void OnScreen(int screen); }
 namespace dbz3::campaigns { void ForgetStoryBattle(); void DuAuto(int slot); void DuSesionFin(); }
@@ -178,13 +181,25 @@ void Launch(PPCContext& ctx, uint8_t* base, bool from_menu) {
                   REX_LOAD_U16(rec + 54), REX_LOAD_U16(rec + 56), REX_LOAD_U16(rec + 58));
     }
   }
-  // PRUEBA (DBZ3_TEST_TRAJES="t1,t2"): traje de cada lado (nova_recetas: trajes y absorciones)
+  // PRUEBA (DBZ3_TEST_TRAJES="t1,t2"): traje de cada lado (nova_recetas: trajes y absorciones). Cada lado admite el
+  // indice del juego o la carpeta del mod de un traje extra (traje.toml), que se resuelve con el roster montado.
   if (static const char* tt = std::getenv("DBZ3_TEST_TRAJES"); tt) {
-    int t1 = 0, t2 = 0;
-    std::sscanf(tt, "%d,%d", &t1, &t2);
-    REX_STORE_U16(kCfg + 16 + 18, uint16_t(t1));
-    REX_STORE_U16(kCfg + 96 + 18, uint16_t(t2));
-    REXLOG_INFO("dbz3 hub: prueba: trajes {} y {}", t1, t2);
+    const std::string s = tt;
+    int t[2] = {0, 0};
+    for (int k = 0; k < 2; ++k) {
+      const size_t a = k ? s.find(',') + 1 : 0;
+      if ((k && a == 0) || a >= s.size()) continue;
+      const size_t b = std::min(s.find(',', a), s.size());
+      const std::string tok = s.substr(a, b - a);
+      if (!tok.empty() && (std::isdigit(static_cast<unsigned char>(tok[0])) || tok[0] == '-'))
+        t[k] = std::atoi(tok.c_str());
+      else if (!tok.empty())
+        t[k] = dbz3::pasarela::TrajeExtra(q.id[k], tok);
+      if (t[k] < 0) t[k] = 0;
+    }
+    REX_STORE_U16(kCfg + 16 + 18, uint16_t(t[0]));
+    REX_STORE_U16(kCfg + 96 + 18, uint16_t(t[1]));
+    REXLOG_INFO("dbz3 hub: prueba: trajes {} y {} ({})", t[0], t[1], tt);
   }
   // PRUEBA (DBZ3_TEST_CAPS="c1,c2,..." hasta 7): capsulas del jugador 1 (rec+52 cuantas, rec+54 IDs; >= 595 las
   // resuelve roster_ext) para probar tecnicas, definitivas y transformaciones de los ports

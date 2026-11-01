@@ -28,7 +28,7 @@ import studio_core as sc  # noqa: E402
 import vista_b2 as vb  # noqa: E402
 import vista_heroe as vh  # noqa: E402
 
-CLIPS = ("espera", "andar", "ataque", "tecnica")
+CLIPS = ("espera", "andar", "ataque", "tecnica", "dano", "derrota", "levantarse", "victoria")
 
 
 def sin_pista(skel, acm, e, anim):

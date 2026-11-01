@@ -280,3 +280,12 @@ de = "Synergien:"
 it = "Sinergie:"
 pt = "Sinergias:"
 ja = "シナジー:"
+
+[faltan_oro]
+es = "Faltan"
+en = "Need"
+fr = "Il manque"
+de = "Fehlen"
+it = "Mancano"
+pt = "Faltam"
+ja = "不足"

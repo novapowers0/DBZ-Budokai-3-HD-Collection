@@ -616,13 +616,13 @@ void VigilarCombate(const char* quien, const Reglas& r, std::function<void(const
         std::string caps;
         for (uint32_t k = 0; r.capsulas && k < 2; ++k) {
           const uint32_t rec = kCfg + 16 + 80 * k, id = REX_LOAD_U16(rec + 16);
-          // la lista Normal ya la pone el conector (hub.cpp); aqui solo la del rival a medida (capsulas_rival)
-          const uint32_t tab = dbz3::GA(0x8234ABB8u) + 96u * id, propia = k == 1 ? uint32_t(r.capsulas_rival[0]) : 0;
+          // la lista Normal ya la pone el conector (hub.cpp); aqui solo las listas a medida (capsulas_rival, capsulas_jugador)
+          const uint32_t tab = dbz3::GA(0x8234ABB8u) + 96u * id, propia = uint32_t(k == 1 ? r.capsulas_rival[0] : r.capsulas_jugador[0]);
           if ((REX_LOAD_U16(rec + 52) && !propia) || id >= 105) continue;
           const uint32_t n = std::min<uint32_t>(propia ? propia : REX_LOAD_U16(tab + 80), 7);
           REX_STORE_U16(rec + 52, uint16_t(n));
           for (uint32_t c = 0; c < 7; ++c) {
-            const uint32_t cap = c >= n ? 0 : propia ? uint32_t(r.capsulas_rival[1 + c]) : REX_LOAD_U16(tab + 82 + 2 * c);
+            const uint32_t cap = c >= n ? 0 : propia ? uint32_t(k == 1 ? r.capsulas_rival[1 + c] : r.capsulas_jugador[1 + c]) : REX_LOAD_U16(tab + 82 + 2 * c);
             REX_STORE_U16(rec + 54 + 2 * c, uint16_t(cap));
           }
           caps += " lado " + std::to_string(k + 1) + ": " + std::to_string(n);
@@ -1254,6 +1254,9 @@ Reglas ReglasDe(const CombateB1& c, int dificultad, int ronda) {
   r.nivel_com = NivelComB3(dificultad, ronda);
   if (const char* f = std::getenv("DBZ3_PASARELA_NIVEL")) r.nivel_com = std::clamp(std::atoi(f), 0, 2);   // pruebas
   r.ki_rival = float(c.ki_rival) / 100.0f;
+  // en todas las dificultades y combates: High Tension (transformacion), sus tecnicas y su definitiva
+  static constexpr int kCapsSatan[] = {5, 69, 70, 71, 72, 73};
+  std::copy(std::begin(kCapsSatan), std::end(kCapsSatan), r.capsulas_jugador);
   r.traje_rival = kTrajeRival[std::clamp(ronda, 0, 10)];
   if (const char* t = std::getenv("DBZ3_DS13_TRAJE_RIVAL")) r.traje_rival = std::atoi(t);   // sonda de pruebas
   return r;

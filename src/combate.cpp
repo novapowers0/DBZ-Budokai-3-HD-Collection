@@ -454,6 +454,7 @@ void DefinitivaLog(uint8_t* base) {
   static float cobrado[2] = {};
   static float vida_rival[2] = {};
   static uint32_t cuadro0[2] = {};
+  static uint32_t espera[2] = {};
   static std::vector<uint32_t> cadena[2];   // codigos por los que pasa (para saber si salio entera)
   if (BattleState(base) < 4) g_ults = {};
   for (int k = 0; k < 2; ++k) {
@@ -476,12 +477,25 @@ void DefinitivaLog(uint8_t* base) {
     if (code[k] != c)
       for (const Ult& u : g_ults[size_t(k)])
         if (u.code && (c == u.code || c == u.aire)) { ini = &u; break; }
+    auto fin = [&](int kk, uint32_t xx, uint32_t aa) {
+      std::string lista;
+      for (uint32_t v : cadena[kk]) { char t[12]; std::snprintf(t, sizeof(t), "%X ", v); lista += t; }
+      const uint32_t rival = Fighter(base, 1 - kk);
+      REXLOG_INFO("dbz3 combate: 15 fin de la definitiva del lado {}: accion {}, vida {:.0f}, estado {}, cobrado {:.0f}, "
+                  "cuadros {}, dano al rival {:.0f} (accion {}), codigos {}",
+                  kk + 1, aa, LoadF(base, xx + kHp), BattleState(base), cobrado[kk], g_frame.load() - cuadro0[kk],
+                  vida_rival[kk] - LoadF(base, rival + kHp), REX_LOAD_U16(rival + kAct), lista);
+      en[kk] = false;
+      espera[kk] = 0;
+    };
     if (ini) {
+      if (en[k]) fin(k, x, act);   // la anterior sigue esperando su ultimo golpe: se cierra antes de empezar otra
       REXLOG_INFO("dbz3 combate: 15 definitiva {:X} del lado {} (capsula {}, coste {:.0f}): empieza con ki {:.0f}, "
                   "modo hiper {}, distancia {:.1f}", c, k + 1, ini->cap, Coste(base, ini->cap), now, REX_LOAD_U8(x + kHyper),
                   std::hypot(LoadF(base, x + 64) - LoadF(base, Fighter(base, 1 - k) + 64),
                              LoadF(base, x + 72) - LoadF(base, Fighter(base, 1 - k) + 72)));
       en[k] = true;
+      espera[k] = 0;
       cobrado[k] = 0;
       vida_rival[k] = LoadF(base, Fighter(base, 1 - k) + kHp);
       cuadro0[k] = g_frame.load();
@@ -493,15 +507,11 @@ void DefinitivaLog(uint8_t* base) {
         REXLOG_INFO("dbz3 combate: 15 cobro de {:.0f} de ki al lado {} (cuadro {}, codigo {:X}): {:.0f} -> {:.0f}",
                     ki[k] - now, k + 1, g_frame.load(), c, ki[k], now);
       }
+      // Solo registro: el golpe final puede caer despues de salir de la accion 15 (Baby: 61 y 1020 mas tarde), asi que el
+      // fin se anota 180 cuadros despues (o al acabar el combate, o al empezar otra definitiva) para no cortar antes.
       if (act != 15 || BattleState(base) != 4) {
-        std::string lista;
-        for (uint32_t v : cadena[k]) { char t[12]; std::snprintf(t, sizeof(t), "%X ", v); lista += t; }
-        const uint32_t rival = Fighter(base, 1 - k);
-        REXLOG_INFO("dbz3 combate: 15 fin de la definitiva del lado {}: accion {}, vida {:.0f}, estado {}, cobrado {:.0f}, "
-                    "cuadros {}, dano al rival {:.0f} (accion {}), codigos {}",
-                    k + 1, act, LoadF(base, x + kHp), BattleState(base), cobrado[k], g_frame.load() - cuadro0[k],
-                    vida_rival[k] - LoadF(base, rival + kHp), REX_LOAD_U16(rival + kAct), lista);
-        en[k] = false;
+        if (!espera[k]) espera[k] = std::max<uint32_t>(g_frame.load(), 1u);
+        if (g_frame.load() - espera[k] >= 180 || BattleState(base) != 4) fin(k, x, act);
       }
     }
     code[k] = c;

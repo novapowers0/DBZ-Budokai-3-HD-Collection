@@ -1,6 +1,7 @@
 // dbz3 - Tag Team en combate (ver tagteam.cpp).
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <vector>
 
@@ -35,6 +36,10 @@ void SetMemberCapsules(int side, int id, const uint16_t* caps);
 void PutCapsules(uint8_t* base, uint32_t rec, int side, int id);
 // Ultimo equipo elegido por 1P en TAG TEAM: online, cada PC manda el suyo (netplay kTeam).
 std::vector<int> MyLastTeam();
+// Pantalla ONLINE: equipo que se lleva a la sala (2+ ids = Tag Team; vacio = 1 contra 1). No toca los equipos de combate.
+void SetMyOnlineTeam(const std::vector<int>& members);
+// Online: lista Custom propia del luchador (id de serie o de plaza): {n, hasta 7 IDs de capsula}; n = 0 = la Normal.
+std::array<uint16_t, 8> OwnCustomCapsules(int id);
 // Lado que lleva el ordenador (relevo propio cuando le queda poca vida).
 void SetComSide(int side, bool com);
 // Inicio del combate (roster_ext.cpp, hook de sub_820FE668): rellena las ranuras y cambia el ID.

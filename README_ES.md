@@ -43,15 +43,18 @@ Copyright (c) 2026 **NovaPowers**. Licencia MIT (ver `LICENSE`).
 
 ## Novedades de la 1.5.6
 
-- **Dragon Tactics (beta):** torneo de combates automáticos contra siete rivales, con 34 luchadores de B3, 11 sinergias, tienda, cápsulas, partidas guardadas y mejoras hasta cuatro estrellas.
+- **Dragon Tactics (experimental):** torneo de combates automáticos contra siete rivales, con 34 luchadores de B3, 11 sinergias, tienda, cápsulas, partidas guardadas y mejoras hasta cuatro estrellas.
 - **Personajes:** páginas L1/R1 para más de 24 luchadores añadidos, trajes extra aunque haya nativos bloqueados, y nombres de técnicas completados.
-- **Shin Budokai:** corregido el cuerpo rígido de SB1 y recuperados los nombres oficiales. Los personajes que existen en B3 HD usan ese cuerpo con movimientos de SB.
+- **Shin Budokai:** corregido el cuerpo rígido de SB1; sus técnicas usan nombres genéricos con el del personaje. Los personajes que existen en B3 HD usan ese cuerpo con movimientos de SB.
 - **Infinite World (experimental):** los campos se repiten sin borde visible y hay más cámaras y correcciones. Aún hay diferencias con el original.
 - **Budokai 2 y nave de Babidi (experimental):** mejoras de menús y figuras. Las transiciones de escenario siguen apagadas.
 - **Modo Héroe (beta):** nombre propio, eventos de mapa, deseo de Shenron y Scouter del juego.
 - **Fusiones y Editar Habilidades:** las cápsulas de mod aparecen en la lista y una fusión fallida de Yamhan ya no cierra el juego.
 - **Gogeta SS4 y Vegito:** sus definitivas llegan al final. La de Baby midió 1081 de daño contra un rival quieto.
-- **Online (beta):** panel renovado. Medido en un PC con el servicio público y red mala simulada; sin probar entre dos PC reales.
+- **Online (beta):** pantalla más sencilla: eliges 1 contra 1 o Tag Team, y cada jugador lucha con su lista Custom. Pide permiso antes de usar el servicio público. Medido en un PC con red mala simulada; sin probar entre dos PC reales. No empareja con versiones anteriores.
+- **Leyenda de Mr. Satán (beta):** mejoras del coche, el humo, los fundidos y el resumen de ronda; lleva siempre su transformación, sus técnicas y su definitiva.
+- **Modo Héroe (beta):** el botón Exportar lo guarda como personaje aparte (solo PC), con una receta sin arte.
+- **Kit de modding:** asistentes y vistas previas, un modo B3 PS2 que crea otra ISO con tu copia, Arte opcional para tus imágenes del HUB y un conversor de trajes DAE. No incluye arte de terceros.
 - **Linux (beta):** ajustes sin ejecutar en Linux real.
 
 ## Novedades de la 1.5.5.5
@@ -180,7 +183,7 @@ En la página de [**Releases**](../../releases/latest):
 | `DBZ-Budokai-3-HD-Collection-v1.5.6.zip` | **El juego para Windows** (obligatorio). |
 | `DBZ-Budokai-3-HD-Collection-v1.5.6-linux-amd64.tar.gz` | El juego para Linux (Vulkan, beta). |
 | [`DBZ3HD-1.4.3-Personajes.zip`](https://drive.google.com/file/d/1jDRwzd_idmeIxwAMN4q4bC89JKFiGXX7/view?usp=sharing) | Opcional: los 7 personajes nuevos (**Google Drive**, actualizado en la 1.4.3; WIP). |
-| `DBZ3HD-1.5.5-Kit-Modding.zip` | Opcional: herramientas para crear e importar personajes. |
+| `DBZ3HD-1.5.6-Kit-Modding.zip` | Opcional: herramientas para crear e importar personajes. |
 
 ### Windows
 
@@ -296,7 +299,7 @@ gritos de su versión de Budokai 1, y Zarbon, Dodoria y Androide 19 su definitiv
 Para quitar uno, desmárcalo en **Personajes → Instalados**. Tus partidas
 guardadas no se tocan.
 
-### Kit de modding (`DBZ3HD-1.5.5-Kit-Modding.zip`)
+### Kit de modding (`DBZ3HD-1.5.6-Kit-Modding.zip`)
 
 Las herramientas que hay detrás de las pestañas de modding del launcher: crear
 e **importar personajes** (Budokai 1, Budokai 2, Infinite World y modelos de la

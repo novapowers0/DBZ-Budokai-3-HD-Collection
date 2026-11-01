@@ -5,6 +5,10 @@
 
 ---
 
+Vídeo: `tools/grabar.py` graba un escenario de `pruebas.py` con su audio; `tools/grabar_vitrina.py` (`--dry-run`) graba cada traje girando con la cámara de prueba `DBZ3_TEST_VITRINA`.
+
+---
+
 ## 0. KIT DE MODS: PERSONAJES NUEVOS Y STUDIO (2026-10-06)
 
 Todo esto se usa sin consola desde el Mod Kit (`mod center hd/modkit_gui.py`) y el launcher; la
@@ -396,3 +400,13 @@ salta la attract demo battle 3D.
 ## Arte opcional y DAE (31/10)
 - `mod center hd/kit/arte.py` (motor y prueba: `python kit/arte.py`), `kit/pagina_arte.py` (pantalla). Lista de piezas en `PIEZAS`: si el juego pide una pieza `hub/` nueva, añádela ahí.
 - `awo_tools/dae_lector.py` y `dae_a_b3.py`: DAE con huesos de estilo Xenoverse a traje de B3; reutilizan `xeno_a_b3`.
+
+## Herramientas nuevas sin inventariar (1.5.6, revisión 2026-11-01)
+| Herramienta | Qué hace |
+|---|---|
+| `awo_tools/t3_anim.py` | Pistas y esqueleto de Tenkaichi 3 PS2 (solo lectura; no instala mods). |
+| `awo_tools/t3_effects.py` | Efectos originales de T3: paquete de ranura → recursos tipados y texturas RGBA (salida TCB2). No clona efectos de un donante. |
+| `awo_tools/t3_retarget.py` | Conversión experimental de pistas T3 a #ACM HD con mapa de huesos explícito. No convierte efectos, cámaras ni técnicas. |
+| `mod center hd/tactics_fx.py` | Textura y color de la técnica de energía de cada unidad de Dragon Tactics, leídos de `data_cmn.afs` del jugador (no hay arte nuevo). |
+| `mod center hd/kit/revisar.py` | «Revisar este mod»: mira una carpeta de mod sin abrir el juego y devuelve errores (no cargará) o avisos. |
+| `tools/fault_proxy.py` | Inyector de fallos UDP en loopback, solo para pruebas (no es un servicio del juego). |

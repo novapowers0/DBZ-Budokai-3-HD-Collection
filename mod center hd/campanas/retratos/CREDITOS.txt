@@ -1,3 +1,4 @@
-Retratos de esta carpeta: arte de "BLONDE UCHIHA" (pack "Dragon Ball Portraits").
+Retratos de esta carpeta: arte de "BlondeUchiha" (pack "Dragon Ball Portraits").
 Creditos a su autor. Usados con permiso del usuario del proyecto en la historia de Freezer.
 mecha_freezer.png: retrato aportado por el usuario del proyecto para la historia de Freezer.
+mecha_freezer_frown.png, mecha_freezer_smirk.png, goku_ssj_sin_camiseta.png: pack "Dragon Ball Portraits" de BlondeUchiha. Creditos a su autor.

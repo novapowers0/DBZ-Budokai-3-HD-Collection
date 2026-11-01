@@ -1801,6 +1801,14 @@ uint32_t UnifiedListed(int id) {
   return std::bitset<8>(UnifiedForms(id)).count() >= 2 ? forms::UnifiedId(id) : 0;
 }
 
+bool SaveCustomList(uint32_t id, uint16_t out[7]) {   // lista Custom de la partida guardada (casilla = ID < 38)
+  if (!g_memory || id >= 38) return false;
+  Guest g(g_memory);
+  const uint32_t lst = 0x824BA110u + 4928u + 4624u * id;
+  for (uint32_t i = 0; i < 7; ++i) out[i] = uint16_t((g.U8(lst + 2 * i) << 8) | g.U8(lst + 1 + 2 * i));
+  return true;
+}
+
 void GetCustomList(uint32_t id, uint16_t out[7]) {
   const uint32_t stored_id = g_logical_ids.LogicalForGuest(id).value_or(id);
   {

@@ -23,6 +23,7 @@ Uso:
 import argparse
 import json
 import os
+import re
 import sys
 import tempfile
 import time
@@ -4604,12 +4605,13 @@ def formas_ssj(afs, fid, ficha, juego, r):
     return out
 
 
-def escribir_personaje_propio(juego, slot, ficha, args_txt, datos, r, fid, ssj=()):
+def escribir_personaje_propio(juego, slot, ficha, args_txt, datos, r, fid, ssj=(), mod_nombre=MOD_HEROE):
     """El heroe como personaje con ID propio (mods/heroe_propio/personaje.toml de roster_build): su modelo es el cuerpo
     ya injertado/tenido (`datos`), el moveset/tecnicas/aura/voz los del donante (el estilo) y el nombre el de la ficha;
     el icono, el retrato y la cara del marcador los renderiza roster_build del propio modelo. ficha.txt = lo que el juego
     compara (sin el donante, que se puede cambiar entre combates: heroe.cpp lo vuelve a poner en marcha)."""
-    mod = os.path.join(juego, "mods", MOD_HEROE)
+    exportar = mod_nombre != MOD_HEROE   # 1.5.6: copia aparte (mods/heroe_<nombre>): sin ID pedido, con celda y con sus tecnicas
+    mod = os.path.join(juego, "mods", mod_nombre)
     os.makedirs(os.path.join(mod, "modelos"), exist_ok=True)
     with open(os.path.join(mod, "modelos", "base.bin"), "wb") as fh:
         fh.write(datos)
@@ -4619,17 +4621,38 @@ def escribir_personaje_propio(juego, slot, ficha, args_txt, datos, r, fid, ssj=(
         modelos.append("modelos/ssj%d.bin" % k)
         with open(os.path.join(mod, "modelos", "ssj%d.bin" % k), "wb") as fh:
             fh.write(datos_k)
+    # formas_donante se evita (SUB_HEROE_EXPORT, 1/11): con esa clave el clon no lanza las tecnicas especiales (0x24A). Se quedan
+    # TODAS las formas del donante hasta la ultima SSJ y modelo_forma da a cada una su modelo (la anterior mas cercana).
+    maxf = max([f for _, f in ssj] or [0])
+    mf = [sum(1 for _, f in ssj if f <= i) for i in range(maxf + 1)]
     formas = "formas = 1\n" if not ssj else (
-        "formas = %d\nmodelos_por_traje = %d\nformas_donante = [0, %s]\ntransformacion = \"donante\"\n"
-        % (len(modelos), len(modelos), ", ".join(str(f) for _, f in ssj)))
-    toml = ("# Generado por vista_heroe.py --combate (Modo Heroe, ficha %d). No editar: se rehace al confirmar.\n"
-            "[personaje]\nnombre = \"%s\"\nid = %d\ndonante = %d\nmodelos = [%s]\n%scelda = false\n") % (
-        slot, nombre, ID_HEROE, int(ficha.get("donante", 0)), ", ".join('"%s"' % m for m in modelos), formas)
+        "formas = %d\nmodelos_por_traje = %d\nmodelo_forma = [%s]\ntransformacion = \"donante\"\n"
+        % (maxf + 1, len(modelos), ", ".join(str(x) for x in mf)))
+    toml = (("# Generado por vista_heroe.py --exportar (Modo Heroe, ficha %d). Mod normal: editable. Receta en receta.toml.\n"
+             if exportar else "# Generado por vista_heroe.py --combate (Modo Heroe, ficha %d). No editar: se rehace al confirmar.\n") +
+            "[personaje]\nnombre = \"%s\"\n%sdonante = %d\nmodelos = [%s]\n%s%s") % (
+        slot, nombre, "" if exportar else "id = %d\n" % ID_HEROE, int(ficha.get("donante", 0)),
+        ", ".join('"%s"' % m for m in modelos), formas, "" if exportar else "celda = false\n")
+    caps = [int(x) for x in str(ficha.get("capsulas") or "").split(",") if x.strip().isdigit()]
+    if exportar:   # tecnicas equipadas (la definitiva primero) + las capsulas de transformacion del donante de cada forma
+        fc = (rb.IDS.get(int(ficha.get("donante", 0))) or {}).get("form_caps", [])
+        trans = [fc[f] for f in range(1, max([g for _, g in ssj] or [0]) + 1) if f < len(fc) and fc[f]]
+        d_ids = rb.IDS.get(int(ficha.get("donante", 0))) or {}
+        # orden: tecnicas equipadas, las de serie del donante (especial/definitiva) y al final las transformaciones (1/11: delante, la especial no salia)
+        caps = [c for c in caps if c not in trans] + [c for c in d_ids.get("caps", []) if c and c not in trans and c not in caps]
+        caps = caps + [t for t in trans if t not in caps]
+        r["transformaciones"] = trans
+        if caps:
+            toml += "capsulas_nativas = [%s]\n" % ", ".join(str(x) for x in caps)
     for clave, k in (("aura_color", "aura_col"), ("ki_color", "ki_col")):   # C4: colores desbloqueados con los maestros
         if ficha.get(k):
             toml += '%s = "%s"\n' % (clave, ficha[k])
     with open(os.path.join(mod, "personaje.toml"), "w", encoding="utf-8", newline="\n") as fh:
         fh.write(toml)
+    if exportar:
+        r.update(fid=fid, mod=mod, donante=int(ficha.get("donante", 0)), nombre=nombre, capsulas=caps)
+        escribir_receta(mod, nombre, ficha, args_txt, r)
+        return r
     quitar = [x for x in args_txt.split(";") if not x.startswith("donante=")]
     with open(os.path.join(mod, "ficha.txt"), "w", encoding="utf-8", newline="\n") as fh:
         fh.write(";".join(quitar) + "\n")
@@ -4649,20 +4672,39 @@ def escribir_personaje_propio(juego, slot, ficha, args_txt, datos, r, fid, ssj=(
     return r
 
 
-def escribir_mod_combate(juego, slot, ficha, args_txt, afs):
+def escribir_receta(mod, nombre, ficha, args_txt, r):
+    """receta.toml: lo que hace falta para rehacer el personaje con el juego de OTRA persona (IDs de piezas, colores,
+    donante, tecnicas). Sin arte ni modelos: es lo unico que se puede compartir."""
+    ficha_txt = ";".join(x for x in args_txt.split(";") if not x.startswith(("cv=", "ut=")))
+    xv2 = str(r.get("fuente", "")).startswith("xv2")
+    txt = ("# Receta de heroe (DBZ Budokai 3 HD). Sin arte ni modelos: se puede compartir.\n"
+           "# Se rehace con:  python \"mod center hd/cac/vista_heroe.py\" --juego <carpeta del juego> --receta receta.toml\n"
+           "# El modelo se arma con las piezas del juego de quien la abre (si usa Xenoverse 2 y no lo tiene, usa piezas de B3).\n"
+           "version = 1\n[receta]\nnombre = \"%s\"\ndonante = %d\ncapsulas = [%s]\nusa_xv2 = %s\nficha = \"%s\"\n"
+           % (nombre, int(ficha.get("donante", 0)), ", ".join(str(x) for x in r.get("capsulas", [])),
+              "true" if xv2 else "false", ficha_txt))
+    for clave, k in (("aura_color", "aura_col"), ("ki_color", "ki_col")):
+        if ficha.get(k):
+            txt += '%s = "%s"\n' % (clave, ficha[k])
+    with open(os.path.join(mod, "receta.toml"), "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(txt)
+
+
+def escribir_mod_combate(juego, slot, ficha, args_txt, afs, mod_nombre=MOD_HEROE):
     """mods/heroe_ficha<slot>/: un TRAJE EXTRA del cuerpo (traje.toml de roster_build: se anade detras de los del
     juego) con el modelo tenido + ficha.txt (los valores con que se hizo: el juego solo lo usa si coinciden)."""
     if XV2_CUERPO[0] <= ficha.get("cuerpo", 0) <= XV2_CUERPO[1]:   # C6: cuerpo propio de piezas XV2
         datos, r = modelo_xv2(afs, ficha, juego)
-        return escribir_personaje_propio(juego, slot, ficha, args_txt, datos, r, -1)
+        return escribir_personaje_propio(juego, slot, ficha, args_txt, datos, r, -1, mod_nombre=mod_nombre)
     if 100 <= ficha.get("cuerpo", 0) <= 105:   # G06a: malla CaC completa; ninguna superficie B3
         datos, r = modelo_ut(afs, ficha, juego)
-        return escribir_personaje_propio(juego, slot, ficha, args_txt, datos, r, -1)
+        return escribir_personaje_propio(juego, slot, ficha, args_txt, datos, r, -1, mod_nombre=mod_nombre)
     fids = KFID.get(ficha.get("cuerpo", 0))
     fid = fids[min(max(ficha.get("traje", 0), 0), len(fids) - 1)]
     datos, r = combate_bin(afs.entry(fid), ficha, juego, afs)
     if ficha.get("nombre") is not None:
-        return escribir_personaje_propio(juego, slot, ficha, args_txt, datos, r, fid, formas_ssj(afs, fid, ficha, juego, r))
+        return escribir_personaje_propio(juego, slot, ficha, args_txt, datos, r, fid, formas_ssj(afs, fid, ficha, juego, r),
+                                         mod_nombre=mod_nombre)
     mod = os.path.join(juego, "mods", "heroe_ficha%d" % slot)
     os.makedirs(os.path.join(mod, "modelos"), exist_ok=True)
     with open(os.path.join(mod, "modelos", "base.bin"), "wb") as fh:
@@ -4810,11 +4852,65 @@ def leer_ficha(txt):
             f[k] = [tuple(int(x) for x in p.split(",")) for p in v.split("|")]
         elif k in ("c1", "c2", "ojos", "piel"):
             f[k] = tuple(int(x) for x in v.split(","))
-        elif k in ("nombre", "xv2", "aura_col", "ki_col"):
+        elif k in ("nombre", "xv2", "aura_col", "ki_col", "capsulas"):
             f[k] = v
         else:
             f[k] = int(v)
     return f
+
+
+def _slug(nombre):
+    import re, unicodedata  # noqa: PLC0415
+    s = unicodedata.normalize("NFKD", str(nombre)).encode("ascii", "ignore").decode().lower()
+    return re.sub(r"[^a-z0-9]+", "_", s).strip("_")[:24] or "heroe"
+
+
+def exportar_personaje(juego, ficha_txt, afs):
+    """1.5.6 Exportar como personaje: el heroe de la ficha como mod normal mods/heroe_<nombre>/ (modelos, formas, tecnicas,
+    colores, personaje.toml, receta.toml). Independiente del heroe y de heroe_propio; un nombre repetido da heroe_<nombre>_2.
+    -> dict con estado: ok | sin_id (no queda plaza: queda desactivado, nada se borra) | fallo."""
+    f = leer_ficha(ficha_txt)
+    if f.get("cuerpo", 0) not in KFID and not 100 <= f.get("cuerpo", 0) <= 115:
+        return {"estado": "fallo", "motivo": "cuerpo %s sin modelo" % f.get("cuerpo")}
+    mods = os.path.join(juego, "mods")
+    base = "heroe_" + _slug(f.get("nombre") or "heroe")
+    mod, k = base, 2
+    # heroe_propio y heroe_fichaN son del propio heroe: un heroe llamado "Propio" no puede caer en ellos
+    while (mod == MOD_HEROE or re.fullmatch(r"heroe_ficha\d+", mod) or os.path.exists(os.path.join(mods, mod))
+           or os.path.exists(os.path.join(mods, mod + ".disabled"))):
+        mod, k = "%s_%d" % (base, k), k + 1
+    # apagado hasta acabar: si el proceso muere a medias (cierre del juego), no queda un personaje roto en la seleccion
+    apagado = os.path.join(mods, mod, ".disabled")
+    os.makedirs(os.path.dirname(apagado))
+    open(apagado, "w").close()
+    r = escribir_mod_combate(juego, 1, f, ficha_txt, afs, mod_nombre=mod)
+    os.remove(apagado)
+    r["estado"], r["mod"], r["carpeta"] = "ok", mod, os.path.join(mods, mod)
+    import contextlib, io  # noqa: PLC0415
+    with contextlib.redirect_stdout(io.StringIO()):   # el reparto de IDs de roster_build (el mismo que al pulsar JUGAR)
+        ids = rb.plan_ids(mods, rb.source_mods(mods))[0]
+    r["id_real"] = ids.get(mod)
+    if r["id_real"] is None:   # tope de personajes nuevos: se deja apagado y se dice (nada se borra)
+        open(os.path.join(mods, mod, ".disabled"), "w").close()
+        r["estado"] = "sin_id"
+    return r
+
+
+def exportar_main(a, ficha_txt):
+    """--exportar / --receta: monta el personaje y deja ingame_ui/heroe_vista/exportar.json (el juego lo lee)."""
+    salida = os.path.join(a.juego, "ingame_ui", "heroe_vista")
+    resultado = os.path.join(salida, "exportar.json")
+    try:
+        afs = rb.Afs(os.path.join(rb.us_dir(a.us), "data_cmn.afs"), tempfile.mkdtemp(prefix="vista_heroe_"))
+        r = exportar_personaje(a.juego, ficha_txt, afs)
+    except Exception as e:   # noqa: BLE001 (el jugador ve el aviso; el detalle va al montaje.log)
+        import traceback  # noqa: PLC0415
+        traceback.print_exc()
+        r = {"estado": "fallo", "motivo": "%s: %s" % (type(e).__name__, e)}
+    print("vista_heroe: exportar: %s" % r)
+    with open(resultado, "w", encoding="utf-8") as fh:
+        json.dump({k: v for k, v in r.items() if isinstance(v, (str, int, list, type(None)))}, fh, ensure_ascii=False)
+    return 0 if r["estado"] != "fallo" else 1
 
 
 def limpiar_fichas(salida, guardar=12):
@@ -4841,9 +4937,20 @@ def main():
     ap.add_argument("--clave", default=None, help="nombre del fichero de la ficha (f_<hash>): <clave>.malla")
     ap.add_argument("--combate", type=int, default=0, help="con --ficha: escribe el traje del combate de la ficha N "
                     "(mods/heroe_fichaN, colores cocidos en las texturas)")
+    ap.add_argument("--exportar", type=int, default=0, help="con --ficha: exporta el heroe como personaje aparte (mods/heroe_<nombre>)")
+    ap.add_argument("--receta", default=None, help="receta.toml de un heroe exportado: rehace su mod con el juego de quien la abre")
     a = ap.parse_args()
     salida = os.path.join(a.juego, "ingame_ui", "heroe_vista")
     os.makedirs(salida, exist_ok=True)
+    if (a.ficha and a.exportar) or a.receta:
+        fd = os.open(os.path.join(salida, "montaje.log"), os.O_WRONLY | os.O_CREAT | os.O_TRUNC)
+        os.dup2(fd, 1)
+        os.dup2(fd, 2)
+        sys.stdout = sys.stderr = open(fd, "w", encoding="utf-8", buffering=1)
+        if a.receta:
+            with open(a.receta, "rb") as fh:
+                a.ficha = tomllib.load(fh)["receta"]["ficha"]
+        return exportar_main(a, a.ficha)
     if a.ficha and a.combate:
         # el juego lo lanza sin consola: todo (tambien los procesos hijos) a un fichero, o un fallo no deja rastro
         fd = os.open(os.path.join(salida, "montaje.log"), os.O_WRONLY | os.O_CREAT | os.O_TRUNC)

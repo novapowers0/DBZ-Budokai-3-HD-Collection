@@ -170,7 +170,7 @@ void GenerarCon(const std::string& clave, const std::wstring& args, const fs::pa
         DWORD code = 1;
         // El montaje del heroe (cuerpo, 3 historias y rotulo) tarda 112 s medidos en un PC rapido y va en este mismo proceso: con el limite de
         // 180 s de las vistas previas, un PC algo mas lento lo mataba a medias y se quedaba sin historia o sin nombre.
-        if (!Lanzar(cmd, &code, clave.rfind("combate_", 0) == 0 ? 1200000 : 180000)) continue;
+        if (!Lanzar(cmd, &code, clave.rfind("combate_", 0) == 0 || clave.rfind("exportar_", 0) == 0 ? 1200000 : 180000)) continue;
         if (code == 9009) continue;   // alias de la Microsoft Store
         ok = code == 0 && fs::exists(hecho, ec);
         if (!ok && clave.rfind("combate_", 0) == 0)
@@ -748,7 +748,63 @@ void Descartar() {
   H::PonerNombre(g_antes.nombre);
 }
 
+// 1.5.6 Exportar como personaje: vista_heroe.py --exportar deja mods/heroe_<nombre>/ (mod normal, con receta.toml) y
+// ingame_ui/heroe_vista/exportar.json con el resultado (ok | sin_id | fallo). Una peticion por pulsacion (clave nueva).
+std::string g_exp_clave, g_exp_ultimo;
+int g_exp_n = 0;
+fs::path ExportarJson() { return Juego() / "ingame_ui" / "heroe_vista" / "exportar.json"; }
+void PedirExportar() {
+  if (!g_exp_clave.empty() && Generando2(g_exp_clave) && !Fallida(g_exp_clave)) return;   // ya en marcha
+  std::error_code ec;
+  fs::remove(ExportarJson(), ec);
+  g_exp_clave = "exportar_" + Num(++g_exp_n);
+  g_exp_ultimo.clear();
+  const std::string args = H::ArgsExportar();
+  REXLOG_INFO("dbz3 heroe: exportar como personaje: {}", args);
+  GenerarCon(g_exp_clave, L"--ficha \"" + fs::u8path(args).wstring() + L"\" --exportar 1", ExportarJson());
+}
+std::string CampoJson(const std::string& j, const char* k) {   // "k": "valor" | "k": numero (el json lo escribe vista_heroe.py)
+  const size_t p = j.find(std::string("\"") + k + "\": ");
+  if (p == std::string::npos) return {};
+  size_t i = p + std::strlen(k) + 4;
+  if (i < j.size() && j[i] == '"') {
+    const size_t e = j.find('"', i + 1);
+    return e == std::string::npos ? std::string() : j.substr(i + 1, e - i - 1);
+  }
+  const size_t e = j.find_first_of(",}", i);
+  return j.substr(i, e == std::string::npos ? std::string::npos : e - i);
+}
+// Texto de la ayuda del boton Exportar: antes de pulsar, el aviso legal; despues, el estado de la ultima exportacion.
+std::string TextoExportar() {
+  if (g_exp_clave.empty())
+    return T::T("Crea un personaje aparte con este héroe. Se comparte solo su receta, nunca el modelo.",
+                "Creates a separate character from this hero. Only its recipe is shared, never the model.");
+  std::string r;
+  if (Fallida(g_exp_clave)) {
+    r = T::T("No se pudo exportar el personaje (detalle en montaje.log).", "Could not export the character (details in montaje.log).");
+  } else if (Generando2(g_exp_clave)) {
+    return T::T("Exportando personaje... puede tardar un minuto.", "Exporting character... this may take a minute.");
+  } else {
+    std::ifstream f(ExportarJson());
+    const std::string j((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    const std::string estado = CampoJson(j, "estado"), mod = CampoJson(j, "mod");
+    if (estado == "ok")
+      r = std::string(T::T("Exportado en mods/", "Exported to mods/")) + mod +
+          T::T(". Sale en la selección al pulsar JUGAR. Se comparte la receta, no el modelo.",
+               ". It shows in character select after PLAY. Share the recipe, not the model.");
+    else if (estado == "sin_id")
+      r = T::T("No quedan plazas de personajes nuevos: desactiva otro y vuelve a exportar.",
+               "No free new-character slots: disable another one and export again.");
+    else
+      r = T::T("No se pudo exportar el personaje (detalle en montaje.log).", "Could not export the character (details in montaje.log).");
+    if (g_exp_ultimo != r) REXLOG_INFO("dbz3 heroe: exportar como personaje: {} (mod {}, id {})", estado, mod, CampoJson(j, "id_real"));
+  }
+  g_exp_ultimo = r;
+  return r;
+}
+
 std::string Ayuda() {
+  if (g_fila == FilaBotones() && g_boton == 4 && g_panel < 0) return TextoExportar();
   if (g_panel >= 0) {
     return g_canal == 0 ? T::T("Elige el tono.", "Select hue.")
          : g_canal == 1 ? T::T("Elige la saturación.", "Select saturation.")
@@ -950,9 +1006,10 @@ void DibujarLista(ImDrawList* dl, const S::Area& a, float t) {
     if (sel && flechas) S::Arrows(dl, a.At(xm + 20, y - Paso() * 0.5f), a.At(kLx1 - 14, y + Paso() * 0.5f), 32 * a.s, t);
   }
   // botones Confirmar / Atras / Reset
-  const float by0 = y1 + 18, by1 = by0 + 62, bw = (kLx1 - kLx0 - 60) / 4;
-  const char* nb[4] = {T::T("Confirmar", "Confirm"), T::T("Atrás", "Back"), T::T("Reset", "Reset"), T::T("Nombre", "Name")};
-  for (int b = 0; b < 4; ++b) {
+  const float by0 = y1 + 18, by1 = by0 + 62, bw = (kLx1 - kLx0 - 80) / 5;
+  const char* nb[5] = {T::T("Confirmar", "Confirm"), T::T("Atrás", "Back"), T::T("Reset", "Reset"), T::T("Nombre", "Name"),
+                       T::T("Exportar", "Export")};
+  for (int b = 0; b < 5; ++b) {
     const float x0 = kLx0 + (bw + 20) * b, x1 = x0 + bw;
     const bool sel = g_fila == FilaBotones() && g_boton == b && g_panel < 0;
     Marco(dl, a, x0, by0, x1, by1);
@@ -1184,7 +1241,7 @@ Accion Crear(ImDrawList* dl, const S::Area& a, float t, uint16_t p) {
         MoverPiezaB3(h, b3, d);
       } else
       if (g_fila == FilaBotones()) {
-        g_boton = (g_boton + d + 4) % 4;
+        g_boton = (g_boton + d + 5) % 5;
       } else if (Xv2() && g_fila < 7) {   // C4: cambia de pieza (la 1.a vez genera el modelo: ~6-12 s)
         const auto lst = H::PiezasXv2(H::Cuerpo(), g_fila);
         if (!lst.empty()) {
@@ -1243,6 +1300,10 @@ Accion Crear(ImDrawList* dl, const S::Area& a, float t, uint16_t p) {
           Descartar();
           REXLOG_INFO("dbz3 heroe: {}: atras (sin guardar)", g_edit ? "Edit" : "Create");
           return Accion::kVolver;
+        }
+        if (g_boton == 4) {
+          PedirExportar();
+          return Accion::kNada;
         }
         if (g_boton == 3) {
           g_nom_abierto = true;
