@@ -6,7 +6,7 @@ are summarized at the end; the full history (in Spanish) is in
 
 Downloads: [latest release](../../releases/latest).
 
-## v1.5.6 (date pending)
+## v1.5.6 (2026-11-02)
 
 ### Last additions
 
