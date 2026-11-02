@@ -271,7 +271,9 @@ class Reproductor {
   }
   void Cerrar() {
     std::lock_guard lock(inicio_);
+#if defined(_WIN32)
     if(hilo_.joinable()){hilo_.request_stop();hilo_.join();}
+#endif
     mezcla_.Limpiar();
   }
   uint32_t ErrorSalida()const{return error_.load();}
@@ -321,7 +323,11 @@ class Reproductor {
 #endif
   Mezclador mezcla_;std::atomic<Proveedor> proveedor_{nullptr};
   std::atomic<uint64_t> reproducidos_{0};
-  std::mutex inicio_,ajustes_;std::jthread hilo_;std::atomic<uint32_t> error_{0};bool automatico_=true;
+  std::mutex inicio_,ajustes_;
+#if defined(_WIN32)
+  std::jthread hilo_;
+#endif
+  std::atomic<uint32_t> error_{0};bool automatico_=true;
 };
 inline Reproductor& Salida(){static Reproductor s;return s;}
 } // namespace dbz3::iwsonido
