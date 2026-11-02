@@ -169,6 +169,8 @@ def cmd_publicar(a):
     if not os.path.isdir(os.path.join(WORK, ".git")):
         subprocess.run(["gh", "repo", "clone", REPO, WORK], check=True)
     os.makedirs(os.path.join(WORK, "mods"), exist_ok=True)
+    cat = os.path.join(WORK, "catalogo.toml")
+    publicado = {m["id"]: m for m in tomllib.load(open(cat, "rb")).get("mod", [])} if os.path.isfile(cat) else {}
     out = ["# Nova's Mods: lo lee el launcher (src/launcher/novas_mods.cpp). Generado por tools/novas_mods.py.", ""]
     for m in cfg["mod"]:
         mid = m["id"]
@@ -200,12 +202,14 @@ def cmd_publicar(a):
         out.append("[[mod]]")
         for k in ("id", "version", "tipo"):
             out.append("%s = %s" % (k, toml_str(m[k])))
+        ya = publicado.get(mid) if big and not os.path.isfile(zpath) else None   # zip grande ya publicado y sin copia local
         if big:
-            out.append("partes = [%s]" % ", ".join(str(i) for i in json.load(open(ids_file))))
+            ids = ya["partes"] if ya else json.load(open(ids_file))
+            out.append("partes = [%s]" % ", ".join(str(i) for i in ids))
         else:
             out.append(("archivo = " if nuevo else "zip = ") + toml_str(zrel))
-        out.append("size = %d" % os.path.getsize(zpath))
-        out.append('sha256 = "%s"' % sha256_file(zpath))    # el zip entero (en los partidos, ya unido)
+        out.append("size = %d" % (ya["size"] if ya else os.path.getsize(zpath)))
+        out.append('sha256 = "%s"' % (ya["sha256"] if ya else sha256_file(zpath)))    # el zip entero (en los partidos, ya unido)
         if "autor" in m:
             out.append("autor = " + toml_str(m["autor"]))
         if "excluye" in m:    # otra version del mismo mod (pack HD V1/V2): el launcher la aparta al instalar esta

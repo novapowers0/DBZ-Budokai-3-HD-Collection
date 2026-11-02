@@ -6,7 +6,7 @@
 
 # DBZ Budokai 3 HD Collection
 
-<p align="center">🎬 <b>Tráiler de la 1.5.0:</b> <a href="https://youtu.be/zcW-9RK046Q">vídeo completo (ES/EN, con tutorial de instalación)</a> · <a href="https://youtube.com/shorts/uqRetUHTBaA">Short</a></p>
+<p align="center">🎬 <b><a href="https://youtu.be/J2P42s0yNVI">Vídeo de la 1.5.6</a></b> · <b>Tráiler de la 1.5.0:</b> <a href="https://youtu.be/zcW-9RK046Q">vídeo completo (ES/EN, con tutorial de instalación)</a> · <a href="https://youtube.com/shorts/uqRetUHTBaA">Short</a></p>
 
 **Windows | Linux**
 
