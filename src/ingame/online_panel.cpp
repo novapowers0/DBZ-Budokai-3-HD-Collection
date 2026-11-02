@@ -669,7 +669,11 @@ void OnlinePanel::OnDraw(ImGuiIO& io) {
         if (s.link() != Link::kIdle) g_close_req = true;
       }
       if (closing && s.link() == Link::kIdle) {
+#ifdef _WIN32
         _putenv_s("DBZ3_NET_TEAM", t2);
+#else
+        setenv("DBZ3_NET_TEAM", t2, 1);
+#endif
         room = 2;
         fired = false;
         last = 0;
