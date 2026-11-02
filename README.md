@@ -22,7 +22,7 @@ Copyright (c) 2026 **NovaPowers**. MIT License (see `LICENSE`).
 
 **[Download the latest release](https://github.com/novapowers0/DBZ-Budokai-3-HD-Collection/releases/latest)** · [CHANGELOG](CHANGELOG.md) · [Installation](#how-to-install-step-by-step) · [Mods](#mods-and-new-characters)
 
-🎬 [1.5.0 trailer and installation tutorial (ES/EN)](https://youtu.be/zcW-9RK046Q) · [Short](https://youtube.com/shorts/uqRetUHTBaA)
+🎬 [1.5.6 video](https://youtu.be/J2P42s0yNVI) · [1.5.0 trailer and installation tutorial (ES/EN)](https://youtu.be/zcW-9RK046Q) · [Short](https://youtube.com/shorts/uqRetUHTBaA)
 
 ## What's new in 1.5.6
 
