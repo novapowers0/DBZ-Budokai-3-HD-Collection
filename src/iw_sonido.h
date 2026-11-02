@@ -246,7 +246,10 @@ class Reproductor {
   }
   void UsarProveedor(Proveedor p){std::lock_guard lock(ajustes_);proveedor_.store(p);}
   bool DispositivoAutomatico(bool activo) {
-    std::lock_guard lock(inicio_);if(hilo_.joinable())return false;
+    std::lock_guard lock(inicio_);
+#if defined(_WIN32)
+    if(hilo_.joinable())return false;
+#endif
     automatico_=activo;return true; // elegir antes de enviar; callback externo usa Procesar
   }
   void Procesar(int16_t* salida,size_t cuadros) {
