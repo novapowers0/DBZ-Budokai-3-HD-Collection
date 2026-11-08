@@ -24,7 +24,7 @@ concurrency:
 
 jobs:
   build-mac-arm64:
-    runs-on: macos-14
+    runs-on: macos-latest
     steps:
       - name: Check out public project
         uses: actions/checkout@v4
