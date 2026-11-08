@@ -927,7 +927,11 @@ Ram QueryRam() {
   }
 #else
   const long pages = sysconf(_SC_PHYS_PAGES), page = sysconf(_SC_PAGE_SIZE);
+#ifdef _SC_AVPHYS_PAGES
   const long avail = sysconf(_SC_AVPHYS_PAGES);
+#else
+  const long avail = -1;   // macOS no lo publica: se usa la mitad del total (abajo)
+#endif
   if (pages > 0 && page > 0) {
     r.total = uint64_t(pages) * uint64_t(page);
     r.avail = avail > 0 ? uint64_t(avail) * uint64_t(page) : r.total / 2;
