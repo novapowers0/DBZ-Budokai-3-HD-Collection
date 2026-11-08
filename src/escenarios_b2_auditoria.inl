@@ -15,6 +15,12 @@ bool NieveB2Activa() {
   return e==5000||e==5002||e==5004||e==5007||e==5008;
 }
 
+// El motor B2 corre en pruebas (DBZ3_TEST_B2_MOTOR) o, de serie, solo en la Llanura (unica cotejada con el original).
+bool B2MotorOn() {
+  if(std::getenv("DBZ3_TEST_B2_MOTOR"))return true;
+  return REXCVAR_GET(dbz3_b2_transicion_llanura)&&NieveB2Activa()&&g_altas[size_t(g_activa-kSerie)].entrada==5004;
+}
+
 void B2ContactoReal(uint8_t* base, uint32_t actor, uint32_t superficie, uint32_t resultado) {
   if (!actor || !resultado || !NieveB2Activa()) return;
   if (g_b2.version < 2 && !g_b2_leido) { std::vector<Clip> cam; (void)LeerClips(1, cam); }

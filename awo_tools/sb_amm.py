@@ -7,8 +7,13 @@ RE 2026-10-04 (Gohan del Futuro, Another Road; validado posando el modelo conver
   Shin Budokai  cabecera igual (+0x10 n_anim, +0x14 tabla, +0x18 n_huesos, +0x1C nombres)
                 tabla de 8 B por animacion: [u16 fotogramas][u16 opciones][u32 huesos]
                 huesos: n_huesos x [u32 n_pistas][u32 ptr]
-                pista 16 B: [u32 clase (0 giro, 1 posicion, 2 escala)][u16 n_claves]
-                            [u16 tipo][u32 ptr fotogramas (u8)][u32 ptr valores]
+                 pista 16 B: [u16 canal (0 giro, 1 posicion, 2 escala)][u16 ancho]
+                             [u16 n_claves][u16 tipo][u32 ptr fotogramas][u32 ptr valores]
+                 ancho 0/1/2 = fotogramas u8/u16/u32 (RE SB2 2026-11-03:
+                 consumidor 0x13c78c, tabla 0x26c5e4, lectores 0x13b8a8/0x13b9ac/0x13bac0).
+                 SB1: consumidor 0x1023c, tabla 0x12f5b4, lectores 0xf358/0xf45c/0xf570.
+                 La lectura ampliada es experimental y requiere wide_frames=True;
+                 por defecto se conserva la conversion anterior, pendiente de aceptacion en juego.
                 valores: giro 3 x s16 (65536 = 360 grados, orden X-Y-Z), posicion/escala 3 x f32
   Budokai 3     tabla de 16 B: [flags (9, o 25 con escala)][0][fotogramas][ptr bloque]
                 bloque: n_huesos x [giro, posicion(, escala)] punteros a pistas
@@ -34,7 +39,7 @@ def is_sb(b):
     return bool(nz) and min(nz) == t + 8 * na
 
 
-def convert(b):
+def convert(b, *, wide_frames=False):
     na, t, nbo, noff = struct.unpack("<4I", b[0x10:0x20])
     names = b[noff:noff + 32 * nbo]
     anims = []
@@ -48,9 +53,20 @@ def convert(b):
                 cnt, ptr = struct.unpack_from("<II", b, tab + 8 * j)
                 for r in range(cnt):
                     cls, nk, typ, fp, vp = struct.unpack_from("<IHHII", b, ptr + 16 * r)
+                    if wide_frames and nk:
+                        width, cls = cls >> 16, cls & 0xFFFF
+                        if cls > 2 or width > 2:
+                            raise ValueError("AMM PSP: canal/ancho no soportado: %d/%d" % (cls, width))
                     if cls > 2 or not nk:
                         continue
-                    fr = b[fp:fp + nk]
+                    if wide_frames:
+                        if fp + nk * (1 << width) > len(b) or vp + nk * (6 if cls == 0 else 12) > len(b):
+                            raise ValueError("AMM PSP: claves fuera del archivo")
+                        if tr[cls] is not None:
+                            raise ValueError("AMM PSP: canal repetido en un hueso")
+                        fr = struct.unpack_from("<%d%s" % (nk, "BHI"[width]), b, fp)
+                    else:
+                        fr = b[fp:fp + nk]
                     if cls == 0:
                         keys = [struct.pack("<H", fr[k]) + b[vp + 6 * k:vp + 6 * k + 6] for k in range(nk)]
                     else:
@@ -86,7 +102,7 @@ def convert(b):
     return bytes(out)
 
 
-def convert_anm(d):
+def convert_anm(d, *, wide_frames=False):
     """#AMB de animaciones (BSK + AMMs): convierte los AMM de Shin Budokai."""
     n, tbl = struct.unpack("<II", d[0x10:0x18])
     kids = [list(struct.unpack("<4I", d[tbl + 16 * k:tbl + 16 * k + 16])) for k in range(n)]
@@ -94,7 +110,7 @@ def convert_anm(d):
     for off, size, typ, z in kids:
         blk = d[off:off + size] if size else b""
         if blk[:4] == b"#AMM" and is_sb(blk):
-            blk = convert(blk)
+            blk = convert(blk, wide_frames=wide_frames)
         parts.append((blk, typ, z))
     out = bytearray(d[:0x20])
     start = (0x20 + 16 * n + 15) // 16 * 16
@@ -112,5 +128,13 @@ def convert_anm(d):
 
 
 if __name__ == "__main__":
-    open(sys.argv[2], "wb").write(convert_anm(open(sys.argv[1], "rb").read()))
-    print("ok", sys.argv[2])
+    import argparse
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("origen")
+    ap.add_argument("salida")
+    ap.add_argument("--fotogramas-amplios", action="store_true",
+                    help="experimental: conserva pistas con fotogramas u16/u32; apagado por defecto")
+    args = ap.parse_args()
+    open(args.salida, "wb").write(convert_anm(open(args.origen, "rb").read(),
+                                            wide_frames=args.fotogramas_amplios))
+    print("ok", args.salida)

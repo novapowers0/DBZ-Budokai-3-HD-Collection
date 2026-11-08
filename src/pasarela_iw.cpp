@@ -1,7 +1,7 @@
 // dbz3 - Misiones del Dragon de Infinite World (ronda 3, frentes F y P1): la tabla de misiones del ELF de la copia del
 // jugador (rival, escenario, tiempo y condicion de cada mision) y la pantalla de Dragon Mission con los graficos del
 // juego (mapa del mundo, insignias, ficha y resultado), leidos en marcha; nada del juego va en la version. Docs:
-// docs/16_pasarela_modos/03_infinite_world.md §2.
+// docs/16_pasarela_modos/03_infinite_world.md Â§2.
 #include "pasarela_iw.h"
 #include "generated/dbz3_init.h"
 #include "anim_iw.h"
@@ -40,6 +40,13 @@
 #include "launcher/launcher_state.h"
 #include "launcher/settings.h"
 
+#include <rex/input/input_system.h>
+#include <rex/runtime.h>
+#include <atomic>
+#define IWM_SOLO_DECL
+#include "iw_mips_mapa.inl"   // tanda4 iw-mapa: el mapa con la logica original (solo declaraciones)
+#undef IWM_SOLO_DECL
+
 namespace dbz3::pasarela::misiones { bool Busy(); }
 namespace dbz3::rpg { void Premio(int zeni); }
 
@@ -54,6 +61,43 @@ constexpr int kRegistro = 0x60;
 // al cargar el mapa y los consume el motor ama::Pool; no se guardan en DragonMissionIW para no tocar el header.
 std::vector<uint8_t> g_ama_mapa_datos;
 std::vector<uint8_t> g_ama_historia_datos;
+
+// ---- tanda4 iw-mapa: el mapa con la logica original del ELF (src/iw_mips_mapa.inl, ajuste dbz3_iw_mapa_original) ----
+// Los datos crudos (#DMD de DATA_CMN 1093 y 1092, #SCD de capsulas 1127) los llena LeerDragonMission; el espejo del
+// interprete es uno solo (el mapa activo). Nada de esto se toca con el ajuste apagado.
+std::vector<uint8_t> g_dmd_raw, g_dmd_road_raw, g_scd_raw;
+namespace MI = dbz3::iwmips::mapa;
+struct MapaOrig {
+  const void* dueno = nullptr;        // PantallaDM que tiene el espejo
+  bool vivo = false;                  // el espejo esta construido para (dueno, road, saga)
+  bool reiniciar = true;              // rehacer el espejo en el siguiente cuadro
+  bool de_golpe = false;              // con el reinicio: todas las casillas a la vez (vuelta, cambio de saga, esfera)
+  bool conservar = false;             // con el reinicio: Goku se queda donde esta
+  bool apagado = false;               // el interprete fallo: el port hasta la proxima entrada al mapa
+  bool road = false;
+  int saga = -1;
+  MI::Salida out;
+  std::vector<int> fila_j;            // fila del #DMD -> indice en Cas()
+  float acc = 0;                      // cuadros de 60 Hz pendientes
+  bool libre_cuadro = false;          // Mapa() lo pone antes de DibujarFondo: este dibujo corre los mandos
+  bool libre_ult = false;             // el ultimo paso fue de mapa libre
+  bool sobre = false;                 // Goku esta sobre una casilla elegible
+  bool conf = false;                  // A sobre una casilla en este dibujo
+  int conf_fila = -1;
+  uint16_t pulsa_pend = 0;            // botones recien pulsados (PS2) aun sin consumir
+  uint16_t mant = 0;                  // botones mantenidos (PS2)
+  int lx = 0, ly = 0;
+  bool cambio = false;                // L1/R1: el original empujo el cambio de saga
+  bool cambio_iniciado = false;       // Mapa() ya arranco ese cambio (hasta FinCambioSaga)
+  int cambio_dir = 0, cambio_area = -1;
+  float pos_defecto[2]{};
+  float cara[2]{0, 1};                // hacia donde mira Goku (su ultimo paso)
+  float fijo[2]{};                    // Goku fijado al cambiar de saga
+  bool fijar = false;
+} g_mo;
+std::atomic<uint16_t> g_mo_mant{0};
+std::atomic<int> g_mo_lx{0}, g_mo_ly{0};
+std::atomic<bool> g_mo_pend{false};
 
 uint16_t U16(const std::vector<uint8_t>& b, size_t o) { return uint16_t(b[o] | (b[o + 1] << 8)); }
 uint32_t U32(const std::vector<uint8_t>& b, size_t o) { return U16(b, o) | (uint32_t(U16(b, o + 2)) << 16); }
@@ -85,7 +129,7 @@ struct CapsulaSCD {
 };
 std::vector<CapsulaSCD> g_caps_iw;
 
-// Catálogo distinto de Capsules_SCDindexes: DATA_CMN 1127, #SCD. Lo carga
+// CatÃ¡logo distinto de Capsules_SCDindexes: DATA_CMN 1127, #SCD. Lo carga
 // READ_GameFolders (EU 0x2ADE30) y Capsule_LoadAndInitData (EU 0x2AB8E0).
 struct PropiedadCapsulaIW {
   int id = 0, tipo = 0, excluida = 0, propietario = -1, sustituta = -1;
@@ -95,8 +139,8 @@ struct PropiedadCapsulaIW {
 std::vector<PropiedadCapsulaIW> g_catalogo_iw;
 std::vector<int> g_deseos_iw;   // CMN967: 127 u32, imagen correspondiente en DATA_USA/ENG62
 std::map<int, int> g_estado_iw;
-// Conservación del formato provisional antiguo. El DM original NO recupera
-// perfiles por misión: estos registros se preservan, pero no se aplican.
+// ConservaciÃ³n del formato provisional antiguo. El DM original NO recupera
+// perfiles por misiÃ³n: estos registros se preservan, pero no se aplican.
 std::map<int, std::array<int, 8>> g_equipos_iw;
 std::array<int, 8> g_tipos_ranura_iw = {2, 3, 3, 1, 0, 0, 0, 0};
 std::array<std::array<int, 57>, 2> g_verdes_iw{};
@@ -130,7 +174,7 @@ void CancelarEquipoIW() {
 }
 
 // Mismas equivalencias de efecto documentadas en pasarela_misiones.cpp
-// (CapsulaIWAB3). Una cápsula sin port NO se reemplaza por una aproximación.
+// (CapsulaIWAB3). Una cÃ¡psula sin port NO se reemplaza por una aproximaciÃ³n.
 int EquivalenteCapsulaIW(int id) {
   static constexpr std::pair<int, int> tabla[] = {
     {1,6},{13,6},{34,20},{43,26},{61,33},{106,54},{133,66},{232,117},{415,28},{418,28},
@@ -240,9 +284,9 @@ int EstadoCapsulaIW(int id) {
   return it == g_estado_iw.end() ? 0 : it->second;
 }
 
-// EU 0x2ABEC0 + 0x2AC810/0x2AC8D0: la cápsula fija conserva su nivel
-// exigido o usa la variante superior POSEÍDA de la misma familia. La cuarta
-// posición evita expresamente esta sustitución en DragonMissionSkillEditScreen.
+// EU 0x2ABEC0 + 0x2AC810/0x2AC8D0: la cÃ¡psula fija conserva su nivel
+// exigido o usa la variante superior POSEÃDA de la misma familia. La cuarta
+// posiciÃ³n evita expresamente esta sustituciÃ³n en DragonMissionSkillEditScreen.
 int ActivacionFijaIW(int activacion, size_t posicion) {
   if (activacion <= 0 || posicion == 3) return activacion;
   size_t p = 0;
@@ -262,17 +306,17 @@ int ActivacionFijaIW(int activacion, size_t posicion) {
 }
 
 void ActualizarInventarioIW() {
-  // Solo los resultados acreditan haber completado una misión. iw_hecho puede
-  // ser el máximo abierto y los iw_cap_* antiguos eran EQUIPO, no posesión.
+  // Solo los resultados acreditan haber completado una misiÃ³n. iw_hecho puede
+  // ser el mÃ¡ximo abierto y los iw_cap_* antiguos eran EQUIPO, no posesiÃ³n.
   for (int n = 1; n <= kMisiones; ++n)
     if (LeerProgreso("iw_rango_" + std::to_string(n), 0) > 0 && g_estado_iw.count(0x7E1 + n))
       g_estado_iw[0x7E1 + n] |= 0xE0;
   // rango_iw_mini_* (sin el prefijo iw_rango) solo mejora al SUPERAR el
-  // minijuego. iw_rango_mini_* también existe tras una derrota: no sirve aquí.
+  // minijuego. iw_rango_mini_* tambiÃ©n existe tras una derrota: no sirve aquÃ­.
   for (int clave = 0x7D0; clave <= 0x7E1; ++clave)
     if (LeerProgreso("rango_iw_mini_" + std::to_string(clave), 0) > 0 && g_estado_iw.count(clave))
       g_estado_iw[clave] |= 0xE0;
-  // EU 0x2AB590: tipo 6 = cualquiera; el resto todos, y al menos uno válido.
+  // EU 0x2AB590: tipo 6 = cualquiera; el resto todos, y al menos uno vÃ¡lido.
   for (const auto& c : g_catalogo_iw) {
     if (EstadoCapsulaIW(c.id)) continue;
     int total = 0, hechos = 0;
@@ -311,7 +355,7 @@ bool GuardarHabilidadesIW() {
   }
   try { (void)toml::parse_file(temporal); }
   catch (const toml::parse_error&) { return false; }
-  // No se borra ni se sobrescribe la revisión anterior; tampoco progreso.toml.
+  // No se borra ni se sobrescribe la revisiÃ³n anterior; tampoco progreso.toml.
   const bool anterior = std::filesystem::exists(ruta, ec);
   const auto respaldo = ruta.string() + ".anterior." + sello;
   if (anterior) {
@@ -607,7 +651,7 @@ int TecnicasMisionIW(int mision, int* salida, int max) {
 // (0x3d0000; 14 huecos de 6 B en +0x10) que mezcla transformaciones y trajes. Los trajes son los otros campos
 // (+0x18/+0x1A jugador, +0x3E/+0x40 rival): DragonMissionBattleCharacterDataBlocks (EU 0x229F20) los usa como indice
 // de la tabla de 8 trajes (+0x78, {id, forma, color}). Prueba de que +0x16/+0x3C es la variante de modelo: la mision
-// 30 («Goku con scouter») trae rival 0 Goku forma 3 y traje 0, y el modelo 4 de Goku en All_Character_Slots es
+// 30 (Â«Goku con scouterÂ») trae rival 0 Goku forma 3 y traje 0, y el modelo 4 de Goku en All_Character_Slots es
 // "Goku Scouter (4)". Las 21 misiones con rival forma != 0 son 1,2,3,4,23,24,26,27,28,30,31,32,50,51,55,64,88,89,
 // 90,93,96 (45 misiones contando las del jugador). Copiar el valor a `forma` de B3 es imposible: alli 0..nf son solo
 // transformaciones de char372 y el numero no significa lo mismo (Piccolo 2 = Fusion con Kami, Goku 4 = SSJ3, A18 1 =
@@ -715,6 +759,7 @@ void MarcarEsferaIW(int indice, float t) {
   GuardarProgreso("iw_esferas", mascara);
   g_esferas_mask = mascara;
   g_esferas_t = t;
+  g_mo.reiniciar = true, g_mo.de_golpe = true, g_mo.conservar = true;   // iw-mapa: la esfera recogida ya no sale en el espejo
 }
 bool g_pose_resultado = false;   // vuelta de combate: Goku con la animacion 8 hasta la recarga (101 cuadros)
 bool g_salida_saga = false;      // cambio de saga (EU 0x2FDF80): Goku con la animacion 10 (tabla 0x498A70)
@@ -1367,7 +1412,7 @@ bool LeerDragonMission(const std::filesystem::path& iw, DragonMissionIW& out, st
     for (size_t i = 0; i < 127; ++i) g_deseos_iw.push_back(int(U32(deseos, i * 4)));
   REXLOG_INFO("dbz3 iw habilidades: lista de deseos CMN967: {} IDs", g_deseos_iw.size());
   // Tabla del ejecutable del jugador, reconocida por los primeros siete IDs.
-  // No se reparte una copia ni se confunde el índice del menú con el ID.
+  // No se reparte una copia ni se confunde el Ã­ndice del menÃº con el ID.
   for (size_t p = 0; p + 29 * 4 <= elf.size(); p += 4) {
     if (U32(elf, p) || U32(elf, p + 4) != 44 || U32(elf, p + 8) != 2 ||
         U32(elf, p + 12) != 3 || U32(elf, p + 16) != 4 || U32(elf, p + 20) != 6 || U32(elf, p + 24) != 7) continue;
@@ -1487,6 +1532,8 @@ bool LeerDragonMission(const std::filesystem::path& iw, DragonMissionIW& out, st
     if (h.size() >= 0x14 && std::memcmp(h.data(), "#DMD", 4) == 0) d = std::move(h);
   }
   const uint32_t n = d.size() >= 0x14 ? std::min<uint32_t>(U32(d, 8), 1024) : 0;
+  g_dmd_raw = d;                         // iw-mapa: crudo para el espejo del interprete
+  g_scd_raw = cmn.Entrada(1127);         // #SCD de capsulas (prerrequisitos de desbloqueo)
   // Recuento por tipo del #DMD (RE 2026-10-25): la copia USA trae 149 registros = 18 minijuegos (0), 96 misiones (1),
   // 22 marcas de Bola/esfera (2, +0x1C = 0..21), 5 eventos tipo 3 (claves 0x8D0-0x8D4, una por saga 1..5) y 8 tipo 4
   // (0x8D5-0x8DC). Los tipos 3-4 son los desbloqueos de guion: no los elige el cursor (Story_SpawnSpriteNode 0x31B770
@@ -1544,6 +1591,7 @@ bool LeerDragonMission(const std::filesystem::path& iw, DragonMissionIW& out, st
       if (h.size() >= 0x14 && std::memcmp(h.data(), "#DMD", 4) == 0) d2 = std::move(h);
     }
     const uint32_t n2 = d2.size() >= 0x14 ? std::min<uint32_t>(U32(d2, 8), 1024) : 0;
+    g_dmd_road_raw = d2;   // iw-mapa
     for (uint32_t i = 0; i < n2 && 0x10 + 4 * size_t(i + 1) <= d2.size(); ++i) {
       const uint32_t o = U32(d2, 0x10 + 4 * size_t(i));
       if (size_t(o) + 0x28 > d2.size()) continue;
@@ -1776,8 +1824,8 @@ int IdActivacionIW(int activacion) {
   for (const auto& c : g_caps_iw) if (c.activacion == activacion) return c.id;
   return 0;
 }
-// EU 0x2ABAE0: el editor usa el propietario base, también para fusiones y
-// absorciones; el registro de COMBATE conserva el ID original de la misión.
+// EU 0x2ABAE0: el editor usa el propietario base, tambiÃ©n para fusiones y
+// absorciones; el registro de COMBATE conserva el ID original de la misiÃ³n.
 int PersonaCapsulasIW(int id) {
   switch (id) {
     case 84: case 79: case 78: return 36;
@@ -1794,8 +1842,8 @@ int FamiliaCapsulaIW(int id) {
   return -id;
 }
 bool EntreIW(int v, int a, int b) { return v >= a && v <= b; }
-// EU 0x2E1030 + 0x2E29C0: categoría, propietario, posesión, sustitución y
-// exclusiones de fusión. Son IDs de cápsula, no índices SCD ni slots B3.
+// EU 0x2E1030 + 0x2E29C0: categorÃ­a, propietario, posesiÃ³n, sustituciÃ³n y
+// exclusiones de fusiÃ³n. Son IDs de cÃ¡psula, no Ã­ndices SCD ni slots B3.
 bool AdmiteCapsulaIW(const PropiedadCapsulaIW& c, int personaje, int ranura, const std::array<int, 8>& equipo) {
   const int categoria = g_tipos_ranura_iw[size_t(ranura)];
   if (c.tipo != categoria || c.excluida == 4 || (c.propietario != personaje && c.propietario != 255) ||
@@ -1890,8 +1938,8 @@ void PantallaDM::AbrirShenron(const InfoDM& in) {
     return;
   }
   ActualizarInventarioIW();
-  // EU 0x280990: índices 1..126 de CMN967, no las técnicas de las misiones
-  // ni todas las fichas del #SCD. Los huecos a cero son 100000 zení.
+  // EU 0x280990: Ã­ndices 1..126 de CMN967, no las tÃ©cnicas de las misiones
+  // ni todas las fichas del #SCD. Los huecos a cero son 100000 zenÃ­.
   std::vector<CapsulaIW> libres;
   for (size_t i = 1; i < g_deseos_iw.size(); ++i) {
     const int id = g_deseos_iw[i];
@@ -1919,13 +1967,13 @@ void PantallaDM::AbrirShenron(const InfoDM& in) {
               elegidas, ids, libres.size() + elegidas);
 }
 
-// Skill Edit: ocho posiciones con máscara fija del registro de misión y selección
-// del inventario #SCD real. El guardado añadido no reinterpreta iw_cap_* como posesión.
+// Skill Edit: ocho posiciones con mÃ¡scara fija del registro de misiÃ³n y selecciÃ³n
+// del inventario #SCD real. El guardado aÃ±adido no reinterpreta iw_cap_* como posesiÃ³n.
 PantallaDM::Accion PantallaDM::PantallaCapsulas(ImDrawList* dl, const ImGuiIO& io, float t, uint16_t pulsado,
                                                 const InfoDM& in) {
   const auto a = S::GameArea(io);
-  // La bandeja de misión NO es Warrior's Room65: usa AMA371 y AMT372
-  // sobre la ficha. El motor AMA compartido resuelve posición, escala y giro.
+  // La bandeja de misiÃ³n NO es Warrior's Room65: usa AMA371 y AMT372
+  // sobre la ficha. El motor AMA compartido resuelve posiciÃ³n, escala y giro.
   FichaMinijuego(dl, io, t, 0, in);
   if (edit_tab_ == 0) {
     if (pulsado & (kUp | kDown)) {
@@ -2043,7 +2091,7 @@ PantallaDM::Accion PantallaDM::PantallaCapsulas(ImDrawList* dl, const ImGuiIO& i
 
 // EU 0x381A30 LoadWaitShenronWishMainMenuFunc
 // Deseos de Shenron (EU 0x2B1220 / 0x2B1210 / 0x381A30). Arte: DATA_USA 65 (ventana, Shenron, dialogos, aros y
-// capsulas) y los nombres del banco 62, indexados por la lista CMN967. La concesión
+// capsulas) y los nombres del banco 62, indexados por la lista CMN967. La concesiÃ³n
 // de EU 0x280D00 conserva los bits bajos del estado, recalcula desbloqueos y dispersa las Bolas.
 PantallaDM::Accion PantallaDM::PantallaShenron(ImDrawList* dl, const ImGuiIO& io, float t, uint16_t pulsado,
                                                const InfoDM& in) {
@@ -2075,7 +2123,7 @@ PantallaDM::Accion PantallaDM::PantallaShenron(ImDrawList* dl, const ImGuiIO& io
             ImVec4(0, 64, 192, 96));
     const CapsulaIW& c = shenron_3_[size_t(std::clamp(shenron_sel_, 0, int(shenron_3_.size()) - 1))];
     char linea[128];
-    if (c.id) std::snprintf(linea, sizeof(linea), T::T("Cápsula %d conseguida", "Capsule %d obtained"), c.id);
+    if (c.id) std::snprintf(linea, sizeof(linea), T::T("CÃ¡psula %d conseguida", "Capsule %d obtained"), c.id);
     else std::snprintf(linea, sizeof(linea), "100000 ZENI");
     S::MenuText(dl, a.At(760, 800), S::mode::kRow * a.s, linea, true, false, 700 * a.s);
     if (shenron_t_ > 1.4f || (pulsado & (kA | kB))) shenron_fase_ = -1;
@@ -2085,7 +2133,7 @@ PantallaDM::Accion PantallaDM::PantallaShenron(ImDrawList* dl, const ImGuiIO& io
   // el original muestra igualmente la pantalla (CapsuleSelect_PickRandomThree_ EU 0x280990): aqui se avisa y se cierra.
   if (shenron_3_.empty()) {
     S::MenuText(dl, a.At(760, 800), S::mode::kRow * a.s,
-                T::T("No quedan cápsulas que desear.", "No capsules left to wish for."), true, false, 700 * a.s);
+                T::T("No quedan cÃ¡psulas que desear.", "No capsules left to wish for."), true, false, 700 * a.s);
     S::mode::Help(dl, a, {{"A", T::T("Cerrar", "Close")}, {"B", T::T("Luego", "Later")}});
     if (pulsado & (kA | kB)) {
       deseo_postpuesto_ = true;
@@ -2139,7 +2187,7 @@ PantallaDM::Accion PantallaDM::PantallaShenron(ImDrawList* dl, const ImGuiIO& io
   S::mode::Help(dl, a, {{shenron_fase_ == 3 ? "START" : "A", T::T("Elegir", "Select")}, {"B", T::T("Luego", "Later")}});
   if (!aviso_.empty()) S::MenuText(dl, a.At(750, 730), S::mode::kSmall * a.s, aviso_.c_str(), false, true, 760 * a.s);
   if (shenron_fase_ == 1 && (pulsado & kA)) {
-    shenron_fase_ = 3;   // información: aún no concede (0x281400 -> 0x280D00)
+    shenron_fase_ = 3;   // informaciÃ³n: aÃºn no concede (0x281400 -> 0x280D00)
     shenron_t_ = 0;
     REXLOG_INFO("dbz3 iw shenron: opcion {} (capsula {}): informacion, aun sin conceder; START o 960 cuadros",
                 shenron_sel_, shenron_3_[size_t(shenron_sel_)].id);
@@ -2174,7 +2222,7 @@ PantallaDM::Accion PantallaDM::PantallaBrillo(ImDrawList* dl, const ImGuiIO& io,
   std::snprintf(valor, sizeof(valor), "%d/128", brillo_);
   S::MenuText(dl, a.At(750, 410), S::mode::kHead * a.s, valor, true, false, 300 * a.s);
   Imagen2(dl, 13000 + kOptMando, De(op, kOptMando), a.At(880, 500), a.At(1160, 760));
-  S::mode::Help(dl, a, {{"←/→", T::T("Ajustar", "Adjust")}, {"Y", T::T("Defecto (26)", "Default (26)")},
+  S::mode::Help(dl, a, {{"â†/â†’", T::T("Ajustar", "Adjust")}, {"Y", T::T("Defecto (26)", "Default (26)")},
                         {"B", T::T("Guardar", "Save")}});
   if (pulsado & kLeft) brillo_ = std::max(0, brillo_ - (pulsado & kLB ? 10 : 1));
   if (pulsado & kRight) brillo_ = std::min(128, brillo_ + (pulsado & kRB ? 10 : 1));
@@ -2198,10 +2246,103 @@ namespace {
 // 0x1B65D0, posicion spline 0x1B5F40, cuadro/textura 0x1B5440) y el recorrido de SprAnim_UpdateAndDrawNode los
 // ejecuta ahora el motor ama::Pool de anim_iw.cpp. Lo unico que queda aqui es elegir el objeto segun el mapa
 // (AsegurarAmaMapa) y pintar las Entradas que devuelve Pool::Pases. El objeto 0 sigue siendo el unico sin
-// StoryMg_PositionAdjust: sus posiciones son pantalla (600x450), no mapa (DS36 §5).
+// StoryMg_PositionAdjust: sus posiciones son pantalla (600x450), no mapa (DS36 Â§5).
+}  // namespace
+
+// ---- tanda4 iw-mapa: pegamento con el espejo del interprete (src/iw_mips_mapa.inl) ----
+namespace {
+// Botones de XInput (los que ve el port) -> botones de PS2 que lee el ELF: cruz 0x4000 confirma, triangulo 0x1000 sale, cuadrado
+// 0x8000 corre, L1/R1 0x400/0x800, SELECT 0x1, START 0x8, cruceta 0x10 arriba / 0x20 derecha / 0x40 abajo / 0x80 izquierda.
+uint16_t Ps2DeXinput(uint16_t x) {
+  uint16_t b = 0;
+  if (x & 0x0001) b |= 0x10;
+  if (x & 0x0008) b |= 0x20;
+  if (x & 0x0002) b |= 0x40;
+  if (x & 0x0004) b |= 0x80;
+  if (x & 0x0100) b |= 0x400;
+  if (x & 0x0200) b |= 0x800;
+  if (x & 0x1000) b |= 0x4000;
+  if (x & 0x2000) b |= 0x1000;
+  if (x & 0x4000) b |= 0x8000;
+  if (x & 0x0020) b |= 0x1;
+  if (x & 0x0010) b |= 0x8;
+  return b;
+}
+// Mando 1 (mantenidos y palanca izquierda), igual que pasarela_misiones.cpp::Pad: se lee en el hilo de la interfaz.
+void RefrescarMandoMapa() {
+  if (g_mo_pend.exchange(true)) return;
+  dbz3::launcher::DeferUi([]() {
+    uint16_t b = 0;
+    int lx = 0, ly = 0;
+    auto* rt = rex::Runtime::instance();
+    if (auto* in = rt ? static_cast<rex::input::InputSystem*>(rt->input_system()) : nullptr) {
+      rex::input::X_INPUT_STATE st = {};
+      if (in->GetStateForUI(0, &st) == 0) {   // X_ERROR_SUCCESS
+        b = Ps2DeXinput(static_cast<uint16_t>(st.gamepad.buttons));
+        lx = std::clamp(int(std::lround(double(int16_t(st.gamepad.thumb_lx)) / 32767.0 * 127.0)), -128, 127);
+        ly = std::clamp(int(std::lround(-double(int16_t(st.gamepad.thumb_ly)) / 32767.0 * 127.0)), -128, 127);   // PS2: abajo es +
+      }
+    }
+    g_mo_mant = b;
+    g_mo_lx = lx;
+    g_mo_ly = ly;
+    g_mo_pend = false;
+  });
+}
+// El progreso del port como bytes de estado de capsula (la partida del original los guarda tal cual): mision hecha |= 0xE0,
+// esfera recogida |= 0xC0, minijuego con rango |= 0xE0, evento de guion visto |= 0x01. Capsule_UpdateUnlockFlagsAt0xC4 abre
+// despues lo que los prerrequisitos del #SCD permiten.
+std::vector<MI::Marca> MarcasMapa(const InfoDM& in, float t) {
+  std::vector<MI::Marca> m;
+  for (const CasillaDM& q : Cas(in)) {
+    if (q.tipo == 1 && q.mision > 0 && q.mision <= in.hecho) m.push_back({uint32_t(q.clave), 0xE0});
+    else if (q.tipo == 2 && EsferaRecogidaIW(q.indice, t)) m.push_back({uint32_t(q.clave), 0xC0});
+    else if (q.tipo == 0 && LeerProgreso("iw_rango_mini_" + std::to_string(q.clave), 0) > 0) m.push_back({uint32_t(q.clave), 0xE0});
+  }
+  const int vistos = LeerProgreso("iw_eventos", 0);
+  for (const CasillaDM& e : (in.road ? in.dm->eventos_road : in.dm->eventos)) {
+    const int bit = e.clave - 0x8CF;
+    if (bit >= 0 && bit < 30 && ((vistos >> bit) & 1)) m.push_back({uint32_t(e.clave), 0x01});
+  }
+  return m;
+}
+// (Re)hace el espejo del mapa para esta pantalla. false = el port (ajuste apagado, ELF distinto o fallo del interprete).
+bool IniciarMapaOrig(const void* dueno, const InfoDM& in, int saga, float gx, float gy, float t) {
+  if (!MI::g_paso || !MI::g_activa || !MI::g_activa()) return false;
+  const std::vector<uint8_t>& dmd = in.road ? g_dmd_road_raw : g_dmd_raw;
+  if (dmd.empty() || g_scd_raw.empty()) return false;
+  const std::vector<MI::Marca> marcas = MarcasMapa(in, t);
+  MI::Entrada e;
+  e.inicio = true;
+  e.de_golpe = g_mo.de_golpe;
+  e.road = in.road;
+  e.saga = saga;
+  e.dmd = dmd.data(), e.dmd_n = uint32_t(dmd.size());
+  e.scd = g_scd_raw.data(), e.scd_n = uint32_t(g_scd_raw.size());
+  e.marcas = marcas.data(), e.n_marcas = uint32_t(marcas.size());
+  e.fijar_goku = true, e.goku[0] = gx, e.goku[1] = gy;
+  e.paso = 1.0f;
+  e.t = uint64_t(t * 60.0f);
+  g_mo.vivo = g_mo.reiniciar = g_mo.de_golpe = g_mo.conservar = false;
+  g_mo.dueno = dueno, g_mo.road = in.road, g_mo.saga = saga;
+  if (!MI::g_paso(e, g_mo.out)) {
+    g_mo.apagado = true;
+    return false;
+  }
+  g_mo.vivo = true;
+  g_mo.fila_j.assign(MI::kFilas, -1);
+  const auto& cas = Cas(in);
+  for (size_t j = 0; j < cas.size(); ++j)
+    if (cas[j].fila >= 0 && cas[j].fila < MI::kFilas) g_mo.fila_j[size_t(cas[j].fila)] = int(j);
+  g_mo.acc = 0, g_mo.libre_ult = g_mo.sobre = g_mo.conf = g_mo.cambio = false;
+  REXLOG_INFO("dbz3 iw mapa original: espejo listo (saga {}, {} marcas de progreso, aparicion en {:.0f} cuadros)", saga,
+              marcas.size(), g_mo.out.duracion);
+  return true;
+}
 }  // namespace
 
 void PantallaDM::ReiniciarMapa() {
+  g_mo.reiniciar = true, g_mo.de_golpe = false, g_mo.conservar = false, g_mo.apagado = false;   // iw-mapa: entrada nueva
   ReiniciarAmaMapa();   // sprites del mapa recreados; el Pool vuelve al cuadro 0 (Sprite_DisplayHudSetByMode)
   bloqueo_scroll_ = false;
   volviendo_ = false;   // una entrada nueva cancela cualquier vuelta de combate pendiente
@@ -2308,6 +2449,7 @@ void PantallaDM::VolverDelCombate() {
   // lleva el comando 4 (Story_MapResultDelayTick / Story_MapReloadAfterDelayTick).
   volviendo_ = false;
   t_vuelta_ = 0;
+  g_mo.reiniciar = true, g_mo.de_golpe = true, g_mo.conservar = true, g_mo.apagado = false;   // iw-mapa: comando 10 con arg 1
   ReiniciarAmaMapa();   // el original recrea los sprites del mapa (Sprite_DisplayHudSetByMode)
   res_delay_hecho_ = recarga_hecha_ = false;
   g_pose_resultado = false;
@@ -2491,9 +2633,14 @@ void PantallaDM::FinCambioSaga(const InfoDM& in) {
     if (cambio_mision_ < int(cas.size())) {
       sel_ = cambio_mision_;
       mx_ = -1;   // paseo hasta la casilla nueva
+      if (g_mo.vivo && g_mo.cambio) {   // iw-mapa: Goku aparece en la posicion por defecto del area (cmd 0xE, tabla 0x47DB60)
+        mx_ = cx_ = g_mo.pos_defecto[0], my_ = cy_ = g_mo.pos_defecto[1];
+        g_mo.reiniciar = true, g_mo.de_golpe = true, g_mo.conservar = true;   // comando 10 con arg 1: casillas de golpe
+      }
     }
     ev_saga_ = cambio_saga_;
   }
+  g_mo.cambio = g_mo.cambio_iniciado = false;
   ap_t_ = 0;    // iconos de la saga nueva (LoadWaitMapIcons)
   tcam_ = 0;
   cambio_fase_ = 0;
@@ -2523,6 +2670,10 @@ void PantallaDM::PasoCambioSaga(float dt, const InfoDM& in) {
       if (cambio_mision_ >= 0 && cambio_mision_ < int(cas.size())) {
         sel_ = cambio_mision_;
         mx_ = -1;
+        if (g_mo.vivo && g_mo.cambio) {   // iw-mapa: posicion por defecto del area y casillas de golpe
+          mx_ = cx_ = g_mo.pos_defecto[0], my_ = cy_ = g_mo.pos_defecto[1];
+          g_mo.reiniciar = true, g_mo.de_golpe = true, g_mo.conservar = true;
+        }
       }
       if (cambio_saga_ >= 0) ev_saga_ = cambio_saga_;
     }
@@ -2935,8 +3086,63 @@ void PantallaDM::DibujarFondo(ImDrawList* dl, const ImGuiIO& io, float t, const 
     mx_ = cx_ = c.x;
     my_ = cy_ = c.y;
   }
+  // tanda4 iw-mapa: con el ajuste dbz3_iw_mapa_original el mapa corre las funciones del ELF (aparicion, palanca, seleccion).
+  // Los mandos del cuadro los pone Mapa() (g_mo.libre_cuadro/pulsa_pend); los dibujos de fondo de otras pantallas no mueven nada.
+  bool orig = false;
+  if (!g_mo.apagado && MI::g_activa && MI::g_activa()) {
+    if (g_mo.dueno != this || !g_mo.vivo || g_mo.reiniciar || g_mo.road != in.road || g_mo.saga != c.saga) {
+      if (g_mo.dueno != this || g_mo.road != in.road) g_mo.de_golpe = false;
+      orig = IniciarMapaOrig(this, in, c.saga, mx_, my_, t);
+    } else {
+      orig = true;
+    }
+  }
+  const bool libre_cuadro = orig && g_mo.libre_cuadro && listo && estado_ == 7 && !bloqueo_scroll_ && !volviendo_ &&
+                            cambio_fase_ == 0 && ev_ < 0 && ordenes_.empty() && !g_mo.cambio;
+  g_mo.libre_cuadro = false;
+  if (orig && libre_cuadro) {
+    RefrescarMandoMapa();
+    g_mo.acc += dt * 60.0f;
+    int pasos = std::min(int(g_mo.acc), 4);
+    g_mo.acc -= float(int(g_mo.acc));
+    for (; pasos > 0; --pasos) {
+      MI::Entrada e;
+      e.libre = true;
+      e.road = in.road;
+      e.saga = c.saga;
+      e.paso = 1.0f;
+      e.mant = g_mo_mant.load();
+      e.pulsa = g_mo.pulsa_pend;
+      e.lx = g_mo_lx.load(), e.ly = g_mo_ly.load();
+      e.t = uint64_t(t * 60.0f);
+      g_mo.pulsa_pend = 0;
+      if (!MI::g_paso(e, g_mo.out)) {
+        g_mo.apagado = true, g_mo.vivo = false, orig = false;
+        break;
+      }
+      g_mo.libre_ult = true;
+      if (std::hypot(g_mo.out.goku[0] - mx_, g_mo.out.goku[1] - my_) > 1.0e-3f)
+        g_mo.cara[0] = g_mo.out.goku[0] - mx_, g_mo.cara[1] = g_mo.out.goku[1] - my_;
+      mx_ = g_mo.out.goku[0], my_ = g_mo.out.goku[1];
+      const int f = g_mo.out.sel;
+      g_mo.sobre = f >= 0 && f < MI::kFilas && g_mo.fila_j[size_t(f)] >= 0;
+      if (g_mo.sobre) sel_ = g_mo.fila_j[size_t(f)];
+      for (int i = 0; i < g_mo.out.n_ord; ++i) {
+        const MI::Orden& o = g_mo.out.ord[i];
+        if (o.cmd == 2) {   // L1/R1: cambio de saga (el original encadena 2, 5, 0xE, 10, 3, 1, 8; el port lleva el 2)
+          g_mo.cambio = true, g_mo.cambio_dir = o.arg, g_mo.cambio_area = g_mo.out.area_destino;
+          g_mo.pos_defecto[0] = g_mo.out.pos_defecto[0], g_mo.pos_defecto[1] = g_mo.out.pos_defecto[1];
+        }
+        if (o.cmd == 9 || (g_mo.out.transicion && o.cmd == 0x10)) g_mo.conf = true, g_mo.conf_fila = g_mo.out.conf_fila;
+      }
+    }
+  } else if (orig) {
+    g_mo.libre_ult = false;
+    g_mo.acc = 0;
+    g_mo.pulsa_pend = 0;
+  }
   constexpr float kX0 = 300, kX1 = 980, kY0 = 225, kY1 = 735;
-  if (listo) {   // durante la espera de entrada, Goku y la camara se quedan quietos (el original no carga mandos)
+  if (listo && !orig) {   // durante la espera de entrada, Goku y la camara se quedan quietos (el original no carga mandos)
     const float k1 = 1.0f - std::exp(-dt * 6.0f);
     mx_ += (c.x - mx_) * k1;
     my_ += (c.y - my_) * k1;
@@ -2986,7 +3192,9 @@ void PantallaDM::DibujarFondo(ImDrawList* dl, const ImGuiIO& io, float t, const 
     // mapa (+0x1D0) limitado a x [300, 980] e y [225, 735]; camara += (objetivo - camara) * t, t += 0,01 por cuadro y
     // vuelve a 0 al pasar de 1; a menos de 2 px, la camara salta al objetivo con t = 1; despues se limita igual.
     const float ox = std::clamp(mx_, kX0, kX1), oy = std::clamp(my_, kY0, kY1);
-    if (std::hypot(ox - cx_, oy - cy_) < 2.0f) {
+    if (orig && g_mo.libre_ult) {   // iw-mapa: Story_MapCameraUpdate pone la camara en Goku (topes x 300..980, y 225..735)
+      cx_ = g_mo.out.cam[0], cy_ = g_mo.out.cam[1], tcam_ = 1.0f;
+    } else if (std::hypot(ox - cx_, oy - cy_) < 2.0f) {
       cx_ = ox, cy_ = oy, tcam_ = 1.0f;
     } else {
       cx_ += (ox - cx_) * tcam_;
@@ -3160,17 +3368,21 @@ void PantallaDM::DibujarFondo(ImDrawList* dl, const ImGuiIO& io, float t, const 
   for (size_t j = 0; j < cas.size(); ++j) {
     const CasillaDM& q = cas[j];
     if (q.saga != c.saga || q.icono < 0) continue;
-    if (q.tipo == 1 && q.mision > in.abiertas) continue;   // las de mas adelante aun no salen
+    if (orig && g_mo.vivo) {   // iw-mapa: sale la casilla que tiene nodo en el espejo (Story_MapObjectVisibility + AppearTick)
+      if (q.fila < 0 || q.fila >= MI::kFilas || g_mo.out.sale_a[q.fila] < 0) continue;
+    } else if (q.tipo == 1 && q.mision > in.abiertas) {
+      continue;   // las de mas adelante aun no salen
+    }
     if (q.tipo == 2 && EsferaRecogidaIW(q.indice, t)) continue;   // esfera ya recogida: su byte queda 0xE0
     // EU 0x2FD580 Story_SpawnMapObjectSprite
     const int rank = n_saga - 1 - pos_saga++;              // la ultima primero (indice count-1 hacia abajo)
-    const float t_ap = 20.0f * float(rank + 1);            // una cada 20 cuadros
+    const float t_ap = orig && g_mo.vivo ? g_mo.out.sale_a[q.fila] : 20.0f * float(rank + 1);   // una cada 20 cuadros
     const float alfa = listo ? std::clamp((ap_t_ - t_ap) / kFundido, 0.0f, 1.0f) : 0.0f;
     if (alfa <= 0.0f) continue;                            // aun no ha aparecido
     const int al = int(255.0f * alfa + 0.5f);
     const Imagen& im = De(in.dm->iconos, q.icono);
     float w = float(im.w), h = float(im.h);
-    if (int(j) == sel_) {   // aro verde (t89) bajo la elegida, que late
+    if (int(j) == sel_ && (!orig || g_mo.sobre)) {   // aro verde (t89) bajo la elegida, que late
       const float r = 40.0f + 5.0f * std::sin(t * 5.0f);
       Imagen2(dl, 1000 + kAro, De(in.dm->iconos, kAro), P(q.x - r, q.y - r), P(q.x + r, q.y + r), {},
               IM_COL32(255, 255, 255, al));
@@ -3222,12 +3434,14 @@ void PantallaDM::DibujarFondo(ImDrawList* dl, const ImGuiIO& io, float t, const 
   // Goku del mapa, de pie junto a la casilla: ~21 % del alto de la pantalla, como el original. En 3D (su modelo de
   // DATA_CMN 1093, andando mientras va a la casilla); sin el, el dibujo t90 a 4x con Scale2x
   const float gh = 0.21f * 480.0f / kZoom, gw = gh * 0.8f, gx = mx_ - 48, gy = my_ + 34;
-  const bool anda = std::hypot(c.x - mx_, c.y - my_) > 2.0f;
+  const bool anda_port = std::hypot(c.x - mx_, c.y - my_) > 2.0f;
+  const bool anda = orig && g_mo.libre_ult ? (g_mo.out.anim == 2 || g_mo.out.anim == 3) : anda_port;   // iw-mapa: animaciones 2 y 3 = andar y correr
+  const float cara_x = orig && g_mo.libre_ult ? g_mo.cara[0] : c.x - mx_, cara_y = orig && g_mo.libre_ult ? g_mo.cara[1] : c.y - my_;
   dl->AddEllipseFilled(P0(gx, gy), ImVec2(gw * 0.4f * s, gw * 0.12f * s), IM_COL32(0, 0, 0, 90));
   // el Goku 3D de IW (1093): con la piel, las texturas opacas y los pesos bien leidos (auditoria10/B y E) sale como el
   // original; DBZ3_IW_SIN_GOKU3D=1 vuelve al dibujo 2D
   static const bool goku3d = std::getenv("DBZ3_IW_SIN_GOKU3D") == nullptr;
-  if (!goku3d || !DibGokuMapa(dl, P0(gx, gy), gh * s, t, anda, c.x - mx_, c.y - my_)) {
+  if (!goku3d || !DibGokuMapa(dl, P0(gx, gy), gh * s, t, anda, cara_x, cara_y)) {
     const float bob = std::fabs(std::sin(t * 7.0f)) * 2.0f;
     Imagen2(dl, 8000, in.dm->goku, P0(gx - gw * 0.5f, gy - gh - bob), P0(gx + gw * 0.5f, gy - bob));
   }
@@ -3283,7 +3497,7 @@ PantallaDM::Accion PantallaDM::MenuMapa(ImDrawList* dl, const ImGuiIO& io, float
         Imagen2(dl, 3000 + kFlecha, De(ui, kFlecha), a.At(466, y - 14), a.At(494, y + 14), ImVec4(24, 0, 0, 24));
       S::MenuText(dl, a.At(640, y), S::mode::kHead * a.s, opt[i], true, false, 280 * a.s);
     }
-    S::mode::Help(dl, a, {{"A", T::T("Elegir", "Select")}, {"B", T::T("Menú principal", "Main menu")},
+    S::mode::Help(dl, a, {{"A", T::T("Elegir", "Select")}, {"B", T::T("MenÃº principal", "Main menu")},
                           {"START", T::T("Volver al mapa", "Back to map")}, {"Y", T::T("Brillo", "Brightness")}});
     // EU 0x365090 Story_MapHandleStartButton: con el menu abierto cierra el estado (Story_PopMapStateAndReload) y,
     // si el scroll sigue pendiente (ctx+0x4A0 < 1), asigna el tick de scroll. El fundido de texto (0x400) es cosmetico.
@@ -3435,7 +3649,7 @@ PantallaDM::Accion PantallaDM::FichaMinijuego(ImDrawList* dl, const ImGuiIO& io,
     }
     if ((pulsado & kA) && mini_campo_ == 2) return EmpezarMinijuego(in, q, t);
   }
-  // Geometría REAL de 334/0. Los callbacks originales solo cambian UV,
+  // GeometrÃ­a REAL de 334/0. Los callbacks originales solo cambian UV,
   // desplazamiento de flechas y luz; no se vuelve a maquetar la ficha.
   auto pintar = [&](const ama::Entrada& e) {
     if (e.SinTextura()) return;
@@ -3863,16 +4077,16 @@ PantallaDM::Accion PantallaDM::Mapa(ImDrawList* dl, const ImGuiIO& io, float t, 
   // EU 0x2B13B0 DragonMissionCutscenesFuncLink: la transicion a Historia usa el reproductor del port.
   if (!in.dm) return kNada;
   if (PruebaCapsulasSpxActiva(dl,io,t,pulsado,*in.dm)) return kNada;
-  CancelarEquipoIW();   // vuelta o cancelación: nunca heredar equipo en un combate ajeno
-  // Arnés N1: una instancia recorre toda la tabla sin reiniciar el juego.
-  // La petición solo se acepta ya en el mapa y acabados sus vídeos; nunca
+  CancelarEquipoIW();   // vuelta o cancelaciÃ³n: nunca heredar equipo en un combate ajeno
+  // ArnÃ©s N1: una instancia recorre toda la tabla sin reiniciar el juego.
+  // La peticiÃ³n solo se acepta ya en el mapa y acabados sus vÃ­deos; nunca
   // altera una batalla ni los datos de la copia real del jugador.
   if (!in.road && video_ < 0 && !dbz3::video::Activo() && std::getenv("DBZ3_TEST_IW_CADENA")) {
     std::ifstream f(dbz3::settings::UserSettingsPath().parent_path() / "dbz3_iw_mision.req");
     int n = 0;
     if ((f >> n) && n >= 1 && n <= kMisiones && n != test_solicitud_mision_) {
       test_solicitud_mision_ = n;
-      GuardarProgreso("iw_bolas", 0);   // misma preparación aislada que TEST_MISIONES=reset
+      GuardarProgreso("iw_bolas", 0);   // misma preparaciÃ³n aislada que TEST_MISIONES=reset
       deseo_bolas_ = 0; t_deseo_ = -1;
       Elegir(in, n);
       REXLOG_INFO("dbz3 iw cadena: solicitud mision {} aceptada en el mapa", n);
@@ -3936,7 +4150,10 @@ PantallaDM::Accion PantallaDM::Mapa(ImDrawList* dl, const ImGuiIO& io, float t, 
   if (video_ >= 0) return Historia(dl, io, t, pulsado, in);
   if (menu_mapa_ != 0) return MenuMapa(dl, io, t, pulsado, in);   // el menu pinta el mapa de fondo
   const float dt = std::clamp(t - t_ultimo_, 0.0f, 0.1f);   // para el globo (ama::Pool); DibujarFondo actualiza t_ultimo_
+  g_mo.libre_cuadro = true;   // iw-mapa: este dibujo es el del mapa libre (los mandos del original corren dentro de DibujarFondo)
+  g_mo.pulsa_pend |= Ps2DeXinput(pulsado);
   DibujarFondo(dl, io, t, in);
+  const bool orig = g_mo.vivo && !g_mo.apagado && g_mo.dueno == this && MI::g_activa && MI::g_activa();
   if (sel_ < 0) return pulsado & kB ? kSalir : kNada;
   // Story_MapIntroDelayTick: el original no carga los mandos del mapa hasta acabar la espera (101 cuadros, > 1,0) y el
   // scroll. RE 2026-10-25 (EU 0x2F8390): el scroll suma 0,01 por cuadro y, si la camara esta a menos de 2 px del
@@ -3961,7 +4178,7 @@ PantallaDM::Accion PantallaDM::Mapa(ImDrawList* dl, const ImGuiIO& io, float t, 
     return q.tipo == 0 || (q.mision > 0 && q.mision <= in.abiertas);
   };
   const int antes = sel_;
-  if (pulsado & (kUp | kDown | kLeft | kRight)) {   // la abierta mas cerca en esa direccion
+  if (!orig && (pulsado & (kUp | kDown | kLeft | kRight))) {   // la abierta mas cerca en esa direccion
     // EU 0x2F8200 Story_PickObjectAtCursor (el original elige el nodo bajo el cursor proyectado; aqui, la casilla
     // abierta mas cercana en la direccion de la cruceta: mismos criterios de "abierta" y de tipo elegible)
     float ux = (pulsado & kLeft) ? -1.0f : (pulsado & kRight) ? 1.0f : 0.0f;
@@ -3983,7 +4200,29 @@ PantallaDM::Accion PantallaDM::Mapa(ImDrawList* dl, const ImGuiIO& io, float t, 
     }
     if (mejor >= 0) sel_ = mejor;
   }
-  if (pulsado & (kLB | kRB)) {   // otra saga: su mision abierta mas alta
+  if (orig && g_mo.cambio && !g_mo.cambio_iniciado && cambio_fase_ == 0) {
+    // iw-mapa: L1/R1 del original (2FE270 empuja 2, 5, 0xE, 10, 3, 1, 8): el area destino la decide LockScript_ y la posicion de
+    // Goku sale de la tabla 0x47DB60; la casilla del cursor es la mas cercana a esa posicion en el area nueva.
+    int mejor = -1;
+    float md = 1.0e9f;
+    for (size_t j = 0; j < cas.size(); ++j) {
+      if (cas[j].saga != g_mo.cambio_area) continue;
+      const float d = std::hypot(cas[j].x - g_mo.pos_defecto[0], cas[j].y - g_mo.pos_defecto[1]);
+      if (d < md) md = d, mejor = int(j);
+    }
+    if (mejor >= 0) {
+      cambio_saga_ = g_mo.cambio_area;
+      cambio_mision_ = mejor;
+      g_mo.cambio_iniciado = true;
+      EmpujarOrden(2, g_mo.cambio_dir);
+      DespacharOrden(in);
+      aviso_.clear();
+    } else {
+      g_mo.cambio = false;
+    }
+    pulsado = 0;
+  }
+  if (!orig && (pulsado & (kLB | kRB))) {   // otra saga: su mision abierta mas alta
     // EU 0x2FDF80 DragonMissionScenarioChange_L1/R1: L1 empuja la orden 2 con argumento 1 (180 cuadros de salida) y
     // R1 con 2 (240); el cambio de saga lo aplica el fundido, no el cursor. El destino es la mision abierta mas alta
     // de la saga siguiente (el original mueve el area con DAT_0049C348/50, 6 areas en Dragon Mission).
@@ -4010,7 +4249,7 @@ PantallaDM::Accion PantallaDM::Mapa(ImDrawList* dl, const ImGuiIO& io, float t, 
   if (sel_ != antes) aviso_.clear();
   // Si se acaba de recoger la esfera del cursor, pasa a la casilla abierta mas cercana de la saga (la recogida deja
   // de existir en Story_MapObjectVisibility).
-  if (sel_ >= 0 && cas[size_t(sel_)].tipo == 2 && EsferaRecogidaIW(cas[size_t(sel_)].indice, t)) {
+  if (!orig && sel_ >= 0 && cas[size_t(sel_)].tipo == 2 && EsferaRecogidaIW(cas[size_t(sel_)].indice, t)) {
     int mejor = -1;
     float md = 1.0e9f;
     for (size_t j = 0; j < cas.size(); ++j) {
@@ -4145,7 +4384,7 @@ PantallaDM::Accion PantallaDM::Mapa(ImDrawList* dl, const ImGuiIO& io, float t, 
   // Gemini/OPUS iw_mision_1: en el mapa de IW no hay acceso ni cartel de "Fighter's Road" (es un modo del menu
   // principal); la linea de ayuda del original solo lleva guia/elegir/salir. La tecla Y sigue disponible para no
   // cerrar el acceso al modo en el port, pero ya no se anuncia.
-  S::mode::Help(dl, S::GameArea(io), {{"BACK", T::T("Guía", "Guide")}, {"A", T::T("Elegir", "Select")},
+  S::mode::Help(dl, S::GameArea(io), {{"BACK", T::T("GuÃ­a", "Guide")}, {"A", T::T("Elegir", "Select")},
                                                              {"B", in.road ? T::T("Volver", "Back") : T::T("Salir", "Quit")}});
   if (pulsado & kB) return kSalir;
   // START del mapa libre: abre el menu de pausa/guardado (EU 0x365090 -> comandos 0xB/0xC de la cola).
@@ -4159,7 +4398,8 @@ PantallaDM::Accion PantallaDM::Mapa(ImDrawList* dl, const ImGuiIO& io, float t, 
     }
     return kNada;
   }
-  if (pulsado & kA) {
+  if (orig ? g_mo.conf : (pulsado & kA)) {
+    g_mo.conf = false;
     if (q.tipo == 2) {   // esfera: GeneralMapScripts (EU 0x2FE270)
       // Original: marca 0xC0 en DragonMissionStoryModeBattlePointCapsules_Moderation (la esfera deja de salir),
       // ExecuteScript_MMI2 (desbloqueo del guion, no esta en el C: [H]), CopyRecordToEngineBuffer y
@@ -4197,7 +4437,7 @@ PantallaDM::Accion PantallaDM::Mapa(ImDrawList* dl, const ImGuiIO& io, float t, 
       aviso_.clear();
       REXLOG_INFO("dbz3 iw seleccion: ficha minijuego {:#x}, personaje {} (EU 0x2FC330)",
                   q.clave, in.dm->ids_mini[size_t(mini_personaje_)]);
-    } else if (q.mision > 0 && q.mision <= in.abiertas && !no_b3) {
+    } else if (q.mision > 0 && (orig || q.mision <= in.abiertas) && !no_b3) {   // iw-mapa: la casilla elegida ya paso Story_MapObjectVisibility
       return kElegir;
     } else if (q.mision > 0 && no_b3) {   // bloqueada: el motivo (p. ej. "Necesita a Super 17...") en el globo
       aviso_ = in.motivo[size_t(q.mision)];
@@ -4296,7 +4536,7 @@ PantallaDM::Accion PantallaDM::Ficha(ImDrawList* dl, const ImGuiIO& io, float t,
   dl->AddRectFilled(ImVec2(0, 0), io.DisplaySize, IM_COL32(0, 0, 0, 215));
   const int n = Mision(in);
   if (n <= 0) return kVolver;
-  // EU 0x2FE888/0x2FE89C: cambiar de misión limpia las posiciones libres;
+  // EU 0x2FE888/0x2FE89C: cambiar de misiÃ³n limpia las posiciones libres;
   // cerrar/reabrir el editor de la misma conserva el contexto, no un archivo.
   if (edit_mision_ != n) {
     edit_mision_ = n;
@@ -4409,7 +4649,7 @@ PantallaDM::Accion PantallaDM::Ficha(ImDrawList* dl, const ImGuiIO& io, float t,
     const int rival = IWaB3(mt->rival);
     if (rival >= 0) S::MenuText(dl, a.At(875, 375), lin, NombreDe(rival).c_str(), true, false, 420 * a.s);
   }
-  // Panel «Normal — BEST SCORE» de la ficha original (captura original_ficha_mision1.png de DS19): cabecera BEST SCORE
+  // Panel Â«Normal â€” BEST SCOREÂ» de la ficha original (captura original_ficha_mision1.png de DS19): cabecera BEST SCORE
   // (334/1 t15) y debajo las filas SCORE (t17 fila 3) y RANK (t17 fila 1), con el guion de "sin marca" (t24 fila 1,
   // columna 2). RE 2026-10-25: DragonMissionMainMenu_TitleScripts (EU 0x2FC330) pinta la cabecera con los elementos 5/7
   // y 6 de la hoja 0xF (MiscellaneousGameProperties_Display_(1,5,7,0xF,0x20080) y (1,6,-1,0xF,0x40080)); las filas son
@@ -4457,10 +4697,10 @@ PantallaDM::Accion PantallaDM::Ficha(ImDrawList* dl, const ImGuiIO& io, float t,
   }
   if ((pulsado & kStart) || ((pulsado & kA) && menu_ == 4)) {
     if (mt && !PrepararEquipoIW(*mt, edit_preparado_ ? &edit_equipo_ : nullptr)) {
-      aviso_ = T::T("Falta una cápsula", "Missing capsule");
+      aviso_ = T::T("Falta una cÃ¡psula", "Missing capsule");
       return kNada;
     }
-    if (mt) {   // EU 0x2FA200: última selección global, NO forma parte del archivo de guardado
+    if (mt) {   // EU 0x2FA200: Ãºltima selecciÃ³n global, NO forma parte del archivo de guardado
       edit_ultima_mision_ = n;
       edit_ultimo_equipo_ = edit_equipo_;
       for (size_t k = 0; k < 8; ++k)
@@ -4603,6 +4843,7 @@ bool PantallaDM::Resultado(ImDrawList* dl, const ImGuiIO& io, float t, uint16_t 
             ImVec4(0, 32.0f * float(fila), 152, 32.0f * float(fila + 1)));
   };
   auto rango = [&](float y) {
+    if (r.rango == -2) return;   // fase 1 (7/11): fallo sin rango (vuelo, EU 0x33C420)
     const int rg = r.rango >= 0 ? std::min(r.rango, 4) : Rango(mini ? score : r.puntos), col = rg >= 3 ? rg - 3 : rg,
               fila = rg >= 3 ? 1 : 0;
     Imagen2(dl, 3000 + kRangos, De(ui, kRangos), a.At(778, y - 34), a.At(830, y + 34),
@@ -4663,8 +4904,8 @@ bool PantallaDM::Resultado(ImDrawList* dl, const ImGuiIO& io, float t, uint16_t 
   return false;
 }
 
-// US 0x82109BA0 / EU 0x82109CA0: entrada de los dos registros de selección,
-// ANTES de que sub_82112260 los lea. Se consume una sola petición explícita de
+// US 0x82109BA0 / EU 0x82109CA0: entrada de los dos registros de selecciÃ³n,
+// ANTES de que sub_82112260 los lea. Se consume una sola peticiÃ³n explÃ­cita de
 // MISSION START; no se escribe la partida B3 ni la tabla por defecto de luchadores.
 void AplicarEquipoCombateIW(uint8_t* base, uint32_t seleccion) {
   EquipoCombateIW q;
@@ -4694,3 +4935,4 @@ DBZ3_HOOK(sub_82109BA0, dbz3eu_sub_82109CA0) {
   dbz3::pasarela::AplicarEquipoCombateIW(base, ctx.r3.u32);
   orig(ctx, base);
 }
+

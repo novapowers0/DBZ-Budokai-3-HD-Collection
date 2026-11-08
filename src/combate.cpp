@@ -34,6 +34,7 @@
 #include "combate.h"
 #include "generated/dbz3_init.h"
 #include "eu_map.h"
+#include "escenarios_intro_sonda.h"
 #include "ingame/game_style.h"
 #include "iw_minijuegos.h"
 #include "cinematica.h"
@@ -186,6 +187,7 @@ void Sonda(uint8_t* base, uint32_t st) {
       for (size_t i = 0, s = 0; i <= l.size(); ++i)
         if (i == l.size() || l[i] == ',') h += std::string(",") + p + l.substr(s, i - s), s = i + 1;
     }
+    if (dbz3::intro_sonda::Activa()) h += dbz3::intro_sonda::Cabecera();
     g_sonda = Abrir("combate_sonda.csv", (h + "\n").c_str());
     g_golpes = Abrir("combate_golpes.csv",
                      "cuadro,tipo,victima,atacante,id_atacante,codigo,cuadro_anim,props,hr,dano_hr,vida_antes,"
@@ -196,6 +198,7 @@ void Sonda(uint8_t* base, uint32_t st) {
   std::fprintf(g_sonda, "%u,%u", g_frame.load(), st);
   SondaLado(base, g_sonda, x0);
   SondaLado(base, g_sonda, x1);
+  if (dbz3::intro_sonda::Activa()) dbz3::intro_sonda::Fila(base, g_sonda, Mgr(base));
   std::fputc('\n', g_sonda);
   if (g_frame.load() % 60 == 0) std::fflush(g_sonda), std::fflush(g_golpes);
 }
@@ -512,7 +515,7 @@ void DefinitivaLog(uint8_t* base) {
       if (act != 15 || BattleState(base) != 4) {
         if (!espera[k]) espera[k] = std::max<uint32_t>(g_frame.load(), 1u);
         if (g_frame.load() - espera[k] >= 180 || BattleState(base) != 4) fin(k, x, act);
-      }
+      } else espera[k] = 0;   // una pausa entre fases no cuenta como final: GT vuelve a la escena antes del impacto
     }
     code[k] = c;
     ki[k] = now;
@@ -1031,6 +1034,7 @@ DBZ3_HOOK_EU(sub_820F7758) {
 // cuadro (como pulsarlos a la vez a mano; mantenerlo no repite).
 namespace dbz3::fusion { void PruebaMando(uint8_t* base, uint32_t user); }   // fusion.cpp (prueba)
 namespace dbz3::formas { void PruebaMando(uint8_t* base, uint32_t user); }   // transformaciones.cpp (prueba)
+#include "diagnostico_var.inl"
 DBZ3_HOOK_EU(sub_8208FD58) {
   using namespace dbz3::combate;
   const uint32_t user = ctx.r3.u32;
@@ -1039,7 +1043,9 @@ DBZ3_HOOK_EU(sub_8208FD58) {
     return;
   }
   dbz3::iwmini::Mando(base, user, false);   // minijuegos de IW (frente P4): palanca relativa a la camara
+  dbz3::diagnostico_var::Mando medida(user);
   orig(ctx, base);
+  medida.Fin();
   dbz3::iwmini::Mando(base, user, true);
   dbz3::cinematica::Mando(base, user);   // escenas 3D (frente R3)
   if (user > 3 || BattleState(base) != 4) return;

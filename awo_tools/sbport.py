@@ -513,7 +513,7 @@ def model_bind(m):
 
 # ---------------------------------------------------------------- port
 def port(sb, code, d_anm, d_cam, d_model, report, models=(), forma_m=None, scale=DMG_SCALE,
-         ult_donor=None):
+         ult_donor=None, *, wide_frames=False):
     """-> (anm PS2, cam PS2, info). sb: SbIso; code: 'GHF'; d_*: donante PS2 GH."""
     import altura  # noqa: PLC0415
     i = sb.find("BC%s.AMB" % code)
@@ -538,7 +538,9 @@ def port(sb, code, d_anm, d_cam, d_model, report, models=(), forma_m=None, scale
     if over is not None:
         over.log = S.log
     raw = kids["amm0"]
-    own = bp.Amm(sb_amm.convert(raw) if sb_amm.is_sb(raw) else raw)
+    own = bp.Amm(sb_amm.convert(raw, wide_frames=wide_frames) if sb_amm.is_sb(raw) else raw)
+    if wide_frames:
+        report.append("experimental: fotogramas AMM u8/u16/u32; falta aceptacion en juego")
     dk = bp.amb_kids(d_anm)
     D = Src(dk[0][0], False)
     d_amm = bp.Amm(dk[1][0])
@@ -673,7 +675,8 @@ def port(sb, code, d_anm, d_cam, d_model, report, models=(), forma_m=None, scale
     if alias:
         report.append("huesos con alias (otra forma): %s" % alias)
     idle = anims[S.anim(0)[0]] if S.has(0) and S.anim(0)[1] == 3 else None
-    hips = [altura.correccion(sk_t, sk_sb, bp.amm_tracks(idle) if idle else None), (1.0, 0.0)]
+    ref = (altura.skeleton(d_model), altura.idle_tracks(d_anm)) if d_model else None   # eANI2: suelo de B3
+    hips = [altura.correccion(sk_t, sk_sb, bp.amm_tracks(idle) if idle else None, ref), (1.0, 0.0)]
     if d_model:
         hips[1] = altura.correccion(sk_t, altura.skeleton(d_model), altura.idle_tracks(d_anm))
     report.append("altura: cadera de SB x%.3f %+.2f, del donante x%.3f %+.2f" % (*hips[0], *hips[1]))
@@ -1037,6 +1040,8 @@ def main():
     ap.add_argument("--modelos", nargs="*", default=[], help="modelos del personaje (PS2/PSP/HD) si no "
                     "son los de SB: el AMM se escribe con sus nombres de hueso")
     ap.add_argument("--forma-m", type=int, help="convierte tambien BC<XXX>M<n>.amb (anm_m<n>.bin)")
+    ap.add_argument("--fotogramas-amplios", action="store_true",
+                    help="experimental: lee las pistas AMM u16/u32; apagado por defecto")
     ap.add_argument("--definitivo-donante", type=int, metavar="CAPSULA",
                     help="el definitivo de SB con esa capsula usa la cinematica del donante (0x25A)")
     ap.add_argument("--dano", type=float, help="escala de dano (por defecto la medida del personaje "
@@ -1073,7 +1078,7 @@ def main():
     for fm, name in outs:
         anm, cam, inf = port(sb, code, d_anm, d_cam, d_model, report, models, fm,
                              a.dano or DMG_SB.get(code, DMG_SCALE),
-                             a.definitivo_donante)
+                              a.definitivo_donante, wide_frames=a.fotogramas_amplios)
         info = info or inf
         errs += verify(anm, cam, d_anm, d_cam, models)
         for data, fn in ((anm, name), (cam, "camara")):

@@ -901,8 +901,6 @@ void OnlinePanel::DrawScreen(ImGuiIO& io, uint16_t pressed) {
     if (!joined) {
       REXLOG_WARN("dbz3 online: no se pudo unir a la partida: {}", last_err_);
       err_detail_ = last_err_;
-      last_err_ = T::T("Ese codigo no parece correcto. Revisa que lo has escrito igual que tu amigo.",
-                       "That code does not look right. Check you typed it exactly like your friend.");
     }
     else mode_ = 3;
     if (joined && REXCVAR_GET(dbz3_net_last_ip) != ip_) {
@@ -1102,8 +1100,6 @@ void OnlinePanel::DrawScreen(ImGuiIO& io, uint16_t pressed) {
         } else {
           REXLOG_WARN("dbz3 online: no se pudo crear la partida: {}", last_err_);
           err_detail_ = last_err_;
-          last_err_ = T::T("No se pudo crear la sala. Cierra otras copias del juego y vuelve a intentarlo.",
-                           "The room could not be created. Close other copies of the game and try again.");
         }
         row_ = 0;
         break;
@@ -1311,20 +1307,20 @@ void OnlinePanel::DrawScreen(ImGuiIO& io, uint16_t pressed) {
                   "\nNobody else is searching right now. You can keep waiting, or cancel and play with a friend using CREATE A ROOM.");
     if (g_mm.st == Mm::kHost && g_mm.poll_fails >= 2)
       say += T::T("\nSin respuesta del servicio: tu sala sigue abierta, pasa el codigo a mano.", "\nNo answer from the service: your room is still open, give the code by hand.");
-  } else if (idle && step_ == 0) {
+  } else if (link == Link::kIdle && step_ == 0) {
     say += T::T("Primero, como quereis jugar? Elige una opcion: despues os explico cada paso.",
                 "First, how do you want to play? Pick one and I will explain each step.");
     say += "\n";
     say += cur == kModeTag ? T::T("Cada uno lleva un equipo de dos luchadores y se relevan en pleno combate.",
                                   "Each of you brings a team of two fighters and you swap them mid-fight.")
                            : T::T("Un luchador contra otro, como el Duelo de siempre.", "One fighter against another, like the classic Duel.");
-  } else if (idle && step_ == 1) {
+  } else if (link == Link::kIdle && step_ == 1) {
     say += pick_n_ == 0 ? T::T("Elige a tu primer luchador", "Pick your first fighter")
                         : T::T("Elige a tu segundo luchador", "Pick your second fighter");
     say += "\n" + dbz3::ingame::TeamFighterName(fighters[size_t(pick_cur_)]) + "  (" + T::T("A: elegir, B: atras", "A: pick, B: back") + ")";
   } else if (idle) {
-    if (link != Link::kIdle && adv_) say += s.Status() + "\n";
-    if (adv_ && !err_detail_.empty() && !last_err_.empty()) say += "[" + err_detail_ + "]\n";
+    // El motivo real (SO, archivos, puerto, timeout) y el informe deben verse sin Avanzado.
+    if (link != Link::kIdle) say += s.Status() + "\n";
     if (step_ == 2 && link == Link::kIdle && !adv_) {
       say += tag_ ? T::T("Modo: Tag Team (equipo de dos). ", "Mode: Tag Team (team of two). ")
                   : T::T("Modo: 1 contra 1. ", "Mode: 1 vs 1. ");
@@ -1335,11 +1331,6 @@ void OnlinePanel::DrawScreen(ImGuiIO& io, uint16_t pressed) {
     else if (link == Link::kLost)
       say += std::string(T::T("Se perdio la conexion. Que hacer: mira que tu internet funciona y volved a crear la sala y unirte.",
                               "The connection was lost. What to do: check your internet, then create the room and join again.")) + "\n";
-    else if (link == Link::kError)
-      say += std::string(host ? T::T("No se pudo conectar. Que hacer: crea la sala otra vez y pasale el codigo de nuevo; los dos necesitais la misma version del juego.",
-                                     "Could not connect. What to do: create the room again and send the code again; you both need the same game version.")
-                              : T::T("Tu amigo no aparece: comprueba el codigo y que ya haya creado la sala. Los dos necesitais la misma version del juego.",
-                                     "Your friend does not show up: check the code and that they already created the room. You both need the same game version.")) + "\n";
     if (link != Link::kError && link != Link::kLost) switch (cur) {   // con un error, solo el error y que hacer (cuadro corto)
       case kSearchRow:
         say += T::T("Te empareja con otro jugador que este buscando ahora. Solo pulsa A.", "Matches you with another player searching right now. Just press A.");
@@ -1397,10 +1388,13 @@ void OnlinePanel::DrawScreen(ImGuiIO& io, uint16_t pressed) {
       if (link == Link::kConnected && !s.mods_match()) {
         // sin la nota de red: el bocadillo no da para ella y la lista de mods
       } else if (how == "router") {
-        if (adv_) say += T::T("\nPuerto abierto en tu router: vale por internet.", "\nPort opened on your router: works over the internet.");
-      } else if (mode_ != 1 && link == Link::kWaiting) {
-        say += T::T("\nSi no consigue entrar, probad al reves: que cree la sala tu amigo y te unes tu.",
-                    "\nIf they cannot get in, try the other way round: your friend creates the room and you join.");
+        if (adv_) say += "\n" + std::string(T::T("El router acepto abrir el puerto. Falta comprobar la llegada del rival.", "The router accepted the port mapping. The other player's connection still needs to be verified."));
+      } else if (link == Link::kWaiting) {
+        say += "\n" + std::string(how == "stun" ?
+            T::T("Codigo publico, puerto sin verificar: abre el puerto UDP en el router y permite el juego en el cortafuegos. Si no puedes, que cree tu amigo.",
+                 "Public code, unverified port: forward the UDP port on the router and allow the game through the firewall. If you cannot, let your friend host.") :
+            T::T("Este codigo solo sirve en la misma red. Para internet hace falta un codigo publico y abrir el puerto UDP; obtener la IP publica no abre el puerto.",
+                 "This code only works on the same network. Internet play needs a public code and UDP port forwarding; obtaining the public IP does not open the port."));
       }
     }
     if (link == Link::kConnected || link == Link::kStarting) {

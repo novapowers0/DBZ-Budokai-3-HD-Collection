@@ -396,6 +396,8 @@ DBZ3_HOOK_EU(sub_821D7C30) {
   orig(ctx, base);
 }
 
+#include "creditos_trace.inl"
+
 // Tras un combate (estado 0x821D6A08 de la tarea de escenas, ya fundido a negro): con la escena 5 pedida crea el
 // menu principal. Con un combate encadenado, en su lugar se lanza el siguiente (o se espera en negro con HoldChain).
 DBZ3_HOOK_EU(sub_821D7D18) {

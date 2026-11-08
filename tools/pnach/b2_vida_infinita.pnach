@@ -1,0 +1,4 @@
+gametitle=Dragon Ball Z Budokai 2 (PAL) [SLES-51839] (FE09A7CC)
+// Vida del jugador siempre llena (slot 0, 0x3DF3E0 + 0x1433A = 0x003F371A; 7000 = tope de 7 barras, ver b2_ganar_combate.pnach).
+// Sin verificar en vivo todavia: si el combate usa menos barras, la vida se ve por encima de lo normal.
+patch=1,EE,003F371A,short,1B58

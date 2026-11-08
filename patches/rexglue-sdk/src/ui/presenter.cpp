@@ -1058,6 +1058,21 @@ Presenter::GuestOutputPaintFlow Presenter::GetGuestOutputPaintFlow(
         flow.effects[flow.effect_count++] = GuestOutputPaintEffect::kFsrEasu;
       } else {
         uint32_t easu_max_passes = config.GetFsrMaxUpsamplingPasses();
+        // DBZ3 (dsPHIRES): por encima de 4K el driver de NVIDIA falla de forma
+        // intermitente con 2+ pasadas EASU (medido a 5K/8K: 5 fallos en 8
+        // arranques; con 1 pasada, 4 de 4 bien). Se deja 1 pasada EASU + RCAS
+        // y el resto lo pone el bilineal final. Se avisa una vez en el log.
+        if (easu_max_passes > 1 &&
+            (output_width_clamped > 3840 || output_height_clamped > 2160)) {
+          static std::atomic<bool> logged_large_output_single_pass{false};
+          if (!logged_large_output_single_pass.exchange(true)) {
+            REXLOG_INFO(
+                "dbz3: salida {}x{} > 4K con FSR: se limita a 1 pasada EASU (2+ "
+                "pasadas fallaban de forma intermitente en el driver)",
+                output_width_clamped, output_height_clamped);
+          }
+          easu_max_passes = 1;
+        }
         uint32_t easu_pass_count = 0;
         while (easu_pass_count < easu_max_passes &&
                (ffx_last_size.first < output_width_clamped ||

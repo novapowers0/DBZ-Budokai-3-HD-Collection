@@ -17,6 +17,7 @@
 #include <atomic>
 #include <algorithm>
 #include <cctype>
+#include <cerrno>
 #include <cmath>
 #include <chrono>
 #include <cstdlib>
@@ -114,6 +115,43 @@ std::string PeerOs(const std::vector<uint8_t>& pkt) {
 const char* OtherOsMessage() {
   return T::T("el otro PC usa otro sistema operativo (Windows/Linux): el online requiere el mismo sistema y version",
               "the other PC runs another operating system (Windows/Linux): online requires the same system and version");
+}
+const char* OtherBuildMessage() {
+  return T::T("los archivos del juego o sus DLL son distintos: extraed los dos el mismo paquete completo, en el mismo sistema",
+              "the game files or DLLs differ: both players must extract the same complete package on the same operating system");
+}
+const char* OtherProtocolMessage() {
+  return T::T("el protocolo online es distinto: actualizad los dos al mismo paquete del juego",
+              "the online protocol differs: both players must update to the same game package");
+}
+int SocketError() {
+#ifdef _WIN32
+  return WSAGetLastError();
+#else
+  return errno;
+#endif
+}
+bool SocketWouldBlock(int e) {
+#ifdef _WIN32
+  return e == WSAEWOULDBLOCK;
+#else
+  return e == EAGAIN || e == EWOULDBLOCK || e == EINTR;
+#endif
+}
+std::string NetworkError(const char* operation, int e) {
+  const char* text;
+#ifdef _WIN32
+  const bool occupied = e == WSAEADDRINUSE, denied = e == WSAEACCES;
+#else
+  const bool occupied = e == EADDRINUSE, denied = e == EACCES || e == EPERM;
+#endif
+  if (occupied) text = T::T("puerto UDP ocupado: cambia el puerto en Avanzado o cierra la otra sala",
+                            "UDP port in use: change the port in Advanced or close the other room");
+  else if (denied) text = T::T("el sistema no permite usar UDP: permite el juego en el cortafuegos y revisa los permisos",
+                              "the system denied UDP access: allow the game through the firewall and check permissions");
+  else text = T::T("fallo de red UDP: revisa la conexion y los permisos del juego; envia el informe si se repite",
+                   "UDP network error: check your connection and game permissions; send the report if it happens again");
+  return std::string(text) + " (" + operation + ": " + std::to_string(e) + ")";
 }
 
 struct Writer {
@@ -423,34 +461,65 @@ bool Session::ValidPacket(const std::vector<uint8_t>& pkt) const {
 
 // ---------------------------------------------------------------- socket
 bool Session::OpenSocket(uint16_t port, std::string* error) {
+  conn_.since = NowMs();
+  conn_.port = port;
+  auto failed = [&](const char* op, int e) {
+    conn_.operation = op; conn_.socket_error = e;
+    const std::string why = NetworkError(op, e);
+    const auto rep = WriteConnectionReport(why, "socket");
+    if (error) *error = why + " " + rep;
+    return false;
+  };
 #ifdef _WIN32
-  static bool wsa = [] { WSADATA d; return WSAStartup(MAKEWORD(2, 2), &d) == 0; }();
-  if (!wsa) { if (error) *error = "WSAStartup"; return false; }
+  static int wsa = [] { WSADATA d; return WSAStartup(MAKEWORD(2, 2), &d); }();
+  if (wsa) return failed("WSAStartup", wsa);
 #endif
   const auto s = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 #ifdef _WIN32
-  if (s == INVALID_SOCKET) { if (error) *error = "socket"; return false; }
+  if (s == INVALID_SOCKET) return failed("socket", SocketError());
   u_long nb = 1;
-  ioctlsocket(s, FIONBIO, &nb);
+  const bool nonblocking = ioctlsocket(s, FIONBIO, &nb) == 0;
 #else
-  if (s < 0) { if (error) *error = "socket"; return false; }
-  fcntl(s, F_SETFL, fcntl(s, F_GETFL, 0) | O_NONBLOCK);
+  if (s < 0) return failed("socket", SocketError());
+  const int flags = fcntl(s, F_GETFL, 0);
+  const bool nonblocking = flags >= 0 && fcntl(s, F_SETFL, flags | O_NONBLOCK) == 0;
 #endif
-  sockaddr_in a{};
-  a.sin_family = AF_INET;
-  a.sin_addr.s_addr = htonl(INADDR_ANY);
-  a.sin_port = htons(port);
-  if (::bind(s, reinterpret_cast<sockaddr*>(&a), sizeof(a)) != 0) {
+  if (!nonblocking) {
+    const int e = SocketError();
 #ifdef _WIN32
     closesocket(s);
 #else
     ::close(s);
 #endif
-    if (error) *error = T::T("el puerto ", "port ") + std::to_string(port) + T::T(" esta ocupado", " is in use");
-    return false;
+    return failed("nonblocking", e);
+  }
+  sockaddr_in a{};
+  a.sin_family = AF_INET;
+  a.sin_addr.s_addr = htonl(INADDR_ANY);
+  a.sin_port = htons(port);
+  if (::bind(s, reinterpret_cast<sockaddr*>(&a), sizeof(a)) != 0) {
+    const int e = SocketError();
+#ifdef _WIN32
+    closesocket(s);
+#else
+    ::close(s);
+#endif
+    return failed("bind", e);
   }
   sock_ = intptr_t(s);
+  socklen_t size = sizeof(a);
+  if (getsockname(s, reinterpret_cast<sockaddr*>(&a), &size) == 0) conn_.port = ntohs(a.sin_port);
   return true;
+}
+
+bool Session::SendDatagram(const std::vector<uint8_t>& wire, const void* address, int length) {
+  const int n = int(::sendto(decltype(::socket(0, 0, 0))(sock_), reinterpret_cast<const char*>(wire.data()), int(wire.size()), 0,
+                           reinterpret_cast<const sockaddr*>(address), length));
+  if (n == int(wire.size())) { ++conn_.tx_ok; return true; }
+  ++conn_.tx_errors;
+  conn_.socket_error = n < 0 ? SocketError() : 0;
+  conn_.operation = "sendto";
+  return false;
 }
 
 void Session::Send(const std::vector<uint8_t>& pkt) {
@@ -461,8 +530,7 @@ void Session::Send(const std::vector<uint8_t>& pkt) {
     Writer ids(0); ids.u32(local_nonce_); ids.u32(peer_nonce_);
     wire.insert(wire.begin() + 6, ids.b.begin() + 6, ids.b.end());
   }
-  ::sendto(decltype(::socket(0, 0, 0))(sock_), reinterpret_cast<const char*>(wire.data()), int(wire.size()), 0,
-           reinterpret_cast<const sockaddr*>(peer_addr_), peer_len_);
+  SendDatagram(wire, peer_addr_, peer_len_);
   last_send_ms_ = NowMs();
 }
 
@@ -474,7 +542,13 @@ bool Session::Recv(std::vector<uint8_t>& pkt) {
   socklen_t len = sizeof(from);
   const int n = int(::recvfrom(decltype(::socket(0, 0, 0))(sock_), reinterpret_cast<char*>(buf), sizeof(buf), 0,
                                reinterpret_cast<sockaddr*>(&from), &len));
-  if (n < 0) return false;                       // nada pendiente
+  if (n < 0) {
+    const int e = SocketError();
+    if (!SocketWouldBlock(e)) { conn_.socket_error = e; conn_.operation = "recvfrom"; }
+    return false;
+  }
+  ++conn_.rx_udp;
+  ++conn_.rx_ignored;   // los aceptados se descuentan al final; STUN no cuenta como respuesta del rival
   pkt.clear();
   if (role_ == Role::kHost && IsStun(buf, n)) {   // respuesta STUN: nuestra IP publica y puerto
     uint32_t ip = 0;
@@ -490,9 +564,32 @@ bool Session::Recv(std::vector<uint8_t>& pkt) {
   }
   if (n < 6 || std::memcmp(buf, kMagic, 4) != 0) return true;
   if (buf[5] != kProto) {
+    // HELLO v5/v6 tiene el mismo cuerpo de 100 bytes y entiende kReject. Antes el
+    // anfitrion lo tiraba en silencio: el invitado solo veia un timeout.
+    if (!have_peer_ && role_ == Role::kHost && link_ == Link::kWaiting &&
+        buf[4] == kHello && n == 100 && (buf[5] == 5 || buf[5] == 6)) {
+      std::vector<uint8_t> old(buf, buf + n);
+      Reader r(old);
+      const auto build = r.str(40), mods = r.str(40);
+      const auto delay = r.u8(); const auto save = r.u32(); const auto region = r.u8();
+      const auto nonce = r.u32(); r.u32();
+      if (r.ok && HexDigest(build, 32) && HexDigest(mods, 32) && nonce && !save && region <= 1 && delay >= 1 && delay <= 10) {
+        conn_.peer_proto = buf[5]; conn_.peer_build = build; conn_.peer_os = PeerOs(old);
+        Writer reject(kReject); reject.b[5] = buf[5]; reject.u32(nonce);
+        SendDatagram(reject.b, &from, int(len));
+        if (!(conn_.reported & 4)) {
+          conn_.reported |= 4;
+          const auto rep = WriteConnectionReport(OtherProtocolMessage(), "protocol");
+          std::lock_guard<std::mutex> lock(mu_);
+          peer_os_notice_ = std::string(OtherProtocolMessage()) + " " + rep;
+        }
+      }
+    }
     if (have_peer_ && role_ == Role::kGuest &&
-        std::memcmp(peer_addr_, &from, sizeof(from)) == 0)
-      Fail(Link::kError, T::T("el otro PC tiene otra version del juego", "the other PC has another game version"));
+        std::memcmp(peer_addr_, &from, sizeof(from)) == 0) {
+      conn_.peer_proto = buf[5];
+      Fail(Link::kError, OtherProtocolMessage(), "protocol");
+    }
     return true;
   }
   std::vector<uint8_t> candidate(buf, buf + n);
@@ -502,6 +599,8 @@ bool Session::Recv(std::vector<uint8_t>& pkt) {
     if (buf[4] == kChallenge && n == 14 && reply.u32() == local_nonce_) {
       const auto challenge = reply.u32();
       if (challenge && (!peer_nonce_ || peer_nonce_ == challenge)) {
+        conn_.peer_proto = buf[5];
+        ++conn_.rx_valid; --conn_.rx_ignored;
         peer_nonce_ = challenge;
         SendHello(kHello);
       }
@@ -509,10 +608,12 @@ bool Session::Recv(std::vector<uint8_t>& pkt) {
     }
     if (buf[4] == kReject && (n == 10 || n == 18) && reply.u32() == local_nonce_) {
       const std::string os = n == 18 ? reply.str(8) : std::string();
-      const char* why = (os == "windows" || os == "linux") && os != kMyOs ? OtherOsMessage() :
-          T::T("el otro PC tiene otra version del juego", "the other PC has another game version");
+      conn_.peer_os = os; conn_.peer_proto = buf[5];
+      ++conn_.rx_valid; --conn_.rx_ignored;
+      const bool other_os = (os == "windows" || os == "linux") && os != kMyOs;
+      const char* why = other_os ? OtherOsMessage() : OtherBuildMessage();
       REXLOG_INFO("dbz3 online: rechazo del anfitrion: {}", why);
-      Fail(Link::kError, why);
+      Fail(Link::kError, why, other_os ? "os" : "build");
       return true;
     }
   }
@@ -527,21 +628,25 @@ bool Session::Recv(std::vector<uint8_t>& pkt) {
     if (!hello.ok || !nonce || delay < 1 || delay > 10 || save || region > 1 || !HexDigest(mods, 32)) return true;   // region 0 US, 1 EU
     if (identity != identity_) {
       const std::string os = PeerOs(candidate);
-      if (!os.empty() && os != kMyOs) {
-        std::lock_guard<std::mutex> lock(mu_);
-        peer_os_notice_ = OtherOsMessage();
-        REXLOG_INFO("dbz3 online: invitado {}, anfitrion {}: identidad distinta, se rechaza", os, kMyOs);
-      }
+      if (!HexDigest(identity, 32)) return true;
+      conn_.peer_proto = buf[5]; conn_.peer_build = identity; conn_.peer_os = os;
+      const bool other_os = !os.empty() && os != kMyOs;
       Writer reject(kReject); reject.u32(nonce);
       if (!os.empty()) reject.str(kMyOs, 8);   // sin etiqueta (version vieja): exactamente los 10 bytes anteriores
-      ::sendto(decltype(::socket(0, 0, 0))(sock_), reinterpret_cast<const char*>(reject.b.data()),
-               int(reject.b.size()), 0, reinterpret_cast<const sockaddr*>(&from), len);
+      SendDatagram(reject.b, &from, int(len));
+      const uint8_t bit = other_os ? 2 : 1;
+      if (!(conn_.reported & bit)) {   // no inundar disco por las retransmisiones del HELLO
+        conn_.reported |= bit;
+        const char* why = other_os ? OtherOsMessage() : OtherBuildMessage();
+        const auto rep = WriteConnectionReport(why, other_os ? "os" : "build");
+        std::lock_guard<std::mutex> lock(mu_);
+        peer_os_notice_ = std::string(why) + " " + rep;
+      }
       return true;
     }
     if (echo != local_nonce_) {
       Writer challenge(kChallenge); challenge.u32(nonce); challenge.u32(local_nonce_);
-      ::sendto(decltype(::socket(0, 0, 0))(sock_), reinterpret_cast<const char*>(challenge.b.data()),
-               int(challenge.b.size()), 0, reinterpret_cast<const sockaddr*>(&from), len);
+      SendDatagram(challenge.b, &from, int(len));
       return true;
     }
   }
@@ -553,6 +658,13 @@ bool Session::Recv(std::vector<uint8_t>& pkt) {
   }
   if (!have_peer_ || std::memcmp(peer_addr_, &from, sizeof(from)) != 0) return true;
   pkt = std::move(candidate);
+  ++conn_.rx_valid; --conn_.rx_ignored;
+  conn_.peer_proto = kProto;
+  if (buf[4] == kHello || buf[4] == kHelloAck) {
+    Reader hello(pkt); conn_.peer_build = hello.str(40); conn_.peer_os = PeerOs(pkt);
+    std::lock_guard<std::mutex> lock(mu_);
+    peer_os_notice_.clear();
+  }
   last_recv_ms_ = NowMs();
   return true;
 }
@@ -1042,6 +1154,12 @@ void Session::Poll() {
   }
   const uint64_t now = NowMs();
   if (role_ == Role::kGuest && link_ == Link::kWaiting && now - last_send_ms_ > 300) SendHello(kHello);
+  if (role_ == Role::kHost && link_ == Link::kWaiting && !conn_.reported && now - conn_.since > 20000) {
+    conn_.reported |= 8;
+    const auto rep = WriteConnectionReport("Waiting for a compatible guest; reachability not verified", "waiting");
+    std::lock_guard<std::mutex> lock(mu_);
+    peer_os_notice_ = std::string(T::T("Esperando al rival...", "Waiting for the other player...")) + " " + rep;
+  }
   // anfitrion sin UPnP: pregunta su IP publica al STUN desde el mismo socket (asi el puerto que ve
   // el STUN es el que vera el rival)
   if (role_ == Role::kHost && link_ == Link::kWaiting && stun_tries_ < 5 && now - stun_sent_ms_ > 1500) {
@@ -1112,9 +1230,13 @@ void Session::Poll() {
     }
     if (now - last_recv_ms_ > kLostMs) Fail(Link::kLost, T::T("sin respuesta del otro PC", "no reply from the other PC"));
   }
-  if (link_ == Link::kWaiting && role_ == Role::kGuest && now - last_recv_ms_ > 15000) {
-    Fail(Link::kError, T::T("no contesta: revisa el codigo y que el anfitrion ya creo la sala",
-                            "no answer: check the code and that the host already created the room"));
+  if (link_ == Link::kWaiting && role_ == Role::kGuest && !my_build_.empty() && now - last_recv_ms_ > 15000) {
+    const std::string why = conn_.socket_error ? NetworkError(conn_.operation.c_str(), conn_.socket_error) :
+        conn_.rx_valid ? T::T("el anfitrion contesto pero no completo la conexion: comprobad el mismo paquete del juego y enviad los dos informes",
+                              "the host replied but did not complete the connection: check that both use the same game package and send both reports") :
+        T::T("sin respuesta del anfitrion: revisa el codigo; permite el juego en el cortafuegos. Por internet, el anfitrion debe abrir su puerto UDP; en la misma casa, usa su IP local",
+             "no reply from the host: check the code; allow the game through the firewall. Over the internet, the host must forward its UDP port; in the same house, use its local IP");
+    Fail(Link::kError, why, "timeout");
   }
 }
 
@@ -1319,6 +1441,7 @@ void Session::ResetTransport() {
   last_send_ms_ = last_recv_ms_ = team_sent_ms_ = 0;
   peer_len_ = 0;
   std::memset(peer_addr_, 0, sizeof(peer_addr_));
+  conn_ = {};
   local_team_.clear(); peer_team_.clear(); ui_snap_.clear();
   local_caps_.clear(); peer_caps_.clear(); local_all_.clear(); peer_all_.clear();
   team_ready_ = false;
@@ -1392,19 +1515,82 @@ void CombatRules::Apply() const {
   rex::cvar::SetFlagByName("dbz3_combate_reversion", std::to_string(reversion));
 }
 
-void Session::Fail(Link l, const std::string& why) {
+void Session::Fail(Link l, const std::string& why, const char* reason) {
   std::lock_guard<std::recursive_mutex> io(io_mu_);
   guest_owner_ = false;
   // el informe se escribe ANTES de ResetTransport (que borra las sumas, el RNG y la marca de desincronia)
   if (link_.load() == Link::kPlaying) cut_fight_ = true;
   const bool ds = desync_.load() && l == Link::kError;
-  const std::string rep = ds ? WriteDesyncReport(why) : std::string();   // informe pequeno para que el jugador nos lo envie
+  const std::string rep = ds ? WriteDesyncReport(why) : WriteConnectionReport(why, reason);
   ResetTransport();
   desync_ = ds;   // la pantalla lo usa para explicar que hacer; Host/Join lo limpian
   std::lock_guard<std::mutex> lock(mu_);
   error_ = why;
   if (!rep.empty()) error_ += " " + rep;
   link_ = l;
+}
+
+// Un informe por fallo y por clase de rechazo en la sala. No se vuelca memoria,
+// guardados, paquetes ni el log entero. io_mu_ protege esta foto antes de ResetTransport.
+std::string Session::WriteConnectionReport(const std::string& why, const char* reason) {
+  try {
+    const fs::path exe_dir = rex::filesystem::GetExecutableFolder();
+    fs::path dir = exe_dir / "informes_online";
+    std::error_code ec;
+    fs::create_directories(dir, ec);
+    const auto now = std::time(nullptr);
+    std::tm tm{};
+#ifdef _WIN32
+    localtime_s(&tm, &now);
+#else
+    localtime_r(&now, &tm);
+#endif
+    char stamp[32]{};
+    std::strftime(stamp, sizeof(stamp), "%Y%m%d_%H%M%S", &tm);
+    static uint64_t serial = 0;   // io_mu_: tambien evita pisar informes en el mismo segundo
+    const std::string name = std::string("conexion_") + stamp + "_" +
+                             std::to_string(local_nonce_) + "_" + std::to_string(++serial) + ".txt";
+    fs::path file = dir / name;
+    std::ofstream f(file, std::ios::binary);
+    if (!f) {   // instalacion de solo lectura: misma raiz escribible que los datos de usuario
+      dir = settings::UserDataRoot() / "informes_online";
+      ec.clear(); fs::create_directories(dir, ec);
+      file = dir / name;
+      f.clear(); f.open(file, std::ios::binary);
+    }
+    if (!f) throw std::runtime_error("cannot open report");
+    f << "DBZ3 online connection report " << stamp << "\r\nreason=" << reason << "\r\n" << why << "\r\n";
+    f << "os_local=" << kMyOs << " protocol_local=" << int(kProto) << " region=" << (dbz3::g_guest_eu ? "EU" : "US")
+      << " role=" << (role_ == Role::kHost ? "host" : role_ == Role::kGuest ? "guest" : "none")
+      << " state=" << int(link_.load()) << " elapsed_ms=" << (conn_.since ? NowMs() - conn_.since : 0) << "\r\n";
+    f << "build_local=" << identity_ << " mods_local=" << my_mods_hash_ << " scan_ready=" << !my_build_.empty() << "\r\n";
+    f << "build_peer=" << conn_.peer_build << " os_peer=" << conn_.peer_os << " protocol_peer=" << conn_.peer_proto << "\r\n";
+    f << "local_udp_port=" << conn_.port;
+    if (have_peer_) {
+      const auto& a = *reinterpret_cast<const sockaddr_in*>(peer_addr_);
+      char address[64]{};
+      inet_ntop(AF_INET, &a.sin_addr, address, sizeof(address));
+      f << " destination=" << address << ":" << ntohs(a.sin_port);
+    }
+    { std::lock_guard<std::mutex> lock(mu_);
+      f << " address_source=" << (pub_how_.empty() ? "local_or_unknown" : pub_how_)
+        << " upnp_port=" << upnp_port_ << "\r\n";
+    }
+    f << "tx_ok=" << conn_.tx_ok << " tx_errors=" << conn_.tx_errors << " rx_udp=" << conn_.rx_udp
+      << " rx_valid=" << conn_.rx_valid << " rx_ignored=" << conn_.rx_ignored << "\r\n";
+    f << "socket_operation=" << conn_.operation << " socket_error=" << conn_.socket_error
+      << " rollback=" << rb_on_.load() << " tick=" << tick_.load() << "\r\n";
+    f << "NAT/firewall reachability is not established by a room code or STUN. No relay is provided.\r\n";
+    f.flush();
+    if (!f) throw std::runtime_error("cannot finish report");
+    REXLOG_WARN("dbz3 online: informe de conexion guardado en {}", rex::path_to_utf8(file));
+    return std::string(T::T("Informe de conexion: envia este archivo: ", "Connection report: send this file: ")) +
+        rex::path_to_utf8(dir == exe_dir / "informes_online" ? fs::path("informes_online") / name : file);
+  } catch (const std::exception& e) {
+    REXLOG_WARN("dbz3 online: no se pudo escribir el informe de conexion: {}", e.what());
+  } catch (...) {}
+  return T::T("No se pudo guardar el informe: envia el ultimo archivo de la carpeta logs del juego.",
+              "Could not save the report: send the latest file from the game's logs folder.");
 }
 
 // Desincronia: guarda un informe corto (datos de la sesion + ultimas lineas del log del online) en <juego>/informes_online/
@@ -1421,7 +1607,7 @@ std::string Session::WriteDesyncReport(const std::string& why) {
     std::strftime(stamp, sizeof(stamp), "%Y%m%d_%H%M%S", std::localtime(&now));
     const fs::path file = dir / (std::string("desincronia_") + stamp + ".txt");
     std::ofstream f(file, std::ios::binary);
-    if (!f) REXLOG_WARN("dbz3 online: no se pudo abrir {}", file.string());
+    if (!f) { REXLOG_WARN("dbz3 online: no se pudo abrir {}", file.string()); return {}; }
     f << "Informe de desincronia (DBZ Budokai 3 HD) " << stamp << "\r\n" << why << "\r\n";
     f << "rol: " << (role_ == Role::kHost ? "anfitrion" : "invitado") << "  tick: " << tick_ << "  retardo: " << int(delay_.load())
       << "  ping: " << ping_ms_.load() << " ms  rollback: " << rb_on_.load() << "\r\n";
@@ -1454,6 +1640,8 @@ std::string Session::WriteDesyncReport(const std::string& why) {
       f << "\r\n--- log (" << newest.filename().string() << ") ---\r\n";
       for (const auto& ln : keep) f << ln << "\r\n";
     }
+    f.flush();
+    if (!f) return {};
     REXLOG_WARN("dbz3 online: informe de desincronia guardado en {}", file.string());
     return std::string(T::T("Informe guardado en la carpeta informes_online del juego: enviamelo.",
                             "Report saved in the game's informes_online folder: please send it to us."));

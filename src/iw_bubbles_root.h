@@ -10,7 +10,7 @@
 namespace dbz3::iwbubbles::noche {
 inline constexpr bool kNormalValidado=false;
 inline constexpr bool kBackendColisionExactaDisponible=false;
-//Solo CLOCK: EE observado redondea hacia0. Double conserva exactamente los
+//EE observado redondea hacia0 (reloj y ADD.S de raiz). Double conserva exactamente los
 //operandos float32 de estos relojes; volatile impide fusionar/reducir precision.
 inline float ClockTrunc(double exacto){
   volatile float redondeado=static_cast<float>(exacto);float r=redondeado;
@@ -64,7 +64,8 @@ inline MezclaEntrada Mezcla349(unsigned estado,std::int16_t cc4,bool faseE0=fals
 // Consume EL VECTOR ACTUAL, no una diferencia de frames. Bits2/4 independientes.
 inline void ConsumirRaiz(Root& s) {
   const V d=s.rotacion.Girar(s.local50);
-  if(s.flags18e8&1u){s.posicion40.x+=d.x;s.posicion40.z+=d.z;s.local50.x=0;s.local50.z=0;}
+   //2F5DA0/EE19761: ADD.S hacia0 al publicar X/Z, no redondeo host al cercano.
+   if(s.flags18e8&1u){s.posicion40.x=ClockAdd(s.posicion40.x,d.x);s.posicion40.z=ClockAdd(s.posicion40.z,d.z);s.local50.x=0;s.local50.z=0;}
   if(s.flags18e8&2u){s.posicion40.y+=d.y;s.local50.y=0;}
   if(s.flags18e8&4u){s.posicion40.y+=d.y;s.local50.y-=d.y;}
   else if(s.flags18e8&8u)s.local50.y=s.alturaBB8c;

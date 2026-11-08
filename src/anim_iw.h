@@ -107,6 +107,11 @@ void Reproducir(uint32_t x, uint32_t codigo, bool sujetar = false, uint32_t tope
 // Entrada de estado IW: reinicia incluso si el codigo coincide. No usar para
 // rearmar una pose pisada por B3 (ese caso debe conservar su reloj y AP).
 void ReiniciarPose(uint32_t x, uint32_t codigo, bool sujetar = true);
+void BucleForzado(uint32_t x, uint32_t codigo);   // eIW6: Bucle que no se descarta por repetido
+// Candidato opt-in: identificador de la orden encolada (0 = no solicitada).
+// El acuse solo existe TRAS Arrancar, con codigo/duracion/reloj verificados.
+// No sustituye ReiniciarPose de los consumidores actuales.
+uint64_t ReiniciarPoseConAcuse(uint32_t x, uint32_t codigo, bool sujetar = true);
 // luego != 0: al acabar la pose pasa sola a ese codigo en bucle (el reposo de IW; los minijuegos de botones).
 // 0 nada pedido, 1 en curso, 2 acabada (o sin esa animacion en la copia del jugador).
 int EstadoPose();
@@ -140,6 +145,9 @@ struct EstadoCuerpo {
   uint8_t congelado = 0, oculto1 = 0, oculto2 = 0;
 };
 bool LeerEstadoCuerpo(uint8_t* base, uint32_t x, int cuerpo, EstadoCuerpo& e);
+// Hilo del juego. False si la orden sigue en cola, fue sustituida/cancelada,
+// o el cuerpo ya no corresponde al clip confirmado. No exige observar cuadro0.
+bool LeerEstadoConAcuse(uint8_t* base, uint32_t x, int cuerpo, uint64_t orden, EstadoCuerpo& e);
 
 // =====================================================================================================================
 // DS37 - Sprites 2D de Infinite World (#AMA): motor de animacion por nodos, segmentos y pistas.

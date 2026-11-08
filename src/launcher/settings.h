@@ -293,6 +293,10 @@ void SetVsyncEnabled(bool enabled);
 
 bool LowResEnabled();
 void SetLowResEnabled(bool enabled);
+// #29: baja SOLO el 3D por debajo de 360p (0 = apagado, 240 o 144). El HUD y los menus siguen a la
+// resolucion de video, asi que no se rompen; requiere reiniciar.
+int32_t LowRenderHeight();
+void SetLowRenderHeight(int32_t height);
 bool VrrEnabled();
 void SetVrrEnabled(bool enabled);
 // Creador de personajes (Modo Heroe): piezas de Xenoverse 2 (opcion, apagada por defecto; requiere XV2 instalado).
@@ -338,6 +342,15 @@ void SetAnisotropicOverride(int32_t level);
 // filled with a bicubic pass; the game's files and guest memory are untouched.
 int32_t HdTextures();
 void SetHdTextures(int32_t factor);
+
+// dsPGPU: factor really forwarded to the runtime. HD texture enhancement adds
+// ~200 MB of VRAM at 2x and ~450 MB at 3x (measured, 720p battle), so on
+// integrated graphics (shared memory) and on cards with little dedicated VRAM
+// it is capped instead of letting the driver page and stutter. The user's
+// choice is kept in dbz3_hd_textures; this is only the effective value.
+int32_t HdTexturesEffective();
+// Same cap for any requested factor (used by the UI and the runtime bridge).
+int32_t SafeHdTextureFactor(int32_t requested);
 
 int32_t HdTextureMaxTexels();
 void SetHdTextureMaxTexels(int32_t texels);
@@ -412,6 +425,20 @@ std::string DetectGpuName();
 int32_t DetectGpuTier();
 // Human-readable tier label: "Low" / "Medium" / "High".
 const char* GpuTierLabel(int32_t tier);
+
+// dsPGPU: memory and kind of the primary adapter. `dedicated_mb` is the VRAM
+// Windows reports as dedicated for it (on integrated GPUs that is only the BIOS
+// aperture, so `integrated` matters more than the number); `shared_mb` is the
+// system memory it may borrow. Empty/zero when DXGI is unavailable.
+struct GpuMemoryInfo {
+  int32_t dedicated_mb = 0;
+  int32_t shared_mb = 0;
+  bool integrated = false;
+  uint32_t vendor_id = 0;
+};
+GpuMemoryInfo DetectGpuMemory();
+// "intel" / "amd" / "nvidia" / "other" (for diagnostics and the UI).
+const char* GpuVendorName(uint32_t vendor_id);
 
 // Apply the current quality preset to the individual quality cvars (scale/MSAA/
 // aniso/effect). For "auto" it uses the detected GPU tier; for a named preset

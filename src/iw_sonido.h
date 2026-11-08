@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <map>
@@ -12,9 +13,11 @@
 #include <thread>
 #include <utility>
 #include <vector>
-#if defined(_WIN32)
+#if defined(_WIN32) && !defined(DBZ3_IW_SDL_AUDIO)
 #include <windows.h>
 #include <mmsystem.h>
+#else
+#include <SDL3/SDL.h>
 #endif
 
 namespace dbz3::iwsonido {
@@ -247,9 +250,7 @@ class Reproductor {
   void UsarProveedor(Proveedor p){std::lock_guard lock(ajustes_);proveedor_.store(p);}
   bool DispositivoAutomatico(bool activo) {
     std::lock_guard lock(inicio_);
-#if defined(_WIN32)
     if(hilo_.joinable())return false;
-#endif
     automatico_=activo;return true; // elegir antes de enviar; callback externo usa Procesar
   }
   void Procesar(int16_t* salida,size_t cuadros) {
@@ -263,26 +264,20 @@ class Reproductor {
   }
   Handle Enviar(const std::vector<int16_t>& pcm,uint32_t hz,Opciones o={}) {
     std::lock_guard lock(inicio_);const auto h=mezcla_.Iniciar(pcm,hz,std::move(o));
-#if defined(_WIN32)
     if(h && automatico_ && !hilo_.joinable()) {
-      error_=0;hilo_=std::jthread([this](std::stop_token stop){Trabajar(stop);});
+      error_=0;parar_=false;hilo_=std::thread([this]{Trabajar();});
     }
-#else
-    if(h && automatico_){mezcla_.Parar(h);error_=0xffffffffu;return 0;}
-#endif
     return h;
   }
   void Cerrar() {
     std::lock_guard lock(inicio_);
-#if defined(_WIN32)
-    if(hilo_.joinable()){hilo_.request_stop();hilo_.join();}
-#endif
+    if(hilo_.joinable()){parar_=true;hilo_.join();}
     mezcla_.Limpiar();
   }
   uint32_t ErrorSalida()const{return error_.load();}
  private:
-#if defined(_WIN32)
-  void Trabajar(std::stop_token stop) {
+#if defined(_WIN32) && !defined(DBZ3_IW_SDL_AUDIO)
+  void Trabajar() {
     WAVEFORMATEX formato{};formato.wFormatTag=WAVE_FORMAT_PCM;formato.nChannels=2;
     formato.nSamplesPerSec=48000;formato.wBitsPerSample=16;formato.nBlockAlign=4;formato.nAvgBytesPerSec=192000;
     // Medido: la cola de16ms se vaciaba (24k avanzaba a9624muestras/s).
@@ -300,12 +295,12 @@ class Reproductor {
       b.cabecera.lpData=reinterpret_cast<LPSTR>(b.pcm.data());b.cabecera.dwBufferLength=DWORD(b.pcm.size()*2);
       error=waveOutPrepareHeader(wo,&b.cabecera,sizeof(WAVEHDR));if(error)break;b.preparado=true;
     }
-    while(!error && !stop.stop_requested()) {
+    while(!error && !parar_.load()) {
       bool trabajo=false;
       for(auto& b:bloques) {
         if(b.enviado && !(b.cabecera.dwFlags&WHDR_DONE))continue;
         Procesar(b.pcm.data(),b.pcm.size()/2);
-        if(stop.stop_requested())break;
+        if(parar_.load())break;
         error=waveOutWrite(wo,&b.cabecera,sizeof(WAVEHDR));if(error)break;
         b.enviado=true;trabajo=true;
       }
@@ -323,13 +318,50 @@ class Reproductor {
     for(auto& b:bloques)if(b.preparado)waveOutUnprepareHeader(wo,&b.cabecera,sizeof(WAVEHDR));
     waveOutClose(wo);CloseHandle(disponible);error_=error;
   }
+#else
+  void FalloSDL(const char* paso) {
+    error_=1;
+    SDL_LogError(SDL_LOG_CATEGORY_AUDIO,"dbz3 iw audio: %s: %s",paso,SDL_GetError());
+  }
+  void Trabajar() {
+    if(!SDL_InitSubSystem(SDL_INIT_AUDIO)){FalloSDL("init");return;}
+    const SDL_AudioSpec formato{SDL_AUDIO_S16,2,48000};
+    SDL_AudioStream* stream=SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK,&formato,nullptr,nullptr);
+    if(!stream){FalloSDL("open");SDL_QuitSubSystem(SDL_INIT_AUDIO);return;}
+    SDL_AudioSpec obtenido{};int periodo=0;
+    const auto dispositivo=SDL_GetAudioStreamDevice(stream);
+    if(!SDL_GetAudioDeviceFormat(dispositivo,&obtenido,&periodo) || obtenido.freq<=0 || periodo<0) {
+      FalloSDL("format");SDL_DestroyAudioStream(stream);SDL_QuitSubSystem(SDL_INIT_AUDIO);return;
+    }
+    // SDL cuenta bytes pendientes en el formato de ENTRADA (48k estereo s16),
+    // no en el del dispositivo. Reservar ademas un periodo del dispositivo:
+    // retirar bytes de SDL no significa que el altavoz ya los haya consumido.
+    const uint64_t margen=(uint64_t(periodo)*48000+obtenido.freq-1)/obtenido.freq;
+    const uint64_t base_salida=mezcla_.CuadrosRenderizados();reproducidos_=base_salida;
+    uint64_t enviados=0;
+    std::array<int16_t,2048> pcm{};
+    if(!SDL_ResumeAudioStreamDevice(stream))FalloSDL("resume");
+    while(!error_.load() && !parar_.load()) {
+      const int pendientes=SDL_GetAudioStreamQueued(stream);
+      if(pendientes<0){FalloSDL("queued");break;}
+      const uint64_t por_oir=(uint64_t(pendientes)+3)/4+margen;
+      reproducidos_=base_salida+enviados-std::min(enviados,por_oir);
+      // Maximo tres bloques1024, igual que WinMM. Sin cola por cada voz.
+      if(pendientes<=int(pcm.size()*sizeof(int16_t)*2)) {
+        Procesar(pcm.data(),pcm.size()/2);
+        if(parar_.load())break;
+        if(!SDL_PutAudioStreamData(stream,pcm.data(),int(pcm.size()*sizeof(int16_t)))){FalloSDL("put");break;}
+        enviados+=pcm.size()/2;
+      }else std::this_thread::sleep_for(std::chrono::milliseconds(4));
+    }
+    SDL_DestroyAudioStream(stream);
+    SDL_QuitSubSystem(SDL_INIT_AUDIO); // equilibrar nuestra referencia, no la del SDK
+  }
 #endif
   Mezclador mezcla_;std::atomic<Proveedor> proveedor_{nullptr};
   std::atomic<uint64_t> reproducidos_{0};
   std::mutex inicio_,ajustes_;
-#if defined(_WIN32)
-  std::jthread hilo_;
-#endif
+  std::thread hilo_;std::atomic<bool> parar_{false};
   std::atomic<uint32_t> error_{0};bool automatico_=true;
 };
 inline Reproductor& Salida(){static Reproductor s;return s;}

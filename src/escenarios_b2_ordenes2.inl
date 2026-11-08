@@ -29,7 +29,7 @@
     if(o.id==0x19&&o.cuenta==3)
       REXLOG_INFO("dbz3 CBT movimiento19: grupo={} PC={:X} cuadro={:.1f} velocidad={:.4f} fase={} lado={}",
                   g_b2.grupo,o.pc,o.cuadro,b2vm::Float(a[0]),b2vm::Signo(a[1]),a[2]);
-    if(o.id==0xB8&&std::getenv("DBZ3_TEST_B2_MOTOR")&&base&&mgr&&
+    if(o.id==0xB8&&B2MotorOn()&&base&&mgr&&
        !dbz3::net::Session::Get().active()) {
       // Lectura en el hilo guest ANTES de ceder los mandos, sin forzar evento,
       // zona ni pose. La conservación final común ocurre después del Tick:

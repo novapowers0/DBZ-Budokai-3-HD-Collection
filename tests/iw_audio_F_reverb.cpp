@@ -1,11 +1,11 @@
 // DSP y mezcla puros: ninguna ventana/dispositivo ni runtime del juego.
+#define NOMINMAX
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
 #include <string>
-#undef _WIN32
 #include "../src/iw_sonido.h"
 using namespace dbz3::iwsonido;
 void Exigir(bool ok,const char* mensaje){if(!ok)throw std::runtime_error(mensaje);}
@@ -83,10 +83,11 @@ int main(int argc,char** argv) {
       m.Maestro(std::nanf(""));m.Iniciar({32767,32767},48000);Exigir(Render(m,1)[0]==0,"volumen NaN");
     }
     {
-      Reproductor r;Exigir(!r.Enviar({1,1},48000) && r.ErrorSalida()==0xffffffffu,"backend no disponible debe fallar sin acumular voces");
-      Exigir(!r.Mezcla().Voces() && r.DispositivoAutomatico(false),"error de backend deja voces huerfanas");
+      // La salida automatica SDL tiene su propio receptor. Aqui solo DSP:
+      // elegir callback antes de Enviar impide abrir un dispositivo real.
+      Reproductor r;Exigir(r.DispositivoAutomatico(false),"seleccionar callback externo");
       Exigir(r.Enviar({1500,1500},48000)!=0,"callback externo no acepta PCM");
-      int16_t b[2];r.Procesar(b,1);Exigir(b[0]==1500 && b[1]==1500,"callback externo sin Windows");
+      int16_t b[2];r.Procesar(b,1);Exigir(b[0]==1500 && b[1]==1500,"callback externo sin dispositivo");
     }
     std::cout<<"PASS volumen final, slots/handles, pausa/mute, remuestreo, cola por bloques y dos cores\n";
     return 0;

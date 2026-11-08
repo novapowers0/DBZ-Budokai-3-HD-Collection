@@ -15,6 +15,8 @@
 #include <array>
 #include <cstdio>
 #include <cstring>
+#include <atomic>
+#include <thread>
 
 #include <rex/assert.h>
 #include <rex/audio/conversion.h>
@@ -32,6 +34,13 @@ REXCVAR_DEFINE_DOUBLE(audio_gain, 1.0, "Audio", "Output gain (0.0 - 1.0)");
 REXCVAR_DEFINE_STRING(dbz3_audio_dump, "", "DBZ3/Dev",
                       "Graba la salida de audio (float32 estereo, 48 kHz, sin cabecera) en este archivo para los videos; "
                       "se graba aunque el juego este silenciado. Vacio = no");
+// dbz3 (eAUD 5/11): recuperacion del dispositivo de audio. Apagado = comportamiento de siempre
+// (sin dispositivo el juego no registra audio; si el dispositivo cae, el sonido se queda parado).
+REXCVAR_DEFINE_BOOL(dbz3_audio_recuperar, true, "DBZ3/Audio",
+                    "Reabre el dispositivo de audio si cae o no existia, sin reiniciar el juego");
+REXCVAR_DEFINE_INT32(dbz3_audio_test_caida_s, 0, "DBZ3/Dev",
+                     "Prueba: cada N s cierra el flujo de audio como si el dispositivo hubiera caido "
+                     "(solo con dbz3_audio_recuperar)");
 // dbz3 - focus behaviour. `dbz3_window_focused` is written by the app when the
 // window gains/loses focus (same name in the launcher registry, so the value is
 // visible in the config); with `dbz3_mute_unfocused` (launcher: "mute when
@@ -43,6 +52,20 @@ REXCVAR_DEFINE_BOOL(dbz3_window_focused, true, "DBZ3/Dev",
                     "Window focus state (written by the app, not a user setting)");
 
 namespace rex::audio::sdl {
+
+// Contadores para la linea `audio` de dbz3_perf_logging (se ponen a cero cada 5 s).
+static std::atomic<uint64_t> g_cb{0};          // llamadas del dispositivo
+static std::atomic<uint64_t> g_vacios{0};      // bloques de silencio por no tener el juego muestras
+static std::atomic<uint64_t> g_huecos{0};      // hueco del dispositivo: entre llamadas > 2 buffers
+static std::atomic<uint64_t> g_gap_max_us{0};  // mayor intervalo entre llamadas
+static std::atomic<uint64_t> g_reaperturas{0}; // veces que se reabrio el flujo
+static std::atomic<uint64_t> g_prof_min{1000}, g_prof_max{0};  // cola de bloques del juego
+static std::atomic<int64_t> g_prev_cb_ns{0};
+
+static int64_t AhoraNs() {
+  return std::chrono::duration_cast<std::chrono::nanoseconds>(
+             std::chrono::steady_clock::now().time_since_epoch()).count();
+}
 
 SDLAudioDriver::SDLAudioDriver(memory::Memory* memory, rex::thread::Semaphore* semaphore)
     : AudioDriver(memory), semaphore_(semaphore) {}
@@ -65,6 +88,20 @@ bool SDLAudioDriver::Initialize() {
   }
   sdl_initialized_ = true;
 
+  recuperar_ = REXCVAR_GET(dbz3_audio_recuperar);
+  const bool ok = AbrirFlujo();
+  if (!ok && !recuperar_) return false;  // comportamiento de siempre
+  if (!ok) {
+    REXAPU_WARN("dbz3 audio: sin dispositivo de audio; el juego sigue en silencio y se reintenta cada 2 s");
+  }
+  if (recuperar_) {
+    vigia_activo_ = true;
+    vigia_ = std::thread([this] { VigiaMain(); });
+  }
+  return true;
+}
+
+bool SDLAudioDriver::AbrirFlujo() {
   SDL_AudioSpec desired_spec = {};
   SDL_AudioSpec obtained_spec = {};
   desired_spec.freq = frame_frequency_;
@@ -81,19 +118,23 @@ bool SDLAudioDriver::Initialize() {
   SDL_AudioDeviceID sdl_device = SDL_GetAudioStreamDevice(sdl_stream_);
   if (!sdl_device) {
     REXAPU_ERROR("SDL_GetAudioStreamDevice() failed: {}", SDL_GetError());
+    CerrarFlujo();
     return false;
   }
 
-  if (!SDL_GetAudioDeviceFormat(sdl_device, &obtained_spec, NULL)) {
+  int device_frames = 0;
+  if (!SDL_GetAudioDeviceFormat(sdl_device, &obtained_spec, &device_frames)) {
     REXAPU_WARN("SDL_GetAudioDeviceFormat() failed: {}", SDL_GetError());
     obtained_spec = desired_spec;
+  }
+  if (device_frames > 0 && obtained_spec.freq > 0) {
+    periodo_ms_ = 1000.0 * device_frames / obtained_spec.freq;
   }
 
   // A 1-channel device gets the stereo fold too, then SDL collapses to mono.
   // Handing it a 6ch stream instead would use SDL's own downmix.
   if (obtained_spec.channels <= 2) {
-    SDL_DestroyAudioStream(sdl_stream_);
-    sdl_stream_ = nullptr;
+    CerrarFlujo();
     desired_spec.channels = 2;
     sdl_device_channels_ = 2;
     sdl_stream_ = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &desired_spec,
@@ -105,6 +146,7 @@ bool SDLAudioDriver::Initialize() {
     sdl_device = SDL_GetAudioStreamDevice(sdl_stream_);
     if (!sdl_device) {
       REXAPU_ERROR("SDL_GetAudioStreamDevice() failed after stereo fallback: {}", SDL_GetError());
+      CerrarFlujo();
       return false;
     }
   }
@@ -113,16 +155,75 @@ bool SDLAudioDriver::Initialize() {
   // first thing worth knowing when a report says the balance is wrong on one
   // speaker setup and right on another.
   const char* device_name = SDL_GetAudioDeviceName(sdl_device);
-  REXAPU_INFO("audio endpoint '{}': {} ch, {} Hz, format 0x{:04X}; submitting {} ch",
+  REXAPU_INFO("audio endpoint '{}': {} ch, {} Hz, format 0x{:04X}; submitting {} ch, buffer {:.1f} ms",
               device_name ? device_name : "?", obtained_spec.channels, obtained_spec.freq,
-              static_cast<uint32_t>(obtained_spec.format), static_cast<int>(sdl_device_channels_));
+              static_cast<uint32_t>(obtained_spec.format), static_cast<int>(sdl_device_channels_),
+              periodo_ms_);
 
+  ultimo_cb_ns_ = AhoraNs();
+  g_prev_cb_ns = 0;
   if (!SDL_ResumeAudioDevice(sdl_device)) {
     REXAPU_ERROR("SDL_ResumeAudioDevice() failed: {}", SDL_GetError());
+    CerrarFlujo();
     return false;
   }
 
   return true;
+}
+
+void SDLAudioDriver::CerrarFlujo() {
+  if (sdl_stream_) {
+    SDL_DestroyAudioStream(sdl_stream_);  // espera a que acabe una llamada en curso
+    sdl_stream_ = nullptr;
+  }
+}
+
+void SDLAudioDriver::VigiaMain() {
+  using namespace std::chrono;
+  const int test_s = REXCVAR_GET(dbz3_audio_test_caida_s);
+  auto ultimo_intento = steady_clock::now();
+  auto ultima_caida_test = steady_clock::now();
+  auto siguiente = steady_clock::now();
+  while (vigia_activo_) {
+    if (sdl_stream_) {
+      std::this_thread::sleep_for(milliseconds(100));
+      const auto ahora = steady_clock::now();
+      bool caido = (AhoraNs() - ultimo_cb_ns_) > 1500LL * 1000000LL;
+      if (test_s > 0 && ahora - ultima_caida_test > seconds(test_s)) {
+        ultima_caida_test = ahora;
+        REXAPU_WARN("dbz3 audio: prueba de caida simulada");
+        caido = true;
+      }
+      if (caido) {
+        REXAPU_WARN("dbz3 audio: el dispositivo dejo de pedir muestras; se cierra y se reabre");
+        CerrarFlujo();
+        ultimo_intento = ahora - seconds(10);  // reintento inmediato
+        siguiente = ahora;
+      }
+      continue;
+    }
+    // Sin dispositivo: reintentar cada 2 s y, mientras tanto, consumir bloques al ritmo real
+    // (256 muestras a 48 kHz = 5,33 ms) para que el juego no se bloquee esperando.
+    const auto ahora = steady_clock::now();
+    if (ahora - ultimo_intento >= seconds(2)) {
+      ultimo_intento = ahora;
+      if (AbrirFlujo()) {
+        g_reaperturas++;
+        REXAPU_INFO("dbz3 audio: dispositivo recuperado");
+        continue;
+      }
+    }
+    siguiente += microseconds(5333);
+    if (siguiente < ahora - milliseconds(100)) siguiente = ahora;  // no acumular atraso
+    std::this_thread::sleep_until(siguiente);
+    std::unique_lock<std::mutex> guard(frames_mutex_);
+    if (!frames_queued_.empty()) {
+      frames_unused_.push(frames_queued_.front());
+      frames_queued_.pop();
+      guard.unlock();
+      semaphore_->Release(1, nullptr);
+    }
+  }
 }
 
 void SDLAudioDriver::SubmitFrame(uint32_t frame_ptr) {
@@ -155,10 +256,9 @@ void SDLAudioDriver::SubmitFrame(uint32_t frame_ptr) {
 }
 
 void SDLAudioDriver::Shutdown() {
-  if (sdl_stream_) {
-    SDL_DestroyAudioStream(sdl_stream_);
-    sdl_stream_ = nullptr;
-  }
+  vigia_activo_ = false;
+  if (vigia_.joinable()) vigia_.join();
+  CerrarFlujo();
   if (sdl_initialized_) {
     SDL_QuitSubSystem(SDL_INIT_AUDIO);
     sdl_initialized_ = false;
@@ -204,8 +304,12 @@ static void Dbz3TrackAudioLevel(const float* buffer, uint32_t channel_samples) {
   }
   if (now - window_start < std::chrono::seconds(5)) return;
   if (rex::cvar::GetFlagByName("dbz3_perf_logging") == "true") {
-    REXAPU_INFO("dbz3: audio pico={:.3f} rms={:.4f}", peak,
-                samples ? std::sqrt(sum_sq / double(samples)) : 0.0);
+    const uint64_t pmin = g_prof_min.exchange(1000), pmax = g_prof_max.exchange(0);
+    REXAPU_INFO(
+        "dbz3: audio pico={:.3f} rms={:.4f} cb={} vacios={} huecos={} gap_max={:.1f}ms cola={}-{} reaperturas={}",
+        peak, samples ? std::sqrt(sum_sq / double(samples)) : 0.0, g_cb.exchange(0),
+        g_vacios.exchange(0), g_huecos.exchange(0), g_gap_max_us.exchange(0) / 1000.0,
+        pmin > pmax ? 0 : pmin, pmax, g_reaperturas.load());
   }
   peak = 0.0f;
   sum_sq = 0.0;
@@ -240,6 +344,17 @@ void SDLAudioDriver::SDLCallback(void* userdata, SDL_AudioStream* stream, int ad
     return;
   }
   const auto driver = static_cast<SDLAudioDriver*>(userdata);
+  {
+    const int64_t t = AhoraNs();
+    driver->ultimo_cb_ns_ = t;
+    g_cb++;
+    const int64_t prev = g_prev_cb_ns.exchange(t);
+    if (prev) {
+      const uint64_t gap_us = uint64_t(t - prev) / 1000;
+      if (gap_us > g_gap_max_us) g_gap_max_us = gap_us;
+      if (gap_us > uint64_t(driver->periodo_ms_ * 2000.0) + 1000) g_huecos++;  // > 2 buffers (+1 ms)
+    }
+  }
   const int sample_count =
       static_cast<int>(channel_samples_ * std::max<uint8_t>(driver->sdl_device_channels_, 1));
   const int len = static_cast<int>(sizeof(float) * sample_count);
@@ -260,7 +375,13 @@ void SDLAudioDriver::SDLCallback(void* userdata, SDL_AudioStream* stream, int ad
   while (additional_amount > 0) {
     static uint32_t sdl_callback_count = 0;
     std::unique_lock<std::mutex> guard(driver->frames_mutex_);
+    {
+      const uint64_t d = driver->frames_queued_.size();
+      if (d < g_prof_min) g_prof_min = d;
+      if (d > g_prof_max) g_prof_max = d;
+    }
     if (driver->frames_queued_.empty()) {
+      g_vacios++;
       if (sdl_callback_count < 10) {
         REXAPU_DEBUG("SDLCallback: no frames queued (silence)");
         sdl_callback_count++;

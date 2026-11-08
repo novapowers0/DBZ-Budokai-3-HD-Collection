@@ -339,6 +339,28 @@ class D3D12Presenter final : public Presenter {
   std::array<Microsoft::WRL::ComPtr<ID3D12PipelineState>, size_t(GuestOutputPaintEffect::kCount)>
       guest_output_paint_final_pipelines_;
 
+  // DBZ3 (nGPU): tiempo de GPU del pintado del guest output (las pasadas de
+  // presentacion: bilineal/FSR/CAS, el resolve final a la ventana) medido con
+  // timestamps D3D12. Solo se graba con dbz3_perf_logging; se publica como
+  // pres_ms= en la linea `perf` del presentador. Sirve para saber si en una
+  // grafica floja el coste esta en las pasadas de presentacion o en el juego.
+  static constexpr uint32_t kDbz3PresentTimeSlots = 16;
+  // D3D12 pide alinear el destino de ResolveQueryData; 512 B por slot deja 16 B
+  // utiles (dos timestamps de 8 B), igual que en el command processor.
+  static constexpr uint32_t kDbz3PresentTimeSlotStride = 512;
+  Microsoft::WRL::ComPtr<ID3D12QueryHeap> dbz3_present_time_heap_;
+  Microsoft::WRL::ComPtr<ID3D12Resource> dbz3_present_time_readback_;
+  uint64_t* dbz3_present_time_mapping_ = nullptr;
+  uint64_t dbz3_present_time_freq_ = 0;
+  uint64_t dbz3_present_time_fence_values_[kDbz3PresentTimeSlots] = {};
+  uint32_t dbz3_present_time_slot_ = 0;
+  bool dbz3_present_time_available_ = false;
+  bool dbz3_present_time_init_failed_ = false;
+  // Reutiliza un slot libre y recoge los ya terminados. Devuelve true si este
+  // frame debe grabar timestamps (y deja el slot elegido en slot_out).
+  bool Dbz3PresentTimeBegin(uint32_t& slot_out);
+  void Dbz3PresentTimeConsume();
+
   // The first is the refresher submission tracker fence value at which the
   // guest output texture was last refreshed, the second is the reference to the
   // texture, which may be null. The indices are the mailbox indices.

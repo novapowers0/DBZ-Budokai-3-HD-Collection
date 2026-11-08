@@ -21,8 +21,7 @@ INDICES = [0, 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]
 
 def zeta():
     import pcsx2_cuadros as C
-    sys.path.insert(0, r'E:\DBZ3HD_trabajo\R7\emu')
-    import sonda as s
+    import pcsx2_sonda as s
     from pcsx2_turnos import process_image
     def pids():
         raw = subprocess.run(['tasklist','/FI','IMAGENAME eq pcsx2.exe','/FO','CSV','/NH'],

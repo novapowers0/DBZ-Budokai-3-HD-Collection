@@ -105,6 +105,11 @@ class Dbz3TexturePackIndex {
   // Numero de entradas indexadas (diagnostico).
   size_t size() const;
 
+  // Poca RAM (4-8 GB): si el pack esta APAGADO no se precarga ni se decodifica
+  // nada; al encenderlo (F1 o launcher) se arranca la precarga, y al apagarlo se
+  // suelta lo decodificado. Se llama desde la comprobacion periodica del indice.
+  void MaintainPreload(bool packs_on) const;
+
   // Imagen decodificada (RGBA8) de una entrada CON su cadena de mips completa (hasta
   // 1x1) y ya dispuesta como la quiere la copia a la GPU (filas y niveles alineados a
   // 512 B, vale para D3D12 y Vulkan): la prepara un hilo de fondo y el hilo de la GPU
@@ -144,6 +149,7 @@ class Dbz3TexturePackIndex {
   mutable std::atomic<bool> building_{false};
   mutable std::atomic<bool> ready_{false};
   mutable std::atomic<const Map*> map_{nullptr};
+  mutable std::atomic<bool> preload_started_{false};
 };
 
 // Interruptor en vivo de los packs (menu F1, cvar dbz3_texture_packs_on del
@@ -168,6 +174,22 @@ uint64_t Dbz3PackLayout(const Dbz3TexturePackIndex::Image& image, uint32_t level
 // se intercambian R y B para quedar en el orden de bytes del guest.
 void Dbz3PackCopyLevels(const Dbz3TexturePackIndex::Image& image, uint64_t bytes, uint8_t* dst,
                         bool swap_rb);
+
+// Imagenes decodificadas que hay AHORA en RAM (bytes) y poda de la LRU hasta
+// `limit_bytes` (devuelve los bytes liberados). Se usa con poca RAM libre.
+uint64_t Dbz3DecodeCacheBytes();
+uint64_t Dbz3TrimDecodeCache(uint64_t limit_bytes);
+// Para la precarga en curso y vacia su cola (al apagar el pack en vivo).
+void Dbz3PackCancelPreload();
+
+// Memoria del proceso y libre del sistema, en MB (`mem=`/`packram=` en la linea perf).
+struct Dbz3HostMemory {
+  uint64_t ws_mb = 0;
+  uint64_t priv_mb = 0;
+  uint64_t avail_mb = 0;
+  uint64_t total_mb = 0;
+};
+Dbz3HostMemory Dbz3HostMemoryNow();
 
 // Texturas de pack subidas (acumulado; la linea `perf` lo muestra como pack=).
 extern std::atomic<uint64_t> g_dbz3_pack_uploads;

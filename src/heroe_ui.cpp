@@ -44,6 +44,7 @@ using DWORD = unsigned long;   // Linux: Lanzar va por std::system
 #include "heroe_api.h"
 #include "launcher/i18n.h"
 #include "launcher/launcher_state.h"
+#include "launcher/settings.h"
 #include "modos.h"
 #include "mods.h"
 #include "ps2_modelo.h"   // ps2::Escena: el pintor 3D con ImGui de los modelos de IW/B2 (toon + borde)
@@ -67,8 +68,23 @@ std::string Num(int n) { return std::to_string(n); }
 // Vista previa: tira de N giros (vista_heroe.py) -> textura. Se relee si el fichero cambia (regenerada al guardar).
 // ---------------------------------------------------------------------------------------------------------------------
 fs::path Juego() { return dbz3::ModsRoot().parent_path(); }
+// Las vistas se reconstruyen; no son partidas. Una instalacion protegida no debe impedir ver el heroe.
+fs::path Vistas() {
+  static const fs::path ruta = [] {
+    const fs::path normal = Juego() / "ingame_ui" / "heroe_vista";
+    const fs::path usuario = dbz3::settings::UserDataRoot() / "heroe_vista";
+    for (const auto& p : {normal, usuario}) {
+      std::error_code ec;
+      fs::create_directories(p, ec);
+      std::ofstream prueba(p / "generacion.log", std::ios::app);
+      if (!ec && prueba) return p;
+    }
+    return usuario;   // el fallo de escritura se explica en GenerarCon, sin excepcion en el hilo de dibujo
+  }();
+  return ruta;
+}
 fs::path VistaPng(int id, int traje) {
-  return Juego() / "ingame_ui" / "heroe_vista" / (Num(id) + "_" + Num(traje) + ".png");
+  return Vistas() / (Num(id) + "_" + Num(traje) + ".png");
 }
 struct Tira {
   std::unique_ptr<rex::ui::ImmediateTexture> tex;
@@ -79,29 +95,47 @@ struct Tira {
 std::map<std::string, Tira> g_tiras;
 std::mutex g_gen_mu;
 std::set<std::string> g_generando, g_fallidas;   // con g_gen_mu
+enum class ErrorModelo { kPython, kPaquete, kDatos, kEscritura, kGeneracion };
+std::map<std::string, ErrorModelo> g_error_modelo;   // con g_gen_mu
 
-bool Lanzar(const std::wstring& cmd, DWORD* code, DWORD limite_ms = 180000) {
+bool Lanzar(const std::wstring& cmd, DWORD* code, DWORD limite_ms = 180000, const fs::path& registro = {}) {
 #if defined(_WIN32)
   STARTUPINFOW si{};
   si.cb = sizeof(si);
   si.dwFlags = STARTF_USESHOWWINDOW;
   si.wShowWindow = SW_HIDE;
+  HANDLE log = INVALID_HANDLE_VALUE;
+  if (!registro.empty()) {
+    SECURITY_ATTRIBUTES sa{sizeof(sa), nullptr, TRUE};
+    log = CreateFileW(registro.c_str(), GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, &sa,
+                      CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (log == INVALID_HANDLE_VALUE) return false;
+    si.dwFlags |= STARTF_USESTDHANDLES;
+    si.hStdOutput = si.hStdError = log;
+    si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+  }
   PROCESS_INFORMATION pi{};
   std::vector<wchar_t> buf(cmd.begin(), cmd.end());
   buf.push_back(0);
-  if (!CreateProcessW(nullptr, buf.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi))
+  const bool lanzado = CreateProcessW(nullptr, buf.data(), nullptr, nullptr, log != INVALID_HANDLE_VALUE,
+                                    CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi) != FALSE;
+  if (log != INVALID_HANDLE_VALUE) CloseHandle(log);
+  if (!lanzado)
     return false;
   *code = 1;
   if (WaitForSingleObject(pi.hProcess, limite_ms) == WAIT_OBJECT_0) {
     GetExitCodeProcess(pi.hProcess, code);
   } else {
     TerminateProcess(pi.hProcess, 1);
+    WaitForSingleObject(pi.hProcess, 5000);
+    *code = 1460;   // tiempo agotado
   }
   CloseHandle(pi.hThread);
   CloseHandle(pi.hProcess);
   return true;
 #else
-  const int r = std::system(fs::path(cmd).string().c_str());   // sin consola que ocultar
+  const std::wstring completa = registro.empty() ? cmd : cmd + L" > \"" + registro.wstring() + L"\" 2>&1";
+  const int r = std::system(fs::path(completa).string().c_str());   // sin consola que ocultar
   *code = r == 0 ? 0 : 1;
   return r != -1;
 #endif
@@ -153,26 +187,63 @@ void GenerarCon(const std::string& clave, const std::wstring& args, const fs::pa
     const fs::path script = Juego() / "mod center hd" / "cac" / script_py;
     std::error_code ec;
     bool ok = false;
-    if (!fs::exists(script, ec)) {
+    ErrorModelo error = ErrorModelo::kPython;
+    const fs::path registro = Vistas() / (clave + ".log");
+    auto leer_registro = [](const fs::path& ruta) {
+      std::ifstream entrada(ruta, std::ios::binary | std::ios::ate);
+      const auto longitud = entrada ? std::streamoff(entrada.tellg()) : 0;
+      entrada.seekg(std::max(std::streamoff(0), longitud - 16384));
+      return std::string((std::istreambuf_iterator<char>(entrada)), std::istreambuf_iterator<char>());
+    };
+    std::string diagnostico;
+    std::ofstream prueba(registro, std::ios::app);
+    const bool escribible = bool(prueba);
+    prueba.close();
+    if (!escribible) {
+      error = ErrorModelo::kEscritura;
+    } else if (!fs::exists(script, ec)) {
+      error = ErrorModelo::kPaquete;
       REXLOG_WARN("dbz3 heroe: vista previa {}: falta {} (se queda el retrato)", clave, script.string());
     } else {
       std::vector<std::wstring> pys;
-      if (const char* e = std::getenv("DBZ3_PYTHON"); e && *e) pys.push_back(L"\"" + fs::path(e).wstring() + L"\"");
+      if (const char* e = std::getenv("DBZ3_PYTHON"); e && *e) pys.push_back(L"\"" + fs::u8path(e).wstring() + L"\"");
       const fs::path port = Juego() / "python" / "python.exe";
       if (fs::exists(port, ec)) pys.push_back(L"\"" + port.wstring() + L"\"");
+#if defined(_WIN32)
       pys.push_back(L"py -3");
+#else
+      pys.push_back(L"python3");
+#endif
       pys.push_back(L"python");
       if (const char* e = std::getenv("DBZ3_TEST_SIN_PYTHON"); e && *e == '1') pys.clear();   // prueba: PC sin Python
       const auto t0 = std::chrono::steady_clock::now();
       for (const std::wstring& py : pys) {
         const std::wstring cmd =
-            py + L" -X utf8 \"" + script.wstring() + L"\" --juego \"" + Juego().wstring() + L"\" " + args;
+            py + L" -X utf8 \"" + script.wstring() + L"\" --juego \"" + Juego().wstring() + L"\" " + args +
+            (std::string(script_py) == "vista_heroe.py" ? L" --salida \"" + Vistas().wstring() + L"\"" : L"");
         DWORD code = 1;
         // El montaje del heroe (cuerpo, 3 historias y rotulo) tarda 112 s medidos en un PC rapido y va en este mismo proceso: con el limite de
         // 180 s de las vistas previas, un PC algo mas lento lo mataba a medias y se quedaba sin historia o sin nombre.
-        if (!Lanzar(cmd, &code, clave.rfind("combate_", 0) == 0 || clave.rfind("exportar_", 0) == 0 ? 1200000 : 180000)) continue;
+        if (!Lanzar(cmd, &code, clave.rfind("combate_", 0) == 0 || clave.rfind("exportar_", 0) == 0 ? 1200000 : 180000, registro)) continue;
         if (code == 9009) continue;   // alias de la Microsoft Store
         ok = code == 0 && fs::exists(hecho, ec);
+        std::string detalle = leer_registro(registro);
+        if (!ok && detalle.empty() && (clave.rfind("combate_", 0) == 0 || clave.rfind("exportar_", 0) == 0))
+          detalle = leer_registro(Vistas() / "montaje.log");
+        if (!detalle.empty()) diagnostico = detalle;
+        if (!ok) {
+          error = ErrorModelo::kGeneracion;
+          if (detalle.find("ModuleNotFoundError") != std::string::npos || detalle.find("ImportError") != std::string::npos ||
+              detalle.find("SyntaxError") != std::string::npos) {
+            error = ErrorModelo::kPython;
+            continue;   // un Python del sistema incompleto no debe impedir probar el siguiente interprete
+          }
+          if (detalle.find("NoGameData") != std::string::npos) error = ErrorModelo::kDatos;
+          if (detalle.find("xbdecompress fallo") != std::string::npos || detalle.find("xbcompress fallo") != std::string::npos)
+            error = ErrorModelo::kPaquete;
+          if (detalle.find("PermissionError") != std::string::npos) error = ErrorModelo::kEscritura;
+          REXLOG_WARN("dbz3 heroe: generacion {} codigo {}: {} (registro {})", clave, code, detalle.substr(0, 1600), registro.string());
+        }
         if (!ok && clave.rfind("combate_", 0) == 0)
           REXLOG_ERROR("dbz3 heroe: el montaje del heroe fallo (codigo {}): detalle en ingame_ui/heroe_vista/montaje.log", code);
         break;
@@ -185,7 +256,16 @@ void GenerarCon(const std::string& clave, const std::wstring& args, const fs::pa
     if (clave.rfind("combate_", 0) == 0) g_montaje_fallo = !ok;   // el aviso en pantalla (MontajeFallido)
     std::lock_guard<std::mutex> lk(g_gen_mu);
     g_generando.erase(clave);
-    if (!ok) g_fallidas.insert(clave);
+    if (!ok) {
+      g_fallidas.insert(clave);
+      g_error_modelo[clave] = error;
+      REXLOG_WARN("dbz3 heroe: modelo no disponible {} motivo {} registro {}", clave, int(error), registro.string());
+    }
+    if (!ok && escribible) {
+      std::ofstream salida(registro, std::ios::app);
+      salida << "\nheroe: clave=" << clave << " motivo=" << int(error) << " script=" << script.string()
+             << "\n" << diagnostico << "\n";
+    }
   }).detach();
 }
 
@@ -204,6 +284,39 @@ bool HayGenerando() {   // K: alguna vista previa en marcha (el menu sigue vivo:
 bool Generando(int id, int traje) {
   std::lock_guard<std::mutex> lk(g_gen_mu);
   return g_generando.count(Num(id) + "_" + Num(traje)) != 0;
+}
+
+std::string AvisoModelo(const std::string& clave) {
+  std::lock_guard<std::mutex> lk(g_gen_mu);
+  const auto it = g_error_modelo.find(clave);
+  if (it == g_error_modelo.end()) return {};
+  switch (it->second) {
+    case ErrorModelo::kPython:
+      return T::T("Falta Python o sus módulos. Extrae también la carpeta python del paquete del juego.",
+                  "Python or its modules are missing. Also extract the python folder from the game package.");
+    case ErrorModelo::kPaquete:
+      return T::T("Faltan herramientas del Héroe. Extrae el paquete completo del juego en esta carpeta.",
+                  "Hero tools are missing. Extract the full game package into this folder.");
+    case ErrorModelo::kDatos:
+      return T::T("Faltan los datos de B3 HD. Elige su carpeta extraída en el launcher; una ISO no sirve para crear modelos.",
+                  "B3 HD data is missing. Select its extracted folder in the launcher; an ISO cannot build models.");
+    case ErrorModelo::kEscritura:
+      return T::T("No se puede escribir. Mueve el juego a una carpeta con permisos y vuelve a abrir el Héroe.",
+                  "Cannot write files. Move the game to a writable folder and reopen Hero mode.");
+    default:
+      return T::T("No se pudo crear el modelo. Consulta el registro del Héroe y vuelve a abrir esta pantalla para reintentar.",
+                  "Could not build the model. Check the hero log and reopen this screen to retry.");
+  }
+}
+
+void ReintentarVistas() {
+  std::lock_guard<std::mutex> lk(g_gen_mu);
+  // Solo al entrar por voluntad del jugador: nunca un bucle de Python por cada fotograma fallido.
+  for (auto it = g_fallidas.begin(); it != g_fallidas.end();) {
+    if (it->rfind("combate_", 0) == 0 || it->rfind("exportar_", 0) == 0) { ++it; continue; }
+    g_error_modelo.erase(*it);
+    it = g_fallidas.erase(it);
+  }
 }
 
 // Hilo de dibujo. Mira el fichero como mucho una vez por segundo.
@@ -330,7 +443,7 @@ Modelo3D* MallaClave(const std::string& clave, double ahora, double cada = 1.0) 
   Modelo3D& m = g_mallas[clave];
   if (ahora - m.visto >= cada) {
     m.visto = ahora;
-    const fs::path f = Juego() / "ingame_ui" / "heroe_vista" / (clave + ".malla");
+    const fs::path f = Vistas() / (clave + ".malla");
     std::error_code ec;
     const auto cuando = fs::last_write_time(f, ec);
     if (!ec && (!m || cuando != m.cuando)) {
@@ -375,12 +488,10 @@ Modelo3D* MallaFicha(int id, int traje, const C::Heroe& h, double ahora) {
   Modelo3D* m = MallaClave(clave, ahora, 0.25);
   if (m) ultima = clave, u_id = id, u_traje = traje;
   if (!m && ahora - g_ficha_cambio > 0.4) {
-    const fs::path f = Juego() / "ingame_ui" / "heroe_vista" / (clave + ".malla");
-    std::error_code ec;
     // UT: VistaUT ya esta generando la misma ficha (PNG + .malla); no lanzar dos procesos.
-    if (!fs::exists(f, ec) && !Generando2(clave) && !Generando2("ut_" + clave)) {
+    if (!Generando2(clave) && !Generando2("ut_" + clave)) {
       REXLOG_INFO("dbz3 heroe: vista de la ficha {}: {}", clave, args);
-      GenerarCon(clave, L"--ficha \"" + fs::path(args).wstring() + L"\" --clave " + fs::path(clave).wstring(), f);
+      GenerarCon(clave, L"--ficha \"" + fs::u8path(args).wstring() + L"\" --clave " + fs::path(clave).wstring(), Vistas() / (clave + ".malla"));
     }
   }
   if (!m && !ultima.empty() && u_id == id && u_traje == traje) {
@@ -399,7 +510,7 @@ S::Pic VistaUT(int id, int traje, double ahora) {   // G06a: turntable del cuerp
   Tira& t = g_tiras["ut_" + clave];
   if (ahora - t.visto < 1.0) return t.pic;
   t.visto = ahora;
-  const fs::path f = Juego() / "ingame_ui" / "heroe_vista" / (clave + ".png");
+  const fs::path f = Vistas() / (clave + ".png");
   std::error_code ec;
   const auto cuando = fs::last_write_time(f, ec);
   if (ec) {
@@ -687,7 +798,8 @@ void MoverPiezaB3(C::Heroe& h, int zona, int dir) {
 
 // Scouter nativo (1/11): draw propio con el material del modelo 281 (vista_heroe.py SCOUTER_NATIVO_ACTIVO). Es la ultima
 // fila de Create; los botones y la navegacion comparten este recuento. Si se apaga alli, volver a 7 en Create.
-int Filas() { return Xv2() ? 14 : CuerpoUT() ? (g_edit ? 3 : 6) : (g_edit ? 7 : 8) + (PiezasB3UI() ? 4 : 0); }   // la ultima: la de los botones
+int Filas() { return Xv2() ? 14 : CuerpoUT() ? (g_edit ? 3 : 6) : 7 + (PiezasB3UI() ? 4 : 0); }
+// 8/11: la fila «Scouter» de Create esta OCULTA (era la 8.a) hasta que salga el cristal (TANDA3_SCOUTER.md); el codigo y la ficha se conservan.   // la ultima: la de los botones
 int FilaBotones() { return Filas() - 1; }
 C::Heroe& Ficha() { return C::SlotEditable(C::SlotActivo()); }
 C::Hsv* ColorDeFila(int f) {
@@ -752,7 +864,7 @@ void Descartar() {
 // ingame_ui/heroe_vista/exportar.json con el resultado (ok | sin_id | fallo). Una peticion por pulsacion (clave nueva).
 std::string g_exp_clave, g_exp_ultimo;
 int g_exp_n = 0;
-fs::path ExportarJson() { return Juego() / "ingame_ui" / "heroe_vista" / "exportar.json"; }
+fs::path ExportarJson() { return Vistas() / "exportar.json"; }
 void PedirExportar() {
   if (!g_exp_clave.empty() && Generando2(g_exp_clave) && !Fallida(g_exp_clave)) return;   // ya en marcha
   std::error_code ec;
@@ -781,7 +893,7 @@ std::string TextoExportar() {
                 "Creates a separate character from this hero. Only its recipe is shared, never the model.");
   std::string r;
   if (Fallida(g_exp_clave)) {
-    r = T::T("No se pudo exportar el personaje (detalle en montaje.log).", "Could not export the character (details in montaje.log).");
+    r = AvisoModelo(g_exp_clave);
   } else if (Generando2(g_exp_clave)) {
     return T::T("Exportando personaje... puede tardar un minuto.", "Exporting character... this may take a minute.");
   } else {
@@ -889,6 +1001,15 @@ void DibujarVista(ImDrawList* dl, const S::Area& a, float t) {
   const Modelo3D* mf = ut ? nullptr : MallaFicha(id, traje, Ficha(), dbz3::RelojT(ImGui::GetTime()));   // colores/pelo/logo de la ficha
   const Modelo3D* m3 = ut ? nullptr : (mf ? mf : Malla3D(id, traje, dbz3::RelojT(ImGui::GetTime())));
   const S::Pic p = m3 ? S::Pic{} : (ut ? VistaUT(id, traje, dbz3::RelojT(ImGui::GetTime())) : Vista(id, traje, dbz3::RelojT(ImGui::GetTime())));
+  const std::string ficha_args = H::ArgsFicha(id, traje) + (Xv2() ? ";donante=" + Num(H::DonanteCombate()) : std::string());
+  const std::string clave = ut ? "ut_" + ClaveFicha(ficha_args) :
+                            H::FichaNativa() ? Num(id) + "_" + Num(traje) : ClaveFicha(ficha_args);
+  std::string aviso = AvisoModelo(clave);
+  std::string clave_error = clave;
+  if (aviso.empty() && !ut && !m3 && !p) {
+    clave_error = Num(id) + "_" + Num(traje);
+    aviso = AvisoModelo(clave_error);
+  }
   if (m3) {   // 3D en vivo
     const float cx = (ix0 + ix1) * 0.5f;
     if (g_cam_preset <= 1)   // cuerpo entero: sombra de contacto bajo los pies; en busto/retrato no hay suelo
@@ -913,9 +1034,17 @@ void DibujarVista(ImDrawList* dl, const S::Area& a, float t) {
   } else {
     Cara(dl, a, id, (ix0 + ix1) * 0.5f, (iy0 + iy1) * 0.5f - 40, 160);
     Texto(dl, a, (ix0 + ix1) * 0.5f, (iy0 + iy1) * 0.5f + 90, D::kSmall,
-          Generando(id, traje) ? std::string(T::T("Preparando la vista previa", "Preparing the preview")) + std::string(size_t(int(ImGui::GetTime() * 3) % 4), '.')
+          HayGenerando() ? std::string(T::T("Preparando la vista previa", "Preparing the preview")) + std::string(size_t(int(ImGui::GetTime() * 3) % 4), '.')
                                : T::T("Vista previa: retrato", "Preview: portrait"),
           false, true, ix1 - ix0);
+  }
+  if (!aviso.empty()) {
+    const float y = iy1 - 245;
+    dl->AddRectFilled(a.At(kPx0 + 12, y), a.At(kPx1 - 12, iy1 + 8), IM_COL32(25, 16, 28, 245), 5 * a.s);
+    const auto ruta_log = (Vistas() / (clave_error + ".log")).u8string();
+    const std::string mensaje = aviso + "\n\n" + T::T("Registro: ", "Log: ") + std::string(ruta_log.begin(), ruta_log.end());
+    dl->AddText(ImGui::GetFont(), 18 * a.s, a.At(kPx0 + 24, y + 12), IM_COL32(255, 220, 150, 255),
+                mensaje.c_str(), nullptr, (kPx1 - kPx0 - 48) * a.s);
   }
   if (Xv2() && HayGenerando())   // K: aviso mientras se compone la pieza nueva (se ve el modelo anterior)
     Texto(dl, a, (kPx0 + kPx1) * 0.5f, kPy1 - 112, D::kSmall,
@@ -1108,6 +1237,7 @@ void NombreDibujo(ImDrawList* dl, const S::Area& a, float t) {
 bool EnEdit() { return g_edit; }
 
 void PedirVista(int id, int traje) {
+  ReintentarVistas();
   std::error_code ec;
   fs::path malla = VistaPng(id, traje);
   malla.replace_extension(".malla");

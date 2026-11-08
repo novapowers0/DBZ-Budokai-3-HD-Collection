@@ -22,6 +22,7 @@ Uso:
   python tools\campos_iw.py info 903                              # piezas del campo
 """
 import argparse
+import hashlib
 import struct
 import sys
 from pathlib import Path
@@ -126,13 +127,18 @@ def capas_de(mcf):
     return flags, ex, ey, [struct.unpack_from("<4f", mcf, 0x30 + 16 * k) for k in range(8)]
 
 
-def _nubes_de(capturas, n_tex_terreno, mcf, cuentas, tam_zdd, capas, cielo=0):
+def _nubes_de(capturas, n_tex_terreno, mcf, cuentas, tam_zdd, capas, cielo=0, *, canales_material=False):
     """Partes pegadas al terreno (textura >= las del terreno): primeras 3 ventanas (132 B = firma para hallarlas en la
     memoria del guest) y su capa UV: Node_DrawBackgroundLayers (EU 0x306320) pone los canales 6..9 (capas 0..3 del
     #MCF) a los dos modelos de fondo antes de dibujarlos. En el alta cada pieza (cielo, nubes) es UN modelo, asi que
     se le da su capa en orden de pieza (0 = cielo, 1 = nubes); el reparto por material de los 4 canales del original
     no esta localizado [H: si se ve una capa quieta o demasiado rapida, es esto]. `cielo` = indice de la pieza que
-    Stage_DrawCameraFollowModel (EU 0x1E2880) dibuja trasladada con la camara (-1 = ninguna)."""
+    Stage_DrawCameraFollowModel (EU 0x1E2880) dibuja trasladada con la camara (-1 = ninguna).
+
+    solIWX 3/11: `canales_material` es opt-in SOLO para884. Reejecucion306320/133770/1B1130:
+    el selector6..9 de vtype elige el canal original; sin selector no hay desplazamiento UV.
+    Capa-1 conserva la ruta du/dv del runtime existente, con cuatro ceros para partes quietas.
+    No corrige seguimiento de camara, mezcla ni imagen GS; no se habilita en auto."""
     out = []
     if mcf[:4] != b"#MCF" or not capas:
         return out
@@ -152,8 +158,15 @@ def _nubes_de(capturas, n_tex_terreno, mcf, cuentas, tam_zdd, capas, cielo=0):
             k = next((k for k, (lo, hi) in enumerate(lim) if lo <= tex < hi), None)
             if k is None:
                 continue
-            capa = min(3, k)
-            u, v, px, py = capas[capa]
+            if canales_material:
+                canal = (d["part"].vtype >> 22) & 15
+                if canal not in (0, 6, 7, 8, 9):
+                    raise ValueError("reparto UV experimental: selector de material no contrastado (%d)" % canal)
+                capa = canal - 6 if canal else -1
+                u, v, px, py = capas[capa] if capa >= 0 else (0.0, 0.0, 0.0, 0.0)
+            else:
+                capa = min(3, k)
+                u, v, px, py = capas[capa]
             a0, n = d["A"]
             out.append(("".join("%02X" % x for x in b"".join(windows[a0:a0 + 3])), n, u, v, tam_zdd,
                         px, py, capa, 1 if k == cielo else 0))
@@ -352,15 +365,26 @@ def poner_niebla(carpeta, mcf):
     plano detras del terreno. Las entradas nativas de B3 usan 0/255 y el mod v13 no escribia esos dos floats
     (los dejaba como el anfitrion): eso es lo que se restaura. Sin #MCF (880) se usan los valores por defecto del
     original (World_CharactersMiscContent EU 0x307410 l.394839-394844), pero sin tocar +4/+8."""
+    # 4/11 (nIW, medido): con DBZ3_NIEBLA_FLOATS=1 se anaden los dos floats +4/+8
+    # COMPLEMENTADOS (IW guarda 255-a/255-b; B3 los usa como color de fondo). Sin
+    # la variable se mantiene el comportamiento DS88 (no se tocan). Pareja A/B con
+    # el cielo del 884: B 213 -> 224 (original 230) y nada roto.
+    import os  # noqa: PLC0415
+    extra = ""
     if mcf[:4] == b"#MCF":
         c = le(mcf, 0x1C)
         ini, fin = struct.unpack_from("<2f", mcf, 0x28)
         r, g, bl = c & 0xFF, (c >> 8) & 0xFF, (c >> 16) & 0xFF
+        if os.environ.get("DBZ3_NIEBLA_FLOATS") == "1":
+            a, b = struct.unpack_from("<2f", mcf, 0x20)
+            if 0.0 <= a <= 255.0 and 0.0 <= b <= 255.0:   # NaN falla las dos comparaciones
+                extra = ",%d,%d" % (round(255 - a), round(255 - b))
     else:
         r = g = bl = 0xFF
         ini, fin = 1000.0, 2000.0
-    linea = 'niebla = "%02X%02X%02X,%.0f,%.0f"     # #MCF: color,ini,fin (DS88: +4/+8 de B3 no se tocan)\n' % (
-        r, g, bl, ini, fin)
+    linea = 'niebla = "%02X%02X%02X,%.0f,%.0f%s"     # #MCF: color,ini,fin%s\n' % (
+        r, g, bl, ini, fin, extra,
+        ",fogA,fogB (complementados; DBZ3_NIEBLA_FLOATS=1)" if extra else " (DS88: +4/+8 de B3 no se tocan)")
     t = carpeta / "stage.toml"
     t.write_text(t.read_text(encoding="utf-8") + linea, encoding="utf-8")
 
@@ -684,6 +708,31 @@ def mar_sin_borde(amo, amt=None):
 # toca (0x7D6 queda byte a byte). NO se escribe la niebla +4/+8 de la entrada de B3 (DS88/DS167): eso ponia el fondo
 # entero turquesa.
 CIELO_SIN_BANDA = set()
+# eIW8 6/11: MEDIDO en el bin convertido (ventanas del #ZDD): las filas del domo del 884 salen en y = 0,93 * y_original - 250,36
+# (2824,2 -> 2376,1; 2199,4 -> 1795,1; -250,36 es la traslacion del hueso del domo), o sea el port dibuja el domo con la altura de
+# los vertices x 0,93 (origen del 0,93 no localizado: no esta en el #AMO ni en campos_iw.py/amo2awo.py). Se compensa con K = 1/0,93
+# (`--cielo-estirar 1,0753`). Con el domo siguiendo al ojo (SDK, dbz3_sky_follow) el perfil del cielo del intro (pose n17215) pasa de
+# G 16/32/90/129 a 32/47/95/131 en las filas 20/40/120/240 (original 32/43/88/125) pero R sube +7 arriba (antes ~igual al original):
+# rms R/G de 7,3/6,9 a 8,8/6,3. No se activa de serie.
+# eIW 5/11: opcion (--cielo-estirar K, solo 884). En la pareja exacta con el original el degradado del cielo de Serpiente
+# ocupa ~1,8 veces menos filas que en el original (suelo y serpiente miden igual: la proyeccion es la misma); se estira en
+# vertical la malla del cielo (alturas x K) sin tocar colores.
+ESTIRAR_CIELO = {}   # eIW8 6/11: ver el comentario de arriba (K = 1/0,93 probado: arregla G arriba pero empeora R; NO es de serie)
+
+
+def cielo_estirado(amo, k):
+    """Multiplica por k la altura (y) de los vertices del cielo (partes sin textura y con color por vertice)."""
+    import amo2awo  # noqa: PLC0415
+
+    b = bytearray(amo)
+    for g in amo2awo.PS2AMO(bytes(amo)).amgs:
+        for p in g.all_parts:
+            if p.vtype >> 31 or not (p.vtype & 2) or not p.verts:   # el domo del 884 (hijo 3): vtype 0x36 (color + uv), no los billboards
+                continue
+            for off, xyz, _nrm, _uv, _col in p.verts:
+                struct.pack_into("<f", b, g.a + off + 4, xyz[1] * k)
+    return bytes(b)
+
 
 
 def cielo_sin_banda(amo):
@@ -837,7 +886,7 @@ def sin_raiz_del_terreno(extra, terreno):
     return bytes(b)
 
 
-def bin_campo(afs, campo, solo_terreno=False, quedan=0):
+def bin_campo(afs, campo, solo_terreno=False, quedan=0, *, canales_uv_originales=False):
     """Bin HD del campo. El cielo y las nubes se pegan AL MODELO DEL TERRENO como partes rigidas de su hueso raiz
     (bind identidad), con el 'attach' de amo2awo (como las pelucas de B2) y sus texturas detras en el mismo banco:
     como sub-mallas propias no se dibujaban (el juego solo pinta las sub-mallas que tiene el escenario base, 2 en
@@ -853,6 +902,8 @@ def bin_campo(afs, campo, solo_terreno=False, quedan=0):
     [VERIFICAR] en pantalla 0x7D7/0x7D8: si el cielo se ve mal, el arreglo es mover en runtime las ventanas del cielo
     con la X/Z de la camara (como TickNubes de src/escenarios.cpp hace con las UV); eso toca escenarios.cpp, no este
     conversor."""
+    if canales_uv_originales and (campo != 884 or solo_terreno):
+        raise ValueError("reparto UV experimental: solo884 completo, sin --solo-terreno")
     import amo2awo  # noqa: PLC0415 (awo_tools, en el path desde escenarios_convertir)
     import amt_ps2  # noqa: PLC0415
     _titulo, base, _tema, piezas, k = CAMPOS[campo]
@@ -867,6 +918,8 @@ def bin_campo(afs, campo, solo_terreno=False, quedan=0):
         d = f[a]
         if ki == CIELO.get(campo, -1) and campo in CIELO_SIN_BANDA:   # DS173: vacio (la fila de niebla es del original)
             d = cielo_sin_banda(d)
+        if ki == 1 and campo in ESTIRAR_CIELO:   # 884: la entrada 3 (resto[1]) es el cielo
+            d = cielo_estirado(d, ESTIRAR_CIELO[campo])
         adjuntos.append((sin_raiz_del_terreno(d, f[a0]), desde))
         desde += le(f[t], 0x10)
     # camaras de la presentacion: el #AMC del propio campo (DATA_CMN campo+1, junto al #WCF): 3 pistas de 300
@@ -905,7 +958,7 @@ def bin_campo(afs, campo, solo_terreno=False, quedan=0):
     _capas = NUBES.get(("capas", campo))
     NUBES[campo] = _nubes_de(capturas, le(f[t0], 0x10), hijos(_e)[0],
                              [le(f[t], 0x10) for _, t in resto], len(zdd), _capas[3] if _capas else [],
-                             CIELO.get(campo, -1))
+                             CIELO.get(campo, -1), canales_material=canales_uv_originales)
     # DS73: el objeto UV animado es la entrada (0,1) del escenario (Stage_CreateAnimUVObject 0x1E2ED0); en los campos
     # de IW es la pieza de cielo (la primera de las de fondo), que ya tiene firma/ventanas de `_nubes_de`.
     cielo = next((x for x in NUBES.get(campo, []) if x[8] == 1), None)
@@ -925,13 +978,50 @@ def cmd_info(a):
         print(c, CAMPOS.get(c, ("?",))[0], [(k, h[:4].decode("latin1"), len(h)) for k, h in enumerate(hijos(e)) if h])
 
 
+def intro_serpiente(datos):
+    """Candidato explicito: esperas 200/300/360 medidas en IW EU, no guion completo.
+
+    Solo admite el SPX54 comprobado. Mantiene llamadas, offsets y recursos;
+    las dos esperas cambian 100->200 y 200->260 (las previas son de 100).
+    El inmediato de un byte tiene signo: PUSH8 200 seria -56. MOV16 200,r0
+    ocupa los mismos cinco bytes que PUSH8 100; POP r0 y conserva la pila.
+    No se aplica en auto ni en la conversion normal.
+    """
+    hijos_spx = [(o, s) for o, s, _t, _f in EC.hijos_amb(datos, ">")
+                 if datos[o:o + 4] == b"#SPX"]
+    if len(hijos_spx) != 1:
+        raise ValueError("intro_serpiente: se necesita un solo #SPX")
+    o, s = hijos_spx[0]
+    spx = datos[o:o + s]
+    if hashlib.sha256(spx).hexdigest() != "8a9faf147e279707734cdc04c1fdf90383aad2b0cd3cc6fd3bb8587a8f1325ad":
+        raise ValueError("intro_serpiente: SPX54 distinto del donante medido; no modificar")
+    if spx[291:301] != bytes.fromhex("0810640a0001004b084b") or spx[350:354] != bytes.fromhex("0820c800"):
+        raise ValueError("intro_serpiente: los operandos medidos no coinciden")
+    out = bytearray(datos)
+    out[o + 291:o + 296] = bytes.fromhex("0120c80000")
+    struct.pack_into("<H", out, o + 352, 260)
+    return bytes(out)
+
+
 def cmd_mod(a):
+    if getattr(a, "intro_serpiente", False) and a.campos != [884]:
+        raise ValueError("--intro-serpiente solo admite mod 884; candidato sin aceptar globalmente")
+    uv_original = getattr(a, "uv_materiales_serpiente", False)
+    if uv_original and (a.campos != [884] or a.solo_terreno or (a.bin and Path(a.bin).exists())):
+        raise ValueError("--uv-materiales-serpiente exige mod884 completo y conversion nueva; candidato sin aceptar")
+    if getattr(a, "cielo_estirar", None):
+        if a.campos != [884]:
+            raise ValueError("--cielo-estirar solo admite mod 884")
+        ESTIRAR_CIELO[884] = a.cielo_estirar
     afs = afs_iw()
     for c in a.campos:
         titulo, base, tema, _, _k = CAMPOS[c]
-        datos = Path(a.bin).read_bytes() if a.bin and Path(a.bin).exists() else bin_campo(afs, c, a.solo_terreno, a.quedan)
+        datos = Path(a.bin).read_bytes() if a.bin and Path(a.bin).exists() else bin_campo(
+            afs, c, a.solo_terreno, a.quedan, canales_uv_originales=uv_original)
         if a.bin and not Path(a.bin).exists():
             Path(a.bin).write_bytes(datos)
+        if getattr(a, "intro_serpiente", False):
+            datos = intro_serpiente(datos)
         entrada = ENTRADAS[c]
         viejo = EC._modelos_escenario     # la foto del selector, sin el suelo del base (partes ocultas: vacio)
         EC._modelos_escenario = lambda z: [m for m in viejo(z) if len(m.pos)]
@@ -946,6 +1036,8 @@ def cmd_mod(a):
         poner_dinamicos(carpeta, c)
         poner_uvanim(carpeta, c)
         poner_setup(carpeta, c)
+        if uv_original:
+            print("EXPERIMENTAL: reparto UV de Serpiente por material; imagen, camara y sonido completos pendientes")
         print("campo %d '%s' -> %s (entradas %d y %d, %d B)" % (c, titulo, carpeta, entrada, entrada + 100, len(datos)))
 
 
@@ -1047,6 +1139,19 @@ def _sello(ruta):
     return "%s|%d|%s|v%d" % (Path(ruta).name, st.st_size, h, VERSION)
 
 
+def _sello_iw(ruta):
+    """Sellar la ISO o el AFS real, nunca una carpeta extraida incompleta."""
+    ruta = Path(ruta)
+    if ruta.is_dir():
+        usr = next((p for p in ruta.iterdir() if p.is_dir() and p.name.lower() == "usr"), None)
+        afs = next((p for p in usr.iterdir() if p.is_file() and p.name.lower() == "data_cmn.afs"), None) if usr else None
+        if afs is None:
+            raise ValueError("la carpeta de Infinite World esta incompleta: falta USR/DATA_CMN.AFS en %s. "
+                             "Selecciona la ISO de Infinite World o una carpeta extraida completa" % ruta)
+        ruta = afs
+    return _sello(ruta)
+
+
 def _al_dia(carpeta, sello):
     try:
         return (carpeta / "stage.toml").is_file() and (carpeta / "origen.txt").read_text(encoding="utf-8") == sello
@@ -1060,39 +1165,66 @@ def _carpetas(us, ps2):
     importar.PS2 = str(ps2)
 
 
-def _apartar_base_vieja(mods):
-    """UH (23/10): la Base Red Ribbon se llamaba "Base B2" en versiones anteriores del conversor y comparte la
-    entrada 5000. Si las dos carpetas estan en mods, la vieja gana por orden alfabetico y sigue cerrando el
-    juego al cambiar de zona. Se aparta (nunca se borra) a mods/_respaldo_escenarios."""
+def _gestionados():
+    """{carpeta: entrada} de los escenarios que crea este script (campos de IW y escenarios de B1/B2)."""
+    g = {"Campo IW %d" % c: ENTRADAS[c] for c in CAMPOS}
+    for juego, grupo, nombre, _rot, _caja in B12:
+        g[nombre] = EC.ENTRADA_BASE + (20 if juego == "b1" else 0) + grupo
+    return g
+
+
+def _entrada(carpeta):
     import re  # noqa: PLC0415
+    try:
+        t = (carpeta / "stage.toml").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    m = re.search(r"^\s*entrada\s*=\s*(\d+)", t, re.M)
+    return int(m.group(1)) if m else None
+
+
+def _a_respaldo(mods, d):
+    """Aparta (nunca borra) una carpeta de escenario a mods/_respaldo_escenarios. Devuelve el destino o None."""
     import shutil  # noqa: PLC0415
     import time  # noqa: PLC0415
+    respaldo = Path(mods) / "_respaldo_escenarios"
+    respaldo.mkdir(parents=True, exist_ok=True)
+    base = "%s_%s" % (d.name, time.strftime("%Y%m%d-%H%M%S"))
+    destino, n = respaldo / base, 2
+    while destino.exists():
+        destino, n = respaldo / ("%s_%d" % (base, n)), n + 1
+    try:
+        shutil.move(str(d), str(destino))
+        return destino
+    except OSError as e:  # noqa: BLE001 (un respaldo que falla no para la conversion)
+        print("escenarios: aviso: no pude apartar '%s': %s" % (d.name, e))
+        return None
+
+
+def _apartar_viejos(mods):
+    """Arreglo automatico para instalaciones de versiones anteriores (7/11; antes solo la Base, UH 23/10).
+    Un escenario creado por una version vieja del conversor con OTRO nombre de carpeta (p. ej. "Base B2",
+    "B2 grupo 1") comparte la entrada del actual; si los dos estan en mods, el viejo puede ganar por orden
+    alfabetico y cerrar el juego. Se aparta a mods/_respaldo_escenarios la carpeta vieja si la actual ya esta
+    completa y la vieja la genero este script (lleva origen.txt). Los escenarios del propio jugador (sin
+    origen.txt) no se tocan: solo se avisa."""
     mods = Path(mods)
-    nueva = mods / "Base Red Ribbon B2"
-    if not (nueva / "stage.toml").is_file():
-        return
-    respaldo = mods / "_respaldo_escenarios"
+    gest = _gestionados()
+    por_entrada = {e: n for n, e in gest.items() if (mods / n / "stage.toml").is_file()}
     for d in sorted(mods.iterdir()):
-        if not d.is_dir() or d == nueva or d.name.startswith("_"):
+        if not d.is_dir() or d.name.startswith("_") or d.name in gest:
             continue
-        try:
-            t = (d / "stage.toml").read_text(encoding="utf-8", errors="replace")
-        except OSError:
+        e = _entrada(d)
+        if e is None or e not in por_entrada:
             continue
-        m = re.search(r"^\s*entrada\s*=\s*(\d+)", t, re.M)
-        if not m or int(m.group(1)) != 5000:
-            continue
-        respaldo.mkdir(parents=True, exist_ok=True)
-        destino = respaldo / ("%s_%s" % (d.name, time.strftime("%Y%m%d-%H%M%S")))
-        n = 2
-        while destino.exists():
-            destino = respaldo / ("%s_%s_%d" % (d.name, time.strftime("%Y%m%d-%H%M%S"), n))
-            n += 1
-        try:
-            shutil.move(str(d), str(destino))
-            print("escenarios: Base vieja '%s' (entrada 5000) apartada a %s" % (d.name, destino))
-        except OSError as e:  # noqa: BLE001 (un respaldo que falla no para la conversion)
-            print("escenarios: aviso: no pude apartar la Base vieja '%s': %s" % (d.name, e))
+        if (d / "origen.txt").is_file() or e == 5000:   # 5000: la "Base B2" vieja no siempre llevaba origen.txt
+            destino = _a_respaldo(mods, d)
+            if destino:
+                print("escenarios: version vieja '%s' (entrada %d, ahora '%s') apartada a %s"
+                      % (d.name, e, por_entrada[e], destino))
+        else:
+            print("escenarios: aviso: '%s' usa la misma entrada %d que '%s'; gana la primera por orden alfabetico"
+                  % (d.name, e, por_entrada[e]))
 
 
 def _tarea(t):
@@ -1143,16 +1275,23 @@ def cmd_auto(a):
     mods = Path(a.mods)
     import final_b1  # noqa: PLC0415  S5-A3b: poses de B1 de la escena final de la Leyenda (mod en tu carpeta mods)
     final_b1.auto(str(mods), a.us, a.ps2)
-    _apartar_base_vieja(mods)
+    _apartar_viejos(mods)
     tareas = []
+    al_dia = (lambda carpeta, sello: False) if a.forzar else _al_dia   # "Reparar escenarios" del launcher
     import importar  # noqa: PLC0415
     iw = importar.source_path("iw")
+    iw_pendiente = False
     if iw:
-        usr = Path(iw) / "USR" / "DATA_CMN.AFS"
-        sello = _sello(iw if Path(iw).is_file() else (usr if usr.exists() else iw))
-        for c in sorted(CAMPOS):
-            if not _al_dia(mods / ("Campo IW %d" % c), sello):
-                tareas.append(("iw", c, str(mods), a.us, a.ps2, sello))
+        try:
+            sello = _sello_iw(iw)
+        except (OSError, ValueError) as e:
+            iw_pendiente = True
+            print("escenarios: aviso: no se pueden preparar los campos de IW: %s. "
+                  "Se conservan los escenarios ya instalados; IW queda pendiente" % e)
+        else:
+            for c in sorted(CAMPOS):
+                if not al_dia(mods / ("Campo IW %d" % c), sello):
+                    tareas.append(("iw", c, str(mods), a.us, a.ps2, sello))
     else:
         print("escenarios: sin Infinite World en %s (campos de IW: nada que hacer)" % a.ps2)
     for juego, grupo, nombre, _rot, _caja in B12:
@@ -1162,10 +1301,10 @@ def cmd_auto(a):
             continue
         sello_b12 = _sello(ruta) + ("|arbol2" if (juego, grupo) == ("b1", 11) else "")   # A3b: el ring de Cell de B1 se rehace una vez (arboles TREE2 verdes); el resto de escenarios, no
         if juego == "b2" and grupo in (0, 2, 4, 7, 8):
-            sello_b12 += "|b2tz2fxampbsk"   # solGP1: visibilidad u16/s16 + metadatos BSK originales
+            sello_b12 += "|b2tz2fxampbsk|env1"   # solGP1 BSK + solB2X perfiles originales de luz/sol
             if grupo == 2:
                 sello_b12 += "|templo1"   # solCBT: añadir B2TZ a packs de una zona ya marcados b2tz2fx
-        if not _al_dia(mods / nombre, sello_b12):
+        if not al_dia(mods / nombre, sello_b12):
             try:   # X1esc: aviso si el escenario B2 instalado lleva el registro viejo (sello < v17); se regenera aqui mismo
                 viejo = (mods / nombre / "origen.txt").read_text(encoding="utf-8")
                 v = int(viejo.split("|v")[1].split("|")[0]) if "|v" in viejo else 0
@@ -1175,14 +1314,31 @@ def cmd_auto(a):
                 pass
             tareas.append(("b12", (juego, grupo), str(mods), a.us, a.ps2, sello_b12))
     if not tareas:
-        print("escenarios: al dia")
+        print("escenarios: sin tareas nuevas; IW pendiente" if iw_pendiente else "escenarios: al dia")
         return 0
+    # Reparar: la carpeta actual se aparta antes de rehacerla (sin restos de versiones viejas dentro) y vuelve a su
+    # sitio si el escenario no se puede crear, para no dejar al jugador sin el que tenia.
+    apartadas = {}
+    if a.forzar:
+        nombres = {"iw": lambda c: "Campo IW %d" % c, "b12": lambda k: next(x[2] for x in B12 if x[:2] == k)}
+        for t in tareas:
+            d = mods / nombres[t[0]](t[1])
+            if d.is_dir():
+                apartadas[(t[0], t[1])] = (d, _a_respaldo(mods, d))
     with ProcessPoolExecutor(max_workers=max(1, min(6, (os.cpu_count() or 2) // 2))) as ex:
         for t, fut in [(t, ex.submit(_tarea, t)) for t in tareas]:
             try:
                 print("escenarios: %s" % fut.result())
             except Exception as e:  # noqa: BLE001 (un escenario que falla no para los demas ni el juego)
                 print("escenarios: fallo %s %s: %s" % (t[0], t[1], e))
+                d, copia = apartadas.get((t[0], t[1]), (None, None))
+                if copia and copia.is_dir():
+                    import shutil  # noqa: PLC0415
+                    if d.exists():
+                        _a_respaldo(mods, d)   # la carpeta a medias del intento fallido, tambien apartada
+                    shutil.move(str(copia), str(d))
+                    print("escenarios: '%s' vuelve a la version anterior" % d.name)
+    _apartar_viejos(mods)   # los recien creados ya pueden desplazar a sus versiones viejas
     return 0
 
 
@@ -1199,11 +1355,16 @@ def main():
     s.add_argument("--solo-terreno", action="store_true", help="sin cielo ni nubes (solo el objeto 0)")
     s.add_argument("--quedan", type=int, default=0, help="partes del suelo del base que se siguen dibujando")
     s.add_argument("--foto", help="imagen para la casilla del selector (si no, foto sin GPU del escenario)")
+    s.add_argument("--intro-serpiente", action="store_true", help="EXPERIMENTAL: solo 884, esperas de intro IW EU; no valida guion/fondo/sonido completos")
+    s.add_argument("--uv-materiales-serpiente", action="store_true", help="EXPERIMENTAL: solo884, reparto UV por material original; no valida imagen/camara/sonido completos")
+    s.add_argument("--cielo-estirar", type=float, help="EXPERIMENTAL: solo 884, multiplica la altura del cielo (apagado por defecto)")
     s.set_defaults(fn=cmd_mod)
     s = sp.add_parser("auto", help="los que falten en la carpeta mods del jugador (launcher, al pulsar Jugar)")
     s.add_argument("--mods", required=True)
     s.add_argument("--us", required=True, help="carpeta con data_cmn.afs de la HD")
     s.add_argument("--ps2", required=True, help="carpeta ps2_games")
+    s.add_argument("--forzar", action="store_true",
+                   help="rehace todos aunque esten al dia (boton 'Reparar escenarios'); los actuales van a _respaldo_escenarios")
     s.set_defaults(fn=cmd_auto)
     a = p.parse_args()
     return a.fn(a) or 0

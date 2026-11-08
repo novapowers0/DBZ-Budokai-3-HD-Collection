@@ -1353,7 +1353,8 @@ def port(b1, rec, donor_anm, donor_cam, report, models=(), drop_effects=(), dono
         # altura: tobillos a la altura relativa del esqueleto de origen (B1 / donante)
         sk3 = altura.skeleton(models[0] if isinstance(models[0], bytes) else open(models[0], "rb").read())
         hips = [(1.0, 0.0), (1.0, 0.0)]
-        hips[0] = altura.correccion(sk3, altura.skeleton(b1.entry(r["models"][0])), amm_tracks(idle))
+        ref = (altura.skeleton(donor_model), altura.idle_tracks(donor_anm)) if donor_model else None   # eANI2: suelo de B3
+        hips[0] = altura.correccion(sk3, altura.skeleton(b1.entry(r["models"][0])), amm_tracks(idle), ref)
         if donor_model:
             hips[1] = altura.correccion(sk3, altura.skeleton(donor_model), altura.idle_tracks(donor_anm))
         report.append("altura: cadera de B1 x%.3f %+.2f, del donante x%.3f %+.2f" % (*hips[0], *hips[1]))

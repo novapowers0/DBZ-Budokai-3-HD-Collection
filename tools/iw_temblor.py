@@ -20,8 +20,7 @@ CONTADOR = 0x4A4D40
 
 
 def original(a):
-    sys.path.insert(0, os.environ.get('DBZ3_SONDA_DIR', r'E:\DBZ3HD_trabajo\R7\emu'))
-    import sonda as s
+    import pcsx2_sonda as s
     from forzar_mini_iw import B
     s.seleccionar_instancia(['--instancia', a.instancia])
     if s.INSTANCIA == 'principal' or s.nuestro_pid():

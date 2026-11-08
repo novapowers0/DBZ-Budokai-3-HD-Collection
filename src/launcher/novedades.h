@@ -20,6 +20,33 @@ struct NewsBlock {
   int count;
 };
 
+inline constexpr NewsItem kNews1561[] = {
+    {"Rendimiento", "Performance",
+     "El ahorro de CPU del bucle principal viene activado: en pruebas con 2 núcleos, el combate pasó de 43-47 a 58-60 FPS y el menú usa mucha menos CPU. Con dbz3_espera_dormir_us=0 vuelve al comportamiento anterior.",
+     "The main-loop CPU saving is now on: in 2-core tests combat went from 43-47 to 58-60 FPS and menus use far less CPU. Set dbz3_espera_dormir_us=0 for the old behaviour."},
+    {nullptr, nullptr,
+     "Automático usa menos memoria gráfica en GPU integradas o con poca RAM, y en pantallas mayores de 4K recomienda escala 3x.",
+     "Automatic uses less texture memory on integrated GPUs or low-RAM PCs, and recommends 3x scale on displays above 4K."},
+    {"Launcher y partidas", "Launcher and saves",
+     "Desbloquear todo instala la partida B3 completa (con copia de seguridad) y Restaurar mi partida la devuelve. Conservan el progreso de Héroe y Tag Team.",
+     "Unlock everything installs the complete B3 save (with a backup) and Restore my save brings yours back. Hero and Tag Team progress is kept."},
+    {"Personajes", "Characters",
+     "Arreglos en técnicas de personajes clonados, en Dragon Rush de Shin Budokai (reconstruye los mods afectados con el Kit nuevo) y en las cámaras de intro de escenarios convertidos.",
+     "Fixes for specials on cloned characters, Dragon Rush on Shin Budokai imports (rebuild affected mods with the new Kit) and intro cameras on converted stages."},
+    {"Online", "Online",
+     "Los errores de conexión se ven sin abrir Opciones avanzadas e indican si hay versión o protocolo incompatible; se guarda un informe en informes_online.",
+     "Connection errors show without opening Advanced options and say if the build or protocol is incompatible; a report is saved in informes_online."},
+    {"Infinite World", "Infinite World",
+     "Más minijuegos de Dragon Mission y el mapa usan la lógica del juego original (necesitas tu copia de Infinite World; sin ella se usa la lógica propia): botones, recogida de objetos, ladrillos, vuelo de Vegeta y Goten y mapa de misiones. Los iconos de botones vuelven a verse y puedes elegir Xbox, PlayStation o Nintendo en el launcher.",
+     "More Dragon Mission minigames and the map now run the original game's logic (needs your own Infinite World copy; without it the built-in logic is used): buttons, item pickup, bricks, Vegeta and Goten flying, and the mission map. Button icons are visible again and you can pick Xbox, PlayStation or Nintendo icons in the launcher."},
+    {"Escenarios y mods", "Stages and mods",
+     "El selector de escenarios se desplaza sin fin y muestra de qué juego viene cada uno; los escenarios repetidos se ocultan (se pueden mostrar en Ajustes rápidos). El launcher reparte solo los números de los mods para que no choquen, y Actualizar en la tienda de mods ya no ofrece una versión ya instalada.",
+     "The stage selector scrolls endlessly and shows which game each stage comes from; duplicate stages are hidden (show them in Quick settings). The launcher assigns mod IDs automatically so they cannot clash, and Update in the mod store no longer offers an already installed version."},
+    {"Héroe, HUB y Satán", "Hero, HUB and Satan",
+     "Los textos de la saga del Héroe llegan también en portugués y japonés. El HUB se maneja con el ratón y se pausa al perder el foco. En la ronda 1 de Satán suenan las voces y la música de la escena larga. Nuevo modo «Sin HUD» (tecla F9 o F1 > Modos) y arreglo de la regla de gigantes tras abandonar un reto.",
+     "Hero saga texts are now also in Portuguese and Japanese. The HUB works with the mouse and pauses when the window loses focus. Satan round 1 now plays the long scene's voices and music. New \"No HUD\" mode (F9 or F1 > Modes) and a fix for the giant-fighter rule sticking after abandoning a challenge."},
+};
+
 inline constexpr NewsItem kNews156[] = {
     {"Dragon Tactics (experimental)", "Dragon Tactics (experimental)",
      "Nuevo modo de combates automáticos contra 7 rivales: 34 luchadores de Budokai 3, tienda, cápsulas, 11 sinergias y mejoras hasta 4 estrellas con sus transformaciones.",
@@ -37,8 +64,8 @@ inline constexpr NewsItem kNews156[] = {
      "Al reconstruir los personajes se completan los rótulos que faltaban en técnicas heredadas y absorciones de Bu. Los nombres genéricos indican el personaje.",
      "Rebuilding the characters fills missing labels for inherited techniques and Buu absorptions. Generic names identify the character."},
     {"Infinite World (experimental)", "Infinite World (experimental)",
-     "Los campos se repiten sin borde visible, más animaciones y cámaras, arreglos de definitivas y ki. Freezer y Krilin conservan su altura en 7D7; aún hay diferencias con el original.",
-     "Fields repeat without a visible edge, more animations and cameras, ultimate and ki fixes. Frieza and Krillin retain their own height in 7D7; differences from the original remain."},
+     "Los campos se repiten sin borde visible, más animaciones y cámaras, arreglos de definitivas y ki. Freezer y Krilin conservan su altura en 7D7; aún hay diferencias con el original. Bubbles, Freezer, Piccolo y las marcas de Cell usan ya la lógica del juego original (necesita tu copia de Infinite World).",
+     "Fields repeat without a visible edge, more animations and cameras, ultimate and ki fixes. Frieza and Krillin retain their own height in 7D7; differences from the original remain. Bubbles, Freezer, Piccolo and Cell's trail markers now run the original game's logic (needs your Infinite World copy)."},
     {"Shin Budokai", "Shin Budokai",
      "Corregido el cuerpo rígido de Shin Budokai 1. Sus técnicas llevan nombres genéricos con el del personaje. Los personajes que existen en B3 HD usan su modelo nativo con los movimientos de Shin Budokai; los mods anteriores se rehacen al jugar si tienes la ISO.",
      "Fixed rigid Shin Budokai 1 bodies. Their techniques use generic names with the character's. Characters already in B3 HD use their native model with Shin Budokai moves; older mods rebuild on Play when their ISO is available."},
@@ -371,6 +398,7 @@ inline constexpr NewsItem kNews145[] = {
 
 // Del mas nuevo al mas antiguo.
 inline constexpr NewsBlock kNewsBlocks[] = {
+    {"1.5.6.1", kNews1561, int(sizeof(kNews1561) / sizeof(kNews1561[0]))},
     {"1.5.6", kNews156, int(sizeof(kNews156) / sizeof(kNews156[0]))},
     {"1.5.5.5", kNews1555, int(sizeof(kNews1555) / sizeof(kNews1555[0]))},
     {"1.5.5.4", kNews1554, int(sizeof(kNews1554) / sizeof(kNews1554[0]))},

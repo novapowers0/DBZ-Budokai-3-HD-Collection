@@ -13,6 +13,7 @@ Los combates reutilizan los #BPC sin usar del juego (data_cmn 627-653, 27: uno p
 Los retratos de los rivales son los de data_cmn 1416-1499 (los de B3), el del heroe el de su estilo (1416 por defecto).
 """
 import argparse
+import json
 import os
 import sys
 import tomllib
@@ -75,7 +76,7 @@ def _con_idiomas(out, extra=None):
             items = tomllib.loads("x = " + v)["x"]
         except Exception:
             continue
-        for lg in ("fr", "de", "it"):
+        for lg in ("fr", "de", "it", "pt", "ja"):
             res.append("%s%s = %s" % (base, lg, lst([t.get(x, {}).get(lg) or (extra or {}).get(x, {}).get(lg) or x for x in items])))
     return res
 
@@ -157,13 +158,24 @@ TRAD_PLANTILLAS = {
 }
 
 
+def _ptja():
+    """pt/ja de TRAD_PLANTILLAS (heroe_plantillas_pt_ja.json, misma clave inglesa)."""
+    try:   # sin el archivo (copia vieja del Kit) pt/ja quedan en ingles, no se rompe el montaje
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "heroe_plantillas_pt_ja.json"), encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {"pt": {}, "ja": {}}
+
+
 def _extra(h_en, nombres):
     """{frase inglesa ya con nombres: {lg: texto}} para el heroe y las sagas de esta generacion."""
     ex = {}
     for k, v in TRAD_PLANTILLAS.items():
         for n in (nombres if ("{n}" in k or "{s}" in k) else [""]):
             e = k.replace("{h}", h_en).replace("{s}", n or "saga").replace("{n}", n)
-            ex[e] = {lg: t.replace("{h}", h_en).replace("{n}", n) for lg, t in zip(("fr", "de", "it"), v)}
+            pj = _ptja()
+            ex[e] = {lg: t.replace("{h}", h_en).replace("{n}", n) for lg, t in
+                     list(zip(("fr", "de", "it"), v)) + [(lg, pj[lg][k]) for lg in ("pt", "ja") if k in pj.get(lg, {})]}
     return ex
 
 

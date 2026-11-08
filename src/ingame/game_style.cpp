@@ -438,6 +438,59 @@ void Sides(ImDrawList* dl, const Area& a) {
   DrawPic(dl, p, a.p0, ImVec2(a.p0.x + w, a.p0.y + h), src, IM_COL32_WHITE, true);
 }
 
+// Iconos de otro mando (ajuste "Tipo de mando" del launcher): dibujados por nosotros, sin arte de terceros.
+// Se elige por POSICION fisica del boton: A de Xbox = X de PlayStation = B de Nintendo.
+// Devuelve el ancho, o <0 si el boton no tiene version propia (se usa el de Xbox).
+static float GlyphOtroMando(ImDrawList* dl, const std::string& set, const char* button, ImVec2 pos, float h) {
+  const bool ps = set == "playstation";
+  const std::string b = button;
+  ImFont* font = MenuFont();
+  const ImU32 oscuro = IM_COL32(30, 30, 36, 255), blanco = IM_COL32(245, 245, 245, 255);
+  const float r = h * 0.45f;
+  // cara: A B X Y -> posicion; PS = simbolo de color, Nintendo = letra cambiada de sitio
+  if (b == "A" || b == "B" || b == "X" || b == "Y") {
+    if (!dl) return 2 * r;
+    const ImVec2 c(pos.x + r, pos.y);
+    dl->AddCircleFilled(c, r, oscuro, 24);
+    if (ps) {
+      const float q = r * 0.5f, t = r * 0.14f + 1.0f;
+      if (b == "A") {   // cruz
+        dl->AddLine(ImVec2(c.x - q, c.y - q), ImVec2(c.x + q, c.y + q), IM_COL32(120, 160, 240, 255), t * 1.4f);
+        dl->AddLine(ImVec2(c.x - q, c.y + q), ImVec2(c.x + q, c.y - q), IM_COL32(120, 160, 240, 255), t * 1.4f);
+      } else if (b == "B") {   // circulo
+        dl->AddCircle(c, q * 1.1f, IM_COL32(235, 95, 95, 255), 20, t * 1.4f);
+      } else if (b == "X") {   // cuadrado
+        dl->AddRect(ImVec2(c.x - q, c.y - q), ImVec2(c.x + q, c.y + q), IM_COL32(230, 140, 200, 255), 0, 0, t * 1.4f);
+      } else {   // triangulo
+        dl->AddTriangle(ImVec2(c.x, c.y - q * 1.15f), ImVec2(c.x - q * 1.1f, c.y + q * 0.8f),
+                        ImVec2(c.x + q * 1.1f, c.y + q * 0.8f), IM_COL32(100, 210, 160, 255), t * 1.4f);
+      }
+    } else {
+      const char* letra = b == "A" ? "B" : b == "B" ? "A" : b == "X" ? "Y" : "X";
+      const float fs = h * 0.6f;
+      const ImVec2 ts = font->CalcTextSizeA(fs, FLT_MAX, 0, letra);
+      dl->AddText(font, fs, ImVec2(c.x - ts.x * 0.5f, c.y - ts.y * 0.5f), blanco, letra);
+    }
+    return 2 * r;
+  }
+  const char* txt = nullptr;
+  if (b == "LB") txt = ps ? "L1" : "L";
+  else if (b == "RB") txt = ps ? "R1" : "R";
+  else if (b == "LT") txt = ps ? "L2" : "ZL";
+  else if (b == "RT") txt = ps ? "R2" : "ZR";
+  else if (b == "BACK") txt = ps ? "SHARE" : "-";
+  else if (b == "START") txt = ps ? "OPTIONS" : "+";
+  if (!txt) return -1.0f;
+  const float fs = h * (std::strlen(txt) > 3 ? 0.36f : 0.5f);
+  const ImVec2 ts = font->CalcTextSizeA(fs, FLT_MAX, 0, txt);
+  const float w = std::max(h * 1.1f, ts.x + h * 0.5f);
+  if (dl) {
+    dl->AddRectFilled(ImVec2(pos.x, pos.y - h * 0.38f), ImVec2(pos.x + w, pos.y + h * 0.38f), oscuro, h * 0.2f);
+    dl->AddText(font, fs, ImVec2(pos.x + (w - ts.x) * 0.5f, pos.y - ts.y * 0.5f), blanco, txt);
+  }
+  return w;
+}
+
 float Glyph(ImDrawList* dl, const char* button, ImVec2 pos, float h) {
   if (const char* plus = std::strchr(button, '+')) {   // "BACK+LB": los dos con un + entre medias
     const std::string first(button, plus);
@@ -450,6 +503,10 @@ float Glyph(ImDrawList* dl, const char* button, ImVec2 pos, float h) {
     }
     w += ps.x + 4;
     return w + Glyph(dl, plus + 1, ImVec2(pos.x + w, pos.y), h);
+  }
+  if (const std::string set = dbz3::settings::InputGlyphs(); set != "xbox") {
+    const float w = GlyphOtroMando(dl, set, button, pos, h);
+    if (w >= 0) return w;
   }
   // botones del juego: tira LB LT RB RT Y B A X (data_usi 2062), BACK (2033) y START (2062)
   struct G {

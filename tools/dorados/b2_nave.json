@@ -1,0 +1,12 @@
+{
+ "modo": "b2",
+ "escena": "nave",
+ "fuente": "Original PAL medido en PCSX2 (RAM + savestates + fotos): studies 5/ENTREGAS/NAVE_PLANTAS.md (31/10 preocupa, 01/11 solGP2 y Astra IW). Solo valores medidos en el original; nada copiado del port.",
+ "tarjeta_vs": false,
+ "plantas": {
+  "1": {"tiempo": -1, "nota": "sin reloj (foto pre_p1_f); supervivencia, el rival se levanta ~2,5 s tras el KO (pre_ko_2500/3000)", "revive_s": [1.5, 3.5]},
+  "2": {"tiempo": 600, "pago": 2, "fin_a_torre_s": [12.0, 14.0], "nota": "limite 36000 cuadros; 2 s -> 4 Kili; fin->torre 649 campos (13,0 s)"},
+  "3": {"tiempo": 99, "pago": 4, "fin_a_torre_s": [10.6, 13.9], "nota": "limite 5940 cuadros; 0 Hits x 4; fin->torre 528-697 campos"},
+  "4": {"tiempo": 99, "pago": 3, "fin_a_torre_s": [10.6, 13.9], "nota": "limite 5940 cuadros; 0 times x 3; fin->torre 528-698 campos"}
+ }
+}

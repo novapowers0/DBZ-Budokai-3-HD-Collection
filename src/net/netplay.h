@@ -68,7 +68,7 @@ class Session {
   bool Host(uint16_t port, uint8_t delay, std::string* error);
   bool Join(const std::string& ip, uint16_t port, std::string* error);
   // Must be called while idle by the isolated build's admission adapter.
-  // digest: 40 lowercase hex, freshly measured executable/SDK/guest/content/rules.
+  // digest: 32 lowercase hex (XXH3-128), freshly measured executable/SDK/guest/content/rules.
   // safe_selection: adapter proves F2 disabled, Normal capsules and no private
   // form/costume reinjection. False or missing proof rejects Host/Join.
   bool ConfigureIdentity(const std::string& digest, bool safe_selection, bool safe_tagteam = false);
@@ -225,6 +225,16 @@ class Session {
   std::vector<int> local_team_;
   bool team_ready_ = false;
   void ResetTransport();
+  // io_mu_: pequenos contadores del transporte; nunca datos de partidas ni payloads.
+  struct ConnectionDiag {
+    uint64_t since = 0, tx_ok = 0, tx_errors = 0, rx_udp = 0, rx_valid = 0, rx_ignored = 0;
+    int socket_error = 0, peer_proto = -1;
+    uint16_t port = 0;
+    uint8_t reported = 0;
+    std::string operation, peer_build, peer_os;
+  } conn_;
+  bool SendDatagram(const std::vector<uint8_t>& wire, const void* address, int length);
+  std::string WriteConnectionReport(const std::string& why, const char* reason);
   bool ValidPacket(const std::vector<uint8_t>& pkt) const;
   bool OpenSocket(uint16_t port, std::string* error);
   void Send(const std::vector<uint8_t>& pkt);
@@ -238,7 +248,7 @@ class Session {
   void AdaptDelay(uint32_t t);           // cada 60 ticks: ping del segundo y, en el anfitrion AUTO, nuevo D
   void SetDelay(uint8_t d, const char* why);
   void ApplySave();
-  void Fail(Link l, const std::string& why);   // estado de error con mu_ (lo leen dos hilos)
+  void Fail(Link l, const std::string& why, const char* reason = "failure");   // estado de error con mu_ (lo leen dos hilos)
 
   std::atomic<Link> link_{Link::kIdle};
   std::atomic<Role> role_{Role::kNone};   // lo leen el hilo de la interfaz y el del juego

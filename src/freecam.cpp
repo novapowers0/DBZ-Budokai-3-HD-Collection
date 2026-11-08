@@ -71,6 +71,9 @@ REXCVAR_DEFINE_BOOL(dbz3_freecam_pausa, false, "DBZ3/Dev", "Camara libre: congel
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
 REXCVAR_DEFINE_BOOL(dbz3_freecam_hud, false, "DBZ3/Dev", "Camara libre: ocultar el HUD")
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
+// "Sin HUD": oculta el marcador del combate con o sin camara libre (F9 o F1). No se guarda (como las anteriores).
+REXCVAR_DEFINE_BOOL(dbz3_sin_hud, false, "DBZ3/Dev", "Sin HUD: ocultar el marcador del combate (F9; no se guarda)")
+    .lifecycle(rex::cvar::Lifecycle::kHotReload);
 
 namespace dbz3::freecam {
 namespace {
@@ -399,6 +402,20 @@ class Panel : public rex::ui::ImGuiDialog {
 
  protected:
   void OnDraw(ImGuiIO& io) override {
+    {   // Sin HUD (F9): el panel se dibuja siempre, haya camara libre o no
+      static bool antes = false;
+      bool pulsada = !io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_F9, false);
+      static const bool pruebas = std::getenv("DBZ3_NO_DIALOGS") != nullptr;   // solo pruebas: F9 por fichero, como F5
+      std::error_code ec;
+      if (pruebas && std::filesystem::remove("dbz3_sinhud.req", ec)) pulsada = true;
+      if (pulsada)
+        rex::cvar::SetFlagByName("dbz3_sin_hud",
+                                 rex::cvar::GetFlagByName("dbz3_sin_hud") == "true" ? "false" : "true");
+      const bool sin = rex::cvar::GetFlagByName("dbz3_sin_hud") == "true";
+      if (sin) combate::OcultarHud(true);
+      else if (antes && !g_hud.load()) combate::OcultarHud(false);
+      antes = sin;
+    }
     if (g_test) return;   // la camara de prueba la lleva AplicarCamara (hilo del juego)
     uint8_t* base = BaseMem();
     const uint32_t mgr = base ? REX_LOAD_U32(dbz3::GA(kMgrPtr)) : 0;
@@ -689,10 +706,11 @@ void IniciarSesion() {
   rex::cvar::ResetToDefault("dbz3_freecam");
   rex::cvar::ResetToDefault("dbz3_freecam_pausa");
   rex::cvar::ResetToDefault("dbz3_freecam_hud");
+  rex::cvar::ResetToDefault("dbz3_sin_hud");
   static bool callbacks = false;
   if (!callbacks) {
     callbacks = true;
-    for (const char* n : {"dbz3_freecam", "dbz3_freecam_pausa", "dbz3_freecam_hud"})
+    for (const char* n : {"dbz3_freecam", "dbz3_freecam_pausa", "dbz3_freecam_hud", "dbz3_sin_hud"})
       rex::cvar::RegisterChangeCallback(n, [](std::string_view name, std::string_view value) {
         HacerNoGuardable(name, value);
       });

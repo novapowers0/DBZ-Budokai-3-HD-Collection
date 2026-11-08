@@ -761,6 +761,23 @@ class D3D12CommandProcessor : public CommandProcessor {
     uint32_t host_index = UINT32_MAX;
     bool valid = false;
   } active_occlusion_query_;
+  // DBZ3 (dsPHIRES): tiempo de GPU por submission con timestamps D3D12, para
+  // separar "la CPU no llega" de "la GPU no llega" en resoluciones altas. Solo
+  // se graba con dbz3_perf_logging=true; sin el cvar no cuesta nada.
+  static constexpr uint32_t kDbz3GpuTimeSlots = 16;
+  Microsoft::WRL::ComPtr<ID3D12QueryHeap> dbz3_gpu_time_heap_;
+  Microsoft::WRL::ComPtr<ID3D12Resource> dbz3_gpu_time_readback_;
+  uint64_t* dbz3_gpu_time_mapping_ = nullptr;
+  uint32_t dbz3_gpu_time_slot_ = 0;
+  uint64_t dbz3_gpu_time_freq_ = 0;
+  uint64_t dbz3_gpu_time_fence_values_[kDbz3GpuTimeSlots] = {};
+  bool dbz3_gpu_time_recording_ = false;
+  bool dbz3_gpu_time_available_ = false;
+  bool dbz3_gpu_time_init_failed_ = false;
+  // Devuelve true si este submission debe grabar timestamps (heap listo y cvar on).
+  bool Dbz3GpuTimeBeginSubmission();
+  // Suma las submissions ya terminadas al contador global (llamado una vez por frame).
+  void Dbz3GpuTimeConsumeCompleted();
   struct VertexBufferState {
     uint32_t address = UINT32_MAX;
     uint32_t size = UINT32_MAX;

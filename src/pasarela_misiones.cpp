@@ -122,6 +122,7 @@ bool Siguiente(int out[7], int vida);
 void Seguido(int vida);
 bool Encadenado();
 bool Seguir();
+void Levantado();   // prueba I sin cadena: el rival se levanta en el mismo combate (cuenta uno mas)
 int ListaCapsulas();   // 0 Normal, 1 Custom (menu de la rueda)
 int DibujarPrincipalB2(ImDrawList* dl, const dbz3::ingame::style::Area& a, float t, uint16_t pressed, int& cursor);
 }  // namespace dbz3::pasarela::nave
@@ -2191,7 +2192,9 @@ class Panel : public rex::ui::ImGuiDialog {
       r.puntos = mr.puntos;
       const int score = mr.score >= 0 ? mr.score : mr.puntos;
       const int zeni = mr.zeni >= 0 ? mr.zeni : mr.puntos;
-      const int rango = mr.rango >= 0 ? mr.rango : PantallaDM::Rango(score);
+      // fase 1 (7/11): -2 = fallo sin rango (vuelo, EU 0x33C420): llega INTACTO a la pantalla (sin letra; -1 seria "por
+      // puntos") y no da progreso de rango (EU 0x28A020 se salta los premios con rango < 0)
+      const int rango = mr.rango == -2 ? -2 : mr.rango >= 0 ? mr.rango : PantallaDM::Rango(score);
       r.score = score;
       r.zeni = zeni;
       r.rango = rango;   // el del minijuego (su formula de IW), no el recalculado por puntos (auditoria8/B)
@@ -2202,7 +2205,7 @@ class Panel : public rex::ui::ImGuiDialog {
       if (mr.clave == 0x7D3) r.ladrillos = mr.objetos;   // fila BRICKS DESTROYED (334/1 t17, fila 2)
       r.clave_mini = mr.clave;                           // s1 F04.3: titulo del minijuego arriba
       if (mr.superado)   // escalafon: 10 por rango mejorado del minijuego
-        RangoMejora("rango_iw_mini_" + std::to_string(mr.clave), rango + 1, 10);
+        RangoMejora("rango_iw_mini_" + std::to_string(mr.clave), std::max(rango, -1) + 1, 10);
       // Marcador del minijuego: iw_mini_<clave> = mejor SCORE (Results_ComputeTotalsAndRewards: fila TOTAL SCORE;
       // SetScore 0x2AE040 elige el hueco del marcador en el registro de la mision). iw_rango_mini_<clave> = mejor
       // rango + 1 (Battle_ComputeRankAndRecord 0x28A5E0 guarda el rango; 0 = sin superar).
@@ -2212,7 +2215,7 @@ class Panel : public rex::ui::ImGuiDialog {
       if (r.nuevo_record) GuardarProgreso(clave, score);
       r.mejor = std::max(antes, score);
       const std::string clave_rango = "iw_rango_mini_" + std::to_string(mr.clave);
-      if (rango + 1 > LeerProgreso(clave_rango, 0)) GuardarProgreso(clave_rango, rango + 1);
+      if (std::max(rango, -1) + 1 > LeerProgreso(clave_rango, 0)) GuardarProgreso(clave_rango, std::max(rango, -1) + 1);
       // Monedero de IW: suma el premio +0x5A del bloque de resultados a las DOS bolsas de la campana
       // (iRam005c154c/iRam005c1550) con tope 0xF41DC = 999900. `iw_zeni` es la bolsa del port; a rpg::Premio entra solo
       // lo que cabe. `saldo` = lo que ensena la fila TOTAL (el monedero ya sumado).
@@ -2815,4 +2818,15 @@ const bool g_test = [] {
 }();
 
 }  // namespace
+
+// Nave, prueba I en 1P (B2: el rival cae y se levanta ~2,5 s despues con la barra llena, en el mismo combate). El
+// golpe y la levantada los hace tagteam.cpp (gancho sub_8211A5A8 y Tick, como el KO con compañero vivo); aqui solo
+// se dice si toca y se cuenta el vencido. La cadena de sub_820FE9B0 queda para un fin de B3 que no pase por el golpe.
+bool NaveReviveRival() {
+  return dbz3::hub::OwnBattle() && g_modo == kNave && g_nave_prueba == 0 && g_fase == kLuchando && !nave::DosJugadores();
+}
+void NaveRivalLevantado() {
+  std::lock_guard<std::mutex> lk(g_mu);
+  nave::Levantado();
+}
 }  // namespace dbz3::pasarela::misiones

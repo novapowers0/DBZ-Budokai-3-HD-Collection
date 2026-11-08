@@ -579,7 +579,7 @@ void CallarAdxPs2() { ++g_adx_gen; }
 // Musica de los modos de PS2: la pista ADX entera en estereo y en bucle (WHDR_BEGINLOOP/ENDLOOP) hasta CallarMusicaPs2 o
 // la siguiente. ponytail: bucle de la pista entera (sin los puntos de bucle de la cabecera ADX); add when one sounds wrong.
 std::atomic<uint32_t> g_mus_gen{0};
-void OirMusicaPs2(const std::filesystem::path& juego, const std::string& afs, int entrada, float volumen) {
+void OirMusicaPs2(const std::filesystem::path& juego, const std::string& afs, int entrada, float volumen, float desde_s) {
   const uint32_t gen = ++g_mus_gen;
   // S5-A3: DBZ3_AUDIO_VERIFICA=1 decodifica la pista aunque este en silencio y apunta su RMS por segundo (la salida por winmm
   // no entra en el volcado del SDK; asi se comprueba con numeros que la pista suena y cuando empieza), sin reproducirla.
@@ -601,10 +601,11 @@ void OirMusicaPs2(const std::filesystem::path& juego, const std::string& afs, in
     return;
   }
   if (volumen <= 0) return;
-  std::thread([juego, afs, entrada, volumen, gen] {
+  std::thread([juego, afs, entrada, volumen, gen, desde_s] {
     AfsPs2 a;
     int hz = 0;
     std::vector<int16_t> pcm = a.Abrir(juego, afs) ? Adx(a.Entrada(size_t(entrada)), hz, true) : std::vector<int16_t>();
+    if (desde_s > 0 && hz) pcm.erase(pcm.begin(), pcm.begin() + std::min(pcm.size(), size_t(desde_s * float(hz)) * 2));   // estereo: entra a mitad de pista (la llegada de la ronda 1 sigue a la previa)
     REXLOG_INFO("dbz3 pasarela: musica {} {}: {:.1f} s", afs, entrada, hz ? double(pcm.size()) / 2 / hz : 0.0);
     if (pcm.empty() || gen != g_mus_gen.load()) return;
     for (int16_t& x : pcm) x = int16_t(std::clamp(int(float(x) * volumen), -32768, 32767));

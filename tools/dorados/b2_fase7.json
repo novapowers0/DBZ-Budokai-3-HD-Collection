@@ -1,40 +1,64 @@
 {
  "modo": "b2",
  "escena": "fase7",
- "fuente": "PCSX2 PINE, A2\\sstates\\fase7.p2s (lista de aliados), 110.0 s",
- "estado": "fase7.p2s",
- "teclas": "cap=lista z espera2500 cap=dialogo up espera800 z espera7000 cap=aliado espera1000 z espera4000 cap=p1 z espera9000 cap=p2 z espera9000 cap=p3 espera20000 cap=final",
- "seg": 110.0,
- "secuencia": [],
- "recuento": {},
- "capturas": [
-  {
-   "original": "C:\\Users\\javie\\Desktop\\PROYECTOS IA\\DBZ Budokai 3 HD Collection\\studies 5\\ENTREGAS\\A2\\evidencias\\original_fase7_lista.png",
-   "port": "fase7_lista"
-  },
-  {
-   "original": "C:\\Users\\javie\\Desktop\\PROYECTOS IA\\DBZ Budokai 3 HD Collection\\studies 5\\ENTREGAS\\A2\\evidencias\\original_fase7_dialogo.png",
-   "port": "fase7_dialogo"
-  },
-  {
-   "original": "C:\\Users\\javie\\Desktop\\PROYECTOS IA\\DBZ Budokai 3 HD Collection\\studies 5\\ENTREGAS\\A2\\evidencias\\original_fase7_aliado.png",
-   "port": "fase7_aliado"
-  },
-  {
-   "original": "C:\\Users\\javie\\Desktop\\PROYECTOS IA\\DBZ Budokai 3 HD Collection\\studies 5\\ENTREGAS\\A2\\evidencias\\original_fase7_p1.png",
-   "port": "fase7_p1"
-  },
-  {
-   "original": "C:\\Users\\javie\\Desktop\\PROYECTOS IA\\DBZ Budokai 3 HD Collection\\studies 5\\ENTREGAS\\A2\\evidencias\\original_fase7_p2.png",
-   "port": "fase7_p2"
-  },
-  {
-   "original": "C:\\Users\\javie\\Desktop\\PROYECTOS IA\\DBZ Budokai 3 HD Collection\\studies 5\\ENTREGAS\\A2\\evidencias\\original_fase7_p3.png",
-   "port": "fase7_p3"
-  },
-  {
-   "original": "C:\\Users\\javie\\Desktop\\PROYECTOS IA\\DBZ Budokai 3 HD Collection\\studies 5\\ENTREGAS\\A2\\evidencias\\original_fase7_final.png",
-   "port": "fase7_final"
-  }
- ]
+ "fuente": "PCSX2 PINE, savestate E:\\DBZ3HD_trabajo\\A2\\sstates\\fase7.p2s, 150.0 s",
+ "estado": "E:\\DBZ3HD_trabajo\\A2\\sstates\\fase7.p2s",
+ "teclas": "z espera2500 up espera800 z espera7000 z espera1500 z espera8000 z espera1500 z espera8000 z espera1500 z espera8000 z espera1500 z espera8000 z espera1500 z espera8000 z espera1500 z espera8000 z espera1500 z espera8000 z espera1500 z espera8000 espera20000",
+ "seg": 150.0,
+ "secuencia": [
+  62,
+  61,
+  62,
+  75,
+  61,
+  62,
+  61,
+  62,
+  58,
+  59,
+  1,
+  35,
+  36,
+  35,
+  36,
+  83,
+  84,
+  50,
+  1
+ ],
+ "tiempos": [
+  36.5,
+  36.6,
+  36.6,
+  36.9,
+  36.9,
+  36.9,
+  37.4,
+  37.4,
+  37.7,
+  37.7,
+  39.0,
+  39.1,
+  39.1,
+  39.1,
+  39.1,
+  39.1,
+  48.9,
+  97.4,
+  97.5
+ ],
+ "recuento": {
+  "1": 2,
+  "35": 2,
+  "36": 2,
+  "50": 3,
+  "58": 1,
+  "59": 1,
+  "61": 3,
+  "62": 5,
+  "75": 1,
+  "83": 297,
+  "84": 322
+ },
+ "capturas": []
 }

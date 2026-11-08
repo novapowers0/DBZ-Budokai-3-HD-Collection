@@ -104,6 +104,13 @@ class PSPAMG:
         for p in self.parts:
             if p.verts and p.verts[0][2] is None and not any(v[0] in skinned for v in p.verts):
                 _smooth_normals(p)
+        # #68: el motor culla cada parte con centro+radio. El radio calculado de la malla
+        # PSP (espacio de modelo) rechaza el cuerpo en el Dragon Rush y deja solo la cara
+        # y las manos. Los modelos nativos HD llevan radio 0 en el cuerpo (sin culling);
+        # se aplica el mismo convenio. Medido: cuerpo entero en el Rush y combate normal
+        # igual (2026-11-04). El centro se conserva.
+        for p in self.parts:
+            p.radius = 0.0
 
     def _part(self, bone, po):
         b, a = self.b, self.a

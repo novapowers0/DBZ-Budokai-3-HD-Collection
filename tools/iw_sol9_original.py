@@ -45,8 +45,10 @@ def rescatar(pid,padre,clave):
 
 def main():
     ap=argparse.ArgumentParser()
-    ap.add_argument('caso',choices=['vuelo','panel','rescate'])
+    ap.add_argument('caso',choices=['vuelo','panel','rescate','intro','meta'])
     ap.add_argument('--clave',default='0x7D6')
+    ap.add_argument('--meta-x',type=float,default=6500.0)
+    ap.add_argument('--meta-z',type=float,default=-6000.0)
     ap.add_argument('--pid',type=int)
     ap.add_argument('--padre',type=int)
     a=ap.parse_args()
@@ -95,7 +97,48 @@ def main():
         hilo.join()
         fin=time.monotonic()+240
         fs=lambda addr:struct.unpack('<f',p.leer(addr,4))[0]
-        if a.caso=='vuelo':
+        if a.caso=='intro':   # eIW8: linea de tiempo de la presentacion del vuelo (G=*(0x49CE3C)): desde que existe hasta soltar la puerta +0x550
+            while time.monotonic()<fin:
+                g=p.u32(0x49CE3C)
+                if 0x100000<g<0x2000000:
+                    c.pausa();break
+                time.sleep(.005)
+            else:raise RuntimeError('sin viewer de vuelo')
+            visto=False
+            for k in range(2600):
+                filas.append(dict(campo=k,contador=c.numero(),puerta=p.u32(g+0x550),codigo=hex(p.u32(g+0x554)),
+                    estado=p.u32(g+0x570),tiempo_ms=fs(g+0x518),listo=fs(g+0x52C),f54c=p.u32(g+0x54C),
+                    mgr_clip=p.u32(0x5C0F54)))
+                if k in (0,300,460,1080,1170):fotos.append(c.captura(out/f'intro_{k:04}_05.png'))
+                visto=visto or filas[-1]['puerta']!=0
+                if visto and k>6 and filas[-1]['puerta']==0 and filas[-6]['puerta']==0:break
+                c.paso()
+        elif a.caso=='meta':   # eIW8: coloca el viewer EN la meta (x,z del #MSF) tras READY y registra el cierre campo a campo
+            while time.monotonic()<fin:
+                g=p.u32(0x49CE3C)
+                if 0x100000<g<0x2000000 and p.u32(g+0x724)==0xFFFFFFFF and p.u32(g+0x54C)==1 and p.u32(g+0x554)==0x320:
+                    c.pausa();break
+                time.sleep(.01)
+            else:raise RuntimeError('sin entrada de vuelo')
+            for _ in range(240):
+                if p.u32(g+0x550)==0:break
+                c.paso()
+            else:raise RuntimeError('READY no libera G+550')
+            c.tecla(0x49,True);c.tecla(0x57,True)   # palanca adelante: sin entrada el viewer no corre
+            y=fs(g+0x5C4)
+            p.escribir(g+0x5C0,struct.pack('<3f',a.meta_x,y,a.meta_z))
+            ult=None
+            for k in range(2400):
+                fila=dict(campo=k,contador=c.numero(),puerta=p.u32(g+0x550),codigo=hex(p.u32(g+0x554)),estado=p.u32(g+0x570),
+                    tiempo_ms=fs(g+0x518),f54c=p.u32(g+0x54C),posicion=struct.unpack('<3f',p.leer(g+0x5C0,12)),
+                    yaw=p.u32(g+0x55C),vel=fs(g+0x560),mgr_estado=p.u32(0x5C0F54))
+                filas.append(fila)
+                firma=(fila['estado'],fila['codigo'],fila['f54c'],fila['puerta'])
+                if firma!=ult:
+                    fotos.append(dict(campo=k,**c.captura(out/f'meta_{k:04}_{fila["estado"]}_{fila["codigo"]}.png')));ult=firma
+                if len(fotos)>40:break
+                c.paso()
+        elif a.caso=='vuelo':
             while time.monotonic()<fin:
                 g=p.u32(0x49CE3C)
                 if 0x100000<g<0x2000000 and p.u32(g+0x724)==0xFFFFFFFF and p.u32(g+0x54C)==1 and p.u32(g+0x554)==0x320:
@@ -139,7 +182,7 @@ def main():
         (out/'medida.json').write_text(json.dumps(dict(clave=a.clave,caso=a.caso,filas=filas,fotos=fotos,
             contador='0x4A4D40',reloj='G+518 ms; G+550 gate' if a.caso=='vuelo' else '0x5C0FF0'),indent=2),encoding='utf-8')
         if propio:
-            if c and a.caso=='vuelo':
+            if c and a.caso in ('vuelo','meta'):
                 c.tecla(0x49,False);c.tecla(0x57,False)
             subprocess.run([sys.executable,str(I.ROOT/'tools/pcsx2_cuadros.py'),'--instancia','principal','cerrar'],check=True)
         elif preparado and not s.nuestro_pid():

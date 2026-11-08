@@ -40,6 +40,8 @@ FUENTES = ["src/hub.cpp", "src/hub_menu.cpp", "src/ingame/hub_panel.cpp", "src/i
            "src/suelo_iw.*",   # frente R11: consulta de suelo y logica de luchadores (sub_8210E700)
            "src/video_hd.inl",   # videos HD: capa amSofdec (sub_82091DA8, sub_820914D8...)
            "src/iw_minijuegos.cpp",   # frente R16: tope de distancia entre luchadores (sub_82114910)
+           # Fase 0 O (6/11): ganchos de IW/B2 que hoy son REX_HOOK_RAW (no corren con el xex EU) y la capa modo original
+           "src/anim_iw.cpp", "src/modo_original.*",   # dia1O: sin escenarios_b2_*.inl (motor B2 solo US, +213 lineas); se anade al pasarlo a EU
            # funciones del juego que copia el generador del selector de escenarios (su .inc EU las necesita)
            "tools/gen_escenarios_sel.py"]
 GEN_H = ROOT / "src" / "eu_map_gen.h"

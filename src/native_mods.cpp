@@ -5,12 +5,21 @@
 
 #include <rex/filesystem.h>
 #include <rex/logging.h>
+#include <rex/hash.h>
 
 #include <chrono>
 #include <ctime>
 
 #include <fstream>
 #include <cstring>
+#include <algorithm>
+#ifdef _WIN32
+#include <windows.h>
+#include <tlhelp32.h>
+#else
+#include <unistd.h>
+#include <fcntl.h>
+#endif
 
 namespace dbz3 {
 namespace {
@@ -22,7 +31,7 @@ constexpr char kSpfMagic[] = "#SPF 1.0";
 std::vector<NativeModInfo> Catalog() {
   using i18n::T;
   return {
-      {"save_100", T("Guardar al 100%", "100% save"),
+      {"save_100", T("Desbloquear todo", "Unlock everything"),
        T("Instala una partida completa de Xbox 360 (todo desbloqueado). Tu partida se copia antes y se puede restaurar.",
          "Installs a complete Xbox 360 save (everything unlocked). Your save is backed up first and can be restored."),
        T("Progreso / guardado", "Progress / save"), NativeModState::kReady},
@@ -37,10 +46,6 @@ std::vector<NativeModInfo> Catalog() {
   };
 }
 
-bool IsDataFile(const std::filesystem::path& path) {
-  return path.filename() == "data.bin" && std::filesystem::is_regular_file(path);
-}
-
 constexpr char kProfile[] = "B13EBABEBABEBABE";
 constexpr char kTitle[] = "4E4D0856";
 
@@ -49,121 +54,91 @@ std::filesystem::path TemplateDir() {
 }
 std::filesystem::path BackupRoot() { return settings::UserDataRoot() / "respaldos_partida"; }
 
+bool FlushSaveFile(const std::filesystem::path& path, std::error_code& ec) {
+#ifdef _WIN32
+  HANDLE h = CreateFileW(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr);
+  if (h == INVALID_HANDLE_VALUE) ec = std::error_code(GetLastError(), std::system_category());
+  else {
+    if (!FlushFileBuffers(h)) ec = std::error_code(GetLastError(), std::system_category());
+    CloseHandle(h);
+  }
+#else
+  const int fd = open(path.c_str(), O_WRONLY);
+  if (fd < 0) ec = std::error_code(errno, std::generic_category());
+  else {
+    if (fsync(fd)) ec = std::error_code(errno, std::generic_category());
+    close(fd);
+  }
+#endif
+  return !ec;
+}
+
 bool CopyAtomic(const std::filesystem::path& from, const std::filesystem::path& to,
                 std::error_code& ec) {
   std::filesystem::create_directories(to.parent_path(), ec);
   if (ec) return false;
   auto tmp = to;
   tmp += ".tmp";
+  // Only the official UI test harness can inject a one-shot partial write.
+  // No test variable / request means the normal filesystem path below.
+  if (std::getenv("DBZ3_TEST_SAVE100_UI") && std::getenv("DBZ3_TEST_SAVE100_FAULTS") &&
+      to.filename() == "DBZ3.header" &&
+      to.lexically_relative(settings::UserDataRoot()).generic_string().find("respaldos_partida") == std::string::npos) {
+    const auto request = rex::filesystem::GetExecutableFolder() / "dbz3_save100_fault.req";
+    std::ifstream input(request);
+    std::string mode;
+    input >> mode;
+    input.close();
+    if (mode == "quota" || mode == "cut") {
+      auto used = request;
+      used += ".used_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+      std::filesystem::rename(request, used, ec);
+      if (ec) return false;
+      std::ifstream source(from, std::ios::binary);
+      std::string half(std::filesystem::file_size(from, ec) / 2, '\0');
+      if (ec) return false;
+      source.read(half.data(), half.size());
+      std::ofstream output(tmp, std::ios::binary);
+      output.write(half.data(), half.size());
+      output.close();
+      FlushSaveFile(tmp, ec);
+      REXLOG_WARN("dbz3: save_100 injected {} after partial header write", mode);
+      if (mode == "cut") std::_Exit(73);
+      ec = std::make_error_code(std::errc::no_space_on_device);
+      return false;
+    }
+  }
   std::filesystem::copy_file(from, tmp, std::filesystem::copy_options::overwrite_existing, ec);
   if (ec) return false;
+  if (!FlushSaveFile(tmp, ec)) return false;
+#ifdef _WIN32
+  if (!MoveFileExW(tmp.c_str(), to.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+    ec = std::error_code(GetLastError(), std::system_category());
+#else
   std::filesystem::rename(tmp, to, ec);
+#endif
   return !ec;
 }
 
 }  // namespace
 
 bool Save100Available() {
+  std::error_code ec;
   return IsSupportedNativeSave(TemplateDir() / "data.bin") &&
-         std::filesystem::is_regular_file(TemplateDir() / "DBZ3.header");
+         std::filesystem::is_regular_file(TemplateDir() / "DBZ3.header", ec) &&
+         std::filesystem::file_size(TemplateDir() / "DBZ3.header", ec) > 0 && !ec;
 }
 
-bool ApplySave100(std::string& message) {
-  if (!Save100Available()) {
-    message = i18n::T("Falta la partida al 100% en mods_nativos/partida_100.", "The 100% save is missing from mods_nativos/partida_100.");
-    return false;
-  }
-  const auto root = settings::UserDataRoot();
-  std::error_code ec;
-  // 1. Backup of every profile folder (all content, not only data.bin).
-  char stamp[32] = {};
-  const std::time_t now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-  std::tm tm{};
-#ifdef _WIN32
-  localtime_s(&tm, &now);
-#else
-  localtime_r(&now, &tm);
-#endif
-  std::strftime(stamp, sizeof(stamp), "%Y%m%d_%H%M%S", &tm);
-  const auto dest = BackupRoot() / stamp;
-  bool any = false;
-  for (auto [it_1, iec_1] = std::pair{std::filesystem::directory_iterator(root, ec), std::error_code{}}; !iec_1 && it_1 != std::filesystem::directory_iterator(); it_1.increment(iec_1)) {
-    const auto& e = *it_1;
-    const auto name = e.path().filename().string();
-    if (!e.is_directory() || name.size() != 16) continue;
-    std::filesystem::create_directories(dest, ec);
-    std::filesystem::copy(e.path(), dest / name, std::filesystem::copy_options::recursive, ec);
-    if (ec) {
-      message = std::string(i18n::T("No se pudo copiar tu partida; no se ha cambiado nada: ", "Could not back up your save; nothing was changed: ")) + ec.message();
-      return false;
-    }
-    any = true;
-  }
-  // 2. Install into each existing profile (or the default one).
-  std::vector<std::filesystem::path> profiles;
-  for (auto [it_2, iec_2] = std::pair{std::filesystem::directory_iterator(root, ec), std::error_code{}}; !iec_2 && it_2 != std::filesystem::directory_iterator(); it_2.increment(iec_2)) { const auto& e = *it_2;
-    if (e.is_directory() && e.path().filename().string().size() == 16 &&
-        std::filesystem::is_directory(e.path() / kTitle))
-      profiles.push_back(e.path()); }
-  if (profiles.empty()) profiles.push_back(root / kProfile);
-  for (const auto& p : profiles) {
-    if (!CopyAtomic(TemplateDir() / "data.bin", p / kTitle / "00000001" / "DBZ3" / "data.bin", ec) ||
-        !CopyAtomic(TemplateDir() / "DBZ3.header", p / kTitle / "Headers" / "00000001" / "DBZ3.header", ec)) {
-      message = std::string(i18n::T("Error al instalar la partida: ", "Error installing the save: ")) + ec.message();
-      return false;
-    }
-  }
-  message = any ? std::string(i18n::T("Partida al 100% instalada. Copia de tu partida: ",
-                                      "100% save installed. Backup of your save: ")) + dest.string()
-                : std::string(i18n::T("Partida al 100% instalada (no habia partida previa).",
-                                      "100% save installed (there was no previous save)."));
-  REXLOG_INFO("dbz3: save_100 applied ({})", message);
-  return true;
-}
-
-bool RestoreLastSaveBackup(std::string& message) {
-  std::error_code ec;
-  std::filesystem::path last;
-  for (auto [it_3, iec_3] = std::pair{std::filesystem::directory_iterator(BackupRoot(), ec), std::error_code{}}; !iec_3 && it_3 != std::filesystem::directory_iterator(); it_3.increment(iec_3)) { const auto& e = *it_3;
-    if (e.is_directory() && (last.empty() || e.path().filename() > last.filename())) last = e.path(); }
-  if (last.empty()) {
-    message = i18n::T("No hay ninguna copia de partida que restaurar.", "There is no save backup to restore.");
-    return false;
-  }
-  const auto root = settings::UserDataRoot();
-  for (auto [it_4, iec_4] = std::pair{std::filesystem::directory_iterator(last, ec), std::error_code{}}; !iec_4 && it_4 != std::filesystem::directory_iterator(); it_4.increment(iec_4)) {
-    const auto& e = *it_4;
-    std::filesystem::copy(e.path(), root / e.path().filename(),
-                          std::filesystem::copy_options::recursive |
-                              std::filesystem::copy_options::overwrite_existing, ec);
-    if (ec) {
-      message = std::string(i18n::T("No se pudo restaurar: ", "Could not restore: ")) + ec.message();
-      return false;
-    }
-  }
-  message = std::string(i18n::T("Partida restaurada desde ", "Save restored from ")) + last.string();
-  return true;
-}
+#include "native_save100.inl"
 
 std::vector<NativeModInfo> NativeModCatalog() { return Catalog(); }
 
 std::vector<std::filesystem::path> FindNativeSaveFiles() {
   std::vector<std::filesystem::path> result;
-  const auto root = settings::UserDataRoot();
   std::error_code ec;
-  if (!std::filesystem::is_directory(root, ec)) return result;
-
-  std::filesystem::recursive_directory_iterator it(
-      root, std::filesystem::directory_options::skip_permission_denied, ec);
-  const std::filesystem::recursive_directory_iterator end;
-  for (; it != end; it.increment(ec)) {
-    if (ec) {
-      ec.clear();
-      continue;
-    }
-    if (!it->is_regular_file(ec) || !IsDataFile(it->path())) continue;
-    result.push_back(it->path());
-  }
+  for (const auto& rel : NativeTargets(settings::UserDataRoot(), ec))
+    if (rel.filename() == "data.bin" && std::filesystem::is_regular_file(settings::UserDataRoot() / rel, ec))
+      result.push_back(settings::UserDataRoot() / rel);
   return result;
 }
 

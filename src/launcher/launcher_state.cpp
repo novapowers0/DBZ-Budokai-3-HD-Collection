@@ -13,8 +13,10 @@
 #include "../mods.h"
 #include "settings.h"
 #include "i18n.h"
+#include "pantalla.h"
 #include "ui_kit.h"
 #include "update_check.h"
+#include "ids_mods.h"
 #include "novas_mods.h"
 #include "novedades.h"
 #include "../region.h"
@@ -57,6 +59,45 @@ constexpr int kLauncherTabCount = 11;
 constexpr int kGameTab = 6;   // "Juego" (antes "Mods nativos"): funciones nuevas, guardados, brillo HD
 
 namespace ui = dbz3::launcher::ui;
+
+// Peticion d (ids_mods.h): reparte los numeros de escenarios de mods que chocan y busca capsulas repetidas.
+// Devuelve la linea de lo arreglado solo (pestana Mods); en `bloqueo`, el aviso si no se puede jugar.
+std::string RevisarIdsMods(const std::vector<dbz3::ModInfo>& mods, std::string* bloqueo) {
+  std::vector<std::string> activos;
+  for (const auto& m : mods)
+    if (m.enabled) activos.push_back(m.name);
+  ids::Revision r;
+  try {
+    r = ids::Revisar(dbz3::ModsRoot(), activos);
+  } catch (const std::exception& e) {   // un fallo de disco aqui no puede impedir jugar
+    REXLOG_WARN("dbz3: revision de numeros de los mods incompleta: {}", e.what());
+    return {};
+  }
+  std::string linea;
+  for (const auto& c : r.cambios) {
+    REXLOG_INFO("dbz3: escenario del mod '{}': numero {} -> {} (chocaba con '{}')", c.mod, c.antes, c.despues, c.con);
+    if (linea.find(c.mod) == std::string::npos) linea += (linea.empty() ? "" : ", ") + c.mod;
+  }
+  if (!linea.empty())
+    linea = std::string(i18n::T("Arreglado solo: escenarios que repetían número con otro mod: ",
+                                "Fixed automatically: stages that repeated another mod's number: ")) + linea;
+  if (bloqueo && !r.bloqueos.empty()) {
+    *bloqueo = i18n::T("Dos mods usan el mismo número y el juego se cerraría al empezar. Desactiva en la pestaña "
+                       "Mods el mod de la lista y vuelve a pulsar JUGAR.",
+                       "Two mods use the same number and the game would close when starting. Turn off the mod "
+                       "listed below in the Mods tab and press PLAY again.");
+    std::string vistos;
+    for (const auto& b : r.bloqueos) {
+      REXLOG_WARN("dbz3: {} {} repetido entre '{}' y '{}'", b.capsula ? "capsula" : "escenario", b.numero, b.mod, b.con);
+      if (vistos.find("\n" + b.mod + "\n") != std::string::npos) continue;
+      vistos += "\n" + b.mod + "\n";
+      *bloqueo += "\n- " + b.mod + " (" + (b.capsula ? i18n::T("cápsula repetida con ", "capsule repeated with ")
+                                                      : i18n::T("escenario repetido con ", "stage repeated with ")) +
+                  b.con + ")";
+    }
+  }
+  return linea;
+}
 
 // DBZ palette (defined in ui_kit.h; these names are the ones the tabs use).
 constexpr ImVec4 kDragonOrange = ui::kAccent;
@@ -721,6 +762,15 @@ static bool ConfirmModal(const char* id, const char* text, const char* yes) {
       ok = true;
       ImGui::CloseCurrentPopup();
     }
+    if (std::getenv("DBZ3_TEST_SAVE100_UI") && std::strstr(id, "save_unlock_restore")) {
+      static ImVec2 last(-1, -1);
+      const ImVec2 a = ImGui::GetItemRectMin(), b = ImGui::GetItemRectMax();
+      const ImVec2 p((a.x + b.x) * 0.5f, (a.y + b.y) * 0.5f);
+      if (p.x != last.x || p.y != last.y) {
+        last = p;
+        REXLOG_INFO("dbz3: save_100 widget confirm_restore at {},{}", int(p.x), int(p.y));
+      }
+    }
     ImGui::SameLine();
     if (ImGui::Button(i18n::T("Cancelar", "Cancel"), ImVec2(120, 0)) || CloseKeyPressed()) {
       ImGui::CloseCurrentPopup();
@@ -938,6 +988,13 @@ void LauncherDialog::PollModsScan() {
                      std::to_string(auto_fixed);
       mods_loaded_ = false;
     }
+    // peticion d: un escenario recien instalado que repite numero se arregla ya (y se dice aqui, en la pestana Mods)
+    if (can_fix) {
+      if (std::string arreglado = RevisarIdsMods(mods_cache_, nullptr); !arreglado.empty()) {
+        mods_status_ = std::move(arreglado);
+        mods_loaded_ = false;
+      }
+    }
     // packs de texturas activos: lo que se ve en JUGAR sigue a la lista
     dbz3::settings::RefreshTexturePacks();
     // F0-12: personajes nuevos sin el kit -> se juega con el montaje que traia el pack (aviso visible)
@@ -975,7 +1032,10 @@ void LauncherDialog::PollModsScan() {
   }
 }
 
+#include "save_unlock_test.inl"
+
 void LauncherDialog::OnDraw(ImGuiIO& io) {
+  SaveUnlockTestInput(io);
   const DrawTimer draw_timer{tab_index_};
   // The launcher UI language follows the game's selected text language. Keep it
   // updated every frame so changing the "Language" combo re-translates the whole
@@ -1496,7 +1556,7 @@ void LauncherDialog::OnDraw(ImGuiIO& io) {
   };
   ImGui::PushStyleVar(ImGuiStyleVar_TabBarOverlineSize, 3.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_TabBarBorderSize, 1.0f);
-  const bool tabs_open = ImGui::BeginTabBar("##launcher_tabs");
+  const bool tabs_open = ImGui::BeginTabBar("##launcher_tabs", ImGuiTabBarFlags_FittingPolicyScroll);
   ImGui::PopStyleVar(2);
   if (tabs_open) {
     const int want_tab = request_tab_;
@@ -1655,6 +1715,7 @@ void LauncherDialog::OnDraw(ImGuiIO& io) {
     static const char* const kResetNames[] = {
         "dbz3_resolution_scale",
         "dbz3_low_res",
+        "dbz3_low_render",
         "dbz3_language",
         "dbz3_region",
         "dbz3_mod_profile",
@@ -1749,6 +1810,8 @@ void LauncherDialog::OnDraw(ImGuiIO& io) {
   }
   ImGui::PopStyleVar();
   ImGui::PopStyleColor(3);
+  ImGui::SameLine(0, 10);
+  DrawSaveUnlock();
   ImGui::SameLine();
   ImGui::SetCursorPosX(ImGui::GetWindowWidth() - 20.0f - 320.0f);
   ImGui::SetCursorPosY(ImGui::GetCursorPosY() - 30.0f);
@@ -1764,6 +1827,15 @@ void LauncherDialog::OnDraw(ImGuiIO& io) {
   const std::string play_label = std::string(ICON_PLAY) + "   " +
       (launching_ ? i18n::T("Preparando...", "Preparing...") : i18n::T("JUGAR", "PLAY")) + "###play";
   const bool play_pressed = ImGui::Button(play_label.c_str(), ImVec2(320, 62));
+  if (std::getenv("DBZ3_TEST_SAVE100_UI")) {
+    static ImVec2 last(-1, -1);
+    const ImVec2 a = ImGui::GetItemRectMin(), b = ImGui::GetItemRectMax();
+    const ImVec2 p((a.x + b.x) * 0.5f, (a.y + b.y) * 0.5f);
+    if (last.x != p.x || last.y != p.y) {
+      last = p;
+      REXLOG_INFO("dbz3: save_100 widget play at {},{}", int(p.x), int(p.y));
+    }
+  }
   const ImVec2 play_min = ImGui::GetItemRectMin();
   const float play_w = ImGui::GetItemRectSize().x;   // la barra de progreso mide lo que JUGAR
   // antes de pintar el aviso de mods: despues el "ultimo item" ya no es JUGAR
@@ -1982,6 +2054,18 @@ void LauncherDialog::OnDraw(ImGuiIO& io) {
     play_previous_roster_ = false;
     REXLOG_WARN("dbz3: personajes nuevos: se juega con el montaje anterior tras un fallo");
     launch_now = true;
+  }
+  if (launch_now) {   // peticion d: ultima revision de numeros, ya con los escenarios de las ISO creados
+    std::string bloqueo;
+    if (std::string arreglado = RevisarIdsMods(dbz3::ListMods(false), &bloqueo); !arreglado.empty())
+      mods_status_ = std::move(arreglado);
+    if (!bloqueo.empty()) {
+      repair_report_ = std::move(bloqueo);
+      repair_popup_ = true;
+      launch_now = false;
+      launching_ = false;
+      mods_loaded_ = false;
+    }
   }
   if (launch_now) {
     dbz3::SessionStart();   // si el juego se cierra de golpe, el proximo launcher lo sabra
@@ -2363,10 +2447,12 @@ void LauncherDialog::DrawVideoTab() {
     static bool gpu_info_checked = false;
     static std::string gpu_name;
     static int gpu_tier = 1;
+    static dbz3::settings::GpuMemoryInfo gpu_mem;
     if (!gpu_info_checked) {
       gpu_info_checked = true;
       gpu_name = dbz3::settings::DetectGpuName();
       gpu_tier = dbz3::settings::DetectGpuTier();
+      gpu_mem = dbz3::settings::DetectGpuMemory();
     }
     if (!gpu_name.empty()) {
       ImGui::TextDisabled(i18n::T("GPU: %s", "GPU: %s"), gpu_name.c_str());
@@ -2376,6 +2462,14 @@ void LauncherDialog::DrawVideoTab() {
                                                               : i18n::T("Media", "Medium"));
       ImGui::TextColored(kTextDim, " - %s: %s", i18n::T("nivel detectado", "detected tier"),
                          tier_label);
+      // dsPGPU: la memoria decide si la mejora de texturas se puede usar entera.
+      if (gpu_mem.integrated) {
+        ImGui::TextDisabled("%s", i18n::T("Grafica integrada: comparte la memoria del sistema.",
+                                          "Integrated graphics: shares system memory."));
+      } else if (gpu_mem.dedicated_mb > 0) {
+        ImGui::TextDisabled(i18n::T("Memoria de video: %d MB", "Video memory: %d MB"),
+                            gpu_mem.dedicated_mb);
+      }
     } else {
       ImGui::TextDisabled(i18n::T("GPU: no detectado", "GPU: not detected"));
     }
@@ -2430,15 +2524,15 @@ void LauncherDialog::DrawVideoTab() {
         i18n::T("1x (nativa 720p) - recomendado", "1x (native 720p) - recommended"),
         i18n::T("2x (interna 1440p) - consume mas GPU", "2x (1440p internal) - higher GPU"),
         i18n::T("3x (interna 2160p) - consume mucho mas GPU", "3x (2160p internal) - much higher GPU"),
-        i18n::T("4x (interna 2880p) - solo GPUs de gama alta", "4x (2880p internal) - high-end GPUs only")};
+        i18n::T("4x (interna 2880p ~5K) - solo GPUs de gama alta", "4x (2880p internal ~5K) - high-end GPUs only"),
+        i18n::T("6x (interna 4320p = 8K) - experimental, mucha VRAM", "6x (4320p internal = 8K) - experimental, high VRAM")};
     int scale = dbz3::settings::ResolutionScale();
-    int scale_idx = scale - 1;
+    int scale_idx = scale >= 5 ? 4 : scale - 1;   // 5x (3600p) de un toml viejo se muestra como 6x
     if (scale_idx < 0) scale_idx = 0;
-    if (scale_idx > 3) scale_idx = 3;
     ui::RowLabel(i18n::T("Escala de render interna", "Internal render scale"));
     if (ImGui::Combo("##DrawVideoTab_2", &scale_idx,
-                     scale_items, 4)) {
-      dbz3::settings::SetResolutionScale(scale_idx + 1);
+                     scale_items, 5)) {
+      dbz3::settings::SetResolutionScale(scale_idx >= 4 ? 6 : scale_idx + 1);
       // Persist immediately: the user often marks the scale and then launches (or
       // closes) without pressing "Save settings". Saving here guarantees the chosen
       // internal resolution is always applied on the next boot.
@@ -2449,18 +2543,120 @@ void LauncherDialog::DrawVideoTab() {
           "tarjeta gráfica trabaja mucho más (cada paso cuesta más o menos el doble). Empieza por 1x.",
           "The game is drawn at a higher resolution and then scaled down: much cleaner edges, but the "
           "graphics card works much harder (each step costs roughly twice as much). Start at 1x."));
-    {   // issue #29: 480p para PCs flojos (el juego dibuja a 640x480 el solo con un modo de video no HD)
-      bool low = dbz3::settings::LowResEnabled();
-      if (ImGui::Checkbox(i18n::T("Resolucion baja 480p (PC flojo, reinicia el juego)",
-                                  "Low resolution 480p (weak PC, restart the game)"), &low)) {
-        dbz3::settings::SetLowResEnabled(low);
+    {   // dsPHIRES: la escala util depende de la pantalla. Por encima de la escala
+        // nativa (720p x N) solo hay supersampling: dobla el coste por paso sin
+        // mas detalle. Medido en el combate de pruebas: 1x 4,8 ms; 2x 5,5; 3x 11,1;
+        // 4x 20,1; 6x 50,8 (a 60 Hz el presupuesto es 16,7). Salida 8K con 3x = 14,2 ms
+        // (60 FPS) frente a 6x = 50,8 (~18 FPS). La VRAM tambien crece en N2.
+      static const dbz3::launcher::PantallaInfo pantalla = dbz3::launcher::PantallaActual();
+      const int nativa = dbz3::launcher::EscalaNativaDePantalla(pantalla.width, pantalla.height);
+      const int propuesta = dbz3::launcher::EscalaNativaPropuesta(pantalla.width, pantalla.height);
+      const bool supera_pantalla = nativa > 0 && scale > nativa;
+      const bool recomendar = nativa > 0 && propuesta < nativa && scale > propuesta;
+      const int est_mb = dbz3::launcher::VramEstimadaMb(
+          scale, pantalla.width, pantalla.height,
+          dbz3::settings::PresentEffect() == "fsr3" || dbz3::settings::PresentEffect() == "fsr2",
+          dbz3::settings::HdTexturesEffective());
+      if (pantalla.width > 0) {
+        ImGui::TextColored(kTextDim,
+                           i18n::T("Pantalla: %dx%d  ·  VRAM: %d MB", "Screen: %dx%d  ·  VRAM: %d MB"),
+                           pantalla.width, pantalla.height, pantalla.vram_mb);
+      }
+      if (supera_pantalla || recomendar) {
+        if (supera_pantalla) {
+          ImGui::PushStyleColor(ImGuiCol_Text, kDragonOrangeDim);
+          char aviso[512];
+          std::snprintf(aviso, sizeof(aviso),
+                        i18n::T("Supersampling por encima de la pantalla: a partir de %dx solo se "
+                                "suavizan bordes y cada paso cuesta el doble. Para 1440p/4K/8K "
+                                "nitidos basta con dibujar a la resolucion de la pantalla.",
+                                "Supersampling above your screen: beyond %dx it only smooths edges "
+                                "and every step costs twice as much. For sharp 1440p/4K/8K, "
+                                "rendering at the screen resolution is enough."),
+                        nativa);
+          ImGui::TextWrapped("%s", aviso);
+          ImGui::PopStyleColor();
+        }
+        char boton[160];
+        std::snprintf(boton, sizeof(boton),
+                      propuesta < nativa
+                          ? i18n::T("Usar escala %dx (recomendada para esta pantalla)",
+                                    "Use %dx (recommended for this screen)")
+                          : i18n::T("Usar escala %dx (nativa)", "Use %dx (native)"),
+                      propuesta);
+        if (ImGui::SmallButton((std::string(boton) + "##nativa").c_str())) {
+          dbz3::settings::SetResolutionScale(propuesta);
+          dbz3::settings::SetQualityPreset("manual");
+          dbz3::settings::SaveUserSettings();
+        }
+        if (propuesta < nativa) {
+          // En 5K/8K la escala nativa real (4x/6x) baja de 60 FPS: se propone 3x.
+          ui::Tip(i18n::T(
+                "En esta pantalla, 3x es lo maximo que mantiene 60 FPS: el resto lo escala el "
+                "presentador sin perder nitidez. 4x baja a ~50 FPS y 6x a ~18 FPS.",
+                "On this screen, 3x is the most that keeps 60 FPS: the presenter scales the rest "
+                "without losing sharpness. 4x drops to ~50 FPS and 6x to ~18 FPS."));
+        } else {
+          ui::Tip(i18n::T(
+                "La escala nativa dibuja a la resolucion real de tu pantalla: se ve nitido y es lo "
+                "mas barato para esa resolucion. Mas arriba es supersampling (antialiasing caro).",
+                "The native scale draws at your screen's real resolution: it looks sharp and is the "
+                "cheapest option for it. Above that it is supersampling (expensive antialiasing)."));
+        }
+      }
+      if (scale >= 4) {
+        ImGui::PushStyleColor(ImGuiCol_Text, kDragonOrangeDim);
+        ImGui::TextWrapped("%s",
+                           i18n::T("4x y 6x bajan los FPS incluso en GPUs buenas: medido en un "
+                                   "combate, 4x ~50 FPS y 6x ~18 FPS en una RTX 4070 SUPER.",
+                                   "4x and 6x lower the frame rate even on good GPUs: measured in a "
+                                   "battle, 4x ~50 FPS and 6x ~18 FPS on an RTX 4070 SUPER."));
+        ImGui::PopStyleColor();
+      }
+      // Solo con VRAM dedicada clara (dGPU): en una APU "dedicada" es la reserva
+      // de BIOS y el aviso saldria siempre y con una cifra enganosa.
+      if (pantalla.vram_mb >= 4096 && est_mb > pantalla.vram_mb * 85 / 100 - 1024) {
+        ImGui::PushStyleColor(ImGuiCol_Text, kDragonOrangeDim);
+        char vram_aviso[512];
+        std::snprintf(
+            vram_aviso, sizeof(vram_aviso),
+            i18n::T("VRAM: se estiman ~%d MB con esta escala y resolucion; tu "
+                    "GPU tiene %d MB. Si no cabe, el juego lo avisa en el registro "
+                    "y puede bajar la escala o el efecto de escalado.",
+                    "VRAM: about %d MB estimated with this scale and resolution; "
+                    "your GPU has %d MB. If it does not fit, the game warns in the "
+                    "log and may lower the scale or the upscaling effect."),
+            est_mb, pantalla.vram_mb);
+        ImGui::TextWrapped("%s", vram_aviso);
+        ImGui::PopStyleColor();
+      }
+    }
+    {   // #29: una sola lista. 360p usa la ruta SD del guest (640x360, medido); 240p/144p bajan SOLO el 3D
+      // (el HUD y los menus siguen a la resolucion de video: medido, no se rompen).
+      const bool low = dbz3::settings::LowResEnabled();
+      const int32_t bajo = dbz3::settings::LowRenderHeight();
+      int res_idx = low ? 1 : (bajo == 240 ? 2 : (bajo == 144 ? 3 : 0));
+      const char* res_items[] = {
+          i18n::T("Nativo (720p)", "Native (720p)"),
+          i18n::T("Ligero 360p (ruta SD del juego)", "Light 360p (game's SD path)"),
+          i18n::T("Solo el 3D a 240p (HUD y menus nitidos)", "3D only at 240p (sharp HUD and menus)"),
+          i18n::T("Solo el 3D a 144p (al minimo)", "3D only at 144p (minimum)")};
+      ui::RowLabel(i18n::T("Resolucion interna (reinicia el juego)",
+                           "Internal resolution (restart the game)"));
+      if (ImGui::Combo("##DrawVideoTab_res", &res_idx, res_items, 4)) {
+        dbz3::settings::SetLowResEnabled(res_idx == 1);
+        dbz3::settings::SetLowRenderHeight(res_idx == 2 ? 240 : (res_idx == 3 ? 144 : 0));
         dbz3::settings::SaveUserSettings();
       }
       ui::Tip(i18n::T(
-            "El juego se dibuja a 640x480 (4:3, como en una Xbox 360 con tele normal) y se estira a la ventana. "
-            "Va bastante mas ligero en tarjetas graficas integradas. Beta: el menu y las barras de vida cambian de forma.",
-            "The game is drawn at 640x480 (4:3, like an Xbox 360 on a standard TV) and stretched to the window. "
-            "Much lighter on integrated GPUs. Beta: menus and health bars change layout."));
+            "720p es lo normal. 360p usa la ruta SD del juego (640x360): la mitad de pixeles por lado. "
+            "240p y 144p bajan solo el escenario y los personajes: el HUD y los menus siguen nitidos. "
+            "Para reducir carga usa 1x y apaga MSAA. Ayuda si el limite es la grafica; si el limite es el "
+            "procesador (lo habitual en equipos flojos) no dara mas FPS.",
+            "720p is the normal one. 360p uses the game's SD path (640x360): half the pixels per side. "
+            "240p and 144p lower only the scenery and characters: the HUD and menus stay sharp. "
+            "To reduce load use 1x and turn MSAA off. Helps if the graphics card is the limit; if the "
+            "processor is the limit (usual on weak PCs) it will not give more FPS."));
     }
     // Aviso fuerte y accion de revertir: un usuario puede subir la escala sin
     // entender que ahi esta el coste real (no en las texturas HD). Se le da el
@@ -2520,6 +2716,24 @@ void LauncherDialog::DrawVideoTab() {
           "if you notice slowdowns, switch back to Off. Requires restarting the "
           "game."));
     if (dbz3::settings::HdTextures() > 1) {
+      // dsPGPU/tPERF: el runtime limita el factor en integradas, poca VRAM o un
+      // equipo de 4-5 GB de RAM. Se dice el valor real que se va a usar en vez
+      // de dejar que el usuario crea que esta aplicando x3 cuando no cabe.
+      const int hd_effective = dbz3::settings::HdTexturesEffective();
+      if (hd_effective < dbz3::settings::HdTextures()) {
+        ImGui::TextColored(kDragonOrangeDim,
+                           i18n::T("Se aplicara x%d: tu equipo tiene poca memoria (RAM o de video).",
+                                   "Will apply x%d: your system has little memory (RAM or video)."),
+                           hd_effective);
+      } else if (dbz3::settings::QualityPreset() != "auto" &&
+                 dbz3::settings::SafeHdTextureFactor(dbz3::settings::HdTextures()) <
+                     dbz3::settings::HdTextures()) {
+        ImGui::TextColored(kDragonOrangeDim, "%s",
+                           i18n::T("Tu grafica tiene poca memoria de video: este ajuste puede ir a tirones. "
+                                   "Usa el modo Automatico para que se limite solo.",
+                                   "Your graphics card has little video memory: this may stutter. "
+                                   "Use Automatic mode to limit it for you."));
+      }
       ImGui::TextColored(kDragonOrangeDim, "%s",
                          i18n::T("Experimental: mayor consumo de GPU y VRAM",
                                  "Experimental: higher GPU and VRAM usage"));
@@ -2946,19 +3160,20 @@ void LauncherDialog::DrawInputTab() {
         "With an Xbox controller keep the first option. Other controllers (PlayStation, Switch...) also "
         "work on their own; pick the second one if yours is not detected. Restart the game after changing it."));
 
-  const char* glyph_items[] = {"Xbox", "PlayStation", "Switch"};
+  const char* glyph_items[] = {"Xbox", "PlayStation", "Nintendo"};
   static const char* glyph_values[] = {"xbox", "playstation", "switch"};
   std::string glyphs = dbz3::settings::InputGlyphs();
   int glyph_idx = glyphs == "playstation" ? 1 : (glyphs == "switch" ? 2 : 0);
-  ui::RowLabel(i18n::T("Tipo de mando", "Button labels"));
+  ui::RowLabel(i18n::T("Iconos de botones", "Button icons"));
   if (ImGui::Combo("##DrawInputTab_2", &glyph_idx, glyph_items, 3)) {
     dbz3::settings::SetInputGlyphs(glyph_values[glyph_idx]);
   }
   ui::Tip(i18n::T(
-        "Cambia los nombres de los botones que se ven abajo (LT/L2/ZL, ...). "
-        "Solo afecta a las etiquetas del launcher, no al mapeo del juego.",
-        "Changes the button names shown below (LT/L2/ZL, ...). Only affects "
-        "the launcher labels, not the game mapping."));
+        "Cambia los iconos de botones que dibujamos nosotros en el juego (minijuegos de botones, ayudas) "
+        "y los nombres del launcher (LT/L2/ZL, ...). Los menús originales de B3 siguen con iconos de Xbox. "
+        "No cambia qué botón hace qué.",
+        "Changes the button icons we draw in the game (button minigames, help bars) and the launcher "
+        "names (LT/L2/ZL, ...). B3's original menus keep Xbox icons. It does not change the button mapping."));
 
   double deadzone = dbz3::settings::Deadzone();
   ui::RowLabel(i18n::T("Zona muerta de los sticks", "Analog stick deadzone"));
@@ -3107,6 +3322,9 @@ struct FeatureText {
   bool beta;
 };
 constexpr FeatureText kFeatureTexts[] = {
+    {"dbz3_broly_sin_destello", "Broly sin destello", "Broly without flash",
+     "Quita el destello blanco de su definitiva en escenarios que se destruyen (solo ese ataque).",
+     "Removes the white flash from his ultimate on destructible stages (that attack only).", false},
     {"dbz3_hub_enabled", "HUB", "HUB",
      "Fila HUB en el menu principal: Tag Team, Online, combate rapido y los demas modos juntos. Por ahora "
      "solo con el juego USA (NTSC).",
@@ -3353,6 +3571,8 @@ void LauncherDialog::DrawPs2Box() {
   ImGui::Spacing();
 }
 
+#include "save_unlock.inl"
+
 void LauncherDialog::DrawNativeModsTab() {
   // Guardados: se buscan al abrir la pestana y tras cada accion (antes, en cada frame: el recorrido de
   // user_data costaba ~1 ms por frame y crece con cada copia de seguridad).
@@ -3436,53 +3656,11 @@ void LauncherDialog::DrawNativeModsTab() {
       ImGui::PopID();
     }
   }
-  for (const auto& mod : native_catalog_) {
-    if (mod.state != dbz3::NativeModState::kReady) continue;   // los "sin codigo" solo confundian
-    ImGui::PushID(mod.id.c_str());
-    ImGui::Spacing();
-    {
-      ui::FontScope b(ui::GetFonts().bold);
-      ImGui::TextUnformatted(mod.name.c_str());
-    }
-    ui::Hint(mod.description.c_str());
-    {
-      const bool avail = mod.id != "save_100" || save100_ok_;
-      ImGui::BeginDisabled(!avail);
-      if (ImGui::Button(i18n::T("Aplicar (reemplaza tu partida)", "Apply (replaces your save)"))) {
-        ImGui::OpenPopup("###confirm_save100");
-      }
-      ImGui::EndDisabled();
-      if (!avail)   // issue #20: el boton en gris sin explicar por que
-        ui::Hint(i18n::T("Falta la carpeta mods_nativos\\partida_100 junto a dbz3.exe: vuelve a instalar la version.",
-                         "The mods_nativos\\partida_100 folder next to dbz3.exe is missing: reinstall the release."));
-      if (ConfirmModal((std::string(i18n::T("Partida", "Save")) + "###confirm_save100").c_str(),
-                       i18n::T("Tu partida se sustituira por esta. Antes se hace una copia de seguridad "
-                               "(la recuperas con 'Restaurar mi partida'). Continuar?",
-                               "Your save will be replaced with this one. A backup is made first "
-                               "(get it back with 'Restore my save'). Continue?"),
-                       i18n::T("Si, aplicar", "Yes, apply"))) {
-        dbz3::ApplySave100(native_mods_status_);
-        saves_loaded_ = false;
-      }
-      ImGui::SameLine();
-      if (ImGui::Button(i18n::T("Restaurar mi partida", "Restore my save"))) {
-        ImGui::OpenPopup("###confirm_restore");
-      }
-      if (ConfirmModal((std::string(i18n::T("Partida", "Save")) + "###confirm_restore").c_str(),
-                       i18n::T("Vuelve a la ultima copia de seguridad de tu partida (la de ahora se "
-                               "sustituye). Continuar?",
-                               "Goes back to the last backup of your save (the current one is "
-                               "replaced). Continue?"),
-                       i18n::T("Si, restaurar", "Yes, restore"))) {
-        dbz3::RestoreLastSaveBackup(native_mods_status_);
-        saves_loaded_ = false;
-      }
-    }
-    ImGui::PopID();
-  }
+  ui::Hint(i18n::T("Para desbloquear todo o restaurar tu partida, pulsa «Desbloquear todo» abajo.",
+                   "To unlock everything or restore your save, press 'Unlock everything' below."));
   if (!native_mods_status_.empty()) {
     ImGui::PushTextWrapPos(0.0f);
-    ImGui::TextColored(kOk, "%s", native_mods_status_.c_str());
+    ImGui::TextColored(save_unlock_ok_ ? kOk : kWarn, "%s", native_mods_status_.c_str());
     ImGui::PopTextWrapPos();
   }
 
@@ -3926,6 +4104,18 @@ void LauncherDialog::DrawModsTab() {
       ImGui::Text("%s", i18n::T("Packs de texturas activos:", "Active texture packs:"));
       ImGui::SameLine();
       ImGui::TextDisabled("%s", packs.c_str());
+      // dsPGPU: un pack HD sustituye texturas por RGBA8 a su resolucion (mas
+      // memoria que el original). En integradas / poca VRAM se avisa, no se
+      // desactiva nada por su cuenta.
+      const dbz3::settings::GpuMemoryInfo pack_gpu = dbz3::settings::DetectGpuMemory();
+      if (pack_gpu.integrated ||
+          (pack_gpu.dedicated_mb > 0 && pack_gpu.dedicated_mb < 2048)) {
+        ImGui::TextColored(kDragonOrangeDim, "%s",
+                           i18n::T("Los packs de texturas ocupan memoria de video: con poca memoria "
+                                   "pueden ir a tirones. Si pasa, desactivalos.",
+                                   "Texture packs use video memory: with little memory they may "
+                                   "stutter. If that happens, turn them off."));
+      }
     }
     }   // tex_open
   }
@@ -4168,6 +4358,20 @@ void LauncherDialog::DrawModsTab() {
       ImGui::TextDisabled("%s", i18n::T(
           "Escenarios de PS2: sin datos todavia (se preparan al pulsar JUGAR).",
           "PS2 stages: no data yet (they are prepared when you press PLAY)."));
+    }
+    // 7/11: para quien viene de versiones antiguas con escenarios rotos. Los rehace desde sus ISO; los actuales
+    // se apartan a mods/_respaldo_escenarios (no se borra nada) y vuelven si alguno no se puede crear.
+    ImGui::BeginDisabled(mod_pipeline_.IsRunning() || launching_);
+    if (ImGui::SmallButton(i18n::T("Reparar escenarios", "Repair stages"))) {
+      mod_pipeline_.BuildStages(true);
+    }
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+      ImGui::SetTooltip("%s", i18n::T(
+          "Vuelve a crear los escenarios de PS2 (B1, B2 e Infinite World) desde tus ISO. Úsalo si un escenario "
+          "sale mal tras actualizar. Los actuales se guardan en mods/_respaldo_escenarios.",
+          "Rebuilds the PS2 stages (B1, B2 and Infinite World) from your ISOs. Use it if a stage looks wrong "
+          "after updating. The current ones are kept in mods/_respaldo_escenarios."));
     }
   }
   ImGui::Separator();
@@ -5704,7 +5908,9 @@ void LauncherDialog::DrawRecetasNova() {
   if (trabajo) ImGui::EndDisabled();
   if (!nrec_msg_.empty()) {
     ImGui::PushTextWrapPos(0.0f);
-    ImGui::TextColored(trabajo ? kInfo : kOk, "%s", nrec_msg_.c_str());
+    // #72: un fallo de la receta salia en verde, como si hubiera ido bien
+    const bool fallo = !trabajo && nrec_msg_.rfind("ERROR", 0) == 0;
+    ImGui::TextColored(trabajo ? kInfo : fallo ? kError : kOk, "%s", nrec_msg_.c_str());
     ImGui::PopTextWrapPos();
   }
   ImGui::EndChild();

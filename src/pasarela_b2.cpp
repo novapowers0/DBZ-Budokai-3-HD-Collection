@@ -1030,6 +1030,9 @@ bool Cargar(int fase) {
   REXLOG_INFO("dbz3 tablero b2: fase {} guiones {} (T3 {} disparadores, T4 {} contactos, T5 {} sucesos)", fase + 1,
               d.guiones.size(), d.t3.size(), d.t4.size(), d.t5.size());
   if (std::getenv("DBZ3_TEST_B2_DUMP")) {   // PRUEBA: vuelca piezas, disparadores y guiones de la fase
+    for (size_t i = 1; i < d.casillas.size(); ++i)   // eB2e
+      REXLOG_INFO("dbz3 b2 dump: casilla {} ({:.0f},{:.0f}) tipo {} dest {} cond {} lucha {} esc {}", i, d.casillas[i].x, d.casillas[i].y,
+                  d.casillas[i].tipo, d.casillas[i].destino, d.casillas[i].condicion, d.casillas[i].lucha, d.casillas[i].escenario);
     for (const Ficha& f : d.piezas)
       REXLOG_INFO("dbz3 b2 dump: pieza {} pj {} ficha {} bando {} mov {} ({}) casilla {} estado0 {} barras {}", f.n, f.c,
                   f.idx, f.bando, f.mov, f.mov_p, f.casilla, f.estado0, f.barras_max);
@@ -1367,6 +1370,8 @@ void Empezar() {
 void Guion(int k, int prof);
 // Disparadores de contacto: T3 {pieza, pieza, 0, script} y T4 por personaje con banderas (el primero que vale).
 int g_suceso = -1;   // fila de T4 del ultimo contacto (iGpffff8d8c del ELF)
+int g_suceso_sel = -1;   // nB2 (opt-in): pieza elegida al abrir el contacto; el resultado T5 la usa si el
+                         // hilo del combate corre en otro hilo y g_sel ya cambio (fase II, Frieza).
 // EU 0x278DE0 FUN_00278de0 (personaje de una pieza: +0 del registro de T2)
 int PersonajeDe(int n) {   // personaje (+0 del registro de T2) de la pieza n
   for (const Ficha& f : g_d.piezas)
@@ -1376,6 +1381,7 @@ int PersonajeDe(int n) {   // personaje (+0 del registro de T2) de la pieza n
 // EU 0x27F510 FUN_0027f510 (T4: contactos por personaje/casilla/banderas tras un paso; no mira el bando)
 void SucesosDeContacto(const Ficha& a, const Ficha& b) {
   g_suceso = -1;
+  g_suceso_sel = -1;
   for (size_t i = 1; i < g_d.t4.size(); ++i) {   // como el ELF, desde la fila 1
     const auto& r = g_d.t4[i];
     const int ca = r[0] ? PersonajeDe(r[0]) : -1, cb = r[1] ? PersonajeDe(r[1]) : -1;
@@ -1387,6 +1393,7 @@ void SucesosDeContacto(const Ficha& a, const Ficha& b) {
     // r[2]: casilla del contacto (+0x0A de la pieza que se mueve, su destino); 0 = cualquiera
     if (!vale || (r[2] != 0 && r[2] != a.casilla && r[2] != b.casilla) || !Condiciones(r, 7)) continue;
     g_suceso = int(i);
+    g_suceso_sel = g_sel;
     REXLOG_INFO("dbz3 tablero b2: contacto {} y {}: suceso {} (script {})", Nombre(a), Nombre(b), i, r[3]);
     Guion(r[3], 0);
     break;
@@ -1439,6 +1446,7 @@ void SucesosDeCombate(bool gana, bool fuera) {
     break;
   }
   g_suceso = -1;
+  g_suceso_sel = -1;
 }
 void Contacto(int j, int r) {
   // T4 (FUN_0027F510, arriba): lo mira TODO contacto; el segundo de la casilla del ganador tambien (0x236420 estado 0x14).
@@ -2264,6 +2272,9 @@ float OrdenEscena(int k, const std::array<int, 6>& o) {
             x = PosFicha(f).x, y = PosFicha(f).y;
           }
       }
+      // Orden 19 (EU 0x2956A0), ejecutada sin juego con tools/mips_perfil.py: NO bloquea el guion (0x37A020[19] = 0); su tarea
+      // vive max(+0x20,+0x24) del efecto / 1,2 por cuadro (efectos 15/16/17: 110/118/126 cuadros = las 354 llamadas grabadas
+      // en la fase 8). Es lo que hace PonerEfecto (dur/60 s) y bloquea = false: igual que el original, no hay que esperar mas.
       const float d = hay ? PonerEfecto(o[2], x, y, 0, extra, bucle, pant) : 0.0f;
       return bloquea ? d : 0.0f;   // DS45: el original espera la senal de fin de la tarea, sin tope de 6 s
     }
@@ -2280,6 +2291,7 @@ float OrdenEscena(int k, const std::array<int, 6>& o) {
           if (!f.rival && f.fuera) {
             f.fuera = false;
             f.jugador = true;
+            f.bando |= 4;   // eB2b: 0x12 = bando del jugador; sin el bit Goku (fase III) no se pintaba en 3D ni contaba como lider
             f.movs = f.movs_turno = 1;
             f.brote_t = g_ahora;
             RecalcularSlots();
@@ -2331,6 +2343,9 @@ void CorrerHilos() {
     for (int vueltas = 0; h.i < g.size() && g[h.i][0] == paso && vueltas < 256; ++vueltas) {
       const std::array<int, 6> o = g[h.i++];
       if (o[1] == 44) {   // salta (no vuelve)
+        // Sesion C 8/11: la traza de pruebas tambien anota la 44 (no pasa por Orden(); el original la llama como las demas).
+        static const bool traza44 = std::getenv("DBZ3_TEST_B2_ORDENES") != nullptr;
+        if (traza44) REXLOG_INFO("dbz3 tablero b2: orden ejecutada 44");
         if (o[2] >= 0 && o[2] < int(g_d.guiones.size())) {
           h.guion = o[2];
           h.i = 0;
@@ -4647,7 +4662,9 @@ void DibEscena(ImDrawList* dl, const S::Area& a, float t, uint16_t& pressed) {
   const float fin_voz = std::max(0.0f, e.voz_fin);
   const bool sigue = (pressed & kA) || (g_esc_auto && desde > std::max(0.35f, fin_voz));
   if (intro) {   // FUN_002a5330: START (mascara 8 de 0x3B43AE) a partir del cuadro 100 la salta; si no, acaba a los 3200
-    if (desde * 60.0f >= 3200.0f || ((pressed & kStart) && desde * 60.0f >= 100.0f)) e.paso = e.textos.size();
+    // P3 7/11: en la prueba automatica (g_esc_auto) las teclas no llegan (pasarela_misiones.cpp:1881 las anula): sin esto la intro dura 53 s y
+    // las fases 1 y 2 de comparar_modo.py no llegaban a M207 en 30 s. Se salta como START al cuadro 100; el jugador no pasa por aqui.
+    if (desde * 60.0f >= 3200.0f || ((pressed & kStart) && desde * 60.0f >= 100.0f) || (g_esc_auto && desde * 60.0f >= 100.0f)) e.paso = e.textos.size();
   } else if (pressed & kB) e.paso = e.textos.size();
   else if (sigue && desde > 0.25f) {
     if (e.voz_paso >= 0 && desde < fin_voz) dbz3::pasarela::CallarAdxPs2();   // 0x227230: cortar la voz al pasar de linea
@@ -4894,7 +4911,7 @@ bool DibFicha3D(ImDrawList* dl, int idx, ImVec2 pie, float e, float t, float gir
 }
 // Goku 3D de pie en `pie` (pantalla), de `alto_px` de alto, mirando hacia (dx, dy) del mapa si anda.
 bool DibGoku3D(ImDrawList* dl, ImVec2 pie, float e, float t, bool anda, float dx, float dy, float alfa = 1.0f,
-               int clip = -1, float clip_t = 0, int estado = 0) {
+               int clip = -1, float clip_t = 0, int estado = 0, ImU32 tinte = IM_COL32_WHITE) {
   CargarGoku3D();
   if (!g_goku3d.malla || g_goku_alto <= 0) return false;
   // dx > 0: pose de combate (dx s desde el contacto); dy > 0: alerta de la busqueda (dy s); si no, andar o reposo.
@@ -4931,6 +4948,12 @@ bool DibGoku3D(ImDrawList* dl, ImVec2 pie, float e, float t, bool anda, float dx
     for (int i = v0; i < dl->VtxBuffer.Size; ++i) {
       ImU32& c = dl->VtxBuffer[i].col;
       c = (c & 0x00FFFFFFu) | (ImU32(float(c >> 24) * std::clamp(alfa, 0.0f, 1.0f)) << 24);
+    }
+  if ((tinte & 0x00FFFFFFu) != 0x00FFFFFFu)   // eB2e: sin movimientos el original oscurece a Goku igual que a las demas piezas (170,170,180); medido en fase III p2/p3/final
+    for (int i = v0; i < dl->VtxBuffer.Size; ++i) {
+      ImU32& c = dl->VtxBuffer[i].col;
+      auto m = [&](int sh) { return ((c >> sh) & 0xFF) * ((tinte >> sh) & 0xFF) / 255u; };
+      c = (c & 0xFF000000u) | (m(16) << 16) | (m(8) << 8) | m(0);
     }
   AplanarFigura(dl, v0, pie);
   return true;
@@ -5866,13 +5889,13 @@ float DibPieza(ImDrawList* dl, const Cam& k, const Ficha& f, ImVec2 pos, float t
         }
     }
     arriba = p.y - 48 * e;
-  } else if (f.c == kGoku && f.bando == 4 && (g_tgoku || g_goku3d.malla)) {
+  } else if (f.c == kGoku && f.bando == 4 && (g_tgoku || (CargarGoku3D(), g_goku3d.malla))) {   // eB2b: sin el sprite de la fase (g_tgoku) el 3D no se cargaba nunca y Goku salia como carta
     dl->AddEllipseFilled(ImVec2(p.x, p.y), ImVec2(22 * e, 7 * e), IM_COL32(0, 0, 0, 90));
     // en 3D (su modelo del tablero de B2, andando durante el paso); sin el, el sprite de la intro
     g_goku_giro = GiroDeOrden(f, g_ahora);   // gira solo al moverse (o al angulo fijo de 61/62) y vuelve a mirar al frente
     if (!DibGoku3D(dl, p, e, t, Andando(f, g_ahora), en_lucha ? std::max(0.001f, g_ahora - g_pend_t) : 0,
                    busca >= 0 && busca < 36.0f / 60.0f ? std::max(0.001f, busca) : 0, alfa,
-                   f.anim_b2, g_ahora - f.anim_t0, f.anim_estado) && g_tgoku)
+                   f.anim_b2, g_ahora - f.anim_t0, f.anim_estado, (col & 0x00FFFFFFu) != 0x00FFFFFFu ? IM_COL32(130, 140, 145, 255) : IM_COL32_WHITE) && g_tgoku)
       dl->AddImage(g_tgoku.id(), ImVec2(p.x - 29 * e, p.y - 80 * e), ImVec2(p.x + 29 * e, p.y), ImVec2(0, 0), ImVec2(1, 1), col);
     arriba = p.y - 90 * e;   // 13,33 u x 512/63 x cos 27 grados, entre k
   } else if (DibFicha3D(dl, f.idx, p, e, t + float(f.n) * 0.37f, GiroDeOrden(f, g_ahora), Andando(f, g_ahora), en_lucha,
@@ -6207,6 +6230,9 @@ void DibTablero(ImDrawList* dl, const S::Area& a, float t, bool prepara) {
   // caminos. s9, medido en B2 (PCSX2, capturas del slot 3/4): banda de ~8 px del mapa, verde (85,255,138) al ~48 % en el
   // centro con borde suave (FWHM 5 px, pie 11 px); el camino que vas a recorrer, blanco menta (245,255,250), 7 px, ~50 %,
   // sin pulso. Antes: 3 px, (150,255,200), muy fina.
+  // eB2e: los caminos SUMAN color (mezcla aditiva), medido en PCSX2 sobre mar, arena y hierba: el no activo suma (0,62,52); el elegido (rojo pulsante
+  // 41..88, 69, 112); si en el destino hay un rival, (137,69,116). Tres anchos (11, 8, 5 px) en 20/30/50 % de la suma (FWHM 5, pie 11).
+  dl->AddCallback(rex::ui::kImDrawBlendAdditive, nullptr);
   for (size_t i = 1; i < g_d.casillas.size(); ++i) {
     for (int v : g_d.casillas[i].vec) {
       if (v <= int(i)) continue;
@@ -6216,22 +6242,41 @@ void DibTablero(ImDrawList* dl, const S::Area& a, float t, bool prepara) {
         continue;
       const bool activo = (int(i) == sel_c && v == g_dest) || (v == sel_c && int(i) == g_dest);
       const float e = (ea + eb) * 0.5f;
+      float sr = 0, sg = 62, sb = 52;
       if (activo) {
-        // medido (slot 3, destino = casilla del Saibaman): si en el destino hay un rival, el camino sale naranja
-        // (228,190,132 en el centro sobre hierba (91,121,16)); si no, blanco menta
         const int dest_c = int(i) == sel_c ? v : int(i);
         const bool enemigo = FichaEn(dest_c, true) >= 0;
-        const int cr = enemigo ? 250 : 245, cg = enemigo ? 200 : 255, cb = enemigo ? 140 : 250, k1 = enemigo ? 100 : 38, k2 = enemigo ? 100 : 50,
-                  k3 = enemigo ? 100 : 64;
-        dl->AddLine(a, b, IM_COL32(cr, cg, cb, k1), 9.0f * e);
-        dl->AddLine(a, b, IM_COL32(cr, cg, cb, k2), 7.0f * e);
-        dl->AddLine(a, b, IM_COL32(cr, cg, cb, k3), 4.0f * e);
-      } else {
-        dl->AddLine(a, b, IM_COL32(85, 255, 138, 38), 11.0f * e);
-        dl->AddLine(a, b, IM_COL32(85, 255, 138, 55), 8.0f * e);
-        dl->AddLine(a, b, IM_COL32(85, 255, 138, 55), 5.0f * e);
+        sr = enemigo ? 137.0f : 65.0f + 24.0f * std::sin(t * 6.2832f);
+        sg = 69;
+        sb = enemigo ? 116.0f : 112.0f;
       }
+      const float pesos[3] = {0.2f, 0.3f, 0.5f}, anchos[3] = {11.0f, 8.0f, 5.0f};
+      for (int q = 0; q < 3; ++q)
+        dl->AddLine(a, b, IM_COL32(int(sr * pesos[q]), int(sg * pesos[q]), int(sb * pesos[q]), 255), anchos[q] * e);
     }
+  }
+  dl->AddCallback(rex::ui::kImDrawBlendAlpha, nullptr);
+  // eB2e: halo bajo la casilla destino (fase III, PCSX2): elipse tostada translucida de ~35 x 16 px del mapa centrada en la casilla
+  if (!prepara && g_dest > 0 && g_dest < int(g_d.casillas.size()) && g_estado == kJuego && !g_fase_rival && !HilosOcupados() && !EscenaAbierta()) {
+    const Casilla& c = g_d.casillas[size_t(g_dest)];
+    ImVec2 p;
+    float e = 1;
+    if (k.P(c.x, c.y, p, &e)) {
+      dl->AddEllipseFilled(p, ImVec2(36 * e, 17 * e), IM_COL32(235, 170, 115, 70), 0, 32);
+      dl->AddEllipseFilled(p, ImVec2(28 * e, 12 * e), IM_COL32(235, 170, 115, 40), 0, 32);
+    }
+    // vecinas libres a las que tambien se puede ir (las mismas que recorre la cruceta, ver `cand` de paso 2): anillo cian (PCSX2 fase III p3: disco
+    // de abajo a la izquierda; fase III p1: disco de arriba)
+    if (sel_c > 0 && g_sel < int(g_f.size()))
+      for (int vv : g_d.casillas[size_t(sel_c)].vec) {
+        if (vv <= 0 || vv == g_dest || CasillaLlena(g_f[size_t(g_sel)], vv)) continue;
+        const Casilla& n = g_d.casillas[size_t(vv)];
+        ImVec2 q;
+        float en = 1;
+        if (!k.P(n.x, n.y, q, &en)) continue;
+        dl->AddEllipseFilled(q, ImVec2(30 * en, 13 * en), IM_COL32(150, 235, 240, 55), 0, 32);
+        dl->AddEllipse(q, ImVec2(30 * en, 13 * en), IM_COL32(120, 230, 240, 170), 0, 32, 2.0f * en);
+      }
   }
   // casillas (398): disco azul pequeno (#0), Dende (#11), Mr. Popo en su alfombra (#16, #18), combate (#14 con el icono de
   // su condicion). Ya buscadas: en gris.
@@ -6254,7 +6299,9 @@ void DibTablero(ImDrawList* dl, const S::Area& a, float t, bool prepara) {
       const int n = int(t * 6) % 4;
       DibIcono(dl, 18, ImVec2(p.x - 52 * e, p.y - 28 * e), ImVec2(p.x + 52 * e, p.y + 28 * e), ImVec4(0, 56.0f * float(n), 104, 56.0f * float(n + 1)), col);
       DibIcono(dl, 16, ImVec2(p.x - 30 * e, p.y - 84 * e), ImVec2(p.x + 30 * e, p.y - 6 * e), ImVec4(0, 0, 0, 0), col);
-    } else if (c.lucha || c.condicion) {   // casilla de combate: boton morado, kanji y en el hexagono su condicion
+    // eB2e: FUN_00239690 (b2.c:191066) dibuja el hexagono (anim 17) SOLO con condicion 1-5; con condicion 0 usa la tabla 0x377D10 por tipo
+    // (disco). La casilla del radar de la fase III es lucha con condicion 0 y el original no le pone hexagono (PCSX2 fase III p1-final).
+    } else if (c.condicion || (c.lucha && g_d.life_ama.size() <= 22)) {   // casilla de combate: boton morado, kanji y en el hexagono su condicion
       Lienzo L; L.o = p; L.s = e;
       if (DibCasilla01(dl, L, c.condicion, t * 60.0f, col)) continue;
       DibIcono(dl, 14, ImVec2(p.x - 24 * e, p.y - 10 * e), ImVec2(p.x + 48 * e, p.y + 70 * e), ImVec4(0, 0, 0, 0), col);
@@ -6720,6 +6767,15 @@ ImTextureID CabezaDeB3(int id_b3) {
   return ImTextureID{};
 }
 
+// P3 7/11: ficha de B2 (indice de personaje) que corresponde a un ID de B3; -1 si no hay. Para el IK de suelo por personaje.
+int FichaDeB3(int id_b3) {
+  // 7/11 revision: B3 32 es el Dr. Gero; la ficha 19 (Androide 19, sin B3) tambien apunta a 32 en kB2aB3 y saldria primero.
+  if (id_b3 == 32) return 25;
+  for (int c = 0; c < kB2Personajes; ++c)
+    if (!SoloB2(c) && B2aB3(c) == id_b3) return c;
+  return -1;
+}
+
 // ---- API (pasarela_misiones.cpp, con su g_mu) ----
 bool Disponible() {
   // una vez encontrada, se queda; mientras falte se vuelve a mirar cada 2 s (el jugador la puede elegir con el juego
@@ -6796,7 +6852,12 @@ void Resultado(int ganador, int vida) {
     // que no es la elegida gana defendiendo, o la elegida pierde.
     // EU 0x2360B0 FUN_002360b0
     const int ganadora = ganador == 0 ? pj : pr;
-    SucesosDeCombate(ganadora == g_sel, ganador == 0 ? fr.barras - 1 <= 0 : fj.barras - 1 <= 0);
+    // nB2 (opt-in, apagado): el resultado puede correr en el hilo del combate despues de que
+    // el tablero cambie g_sel; usar la pieza elegida al abrir el contacto evita el codigo T5 3
+    // en vez de 4 (fase II: Goku gana pero g_sel ya es Gohan). Sin la variable, igual que antes.
+    static const bool sel_contacto = std::getenv("DBZ3_TEST_B2_SEL_CONTACTO") != nullptr;
+    const int elegida = sel_contacto && g_suceso_sel >= 0 ? g_suceso_sel : g_sel;
+    SucesosDeCombate(ganadora == elegida, ganador == 0 ? fr.barras - 1 <= 0 : fj.barras - 1 <= 0);
   }
   if (pj < 0 || pr < 0 || ganador < 0) return FinDeAccion();
   Ficha &j = g_f[size_t(pj)], &r = g_f[size_t(pr)];

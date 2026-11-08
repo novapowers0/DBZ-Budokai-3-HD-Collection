@@ -527,6 +527,9 @@ def _tex_usadas(amb):
     return usadas
 
 
+RIGIDO = False   # 9/11: scouter como lista rigida de un hueso hijo de la cabeza (como el original); False = lista del hueso 0
+
+
 def injertar_nativo(amb, ex, donor, ddraw):
     """1/11 Scouter NATIVO: anade al cuerpo un DRAW NUEVO con el material PROPIO del donante (textura + rampa + flags del
     material del draw `ddraw` del #AMB `donor`, p. ej. el XGOK_SCOUT1 del modelo 281). El resto del injerto comparte el
@@ -545,20 +548,29 @@ def injertar_nativo(amb, ex, donor, ddraw):
     ddt = DrawTable(davb)
     dd = ddt.draws[ddraw]
     dmat = ddt.materials[dd["material"]]
-    d0 = [d for d in dt.draws if d["group_bone"] == 0]
-    if len(d0) < 2:
-        return amb, {"scouter": "sin array de draws del grupo BODY"}
     labels = avb.bone_labels()
     ss = SkinSlots(avb)
     world, parents = avb.bind_worlds()
+    # 9/11: el scouter original es una LISTA RIGIDA del hueso XGOK_SCOUT1 (hijo de la cabeza), no una lista del hueso 0 con
+    # slot de paleta. El cuerpo no tiene ese hueso: se usa el grupo rigido de un hueso hijo de la cabeza que ya tenga su
+    # array de draws (los dientes superiores, XGOK_M_UTEETH, estaticos respecto a la cabeza). Sin el: la via antigua (hueso 0).
     cab = _hueso_cabeza(labels)
-    eff, seen = cab, set()
-    while eff is not None and eff not in ss.slot_of and eff >= 0 and eff not in seen:
-        seen.add(eff)
-        eff = parents[eff]
-    if cab is None or eff not in ss.slot_of:
-        return amb, {"scouter": "sin hueso HEAD / slot de paleta"}
-    slot, inv = ss.slot_of[eff], np.array(minv_affine(world[eff]))
+    gb = next((d["group_bone"] for d in dt.draws if d["group_bone"] > 0 and d["prim"] == 4 and parents[d["group_bone"]] == cab
+               and "UTEETH" in labels[d["group_bone"]]), None) if (RIGIDO and cab is not None) else None
+    if gb is not None:
+        d0 = [d for d in dt.draws if d["group_bone"] == gb]
+        slot, inv = 0, np.array(minv_affine(world[gb]))
+    else:
+        d0 = [d for d in dt.draws if d["group_bone"] == 0]
+        if len(d0) < 2:
+            return amb, {"scouter": "sin array de draws del grupo BODY"}
+        eff, seen = cab, set()
+        while eff is not None and eff not in ss.slot_of and eff >= 0 and eff not in seen:
+            seen.add(eff)
+            eff = parents[eff]
+        if cab is None or eff not in ss.slot_of:
+            return amb, {"scouter": "sin hueso HEAD / slot de paleta"}
+        slot, inv = ss.slot_of[eff], np.array(minv_affine(world[eff]))
     # --- textura del donante (bloques DXT3 copiados tal cual) -> hueco libre 16x16 bloques (+1 de margen) de una textura
     # grande del cuerpo que ningun triangulo de ningun AWG cubre; rampa identica (o la mas parecida) ya presente en el cuerpo
     _, th = tb.parse_azt(amb)
@@ -680,15 +692,20 @@ def injertar_nativo(amb, ex, donor, ddraw):
     # array de draws del hueso 0 (+1) y tabla de materiales (+1) reubicados tras las ventanas
     tab = avb.vb0                                  # donde empezaban las ventanas: ahora es el hueco de la cabecera
     axes = a0 + be(b, a0 + 0x14)
-    arm = be(b, axes + 0x34)
+    arm = be(b, axes + (gb or 0) * 80 + 0x34)
     hdr = a0 + be(b, a0 + arm + 4)
-    assert be(b, hdr) == nd, "el array de draws del hueso 0 no tiene los %d draws esperados" % nd
-    nuevo = bytearray(b[hdr:hdr + 0x60 * nd]) + bytearray(b[hdr + 0x60:hdr + 0xC0])     # plantilla: draw 1 (lista BODY)
+    assert be(b, hdr) == nd, "el array de draws del hueso %d no tiene los %d draws esperados" % (gb or 0, nd)
+    plan = hdr + 0x60 * (nd - 1 if gb is not None else 1)   # plantilla: la lista rigida del grupo / draw 1 (lista BODY)
+    nuevo = bytearray(b[hdr:hdr + 0x60 * nd]) + bytearray(b[plan:plan + 0x60])
     struct.pack_into(">I", nuevo, 0, nd + 1)
     o = 0x60 * nd
-    c = (nP.min(0) + nP.max(0)) / 2
+    if gb is not None:     # rigido: centro y radio en el espacio local del hueso (como el draw original del scouter)
+        c = (loc.min(0) + loc.max(0)) / 2
+        rad = float(np.max(np.linalg.norm(loc - c, axis=1)))
+    else:
+        c, rad = (nP.min(0) + nP.max(0)) / 2, 0.0
     struct.pack_into(">3f", nuevo, o + 0x10, *c)
-    struct.pack_into(">f", nuevo, o + 0x20, 0.0)
+    struct.pack_into(">f", nuevo, o + 0x20, rad)
     struct.pack_into(">I", nuevo, o + 0x24, n_mat << 16)
     struct.pack_into(">I", nuevo, o + 0x30, 4)                          # prim 4 = lista de triangulos
     struct.pack_into(">4I", nuevo, o + 0x38, avb.n, nv, cur, len(tris))

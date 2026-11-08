@@ -386,6 +386,14 @@ void InstallNovaMod(const NovaMod& mod) {
           if (ec) REXLOG_WARN("dbz3: Nova's Mods: no se pudo devolver {} (sigue en mods_respaldo)", rex::path_to_utf8(old));
         }
       }
+      // #72: la ficha compara la version del catalogo con la del manifest.txt del mod; si el zip trae otra (o ninguna),
+      // seguia diciendo "Actualizar" despues de instalar. Lo instalado queda marcado con la version que se pidio.
+      if (error.empty() && !mod.version.empty() && GetModManifestValue(name, "version") != mod.version) {
+        if (!SetModManifestValue(name, "version", mod.version))
+          REXLOG_WARN("dbz3: Nova's Mods: no se pudo marcar la version de {}", name);
+      }
+      if (error.empty() && name != mod.id)
+        REXLOG_WARN("dbz3: Nova's Mods: el zip de {} instalo la carpeta '{}' (la ficha busca '{}')", mod.id, name, mod.id);
       if (error.empty() && was_disabled) SetModEnabled(name, false);
       // la otra version del mismo mod (pack HD V1 / V2) se aparta: dos a la vez se pisan las texturas
       for (const std::string& other : error.empty() ? mod.excluye : std::vector<std::string>{}) {

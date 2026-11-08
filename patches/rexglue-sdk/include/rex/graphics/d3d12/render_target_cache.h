@@ -55,6 +55,10 @@ class D3D12RenderTargetCache final : public RenderTargetCache {
   void BeginSubmission();
 
   Path GetPath() const override { return path_; }
+  // DBZ3 (dsPHIRES): tamano del buffer EDRAM emulado (crece N2 con la escala).
+  uint64_t edram_buffer_size_bytes() const {
+    return edram_buffer_ ? edram_buffer_->GetDesc().Width : 0;
+  }
 
   // dbz3 temporal upscaling: the depth render target of the last draw,
   // transitioned for non-pixel shader reads (the next draw transitions it
@@ -120,6 +124,10 @@ class D3D12RenderTargetCache final : public RenderTargetCache {
   static DXGI_FORMAT GetDepthDSVDXGIFormat(xenos::DepthRenderTargetFormat format);
   static DXGI_FORMAT GetDepthSRVDepthDXGIFormat(xenos::DepthRenderTargetFormat format);
   static DXGI_FORMAT GetDepthSRVStencilDXGIFormat(xenos::DepthRenderTargetFormat format);
+
+  // DBZ3 1.5.6.1: tamano (pixeles del host) del menor render target enlazado en
+  // el ultimo Update; false si no hay ninguno.
+  bool Dbz3BoundRenderTargetSize(uint32_t& width, uint32_t& height) const;
 
  protected:
   uint32_t GetMaxRenderTargetWidth() const override { return D3D12_REQ_TEXTURE2D_U_OR_V_DIMENSION; }

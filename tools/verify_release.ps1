@@ -40,10 +40,13 @@ $errors = @()
 # 2026-10-17: menu F1 nuevo (quick_menu.cpp) y volcado de audio dbz3_audio_dump (sdl_audio_driver.cpp) = 11172864 / 6596608.
 # 2026-10-16 ronda 4 (frente R15): modelos de la interfaz con el z-buffer del juego (dbz3_ui_depth) = 11158528 / 6596608.
 # 2026-11-01 v1.5.6: DLL canonicas SIN cambios (11189760 / 6664192 / 5413888, medidas en el stage D:\tmp\rel156); solo cambia la etiqueta de referencia.
-$canonVersion = "1.5.6"
+# 2026-11-05 v1.5.6.1: rexruntime/rexgpu-xenos recompiladas con el sello 1.5.6.1 (11228672 / 6688768: + carga de mods indexada, recuperacion de audio, contadores de GPU y apano de viewport para Intel).
+# 2026-11-06 v1.5.6.1: rexruntime 11228672 (sha 2dca9fab5579) / rexgpu-xenos 6700544 (sha 53a5853b3bcd): + dbz3_sky_follow (eIW8) y recompilacion del baseline.
+# 2026-11-03: baseline recompilado con solar-Z optativo (apagado por defecto).
+$canonVersion = "1.5.6.1"
 $canonSizes = @{
-    "rexruntime.dll"          = 11189760
-    "rexgpu-xenos.dll"        = 6664192
+    "rexruntime.dll"          = 11228672
+    "rexgpu-xenos.dll"        = 6700544
     "amd_fidelityfx_dx12.dll" = 5413888
 }
 
@@ -178,7 +181,7 @@ if ($Version -ne "" -and (Test-Path -LiteralPath $zip)) {
     $z = [System.IO.Compression.ZipFile]::OpenRead($zip)
     try {
         # us/eu son las carpetas de juego en la raiz; Tcl trae su propia zona horaria tzdata/US (no es un asset).
-        $bad = $z.Entries | Where-Object { $_.FullName -match "default\.xex|^(us|eu)[/\\]|(^|[/\\])(pack_hub|mods_ps2)([/\\])|\.(afs|xex|iso|xiso|chd|cpk|amb|awo|amo|amg|azt|adx|sfd|mp4|mkv|avi|mp3|wav|ogg|flac)$|xv2_cac\.toml$" }
+        $bad = $z.Entries | Where-Object { $_.FullName -match "default\.xex|^(us|eu)[/\\]|(^|[/\\])(pack_hub|mods_ps2)([/\\])|\.(afs|xex|iso|xiso|chd|cpk|amb|awo|amo|amg|azt|adx|sfd|mp4|mkv|avi|mp3|wav|ogg|flac)$|\.p2s$|eeMemory|xv2_cac\.toml$" }
         if ($bad) {
             $errors += "el zip contiene assets del juego: $($bad.FullName -join ', ')"
         } else {

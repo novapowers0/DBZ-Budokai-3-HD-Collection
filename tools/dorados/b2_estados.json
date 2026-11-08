@@ -1,0 +1,124 @@
+{
+ "_leeme": "Savestates de B2 PAL (SLES-51839) con la partida europea al 100 % (GameFAQs DeathAwaitsU) en tarjeta CARPETA memcards/b2_100.ps2 de cada perfil de la granja. Copias canonicas en E:; los mismos ficheros estan en D:/DBZ3HD/_pcsx2_pool/{1,2}/sstates (slot = numero antes de .p2s; PINE load <slot>). Se cargan con `pcsx2_pool.py lanzar N --iso <B2 EU> --estado <fichero>` o con Pine.cargar(slot). La tarjeta debe ser b2_100.ps2 (pcsx2_pool.py tarjeta N b2_100.ps2 <carpeta partida>). Tras cargar, la primera captura puede salir negra: esperar ~3 s.",
+ "iso": "ps2_games/DragonBall Z - Budokai 2 (Europe) (En,Fr,De,Es,It).iso",
+ "tarjeta": "b2_100.ps2",
+ "escenas": {
+  "menu_principal": {
+   "slot": 20,
+   "ruta": "E:/DBZ3HD_trabajo/pool_estados/b2/SLES-51839 (FE09A7CC).20.p2s",
+   "nota": "Main Menu; cursor en Dragon World; Babidi's Spaceship desbloqueada"
+  },
+  "dragon_world_aliado": {
+   "slot": 21,
+   "ruta": "E:/DBZ3HD_trabajo/pool_estados/b2/SLES-51839 (FE09A7CC).21.p2s",
+   "nota": "Dragon World, Stage 1 (Raditz/Nappa), pantalla 'select an ally' (Gohan, Goten, Kid Trunks, Piccolo, Krillin...)"
+  },
+  "babidi_entrada": {
+   "slot": 22,
+   "ruta": "E:/DBZ3HD_trabajo/pool_estados/b2/SLES-51839 (FE09A7CC).22.p2s",
+   "nota": "Babidi's Spaceship, selector 1P/2P (primera pantalla al entrar)"
+  },
+  "babidi_pisos": {
+   "slot": 23,
+   "ruta": "E:/DBZ3HD_trabajo/pool_estados/b2/SLES-51839 (FE09A7CC).23.p2s",
+   "nota": "Babidi's Spaceship tras 1P: selector de piso, Stage 1"
+  },
+  "vs_seleccion": {
+   "slot": 24,
+   "ruta": "E:/DBZ3HD_trabajo/pool_estados/b2/SLES-51839 (FE09A7CC).24.p2s",
+   "nota": "Dueling 1P vs COM, Select Characters: 1P Great Saiyaman, COM cursor en Piccolo (sin confirmar)"
+  },
+  "babidi_piso1_elegir": {
+   "slot": 41,
+   "nota": "Babidi piso 1: Select Characters (1P Goku por defecto), antes de confirmar",
+   "necesita": "solo ver quien/que; mapa de plantel (nombres) para elegir personajes",
+   "ruta": "E:/DBZ3HD_trabajo/pool_estados/b2/SLES-51839 (FE09A7CC).41.p2s"
+  },
+  "babidi_piso1_estadio": {
+   "slot": 51,
+   "nota": "Babidi piso 1: Stage Selection tras elegir Goku vs Goku",
+   "necesita": "una captura de pantalla de las miniaturas; sin RAM de combate",
+   "ruta": "E:/DBZ3HD_trabajo/pool_estados/b2/SLES-51839 (FE09A7CC).51.p2s"
+  },
+  "babidi_piso1_combate": {
+   "slot": 61,
+   "nota": "Babidi piso 1: primer fotograma del combate (Goku vs Goku, COM; reglas del piso: 1 aguantar, 2 sobrevivir/40 kills, 4 Ki...)",
+   "necesita": "dif_mapa_b2_pal.py (contador 0x371550, offsets de matrices/huesos, PAL_IDX/HD_IDX) + diferencial.py b2 (traza.json PAL); victima/atacante por traza, camara",
+   "ruta": "E:/DBZ3HD_trabajo/pool_estados/b2/SLES-51839 (FE09A7CC).61.p2s"
+  },
+  "babidi_piso2_elegir": {
+   "slot": 42,
+   "nota": "Babidi piso 2: Select Characters (1P Goku por defecto), antes de confirmar",
+   "necesita": "solo ver quien/que; mapa de plantel (nombres) para elegir personajes",
+   "ruta": "E:/DBZ3HD_trabajo/pool_estados/b2/SLES-51839 (FE09A7CC).42.p2s"
+  },
+  "babidi_piso2_estadio": {
+   "slot": 52,
+   "nota": "Babidi piso 2: Stage Selection tras elegir Goku vs Goku",
+   "necesita": "una captura de pantalla de las miniaturas; sin RAM de combate",
+   "ruta": "E:/DBZ3HD_trabajo/pool_estados/b2/SLES-51839 (FE09A7CC).52.p2s"
+  },
+  "babidi_piso2_combate": {
+   "slot": 62,
+   "nota": "Babidi piso 2: primer fotograma del combate (Goku vs Goku, COM; reglas del piso: 1 aguantar, 2 sobrevivir/40 kills, 4 Ki...)",
+   "necesita": "dif_mapa_b2_pal.py (contador 0x371550, offsets de matrices/huesos, PAL_IDX/HD_IDX) + diferencial.py b2 (traza.json PAL); victima/atacante por traza, camara",
+   "ruta": "E:/DBZ3HD_trabajo/pool_estados/b2/SLES-51839 (FE09A7CC).62.p2s"
+  },
+  "babidi_piso3_elegir": {
+   "slot": 43,
+   "nota": "Babidi piso 3: Select Characters (1P Goku por defecto), antes de confirmar",
+   "necesita": "solo ver quien/que; mapa de plantel (nombres) para elegir personajes",
+   "ruta": "E:/DBZ3HD_trabajo/pool_estados/b2/SLES-51839 (FE09A7CC).43.p2s"
+  },
+  "babidi_piso3_estadio": {
+   "slot": 53,
+   "nota": "Babidi piso 3: Stage Selection tras elegir Goku vs Goku",
+   "necesita": "una captura de pantalla de las miniaturas; sin RAM de combate",
+   "ruta": "E:/DBZ3HD_trabajo/pool_estados/b2/SLES-51839 (FE09A7CC).53.p2s"
+  },
+  "babidi_piso3_combate": {
+   "slot": 63,
+   "nota": "Babidi piso 3: primer fotograma del combate (Goku vs Goku, COM; reglas del piso: 1 aguantar, 2 sobrevivir/40 kills, 4 Ki...)",
+   "necesita": "dif_mapa_b2_pal.py (contador 0x371550, offsets de matrices/huesos, PAL_IDX/HD_IDX) + diferencial.py b2 (traza.json PAL); victima/atacante por traza, camara",
+   "ruta": "E:/DBZ3HD_trabajo/pool_estados/b2/SLES-51839 (FE09A7CC).63.p2s"
+  },
+  "babidi_piso4_elegir": {
+   "slot": 44,
+   "nota": "Babidi piso 4: Select Characters (1P Goku por defecto), antes de confirmar",
+   "necesita": "solo ver quien/que; mapa de plantel (nombres) para elegir personajes",
+   "ruta": "E:/DBZ3HD_trabajo/pool_estados/b2/SLES-51839 (FE09A7CC).44.p2s"
+  },
+  "babidi_piso4_estadio": {
+   "slot": 54,
+   "nota": "Babidi piso 4: Stage Selection tras elegir Goku vs Goku",
+   "necesita": "una captura de pantalla de las miniaturas; sin RAM de combate",
+   "ruta": "E:/DBZ3HD_trabajo/pool_estados/b2/SLES-51839 (FE09A7CC).54.p2s"
+  },
+  "babidi_piso4_combate": {
+   "slot": 64,
+   "nota": "Babidi piso 4: primer fotograma del combate (Goku vs Goku, COM; reglas del piso: 1 aguantar, 2 sobrevivir/40 kills, 4 Ki...)",
+   "necesita": "dif_mapa_b2_pal.py (contador 0x371550, offsets de matrices/huesos, PAL_IDX/HD_IDX) + diferencial.py b2 (traza.json PAL); victima/atacante por traza, camara",
+   "ruta": "E:/DBZ3HD_trabajo/pool_estados/b2/SLES-51839 (FE09A7CC).64.p2s"
+  },
+  "dragon_world_tablero": {
+   "slot": 71,
+   "nota": "Dragon World Stage 1 tras elegir a Gohan de aliado: tablero con Goku, primer turno",
+   "necesita": "tablero 12/12: guion/mapa de tablero (E:/R7 board maps), cursor y dados; mismo mapa de nodos que pasarela_b2",
+   "ruta": "E:/DBZ3HD_trabajo/pool_estados/b2/SLES-51839 (FE09A7CC).71.p2s"
+  },
+  "dragon_world_batalla_intro": {
+   "slot": 72,
+   "nota": "Dragon World Stage 1: pantalla 'Battle! Defeat the enemy!' contra Saibaman (previo al combate)",
+   "necesita": "transicion tablero->combate (7 familias de transicion B2)",
+   "ruta": "E:/DBZ3HD_trabajo/pool_estados/b2/SLES-51839 (FE09A7CC).72.p2s"
+  },
+  "dragon_world_combate": {
+   "slot": 73,
+   "nota": "Dragon World Stage 1: primer fotograma del combate contra Saibaman",
+   "necesita": "dif_mapa_b2_pal.py (contador 0x371550, offsets de matrices/huesos, PAL_IDX/HD_IDX) + diferencial.py b2 (traza.json PAL)",
+   "ruta": "E:/DBZ3HD_trabajo/pool_estados/b2/SLES-51839 (FE09A7CC).73.p2s"
+  }
+ },
+ "limites": "Solo Stage 1 de Dragon World esta alcanzable sin jugar (la partida abre directo en Stage 1); los siguientes capitulos requieren ganar combates desde el 71-73. Babidi tiene 4 pisos (confirmado: no hay flecha tras el 4). Las pantallas de resultado piden 'Save data already exists': no confirmar (autoguarda en la tarjeta copia).",
+ "_nota_teclas": "Tras cargar un estado la primera tecla del MISMO proceso se pierde: cargar en un proceso y mandar teclas en otro (ver tools/pool_nav.py, tools/b2_babidi_estados.py)."
+}

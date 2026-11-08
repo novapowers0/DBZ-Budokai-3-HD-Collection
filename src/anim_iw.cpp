@@ -29,6 +29,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <map>
 #include <mutex>
 #include <string>
@@ -180,10 +181,17 @@ constexpr Extra kExtras[] = {{0x11D, 204}, {0x51, 922},  {0x53, 922},  {0x118, 9
                               {0x3D4,924,0xFA3},{0x3D5,924,0xFA4},{0x3D6,924,0xFA5},{0x3B6,924,0xFA6},{0x3B7,924,0xFA7},{0x3B8,924,0xFA8},{0x3B9,924,0xFA9},
                                {0x384,918,0xFAA},{0x3AC,918,0xFAB},{0x391,918,0xFAC},
                                {0x393,918,0xFB9}, // esquiva observada por PINE solIWN,40cuadros
+                               // 5/11 opusBB: el resto de esquivas de Freezer (Char_EnterPoseState2Transform EU 0x35D150:
+                               // 0x38E+dir cortas, +4 largas); 0x391/0x393 ya arriba.
+                               {0x38E,918,0xFD0},{0x38F,918,0xFD1},{0x390,918,0xFD2},
+                               {0x392,918,0xFD3},{0x394,918,0xFD4},{0x395,918,0xFD5},
                               {0x438,918,0xFAD},{0x439,918,0xFAE},{0x43A,918,0xFAF},
                                {0x3E8,925,0xFB0},{0x43D,925,0xFB1},{0x410,925,0xFB2},{0x3F2,925,0xFB3},{0x3F4,925,0xFB4},
                                {0x3F2,925,0xFC0},{0x3F3,925,0xFC1},{0x3F4,925,0xFC2},{0x3F5,925,0xFC3},
-                               {0x3F6,925,0xFC4},{0x3F7,925,0xFC5},{0x3F8,925,0xFC6},{0x3F9,925,0xFC7},
+                                {0x3F6,925,0xFC4},{0x3F7,925,0xFC5},{0x3F8,925,0xFC6},{0x3F9,925,0xFC7},
+                                // MSN010: tabla EU499A60, seis reacciones por zona; no esquivas3F2..3F9.
+                                {0x406,925,0xFC8},{0x407,925,0xFC9},{0x408,925,0xFCA},
+                                {0x409,925,0xFCB},{0x40A,925,0xFCC},{0x40B,925,0xFCD},
                               {0x690,929,0xFB5},{0x691,929,0xFB6},{0x692,929,0xFB7},{0x695,914,0xFB8},
                               {0x6F4,928,0xA58},{0x6F5,928,0xA59},{0x6F6,928,0xA5A},
                               {0x6F4,931,0xA5B},{0x6F5,931,0xA5C},{0x6F6,931,0xA5D}};
@@ -280,8 +288,10 @@ std::atomic<int> g_vista{kApagado};   // fase del scatto que se ve
 // usar un almacen distinto. g_cache[0] es el cuerpo A (el de CrearTransicion/PrepararTransicion).
 struct CacheCuerpo {
   uint32_t acm = 0, tabla = 0, base_idx = 0;
+  std::vector<std::array<uint32_t, 2>> reservas;   // eANI2: [direccion, bytes] de tabla y bloques (se liberan al reinstalar)
 };
-CacheCuerpo g_cache[2];
+int64_t g_bytes_iw = 0;   // eANI2: bytes de tablas/bloques de #ACM vivos (registro)
+CacheCuerpo g_cache[4];   // eANI2: 2 luchadores x 2 cuerpos, cada uno puede ir en su almacen propio
 // DS103: el #CSK es POR CUERPO (no por #ACM). Dos cuerpos pueden compartir el mismo #ACM y tener cada uno su
 // propia lista de 3 #CSK con codigos distintos. Antes se cacheaba por #ACM, asi que el segundo cuerpo reutilizaba
 // el #CSK del primero o, si no habia hueco libre, se quedaba sin el (codigo 0 = guardia de B3: la captura).
@@ -289,7 +299,7 @@ CacheCuerpo g_cache[2];
 // codigos originales; asi our alias 0x8xx ganan aunque el #CSK de B3 tenga una entrada propia ahi y el cuerpo no
 // dependa de que quede un hueco libre. `prev` = puntero que habia en el hueco, para devolverlo en Quitar.
 struct CacheCsk {
-  uint32_t A = 0, acm = 0, csk = 0, prev = 0, hueco = 0;
+  uint32_t A = 0, acm = 0, csk = 0, prev = 0, hueco = 0, hr = 0;   // hr: tabla HR propia (eANI2: se libera con el #CSK)
 };
 CacheCsk g_csk[2];
 uint32_t g_acm_principal = 0;   // #ACM del cuerpo A (donde vive la transicion 0x7FE generada)
@@ -1108,13 +1118,17 @@ bool PrepararTransicion(uint8_t* base, uint32_t de, float f, uint32_t a) {
     const uint32_t bt = REX_LOAD_U32(g_csk_principal + 0x20 + 4 * kTransicion);
     if (bt)
       for (uint32_t w = 0; w < 11; ++w) REX_STORE_U32(bt + 4 + 4 * w, B->bloque[w]);
-    for (uint32_t c = 0; c < Total(); ++c)
-      if (AnimN(c).codigo == kTransicion) {
-        const uint32_t e = Abs(cc->tabla, cc->acm) + 16 * (cc->base_idx + c);
-        REX_STORE_U32(e, B->flags);
-        REX_STORE_U32(e + 4, B->var);
-        REX_STORE_U32(e + 8, n + 1);   // cuadros de esta mezcla
-      }
+    // eANI2: cada luchador puede llevar su almacen propio (AlmacenIw): la fila va en todos los #ACM instalados vivos.
+    for (const CacheCuerpo& q : g_cache) {
+      if (q.acm < 0x10000000u || q.acm >= 0xF0000000u || REX_LOAD_U32(q.acm + 0x14) != q.tabla) continue;
+      for (uint32_t c = 0; c < Total(); ++c)
+        if (AnimN(c).codigo == kTransicion) {
+          const uint32_t e = Abs(q.tabla, q.acm) + 16 * (q.base_idx + c);
+          REX_STORE_U32(e, B->flags);
+          REX_STORE_U32(e + 4, B->var);
+          REX_STORE_U32(e + 8, n + 1);   // cuadros de esta mezcla
+        }
+    }
   }
   return true;
 }
@@ -1318,11 +1332,15 @@ uint32_t Bloque(uint8_t* base, uint32_t acm, const Anim& an, bool relativo) {
 }
 
 // Cache del #ACM de un cuerpo (hasta dos cuerpos con almacenes distintos). nullptr si no hay hueco.
-CacheCuerpo* CacheDe(uint32_t acm) {
+CacheCuerpo* CacheDe(uint8_t* base, uint32_t acm) {
   for (CacheCuerpo& c : g_cache)
     if (c.acm == acm) return &c;
   for (CacheCuerpo& c : g_cache)
     if (!c.acm) return &c;
+  // eANI2: con el almacen propio de cada personaje (AlmacenIw) el #ACM cambia en cada combate; una entrada cuyo #ACM ya
+  // no lleva nuestra tabla (recargado o liberado) se reutiliza: InstalarCuerpo libera sus reservas al reinstalar.
+  for (CacheCuerpo& c : g_cache)
+    if (c.acm < 0x10000000u || c.acm >= 0xF0000000u || REX_LOAD_U32(c.acm + 0x14) != c.tabla) return &c;
   return nullptr;
 }
 
@@ -1344,6 +1362,31 @@ CacheCsk* CacheCskDe(uint32_t A) {
   return nullptr;
 }
 
+// eANI2 (5/11): almacen del modelo en el que van las animaciones de IW. Antes siempre el 0 (#ACM global GOK, 46 huesos):
+// el mapa hueso->pista que el motor construye por almacen (0x8208D2C8, modelo+0x4B0+0x200*almacen, s16, -1 = sin pista)
+// deja sin pista los huesos que ese #ACM no nombra, y sus pistas de IW se perdian (Freezer 0x384: T_TAIL1-5 en reposo,
+// 5-107 grados frente a PCSX2; Krillin: WPAT/SPAT). Se elige el almacen cuyo mapa cubre mas huesos del modelo; a
+// igualdad, el 0 (los personajes que ya lo cubrian todo no cambian). DBZ3_IW_ALMACEN_GLOBAL=1: siempre el 0.
+uint32_t AlmacenIw(uint8_t* base, uint32_t modelo) {
+  static const bool global = [] { const char* v = std::getenv("DBZ3_IW_ALMACEN_GLOBAL"); return v && *v == '1'; }();
+  auto ok = [](uint32_t p) { return p >= 0x10000000u && p < 0xF0000000u; };
+  const uint32_t h = REX_LOAD_U32(modelo + 4);
+  if (global || !ok(h)) return 0;
+  const uint32_t mg = REX_LOAD_U32(h) & 0x00FFFFFFu;
+  const uint32_t nh = REX_LOAD_U32(h + ((mg == 0x00415747u || mg == 0x00414D47u) ? 0x10 : 0x20));   // #AWG/#AMG o #AWO
+  if (!nh || nh > 256) return 0;
+  uint32_t mejor = 0, cubre0 = 0, cubre_mejor = 0;
+  for (uint32_t k = 0; k < 8; ++k) {
+    const uint32_t acm = REX_LOAD_U32(modelo + kAlmacenes + 4 * k);
+    if (!ok(acm) || (REX_LOAD_U32(acm) & 0x00FFFFFFu) != kAcm) continue;
+    uint32_t cubre = 0;
+    for (uint32_t j = 0; j < nh; ++j) cubre += int16_t(REX_LOAD_U16(modelo + 0x4B0 + 0x200 * k + 2 * j)) >= 0;
+    if (k == 0) cubre0 = cubre;
+    if (cubre > cubre_mejor) mejor = k, cubre_mejor = cubre;
+  }
+  return cubre_mejor > cubre0 ? mejor : 0;
+}
+
 bool InstalarCuerpo(uint8_t* base, uint32_t A, uint32_t& csk, uint32_t& hueco, uint32_t& csk_prev) {
   csk = 0;
   hueco = 0;
@@ -1360,10 +1403,10 @@ bool InstalarCuerpo(uint8_t* base, uint32_t A, uint32_t& csk, uint32_t& hueco, u
   auto puntero_ok = [](uint32_t p) { return p >= 0x10000000u && p < 0xF0000000u; };
   const uint32_t modelo = REX_LOAD_U32(A + kModelo);
   if (!puntero_ok(modelo) || !puntero_ok(modelo + kAlmacenes)) return fallo("modelo", modelo, 0);
-  const uint32_t acm = REX_LOAD_U32(modelo + kAlmacenes);
+  const uint32_t alm = AlmacenIw(base, modelo), acm = REX_LOAD_U32(modelo + kAlmacenes + 4 * alm);
   if (!puntero_ok(acm) || (REX_LOAD_U32(acm) & 0x00FFFFFFu) != kAcm)
     return fallo("acm/magia", acm, puntero_ok(acm) ? REX_LOAD_U32(acm) : 0);
-  CacheCuerpo* c = CacheDe(acm);
+  CacheCuerpo* c = CacheDe(base, acm);
   if (!c) return fallo("cache #ACM llena", acm, 0);
   if (c->acm != acm || REX_LOAD_U32(acm + 0x14) != c->tabla) {
     const uint32_t n = REX_LOAD_U32(acm + 0x10), crudo = REX_LOAD_U32(acm + 0x14), tbl = Abs(crudo, acm);
@@ -1376,12 +1419,22 @@ bool InstalarCuerpo(uint8_t* base, uint32_t A, uint32_t& csk, uint32_t& hueco, u
         rel = p < 0x01000000u;
         break;
       }
+    // eANI2: nadie apunta ya a la tabla vieja (el #ACM no la lleva): se libera con sus bloques.
+    static const bool sin_liberar = std::getenv("DBZ3_IW_SIN_LIBERAR") != nullptr;   // prueba de control
+    for (const auto& r : c->reservas)
+      if (!sin_liberar) dbz3::roster::GuestFree(r[0]), g_bytes_iw -= r[1];
+    c->reservas.clear();
+    c->acm = 0;
     const uint32_t nt = dbz3::roster::GuestAlloc(16 * (n + Total()));
     if (!nt) return fallo("sin memoria (#ACM)", n, Total());
+    c->reservas.push_back({nt, 16 * (n + Total())});
+    g_bytes_iw += 16 * (n + Total());
     for (uint32_t k = 0; k < 4 * n; ++k) REX_STORE_U32(nt + 4 * k, REX_LOAD_U32(tbl + 4 * k));
     for (uint32_t q = 0; q < Total(); ++q) {
       const uint32_t b = Bloque(base, acm, AnimN(q), rel), e = nt + 16 * (n + q);
       if (!b) return fallo("sin bloque de animacion", AnimN(q).codigo, 0);
+      c->reservas.push_back({b, 8 * REX_LOAD_U32(acm + 0x18)});
+      g_bytes_iw += 8 * REX_LOAD_U32(acm + 0x18);
       REX_STORE_U32(e, AnimN(q).flags);
       REX_STORE_U32(e + 4, AnimN(q).var);
       REX_STORE_U32(e + 8, AnimN(q).cuadros);
@@ -1392,8 +1445,8 @@ bool InstalarCuerpo(uint8_t* base, uint32_t A, uint32_t& csk, uint32_t& hueco, u
     REX_STORE_U32(acm + 0x10, n + Total());
     c->acm = acm;
     c->base_idx = n;
-    REXLOG_INFO("dbz3 anim: animaciones de IW en el #ACM (0x{:08X}): {}..{} (punteros {})", acm, n,
-                n + Total() - 1, rel ? "relativos" : "absolutos");
+    REXLOG_INFO("dbz3 anim: animaciones de IW en el #ACM (0x{:08X}): {}..{} (punteros {}); reservas vivas {} B, tabla 0x{:08X}",
+                acm, n, n + Total() - 1, rel ? "relativos" : "absolutos", g_bytes_iw, nt);
   }
   CacheCsk* cc = CacheCskDe(A);
   if (!cc) return fallo("cache #CSK llena", A, 0);
@@ -1442,6 +1495,7 @@ bool InstalarCuerpo(uint8_t* base, uint32_t A, uint32_t& csk, uint32_t& hueco, u
   const uint32_t nh = puntero_ok(O) ? REX_LOAD_U32(O + 24) : 0;
   const uint32_t hr = nh ? Abs(REX_LOAD_U32(O + 28), O) : 0;
   if (nh > ap::kHrIw || (nh && !puntero_ok(hr))) return fallo("tabla HR", nh, hr);
+  uint32_t hr_propia = 0;
   if (g_ap_hr.empty()) {
     REX_STORE_U32(g + 24, nh);
     REX_STORE_U32(g + 28, hr);
@@ -1449,6 +1503,7 @@ bool InstalarCuerpo(uint8_t* base, uint32_t A, uint32_t& csk, uint32_t& hueco, u
     const uint32_t total_hr = ap::kHrIw + uint32_t(g_ap_hr.size());
     const uint32_t h = dbz3::roster::GuestAlloc(128 * total_hr);
     if (!h) return fallo("sin memoria (AP/HR)", total_hr, 0);
+    hr_propia = h;
     for (uint32_t k = 0; k < 128 * total_hr; k += 4)
       REX_STORE_U32(h + k, k < 128 * nh ? REX_LOAD_U32(hr + k) : 0);
     for (uint32_t j = 0; j < g_ap_hr.size(); ++j)
@@ -1464,15 +1519,27 @@ bool InstalarCuerpo(uint8_t* base, uint32_t A, uint32_t& csk, uint32_t& hueco, u
     const uint32_t b = g + blks + 48 * q;
     REX_STORE_U32(g + lst + 4 * AnimN(q).codigo, b);
     REX_STORE_U16(b, uint16_t(c->base_idx + q));
-    REX_STORE_U16(b + 2, 0);
+    REX_STORE_U16(b + 2, uint16_t(alm));
     for (uint32_t w = 0; w < 11; ++w) REX_STORE_U32(b + 4 + 4 * w, AnimN(q).bloque[w]);
   }
+  // eANI2: el #CSK anterior de este cuerpo (y su tabla HR) se libera si el motor ya no lo tiene en ningun hueco ni
+  // como #CSK resuelto (A+0x474); si aun lo tiene, se deja (fuga acotada, mejor que leer memoria liberada).
+  const uint32_t csk_viejo = cc->A == A ? cc->csk : 0, hr_viejo = cc->A == A ? cc->hr : 0;
   cc->A = A;
   cc->acm = acm;
   cc->csk = g;
+  cc->hr = hr_propia;
   cc->prev = O;
   cc->hueco = A + kBsk;
   REX_STORE_U32(A + kBsk, g);
+  if (csk_viejo && csk_viejo != g && !std::getenv("DBZ3_IW_SIN_LIBERAR") && REX_LOAD_U32(A + kBsk + 4) != csk_viejo && REX_LOAD_U32(A + kBsk + 8) != csk_viejo &&
+      REX_LOAD_U32(A + 0x474) != csk_viejo) {
+    dbz3::roster::GuestFree(csk_viejo);
+    dbz3::roster::GuestFree(hr_viejo);
+    REXLOG_INFO("dbz3 anim: #CSK viejo 0x{:08X} del cuerpo 0x{:08X} liberado", csk_viejo, A);
+  } else if (csk_viejo && csk_viejo != g) {
+    REXLOG_INFO("dbz3 anim: #CSK viejo 0x{:08X} del cuerpo 0x{:08X} aun en uso: no se libera", csk_viejo, A);
+  }
   csk = cc->csk;
   hueco = cc->hueco;
   csk_prev = cc->prev;
@@ -1492,7 +1559,7 @@ bool Instalar(uint8_t* base, uint32_t x, uint32_t& hueco, uint32_t& hueco2, uint
   if (!InstalarCuerpo(base, x + kAnimObj, csk, hueco, csk_prev)) return false;
   g_csk_principal = csk;
   const uint32_t mA = REX_LOAD_U32(x + kAnimObj + kModelo);
-  g_acm_principal = (mA >= 0x10000000u && mA < 0xF0000000u) ? REX_LOAD_U32(mA + kAlmacenes) : 0;
+  g_acm_principal = (mA >= 0x10000000u && mA < 0xF0000000u) ? REX_LOAD_U32(mA + kAlmacenes + 4 * AlmacenIw(base, mA)) : 0;
   InstalarCuerpo(base, x + kAnimObj2, csk2, hueco2, csk2_prev);
   return true;
 }
@@ -1508,12 +1575,12 @@ void Arrancar(PPCContext& ctx, uint8_t* base, uint32_t x, uint32_t codigo, bool 
     REX_STORE_U16(x + kAccion + 4, 0);
     c.r3.u64 = x;
     c.r4.u64 = 0;
-    sub_82103978(c, base);
+    DBZ3_CALL_EU(sub_82103978)(c, base);
     c = ctx;
   }
   REX_STORE_U32(x + kCodigo, codigo);
   c.r3.u64 = x;
-  sub_82114FB8(c, base);
+  DBZ3_CALL_EU(sub_82114FB8)(c, base);
   // DS103: 0x820FA4B8 no avanza el reloj si A+0x66C != 0 (pose congelada por sub_820F9970(-1)). Al arrancar una
   // animacion nuestra se quita el congelado para que el cuadro corra.
   REX_STORE_U8(x + kAnimObj + 0x66C, 0);
@@ -1528,7 +1595,7 @@ void ArrancarCuerpoB(PPCContext& ctx, uint8_t* base, uint32_t x, uint32_t codigo
   REX_STORE_U32(A + kCodigoCuerpo, codigo);
   PPCContext c = ctx;
   c.r3.u64 = A;
-  sub_820FA378(c, base);
+  DBZ3_CALL_EU(sub_820FA378)(c, base);
   REX_STORE_U8(A + 0x66C, 0);   // DS103: sin congelado (ver Arrancar)
 }
 
@@ -1554,6 +1621,7 @@ struct Pedido {
   uint32_t tope = 0;
   uint32_t luego = 0;    // kModoPose: al acabar, este codigo en bucle (0 = a la guardia o sujeta)
   bool reiniciar = false;
+  uint64_t orden_reinicio = 0;   // solo ReiniciarPoseConAcuse (candidato opt-in)
 };
 struct Luchador {
   uint32_t x = 0, puesto = 0, hueco = 0, cuadro = 0;   // cuadro: el de la animacion propia (bits del float A+0x608)
@@ -1579,6 +1647,12 @@ struct Luchador {
 };
 std::mutex g_mu;
 std::vector<Pedido> g_pedidos;
+struct AcuseReinicio {
+  uint64_t solicitada = 0, aplicada = 0;
+  EstadoCuerpo cuerpos[2];
+};
+std::map<uint32_t, AcuseReinicio> g_reinicios;
+uint64_t g_orden_reinicio = 0;   // g_mu; nunca se reutiliza una identidad
 std::atomic<bool> g_hay{false}, g_scatto_cell{false};
 Luchador g_l[2];
 
@@ -1597,13 +1671,17 @@ void Quitar(PPCContext& ctx, uint8_t* base, Luchador& l) {
     REX_STORE_U32(l.x + kAnimObj2 + kCodigoCuerpo, 0);
     PPCContext c = ctx;
     c.r3.u64 = l.x + kAnimObj2;
-    sub_820FA378(c, base);
+    DBZ3_CALL_EU(sub_820FA378)(c, base);
   }
   // DS103: se devuelve el #CSK original de B3 que habia en el hueco 0 (no 0: el juego necesita SUS codigos).
   if (l.hueco && l.csk && REX_LOAD_U32(l.hueco) == l.csk) REX_STORE_U32(l.hueco, l.csk_prev);
   if (l.hueco2 && l.csk2 && REX_LOAD_U32(l.hueco2) == l.csk2) REX_STORE_U32(l.hueco2, l.csk2_prev);
   if (l.modo == kModoScatto) g_vista = kApagado;
   QuitarContextoAp(l.x);
+  {
+    std::lock_guard<std::mutex> lk(g_mu);
+    g_reinicios.erase(l.x);
+  }
   l = Luchador{};
 }
 
@@ -1648,6 +1726,14 @@ int CuadrosScatto(Fase f, bool aire) {
 }
 void Corredor(uint32_t x, bool on) { Pedir({x, kModoCorredor, on ? 1 : 0, false}); }
 void Bucle(uint32_t x, uint32_t codigo) { Pedir({x, kModoCorredor, codigo ? 1 : 0, false, codigo}); }
+// eIW6: como Bucle, pero el pedido no se descarta aunque coincida con uno anterior ya muerto (reiniciar), y en bucle
+// (no sujeto) el motor de B3 no gana: el repuesto de AjustarReloj/AvanzarRelojes devuelve el codigo cada cuadro.
+void BucleForzado(uint32_t x, uint32_t codigo) {
+  if (!codigo) return;
+  Pedido p{x, kModoCorredor, 1, false, codigo};
+  p.reiniciar = true;
+  Pedir(p);
+}
 void Cansado(uint32_t x, bool on) { Pedir({x, kModoCansado, on ? 1 : 0, false}); }
 void Reproducir(uint32_t x, uint32_t codigo, bool sujetar, uint32_t tope, uint32_t luego) {
   g_pose = codigo ? 1 : 0;
@@ -1666,6 +1752,23 @@ void ReiniciarPose(uint32_t x,uint32_t codigo,bool sujetar) {
   if(!codigo){Reproducir(x,0);return;}
   g_pose=1;
   Pedido p{x,kModoPose,1,false,codigo,sujetar};p.reiniciar=true;Pedir(p);
+}
+uint64_t ReiniciarPoseConAcuse(uint32_t x,uint32_t codigo,bool sujetar) {
+  if (!x || !codigo) return 0;
+  std::lock_guard<std::mutex> lk(g_mu);
+  if (g_orden_reinicio == ~uint64_t{0}) return 0;
+  const uint64_t orden = ++g_orden_reinicio;
+  Pedido p{x,kModoPose,1,false,codigo,sujetar};
+  p.reiniciar = true;
+  p.orden_reinicio = orden;
+  g_pedidos.push_back(p);
+  // Solicitar NO confirma ni hereda el clip anterior, aunque tenga igual alias.
+  auto& acuse = g_reinicios[x];
+  acuse.solicitada = orden;
+  acuse.aplicada = 0;
+  g_pose = 1;
+  g_hay = true;
+  return orden;
 }
 float VelocidadAP(uint32_t x,float velocidad,float paso,float cac) {
   std::lock_guard<std::mutex> lk(g_ap_mu);
@@ -1715,9 +1818,111 @@ bool EventosSonandoReciente() { return g_ev_ticks[0].load() > 0 || g_ev_ticks[1]
 int EstadoPose() { return g_pose.load(); }
 Fase FaseScatto() { return Fase(g_vista.load()); }
 
+// eANI2: solo medida. DBZ3_TEST_IW_HUESOS=<ruta.jsonl> vuelca, por tick, nombres y matrices de huesos del modelo
+// B3 de los dos luchadores del gestor (modelo+0x408 = n matrices de 64 B, nombres en el #AWO del modelo).
+void VolcarHuesos(uint8_t* base) {
+  static const char* ruta = std::getenv("DBZ3_TEST_IW_HUESOS");
+  if (!ruta || !*ruta) return;
+  static std::ofstream f(ruta, std::ios::app);
+  static unsigned n = 0;
+  const uint32_t mgr = REX_LOAD_U32(kMgrPtr);
+  if (!mgr || mgr < 0x10000000u || mgr >= 0xF0000000u) return;
+  ++n;
+  static const unsigned cada = [] { const char* v = std::getenv("DBZ3_TEST_IW_HUESOS_CADA"); return v ? std::max(1, std::atoi(v)) : 1; }();
+  if (n % cada) return;
+  auto valido = [](uint32_t a, size_t k) { return a >= 0x10000000u && uint64_t(a) + k < 0xF0000000ull; };
+  for (uint32_t i = 0; i < 2; ++i) {
+    const uint32_t x = mgr + kX0 + i * kXPaso, A = x + kAnimObj;
+    if (!valido(x, kAnimObj + kModelo + 4)) continue;
+    const uint32_t modelo = REX_LOAD_U32(A + kModelo);
+    if (!valido(modelo, 0x46c)) continue;
+    const uint32_t h = REX_LOAD_U32(modelo + 4);
+    if (!valido(h, 0x28)) continue;
+    const bool awg = (REX_LOAD_U32(h) & 0x00FFFFFFu) == 0x00415747u || (REX_LOAD_U32(h) & 0x00FFFFFFu) == 0x00414D47u;  // #AWG/#AMG
+    const uint32_t nh = REX_LOAD_U32(h + (awg ? 0x10 : 0x20)), nombres = Abs(REX_LOAD_U32(h + (awg ? 0x1C : 0x24)), h),
+                   mats = REX_LOAD_U32(modelo + 0x408);
+    if (!nh || nh > 256 || !valido(nombres, size_t(nh) * 32) || !valido(mats, size_t(nh) * 64)) continue;
+    auto fl = [&](uint32_t a) { const uint32_t u = REX_LOAD_U32(a); float v; std::memcpy(&v, &u, 4); return v; };
+    f << "{\"n\":" << n << ",\"i\":" << i << ",\"codigo\":" << REX_LOAD_U32(A + 0x604) << ",\"reloj\":" << fl(A + 0x608)
+      << ",\"pos\":[" << fl(x + 64) << ',' << fl(x + 68) << ',' << fl(x + 72) << "],\"ik\":[";
+    {   // eANI3: estado del ajuste de pies de B3 (sub_8211B1F0): radios [X+2996]+4/+8, X+6664, pesos X+6644.., marcas
+        // X+6632.., X+8185, huesos [X+2956]+24/+26 (pies), +20/+22 (manos), +4 (rol 2); centros X+1616+16*12/13
+        const uint32_t t = REX_LOAD_U32(x + 2996), hb = REX_LOAD_U32(x + 2956);
+        f << (valido(t, 12) ? fl(t + 4) : 0) << ',' << (valido(t, 12) ? fl(t + 8) : 0) << ',' << fl(x + 6664);
+        for (uint32_t w = 0; w < 5; ++w) f << ',' << fl(x + 6644 + 4 * w);
+        for (uint32_t w = 0; w < 5; ++w) f << ',' << REX_LOAD_U16(x + 6632 + 2 * w);
+        f << ',' << int(REX_LOAD_U8(x + 8185));
+        for (uint32_t o : {24u, 26u, 20u, 22u, 4u}) f << ',' << (valido(hb, 32) ? int16_t(REX_LOAD_U16(hb + o)) : -1);
+        for (uint32_t w = 0; w < 4; ++w) f << ',' << fl(x + 1808 + 4 * w);
+        for (uint32_t w = 0; w < 4; ++w) f << ',' << fl(x + 1824 + 4 * w);
+        f << ',' << fl(x + 6216);
+      }
+    f << "],\"nombres\":[";
+    for (uint32_t j = 0; j < nh; ++j) {
+      char c[33]{};
+      for (uint32_t k = 0; k < 32; ++k) c[k] = char(REX_LOAD_U8(nombres + 32 * j + k));
+      f << (j ? ",\"" : "\"") << c << '"';
+    }
+    f << "],\"mst\":[";   // estado del modelo: modelo+0x410..0x470 (canales 0/1: clip +0x41C/+0x43C, cuadro +0x424/+0x444)
+    for (uint32_t w = 0; w < 24; ++w) f << (w ? "," : "") << REX_LOAD_U32(modelo + 0x410 + 4 * w);
+    f << "],\"m\":[";
+    for (uint32_t w = 0; w < nh * 16; ++w) f << (w ? "," : "") << fl(mats + 4 * w);
+    f << "]}\n";
+    // una vez por actor y codigo: nombres del #ACM del almacen y mapa hueso del modelo -> pista (modelo+0x4B0+0x200*alm)
+    static uint32_t visto[2] = {};
+    const uint32_t cod = REX_LOAD_U32(A + 0x604), alm = (cod >> 16) ? (cod >> 16) - 1 : 0;
+    if (visto[i] != cod && alm < 8) {
+      visto[i] = cod;
+      const uint32_t acm = REX_LOAD_U32(modelo + kAlmacenes + 4 * alm);
+      f << "{\"acm\":" << acm << ",\"i\":" << i << ",\"codigo\":" << cod << ",\"mapas\":[";
+      for (uint32_t q = 0; q < 8 * 0x100; ++q) f << (q ? "," : "") << int16_t(REX_LOAD_U16(modelo + 0x4B0 + 2 * q));
+      f << "],\"acm_nombres\":[";
+      if (valido(acm, 0x20)) {
+        const uint32_t na = REX_LOAD_U32(acm + 0x18), no = Abs(REX_LOAD_U32(acm + 0x1C), acm);
+        for (uint32_t j = 0; na <= 128 && valido(no, 32 * na) && j < na; ++j) {
+          char c[33]{};
+          for (uint32_t k = 0; k < 32; ++k) c[k] = char(REX_LOAD_U8(no + 32 * j + k));
+          f << (j ? ",\"" : "\"") << c << '"';
+        }
+      }
+      // pistas de giro del clip que suena (claves [cuadro, x, y, z] u16 por ranura del #ACM; [] sin pista)
+      f << "],\"pistas\":[";
+      if (valido(acm, 0x20)) {
+        const uint32_t na = REX_LOAD_U32(acm + 0x18), na_an = REX_LOAD_U32(acm + 0x10), idx = cod & 0xFFFF;
+        const uint32_t tbl = Abs(REX_LOAD_U32(acm + 0x14), acm);
+        if (na <= 128 && idx < na_an && valido(tbl + 16 * idx, 16)) {
+          const uint32_t fl0 = REX_LOAD_U32(tbl + 16 * idx), blk = Abs(REX_LOAD_U32(tbl + 16 * idx + 12), acm);
+          const uint32_t per = (fl0 & 0x10) ? 3 : 2;
+          for (uint32_t j = 0; j < na && valido(blk, 4 * per * na); ++j) {
+            const uint32_t p = Abs(REX_LOAD_U32(blk + 4 * per * j), acm);
+            f << (j ? ",[" : "[");
+            if (p && valido(p, 12)) {
+              const uint32_t nk = REX_LOAD_U32(p + 8);
+              for (uint32_t q = 0; nk <= 4096 && q < 4 * nk && valido(p + 12, 8 * nk); ++q)
+                f << (q ? "," : "") << REX_LOAD_U16(p + 12 + 2 * q);
+            }
+            f << "]";
+          }
+        }
+      }
+      f << "]}\n";
+    }
+  }
+  f.flush();
+}
+
 // Hilo del juego, con contexto (gancho de abajo): aplica los pedidos y hace avanzar las fases.
 void Tick(PPCContext& ctx, uint8_t* base) {
+  // eIW6 (medido 6/11): la lectura del banco de IW (Leer: 462 codigos de la ISO) tarda 0,6 s o mas en el hilo del juego
+  // y se hacia con el PRIMER pedido (t 1 de la camara 0 del 7D7): los clips de la entrada empezaban 37-241 cuadros
+  // tarde, segun la carga del PC. Se lee en cuanto el minijuego esta activo, durante la presentacion de B3 que lo
+  // precede. DBZ3_IW_LEER_TARDE=1: como antes.
+  static const bool leer_tarde = [] { const char* v = std::getenv("DBZ3_IW_LEER_TARDE"); return v && *v == '1'; }();
+  if (!leer_tarde && !g_leida && dbz3::iwmini::Activo()) Leer(base);
+  // Solo identifica los reinicios realmente consumidos en ESTE despacho.
+  uint64_t reinicios[2] = {};
   Prueba(base);
+  VolcarHuesos(base);
   for (int i = 0; i < 2; ++i) {   // 06: la marca de "evento sonoro reciente" se gasta por tick
     const int t = g_ev_ticks[i].load();
     if (t > 0) g_ev_ticks[i].store(t - 1);
@@ -1743,6 +1948,12 @@ void Tick(PPCContext& ctx, uint8_t* base) {
       if (!p.reiniciar && l->modo == p.modo && (p.modo != kModoScatto || p.fase == l->ultima) &&
           ((p.modo != kModoPose && p.modo != kModoCorredor) || p.codigo == l->codigo))
         continue;   // repetir no hace nada
+      {
+        std::lock_guard<std::mutex> lk(g_mu);
+        const auto it = g_reinicios.find(p.x);
+        if (it != g_reinicios.end()) it->second.aplicada = 0;
+      }
+      reinicios[l - g_l] = p.orden_reinicio;
       l->x = p.x;
       l->modo = p.modo;
       l->fase = p.fase;
@@ -1807,6 +2018,30 @@ void Tick(PPCContext& ctx, uint8_t* base) {
       l.puesto2=~0u;armaB(codigo);
       l.cuadro=0;l.reloj[0]=0;l.cuadro_visto[0]=~0u;
       l.puesto=codigo;l.destino=0;l.t_mezcla=0;l.cuadro_ev=-1;l.reiniciar=false;
+      const uint64_t orden = reinicios[&l - g_l];
+      if (orden) {
+        EstadoCuerpo cuerpos[2];
+        LeerEstadoCuerpo(base,l.x,0,cuerpos[0]);
+        if (l.csk2) LeerEstadoCuerpo(base,l.x,1,cuerpos[1]);
+        const Anim* a = AnimDe(codigo);
+        const auto reiniciado = [&](const EstadoCuerpo& e) {
+          return a && e.hay && e.codigo == codigo && e.cuadros == a->cuadros &&
+              e.cuadros > 0 && e.cuadro == 0.0f && e.vueltas == 0;
+        };
+        const bool aplicado = reiniciado(cuerpos[0]) && (!l.csk2 || reiniciado(cuerpos[1]));
+        {
+          std::lock_guard<std::mutex> lk(g_mu);
+          const auto it = g_reinicios.find(l.x);
+          if (it != g_reinicios.end() && it->second.solicitada == orden && aplicado) {
+            it->second.cuerpos[0] = cuerpos[0];
+            it->second.cuerpos[1] = cuerpos[1];
+            it->second.aplicada = orden;
+          }
+        }
+        REXLOG_INFO("dbz3 solIWX: reinicio aplicado orden {} codigo {:X} valido {} A {:X}/{:X}/{:.6f}/{} B {:X}/{:X}/{:.6f}/{}",
+            orden,codigo,aplicado,cuerpos[0].codigo,cuerpos[0].clip,cuerpos[0].cuadro,cuerpos[0].cuadros,
+            cuerpos[1].codigo,cuerpos[1].clip,cuerpos[1].cuadro,cuerpos[1].cuadros);
+      }
       continue;
     }
     const uint32_t ahora = REX_LOAD_U32(l.x + kCodigo) & 0xFFF;
@@ -1952,7 +2187,7 @@ void Tick(PPCContext& ctx, uint8_t* base) {
         REX_STORE_U32(A + kCodigoCuerpo, des);
         PPCContext c = ctx;
         c.r3.u64 = A;
-        sub_820FA378(c, base);
+        DBZ3_CALL_EU(sub_820FA378)(c, base);
         REX_STORE_U8(A + 0x66C, 0);
         repuesto = true;   // el arranque deja el cuadro a 0: no se adopta, sigue NUESTRO reloj
       }
@@ -2003,7 +2238,7 @@ void AjustarReloj(PPCContext& ctx, uint8_t* base, uint32_t A, float antes) {
       REX_STORE_U32(A + kCodigoCuerpo, des);
       PPCContext c = ctx;
       c.r3.u64 = A;
-      sub_820FA378(c, base);   // resuelve el #CSK a nuestro clip (no pasa por la accion del luchador)
+      DBZ3_CALL_EU(sub_820FA378)(c, base);   // resuelve el #CSK a nuestro clip (no pasa por la accion del luchador)
       REX_STORE_U8(A + 0x66C, 0);
       antes = -1.0f;           // el arranque deja el cuadro a 0: no cuenta como avance
     }
@@ -2068,6 +2303,19 @@ bool LeerEstadoCuerpo(uint8_t* base, uint32_t x, int cuerpo, EstadoCuerpo& e) {
   e.oculto1 = REX_LOAD_U8(x + (cuerpo ? 4924u : 3260u));
   e.oculto2 = REX_LOAD_U8(x + (cuerpo ? 4925u : 3261u));
   return e.hay;
+}
+bool LeerEstadoConAcuse(uint8_t* base,uint32_t x,int cuerpo,uint64_t orden,EstadoCuerpo& e) {
+  e = EstadoCuerpo{};
+  if (!orden || (cuerpo != 0 && cuerpo != 1)) return false;
+  std::lock_guard<std::mutex> lk(g_mu);
+  const auto it = g_reinicios.find(x);
+  if (it == g_reinicios.end() || it->second.solicitada != orden || it->second.aplicada != orden)
+    return false;
+  const auto& inicial = it->second.cuerpos[cuerpo];
+  if (!inicial.hay || !LeerEstadoCuerpo(base,x,cuerpo,e)) return false;
+  return e.objeto == inicial.objeto && e.modelo == inicial.modelo && e.codigo == inicial.codigo &&
+      e.clip == inicial.clip && e.cuadros == inicial.cuadros && std::isfinite(e.cuadro) &&
+      e.cuadro >= 0 && e.cuadro < float(e.cuadros);
 }
 
 // =====================================================================================================================
@@ -3374,23 +3622,60 @@ size_t HudPorModo(int modo, const HudObjeto** lista) {
 }  // namespace dbz3::anim::ama
 
 
-// Solo US (como iw_minijuegos.cpp). sub_8208FAB0: lo llama la lectura del mando de cada usuario (sub_8208FD58) en
-// cada cuadro; de aqui sale el contexto para arrancar animaciones. Sin nada pedido no hace nada.
-REX_HOOK_RAW(sub_8208FAB0) {
-  __imp__sub_8208FAB0(ctx, base);
+// sub_8208FAB0 (EU 8208FA78): lo llama la lectura del mando de cada usuario (sub_8208FD58) en cada cuadro; de aqui
+// sale el contexto para arrancar animaciones. Sin nada pedido no hace nada. dia1O: los 4 ganchos de este fichero eran
+// REX_HOOK_RAW (solo xex US): con el xex EU no habia banco IW, ni clips, ni reloj, ni guardas de IK.
+DBZ3_HOOK_EU(sub_8208FAB0) {
+  orig(ctx, base);
   dbz3::anim::Tick(ctx, base);
 }
 
 // DS103: reloj del motor. sub_820FA4B8(anim_obj, mascara) es el UNICO que suma a A+0x608 (y copia ese valor al
 // reloj del tercer clip A+0x63C); si A+0x66C != 0 no avanza (0x820FA73C). Se guarda el cuadro de antes y, al volver,
 // se repone el codigo de IW y se lleva el reloj (ver AjustarReloj). Es el mismo patron que el gancho de Tick.
-REX_HOOK_RAW(sub_820FA4B8) {
+DBZ3_HOOK_EU(sub_820FA4B8) {
   const uint32_t A = ctx.r3.u32;
   float antes = 0.0f;
   if (A >= 0x10000000u && A < 0xF0000000u) {
     const uint32_t u = REX_LOAD_U32(A + 0x608);
     std::memcpy(&antes, &u, 4);
   }
-  __imp__sub_820FA4B8(ctx, base);
+  orig(ctx, base);
   if (A >= 0x10000000u && A < 0xF0000000u) dbz3::anim::AjustarReloj(ctx, base, A, antes);
 }
+
+// eANI2 (5/11): IK de suelo de B3 fuera de los minijuegos de IW. sub_8211B1F0 (cada luchador, desde sub_8210E700) mide
+// el suelo del ESCENARIO DE B3 bajo pies y manos (sub_820CB0A0) y, si los ve por debajo, dobla la cadena con un IK
+// (sub_82113B08: pies roles 12/13 y brazos 10/11; sub_8211A228: rol 2). En los minijuegos ese suelo no es el de IW y
+// el IK doblaba rodillas y caderas (Krillin 0x3B6: LEGROT 93/127 grados, rodilla 84; Freezer 0x384: RLEGROT 9-120,
+// rodilla 90, ARMROT 5-15). PCSX2 (savestates 7D7 de solIWX): las matrices de IW son la pista pura a 0,0-0,1 grados
+// en esos huesos, sin IK. Medida y comparador: D:/tmp/eANI2, DBZ3_TEST_IW_HUESOS. DBZ3_IW_IK_SUELO=1: el IK de B3.
+namespace {
+bool SinIkSueloIw() {
+  static const bool b3 = [] { const char* v = std::getenv("DBZ3_IW_IK_SUELO"); return v && *v == '1'; }();
+  static const bool prueba = std::getenv("DBZ3_TEST_SIN_IK_PIES") != nullptr;   // eANI3, solo medida: pose sin IK
+  return prueba || (!b3 && dbz3::iwmini::Activo());
+}
+}  // namespace
+DBZ3_HOOK_EU(sub_82113B08) {
+  if (SinIkSueloIw()) return;
+  orig(ctx, base);
+}
+DBZ3_HOOK_EU(sub_8211A228) {
+  if (SinIkSueloIw()) return;
+  orig(ctx, base);
+}
+
+// eANI3 (6/11): cuello y cabeza al empezar clips en los minijuegos de IW. sub_82116978 (lo llama sub_8210E700 antes de
+// guardar la pose, sub_8208C7A8) es la mirada de B3: gira NECK/HEAD hacia el rival con un peso X+6336 que sube o baja a
+// velocidad X+3240 segun la marca X+8191 (bit 5 de la accion). En 7D7 el clip de espera 0x40004 llevaba NECK 10-49 y
+// HEAD 12-75 grados fuera de su pista y, al pasar a Freezer 0x384, el peso bajaba en 6-12 cuadros (NECK 18-23, HEAD 54).
+// IW no tiene esa mirada (PCSX2: los clips siguen la pista desde el cuadro 0). sub_8208C7C0 (copia +0x460 -> +0x45C)
+// no es la causa: medido, en ese momento las dos tablas ya son iguales en el cuello. DBZ3_IW_MIRADA=1: la mirada de B3.
+// El gancho de sub_82116978 vive en net/netplay_hooks.cpp (sonda del rollback); llama a esta antes.
+namespace dbz3::anim {
+bool SinMiradaIw() {
+  static const bool b3 = [] { const char* v = std::getenv("DBZ3_IW_MIRADA"); return v && *v == '1'; }();
+  return !b3 && dbz3::iwmini::Activo();
+}
+}  // namespace dbz3::anim

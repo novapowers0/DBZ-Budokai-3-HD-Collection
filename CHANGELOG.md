@@ -6,6 +6,69 @@ are summarized at the end; the full history (in Spanish) is in
 
 Downloads: [latest release](../../releases/latest).
 
+## v1.5.6.1 (unreleased)
+
+### Performance and display settings
+
+- Automatic settings use a smaller texture cache on integrated GPUs, GPUs with less than 3 GB of dedicated memory, or systems with 5 GB of RAM or less. On integrated GPUs with 4–5 GB of system RAM, Automatic also keeps texture enhancement off even when a higher enhancement level was requested. Custom settings remain under the user's control.
+- On displays larger than 4K, the launcher recommends a maximum internal scale of 3× instead of suggesting 4× or 6×. This is a recommendation, not a new limit on manual settings. Updated VRAM estimates better reflect measured usage at 1× and at large output resolutions.
+- The main-loop CPU saving is now **on by default** (`dbz3_espera_dormir_us=100`, spin `dbz3_espera_giro_us=1000`; set `dbz3_espera_dormir_us=0` to restore the old busy wait; restart required). Waiting is restricted to the measured main-loop caller in US/EU. Measured on 2 logical cores: combat 44 -> 60 FPS and menus 48 -> 58 FPS; menu CPU 108% -> 32% of one core; time from button press to the game reacting drops from 91 to 43 ms (median) because the game is no longer CPU-starved; no audio gaps and no online desyncs.
+- Audio is hardened: if the sound device drops (headphones or Bluetooth unplugged, device change) or is missing at start, the game keeps running and reopens it on its own without restarting (`dbz3_audio_recuperar`, on by default). The audio thread gets higher priority on busy PCs. With `dbz3_perf_logging` the log now reports audio gaps and device reopens.
+- Intel UHD / Iris Xe integrated GPUs now use the fast render path by default (about 5x faster in our software-GPU test) instead of the slow ROV path they were forced into. The old Intel driver bug that made it necessary (the viewport gets cut to the render target when stencil is on, so screen clears shrink) is worked around by never letting the viewport exceed the render target; we reproduced the bug on another GPU and the workaround removes it with no image change. If you see glitches on Intel, set `dbz3_intel_rtv = false` in dbz3_user.toml and please report it.
+- Faster start with many mods: mod file lookups are indexed once per archive instead of checked file by file (with 40 mods the initial load went from about 19 s to 4 s; same files loaded).
+- Performance log: new per-frame `draws=`, `copies=` and `rtx=` counters.
+- The existing lightweight SD path is correctly labelled 640×360 widescreen. Optional 3D-only 240p and 144p settings preserve sharp HUD and menus; they remain off by default and do not solve a CPU bottleneck.
+
+### Launcher, saves and Hero mode
+
+- **Unlock everything** installs the complete original B3 save for US or EU after confirmation and an automatic backup. It replaces original B3 progress while preserving Hero and Tag Team progress. **Restore my save** has its own confirmation and backs up the save it replaces. Both operations refuse to run while the game is open. The tested saves unlocked all 38 native fighters and Dragon Arena; capsules were not checked individually.
+- Save restoration checks the backup inventory and checksums before replacing files and detects an interrupted operation. Older backups without that inventory remain on disk for manual recovery.
+- Hero model previews use a writable cache, regenerate invalid cached meshes and can retry after a repair when the appearance screen is reopened. Missing tools, Python or game data and write failures have recovery instructions and a log path. Windows tests included accented paths and generation without XV2.
+- Launcher tabs scroll instead of shrinking Japanese labels. Online connection errors take priority over first-use help, so the rejection or timeout reason remains visible.
+
+### Characters and converted stages
+
+- Fixed donor-form mappings that blocked specials on cloned characters, including exported heroes, and cleared unused donor-form rows. Fixed a donor-based Dragon Rush finisher lookup; the tested Goku DBS clone completed a chain and returned to battle in base and transformed forms.
+- Fixed disappearing body parts during Dragon Rush on Shin Budokai imports by correcting the converted parts' culling radius. Checked with SB1/SB2 Krillin, Janemba and a rebuilt older mod. **Existing affected mods must be rebuilt with the updated Mod Kit**; replacing only the executable does not rewrite their models.
+- Fixed an intro-only guard that froze presentation-camera changes on converted stages. All 19 added stages in the test set loaded through three intro passes; the tested B2 Base intro matched its native B3 donor over 679 steps. This does not certify full original-game cinematic parity or fix the separate black-crossfade report.
+- Ultimate-damage diagnostics wait again if a cinematic resumes after an intermediate pause, avoiding a premature zero-damage report. This changes the report, not the attack's damage.
+
+### Infinite World / Dragon Mission (experimental)
+
+- Namek lava checks use the original close ground-contact condition; a wall contact no longer incorrectly cancels it. Piccolo's hit tint publishes the source colour in B3's byte order. The native Goku halo model was checked in Bubbles and Snake Way; that check accepts the model choice, not the complete mission.
+- IW shooting minigame cameras now follow the original clips (**on by default**; `dbz3_iw_amc_unico = false` brings back the old camera). Checked against PCSX2 captures of three shooting minigames; other minigames still lack reference captures.
+- Bubbles, Freezer, Piccolo, Cell's trail markers in Stop Cell! and the MSN019 button rows now run the original game's own logic for EU and USA players (**on by default**, `dbz3_iw_logica_original`; it needs your own copy of Infinite World, and without it the built-in logic is used). Bubbles' decisions matched the original on 1,162 of 1,162 recorded calls; the MSN019 rows on 10 of 10; Cell's markers on 45 of 45 captured placements, and they now last as long as in the original. The emulated console's floating-point rules matched 908 of 908 test vectors from a real PS2.
+- `dbz3_original_on` (**on by default**: `manos_toon,ik_b2,caida_pal,pose_ya,capa_b2,idle_b2,ataque_b2,levantar_b2,mirada_b2`) applies measured "original mode" fixes: hand shading, feet and neck on the ground, fall, stand-up, idle and attack poses. Tested with Goku, Saiyaman-Krillin and Gohan-Piccolo; no pair got worse. `dbz3_original_escala_b2` stays at 1.0 because a larger value helps one character and hurts another.
+- `dbz3_sky_follow` (the Snake Way sky follows the eye) is off in the SDK and switched on by the game itself only inside Snake Way.
+- Periodic field contacts use the nearest repeated image rather than counting multiple copies of the same object. Investigation tools for B2 actors, IW effects and dodges are included behind test controls; unfinished scene-reconstruction and effect candidates are not newly enabled as completed content.
+
+### Online and audio diagnostics
+
+- Online shows connection failures without requiring Advanced options, distinguishes incompatible builds, operating systems and protocols, and writes `informes_online/conexion_*.txt` reports. Valid older-protocol requests receive an explicit rejection. A public room code or STUN address is not proof that a UDP port is reachable. Rollback remains off by default.
+- IW audio has a shared SDL output path for automatic-device audio outside Windows. Receiver tests and Windows regressions passed; a real Linux audio device and its timing remain untested. Credits/video-start markers help investigate Linux ending reports and are not an ending fix.
+
+### Added since the previous 1.5.6.1 build (8 Nov)
+
+- Infinite World / Dragon Mission now runs more of the original game's own logic (needs your own IW copy; `dbz3_iw_logica_original`), **on by default**: buttons 0x7DB and 0x7D4, item pickup 0x7D0/0x7D2/0x7D9/0x7DF, bricks 0x7D3, Vegeta/Goten flying 0x7D6/0x7E0 (`dbz3_iw_vuelo_original`) and the mission map (`dbz3_iw_mapa_original`), plus 0x7DA/0x7DC. Checked against PCSX2 captures (flying 699 of 699 frames per minigame, bricks 940 of 940, map 150 of 150 pairs) and in-game tests. Mission 11 now requires minigame 0x7D0 first, as in the original. 0x7DD and 0x7D5 stay **off** (not matching yet). Known gaps: the 0x7D0 hidden ball is not drawn; the "freeze" item and some pose lengths in flying are approximations; the flying test autopilot crashes into obstacles.
+- Button-minigame icons were invisible (a fade-in timing bug) and are fixed. New launcher option "Button icons" (Xbox / PlayStation / Nintendo) for our own on-screen prompts; the original B3 menus keep their Xbox icons.
+- Stage selector scrolls endlessly (up to 110 added stages), shows the source game of each stage and hides stages that duplicate a native one (list in `res/datos/escenarios_repetidos.toml`; Quick settings > "Duplicate stages" shows them). Random rematch and per-stage music while browsing stay **off** (unfinished).
+- The launcher assigns stage and capsule IDs of mods itself so two mods cannot clash; assignments stay stable and nothing is deleted.
+- Mod store: "Update" no longer keeps offering an already installed version (issue #72; fixed in code, not yet checked in the open launcher).
+- HUB: mouse support and pause on focus loss. Hero mode: saga texts in Portuguese and Japanese; the Scouter row is hidden in Create.
+- Satan round 1 (B1 scene): voices and music of the long scene added.
+- New "No HUD" mode: press F9 (or F1 > MODES) to hide the on-screen HUD, with or without the free camera; it is not saved between sessions.
+- Giant-fighter challenge rule no longer sticks to normal fights after abandoning a challenge halfway; giant bosses are only set by the player.
+
+### Known limitations
+
+- These notes do not claim unchanged physical controller-to-screen latency or guaranteed glitch-free audio.
+- With the European game file, Infinite World's animation layer (feet, neck, hand shading) does not run yet; the measured match applies to the US file only. Freezer's idle choices (9,567 of 9,567) and Piccolo's dodges (6,765 of 6,765) now also match PCSX2 captures of the original, but a full playthrough with the new logic has not been played yet.
+- Bubbles, Snake Way camera/trajectory, Piccolo reaction and the unfinished B2/Tien/effect reconstructions remain partially validated; no full-scene parity is claimed.
+- Gotenks IW special attacks were checked with the corrected conversion tools, but its ultimate cinematic and complete Hyper behaviour remain unresolved. The exact crash report is not certified fixed. Donor-form/Hyper tool changes do not imply that every catalogue download has been rebuilt or republished.
+- Camera separation after Dragon Rush, Broly's white-flash report, Super 17's specific special and the converted-stage black crossfade have no general confirmed fix here. Any optional mitigation remains separate from a full fix.
+- The reported Novice Tournament freeze and controller delay were not reproduced locally. True ultrawide projection is not implemented. Linux ending black screens and transformation/Tag-switch stutters remain open.
+- A local two-copy lockstep test is not a real two-PC internet test. Windows/Linux interoperability, native Linux audio/ending behaviour and performance on an actual 4–8 GB APU machine remain unverified.
+
 ## v1.5.6 (2026-11-02)
 
 ### Last additions

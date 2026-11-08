@@ -1,14 +1,12 @@
 # DBZ Budokai 3 HD Collection — Contexto del proyecto (operativo)
 
-> Documento de contexto para agentes/AI. **Compactado 2026-09-26** (117 KB → ~60 KB)
-> al publicar la **v1.2.9**; **actualizado 2026-09-30** para la **v1.3.0** y
-> **2026-10-03** (RE skinning Vía B + handoff a Claude). El
-> relato detallado verbatim vive en
-> `docs/01_estructura/HISTORICO_AGENTS.md` (hasta 2026-09-02) y
-> `docs/01_estructura/HISTORICO_RELEASES.md` (releases 1.1.3→1.2.9, investigación
-> del port PS2→B3 y detalle del launcher). Este documento es la referencia
-> OPERATIVA: estado actual, constraints de ingeniería y comandos. El **estado vivo
-> y el protocolo con Claude** están en `MEMORY.md` (raíz) + `docs/MIGRACION_CLAUDE.md`.
+> Referencia OPERATIVA para agentes: ubicaciones, constraints de ingeniería y
+> comandos. Relato histórico: `docs/01_estructura/HISTORICO_AGENTS.md` (hasta
+> 2026-09-02) y `docs/01_estructura/HISTORICO_RELEASES.md` (releases 1.1.3→1.2.9,
+> investigación del port PS2→B3 y detalle del launcher). Plan y estado vigentes:
+> `studies 5/00_LEEME.md` y `studies 5/01_ROADMAP.md`. `MEMORY.md` (raíz) es el
+> diario de cierres de sesión y `docs/MIGRACION_CLAUDE.md` el traspaso de la
+> migración a Claude (2026-10-03).
 
 ---
 
@@ -31,7 +29,7 @@ lógica de región/mods, y runtime.
 | `out/build/win-amd64-release/` | **Build del juego** (dbz3.exe, DLLs, mods/) |
 | `out/build/win-amd64-dual/` | Build dual (US+EU) — **de aquí sale el exe de release** |
 | `eu/`, `us/` | Assets de región (AFS del juego) |
-| `ps2_games/` | AFS de B3 GH e IW (referencias PS2; B1/B2/B2V/Shin Budokai eliminados 2026-09-14) |
+| `ps2_games/` | AFS de B3 GH e IW (referencias PS2); las ISOs de B1/B2 las leen las pasarelas y `tools/pruebas.py` desde `DBZ3_PS2_GAMES` |
 | `mod center/` | Herramientas de modding PS2 (36 programas) |
 | `mod center hd/` | Herramientas HD propias (swap_b3.py, texture_b3.py, texture_pack.py, ports/) |
 | `modding resources/`, `modding resources discord/` | Docs + recursos de la comunidad (pendientes de decidir su limpieza) |
@@ -49,11 +47,11 @@ lógica de región/mods, y runtime.
   `01_estructura/ARBOL.md`, `01_estructura/HISTORICO_AGENTS.md` y
   `01_estructura/HISTORICO_RELEASES.md` (histórico, solo bajo demanda).
 - **Formatos**: `03_formatos/AMO_AWO.md`, `BIN_LAYOUT.md`, `AWO_FORMAT.md`
-  (formato bin), `ACM_FORMAT.md` (moveset), `STAGES_FORMAT.md` (stages/SPX/PS2),
+  (formato bin; en la raíz del proyecto, no en `docs/`), `ACM_FORMAT.md` (moveset), `STAGES_FORMAT.md` (stages/SPX/PS2),
   `MAPA_ROSTER_HD.md`.
 - **Mods**: `02_mods/COMO_HACER_MODS.md`, `MODEL_SWAP.md`, `TEXTURAS_MOD.md`,
   `PACKS_DE_TEXTURAS.md`.
-- **Port PS2→B3**: `07_ports/` (ESTRUCTURA_DIBUJO_HD + sesiones + HOMA_DE_RUTA);
+- **Port PS2→B3**: `07_ports/` (ESTRUCTURA_DIBUJO_HD + sesiones + HOJA_DE_RUTA_PORT_PS2_B3);
   resumen operativo en §3.4 de este documento.
 - **Herramientas / build / limpieza**: `04_herramientas/TOOLS.md`,
   `05_build/COMO_COMPILAR.md`, `06_limpieza/`.
@@ -61,8 +59,9 @@ lógica de región/mods, y runtime.
   `ANALISIS_RENDIMIENTO_LOGS_2026-09-18.md`.
 - **Sesiones recientes** (una por release): `SESION_*_2026-09-*.md` — ver la
   tabla §3.0.
-- **Plan rector / dictámenes**: `HOJA_DE_RUTA_2026_09.md` (activa),
-  `HOJA_DE_RUTA_ACELERADA.md`, `RE_MASTER_2026_09.md`, `DICTAMEN_GPT6_ASTRA.md`.
+- **Plan vigente**: `studies 5/00_LEEME.md` y `studies 5/01_ROADMAP.md` (raíz del
+  proyecto). Históricos: `HOJA_DE_RUTA_2026_09.md`, `HOJA_DE_RUTA_ACELERADA.md`,
+  `RE_MASTER_2026_09.md`, `DICTAMEN_GPT6_ASTRA.md`.
 - **Herramientas externas / método**: `07_ports/UNIVERSAL_MODDER_2026-09-30.md`
   (evaluación de `rehan-remade/universal-modder`: RE con Ghidra/IDA/RenderDoc vía
   MCP + oráculos; aplicable al bind/skin de la Vía B).
@@ -75,11 +74,8 @@ lógica de región/mods, y runtime.
 
 **Juego funcional**: D3D12 principal, 60,0 fps, **núcleo dual US+EU** en un solo
 exe, mando XInput, teclado por defecto (`mnk_mode=true`). Vulkan experimental
-(entra en el CI de Linux). Swap nativo HD↔HD y texturas funcionan. Port completo
-PS2→HD **aparcado** (§3.4.10). El diagnóstico de la v1.2.9 se explica solo; la
-**v1.3.0** añade «Reparar instalación», etiquetas de botón (Xbox/PS/Switch), DRED
-por defecto, `gamecontrollerdb.txt`, el fix del extractor de texturas (#13) y
-pulido/optimización del launcher.
+(entra en el CI de Linux). Swap nativo HD↔HD, texturas HD y port PS2→HD (Vía B,
+§3.4.10) funcionan. Releases: tabla §3.0 y etiquetas del repo `github/`.
 
 > El detalle release a release (diagnósticos, causas, mediciones, tamaños de DLL)
 > está en `docs/01_estructura/HISTORICO_RELEASES.md` §A y en los docs de sesión.
@@ -91,7 +87,7 @@ Tabla hasta v1.3.0 (2026-09-30). Las versiones publicadas después (v1.4.x-v1.5.
 
 | Release | Fecha | Contenido clave | FileVersion | Doc de sesión |
 |---|---|---|---|---|
-| v1.3.0 | 2026-09-30 | «Reparar instalación», etiquetas de botón (Xbox/PS/Switch), DRED por defecto, `gamecontrollerdb.txt`, fix del extractor de texturas (#13), pulido y optimización del launcher | 1.3.0 | SESION_LAUNCHER_V130_2026-09-30 |
+| v1.3.0 | 2026-09-30 | «Reparar instalación», etiquetas de botón (Xbox/PS/Switch), DRED por defecto, `gamecontrollerdb.txt`, fix del extractor de texturas (#13), pulido y optimización del launcher | 1.3.0 | — |
 | v1.2.9 | 2026-09-26 | Diagnóstico autoexplicativo: avisos SIEMPRE activos (fps sostenido, disco lento, instalación mixta), `vram=`/`lim=` en `perf`, guardia de VRAM, línea `entorno`, `copy_sdk_dlls.ps1` | 1.2.9 | SESION_DIAGNOSTICO_2026-09-26 |
 | v1.2.8.2 | 2026-09-24 | La mejora de texturas deja de hundir los FPS (throttle de dinámicas: solo nivel 0) + `cfg=`/`upx_dyn=`/`texload=` | 1.2.8.2 | SESION_PERF_TEXTURAS_2026-09-24 |
 | v1.2.8.1 | 2026-09-23 | Volcado de HUD/UI sin comprimir + packs RGBA8 + tope 4 versiones/identidad (issue #11) | 1.2.8.1 | SESION_VOLCADO_FORMATOS_2026-09-23 |
@@ -129,8 +125,9 @@ Tabla hasta v1.3.0 (2026-09-30). Las versiones publicadas después (v1.4.x-v1.5.
 - **Mando**: `input_backend = "xinput"` (evita cuelgue con RTSS/OBS); SDL como
   selector alternativo.
 - **Mods**: override por entrada AFS + mid-insert virtual (§6).
-- **Port PS2→HD**: Vía A (inyección) = entrega aproximada; Vía B (port completo)
-  = aparcada por el bind/skin (§3.4.10). Janemba IW→B3 descartado.
+- **Port PS2→HD**: Vía B (port completo) resuelta y validada en combate el
+  2026-10-03 (tabla de paleta slot→hueso, §3.4.10); Vía A (inyección) = aproximada,
+  solo de respaldo.
 
 ### 3.1 SWAPS Y PORT — VÍAS VALIDADAS (2026-08-17..08-26)
 
@@ -146,7 +143,7 @@ Tabla hasta v1.3.0 (2026-09-30). Las versiones publicadas después (v1.4.x-v1.5.
   Los coords locales PS2 del hueso B se inyectan en slots HD del hueso B.
 - **Inyección (template HD + posiciones PS2) = RECONOCIBLE** (mejor: cell_npm4,
   umbral binario 0.8): cuerpo PS2 + extremidades/cabeza HD. Ver §3.4.
-- **Port completo (topología PS2) = ❌ NO RENDERIZA (2026-09-11)**: el GPU dibuja
+- **Port completo (topología PS2) = ❌ NO RENDERIZABA (2026-09-11; resuelto el 2026-10-03, §3.4.10)**: el GPU dibuja
   con **ventanas de 44 B autocontenidas** en la región `[vb0,ib)` del AWO + IB.
   La geometría del port es **exacta** y **llega al GPU**; el **draw también es
   correcto** (1 draw strip, VB+IB verbatim) y el **bloqueo restante es el
@@ -223,7 +220,7 @@ rangos A **teselan el pool sin solapes**). B = rango de ÍNDICES del IB; los
 ```
 El sec34 usa bones 0-35 (sin piernas/rostro → van al vb2). **B1** (52 huesos)
 comparte labels pero en ORDEN distinto → mapeo POR LABEL, no por índice.
-Herramienta: `analyze_awo_b1.py` (estructura AWO B1, en dbz1).
+Herramienta: `awo_tools/analyze_awo_b1.py` (estructura AWO B1).
 
 ### 3.4 🔴 MODEL PORT PS2→B3 HD — ESTADO CONSOLIDADO
 
@@ -237,7 +234,7 @@ Herramienta: `analyze_awo_b1.py` (estructura AWO B1, en dbz1).
 |---|---|---|---|
 | Swap nativo B3→B3 | ✅ FUNCIONA | sw_goten_nativo, sw_vegeta424 | bin #AMB completo en slot ajeno |
 | Inyección (template + posiciones PS2) | ✅ FUNCIONA (reconocible) | **cell_npm4** (umbral binario 0.8) | cuerpo PS2 + extremidades/cabeza HD |
-| Port completo (topología PS2) | ❌ NO RENDERIZA | geometría + draw CORRECTOS (1 strip draw, VB+IB verbatim); bind/skin/huesos/IB/UV **verificados idénticos** al nativo (2026-09-30) → causa NO es el skin | Ver 3.4.5 y 3.4.10 |
+| Port completo (topología PS2) | ✅ FUNCIONA (2026-10-03) | Cell F2 y ports posteriores validados en combate | Fallo antiguo: la tabla de paleta slot→hueso (AWG0+0x38/+0x3C) debe seguir tras el IB al hacer `grow()`; ver §3.4.10 |
 | Swap de cabeza HD→HD | ◑ parcial | goku_armadura v3 | z-fighting, pausado |
 
 ### 3.4.2 HECHOS VALIDADOS (cómo renderiza el guest)
@@ -255,10 +252,9 @@ Herramienta: `analyze_awo_b1.py` (estructura AWO B1, en dbz1).
    A NO se usan para el fetch**; solo importan `B` + prim.
 3. **El guest usa el bone del vértice (+28) para el transform** (test bone0:
    bones→0 colapsa TODO a los pies; cara sup. y una mano se salvan → viven en vb2).
-4. ~~Consumo posicional del pool~~ ⇒ **REFUTADO**: el GPU buffer es copia
-   verbatim del pool y el guest usa el IB del fichero; la deformación de T3/T4/T9
-   era un **bug de base de índices del tool** (`awg_vertex_buffer._parse` usaba el
-   máximo índice del IB; ahora usa `g(0x2C)//44`).
+4. **El GPU buffer es copia verbatim del pool** y el guest usa el IB del fichero.
+   `awg_vertex_buffer._parse` calcula la base de índices con `g(0x2C)//44` (no con
+   el máximo índice del IB).
 5. **vb2/bones**: la plantilla sec34 usa SOLO bones 0-33; el nº de AWGs/huesos
    varía por personaje (Krillin 18 AWG/51; Bulma 2/43; Babidi 1/41). El bin es
    **AUTOCONTENIDO** (formatos A/B/C; el guest autodetecta). ⚠️ **Formato C**
@@ -272,19 +268,11 @@ Herramienta: `analyze_awo_b1.py` (estructura AWO B1, en dbz1).
   reescribir pos/normales (`[nz,-ny,nx]`) con geometría PS2 convertida a
   bone-local. Parámetro crítico: **umbral binario** (0.8 bueno; 2.0 y los
   blends/soft SIEMPRE malos). No re-topologiza.
-- **Vía B — PORT COMPLETO (aparcada)**: pipeline `port_b3_windows.py` →
+- **Vía B — PORT COMPLETO (intento de 2026-09; funciona desde 2026-10-03, §3.4.10)**: pipeline `port_b3_windows.py` →
   `port_b3_strip.py` (IB a **strip** + anula arms `+0x3C` **y `+0x44`** +
   `desc[0]=B[0,n_ib)`). Tras eso queda **1 solo draw** con VB+IB verbatim
   correctos, **pero sigue deforme**. `grow()` está BIEN (validado con `_grow_tpl`
   nativo). ⚠️ NO usar como entrega.
-
-### 3.4.4 CRONOLOGÍA DE INTENTOS (resumen)
-
-Tabla completa de intentos T2-T11 (Fases B/C/GPU) en `HISTORICO_RELEASES.md` §B.
-Resumen: T2/T8/T10/T11 = **IDÉNTICO** (relabeling consistente = identidad
-geométrica); T3/T4/T9 = **DEFORME** (era bug de base de índices del tool);
-T5 = peor; T6 = normal (**A no se usa para dibujar**); T7 = masivo (**el IB
-gobierna**). Ver §3.4.9.
 
 ### 3.4.5 BLOQUEADORES / COSAS A NO REPETIR
 
@@ -309,22 +297,14 @@ gobierna**). Ver §3.4.9.
    conteos ≤ plantilla o resolver el crecimiento.
 7. **Fuente PS2**: los `ps2_games/*/data_cmn.afs` SON #AMO0/#AMG LE auténticos
    (B3 GH 558 #AMO0 / 0 #AWO).
-8. ⚠️ Instrumentaciones de draw/paleta ya **REVERTIDAS**; la DLL canónica NO lleva
-   instrumentación. `dump_shaders` debe quitarse del `dbz3_user.toml` al terminar.
+8. `dump_shaders` debe quitarse del `dbz3_user.toml` al terminar de usarlo (la DLL
+   canónica no lleva instrumentación).
 
 ### 3.4.6 PRÓXIMOS PASOS (si se retoma)
 
 1. Vía A práctica: reactivar/refinar `cell_npm4`; extender a los 16 AWGs
    auxiliares (`port_ps2_b3_inject_aux.py`, ver §10).
-2. Vía B: **CORREGIDO 2026-10-03 (§24)** — el bloqueo **NO es el shader**: B3 HD
-   **no hace skinning en GPU** (ningún VS indexa constantes; sin `memexport`; el
-   VS del cuerpo = transform rígida con una matriz `c0..c3` idéntica en los ~33
-   chunks). El skinning es **CPU-side (Xenon)**. Los datos están bien (bind
-   idéntico §21 y VB verbatim §22). **Próximo paso = RE de la rutina CPU de
-   skinning** en el código recompilado (`generated/`/`generated_eu/`): qué
-   espacio/orden de vértices espera el guest. Consulta
-   `SESION_DRAW_SEMANTICS_2026-09-11.md` §21-§22 y **§24**.
-3. `vb2` (layout B) para cara/piernas.
+2. `vb2` (layout B) para cara/piernas.
 
 ### 3.4.7 REFERENCIAS
 
@@ -381,78 +361,26 @@ gobierna**). Ver §3.4.9.
   `_body33`, `_nottail`, `_bone0port` (crash), `_strip4*`, `_hdskin_strip`.
 - ✅ **`grow()` es correcto** (con `awg+0x2C` y `awg+0x34` actualizados);
   `_grow_tpl` (plantilla nativa crecida) renderiza PERFECTO.
-- **Bloqueo restante = bind/skin** (ver §3.4.6). Los `world` PS2==HD (48/48) y
+- **Bloqueo de entonces = bind/skin** (resuelto el 2026-10-03, §3.4.10). Los `world` PS2==HD (48/48) y
   los labels 48/48 ⇒ esqueleto y mapeo correctos.
 
-### 3.4.10 CIERRE — Vía B APARCADA; HD↔HD = entrega
+### 3.4.10 Estado vigente del port y hechos de RE
 
-**Decisión** (2026-09-13): Vía B (bind real) **aparcada** (no imposible). Vía A
-documentada como aproximada. La entrega es el **swap nativo B3 HD↔HD** (ya en el
-launcher). Detalle: `docs/07_ports/SESION_DRAW_SEMANTICS_2026-09-11.md` §20.
-- **🔴 LAYOUT REAL (los 17 AWGs)**: TODOS usan el **layout de ventana**
-  (`pos@0`, `w@12`, `bone@16`, `nrm@20`, `FFFFFFFF@32`, `uv@36`, stride 44);
-  región `[ib−g(0x2C), ib)` con `g(0x2C)/44` slots exactos (FFFF@32 en el 100 %).
-  ⚠️ **El layout "sec34" (`FFFF@0`,`bone@28`) es un error** para estos bins;
-  `port_ps2_b3_inject.py` escribía con desfase de 428 B (10 slots). Fixes en
-  `%TEMP%\opencode\phaseb\make_winbody.py` + `make_winaux.py`.
-- **Vía B — bloqueo = `M_bind`**: `world` (ejes) da un T-pose correcto pero no es
-  el bind exacto del skin; la paleta = transform aplicada a `pos` (bone-local).
-  Para retomar: RE de `sub_82087F58` o capturar la paleta en BIND/T-pose.
-- **🔴 CORRECCIÓN 2026-09-30 (oráculo offline)**: comparando `cell_native`
-  (renderiza bien) vs `cell_win2` (port) **descomprimidos**, el **bind (`world`) es
-  IDÉNTICO** (diff 0.0), el **`bone` @+16 IDÉNTICO** (0/2948), el **`uv` @+40
-  IDÉNTICO**, el IB/huesos iguales, **sin permutación de ejes**, y los bounds
-  model-space casi idénticos. Solo cambian `pos`/`nrm` (máx 0.78 u). ⇒ **el port
-  es estructuralmente correcto; el bind/skin/huesos NO son la causa.** Si en juego
-  explota, la causa está en cómo el renderer interpreta `pos`/`nrm` o en el
-  **VB servido al GPU** (verificar que la copia GPU == `[vb0, ib)` del bin del
-  PORT y que `n`/`n_ib` son los del port). Refuta la hipótesis "causa raíz = skin
-  `(pos,bone)`" de §10. Herramientas: `awo_tools/bind_oracle.py` +
-  `bind_oracle_bones.py`; detalle en `SESION_DRAW_SEMANTICS_2026-09-11.md` §21.
-- **🔴 RESUELTO 2026-10-01 (verificación en runtime)**: se instrumentó temporalmente
-  `rexgpu-xenos` (`command_processor.cpp` d3d12, **YA REVERTIDA**) para volcar el
-  **VB real servido al GPU**. Resultado: el VB del cuerpo (129712 B, `vfetch=95`) es
-  **copia VERBATIM del bin del PORT** (sha1 `91fa3a12…`, **32428/32428 dwords**),
-  NO del nativo (21214). ⇒ la cadena bin→GPU es **correcta de extremo a extremo**.
-  La causa del render deforme está **exclusivamente en el shader de skinning**
-  (`pos`/`nrm`+paleta), no en los datos. Herramientas:
-  `awo_tools/vbdump_info.py` + `vbdump_vs_bin.py`; detalle en §22.
-- **🔴 VÍA A `cell_win2` — defecto brazo/cabeza = INHERENTE (2026-10-03)**: en el
-  select el port Vía A renderiza un Cell **coherente** pero con **planos grises
-  facetados localizados** en brazo derecho y cuña gris en la cresta de la cabeza
-  (`cell_native` = perfecto). Oráculo offline (render de CADA AWG con la matriz
-  bind del hueso correcto: manos `world[23]/[30]`, cara `world[40]`): los 16 AWGs
-  aux caen **en los sockets correctos** y se superponen **casi exactamente** al
-  nativo en bind-pose → **el defecto NO se reproduce en estático**. Diff campo a
-  campo: `pos`/`nrm` difieren (Vía A proyecta la malla HD sobre la superficie PS2;
-  forma/silueta no coinciden 100 %), `uv`/`weight`/`bone`/`marker`/`IB`/header/
-  ejes/bind **idénticos**. **NO hay bug de rotación de normales** (aplicar `inv(R)`
-  a las del port las ALEJA del nativo). ⇒ El artefacto gris es consecuencia del
-  **sombreado de geometría aproximada**, se acentúa en animación; **no** se arregla
-  retocando normales. Vías reales: (a) refinar inyección (umbrales/`--bone-aware`/
-  `--normal-only` por zona) o (b) desbloquear Vía B (§22). Detalle:
-  `SESION_DRAW_SEMANTICS_2026-09-11.md` §23.
-- **SWAP HD↔HD (entrega)**: `mod center hd/swap_b3.py` + `catalog_b3.cat` (183),
-  mid-insert virtual. En el launcher: pestaña "Cambio de modelo". Guardia
-  origen==destino en `src/launcher/mod_pipeline.cpp`.
-- **🔴🔴 RE DEL SKINNING — B3 HD NO HACE SKINNING EN GPU (2026-10-03)**: se
-  instrumentó `rexgpu-xenos` (`command_processor.cpp`, **YA REVERTIDA**) con
-  captura por draw (marker `dbz3_paldump.on`, log `dbz3_paldump.log`: hash de
-  shader + `c0..c63` + vf0). Resultados **duros**:
-  1. **Ningún vertex shader indexa constantes dinámicamente** (no `a0`/`arl`/`lc`)
-     y **ningún shader usa `memexport`/`alloc export`** ⇒ no hay paleta en GPU.
-  2. El VS del cuerpo es **una transformación rígida**: `vfetch` de `vf0` (pos/
-     nrm/uv) y `mad/mul` contra **una sola matriz 4×4 en `c0..c3`**.
-  3. **TODOS** los draws del cuerpo en una escena usan el mismo shader
-     `FDF960B5D7869030`, `indx_offset=0`, y **`c0..c3` IDÉNTICOS** en los ~33
-     chunks (counts 3..1995) ⇒ los vértices llegan **ya en world-space**.
-  ⇒ **El skinning es CPU-side (Xenon)**: el guest lee bind-pose, aplica matrices
-  de hueso y escribe world-space; el VS solo proyecta. **Esto REFUTA la
-  hipótesis "causa = shader de skinning"** (§3.4.6/§10 y §22). El bloqueo real
-  es **en qué espacio/orden espera el guest los vértices del bin para su rutina
-  de skinning**. Próximo paso: RE de la rutina CPU de skinning en el código
-  recompilado (no del shader). Detalle: `SESION_DRAW_SEMANTICS_2026-09-11.md`
-  §24. Artefactos RE borrados; DLL canónica restaurada (6360064 B).
+- **Entrega estable**: swap nativo B3 HD↔HD (`mod center hd/swap_b3.py` + `catalog_b3.cat`,
+  mid-insert virtual; pestaña "Cambio de modelo"; guardia origen==destino en
+  `src/launcher/mod_pipeline.cpp`).
+- **Port PS2→HD (Vía B)**: funciona (2026-10-03). El VS del cuerpo hace `vfetch` de una
+  paleta de matrices de hueso (escrita por la CPU del guest) indexada por el campo `bone`
+  del vértice, que es un SLOT de paleta, no el índice de esqueleto. La tabla slot→hueso
+  está en AWG0+0x38 (puntero) / +0x3C (nº de entradas), justo tras el IB; `grow()` debe
+  conservarla. `awo_tools/skin_slots.py` la lee y `awo_tools/draw_oracle.py` es el lint
+  offline previo a probar en juego.
+- **Layout** (los 17 AWGs): ventana de 44 B (`pos@0, w@12, bone@16, nrm@20, FFFFFFFF@32,
+  uv@36`) en `[ib−g(0x2C), ib)`; el layout "sec34" (`FFFF@0`, `bone@28`) NO vale para estos bins.
+- **Vía A**: el defecto gris de brazo/cabeza es inherente a la geometría aproximada; no se
+  arregla retocando normales.
+- Cronología, hipótesis descartadas e instrumentación: `docs/07_ports/SESION_DRAW_SEMANTICS_2026-09-11.md`
+  §20-§24 y los handbacks de `docs/historial/handbacks/` (2026-10-03).
 
 ## 4. COMANDOS ÚTILES
 
@@ -570,21 +498,19 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
   padded 106496). Histórico: editábamos la 326 (tabla@0x10) = otro bin.
 
 ### Reglas de activación de mods
-- **UN SOLO sistema**: un mod está activo si NO tiene el marker `.disabled`
-  (`IsModEnabled` usa SOLO el marker). El cvar `dbz3_enabled_mods` es **CÓDIGO
-  MUERTO**. Los AFS completos de mods viejos se migran automáticamente al
-  regenerar (override por entrada).
+- **UN SOLO sistema**: un mod está activo si su carpeta no tiene el marker `.disabled`.
+  No existe ningún cvar `dbz3_enabled_mods`. Los AFS completos de mods viejos se
+  migran automáticamente al regenerar (override por entrada).
 
 ## 7. RUNTIME / SDK — DLLs CANÓNICAS Y TRAMPAS DE BUILD
 
 - **DLLs canónicas del SDK 0.10** (NO reemplazar por las regeneradas del build):
   - **Baseline (único en uso)**: `rexglue-sdk-0.10/out/win-amd64-baseline/` →
-    `rexruntime.dll` **11172864 B** y `rexgpu-xenos.dll` **6596608 B**
-    (2026-10-17, menu F1 rehecho: `src/ui/overlay/quick_menu.cpp` con secciones a la izquierda, ayuda en caja y etiquetas
-    BETA/EXPERIMENTAL; solo cambia rexruntime; la anterior 11158528 en `rexglue-sdk-0.10/out/_respaldo_canonicas/20261017_0011_antes_f1/`.
-    2026-10-16 ronda 4, frente R15: modelos 3D de la interfaz probados contra el z-buffer del juego, cvars
-    `dbz3_ui_depth`/`dbz3_ui_depth_estado`, filtro `kDbz3LinearDepth`; las anteriores (11145216 / 6594048, tiras
-    doradas del frente C) en `out/_respaldo_canonicas/20261016_antes_r15/`); `amd_fidelityfx_dx12.dll` 5413888.
+    `rexruntime.dll` **11228672 B** y `rexgpu-xenos.dll` **6700544 B** (sha256 53a5853b3bcd; la de 2026-11-05 era 6688768 B; sello 1.5.6.1 + carga de mods indexada (afs.cpp) + audio eAUD + contadores GPU + apano de viewport para Intel; las anteriores 11194880 / 6664192 en `rexglue-sdk-0.10/out/_respaldo_canonicas/20261105_antes_1561/`)
+    Tamaños anteriores: carpetas fechadas de `rexglue-sdk-0.10/out/_respaldo_canonicas/`
+    (la más reciente `20261105_antes_1561`). `amd_fidelityfx_dx12.dll` canónica: 5413888 B.
+    Solar con z estricto (`dbz3_solar_depth_estado`): el SDK se recompila dentro del turno
+    con `DBZ3_COMPILAR_SOLAR_Z=1 python tools/compilar.py`.
     - rexruntime lleva: `audio_gain`, `dbz3_perf_logging`, `dbz3_io_logging`/
       `dbz3_io_readahead`, poda de logs, `dbz3_mute_unfocused`, `frame_cap`
       (definido en `src/ui/presenter.cpp`), `d3d12_dred` (DRED ON por defecto,
@@ -596,16 +522,12 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
       (v1.2.8.2), guardia de VRAM y aviso de fps sostenido (v1.2.9), volcado dev
       `dbz3_texture_dump`/`dbz3_texture_dump_max`, cargador `dbz3_texture_packs`
       y sello `dbz3_gpu_build`; **sin** instrumentación de draw.
-  - avx2 (fallback clásico): `out/win-amd64/` → rexruntime 10951168,
-    rexgpu-xenos 6207488 (o 6210048), ffx 5420544, TracyClient 246784.
-  - legacy: `out/win-amd64-legacy/` (variante eliminada; se puede limpiar).
+  - avx2 (fallback clásico, solo referencia): `out/win-amd64/` → rexruntime 11197440,
+    rexgpu-xenos 6210048, ffx 5420544, TracyClient 246784.
 - ⚠️ **El SHA256 varía por build** (embebe timestamp) → comparar por **tamaño** o
   recompilar y copiar. Los tamaños de AMBAS DLL cambian al recompilar el SDK; el
   valor de referencia es el de `out/win-amd64-baseline/` (lo que usa
-  `verify_release.ps1`). Tamaños de releases previas: 10910720/6346240
-  (v1.2.8.2), 10910208/6227456 (v1.2.6), 6346752 (v1.2.7), 6340096 (v1.2.8),
-  6342656 (v1.2.8.1), 10910208/6355456 (v1.2.9); **10920448/6360064**
-  (v1.3.0, 2026-09-30; mismo tamaño que v1.2.9 pero sello `1.3.0`).
+  `verify_release.ps1`).
 - ⚠️ **Sello de build**: `rex/dbz3_build.h` (`DBZ3_RUNTIME_BUILD`) se
   publica por las cvars `dbz3_runtime_build` / `dbz3_gpu_build`; **subirlo junto
   con `src/version.rc`** (`verify_release.ps1` lo comprueba). El launcher lo usa
@@ -657,8 +579,8 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
 
 > Detalle completo verbatim en `HISTORICO_RELEASES.md` §C. Resumen operativo:
 
-- **Tabs**: Video / Upscaling / Audio / Input / Mods / Native mods / Model Swap /
-  Texturas / Dev. Footer con **PLAY verde siempre visible** + resumen "Inicio:
+- **Tabs**: Video / Escalado / Audio / Controles / Mods / Juego / Modelos /
+  Texturas / Personajes / Avanzado. Footer con **PLAY verde siempre visible** + resumen "Inicio:
   región-backend-escala-efecto-idioma" + selector de región + botones
   Restablecer / Guardar / **Reparar instalación**. **Idioma**
   (`dbz3_language`): ES/EN/IT/DE/FR + JP (launcher vía i18n.cpp `kTable[]`;
@@ -713,7 +635,7 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
   refrescar, badges de tipo, filas alternas. Instalar desde `.zip`,
   perfiles (`mods/profiles.txt`, `dbz3_mod_profile`).
 - **Update check** (`src/launcher/update_check.{h,cpp}`): hilo de fondo consulta
-  `api.github.com/.../releases/latest` (WinHTTP) y compara con el VERSIONINFO
+  `api.github.com/.../releases/latest` por WinHTTP (si falla, otras rutas y, como última, el `curl` del sistema) y compara con el VERSIONINFO
   (`VersionNewer`; `1.2.4-EX` > `1.2.4` pero < `1.2.5`; un build local > 0 cuenta
   como repack). Muestra versión instalada + estado + botón "Buscar
   actualizaciones"/"Reintentar"; nunca bloquea PLAY. Toggle `dbz3_update_check`.
@@ -768,15 +690,10 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
   primer `[[switch_tables]]`; usar `DBZ3_COLLECT_UNREGISTERED` / `DBZ3_DUMP_IMAGE`).
 
 ### 9.2 Releases y estado GitHub
-- **v1.3.0 = Latest** (2026-09-30): Reparar instalación, etiquetas de botón,
-  DRED por defecto, `gamecontrollerdb.txt`, fix #13, pulido/optimización.
-- **v1.2.9 / 1.2.8.2 / 1.2.8.1 / 1.2.8 / 1.2.7 / 1.2.6 / 1.2.5 / 1.2.4 EX /
-  1.2.4 / 1.2.3 / 1.2.2 EX / 1.2.1 / 1.2.0 / 1.1.4 EX / 1.1.3 / 1.1.2 /
-  1.1.1** = no-Latest (contenido en §3.0); **v1.1.0-clasico** = fallback (runtime
-  avx2); tags v1.0.0..v1.0.9 + v1.0.5-EX conservados (zips binarios viejos NO
-  existen). ⚠️ La **v1.2.2 plana se retiró** (le faltaban los fixes del ISO).
-- **PortForge**: `defaultVersion` = 1.3.0; visibles 1.3.0 / 1.2.9 / 1.2.8.2;
-  el resto al archivo (`portforge/archive/`).
+- La versión vigente se lee de `src/version.rc` (`DBZ3_VERSION_STR`); la publicada y las
+  anteriores, de las etiquetas/releases del repo `github/`.
+- **PortForge**: `defaultVersion` en `portforge/.forge.json`; el resto de versiones va a
+  `portforge/archive/`.
 - ⚠️ **El exe de release se compila desde `out\build\win-amd64-dual`** (core dual);
   `make_release.ps1` toma `dbz3.exe` de ahí + DLLs del
   `rexglue-sdk-0.10\out\win-amd64-baseline\`.
@@ -784,28 +701,11 @@ AFS MOD READ: bin 327 mod_off=0x0 to_read=106496 got=106496 mod_size=...
   UPX). Verificación: `tools/verify_release.ps1` (hashes DLL vs SDK, VERSIONINFO,
   sello vs `version.rc`, cvar vsync en rexgpu, mods/ vacía, zip sin assets).
   `make_release.ps1` monta: dbz3.exe + DLLs + `mod center hd/` + `mods/` + docs.
-- **Issues (triaje 2026-09-29)**: cerrados #7 (crash al título = menú HD, v1.2.2
-  EX), #11 (volcado: v1.2.8 + HUD/RGBA8 v1.2.8.1), #9 (importar saves: receta por
-  carpeta; sin converter), #12 (FPS a 4K: respondida — escala interna 1x + FSR),
-  #13 (extraer texturas a PNG: `python` = alias de Microsoft Store → exit 9009;
-  fix de intérprete en `mod_pipeline.cpp` + **seguimiento del reporter**: la
-  carpeta elegida se ignoraba porque la validación rechazaba rutas absolutas por
-  el `:` de unidad y caía a `mods/<mod>/textures`; arreglado en `launcher_state.cpp`
-  y `mod center hd/texture_b3.py`), #3 (CrossOver Mac; el splash sin canal rojo
-  es de D3DMetal). **Abiertos**: #8 (bajones de FPS: esperando el log `perf`),
-  #1 (pico de volumen al volar; última respuesta del reporter = livestream con
-  timestamps 17:37 / 2:08:46, contestada aceptando el clip como repro; deducción
-  Kaioken RECTIFICADA: Kaioken SÍ es parte del ciclo de Goku, el cápsula es
-  requisito para SSJ). #10/#6/#5/#4/#2 cerrados antes. **Revisión
-  2026-09-30**: sin respuestas nuevas pendientes (el último mensaje de #11 es una
-  confirmación de éxito del reporter).
 - **DRED + gamecontrollerdb (2026-09-29, de reblue/LostOdysseyRecomp)**: DRED
   (`d3d12_dred`, ON) ya no depende de `d3d12_debug` → el reporte de *device lost*
   nombra queue/list y las allocation nodes; `gamecontrollerdb.txt` se envía junto
   al exe (cvar `hid_mappings_file` del SDK). Ver §7 y
-  `docs/VIABILIDAD_UPSCALING_TEMPORAL_2026-09-29.md`. ⚠️ Las
-  DLL se recompilaron: baseline `rexruntime` **10920448**, `rexgpu-xenos`
-  **6360064**.
+  `docs/VIABILIDAD_UPSCALING_TEMPORAL_2026-09-29.md`.
 - **CI Linux** (`.github/workflows/linux.yml`, 2026-09-30): la versión se lee de
   `src/version.rc` (`DBZ3_VERSION_STR`) → el tar.gz se nombra
   `DBZ-Budokai-3-HD-Collection-v<ver>-linux-amd64.tar.gz` (nada hardcodeado). El
@@ -909,25 +809,10 @@ históricas; la última de ellas, **`docs/HOJA_DE_RUTA_2026_09.md`**, tenía 3 f
 - **Respuestas de issues = "IA" PARCIAL (declarado en #1, 2026-09-29)**: el
   mantenedor es usuario avanzado (no experto) y usa IA para analizar/acelerar;
   las decisiones y pruebas son suyas. Ser explícito si se pregunta; no ocultarlo.
-- Los datos de referencia que vivían en `%TEMP%\opencode\` (b327_*.bin,
-  cell_*.bin, etc.) **ya NO existen** (limpieza 2026-09-02): regenerar desde
-  `us/` + `ps2_games/` con las herramientas de `awo_tools/`.
-- **Limpieza 2026-09-09 (~46 GB → ~28.4 GB)**: borrados `out/analysis/corpus/.work/`
-  (regenerable con `corpus_scan.py`), `rexglue-sdk/` (0.9) y `rexglue_0.9/`,
-  `out/build/_archivo_builds/` + `_archivo_dlls/`, duplicados de docs en
-  `modding resources discord/tutorials/`. Detalle:
-  `docs/06_limpieza/INVENTARIO_FISICO_2026-09.md`.
-- **Limpieza 2026-09-14 (~10.6 GB; 29.4 → 18.8 GB)**: borrados
-  `out/build/_archivo_mods/`, `out/build/win-amd64-release/mods_archivo/` (83
-  tests), `github/release-stage/` + `release-stage/`, `rexglue_backup/`, el build
-  SDK avx2 `out/build-win-vulkan/` (se conserva `out/win-amd64/` con las DLLs
-  avx2), los AFS de B1/B2/B2V/Shin Budokai PSP **y sus ISOs** (se conservan **B3
-  Greatest Hits** e **Infinite World**), y dedup de `modding resources update*`.
-  Hoy las ISOs de B1 y B2 se vuelven a usar: las pasarelas y `tools/pruebas.py` las leen
-  de `DBZ3_PS2_GAMES` (fuera del proyecto).
-  **Se conserva** `mods/og_music`. Barrido de `__pycache__`/`*.pyc`/`.tmp`/`.bak`.
-  **Pendiente de decidir**: `modding resources` (2.2 GB) y `modding resources
-  discord` (0.86 GB).
-- `out/build/win-amd64-tracy` (perfilado) se borró: regenerar con el preset Tracy
-  del CMake si se necesita.
+- Los datos de referencia de `%TEMP%\opencode\` (b327_*.bin, cell_*.bin) ya no existen:
+  regenerar desde `us/` + `ps2_games/` con `awo_tools/`.
+- Limpiezas de disco anteriores: `docs/06_limpieza/INVENTARIO_FISICO_2026-09.md`. Las ISOs
+  de B1 y B2 se usan: las pasarelas y `tools/pruebas.py` las leen de `DBZ3_PS2_GAMES`
+  (fuera del proyecto). Se conserva `mods/og_music`. El build de perfilado se regenera
+  con el preset Tracy del CMake.
 - El usuario habla español. Sesiones largas de juego.

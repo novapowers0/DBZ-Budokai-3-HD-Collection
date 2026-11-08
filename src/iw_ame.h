@@ -342,6 +342,7 @@ inline void Pintar(const Instancia& in, const ps2::Camara& cam, const std::vecto
                     const std::vector<ps2::Tex>& suma, ImDrawList* dl, float tope_px, bool gs_propio=false) {
   if(!cam.ok) return;
   const float foco=cam.Foco();
+  static const bool forzar_alfa = std::getenv("DBZ3_TEST_AME_ALFA") != nullptr;
   int mezcla=0;
   for (const auto& lista : in.ps)
     for (const Particula& p : lista) {
@@ -359,6 +360,7 @@ inline void Pintar(const Instancia& in, const ps2::Camara& cam, const std::vecto
         if(n.estado==2&&!gs_propio) {
           c[3]*=std::max({c[0],c[1],c[2]});c[0]=c[1]=c[2]=0;
         }
+        if(forzar_alfa && (n.estado==1 || n.tipo==2)) c[3]=1.0f;
         return IM_COL32(int(c[0]*255),int(c[1]*255),int(c[2]*255),int(c[3]*255));
       };
       const ImU32 c=color(12,16),ce=n.tipo==2 ? color(20,24) : c;

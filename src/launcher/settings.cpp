@@ -22,6 +22,7 @@
 #include <functional>
 #include <system_error>
 #include <cctype>
+#include <cwctype>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -62,8 +63,8 @@ REXCVAR_DEFINE_BOOL(dbz3_cac_xv2, false, "DBZ3/Launcher",
 // scope below and read/written through the runtime's cvar registry.
 
 REXCVAR_DEFINE_INT32(dbz3_resolution_scale, 1, "DBZ3/Video",
-                     "Internal render scale (1x-4x supersampling of the 720p framebuffer)")
-    .range(1, 4)
+                     "Internal render scale (1x-6x supersampling of the 720p framebuffer)")
+    .range(1, 6)
     .lifecycle(rex::cvar::Lifecycle::kHotReload);  // live since v1.4.0 (draw scale changes live)
 
 REXCVAR_DEFINE_INT32(dbz3_language, 1, "DBZ3/Language",
@@ -75,6 +76,14 @@ REXCVAR_DEFINE_INT32(dbz3_language, 1, "DBZ3/Language",
 // portugues de Brasil (el texto del juego queda en ingles). Lo pone SetLanguage(9).
 REXCVAR_DEFINE_STRING(dbz3_ui_language, "", "DBZ3/Language", "Launcher/mod text language override: empty or pt")
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
+
+// dia1O: arreglos medidos del modo original (modo_original.h Arreglo), por comas. Vacio = ninguno (de serie).
+// Tokens: manos_toon, ik_b2, caida_pal, pose_ya, capa_b2, idle_b2, ataque_b2, levantar_b2, mirada_b2. Texto libre:
+// el launcher no lo ensena (solo interruptores y combos).
+// 6/11 20:00: encendidos de serie con OK del usuario (INFORME_dia1B: 8 tokens B2 mejor en 3 parejas; manos_toon IoU 0,50->0,90).
+REXCVAR_DEFINE_STRING(dbz3_original_on, "manos_toon,ik_b2,caida_pal,pose_ya,capa_b2,idle_b2,ataque_b2,levantar_b2,mirada_b2", "DBZ3/Original",
+                      "Measured original-mode fixes (comma-separated tokens; empty = none; default = all measured fixes)")
+    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 
 REXCVAR_DEFINE_STRING(dbz3_region, "us", "DBZ3/Language",
                       "Asset region: us (NTSC) or eu (PAL). Selects the us/ or eu/ asset folder "
@@ -111,10 +120,18 @@ REXCVAR_DEFINE_BOOL(dbz3_vrr, true, "DBZ3/Video",
                     "to each presented frame for even pacing on high-refresh panels.")
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
 
-// Issue #29 (S5-I1): the game asks XGetVideoMode for its back-buffer size and, if the mode is not hi-def, draws at
-// video_mode_width x video_mode_height (its own SD path, measured: 640x480 capture). So 480p needs no SDK change.
+// Issue #29: a non-HD video mode selects the game's SD path. The SDK reports 640x480 widescreen,
+// and sub_820A7980 selects an internal 640x360 picture (measured with guest_render, not a resized capture).
 REXCVAR_DEFINE_BOOL(dbz3_low_res, false, "DBZ3/Video",
-                    "Low internal resolution (480p, 4:3) for weak PCs. Needs a restart.")
+                    "Low internal resolution (360p, widescreen). Needs a restart.")
+    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
+
+// Issue #29 (dsSERP): por debajo de 360p el juego no tiene un modo propio, asi que se baja SOLO el 3D
+// anulando el tamano que el guest elige en sub_820A7980 (1280x720 -> 426x240 / 256x144, 16:9). El HUD y
+// los menus se dibujan con el tamano de video y siguen nitidos (medido). 0 = apagado.
+REXCVAR_DEFINE_INT32(dbz3_low_render, 0, "DBZ3/Video",
+                     "Lower 3D render size only: 0 = off, 240 or 144 (widescreen). Needs a restart.")
+    .range(0, 720)
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 
 REXCVAR_DEFINE_INT32(dbz3_frame_cap, 60, "DBZ3/Video",
@@ -2007,6 +2024,8 @@ void SetVsyncEnabled(bool enabled) { REXCVAR_SET(dbz3_vsync, enabled); }
 
 bool LowResEnabled() { return REXCVAR_GET(dbz3_low_res); }
 void SetLowResEnabled(bool enabled) { REXCVAR_SET(dbz3_low_res, enabled); }
+int32_t LowRenderHeight() { return REXCVAR_GET(dbz3_low_render); }
+void SetLowRenderHeight(int32_t height) { REXCVAR_SET(dbz3_low_render, height); }
 bool VrrEnabled() { return REXCVAR_GET(dbz3_vrr); }
 void SetVrrEnabled(bool enabled) { REXCVAR_SET(dbz3_vrr, enabled); }
 
@@ -2128,6 +2147,16 @@ void SetAnisotropicOverride(int32_t level) { REXCVAR_SET(dbz3_anisotropic, level
 int32_t HdTextures() { return REXCVAR_GET(dbz3_hd_textures); }
 
 void SetHdTextures(int32_t factor) { REXCVAR_SET(dbz3_hd_textures, factor); }
+
+int32_t HdTexturesEffective() {
+  // Solo el modo Automatico (el recomendado por defecto) limita por memoria:
+  // en Personalizado manda lo que el usuario eligio (la UI le avisa).
+  const int32_t requested = HdTextures();
+  if (QualityPreset() != "auto") {
+    return requested;
+  }
+  return SafeHdTextureFactor(requested);
+}
 
 int32_t HdTextureMaxTexels() { return REXCVAR_GET(dbz3_hd_texture_max_texels); }
 
@@ -2277,6 +2306,35 @@ bool D3D12Usable() {
   if (cached == 1 && !key.empty()) REXCVAR_SET(dbz3_d3d12_ok, key);   // se guarda con los demas ajustes
   return cached == 1;
 }
+
+// dsPGPU: integrada = comparte la memoria del sistema. Los nombres de las APU
+// de AMD no llevan "RX"/"Pro"/"Instinct"; Intel integrada es cualquier cosa que
+// no sea una Arc. Ademas, una grafica con muy poca VRAM dedicada (< 512 MB) es
+// integrada o una dedicada muy basica: en ambos casos conviene el mismo limite
+// de memoria. Se mira tambien el nombre para no confundir una dedicada antigua
+// con 0 MB reportados.
+bool AdapterLooksIntegrated(const DXGI_ADAPTER_DESC1& desc) {
+  const std::wstring name(desc.Description);
+  const std::wstring lower = [&name] {
+    std::wstring s = name;
+    std::transform(s.begin(), s.end(), s.begin(), [](wchar_t c) { return std::towlower(c); });
+    return s;
+  }();
+  const bool is_arc = lower.find(L"arc") != std::wstring::npos;
+  if (desc.VendorId == 0x8086) {  // Intel
+    return !is_arc;
+  }
+  if (desc.VendorId == 0x1002) {  // AMD
+    const bool is_rx = lower.find(L"rx") != std::wstring::npos;
+    const bool is_pro = lower.find(L"pro") != std::wstring::npos;
+    const bool is_instinct = lower.find(L"instinct") != std::wstring::npos;
+    const bool is_firepro = lower.find(L"firepro") != std::wstring::npos;
+    return !is_rx && !is_pro && !is_instinct && !is_firepro;
+  }
+  // NVIDIA no tiene integradas x86: si reporta poca memoria dedicada, se trata
+  // como dedicada basica (mismo limite prudente), no como integrada.
+  return desc.VendorId != 0x10de && desc.DedicatedVideoMemory < (512ull << 20);
+}
 #endif  // REX_PLATFORM_WIN32
 
 }  // namespace
@@ -2310,23 +2368,20 @@ std::string DetectGpuName() {
 
 int32_t DetectGpuTier() {
 #if REX_PLATFORM_WIN32
+  // Solo para pruebas (dsPGPU): fuerza el nivel detectado para medir el perfil
+  // automatico de una integrada sin tener una en este equipo.
+  if (const char* forced = std::getenv("PGPU_TEST_GPU_TIER")) {
+    const int32_t v = std::atoi(forced);
+    if (v >= 0 && v <= 2) {
+      return v;
+    }
+  }
   DXGI_ADAPTER_DESC1 desc{};
   if (!GetPrimaryGpu(&desc)) {
     return 1;  // unknown -> medium
   }
-  const std::wstring name(desc.Description);
   const size_t vram_mb = desc.DedicatedVideoMemory / (1024 * 1024);
-  const bool is_intel = name.find(L"Intel") != std::wstring::npos;
-  const bool is_arc = name.find(L"Arc") != std::wstring::npos;
-  // 1.4.3 EX: las APU de AMD (Radeon 680M/780M/890M, Vega 8, "AMD Radeon(TM)
-  // Graphics") son integradas aunque la BIOS les reserve 2-4 GB "dedicados":
-  // antes salian como "alta" (MSAA) y daban tirones. Las dedicadas llevan "RX",
-  // "Pro", "FirePro" o "Instinct" en el nombre.
-  const bool is_amd = desc.VendorId == 0x1002;
-  const bool is_amd_apu = is_amd && name.find(L"RX") == std::wstring::npos &&
-                          name.find(L"Pro") == std::wstring::npos &&
-                          name.find(L"Instinct") == std::wstring::npos;
-  if ((is_intel && !is_arc) || is_amd_apu) {
+  if (AdapterLooksIntegrated(desc)) {
     // Integrated: never auto-assign the top tier. Modern iGPUs with
     // plenty of shared memory still get "medium"; old ones get "low".
     return vram_mb >= 2048 ? 1 : 0;
@@ -2343,6 +2398,95 @@ int32_t DetectGpuTier() {
 #else
   // No DXGI on non-Windows platforms: unknown GPU -> medium tier.
   return 1;
+#endif
+}
+
+GpuMemoryInfo DetectGpuMemory() {
+  GpuMemoryInfo info;
+#if REX_PLATFORM_WIN32
+  DXGI_ADAPTER_DESC1 desc{};
+  if (!GetPrimaryGpu(&desc)) {
+    return info;
+  }
+  info.dedicated_mb = static_cast<int32_t>(desc.DedicatedVideoMemory / (1024 * 1024));
+  info.shared_mb = static_cast<int32_t>(desc.SharedSystemMemory / (1024 * 1024));
+  info.integrated = AdapterLooksIntegrated(desc);
+  info.vendor_id = desc.VendorId;
+  // Solo para pruebas: simula la memoria de una integrada/floja.
+  if (const char* forced = std::getenv("PGPU_TEST_GPU_VRAM_MB")) {
+    const int32_t v = std::atoi(forced);
+    if (v >= 0) {
+      info.dedicated_mb = v;
+      info.integrated = v <= 1024;
+    }
+  }
+#endif
+  return info;
+}
+
+const char* GpuVendorName(uint32_t vendor_id) {
+  switch (vendor_id) {
+    case 0x8086:
+      return "intel";
+    case 0x1002:
+      return "amd";
+    case 0x10de:
+      return "nvidia";
+    default:
+      return "other";
+  }
+}
+
+// RAM total del equipo (MB). En una APU la VRAM es RAM del sistema: con 4-5 GB
+// las texturas HD x2 (+~200 MB) empujan al archivo de paginacion. Override solo
+// para pruebas, como PGPU_TEST_GPU_*. En Linux devuelve 0 (sin tope por RAM).
+uint64_t HostRamMb() {
+  if (const char* forced = std::getenv("PGPU_TEST_RAM_MB")) {
+    const long v = std::atol(forced);
+    if (v > 0) {
+      return static_cast<uint64_t>(v);
+    }
+  }
+#if REX_PLATFORM_WIN32
+  MEMORYSTATUSEX status = {};
+  status.dwLength = sizeof(status);
+  if (GlobalMemoryStatusEx(&status)) {
+    return status.ullTotalPhys >> 20;
+  }
+#endif
+  return 0;
+}
+
+int32_t SafeHdTextureFactor(int32_t requested) {
+  if (requested <= 1) {
+    return requested;
+  }
+#if REX_PLATFORM_WIN32
+  const GpuMemoryInfo gpu = DetectGpuMemory();
+  // La mejora crea texturas Nx RGBA8 en la GPU: +~200 MB a x2 y +~450 MB a x3
+  // (medido en combate a 720p). En una integrada la memoria es del sistema y en
+  // una dedicada de 2 GB el juego ya usa ~450 MB, asi que x3 es lo que hace que
+  // el driver empiece a paginar. x2 sigue siendo ligero; por debajo de 1 GB se
+  // apaga. En una dedicada de 3 GB o mas se respeta lo pedido.
+  int32_t limit = 3;
+  if (gpu.integrated) {
+    // tPERF: en una APU de 4-5 GB la VRAM compartida es RAM del sistema. Aunque
+    // tenga 1-2 GB "dedicados" de BIOS, x2 suma ~200 MB reales de RAM; en el
+    // perfil automatico se apaga. En 6-8 GB se mantiene x2; en mas, lo de antes.
+    const uint64_t ram_mb = HostRamMb();
+    if (ram_mb > 0 && ram_mb <= 5120) {
+      limit = 1;
+    } else {
+      limit = gpu.dedicated_mb >= 1024 ? 2 : 1;
+    }
+  } else if (gpu.dedicated_mb < 1024) {
+    limit = 1;
+  } else if (gpu.dedicated_mb < 3072) {
+    limit = 2;
+  }
+  return requested < limit ? requested : limit;
+#else
+  return requested;
 #endif
 }
 
@@ -2781,7 +2925,7 @@ void ApplyUserSettingsToSdk() {
   int32_t scale = ResolutionScale();
   rex::cvar::SetFlagByName("draw_resolution_scale_x", std::to_string(scale));
   rex::cvar::SetFlagByName("draw_resolution_scale_y", std::to_string(scale));
-  // Low resolution (issue #29): a non hi-def guest video mode makes the game draw at 640x480 by itself. Only
+  // Low resolution (issue #29): a non hi-def widescreen mode makes the game select its 640x360 SD picture. Only
   // touched when on, or to undo our own 640x480 (the SDK cvars may have been saved in the user file).
   if (LowResEnabled()) {
     rex::cvar::SetFlagByName("video_mode_width", "640");
@@ -2866,8 +3010,38 @@ void ApplyRuntimeSettingsToSdk(bool for_game) {
   // initialized right after these settings are applied, so the value here is
   // what governs the upscale pipeline for this session (hence "restart
   // required" in the UI).
-  SetSdkInt("dbz3_texture_upscale", REXCVAR_GET(dbz3_hd_textures));
+  // dsPGPU: en integradas / poca VRAM se limita el factor (ver
+  // SafeHdTextureFactor). El valor pedido se conserva en dbz3_hd_textures.
+  const int32_t hd_requested = REXCVAR_GET(dbz3_hd_textures);
+  const int32_t hd_effective = HdTexturesEffective();
+  SetSdkInt("dbz3_texture_upscale", hd_effective);
+  if (hd_effective != hd_requested) {
+    const GpuMemoryInfo gpu = DetectGpuMemory();
+    REXLOG_INFO("dbz3: HD textures {}x pedido -> {}x (GPU {} {} MB, integrada={}, RAM {} MB), "
+                "limitado por memoria (VRAM/RAM)",
+                hd_requested, hd_effective, GpuVendorName(gpu.vendor_id), gpu.dedicated_mb,
+                gpu.integrated ? 1 : 0, HostRamMb());
+  }
   SetSdkInt("dbz3_upscale_max_texels", REXCVAR_GET(dbz3_hd_texture_max_texels));
+  // tPERF: en Automatico, cache de texturas menor en equipos flojos. En el
+  // tablero de B2 la cache 384/768 retiene ~235 MB de VRAM y ~260 MB de commit
+  // de mas (medido con 1 GB de GPU simulada: 736 -> 501 MB y 2.110 -> 1.846 MB,
+  // 60 fps). En B3 el ahorro es ~20 MB y no rompe nada. En Personalizado no se
+  // toca: manda lo que haya elegido el usuario.
+  if (QualityPreset() == "auto") {
+    const GpuMemoryInfo gpu = DetectGpuMemory();
+    const uint64_t ram_mb = HostRamMb();
+    const bool conocido = gpu.integrated || gpu.dedicated_mb > 0 || ram_mb > 0;
+    const bool flojo = conocido && (gpu.integrated || gpu.dedicated_mb < 3072 ||
+                                    (ram_mb > 0 && ram_mb <= 5120));
+    SetSdkInt("texture_cache_memory_limit_soft", flojo ? 96 : 384);
+    SetSdkInt("texture_cache_memory_limit_hard", flojo ? 192 : 768);
+    if (flojo) {
+      REXLOG_INFO("dbz3: cache de texturas 96/192 (equipo flojo: GPU {} {} MB, "
+                  "integrada={}, RAM {} MB)",
+                  GpuVendorName(gpu.vendor_id), gpu.dedicated_mb, gpu.integrated ? 1 : 0, ram_mb);
+    }
+  }
   // The upscaler and its render resolution apply live (v1.4.0). dbz3_fsr_quality
   // is the pre-1.4 value: it never lowered the render resolution, so it is not
   // forwarded (its old default "quality" would now halve the picture at 2x).

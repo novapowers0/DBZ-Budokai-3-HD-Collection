@@ -65,7 +65,9 @@ except ImportError:  # Python < 3.11
     import tomli as tomllib  # type: ignore  # noqa: E402
 
 LANG_AFS = {"en": ("data_usi.afs", "data_eng.afs"), "es": ("data_spn.afs",), "fr": ("data_fra.afs",),
-            "de": ("data_ger.afs",), "it": ("data_ita.afs",)}
+            "de": ("data_ger.afs",), "it": ("data_ita.afs",),
+            "pt": ("data_por.afs",), "ja": ("data_jpn.afs",)}   # pt/ja: copias de data_usi (el juego en ingles) con las escenas propias traducidas
+FUENTE_IDIOMA = {"ja": "YuGothB.ttc"}   # las escenas son imagenes: el japones necesita una fuente con kanji
 RIVAL_SUITS = {}   # [traje_rival] del campana.toml: palabra del combate -> traje del rival
 START_FORMS = {}   # [forma_jugador] del campana.toml: palabra del combate -> forma inicial
 STORY_CODES = {}   # [codigos_historia]: codigo -> contenedor, solo mientras se juega una historia de [rueda]
@@ -261,18 +263,28 @@ STYLES = {
 STYLES["final"] = dict(STYLES["narracion"])
 
 
-def render(text, style):
+def render(text, style, lang=None):
     """Una linea que acaba en .png es una imagen propia (RGBA, relativa al .toml) y se usa tal cual.
     Si no, se dibuja con el estilo de STYLES (texto centrado, una linea cada `interlineado` px)."""
     if text.lower().endswith(".png"):           # pagina hecha a mano: la imagen tal cual
         path = text if os.path.isabs(text) else os.path.join(TOML_DIR[0], text)
         return np.array(Image.open(path).convert("RGBA"))
     st = STYLES.get(style, STYLES["dialogo"])
-    font = os.path.join(TOML_DIR[0], st["fuente"])
+    fuente = FUENTE_IDIOMA.get(lang) or st["fuente"]
+    font = os.path.join(TOML_DIR[0], fuente)
     if not os.path.exists(font):
-        font = os.path.join("C:/Windows/Fonts", st["fuente"])
+        font = os.path.join("C:/Windows/Fonts", fuente)
     f, pitch, stroke = capsulas.load_font(font, int(st["tamano"])), int(st["interlineado"]), int(st["borde"])
-    lines = capsulas._wrap(text, f, int(st["ancho"]))
+    if lang == "ja":   # sin espacios: se parte por caracteres al ancho de la caja
+        lines, cur = [], ""
+        for ch in text:
+            if cur and f.getlength(cur + ch) > int(st["ancho"]):
+                lines.append(cur)
+                cur = ""
+            cur += ch
+        lines.append(cur)
+    else:
+        lines = capsulas._wrap(text, f, int(st["ancho"]))
     w = int(max(f.getlength(t) for t in lines)) + 8
     img = Image.new("RGBA", (max(16, w), max(16, pitch * len(lines) + 6)), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
@@ -282,9 +294,9 @@ def render(text, style):
     return np.array(img)
 
 
-def text_bank(lines, style):
+def text_bank(lines, style, lang=None):
     """#AZT de dialogo: texturas 0..n-1 (DXT3, flags 0x21, +0x28 = 0x40 como las nativas)."""
-    return capsulas.build_bank(0, {k: render(t, style) for k, t in enumerate(lines)}, flag28=0x40, tall=True)
+    return capsulas.build_bank(0, {k: render(t, style, lang) for k, t in enumerate(lines)}, flag28=0x40, tall=True)
 
 
 # ---------------------------------------------------------------- lectura
@@ -678,10 +690,10 @@ def story(cfg, us, mod, work):
                             nb, pg = (int(v) for v in p.split("."))
                             imgs[k] = capsulas.azt_read(read_entry(us, afs, nb, work), pg)
                         else:
-                            imgs[k] = render(lines[int(p)], style)
+                            imgs[k] = render(lines[int(p)], style, lang)
                     data = capsulas.build_bank(0, imgs, flag28=0x40, tall=True)
                 else:
-                    data = text_bank(lines, style)
+                    data = text_bank(lines, style, lang)
                 write_entry(mod, afs, bank, data, work)
                 n += 1
         return len(pages) if pages else len(c.get(key + "en") or c.get(key + "es"))

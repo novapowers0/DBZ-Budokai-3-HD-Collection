@@ -42,7 +42,7 @@ struct Clip {
 struct Recurso {
   uint32_t grupo = 0, version = 0;
   std::vector<uint8_t> datos;
-  std::array<uint32_t, 12> off{}, tam{};
+  std::array<uint32_t, 13> off{}, tam{};
   std::vector<Clip> camara, trayectoria;
   Vista Bloque(size_t i) const {
     if (i >= off.size() || off[i] > datos.size() || tam[i] > datos.size() - off[i]) return {};
@@ -126,14 +126,14 @@ inline bool Leer(std::vector<uint8_t> datos, Recurso& salida, std::string& error
   if (!b.Rango(0, 64) || datos.size() > 64u * 1024u * 1024u || std::memcmp(b.p, "B2TZ", 4))
     return fallo("cabecera B2TZ inválida");
   const uint32_t version = b.U(4), componentes = b.U(12);
-  if (!((version == 1 && componentes == 5) || (version == 2 && (componentes == 7 || componentes == 8 || componentes == 10 || componentes == 11 || componentes == 12))) || b.U(16) != 64 || b.U(20) != datos.size())
+  if (!((version == 1 && componentes == 5) || (version == 2 && (componentes == 7 || componentes == 8 || componentes == 10 || componentes == 11 || componentes == 12 || componentes == 13))) || b.U(16) != 64 || b.U(20) != datos.size())
     return fallo("versión/tamaño B2TZ inválidos");
   for (size_t i = 24; i < 64; ++i) if (b.p[i]) return fallo("reservado B2TZ no nulo");
   Recurso r;
   r.version = version;
   r.grupo = b.U(8);
   if (r.grupo != 0 && r.grupo != 2 && r.grupo != 4 && r.grupo != 7 && r.grupo != 8) return fallo("grupo B2TZ inválido");
-  constexpr char tags[12][8] = {"CAMR", "TRAY", "SPX0", "MDD0", "FX00", "MAD0", "MAS0", "SND0", "ANM0", "ANM1", "FXHD", "BSK0"};
+  constexpr char tags[13][8] = {"CAMR", "TRAY", "SPX0", "MDD0", "FX00", "MAD0", "MAS0", "SND0", "ANM0", "ANM1", "FXHD", "BSK0", "ENV0"};
   size_t fin = (64 + 24 * componentes + 31) & ~size_t(31);
   for (size_t i = 0; i < componentes; ++i) {
     const size_t q = 64 + 24 * i;
@@ -147,7 +147,7 @@ inline bool Leer(std::vector<uint8_t> datos, Recurso& salida, std::string& error
   }
   r.datos = std::move(datos);
   if (!LeerAcc(r.Bloque(0), r.camara) || !LeerAcc(r.Bloque(1), r.trayectoria)) return fallo("ACC B2TZ inválido");
-  constexpr char magics[10][5] = {"#SPX", "#MDD", "#AMB", "#MAD", "#MAS", "#B2S", "#ACM", "#ACM", "#AMB", "#BSK"};
+  constexpr char magics[11][5] = {"#SPX", "#MDD", "#AMB", "#MAD", "#MAS", "#B2S", "#ACM", "#ACM", "#AMB", "#BSK", "#B2E"};
   for (size_t i = 2; i < componentes; ++i) {
     const Vista v = r.Bloque(i);
     if (!v.Rango(0, 4) || std::memcmp(v.p, magics[i - 2], 4)) return fallo("componente B2TZ inválido");

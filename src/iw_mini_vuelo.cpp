@@ -76,6 +76,11 @@
 #include "anim_iw.h"
 #include "iw_camaras_gp2.h"
 #include "iw_ame.h"
+#include "iw_amc.h"
+#include "iw_cutscene.h"
+#define IWV_SOLO_DECL
+#include "iw_mips_vuelo.inl"   // T4B: vuelo con la logica original (solo declaraciones)
+#undef IWV_SOLO_DECL
 #include <chrono>
 #include "iw_gs.h"
 #include "cine.h"
@@ -237,14 +242,11 @@ struct Obj {
 // RAMFlyingMinigamesRelated 0x306A20). Cabecera del #AMC: +0x10 nº clips, +0x14 tabla de 16 B por clip;
 // clip: +8 duracion en cuadros, +12 offset. Cada pista: +8 nº claves y claves de 16 B (x,y,z,bandera) desde +16.
 // El cutscene de vuelo (0x3424F0) usa el indice de la linea como clip y la duracion del clip (+8) como fin de linea.
+// dia 1A: lector y muestreo unicos de iw_amc.h (FUN_00127280); `dur` y `fov` (1.a clave de la pista 3) como antes.
 struct ClipVuelo {
   int dur = 0;
-  float fov = 0.0f;   // 31/10: pista 3 del #AMC
-  // DS113: el 4.o u32 de cada clave del #AMC es su cuadro (1..dur; el ultimo viene como 0 porque es dur mod dur).
-  // Antes se repartian las claves por igual, lo que solo coincidia cuando n_claves == dur (900 tiene 83 claves en
-  // 160 cuadros: la camara iba a la mitad de velocidad).
-  std::vector<uint32_t> ojo_c, obj_c;
-  std::vector<std::array<float, 3>> ojo, obj;
+  float fov = 0.0f;
+  dbz3::iwamc::Clip c;
 };
 
 uint32_t U32(const std::vector<uint8_t>& b, size_t o) {
@@ -510,6 +512,7 @@ struct Juego {
     uint32_t anim = 0;   // codigo de animacion del actor (IW); 0 = linea sin actores
   };
   std::vector<LineaGuion> guion;   // escena 0 (intro)
+  dbz3::iwcut::Escena cs;           // dia 1A: Cutscene_GotoLine/Update (iw_cutscene.h) sobre `guion`
   int guion_linea = 0, guion_f = 0, intro_total = 0, clip_meta = 210;
   bool intro = false, intro_done = false, poses = false;
   int intro_t = 0;
@@ -537,6 +540,12 @@ struct Juego {
   // estado (hilo del juego)
   float x = 0, z = 0, vel = 0, medidor = 0, congelado = 0, t568 = 0, t56c = 0, t_ms = 0;
   int yaw = 0, estado = 0, restantes = 0, monedas = 0, puntos = 0, cuadros = 0;
+  // T4B: logica original del vuelo (iw_mips_vuelo.inl). orig: 0 sin probar, 1 en marcha, 2 fallo/apagada
+  std::vector<uint8_t> msf_raw;
+  int orig = 0;
+  bool congelar_pend = false;
+  uint32_t anim_prev = 0;
+  dbz3::iwmips::vuelo7::Salida orig_o;
   int cam_yaw = -1;   // R7: rumbo de la camara, sigue a yaw a 1/16 por cuadro (Viewer_UpdateOrbitCamera L427262)
   // aplicar_estudios (entrega 16 P2): +0x604 cabeceo (palanca derecha Y) y +0x608 balanceo (palanca X) del visor de vuelo
   int cabeceo = -0x800, balanceo = 0;
@@ -924,67 +933,25 @@ std::vector<float> LeerDerivasMta(const std::vector<uint8_t>& b) {
 // #AMC de camara de 891 (formato del vuelo: pista +8 = nº claves, claves de 16 B x,y,z,bandera desde +16).
 // DS113: `libro` = indice del #AMC dentro del bundle (0 = hijo 25, 1 = hijo 26); la clave del mapa es libro<<16|clip.
 void LeerClipsVuelo(const std::vector<uint8_t>& amc, int libro, const std::vector<int>& ids, std::map<int, ClipVuelo>& out) {
-  // GP2 noche:127280 usa claves {tiempo,x,y,z} desde+12. El lector
-  // anterior leia XYZ bien, pero tomaba el tiempo de la SIGUIENTE clave.
-  // Verificado (kTiemposVueloVerificados = true): el interruptor de prueba queda solo como respaldo.
-  constexpr bool kTiemposVueloVerificados = true;
-  const bool tiempos_originales = kTiemposVueloVerificados ||
-      (std::getenv("DBZ3_TEST_IWMINI") && std::getenv("TEST_GP2_AMC_TIEMPOS"));
-  if (amc.size() < 0x20 || std::memcmp(amc.data(), "#AMC", 4) != 0) return;
-  const uint32_t n = U32(amc, 0x10), tab = U32(amc, 0x14);
   for (int id : ids) {
     const int clave = (libro << 16) | (id & 0xFFFF);
-    if (id < 0 || uint32_t(id) >= n || out.count(clave)) continue;
-    const size_t e = size_t(tab) + 16 * size_t(id);
-    const int dur = int(U32(amc, e + 8));
-    const size_t off = U32(amc, e + 12);
-    if (dur <= 0 || off + 16 > amc.size()) continue;
-    ClipVuelo c;
-    c.dur = dur;
-    for (int pista = 0; pista < 2; ++pista) {
-      const size_t t = U32(amc, off + 4 * size_t(pista));
-      if (t + 16 > amc.size()) break;
-      const uint32_t nk = U32(amc, t + 8);
-      if (nk == 0 || nk > 5000) continue;
-      auto& dst = pista == 0 ? c.ojo : c.obj;
-      auto& marcos = pista == 0 ? c.ojo_c : c.obj_c;
-      dst.reserve(nk);
-      marcos.reserve(nk);
-      for (uint32_t k = 0; k < nk; ++k) {
-        const size_t o = t + 16 + 16 * size_t(k);
-        if (o + 16 > amc.size()) break;
-        uint32_t cuadro = U32(amc, tiempos_originales ? o - 4 : o + 12);
-        if (!tiempos_originales && cuadro == 0) cuadro = uint32_t(dur);
-        dst.push_back({F32(amc, o), F32(amc, o + 4), F32(amc, o + 8)});
-        marcos.push_back(cuadro);
-      }
-    }
-    if (const size_t t3 = U32(amc, off + 12); t3 + 20 <= amc.size() && U32(amc, t3 + 8) > 0 && U32(amc, t3 + 8) < 5000)
-      c.fov = F32(amc, t3 + 16);
-    if (!c.ojo.empty() && !c.obj.empty()) out[clave] = std::move(c);
+    if (out.count(clave)) continue;
+    ClipVuelo v;
+    if (!dbz3::iwamc::Leer(amc, id, v.c)) continue;
+    v.dur = v.c.nf;
+    if (!v.c.fov.empty()) v.fov = v.c.fov[0][1];
+    out[clave] = std::move(v);
   }
-}
-
-// Muestra una pista por cuadro de la linea (las claves no traen tiempo util: se reparten por la duracion del clip).
-// DS113: muestrea por el cuadro real de cada clave (el 4.o u32 del #AMC), no repartiendo las claves por igual.
-bool MuestraClip(const std::vector<std::array<float, 3>>& k, const std::vector<uint32_t>& marcos, float f, int dur,
-                 float out[3]) {
-  if (k.empty() || k.size() != marcos.size() || dur <= 0) return false;
-  const float u = std::clamp(f, 0.0f, float(dur));
-  size_t i = 0;
-  while (i + 1 < marcos.size() && float(marcos[i + 1]) <= u) ++i;
-  const size_t j = std::min(i + 1, marcos.size() - 1);
-  const float t = marcos[j] > marcos[i] ? std::clamp((u - float(marcos[i])) / float(marcos[j] - marcos[i]), 0.0f, 1.0f)
-                                        : 0.0f;
-  for (int c = 0; c < 3; ++c) out[c] = k[i][size_t(c)] + (k[j][size_t(c)] - k[i][size_t(c)]) * t;
-  return true;
 }
 
 bool CamaraClip(const Juego& j, int libro, int clip, float f, float ojo[3], float obj[3]) {
   const auto it = j.cams.find((libro << 16) | (clip & 0xFFFF));
   if (it == j.cams.end()) return false;
-  const bool ok = MuestraClip(it->second.ojo, it->second.ojo_c, f, it->second.dur, ojo) &&
-                  MuestraClip(it->second.obj, it->second.obj_c, f, it->second.dur, obj);
+  const float u = std::clamp(f, 0.0f, float(it->second.dur));
+  const dbz3::iwamc::Pose pose = dbz3::iwamc::Muestrea(it->second.c, u);
+  std::copy(pose.ojo, pose.ojo + 3, ojo);
+  std::copy(pose.obj, pose.obj + 3, obj);
+  const bool ok = true;
   if (ok && dbz3::gp2cam::Activo())
     dbz3::gp2cam::Evaluada("vuelo", 891, 25 + libro, libro, clip, f, it->second.dur,
         j.intro ? 0 : j.cierre ? j.escena_cierre : -1, j.intro ? j.guion_linea : -1,
@@ -1175,6 +1142,7 @@ bool Cargar(Juego& j, std::string& error) {
               mcf.size() >= 0x30 ? F32(mcf, 0x28) : 0.0f, mcf.size() >= 0x30 ? F32(mcf, 0x2C) : 0.0f);
   const std::vector<uint8_t> amb = cmn.Entrada(891);
   const std::vector<uint8_t> m = P::HijoAmb(amb, uint32_t(23 + j.v));
+  j.msf_raw = m;
   if (m.size() < 0x200 || std::memcmp(m.data(), "#MSF", 4) != 0) return error = "sin #MSF en DATA_CMN 891", false;
   iwvuelo::Msf f;
   if (!iwvuelo::LeerMsf(m, j.dif, f, error)) return false;
@@ -1363,6 +1331,14 @@ bool Cargar(Juego& j, std::string& error) {
     j.intro_total += it->second.dur;
     ++k;
   }
+  j.cs = {};
+  for (const Juego::LineaGuion& l : j.guion) {
+    dbz3::iwcut::Linea li;
+    li.libro = l.libro, li.clip = l.clip;
+    li.cuadros = j.cams.at((l.libro << 16) | l.clip).dur;
+    if (l.actor >= 0) li.actores.push_back({l.actor, -1, l.anim});
+    j.cs.lineas.push_back(std::move(li));
+  }
   {
     std::string s;
     for (const Juego::LineaGuion& l : j.guion) {
@@ -1519,6 +1495,7 @@ void Reiniciar(Juego& j,bool reiniciar_efectos=true) {
   j.picado_t = 0;
   j.pose_aro = false;
   j.codigo_vuelo = 0;
+  j.orig = 0; j.congelar_pend = false; j.anim_prev = 0;   // T4B: la logica original vuelve a montarse
   j.espera_cam = 0;
   j.cam_ped_ok = false;
   j.cam_esc_ok = false;
@@ -1707,7 +1684,7 @@ void AplicarPoseVuelo(uint32_t x,Juego& j,uint32_t codigo) {
   j.codigo_vuelo=codigo;
   // Las transiciones no son ciclos. El camino sujeto conserva el avance
   // nativo a60Hz, sin el reloj de respaldo de las poses en bucle.
-  if (codigo==0x321||codigo==0x32D||codigo==0x323||codigo==0x32E||codigo==0x330)
+  if (codigo==0x321||codigo==0x32D||codigo==0x323||codigo==0x32E||codigo==0x330||codigo==0x32F)
     dbz3::anim::Reproducir(x,codigo,true);
   else dbz3::anim::Bucle(x,codigo);
 }
@@ -1819,7 +1796,7 @@ void Volar(uint8_t* base, uint32_t x, Juego& j, float h, float v, bool r1) {
 }
 
 // Objetos (Viewer_UpdateObjectCollection): barrido en el plano desde el sitio anterior
-void Recoger(uint8_t* base, uint32_t mgr, Juego& j, float x0, float z0) {
+void Recoger(uint8_t* base, uint32_t mgr, Juego& j, float x0, float z0, const dbz3::iwmips::vuelo7::Salida* orig = nullptr) {
   auto toca = [&](const Obj& o) {
     const float ax = Envolver(x0 - o.x, j.periodo), az = Envolver(z0 - o.z, j.periodo);
     const float bx = Envolver(j.x - o.x, j.periodo), bz = Envolver(j.z - o.z, j.periodo);
@@ -1830,16 +1807,24 @@ void Recoger(uint8_t* base, uint32_t mgr, Juego& j, float x0, float z0) {
   };
   for (size_t k = 0; k < j.objs.size(); ++k) {
     Obj& o = j.objs[k];
-    if (!o.activo) {
-      if (o.reaparece > 0 && (o.reaparece -= 1.0f) <= 0) o.activo = true;
-      continue;
+    bool cogido;
+    if (orig) {   // T4B: Viewer_UpdateObjectCollection del ELF; el objeto k es el k+1 de su tabla (el 0 es la meta)
+      const bool visible = k + 1 < size_t(orig->n_obj) && !(orig->flags[k + 1] & 0x8000);
+      cogido = o.activo && !visible;
+      o.activo = visible;
+      if (!cogido) continue;
+    } else {
+      if (!o.activo) {
+        if (o.reaparece > 0 && (o.reaparece -= 1.0f) <= 0) o.activo = true;
+        continue;
+      }
+      if (!toca(o)) continue;
+      o.activo = false;
+      if (o.flags & 0x4000) o.reaparece = j.reaparece;
     }
-    if (!toca(o)) continue;
-    o.activo = false;
-    if (o.flags & 0x4000) o.reaparece = j.reaparece;
     if (o.tipo == kControl) {
       --j.restantes;
-      if (!j.mostrar_todos && k + 1 < size_t(j.n_control)) j.objs[k + 1].activo = true, j.siguiente = k + 1;
+      if (!orig && !j.mostrar_todos && k + 1 < size_t(j.n_control)) j.objs[k + 1].activo = true, j.siguiente = k + 1;
       REXLOG_INFO("dbz3 r12: punto de control {} ({} quedan)", k, j.restantes);
       // EU 0x33AFA0 Viewer_OnObjectHitEvent
       // v0: al PRIMER aro (quedan n-1) y cuando queda 1 se dispara el dialogo del rival
@@ -1866,7 +1851,7 @@ void Recoger(uint8_t* base, uint32_t mgr, Juego& j, float x0, float z0) {
         const int pos = (j.voz_aro++ % 3) + (tarde ? 3 : 0) + j.pj * 6 + j.v * 12;
         VozJugador(j, kVozAro[pos], tarde ? "aro cruzado (tarde)" : "aro cruzado");
       }
-      if (j.restantes <= 0 && !j.abierta) {
+      if (!orig && j.restantes <= 0 && !j.abierta) {
         j.abierta = j.meta.activo = true;
         REXLOG_INFO("dbz3 r12: meta abierta en ({:.0f}, {:.0f})", j.meta.x, j.meta.z);
       }
@@ -1903,13 +1888,17 @@ void Recoger(uint8_t* base, uint32_t mgr, Juego& j, float x0, float z0) {
       Fx::Lanzar(j, 7, 7, Fx::Cuerpo(j), Fx::Rumbo(j.yaw), true);    // DS182: Aura_Dash_(7, 0, 1)
       Fx::Lanzar(j, 0x10, 0x10, Fx::Cuerpo(j), Fx::Rumbo(j.yaw), true);
     } else if (o.tipo == 8 || o.tipo == 0x108) {
-      j.congelado = j.congela;   // [VERIFICAR]: en IW +0x520 lanza Vegeta_GotenHarassmentEffectDraw(8) antes de congelar
+      j.congelado = j.congela; j.congelar_pend = orig != nullptr;   // T4B: con el original, ctx+0x520 = +0x24 el cuadro siguiente. [VERIFICAR]: en IW +0x520 lanza Vegeta_GotenHarassmentEffectDraw(8) antes de congelar
       Fx::Lanzar(j, 0xD, 0xD, Fx::Cuerpo(j), Fx::Rumbo(j.yaw), true);   // DS182: Aura_Dash_(0xD, punto, 0x8210)
       Fx::Lanzar(j, 0xC, 0xC, Fx::Cuerpo(j), Fx::Rumbo(j.yaw), true);   //        + Aura_Dash_(0xC, 0, 1)
     }
     REXLOG_INFO("dbz3 r12: objeto {} (tipo 0x{:X}) cogido", k, o.tipo);
   }
-  if (j.meta.activo && toca(j.meta)) {
+  if (orig) {   // T4B: la meta es el objeto 0 de la tabla; Viewer_BeginFinalPhase avisa de que se cruzo
+    j.meta.activo = !(orig->flags[0] & 0x8000);
+    if (j.meta.activo && !j.abierta) { j.abierta = true; REXLOG_INFO("dbz3 r12: meta abierta (original) en ({:.0f}, {:.0f})", j.meta.x, j.meta.z); }
+  }
+  if (orig ? orig->meta : (j.meta.activo && toca(j.meta))) {
     // 0x33C190 Viewer_StateResultSuccess: antes de CLEAR va la parte 1 del guion (linea 210, aterrizaje + pose).
     if (!j.cierre) {
       j.cierre = true;
@@ -1942,6 +1931,7 @@ void Piloto(const Juego& j, float& h, float& v, bool& r1) {
   const float d = std::hypot(dx, dz), radio = std::max(j.vel, 1.0f) / (96.0f / 65536.0f * 6.2831853f);
   v = std::fabs(dif) > 0.3f && d < radio * 2.0f ? 0.3f : std::fabs(dif) > 1.2f ? 0.6f : 1.0f;
   r1 = j.medidor < 0.6f && std::fabs(dif) < 0.15f && d > 1500.0f;
+  if (j.estado == 0 || j.vel < 8.0f) v = 1.0f;   // T4B: lento (tras un choque con el original) acelera a fondo: si no, gira en redondo
 }
 
 }  // namespace
@@ -2344,27 +2334,22 @@ bool AvanzarIntro(uint8_t* base, uint32_t mgr, Juego& j) {
   // Cutscene_Update EU 0x342170: avanza el cuadro +0xC; cuando llega a la duracion del clip (+0x10) pasa a la linea
   // siguiente (Cutscene_GotoLine con la linea +1) y, agotada la ultima, la escena termina. La linea nueva se pinta en
   // este mismo cuadro (GotoLine deja la camara en su cuadro 0).
-  const Juego::LineaGuion* L = nullptr;
-  int dur = 0;
-  while (true) {
-    if (j.guion_linea >= int(j.guion.size())) {
-      fin_intro();
-      return true;
-    }
-    L = &j.guion[size_t(j.guion_linea)];
-    const auto cl = j.cams.find((L->libro << 16) | L->clip);
-    dur = cl == j.cams.end() ? 0 : cl->second.dur;
-    if (dur > 0 && j.guion_f < dur) break;
-    ++j.guion_linea;
-    j.guion_f = 0;
+  const dbz3::iwcut::Paso paso = j.cs.Tick();
+  if (paso.fin) {
+    j.guion_linea = int(j.guion.size());
+    fin_intro();
+    return true;
   }
+  j.guion_linea = paso.linea;
+  j.guion_f = int(paso.t);
+  const Juego::LineaGuion* L = &j.guion[size_t(paso.linea)];
+  const int dur = paso.l->cuadros;
   float ojo[3], obj[3];
   const auto cl_it = j.cams.find((L->libro << 16) | L->clip);
   const float cl_fov = cl_it == j.cams.end() ? 0.0f : cl_it->second.fov;
   const bool hay = CamaraClip(j, L->libro, L->clip, float(j.guion_f), ojo, obj);
   if (!hay) {   // clip sin pistas (raro): se salta la linea
-    ++j.guion_linea;
-    j.guion_f = 0;
+    j.cs.lineas[size_t(paso.linea)].cuadros = 0;
     return false;
   }
   // Musica de la intro (EU 0x33CE40): ADX_CMN 65 (v0) / 63 (v1) por el canal 0. Se lanza en el cuadro 10 de la
@@ -2514,6 +2499,48 @@ void PasoCierre(uint8_t* base, uint32_t mgr, Juego& j) {
 }
 
 // EU 0x33EA50 Viewer_UpdateEventTimers
+// T4B: un cuadro del vuelo con la logica original del ELF (iw_mips_vuelo.inl). false = sigue el port.
+bool VueloOriginal(uint8_t* base, uint32_t x0, Juego& j, int px, int py, bool r1) {
+  namespace v7 = dbz3::iwmips::vuelo7;
+  if (j.orig == 2 || !v7::g_vuelo || !v7::g_activa_vuelo || !v7::g_activa_vuelo()) return false;
+  v7::Entrada in;
+  in.inicio = j.orig == 0;
+  in.msf = j.msf_raw.data(); in.msf_n = j.msf_raw.size();
+  in.v = j.v; in.dif = j.dif; in.pj = j.pj;
+  in.botones = r1 ? 0x800 : 0;
+  in.lx = int8_t(std::clamp(px, -128, 127));
+  in.ly = int8_t(py >= 128 ? -128 : std::clamp(-py, -128, 127));
+  in.rx = int8_t(std::clamp(dbz3::iwmini::PalancaDerechaX() / 256, -128, 127));
+  dbz3::anim::EstadoCuerpo e;
+  if (dbz3::anim::LeerEstadoCuerpo(base, x0, 0, e) && e.hay) {
+    in.anim_cod = e.codigo; in.anim_cuadro = e.cuadro; in.anim_cuadros = int(e.cuadros);
+  }
+  in.congelar = j.congelar_pend;
+  j.congelar_pend = false;
+  in.t = uint64_t(j.cuadros);
+  v7::Salida o;
+  if (!v7::g_vuelo(in, o)) {
+    REXLOG_WARN("dbz3 r12: la logica original del vuelo no esta disponible; sigue el port");
+    j.orig = 2;
+    return false;
+  }
+  if (j.orig == 0) REXLOG_INFO("dbz3 r12: vuelo con la logica original del ELF (dbz3_iw_vuelo_original)");
+  j.orig = 1;
+  const float ox = j.x, oz = j.z;
+  j.x = o.x; j.z = o.z;
+  j.ux += Envolver(o.x - ox, j.periodo); j.uz += Envolver(o.z - oz, j.periodo);
+  j.yaw = int(o.yaw);
+  j.vel = o.vel;
+  j.estado = o.estado >= 10 ? 0 : o.estado;
+  j.t568 = o.t568; j.t56c = o.t56c; j.congelado = o.congelado;
+  j.orig_o = o;
+  if (o.anim == 0x32E && j.anim_prev != 0x32E) j.zoom_meta = -10.0f;
+  j.anim_prev = o.anim;
+  j.pose_aro = o.anim == 0x330;
+  AplicarPoseVuelo(x0, j, o.anim);
+  return true;
+}
+
 void PasoVuelo(uint8_t* base) {
   if (!g_corre.load()) return;
   std::shared_ptr<Juego> jp;
@@ -2566,6 +2593,7 @@ void PasoVuelo(uint8_t* base) {
     j.intro_done = !j.intro;
     j.intro_t = 0;
     j.guion_linea = j.guion_f = 0;
+    j.cs.Reinicia();
     j.poses = false;
     j.mus_intro = false;
     if (j.intro) {
@@ -2676,19 +2704,29 @@ void PasoVuelo(uint8_t* base) {
     // se le da esa misma X para que la camara se ladee con el giro como en el video del original.
     if (j.auto_ && j.cam_x == 0.0f && j.cam_y == 0.0f) j.cam_x = h;
     const float ax = j.x, az = j.z;
-    Volar(base, x0, j, h, v, r1);
-    if (static const bool poses = !std::getenv("DBZ3_IW_VUELO"); poses) AplicarPoseVuelo(x0, j, PoseVuelo(j, h, v));
+    if (j.auto_) {   // piloto de prueba: h, v -> bytes de palanca (inversa de EjeIW: zona muerta de 64)
+      auto inv = [](float a) { return a == 0.0f ? 0 : std::clamp(int(std::lround(a * 64.0f)) + (a > 0 ? 64 : -64), -127, 127); };
+      px = inv(h); py = inv(v);
+    }
+    const bool orig = VueloOriginal(base, x0, j, px, py, r1);   // T4B: posicion, giro, estado, medidor y objetos del ELF
+    if (!orig) {
+      Volar(base, x0, j, h, v, r1);
+      if (static const bool poses = !std::getenv("DBZ3_IW_VUELO"); poses) AplicarPoseVuelo(x0, j, PoseVuelo(j, h, v));
+    }
     j.rastro.push_back({j.ux, 0, j.uz});
     if (j.rastro.size() > 2400) j.rastro.pop_front();
-    j.t568 = std::max(0.0f, j.t568 - 1.0f);
-    j.t56c = std::max(0.0f, j.t56c - 1.0f);
+    if (!orig) {
+      j.t568 = std::max(0.0f, j.t568 - 1.0f);
+      j.t56c = std::max(0.0f, j.t56c - 1.0f);
+    }
     j.aura = std::max(0.0f, j.aura - 1.0f);
     // medidor del rival (FlyingMinigameSpritesScripts EU 0x33C660): congelado o base + extra del estado 5/6
-    if (j.congelado > 0) {
+    if (!orig && j.congelado > 0) {
       j.congelado = std::max(0.0f, j.congelado - 1.0f);
     } else {
       const float medidor_antes = j.medidor;
-      j.medidor = std::max(0.0f, j.medidor + j.sube[0] +
+      if (orig) j.medidor = j.orig_o.medidor;   // T4B: FlyingMinigameSpritesScripts del ELF (el congelado tambien)
+      else j.medidor = std::max(0.0f, j.medidor + j.sube[0] +
                                       (j.estado == 6 ? j.sube[2] : j.estado == 5 ? j.sube[1] : 0.0f));
       // EU 0x33C660 FlyingMinigameSpritesScripts_MissionObjectiveScripts
       // DS118: dialogos del rival en v1 (param 3..6 de Timelapse_Vegeta_GotenMeter_ObjectsCountVisuals, uno por
@@ -2707,13 +2745,13 @@ void PasoVuelo(uint8_t* base) {
     // CharacterDialoguesStart_(1, Audio_GetFilteredTableEntry(char, DAT_00483230[pj + variant*2]), ...). El indice
     // de la tabla 0x49C45C es {2,0x0B,2,2}: pj 1 usa 0x0B y el resto 2 (el mismo en las dos variantes).
     const float t_antes = j.t_ms;
-    j.t_ms += 1000.0f / 60.0f;
+    if (orig) j.t_ms = j.orig_o.t_ms; else j.t_ms += 1000.0f / 60.0f;
     if (!j.voz_inicio && t_antes < 1000.0f && j.t_ms >= 1000.0f) {
       j.voz_inicio = true;
       VozJugador(j, j.pj == 1 ? 0x0B : 2, "arranque del vuelo (EU 0x33C660)");
     }
     ++j.cuadros;
-    Recoger(base, mgr, j, ax, az);
+    Recoger(base, mgr, j, ax, az, orig ? &j.orig_o : nullptr);
     // DS182: auras de los estados de impulso (0x33F040/0x33ECC0/0x33F2C0/0x33F5E0) y un cuadro de los #AME.
     Fx::Estado(j, j.estado);
     Fx::Cuadro(j);
@@ -3285,7 +3323,7 @@ class Panel : public iwgs::Drawer {
       r.centesimas = int(j.t_ms / 10.0f);
       int i = 0;
       while (i < 4 && int(j.t_ms / 1000.0f) >= j.rango_s[i]) ++i;
-      r.rango = r.superado ? 4 - i : 0;
+      r.rango = r.superado ? 4 - i : -2;   // fase 1 (7/11): fallo = sin rango (Viewer_StateResultFail EU 0x33C420: -1)
       r.puntos = r.superado ? j.puntos + j.puntos_rango[i] : j.puntos_fallo;
       r.monedas = j.monedas;
       const auto a = dbz3::ingame::style::GameArea(io);
@@ -3485,11 +3523,11 @@ bool Empezar(int clave, int fila, int dificultad, int personaje) {
       res.centesimas = int(j->t_ms / 10.0f);
       int i = 0;
       while (i < 4 && int(j->t_ms / 1000.0f) >= j->rango_s[i]) ++i;   // Viewer_StateResultSuccess
-      res.rango = res.superado ? 4 - i : 0;
+      res.rango = res.superado ? 4 - i : -2;   // fallo = sin rango (EU 0x33C420 pone -1; aqui -2: el -1 es "por puntos")
       res.puntos = res.superado ? j->puntos + j->puntos_rango[i] : j->puntos_fallo;
       res.monedas = j->monedas;
     }
-    REXLOG_INFO("dbz3 r12: resultado superado {} rango {} puntos {} tiempo {} cs", res.superado, "CBASZ"[res.rango],
+    REXLOG_INFO("dbz3 r12: resultado superado {} rango {} puntos {} tiempo {} cs", res.superado, res.rango >= 0 ? "CBASZ"[res.rango] : '-',
                 res.puntos, res.centesimas);
     Terminar(res);
   });

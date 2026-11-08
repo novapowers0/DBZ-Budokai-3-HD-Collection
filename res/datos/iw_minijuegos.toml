@@ -100,3 +100,1514 @@ clave = "0x7E1"
 modulo = "MSN019"
 amc_915_clips = []
 
+# GENERADO: llamadas UiAnim_Start (= FUN_00127280, camara #AMC) del ELF EU; ver src/iw_amc.h
+
+[[amc_llamada]]
+funcion = "0x00293530"
+nombre = "MiniGame_ShowResult"
+libro = 0
+clip = 852
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00293530"
+nombre = "MiniGame_ShowResult"
+libro = 0
+clip = 851
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00293530"
+nombre = "MiniGame_ShowResult"
+libro = 0
+clip = 851
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00293530"
+nombre = "MiniGame_ShowResult"
+libro = 0
+clip = 851
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00293530"
+nombre = "MiniGame_ShowResult"
+libro = 0
+clip = 851
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00293530"
+nombre = "MiniGame_ShowResult"
+libro = 0
+clip = 851
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00293ef0"
+nombre = "MiniGame_CheckInputStep"
+libro = 0
+clip = 190
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00294300"
+nombre = "MiniGame_FinishRound"
+libro = 0
+clip = 190
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00294750"
+nombre = "MiniGame_StartNextRound"
+libro = 0
+clip = -1
+cuadro_inicial = 0
+reproduce = 1
+tabla = "0x00473700"
+
+[[amc_llamada]]
+funcion = "0x00294d60"
+nombre = "MiniGame_UpdateCountdown"
+libro = 0
+clip = 180
+cuadro_inicial = 0
+reproduce = 0
+
+[[amc_llamada]]
+funcion = "0x00294d60"
+nombre = "MiniGame_UpdateCountdown"
+libro = 0
+clip = 850
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00294d60"
+nombre = "MiniGame_UpdateCountdown"
+libro = 0
+clip = 850
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00295490"
+nombre = "MiniGame_Init"
+libro = 1
+clip = 0
+cuadro_inicial = 0x3f800000
+reproduce = 0
+
+[[amc_llamada]]
+funcion = "0x00295bd0"
+nombre = "MiniGame_StartPlayback"
+libro = 1
+clip = 0
+cuadro_inicial = 0x3f800000
+reproduce = 0
+
+[[amc_llamada]]
+funcion = "0x002eab30"
+nombre = "Results_StateFinishOutcome"
+libro = 0
+clip = -1
+cuadro_inicial = 0
+reproduce = 1
+tabla = "0x004985a0"
+
+[[amc_llamada]]
+funcion = "0x002eac30"
+nombre = "Results_BeginOutcome"
+libro = 1
+clip = 0
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x002ebe20"
+nombre = "Results_SetupCameraLight"
+libro = 1
+clip = 0
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x002ec440"
+nombre = "s_MSN019_UPDATE"
+libro = 1
+clip = 0
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x003077c0"
+nombre = "MgPly_St7_Enter"
+libro = 0
+clip = -1
+cuadro_inicial = 0
+reproduce = 1
+tabla = "0x004985a8"
+
+[[amc_llamada]]
+funcion = "0x00307970"
+nombre = "MgPly_St6_Update"
+libro = 0
+clip = -1
+cuadro_inicial = 0
+reproduce = 1
+tabla = "0x004985a4"
+
+[[amc_llamada]]
+funcion = "0x0030a3d0"
+nombre = "MgShoot_St_GameOver"
+libro = 0
+clip = 1301
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x0030a3d0"
+nombre = "MgShoot_St_GameOver"
+libro = 0
+clip = 1302
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x0030b1c0"
+nombre = "MgShoot_St_Intro"
+libro = 0
+clip = 1303
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x0030b410"
+nombre = "MgShoot_St_PreIntro"
+libro = 0
+clip = 1300
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x0030bd90"
+nombre = "MgShoot_Start"
+libro = 1
+clip = 0
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x0030c850"
+nombre = "Camera_SetupFieldOfView"
+libro = 1
+clip = 0
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x0030ccf0"
+nombre = "s_MSN016_UPDATE"
+libro = 1
+clip = 0
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x003130f0"
+nombre = "Mg_StartResultAnimByChar"
+libro = 0
+clip = 1102
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x003130f0"
+nombre = "Mg_StartResultAnimByChar"
+libro = 0
+clip = 1105
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x003130f0"
+nombre = "Mg_StartResultAnimByChar"
+libro = 0
+clip = 1108
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x003130f0"
+nombre = "Mg_StartResultAnimByChar"
+libro = 0
+clip = 1111
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x003130f0"
+nombre = "Mg_StartResultAnimByChar"
+libro = 0
+clip = 1101
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x003130f0"
+nombre = "Mg_StartResultAnimByChar"
+libro = 0
+clip = 1104
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x003130f0"
+nombre = "Mg_StartResultAnimByChar"
+libro = 0
+clip = 1107
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x003130f0"
+nombre = "Mg_StartResultAnimByChar"
+libro = 0
+clip = 1110
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x003130f0"
+nombre = "Mg_StartResultAnimByChar"
+libro = 0
+clip = 1101
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x003130f0"
+nombre = "Mg_StartResultAnimByChar"
+libro = 0
+clip = 1104
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x003130f0"
+nombre = "Mg_StartResultAnimByChar"
+libro = 0
+clip = 1107
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x003130f0"
+nombre = "Mg_StartResultAnimByChar"
+libro = 0
+clip = 1110
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x003130f0"
+nombre = "Mg_StartResultAnimByChar"
+libro = 0
+clip = 1101
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x003130f0"
+nombre = "Mg_StartResultAnimByChar"
+libro = 0
+clip = 1104
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x003130f0"
+nombre = "Mg_StartResultAnimByChar"
+libro = 0
+clip = 1107
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x003130f0"
+nombre = "Mg_StartResultAnimByChar"
+libro = 0
+clip = 1110
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x003130f0"
+nombre = "Mg_StartResultAnimByChar"
+libro = 0
+clip = 1101
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x003130f0"
+nombre = "Mg_StartResultAnimByChar"
+libro = 0
+clip = 1104
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x003130f0"
+nombre = "Mg_StartResultAnimByChar"
+libro = 0
+clip = 1107
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x003130f0"
+nombre = "Mg_StartResultAnimByChar"
+libro = 0
+clip = 1110
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x003130f0"
+nombre = "Mg_StartResultAnimByChar"
+libro = 0
+clip = 1101
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x003130f0"
+nombre = "Mg_StartResultAnimByChar"
+libro = 0
+clip = 1104
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x003130f0"
+nombre = "Mg_StartResultAnimByChar"
+libro = 0
+clip = 1107
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x003130f0"
+nombre = "Mg_StartResultAnimByChar"
+libro = 0
+clip = 1110
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00313a10"
+nombre = "Mg_CheckLastRoundEnd"
+libro = 0
+clip = 350
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00313a10"
+nombre = "Mg_CheckLastRoundEnd"
+libro = 0
+clip = 370
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00313a10"
+nombre = "Mg_CheckLastRoundEnd"
+libro = 0
+clip = 360
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00313a10"
+nombre = "Mg_CheckLastRoundEnd"
+libro = 0
+clip = 340
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x003144f0"
+nombre = "Mg_StartNextRound"
+libro = 0
+clip = -1
+cuadro_inicial = 0
+reproduce = 1
+tabla = "0x0047e290"
+
+[[amc_llamada]]
+funcion = "0x00314c70"
+nombre = "Mg_UpdateGameIntro"
+libro = 0
+clip = 330
+cuadro_inicial = 0
+reproduce = 0
+
+[[amc_llamada]]
+funcion = "0x00314c70"
+nombre = "Mg_UpdateGameIntro"
+libro = 0
+clip = 1109
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00314c70"
+nombre = "Mg_UpdateGameIntro"
+libro = 0
+clip = 1106
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00314c70"
+nombre = "Mg_UpdateGameIntro"
+libro = 0
+clip = 1103
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00314c70"
+nombre = "Mg_UpdateGameIntro"
+libro = 0
+clip = 1100
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00314c70"
+nombre = "Mg_UpdateGameIntro"
+libro = 0
+clip = 1109
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00314c70"
+nombre = "Mg_UpdateGameIntro"
+libro = 0
+clip = 1106
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00314c70"
+nombre = "Mg_UpdateGameIntro"
+libro = 0
+clip = 1103
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00314c70"
+nombre = "Mg_UpdateGameIntro"
+libro = 0
+clip = 1100
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00315d70"
+nombre = "Mg_Start"
+libro = 1
+clip = 0
+cuadro_inicial = 0
+reproduce = 0
+
+[[amc_llamada]]
+funcion = "0x00315d70"
+nombre = "Mg_Start"
+libro = 1
+clip = 0
+cuadro_inicial = 0
+reproduce = 0
+
+[[amc_llamada]]
+funcion = "0x00315d70"
+nombre = "Mg_Start"
+libro = 1
+clip = 0
+cuadro_inicial = 0
+reproduce = 0
+
+[[amc_llamada]]
+funcion = "0x00315d70"
+nombre = "Mg_Start"
+libro = 1
+clip = 0
+cuadro_inicial = 0
+reproduce = 0
+
+[[amc_llamada]]
+funcion = "0x00316810"
+nombre = "Mg_StartIntroAnim"
+libro = 1
+clip = 0
+cuadro_inicial = 0
+reproduce = 0
+
+[[amc_llamada]]
+funcion = "0x00316810"
+nombre = "Mg_StartIntroAnim"
+libro = 1
+clip = 0
+cuadro_inicial = 0
+reproduce = 0
+
+[[amc_llamada]]
+funcion = "0x00316810"
+nombre = "Mg_StartIntroAnim"
+libro = 1
+clip = 0
+cuadro_inicial = 0
+reproduce = 0
+
+[[amc_llamada]]
+funcion = "0x00316810"
+nombre = "Mg_StartIntroAnim"
+libro = 1
+clip = 0
+cuadro_inicial = 0
+reproduce = 0
+
+[[amc_llamada]]
+funcion = "0x00324e30"
+nombre = "Viewer_StateActive"
+libro = 0
+clip = 1001
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00324e30"
+nombre = "Viewer_StateActive"
+libro = 0
+clip = 1002
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00325ab0"
+nombre = "Viewer_StateCountdown"
+libro = 0
+clip = 1003
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00325c30"
+nombre = "Viewer_StateIntro"
+libro = 0
+clip = 1000
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00326450"
+nombre = "Viewer_StartTask"
+libro = 1
+clip = 0
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00327080"
+nombre = "Viewer_SetupCameraLight"
+libro = 1
+clip = 0
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00327590"
+nombre = "s_MSN010_UPDATE"
+libro = 1
+clip = 0
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x0032f0f0"
+nombre = "QteMg_FinalizeResult"
+libro = 0
+clip = 1202
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x0032f0f0"
+nombre = "QteMg_FinalizeResult"
+libro = 0
+clip = 1201
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x0032f0f0"
+nombre = "QteMg_FinalizeResult"
+libro = 0
+clip = 1201
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x0032f0f0"
+nombre = "QteMg_FinalizeResult"
+libro = 0
+clip = 1201
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x0032f0f0"
+nombre = "QteMg_FinalizeResult"
+libro = 0
+clip = 1201
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x0032f0f0"
+nombre = "QteMg_FinalizeResult"
+libro = 0
+clip = 1201
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x0032f0f0"
+nombre = "QteMg_FinalizeResult"
+libro = 0
+clip = 1202
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x0032f0f0"
+nombre = "QteMg_FinalizeResult"
+libro = 0
+clip = 1201
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x0032f0f0"
+nombre = "QteMg_FinalizeResult"
+libro = 0
+clip = 1201
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x0032f0f0"
+nombre = "QteMg_FinalizeResult"
+libro = 0
+clip = 1201
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x0032f0f0"
+nombre = "QteMg_FinalizeResult"
+libro = 0
+clip = 1201
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x0032f0f0"
+nombre = "QteMg_FinalizeResult"
+libro = 0
+clip = 1201
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x0032f0f0"
+nombre = "QteMg_FinalizeResult"
+libro = 0
+clip = 1202
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x0032f0f0"
+nombre = "QteMg_FinalizeResult"
+libro = 0
+clip = 1201
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x0032f0f0"
+nombre = "QteMg_FinalizeResult"
+libro = 0
+clip = 1201
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x0032f0f0"
+nombre = "QteMg_FinalizeResult"
+libro = 0
+clip = 1201
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x0032f0f0"
+nombre = "QteMg_FinalizeResult"
+libro = 0
+clip = 1201
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x0032f0f0"
+nombre = "QteMg_FinalizeResult"
+libro = 0
+clip = 1201
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x0032f0f0"
+nombre = "QteMg_FinalizeResult"
+libro = 0
+clip = 1202
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x0032f0f0"
+nombre = "QteMg_FinalizeResult"
+libro = 0
+clip = 1201
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x0032f0f0"
+nombre = "QteMg_FinalizeResult"
+libro = 0
+clip = 1201
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x0032f0f0"
+nombre = "QteMg_FinalizeResult"
+libro = 0
+clip = 1201
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x0032f0f0"
+nombre = "QteMg_FinalizeResult"
+libro = 0
+clip = 1201
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x0032f0f0"
+nombre = "QteMg_FinalizeResult"
+libro = 0
+clip = 1201
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x0032f0f0"
+nombre = "QteMg_FinalizeResult"
+libro = 0
+clip = 1202
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x0032f0f0"
+nombre = "QteMg_FinalizeResult"
+libro = 0
+clip = 1201
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x0032f0f0"
+nombre = "QteMg_FinalizeResult"
+libro = 0
+clip = 1201
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x0032f0f0"
+nombre = "QteMg_FinalizeResult"
+libro = 0
+clip = 1201
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x0032f0f0"
+nombre = "QteMg_FinalizeResult"
+libro = 0
+clip = 1201
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x0032f0f0"
+nombre = "QteMg_FinalizeResult"
+libro = 0
+clip = 1201
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x0032f0f0"
+nombre = "QteMg_FinalizeResult"
+libro = 0
+clip = 1202
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x0032f0f0"
+nombre = "QteMg_FinalizeResult"
+libro = 0
+clip = 1201
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x0032f0f0"
+nombre = "QteMg_FinalizeResult"
+libro = 0
+clip = 1201
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x0032f0f0"
+nombre = "QteMg_FinalizeResult"
+libro = 0
+clip = 1201
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x0032f0f0"
+nombre = "QteMg_FinalizeResult"
+libro = 0
+clip = 1201
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x0032f0f0"
+nombre = "QteMg_FinalizeResult"
+libro = 0
+clip = 1201
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x0032f8b0"
+nombre = "QteMg_StartResultPhase"
+libro = 0
+clip = 431
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x0032f8b0"
+nombre = "QteMg_StartResultPhase"
+libro = 0
+clip = 430
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00331520"
+nombre = "QteMg_UpdateCountdownPhase"
+libro = 0
+clip = 420
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00331520"
+nombre = "QteMg_UpdateCountdownPhase"
+libro = 0
+clip = 421
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00331c70"
+nombre = "QteMg_UpdateIntroPhase"
+libro = 1
+clip = 0
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00331c70"
+nombre = "QteMg_UpdateIntroPhase"
+libro = 0
+clip = 1200
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00331c70"
+nombre = "QteMg_UpdateIntroPhase"
+libro = 0
+clip = 420
+cuadro_inicial = 0
+reproduce = 0
+
+[[amc_llamada]]
+funcion = "0x003332d0"
+nombre = "Battle_ScreenInit"
+libro = 1
+clip = 0
+cuadro_inicial = 0
+reproduce = 0
+
+[[amc_llamada]]
+funcion = "0x00333e00"
+nombre = "Battle_WaitLoadAndStartAnim"
+libro = 1
+clip = 0
+cuadro_inicial = 0
+reproduce = 0
+
+[[amc_llamada]]
+funcion = "0x003498b0"
+nombre = "Viewer_State_ShootRecoil"
+libro = 0
+clip = 952
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x003498b0"
+nombre = "Viewer_State_ShootRecoil"
+libro = 0
+clip = 951
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x0034a280"
+nombre = "Viewer_State_ShootSetup"
+libro = 0
+clip = 950
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x0034a410"
+nombre = "Viewer_ShootEnter"
+libro = 1
+clip = 0
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x0034aeb0"
+nombre = "Viewer_SetupCameraLight"
+libro = 1
+clip = 0
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x0034b3f0"
+nombre = "s_MSN009_UPDATE"
+libro = 1
+clip = 0
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x0034ce80"
+nombre = "Char_EnterPoseState_0x2b"
+libro = 0
+clip = 391
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00351950"
+nombre = "Mg_ApplyRoundOutcome"
+libro = 0
+clip = 1152
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00351950"
+nombre = "Mg_ApplyRoundOutcome"
+libro = 0
+clip = 1151
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00351950"
+nombre = "Mg_ApplyRoundOutcome"
+libro = 0
+clip = 1152
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00351950"
+nombre = "Mg_ApplyRoundOutcome"
+libro = 0
+clip = 1151
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00351950"
+nombre = "Mg_ApplyRoundOutcome"
+libro = 0
+clip = 1152
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00351950"
+nombre = "Mg_ApplyRoundOutcome"
+libro = 0
+clip = 1151
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00351950"
+nombre = "Mg_ApplyRoundOutcome"
+libro = 0
+clip = 1152
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00351950"
+nombre = "Mg_ApplyRoundOutcome"
+libro = 0
+clip = 1151
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00351950"
+nombre = "Mg_ApplyRoundOutcome"
+libro = 0
+clip = 1152
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00351950"
+nombre = "Mg_ApplyRoundOutcome"
+libro = 0
+clip = 1151
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00351950"
+nombre = "Mg_ApplyRoundOutcome"
+libro = 0
+clip = 1152
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00351950"
+nombre = "Mg_ApplyRoundOutcome"
+libro = 0
+clip = 1151
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00351e20"
+nombre = "Mg_StartRoundSequence"
+libro = 0
+clip = 401
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00351e20"
+nombre = "Mg_StartRoundSequence"
+libro = 0
+clip = 400
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00352760"
+nombre = "Mg_CheckClashOutcome"
+libro = 0
+clip = 391
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00352890"
+nombre = "Mg_SetClashResultPoses"
+libro = 0
+clip = 396
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00352890"
+nombre = "Mg_SetClashResultPoses"
+libro = 0
+clip = 394
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00352890"
+nombre = "Mg_SetClashResultPoses"
+libro = 0
+clip = 394
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00352890"
+nombre = "Mg_SetClashResultPoses"
+libro = 0
+clip = 393
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00352a50"
+nombre = "Mg_StartClashSequence"
+libro = 0
+clip = 392
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00352a50"
+nombre = "Mg_StartClashSequence"
+libro = 0
+clip = 395
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00352a50"
+nombre = "Mg_StartClashSequence"
+libro = 0
+clip = 394
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00352a50"
+nombre = "Mg_StartClashSequence"
+libro = 0
+clip = 392
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x003547a0"
+nombre = "Mg_UpdateIntroPhase"
+libro = 0
+clip = 390
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x003547a0"
+nombre = "Mg_UpdateIntroPhase"
+libro = 0
+clip = 391
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00354e50"
+nombre = "Mg_UpdateOpeningPhase"
+libro = 1
+clip = 0
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00354e50"
+nombre = "Mg_UpdateOpeningPhase"
+libro = 0
+clip = 1150
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00354e50"
+nombre = "Mg_UpdateOpeningPhase"
+libro = 0
+clip = 390
+cuadro_inicial = 0
+reproduce = 0
+
+[[amc_llamada]]
+funcion = "0x00357180"
+nombre = "Mg_Init"
+libro = 1
+clip = 0
+cuadro_inicial = 0
+reproduce = 0
+
+[[amc_llamada]]
+funcion = "0x00358160"
+nombre = "Mg_FinishLoadAndStartUi"
+libro = 1
+clip = 0
+cuadro_inicial = 0
+reproduce = 0
+
+[[amc_llamada]]
+funcion = "0x00358ff0"
+nombre = "Char_EnterPoseState0x2a"
+libro = 0
+clip = 391
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00377a00"
+nombre = "Mg_StartResultAnim"
+libro = 0
+clip = 803
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00377a00"
+nombre = "Mg_StartResultAnim"
+libro = 0
+clip = 802
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00377a00"
+nombre = "Mg_StartResultAnim"
+libro = 0
+clip = 803
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00377a00"
+nombre = "Mg_StartResultAnim"
+libro = 0
+clip = 802
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00377a00"
+nombre = "Mg_StartResultAnim"
+libro = 0
+clip = 803
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00377a00"
+nombre = "Mg_StartResultAnim"
+libro = 0
+clip = 802
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00377a00"
+nombre = "Mg_StartResultAnim"
+libro = 0
+clip = 803
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00377a00"
+nombre = "Mg_StartResultAnim"
+libro = 0
+clip = 802
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00377a00"
+nombre = "Mg_StartResultAnim"
+libro = 0
+clip = 803
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00377a00"
+nombre = "Mg_StartResultAnim"
+libro = 0
+clip = 802
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00377a00"
+nombre = "Mg_StartResultAnim"
+libro = 0
+clip = 803
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00377a00"
+nombre = "Mg_StartResultAnim"
+libro = 0
+clip = 802
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00377f10"
+nombre = "Mg_IntroScreenSetup"
+libro = 0
+clip = 151
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00377f10"
+nombre = "Mg_IntroScreenSetup"
+libro = 0
+clip = 151
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x003787c0"
+nombre = "Mg_UpdateRoundStart"
+libro = 0
+clip = 151
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x003788e0"
+nombre = "Mg_EnterResultPhase"
+libro = 0
+clip = 154
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x003788e0"
+nombre = "Mg_EnterResultPhase"
+libro = 0
+clip = 154
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00378cc0"
+nombre = "Mg_ResetRoundState"
+libro = 0
+clip = 152
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00379e30"
+nombre = "Mg_UpdateRoundState"
+libro = 0
+clip = 150
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x00379e30"
+nombre = "Mg_UpdateRoundState"
+libro = 0
+clip = 151
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x0037a2d0"
+nombre = "Mg_UpdateIntroSequence"
+libro = 1
+clip = 0
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x0037a2d0"
+nombre = "Mg_UpdateIntroSequence"
+libro = 1
+clip = 1
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x0037a2d0"
+nombre = "Mg_UpdateIntroSequence"
+libro = 0
+clip = 801
+cuadro_inicial = 0
+reproduce = 1
+
+[[amc_llamada]]
+funcion = "0x0037c080"
+nombre = "Mg_Start"
+libro = 1
+clip = 0
+cuadro_inicial = 0
+reproduce = 0
+
+[[amc_llamada]]
+funcion = "0x0037cf60"
+nombre = "Mg_SetupCameraAndAnim"
+libro = 1
+clip = 0
+cuadro_inicial = 0
+reproduce = 0
+

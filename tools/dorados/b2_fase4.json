@@ -1,47 +1,118 @@
 {
  "modo": "b2",
  "escena": "fase4",
- "fuente": "PCSX2 PINE, A2\\sstates\\fase4.p2s (lista de aliados), 110.0 s",
- "estado": "fase4.p2s",
- "teclas": "cap=lista z espera2000 down espera800 z espera2500 cap=dialogo up espera800 z espera7000 cap=aliado espera1000 z espera4000 cap=p1 z espera9000 cap=p2 z espera9000 cap=p3 espera20000 cap=final",
- "seg": 110.0,
+ "fuente": "PCSX2 PINE por reloj, una entrada por tarea (grabar_fases.py --tareas), 230.0 s",
+ "estado": "E:\\DBZ3HD_trabajo\\A2\\sstates\\fase4.p2s",
+ "teclas": "z espera2000 down espera800 z espera2500 up espera800 z espera7000 z espera1500 z espera8000 z espera1500 z espera1500 z espera1500 z espera1500 z espera1500 z espera1500 z espera1500 z espera1500 z espera1500 z espera1500 z espera1500 z espera1500  start espera4000 a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z  z espera1500 z espera8000 z espera1500 z espera8000 z espera1500 z espera8000 z espera1500 z espera8000 espera10000",
+ "seg": 230.0,
  "secuencia": [
   5,
   1,
-  5
+  70,
+  62,
+  62,
+  61,
+  62,
+  75,
+  61,
+  62,
+  61,
+  62,
+  58,
+  59,
+  36,
+  1,
+  84,
+  62,
+  62,
+  58,
+  62,
+  58,
+  75,
+  62,
+  62,
+  59,
+  53,
+  36,
+  1,
+  84
+ ],
+ "tiempos": [
+  17.82,
+  17.82,
+  111.15,
+  176.81,
+  176.84,
+  177.05,
+  177.05,
+  177.3,
+  177.3,
+  177.3,
+  177.54,
+  177.54,
+  177.79,
+  177.82,
+  178.65,
+  178.65,
+  178.65,
+  207.99,
+  208.05,
+  208.08,
+  208.11,
+  208.33,
+  208.36,
+  208.36,
+  208.6,
+  208.85,
+  209.68,
+  209.68,
+  209.68,
+  209.71
+ ],
+ "sitios": [
+  "3B67B0@1",
+  "3B6A30@2",
+  "3B6330@3",
+  "3B7CB0@4",
+  "3B7E30@5",
+  "3B7EB0@6",
+  "3B8430@7",
+  "3B8330@8",
+  "3B87B0@9",
+  "3B81B0@10",
+  "3B83B0@11",
+  "3B8030@12",
+  "3B8F30@13",
+  "3B8FB0@14",
+  "3B9030@15",
+  "3B90B0@16",
+  "3B91B0@17",
+  "3B9230@18",
+  "3B8730@19",
+  "3B6D30@20",
+  "3B9330@21",
+  "3B92B0@22",
+  "3B9F30@23",
+  "3BA030@24",
+  "3B9FB0@25",
+  "3BA0B0@26",
+  "3BA2B0@27",
+  "3BA130@28",
+  "3BA230@29",
+  "3BA330@30"
  ],
  "recuento": {
-  "1": 1,
-  "5": 740
+  "1": 3,
+  "5": 605,
+  "36": 2,
+  "53": 1,
+  "58": 3,
+  "59": 2,
+  "61": 3,
+  "62": 10,
+  "70": 287,
+  "75": 2,
+  "84": 438
  },
- "capturas": [
-  {
-   "original": "C:\\Users\\javie\\Desktop\\PROYECTOS IA\\DBZ Budokai 3 HD Collection\\studies 5\\ENTREGAS\\A2\\evidencias\\original_fase4_lista.png",
-   "port": "fase4_lista"
-  },
-  {
-   "original": "C:\\Users\\javie\\Desktop\\PROYECTOS IA\\DBZ Budokai 3 HD Collection\\studies 5\\ENTREGAS\\A2\\evidencias\\original_fase4_dialogo.png",
-   "port": "fase4_dialogo"
-  },
-  {
-   "original": "C:\\Users\\javie\\Desktop\\PROYECTOS IA\\DBZ Budokai 3 HD Collection\\studies 5\\ENTREGAS\\A2\\evidencias\\original_fase4_aliado.png",
-   "port": "fase4_aliado"
-  },
-  {
-   "original": "C:\\Users\\javie\\Desktop\\PROYECTOS IA\\DBZ Budokai 3 HD Collection\\studies 5\\ENTREGAS\\A2\\evidencias\\original_fase4_p1.png",
-   "port": "fase4_p1"
-  },
-  {
-   "original": "C:\\Users\\javie\\Desktop\\PROYECTOS IA\\DBZ Budokai 3 HD Collection\\studies 5\\ENTREGAS\\A2\\evidencias\\original_fase4_p2.png",
-   "port": "fase4_p2"
-  },
-  {
-   "original": "C:\\Users\\javie\\Desktop\\PROYECTOS IA\\DBZ Budokai 3 HD Collection\\studies 5\\ENTREGAS\\A2\\evidencias\\original_fase4_p3.png",
-   "port": "fase4_p3"
-  },
-  {
-   "original": "C:\\Users\\javie\\Desktop\\PROYECTOS IA\\DBZ Budokai 3 HD Collection\\studies 5\\ENTREGAS\\A2\\evidencias\\original_fase4_final.png",
-   "port": "fase4_final"
-  }
- ]
+ "capturas": []
 }

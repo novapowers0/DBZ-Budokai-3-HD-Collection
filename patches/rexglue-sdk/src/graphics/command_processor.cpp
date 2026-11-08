@@ -90,6 +90,16 @@ REXCVAR_DEFINE_DOUBLE(dbz3_rim_light_scale, 1.0, "DBZ3/Video",
                       "Strength of the HD rim light on character models (0 = off, 1 = original)")
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
 
+REXCVAR_DEFINE_BOOL(dbz3_sky_follow, false, "DBZ3/Video",
+                    "eIW8: el domo del cielo del Camino de la Serpiente (IW) se dibuja centrado en el ojo, como "
+                    "Stage_DrawCameraFollowModel (EU 0x1E2880). Lo pone el minijuego; solo D3D12.")
+    .lifecycle(rex::cvar::Lifecycle::kHotReload);
+
+REXCVAR_DEFINE_BOOL(dbz3_cp_event_wait, true, "DBZ3/Dev",
+                    "DBZ3 (dsPCPU): el hilo del command processor espera en el evento del anillo "
+                    "(lo despierta el guest al mover el puntero) en vez de girar con SwitchToThread.")
+    .lifecycle(rex::cvar::Lifecycle::kHotReload);
+
 namespace rex::graphics {
 
 // The B3 HD model vertex shaders write the rim light strength as
@@ -189,6 +199,9 @@ void CommandProcessor::CallInThread(std::function<void()> fn) {
     fn();
   } else {
     pending_fns_.push(std::move(fn));
+    // DBZ3 (dsPCPU): despertar al hilo si esta esperando en el evento (nuevo modo
+    // dbz3_cp_event_wait); con el giro antiguo no hacia falta.
+    write_ptr_index_event_->Set();
   }
 }
 
@@ -240,24 +253,36 @@ void CommandProcessor::WorkerThreadMain() {
     uint32_t write_ptr_index = write_ptr_index_.load();
     if (write_ptr_index == 0xBAADF00D || read_ptr_index_ == write_ptr_index) {
       SCOPE_profile_cpu_i("gpu", "rex::graphics::CommandProcessor::Stall");
-      // We've run out of commands to execute.
-      // We spin here waiting for new ones, as the overhead of waiting on our
-      // event is too high.
+      // We've run out of commands to execute. Esperamos a que el guest produzca
+      // mas (ver dbz3_cp_event_wait en el brazo de abajo).
       PrepareForWait();
-      uint32_t loop_count = 0;
-      do {
-        // If we spin around too much, revert to a "low-power" state.
-        if (loop_count > 500) {
-          const int wait_time_ms = 5;
+      if (REXCVAR_GET(dbz3_cp_event_wait)) {
+        // DBZ3 (dsPCPU): el puntero de escritura solo cambia en UpdateWritePointer, que
+        // ademas senaliza este evento: dormir en el desde el principio despierta igual de
+        // rapido y evita el trafico de SwitchToThread mientras no hay comandos.
+        const int wait_time_ms = 5;
+        do {
           rex::thread::Wait(write_ptr_index_event_.get(), true,
                             std::chrono::milliseconds(wait_time_ms));
-        }
+          write_ptr_index = write_ptr_index_.load();
+        } while (worker_running_ && pending_fns_.empty() &&
+                 (write_ptr_index == 0xBAADF00D || read_ptr_index_ == write_ptr_index));
+      } else {
+        uint32_t loop_count = 0;
+        do {
+          // If we spin around too much, revert to a "low-power" state.
+          if (loop_count > 500) {
+            const int wait_time_ms = 5;
+            rex::thread::Wait(write_ptr_index_event_.get(), true,
+                              std::chrono::milliseconds(wait_time_ms));
+          }
 
-        rex::thread::MaybeYield();
-        loop_count++;
-        write_ptr_index = write_ptr_index_.load();
-      } while (worker_running_ && pending_fns_.empty() &&
-               (write_ptr_index == 0xBAADF00D || read_ptr_index_ == write_ptr_index));
+          rex::thread::MaybeYield();
+          loop_count++;
+          write_ptr_index = write_ptr_index_.load();
+        } while (worker_running_ && pending_fns_.empty() &&
+                 (write_ptr_index == 0xBAADF00D || read_ptr_index_ == write_ptr_index));
+      }
       ReturnFromWait();
       if (!worker_running_ || !pending_fns_.empty()) {
         continue;

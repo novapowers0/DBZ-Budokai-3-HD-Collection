@@ -36,7 +36,14 @@ constexpr int kSerie = 17;   // registros de serie (0..16)
 void CargarDeMods(rex::memory::Memory* memory);
 // Registros disponibles: 17 de serie + altas de mods.
 int Total();
-int Visibles();   // altas con casilla en el selector (las primeras; los campos de IW quedan fuera)
+int Visibles();
+// Selector del Duelo: 11 casillas nuevas; con mas altas el carrusel se desplaza sin fin por todas (sin paginas).
+constexpr int kCeldas = 11;
+int Cuantos();    // escenarios que recorre el desplazamiento continuo (0 = caben todos: selector de siempre)
+int Posicion();   // escenario del cursor dentro de esos (0..Cuantos()-1), para la barra de la interfaz
+int RegistroSelector();          // registro que mira el cursor del selector (-1 = ninguno)
+std::string Origen(int registro);   // "B3" (nativos), "B1", "B2", "IW", "SB" o "Mod"; "" fuera de rango
+// Visibles: altas con casilla en el selector (las primeras; los campos de IW quedan fuera)
 // true si hay un alta de mod puesta en el registro anfitrion, o sea, el escenario cargado es un alta
 // (frente 05: lo usa el bloqueo del cambio de zona del motor en escenarios.cpp).
 bool AltaActiva();
@@ -65,5 +72,8 @@ bool EscenaDeZona();
 bool TransicionB2Activa(); // el límite de distancia nativo se omite durante una escena, como mgr+35204
 // NB006 (IW): apaga SOLO la geometria/cielo del escenario (bit 0 de G+0x4C), sin tocar a los luchadores.
 void OcultarFondo(bool ocultar);
+
+// eB2f: IK de suelo de B2 (escenarios_b2_ik.inl); apagado salvo DBZ3_TEST_B2_IK_SUELO=1.
+namespace b2ik { void AplicarActor(uint8_t* base, uint32_t x); void RestaurarIkB3(uint8_t* base); void AplicarMirada(uint8_t* base, uint32_t x, uint32_t rival, double cuadro); }  // eB2g: mirada (DBZ3_TEST_B2_MIRADA, apagado)
 
 }  // namespace dbz3::escenarios

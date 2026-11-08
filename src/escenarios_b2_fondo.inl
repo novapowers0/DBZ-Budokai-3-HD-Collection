@@ -1,7 +1,8 @@
 // Consumidor de raíces B2 sobre los controladores reales HD (registro32B).
 // BE1D0/BDFA8: +8 controlador, [0]modelo,[1]tiempo,[6]modo,[7]mezcla.
+#include "escenarios_b2_tareas.inl"
 struct B2FondoHD {
-  struct Raiz { uint32_t amm=0,registro=0,control=0,modelo=0,ultimo_fx=~0u; bool pistas=false,por_guion=false; std::array<uint8_t,32> antes{}; };
+  struct Raiz { uint32_t amm=0,registro=0,control=0,uv=0,modelo=0,ultimo_fx=~0u; bool pistas=false,por_guion=false; std::array<uint8_t,32> antes{},antes_uv{}; };
   struct Copia {uint32_t p=0;std::vector<uint8_t> bytes;};
   std::vector<Raiz> raices;
   std::vector<Copia> copias;
@@ -12,6 +13,7 @@ struct B2FondoHD {
   std::vector<uint32_t> instancias_fx;
   struct AnclajeFx {uint32_t fx=0,raiz=0,hueso=0;bool seguir=false,anclado=false;};
   std::map<uint32_t,AnclajeFx> tareas_fx;
+#include "escenarios_b2_robot.inl"
   bool CargarFx(PPCContext& ctx,uint8_t* base,const b2::Recurso& r) {
     if(banco_fx)return true;
     const auto v=r.Bloque(10);
@@ -71,14 +73,18 @@ struct B2FondoHD {
       REXLOG_WARN("dbz3 B2 raices: original={} HD={}; reconstruir pack con todas las raices",raices.size(),n);
       return false;
     }
-    a.registro=p+32*i;a.control=REX_LOAD_U32(a.registro+8);
-    if(!a.control)return true; // raíz sin AMM: sí puede cambiar su visibilidad
-    if(a.control<0x10000000u||a.control>=0xf0000000u)return false;
-    a.modelo=REX_LOAD_U32(a.control);
-    if(a.modelo<0x10000000u||a.modelo>=0xf0000000u)return false;
-    std::memcpy(a.antes.data(),base+a.control,32);
-    REXLOG_INFO("dbz3 B2 raiz: id={} registro={:08X} control={:08X} modelo={:08X} modo={} mezcla={:.3f}",
-                i,a.registro,a.control,a.modelo,REX_LOAD_U32(a.control+24),LeeFl(a.control+28));
+    const uint32_t registro=p+32*i,control=REX_LOAD_U32(registro+8),uv=REX_LOAD_U32(registro+12);
+    if((control&&(control<0x10000000u||control>=0xf0000000u))||
+       (uv&&(uv<0x10000000u||uv>=0xf0000000u)))return false;
+    const uint32_t modelo=control?REX_LOAD_U32(control):0;
+    if(control&&(modelo<0x10000000u||modelo>=0xf0000000u))return false;
+    a.registro=registro;a.control=control;a.uv=uv;a.modelo=modelo;
+    if(uv)std::memcpy(a.antes_uv.data(),base+uv,32);
+    if(control) {
+      std::memcpy(a.antes.data(),base+control,32);
+      REXLOG_INFO("dbz3 B2 raiz: id={} registro={:08X} control={:08X} modelo={:08X} modo={} mezcla={:.3f}",
+                  i,a.registro,a.control,a.modelo,REX_LOAD_U32(a.control+24),LeeFl(a.control+28));
+    }
     return true;
   }
   bool Pistas(uint8_t* base,const b2::Recurso& r,Raiz& a) {
@@ -117,14 +123,22 @@ struct B2FondoHD {
     auto& a=raices[i];const int modo=b2vm::Signo(p[2]);
     a.por_guion=true;
     PPCContext c=ctx;
-    if(modo==-1){c.r3.u64=0;c.r4.u64=i;sub_820BFBA8(c,base);}
+    if(modo==-1) {
+      unsigned eliminadas=0;
+      if(!B2TareasHD::Eliminar(a.registro,
+          [&](uint32_t p){return REX_LOAD_U32(p);},
+          [&](uint32_t t){PPCContext q=ctx;q.r3.u64=t;sub_820BD570(q,base);},eliminadas))return false;
+      REXLOG_INFO("dbz3 B2 raiz: eliminacion PAL id={} tareas={}",i,eliminadas);
+    }
     else {c.r3.u64=i;sub_820C1390(c,base);}
-    if(!a.control)return true;
-    if(modo>0&&!Pistas(base,r,a))return false;
-    const float tiempo=b2vm::Float(p[1]);
-    if(tiempo>=0)REX_STORE_U32(a.control+4,b2vm::Bits(float(int(tiempo))));
-    c=ctx;c.r3.u64=a.registro;sub_820BE1D0(c,base);
-    REX_STORE_U32(a.control+24,modo>0?uint32_t(modo)&3:0);
+    if(a.control) {
+      if(modo>0&&!Pistas(base,r,a))return false;
+      const float tiempo=b2vm::Float(p[1]);
+      // PAL1B908C hace SWC1: conserva los bits del tiempo, sin pasar por entero.
+      if(tiempo>=0)REX_STORE_U32(a.control+4,p[1]);
+      c=ctx;c.r3.u64=a.registro;sub_820BE1D0(c,base);
+      REX_STORE_U32(a.control+24,modo>0?uint32_t(modo)&3:0);
+    }
     // El controlador UV es independiente, tal como1B8FF0 (no confundirlo con AMM).
     const uint32_t uv=REX_LOAD_U32(a.registro+12);
     if(uv) {
@@ -199,6 +213,11 @@ struct B2FondoHD {
       std::memcpy(base+a.control,a.antes.data(),32);
       PPCContext c=ctx;c.r3.u64=a.registro;sub_820BE1D0(c,base);
       std::memcpy(base+a.control,a.antes.data(),32);
+    }
+    for(const auto& a:raices)if(a.uv&&REX_LOAD_U32(a.registro+12)==a.uv) {
+      std::memcpy(base+a.uv,a.antes_uv.data(),32);
+      PPCContext c=ctx;c.r3.u64=a.registro;sub_820BD628(c,base);
+      std::memcpy(base+a.uv,a.antes_uv.data(),32);
     }
     copias.clear();
     for(uint32_t p:instancias_fx)if((REX_LOAD_U32(p+8)&0x02000002)==0x02000002) {

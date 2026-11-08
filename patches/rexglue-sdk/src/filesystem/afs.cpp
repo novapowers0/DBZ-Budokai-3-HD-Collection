@@ -358,6 +358,8 @@ bool g_mod_dirs_scanned = false;
 // override). Antes cada lectura hacia 2 stat por mod instalado, con el mutex
 // tomado; se vacia al reescanear los mods.
 std::unordered_map<std::string, std::filesystem::path> g_override_cache;
+// ePRU 5/11: indice de overrides por AFS (nombre de fichero -> {entrada -> ruta}); se vacia al reescanear los mods.
+std::unordered_map<std::string, std::unordered_map<int64_t, std::filesystem::path>> g_ov_index;
 
 void ScanModDirs() {
   std::lock_guard<std::mutex> lock(g_mod_dirs_mutex);
@@ -366,6 +368,7 @@ void ScanModDirs() {
   }
   g_mod_dirs_cache.clear();
   g_override_cache.clear();
+  g_ov_index.clear();
   const std::filesystem::path mods_root = AfsModsRoot();
   std::error_code ec;
   if (std::filesystem::is_directory(mods_root, ec)) {
@@ -419,6 +422,36 @@ static std::filesystem::path FirstFileIn(const std::filesystem::path& dir) {
   return first;
 }
 
+// ePRU 5/11: indice de overrides de UN AFS (mods/<mod>/us/<afs>/<N> como fichero o carpeta), construido con UN
+// listado por mod. El constructor de la tabla virtual preguntaba entrada a entrada (miles de entradas x cada mod x 2
+// stat): con 40 mods eran ~15 s de arranque. Mismo resultado que FindModOverrideQuiet: gana el primer mod en orden;
+// <N> es el decimal canonico (sin ceros a la izquierda). g_mod_dirs_mutex tomado.
+const std::unordered_map<int64_t, std::filesystem::path>& OverrideIndex(const std::filesystem::path& host_path) {
+  const std::string afs_key = host_path.filename().string();
+  if (const auto hit = g_ov_index.find(afs_key); hit != g_ov_index.end()) return hit->second;
+  auto& idx = g_ov_index[afs_key];   // se queda (aunque vacio) hasta el siguiente reescaneo de mods
+  const std::string afs_name = host_path.filename().string();
+  for (const auto& mod_dir : g_mod_dirs_cache) {
+    std::error_code ec;
+    const auto dir = mod_dir / "us" / afs_name;
+    if (!std::filesystem::is_directory(dir, ec)) continue;
+    for (std::filesystem::directory_iterator it(dir, ec); !ec && it != std::filesystem::directory_iterator();
+         it.increment(ec)) {
+      const std::string name = it->path().filename().string();
+      if (name.empty() || name.size() > 9 || name.find_first_not_of("0123456789") != std::string::npos) continue;
+      const int64_t n = std::stoll(name);
+      if (std::to_string(n) != name || idx.count(n)) continue;
+      std::error_code fec;
+      if (it->is_regular_file(fec)) {
+        idx.emplace(n, it->path());
+      } else if (it->is_directory(fec)) {
+        if (const auto first = FirstFileIn(it->path()); !first.empty()) idx.emplace(n, first);
+      }
+    }
+  }
+  return idx;
+}
+
 // Look for a mod-provided replacement for the given AFS entry. A mod is a
 // subfolder under <exe>/mods/<mod>/us/<afs_filename>/<entry_index>. The first
 // match (alphabetical mod order) wins. Returns true and fills out_path if found.
@@ -447,6 +480,17 @@ bool AfsFindModOverride(const std::filesystem::path& host_path, int entry_index,
       out_path = cached->second;
       return true;
     }
+  }
+  if (!log_override_lookups) {
+    const auto& ix = OverrideIndex(host_path);
+    const auto f = ix.find(entry_index);
+    if (f == ix.end()) {
+      g_override_cache[cache_key].clear();
+      return false;
+    }
+    out_path = f->second;
+    g_override_cache[cache_key] = out_path;
+    return true;
   }
   for (const auto& mod_dir : g_mod_dirs_cache) {
     auto candidate = mod_dir / "us" / afs_name / entry_name;
@@ -540,7 +584,7 @@ std::map<std::string, VirtualAfsLayout> g_vafs_cache;
 
 // Non-logging override lookup (used by the virtual table builder, which probes
 // every entry of the AFS). g_mod_dirs_mutex must be held.
-bool FindModOverrideQuiet(const std::filesystem::path& host_path, int entry_index,
+[[maybe_unused]] bool FindModOverrideQuiet(const std::filesystem::path& host_path, int entry_index,
                           std::filesystem::path& out_path) {
   const std::string afs_name = host_path.filename().string();
   const std::string entry_name = std::to_string(entry_index);
@@ -620,6 +664,13 @@ const VirtualAfsLayout* GetOrLoadVirtualAfs(const std::filesystem::path& host_pa
   layout.phys_addrs.resize(count);
   layout.delta.resize(count);
   layout.mod_paths.resize(count);
+  const auto& ov_index = OverrideIndex(host_path);
+  const auto find_override = [&ov_index](int i, std::filesystem::path& out) {
+    const auto f = ov_index.find(i);
+    if (f == ov_index.end()) return false;
+    out = f->second;
+    return true;
+  };
 
   // Build the virtual table: for each entry, if it has an override file larger
   // than the physical slot, the entry grows to the override size (aligned to
@@ -654,7 +705,7 @@ const VirtualAfsLayout* GetOrLoadVirtualAfs(const std::filesystem::path& host_pa
     uint64_t virt_size = phys_size;
 
     std::filesystem::path mod_path;
-    if (FindModOverrideQuiet(host_path, int(i), mod_path)) {
+    if (find_override(int(i), mod_path)) {
       std::error_code ec;
       const uint64_t fsz = std::filesystem::file_size(mod_path, ec);
       layout.mod_paths[i] = mod_path;
@@ -689,7 +740,7 @@ const VirtualAfsLayout* GetOrLoadVirtualAfs(const std::filesystem::path& host_pa
     for (size_t i = phys_count; i < count; ++i) {
       std::filesystem::path mod_path;
       uint64_t fsz = 0;
-      if (FindModOverrideQuiet(host_path, int(i), mod_path)) {
+      if (find_override(int(i), mod_path)) {
         std::error_code fec;
         fsz = std::filesystem::file_size(mod_path, fec);
         if (fec) {
@@ -878,25 +929,12 @@ int AfsTranslateOffset(const std::filesystem::path& host_path, uint64_t virtual_
   out_physical_offset = virtual_offset - layout->delta[found];
 
   // If the entry has a mod override, return the mod file path.
-  const std::string afs_name = host_path.filename().string();
-  const std::string entry_name = std::to_string(found);
   ScanModDirs();
   std::lock_guard<std::mutex> lock(g_mod_dirs_mutex);
-  for (const auto& mod_dir : g_mod_dirs_cache) {
-    auto candidate = mod_dir / "us" / afs_name / entry_name;
-    std::error_code ec;
-    if (std::filesystem::is_regular_file(candidate, ec)) {
-      out_override_path = candidate;
-      out_override_mod_offset = virtual_offset - start;
-      return found;
-    }
-    if (std::filesystem::is_directory(candidate, ec)) {
-      if (const auto first = FirstFileIn(candidate); !first.empty()) {
-        out_override_path = first;
-        out_override_mod_offset = virtual_offset - start;
-        return found;
-      }
-    }
+  const auto& ix = OverrideIndex(host_path);   // ePRU 5/11: antes 2 stat por mod en cada lectura
+  if (const auto f = ix.find(found); f != ix.end()) {
+    out_override_path = f->second;
+    out_override_mod_offset = virtual_offset - start;
   }
   return found;
 }

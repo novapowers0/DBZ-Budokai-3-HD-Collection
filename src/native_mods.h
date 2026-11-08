@@ -44,10 +44,10 @@ bool IsSupportedNativeSave(const std::filesystem::path& save);
 // "Partida al 100%": template shipped in <exe>/mods_nativos/partida_100
 // (data.bin + DBZ3.header of a complete Xbox 360 save, same title 4E4D0856).
 bool Save100Available();
-// Copies the whole current profile folders to user_data/respaldos_partida/<date>
-// and then installs the template atomically (temp file + rename).
-bool ApplySave100(std::string& message);
+// Backs up B3 data/header only, then installs the template. Refuses while the
+// game or another dbz3 process is open. The launcher supplies its F4 state.
+bool ApplySave100(std::string& message, bool in_game = false);
 // Puts back the most recent backup made by ApplySave100.
-bool RestoreLastSaveBackup(std::string& message);
+bool RestoreLastSaveBackup(std::string& message, bool in_game = false);
 
 }  // namespace dbz3

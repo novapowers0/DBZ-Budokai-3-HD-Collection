@@ -3,18 +3,68 @@
 Los mods nativos cambian el progreso o el comportamiento del juego. Son una
 categoria distinta de los mods AFS de modelos, texturas, audio y movesets.
 
-## Catalogo inicial
+## Catalogo actual
 
-El launcher ya reserva el catalogo para:
+- `Desbloquear todo`: **disponible**. Instala una partida completa de Xbox 360
+  (personajes, trajes, capsulas y modos) y permite restaurar la partida anterior.
+- `Vida infinita` y `Ki infinito`: **sin codigo encontrado**. No aparecen en el
+  launcher actual porque no hay un parche validado para este port.
 
-- `Guardar al 100%`: objetos, tecnicas y contenido permanente.
-- `Vida infinita`: vida del jugador durante los combates.
-- `Ki infinito`: ki del jugador durante los combates.
+No se aplican offsets de GameShark de PS2 directamente: esos codigos parchean la
+memoria MIPS de PS2 y no son offsets del save ni del guest PowerPC.
 
-Estos candidatos aparecen como **En investigacion** hasta que se valide su
-implementacion en la version Xbox 360/ReXGlue. No se aplican offsets de
-GameShark de PS2 directamente: esos codigos parchean la memoria MIPS de PS2 y
-no son offsets del save ni del guest PowerPC.
+## Desbloquear todo y restaurar tu partida (jugador)
+
+Con el juego cerrado, pulsa **Desbloquear todo** en la parte inferior del
+launcher y confirma. Instala la partida completa de Budokai 3 para US o EU:
+personajes, trajes, capsulas y modos. **Sustituye tu progreso del juego
+original**, pero antes guarda una copia automatica. El progreso del **Heroe y de
+Tag Team se conserva**.
+
+Para volver a tu partida anterior, abre el mismo boton, elige **Restaurar mi
+partida** y confirma. La partida que tenias en ese momento tambien se guarda
+aparte antes de sustituirla.
+
+- Las copias estan en `user_data/dbz3/respaldos_partida` (o en la carpeta de
+  datos que indique el launcher). La restauracion guarda la partida sustituida
+  en `antes_restaurar`.
+- Si antes de desbloquear no tenias partida, restaurar deja otra vez la
+  instalacion sin partida.
+- Si falta `mods_nativos\partida_100` junto a `dbz3.exe`, reinstala la version
+  completa.
+- No se puede aplicar ni restaurar con el juego abierto o con otra ventana de
+  `dbz3.exe` de la misma instalacion en marcha.
+- Si el cambio se interrumpe, el launcher pide usar **Restaurar mi partida**
+  antes de volver a desbloquear. Un respaldo danado o no verificable no se
+  restaura; los respaldos antiguos sin checksum quedan para recuperacion manual.
+- Si falta espacio o un programa bloquea los archivos, el launcher lo indica y
+  no deja la partida a medias.
+
+## Unlock everything and restore your save (player guide)
+
+Close the game, click **Unlock everything** at the bottom of the launcher and
+confirm. This installs the complete Budokai 3 save for US or EU: characters,
+costumes, capsules and modes. It **replaces your original-game progress**, but
+an automatic backup is made first. **Hero and Tag Team progress is preserved.**
+
+To return to your previous save, open the same button, choose **Restore my
+save** and confirm. The save you had at that moment is also backed up before it
+is replaced.
+
+- Backups are stored in `user_data/dbz3/respaldos_partida` (or the data folder
+  shown by the launcher). Restoring also backs up the replaced save in
+  `antes_restaurar`.
+- If you had no save before unlocking, restoring leaves the installation with
+  no save again.
+- If `mods_nativos\partida_100` is missing next to `dbz3.exe`, reinstall the
+  complete release.
+- You cannot apply or restore while the game is running or while another
+  `dbz3.exe` window from the same installation is open.
+- If the change is interrupted, the launcher asks you to use **Restore my save**
+  before unlocking again. A damaged or unverifiable backup is not restored;
+  older backups without checksums are kept for manual recovery.
+- If disk space is low or a program locks the files, the launcher says so and
+  does not leave the save half-written.
 
 ## Investigacion Xenia
 
@@ -35,9 +85,9 @@ El ReXGlue usado por este proyecto tampoco incluye el lector de
 distinto de parche XEX (`default.xexp`), pero eso no equivale a un cheat y no se
 puede copiar directamente al codegen dual de este proyecto.
 
-Por eso `Vida infinita` y `Ki infinito` aparecen como **Sin codigo encontrado**.
-No existe actualmente una instruccion del tipo "activa este cheat y tendras
-todo" que podamos recomendar honestamente para este port.
+Por eso `Vida infinita` y `Ki infinito` siguen **sin codigo encontrado** y no se
+ofrecen en el launcher. No existe actualmente una instruccion del tipo "activa
+este cheat y tendras todo" que podamos recomendar honestamente para este port.
 
 La via Xenia sigue siendo viable como referencia de formato: si se descubre un
 parche para `4E4D0856`, habria que convertir sus escrituras a hooks/cambios del
@@ -49,14 +99,14 @@ El runtime almacena el contenido del juego bajo `user_data/dbz3/`, con una
 carpeta de perfil, title id, tipo de contenido y nombre de paquete. El archivo
 de progreso observado es `DBZ3/data.bin` y comienza por `#SPF 1.0`.
 
-Antes de implementar un modificador se deben obtener saves diferenciales del
-port: partida nueva, compra de una capsula, compra de una tecnica, desbloqueo
-de un personaje y save completo. Asi se pueden identificar flags y checksums
-sin asumir que el formato PS2 sea reutilizable.
-
-El launcher detecta los `data.bin` reconocibles y permite crear una copia
-`data.bin.native.bak`. La copia de seguridad es previa a cualquier futuro
-transformador y no modifica el save original.
+El desbloqueo actual sustituye solo `data.bin` y `DBZ3.header` del titulo
+`4E4D0856`; no toca el Heroe/HUB ni el historial de Tag Team. Antes de escribir
+crea una carpeta `respaldos_partida/v2_*` con inventario, tamano y checksum
+XXH3-128 de cada archivo, y recuerda con `.absent` si la partida no existia.
+El marcador `pending` permite recuperar un corte antes de la primera
+sustitucion. Restaurar valida todos los archivos, guarda la partida sustituida
+en `antes_restaurar` y rechaza un respaldo danado. Los respaldos antiguos sin
+checksum se conservan, pero no se restauran automaticamente.
 
 ## Regla de seguridad
 

@@ -21,6 +21,19 @@ Texture2D<float> dbz3_scene_depth : register(t1);
 float4 main(float2 xe_texcoord : TEXCOORD0, float xe_depth : TEXCOORD1, float4 xe_color : COLOR,
             float4 xe_position : SV_Position) : SV_Target {
   // A negative vertex depth (a camera without the guest projection) is never tested.
+#ifdef DBZ3_SOLAR_DEPTH
+  // Solar GS: ZTE=1, GEQUAL, ZMSK=1. No contact epsilon, and no untested
+  // fallback if the depth copy is missing. Negative depth is the lab ablation.
+  if (xe_depth >= 0.0) {
+    if (dbz3_enabled != 1.0) discard;
+    float2 p = (xe_position.xy - dbz3_origin) * dbz3_scale;
+    if (any(p < 0.0) || any(p >= dbz3_size)) discard;
+    float scene = dbz3_scene_depth.Load(int3(p, 0));
+    float z = dbz3_inverted != 0.0 ? 1.0 - xe_depth : xe_depth;
+    if (dbz3_inverted != 0.0 ? z < scene : z > scene) discard;
+  }
+  return xe_immediate_texture.SampleLevel(xe_immediate_texture_xe_sampler, xe_texcoord, 0.0) * xe_color;
+#else
   if (dbz3_enabled == 2.0) {
     // Probe (DBZ3_ZBUF_DEBUG): the scene depth behind the fragment, r + g / 255, and b = the
     // inversion flag; alpha 1.
@@ -41,4 +54,5 @@ float4 main(float2 xe_texcoord : TEXCOORD0, float xe_depth : TEXCOORD1, float4 x
   }
   return xe_immediate_texture.SampleLevel(xe_immediate_texture_xe_sampler, xe_texcoord, 0.0) *
          xe_color;
+#endif
 }

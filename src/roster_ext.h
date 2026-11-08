@@ -107,6 +107,8 @@ const VirtualCell& GetVirtualCell(int i);
 // Guest system-heap allocation (zeroed) for runtime-built guest data; 0 if the
 // roster was not applied.
 uint32_t GuestAlloc(uint32_t size);
+// Frees a GuestAlloc block (0 is ignored).
+void GuestFree(uint32_t address);
 
 // Extended capsule catalogue (new capsules, inherited owners). Idempotent; called at
 // launch and again from the select / battle hooks until the catalogue is in memory.

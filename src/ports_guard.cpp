@@ -17,6 +17,7 @@
 // defecto (precedencia: el set del traje manda sobre el del jugador para el personaje base). En el select, mientras
 // se mira ese traje, un rotulo lo avisa (nombre de epoca + "golpes y capsulas propios").
 #include <imgui.h>
+#include <rex/cvar.h>
 #include <rex/hook.h>
 #include <rex/logging.h>
 #include <rex/runtime.h>
@@ -256,7 +257,32 @@ bool SaltaOrdenIW(PPCContext& ctx, uint8_t* base, uint32_t c, uint32_t f) {
   return true;
 }
 }  // namespace
-DBZ3_HOOK_EU(sub_8211E148) { if (!SaltaOrdenIW(ctx, base, 3, 5)) orig(ctx, base); }
+DBZ3_HOOK_EU(sub_8211E148) {
+  if (SaltaOrdenIW(ctx, base, 3, 5)) return;
+  const uint32_t cmd = ctx.r4.u32;
+  orig(ctx, base);
+  // La orden B3 0x60 consulta la identidad para elegir el remate del Dragon Rush.
+  // Un clon no figura en esas ramas: en forma4 repite 0x400..0x40B indefinidamente.
+  // La consulta inicial llega aun con el codigo 0x23E de expulsion, antes de 0x400.
+  // Solo se adapta el resultado de esta consulta al entrar/durante el Rush; X+7420 (modelo,
+  // tecnicas propias, HUD) conserva siempre el ID del clon.
+  if (!cmd) return;
+  const uint32_t id = REX_LOAD_U32(cmd);
+  const int donor = dbz3::roster::DonorOf(id);
+  if (donor < 0 || uint32_t(donor) == id) return;
+  const uint32_t p = REX_LOAD_U32(cmd + 44), mgr = REX_LOAD_U32(dbz3::GA(0x823D6CF4));
+  if (!p || !mgr) return;
+  const uint32_t side = REX_LOAD_U32(p);
+  if (side > 1) return;
+  const uint32_t x = REX_LOAD_U32(mgr + 35188 + 4 * side);
+  if (x != mgr + 2096 && x != mgr + 2096 + 8240) return;
+  const uint32_t code = REX_LOAD_U32(x + 2928);
+  if (code != 0x23E && (code < 0x400 || code >= 0x440)) return;
+  REX_STORE_U32(cmd, uint32_t(donor));
+  static std::atomic<int> avisos{0};
+  if (avisos.fetch_add(1) < 4)
+    REXLOG_INFO("dbz3 ports: Dragon Rush del ID {} consulta remate del donante {} (codigo {:X})", id, donor, code);
+}
 DBZ3_HOOK_EU(sub_8211E178) { if (!SaltaOrdenIW(ctx, base, 3, 6)) orig(ctx, base); }
 DBZ3_HOOK_EU(sub_8211E1B0) { if (!SaltaOrdenIW(ctx, base, 3, 7)) orig(ctx, base); }
 DBZ3_HOOK_EU(sub_8211E6A0) { if (!SaltaOrdenIW(ctx, base, 9, 9)) orig(ctx, base); }
@@ -726,7 +752,20 @@ void SpxThunk(PPCContext& ctx, uint8_t* base) {
   }
   std::string ids;
   for (int v : g_spx_ids[I]) ids += fmt::format("{:X} ", v);
-  REXLOG_INFO("dbz3 spx: t {} luchador {} orden {}", ms, fid, ids);
+  // sub_8209F568 -> bctrl 0x8209F668: r10/r9 conservan los indices
+  // de fila/celda de ESTA llamada. La lista anterior solo son alias del
+  // manejador; no significa que se hayan ejecutado todas esas ordenes.
+  const uint32_t orden = ctx.lr == 0x8209F668
+                             ? ((ctx.r10.u32 & 0x3FFCu) << 2) | ((ctx.r9.u32 >> 2) & 15u)
+                             : 0xFFFFFFFFu;
+  const bool exacta = std::find(g_spx_ids[I].begin(), g_spx_ids[I].end(), int(orden)) != g_spx_ids[I].end();
+  const uint32_t actor = mgr ? mgr + 2096 : 0;
+  const uint32_t pc = exacta && ctx.r4.u32 >= 0x40000000u && ctx.r4.u32 < 0x9FFFFFD8u
+                          ? REX_LOAD_U32(ctx.r4.u32 + 36) : 0;
+  REXLOG_INFO("dbz3 spx: t {} luchador {} orden {} ejecutada {:X} pc {:08X} actor {}/cod {:X} escenario {}/campo40 {}",
+              ms, fid, ids, exacta ? orden : 0xFFFFFFFFu, pc,
+              actor ? REX_LOAD_U32(actor + 7420) : 0xFFFFFFFFu, actor ? REX_LOAD_U32(actor + 2928) : 0,
+              REX_LOAD_U32(0x823A3D80), REX_LOAD_U32(0x823A3DC0));
   g_spx_orig[I](ctx, base);
 }
 
@@ -769,5 +808,42 @@ DBZ3_HOOK_EU(sub_8209F568) {
   if (traza && !g_spx_on.exchange(true)) SpxInstalar(ctx.r3.u32, base);
   orig(ctx, base);
 }
+
+
+// dsBROLY (#30): la definitiva de Broly en un escenario que se puede destruir tapa el impacto con un destello
+// blanco de pantalla completa. Lo pinta la tarea de escenario "Mtn Amo Effect" al entrar en la fase 0x4A5 de la
+// cinemática (sub_820BEFB8 / EU dbz3eu_sub_820BEF98: al final pone el color de pantalla a 1,1,1,1 y dibuja).
+// Interruptor `dbz3_broly_sin_destello` (apagado = juego original): solo se salta ese manejador cuando la
+// definitiva en curso es la de Broly nativo (ID 40, código 0x4A0..0x4A9). El escenario se sigue destruyendo y la
+// técnica no se toca; otros personajes conservan su destello. Medido 3/11: sin él la fase 4A5 sale blanca entera;
+// con él se ve la cinemática y la pantalla final queda con el escenario destruido.
+REXCVAR_DEFINE_BOOL(dbz3_broly_sin_destello, false, "DBZ3/Mods",
+                    "Broly sin destello: quita el destello blanco de su definitiva en escenarios que se destruyen "
+                    "(solo ese ataque). | Broly without flash: removes the white flash from his ultimate on "
+                    "destructible stages (that attack only).");
+namespace {
+// ID y código en curso de los dos luchadores (los mismos campos de src/combate.cpp: kId y kCode).
+bool DefinitivaBrolyEnCurso(uint8_t* base) {
+  const uint32_t mgr = REX_LOAD_U32(0x823D6CF4);
+  if (!mgr) return false;
+  for (uint32_t k = 0; k < 2; ++k) {
+    const uint32_t x = mgr + 2096 + 8240 * k;
+    if (REX_LOAD_U32(x + 7420) != 40) continue;
+    const uint32_t cod = REX_LOAD_U32(x + 2928) & 0xFFFFu;   // el bit de banco (0x10000) no cambia el codigo
+    if (cod >= 0x4A0u && cod <= 0x4A9u) return true;
+  }
+  return false;
+}
+void GanchoMtnAmo(PPCContext& ctx, uint8_t* base, [[maybe_unused]] Dbz3GuestFn orig) {
+  if (REXCVAR_GET(dbz3_broly_sin_destello) && DefinitivaBrolyEnCurso(base)) {
+    static std::atomic<int> avisos{0};
+    if (avisos.fetch_add(1) < 3) REXLOG_INFO("dbz3 broly: destello blanco de la definitiva quitado");
+    ctx.r3.u64 = 0;
+    return;
+  }
+  orig(ctx, base);
+}
+}  // namespace
+DBZ3_HOOK2(sub_820BEFB8, dbz3eu_sub_820BEF98, GanchoMtnAmo)
 
 #include "tecnicas_ext.inl"

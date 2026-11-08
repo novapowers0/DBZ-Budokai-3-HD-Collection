@@ -30,7 +30,9 @@
 REXCVAR_DEFINE_BOOL(dbz3_ui_depth, false, "DBZ3/Dev",
                     "Copy the game's scene depth every frame for the depth-tested UI draws");
 REXCVAR_DEFINE_INT32(dbz3_ui_depth_estado, 0, "DBZ3/Dev",
-                     "Read only: 0 no depth-tested UI, 1 supported, 2 scene depth in the last paint");
+                      "Read only: 0 no depth-tested UI, 1 supported, 2 scene depth in the last paint");
+REXCVAR_DEFINE_INT32(dbz3_solar_depth_estado, 0, "DBZ3/Dev",
+                     "Read only: 0 unavailable, 1 additive depth pipeline, 2 scene depth available");
 
 namespace rex::ui::d3d12 {
 
@@ -40,6 +42,7 @@ namespace shaders {
 #include "../shaders/bytecode/d3d12_5_1/immediate_vs.h"
 #include "../shaders/bytecode/d3d12_5_1/dbz3_ui_depth_ps.h"
 #include "../shaders/bytecode/d3d12_5_1/dbz3_ui_depth_vs.h"
+#include "../shaders/bytecode/d3d12_5_1/dbz3_solar_depth_ps.h"
 }  // namespace shaders
 
 D3D12ImmediateDrawer::D3D12ImmediateTexture::D3D12ImmediateTexture(
@@ -218,6 +221,15 @@ bool D3D12ImmediateDrawer::Initialize() {
     pipeline_triangle_dbz3_depth_.Reset();
   }
   REXCVAR_SET(dbz3_ui_depth_estado, pipeline_triangle_dbz3_depth_ ? 1 : 0);
+  // ALPHA 0x48: source alpha + destination, with a read-only, strict depth test.
+  pipeline_blend_desc.DestBlend = D3D12_BLEND_ONE;
+  pipeline_desc.PS.pShaderBytecode = shaders::dbz3_solar_depth_ps;
+  pipeline_desc.PS.BytecodeLength = sizeof(shaders::dbz3_solar_depth_ps);
+  if (FAILED(device->CreateGraphicsPipelineState(
+          &pipeline_desc, IID_PPV_ARGS(&pipeline_triangle_dbz3_depth_additive_)))) {
+    pipeline_triangle_dbz3_depth_additive_.Reset();
+  }
+  REXCVAR_SET(dbz3_solar_depth_estado, pipeline_triangle_dbz3_depth_additive_ ? 1 : 0);
 
   // Create the samplers.
   D3D12_DESCRIPTOR_HEAP_DESC sampler_heap_desc;
@@ -464,6 +476,8 @@ void D3D12ImmediateDrawer::Begin(UIDrawContext& ui_draw_context, float coordinat
     }
     command_list->SetGraphicsRoot32BitConstants(UINT(RootParameter::kDbz3DepthConstants), 8, c, 0);
     REXCVAR_SET(dbz3_ui_depth_estado, dbz3_scene_depth_ ? 2 : 1);
+    REXCVAR_SET(dbz3_solar_depth_estado,
+      pipeline_triangle_dbz3_depth_additive_ ? (dbz3_scene_depth_ ? 2 : 1) : 0);
   }
 }
 
@@ -642,6 +656,10 @@ void D3D12ImmediateDrawer::Draw(const ImmediateDraw& draw) {
     case ImmediatePrimitiveType::kTriangles:
       primitive_topology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
       pipeline = dbz3_depth_mode ? pipeline_triangle_dbz3_depth_.Get() : pipeline_triangle_.Get();
+      if (draw.additive && dbz3_depth_mode) {
+        if (!pipeline_triangle_dbz3_depth_additive_) return; // Never substitute alpha blending.
+        pipeline = pipeline_triangle_dbz3_depth_additive_.Get();
+      }
       if (draw.additive && !dbz3_depth_mode && pipeline_triangle_additive_) {
         pipeline = pipeline_triangle_additive_.Get();
       }
@@ -650,7 +668,7 @@ void D3D12ImmediateDrawer::Draw(const ImmediateDraw& draw) {
       assert_unhandled_case(draw.primitive_type);
       return;
   }
-  const bool additive = pipeline == pipeline_triangle_additive_.Get();
+  const bool additive = draw.additive;
   if (current_primitive_topology_ != primitive_topology ||
       current_dbz3_depth_mode_ != dbz3_depth_mode || current_additive_ != additive) {
     current_primitive_topology_ = primitive_topology;

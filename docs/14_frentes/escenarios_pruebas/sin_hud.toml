@@ -1,0 +1,3 @@
+descripcion = "Sin HUD (F9): combate normal, captura con HUD, F9 de verdad (sin camara libre), captura sin HUD, F9 otra vez y vuelve"
+env = ["DBZ3_TEST_BATTLE=0,7,7", "DBZ3_HUB_MODE=5"]
+pasos = ["log \"hub: combate nativo\" 60", "log \"tag: empieza un combate\" 60", "esperar 3000", "captura 01_con_hud", "tecla F9", "log \"marcador oculto\" 10", "esperar 2500", "captura 02_sin_hud", "tecla F9", "log \"marcador visible\" 10"]

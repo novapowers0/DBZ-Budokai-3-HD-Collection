@@ -49,7 +49,7 @@ void Completar() {
 }
 void ComprobarBloque(size_t n,int valor) {
   std::lock_guard lock(mu);Exigir(n<bloques.size(),"bloque no enviado");
-  Exigir(bloques[n].size()==512,"longitud de bloque48k");
+    Exigir(bloques[n].size()==2048,"longitud de bloque48k (1024 cuadros estereo)");
   Exigir(std::all_of(bloques[n].begin(),bloques[n].end(),[&](int x){return x==valor;}),"mezcla/volumen/pausa incorrectos");
 }
 }
@@ -72,11 +72,11 @@ namespace dbz3::pasarela {std::vector<uint8_t> HijoAmb(const std::vector<uint8_t
 int main(int argc,char** argv) {
   try {
     using namespace receptor;using namespace dbz3;
-    iwiop::Voz voz;voz.pcm.assign(16384,1000);
+    iwiop::Voz voz;voz.pcm.assign(32768,1000);
     const auto hi=iwiop::Oir(voz);Esperar([]{return abri==1;});
     auto canal=std::make_shared<iwadx::Canal>();
-    iwadx::Pcm adx;adx.hz=48000;adx.muestras.assign(16384,9000);
-    iwadx::Oir(adx,canal,.5f);adx.muestras.assign(16384,2000);
+    iwadx::Pcm adx;adx.hz=48000;adx.muestras.assign(32768,9000);
+    iwadx::Oir(adx,canal,.5f);adx.muestras.assign(32768,2000);
     const auto ha=iwadx::Oir(adx,canal,.5f);Exigir(hi && ha,"handles IOP/ADX");
     {std::lock_guard lock(mu);liberar=true;cv.notify_all();}
     Esperar([]{return escribi==3;});

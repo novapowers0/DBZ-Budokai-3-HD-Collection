@@ -9,6 +9,8 @@
  * @modified    Tom Clay, 2026 - Adapted for ReXGlue runtime
  */
 
+#include <cstdlib>
+#include <set>
 #include <algorithm>
 #include <chrono>
 #include <atomic>
@@ -76,6 +78,7 @@ REXCVAR_DEFINE_BOOL(dbz3_motion_vectors, true, "DBZ3/Dev",
 REXCVAR_DEFINE_BOOL(dbz3_temporal_jitter, true, "DBZ3/Dev",
                     "Sub-pixel camera jitter for the temporal upscaler (off = debugging)");
 REXCVAR_DECLARE(double, dbz3_rim_light_scale);  // src/graphics/command_processor.cpp
+REXCVAR_DECLARE(bool, dbz3_sky_follow);         // src/graphics/command_processor.cpp (eIW8)
 // Experimental "relight" (launcher: dbz3_relight): subtle ambient occlusion on
 // the 3D scene, never on the HUD or the menus. 0 = off (nothing runs), 1 = low
 // (4 directions), 2 = high (8 directions).
@@ -2182,6 +2185,102 @@ bool Dbz3IsOurWindowForeground() {
 static std::atomic<uint64_t> g_dbz3_fence_wait_us{0};
 extern std::atomic<uint64_t> g_dbz3_sync_shader_work;  // pipeline_cache.cpp
 static std::atomic<uint64_t> g_dbz3_fence_waits{0};
+// DBZ3 (dsPHIRES): tiempo de GPU (timestamps) sumado de las submissions ya
+// completadas. Se publica como gpu_ms= en la linea `perf` (ver Dbz3GpuTime*).
+static std::atomic<uint64_t> g_dbz3_gpu_busy_us{0};
+// DBZ3 1.5.6.1: trabajo por cuadro (draws=, copies= resolves del guest, rtx=
+// transferencias entre render targets de render_target_cache.cpp).
+static std::atomic<uint64_t> g_dbz3_draws{0};
+static std::atomic<uint64_t> g_dbz3_copies{0};
+extern std::atomic<uint64_t> g_dbz3_rt_transfers;
+extern int g_dbz3_intel_viewport_mode;  // render_target_cache.cpp
+static std::atomic<uint64_t> g_dbz3_gpu_time_submissions{0};
+static std::atomic<uint64_t> g_dbz3_gpu_time_timed{0};
+// D3D12 pide alinear el destino de ResolveQueryData; 512 B por slot evita
+// depender del alineamiento minimo y deja 16 B utiles (dos timestamps de 8 B).
+static constexpr uint32_t kDbz3GpuTimeSlotStride = 512;
+
+bool D3D12CommandProcessor::Dbz3GpuTimeBeginSubmission() {
+  if (rex::cvar::GetFlagByName("dbz3_perf_logging") != "true" || dbz3_gpu_time_init_failed_) {
+    return false;
+  }
+  if (!dbz3_gpu_time_available_) {
+    const ui::d3d12::D3D12Provider& provider = GetD3D12Provider();
+    ID3D12Device* device = provider.GetDevice();
+    ID3D12CommandQueue* queue = provider.GetDirectQueue();
+    if (!device || !queue) {
+      dbz3_gpu_time_init_failed_ = true;
+      return false;
+    }
+    D3D12_QUERY_HEAP_DESC heap_desc = {};
+    heap_desc.Type = D3D12_QUERY_HEAP_TYPE_TIMESTAMP;
+    heap_desc.Count = kDbz3GpuTimeSlots * 2;
+    if (FAILED(device->CreateQueryHeap(&heap_desc, IID_PPV_ARGS(&dbz3_gpu_time_heap_)))) {
+      dbz3_gpu_time_init_failed_ = true;
+      REXGPU_WARN("dbz3: no se pudo crear el query heap de tiempos de GPU");
+      return false;
+    }
+    D3D12_HEAP_PROPERTIES readback_heap_props = {};
+    readback_heap_props.Type = D3D12_HEAP_TYPE_READBACK;
+    D3D12_RESOURCE_DESC readback_desc = {};
+    readback_desc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+    readback_desc.Width = kDbz3GpuTimeSlots * kDbz3GpuTimeSlotStride;
+    readback_desc.Height = 1;
+    readback_desc.DepthOrArraySize = 1;
+    readback_desc.MipLevels = 1;
+    readback_desc.SampleDesc.Count = 1;
+    readback_desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+    if (FAILED(device->CreateCommittedResource(&readback_heap_props, D3D12_HEAP_FLAG_NONE,
+                                               &readback_desc, D3D12_RESOURCE_STATE_COPY_DEST,
+                                               nullptr,
+                                               IID_PPV_ARGS(&dbz3_gpu_time_readback_))) ||
+        FAILED(dbz3_gpu_time_readback_->Map(0, nullptr,
+                                            reinterpret_cast<void**>(&dbz3_gpu_time_mapping_)))) {
+      dbz3_gpu_time_init_failed_ = true;
+      REXGPU_WARN("dbz3: no se pudo preparar la lectura de tiempos de GPU");
+      return false;
+    }
+    UINT64 timestamp_frequency = 0;
+    if (FAILED(queue->GetTimestampFrequency(&timestamp_frequency)) || !timestamp_frequency) {
+      dbz3_gpu_time_init_failed_ = true;
+      return false;
+    }
+    dbz3_gpu_time_freq_ = timestamp_frequency;
+    dbz3_gpu_time_available_ = true;
+  }
+  // Reutilizar un slot solo si su submission anterior ya termino (si no, no se
+  // graba esta: mejor un hueco que dos resoluciones escribiendo lo mismo).
+  const uint32_t slot = (dbz3_gpu_time_slot_ + 1) % kDbz3GpuTimeSlots;
+  const uint64_t previous_fence = dbz3_gpu_time_fence_values_[slot];
+  if (previous_fence && submission_fence_ &&
+      submission_fence_->GetCompletedValue() < previous_fence) {
+    return false;
+  }
+  dbz3_gpu_time_slot_ = slot;
+  return true;
+}
+
+void D3D12CommandProcessor::Dbz3GpuTimeConsumeCompleted() {
+  if (!dbz3_gpu_time_available_ || !dbz3_gpu_time_freq_ || !submission_fence_ ||
+      !dbz3_gpu_time_mapping_) {
+    return;
+  }
+  const uint64_t completed = submission_fence_->GetCompletedValue();
+  for (uint32_t i = 0; i < kDbz3GpuTimeSlots; ++i) {
+    const uint64_t finished_fence = dbz3_gpu_time_fence_values_[i];
+    if (!finished_fence || completed < finished_fence) {
+      continue;
+    }
+    const uint64_t* slot_timestamps = dbz3_gpu_time_mapping_ + i * (kDbz3GpuTimeSlotStride / 8);
+    const uint64_t start = slot_timestamps[0];
+    const uint64_t end = slot_timestamps[1];
+    if (end > start && end - start <= dbz3_gpu_time_freq_) {
+      g_dbz3_gpu_busy_us.fetch_add((end - start) * 1000000ull / dbz3_gpu_time_freq_,
+                                   std::memory_order_relaxed);
+    }
+    dbz3_gpu_time_fence_values_[i] = 0;
+  }
+}
 
 static void Dbz3TimedFenceWait(HANDLE event) {
   const auto start = std::chrono::steady_clock::now();
@@ -2257,7 +2356,9 @@ static uint32_t g_dbz3_relight_missed[2] = {};
 
 static void Dbz3LogGuestPerformance(uint64_t upscaled_textures, uint64_t upscale_dynamic_refills,
                                     uint64_t texture_loads, uint64_t vram_usage,
-                                    uint64_t vram_budget, uint32_t upscale_limit) {
+                                    uint64_t vram_budget, uint32_t upscale_limit,
+                                    uint64_t scaled_resolve_bytes, uint64_t edram_bytes,
+                                    uint32_t effective_scale_x, uint32_t effective_scale_y) {
   static std::chrono::steady_clock::time_point window_start;
   static std::chrono::steady_clock::time_point last_frame;
   static uint32_t frames_in_window = 0;
@@ -2317,6 +2418,20 @@ static void Dbz3LogGuestPerformance(uint64_t upscaled_textures, uint64_t upscale
   const double gpu_wait_ms = double(fence_wait_us_now - fence_wait_us_last) / 1000.0 / frames_div;
   const uint64_t fence_waits = fence_waits_now - fence_waits_last;
   const double cp_wait_ms = double(cp_wait_us_now - cp_wait_us_last) / 1000.0 / frames_div;
+  // DBZ3 (dsPHIRES): GPU ocupada por frame en esta ventana (timestamps reales).
+  static uint64_t gpu_busy_us_last = 0;
+  const uint64_t gpu_busy_us_now = g_dbz3_gpu_busy_us.load(std::memory_order_relaxed);
+  const double gpu_ms = double(gpu_busy_us_now - gpu_busy_us_last) / 1000.0 / frames_div;
+  gpu_busy_us_last = gpu_busy_us_now;
+  static uint64_t gpu_time_submissions_last = 0, gpu_time_timed_last = 0;
+  const uint64_t gpu_time_submissions_now = g_dbz3_gpu_time_submissions.load();
+  const uint64_t gpu_time_timed_now = g_dbz3_gpu_time_timed.load();
+  const double gpu_time_timed_per_frame =
+      double(gpu_time_timed_now - gpu_time_timed_last) / frames_div;
+  const double gpu_time_submissions_per_frame =
+      double(gpu_time_submissions_now - gpu_time_submissions_last) / frames_div;
+  gpu_time_submissions_last = gpu_time_submissions_now;
+  gpu_time_timed_last = gpu_time_timed_now;
   fence_wait_us_last = fence_wait_us_now;
   fence_waits_last = fence_waits_now;
   cp_wait_us_last = cp_wait_us_now;
@@ -2343,11 +2458,17 @@ static void Dbz3LogGuestPerformance(uint64_t upscaled_textures, uint64_t upscale
       p99_ms = frame_samples[size_t(double(frame_samples.size() - 1) * 0.99)];
     }
     const double fps1 = p99_ms > 0.0 ? 1000.0 / p99_ms : 0.0;
+    // Memoria (dsPRAM): memoria de trabajo / privada del proceso, RAM libre del sistema y
+    // lo que ocupan las imagenes del pack HD decodificadas. Un log de usuario dice asi si
+    // el problema es RAM (4-8 GB) sin pedirle nada mas.
+    const Dbz3HostMemory host_mem = Dbz3HostMemoryNow();
     REXGPU_INFO(
         "dbz3: perf fps={:.1f} p1={:.1f} p99_ms={:.1f} frames={} window={:.2f}s max_frame_ms={:.1f} fg={} "
         "cfg=scale:{}x{} msaa:{} hdtex:{} area:{} min:{} aniso:{} upx={} upx_dyn={} "
-        "texload={} pack={} vram={}MB/{}MB lim={} gpu_wait={:.1f}ms/f syncs={} cp_wait={:.1f}ms/f "
-        "relight={} (sin_post={} sin_resolve={}) packhash={:.1f}ms/f n={}",
+        "texload={} pack={} vram={}MB/{}MB sres={}MB edram={}MB eff={}x{} lim={} gpu_wait={:.1f}ms/f syncs={} cp_wait={:.1f}ms/f "
+        "relight={} (sin_post={} sin_resolve={}) packhash={:.1f}ms/f n={} "
+        "mem={}MB priv={}MB packram={}MB avail={}MB gpu_ms={:.1f} gtsub={:.2f}/{:.2f} "
+        "draws={:.0f} copies={:.1f} rtx={:.1f}",
         double(frames_in_window) / elapsed_s, fps1, p99_ms, frames_in_window, elapsed_s, max_frame_ms,
         foreground ? 1 : 0, rex::cvar::GetFlagByName("draw_resolution_scale_x"),
         rex::cvar::GetFlagByName("draw_resolution_scale_y"),
@@ -2358,9 +2479,14 @@ static void Dbz3LogGuestPerformance(uint64_t upscaled_textures, uint64_t upscale
         rex::cvar::GetFlagByName("anisotropic_override"), upscaled_textures,
         upscale_dynamic_refills, texture_loads_window, g_dbz3_pack_uploads.load(),
         vram_usage >> 20, vram_budget >> 20,
+        scaled_resolve_bytes >> 20, edram_bytes >> 20, effective_scale_x, effective_scale_y,
         upscale_limit, gpu_wait_ms, fence_waits, cp_wait_ms, g_dbz3_relight_passes,
         g_dbz3_relight_missed[0], g_dbz3_relight_missed[1],
-        double(g_dbz3_pack_hash_us.exchange(0)) / 1000.0 / frames_div, g_dbz3_pack_hash_n.exchange(0));
+        double(g_dbz3_pack_hash_us.exchange(0)) / 1000.0 / frames_div, g_dbz3_pack_hash_n.exchange(0),
+        host_mem.ws_mb, host_mem.priv_mb, Dbz3DecodeCacheBytes() >> 20, host_mem.avail_mb, gpu_ms,
+        gpu_time_timed_per_frame, gpu_time_submissions_per_frame,
+        double(g_dbz3_draws.exchange(0)) / frames_div, double(g_dbz3_copies.exchange(0)) / frames_div,
+        double(g_dbz3_rt_transfers.exchange(0)) / frames_div);
   }
   g_dbz3_relight_passes = 0;
   g_dbz3_relight_missed[0] = g_dbz3_relight_missed[1] = 0;
@@ -3086,6 +3212,9 @@ void D3D12CommandProcessor::Dbz3TemporalEndFrame(uint32_t frontbuffer_width_unsc
 // "dbz3_frame_trace.req" next to the exe dumps every draw/resolve of the next
 // few guest frames as "dbz3: ft ..." lines (scene/UI boundary, depth, camera).
 static int g_dbz3_ft_frames = 0;
+// eIW8 (prueba, DBZ3_IW_CIELO_SIGUE): el dibujo del domo del cielo de IW (EU 0x1E2880 Stage_DrawCameraFollowModel) va trasladado a la
+// posicion x/z del ojo: se corrige la fila de traslacion de la WVP (c3 += ex*c0 + ez*c2, con el ojo resuelto de la propia matriz).
+static bool g_dbz3_sky_draw = false, g_dbz3_sky_applied = false;
 static uint32_t g_dbz3_ft_seq = 0;
 static uint32_t g_dbz3_ft_swaps = 0;
 static void Dbz3FrameTraceOnSwap(uint32_t frontbuffer_ptr, uint32_t w, uint32_t h) {
@@ -3141,12 +3270,18 @@ static void Dbz3FrameTraceCopy(const RegisterFile& regs, uint32_t addr, uint32_t
 
 void D3D12CommandProcessor::IssueSwap(uint32_t frontbuffer_ptr, uint32_t frontbuffer_width,
                                       uint32_t frontbuffer_height) {
+  // DBZ3 (dsPHIRES): recoge los tiempos de GPU de las submissions ya terminadas.
+  Dbz3GpuTimeConsumeCompleted();
   Dbz3LogGuestPerformance(texture_cache_ ? texture_cache_->upscaled_texture_count() : 0,
                           texture_cache_ ? texture_cache_->upscale_dynamic_refill_count() : 0,
                           texture_cache_ ? texture_cache_->texture_load_count() : 0,
                           texture_cache_ ? texture_cache_->video_memory_usage_bytes() : 0,
                           texture_cache_ ? texture_cache_->video_memory_budget_bytes() : 0,
-                          texture_cache_ ? texture_cache_->ConsumeUpscaleLimitReason() : 0);
+                          texture_cache_ ? texture_cache_->ConsumeUpscaleLimitReason() : 0,
+                          texture_cache_ ? texture_cache_->scaled_resolve_memory_bytes() : 0,
+                          render_target_cache_ ? render_target_cache_->edram_buffer_size_bytes() : 0,
+                          texture_cache_ ? texture_cache_->draw_resolution_scale_x() : 0,
+                          texture_cache_ ? texture_cache_->draw_resolution_scale_y() : 0);
   Dbz3FrameTraceOnSwap(frontbuffer_ptr, frontbuffer_width, frontbuffer_height);
   SCOPE_profile_cpu_f("gpu");
   vertex_buffers_in_sync_[0] = 0;
@@ -3551,6 +3686,7 @@ Shader* D3D12CommandProcessor::LoadShader(xenos::ShaderType shader_type, uint32_
 bool D3D12CommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type, uint32_t index_count,
                                       IndexBufferInfo* index_buffer_info,
                                       bool major_mode_explicit) {
+  g_dbz3_draws.fetch_add(1, std::memory_order_relaxed);
 #if XE_GPU_FINE_GRAINED_DRAW_SCOPES
   SCOPE_profile_cpu_f("gpu");
 #endif  // XE_GPU_FINE_GRAINED_DRAW_SCOPES
@@ -3606,6 +3742,66 @@ bool D3D12CommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type, uint3
   }
   bool memexport_used_pixel = pixel_shader && (pixel_shader->memexport_eM_written() != 0);
   bool memexport_used = memexport_used_vertex || memexport_used_pixel;
+
+  {
+    static const bool sky_env = std::getenv("DBZ3_IW_CIELO_SIGUE") != nullptr;
+    g_dbz3_sky_draw = false;
+    // eIW8: textura 0 de 64x64 = la del domo del cielo de IW (hijo 3 del 884). Probado por buffer de vertices (0x01000002 / 0x02000002)
+    // + formato de textura 0x053: no sirve, desplaza tambien trozos del terreno; el muro de nubes comparte tamano con el terreno.
+    if ((sky_env || REXCVAR_GET(dbz3_sky_follow)) && is_rasterization_done && regs.GetTextureFetch(0).dword_2 == 0x0007E03F)
+      g_dbz3_sky_draw = true;
+  }
+  {
+    // eIW (solo pruebas): DBZ3_TEST_SALTAR_TEXTURA=<lista hex de dword_1 del fetch 0 sin los 12 bits bajos, separada por comas>
+    // salta el dibujo cuya textura 0 coincida; "log" imprime las distintas (dword_0..5) una vez. Solo con DBZ3_NO_DIALOGS.
+    static const std::vector<uint64_t> skip_tex = [] {   // clave: dword_1>>12, o (1<<32)|dword_2 con prefijo 's'
+      std::vector<uint64_t> v;
+      const char* e = std::getenv("DBZ3_TEST_SALTAR_TEXTURA");
+      if (e && std::getenv("DBZ3_NO_DIALOGS") && std::strcmp(e, "log") != 0) {
+        for (const char* q = e; *q;) {
+          char* fin;
+          const bool por_tam = *q == 's';
+          if (por_tam) ++q;
+          v.push_back(uint64_t(std::strtoul(q, &fin, 16)) | (por_tam ? (1ull << 32) : 0));
+          q = *fin == ',' ? fin + 1 : fin;
+          if (fin == q && *q) break;
+        }
+      }
+      return v;
+    }();
+    static const bool log_tex = [] {
+      const char* e = std::getenv("DBZ3_TEST_SALTAR_TEXTURA");
+      return e && std::getenv("DBZ3_NO_DIALOGS") && std::strcmp(e, "log") == 0;
+    }();
+    if (is_rasterization_done && (!skip_tex.empty() || log_tex)) {
+      const auto f0 = regs.GetTextureFetch(0);
+      const uint32_t key = f0.dword_1 >> 12;
+      if (log_tex && f0.dword_2 != 0 && f0.dword_2 != 0x0059E4FF) {
+        static std::set<uint64_t> vistos;
+        const uint64_t k = (uint64_t(f0.dword_1) << 32) ^ f0.dword_2;
+        if (vistos.insert(k).second)
+          REXGPU_ERROR("eIW tex0: {:08X} {:08X} {:08X} {:08X} {:08X} {:08X} idx {} vf0 {:08X} {:08X} ps {}", f0.dword_0, f0.dword_1,
+                       f0.dword_2, f0.dword_3, f0.dword_4, f0.dword_5, index_count, regs.GetVertexFetch(0).dword_0, regs.GetVertexFetch(0).dword_1,
+                       pixel_shader ? pixel_shader->ucode_data_hash() : 0);
+      }
+      if (log_tex && f0.dword_2 == 0x0007E03F) {   // eIW8 (solo pruebas): dibujo del domo del cielo: vertex fetch y constantes del VS
+        static uint32_t n_dome = 0;
+        if ((n_dome++ % 200) < 3) {
+          const auto vf = regs.GetVertexFetch(0);
+          std::string c;
+          for (uint32_t i = 0; i < 48; ++i) {
+            const float x = regs.Get<float>(XE_GPU_REG_SHADER_CONSTANT_000_X + 4 * i + 0), y = regs.Get<float>(XE_GPU_REG_SHADER_CONSTANT_000_X + 4 * i + 1),
+                        z = regs.Get<float>(XE_GPU_REG_SHADER_CONSTANT_000_X + 4 * i + 2), w = regs.Get<float>(XE_GPU_REG_SHADER_CONSTANT_000_X + 4 * i + 3);
+            if (x != 0 || y != 0 || z != 0 || w != 0) c += fmt::format(" c{}=({:.3f},{:.3f},{:.3f},{:.3f})", i, x, y, z, w);
+          }
+          REXGPU_ERROR("eIW8 domo: vf0 {:08X} {:08X} idx {} vs {:016X}{}", vf.dword_0, vf.dword_1, index_count,
+                       vertex_shader ? vertex_shader->ucode_data_hash() : 0, c);
+        }
+      }
+      for (uint64_t k2 : skip_tex)
+        if ((k2 >> 32) ? uint32_t(k2) == f0.dword_2 : uint32_t(k2) == key) return true;
+    }
+  }
 
   if (!BeginSubmission(true)) {
     return false;
@@ -3726,7 +3922,20 @@ bool D3D12CommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type, uint3
                        (uint32_t(host_render_targets_used) << 1) | (uint32_t(ps_writes_depth) << 2);
 
   draw_util::ViewportInfo viewport_info;
-  if (viewport_cache_valid_ && viewport_key == previous_viewport_key_) {
+  // DBZ3 1.5.6.1 (Intel UHD/Iris Xe, ver render_target_cache.cpp): con stencil, el
+  // viewport no pasa del render target; GetHostViewportInfo compensa en ndc.
+  uint32_t dbz3_rt_w = 0, dbz3_rt_h = 0;
+  const bool dbz3_rt_known = host_render_targets_used && normalized_depth_control.stencil_enable &&
+                             g_dbz3_intel_viewport_mode &&
+                             render_target_cache_->Dbz3BoundRenderTargetSize(dbz3_rt_w, dbz3_rt_h);
+  if ((g_dbz3_intel_viewport_mode & 2) && dbz3_rt_known) {
+    draw_util::GetHostViewportInfo(
+        regs, draw_resolution_scale_x, draw_resolution_scale_y, true,
+        std::min<uint32_t>(D3D12_VIEWPORT_BOUNDS_MAX, dbz3_rt_w),
+        std::min<uint32_t>(D3D12_VIEWPORT_BOUNDS_MAX, dbz3_rt_h), false, normalized_depth_control,
+        convert_z_to_float24, host_render_targets_used, ps_writes_depth, viewport_info);
+    viewport_cache_valid_ = false;
+  } else if (viewport_cache_valid_ && viewport_key == previous_viewport_key_) {
     viewport_info = previous_viewport_info_;
   } else {
     draw_util::GetHostViewportInfo(regs, draw_resolution_scale_x, draw_resolution_scale_y, true,
@@ -3736,6 +3945,15 @@ bool D3D12CommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type, uint3
     previous_viewport_key_ = viewport_key;
     previous_viewport_info_ = viewport_info;
     viewport_cache_valid_ = true;
+  }
+  // Solo pruebas: imitar el driver Intel (recorta el borde derecho/inferior del
+  // viewport al render target, sin compensar) para reproducir el fallo aqui.
+  if ((g_dbz3_intel_viewport_mode & 1) && dbz3_rt_known) {
+    for (uint32_t i = 0; i < 2; ++i) {
+      const uint32_t lim = i ? dbz3_rt_h : dbz3_rt_w;
+      if (viewport_info.xy_offset[i] >= lim) continue;
+      viewport_info.xy_extent[i] = std::min(viewport_info.xy_extent[i], lim - viewport_info.xy_offset[i]);
+    }
   }
 
   draw_util::Scissor scissor;
@@ -4178,6 +4396,7 @@ bool D3D12CommandProcessor::IssueDraw_MemexportReadbackFastPath(uint32_t total_s
 }
 
 bool D3D12CommandProcessor::IssueCopy() {
+  g_dbz3_copies.fetch_add(1, std::memory_order_relaxed);
 #if XE_GPU_FINE_GRAINED_DRAW_SCOPES
   SCOPE_profile_cpu_f("gpu");
 #endif  // XE_GPU_FINE_GRAINED_DRAW_SCOPES
@@ -4690,6 +4909,17 @@ bool D3D12CommandProcessor::BeginSubmission(bool is_guest_command) {
     // end of the submission (when async pipeline creation requests are
     // fulfilled).
     deferred_command_list_.Reset();
+    // DBZ3 (dsPHIRES): marca el inicio de la GPU para este submission. El
+    // timestamp 0 del slot va antes de cualquier comando encolado.
+    dbz3_gpu_time_recording_ = Dbz3GpuTimeBeginSubmission();
+    if (rex::cvar::GetFlagByName("dbz3_perf_logging") == "true") {
+      g_dbz3_gpu_time_submissions.fetch_add(1, std::memory_order_relaxed);
+    }
+    if (dbz3_gpu_time_recording_) {
+      g_dbz3_gpu_time_timed.fetch_add(1, std::memory_order_relaxed);
+      deferred_command_list_.D3DEndQuery(dbz3_gpu_time_heap_.Get(), D3D12_QUERY_TYPE_TIMESTAMP,
+                                         dbz3_gpu_time_slot_ * 2);
+    }
 
     // Reset cached state of the command list.
     ff_viewport_update_needed_ = true;
@@ -4813,6 +5043,16 @@ bool D3D12CommandProcessor::EndSubmission(bool is_swap) {
         command_allocator_writable_first_->command_allocator;
     const HRESULT allocator_reset_hr = command_allocator->Reset();
     const HRESULT list_reset_hr = command_list_->Reset(command_allocator, nullptr);
+    // DBZ3 (dsPHIRES): fin de la GPU de este submission + copia de los dos
+    // timestamps al buffer de lectura, al final del command list.
+    if (dbz3_gpu_time_recording_) {
+      const uint32_t gpu_time_slot = dbz3_gpu_time_slot_;
+      deferred_command_list_.D3DEndQuery(dbz3_gpu_time_heap_.Get(), D3D12_QUERY_TYPE_TIMESTAMP,
+                                         gpu_time_slot * 2 + 1);
+      deferred_command_list_.D3DResolveQueryData(
+          dbz3_gpu_time_heap_.Get(), D3D12_QUERY_TYPE_TIMESTAMP, gpu_time_slot * 2, 2,
+          dbz3_gpu_time_readback_.Get(), gpu_time_slot * kDbz3GpuTimeSlotStride);
+    }
     deferred_command_list_.Execute(command_list_, command_list_1_);
     const HRESULT list_close_hr = command_list_->Close();
     // DBZ3: antes se ignoraban estos HRESULT; si la capa de depuracion rechaza la
@@ -4856,7 +5096,12 @@ bool D3D12CommandProcessor::EndSubmission(bool is_swap) {
       command_allocator_writable_last_ = nullptr;
     }
 
-    direct_queue->Signal(submission_fence_, submission_current_++);
+    const uint64_t signalled_submission = submission_current_++;
+    direct_queue->Signal(submission_fence_, signalled_submission);
+    if (dbz3_gpu_time_recording_) {
+      dbz3_gpu_time_fence_values_[dbz3_gpu_time_slot_] = signalled_submission;
+      dbz3_gpu_time_recording_ = false;
+    }
 
     submission_open_ = false;
 
@@ -5531,6 +5776,10 @@ bool D3D12CommandProcessor::UpdateBindings(const D3D12Shader* vertex_shader,
     dbz3_rim_applied_scale_ = rim_applied;
     cbuffer_binding_float_vertex_.up_to_date = false;
   }
+  if (g_dbz3_sky_draw != g_dbz3_sky_applied) {   // eIW8: entrar o salir del domo obliga a subir de nuevo las constantes
+    g_dbz3_sky_applied = g_dbz3_sky_draw;
+    cbuffer_binding_float_vertex_.up_to_date = false;
+  }
   if (!cbuffer_binding_float_vertex_.up_to_date) {
     // Even if the shader doesn't need any float constants, a valid binding must
     // still be provided, so if the first draw in the frame with the current
@@ -5557,6 +5806,25 @@ bool D3D12CommandProcessor::UpdateBindings(const D3D12Shader* vertex_shader,
         if (i == 0 && float_constant_index == 39 && rim_shader) {
           float* rim = reinterpret_cast<float*>(float_constants);
           rim[0] *= rim_scale;
+        }
+        if (i == 0 && float_constant_index == 3 && g_dbz3_sky_draw) {   // eIW8: domo sigue al ojo (x/z)
+          auto C = [&](uint32_t r, uint32_t k) { return regs.Get<float>(XE_GPU_REG_SHADER_CONSTANT_000_X + 4 * r + k); };
+          // ojo: [ex ey ez 1] * M tiene x = y = w = 0 (resolver 3x3 por Cramer)
+          const double a[3][3] = {{C(0, 0), C(1, 0), C(2, 0)}, {C(0, 1), C(1, 1), C(2, 1)}, {C(0, 3), C(1, 3), C(2, 3)}};
+          const double b[3] = {-C(3, 0), -C(3, 1), -C(3, 3)};
+          auto det3 = [](const double m[3][3]) {
+            return m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) +
+                   m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+          };
+          const double d = det3(a);
+          if (std::fabs(d) > 1e-9) {
+            double ax[3][3], az[3][3];
+            for (int r = 0; r < 3; ++r)
+              for (int c = 0; c < 3; ++c) ax[r][c] = c == 0 ? b[r] : a[r][c], az[r][c] = c == 2 ? b[r] : a[r][c];
+            const float ex = float(det3(ax) / d), ez = float(det3(az) / d);
+            float* t = reinterpret_cast<float*>(float_constants);
+            for (uint32_t k = 0; k < 4; ++k) t[k] += ex * C(0, k) + ez * C(2, k);
+          }
         }
         float_constants += 4 * sizeof(float);
       }

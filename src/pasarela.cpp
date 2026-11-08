@@ -1453,6 +1453,14 @@ const ObjReady kObjReady[11][2] = {
 // Las rondas 2-11 estan medidas (DS11). Yamcha tambien: A3/datos/r1_yamcha.log (PCSX2/PINE, gancho 0x1369D0),
 // 1303 en canal 1 a 94,52 s y 1516 en canal 2 durante la segunda toma. B1 no le da charla ni tablero previo:
 // las dos tomas van al final de la escena larga de los Juegos de Cell. No confundir esa ausencia de charla con voz sin medir.
+// Voces y musica de la escena larga de la ronda 1 (Juegos de Cell). MEDIDAS en PCSX2 (A3/datos/r1_yamcha.log, gancho 0x1369D0): musica 1232 a 3,14 s
+// = cuadro 0 del #AMC; cada voz entra a (t - 3,14) s y cae en un corte de camara (1220 a 10,16 s = corte 600; 471 a 15,75 = 950; 1221 a 19,45 = 1180;
+// 1228 a 63,94 = 3820; 1229 a 75,19 = 4480; 1231 a 85,44 = 5100). Duran menos que el hueco hasta la siguiente (ADX_JP: 6,45 / 1,89 / 4,83 / 2,63 / 4,43 /
+// 5,13 / 1,95 / 2,37 / 11,18 / 2,93 / 10,81 / 3,62 / 3,81 / 2,42 s). La previa dura 2030 cuadros (33,83 s) y la llegada empieza ahi: sus ms van
+// restados de 33 833. Formato de OirVozB1: -ms, entrada. La entrada 1227 no suena en la grabacion.
+constexpr int kVocesPrevia[] = {-600, 1218, -7440, 1219, -10160, 1220, -15750, 471, -19450, 1221, -23780, 1222, -29500, 1223};
+constexpr int kVocesLlegada[] = {-4050, 1224, -7230, 1225, -19020, 1226, -30110, 1228, -41360, 1229, -47180, 1230, -51610, 1231};
+constexpr int kMusicaJuegosCell = 1232;
 constexpr int kVozReady[11][4] = {{1303, 300, 1516, 30}, {1302, 1370, 1477, 1260}, {1307, 1580, 662, 1440}, {1299, 1670, 15, 1770},
                                   {1302, 1330, 1456, 1130}, {1303, 320, 1493, 330}, {1307, 1600, 1160, 830},
                                   {1302, 1330, 103, 750}, {1299, 1680, 614, 1420}, {1303, 320, 569, 1510}, {1299, 1730, 93, 2040}};
@@ -1500,7 +1508,7 @@ void TomasPresentacion(dbz3::cinematica::Escena& e, int r = 1) {
   p.cam_obj.assign(o1.a, o1.a + o1.n);
   // Sin el ajuste provisional de LUNA20 (ojo Y-1,2/Z+14 y objetivo X+4): FUN_001920b0 da la camara exacta y las
   // claves medidas de DS11 la confirman. El encuadre de la toma 1 y el de la 2 son el mismo tipo de orbita.
-  p.cam_fov = {{0.0f, 0.610865f}, {180.0f, 1.2025f}};
+  p.cam_fov = {{0.0f, 0.610865f}, {180.0f, 1.2020f}};
   if (!std::getenv("DBZ3_SIN_FOV_READY")) p.fov_acerca = true;   // Satan 30/10 (d): B3 proyecta con 0,785 fijo; sin esto la rampa de fov 35->69 grados de B1 no se ve   // FUN_001920b0: fov = (35 + 35*t/186) grados; a 180 cuadros 1,2025 rad
   if (!e.iso_voces.empty()) p.voces = {-kVozReady[std::clamp(r, 0, 10)][1], kVozReady[std::clamp(r, 0, 10)][0]};
   e.pasos.push_back(p);
@@ -1517,7 +1525,7 @@ void TomasPresentacion(dbz3::cinematica::Escena& e, int r = 1) {
   p.cam_ojo = ojo2;
   const ObjReady& o2 = kObjReady[std::clamp(r, 0, 10)][1];
   p.cam_obj.assign(o2.a, o2.a + o2.n);
-  p.cam_fov = {{0.0f, 0.610865f}, {180.0f, 1.2025f}};
+  p.cam_fov = {{0.0f, 0.610865f}, {180.0f, 1.2020f}};
   if (!std::getenv("DBZ3_SIN_FOV_READY")) p.fov_acerca = true;   // Satan 30/10 (d): B3 proyecta con 0,785 fijo; sin esto la rampa de fov 35->69 grados de B1 no se ve   // FUN_001920b0, igual que la toma 1
   if (!e.iso_voces.empty()) p.voces = {-kVozReady[std::clamp(r, 0, 10)][3], kVozReady[std::clamp(r, 0, 10)][2]};
   e.pasos.push_back(p);
@@ -3267,6 +3275,7 @@ void DibujarPropsLlegada(ImGuiIO& io) {
 enum TipoSuelta : int { kSueltaPrevia = 0, kSueltaPresentacion = 1, kSueltaFinal = 2 };
 
 void ArrancarMusica(const std::filesystem::path& ruta, int indice, float retraso_s, bool continuar);   // mas abajo
+void ArrancarMusicaPista(const std::filesystem::path& ruta, int pista, float desde_s = 0);   // mas abajo
 
 bool LanzarSolo(int escenario, int id1, int id2, int f1, int f2, dbz3::cinematica::Escena e, int tipo = kSueltaPrevia,
                 Reglas reglas = {}) {   // con g_mu
@@ -3407,11 +3416,16 @@ bool LanzarPrevia(int escenario) {   // con g_mu
   e.iso_voces = g_d->ruta;
   e.volumen = dbz3::settings::AudioMute() ? 0.0f : float(dbz3::settings::MasterVolume());
   e.distancia = 30;
-  if (!EscenaPreviaLarga(e)) EscenaPrevia(e);   // DS143: los 4 clips reales del #AMC de B1; si no, el resumen medido
+  const bool larga = EscenaPreviaLarga(e);   // DS143: los 4 clips reales del #AMC de B1; si no, el resumen medido
+  if (!larga) EscenaPrevia(e);
   g_previa_inicio = 0;
+  if (larga && !e.pasos.empty() && !e.iso_voces.empty()) e.pasos.front().voces.assign(std::begin(kVocesPrevia), std::end(kVocesPrevia));
+  CallarB3EnEscena(e);   // la musica de B1 suena sola: sin la mezcla de B3 (el ambiente del escenario)
+  if (larga) e.al_terminar_escena = [fin = e.al_terminar_escena] { if (fin) fin(); DetenerMusica(); };   // la llegada retoma 1232 donde iba B1 (cuadro 2030): no sigue sonando durante la carga
   if (!e.pasos.empty()) {
     const auto empezar = e.pasos.front().al_empezar;
-    e.pasos.front().al_empezar = [empezar] {
+    e.pasos.front().al_empezar = [empezar, larga, ruta = g_d->ruta] {
+      if (larga) ArrancarMusicaPista(ruta, kMusicaJuegosCell);   // 1232 desde el cuadro 0, como B1
       g_previa_inicio = NowMs();
       dbz3::launcher::DeferUi(&CrearFundidoSatan);
       if (empezar) empezar();
@@ -3432,9 +3446,14 @@ bool LanzarPresentacion(int escenario, const CombateB1& c, int ronda) {   // con
     // DS143: ronda 1 = los 11 clips reales del #AMC de B1 (previa ya jugada antes) + las dos tomas de Yamcha
     if (!EscenaCellLarga(e)) {
       EscenaCell(e);   // si la ISO no trae el paquete, el resumen medido
-    } else if (!std::getenv("DBZ3_SIN_PROPS_LLEGADA")) {
+    } else if (const auto empezar_ll = e.pasos[0].al_empezar;
+               (e.pasos[0].al_empezar = [empezar_ll, ruta = g_d->ruta] {
+                 if (empezar_ll) empezar_ll();
+                 ArrancarMusicaPista(ruta, kMusicaJuegosCell, 2030.0f / 60.0f);   // 1232 desde el cuadro 2030, como B1
+               }, !std::getenv("DBZ3_SIN_PROPS_LLEGADA"))) {
       // DS145: coche y humo de la llegada (paquete #2372 de la ISO, en un hilo). El primer paso fija el reloj: el
       // cuadro global 2030 del #AMC es el 0 de la llegada.
+      if (!e.iso_voces.empty()) e.pasos[0].voces.assign(std::begin(kVocesLlegada), std::end(kVocesLlegada));   // voces 1224-1231 de la escena larga
       const auto empezar = e.pasos[0].al_empezar;
       e.pasos[0].al_empezar = [empezar] { if (empezar) empezar(); g_pl.t0 = NowMs(); g_pl.activo = true; };
       if (g_pl.estado.load() == 0) {
@@ -3447,6 +3466,7 @@ bool LanzarPresentacion(int escenario, const CombateB1& c, int ronda) {   // con
     // dos tomas de presentacion de FUN_001920b0. Se quita la charla 3D anadida (contenido inventado).
     TomasPresentacion(e, ronda);
   }
+  CallarB3EnEscena(e);   // la musica y las voces de B1 suenan solas (sin el ambiente de B3)
   static const bool sin_musica = std::getenv("DBZ3_SIN_MUSICA_B1") != nullptr;
   if (!sin_musica && e.pasos.size() >= 3)
     e.pasos[e.pasos.size() - 3].al_empezar = [ruta = g_d->ruta, m = c.musica] { ArrancarMusica(ruta, m, 0.0f, false); };
@@ -3546,7 +3566,7 @@ bool LeerCamaraB1(const std::vector<uint8_t>& paq, CamaraB1& c) {
   return !c.ojo.empty() && !c.obj.empty();   // las pistas del ojo y del objetivo pueden tener claves en cuadros distintos
 }
 
-void ArrancarMusicaPista(const std::filesystem::path& ruta, int pista);   // abajo
+void ArrancarMusicaPista(const std::filesystem::path& ruta, int pista, float desde_s);   // abajo
 dbz3::cinematica::Escena EscenaFinal() {   // con g_mu
   namespace C = dbz3::cinematica;
   C::Escena e;
@@ -3727,7 +3747,7 @@ dbz3::cinematica::Escena EscenaFinal() {   // con g_mu
 // Medido (S5-A3, volcado de audio del juego): en combate B3 no abre ningun stream de musica (0 aperturas en `voces: stream` entre el
 // estado 1 y el 4) y lo que queda de audio (RMS 0,05) es grave y tonal (centroide 614 Hz, 52 % por debajo de 200 Hz) = ambiente del
 // escenario; parar todos los streams (sub_82081A48(-1)) no lo cambia. No hay musica de B3 que silenciar.
-void ArrancarPista(const std::filesystem::path& ruta, int pista, float retraso_s, bool continuar) {
+void ArrancarPista(const std::filesystem::path& ruta, int pista, float retraso_s, bool continuar, float desde_s = 0) {
   if (pista < 0 || ruta.empty()) return;
   if (continuar && g_mus_pista.load() == pista) return;   // los Cell Jr. seguidos: la misma pista sigue
   DetenerMusica();
@@ -3735,15 +3755,15 @@ void ArrancarPista(const std::filesystem::path& ruta, int pista, float retraso_s
   const uint32_t ficha = g_mus_ficha.load();
   const float vol = dbz3::settings::AudioMute() ? 0.0f : float(dbz3::settings::MasterVolume()) * 0.6f;
   REXLOG_INFO("dbz3 pasarela: musica del combate: ADX_JP {} dentro de {:.1f} s", pista, retraso_s);
-  std::thread([ruta, pista, vol, retraso_s, ficha] {
+  std::thread([ruta, pista, vol, retraso_s, ficha, desde_s] {
     std::this_thread::sleep_for(std::chrono::milliseconds(int(retraso_s * 1000)));
-    if (ficha == g_mus_ficha.load()) OirMusicaPs2(ruta, "adx_jp.afs", pista, vol);
+    if (ficha == g_mus_ficha.load()) OirMusicaPs2(ruta, "adx_jp.afs", pista, vol, desde_s);
   }).detach();
 }
 void ArrancarMusica(const std::filesystem::path& ruta, int indice, float retraso_s, bool continuar) {
   if (indice >= 0 && indice < int(std::size(kBgmB1))) ArrancarPista(ruta, kBgmB1[indice], retraso_s, continuar);
 }
-void ArrancarMusicaPista(const std::filesystem::path& ruta, int pista) { ArrancarPista(ruta, pista, 0.0f, false); }
+void ArrancarMusicaPista(const std::filesystem::path& ruta, int pista, float desde_s) { ArrancarPista(ruta, pista, 0.0f, false, desde_s); }
 
 // Efectos de la interfaz de B1: DATA_<idioma>.AFS 676 = cuerpo PS-ADPCM y 677 = indice IECS (17 sonidos, 0..0x10).
 // B1 los pide por FUN_00152690(0,0,id) al sistema de audio del IOP; el puerto decodifica ese mismo banco con

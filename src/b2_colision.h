@@ -111,4 +111,79 @@ inline Impacto Rayo(const Recurso& r,uint32_t variante,const std::array<float,3>
   }
   return mejor;
 }
+// FUN_001B6520(x,z,0): suelo B2, no el suelo HD de CA2C0. El original
+// usa propiedades &1; CA2C0 busca &2/&8 y en Base elige la plataforma6.133
+// (registro94, flags18) en vez del suelo0 (registro46, flags17).
+inline float AlturaSuelo(const Recurso& r,uint32_t variante,float x,float z,
+                        const std::function<bool(uint32_t)>& seleccionada={}) {
+  const Vista m=r.Bloque(3),mad=r.Bloque(5),mas=r.Bloque(6);
+  auto fv=[&](size_t p){const uint32_t u=m.U(p);float f;std::memcpy(&f,&u,4);return f;};
+  if(!std::isfinite(x)||!std::isfinite(z)||!m.Rango(0,40)||variante>=m.U(4))return 0;
+  const uint32_t ol=m.U(32);
+  if(!m.Rango(size_t(ol)+4ull*variante,4))return 0;
+  const uint32_t ob=m.U(size_t(ol)+4ull*variante);
+  if(!m.Rango(ob,0xe0))return 0;
+  const uint32_t tabla=m.U(ob+0xb0),n=m.U(ob+0x98);
+  if(n>10000||!m.Rango(tabla,size_t(n)*48))return 0;
+  uint32_t nodo=m.U(ob+0xbc);
+  // 1B1AC0: descender por X o Z hasta la hoja que contiene la consulta.
+  for(unsigned pasos=0;nodo;++pasos) {
+    if(pasos>=10000||!m.Rango(nodo,80))return 0;
+    const bool derecha=fv(nodo+0x24)==fv(nodo+0x28)?x>=fv(nodo):z>=fv(nodo+8);
+    const uint32_t hijo=m.U(nodo+(derecha?0x38:0x3c));
+    if(!hijo)break;nodo=hijo;
+  }
+  uint32_t izq=nodo,der=nodo;bool izquierda=true;unsigned ni=0,nd=0;
+  for(unsigned pasos=0;nodo&&pasos<10000;++pasos) {
+    if(!m.Rango(nodo,80))return 0;
+    const uint32_t cnt=m.U(nodo+0x30),lista=m.U(nodo+0x4c);
+    if(cnt>10000||!m.Rango(lista,size_t(cnt)*4))return 0;
+    for(uint32_t i=0;i<cnt;++i) {
+      const uint32_t rec=m.U(lista+4*i);
+      if(rec<tabla||(rec-tabla)%48||(rec-tabla)/48>=n||
+         (seleccionada&&!seleccionada((rec-tabla)/48)))continue;
+      const uint32_t geo=m.U(rec),bloque=m.U(rec+8);
+      if(!m.Rango(geo,32)||!m.Rango(bloque,12))continue;
+      const uint32_t atributo=m.U(geo+16);
+      if(!mas.Rango(0,12)||atributo>=mas.U(4)||!mad.Rango(0,12)||
+         !mas.Rango(size_t(mas.U(8))+4ull*atributo,4))continue;
+      const uint32_t g=mas.U(size_t(mas.U(8))+4ull*atributo);
+      if(!mas.Rango(g,12)||!mas.Rango(mas.U(g+8),size_t(mas.U(g+4))*16))continue;
+      bool activa=false;
+      for(uint32_t j=0;j<mas.U(g+4);++j) {
+        const uint32_t q=mas.U(g+8)+16*j,cat=mas.U(q),idx=mas.U(q+4);
+        if(cat>=mad.U(4)||!mad.Rango(size_t(mad.U(8))+4ull*cat,4))continue;
+        const uint32_t mg=mad.U(size_t(mad.U(8))+4ull*cat);
+        if(!mad.Rango(mg,16)||idx>=mad.U(mg+8)||
+           !mad.Rango(size_t(mad.U(mg+12))+4ull*idx,4))continue;
+        const uint32_t prop=mad.U(size_t(mad.U(mg+12))+4ull*idx);
+        if(mad.Rango(prop,4)&&(mad.U(prop)&1)){activa=true;break;}
+      }
+      if(!activa)continue;
+      const uint64_t pool=uint64_t(m.U(rec+28))+m.U(bloque+4)+16;
+      std::array<std::array<float,3>,3> v;
+      bool bien=true;
+      for(unsigned j=0;j<3;++j) {
+        const uint64_t p=pool+16ull*m.U(geo+20+4*j);
+        if(!m.Rango(size_t(p),12)){bien=false;break;}
+        v[j]={fv(size_t(p)),fv(size_t(p)+4),fv(size_t(p)+8)};
+      }
+      const float nx=fv(geo),ny=fv(geo+4),nz=fv(geo+8);
+      if(!bien||ny==0)continue;
+      const float y=((v[0][0]*nx+v[0][1]*ny+v[0][2]*nz)-(nx*x+nz*z))/ny;
+      if(!std::isfinite(y))continue;
+      std::array<bool,3> signo;
+      for(unsigned j=0;j<3;++j) {
+        const auto& a=v[j];const auto& b=v[(j+1)%3];
+        signo[j]=(a[2]-z)*(b[0]-x)-(a[0]-x)*(b[2]-z)<0;
+      }
+      if(signo[0]==signo[1]&&signo[1]==signo[2])return y;
+    }
+    if(izquierda){if(izq)izq=nodo=m.U(izq+0x40);else if(der)der=nodo=m.U(der+0x44);++ni;}
+    else {if(der)der=nodo=m.U(der+0x44);else if(izq)izq=nodo=m.U(izq+0x40);++nd;}
+    izquierda=!izquierda;
+    if(izq==der||(ni>=3&&nd>=3&&ni==nd))break;
+  }
+  return 0;
+}
 } // namespace dbz3::escenarios::b2

@@ -154,7 +154,7 @@ TOURN_STRIP_TEX = 14           # plantilla de las tiras de iconos (DDS 512x128 A
 # cinco tienen la misma estructura (2709 entradas, mismas texturas del select y catalogo).
 # Todo lo que se escribe en data_usi se repite en ellas (sin esto, en espanol las casillas
 # nuevas salian sin icono y el juego se cerraba al pasar por ellas).
-DATA_LANGS = ("eng", "spn", "fra", "ger", "ita")
+DATA_LANGS = ("eng", "spn", "fra", "ger", "ita", "por", "jpn")   # por/jpn: copias de data_usi (pt y ja, el juego en ingles; ver asegurar_copias_pt_ja)
 SELECT_POSES = (3881, 3882)    # data_cmn: poses del select (#ACM, una por ID; #CSK codigo = ID)
 ICON_TEX = 11                  # textura 1024x1024 del marco de la rueda (45 % libre)
 FONT = "C:/Windows/Fonts/comicbd.ttf"
@@ -198,6 +198,19 @@ def default_us():
     return os.path.dirname(swap_b3.DEFAULT_AFS)
 
 
+def asegurar_copias_pt_ja(us):
+    """pt y ja no son idiomas del juego (lee data_usi en ingles): cada uno tiene su copia de data_usi.afs (data_por / data_jpn)
+    para que las escenas propias salgan traducidas. Se crea una vez; el juego la usa si existe (roster_ext.cpp, sub_821D3EB8)."""
+    usi = os.path.join(us, "data_usi.afs")
+    if not os.path.isfile(usi):
+        return
+    for lk in ("por", "jpn"):
+        dst = os.path.join(us, "data_%s.afs" % lk)
+        if not os.path.isfile(dst):
+            shutil.copyfile(usi, dst)
+            log("copia de idioma creada: data_%s.afs" % lk)
+
+
 def us_dir(us=None):
     """La carpeta us/ del Budokai 3 HD: `us` si su data_cmn.afs es el bueno; si no, la que encuentre
     swap_b3.find_us (carpeta del launcher, DBZ3/us...). Sin ninguna: swap_b3.NoGameData (mensaje claro)."""
@@ -233,7 +246,60 @@ class Afs:
 CACHE_DIR = None
 _MEM = {}
 _MEM_BYTES = [0]
-_MEM_MAX = 384 * 1024 * 1024        # tope de la cache en memoria (lo demas, en disco)
+def _system_ram():
+    """(total, libre) en bytes; (0, 0) si el sistema no lo dice."""
+    try:
+        if os.name == "nt":
+            import ctypes
+
+            class _Mem(ctypes.Structure):
+                _fields_ = [("dwLength", ctypes.c_ulong), ("dwMemoryLoad", ctypes.c_ulong),
+                            ("ullTotalPhys", ctypes.c_ulonglong), ("ullAvailPhys", ctypes.c_ulonglong),
+                            ("ullTotalPageFile", ctypes.c_ulonglong), ("ullAvailPageFile", ctypes.c_ulonglong),
+                            ("ullTotalVirtual", ctypes.c_ulonglong), ("ullAvailVirtual", ctypes.c_ulonglong),
+                            ("ullAvailExtendedVirtual", ctypes.c_ulonglong)]
+
+            m = _Mem()
+            m.dwLength = ctypes.sizeof(m)
+            if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(m)):
+                return int(m.ullTotalPhys), int(m.ullAvailPhys)
+            return 0, 0
+        total = avail = 0
+        with open("/proc/meminfo", encoding="ascii", errors="replace") as fh:
+            for line in fh:
+                if line.startswith("MemTotal:"):
+                    total = int(line.split()[1]) * 1024
+                elif line.startswith("MemAvailable:"):
+                    avail = int(line.split()[1]) * 1024
+        return total, avail
+    except Exception:  # noqa: BLE001 (nunca debe impedir el montaje)
+        return 0, 0
+
+
+def _mem_cache_max():
+    """Tope de la cache en RAM. En un PC de 4-8 GB 384 MB era demasiado: se escala por
+    tramos y nunca pasa de 1/12 de la RAM libre que hay al empezar el montaje."""
+    manual = os.environ.get("DBZ3_ROSTER_MEM_MB")
+    if manual:
+        try:                        # prueba / ajuste manual (no se documenta)
+            return max(8, int(manual)) * 1024 * 1024
+        except ValueError:
+            pass
+    total, libre = _system_ram()
+    if total <= 0:
+        return 384 * 1024 * 1024
+    if total <= 5 * 1024 ** 3:
+        base = 96 * 1024 * 1024
+    elif total <= 7 * 1024 ** 3:
+        base = 128 * 1024 * 1024
+    elif total <= 9 * 1024 ** 3:
+        base = 192 * 1024 * 1024
+    else:
+        base = 384 * 1024 * 1024
+    return min(base, max(48 * 1024 * 1024, libre // 12))
+
+
+_MEM_MAX = _mem_cache_max()         # tope de la cache en memoria (lo demas, en disco)
 _PRUNE = [0]
 _TAGS = {}
 
@@ -337,16 +403,25 @@ _PENDING = {}
 _SEQ = [0]
 
 
-def _compress(raw, dst, work):
-    with open(raw, "rb") as fh:
-        data = fh.read()
+def _file_sha256(path):
+    """sha256 leyendo por trozos: no hace falta tener el bin entero en RAM solo para la clave."""
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
+
+def _compress(raw, dst, work):
     def comprimir():
         swap_b3.lzx_compress(raw, dst, work)
         with open(dst, "rb") as fh:
             return fh.read()
 
-    blob = _cached("lzx_c", _content_key(_file_tag(swap_b3.XBCOMPRESS), data), comprimir, cap_mb=256)
+    # Clave por contenido sin duplicar el bin en memoria (antes se leia entero solo para
+    # hashearlo y se tenia otra copia en el llamador).
+    key = "%s-%s" % (_file_tag(swap_b3.XBCOMPRESS), _file_sha256(raw))
+    blob = _cached("lzx_c", key, comprimir, cap_mb=256)
     with open(dst, "wb") as fh:
         fh.write(blob)
     os.remove(raw)
@@ -537,6 +612,49 @@ def forms_height_fixed(raws, per, anm, cmn, dn, name):
         if fixed:
             out[i] = fixed
             log("   %s: altura: modelo %d (pierna %.2f, la forma 1 %.2f) cadera %+.2f" % (name, i + 1, l1, l0, dy))
+    return out
+
+
+def pies_fixed(raws, per, c, d, cmn, dn, work, name):
+    """Importados de B1/B2 (eANI4): nulos NLF/NRF como los del donante y cadera subida para que el nulo en reposo quede
+    donde lo deja un nativo; sin eso el IK de pies de B3 dobla las piernas en combate (awo_tools/pies.py, medido).
+    Apagado con `pies = false` en el personaje.toml o DBZ3_SIN_PIES=1. Modelos PS2. -> raws."""
+    if not c.get("pies", True) or os.environ.get("DBZ3_SIN_PIES") or c.get("origen_fuente") not in ("b1", "b2"):
+        return raws
+    import pies  # noqa: PLC0415
+    glob = pies.global_idle(cmn.entry(pies.GLOBAL_AMM))
+    dper = max(1, dn.get("models_per_costume", 1))
+    moves = c.get("moveset", [])
+    out = list(raws)
+    for i, raw in enumerate(raws):
+        f = i % per
+        dmodel = cmn.entry(dn["models"][min(f, dper - 1, len(dn["models"]) - 1)])
+        tr = d_tr = None
+        if moves:
+            tr = pies.reposo(load_bin(os.path.join(d, moves[min(f, len(moves) - 1)]), work), glob)
+        danm = dn["anm"][f] if f < len(dn["anm"]) and 0 < dn["anm"][f] < 0xFFFFFFFF else dn["anm"][0]
+        if 0 < danm < 0xFFFFFFFF:
+            d_tr = pies.reposo(cmn.entry(danm), glob)
+        out[i], info = pies.corregir(raw, dmodel, tr, d_tr, lift=bool(moves))
+        if info:
+            log("   %s: pies: modelo %d: %s" % (name, i + 1, info))
+    return out
+
+
+def sb_var_fixed(anm_bins, c, cmn, dn, name):
+    """Ports de Shin Budokai (eANI4): el campo var de las animaciones de reposo/andar como el del donante (pies.py)."""
+    if not c.get("pies", True) or os.environ.get("DBZ3_SIN_PIES") or c.get("origen_fuente") not in ("sb1", "sb2"):
+        return anm_bins
+    import pies  # noqa: PLC0415
+    danm = dn["anm"][0] if dn.get("anm") else 0
+    if not 0 < danm < 0xFFFFFFFF:
+        return anm_bins
+    out = []
+    for b in anm_bins:
+        b, cods = pies.var_como_donante(b, cmn.entry(danm))
+        if cods:
+            log("   %s: pies: var de los codigos %s como el donante" % (name, ", ".join(hex(x) for x in cods)))
+        out.append(b)
     return out
 
 
@@ -988,6 +1106,47 @@ def bsp_resources(bsp):
         return 0
 
 
+
+def radio_piel_0(hdb):
+    """#68: deja radio 0 en las partes skinneadas de un #AMB HD (el culling del Rush
+    usa centro+radio; los nativos HD ya llevan 0 en el cuerpo). No cambia tamanos:
+    solo escribe el float del radio. Los ports PSP ya convertidos quedan arreglados
+    al reconstruir, sin reimportar."""
+    b = bytearray(hdb)
+    if b[:4] != b"#AMB":
+        return hdb
+    n, tbl = struct.unpack_from(">II", b, 0x10)
+    awo = None
+    for k in range(n):
+        off, size = struct.unpack_from(">II", b, tbl + 16 * k)[:2]
+        if size and b[off:off + 4] == b"#AWO":
+            awo = off
+            break
+    if awo is None:
+        return hdb
+    namg = struct.unpack_from(">I", b, awo + 0x18)[0]
+    atbl = struct.unpack_from(">I", b, awo + 0x1C)[0]
+    hechos = 0
+    for k in range(namg):
+        awg = awo + struct.unpack_from(">I", b, awo + atbl + 4 * k)[0]
+        nb = struct.unpack_from(">I", b, awg + 0x10)[0]
+        axes = struct.unpack_from(">I", b, awg + 0x14)[0]
+        for i in range(nb):
+            arm = struct.unpack_from(">I", b, awg + axes + 80 * i + 0x34)[0]
+            if not arm:
+                continue
+            g = struct.unpack_from(">I", b, awg + arm + 4)[0] or struct.unpack_from(">I", b, awg + arm + 8)[0]
+            if not g:
+                continue
+            npart = struct.unpack_from(">I", b, awg + g)[0]
+            for pi in range(npart):
+                rec = awg + g + 16 + 0x60 * pi
+                if rec + 0x40 <= len(b) and b[rec + 0x38] == 1:
+                    struct.pack_into(">f", b, rec + 0x10, 0.0)
+                    hechos += 1
+    return bytes(b)
+
+
 def b3_ramps(hdb, name, c=None):
     """Rampas de sombreado de Budokai 2 (sombra en el alfa, RGB negro y ultima columna blanca) -> estilo B3
     (awo_tools/rampas.py). Sin esto la piel salia sin sombra (muy blanca) y con manchas negras (Tenshinhan B2).
@@ -1010,6 +1169,8 @@ def b3_ramps(hdb, name, c=None):
         out, n = rampas.sombrear_planas(out)      # SDBH: texturas sin sombrear (pelo de Goku gris claro)
         if n:
             log("   %s: %d texturas de SDBH pasan a sombreadas (pelo)" % (name, n))
+    if c is not None and c.get("origen_fuente") in ("sb1", "sb2"):
+        out = radio_piel_0(out)                   # #68: culling del Rush sobre ports PSP
     return out
 
 
@@ -1938,13 +2099,23 @@ def ordenar_trajes(trajes, orden):
     return sorted(trajes, key=lambda t: (orden[t[0]], t[0])), orden
 
 
-def guardar_reparto(mods_dir, mapa, orden):
+def capsulas_fijas(mods_dir):
+    """[capsulas] de roster_ids.toml: "carpeta|tipo|nombre" -> ID de capsula (peticion d)."""
+    try:
+        doc = toml_file(os.path.join(mods_dir, IDS_FILE))
+    except (OSError, ValueError):
+        return {}
+    return {str(k): v for k, v in doc.get("capsulas", {}).items() if isinstance(v, int)}
+
+
+def guardar_reparto(mods_dir, mapa, orden, caps=None):
     txt = "\n".join(["# GENERADO por roster_build.py: ID fijo de cada personaje nuevo y orden de los trajes extra.",
                      "# No cambia al anadir o quitar mods (un mod quitado reserva su ID). Editar a mano solo",
                      "# para mover a alguien a proposito (con una copia de la partida guardada).",
                      "version = 1", "", "[ids]"] +
                     ["%s = %d" % (json.dumps(k), v) for k, v in mapa.items()] + ["", "[trajes]"] +
-                    ["%s = %d" % (json.dumps(k), v) for k, v in orden.items()]) + "\n"
+                    ["%s = %d" % (json.dumps(k), v) for k, v in orden.items()] +
+                    (["", "[capsulas]"] + ["%s = %d" % (json.dumps(k), v) for k, v in caps.items()] if caps else [])) + "\n"
     path = os.path.join(mods_dir, IDS_FILE)
     try:
         if open(path, encoding="utf-8").read() == txt:
@@ -2201,7 +2372,7 @@ def inputs_hash(srcs):
     h.update(open(os.path.join(HERE, "gritos.py"), "rb").read())
     h.update(open(os.path.join(HERE, "capsulas.py"), "rb").read())
     for extra in (os.path.join(HERE, "colores.py"), os.path.join(ROOT, "awo_tools", "altura.py"),
-                  os.path.join(ROOT, "awo_tools", "rampas.py")):
+                  os.path.join(ROOT, "awo_tools", "pies.py"), os.path.join(ROOT, "awo_tools", "rampas.py")):
         if os.path.isfile(extra):        # tambien cambian el resultado (efectos, pies al suelo)
             h.update(open(extra, "rb").read())
     for name, d, _ in srcs:
@@ -2241,11 +2412,16 @@ EVERYONE = 0xFFFFFFFFFFF      # objetos comunes: bits de los IDs 0..43
 class Capsules:
     """IDs nuevos (596+), registros del catalogo, bancos de nombres y lineas de roster.toml."""
 
-    def __init__(self, usi, cmn=None):
+    def __init__(self, usi, cmn=None, fijas=None):
         self.usi = usi
         self.cmn = cmn
         self.recs = capsulas.skc_records(usi.entry(capsulas.SKC_ENTRY))
-        self.next_id = len(self.recs)
+        self.next_id = len(self.recs)   # primera ID nueva (clean_custom_lists)
+        # peticion d: ID fija por capsula ("carpeta|tipo|nombre" -> ID, en roster_ids.toml [capsulas]); una capsula
+        # conserva su ID aunque se anadan o quiten otros personajes (la partida guarda inventario y listas Custom por ID)
+        self.fijas = {k: v for k, v in (fijas or {}).items() if self.next_id <= v < capsulas.ID_MAX_NUEVA}
+        self.usadas = set()
+        self._claves = set()
         self.new = []                 # [(id, registro, nombre)]
         self.next_usi = len(usi.index)
         self.banks = []               # [(fid data_usi, bytes | f(afs, idioma) -> bytes)]
@@ -2256,6 +2432,25 @@ class Capsules:
         self.nforms = 1
         self.desc = {}                # id -> fid data_usi del panel de descripcion
         self.buu_extra = set()        # capsulas que Super Bu hereda al absorber (src/fusion.cpp): su banco no trae sus nombres
+
+    def _id_fija(self, mod, kind, cc):
+        """ID de la capsula: la de siempre (roster_ids.toml) o la primera libre que nadie tenga reservada."""
+        base = "%s|%s|%s" % (mod, kind, str(cc.get("nombre") or "").strip())
+        clave, k = base, 2
+        while clave in self._claves:
+            clave, k = "%s#%d" % (base, k), k + 1
+        self._claves.add(clave)
+        nid = self.fijas.get(clave)
+        if nid is None or nid in self.usadas:
+            reservadas = set(self.fijas.values())
+            libres = [i for i in range(self.next_id, capsulas.ID_MAX_NUEVA) if i not in self.usadas]
+            # sin hueco libre: se reutiliza la reserva de una capsula que ya no esta (mod quitado o desactivado)
+            nid = next((i for i in libres if i not in reservadas), libres[0] if libres else None)
+            if nid is None:
+                return None
+        self.fijas[clave] = nid
+        self.usadas.add(nid)
+        return nid
 
     @staticmethod
     def _bank_ids(b):
@@ -2271,10 +2466,11 @@ class Capsules:
                 return capsulas.azt_read(b, ids[cap])
         return None
 
-    def graft_hyper(self, anm, donor, cmn, anim_from=None):
+    def graft_hyper(self, anm, donor, cmn, anim_from=None, base_anm=None):
         """Injerta en el moveset (forma 1) el bloque del modo hiper del donante en los codigos
         que usa la entrada hiper convertida. anim_from = {codigo: codigo propio} hace que el
-        bloque reproduzca la animacion propia (el aura burst de IW) y no la del donante."""
+        bloque reproduzca la animacion propia (el aura burst de IW) y no la del donante.
+        Los deltas de forma sin ese codigo heredan el aura del moveset base, como en juego."""
         dn = IDS[donor]
         dcam = cmn.entry(dn["cam"])
         at = capsulas.ccm_child(dcam)
@@ -2287,15 +2483,18 @@ class Capsules:
         k, do, ds = capsulas.csk_child(anm)
         csk = anm[do:do + ds]
         own = bytes(csk)
+        _, bo, bs = capsulas.csk_child(base_anm or anm)
+        base_own = (base_anm or anm)[bo:bo + bs]
         for dst_code, src_code in zip(self.hyper, src_codes):
             csk = capsulas.csk_graft(csk, dst_code, src, src_code)
         csk = bytearray(csk)
         for dst_code, own_code in (anim_from or {}).items():
+            anim_src = own if capsulas.csk_block_at(own, own_code) else base_own
             # con la animacion propia (aura burst de IW, 60 fotogramas) los eventos del bloque
             # de B3 (120) se comprimen a su duracion: los de f88/f100 terminan de entrar en
             # modo hiper y sin ellos se quedaba en la pantalla oscura (Goku GT, 2026-10-10)
-            if capsulas.csk_set_anim(csk, dst_code, own, own_code):
-                capsulas.csk_fit_frames(csk, dst_code, capsulas.csk_last_frame(own, own_code))
+            if capsulas.csk_set_anim(csk, dst_code, anim_src, own_code):
+                capsulas.csk_fit_frames(csk, dst_code, capsulas.csk_last_frame(anim_src, own_code))
         return capsulas.amb_rebuild(anm, {k: bytes(csk)})
 
     @staticmethod
@@ -2343,11 +2542,10 @@ class Capsules:
             if kind not in CAP_TEMPLATES:
                 notes.append("capsula '%s': tipo desconocido (%s)" % (cc.get("nombre"), kind))
                 continue
-            if self.next_id >= capsulas.ID_MAX_NUEVA:
+            nid = self._id_fija(mod, kind, cc)
+            if nid is None:
                 notes.append("capsula '%s' omitida: catalogo lleno (IDs nuevas hasta %d)" % (cc.get("nombre"), capsulas.ID_MAX_NUEVA - 1))
                 continue
-            nid = self.next_id
-            self.next_id += 1
             req = last_tr if kind == "transformacion" else 0
             forma = int(cc.get("forma", 1))
             tpl = CAP_TEMPLATES[kind]
@@ -2399,7 +2597,8 @@ class Capsules:
                     key_map = {}
                     for kind in ("especial", "definitiva"):
                         mine = [o for o in own if o["tipo"] == kind]
-                        keys = [sk["clave"] for sk in capsulas.iw_skills(ccm) if sk["tipo"] == kind]
+                        keys = [sk["clave"] for sk in capsulas.iw_skills(ccm, c.get("iw_fila"))
+                                if sk["tipo"] == kind]
                         for k, o in enumerate(mine):
                             bcm_key = keys[k] if k < len(keys) else None
                             # la clave declarada (iw = ...) manda; sin ella, la del BCM
@@ -2408,7 +2607,8 @@ class Capsules:
                                 continue
                             if bcm_key is not None and bcm_key != real:
                                 key_map[bcm_key] = real
-                            skill_caps.setdefault(int(real), o["id"])
+                            # (tipo, clave): un especial y una definitiva pueden compartir ID en IW
+                            skill_caps.setdefault((kind, int(real)), o["id"])
                     ccm, self.grafts, rep = capsulas.adapt_iw_bcm(ccm, skill_caps, self.nforms, key_map,
                                                                   {int(x) for x in c.get("iw_ajenos", [])}, c.get("iw_fila"))
                     notes += ["BCM de Infinite World adaptado: " + r for r in rep]
@@ -2707,6 +2907,10 @@ class Capsules:
                     write_entry(out_dir, afs_name, e,
                                 capsulas.extend_bank(afs.entry(e), self._names), work)
         out = []
+        # huecos de capsulas reservadas de mods quitados: registro sin dueno (nadie la ve ni la equipa)
+        hueco = capsulas.make_record(self.recs[CAP_TEMPLATES["especial"]], [])
+        for nid in sorted(set(range(self.next_id, max(self.usadas, default=0))) - self.usadas):
+            out += ["[[capsula]]", "# hueco reservado", "id = %d" % nid, 'registro = "%s"' % hueco.hex(), ""]
         for nid, rec, nm in self.new:
             out += ["[[capsula]]", "# %s" % nm, "id = %d" % nid, 'registro = "%s"' % rec.hex()]
             if nid in self.desc:
@@ -2871,6 +3075,7 @@ def build(a):
     _POOL = ThreadPoolExecutor(max_workers=max(2, (os.cpu_count() or 4)))
     try:
         us = us_dir(us)     # aqui y no arriba: sin personajes no hace falta el juego
+        asegurar_copias_pt_ja(us)
         cmn = Afs(os.path.join(us, "data_cmn.afs"), work)
         # EU/PAL no trae data_usi.afs (su ingles es data_eng, misma estructura): se parte de
         # data_eng; lo escrito en data_usi no lo lee el juego EU (inofensivo).
@@ -2894,7 +3099,7 @@ def build(a):
         free = ALL_IDS
         toml = ["# GENERADO por mod center hd/roster_build.py (no editar: se regenera).", ""]
         manifest = []
-        caps = Capsules(usi, cmn)
+        caps = Capsules(usi, cmn, capsulas_fijas(mods))
         own_caps, first_new = {}, caps.next_id
         voice_out = voces.VoiceWriter(us, out_dir)
         iw_voices = None
@@ -2951,6 +3156,10 @@ def build(a):
                                                   cmn, dn, name)
                     except Exception as e:  # noqa: BLE001
                         log("   %s: aviso: altura de las formas sin ajustar (%s)" % (name, e))
+                try:
+                    raws = pies_fixed(raws, per, c, d, cmn, dn, work, name)
+                except Exception as e:  # noqa: BLE001
+                    log("   %s: aviso: pies sin ajustar (%s)" % (name, e))
                 for rel, raw in zip(files, raws):
                     hdbs.append(b3_ramps(to_hd(raw, work), name, c))
             except Exception as e:  # noqa: BLE001
@@ -3073,6 +3282,10 @@ def build(a):
             anm_rels = list(c.get("moveset", []))
             uniq = list(dict.fromkeys(anm_rels))
             anm_bins = [load_bin(os.path.join(d, rel), work) for rel in uniq]
+            try:
+                anm_bins = sb_var_fixed(anm_bins, c, cmn, dn, name)
+            except Exception as e:  # noqa: BLE001
+                log("   %s: aviso: pies (var) sin ajustar (%s)" % (name, e))
             if caps.grafts.get(-1) and anm_bins:     # golpes de IW que estaban en 0x258/0x358
                 moves = caps.grafts.pop(-1)
                 anm_bins = [csk_copy_codes(b, moves) for b in anm_bins]
@@ -3158,7 +3371,7 @@ def build(a):
             if caps.hyper and anm_bins:
                 try:
                     anim_from = caps.grafts.pop(-2, None)       # IW: su animacion de aura burst
-                    anm_bins = [caps.graft_hyper(b, donor, cmn, anim_from) for b in anm_bins]   # todas las formas
+                    anm_bins = [caps.graft_hyper(b, donor, cmn, anim_from, anm_bins[0]) for b in anm_bins]   # todas las formas
                     notes.append("modo hiper: animacion y efecto de Budokai 3 (los de %s)" % dn["name"])
                 except Exception as e:  # noqa: BLE001
                     notes.append("aviso: sin injerto del modo hiper (%s)" % e)
@@ -3504,7 +3717,7 @@ def build(a):
             "Personajes nuevos (generado por roster_build.py)\n" + "\n".join(manifest) + "\n")
         open(stamp, "w").write(digest)
         txn.commit(validate_roster)
-        guardar_reparto(mods, mapa, orden)     # solo con el _roster publicado (si falla, nada cambia)
+        guardar_reparto(mods, mapa, orden, caps.fijas)     # solo con el _roster publicado (si falla, nada cambia)
         guardar_avisos(mods)
         try:   # el _roster ya esta publicado: un fallo aqui es un aviso, no un montaje fallido
             clean_custom_lists(mods, first_new, own_caps)
@@ -3946,7 +4159,7 @@ def import_caps(a, path, c, d):
         log("el moveset no pide ninguna capsula")
         return []
     if game == "iw":            # cada tecnica de IW: su capsula, con su nombre, formas y ki
-        skills = capsulas.iw_skills(ccm)
+        skills = capsulas.iw_skills(ccm, c.get("iw_fila"))   # fusiones: mascara a formas del port
         names = iw_skill_names(c.get("nombre_iw") or c.get("nombre", ""), skills, a.lista)
         ids = iw_skill_ids(c.get("nombre_iw") or c.get("nombre", ""), a.lista)
         caps, used = [], {"especial": 0, "definitiva": 0}

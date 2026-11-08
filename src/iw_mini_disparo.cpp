@@ -37,6 +37,10 @@
 // 890/5 del 3 estan en otro sitio (y=77 / casa de Kaio) y no se reproducen. En el 15 se cruzan 1301/1302 (sus
 // alturas lo dicen). El 3 lee de su bloque del #MSS el ojo/objetivo/fov/giro (+0x40/+0x4c/+0x58/+0x5c).
 // DBZ3_IWMINI_SIN_CINE=1 vuelve al comportamiento anterior (listo de 100 cuadros) para comparar.
+#include "modo_original.h"
+#include "iw_amc.h"
+#include "iw_cutscene.h"
+#include <rex/cvar.h>
 #include <rex/logging.h>
 #include <rex/runtime.h>
 #include <rex/ui/imgui_dialog.h>
@@ -61,6 +65,9 @@
 #include "generated/dbz3_init.h"
 #include "anim_iw.h"
 #include "iw_camaras_gp2.h"
+#define IWV_SOLO_DECL
+#include "iw_mips_vuelo.inl"   // tanda3 iw-vuelo: mgfly (7D3 con la logica original)
+#undef IWV_SOLO_DECL
 #include "cine.h"
 #include "combate.h"
 #include "escenarios.h"
@@ -75,6 +82,11 @@
 #include "suelo_iw.h"
 #include "iw_shoot_dialogo.h"
 #include "iw_azar.h"
+#include "iw_mips.h"
+#include "iw_piccolo_reaccion.h"
+
+REXCVAR_DEFINE_BOOL(dbz3_iw_amc_unico, true, "DBZ3/Mods",
+                    "Disparo IW: camara de los clips #AMC con el reproductor unico y fiel al original (iw_amc.h). Apagado = copia antigua (interruptor de vuelta atras)");
 
 namespace dbz3::hub {
 bool RequestBattleEx(int id1, int id2, int stage, bool p2_com, int time_s, int hp1, int hp2, int form1, int form2);
@@ -158,6 +170,20 @@ constexpr int kTiros[6] = {12, 12, 11, 10, 9, 8};
 constexpr int kB50[6] = {45, 50, 60, 65, 70, 75};
 constexpr float kB48[6] = {0.021f, 0.021f, 0.022f, 0.022f, 0.023f, 0.023f};
 constexpr int kBaseDisco[5] = {4000, 5000, 6000, 8000, 10000};
+// 5/11 opusBB: maquina de esquiva de Freezer del original (EU Char_PoseInputTransition 0x35DF50, tracker 0x35D770,
+// Char_SelectBoneScreenDirection 0x35D3D0, Char_EnterPoseState2Transform 0x35D150). B4C (ELF 0x4836A0): esquiva LARGA
+// si Memory()%100 >= B4C (tirada por cuadro en reposo). Corta: B48 por cuadro frenando B48/105 hasta acabar su clip;
+// larga: B48/1,5 constante durante 40+azar%80. Medido en PCSX2 (7D7, radio 150): 0,0264/0,0176 rad por campo PAL
+// (= B48 x 1,2 y /1,5), freno 0,00025. Encendido por defecto (eIW6); DBZ3_IW_ESQUIVA_ORIGINAL=0 la apaga.
+constexpr int kB4C[6] = {65, 65, 70, 70, 85, 85};
+// eIW6 6/11: reglas medidas en PCSX2 (globales 0x5D9D60.., tools/iwx_freezer.py): freno, velocidades, tiempo, paso
+// angular, tirada por cuadro y cambio de direccion iguales. Encendida; DBZ3_IW_ESQUIVA_ORIGINAL=0 = esquiva antigua.
+inline bool EsquivaOriginal7() {
+  static const bool v = [] { const char* e = std::getenv("DBZ3_IW_ESQUIVA_ORIGINAL"); return !(e && *e == '0'); }();
+  return v;
+}
+// 0x38E..0x395 -> alias B3 (anim_iw.cpp kExtras; 0x391 = 0xFAC, 0x393 = 0xFB9).
+constexpr uint32_t kEsquivaFz[8] = {0xFD0, 0xFD1, 0xFD2, 0xFAC, 0xFD3, 0xFB9, 0xFD4, 0xFD5};
 // MSN016 (Scene_InitDefaultParams EU 0x30D150; tablas USA 0x47D860 + 0x20 k, EU 0x47E010): tiempo, energia inicial 1,
 // divisor del rango 1, campo +0xC = 3 (Cell corriendo, por cuadro), +0x10 = subida de Cell por cuadro, multiplicador;
 // puntos por rango 0x5D9392; altura de Ten = 400 (controlador +0x84).
@@ -165,6 +191,10 @@ constexpr int kTiempo15[6] = {40, 60, 80, 100, 120, 160};
 constexpr float kSubida15[6] = {3.0f, 3.0f, 3.5f, 3.5f, 4.0f, 4.0f};
 constexpr int kBase15[5] = {3600, 4200, 4800, 5400, 6000};
 constexpr float kAltura15 = 400.0f;
+inline float Env15(const char* n, float def) { const char* e = std::getenv(n); return e && *e ? float(std::atof(e)) : def; }
+// eIW2: manos de Ten con el sombreado de IW (3 tonos de la rampa 895/2 sobre la piel; la luz como la de B3). Apagado por defecto:
+// DBZ3_IW_MANOS_TOON=1 lo enciende (y DBZ3_TEST_MANOS15=4 la pose medida).
+inline bool ManosToon15() { static const bool v = std::getenv("DBZ3_IW_MANOS_TOON") != nullptr || ::dbz3::original::Arreglo("manos_toon"); return v; }
 constexpr float kEsc3 = 1.0f;   // 3: unidades de IW = las de B3 (el campo 897 de R8 va a escala 1)
 // R17: camara del 3 medida en el original con PCSX2 (struct del modulo de disparo, *(0x49CEAC)+0x660): ojo (0,30,100),
 // objetivo (0,35,0), fov 0,785 (coincide con la camara del #MSS 890/4). Es FIJA y en IW no se ve ningun personaje
@@ -228,6 +258,7 @@ struct ClipCam {
   float fov = 0.0f;   // pista 3 (radianes); 0 si el clip no la trae
   std::vector<uint32_t> ojo_c, obj_c;
   std::vector<std::array<float, 3>> ojo, obj;
+  dbz3::iwamc::Clip uni;   // dia 1A: el mismo clip leido por iw_amc.h (se usa con dbz3_iw_amc_unico)
 };
 uint32_t U32v(const std::vector<uint8_t>& b, size_t o) {
   uint32_t v = 0;
@@ -274,6 +305,7 @@ void LeerClipsDisparo(const std::vector<uint8_t>& amc, const std::vector<int>& i
         if (o + 8 <= amc.size()) c.fov = F32v(amc, o + 4);
       }
     }
+    dbz3::iwamc::Leer(amc, id, c.uni);
     if (!c.ojo.empty() && !c.obj.empty()) out[id] = std::move(c);
   }
 }
@@ -290,6 +322,8 @@ struct Datos {
   // 3 (ladrillos): el bloque del #MSS 890/4 de su dificultad
   std::vector<std::array<float, 7>> tramos;
   int n_tramos = 0, umbral[5] = {}, puntos[5] = {}, fallo = 100;
+  std::vector<uint8_t> mss_raw;   // T3: #MSS 890/4 crudo y bloque elegido (logica original, dbz3_iw_7d3_original)
+  int mss_bdif = 0;
   float lad_s = 18.0f;   // #MSS bloque +0x08: tamano que se proyecta para el radio de fijado (18/18/18/10/6)
   float lad_duracion = 115.0f, lad_vel_mira = 10.0f;
   // EU 0x367e30 MgFly_StateIntroSetup: camara del bloque del #MSS (+0x40 ojo, +0x4c objetivo, +0x58 fov y +0x5c giro,
@@ -319,6 +353,9 @@ struct Datos {
 std::mutex g_mu;
 std::shared_ptr<Datos> g_d;
 std::atomic<bool> g_on{false}, g_fin_pedido{false};
+// eANI2: numero de partida. `hecho_` comparaba solo la direccion de Datos: make_shared reutiliza la de la partida
+// anterior (g_d.reset() al acabar) y la segunda partida no se preparaba (fase_ kFinal: acababa al instante).
+std::atomic<uint32_t> g_partida{0};
 iwmini::Resultado g_res;
 bool g_auto = false;   // prueba: apunta y dispara solo
 // hilo del juego <-> interfaz
@@ -359,7 +396,7 @@ class Panel : public rex::ui::ImGuiDialog {
       d = g_d;
     }
     if (!g_on.load() || !d) return;
-    if (d.get() != hecho_) Preparar(*d);
+    if (d.get() != hecho_ || g_partida.load() != partida_) Preparar(*d);
     uint8_t* base = Base();
     const int st = P::EstadoCombate();
     if (!base || st < 3 || st > 8) return;   // iw_fix: hasta el 8 (el menu azul de B3, ~1,7 s)
@@ -396,7 +433,19 @@ class Panel : public rex::ui::ImGuiDialog {
   // EU 0x3104B0 CameraCtrl_LoadModel
   void Preparar(const Datos& d) {
     hecho_ = &d;
+    partida_ = g_partida.load();
     tx_i_ = ps2::Texturas(d.mano_i);
+    ramp15_.clear();
+    if (d.juego == 15)   // eIW2: la rampa de piel (64 x 64, azulada: se resta al blanco) de las manos de Ten
+      for (const P::Imagen& im : d.mano_i.tex) {
+        if (im.w != 64 || im.h != 64 || im.rgba.size() < 64 * 4) continue;
+        long dif = 0;
+        for (int i = 0; i < 64; ++i) dif += long(im.rgba[size_t(4 * i) + 2]) - long(im.rgba[size_t(4 * i)]);
+        if (dif / 64 < 40) continue;
+        for (int i = 0; i < 64; ++i)
+          ramp15_.push_back(IM_COL32(255 - im.rgba[size_t(4 * i)], 255 - im.rgba[size_t(4 * i) + 1], 255 - im.rgba[size_t(4 * i) + 2], 255));
+        break;
+      }
     tx_ef_ = ps2::Texturas(d.efecto);
     tx_lad_ = ps2::Texturas(d.ladrillo);
     tx_atlas_.clear();
@@ -431,6 +480,14 @@ class Panel : public rex::ui::ImGuiDialog {
     recompensa_hitos_ = 0;
     // EU 0x327590 s_MSN010_UPDATE
     vida_ = vida_max_ = kVidaPicc[d.dif];
+    pc_dif_ = d.dif; pc_estado_ = 1; pc_campo_ = 0; pc_semilla_ = pc_clip_ = pc_clip_rep_ = 0; pc_vueltas_ = ~0u;   // dia1E4
+    cell_semilla_ = 0;   // N2
+    pc_az_p_ = 1e9f; std::memset(pc_glob_, 0, sizeof pc_glob_); pc_d_ok_ = false;
+    // P1 (revision 7/11): la esquiva de Freezer (0x7D7) tambien empieza de cero en cada partida (antes se arrastraba la
+    // de la partida anterior: fz_clip_rep_ viejo podia impedir el fin de reposo toda la partida). = valores de la clase.
+    fz_estado_ = 1; fz_dir_ = -1; fz_larga_ = fz_preparada_ = false; fz_vel_ = fz_t_ = 0; fz_vueltas_ = ~0u;
+    fz_clip_ = fz_clip_rep_ = 0; fz_traza_ = 0; fz_semilla_ = fz_dir_prev_ = 0; fz_campo_ = 0; fz_az_o_ = 0; fz_az_p_ = 1e9f;
+    fz_interp_ = fz_ant_ok_ = false; fz_az_ant_ = fz_el_ant_ = 0; esquiva_dur_ = esquiva_vivida_ = 0;
     restante_ = float(kLimite[d.dif]);
     fase_ = kListo;
     t_ = 0;
@@ -446,6 +503,24 @@ class Panel : public rex::ui::ImGuiDialog {
     picc_fase_ = 0;
     esquiva_ = -1;
     esquiva_t_ = 60;
+    reaccion_piccolo_.Reiniciar();
+    probar_reaccion_piccolo_ = d.juego == 9 && std::getenv("DBZ3_TEST_IWMINI") &&
+        std::getenv("DBZ3_TEST_IWX_PICCOLO_REACCION");
+    probar_acuse_piccolo_ = probar_reaccion_piccolo_ &&
+        std::getenv("DBZ3_TEST_IWX_PICCOLO_ACUSE");
+    rol_piccolo_prueba_ = 1;
+    if (probar_reaccion_piccolo_) {
+      if (const char* rol = std::getenv("DBZ3_TEST_IWX_PICCOLO_PUNTO")) {
+        char* fin = nullptr;
+        const long valor = std::strtol(rol, &fin, 10);
+        if (fin != rol && *fin == '\0' && valor >= 0 && valor < 22)
+          rol_piccolo_prueba_ = int(valor);
+      }
+    }
+    if (probar_reaccion_piccolo_)
+      REXLOG_INFO("dbz3 solIWX: reaccion Piccolo candidata; normal=false, scheduler y efectos integrales pendientes");
+    if (probar_acuse_piccolo_)
+      REXLOG_INFO("dbz3 solIWX: Piccolo acuse candidato; normal=false, identidad tras reinicio A/B");
     semilla_ = uint32_t(std::chrono::steady_clock::now().time_since_epoch().count());
 
     g_yaw = d.juego == 9 ? 3.14159265f : 0.0f;
@@ -461,6 +536,7 @@ class Panel : public rex::ui::ImGuiDialog {
       lad_s_ = d.lad_s;
       mira_x_ = 300, mira_y_ = 225;
       tramos_disponibles_ = 0;
+      orig3_ = -1; acum3_ = 0; held3_ = 0; sem3_ = 0; aviso_fin3_ = false;
       mensaje3_.Reiniciar();bloqueo_tiro3_=false;tramo_preparado3_=false;cargar_postmensaje3_=false;fin3_inicio_=-1;
       tramo_espera_ = 0;
       ladrillo_vivo_ = fijado_ = false;
@@ -546,7 +622,13 @@ class Panel : public rex::ui::ImGuiDialog {
     if (it == d.cams.end()) return false;
     const ClipCam& c = it->second;
     const float q = std::clamp(f, 0.0f, float(std::max(c.dur - 1, 0)));
-    if (!MuestraPista(c.ojo, c.ojo_c, q, ojo) || !MuestraPista(c.obj, c.obj_c, q, obj)) return false;
+    float fov_u = 0.0f;
+    if (REXCVAR_GET(dbz3_iw_amc_unico) && c.uni.nf > 0) {
+      const dbz3::iwamc::Pose p = dbz3::iwamc::Muestrea(c.uni, q);
+      std::copy(p.ojo, p.ojo + 3, ojo);
+      std::copy(p.obj, p.obj + 3, obj);
+      if (p.hay_fov) fov_u = p.fov;
+    } else if (!MuestraPista(c.ojo, c.ojo_c, q, ojo) || !MuestraPista(c.obj, c.obj_c, q, obj)) return false;
     const float fj = LoadF(base, mgr + 0x1C4);   // kFov del combate
     // DS129: el 8 NO compensa: su 0,6024 es el campo de la cinematica y el de la camara de juego del original es el
     // de B3 (0,785, tools/dorados/iw_0x7D7.json). Compensarlo acercaba el ojo 5 u y dejaba el encuadre del clip, no
@@ -554,7 +636,7 @@ class Panel : public rex::ui::ImGuiDialog {
     // 31/10: cine::Camara solo escribe una entrada que B3 mezcla: mandaba la camara nativa, por eso los clips no se
     // veian. Ahora va por CamaraMinijuego con su FOV, sin acercar el ojo.
     (void)fj;
-    g_fov_clip = c.fov > 0.1f && c.fov < 1.4f ? c.fov : 0.0f;
+    { const float fc = fov_u > 0.0f ? fov_u : c.fov; g_fov_clip = fc > 0.1f && fc < 1.4f ? fc : 0.0f; }
     // GP2: q/id son el reloj literal del sampler, no t_ ni el actor.
     if (dbz3::gp2cam::Activo())
       dbz3::gp2cam::Evaluada("disparo", 915, 2, 0, id, q, c.dur,
@@ -601,18 +683,19 @@ class Panel : public rex::ui::ImGuiDialog {
       if (juego_ == 3) PonerCamara(ojo, obj), g_camclip = false;   // el 3 usa g_ex como camara fija
       return false;
     }
-    int acum = 0, id = -1;
-    float local = 0;
-    for (int c : d.intro) {
-      const auto it = d.cams.find(c);
-      if (it == d.cams.end()) continue;
-      if (f < acum + it->second.dur) {
-        id = c;
-        local = float(f - acum);
-        break;
+    // dia 1A: cadena de clips = lineas de una escena de Cutscene_GotoLine (iw_cutscene.h)
+    std::vector<dbz3::iwcut::Linea> lineas;
+    std::vector<int> ids;
+    for (int c : d.intro)
+      if (const auto it = d.cams.find(c); it != d.cams.end()) {
+        dbz3::iwcut::Linea li;
+        li.clip = c, li.cuadros = it->second.dur;
+        lineas.push_back(li);
+        ids.push_back(c);
       }
-      acum += it->second.dur;
-    }
+    int id = -1, lin = 0;
+    float local = 0;
+    if (dbz3::iwcut::Posicion(lineas, f, lin, local)) id = ids[size_t(lin)];
     if (id < 0) return false;
     float ojo[3], obj[3];
     if (!ClipPose(d, id, local, base, mgr, ojo, obj)) return false;
@@ -678,7 +761,7 @@ class Panel : public rex::ui::ImGuiDialog {
     // EU 0x325c30 Viewer_StateIntro (clip 1000 del #AMC 915/2; DS126: el 1003 no se reproduce, esta a y=77) y despues
     // EU 0x325840 Viewer_StateReady: 100 cuadros de espera si no hay clips.
     if (fase_ == kListo) {
-      MoverPiccolo(false);
+      MoverPiccolo(base, mgr, false);
       if (HayCine(d)) {
         const int t0 = d.cams.count(0) ? d.cams.at(0).dur : 0;
         if (t_ == 1 && t0) Cine(mgr, 0, 0, 0);
@@ -741,7 +824,7 @@ class Panel : public rex::ui::ImGuiDialog {
         if (brillo_[m]) brillo_[m]->origen = Mano(m, retroceso_[m]);
       }
       Rayos(base, mgr);
-      MoverPiccolo(vida_ < 0.25f * vida_max_);
+      MoverPiccolo(base, mgr, vida_ < 0.25f * vida_max_);
       if (vida_ <= 0) {
         fase_ = kDerribo;
         t_ = 0;
@@ -787,10 +870,34 @@ class Panel : public rex::ui::ImGuiDialog {
     // DS126: entrada con el clip 950 (520 c.) del #AMC 915/2, que es el que declara el descriptor EU 0x49A600; sin
     // clip, AimStart de 100 cuadros. El 952 NO es la entrada (es la tercera camara del modulo).
     if (fase_ == kListo) {
-      MoverFreezer(d);
+      MoverFreezer(base, mgr, d);
       if (HayCine(d)) {
         const int t0 = d.cams.count(0) ? d.cams.at(0).dur : 0;
         if (t_ == 1 && t0) Cine(mgr, 0, 0, 0);
+        // eIW6: durante la camara 0 el original ya tiene a Krillin en su estado 8 (0x3B6, PINE n16884..17250) y a
+        // Freezer en el 0/1 (Char_EnterPoseState0Idle/1 EU 0x35D330/0x35D2B0: anim 900 = 0x384). Sin esto el port
+        // dejaba el clip comun 0x40004, con la mirada de B3 y la cola de Freezer 24-124 grados fuera de pista (eANI3).
+        // DBZ3_IW_ESPERA_COMUN=1: como antes.
+        static const bool espera_comun = std::getenv("DBZ3_IW_ESPERA_COMUN") != nullptr;
+        // El cuerpo de IW se instala unos cuadros despues de t 1 (un pedido antes se pierde): se pide mientras el
+        // cuerpo lea otro codigo, solo hasta la camara 950.
+        if (t_ <= t0 && !espera_comun) {
+          const uint32_t xs[2] = {mgr + kX0, mgr + kX0 + kXPaso}, cods[2] = {0xFA6, 0xFAA};
+          for (int k = 0; k < 2; ++k) {
+            dbz3::anim::EstadoCuerpo e;
+            const bool leido = dbz3::anim::LeerEstadoCuerpo(base, xs[k], 0, e);
+            static uint32_t visto[2] = {~0u, ~0u};
+            const uint32_t firma = (e.codigo << 20) ^ e.clip;
+            if (std::getenv("DBZ3_TEST_IWMINI") && (firma != visto[k] || t_ == 1)) {
+              visto[k] = firma;
+              REXLOG_INFO("dbz3 iwdisparo: espera t {} actor {} codigo {:X} clip {:X} accion {:X} oculto {}/{}", t_, k, e.codigo,
+                          e.clip, REX_LOAD_U32(xs[k] + 2928) & 0xFFF, e.oculto1, e.oculto2);
+            }
+            // BucleForzado: un Bucle repetido se descarta aunque el primero no entrase; en bucle (no pose sujeta) el
+            // repuesto de anim_iw devuelve el codigo cuando la accion 0 de B3 lo pisa.
+            if (!leido || !e.hay || e.codigo != cods[k]) dbz3::anim::BucleForzado(xs[k], cods[k]);
+          }
+        }
         if (t_ == t0 + 1) Cine(mgr, 3, 0xFA3, 0xFAA);   // PINE: 0x3D4 y 0x384 con 950
         if (PasoIntro(base, mgr, d)) return;
       } else if (t_ < 100) {
@@ -799,6 +906,7 @@ class Panel : public rex::ui::ImGuiDialog {
       g_cine = 0;
       dbz3::anim::Bucle(mgr + kX0, 0xFA6);
       dbz3::anim::Bucle(mgr + kX0 + kXPaso, 0xFAA);
+      (void)::dbz3::original::FuenteIw();   // dia1O: lee el ELF aqui y no en el primer freno
       fase_ = kJuego;
       t_ = 0;
       REXLOG_INFO("dbz3 iwdisparo: juego 0x{:X} empieza", d.clave);
@@ -870,7 +978,7 @@ class Panel : public rex::ui::ImGuiDialog {
     }
     fuego_antes_ = fuego;
     if (disco_ == 3) DiscoVuela(base, mgr);
-    MoverFreezer(d);
+    MoverFreezer(base, mgr, d);
     if (disco_ == 3) return;   // AimShootD mira el resultado cuando el disco acaba
     if (aciertos_ >= 7) {
       fase_ = kDerribo;
@@ -928,16 +1036,173 @@ class Panel : public rex::ui::ImGuiDialog {
   // esquivar 40 + azar % 80 cuadros hacia un lado (0..3). El paso angular es B48 de Viewer_InitRoundTables 0x34B800
   // (0.021..0.023 rad/cuadro). [VERIFICAR] en pantalla la duracion 40 + azar % 80.
   // (en el decomp ese paso se trunca a entero y el movimiento visible sale de la animacion, sin seguir).
-  void MoverFreezer(const Datos& d) {
+  // 5/11 opusBB: esquiva de Freezer como el original (ver kB4C). Estados: 1 reposo (clip 0x384 en bucle), 2 esquiva.
+  // dia1E3: la esquiva ORIGINAL (EU Char_PoseInputTransition 0x35DF50) ejecutada del ELF por src/iw_mips.cpp, tras la
+  // cvar dbz3_iw_logica_original (apagada). Una llamada por campo PAL (5 de cada 6 cuadros, paso 1,2), como el original:
+  // velocidades y tiempos en sus unidades. El estado vive aqui (lockstep), no en el invitado. false -> la del port.
+  bool EsquivaMips(const dbz3::anim::EstadoCuerpo& e, bool hay, const Datos& d, float apunta, const V3& f, uint32_t x1) {
+    namespace fz = dbz3::iwmips::freezer;
+    (void)apunta;   // el original la calcula de la camara (f) y la posicion
+    if (!fz::g_activa || !fz::g_esquiva || !fz::g_activa() || (fz_estado_ != 1 && fz_estado_ != 2)) return false;
+    // +0xC74 (fin del clip) como lo mide el port: la corta acaba con su clip; el reposo, al dar la vuelta el 0x384.
+    int c74 = 0;
+    if (fz_estado_ == 2) {
+      if (hay && !fz_clip_ && e.clip != fz_clip_rep_) fz_clip_ = e.clip;
+      c74 = hay && fz_clip_ && (e.clip != fz_clip_ || e.cuadro + 1.0f >= float(e.cuadros));
+    } else {
+      if (hay && !fz_clip_rep_) fz_clip_rep_ = e.clip;
+      if (hay && e.clip == fz_clip_rep_) {
+        if (fz_vueltas_ == ~0u) fz_vueltas_ = e.vueltas;
+        c74 = e.vueltas != fz_vueltas_;
+      }
+    }
+    fz_campo_ += fz::g_ntsc ? 6 : 5;   // dia1E5: con el ELF USA (NTSC) el original corre en cada cuadro
+    if (fz_campo_ < 6) return true;   // cuadro sin campo PAL: el original no corre
+    fz_campo_ -= 6;
+    auto bits = [](float v) { uint32_t b; std::memcpy(&b, &v, 4); return b; };
+    auto flt = [](uint32_t b) { float v; std::memcpy(&v, &b, 4); return v; };
+    if (az_ != fz_az_p_) fz_az_o_ = az_ + 1.5707964f;   // alguien movio az_ por fuera: se rehace
+    fz::EntradaEsq in;
+    const uint32_t g[10] = {bits(fz_az_o_), bits(elev_), uint32_t(fz_larga_), 0, bits(fz_vel_), uint32_t(fz_dir_ < 0 ? 0 : fz_dir_),
+                            fz_dir_prev_, bits(fz_t_), uint32_t(fz_preparada_), uint32_t(tirada_)};
+    std::memcpy(in.glob, g, sizeof g);
+    in.estado = fz_estado_; in.c74 = c74; in.krillin = disco_ == 3 ? 10 : 8; in.dif = d.dif;
+    in.b48 = kB48[d.dif]; in.b4c = kB4C[d.dif]; in.b50 = kB50[d.dif];
+    in.f[0] = -f.x; in.f[1] = f.y; in.f[2] = -f.z;   // ejes del original (T7: x y z invertidos)
+    in.t = uint64_t(t_);
+    if (!fz_semilla_) fz_semilla_ = semilla_ | 1u;
+    uint32_t s = fz_semilla_;
+    fz::SalidaEsq o;
+    if (!fz::g_esquiva(in, o, s)) { fz_campo_ += 6; return false; }
+    fz_semilla_ = s;
+    fz_ant_ok_ = az_ == fz_az_p_; fz_az_ant_ = az_; fz_el_ant_ = elev_;   // dia1E4: campo anterior (para el dibujo)
+    fz_az_o_ = flt(o.glob[0]); az_ = fz_az_o_ - 1.5707964f; fz_az_p_ = az_; elev_ = flt(o.glob[1]);
+    fz_larga_ = o.glob[2] != 0; fz_vel_ = flt(o.glob[4]); fz_dir_ = int(o.glob[5]); fz_dir_prev_ = o.glob[6];
+    fz_t_ = flt(o.glob[7]); fz_preparada_ = o.glob[8] != 0; tirada_ = o.glob[9] != 0;
+    if (o.estado == 1 && fz_estado_ != 1) {
+      fz_vueltas_ = ~0u;
+      dbz3::anim::Bucle(x1, 0xFAA);
+      REXLOG_INFO("dbz3 iwdisparo: esquiva(mips) fin dir {} larga {} vivida {} az {:.3f} elev {:.3f}", fz_dir_, fz_larga_,
+                  esquiva_vivida_, az_, elev_);
+    } else if (o.estado == 2 && fz_estado_ != 2) {
+      const uint32_t k = o.b60 - 0x38E;
+      if (k < 8) dbz3::anim::Reproducir(x1, kEsquivaFz[k], false, 0, 0xFAA);
+      fz_clip_ = 0; esquiva_vivida_ = 0;
+      REXLOG_INFO("dbz3 iwdisparo: esquiva(mips) inicio dir {} larga {} t {:.1f} vel {:.4f} codigo {:X} az {:.3f} elev {:.3f}",
+                  fz_dir_, fz_larga_, fz_t_, fz_vel_, o.b60, az_, elev_);
+    } else if (fz_estado_ == 2) {
+      ++esquiva_vivida_;
+    }
+    fz_estado_ = o.estado;
+    return true;
+  }
+  void EsquivaFz(uint8_t* base, uint32_t mgr, const Datos& d, float apunta, const V3& f) {
+    if (fase_ != kJuego) return;
+    const uint32_t x1 = mgr + kX0 + kXPaso;
+    dbz3::anim::EstadoCuerpo e;
+    const bool hay = dbz3::anim::LeerEstadoCuerpo(base, x1, 0, e) && e.hay;
+    const float b48 = kB48[d.dif];
+    if (EsquivaMips(e, hay, d, apunta, f, x1)) { fz_interp_ = fz_ant_ok_ && az_ == fz_az_p_; return; }   // dia1E4
+    if (std::getenv("DBZ3_TEST_IWMINI") && ++fz_traza_ % 30 == 0) REXLOG_INFO("dbz3 iwdisparo: esquiva(orig) traza est {} clip {:X} cod {:X} cuadro {:.1f}/{} vueltas {} rep {:X} apunta {:.3f}",
+        fz_estado_, e.clip, e.codigo, e.cuadro, e.cuadros, e.vueltas, fz_clip_rep_, apunta);
+    auto reposo = [&](const char* por) {
+      fz_estado_ = 1; fz_preparada_ = false; fz_vueltas_ = ~0u;
+      dbz3::anim::Bucle(x1, 0xFAA);
+      REXLOG_INFO("dbz3 iwdisparo: esquiva(orig) fin {} dir {} larga {} vivida {} az {:.3f} elev {:.3f}",
+                  por, fz_dir_, fz_larga_, esquiva_vivida_, az_, elev_);
+    };
+    // Tracker EU 0x35D770 + Char_SelectBoneScreenDirection 0x35D3D0.
+    auto preparar = [&]() {
+      if (!fz_larga_) { fz_vel_ = b48; fz_t_ = 0; }
+      else { fz_vel_ = b48 / 1.5f; fz_t_ = 40.0f + float(Azar() % 80); }
+      int dir = int(Azar() & 3);
+      if (apunta > 0.95f) {   // en pantalla: huye del centro hacia su lado
+        const float caz = std::atan2(f.x, -f.z), cel = std::asin(std::clamp(f.y, -1.0f, 1.0f));
+        const float fx = (az_ - caz) * std::cos(elev_), fy = -(elev_ - cel);
+        dir = fy < fx ? (fy < 0 ? 2 : 3) : (fx < 0 ? 1 : 0);
+      }
+      while (dir == fz_dir_) dir = int(Azar() & 3);
+      auto mala = [&](int k) { return (k == 1 && az_ < 0.7330383f - 1.5707964f) || (k == 2 && elev_ > 0.6981317f) ||
+                                      (k == 3 && elev_ < -0.2327106f) || (k == 0 && az_ > 2.4085543f - 1.5707964f); };
+      while (mala(dir)) dir = int(Azar() & 3);
+      fz_dir_ = dir; tirada_ = false;
+    };
+    // eIW6 (EU Char_PoseInputTransition 0x35DF50): con Krillin en el estado 10/11 (lanza 0x3B9 / 0x3B6 hasta que el
+    // disco acaba = disco_ 3 aqui) iRam5D9D6C = 1 en CUALQUIER estado de Freezer: esquiva larga; una corta en curso
+    // pasa a la rama larga y acaba por tiempo (su contador es 0).
+    const bool krillin_lanza = disco_ == 3;
+    if (fz_estado_ == 2) {
+      if (krillin_lanza) fz_larga_ = true;
+      fz_t_ -= 1.0f; ++esquiva_vivida_;
+      bool mover = false;
+      if (elev_ < -0.34906587f || elev_ > 1.0471976f || az_ < -1.0471976f || az_ > 1.0471976f) {
+        az_ = std::clamp(az_, -1.0471976f, 1.0471976f); elev_ = std::clamp(elev_, -0.34906587f, 1.0471976f);
+        reposo("limite");
+      } else if (apunta < 0.5f) reposo("no apunta");
+      else if (!fz_larga_) {
+        if (hay && !fz_clip_ && e.clip != fz_clip_rep_) fz_clip_ = e.clip;
+        const bool acabo = hay && fz_clip_ && (e.clip != fz_clip_ || e.cuadro + 1.0f >= float(e.cuadros));
+        if (acabo) reposo("clip"); else { mover = true; }
+      } else if (fz_t_ < 0) reposo("tiempo");
+      else mover = true;
+      if (mover) {
+        if (fz_dir_ == 0) az_ += fz_vel_;
+        if (fz_dir_ == 1) az_ -= fz_vel_;
+        if (fz_dir_ == 2) elev_ += fz_vel_;
+        if (fz_dir_ == 3) elev_ -= fz_vel_;
+        // freno: B48/105 por campo del ELF, sin Delta; en pasos de 60: B48/CamposAPasos(105) (EU 126, USA 105)
+        if (!fz_larga_) fz_vel_ -= b48 / float(::dbz3::original::CamposAPasos(105, ::dbz3::original::FuenteIw()));
+      }
+      return;
+    }
+    // Reposo: tirada B4C por cuadro (EU 0x34AAC0), la que haya al preparar decide corta o larga.
+    fz_larga_ = int(Azar() % 100) >= kB4C[d.dif] || krillin_lanza;
+    if (hay && !fz_clip_rep_) fz_clip_rep_ = e.clip;
+    bool fin_reposo = false;
+    if (hay && e.clip == fz_clip_rep_) {
+      if (fz_vueltas_ == ~0u) fz_vueltas_ = e.vueltas;
+      fin_reposo = e.vueltas != fz_vueltas_;
+    }
+    if (!fz_preparada_) {
+      if (fin_reposo) { preparar(); fz_preparada_ = true; }
+      else if (!tirada_ && apunta > 0.98f) {
+        tirada_ = true;
+        const int r = int(Azar() % 100);
+        if (r < kB50[d.dif]) { preparar(); fz_preparada_ = true; }
+        REXLOG_INFO("dbz3 iwdisparo: esquiva(orig) tirada B50 {} ({})", kB50[d.dif], r);
+      }
+    } else if (apunta >= 0.5f) {
+      preparar();
+      fz_estado_ = 2; esquiva_vivida_ = 0;
+      const bool larga = fz_t_ > 35.0f;
+      const uint32_t cod = kEsquivaFz[fz_dir_ + (larga ? 4 : 0)];
+      dbz3::anim::Reproducir(x1, cod, false, 0, 0xFAA);
+      fz_clip_ = 0;
+      REXLOG_INFO("dbz3 iwdisparo: esquiva(orig) inicio dir {} larga {} t {:.0f} vel {:.4f} codigo {:X} az {:.3f} elev {:.3f}",
+                  fz_dir_, fz_larga_, fz_t_, fz_vel_, 0x38E + fz_dir_ + (larga ? 4 : 0), az_, elev_);
+    }
+  }
+  void MoverFreezer(uint8_t* base, uint32_t mgr, const Datos& d) {
     const V3 ojo = Ojo(), f = Dir(g_yaw.load(), g_polar.load());
     const V3 a{std::cos(elev_) * std::sin(az_), std::sin(elev_), -std::cos(elev_) * std::cos(az_)};
     const float apunta = f.x * a.x + f.y * a.y + f.z * a.z;
+    fz_interp_ = false;   // dia1E4: lo enciende EsquivaFz cuando corre el original (cvar)
+    if (EsquivaOriginal7()) EsquivaFz(base, mgr, d, apunta, f);
+    else {
     if (fase_ == kJuego && esquiva_t_ <= 0) {
       if (apunta > 0.98f && !tirada_) {
         tirada_ = true;
-        if (int(Azar() % 100) < kB50[d.dif]) {
+        const int r = int(Azar() % 100);
+        const bool sale = r < kB50[d.dif];
+        REXLOG_INFO("dbz3 iwdisparo: esquiva tirada B50 {} ({}), {}; az {:.3f} elev {:.3f}",
+                    kB50[d.dif], r, sale ? "sale" : "no sale", az_, elev_);
+        if (sale) {
           esquiva_ = int(Azar() & 3);
           esquiva_t_ = 40 + int(Azar() % 80);
+          esquiva_dur_ = esquiva_t_;
+          esquiva_vivida_ = 0;
+          REXLOG_INFO("dbz3 iwdisparo: esquiva inicio dir {} cuadros {} az {:.3f} elev {:.3f}",
+                      esquiva_, esquiva_dur_, az_, elev_);
           if (g_x1.load()) dbz3::anim::Reproducir(g_x1.load(),0xFB9,false,0,0xFAA);
         }
       } else if (apunta <= 0.98f) {
@@ -946,20 +1211,38 @@ class Panel : public rex::ui::ImGuiDialog {
     }
     if (esquiva_t_ > 0) {
       --esquiva_t_;
+      ++esquiva_vivida_;
       const float v = kB48[d.dif];
       if (esquiva_ == 0) az_ += v;
       if (esquiva_ == 1) az_ -= v;
       if (esquiva_ == 2) elev_ += v;
       if (esquiva_ == 3) elev_ -= v;
-      if (std::abs(az_) > 1.0472f || elev_ < -0.349f || elev_ > 1.0472f) esquiva_t_ = 0;   // fuera: a la pose 1
+      const bool fuera = std::abs(az_) > 1.0472f || elev_ < -0.349f || elev_ > 1.0472f;
+      if (fuera) esquiva_t_ = 0;   // fuera: a la pose 1
       az_ = std::clamp(az_, -1.0472f, 1.0472f);
       elev_ = std::clamp(elev_, -0.349f, 1.0472f);
+      if (esquiva_t_ == 0)
+        REXLOG_INFO("dbz3 iwdisparo: esquiva fin dir {} vivida {} de {} fuera {} az {:.3f} elev {:.3f}",
+                    esquiva_, esquiva_vivida_, esquiva_dur_, fuera, az_, elev_);
     }
-    g_px = ojo.x + kRadioFz * std::cos(elev_) * std::sin(az_);
+    }
+    // dia1E4: con la cvar Freezer solo se mueve en los campos PAL (50/s, 5 de cada 6 cuadros) y a 60 Hz se quedaba
+    // quieto 1 cuadro de cada 6. Solo para dibujar, se interpola entre los dos ultimos campos: fraccion = resto del
+    // acumulador / 6, que da un avance constante por cuadro (5/6 de campo). La logica (az_/elev_) no cambia.
+    float az = az_, el = elev_;
+    if (fz_interp_) {
+      const float k = float(fz_campo_) / 6.0f;
+      az = fz_az_ant_ + (az_ - fz_az_ant_) * k;
+      el = fz_el_ant_ + (elev_ - fz_el_ant_) * k;
+    }
+    if (fase_ == kJuego && std::getenv("DBZ3_TEST_IWMINI"))   // prueba: registro de posicion por cuadro
+      REXLOG_INFO("dbz3 iwdisparo: fz dibujo t={} interp={} campo={} az={:.7f} elev={:.7f} az_logica={:.7f} elev_logica={:.7f}",
+                  t_, int(fz_interp_), fz_campo_, az, el, az_, elev_);
+    g_px = ojo.x + kRadioFz * std::cos(el) * std::sin(az);
     // DS126: la camara del 0x7D7 (clip 950) mira hacia -Z; Freezer va DELANTE de ella en ese eje. Con el
     // signo +Z se quedaba a la espalda y el piloto (y el retículo) apuntaban al suelo para "alcanzarlo".
-    g_pz = ojo.z - kRadioFz * std::cos(elev_) * std::cos(az_);
-    g_py = std::max(0.0f, ojo.y - 6.0f + kRadioFz * std::sin(elev_));
+    g_pz = ojo.z - kRadioFz * std::cos(el) * std::cos(az);
+    g_py = std::max(0.0f, ojo.y - 6.0f + kRadioFz * std::sin(el));
   }
 
   // ---- MSN016: Ten contra Cell (MgShoot_* EU 0x3099E0-0x30CEF0 y la IA de Cell 0x31C400-0x31DF30: tablas de estado
@@ -999,6 +1282,7 @@ class Panel : public rex::ui::ImGuiDialog {
       fase_ = kJuego;
       t_ = 0;
       REXLOG_INFO("dbz3 iwdisparo: juego 0x{:X} empieza", d.clave);
+      if (const char* r = std::getenv("DBZ3_TEST_MANOS15_RAFAGA")) if (FILE* f = std::fopen("dbz3_shot.req", "wb")) { std::fputs(r, f); std::fclose(f); }   // eIW2: fotos por cuadro del juego (prueba)
       CellEstado(1);
       return;
     }
@@ -1150,6 +1434,15 @@ class Panel : public rex::ui::ImGuiDialog {
     if (e == 3) cvy_ = kSubida15[dif15_];   // Char_EnterPoseState3Alt: vy = campo +0x10 (3,0..4,0)
     if (e == 4) cvy_ = cvy_ > 0 ? -0.08f : cvy_ - 0.08f;   // Char_EnterPoseState4Alt (golpe)
     if (e == 1 && cc0_ == 0) {   // DashTrail: 5 marcas al azar (Char_InitTrailMarkerRandom)
+      namespace ce = dbz3::iwmips::cell;   // N2: con dbz3_iw_logica_original, las del original (LFSR propio)
+      ce::Marca om[5];
+      if (!cell_semilla_) cell_semilla_ = semilla_ | 1u;
+      uint32_t s = cell_semilla_;
+      const bool orig = ce::g_marcas && ce::g_marcas(om, s, uint64_t(t15_));
+      if (orig) {
+        cell_semilla_ = s;
+        for (size_t k = 0; k < marcas_.size(); ++k) marcas_[k] = {om[k].tipo, om[k].x, om[k].z, om[k].paso, om[k].dura};
+      } else
       for (auto& mk : marcas_) {
         mk.tipo = int(Azar() % 10);
         mk.x = float(Azar() % 230) - 140.0f;
@@ -1294,7 +1587,7 @@ class Panel : public rex::ui::ImGuiDialog {
       if(const char* aviso=std::getenv("DBZ3_TEST_LADRILLOS_AVISO");std::getenv("DBZ3_TEST_IWMINI") && aviso) {
         quedan_=std::atoi(aviso)==0?(d.n_tramos*2)/3:d.n_tramos/3;
         Progreso3(d);
-      } else Tramo(d);
+      } else if (!(OriginalActiva3() && PasoOriginal3(d, 0, 0, 0, 0, true))) Tramo(d);
       return;
     }
     if (fase_ == kDerribo) {   // EU 0x3675f0 MgFly_FinishAndApplyResult
@@ -1302,6 +1595,7 @@ class Panel : public rex::ui::ImGuiDialog {
       return;
     }
     if (fase_ != kJuego) return;
+    if (orig3_ != 0 && PasoOriginal3(d, bot, dirs, sx, sy)) return;   // T3: logica original del ELF (mgfly)
     // mira: palanca (x*x + y*y > 0xFFF) o cruceta, a la velocidad del #MSS (+0x10 = 10 px de PS2 por cuadro)
     float gx = 0, gy = 0;
     if (sx * sx + sy * sy > 0xFFF) {
@@ -1397,6 +1691,69 @@ class Panel : public rex::ui::ImGuiDialog {
         std::fflush(traza);
       }
     }
+  }
+  // T3 (8/11): 0x7D3 con la logica original (iw_mips_vuelo.inl, cvar dbz3_iw_7d3_original, de serie apagada). Por campo PAL
+  // (5 de cada 6 cuadros de 60 Hz) corre del ELF la tarea de estados de MgFly y StartFunc 0x366F60; aqui se pasan el
+  // mando y el aviso de Kaio, y se recogen mira, ladrillo, fijado, disparos y aciertos. false = el port sigue (USA, error).
+  bool OriginalActiva3() const {
+    return dbz3::iwmips::mgfly::g_ladrillos && dbz3::iwmips::mgfly::g_activa_lad && dbz3::iwmips::mgfly::g_activa_lad();
+  }
+  bool PasoOriginal3(const Datos& d, uint16_t bot, uint16_t dirs, int sx, int sy, bool inicio = false) {
+    namespace mg = dbz3::iwmips::mgfly;
+    if (!inicio && orig3_ != 1) return false;
+    if (d.mss_raw.empty()) return false;
+    acum3_ += dbz3::iwmips::freezer::g_ntsc ? 6 : 5;   // un campo PAL de cada 6 cuadros de 60 Hz; NTSC: cada cuadro
+    if (!inicio && acum3_ < 6) return true;   // cuadro de 60 Hz sin campo PAL
+    if (!inicio) acum3_ -= 6;
+    mg::Entrada in;
+    in.inicio = inicio;
+    in.mss = d.mss_raw.data(); in.mss_n = d.mss_raw.size(); in.dif = d.mss_bdif;
+    const uint16_t dd = uint16_t(dirs | (dirs >> 8));
+    const uint16_t mant = uint16_t((bot & ~0x00F0) | (dd & 0x00F0));
+    in.mantenido = mant; in.nuevo = uint16_t(mant & ~held3_);
+    held3_ = mant;
+    in.palanca_x = int8_t(sx); in.palanca_y = int8_t(sy);
+    in.aviso_fin = aviso_fin3_;
+    aviso_fin3_ = false;
+    in.t = uint64_t(t_);
+    if (!sem3_) sem3_ = iwazar::Global().Estado() | 1u;
+    mg::Salida o;
+    if (!mg::g_ladrillos(in, o, sem3_)) {
+      if (inicio) { orig3_ = 0; return false; }
+      REXLOG_WARN("dbz3 iwdisparo: la logica original de los ladrillos fallo; sigue el port");
+      orig3_ = 2;
+      return false;
+    }
+    if (inicio) { orig3_ = 1; REXLOG_INFO("dbz3 iwdisparo: ladrillos con la logica original del ELF (dbz3_iw_7d3_original)"); }
+    const int antes_aciertos = aciertos_;
+    mira_x_ = o.mira[0]; mira_y_ = o.mira[1];
+    if (o.activo) lad_x_ = o.blanco[0], lad_y_ = o.blanco[1], lad_z_ = o.prof;
+    progreso_ = o.progreso; fijado_ = o.fijado != 0; tiro_t_ = o.iman;
+    ladrillo_vivo_ = o.activo != 0;
+    tiros_ = o.tiros; aciertos_ = o.aciertos; quedan_ = o.quedan;
+    lad_a_ = {o.pos3b[0], o.pos3b[1], o.pos3b[2]};
+    for (int k = 0; k < o.n_ev; ++k) {
+      const mg::Evento& e = o.ev[k];
+      if (e.tipo == 'S') {   // Aura_Dash(7): el disparo, en la mira a la profundidad del ladrillo
+        const float xx = lad_x_, yy = lad_y_, zz = lad_z_;
+        lad_x_ = mira_x_, lad_y_ = mira_y_, lad_z_ = std::max(zz, 60.0f);
+        Lanzar(22, Lad3D(), V3{0, 0, 1});
+        lad_x_ = xx, lad_y_ = yy, lad_z_ = zz;
+      } else if (e.tipo == 'K') {
+        if (d.mensajes3.Valido()) { mensaje3_.Iniciar(d.mensajes3, e.n); REXLOG_INFO("dbz3 iwdisparo: aviso Kaio {} (original)", e.n); }
+        else aviso_fin3_ = true;
+      }
+    }
+    if (aciertos_ > antes_aciertos) {
+      chispas_.push_back({Lad3D(), 0});
+      REXLOG_INFO("dbz3 iwdisparo: ladrillo roto (original; {} aciertos, {} tiros, quedan {})", aciertos_, 7 - tiros_, quedan_);
+    }
+    if (mensaje3_.Activo()) {
+      mensaje3_.Paso(d.mensajes3, 1.0f);
+      if (!mensaje3_.Activo()) aviso_fin3_ = true;
+    }
+    if (o.fin) { REXLOG_INFO("dbz3 iwdisparo: original: fin de los ladrillos (rango {})", o.rango); Fin3(d); }
+    return true;
   }
   // EU 0x366700 MgFly_SetupNextNode
   void Tramo(const Datos& d) {   // MgFly_SetupNextNode: una trayectoria al azar de las 60
@@ -1551,6 +1908,20 @@ class Panel : public rex::ui::ImGuiDialog {
       if (mejor < 0) continue;
       r.vivo = false;
       const int g = kGrupo[mejor];
+      if (probar_reaccion_piccolo_ && fase_ == kJuego) {
+        const auto golpe = reaccion_piccolo_.Golpe(mejor, float(vida_), float(vida_max_), probar_acuse_piccolo_);
+        if (golpe.error == iwpiccolo::Error::Ninguno && golpe.orden.reproducir) {
+          if (probar_acuse_piccolo_) {
+            const auto orden = dbz3::anim::ReiniciarPoseConAcuse(x1,iwpiccolo::AliasReaccion(golpe.orden.codigo),true);
+            const bool vinculada = reaccion_piccolo_.VincularReinicio(golpe.estado.generacion,orden);
+            REXLOG_INFO("dbz3 solIWX: Piccolo reinicio pedido gen {} orden {} vinculado {}",
+                golpe.estado.generacion,orden,vinculada);
+          } else dbz3::anim::ReiniciarPose(x1, iwpiccolo::AliasReaccion(golpe.orden.codigo), true);
+          REXLOG_INFO("dbz3 solIWX: Piccolo reaccion entra gen {} rol {} codigo {:X} alias {:X} previo {} repeticion {}",
+              golpe.estado.generacion, mejor, golpe.orden.codigo, iwpiccolo::AliasReaccion(golpe.orden.codigo),
+              golpe.estado.pose_anterior, golpe.estado.repeticion_cc0);
+        }
+      }
       vida_ = std::max(0, vida_ - kDano[g]);
       chispas_.push_back({r.p, 0});
       hit_t_ = datos_?datos_->hit_cuadros:0; // AMA5/0 objeto5:17cuadros en el disco del jugador
@@ -1569,9 +1940,118 @@ class Panel : public rex::ui::ImGuiDialog {
   // 120.0f (0x42F00000) en +0x14 y cambia de direccion cada 120 cuadros. El giro de cada esquiva es fRam005d9954 y
   // decae (dt x Viewer_GetParamBC) / 70 por cuadro; el 2.0 / 60 rad por cuadro del port es una aproximacion.
   // [VERIFICAR] en pantalla el ritmo de las esquivas (120 cuadros) y el angulo recorrido.
-  void MoverPiccolo(bool quieto) {
+  // dia1E4: la esquiva ORIGINAL de Piccolo (EU Viewer_UpdatePoseRotationInput 0x32DC80: planificador, direccion al azar,
+  // entradas a los estados 1/2 y el giro) ejecutada del ELF por src/iw_mips.cpp con la cvar dbz3_iw_logica_original.
+  // Una llamada por campo PAL (5 de cada 6 cuadros). Piccolo va en la esfera de 60 del ojo y se dibuja con la posicion de
+  // antes de girar (Viewer_UpdateCharactersAndCamera 0x32D820). Sin cvar, con el modo de prueba solIWX o si el
+  // interprete falla, el port de abajo.
+  bool PiccoloMips(uint8_t* base, uint32_t mgr) {
+    namespace pc = dbz3::iwmips::piccolo;
+    namespace fz = dbz3::iwmips::freezer;
+    if (juego_ != 9 || fase_ != kJuego || probar_reaccion_piccolo_ || !pc::g_esquiva || !fz::g_activa || !fz::g_activa())
+      return false;
+    const uint32_t x1 = mgr + kX0 + kXPaso;
+    dbz3::anim::EstadoCuerpo e;
+    const bool hay = dbz3::anim::LeerEstadoCuerpo(base, x1, 0, e) && e.hay;
+    // +0xC74 como lo mide el port: la esquiva acaba con su clip; el reposo (0x3E8, en bucle) al dar la vuelta.
+    int c74 = 0;
+    if (pc_estado_ == 2) {
+      if (hay && !pc_clip_ && e.clip != pc_clip_rep_) pc_clip_ = e.clip;
+      c74 = hay && pc_clip_ && (e.clip != pc_clip_ || e.cuadro + 1.0f >= float(e.cuadros));
+    } else {
+      if (hay && !pc_clip_rep_) pc_clip_rep_ = e.clip;
+      if (hay && e.clip == pc_clip_rep_) {
+        if (pc_vueltas_ == ~0u) pc_vueltas_ = e.vueltas;
+        c74 = e.vueltas != pc_vueltas_;
+      }
+    }
+    auto bits = [](float v) { uint32_t b; std::memcpy(&b, &v, 4); return b; };
+    auto flt = [](uint32_t b) { float v; std::memcpy(&v, &b, 4); return v; };
+    if (az_ != pc_az_p_) { pc_glob_[0] = bits(az_ - 1.5707964f); pc_d_ok_ = false; }   // az_ movido por fuera (o 1.a vez)
+    pc_glob_[1] = bits(elev_);
+    const V3 o = Ojo(), f = Dir(g_yaw.load(), g_polar.load());
+    const float azo = flt(pc_glob_[0]), el = flt(pc_glob_[1]), ce = std::cos(el);
+    const float pos[3] = {o.x + 60.0f * ce * std::cos(azo), o.y + 60.0f * std::sin(el), o.z + 60.0f * ce * std::sin(azo)};
+    // Dibujo a 60 Hz: entre los dos ultimos campos (como Freezer, ver MoverFreezer); sin ellos, la posicion logica.
+    auto dibujar = [&] {
+      float a = azo, b = el;
+      if (pc_d_ok_) {
+        const float k = float(pc_campo_) / 6.0f;
+        a = pc_d_[0] + (pc_d_[2] - pc_d_[0]) * k;
+        b = pc_d_[1] + (pc_d_[3] - pc_d_[1]) * k;
+      }
+      const float cb = std::cos(b);
+      g_px = o.x + 60.0f * cb * std::cos(a); g_py = o.y + 60.0f * std::sin(b); g_pz = o.z + 60.0f * cb * std::sin(a);
+      if (std::getenv("DBZ3_TEST_IWMINI"))   // prueba: registro de posicion por cuadro (D:/tmp/dia1E4/tiron.py)
+        REXLOG_INFO("dbz3 iwdisparo: pc dibujo t={} interp={} campo={} az={:.7f} elev={:.7f} az_logica={:.7f} elev_logica={:.7f}",
+                    t_, int(pc_d_ok_), pc_campo_, a, b, flt(pc_glob_[0]), flt(pc_glob_[1]));
+    };
+    pc_campo_ += fz::g_ntsc ? 6 : 5;   // dia1E5: con el ELF USA (NTSC) el original corre en cada cuadro
+    if (pc_campo_ < 6) { dibujar(); return true; }   // cuadro sin campo PAL: el original no corre
+    pc_campo_ -= 6;
+    pc::EntradaPc in;
+    std::memcpy(in.glob, pc_glob_, sizeof pc_glob_);
+    in.estado = pc_estado_; in.c74 = c74; in.dif = pc_dif_; in.vida = float(vida_); in.t = uint64_t(t_);
+    for (int i = 0; i < 3; ++i) in.pos[i] = pos[i];
+    in.ojo[0] = o.x; in.ojo[1] = o.y; in.ojo[2] = o.z;
+    in.obj[0] = o.x + f.x; in.obj[1] = o.y + f.y; in.obj[2] = o.z + f.z;
+    if (!pc_semilla_) pc_semilla_ = semilla_ | 1u;
+    uint32_t s = pc_semilla_;
+    pc::SalidaPc r;
+    if (!pc::g_esquiva(in, r, s)) { pc_campo_ += 6; return false; }
+    pc_semilla_ = s;
+    std::memcpy(pc_glob_, r.glob, sizeof pc_glob_);
+    az_ = flt(pc_glob_[0]) + 1.5707964f; pc_az_p_ = az_; elev_ = flt(pc_glob_[1]);
+    pc_d_[0] = azo; pc_d_[1] = el; pc_d_[2] = flt(pc_glob_[0]); pc_d_[3] = flt(pc_glob_[1]); pc_d_ok_ = true;
+    dibujar();
+    if (hay && pc_estado_ == 1 && c74) pc_vueltas_ = e.vueltas;
+    if (r.estado == 1 && pc_estado_ != 1) {
+      pc_vueltas_ = ~0u;
+      dbz3::anim::Bucle(x1, 0xFB0);
+      REXLOG_INFO("dbz3 iwdisparo: Piccolo esquiva(mips) fin rumbo {} vivida {} az {:.3f} elev {:.3f}", pc_glob_[6],
+                  esquiva_vivida_, az_, elev_);
+    } else if (r.estado == 2 && pc_estado_ != 2) {
+      const uint32_t k = r.b60 - 0x3F2;
+      if (k < 8 && g_x1.load()) dbz3::anim::Reproducir(g_x1.load(), 0xFC0 + k, false, 0, 0xFB0);
+      pc_clip_ = 0; esquiva_vivida_ = 0;
+      REXLOG_INFO("dbz3 iwdisparo: Piccolo esquiva(mips) inicio rumbo {} modo {} giro {:.4f} contador {:.1f} codigo {:X} az {:.3f} "
+                  "elev {:.3f}", pc_glob_[6], pc_glob_[3], flt(pc_glob_[5]), flt(pc_glob_[8]), r.b60, az_, elev_);
+    } else if (pc_estado_ == 2) {
+      ++esquiva_vivida_;
+    }
+    pc_estado_ = r.estado;
+    return true;
+  }
+  void MoverPiccolo(uint8_t* base, uint32_t mgr, bool quieto) {
+    if (PiccoloMips(base, mgr)) return;   // dia1E4
+    iwpiccolo::PasoReaccion reaccion;
+    if (probar_reaccion_piccolo_ && fase_ == kJuego) {
+      dbz3::anim::EstadoCuerpo clip;
+      const uint64_t orden = probar_acuse_piccolo_ ? reaccion_piccolo_.OrdenReinicio() : 0;
+      const bool confirmado = probar_acuse_piccolo_ ?
+          dbz3::anim::LeerEstadoConAcuse(base,mgr+kX0+kXPaso,0,orden,clip) :
+          dbz3::anim::LeerEstadoCuerpo(base,mgr+kX0+kXPaso,0,clip);
+      reaccion = reaccion_piccolo_.Paso({clip.codigo, clip.cuadros, clip.vueltas, clip.cuadro,
+          probar_acuse_piccolo_ && confirmado ? orden : 0},
+          float(vida_), float(vida_max_), elev_);
+      if (probar_acuse_piccolo_ && reaccion.observado)
+        REXLOG_INFO("dbz3 solIWX: Piccolo acuse observado gen {} orden {} codigo {:X} cuadro {:.6f} duracion {} fin {}",
+            reaccion_piccolo_.Ver().generacion,orden,clip.codigo,clip.cuadro,clip.cuadros,reaccion.regreso);
+      if (reaccion.regreso) {
+        dbz3::anim::Bucle(mgr + kX0 + kXPaso, 0xFB0);
+        esquiva_t_ = 1; // puente al scheduler previo; NO acredita el scheduler de IW.
+        REXLOG_INFO("dbz3 solIWX: Piccolo reaccion fin gen {} codigo {:X} cuadro {:.6f} duracion {} vuelve 3E8",
+            reaccion_piccolo_.Ver().generacion, clip.codigo, clip.cuadro, clip.cuadros);
+      }
+      az_ += reaccion.delta_azimut;
+      elev_ += reaccion.delta_inclinacion;
+      if (reaccion.activa && reaccion.observado)
+        REXLOG_INFO("dbz3 solIWX: Piccolo reaccion paso gen {} codigo {:X} cuadro {:.6f} duracion {} giro {:.6f}/{:.6f}",
+            reaccion_piccolo_.Ver().generacion, clip.codigo, clip.cuadro, clip.cuadros,
+            reaccion.delta_azimut, reaccion.delta_inclinacion);
+    }
     picc_fase_ += 0.1f;
-    if (!quieto && fase_ == kJuego) {
+    if (!quieto && fase_ == kJuego && !reaccion.activa && !reaccion.regreso) {
       if (--esquiva_t_ <= 0) {
         int nueva;
         do nueva = int(Azar() & 3);
@@ -1584,6 +2064,8 @@ class Panel : public rex::ui::ImGuiDialog {
         const bool larga=vida_<0.4f*vida_max_;
         const uint32_t codigo=0xFC0+uint32_t(esquiva_)+(larga?4u:0u);
         if(g_x1.load())dbz3::anim::Reproducir(g_x1.load(),codigo,false,0,0xFB0);
+        if (probar_reaccion_piccolo_)
+          reaccion_piccolo_.Esquiva(0x3F2 + uint32_t(esquiva_) + (larga ? 4u : 0u));
         if(std::getenv("DBZ3_TEST_IWMINI"))
           REXLOG_INFO("dbz3 solIWZ: Piccolo esquiva codigo {:X} direccion {} contador {}",0x3F2+esquiva_+(larga?4:0),esquiva_,larga?120:0);
       }
@@ -1595,10 +2077,14 @@ class Panel : public rex::ui::ImGuiDialog {
       az_ = std::clamp(az_, -0.7853982f, 0.7853982f);
       elev_ = std::clamp(elev_, -0.05f, kElevMax);
     }
-    const float rad = juego_ == 9 ? kRadioPicc9 : kOrbita + 10.0f * std::sin(picc_fase_);
+    const float rad = probar_reaccion_piccolo_ && fase_ == kJuego ? reaccion_piccolo_.Radio()
+        : juego_ == 9 ? kRadioPicc9 : kOrbita + 10.0f * std::sin(picc_fase_);
     const V3 o = Ojo();
     g_px = o.x + rad * std::cos(elev_) * std::sin(az_);
-    g_pz = juego_ == 9 ? -rad * std::cos(elev_) * std::cos(az_)
+    // EU32D820 suma el ojo del visor a la esfera de radio60+expansion.
+    // El radio23 previo compensaba z=37; no mezclarlo con el radio del core.
+    const float centro_z = probar_reaccion_piccolo_ && fase_ == kJuego ? o.z : 0.0f;
+    g_pz = juego_ == 9 ? centro_z - rad * std::cos(elev_) * std::cos(az_)
                        : o.z + rad * std::cos(elev_) * std::cos(az_);
     g_py = juego_ == 9 ? o.y + rad * std::sin(elev_)
                        : std::max(0.0f, o.y - 6.0f + rad * std::sin(elev_));
@@ -1613,10 +2099,15 @@ class Panel : public rex::ui::ImGuiDialog {
       // posicion del modulo (g_px/g_py/g_pz) es la logica y B3 la pinta con la pose ~6-7 u mas arriba: apuntando a
       // ella el disco salia "libre" al agua (prueba del coordinador: 0 aciertos). Si el modelo aun no tiene tabla,
       // se usa la del modulo.
-      if (!HuesoMundo(base, mgr + kX0 + kXPaso, 1, p)) p = {g_px.load(), g_py.load(), g_pz.load()};
-      else p = T7(p);
+      // 4/11: el rival se COLOCA en T7(module) (Poner de este archivo), asi que
+      // el objetivo del piloto es esa misma posicion; el punto de cuerpo del
+      // actor oculto puede estar sin actualizar (medido y 0) y hacia fallar el
+      // tiro. El piloto es solo prueba (g_auto).
+      p = {g_px.load(), g_py.load(), g_pz.load()};
+      p = T7(p);
     } else {
-      if (!HuesoMundo(base,mgr+kX0+kXPaso,1,p)) p={g_px.load(),g_py.load(),g_pz.load()};
+      const uint32_t rol = probar_reaccion_piccolo_ ? uint32_t(rol_piccolo_prueba_) : 1u;
+      if (!HuesoMundo(base,mgr+kX0+kXPaso,rol,p)) p={g_px.load(),g_py.load(),g_pz.load()};
     }
     const V3 d = Mas(p, Por(o, -1.0f));
     const float yaw = std::atan2(d.x, d.z), polar = std::acos(std::clamp(d.y / std::max(Largo(d), 1e-3f), -1.0f, 1.0f));
@@ -1626,6 +2117,8 @@ class Panel : public rex::ui::ImGuiDialog {
     gx = std::clamp(-dy / 0.0165f, -1.0f, 1.0f);
     gy = std::clamp(-(polar - g_polar.load()) / 0.0165f, -1.0f, 1.0f);
     fuego = std::abs(dy) < 0.08f && ++auto_t_ % 2 == 0;
+    // La focal deja acabar cada reaccion; solo limita las pulsaciones del piloto.
+    if (probar_reaccion_piccolo_ && reaccion_piccolo_.Ver().pose_estado == 3) fuego = false;
     if (hecho_ && hecho_->juego == 8)
       fuego = std::abs(dy) < 0.03f && std::abs(polar - g_polar.load()) < 0.03f && auto_t_ % 2 == 0;
   }
@@ -1808,14 +2301,34 @@ class Panel : public rex::ui::ImGuiDialog {
         ps2::Malla w = m.malla;
         // 15: CameraCtrl_Create (EU 0x3105A0): a 5,5 por la mirada y (0, -1,1, -3,7) -> (0, -1,1, 1,8). Su rotacion
         // (+0x50: -1, pi, 0) no se aplica porque el modelo ya mira a +z en el espacio de la camara. [VERIFICAR] el giro.
+        if (juego_ == 15 && ManosToon15() && !ramp15_.empty()) {   // eIW2: color por vertice = 255 - rampa[l], l = 0,5 + 0,5 n.l en vista
+          static const V3 L{Env15("DBZ3_TEST_MANOS15_LX", -0.4512f), Env15("DBZ3_TEST_MANOS15_LY", 0.5514f), Env15("DBZ3_TEST_MANOS15_LZ", 0.7018f)};
+          static const float oscuro = Env15("DBZ3_TEST_MANOS15_OSC", 0.75f);
+          const float cxr = std::cos(-1.0f), sxr = std::sin(-1.0f), baja = (sub15_ == 1 || sub15_ == 2 || kikoho_ > 0) ? oscuro : 0.0f;
+          for (auto& t : w.tris)
+            for (int c = 0; c < 3; ++c) {
+              if (!t.con_color || t.col[c] != IM_COL32(255, 210, 170, 255)) continue;   // solo la piel
+              const float y1 = t.n[c].y * cxr - t.n[c].z * sxr, z1 = t.n[c].y * sxr + t.n[c].z * cxr;
+              const float l = 0.5f + 0.5f * (-t.n[c].x * L.x + y1 * L.y - z1 * L.z) - baja;
+              t.col[c] = ramp15_[size_t(std::clamp(int(l * 64.0f), 0, 63))];
+            }
+        }
         const V3 o = juego_ == 15 ? V3{0, -1.1f, 1.8f} : SitioMano(k, retroceso_[k]);
         // x5 alrededor del ojo: la misma imagen, pero lejos del corte de Escena::Poner (no pinta lo pegado a la camara)
         for (auto& t : w.tris)
           for (V3& p : t.p) {
             if (juego_ == 15) {   // EU 0x310650: M = T(+0x40: 5,5 por la mirada) x camara x Ry(pi) x Rx(-1) x T(0; -1,1; -3,7)
-              static const int conv = [] { const char* e = std::getenv("DBZ3_TEST_MANOS15"); return e ? std::atoi(e) : 1; }();
+              static const int conv = [] { const char* e = std::getenv("DBZ3_TEST_MANOS15"); return e ? std::atoi(e) : ManosToon15() ? 4 : 1; }();
               const float vy = p.y - 1.1f, vz = p.z - 3.7f, cx = std::cos(-1.0f), sx = std::sin(-1.0f);
               const float y1 = vy * cx - vz * sx, z1 = vy * sx + vz * cx;
+              if (conv == 4) {   // eIW2 (apagado por defecto): pose medida contra el original (IoU 0,52 -> 0,94): esc en x/y, dx, dy
+                static const float aj[3] = {Env15("DBZ3_TEST_MANOS15_ESC", 1.06f), Env15("DBZ3_TEST_MANOS15_DX", 0.0f),
+                                            Env15("DBZ3_TEST_MANOS15_DY", 0.0f)};
+                const float xv = (-p.x + aj[1]) * 5.0f * aj[0], yv = (y1 + aj[2]) * 5.0f * aj[0], zv = -(5.5f + z1) * 5.0f;
+                const float* m = cam.m;
+                const float ax = xv - m[12], ay = yv - m[13], az = zv - m[14];
+                p = {m[0] * ax + m[1] * ay + m[2] * az, m[4] * ax + m[5] * ay + m[6] * az, m[8] * ax + m[9] * ay + m[10] * az};
+              } else
               p = conv == 1 ? Cam({-p.x, y1, 5.5f + z1}, 5.0f) : conv == 2 ? Cam({-p.x, y1, 5.5f - z1}, 5.0f) : Cam({p.x, -y1, 5.5f + z1}, 5.0f);
             } else {
               if (juego_ == 9) {   // EU 0x32C5D0 + 0x32CC50: T(ojo - 4,5 por la mirada) x camara x Ry(pi) x Rx(-0,2) x T(-+2; -4; 11 + retroceso)
@@ -1835,7 +2348,7 @@ class Panel : public rex::ui::ImGuiDialog {
       if (juego_ == 15 && kikoho_ > 0 && d.efecto.malla) {
         const V3 e{mx_, kAltura15, mz_}, f = Unir(V3{0, 15.0f - kAltura15, -200.0f});
         const float largo = (kAltura15 - 15.0f) / std::max(-f.y, 0.1f);
-        OrientadoY(cam, d.efecto, Mas(e, Por(f, 30.0f)), f, largo / 120.0f * (0.6f + 0.4f * float(kikoho_) / 32.0f));
+        OrientadoY(cam, d.efecto, Mas(e, Por(f, 30.0f)), f, largo / 120.0f * (0.6f + 0.4f * float(kikoho_) / 32.0f) * (std::getenv("DBZ3_TEST_KIKOHO_ESC_M") ? float(std::atof(std::getenv("DBZ3_TEST_KIKOHO_ESC_M"))) : 1.0f));
       }
       // 3: el ladrillo de IW (890/1 ITEMB03_BRICK) en su punto del tramo
       if (juego_ == 3 && ladrillo_vivo_ && d.ladrillo.malla) {
@@ -2071,6 +2584,7 @@ class Panel : public rex::ui::ImGuiDialog {
   }
 
   const Datos* hecho_ = nullptr;
+  uint32_t partida_ = 0;
   ps2::Tex tx_hit_;
   int hit_t_ = 0;
   std::vector<ps2::Tex> tx_i_, tx_d_, hud_, tx_ef_, tx_lad_, tx_atlas_, tx_suma_;
@@ -2106,7 +2620,20 @@ class Panel : public rex::ui::ImGuiDialog {
   Fase fase_ = kListo;
   std::shared_ptr<ame::Instancia> brillo_[2];
   int t_ = 0, vida_ = 0, vida_max_ = 1, disparos_ = 0, mano_ = 0, esquiva_ = -1, esquiva_t_ = 0, auto_t_ = 0;
+  int esquiva_dur_ = 0, esquiva_vivida_ = 0;
+  int fz_estado_ = 1, fz_dir_ = -1; bool fz_larga_ = false, fz_preparada_ = false; float fz_vel_ = 0, fz_t_ = 0; uint32_t fz_vueltas_ = ~0u, fz_clip_ = 0, fz_clip_rep_ = 0; int fz_traza_ = 0;
+  // dia1E3 (esquiva original en el interprete): LFSR propio de Memory(), campo PAL, anterior y azimut en ejes del original.
+  uint32_t fz_semilla_ = 0, fz_dir_prev_ = 0; int fz_campo_ = 0; float fz_az_o_ = 0, fz_az_p_ = 1e9f;   // diagnostico: cuadros pedidos y vividos
+  // dia1E4 (esquiva original de Piccolo en el interprete): globales 0x5D9940.., estado de pose, LFSR, campo PAL y fin de clip.
+  uint32_t pc_glob_[10] = {}, pc_semilla_ = 0, pc_clip_ = 0, pc_clip_rep_ = 0, pc_vueltas_ = ~0u;
+  int pc_estado_ = 1, pc_campo_ = 0, pc_dif_ = 2; float pc_az_p_ = 1e9f;
+  bool fz_interp_ = false, fz_ant_ok_ = false; float fz_az_ant_ = 0, fz_el_ant_ = 0;   // dia1E4: dibujo de Freezer a 60 Hz
+  bool pc_d_ok_ = false; float pc_d_[4] = {};   // dia1E4: dibujo de Piccolo a 60 Hz (campo anterior y ultimo, ejes del original)
+  int rol_piccolo_prueba_ = 1; // Solo objetivo del piloto opt-in; no fuerza el impacto.
   float acc_ = 0, restante_ = 0, segundos_ = 0, az_ = 0, elev_ = 0, picc_fase_ = 0;
+  iwpiccolo::ReaccionEnMotor reaccion_piccolo_;
+  bool probar_reaccion_piccolo_ = false;
+  bool probar_acuse_piccolo_ = false; // solo testmini9 + reaccion + DBZ3_TEST_IWX_PICCOLO_ACUSE
   float espera_[2] = {}, retroceso_[2] = {};
   int tiros_ = 0, aciertos_ = 0, fallos_seguidos_ = 0, disco_ = 0, carga_ = 0, pausa_ = 0, bloqueo_ = -1;
   struct Marca {
@@ -2114,11 +2641,18 @@ class Panel : public rex::ui::ImGuiDialog {
     float x = 0, z = 0, paso = 0, dura = 0;
   };
   std::array<Marca, 5> marcas_{};
+  std::vector<ImU32> ramp15_;   // eIW2: colores de la rampa de piel de las manos (255 - rampa), 64 columnas
+  uint32_t cell_semilla_ = 0;   // N2: LFSR de Memory() propio de las marcas de Cell (cvar)
   int marca_ = 0, marca_t_ = 0, cst_ = 0, cc0_ = 0, ce_t_ = 0, sub15_ = 0, t15_ = 0, kikoho_ = 0, dif15_ = 2;
   float mx_ = 0, mz_ = 200, cx_ = 0, cy_ = 0, cz_ = 0, cvy_ = 0, golpe_y_ = 0, rumbo_ = 0, wx_ = 0, wz_ = 0;
   float energia_ = 1, p15_ = -1;
   bool baja_usada_ = false;
   uint16_t antes15_ = 0;
+  int orig3_ = -1;   // T3: -1 sin decidir, 0 port, 1 logica original, 2 la original fallo a mitad (port)
+  int acum3_ = 0;
+  uint16_t held3_ = 0;
+  uint32_t sem3_ = 0;
+  bool aviso_fin3_ = false;
   int quedan_ = 0;
   float tramo_espera_ = 0;
   float mira_x_ = 300, mira_y_ = 225, progreso_ = 0, lad_vel_ = 1, lad_x_ = 0, lad_y_ = 0, lad_z_ = 0, tiro_t_ = 0;
@@ -2207,6 +2741,8 @@ bool Empezar(int clave, int fila, int dificultad, int personaje) {
     if (bdif != d->dif)
       REXLOG_INFO("dbz3 iwdisparo: la copia de IW no tiene bloque para la dificultad {}; se usa la {}",
                   d->dif, bdif);
+    d->mss_raw = mss;
+    d->mss_bdif = bdif;
     d->n_tramos = i32(b);
     d->lad_s = f32(b + 0x08);   // MgFly_SetupNextNode: +0x510 = bloque +0x08 (tamano proyectado del ladrillo)
     d->lad_duracion=f32(b+0x0C);
@@ -2327,7 +2863,10 @@ bool Empezar(int clave, int fila, int dificultad, int personaje) {
   {   // proyectil (ver Datos::efecto): sin Centrar, la cabeza del rayo / el centro del disco en el origen
     const int e = d->juego == 15 ? 935 : d->juego == 8 ? 851 : 842;   // 15: el paquete del minijuego (Kikoho)
     const std::vector<uint8_t> amb = cmn.Entrada(size_t(e));
-    ps2::LeerAmo(P::HijoAmb(amb, e == 935 ? 1u : e == 851 ? 6u : 7u), 0, d->efecto.malla);
+    if (std::getenv("DBZ3_TEST_KIKOHO_MATERIAL"))
+      ps2::LeerAmo(P::HijoAmb(amb, e == 935 ? 1u : e == 851 ? 6u : 7u), 0, d->efecto.malla, nullptr, true, true);
+    else
+      ps2::LeerAmo(P::HijoAmb(amb, e == 935 ? 1u : e == 851 ? 6u : 7u), 0, d->efecto.malla);
     const std::vector<uint8_t> t = P::HijoAmb(amb, e == 935 ? 0u : e == 851 ? 2u : 8u);
     for (int j = 0, n = P::CuantasAmt(t); j < n; ++j) d->efecto.tex.push_back(P::TexturaAmt(t, j));
   }
@@ -2367,6 +2906,7 @@ bool Empezar(int clave, int fila, int dificultad, int personaje) {
   {
     std::lock_guard<std::mutex> lk(g_mu);
     g_d = d;
+    ++g_partida;
     g_res = iwmini::Resultado{};
     g_res.clave = clave;
     g_res.fila = fila;

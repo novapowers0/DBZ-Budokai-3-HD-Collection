@@ -17,6 +17,9 @@ Uso (desde la carpeta del proyecto):
       crea mods\<nombre>: entrada 5000+grupo (B1: 5020+grupo; B2 zona B: 5040+grupo) y sus imagenes del
       selector en entrada+100
       (--mods otra carpeta mods, --entrada N, --bin cache del bin convertido, --foto captura para la casilla)
+  python tools\escenarios_convertir.py mod 0 --rampas-b2 --nombre "Base Red Ribbon B2"
+      convierte ademas las rampas de sombreado de B2 (sombra en el alfa) a rampas RGB de B3 HD; apagado
+      por defecto porque cambia el resultado del conversor (subir VERSION si se adopta).
   python tools\escenarios_convertir.py comprobar                   # autocomprobacion con los 13 pares B3 PS2/HD
 
 Formato (medido contra los 13 pares nativos B3 PS2 GH <-> HD; detalle en docs/14_frentes/escenarios.md):
@@ -48,6 +51,7 @@ PS2 = RAIZ / "ps2_games"      # ISOs de PS2
 import amo2awo  # noqa: E402
 import iso  # noqa: E402
 import ps2hd  # noqa: E402
+import rampas  # noqa: E402
 
 import swap_b3  # noqa: E402  (xbcompress: "mod center hd/tools" en el Kit y la release, el del XDK en el proyecto)
 XBC, XBD = Path(swap_b3.XBCOMPRESS), Path(swap_b3.XBDECOMPRESS)
@@ -1560,6 +1564,10 @@ def cmd_mod(a):
     else:
         datos = escenario_b2(IsoB2(a.iso, a.juego), a.grupo, a.donante, zona=1 if a.zona == "b" else 0,
                            escala=a.caja_escala)
+    datos_cache = datos
+    if a.rampas_b2:                             # solB2X/dsROBOT: rampa de sombreado B2 (alfa) -> RGB de B3 HD
+        datos, informe = rampas.escena_rampas(datos)
+        print("rampas B2: %s" % informe)
     base = ENTRADA_BASE + (20 if a.juego == "b1" else 0)
     entrada = a.entrada if a.entrada is not None else base + (40 + a.grupo if a.zona == "b" else a.grupo)   # menu = entrada + 100
     nombre = a.nombre or "%s ESCENARIO %d%s" % (a.juego.upper(), a.grupo, " ZONA B" if a.zona == "b" else "")
@@ -1578,7 +1586,7 @@ def cmd_mod(a):
     if a.tabla_efectos:
         print(tabla_efectos_b2(IsoB2(a.iso, a.juego), [a.grupo]))
     if a.bin and not Path(a.bin).exists():
-        Path(a.bin).write_bytes(datos)
+        Path(a.bin).write_bytes(datos_cache)     # cache canonico: sin el postproceso de rampas
 
 
 def main():
@@ -1608,6 +1616,8 @@ def main():
                         "un escenario cuyo suelo es mas ancho que su colision (Base Red Ribbon de B2: poco sitio).")
     s.add_argument("--tabla-efectos", action="store_true",
                    help="imprime las llamadas de efecto del #SPX de B2 y el banco #AME que el bin del donante no usa")
+    s.add_argument("--rampas-b2", action="store_true",
+                   help="convierte las rampas de sombreado de B2 (sombra en alfa) a rampas RGB de B3 HD; apagado por defecto")
     s.set_defaults(fn=cmd_mod)
     s = sp.add_parser("comprobar")
     s.add_argument("escenarios", nargs="*", type=int)

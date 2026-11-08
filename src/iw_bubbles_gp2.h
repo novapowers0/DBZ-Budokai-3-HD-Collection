@@ -11,11 +11,14 @@
 #include "iw_bubbles_wcf.h"
 
 namespace dbz3::iwbubbles {
-inline constexpr bool kBubblesProbado = false; // Candidato completo; oraculo C++/runtime/fin9 pendientes.
+// eIW6 6/11: IA medida contra PCSX2 con la semilla real de cada llamada (sonda tools/iwx_bubbles_ia.py): mismas
+// tiradas y mismas decisiones (ramas, estado 9, huida, tareas); voces 1-6 en los mismos cuadros. Ver INFORME_eIW6.md.
+inline constexpr bool kBubblesProbado = true;
 inline bool Prueba(int clave) {
+  static const bool aprox = [] { const char* v = std::getenv("DBZ3_IW_BUBBLES_APROX"); return v && *v == '1'; }();
   const char* m = std::getenv("DBZ3_TEST_IWMINI");
   const char* b = std::getenv("DBZ3_TEST_GP2_BUBBLES");
-  return clave == 0x7D1 && (kBubblesProbado ||
+  return clave == 0x7D1 && ((kBubblesProbado && !aprox) ||
       (m && std::strtoul(m,nullptr,0)==0x7D1 && b && b[0]=='1' && b[1]==0));
 }
 inline constexpr std::array<unsigned,11> kCodigos = {0xD2,0xD3,0xD4,0xDD,0xDF,0xE0,0xE1,0xD5,0xD6,0xE2,0xD8};
@@ -52,6 +55,7 @@ struct Maquina {
   bool flag200=false,flag210=false,flag214=false,flag218=false;
   std::int16_t cc4=0;
   bool fin=false,latch224=false,tarea=false;
+  int voz=-1; // linea del perfil ADX16 pedida en esta pasada (PlayHit_KiBlastsAudios3 corta la anterior: gana la ultima)
   V p, frente{0,0,1},vel,centro;
   float icono=0;
   std::uint64_t tick=0,revision=0;
@@ -62,7 +66,10 @@ struct Maquina {
   noche::Grid grid{-900,900,-900,900,3};
   wcf::Result barrido,rayo;
   wcf::Contact contacto_tarea5;
-  V ultima_raiz;
+  V ultima_raiz,p_inicio;
+  // Logica original (iw_mips, cvar apagada por defecto): palabras del invitado que la tick lee de cuadros anteriores.
+  std::array<std::uint32_t,20> guarda{};
+  bool guarda_ok=false;
   unsigned flags_consumidos=0,pose_codigo=0xD2;
   float pose_cuadro=0,cuadro_previo_fin=0;
   bool nueva_tarea5=false,bloqueado_c0=false;

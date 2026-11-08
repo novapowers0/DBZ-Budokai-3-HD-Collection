@@ -1,0 +1,13 @@
+# Escenarios añadidos que son en esencia el MISMO lugar que uno nativo de Budokai 3 HD.
+# No salen en el selector de escenarios del Duelo (solo se ocultan: no se borra nada y el nativo siempre se queda).
+# Para verlos igualmente: Ajustes rápidos > ESCENARIO > «Escenarios repetidos» (dbz3_escenarios_repetidos), y reiniciar.
+#
+# Clave = carpeta del mod (la que crea el launcher desde la ISO del jugador). Valor = escenario nativo equivalente.
+# Lista revisable a mano: lo que no esté aquí se muestra. Sin heurísticas.
+[repetidos]
+"Torneo B2" = "World Tournament Stage"
+"Calle de la ciudad B2" = "Urban Area"          # Zona urbana (B2)
+"Islas B2" = "Planet Namek"                     # su título es «Planeta Namek (B2)»
+"Llanura B2" = "Plains"
+"Namek B2" = "Supreme Kai's World"              # su título es «Mundo de Kaiyoshin (B2)»
+"Ring de Cell B1" = "Cell Ring"

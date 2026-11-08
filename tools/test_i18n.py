@@ -68,7 +68,7 @@ def tabla_k(cpp):
 def llamadas():
     """(archivo, es, en, es_L) de cada i18n::T(es, en) y L(es, en, fr, de, it) con todos sus argumentos literales."""
     r = []
-    for f in sorted((RAIZ / "src").rglob("*.cpp")):
+    for f in sorted(f for f in (RAIZ / "src").rglob("*") if f.suffix in (".cpp", ".inl")):
         if f.name in ("i18n.cpp", "i18n_selftest.cpp"):
             continue
         s = f.read_text(encoding="utf-8-sig", errors="replace")

@@ -1,0 +1,3 @@
+descripcion = "Sin pedir gigante: combate normal; el log NO debe decir 'gigante: escala' (rival a tamano normal)"
+env = ["DBZ3_TEST_BATTLE=0,7,7", "DBZ3_HUB_MODE=5"]
+pasos = ["log \"hub: combate nativo\" 60", "log \"tag: empieza un combate\" 60", "esperar 3000", "captura 01_normal"]

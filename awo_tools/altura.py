@@ -295,14 +295,26 @@ def leg(skel):
     return P["WAIST"][1] - min(P[k][1] for k in ANKLES if k in P)
 
 
-def correccion(skel_dst, skel_src, idle):
+def correccion(skel_dst, skel_src, idle, ref=None):
     """(escala, desplazamiento y) de la cadera para que `idle` (animacion hecha para
-    skel_src) deje los tobillos de skel_dst a la altura relativa que tenian en skel_src."""
+    skel_src) deje los tobillos de skel_dst a la altura relativa que tenian en skel_src.
+    eANI2 (6/11): con `ref` = (esqueleto, reposo) de un nativo de B3 (el donante), el tobillo va a la altura de
+    reposo de ESE nativo escalada al largo de pierna de skel_dst: la convencion de suelo de B3. Con la del juego de
+    origen los importados quedaban hundidos (reposo en combate, tobillo: Goku B1 0,41, Freezer B2 -0,2/-0,7, Krillin
+    SB -1,5, frente a 0,95-1,14 de los nativos) y el IK de suelo de B3 les doblaba las piernas en el 32-46 % de los
+    cuadros (nativos 1-11 %). MEDIDO 6/11 con Goku B1 rehecho: el reposo sube 0,41 -> 0,88 pero el IK salta MAS (63 %):
+    el IK no es "pie bajo el suelo" sino una banda junto al suelo, y el reposo de combate (clip 0x40000) no es el
+    codigo 0 que mide `idle`. Por eso va APAGADO: DBZ3_ALTURA_B3=1 lo enciende para medir."""
+    import os  # noqa: PLC0415
     l_dst, l_src = leg(skel_dst), leg(skel_src)
     if not (l_dst and l_src and idle and "WAIST" in idle and idle["WAIST"][1]):
         return 1.0, 0.0
     s = l_dst / l_src
     target = ankle(skel_src, idle) * s
+    if ref and os.environ.get("DBZ3_ALTURA_B3"):
+        l_ref, a_ref = leg(ref[0]), ankle(ref[0], ref[1]) if ref[1] else None
+        if l_ref and a_ref is not None:
+            target = a_ref * l_dst / l_ref
     now = ankle(skel_dst, idle, (s, 0.0))
     return s, target - now
 

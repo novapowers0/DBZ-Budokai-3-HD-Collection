@@ -119,6 +119,7 @@ inline int PerfilAdx(uint32_t cmn) {
     case 923:return 4;case 931:return 5;case 928:return 6;case 927:return 7;
     case 924:return 8;case 925:return 9;case 929:return 10;case 932:return 11;
     case 926:return 12;case 930:return 13;case 914:return 15;
+    case 912:return 16; // BBR actor+B8C=39, EU298380 -> filtro16
     default:return -1;
   }
 }

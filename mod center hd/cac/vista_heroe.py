@@ -4898,7 +4898,7 @@ def exportar_personaje(juego, ficha_txt, afs):
 
 def exportar_main(a, ficha_txt):
     """--exportar / --receta: monta el personaje y deja ingame_ui/heroe_vista/exportar.json (el juego lo lee)."""
-    salida = os.path.join(a.juego, "ingame_ui", "heroe_vista")
+    salida = a.salida
     resultado = os.path.join(salida, "exportar.json")
     try:
         afs = rb.Afs(os.path.join(rb.us_dir(a.us), "data_cmn.afs"), tempfile.mkdtemp(prefix="vista_heroe_"))
@@ -4927,6 +4927,7 @@ def limpiar_fichas(salida, guardar=12):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--juego", required=True, help="carpeta del juego (la de dbz3.exe)")
+    ap.add_argument("--salida", default=None, help="cache de vistas escribible (por defecto ingame_ui/heroe_vista)")
     ap.add_argument("--us", default=None, help="carpeta us/ con data_cmn.afs (por defecto la que encuentre)")
     ap.add_argument("--size", type=int, default=384)
     ap.add_argument("--giros", type=int, default=12)
@@ -4940,7 +4941,7 @@ def main():
     ap.add_argument("--exportar", type=int, default=0, help="con --ficha: exporta el heroe como personaje aparte (mods/heroe_<nombre>)")
     ap.add_argument("--receta", default=None, help="receta.toml de un heroe exportado: rehace su mod con el juego de quien la abre")
     a = ap.parse_args()
-    salida = os.path.join(a.juego, "ingame_ui", "heroe_vista")
+    salida = a.salida = a.salida or os.path.join(a.juego, "ingame_ui", "heroe_vista")
     os.makedirs(salida, exist_ok=True)
     if (a.ficha and a.exportar) or a.receta:
         fd = os.open(os.path.join(salida, "montaje.log"), os.O_WRONLY | os.O_CREAT | os.O_TRUNC)
@@ -5016,7 +5017,7 @@ def main():
     work = tempfile.mkdtemp(prefix="vista_heroe_")
     try:
         afs = rb.Afs(os.path.join(rb.us_dir(a.us), "data_cmn.afs"), work)
-        hechas = 0
+        hechas = fallos = 0
         for cid, fids in KFID.items():
             for t, fid in enumerate(fids):
                 nombre = "%d_%d" % (cid, t)
@@ -5031,6 +5032,9 @@ def main():
                     img = tira(m, a.size, a.giros)
                     nt, ntex = exportar_malla(m, pose_de(m), os.path.join(salida, nombre + ".malla"))
                 except Exception as e:   # noqa: BLE001 (un modelo raro no para el resto)
+                    import traceback  # noqa: PLC0415
+                    traceback.print_exc()
+                    fallos += 1
                     print("vista_heroe: %s (fid %d) FALLO: %s" % (nombre, fid, e))
                     continue
                 tmp = dst + ".tmp.png"
@@ -5045,8 +5049,14 @@ def main():
             os.remove(marca)
         except OSError:
             pass
-    return 0
+    return 1 if fallos else 0   # sin modelo no se debe anunciar exito al juego
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except swap_b3.NoGameData as e:
+        # NoGameData hereda SystemExit: sin esta marca solo salia un texto traducido,
+        # imposible de distinguir de otros fallos desde el menu del juego.
+        print("heroe: NoGameData: %s" % e, file=sys.stderr)
+        sys.exit(4)

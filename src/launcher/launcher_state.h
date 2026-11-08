@@ -70,6 +70,7 @@ class LauncherDialog : public rex::ui::ImGuiDialog {
   void DrawInputTab();
   void DrawModsTab();
   void DrawNativeModsTab();
+  void DrawSaveUnlock();
   void DrawNovasModsTab();
   void DrawModelSwapTab();
   void DrawTexturesTab();
@@ -311,6 +312,7 @@ class LauncherDialog : public rex::ui::ImGuiDialog {
   // Mods center (P4.1): zip install + profiles.
   std::string mods_status_;  // transient status line shown in the Mods tab
   std::string native_mods_status_;
+  bool save_unlock_ok_ = false;
   // Pestana Juego: guardados y catalogo leidos al abrirla y tras cada accion (no en cada frame).
   struct SaveFile {
     std::filesystem::path path;

@@ -10,6 +10,7 @@
 #if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
+#include <cmath>
 #include <windows.h>
 #endif
 #include <rex/cvar.h>
@@ -358,7 +359,11 @@ bool CabeceraAdx(pasarela::AfsPs2& afs, int entrada, int& hz, int& canales, doub
 }
 
 std::filesystem::path BaseDeJuego(const std::string& juego) {
-  if (juego == "b3") return dbz3::HostDataRoot();
+  if (juego == "b3") {   // la carpeta us/ primero: AfsPs2 busca recursivamente y se quedaba con otro adx_usa.afs (copias, respaldos)
+    std::error_code ec;
+    const std::filesystem::path us = dbz3::HostDataRoot() / "us";
+    return std::filesystem::is_directory(us, ec) ? us : dbz3::HostDataRoot();
+  }
   if (juego == "b2") return pasarela::BuscarJuego("budokai 2");
   if (juego == "iw") return pasarela::BuscarJuego("infinite world");
   if (juego == "b1") return pasarela::BuscarIsoB1();
@@ -379,6 +384,31 @@ std::string NombreFuente(const std::string& juego) {
 std::mutex g_pistas_mu;
 std::shared_ptr<const std::vector<Pista>> g_pistas;
 std::chrono::steady_clock::time_point g_pistas_at;
+
+// Peticion b (8/11): titulo oficial en ingles (solo texto; el audio sigue saliendo de la copia del jugador). Solo las pistas
+// asignadas con datos medidos: la duracion del ADX coincide (<= 1,5 s) con la del album oficial y es la UNICA a +-8 s en los
+// dos sentidos (E:/DBZ3HD_trabajo/escenarios_musica/medidas.txt frente a tracklists.md, kanzenshuu). La duracion tambien
+// guarda contra otra region con otro orden en el AFS. Las demas siguen como "#N": no se adivina.
+struct TituloOficial {
+  const char* juego;
+  int entrada;
+  double segundos;
+  const char* titulo;
+};
+constexpr TituloOficial kTitulos[] = {
+    {"b3", 132, 286.48, "The Greatest Tactics In the Universe ~Great Tactics~"},   // album 4:48
+    {"b3", 146, 205.62, "24-7 Crazy"},                                             // album 3:26
+    {"b2", 272, 265.90, "Full of Tears: In the Depths of Sadness"},                // album 4:25
+};
+
+std::string TituloDe(const std::string& juego, int entrada, double segundos) {
+  for (const TituloOficial& t : kTitulos)
+    if (juego == t.juego && entrada == t.entrada) {
+      if (std::abs(segundos - t.segundos) < 0.5) return t.titulo;
+      REXLOG_INFO("dbz3 musica: {} #{} dura {:.2f} s (el titulo es para {:.2f} s): se queda sin titulo", juego, entrada, segundos, t.segundos);
+    }
+  return {};
+}
 
 void AgregarJuego(std::vector<Pista>& out, std::set<std::string>& vistos, const std::string& juego,
                   const std::string& afs_nombre, double minimo_segundos) {
@@ -412,7 +442,8 @@ void AgregarJuego(std::vector<Pista>& out, std::set<std::string>& vistos, const 
     p.hz = hz;
     p.canales = canales;
     p.segundos = segundos;
-    p.nombre = NombreFuente(juego) + " #" + std::to_string(k);
+    const std::string titulo = TituloDe(juego, int(k), segundos);
+    p.nombre = NombreFuente(juego) + (titulo.empty() ? " #" + std::to_string(k) : " - " + titulo);
     out.push_back(std::move(p));
   }
 }

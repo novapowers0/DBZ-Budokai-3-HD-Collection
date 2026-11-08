@@ -2,11 +2,17 @@
 // desconocida acredita éxito; se conserva el motivo concreto del bloqueo.
 #include "escenarios_b2_anim.inl"
 #include "escenarios_b2_fondo.inl"
+#include "escenarios_b2_fundido.inl"
+#include "escenarios_b2_solar.inl"
 
 struct B2MotorHD {
   std::unique_ptr<b2::Transicion> escena;
   B2AnimHD anim;
   B2FondoHD fondo;
+  B2FundidoHD fundido;
+  B2SolarHD solar;
+  uint32_t solar_inicial_gestor=0,solar_inicial_zdd=0;
+  int solar_inicial_alta=-1;
   uint32_t mgr=0, actor[2]{}, scratch=0, origen=0, ultimo=~0u;
   uint32_t vida[2]{},ki[2]{};
   std::array<uint8_t,480> camara_antes{};
@@ -19,10 +25,30 @@ struct B2MotorHD {
   std::array<float,3> punto_contacto{};
   bool fija=false;
   std::array<bool,2> visible{true,true};
+  std::array<bool,2> aterrizaje_b2{false,false};
+  // Aterrizaje PAL de Ciudad (DBZ3_TEST_B2_ATERRIZAJE_15B2=2): ver Paso.
+  std::array<uint32_t,2> aterrizaje_f0{0,0};
+  std::array<std::array<float,3>,2> aterrizaje_p0{};
   std::map<int,int> pantallas_fin;
   uint32_t pantallas_dibujadas=0;
   uint16_t vibracion[2][2]{};
 #include "escenarios_b2_foto.inl"
+#include "escenarios_b2_trayectoria.inl"
+#include "escenarios_b2_reaccion.inl"
+  bool PrepararSolar(PPCContext& ctx,uint8_t* base) {
+    const uint32_t m=REX_LOAD_U32(kMgrPtr),z=REX_LOAD_U32(kG+32);
+    if(!m||!z||REX_LOAD_U32(m+kEstadoCombate)!=4) {
+      solar_inicial_gestor=solar_inicial_zdd=0;solar_inicial_alta=-1;return true;
+    }
+    if(solar_inicial_gestor==m&&solar_inicial_zdd==z&&solar_inicial_alta==g_activa)return true;
+    if(g_b2.version<2&&!g_b2_leido){std::vector<Clip> cam;(void)LeerClips(1,cam);}
+    if(!solar.Crear(ctx,base,g_b2))return false;
+    dbz3::launcher::DeferUi(&CrearClimaPanel);
+    // Una vez al entrar en combate, no cada vez que79 vacía la lista.
+    // PAL ya tiene el solar antes del primer contacto/lanzamiento.
+    solar_inicial_gestor=m;solar_inicial_zdd=z;solar_inicial_alta=g_activa;
+    return true;
+  }
   bool Vibrar(unsigned lado,uint32_t tipo,uint32_t valor) {
     if(lado>=2||!scratch||!contexto)return false;
     auto& v=vibracion[lado];
@@ -49,7 +75,9 @@ struct B2MotorHD {
     }
   }
   void DibujarPantallas(PPCContext& ctx,uint8_t* b) {
-    if(!activo||pantallas_fin.empty())return;
+    if(!activo)return;
+    fundido.Dibujar(REX_LOAD_U32(0x8238D6B4),escena->reloj.delta);
+    if(pantallas_fin.empty())return;
     std::array<bool,4> hechas{};
     PPCContext c=ctx;c.r3.u64=0;sub_8214F4F8(c,b);
     for(const auto& [t,slot]:pantallas_fin)if(!hechas[size_t(slot)]) {
@@ -71,7 +99,9 @@ struct B2MotorHD {
     for(size_t i=0;i<o.cuenta;++i)REX_STORE_U32(scratch+128+uint32_t(i)*4,o.argumentos[i]);
     PPCContext c=*contexto;c.r3.u64=scratch+64;c.r4.u64=scratch;
     c.r9.u64=c.r10.u64=0; // llamada adaptada, no opcode IW crudo del guest
+    if(o.id==0x11||o.id==0x13||o.id==0x19||o.id==0xC1)MedirActores1450("orden_antes",&o);
     fn(c,base);
+    if(o.id==0x11||o.id==0x13||o.id==0x19||o.id==0xC1)MedirActores1450("orden_despues",&o);
     REX_STORE_U32(mgr+35188,p0);REX_STORE_U32(mgr+35192,p1);
     return true;
   }
@@ -160,7 +190,7 @@ struct B2MotorHD {
         }
         return true;
       }
-      case 0x13: return lado(3)&&Llamar(sub_8211D108,o); // ángulo/velocidad/tipo/lado, homólogo de1FB650
+      case 0x13: return lado(3)&&OrdenReaccion(o); //1FB650, adaptación optativa del paso PAL18
       case 0x16: return lado(1)&&Llamar(sub_8211D810,o); // aire y recálculo de postura
       case 0x19: return lado(2)&&Llamar(sub_8211D000,o); // desplazamiento respecto al rival
       case 0x1C: {
@@ -207,17 +237,13 @@ struct B2MotorHD {
             PPCContext c=*contexto;c.r3.u64=t;sub_820BD570(c,base);
           }
         }
+        solar.Quitar(*contexto,base);
         return true;
       }
       case 0x78: {
-        //1B78A0: no crea nada cuando el índice solar del descriptor es-1.
-        // Perfil ELF PAL acreditado porSND0: Base(stage4),Ciudad1,Nieve5
-        // tienen[-1,-1]; Kami6 tiene[-1,0]. Llanura0 tiene[0,1].
-        const auto perfil=g_b2.Bloque(7);
-        if(perfil.n<16||perfil.U(4)!=1)return false;
-        if(g_b2.grupo==0||g_b2.grupo==7||g_b2.grupo==8||
-           (g_b2.grupo==2&&REX_LOAD_U32(kG+64)==0))return true;
-        bloqueo="destello solar B2 presente, falta consumidor78";return false;
+        const bool ok=solar.Crear(*contexto,base,g_b2);
+        if(!ok)bloqueo="solar B2: recurso ENV/AMT o tarea no disponible";
+        return ok;
       }
       case 0x7E:return Llamar(sub_8211F760,o); // alpha=arg1, decremento=arg0; D53F0 / FC5xx dibujan el mismo blanco
       case 0x7F:Fl(base,mgr+35168,-1);return true; // mismo veto alpha>0 que142D8 del original
@@ -242,7 +268,11 @@ struct B2MotorHD {
         return lado(1);
       case 0x14: // Daño del suceso: el contrato HD conserva vida/ki/contador.
         h.r[0]=0;Conservar();return true;
-      case 0xC1:return lado(3); // Estado y trayectoria los mantiene Transicion.
+      case 0xC1:
+        if(!lado(3))return false;
+        if(!trayectoria_nativa)return true; // Camino anterior, sin activar el experimento.
+        if(a[2]!=~0u&&(a[2]>28||a[1]>=g_b2.trayectoria.size()))return false;
+        return Llamar(sub_8211D6F0,o);
       case 0x31: {
         if(a[6]&~0xffu)return false;
         b2::Orden hd=o;
@@ -254,7 +284,10 @@ struct B2MotorHD {
       case 0x35:fija=false;return a[5]==2&&a[4]<g_b2.camara.size();
       case 0x95:return a[0]==0; // Banco de cámara explícito del B2TZ, no el del donante.
       case 0x94:return fondo.Controlar(*contexto,base,g_b2,o);
+      case 0x90:return fondo.CrearRobot(*contexto,base,g_b2);
       case 0x96:return fondo.CrearFx(*contexto,base,g_b2,o);
+      case 0x64:return fundido.Color(o);
+      case 0x61:case 0x62:return fundido.Crear(o);
       case 0x40:CambiarZonaMotor(*contexto,base);return true;
       case 0x45:case 0x46:case 0x47:
         // ASM1B9260/1B9240/1B9220: f0=XYZ del contacto que lanzó la escena.
@@ -291,8 +324,11 @@ struct B2MotorHD {
     if(mgr!=contacto.gestor||!mgr)return false;
     punto_contacto=contacto.punto;
     pantallas_dibujadas=0;
+    fundido.Limpiar();
+    dbz3::launcher::DeferUi(&CrearClimaPanel);
     std::memcpy(camara_antes.data(),base+mgr+160,camara_antes.size());
     PrepararFotos();
+    PrepararReaccion();
     if(!fondo.Cargar(base,g_b2)){bloqueo="raices B2 invalidas";return false;}
     actor[1]=contacto.actor;actor[0]=mgr+2096+(actor[1]==mgr+2096?8240:0);
     if(!anim.Preparar(base,g_b2)||!anim.Instalar(base,actor[0])||!anim.Instalar(base,actor[1])) {
@@ -301,40 +337,58 @@ struct B2MotorHD {
     }
     if(!scratch)scratch=g_mem->SystemHeapAlloc(256,32);
     if(!scratch){anim.Restaurar(base);return false;}
+    if(!PrepararTrayectoria(ctx)) {
+      anim.Restaurar(base);bloqueo="trayectoria ACC nativa no disponible";return false;
+    }
     for(unsigned i=0;i<2;++i){vida[i]=REX_LOAD_U32(actor[i]+6080);ki[i]=REX_LOAD_U32(actor[i]+6100);
       oculto[i][0]=REX_LOAD_U8(actor[i]+3261);oculto[i][1]=REX_LOAD_U8(actor[i]+4925);}
     QuietarLuchadores();dbz3::combate::OcultarHud(true);
+    aterrizaje_b2={false,false};
     escena=std::make_unique<b2::Transicion>();
     b2::Puente p;
     p.ejecutar=[this](const auto& o,auto& m,auto& h){return Orden(o,m,h);};
     p.observar=[](const auto& o){REXLOG_INFO("dbz3 B2 HD orden: cuadro={:.1f} id={:X} PC={:X} tarea={}",o.cuadro,o.id,o.pc,o.tarea);};
+    // El original ya tiene el solar de la zona inicial antes del evento.
+    // La orden79 del guion lo retira;78 crea el de la zona de llegada.
+    if(!PrepararSolar(ctx,base)) {
+      RestaurarTrayectoria();anim.Restaurar(base);SoltarLuchadores();dbz3::combate::OcultarHud(false);
+      bloqueo="solar B2 inicial no disponible";return false;
+    }
     activo=escena->Iniciar(g_b2,uint32_t(contacto.entrada),std::move(p));
     escena->vm.ganchos.terminar=[this](auto&,auto& h) {
       const auto it=pantallas_fin.find(h.ranura);
       if(it!=pantallas_fin.end()){CerrarPantalla(it->second);pantallas_fin.erase(it);}
     };
     origen=REX_LOAD_U32(0x8238D6B4);ultimo=~0u;
+    if(activo){PrepararTraza();MedirTraza("inicio");}
     REXLOG_INFO("dbz3 B2 HD: inicio por colision real entrada={} guest={} actores={:08X}/{:08X}",contacto.entrada,origen,actor[0],actor[1]);
     if(!activo)Terminar("fallo al iniciar");
     return activo;
   }
   void Terminar(const char* motivo) {
+    MedirTraza("terminar");if(traza.is_open())traza.close();
     if(escena)escena->vm.Parar(); // ejecuta limpiezas de tareas también al bloquearse
     for(unsigned i=0;i<2;++i)(void)Vibrar(i,0xD2,0);
     Conservar();
     REXLOG_INFO("dbz3 B2 HD: {} cuadro={:.1f} bloqueo='{}' VM='{}'",motivo,escena?escena->reloj.cuadro:0,bloqueo,escena?escena->Error():"");
     REXLOG_INFO("dbz3 B2 FX resumen: instancias={} dibujos={} paso_global={:.3f}",fondo.instancias_fx.size(),fondo.dibujos_fx,LeeFl(0x824392B0+8));
     REXLOG_INFO("dbz3 B2 pantallas: dibujos={}",pantallas_dibujadas);
+    REXLOG_INFO("dbz3 B2 fundido: dibujos={} tarea_viva={}",fundido.dibujos,fundido.estado.existe);
+    fundido.Limpiar();
     if(mgr&&REX_LOAD_U32(kMgrPtr)==mgr) {
+      fondo.CerrarRobot(*contexto,base,escena&&!escena->Error().empty());
+      if(escena&&!escena->Error().empty())solar.Quitar(*contexto,base);
       if(escena&&!escena->Error().empty())fondo.Devolver(*contexto,base);
       for(unsigned i=0;i<2;++i){REX_STORE_U8(actor[i]+3261,oculto[i][0]);REX_STORE_U8(actor[i]+4925,oculto[i][1]);}
-      anim.Restaurar(base);SoltarLuchadores();
+      RestaurarTrayectoria();anim.Restaurar(base);SoltarLuchadores();
+      dbz3::escenarios::b2ik::RestaurarIkB3(base);   // eB2i (DBZ3_TEST_B2_SIN_IK_B3)
       if(contexto&&REX_LOAD_U32(mgr+kEstadoCombate)==4)for(unsigned i=0;i<2;++i) {
         PPCContext c=*contexto;c.r3.u64=actor[i];c.r4.u64=0;sub_8210E6D8(c,base);
       }
       std::memcpy(base+mgr+160,camara_antes.data(),camara_antes.size());
     }
     activo=false;g_esc_cam=false;dbz3::combate::OcultarHud(false);
+    trayectoria_nativa=false;
   }
   bool Paso(PPCContext& ctx,uint8_t* b) {
     if(!activo)return false;
@@ -342,20 +396,67 @@ struct B2MotorHD {
     if(REX_LOAD_U32(kMgrPtr)!=mgr||REX_LOAD_U32(mgr+kEstadoCombate)!=4){Terminar("pelea terminada");return false;}
     const uint32_t f=REX_LOAD_U32(0x8238D6B4);if(f==ultimo){Conservar();return true;}
     EsperarFoto();ultimo=f;
+    MedirActores1450("antes_vm");
     if(!escena->Paso(1)) {Terminar("VM bloqueada");return false;}
+    MedirActores1450("despues_vm");
     PasarPantallas();
     Conservar();
+    MedirActores1450("antes_trayectoria");
     for(unsigned i=0;i<2;++i) {
       REX_STORE_U8(actor[i]+3261,visible[i]?0:1);REX_STORE_U8(actor[i]+4925,visible[i]?0:1);
+      if(aterrizaje_b2[i]) {
+        // Medido en PAL (traza solB2X g8, victima): estado15/codigo137 con
+        // vel (0.92,0,-6.94) durante 15.6 relojes y luego estado20/codigo168
+        // con vel (0.34,.,-2.58) otros 15.6; luego quieta. Sin Y (suelo).
+        const char* m=std::getenv("DBZ3_TEST_B2_ATERRIZAJE_15B2");
+        if(m&&!std::strcmp(m,"2")) {
+          const float dt=float(int32_t(f-aterrizaje_f0[i])),T=15.6f;
+          const float t1=std::min(dt,T),t2=std::max(0.f,std::min(dt-T,T));
+          const float d[3]={0.92f*t1+0.34f*t2,0.f,-6.94f*t1-2.58f*t2};
+          for(unsigned j=0;j<3;j+=2){const float v=aterrizaje_p0[i][j]+d[j];Fl(base,actor[i]+64+4*j,v);Fl(base,actor[i]+48+4*j,v);}
+        }
+        continue;
+      }
+      if(trayectoria_nativa) {
+        // El reloj sigue siendo el del guion original; el guest consume el
+        // ACC reubicado al actualizar las posiciones, sin una segunda copia.
+        Fl(base,actor[i]+6760,escena->actores[i].tiempo);continue;
+      }
       std::array<float,3> p,hueso;
       if(escena->Trayectoria(i,p)&&Punto(i,escena->actores[i].hueso,hueso,true))
-        for(unsigned j=0;j<3;++j){const float v=p[j]-hueso[j];Fl(base,actor[i]+64+4*j,v);Fl(base,actor[i]+48+4*j,v);}
+         for(unsigned j=0;j<3;++j){const float v=p[j]-hueso[j];Fl(base,actor[i]+64+4*j,v);Fl(base,actor[i]+48+4*j,v);}
     }
+    MedirActores1450("despues_trayectoria");
+    anim.Aterrizar(base,actor[1],escena->reloj.cuadro);   // eB2h: LEVANTAR_B2
+    {   // eB2j: primer cuadro de cada cambio de estado de la victima (el cambio se hace despues de animar: la pose sale con el estado anterior un cuadro)
+      static uint32_t prev_cod=~0u;static const char* rp=std::getenv("DBZ3_TEST_B2_REPOSE_VICTIMA");
+      const uint32_t x1=actor[1],cod=REX_LOAD_U32(x1+2928),c1=x1+0x650,mod=REX_LOAD_U32(c1+0x538);
+      if(escena->reloj.cuadro<2)prev_cod=~0u;
+      if(cod!=prev_cod&&prev_cod!=~0u&&mod>=0x10000000u&&mod<0xeffff000u) {
+        static unsigned nlog=0;
+        if(nlog++<40)REXLOG_INFO("dbz3 B2 victima cambio {}->{} cuadro {:.1f} reloj3160 {:.3f} mod1060 {:.3f} clip {:X} +1540 {:X} +1580 {:X} +1620 {:.3f}",prev_cod,cod,escena->reloj.cuadro,
+          LeeFl(x1+3160),LeeFl(mod+1060),REX_LOAD_U32(mod+1052),REX_LOAD_U32(c1+1540),REX_LOAD_U32(c1+1580),LeeFl(c1+1620));
+        if(rp&&*rp&&(cod==141||cod==131)) {   // solo el inicio del aterrizaje (en 154 la repeticion alargo el estado 4 cuadros); valor = suma al reloj del actor antes de rehacer la pose
+          const uint32_t ant=REX_LOAD_U32(x1+3160);const float t=LeeFl(x1+3160)+std::strtof(rp,nullptr);uint32_t u;std::memcpy(&u,&t,4);REX_STORE_U32(x1+3160,u);
+          PPCContext c=ctx;c.r3.u64=c1;c.f1.f64=1.0;sub_820FAF40(c,base);REX_STORE_U32(x1+3160,ant);
+        }
+      }
+      prev_cod=cod;
+    }
+    anim.BaseVictima(base,actor[1]);
+    anim.Retener(base,actor[1]);   // eB2h: Base, DBZ3_TEST_B2_LEVANTAR_B2 (apagado)
+    if(anim.ForzarAtaque(base,actor[0])&&anim.atq_primero&&anim.PoseYa()) {   // eB2g: DBZ3_TEST_B2_ATAQUE_B2 (apagado)
+      // eB2i: el cuadro del cambio ya se animo con el clip nativo; se vuelve a llamar a la animacion del cuerpo (820FAF40: clip,
+      // capas y matrices) con el clip B2 para no dejar 1-2 cuadros con la pose B3 (Kami cuadros 1-2, 17-35 grados). Peso 1 (f=1).
+      PPCContext c=ctx;c.r3.u64=actor[0]+0x650;c.f1.f64=1.0;sub_820FAF40(c,base);
+    }    dbz3::escenarios::b2ik::AplicarMirada(base,actor[0],actor[1],escena->reloj.cuadro); // eB2g: mirada PAL (DBZ3_TEST_B2_MIRADA, apagado)
+    for(unsigned i=0;i<2;++i)dbz3::escenarios::b2ik::AplicarActor(base,actor[i]); // eB2f: IK de suelo PAL (DBZ3_TEST_B2_IK_SUELO, apagado)
     if(escena->camara>=0) {
       std::copy(escena->ojo.begin(),escena->ojo.end(),g_esc_ojo);
       std::copy(escena->objetivo.begin(),escena->objetivo.end(),g_esc_obj);
       g_esc_giro=escena->giro_camara;g_esc_fov=escena->fov;g_esc_cam=true;
     }
+    MedirTraza("paso");
     if(!escena->Viva()){Terminar("guion finalizado");return false;}
     EstadoFoto();
     return true;
@@ -367,9 +468,10 @@ bool B2ActualizarFx(PPCContext& ctx,uint8_t* base) {
 }
 
 void B2ConsultarLanzamiento(PPCContext& ctx,uint8_t* base,uint32_t actor) {
-  if(!NieveB2Activa()||g_b2_motor.activo||!std::getenv("DBZ3_TEST_B2_MOTOR"))return;
+  if(!NieveB2Activa()||g_b2_motor.activo||!B2MotorOn())return;
   const uint32_t mgr=REX_LOAD_U32(kMgrPtr);
-  // B2: estados12/14 (tablas393520/3935AC: 1DACA0/1DAF20 y1DA080/1DA1B0).
+  // B2: estados0x12/0x14; tablas393520/3935B0.18=1DACA0/1DA7F0;
+  //20=1DA080/1D9F30.3935AC era una celda anterior, no la tabla de paso.
   // HD:20 especial deE6D8 y22(82105FE8/821060E8).25 es otra reacción;
   // aceptarla lanzaba al simple empujón con códigoB378, sin equivalente medido.
   if(!mgr||REX_LOAD_U32(mgr+kEstadoCombate)!=4||
@@ -377,6 +479,12 @@ void B2ConsultarLanzamiento(PPCContext& ctx,uint8_t* base,uint32_t actor) {
       (REX_LOAD_U16(actor+3244)!=20&&REX_LOAD_U16(actor+3244)!=22)||int8_t(REX_LOAD_U8(actor+8184))==-1)return;
   if(g_b2.version<2&&!g_b2_leido){std::vector<Clip> c;(void)LeerClips(1,c);}
   if(g_b2.version<2)return;
+  // Diagnóstico acotado de laboratorio: no cambia el resultado de la consulta.
+  // Base20/22 cruzaba una pared válida pero no llegaba al registro REAL.
+  static unsigned diagnosticos=0;
+  const bool diagnostico=std::getenv("DBZ3_TEST_B2_CONSULTA")&&diagnosticos<128;
+  if(diagnostico)++diagnosticos;
+  const uint32_t cuadro_diagnostico=diagnostico?REX_LOAD_U32(0x8238D6B4):0;
   std::array<float,3> p,v,objetivo;
   float longitud=0;
   for(unsigned j=0;j<3;++j){p[j]=LeeFl(actor+1616+4*j);v[j]=LeeFl(actor+208+4*j);longitud+=v[j]*v[j];}
@@ -402,13 +510,21 @@ void B2ConsultarLanzamiento(PPCContext& ctx,uint8_t* base,uint32_t actor) {
     std::array<float,3> a,b;
     for(unsigned j=0;j<3;++j){a[j]=p[j]-20*v[j];b[j]=objetivo[j]+20*v[j];}
     const auto hit=b2::Rayo(g_b2,variante,a,b,seleccionada);
-    if(!hit.hay)return;
+    if(!hit.hay) {
+      if(diagnostico) {
+        const auto bruto=b2::Rayo(g_b2,variante,a,b);
+        REXLOG_INFO("dbz3 B2 filtro: guest={} actor={:X} intento={} sin-contacto bruto={} registro={} entrada={} pos=({:.3f},{:.3f},{:.3f})",
+                    cuadro_diagnostico,actor,intento,bruto.hay,bruto.registro,bruto.entrada,p[0],p[1],p[2]);
+      }
+      return;
+    }
     float dot=0;for(unsigned j=0;j<3;++j)dot+=hit.normal[j]*v[j];
     if(dot>=0)return;
-    // CA2C0 es la consulta escalar (f1=x,f2=z -> f1=altura).
-    // CB0A0 recibe estructuras en r3/r4 y NO comparte esa ABI.
-    PPCContext c=ctx;c.f1.f64=hit.punto[0];c.f2.f64=hit.punto[2];sub_820CA2C0(c,base);
-    const float suelo=float(c.f1.f64);
+    // 1B6520 filtra &1 del MAS original; CA2C0 usa &2/&8 de HD.
+    const float suelo=b2::AlturaSuelo(g_b2,variante,hit.punto[0],hit.punto[2],seleccionada);
+    if(diagnostico)
+      REXLOG_INFO("dbz3 B2 filtro: guest={} actor={:X} intento={} registro={} entrada={} NdotV={:.5f} suelo={:.3f} y={:.3f} py={:.3f}",
+                  cuadro_diagnostico,actor,intento,hit.registro,hit.entrada,dot,suelo,hit.punto[1],p[1]);
     auto punto=hit.punto;
     if(punto[1]<suelo+9) punto[1]=suelo+9;
     else {
@@ -437,18 +553,37 @@ bool B2PasoMotor(PPCContext& ctx,uint8_t* base) {
   if(g_b2_motor.activo)return g_b2_motor.Paso(ctx,base);
   // Solo laboratorio hasta aceptar NIEVE; no activar una escena con nativas
   // pendientes por haber aprobado el lector o una cámara parcial.
-  if(!NieveB2Activa()||!std::getenv("DBZ3_TEST_B2_MOTOR"))return false;
+  if(!NieveB2Activa()||!B2MotorOn())return false;
   if(!g_b2_motor.bloqueo.empty())return false; // un fallo medido, no relanzar cada contacto
+  if(!dbz3::g_guest_eu&&!g_b2_motor.PrepararSolar(ctx,base)) {
+    g_b2_motor.bloqueo="solar B2 inicial no disponible";
+    REXLOG_WARN("dbz3 B2 HD: inicio bloqueado: {}",g_b2_motor.bloqueo);return false;
+  }
+  g_b2_motor.solar.EsperarFoto(base);
   if(g_b2_contacto.entrada<0||!g_b2_contacto.cuadro)return false;
   const auto c=g_b2_contacto;
   const uint16_t accion=REX_LOAD_U16(c.actor+3244);
   if(REX_LOAD_U32(kMgrPtr)!=c.gestor||(accion!=20&&accion!=22)){g_b2_contacto={};return false;}
-  // 1DA1B0: no lanzar la VM al consultar la pared; esperar el umbral de reacción.
-   // Homólogo HD en821062A8: compara6192 con3256(CB8). CA0/CA8 no
-   // son el tiempo de la reacción: ambos permanecieron a0 en la prueba.
-   if(!(LeeFl(c.actor+6192)<LeeFl(c.actor+3256)))return false;
+   // No lanzar al consultar la pared: esperar el umbral de reacción. HD22
+   // compara3256 en821062A8; HD20 avanza6196 en82105CFC y cambia a21
+   // antes de la comprobación global (que ya vería el reloj reiniciado).
+   const float tiempo=LeeFl(c.actor+(accion==20?6196:3256));
+   if(!(LeeFl(c.actor+6192)<tiempo))return false;
   g_b2_contacto={};
   if(g_esc.activa)TerminarEscena("VM B2 toma el control");
   if(!g_b2_motor.Iniciar(ctx,base,c))return false;
-  return g_b2_motor.Paso(ctx,base);
+   return g_b2_motor.Paso(ctx,base);
+}
+
+bool B2ConsumirAntesDeReaccion(PPCContext& ctx,uint8_t* base) {
+  if(dbz3::g_guest_eu||!NieveB2Activa()||!B2MotorOn()||
+     g_b2_motor.activo||g_b2_contacto.entrada<0||g_b2_contacto.actor!=ctx.r3.u32||
+     ctx.r4.u32!=21||REX_LOAD_U16(ctx.r3.u32+3244)!=20)return false;
+  // 82105EC8: la reacción20 ya ha actualizado su movimiento y6196, pero
+  // 82103908 aún no ha sustituido la acción ni reiniciado3256. Solo un
+  // contacto real pendiente y el umbral superado permiten tomar el control.
+  if(!(LeeFl(ctx.r3.u32+6192)<LeeFl(ctx.r3.u32+6196)))return false;
+  REXLOG_INFO("dbz3 B2 consume pendiente: guest={} accion=20 siguiente=21 umbral={:.3f} tiempo={:.3f}",
+              REX_LOAD_U32(0x8238D6B4),LeeFl(ctx.r3.u32+6192),LeeFl(ctx.r3.u32+6196));
+  return B2PasoMotor(ctx,base);
 }

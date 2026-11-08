@@ -12,8 +12,7 @@ import threading
 import time
 
 os.environ.pop("DBZ3_PCSX2_INSTANCIA", None)
-sys.path.insert(0, r"E:\DBZ3HD_trabajo\R7\emu")
-import sonda as s
+import pcsx2_sonda as s
 from pcsx2_turnos import Turno
 import pcsx2_cuadros as C
 import pruebas as P

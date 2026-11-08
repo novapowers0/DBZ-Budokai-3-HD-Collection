@@ -751,16 +751,15 @@ void ApplyCharacter(Guest& g, const toml::table& t, const std::string& mod) {
     g.W8(c96 + 4, uint8_t(std::max<uint32_t>(1, n / per)));
     g.W8(c96 + 5, uint8_t(per));
     if (donor >= 0) {
-      // formas y lista +80 del donante (el moveset es suyo), con el ID propio
+      // formas y lista +80 del donante (el moveset es suyo). El u16 +0 de cada
+      // forma es su identidad de movimientos (X+2972), NO el ID del modelo:
+      // sub_820F7588 la compara con CCM+20 para permitir especiales. Cambiarla
+      // por el clon rompe E+direccion (tambien en base con formas_donante).
+      // El modelo propio ya se resuelve por char372.formas +2/+4.
       const uint32_t d96 = kChar96 + uint32_t(donor) * 96;
       g.W8(c96 + 6, g.U8(d96 + 6));
       g.W8(c96 + 7, g.U8(d96 + 7));
       g.Copy(c96 + 16, d96 + 16, 80);
-      for (uint32_t f = 0; f < 8; ++f) {
-        if (g.U32(c96 + 16 + 8 * f) || g.U32(c96 + 20 + 8 * f)) {
-          g.W16(c96 + 16 + 8 * f, uint16_t(id));
-        }
-      }
       // formas_donante = [0, 2, 4, 5]: formas de combate del donante que se quedan, en ese
       // orden (Goku GT de Infinite World: normal, SSJ, SSJ3, SSJ4; sin Kaioken ni SSJ2).
       // Cada una pasa a ser del ID propio (la del SSJ4 de Goku era del ID 91: cargaba su
@@ -793,7 +792,6 @@ void ApplyCharacter(Guest& g, const toml::table& t, const std::string& mod) {
         for (uint32_t f = 0; f < nf; ++f) {
           recs[f][2] = uint8_t(id >> 8), recs[f][3] = uint8_t(id);
           recs[f][4] = 0, recs[f][5] = uint8_t(f);
-          fms[f][0] = uint8_t(id >> 8), fms[f][1] = uint8_t(id);
           for (uint32_t b = 0; b < 20; ++b) g.W8(c372 + 212 + 20 * f + b, recs[f][b]);
           for (uint32_t b = 0; b < 8; ++b) g.W8(c96 + 16 + 8 * f + b, fms[f][b]);
         }
@@ -829,6 +827,13 @@ void ApplyCharacter(Guest& g, const toml::table& t, const std::string& mod) {
   if (auto nf = Int(t["formas"], -1); nf >= 1 && nf <= 8) {
     g.W8(c96 + 7, uint8_t(nf));
     if (g.U32(c372 + 0xD0) > uint32_t(nf)) g.W32(c372 + 0xD0, uint32_t(nf));
+  }
+  // sub_82119108 recorre hasta ocho filas, SIN consultar +0xD0. Al reducir las
+  // formas quedaban filas del donante detras: el clon de cuatro formas llegaba
+  // a la 4 (fuera de su lista). El terminador es la siguiente fila vacia.
+  if (const uint32_t nf = g.U32(c372 + 0xD0); nf >= 1 && nf < 8) {
+    for (uint32_t f = nf; f < 8; ++f)
+      for (uint32_t b = 0; b < 20; b += 4) g.W32(c372 + 212 + 20 * f + b, 0);
   }
   // 3b) capsulas: lista por defecto, la de cada forma y las heredadas del donante
   if (auto* arr = t["capsulas"].as_array()) {
@@ -1129,6 +1134,9 @@ uint32_t GuestAlloc(uint32_t size) {
   const uint32_t a = g_memory->SystemHeapAlloc(size, 0x20);
   if (a) std::memset(g_memory->TranslateVirtual<uint8_t*>(a), 0, size);
   return a;
+}
+void GuestFree(uint32_t address) {
+  if (g_memory && address) g_memory->SystemHeapFree(address);
 }
 
 // Arranque con muchos personajes (31/10): al montar cada AFS el runtime mira, por cada entrada (11 000) y cada carpeta de
@@ -2732,6 +2740,9 @@ REX_HOOK_RAW(sub_821D3EB8) {
   const uint32_t idioma = ctx.r3.u32;
   static uint32_t s_ger = 0, s_ita = 0;
   static const bool s_hay_ger = HayDatosLocalizadosUS("data_ger.afs"), s_hay_ita = HayDatosLocalizadosUS("data_ita.afs");
+  // portugues (idioma 9 solo de interfaz: el juego va en ingles) y japones (2): copias de data_usi con las escenas propias traducidas
+  static const bool s_hay_por = HayDatosLocalizadosUS("data_por.afs"), s_hay_jpn = HayDatosLocalizadosUS("data_jpn.afs");
+  static uint32_t s_por = 0, s_jpn = 0;
   auto texto = [&](uint32_t& dir, const char* s) {
     if (!dir) {
       dir = dbz3::roster::GuestAlloc(32);
@@ -2742,5 +2753,7 @@ REX_HOOK_RAW(sub_821D3EB8) {
   uint32_t nueva = 0;
   if (idioma == 3 && s_hay_ger) nueva = texto(s_ger, "/usr/data_ger.afs");
   if (idioma == 6 && s_hay_ita) nueva = texto(s_ita, "/usr/data_ita.afs");
+  if (idioma == 2 && s_hay_jpn) nueva = texto(s_jpn, "/usr/data_jpn.afs");
+  if (idioma == 1 && dbz3::settings::UiLanguage() == 9 && s_hay_por) nueva = texto(s_por, "/usr/data_por.afs");
   ctx.r3.u64 = nueva ? nueva : ruta;
 }

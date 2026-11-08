@@ -1,6 +1,197 @@
 # Textos propios del launcher y de los modos nuevos en fr / de / it / pt / ja.
 # Clave = texto ingles tal cual. pt y ja: todos los textos (2026-10-17); it/de/fr: los que no estan en kTable.
 
+# solINT: opcion Broly por kFeatureTexts, con nombre y ayuda traducidos.
+["Broly without flash"]
+es = "Broly sin destello"
+en = "Broly without flash"
+fr = "Broly sans flash"
+de = "Broly ohne Lichtblitz"
+it = "Broly senza lampo"
+pt = "Broly sem clarão"
+ja = "ブロリーの閃光を非表示"
+
+["Removes the white flash from his ultimate on destructible stages (that attack only)."]
+es = "Quita el destello blanco de su definitiva en escenarios que se destruyen (solo ese ataque)."
+en = "Removes the white flash from his ultimate on destructible stages (that attack only)."
+fr = "Supprime le flash blanc de son attaque ultime dans les arènes destructibles (uniquement cette attaque)."
+de = "Entfernt den weißen Lichtblitz seiner ultimativen Attacke in zerstörbaren Arenen (nur bei dieser Attacke)."
+it = "Rimuove il lampo bianco della sua tecnica suprema negli scenari distruttibili (solo per questo attacco)."
+pt = "Remove o clarão branco da técnica suprema dele nos cenários destrutíveis (somente esse ataque)."
+ja = "破壊可能なステージで、ブロリーの究極技の白い閃光を非表示にします（この技のみ）。"
+
+# solNET 1.5.6.1: motivos de conexion y registro enviable.
+["the game files or DLLs differ: both players must extract the same complete package on the same operating system"]
+es = "los archivos del juego o sus DLL son distintos: extraed los dos el mismo paquete completo, en el mismo sistema"
+en = "the game files or DLLs differ: both players must extract the same complete package on the same operating system"
+fr = "les fichiers du jeu ou les DLL diffèrent : vous devez tous les deux extraire le même paquet complet sur le même système"
+de = "Spieldateien oder DLLs unterscheiden sich: Beide müssen dasselbe vollständige Paket auf demselben Betriebssystem entpacken"
+it = "i file del gioco o le DLL sono diversi: entrambi dovete estrarre lo stesso pacchetto completo sullo stesso sistema operativo"
+pt = "os arquivos do jogo ou as DLLs são diferentes: ambos devem extrair o mesmo pacote completo no mesmo sistema operacional"
+ja = "ゲームファイルまたはDLLが異なります。同じOSで、両者とも同じ配布パッケージをすべて展開してください"
+
+["the online protocol differs: both players must update to the same game package"]
+es = "el protocolo online es distinto: actualizad los dos al mismo paquete del juego"
+en = "the online protocol differs: both players must update to the same game package"
+fr = "le protocole en ligne diffère : mettez tous les deux le jeu à jour avec le même paquet"
+de = "Das Online-Protokoll unterscheidet sich: Beide müssen auf dasselbe Spielpaket aktualisieren"
+it = "il protocollo online è diverso: entrambi dovete aggiornare allo stesso pacchetto del gioco"
+pt = "o protocolo online é diferente: ambos devem atualizar para o mesmo pacote do jogo"
+ja = "オンライン通信の形式が異なります。両者とも同じ配布パッケージに更新してください"
+
+["UDP port in use: change the port in Advanced or close the other room"]
+es = "puerto UDP ocupado: cambia el puerto en Avanzado o cierra la otra sala"
+en = "UDP port in use: change the port in Advanced or close the other room"
+fr = "port UDP occupé : change le port dans Avancé ou ferme l'autre salle"
+de = "UDP-Port belegt: Ändere den Port unter Erweitert oder schließe den anderen Raum"
+it = "porta UDP occupata: cambia la porta in Avanzate o chiudi l'altra stanza"
+pt = "porta UDP ocupada: altere a porta em Avançado ou feche a outra sala"
+ja = "UDPポートは使用中です。詳細設定でポートを変更するか、別のルームを閉じてください"
+
+["the system denied UDP access: allow the game through the firewall and check permissions"]
+es = "el sistema no permite usar UDP: permite el juego en el cortafuegos y revisa los permisos"
+en = "the system denied UDP access: allow the game through the firewall and check permissions"
+fr = "le système refuse l'accès UDP : autorise le jeu dans le pare-feu et vérifie les permissions"
+de = "Das System verweigert UDP: Erlaube das Spiel in der Firewall und prüfe die Berechtigungen"
+it = "il sistema nega l'accesso UDP: consenti il gioco nel firewall e controlla i permessi"
+pt = "o sistema negou acesso UDP: permita o jogo no firewall e confira as permissões"
+ja = "システムがUDP通信を許可しません。ファイアウォールでゲームを許可し、権限を確認してください"
+
+["UDP network error: check your connection and game permissions; send the report if it happens again"]
+es = "fallo de red UDP: revisa la conexion y los permisos del juego; envia el informe si se repite"
+en = "UDP network error: check your connection and game permissions; send the report if it happens again"
+fr = "erreur réseau UDP : vérifie la connexion et les permissions du jeu ; envoie le rapport si cela se reproduit"
+de = "UDP-Netzwerkfehler: Prüfe Verbindung und Spielberechtigungen; sende bei Wiederholung den Bericht"
+it = "errore di rete UDP: controlla la connessione e i permessi del gioco; invia il rapporto se ricapita"
+pt = "erro de rede UDP: confira a conexão e as permissões do jogo; envie o relatório se acontecer novamente"
+ja = "UDP通信エラーです。接続とゲームの権限を確認し、繰り返す場合はレポートを送ってください"
+
+["the host replied but did not complete the connection: check that both use the same game package and send both reports"]
+es = "el anfitrion contesto pero no completo la conexion: comprobad el mismo paquete del juego y enviad los dos informes"
+en = "the host replied but did not complete the connection: check that both use the same game package and send both reports"
+fr = "l'hôte a répondu mais la connexion reste incomplète : vérifiez que vous utilisez le même paquet du jeu et envoyez les deux rapports"
+de = "Der Gastgeber antwortete, aber die Verbindung blieb unvollständig: Prüft dasselbe Spielpaket und sendet beide Berichte"
+it = "l'host ha risposto ma non ha completato la connessione: verificate di usare lo stesso pacchetto del gioco e inviate entrambi i rapporti"
+pt = "o anfitrião respondeu, mas não concluiu a conexão: confiram se usam o mesmo pacote do jogo e enviem os dois relatórios"
+ja = "ホストから応答がありましたが接続が完了しません。同じ配布パッケージか確認し、両者のレポートを送ってください"
+
+["no reply from the host: check the code; allow the game through the firewall. Over the internet, the host must forward its UDP port; in the same house, use its local IP"]
+es = "sin respuesta del anfitrion: revisa el codigo; permite el juego en el cortafuegos. Por internet, el anfitrion debe abrir su puerto UDP; en la misma casa, usa su IP local"
+en = "no reply from the host: check the code; allow the game through the firewall. Over the internet, the host must forward its UDP port; in the same house, use its local IP"
+fr = "aucune réponse de l'hôte : vérifie le code et autorise le jeu dans le pare-feu. Par Internet, l'hôte doit rediriger son port UDP ; dans la même maison, utilise son IP locale"
+de = "Keine Antwort vom Gastgeber: Prüfe den Code und erlaube das Spiel in der Firewall. Im Internet muss der Gastgeber seinen UDP-Port weiterleiten; im selben Haus nutze seine lokale IP"
+it = "nessuna risposta dall'host: verifica il codice e consenti il gioco nel firewall. Via Internet l'host deve inoltrare la porta UDP; nella stessa casa usa il suo IP locale"
+pt = "sem resposta do anfitrião: confira o código e permita o jogo no firewall. Pela internet o anfitrião precisa encaminhar a porta UDP; na mesma casa use o IP local dele"
+ja = "ホストから応答がありません。コードを確認し、ファイアウォールでゲームを許可してください。インターネットではホスト側のUDPポート転送が必要です。同じ家ではローカルIPを使ってください"
+
+["Connection report: send this file: "]
+es = "Informe de conexion: envia este archivo: "
+en = "Connection report: send this file: "
+fr = "Rapport de connexion : envoie ce fichier : "
+de = "Verbindungsbericht: Sende diese Datei: "
+it = "Rapporto di connessione: invia questo file: "
+pt = "Relatório de conexão: envie este arquivo: "
+ja = "接続レポート：このファイルを送ってください："
+
+["Could not save the report: send the latest file from the game's logs folder."]
+es = "No se pudo guardar el informe: envia el ultimo archivo de la carpeta logs del juego."
+en = "Could not save the report: send the latest file from the game's logs folder."
+fr = "Impossible d'enregistrer le rapport : envoie le fichier le plus récent du dossier logs du jeu."
+de = "Bericht konnte nicht gespeichert werden: Sende die neueste Datei aus dem logs-Ordner des Spiels."
+it = "Impossibile salvare il rapporto: invia il file più recente della cartella logs del gioco."
+pt = "Não foi possível salvar o relatório: envie o arquivo mais recente da pasta logs do jogo."
+ja = "レポートを保存できませんでした。ゲームのlogsフォルダーにある最新ファイルを送ってください。"
+
+["The router accepted the port mapping. The other player's connection still needs to be verified."]
+es = "El router acepto abrir el puerto. Falta comprobar la llegada del rival."
+en = "The router accepted the port mapping. The other player's connection still needs to be verified."
+fr = "Le routeur a accepté la redirection du port. Il reste à vérifier la connexion de l'autre joueur."
+de = "Der Router hat die Portweiterleitung akzeptiert. Die Verbindung des anderen Spielers muss noch geprüft werden."
+it = "Il router ha accettato l'inoltro della porta. La connessione dell'altro giocatore deve ancora essere verificata."
+pt = "O roteador aceitou o encaminhamento da porta. A conexão do outro jogador ainda precisa ser verificada."
+ja = "ルーターがポート転送を受け付けました。相手が接続できるかは、まだ確認できていません。"
+
+["Public code, unverified port: forward the UDP port on the router and allow the game through the firewall. If you cannot, let your friend host."]
+es = "Codigo publico, puerto sin verificar: abre el puerto UDP en el router y permite el juego en el cortafuegos. Si no puedes, que cree tu amigo."
+en = "Public code, unverified port: forward the UDP port on the router and allow the game through the firewall. If you cannot, let your friend host."
+fr = "Code public, port non vérifié : redirige le port UDP du routeur et autorise le jeu dans le pare-feu. Sinon, demande à ton ami d'héberger."
+de = "Öffentlicher Code, Port ungeprüft: Leite den UDP-Port im Router weiter und erlaube das Spiel in der Firewall. Falls das nicht geht, lass deinen Freund hosten."
+it = "Codice pubblico, porta non verificata: inoltra la porta UDP nel router e consenti il gioco nel firewall. Se non puoi, fai ospitare il tuo amico."
+pt = "Código público, porta não verificada: encaminhe a porta UDP no roteador e permita o jogo no firewall. Se não puder, peça ao amigo para hospedar."
+ja = "公開コードですが、ポートは未確認です。ルーターのUDPポート転送とファイアウォールの許可が必要です。できない場合は友達にホストを頼んでください。"
+
+["This code only works on the same network. Internet play needs a public code and UDP port forwarding; obtaining the public IP does not open the port."]
+es = "Este codigo solo sirve en la misma red. Para internet hace falta un codigo publico y abrir el puerto UDP; obtener la IP publica no abre el puerto."
+en = "This code only works on the same network. Internet play needs a public code and UDP port forwarding; obtaining the public IP does not open the port."
+fr = "Ce code fonctionne seulement sur le même réseau. Par Internet, il faut un code public et rediriger le port UDP ; obtenir l'IP publique n'ouvre pas le port."
+de = "Dieser Code funktioniert nur im selben Netzwerk. Im Internet braucht es einen öffentlichen Code und UDP-Portweiterleitung; die öffentliche IP allein öffnet keinen Port."
+it = "Questo codice funziona solo sulla stessa rete. Via Internet servono un codice pubblico e l'inoltro UDP; ottenere l'IP pubblico non apre la porta."
+pt = "Este código funciona apenas na mesma rede. Pela internet são necessários um código público e o encaminhamento UDP; obter o IP público não abre a porta."
+ja = "このコードは同じネットワーク内専用です。インターネット接続には公開コードとUDPポート転送が必要です。公開IPを取得するだけではポートは開きません。"
+
+["Low-resolution mode 360p (restart the game)"]
+es = "Modo ligero 360p (reinicia el juego)"
+en = "Low-resolution mode 360p (restart the game)"
+fr = "Mode basse résolution 360p (redémarre le jeu)"
+de = "Niedrige Auflösung 360p (Spiel neu starten)"
+it = "Modalità a bassa risoluzione 360p (riavvia il gioco)"
+pt = "Modo de baixa resolução 360p (reinicie o jogo)"
+ja = "低解像度モード360p（ゲームの再起動が必要）"
+
+["Uses the game's SD path: widescreen 640x360, one quarter of the pixels of 720p at 1x scale. To reduce load, use 1x and turn MSAA off. May help a GPU bottleneck; does not guarantee more FPS with a CPU bottleneck."]
+es = "Usa la ruta SD del juego: 640x360 panoramico, un cuarto de los pixeles de 720p a escala 1x. Para reducir carga, usa 1x y apaga MSAA. Puede ayudar si limita la GPU; no garantiza mas FPS si limita la CPU."
+en = "Uses the game's SD path: widescreen 640x360, one quarter of the pixels of 720p at 1x scale. To reduce load, use 1x and turn MSAA off. May help a GPU bottleneck; does not guarantee more FPS with a CPU bottleneck."
+fr = "Utilise le mode SD du jeu : 640x360 panoramique, soit un quart des pixels du 720p à l'échelle 1x. Pour réduire la charge, utilise 1x et désactive le MSAA. Peut aider si le GPU limite les performances ; aucun gain de FPS garanti si le CPU les limite."
+de = "Nutzt den SD-Modus des Spiels: 640x360 im Breitbild, ein Viertel der Pixel von 720p bei Skalierung 1x. Nutze 1x und schalte MSAA aus, um die Last zu senken. Kann bei einem GPU-Engpass helfen; mehr FPS bei einem CPU-Engpass sind nicht garantiert."
+it = "Usa la modalità SD del gioco: 640x360 panoramico, un quarto dei pixel di 720p a scala 1x. Per ridurre il carico, usa 1x e disattiva MSAA. Può aiutare se il limite è la GPU; non garantisce più FPS se il limite è la CPU."
+pt = "Usa o modo SD do jogo: 640x360 panorâmico, um quarto dos pixels de 720p na escala 1x. Para reduzir a carga, use 1x e desative MSAA. Pode ajudar se a GPU for o limite; não garante mais FPS se a CPU for o limite."
+ja = "ゲームのSD描画を使用：640x360のワイド画面。倍率1xでは720pの4分の1の画素数です。負荷を下げるには1xにしてMSAAを無効にしてください。GPUが原因なら改善する可能性がありますが、CPUが原因の場合はFPS向上を保証しません。"
+
+["Python or its modules are missing. Also extract the python folder from the game package."]
+es = "Falta Python o sus módulos. Extrae también la carpeta python del paquete del juego."
+en = "Python or its modules are missing. Also extract the python folder from the game package."
+fr = "Python ou ses modules sont absents. Extrais aussi le dossier python du paquet du jeu."
+de = "Python oder seine Module fehlen. Entpacke auch den Ordner python aus dem Spielpaket."
+it = "Mancano Python o i suoi moduli. Estrai anche la cartella python dal pacchetto del gioco."
+pt = "Faltam Python ou seus módulos. Extraia também a pasta python do pacote do jogo."
+ja = "Pythonまたは必要なモジュールがありません。ゲームの配布パッケージからpythonフォルダーも展開してください。"
+
+["Hero tools are missing. Extract the full game package into this folder."]
+es = "Faltan herramientas del Héroe. Extrae el paquete completo del juego en esta carpeta."
+en = "Hero tools are missing. Extract the full game package into this folder."
+fr = "Les outils du Héros sont absents. Extrais le paquet complet du jeu dans ce dossier."
+de = "Die Helden-Werkzeuge fehlen. Entpacke das vollständige Spielpaket in diesen Ordner."
+it = "Mancano gli strumenti dell'Eroe. Estrai il pacchetto completo del gioco in questa cartella."
+pt = "Faltam as ferramentas do Herói. Extraia o pacote completo do jogo nesta pasta."
+ja = "ヒーロー用ツールがありません。このフォルダーにゲームの配布パッケージをすべて展開してください。"
+
+["B3 HD data is missing. Select its extracted folder in the launcher; an ISO cannot build models."]
+es = "Faltan los datos de B3 HD. Elige su carpeta extraída en el launcher; una ISO no sirve para crear modelos."
+en = "B3 HD data is missing. Select its extracted folder in the launcher; an ISO cannot build models."
+fr = "Les données B3 HD sont absentes. Choisis leur dossier extrait dans le lanceur ; une ISO ne permet pas de créer les modèles."
+de = "B3-HD-Daten fehlen. Wähle ihren entpackten Ordner im Launcher; eine ISO reicht zum Erstellen der Modelle nicht aus."
+it = "Mancano i dati di B3 HD. Scegli la loro cartella estratta nel launcher; un'ISO non basta per creare i modelli."
+pt = "Faltam os dados de B3 HD. Selecione a pasta extraída no launcher; uma ISO não serve para criar modelos."
+ja = "B3 HDのデータがありません。ランチャーで展開済みフォルダーを選択してください。ISOからはモデルを作成できません。"
+
+["Cannot write files. Move the game to a writable folder and reopen Hero mode."]
+es = "No se puede escribir. Mueve el juego a una carpeta con permisos y vuelve a abrir el Héroe."
+en = "Cannot write files. Move the game to a writable folder and reopen Hero mode."
+fr = "Écriture impossible. Déplace le jeu dans un dossier accessible en écriture et rouvre le mode Héros."
+de = "Dateien können nicht geschrieben werden. Verschiebe das Spiel in einen beschreibbaren Ordner und öffne den Heldenmodus erneut."
+it = "Impossibile scrivere i file. Sposta il gioco in una cartella scrivibile e riapri la modalità Eroe."
+pt = "Não é possível gravar arquivos. Mova o jogo para uma pasta com permissão de gravação e reabra o modo Herói."
+ja = "ファイルを書き込めません。書き込み可能なフォルダーにゲームを移動し、ヒーローモードを開き直してください。"
+
+["Could not build the model. Check the hero log and reopen this screen to retry."]
+es = "No se pudo crear el modelo. Consulta el registro del Héroe y vuelve a abrir esta pantalla para reintentar."
+en = "Could not build the model. Check the hero log and reopen this screen to retry."
+fr = "Impossible de créer le modèle. Consulte le journal du Héros et rouvre cet écran pour réessayer."
+de = "Das Modell konnte nicht erstellt werden. Prüfe das Heldenprotokoll und öffne diesen Bildschirm für einen neuen Versuch."
+it = "Impossibile creare il modello. Consulta il registro dell'Eroe e riapri questa schermata per riprovare."
+pt = "Não foi possível criar o modelo. Consulte o registro do Herói e reabra esta tela para tentar novamente."
+ja = "モデルを作成できませんでした。ヒーローのログを確認し、この画面を開き直して再試行してください。"
+
 ["\nClose the game, press PLAY in the launcher and reconnect."]
 es = "\nCierra el juego, pulsa JUGAR en el launcher y volved a conectar."
 en = "\nClose the game, press PLAY in the launcher and reconnect."
@@ -5862,12 +6053,19 @@ it = "3x (2160p interni) - GPU molto più carica"
 pt = "3x (interna 2160p) - consome muito mais GPU"
 ja = "3x（内部 2160p）- GPU負荷がかなり高い"
 
-["4x (2880p internal) - high-end GPUs only"]
-fr = "4x (2880p interne) - cartes haut de gamme uniquement"
-de = "4x (2880p intern) - nur High-End-GPUs"
-it = "4x (2880p interni) - solo GPU di fascia alta"
-pt = "4x (interna 2880p) - só GPUs de ponta"
-ja = "4x（内部 2880p）- ハイエンドGPUのみ"
+["4x (2880p internal ~5K) - high-end GPUs only"]
+fr = "4x (2880p interne ~5K) - cartes haut de gamme uniquement"
+de = "4x (2880p intern ~5K) - nur High-End-GPUs"
+it = "4x (2880p interni ~5K) - solo GPU di fascia alta"
+pt = "4x (interna 2880p ~5K) - só GPUs de ponta"
+ja = "4x（内部 2880p ~5K）- ハイエンドGPUのみ"
+
+["6x (4320p internal = 8K) - experimental, high VRAM"]
+fr = "6x (4320p interne = 8K) - expérimental, beaucoup de VRAM"
+de = "6x (4320p intern = 8K) - experimentell, hoher VRAM-Bedarf"
+it = "6x (4320p interni = 8K) - sperimentale, molta VRAM"
+pt = "6x (interna 4320p = 8K) - experimental, muita VRAM"
+ja = "6x（内部 4320p = 8K）- 実験的、VRAMを大量に使用"
 
 ["Internal render scale"]
 fr = "Échelle de rendu interne"
@@ -17813,3 +18011,291 @@ de = "\nIm Kampf wechselt SELECT zu deinem Partner."
 it = "\nIn combattimento, SELECT fa entrare il tuo compagno."
 pt = "\nNa luta, SELECT troca para o seu parceiro."
 ja = "\n戦闘中はSELECTで相棒と交代できます。"
+
+# solUNLOCK 1.5.6.1 — guardado original, respaldo y restauración.
+["Unlock everything"]
+es = "Desbloquear todo"
+en = "Unlock everything"
+fr = "Tout débloquer"
+de = "Alles freischalten"
+it = "Sblocca tutto"
+pt = "Desbloquear tudo"
+ja = "すべて解放"
+
+["Yes, unlock everything"]
+es = "Sí, desbloquear todo"
+en = "Yes, unlock everything"
+fr = "Oui, tout débloquer"
+de = "Ja, alles freischalten"
+it = "Sì, sblocca tutto"
+pt = "Sim, desbloquear tudo"
+ja = "はい、すべて解放"
+
+["US and EU: install the complete B3 save (characters, costumes, capsules and modes). This replaces your original-game progress. A backup is made first; Hero and Tag Team are preserved. Continue?"]
+es = "US y EU: instala la partida completa de B3 (personajes, trajes, cápsulas y modos). Sustituye tu progreso del juego original. Antes se guarda una copia; Héroe y Tag Team se conservan. ¿Continuar?"
+en = "US and EU: install the complete B3 save (characters, costumes, capsules and modes). This replaces your original-game progress. A backup is made first; Hero and Tag Team are preserved. Continue?"
+fr = "US et EU : installe la sauvegarde complète de B3 (personnages, tenues, capsules et modes). Remplace ta progression du jeu original. Une copie est créée avant ; Héros et Tag Team sont conservés. Continuer ?"
+de = "US und EU: Installiert den vollständigen B3-Spielstand (Figuren, Kostüme, Kapseln und Modi). Ersetzt deinen Fortschritt im Originalspiel. Vorher wird eine Sicherung erstellt; Held und Tag Team bleiben erhalten. Fortfahren?"
+it = "US ed EU: installa il salvataggio completo di B3 (personaggi, costumi, capsule e modalità). Sostituisce i progressi del gioco originale. Prima viene creata una copia; Eroe e Tag Team vengono conservati. Continuare?"
+pt = "US e EU: instala o save completo de B3 (personagens, roupas, cápsulas e modos). Substitui o progresso do jogo original. Uma cópia é criada antes; Herói e Tag Team são preservados. Continuar?"
+ja = "US・EU対応：B3の完全クリアデータ（キャラクター、衣装、カプセル、モード）を導入し、原作の進行状況を置き換えます。事前にバックアップを作成し、ヒーローとタッグの進行状況は保持します。続けますか？"
+
+["Restore the save from before the last unlock. The current save is backed up separately before replacement. Hero and Tag Team are preserved. Restore?"]
+es = "Se recupera la partida anterior al último desbloqueo. La partida actual se guarda aparte antes de sustituirla. Héroe y Tag Team se conservan. ¿Restaurar?"
+en = "Restore the save from before the last unlock. The current save is backed up separately before replacement. Hero and Tag Team are preserved. Restore?"
+fr = "Récupère la sauvegarde d'avant le dernier déblocage. La sauvegarde actuelle est copiée à part avant remplacement. Héros et Tag Team sont conservés. Restaurer ?"
+de = "Stellt den Spielstand vor der letzten Freischaltung wieder her. Der aktuelle Stand wird vorher separat gesichert. Held und Tag Team bleiben erhalten. Wiederherstellen?"
+it = "Ripristina il salvataggio precedente all'ultimo sblocco. Quello attuale viene prima copiato a parte. Eroe e Tag Team vengono conservati. Ripristinare?"
+pt = "Restaura o save anterior ao último desbloqueio. O save atual é copiado à parte antes da substituição. Herói e Tag Team são preservados. Restaurar?"
+ja = "前回の解放前のセーブに戻します。現在のセーブも置き換える前に別途保存します。ヒーローとタッグの進行状況は保持します。復元しますか？"
+
+["Close the game and other dbz3 windows before changing the save. Nothing was changed."]
+es = "Cierra el juego y las otras ventanas de dbz3 antes de cambiar la partida. No se ha cambiado nada."
+en = "Close the game and other dbz3 windows before changing the save. Nothing was changed."
+fr = "Ferme le jeu et les autres fenêtres de dbz3 avant de modifier la sauvegarde. Rien n'a été modifié."
+de = "Schließe das Spiel und andere dbz3-Fenster, bevor du den Spielstand änderst. Es wurde nichts geändert."
+it = "Chiudi il gioco e le altre finestre di dbz3 prima di cambiare il salvataggio. Non è stato modificato nulla."
+pt = "Feche o jogo e as outras janelas de dbz3 antes de alterar o save. Nada foi alterado."
+ja = "セーブを変更する前に、ゲームと他のdbz3ウィンドウを閉じてください。変更は行われていません。"
+
+["Everything unlocked. Hero and Tag Team preserved. Backup: "]
+es = "Todo desbloqueado. Héroe y Tag Team conservados. Copia de seguridad: "
+en = "Everything unlocked. Hero and Tag Team preserved. Backup: "
+fr = "Tout est débloqué. Héros et Tag Team conservés. Copie de sécurité : "
+de = "Alles freigeschaltet. Held und Tag Team erhalten. Sicherung: "
+it = "Tutto sbloccato. Eroe e Tag Team conservati. Copia di sicurezza: "
+pt = "Tudo desbloqueado. Herói e Tag Team preservados. Cópia de segurança: "
+ja = "すべて解放しました。ヒーローとタッグは保持されています。バックアップ："
+
+["Save restored. The replaced save was also backed up in: "]
+es = "Partida restaurada. La partida sustituida también se ha guardado en: "
+en = "Save restored. The replaced save was also backed up in: "
+fr = "Sauvegarde restaurée. La sauvegarde remplacée a aussi été copiée dans : "
+de = "Spielstand wiederhergestellt. Der ersetzte Stand wurde ebenfalls gesichert unter: "
+it = "Salvataggio ripristinato. Quello sostituito è stato copiato anche in: "
+pt = "Save restaurado. O save substituído também foi copiado em: "
+ja = "復元しました。置き換えたセーブも次の場所に保存しました："
+
+["Could not change the save. Backup: "]
+es = "No se pudo cambiar la partida. Copia de seguridad: "
+en = "Could not change the save. Backup: "
+fr = "Impossible de modifier la sauvegarde. Copie de sécurité : "
+de = "Spielstand konnte nicht geändert werden. Sicherung: "
+it = "Impossibile cambiare il salvataggio. Copia di sicurezza: "
+pt = "Não foi possível alterar o save. Cópia de segurança: "
+ja = "セーブを変更できませんでした。バックアップ："
+
+["To unlock everything or restore your save, press 'Unlock everything' below."]
+es = "Para desbloquear todo o restaurar tu partida, pulsa «Desbloquear todo» abajo."
+en = "To unlock everything or restore your save, press 'Unlock everything' below."
+fr = "Pour tout débloquer ou restaurer ta sauvegarde, appuie sur « Tout débloquer » en bas."
+de = "Zum Freischalten oder Wiederherstellen drücke unten auf „Alles freischalten“."
+it = "Per sbloccare tutto o ripristinare il salvataggio, premi «Sblocca tutto» in basso."
+pt = "Para desbloquear tudo ou restaurar o save, aperte «Desbloquear tudo» abaixo."
+ja = "すべて解放するかセーブを復元するには、下の「すべて解放」を押してください。"
+
+# solUNL2: errores comprobados de respaldo/escritura.
+["The backup is damaged or cannot be verified. It was not restored. Keep the copies and recover a healthy backup."]
+es = "El respaldo está dañado o no se puede verificar. No se ha restaurado. Conserva las copias y recupera un respaldo sano."
+en = "The backup is damaged or cannot be verified. It was not restored. Keep the copies and recover a healthy backup."
+fr = "La copie est endommagée ou invérifiable. Elle n’a pas été restaurée. Conserve les copies et récupère une copie saine."
+de = "Die Sicherung ist beschädigt oder nicht prüfbar. Sie wurde nicht wiederhergestellt. Bewahre die Kopien auf und verwende eine intakte Sicherung."
+it = "La copia è danneggiata o non verificabile. Non è stata ripristinata. Conserva le copie e recuperane una integra."
+pt = "O backup está danificado ou não pode ser verificado. Não foi restaurado. Guarde as cópias e recupere um backup íntegro."
+ja = "バックアップが破損しているか、検証できません。復元していません。コピーを保管し、正常なバックアップを用意してください。"
+
+["Not enough disk space. Free some space and use Restore my save before trying again."]
+es = "No hay espacio suficiente. Libera espacio y usa Restaurar mi partida antes de volver a intentarlo."
+en = "Not enough disk space. Free some space and use Restore my save before trying again."
+fr = "Espace disque insuffisant. Libère de l’espace et utilise Restaurer ma sauvegarde avant de réessayer."
+de = "Nicht genug Speicherplatz. Gib Platz frei und nutze vor dem nächsten Versuch Spielstand wiederherstellen."
+it = "Spazio su disco insufficiente. Libera spazio e usa Ripristina il mio salvataggio prima di riprovare."
+pt = "Espaço insuficiente. Libere espaço e use Restaurar meu save antes de tentar novamente."
+ja = "空き容量が不足しています。空き容量を増やし、「セーブを復元」を使ってから再試行してください。"
+
+["Check free disk space and close programs locking the files. Keep the indicated backup; use Restore my save if the change was interrupted."]
+es = "Comprueba el espacio libre y cierra programas que bloqueen los archivos. Conserva la copia indicada; usa Restaurar mi partida si el cambio quedó interrumpido."
+en = "Check free disk space and close programs locking the files. Keep the indicated backup; use Restore my save if the change was interrupted."
+fr = "Vérifie l’espace libre et ferme les programmes bloquant les fichiers. Garde la copie indiquée ; utilise Restaurer ma sauvegarde si le changement a été interrompu."
+de = "Prüfe den freien Speicher und schließe Programme, die Dateien sperren. Bewahre die genannte Sicherung auf; nutze bei Abbruch Spielstand wiederherstellen."
+it = "Controlla lo spazio libero e chiudi i programmi che bloccano i file. Conserva la copia indicata; usa Ripristina il mio salvataggio se la modifica è stata interrotta."
+pt = "Confira o espaço livre e feche programas que bloqueiem os arquivos. Guarde o backup indicado; use Restaurar meu save se a alteração foi interrompida."
+ja = "空き容量を確認し、ファイルを使用中のプログラムを閉じてください。表示されたコピーを保管し、中断した場合は「セーブを復元」を使ってください。"
+
+["The save change was interrupted. Click Restore my save before unlocking again."]
+es = "El cambio de partida quedó interrumpido. Pulsa Restaurar mi partida antes de desbloquear de nuevo."
+en = "The save change was interrupted. Click Restore my save before unlocking again."
+fr = "Le changement de sauvegarde a été interrompu. Clique sur Restaurer ma sauvegarde avant de débloquer à nouveau."
+de = "Die Spielstandänderung wurde unterbrochen. Klicke vor dem erneuten Freischalten auf Spielstand wiederherstellen."
+it = "La modifica del salvataggio è stata interrotta. Premi Ripristina il mio salvataggio prima di sbloccare di nuovo."
+pt = "A alteração do save foi interrompida. Clique em Restaurar meu save antes de desbloquear novamente."
+ja = "セーブの変更が中断されました。再び解放する前に「セーブを復元」を押してください。"
+
+# dsSERP #29: resoluciones internas por debajo de 360p (solo baja el 3D; HUD y menus siguen nitidos).
+["Native (720p)"]
+es = "Nativo (720p)"
+en = "Native (720p)"
+fr = "Natif (720p)"
+de = "Nativ (720p)"
+it = "Nativo (720p)"
+pt = "Nativo (720p)"
+ja = "標準 (720p)"
+
+["Light 360p (game's SD path)"]
+es = "Ligero 360p (ruta SD del juego)"
+en = "Light 360p (game's SD path)"
+fr = "Léger 360p (mode SD du jeu)"
+de = "Leicht 360p (SD-Pfad des Spiels)"
+it = "Leggero 360p (percorso SD del gioco)"
+pt = "Leve 360p (modo SD do jogo)"
+ja = "軽量360p（ゲームのSD経路）"
+
+["3D only at 240p (sharp HUD and menus)"]
+es = "Solo el 3D a 240p (HUD y menus nitidos)"
+en = "3D only at 240p (sharp HUD and menus)"
+fr = "3D seul en 240p (HUD et menus nets)"
+de = "Nur 3D in 240p (HUD und Menüs scharf)"
+it = "Solo il 3D a 240p (HUD e menu nitidi)"
+pt = "Só o 3D em 240p (HUD e menus nítidos)"
+ja = "3Dのみ240p（HUDとメニューは鮮明）"
+
+["3D only at 144p (minimum)"]
+es = "Solo el 3D a 144p (al minimo)"
+en = "3D only at 144p (minimum)"
+fr = "3D seul en 144p (minimum)"
+de = "Nur 3D in 144p (Minimum)"
+it = "Solo il 3D a 144p (al minimo)"
+pt = "Só o 3D em 144p (no mínimo)"
+ja = "3Dのみ144p（最小）"
+
+["Internal resolution (restart the game)"]
+es = "Resolucion interna (reinicia el juego)"
+en = "Internal resolution (restart the game)"
+fr = "Résolution interne (redémarre le jeu)"
+de = "Interne Auflösung (Spiel neu starten)"
+it = "Risoluzione interna (riavvia il gioco)"
+pt = "Resolução interna (reinicie o jogo)"
+ja = "内部解像度（ゲームの再起動が必要）"
+
+["720p is the normal one. 360p uses the game's SD path (640x360): half the pixels per side. 240p and 144p lower only the scenery and characters: the HUD and menus stay sharp. To reduce load use 1x and turn MSAA off. Helps if the graphics card is the limit; if the processor is the limit (usual on weak PCs) it will not give more FPS."]
+es = "720p es lo normal. 360p usa la ruta SD del juego (640x360): la mitad de pixeles por lado. 240p y 144p bajan solo el escenario y los personajes: el HUD y los menus siguen nitidos. Para reducir carga usa 1x y apaga MSAA. Ayuda si el limite es la grafica; si el limite es el procesador (lo habitual en equipos flojos) no dara mas FPS."
+en = "720p is the normal one. 360p uses the game's SD path (640x360): half the pixels per side. 240p and 144p lower only the scenery and characters: the HUD and menus stay sharp. To reduce load use 1x and turn MSAA off. Helps if the graphics card is the limit; if the processor is the limit (usual on weak PCs) it will not give more FPS."
+fr = "720p est la normale. 360p utilise le mode SD du jeu (640x360) : deux fois moins de pixels par côté. 240p et 144p ne baissent que le décor et les personnages : le HUD et les menus restent nets. Pour réduire la charge, utilise 1x et désactive le MSAA. Aide si la carte graphique est la limite ; si c'est le processeur (fréquent sur les PC faibles), cela ne donnera pas plus d'images par seconde."
+de = "720p ist normal. 360p nutzt den SD-Pfad des Spiels (640x360): halb so viele Pixel pro Seite. 240p und 144p senken nur Szenerie und Figuren: HUD und Menüs bleiben scharf. Zur Entlastung 1x nutzen und MSAA ausschalten. Hilft, wenn die Grafikkarte limitiert; limitiert der Prozessor (bei schwachen PCs üblich), bringt es keine höhere Bildrate."
+it = "720p è la norma. 360p usa il percorso SD del gioco (640x360): metà dei pixel per lato. 240p e 144p abbassano solo scenario e personaggi: HUD e menu restano nitidi. Per ridurre il carico usa 1x e disattiva l'MSAA. Aiuta se il limite è la scheda grafica; se il limite è il processore (comune sui PC deboli) non darà più FPS."
+pt = "720p é o normal. 360p usa o modo SD do jogo (640x360): metade dos pixels por lado. 240p e 144p baixam só o cenário e os personagens: o HUD e os menus continuam nítidos. Para reduzir a carga use 1x e desligue o MSAA. Ajuda se o limite for a placa de vídeo; se o limite for o processador (comum em PCs fracos), não dará mais FPS."
+ja = "720pが標準です。360pはゲームのSD経路（640x360）を使い、1辺あたりのピクセル数が半分になります。240pと144pは背景とキャラクターのみを下げるので、HUDとメニューは鮮明なままです。負荷を下げるには1xにしてMSAAを切ってください。GPUが上限なら効果がありますが、CPUが上限の場合（低性能PCでは一般的）はFPSは上がりません。"
+
+# dsPGPU 3/11: memoria de la grafica y limite seguro de la mejora de texturas en el launcher.
+["Integrated graphics: shares system memory."]
+es = "Grafica integrada: comparte la memoria del sistema."
+en = "Integrated graphics: shares system memory."
+fr = "Carte graphique intégrée : partage la mémoire du système."
+de = "Integrierte Grafik: nutzt den Systemspeicher mit."
+it = "Grafica integrata: condivide la memoria di sistema."
+pt = "Placa de vídeo integrada: compartilha a memória do sistema."
+ja = "内蔵グラフィックス：システムメモリを共有します。"
+
+["Video memory: %d MB"]
+es = "Memoria de video: %d MB"
+en = "Video memory: %d MB"
+fr = "Mémoire vidéo : %d MB"
+de = "Videospeicher: %d MB"
+it = "Memoria video: %d MB"
+pt = "Memória de vídeo: %d MB"
+ja = "ビデオメモリ：%d MB"
+
+["Will apply x%d: your system has little memory (RAM or video)."]
+es = "Se aplicara x%d: tu equipo tiene poca memoria (RAM o de video)."
+en = "Will apply x%d: your system has little memory (RAM or video)."
+fr = "x%d sera appliqué : ton système a peu de mémoire (RAM ou vidéo)."
+de = "Es wird x%d angewendet: Dein System hat wenig Speicher (RAM oder Videospeicher)."
+it = "Verrà applicato x%d: il sistema ha poca memoria (RAM o video)."
+pt = "Será aplicado x%d: seu sistema tem pouca memória (RAM ou vídeo)."
+ja = "x%d で適用されます：システムのメモリ（RAM またはビデオメモリ）が少ないためです。"
+
+["Your graphics card has little video memory: this may stutter. Use Automatic mode to limit it for you."]
+es = "Tu grafica tiene poca memoria de video: este ajuste puede ir a tirones. Usa el modo Automatico para que se limite solo."
+en = "Your graphics card has little video memory: this may stutter. Use Automatic mode to limit it for you."
+fr = "Ta carte graphique a peu de mémoire vidéo : ce réglage peut saccader. Utilise le mode Automatique pour qu'il se limite tout seul."
+de = "Deine Grafikkarte hat wenig Videospeicher: Diese Option kann ruckeln. Nutze den Modus Automatisch, damit er sich selbst begrenzt."
+it = "La tua scheda video ha poca memoria: questa opzione può causare scatti. Usa la modalità Automatica per limitarla da sola."
+pt = "Sua placa de vídeo tem pouca memória: este ajuste pode apresentar engasgos. Use o modo Automático para limitá-lo sozinho."
+ja = "グラフィックボードのビデオメモリが少ないため、この設定はカクつく可能性があります。自動モードを使うと自動で制限されます。"
+
+["Texture packs use video memory: with little memory they may stutter. If that happens, turn them off."]
+es = "Los packs de texturas ocupan memoria de video: con poca memoria pueden ir a tirones. Si pasa, desactivalos."
+en = "Texture packs use video memory: with little memory they may stutter. If that happens, turn them off."
+fr = "Les packs de textures utilisent la mémoire vidéo : avec peu de mémoire, ils peuvent saccader. Si cela arrive, désactive-les."
+de = "Texturpakete belegen Videospeicher: Bei wenig Speicher kann es ruckeln. Deaktiviere sie dann."
+it = "I pacchetti di texture occupano memoria video: con poca memoria possono causare scatti. Se succede, disattivali."
+pt = "Os pacotes de texturas ocupam memória de vídeo: com pouca memória podem apresentar engasgos. Se isso acontecer, desative-os."
+ja = "テクスチャパックはビデオメモリを使います。メモリが少ないとカクつくことがあります。その場合は無効にしてください。"
+
+# dsPHIRES: avisos de la escala interna segun pantalla y VRAM.
+["Screen: %dx%d  ·  VRAM: %d MB"]
+es = "Pantalla: %dx%d  ·  VRAM: %d MB"
+fr = "Écran : %dx%d  ·  VRAM : %d Mo"
+de = "Bildschirm: %dx%d  ·  VRAM: %d MB"
+it = "Schermo: %dx%d  ·  VRAM: %d MB"
+pt = "Tela: %dx%d  ·  VRAM: %d MB"
+ja = "画面: %dx%d  ·  VRAM: %d MB"
+
+["Supersampling above your screen: beyond %dx it only smooths edges and every step costs twice as much. For sharp 1440p/4K/8K, rendering at the screen resolution is enough."]
+es = "Supersampling por encima de la pantalla: a partir de %dx solo se suavizan bordes y cada paso cuesta el doble. Para 1440p/4K/8K nitidos basta con dibujar a la resolucion de la pantalla."
+fr = "Supersampling au-delà de votre écran : au-delà de %dx, cela ne lisse que les bords et chaque palier coûte deux fois plus. Pour du 1440p/4K/8K net, dessiner à la résolution de l'écran suffit."
+de = "Supersampling über den Bildschirm hinaus: ab %dx werden nur Kanten geglättet und jede Stufe kostet doppelt so viel. Für scharfes 1440p/4K/8K genügt das Rendern in Bildschirmauflösung."
+it = "Supersampling oltre lo schermo: oltre %dx si smussano solo i bordi e ogni passo costa il doppio. Per un 1440p/4K/8K nitido basta disegnare alla risoluzione dello schermo."
+pt = "Supersampling acima da tela: a partir de %dx só suaviza bordas e cada passo custa o dobro. Para 1440p/4K/8K nítido basta desenhar na resolução da tela."
+ja = "画面を超えるスーパーサンプリング: %dx を超えると輪郭が滑らかになるだけで、1段ごとに2倍の負荷がかかります。1440p/4K/8Kを鮮明にするには、画面解像度で描画すれば十分です。"
+
+["Use %dx (native)"]
+es = "Usar escala %dx (nativa)"
+fr = "Utiliser %dx (native)"
+de = "%dx verwenden (nativ)"
+it = "Usa %dx (nativa)"
+pt = "Usar %dx (nativa)"
+ja = "%dx を使用（ネイティブ）"
+
+# tPERF: en pantallas de mas de 4K la escala nativa real (4x/6x) no da 60 FPS; se propone 3x.
+["Use %dx (recommended for this screen)"]
+es = "Usar escala %dx (recomendada para esta pantalla)"
+en = "Use %dx (recommended for this screen)"
+fr = "Utiliser l'échelle %dx (recommandée pour cet écran)"
+de = "%dx verwenden (für diesen Bildschirm empfohlen)"
+it = "Usa scala %dx (consigliata per questo schermo)"
+pt = "Usar escala %dx (recomendada para esta tela)"
+ja = "この画面に推奨の %dx を使用"
+
+["On this screen, 3x is the most that keeps 60 FPS: the presenter scales the rest without losing sharpness. 4x drops to ~50 FPS and 6x to ~18 FPS."]
+es = "En esta pantalla, 3x es lo maximo que mantiene 60 FPS: el resto lo escala el presentador sin perder nitidez. 4x baja a ~50 FPS y 6x a ~18 FPS."
+en = "On this screen, 3x is the most that keeps 60 FPS: the presenter scales the rest without losing sharpness. 4x drops to ~50 FPS and 6x to ~18 FPS."
+fr = "Sur cet écran, 3x est le maximum qui maintient 60 FPS : le reste est mis à l'échelle par le présentateur sans perte de netteté. 4x descend à ~50 FPS et 6x à ~18 FPS."
+de = "Auf diesem Bildschirm sind 3x das Maximum, das 60 FPS hält: den Rest skaliert der Presenter ohne Schärfeverlust. 4x fällt auf ~50 FPS und 6x auf ~18 FPS."
+it = "Su questo schermo, 3x è il massimo che mantiene 60 FPS: il resto lo scala il presentatore senza perdere nitidezza. 4x scende a ~50 FPS e 6x a ~18 FPS."
+pt = "Nesta tela, 3x é o máximo que mantém 60 FPS: o restante é escalado pelo apresentador sem perder nitidez. 4x cai para ~50 FPS e 6x para ~18 FPS."
+ja = "この画面では 60 FPS を維持できるのは最大 3x です。残りはプレゼンターが拡大しても鮮明さを失いません。4x は約50FPS、6x は約18FPS まで低下します。"
+
+["The native scale draws at your screen's real resolution: it looks sharp and is the cheapest option for it. Above that it is supersampling (expensive antialiasing)."]
+es = "La escala nativa dibuja a la resolucion real de tu pantalla: se ve nitido y es lo mas barato para esa resolucion. Mas arriba es supersampling (antialiasing caro)."
+fr = "L'échelle native dessine à la résolution réelle de votre écran : l'image est nette et c'est l'option la moins coûteuse. Au-delà, c'est du supersampling (anticrénelage coûteux)."
+de = "Die native Skalierung rendert in der echten Bildschirmauflösung: scharf und die günstigste Option dafür. Darüber ist es Supersampling (teures Antialiasing)."
+it = "La scala nativa disegna alla risoluzione reale dello schermo: è nitida ed è l'opzione più economica. Oltre è supersampling (antialiasing costoso)."
+pt = "A escala nativa desenha na resolução real da tela: fica nítido e é a opção mais barata. Acima disso é supersampling (antialiasing caro)."
+ja = "ネイティブスケールは画面の実際の解像度で描画するため、鮮明で最も低コストです。それ以上はスーパーサンプリング（高コストのアンチエイリアス）です。"
+
+["VRAM: about %d MB estimated with this scale and resolution; your GPU has %d MB. If it does not fit, the game warns in the log and may lower the scale or the upscaling effect."]
+es = "VRAM: se estiman ~%d MB con esta escala y resolucion; tu GPU tiene %d MB. Si no cabe, el juego lo avisa en el registro y puede bajar la escala o el efecto de escalado."
+fr = "VRAM : environ %d Mo estimés avec cette échelle et cette résolution ; votre GPU dispose de %d Mo. Si cela ne tient pas, le jeu l'indique dans le journal et peut réduire l'échelle ou l'effet d'agrandissement."
+de = "VRAM: mit dieser Skalierung und Auflösung werden ca. %d MB geschätzt; Ihre GPU hat %d MB. Wenn es nicht passt, meldet das Spiel es im Protokoll und senkt ggf. die Skalierung oder den Upscaling-Effekt."
+it = "VRAM: stimati circa %d MB con questa scala e risoluzione; la GPU ha %d MB. Se non basta, il gioco lo segnala nel registro e può ridurre la scala o l'effetto di upscaling."
+pt = "VRAM: estimados ~%d MB com esta escala e resolução; sua GPU tem %d MB. Se não couber, o jogo avisa no registro e pode reduzir a escala ou o efeito de upscaling."
+ja = "VRAM: このスケールと解像度で約 %d MB と推定されます（GPU は %d MB）。収まらない場合、ゲームはログで通知し、スケールまたはアップスケーリング効果を下げることがあります。"
+
+["4x and 6x lower the frame rate even on good GPUs: measured in a battle, 4x ~50 FPS and 6x ~18 FPS on an RTX 4070 SUPER."]
+es = "4x y 6x bajan los FPS incluso en GPUs buenas: medido en un combate, 4x ~50 FPS y 6x ~18 FPS en una RTX 4070 SUPER."
+fr = "4x et 6x réduisent les FPS même sur de bonnes GPU : mesuré en combat, 4x ~50 FPS et 6x ~18 FPS sur une RTX 4070 SUPER."
+de = "4x und 6x senken die Bildrate selbst auf guten GPUs: im Kampf gemessen, 4x ~50 FPS und 6x ~18 FPS auf einer RTX 4070 SUPER."
+it = "4x e 6x riducono gli FPS anche su GPU buone: misurato in combattimento, 4x ~50 FPS e 6x ~18 FPS su una RTX 4070 SUPER."
+pt = "4x e 6x reduzem os FPS mesmo em GPUs boas: medido em combate, 4x ~50 FPS e 6x ~18 FPS numa RTX 4070 SUPER."
+ja = "4x と 6x は高性能GPUでもFPSが下がります（戦闘で計測: RTX 4070 SUPER で 4x 約50FPS、6x 約18FPS）。"

@@ -1,0 +1,34 @@
+descripcion = "12a: con la casilla aleatoria (?) del selector del Duelo, cada revancha carga un escenario nuevo (log 'dbz3 escenarios: revancha aleatoria: registro X -> Y'); la primera carga respeta el elegido. Cvar dbz3_escenarios_revancha_aleatoria activada. DBZ3_SONDA_ESCENARIO=1 imprime 'dbz3 escenarios: sel casilla N (registro R)' cada vez que cambia el cursor del selector: sirve para fijar sin adivinar la cuenta de tecla A hasta el '?' (casilla 12). La comprobacion esencial es la linea de la revancha, no la captura."
+env = ["REX_DBZ3_ESCENARIOS_REVANCHA_ALEATORIA=true", "DBZ3_SONDA_ESCENARIO=1", "DBZ3_TEST_RINGOUT=1"]
+pasos = [
+  "esperar 2500",
+  "tecla S 1200",
+  "tecla Space 3000",   # titulo -> menu -> ...
+  "tecla Space 3000",
+  "tecla Space 4000",
+  "tecla Space 4000",
+  "tecla Space 4000",
+  "tecla Space 4000",   # ... -> selector de fases del Duelo (mn_StageSel)
+  "esperar 2500",
+  # sonda del selector (frente 15): da la casilla de partida y la secuencia al mover con A. Si la casilla de
+  # partida no fuera 0, la cuenta de tecla A de abajo se ajusta con lo que diga esta linea.
+  "log \"escenarios: sel casilla\" 30",
+  "captura 01_selector",
+  "tecla A 700",
+  "log \"escenarios: sel casilla 12\" 20",   # la casilla "?" (aleatorio)
+  "captura 01_casilla_azar",
+  "tecla Space 3000",
+  "log \"tag: empieza un combate\" 90",
+  "esperar 2500",
+  "captura 02_combate",
+  "log \"estado del combate 7\" 180",
+  "esperar 1500",
+  "tecla Space 3000",
+  "log \"revancha aleatoria: registro\" 60",
+  "captura 03_revancha",
+  "log \"(?s)(estado del combate 7.*){2}\" 90",
+  "esperar 1500",
+  "tecla Space 3000",
+  "log \"(?s)(revancha aleatoria: registro.*){2}\" 60",
+  "captura 04_revancha2",
+]

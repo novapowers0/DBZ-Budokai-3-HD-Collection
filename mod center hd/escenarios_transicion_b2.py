@@ -17,7 +17,38 @@ import zlib
 GRUPOS = (0, 2, 4, 7, 8)
 VERSION = 2
 MAX_ARCHIVO = 64 * 1024 * 1024
-ETIQUETAS = (b"CAMR", b"TRAY", b"SPX0", b"MDD0", b"FX00", b"MAD0", b"MAS0", b"SND0", b"ANM0", b"ANM1", b"FXHD", b"BSK0")
+ETIQUETAS = (b"CAMR", b"TRAY", b"SPX0", b"MDD0", b"FX00", b"MAD0", b"MAS0", b"SND0", b"ANM0", b"ANM1", b"FXHD", b"BSK0", b"ENV0")
+
+
+def ambiente(fuente, grupo):
+    """Perfiles de luz/sol del ELF del jugador; nunca datos del anfitrión HD."""
+    import hashlib
+    elf = fuente.iso.read(fuente.iso.boot_elf())
+    if hashlib.sha256(elf).hexdigest() != "30c362969ad64184df0b4a4ee498badb101265470883948f3131b6302ae3c797":
+        raise ValueError("ambiente B2: ELF sin perfil acreditado")
+    ph, es, n = _u(elf, 28), struct.unpack_from("<H", elf, 42)[0], struct.unpack_from("<H", elf, 44)[0]
+    def va(a, size):
+        candidatos = []
+        for i in range(n):
+            typ, off, addr, _, fs, *_ = struct.unpack_from("<8I", elf, ph+i*es)
+            if typ == 1 and addr <= a and a+size <= addr+fs and off+a-addr+size <= len(elf):
+                candidatos.append(elf[off+a-addr:off+a-addr+size])
+        if len(candidatos) != 1:
+            raise ValueError("ambiente B2: dirección ELF no única o truncada")
+        return candidatos[0]
+    stage = {0: 4, 2: 6, 4: 0, 7: 5, 8: 1}[grupo]
+    out = bytearray(struct.pack("<4s7I", b"#B2E", 1, stage, 2, 32, 128, 288, 240))
+    for zona in range(2):
+        celda = 0x372ab0+stage*0x9c+zona*0x1c
+        luz, sol = struct.unpack("<i", va(celda+0x24, 4))[0], struct.unpack("<i", va(celda+0x2c, 4))[0]
+        reorienta = _u(va(0x374b00+stage*8+zona*4, 4), 0)
+        indice_dir = struct.unpack("<i", va(0x374b70+stage*8+zona*4, 4))[0]
+        perfil = va(0x372330+luz*80, 80) if luz >= 0 else bytes(80)
+        punto = va(0x372790+sol*16, 16) if sol >= 0 else bytes(16)
+        origen = va(0x372790+indice_dir*16, 16) if reorienta and indice_dir >= 0 else bytes(16)
+        out += struct.pack("<4i", luz, sol, reorienta, indice_dir)+perfil+punto+origen
+    out += va(0x373340, 240)
+    return bytes(out)
 
 
 def sonidos(fuente, grupo):
@@ -131,7 +162,7 @@ def construir(fuente, grupo):
         raise ValueError("perfil B2 sin banco de movimientos173/BSK")
     off, size = bsks[0]
     bsk = moveset[off:off+size]
-    return empaquetar(Transicion(grupo, dict(zip(ETIQUETAS, (camara, trayectoria, spx, mdd, banco, mad, mas, sonidos(fuente,grupo), *anms, fxhd, bsk)))))
+    return empaquetar(Transicion(grupo, dict(zip(ETIQUETAS, (camara, trayectoria, spx, mdd, banco, mad, mas, sonidos(fuente,grupo), *anms, fxhd, bsk, ambiente(fuente,grupo))))))
 
 
 def instalar(fuente, grupo, carpeta):
@@ -173,7 +204,7 @@ def leer(b):
     if len(b) < 64 or len(b) > MAX_ARCHIVO:
         raise ValueError("tamaño de transición inválido")
     magic, ver, grupo, n, tabla, tam, res0, res1 = struct.unpack_from("<4s7I", b)
-    etiquetas = ETIQUETAS[:n] if ver == 2 and n in (7,8,10,11,12) else ETIQUETAS[:5] if ver == 1 else ()
+    etiquetas = ETIQUETAS[:n] if ver == 2 and n in (7,8,10,11,12,13) else ETIQUETAS[:5] if ver == 1 else ()
     if magic != b"B2TZ" or not etiquetas or grupo not in GRUPOS or n != len(etiquetas) or tabla != 64 or tam != len(b):
         raise ValueError("cabecera de transición inválida")
     if res0 or res1 or any(b[32:64]):

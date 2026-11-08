@@ -4,6 +4,7 @@
 #include <imgui.h>
 #include "iw_nave_hud_b2_noche.h"
 #include "iw_nave_hud_b2_2p.h"
+#include "modo_original.h"
 #include <fstream>
 #include <sstream>
 
@@ -26,7 +27,7 @@ struct MuestraMarcadorB2 {
   int personaje_b3[2] = {-1, -1}, forma_b3[2] = {0, 0};
   bool dos_jugadores = false, pausa = false, fase_resultado = false;
   uint64_t encuentro = 0;              // cambia entre encuentros; no decide el flujo
-  float paso_hud_original = 1.2f;       // PAL medido. cuadros esta en ticks60Hz: no multiplicarlo otra vez.
+  float paso_hud_original = ::dbz3::original::Delta(::dbz3::original::Fuente::B2Pal);   // PAL medido (B2 NTSC bloqueado). cuadros esta en ticks60Hz: no multiplicarlo otra vez.
   noche::OpcionesPrueba prueba;
   noche::DanoHud dano[2];              // valido=false si no hay productor exacto
   noche::ContextoVisual* contexto = nullptr;  // fixture independiente; nullptr usa solo cache visual del consumidor

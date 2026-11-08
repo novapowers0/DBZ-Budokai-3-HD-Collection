@@ -7,8 +7,8 @@ propio juego lo guarda (cvar dbz3_audio_dump del SDK, float32 estereo 48 kHz, au
 junta con la imagen usando las horas de inicio de los dos (la del audio sale en el log del juego).
 
   python tools\grabar.py COPIA ESCENARIO NOMBRE SEGUNDOS [--retraso S] [--par k=v] [--env K=V]
-  python tools\grabar.py iso_test D:\tmp\rec\com_tag.toml 01_com_tagteam_a 90 --retraso 20
-  python tools\grabar.py smoke_b D:\tmp\rec\vitrina.toml t16_goku_gt 10 --desde-log "dbz3 cine: vitrina empieza" --salida D:\DBZ3HD\video\clips\v156
+  python tools\grabar.py iso_test E:\DBZ3HD_trabajo\tmp\rec\com_tag.toml 01_com_tagteam_a 90 --retraso 20
+  python tools\grabar.py smoke_b E:\DBZ3HD_trabajo\tmp\rec\vitrina.toml t16_goku_gt 10 --desde-log "dbz3 cine: vitrina empieza" --salida D:\DBZ3HD\video\clips\v156
 
 SEGUNDOS es el maximo (para antes si el juego se cierra). Salida: video/clips/proxima/NOMBRE.mp4 (y NOMBRE_v.mp4 + NOMBRE.f32 de trabajo) o la carpeta de --salida. Nunca mata ffmpeg a medias (el mp4 se
 quedaria sin indice): espera a que acabe sus SEGUNDOS. Se captura la propia ventana (Windows.Graphics.Capture):

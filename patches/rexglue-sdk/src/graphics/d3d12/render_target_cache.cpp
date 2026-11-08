@@ -12,8 +12,10 @@
 #include "thirdparty/dxbc/DXBCChecksum.h"
 
 #include <algorithm>
+#include <atomic>
 #include <array>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <iterator>
 #include <memory>
@@ -47,7 +49,29 @@ REXCVAR_DEFINE_STRING(render_target_path_d3d12, "", "GPU/D3D12",
 
 REXCVAR_DEFINE_BOOL(native_stencil_value_output, true, "GPU", "Enable native stencil value output");
 
+// DBZ3 1.5.6.1: las Intel anteriores a Arc (UHD/Iris Xe) van por ROV, mucho mas
+// lento (~5x en WARP), por un fallo de su driver (IGCIT #176, Triang3l): con el
+// stencil activado, el borde derecho/inferior del viewport se recorta al tamano
+// del render target; los borrados en espacio de pantalla (viewport de 8192) se
+// encogen. Con dbz3_intel_rtv=true van por RTV y el viewport nunca pasa del render
+// target (D3D12CommandProcessor compensa las coordenadas, imagen identica).
+// dbz3_intel_viewport_fix aplica ese limite en cualquier GPU (para comprobarlo);
+// DBZ3_TEST_SIMULAR_INTEL (solo pruebas) imita el fallo en una GPU sana.
+REXCVAR_DEFINE_BOOL(dbz3_intel_rtv, true, "GPU/D3D12",
+                    "Intel UHD/Iris Xe: camino RTV rapido con apano del viewport (experimental)")
+    .lifecycle(rex::cvar::Lifecycle::kInitOnly);
+REXCVAR_DEFINE_BOOL(dbz3_intel_viewport_fix, false, "GPU/D3D12",
+                    "Limitar el viewport al render target cuando hay stencil, en cualquier GPU (pruebas)")
+    .lifecycle(rex::cvar::Lifecycle::kInitOnly);
+
 namespace rex::graphics::d3d12 {
+
+// bit 0: imitar el fallo de Intel (solo pruebas); bit 1: apano del viewport.
+int g_dbz3_intel_viewport_mode = 0;
+// DBZ3 1.5.6.1: transferencias entre render targets (copias de propiedad de la
+// EDRAM), para la linea `perf` (rtx=).
+std::atomic<uint64_t> g_dbz3_rt_transfers{0};
+
 
 // Generated with `xb buildshaders`.
 namespace shaders {
@@ -169,6 +193,19 @@ D3D12RenderTargetCache::~D3D12RenderTargetCache() {
   Shutdown(true);
 }
 
+bool D3D12RenderTargetCache::Dbz3BoundRenderTargetSize(uint32_t& width, uint32_t& height) const {
+  width = height = UINT32_MAX;
+  RenderTarget* const* rts = last_update_accumulated_render_targets();
+  for (uint32_t i = 0; i < 1 + xenos::kMaxColorRenderTargets; ++i) {
+    if (!rts[i]) continue;
+    const D3D12_RESOURCE_DESC desc =
+        static_cast<const D3D12RenderTarget*>(rts[i])->resource()->GetDesc();
+    width = std::min(width, uint32_t(desc.Width));
+    height = std::min(height, uint32_t(desc.Height));
+  }
+  return width != UINT32_MAX;
+}
+
 bool D3D12RenderTargetCache::Initialize() {
   const ui::d3d12::D3D12Provider& provider = command_processor_.GetD3D12Provider();
   ID3D12Device* device = provider.GetDevice();
@@ -190,10 +227,12 @@ bool D3D12RenderTargetCache::Initialize() {
     // DBZ3 1.4.3 EX (como xenia-canary, dic. 2025): Intel Arc no tiene el fallo
     // de stencil, asi que va por RTV (mucho mas rapido); solo las Intel previas
     // a Arc (UHD/Iris Xe) siguen forzando ROV.
-    path_ = provider.GetAdapterVendorID() == ui::GraphicsProvider::GpuVendorID::kIntel &&
-                    !provider.IsIntelArcGpu()
-                ? Path::kPixelShaderInterlock
-                : Path::kHostRenderTargets;
+    const bool intel_previa = provider.GetAdapterVendorID() ==
+                                  ui::GraphicsProvider::GpuVendorID::kIntel &&
+                              !provider.IsIntelArcGpu();
+    path_ = intel_previa && !REXCVAR_GET(dbz3_intel_rtv) ? Path::kPixelShaderInterlock
+                                                          : Path::kHostRenderTargets;
+    if (intel_previa && REXCVAR_GET(dbz3_intel_rtv)) g_dbz3_intel_viewport_mode |= 2;
 #else
     // The AMD shader compiler crashes very often with Xenia's custom
     // output-merger code as of March 2021.
@@ -205,6 +244,14 @@ bool D3D12RenderTargetCache::Initialize() {
   if (path_ == Path::kPixelShaderInterlock && !provider.AreRasterizerOrderedViewsSupported()) {
     path_ = Path::kHostRenderTargets;
   }
+  if (REXCVAR_GET(dbz3_intel_viewport_fix)) g_dbz3_intel_viewport_mode |= 2;
+  if (std::getenv("DBZ3_NO_DIALOGS") && std::getenv("DBZ3_TEST_SIMULAR_INTEL")) {
+    g_dbz3_intel_viewport_mode |= 1;
+  }
+  if (path_ != Path::kHostRenderTargets) g_dbz3_intel_viewport_mode = 0;
+  REXLOG_INFO("dbz3: render target path {}{}{}", path_ == Path::kHostRenderTargets ? "rtv" : "rov",
+              (g_dbz3_intel_viewport_mode & 1) ? " + fallo Intel simulado" : "",
+              (g_dbz3_intel_viewport_mode & 2) ? " + apano viewport" : "");
 
   // Create the buffer for reinterpreting EDRAM contents.
   uint32_t edram_buffer_size =
@@ -3749,7 +3796,7 @@ ID3D12PipelineState* const* D3D12RenderTargetCache::GetOrCreateTransferPipelines
         // stencil being different.
         pipeline_desc.DepthStencilState.FrontFace.StencilFunc = D3D12_COMPARISON_FUNC_ALWAYS;
         pipeline_desc.DepthStencilState.BackFace = pipeline_desc.DepthStencilState.FrontFace;
-      }
+          }
       pipeline_desc.DSVFormat = GetDepthDSVDXGIFormat(dest_depth_format);
     }
     ID3D12PipelineState* pipeline;
@@ -3803,6 +3850,18 @@ void D3D12RenderTargetCache::PerformTransfersAndResolveClears(
     const uint64_t* render_target_resolve_clear_values,
     const Transfer::Rectangle* resolve_clear_rectangle) {
   assert_true(GetPath() == Path::kHostRenderTargets);
+  if (render_target_transfers) {
+    uint64_t n = 0;
+    for (uint32_t i = 0; i < render_target_count; ++i) n += render_target_transfers[i].size();
+    g_dbz3_rt_transfers.fetch_add(n, std::memory_order_relaxed);
+  }
+  // Solo laboratorio (imagen incorrecta): cota de lo que cuestan las
+  // transferencias. Requiere DBZ3_NO_DIALOGS (pruebas automaticas).
+  static const bool sin_transferencias = std::getenv("DBZ3_NO_DIALOGS") &&
+                                         std::getenv("DBZ3_TEST_SIN_TRANSFERENCIAS");
+  if (sin_transferencias) {
+    render_target_transfers = nullptr;
+  }
 
   const ui::d3d12::D3D12Provider& provider = command_processor_.GetD3D12Provider();
   ID3D12Device* device = provider.GetDevice();

@@ -351,7 +351,7 @@ int g_pag = 0, g_j3 = 0, g_r3 = 0;   // pagina de la rueda y luchadores de B3 el
 // solP3: B2 conserva por lado la eleccion CONFIRMADA en 0x69D3E4/+0x430
 // (FUN_002B3F60/002AD490); cancelar la rueda no guarda. No es parte de la tarjeta.
 struct EleccionNave { int id = 0, traje = 0, lista = 0; };
-EleccionNave g_recordada[2] = {{0, 0, 0}, {3, 0, 0}}, g_elegida[2];
+EleccionNave g_recordada[2] = {{0, 0, 0}, {0, 0, 0}}, g_elegida[2];   // eB2e: el COM arranca en 0 como el original (memoria a cero, dorado PAL)
 std::atomic<uint64_t> g_trajes_pendientes{0};
 bool EsHeroe(int id, const std::string& n) {
   std::string l = n;
@@ -428,8 +428,9 @@ void Pedir(int out[7]) {
   out[5] = g_prueba;
   out[6] = g_2p.load() ? 1 : 0;   // P2 humano (camino nativo del vs de B3; 0 = como antes)
   if (g_prueba == 1) Reloj();
-  REXLOG_INFO("dbz3 nave: prueba {}: {} contra {} en {} (vida {}, tiempo {}, vencidos {}, {})", g_prueba + 1, NombreDe(j),
-              NombreDe(r), kEscenas2[g_sitio].es, out[3], out[4], g_vencidos, g_2p.load() ? "2P humano" : "1P");
+  REXLOG_INFO("dbz3 nave: prueba {}: {} contra {} en {} (vida {}, tiempo {}, vencidos {}, {}, regla {} s pago {})", g_prueba + 1,
+              NombreDe(j), NombreDe(r), kEscenas2[g_sitio].es, out[3], out[4], g_vencidos, g_2p.load() ? "2P humano" : "1P",
+              kPruebas[g_prueba].tiempo, kPruebas[g_prueba].pago);   // B2_FASE2: comparar_modo b2 nave (regla sin el atajo de pruebas)
 }
 
 // Capsula de B3 equivalente a cada premio de B2 (por nombre: modding resources discord/research/SkillList.dson y
@@ -2456,7 +2457,7 @@ void PintaFig(ImDrawList* dl) {
       const float fd = cr.F * g_fig_L.s;
       cam.h = ImVec2(450, 450);
       cam.fov = 2.0f * std::atan(450.0f / fd);
-      cam.c = g_fig_L.P(320.0f + cr.cx, (196.0f + cr.cy) * ay);
+      cam.c = g_fig_L.P(320.0f + (g_rueda_com && !std::getenv("DBZ3_SEL_COMX_VIEJO") ? -cr.cx : cr.cx), (196.0f + cr.cy) * ay);   // eB2e: la fila COM (cx > 0) deja la figura a la izquierda como en el original (PCSX2, planta IV)
       cam.m[0] = cam.m[5] = cam.m[10] = cam.m[15] = 1;
       cam.m[13] = cr.dy * ay_m;
       cam.m[14] = cr.dz;
@@ -3671,6 +3672,10 @@ void Seguido(int vida) {   // el combate encadenado quedo pedido: cuenta el venc
 }
 bool Encadenado() { return g_enc_armado.load(); }
 bool Seguir() { return g_enc_armado.exchange(false); }   // CombateNave: lo consume y arranca la cadena
+void Levantado() {   // tagteam.cpp: el rival de la prueba I se levanto en el mismo combate (contador x0 -> x1)
+  ++g_vencidos;
+  REXLOG_INFO("dbz3 nave: prueba I: el rival se levanta en el mismo combate (x{})", g_vencidos);
+}
 
 // 0 nada, 1 salir, 2 combate pedido en out = {jugador, rival, mapa, vida inicial, tiempo, prueba, P2 humano}.
 int Dibujar(ImDrawList* dl, const S::Area& a, float t, uint16_t pressed, bool auto_on, int out[7]) {
@@ -3739,6 +3744,7 @@ int Dibujar(ImDrawList* dl, const S::Area& a, float t, uint16_t pressed, bool au
     }
     if (g_estado == kJugador) {
       g_frase_sel = 9 + std::rand() % 2;   // 0x2617C0
+      if (const char* fr = std::getenv("DBZ3_TEST_NAVE_FRASE")) g_frase_sel = std::clamp(std::atoi(fr), 9, 10);   // pruebas: el dado de Babidi fijo para comparar con el original
       Voz(1150 + g_frase_sel - 9);
     }
     if (g_estado == kSitio) {

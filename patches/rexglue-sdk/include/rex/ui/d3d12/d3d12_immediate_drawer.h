@@ -123,6 +123,7 @@ class D3D12ImmediateDrawer final : public ImmediateDrawer {
   Microsoft::WRL::ComPtr<ID3D12PipelineState> pipeline_triangle_additive_;
   // dbz3 (R15): triangles of kDbz3LinearDepth textures (dbz3_ui_depth.vs/ps).
   Microsoft::WRL::ComPtr<ID3D12PipelineState> pipeline_triangle_dbz3_depth_;
+  Microsoft::WRL::ComPtr<ID3D12PipelineState> pipeline_triangle_dbz3_depth_additive_;
 
   Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> sampler_heap_;
   D3D12_CPU_DESCRIPTOR_HANDLE sampler_heap_cpu_start_;

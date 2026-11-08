@@ -70,7 +70,9 @@
 | [16_pasarela_modos](16_pasarela_modos/) | **Pasarela de modos B1/B2/IW**: viabilidad por modo, Leyenda de Mr. Satan, saga B1, tablero B2, misiones y retos de IW ([04_misiones_y_tablero.md](16_pasarela_modos/04_misiones_y_tablero.md); `src/pasarela*.cpp`, `mod center hd/pasarela/pasarela.py`) |
 | [jugador/MODOS_Y_RETOS.md](jugador/MODOS_Y_RETOS.md) | Guia del jugador: HUB, retos y torre de la semana |
 | [jugador/CAMARA_LIBRE.md](jugador/CAMARA_LIBRE.md) | Guía del jugador: activar y usar la cámara libre (BETA) |
+| [jugador/RESOLUCION_Y_BROLY.md](jugador/RESOLUCION_Y_BROLY.md) | Guía del jugador: resolución interna (360p/240p/144p) y Broly sin destello |
 | [02_mods/PLUGINS.md](02_mods/PLUGINS.md) | Plugins de código (DLL en `plugins/`, API `rex_mod_init`): vía oficial para mods como Budokai3Access |
+| [09_mods_nativos](09_mods_nativos.md) | Mods nativos: «Desbloquear todo», restaurar la partida y estado de los cheats |
 | [Kit modo PS2](../studies%205/ENTREGAS/KIT_PS2_31-10.md) | **Modding Kit, modo Budokai 3 PS2** (ISO nueva con texturas, intercambio de modelos y música; probado solo en PCSX2 US). Reglas de ISO/AFS en [HOJA_DE_RUTA_PORT_PS2_B3](07_ports/HOJA_DE_RUTA_PORT_PS2_B3.md) |
 | [Vídeos HD](../studies%205/ENTREGAS/VIDEOS_HD_31-10.md) | **Vídeos HD opcionales** (apertura y final, descarga aparte, solo Windows): qué se midió y qué no |
 | [Rollback R5](../studies%205/ENTREGAS/ROLLBACK_R5.md) / [Online rework](../studies%205/ENTREGAS/ONLINE_REWORK.md) | Rollback (apagado por defecto, 50/50 medido en un PC) y búsqueda de partida sin servidor |

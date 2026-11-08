@@ -16,9 +16,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import pruebas as P  # noqa: E402
 
 # escenarios integrados y de la bateria: todos cargan y piden los hooks que tocan
+# valores ficticios para los escenarios que exigen --par; solo se usan para armar el entorno, nunca se lanza el juego
+PAR_FICTICIO = {"online_rb": {"rol": "host"}, "heroe_pieza": {"pelo": "0"}, "online_mm": {"url": "http://127.0.0.1:9"}}
 for nombre in P.ESCENARIOS:
-    par = {"rol": "host"} if nombre == "online_rb" else {"pelo": "0"} if nombre == "heroe_pieza" else {}
-    desc, fn, env, prep = P.cargar_escenario(nombre, par)   # online_rb exige --par rol; heroe_pieza, una pieza
+    par = PAR_FICTICIO.get(nombre, {})
+    desc, fn, env, prep = P.cargar_escenario(nombre, par)   # online_rb exige rol; heroe_pieza, una pieza; online_mm, url
     assert desc and callable(fn), nombre
 assert P.cargar_escenario("batalla", {})[2] == {"DBZ3_TEST_BATTLE": "0,7,2", "DBZ3_TEST_RINGOUT": "1"}
 assert P.cargar_escenario("batalla", {"ids": "3,4,1"})[2]["DBZ3_TEST_BATTLE"] == "3,4,1"

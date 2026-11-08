@@ -61,6 +61,11 @@ class Transicion {
   bool Paso(float delta = 1) {
     if (!error_.empty() || !vm.Viva()) return false;
     reloj.delta = delta;
+    // PAL1D4630 avanza142FC antes de ejecutar el guion. Hacerlo después
+    // aplazaba los cortes con espera (Nieve30/450), aunque la cámara inicial
+    // de RR pareciera correcta. La espera4 conserva su tolerancia de0,5.
+    reloj.cuadro += delta;
+    if (camara >= 0) tiempo_camara += delta;
     for (auto& a : actores) {
       if (a.hueso < 0) continue;
       if (!recurso_ || a.clip < 0 || size_t(a.clip) >= recurso_->trayectoria.size()) { error_ = "trayectoria B2 inválida"; return false; }
@@ -69,11 +74,9 @@ class Transicion {
     if (!vm.Tick()) return false;
     if (camara >= 0 && recurso_ && size_t(camara) < recurso_->camara.size()) {
       std::array<std::array<float, 3>, 4> v;
-      tiempo_camara = reloj.cuadro - inicio_camara;
       if (!Muestrear(recurso_->camara[size_t(camara)], tiempo_camara, v)) { error_ = "cámara B2 inválida"; return false; }
       ojo = v[0]; objetivo = v[1]; giro_camara = v[2][0]; fov = v[3][0];
     }
-    reloj.cuadro += delta;
     return true;
   }
   bool Viva() const { return error_.empty() && vm.Viva() && !vm.Bloqueada(); }
@@ -118,7 +121,11 @@ class Transicion {
     if (!puente.ejecutar || !puente.ejecutar(o,m,h))
       m.Fallar("B2 nativa sin consumidor: " + std::to_string(id) + " PC " + std::to_string(o.pc));
     if (id == 0x35 && o.argumentos[5] == 2) {
-      camara = int(o.argumentos[4]); inicio_camara = reloj.cuadro;
+      // PAL1CDED0: el tipo6 empieza en delta; 1CDC80 lo muestrea y después
+      // avanza su reloj propio. No derivarlo del reloj global ni sumar dos
+      // veces al seleccionar otra cámara dentro de este mismo paso.
+      camara = int(o.argumentos[4]); tiempo_camara = reloj.delta;
+      inicio_camara = reloj.cuadro - tiempo_camara;
     }
     if (id == 0x40) zona ^= 1;
     if (id == 0xC1 && o.argumentos[3] < actores.size()) {

@@ -11,6 +11,7 @@
 #include <condition_variable>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <deque>
 #include <list>
@@ -751,6 +752,9 @@ void Dbz3TexturePackIndex::EnsureInitialized() const {
   // local se queda por defecto. La consulta por nombre devuelve el valor real.
   const std::string list = REXCVAR_QUERY(std::string, dbz3_texture_packs);
   if (started_ && list == built_list_) {
+    // Misma lista: solo queda vigilar el interruptor en vivo (arrancar/parar la
+    // precarga) y aliviar la cache si el sistema se queda sin RAM.
+    MaintainPreload(Dbz3TexturePacksOn());
     return;
   }
   // La cache de texturas se crea al abrir el launcher: con el pack instalado desde Nova's
@@ -762,7 +766,11 @@ void Dbz3TexturePackIndex::EnsureInitialized() const {
   }
   // Lista cambiada con el juego en marcha (p. ej. un zip "update" soltado tras el pack grande): lo ya
   // decodificado esta indexado por hash y seguiria devolviendo la imagen del pack anterior.
-  if (started_) Dbz3ClearDecodeCache();
+  if (started_) {
+    Dbz3PackCancelPreload();
+    Dbz3ClearDecodeCache();
+  }
+  preload_started_.store(false, std::memory_order_relaxed);
   started_ = true;
   built_list_ = list;
   ready_.store(false, std::memory_order_release);
@@ -787,7 +795,17 @@ void Dbz3TexturePackIndex::EnsureInitialized() const {
       REXGPU_INFO("dbz3: indice de packs listo en {} ms (hasta ahora, texturas originales)",
                   std::chrono::duration_cast<std::chrono::milliseconds>(
                       std::chrono::steady_clock::now() - t0).count());
-      StartPreload(*entries);
+      // Con el pack APAGADO no se precarga nada (ni se decodifica): en un PC de 4-8 GB
+      // eso eran cientos de MB (o GB) de RAM tirados. Se arranca al encenderlo.
+      if (Dbz3TexturePacksOn()) {
+        preload_started_.store(true, std::memory_order_relaxed);
+        StartPreload(*entries);
+      } else {
+        preload_started_.store(false, std::memory_order_relaxed);
+        const Dbz3HostMemory mem = Dbz3HostMemoryNow();
+        REXGPU_INFO("dbz3: pack HD apagado: no se precarga (0 MB de RAM; {} MB total, {} MB libres)",
+                    mem.total_mb, mem.avail_mb);
+      }
     }
   }).detach();
 }
@@ -922,13 +940,36 @@ Ram QueryRam() {
   return r;
 }
 
-// Un cuarto de la RAM, pero nunca mas de la mitad de la que esta LIBRE al arrancar (entre
-// 512 MB y 8 GB). Con 32 GB y el navegador abierto quedaban ~4 GB libres: llenar 8 GB hacia
-// que Windows mandara el juego al disco y se quedaba congelado 45 s (2026-10-14).
+// Presupuesto de la cache de imagenes decodificadas. Antes era total/4 (hasta 8 GB): con
+// un pack HD real eso son cientos de MB o GB de RAM que en un PC de 4-8 GB empujan al
+// sistema a paginar (y el juego se congela). Ahora escala por tramos de RAM total y deja
+// siempre margen: 4 GB -> 192 MB, 6 GB -> 256, 8 GB -> 384, 16+ GB -> 4 GB como maximo.
 uint64_t CacheBudget() {
   static const uint64_t budget = [] {
     const Ram r = QueryRam();
-    return std::clamp<uint64_t>(std::min(r.total / 4, r.avail / 2), uint64_t(512) << 20, uint64_t(8) << 30);
+    // Pruebas y casos raros: tope manual en MB (no se documenta; 0/ausente = automatico).
+    uint64_t manual = 0;
+    if (const char* v = std::getenv("DBZ3_PACK_RAM_MB")) {
+      const long mb = std::atol(v);
+      if (mb > 0) manual = uint64_t(mb) << 20;
+    }
+    uint64_t by_total;
+    if (r.total <= (uint64_t(5) << 30)) {
+      by_total = uint64_t(192) << 20;
+    } else if (r.total <= (uint64_t(7) << 30)) {
+      by_total = uint64_t(256) << 20;
+    } else if (r.total <= (uint64_t(9) << 30)) {
+      by_total = uint64_t(384) << 20;
+    } else {
+      by_total = std::min<uint64_t>(r.total / 4, uint64_t(4) << 30);
+    }
+    // Y nunca mas de un tercio de la que esta libre AHORA al arrancar.
+    uint64_t budget =
+        std::clamp<uint64_t>(std::min(by_total, r.avail / 3), uint64_t(96) << 20, uint64_t(4) << 30);
+    if (manual != 0) {
+      budget = std::min<uint64_t>(budget, std::max<uint64_t>(manual, uint64_t(16) << 20));
+    }
+    return budget;
   }();
   return budget;
 }
@@ -937,6 +978,16 @@ uint64_t CacheBudget() {
 bool RamLow() {
   const Ram r = QueryRam();
   return r.avail < std::max<uint64_t>(uint64_t(1536) << 20, r.total / 12);
+}
+
+// Margen que se deja libre al decodificar una imagen (no dejar al sistema sin colchon).
+constexpr uint64_t kDecodeReserveBytes = uint64_t(512) << 20;
+
+// Se puede decodificar `e` ahora sin empujar al sistema a paginar? La decodificacion
+// necesita la imagen base (w*h*4) y la copia con mips (4/3) a la vez.
+bool CanDecodeNow(const Dbz3TexturePackEntry& e) {
+  const uint64_t need = uint64_t(e.width) * e.height * 4 * 7 / 3;
+  return QueryRam().avail > need + kDecodeReserveBytes;
 }
 
 // Tamano en RAM de una entrada ya decodificada con todos sus mips (4/3 de la base).
@@ -995,6 +1046,35 @@ void Dbz3ClearDecodeCache() {
     c.failed.clear();
     c.bytes = 0;
   }
+}
+
+uint64_t Dbz3DecodeCacheBytes() {
+  PackCache& c = Cache();
+  std::lock_guard<std::mutex> lock(c.mutex);
+  return c.bytes;
+}
+
+uint64_t Dbz3TrimDecodeCache(uint64_t limit_bytes) {
+  std::vector<std::shared_ptr<const Dbz3TexturePackIndex::Image>> victims;
+  uint64_t before = 0, after = 0;
+  {
+    PackCache& c = Cache();
+    std::lock_guard<std::mutex> lock(c.mutex);
+    before = c.bytes;
+    while (c.bytes > limit_bytes && c.lru.size() > 1) {
+      auto victim = c.images.find(c.lru.back());
+      if (victim == c.images.end()) {
+        c.lru.pop_back();
+        continue;
+      }
+      c.bytes -= victim->second.first->rgba.size();
+      victims.push_back(std::move(victim->second.first));
+      c.images.erase(victim);
+      c.lru.pop_back();
+    }
+    after = c.bytes;
+  }
+  return before - after;
 }
 
 namespace {
@@ -1175,7 +1255,11 @@ void DecoderLoop() {
     }
     bool skipped = false;
     if (!CacheHas(e->hash) && !CacheFailed(e->hash)) {
-      if (from_preload && RamLow()) {
+      // Ni la precarga ni una peticion urgente decodifican si no hay RAM: con 4-8 GB
+      // una imagen 4K con mips son cientos de MB y empujaria al sistema a paginar.
+      if (!CanDecodeNow(*e)) {
+        skipped = true;   // se reintenta cuando se libere (urgente: en frames siguientes)
+      } else if (from_preload && RamLow()) {
         skipped = true;   // la precarga nunca empuja al sistema a usar el disco
       } else if (auto image = DecodeEntry(*e)) {
         CachePut(e->hash, std::move(image));
@@ -1301,6 +1385,58 @@ void SaveUsage(std::vector<uint64_t> session, const std::vector<uint64_t>& previ
 }
 }  // namespace
 
+void Dbz3PackCancelPreload() {
+  Decoder& d = Dec();
+  {
+    std::lock_guard<std::mutex> lock(d.mutex);
+    for (const Dbz3TexturePackEntry* e : d.preload) {
+      if (!d.in_urgent.count(e->hash)) {
+        d.pending.erase(e->hash);
+      }
+    }
+    d.preload.clear();
+  }
+  d.cv.notify_all();
+}
+
+void Dbz3TexturePackIndex::MaintainPreload(bool packs_on) const {
+  const Map* entries = ready_.load(std::memory_order_acquire) ? map_.load(std::memory_order_acquire) : nullptr;
+  if (entries == nullptr || entries->empty()) {
+    preload_started_.store(false, std::memory_order_relaxed);
+    return;
+  }
+  if (!packs_on) {
+    // Pack apagado: no tiene sentido tener cientos de MB decodificados que nadie usa.
+    if (preload_started_.exchange(false, std::memory_order_relaxed) ||
+        Dbz3DecodeCacheBytes() != 0) {
+      Dbz3PackCancelPreload();
+      const uint64_t freed = Dbz3DecodeCacheBytes();
+      Dbz3ClearDecodeCache();
+      if (freed != 0) {
+        REXGPU_INFO("dbz3: pack HD apagado: liberados {} MB de imagenes decodificadas",
+                    freed >> 20);
+      }
+    }
+    return;
+  }
+  if (!preload_started_.exchange(true, std::memory_order_relaxed)) {
+    StartPreload(*entries);
+  }
+  // Poca RAM libre con el pack encendido: se suelta lo mas viejo (una vez cada 3 s).
+  static std::atomic<int64_t> last_trim{0};
+  const int64_t now = std::chrono::steady_clock::now().time_since_epoch().count();
+  int64_t prev = last_trim.load(std::memory_order_relaxed);
+  if (RamLow() && now - prev > 3000000000ll &&
+      last_trim.compare_exchange_strong(prev, now, std::memory_order_relaxed)) {
+    const uint64_t limit = CacheBudget() / 4;
+    const uint64_t freed = Dbz3TrimDecodeCache(limit);
+    if (freed != 0) {
+      REXGPU_INFO("dbz3: poca RAM libre: cache del pack a {} MB (liberados {} MB)",
+                  limit >> 20, freed >> 20);
+    }
+  }
+}
+
 void Dbz3PackNoteUsed(uint64_t hash) {
   Usage& u = Use();
   std::vector<uint64_t> session, previous;
@@ -1387,7 +1523,7 @@ std::shared_ptr<const Dbz3TexturePackIndex::Image> Dbz3TexturePackIndex::Decoded
   if (auto cached = CacheGet(entry.hash)) {
     return cached;
   }
-  if (CacheFailed(entry.hash)) {
+  if (CacheFailed(entry.hash) || !CanDecodeNow(entry)) {
     return nullptr;
   }
   auto image = DecodeEntry(entry);
@@ -1405,7 +1541,7 @@ std::shared_ptr<const Dbz3TexturePackIndex::Image> Dbz3TexturePackIndex::TryDeco
   if (auto cached = CacheGet(entry.hash)) {
     return cached;
   }
-  if (!CacheFailed(entry.hash)) {
+  if (!CacheFailed(entry.hash) && CanDecodeNow(entry)) {
     Enqueue(entry, true);
   }
   return nullptr;
@@ -1416,7 +1552,9 @@ bool Dbz3TexturePackIndex::IsDecoded(uint64_t hash) const { return CacheHas(hash
 bool Dbz3TexturePackIndex::IsBroken(uint64_t hash) const { return CacheFailed(hash); }
 
 void Dbz3TexturePackIndex::StartPreload(const Map& entries_) {
-  const uint64_t budget = CacheBudget();
+  // Nunca se precarga todo el pack si eso deja al sistema con menos de dos tercios de
+  // su RAM libre: con poca RAM, la precarga es lo primero que se recorta.
+  const uint64_t budget = std::min<uint64_t>(CacheBudget(), QueryRam().avail / 3);
   uint64_t all = 0;
   for (const auto& [hash, e] : entries_) {
     all += DecodedBytes(e);
@@ -1485,6 +1623,56 @@ void Dbz3PackCopyLevels(const Dbz3TexturePackIndex::Image& image, uint64_t bytes
     v = (v & 0xFF00FF00u) | ((v >> 16) & 0xFFu) | ((v & 0xFFu) << 16);
     std::memcpy(dst + i, &v, 4);
   }
+}
+
+Dbz3HostMemory Dbz3HostMemoryNow() {
+  Dbz3HostMemory m;
+  const Ram ram = QueryRam();
+  m.avail_mb = ram.avail >> 20;
+  m.total_mb = ram.total >> 20;
+#if defined(_WIN32)
+  // K32GetProcessMemoryInfo (kernel32, Windows 7+) resuelto por nombre: psapi.lib no
+  // esta enlazada y el plugin debe seguir compilando sin tocar el CMake.
+  struct Counters {
+    uint32_t cb;
+    uint32_t page_faults;
+    uint64_t peak_working_set;
+    uint64_t working_set;
+    uint64_t quota_peak_paged;
+    uint64_t quota_paged;
+    uint64_t quota_peak_nonpaged;
+    uint64_t quota_nonpaged;
+    uint64_t pagefile;
+    uint64_t peak_pagefile;
+  };
+  using Fn = int(WINAPI*)(void*, Counters*, uint32_t);
+  if (HMODULE k32 = GetModuleHandleW(L"kernel32.dll")) {
+    auto fn = reinterpret_cast<Fn>(reinterpret_cast<void*>(
+        GetProcAddress(k32, "K32GetProcessMemoryInfo")));
+    if (fn != nullptr) {
+      Counters c{};
+      c.cb = sizeof(c);
+      if (fn(GetCurrentProcess(), &c, sizeof(c)) != 0) {
+        m.ws_mb = c.working_set >> 20;
+        m.priv_mb = c.pagefile >> 20;
+      }
+    }
+  }
+#else
+  if (FILE* f = std::fopen("/proc/self/status", "rb")) {
+    char line[256];
+    while (std::fgets(line, sizeof(line), f)) {
+      uint64_t kb = 0;
+      if (std::sscanf(line, "VmRSS: %llu kB", &kb) == 1) {
+        m.ws_mb = kb >> 10;
+      } else if (std::sscanf(line, "VmData: %llu kB", &kb) == 1) {
+        m.priv_mb = kb >> 10;
+      }
+    }
+    std::fclose(f);
+  }
+#endif
+  return m;
 }
 
 }  // namespace rex::graphics

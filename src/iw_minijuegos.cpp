@@ -23,7 +23,12 @@
 // con esa camara y dibujados con sus texturas originales de la copia del jugador; HUD de IW (DATA_USA 6/0).
 #include "reloj_prueba.h"
 #include "iw_ame.h"
+#include "iw_amc.h"
 #include "iw_minijuegos.h"
+#include "iw_mips.h"
+#define IWC_SOLO_DECL
+#include "iw_mips_campo.inl"   // tanda3: MSNMW con la logica original (solo declaraciones)
+#undef IWC_SOLO_DECL
 #include "iw_ap_eventos.h"
 
 #include <rex/input/input_system.h>
@@ -57,7 +62,12 @@
 #include "anim_iw.h"
 #include "iw_azar.h"
 #include "iw_bubbles_gp2.h"
+#include "iw_bubbles_pose.h"
+#include "iw_bubbles_audio.h"
 #include "iw_camaras_gp2.h"
+#include "iw_seguimiento.h"
+#include "iw_estados.h"
+#include "iw_lava.h"
 #include "cine.h"
 #include "combate.h"
 #include "eu_map.h"
@@ -292,60 +302,15 @@ using ps2::Posar;
 //   (Minigame_State30_EnterResultAnim_ 0x29AA90 y Battle_CharState2eInit 0x29B3B0; las ramas por +0xB8C son la pose
 //    de resultado; aqui se usa la rama 0xD para el exito, que es la que el original pone en State2F para el tipo 1, y
 //    la rama 0 para el fallo. Las otras ramas quedan [H] hasta mapear +0xB8C al rango del port.)
-struct ClipCamIa {
-  int nf = 0;
-  std::vector<std::array<float, 4>> ojo, obj;   // {cuadro, x, y, z}
-  std::vector<std::array<float, 2>> fov, roll;  // {cuadro, radianes}
-};
+// dia 1A: el lector y el muestreo del #AMC son los de iw_amc.h (FUN_00127280), compartidos con las demas familias.
+using ClipCamIa = dbz3::iwamc::Clip;
 uint32_t LeerAmcMinijuego(const std::vector<uint8_t>& amc, const std::vector<int>& ids,
                           std::map<int, ClipCamIa>& out) {
-  auto u32 = [&](size_t o) {
-    uint32_t v = 0;
-    if (o + 4 <= amc.size()) std::memcpy(&v, amc.data() + o, 4);
-    return v;
-  };
-  auto f32 = [&](size_t o) {
-    const uint32_t v = u32(o);
-    float f;
-    std::memcpy(&f, &v, 4);
-    return f;
-  };
-  if (amc.size() < 0x20 || std::memcmp(amc.data(), "#AMC", 4) != 0) return 0;
-  const uint32_t n = u32(0x10), tab = u32(0x14);
   for (int id : ids) {
-    if (id < 0 || uint32_t(id) >= n || out.count(id)) continue;
     ClipCamIa c;
-    c.nf = int(u32(tab + 16 * size_t(id) + 8));
-    const uint32_t off = u32(tab + 16 * size_t(id) + 12);
-    if (c.nf <= 0 || off + 16 > amc.size()) continue;
-    for (int k = 0; k < 4; ++k) {
-      const uint32_t t = u32(off + 4 * size_t(k)), nk = u32(t + 8);
-      if (nk == 0 || nk > 5000) continue;
-      for (uint32_t i = 0; i < nk; ++i) {
-        if (k < 2) {
-          const size_t o = t + 12 + 16 * size_t(i);
-          if (o + 16 > amc.size()) break;
-          (k == 0 ? c.ojo : c.obj).push_back({float(u32(o)), f32(o + 4), f32(o + 8), f32(o + 12)});
-        } else if (k == 2 || k == 3) {
-          const size_t o = t + 12 + 8 * size_t(i);
-          if (o + 8 > amc.size()) break;
-          (k == 2 ? c.roll : c.fov).push_back({float(u32(o)), f32(o + 4)});
-        }
-      }
-    }
-    if (!c.ojo.empty() && !c.obj.empty()) out[id] = std::move(c);
+    if (!out.count(id) && dbz3::iwamc::Leer(amc, id, c)) out[id] = std::move(c);
   }
-  return n;
-}
-// Valor de una pista {cuadro, v...} en el cuadro f (lineal, como FUN_00127280).
-template <size_t N>
-void MuestraPistaCam(const std::vector<std::array<float, N>>& k, float f, float* out) {
-  if (k.empty()) return;
-  size_t i = 0;
-  while (i + 1 < k.size() && k[i + 1][0] <= f) ++i;
-  const size_t j = std::min(i + 1, k.size() - 1);
-  const float d = k[j][0] - k[i][0], t = d > 0 ? std::clamp((f - k[i][0]) / d, 0.0f, 1.0f) : 0.0f;
-  for (size_t c = 1; c < N; ++c) out[c - 1] = k[i][c] + (k[j][c] - k[i][c]) * t;
+  return dbz3::iwamc::NumClips(amc);
 }
 
 struct Objeto {
@@ -353,14 +318,17 @@ struct Objeto {
   int grupo = 0;   // 0 A (aro RING_A01), 1 B (moneda), 2 C (bebida), 3 D (marca del radar, ITEMA20)
   float radio = 1;
   int valor = 0;   // bebida: energia que da (#ITM +0x480 + 2k, s16; 0x3237D0 la suma a la del jugador +0x185C)
+  int k = 0;       // indice dentro de su grupo en el #ITM (con los sin sitio contados): banderas de G en la logica original
 };
 struct Datos {
   int indice = -1, clave = 0, fila = 0, total = 0, num_a = 0;   // num_a: aros con sitio (abren la meta)
   int dificultad = 2;                                           // 0..5 (descriptor +0xC del MSNMW)
   float escala = 1;                                             // posiciones de IW -> B3 (curso juntado)
   bool campo = false;   // el campo de IW instalado (R8): posiciones y velocidades de IW tal cual
+  bool halo_nativo = false;   // traje4 Goku B3, cotejado en7D1/7D2; evita duplicar el anillo
   float k = 0.0825f;    // por unidad de +0xB4 de IW: 0.4 en el campo; si no, 0.33 / 4 (el andar de IW = el de B3)
   float limite = 300;
+  float altura_camara = 9;   // respaldo Goku; descriptor EU +0xC para el indice 14
   V3 salida, meta;
   // Meta de fin (s_SPACE 0x31F280): +0x1630. Se fija abajo segun el indice (ver LeerCurso).
   V3 llegada;
@@ -371,6 +339,7 @@ struct Datos {
   bool meta_fija = false;
   float radio_meta = 2;
   std::vector<Objeto> objetos;
+  std::vector<uint8_t> itm_crudo;   // #ITM del campo tal cual (la logica original de s_SPACE lo lee en el invitado)
   P::Imagen aro, moneda, bebida;   // texturas del paquete (#AMT hijos 0, 4 y 8)
   Modelo m_aro, m_moneda, m_bebida, m_meta;   // modelos 3D de IW (paquete y campo); m_meta = la nave de Raditz
   // 0x7D9: geiseres de lava del campo 900 (DATA_CMN 900/14 modelo + 900/20 texturas + 900/26 #AMM; el #MIF 900/33
@@ -410,8 +379,12 @@ struct Datos {
   V3 npc_inicio;
   Modelo m_npc, m_platano;
   std::array<AnimIW,0xE3> bubbles_clips;
+  std::shared_ptr<iwbubbles::poses::Recursos> bubbles_poses;
+  std::array<iwbubbles::audio::Recurso,2> bubbles_audio; // USA/JPN del jugador
   bool bubbles_clips_ok = false;
   std::vector<uint8_t> bubbles_wcf; // campo897, colision RAW898/0; solo candidato Bubbles.
+  std::vector<uint8_t> piccolo_wcf; // P1: campo906, colision RAW907/0 (rayo de visibilidad de la CPU de Piccolo, 0x7DD)
+  dbz3::iwmips::persecucion::RaizDatos piccolo_raiz;   // iw_7dd_raiz: #BSK/#AMM de Piccolo (925) y comunes (915)
   std::vector<V3> platanos;
   P::Imagen clear;                 // DATA_USA 334/3 t69 "CLEAR"
   P::Imagen ready, start;          // DATA_USA 5/1 t08 "READY?" y t00 "START!" (R16; los de R14)
@@ -421,6 +394,8 @@ struct Datos {
   std::vector<P::Imagen> cutin_retratos, cutin_textos;   // 936/1 y DATA_USA 5/11
   float cutin_marco[2] = {0, 0}, cutin_pos[2] = {195, 312};
   std::vector<int> cutin_voz;         // entrada ADX de cada fila de kCutins (-1 = sin voz)
+  int voz_arranque = -1, voz_2e = -1, voz_2f = -1, voz_30 = -1;   // voces de pose del jugador (Char_PlayAttackVoice*): s_SPACE, 2E, 2F, 30
+  int voz_intro = -1, voz_intro_cuadro = 0;   // eIW8: voz de la presentacion de 0x7DD (cuadro 243, linea 1) y 0x7DF (206, linea 0x42)
   std::vector<P::Imagen> hud;      // DATA_USA 6/0 (kHud*)
   int cara = kGoku;               // ID de B3 del que juega (su cara del HUD: PintarCara)
   // DS93: camaras de IW de entrada y resultado (ver ClipCamIa).
@@ -472,6 +447,9 @@ void AplicarDerivaUv(Malla& malla, const std::vector<float>& canales, float cuad
 
 std::mutex g_mu;
 std::shared_ptr<Datos> g_d;           // del minijuego en curso
+// P1 (revision 7/11): numero de partida, como iw_mini_disparo.cpp (eANI2): make_shared puede devolver la direccion de la
+// partida anterior y `hecho_` solo no basta (no se preparaba: Piccolo del 0x7DD seguia en el interprete).
+std::atomic<uint32_t> g_partida{0};
 std::atomic<int> g_estado{0};         // 0 nada, 1 cargando, 2 combate, 3 resultado listo
 // Minijuegos de otros frentes (RegistrarModulo): clave 0x7D0 + i. Ceros en la inicializacion estatica (antes de que
 // los modulos se registren en la dinamica). g_modulo: corre uno (los ganchos de aqui no hacen nada).
@@ -548,6 +526,7 @@ std::atomic<int> g_fundido{0};
 // del objetivo (LoadWaitGroundMinigameObjective 0x299900, parametro 0: 140 cuadros) para el reloj (+0x8D21). Final:
 // estados 0x2F (superado, MgResult_ComputeScore(+1)) y 0x30 (no superado, (-1); anim 0x53/0x11A/... por variante).
 std::atomic<bool> g_sin_mando{false};   // entrada o final en curso: ni andar ni scatto
+std::atomic<int> g_bubbles_intro{0}; // 0:s_SPACE, 1:11D, 2:READY/juego; publicado por el hilo guest.
 std::atomic<bool> g_reloj_parado{false};   // entrada o cartel del objetivo: ni reloj ni NPC
 std::atomic<int> g_cartel{0};           // cuadros del cartel del objetivo que quedan
 // 30/10: vida de Namek (+0x1850): la bajan rocas y lava, y a 0 el minijuego se pierde (Minigame_TriggerObjective EU 0x2A6260).
@@ -629,23 +608,10 @@ const char* NombreEstadoIW(int e) {
   };
   return e >= 0 && e < 0x32 ? kEstados[e] : "?";
 }
-// El estado de IW que el port reproduce cuando pide cada animacion (los nombres de AnimoLog). Sirve para publicar en
-// "iwmini: accion" el estado original que se esta emulando (p. ej. pared-kick -> 0x1F Minigame_State1F_Enter).
+// Lo consume tambien el selector del ancla de camara. Las reacciones tienen
+// subestados por codigo; no basta con conservar el nombre del primer golpe.
 int EstadoIWDeAnim(const char* nombre) {
-  struct Par { const char* n; int e; };
-  static const Par kPar[] = {
-      {"reposo", 0x00}, {"reposo-1", 0x01}, {"andar", 0x02}, {"correr", 0x03}, {"freno", 0x04}, {"entrada", 0x0A},
-      {"entrada-2", 0x0A}, {"salto-prep", 0x0C}, {"salto-sube", 0x0D}, {"salto-aire", 0x0E},
-      {"salto-cae", 0x0F}, {"aterrizar", 0x10}, {"salto-doble", 0x13}, {"dash-ini", 0x14},
-      {"dash", 0x15}, {"dash-fin", 0x16}, {"dash-aereo-ini", 0x14}, {"dash-aereo", 0x15},
-      {"dash-aereo-fin", 0x16}, {"pared-kick", 0x1F}, {"pared-rebote", 0x20}, {"pared-rebote-aire", 0x20},
-      {"saliente", 0x0E}, {"cansado", 0x07}, {"recuperacion", 0x08}, {"final-bien", 0x2F},
-      {"final-mal", 0x30},
-  };
-  if (!nombre) return -1;
-  for (const Par& p : kPar)
-    if (std::strcmp(nombre, p.n) == 0) return p.e;
-  return -1;
+  return dbz3::iwestado::DeAnim(nombre,g_anim_codigo);
 }
 std::atomic<int> g_pad_prueba{0};     // PadPrueba
 std::atomic<int> g_final{0};            // 0 jugando, 1 superado, 2 no superado (lo pide el panel), 3 combate acabado
@@ -850,8 +816,14 @@ bool LeerCurso(const std::vector<uint8_t>& itm, Datos& d) {
   auto vacio = [](const V3& p) { return p.x == 0 && p.y == 0 && p.z == 0; };
   const int dif = d.dificultad;
   // EU 0x3227A0 GroundMinigameObjectsAroundTheMap
-  const int na = d.indice == 2 ? 10 - 2 * dif : d.indice == 16 ? 0 : kCuantosA[dif];
-  const int nb = kCuantosB[dif], nc = kCuantosC[dif];
+  int na = d.indice == 2 ? 10 - 2 * dif : d.indice == 16 ? 0 : kCuantosA[dif];
+  int nb = kCuantosB[dif], nc = kCuantosC[dif];
+  {   // fase 1 (7/11): EU 0x323840 recorta A/B/C a los contadores del #ITM (+0x04/+0x08/+0x0C): min(tabla, #ITM)
+    auto i32 = [&](size_t o) { int32_t v = 0; std::memcpy(&v, &itm[o], 4); return v; };
+    if (i32(4) < na) na = int(int8_t(i32(4)));
+    if (i32(8) < nb) nb = int(int8_t(i32(8)));
+    if (i32(12) < nc) nc = int(int8_t(i32(12)));
+  }
   // D (G+0x16B9 = #ITM +0x10; GroundMinigameObjectsAroundTheMap EU 0x3227A0 = USA 0x323...): el contador es SIEMPRE
   // el +0x10 del #ITM y se suma al total (0x323A40) salvo en el 1 (Bubbles, sus platanos no cuentan). El Radar (0x10)
   // lo cambia por 2d + 6 (y deja A = 0). El 893 (indice 10, "Find the spaceship") trae 16 y SI cuentan.
@@ -876,7 +848,11 @@ bool LeerCurso(const std::vector<uint8_t>& itm, Datos& d) {
   // valor (que ademas elige la variante del modelo) sale de +0x5A0 + 2k, s16, como el de las bebidas (+0x480).
   for (int k = 0; k < nd; ++k)
     crudos.push_back({pt(72 + k), d.indice == 16 ? 3 : 4, d.indice == 16 ? 0 : s16(0x5A0 + 2 * size_t(k))});
-  d.total = na + nb + nc + nd + 2;   // 0x3237D0 (+1 del 16 y +1 del objeto 16A4: los 2)
+  // EU 0x323840 (414338-414358): +0x165A = A + B + C (+ D salvo el 1) + 1 (siempre) + 1 (el 16; o el objeto oculto
+  // +0x16A4 si sigue pendiente). Medido por PINE en el original (7/11, tools/iw_mips/sonda_meta.py, dificultad 2, partida
+  // sin bolas: mascara 0x5C1D78 = 0): 0x7D0 44 = 42 + 2, 0x7D2 40 = 38 + 2, 0x7D9 60 = 58 + 2 (oculto pendiente,
+  // +0x16A4 = 1) y 0x7DF 44 = 42 + 2 (+0x16A4 = 2). El port no tiene el oculto (bola del #ITM 90 + slot): S + 2 en todos.
+  d.total = na + nb + nc + nd + 2;
   const V3 salida = pt(0), meta = pt(1);
   float x0 = std::min(salida.x, meta.x), x1 = std::max(salida.x, meta.x);
   float z0 = std::min(salida.z, meta.z), z1 = std::max(salida.z, meta.z);
@@ -905,18 +881,23 @@ bool LeerCurso(const std::vector<uint8_t>& itm, Datos& d) {
   // En el #ITM el +0x30 es el disparador (206,55,-832), a 311 u del casco: es el objetivo de mision, no la meta de fin.
   if (d.indice == 10) d.meta_modelo = b3({-54.254f, 8.302f, -1002.505f}), d.meta_fija = true;
   if (!d.campo) d.salida.y = d.meta.y = 0;
-  d.llegada = (d.indice == 0 || d.indice == 10 || d.indice == 14) ? d.salida : d.meta;
-  d.radio_llegada = d.indice == 2 ? kCogerA : kCogerB;   // disparador del 2: 600 -> 24,5; +0x1630: 180 -> 13,4
+  // fase 1 (7/11): tambien el 2 acaba en +0x1630 = la salida (medido por PINE tras el script MMI2: +0x1630 = (0, 50, 3416)
+  // = punto 0 + 15 en y; el punto 1 (20, 47, -3401) es el disparador +0x16BC, que no termina). Radio^2 180 en todos.
+  d.llegada = (d.indice == 0 || d.indice == 2 || d.indice == 10 || d.indice == 14) ? d.salida : d.meta;
+  d.radio_llegada = kCogerB;   // +0x1630: radio^2 < 180 -> 13,4
   d.radio_meta = kCogerB;   // meta de IW: radio^2 < 180 (s_SPACE 0x31F280); antes kCogerA (24,5) era el de los aros
   d.escala = s;
   int vacios = 0;
+  d.itm_crudo = itm;
+  int kg[5] = {0, 0, 0, 0, 0};   // indice dentro del grupo (los sin sitio cuentan: son las banderas de G)
   for (const Crudo& c : crudos) {
+    const int kk = kg[c.grupo]++;
     if (vacio(c.p)) {
       ++vacios;
       continue;
     }
     const float radio = c.grupo == 0 ? kCogerA : c.grupo == 3 ? kCogerA : c.grupo == 4 ? kCogerD : kCogerB;
-    d.objetos.push_back({b3(c.p), c.grupo, std::max(radio, kCogerMin), c.valor});
+    d.objetos.push_back({b3(c.p), c.grupo, std::max(radio, kCogerMin), c.valor, kk});
     if (c.grupo == 0 || c.grupo == 3) ++d.num_a;   // los que abren la meta (aros; en el Radar, sus marcas)
   }
   if (std::getenv("DBZ3_IWMINI_ARO_CERCA")) {   // prueba: el primer aro a 45 delante de la salida (verlo de cerca)
@@ -937,8 +918,11 @@ bool LeerCurso(const std::vector<uint8_t>& itm, Datos& d) {
       const float c = std::cos(0.8f), s = std::sin(0.8f);   // lejos de Goku en pantalla (sus esferas tapan)
       d.npc_inicio = {d.salida.x + (dx * c + dz * s) / l * 28.0f, 0, d.salida.z + (-dx * s + dz * c) / l * 28.0f};
     }
-    for (int k = 72; k < 90; ++k)
+    // EU3227A0/31F280 usa ITM+10 entradas desde +4A0; +5A0 ya son valores s16.
+    // Leer 18 posiciones incluia esos valores como dos platanos junto al origen.
+    for (int k = 72; k < 72 + int(std::min(mas10, 16u)); ++k)
       if (!vacio(pt(k))) d.platanos.push_back(b3(pt(k)));
+    REXLOG_INFO("dbz3 iwmini: platanos de la mision (grupo D): {}", d.platanos.size());
   } else if (d.indice == 14) {   // Piccolo persigue VOLANDO detras del jugador (medido en el original, PCSX2 PINE
     d.npc = 2;                   // 2026-10-25, 0x7DD/indice 14): al cargar esta en (-9, 124, -875) y sube/baja entre
                                  // 115 y 146 mientras se acerca; el jugador va a ras de suelo. Antes: 720 detras y a
@@ -962,6 +946,40 @@ bool LeerCurso(const std::vector<uint8_t>& itm, Datos& d) {
 // es 1, EnableBattleWait_; si +0x24 != 0, READ_BattleMain; y en los dos casos READ_SYSTEMFunctions -> +0x24). No hay
 // logica que portar: el port carga de una vez y en el hilo de la interfaz (DATA_CMN y DATA_USA del jugador) y la
 // pantalla de carga es la del propio B3 (RequestBattleEx); `motor`.
+// P1 (revision 7/11): la misma tabla de descriptores de personaje que iwseguimiento::AlturaDescriptorEU en el ELF USA
+// SLUS_218.42 (datos EU - 0x800, comprobado: tabla 0x44F610, Goku 0x44DE70, Cell 0x44E8F0, +0xC = 9 y 10). Con el ELF USA
+// la lectura EU fallaba y el 0x7DD usaba la altura de Goku (9) en vez de la de Cell (10).
+bool AlturaDescriptorUsa(const std::vector<uint8_t>& elf, int jugador, float& altura) {
+  if (elf.size() < 52 || std::memcmp(elf.data(), "\x7f" "ELF\x01\x01", 6) || (jugador != 0 && jugador != 33)) return false;
+  auto u = [&](size_t o) -> uint32_t {
+    uint32_t v = 0;
+    if (o + 4 <= elf.size()) std::memcpy(&v, elf.data() + o, 4);
+    return v;
+  };
+  const size_t ph = u(28), paso = elf[42] | (unsigned(elf[43]) << 8), n = elf[44] | (unsigned(elf[45]) << 8);
+  if (paso < 32 || n > 1024 || uint64_t(ph) + uint64_t(paso) * n > elf.size()) return false;
+  auto leer = [&](uint32_t va, uint32_t& valor) {
+    for (size_t i = 0; i < n; ++i) {
+      const size_t h = ph + i * paso;
+      if (u(h) != 1 || va < u(h + 8) || uint64_t(va) + 4 > uint64_t(u(h + 8)) + u(h + 16)) continue;
+      const uint64_t o = uint64_t(u(h + 4)) + va - u(h + 8);
+      if (o + 4 > elf.size()) return false;
+      valor = u(size_t(o));
+      return true;
+    }
+    return false;
+  };
+  constexpr uint32_t kTabla = 0x44F610;
+  uint32_t goku = 0, cell = 0, desc = 0, bits = 0;
+  if (!leer(kTabla, goku) || goku != 0x44DE70 || !leer(kTabla + 33 * 4, cell) || cell != 0x44E8F0 ||
+      !leer(kTabla + uint32_t(jugador) * 4, desc) || !leer(desc + 12, bits)) return false;
+  float v;
+  std::memcpy(&v, &bits, 4);
+  if (!std::isfinite(v) || v <= 0 || v > 64) return false;
+  altura = v;
+  return true;
+}
+
 bool Cargar(Datos& d, std::string& error) {
   const std::filesystem::path iw = P::BuscarIW();
   P::AfsPs2 cmn, usa;
@@ -969,8 +987,14 @@ bool Cargar(Datos& d, std::string& error) {
     error = "sin la copia de Infinite World en ps2_games";
     return false;
   }
-  iwazar::Global().Iniciar(P::LeerElf(iw)); // idempotente; no reinicia al entrar en otro campo
+  const auto elf_campo=P::LeerElf(iw);
+  iwazar::Global().Iniciar(elf_campo); // idempotente; no reinicia al entrar en otro campo
   const Ficha* f = FichaDe(d.indice);
+  if(d.indice==14) {
+    bool leida=dbz3::iwseguimiento::AlturaDescriptorEU(elf_campo,f->jugador,d.altura_camara);
+    if(!leida) leida=AlturaDescriptorUsa(elf_campo,f->jugador,d.altura_camara);   // P1 (revision 7/11): ELF USA
+    REXLOG_INFO("dbz3 iwmini: altura camara descriptor jugador={} altura={} leida={}",f->jugador,d.altura_camara,leida);
+  }
   // EU 0x298760 LoadWaitMinigameLink
   d.limite = f->minutos * 60.0f;
   const std::vector<uint8_t> pack = cmn.Entrada(size_t(f->pack));
@@ -1146,11 +1170,61 @@ bool Cargar(Datos& d, std::string& error) {
                     codigo,indice,almacen,d.bubbles_clips[codigo].cuadros,d.m_npc.esq->padre.size());
       }
       d.bubbles_clips_ok=d.bubbles_clips_ok && d.m_npc.esq->padre.size()==47 && d.m_npc.esq->padre[1]==0;
+      if(d.bubbles_clips_ok)try{
+        const auto facial=cmn.Entrada(120);
+        auto recursos=std::make_shared<iwbubbles::poses::Recursos>();
+        recursos->Iniciar(cmn.Entrada(118),amm,bsk,P::HijoAmb(facial,0),P::HijoAmb(facial,1),P::LeerElf(iw));
+        for(unsigned codigo:iwbubbles::kCodigos){
+          recursos->Muestrear(codigo,0);
+          recursos->Muestrear(codigo,float(d.bubbles_clips[codigo].cuadros-1));
+        }
+        recursos->Muestrear(0x11D,0);
+        for(unsigned i=0;i<12;++i)recursos->cara.Muestrear(i,float(recursos->cara.Cuadros(i)-1),recursos->lut);
+        d.bubbles_poses=std::move(recursos);
+        REXLOG_INFO("dbz3 gp2 bubbles LIVE47+facial8 recursos=118/912/120 LUT=ELF intro=11D normal=false");
+      }catch(const std::exception& e){
+        d.bubbles_clips_ok=false;REXLOG_WARN("dbz3 gp2 bubbles poses bloqueadas: {}",e.what());
+      }
+      // No confundir el SE1460 con voz ADX: EU318410 pide linea0 del perfil
+      // filtrado16. Tabla y bancoAMK se leen del ELF/AFS de esta copia.
+      const auto elf=P::LeerElf(iw);
+      const auto voz=anim::apev::ResolverAdx(elf,912,0,0);
+      const int amk=anim::apev::BancoBoca(elf,912);
+      for(size_t idioma=0;idioma<d.bubbles_audio.size();++idioma){
+        auto& a=d.bubbles_audio[idioma];P::AfsPs2 afs;
+        const char* nombre=idioma?"ADX_JPN.AFS":"ADX_USA.AFS";
+        if(afs.Abrir(iw,nombre)){
+          if(amk>=0)a.boca.Cargar(afs.Entrada(size_t(amk)));
+          if(voz.ruta==anim::apev::Ruta::Adx){
+            a.entrada=voz.banco;a.pcm=iwadx::Leer(afs.Entrada(size_t(a.entrada)));
+          }
+          for(uint32_t l=1;l<a.lineas.size();++l){
+            const auto r=anim::apev::ResolverAdx(elf,912,l,0);
+            if(r.ruta==anim::apev::Ruta::Adx)a.lineas[l]=iwadx::Leer(afs.Entrada(size_t(r.banco)));
+            REXLOG_INFO("dbz3 gp2 bubbles voz linea {} {} entrada={} muestras={}",l,nombre,r.banco,a.lineas[l].muestras.size()/2);
+          }
+        }
+        REXLOG_INFO("dbz3 gp2 bubbles voz banco={} entrada={} hz={} muestras={} AMK={} clips={} normal=false",
+          nombre,a.entrada,a.pcm.hz,a.pcm.muestras.size()/2,amk,a.boca.Cantidad());
+      }
       REXLOG_INFO("dbz3 gp2 bubbles prueba banco={} wcf={} normal=false oraculo/runtime/fin9 pendientes",
                   d.bubbles_clips_ok,d.bubbles_wcf.size());
     }
     d.m_platano = CargarModelo(pack, 9, 8, 0);
   }   // Piccolo (14) es el luchador de B3 (el rival del combate), no un modelo pintado
+  // P1: #WCF 907/0, solo con la CPU original del 0x7DD encendida (cvars dbz3_iw_7dd_original, de serie apagada (decision del usuario 7/11 21h), y
+  // dbz3_iw_logica_original); apagada no se lee nada y Piccolo sigue con el port
+  if (d.npc == 2 && d.campo && dbz3::iwmips::persecucion::g_tick && dbz3::iwmips::persecucion::g_activa &&
+      dbz3::iwmips::persecucion::g_activa())
+  {
+    d.piccolo_wcf = P::HijoAmb(cmn.Entrada(size_t(f->campo) + 1), 0);
+    const std::vector<uint8_t> c915 = cmn.Entrada(915), c925 = cmn.Entrada(925);
+    auto& r = d.piccolo_raiz;
+    r.bsk[0] = P::HijoAmb(c925, 0); r.bsk[1] = P::HijoAmb(c915, 3);
+    r.amm[0] = P::HijoAmb(c915, 0); r.amm[1] = P::HijoAmb(c915, 1); r.amm[3] = P::HijoAmb(c925, 1); r.amm[4] = P::HijoAmb(c925, 2);
+    REXLOG_INFO("dbz3 iwmini: 0x7DD raiz de Piccolo: bsk {}/{} amm {}/{}/{}/{} B", r.bsk[0].size(), r.bsk[1].size(), r.amm[0].size(),
+                r.amm[1].size(), r.amm[3].size(), r.amm[4].size());
+  }
   if (f->pack == 896) {   // Radar: marcas ITEMA20 (896/1, texturas 896/0) y la bola de dragon DB_BLV_BALL (896/16, 896/15)
     d.m_marca = CargarModelo(pack, 1, 0, 0);
     d.m_meta = CargarModelo(pack, 16, 15, 0);
@@ -1206,6 +1280,33 @@ bool Cargar(Datos& d, std::string& error) {
     for (int i = 0, n = P::CuantasAmt(txt); i < n; ++i) d.cutin_textos.push_back(P::TexturaAmt(txt, i));
     const std::vector<uint8_t> elf = P::LeerElf(iw);
     for (const Cutin& c : kCutins) d.cutin_voz.push_back(anim::apev::EntradaAdxPerfil(elf, c.perfil, c.linea));
+    // EU 0x29BB70 LoadWaitMinigameIntro: PlayHit_KiBlastsAudios3(jugador, linea) con el reloj de la presentacion en 243 (tipo 0xE = 0x7DD,
+    // linea 1) o 206 (tipo 0x10 = 0x7DF, linea 0x42); una sola vez. El perfil es el del cuerpo del jugador (PerfilAdx).
+    if (d.indice == 14 || d.indice == 16) {
+      const Ficha* fj = FichaDe(d.indice);
+      const int perfil = fj ? anim::apev::PerfilAdx(anim::apev::CmnActor(uint32_t(fj->jugador))) : -1;
+      d.voz_intro = anim::apev::EntradaAdxPerfil(elf, perfil, d.indice == 14 ? 1 : 0x42);
+      d.voz_intro_cuadro = d.indice == 14 ? 243 : 206;
+      if (const char* e = std::getenv("DBZ3_IW_VOZ_INTRO"); e && e[0] == '0') d.voz_intro = -1;   // interruptor: 0 = sin la voz
+      REXLOG_INFO("dbz3 iwmini: voz de presentacion indice {}: perfil {} -> ADX {} en el cuadro {}", d.indice, perfil, d.voz_intro, d.voz_intro_cuadro);
+    }
+  }
+  if (const Ficha* fj = FichaDe(d.indice); fj && fj->jugador >= 0) {
+    // Voz de la pose del jugador al empezar (s_SPACE EU 0x29BFF0 -> Char_PlayAttackVoiceAndMouth3 0x2A80B0) y en el final:
+    // 0x2E exito (Mode1 0x2A75E0, solo el tipo 1), 0x2F pose de resultado (0x2A7730) y 0x30 fallo (0x2A7120). Cada estado la
+    // pide UNA vez (flag +0x1D4). Lineas del jugador (rama +0xB8C = 0 Goku; Cell en el 14), medidas en la tabla del ELF.
+    // [H] arranque 0x7D0 (1) y 0x7D2 (14), y 0x30 del tipo 1 (13): el decompilado no trae el argumento; es el valor que a1 deja
+    // el codigo de la comparacion (EU 0x2A80E0/0x2A8104 y 0x2A7218).
+    static constexpr int kV[19][4] = {   // por indice: arranque, 2E, 2F, 30
+        {1,-1,4,6}, {8,10,12,13}, {14,-1,0x13,0x14}, {}, {}, {}, {}, {}, {}, {}, {0x27,-1,0x2C,0x2D}, {}, {}, {}, {0,-1,4,6}, {}, {0x41,-1,0x46,0x47}, {}, {}};
+    if (d.indice >= 0 && d.indice < 19 && (kV[d.indice][2] | kV[d.indice][3]) != 0) {
+      const std::vector<uint8_t> elf = P::LeerElf(iw);
+      const int perfil = anim::apev::PerfilAdx(anim::apev::CmnActor(uint32_t(fj->jugador)));
+      int* dest[4] = {&d.voz_arranque, &d.voz_2e, &d.voz_2f, &d.voz_30};
+      for (int k = 0; k < 4; ++k) *dest[k] = kV[d.indice][k] >= 0 ? anim::apev::EntradaAdxPerfil(elf, perfil, kV[d.indice][k]) : -1;
+      REXLOG_INFO("dbz3 iwmini: voces de pose indice {} perfil {}: arranque ADX {} / 2E {} / 2F {} / 30 {}", d.indice, perfil,
+                  d.voz_arranque, d.voz_2e, d.voz_2f, d.voz_30);
+    }
   }
   for (int i=0,n=P::CuantasAmt(t51);i<n;++i) d.aviso_atlas.push_back(P::TexturaAmt(t51,i));
   // DS93 - camaras de la maquina de estados de tierra (ver ClipCamIa). El original las reproduce con
@@ -1530,10 +1631,16 @@ class Panel : public rex::ui::ImGuiDialog {
 
  protected:
   void OnDraw(ImGuiIO& io) override {
+    {   // eIW8: el domo del 884 sigue al ojo (SDK, cvar dbz3_sky_follow); apagado fuera del Camino de la Serpiente
+      static bool domo = false;
+      const std::shared_ptr<Datos> d0 = g_estado.load() == 2 ? Actual() : nullptr;
+      const bool quiere = d0 && d0->indice == 2 && d0->campo && !std::getenv("DBZ3_IW_CIELO_FIJO");
+      if (quiere != domo) domo = quiere, rex::cvar::SetFlagByName("dbz3_sky_follow", quiere ? "true" : "false");
+    }
     if (g_estado.load() != 2) return;
     const std::shared_ptr<Datos> d = Actual();
     if (!d) return;
-    if (d.get() != hecho_) Preparar(*d);
+    if (d.get() != hecho_ || g_partida.load() != partida_) Preparar(*d);
     uint8_t* base = Base();
     const int st = P::EstadoCombate();
     // iw_fix: hasta el final del combate (estado 8 incluido): al llegar a el, B3 pinta su menu azul "Luchar otra vez?" sobre un
@@ -1598,6 +1705,7 @@ class Panel : public rex::ui::ImGuiDialog {
  private:
   void Preparar(const Datos& d) {
     hecho_ = &d;
+    partida_ = g_partida.load();
     aro_ = Crear(d.aro);
     moneda_ = Crear(d.moneda);
     bebida_ = Crear(d.bebida);
@@ -1657,11 +1765,11 @@ class Panel : public rex::ui::ImGuiDialog {
     tex_platano_ = texs(d.m_platano);
     // DS169: aureola de Goku muerto (0x7D1/0x7D2). En el modelo de Goku de IW (DATA_CMN 409/0 + texturas 410) el
     // anillo es la parte del hueso GOK_RING; de sus 23 mallas se elige la que es un anillo fino (radio 1,68 y grosor
-    // 0,22 en 409/0). B3 no trae GOK_RING: se pinta aparte, sobre la cabeza del luchador del guest.
+    // 0,22 en 409/0). Respaldo: el traje0 de B3 no trae el anillo; el4 si (fid282).
     halo_ok_ = false;
     halo_.malla.tris.clear();
     tex_halo_.clear();
-    if (d.indice == 1 || d.indice == 2) {
+    if ((d.indice == 1 || d.indice == 2) && !d.halo_nativo) {
       P::AfsPs2 cmn;
       if (cmn.Abrir(P::BuscarIW(), "DATA_CMN.AFS")) {
         const ps2::Modelo g = CargarSuelto(cmn.Entrada(409), cmn.Entrada(410), false);
@@ -1710,6 +1818,7 @@ class Panel : public rex::ui::ImGuiDialog {
       radar_[j] = hud(j);
     // EU 0x323840 LoadWaitDragonMissionGroundMinigameItems
     cogido_.assign(d.objetos.size(), false);
+    campo_ini_ = true, camp_ok_ = false;   // tanda3: la logica original de s_SPACE arranca de nuevo con la partida
     restante_ = d.limite;
     cogidos_ = aros_ = 0;
     cutin_hechos_ = 0, cutin_c_ = cutin_d_ = cutin_mitad_ = false, cutin_act_ = -1;
@@ -1722,7 +1831,18 @@ class Panel : public rex::ui::ImGuiDialog {
     std::array<float,0xE3> largos_bubbles{};
     for (unsigned c : iwbubbles::kCodigos) largos_bubbles[c]=float(d.bubbles_clips[c].cuadros);
     bubbles_.Iniciar({npc_p_.x,npc_p_.y,npc_p_.z},largos_bubbles);
+    // Solo pruebas: misma semilla Memory(n) que el original para parear por cuadro.
+    if (const char* sem=std::getenv("DBZ3_TEST_IW_SEMILLA"); sem && *sem && iwbubbles::Prueba(d.clave))
+      iwazar::Global().Cambiar(uint32_t(std::strtoul(sem,nullptr,0)));
     PrepararBubbles(d);
+    // P1 (7/11): 0x7DD con la CPU original (iw_mips.h persecucion); el #WCF del campo 906 da el rayo de visibilidad.
+    // La rejilla del campo (Node_WrapPositionInGrid: 3000 x 3000 en 10 x 10 desde -1350, medida en el savestate del dorado).
+    piccolo_ini_ = false, piccolo_acum_ = 0, piccolo_t_ = 0;
+    piccolo_wcf_ok_ = !d.piccolo_wcf.empty() &&
+                      piccolo_wcf_.Load(d.piccolo_wcf.data(), d.piccolo_wcf.size(), {-1500, -1500, 1500, 1500, 3});
+    if (!d.piccolo_wcf.empty())
+      REXLOG_INFO("dbz3 iwmini: 0x7DD CPU original de Piccolo: wcf={} nodos={} error={}", piccolo_wcf_ok_,
+                  piccolo_wcf_.Nodes(), piccolo_wcf_.Error());
     if (d.npc==1 && d.bubbles_clips_ok && iwbubbles::Prueba(d.clave))
       REXLOG_INFO("dbz3 gp2 bubbles tick=0 init estado=0 codigo=D2 cuadro=0 flags210/214/218=0/0/0 pos={},{},{}",
                   npc_p_.x,npc_p_.y,npc_p_.z);
@@ -1870,7 +1990,12 @@ class Panel : public rex::ui::ImGuiDialog {
   void Jugar(ImGuiIO& io, uint8_t* base, uint32_t mgr, const Datos& d, bool pausa) {
     const uint32_t x0 = mgr + kX0;
     // EU 0x299900 LoadWaitGroundMinigameObjective
-    const bool parado = g_reloj_parado.load();   // R16: entrada y cartel del objetivo de IW
+    // El panel puede abrirse antes del primer Fotograma guest. No ejecutar un
+    // tick de IA con las banderas iniciales aun sin publicar la introduccion.
+    const bool espera_bb = d.bubbles_poses && iwbubbles::Prueba(d.clave) && bubbles_pose_.fase < 2;
+    const bool parado = g_reloj_parado.load() || espera_bb;   // R16: entrada y cartel del objetivo de IW
+    if(!pausa && parado && d.bubbles_poses && iwbubbles::Prueba(d.clave) && !g_final.load())
+      IntroBubbles(io,d);
     // EU 0x2F3BE0 GroundMinigameTimer: el original acumula lo andado (+0x8b9c += +0x8b80) y lo TOPA al limite
     // (`if (0 < +0x7cc && limite < +0x8b9c) +0x8b9c = limite`), asi que el reloj nunca pasa de 0. Solo corre si
     // (+0x8c & 1) o (+0x8c & 4) (minijuego cargado/activo) y si el cartel del objetivo (+0x8d21) esta apagado, que es
@@ -1901,7 +2026,18 @@ class Panel : public rex::ui::ImGuiDialog {
         return;
       }
     }
-    if (g_auto && !parado && NowMs() - auto_ms_ > 700) {   // prueba: a cada aro y bebida (y despues a la meta)
+    // Prueba opt-in: con DBZ3_TEST_IWMINI_PLATANO=<ms> el piloto automatico
+    // espera <ms> (para que Bubbles tire platanos naturales), recorre esa lista
+    // pisandolos y no toca los aros. Sin la variable, el piloto de siempre.
+    static const char* plat_auto = std::getenv("DBZ3_TEST_IWMINI_PLATANO");
+    static const uint64_t plat_t0 = NowMs();
+    const bool plat_auto_on = plat_auto && *plat_auto;
+    if (g_auto && plat_auto_on && !parado && NowMs() - auto_ms_ > 700) {
+      if (NowMs() - plat_t0 >= uint64_t(std::atol(plat_auto)) && !platanos_.empty()) {
+        auto_ms_ = NowMs();
+        Poner(base, x0, platanos_.front());   // el resbalon lo aplica el bucle de abajo, igual que al andar
+      }
+    } else if (g_auto && !plat_auto_on && !parado && NowMs() - auto_ms_ > 700) {   // prueba: a cada aro y bebida (y despues a la meta)
       auto_ms_ = NowMs();
       while (auto_i_ < d.objetos.size() && cogido_[auto_i_]) ++auto_i_;
       V3 p = auto_i_ < d.objetos.size() ? d.objetos[auto_i_].p : d.npc == 1 ? npc_p_ : d.llegada;
@@ -1910,6 +2046,40 @@ class Panel : public rex::ui::ImGuiDialog {
     }
     const V3 yo = Leer(base, x0);
     // EU 0x31F280 s_SPACE
+    // tanda3: con dbz3_iw_7d0_original (apagada de serie) y el campo de IW instalado, la recogida la decide s_SPACE ORIGINAL
+    // ejecutado del ELF (banderas de G: 2 = cogido; radios, grupos y bola oculta del original). Si no, la cuenta del port.
+    camp_ok_ = false;
+    if (campo_ini_) REXLOG_INFO("dbz3 iwmini: s_SPACE original: campo {} itm {} g_campo {} activa {}", d.campo, d.itm_crudo.size(),
+                                dbz3::iwmips::campo::g_campo != nullptr, dbz3::iwmips::campo::g_activa && dbz3::iwmips::campo::g_activa());
+    if (d.campo && !d.itm_crudo.empty() && dbz3::iwmips::campo::g_activa && dbz3::iwmips::campo::g_activa()) {
+      dbz3::iwmips::campo::Entrada ce;
+      ce.inicio = campo_ini_;
+      ce.indice = d.indice, ce.dif = d.dificultad;
+      ce.itm = d.itm_crudo.data(), ce.itm_n = uint32_t(d.itm_crudo.size());
+      ce.slot = std::rand() & 7;
+      ce.anc[0] = yo.x, ce.anc[1] = yo.y + 6.0f, ce.anc[2] = yo.z;   // CharacterHitboxes: raiz + 6 (la cadera)
+      ce.jug[0] = yo.x, ce.jug[1] = yo.y, ce.jug[2] = yo.z;
+      dbz3::suelo_iw::Periodos(base, ce.ex, ce.ez);
+      ce.t = uint64_t(NowMs());
+      uint32_t semilla_campo = 0;
+      camp_ok_ = dbz3::iwmips::campo::g_campo(ce, camp_, semilla_campo);
+      if (camp_ok_) {
+        if (campo_ini_)
+          REXLOG_INFO("dbz3 iwmini: s_SPACE ORIGINAL activo: total {} (port {}), bola oculta slot {}", dbz3::iwmips::campo::Total(camp_),
+                      d.total, dbz3::iwmips::campo::Flag(camp_, 0x16A6));
+        campo_ini_ = false;
+      }
+    }
+    if (camp_ok_ && g_auto && NowMs() - diag_ms_ > 2000) {   // solo pruebas: el objetivo del piloto y la bandera de G
+      diag_ms_ = NowMs();
+      if (auto_i_ < d.objetos.size()) {
+        static const int bg[5] = {0x165E, 0x1670, 0x1692, 0x16A8, 0x16A8};
+        const Objeto& q = d.objetos[auto_i_];
+        const float qx = yo.x - q.p.x, qy = yo.y + 6.0f - q.p.y, qz = yo.z - q.p.z;
+        REXLOG_INFO("dbz3 iwmini: diag piloto i {} grupo {} k {} bandera {} d2 {:.1f} pos ({:.1f},{:.1f},{:.1f}) yo ({:.1f},{:.1f},{:.1f})", auto_i_, q.grupo, q.k,
+                    dbz3::iwmips::campo::Flag(camp_, bg[q.grupo] + q.k), qx * qx + qy * qy + qz * qz, q.p.x, q.p.y, q.p.z, yo.x, yo.y, yo.z);
+      }
+    }
     for (size_t k = 0; k < d.objetos.size(); ++k) {
       const Objeto& o = d.objetos[k];
       // IW recoge con CharacterHitboxes: distancia 3D entre el cuerpo (raiz + 6, la cadera) y el objeto, no en el plano.
@@ -1919,7 +2089,10 @@ class Panel : public rex::ui::ImGuiDialog {
       dbz3::suelo_iw::EnvolverReferencia(objeto.x,objeto.z,yo.x,yo.z);
       const float ox = yo.x - objeto.x, oy = yo.y + 6.0f - objeto.y, oz = yo.z - objeto.z;
       // EU 0x304D90 ObjectsDisappearingAfterCollection
-      if (cogido_[k] || std::sqrt(ox * ox + oy * oy + oz * oz) > o.radio) continue;
+      if (camp_ok_) {   // original: bandera 2 del objeto k de su grupo (A 0x165E, B 0x1670, C 0x1692, D 0x16A8)
+        static const int base_g[5] = {0x165E, 0x1670, 0x1692, 0x16A8, 0x16A8};
+        if (cogido_[k] || dbz3::iwmips::campo::Flag(camp_, base_g[o.grupo] + o.k) != 2) continue;
+      } else if (cogido_[k] || std::sqrt(ox * ox + oy * oy + oz * oz) > o.radio) continue;
       cogido_[k] = true;
       ++cogidos_;
       if (d.indice == 16 && AvisosCD16() && (o.grupo == 1 || o.grupo == 3)) {
@@ -1970,9 +2143,11 @@ class Panel : public rex::ui::ImGuiDialog {
       if (fin_) return;
     }
     // s_SPACE 0x31F280: la meta se abre al recoger todos los objetos (0x165a-1 <= 0x165c; el Radar, -2), no solo los
-    // aros A. En el original +0x165c incluye tambien el objetivo oculto +0x5C0 (que el port no tiene), por eso aqui se
-    // usa total-2 en todos: equivale al total-1 del original (y al total-2 del Radar). Tocar la meta es +0x1630
+    // aros A. En el original +0x165c incluye tambien el objetivo oculto +0x5C0 (que el port no tiene: ver d.total, caso
+    // "ya cogido"). Tocar la meta es +0x1630
     // (0x323840: copia de +0x840 = salida) salvo el 2 (disparador +0x30, radio^2 600) y el 16 (bola del Radar).
+    // [H] el original abre con 0x165A - 1 <= 0x165C (el 16: - 2): con el oculto pendiente exige S + 1 (todos y la bola
+    // oculta). El port no tiene la bola: abre con S (total - 2) en todos.
     if (d.npc != 1 && cogidos_ >= d.total - 2 && DistH(yo, d.llegada) < d.radio_llegada) Acabar(base, mgr, d, true);
     else if (restante_ <= 0) Acabar(base, mgr, d, false);
   }
@@ -1996,9 +2171,11 @@ class Panel : public rex::ui::ImGuiDialog {
   // suma la posicion del actor: deja el PUNTO DE TRABAJO a 25 u en la direccion de huida, sin altura; no es un salto
   // (y el consumo de ese punto por el task de la mision es [H]). Por eso aqui no hay salto y se queda el %10.
   void PrepararBubbles(const Datos& d) {
-    bubbles_pose_.datos=&d;bubbles_pose_.codigo=~0u;
+    if(bubbles_pose_.canal_voz)++bubbles_pose_.canal_voz->generacion;
+    bubbles_pose_={};bubbles_pose_.datos=&d;bubbles_pose_.maquina=&bubbles_;
     bubbles_backend_ok_=false;bubbles_oraculo_ok_=true;bubbles_bloqueo_=nullptr;
     if(d.npc!=1 || !iwbubbles::Prueba(d.clave))return;
+    if(d.bubbles_poses)bubbles_pose_.Iniciar();
     // Cada selftest usa SEIS backends nuevos: no altera caches del NPC, pose ni RNG.
     const char* oracle=std::getenv("TEST_GP2_BB_ORACULO");
     if(oracle && !std::strcmp(oracle,"1")) {
@@ -2031,30 +2208,139 @@ class Panel : public rex::ui::ImGuiDialog {
       bubbles_backend_ok_,bubbles_backend_.Nodes(),bubbles_backend_.Triangles(),d.campo,bubbles_backend_.Error());
     ++bubbles_sesion_;
   }
+  void IntroBubbles(ImGuiIO& io,const Datos& d){
+    const int fase=g_bubbles_intro.load();
+    if(fase==2 && bubbles_pose_.fase!=2){
+      // EU318400 al terminar11D: escrituras actor+40/+44/+48, no el puntoITM.
+      // Se conserva LIVE: la primeraD2 aun contiene la raiz de la presentacion.
+      // PRUEBA (DBZ3_IWMINI_NPC_QUIETO=1): mismo encuadre que el punto real,
+      // pero a 28 delante, para ver el modelo de cerca. No cambia nada normal.
+      if (std::getenv("DBZ3_IWMINI_NPC_QUIETO")) {
+        const float dx = d.meta.x - d.salida.x, dz = d.meta.z - d.salida.z, l = std::max(std::hypot(dx, dz), 1e-3f);
+        const float c = std::cos(0.8f), s = std::sin(0.8f);
+        bubbles_.p = {d.salida.x + (dx * c + dz * s) / l * 28.0f, 0.f,
+                      d.salida.z + (-dx * s + dz * c) / l * 28.0f};
+      } else {
+        bubbles_.p = {-464.f, 0.f, -502.f};
+      }
+      bubbles_.raiz.posicion40=bubbles_.p;
+      bubbles_.raiz.rotacion={};bubbles_.frente={0,0,1};npc_dir_={0,0,1};
+      npc_p_={bubbles_.p.x,bubbles_.p.y,bubbles_.p.z};
+    }
+    bubbles_acum_+=dbz3::RelojDt(std::min(io.DeltaTime,.1f))*60.f;
+    while(bubbles_acum_>=1.2f){
+      bubbles_acum_-=1.2f;
+      bubbles_pose_.Intro(fase);
+      bubbles_.raiz.local50=bubbles_pose_.Raiz();bubbles_.ActualizarAncla();
+      // READY sigue mostrando la relajacion de11D aD2 con el mismo LIVE.
+      if(fase==2){bubbles_.cuadro=bubbles_pose_.cuadro;bubbles_.pose_cuadro=bubbles_pose_.cuadro;}
+    }
+  }
+  // PlayHit_KiBlastsAudios3 (EU 0x22FD20) en juego: corta la voz del actor y pide la linea del perfil 16.
+  void VozBubbles(const Datos& d,int linea){
+    const auto* base=Base();
+    const bool japones=base && REX_LOAD_U8(dbz3::GA(0x824BA110)+0x2C0C9)==0;
+    const auto& pcm=d.bubbles_audio[japones?1:0].lineas[size_t(linea)];
+    iwsonido::Opciones o;o.canal=bubbles_pose_.canal_voz;
+    const auto h=pcm.muestras.empty()?0:iwadx::Oir(pcm,std::move(o));
+    REXLOG_INFO("dbz3 gp2 bubbles voz tick={} estado={} linea={} handle={}",bubbles_.tick,bubbles_.estado,linea,h);
+  }
   void CsvBubbles(const iwbubbles::Entrada& e) {
     if(!bubbles_csv_intentado_){
       bubbles_csv_intentado_=true;
       if(const char* path=std::getenv("TEST_GP2_BB_CSV");path&&*path){
         bubbles_csv_.f=std::fopen(path,"wx");
-        if(bubbles_csv_.f)std::fputs("sesion,tick,estado,codigo,cuadro,pose_codigo,pose_cuadro,x,y,z,rootx,rooty,rootz,anclax,anclay,anclaz,f210,f214,f218,cc4,flags18e8_consumidos,tarea,sweep_hit,mat,tipo,nx,ny,nz,ray_hit,raymat,raytipo,altura,nueva5,c0x,c0y,c0z\n",bubbles_csv_.f);
+        if(bubbles_csv_.f)std::fputs("sesion,tick,estado,codigo,cuadro,pose_codigo,pose_cuadro,x,y,z,rootx,rooty,rootz,anclax,anclay,anclaz,f210,f214,f218,cc4,flags18e8_consumidos,tarea,sweep_hit,mat,tipo,nx,ny,nz,ray_hit,raymat,raytipo,altura,nueva5,c0x,c0y,c0z,jugadorx,jugadory,jugadorz,estado_jugador,distancia,frente,seed\n",bubbles_csv_.f);
         else REXLOG_WARN("dbz3 gp2 bubbles CSV no creado (existe o no escribible): {}",path);
       }
     }
     if(!bubbles_csv_.f)return;
     const auto& m=bubbles_;const auto& c=m.barrido.contact;
-    std::fprintf(bubbles_csv_.f,"%llu,%llu,%d,%u,%.9g,%u,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%d,%d,%d,%d,%u,%llu,%d,%u,%u,%.9g,%.9g,%.9g,%d,%u,%u,%.9g,%d,%.9g,%.9g,%.9g\n",
+    std::fprintf(bubbles_csv_.f,"%llu,%llu,%d,%u,%.9g,%u,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%d,%d,%d,%d,%u,%llu,%d,%u,%u,%.9g,%.9g,%.9g,%d,%u,%u,%.9g,%d,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%d,%.9g,%.9g,%u\n",
       static_cast<unsigned long long>(bubbles_sesion_),static_cast<unsigned long long>(m.tick),m.estado,m.codigo,m.cuadro,m.pose_codigo,m.pose_cuadro,
       m.p.x,m.p.y,m.p.z,m.raiz.local50.x,m.raiz.local50.y,m.raiz.local50.z,m.anclas.actual640.x,m.anclas.actual640.y,m.anclas.actual640.z,
       int(m.flag210),int(m.flag214),int(m.flag218),int(m.cc4),m.flags_consumidos,static_cast<unsigned long long>(m.tarea_actual),int(m.barrido.hit),unsigned(c.material),unsigned(c.type),c.normal.x,c.normal.y,c.normal.z,
-      int(m.rayo.hit),unsigned(m.rayo.contact.material),unsigned(m.rayo.contact.type),m.work.altura18d0,int(m.nueva_tarea5),e.camaraC0.x,e.camaraC0.y,e.camaraC0.z);
+      int(m.rayo.hit),unsigned(m.rayo.contact.material),unsigned(m.rayo.contact.type),m.work.altura18d0,int(m.nueva_tarea5),e.camaraC0.x,e.camaraC0.y,e.camaraC0.z,
+      e.jugador.x,e.jugador.y,e.jugador.z,e.estado_jugador,m.Distancia(e),m.Frente(e),unsigned(iwazar::Global().Estado()));
     std::fflush(bubbles_csv_.f);
+  }
+  // P1 (7/11): Piccolo del 0x7DD decidido por su CPU original (iw_mips.cpp Tick7DD: MinigameHideNSeekPiccolo_sCPU,
+  // Char_EnterPoseStateByIndex y MgObj_UpdateTrajectory del ELF), una pasada por campo (1,2 cuadros PAL; 1,0 con el ELF
+  // USA). Entradas del port: raiz y ancla del jugador (hueso 0), su estado de pose de IW (iwestado::DeAnim), el tipo de
+  // suelo bajo el y el rayo de visibilidad contra el #WCF del campo. false (cvar apagada, sin campo, sin #WCF o fallo del
+  // interprete) = el camino de antes. El invitado guarda el estado de Piccolo; tras un fallo se vuelve a empezar.
+  bool Piccolo7DD(uint8_t* base, uint32_t mgr, const Datos& d, const V3& yo, float cuadros) {
+    namespace pz = dbz3::iwmips::persecucion;
+    if (!pz::g_tick || !piccolo_wcf_ok_ || !d.campo) return false;
+    const float paso = dbz3::iwmips::freezer::g_ntsc ? 1.0f : 1.2f;
+    V3 ancla = yo;
+    PuntoCuerpo(base, mgr + kX0, 0, ancla);
+    int tipo = dbz3::suelo_iw::TipoSuelo(yo.x, yo.z, yo.y + 2.0f);
+    // Campo periodico (revision 7/11): el invitado envuelve a Piccolo en la rejilla (Node_WrapPositionInGrid). Al
+    // invitado se le da la copia del jugador mas cercana a su Piccolo, y el port dibuja y mide con la copia de Piccolo
+    // mas cercana al jugador.
+    if (!piccolo_ini_) piccolo_g_ = npc_p_;
+    float jx = yo.x, jz = yo.z;
+    dbz3::suelo_iw::EnvolverReferencia(jx, jz, piccolo_g_.x, piccolo_g_.z);
+    const float ox = jx - yo.x, oz = jz - yo.z;
+    piccolo_acum_ += cuadros;
+    while (piccolo_acum_ >= paso) {
+      piccolo_acum_ -= paso;
+      pz::Entrada in;
+      pz::Salida out;
+      in.inicio = !piccolo_ini_;
+      in.pic0[0] = npc_p_.x, in.pic0[1] = npc_p_.y, in.pic0[2] = npc_p_.z;
+      in.jug40[0] = yo.x + ox, in.jug40[1] = yo.y, in.jug40[2] = yo.z + oz;
+      in.jug640[0] = ancla.x + ox, in.jug640[1] = ancla.y, in.jug640[2] = ancla.z + oz;
+      in.jcbc = EstadoIWDeAnim(g_anim_estado);
+      in.dif = d.dificultad;
+      in.tipo25a = unsigned(tipo > 0 ? tipo : 1);
+      in.t = ++piccolo_t_;
+      in.host = &piccolo_wcf_;
+      if (!d.piccolo_raiz.amm[3].empty() && !d.piccolo_raiz.bsk[0].empty()) in.raiz = &d.piccolo_raiz;
+      in.rayo = [](void* h, const float* a, const float* b, unsigned m, float* p, pz::Contacto& k) {
+        const auto r = static_cast<iwbubbles::wcf::Backend*>(h)->Ray({a[0], a[1], a[2]}, {b[0], b[1], b[2]}, m);
+        if (!r.hit) return false;
+        p[0] = r.point.x, p[1] = r.point.y, p[2] = r.point.z;
+        k.normal[0] = r.contact.normal.x, k.normal[1] = r.contact.normal.y, k.normal[2] = r.contact.normal.z;
+        k.d = r.contact.d, k.material = r.contact.material, k.tipo = r.contact.type;
+        return true;
+      };
+      in.barrido = [](void* h, const float* a, const float* b, float radio, unsigned m, float* p, pz::Contacto& k) {
+        const auto r = static_cast<iwbubbles::wcf::Backend*>(h)->Sweep({a[0], a[1], a[2]}, {b[0], b[1], b[2]}, radio, m);
+        if (!r.hit) return false;
+        p[0] = r.point.x, p[1] = r.point.y, p[2] = r.point.z;
+        k.normal[0] = r.contact.normal.x, k.normal[1] = r.contact.normal.y, k.normal[2] = r.contact.normal.z;
+        k.d = r.contact.d, k.material = r.contact.material, k.tipo = r.contact.type;
+        return true;
+      };
+      bool ok = false;
+      iwazar::Global().ConEstado([&](uint32_t& s) { ok = pz::g_tick(in, out, s); return ok; });
+      if (!ok) {
+        const bool habia = piccolo_ini_;
+        piccolo_ini_ = false;   // el invitado puede quedar a medias: la siguiente pasada vuelve a empezar
+        return habia;
+      }
+      piccolo_ini_ = true;
+      piccolo_g_ = {out.p[0], out.p[1], out.p[2]};
+      npc_p_ = piccolo_g_;
+      dbz3::suelo_iw::EnvolverReferencia(npc_p_.x, npc_p_.z, yo.x, yo.z);
+      if (out.frente[0] != 0 || out.frente[2] != 0) npc_dir_ = {out.frente[0], 0, out.frente[2]};
+      npc_modo_ = out.estado;
+      if (out.voz >= 0) REXLOG_INFO("dbz3 iwmini: 0x7DD voz de Piccolo linea {:X} (t={})", out.voz, in.t);
+    }
+    return true;
   }
   void MoverNpc(ImGuiIO& io, uint8_t* base, uint32_t mgr, const Datos& d, const V3& yo) {
     const float cuadros = dbz3::RelojDt(std::min(io.DeltaTime, 0.1f)) * 60.0f;
-    const bool bubbles_gp2=d.npc==1 && d.bubbles_clips_ok && iwbubbles::Prueba(d.clave);
+    // eIW6: en juego normal (sin DBZ3_TEST_GP2_BUBBLES) si falta un recurso del BBR se vuelve a la aproximacion
+    // antigua en vez de dejar a Bubbles quieto (el minijuego no se podria acabar).
+    const bool bb_recursos=d.bubbles_clips_ok && bubbles_backend_ok_ && d.campo && bubbles_oraculo_ok_;
+    const bool bb_test=std::getenv("DBZ3_TEST_GP2_BUBBLES")!=nullptr;
+    const bool bubbles_gp2=d.npc==1 && d.bubbles_clips_ok && iwbubbles::Prueba(d.clave) && (bb_recursos || bb_test);
     V3 ancla_jugador_bb=yo;
     const bool ancla_bb=!bubbles_gp2||PuntoCuerpo(base,mgr+kX0,0,ancla_jugador_bb);
-    if(d.npc==1&&iwbubbles::Prueba(d.clave)){
+    if(d.npc==1&&iwbubbles::Prueba(d.clave)&&(bb_recursos||bb_test)){
       const char* motivo=!d.bubbles_clips_ok?"clips_BBR47":!bubbles_backend_ok_?"WCF897":!d.campo?"campo897_no_instalado":!bubbles_oraculo_ok_?"SELFTEST_CPP_FAIL":
         (!g_ojo_ok.load()||g_sin_mando.load()||g_final.load()!=0)?"C0_seguimiento_no_publicado":!ancla_bb?"ancla_player0_no_publicada":nullptr;
       if(motivo){
@@ -2089,17 +2375,23 @@ class Panel : public rex::ui::ImGuiDialog {
           if(m.nueva_tarea5)REXLOG_INFO("dbz3 gp2 bubbles tarea5 normal238={},{},{} mat={} tipo={} (antes de Ray)",m.contacto_tarea5.normal.x,m.contacto_tarea5.normal.y,m.contacto_tarea5.normal.z,m.contacto_tarea5.material,m.contacto_tarea5.type);
         }
         CsvBubbles(entrada);
+        if(bubbles_.voz>0)VozBubbles(d,bubbles_.voz);
         for (int i=0;i<bubbles_.n_eventos;++i) {
           const auto& e=bubbles_.eventos[size_t(i)];
           REXLOG_INFO("dbz3 gp2 bubbles evento tick={} estado={} codigo={:X} cuadro={} tipo={} pos={},{},{}",
                       bubbles_.tick,bubbles_.estado,bubbles_.codigo,bubbles_.cuadro,e.tipo,e.p.x,e.p.y,e.p.z);
-          if (e.tipo==0 || e.tipo==1 || e.tipo==2) platanos_.push_back({e.p.x,e.p.y,e.p.z});
+          if (e.tipo==0 || e.tipo==1 || e.tipo==2) {
+            platanos_.push_back({e.p.x,e.p.y,e.p.z});
+            REXLOG_INFO("dbz3 iwmini: platano tirado (evento) en ({:.1f},{:.1f},{:.1f})", e.p.x,e.p.y,e.p.z);
+          }
           // Extras3/4 solo trazados: falta su trayectoria, NO platanos inmediatos.
         }
       }
       npc_p_={bubbles_.p.x,bubbles_.p.y,bubbles_.p.z};
       npc_dir_={bubbles_.frente.x,bubbles_.frente.y,bubbles_.frente.z};
       npc_modo_=bubbles_.modo;
+    } else if (d.npc == 2 && Piccolo7DD(base, mgr, d, yo, cuadros)) {
+      // P1: la CPU original movio a Piccolo (npc_p_, npc_dir_, npc_modo_ = estado de pose de IW)
     } else {
     auto azar = [this]() {
       semilla_ = semilla_ * 1103515245u + 12345u;
@@ -2120,7 +2412,10 @@ class Panel : public rex::ui::ImGuiDialog {
         npc_dir_ = {dx + (px - dx) * dev, 0, dz + (pz - dz) * dev};
         const float m = std::max(std::hypot(npc_dir_.x, npc_dir_.z), 1e-3f);
         npc_dir_ = {npc_dir_.x / m, 0, npc_dir_.z / m};
-        if (npc_modo_ == 2 && (azar() & 1)) platanos_.push_back(npc_p_);   // el platano que tira
+        if (npc_modo_ == 2 && (azar() & 1)) {   // el platano que tira
+          platanos_.push_back(npc_p_);
+          REXLOG_INFO("dbz3 iwmini: platano tirado en ({:.1f},{:.1f},{:.1f})", npc_p_.x,npc_p_.y,npc_p_.z);
+        }
       }
       vel = VelocidadCampoAp(mgr+kX0+kXPaso,4.5f,d.k);
     } else {
@@ -2154,7 +2449,7 @@ class Panel : public rex::ui::ImGuiDialog {
         platanos_.erase(platanos_.begin() + long(i));
         resbalon_ = 1.0f;   // 60 cuadros de la animacion 0xCA (MoverNpc los descuenta a 60/s)
         g_energia = std::max(0.0f, g_energia.load() - 25.0f);
-        REXLOG_INFO("dbz3 iwmini: platano: resbala (60 cuadros, -25 de energia)");
+        REXLOG_INFO("dbz3 iwmini: platano: resbala (60 cuadros, -25 de energia; queda {:.0f})", g_energia.load());
         break;
       }
     }
@@ -2279,16 +2574,23 @@ class Panel : public rex::ui::ImGuiDialog {
     }
     if (d.npc && d.m_npc.malla && !(d.npc==1 && iwbubbles::Prueba(d.clave) && !d.bubbles_clips_ok)) {   //modeloBBR propio; nunca fallback E2 en prueba sin banco.
       const bool prueba_bb=d.npc==1 && d.bubbles_clips_ok && iwbubbles::Prueba(d.clave);
-      const auto& clip_bb=prueba_bb?bubbles_pose_.instancia:d.m_npc.anim;
-      const bool anima = d.m_npc.esq && clip_bb;
-      if (anima) Posar(*d.m_npc.esq, clip_bb, prueba_bb?bubbles_pose_.cuadro/60.f:t, npc_pose_.malla);
+      const bool anima = d.m_npc.esq && (prueba_bb?bubbles_pose_.cuerpo.iniciada:bool(d.m_npc.anim));
+      if(anima){
+        if(prueba_bb)bubbles_pose_.Posar(npc_pose_.malla);
+        else Posar(*d.m_npc.esq,d.m_npc.anim,t,npc_pose_.malla);
+      }
       V3 dibujo=npc_p_;
       if(prueba_bb&&anima){
         const auto& c=d.m_npc.esq->centro;
-        const auto origen=iwbubbles::noche::OrigenDibujoAnimado(bubbles_.p,bubbles_.raiz.rotacion,{c.x,0,c.z});
+        const bool intro=g_bubbles_intro.load()<2;
+        const auto origen=iwbubbles::noche::OrigenDibujoAnimado(intro?iwbubbles::V{}:bubbles_.p,
+          intro?iwbubbles::noche::R3{}:bubbles_.raiz.rotacion,{c.x,0,c.z});
         dibujo={origen.x,origen.y,origen.z};
       }
-      Poner3D(cam, anima ? npc_pose_ : d.m_npc, tex_npc_, dibujo, std::atan2(npc_dir_.x, npc_dir_.z), 1.0f);
+      Poner3D(cam, anima ? npc_pose_ : d.m_npc, tex_npc_, dibujo,
+        prueba_bb&&g_bubbles_intro.load()<2?0.f:std::atan2(npc_dir_.x,npc_dir_.z),1.f);
+      if(prueba_bb&&anima)bubbles_pose_.Medir(npc_pose_.malla,dibujo,
+        g_bubbles_intro.load()<2?0.f:std::atan2(npc_dir_.x,npc_dir_.z),cam);
     }
     for (const V3& pl : platanos_)
       if (d.m_platano.malla) Poner3D(cam, d.m_platano, tex_platano_, pl, 0.0f, 1.0f);
@@ -2577,7 +2879,9 @@ class Panel : public rex::ui::ImGuiDialog {
     const float radio = 62.0f * k, alcance = 1700.0f * d.escala, yaw = g_yaw.load();
     const float fx = std::sin(yaw), fz = std::cos(yaw);
     auto marca = [&](const V3& p, int j, float w) {
-      const float dx = p.x - yo.x, dz = p.z - yo.z;
+      V3 q = p;   // mundo periodico: la marca mas proxima al jugador, no la copia literal
+      dbz3::suelo_iw::EnvolverReferencia(q.x, q.z, yo.x, yo.z);
+      const float dx = q.x - yo.x, dz = q.z - yo.z;
       const float ade = dx * fx + dz * fz, der = -(dx * fz - dz * fx);   // delante = arriba
       float u = der / alcance, v = ade / alcance;
       const float l = std::hypot(u, v);
@@ -2925,6 +3229,7 @@ class Panel : public rex::ui::ImGuiDialog {
   }
 
   const Datos* hecho_ = nullptr;
+  uint32_t partida_ = 0;
   Tex aro_, moneda_, bebida_, time_, clear_, ready_, start_, puerta_;
   std::vector<Tex> campo_;   // DS68: DATA_USA 6/0 por indice, para el HUD propio del 0x7D9 (10) y el 0x7DD (14)
   std::vector<Tex> aviso_tx_;
@@ -2958,7 +3263,11 @@ class Panel : public rex::ui::ImGuiDialog {
         const float dx = a.x - n.p.x, dy = a.y - n.p.y, dz = a.z - n.p.z, l = std::max(std::sqrt(dx * dx + dy * dy + dz * dz), 1e-3f);
         n.v = {dx / l * v, dy / l * v, dz / l * v};
       };
-      const int f = int(float(limite) / 200.0f * 100.0f), q = r(100);
+      // eIW3: s_BG_RCK_DRAW (EU 0x2A57A0): con el jugador en los estados 0x26..0x29 (golpe) la proporcion que va a por el es 1, no
+      // limite/200*100. Interruptor DBZ3_IW_ROCAS_ESTADO=1 (apagado: como antes).
+      static const bool rocas_estado = std::getenv("DBZ3_IW_ROCAS_ESTADO") != nullptr;
+      const int fase_j = g_fase.load();
+      const int f = rocas_estado && fase_j > 0x25 && fase_j < 0x2A ? 1 : int(float(limite) / 200.0f * 100.0f), q = r(100);
       if (q < f) hacia(yo, 4.0f);
       else if (q < f + 1 || q >= f + (d.dificultad + 1) * 5) n.v = {float(r(20)) * 0.1f, -5.0f, float(r(20)) * 0.1f};
       else hacia({yo.x + mas(100), yo.y, yo.z + mas(100)}, 4.5f);
@@ -2970,7 +3279,9 @@ class Panel : public rex::ui::ImGuiDialog {
       c.giro += 0.1745f;   // +0x5C += 0x71C
       c.vida -= 1.0f;
       const float radio = c.tam == 2 ? 15.0f : c.tam == 1 ? 12.0f : 8.0f;
-      const float dx = c.p.x - yo.x, dy = c.p.y - (yo.y + 10.0f), dz = c.p.z - yo.z;
+      V3 q = c.p;   // mundo periodico: la copia mas proxima al jugador
+      dbz3::suelo_iw::EnvolverReferencia(q.x, q.z, yo.x, yo.z);
+      const float dx = q.x - yo.x, dy = q.y - (yo.y + 10.0f), dz = q.z - yo.z;
       const bool pega = g_gracia.load() <= 0 && dx * dx + dy * dy + dz * dz < radio * radio;
       if (pega) {
         g_vida = g_vida.load() - (float(c.tam) * 5.0f + 15.0f);
@@ -3027,7 +3338,9 @@ class Panel : public rex::ui::ImGuiDialog {
     }
     static const bool kami_sin_golpe = [] { const char* e = std::getenv("DBZ3_TEST_IWKAMI"); return e && *e == '2'; }();   // prueba: como +0x1AC alto en el original
     if (kami_.cayo && kami_.t > 56 && g_gracia.load() <= 0 && !kami_sin_golpe) {
-      const float dx = yo.x - kami_.p.x, dz = yo.z - kami_.p.z;
+      V3 q = kami_.p;   // mundo periodico: la copia mas proxima al jugador
+      dbz3::suelo_iw::EnvolverReferencia(q.x, q.z, yo.x, yo.z);
+      const float dx = yo.x - q.x, dz = yo.z - q.z;
       if (dx * dx + dz * dz < 15.0f * 15.0f) {
         g_vida = g_vida.load() - 20.0f;
         g_golpe = 2;
@@ -3042,6 +3355,9 @@ class Panel : public rex::ui::ImGuiDialog {
   std::vector<bool> cogido_;
   int puntos_objetos_ = 0;
   int cogidos_ = 0, aros_ = 0;
+  int64_t diag_ms_ = 0;
+  bool campo_ini_ = true, camp_ok_ = false;   // tanda3: s_SPACE original (iw_mips_campo.inl); camp_ = G+0x1620..0x1700 del invitado
+  dbz3::iwmips::campo::Salida camp_;
   // Avisos de progreso (kCutins): bits ya disparados, C/D pendientes, el activo (fila) y su reloj en cuadros de 60.
   uint32_t cutin_hechos_ = 0;
   bool cutin_c_ = false, cutin_d_ = false, cutin_mitad_ = false;
@@ -3054,20 +3370,113 @@ class Panel : public rex::ui::ImGuiDialog {
   float bubbles_acum_ = 0;
   //Instancia mutable SOLO del BBR. Nunca cambiar el clip compartido ni el esqueleto.
   struct PoseBubbles {
-    const Datos* datos=nullptr;AnimIW instancia;unsigned codigo=~0u;float cuadro=0;
+    const Datos* datos=nullptr;const iwbubbles::Maquina* maquina=nullptr;
+    iwbubbles::poses::Instancia<47> cuerpo;
+    iwbubbles::poses::Instancia<8> cara;
+    unsigned codigo=~0u;std::uint64_t revision=~std::uint64_t{0};float cuadro=0;int fase=-1;
+    iwbubbles::audio::Intro voz_intro;
+    std::shared_ptr<iwsonido::Canal> canal_voz=std::make_shared<iwsonido::Canal>();
+    std::uint32_t publicaciones=0,ultima_medida=~0u,medidas=0;
+    bool medida_intentada=false;std::shared_ptr<FILE> medida;
+    void Iniciar(){
+      cuerpo.Iniciar(datos->bubbles_poses->Muestrear(0xD2,0));
+      cara.Iniciar(datos->bubbles_poses->cara.Reposo());
+    }
+    iwbubbles::V Raiz()const{const auto& p=cuerpo.live[1].p;return {p.x,p.y,p.z};}
+    void Facial(){
+      const auto& r=*datos->bubbles_poses;
+      // 206EE0 sin pista de voz: Char_PushAnimIds(0,0), relajacion facial .6.
+      cara.AplicarFactor(r.cara.Muestrear(0,float(r.cara.Cuadros(0)-1),r.lut),.6f);
+      r.PublicarCara(cuerpo,cara);
+    }
     iwbubbles::V Evaluar(unsigned nuevo,float frame){
-      cuadro=frame;
-      if(codigo!=nuevo){codigo=nuevo;instancia=datos->bubbles_clips[nuevo];}
-      iwbubbles::V r;
-      iwbubbles::noche::MuestrearLocal(datos->bubbles_clips[nuevo],*datos->m_npc.esq,1,frame,r);
-      AplicarRaiz(r);return r;
+      if(revision!=maquina->revision){
+        revision=maquina->revision;
+        std::memcpy(&cuerpo.u,&maquina->mezcla.cb4,4);std::memcpy(&cuerpo.rate,&maquina->mezcla.cb8,4);
+      }
+      codigo=nuevo;cuadro=frame;
+      cuerpo.Aplicar(datos->bubbles_poses->Muestrear(nuevo,frame),1.2f);Facial();++publicaciones;return Raiz();
     }
     void AplicarRaiz(iwbubbles::V r){
-      //Posar evalua TODOS los47huesos en cuadro; solo sobreescribir la raiz consumida.
-      if(instancia.pos.size()>1){instancia.pos[1].resize(1);instancia.pos[1][0]={0,r.x,r.y,r.z};}
+      auto& h=cuerpo.live[1];h.p={r.x,r.y,r.z,1};iwbubbles::poses::Matriz(h);
+    }
+    void Intro(int nueva){
+      const bool cambio=nueva!=fase;
+      if(cambio){
+        fase=nueva;cuadro=0;codigo=fase==1?0x11D:0xD2;
+        cuerpo.u=fase==2?.005f:1.f;cuerpo.rate=.03f;
+        revision=maquina->revision;
+      }
+      const auto& r=*datos->bubbles_poses;
+      if(!cambio||fase==1){
+        const float n=iwbubbles::noche::ClockAdd(cuadro,1.2f);
+        const float largo=float(r.cuerpo.Cuadros(r.clips[codigo]));
+        // AnimationFrames conserva el ultimo cuadro fraccionario al terminar.
+        // En PAL11D es179.999603, no largo-1 (179).
+        cuadro=fase==1?(n<largo?n:cuadro):(n>=largo?0.f:n);
+      }
+      cuerpo.Aplicar(r.Muestrear(codigo,cuadro),1.2f);
+      if(fase!=1)Facial(); // estado10 NO publica los siete huesos de25FA90.
+      const auto* base=Base();
+      const bool japones=base && REX_LOAD_U8(dbz3::GA(0x824BA110)+0x2C0C9)==0;
+      const auto& voz=datos->bubbles_audio[japones?1:0];
+      if(voz_intro.Paso(fase,codigo,cuadro,voz.boca)){
+        auto& salida=iwsonido::Salida();
+        salida.UsarProveedor(+[]()->iwsonido::Ajustes{
+          return {float(settings::MasterVolume()),settings::AudioMute()};
+        });
+        iwsonido::Opciones o;o.canal=canal_voz;
+        const auto handle=iwadx::Oir(voz.pcm,std::move(o));
+        REXLOG_INFO("dbz3 gp2 bubbles voz_inicio fase={} codigo={:X} cuadro={} perfil=16 linea=0 entrada={} idioma={} hz={} muestras={} boca={:X} handle={} normal=false",
+          fase,codigo,cuadro,voz.entrada,japones?"JPN":"USA",voz.pcm.hz,voz.pcm.muestras.size()/2,voz_intro.boca.id,handle);
+      }
+      ++publicaciones;
+    }
+    void Posar(Malla& out)const{
+      std::vector<ps2::M34> locales(47);
+      for(size_t i=0;i<47;++i){const auto& h=cuerpo.live[i];auto& m=locales[i].m;
+        const auto& r=datos->m_npc.esq->local[i].m;
+        const auto dibujo=iwbubbles::poses::MatrizDibujo(h,{r[3],r[7],r[11],1});
+        std::copy(dibujo.begin(),dibujo.end(),m);
+      }
+      ps2::PosarMatrices(*datos->m_npc.esq,locales,false,out);
+    }
+    void Medir(const Malla& m,V3 dibujo,float yaw,const ps2::Camara& cam){
+      // Solo la focal explicita. Registra el LIVE y los vertices que recibe Poner3D,
+      // sin modificar pose, reloj, camara ni RNG. Formato versionado IWPB1.
+      if(!medida_intentada){
+        medida_intentada=true;
+        if(const char* path=std::getenv("TEST_GP2_BB_POSE");path&&*path){
+          medida=std::shared_ptr<FILE>(std::fopen(path,"wbx"),[](FILE* f){if(f)std::fclose(f);});
+          if(!medida)REXLOG_WARN("dbz3 gp2 bubbles POSE no creado: {}",path);
+        }
+      }
+      if(!medida||ultima_medida==publicaciones||medidas>=700||m.tris.size()>4096)return;
+      if(fase<=0 && publicaciones%10!=0)return;
+      ultima_medida=publicaciones;
+      const std::uint32_t h[8]={0x42505749u,1,medidas++,unsigned(fase),codigo,
+        unsigned(maquina->estado),unsigned(maquina->tick),unsigned(m.tris.size())};
+      const auto root=Raiz();const auto c=datos->m_npc.esq->centro;
+      const float meta[16]={cuadro,cuerpo.u,cuerpo.rate,maquina->p.x,maquina->p.y,maquina->p.z,
+        root.x,root.y,root.z,dibujo.x,dibujo.y,dibujo.z,yaw,c.x,c.y,c.z};
+      const float pantalla[5]={cam.fov,cam.c.x,cam.c.y,cam.h.x,cam.h.y};
+      std::vector<float> vertices;vertices.reserve(m.tris.size()*18);
+      for(const auto& tr:m.tris)for(int i=0;i<3;++i){const auto p=tr.p[i],n=tr.n[i];
+        vertices.insert(vertices.end(),{p.x,p.y,p.z,n.x,n.y,n.z});}
+      auto escribir=[&](const void* p,size_t n){return std::fwrite(p,1,n,medida.get())==n;};
+      const bool ok=escribir(h,sizeof h)&&escribir(meta,sizeof meta)&&
+        escribir(cuerpo.live.data(),sizeof cuerpo.live)&&escribir(cara.live.data(),sizeof cara.live)&&
+        escribir(cam.m,sizeof cam.m)&&escribir(pantalla,sizeof pantalla)&&
+        escribir(vertices.data(),vertices.size()*sizeof(float));
+      if(!ok){REXLOG_WARN("dbz3 gp2 bubbles POSE escritura incompleta");medida.reset();}
     }
   } bubbles_pose_;
   iwbubbles::wcf::Backend bubbles_backend_;
+  iwbubbles::wcf::Backend piccolo_wcf_;   // P1: 0x7DD, rayo de la CPU original de Piccolo
+  bool piccolo_wcf_ok_ = false, piccolo_ini_ = false;
+  V3 piccolo_g_;   // Piccolo +0x40 en el invitado (sin envolver al jugador)
+  float piccolo_acum_ = 0;
+  uint64_t piccolo_t_ = 0;
   bool bubbles_backend_ok_=false,bubbles_oraculo_ok_=true,bubbles_csv_intentado_=false;
   const char* bubbles_bloqueo_=nullptr;
   uint64_t bubbles_sesion_=0;
@@ -3121,6 +3530,7 @@ bool EmpezarCombate(const std::shared_ptr<Datos>& d) {
   dbz3::combate::SetMuneco(1);
   dbz3::combate::OcultarHud(true);  // sin marcador de combate de B3: el HUD es el de IW
   P::Reglas r;
+  if (d->halo_nativo) r.traje_jugador = 4;   // B3 Goku Angelic, fid282 con XGOK_RING1
   if (d->indice == 10 && d->cara == 0) r.traje_jugador = 2;   // 0x7D9: Goku con el gi roto (B3 fid 278), como el original
   r.capsulas = false;
   P::VigilarCombate("iwmini", r, [d](const P::Fin& fin) {
@@ -3293,6 +3703,11 @@ bool Empezar(int clave, int fila) {
   d->fila = fila;
   d->dificultad = std::clamp(g_dificultad.load(), 0, 5);
   d->cara=personaje>=0 ? personaje : f->jugador;
+  constexpr bool kHaloGokuNativoValidado=true;   // solIWX3/11: RAM fid282 + fotos de ambas misiones
+  d->halo_nativo=d->cara==0 && (indice==1 || indice==2) &&
+    (kHaloGokuNativoValidado || (std::getenv("DBZ3_TEST_IWMINI") &&
+      std::getenv("DBZ3_TEST_IWMINI_HALO_NATIVO")));
+  if(d->halo_nativo)REXLOG_INFO("dbz3 iwmini: halo nativo B3 traje=4 fid=282 overlay=false mini={}",indice);
   std::string error;
   if (!Cargar(*d, error)) {
     REXLOG_WARN("dbz3 iwmini: {}", error);
@@ -3301,6 +3716,7 @@ bool Empezar(int clave, int fila) {
   {
     std::lock_guard<std::mutex> lk(g_mu);
     g_d = d;
+    ++g_partida;
     g_res = Resultado{};
   }
   g_clave = clave;
@@ -3572,15 +3988,13 @@ bool CamaraIw(uint8_t* base, uint32_t mgr, const Datos& d, int clip, float cuadr
   if (it == d.camaras.end()) return false;
   const ClipCamIa& c = it->second;
   const float f = std::clamp(cuadro, 0.0f, float(std::max(c.nf - 1, 0)));
-  float a[3], b[3], fov = 0, roll = 0;
-  MuestraPistaCam(c.ojo, f, a);
-  MuestraPistaCam(c.obj, f, b);
+  const dbz3::iwamc::Pose pose = dbz3::iwamc::Muestrea(c, f);
+  float a[3] = {pose.ojo[0], pose.ojo[1], pose.ojo[2]}, b[3] = {pose.obj[0], pose.obj[1], pose.obj[2]};
+  const float fov = pose.fov, roll = pose.roll;
   if (anclada) {
     a[0] += p.x, a[1] += p.y, a[2] += p.z;
     b[0] += p.x, b[1] += p.y, b[2] += p.z;
   }
-  if (!c.fov.empty()) MuestraPistaCam(c.fov, f, &fov);
-  if (!c.roll.empty()) MuestraPistaCam(c.roll, f, &roll);
   if (balanceo) *balanceo = roll;
   // Ojo/objetivo del recurso intactos. Su angulo tambien pasa por126F50 al
   // reproducirse en campo: convertir una vez, sin compensar la distancia.
@@ -3606,6 +4020,16 @@ static void MatrizFinal(uint8_t* base, uint32_t x0) {
   static constexpr float kId[12] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0};
   for (uint32_t i = 0; i < 12; ++i) StoreF(base, x0 + 4 * i, kId[i]);
 }
+// Voz de la pose del jugador (ADX de la copia del jugador; DBZ3_IW_VOZ_POSE=0 la apaga).
+void HablarPose(uint8_t* base, const char* estado, int entrada, int indice) {
+  if (entrada < 0) return;
+  if (const char* e = std::getenv("DBZ3_IW_VOZ_POSE"); e && e[0] == '0') return;
+  const int byte = int(REX_LOAD_U8(dbz3::GA(0x824BA110) + 0x2C0C9));   // 0 = voces japonesas
+  const float vol = dbz3::settings::AudioMute() ? 0.0f : float(dbz3::settings::MasterVolume());
+  REXLOG_INFO("dbz3 iwmini: voz de pose {} (indice {}, ADX {})", estado, indice, entrada);
+  P::OirAdxPs2(P::BuscarIW(), byte == 0 ? "ADX_JPN.AFS" : "ADX_USA.AFS", entrada, vol);
+}
+
 void PasoFinal(uint8_t* base, uint32_t mgr, const Variante* v, int fin) {
   ++g_t_fin;
   ++g_t_panel;
@@ -3658,6 +4082,7 @@ void PasoFinal(uint8_t* base, uint32_t mgr, const Variante* v, int fin) {
       return;
     }
     g_fase_fin = 1;
+    if (const auto dd = Actual()) HablarPose(base, "2F", dd->voz_2f, dd->indice);
     g_t_fin = 1;   // no 0: es el mismo contador que t_fin de Fotograma, y a 0 volvia a empezar el final (bucle de la 0x52)
     if (v) {
       // EU29B120: F0 del BSK comun915/3, AMM915/0 indice47,180cuadros.
@@ -3771,8 +4196,10 @@ void Fotograma(uint8_t* base, uint32_t estado) {
         float ojo[3], obj[3];
         if (dbz3::cine::LeerCamara(base, ojo, obj)) {
           const V3 p = Leer(base, mgr + kX0);
-          REXLOG_INFO("dbz3 iwmini: jugador ({:.1f}, {:.1f}, {:.1f}) marcha (0.00, 0.00) anda 0 ojo ({:.1f}, {:.1f}, {:.1f})",
-                      p.x, p.y, p.z, ojo[0], ojo[1], ojo[2]);
+          // fase 1 (7/11): tambien el objetivo, para medir hacia donde mira (diferencial.giro_reposo_iw)
+          REXLOG_INFO("dbz3 iwmini: jugador ({:.1f}, {:.1f}, {:.1f}) marcha (0.00, 0.00) anda 0 ojo ({:.1f}, {:.1f}, {:.1f}) "
+                      "objetivo ({:.2f}, {:.2f}, {:.2f})",
+                      p.x, p.y, p.z, ojo[0], ojo[1], ojo[2], obj[0], obj[1], obj[2]);
         }
       }
     }
@@ -3806,6 +4233,11 @@ void Fotograma(uint8_t* base, uint32_t estado) {
   }
   V3 p = Leer(base, x0);
   if (g_en_presenta) p = g_ancla_pres;
+  if (static const bool poslog = std::getenv("DBZ3_TEST_IW_POSLOG") != nullptr; poslog && estado >= 3) {   // eIW5: posicion por cuadro
+    static int n = 0;
+    if (n++ < 4000) REXLOG_INFO("dbz3 iwpos: {} est {} libre {} col {} p ({:.1f}, {:.1f}, {:.1f}) cae {} anda {}", n, estado,
+                                g_libre.load() ? 1 : 0, g_colocado.load() ? 1 : 0, p.x, p.y, p.z, g_cae ? 1 : 0, g_anda.load());
+  }
   // D34: al nacer (y quieto) los pies en el SUELO de IW. DS33 2.4 ponia la y del suelo al colocar, pero la pose/intro de
   // B3 la devolvia a la del #ITM a los 2 s (log del clip de DS33: 17:45:07 (-26, 32, 72) -> 17:45:09 (-26, 17,8, 72));
   // con el jugador 14 u hundido la camara de la entrada nacia dentro del terreno. Solo si el suelo esta a <= 30 u de la y
@@ -3818,7 +4250,15 @@ void Fotograma(uint8_t* base, uint32_t estado) {
       g_y_buena = p.y;
     } else if (g > -1e29f && std::fabs(g - g_y_buena) < 30.0f) {
       g_y_buena = g;
-      if (!g_anda.load() && std::fabs(g - p.y) > 0.05f) {
+      // Cell READY: el original conserva los pies en el suelo (EE18236..18296).
+      // No retener aqui el margen de .05u del suelo nativo de B3: tambien
+      // desplaza el ancla y la camara. El resto de indices conserva su margen.
+      if (!g_anda.load() && (d->indice == 14 || std::fabs(g - p.y) > 0.05f)) {
+        if (d->indice == 14 && std::getenv("DBZ3_TEST_IWMINI_CAMLOG") && std::fabs(g-p.y) > 0.0001f) {
+          static unsigned medidas_cell = 0;
+          if (medidas_cell++ < 8)
+            REXLOG_INFO("dbz3 iwmini: Cell suelo pies_antes={} suelo={} delta={}",p.y,g,g-p.y);
+        }
         p.y = g;
         Poner(base, x0, p);
       }
@@ -3834,7 +4274,8 @@ void Fotograma(uint8_t* base, uint32_t estado) {
     static bool sobre_hecho = false;
     int& t_fin = g_t_fin;
     const Variante* v = VarianteDe(d->indice,d->cara);
-    if (estado == 3) paso = 0, t_fin = 0, g_cartel = 0, g_t_entrada = 0, g_t_arranque = 0, g_paso_entrada = 0, sobre_hecho = false, sobre_i = 0;
+    static bool voz_intro_hecha = false;
+    if (estado == 3) paso = 0, t_fin = 0, g_cartel = 0, g_t_entrada = 0, g_t_arranque = 0, g_paso_entrada = 0, sobre_hecho = false, sobre_i = 0, voz_intro_hecha = false;
     if (estado == 4 && g_colocado.load()) {
       ++t_paso;
       const bool idx1 = d->indice == 1, fin_hud = g_final.load() != 0;
@@ -3862,12 +4303,14 @@ void Fotograma(uint8_t* base, uint32_t estado) {
           AnimoLog("entrada", v ? v->comienzo : 0);
           REXLOG_INFO("dbz3 iwmini: entrada de IW (indice 1, anim 0x{:X}, camara 0x{:X})", v ? v->comienzo : 0,
                       d->cam_arranque);
+          HablarPose(base, "s_SPACE", d->voz_arranque, d->indice);
         } else if (v) {
           paso = 2;
           dbz3::anim::Reproducir(x0, v->comienzo, true);
           AnimoLog("entrada-2", v->comienzo);
           REXLOG_INFO("dbz3 iwmini: arranque de IW (indice {}, anim 0x{:X}, camara 0x{:X})", d->indice, v->comienzo,
                       d->cam_arranque);
+          HablarPose(base, "s_SPACE", d->voz_arranque, d->indice);
         } else {
           paso = 3;
           g_cartel = kCartelCuadros;
@@ -3906,14 +4349,27 @@ void Fotograma(uint8_t* base, uint32_t estado) {
         REXLOG_INFO("dbz3 iwmini: entrada acabada: mando al jugador");
       }
       g_paso_entrada = paso;
+      if(d->indice==1)g_bubbles_intro=paso==2?1:(paso==3?2:0);
       g_sin_hud = paso == 5 || paso == 1 || paso == 2 || fin_hud;   // EU 0x29B3B0 / 0x29AA90: los finales tampoco llevan HUD
       g_t_arranque = (idx1 ? paso == 1 : paso == 2) ? g_t_arranque + 1 : 0;
       g_t_entrada = paso == 2 ? g_t_entrada + 1 : 0;
-      if (paso == 3 && g_cartel.load() > 0) g_cartel = g_cartel.load() - 1;
+      if (paso == 2 && !voz_intro_hecha && d->voz_intro >= 0 && t_paso >= d->voz_intro_cuadro) {
+        voz_intro_hecha = true;
+        const int byte = int(REX_LOAD_U8(dbz3::GA(0x824BA110) + 0x2C0C9));   // 0 = voces japonesas
+        const float vol = dbz3::settings::AudioMute() ? 0.0f : float(dbz3::settings::MasterVolume());
+        P::OirAdxPs2(P::BuscarIW(), byte == 0 ? "ADX_JPN.AFS" : "ADX_USA.AFS", d->voz_intro, vol);
+        REXLOG_INFO("dbz3 iwmini: voz de presentacion (indice {}, ADX {}) en el cuadro {}", d->indice, d->voz_intro, t_paso);
+      }
+      if (paso == 3 && g_cartel.load() > 0) {
+        const int antes=g_cartel.load();g_cartel=antes-1;
+        if(antes==1 && idx1 && iwbubbles::Prueba(d->clave))
+          REXLOG_INFO("dbz3 gp2 bubbles READY terminado: mando y reloj liberados");
+      }
       const int fin = g_final.load();
       if ((fin == 1 || fin == 2) && t_fin == 0) {
         t_fin = 1;
         g_fase_fin = 0;   // DS169: el final empieza en el estado 0x2E (anim + clip de la variante)
+        HablarPose(base, fin == 1 ? "2E" : "30", fin == 1 ? d->voz_2e : d->voz_30, d->indice);
         // EU 0x2997F0 Minigame_ResetPlayerTransform: actor al origen y direccion +Z.
         // El AMM conserva las coordenadas del campo, igual que el AMC emparejado.
         g_ancla_fin = {};
@@ -4083,8 +4539,9 @@ void Fotograma(uint8_t* base, uint32_t estado) {
       prep_quieto = false;
       dbz3::anim::Scatto(x0, dbz3::anim::kApagado);
       // golpe 2: rayo, EU 0x29E260 Minigame_State20_Enter: 0x40 en el suelo, 0x41 en el aire
-      dbz3::anim::Reproducir(x0, g_cae ? dbz3::anim::kParedReboteAire : golpe == 2 ? dbz3::anim::kParedRebote : 0x843, true);
-      AnimoLog("golpe", golpe == 2 ? dbz3::anim::kParedRebote : 0x843);
+      const uint32_t codigo_golpe=g_cae ? dbz3::anim::kParedReboteAire : golpe == 2 ? dbz3::anim::kParedRebote : 0x843;
+      dbz3::anim::Reproducir(x0, codigo_golpe, true);
+      AnimoLog("golpe", codigo_golpe);
       LanzarFx(Datos::kFxSBound, p.x, p.y, p.z, dx, dz);
     }
     const bool pide = g_pide_scatto.exchange(false);
@@ -4121,6 +4578,7 @@ void Fotograma(uint8_t* base, uint32_t estado) {
       if (t == 0 && dbz3::anim::EstadoPose() == 2) {
         t = 1;
         dbz3::anim::Reproducir(x0, 0x847, true);
+        AnimoLog("muerte", 0x847);
       }
     } else if (fase == 0x27) {
       // EU 0x29CF30 / 0x29CBE0 / 0x29C940: 0x43 -> 0x44 -> 0x45, cada una al acabar su clip (t = paso)
@@ -4130,9 +4588,11 @@ void Fotograma(uint8_t* base, uint32_t estado) {
         } else if (t == 0) {
           t = 1;
           dbz3::anim::Reproducir(x0, 0x844, true);
+          AnimoLog("golpe", 0x844);
         } else if (t == 1) {
           t = 2;
           dbz3::anim::Reproducir(x0, 0x845, true);
+          AnimoLog("golpe", 0x845);
         } else {
           fase = 0;
         }
@@ -4294,7 +4754,9 @@ void Fotograma(uint8_t* base, uint32_t estado) {
   if(estado==3 || g_final.load()!=0 || g_sin_mando.load() || resbalon || g_cae || fase!=0) carga=0;
   const uint32_t carga_base=d->indice==14?0x8D3u:0x8D0u;
   if(estado==4 && !g_sin_mando.load() && !g_final.load() && !resbalon && !g_cae && fase==0) {
-    if(!carga && g_cuadrado.load() && !g_anda.load()) {
+    // EU2A9440 descarta cuadrado si +185C ya esta a100; no reiniciar
+    // 2/3/4 repetidamente al mantener el boton despues de llenar la energia.
+    if(!carga && g_cuadrado.load() && !g_anda.load() && g_energia.load()<100.0f) {
       carga=1;carga_t=0;andaba=carrera=false;parar=0;t_quieto=0;
       dbz3::anim::Reproducir(x0,carga_base,true);
       AnimoLog("carga",carga_base);
@@ -4349,10 +4811,17 @@ void Fotograma(uint8_t* base, uint32_t estado) {
     // quema. El rayo sale de pies + 18 (cadera + H, H = 9). ponytail: tocar = no quema; el original pega en los pocos cuadros en que el deslizamiento no sube.
     const int toque_cuerpo = d->indice == 10 && d->campo && g_gracia.load() <= 0 && hang_t == 0 && pared_t == 0
                                  ? dbz3::suelo_iw::ToqueEsfera(p.x, (g_cae ? y_cae : p.y) + 9.0f, p.z, 8.0f) : 0;
+    const int estado_lava=EstadoIWDeAnim(g_anim_estado);
+    const float y_lava=g_cae ? y_cae : p.y;
+    const bool quema3=dbz3::iwlava::Superficie3(estado_lava,tipo_pies,y_lava,hs,g_cae);
+    // EU2A5DE0 conserva el contacto de cuerpo con torres aun estando en el aire.
+    const bool quema4=dbz3::iwlava::Superficie4(estado_lava,tipo_pies,toque_cuerpo,y_lava,hs);
+    if(d->indice==10 && std::getenv("DBZ3_TEST_IWMINI"))
+      dbz3::iwlava::Medir(std::getenv("TEST_IWX_LAVA"),estado_lava,p.x,y_lava,p.z,hs,
+          tipo_pies,toque_cuerpo,g_cae,g_gracia.load(),quema3,quema4,
+          tipo_pies==3&&!g_cae&&y_antes-hs<=11.0f&&toque_cuerpo==0,g_vida.load());
     if (tipo_pies == 3 || tipo_pies == 4 || toque_cuerpo == 4) {
-      // EU 0x2A5DE0: +0x1F0 == 4 (la esfera toca una torre de lava, tambien en el aire) o +0x1E8 == 4 a menos de 2 del suelo
-      const bool quema4 = toque_cuerpo == 4 || (tipo_pies == 4 && std::fabs((g_cae ? y_cae : p.y) - hs) <= 2.0f);
-      const bool topa = quema4 || (tipo_pies == 3 && !g_cae && y_antes - hs <= 11.0f && toque_cuerpo == 0);   // la misma y fuera del suelo: al salir de una cornisa aun no quema
+      const bool topa = quema4 || quema3;
       if (topa) {
         g_gracia = 76;   // duracion del clip + 50 (EU 0x29E5D0)
         g_vida = g_vida.load() - (quema4 ? 25.0f : 10.0f);
@@ -4608,7 +5077,16 @@ void Fotograma(uint8_t* base, uint32_t estado) {
   }
   if (d->campo && estado == 4 && g_colocado.load()) {
     constexpr float kSin = -1.0e9f;
-    if (p.y < -1000.0f || p.y > 1000.0f || dbz3::suelo_iw::Altura(p.x, p.z, kSin) == kSin) {
+    // 7D1 (medido 4/11, andando de verdad y sin piloto automatico): el #WCF del
+    // 897 es una malla gruesa y su consulta puntual falla en celdas vacias; el
+    // respawn devolvia al jugador al inicio cada ~0,85 s en (-56,-60), con el
+    // suelo a la vista (22 reapariciones en 20 s de W). Solo en esta mision se
+    // exige ademas que falte la malla DIBUJADA para dar la caida por buena; en
+    // los demas campos el criterio queda exactamente como estaba hasta medirlos.
+    const bool malla_tb_falta = d->clave != 0x7D1 ||
+        dbz3::suelo_iw::AlturaMalla(p.x, p.z, kSin) == kSin;
+    const bool sin_suelo = dbz3::suelo_iw::Altura(p.x, p.z, kSin) == kSin && malla_tb_falta;
+    if (p.y < -1000.0f || p.y > 1000.0f || sin_suelo) {
       V3 r = g_resp_hay.load() ? V3{g_resp_x.load(), 0.0f, g_resp_z.load()} : con_suelo;
       // D34: IW suma +5 al ultimo objeto/salida (fVar21), pero alli el +0x1620 es una posicion CON suelo; en el port
       // (y con dos aros del 900 en -5) el +5 dejaba al jugador en y = 5 bajo un terreno de 100. Se respeta el +5 solo si
@@ -4706,9 +5184,17 @@ void Fotograma(uint8_t* base, uint32_t estado) {
           3.14159265f * float(g_cartel.load()) / float(kCartelCuadros) : 0.0f;
   const float fx = std::sin(yaw + orbita), fz = std::cos(yaw + orbita);
   static V3 seguido;
+  const char* fase_csv=std::getenv("TEST_IWX_SEGUIMIENTO");
+  const bool medir_seguimiento=d->indice<=2 && fase_csv && *fase_csv && std::getenv("DBZ3_TEST_IWMINI");
+  // EU299A70, RAM7D1 autenticada por VSync: tambien .12 usa la referencia
+  // previa. Opt-in separado: escribir un CSV no activa el candidato de Goku.
+  const bool previa_goku=d->indice<=1 && medir_seguimiento && std::getenv("TEST_IWX_SEGUIMIENTO_PREVIO");
+  const bool fase_previa=medir_seguimiento && (d->indice==2 || previa_goku);
+  static dbz3::iwseguimiento::Memoria memoria_seguimiento;
+  if(!fase_previa)memoria_seguimiento={};
   // Solo cambio de copia periodica (EU299A70); la politica de seguimiento
   // de GP2 queda debajo. Implementacion y periodos en suelo_iw.
-  dbz3::suelo_iw::EnvolverReferencia(seguido.x, seguido.z, p.x, p.z);
+  if(!fase_previa)dbz3::suelo_iw::EnvolverReferencia(seguido.x, seguido.z, p.x, p.z);
   // GP2 noche: otra via, sin cambiar coeficiente ni colision. EU299A70
   // toma ancla640 en freno/salto/dash segun work1C8; no siempre pies+9.
   constexpr bool kAnclaSerpienteVerificada = false;
@@ -4717,12 +5203,36 @@ void Fotograma(uint8_t* base, uint32_t estado) {
   static bool cam_usa_raiz=false;
   if(estado==3 || !g_colocado.load())cam_usa_raiz=false;
   V3 ancla_proxy=p;
-  if(ancla_original) {
+  if(ancla_original || fase_previa) {
     const int e=EstadoIWDeAnim(g_anim_estado);
     cam_usa_raiz=dbz3::gp2cam::ModoAnclaOriginal(e,cam_usa_raiz);
     V3 cache;
-    if(cam_usa_raiz && PuntoCuerpo(base,x0,0,cache))
-      ancla_proxy={cache.x,cache.y-9.0f,cache.z};
+    if(cam_usa_raiz && PuntoCuerpo(base,x0,0,cache)) {
+      V3 ancla=cache;
+      // EU208390 y B3 820F9548: punto0 = hueso indicado por el primer s16
+      // de la tabla corporal. El cache B3 se calculo ANTES de que este tick
+      // cambie posicion/giro con Poner: medido hasta49.47u de desfase en dash.
+      // Recalcular desde la matriz que dibuja el modelo, no desde AMM sin
+      // jerarquia/mezcla. Sigue bajo el candidato de seguimiento, no normal.
+      const uint32_t tabla=REX_LOAD_U32(x0+2956);
+      const int indice=tabla>=0x40000000u && tabla<0xA0000000u ?
+          int(int16_t(REX_LOAD_U16(tabla))) : -1;
+      V3 mundo;
+      if(HuesoMundo(base,x0,indice,mundo)) {
+        ancla=mundo;
+        const char* ruta=medir_seguimiento ? std::getenv("TEST_IWX_ANCLA") : nullptr;
+        if(ruta&&*ruta) {
+          const uint32_t modelo=REX_LOAD_U32(x0+2952);
+          const uint32_t huesos=REX_LOAD_U32(modelo+1032);
+          const uint32_t h=huesos+64u*uint32_t(indice);
+          float matriz[16];
+          for(uint32_t i=0;i<16;++i)matriz[i]=LoadF(base,x0+4*i);
+          dbz3::iwseguimiento::MedirAncla(ruta,e,indice,{ancla.x,ancla.y,ancla.z},
+              {cache.x,cache.y,cache.z},{LoadF(base,h+48),LoadF(base,h+52),LoadF(base,h+56)},matriz);
+        }
+      }
+      ancla_proxy={ancla.x,ancla.y-9.0f,ancla.z};
+    }
     bool local_aplicada=false;
     if(cam_usa_raiz && std::getenv("TEST_GP2_ANCLA_LOCAL")) {
       float r[3];
@@ -4734,28 +5244,52 @@ void Fotograma(uint8_t* base, uint32_t estado) {
     static int ultimo=-99;
     if(e!=ultimo) {
       ultimo=e;
-      REXLOG_INFO("dbz3 gp2 ancla7D2 estado={} raiz={} local={} pies={},{},{} proxy={},{},{}",
-          e,cam_usa_raiz,local_aplicada,p.x,p.y,p.z,ancla_proxy.x,ancla_proxy.y,ancla_proxy.z);
+      REXLOG_INFO("dbz3 gp2 ancla indice={} estado={} raiz={} local={} pies={},{},{} proxy={},{},{}",
+          d->indice,e,cam_usa_raiz,local_aplicada,p.x,p.y,p.z,ancla_proxy.x,ancla_proxy.y,ancla_proxy.z);
     }
+  }
+  const V3 referencia_actual=ancla_proxy;
+  const bool reiniciar_seguimiento=estado==3 || !g_colocado.load();
+  if(fase_previa) {
+    const auto usada=memoria_seguimiento.Elegir({ancla_proxy.x,ancla_proxy.y,ancla_proxy.z},reiniciar_seguimiento);
+    ancla_proxy={usada.x,usada.y,usada.z};
+    dbz3::suelo_iw::EnvolverReferencia(seguido.x,seguido.z,ancla_proxy.x,ancla_proxy.z);
   }
   // solGP2: EU299A70 usa .3 constante en Serpiente. Candidato apagado
   // hasta cotejar la curva; solo el arnes puede solicitarlo explicitamente.
   constexpr bool kSeguimientoSerpienteProbado = false;
   const bool seguir_iw2 = d->indice == 2 && (kSeguimientoSerpienteProbado ||
-      (std::getenv("DBZ3_TEST_IWMINI") && std::getenv("DBZ3_TEST_GP2_SEGUIR")));
+      fase_previa || (std::getenv("DBZ3_TEST_IWMINI") && std::getenv("DBZ3_TEST_GP2_SEGUIR")));
   // un salto de sitio (la prueba auto, un reinicio) no se sigue: la camara cruzaria colinas y paredes por el camino
-  if (estado == 3 || !g_colocado.load() || (!seguir_iw2 && DistH(seguido, p) > 150.0f)) seguido = ancla_proxy;
+  // eIW7: DBZ3_IW_SEG_ORIGINAL=1 (apagado, sin medir): regla exacta de Minigame_UpdateFollowCamera (EU 0x299A70): coeficiente
+  // constante 0,12 (0,3 con +4==2) sin acercamiento extra ni salto a >150 u; el port anade ambos para el scatto.
+  static const bool seg_original = std::getenv("DBZ3_IW_SEG_ORIGINAL") != nullptr;
+  if (estado == 3 || !g_colocado.load() || (!seg_original && !seguir_iw2 && !previa_goku && DistH(seguido, p) > 150.0f)) seguido = ancla_proxy;
   // con el scatto (35 u por cuadro) se quedaba atras hasta pasar de 150 y saltaba de golpe (cruzando lomas, el ojo
   // dentro del terreno, rafaga 204507): mas alla de 40 u alcanza mas deprisa; corriendo (~33 u de retraso), igual
   const float lejos = DistH(seguido, p);
   // EU 0x299A70 Minigame_UpdateFollowCamera
-  const float kseg = seguir_iw2 ? 0.3f :
+  const float kseg = seguir_iw2 ? 0.3f : previa_goku ? 0.12f : seg_original ? (d->indice == 2 ? 0.3f : 0.12f) :
       std::min(1.0f, (d->indice == 2 ? 0.3f : 0.12f) + std::max(0.0f, lejos - 40.0f) / 60.0f);
-  seguido = {seguido.x + (ancla_proxy.x - seguido.x) * kseg, seguido.y + (ancla_proxy.y - seguido.y) * kseg,
-             seguido.z + (ancla_proxy.z - seguido.z) * kseg};
+  if(medir_seguimiento) {
+    const auto antes=seguido;
+    const auto nueva=dbz3::iwseguimiento::Mezclar({seguido.x,seguido.y,seguido.z},
+        {ancla_proxy.x,ancla_proxy.y,ancla_proxy.z},kseg);
+    seguido={nueva.x,nueva.y,nueva.z};
+    dbz3::iwseguimiento::Medir(fase_csv,EstadoIWDeAnim(g_anim_estado),cam_usa_raiz,reiniciar_seguimiento,
+        {referencia_actual.x,referencia_actual.y,referencia_actual.z},
+        {ancla_proxy.x,ancla_proxy.y,ancla_proxy.z},{antes.x,antes.y,antes.z},nueva);
+  } else {
+    seguido = {seguido.x + (ancla_proxy.x - seguido.x) * kseg, seguido.y + (ancla_proxy.y - seguido.y) * kseg,
+               seguido.z + (ancla_proxy.z - seguido.z) * kseg};
+  }
   // entrada (cartel): empieza en primer plano, cerca y desde abajo (referencia del usuario 4_goku_pose_entrada: Goku
   // llena el cuadro) y se aleja hasta la de seguir mientras da la media vuelta (auditoria10/C)
-  float atras = kCamAtras, alto = kCamAlto, mira = kCamMiraAlto;
+  // EU299A70 sigue pies+descriptor[3]; EU297DE0 suma ojo+15 y objetivo+5.
+  // Nuestro seguido descuenta las 9 unidades de Goku. Cell usa 10, no 9:
+  // RAM 7DD EE18236..18296 y descriptor del ELF, no una escala del modelo HD.
+  const float altura_descriptor=d->altura_camara-9.0f;
+  float atras = kCamAtras, alto = kCamAlto+altura_descriptor, mira = kCamMiraAlto+altura_descriptor;
   if (orbita > 0.0f) {
     const float s0 = 1.0f - float(g_cartel.load()) / float(kCartelCuadros), s = s0 * s0 * (3.0f - 2.0f * s0);
     // EU 0x29BFF0 s_SPACE
@@ -4982,9 +5516,12 @@ void Fotograma(uint8_t* base, uint32_t estado) {
     REXLOG_INFO("dbz3 gp2 bb-ready edad=60 codigo={:X} cuadro={} ojo={},{},{} objetivo={},{},{}",
         REX_LOAD_U32(x0+0x650+0x520)&0xFFF,LoadF(base,x0+0x650+0x608),
         ojo[0],ojo[1],ojo[2],obj[0],obj[1],obj[2]);
-  if (std::getenv("DBZ3_TEST_IWMINI_CAMLOG") && g_cartel.load() > 0 && g_cartel.load()%30 == 0)
+  if (std::getenv("DBZ3_TEST_IWMINI_CAMLOG") && g_cartel.load() > 0 && g_cartel.load()%30 == 0) {
     REXLOG_INFO("dbz3 solIW8: campo camara READY {} ojo ({:.4f},{:.4f},{:.4f}) obj ({:.4f},{:.4f},{:.4f}) fov {:.6f}",
         kCartelCuadros-g_cartel.load(),ojo[0],ojo[1],ojo[2],obj[0],obj[1],obj[2],g_fov_campo.load());
+    if (d->indice == 14)
+      REXLOG_INFO("dbz3 iwmini: Cell READY pies_y={} seguido_y={} altura={}",p.y,seguido.y,d->altura_camara);
+  }
   dbz3::cine::Camara(base, ojo, obj);
   {   // registro de la accion (X+3244) y el ataque/animacion (X+2928 & 0xFFF) del jugador al cambiar: andar, correr...
     // DS114: ademas del numero, el NOMBRE del estado (el de anim_iw: reposo, correr, pared-kick, saliente, dash,
@@ -5100,8 +5637,9 @@ void Fotograma(uint8_t* base, uint32_t estado) {
   static int64_t traza = 0;
   if (traza_log && estado == 4 && NowMs() - traza > 2000) {
     traza = NowMs();
-    REXLOG_INFO("dbz3 iwmini: jugador ({:.1f}, {:.1f}, {:.1f}) marcha ({:.2f}, {:.2f}) anda {} ojo ({:.1f}, {:.1f}, {:.1f})",
-                p.x, p.y, p.z, dx, dz, g_anda.load(), ojo[0], ojo[1], ojo[2]);
+    REXLOG_INFO("dbz3 iwmini: jugador ({:.1f}, {:.1f}, {:.1f}) marcha ({:.2f}, {:.2f}) anda {} ojo ({:.1f}, {:.1f}, {:.1f}) "
+                "objetivo ({:.2f}, {:.2f}, {:.2f})",   // fase 1 (7/11): hacia donde mira (diferencial.giro_reposo_iw)
+                p.x, p.y, p.z, dx, dz, g_anda.load(), ojo[0], ojo[1], ojo[2], obj[0], obj[1], obj[2]);
     // D34 (medida del encargo): ojo vs malla DIBUJADA. `malla` = superficie dibujada mas alta en la columna del ojo
     // (AlturaMalla; "sin" en un canto vertical), `suelo` = altura del #WCF (Altura), `tapado` = el segmento T->ojo corta
     // la malla dibujada (con `d` = distancia de T al corte, `fraccion` del segmento), `pegada` = el ojo esta a menos de
@@ -5199,6 +5737,31 @@ void Mando(uint8_t* base, uint32_t usuario, bool leido) {
        REX_LOAD_U16(r + 12),
        REX_LOAD_U16(r + 14),
        REX_LOAD_U32(r + 92)};
+  // eIW3 (solo pruebas): DBZ3_TEST_IW_GUION=<fichero> mete entradas cuadro a cuadro desde que empieza el juego (estado 4).
+  // Lineas "desde hasta x y b12 b14" (cuadros del port a 60 Hz, [desde,hasta); x/y = palanca s8, arriba = -127; b12 se
+  // mantiene todo el tramo, b14 solo en el primer cuadro). Sin la variable no hace nada.
+  if (static const char* guion = std::getenv("DBZ3_TEST_IW_GUION"); guion && *guion) {
+    static std::vector<std::array<int, 6>> tramos;
+    static int cuadro = 0;
+    static bool leido_f = false;
+    if (!leido_f) {
+      leido_f = true;
+      std::ifstream f(guion);
+      std::array<int, 6> t{};
+      while (f >> t[0] >> t[1] >> t[2] >> t[3] >> std::hex >> t[4] >> t[5] >> std::dec) tramos.push_back(t);
+      REXLOG_INFO("dbz3 iwmini: guion de prueba: {} tramos", tramos.size());
+    }
+    // cuadro 0 = primer cuadro con el mando ya en manos del jugador (fin del cartel/entrada)
+    static bool con_mando = false;
+    if (g_libre.load()) con_mando = true;   // latch: el primer cuadro libre del jugador
+    if (con_mando) for (const auto& t : tramos)
+      if (cuadro >= t[0] && cuadro < t[1]) {
+        g.d108 = 0, g.p26 = uint8_t(int8_t(t[2])), g.p27 = uint8_t(int8_t(t[3]));
+        g.b12 = uint16_t(g.b12 | t[4]);
+        if (cuadro == t[0]) g.b14 = uint16_t(g.b14 | t[5]);
+      }
+    if (con_mando) ++cuadro;
+  }
   if(g_panel_campo.load()>=0 && (g.b14 & 0x4000))g_panel_confirmar=true;
   // circulo (B del mando de Xbox): el scatto de IW (Minigame_ReadPlayerButtons: recien pulsado 0x2000). El luchador
   // de B3 no lo ve (seria su rafaga de ki).
@@ -5528,11 +6091,25 @@ const bool g_test = [] {
     g_dificultad = std::clamp(int(std::strtol(dif, nullptr, 0)), 0, 5);
   g_auto = std::strstr(t, "auto") != nullptr;
   g_meta_abierta = std::strstr(t, "meta") != nullptr;
-  std::thread([clave] {
+  // eANI2: ",serie=0x7D7:0x7D8:..." (solo pruebas) juega esas claves una tras otra en la misma sesion.
+  std::vector<int> serie{clave};
+  if (const char* sr = std::strstr(t, "serie=")) {
+    serie.clear();
+    for (const char* q = sr + 6; *q;) {
+      char* fin = nullptr;
+      serie.push_back(int(std::strtol(q, &fin, 0)));
+      if (!fin || *fin != ':') break;
+      q = fin + 1;
+    }
+  }
+  std::thread([serie] {
+   for (size_t ronda = 0; ronda < serie.size(); ++ronda) {
+    const int clave = serie[ronda];
     for (int quieto = 0; quieto < 120;) {
       quieto = dbz3::ingame::GameScreen() == kMainScreen ? quieto + 1 : 0;
       std::this_thread::sleep_for(std::chrono::milliseconds(25));
     }
+    REXLOG_INFO("dbz3 iwmini: prueba: serie {}/{} clave 0x{:X}", ronda + 1, serie.size(), clave);
     REXLOG_INFO("dbz3 iwmini: prueba: {}", Empezar(clave, -1) ? "empieza" : "no empieza");
     for (int i = 0; i < 8000 && g_estado.load() != 3; ++i) std::this_thread::sleep_for(std::chrono::milliseconds(50));
     Resultado r;
@@ -5545,6 +6122,11 @@ const bool g_test = [] {
       if (!ClaveConPanelPropioIW(r.clave))
         MostrarResultadoFuera(r);   // disparo ya espero y confirmo su recompensa
     }
+    // que se cierre el panel y el minijuego quede libre antes del siguiente
+    for (int i = 0; ronda + 1 < serie.size() && i < 1200 && (g_estado.load() != 0 || dbz3::ingame::GameScreen() != kMainScreen); ++i)
+      std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    if (ronda + 1 < serie.size()) std::this_thread::sleep_for(std::chrono::seconds(12));
+   }
   }).detach();
   return true;
 }();
@@ -5754,7 +6336,8 @@ bool DibujarResultadoIW(ImDrawList* dl, float x0, float y0, float w, float h, co
   // DS169: letra de rango grande del fondo, como Results_ShowRankBanner (EU 0x2EAE50, objeto 5 sub-animacion 0x12/0x13/
   // 0x14). En los fotogramas del original (0x7D1 630 s, 0x7D2 500 s, 0x7D9 1070 s) ocupa media pantalla detras de las
   // filas. El atlas es el de la letra pequena (334/1 t24, 32x40 por glifo) ampliado; el tinte se toma de esos fotogramas.
-  const int rg_grande = r.rango >= 0 ? std::min(r.rango, 4) : RangoResultadoIW(ScoreResultado(r));
+  // fase 1 (7/11): -2 = fallo sin rango (vuelo, EU 0x33C420 Viewer_StateResultFail): no hay letra
+  const int rg_grande = r.rango == -2 ? -1 : r.rango >= 0 ? std::min(r.rango, 4) : RangoResultadoIW(ScoreResultado(r));
   if (tx.ranks && rg_grande >= 0) {
     const int col = rg_grande >= 3 ? rg_grande - 3 : rg_grande, fila = rg_grande >= 3 ? 1 : 0;
     const float alto = 232.0f, an = alto * 32.0f / 40.0f;
@@ -5857,7 +6440,7 @@ bool DibujarResultadoIW(ImDrawList* dl, float x0, float y0, float w, float h, co
   // entre filas (48) y arranque mas bajo (92) para que la letra grande del fondo se lea entre ellas.
   const bool msnmw = fk == (kResTime | kResObjects | kResScore | kResEarned | kResTotal);
   const float paso = msnmw ? 48.0f : (n >= 8 ? 30.0f : 34.0f), y0f = msnmw ? 92.0f : 88.0f;
-  const int rg = r.rango >= 0 ? std::min(r.rango, 4) : RangoResultadoIW(ScoreResultado(r));
+  const int rg = r.rango == -2 ? -1 : r.rango >= 0 ? std::min(r.rango, 4) : RangoResultadoIW(ScoreResultado(r));
   for (int i = 0; i < n; ++i) {
     const float y = y0f + paso * float(i);
     const int v = std::max(filas[size_t(i)].valor, 0);

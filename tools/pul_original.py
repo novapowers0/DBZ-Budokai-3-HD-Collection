@@ -18,8 +18,7 @@ OUT = Path('D:/tmp/solPUL')
 def main():
     import pcsx2_cuadros as C
     import pruebas as P
-    sys.path.insert(0, r'E:\DBZ3HD_trabajo\R7\emu')
-    import sonda as s
+    import pcsx2_sonda as s
     from pcsx2_turnos import process_image
     def pids():
         r = subprocess.run(['tasklist', '/FI', 'IMAGENAME eq pcsx2.exe', '/FO', 'CSV', '/NH'],

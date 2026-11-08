@@ -59,7 +59,7 @@ KIT_DATA = ["catalog_b3.cat", "cac/piezas_b3_base.json", "roster_db.json", "b1_c
             # sin estos el Kit fallaba en casa de los jugadores (log de un jugador, 2026-10-12): presets del
             # importador, nombres de los modelos de IW, codigos de Dragon Universe, etiquetas de texturas
             # y la lista de herramientas de la ventana
-            "presets_importar.toml", "iw_modelos.json", "du_codigos.json", "texturas_etiquetas.json",
+            "presets_importar.toml", "iw_modelos.json", "du_codigos.json", "heroe_plantillas_pt_ja.json", "texturas_etiquetas.json",
             "tools_manifest.json",
             "ports_oficiales.toml", "tactics_manifest.toml", "tactics_units.toml", "tactics_economia.toml", "tactics_capsulas.toml", "tactics_textos.toml",   # recetas de la tarjeta "4. Ports oficiales" (importar.py oficial)
             "ports_vision.toml"]      # tarjeta "5. Personajes de la vision" (importar.py oficial --recetas)

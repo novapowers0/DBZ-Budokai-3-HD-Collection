@@ -1,0 +1,253 @@
+{
+ "_leeme": "Savestates de IW EU (SLES-55347, ISO E:/DBZ3HD_trabajo/iw_eu/Dragon Ball Z - Infinite World (Europe).iso) guardados 0,3 s despues de escribir indice/clave de mision (inicio de la presentacion del minijuego, antes de la intro). Hecho con tools/iw_estados.py desde el estado 04 de menu. Verificado: al cargar, 0x5C0DC8 = clave y 0x4A4D40 avanza. Copias en D:/DBZ3HD/_pcsx2_pool/{1,2,3}/sstates (slot) y E:/DBZ3HD_trabajo/pool_estados/iw_eu/. Slot = 30 + (clave - 0x7D0).",
+ "iso": "E:/DBZ3HD_trabajo/iw_eu/Dragon Ball Z - Infinite World (Europe).iso",
+ "mapa_ram_comun": [
+  "contador de cuadros 0x4A4D40",
+  "clave de mision 0x5C0DC8 (= la del estado)",
+  "raiz de actores 0x49CA70 (+0x800 jugador)",
+  "contexto de marcha 0x49CBC0",
+  "mando original: indice 0x5C14B4, crudo 0x4ADEDA+pad*0xBC",
+  "datos EU: tools/dif_mapa_iw_eu.py (leer_original, COUNT, INDICES) + iwx_original_cuadros.py"
+ ],
+ "estados": {
+  "0x7D0": {
+   "slot": 30,
+   "ruta": "E:/DBZ3HD_trabajo/pool_estados/iw_eu/SLES-55347 (335A5A1F).30.p2s",
+   "indice_mision": 0,
+   "necesita": "solo el mapa comun"
+  },
+  "0x7D1": {
+   "slot": 31,
+   "ruta": "E:/DBZ3HD_trabajo/pool_estados/iw_eu/SLES-55347 (335A5A1F).31.p2s",
+   "indice_mision": 1,
+   "necesita": "Bubbles: ademas tools/dif_lector_bubbles.py (raices 0x49ca70..., Reader/ptr); decisiones BBR 0x127CA0/0x3172E0"
+  },
+  "0x7D2": {
+   "slot": 32,
+   "ruta": "E:/DBZ3HD_trabajo/pool_estados/iw_eu/SLES-55347 (335A5A1F).32.p2s",
+   "indice_mision": 2,
+   "necesita": "solo el mapa comun"
+  },
+  "0x7D3": {
+   "slot": 33,
+   "ruta": "E:/DBZ3HD_trabajo/pool_estados/iw_eu/SLES-55347 (335A5A1F).33.p2s",
+   "indice_mision": 3,
+   "necesita": "solo el mapa comun"
+  },
+  "0x7D4": {
+   "slot": 34,
+   "ruta": "E:/DBZ3HD_trabajo/pool_estados/iw_eu/SLES-55347 (335A5A1F).34.p2s",
+   "indice_mision": 5,
+   "necesita": "NB006 (QTE): --qte con contexto 0x49CEBC"
+  },
+  "0x7D5": {
+   "slot": 35,
+   "ruta": "E:/DBZ3HD_trabajo/pool_estados/iw_eu/SLES-55347 (335A5A1F).35.p2s",
+   "indice_mision": 6,
+   "necesita": "solo el mapa comun"
+  },
+  "0x7D6": {
+   "slot": 36,
+   "ruta": "E:/DBZ3HD_trabajo/pool_estados/iw_eu/SLES-55347 (335A5A1F).36.p2s",
+   "indice_mision": 7,
+   "necesita": "solo el mapa comun"
+  },
+  "0x7D7": {
+   "slot": 37,
+   "ruta": "E:/DBZ3HD_trabajo/pool_estados/iw_eu/SLES-55347 (335A5A1F).37.p2s",
+   "indice_mision": 8,
+   "necesita": "solo el mapa comun"
+  },
+  "0x7D8": {
+   "slot": 38,
+   "ruta": "E:/DBZ3HD_trabajo/pool_estados/iw_eu/SLES-55347 (335A5A1F).38.p2s",
+   "indice_mision": 9,
+   "necesita": "solo el mapa comun"
+  },
+  "0x7D9": {
+   "slot": 39,
+   "ruta": "E:/DBZ3HD_trabajo/pool_estados/iw_eu/SLES-55347 (335A5A1F).39.p2s",
+   "indice_mision": 10,
+   "necesita": "solo el mapa comun"
+  },
+  "0x7DA": {
+   "slot": 40,
+   "ruta": "E:/DBZ3HD_trabajo/pool_estados/iw_eu/SLES-55347 (335A5A1F).40.p2s",
+   "indice_mision": 11,
+   "necesita": "solo el mapa comun"
+  },
+  "0x7DB": {
+   "slot": 41,
+   "ruta": "E:/DBZ3HD_trabajo/pool_estados/iw_eu/SLES-55347 (335A5A1F).41.p2s",
+   "indice_mision": 12,
+   "necesita": "solo el mapa comun"
+  },
+  "0x7DC": {
+   "slot": 42,
+   "ruta": "E:/DBZ3HD_trabajo/pool_estados/iw_eu/SLES-55347 (335A5A1F).42.p2s",
+   "indice_mision": 13,
+   "necesita": "solo el mapa comun"
+  },
+  "0x7DD": {
+   "slot": 43,
+   "ruta": "E:/DBZ3HD_trabajo/pool_estados/iw_eu/SLES-55347 (335A5A1F).43.p2s",
+   "indice_mision": 14,
+   "necesita": "posible NB013/NB014: --qte-ctx 0x49CE7C (NB013) / 0x49CDF8 (NB014); confirmar clave"
+  },
+  "0x7DE": {
+   "slot": 44,
+   "ruta": "E:/DBZ3HD_trabajo/pool_estados/iw_eu/SLES-55347 (335A5A1F).44.p2s",
+   "indice_mision": 15,
+   "necesita": "solo el mapa comun"
+  },
+  "0x7DF": {
+   "slot": 45,
+   "ruta": "E:/DBZ3HD_trabajo/pool_estados/iw_eu/SLES-55347 (335A5A1F).45.p2s",
+   "indice_mision": 16,
+   "necesita": "solo el mapa comun"
+  },
+  "0x7E0": {
+   "slot": 46,
+   "ruta": "E:/DBZ3HD_trabajo/pool_estados/iw_eu/SLES-55347 (335A5A1F).46.p2s",
+   "indice_mision": 17,
+   "necesita": "solo el mapa comun"
+  },
+  "0x7E1": {
+   "slot": 47,
+   "ruta": "E:/DBZ3HD_trabajo/pool_estados/iw_eu/SLES-55347 (335A5A1F).47.p2s",
+   "indice_mision": 18,
+   "necesita": "solo el mapa comun"
+  }
+ },
+ "usa": {
+  "_leeme": "IW USA (SLUS-21842) con la partida NA al 100 % (GameFAQs Cranman1982) en tarjeta carpeta memcards/iw_usa100.ps2 de los perfiles 1-3. ISO: E:/DBZ3HD_trabajo/iw_usa/iw_usa.bin (pasar el .bin, no el .cue). Mismo metodo que EU (tools/iw_estados_usa.py): Main Menu -> Dragon Mission -> Continue -> mapa -> mision -> Mission Start, y al valer la clave 0x7D0 se escribe indice/clave y se guarda 0,3 s despues; el estado nace en el mapa y entra al minijuego ~15-20 s despues (comprobado 0x7D1: persecucion de Bubbles). Slot = 30 + (clave - 0x7D0). Verificados 18/18: clave = la pedida y el contador avanza.",
+  "iso": "E:/DBZ3HD_trabajo/iw_usa/iw_usa.bin",
+  "tarjeta": "iw_usa100.ps2",
+  "mapa_ram": "tools/dif_mapa_iw_usa.py: datos USA = EU - 0x800 (contador 0x4A4540, clave 0x5C05C8, indice 0x5C05C4, raices 0x49C270/0x49C3BC/0x49C58C/0x49C3A4/0x49C63C, marcha 0x49C3C0, mando 0x5C0CB4/0x4AD6DA, QTE NB014/NB013/NB006 0x49C5F8/0x49C67C/0x49C6BC); codigo por tramos en dif_mapa_iw_usa_codigo.json",
+  "main_menu": {
+   "slot": 4,
+   "ruta": "E:/DBZ3HD_trabajo/pool_estados/iw_usa/SLUS-21842 (E90DC5C9).4.p2s",
+   "nota": "Main Menu (Dragon Mission, Dragon Duel, Warrior's Training, Warrior's Room, Options, Fighter's Road: todo abierto)"
+  },
+  "mapa_misiones": {
+   "slot": 5,
+   "ruta": "E:/DBZ3HD_trabajo/pool_estados/iw_usa/SLUS-21842 (E90DC5C9).5.p2s",
+   "nota": "Dragon Mission, Continue: mapa Saiyan Saga"
+  },
+  "mision_ajustes": {
+   "slot": 6,
+   "ruta": "E:/DBZ3HD_trabajo/pool_estados/iw_usa/SLUS-21842 (E90DC5C9).6.p2s",
+   "nota": "Pantalla de la primera mision (Go after Raditz!): Mission Settings / Mission Start"
+  },
+  "estados": {
+   "0x7D0": {
+    "slot": 30,
+    "ruta": "E:/DBZ3HD_trabajo/pool_estados/iw_usa/SLUS-21842 (E90DC5C9).30.p2s",
+    "indice_mision": 0,
+    "necesita": "mapa comun USA (ver mapa_ram)"
+   },
+   "0x7D1": {
+    "slot": 31,
+    "ruta": "E:/DBZ3HD_trabajo/pool_estados/iw_usa/SLUS-21842 (E90DC5C9).31.p2s",
+    "indice_mision": 1,
+    "necesita": "mapa comun USA (ver mapa_ram); decisiones BBR 0x127CA0/0x3172E0"
+   },
+   "0x7D2": {
+    "slot": 32,
+    "ruta": "E:/DBZ3HD_trabajo/pool_estados/iw_usa/SLUS-21842 (E90DC5C9).32.p2s",
+    "indice_mision": 2,
+    "necesita": "mapa comun USA (ver mapa_ram)"
+   },
+   "0x7D3": {
+    "slot": 33,
+    "ruta": "E:/DBZ3HD_trabajo/pool_estados/iw_usa/SLUS-21842 (E90DC5C9).33.p2s",
+    "indice_mision": 3,
+    "necesita": "mapa comun USA (ver mapa_ram)"
+   },
+   "0x7D4": {
+    "slot": 34,
+    "ruta": "E:/DBZ3HD_trabajo/pool_estados/iw_usa/SLUS-21842 (E90DC5C9).34.p2s",
+    "indice_mision": 5,
+    "necesita": "mapa comun USA (ver mapa_ram); NB006 (QTE): --qte con contexto 0x49CEBC"
+   },
+   "0x7D5": {
+    "slot": 35,
+    "ruta": "E:/DBZ3HD_trabajo/pool_estados/iw_usa/SLUS-21842 (E90DC5C9).35.p2s",
+    "indice_mision": 6,
+    "necesita": "mapa comun USA (ver mapa_ram)"
+   },
+   "0x7D6": {
+    "slot": 36,
+    "ruta": "E:/DBZ3HD_trabajo/pool_estados/iw_usa/SLUS-21842 (E90DC5C9).36.p2s",
+    "indice_mision": 7,
+    "necesita": "mapa comun USA (ver mapa_ram)"
+   },
+   "0x7D7": {
+    "slot": 37,
+    "ruta": "E:/DBZ3HD_trabajo/pool_estados/iw_usa/SLUS-21842 (E90DC5C9).37.p2s",
+    "indice_mision": 8,
+    "necesita": "mapa comun USA (ver mapa_ram)"
+   },
+   "0x7D8": {
+    "slot": 38,
+    "ruta": "E:/DBZ3HD_trabajo/pool_estados/iw_usa/SLUS-21842 (E90DC5C9).38.p2s",
+    "indice_mision": 9,
+    "necesita": "mapa comun USA (ver mapa_ram)"
+   },
+   "0x7D9": {
+    "slot": 39,
+    "ruta": "E:/DBZ3HD_trabajo/pool_estados/iw_usa/SLUS-21842 (E90DC5C9).39.p2s",
+    "indice_mision": 10,
+    "necesita": "mapa comun USA (ver mapa_ram)"
+   },
+   "0x7DA": {
+    "slot": 40,
+    "ruta": "E:/DBZ3HD_trabajo/pool_estados/iw_usa/SLUS-21842 (E90DC5C9).40.p2s",
+    "indice_mision": 11,
+    "necesita": "mapa comun USA (ver mapa_ram)"
+   },
+   "0x7DB": {
+    "slot": 41,
+    "ruta": "E:/DBZ3HD_trabajo/pool_estados/iw_usa/SLUS-21842 (E90DC5C9).41.p2s",
+    "indice_mision": 12,
+    "necesita": "mapa comun USA (ver mapa_ram)"
+   },
+   "0x7DC": {
+    "slot": 42,
+    "ruta": "E:/DBZ3HD_trabajo/pool_estados/iw_usa/SLUS-21842 (E90DC5C9).42.p2s",
+    "indice_mision": 13,
+    "necesita": "mapa comun USA (ver mapa_ram)"
+   },
+   "0x7DD": {
+    "slot": 43,
+    "ruta": "E:/DBZ3HD_trabajo/pool_estados/iw_usa/SLUS-21842 (E90DC5C9).43.p2s",
+    "indice_mision": 14,
+    "necesita": "mapa comun USA (ver mapa_ram); confirmar clave"
+   },
+   "0x7DE": {
+    "slot": 44,
+    "ruta": "E:/DBZ3HD_trabajo/pool_estados/iw_usa/SLUS-21842 (E90DC5C9).44.p2s",
+    "indice_mision": 15,
+    "necesita": "mapa comun USA (ver mapa_ram)"
+   },
+   "0x7DF": {
+    "slot": 45,
+    "ruta": "E:/DBZ3HD_trabajo/pool_estados/iw_usa/SLUS-21842 (E90DC5C9).45.p2s",
+    "indice_mision": 16,
+    "necesita": "mapa comun USA (ver mapa_ram)"
+   },
+   "0x7E0": {
+    "slot": 46,
+    "ruta": "E:/DBZ3HD_trabajo/pool_estados/iw_usa/SLUS-21842 (E90DC5C9).46.p2s",
+    "indice_mision": 17,
+    "necesita": "mapa comun USA (ver mapa_ram)"
+   },
+   "0x7E1": {
+    "slot": 47,
+    "ruta": "E:/DBZ3HD_trabajo/pool_estados/iw_usa/SLUS-21842 (E90DC5C9).47.p2s",
+    "indice_mision": 18,
+    "necesita": "mapa comun USA (ver mapa_ram)"
+   }
+  }
+ }
+}

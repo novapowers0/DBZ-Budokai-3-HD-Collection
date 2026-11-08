@@ -124,3 +124,6 @@ src/escenarios_sel_gen_eu.inc
 docs/historial/handbacks/
 # historias del heroe generadas en cada PC
 mod center hd/campanas/historia_heroe_[0-9]*.toml
+
+# resultados de pruebas locales (se regeneran)
+tools/dorados/resultados/

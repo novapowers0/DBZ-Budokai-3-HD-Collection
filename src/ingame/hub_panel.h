@@ -109,6 +109,8 @@ struct View {
   int rows = 6;            // filas nativas del menu (7 con Dragon Arena)
 };
 View Snapshot();
+// Raton en la pantalla HUB (hilo de la interfaz): entrada bajo el puntero (-1 ninguna), clic izquierdo (A), derecho (B).
+void PostMouse(int entry, bool a, bool b);
 int64_t ClockMs();         // reloj de View::fade_t0 (steady_clock en ms)
 // Hilo de la interfaz: crea el dialogo que dibuja todo (lo pide el hilo del juego la primera vez).
 void CreatePanel();

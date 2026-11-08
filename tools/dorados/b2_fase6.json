@@ -1,40 +1,28 @@
 {
  "modo": "b2",
  "escena": "fase6",
- "fuente": "PCSX2 PINE, A2\\sstates\\fase6.p2s (lista de aliados), 110.0 s",
- "estado": "fase6.p2s",
- "teclas": "cap=lista z espera2500 cap=dialogo up espera800 z espera7000 cap=aliado espera1000 z espera4000 cap=p1 z espera9000 cap=p2 z espera9000 cap=p3 espera20000 cap=final",
- "seg": 110.0,
- "secuencia": [],
- "recuento": {},
- "capturas": [
-  {
-   "original": "C:\\Users\\javie\\Desktop\\PROYECTOS IA\\DBZ Budokai 3 HD Collection\\studies 5\\ENTREGAS\\A2\\evidencias\\original_fase6_lista.png",
-   "port": "fase6_lista"
-  },
-  {
-   "original": "C:\\Users\\javie\\Desktop\\PROYECTOS IA\\DBZ Budokai 3 HD Collection\\studies 5\\ENTREGAS\\A2\\evidencias\\original_fase6_dialogo.png",
-   "port": "fase6_dialogo"
-  },
-  {
-   "original": "C:\\Users\\javie\\Desktop\\PROYECTOS IA\\DBZ Budokai 3 HD Collection\\studies 5\\ENTREGAS\\A2\\evidencias\\original_fase6_aliado.png",
-   "port": "fase6_aliado"
-  },
-  {
-   "original": "C:\\Users\\javie\\Desktop\\PROYECTOS IA\\DBZ Budokai 3 HD Collection\\studies 5\\ENTREGAS\\A2\\evidencias\\original_fase6_p1.png",
-   "port": "fase6_p1"
-  },
-  {
-   "original": "C:\\Users\\javie\\Desktop\\PROYECTOS IA\\DBZ Budokai 3 HD Collection\\studies 5\\ENTREGAS\\A2\\evidencias\\original_fase6_p2.png",
-   "port": "fase6_p2"
-  },
-  {
-   "original": "C:\\Users\\javie\\Desktop\\PROYECTOS IA\\DBZ Budokai 3 HD Collection\\studies 5\\ENTREGAS\\A2\\evidencias\\original_fase6_p3.png",
-   "port": "fase6_p3"
-  },
-  {
-   "original": "C:\\Users\\javie\\Desktop\\PROYECTOS IA\\DBZ Budokai 3 HD Collection\\studies 5\\ENTREGAS\\A2\\evidencias\\original_fase6_final.png",
-   "port": "fase6_final"
-  }
- ]
+ "fuente": "PCSX2 PINE por reloj, una entrada por tarea (grabar_fases.py --tareas), 330.0 s",
+ "estado": "E:\\DBZ3HD_trabajo\\A2\\sstates\\fase6.p2s",
+ "teclas": "z espera2500 up espera800 z espera7000 z espera1500 z espera8000 z espera1500 z espera8000 z espera1500 z espera8000 z espera1500 z espera8000 z espera1500 z espera1500 z espera1500 z espera1500 z espera1500 z espera1500 z espera1500 z espera1500 z espera1500 z espera1500 z espera1500 z espera1500  start espera4000 a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z  z espera1500 z espera8000 z espera1500 z espera8000 z espera1500 z espera8000 z espera1500 z espera8000 espera10000",
+ "seg": 330.0,
+ "secuencia": [
+  5,
+  1,
+  5
+ ],
+ "tiempos": [
+  39.92,
+  151.61,
+  185.06
+ ],
+ "sitios": [
+  "3BA230@1",
+  "3BB3B0@2",
+  "3BA830@3"
+ ],
+ "recuento": {
+  "1": 1,
+  "5": 2045
+ },
+ "capturas": []
 }

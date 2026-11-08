@@ -8,7 +8,7 @@ Turno: carpeta E:\DBZ3HD_trabajo\coord\compilando (mkdir es atomico); si lleva m
 aparta (nunca se borra). Codigo de salida = el de cmake. Si falla en un archivo que no es tuyo, espera y reintenta:
 otro agente lo esta editando.
 
-Si la copia se ha movido de carpeta (integracion en D:\tmp, otra maquina), CMakeCache.txt apunta al proyecto
+Si la copia se ha movido de carpeta (integracion en E:\DBZ3HD_trabajo\tmp, otra maquina), CMakeCache.txt apunta al proyecto
 original y `cmake --build` compilaria el arbol equivocado. En ese caso se aparta el build viejo (nunca se borra) y
 se configura uno nuevo en esta raiz.
 """
@@ -79,6 +79,11 @@ def main():
         pass
     try:
         print(f"turno de compilar tras {time.time() - t0:.0f} s", flush=True)
+        if os.environ.get('DBZ3_COMPILAR_SOLAR_Z') == '1':
+            from compilar_solar_z import compilar
+            codigo = compilar(R)
+            if codigo:
+                return codigo
         r = subprocess.run(["cmake", "--build", str(BUILD)], capture_output=True, text=True, errors="replace")
         lineas = [l for l in (r.stdout + r.stderr).splitlines() if "error" in l.lower() or "FAILED" in l]
         print("\n".join(lineas[:40]) if lineas else "sin errores", flush=True)

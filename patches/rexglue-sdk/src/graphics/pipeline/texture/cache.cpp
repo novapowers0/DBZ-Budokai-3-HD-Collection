@@ -295,6 +295,17 @@ bool TextureCache::GetConfigDrawResolutionScale(uint32_t& x_out, uint32_t& y_out
   uint32_t config_y = use_shared_scale && !rex::cvar::HasNonDefaultValue("draw_resolution_scale_y")
                           ? shared_scale
                           : uint32_t(std::max(INT32_C(1), REXCVAR_GET(draw_resolution_scale_y)));
+  // DBZ3: la opcion visible del launcher ("Escala de render interna",
+  // dbz3_resolution_scale) manda. El toml puede traer draw_resolution_scale_x/y
+  // obsoletos de otra sesion (SaveConfig los guarda) y al arrancar se leen antes
+  // de que exista el cvar del plugin; sin esto, elegir 4x podia acabar
+  // renderizando a 1x (medido: eff=1x1 con scale:4x4 y vram plana).
+  if (!rex::cvar::GetFlagByName("dbz3_resolution_scale").empty()) {
+    const int32_t friendly_scale = rex::cvar::Query<int32_t>("dbz3_resolution_scale");
+    if (friendly_scale > 0) {
+      config_x = config_y = uint32_t(std::min<int32_t>(friendly_scale, kMaxDrawResolutionScaleAlongAxis));
+    }
+  }
   uint32_t clamped_x = std::min(kMaxDrawResolutionScaleAlongAxis, config_x);
   uint32_t clamped_y = std::min(kMaxDrawResolutionScaleAlongAxis, config_y);
 

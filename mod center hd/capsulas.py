@@ -237,9 +237,14 @@ def iw_key(blk, o=0):
     return w(blk, o, 11) or w(blk, o, 8)
 
 
-def iw_skills(ccm):
+def iw_skills(ccm, fila=None):
     """Tecnicas y definitivas de un BCM de IW, en orden de ID: [{clave, tipo, formas (mascara,
-    0 = todas), ki, variantes}] (las variantes por forma son la misma tecnica)."""
+    0 = todas), ki, variantes}] (las variantes por forma son la misma tecnica).
+    `fila` = fila del registro de IW que ocupa la forma 1 (fusiones como Gotenks): las mascaras
+    van por filas de esa tabla (bit 3 = Gotenks normal), asi que se desplazan a los indices de
+    forma del port (bit 0 = normal); una mascara que se queda en 0 es de otro personaje de la
+    fusion y no se lista. La clave es (tipo, ID): un especial y una definitiva pueden compartir
+    el ID de IW (Gotenks 941) y son dos capsulas distintas."""
     out = {}
     for o, st in ccm_blocks(ccm):
         c1 = w(ccm, o, COND)
@@ -248,9 +253,14 @@ def iw_skills(ccm):
         key = iw_key(ccm, o)
         if not key:
             continue
-        s = out.setdefault(key, {"clave": key, "tipo": "definitiva" if c1 & 0x0008 else "especial",
-                                 "formas": 0, "todas": False, "ki": 0, "variantes": set()})
+        tipo = "definitiva" if c1 & 0x0008 else "especial"
         m = w(ccm, o, 10) if c1 & IW_FORM_MASK else 0
+        if m and fila:
+            m >>= fila
+            if not m:               # solo en la fila de un componente: no es suya
+                continue
+        s = out.setdefault((tipo, key), {"clave": key, "tipo": tipo,
+                                         "formas": 0, "todas": False, "ki": 0, "variantes": set()})
         s["todas"] |= not m
         s["formas"] |= m
         s["variantes"].add(m)
@@ -266,7 +276,9 @@ def _lowbit(m):
 
 
 def adapt_iw_bcm(ccm, skill_caps, nforms=1, key_map=None, ajenos=(), fila=None):
-    """BCM de Infinite World -> mecanica de Budokai 3. skill_caps = {clave IW: capsula B3}.
+    """BCM de Infinite World -> mecanica de Budokai 3. skill_caps = {clave IW: capsula B3} o
+    {(tipo, clave): capsula} (un especial y una definitiva pueden compartir el ID de IW: Gotenks
+    941; se separan por tipo y cada una lleva su capsula).
     key_map = {clave del BCM: clave real de IW}: los ports de la comunidad a veces dejan en
     w11 un ID que en la hoja de IW es un objeto (p.ej. Janemba: 884 Senzu Bean, 887 Super Holy
     Water); con el mapa se traduce a la tecnica real (364 Hell Gate, 367 Rakshasa's Claw).
@@ -292,6 +304,19 @@ def adapt_iw_bcm(ccm, skill_caps, nforms=1, key_map=None, ajenos=(), fila=None):
     def bkey(b):
         k = iw_key(b)
         return km.get(k, k)
+
+    def cap_for(tipo, key):
+        """Capsula de una tecnica: por (tipo, clave) si el mapa las separa; si no, por clave."""
+        if (tipo, key) in skill_caps:
+            return skill_caps[(tipo, key)]
+        return skill_caps.get(key, 0)
+
+    # fusiones: las mascaras de forma van por filas del registro de IW (Gotenks: bit 3 = normal);
+    # se pasan a indices de forma del port antes de agrupar variantes. Mascara 0 = de un componente.
+    if fila:
+        for k in nodes:
+            if wn(k, COND) & IW_FORM_MASK:
+                setw(nodes[k][0], 0, 10, wn(k, 10) >> fila)
 
     def collapse(keys):
         groups = {}
@@ -329,9 +354,10 @@ def adapt_iw_bcm(ccm, skill_caps, nforms=1, key_map=None, ajenos=(), fila=None):
     def ajeno(k):
         if k not in nodes:
             return False
-        # 0x1000 + mascara sin la fila de la fusion: Gogeta SS4 trae asi los golpes del SS4 de Goku (w10 = 2)
+        # 0x1000 + mascara sin la fila de la fusion: Gogeta SS4 trae asi los golpes del SS4 de Goku
+        # (w10 = 2). Con `fila` la mascara ya viene desplazada: 0 = solo la fila de un componente.
         return ((wn(k, COND) & 0x0010 and wn(k, 10) in ajenos) or
-                (fila is not None and wn(k, COND) & IW_FORM_MASK and not wn(k, 10) >> fila & 1))
+                (fila is not None and wn(k, COND) & IW_FORM_MASK and not wn(k, 10)))
     if ajenos or fila is not None:
         nq = len({x for k in nodes for x in nodes[k][1] if ajeno(x)} | {k for k in st if ajeno(k)})
         for k in nodes:
@@ -412,8 +438,9 @@ def adapt_iw_bcm(ccm, skill_caps, nforms=1, key_map=None, ajenos=(), fila=None):
             "%#x->%#x" % x for x in sorted(moved.items())))
     out, specials, first_sp = [], {}, None
     otra_ranura = {}
-    # fusiones de IW: tecnicas y definitiva con la misma clave; la tecnica lleva la capsula de tecnica, no la de la definitiva
-    caps_ult = {skill_caps.get(bkey(nodes[k][0])) for k in st
+    # fusiones de IW: tecnicas y definitiva con la misma clave; la tecnica lleva la capsula de
+    # tecnica, no la de la definitiva (con claves (tipo, ID) ya son capsulas distintas)
+    caps_ult = {cap_for("definitiva", bkey(nodes[k][0])) for k in st
                 if w(nodes[k][0], 0, COND) & 0x8000 and w(nodes[k][0], 0, COND) & 0x0008}
     for k in st:
         b = nodes[k][0]
@@ -442,7 +469,7 @@ def adapt_iw_bcm(ccm, skill_caps, nforms=1, key_map=None, ajenos=(), fila=None):
                 w(b, 0, 12), w(b, 0, 13)))
         elif c1 & 0x8000 and c1 & 0x0008:                # definitiva
             key = bkey(b)
-            cid = skill_caps.get(key, 0)
+            cid = cap_for("definitiva", key)
             for i, v in ((0, 0), (1, 0x0F), (COND, 0x000A), (TYPE, 0), (6, 0x8001), (8, cid),
                          (9, 0), (10, 0), (11, 0)):
                 setw(b, 0, i, v)
@@ -462,12 +489,14 @@ def adapt_iw_bcm(ccm, skill_caps, nforms=1, key_map=None, ajenos=(), fila=None):
             specials[key] = k
             continue
         out.append(k)
-    sp_order = [key for key in skill_caps if key in specials] + [key for key in specials if key not in skill_caps]
+    cap_special = ([k for (t, k) in skill_caps if t == "especial"]
+                   if any(isinstance(x, tuple) for x in skill_caps) else list(skill_caps))
+    sp_order = [key for key in cap_special if key in specials] + [key for key in specials if key not in cap_special]
     new = []
     for d, keys in ((1, sp_order), (2, sp_order[::-1])):
         for key in keys:
             k = otra_ranura.get(key, specials[key]) if d == 2 else specials[key]
-            cid = skill_caps.get(key, 0)
+            cid = cap_for("especial", key)
             if cid in caps_ult:
                 cid = next((v for v in skill_caps.values() if v not in caps_ult), cid)
             cid = cid or UNUSED_CAP
@@ -487,7 +516,7 @@ def adapt_iw_bcm(ccm, skill_caps, nforms=1, key_map=None, ajenos=(), fila=None):
             if cid != UNUSED_CAP:
                 KI[cid] = max(KI.get(cid, 0), ki)
     for key in sp_order:
-        rep.append("tecnica (IW %d) -> capsula %s" % (key, skill_caps.get(key) or "ninguna: no saldra"))
+        rep.append("tecnica (IW %d) -> capsula %s" % (key, cap_for("especial", key) or "ninguna: no saldra"))
     if first_sp is None:
         first_sp = len(out)
     out[first_sp:first_sp] = new

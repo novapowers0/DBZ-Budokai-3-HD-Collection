@@ -45,6 +45,7 @@
 REXCVAR_DEFINE_BOOL(dbz3_hub_enabled, true, "DBZ3/Mods", "HUB row in the main menu (Tag Team, Online, quick battle...)");
 REXCVAR_DECLARE(bool, dbz3_tag_team_enabled);   // online_panel.cpp
 REXCVAR_DECLARE(bool, dbz3_online_enabled);
+REXCVAR_DECLARE(bool, dbz3_window_focused);   // main.cpp (OnWindowFocusChanged): pausa del HUB al perder el foco
 
 namespace dbz3::ingame {
 bool Online();   // tagteam_panel.cpp: sesion online abierta
@@ -219,6 +220,10 @@ struct State {
 
 bool Enabled() { return REXCVAR_GET(dbz3_hub_enabled); }
 // el bocadillo del menu dice lo del HUB (sin el texto del juego)
+// Raton (lo pone el hilo de la interfaz, lo lee el hilo del juego): fila bajo el puntero, clic izquierdo (A) y derecho (B).
+std::atomic<int> g_mouse_row{-1};
+std::atomic<bool> g_mouse_a{false}, g_mouse_b{false};
+
 bool OwnsBubble() { return g.focus || g.open || g.leaving || (g.back && g.armed) || g.fade != Fade::kNone; }
 
 bool OtherScreen() {
@@ -447,7 +452,20 @@ void Move(int step, int page_step) {
 // Mando del menu con la fila o la pantalla HUB: true = el HUB se lo queda (el menu no lo ve).
 bool Input(PPCContext& ctx, uint8_t* base, uint32_t obj, uint32_t pad) {
   if (g.open && dbz3::ingame::tutorial::Abierto()) return true;   // F3: tutorial encima del HUB (el lo lee)
-  const uint16_t pressed = REX_LOAD_U16(pad + 14), rep = REX_LOAD_U16(pad + 18) | REX_LOAD_U16(pad + 114);
+  // Pausa: sin foco (y sin entrada en segundo plano de las pruebas) el HUB no lee mando ni raton
+  if ((g.open || g.focus) && !REXCVAR_GET(dbz3_window_focused) &&
+      rex::cvar::GetFlagByName("mnk_background_input") != "true") {   // las pruebas lo activan y siguen sin foco
+    g_mouse_row = -1, g_mouse_a = g_mouse_b = false;
+    return true;
+  }
+  uint16_t pressed = REX_LOAD_U16(pad + 14);
+  const uint16_t rep = REX_LOAD_U16(pad + 18) | REX_LOAD_U16(pad + 114);
+  if (g.open && g.fade == Fade::kNone) {   // raton: pasar por encima elige, clic izquierdo = A, derecho = B
+    const int mr = g_mouse_row.exchange(-1);
+    if (mr >= 0 && mr != g.cursor) { g.cursor = mr; PlaySe(ctx, base, kSeMove); }
+    if (g_mouse_a.exchange(false)) pressed |= kA;
+    if (g_mouse_b.exchange(false)) pressed |= kB;
+  }
   const int rows = REX_LOAD_U8(obj + 151), row = REX_LOAD_U8(obj + 150);
   if (g.test && (pressed || rep)) REXLOG_INFO("dbz3 hub: prueba: botones {:04X} (repeticion {:04X})", pressed, rep);
   if (g.open) {
@@ -530,6 +548,12 @@ const char* EntryKey(int e) {
   if (e >= 0 && e < kEntries) return kKeys[e];
   Extras& x = Ext();
   return e >= kEntries && e < kEntries + x.n.load() ? x.e[e - kEntries].key.c_str() : "";
+}
+
+void PostMouse(int row, bool a, bool b) {
+  if (row >= 0) g_mouse_row = row;
+  if (a) g_mouse_a = true;
+  if (b) g_mouse_b = true;
 }
 
 int EntryCount() { return kEntries + Ext().n.load(); }

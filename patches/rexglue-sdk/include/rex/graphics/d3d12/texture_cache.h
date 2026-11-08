@@ -523,6 +523,13 @@ class D3D12TextureCache final : public TextureCache {
   // Devuelven 0 cuando DXGI no da el dato (no soportado / adaptador WARP).
   uint64_t video_memory_usage_bytes() const;
   uint64_t video_memory_budget_bytes() const;
+  // DBZ3 (dsPHIRES): bytes comprometidos por los heaps del "scaled resolve"
+  // (memoria de EDRAM residente a escala Nx). DXGI CurrentUsage no siempre los
+  // refleja, pero ocupan VRAM real: a 6x + MSAA son cientos de MB. Se publica
+  // en `perf` como sres= y se suma a la guardia de VRAM.
+  uint64_t scaled_resolve_memory_bytes() const {
+    return uint64_t(scaled_resolve_heap_count_) << kScaledResolveHeapSizeLog2;
+  }
   // Motivo por el que en la ventana actual se ha dejado de conceder upscale a
   // texturas nuevas: 0 = ninguno, 1 = racha de recargas (video/intro), 2 = VRAM.
   // La consume (y la resetea) la linea `perf` como `lim=`, para que un log de

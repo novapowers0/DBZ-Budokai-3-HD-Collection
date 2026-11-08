@@ -296,7 +296,12 @@ RB_AUDIT_PROBE(sub_821114F8, 0x821114F8)
 RB_AUDIT_PROBE(sub_82114B40, 0x82114B40)
 RB_AUDIT_PROBE(sub_82114650, 0x82114650)
 RB_AUDIT_PROBE(sub_821109D0, 0x821109D0)
-RB_AUDIT_PROBE(sub_82116978, 0x82116978)
+// eANI3: la mirada de B3 (sub_82116978) no va en los minijuegos de IW (anim_iw.cpp, DBZ3_IW_MIRADA=1 la devuelve).
+namespace dbz3::anim { bool SinMiradaIw(); }
+DBZ3_HOOK_EU(sub_82116978) {   // dia1O: EU 82116A78 (con REX_HOOK_RAW la guarda no corria con el xex EU)
+  if (dbz3::anim::SinMiradaIw()) return;
+  dbz3::net::rb::Audit::Probe(0x82116978, ctx, base, orig);   // la sonda solo graba en US (callback 0x8210E700)
+}
 RB_AUDIT_PROBE(sub_82112478, 0x82112478)
 RB_AUDIT_PROBE(sub_8208D380, 0x8208D380)
 RB_AUDIT_PROBE(sub_8208C7A8, 0x8208C7A8)

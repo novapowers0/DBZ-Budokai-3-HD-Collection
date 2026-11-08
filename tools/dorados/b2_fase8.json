@@ -1,44 +1,54 @@
 {
  "modo": "b2",
  "escena": "fase8",
- "fuente": "PCSX2 PINE, A2\\sstates\\fase8.p2s (lista de aliados), 110.0 s",
- "estado": "fase8.p2s",
- "teclas": "cap=lista z espera2500 cap=dialogo up espera800 z espera7000 cap=aliado espera1000 z espera4000 cap=p1 z espera9000 cap=p2 z espera9000 cap=p3 espera20000 cap=final",
- "seg": 110.0,
+ "fuente": "PCSX2 PINE por campos (grabar_fases.py), b2_fase8_c1.json",
+ "estado": "E:\\DBZ3HD_trabajo\\A2\\sstates\\fase8.p2s",
+ "teclas": "z espera2500 up espera800 z espera7000 z espera1500 z espera8000 z espera1500 z espera8000 z espera1500 z espera8000 z espera1500 z espera8000 z espera1500 z espera8000 z espera1500 z espera8000 z espera1500 z espera8000 z espera1500 z espera8000 espera20000",
+ "seg": 60.0,
  "secuencia": [
-  33
+  33,
+  11,
+  19,
+  19,
+  19,
+  7,
+  75,
+  7,
+  80,
+  1
+ ],
+ "tiempos": [
+  4.86,
+  31.82,
+  33.18,
+  33.18,
+  33.18,
+  33.2,
+  34.54,
+  34.56,
+  35.9,
+  35.92
+ ],
+ "sitios": [
+  "3BB830@243",
+  "3B5630@1591",
+  "3B55B0@1659",
+  "3B57B0@1659",
+  "3B5830@1659",
+  "3B58B0@1660",
+  "3B6CB0@1727",
+  "3B6C30@1728",
+  "3B6BB0@1795",
+  "3B5930@1796"
  ],
  "recuento": {
-  "33": 1
+  "1": 1,
+  "7": 134,
+  "11": 68,
+  "19": 354,
+  "33": 1,
+  "75": 1,
+  "80": 1
  },
- "capturas": [
-  {
-   "original": "C:\\Users\\javie\\Desktop\\PROYECTOS IA\\DBZ Budokai 3 HD Collection\\studies 5\\ENTREGAS\\A2\\evidencias\\original_fase8_lista.png",
-   "port": "fase8_lista"
-  },
-  {
-   "original": "C:\\Users\\javie\\Desktop\\PROYECTOS IA\\DBZ Budokai 3 HD Collection\\studies 5\\ENTREGAS\\A2\\evidencias\\original_fase8_dialogo.png",
-   "port": "fase8_dialogo"
-  },
-  {
-   "original": "C:\\Users\\javie\\Desktop\\PROYECTOS IA\\DBZ Budokai 3 HD Collection\\studies 5\\ENTREGAS\\A2\\evidencias\\original_fase8_aliado.png",
-   "port": "fase8_aliado"
-  },
-  {
-   "original": "C:\\Users\\javie\\Desktop\\PROYECTOS IA\\DBZ Budokai 3 HD Collection\\studies 5\\ENTREGAS\\A2\\evidencias\\original_fase8_p1.png",
-   "port": "fase8_p1"
-  },
-  {
-   "original": "C:\\Users\\javie\\Desktop\\PROYECTOS IA\\DBZ Budokai 3 HD Collection\\studies 5\\ENTREGAS\\A2\\evidencias\\original_fase8_p2.png",
-   "port": "fase8_p2"
-  },
-  {
-   "original": "C:\\Users\\javie\\Desktop\\PROYECTOS IA\\DBZ Budokai 3 HD Collection\\studies 5\\ENTREGAS\\A2\\evidencias\\original_fase8_p3.png",
-   "port": "fase8_p3"
-  },
-  {
-   "original": "C:\\Users\\javie\\Desktop\\PROYECTOS IA\\DBZ Budokai 3 HD Collection\\studies 5\\ENTREGAS\\A2\\evidencias\\original_fase8_final.png",
-   "port": "fase8_final"
-  }
- ]
+ "capturas": []
 }

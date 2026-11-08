@@ -2036,7 +2036,13 @@ DBZ3_HOOK_EU(sub_821D7400) {
                   "objetivo {} s)",
                   REX_LOAD_U16(p1 + 16), g_traje, g_st.vida, g_st.vida_max, REX_LOAD_U16(p2 + 16), c.traje,
                   int32_t(REX_LOAD_U32(p2 + 36)), Tiempo(), Regen(), Objetivo());
+    } else {
+      dbz3::gigantes::Activar(1, 0);   // sin combate de reto en marcha no queda regla de gigante pegada
     }
+  } else if (int32_t(REX_LOAD_U32(kReqCur)) == 25) {
+    // combate suelto: un reto abandonado a medias (sin pasar por Terminar) dejaba el gigante puesto para siempre
+    if (dbz3::gigantes::ReglaActiva()) REXLOG_INFO("dbz3 gigante: regla de reto residual quitada");
+    dbz3::gigantes::Activar(1, 0);
   }
   orig(ctx, base);
 }

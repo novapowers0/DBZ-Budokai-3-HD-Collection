@@ -432,6 +432,20 @@ class HubPanel : public rex::ui::ImGuiDialog {
     S::Glyph(dl, "RB", ImVec2(p1.x - 12 * a.s - rb, cy), gh);
     S::MenuTextB3(dl, ImVec2((p0.x + p1.x) * 0.5f, cy), 30 * a.s, txt.c_str(), true, false, (p1.x - p0.x) - 110 * a.s);
     S::Arrows(dl, ImVec2(p0.x + 70 * a.s, p0.y), ImVec2(p1.x - 70 * a.s, p1.y), 26 * a.s, t);
+    // juego de origen del escenario del cursor (B3, B2, IW...) y, si hay mas escenarios de los que caben, una barra fina con
+    // la posicion en la lista (el carrusel se desplaza sin fin; sin texto de pagina)
+    if (const std::string org = dbz3::escenarios::Origen(dbz3::escenarios::RegistroSelector()); !org.empty()) {
+      const ImVec2 q0 = a.At(450, 768), q1 = a.At(570, 806);
+      S::Frame(dl, q0, q1, a.s);
+      S::MenuTextB3(dl, ImVec2((q0.x + q1.x) * 0.5f, (q0.y + q1.y) * 0.5f), 26 * a.s, org.c_str(), true, false, 100 * a.s);
+    }
+    if (const int n = dbz3::escenarios::Cuantos(); n > 0) {
+      const ImVec2 b0 = a.At(330, 863), b1 = a.At(690, 869);
+      dl->AddRectFilled(b0, b1, IM_COL32(20, 40, 60, 170), 3 * a.s);
+      const float w = std::max((b1.x - b0.x) / float(n), 10 * a.s);
+      const float x = b0.x + (b1.x - b0.x - w) * (n > 1 ? float(dbz3::escenarios::Posicion()) / float(n - 1) : 0.0f);
+      dl->AddRectFilled(ImVec2(x, b0.y), ImVec2(x + w, b1.y), IM_COL32(255, 200, 40, 235), 3 * a.s);
+    }
   }
 
   // Recuadro de la fila HUB bajo la lista (donde estaba el de TAG TEAM): marco del juego, agua si es la
@@ -647,6 +661,16 @@ class HubPanel : public rex::ui::ImGuiDialog {
     const float target = kRow0 + kPitch * float(pos % kPerPage);
     if (stripe_y_ < 0 || t - since < 0.01f) stripe_y_ = target;
     stripe_y_ += (target - stripe_y_) * std::min(1.0f, dt * 22.0f);
+    if (v.open && v.fade == Fade::kNone && t - opened_at_ > 0.6f) {   // raton sobre las filas de la pagina
+      const ImGuiIO& io = ImGui::GetIO();
+      int hit = -1;
+      for (int i = page * kPerPage; i < std::min(n, page * kPerPage + kPerPage); ++i) {
+        const float y = kRow0 + kPitch * float(i % kPerPage);
+        if (ImGui::IsMouseHoveringRect(a.At(kInX0, y - kPitch * 0.5f), a.At(kInX1, y + kPitch * 0.5f), false)) hit = vis[i];
+      }
+      const bool moved = io.MouseDelta.x != 0 || io.MouseDelta.y != 0, click = ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+      PostMouse(hit >= 0 && (moved || click) ? hit : -1, hit >= 0 && click, ImGui::IsMouseClicked(ImGuiMouseButton_Right));
+    }
     if (v.open) S::Highlight(dl, a.At(kInX0, stripe_y_ - kStripe * 0.5f), a.At(kInX1, stripe_y_ + kStripe * 0.5f), t);
     for (int i = page * kPerPage; i < std::min(n, page * kPerPage + kPerPage); ++i) {
       const int e = vis[i], slot = i % kPerPage;

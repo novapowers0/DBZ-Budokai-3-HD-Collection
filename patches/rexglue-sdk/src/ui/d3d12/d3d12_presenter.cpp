@@ -925,6 +925,11 @@ void D3D12Presenter::PaintContext::DestroySwapChain() {
 // DBZ3: contador de rendimiento (una linea cada 5 s). Los ajustes que mas
 // afectan al coste (escala interna, MSAA, cap) ya quedan registrados al
 // arrancar la partida, asi que aqui basta con FPS y peor frame del intervalo.
+// nGPU: ademas, el tiempo de GPU de las pasadas de presentacion (pres_ms), para
+// separar el coste del juego del de la pasada final en graficas flojas.
+static std::atomic<uint64_t> g_dbz3_present_time_us{0};
+static std::atomic<uint64_t> g_dbz3_present_time_count{0};
+
 void Dbz3LogPerformanceWindow() {
   if (!REXCVAR_GET(dbz3_perf_logging)) {
     return;
@@ -950,12 +955,101 @@ void Dbz3LogPerformanceWindow() {
   if (elapsed_s < 5.0) {
     return;
   }
-  REXLOG_INFO("dbz3: perf fps={:.1f} frames={} window={:.2f}s max_frame_ms={:.1f} cap={}",
+  const uint64_t present_time_us = g_dbz3_present_time_us.exchange(0, std::memory_order_relaxed);
+  const uint64_t present_time_count =
+      g_dbz3_present_time_count.exchange(0, std::memory_order_relaxed);
+  REXLOG_INFO("dbz3: perf fps={:.1f} frames={} window={:.2f}s max_frame_ms={:.1f} cap={} pres_ms={:.2f} pres_n={}",
               double(frames_in_window) / elapsed_s, frames_in_window, elapsed_s, max_frame_ms,
-              int32_t(REXCVAR_GET(frame_cap)));
+              int32_t(REXCVAR_GET(frame_cap)),
+              present_time_count ? double(present_time_us) / 1000.0 / double(present_time_count) : 0.0,
+              present_time_count);
   window_start = now;
   frames_in_window = 0;
   max_frame_ms = 0.0;
+}
+
+bool D3D12Presenter::Dbz3PresentTimeBegin(uint32_t& slot_out) {
+  if (!REXCVAR_GET(dbz3_perf_logging) || dbz3_present_time_init_failed_) {
+    return false;
+  }
+  Dbz3PresentTimeConsume();
+  if (!dbz3_present_time_available_) {
+    ID3D12Device* device = provider_.GetDevice();
+    ID3D12CommandQueue* queue = provider_.GetDirectQueue();
+    if (!device || !queue) {
+      dbz3_present_time_init_failed_ = true;
+      return false;
+    }
+    D3D12_QUERY_HEAP_DESC heap_desc = {};
+    heap_desc.Type = D3D12_QUERY_HEAP_TYPE_TIMESTAMP;
+    heap_desc.Count = kDbz3PresentTimeSlots * 2;
+    if (FAILED(device->CreateQueryHeap(&heap_desc, IID_PPV_ARGS(&dbz3_present_time_heap_)))) {
+      dbz3_present_time_init_failed_ = true;
+      REXLOG_WARN("dbz3: no se pudo crear el query heap de tiempos de presentacion");
+      return false;
+    }
+    D3D12_HEAP_PROPERTIES readback_heap_props = {};
+    readback_heap_props.Type = D3D12_HEAP_TYPE_READBACK;
+    D3D12_RESOURCE_DESC readback_desc = {};
+    readback_desc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+    readback_desc.Width = kDbz3PresentTimeSlots * kDbz3PresentTimeSlotStride;
+    readback_desc.Height = 1;
+    readback_desc.DepthOrArraySize = 1;
+    readback_desc.MipLevels = 1;
+    readback_desc.SampleDesc.Count = 1;
+    readback_desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+    if (FAILED(device->CreateCommittedResource(
+            &readback_heap_props, D3D12_HEAP_FLAG_NONE, &readback_desc,
+            D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
+            IID_PPV_ARGS(&dbz3_present_time_readback_))) ||
+        FAILED(dbz3_present_time_readback_->Map(
+            0, nullptr, reinterpret_cast<void**>(&dbz3_present_time_mapping_)))) {
+      dbz3_present_time_init_failed_ = true;
+      REXLOG_WARN("dbz3: no se pudo preparar la lectura de tiempos de presentacion");
+      return false;
+    }
+    UINT64 timestamp_frequency = 0;
+    if (FAILED(queue->GetTimestampFrequency(&timestamp_frequency)) || !timestamp_frequency) {
+      dbz3_present_time_init_failed_ = true;
+      return false;
+    }
+    dbz3_present_time_freq_ = timestamp_frequency;
+    dbz3_present_time_available_ = true;
+  }
+  // Un slot solo se reutiliza si su pintado anterior ya termino.
+  const uint32_t slot = (dbz3_present_time_slot_ + 1) % kDbz3PresentTimeSlots;
+  const uint64_t previous_fence = dbz3_present_time_fence_values_[slot];
+  if (previous_fence &&
+      paint_context_.paint_submission_tracker.GetCompletedSubmission() < previous_fence) {
+    return false;
+  }
+  dbz3_present_time_slot_ = slot;
+  slot_out = slot;
+  return true;
+}
+
+void D3D12Presenter::Dbz3PresentTimeConsume() {
+  if (!dbz3_present_time_available_ || !dbz3_present_time_freq_ ||
+      !dbz3_present_time_mapping_) {
+    return;
+  }
+  const uint64_t completed = paint_context_.paint_submission_tracker.GetCompletedSubmission();
+  for (uint32_t i = 0; i < kDbz3PresentTimeSlots; ++i) {
+    const uint64_t finished_fence = dbz3_present_time_fence_values_[i];
+    if (!finished_fence || completed < finished_fence) {
+      continue;
+    }
+    const uint64_t* slot_timestamps =
+        dbz3_present_time_mapping_ + i * (kDbz3PresentTimeSlotStride / 8);
+    const uint64_t start = slot_timestamps[0];
+    const uint64_t end = slot_timestamps[1];
+    if (end > start && end - start <= dbz3_present_time_freq_) {
+      g_dbz3_present_time_us.fetch_add(
+          (end - start) * 1000000ull / dbz3_present_time_freq_, std::memory_order_relaxed);
+      g_dbz3_present_time_count.fetch_add(1, std::memory_order_relaxed);
+    }
+    dbz3_present_time_fence_values_[i] = 0;
+  }
 }
 
 Presenter::PaintResult D3D12Presenter::PaintAndPresentImpl(bool execute_ui_drawers) {
@@ -1029,6 +1123,14 @@ Presenter::PaintResult D3D12Presenter::PaintAndPresentImpl(bool execute_ui_drawe
   }
 
   if (guest_output_resource) {
+    // nGPU: mide el coste de GPU de pintar el guest output (pasadas de
+    // presentacion) desde aqui hasta el final del bloque.
+    uint32_t present_time_slot = 0;
+    const bool present_time_recording = Dbz3PresentTimeBegin(present_time_slot);
+    if (present_time_recording) {
+      command_list->EndQuery(dbz3_present_time_heap_.Get(), D3D12_QUERY_TYPE_TIMESTAMP,
+                            present_time_slot * 2);
+    }
     GuestOutputPaintFlow guest_output_flow = GetGuestOutputPaintFlow(
         guest_output_properties, paint_context_.swap_chain_width, paint_context_.swap_chain_height,
         D3D12_REQ_TEXTURE2D_U_OR_V_DIMENSION, D3D12_REQ_TEXTURE2D_U_OR_V_DIMENSION,
@@ -1530,6 +1632,16 @@ Presenter::PaintResult D3D12Presenter::PaintAndPresentImpl(bool execute_ui_drawe
           }
         }
       }
+    }
+
+    if (present_time_recording) {
+      command_list->EndQuery(dbz3_present_time_heap_.Get(), D3D12_QUERY_TYPE_TIMESTAMP,
+                            present_time_slot * 2 + 1);
+      command_list->ResolveQueryData(
+          dbz3_present_time_heap_.Get(), D3D12_QUERY_TYPE_TIMESTAMP, present_time_slot * 2, 2,
+          dbz3_present_time_readback_.Get(), present_time_slot * kDbz3PresentTimeSlotStride);
+      // Se podra leer cuando la GPU termine este mismo envio de pintado.
+      dbz3_present_time_fence_values_[present_time_slot] = current_paint_submission;
     }
   }
 

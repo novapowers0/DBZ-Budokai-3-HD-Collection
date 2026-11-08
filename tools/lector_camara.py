@@ -43,8 +43,7 @@ def _f(v):
 # ------------------------------------------------------------------ original: PCSX2 por PINE
 def grabar(juego, seg, salida, estado=None):
     """Graba la serie del original en un TSV con COLUMNAS (una fila cada vez que algo cambia)."""
-    sys.path.insert(0, R7_EMU)
-    import sonda                                                  # noqa: E402  (E:\DBZ3HD_trabajo\R7\emu\sonda.py)
+    import pcsx2_sonda as sonda
     spec = JUEGOS[juego]
     p = sonda.Pine()
     if estado is not None:

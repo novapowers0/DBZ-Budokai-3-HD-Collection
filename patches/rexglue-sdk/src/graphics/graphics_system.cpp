@@ -50,6 +50,14 @@ static uint64_t Dbz3VblankSlowdown() {
 // dbz3 (X0g, studies 5): the opposite for N1 logic tests. Guest vblank N times
 // FASTER (turbo), only with DBZ3_NO_DIALOGS (automated tests). DBZ3_TEST_TURBO=N
 // in the environment wins over the cvar so pruebas.py can set it per instance.
+// DBZ3 (dsPCPU): cuanto antes del vblank se deja de dormir y se cede el hilo. Antes
+// eran 2 ms fijos girando; 700 us baja el hilo de vblank del 8 % al 2-4 % de un nucleo
+// sin cambiar la cadencia del guest (tick 16,66 ms). Solo los ultimos us se giran.
+REXCVAR_DEFINE_INT32(dbz3_vsync_spin_us, 700, "DBZ3/Dev",
+                     "Microsegundos antes del vblank en los que el hilo de vblank cede "
+                     "el hilo en vez de dormir (700 por defecto; 2000 = 2 ms era lo anterior)")
+    .range(100, 5000);
+
 REXCVAR_DEFINE_INT32(dbz3_vblank_turbo, 1, "DBZ3/Dev",
                      "Tests: guest vblank this many times faster (1 = normal)")
     .range(1, 16)
@@ -228,7 +236,9 @@ X_STATUS GraphicsSystem::SetupGuestGpu(runtime::FunctionDispatcher* function_dis
           // para el siguiente vblank y el resto se cede el hilo. Vblanks
           // equiespaciados = el guest no pierde frames por un vblank tardio.
           const uint64_t remaining_ticks = last_frame_time + interval_ticks - current_time;
-          if (remaining_ticks * 1000 > guest_tick_frequency * 2) {
+          const uint64_t spin_us =
+              uint64_t(std::max(REXCVAR_GET(dbz3_vsync_spin_us), 100));
+          if (remaining_ticks * 1000000ULL > guest_tick_frequency * spin_us) {
             rex::thread::Sleep(std::chrono::milliseconds(1));
           } else {
             rex::thread::MaybeYield();

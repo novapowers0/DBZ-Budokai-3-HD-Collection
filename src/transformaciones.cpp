@@ -768,6 +768,10 @@ bool PrepareNamesMod(const std::vector<std::pair<int, uint32_t>>& banks, const s
   const int32_t lang = dbz3::settings::Language();
   const char* active = lang == 3 ? "data_ger.afs" : lang == 4 ? "data_fra.afs" : lang == 5 ? "data_spn.afs"
                      : lang == 6 ? "data_ita.afs" : "data_usi.afs";
+  {   // pt (interfaz 9, juego en ingles) y ja (2): su copia de data_usi, si existe
+    const char* propio = lang == 2 ? "data_jpn.afs" : (lang == 1 && dbz3::settings::UiLanguage() == 9) ? "data_por.afs" : nullptr;
+    if (propio && fs::exists(dir / propio, ec)) active = propio;
+  }
   std::vector<std::pair<std::string, fs::path>> afss;
   for (const char* n : {active, "data_eng.afs"}) {   // EU no trae data_usi: su ingles es data_eng
     if (afss.empty() && fs::exists(dir / n, ec)) afss.emplace_back(n, dir / n);

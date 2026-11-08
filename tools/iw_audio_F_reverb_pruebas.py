@@ -75,7 +75,7 @@ def main():
         assert p.returncode==0,name
         return p.stdout
     clang='C:/Program Files/LLVM/bin/clang++.exe'
-    cmd=[clang,'-std=c++23','-O1','-Wall','-Wextra','-fsanitize=undefined','-fsanitize-trap=all',root/'tests/iw_audio_F_reverb.cpp','-o',a.tmp/'reverb_prueba.exe']
+    cmd=[clang,'-std=c++23','-O1','-Wall','-Wextra','-fsanitize=undefined','-fsanitize-trap=all','-lwinmm',root/'tests/iw_audio_F_reverb.cpp','-o',a.tmp/'reverb_prueba.exe']
     if a.solo_salida:
         anterior=json.loads((a.tmp/'reverb_verificado.json').read_text(encoding='utf-8'))
         assert anterior['fuentes']['iw_sonido.h']==hashlib.sha256((root/'src/iw_sonido.h').read_bytes()).hexdigest(),'DSP cambiado: ejecutar sin --solo-salida'
@@ -134,7 +134,7 @@ def main():
             txt=(root/'src'/f'{name}.h').read_text(encoding='utf-8')
             ns='namespace dbz3::iwiop {' if name=='iw_iop' else 'namespace dbz3::iwadx {'
             (a.tmp/(name+'_core.h')).write_text(txt[txt.index(ns):],encoding='utf-8')
-        cmd=[clang,'-std=c++23','-O1','-Wall','-Wextra','-fsanitize=undefined','-fsanitize-trap=all',
+        cmd=[clang,'-std=c++23','-O1','-Wall','-Wextra','-fsanitize=undefined','-fsanitize-trap=all','-lwinmm',
              '-DDBZ3_IW_AUDIO_F_SALIDA',
              '-DDBZ3_IW_IOP_CORE="'+str((a.tmp/'iw_iop_core.h').resolve()).replace('\\','/')+'"',
              '-DDBZ3_IW_ADX_CORE="'+str((a.tmp/'iw_adx_core.h').resolve()).replace('\\','/')+'"',

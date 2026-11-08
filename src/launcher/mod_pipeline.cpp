@@ -1112,7 +1112,7 @@ int ModPipeline::PruneIncompleteStages() {
   return moved;
 }
 
-void ModPipeline::BuildStages() {
+void ModPipeline::BuildStages(bool force) {
   // ps2_games como el juego (pasarela_b1.cpp BuscarIsoB1): DBZ3_PS2_GAMES (pruebas) o la carpeta de los ajustes.
   // Si los ajustes cayeron a Documentos (instalacion no escribible), tambien se mira junto al exe y en user_data:
   // antes solo se miraba UserSettingsPath().parent_path() y el paso se omitia en silencio.
@@ -1163,7 +1163,9 @@ void ModPipeline::BuildStages() {
   const int pruned = PruneIncompleteStages();
   if (pruned > 0) REXLOG_INFO("dbz3: escenarios de PS2: {} carpetas a medias apartadas a mods_respaldo", pruned);
   stages_run_pending_ = true;
-  RunAsync(StagesScript(), {"auto", "--mods", Utf8(ModsOutDir()), "--us", us, "--ps2", Utf8(ps2)});
+  std::vector<std::string> args = {"auto", "--mods", Utf8(ModsOutDir()), "--us", us, "--ps2", Utf8(ps2)};
+  if (force) args.push_back("--forzar");
+  RunAsync(StagesScript(), args);
 }
 
 void ModPipeline::Wait() {

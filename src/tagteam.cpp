@@ -61,6 +61,7 @@ DBZ3_EXTERN_EU(dbz3eu_sub_82112360);
 DBZ3_EXTERN_EU(dbz3eu_sub_82115430);
 
 namespace dbz3::fusion { void Tick(PPCContext& ctx, uint8_t* base); }
+namespace dbz3::pasarela::misiones { bool NaveReviveRival(); void NaveRivalLevantado(); }   // Nave B2, prueba I
 namespace dbz3::tag {
 // TAG_F3_RECIPE_V1
 bool ReadMemberCapsules(uint8_t*, int, int, std::array<uint16_t, 8>&);
@@ -163,6 +164,10 @@ std::array<uint16_t, 4> g_prev_buttons{};
 std::atomic<bool> g_in_battle{false};
 std::atomic<uint32_t> g_frame{0};             // ticks del bucle principal
 std::atomic<uint32_t> g_fall_x{0};            // luchador tumbado por KO que aun tiene que salir despedido
+// Nave de Babidi, prueba I (B2, medido en PCSX2: pre_ko_2500/3000): el rival cae con el golpe letal y a los ~2,5 s
+// se levanta con la barra llena, sin acabar el combate. Caido = sin mas dano hasta que se levanta.
+std::atomic<uint32_t> g_nave_x{0}, g_nave_ko{0};
+constexpr uint32_t kNaveLevanta = 150, kNaveTope = 300;   // ticks desde el golpe (60/s); tope si sigue en el aire
 std::array<HudSide, 2> g_hud{};               // con g_mu
 bool g_in_swap = false;                       // nuestro sub_82109638 (no es un combate nuevo)
 std::array<std::atomic<bool>, 2> g_com{};     // lado del ordenador
@@ -1061,6 +1066,22 @@ void Tick(PPCContext& ctx, uint8_t* base) {
       Call(ctx, base, DBZ3_CALL_EU(sub_82103908), fx, uint32_t(act));
     }
   }
+  if (const uint32_t nx = g_nave_x.load()) {   // Nave, prueba I: el rival caido se levanta en el mismo combate
+    if (!dbz3::pasarela::misiones::NaveReviveRival() || BattleState(base) != 4 || nx != Fighter(base, 1)) {
+      g_nave_x = 0;
+    } else {
+      if (LoadF(base, nx + kHp) < 1.0f) StoreF(base, nx + kHp, 1.0f);
+      const uint32_t d = now - g_nave_ko.load();
+      const uint16_t a = REX_LOAD_U16(nx + 3244);
+      if ((d >= kNaveLevanta && a != 25) || d >= kNaveTope) {
+        if ((a == 18 || a == 19 || a == 35 || a == 36) && ActionCtxOk(base, nx))
+          Call(ctx, base, DBZ3_CALL_EU(sub_82103908), nx, 0);   // tumbado o levantandose: de pie
+        StoreF(base, nx + kHp, LoadF(base, nx + kHpMax));
+        g_nave_x = 0;
+        dbz3::pasarela::misiones::NaveRivalLevantado();
+      }
+    }
+  }
   // Prueba de campanas (DBZ3_TEST_KO=1): el rival (jugador 2) se queda sin vida a los ~2 s de combate, para
   // recorrer una historia entera sin jugarla.
   static const bool test_ko = std::getenv("DBZ3_TEST_KO") != nullptr;
@@ -1524,6 +1545,7 @@ void OnScreen(int screen) {
     g_net_local = 0;
     g_net_applied[0] = 0; g_net_applied[1] = 0;
     g_prev_buttons = {}; g_fall_x = 0;
+    g_nave_x = 0; g_nave_ko = 0;   // Nave I: un caido del combate anterior no se levanta en este
     // Este callback se repite mientras permanece en 5/14. g_com lo administra TagTeamPanel; borrarlo
     // aqui limpiaba la orden COM cada tick antes de iniciar la rueda/el combate.
     std::lock_guard<std::mutex> lock(g_mu);
@@ -1637,6 +1659,7 @@ DBZ3_HOOK(sub_82109638, dbz3eu_sub_82109738) {
       dbz3::tag::g_net_local = 0;
       dbz3::tag::g_net_applied[0] = 0; dbz3::tag::g_net_applied[1] = 0;
       dbz3::tag::g_prev_buttons = {}; dbz3::tag::g_fall_x = 0;
+      dbz3::tag::g_nave_x = 0; dbz3::tag::g_nave_ko = 0;
       for (auto& f : dbz3::tag::g_face) f.clear();   // las hojas del combate anterior ya no valen
     }
   }
@@ -1661,6 +1684,23 @@ DBZ3_HOOK(sub_8211A5A8, dbz3eu_sub_8211A6A8) {
   const uint32_t x = ctx.r3.u32;
   const int32_t delta = ctx.r4.s32;
   bool protect = false, ko = false;
+  if (delta > 0 && dbz3::tag::SideOf(base, x) == 1 && dbz3::pasarela::misiones::NaveReviveRival()) {
+    namespace tg = dbz3::tag;   // Nave, prueba I: el golpe letal tumba al rival sin KO de B3 (se levanta en Tick)
+    if (tg::g_nave_x.load() == x) {
+      ctx.r4.s64 = 0;   // ya caido
+    } else if (tg::LoadF(base, x + tg::kHp) - float(delta) <= 0.0f) {
+      const uint8_t nd = REX_LOAD_U8(x + tg::kNearDeath);
+      REX_STORE_U8(x + tg::kNearDeath, 1);   // sub_8211A5A8: vida = f30, sin KO
+      orig(ctx, base);
+      REX_STORE_U8(x + tg::kNearDeath, nd);
+      if (tg::LoadF(base, x + tg::kHp) < 1.0f) tg::StoreF(base, x + tg::kHp, 1.0f);
+      tg::g_fall_x = x;   // sale despedido (accion 25) en el tick siguiente
+      tg::g_nave_ko = tg::g_frame.load();
+      tg::g_nave_x = x;
+      REXLOG_INFO("dbz3 nave: prueba I: KO del rival (cae; se levanta en {} ticks)", tg::kNaveLevanta);
+      return;
+    }
+  }
   uint8_t old_nd = 0;
   {
     std::lock_guard<std::mutex> lock(dbz3::tag::g_mu);
@@ -1812,6 +1852,9 @@ DBZ3_HOOK_EU(sub_820FD408) {
   orig(ctx, base);
 }
 
+namespace dbz3::escenarios {
+bool ConsumirLanzamientoB2AntesDeReaccion(PPCContext& ctx, uint8_t* base);
+}
 DBZ3_HOOK_EU(sub_82103908) {
   static const bool probe = std::getenv("DBZ3_ACT_PROBE") != nullptr;
   if (probe) {
@@ -1820,6 +1863,7 @@ DBZ3_HOOK_EU(sub_82103908) {
                 REX_LOAD_U16(x + 3244), dbz3::tag::LoadF(base, x + dbz3::tag::kHp));
   }
   if (dbz3::iwmini::AnularAndar(base, ctx.r3.u32, ctx.r4.u32)) return;   // andar libre de IW: sigue en reposo (accion 0)
+  if (dbz3::escenarios::ConsumirLanzamientoB2AntesDeReaccion(ctx, base)) return;
   orig(ctx, base);
 }
 

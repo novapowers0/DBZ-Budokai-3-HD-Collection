@@ -111,7 +111,7 @@ void CallarVozB1();
 void OirAdxPs2(const std::filesystem::path& juego, const std::string& afs, int entrada, float volumen);
 void CallarAdxPs2();
 // Musica (ADX estereo en bucle) de los modos de PS2: una a la vez; la nueva corta la anterior.
-void OirMusicaPs2(const std::filesystem::path& juego, const std::string& afs, int entrada, float volumen);
+void OirMusicaPs2(const std::filesystem::path& juego, const std::string& afs, int entrada, float volumen, float desde_s = 0);
 void CallarMusicaPs2();
 // Efecto corto PS-ADPCM (VAG) de un banco IECS: entrada `cuerpo` del AFS = datos, `cuerpo`+1 = indice; `id` = sonido del
 // banco. Los del mismo `tipo` (0..7) se cortan entre si. periodo_ms > 0: se repite cada tanto hasta cortarlo.

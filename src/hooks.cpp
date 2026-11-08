@@ -19,10 +19,18 @@
 #include "hooks.h"
 
 #include <rex/hook.h>
+#include <rex/cvar.h>
+#include <rex/logging.h>
+#include <rex/thread.h>
+
+#include <algorithm>
+#include <chrono>
+#include <cstdlib>
 
 #include "generated/dbz3_init.h"
 
 #include "xv2_fisica_runtime.inl"
+#include "eu_map.h"
 
 REX_HOOK_RAW(sub_820F2280) {
     // r3 = original index, r4 = argument passed to the handler
@@ -65,4 +73,66 @@ REX_HOOK_RAW(sub_820BB938) {
     }
     ctx.ctr.u64 = handler;
     REX_CALL_INDIRECT_FUNC(handler);
+}
+
+// Espera del bucle principal (sub_82231110, EU sub_8222F8C0; unico llamador que
+// la usa, medido en solLAT2). Cada espera gira como el original los primeros
+// dbz3_espera_giro_us y solo despues duerme dbz3_espera_dormir_us por vuelta:
+// las esperas cortas (respuesta al mando) no pagan el despertar del planificador
+// y las largas dejan de quemar CPU. solLAT3 (n>=300): combate mediana 5,55->5,51 ms,
+// p95 12,0->7,3, 43-47 -> 58-60 FPS con 2 nucleos; menu CPU 108->32 %.
+// dbz3_espera_dormir_us=0 vuelve al giro original. Se leen al arrancar.
+REXCVAR_DEFINE_INT32(dbz3_espera_dormir_us, 100, "DBZ3/Rendimiento",
+                     "Ahorro de CPU en el bucle principal: microsegundos de sueno por vuelta (0 = giro original; requiere reiniciar)");
+REXCVAR_DEFINE_INT32(dbz3_espera_giro_us, 1000, "DBZ3/Rendimiento",
+                     "Ahorro de CPU: microsegundos que gira cada espera antes de dormir (requiere reiniciar)");
+namespace {
+thread_local std::chrono::steady_clock::time_point g_espera_inicio{};
+}
+DBZ3_HOOK(sub_82231110, dbz3eu_sub_8222F8C0) {
+    g_espera_inicio = std::chrono::steady_clock::now();
+    orig(ctx, base);
+}
+DBZ3_HOOK(sub_82235918, dbz3eu_sub_822340C8) {
+    const uint32_t retorno = uint32_t(ctx.lr); // orig modifica LR; guardar antes.
+    orig(ctx, base);
+    static const int dormir_us = static_cast<int>(REXCVAR_GET(dbz3_espera_dormir_us));
+    static const int giro_us = std::max(0, static_cast<int>(REXCVAR_GET(dbz3_espera_giro_us)));
+    const uint32_t medido = dbz3::g_guest_eu ? 0x8222F958 : 0x822311A8;
+    if (dormir_us <= 0 || retorno != medido || ctx.r3.u32 == 0) {
+        return;
+    }
+    if (std::chrono::steady_clock::now() - g_espera_inicio < std::chrono::microseconds(giro_us)) {
+        return; // fase de giro: igual que el original
+    }
+    static const bool sonda = [] {
+        const char* s = std::getenv("DBZ3_TEST_ESPERA_SONDA");
+        return s && s[0] == '1' && s[1] == 0;
+    }();
+    if (!sonda) {
+        rex::thread::Sleep(std::chrono::microseconds(dormir_us));
+        return;
+    }
+    // Solo arnes: medir el tiempo real bloqueado, no confundirlo con el plazo
+    // solicitado ni con el instante (desconocido) en que se cumple la espera.
+    using Reloj = std::chrono::steady_clock;
+    struct Medida {
+        Reloj::time_point inicio = Reloj::now();
+        uint64_t n = 0, total = 0, maximo = 0, mas1ms = 0, mas5ms = 0;
+    };
+    thread_local Medida m;
+    const auto antes = Reloj::now();
+    rex::thread::Sleep(std::chrono::microseconds(dormir_us));
+    const auto despues = Reloj::now();
+    const auto us = uint64_t(std::chrono::duration_cast<std::chrono::microseconds>(despues - antes).count());
+    ++m.n;
+    m.total += us;
+    if (us > m.maximo) m.maximo = us;
+    if (us > 1000) ++m.mas1ms;
+    if (us > 5000) ++m.mas5ms;
+    if (despues - m.inicio >= std::chrono::seconds(5)) {
+        REXLOG_INFO("dbz3: espera_sonda lr={:08X} solicitado_us={} n={} total_us={} max_us={} mas1ms={} mas5ms={}",
+                    retorno, dormir_us, m.n, m.total, m.maximo, m.mas1ms, m.mas5ms);
+        m = Medida{};
+    }
 }

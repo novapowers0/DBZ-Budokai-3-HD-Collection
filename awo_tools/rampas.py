@@ -21,6 +21,10 @@ nueva al final del #AZT). Los modelos nativos (rampa con RGB) no se tocan: detec
 
   python rampas.py ENTRADA SALIDA       (bin HD #AMB [#AWO, #AZT]; LZX o #AMB PS2 tambien)
   python rampas.py --info ENTRADA       (que rampas son de B2)
+
+Escenarios: escena_rampas() hace lo mismo dentro de un bin #AMB con #ZDD anidado (escenarios de B2 de
+escenarios_convertir.py, opcion --rampas-b2). En escena la sombra es neutra (pesos 1,1,1): en B2 la
+rampa es un negro con alfa y oscurece sin cambiar el tono; el calibrado de piel es solo de personajes.
 """
 import io
 import os
@@ -100,8 +104,11 @@ def es_rampa_b2(img):
     return claros <= 0.07 and int(a.max()) > 0 and int(a.min()) < 255
 
 
-def rampa_nueva(ramp, bases):
-    """Rampa RGB (alfa 255) a partir del alfa de la de B2 y del color medio de las bases por banda."""
+def rampa_nueva(ramp, bases, pesos=None):
+    """Rampa RGB (alfa 255) a partir del alfa de la de B2 y del color medio de las bases por banda.
+
+    pesos: vector RGB fijo para la sombra; None = el calibrado de piel (_pesos, personajes). Los escenarios
+    usan (1,1,1): en B2 la rampa es un negro con alfa (oscurece sin cambiar el tono)."""
     h = ramp.shape[0]
     bandas = np.zeros((16, 3))
     cuenta = np.zeros(16)
@@ -128,7 +135,8 @@ def rampa_nueva(ramp, bases):
         if coloreada:                         # base - rampa = base x (1 - D_LUZ) - alfa x (base - color)
             fila = D_LUZ * c[None, :] + a[r][:, None] * (c[None, :] - tinte[r])
         else:
-            fila = np.clip(D_LUZ + a[r][:, None] * _pesos(c)[None, :], 0.0, 1.0) * c[None, :]
+            w = _pesos(c) if pesos is None else np.asarray(pesos, np.float64)
+            fila = np.clip(D_LUZ + a[r][:, None] * w[None, :], 0.0, 1.0) * c[None, :]
         out[r, :, :3] = np.clip(np.rint(fila), 0, 255).astype(np.uint8)
     return out
 
@@ -189,7 +197,7 @@ def convertir(hd, info=None):
 
     def img(t):
         if t not in cache:
-            cache[t] = leer_dds(b, tex[t]) if t in tex else None
+            cache[t] = leer_dds(b, tex[t][:3]) if t in tex else None
         return cache[t]
 
     pares = {}
@@ -234,6 +242,106 @@ def convertir(hd, info=None):
         struct.pack_into(">I", b, zent + 4, len(b) - z)       # tamano del #AZT en la tabla del #AMB
         b += b"\0" * ((-len(b)) % 32)
     return bytes(b), "rampas de Budokai 2 convertidas: %d (%d nuevas)" % (escritas + nuevas, nuevas)
+
+
+def _azts_escena(b):
+    """#AZT de un bin de escenario (#AMB/#ZDD), con sus texturas DDS: [(off, {indice: (entrada, datos, tam, w, h)})]."""
+    out, i = [], 0
+    while True:
+        i = bytes(b).find(b"#AZT", i)
+        if i < 0:
+            break
+        z, i = i, i + 4
+        try:
+            n, idx = _be(b, z + 0x10), _be(b, z + 0x14)
+            if not 1 <= n <= 512 or idx < 0x18 or z + idx + 4 * n > len(b):
+                continue
+            tex, vistas = {}, 0
+            for t in range(n):
+                e = _be(b, z + idx + 4 * t)
+                if not e:
+                    continue
+                if e < 0x18 or z + e + 0x30 > len(b):
+                    raise ValueError
+                do, ds = _be(b, z + e + 0x14), _be(b, z + e + 0x18)
+                if do < 0x18 or ds < 128 or z + do + ds > len(b) or bytes(b[z + do:z + do + 4]) != b"DDS ":
+                    raise ValueError
+                w, h = struct.unpack_from(">2H", b, z + e + 16)
+                tex[t] = (z + e, z + do, ds, w, h)
+                vistas += 1
+            if vistas:
+                out.append((z, tex))
+        except (ValueError, struct.error):
+            continue
+    return out
+
+
+def _materiales_escena(b):
+    """Materiales de todos los #AWO del bin: [(descriptor, textura base, rampa)] (FFFF = sin textura/rampa)."""
+    out, i = [], 0
+    while True:
+        i = bytes(b).find(b"#AWO", i)
+        if i < 0:
+            break
+        awo, i = i, i + 4
+        try:
+            n, tbl = _be(b, awo + 0x18), _be(b, awo + 0x1C)
+            if not 1 <= n <= 64 or tbl < 0x20 or awo + tbl + 4 * n > len(b):
+                continue
+            out += materiales(b, awo)
+        except (ValueError, struct.error):
+            continue
+    return out
+
+
+def escena_rampas(hd):
+    """Rampas de sombreado de Budokai 2 dentro de un bin de ESCENARIO (#AMB con #ZDD anidado).
+
+    En B3 HD el color es base - rampa (la rampa lleva la sombra en RGB); los escenarios de B2 traen
+    la sombra en el ALFA de la rampa con el RGB a 0. Se reescribe cada rampa de alfa como rampa RGB
+    con el color medio de las texturas base de sus materiales, igual que los ports de personaje
+    (convertir()). Trabaja por #AZT y solo toca indices de rampa que use algun material de ese #AZT;
+    sin rampas de B2 devuelve el mismo bin. -> (bytes, informe)."""
+    b = bytearray(hd)
+    if b[:4] != b"#AMB":
+        return bytes(hd), "no es un #AMB"
+    mats = _materiales_escena(b)
+    if not mats:
+        return bytes(hd), "sin materiales #AWO"
+    usadas = {r for _, _, r in mats}
+    hechas = []
+    for z, tex in _azts_escena(b):
+        cache = {}
+
+        def img(t):
+            if t not in cache:
+                cache[t] = None
+                if t in tex:
+                    try:
+                        cache[t] = leer_dds(b, tex[t][:3])
+                    except (OSError, ValueError):
+                        pass
+            return cache[t]
+
+        for r in sorted(usadas & set(tex)):
+            ramp = img(r)
+            if ramp is None or not es_rampa_b2(ramp):
+                continue
+            bases = sorted({t for _, t, rr in mats if rr == r and t in tex and t != r})
+            imgs = [i for i in (img(t) for t in bases) if i is not None and not es_rampa_b2(i)]
+            if not imgs:
+                continue
+            nueva = rampa_nueva(ramp, imgs, pesos=np.ones(3))
+            ent_o, do, ds, _, _ = tex[r]
+            dato = _dds(nueva, b[do:do + 128])
+            if len(dato) != ds:
+                continue
+            b[do:do + ds] = dato
+            hechas.append(dict(azt=z, indice=r, bases=bases))
+    if not hechas:
+        return bytes(hd), "sin rampas de Budokai 2 en escenario"
+    return bytes(b), "rampas de B2 en escenario convertidas: %d %s" % (
+        len(hechas), ", ".join("AZT%X/tex%d<-%s" % (h["azt"], h["indice"], h["bases"]) for h in hechas))
 
 
 def es_b1(b, mats):

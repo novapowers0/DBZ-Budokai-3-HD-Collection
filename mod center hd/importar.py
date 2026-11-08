@@ -1240,6 +1240,74 @@ def iw_spx_sonidos(spx, delta=-1913):
     return bytes(out), n
 
 
+# tipos de las demandas de recurso del #SPX (#AMO modelo, #AMT textura, #AMM animacion)
+IW_SPX_TIPO = {0x63: b"#AMO", 0x64: b"#AMT", 0x66: b"#AMM"}
+
+
+def iw_spx_demandas(cam):
+    """{indice del hijo de la raiz del BSP: tipo pedido} de las ordenes 355/356/358 del #SPX
+    de una camara #AMB (formato PS2 del disco, tal como lo deja iw_moveset_files)."""
+    try:
+        import roster_build as rb  # noqa: PLC0415
+        n, tbl = struct.unpack_from("<II", cam, 0x10)
+        for k in range(n):
+            off, size = struct.unpack_from("<II", cam, tbl + 16 * k)
+            if cam[off:off + 4] == b"#SPX":
+                return {int(m.group(2)[0]): int(m.group(3)[0])
+                        for m in rb.SPX_RECURSO.finditer(cam[off:off + size])}
+    except (ValueError, struct.error, IndexError):
+        pass
+    return {}
+
+
+def iw_bsp_tags(iw, fid):
+    """Tipos de los hijos de la raiz de un BSP de IW (PS2 #AMB) o None."""
+    try:
+        d = iw_afs(iw).entry(fid)
+        n, tbl = struct.unpack_from("<II", d, 0x10)
+        if d[:4] != b"#AMB" or not 0 < n <= 512 or tbl + 16 * n > len(d):
+            return None
+        return [d[struct.unpack_from("<I", d, tbl + 16 * k)[0]:][:4] for k in range(n)]
+    except (OSError, ValueError, struct.error):
+        return None
+
+
+def iw_bsp_del_guion(cam, bsp, iw):
+    """BSP de tecnicas que casa con el guion del personaje. El registro de IW de una fusion
+    apunta al BSP de un componente (Gotenks: 848), pero su #SPX pide los recursos por indice en
+    otro (822): sin el, la definitiva no carga sus modelos/animaciones y no sale (o cierra).
+    Se puntua cada BSP de la tabla por las demandas del guion; solo se cambia si mejora."""
+    dem = iw_spx_demandas(cam)
+    if not dem or not bsp:
+        return bsp
+    def score(fid):
+        tags = iw_bsp_tags(iw, fid)
+        if not tags:
+            return -1
+        return sum(1 for i, t in dem.items()
+                   if i < len(tags) and tags[i] == IW_SPX_TIPO.get(t))
+    base = score(bsp)
+    if base >= len(dem):
+        return bsp
+    try:
+        import voces  # noqa: PLC0415
+        d = voces.IwVoices(iw).elf
+        bsp_t = iw_tables(d, iw_afs(iw))[1]
+        cands = {struct.unpack_from("<I", d, bsp_t + 4 * c)[0] for c in range(IW_IDS)} if bsp_t else set()
+    except (OSError, ValueError, struct.error):
+        cands = set()
+    best, bs = bsp, base
+    for fid in sorted(c for c in cands if 0 < c < iw_afs(iw).n):
+        s = score(fid)
+        if s > bs:
+            best, bs = fid, s
+    if best != bsp:
+        import roster_build as rb  # noqa: PLC0415
+        rb.log("BSP de tecnicas: el del registro no casa con el guion (%d/%d); uso el %d (%d/%d)"
+               % (base, len(dem), best, bs, len(dem)))
+    return best
+
+
 def iw_moveset_files(cid, work, iw=None):
     """Bins PS2 del moveset de IW del personaje en work -> {"anm": [...], "cam": p, "bsp": p}
     (lo mismo que port_files de un port de la comunidad)."""
@@ -1258,11 +1326,13 @@ def iw_moveset_files(cid, work, iw=None):
     if not any(d[:4] == b"#AML" for d, _ in ks):        # B3 lee los hijos de la camara por posicion
         ks = ks[:1] + [(AML, 6)] + ks[1:]
     ks = [(iw_spx_sonidos(d)[0], t) if d[:4] == b"#SPX" else (d, t) for d, t in ks]
+    cam = b1port.amb_build(ks)
     out["cam"] = os.path.join(work, "iw_camara.bin")
-    open(out["cam"], "wb").write(b1port.amb_build(ks))
-    if m["bsp"]:
+    open(out["cam"], "wb").write(cam)
+    bsp = iw_bsp_del_guion(cam, m["bsp"], iw) if m["bsp"] else None
+    if bsp:
         out["bsp"] = os.path.join(work, "iw_tecnicas.bin")
-        open(out["bsp"], "wb").write(afs.entry(m["bsp"]))
+        open(out["bsp"], "wb").write(afs.entry(bsp))
     return out
 
 

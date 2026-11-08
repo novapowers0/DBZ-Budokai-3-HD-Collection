@@ -94,6 +94,35 @@ TABLA_IW = 0x473310     # u32[0..18]: descriptor de cada minijuego (forzar_mini_
 _FILA = re.compile(r"^\| `(0x7[0-9A-F]{2})` \| (\d+) \| (\S+) \|")
 
 
+def iw_amc_llamadas(mem):
+    """Las llamadas a UiAnim_Start(frame0, libro, clip, play, p5) del ELF de IW (0x2ED8F0; es FUN_00127280, el reproductor de
+    camara #AMC, no una animacion de interfaz; ver src/iw_amc.h). libro = indice en el contexto +0x14 (0 = #AMC 915/2 general,
+    1 = el de la escena). clip = literal, INT_xxxxxxxx escalar (se lee de la RAM) o tabla[indice] (queda la direccion)."""
+    import bisect
+    t = (GHIDRA / "iw_sles55347.c").read_text(encoding="utf-8", errors="replace")
+    hs = [(m.start(), m.group(1), m.group(2)) for m in re.finditer(r"^// ==== ([0-9a-f]{8}) (\S+)", t, re.M)]
+    pos = [h[0] for h in hs]
+    out = []
+    for m in re.finditer(r"UiAnim_Start\(([^;]*)\);", t):
+        h = hs[bisect.bisect(pos, m.start()) - 1]
+        if h[2] == "UiAnim_Start":
+            continue
+        a = [x.strip() for x in re.split(r",(?![^(]*\))", m.group(1))]
+        if len(a) < 5 or not re.fullmatch(r"\d+", a[1]):
+            continue
+        clip, tabla = a[2], ""
+        if re.fullmatch(r"INT_([0-9a-f]{8})", clip):
+            clip = str(u32(mem, int(clip[4:], 16)))
+        elif (mt := re.fullmatch(r"\(&INT_([0-9a-f]{8})\)\[.*\]", clip)):
+            tabla, clip = "0x" + mt.group(1), "-1"
+        elif re.fullmatch(r"0x[0-9a-f]+", clip):
+            clip = str(int(clip, 16))
+        elif not re.fullmatch(r"\d+", clip):
+            tabla, clip = clip, "-1"
+        out.append((h[1], h[2], a[0], int(a[1]), int(clip), tabla, a[3], a[4]))
+    return out
+
+
 def iw_minijuegos():
     mem = ram("iw")
     inv = {}
@@ -119,6 +148,15 @@ def iw_minijuegos():
             out += [f'clave = "{clave}"', f'modulo = "{mod}"', "amc_915_clips = [" + ", ".join(f'"{x}"' for x in clips) + "]"]
             if ent:
                 out.append(f"amc_entrada = {ent}")
+        out.append("")
+    # dia 1A: las llamadas a la camara #AMC del ELF (libro, clip) por funcion; clip -1 = sale de una tabla del ELF (`tabla`)
+    llam = iw_amc_llamadas(mem)
+    out += ["# GENERADO: llamadas UiAnim_Start (= FUN_00127280, camara #AMC) del ELF EU; ver src/iw_amc.h", ""]
+    for f, nombre, f0, libro, clip, tabla, play, p5 in llam:
+        out += ["[[amc_llamada]]", f'funcion = "0x{f}"', f'nombre = "{nombre}"', f"libro = {libro}", f"clip = {clip}",
+                f"cuadro_inicial = {f0}", f"reproduce = {1 if play.strip() != '0' else 0}"]
+        if tabla:
+            out.append(f'tabla = "{tabla}"')
         out.append("")
     return "iw_minijuegos.toml", "\n".join(out), len(inv)
 

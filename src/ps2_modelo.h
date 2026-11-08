@@ -161,6 +161,8 @@ uint32_t RampasPiel(const std::vector<uint8_t>& amt);
 Anim LeerAnim(const std::vector<uint8_t>& amm, uint32_t anim, size_t huesos);
 // Malla de `esq` en el segundo `t` (bucle a 60 cuadros por segundo) de `an`, con el centro x/z de Centrar.
 void Posar(const Esqueleto& esq, const Anim& an, float t, Malla& out);
+// LIVE de IW ya evaluado: no volver a interpolar Euler ni envolver el reloj.
+void PosarMatrices(const Esqueleto& esq, const std::vector<M34>& locales, bool relativa, Malla& out);
 void Centrar(Malla& m);
 // #AMO y #AMT sueltos (entradas propias de un AFS); animable: con esqueleto y pesos para Posar.
 // colores (frente R2, B2): color por vertice (vtype & 2) y, en las partes sin textura, el color de material (+0x30).

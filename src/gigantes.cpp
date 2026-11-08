@@ -71,6 +71,8 @@ float EscalaDe(uint8_t* base, int lado) {
   return std::clamp(Escala(base, mgr, lado), 0.5f, 3.0f);
 }
 
+bool ReglaActiva() { return g_regla[0] > 0.0f || g_regla[1] > 0.0f; }
+
 void Activar(int lado, float escala) {
   if (lado < 0 || lado > 1) return;
   g_regla[lado] = escala > 0.0f ? std::clamp(escala, 0.5f, 3.0f) : 0.0f;

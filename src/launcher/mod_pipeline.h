@@ -76,7 +76,8 @@ class ModPipeline {
   void BuildRoster(bool force = false);
   // Escenarios nuevos desde los juegos de PS2 del jugador (campos de IW y escenarios de B1/B2): los que falten o
   // cuya ISO cambio, en mods/ (mod center hd/campos_iw.py auto). Se genera en su equipo: nada del juego viaja.
-  void BuildStages();
+  // force = boton "Reparar escenarios": los rehace todos (los actuales van a mods/_respaldo_escenarios).
+  void BuildStages(bool force = false);
   // Resultado del ultimo paso de escenarios (visible en la pestana Mods). `created` = escenarios completos en
   // mods/; `failed` = tareas que fallaron en la ultima pasada y `reason` = primer motivo (sin prefijo).
   struct StageReport {

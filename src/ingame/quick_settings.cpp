@@ -408,6 +408,13 @@ void ConfigureQuickMenu(rex::ui::QuickMenuConfig& menu, std::function<void()> op
       hud.shown_if_cvar = "dbz3_freecam";
       hud.shown_if_values = {"true"};
     }
+    // Sin HUD: oculta barras, retratos y marcadores del combate, con o sin camara libre. No se guarda.
+    modes.items.push_back(Toggle(
+        T::T("Sin HUD (F9)", "No HUD (F9)"), "dbz3_sin_hud",
+        T::T("Oculta todo el marcador del combate: barras, retratos y contadores. Sirve con la camara libre y sin ella. "
+             "Tambien con la tecla F9. No se guarda: al abrir el juego vuelve a verse.",
+             "Hides the whole fight HUD: bars, portraits and counters. Works with and without the free camera. Also "
+             "with the F9 key. Not saved: the HUD is back next time you start the game.")));
   }
 
   // 6. COMBATE (frente combate, src/combate.cpp): todo apagado de serie; lo que cambia el combate no se usa online.
@@ -469,6 +476,11 @@ void ConfigureQuickMenu(rex::ui::QuickMenuConfig& menu, std::function<void()> op
                                       "The rival controlled by the console appears bigger, like a giant boss, and "
                                       "the camera widens to show it. Only its on-screen size changes. Not used "
                                       "online.")));
+    stage.items.push_back(Toggle(T::T("Escenarios repetidos", "Repeated stages"), "dbz3_escenarios_repetidos",
+                                 T::T("Muestra en la pantalla de escenarios los añadidos que son el mismo lugar que uno "
+                                      "del juego (p. ej. el Torneo de B2). Apagado de serie. Se aplica al reiniciar.",
+                                      "Shows on the stage screen the added stages that are the same place as one of "
+                                      "the game (e.g. the B2 Tournament). Off by default. Applies after a restart.")));
     stage.items.push_back(Toggle(T::T("Intro de cine", "Cinematic intro"), "dbz3_cine_intro",
                                  T::T("Al empezar cada combate, 10 s de cámara de cine sobre el escenario y los "
                                       "luchadores; A la salta. No se usa en el online.",
