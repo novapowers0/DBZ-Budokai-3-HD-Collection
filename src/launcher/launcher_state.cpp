@@ -5830,7 +5830,8 @@ void LauncherDialog::DrawRecetasNova() {
     std::istringstream in(mod_pipeline_.Output());
     for (std::string l; std::getline(in, l);) {
       if (!l.empty() && l.back() == '\r') l.pop_back();
-      if (!l.empty()) ultima = l;
+      // #72: "[exit code N]" lo anade el pipeline; el motivo real es la linea anterior (ERROR/traceback)
+      if (!l.empty() && l.rfind("[exit code", 0) != 0) ultima = l;
     }
     return ultima;
   };
@@ -5851,7 +5852,7 @@ void LauncherDialog::DrawRecetasNova() {
   }
   if (nrec_estado_ == 3 && !trabajo) {   // el mod ya esta en mods/: se monta al pulsar JUGAR
     const std::string fin = ultima_linea();
-    REXLOG_INFO("dbz3 recetas: fin -> {}", fin);
+    REXLOG_INFO("dbz3 recetas: fin (exit {}) -> {}", mod_pipeline_.ExitCode(), fin);
     nrec_msg_ = fin.rfind("construido", 0) == 0
                     ? i18n::T("Hecho. Se aplica al pulsar JUGAR; en la pestana Mods se desactiva.",
                               "Done. It applies when you press PLAY; turn it off in the Mods tab.")

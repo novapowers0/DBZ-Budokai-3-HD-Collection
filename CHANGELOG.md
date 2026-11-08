@@ -6,7 +6,16 @@ are summarized at the end; the full history (in Spanish) is in
 
 Downloads: [latest release](../../releases/latest).
 
-## v1.5.6.1 (unreleased)
+## v1.5.6.2
+
+Fixes for building mods from your own copies (#72).
+
+- **No Budokai 3 for PS2 needed.** Importing a character from Budokai 1 or 2, and the Nova's Mods recipes that do it (Buu's absorptions, Yamhan, Gotan), used to read the donor's base moves and cameras from a Budokai 3 PS2 disc that most players don't have, and failed without saying why. They are now rebuilt from your HD copy (new `awo_tools/hdps2.py`, the reverse of `ps2hd.py`). Checked on all 76 donor files: HD → PS2 → HD keeps the same content; against the real PS2 disc, moves and cameras are identical and animations match except the ones the HD release itself retouched (you get the HD version). Shin Budokai technique import still needs the PS2 disc for its energy attacks and now says so clearly.
+- A PS2 game picked with **Choose ISO** is now found by these tools too (they followed only files inside `ps2_games`).
+- When a recipe fails, the launcher shows the real reason instead of just `[exit code 1]`.
+- The game package and the Mod Kit now include `t3_audio.py` (Tenkaichi 3 music), `recolorear.py` (in-game recolouring) and `heroe_arte.py` (Hero Mode art). The launcher and the game called them, but they were missing without the Kit.
+
+## v1.5.6.1
 
 ### Performance and display settings
 

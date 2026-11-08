@@ -1,10 +1,10 @@
 {
   "_note": "Historico de versiones retiradas de ../.forge.json. PortForge (el instalador de 1 clic) SOLO consume ../.forge.json; este fichero es un registro para no perder las entradas antiguas. Para rehabilitar una version, copia su objeto del array 'builds' al array 'builds' de ../.forge.json.",
-  "_archivedOn": "2026-10-04",
+  "_archivedOn": "2026-11-08",
   "_activeVersions": [
-    "1.4.0",
-    "1.3.0",
-    "1.2.9"
+    "1.5.6.2",
+    "1.5.6.1",
+    "1.5.6"
   ],
   "_retired": {
     "1.2.8.2": "La mejora de texturas deja de hundir los FPS (throttle de texturas dinamicas) + diagnostico en la linea perf. Retirada al dejar visibles 1.4.0 / 1.3.0 / 1.2.9 (la 1.3.0 y la 1.2.9 incluyen todo lo de la 1.2.8.2).",
@@ -20,9 +20,153 @@
     "1.2.2": "RETIRADA en su dia (el release se reemplazo por la EX): le faltaban los fixes del modo ISO (normalizacion de rutas + fallback carpeta->ISO). NO reusar.",
     "1.2.1": "Linea 1.2.0 / 1.2.1 antigua; superada.",
     "1.1.4": "Entrada antigua que en realidad descargaba el asset v1.1.4-EX. Superada.",
-    "1.1.2": "Formato de pasos antiguo (dest con nombre completo del zip y copia del rom a 'gamedata'); incompatible con el layout actual. NO reusar."
+    "1.1.2": "Formato de pasos antiguo (dest con nombre completo del zip y copia del rom a 'gamedata'); incompatible con el layout actual. NO reusar.",
+    "1.5.5.5": "Retirada el 2026-11-08 al dejar visibles 1.5.6.2 / 1.5.6.1 / 1.5.6 (las tres incluyen todo lo de la 1.5.5.5).",
+    "1.5.5.4": "Retirada el 2026-11-08 al dejar visibles 1.5.6.2 / 1.5.6.1 / 1.5.6 (las tres incluyen todo lo de la 1.5.5.4).",
+    "1.5.5.3": "Retirada el 2026-11-08 al dejar visibles 1.5.6.2 / 1.5.6.1 / 1.5.6 (las tres incluyen todo lo de la 1.5.5.3)."
   },
   "builds": [
+    {
+      "versions": [
+        "1.5.5.5"
+      ],
+      "targetPlatforms": [
+        "Windows"
+      ],
+      "steps": [
+        {
+          "step": "createDir",
+          "path": ".build"
+        },
+        {
+          "step": "fetch",
+          "url": "https://github.com/novapowers0/DBZ-Budokai-3-HD-Collection/releases/download/v1.5.5.5/DBZ-Budokai-3-HD-Collection-v1.5.5.5.zip",
+          "dest": ".build/port.zip"
+        },
+        {
+          "step": "extract",
+          "src": ".build/port.zip",
+          "dest": ".build"
+        },
+        {
+          "step": "deletePath",
+          "path": ".build/port.zip"
+        },
+        {
+          "step": "copy",
+          "from": "rom",
+          "dest": ".build/game.iso"
+        },
+        {
+          "step": "move",
+          "src": "./.build",
+          "dest": "./install"
+        },
+        {
+          "step": "deletePath",
+          "path": "./.build"
+        },
+        {
+          "step": "defineExecutable",
+          "executable": "install/dbz3.exe",
+          "title": "Play"
+        }
+      ]
+    },
+    {
+      "versions": [
+        "1.5.5.4"
+      ],
+      "targetPlatforms": [
+        "Windows"
+      ],
+      "steps": [
+        {
+          "step": "createDir",
+          "path": ".build"
+        },
+        {
+          "step": "fetch",
+          "url": "https://github.com/novapowers0/DBZ-Budokai-3-HD-Collection/releases/download/v1.5.5.4/DBZ-Budokai-3-HD-Collection-v1.5.5.4.zip",
+          "dest": ".build/port.zip"
+        },
+        {
+          "step": "extract",
+          "src": ".build/port.zip",
+          "dest": ".build"
+        },
+        {
+          "step": "deletePath",
+          "path": ".build/port.zip"
+        },
+        {
+          "step": "copy",
+          "from": "rom",
+          "dest": ".build/game.iso"
+        },
+        {
+          "step": "move",
+          "src": "./.build",
+          "dest": "./install"
+        },
+        {
+          "step": "deletePath",
+          "path": "./.build"
+        },
+        {
+          "step": "defineExecutable",
+          "executable": "install/dbz3.exe",
+          "title": "Play"
+        }
+      ]
+    },
+    {
+      "versions": [
+        "1.5.5.3"
+      ],
+      "targetPlatforms": [
+        "Windows"
+      ],
+      "steps": [
+        {
+          "step": "createDir",
+          "path": ".build"
+        },
+        {
+          "step": "fetch",
+          "url": "https://github.com/novapowers0/DBZ-Budokai-3-HD-Collection/releases/download/v1.5.5.3/DBZ-Budokai-3-HD-Collection-v1.5.5.3.zip",
+          "dest": ".build/port.zip"
+        },
+        {
+          "step": "extract",
+          "src": ".build/port.zip",
+          "dest": ".build"
+        },
+        {
+          "step": "deletePath",
+          "path": ".build/port.zip"
+        },
+        {
+          "step": "copy",
+          "from": "rom",
+          "dest": ".build/game.iso"
+        },
+        {
+          "step": "move",
+          "src": "./.build",
+          "dest": "./install"
+        },
+        {
+          "step": "deletePath",
+          "path": "./.build"
+        },
+        {
+          "step": "defineExecutable",
+          "executable": "install/dbz3.exe",
+          "title": "Play"
+        }
+      ]
+    },
     {
       "versions": [
         "1.5.5.2"

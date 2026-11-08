@@ -44,6 +44,7 @@ KIT_ENTRIES = ["t3", "inventario_copias",   # studies 1 F08/F09: Tenkaichi 3 e i
                "retos_predefinidos",   # "Retos predefinidos" row (HUB challenges, tower of the week)
                "nova_recetas",   # mods de Nova's Mods que se construyen con la copia del jugador
                "forma_unica",   # respaldo de la capsula "Todas las transformaciones" (hoy la crea el juego)
+               "t3_audio", "recolorear", "heroe_arte",   # #72: los lanza el launcher/juego; faltaban en el Kit y en el zip
                "campos_iw"]     # escenarios de los juegos de PS2 del jugador (campos de IW, B1/B2) al pulsar
                                 # Jugar (ModPipeline::BuildStages); trae escenarios_convertir. Solo el conversor:
                                 # los escenarios se generan en el equipo del jugador desde sus ISOs
@@ -92,7 +93,9 @@ GAME_ENTRIES = ["campos_iw", "escenarios_convertir", "iso", "importar", "vista_h
                 # tecnicas del Modo Heroe (heroe_ui.cpp GenerarCon)
                 "vista_b2", "vista_nave", "tecnicas_cartas",
                 # Dragon Tactics: clips de B3 horneados para sus figuras (pasarela_nave.cpp TkEstado)
-                "vista_tactics"]
+                "vista_tactics",
+                # #72: el launcher/juego los lanzan sin Kit (musica de Tenkaichi 3, recolorear en partida, arte del Heroe)
+                "t3_audio", "recolorear", "heroe_arte"]
 
 
 def kit_modules(entries=None):

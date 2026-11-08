@@ -1,5 +1,5 @@
 {
-  "defaultVersion": "1.5.5.5",
+  "defaultVersion": "1.5.6.2",
   "dependencies": [
     "unzip",
     "7z"
@@ -17,7 +17,7 @@
   "builds": [
     {
       "versions": [
-        "1.5.5.5"
+        "1.5.6.2"
       ],
       "targetPlatforms": [
         "Windows"
@@ -29,7 +29,7 @@
         },
         {
           "step": "fetch",
-          "url": "https://github.com/novapowers0/DBZ-Budokai-3-HD-Collection/releases/download/v1.5.5.5/DBZ-Budokai-3-HD-Collection-v1.5.5.5.zip",
+          "url": "https://github.com/novapowers0/DBZ-Budokai-3-HD-Collection/releases/download/v1.5.6.2/DBZ-Budokai-3-HD-Collection-v1.5.6.2.zip",
           "dest": ".build/port.zip"
         },
         {
@@ -64,7 +64,7 @@
     },
     {
       "versions": [
-        "1.5.5.4"
+        "1.5.6.1"
       ],
       "targetPlatforms": [
         "Windows"
@@ -76,7 +76,7 @@
         },
         {
           "step": "fetch",
-          "url": "https://github.com/novapowers0/DBZ-Budokai-3-HD-Collection/releases/download/v1.5.5.4/DBZ-Budokai-3-HD-Collection-v1.5.5.4.zip",
+          "url": "https://github.com/novapowers0/DBZ-Budokai-3-HD-Collection/releases/download/v1.5.6.1/DBZ-Budokai-3-HD-Collection-v1.5.6.1.zip",
           "dest": ".build/port.zip"
         },
         {
@@ -111,7 +111,7 @@
     },
     {
       "versions": [
-        "1.5.5.3"
+        "1.5.6"
       ],
       "targetPlatforms": [
         "Windows"
@@ -123,7 +123,7 @@
         },
         {
           "step": "fetch",
-          "url": "https://github.com/novapowers0/DBZ-Budokai-3-HD-Collection/releases/download/v1.5.5.3/DBZ-Budokai-3-HD-Collection-v1.5.5.3.zip",
+          "url": "https://github.com/novapowers0/DBZ-Budokai-3-HD-Collection/releases/download/v1.5.6/DBZ-Budokai-3-HD-Collection-v1.5.6.zip",
           "dest": ".build/port.zip"
         },
         {

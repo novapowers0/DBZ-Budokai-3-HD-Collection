@@ -1388,7 +1388,8 @@ def donor_model(anm_fid):
     import roster_build  # noqa: PLC0415
     for e in roster_build.DB["ids"]:
         if e["anm"] and e["anm"][0] == anm_fid and e["models"]:
-            return afs_pair.ps2(e["models"][0])
+            # altura.skeleton lee PS2 o HD: sin el B3 de PS2 (#72) vale el modelo HD del jugador
+            return afs_pair.ps2(e["models"][0]) if os.path.exists(afs_pair.PS2_GH) else afs_pair.hd(e["models"][0])
     return None
 
 

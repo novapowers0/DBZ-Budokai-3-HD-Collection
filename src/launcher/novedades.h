@@ -20,6 +20,18 @@ struct NewsBlock {
   int count;
 };
 
+inline constexpr NewsItem kNews1562[] = {
+    {"Mods con tu copia", "Mods from your copy",
+     "Las absorciones de Bu, Yamhan y Gotan (y cualquier personaje importado de Budokai 1 o 2) ya no necesitan el Budokai 3 de PS2: los movimientos base salen de tu versión HD.",
+     "Buu's absorptions, Yamhan and Gotan (and any character imported from Budokai 1 or 2) no longer need Budokai 3 for PS2: the base moves come from your HD copy."},
+    {nullptr, nullptr,
+     "Si crear un mod falla, el launcher muestra el motivo en vez de solo un código de error.",
+     "If building a mod fails, the launcher shows the reason instead of just an error code."},
+    {nullptr, nullptr,
+     "La música de Tenkaichi 3, el cambio de colores en partida y el arte del Modo Héroe ya funcionan sin el Kit de modding (faltaban sus herramientas en el paquete).",
+     "Tenkaichi 3 music, in-game recolouring and Hero Mode art now work without the Mod Kit (their tools were missing from the package)."},
+};
+
 inline constexpr NewsItem kNews1561[] = {
     {"Rendimiento", "Performance",
      "El ahorro de CPU del bucle principal viene activado: en pruebas con 2 núcleos, el combate pasó de 43-47 a 58-60 FPS y el menú usa mucha menos CPU. Con dbz3_espera_dormir_us=0 vuelve al comportamiento anterior.",
@@ -398,6 +410,7 @@ inline constexpr NewsItem kNews145[] = {
 
 // Del mas nuevo al mas antiguo.
 inline constexpr NewsBlock kNewsBlocks[] = {
+    {"1.5.6.2", kNews1562, int(sizeof(kNews1562) / sizeof(kNews1562[0]))},
     {"1.5.6.1", kNews1561, int(sizeof(kNews1561) / sizeof(kNews1561[0]))},
     {"1.5.6", kNews156, int(sizeof(kNews156) / sizeof(kNews156[0]))},
     {"1.5.5.5", kNews1555, int(sizeof(kNews1555) / sizeof(kNews1555[0]))},

@@ -19,12 +19,23 @@ import zlib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
+def _ruta(p):
+    try:
+        with open(p, encoding="utf-8-sig") as f:
+            d = f.read().strip()
+    except OSError:
+        return None
+    return d if d and os.path.exists(d) else None
+
+
 def _ps2_source(pattern, default):
     """Juego de PS2 en ps2_games de cualquier region: su carpeta USR (disco extraido) o su ISO
     (se lee sin extraer). La carpeta tiene prioridad."""
     import glob  # noqa: PLC0415
     hits = sorted(glob.glob(os.path.join(ROOT, "ps2_games", pattern)), key=lambda p: not os.path.isdir(p))
-    for p in hits:
+    # #72: 'Elegir ISO' del launcher deja un .ruta (la ISO se queda donde estaba): se sigue a su destino
+    hits = [_ruta(p) if p.lower().endswith(".ruta") else p for p in hits]
+    for p in filter(None, hits):
         if os.path.isdir(p):
             usr = next((os.path.join(p, d) for d in ("USR", "usr") if os.path.isdir(os.path.join(p, d))), None)
             if usr:
@@ -111,7 +122,15 @@ def decompress(raw, key):
     return open(out, "rb").read()
 
 
-def ps2(n, afs="data_cmn.afs", game=PS2_GH):
+def ps2(n, afs="data_cmn.afs", game=PS2_GH, real=False):
+    # #72: sin el Budokai 3 de PS2 (lo normal en casa del jugador) se reconstruye desde su HD con hdps2
+    if game == PS2_GH and afs == "data_cmn.afs" and not real and not os.path.exists(os.path.join(game, afs)) \
+            and not os.path.isfile(game):
+        import hdps2  # noqa: PLC0415
+        try:
+            return hdps2.hd_a_ps2(hd(n))
+        except hdps2.ps2hd.Unsupported as ex:   # solo animaciones y camaras tienen vuelta (modelos, BSP: no)
+            raise SystemExit("ERROR: esta parte necesita el Budokai 3 de PS2 en ps2_games (entrada %d, %s)" % (n, ex))
     return entry(os.path.join(game, afs), n)
 
 
