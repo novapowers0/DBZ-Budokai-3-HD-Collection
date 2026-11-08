@@ -96,7 +96,7 @@ jobs:
             -DDBZ3_DUAL_REGION=ON \
             -DREXGLUE_USE_D3D12=OFF -DREXGLUE_USE_VULKAN=ON \
             -DCMAKE_PREFIX_PATH="$GITHUB_WORKSPACE/rexglue-mac"
-          cmake --build out/build/mac-arm64-release --parallel
+          cmake --build out/build/mac-arm64-release --parallel -- -k 0
 
       - name: Show build outputs
         run: |

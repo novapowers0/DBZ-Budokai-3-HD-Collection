@@ -10,7 +10,11 @@
 #include <iterator>
 #include <cstdlib>
 #include <cstring>
+#if defined(__x86_64__) || defined(_M_X64)
 #include <xmmintrin.h>
+#else
+#include <cfenv>
+#endif
 
 #include <rex/cvar.h>
 #include <rex/logging.h>
@@ -471,7 +475,11 @@ bool Ee::Llamar(uint32_t dir, std::initializer_list<uint32_t> args, uint64_t lim
   r[28] = Sx(gp); r[29] = kPila + 0xFF000; r[31] = kRetorno;
   error_.clear(); io = 0;
   // El hilo del juego puede llevar otro MXCSR (redondeo/FTZ del runtime PPC): las cuentas double van en el de fabrica.
+#if defined(__x86_64__) || defined(_M_X64)
   struct Csr { unsigned c = _mm_getcsr(); Csr() { _mm_setcsr(0x1F80); } ~Csr() { _mm_setcsr(c); } } csr;
+#else   // ARM (Mac): mismo efecto, entorno IEEE por defecto (sin flush-to-zero) mientras corre el MIPS
+  struct Csr { std::fenv_t e; Csr() { std::fegetenv(&e); std::fesetenv(FE_DFL_ENV); } ~Csr() { std::fesetenv(&e); } } csr;
+#endif
   const uint32_t hw = FpuHwActivas();  // dia1E6: reglas de hardware de la FPU (de serie kFpuHwSerie, 6 reglas)
   auto entrar = [&](uint32_t t) -> uint32_t {
     if (auto it = puentes.find(t); it != puentes.end()) { it->second(*this); return uint32_t(r[31]); }
