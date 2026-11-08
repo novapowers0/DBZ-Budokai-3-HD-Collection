@@ -63,6 +63,9 @@ jobs:
         shell: bash
         run: |
           cp -a patches/rexglue-sdk/. rexglue-sdk-0.10/
+          # Apple's libc++ already has std::chrono::clock_time_conversion: mark it so the Linux
+          # script skips that fallback (it would be a redefinition) and applies only the rest.
+          echo '// REXGLUE_LINUX_CLOCK_TIME_CONVERSION (provided by Apple libc++)' >> rexglue-sdk-0.10/include/rex/chrono/chrono.h
           bash tools/patch_rexglue_linux.sh
 
       - name: Validate generated source set
