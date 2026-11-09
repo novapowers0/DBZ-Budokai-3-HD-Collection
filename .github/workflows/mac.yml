@@ -110,21 +110,17 @@ jobs:
           set -euo pipefail
           mkdir -p package/mods
           cp out/build/mac-arm64-release/dbz3 package/dbz3
-          # Runtime libraries next to the game (rexruntime from the SDK install, the GPU backend and
-          # MoltenVK/Vulkan loader from whichever tree produced them).
-          for pat in 'librexruntime*.dylib' 'librexgpu-xenos*.dylib' 'libMoltenVK*.dylib' 'libvulkan*.dylib'; do
-            find out/build/mac-arm64-release rexglue-mac rexglue-sdk-0.10/out/build/mac-arm64 \
-              -name "$pat" \( -type f -o -type l \) -print 2>/dev/null | while read -r f; do cp -L "$f" package/; done
-          done
-          icd=$(find rexglue-mac rexglue-sdk-0.10 -name 'MoltenVK_icd.json' -print -quit || true)
-          if [ -n "$icd" ]; then
-            mkdir -p package/vulkan/icd.d
-            sed 's#"library_path": *"[^"]*"#"library_path": "../../libMoltenVK.dylib"#' "$icd" > package/vulkan/icd.d/MoltenVK_icd.json
-          fi
+          # rexruntime/rexgpu beside the game; the Vulkan loader, MoltenVK and its ICD in vulkan/, the
+          # layout the SDK copies after the build and searches at start (vulkan_moltenvk.cpp).
+          cp -L out/build/mac-arm64-release/librexruntime.dylib out/build/mac-arm64-release/librexgpu-xenos.dylib package/
+          cp -RL out/build/mac-arm64-release/vulkan package/vulkan
+          find package/vulkan -type f | sort
+          test -f package/vulkan/lib/libvulkan.1.dylib
+          test -f package/vulkan/lib/libMoltenVK.dylib
+          test -n "$(find package/vulkan -name 'MoltenVK_icd.json' -print -quit)"
           install_name_tool -add_rpath @executable_path package/dbz3 || true
-          for f in package/*.dylib; do install_name_tool -add_rpath @loader_path "$f" 2>/dev/null || true; done
           # Ad-hoc signature: arm64 binaries must be signed to run at all after install_name_tool.
-          codesign --force -s - package/*.dylib package/dbz3
+          codesign --force -s - package/*.dylib package/vulkan/lib/*.dylib package/dbz3
           cp README.md README_EN.md baserom.md gamecontrollerdb.txt package/
           cat > package/README_MAC.txt <<'EOF'
           EXPERIMENTAL - UNTESTED. This macOS build (Apple Silicon, M1 or newer) is compiled automatically;
