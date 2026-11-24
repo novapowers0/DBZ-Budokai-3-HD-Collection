@@ -2,6 +2,13 @@
 // Modo y sus ayudas. Troceo P0 (survivors_comercial/PLAN_COMERCIAL.md): solo traslado, sin cambios de comportamiento. Lo toca el coordinador.
 #pragma once
 #include "entrada.h"
+#if defined(_WIN32)
+#include <stdlib.h>
+#define DBZ3_ENVIRON _environ
+#else
+extern "C" char** environ;
+#define DBZ3_ENVIRON environ
+#endif
 
 #include <algorithm>
 #include <atomic>
@@ -180,7 +187,7 @@ inline const Prueba& Pr() {
     if ((v = env("DIFICULTAD"))) r.dificultad = std::clamp(std::atoi(v), 0, 1);
     if ((v = env("ZENI"))) r.zeni = std::max(0, std::atoi(v));
     if ((v = env("GUARDADO"))) r.guardado = v;
-    for (char** e = _environ; e && *e; ++e)   // auditoria #14: cualquier DBZ3_TEST_SURVIVORS_* es prueba
+    for (char** e = DBZ3_ENVIRON; e && *e; ++e)   // auditoria #14: cualquier DBZ3_TEST_SURVIVORS_* es prueba
       if (std::strncmp(*e, "DBZ3_TEST_SURVIVORS_", 20) == 0) r.otra = true;
     return r;
   }();

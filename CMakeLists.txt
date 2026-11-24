@@ -210,9 +210,9 @@ endif()
 
 # CaC: prueba de persistencia real, sin motor; se compila con tools/compilar.py.
 add_executable(cac_guardado_test tests/cac_guardado_test.cpp src/cac/cac.cpp)
-target_include_directories(cac_guardado_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/rexglue/include)
+target_include_directories(cac_guardado_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/rexglue/include $<TARGET_PROPERTY:rex::runtime,INTERFACE_INCLUDE_DIRECTORIES>)
 add_executable(cac_recetas_test tests/cac_recetas_test.cpp src/cac/cac.cpp)   # cac1: migracion v2->v3 y recetas
-target_include_directories(cac_recetas_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/rexglue/include)
+target_include_directories(cac_recetas_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/rexglue/include $<TARGET_PROPERTY:rex::runtime,INTERFACE_INCLUDE_DIRECTORIES>)
 
 # Dragon Tactics H2 (T8/T9): simulacion de combate + catalogo + pruebas, sin el juego ni el SDK. No entra en "all":
 #   cmake --build <build> --target tactics_sim_test   y luego   tactics_sim_test "mod center hd" D:/tmp   (desde la raiz del repo)

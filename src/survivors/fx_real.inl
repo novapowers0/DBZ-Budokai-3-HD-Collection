@@ -1,7 +1,7 @@
 // Incluido por combate.cpp: todas las llamadas PPC ocurren en su hilo y contexto.
 // Spawn 82155990 -> callbacks originales; tick 821547D8. El adaptador de dibujo
 // lee las particulas producidas por ellos; no calcula nacimientos ni curvas ACE.
-#include "survivors/fx_real.h"
+#include "fx_real.h"
 #include <mutex>
 #include <string>
 #include <cstdlib>
