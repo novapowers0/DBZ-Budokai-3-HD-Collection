@@ -1,0 +1,3 @@
+descripcion = "#66/#75: clon de Vegeta (s66_vegeta, id 55, donante 7) en Hyper hace un Dragon Rush real (R1+circulo = L+P tras expulsar) y debe acabar con el remate del donante. Control: --env DBZ3_TEST_BATTLE=7,7,2,0,0,0,0,0. Veredicto por codigos: tools/solmods_verificar.py --copia opus --id 55 --modo rush --espera-rush-fin"
+env = ["DBZ3_TEST_BATTLE=55,7,2,0,0,0,0,0", "DBZ3_COMBATE_SONDA=1", "DBZ3_COMBATE_MUNECO=quieto"]
+pasos = ["log \"hub: combate nativo\" 90", "esperar_pelea 120", "tecla L+P+Space+Quote 2500", "tecla D:900 1100", "tecla L+P 450", "tecla L+P+Space+Quote 200", "esperar 6000", "captura 01_rush", "esperar 8000", "captura 02_remate", "esperar 8000", "captura 03_vuelta"]

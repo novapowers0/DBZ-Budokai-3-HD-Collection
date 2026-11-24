@@ -1,0 +1,31 @@
+# R23 HER-01 (de E:\DBZ3HD_trabajo\heroe_post2\p2_resultado.toml, con el aspecto nuevo y en espanol):  python tools\pruebas.py correr smoke_b tools\pruebas_heroe\her01_resultado.toml
+# POST2 (12/11): cierre de saga y resultado. Con --env DBZ3_TEST_CFG=dbz3_heroe_ui_nueva=true
+# Los 3 combates de la saga por ring out (como --par completa=1 de r5_heroe) hasta el panel de resultado.
+descripcion = "Heroe: panel de resultado tras los 3 combates"
+env = ["DBZ3_TEST_MODO=heroe", "DBZ3_HUB_MODE=5", "DBZ3_TEST_RINGOUT=1", "DBZ3_TEST_CFG=dbz3_heroe_ui_nueva=true", "REX_DBZ3_LANGUAGE=5", "REX_DBZ3_UI_LANGUAGE=5"]
+pasos = [
+  'log "dbz3 rpg: Modo Heroe" 240',
+  "esperar 5000",
+  "tecla W 800",
+  'hasta_log "hub: combate nativo" 60',
+  "tecla Space 3000",
+  "fin",
+  'log "capsulas del jugador" 60',
+  'log "combate 1 ganado" 90',
+  "esperar 6000",
+  "captura a_entre_combates",
+  'hasta_log "combate 2: pedido" 30',
+  "tecla Space 4000",
+  "fin",
+  'log "combate 2 ganado" 120',
+  "esperar 6000",
+  'hasta_log "combate 3: pedido" 30',
+  "tecla Space 4000",
+  "fin",
+  'log "fin de saga" 150',
+  "esperar 4000",
+  "captura b_cierre_saga",
+  # A pasa del cierre de la saga (pagina 0 de DibujarFin) al panel de resultado (pagina 1)
+  "tecla Space 2500",
+  "captura c_resultado",
+]

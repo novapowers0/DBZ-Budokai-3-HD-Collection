@@ -1,0 +1,449 @@
+[
+  {
+    "fuente": "campaigns.cpp",
+    "formato": "dbz3 heroe: H02 despedida intermedia -> historia {}, sin creditos",
+    "llamada_sha256": "02f1cb29a09a9773cd44da84fddfa21030ec18c9b1ec63b66823c2208c2791e3",
+    "casos": {
+      "H02 despedida intermedia -> historia con decision, sin creditos": ["con decision"]
+    }
+  },
+  {
+    "fuente": "escenarios.cpp",
+    "formato": "dbz3 escenarios: alta {} '{}' (mod {}) en el registro {}: entrada {}, id_se {}, tema {}",
+    "llamada_sha256": "78f9787a63c2cb894b4b1fd6cb20c24653c368c5dec744b03a77f6b4fe141c0d",
+    "casos": {
+      "alta 254 'COPIA 0238' \\(mod Copia ESC 0238\\) en el registro": [254, "COPIA 0238", "Copia ESC 0238", 0, 5000, 0, 0],
+      "alta 28 'COPIA 0012' \\(mod Copia ESC 0012\\) en el registro": [28, "COPIA 0012", "Copia ESC 0012", 0, 5000, 0, 0],
+      "alta 56 'COPIA 0040' \\(mod Copia ESC 0040\\) en el registro": [56, "COPIA 0040", "Copia ESC 0040", 0, 5000, 0, 0]
+    }
+  },
+  {
+    "fuente": "escenarios.cpp",
+    "formato": "dbz3 escenarios: alta {} = '{}' / '{}' (mod {}, entrada {})",
+    "llamada_sha256": "bf44f555ab518dd43387bf84eb854512738905709e056260fe4f697edcccd85e",
+    "casos": {
+      "alta 126 = 'COPIA 0110'": [126, "COPIA 0110", "COPIA 0110", "Copia ESC 0110", 5000],
+      "alta 254 = 'COPIA 0238'": [254, "COPIA 0238", "COPIA 0238", "Copia ESC 0238", 5000],
+      "alta 28 = 'COPIA 0012'": [28, "COPIA 0012", "COPIA 0012", "Copia ESC 0012", 5000],
+      "alta 56 = 'COPIA 0040'": [56, "COPIA 0040", "COPIA 0040", "Copia ESC 0040", 5000]
+    }
+  },
+  {
+    "fuente": "heroe.cpp",
+    "formato": "dbz3 heroe: H02 deseo de historia confirmado: {}; posesion 00",
+    "llamada_sha256": "a9e6c41b8d4871cf52cba3e21d3f6fff793fb3aedec3d3ecd725442a8cc70436",
+    "casos": {
+      "H02 deseo de historia confirmado: seguir sin revivir": ["seguir sin revivir"]
+    }
+  },
+  {
+    "fuente": "heroe.cpp",
+    "formato": "dbz3 heroe: ruta atomica de la ficha {}: tramo {}, etapa pendiente {}, semilla {}, marcas {}",
+    "llamada_sha256": "1d92b841c59e61a2f6c42d52538c970288f977b7aed2b88799328a5c5e987ea8",
+    "casos": {
+      "ruta atomica de la ficha .*tramo -1, etapa pendiente -1": [1, -1, -1, 123, 0]
+    }
+  },
+  {
+    "fuente": "heroe_ui.cpp",
+    "formato": "dbz3 heroe: pieza B3 nativa {} = {}",
+    "llamada_sha256": "33f6cfa5c16b6e20a4179763494695e1415b4a5e70a1e581cb1ac659f6997f6c",
+    "casos": {
+      "pieza B3 nativa Cabeza / cresta = Type 2 / 8": ["Cabeza / cresta", "Type 2 / 8"],
+      "pieza B3 nativa Cara / boca = Type 2 / 8": ["Cara / boca", "Type 2 / 8"],
+      "pieza B3 nativa Cola = Type 2 / 4": ["Cola", "Type 2 / 4"],
+      "pieza B3 nativa Cuernos = Type 1 / 6": ["Cuernos", "Type 1 / 6"],
+      "pieza B3 nativa Cuerpo / placas = Type 2 / 4": ["Cuerpo / placas", "Type 2 / 4"],
+      "pieza B3 nativa Gema = Type 2 / 3": ["Gema", "Type 2 / 3"]
+    }
+  },
+  {
+    "fuente": "hub.cpp",
+    "formato": "dbz3 hub: combate nativo{}: id {} contra id {} (escenario {}, mandos {} / {}, tiempo {}, vida {} / {}, forma {} / {}, modo {})",
+    "llamada_sha256": "d08321e342950a7ba04fb4d8965908b819ff37ceb1633267ea51017bbabc9bfa",
+    "casos": {
+      "hub: combate nativo: id .* contra id .*": ["", 1, 2, 0, "a", "b", 99, 3000, 3000, 1, 1, 1],
+      "hub: combate nativo: id 27": ["", 27, 2, 0, "a", "b", 99, 3000, 3000, 1, 1, 1],
+      "hub: combate nativo: id 33": ["", 33, 2, 0, "a", "b", 99, 3000, 3000, 1, 1, 1],
+      "hub: combate nativo: id 45": ["", 45, 2, 0, "a", "b", 99, 3000, 3000, 1, 1, 1],
+      "hub: combate nativo: id 46": ["", 46, 2, 0, "a", "b", 99, 3000, 3000, 1, 1, 1],
+      "hub: combate nativo: id 47": ["", 47, 2, 0, "a", "b", 99, 3000, 3000, 1, 1, 1]
+    }
+  },
+  {
+    "fuente": "hub_menu.cpp",
+    "formato": "dbz3 hub: {} (fundido)",
+    "llamada_sha256": "09347a4c2b183fd8edaea57708e8028cfe068c93279c6609c8eebb71b9645175",
+    "casos": {
+      "hub: entra la pantalla HUB": ["entra la pantalla HUB"]
+    }
+  },
+  {
+    "fuente": "ingame/tutorial.cpp",
+    "formato": "dbz3 tutorial: {} cerrado en el paso {}/{} ({})",
+    "llamada_sha256": "43897879545cd378d6cb68604f69d7646fced53ee37a696f21674255ef40b780",
+    "casos": {
+      "tutorial: dragon_world cerrado en el paso 2/6 \\(visto, guardado\\)": ["dragon_world", 2, 6, "visto, guardado"]
+    }
+  },
+  {
+    "fuente": "ingame/tutorial.cpp",
+    "formato": "dbz3 tutorial: {} paso {}/{}",
+    "llamada_sha256": "84fd86f51a1ff587e9b417c393eb4068eaaca193b5210ccb465e847a9b9d227d",
+    "casos": {
+      "tutorial: dragon_world paso 2/6": ["dragon_world", 2, 6]
+    }
+  },
+  {
+    "fuente": "iw_mini_botones.cpp",
+    "formato": "dbz3 r14: 7D5: la ronda es la del original arrancado desde el ELF",
+    "llamada_sha256": "21f384480e72e92b65194c0f9fafafb8f6c6c1268185500806d167d48cb09c01",
+    "casos": {
+      "7D5: la ronda es la del original arrancado desde el ELF": []
+    }
+  },
+  {
+    "fuente": "iw_mini_botones.cpp",
+    "formato": "dbz3 r14: resultado {} superado {} rango {} score {} zeni {}",
+    "llamada_sha256": "27faa4f641d133b1db3a97d7ce88a2cc0887a8e38a327f05b295d413a0885496",
+    "casos": {
+      "r14: resultado MSN_NB013 superado true rango [1-5] score [0-9]+ zeni [1-9][0-9]*": ["MSN_NB013", "true", 3, 100, 20]
+    }
+  },
+  {
+    "fuente": "iw_mini_botones.cpp",
+    "formato": "dbz3 r14: {:X} original: escenario {}",
+    "llamada_sha256": "049b82208374964cd5ba07df2fad76d2a19634041699686b8e606ef33db5095e",
+    "casos": {
+      "7DB original: escenario oculto": [2011, "oculto"],
+      "7DB original: escenario visible": [2011, "visible"]
+    }
+  },
+  {
+    "fuente": "iw_mini_disparo.cpp",
+    "formato": "dbz3 iwdisparo: ladrillos con la logica original del ELF (dbz3_iw_7d3_original)",
+    "llamada_sha256": "b847ee80362f86c057c2b8448d47b827a8b245168b0d7c683679ae987e76b6e8",
+    "casos": {
+      "dbz3 iwdisparo: ladrillos con la logica original del ELF": [],
+      "ladrillos con la logica original del ELF": []
+    }
+  },
+  {
+    "fuente": "iw_mips_mapa.inl",
+    "formato": "dbz3 iw mapa original: Goku animacion {} -> {} (M+0x238 {} mando+6 {:04X} +0x66 {:04X})",
+    "llamada_sha256": "06a32189b04083f33cb5635b9f24f07f299162f344cf70d7b52c464af479f5be",
+    "casos": {
+      "iw mapa original: Goku animacion -1 -> 0": [-1, 0, 0, 0, 0]
+    }
+  },
+  {
+    "fuente": "modos.cpp",
+    "formato": "dbz3 modos: laboratorio: la practica anterior no acabo: muneco devuelto a '{}'",
+    "llamada_sha256": "e2e5e4c015cac2960edc8f9e2eeade73f9626f99e49055df32d15c0cd19d1589",
+    "casos": {
+      "practica anterior no acabo: muneco devuelto a 'guardia'": ["guardia"]
+    }
+  },
+  {
+    "fuente": "modos.cpp",
+    "formato": "dbz3 modos: prueba: mision 100 n {} con id {}: {}",
+    "llamada_sha256": "c3e6e610fc41a15935d292bf246c59227cf3c56e025223a1df74aa39b12e948d",
+    "casos": {
+      "modos: prueba: mision 100 n 25 con id 0: empieza": [25, 0, "empieza"]
+    }
+  },
+  {
+    "fuente": "modos.cpp",
+    "formato": "dbz3 modos: prueba: {} con id {}: {}",
+    "llamada_sha256": "2a8b301fd6dc35408446652539fe1127a058f5968cde12fbc7628eb942395577",
+    "casos": {
+      "modos: prueba: abyss con id 0: empieza": ["abyss", 0, "empieza"],
+      "modos: prueba: jefes con id 0: empieza": ["jefes", 0, "empieza"],
+      "modos: prueba: torres con id 0: empieza": ["torres", 0, "empieza"]
+    }
+  },
+  {
+    "fuente": "modos.cpp",
+    "formato": "dbz3 modos: reglas: armadura {} a los {:.1f} s (hueco {} s)",
+    "llamada_sha256": "316a3d44ca14576bc67b403200d5100352cbfe94547e94e3a8706295f25d4d50",
+    "casos": {
+      "dbz3 modos: reglas: armadura abierta a los 5.0 s .hueco 5 s.": ["abierta", 5.0, 5],
+      "dbz3 modos: reglas: armadura puesta a los 0.0 s .hueco 5 s.": ["puesta", 0.0, 5]
+    }
+  },
+  {
+    "fuente": "modos.cpp",
+    "formato": "dbz3 modos: {} terminado: {} ({} de {} combates ganados)",
+    "llamada_sha256": "a698e05836217461a48327d4e1ff94c819b03a4c6c408bdd91213f3a582a7755",
+    "casos": {
+      "kumite terminado: victoria": ["kumite", "victoria", 3, 3],
+      "supervivencia terminado: victoria": ["supervivencia", "victoria", 3, 3],
+      "torre terminado: victoria": ["torre", "victoria", 3, 3]
+    }
+  },
+  {
+    "fuente": "modos.cpp",
+    "formato": "dbz3 modos: {} {}/{}: id {} contra id {} (escenario {}, vida {}/{})",
+    "llamada_sha256": "0465d3f25fff2d520fd704cdfa31d3f17c761090896b03e31fb881b10ed34f58",
+    "casos": {
+      "dbz3 modos: rogue 1/2: id 0 contra id": ["rogue", 1, 2, 0, 1, 0, 1000, 1000],
+      "dbz3 modos: rogue 1/3: id 0 contra id 27": ["rogue", 1, 3, 0, 27, 0, 1000, 1000],
+      "dbz3 modos: rogue 1/3: id 0 contra id 33": ["rogue", 1, 3, 0, 33, 0, 1000, 1000],
+      "dbz3 modos: rogue 1/3: id 0 contra id 42": ["rogue", 1, 3, 0, 42, 0, 1000, 1000],
+      "dbz3 modos: rogue 2/2: id 0 contra id": ["rogue", 2, 2, 0, 1, 0, 1000, 1000],
+      "dbz3 modos: rogue 2/3: id 0 contra id 18": ["rogue", 2, 3, 0, 18, 0, 1000, 1000],
+      "dbz3 modos: rogue 2/3: id 0 contra id 19": ["rogue", 2, 3, 0, 19, 0, 1000, 1000],
+      "dbz3 modos: rogue 2/3: id 0 contra id 33": ["rogue", 2, 3, 0, 33, 0, 1000, 1000],
+      "dbz3 modos: rogue 2/3: id 0 contra id 40": ["rogue", 2, 3, 0, 40, 0, 1000, 1000],
+      "dbz3 modos: rogue 3/3: id 0 contra id 19": ["rogue", 3, 3, 0, 19, 0, 1000, 1000],
+      "dbz3 modos: rogue 3/3: id 0 contra id 36": ["rogue", 3, 3, 0, 36, 0, 1000, 1000],
+      "dbz3 modos: rogue 3/3: id 0 contra id 38": ["rogue", 3, 3, 0, 38, 0, 1000, 1000],
+      "dbz3 modos: rogue 3/3: id 0 contra id 7": ["rogue", 3, 3, 0, 7, 0, 1000, 1000]
+    }
+  },
+  {
+    "fuente": "modos.cpp",
+    "formato": "dbz3 modos: {}: se sigue el reto guardado (combate {}, vida {})",
+    "llamada_sha256": "c3f8c3cf728989bee5844f503ef007ef211514915652df1bcdfbbe89df78535d",
+    "casos": {
+      "kumite: se sigue el reto guardado \\(combate 2": ["kumite", 2, 3000],
+      "supervivencia: se sigue el reto guardado \\(combate 2": ["supervivencia", 2, 3000],
+      "torre: se sigue el reto guardado \\(combate 2": ["torre", 2, 3000]
+    }
+  },
+  {
+    "fuente": "net/netplay_hooks.cpp",
+    "formato": "dbz3 online: F10 ajustes efectivos: validacion true rollback {} region {}",
+    "llamada_sha256": "4c86a7f342236b41274dc38df3ec654eca014a08cded2c98bfaef3a69757b16e",
+    "casos": {
+      "dbz3 online: F10 ajustes efectivos: validacion true rollback false region US": ["false", "US"],
+      "dbz3 online: F10 ajustes efectivos: validacion true rollback true region US": ["true", "US"]
+    }
+  },
+  {
+    "fuente": "net/netplay_hooks.cpp",
+    "formato": "dbz3 rb: auto {}: {} {}",
+    "llamada_sha256": "e604a43b70fd52acf8addf33af4a16d33b1a81bba0f85ae9b29bdc2a60351a2f",
+    "casos": {
+      "dbz3 rb: auto host: en marcha": ["host", "en marcha", ""]
+    }
+  },
+  {
+    "fuente": "pasarela.cpp",
+    "formato": "dbz3 {}: traje del jugador {}, del rival {}; capsulas de serie{}",
+    "llamada_sha256": "8c60be3a08d79ea38c93209a556cdab282c5797434f489b63e0e7b81d73f666e",
+    "casos": {
+      "paso 2: traje del jugador": ["pasarela: paso 2", 0, 0, " (ninguna)"]
+    }
+  },
+  {
+    "fuente": "pasarela_b2.cpp",
+    "formato": "dbz3 b2 inv: {} entrada {} {} bytes magia {} tex/spr {}",
+    "llamada_sha256": "e59865c73220325ff6d39424615e11e1ab0804dffe7b6f1a5f5263160ffc40bf",
+    "casos": {
+      "dbz3 b2 inv: #YDW tablero entrada 387": ["#YDW tablero", 387, 1, "#YDW", -1]
+    }
+  },
+  {
+    "fuente": "pasarela_b2.cpp",
+    "formato": "dbz3 tablero b2: aturdido: {} se queda con {} barras y nube (pose 7, FUN_00277bb0 b2.c:222492)",
+    "llamada_sha256": "b46b8185f1d7a07b63d058872bdad053e88236205aab951e16b0de5ef51fd4fa",
+    "casos": {
+      "aturdido: Raditz se queda con 2 barras y nube": ["Raditz", 2],
+      "tablero b2: aturdido: Raditz se queda con 2 barras y nube": ["Raditz", 2]
+    }
+  },
+  {
+    "fuente": "pasarela_b2.cpp",
+    "formato": "dbz3 tablero b2: audio perdedor {}: canal 3 id {} (FUN_00277bb0)",
+    "llamada_sha256": "e4d7c7989ddf64f3e778212ac9fb02dcab67c0cb4840b582a325ab98ad3b3073",
+    "casos": {
+      "audio perdedor Raditz: canal 3 id 8 ": ["Raditz", 8],
+      "audio perdedor Raditz: canal 3 id 9 ": ["Raditz", 9]
+    }
+  },
+  {
+    "fuente": "pasarela_b2.cpp",
+    "formato": "dbz3 tablero b2: barras de {}: {} -> {} (aturdida {}, EU 0x27A010)",
+    "llamada_sha256": "4bec082ea3a11165874b47224be6f25ae55f2968466217ceae3ad8e0692e8ef8",
+    "casos": {
+      "barras de Nappa: 4 -> 3 \\(aturdida 0": ["Nappa", 4, 3, 0],
+      "barras de Raditz: 2 -> 0 \\(aturdida 1": ["Raditz", 2, 0, 1],
+      "barras de Raditz: 3 -> 2 \\(aturdida 0": ["Raditz", 3, 2, 0]
+    }
+  },
+  {
+    "fuente": "pasarela_b2.cpp",
+    "formato": "dbz3 tablero b2: contacto {} y {}: suceso {} (script {})",
+    "llamada_sha256": "b46a6d8f784a835b9536dd49ca48c68eef3d0477a433aafdbae7d19450615a37",
+    "casos": {
+      "tablero b2: contacto Goten y Kid Bu": ["Goten", "Kid Bu", 0, 0]
+    }
+  },
+  {
+    "fuente": "pasarela_b2.cpp",
+    "formato": "dbz3 tablero b2: prueba objeto programa: tipo {} pieza {} jugador {} ruta {} clip {:#x} duracion {:.1f} cuadros sonido60 {:#x}",
+    "llamada_sha256": "f731f47e100c0c67907a3b215c244896bea1d0c73a15603f7f29ff7f081e6fa8",
+    "casos": {
+      "prueba objeto programa: tipo 9 .*jugador false ruta andar clip 0x3c .*sonido60 0xd": [9, 0, "false", "andar", 60, 1, 13]
+    }
+  },
+  {
+    "fuente": "pasarela_misiones.cpp",
+    "formato": "dbz3 misiones: tablero combate B2: ki {} / {} (crudo) -> {:.1f} / {:.1f} barras, COM {}, ataque rival {}",
+    "llamada_sha256": "742e89408a26af88464ef434f922935389eac626dc8d2b3a9d3bc57c2537ae53",
+    "casos": {
+      "tablero combate B2: ki -1 / 500 \\(crudo\\) -> .* barras, COM [0-9]+": [-1, 500, 0, 5, 3, 0]
+    }
+  },
+  {
+    "fuente": "pasarela_misiones.cpp",
+    "formato": "dbz3 misiones: {} paso {}/{}{}: {}",
+    "llamada_sha256": "230f6e7b20f36b2c6890091f68bc49f90178baaa9abc4003d686e931610d9d2b",
+    "casos": {
+      "misiones: tablero paso 1/1: tablero": ["tablero", 1, 1, "", "tablero"]
+    }
+  },
+  {
+    "fuente": "ranking_online.cpp",
+    "formato": "dbz3 rank: envio {} ({}, {} bytes) a {}/{}: {}",
+    "llamada_sha256": "f6820470eac069af9cef2bb52b6d4dbe7aa450148b451fc846366c2ac92ae37a",
+    "casos": {
+      "rank: envio [0-9a-f]{16} .rogue diario, [0-9]+ bytes. a http://127.0.0.1:8097/dbz3hd-rank-[0-9a-f]+: ok": ["0123456789abcdef", "rogue diario", 24, "http://127.0.0.1:8097", "dbz3hd-rank-abc", "ok"],
+      "rank: envio [0-9a-f]{16} .rogue diario, [0-9]+ bytes. a http://127.0.0.1:8097/dbz3hd-rank-[0-9a-f]+: sin conexion": ["0123456789abcdef", "rogue diario", 24, "http://127.0.0.1:8097", "dbz3hd-rank-abc", "sin conexion"],
+      "rank: envio [0-9a-f]{16} .survivors, [0-9]+ bytes. a http://127.0.0.1:8097/dbz3hd-rank-[0-9a-f]+: ok": ["0123456789abcdef", "survivors", 24, "http://127.0.0.1:8097", "dbz3hd-rank-abc", "ok"]
+    }
+  },
+  {
+    "fuente": "rogue.cpp",
+    "formato": "dbz3 rogue: camino {} ({} combates, jefe cada {}, rivales {}, pausa {}{})",
+    "llamada_sha256": "dbe30209e0c4a12c90e5dcf62e5736691a9fbdc362a78f5fba91fd45f3b3b20c",
+    "casos": {
+      "rogue: camino kumite .5 combates, jefe cada 1, rivales jefes, pausa cartas.": ["kumite", 5, 1, "jefes", "cartas", ""],
+      "rogue: camino kumite2 .3 combates, jefe cada 1, rivales jefes, pausa cartas.": ["kumite2", 3, 1, "jefes", "cartas", ""],
+      "rogue: camino semana .8 combates, jefe cada 4, rivales escalera, pausa cartas, maldicion saiyan.": ["semana", 8, 4, "escalera", "cartas", ", maldicion saiyan"],
+      "rogue: camino simulacion .0 combates, jefe cada 5, rivales semilla, pausa simulacion.": ["simulacion", 0, 5, "semilla", "simulacion", ""],
+      "rogue: camino supervivencia .0 combates, jefe cada 5, rivales semilla, pausa cartas.": ["supervivencia", 0, 5, "semilla", "cartas", ""],
+      "rogue: camino torneo .2 combates, jefe cada 0, rivales elo, pausa cartas.": ["torneo", 2, 0, "elo", "cartas", ""],
+      "rogue: camino torre .10 combates, jefe cada 5, rivales escalera, pausa cartas.": ["torre", 10, 5, "escalera", "cartas", ""]
+    }
+  },
+  {
+    "fuente": "rogue.cpp",
+    "formato": "dbz3 rogue: fin de {}: id {}, {} pisos (record {}{}), {} Zenie",
+    "llamada_sha256": "ea0605ad68200be196e59551a8bc813b4e0f28dd7de4f601cf602913c70351c0",
+    "casos": {
+      "rogue: fin de abismo: id 0, 0 pisos .record 0[^)]*., 0 Zenie": ["abismo", 0, 0, 0, "", 0],
+      "rogue: fin de abismo: id 0, 3 pisos": ["abismo", 0, 3, 3, "", 0],
+      "rogue: fin de abismo: id 0, 3 pisos .record 3[^)]*., 1425 Zenie": ["abismo", 0, 3, 3, "", 1425],
+      "rogue: fin de abismo: id 0, 4 pisos": ["abismo", 0, 4, 4, "", 0],
+      "rogue: fin de abismo: id 0, 5 pisos": ["abismo", 0, 5, 5, "", 0],
+      "rogue: fin de abismo: id 0, 7 pisos": ["abismo", 0, 7, 7, "", 0],
+      "rogue: fin de kumite2: id 0, 3 pisos .record 3[^)]*., 2550 Zenie": ["kumite2", 0, 3, 3, "", 2550],
+      "rogue: fin de kumite: id 0, 3 pisos .record 3[^)]*., 2250 Zenie": ["kumite", 0, 3, 3, "", 2250],
+      "rogue: fin de semana: id 0, 3 pisos .record 3[^)]*., 750 Zenie": ["semana", 0, 3, 3, "", 750],
+      "rogue: fin de simulacion: id 0, 4 pisos .record 4[^)]*., 700 Zenie": ["simulacion", 0, 4, 4, "", 700],
+      "rogue: fin de supervivencia: id 0, 4 pisos .record 4[^)]*., 1200 Zenie": ["supervivencia", 0, 4, 4, "", 1200],
+      "rogue: fin de torneo: id 0, 2 pisos .record 2[^)]*., 700 Zenie": ["torneo", 0, 2, 2, "", 700],
+      "rogue: fin de torre: id 0, 3 pisos .record 3[^)]*., 950 Zenie": ["torre", 0, 3, 3, "", 950]
+    }
+  },
+  {
+    "fuente": "rogue.cpp",
+    "formato": "dbz3 rogue: piso {}: carta {} ({} de {}); reglas: dano {}%, recibido {}%, ki {}/s, {} capsulas; sellos ki {} cuerpo {} apoyo {}; vida {}/{}",
+    "llamada_sha256": "e57ef6a871bc4e30714cab7cf446ca2dc29d47c0d42b56adb22144f91b0680e5",
+    "casos": {
+      "rogue: piso 1: carta evolucion_09": [1, "evolucion_09", 1, 1, 100, 100, 0, 0, 0, 0, 0, 3000, 4000],
+      "rogue: piso 1: carta fisica_09 .1 de 2.; reglas: dano 125%, recibido 100%, ki 0/s, 0 capsulas; sellos ki 0 cuerpo 1 apoyo 0": [1, "fisica_09", 1, 2, 125, 100, 0, 0, 0, 1, 0, 3000, 4000],
+      "rogue: piso 1: carta fisica_09 .1 de [0-9]+.; reglas: .*sellos ki 0 cuerpo 1 apoyo 0": [1, "fisica_09", 1, 1, 100, 100, 0, 0, 0, 1, 0, 3000, 4000],
+      "rogue: piso 1: carta utilidad_02 .1 de 99.": [1, "utilidad_02", 1, 99, 100, 100, 0, 0, 0, 0, 0, 3000, 4000],
+      "rogue: piso 2: carta fisica_01 .1 de 1.; reglas: dano 160%, recibido 100%, ki 0/s, 0 capsulas; sellos ki 0 cuerpo 2 apoyo 0": [2, "fisica_01", 1, 1, 160, 100, 0, 0, 0, 2, 0, 3000, 4000],
+      "rogue: piso 2: carta fisica_11 .1 de [0-9]+.; reglas: .*sellos ki 0 cuerpo 2 apoyo 0": [2, "fisica_11", 1, 1, 100, 100, 0, 0, 0, 2, 0, 3000, 4000],
+      "rogue: piso 2: carta utilidad_03 .1 de 1.; reglas: dano 100%, recibido 100%, ki 0/s, 1 capsulas; sellos ki 0 cuerpo 0 apoyo 1": [2, "utilidad_03", 1, 1, 100, 100, 0, 1, 0, 0, 1, 3000, 4000],
+      "rogue: piso 2: carta utilidad_05 .1 de 99.": [2, "utilidad_05", 1, 99, 100, 100, 0, 0, 0, 0, 0, 3000, 4000],
+      "rogue: piso 3: carta fisica_07 .1 de 2.; reglas: dano 100%, recibido 100%, ki 0/s, 1 capsulas; sellos ki 0 cuerpo 1 apoyo 1; vida [0-9]+/4000": [3, "fisica_07", 1, 2, 100, 100, 0, 1, 0, 1, 1, 3000, 4000],
+      "rogue: piso 3: carta fisica_14 .1 de [0-9]+.; reglas: .*sellos ki 0 cuerpo 3 apoyo 0": [3, "fisica_14", 1, 1, 100, 100, 0, 0, 0, 3, 0, 3000, 4000],
+      "rogue: piso 4: carta fisica_01 .1 de [0-9]+.; reglas: .*sellos ki 0 cuerpo 4 apoyo 0": [4, "fisica_01", 1, 1, 100, 100, 0, 0, 0, 4, 0, 3000, 4000],
+      "rogue: piso 4: carta utilidad_08 .1 de 1.; reglas: dano 100%, recibido 100%, ki 0/s, 2 capsulas; sellos ki 0 cuerpo 1 apoyo 2": [4, "utilidad_08", 1, 1, 100, 100, 0, 2, 0, 1, 2, 3000, 4000],
+      "rogue: piso 5: carta evolucion_01 .1 de 1.; reglas: dano 100%, recibido 100%, ki 0/s, 2 capsulas; sellos ki 0 cuerpo 1 apoyo 2": [5, "evolucion_01", 1, 1, 100, 100, 0, 2, 0, 1, 2, 3000, 4000],
+      "rogue: piso 6: carta fisica_11 .1 de 1.": [6, "fisica_11", 1, 1, 100, 100, 0, 0, 0, 0, 0, 3000, 4000]
+    }
+  },
+  {
+    "fuente": "rogue_resultado.cpp",
+    "formato": "dbz3 rogue: kami: compra {} por {} Zenie (quedan {})",
+    "llamada_sha256": "c7cd4f9cbd6d5d67d746a68704a94688c2bf9bd2a470347f65165154776780e5",
+    "casos": {
+      "kami: compra cambio por 1500 Zenie .quedan 4500.": ["cambio", 1500, 4500],
+      "kami: compra carta por 2000 Zenie": ["carta", 2000, 0],
+      "kami: compra vida por 1200 Zenie .quedan 3300.": ["vida", 1200, 3300]
+    }
+  },
+  {
+    "fuente": "rpg.cpp",
+    "formato": "dbz3 rpg: {} combate {}: {} (vida {}/{}, dano {}%, recibido {}%, armadura {}%, ki {}/s, {} capsulas)",
+    "llamada_sha256": "eb3ec6f86c2d302ae2f614dcf3b478a906c5411f93e677f4490b45533680bbf1",
+    "casos": {
+      "Dragon Rogue combate 10: pedido": ["Dragon Rogue", 10, "pedido", 3456, 4000, 100, 100, 0, 0, 0],
+      "Dragon Rogue combate 10: pedido .*armadura 60%": ["Dragon Rogue", 10, "pedido", 3456, 4000, 100, 100, 60, 0, 0],
+      "Dragon Rogue combate 11: pedido": ["Dragon Rogue", 11, "pedido", 3456, 4000, 100, 100, 0, 0, 0],
+      "Dragon Rogue combate 12: pedido": ["Dragon Rogue", 12, "pedido", 3456, 4000, 100, 100, 0, 0, 0],
+      "Dragon Rogue combate 13: pedido": ["Dragon Rogue", 13, "pedido", 3456, 4000, 100, 100, 0, 0, 0],
+      "Dragon Rogue combate 14: pedido": ["Dragon Rogue", 14, "pedido", 3456, 4000, 100, 100, 0, 0, 0],
+      "Dragon Rogue combate 15: pedido .*armadura 70%": ["Dragon Rogue", 15, "pedido", 3456, 4000, 100, 100, 70, 0, 0],
+      "Dragon Rogue combate 1: pedido": ["Dragon Rogue", 1, "pedido", 3456, 4000, 100, 100, 0, 0, 0],
+      "Dragon Rogue combate 1: pedido .vida 3000/3000": ["Dragon Rogue", 1, "pedido", 3000, 3000, 100, 100, 0, 0, 0],
+      "Dragon Rogue combate 1: pedido .vida 3000/3000, dano [0-9]+%, recibido [0-9]+%": ["Dragon Rogue", 1, "pedido", 3000, 3000, 100, 100, 0, 0, 0],
+      "Dragon Rogue combate 1: pedido .vida 3500/3500": ["Dragon Rogue", 1, "pedido", 3500, 3500, 100, 100, 0, 0, 0],
+      "Dragon Rogue combate 2: pedido": ["Dragon Rogue", 2, "pedido", 3456, 4000, 100, 100, 0, 0, 0],
+      "Dragon Rogue combate 2: pedido .vida [0-9]+/3000, dano 100%, recibido 100%, armadura 0%, ki 0/s, -1 capsulas": ["Dragon Rogue", 2, "pedido", 3456, 3000, 100, 100, 0, 0, -1],
+      "Dragon Rogue combate 2: pedido .vida [0-9]+/[0-9]+, dano 125%, recibido 100%": ["Dragon Rogue", 2, "pedido", 3456, 4000, 125, 100, 0, 0, 0],
+      "Dragon Rogue combate 2: pedido .vida [0-9]+/[0-9]+, dano [0-9]+%, recibido [0-9]+%, armadura 60%": ["Dragon Rogue", 2, "pedido", 3456, 4000, 100, 100, 60, 0, 0],
+      "Dragon Rogue combate 3: pedido": ["Dragon Rogue", 3, "pedido", 3456, 4000, 100, 100, 0, 0, 0],
+      "Dragon Rogue combate 3: pedido .vida [0-9]+/[0-9]+, dano 160%, recibido 100%": ["Dragon Rogue", 3, "pedido", 3456, 4000, 160, 100, 0, 0, 0],
+      "Dragon Rogue combate 4: pedido": ["Dragon Rogue", 4, "pedido", 3456, 4000, 100, 100, 0, 0, 0],
+      "Dragon Rogue combate 4: pedido .vida [0-9]+/[0-9]+, dano 115%, recibido 110%": ["Dragon Rogue", 4, "pedido", 3456, 4000, 115, 110, 0, 0, 0],
+      "Dragon Rogue combate 5: pedido": ["Dragon Rogue", 5, "pedido", 3456, 4000, 100, 100, 0, 0, 0],
+      "Dragon Rogue combate 5: pedido .*armadura 50%": ["Dragon Rogue", 5, "pedido", 3456, 4000, 100, 100, 50, 0, 0],
+      "Dragon Rogue combate 6: pedido": ["Dragon Rogue", 6, "pedido", 3456, 4000, 100, 100, 0, 0, 0],
+      "Dragon Rogue combate 7: pedido": ["Dragon Rogue", 7, "pedido", 3456, 4000, 100, 100, 0, 0, 0],
+      "Dragon Rogue combate 8: pedido": ["Dragon Rogue", 8, "pedido", 3456, 4000, 100, 100, 0, 0, 0],
+      "Dragon Rogue combate 9: pedido": ["Dragon Rogue", 9, "pedido", 3456, 4000, 100, 100, 0, 0, 0],
+      "Torres del Tiempo combate 1: ": ["Torres del Tiempo", 1, "pedido", 3456, 4000, 100, 100, 0, 0, 0]
+    }
+  },
+  {
+    "fuente": "rpg.cpp",
+    "formato": "dbz3 rpg: {}: combate {} ganado (vida {}/{}, dano recibido {}, zeni {})",
+    "llamada_sha256": "70527d8b6b2bc8cb6452a8f63d1a8a73e0ae54459298bbbc7348939e86f6c50a",
+    "casos": {
+      "Dragon Rogue: combate 1 ganado": ["Dragon Rogue", 1, 2000, 4000, 0, 0],
+      "Dragon Rogue: combate 1 ganado .vida 3000/3000": ["Dragon Rogue", 1, 3000, 3000, 0, 0],
+      "Dragon Rogue: combate 10 ganado": ["Dragon Rogue", 10, 2000, 4000, 0, 0],
+      "Dragon Rogue: combate 11 ganado": ["Dragon Rogue", 11, 2000, 4000, 0, 0],
+      "Dragon Rogue: combate 12 ganado": ["Dragon Rogue", 12, 2000, 4000, 0, 0],
+      "Dragon Rogue: combate 13 ganado": ["Dragon Rogue", 13, 2000, 4000, 0, 0],
+      "Dragon Rogue: combate 14 ganado": ["Dragon Rogue", 14, 2000, 4000, 0, 0],
+      "Dragon Rogue: combate 2 ganado": ["Dragon Rogue", 2, 2000, 4000, 0, 0],
+      "Dragon Rogue: combate 2 ganado .vida 3000/3000": ["Dragon Rogue", 2, 3000, 3000, 0, 0],
+      "Dragon Rogue: combate 3 ganado": ["Dragon Rogue", 3, 2000, 4000, 0, 0],
+      "Dragon Rogue: combate 4 ganado": ["Dragon Rogue", 4, 2000, 4000, 0, 0],
+      "Dragon Rogue: combate 5 ganado": ["Dragon Rogue", 5, 2000, 4000, 0, 0],
+      "Dragon Rogue: combate 5 ganado .vida 4000/4000": ["Dragon Rogue", 5, 4000, 4000, 0, 0],
+      "Dragon Rogue: combate 6 ganado": ["Dragon Rogue", 6, 2000, 4000, 0, 0],
+      "Dragon Rogue: combate 7 ganado": ["Dragon Rogue", 7, 2000, 4000, 0, 0],
+      "Dragon Rogue: combate 8 ganado": ["Dragon Rogue", 8, 2000, 4000, 0, 0],
+      "Dragon Rogue: combate 9 ganado": ["Dragon Rogue", 9, 2000, 4000, 0, 0]
+    }
+  },
+  {
+    "fuente": "rpg.cpp",
+    "formato": "dbz3 rpg: {}: partida nueva (id {}, semilla {})",
+    "llamada_sha256": "7c0879390e67a97f8a1ec8cad5e43eea4deacfe0d98981c7ac7d6bc8b9ba778f",
+    "casos": {
+      "Dragon Rogue: partida nueva": ["Dragon Rogue", 0, 123],
+      "Time Towers: partida nueva|Torres del Tiempo: partida nueva|partida nueva": ["Time Towers", 0, 123],
+      "rpg: 4-Fighter Tournament: partida nueva": ["4-Fighter Tournament", 0, 123]
+    }
+  }
+]

@@ -24,7 +24,10 @@ struct B2AnimHD {
       {573,1,98,574},
       // eB2h: Base (captura PAL con lanzamiento 6/11). PAL: 152 (clip 118, mantiene la ultima pose) -> 137 (clip 94) -> 40; HD pasa por 157 -> 163 -> 256
       // (vuelo) y 131 -> 38 (aterrizaje). Solo clip (ranura HD <- descriptor B2); el flujo de estados lo sigue eligiendo el codigo nativo. LEVANTAR_B2=1.
-      {152,0,118,157},{152,0,118,163},{152,0,118,256},{137,0,94,131},{137,0,94,38}};
+      {152,0,118,157},{152,0,118,163},{152,0,118,256},{137,0,94,131},{137,0,94,38},
+      // RESCATE B2-TRANS: golpe del atacante del dorado de Kami (traza g2 0911: clip 0x1010A = banco0 clip 266 = BSK 234).
+      // Solo con dbz3_b2_golpe_real en Kami (Salta/ForzarAtaque). Ciudad = 573 (0x20062); Nieve 0x30010 (banco 2, no viaja en el B2TZ).
+      {234,0,266,574}};
   static bool IdleB2() {
     static const bool v=[]{const char* e=std::getenv("DBZ3_TEST_B2_IDLE_B2");return (e&&*e=='1')||::dbz3::original::Arreglo("idle_b2");}();
     return v;
@@ -48,7 +51,9 @@ struct B2AnimHD {
   static uint32_t Ranura(const Mapa& m) {return m.ranura?m.ranura:m.codigo;}
   // eB2h: las ranuras 157/163/256/131/38 son del vuelo y aterrizaje nativos HD de la Base (grupo 0); en Nieve la 256 es el clip B2 19 de PAL.
   static bool SoloBase(const Mapa& m) {return m.ranura==157||m.ranura==163||m.ranura==256||m.ranura==131||m.ranura==38;}
-  static bool Salta(const Mapa& m) {return (m.codigo==0&&!IdleB2())||(m.ranura&&!(m.ranura==574?AtaqueB2():LevantarB2()))||(m.ranura&&SoloBase(m)&&g_b2.grupo!=0);}
+  static bool GolpeReal() {return REXCVAR_GET(dbz3_b2_golpe_real);}
+  static uint32_t CodigoGolpeB2() {return GolpeReal()&&g_b2.grupo==2?234u:573u;}
+  static bool Salta(const Mapa& m) {return (m.codigo==234&&CodigoGolpeB2()!=234)||(m.codigo==0&&!IdleB2())||(m.ranura&&!(m.ranura==574?AtaqueB2():LevantarB2()))||(m.ranura&&SoloBase(m)&&g_b2.grupo!=0);}
   struct Banco { uint32_t acm=0, n=0, tabla=0, nueva=0, primer=0; bool rel=false; };
   struct Cuerpo { uint32_t a=0, antes=0, nuevo=0; };
   std::vector<Banco> bancos;
@@ -256,18 +261,28 @@ struct B2AnimHD {
       return;
     }
   }
-  // eB2h: PAL mantiene la ultima pose del clip 118 (10 cuadros) durante todo el vuelo (144 relojes); HD envuelve el reloj. Se limita el cuadro de
-  // animacion del actor (x+3160, el que lee la reproduccion CSK; mod+1060 no basta, medido) a nf-1. Solo estados 157/163/256 y con LEVANTAR_B2.
+  // eB2h (Base): PAL mantiene la ultima pose del clip 118 (10 cuadros) durante todo el vuelo (144 relojes); HD envuelve el reloj. Se limita el cuadro de
+  // animacion del actor (x+3160, el que lee la reproduccion CSK; mod+1060 no basta, medido) a nf-1. En la Base, solo estados 157/163/256 y con LEVANTAR_B2.
+  // eB2/Nieve y Ciudad (F5 2026-11-10): tomas originales g7/g8. La victima
+  // vuela con el MISMO descriptor de reposo de reaccion mientras el cuerpo se
+  // desplaza: Nieve codigo 152 / clip 65654 (10 cuadros) de 30 a 300; Ciudad
+  // 152 hasta 120 y 168 / clip 65665 desde el aterrizaje. PAL mantiene la
+  // ultima pose; HD envuelve el reloj de animacion al llegar a nf. Se limita el
+  // cuadro de animacion del actor (x+3160), igual que la Base.
+  // Solo corre con el motor B2 de ESE grupo ya activo (cvar de la escena,
+  // APAGADA de serie: dbz3_b2_transicion_nieve/ciudad); no hay ajuste nuevo.
   void Retener(uint8_t* base,uint32_t x) {
-    if(!LevantarB2()||g_b2.grupo!=0)return;
     const uint32_t cod=REX_LOAD_U32(x+2928);
-    if(cod!=157&&cod!=163&&cod!=256)return;
+    const bool base_g0=(g_b2.grupo==0);
+    if(base_g0) {
+      if(!LevantarB2()||(cod!=157&&cod!=163&&cod!=256))return;
+    } else if(!(g_b2.grupo==7||g_b2.grupo==8)||(cod!=152&&cod!=168&&cod!=40))return;
     const uint32_t c=x+0x650,mod=REX_LOAD_U32(c+0x538);
     if(mod<0x10000000u||mod>=0xeffff000u)return;
     const uint32_t acm=REX_LOAD_U32(mod+0x46c),id=REX_LOAD_U32(mod+1052);
     for(const auto& b:bancos) if(b.acm==acm&&(id>>16)==1&&(id&0xffffu)>=b.primer&&(id&0xffffu)<b.primer+uint32_t(std::size(mapas))) {
       const uint32_t i=(id&0xffffu)-b.primer;
-      if(mapas[i].clip!=118)return;
+      if(base_g0&&mapas[i].clip!=118)return;   // Base: solo el vuelo 118 (el resto lo deja el codigo nativo)
       const uint32_t tb=REX_LOAD_U32(acm+20),nf=REX_LOAD_U32((b.tabla<0x10000000u?acm+tb:tb)+16*(id&0xffffu)+8);
       if(nf>1&&dbz3::escenarios::LeeFl(x+3160)>float(nf-1)) {float t=float(nf-1);uint32_t u;std::memcpy(&u,&t,4);REX_STORE_U32(x+3160,u);}
       return;
@@ -278,19 +293,31 @@ struct B2AnimHD {
     static const bool v=[]{const char* e=std::getenv("DBZ3_TEST_B2_POSE_YA");return (e&&*e=='1')||::dbz3::original::Arreglo("pose_ya");}();
     return v;
   }
+  uint32_t cod_golpe=0;   // RESCATE B2-TRANS: codigo HD del atacante al abrir la escena (Iniciar)
+  bool fin_golpe=false;
   bool ForzarAtaque(uint8_t* base,uint32_t x) {
     atq_primero=false;
-    if(!AtaqueB2()||REX_LOAD_U32(x+2928)!=574)return false;
+    const uint32_t cod=REX_LOAD_U32(x+2928);
+    if(GolpeReal()&&fin_golpe&&cod==0) {
+      // RESCATE B2-TRANS: PAL pasa del golpe al reposo sin fundido (Kami 27,6: centro y 8,03 ya en el primer cuadro); el 0 de
+      // HD fundia desde la pose final del golpe (medido: centro y 0,15 en 30, 1,58 en 40, 7,29 en 80). Mismo f=1 que eB2i (+1620).
+      const float f=1.0f;uint32_t u;std::memcpy(&u,&f,4);REX_STORE_U32(x+0x650+1620,u);fin_golpe=false;
+      REXLOG_INFO("dbz3 B2 golpe real: reposo sin fundido (+1620=1)");
+    }
+    if(!AtaqueB2()||!(cod==574||(GolpeReal()&&cod_golpe&&cod==cod_golpe)))return false;
     const uint32_t c=x+0x650,mod=REX_LOAD_U32(c+0x538);
     if(mod<0x10000000u||mod>=0xeffff000u)return false;
     const uint32_t acm=REX_LOAD_U32(mod+0x46c);
-    for(const auto& b:bancos) if(b.acm==acm) for(size_t i=0;i<std::size(mapas);++i) if(mapas[i].ranura==574) {
+    for(const auto& b:bancos) if(b.acm==acm) for(size_t i=0;i<std::size(mapas);++i) if(mapas[i].ranura==574&&mapas[i].codigo==CodigoGolpeB2()) {
       const uint32_t id=0x10000u|uint32_t(b.primer+i);
       static unsigned n=0;
       if(n++<3)REXLOG_INFO("dbz3 B2 ataque: controlador +1540={:X} +1580={:X} clip cuerpo {:X} -> {:X}",REX_LOAD_U32(c+1540),REX_LOAD_U32(c+1580),REX_LOAD_U32(mod+1052),id);
       atq_primero=REX_LOAD_U32(c+1580)!=0xFFFFFFFFu;
       if(atq_primero) {   // primer cuadro: tiempo de arranque absoluto del clip B2 98 (medido contra PAL en 4 escenas)
         float t=DesfaseAtaque();
+        // RESCATE B2-TRANS: el clip de Kami (banco0 266) tiene 56 cuadros y el 98 tiene 53; en PAL los dos acaban en el mismo
+        // reloj (Kami 26,4-27,6, Ciudad 24-28,8). Con 25,7 Kami aterrizaba despues de la foto 30 (medido 04:33: z 130 frente a 135,13).
+        if(CodigoGolpeB2()==234)t+=56.0f-53.0f;
         // eB2j DBZ3_TEST_B2_ATAQUE_REL=<k>: el arranque sale del propio juego: tiempo del clip nativo del golpe al empezar la escena (el golpe
         // empezo antes de la colision, medido 23,0/24,0) + k, en vez del 25,7 fijo. Sin la variable no cambia nada.
         static const char* rel=std::getenv("DBZ3_TEST_B2_ATAQUE_REL");
@@ -298,6 +325,17 @@ struct B2AnimHD {
         if(rel&&*rel)t=nat+std::strtof(rel,nullptr);
         REXLOG_INFO("dbz3 B2 ataque: tiempo nativo {:.3f} (x+3160 {:.3f}) -> arranque {:.3f}",nat,dbz3::escenarios::LeeFl(x+3160),t);
         uint32_t u;std::memcpy(&u,&t,4);REX_STORE_U32(c+1544,u);   // +1544 = tiempo de arranque que 820FAF40 copia a mod+1060 al cambiar de clip
+        fin_golpe=false;
+      } else if(GolpeReal()&&!fin_golpe) {
+        // RESCATE B2-TRANS: en PAL el estado 13 acaba con su clip B2 (Kami: centro quieto desde 26, estado 0 en 27,6) y ahi
+        // suma el desplazamiento; el 577 de HD sigue hasta el fin de SU clip B3 (reloj x+3160, medido: 577 en 32, 0 en 40).
+        // Al acabar el clip B2 se lleva x+3160 al final para que el codigo nativo cierre el estado (y sume el desplazamiento) ya.
+        const uint32_t tb=REX_LOAD_U32(acm+20),nf=REX_LOAD_U32((b.tabla<0x10000000u?acm+tb:tb)+16*(id&0xffffu)+8);
+        const float tc=dbz3::escenarios::LeeFl(mod+1060);
+        if(nf>1&&tc>=float(nf-1)) {
+          REXLOG_INFO("dbz3 B2 golpe real: clip B2 acabado (t {:.2f} nf {}) x+3160 {:.2f} -> fin del estado {}",tc,nf,dbz3::escenarios::LeeFl(x+3160),cod);
+          const float f=1.0e4f;uint32_t u;std::memcpy(&u,&f,4);REX_STORE_U32(x+3160,u);fin_golpe=true;
+        }
       }
       REX_STORE_U32(c+1580,0xFFFFFFFFu);
       REX_STORE_U32(c+1540,id);

@@ -264,8 +264,18 @@ def decode_tex(amt, t):
 
 
 def ramp_image():
+    """Neutral toon ramp, 64x64 RGBA. 1.5.7: psp_ramp.npy (derived from the game) is no longer shipped; without it the
+    same generic grayscale structure is generated: light 255 / shadow 149 (172 band in rows 12-15) and the black
+    outline strip in the last 8 rows."""
     import os  # noqa: PLC0415
-    return np.load(os.path.join(os.path.dirname(os.path.abspath(__file__)), "psp_ramp.npy"))
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "psp_ramp.npy")
+    if os.path.isfile(p):
+        return np.load(p)
+    g = np.full((64, 64), 255, np.uint8)
+    g[:56, 40:] = 149
+    g[12:16, 40:] = 172
+    g[56:, :10] = 0
+    return np.dstack([g, g, g, np.full_like(g, 255)])
 
 
 def amt_slots(amt):

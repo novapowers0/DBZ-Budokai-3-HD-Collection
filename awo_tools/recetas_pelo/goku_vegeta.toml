@@ -1,0 +1,28 @@
+# Kitbash PELO-02: casco y mechones laterales/flequillo/nuca de Goku (264) + copete (llama) de Vegeta (416). Marco HEAD de Goku.
+nombre = "goku_vegeta"
+variante = "base"      # base | alto | caido (jaula FFD)
+
+[casco]
+donante = 264
+
+[capsula]
+sesgo = 0.25          # inclinacion hacia arriba de las normales de la cabeza proxy
+mezcla = 0.0
+
+[[mechon]]
+donante = 264
+zona = "flequillo"
+[[mechon]]
+donante = 264
+zona = "lat_izq"
+[[mechon]]
+donante = 264
+zona = "lat_der"
+[[mechon]]
+donante = 264
+zona = "nuca"
+[[mechon]]
+donante = 416
+zona = "copete"
+giro = 0
+largo = 1.0

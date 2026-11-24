@@ -1,0 +1,32 @@
+# C1 / IW-E02 — Bubbles (7D1): WCF/collision, camara y particulas.
+#   python tools\pruebas.py correr <copia> "docs\14_frentes\escenarios_pruebas\final\c1-iw-escenas\bubbles.toml"
+#
+# clave    = IW-E02 (Bubbles) / IW13
+# cvar     = ninguna nueva: dbz3_iw_logica_original=true (de serie).
+# env      = DBZ3_TEST_IWMINI=0x7D1,auto; DBZ3_TEST_GP2_BUBBLES=1 (backend WCF);
+#            TEST_GP2_BB_ORACULO=1 (ejecuta el SELFTEST_CPP; sin el, el banco no corre);
+#            DBZ3_IWMINI_NPC_QUIETO=1 (Bubbles cerca para captura).
+# criterio = (banco, ya verde) WCF 6/6 goldens contra el #WCF real de IW EU (entrada 898/0,
+#            126048 B, sha af256 afb8e03e...), error 0 en punto y normal. En juego (PENDIENTE_JUEGO):
+#            captura del mismo cuadro con Bubbles visible y SSIM >= 0,45 / pHash <= 18.
+# log      = "dbz3 gp2 bubbles SELFTEST_CPP total=6/6" / "dbz3 gp2 bubbles backend=.*triangulos=18402"
+#            / "dbz3 gp2 bubbles tick=.*estado=0 codigo=D2"
+descripcion = "7D1 Bubbles: WCF (barrido/rayo), camara y particulas #AME (IW-E02)"
+env = [
+  "DBZ3_TEST_IWMINI=0x7D1,auto",
+  "DBZ3_TEST_GP2_BUBBLES=1",
+  "TEST_GP2_BB_ORACULO=1",
+  "DBZ3_IWMINI_NPC_QUIETO=1",
+  "DBZ3_TEST_CFG=dbz3_iw_logica_original=true",
+  'DBZ3_PS2_GAMES=D:\DBZ3HD\ps2_games',
+]
+pasos = [
+  "log \"iwmini: prueba: empieza\" 90",
+  "log \"dbz3 gp2 bubbles SELFTEST_CPP total=6/6\" 120",
+  "captura t01_inicio",
+  "log \"dbz3 gp2 bubbles tick=\" 90",
+  "esperar 2500",
+  "captura t02_bubbles",
+  "esperar 2500",
+  "captura t03_bubbles2",
+]

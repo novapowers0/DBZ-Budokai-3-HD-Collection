@@ -1,0 +1,108 @@
+# S8 / HER01 + HER02 + HER05: importar una receta desde el creador y llegar al final de la historia (Shenron).
+# FASE 3: lo deja escrito el carril S8; lo ejecuta Z una sola vez.
+#   python tools\pruebas.py correr smoke_a "docs\14_frentes\escenarios_pruebas\final\s8-heroe\heroe.toml"
+#
+# clave    = HER01 (boton/ruta Importar), HER02 (tecnicas de otro donante declaradas), HER05 (final real)
+# cvar     = dbz3_heroe_importar=true (NUEVA, APAGADA de serie; src/heroe_ui.cpp). El resto son ganchos de prueba ya
+#            existentes (DBZ3_TEST_HEROE_ABRIR=2, DBZ3_TEST_HEROE_FINAL, DBZ3_TEST_HEROE_ESFERAS=127).
+# criterio = (1) Exportar crea mods/heroe_<nombre>/receta.toml; (2) Importar la lista y rehace el mod sin ERROR
+#            (importar.json estado ok; en el registro "importar receta: ok"); (3) Empezar lleva al final (escena 1.39),
+#            Shenron comprueba la mascara 7F y guarda deseos=1 (registro); creditos sin cierre.
+# log      = "dbz3 heroe: exportar como personaje: ok (mod heroe_" / "dbz3 heroe: importar receta: ok (mod heroe_" /
+#            "escena 102 entrada 35" / "se lanza la escena 1 entrada 39" / "dbz3 shenron: sub_8215C1B0"
+#
+# Banco sin juego (ya en verde): "mod center hd/cac/heroe_banco.py" ida-vuelta (base/ssj1-3 4/4 identicos) y
+# textos (27 combates, 7/7 Esferas). PENDIENTE_JUEGO: las fotos del picker, del final y de los creditos HD.
+descripcion = "Heroe: importar receta desde el creador y llegar al final (Shenron) con las 7 Esferas"
+env = [
+  "DBZ3_TEST_HEROE_ABRIR=2",
+  "DBZ3_TEST_HEROE_FINAL=1",
+  "DBZ3_TEST_HEROE_ESFERAS=127",
+  "DBZ3_TEST_DU_HEROE_FORZAR=1",
+  "DBZ3_CAC_XV2=0",
+  "DBZ3_TEST_CFG=dbz3_heroe_importar=true",
+]
+pasos = [
+  "esperar 2500",
+  "tecla W 1200",
+  "tecla Space 3500",
+  "tecla S 450",
+  "tecla S 450",
+  "tecla S 450",
+  "tecla S 450",
+  "tecla S 450",
+  "tecla Space 2500",
+  "tecla S 700",
+  "tecla S 700",
+  "tecla S 700",
+  "tecla Space 2500",
+  # creador: Exportar (boton 4) para que exista una receta.toml que importar
+  "tecla W 600",
+  "tecla D 400",
+  "tecla D 400",
+  "tecla D 400",
+  "tecla D 400",
+  "captura a_boton_exportar",
+  "tecla Space 600",
+  "esperar 1000",
+  "captura b_exportando",
+  "log \"exportar como personaje: ok \\(mod heroe_\" 300",
+  "esperar 1000",
+  "captura c_exportado",
+  # Importar (boton 5): el picker lista mods/heroe_<nombre>/receta.toml
+  "tecla D 400",
+  "captura d_boton_importar",
+  "tecla Space 600",
+  "esperar 1500",
+  "captura e_picker",
+  "tecla Space 600",
+  "esperar 1000",
+  "captura f_importando",
+  "log \"importar receta: ok \\(mod heroe_\" 300",
+  "captura g_importado",
+  # salir del creador: la copia ya tiene historia_heroe_* (DuDisponible con FORZAR); el modelo del mapa sin id 63
+  # tiene el respaldo Goku de campaigns.cpp (no cierra).
+  "tecla Backspace 800",
+  "esperar 1500",
+  # Heroe > pestana Progreso (RB x2) > Empezar (fila 8): el mapa salta al final (DBZ3_TEST_HEROE_FINAL)
+  "tecla 3 600",
+  "tecla 3 600",
+  "tecla S 450",
+  "tecla S 450",
+  "captura j_empezar",
+  "tecla D 600",
+  "log \"mapa abierto\" 60",
+  "esperar 1000",
+  "captura k_mapa",
+  "tecla Space 1500",
+  "log \"escena 10[02] entrada 35\" 180",
+  "captura k_intro_final",
+  "tecla Space 2500",
+  "tecla Space 2500",
+  "tecla Space 2500",
+  "tecla Space 2500",
+  "tecla Space 2500",
+  "tecla Space 2500",
+  "tecla Space 2500",
+  "tecla Space 2500",
+  "tecla Space 2500",
+  "tecla Space 2500",
+  "tecla Space 2500",
+  "tecla Space 2500",
+  "tecla Space 2500",
+  "tecla Space 2500",
+  "tecla Space 2500",
+  "tecla Space 2500",
+  "log \"se lanza la escena 1 entrada 39\" 180",
+  "captura l_final",
+  "log \"shenron: sub_8215C1B0\" 120",
+  "captura m_shenron",
+  "esperar 14000",
+  "captura n_deseo",
+  "tecla Space 2000",
+  "tecla Space 2000",
+  "tecla Space 2000",
+  "tecla Space 2000",
+  "tecla Space 2000",
+  "captura o_creditos",
+]

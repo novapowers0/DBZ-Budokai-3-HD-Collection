@@ -12,7 +12,7 @@ Como las liga el juego nativo (medido con colores.py / sb_tecnicas.py):
 
   python tactics_fx.py generar     # escribe ../src/tactics/fx_nativo.inc
   python tactics_fx.py informe     # tabla legible por unidad
-  python tactics_fx.py hoja        # D:/tmp/subTAC/fx/hoja.png (texturas elegidas por unidad)
+  python tactics_fx.py hoja [salida.png]   # hoja de las texturas elegidas por unidad (por defecto, E:/DBZ3HD_trabajo/d2/tac05/hoja.png)
 """
 import json
 import os
@@ -237,13 +237,60 @@ def hoja(res, ruta):
     img.save(ruta)
 
 
+def tabla(res, ruta=None):
+    """Tabla reproducible de 5 tecnicas (TAC05) + cobertura, y comprobacion de que el .inc y native_ui las consumen."""
+    cinco = ("goku", "vegeta", "tenshinhan", "freezer", "cell")
+    inc = open(SALIDA, encoding="utf-8").read() if os.path.exists(SALIDA) else ""
+    nui = os.path.join(RAIZ, "src", "ingame", "native_ui.cpp")
+    nui_txt = open(nui, encoding="utf-8").read() if os.path.exists(nui) else ""
+    filas = []
+    for u in cinco:
+        i = res.get(u, {})
+        filas.append({
+            "unidad": u, "capsula": i.get("capsula"), "tipo": i.get("tipo"), "origen": i.get("origen"),
+            "bola": (i.get("bola") or {}), "rayo": (i.get("rayo") or {}), "color": i.get("color"),
+            "en_inc": ('TKFX("%s"' % u) in inc,
+            "extraccion": ("tkfx/" in nui_txt and "fx_nativo.inc" in nui_txt),
+        })
+    cab = ["unidad", "capsula", "tipo", "origen", "bola_hash", "bola_w", "bola_h", "rayo_hash", "rayo_w", "rayo_h", "color", "en_inc", "extraccion"]
+    if ruta:
+        import csv  # noqa: PLC0415
+        with open(ruta, "w", newline="", encoding="utf-8") as fh:
+            w = csv.writer(fh, delimiter=";")
+            w.writerow(cab)
+            for f in filas:
+                w.writerow([f["unidad"], f["capsula"], f["tipo"], f["origen"],
+                            f["bola"].get("hash"), f["bola"].get("w"), f["bola"].get("h"),
+                            f["rayo"].get("hash"), f["rayo"].get("w"), f["rayo"].get("h"),
+                            "/".join("%.3f" % x for x in f["color"]) if f["color"] else "", f["en_inc"], f["extraccion"]])
+    print("| unidad | capsula | tipo | origen | bola (hash, w x h) | rayo (hash, w x h) | color | en fx_nativo.inc | extraccion native_ui |")
+    print("|---|---|---|---|---|---|---|---|---|")
+    for f in filas:
+        b, r = f["bola"], f["rayo"]
+        print("| %s | %s | %s | %s | %s | %s | %s | %s | %s |" % (
+            f["unidad"], f["capsula"], f["tipo"], f["origen"],
+            ("%#x %dx%d" % (b["hash"], b["w"], b["h"])) if b else "-",
+            ("%#x %dx%d" % (r["hash"], r["w"], r["h"])) if r else "-",
+            "/".join("%.3f" % x for x in f["color"]) if f["color"] else "-",
+            "si" if f["en_inc"] else "NO", "si" if f["extraccion"] else "NO"))
+    bolas = sum(bool(i.get("bola")) for i in res.values())
+    rayos = sum(bool(i.get("rayo")) for i in res.values())
+    colores = sum(bool(i.get("color")) for i in res.values())
+    print("\ncobertura: %d unidades, %d bolas, %d rayos, %d colores; tabla de %d y todas en el .inc: %s" % (
+        len(res), bolas, rayos, colores, len(filas), all(f["en_inc"] and f["extraccion"] for f in filas)))
+    return filas
+
+
 def main():
     cmd = sys.argv[1] if len(sys.argv) > 1 else "informe"
     res = analizar()
     if cmd == "generar":
         print("escritas %d unidades en %s" % (generar(res), SALIDA))
     elif cmd == "hoja":
-        hoja(res, sys.argv[2] if len(sys.argv) > 2 else "D:/tmp/subTAC/fx/hoja.png")
+        hoja(res, sys.argv[2] if len(sys.argv) > 2 else "E:/DBZ3HD_trabajo/d2/tac05/hoja.png")
+    elif cmd == "tabla":
+        tabla(res, sys.argv[2] if len(sys.argv) > 2 else None)
+        return
     for u, i in res.items():
         print(u, {k: v for k, v in i.items() if k != "_dds"})
 

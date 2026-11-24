@@ -1,0 +1,24 @@
+descripcion = "solHAB: cerrar la fila virtual con START y reabrir el menu"
+env = [
+  "DBZ3_TEST_DU_HEROE=35",
+  "DBZ3_TEST_CFG=dbz3_heroe_habitacion=true",
+]
+pasos = [
+  'log "escena 10[02] entrada 35" 180',
+  "tecla Space 2000",
+  "tecla Space 2000",
+  "tecla Space 2000",
+  "tecla Space 2000",
+  "tecla Space 2000",
+  "tecla Space 2000",
+  "esperar 8000",
+  "tecla Return 1500",
+  "tecla W 500",
+  "tecla Return 1500",
+  "captura a_cierre_start",
+  "tecla Return 1500",
+  "captura b_reapertura",
+  "tecla W 500",
+  "tecla Return 1500",
+  "captura c_cierre_start",
+]

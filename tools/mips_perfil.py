@@ -107,5 +107,74 @@ def autoprueba(p2s=None):
     print('AUTOPRUEBA OK')
 
 
+def suceso_b2(cpu, suceso, resultado):
+    """Banco opt-in: ejecuta el selector T5 PAL real, FUN_0027F3A0.
+
+    Usar un Ee aislado cargado del savestate de la fase. Lee sus banderas y
+    conserva el efecto original de poner el suceso a -1 cuando no hay rama.
+    No simula un combate ni inventa su victoria/semilla.
+    """
+    if cpu.gp != 0x3ABCF0 or resultado not in (1, 2, 3, 4, 5):
+        raise ValueError('selector solo comprobado para B2 PAL y resultados 1..5')
+    anteriores = cpu.hooks, cpu.whitelist, cpu.estricto
+    try:
+        cpu.hooks, cpu.whitelist, cpu.estricto = {}, set(), True
+        cpu.w32(cpu.gp - 0x7274, suceso)  # iGpffff8d8c
+        valor = cpu.call(0x27F3A0, resultado, limite=200_000) & 0xFFFFFFFF
+        return valor if valor < 0x80000000 else valor - 0x100000000
+    finally:
+        cpu.hooks, cpu.whitelist, cpu.estricto = anteriores
+
+
+def despacho_b2(cpu, guion, limite=4096):
+    """Banco opt-in: instrucciones despachadas por la VM original PAL.
+
+    Ejecuta 0x2960C0/0x295F20 con las tablas del savestate; solo puentea
+    crear tarea, copiar argumentos y cancelar tareas. NO ejecuta consumidores,
+    saltos (44), premio, sonido, RNG, combate ni sus tiempos. Cada bloqueo se
+    libera explicitamente para inspeccionar el siguiente grupo; 'turno_banco'
+    nunca es un campo PAL. La salida no acredita una partida poscombate.
+    """
+    if cpu.gp != 0x3ABCF0:
+        raise ValueError('despachador solo comprobado para B2 PAL')
+    base = cpu.r32(cpu.gp - 0x7748)
+    if not 0 < base < ee.RAM - 0x50 or not 0 <= guion < cpu.r32(base + 0x48):
+        raise ValueError('guion o tabla YDW fuera de rango')
+    anteriores = cpu.hooks, cpu.whitelist, cpu.estricto
+    salida, turno = [], 0
+    tarea = 0x1F00000  # memoria sintetica del banco, no tarea capturada
+
+    def crear(c):
+        sitio = c.r32(c.gp - 0x7238)  # piGpffff8dc8
+        opcode = c.r32(sitio + 4)
+        if c.r[4] & 0xFFFFFFFF != c.r32(PERFILES['b2']['tabla'] + 4 * opcode):
+            raise ValueError('manejador y opcode no coinciden')
+        salida.append(dict(sitio=f'{sitio:X}', orden=opcode,
+                           argumentos=[c.r32(sitio + 8 + 4 * i) for i in range(4)], turno_banco=turno))
+        c.r[2] = tarea
+
+    def copiar(c):
+        dst, src, n = (c.r[i] & 0xFFFFFFFF for i in (4, 5, 6))
+        if not (0 <= n <= 0x100 and dst + n <= ee.RAM and src + n <= ee.RAM):
+            raise ValueError('copia fuera del banco')
+        c.m[dst:dst + n] = c.m[src:src + n]
+        c.r[2] = dst
+
+    def cancelar(c):
+        c.r[2] = 0
+
+    try:
+        cpu.hooks = {0x1484A0: crear, 0x123A60: copiar, 0x148650: cancelar, 0x14C4F0: cancelar}
+        cpu.whitelist, cpu.estricto = set(), True
+        cpu.call(0x2960C0, guion, limite=10_000)
+        for turno in range(limite):
+            cpu.w32(cpu.gp - 0x7248, 1)  # iGpffff8db8: liberar consumidores no ejecutados
+            if cpu.call(0x295F20, limite=200_000) & 0xFFFFFFFF:
+                return dict(ordenes=salida, consumidores_ejecutados=False, tiempos_pal_disponibles=False)
+        raise RuntimeError('VM sin finalizar dentro del limite del banco')
+    finally:
+        cpu.hooks, cpu.whitelist, cpu.estricto = anteriores
+
+
 if __name__ == '__main__':
     autoprueba(sys.argv[1] if len(sys.argv) > 1 else None)

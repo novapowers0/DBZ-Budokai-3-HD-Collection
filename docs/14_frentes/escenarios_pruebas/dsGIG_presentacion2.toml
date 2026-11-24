@@ -1,0 +1,3 @@
+descripcion = "dsGIG: presentacion del juego con el jefe gigante (opcion dbz3_jefe_gigante=1.8): capturas cada 300 ms entre la peticion y el FIGHT"
+env = ["DBZ3_TEST_BATTLE=0,7,7", "DBZ3_HUB_MODE=5", "DBZ3_SONDA_GIGANTE=1"]
+pasos = ["log \"hub: combate nativo\" 60", "esperar 2200", "captura 01", "esperar 300", "captura 02", "esperar 300", "captura 03", "esperar 300", "captura 04", "esperar 300", "captura 05", "esperar 300", "captura 06", "esperar 300", "captura 07", "log \"gigante: escala\" 60"]

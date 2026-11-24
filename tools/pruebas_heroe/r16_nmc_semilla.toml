@@ -1,0 +1,37 @@
+# Ficha sintética: prueba del montaje, no acredita selección desde el menú.
+version = 2
+schema = "dbz3-cac/2"
+activo = 0
+
+[[heroe]]
+id = "r16nmc001"
+nombre = "R16 NMC"
+raza = 2
+cuerpo = 11
+traje = 0
+pelo = 5
+cara = 3
+ropa = 0
+color = 0
+voz = 0
+aura = 0
+estilo = 0
+moveset = 11
+b3_piezas = [3607, 3643, 3682, 3702]
+partes = [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]]
+xv2 = [0, 0, 0, 0, 0, 0, 0]
+inventario = [57, 58]
+equipo = [57, 58, 0, 0]
+tecnicas = [0, 0, 0, 0]
+desbloqueos = []
+nivel = 1
+xp = 1
+progreso = 2
+saga = 0
+ph = 0
+logo = 0
+scouter = 0
+pelo_color1 = [0, 0, 0]
+pelo_color2 = [0, 0, 0]
+ojos_color = [0, 0, 0]
+piel_color = [0, 0, 0]

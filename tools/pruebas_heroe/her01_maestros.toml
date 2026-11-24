@@ -1,0 +1,9 @@
+# R23 HER-01: Elige maestro (maqueta 05).  python tools\pruebas.py correr smoke_b tools\pruebas_heroe\her01_maestros.toml
+descripcion = "Heroe: Elige maestro (maqueta 05)"
+env = ["DBZ3_TEST_MODO=heroe", "DBZ3_HUB_MODE=5", "DBZ3_TEST_HEROE_PANTALLA=maestros", "DBZ3_TEST_HEROE_ENTRENO=0:72", "DBZ3_TEST_HEROE_MAESTROS=2",
+       "DBZ3_TEST_CFG=dbz3_heroe_ui_nueva=true", "REX_DBZ3_LANGUAGE=5", "REX_DBZ3_UI_LANGUAGE=5"]
+pasos = [
+  'log "dbz3 rpg: Modo Heroe" 240',
+  "esperar 6000",
+  "captura a_maestros",
+]

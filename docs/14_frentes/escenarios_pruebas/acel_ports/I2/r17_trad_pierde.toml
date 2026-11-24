@@ -1,0 +1,22 @@
+descripcion = "R17 IW traducido: inicio, derrota exigida sin entradas, resultado y vuelta al menu (clave por --env)"
+env = [
+  "DBZ3_TEST_CFG=dbz3_iw_traducido=true;dbz3_iw_7db_original=true;dbz3_iw_7da_original=true;dbz3_iw_7d5_original=true",
+  'DBZ3_PS2_GAMES=D:\DBZ3HD\ps2_games',
+  "DBZ3_IW_RITMO=1",
+]
+pasos = [
+  'log "iwmini: prueba: empieza" 120',
+  'log "la ronda es la del original arrancado desde el ELF" 180',
+  "esperar 12000",
+  "captura a_juego",
+  'log "r14: (original .*fin|fin:)" 720',
+  "esperar 5000",
+  "captura b_resultado",
+  'hasta_log "iwmini: modulo .*resultado listo" 180',
+  "tecla Space 1500",
+  "fin",
+  'log "r14: resultado .*superado false rango (-1|0) " 30',
+  'log "iwmini: modulo .*resultado listo [(]superado false" 30',
+  "esperar_pantalla 5 30",
+  "captura c_menu",
+]

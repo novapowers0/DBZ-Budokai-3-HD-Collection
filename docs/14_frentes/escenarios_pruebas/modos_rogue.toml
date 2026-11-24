@@ -1,0 +1,41 @@
+descripcion = "modos_rogue (ROG-01 + ROG-02): Dragon Rogue, El Abismo: entrada del HUB, selector, 3 pisos (camino de prueba de 3) con la pausa 'elige 1 de 3': carta en el piso 1, cambio de cartas y carta en el piso 2, reglas aplicadas en el combate siguiente, final con record y Zenie"
+# Con DBZ3_TEST_ROGUE la oferta sale de una semilla fija (rogue.cpp Oferta): piso 1 = utilidad_11, fisica_09, ki_03;
+# piso 2 = fisica_06, fisica_11, utilidad_03 y, tras el cambio, fisica_14, fisica_01, utilidad_11. El cursor empieza en
+# la del centro. Fuerza (+25 %) -> dano 125 %; Punetazo (+25 %) y sello Cuerpo x2 (+10 %) -> 160 %.
+# Si se cambia rogue_cartas.toml (orden, cartas o maximos), estas cartas cambian: recalcular.
+# Teclas: Space = A (elegir / siguiente), L = X (cambiar las 3), P = Y (saltar).
+env = ["DBZ3_HUB_MODE=5", "DBZ3_TEST_RINGOUT=1", "DBZ3_TEST_ROGUE=3", "DBZ3_TEST_MODO=rogue,0"]
+pasos = [
+  "esperar_pantalla 5 120",
+  "log 'Dragon Rogue: entrada del HUB registrada' 30",
+  "log 'prueba: Dragon Rogue' 30",
+  "esperar 2500",
+  "captura 01_selector",
+  "tecla Space 3000",
+  "log 'rogue: baraja de 43 cartas' 30",
+  "log 'Dragon Rogue combate 1: pedido' 30",
+  "log 'Dragon Rogue: combate 1 ganado' 180",
+  "esperar 3000",
+  "captura 02_elegir_piso1",
+  "tecla Space 1500",
+  "log 'rogue: piso 1: carta fisica_09 .1 de 2.; reglas: dano 125%, recibido 100%, ki 0/s, 0 capsulas; sellos ki 0 cuerpo 1 apoyo 0' 20",
+  "esperar 1500",
+  "captura 03_entre_pisos",
+  "tecla Space 3000",
+  "log 'Dragon Rogue combate 2: pedido .vida [0-9]+/[0-9]+, dano 125%, recibido 100%' 60",
+  "log 'Dragon Rogue: combate 2 ganado' 180",
+  "esperar 3000",
+  "tecla L 1500",
+  "log 'rogue: piso 2: cambio de cartas .quedan 0.' 20",
+  "esperar 1000",
+  "captura 04_elegir_piso2_cambio",
+  "tecla Space 1500",
+  "log 'rogue: piso 2: carta fisica_01 .1 de 1.; reglas: dano 160%, recibido 100%, ki 0/s, 0 capsulas; sellos ki 0 cuerpo 2 apoyo 0' 20",
+  "esperar 1500",
+  "tecla Space 3000",
+  "log 'Dragon Rogue combate 3: pedido .vida [0-9]+/[0-9]+, dano 160%, recibido 100%' 60",
+  "log 'rogue: fin de abismo: id 0, 3 pisos' 180",
+  "esperar 3000",
+  "captura 05_final",
+  "tecla Space 2500",
+]

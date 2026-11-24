@@ -1,0 +1,11 @@
+descripcion = "RESTO-21: combate nativo del id 33 con el traje extra nova_cell_majin (Cell Majin (traje de Cell)); la copia debe tener el mod instalado y el roster construido (mods Nova en E:/DBZ3HD_trabajo/sprint/A-PRUEBAS-2/nova)"
+env = ["DBZ3_TEST_BATTLE=33,7,2", "DBZ3_TEST_TRAJES=nova_cell_majin,0"]
+pasos = [
+  'log "hub: combate nativo: id 33" 180',
+  "esperar_pelea 120",
+  "esperar 2000",
+  "captura nova_cell_majin_0",
+  "tecla L 250", "tecla L 250", "tecla Space 250",
+  "esperar 3000",
+  "captura nova_cell_majin_1"
+]

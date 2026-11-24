@@ -1,0 +1,43 @@
+# D2 / TAC03–TAC06: Dragon Tactics completo sin ISO de IW (fase 3; NO se ejecuta en fase 1).
+# Deja escrito el escenario que abre Tactics desde el HUB, compra/coloca con el piloto (una compra real),
+# juega una ronda y comprueba que la huella de la ronda 1 coincide con el banco B6 (semilla 2024).
+#
+# clave    = TAC03 (34 figuras x 8 clips), TAC04 (reglas/economia), TAC05 (efectos nativos), TAC06 (solo B3)
+# cvar     = dbz3_tactics_fx_nativo=true (TAC05; por defecto true; apagado = dibujo anterior)
+# criterio = precarga sin error, preparacion ronda 1, compra/colocacion del piloto (oro baja y tablero >0),
+#            combate ronda 1 y resultado con huella 269e4185 y vida 74 / 80 (coincide con tactics_partida_test,
+#            semilla 2024, datos de TAC04: 80 de resistencia e interes tope 3). Sin ninguna ISO de PS2/IW.
+# log      = "tactics: arena abierta", "tactics: precarga de N figuras", "tactics: tablero sobre el escenario",
+#            "tactics: preparacion ronda 1:", "tactics: piloto automatico: compra y coloca (oro .., tablero >0)",
+#            "tactics: combate ronda 1:", "tactics: partida ronda 1 fin: ... huella 269e4185 ... vida 74 / 80"
+#
+# PENDIENTE_JUEGO: golpe/KO foto a foto (TAC03), letrero de derrota (TAC04), pares ON/OFF de 5 tecnicas (TAC05),
+# decision final del usuario sobre DLC IW (TAC06). Regenerar los tk con vista_tactics.py --todas antes de probar
+# (la cache vieja tenia las reacciones en T-pose; el manifiesto version=2 ya la invalida por fecha).
+descripcion = "D2 TAC03-TAC06: Tactics con compra, una ronda y huella 269e4185; solo B3 (sin ISO IW)"
+env = [
+  "DBZ3_TEST_TACTICS_PRUEBA=1",
+  "DBZ3_TEST_TACTICS_SEMILLA=2024",
+  "DBZ3_TEST_TACTICS_AUTO=1",
+  "DBZ3_TEST_TACTICS_SIN_FOCO=1",
+  "DBZ3_TEST_CFG=dbz3_tactics_fx_nativo=true",
+]
+pasos = [
+  "esperar 2500",
+  "tecla W 1200",
+  "tecla Space 3500",
+  "tecla W 600",
+  "tecla Space 1500",
+  "log \"tactics: arena abierta\" 45",
+  "log \"tactics: precarga de [0-9]+ figuras\" 300",
+  "log \"tactics: tablero sobre el escenario\" 120",
+  "log \"tactics: preparacion ronda 1:\" 120",
+  "esperar 4000",
+  "log \"tactics: piloto automatico: compra y coloca [(]oro [0-9]+, tablero [1-9][0-9]*[)]\" 30",
+  "captura a_compra",
+  "log \"tactics: combate ronda 1:\" 120",
+  "esperar 8000",
+  "captura b_combate",
+  "log \"tactics: partida ronda 1 fin: ganador 1 .* huella 269e4185 .* vida 74 / 80\" 240",
+  "captura c_resultado",
+]

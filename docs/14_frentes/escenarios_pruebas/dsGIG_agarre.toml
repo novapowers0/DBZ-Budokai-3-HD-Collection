@@ -1,0 +1,3 @@
+descripcion = "dsGIG: agarre P+G (L+Backspace) del jugador normal contra el gigante COM y del gigante (IA) al jugador; sonda de combate para ver los codigos 0x480"
+env = ["DBZ3_TEST_BATTLE=0,7,7", "DBZ3_HUB_MODE=5", "DBZ3_GIGANTE=1.8", "DBZ3_SONDA_GIGANTE=1", "DBZ3_COMBATE_SONDA=1"]
+pasos = ["log \"hub: combate nativo\" 60", "log \"gigante: escala\" 120", "tecla D:900 100", "tecla L+Backspace 250", "esperar 600", "captura 01_agarre_a", "tecla L+Backspace 250", "esperar 600", "captura 02_agarre_b", "tecla D:500 100", "tecla L+Backspace 250", "esperar 800", "captura 03_agarre_c", "esperar 2000", "captura 04_tras_agarre", "esperar 2000", "captura 05_pelea"]

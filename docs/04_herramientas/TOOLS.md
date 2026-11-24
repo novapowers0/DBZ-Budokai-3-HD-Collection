@@ -410,3 +410,40 @@ salta la attract demo battle 3D.
 | `mod center hd/tactics_fx.py` | Textura y color de la técnica de energía de cada unidad de Dragon Tactics, leídos de `data_cmn.afs` del jugador (no hay arte nuevo). |
 | `mod center hd/kit/revisar.py` | «Revisar este mod»: mira una carpeta de mod sin abrir el juego y devuelve errores (no cargará) o avisos. |
 | `tools/fault_proxy.py` | Inyector de fallos UDP en loopback, solo para pruebas (no es un servicio del juego). |
+
+## Mod Kit rehecho (KIT-04 a KIT-09, 2026-11-12)
+
+Guía para jugadores: [KIT_GUIA_RAPIDA.md](../02_mods/KIT_GUIA_RAPIDA.md). Registro y límites: `studies 5/ENTREGAS/KIT_REGISTRO.md`. Pruebas del Kit: `studies 5/ENTREGAS/KIT_PRUEBAS.md`.
+
+| Herramienta | Qué hace |
+|---|---|
+| `mod center hd/escenarios_convertir.py` | Conversor de escenarios de Budokai 1/2 de la ISO del jugador a escenarios del selector (`comprobar` lo valida contra los nativos). `tools/escenarios_convertir.py` es solo un lanzador hacia este. |
+| `mod center hd/kit/base.py` | Base común del Kit: rutas, búsqueda del juego y de `us/` (con validación del `data_cmn`), LZX `/N:2048`, índice AFS. Prueba: `kit/prueba_base.py`. |
+| `mod center hd/kit/nucleo.py` | Núcleo de la ventana (idioma, entorno, trabajos, widgets, `Page`). Las pantallas viven en `kit/paginas/` (una por fichero). |
+| `mod center hd/kit/portada.py` | Portada del modo fácil: 6 tarjetas con render del juego del jugador (caché del Kit) y accesos. |
+| `mod center hd/kit/pelicula.py` | Película de fotogramas de una animación con el modelo real, con caché por clave. Prueba: `kit/prueba_pelicula.py`. |
+| `mod center hd/biblioteca_anim.py` | Biblioteca de clips y recetas (`listar`, `resumen`, `receta-guardar`, `aplicar`, `selftest`); `aplicar_receta` escribe solo en la carpeta del mod. |
+| `mod center hd/kit/generador.py` | Lógica del generador de animaciones (nombres oficiales de cápsula, recetas, tramos y mezcla). Prueba: `kit/prueba_generador.py`. |
+| `mod center hd/kit/traje.py` | «Cambiar traje»: formas reales, un modelo por forma, validador antes de escribir. Prueba: `kit/prueba_traje.py`. |
+| `mod center hd/kit/escenarios.py` + `kit/escenarios_estado.toml` | «Nuevo escenario»: llama al CLI del conversor; el `.toml` dice qué escenarios están probados o aún no funcionan. Prueba: `kit/prueba_escenario.py`. |
+| `mod center hd/kit/fusiones.py` | Duración de las fusiones (`dbz3_fusion_duracion` en `dbz3_user.toml`, con copia y «Deshacer»). Prueba: `kit/prueba_fusiones.py`. |
+| `mod center hd/kit/probar.py` | «Probar en el juego»: lee el registro y resume (`resumen()` cuenta trajes, escenarios y personajes). |
+| `mod center hd/tools_manifest_check.py` | Valida `tools_manifest.json` (solo metadatos y rutas). |
+
+## Infraestructura común (carril INFRA, 2026-11-11)
+
+Detalle y cifras: `studies 5/ENTREGAS/INFORME_INFRA.md`. Notas por paquete: `E:\DBZ3HD_trabajo\infra\INFRA-0x\NOTA.md`.
+
+| Herramienta | Para qué | Uso |
+|---|---|---|
+| `tools/infra.py` | Biblioteca común: rutas (`RAIZ`, `TRABAJO`, `JUEGOS`, `COORD`, `PAPELERA`, `tmp()`), `cronometro`, `turno`, `ejecutar`, `mover_a_papelera`, `u16/u32/f32/be32…` | `from infra import cronometro, TRABAJO` · `python tools/infra.py tiempos [--desde AAAA-MM-DD]` (tabla de tiempos por flujo) · `--autoprueba` |
+| `tools/arranque_lento.py` | Mide el arranque del juego en los `dbz3.log` de `D:\DBZ3HD\_pruebas` sin lanzar nada: crear D3D12, presentación, lanzar el módulo y cuántos juegos arrancaban a la vez; tabla de los lentos. `python tools/arranque_lento.py [carpeta] [--desde AAAAMMDD]` (POST3, 12/11). |
+| `tools/chequeo.py` | Portero: sintaxis y nombres sin definir de las herramientas compartidas. Pásalo ANTES de guardar un cambio en `pruebas.py`, `compilar.py`, `tanda.py`, `pcsx2_pool.py`, `roster_build.py`, `importar.py` | `python tools/chequeo.py [archivos]` (1-2 s; código ≠ 0 si falla) |
+| `tools/escenario_nuevo.py` | Crear y validar un escenario de `pruebas.py` sin abrir el juego | `crear <nombre> [--desde <existente>]` · `validar <nombre o ruta>` (errores con línea) · `lista` (órdenes del guion) |
+| `tools/oc.py` | Puerta única para encargos en opencode | `lanzar <encargo.md> --modelo sol|ds|<prov/modelo> [--nombre X]` · `estado` |
+
+Reglas nuevas:
+- Código nuevo: rutas y temporales desde `infra.py` (nada de `D:\tmp` ni rutas a mano); operaciones largas dentro de `with cronometro("flujo", detalle=…)`.
+- Los tiempos reales de cada flujo quedan en `E:\DBZ3HD_trabajo\infra\tiempos.jsonl`.
+- Interruptores para volver al comportamiento anterior: `DBZ3_PRUEBAS_ARRANQUE_LENTO=1` (arranque sin acelerar), `DBZ3_PRUEBAS_REINTENTO=0` (sin reintento por fallo del banco), `DBZ3_PRUEBAS_PREPARAR_LENTO=1` (preparar la copia sin atajos), `DBZ3_ROSTER_SIN_CACHE=1` (`roster_build` sin atajos).
+- `compilar.py`: si falla, la última línea dice el archivo y su dueño (`DBZ3_PAQUETE=<id>` para saber si es tuyo); «AVISO DLL: SIN RECOPIAR» significa que esa carpeta mide otro runtime hasta la siguiente compilación.

@@ -504,6 +504,14 @@ PASOS_ENTRE = [(184, 19), (214, 39), (216, 4), (227, 3), (244, 15), (246, 34), (
                (638, 1), (667, 4), (776, 1), (806, 1), (819, 2), (994, 1), (1074, 1), (1104, 1)]
 
 
+_ENTRE_TABLA = [p for p, v in PASOS_ENTRE for _ in range(v)]   # 272 entradas
+
+
+def pasos_entre_port(s):
+    """IW-F09: pasos entre ticks del runtime (iw_mips.cpp PasosEntre7DD): la tabla expandida, indice = semilla % 272."""
+    return _ENTRE_TABLA[s % len(_ENTRE_TABLA)]
+
+
 def lfsr(s, n):
     """n pasos del LFSR de Memory: s = s << 1 | (s >> 31 ^ s >> 4) & 1 (comprobado contra el ELF, 500 pasos)."""
     for _ in range(n):

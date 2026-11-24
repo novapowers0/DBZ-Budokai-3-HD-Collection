@@ -1,0 +1,10 @@
+descripcion = "MODOS-04 (2/2): la misma mision 1 de Mision 100 ganada otra vez, con la partida de p4a en la copia (sin apartar rpg.toml): el resultado paga el 10 % (10 Zenie) y el rango S no sube"
+env = ["DBZ3_HUB_MODE=5", "DBZ3_TEST_RINGOUT=1", "DBZ3_TEST_CFG=dbz3_modos_premio_unico=true", "DBZ3_TEST_MODO=mision100,0,1"]
+pasos = [
+  "log 'combate 1: pedido' 150",
+  "esperar 5000",
+  "captura 01_combate",
+  "log 'mision 100 n 1: rango' 180",
+  "esperar 5000",
+  "captura 02_resultado_repetida",
+]

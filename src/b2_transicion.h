@@ -3,10 +3,51 @@
 #pragma once
 #include "b2_vm.h"
 #include "escenarios_b2_recursos.h"
+#include <cmath>
 #include <functional>
 #include <memory>
 
 namespace dbz3::escenarios::b2 {
+// CONTRATO P1/F4 (2026-11-10), revision 1; consumidores F5/S5/F7/S4/F8.
+// Se conserva la firma Actor/Orden/Puente/Transicion y B2TZv2. F5 entrega
+// recursos y adapta ordenes a este puente: no crea otra VM ni otro reloj.
+// Extension optativa F4: Puente::validar_inicio=false conserva el recorrido
+// anterior; true comprueba contenedor/caches/SPX y reinicia el estado de escena.
+//
+// VIDA: Recurso se obtiene con b2::Leer/Cargar y permanece inmutable y vivo
+// hasta terminar la Transicion. Iniciar exige version 2, SPX de combate y
+// CAMR/TRAY/MDD0/FX00/MAD0/MAS0 validos; el banco FX00 pertenece al escenario,
+// nunca al personaje donante. FXHD/SND0/ANM*/BSK0/ENV0 son extensiones: cada
+// consumidor exige las que realmente use y devuelve false si faltan.
+//
+// ROLES: actores[0] = atacante, actores[1] = victima del contacto REAL.
+// No equivalen a P1/P2: B2MotorHD::Iniciar resuelve el actor fisico. S5 consume
+// matrices finales en B2MotorHD::Paso, despues de trayectoria/animacion y
+// antes de aplicar camara; mirada primero, IK despues. No usar el gancho
+// intermedio sub_82110AB8 ni ajustar desfase para mejorar la comparacion.
+//
+// ORDEN: id = builtin de la tabla PAL 0x375190; pc = offset en SPX;
+// argumentos[0..cuenta) = palabras de 32 bits en orden de firma, no direcciones
+// HD. Los floats conservan sus bits (b2vm::Float/Bits); los enteros con signo
+// usan b2vm::Signo. El adaptador no altera la orden observada.
+// ejecutar=true SOLO tras consumir la orden. Las consultas escriben h.r[0]
+// (entero/puntero virtual B2) o h.f[0] (bits float); el bool no es ese retorno.
+// Las esperas del reloj instalan h.sondeo; el sondeo devuelve 3 mientras
+// espera y 1 al continuar. ejecutar no codifica retornos del planificador.
+// Sin consumidor/argumento/recurso: false, VM
+// bloqueada con Error(), sin aplicar cambios internos de esa orden.
+// observar recibe la orden antes del consumidor y no acredita su ejecucion.
+//
+// RELOJ: Paso(delta) recibe cuadros de simulacion B2, nunca milisegundos ni
+// ticks de dibujo. El motor llama una vez por guest frame (delta=1). Se avanza
+// el reloj ANTES de la VM (PAL1D4630); builtin4 espera con tolerancia 0,5;
+// builtin9 devuelve delta en f0. Camara tipo2 y trayectoria C1 empiezan en
+// delta; no sumar un segundo avance en el mismo paso. Pausa no llama Paso.
+// Viva=false incluye final normal y bloqueo: consultar Error para distinguir.
+// Politica de activacion/online/rollback y restauracion de vida/ki/HUD pertenece
+// al motor anfitrion; publicar este contrato no habilita escenas nuevas.
+inline constexpr uint32_t kContratoTransicion = 1;
+
 struct Actor {
   std::array<float, 3> posicion{};
   uint32_t giro = 0, codigo = 0;
@@ -25,6 +66,7 @@ struct Puente {
   // Para consultas, el consumidor escribe r0/f0 del hilo, como el builtin B2.
   std::function<bool(const Orden&, dbz3::b2vm::Maquina&, dbz3::b2vm::Tarea&)> ejecutar;
   std::function<void(const Orden&)> observar;
+  bool validar_inicio = false;
 };
 class Transicion {
  public:
@@ -38,7 +80,49 @@ class Transicion {
   std::array<float, 3> ojo{}, objetivo{};
   float giro_camara = 0, fov = 0;
 
+  // Preflight sin mutar VM/HUD/actores: el anfitrion puede llamarlo ANTES
+  // de instalar animaciones. No acredita consumidores ni fidelidad visual.
+  static bool ValidarInicio(const Recurso& r, uint32_t e, std::string& error) {
+    auto fallo = [&](const char* causa) { error = causa; return false; };
+    if (r.version != 2) return fallo("inicio B2 requiere B2TZv2");
+    Recurso verificado;
+    if (!Leer(r.datos, verificado, error)) return false;
+    if (r.version != verificado.version || r.grupo != verificado.grupo ||
+        r.off != verificado.off || r.tam != verificado.tam)
+      return fallo("metadatos B2 difieren del contenedor");
+    auto mismos_clips = [](const std::vector<Clip>& a, const std::vector<Clip>& b) {
+      if (a.size() != b.size()) return false;
+      for (size_t i = 0; i < a.size(); ++i) {
+        if (a[i].cuadros != b[i].cuadros || a[i].tipo != b[i].tipo) return false;
+        for (size_t j = 0; j < a[i].pistas.size(); ++j) {
+          if (a[i].pistas[j].size() != b[i].pistas[j].size()) return false;
+          for (size_t k = 0; k < a[i].pistas[j].size(); ++k)
+            if (a[i].pistas[j][k].cuadro != b[i].pistas[j][k].cuadro ||
+                a[i].pistas[j][k].valor != b[i].pistas[j][k].valor) return false;
+        }
+      }
+      return true;
+    };
+    if (!mismos_clips(r.camara, verificado.camara) ||
+        !mismos_clips(r.trayectoria, verificado.trayectoria))
+      return fallo("cache ACC B2 difiere del contenedor");
+    const Vista spx = verificado.Bloque(2);
+    if (!spx.Rango(0, 0x24)) return fallo("cabecera SPX B2 truncada");
+    const uint32_t codigo = spx.U(0x14), entradas = spx.U(0x18);
+    if (codigo < 0x20 || codigo >= spx.n || entradas > (codigo - 0x20) / 4 || e >= entradas)
+      return fallo("entrada/base SPX B2 invalida");
+    const uint32_t destino = spx.U(0x20 + size_t(e) * 4) & dbz3::iw::spx::kMascaraDestino;
+    if (destino >= spx.n - codigo) return fallo("destino SPX B2 fuera del guion");
+    error.clear();
+    return true;
+  }
+
   bool Iniciar(const Recurso& r, uint32_t e, Puente p) {
+    const bool validar = p.validar_inicio;
+    // Un segundo inicio no debe cambiar el recurso/puente/reloj de tareas
+    // todavia vivas ni bloquearlas por intentar vm.Cargar sobre ellas.
+    if (validar && vm.Viva()) return false;
+    if (validar && !ValidarInicio(r, e, error_)) return false;
     if (r.version < 2) { error_ = "B2TZv2 requerido: MAD/MAS y banco de efectos correcto"; return false; }
     recurso_ = &r;
     entrada = e;
@@ -47,6 +131,11 @@ class Transicion {
     reloj.cuadro = 0;
     const Vista spx = r.Bloque(2);
     if (!vm.Cargar(std::vector<uint8_t>(spx.p, spx.p + spx.n), dbz3::b2vm::kTabla)) return false;
+    if (validar) {
+      zona = 0; camara = -1; tiempo_camara = inicio_camara = 0;
+      actores = {}; ojo = {}; objetivo = {}; giro_camara = fov = 0;
+      reloj.delta = 1;
+    }
     reloj.Instalar(vm);
     // Solo registrar funciones presentes en la tabla de combate B2, con su
     // firma en palabras. No usar la tabla de la pasarela/dialogos.
@@ -87,6 +176,12 @@ class Transicion {
     if (a.hueso < 0 || a.clip < 0 || size_t(a.clip) >= recurso_->trayectoria.size()) return false;
     std::array<std::array<float, 3>, 4> v;
     if (!Muestrear(recurso_->trayectoria[size_t(a.clip)], a.tiempo, v)) return false;
+    // F5 2026-11-10: el original marca "sin destino de hueso" con la clave
+    // (0,-100000,0) (Nieve, TRAY clip0 cuadro 41..419; medido en la ISO PAL).
+    // No es una posicion: a partir de ahi la victima sigue por fisica nativa.
+    // Aplicarla tal cual teletransporta al luchador -100000; se declara ausencia
+    // y el motor conserva el camino nativo, como el original.
+    if (!(std::fabs(v[0][1]) < 99999.0f)) return false;
     posicion = v[0];
     return true;
   }

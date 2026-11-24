@@ -1,0 +1,64 @@
+# S5 / B2-19 + B2F: IK de suelo de B2, lado A del A/B (tabla pie/mano con FICHA APAGADA).
+# El IK vive en la escena B2 (B2MotorHD::Paso): hay que armarla con DBZ3_TEST_ESCENA_VOLCADO=1 y
+# DBZ3_TEST_B2_MOTOR=1. Combate nativo en el alta 25 = 'TEMPLO DE KAMI' (mod Templo de Kami, entrada 5002): plataforma
+# cerrada; con el rival quieto, W acerca y L+P lo lanza contra el borde/pared.
+# El lado B (escala por ficha) es ik_escala_ficha.toml.
+# criterio = "dbz3 B2 HD: inicio por colision real" + "dbz3 B2 IK suelo: actor=... cabeza=... extremidades=...".
+# log      = "dbz3 B2 HD: inicio por colision real" / "dbz3 B2 IK suelo:"
+# PAREJAS (29 de la rueda): lote completo con `python tools/b2_huesos.py parejas` (arnes solb2x_lanzamiento).
+descripcion = "B2 IK de suelo, lado A del A/B (DBZ3_TEST_B2_IK_FICHA=0) en el Templo de Kami B2"
+env = [
+  "DBZ3_TEST_BATTLE=0,0,25",
+  "DBZ3_TEST_B2_IK_FICHA=0",
+  "DBZ3_TEST_ESCENA_VOLCADO=1",
+  "DBZ3_TEST_B2_MOTOR=1",
+  "DBZ3_COMBATE_MUNECO=quieto",
+  'DBZ3_PS2_GAMES=D:\DBZ3HD\ps2_games',
+]
+pasos = [
+  "esperar_pelea 120",
+  "captura 00_combate",
+  "esperar 3000",
+  "tecla W 1200",
+  "tecla L+P 450",
+  "esperar 1500",
+  "tecla L+P 450",
+  "esperar 1500",
+  "tecla L+P 450",
+  "esperar 1500",
+  "tecla L+P 450",
+  "esperar 1500",
+  "tecla L+P 450",
+  "esperar 1500",
+  "tecla L+P 450",
+  "esperar 1500",
+  "tecla L+P 450",
+  "esperar 1500",
+  "tecla L+P 450",
+  "esperar 1500",
+  "tecla L+P 450",
+  "esperar 1500",
+  "tecla L+P 450",
+  "esperar 1500",
+  "tecla L+P 450",
+  "esperar 1500",
+  "tecla L+P 450",
+  "esperar 1500",
+  "tecla L+P 450",
+  "esperar 1500",
+  "tecla L+P 450",
+  "esperar 1500",
+  "tecla L+P 450",
+  "esperar 1500",
+  "tecla L+P 450",
+  "esperar 1500",
+  "tecla L+P 450",
+  "esperar 1500",
+  "tecla L+P 450",
+  "esperar 1500",
+  "tecla L+P 450",
+  "esperar 1500",
+  "log \"dbz3 B2 HD: inicio por colision real\" 90",
+  "log \"dbz3 B2 IK suelo:\" 60",
+  "captura 01_b2_ik",
+]

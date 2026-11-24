@@ -1,0 +1,7 @@
+descripcion = "IW REF: agotamiento por fatiga llena con ki disponible; no por final del Burst"
+turbo = false
+env = ['DBZ3_TEST_BATTLE=0,7,2', 'DBZ3_COMBATE_MUNECO=ataca', 'DBZ3_COMBATE_SONDA=1', 'DBZ3_COMBATE_KI=4000', 'DBZ3_TEST_CFG=dbz3_modo_competitivo=true;dbz3_combate_prueba_muneco="ataca";dbz3_combate_definitiva_directa=false']
+pasos = ['log "tag: empieza un combate" 90', 'esperar_pelea 90', 'esperar 3000', 'captura fatiga_humo']
+[iw]
+caso = "fatiga"
+fuentes = ["235180", "235540"]

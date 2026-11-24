@@ -16,10 +16,12 @@
 #include "gigantes.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <string>
 
 #include <rex/cvar.h>
 #include <rex/hook.h>
@@ -31,12 +33,17 @@
 #include "net/netplay.h"
 
 REXCVAR_DEFINE_DOUBLE(dbz3_jefe_gigante, 0.0, "DBZ3/Mods",
-                      "Jefe gigante: escala del rival controlado por la consola (0 = apagado; p. ej. 1.8)");
+                      "Jefe gigante: escala del rival controlado por la consola (0 = apagado; p. ej. 1.8; tope 2.0)");
+// RESTO-09: con un atacante gigante la victima del agarre (codigos 0x480..0x48F) se coloca en huesos de la logica a
+// tamano normal y se ve desplazada. Encendido la lleva sobre la mano del gigante (desvio de partida x escala).
+// Apagado = identico al original. Solo actua cuando ya hay un gigante (dbz3_jefe_gigante > 0 o DBZ3_GIGANTE).
+REXCVAR_DEFINE_BOOL(dbz3_gigante_agarre, false, "DBZ3/Mods",
+                    "Jefe gigante: coloca a la victima del agarre en la mano del gigante (apagado = original)");
 
 namespace dbz3::gigantes {
 namespace {
 
-float g_regla[2] = {0.0f, 0.0f};   // regla de reto por lado (0 = sin regla)
+std::atomic<float> g_regla[2] = {0.0f, 0.0f};   // regla de reto por lado (0 = sin regla; la pone/lee el hilo del juego)
 
 float LeeF(uint8_t* base, uint32_t a) {
   const uint32_t u = REX_LOAD_U32(a);
@@ -52,7 +59,7 @@ void PonF(uint8_t* base, uint32_t a, float f) {
 
 // Escala de un lado en este combate (1 = normal).
 float Escala(uint8_t* base, uint32_t mgr, int lado) {
-  if (g_regla[lado] > 0.0f) return g_regla[lado];
+  if (const float r = g_regla[lado].load(); r > 0.0f) return r;
   static const float prueba = std::getenv("DBZ3_GIGANTE") ? float(std::atof(std::getenv("DBZ3_GIGANTE"))) : 0.0f;
   static const int lado_prueba = std::getenv("DBZ3_GIGANTE_LADO") ? std::atoi(std::getenv("DBZ3_GIGANTE_LADO")) - 1 : 1;
   if ((lado == lado_prueba || lado_prueba == 2) && prueba > 0.0f) return prueba;   // DBZ3_GIGANTE_LADO=3: los dos
@@ -63,19 +70,101 @@ float Escala(uint8_t* base, uint32_t mgr, int lado) {
   return lado == 1 && op > 0.0f && com ? op : 1.0f;
 }
 
+// RESTO-09: agarre. Con un atacante gigante la victima (codigos 0x480..0x48F) queda en huesos de la logica a tamano
+// normal. Se guarda al entrar el desvio (x,z) respecto a los pies del gigante y cada cuadro se vuelve a poner x escala.
+// Se mueven las dos copias de la posicion conocidas: la del paso de combate (+48/+56) y la del dibujo (+64/+72).
+// Apagado = no toca nada. Sonda: "gigante: agarre ..." con la distancia (medida de la ficha: error <= 1 u).
+struct AgarreLado { bool dentro = false; float x = 0, y = 0, z = 0, cx = 0, cy = 0, cz = 0; };
+// POST2: cuello de la victima respecto a sus pies (mundo), del esqueleto de la logica, como cinematica.cpp PuntoCuerpo:
+// anclaje 2 (NECK) en x+2956, hueso [x+2952]+1032 + 64*i con su punto en +48, girado con la matriz del luchador (x+0..x+32).
+bool CuelloRel(uint8_t* base, uint32_t x, float g[3]) {
+  const uint32_t mi = REX_LOAD_U32(x + 2952), anc = REX_LOAD_U32(x + 2956);
+  if (!mi || !anc) return false;
+  const uint32_t tb = REX_LOAD_U32(mi + 1032);
+  const int hb = int16_t(REX_LOAD_U16(anc + 4u));
+  if (tb < 0x40000000u || tb >= 0xA0000000u || hb < 0 || hb > 255) return false;
+  const uint32_t h = tb + 64u * uint32_t(hb);
+  const float v[3] = {LeeF(base, h + 48), LeeF(base, h + 52), LeeF(base, h + 56)};
+  for (uint32_t f = 0; f < 3; ++f)
+    g[f] = LeeF(base, x + 16 * f) * v[0] + LeeF(base, x + 16 * f + 4) * v[1] + LeeF(base, x + 16 * f + 8) * v[2];
+  return std::isfinite(g[1]) && g[1] > 2.0f && g[1] < 30.0f;
+}
+void AjusteAgarre(uint8_t* base, uint32_t mgr) {
+  static AgarreLado ag[2];
+  if (!REXCVAR_GET(dbz3_gigante_agarre) || dbz3::net::Session::Get().active()) {
+    ag[0].dentro = ag[1].dentro = false;
+    return;
+  }
+  float s[2];
+  int grande = -1;
+  for (int k = 0; k < 2; ++k) {
+    s[k] = std::clamp(Escala(base, mgr, k), 0.5f, 2.0f);
+    if (s[k] > 1.01f) grande = k;
+  }
+  if (grande < 0) {   // sin gigante no hay nada que colocar (y no se deja estado pegado)
+    ag[0].dentro = ag[1].dentro = false;
+    return;
+  }
+  const int victima = 1 - grande;
+  const uint32_t xv = mgr + 2096 + 8240 * uint32_t(victima), xg = mgr + 2096 + 8240 * uint32_t(grande);
+  const uint32_t code = REX_LOAD_U32(xv + 2928) & 0xFFFFu;   // el bit 0x10000 es una marca: 0x10481 = agarre de la victima
+  const bool dentro = code >= 0x480u && code < 0x490u;
+  if (!dentro) {
+    if (ag[victima].dentro) REXLOG_INFO("dbz3 gigante: agarre lado {} termina (codigo {:03X})", victima + 1, code);
+    ag[victima].dentro = false;
+    return;
+  }
+  const float s2 = s[grande];
+  if (!ag[victima].dentro) {   // primer cuadro: desvio de partida de la victima respecto a los pies del gigante
+    ag[victima].dentro = true;
+    ag[victima].x = LeeF(base, xv + 64) - LeeF(base, xg + 64);
+    ag[victima].z = LeeF(base, xv + 72) - LeeF(base, xg + 72);
+    ag[victima].y = LeeF(base, xv + 68) - LeeF(base, xg + 68);
+    float g[3] = {0, 14.0f, 0};   // sin esqueleto: un cuello a 14 u (luchador normal)
+    const bool hueso = CuelloRel(base, xv, g);
+    ag[victima].cx = g[0], ag[victima].cy = g[1], ag[victima].cz = g[2];
+    REXLOG_INFO("dbz3 gigante: agarre cuello de la victima a ({:.1f},{:.1f},{:.1f}){}", g[0], g[1], g[2], hueso ? "" : " (supuesto)");
+    REXLOG_INFO("dbz3 gigante: agarre lado {} empieza (escala {:.2f}) a {:.1f} u del gigante", victima + 1, s2,
+                std::sqrt(ag[victima].x * ag[victima].x + ag[victima].z * ag[victima].z));
+  }
+  // POST2: a tamano normal la mano del gigante esta en el cuello de la victima (pies + desvio + cuello); el gigante se
+  // dibuja escalado desde sus pies, asi que esa mano queda en s x (desvio + cuello): los pies de la victima van a
+  // s x desvio + (s-1) x cuello (antes: (s-1) x la cintura de la tabla X+1616, vieja fuera de los estados 3/4/5/8: rodilla)
+  const float px = LeeF(base, xg + 64) + ag[victima].x * s2 + (s2 - 1.0f) * ag[victima].cx;
+  const float pz = LeeF(base, xg + 72) + ag[victima].z * s2 + (s2 - 1.0f) * ag[victima].cz;
+  const float py = LeeF(base, xg + 68) + ag[victima].y * s2 + (s2 - 1.0f) * ag[victima].cy;
+  PonF(base, xv + 52, py);
+  PonF(base, xv + 68, py);
+  PonF(base, xv + 48, px);
+  PonF(base, xv + 56, pz);
+  PonF(base, xv + 64, px);
+  PonF(base, xv + 72, pz);
+  static const bool sonda = std::getenv("DBZ3_SONDA_GIGANTE") != nullptr;
+  static uint32_t cuadro = 0;
+  if (sonda && ++cuadro % 20 == 0) {
+    const float dx = LeeF(base, xv + 64) - LeeF(base, xg + 64), dz = LeeF(base, xv + 72) - LeeF(base, xg + 72);
+    REXLOG_INFO("dbz3 gigante: agarre a {:.1f} u (desvio base {:.1f}, escala {:.2f})", std::sqrt(dx * dx + dz * dz),
+                std::sqrt(ag[victima].x * ag[victima].x + ag[victima].z * ag[victima].z), s2);
+  }
+}
+
 }  // namespace
 
 float EscalaDe(uint8_t* base, int lado) {
   const uint32_t mgr = REX_LOAD_U32(dbz3::GA(0x823D6CF4));
   if (!mgr || lado < 0 || lado > 1 || dbz3::net::Session::Get().active()) return 1.0f;
-  return std::clamp(Escala(base, mgr, lado), 0.5f, 3.0f);
+  return std::clamp(Escala(base, mgr, lado), 0.5f, 2.0f);
 }
 
-bool ReglaActiva() { return g_regla[0] > 0.0f || g_regla[1] > 0.0f; }
+bool ReglaActiva() { return g_regla[0].load() > 0.0f || g_regla[1].load() > 0.0f; }
 
 void Activar(int lado, float escala) {
   if (lado < 0 || lado > 1) return;
-  g_regla[lado] = escala > 0.0f ? std::clamp(escala, 0.5f, 3.0f) : 0.0f;
+  const float v = escala > 0.0f ? std::clamp(escala, 0.5f, 2.0f) : 0.0f;
+  const float old = g_regla[lado].load();
+  if (old == v) return;   // sin cambio: no se repite el aviso en cada combate del reto
+  g_regla[lado] = v;
+  REXLOG_INFO("dbz3 gigante: regla de reto lado {} {}", lado + 1, v > 0.0f ? std::to_string(v) + "x" : std::string("quitada"));
 }
 
 void Fotograma(uint8_t* base, uint32_t frames_pelea) {
@@ -83,14 +172,15 @@ void Fotograma(uint8_t* base, uint32_t frames_pelea) {
   const uint32_t mgr = REX_LOAD_U32(dbz3::GA(0x823D6CF4));
   if (!mgr) return;
   static const bool sonda = std::getenv("DBZ3_SONDA_GIGANTE") != nullptr;
-  float ojo[3], obj[3];
-  if (!dbz3::cine::LeerCamara(base, ojo, obj)) return;
-  if (sonda && frames_pelea && frames_pelea % 120 == 0)   // vida (X+6080) de los dos y distancia de la camara del juego
+  float ojo[3] = {0, 0, 0}, obj[3] = {0, 0, 0};
+  // La camara solo la usan las sondas: si falla, el modo sigue.
+  const bool cam = dbz3::cine::LeerCamara(base, ojo, obj);
+  if (sonda && cam && frames_pelea && frames_pelea % 120 == 0)   // vida (X+6080) y distancia de la camara
     REXLOG_INFO("dbz3 sonda gigante: {} s: vida {:.0f} / {:.0f}, camara del juego a {:.1f} (altura {:.1f})",
                 frames_pelea / 60, LeeF(base, mgr + 2096 + 6080), LeeF(base, mgr + 2096 + 8240 + 6080),
                 std::sqrt((ojo[0] - obj[0]) * (ojo[0] - obj[0]) + (ojo[2] - obj[2]) * (ojo[2] - obj[2])), ojo[1]);
   float mayor = 1.0f;
-  for (int lado = 0; lado < 2; ++lado) mayor = std::max(mayor, std::clamp(Escala(base, mgr, lado), 0.5f, 3.0f));
+  for (int lado = 0; lado < 2; ++lado) mayor = std::max(mayor, std::clamp(Escala(base, mgr, lado), 0.5f, 2.0f));
   if (frames_pelea == 1 && mayor > 1.01f) REXLOG_INFO("dbz3 gigante: escala {:.2f}", mayor);
   if (sonda && frames_pelea) {   // cada golpe que quita vida: a que distancia estaban (alcance)
     static float vida[2] = {0, 0};
@@ -141,17 +231,59 @@ void Fotograma(uint8_t* base, uint32_t frames_pelea) {
   // encuadre: se abre el campo de vision (mgr+0x1C4, 0,785 de serie) en proporcion a la escala. El ojo y el
   // objetivo no se tocan: la camara del juego parte de los del fotograma anterior y se iria lejos (medido: a los
   // 2 s de alejarlos estaba a 1e16). La intro de cine.cpp lleva su propia camara.
+  // El campo de vision se abre lo justo para que el gigante ocupe lo mismo que un luchador normal a esa distancia:
+  // tan(fov'/2) = escala * tan(fov/2) (triangulos semejantes) y, si la camara se acerca, lo que pida la cabeza
+  // (punto 3 de los 22) para no salirse por arriba. Antes se abria la mitad de lo necesario (+50 % de la escala) y
+  // en el cuerpo a cuerpo la cabeza salia cortada (medido 2026-11-09). Tope 1,55 rad (89 grados verticales): a partir
+  // de ahi el ojo de pez estropea mas de lo que arregla. 2,0 encuadra; 2,5 puede seguir cortando (la fila F1 avisa).
   static float fov_juego = 0.0f, fov_puesto = 0.0f;
   static bool tocado = false;
   const float fov = LeeF(base, mgr + 0x1C4);
-  if (mayor <= 1.01f || dbz3::cine::EnCurso() || !frames_pelea) {
+  // Se abre desde la pelea (estado 4) y se queda en el KO/victoria (5+), donde la camara tambien es de cerca: si se
+  // cerrara al acabar la pelea, el gigante salia cortado en la caida (medido 2026-11-09). En la presentacion (1-3)
+  // no se toca: el gigante se dibuja a tamano normal y su camara es la del guion.
+  // RESTO-09: el agarre va antes de los retornos de la camara (un campo de vision fuera de rango o una toma de cine
+  // durante el agarre lo saltaban). Sin gigante o con la cvar apagada no hace nada.
+  if (REX_LOAD_U32(mgr + 35128) >= 4) AjusteAgarre(base, mgr);
+  if (mayor <= 1.01f || dbz3::cine::EnCurso() || REX_LOAD_U32(mgr + 35128) < 4) {
     if (tocado) PonF(base, mgr + 0x1C4, fov_juego);   // fuera del combate o sin gigante: el del juego
     tocado = false;
     return;
   }
   if (!tocado || fov != fov_puesto) fov_juego = fov;   // el juego lo rehace (o es el primero): ese es el suyo
   if (!(fov_juego > 0.3f && fov_juego < 1.2f)) return;
-  fov_puesto = std::min(1.25f, fov_juego * (1.0f + 0.5f * (mayor - 1.0f)));
+  float fov_necesario = 2.0f * std::atan(std::tan(0.5f * fov_juego) * mayor);
+  // Si la camara esta muy cerca, la cabeza del gigante queda por encima del eje aunque el cuerpo quepa: se mira el
+  // punto de cabeza (punto 3 de los 22, ya escalado) y se abre lo justo para que entre (con 7 grados de margen).
+  if (cam) {
+    const float vx0 = obj[0] - ojo[0], vy0 = obj[1] - ojo[1], vz0 = obj[2] - ojo[2];
+    const float vl = std::sqrt(vx0 * vx0 + vy0 * vy0 + vz0 * vz0);
+    if (vl > 1e-3f) {
+      const float vx = vx0 / vl, vy = vy0 / vl, vz = vz0 / vl;
+      float ux = -vx * vy, uy = 1.0f - vy * vy, uz = -vz * vy;   // arriba del mundo, perpendicular a la vista
+      const float ul = std::sqrt(ux * ux + uy * uy + uz * uz);
+      if (ul > 1e-4f) {
+        ux /= ul, uy /= ul, uz /= ul;
+        for (uint32_t lado = 0; lado < 2; ++lado) {
+          if (std::clamp(Escala(base, mgr, int(lado)), 0.5f, 2.0f) < 1.02f) continue;
+          const uint32_t x = mgr + 2096 + 8240 * lado;
+          const bool oculta_a = REX_LOAD_U8(x + 3260) || REX_LOAD_U8(x + 3261);
+          const bool oculta_b = REX_LOAD_U8(x + 4924) || REX_LOAD_U8(x + 4925);
+          if (oculta_a && oculta_b) continue;
+          const uint32_t cabeza = (oculta_a ? x + 3280 : x + 1616) + 48;   // punto 3 (16 B por punto)
+          float hx = LeeF(base, cabeza) - ojo[0], hy = LeeF(base, cabeza + 4) - ojo[1], hz = LeeF(base, cabeza + 8) - ojo[2];
+          const float hl = std::sqrt(hx * hx + hy * hy + hz * hz);
+          if (hl < 1e-3f) continue;
+          hx /= hl, hy /= hl, hz /= hl;
+          const float delante = hx * vx + hy * vy + hz * vz;
+          if (delante < 0.2f) continue;   // detras o al lado de la camara
+          const float arriba = std::atan2(hx * ux + hy * uy + hz * uz, delante);
+          if (arriba > 0.0f) fov_necesario = std::max(fov_necesario, 2.0f * arriba + 0.12f);
+        }
+      }
+    }
+  }
+  fov_puesto = std::min(1.55f, std::max(fov_juego, fov_necesario));
   PonF(base, mgr + 0x1C4, fov_puesto);
   if (!tocado) REXLOG_INFO("dbz3 gigante: campo de vision {:.3f} -> {:.3f}", fov_juego, fov_puesto);
   tocado = true;
@@ -161,11 +293,19 @@ void Fotograma(uint8_t* base, uint32_t frames_pelea) {
 
 // Dibujo del luchador X (r3): su matriz de mundo (X+0, filas 0..2) a la escala del lado solo mientras se dibuja;
 // despues vuelve la del juego (la logica del combate no la ve cambiada).
+// Solo desde la pelea (mgr+35128 >= 4: pelea, KO y victoria). La presentacion del juego (estados 1-3) usa una camara
+// de guion que no se deja mover (escenarios.md R2/R6b) y con el jefe a 1,8x solo salian las piernas (plano de
+// presentacion) o la cabeza cortada (READY), medido 2026-11-09. Ahi se dibuja a tamano normal y crece al empezar el
+// combate (el flash de FIGHT tapa el cambio); la intro de cine ya corre en estado 4 y su encuadre usa EscalaDe.
 DBZ3_HOOK_EU(sub_82109D90) {
   using namespace dbz3::gigantes;
   const uint32_t x = ctx.r3.u32, mgr = REX_LOAD_U32(dbz3::GA(0x823D6CF4));
-  const int lado = mgr && x == mgr + 2096 ? 0 : mgr && x == mgr + 2096 + 8240 ? 1 : -1;
-  const float s = lado >= 0 && !dbz3::net::Session::Get().active() ? std::clamp(Escala(base, mgr, lado), 0.5f, 3.0f)
+  if (!mgr || REX_LOAD_U32(mgr + 35128) < 4) {
+    orig(ctx, base);
+    return;
+  }
+  const int lado = x == mgr + 2096 ? 0 : x == mgr + 2096 + 8240 ? 1 : -1;
+  const float s = lado >= 0 && !dbz3::net::Session::Get().active() ? std::clamp(Escala(base, mgr, lado), 0.5f, 2.0f)
                                                                   : 1.0f;
   if (s > 0.99f && s < 1.01f) {
     orig(ctx, base);
@@ -199,10 +339,11 @@ DBZ3_HOOK_EU(sub_820F9548) {
   const uint32_t t = ctx.r3.u32, mascara = ctx.r4.u32;
   orig(ctx, base);
   const uint32_t mgr = REX_LOAD_U32(dbz3::GA(0x823D6CF4));
+  if (!mgr || REX_LOAD_U32(mgr + 35128) < 4) return;   // presentacion: como el dibujo, sin escala
   const uint32_t x = t ? REX_LOAD_U32(t + 1384) : 0;
-  const int lado = mgr && x == mgr + 2096 ? 0 : mgr && x == mgr + 2096 + 8240 ? 1 : -1;
+  const int lado = x == mgr + 2096 ? 0 : x == mgr + 2096 + 8240 ? 1 : -1;
   if (lado < 0 || dbz3::net::Session::Get().active()) return;
-  const float s = std::clamp(Escala(base, mgr, lado), 0.5f, 3.0f);
+  const float s = std::clamp(Escala(base, mgr, lado), 0.5f, 2.0f);
   if (s > 0.99f && s < 1.01f) return;
   const float pie[3] = {LeeF(base, x + 64), LeeF(base, x + 68), LeeF(base, x + 72)};
   uint32_t m = mascara;
@@ -236,7 +377,7 @@ void ConGolpeGigante(PPCContext& ctx, uint8_t* base, GolpeFn orig) {
     orig(ctx, base);
     return;
   }
-  const float sa = std::clamp(Escala(base, mgr, la), 0.5f, 3.0f), sv = std::clamp(Escala(base, mgr, lv), 0.5f, 3.0f);
+  const float sa = std::clamp(Escala(base, mgr, la), 0.5f, 2.0f), sv = std::clamp(Escala(base, mgr, lv), 0.5f, 2.0f);
   const bool ga = sa < 0.99f || sa > 1.01f, gv = sv < 0.99f || sv > 1.01f;
   if (!ga && !gv) {
     orig(ctx, base);

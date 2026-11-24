@@ -1,0 +1,4 @@
+descripcion = "CAC2: asignar receta 1 a la forma 2 y guardar su color como metadato"
+turbo = false
+env = ["DBZ3_TEST_MODO=heroe,0", "DBZ3_TEST_HEROE_ABRIR=2", "DBZ3_TEST_CFG=dbz3_cac_xv2=false;dbz3_heroe_ui_nueva=true;dbz3_cac2_pestanas=true;dbz3_cac2_formas=true;dbz3_cac2_receta_forma=true"]
+pasos = ['log "Create abierto" 180', 'repetir 3', 'tecla Z', 'fin', 'hasta_log "CAC2 forma 1 capsula" 180', 'tecla D 1500', 'fin', 'tecla D', 'log "CAC2 forma 2 lista" 180', 'captura antes', 'tecla P', 'log "CAC2 forma 2 receta 0 estallido" 15', 'tecla L', 'log "CAC2 forma 2 receta 0 estallido.*FFAA00" 15', 'esperar 6000', 'captura despues', 'tecla 3', 'log "Create: confirmar" 30']

@@ -1,0 +1,261 @@
+# Estado de cada escenario de Budokai 2 / Budokai 1 (PS2) para el asistente «Nuevo escenario» del Kit (KIT-07).
+# Se puede actualizar sin tocar codigo. Fuente: docs/14_frentes/escenarios.md §5 (11/11/2026).
+#   estado: "probado" (selector + combate en el juego) | "sin_probar" | "no_funciona" (sale apagado, no se elige)
+#   zona_b: el escenario tiene segunda zona (B2: grupos 0, 4, 7 y 8; escenarios_convertir.py --zona b)
+#   corto:  nombre que se propone para el selector cuando `es` pasa de 15 letras
+#   foto_girada: la foto del Kit sale boca abajo (camara de la foto, no el escenario): la casilla la gira 180 grados
+# Nombres: los que se ven en la foto (no son los oficiales del juego de origen).
+
+[[escenario]]
+juego = "b2"
+grupo = 0
+es = "Base militar"
+en = "Military base"
+estado = "sin_probar"
+zona_b = true
+
+[[escenario]]
+juego = "b2"
+grupo = 1
+es = "Estadio del torneo"
+en = "Tournament stadium"
+corto = "Estadio torneo"
+estado = "no_funciona"     # cierra el juego al dibujar el modelo (sub_8208E518)
+
+[[escenario]]
+juego = "b2"
+grupo = 2
+es = "Templo de Kami"
+en = "Kami's temple"
+estado = "probado"
+
+[[escenario]]
+juego = "b2"
+grupo = 3
+es = "Meseta con luna"
+en = "Moonlit plateau"
+estado = "sin_probar"      # entro en combate en pruebas viejas; sin prueba completa
+
+[[escenario]]
+juego = "b2"
+grupo = 4
+es = "Isla"
+en = "Island"
+estado = "sin_probar"
+zona_b = true
+
+[[escenario]]
+juego = "b2"
+grupo = 5
+es = "Sala del Tiempo"
+en = "Time chamber"
+estado = "sin_probar"
+
+[[escenario]]
+juego = "b2"
+grupo = 6
+es = "Planeta Namek"
+en = "Planet Namek"
+estado = "sin_probar"
+
+[[escenario]]
+juego = "b2"
+grupo = 7
+es = "Montañas nevadas"
+en = "Snowy mountains"
+corto = "Montes nevados"
+estado = "probado"
+zona_b = true
+
+[[escenario]]
+juego = "b2"
+grupo = 8
+es = "Ciudad"
+en = "City"
+foto_girada = true          # el logo CAPSULE del suelo salia del reves (KIT-10)
+estado = "no_funciona"     # cierra el juego al dibujar el modelo (sub_8208E518)
+zona_b = true
+
+[[escenario]]
+juego = "b1"
+grupo = 0
+es = "Pradera"
+en = "Grassland"
+estado = "sin_probar"
+
+[[escenario]]
+juego = "b1"
+grupo = 1
+es = "Páramo nublado"
+en = "Cloudy wasteland"
+estado = "sin_probar"
+
+[[escenario]]
+juego = "b1"
+grupo = 2
+es = "Páramo con rayos"
+en = "Stormy wasteland"
+estado = "sin_probar"
+
+[[escenario]]
+juego = "b1"
+grupo = 3
+es = "Páramo al atardecer"
+en = "Wasteland at dusk"
+corto = "Páramo"
+estado = "probado"         # Duelo y HUB
+
+[[escenario]]
+juego = "b1"
+grupo = 4
+es = "Desfiladero"
+en = "Gorge"
+estado = "sin_probar"
+
+[[escenario]]
+juego = "b1"
+grupo = 5
+es = "Planeta Namek"
+en = "Planet Namek"
+estado = "sin_probar"
+
+[[escenario]]
+juego = "b1"
+grupo = 6
+es = "Lugar oscuro"
+en = "Dark place"
+estado = "sin_probar"
+
+[[escenario]]
+juego = "b1"
+grupo = 7
+es = "Colinas verdes"
+en = "Green hills"
+estado = "sin_probar"
+
+[[escenario]]
+juego = "b1"
+grupo = 8
+es = "Colinas al ocaso"
+en = "Hills at sunset"
+estado = "sin_probar"
+
+[[escenario]]
+juego = "b1"
+grupo = 9
+es = "Rocas rojizas"
+en = "Reddish rocks"
+estado = "no_funciona"     # cabecera de colision distinta: no convierte
+
+[[escenario]]
+juego = "b1"
+grupo = 10
+es = "Templo de Kami"
+en = "Kami's temple"
+estado = "sin_probar"
+
+[[escenario]]
+juego = "b1"
+grupo = 11
+es = "Rocas rojizas 2"
+en = "Reddish rocks 2"
+estado = "no_funciona"     # cabecera de colision distinta: no convierte
+
+[[escenario]]
+juego = "b1"
+grupo = 12
+es = "Ring de tierra"
+en = "Dirt ring"
+estado = "sin_probar"
+
+# Ambientes: `tema` del stage.toml (0..16) = registro de B3 que presta luz y cielo. Solo el 16 esta probado.
+# principal = sale como boton; el resto, en «Más…».
+[[ambiente]]
+tema = 16
+es = "Neutra"
+en = "Neutral"
+principal = true
+
+[[ambiente]]
+tema = 5
+es = "Llanuras"
+en = "Plains"
+principal = true
+
+[[ambiente]]
+tema = 4
+es = "Montañas"
+en = "Mountains"
+principal = true
+
+[[ambiente]]
+tema = 2
+es = "Archipiélago"
+en = "Archipelago"
+principal = true
+
+[[ambiente]]
+tema = 7
+es = "Namek"
+en = "Namek"
+principal = true
+
+[[ambiente]]
+tema = 0
+es = "Torneo Mundial"
+en = "World Tournament"
+
+[[ambiente]]
+tema = 1
+es = "Cámara del Tiempo"
+en = "Time Chamber"
+
+[[ambiente]]
+tema = 3
+es = "Zona urbana"
+en = "Urban area"
+
+[[ambiente]]
+tema = 6
+es = "Casa del abuelo"
+en = "Grandpa's house"
+
+[[ambiente]]
+tema = 8
+es = "Ring de Cell"
+en = "Cell Ring"
+
+[[ambiente]]
+tema = 9
+es = "Mundo de Kaioshin"
+en = "Supreme Kai's world"
+
+[[ambiente]]
+tema = 10
+es = "Dentro de Bu"
+en = "Inside Buu"
+
+[[ambiente]]
+tema = 11
+es = "Archipiélago (otra luz)"
+en = "Archipelago (other light)"
+
+[[ambiente]]
+tema = 12
+es = "Zona urbana (otra luz)"
+en = "Urban area (other light)"
+
+[[ambiente]]
+tema = 13
+es = "Montañas (Tierra)"
+en = "Mountains (Earth)"
+
+[[ambiente]]
+tema = 14
+es = "Namek (otra luz)"
+en = "Namek (other light)"
+
+[[ambiente]]
+tema = 15
+es = "Mundo de Kaioshin (otra luz)"
+en = "Supreme Kai's world (other light)"

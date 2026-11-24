@@ -1,0 +1,25 @@
+# S3 / IW-A01 (L1/R1): cambio de saga con el flujo del ELF (0x2FE270 empuja 2, 5, 0xE, 10, 3, 1, 8; el area destino
+# es el ARGUMENTO DEL COMANDO 5 y la salida 1/2/0 = 180/240/20 cuadros). Necesita DOS areas abiertas: desde=30 deja la
+# mision 31 (saga 1) y L1 vuelve a la saga 0. PENDIENTE_JUEGO: no hay dorado PCSX2 del cambio (el de 150/200 parejas
+# es de la saga 0 y el estado del savestate no tiene otra area abierta, asi que L1/R1 no hacen nada alli).
+# El banco sin juego SI prueba la rama: tools\iw_mips\mapa_casos.py -> L1/R1 12/12 con areas 0x81.
+#   python tools\pruebas.py correr <copia> "docs\14_frentes\escenarios_pruebas\final\s3-iw-mapa\mapa_l1r1.toml"
+env = [
+  "DBZ3_TEST_MISIONES=4,reset,desde=30",
+  "DBZ3_TEST_RINGOUT=1",
+  "DBZ3_TEST_CFG=dbz3_iw_mapa_original=true",
+  'DBZ3_PS2_GAMES=D:\DBZ3HD\ps2_games',
+]
+pasos = [
+  "log \"misiones: iw: mapa de Dragon Mission\" 90",
+  "esperar 4000",
+  "captura a_mapa_saga1",
+  "log \"dbz3 iw mapa original: espejo listo\" 60",
+  "tecla 1 500",
+  "captura b_tras_l1",
+  "esperar 3500",
+  "captura c_saga0",
+  "tecla 3 500",
+  "esperar 3500",
+  "captura d_saga1",
+]

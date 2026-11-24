@@ -1,0 +1,48 @@
+# F8, B2-12 (fase final SOLO Z): menu Normal/Custom/Edit Skills de la rueda (10 comportamientos).
+# clave = B2-12
+# cvar  = dbz3_nave_rueda_datos=true (OFF de serie; no cambia el menu, deja el log del aro y el encuadre)
+# criterio = Custom elegido de verdad (lista de capsulas de la partida, log "menu Custom") y Edit Skills
+#            nativo (pantalla 22) con vuelta a la pantalla 5 conservando el luchador; rueda COM detras.
+# log   = "dbz3 nave: menu Custom (lista de capsulas Custom)" y "dbz3 hub: Edit Skills nativo abierto desde la nave"
+descripcion = "F8 B2-12: Custom y Edit Skills (ida y vuelta) desde el menu de la rueda"
+env = [
+  "DBZ3_PS2_GAMES=D:\\DBZ3HD\\ps2_games",
+  "DBZ3_TEST_MISIONES=5,reset",
+  "DBZ3_TEST_NAVE_TODO=1",
+  "DBZ3_TEST_CFG=dbz3_nave_rueda_datos=true",
+]
+pasos = [
+  'log "nave: entrar" 120',
+  "esperar 3500",
+  "tecla Space 900",
+  "tecla S 700",
+  "tecla Space 6000",
+  "tecla D 700", "tecla D 700", "tecla D 700",
+  "esperar 1200",
+  "tecla Space 1500",
+  'log "nave: pantalla menu" 30',
+  "captura 00_menu_normal",
+  "tecla S 500", "tecla S 500",
+  "tecla Space 300",
+  "esperar_pantalla 22 20",
+  "esperar 3000",
+  "captura 01_editskills_22",
+  "tecla Space 2500",
+  "captura 02_edit_capsules",
+  "tecla Space 1500",
+  "captura 03_capsula",
+  "tecla Space 1500",
+  "tecla Backspace 2200", "tecla P 2200", "tecla Backspace 2200", "tecla P 2200",
+  "tecla Backspace 2200", "tecla P 2200", "tecla Backspace 2200", "tecla P 2200",
+  "esperar_pantalla 5 20",
+  "esperar 3000",
+  "captura 04_vuelta_menu",
+  'log "Edit Skills nativo abierto desde la nave" 30',
+  "tecla S 500", "tecla S 500",
+  "tecla Space 1500",
+  'log "menu Custom" 30',
+  "captura 05_menu_custom",
+  "esperar 1500",
+  "captura 06_rueda_com",
+  'log "nave: pantalla rueda COM" 30',
+]

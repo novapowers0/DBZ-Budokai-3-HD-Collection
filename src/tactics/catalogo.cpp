@@ -107,7 +107,7 @@ bool CargarCatalogo(const std::string& ruta, const std::string& ruta_manifest, C
         int* dst = k[0] == 'a' ? d.voz_ataque : d.voz_ko;
         for (size_t j = 0; j < 3; ++j) {
           const int64_t v = a->get(j)->value_or<int64_t>(-1);
-          if (v < 0 || v > 63) err += d.id + ": voz." + k + " fuera de 0..63\n";
+          if (!sim::EnPapel(k[0] == 'a' ? sim::PapelVoz::Tecnica : sim::PapelVoz::Ko, int(v))) err += d.id + ": voz." + k + " fuera de su papel (tecnica 42..50, KO 19..25)\n";
           dst[j] = static_cast<int>(v);
         }
       }

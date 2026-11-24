@@ -3,7 +3,7 @@
 """tecnicas_tipo.py - tipo de entrada de cada tecnica (capsula #SKC) segun el #CCM del moveset de su duenyo (C4, item 3).
 
 Medido sobre los 44 nativos: en los bloques de entrada (starters) del #CCM, w0 = 1 -> "E + derecha", w0 = 2 -> "E + izquierda",
-y la condicion 0x0008 = definitiva (P+K+G+E en modo hiper). Escribe <juego>/ingame_ui/heroe_vista/tecnicas_tipo.txt con
+y la condicion 0x0008 = definitiva (P+K+G+E en modo hiper). Escribe <juego>/ingame_ui/heroe_vista/tecnicas_tipo_v2.txt con
 lineas `capsula tipo donante` (tipo 0 = definitiva, 1 = E+derecha, 2 = E+izquierda). Lo lee heroe.cpp (TipoTecnica):
 un unico ultimate activo, una tecnica en E+derecha y otra en E+izquierda.
   python tecnicas_tipo.py --juego D:/DBZ3HD/copia [--us carpeta_us]
@@ -19,7 +19,8 @@ import capsulas  # noqa: E402
 import roster_build as rb  # noqa: E402
 
 
-def tipos(afs):
+def tipos(afs, todos=None):
+    """cap -> (tipo, primer donante). Con `todos` (dict) tambien rellena (cap, donante) -> tipo (PM-32 TC-02: el tipo depende del donante)."""
     out = {}
     for cid in range(0, 44):
         dn = rb.IDS.get(cid)
@@ -38,6 +39,8 @@ def tipos(afs):
             t = 0 if c1 & 8 else 1 if w0 == 1 else 2 if w0 == 2 else None
             if t is not None:
                 out.setdefault(cap, (t, cid))
+                if todos is not None:
+                    todos.setdefault((cap, cid), t)
     return out
 
 
@@ -47,12 +50,15 @@ def main():
     ap.add_argument("--us")
     a = ap.parse_args()
     afs = rb.Afs(os.path.join(rb.us_dir(a.us), "data_cmn.afs"), tempfile.mkdtemp(prefix="tec_tipo_"))
-    t = tipos(afs)
+    todos = {}
+    t = tipos(afs, todos)
     d = os.path.join(a.juego, "ingame_ui", "heroe_vista")
     os.makedirs(d, exist_ok=True)
-    with open(os.path.join(d, "tecnicas_tipo.txt"), "w", encoding="utf-8", newline="\n") as f:
-        for cap in sorted(t):
-            f.write("%d %d %d\n" % (cap, t[cap][0], t[cap][1]))
+    destino = os.path.join(d, "tecnicas_tipo_v2.txt")
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", newline="\n", dir=d, delete=False) as f:
+        for (cap, cid), tipo in sorted(todos.items()):
+            f.write("%d %d %d\n" % (cap, tipo, cid))   # donante menor primero: mismo respaldo que antes
+    os.replace(f.name, destino)   # TiposListos no debe observar un fichero a medio escribir
     print("tecnicas_tipo: %d capsulas (%d definitivas, %d E+der, %d E+izq)" % (
         len(t), sum(1 for v in t.values() if v[0] == 0), sum(1 for v in t.values() if v[0] == 1),
         sum(1 for v in t.values() if v[0] == 2)))

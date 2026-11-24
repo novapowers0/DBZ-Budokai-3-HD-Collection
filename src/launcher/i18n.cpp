@@ -34,7 +34,51 @@ struct Entry {
   const char* fr;  // French (language id 4)
 };
 
+// R17: la seccion XV2 comparte claves para todos los idiomas, incluidos PT y JA.
+struct Xv2Entry { const char *es, *it, *de, *fr, *pt, *ja; };
+static const Xv2Entry kXv2[] = {
+    {"Xenoverse 2 · Modo Héroe", "Xenoverse 2 · Modalità Eroe", "Xenoverse 2 · Heldenmodus", "Xenoverse 2 · Mode Héros", "Xenoverse 2 · Modo Herói", "Xenoverse 2 · ヒーローモード"},
+    {"XV2 encontrado", "XV2 trovato", "XV2 gefunden", "XV2 trouvé", "XV2 encontrado", "XV2が見つかりました"},
+    {"Versión", "Versione", "Version", "Version", "Versão", "バージョン"},
+    {"No declarada por la instalación", "Non indicata dall'installazione", "Von der Installation nicht angegeben", "Non indiquée par l'installation", "Não informada pela instalação", "インストール情報に記載なし"},
+    {"XV2 no encontrado. Elige su carpeta o vuelve a buscar.", "XV2 non trovato. Scegli la sua cartella o ripeti la ricerca.", "XV2 nicht gefunden. Ordner wählen oder erneut suchen.", "XV2 introuvable. Choisis son dossier ou relance la recherche.", "XV2 não encontrado. Escolha a pasta ou busque novamente.", "XV2が見つかりません。フォルダーを選ぶか、再検索してください。"},
+    {"Carpeta de XV2...", "Cartella XV2...", "XV2-Ordner...", "Dossier XV2...", "Pasta do XV2...", "XV2のフォルダー..."},
+    {"Detectar automáticamente", "Rileva automaticamente", "Automatisch suchen", "Détection automatique", "Detectar automaticamente", "自動検出"},
+    {"Comprobar de nuevo", "Controlla di nuovo", "Erneut prüfen", "Vérifier à nouveau", "Verificar novamente", "再確認"},
+    {"Esa carpeta no contiene cpk/data.cpk. Elige la carpeta DB Xenoverse 2.", "Quella cartella non contiene cpk/data.cpk. Scegli la cartella DB Xenoverse 2.", "Dieser Ordner enthält kein cpk/data.cpk. Wähle den Ordner DB Xenoverse 2.", "Ce dossier ne contient pas cpk/data.cpk. Choisis le dossier DB Xenoverse 2.", "Essa pasta não contém cpk/data.cpk. Escolha a pasta DB Xenoverse 2.", "cpk/data.cpkがありません。DB Xenoverse 2フォルダーを選んでください。"},
+    {"Preparar / actualizar piezas XV2", "Prepara / aggiorna parti XV2", "XV2-Teile vorbereiten / erneuern", "Préparer / actualiser les pièces XV2", "Preparar / atualizar peças XV2", "XV2パーツを準備・更新"},
+    {"Falta el lector de XV2. Copia el Kit de modding completo junto al juego.", "Manca il lettore XV2. Copia il Kit di modding completo accanto al gioco.", "Der XV2-Leser fehlt. Kopiere das vollständige Modding-Kit neben das Spiel.", "Le lecteur XV2 manque. Copie le Kit de modding complet à côté du jeu.", "Falta o leitor do XV2. Copie o Kit de modding completo junto ao jogo.", "XV2の読み込みツールがありません。完全なModding Kitをゲームと同じ場所にコピーしてください。"},
+    {"Preparando piezas locales...", "Preparazione delle parti locali...", "Lokale Teile werden vorbereitet...", "Préparation des pièces locales...", "Preparando peças locais...", "ローカルパーツを準備中..."},
+    {"Piezas preparadas. Ya puedes activar XV2.", "Parti preparate. Ora puoi attivare XV2.", "Teile vorbereitet. Du kannst XV2 jetzt aktivieren.", "Pièces préparées. Tu peux activer XV2.", "Peças preparadas. Você já pode ativar o XV2.", "準備が完了しました。XV2を有効にできます。"},
+    {"No se pudo guardar. Usa una carpeta del juego donde puedas escribir.", "Impossibile salvare. Usa una cartella di gioco in cui puoi scrivere.", "Speichern fehlgeschlagen. Verwende einen beschreibbaren Spielordner.", "Enregistrement impossible. Utilise un dossier de jeu accessible en écriture.", "Não foi possível salvar. Use uma pasta do jogo com permissão de escrita.", "保存できませんでした。書き込み可能なゲームフォルダーを使用してください。"},
+    {"Falta Python o sus componentes. Usa el Python incluido en el Kit de modding.", "Manca Python o qualche componente. Usa il Python incluso nel Kit di modding.", "Python oder benötigte Komponenten fehlen. Nutze Python aus dem Modding-Kit.", "Python ou des composants nécessaires manquent. Utilise le Python du kit de modding.", "Falta o Python ou algum componente. Use o Python incluído no Kit de modding.", "Pythonまたは必要なコンポーネントがありません。Modding Kit付属のPythonを使用してください。"},
+    {"Faltan archivos. Comprueba la carpeta de XV2 y el Kit de modding.", "Mancano dei file. Controlla la cartella XV2 e il Kit di modding.", "Dateien fehlen. Prüfe den XV2-Ordner und das Modding-Kit.", "Des fichiers manquent. Vérifie le dossier XV2 et le Kit de modding.", "Faltam arquivos. Verifique a pasta do XV2 e o Kit de modding.", "ファイルが不足しています。XV2のフォルダーとModding Kitを確認してください。"},
+    {"No se pudieron leer las piezas. Verifica XV2 en Steam y vuelve a intentarlo.", "Impossibile leggere le parti. Verifica XV2 su Steam e riprova.", "Teile nicht lesbar. Überprüfe XV2 in Steam und versuche es erneut.", "Lecture des pièces impossible. Vérifie XV2 dans Steam et réessaie.", "Não foi possível ler as peças. Verifique o XV2 no Steam e tente novamente.", "パーツを読み込めませんでした。SteamでXV2のファイルを確認してから再試行してください。"},
+    {"Detalles de la preparación", "Dettagli della preparazione", "Details zur Vorbereitung", "Détails de la préparation", "Detalhes da preparação", "準備の詳細"},
+    {"Activar piezas XV2 (experimental)", "Attiva parti XV2 (sperimentale)", "XV2-Teile aktivieren (experimentell)", "Activer les pièces XV2 (expérimental)", "Ativar peças XV2 (experimental)", "XV2パーツを有効にする（試験機能）"},
+    {"Opcional. Apagado: piezas de Budokai 3. La preparación lee tu XV2 y actualiza el catálogo local; los modelos se crean al elegirlos.", "Facoltativo. Disattivato: parti di Budokai 3. La preparazione legge il tuo XV2 e aggiorna il catalogo locale; i modelli vengono creati quando li scegli.", "Optional. Aus: Budokai-3-Teile. Die Vorbereitung liest dein XV2 und aktualisiert den lokalen Katalog; Modelle werden bei der Auswahl erstellt.", "Facultatif. Désactivé : pièces de Budokai 3. La préparation lit ton XV2 et actualise le catalogue local ; les modèles sont créés à la sélection.", "Opcional. Desligado: peças de Budokai 3. A preparação lê seu XV2 e atualiza o catálogo local; os modelos são criados ao serem escolhidos.", "任意機能です。無効時はBudokai 3のパーツを使用します。準備では自分のXV2を読み込み、ローカル一覧を更新します。モデルは選択時に作成されます。"},
+    {"Cierra la partida para cambiar la carpeta o actualizar las piezas.", "Chiudi la partita per cambiare cartella o aggiornare le parti.", "Beende das Spiel, um den Ordner zu ändern oder Teile zu aktualisieren.", "Ferme la partie pour changer de dossier ou actualiser les pièces.", "Feche a partida para mudar a pasta ou atualizar as peças.", "フォルダーの変更やパーツの更新は、プレイを終了してから行ってください。"},
+};
+
 static const Entry kTable[] = {
+    // START de Dragon Universe: acceso a la Habitacion del Heroe.
+    {"Habitación", "Stanza", "Zimmer", "Chambre"},
+    // Xenoverse 2: panel de integracion del launcher
+    {"Xenoverse 2 encontrado en: ", "Xenoverse 2 trovato in: ", "Xenoverse 2 gefunden in: ", "Xenoverse 2 trouvé dans : "},
+    {"Xenoverse 2 no encontrado. Si lo tienes instalado, pulsa \"Buscar carpeta...\" y elige su carpeta (la que se llama \"DB Xenoverse 2\").", "Xenoverse 2 non trovato. Se lo hai installato, premi \"Cerca cartella...\" e scegli la sua cartella (quella chiamata \"DB Xenoverse 2\").", "Xenoverse 2 nicht gefunden. Wenn es installiert ist, klicke auf \"Ordner suchen...\" und wähle seinen Ordner (den mit dem Namen \"DB Xenoverse 2\").", "Xenoverse 2 introuvable. S'il est installé, clique sur \"Chercher le dossier...\" et choisis son dossier (celui nommé \"DB Xenoverse 2\")."},
+    {"Buscar carpeta...", "Cerca cartella...", "Ordner suchen...", "Chercher le dossier..."},
+    {"Buscar automaticamente", "Cerca automaticamente", "Automatisch suchen", "Chercher automatiquement"},
+    {"Esa carpeta no parece Xenoverse 2: no contiene cpk\\data.cpk. Elige la carpeta \"DB Xenoverse 2\".", "Quella cartella non sembra Xenoverse 2: non contiene cpk\\data.cpk. Scegli la cartella \"DB Xenoverse 2\".", "Dieser Ordner scheint nicht Xenoverse 2 zu sein: er enthält kein cpk\\data.cpk. Wähle den Ordner \"DB Xenoverse 2\".", "Ce dossier ne semble pas être Xenoverse 2 : il ne contient pas cpk\\data.cpk. Choisis le dossier \"DB Xenoverse 2\"."},
+    {"Usar razas y piezas de Xenoverse 2 en el creador del Héroe", "Usa razze e pezzi di Xenoverse 2 nel creatore dell'Eroe", "Rassen und Teile von Xenoverse 2 im Helden-Editor verwenden", "Utiliser les races et pièces de Xenoverse 2 dans le créateur du Héros"},
+    {"Usa tu propia copia de Xenoverse 2 para ofrecer sus razas y piezas al crear tu Heroe. No se reparte ningun arte del juego.", "Usa la tua copia di Xenoverse 2 per offrire le sue razze e i suoi pezzi quando crei il tuo Eroe. Non viene distribuita alcuna grafica del gioco.", "Nutzt deine eigene Kopie von Xenoverse 2, um dessen Rassen und Teile beim Erstellen deines Helden anzubieten. Es wird keine Spielgrafik mitgeliefert.", "Utilise ta propre copie de Xenoverse 2 pour proposer ses races et pièces lors de la création de ton Héros. Aucun visuel du jeu n'est distribué."},
+    // Boton del Kit de Modding (pestana Personajes): KIT-15
+    {"Kit de Modding", "Kit di Modding", "Modding-Kit", "Kit de modding"},
+    {"Crea trajes, personajes, escenarios y técnicas paso a paso.", "Crea costumi, personaggi, scenari e tecniche passo dopo passo.", "Erstelle Outfits, Charaktere, Stages und Techniken Schritt für Schritt.", "Crée des costumes, personnages, stages et techniques pas à pas."},
+    {"Abriendo el Kit...", "Apertura del Kit...", "Kit wird geöffnet...", "Ouverture du Kit..."},
+    {"Kit abierto en su propia ventana.", "Kit aperto in una finestra a parte.", "Kit in eigenem Fenster geöffnet.", "Kit ouvert dans sa propre fenêtre."},
+    {"No se encontro el Kit (falta mod center hd\\modkit_gui.py). Descarga el \"Kit de modding\" (DBZ3HD-Kit-Modding.zip) y copialo junto a dbz3.exe.", "Kit non trovato (manca mod center hd\\modkit_gui.py). Scarica il \"Kit di modding\" (DBZ3HD-Kit-Modding.zip) e copialo accanto a dbz3.exe.", "Das Kit wurde nicht gefunden (mod center hd\\modkit_gui.py fehlt). Lade das „Modding-Kit“ (DBZ3HD-Kit-Modding.zip) herunter und kopiere es neben dbz3.exe.", "Kit introuvable (mod center hd\\modkit_gui.py manquant). Télécharge le « Kit de modding » (DBZ3HD-Kit-Modding.zip) et copie-le à côté de dbz3.exe."},
+    {"No se encontro Python 3. El \"Kit de modding\" trae uno listo (carpeta python): copialo junto a dbz3.exe, o instala Python 3 desde python.org.", "Python 3 non trovato. Il \"Kit di modding\" ne include uno pronto (cartella python): copialo accanto a dbz3.exe, oppure installa Python 3 da python.org.", "Python 3 wurde nicht gefunden. Das „Modding-Kit“ bringt eines mit (Ordner python): kopiere es neben dbz3.exe oder installiere Python 3 von python.org.", "Python 3 introuvable. Le « Kit de modding » en fournit un prêt à l'emploi (dossier python) : copie-le à côté de dbz3.exe, ou installe Python 3 depuis python.org."},
+    {"No se pudo abrir el Kit. Mira el registro (carpeta logs).", "Impossibile aprire il Kit. Controlla il registro (cartella logs).", "Das Kit konnte nicht geöffnet werden. Siehe Protokoll (Ordner logs).", "Impossible d'ouvrir le Kit. Consulte le journal (dossier logs)."},
     // Dragon Tactics (dsTAC): banda del paso de preparacion a combate
     {"¡COMBATE!", "COMBATTIMENTO!", "KAMPF!", "COMBAT !"},
     // Widescreen (frente 05, studies 6): aspecto en pantallas anchas
@@ -804,6 +848,7 @@ static const Entry kTable[] = {
       {"Modelos de la comunidad (.amb / .amo + .amt) de 'modding resources'.", "Modelli della comunità (.amb / .amo + .amt) da 'modding resources'.", "Community-Modelle (.amb / .amo + .amt) aus 'modding resources'.", "Modèles de la communauté (.amb / .amo + .amt) de 'modding resources'."},
       {"Modelo, voces, gritos, golpes, tecnicas y definitiva de Infinite World (con modo hiper).", "Modello, voci, urla, colpi, tecniche e ultimate di Infinite World (con modalità iper).", "Modell, Stimmen, Schreie, Angriffe, Techniken und Ultimate aus Infinite World (mit Hyper-Modus).", "Modèle, voix, cris, coups, techniques et ultime d'Infinite World (avec mode hyper)."},
       {"Modelos HD de Heroes (boca, 7 caras, rampas); golpes de Shin Budokai o del donante.", "Modelli HD di Heroes (bocca, 7 volti, rampe); colpi di Shin Budokai o del donatore.", "HD-Modelle aus Heroes (Mund, 7 Gesichter, Rampen); Angriffe aus Shin Budokai oder vom Spender.", "Modèles HD de Heroes (bouche, 7 visages, rampes) ; coups de Shin Budokai ou du donneur."},
+      {"El juego admite hasta 8 formas por personaje. Tag Team usa solo las 6 primeras caras.", "Il gioco supporta fino a 8 forme per personaggio. Tag Team usa solo i primi 6 volti.", "Das Spiel unterstützt bis zu 8 Formen pro Charakter. Tag Team nutzt nur die ersten 6 Gesichter.", "Le jeu prend jusqu'à 8 formes par personnage. Le Tag Team n'utilise que les 6 premiers visages."},
       {"Modelos de PSP con sus formas; golpes, combos y camara de Shin Budokai (o del donante).", "Modelli PSP con le loro forme; colpi, combo e camera di Shin Budokai (o del donatore).", "PSP-Modelle mit ihren Formen; Angriffe, Combos und Kamera aus Shin Budokai (oder vom Spender).", "Modèles PSP avec leurs formes ; coups, combos et caméra de Shin Budokai (ou du donneur)."},
       {"Importado. Ya aparece abajo en \"Instalados\"; se anade al juego al pulsar JUGAR.", "Importato. Ora appare sotto \"Installati\"; viene aggiunto al gioco premendo PLAY.", "Importiert. Er steht unten unter \"Installiert\" und wird beim Drücken von PLAY ins Spiel übernommen.", "Importé. Il apparaît ci-dessous dans \"Installés\" et sera ajouté au jeu en appuyant sur PLAY."},
       {"No se pudo importar. Abre 'Detalles tecnicos' para ver el motivo.", "Importazione non riuscita. Apri 'Dettagli tecnici' per vedere il motivo.", "Import fehlgeschlagen. Öffne 'Technische Details', um den Grund zu sehen.", "Échec de l'import. Ouvrez 'Détails techniques' pour voir la raison."},
@@ -1088,6 +1133,7 @@ static const Entry kTable[] = {
     {"Si el problema persiste, comparte el registro para diagnostico.", "Se il problema persiste, condividi il registro per la diagnosi.", "Wenn das Problem weiterhin besteht, teile das Protokoll zur Diagnose.", "Si le problème persiste, partage le journal pour le diagnostic."},
     {"DBZ Budokai 3 HD Collection se cerro inesperadamente (terminacion del runtime). Consulta el registro en logs/ junto al juego.", "DBZ Budokai 3 HD Collection si è chiuso in modo imprevisto (terminazione del runtime). Consulta il registro in logs/ accanto al gioco.", "DBZ Budokai 3 HD Collection wurde unerwartet beendet (Laufzeitabbruch). Sieh dir das Protokoll in logs/ neben dem Spiel an.", "DBZ Budokai 3 HD Collection s'est fermé de façon inattendue (arrêt du runtime). Consulte le journal dans logs/ à côté du jeu."},
     {"DBZ Budokai 3 HD Collection se cerro por un error grave (normalmente de la tarjeta grafica).", "DBZ Budokai 3 HD Collection si è chiuso per un errore grave (di solito della scheda grafica).", "DBZ Budokai 3 HD Collection wurde wegen eines schweren Fehlers beendet (meist durch die Grafikkarte).", "DBZ Budokai 3 HD Collection s'est fermé à cause d'une erreur grave (généralement liée à la carte graphique)."},
+    {"DBZ Budokai 3 HD Collection se cerro por este error:", "DBZ Budokai 3 HD Collection si è chiuso per questo errore:", "DBZ Budokai 3 HD Collection wurde wegen dieses Fehlers beendet:", "DBZ Budokai 3 HD Collection s'est fermé à cause de cette erreur :"},
     {"Prueba en el lanzador: Motor grafico -> Vulkan, y actualiza el driver de la grafica. Si sigue, comparte el registro.", "Prova nel launcher: Motore grafico -> Vulkan, e aggiorna il driver della scheda grafica. Se continua, condividi il registro.", "Probiere im Launcher: Grafik-API -> Vulkan, und aktualisiere den Grafiktreiber. Wenn es weiterhin auftritt, teile das Protokoll.", "Essaie dans le launcher : Moteur graphique -> Vulkan, et mets à jour le pilote graphique. Si ça continue, partage le journal."},
     {"el mod '", "la mod '", "der Mod '", "le mod '"},
     {"' ya instalado está abierto en otro programa. Cierra el juego (y el Mod Kit o la carpeta mods en el Explorador) y vuelve a instalarlo.", "' già installata è aperta in un altro programma. Chiudi il gioco (e il Mod Kit o la cartella mods in Esplora risorse) e installala di nuovo.", "' ist bereits installiert und in einem anderen Programm geöffnet. Schließe das Spiel (und das Mod Kit oder den Mods-Ordner im Explorer) und installiere ihn erneut.", "' déjà installé est ouvert dans un autre programme. Ferme le jeu (et le Mod Kit ou le dossier mods dans l'Explorateur) puis réinstalle-le."},
@@ -1100,6 +1146,12 @@ static const Entry kTable[] = {
     {"Falta", "Manca", "Fehlt", "Manquante"},
     {"Personajes para el importador", "Personaggi per l'importatore", "Charaktere für den Importer", "Personnages pour l'importateur"},
     {"Elegir ISO", "Scegli ISO", "ISO wählen", "Choisir l'ISO"},
+    {"Carpeta de tus juegos", "Cartella dei tuoi giochi", "Ordner deiner Spiele", "Dossier de tes jeux"},
+    {"Elegir carpeta", "Scegli cartella", "Ordner wählen", "Choisir le dossier"},
+    {"Si ya tienes tus ISO juntas en una carpeta, elígela y se encuentran solas. No se copia nada.", "Se hai già le tue ISO insieme in una cartella, sceglila e verranno trovate. Non viene copiato nulla.", "Wenn deine ISOs schon zusammen in einem Ordner liegen, wähle ihn und sie werden gefunden. Es wird nichts kopiert.", "Si tes ISO sont déjà réunies dans un dossier, choisis-le et elles seront trouvées. Rien n'est copié."},
+    {"Esa carpeta ya no existe: se usa la de siempre.", "Quella cartella non esiste più: si usa quella predefinita.", "Dieser Ordner existiert nicht mehr: Es wird der Standardordner verwendet.", "Ce dossier n'existe plus : le dossier par défaut est utilisé."},
+    {"La de siempre: ps2_games, junto al juego.", "Predefinita: ps2_games, accanto al gioco.", "Standard: ps2_games, neben dem Spiel.", "Par défaut : ps2_games, à côté du jeu."},
+    {"Volver a la de siempre", "Torna alla predefinita", "Zurück zum Standard", "Revenir au dossier par défaut"},
     {"¡Listo! Ya puedes jugarlo.", "Fatto! Ora puoi giocarlo.", "Fertig! Du kannst es jetzt spielen.", "C'est prêt ! Tu peux y jouer maintenant."},
     {"Busca el archivo .iso de ese juego de PS2 (tu copia). No se copia nada.", "Cerca il file .iso di quel gioco PS2 (la tua copia). Non viene copiato nulla.", "Suche die .iso-Datei dieses PS2-Spiels (deine Kopie). Es wird nichts kopiert.", "Cherche le fichier .iso de ce jeu PS2 (ta copie). Rien n'est copié."},
     // i18n sweep 2026-10-17 (trans2): textos que caian al ingles en fr/de/it
@@ -1337,6 +1389,14 @@ const PtJaEntry kNovedadesPtJa[] = {
     {"Jeice de las Fuerzas Especiales Ginyu. Modelo de @ArielPVB. Grita con sus voces de Heroes World Mission (incluidas en el mod).", "Jeice das Forças Especiais Ginyu. Modelo de @ArielPVB. Grita com as suas vozes de Heroes World Mission (incluídas no mod).", "ギニュー特戦隊のジース。モデル：@ArielPVB。ヒーローズ ワールドミッションの掛け声入り（MODに同梱）。"},
     {"Burter", "Burter", "バータ"},
     {"Burter de las Fuerzas Especiales Ginyu. Modelo de @ArielPVB. Grita con sus voces de Heroes World Mission (incluidas en el mod).", "Burter das Forças Especiais Ginyu. Modelo de @ArielPVB. Grita com as suas vozes de Heroes World Mission (incluídas no mod).", "ギニュー特戦隊のバータ。モデル：@ArielPVB。ヒーローズ ワールドミッションの掛け声入り（MODに同梱）。"},
+    // Boton del Kit de Modding (pestana Personajes): KIT-15
+    {"Kit de Modding", "Kit de Modding", "MODキット"},
+    {"Crea trajes, personajes, escenarios y técnicas paso a paso.", "Crie roupas, personagens, cenários e técnicas passo a passo.", "衣装、キャラクター、ステージ、技を順番に作れる。"},
+    {"Abriendo el Kit...", "Abrindo o Kit...", "キットを開いています..."},
+    {"Kit abierto en su propia ventana.", "Kit aberto em uma janela própria.", "キットを別ウィンドウで開きました。"},
+    {"No se encontro el Kit (falta mod center hd\\modkit_gui.py). Descarga el \"Kit de modding\" (DBZ3HD-Kit-Modding.zip) y copialo junto a dbz3.exe.", "Kit não encontrado (falta mod center hd\\modkit_gui.py). Baixe o \"Kit de modding\" (DBZ3HD-Kit-Modding.zip) e copie-o para junto do dbz3.exe.", "キットが見つかりません（mod center hd\\modkit_gui.py がありません）。「MODキット」（DBZ3HD-Kit-Modding.zip）をダウンロードして、dbz3.exe の隣にコピーしてください。"},
+    {"No se encontro Python 3. El \"Kit de modding\" trae uno listo (carpeta python): copialo junto a dbz3.exe, o instala Python 3 desde python.org.", "Python 3 não encontrado. O \"Kit de modding\" traz um pronto (pasta python): copie-o para junto do dbz3.exe ou instale o Python 3 em python.org.", "Python 3 が見つかりません。「MODキット」には用意済みのもの（python フォルダ）が入っています。dbz3.exe の隣にコピーするか、python.org から Python 3 をインストールしてください。"},
+    {"No se pudo abrir el Kit. Mira el registro (carpeta logs).", "Não foi possível abrir o Kit. Veja o registro (pasta logs).", "キットを開けませんでした。ログ（logs フォルダ）を確認してください。"},
 };
 
 const char* PtJa(const char* es, bool pt) {
@@ -1541,6 +1601,11 @@ const char* Extra(const char* en, int idioma) {
 }
 
 const char* T(const char* es, const char* en) {
+  if (g_ui_lang != 1 && g_ui_lang != 5) {
+    for (const auto& e : kXv2) if (std::strcmp(e.es, es) == 0)
+      return g_ui_lang == 6 ? e.it : g_ui_lang == 3 ? e.de : g_ui_lang == 4 ? e.fr
+           : g_ui_lang == 9 ? e.pt : g_ui_lang == 2 ? e.ja : en;
+  }
   switch (g_ui_lang) {
     case 5:  // Spanish
       return Espanol(es);

@@ -21,6 +21,9 @@ Uso (desde la carpeta del proyecto):
       convierte ademas las rampas de sombreado de B2 (sombra en el alfa) a rampas RGB de B3 HD; apagado
       por defecto porque cambia el resultado del conversor (subir VERSION si se adopta).
   python tools\escenarios_convertir.py comprobar                   # autocomprobacion con los 13 pares B3 PS2/HD
+  python tools\escenarios_convertir.py auditar [grupos...]         # banco sin juego de las transiciones B2
+      separa los dos #AMC (camara y trayectoria), valida ambos #ACC y publica duracion
+      prevista frente a la medida en las tomas originales (--golden). No abre el juego.
 
 Formato (medido contra los 13 pares nativos B3 PS2 GH <-> HD; detalle en docs/14_frentes/escenarios.md):
   bin de escenario = #AMB[#ZDD, #CAD, #CAS, #SPX, #AMB de 641 casillas]
@@ -34,12 +37,12 @@ Formato (medido contra los 13 pares nativos B3 PS2 GH <-> HD; detalle en docs/14
 """
 import argparse
 import bisect
+import json
+import math
 import os
 import re
 import struct
-import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
@@ -53,8 +56,6 @@ import iso  # noqa: E402
 import ps2hd  # noqa: E402
 import rampas  # noqa: E402
 
-import swap_b3  # noqa: E402  (xbcompress: "mod center hd/tools" en el Kit y la release, el del XDK en el proyecto)
-XBC, XBD = Path(swap_b3.XBCOMPRESS), Path(swap_b3.XBDECOMPRESS)
 ENTRADA_BASE = 5000          # data_cmn.afs 5000-5199: reservado para escenarios (no pisa nada)
 REGISTRO_N = 641
 
@@ -557,14 +558,8 @@ def entrada_afs(ruta, i):
 
 
 def lzx(datos, comprimir):
-    with tempfile.TemporaryDirectory() as d:
-        src, dst = os.path.join(d, "a"), os.path.join(d, "b")
-        open(src, "wb").write(datos)
-        args = [str(XBC), "/N:2048", src, dst] if comprimir else [str(XBD), src, dst]
-        subprocess.run(args, capture_output=True, timeout=600)
-        if not os.path.exists(dst):
-            raise RuntimeError("xbcompress/xbdecompress fallo")
-        return open(dst, "rb").read()
+    from kit import base  # noqa: PLC0415  (LZX comun del Kit)
+    return base.lzx_bytes(datos, comprimir, timeout=600)
 
 
 def hd_nativo(i):
@@ -910,6 +905,21 @@ def camaras_transicion(mdd):
     return out
 
 
+def amc_transicion(mdd):
+    """Devuelve (camaras, trayectorias) del objeto de la variante 0 de un #MDD de B2.
+
+    El objeto declara dos #AMC y los dos son datos de la transicion, con papeles
+    distintos: el primero es la camara del suceso y el segundo la trayectoria de
+    los luchadores (destino del hueso en coordenadas de mundo). `camaras_transicion`
+    devuelve los dos en orden, que es lo que necesita el B2TZ v2 (CAMR/TRAY); aqui
+    se separan para que el conversor no pueda volver a confundirlos. Solo el
+    primero puede ir a la lista de camaras del #ZDD: el segundo, si se instala como
+    clip de camara (lo hacia la zona B), el guion lo muestrea como camara.
+    """
+    bloques = camaras_transicion(mdd)
+    return bloques[:1], bloques[1:2], bloques[2:]
+
+
 def objetos_zona_b(mdd):
     """Zona B: el objeto de la variante 1 pasa a ser el objeto 0 del #ZDD (el juego dibuja el objeto 0; la
     variante 1 es la otra zona del escenario). Intercambia las dos primeras entradas de la lista de objetos
@@ -1018,6 +1028,11 @@ def nieve_g7(fuente, spx, reg):
 
 # ZB 25/10: grupos de B2 con cambio de zona -> cuantos clips del 1.er #AMC del objeto 0 dura la escena (medido en el #SPX original:
 # camara clip 0, cambio de zona (llamada 0x40) al acabar su espera, camara clip 1...; Llanura sigue con el clip 2). Duran lo que sus clips.
+# Banco 2026-11-10 (auditar --golden): la camara del recurso reproduce la toma original
+# con distancia 0,000-0,008 en 30/120/300; el desfase medido es 28,8 (Nieve) y 38,4
+# (Ciudad, que a los 30 aun no ha entrado: alli manda la camara de combate). Nieve:
+# 28,8+420+270 = 718,8 frente a 719 (dif -0,2). Ciudad: 38,4+280 = 318,4 y 39,2 de
+# cola tras la ultima clave de camara (residual, no un defecto del conversor).
 ESCENA_ZONA = {7: 2, 8: 2}   # fuera: g0 Base (su guion cambia a los 750 cuadros; clip 0 = 604 y entre medias una camara fija, builtin 0x31, sin decodificar) y g4 Llanura (sus camaras de suceso enseñan huecos negros: el mar y el horizonte de la zona B no se dibujan)
 
 
@@ -1039,14 +1054,22 @@ def escenario_b2(fuente, grupo, donante=44, zona=0, escala=1.0):
         mdd, saneadas = sanear_anims_raiz_b2(mdd)
         mdd, sucesos = sin_camaras_suceso(mdd)
         print("arreglos B2 zona B: %d raices de la variante A fuera, %d de la B quietas en su cuadro 0, "
-              "%d camaras del objeto de la variante B fuera, %d animaciones de raiz desactivadas, "
-              "%d camaras de transicion" % (quitadas, quietas, sucesos, saneadas, len(transicion)))
+              "%d camaras del objeto de la variante B fuera, %d animaciones de raiz desactivadas; "
+              "objeto 0 original: %d #AMC (camara; la trayectoria va aparte en el B2TZ)"
+              % (quitadas, quietas, sucesos, saneadas, len(transicion)))
+        if len(transicion) != 2:
+            print("aviso: el objeto 0 del grupo %d trae %d #AMC; el B2TZ v2 espera camara+trayectoria"
+                  % (grupo, len(transicion)))
         nat = hd_nativo(donante)
         k = hijos_amb(nat, ">")
         spx = nat[k[3][0]:k[3][0] + k[3][1]]
         reg = completar_registro(nat[k[4][0]:k[4][0] + k[4][1]], donante)
         camaras = []
-        for b in transicion:
+        # Solo el primer #AMC es camara. El segundo es la trayectoria (destino del
+        # hueso en mundo): la carga el B2TZ v2 (CAMR/TRAY) y la aplica el motor de
+        # transicion. Instalarla aqui como clip de camara hacia que el guion la
+        # muestrease como camara (defecto de la zona B, corregido 2026-11-10).
+        for b in transicion[:1]:
             try:
                 hd = ps2hd.convert_block(b)
             except ps2hd.Unsupported:
@@ -1589,6 +1612,183 @@ def cmd_mod(a):
         Path(a.bin).write_bytes(datos_cache)     # cache canonico: sin el postproceso de rampas
 
 
+def _acc_be(b):
+    """Lee un #ACC big-endian a la estructura que consume escenarios_b2_recursos.h."""
+    if len(b) < 32 or b[:4] != b"#ACC":
+        raise ValueError("no es #ACC")
+    n, t = struct.unpack_from(">II", b, 16)
+    if not 1 <= n <= 64 or t < 32 or t + 16 * n > len(b):
+        raise ValueError("tabla de clips invalida")
+    out = []
+    for i in range(n):
+        tipo, _u, cuadros, data = struct.unpack_from(">4I", b, t + 16 * i)
+        if tipo not in (0x0D, 0x1D) or not 1 <= cuadros <= 10000:
+            raise ValueError("clip invalido")
+        pistas = []
+        for j in range(4 if tipo & 0x10 else 3):
+            p = struct.unpack_from(">I", b, data + 4 * j)[0]
+            nk = struct.unpack_from(">I", b, p + 8)[0]
+            paso, comp = (16, 3) if j < 2 else (8, 1)
+            if not p or not 1 <= nk <= 20000 or p + 12 + nk * paso > len(b):
+                raise ValueError("pista fuera de limites")
+            claves = []
+            for k in range(nk):
+                q = p + 12 + paso * k
+                f = struct.unpack_from(">I", b, q)[0]
+                v = struct.unpack_from(">" + str(comp) + "f", b, q + 4)
+                if f >= cuadros or (k and f <= claves[-1][0]) or not all(math.isfinite(x) for x in v):
+                    raise ValueError("claves de pista invalidas")
+                claves.append((f,) + tuple(v))
+            pistas.append({"comp": comp, "claves": claves})
+        out.append({"tipo": tipo, "cuadros": cuadros, "pistas": pistas})
+    return out
+
+
+def _muestrear_acc(clip, tiempo):
+    f = min(max(float(tiempo), 0.0), float(clip["cuadros"] - 1))
+    out = []
+    for pista in clip["pistas"]:
+        claves, comp = pista["claves"], pista["comp"]
+        lo, hi = 0, len(claves)
+        while lo < hi:
+            medio = (lo + hi) // 2
+            if f < float(claves[medio][0]):
+                hi = medio
+            else:
+                lo = medio + 1
+        if lo == 0:
+            v = list(claves[0][1:])
+        elif lo >= len(claves):
+            v = list(claves[-1][1:])
+        else:
+            a, c = claves[lo - 1], claves[lo]
+            u = (f - float(a[0])) / float(c[0] - a[0])
+            v = [a[1 + k] * (1 - u) + c[1 + k] * u for k in range(comp)]
+        out.append([round(x, 6) for x in v + [0.0] * (3 - len(v))])
+    return out
+
+
+# Preludio medido en la toma original (solB2X 7/11): reloj del suceso en el que el
+# primer clip de camara vale su clave 0. No sale de la camara sola: lo fija el
+# guion. Solo se usa para contrastar la duracion; no lo consume el motor.
+PRELUDIO_B2 = {7: 28.8, 8: 38.4}
+# Duracion del suceso original (B2_TRANSICIONES.md: 719 nieve; FIN de la toma
+# fresca de Ciudad). Denominador del criterio de B2-14/B2-15.
+DURACION_B2 = {7: 719.0, 8: 357.6}
+
+
+def auditar_transicion(fuente, grupo, base_golden=None):
+    """Banco sin juego de una transicion B2: camara, trayectoria y duracion esperada."""
+    import escenarios_transicion_b2 as b2t
+    mdd, mad, mas, spx = fuente.piezas(grupo)
+    camaras, trayectorias, extra = amc_transicion(mdd)
+    if not camaras:
+        raise SystemExit("el grupo %d no tiene #AMC de camara" % grupo)
+    cam_hd = bytes(ps2hd.convert_block(camaras[0]))
+    b2t.validar_acc(cam_hd)
+    cam = _acc_be(cam_hd)
+    tray = []
+    if trayectorias:
+        tray_hd = bytes(ps2hd.convert_block(trayectorias[0]))
+        b2t.validar_acc(tray_hd)
+        tray = _acc_be(tray_hd)
+    clips_escena = ESCENA_ZONA.get(grupo, 0)
+    dur_cam = sum(c["cuadros"] for c in cam[:clips_escena])
+    informe = {
+        "grupo": grupo, "entrada": fuente.escenarios()[grupo],
+        "amc": 1 + (1 if trayectorias else 0) + len(extra),
+        "spx_bytes": None if spx is None else len(spx),
+        "camara_cuadros": [c["cuadros"] for c in cam],
+        "trayectoria_cuadros": [c["cuadros"] for c in tray],
+        "clips_escena": clips_escena,
+        "camara_escena_cuadros": dur_cam,
+        "preludio": PRELUDIO_B2.get(grupo),
+        "duracion_original": DURACION_B2.get(grupo),
+        "duracion_prevista": None if grupo not in PRELUDIO_B2 else round(PRELUDIO_B2[grupo] + dur_cam, 2),
+    }
+    if informe["duracion_prevista"] is not None and informe["duracion_original"]:
+        informe["diferencia_cuadros"] = round(informe["duracion_prevista"] - informe["duracion_original"], 2)
+    # Centinelas: el original usa -100000 para decir "sin destino de hueso aqui".
+    # El motor debe dejar de aplicar la trayectoria en ese punto, no teleportar.
+    informe["centinelas"] = [
+        {"clip": i, "cuadro": k[0], "valor": list(k[1:])}
+        for i, c in enumerate(tray) for k in c["pistas"][0]["claves"] if any(abs(v) >= 100000 for v in k[1:])]
+    informe["trayectoria_final"] = [
+        {"clip": i, "cuadros": c["cuadros"], "destino": _muestrear_acc(c, c["cuadros"] - 1)[0]}
+        for i, c in enumerate(tray)]
+    informe["camara_30_120_300"] = {str(f): _muestrear_acc(cam[0], f) for f in (30, 120, 300)}
+    # Comprobaciones con denominador (no basta un codigo de salida 0).
+    comp = {
+        "camara_tiene_clips_de_escena": len(cam) >= clips_escena,   # 0 = grupo sin cambio de zona por ESCENA_ZONA
+        "trayectoria_cubre_las_fases": len(tray) >= len(cam),   # 7 clips en Nieve: una fase tiene dos huesos
+        "sin_centinelas_en_el_ultimo_clip": not any(
+            abs(v) >= 100000 for c in tray[-1:] for k in c["pistas"][0]["claves"] for v in k[1:]),
+    }
+    if informe["duracion_prevista"] is not None and informe["duracion_original"]:
+        comp["duracion_dentro_de_2"] = abs(informe["diferencia_cuadros"]) <= 2
+    informe["comprobaciones"] = comp
+    informe["comprobaciones_ok"] = sum(1 for v in comp.values() if v)
+    informe["comprobaciones_total"] = len(comp)
+    # Contraste con la toma original ya grabada, si esta en disco (no la graba esto).
+    if base_golden:
+        g = Path(base_golden)
+        tomas = sorted(g.glob("original_g%d_e*" % grupo)) if g.is_dir() else []
+        if tomas:
+            toma = tomas[-1]
+            informe["golden"] = str(toma)
+            comparacion = {}
+            for f in (30, 120, 300):
+                ruta = toma / ("cuadro_%d.json" % f)
+                if not ruta.exists():
+                    continue
+                d = json.loads(ruta.read_text(encoding="utf-8"))
+                ojo = d.get("escena_original", {}).get("camaras", {}).get("actual", {}).get("ojo")
+                if not ojo:
+                    continue
+                reloj = float(d.get("reloj", f))   # la toma original muestrea cada 1,2 relojes
+                mejor = None
+                for ci, c in enumerate(cam):
+                    for t10 in range(0, int(c["cuadros"] * 10) + 1):
+                        t = t10 / 10.0
+                        v = _muestrear_acc(c, t)[0]
+                        dist = math.dist(v, ojo)
+                        if mejor is None or dist < mejor[0]:
+                            mejor = (dist, ci, t)
+                comparacion[str(f)] = {"distancia": round(mejor[0], 3), "clip": mejor[1],
+                                       "tiempo": mejor[2], "reloj": round(reloj, 2),
+                                       "desfase": round(reloj - mejor[2], 2)}
+            informe["golden_camara"] = comparacion
+    return informe
+
+
+def cmd_auditar(a):
+    fuente = IsoB2(a.iso, a.juego)
+    grupos = a.grupos or sorted(ESCENA_ZONA)
+    informe = {"juego": JUEGOS[a.juego][0], "escenarios": {}}
+    for g in grupos:
+        datos = auditar_transicion(fuente, g, a.golden)
+        informe["escenarios"][str(g)] = datos
+        print("grupo %d: camara %s, trayectoria %s, escena %d clips=%d, prevista=%s original=%s dif=%s, "
+              "comprobaciones %d/%d"
+              % (g, datos["camara_cuadros"], datos["trayectoria_cuadros"], datos["clips_escena"],
+                 datos["camara_escena_cuadros"], datos["duracion_prevista"], datos["duracion_original"],
+                 datos.get("diferencia_cuadros"), datos["comprobaciones_ok"], datos["comprobaciones_total"]))
+        for k, v in datos["comprobaciones"].items():
+            if not v:
+                print("  FALLA: %s" % k)
+        for c in datos["centinelas"]:
+            print("  centinela: clip %d cuadro %d = %s (sin destino de hueso)" % (c["clip"], c["cuadro"], c["valor"]))
+        for c in datos["trayectoria_final"]:
+            print("  trayectoria clip %d (%d cuadros) termina en %s" % (c["clip"], c["cuadros"], c["destino"]))
+        for f, v in sorted(datos.get("golden_camara", {}).items(), key=lambda kv: int(kv[0])):
+            print("  golden %s: camara a %.3f del clip %d t=%.1f (reloj %.1f, desfase %.2f)"
+                  % (f, v["distancia"], v["clip"], v["tiempo"], v["reloj"], v["desfase"]))
+    salida = Path(a.salida or "auditoria_transiciones.json")
+    salida.write_text(json.dumps(informe, ensure_ascii=False, indent=1), encoding="utf-8")
+    print("escrito %s" % salida)
+    return 0
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sp = p.add_subparsers(dest="cmd", required=True)
@@ -1622,6 +1822,13 @@ def main():
     s = sp.add_parser("comprobar")
     s.add_argument("escenarios", nargs="*", type=int)
     s.set_defaults(fn=cmd_comprobar)
+    s = sp.add_parser("auditar", help="banco sin juego de camara/trayectoria/duracion de las transiciones B2")
+    s.add_argument("grupos", nargs="*", type=int, help="grupos B2 (por defecto los de ESCENA_ZONA: 7 y 8)")
+    s.add_argument("--juego", choices=sorted(JUEGOS), default="b2")
+    s.add_argument("--iso")
+    s.add_argument("--golden", help="carpeta con las tomas originales (original_gN_*/cuadro_30.json...)")
+    s.add_argument("--salida", help="JSON de salida (por defecto ./auditoria_transiciones.json)")
+    s.set_defaults(fn=cmd_auditar)
     a = p.parse_args()
     return a.fn(a) or 0
 

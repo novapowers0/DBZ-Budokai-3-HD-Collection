@@ -22,6 +22,9 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <map>      // SetEntryImage
+#include <memory>   // SetEntryImage
+#include <mutex>    // SetEntryImage
 #include <sstream>
 #include <string>
 #include <vector>
@@ -36,6 +39,9 @@ bool DuCover();   // campaigns.cpp: el Heroe entra en DU: pantalla en negro hast
 #include <rex/logging.h>
 #include <rex/runtime.h>
 #include <rex/ui/imgui_dialog.h>
+#include <rex/ui/image_decode.h>      // SetEntryImage: PNG propio de una fila
+#include <rex/ui/immediate_drawer.h>  // SetEntryImage
+#include "../launcher/launcher_state.h"   // SetEntryImage: PreviewDrawer
 
 #include "../launcher/i18n.h"
 #include "../launcher/settings.h"
@@ -44,6 +50,7 @@ bool DuCover();   // campaigns.cpp: el Heroe entra en DU: pantalla en negro hast
 #include "../modos.h"
 #include "../mods_opcionales.h"
 #include "../pasarela.h"
+#include "../survivors/entrada.h"   // Dragon Budokai Survivors: fila del HUB con el ajuste dbz3_survivors
 #include "game_style.h"
 
 namespace dbz3 {
@@ -136,6 +143,36 @@ constexpr float kSaveX0 = 60, kSaveY0 = 231, kSaveX1 = 1140, kSaveY1 = 548, kSav
 constexpr float kSaveDim = 0.78f, kSaveFill = 0.55f, kSaveIconH = 150;
 constexpr int64_t kSavingMs = 3000, kSavedMs = 2000, kSaveAnimMs = 300;
 std::atomic<int64_t> g_saving_at{-100000};
+
+// SetEntryImage: imagen propia (PNG de cualquier ruta) de la insignia de una fila. Se carga la primera vez que se dibuja (hilo de dibujo);
+// si falta o no se lee, se avisa una vez y la fila sigue con modo_<clave> / modo_extra como antes.
+struct EntryPic {
+  std::filesystem::path png;
+  std::unique_ptr<rex::ui::ImmediateTexture> tex;
+  S::Pic pic;
+  bool tried = false;
+};
+std::mutex g_entry_pics_mx;
+std::map<std::string, EntryPic> g_entry_pics;
+S::Pic EntryImage(const char* key) {
+  std::lock_guard<std::mutex> lock(g_entry_pics_mx);
+  const auto it = g_entry_pics.find(key);
+  if (it == g_entry_pics.end()) return {};
+  EntryPic& e = it->second;
+  if (!e.tried) {
+    e.tried = true;
+    std::ifstream in(e.png, std::ios::binary);
+    const std::vector<uint8_t> data((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    int w = 0, h = 0;
+    const std::vector<uint8_t> px = data.empty() ? std::vector<uint8_t>() : rex::ui::DecodeImageRGBA(data.data(), data.size(), w, h);
+    auto* drawer = dbz3::launcher::PreviewDrawer();
+    if (!px.empty() && drawer) e.tex = drawer->CreateTexture(uint32_t(w), uint32_t(h), rex::ui::ImmediateTextureFilter::kLinear, false, px.data());
+    if (e.tex) e.pic = {reinterpret_cast<ImTextureID>(e.tex.get()), float(w), float(h)};
+    if (e.pic) REXLOG_INFO("dbz3 hub: fila {}: imagen propia {} ({}x{})", key, e.png.string(), w, h);
+    else REXLOG_WARN("dbz3 hub: fila {}: no se pudo leer la imagen propia {} (sigue la insignia de siempre)", key, e.png.string());
+  }
+  return e.pic;
+}
 
 // Icono del guardado al tamano mas cercano por arriba (sin mipmaps: reducir mas de 2x se ve con dientes).
 S::Pic SaveIcon(float h) {
@@ -458,6 +495,7 @@ class HubPanel : public rex::ui::ImGuiDialog {
     dl->AddRectFilled(r0, r1, IM_COL32(8, 40, 56, 235));
     S::Frame(dl, r0, r1, a.s);
     if (lit) S::Highlight(dl, r0, r1, t);
+    dbz3::survivors::RegistrarEntrada();   // solo con el ajuste encendido (una vez)
     int vis[kMaxEntries];
     const int n = VisibleEntries(vis);
     const int pages = (n + kPerPage - 1) / kPerPage;
@@ -583,7 +621,10 @@ class HubPanel : public rex::ui::ImGuiDialog {
           Pa::GuardarProgreso("rango_ascenso", 0);
         }
       }
-      const std::string rango = std::string(dbz3::i18n::T("Rango", "Rank")) + ": " + Pa::RangoNombre(Pa::RangoNivel(pe)) +
+      // MODOS-05: con el ajuste, el de PE se llama "Nivel" (el selector de retos usa "Rango" para el Elo).
+      const char* etq_rango = dbz3::modos::UnRango() ? dbz3::i18n::T("Nivel", "Level")
+                                                     : dbz3::i18n::T("Rango", "Rank");
+      const std::string rango = std::string(etq_rango) + ": " + Pa::RangoNombre(Pa::RangoNivel(pe)) +
                                 " (" + std::to_string(pe) + " PE)";
       marks = marks.empty() ? rango : marks + " - " + rango;
       if (ascenso > 0 && t < aviso_hasta)
@@ -681,6 +722,7 @@ class HubPanel : public rex::ui::ImGuiDialog {
       const bool sel = e == v.cursor, ready = EntryReady(e);
       const ImU32 tint = !ready ? kOff : sel ? IM_COL32_WHITE : kDim;
       S::Pic ic = S::Img((std::string("modo_") + EntryKey(e)).c_str());
+      if (const S::Pic own = EntryImage(EntryKey(e))) ic = own;   // SetEntryImage: la imagen propia de la fila, si la tiene
       if (!ic) ic = S::Img("modo_extra");   // entrada nueva sin insignia propia
       if (ic) {
         const float s = (sel ? 52.0f + 3.0f * std::sin(t * 5.0f) : 46.0f) * a.s;
@@ -693,16 +735,23 @@ class HubPanel : public rex::ui::ImGuiDialog {
       const std::string key = EntryKey(e);
       const int estado = key == "pasarela" || key == "minijuegos" || key == "tactics" ? 2
                          : key == "tagteam" || key == "online" || key == "satan" || key == "mision100" ||
-                                   key == "laboratorio" || key == "escenarios" || key == "heroe"
+                                   key == "laboratorio" || key == "escenarios" || key == "heroe" || key == "rogue"
+                                   || key == "survivors"
                              ? 1
                              : 0;
+      // MODOS-07 punto 3 (dbz3_modos_pulido): la lamina de Satan (774 px) a 0,6 no cabe y se encogia a 0,39; sin la
+      // pegatina BETA llega hasta el marco (~0,49). Apagado = como antes.
+      const bool satan_ancha = key == "satan" && dbz3::modos::ModoPulido();
       const float right = Label(dl, a, EntryKey(e), EntryName(e), kLabelX + dx, y, kLabelK, tint, sel,
-                                kLabelMax - (estado == 1 ? 70.0f : estado == 2 ? 150.0f : 0.0f));
-      if (estado == 1) {
+                                satan_ancha ? kInX1 - kLabelX - 10.0f
+                                            : kLabelMax - (estado == 1 ? 70.0f : estado == 2 ? 150.0f : 0.0f));
+      if (estado == 1 && !satan_ancha) {
         if (const S::Pic b = S::Img("beta")) {
           const float h = 26 * a.s, w = b.w * h / b.h;
           const ImVec2 p0 = a.At(right + 6, y - 22);
           S::DrawPic(dl, b, p0, ImVec2(p0.x + w, p0.y + h), ImVec4(0, 0, 0, 0), sel ? IM_COL32_WHITE : kDim);
+        } else if (key == "tagteam" || key == "online") {
+          S::MenuText(dl, a.At(right + 36, y), 19 * a.s, "BETA", sel, !ready);
         }
       } else if (estado == 2) {   // pegatina de texto (sin pieza propia): ambar, como un aviso de obras
         static const char* const kExp[5] = {"EXPERIMENTAL", "EXPERIMENTAL", "EXPÉRIMENTAL", "EXPERIMENTELL",
@@ -883,6 +932,14 @@ void ShowSaving() {   // otro guardado con el aviso en pantalla: vuelve a "Guard
   const bool shown = now - at >= 0 && now - at <= kSavingMs + kSavedMs + kSaveAnimMs;
   g_saving_at = shown ? now - std::min<int64_t>(now - at, kSaveAnimMs) : now;
   REXLOG_INFO("dbz3 hub: aviso de guardado{}", shown ? " (sigue)" : "");
+}
+
+void SetEntryImage(const char* key, const std::filesystem::path& png) {
+  if (!key || !*key) return;
+  std::lock_guard<std::mutex> lock(g_entry_pics_mx);
+  EntryPic& e = g_entry_pics[key];
+  if (e.png == png && e.tried) return;   // la misma: ya cargada (o ya avisado que falta)
+  e.png = png, e.tex.reset(), e.pic = {}, e.tried = false;
 }
 
 void CreatePanel() {

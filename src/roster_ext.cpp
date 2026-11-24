@@ -70,6 +70,7 @@
 //   u32 = [1, 2]            # o u16 = [...] / u8 = [...]
 
 #include "roster_ext.h"
+#include "lim3_limits.h"
 #include "net/netplay.h"
 #include "ids_registry.h"
 #include "form_selection_state.h"
@@ -93,10 +94,25 @@
 #include "region.h"
 
 REXCVAR_DECLARE(std::string, dbz3_iso_path);
+REXCVAR_DEFINE_BOOL(dbz3_lim3_arranque, false, "DBZ3/Mods",
+                    "LIM3: preparar el indice AFS sin marcadores temporales cuando solo hay fuentes puras");
 REXCVAR_DEFINE_BOOL(dbz3_dynamic_roster, false, "DBZ3/Mods",
                     "Experimental host registry for logical character IDs beyond the retail 64 (gameplay mapping in progress)");
 REXCVAR_DEFINE_INT32(dbz3_dynamic_roster_page, -1, "DBZ3/Mods",
                      "Experimental roster page to load at boot (-1 = last page; requires dbz3_dynamic_roster)");
+REXCVAR_DEFINE_BOOL(dbz3_capsulas_sin_tope, false, "DBZ3/Mods",
+                    "SLOTS_PJ-06: catalogo de capsulas sin el tope de 2048 del inventario (las nuevas, IDs >= 596, "
+                    "cuentan como tuyas sin leer fuera de la partida)");
+REXCVAR_DEFINE_BOOL(dbz3_capsula_unica_paginas, false, "DBZ3/Mods",
+                    "SLOTS_PJ-07: capsula de transformacion unica tambien para los personajes de pagina "
+                    "(la 1984+plaza del proxy que tienen asignado; sin nombres propios todavia)");
+REXCVAR_DEFINE_BOOL(dbz3_edit_skills_ventana, false, "DBZ3/Mods",
+                    "SLOTS_PJ-08: Edit Skills dibuja tambien las capsulas nuevas de la ventana visible de la "
+                    "bandeja (9), no solo las equipadas");
+REXCVAR_DEFINE_BOOL(dbz3_roster_sin_fugas, true,  // 12/11 encendido de serie (HOJA_DECISIONES_0800 A)
+    "DBZ3/Mods",   // SPRINT (coordinador): apagado de serie hasta probarlo; encender es decision del usuario
+                    "SLOTS_PJ-12a: al reaplicar un personaje de pagina se liberan las listas del apply anterior "
+                    "(sin esto, ~171 MB por 1000 cambios de pagina). false = comportamiento anterior");
 
 #include <algorithm>
 #include <array>
@@ -127,6 +143,9 @@ struct PendingDynamicCharacter {
   toml::table config;
 };
 std::vector<PendingDynamicCharacter> g_pending_dynamic_characters;
+std::atomic<int> g_hero_roster_request{-1};
+// Una sola publicacion: 32 bits de identidad y 8 de plaza; cero invalida ambas.
+std::atomic<uint64_t> g_hero_roster_binding{0};
 std::map<uint32_t, std::vector<toml::table>> g_pending_dynamic_costumes;   // ID de pagina -> sus trajes extra
 
 constexpr uint32_t kChar96 = 0x8234ABB8;
@@ -159,6 +178,11 @@ constexpr int64_t kDataCmnEntries = 3990;    // entradas de data_cmn.afs (US)
 std::atomic<uint64_t> g_unlock{0};
 std::vector<VirtualCell> g_cells;
 rex::memory::Memory* g_memory = nullptr;
+// SLOTS_PJ-12a: bloques del heap del guest que dimos al aplicar un ID (listas de modelos, bocas, voces,
+// nombres, fichas...). Al volver a aplicar el mismo ID (cada cambio de pagina) se liberan los anteriores.
+std::mutex g_apply_mu;
+std::map<uint32_t, std::vector<uint32_t>> g_apply_allocs;
+thread_local std::vector<uint32_t>* t_apply_allocs = nullptr;
 // donante de cada ID de la plantilla extendida (-1 = ninguno)
 std::atomic<int> g_donor[kIds];
 // franja de ojos propia de la bandeja Ability (roster.toml `ojos = [tex, x0, y0, x1, y1]`; tex < 0 = ninguna)
@@ -168,6 +192,8 @@ std::atomic<int> g_team_member[kIds][5];
 // trajes anadidos por mods a personajes del juego (traje.toml)
 std::atomic<int> g_extra_costumes[kIds];
 std::atomic<int> g_fusion_cap[kIds];   // roster.toml capsula_fusion
+std::atomic<int> g_ficha_nativa[kIds], g_forma_nativa[kIds];   // roster.toml ficha_nativa / forma_inicial (0 = ninguna)
+std::atomic<bool> g_obj_cel[kIds];   // acabado OBJ opcional; brillo HD fuera de sus combates intacto
 std::string g_roster_nombre[kIds];     // roster.toml nombre (los IDs reutilizados conservan el nombre interno del juego)
 // trajes reales de cada personaje anadido por roster.toml (0 = no anadido)
 std::atomic<int> g_costume_count[kIds];
@@ -299,7 +325,10 @@ class Guest {
   }
   uint32_t Alloc(uint32_t n) {
     const uint32_t a = m_->SystemHeapAlloc(n, 0x20);
-    if (a) std::memset(P(a), 0, n);
+    if (a) {
+      std::memset(P(a), 0, n);
+      if (t_apply_allocs) t_apply_allocs->push_back(a);   // SLOTS_PJ-12a: se libera al reinstalar el ID
+    }
     return a;
   }
 
@@ -316,6 +345,7 @@ struct GuestProxyBase {
   std::array<uint8_t, 56> select_pos{};
   std::array<uint8_t, 40> aura_types{};
   int donor = -1, team_size = 0, extra_costumes = 0, costume_count = 0;
+  bool obj_cel = false;
   std::array<int, 5> team_members{};
 };
 
@@ -468,9 +498,44 @@ void ApplyExtraCostume(Guest& g, const toml::table& t, const std::string& mod, u
   }
 }
 
+// SLOTS_PJ-12a: cada ApplyCharacter de un ID de guest reserva listas y registros nuevos; los del apply
+// anterior de ese mismo ID ya no los mira nadie (RestoreDynamicBase devuelve los punteros base antes de
+// volver a aplicarlo), asi que se liberan aqui en vez de dejarlos en el heap (fuga de ~171 MB/1000 cambios
+// de pagina medidos el 12/11). Apagado con dbz3_roster_sin_fugas=false: igual que antes.
+namespace {
+struct ApplyAllocScope {
+  ApplyAllocScope(int64_t id, bool on) : id_(id), on_(on) {
+    if (t_apply_allocs) {   // anidado (el traje de un personaje de pagina): sigue el apply de fuera
+      nested_ = true;
+      return;
+    }
+    // solo las plazas prestadas a paginas: los IDs nativos se aplican una vez al arrancar y no se reaplican
+    if (!on_ || id_ < 0 || id_ >= kIds || !g_logical_ids.LogicalForGuest(uint32_t(id_))) return;
+    t_apply_allocs = &new_;
+  }
+  ~ApplyAllocScope() {
+    if (nested_ || t_apply_allocs != &new_) return;
+    t_apply_allocs = nullptr;
+    if (!on_ || new_.empty()) return;
+    // NO se libera aqui: un mismo ID se aplica varias veces seguidas (personaje y sus trajes) y el
+    // segundo apply lee de los punteros del primero. Se libera todo al empezar la pagina siguiente,
+    // cuando RestoreDynamicBase ya devolvio los punteros base (SLOTS_PJ-12a).
+    std::lock_guard<std::mutex> lk(g_apply_mu);
+    auto& v = g_apply_allocs[uint32_t(id_)];
+    v.insert(v.end(), new_.begin(), new_.end());
+  }
+  int64_t id_;
+  bool on_;
+  bool nested_ = false;
+  std::vector<uint32_t> new_;
+};
+}  // namespace
+
 void ApplyCharacter(Guest& g, const toml::table& t, const std::string& mod) {
   const int64_t id = Int(t["id"], -1);
   const int64_t donor = Int(t["donante"], -1);
+  static const bool sin_fugas = rex::cvar::Query<bool>("dbz3_roster_sin_fugas");
+  ApplyAllocScope allocs(id, sin_fugas);
   if (id >= dbz3::ids::kFirstLogicalId) {
     if (t["traje_formas"].as_array()) {   // traje extra de un personaje de pagina: se aplica con el, en su plaza
       g_pending_dynamic_costumes[uint32_t(id)].push_back(t);
@@ -540,6 +605,9 @@ void ApplyCharacter(Guest& g, const toml::table& t, const std::string& mod) {
   const uint32_t c96 = kChar96 + uint32_t(id) * 96;
   const uint32_t c372 = kChar372 + uint32_t(id) * 372;
   g_fusion_cap[id] = Int(t["capsula_fusion"], 0);
+  g_ficha_nativa[id] = int(Int(t["ficha_nativa"], 0));
+  g_forma_nativa[id] = int(Int(t["forma_inicial"], 0));
+  g_obj_cel[id] = t["obj_cel"].value_or(false);
   g_roster_nombre[id] = t["nombre"].value_or(std::string());
   const auto models = Ints(t["modelos"]);
   auto lips = Ints(t["bocas"]);
@@ -831,7 +899,10 @@ void ApplyCharacter(Guest& g, const toml::table& t, const std::string& mod) {
   // sub_82119108 recorre hasta ocho filas, SIN consultar +0xD0. Al reducir las
   // formas quedaban filas del donante detras: el clon de cuatro formas llegaba
   // a la 4 (fuera de su lista). El terminador es la siguiente fila vacia.
-  if (const uint32_t nf = g.U32(c372 + 0xD0); nf >= 1 && nf < 8) {
+  // Super Bu declara una forma ordinaria, pero sus siete filas tipo 7 son
+  // absorciones/victimas usadas por la definitiva, no formas sobrantes.
+  const bool absorciones_nativas = donor == 35 && g.U8(c96 + 5) >= 8 && t["absorciones_nativas"].value_or(false);
+  if (const uint32_t nf = g.U32(c372 + 0xD0); nf >= 1 && nf < 8 && !absorciones_nativas) {
     for (uint32_t f = nf; f < 8; ++f)
       for (uint32_t b = 0; b < 20; b += 4) g.W32(c372 + 212 + 20 * f + b, 0);
   }
@@ -1033,6 +1104,16 @@ void ApplyPatch(Guest& g, const toml::table& t, const std::string& mod) {
 
 }  // namespace
 
+// SLOTS_PJ-06: tope del catalogo. Apagado (de serie) = 2048, como el inventario de la partida; con
+// dbz3_capsulas_sin_tope el catalogo puede pasar de 2048 y las capsulas >= 596 cuentan como tuyas sin
+// leer el inventario (que solo tiene 2048 B y una lectura fuera de el seria otro campo de la partida).
+bool CapsulesSinTope() {
+  static const bool on = rex::cvar::Query<bool>("dbz3_capsulas_sin_tope");
+  return on;
+}
+
+uint32_t CatalogueLimit() { return CapsulesSinTope() ? 65535u : kInventorySize; }
+
 uint64_t ExtraUnlockMask() { return g_unlock.load(); }
 
 std::atomic<uint64_t> g_extra_slots{0};
@@ -1092,6 +1173,9 @@ int TeamMember(uint32_t id, int k) {
 }
 
 int FusionCapsule(uint32_t id) { return id < kIds ? g_fusion_cap[id].load() : 0; }
+int FichaNativa(uint32_t id) { return id < kIds ? g_ficha_nativa[id].load() : 0; }
+int FormaNativa(uint32_t id) { return id < kIds ? g_forma_nativa[id].load() : 0; }
+bool ObjCel(uint32_t id) { return id < kIds && g_obj_cel[id].load(); }
 int IdPorNombre(const std::string& nombre) {
   for (int k = 0; k < kIds; ++k)
     if (g_roster_nombre[k] == nombre) return k;
@@ -1155,7 +1239,23 @@ bool EsMarcaEscaneo(const std::filesystem::path& f) {
   return s == kMarcaEscaneo;
 }
 void EscaneoSinFuentes() {
+  if (REXCVAR_GET(dbz3_lim3_arranque)) {
+    // No cambiar una opcion del SDK solicitada por el usuario ni asumir que
+    // un runtime antiguo la conoce. Con mods mixtos usar el indice normal.
+    constexpr auto filtro = "dbz3_afs_saltar_fuentes";
+    if (rex::cvar::GetFlagByName(filtro) != "false" || !lim3::CanFilterSources(ModsRoot())) return;
+    if (!rex::cvar::SetFlagByName(filtro, "true")) return;
+    struct RestaurarFiltro {
+      ~RestaurarFiltro() { rex::cvar::SetFlagByName("dbz3_afs_saltar_fuentes", "false"); }
+    } restaurar;
+    rex::filesystem::AfsResetModCache();
+    rex::filesystem::AfsModsPresent();  // materializa solo la lista de carpetas
+    return;
+  }
   constexpr size_t kMinimo = 8;   // con pocas no merece la pena tocar nada
+  // SLOTS_PJ-10: con el filtro del SDK encendido (dbz3_afs_saltar_fuentes, parche de SDK-01) el escaneo ya salta las
+  // fuentes: no se marca nada (sin marcas no hay carpetas que curar tras un cierre). Sin ese cvar, Query da false.
+  if (rex::cvar::Query<bool>("dbz3_afs_saltar_fuentes")) return;
   const auto t0 = std::chrono::steady_clock::now();
   std::error_code ec;
   std::vector<std::filesystem::path> fuentes;
@@ -1273,8 +1373,11 @@ void EnsureCapsules() {
   }
   // capsula unica de cada personaje con 2+ transformaciones agrupables: registro de su primera
   // transformacion, solo suya, sin requisito ni efecto, con la mitad de huecos (forms::UnifiedCost)
+  const bool paginas = rex::cvar::Query<bool>("dbz3_capsula_unica_paginas");   // SLOTS_PJ-07 (apagado)
   for (int id = 0; g_unified_on.load() && id < kIds; ++id) {
-    if (g_logical_ids.LogicalForGuest(uint32_t(id))) continue;   // plaza prestada a paginas: sin capsula unica
+    // plaza prestada a paginas: sin capsula unica (salvo con dbz3_capsula_unica_paginas: el personaje de la
+    // pagina en curso toma la 1984+plaza mientras dura su plaza, y desaparece al cambiar de pagina)
+    if (!paginas && g_logical_ids.LogicalForGuest(uint32_t(id))) continue;
     const int chain = GroupableChain(g, buf + start, total, id, false);
     if (chain < 2) continue;
     const uint16_t uid = forms::UnifiedId(id);
@@ -1289,6 +1392,8 @@ void EnsureCapsules() {
     g.Write(buf + start + kSkcRec * uid, rec.data(), 40);
     if (g_unified_desc) g_cap_desc[uid] = g_unified_desc;
     g_unified_ids.push_back(uid);
+    if (const auto logical = g_logical_ids.LogicalForGuest(uint32_t(id)))   // SLOTS_PJ-07: plaza de pagina
+      REXLOG_INFO("dbz3 roster: capsula unica del id logico {} (plaza {}) -> {}", *logical, id, uid);
   }
   if (!g_unified_ids.empty())
     REXLOG_INFO("dbz3 roster: {} capsulas unicas de transformacion ({}..{})", g_unified_ids.size(),
@@ -1330,6 +1435,7 @@ void CaptureDynamicBase(Guest& g) {
     p.team_size = g_team_size[id].load();
     p.extra_costumes = g_extra_costumes[id].load();
     p.costume_count = g_costume_count[id].load();
+    p.obj_cel = g_obj_cel[id].load();
     for (size_t k = 0; k < p.team_members.size(); ++k) p.team_members[k] = g_team_member[id][k].load();
     g_dynamic_base.proxies.push_back(std::move(p));
   }
@@ -1337,6 +1443,7 @@ void CaptureDynamicBase(Guest& g) {
 }
 
 void RestoreDynamicBase(Guest& g) {
+  g_hero_roster_binding.store(0);
   if (!g_dynamic_base.ready) return;
   constexpr uint32_t kAuraTypes = 0x82321A38;
   for (const GuestProxyBase& p : g_dynamic_base.proxies) {
@@ -1354,6 +1461,7 @@ void RestoreDynamicBase(Guest& g) {
     g_team_size[id].store(p.team_size);
     g_extra_costumes[id].store(p.extra_costumes);
     g_costume_count[id].store(p.costume_count);
+    g_obj_cel[id].store(p.obj_cel);
     for (size_t k = 0; k < p.team_members.size(); ++k) g_team_member[id][k].store(p.team_members[k]);
   }
   g_unlock.store(g_dynamic_base.unlock);
@@ -1372,6 +1480,17 @@ void RestoreDynamicBase(Guest& g) {
     g.W32(kSkcHdrPtr, hdr);
     g.W32(kSkcRecPtr, hdr + g_dynamic_base.skc_start);
   }
+  if (rex::cvar::Query<bool>("dbz3_roster_sin_fugas")) {   // SLOTS_PJ-12a: ya nadie mira los bloques de la pagina anterior
+    std::vector<uint32_t> blocks;
+    {
+      std::lock_guard<std::mutex> lk(g_apply_mu);
+      for (auto& [id, v] : g_apply_allocs) blocks.insert(blocks.end(), v.begin(), v.end());
+      g_apply_allocs.clear();
+    }
+    for (uint32_t a : blocks) {
+      if (a && g_memory) g_memory->SystemHeapFree(a);
+    }
+  }
   g_caps_done.store(false);
   ClearPickedCells();
 }
@@ -1384,12 +1503,9 @@ bool LoadDynamicPage(Guest& g, size_t page_index, const std::vector<dbz3::ids::P
   ids.reserve(range->count);
   for (size_t k = 0; k < range->count; ++k)
     ids.push_back(g_pending_dynamic_characters[range->first + k].logical_id);
-  // Ultima pagina incompleta: mover el cursor por la rueda cerraba el juego (lr 0x82135BD8, 25-33 personajes, 31/10; con y sin
-  // online). Se completa con los primeros, que salen en las dos paginas.
-  // ponytail: evita el caso sin saber por que falla la rueda con menos casillas; si se quiere una pagina corta, hay que encontrarlo.
-  for (size_t k = 0; ids.size() < g_dynamic_page_size && k < g_pending_dynamic_characters.size(); ++k)
-    if (std::find(ids.begin(), ids.end(), g_pending_dynamic_characters[k].logical_id) == ids.end())
-      ids.push_back(g_pending_dynamic_characters[k].logical_id);
+  // Ultima pagina incompleta: lleva solo sus personajes (SLOTS_PJ-02). El cierre del 31/10 al mover el cursor (lr 0x82135BD8 /
+  // 0x82135CE0, sub_82135BD0 al rematar la carga de la vista previa) era de select_ext.cpp: la rueda no se rehacia al cambiar
+  // de pagina y sus casillas de mas apuntaban a plazas sin personaje. Ya no hace falta rellenar con los primeros.
   // L: pin - los elegidos ocupan plaza: la pagina pierde las ultimas que no caben (vuelven al deshacer)
   size_t extra = 0;
   for (const auto& pin : pins)
@@ -1435,6 +1551,7 @@ void ApplyAtLaunch(rex::memory::Memory* memory) {
   for (auto& o : g_ojos) o[0].store(-1);
   for (auto& c : g_extra_costumes) c.store(0);
   for (auto& c : g_costume_count) c.store(0);
+  for (auto& c : g_obj_cel) c.store(false);
   g_cells.clear();
   g_selpos.clear();
   g_host_slot.clear();
@@ -1451,6 +1568,10 @@ void ApplyAtLaunch(rex::memory::Memory* memory) {
   g_unlock.store(0);
   g_skill_entries.clear();
   g_skill_recs.clear();
+  {
+    std::lock_guard<std::mutex> lk(g_apply_mu);   // SLOTS_PJ-12a: punteros de un arranque anterior
+    g_apply_allocs.clear();
+  }
   LoadCustomLists();
   if (!memory) return;
   Guest g(memory);
@@ -1618,6 +1739,10 @@ void RequestDynamicRosterPage(int delta) {
 }
 void RequestDynamicRosterPageAbs(int page) { g_dynamic_page_abs.store(page); }
 bool IsLogicalRosterId(int id) { return id >= int(dbz3::ids::kFirstLogicalId) && g_logical_ids.Find(uint32_t(id)); }
+int ActiveGuestForLogical(int logical) {
+  const auto slot = logical >= 64 ? g_logical_ids.GuestForLogical(uint32_t(logical)) : std::nullopt;
+  return slot ? int(*slot) : -1;
+}
 int OnlineWireId(int guest) {
   const auto l = guest >= 0 ? g_logical_ids.LogicalForGuest(uint32_t(guest)) : std::nullopt;
   return l ? int(*l) : guest;
@@ -1647,6 +1772,49 @@ int64_t LogicalForProxy(int guest) {   // L: -1 si no es un proxy del roster din
   const auto l = guest >= 0 ? g_logical_ids.LogicalForGuest(uint32_t(guest)) : std::nullopt;
   return l ? int64_t(*l) : -1;
 }
+std::vector<int> HeroRosterIds() {
+  std::vector<int> ids;
+  if (!DynamicRosterPageCount()) return ids;
+  for (const auto& c : g_pending_dynamic_characters) ids.push_back(int(c.logical_id));
+  return ids;
+}
+std::string HeroRosterName(int logical) {
+  for (const auto& c : g_pending_dynamic_characters)
+    if (c.logical_id == uint32_t(logical))
+      return c.config["nombre"].value_or(std::string("#") + std::to_string(logical));
+  return {};
+}
+void RequestHeroRosterId(int logical) { g_hero_roster_request.store(logical); }
+int HeroRosterGuest(int logical) {
+  const auto binding = g_hero_roster_binding.load();
+  return logical >= 64 && (binding >> 8) == uint32_t(logical) && (binding & 255) < 64 ? int(binding & 255) : -1;
+}
+bool HeroRosterAnswered(int logical) {
+  return logical >= 64 && (g_hero_roster_binding.load() >> 8) == uint32_t(logical);
+}
+void ProcessHeroRosterRequest() {
+  const int id = g_hero_roster_request.exchange(-1);
+  if (id < 64 || HeroRosterAnswered(id) || !DynamicRosterPageCount() || !g_dynamic_base.ready || !g_memory) return;
+  const auto it = std::find_if(g_pending_dynamic_characters.begin(), g_pending_dynamic_characters.end(),
+                               [id](const auto& c) { return c.logical_id == uint32_t(id); });
+  if (it == g_pending_dynamic_characters.end()) return;
+  if (!g_logical_ids.GuestForLogical(uint32_t(id))) {
+    Guest g(g_memory);
+    const int old = DynamicRosterPage();
+    const size_t page = size_t(it - g_pending_dynamic_characters.begin()) / g_dynamic_page_size;
+    RestoreDynamicBase(g);
+    if (!LoadDynamicPage(g, page)) LoadDynamicPage(g, size_t(old));
+    forms::ClearMembers();
+  }
+  uint8_t result = 255;
+  if (const auto slot = g_logical_ids.GuestForLogical(uint32_t(id))) {
+    Guest g(g_memory);
+    const auto fid = g.U32(kChar372 + uint32_t(*slot) * 372);
+    if (fid && fid != 0xFFFFFFFFu) result = *slot;
+  }
+  g_hero_roster_binding.store((uint64_t(uint32_t(id)) << 8) | result);
+}
+
 bool ProcessDynamicRosterPage(uint64_t& removed_proxy_mask, uint64_t& added_proxy_mask) {
   removed_proxy_mask = added_proxy_mask = 0;
   const int pages = DynamicRosterPageCount();
@@ -1781,7 +1949,7 @@ uint32_t CapsuleCount() {
   Guest g(g_memory);
   const uint32_t hdr = g.U32(kSkcHdrPtr);     // la copia ampliada vive en el heap del sistema
   if (hdr < 0x10000u || std::memcmp(g.P(hdr), "#SKC", 4) != 0) return 596;
-  return std::min<uint32_t>(g.U32(hdr + 0x10), kInventorySize);
+  return std::min<uint32_t>(g.U32(hdr + 0x10), CatalogueLimit());
 }
 
 void OwnNewCapsules(uint32_t inventory) {
@@ -1881,6 +2049,7 @@ DBZ3_HOOK(sub_82083618, dbz3eu_sub_82083618) {
   orig(ctx, base);
 }
 
+namespace dbz3::heroe { uint64_t LuchadoresPremiados(); }   // heroe_recompensas.inl (R23 HER-06)
 // Select: builds the per-mode availability state (r3); +56 = u64 mask of
 // unlocked character IDs. Roster characters are always available.
 DBZ3_HOOK(sub_8217A1C0, dbz3eu_sub_8217A178) {
@@ -1890,6 +2059,12 @@ DBZ3_HOOK(sub_8217A1C0, dbz3eu_sub_8217A178) {
   const uint64_t extra = dbz3::roster::ExtraUnlockMask();
   if (extra && st) {
     REX_STORE_U64(st + 56, REX_LOAD_U64(st + 56) | extra);
+  }
+  // R23 HER-06: luchadores ganados como premio del Modo Heroe (solo suma bits; con dbz3_heroe_recompensas apagado, 0)
+  if (const uint64_t prem = dbz3::heroe::LuchadoresPremiados(); prem && st) {
+    const uint64_t antes = REX_LOAD_U64(st + 56);
+    REX_STORE_U64(st + 56, antes | prem);
+    REXLOG_INFO("dbz3 heroe: premio luchador: mascara del selector {:016X} -> {:016X}", antes, antes | prem);
   }
 }
 
@@ -1981,6 +2156,35 @@ DBZ3_HOOK(sub_821007E8, dbz3eu_sub_821008E8) {
       REX_STORE_U16(rec + 52, REX_LOAD_U16(c96 + 80));
       for (uint32_t b = 0; b < 14; ++b) REX_STORE_U8(rec + 54 + b, REX_LOAD_U8(c96 + 82 + b));
     }
+    // ficha_nativa (roster_build, issue #73): la casilla pelea como la ficha del juego, igual que una fila nativa de
+    // esta funcion (A,C,B,F: +16 = B, +20 = +22 = F, capsulas = [C]) pero con F = la forma fusionada. Una ficha que
+    // empieza fusionada no gasta tiempo de fusion (sub_82118DE0). Solo la copia de combate: la seleccion no cambia.
+    if (const int fi = k < 4 && t_sel_ids[k] >= 0 ? dbz3::roster::FichaNativa(uint32_t(t_sel_ids[k])) : 0; fi >= 64 && fi < 105) {
+      const uint32_t f = uint32_t(dbz3::roster::FormaNativa(uint32_t(t_sel_ids[k])));
+      const uint32_t c372 = 0x82329CF0 + 372 * uint32_t(fi);
+      if (f < 8 && f < REX_LOAD_U32(c372 + 0xD0)) {
+        const uint16_t cap = REX_LOAD_U16(c372 + 212 + 20 * f);
+        REX_STORE_U16(rec + 16, uint16_t(fi));
+        REX_STORE_U16(rec + 20, uint16_t(f));
+        REX_STORE_U16(rec + 22, uint16_t(f));
+        REX_STORE_U16(rec + 52, uint16_t(cap ? 1 : 0));
+        for (uint32_t b = 0; b < 7; ++b) REX_STORE_U16(rec + 54 + 2 * b, uint16_t(b ? 0 : cap));
+        REXLOG_INFO("dbz3 roster: casilla {} arranca como ficha {} forma {} (lado {}, capsula {})", t_sel_ids[k], fi, f, k + 1, cap);
+      } else {
+        REXLOG_WARN("dbz3 roster: casilla {}: ficha_nativa {} sin forma {}: pelea como su donante", t_sel_ids[k], fi, f);
+      }
+    }
+  }
+  // POST3/ROGUE (carta Fusion: Vegito sin Potara): una ficha de fusion (64-104) que llega ya en una forma con capsula y con la
+  // lista vacia recibe esa capsula, como deja esta misma funcion a B en sus filas nativas (A,C,B,F: capsulas = [C]). El copiado
+  // anterior del registro la tira porque la capsula es del luchador A (medido: CFG 187 -> preparacion 0 capsulas).
+  if (const uint32_t id = REX_LOAD_U16(rec + 16), f = REX_LOAD_U16(rec + 20); id >= 64 && id < 105 && f > 0 && f < 8 && !REX_LOAD_U16(rec + 52)) {
+    const uint32_t c372 = 0x82329CF0 + 372 * id;
+    if (const uint16_t cap = f < REX_LOAD_U32(c372 + 0xD0) ? REX_LOAD_U16(c372 + 212 + 20 * f) : 0) {
+      REX_STORE_U16(rec + 52, 1);
+      REX_STORE_U16(rec + 54, cap);
+      REXLOG_INFO("dbz3 roster: ficha de fusion {} en la forma {} sin capsulas: se le pone la suya ({})", id, f, cap);
+    }
   }
   dbz3::fusion::AlPrepararCombate(base, rec);
   orig(ctx, base);
@@ -2040,6 +2244,9 @@ bool ReadFormBytes(uint32_t address, void* out, size_t size) {
   return true;
 }
 forms::Snapshot ReadForms(int id, int suit) {
+  // POST/FORMAS-8 (12/11): el catalogo ampliado antes de leer las capsulas de las formas. Si no, el lado 1 se
+  // resolvia con el de 596 (lo ampliaba UnifiedForms al final) y rechazaba las formas con capsulas nuevas (motivo 8).
+  EnsureCapsules();
   auto snapshot = forms::Decode(ReadFormBytes, id, suit, g_forms_scope);
   if (!forms::CountValid(snapshot)) return snapshot;
   if (id >= 0) {
@@ -2052,7 +2259,7 @@ forms::Snapshot ReadForms(int id, int suit) {
   }
   std::array<uint8_t, 4> pointer{};
   const uint32_t count = CapsuleCount();
-  const bool catalogue = count >= 1 && count <= 2048 &&
+  const bool catalogue = count >= 1 && count <= dbz3::roster::CatalogueLimit() &&
       ReadFormBytes(0x8237560Cu, pointer.data(), pointer.size());
   const uint32_t records = catalogue ? forms::Be32(pointer.data()) : 0;
   for (int f = 1; f < snapshot.count; ++f) {
@@ -2237,6 +2444,13 @@ bool ListedCapsule(uint8_t* base, uint32_t rec, uint64_t owner_bit, uint32_t tab
   return (REX_LOAD_U64(rec) & owner_bit) != 0 && (REX_LOAD_U8(rec + 10) & 3) == tab &&
          (REX_LOAD_U8(rec + 8) & 7) != 0 && inv_count != 0;
 }
+
+// SLOTS_PJ-06: las capsulas nuevas (>= 596) son siempre tuyas. Con dbz3_capsulas_sin_tope no se
+// consulta el inventario para ellas: un ID >= 2048 cae fuera de sus 2048 B (otro campo de la partida).
+inline uint32_t OwnedCount(uint8_t* base, uint32_t id, uint32_t inv) {
+  if (id >= 596 && dbz3::roster::CapsulesSinTope()) return 1;
+  return REX_LOAD_U8(inv + id);
+}
 }  // namespace
 
 // Lista visible de la pestana (9 capsulas desde el desplazamiento). Misma logica que el
@@ -2272,7 +2486,7 @@ DBZ3_HOOK(sub_821B6ED8, dbz3eu_sub_821B5CC0) {
   const uint32_t n = dbz3::roster::CapsuleCount();
   uint32_t skipped = 0, shown = 0;
   for (uint32_t id = 1; id < n; ++id) {
-    if (!ListedCapsule(base, recs + 40 * id, bit, tab, id == uid ? 1u : REX_LOAD_U8(inv + id))) continue;
+    if (!ListedCapsule(base, recs + 40 * id, bit, tab, id == uid ? 1u : OwnedCount(base, id, inv))) continue;
     if (int32_t(skipped) < int32_t(skip)) {
       ++skipped;
       continue;
@@ -2290,7 +2504,8 @@ DBZ3_HOOK(sub_821B6FE8, dbz3eu_sub_821B5DD0) {
   const uint32_t st = ctx.r3.u32;
   const int32_t want = ctx.r4.s32;
   const uint32_t recs = REX_LOAD_U32(kSkcRecs);
-  if (!PtrEditor(st) || !PtrSkc(recs) || !PtrEditor(REX_LOAD_U32(st + 44)) || want >= int32_t(dbz3::roster::kInventorySize)) {
+  if (!PtrEditor(st) || !PtrSkc(recs) || !PtrEditor(REX_LOAD_U32(st + 44)) ||
+      want >= int32_t(dbz3::roster::CapsuleCount())) {
     orig(ctx, base);   // s9: cursor fuera del catalogo o editor sin montar
     return;
   }
@@ -2304,7 +2519,7 @@ DBZ3_HOOK(sub_821B6FE8, dbz3eu_sub_821B5DD0) {
   int32_t pos = 0, count = 0;
   for (uint32_t id = 1; id < n; ++id) {
     if (int32_t(id) == want) pos = count;
-    if (ListedCapsule(base, recs + 40 * id, bit, tab, id == uid ? 1u : REX_LOAD_U8(inv + id))) ++count;
+    if (ListedCapsule(base, recs + 40 * id, bit, tab, id == uid ? 1u : OwnedCount(base, id, inv))) ++count;
   }
   REX_STORE_U16(blk + 102, uint16_t(count));
   if (count < 9) {
@@ -2420,7 +2635,7 @@ DBZ3_HOOK(sub_821B8FC8, dbz3eu_sub_821B7DB0) {
 // con un ID "prestado" < 595 (su registro intercambiado con el del prestado) y el nombre
 // se pide con el ID real (sub_82146430: r3 = sprite, +24 textura; r5 = ID en el banco).
 namespace {
-constexpr int kMaxProxies = 16;
+constexpr int kMaxProxies = 48;   // SLOTS_PJ-08: ventana visible (9) + equipadas (7) x 2 jugadores; antes 16 cortaba en silencio
 thread_local int t_proxy_n = 0;
 thread_local uint32_t t_proxy_from[kMaxProxies];   // ID prestado (< 595)
 thread_local uint32_t t_proxy_to[kMaxProxies];     // ID real (>= 595)
@@ -2471,11 +2686,28 @@ void ProxyEnd(uint8_t* base) {
 DBZ3_HOOK(sub_821B7C50, dbz3eu_sub_821B6A38) {
   const uint32_t st = ctx.r3.u32;
   const uint32_t n = dbz3::roster::CapsuleCount();
-  const uint32_t cnt = st && n > 595 && t_proxy_n == 0 ? std::min<uint32_t>(REX_LOAD_U32(st + 188), 7) : 0;
+  static const bool ventana = rex::cvar::Query<bool>("dbz3_edit_skills_ventana");   // SLOTS_PJ-08 (apagado)
+  if (!st || n <= 595 || t_proxy_n != 0) {
+    orig(ctx, base);
+    return;
+  }
+  const uint32_t cnt = std::min<uint32_t>(REX_LOAD_U32(st + 188), 7);
   std::vector<uint32_t> list(cnt);
   for (uint32_t k = 0; k < cnt; ++k) list[k] = REX_LOAD_U32(st + 192 + 4 * k);
   for (uint32_t k = 0; k < cnt; ++k) {
     if (list[k] >= 595 && list[k] < n) REX_STORE_U32(st + 192 + 4 * k, ProxyFor(base, list[k], list));
+  }
+  // SLOTS_PJ-08: la bandeja dibuja su ventana de 9 capsulas (bloque de la pestana +8) y el original
+  // se salta las >= 595. Con el ajuste, esas 9 se presentan con un ID prestado igual que las equipadas.
+  uint32_t vis = 0;
+  constexpr uint32_t kVis = 9;
+  if (ventana) {
+    vis = st + 76 + 28 * (REX_LOAD_U32(st + 36) & 3) + 8;
+    std::vector<uint32_t> vlist(kVis);
+    for (uint32_t k = 0; k < kVis; ++k) vlist[k] = REX_LOAD_U16(vis + 2 * k);
+    for (uint32_t k = 0; k < kVis; ++k) {
+      if (vlist[k] >= 595 && vlist[k] < n) REX_STORE_U16(vis + 2 * k, uint16_t(ProxyFor(base, vlist[k], vlist)));
+    }
   }
   if (t_proxy_n == 0) {
     orig(ctx, base);
@@ -2483,6 +2715,9 @@ DBZ3_HOOK(sub_821B7C50, dbz3eu_sub_821B6A38) {
   }
   orig(ctx, base);
   for (uint32_t k = 0; k < cnt; ++k) REX_STORE_U32(st + 192 + 4 * k, RealOf(REX_LOAD_U32(st + 192 + 4 * k)));
+  if (vis) {
+    for (uint32_t k = 0; k < kVis; ++k) REX_STORE_U16(vis + 2 * k, uint16_t(RealOf(REX_LOAD_U16(vis + 2 * k))));
+  }
   ProxyEnd(base);
 }
 
@@ -2736,13 +2971,6 @@ REX_HOOK_RAW(sub_821D3EB8) {
   constexpr uint32_t kRutaUsi = 0x820245F8;   // "/usr/data_usi.afs" (devuelta cuando el idioma no tiene ruta propia)
   const uint32_t ruta = ctx.r3.u32;
   if (ruta != kRutaUsi) return;
-  sub_8221CD48(ctx, base);
-  const uint32_t idioma = ctx.r3.u32;
-  static uint32_t s_ger = 0, s_ita = 0;
-  static const bool s_hay_ger = HayDatosLocalizadosUS("data_ger.afs"), s_hay_ita = HayDatosLocalizadosUS("data_ita.afs");
-  // portugues (idioma 9 solo de interfaz: el juego va en ingles) y japones (2): copias de data_usi con las escenas propias traducidas
-  static const bool s_hay_por = HayDatosLocalizadosUS("data_por.afs"), s_hay_jpn = HayDatosLocalizadosUS("data_jpn.afs");
-  static uint32_t s_por = 0, s_jpn = 0;
   auto texto = [&](uint32_t& dir, const char* s) {
     if (!dir) {
       dir = dbz3::roster::GuestAlloc(32);
@@ -2750,6 +2978,22 @@ REX_HOOK_RAW(sub_821D3EB8) {
     }
     return dir;
   };
+  // XEX US sobre datos EU: XGetLanguage=EN da data_usi, que no existe en PAL.
+  // Conserva /usr (el juego lo traduce a D:\us), para que el montaje de carpeta
+  // o ISO abra el data_eng de EU. El XEX EU ya trae la ruta inglesa correcta.
+  if (dbz3::settings::JapaneseUiOnly()) {
+    static uint32_t s_eng = 0;
+    const uint32_t eng = texto(s_eng, "/usr/data_eng.afs");
+    if (eng) ctx.r3.u64 = eng;
+    return;
+  }
+  sub_8221CD48(ctx, base);
+  const uint32_t idioma = ctx.r3.u32;
+  static uint32_t s_ger = 0, s_ita = 0;
+  static const bool s_hay_ger = HayDatosLocalizadosUS("data_ger.afs"), s_hay_ita = HayDatosLocalizadosUS("data_ita.afs");
+  // portugues (idioma 9 solo de interfaz: el juego va en ingles) y japones (2): copias de data_usi con las escenas propias traducidas
+  static const bool s_hay_por = HayDatosLocalizadosUS("data_por.afs"), s_hay_jpn = HayDatosLocalizadosUS("data_jpn.afs");
+  static uint32_t s_por = 0, s_jpn = 0;
   uint32_t nueva = 0;
   if (idioma == 3 && s_hay_ger) nueva = texto(s_ger, "/usr/data_ger.afs");
   if (idioma == 6 && s_hay_ita) nueva = texto(s_ita, "/usr/data_ita.afs");

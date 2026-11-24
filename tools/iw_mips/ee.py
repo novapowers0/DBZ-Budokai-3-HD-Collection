@@ -280,6 +280,8 @@ class Ee:
         s.llamadas = Counter()
         s.sin_puente = Counter()
         s.io = Counter()
+        s.leer_io = None      # TRAD/1: registros de hardware simulados (oraculo.py); None = leen 0
+        s.escribir_io = None
         s.n = 0
         s.desconocidas = Counter()
 
@@ -291,7 +293,9 @@ class Ee:
         if 0x70000000 <= a < 0x70004000:
             return SPR + (a - 0x70000000)
         if a >= 0x80000000 or 0x20000000 <= a < 0x40000000:
-            b = a & 0x1FFFFFFF
+            # kseg0/kseg1 y los espejos sin cache de la RAM: 0x2xxxxxxx y 0x3xxxxxxx (acelerado; TRAD/1: el juego
+            # escribe ahi sus paquetes de DMA)
+            b = a & (0x0FFFFFFF if a < 0x40000000 else 0x1FFFFFFF)
             if b < RAM:
                 return b
         if PILA <= a < SPR:
@@ -302,34 +306,35 @@ class Ee:
         p = s.ph(a)
         if p is None:
             s.io[a & M32] += 1
-            return 0
+            return s.leer_io(a & M32, 1) if s.leer_io else 0
         return s.m[p]
 
     def r16(s, a):
         p = s.ph(a)
         if p is None:
             s.io[a & M32] += 1
-            return 0
+            return s.leer_io(a & M32, 2) if s.leer_io else 0
         return U16.unpack_from(s.m, p)[0]
 
     def r32(s, a):
         p = a if a < RAM else s.ph(a)
         if p is None:
             s.io[a & M32] += 1
-            return 0
+            return s.leer_io(a & M32, 4) if s.leer_io else 0
         return U32.unpack_from(s.m, p)[0]
 
     def r64(s, a):
         p = a if a < RAM else s.ph(a)
         if p is None:
             s.io[a & M32] += 1
-            return 0
+            return s.leer_io(a & M32, 8) if s.leer_io else 0
         return U64.unpack_from(s.m, p)[0]
 
     def w8(s, a, v):
         p = s.ph(a)
         if p is None:
             s.io[a & M32] += 1
+            if s.escribir_io: s.escribir_io(a & M32, v, 1)
             return
         s.m[p] = v & 0xFF
 
@@ -337,6 +342,7 @@ class Ee:
         p = s.ph(a)
         if p is None:
             s.io[a & M32] += 1
+            if s.escribir_io: s.escribir_io(a & M32, v, 2)
             return
         U16.pack_into(s.m, p, v & 0xFFFF)
 
@@ -344,6 +350,7 @@ class Ee:
         p = a if a < RAM else s.ph(a)
         if p is None:
             s.io[a & M32] += 1
+            if s.escribir_io: s.escribir_io(a & M32, v, 4)
             return
         U32.pack_into(s.m, p, v & M32)
 
@@ -351,6 +358,7 @@ class Ee:
         p = a if a < RAM else s.ph(a)
         if p is None:
             s.io[a & M32] += 1
+            if s.escribir_io: s.escribir_io(a & M32, v, 8)
             return
         U64.pack_into(s.m, p, v & M64)
 
@@ -441,10 +449,19 @@ class Ee:
     # ===== enteras =====
     def i_nop(s, *a): return _nop
     def i_sync(s, *a): return _nop
+    def i_sync_p(s, *a): return _nop   # TRAD/1: sync.p del arranque (sin efecto en un interprete)
+    def i_sync_l(s, *a): return _nop
     def i_cache(s, *a): return _nop
     def i_pref(s, *a): return _nop
-    def i_ei(s, *a): return _nop
-    def i_di(s, *a): return _nop
+    # ei/di: solo cambian Status.EIE (bit 16) si el llamador fijo s.cop0_status; si no, no hacen nada (como antes)
+    def i_ei(s, *a):
+        def f():
+            if getattr(s, 'cop0_status', None): s.cop0_status |= 0x10000
+        return f
+    def i_di(s, *a):
+        def f():
+            if getattr(s, 'cop0_status', None): s.cop0_status &= ~0x10000
+        return f
 
     def i_lui(s, pc, w, rs, rt, rd, sa, imm, simm):
         r = s.r; v = sx32(imm << 16)
@@ -968,6 +985,7 @@ class Ee:
             h = s.hooks.get(('syscall', n))
             if h is None:
                 raise RuntimeError(f'syscall {n} en {pc:#x} sin puente')
+            s.pc_sys = pc   # para el puente: donde esta la syscall (oraculo.py reanuda hilos en pc + 4)
             h(s)
         return f
 
@@ -977,12 +995,43 @@ class Ee:
 
     def i_mfc0(s, pc, w, rs, rt, rd, sa, imm, simm):
         r = s.r
-        def f(): r[rt] = sx32(s.n & M32) if rd == 9 else 0  # Count = contador propio; resto 0
+        # Count = contador propio; Status (12) = s.cop0_status si se fija (None/0 = como antes); resto 0
+        def f(): r[rt] = sx32(s.n & M32) if rd == 9 else (sx32(getattr(s, 'cop0_status', 0) or 0) if rd == 12 else 0)
         return s._w(rt, f)
 
     def i_mtc0(s, *a): return _nop
 
     # ===== MMI (los que aparecen) =====
+    def i_pmfhl_lw(s, pc, w, rs, rt, rd, sa, imm, simm):
+        def f():
+            s.r[rd] = (s.lo & M32) | ((s.hi & M32) << 32)
+            s.up[rd] = (s.lo1 & M32) | ((s.hi1 & M32) << 32)
+        return s._w(rd, f)
+
+    # TRAD/1: MMI por carriles (libc del arranque: strlen/memchr con psubb/pceqb...). Registro de 128 bits = up:r.
+    def _carriles(s, rs, rt, rd, bits, op):
+        r = s.r; up = s.up; m = (1 << bits) - 1; n = 128 // bits; sg = 1 << (bits - 1)
+        def f():
+            a = (up[rs] << 64) | r[rs]; b = (up[rt] << 64) | r[rt]; x = 0
+            for i in range(n):
+                u, v = (a >> (i * bits)) & m, (b >> (i * bits)) & m
+                x |= (op(u, v, m, sg) & m) << (i * bits)
+            r[rd], up[rd] = x & M64, x >> 64
+        return s._w(rd, f)
+    def _sx(v, sg): return v - 2 * sg if v & sg else v
+    for _nom, _bits, _op in (('paddb', 8, lambda u, v, m, g: u + v), ('psubb', 8, lambda u, v, m, g: u - v),
+                             ('paddh', 16, lambda u, v, m, g: u + v), ('psubh', 16, lambda u, v, m, g: u - v),
+                             ('paddw', 32, lambda u, v, m, g: u + v), ('psubw', 32, lambda u, v, m, g: u - v),
+                             ('pceqb', 8, lambda u, v, m, g: m if u == v else 0), ('pceqh', 16, lambda u, v, m, g: m if u == v else 0),
+                             ('pceqw', 32, lambda u, v, m, g: m if u == v else 0),
+                             ('pcgtb', 8, lambda u, v, m, g: m if _sx(u, g) > _sx(v, g) else 0),
+                             ('pcgth', 16, lambda u, v, m, g: m if _sx(u, g) > _sx(v, g) else 0),
+                             ('pcgtw', 32, lambda u, v, m, g: m if _sx(u, g) > _sx(v, g) else 0),
+                             ('pmaxw', 32, lambda u, v, m, g: u if _sx(u, g) >= _sx(v, g) else v),
+                             ('pminw', 32, lambda u, v, m, g: u if _sx(u, g) <= _sx(v, g) else v)):
+        locals()['i_' + _nom] = (lambda bits, op: lambda s, pc, w, rs, rt, rd, sa, imm, simm: s._carriles(rs, rt, rd, bits, op))(_bits, _op)
+    del _nom, _bits, _op
+
     def i_pcpyld(s, pc, w, rs, rt, rd, sa, imm, simm):
         r = s.r; up = s.up
         def f(): up[rd], r[rd] = r[rs], r[rt]
@@ -1269,11 +1318,29 @@ class Ee:
             elif fd: vf[fd] = out
         return f
 
+    def _vbits(s, w, pick, bc=None):
+        """fd.dest = pick(fs, ft | ft.bc) sobre los bits crudos (vmax/vmini)."""
+        ft, fs, fd = (w >> 16) & 31, (w >> 11) & 31, (w >> 6) & 31
+        dest = Ee._vdest(w); vf = s.vf
+        def f():
+            if fd:
+                a, b = vf[fs], vf[ft]
+                o = list(vf[fd])
+                for i in dest: o[i] = pick(a[i], b[bc] if bc is not None else b[i])
+                vf[fd] = o
+        return f
+
     def __getattr__(s, nom):
         # familia vadd/vsub/vmul/vmadd/vmsub[a][x|y|z|w|q|i]
         if not nom.startswith('i_v'):
             raise AttributeError(nom)
         base = nom[2:]
+        for pre, mx in (('vmax', True), ('vmini', False)):   # vmax/vmini[x|y|z|w]: copia los bits del mayor/menor
+            rest = base[len(pre):]
+            if base.startswith(pre) and rest in ('', 'x', 'y', 'z', 'w'):
+                bc = 'xyzw'.index(rest) if rest else None
+                pick = (lambda a, b: a if fv(a) >= fv(b) else b) if mx else (lambda a, b: a if fv(a) <= fv(b) else b)
+                return lambda pc, w, *a: s._vbits(w, pick, bc)
         def R(k, sub=False):  # redondeo por familia (VU_CERCANO[k]); se mira en cada ejecucion
             if sub:
                 return lambda a, b: f_add(a, -b, VU_CERCANO.get(k, False))
@@ -1428,8 +1495,27 @@ def demo():
     assert fv(0x7F800000) == 2.0 ** 128                # exponente 255 = numero
     assert fb(1e-40) == 0                              # denormal a cero
     assert f_div(1.0, 3.0) == 0x3EAAAAAA and f_sqrt(2.0) == 0x3FB504F3
+    # VU0 vmaxw.xyzw vf3,vf1,vf2w / vmini.xy vf4,vf1,vf2 (bits del mayor/menor; campos fuera de dest intactos)
+    uno, dos, menos = fb(1.0), fb(2.0), fb(-3.0)
+    cpu.vf[1], cpu.vf[2], cpu.vf[4] = [uno, menos, dos, 0], [0, 0, 0, dos], [7, 7, 7, 7]
+    cpu.vf[2][0] = menos
+    _asm(mem, 0x2000, [0x4BE208D3])   # vmaxw.xyzw vf3,vf1,vf2w
+    cpu.decodificar(0x2000)()
+    assert cpu.vf[3] == [dos, dos, dos, dos], cpu.vf[3]
+    _asm(mem, 0x2004, [0x4B82092F])   # vmini.xy vf4,vf1,vf2
+    cpu.decodificar(0x2004)()
+    assert cpu.vf[4] == [menos, menos, 7, 7], cpu.vf[4]
     print('ee.py autocomprobacion OK')
 
 
 if __name__ == '__main__':
-    demo()
+    import os, sys
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    try:
+        from infra import cronometro
+    except ImportError:
+        import contextlib
+        def cronometro(*a, **k):
+            return contextlib.nullcontext()
+    with cronometro('ee', 'demo'):
+        demo()

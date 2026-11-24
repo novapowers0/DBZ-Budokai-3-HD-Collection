@@ -80,6 +80,8 @@
 #include "iw_cutscene.h"
 #define IWV_SOLO_DECL
 #include "iw_mips_vuelo.inl"   // T4B: vuelo con la logica original (solo declaraciones)
+#include "iw_mips.h"         // IWFIN/IW-F13a: freezer::g_ntsc (ELF USA cargado)
+#include "iw_gs_traductor.h"   // PAQ_0: unico include del traductor en este archivo
 #undef IWV_SOLO_DECL
 #include <chrono>
 #include "iw_gs.h"
@@ -91,8 +93,25 @@
 #include "freecam.h"
 #include "launcher/launcher_state.h"
 #include "pasarela.h"
+#include "pasarela_iw.h"
 #include "ps2_modelo.h"
 #include "suelo_iw.h"
+#include "iw_azar.h"
+
+#include <rex/cvar.h>
+
+// PUL-IW-ANIM 11/11 (IW-F12b/IW-V03): voces del vuelo 7D6/7E0 como el ELF EU/USA (censo en
+// studies 5/ENTREGAS/ESTADO_PULANIM_VOCES_VUELO.md). Apagado = comportamiento anterior sin cambios.
+// IWFIN/IW-F13a: el objeto 8 no congela el medidor al cogerlo: Viewer_UpdateObjectCollection (EU 0x33B7D0) lanza un efecto
+// con la bandera 0x200 y Viewer_UpdateEffectSlots (EU 0x33A000) lo lleva al medidor (G+0x1E0): reloj += paso por campo y
+// llega cuando 1 / (T - reloj) >= 1 con T = 40 (float EU 0x49C3A0, USA 0x49BBA0; leido en los dos ELF), o sea reloj >= 39:
+// 33 campos PAL (paso 1,2) o 39 NTSC. Entonces G+0x520 = bloque +0x24 y MgFly_CallLoadFunc(8). El port lo ponia al campo
+// siguiente. ponytail: +-1 campo sin medir (orden de las dos tareas en el campo de la recogida; hace falta una toma PINE
+// del original con G+0x520 por campo).
+REXCVAR_DEFINE_BOOL(dbz3_iw_vuelo_objeto8_viaje, false, "DBZ3/IW",
+                    "IW vuelo 0x7D6/0x7E0: el objeto 8 congela el medidor cuando su efecto llega (33 campos PAL / 39 NTSC), no al cogerlo");
+REXCVAR_DEFINE_BOOL(dbz3_iw_voces_vuelo_original, true, "DBZ3/IW",
+                    "IW vuelo: voces como el original (1249 del READY, 1261 de derrota, 955/956 a 10 s, aros con Memory) (pruebas)");
 
 namespace dbz3::hub {
 bool RequestBattleEx(int id1, int id2, int stage, bool p2_com, int time_s, int hp1, int hp2, int form1, int form2);
@@ -121,6 +140,7 @@ namespace {
 
 namespace P = dbz3::pasarela;
 namespace ame = dbz3::iwame::ame;
+bool VocesOriginal() { return REXCVAR_GET(dbz3_iw_voces_vuelo_original); }
 using ps2::Modelo;
 using ps2::Tex;
 using ps2::V3;
@@ -499,6 +519,10 @@ struct Juego {
   bool voz_inicio = false;   // frase del jugador al pasar de 1 s de vuelo (EU 0x33C660, ver PasoVuelo)
   uint8_t eventos = 0;       // dialogos del rival ya disparados (EU 0x33C660 / 0x33AFA0; bit = indice de evento)
   int voz_aro = 0;           // contador para el `Memory() % 3` de la frase de los aros (EU 0x33AFA0)
+  // dbz3_iw_voces_vuelo_original: +0x52c del READY? (EU 0x33CA90: al bajar de 0 suena 1249 y vale 99999) y la
+  // voz de derrota ya lanzada (EU 0x33C660 bVar2: 1261 en el mismo cuadro en que se pierde).
+  float listo_voz = 0.0f;
+  bool voz_derrota = false;
   TerrenoVuelo terreno;   // DS101: malla del 883/881 (hijo 5 del AFS de IW) para la altura de vuelo
   // #AMC de 891: clave = (libro << 16) | clip. Libro 0 = hijo 25 (todos los clips, 1408); libro 1 = hijo 26 (su
   // unico clip 0, 300 cuadros = plano de presentacion del campo). DS113: las escenas de Cutscene_GotoLine (0x3424F0)
@@ -517,6 +541,9 @@ struct Juego {
   bool intro = false, intro_done = false, poses = false;
   int intro_t = 0;
   float intro_ojo[3] = {0, 0, 0};
+  // IWINI (11/11): objetivo y actor del cuadro ANTERIOR del guion (ver AvanzarIntro); actor -2 = aun no hay
+  float intro_obj_ant[3] = {0, 0, 0};
+  int intro_actor_ant = -2;
   // DS113: audio de la intro. EU 0x33CE40: CharacterDialoguesStart_(0, Audio_GetFilteredTableEntry(0x6b, 0x49c458[v])
   // | 0x20000, 0) = musica (ADX_CMN 65 v0 / 63 v1) y Audio_PlayDialogueOnChannel(3, #AMB 891, 0x49c460[v*3+k]) =
   // hijos ADX 29/30/31 (v0) y 32/33/31 (v1). Se copian una vez a un AFS cache para el reproductor de pasarela.
@@ -544,8 +571,11 @@ struct Juego {
   std::vector<uint8_t> msf_raw;
   int orig = 0;
   bool congelar_pend = false;
+  int congelar_en = 0;   // IWFIN/IW-F13a: campos que le faltan al efecto del objeto 8 para llegar al medidor
   uint32_t anim_prev = 0;
   dbz3::iwmips::vuelo7::Salida orig_o;
+  int rango_elf = -1;   // PAQ_3: rango que deja el ELF en ctx+0x4E0 (Viewer_StateCheckResult)
+  bool trad_vuelo_entrada_ = false;   // PAQ_0: enganche del bucle traducido del vuelo (0x7D6/0x7E0)
   int cam_yaw = -1;   // R7: rumbo de la camara, sigue a yaw a 1/16 por cuadro (Viewer_UpdateOrbitCamera L427262)
   // aplicar_estudios (entrega 16 P2): +0x604 cabeceo (palanca derecha Y) y +0x608 balanceo (palanca X) del visor de vuelo
   int cabeceo = -0x800, balanceo = 0;
@@ -1411,6 +1441,7 @@ std::shared_ptr<ame::Instancia> Lanzar(Juego& j, int id, int slot, const V3& pos
   in->esc = esc;
   in->mezcla_gs = true;
   in->modelos = !j.fx_modelos.empty();
+  ame::Fiel(*in, "vuelo", id, false, false);   // PUL-IW-FX-02: hijas, caja y orientacion de modelos (solo con el ajuste)
   Juego::FxVivo v;
   v.id = id;
   v.slot = slot;
@@ -1495,7 +1526,7 @@ void Reiniciar(Juego& j,bool reiniciar_efectos=true) {
   j.picado_t = 0;
   j.pose_aro = false;
   j.codigo_vuelo = 0;
-  j.orig = 0; j.congelar_pend = false; j.anim_prev = 0;   // T4B: la logica original vuelve a montarse
+  j.orig = 0; j.congelar_pend = false; j.congelar_en = 0; j.anim_prev = 0;   // T4B: la logica original vuelve a montarse
   j.espera_cam = 0;
   j.cam_ped_ok = false;
   j.cam_esc_ok = false;
@@ -1514,6 +1545,10 @@ void Reiniciar(Juego& j,bool reiniciar_efectos=true) {
   j.voz_inicio = false;
   j.eventos = 0;
   j.voz_aro = 0;
+  j.listo_voz = 0.0f;
+  j.voz_derrota = false;
+  // Memory() del ELF (aros y aviso de 10 s): idempotente, no reinicia la semilla si ya la puso otro consumidor IW.
+  if (reiniciar_efectos && VocesOriginal()) iwazar::Global().Iniciar(P::LeerElf(P::BuscarIW()));
   j.meta.activo = false;
   for (size_t k = 0; k < j.objs.size(); ++k) {
     Obj& o = j.objs[k];
@@ -1613,6 +1648,14 @@ bool FinAviso(const Juego& j) {
 }
 void Acabar(uint8_t* base, uint32_t mgr, Juego& j, bool meta, const char* por) {
   const bool superado = meta && j.t_ms <= float(j.rango_s[4]) * 1000.0f;
+  // dbz3_iw_voces_vuelo_original: EU 0x33C660 (USA 0x33C160) rama bVar2 (tiempo agotado en v0 / medidor del rival a 1
+  // en v1): CharacterDialoguesStart_(2, Table_Lookup480450(byte EU 0x49C46B = 13) | 0x30000) = ADX 1261 en el MISMO
+  // cuadro en que se pierde, antes de LoadWaitWinLose. El port de antes lanzaba 1250 al empezar la escena 3.
+  if (!meta && !j.voz_derrota && VocesOriginal()) {
+    j.voz_derrota = true;
+    VozCorta(j, 1261);
+    REXLOG_INFO("dbz3 pulanim voz: derrota 1261 (EU 0x33C660 bVar2) cuadro {} por {}", j.cuadros, por);
+  }
   if (!meta&&!j.derrota_vista&&!j.resultado_visto&&j.vuelo_real) {
     if (!j.derrota_espera) {
       j.derrota_espera=true;j.aviso_id=8;j.aviso_t=0;
@@ -1638,7 +1681,7 @@ void Acabar(uint8_t* base, uint32_t mgr, Juego& j, bool meta, const char* por) {
       j.superado = superado;
       if (meta) { j.aviso_id=superado ? 7 : 8;j.aviso_t=0; }
       Fx::Limpiar(j);
-      if (!meta) VozCorta(j, 1250);
+      if (!meta && !j.voz_derrota) VozCorta(j, 1250);
       REXLOG_INFO("dbz3 r12: resultado de IW: escena {} clip {} anim 0x{:X}, {} cuadros antes de salir",
                   j.escena_cierre, clip, j.v == 0 ? (superado ? 0x371 : 0x372) : (superado ? 0x759 : 0x75A),
                   j.cams.at(clip).dur);
@@ -1654,9 +1697,11 @@ void Acabar(uint8_t* base, uint32_t mgr, Juego& j, bool meta, const char* por) {
   // DS118: al perder, la rama `bVar2` corta la musica del canal 2 y lanza
   // CharacterDialoguesStart_(2, Table_Lookup480450(SemaParam.count)|0x30000) = 1250 (ADX_USA/JPN). La victoria ya
   // la lanza Viewer_BeginFinalPhase (1253/1250) en PasoCierre.
-  if (!meta && !j.resultado_visto) VozCorta(j, 1250);
+  if (!meta && !j.resultado_visto && !j.voz_derrota) VozCorta(j, 1250);
   REXLOG_INFO("dbz3 r12: fin ({}): tiempo {:.2f} s, medidor {:.3f}, monedas {} ({} puntos), superado {}", por,
               j.t_ms / 1000.0f, j.medidor, j.monedas, j.puntos, j.superado);
+  if (j.orig == 1)   // PAQ_3: cotejo del cierre del vuelo contra el ELF
+    REXLOG_INFO("dbz3 r12: fin desde ELF: quedan={} rango={} (ctx+0x4CC/+0x4E0)", j.t_ms / 1000.0f, j.rango_elf);
 }
 
 // Pose del jugador en cada estado del vuelo (auditoria7/J, visor de vuelo de IW: DATA_CMN 915; Viewer_StateFlyUpdate0
@@ -1743,7 +1788,9 @@ void Volar(uint8_t* base, uint32_t x, Juego& j, float h, float v, bool r1) {
     j.yaw = (j.yaw - int(h * float(j.giro_picado))) & 0xFFFF;
     j.vel *= j.freno_picado;
     j.balanceo >>= 1;   // Viewer_StateFlyUpdate4: +0x558 = +0x558 >> 1
-    if (v < 0.0f && j.vel >= j.vmin) {
+    // EU 3407D0: solo al ENTRAR en 32E se cambia velocidad/zoom. Si ya se ve, esperar fin aun con v < 0.
+    const bool una_vez = j.clave == 0x7E0 && std::getenv("DBZ3_IW_ANI2_7E0");
+    if (v < 0.0f && j.vel >= j.vmin && (!una_vez || j.anim_picado != 0x32E)) {
       j.vel = j.vfreno;
       j.anim_picado = 0x32E;
       j.zoom_meta = -10.0f;
@@ -1831,7 +1878,32 @@ void Recoger(uint8_t* base, uint32_t mgr, Juego& j, float x0, float z0, const db
       // (Timelapse_...Visuals(1)/(2) -> Cutscene_QueueEvent2C/2D, Audio_GetFilteredTableEntry(0x6C, 0x14/0x15) =
       // ADX 957/958) EN LUGAR de la frase del jugador. Si no, la frase sale de DAT_00483230 (ELF EU 0x483230).
       bool dialogo = false;
-      if (j.v == 0) {
+      if (VocesOriginal()) {
+        // EU 0x33AFA0 (USA 0x33AAA0): Memory(32) SIEMPRE (EU 0x33B018: elige el SE del canal 4 de la tabla 0x483260;
+        // ese SE no es voz, pero gasta el LFSR). v0 con quedan n-1 o 1: Timelapse(1/2) (una vez, G+0x7F0) y se salta
+        // la frase aunque el evento ya hubiera salido. Si no: frase DAT_00483230[Memory(32) % 3 (divu, EU 0x33B1D0)
+        // + tarde*3 + pj*6 + v*12].
+        (void)iwazar::Global().Memory(32);
+        if (j.v == 0 && (j.restantes == j.n_control - 1 || j.restantes == 1)) {
+          dialogo = true;
+          const bool primero = j.restantes == j.n_control - 1;
+          const uint8_t bit = primero ? 0x10 : 0x20;
+          if (!(j.eventos & bit)) {
+            j.eventos |= bit;
+            VozBanco3(j, primero ? 957 : 958, primero ? "dialogo del rival, primer aro (EU 0x33AFA0, original)"
+                                                      : "dialogo del rival, ultimo aro (EU 0x33AFA0, original)");
+          }
+        } else {
+          static constexpr uint8_t kVozAroOrig[24] = {3, 4, 5, 6, 7, 8, 12, 13, 14, 15, 16, 17,
+                                                      3, 4, 5, 6, 7, 8, 3,  4,  5,  6,  7,  8};   // ELF EU 0x483230
+          const bool tarde = j.t_ms >= float(j.rango_s[4]) * 700.0f && (j.n_control >> 1) < j.restantes;
+          const uint32_t m = iwazar::Global().Memory(32);
+          const int pos = int(m % 3u) + (tarde ? 3 : 0) + (j.pj & 1) * 6 + (j.v & 1) * 12;
+          VozJugador(j, kVozAroOrig[pos], tarde ? "aro cruzado (tarde, original)" : "aro cruzado (original)");
+          dialogo = true;   // ya sono: no repetir la rama del port de abajo
+        }
+      }
+      if (!dialogo && j.v == 0) {
         if (j.restantes == j.n_control - 1 && !(j.eventos & 0x10)) {
           j.eventos |= 0x10;
           dialogo = true;
@@ -1888,7 +1960,9 @@ void Recoger(uint8_t* base, uint32_t mgr, Juego& j, float x0, float z0, const db
       Fx::Lanzar(j, 7, 7, Fx::Cuerpo(j), Fx::Rumbo(j.yaw), true);    // DS182: Aura_Dash_(7, 0, 1)
       Fx::Lanzar(j, 0x10, 0x10, Fx::Cuerpo(j), Fx::Rumbo(j.yaw), true);
     } else if (o.tipo == 8 || o.tipo == 0x108) {
-      j.congelado = j.congela; j.congelar_pend = orig != nullptr;   // T4B: con el original, ctx+0x520 = +0x24 el cuadro siguiente. [VERIFICAR]: en IW +0x520 lanza Vegeta_GotenHarassmentEffectDraw(8) antes de congelar
+      j.congelado = j.congela;
+      if (orig != nullptr && REXCVAR_GET(dbz3_iw_vuelo_objeto8_viaje)) j.congelar_en = dbz3::iwmips::freezer::g_ntsc ? 39 : 33;
+      else j.congelar_pend = orig != nullptr;   // T4B: con el original, ctx+0x520 = +0x24 el cuadro siguiente. [VERIFICAR]: en IW +0x520 lanza Vegeta_GotenHarassmentEffectDraw(8) antes de congelar
       Fx::Lanzar(j, 0xD, 0xD, Fx::Cuerpo(j), Fx::Rumbo(j.yaw), true);   // DS182: Aura_Dash_(0xD, punto, 0x8210)
       Fx::Lanzar(j, 0xC, 0xC, Fx::Cuerpo(j), Fx::Rumbo(j.yaw), true);   //        + Aura_Dash_(0xC, 0, 1)
     }
@@ -1908,7 +1982,12 @@ void Recoger(uint8_t* base, uint32_t mgr, Juego& j, float x0, float z0, const db
   }
 }
 
-// Piloto de prueba ("auto"): gira hacia el objetivo y vuela con R1 mientras el medidor lo permite
+// Piloto de prueba ("auto"): el mismo que tools/T4B/piloto.py, que acaba el circuito con la logica original
+// (v0 19/19 en 2330 cuadros a dif0 y 3351 a dif2; v1 29/29 en 6053). Dos reglas medidas en el banco: el radio de
+// giro a crucero es vel / (96/65536 * 2pi) ~ 1050 u, asi que un aro que queda dentro de ese circulo no se alcanza
+// girando (se orbita); y la zona muerta del mando es 64, por lo que "frenar" es palanca al centro, no un valor
+// pequeno. Con el objetivo fuera de +-0,04 rad se frena y se gira en el sitio; alineado, palanca a fondo y R1
+// mientras el medidor del rival lo permita (1.0 = derrota).
 void Piloto(const Juego& j, float& h, float& v, bool& r1) {
   const Obj* o = j.meta.activo ? &j.meta : nullptr;
   float mejor = 1e30f;
@@ -1926,12 +2005,15 @@ void Piloto(const Juego& j, float& h, float& v, bool& r1) {
   float dif = std::atan2(dx, dz) - Ang(j.yaw);
   while (dif > 3.14159265f) dif -= 6.2831853f;
   while (dif < -3.14159265f) dif += 6.2831853f;
-  h = std::clamp(-dif * 4.0f, -1.0f, 1.0f);   // giro -= h: a la izquierda (dif > 0) con h < 0
-  // radio de giro = vel / (tasa en radianes): si el objetivo queda dentro, frena para no dar vueltas a su alrededor
-  const float d = std::hypot(dx, dz), radio = std::max(j.vel, 1.0f) / (96.0f / 65536.0f * 6.2831853f);
-  v = std::fabs(dif) > 0.3f && d < radio * 2.0f ? 0.3f : std::fabs(dif) > 1.2f ? 0.6f : 1.0f;
-  r1 = j.medidor < 0.6f && std::fabs(dif) < 0.15f && d > 1500.0f;
-  if (j.estado == 0 || j.vel < 8.0f) v = 1.0f;   // T4B: lento (tras un choque con el original) acelera a fondo: si no, gira en redondo
+  const float ae = std::fabs(dif);
+  h = std::clamp(-dif * 3.5f, -1.0f, 1.0f);   // giro -= h: a la izquierda (dif > 0) con h < 0
+  if (ae > 0.04f) {
+    v = 0.0f;   // palanca al centro: el estado 0 deja de avanzar y gira en el sitio (radio de giro infinito)
+    r1 = false;
+  } else {
+    v = 1.0f;
+    r1 = j.medidor < 0.5f;
+  }
 }
 
 }  // namespace
@@ -2328,6 +2410,7 @@ bool AvanzarIntro(uint8_t* base, uint32_t mgr, Juego& j) {
     // 0x33CA90 -> FlyingMinigameSpritesScripts 0x33C660). Ese es el READY? de IW: el vuelo no avanza.
     VozCorta(j, 1248);
     j.listo_t = 90;
+    j.listo_voz = 90.0f;   // +0x52c = 0x42B40000 (lo consume Viewer_StateEndingWait 0x33CA90 con el ajuste)
     j.aviso_id=0;j.aviso_t=0;
     REXLOG_INFO("dbz3 r12: intro terminada ({} cuadros); READY? {} cuadros y empieza el vuelo", j.intro_t, j.listo_t);
   };
@@ -2400,7 +2483,35 @@ bool AvanzarIntro(uint8_t* base, uint32_t mgr, Juego& j) {
   }
   // El actor del plano: 2 = Vegeta (x1), 1 = Krilin del guion (x0). El resto de la escena queda oculto (el original
   // dibuja solo los actores del mask de la linea; World_CharacterLoader 0x33B580).
-  const bool ver_p1 = L->actor == 1, ver_p2 = L->actor == 2;
+  // IWINI (11/11): la vista que se dibuja en este cuadro es la publicada en el ANTERIOR (AplicarCamaraVueloTrasB3 corre
+  // con la camara de B3, antes que este paso) y la pose pedida con Reproducir tambien entra un cuadro despues; la
+  // posicion y la mascara, en cambio, se pintaban ya. Con el clip a 45 u por cuadro y el ojo a 13 u del actor, este
+  // quedaba DETRAS de la camara: Goten/Vegeta y Gohan/Krilin no salian en sus planos y en el ultimo (que frena) entraban
+  // por el borde (grabacion ser_7e0 11/11 20:45). Se colocan y se enmascaran con el cuadro anterior, a la par que la vista.
+  // DBZ3_IWINI_SIN_RETRASO=1 (solo pruebas): como antes, para la foto de "antes".
+  static const bool sin_retraso = std::getenv("DBZ3_IWINI_SIN_RETRASO") != nullptr;
+  if (sin_retraso) j.intro_actor_ant = -2;
+  // IWINI (11/11): el sitio del actor es su cadera ORIGINAL (la pista absoluta del #AMM, par del #AMC del clip: en IW el
+  // actor va con el mundo en identidad y la camara lo encuadra), no el objetivo de la camara. Clavarlo al objetivo
+  // (31/10) valia para los que vuelan con la camara pegada, pero a Vegeta (clip 900, quieto mientras la camara se
+  // acerca a su cara) le ponia la cadera en el centro: primerisimo plano de la entrepierna (grabacion ser_7d6).
+  // DBZ3_IWINI_CADERA_OBJ=1 (solo pruebas): como antes, al objetivo.
+  const uint32_t porte = (j.v == 0 && j.pj == 1 && L->actor == 1 && L->anim == 0x375) ? 0x9E1u
+                         : (j.v == 1 && j.pj == 1 && L->anim == 0x75D) ? 0x9E0u
+                         : L->anim ? L->anim : uint32_t(L->actor == 2 ? 0x370 : 0x375);
+  static const bool cadera_obj = std::getenv("DBZ3_IWINI_CADERA_OBJ") != nullptr;
+  float sitio[3] = {obj[0], obj[1], obj[2]};
+  const bool hay_cadera = !cadera_obj && L->actor > 0 && dbz3::anim::CaderaGuion(porte, paso.t, sitio);
+  if (std::getenv("DBZ3_TEST_IWMINI") && L->actor > 0 && j.guion_f % 60 == 2)
+    REXLOG_INFO("dbz3 r12: iwini sitio linea {} f {} cadera {} ({:.1f},{:.1f},{:.1f}) objetivo ({:.1f},{:.1f},{:.1f})",
+                j.guion_linea, j.guion_f, hay_cadera, sitio[0], sitio[1], sitio[2], obj[0], obj[1], obj[2]);
+  const int actor_dib = j.intro_actor_ant == -2 ? L->actor : j.intro_actor_ant;
+  const float obj_dib[3] = {j.intro_actor_ant == -2 ? sitio[0] : j.intro_obj_ant[0],
+                            j.intro_actor_ant == -2 ? sitio[1] : j.intro_obj_ant[1],
+                            j.intro_actor_ant == -2 ? sitio[2] : j.intro_obj_ant[2]};
+  j.intro_actor_ant = L->actor;
+  j.intro_obj_ant[0] = sitio[0], j.intro_obj_ant[1] = sitio[1], j.intro_obj_ant[2] = sitio[2];
+  const bool ver_p1 = actor_dib == 1, ver_p2 = actor_dib == 2;
   ColocarActorGuion(base,x0);
   ColocarActorGuion(base,x1);
   REX_STORE_U8(x0 + kOcultoA, uint8_t(ver_p1 ? 0 : 1));
@@ -2412,19 +2523,17 @@ bool AvanzarIntro(uint8_t* base, uint32_t mgr, Juego& j) {
     // `anim` del guion (0x4831xx): v0 880 (0x370, Vegeta, DATA_CMN 931) y 885 (0x375, Krilin, 924); v1 1880 (0x758,
     // Goten, 923), 1885 (0x75D, Gohan 919 / Trunks nino 927) y 1886 (0x75E, Goten, 923), con el almacen propio
     // (hijo 1, alm 3) de cada #BSK. 0x370/0x375 estan en kExtras desde DS116; los tres de v1 hay que anadirlos alli.
-    // DS122: el 0x75D de Trunks nino (927, 52 huesos) va con alias 0x9E0 para no pisar el de Gohan (919)
-    const uint32_t porte = (j.v == 0 && j.pj == 1 && L->actor == 1 && L->anim == 0x375) ? 0x9E1u
-                           : (j.v == 1 && j.pj == 1 && L->anim == 0x75D) ? 0x9E0u
-                           : L->anim ? L->anim : uint32_t(L->actor == 2 ? 0x370 : 0x375);
+    // DS122: el 0x75D de Trunks nino (927, 52 huesos) va con alias 0x9E0 para no pisar el de Gohan (919): `porte`, arriba.
     // 31/10: como el cierre: la pista absoluta (AMM y AMC en par); en Bucle el actor quedaba fuera de plano
-    if (ver_p2) dbz3::anim::Reproducir(x1, porte, true, uint32_t(std::max(dur - 1, 1)));
-    if (ver_p1) dbz3::anim::Reproducir(x0, porte, true, uint32_t(std::max(dur - 1, 1)));
+    // (el actor de ESTA linea, no el que se pinta este cuadro: actor_dib va un cuadro por detras)
+    if (L->actor == 2) dbz3::anim::Reproducir(x1, porte, true, uint32_t(std::max(dur - 1, 1)));
+    if (L->actor == 1) dbz3::anim::Reproducir(x0, porte, true, uint32_t(std::max(dur - 1, 1)));
     REXLOG_INFO("dbz3 r12: intro linea {} (libro {} clip {}, {} cuadros): actor {} anim {} de IW -> 0x{:X}",
                 j.guion_linea, L->libro, L->clip, dur, L->actor, L->anim, porte);
   }
   // 31/10: el actor del guion cruza el mundo a 45 u por cuadro con el clip; la pista va sin esa recta (anim_iw) y el
   // actor se pone en el objetivo del clip cada cuadro (PINE/log: cadera = objetivo +-6): un cuadro de desfase lo sacaba de plano.
-  if (ver_p1 || ver_p2) Poner(base, x0, {obj[0], obj[1], obj[2]}), Poner(base, x1, {obj[0], obj[1], obj[2]});   // B3 acota la distancia entre los dos
+  if (ver_p1 || ver_p2) Poner(base, x0, {obj_dib[0], obj_dib[1], obj_dib[2]}), Poner(base, x1, {obj_dib[0], obj_dib[1], obj_dib[2]});   // B3 acota la distancia entre los dos
   StoreF(base, x0 + kVida, LoadF(base, x0 + kVidaMax));
   StoreF(base, x1 + kVida, LoadF(base, x1 + kVidaMax));
   return false;
@@ -2460,7 +2569,10 @@ void PasoCierre(uint8_t* base, uint32_t mgr, Juego& j) {
     // tabla EU 0x480450 = 1248 + indice).
     if (meta) {
       VozVuelo(j, 2);
-      VozCorta(j, j.t_ms <= float(j.rango_s[4]) * 1000.0f ? 1253 : 1250);
+      // dbz3_iw_voces_vuelo_original: la rama "fuera de tiempo" lee el byte EU 0x49C46B (gp-0x7985) = 13 -> 1261.
+      VozCorta(j, j.t_ms <= float(j.rango_s[4]) * 1000.0f ? 1253 : VocesOriginal() ? 1261 : 1250);
+      // Con el ajuste: la escena 3 que sigue (Viewer_StateCheckResult 0x33C340) no lanza otra voz.
+      if (VocesOriginal()) j.voz_derrota = true;
     }
   }
   if (hay) {
@@ -2515,6 +2627,10 @@ bool VueloOriginal(uint8_t* base, uint32_t x0, Juego& j, int px, int py, bool r1
   if (dbz3::anim::LeerEstadoCuerpo(base, x0, 0, e) && e.hay) {
     in.anim_cod = e.codigo; in.anim_cuadro = e.cuadro; in.anim_cuadros = int(e.cuadros);
   }
+  if (j.congelar_en > 0 && --j.congelar_en == 0) {   // IWFIN/IW-F13a
+    j.congelar_pend = true;
+    REXLOG_INFO("dbz3 r12: objeto 8: el efecto llega al medidor (cuadro {}), G+0x520 = bloque +0x24", j.cuadros);
+  }
   in.congelar = j.congelar_pend;
   j.congelar_pend = false;
   in.t = uint64_t(j.cuadros);
@@ -2534,6 +2650,7 @@ bool VueloOriginal(uint8_t* base, uint32_t x0, Juego& j, int px, int py, bool r1
   j.estado = o.estado >= 10 ? 0 : o.estado;
   j.t568 = o.t568; j.t56c = o.t56c; j.congelado = o.congelado;
   j.orig_o = o;
+  j.rango_elf = o.rango;   // PAQ_3: el rango del ELF (ctx+0x4E0); el panel del port sigue clasificando
   if (o.anim == 0x32E && j.anim_prev != 0x32E) j.zoom_meta = -10.0f;
   j.anim_prev = o.anim;
   j.pose_aro = o.anim == 0x330;
@@ -2592,6 +2709,7 @@ void PasoVuelo(uint8_t* base) {
     j.intro = j.vuelo_real && !j.guion.empty();
     j.intro_done = !j.intro;
     j.intro_t = 0;
+    j.intro_actor_ant = -2;
     j.guion_linea = j.guion_f = 0;
     j.cs.Reinicia();
     j.poses = false;
@@ -2653,6 +2771,15 @@ void PasoVuelo(uint8_t* base) {
       REXLOG_INFO("dbz3 solIW6: READY fin raiz AMA0 cuadro {}",j.aviso_t);
       REXLOG_INFO("dbz3 r12: READY? terminado; empieza el vuelo en ({:.0f}, {:.0f}) giro {} y arranca el reloj", j.x,
                   j.z, j.yaw);
+    } else if (VocesOriginal()) {
+      // EU 0x33CA90 (USA 0x33C590) Viewer_StateEndingWait: mientras el nodo +0x118 no acaba, +0x52c -= dt; al bajar
+      // de 0: CharacterDialoguesStart_(2, Table_Lookup480450(byte 0x49C469 = 1) | 0x30000) = ADX 1249 y +0x52c = 99999.
+      j.listo_voz -= 1.0f;
+      if (j.listo_voz < 0.0f) {
+        VozCorta(j, 1249);
+        j.listo_voz = 99999.0f;
+        REXLOG_INFO("dbz3 pulanim voz: READY 1249 (EU 0x33CA90) aviso cuadro {}", j.aviso_t);
+      }
     }
   }
   if (j.derrota_espera) {
@@ -2708,6 +2835,15 @@ void PasoVuelo(uint8_t* base) {
       auto inv = [](float a) { return a == 0.0f ? 0 : std::clamp(int(std::lround(a * 64.0f)) + (a > 0 ? 64 : -64), -127, 127); };
       px = inv(h); py = inv(v);
     }
+    // PAQ_0: un solo bloque de vuelo traducido para 0x7D6 y 0x7E0 (aqui no hay `d`: la clave esta en j).
+    if ((j.clave == 0x7D6 || j.clave == 0x7E0) && dbz3::iwtrad::Activo()) {
+      if (!j.trad_vuelo_entrada_) {
+        j.trad_vuelo_entrada_ = true;
+        dbz3::iwtrad::PonerClave(uint32_t(j.clave));
+        dbz3::iwtrad::NuevaEntrada();
+      }
+      dbz3::iwtrad::CuadroBucle(uint16_t(g_pad.b12));
+    }
     const bool orig = VueloOriginal(base, x0, j, px, py, r1);   // T4B: posicion, giro, estado, medidor y objetos del ELF
     if (!orig) {
       Volar(base, x0, j, h, v, r1);
@@ -2746,7 +2882,24 @@ void PasoVuelo(uint8_t* base) {
     // de la tabla 0x49C45C es {2,0x0B,2,2}: pj 1 usa 0x0B y el resto 2 (el mismo en las dos variantes).
     const float t_antes = j.t_ms;
     if (orig) j.t_ms = j.orig_o.t_ms; else j.t_ms += 1000.0f / 60.0f;
-    if (!j.voz_inicio && t_antes < 1000.0f && j.t_ms >= 1000.0f) {
+    if (VocesOriginal()) {
+      // EU 0x33C660 (USA 0x33C160), v0: t >= limite -> derrota (Acabar); t >= limite-10 s -> evento 0 (una vez,
+      // G+0x7F0) = Audio_PostSysSound EU 0x343A20: Memory(1)&1 ? (0x6C,0x13) : (0x6C,0x12) = ADX 956 / 955, y en ese
+      // tramo NO se mira la frase de 1 s. Si no (o v1): frase de 1 s con el byte 0x49C45C[v*2+pj] = {2,0x0B,2,2}.
+      const float lim = float(j.rango_s[4]) * 1000.0f;
+      const bool ultimos10 = j.v == 0 && j.t_ms < lim && j.t_ms >= lim - 10000.0f;
+      if (ultimos10) {
+        if (!(j.eventos & 0x40)) {
+          j.eventos |= 0x40;
+          const uint32_t m = iwazar::Global().Memory(1);
+          VozBanco3(j, (m & 1) ? 956 : 955, "aviso de 10 s del rival (EU 0x343A20)");
+        }
+      } else if (!(j.v == 0 && j.t_ms >= lim) && !j.voz_inicio && t_antes < 1000.0f && j.t_ms >= 1000.0f) {
+        static constexpr uint8_t kVozArranque[4] = {2, 0x0B, 2, 2};   // ELF EU 0x49C45C (USA 0x49BC5C)
+        j.voz_inicio = true;
+        VozJugador(j, kVozArranque[(j.v & 1) * 2 + (j.pj & 1)], "arranque del vuelo (EU 0x33C660, original)");
+      }
+    } else if (!j.voz_inicio && t_antes < 1000.0f && j.t_ms >= 1000.0f) {
       j.voz_inicio = true;
       VozJugador(j, j.pj == 1 ? 0x0B : 2, "arranque del vuelo (EU 0x33C660)");
     }
@@ -3307,7 +3460,8 @@ class Panel : public iwgs::Drawer {
     // (Minigame_UpdateScoreDigits 0x30ECD0: aros de control del #MSF + la meta = 19 + 1 = 20), no +0x166f.
     // En la intro, en el READY? y en el aterrizaje no hay HUD (el original ensena la escena limpia).
     const bool en_listo = j.listo_t > 0;
-    if (!en_intro && !en_listo && !en_cierre)
+    if (!en_intro && !en_listo && !en_cierre &&
+        !(dbz3::iwtrad::Activo() && (j.clave == 0x7D6 || j.clave == 0x7E0)))
       HudVuelo(segundos, medidor, j.v, j.n_control - j.restantes, j.n_control + 1, 0);
     if (!en_intro&&!en_cierre&&j.dialogo>=0) DibujarDialogo(io,j);
     // READY? durante la espera tras la intro y START! al empezar el vuelo (como IW; texturas DATA_USA 5/1 t08/t00).
@@ -3488,6 +3642,7 @@ bool Empezar(int clave, int fila, int dificultad, int personaje) {
   g_corre = true;
   P::Reglas r;
   r.capsulas = false;
+  if (j->v == 0) r.traje_rival = 3;   // original (0x482860): Vegeta con armadura de Namek (traje 3)
   P::VigilarCombate("r12", r, [j](const P::Fin&) {
     g_corre = false;
     {

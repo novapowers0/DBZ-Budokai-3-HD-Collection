@@ -10,6 +10,7 @@
 #pragma once
 #ifdef _WIN32
 #include "rb_store.h"
+#include "rb_cas_undo.h"
 namespace dbz3::net::rb {
 struct WLogTick {
   struct E { uint32_t a, v, fn, n; };   // n: valor al acabar el tick
@@ -21,15 +22,17 @@ struct WLogTick {
 struct WLog {
   static bool On() { static const bool v = (std::getenv("DBZ3_RB_WLOG") || std::getenv("DBZ3_RB_ON") || rex::cvar::GetFlagByName("dbz3_net_rollback") == "true") && !dbz3::g_guest_eu; return v; }
   using Tick = WLogTick;
-  static constexpr int kTicks = 16;
+  static constexpr int kTicks = 16;   // ventana de deshacer de serie
+  static constexpr int kRing = 64;    // capacidad; RESTO-02 (dbz3_net_rb_reparacion_larga) sube la ventana a 60 para que la reparacion (~20 ticks tarde) quepa
+  static inline uint32_t win = kTicks;
   static constexpr uint64_t kTop = 0xA0000000ull;   // por encima: espejos fisicos y GPU
-  static inline std::array<Tick, kTicks> ring;
+  static inline std::array<Tick, kRing> ring;
   static constexpr uint32_t kClock = 0x8238D6B4;   // solo US
   // Contador de altas del monton (solo lo toca sub_820A2550, nadie lo lee). Al resimular las altas reutilizadas del diario no lo suben
   // y las nuevas si: se deja como estaba antes de deshacer para que la suma del estado no dependa de cuantas se repitieron.
   static constexpr uint32_t kHeapCnt = 0x8238D6D8;
   static inline uint32_t heap_hold = 0;
-  static inline std::array<uint32_t, kTicks> clock_v{}, clock_t_{}, cosm_v{};
+  static inline std::array<uint32_t, kRing> clock_v{}, clock_t_{}, cosm_v{};
   static inline uint32_t* cosm = nullptr;   // LFSR cosmetico de los efectos (g_cosm_rng, fuera de la memoria del invitado)
   static inline Tick* cur = nullptr;
   static inline uint8_t* mem = nullptr;
@@ -57,6 +60,7 @@ struct WLog {
   static inline std::vector<bool> prev_used;
   static inline bool in_api = false;
   static inline uint64_t n_api_real = 0, n_api_kept = 0;
+  static inline bool cas_delta = false;   // dbz3_net_rb_cas_delta (netplay_hooks.cpp), apagado de serie
   static inline uint64_t n_foreign = 0, n_ext = 0, n_stack = 0, n_top = 0, n_atom = 0, n_words = 0;
 
   static void Ranges(const char* env, std::vector<std::pair<uint32_t, uint32_t>>& out) {
@@ -172,7 +176,7 @@ struct WLog {
       if (mute) {
         const bool shared = (lw[w >> 6] & bit) != 0;
         if (!shared && !InDrawMem(w << 2)) continue;
-        draw_out[cur->tick % kTicks].push_back({draw_cb, w << 2, 0});
+        draw_out[cur->tick % kRing].push_back({draw_cb, w << 2, 0});
         if (!shared) continue;
       } else {
         lw[w >> 6] |= bit;
@@ -374,9 +378,9 @@ struct WLog {
   static void Begin(uint32_t k, bool resim) {
     if (!seen || !mem) return;
     End();
-    cur = &ring[k % kTicks];
+    cur = &ring[k % kRing];
     cur->tick = k;
-    if (!resim) { std::memcpy(&clock_v[k % kTicks], mem + kClock, 4); clock_t_[k % kTicks] = k; if (cosm) cosm_v[k % kTicks] = *cosm; }
+    if (!resim) { std::memcpy(&clock_v[k % kRing], mem + kClock, 4); clock_t_[k % kRing] = k; if (cosm) cosm_v[k % kRing] = *cosm; }
     cur->e.clear();
     prev_api.clear();
     if (resim && cur->api_tick == k) prev_api.swap(cur->api);
@@ -414,12 +418,12 @@ struct WLog {
   }
   // Diagnostico (DBZ3_RB_WLOG_DIFF): compara lo que escribe la logica al resimular un tick con lo que escribio en el avance. Valor
   // anterior distinto = estado de partida no repuesto; mismo anterior y final distinto = la logica leyo algo distinto (p.ej. del dibujo).
-  static inline std::array<std::vector<WLogTick::E>, kTicks> fwd;
-  static inline std::array<uint32_t, kTicks> fwd_tick{};
+  static inline std::array<std::vector<WLogTick::E>, kRing> fwd;
+  static inline std::array<uint32_t, kRing> fwd_tick{};
   static void Diff() {
     static const bool on = std::getenv("DBZ3_RB_WLOG_DIFF") != nullptr;
     if (!on) return;
-    const uint32_t k = cur->tick, i = k % kTicks;
+    const uint32_t k = cur->tick, i = k % kRing;
     if (!replay) { fwd[i] = cur->e; fwd_tick[i] = k; return; }
     if (fwd_tick[i] != k) return;
     static int shown = 0;
@@ -450,8 +454,8 @@ struct WLog {
     if (nv + nn + nnew + nmiss) { ++shown; REXLOG_WARN("dbz3 rb: WLOG DIFF tick {}: antes {} final {} nuevas {} faltan {}:{}", k, nv, nn, nnew, nmiss, txt); }
   }
   static bool Has(uint32_t u, uint32_t t) {
-    for (uint32_t k = u; k < t; ++k) if (ring[k % kTicks].tick != k) return false;
-    return u < t && t - u < kTicks;
+    for (uint32_t k = u; k < t; ++k) if (ring[k % kRing].tick != k) return false;
+    return u < t && t - u < win;
   }
   // Deshace t-1..u. Despues la memoria registrada es la del principio de u.
   static bool Restore(uint32_t u, uint32_t t) {
@@ -462,14 +466,14 @@ struct WLog {
     // Igual el LFSR cosmetico: si no, al resimular los efectos salen con otros aleatorios, viven otro tiempo y la lista de efectos
     // (823C76D0, recorrida por sub_820CF8D0) acaba con nodos ya liberados.
     std::memcpy(&heap_hold, mem + kHeapCnt, 4);
-    if (clock_t_[u % kTicks] == u) { std::memcpy(mem + kClock, &clock_v[u % kTicks], 4); if (cosm) *cosm = cosm_v[u % kTicks]; }
+    if (clock_t_[u % kRing] == u) { std::memcpy(mem + kClock, &clock_v[u % kRing], 4); if (cosm) *cosm = cosm_v[u % kRing]; }
     static int dumps = 0;   // diagnostico: que funcion escribio cada palabra deshecha (primeras restauraciones)
     if (dumps < 3 && std::getenv("DBZ3_RB_WLOG_DUMP")) {
       ++dumps;
       std::ofstream o(OutDir() / ("wlog_" + std::to_string(GetCurrentProcessId()) + "_" + std::to_string(u) + ".csv"));
       o << "tick,addr,fn,old,new" << '\n';
       for (uint32_t k = u; k < t; ++k)
-        for (const auto& e : ring[k % kTicks].e) {
+        for (const auto& e : ring[k % kRing].e) {
           uint32_t now; std::memcpy(&now, mem + e.a, 4);
           char l[80]; std::snprintf(l, sizeof l, "%u,%08X,%08X,%08X,%08X%c", k, e.a, e.fn, _byteswap_ulong(e.v), _byteswap_ulong(now), '\n'); o << l;
         }
@@ -477,7 +481,7 @@ struct WLog {
     // Conflictos: palabra registrada que, despues de su ultimo tick, cambio alguien que no es la logica registrada (otro hilo, librerias,
     // dibujo). Deshacerla pisaria a ese otro dueno: no se deshace y se informa (funcion que la escribio).
     std::unordered_map<uint32_t, uint32_t> last;   // palabra -> valor al acabar su ultimo tick
-    for (uint32_t k = u; k < t; ++k) for (const auto& e : ring[k % kTicks].e) last[e.a] = e.n;
+    for (uint32_t k = u; k < t; ++k) for (const auto& e : ring[k % kRing].e) last[e.a] = e.n;
     std::unordered_set<uint32_t> foreign;
     for (const auto& [a, n] : last) { uint32_t now; std::memcpy(&now, mem + a, 4); if (now != n) foreign.insert(a); }
     if (!foreign.empty()) {
@@ -485,13 +489,33 @@ struct WLog {
       static int shown = 0;
       if (shown < 30) {
         std::map<uint32_t, std::pair<uint32_t, uint32_t>> byfn;   // fn -> (cuantas, primera direccion)
-        for (uint32_t k = u; k < t; ++k) for (const auto& e : ring[k % kTicks].e) if (foreign.count(e.a)) { auto& b = byfn[e.fn]; if (!b.first++) b.second = e.a; }
+        for (uint32_t k = u; k < t; ++k) for (const auto& e : ring[k % kRing].e) if (foreign.count(e.a)) { auto& b = byfn[e.fn]; if (!b.first++) b.second = e.a; }
         for (const auto& [fn, b] : byfn) if (shown++ < 30) REXLOG_WARN("dbz3 rb: WLOG ajena tras {}: fn {:08X} {} palabras (p.ej. {:08X})", u, fn, b.first, b.second);
       }
     }
+    // RESTO-01 (cierre del tick 17840: "ajena fn 80000000" en 405D6424 = obj+4, contador de sub_82080750, y 13 ms despues purecall ->
+    // abort 822FB6A0 -> _exit 822F8B50 -> KeBugCheck en 822F8988, lr 822F8AE4). Un contador atomico que tambien cambio otro dueno
+    // (alta de referencia dentro de una llamada externa del diario, que al resimular no se repite, u otro hilo) no se deshacia: al
+    // resimular la logica volvia a bajarlo, llegaba a 0 antes de tiempo y el objeto se destruia vivo. Con el ajuste se resta solo lo
+    // que sumo la logica (n - v de cada tick) y se conserva lo del otro dueno; vale tambien si el otro dueno cambio la palabra entre dos
+    // ticks registrados (no sale como ajena). Banco: python -B src/net/rb_wlog_bench.py.
+    // ponytail: el n de cada tick incluye cambios ajenos hechos DENTRO de ese tick; separarlos exigiria registrar cada CAS.
+    std::unordered_map<uint32_t, uint32_t> cas;
+    if (cas_delta) {
+      std::vector<const std::vector<WLogTick::E>*> tks;
+      for (uint32_t k = u; k < t; ++k) tks.push_back(&ring[k % kRing].e);
+      cas = CasDeltas(tks);
+      for (const auto& [a, x] : cas) {
+        uint32_t now; std::memcpy(&now, mem + a, 4);
+        const uint32_t fixed = Bswap32(Bswap32(now) - x);
+        std::memcpy(mem + a, &fixed, 4);
+        static int shown = 0;
+        if (foreign.count(a) && shown++ < 30) REXLOG_INFO("dbz3 rb: WLOG contador corregido tras {}: {:08X} {:08X} -> {:08X} (logica {})", u, a, Bswap32(now), Bswap32(fixed), int32_t(x));
+      }
+    }
     for (uint32_t k = t; k-- > u;) {
-      auto& tk = ring[k % kTicks];
-      for (size_t i = tk.e.size(); i-- > 0;) if (!foreign.count(tk.e[i].a)) std::memcpy(mem + tk.e[i].a, &tk.e[i].v, 4);
+      auto& tk = ring[k % kRing];
+      for (size_t i = tk.e.size(); i-- > 0;) if (!foreign.count(tk.e[i].a) && !cas.count(tk.e[i].a)) std::memcpy(mem + tk.e[i].a, &tk.e[i].v, 4);
       tk.tick = 0xFFFFFFFFu;
     }
     return true;
@@ -503,13 +527,13 @@ struct WLog {
   // escriben (fuera de librerias, pila y GPU); al resimular, la tarea no se ejecuta y se reponen esos valores. Con los mismos mandos
   // es exacto; con mandos corregidos repone lo del avance (cosmetico salvo que la logica dependa de ello: lo mide el oraculo).
   struct DrawOut { uint32_t cb, a, v; };
-  static inline std::array<std::vector<DrawOut>, kTicks> draw_out;
-  static inline std::array<uint32_t, kTicks> draw_tick{};
+  static inline std::array<std::vector<DrawOut>, kRing> draw_out;
+  static inline std::array<uint32_t, kRing> draw_tick{};
   static inline size_t draw_from = 0;
   static inline std::vector<std::pair<uint32_t, uint32_t>> draw_mem;   // donde se repone (vacio = nada; la memoria de render rompia el D3D)
   static bool InDrawMem(uint32_t a) { for (const auto& r : draw_mem) if (a >= r.first && a < r.second) return true; return false; }
   // Diagnostico (DBZ3_RB_WLOG_PRECHK=cb): al entrar en esa tarea, compara al resimular las palabras que escribio el dibujo con las del avance.
-  static inline std::array<std::vector<uint32_t>, kTicks> pre_v;   // inicio de las palabras de la tarea en curso
+  static inline std::array<std::vector<uint32_t>, kRing> pre_v;   // inicio de las palabras de la tarea en curso
   static void Task(uint32_t lr, uint32_t node, PPCContext& c, uint8_t* base) {
     if (!cur) return;
     if (lr == 0x82092814) {
@@ -517,9 +541,9 @@ struct WLog {
       std::memcpy(&cb, mem + node + 28, 4); cb = _byteswap_ulong(cb);
       std::memcpy(&prio, mem + node + 24, 4); prio = _byteswap_ulong(prio);
       static const uint32_t prechk = std::getenv("DBZ3_RB_WLOG_PRECHK") ? uint32_t(std::strtoul(std::getenv("DBZ3_RB_WLOG_PRECHK"), nullptr, 16)) : 0;
-      if (cb == prechk && draw_tick[cur->tick % kTicks] == cur->tick) {
-        auto& d = draw_out[cur->tick % kTicks];
-        auto& pv = pre_v[cur->tick % kTicks];
+      if (cb == prechk && draw_tick[cur->tick % kRing] == cur->tick) {
+        auto& d = draw_out[cur->tick % kRing];
+        auto& pv = pre_v[cur->tick % kRing];
         if (!replay) { pv.resize(d.size()); for (size_t i = 0; i < d.size(); ++i) std::memcpy(&pv[i], mem + d[i].a, 4); }
         else if (pv.size() == d.size()) {
           static int shown = 0;
@@ -539,12 +563,12 @@ struct WLog {
         skip_node = node; skip_cb = cb;
         const uint32_t z = 0;
         std::memcpy(mem + node + 28, &z, 4);
-        if (draw_tick[cur->tick % kTicks] == cur->tick)   // repone lo que dejo esta tarea en el avance (registrado: se deshace)
-          for (const auto& d : draw_out[cur->tick % kTicks])
+        if (draw_tick[cur->tick % kRing] == cur->tick)   // repone lo que dejo esta tarea en el avance (registrado: se deshace)
+          for (const auto& d : draw_out[cur->tick % kRing])
             if (d.cb == cb) { mute = 0; Store(0, d.a, 4, 0xFFFFFFFFu, 0); mute = 1; const uint32_t v = d.v; std::memcpy(mem + d.a, &v, 4); }
       } else {
-        auto& d = draw_out[cur->tick % kTicks];
-        if (draw_tick[cur->tick % kTicks] != cur->tick) { d.clear(); draw_tick[cur->tick % kTicks] = cur->tick; }
+        auto& d = draw_out[cur->tick % kRing];
+        if (draw_tick[cur->tick % kRing] != cur->tick) { d.clear(); draw_tick[cur->tick % kRing] = cur->tick; }
         draw_from = d.size();
       }
       Sync();
@@ -552,7 +576,7 @@ struct WLog {
       spying = false;
     } else if (lr == 0x82092858 && mute) {
       if (!replay) {   // valor final de lo que escribio la tarea
-        auto& d = draw_out[cur->tick % kTicks];
+        auto& d = draw_out[cur->tick % kRing];
         for (size_t i = draw_from; i < d.size(); ++i) std::memcpy(&d[i].v, mem + d[i].a, 4);
       }
       if (skip_node) {

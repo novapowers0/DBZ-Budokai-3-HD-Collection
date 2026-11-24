@@ -1,0 +1,28 @@
+descripcion = "modos_rogue_torneo (ROG-05): camino Torneo: semifinal y final contra rivales por su Elo del Ranking, vida llena, carta entre rondas; final con 2 pisos y 100 + 600 Zenie"
+# ROG-05: pasar en una copia SIN partida de Rogue a medias (la pantalla 01 solo sigue la suya): despues de
+# modos_rogue_reanudar, que la termina. Pantalla 01: el cursor sale en El Abismo (2.a fila); W = arriba, S = abajo.
+# Teclas: Space = A, P = Y (saltar la carta), D = derecha, L = X (cambiar las 3).
+env = ["DBZ3_HUB_MODE=5", "DBZ3_TEST_RINGOUT=1", "DBZ3_TEST_MODO=rogue,0", "REX_DBZ3_LANGUAGE=5", "DBZ3_TEST_ROGUE=2"]
+pasos = [
+  "esperar_pantalla 5 120",
+  "log 'prueba: Dragon Rogue' 30",
+  "esperar 2500",
+  "tecla S 800",
+  "tecla S 800",
+  "tecla S 800",
+  "tecla S 800",
+  "tecla S 800",
+  "tecla S 1200",
+  "tecla Space 3000",
+  "log 'rogue: camino torneo .2 combates, jefe cada 0, rivales elo, pausa cartas.' 20",
+  "log 'dbz3 modos: rogue 1/2: id 0 contra id' 30",
+  "log 'Dragon Rogue: combate 1 ganado .vida 3000/3000' 180",
+  "esperar 3000",
+  "tecla P 1500",
+  "esperar 1000",
+  "tecla Space 3000",
+  "log 'dbz3 modos: rogue 2/2: id 0 contra id' 60",
+  "log 'rogue: fin de torneo: id 0, 2 pisos .record 2[^)]*., 700 Zenie' 180",
+  "esperar 3000",
+  "tecla Space 2500",
+]

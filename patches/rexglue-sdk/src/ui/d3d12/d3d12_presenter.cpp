@@ -23,6 +23,7 @@
 
 #include <rex/assert.h>
 #include <rex/cvar.h>
+#include <rex/dbz3_latencia.h>
 #include <rex/logging.h>
 #include <rex/math.h>
 #include <rex/thread.h>
@@ -50,6 +51,8 @@ REXCVAR_DEFINE_BOOL(d3d12_allow_variable_refresh_rate_and_tearing, true, "UI/D3D
 // and the Vulkan presenter are built; here we only declare it.
 REXCVAR_DECLARE(int32_t, frame_cap);
 REXCVAR_DECLARE(bool, dbz3_test_oculto);
+REXCVAR_DECLARE(bool, dbz3_baja_latencia);
+REXCVAR_DECLARE(bool, dbz3_latencia_sonda);
 
 // dbz3 (X0g): hidden test mode (DBZ3_NO_DIALOGS + DBZ3_TEST_OCULTO=1 or the cvar): no Present().
 static bool Dbz3TestHidden() {
@@ -652,7 +655,8 @@ D3D12Presenter::ConnectOrReconnectPaintingToSurfaceFromUIThread(Surface& new_sur
     }
     bool swap_chain_resized = SUCCEEDED(paint_context_.swap_chain->ResizeBuffers(
         0, UINT(new_swap_chain_width), UINT(new_swap_chain_height), DXGI_FORMAT_UNKNOWN,
-        paint_context_.swap_chain_allows_tearing ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING : 0));
+        (paint_context_.swap_chain_allows_tearing ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING : 0) |
+            (dbz3_swap_chain_waitable_ ? DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT : 0)));
     if (swap_chain_resized) {
       for (uint32_t i = 0; i < PaintContext::kSwapChainBufferCount; ++i) {
         if (FAILED(paint_context_.swap_chain->GetBuffer(
@@ -702,6 +706,10 @@ D3D12Presenter::ConnectOrReconnectPaintingToSurfaceFromUIThread(Surface& new_sur
       // rate.
       swap_chain_desc.Flags |= DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
     }
+    // SDK-01 (RESTO-15): sin este flag SetMaximumFrameLatency da 887A0001. Apagado de serie.
+    if (REXCVAR_GET(dbz3_baja_latencia)) {
+      swap_chain_desc.Flags |= DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
+    }
     IDXGIFactory2* dxgi_factory = provider_.GetDXGIFactory();
     ID3D12CommandQueue* direct_queue = provider_.GetDirectQueue();
     Microsoft::WRL::ComPtr<IDXGISwapChain1> swap_chain_1;
@@ -739,6 +747,14 @@ D3D12Presenter::ConnectOrReconnectPaintingToSurfaceFromUIThread(Surface& new_sur
     paint_context_.swap_chain_height = new_swap_chain_height;
     paint_context_.swap_chain_allows_tearing =
         (swap_chain_desc.Flags & DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING) != 0;
+    // Swap chain nueva: su latencia y su objeto de espera se vuelven a pedir al pintar.
+    dbz3_swap_chain_waitable_ =
+        (swap_chain_desc.Flags & DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT) != 0;
+    dbz3_latency_applied_ = false;
+    if (dbz3_latency_wait_) {
+      CloseHandle(dbz3_latency_wait_);
+      dbz3_latency_wait_ = nullptr;
+    }
     for (uint32_t i = 0; i < PaintContext::kSwapChainBufferCount; ++i) {
       if (FAILED(paint_context_.swap_chain->GetBuffer(
               i, IID_PPV_ARGS(&paint_context_.swap_chain_buffers[i])))) {
@@ -1052,7 +1068,55 @@ void D3D12Presenter::Dbz3PresentTimeConsume() {
   }
 }
 
+// dbz3 (#59): baja latencia de mando. Con `dbz3_baja_latencia` la cola de
+// presentacion de DXGI baja a 1 cuadro (menos retraso CPU->pantalla); al apagar
+// el ajuste se restaura el valor que traia la swap chain. Se comprueba al
+// empezar a pintar: barato y cubre el cambio en caliente y el recreado.
+void D3D12Presenter::Dbz3ApplyLatency() {
+  if (!paint_context_.swap_chain) {
+    dbz3_latency_applied_ = false;
+    return;
+  }
+  Microsoft::WRL::ComPtr<IDXGISwapChain2> swap_chain_2;
+  if (FAILED(paint_context_.swap_chain.As(&swap_chain_2)) || !swap_chain_2) return;
+  const bool quiere = REXCVAR_GET(dbz3_baja_latencia);
+  if (!dbz3_latency_applied_ && quiere) {
+    UINT actual = 0;
+    const HRESULT consulta = swap_chain_2->GetMaximumFrameLatency(&actual);
+    if (SUCCEEDED(consulta)) dbz3_latency_original_ = actual;
+    const HRESULT cambio = swap_chain_2->SetMaximumFrameLatency(1);
+    // Se marca intentado tambien si falla: se avisa UNA vez y no se repite cada cuadro.
+    dbz3_latency_applied_ = true;
+    if (SUCCEEDED(cambio)) {
+      if (dbz3_swap_chain_waitable_ && !dbz3_latency_wait_) {
+        dbz3_latency_wait_ = swap_chain_2->GetFrameLatencyWaitableObject();
+      }
+      REXLOG_INFO("dbz3 latencia: cola de presentacion a 1 cuadro (antes {}, espera {})",
+                  dbz3_latency_original_, dbz3_latency_wait_ ? "si" : "no");
+    } else if (!dbz3_swap_chain_waitable_) {
+      REXLOG_WARN("dbz3 latencia: la swap chain se creo con el ajuste apagado; se aplica al "
+                  "reiniciar el juego (cambio {:08X})", uint32_t(cambio));
+    } else {
+      REXLOG_WARN("dbz3 latencia: no se pudo bajar la cola de presentacion (consulta {:08X}, "
+                  "cambio {:08X}); se queda en {}",
+                  uint32_t(consulta), uint32_t(cambio),
+                  SUCCEEDED(consulta) ? dbz3_latency_original_ : 0u);
+    }
+  } else if (dbz3_latency_applied_ && !quiere) {
+    swap_chain_2->SetMaximumFrameLatency(dbz3_latency_original_ ? dbz3_latency_original_ : 1);
+    dbz3_latency_applied_ = false;
+    REXLOG_INFO("dbz3 latencia: cola de presentacion restaurada a {}",
+                dbz3_latency_original_ ? dbz3_latency_original_ : 1);
+  }
+  // Swap chain con objeto de espera: hay que esperarlo antes de pintar o la cola no se
+  // limita. Tope de 100 ms para no colgar el pintado si el driver no lo senala.
+  if (dbz3_latency_wait_) {
+    WaitForSingleObjectEx(dbz3_latency_wait_, 100, TRUE);
+  }
+}
+
 Presenter::PaintResult D3D12Presenter::PaintAndPresentImpl(bool execute_ui_drawers) {
+  Dbz3ApplyLatency();
   Dbz3LogPerformanceWindow();
 
   // Host present pacing: limit the swap chain present rate to `frame_cap` FPS
@@ -1882,6 +1946,22 @@ Presenter::PaintResult D3D12Presenter::PaintAndPresentImpl(bool execute_ui_drawe
   // internally before the failure according to Jesse Natalie from the DirectX
   // Discord server.
   paint_context_.present_submission_tracker.NextSubmission();
+  // dbz3 (#59): sonda de latencia entrada->present. El primer present despues de
+  // una pulsacion nueva que leyo el guest (src/input/input_system.cpp, misma
+  // DLL). Solo se gasta con dbz3_latencia_sonda.
+  if (REXCVAR_GET(dbz3_latencia_sonda)) {
+    const uint64_t marca = rex::dbz3::g_input_edge_ns.exchange(0, std::memory_order_relaxed);
+    if (marca) {
+      const uint64_t ahora = uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                          std::chrono::steady_clock::now().time_since_epoch())
+                                          .count());
+      if (ahora > marca) {
+        REXLOG_INFO("dbz3 latencia: entrada->present {:.1f} ms (boton {:#06x})",
+                    double(ahora - marca) / 1e6,
+                    rex::dbz3::g_input_edge_buttons.load(std::memory_order_relaxed));
+      }
+    }
+  }
   // Startup timing diagnostic: log the FIRST successful present so the
   // black-screen window (window created -> first painted frame) can be
   // measured from the game log on machines where the launcher is slow.

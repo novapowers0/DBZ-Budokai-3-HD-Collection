@@ -668,7 +668,7 @@ def portrait_background(w, h, variant):
 
 
 def make_portraits(model, size, yaw=None, pitch=None, zoom=1.0, dx=0.0, dy=0.0, art=None, tint=True,
-                   light=None, outline=1.3, persp=None, roll=0.0):
+                   light=None, outline=1.3, persp=None, roll=0.0, pose=None):
     """Retratos del select [P1, P2] (RGBA alto x ancho = size[1] x size[0]). Desde el
     modelo (3/4, brazos bajados) o desde `art` (imagen del modder, sin fondo o con fondo
     propio), que se encaja igual. P2 renderiza la cámara desde el lado contrario; nunca se
@@ -678,8 +678,9 @@ def make_portraits(model, size, yaw=None, pitch=None, zoom=1.0, dx=0.0, dy=0.0, 
     if art is None:
         pitch = PORTRAIT_PITCH if pitch is None else pitch
         dx, dy = dx + PORTRAIT_DX, dy + PORTRAIT_DY
-        pose = model.arms_down()
-        pose.update(model.mouth_closed())
+        if pose is None:
+            pose = model.arms_down()
+            pose.update(model.mouth_closed())
         P, _ = model.posed(pose)
         _, _, hb = head_info(model, pose)
         sel = np.isin(model.vbone, list(core_bones(model, hb))) if hb is not None else np.ones(len(P), bool)

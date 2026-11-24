@@ -1,0 +1,15 @@
+# SLOTS_ESC-01: con 200 altas sale el aviso actual (tope de 110) y solo se cargan las 110 primeras.
+#   Requiere la copia fija esc_n preparada con:  python tools\escenarios_copia_n.py preparar --n 200
+#     python tools\pruebas.py correr esc_n docs\14_frentes\escenarios_pruebas\final\slots_esc\selector_desplazamiento_200.toml
+# criterio = el arranque avisa "200 escenarios nuevos; se cargan los 110 primeros", la 110 (registro 126)
+#            esta y la lista de nombres termina en la 126 (la 111, registro 127, no se carga). No se abre el
+#            selector: con muchas altas se cae al entrar (lo mide SLOTS_ESC-02 y lo quita SLOTS_ESC-03).
+descripcion = "SLOTS_ESC-01: con 200 altas, aviso actual del tope de 110"
+env = ["DBZ3_SONDA_ESCENARIO=1"]
+pasos = [
+  "esperar 2000",
+  "log \"200 escenarios nuevos; se cargan los 110 primeros\" 90",
+  "log \"alta 126 = 'COPIA 0110'\" 10",
+  "log \"nombres \\(idioma \\d+\\): .*126 Copia 0110\\r?\\n\" 10",
+  "captura a_200_aviso",
+]

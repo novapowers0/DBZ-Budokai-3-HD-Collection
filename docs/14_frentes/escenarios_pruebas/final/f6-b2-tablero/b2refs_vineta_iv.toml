@@ -1,0 +1,39 @@
+# Recorrido manual de _luna13_b2_vineta, pruebas.py:4418. Sin piloto.
+# Prueba contacto P en fase IV; no confundir T155 (introducción) con viñeta P.
+descripcion = "B2 REFS: contacto y viñeta P fase IV, modelos HD con animación B2"
+env = [
+  'DBZ3_PS2_GAMES=D:\DBZ3HD\ps2_games',
+  "DBZ3_TEST_MISIONES=1,reset,desde=3",
+  "DBZ3_TEST_B2_ORDENES=1",
+  "DBZ3_TEST_RINGOUT=1",
+  "DBZ3_TEST_TURBO=1",
+  "DBZ3_TEST_CFG=dbz3_b2_traducido=false",
+]
+pasos = [
+  'log "tablero b2: fase 4 leida" 120',
+  'hasta_log "tablero b2: script 301: eleccion de 2 aliado" 60',
+  "tecla Space 4000",
+  "fin",
+  "esperar 500",
+  'hasta_log "tablero b2: aliado marcado: .* quedan 1" 20',
+  "tecla Space 3000",
+  "fin",
+  "tecla S 450",
+  'hasta_log "tablero b2: aliado marcado: .* quedan 0" 20',
+  "tecla Space 3000",
+  "fin",
+  "esperar 1000",
+  "tecla W 400",
+  'hasta_log "tablero b2: aliado elegido" 20',
+  "tecla Space 4000",
+  "fin",
+  'log "tablero b2: guiones terminados" 90',
+  "esperar 800",
+  "captura 00_tablero_iv",
+  "tecla Space 1500",
+  'hasta_log "tablero b2: escena P[0-9]+" 60',
+  "tecla Space 4000",
+  "fin",
+  "esperar 500",
+  "captura 01_vineta_iv",
+]

@@ -23,8 +23,10 @@ PAD = 0x4ADECC   # +0 u16 mantenido, +2 u16 recien pulsado, +0xE/+0xF palanca iz
 
 
 class Mapa:
-    def __init__(s, p2s=P2S):
-        s.base, _ = B.cargar(B.ELF, Path(p2s))
+    pad_addr = PAD   # una subclase (mapa_espejo.Espejo) que no llame a __init__ hereda el EU
+
+    def __init__(s, p2s=P2S, elf=None, pad=None):
+        s.base, _ = B.cargar(Path(elf) if elf else B.ELF, Path(p2s))
         s.nom = B.leer_simbolos()
         s.c = ee.Ee(s.base, B.GP, entradas=s.nom.keys(), nombres=s.nom)
         s.ev = []
@@ -36,6 +38,7 @@ class Mapa:
         s.poner_mudos()
         s.M = s.c.r32(G_M)
         s.ctx = s.c.r32(G_CTX)
+        s.pad_addr = PAD if pad is None else pad   # USA: 0x4AD6CC (el savestate y la captura lo dan)
 
     def poner_mudos(s):
         # MiniGokuAnimations(nodo, anim, tabla): lo unico que hace la logica es dejar la animacion en nodo+0x48
@@ -71,11 +74,11 @@ class Mapa:
         return k
 
     def pad(s, mant=0, pulsa=0, lx=0, ly=0):
-        c = s.c
-        c.m[PAD:PAD + 2] = struct.pack('<H', mant)
-        c.m[PAD + 2:PAD + 4] = struct.pack('<H', pulsa)
-        c.m[PAD + 0xE] = lx & 255
-        c.m[PAD + 0xF] = ly & 255
+        c, P = s.c, s.pad_addr
+        c.m[P:P + 2] = struct.pack('<H', mant)
+        c.m[P + 2:P + 4] = struct.pack('<H', pulsa)
+        c.m[P + 0xE] = lx & 255
+        c.m[P + 0xF] = ly & 255
 
     def cuadro(s, mant=0, pulsa=0, lx=0, ly=0):
         """Un cuadro de mapa libre: seleccion bajo Goku y mandos. Devuelve (x, y, sel, orden pendiente)."""

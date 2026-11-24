@@ -1818,7 +1818,8 @@ void LauncherDialog::OnDraw(ImGuiIO& io) {
   // PLAY is gated on the assets being found: pressing it with no game data
   // would crash before the guest even starts (P1). The banner above offers the
   // folder picker to fix it.
-  ImGui::BeginDisabled(!assets_ready || launching_ || iso_prep_);
+  ImGui::BeginDisabled(!assets_ready || launching_ || iso_prep_ || xv2_pipeline_.IsRunning() ||
+                       (dlcb1_job_ && mod_pipeline_.IsRunning()));
   ImGui::PushStyleColor(ImGuiCol_Button, kPlayIdle);
   ImGui::PushStyleColor(ImGuiCol_ButtonHovered, kPlayHovered);
   ImGui::PushStyleColor(ImGuiCol_ButtonActive, kPlayActive);
@@ -1937,7 +1938,7 @@ void LauncherDialog::OnDraw(ImGuiIO& io) {
   if (kb_listen_wait_ < 0) kb_listen_wait_ = 0;
   const bool enter = !popup && !kb_busy && ImGui::IsKeyPressed(ImGuiKey_Enter, false) &&
                      !ImGui::GetIO().WantTextInput && !ImGui::IsAnyItemActive();
-  if (!launching_ && (play_pressed || (assets_ready && ((pad_play && !popup) || enter)))) {
+  if (!launching_ && !xv2_pipeline_.IsRunning() && !(dlcb1_job_ && mod_pipeline_.IsRunning()) && (play_pressed || (assets_ready && ((pad_play && !popup) || enter)))) {
     dbz3::settings::SaveUserSettings();
     dbz3::settings::ApplyUserSettingsToSdk();
     dbz3::settings::ApplyRuntimeSettingsToSdk(true);
@@ -3367,6 +3368,13 @@ constexpr FeatureText kFeatureTexts[] = {
      "juego original. No se usa en el online.",
      "WARNING: changes the damage of 2 Goku hits (kick 50 to 70, forward + punch 35 to 50). Off is the "
      "original game. Not used online.", false},
+    {"dbz3_modo_competitivo", "Modo Competitivo", "Competitive Mode",
+     "AVISO: cambia las reglas del combate, como en Infinite World. L2 es Aura Burst: pide una barra de ki, "
+     "gasta ki mientras dura y no deja cansado al acabar. La definitiva sale con Arriba + Circulo. No hay "
+     "Dragon Rush. Apagado es el juego original. En el online, solo si los dos lo tienen encendido.",
+     "WARNING: changes the fight rules, as in Infinite World. L2 is Aura Burst: needs one ki bar, drains ki "
+     "while active and leaves no fatigue when it ends. The ultimate is Up + Circle. No Dragon Rush. Off is "
+     "the original game. Online, only if both players have it on.", false},
     {"dbz3_combate_definitiva_directa", "Definitiva directa", "Direct ultimate",
      "La definitiva sin entrar en el modo hiper: su misma entrada, pagando una vez el ki de su capsula. No se "
      "usa en el online.",
@@ -3445,7 +3453,7 @@ const std::vector<Feature>& Features() {
 bool FeatureRow(const Feature& f) {
   ImGui::PushID(f.cvar.c_str());
   bool changed = false;
-  if (f.scale) {   // jefe gigante: casilla (0 = apagado) y, encendido, su tamano (125-250 %)
+  if (f.scale) {   // jefe gigante: casilla (0 = apagado) y, encendido, su tamano (125-200 %; por encima la camara corta)
     const double v = rex::cvar::Query<double>(f.cvar);
     bool on = v > 0.0;
     {
@@ -3457,7 +3465,7 @@ bool FeatureRow(const Feature& f) {
       ImGui::SameLine(0.0f, 16.0f);
       int pct = int(v * 100.0 + 0.5);
       ImGui::SetNextItemWidth(160.0f);
-      if (ImGui::SliderInt("##escala", &pct, 125, 250, "%d %%")) {
+      if (ImGui::SliderInt("##escala", &pct, 125, 200, "%d %%")) {
         pct = (pct + 12) / 25 * 25;
         rex::cvar::SetFlagByName(f.cvar, std::to_string(pct / 100.0));
         changed = true;
@@ -3527,7 +3535,7 @@ void LauncherDialog::DrawPs2Box() {
     const char* en;
   };
   static const Juego kJuegos[] = {
-      {"Dragon Ball Z Budokai (PS2)", "Leyenda de Mr. Satán y saga de Namek", "Mr. Satan's legend and the Namek saga"},
+      {"Dragon Ball Z Budokai (PS2)", "Leyenda de Mr. Satán", "Mr. Satan's legend"},   // 1.5.7: la historia B1 (saga de Namek) no sale (RL1)
       {"Dragon Ball Z Budokai 2 (PS2)", "Campaña de Budokai 2 (tablero) y Nave de Babidi",
        "Budokai 2 campaign (board) and Babidi's ship"},
       {"Dragon Ball Z Infinite World (PS2)", "Campaña de Infinite World, sus minijuegos y animaciones",
@@ -3567,7 +3575,88 @@ void LauncherDialog::DrawPs2Box() {
                         ruta[i].c_str());
     ImGui::PopID();
   }
+  // HUECOS (11/11, feedback 1.4.6 punto 5): todas tus ISO en una carpeta tuya (dbz3_ps2_games_dir; vacio = ps2_games
+  // junto al juego, como siempre). Lo lee pasarela::CarpetaPs2 y el montaje de mods.
+  const std::string carpeta = rex::cvar::Query<std::string>("dbz3_ps2_games_dir");
+  std::error_code ec;
+  const bool perdida = !carpeta.empty() && !std::filesystem::is_directory(std::filesystem::u8path(carpeta), ec);
+  ImGui::AlignTextToFramePadding();
+  ImGui::TextColored(kGold, "%s", i18n::T("Carpeta de tus juegos", "Your games folder"));
+  ImGui::SameLine(ImGui::GetContentRegionAvail().x + ImGui::GetCursorPosX() - 170);
+  if (ImGui::Button((std::string(ICON_FOLDER " ") + i18n::T("Elegir carpeta", "Pick folder")).c_str(), ImVec2(170, 0))) {
+    std::string elegida;
+    if (PickFolder(elegida, carpeta) && !elegida.empty()) {
+      rex::cvar::SetFlagByName("dbz3_ps2_games_dir", elegida);
+      dbz3::settings::SaveUserSettings();
+      ps2_msg_.clear();
+      leido = -10;
+    }
+  }
+  if (ImGui::IsItemHovered()) {
+    ImGui::SetTooltip("%s", i18n::T("Si ya tienes tus ISO juntas en una carpeta, elígela y se encuentran solas. No se copia nada.",
+                                    "If your ISOs are already together in one folder, pick it and they are found. Nothing is copied."));
+  }
+  if (perdida) {
+    ImGui::TextColored(kDragonOrangeDim, "   %s %s  ·  %s", ICON_WARN,
+                       i18n::T("Esa carpeta ya no existe: se usa la de siempre.", "That folder is gone: using the default one."), carpeta.c_str());
+  } else {
+    ImGui::TextDisabled("   %s", carpeta.empty() ? i18n::T("La de siempre: ps2_games, junto al juego.", "Default: ps2_games, next to the game.")
+                                                 : carpeta.c_str());
+  }
+  if (!carpeta.empty()) {
+    ImGui::SameLine();
+    if (ImGui::SmallButton(i18n::T("Volver a la de siempre", "Back to default"))) {
+      rex::cvar::SetFlagByName("dbz3_ps2_games_dir", "");
+      dbz3::settings::SaveUserSettings();
+      leido = -10;
+    }
+  }
   if (!ps2_msg_.empty()) ImGui::TextColored(kInfo, "%s", ps2_msg_.c_str());
+  if (ModPipeline::DlcB1Available()) {
+    ui::SectionTitle(i18n::T("DLC Budokai 1: Zarbon y Dodoria", "Budokai 1 DLC: Zarbon and Dodoria"));
+    ui::Hint(i18n::T("Se crean con tu ISO europea de Budokai 1 y se añaden al plantel.",
+                    "Built from your European Budokai 1 ISO and added to the roster."));
+    const bool busy = launching_ || mod_pipeline_.IsRunning() || bool(iso_prep_);
+    const bool needs_data = dbz3::settings::IsIsoMode() && dbz3::settings::IsoDataPending(true) != 0;
+    if (needs_data) {
+      ImGui::BeginDisabled(busy);
+      if (ImGui::Button(i18n::T("Preparar los datos de Budokai 3 HD", "Prepare Budokai 3 HD data")))
+        StartIsoPrep(false, true);
+      ImGui::EndDisabled();
+      if (iso_prep_) ImGui::ProgressBar(float(iso_prep_->progress.load()) / 1000.0f);
+      if (!iso_prep_error_.empty()) ImGui::TextWrapped("%s", iso_prep_error_.c_str());
+    }
+    const bool sources = ModPipeline::DlcB1HasSources();
+    ImGui::BeginDisabled(busy || needs_data || ruta[0].empty());
+    if (ImGui::Button(sources ? i18n::T("Actualizar DLC B1", "Update B1 DLC")
+                             : i18n::T("Instalar DLC B1", "Install B1 DLC"))) {
+      mod_pipeline_.RunDlcB1(Pa::IsoPs2(0), true);
+      dlcb1_job_ = mod_pipeline_.IsRunning();
+    }
+    ImGui::EndDisabled();
+    if (sources) {
+      ImGui::SameLine();
+      ImGui::BeginDisabled(busy || needs_data);
+      if (ImGui::Button(i18n::T("Quitar DLC B1", "Remove B1 DLC"))) {
+        mod_pipeline_.RunDlcB1({}, false);
+        dlcb1_job_ = mod_pipeline_.IsRunning();
+      }
+      ImGui::EndDisabled();
+    }
+    if (dlcb1_job_ && mod_pipeline_.IsRunning()) {
+      std::string what;
+      const float pct = mod_pipeline_.Progress(&what);
+      ImGui::ProgressBar(pct, ImVec2(-1.0f, 0.0f), what.empty() ? "DLC B1" : what.c_str());
+    } else {
+      if (dlcb1_job_) {   // el trabajo del DLC acaba de terminar: se guarda su resultado
+        dlcb1_done_ = mod_pipeline_.State() == ModPipeline::JobState::kOk ? 1 : 2;
+        dlcb1_job_ = false;
+      }
+      if (dlcb1_done_) ImGui::TextWrapped("%s", dlcb1_done_ == 1
+          ? i18n::T("DLC B1: cambios aplicados.", "B1 DLC: changes applied.")
+          : i18n::T("DLC B1: falló. Consulta el registro de Mods.", "B1 DLC failed. Check the Mods log."));
+    }
+  }
   ImGui::Spacing();
 }
 
@@ -3699,9 +3788,9 @@ void LauncherDialog::DrawNativeModsTab() {
   ImGui::EndChild();
 }
 
-void LauncherDialog::StartIsoPrep(bool then_play) {
+void LauncherDialog::StartIsoPrep(bool then_play, bool force_voices) {
   if (iso_prep_) return;
-  const bool voices = ModPipeline::HasCharacterSources() && ModPipeline::RosterToolAvailable();
+  const bool voices = force_voices || (ModPipeline::HasCharacterSources() && ModPipeline::RosterToolAvailable());
   iso_prep_ = std::make_shared<IsoPrep>();
   iso_prep_->then_play = then_play;
   iso_prep_error_.clear();
@@ -6419,9 +6508,150 @@ void LauncherDialog::DrawImporter() {
   ui::EndCard();
 }
 
+void LauncherDialog::DrawXv2() {
+  namespace S = dbz3::settings;
+  namespace fs = std::filesystem;
+  const bool testing = std::getenv("DBZ3_TEST_XV2_UI") != nullptr;
+  auto status = [&] {
+    xv2_version_ = S::Xv2Version();
+    if (testing) REXLOG_INFO("dbz3 xv2 UI: found={} enabled={} cpk={} version={}",
+                            S::Xv2Instalado(), S::CacXv2Piezas(), S::Xv2Cpk(), xv2_version_);
+  };
+  if (!xv2_checked_) { xv2_checked_ = true; status(); }
+  if (xv2_preparing_ && !xv2_pipeline_.IsRunning()) {
+    xv2_preparing_ = false;
+    xv2_finished_ = true;
+    xv2_ok_ = xv2_pipeline_.ExitCode() == 0 && xv2_pipeline_.Output().find("@xv2_ok") != std::string::npos;
+    REXLOG_INFO("dbz3 xv2 UI: prepare {}", xv2_ok_ ? "ok" : "failed");
+  }
+  const bool busy = xv2_preparing_ || mod_pipeline_.IsRunning() || in_game_;
+  auto folder = [&](const std::string& picked) {
+    if (!S::Xv2CarpetaValida(picked)) { xv2_folder_error_ = "invalid"; return; }
+    S::SetXv2Carpeta(picked);
+    S::SaveUserSettings();
+    xv2_folder_error_.clear();
+    xv2_finished_ = false;
+    status();
+  };
+  auto autodetect = [&] {
+    S::SetXv2Carpeta("");
+    S::SaveUserSettings();
+    xv2_folder_error_.clear();
+    xv2_finished_ = false;
+    status();
+  };
+  auto prepare = [&] {
+    if (!S::Xv2Instalado() || !ModPipeline::Xv2PrepareAvailable()) return;
+    xv2_finished_ = false;
+    xv2_preparing_ = true;
+    xv2_pipeline_.PrepareXv2(S::Xv2Cpk());
+    REXLOG_INFO("dbz3 xv2 UI: prepare started");
+  };
+  // El arnes usa exactamente las mismas acciones que los botones; no toca el raton del usuario.
+  if (testing && !busy) {
+    const auto req = S::UserSettingsPath().parent_path() / "dbz3_xv2_ui.req";
+    std::ifstream f(req);
+    std::string action;
+    if (std::getline(f, action)) {
+      f.close();
+      std::error_code ec;
+      int n = 0;
+      fs::path used;
+      do { used = req; used += ".used." + std::to_string(++n); } while (fs::exists(used, ec));
+      fs::rename(req, used, ec);
+      if (!ec) {
+        if (action == "prepare") prepare();
+        else if (action == "auto") autodetect();
+        else if (action == "refresh") { S::RefreshXv2(); status(); }
+        else if (action.rfind("folder=", 0) == 0) folder(action.substr(7));
+        else if (action == "on" || action == "off") {
+          S::SetCacXv2Piezas(action == "on" && S::Xv2Instalado());
+          S::SaveUserSettings();
+          status();
+        }
+        REXLOG_INFO("dbz3 xv2 UI: action {}", action);
+      }
+    }
+  }
+  ui::SectionTitle(i18n::T("Xenoverse 2 · Modo Héroe", "Xenoverse 2 · Hero Mode"));
+  ImGui::PushTextWrapPos(0.0f);
+  const bool found = S::Xv2Instalado();
+  if (found) {
+    const auto cpk = fs::u8path(S::Xv2Cpk());
+    ImGui::TextColored(ui::kOk, "%s  %s", ICON_OK, i18n::T("XV2 encontrado", "XV2 found"));
+    ImGui::TextUnformatted(PathUtf8(cpk.parent_path().filename() == "cpk" ? cpk.parent_path().parent_path() : cpk.parent_path()).c_str());
+    ImGui::Text("%s: %s", i18n::T("Versión", "Version"), xv2_version_.empty()
+                ? i18n::T("No declarada por la instalación", "Not declared by the installation") : xv2_version_.c_str());
+  } else {
+    ImGui::TextColored(ui::kWarn, "%s  %s", ICON_WARN,
+        i18n::T("XV2 no encontrado. Elige su carpeta o vuelve a buscar.", "XV2 not found. Choose its folder or scan again."));
+    if (!S::Xv2Carpeta().empty()) ImGui::TextUnformatted(S::Xv2Carpeta().c_str());
+  }
+  ImGui::BeginDisabled(busy);
+  if (ImGui::Button(i18n::T("Carpeta de XV2...", "XV2 folder..."))) {
+    std::string picked;
+    if (PickFolder(picked, S::Xv2Carpeta()) && !picked.empty()) folder(picked);
+  }
+  ImGui::SameLine();
+  if (ImGui::Button(i18n::T("Detectar automáticamente", "Auto-detect XV2"))) autodetect();
+  ImGui::SameLine();
+  if (ImGui::Button(i18n::T("Comprobar de nuevo", "Check again"))) { S::RefreshXv2(); status(); }
+  ImGui::EndDisabled();
+  if (!xv2_folder_error_.empty()) ImGui::TextColored(ui::kWarn, "%s", i18n::T(
+      "Esa carpeta no contiene cpk/data.cpk. Elige la carpeta DB Xenoverse 2.",
+      "That folder has no cpk/data.cpk. Choose the DB Xenoverse 2 folder."));
+  const bool tools = ModPipeline::Xv2PrepareAvailable();
+  ImGui::BeginDisabled(busy || !found || !tools);
+  if (ImGui::Button(i18n::T("Preparar / actualizar piezas XV2", "Prepare / refresh XV2 parts"))) prepare();
+  ImGui::EndDisabled();
+  if (!tools) ImGui::TextColored(ui::kWarn, "%s", i18n::T(
+      "Falta el lector de XV2. Copia el Kit de modding completo junto al juego.",
+      "The XV2 reader is missing. Copy the complete Modding Kit next to the game."));
+  if (xv2_preparing_) {
+    const float progress = std::max(0.0f, xv2_pipeline_.Progress());
+    ImGui::ProgressBar(progress, ImVec2(-1, 0), i18n::T("Preparando piezas locales...", "Preparing local parts..."));
+  } else if (xv2_finished_) {
+    const std::string output = xv2_pipeline_.Output();
+    const char* text = xv2_ok_ ? i18n::T("Piezas preparadas. Ya puedes activar XV2.", "Parts prepared. You can now enable XV2.")
+        : output.find("permissions") != std::string::npos ? i18n::T(
+            "No se pudo guardar. Usa una carpeta del juego donde puedas escribir.",
+            "Could not save. Use a game folder you can write to.")
+        : output.find("dependencies") != std::string::npos || output.find("Python 3") != std::string::npos ? i18n::T(
+            "Falta Python o sus componentes. Usa el Python incluido en el Kit de modding.",
+            "Python or its components are missing. Use the Python included in the Modding Kit.")
+        : output.find("missing") != std::string::npos ? i18n::T(
+            "Faltan archivos. Comprueba la carpeta de XV2 y el Kit de modding.",
+            "Files are missing. Check the XV2 folder and the Modding Kit.")
+        : i18n::T("No se pudieron leer las piezas. Verifica XV2 en Steam y vuelve a intentarlo.",
+                  "Could not read the parts. Verify XV2 in Steam and try again.");
+    ImGui::TextColored(xv2_ok_ ? ui::kOk : ui::kWarn, "%s", text);
+    if (ImGui::TreeNode(i18n::T("Detalles de la preparación", "Preparation details"))) {
+      ImGui::TextUnformatted(output.c_str());
+      ImGui::TreePop();
+    }
+  }
+  bool enabled = found && S::CacXv2Piezas();
+  ImGui::BeginDisabled(!found || xv2_preparing_);
+  if (ImGui::Checkbox(i18n::T("Activar piezas XV2 (experimental)", "Enable XV2 parts (experimental)"), &enabled)) {
+    S::SetCacXv2Piezas(enabled);
+    S::SaveUserSettings();
+    status();
+  }
+  ImGui::EndDisabled();
+  ImGui::TextDisabled("%s", i18n::T(
+      "Opcional. Apagado: piezas de Budokai 3. La preparación lee tu XV2 y actualiza el catálogo local; los modelos se crean al elegirlos.",
+      "Optional. Off: Budokai 3 parts. Preparation reads your XV2 and refreshes the local catalog; models are created when selected."));
+  if (in_game_) ImGui::TextDisabled("%s", i18n::T(
+      "Cierra la partida para cambiar la carpeta o actualizar las piezas.",
+      "Close the game session to change the folder or refresh parts."));
+  ImGui::PopTextWrapPos();
+  ImGui::Dummy(ImVec2(0, 6));
+}
+
 void LauncherDialog::DrawNewCharactersTab() {
   ImGui::BeginChild("##new_chars", ImVec2(0, -kFooterHeight), ImGuiChildFlags_AlwaysUseWindowPadding);
   TestScroll();
+  DrawXv2();
   // Plain-language notice for non-technical users: what this tab does, that it
   // is optional and experimental, and how to undo it.
   {
@@ -6463,30 +6693,46 @@ void LauncherDialog::DrawNewCharactersTab() {
     ImGui::PopStyleColor(2);
     ImGui::Dummy(ImVec2(0, 4));
   }
-  {
-    ui::SectionTitle(i18n::T("Creador de personajes (Modo Héroe) (beta)", "Character creator (Hero Mode) (beta)"));
-    const bool xv2 = dbz3::settings::Xv2Instalado();
-    bool piezas = xv2 && dbz3::settings::CacXv2Piezas();
-    ImGui::BeginDisabled(!xv2);
-    if (ImGui::Checkbox(i18n::T("Usar piezas de Xenoverse 2 (opcional)", "Use Xenoverse 2 parts (optional)"),
-                        &piezas)) {
-      dbz3::settings::SetCacXv2Piezas(piezas);
-      dbz3::settings::SaveUserSettings();
+  if (dbz3::settings::LauncherKitButton()) {   // KIT-13: apagado (dbz3_launcher_kit = false) no se dibuja nada
+    using KL = ModPipeline::KitLaunch;
+    const KL kit = ModPipeline::ModKitState();
+    const bool kit_alive = ModPipeline::ModKitAlive();
+    ImGui::BeginDisabled(kit == KL::kOpening || kit_alive);
+    if (ui::IconButton(ICON_REPAIR, i18n::T("Kit de Modding", "Mod Kit"), ImVec2(200, 38))) {
+      ModPipeline::LaunchModKit(std::strcmp(i18n::LangCode(), "es") == 0 ? "es" : "en");
     }
     ImGui::EndDisabled();
-    {   // piezas XV2 aun muy verdes (ojos, brazos): se marca como experimental (23/10, pedido del usuario)
-      ImGui::SameLine(0.0f, 10.0f);
-      const float pill_h = (ui::GetFonts().sm ? ui::GetFonts().sm->LegacySize : ImGui::GetFontSize()) + 6.0f;
-      ImGui::SetCursorPosY(ImGui::GetCursorPosY() + std::max(0.0f, (ImGui::GetFrameHeight() - pill_h) * 0.5f));
-      ui::Pill(nullptr, "EXPERIMENTAL", ui::kBlue);
+    ImGui::SameLine(0.0f, 12.0f);
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextDisabled("%s", i18n::T("Crea trajes, personajes, escenarios y técnicas paso a paso.",
+                                      "Create outfits, characters, stages and techniques step by step."));
+    if (kit != KL::kIdle) {
+      ImGui::PushTextWrapPos(0.0f);
+      if (kit == KL::kOpening) {
+        ImGui::TextDisabled("%s", i18n::T("Abriendo el Kit...", "Opening the Kit..."));
+      } else if (kit == KL::kOpened) {
+        ImGui::TextDisabled("%s  %s%s", ICON_OK,
+                            i18n::T("Kit abierto en su propia ventana.", "Kit opened in its own window."),
+                            kit_alive ? i18n::T(" Cierra su ventana para abrirlo otra vez.",
+                                                " Close its window to open it again.")
+                                      : "");
+      } else {
+        ImGui::TextColored(ui::kWarn, "%s  %s", ICON_WARN,
+            kit == KL::kNoKit
+                ? i18n::T("No se encontro el Kit (falta mod center hd\\modkit_gui.py). Descarga el \"Kit de "
+                          "modding\" (DBZ3HD-Kit-Modding.zip) y copialo junto a dbz3.exe.",
+                          "The Kit was not found (mod center hd\\modkit_gui.py is missing). Download the "
+                          "\"Modding kit\" (DBZ3HD-Kit-Modding.zip) and copy it next to dbz3.exe.")
+            : kit == KL::kNoPython
+                ? i18n::T("No se encontro Python 3. El \"Kit de modding\" trae uno listo (carpeta python): "
+                          "copialo junto a dbz3.exe, o instala Python 3 desde python.org.",
+                          "Python 3 was not found. The \"Modding kit\" ships one ready (python folder): "
+                          "copy it next to dbz3.exe, or install Python 3 from python.org.")
+                : i18n::T("No se pudo abrir el Kit. Mira el registro (carpeta logs).",
+                          "Could not open the Kit. See the log (logs folder)."));
+      }
+      ImGui::PopTextWrapPos();
     }
-    ImGui::TextDisabled("%s", xv2
-        ? i18n::T("Apagado: el creador usa pelo, torso y piernas de los personajes nativos de tu Budokai 3. "
-                  "Activado: ofrece ademas las piezas de tu Xenoverse 2 instalado (nunca se reparte arte).",
-                  "Off: the creator uses hair, torso and legs from your native Budokai 3 characters. "
-                  "On: it also offers parts from your installed Xenoverse 2 (no art is shipped).")
-        : i18n::T("Xenoverse 2 no instalado: el creador usa los personajes nativos de B3 (opcion no disponible).",
-                  "Xenoverse 2 not installed: the creator uses native B3 characters (option unavailable)."));
     ImGui::Dummy(ImVec2(0, 4));
   }
   ui::SectionTitle(i18n::T("Personajes nuevos (casillas extra en el select)",
@@ -6698,14 +6944,14 @@ void LauncherDialog::DrawNewCharactersTab() {
       ImGui::EndCombo();
     }
   }
-  nc_forms_ = std::clamp(nc_forms_, 1, 6);
+  nc_forms_ = std::clamp(nc_forms_, 1, 8);
   {
     char cur[48];
     std::snprintf(cur, sizeof(cur), nc_forms_ == 1 ? i18n::T("1 forma", "1 form") : i18n::T("%d formas", "%d forms"),
                   nc_forms_);
     ImGui::SetNextItemWidth(160);
     if (ImGui::BeginCombo(i18n::T("Formas por traje", "Forms per costume"), cur)) {
-      for (int f = 1; f <= 6; ++f) {
+      for (int f = 1; f <= 8; ++f) {
         char it[48];
         std::snprintf(it, sizeof(it), f == 1 ? i18n::T("1 forma", "1 form") : i18n::T("%d formas", "%d forms"), f);
         if (ImGui::Selectable(it, f == nc_forms_)) nc_forms_ = f;
@@ -6714,6 +6960,8 @@ void LauncherDialog::DrawNewCharactersTab() {
     }
     Help(i18n::T("Transformaciones (normal, Super Saiyan...): una forma por modelo de cada traje.",
                  "Transformations (normal, Super Saiyan...): one form per model of each costume."));
+    Help(i18n::T("El juego admite hasta 8 formas por personaje. Tag Team usa solo las 6 primeras caras.",
+                 "The game supports up to 8 forms per character. Tag Team uses only the first 6 faces."));
   }
   ImGui::TextDisabled("%s", i18n::T(
       "Modelos: una ruta por linea, uno por traje (con varias formas: traje 1 forma 1, traje 1 "

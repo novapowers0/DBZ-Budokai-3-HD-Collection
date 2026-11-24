@@ -1,0 +1,17 @@
+descripcion = "modos_rogue_jefe_derrota (ROG-01): Dragon Rogue, se pierde contra el jefe del combate 1 (DBZ3_TEST_RINGOUT=2: el jugador cae del ring): no hay revancha, la partida acaba con 0 pisos y 0 Zenie, sale la pantalla 05 con el resultado y la partida no queda a medias en rogue.toml"
+# Aparta rogue.toml para empezar sin partida. Teclas: Space = A (continuar), Backspace = B.
+env = ["DBZ3_HUB_MODE=5", "DBZ3_TEST_RINGOUT=2", "DBZ3_TEST_ROGUE=3", "DBZ3_TEST_ROGUE_JEFE=1", "DBZ3_TEST_MODO=rogue,0", "REX_DBZ3_LANGUAGE=5"]
+apartar = ["user_data/dbz3/rogue.toml*"]
+pasos = [
+  "esperar_pantalla 5 120",
+  "log 'prueba: Dragon Rogue' 30",
+  "esperar 2500",
+  "tecla Space 3000",
+  "log 'Dragon Rogue combate 1: pedido .vida [0-9]+/[0-9]+, dano 100%, recibido 150%, armadura 50%' 60",
+  "log 'dbz3 tag: prueba: jugador 1 fuera del ring' 90",
+  "log 'rogue: fin de abismo: id 0, 0 pisos .record 0[^)]*., 0 Zenie' 120",
+  "esperar 3000",
+  "captura 01_resultado_derrota",
+  "tecla Space 2500",
+  "captura 02_tras_A",
+]

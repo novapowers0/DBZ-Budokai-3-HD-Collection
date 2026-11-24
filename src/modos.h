@@ -19,7 +19,7 @@ int TorneoIdReal(int plaza);   // modos.cpp (S5-I1): ID real de una plaza COM de
 // 0-2: los retos de modos.cpp; 3-10: los de rpg.cpp (StartPropio), cada uno con su record (10: Mision 100).
 enum Tipo : int {
   kTorre = 0, kSupervivencia = 1, kKumite = 2, kSimulacion = 3, kTienda = 4, kHeroe = 5, kTorres = 6, kAbyss = 7,
-  kJefes = 8, kTorneo4 = 9, kMision = 10, kTipos = 11
+  kJefes = 8, kTorneo4 = 9, kMision = 10, kRogue = 11, kTipos = 12   // 11: Dragon Rogue (rogue.cpp)
 };
 enum Fase : int { kNada = 0, kCombate = 1, kEntre = 2, kFin = 3 };
 enum Resultado : int { kNinguno = -1, kDerrota = 0, kVictoria = 1, kAbandono = 2, kGuardado = 3 };
@@ -34,6 +34,7 @@ struct Estado {
   int recibido = 0;             // dano que recibio el jugador en el ultimo combate (0 = perfecto)
   int escenario = 0;            // del combate en curso o del siguiente (dbz3::escenarios::Nombre)
   int propio = 0;               // reto de rpg.cpp
+  int rival_ganado = -1, forma_ganada = -1;   // ultima victoria; rival ya puede apuntar a la pelea siguiente
 };
 // Puesto del ranking (Elo por personaje).
 struct Puesto {
@@ -56,10 +57,13 @@ struct Reglas {
   int dano_hecho = 100, dano_recibido = 100;   // % del dano que hace / recibe el jugador
   int armadura = 0;                            // % del dano del jugador que absorbe el rival (jefe)
   int ventana = 0;                             // > 0: cada `ventana` s la armadura cae 3 s (hueco castigable)
+  int hueco = 3;                               // ROG-02: segundos del hueco sin armadura (Rogue: Cuerpo x4 = 5)
   int ki_drena = 0;                            // % del tope de ki que pierde el jugador cada segundo (< 0: lo gana)
   int ncaps = -1;                              // capsulas del reto para el jugador (-1 = ninguna)
   int caps[7] = {};
   bool reemplazar = false;                     // true: solo esas; false: se suman a las suyas (hasta 7)
+  int forma1 = 0;                              // ROG-04: forma inicial del jugador (form1 de RequestBattleEx)
+  int caps_prioritarias = 0;                  // Heroe: prefijo de caps que no pueden quedar fuera del registro de 7
 };
 
 // Texto en el idioma del juego (es, en, fr, de, it; el resto en ingles).
@@ -91,16 +95,56 @@ bool Guardado(int tipo, int* id, int* ganados);
 bool PerfilJugador(int* elo, int* tramo, const char** nombre_tramo);   // ficha 01 (panel Online)
 int Ranking(Puesto* out, int max);
 
+// MODOS-01 (dbz3_modos_reglas_vista, apagado): reglas del reto cargado para el bocadillo del selector.
+bool ReglasVista();
+bool ResumenReto(int tipo, int* combates, bool* arrastra, int* recupera, int* premio);
+// MODOS-02 (dbz3_modos_rotulos, apagado): "Combates ganados" / "Mejor marca" en las pantallas de resultado.
+bool RotulosNuevos();
+// MODOS-03 (dbz3_modos_revancha, apagado): los retos propios con reintentar pasan por la pantalla de derrota.
+bool RevanchaPropios();
+// MODOS-04 (dbz3_modos_premio_unico, apagado): premio entero la primera vez o al mejorar; 10 % al repetir.
+bool PremioUnico();
+// MODOS-06 (dbz3_modos_lab_nombres, apagado): nombre del golpe por su tipo en la tabla del laboratorio.
+bool LabNombres();
+const char* TipoGolpeLab(int codigo);   // "Patada", "Puñetazo", "Rush", "Definitiva"; nullptr si no se sabe
+// MODOS-05 (dbz3_modos_un_rango, apagado): el HUB llama "Nivel" al de PE y el selector "Rango" al Elo.
+bool UnRango();
+// MODOS-06 (dbz3_modos_lab_nombres, apagado): el resumen del laboratorio dice si es de una sesion anterior.
+bool LabSesionAnterior();
+// HEROE-TEC T4: practica del laboratorio con estas capsulas para el jugador 1 (Probar en Entrenamiento del Heroe).
+bool PracticaConCapsulas(int jugador, const std::vector<int>& caps);
+// MODOS-07 (dbz3_modos_pulido, apagado): rótulos de los retos corregidos (p. ej. «¡Gigante!» explicado).
+bool ModoPulido();
+
 }  // namespace dbz3::modos
+
+// Dragon Rogue (rogue.cpp, ROG-01): ajuste dbz3_rogue, combates del camino y guardado propio (rogue.toml).
+namespace dbz3::rogue {
+constexpr int kPisos = 50;   // El Abismo "sin fin": hasta aqui llega una partida
+struct Partida {
+  int jugador = 0, traje = 0;
+  uint32_t semilla = 0;
+  int ganados = 0, vida = 3000, vida_max = 3000;
+};
+bool Activo();                                                          // ajuste dbz3_rogue (apagado de serie)
+std::vector<dbz3::modos::Pelea> Peleas(uint32_t semilla, int jugador);   // los kPisos combates de esa semilla
+bool LeerPartida(Partida* p);                                           // partida a medias (false = no hay)
+void GuardarPartida(const Partida* p);                                  // nullptr = ya no hay
+int Record(int jugador);                                                // pisos superados de su mejor partida
+int Fin(int jugador, int ganados);   // partida terminada: apunta el record y devuelve los Zenie ganados
+}  // namespace dbz3::rogue
 
 namespace dbz3::rpg {
 void Premio(int zeni);       // Zenie al monedero del HUB (reto completado)
 bool Activa();               // tiene una pantalla que ensenar (menu principal)
 bool Busy();                 // selector o reto propio abierto (el HUB espera)
 bool Heroe();                // pantallas del Modo Heroe (su fondo propio)
+bool EnHabitacionMapa();     // la Habitacion abierta desde el mapa de Dragon Universe (dbz3_heroe_habitacion): se dibuja encima del juego
+void AbrirHabitacionMapa();  // SELECT en el mapa de DU del Heroe (campaigns.cpp)
 bool Mision100();            // pantalla de Mision 100 (su fondo y anfitrion propios)
 void AbrirSelector(int entrada);   // 0 torre, 1 supervivencia, 2 kumite, 3 Mision 100 (entradas del HUB)
 void AbrirHeroe();   // Modo Heroe como entrada propia del HUB (no depende del Kumite)
+bool ProbarReto(int modo, int jugador);   // PRUEBAS (MODOS-08): empieza Torres, Abyss, Jefes, Torneo de 4... sin pasar por el HUB
 bool ProbarMision(int n, int jugador);   // PRUEBAS: empieza la mision n (1-100) de la Mision 100
 bool EquiposMision();               // la mision en curso lleva equipos (tagteam_slots.cpp no los borra)
 void Dibujar(ImDrawList* dl, const dbz3::ingame::style::Area& a, float t, uint16_t pulsado);

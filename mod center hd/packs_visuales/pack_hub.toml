@@ -70,3 +70,41 @@ fuente = "Dragon HUB (pack opcional)/Icono guardado SSJ4.png"
 destino = "ui_ingame/hub/guardado_64.png"
 modo = "llenar"
 tamano = [64, 64]
+
+# HUECOS (11/11, feedback 1.4.6 punto 4): un fondo por modo. Cada pantalla pide hub/fondo_<modo> y, si el pack no lo
+# trae, pinta lo de siempre (modos.cpp, online_panel.cpp, tagteam_panel.cpp, heroe_ui.cpp). Cambia `fuente` por la
+# imagen que prefieras de tu carpeta y vuelve a construir el pack. Sin reconstruir, nada cambia.
+[[asset]]
+fuente = "Dragon Ball BG -BackGrounds-/Cell Games BG.jpg"
+destino = "ui_ingame/hub/fondo_tagteam.png"
+tipo = "fondo_hub"
+
+[[asset]]
+fuente = "Dragon Ball BG -BackGrounds-/Torneo de Poder BG 1.jpg"
+destino = "ui_ingame/hub/fondo_online.png"
+tipo = "fondo_hub"
+
+[[asset]]
+fuente = "Dragon Ball BG -BackGrounds-/[2018-12-05] Earth BG [Xkeeperz] by Maxiuchiha22 - 775388296.png"
+destino = "ui_ingame/hub/fondo_heroe.png"
+tipo = "fondo_hub"
+
+[[asset]]
+fuente = "Dragon Ball BG -BackGrounds-/[2019-03-14] Wasteland BG [DB Legends] by Maxiuchiha22 - 789530138.png"
+destino = "ui_ingame/hub/fondo_mision.png"
+tipo = "fondo_hub"
+
+[[asset]]
+fuente = "Dragon Ball BG -BackGrounds-/[2018-12-05] Champa tournament BG [Xkeeperz] by Maxiuchiha22 - 775388282.png"
+destino = "ui_ingame/hub/fondo_ranking.png"
+tipo = "fondo_hub"
+
+[[asset]]
+fuente = "Dragon Ball BG -BackGrounds-/[2019-03-14] Rock BG [DB Legends] by Maxiuchiha22 - 789530110.png"
+destino = "ui_ingame/hub/fondo_retos.png"
+tipo = "fondo_hub"
+
+[[asset]]
+fuente = "Dragon Ball BG -BackGrounds-/[2019-03-14] Laboratory BG [DB Legends] by Maxiuchiha22 - 789530088.png"
+destino = "ui_ingame/hub/fondo_lab.png"
+tipo = "fondo_hub"

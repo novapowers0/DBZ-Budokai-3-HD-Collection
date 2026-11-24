@@ -1,0 +1,30 @@
+# F6, fase final SOLO Z. Una entrada manual por el plan vigente; no ejecutar en fase1.
+# clave = B2-01/02/03/04/05/06/13/22/B2T
+# cvar = dbz3_b2_pasos_estrictos=true (OFF de serie)
+# log = "dbz3 tablero b2: pasos estrictos activos"
+# Criterio de este TOML: fase1 cargada y ajuste activo; no certifica ordenes/imagen/audio.
+# Aceptacion completa: matriz y contratos en LEEME.md; mismo hash final, manual1..9,
+# >=3 opcodes distintos poscombate IV/VI/IX; quads<=1px y audio<=1campoPAL.
+# Ronda2: A sale de preparacion; START salta T155 solo tras sus primeros100 cuadros.
+# Sin estas pulsaciones nunca se entra en kJuego sin escena, donde se comprueba el ajuste.
+descripcion = "F6 B2: entrada manual y activacion experimental de pasos; aceptacion completa aparte"
+env = [
+  "DBZ3_PS2_GAMES=D:\\DBZ3HD\\ps2_games",
+  "DBZ3_TEST_MISIONES=1,reset",
+  "DBZ3_TEST_B2_ORDENES=1",
+  "DBZ3_TEST_B2T_AUDIO=1",
+  "DBZ3_TEST_TURBO=1",
+  "DBZ3_TEST_CFG=dbz3_b2_pasos_estrictos=true",
+]
+pasos = [
+  'log "tablero b2: fase 1 leida" 120',
+  "captura 00_fase1_entrada",
+  "esperar 3000",
+  "tecla Space 2500",
+  'log "tablero b2: fase 1 empieza" 30',
+  'log "tablero b2: escena T155" 30',
+  "esperar 2000",
+  "tecla Return 1500",
+  'log "dbz3 tablero b2: pasos estrictos activos" 30',
+  "captura 01_fase1_manual",
+]

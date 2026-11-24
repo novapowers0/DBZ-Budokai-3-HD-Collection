@@ -1,0 +1,30 @@
+# S2 / IW-M07 + IW-E01 + IW10: vuelo 0x7D6 ("Go to Guru's House", Vegeta) con la logica ORIGINAL y piloto de
+# prueba. SOLO fase 3 (Z); este carril NO lo ejecuta. Copia: smoke_a/b/c.
+#   python tools\pruebas.py correr smoke_a "docs\14_frentes\escenarios_pruebas\final\s2-iw-vuelo\7d6.toml"
+#
+# clave    = IW-M07 / IW-E01 / IW10 / 0x7D6
+# cvar     = dbz3_iw_vuelo_original=true (de serie APAGADA) + dbz3_iw_logica_original=true
+# criterio = offline (verde): comparar_vuelo.py dorado_7d6 = 0/699 DIF; piloto.py v0 dif2 = 19/19 aros y META en
+#            3351 cuadros con medidor 0,514 (banco de ee.py, sin juego). En el juego: el piloto cruza la meta y el
+#            resultado sale superado con rango 0..4 y puntos = monedas + premio del rango.
+#            Los objetos 2/3/8 no los toca el piloto: su mecanica se mide en el banco sintetico objetos_banco.py
+#            (2/3 = 0x568/0x56c 180 cuadros; 8 = 0x520 300 -> 250 cuadros a paso 1,2 y Vegeta_GotenHarassmentEffectDraw(8)).
+# log      = "dbz3 r12: vuelo con la logica original del ELF" / "dbz3 r12: resultado superado true rango"
+descripcion = "7D6 vuelo a casa de Guru: piloto automatico acaba el circuito y entrega el resultado original"
+env = [
+  "DBZ3_TEST_IWMINI=0x7D6,auto",
+  "DBZ3_TEST_CFG=dbz3_iw_vuelo_original=true;dbz3_iw_logica_original=true",
+  'DBZ3_PS2_GAMES=D:\DBZ3HD\ps2_games',
+]
+pasos = [
+  'log "iwmini: prueba: empieza" 90',
+  "captura 00_salida",
+  'log "dbz3 r12: vuelo con la logica original del ELF" 90',
+  "esperar 4000",
+  "captura 01_vuelo",
+  'log "dbz3 r12: punto de control" 120',
+  "captura 02_aro",
+  'log "dbz3 r12: resultado superado true rango" 240',
+  "captura 03_resultado",
+  'log "dbz3 r12: fin " 60',
+]

@@ -4,6 +4,11 @@ python tools/iw_campana.py dificultad --region us --copia s5_b3_a
 python tools/iw_campana.py dm --region eu --copia s5_b3_b --misiones 1-96
 python tools/iw_campana.py dm --region us --copia s5_b3_b --continuo --turbo 4
 python tools/iw_campana.py dm --region eu --copia s5_b3_c --continuo --turbo 4
+python tools/iw_campana.py requisitos        (rehace iw_campana_requisitos.json con la logica del ELF)
+
+Cada caso arranca con el avance minimo con el que su casilla sale en el mapa del original (iw_campana_requisitos.json:
+la tabla de IW no va en orden de desbloqueo; la 12 sale tras la 77), escenas de desbloqueo vistas y cerrojos de area
+gastados, como una partida real. --cfg anade ajustes (p. ej. dbz3_iw_rango_fight40=true para HUECOS-08).
 
 --continuo mantiene una sola instancia y comprueba cada solicitud, MISSION START,
 fin y resultado. La petición IPC solo está habilitada en esta copia de pruebas.
@@ -65,7 +70,99 @@ def ficha(j, n):
     # ahí puede llegar todavía al menú B3 y abrir Dragon Universe (M78).
     esperar(j, r'iw mapa: intro acabada', 180)
     # El mapa bloquea el mando durante introducción, scroll y desbloqueos.
-    j.tecla_hasta_log('Space', rf'misiones: iw: ficha de la mision {n}\b', 90, 1)
+    j.tecla_hasta_log('Space', rf'misiones: iw: (ficha de la mision|mision) {n}\b( no jugable)?', 90, 1)
+    if m := re.search(rf'misiones: iw: mision {n} no jugable en B3: (.*)', j.texto_log()):
+        # El original la elige (Story_PickObjectAtCursor confirma) pero esta copia no tiene a sus luchadores.
+        raise NoJugable(m[1].strip())
+
+
+class NoJugable(Exception):
+    pass
+
+
+REQUISITOS = Path(__file__).with_name('iw_campana_requisitos.json')
+
+
+def calcular_requisitos():
+    """Avance minimo con el que cada casilla aparece en el mapa, segun la logica del ELF (ee.py: Capsule_UpdateUnlockFlags
+    0x2AB590 + aparicion de casillas) con las marcas que pone el port (misiones <= iw_hecho y minijuegos superados).
+    El orden de la tabla de IW NO es el de desbloqueo: la 12 pide la capsula 0x84E, que pide la 77; por eso
+    'desde=N-1' no abre la 12-21, 24-27, 30-36... (fallo de la prueba, no del juego). Clave -> [desde, [minijuegos]]."""
+    sys.path.insert(0, str(Path(__file__).parent / 'iw_mips'))
+    import mapa_espejo as E
+    dmd = E.dmd_de(E.entrada_afs(1093))
+    U = lambda o: struct.unpack_from('<I', dmd, o)[0]
+    recs = {}
+    for k in range(U(8)):
+        o = U(0x10 + 4 * k)
+        recs[U(o + 0x20)] = (U(o + 0x18), U(o + 4), k)   # clave -> tipo, saga, fila
+    minis = [c for c, r in recs.items() if r[0] == 0]
+    def plan(clave, desde0):
+        _, saga, fila = recs[clave]
+        for h in range(desde0, 97):
+            hechos = []
+            for _ in range(12):
+                e = E.Espejo(saga=saga, hechas=[0x7E1 + n for n in range(1, h + 1)] + hechos)
+                gastar_cerrojos(E, e)   # como preparar_avance (iw_cerrojos): 0x7E0/0x7E1 piden los cerrojos de area
+                e.aparecer(de_vuelta=True)
+                # POST2/HUECOS-09: aparecer no basta; sin 0x80 en su byte la casilla sale como «?» (bit 4) y el
+                # original no deja elegirla (Story_PickObjectAtCursor 0x2F8200).
+                if fila in {n[2] for n in e.nodos()} and e.c.m[E.ESTADO + e.clave_idx(clave)] & 0x80:
+                    return [h, sorted(hechos)]
+                nuevos = [c for c in minis if c not in hechos and
+                          (e.c.m[E.ESTADO + e.clave_idx(c)] & 0xE0) == 0x80]
+                if not nuevos: break
+                hechos += nuevos
+        return None
+    tabla = {str(n): plan(0x7E1 + n, n - 1) for n in range(1, 97)}
+    tabla.update({hex(c).upper().replace('0X', '0x'): plan(c, 0) for c in sorted(minis)})
+    REQUISITOS.write_text(json.dumps(tabla, indent=1), encoding='utf8')
+    return tabla
+
+
+def requisitos(clave):
+    tabla = json.loads(REQUISITOS.read_text(encoding='utf8')) if REQUISITOS.exists() else calcular_requisitos()
+    r = tabla.get(clave)
+    if r is None: raise P.Fallo(f'{clave}: no aparece en el mapa con ningun avance')
+    return r
+
+
+def cerrojos(desde, minis):
+    """Cerrojos de area (0x842-0x84D) que un jugador con ese avance ya habria gastado: abiertos (0x80) -> 0xE1, hasta
+    que no se abra ninguno mas. Es lo que el port guarda en iw_cerrojos (EU 0x2FE270, avance automatico de saga)."""
+    sys.path.insert(0, str(Path(__file__).parent / 'iw_mips'))
+    import mapa_espejo as E
+    return gastar_cerrojos(E, E.Espejo(hechas=[0x7E1 + n for n in range(1, desde + 1)] + list(minis)))
+
+
+def gastar_cerrojos(E, e):
+    """En el espejo `e`: cerrojos abiertos -> 0xE1 hasta que no se abra ninguno (devuelve la mascara)."""
+    mascara = 0
+    while True:
+        nuevos = [c for c in range(0x842, 0x84E) if not mascara >> (c - 0x842) & 1 and
+                  e.c.m[E.ESTADO + e.clave_idx(c)] & 0x80]
+        if not nuevos: return mascara
+        for c in nuevos:
+            e.c.m[E.ESTADO + e.clave_idx(c)] |= 0xE1
+            mascara |= 1 << (c - 0x842)
+        e.c.call(0x2AB590, 0x5C1490, limite=5_000_000)
+
+
+def preparar_avance(j, desde, minis):
+    """Partida de prueba sin 'reset' (que pone iw_eventos a 0): Bolas y monedero a 0, escenas de desbloqueo 0x8D0-0x8DC
+    ya vistas (si no, el mapa del original hace su recorrido de sagas al entrar y Goku acaba lejos de la casilla) y los
+    minijuegos superados que pide la casilla (iw_rango_mini_<clave> > 0 -> 0xE0 en MarcasMapa); el resto a 0."""
+    progreso = j.dest / 'user_data/dbz3/pasarela/progreso.toml'
+    progreso.parent.mkdir(parents=True, exist_ok=True)
+    contenido = progreso.read_text(encoding='utf8') if progreso.exists() else ''
+    valores = {'iw_bolas': 0, 'iw_zeni': 0, 'iw_eventos': sum(1 << (c - 0x8CF) for c in range(0x8D0, 0x8DD)),
+               'iw_cerrojos': cerrojos(desde, minis)}
+    valores.update({f'iw_rango_mini_{c}': 1 if c in minis else 0 for c in range(0x7D0, 0x7E2)})
+    for clave, valor in valores.items():
+        patron = rf'(?m)^\s*{clave}\s*=.*$'
+        if re.search(patron, contenido): contenido = re.sub(patron, f'{clave} = {valor}', contenido)
+        elif valor: contenido += f'\n{clave} = {valor}\n'
+    progreso.write_text(contenido, encoding='utf8')
 
 
 def publicar_solicitud(ruta, numero):
@@ -131,7 +228,13 @@ def escenario(j, par):
     n = int(par['mision'])
     imagen = 'EU' if par['region'] == 'eu' else 'US'
     esperar(j, rf'dual-region core detected .*using {imagen} image config', 20)
-    ficha(j, n)
+    try:
+        ficha(j, n)
+    except NoJugable as x:
+        j.info(f'NO JUGABLE misión {n}: el mapa original la elige; falta en esta copia: {x}')
+        (j.run / 'iw_resultado.json').write_text(json.dumps({'mision': n, 'resultado': 'no jugable',
+            'motivo': str(x)}, ensure_ascii=False), encoding='utf-8')
+        return
     if par.get('tipo') == 'habilidades':
         return habilidades(j, par)
     if 'dificultad' in par:
@@ -264,7 +367,8 @@ def seleccion(j, par):
         '0x7D1': (0, 11, 0, 11), '0x7D2': (0, 11, 0, 11),
         '0x7DF': (0, 3, 0, 3), '0x7E1': (15, 14, 15, 14),
     }[clave]
-    bloqueo = clave in ('0x7D1', '0x7D2', '0x7DF', '0x7DA', '0x7E1')
+    # 0x7DA/10 y 0x7E1/14 ya tienen sus alias portados (MotivoPersonaje, src/iw_minijuegos.cpp): se aceptan.
+    bloqueo = clave in ('0x7D1', '0x7D2', '0x7DF')
     esperar(j, r'using (EU|US) image config', 20)
     esperar(j, r'misiones: iw: mapa de Dragon Mission', 120)
     esperar(j, r'iw mapa: intro acabada', 180)
@@ -330,6 +434,8 @@ def preparar_habilidades(j, par, env):
     if par.get('continuo'):
         publicar_solicitud(j.dest / 'dbz3_iw_mision.req', int(par['mision']))
         return
+    if par.get('tipo') in ('dm', 'seleccion', 'dificultad', 'habilidades'):
+        preparar_avance(j, *requisitos(par['clave'] if par.get('tipo') == 'seleccion' else par['mision']))
     if par.get('tipo') not in ('habilidades', 'seleccion', 'deseos'): return
     ruta = j.dest / 'user_data/dbz3/pasarela/iw_habilidades.toml'
     if par.get('fase') == 'recargar': return
@@ -386,7 +492,7 @@ def corrida_paralela(a):
         destino.mkdir()
         cmd = [sys.executable, '-X', 'utf8', str(Path(__file__).resolve()), 'dm', '--region', a.region,
                '--copia', copias[i], '--misiones', ','.join(map(str, lista)), '--salida', str(destino), '--exe', str(exe),
-               '--turbo', str(a.turbo)]
+               '--turbo', str(a.turbo)] + (['--cfg', a.cfg] if a.cfg else [])
         if a.continuo: cmd.append('--continuo')
         with (destino / 'ejecucion.log').open('w', encoding='utf8') as f:
             p = subprocess.run(cmd, stdout=f, stderr=subprocess.STDOUT)
@@ -407,6 +513,9 @@ def corrida_paralela(a):
 
 def main():
     # Este encargo limita también el arnés aunque haya un cupo temporal mayor.
+    if sys.argv[1:2] == ['requisitos']:   # rehace iw_campana_requisitos.json (sin juego; ~minutos)
+        for clave, r in calcular_requisitos().items(): print(clave, r)
+        return 0
     P.TOPE_JUEGOS = min(P.TOPE_JUEGOS, 2)
     P.VENTANAS = min(P.VENTANAS, 2)
     ap = argparse.ArgumentParser(description=__doc__)
@@ -421,6 +530,7 @@ def main():
     ap.add_argument('--claves', help='seleccion: claves hex separadas por coma (por defecto vuelo, ladrillos, NB012 y MSN019)')
     ap.add_argument('--misiones', type=numeros, default=numeros('1-96'))
     ap.add_argument('--salida', type=Path, default=Path(r'D:\tmp\solIWC'))
+    ap.add_argument('--cfg', help='ajustes extra para la prueba, "a=true;b=false" (p. ej. HUECOS-08: dbz3_iw_rango_fight40=true)')
     a = ap.parse_args()
     if a.copias: return corrida_paralela(a)
     if not a.copia: ap.error('falta --copia o --copias')
@@ -429,11 +539,16 @@ def main():
     os.environ['DBZ3_TEST_PANTALLA_EU'] = '1' if a.region == 'eu' else '0'
     P.OVERRIDES['dbz3_region'] = '"' + a.region + '"'
     P.OVERRIDES['dbz3_game_dir'] = '"' + str(P.R).replace('\\', '/') + '"'
-    ps2 = r'D:\DBZ3HD\ps2_games_eu' if a.region == 'eu' else r'D:\DBZ3HD\ps2_games'
+    ps2 = r'D:\DBZ3HD\ps2_iw_eu' if a.region == 'eu' else r'D:\DBZ3HD\ps2_games'
     P.ESCENARIOS['iw_campana'] = ('IW: campaña y COM real', lambda p: {
-        'DBZ3_PS2_GAMES': ps2, 'DBZ3_TEST_MISIONES': '4,reset,desde=95' if p.get('continuo') else ('4,desde=' if p.get('tipo') == 'deseos' else '4,reset,desde=') + str(int(p['mision']) - 1),
+        'DBZ3_PS2_GAMES': ps2, 'DBZ3_TEST_MISIONES': '4,reset,desde=95' if p.get('continuo') else ('4,desde=' + str(int(p['mision']) - 1) if p.get('tipo') == 'deseos' else
+                                                                                                   '4,desde=' + str(requisitos(p['clave'] if p.get('tipo') == 'seleccion' else p['mision'])[0])),
         **({'DBZ3_TEST_IW_CADENA': '1'} if p.get('continuo') else {'DBZ3_TEST_IW_CASILLA': p.get('clave', '0x7D6')} if p.get('tipo') == 'seleccion' else {'DBZ3_IW_MISION': p['mision']}),
         'DBZ3_TEST_RINGOUT': '1', 'DBZ3_R1_TRAZA': '1',
+        # IWC_TRAZA=1: traza del espejo del mapa (iw_mips_mapa.inl: casilla bajo Goku y sus banderas).
+        **({'DBZ3_TEST_IW_SEMILLA': '0'} if os.environ.get('IWC_TRAZA') else {}),
+        # IWC_EQUIPO="id,...": equipo de prueba como si saliera del Skill Edit (IW-F14: capsula de Zeni 767..771)
+        **({'DBZ3_TEST_IW_EQUIPO': os.environ['IWC_EQUIPO']} if os.environ.get('IWC_EQUIPO') else {}),
         'DBZ3_TEST_OCULTO': '0' if p.get('tipo') in ('seleccion', 'habilidades', 'deseos') else '1', 'DBZ3_TEST_TURBO': str(a.turbo)},
         cadena_continua if a.continuo else seleccion if a.tipo == 'seleccion' else deseos if a.tipo == 'deseos' else escenario, preparar_habilidades)
     carpeta = a.salida / (time.strftime('%Y%m%d-%H%M%S') + '_' + a.tipo + '_' + a.region + '_' + a.copia)
@@ -451,7 +566,7 @@ def main():
     P.OVERRIDES['dbz3_game_dir'] = '"' + raiz.as_posix() + '"'
     # escribir_toml fuerza R incluso sobre OVERRIDES. Su punto de extensión
     # documentado es DBZ3_TEST_CFG, aplicado después de esa asignación.
-    os.environ['DBZ3_TEST_CFG'] = 'dbz3_game_dir="' + raiz.as_posix() + '"'
+    os.environ['DBZ3_TEST_CFG'] = 'dbz3_game_dir="' + raiz.as_posix() + '"' + (';' + a.cfg if a.cfg else '')
     fuente = P.R / ('yae3_xenon_eu.xex' if a.region == 'eu' else 'default.xex')
     md5 = hashlib.md5(fuente.read_bytes()).hexdigest().upper()
     esperado = 'C37EB979B762DA0AB5B8C9BA8037CE4E' if a.region == 'eu' else 'A53E324B5D2A65EBCBF648E4F85A7271'
@@ -464,9 +579,16 @@ def main():
     original = P.Juego
     class JuegoImagen(original):
         def base_real(self, seg=20):
-            super().base_real(seg)
+            # POST2/IW-ARRANQUE: con varias pruebas a la vez el arranque llega a tardar 20-66 s hasta la arena de
+            # memoria (y la linea 'using .. image config'); con 20 s se daba por mala una copia sana.
+            super().base_real(max(seg, 180))
             imagen = 'EU' if a.region == 'eu' else 'US'
-            if not re.search(rf'using {imagen} image config', self.texto_log()):
+            texto = self.texto_log()
+            if not re.search(r'using (EU|US) image config', texto):
+                # Arranque colgado justo tras crear el dispositivo D3D12 (sin ventana ni arena; se vio igual en opus2):
+                # no es la copia ni la ISO. Fallo de herramienta -> pruebas.correr lo repite una vez.
+                raise P.Fallo('HERRAMIENTA: arranque colgado tras D3D12 (sin "image config" en 180 s); se repite')
+            if not re.search(rf'using {imagen} image config', texto):
                 raise P.Fallo(f'no se cargó la imagen PPC {imagen}; no cuenta como prueba de esa región')
         def lanzar(self, env):
             proyecto = P.R

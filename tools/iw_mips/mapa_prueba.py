@@ -35,14 +35,28 @@ def esc(m):
     poner(m, x, y)
     m.cuadro()
     m.cuadro(pulsa=0x4000, mant=0x4000)
+    # Los eventos (llamadas mudas de sonido/menu) no deciden la logica y dependen de globales de presentacion que el
+    # espejo no arranca (p. ej. fRam005c54e4): se comparan solo los campos del mapa y la cola.
     r.append((tuple(c.r32(M + k) for k in range(0x10, 0x20, 4)) , tuple(c.r32(0x5D9220 + 4 * k) for k in range(0, 12)),
-              tuple(c.r32(0x5D9260 + 4 * k) for k in range(0, 12)), c.r32(0x5D92A0), tuple(m.ev)))
+              tuple(c.r32(0x5D9260 + 4 * k) for k in range(0, 12)), c.r32(0x5D92A0)))
     return r
+
+
+def norm(v):
+    """Los punteros al contexto/nodos dependen de la base del espejo (savestate 0x8E7xxx, espejo 0x11Axxxx): no son
+    logica. Se anulan para comparar; los indices, banderas y coordenadas siguen contando."""
+    if isinstance(v, (tuple, list)):
+        return tuple(norm(x) for x in v)
+    if isinstance(v, int) and 0x800000 <= v <= 0x1200000:
+        return -1
+    return v
 
 
 def main():
     a = esc(MB.Mapa())
     b = esc(ME.Espejo(goku=(0, 0)))
+    a = [norm(x) for x in a]
+    b = [norm(x) for x in b]
     nd = 0
     for i, (p, q) in enumerate(zip(a, b)):
         if p != q:

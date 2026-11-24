@@ -1,0 +1,40 @@
+# ESC-JUGABLES 12/11: el selector con las 238 altas (tope del byte +30) y la rueda continua.
+#   Copia: esc_n preparada con  python tools\escenarios_copia_n.py preparar --n 238
+#   python tools\pruebas.py correr esc_n "docs\14_frentes\escenarios_pruebas\post1212\sel238_rueda.toml"
+#
+# clave    = ESC-JUGABLES / SLOTS_ESC-03 (238 altas) + SLOTS_ESC-04 (rueda desplazada).
+# cvar     = dbz3_escenarios_238=true y dbz3_esc_azar_todos=true (ya de serie; se fijan para no depender del toml de la copia).
+# criterio = el arranque carga las 238 altas (alta 254 = COPIA 0238 y la lista de nombres acaba en la 254), el
+#            selector instala la rueda continua (243 escenarios en 16 casillas), el cursor llega a la ULTIMA alta
+#            (registro 254) y se empieza un combate en ella sin cierre.
+# log      = "dbz3 escenarios: alta 254 = 'COPIA 0238'"
+#            "dbz3 escenarios: selector continuo: 243 escenarios en 16 casillas"
+#            "dbz3 escenarios: sel casilla N (registro 254)"
+#            "dbz3 escenarios: alta 254 'COPIA 0238' (mod Copia ESC 0238) en el registro"
+#
+# Nota: el registro de la ultima alta es 17 + 238 - 1 = 254 (kSerie = 17). La navegacion es la de la rueda
+# (probada en slots_esc con 12/40/110): A mueve una casilla; hasta_log repite A hasta que la sonda diga 254.
+descripcion = "ESC-JUGABLES: 238 altas, rueda continua y combate en la ultima (registro 254)"
+env = ["DBZ3_SONDA_ESCENARIO=1", "DBZ3_TEST_RINGOUT=1", "DBZ3_TEST_CFG=dbz3_escenarios_238=true;dbz3_esc_azar_todos=true"]
+pasos = [
+  "esperar 2000",
+  "log \"alta 254 = 'COPIA 0238'\" 90",
+  "log \"nombres \\(idioma \\d+\\): .*254 Copia 0238\" 10",
+  "tecla S 1200",
+  "tecla Space 3000",
+  "tecla Space 3000",
+  "hasta_log 'lecturas del juego al entrar al selector' 120",
+  "tecla Space 4000",
+  "fin",
+  "esperar 2500",
+  "log \"selector continuo: 243 escenarios en 16 casillas\" 20",
+  "captura 01_rueda_238",
+  "hasta_log 'sel casilla \\d+ \\(registro 254\\)' 240",
+  "tecla A 400",
+  "fin",
+  "captura 02_ultima_alta",
+  "tecla Space 3000",
+  "log \"alta 254 'COPIA 0238' \\(mod Copia ESC 0238\\) en el registro\" 90",
+  "esperar 12000",
+  "captura 03_combate",
+]

@@ -1,0 +1,3 @@
+descripcion = "dsGIG: ring out con el gigante COM (aviso del juego a los 5 s): el combate acaba y la camara vuelve a su campo de vision normal"
+env = ["DBZ3_TEST_BATTLE=0,7,7", "DBZ3_HUB_MODE=5", "DBZ3_GIGANTE=1.8", "DBZ3_SONDA_GIGANTE=1", "DBZ3_TEST_RINGOUT=1"]
+pasos = ["log \"hub: combate nativo\" 60", "log \"gigante: escala\" 120", "esperar 3000", "captura 01_pelea", "log \"combate acabado\" 40", "esperar 2000", "captura 02_tras_ringout", "esperar 2500", "captura 03_final"]

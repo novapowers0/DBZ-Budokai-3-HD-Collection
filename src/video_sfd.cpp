@@ -641,10 +641,13 @@ class Panel : public rex::ui::ImGuiDialog {
     if (vw > W) vw = W, vh = W / aspecto;
     const ImVec2 p0((W - vw) * 0.5f, (H - vh) * 0.5f);
     if (tex_[uno_]) dl->AddImage(reinterpret_cast<ImTextureID>(tex_[uno_].get()), p0, ImVec2(p0.x + vw, p0.y + vh));
-    // subtitulos: las imagenes del original a la escala de la pantalla de PS2, centradas abajo (como IW); si se
-    // solapan (FD12) se apilan hacia arriba. ponytail: margen inferior medido a ojo (24 px de PS2).
-    float y = p0.y + vh - 24 * (vh / kAltoPs2);
+    // subtitulos: como Movie_DrawFrameAndSubtitle (EU 0x338C10): UNA sola imagen (la que devuelve el reproductor),
+    // centrada y con su borde inferior a 5 px del fondo de la pantalla (fRam0049c830 - 5). ponytail: alto de pantalla
+    // 448 (NTSC) para la escala.
+    float y = p0.y + vh - 5 * (vh / kAltoPs2);
+    bool dibujada = false;
     for (const Linea& l : s->lineas) {
+      if (dibujada) break;
       if (t < l.desde || t >= l.hasta || l.imagen < 0 || l.imagen >= int(s->imagenes.size())) continue;
       const pasarela::Imagen& im = s->imagenes[size_t(l.imagen)];
       if (!im) continue;
@@ -656,6 +659,7 @@ class Panel : public rex::ui::ImGuiDialog {
       if (!tx) continue;
       const float e = vh / kAltoPs2, sw = im.w * e, sh = im.h * e;
       y -= sh;
+      dibujada = true;
       dl->AddImage(reinterpret_cast<ImTextureID>(tx.get()), ImVec2(p0.x + (vw - sw) * 0.5f, y),
                    ImVec2(p0.x + (vw + sw) * 0.5f, y + sh));
     }
@@ -787,7 +791,8 @@ bool ReproducirIW(int video) {
       for (int j = 0, n = pasarela::CuantasAmt(amt); j < n; ++j) subs.push_back(pasarela::TexturaAmt(amt, j));
     }
   }
-  const int canal = CanalSubtitulosIW(dbz3::settings::Language());
+  // Movie_OpenContext (EU 0x3393B0): con el video 8 (FD08A) el canal de subtitulos se fuerza a 2.
+  const int canal = video == 8 ? 2 : CanalSubtitulosIW(dbz3::settings::Language());
   return Reproducir(iw / "USR" / (std::string(kVideosIW[video]) + ".SFD"), std::move(subs), canal);
 }
 

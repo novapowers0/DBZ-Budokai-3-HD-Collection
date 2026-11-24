@@ -1,0 +1,11 @@
+descripcion = "MODOS-04 (1/2): Mision 100, mision 1 ganada por primera vez con premio_unico: el resultado paga el premio entero (100) y el rango queda en S"
+env = ["DBZ3_HUB_MODE=5", "DBZ3_TEST_RINGOUT=1", "DBZ3_TEST_CFG=dbz3_modos_premio_unico=true", "DBZ3_TEST_MODO=mision100,0,1"]
+apartar = ["user_data/dbz3/rpg.toml*", "user_data/dbz3/hub_modos.toml*", "user_data/dbz3/modos", "user_data/dbz3/retos.csv", "user_data/dbz3/hub_heroe.toml*", "user_data/dbz3/pasarela"]
+pasos = [
+  "log 'combate 1: pedido' 150",
+  "esperar 5000",
+  "captura 01_combate",
+  "log 'mision 100 n 1: rango' 180",
+  "esperar 5000",
+  "captura 02_resultado_primera",
+]

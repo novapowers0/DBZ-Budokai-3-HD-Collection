@@ -47,6 +47,13 @@ bool LeerRecursosDosJugadoresB2(int planta, InformacionDosJugadoresB2& info);
 // reutiliza HijoAmb/LeerAma2/TexturaAmt de la nave y la copia del jugador.
 bool PintarMarcadorB2(ImDrawList* dl, const MuestraMarcadorB2& m);
 
+// B2-08: golpes EN VIVO de la prueba III. El +0x1c de B3 (Fin::golpes) es la marca 0/1 del golpe directo, no una
+// cuenta; este contador suma cada bajada de vida del rival (>=0.5) mientras dura el encuentro, asi el contador de la
+// planta III ensena lo mismo que el original (x2, x10, x17) y el resultado usa la misma cifra. Las demas plantas: 0.
+int GolpesHudB2();
+void ReiniciarGolpesB2();          // al empezar una prueba/encuentro (nave.cpp) y tras el resultado
+inline constexpr bool kContadorVivoB2 = true;
+
 // Llamar TODOS los cuadros desde Panel::OnDraw, bajo g_mu de misiones.
 // activo=false libera solo la ocultacion adquirida por este adaptador.
 // Lee el combate B3 con GA y llama PintarMarcadorB2; dibujo2P queda fuera (modos originales10..13).

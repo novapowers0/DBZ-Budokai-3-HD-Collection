@@ -17,6 +17,8 @@ namespace dbz3::settings {
 // Load dbz3_user.toml (no-op if it does not exist). Must be called after
 // rex::cvar::LoadConfig for the SDK config so user values win.
 void LoadUserSettings();
+// 22/11: once per version change (unzipped over an older one): stale defaults and leftover files. Call after LoadUserSettings.
+void MigrarTrasActualizar();
 
 // Result of the last LoadUserSettings() call, so the launcher can tell the user
 // when their settings file had to be repaired (or was unusable) instead of
@@ -70,9 +72,13 @@ int32_t ResolutionScale();
 void SetResolutionScale(int32_t scale);
 
 // --- Language --------------------------------------------------------------
-// Game text language (affects the data_XX.afs text pack). Values map to Xbox
+// Requested language (kept in dbz3_language). Values map to Xbox
 // 360 XGetLanguage ids: 1=EN, 2=JP, 3=DE, 4=FR, 5=ES, 6=IT.
 int32_t Language();
+// The PAL asset set has no Japanese text bank. Keep Japanese in the port UI
+// and use English for the native game, without changing the saved preference.
+bool JapaneseUiOnly();
+int32_t GuestLanguage();
 // Idioma de la interfaz: el de Language() o 9 = portugues de Brasil (dbz3_ui_language; el juego sigue en ingles).
 int32_t UiLanguage();
 // 9 = portugues: dbz3_language 1 + dbz3_ui_language "pt"; el resto lo limpia.
@@ -305,6 +311,13 @@ void SetVideosHd(bool on);
 std::string VideosHdUrl();
 bool CacXv2Piezas();
 void SetCacXv2Piezas(bool enabled);
+bool LauncherKitButton();   // dbz3_launcher_kit: boton "Kit de Modding" (encendido de serie)
+std::string Xv2Cpk();            // ruta de data.cpk de XV2 ("" si no esta)
+std::string Xv2Version();        // version del ejecutable o Steam build; vacia si no esta declarada
+void RefreshXv2();              // reconsulta disco y sincroniza la ruta de los lectores Python
+std::string Xv2Carpeta();        // carpeta elegida a mano ("" = autodeteccion)
+void SetXv2Carpeta(const std::string& dir);
+bool Xv2CarpetaValida(const std::string& dir);   // contiene cpk/data.cpk
 bool Xv2Instalado();   // data.cpk de Xenoverse 2 localizado (DBZ3_XENO2_CPK o bibliotecas de Steam)
 
 // Active mod profile ("vanilla" = all mods disabled).

@@ -1,0 +1,23 @@
+descripcion = "solHAB: referencia del menu START del Heroe con Habitacion apagada"
+env = [
+  "DBZ3_TEST_DU_HEROE=35",
+  "DBZ3_TEST_CFG=dbz3_heroe_habitacion=false",
+]
+pasos = [
+  'log "escena 10[02] entrada 35" 180',
+  "tecla Space 2000",
+  "tecla Space 2000",
+  "tecla Space 2000",
+  "tecla Space 2000",
+  "tecla Space 2000",
+  "tecla Space 2000",
+  "esperar 8000",
+  "captura a_mapa",
+  "tecla Return 1500",
+  "captura b_start",
+  "tecla S 500",
+  "tecla S 500",
+  "captura c_ultima_fila",
+  "tecla Return 1500",
+  "captura d_mapa",
+]

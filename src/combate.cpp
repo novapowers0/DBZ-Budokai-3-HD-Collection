@@ -30,12 +30,18 @@
 #include <string>
 #include <vector>
 
+#include "src/tactics/entrada.h"   // TACTICS-01: puerta unica de las variables de prueba de Tactics
+#include "roster_ext.h"   // SLOTS_PJ-06: CatalogueLimit() del catalogo de capsulas
 #include "reloj_prueba.h"
 #include "combate.h"
+#include "comp_estado.h"
+#include "comp_hud.h"
+#include "comp_aura.h"
 #include "generated/dbz3_init.h"
 #include "eu_map.h"
 #include "escenarios_intro_sonda.h"
 #include "ingame/game_style.h"
+#include "ingame/online_panel.h"   // BattleNow: diagnostico del acabado OBJ
 #include "iw_minijuegos.h"
 #include "cinematica.h"
 #include "launcher/i18n.h"
@@ -43,6 +49,7 @@
 #include "net/netplay.h"
 #include "tagteam.h"
 #include "t3_crusher_ball.h"
+#include "survivors/fx_real.inl"
 
 REXCVAR_DEFINE_BOOL(dbz3_combate_reglas_v0, false, "DBZ3/Combate",
                     "Reglas competitivas v0: dos golpes de Goku con otro dano (no online)");
@@ -54,6 +61,19 @@ REXCVAR_DEFINE_STRING(dbz3_combate_boton_cancel, "no", "DBZ3/Combate",
                       "Boton de cancelacion: no, lb o rb = adelante + ki en una pulsacion (no online)");
 REXCVAR_DEFINE_INT32(dbz3_combate_reversion, 0, "DBZ3/Combate",
                      "Dano de un golpe que devuelve a la forma normal (0 = nunca; no online)");
+// DR01 (#63): el Rush teletransporta al atacante al borde al salir de su cinematica (medido: 109,7 u; ver
+// studies 5/ENTREGAS/INFORME_tPEND.md). Apagado = identico al original; encendido devuelve al atacante a su
+// sitio de antes del Rush (<= 20 u) durante 12 fotogramas tras el remate.
+REXCVAR_DEFINE_BOOL(dbz3_rush_sin_salto, false, "DBZ3/Combate",
+                    "Dragon Rush sin salto: devuelve al atacante a su sitio al acabar el Rush (mitigacion; "
+                    "apagado = original) | Dragon Rush: send the attacker back to its spot after the Rush "
+                    "(mitigation; off = original)");
+// COMP: Modo Competitivo = el Aura Burst de Infinite World, con estado independiente del hiper de B3 (estudio, parejas de
+// funciones y decisiones: studies 5/ENTREGAS/MODO_COMPETITIVO_ESTUDIO.md). Apagado = juego original.
+REXCVAR_DEFINE_BOOL(dbz3_modo_competitivo, false, "DBZ3/Combate",
+                    "Modo Competitivo: L2 = Aura Burst (1 barra para entrar, 10 de ki por cuadro, no cansa al acabar), "
+                    "definitiva con Arriba + Circulo, sin Dragon Rush (online: si la sala lo acuerda) | Competitive Mode: L2 = Aura Burst, "
+                    "ultimate with Up + Circle, no Dragon Rush (online: if the room agrees)");
 // Solo pruebas (no salen en el menu): muneco del laboratorio y ki del jugador del teclado.
 REXCVAR_DEFINE_STRING(dbz3_combate_prueba_muneco, "", "DBZ3/Combate",
                       "Pruebas: el ordenador no decide (quieto) o se queda en guardia (guardia)");
@@ -67,6 +87,10 @@ namespace dbz3 {
 bool GameDimmed();
 bool OverlayOpen();
 }  // namespace dbz3
+
+namespace dbz3::net {
+void InyectarPad(uint32_t usuario, int32_t botones);   // misma entrada XInput que las cinematicas y el Tag Team
+}
 
 namespace dbz3::combate {
 namespace {
@@ -134,6 +158,7 @@ int CancelButton() {   // bit PS2 del boton de cancelacion (0 = no)
 std::atomic<uint32_t> g_frame{0};   // cuadros de pelea (hilo del juego)
 std::atomic<int64_t> g_tick_ms{0};  // ultimo paso de pelea (para el panel)
 std::atomic<int64_t> g_inicio_ms{0};   // empiezo de la pelea (estado 4)
+std::atomic<bool> g_obj_cel{false};
 std::atomic<int> g_aviso[2] = {};   // cuadros que faltan para el golpe que va a recibir cada lado (0 = nada)
 std::atomic<bool> g_humano[2] = {};
 std::atomic<int64_t> g_aviso_ms[2] = {};   // ultimo aviso (para DBZ3_COMBATE_AVISO_PRUEBA: verlo en una captura)
@@ -441,12 +466,176 @@ bool Equipada(uint8_t* base, uint32_t x, uint16_t cap) {   // lista de capsulas 
 }
 float Coste(uint8_t* base, uint16_t cap) {   // #SKC: *(0x8237560C) + 40 ID, +15 = decimas de barra
   const uint32_t skc = REX_LOAD_U32(dbz3::GA(0x8237560C));
-  return skc && cap < 1024 ? float(REX_LOAD_U8(skc + 40 * uint32_t(cap) + 15)) * 100.0f : 1e9f;
+  // el catalogo ampliado (roster_ext) llega a kInventorySize=2048: con el tope viejo de 1024 una
+  // definitiva de una capsula >= 1024 costaba 1e9 (la regla 15 no la daba nunca por pagable)
+  return skc && cap < dbz3::roster::CatalogueLimit() ? float(REX_LOAD_U8(skc + 40 * uint32_t(cap) + 15)) * 100.0f : 1e9f;
 }
 bool Directa(uint8_t* base, uint32_t x, int lado) {
   const Ult& u = g_ult[size_t(lado)];
   return u.cap && Equipada(base, x, u.cap) && LoadF(base, x + kKi) >= Coste(base, u.cap);
 }
+// ---------------------------------------------------------------- COMP modo competitivo
+// Solo US (los ganchos nuevos no tienen pareja EU verificada). En el online, solo si la sala lo acordo en los dos PCs
+// (bit 0x20 de CombatRules, netplay.cpp): todo lo que usa vive en la memoria del juego o sale del mando de ese cuadro,
+// que el online sincroniza por debajo de sub_8208FD58 (tambien al repetir cuadros del rollback).
+bool Competitivo() { return REXCVAR_GET(dbz3_modo_competitivo) && !dbz3::g_guest_eu && Rules(); }
+// R16: estado propio dentro del bloque del luchador que Snapshot guarda/restaura entero (net/rollback.h).
+// +6116 era EXCLUSIVAMENTE el ki guardado del Hiper: los dos lectores de sub_82110818 solo entran con +8208 != 0
+// (generated/19.cpp:7762-7801). En COMP se interceptan AMBAS escrituras on/off y +8208 permanece cero.
+// Se reutiliza ese campo inerte, no un hueco supuesto ni una asignacion fuera del rollback. El inicializador
+// sub_821094E8 ya lo borra al crear luchador/asaltar (generated/25.cpp:8037). La marca no parece un puntero del heap.
+constexpr uint32_t kCompBurst = 6116, kCompBurstOn = 0x434D5001, kCompAtaqueGratis = 2;
+std::atomic<bool> g_comp_burst[2]{};
+std::atomic<float> g_comp_ki[2]{};
+std::array<bool, 2> g_l2{};   // se rehace desde el mando sincronizado, nunca decide desde el reloj host
+thread_local uint32_t g_comp_chase = 0;   // contexto de llamada, nunca estado persistente entre cuadros
+thread_local uint32_t g_comp_nodo = 0, g_comp_actor = 0;   // comprobacion del #CCM en curso
+thread_local uint32_t g_comp_capsula = 0;   // cobro de la capsula del ataque, no su posesion/forma
+bool Burst(uint8_t* base, uint32_t x) {
+  return x && SideOf(base, x) >= 0 && Competitivo() &&
+         (REX_LOAD_U32(x + kCompBurst) & ~kCompAtaqueGratis) == kCompBurstOn;
+}
+bool AtaqueGratis(uint8_t* base, uint32_t x) {
+  return (REX_LOAD_U32(x + kCompBurst) & ~1u) == ((kCompBurstOn & ~1u) | kCompAtaqueGratis) &&
+         REX_LOAD_U16(x + kAct) == 15;
+}
+void PublicarComp(uint8_t* base) {
+  const bool en = Competitivo() && BattleState(base) == 4;
+  for (int k = 0; k < 2; ++k) {
+    const uint32_t x = Fighter(base, k);
+    // Solo US usa esta marca. No tocar el ki guardado del Hiper nativo.
+    if (x && !dbz3::g_guest_eu && !Competitivo() && !REX_LOAD_U8(x + kHyper)) {
+      const uint32_t v = REX_LOAD_U32(x + kCompBurst) & ~1u;
+      if (v == (kCompBurstOn & ~1u) || v == ((kCompBurstOn & ~1u) | kCompAtaqueGratis))
+        REX_STORE_U32(x + kCompBurst, 0);
+    }
+    g_comp_burst[k].store(en && Burst(base, x), std::memory_order_relaxed);
+    const float ki = en && x ? LoadF(base, x + kKi) / 1000.0f : 0.0f;
+    g_comp_ki[k].store(std::isfinite(ki) ? std::clamp(ki, 0.0f, 6.0f) : 0.0f, std::memory_order_relaxed);
+  }
+}
+void CompApagar(uint8_t* base, uint32_t x) {
+  const uint32_t s = REX_LOAD_U32(x + kCompBurst);
+  // IW fija la gratuidad del ataque al iniciarlo (0x21C530), aunque el Burst termine antes del impacto.
+  if ((s & ~kCompAtaqueGratis) == kCompBurstOn)
+    REX_STORE_U32(x + kCompBurst, s & kCompAtaqueGratis ? s & ~1u : 0);
+}
+// Definitiva pedida este cuadro con Arriba + E. La escribe el gancho del mando en cada lectura (sub_8208FD58) y la
+// consume sub_820F7758 en el mismo cuadro: asi L2 a secas es siempre Aura Burst.
+// Vive fuera de la memoria del juego, pero se rehace del mando sincronizado en cada lectura: igual en los dos PCs.
+std::array<bool, 2> g_def_pedida{};
+std::array<bool, 2> g_l1{};   // COMP/7: L1 recien pulsado este cuadro (persecucion), igual que la marca de arriba
+// IW: la definitiva es la entrada Arriba + E del #BCM (cond 0x8009), sin exigir estado. En B3 es P+K+G+E con el bit de
+// hiper: Arriba + el boton de E pasa a traer P+K+G+E ese cuadro (como el boton de cancelacion) y deja la marca. Solo
+// si hay una definitiva equipada y pagable: sin ella, Arriba + E sigue siendo la rafaga de ki (los #CCM nativos no
+// tienen ninguna entrada con Arriba: censo en MODO_COMPETITIVO_ESTUDIO.md).
+// PRUEBA (DBZ3_TEST_COMP_RUSH, solo via tools/comp_pruebas.py): el lado 1 hace la entrada del Dragon Rush al cuadro, que con
+// teclas inyectadas no cabe en su ventana (~0,4 s): en reposo, P+K+G+E (hiper; =3 y =4 sin hiper), el rival a 15 delante y
+// P+K (lanzador); 8 cuadros despues E + R1 (la entrada del Rush) y, con =2 o =4, 20 cuadros despues L1 (persecucion).
+// Repite cada 4 s. Pulsar = bit del registro (+12), recien pulsado (+14) y cuadros pulsado = 1 (+72 + 4j).
+void PruebaRush(uint8_t* base, uint32_t user) {
+  static const int modo = std::getenv("DBZ3_TEST_COMP_RUSH") ? std::atoi(std::getenv("DBZ3_TEST_COMP_RUSH")) : 0;
+  const uint32_t x = Fighter(base, 0);
+  if (!modo || user != 0 || !x || PadRecord(base, x) != 0) return;
+  static int fase = 0;
+  static uint32_t t = 0;
+  ++t;
+  const uint32_t r = kPads, cfg = Mgr(base) + (REX_LOAD_U16(x + kPadIdx) + 4382u) * 8;
+  auto pulsa = [&](std::initializer_list<uint8_t> quiero, uint16_t extra) {
+    uint16_t bits = extra;
+    for (const uint8_t w : quiero)
+      for (uint32_t j = 0; j < 8; ++j)
+        if (REX_LOAD_U8(cfg + j) == w) { bits = uint16_t(bits | (0x100u << j)); break; }
+    for (uint32_t j = 0; j < 8; ++j)
+      if (bits & (0x100u << j)) REX_STORE_U32(r + 72 + 4 * j, 1);
+    REX_STORE_U16(r + 12, uint16_t(REX_LOAD_U16(r + 12) | bits));
+    REX_STORE_U16(r + 14, uint16_t(REX_LOAD_U16(r + 14) | bits));
+    REXLOG_INFO("dbz3 combate: prueba rush: fase {} pulsa {:04X} (accion {}, hiper {}, ki {:.0f}, rival {})", fase, bits,
+                REX_LOAD_U16(x + kAct), REX_LOAD_U8(x + kHyper), LoadF(base, x + kKi), REX_LOAD_U16(Fighter(base, 1) + kAct));
+  };
+  const bool hiper = modo <= 2, l1 = modo == 2 || modo == 4;
+  const uint16_t act = REX_LOAD_U16(x + kAct);
+  if (fase == 0 && act <= 2 && t > 240) {
+    if (hiper && !(Competitivo() ? Burst(base, x) : REX_LOAD_U8(x + kHyper))) {
+      if (Competitivo()) pulsa({}, 0x0100);   // L2 fisico; el control conserva el combo B3
+      else pulsa({1, 2, 4, 8}, 0);
+    }
+    fase = 1, t = 0;
+  } else if (fase == 1 && t > 90 && act <= 2 && (!hiper || (Competitivo() ? Burst(base, x) : REX_LOAD_U8(x + kHyper)))) {
+    const uint32_t a = x + 64, b = Fighter(base, 1) + 64;   // el rival a 15 delante (solo en el suelo)
+    const float dx = LoadF(base, b) - LoadF(base, a), dz = LoadF(base, b + 8) - LoadF(base, a + 8);
+    const float d = std::max(0.01f, std::sqrt(dx * dx + dz * dz));
+    StoreF(base, b, LoadF(base, a) + dx / d * 15.0f);
+    StoreF(base, b + 8, LoadF(base, a + 8) + dz / d * 15.0f);
+    pulsa({1, 2}, 0);
+    fase = 2, t = 0;
+  } else if (fase == 2 && t == 8) {
+    pulsa({8}, 0x0800);
+  } else if (fase == 2 && t == 20 && l1) {
+    pulsa({}, 0x0400);
+  } else if (fase == 2 && t > 30) {
+    fase = 0, t = 0;
+  } else if (fase == 1 && t > 600) {
+    fase = 0, t = 0;
+  }
+}
+
+void CompMando(uint8_t* base, uint32_t user) {
+  uint32_t x = 0;
+  for (int k = 0; k < 2; ++k)
+    if (const uint32_t f = Fighter(base, k); f && PadRecord(base, f) == int(user)) x = f;
+  if (!x) return;
+  const int lado = SideOf(base, x);
+  g_def_pedida[size_t(lado)] = false;
+  g_l1[size_t(lado)] = false;
+  g_l2[size_t(lado)] = false;
+  if (!Competitivo()) return;
+  const uint32_t r = kPads + 184 * user, cfg = Mgr(base) + (REX_LOAD_U16(x + kPadIdx) + 4382u) * 8;
+  g_l2[size_t(lado)] = (REX_LOAD_U16(r + 14) & 0x0100) != 0;
+  // COMP/7 (decision 6): L1 es la persecucion y deja de ser su atajo (P+G): el juego lo ve suelto, como el boton de
+  // cancelacion; la pulsacion nueva queda en g_l1 para sub_821033E0.
+  if (REX_LOAD_U16(r + 12) & 0x0400) {
+    g_l1[size_t(lado)] = (REX_LOAD_U16(r + 14) & 0x0400) != 0;
+    REX_STORE_U16(r + 12, uint16_t(REX_LOAD_U16(r + 12) & ~0x0400));
+    REX_STORE_U16(r + 14, uint16_t(REX_LOAD_U16(r + 14) & ~0x0400));
+    REX_STORE_U32(r + 72 + 4 * 2, uint32_t(-1));
+  }
+  uint16_t eb = 0, bits = 0;
+  for (uint32_t j = 0; j < 8; ++j)
+    if (REX_LOAD_U8(cfg + j) == 8) eb = uint16_t(eb | (0x100u << j));
+  if (g_l2[size_t(lado)]) {
+    // Adaptador del #CCM de B3 al boton L2 del #BCM IW: solo durante ESTA lectura se presenta su entrada
+    // de animacion. La condicion de abajo exige g_l2; P+K+G+E real por si solo nunca la acepta.
+    for (const uint8_t want : {1, 2, 4, 8})
+      for (uint32_t j = 0; j < 8; ++j)
+        if (REX_LOAD_U8(cfg + j) == want) {
+          bits = uint16_t(bits | (0x100u << j));
+          REX_STORE_U32(r + 72 + 4 * j, 1);
+          break;
+        }
+    REX_STORE_U16(r + 12, uint16_t(REX_LOAD_U16(r + 12) | bits));
+    REX_STORE_U16(r + 14, uint16_t(REX_LOAD_U16(r + 14) | bits));
+    return;   // L2 no es la definitiva, aunque se mantenga Arriba
+  }
+  if (!(REX_LOAD_U16(r + 108) & 0x10) || !(REX_LOAD_U16(r + 14) & eb)) return;   // Arriba mantenido + E recien pulsado
+  bool hay = false;
+  for (const Ult& u : g_ults[size_t(lado)])
+    hay = hay || (u.code && Equipada(base, x, u.cap) && LoadF(base, x + kKi) >= Coste(base, u.cap));
+  if (!hay) return;
+  for (const uint8_t want : {1, 2, 4})
+    for (uint32_t j = 0; j < 8; ++j)
+      if (REX_LOAD_U8(cfg + j) == want) {
+        bits = uint16_t(bits | (0x100u << j));
+        REX_STORE_U32(r + 72 + 4 * j, 1);
+        break;
+      }
+  REX_STORE_U16(r + 12, uint16_t(REX_LOAD_U16(r + 12) | bits));
+  REX_STORE_U16(r + 14, uint16_t(REX_LOAD_U16(r + 14) | bits));
+  g_def_pedida[size_t(lado)] = true;
+  REXLOG_INFO("dbz3 combate: COMP Arriba + E del lado {}: definitiva pedida (ki {:.0f}, hiper {}, cuadro {})", lado + 1,
+              LoadF(base, x + kKi), REX_LOAD_U8(x + kHyper), g_frame.load());
+}
+
 // Seguimiento de la definitiva (log): empieza (codigo de la entrada), cobro (el juego quita el ki de una vez cuando
 // la definitiva se confirma: el ataque conecta y arranca la escena) y como acaba (de pie, golpeado, KO, fin).
 std::array<uint32_t, 2> g_ultima_code{};   // ultimo codigo de ataque de cada lado (para los proyectiles)
@@ -546,6 +735,14 @@ class CombatePanel : public rex::ui::ImGuiDialog {
 
  protected:
   void OnDraw(ImGuiIO& io) override {
+    // La mascara cel pertenece a las normales del OBJ. Nunca apagar la constante
+    // global: tambien iluminaria al rival nativo y a otros modelos de la pelea.
+    const bool cel = g_obj_cel.load() && dbz3::ingame::BattleNow();
+    static bool cel_anterior = false;
+    if (cel && !cel_anterior)
+      REXLOG_INFO("dbz3 OBJ cel: mascara propia del modelo; brillo HD nativo intacto (escala {})",
+                  rex::cvar::Query<double>("dbz3_rim_light_scale"));
+    cel_anterior = cel;
     if (NowMs() - g_tick_ms.load() > 250 || dbz3::GameDimmed() || dbz3::OverlayOpen()) return;
     dbz3::t3cb::Draw(io);
     const S::Area a = S::GameArea(io);
@@ -568,6 +765,7 @@ class CombatePanel : public rex::ui::ImGuiDialog {
     // reglas activas: una linea pequena abajo (el jugador sabe que no es el combate original)
     std::string r;
     if (Rules()) {
+      if (Competitivo()) r += dbz3::i18n::T("MODO COMPETITIVO  ", "COMPETITIVE MODE  ");
       if (REXCVAR_GET(dbz3_combate_reglas_v0)) r += dbz3::i18n::T("REGLAS V0  ", "RULES V0  ");
       if (REXCVAR_GET(dbz3_combate_definitiva_directa)) r += dbz3::i18n::T("DEFINITIVA DIRECTA  ", "DIRECT ULTIMATE  ");
       if (CancelButton()) r += dbz3::i18n::T("CANCELACION ", "CANCEL ") + std::string(CancelButton() == 0x400 ? "LB  " : "RB  ");
@@ -592,6 +790,65 @@ void CrearPanel() {
 }
 
 }  // namespace dbz3::combate
+
+// IWFIN/HUECOS-08: palabras de control por jugador de IW (EU 0x22F960: palabra[n] += 1, 32 por jugador en
+// *(0x49CA70) + jugador * 0x40 + 0x8C1C). El rango de las misiones (Char_ComputeStatGrade EU 0x2AC0D0) lee cuatro que el
+// port no media: 1 (+0x30) al entrar en la accion 0x26 (esquiva, EU 0x2165F0), 2 (+0x2C) en la 0x27 (teletransporte, EU
+// 0x215E30), 3 (+0x34) en la 0x1E (EU 0x218580) y 16 (+0x20) en la 0x28 (ataque con teletransporte, EU 0x2157B0). B3 HD es
+// el mismo motor: las mismas cuatro funciones escriben la misma accion en X+3244 (US sub_82107DB0, sub_8210D620,
+// sub_82107380 y sub_82108098), pero no llevan la cuenta; aqui se lleva, una por llamada como el original.
+namespace dbz3::combate {
+namespace {
+std::atomic<int> g_palabra_iw[2][4] = {};
+void SumarPalabraIW(uint8_t* base, uint32_t x, int k) {
+  const int lado = SideOf(base, x);
+  if (lado < 0) return;
+  const int n = ++g_palabra_iw[lado][k];
+  static const bool traza = std::getenv("DBZ3_TEST_PALABRAS_IW") != nullptr;   // solo pruebas
+  if (traza && n <= 12) REXLOG_INFO("dbz3 combate: palabra IW {} del lado {} = {} (accion {:#x})", k == 3 ? 16 : k + 1, lado + 1, n, REX_LOAD_U16(x + kAct));
+}
+}  // namespace
+int PalabraIW(int lado, int k) { return lado >= 0 && lado < 2 && k >= 0 && k < 4 ? g_palabra_iw[lado][k].load() : 0; }
+void PalabrasIWCero() {
+  for (auto& l : g_palabra_iw)
+    for (auto& v : l) v = 0;
+}
+}  // namespace dbz3::combate
+DBZ3_HOOK(sub_82107DB0, dbz3eu_sub_82107EB0) {   // accion 0x26 -> palabra 1
+  using namespace dbz3::combate;
+  const uint32_t x = ctx.r3.u32;
+  const bool valido = SideOf(base, x) >= 0;
+  const bool comp = valido && Competitivo(), burst = comp && Burst(base, x);
+  static const bool prueba = std::getenv("DBZ3_TEST_COMP_ESQUIVA") != nullptr;
+  const float antes = valido && prueba ? LoadF(base, x + 6120) : 0.0f;
+  orig(ctx, base);
+  SumarPalabraIW(base, x, 0);
+  // IW PAL 0x21697C..0x216998 (cola de 0x2165F0): 50 de fatiga por esquiva, solo fuera del Burst.
+  // La pareja B3 termina sin esa llamada. Banderas 0: suma/limita, no pide aturdimiento inmediato.
+  if (comp && !burst) {
+    PPCContext llamada = ctx;
+    llamada.r3.u64 = x, llamada.r5.u64 = 0, llamada.f1.f64 = 50.0;
+    sub_821194E0(llamada, base);
+  }
+  if (valido && prueba)
+    REXLOG_INFO("dbz3 combate: COMP prueba esquiva: lado {}, modo {}, Burst {}, fatiga {:.2f} -> {:.2f}",
+                SideOf(base, x) + 1, comp, burst, antes, LoadF(base, x + 6120));
+}
+DBZ3_HOOK(sub_8210D620, dbz3eu_sub_8210D720) {   // accion 0x27 -> palabra 2
+  const uint32_t x = ctx.r3.u32;
+  orig(ctx, base);
+  dbz3::combate::SumarPalabraIW(base, x, 1);
+}
+DBZ3_HOOK(sub_82107380, dbz3eu_sub_82107478) {   // accion 0x1E -> palabra 3
+  const uint32_t x = ctx.r3.u32;
+  orig(ctx, base);
+  dbz3::combate::SumarPalabraIW(base, x, 2);
+}
+DBZ3_HOOK(sub_82108098, dbz3eu_sub_82108198) {   // accion 0x28 -> palabra 16
+  const uint32_t x = ctx.r3.u32;
+  orig(ctx, base);
+  dbz3::combate::SumarPalabraIW(base, x, 3);
+}
 
 // SONDA (DBZ3_TEST_BANCOS=1): cada carga de banco de efectos (sub_8209E650: r4 = descriptor en memoria del juego)
 DBZ3_HOOK_EU(sub_8209E650) {
@@ -746,6 +1003,16 @@ void VocesCuadro(PPCContext& ctx, uint8_t* base) {
         continue;
       }
       const uint32_t raiz = REX_LOAD_U32(data + 208);
+      // Ronda 10/11: con un mod, el banco de voces puede no traer raiz de escena (data+208 = 0) y
+      // sub_820800A8(NULL) lee la direccion 1 (access violation al empezar el combate). Sin raiz no hay
+      // escena que instanciar: se salta esta voz (las demas del personaje siguen) en vez de cerrar el juego.
+      if (!raiz) {
+        static std::atomic<int> avisos{0};
+        if (avisos.fetch_add(1) < 4)
+          REXLOG_WARN("dbz3 combate: voz: personaje {} sin raiz de escena en el banco {:08X}: se salta la voz", r.ch, data);
+        SoltarRanuraVoz(ctx, base, k);
+        continue;
+      }
       Gcall(ctx, base, DBZ3_CALL_EU(sub_820800A8), raiz);
       const uint32_t c0 = Gcall(ctx, base, DBZ3_CALL_EU(sub_820B0CC8), raiz, 0);
       const uint32_t c1 = Gcall(ctx, base, DBZ3_CALL_EU(sub_820B0CC8), raiz, 1);
@@ -801,7 +1068,7 @@ void SonarPedidos(PPCContext& ctx, uint8_t* base) {
     ctx.r5.u64 = v & 0xFFFF;
     ctx.r6.u64 = 0;
     DBZ3_CALL_EU(sub_820922A0)(ctx, base);
-    if (static const bool sonda = std::getenv("DBZ3_TEST_TACTICS_PRUEBA") != nullptr; sonda && (v >> 16) == 0) {   // subTAC: sonda de las voces del gestor tras pedir un efecto del banco 0 (misma lectura que hub_menu.cpp)
+    if (static const bool sonda = dbz3::tactics::EnvPrueba("PRUEBA") != nullptr; sonda && (v >> 16) == 0) {   // subTAC: sonda de las voces del gestor tras pedir un efecto del banco 0 (misma lectura que hub_menu.cpp)
       const uint32_t sm = REX_LOAD_U32(dbz3::GA(0x82386260)) + 808;
       int voces = 0, mias = 0;
       for (uint32_t i = 0; i < 64; ++i) {
@@ -813,6 +1080,49 @@ void SonarPedidos(PPCContext& ctx, uint8_t* base) {
       REXLOG_INFO("dbz3 combate: prueba: efecto de sistema {} pedido (voces {}, suyas {})", v & 0xFFFF, voces, mias);
     }
     ctx = guardado;
+  }
+}
+
+// DR01 (#63): el Rush devuelve al atacante al borde al salir de la cinematica (109,7 u medidos con el personaje
+// nativo; docs/ENTREGAS/INFORME_tPEND.md). La camara del juego solo encuadra a los dos y por eso se ve el fondo
+// lejos. Se guarda la posicion de suelo (X+48/+52/+56) al entrar en el Rush (codigos 0x400..0x47F) y, al salir,
+// si el atacante (0x400..0x43F) aparece a mas de 20 u se devuelve durante 12 fotogramas (el tiron del motor es de
+// un fotograma; la victima no se toca). Apagado = original; nunca actua en el online.
+struct RushSitio { bool dentro = false, atacante = false, guardado = false; float x = 0, z = 0; int vuelta = 0; };
+void RushSinSalto(uint8_t* base) {
+  using namespace dbz3::combate;
+  if (!REXCVAR_GET(dbz3_rush_sin_salto) || dbz3::net::Session::Get().active()) return;   // nunca en online
+  static RushSitio sitio[2];
+  for (uint32_t k = 0; k < 2; ++k) {
+    const uint32_t x = Fighter(base, int(k));
+    if (!x) continue;
+    const uint32_t code = REX_LOAD_U32(x + kCode);
+    const bool dentro = code >= 0x400u && code < 0x480u;
+    if (dentro) {
+      if (!sitio[k].guardado) {   // una sola vez por Rush: el sitio de antes de entrar
+        sitio[k].guardado = true;
+        sitio[k].x = LoadF(base, x + 48);
+        sitio[k].z = LoadF(base, x + 56);
+      }
+      sitio[k].dentro = true;
+      sitio[k].atacante = code < 0x440u;   // el remate (0x440..0x47F es la victima: el juego la devuelve bien)
+    } else if (sitio[k].dentro) {
+      sitio[k].dentro = false;
+      sitio[k].vuelta = sitio[k].atacante ? 12 : 0;
+      if (!sitio[k].vuelta) sitio[k].guardado = false;
+    }
+    if (sitio[k].vuelta <= 0) continue;
+    if ((code >= 0x400u && code < 0x500u) || code == 0x23Eu) continue;   // otra cinemática: no tocar
+    if (--sitio[k].vuelta <= 0) sitio[k].guardado = false;
+    const float px = LoadF(base, x + 48), pz = LoadF(base, x + 56);
+    const float dx = px - sitio[k].x, dz = pz - sitio[k].z;
+    const float d = std::sqrt(dx * dx + dz * dz);
+    if (d <= 20.0f) continue;
+    StoreF(base, x + 48, sitio[k].x);
+    StoreF(base, x + 56, sitio[k].z);
+    static std::atomic<int> avisos{0};
+    if (avisos.fetch_add(1) < 4)
+      REXLOG_INFO("dbz3 combate: DR01: el lado {} vuelve a su sitio tras el Rush (estaba a {:.1f} u)", k + 1, d);
   }
 }
 }  // namespace
@@ -832,6 +1142,48 @@ DBZ3_HOOK_EU(sub_821100B0) {
   using namespace dbz3::combate;
   {
     const uint32_t st = BattleState(base);
+    // Prueba visual por mando NATIVO, sin imponer acciones, animaciones ni ki.
+    // Formato: cuadro de inicio,duracion,botones XInput. Solo entorno de prueba,
+    // nunca online; el resultado se acredita con la sonda de acciones y ki.
+    if (static const char* pad_test = std::getenv("DBZ3_TEST_OBJ_PAD"); pad_test && !dbz3::net::Session::Get().active()) {
+      static uint32_t cuadro = 0;
+      static int usuario_activo = -1;
+      unsigned inicio = 600, duracion = 600, botones = 0xA000, doble = 0;
+      const bool valido = std::sscanf(pad_test, "%u,%u,%u,%u", &inicio, &duracion, &botones, &doble) >= 3 && botones <= 0xFFFF;
+      if (st == 4 && valido) ++cuadro;
+      else cuadro = 0;
+      const uint32_t x = Fighter(base, 0);
+      const int slot = x ? int16_t(REX_LOAD_U16(x + kPadIdx)) : -1;
+      const bool pulsar = valido && st == 4 && cuadro >= inicio && cuadro - inicio < duracion && slot >= 0 && slot < 4;
+      if (pulsar) {
+        const uint32_t delta = cuadro - inicio;
+        unsigned actuales = doble == 1 && delta >= 3 && delta < 6 ? 0 : botones;
+        if (doble == 2) {   // inventario finito de combinaciones; no son acciones impuestas
+          const unsigned grupo = delta / 240, paso = delta % 240;
+          const unsigned prueba = grupo < 15 ? (grupo + 1) << 12 : grupo == 15 ? 0x1004 : 0x1008;
+          actuales = paso >= 180 ? 0 : prueba;
+          if (grupo == 0 && paso >= 3 && paso < 6) actuales = 0;
+          if (grupo >= 15 && (paso < 3 || (paso >= 6 && paso < 9))) actuales = 0x1000;
+          if (!paso) REXLOG_INFO("dbz3 prueba OBJ: combinacion {} botones {:04X}", grupo, prueba);
+        }
+        dbz3::net::InyectarPad(uint32_t(slot), int32_t(actuales));
+        if (usuario_activo < 0)
+          REXLOG_INFO("dbz3 prueba OBJ: mando nativo inicio usuario {} botones {:04X}", slot, botones);
+        usuario_activo = slot;
+      } else if (usuario_activo >= 0) {
+        dbz3::net::InyectarPad(uint32_t(usuario_activo), -1);
+        usuario_activo = -1;
+        REXLOG_INFO("dbz3 prueba OBJ: mando nativo fin");
+      }
+    }
+    bool obj_cel = false;
+    if (st >= 3 && st <= 7) {
+      for (int k = 0; k < 2; ++k) {
+        const uint32_t x = Fighter(base, k);
+        if (x && dbz3::roster::ObjCel(REX_LOAD_U32(x + kId))) obj_cel = true;
+      }
+    }
+    g_obj_cel.store(obj_cel);
     static uint32_t last = 0;
     static uint32_t pelea = 0;
     if (st != last && st == 3) g_frame = 0, ++pelea;   // READY: combate nuevo (la revancha tambien)
@@ -852,6 +1204,7 @@ DBZ3_HOOK_EU(sub_821100B0) {
     g_frame.fetch_add(1);
     g_tick_ms = NowMs();
     SonarPedidos(ctx, base);
+    dbz3::survivors::fxreal::Paso(ctx, base);
     static bool panel = false;
     if (!panel) panel = true, dbz3::launcher::DeferUi(&CrearPanel);
     MunecoCuadro(base, st);
@@ -862,8 +1215,12 @@ DBZ3_HOOK_EU(sub_821100B0) {
     Sonda(base, st);
     Volcado(base);
   }
+  PublicarComp(base);   // Retirar marcas antes de que el juego procese Hiper al apagar COMP.
   if(!dbz3::t3cb::Frozen()) orig(ctx, base);
   dbz3::t3cb::Tick(ctx, base);
+  PublicarComp(base);   // R16: instantanea atomica para el aura/HUD, tambien tras resimular un cuadro
+  dbz3::comp::aura::Actualizar(base);
+  if (const uint32_t st = BattleState(base); st >= 4 && st <= 7) RushSinSalto(base);   // DR01 (#63)
 }
 
 // Golpe recibido (sub_8210ED48, r3 = victima): 05 dano del bloque HR, 18 reversion, sonda de golpes.
@@ -986,6 +1343,37 @@ DBZ3_HOOK_EU(sub_820F7758) {
       if (!h.code) { h = u; break; }
     }
   }
+  if (Competitivo() && BattleState(base) == 4) {   // COMP
+    const bool pedida = g_def_pedida[size_t(lado)];
+    if (c5 & 0x0400) {
+      // IW 0x22AAE0 Battle_IsSpecialStateActive (cond 0x4000 de la entrada L2): fuera del Burst y con una barra
+      // (ki >= 1000.0) o con el reloj de ki ilimitado. El "fuera del Burst" ya lo mira B3 (sub_820F7588, X+8208).
+      const bool barra = LoadF(base, x + 6720) > 0.0f || LoadF(base, x + kKi) >= 1000.0f;
+      bool recien = true;
+      for (uint32_t b = 0; b < 4; ++b) recien = recien && int32_t(REX_LOAD_U32(x + kTimers + 4 * b)) == 1;
+      if (recien && g_l2[size_t(lado)] && !pedida && !Burst(base, x))
+        REXLOG_INFO("dbz3 combate: COMP L2 del lado {} con ki {:.0f}: {}", lado + 1, LoadF(base, x + kKi),
+                    barra ? "Aura Burst" : "sin una barra, no entra");
+      if (pedida || !g_l2[size_t(lado)] || Burst(base, x) || !barra) {
+        ctx.r3.u64 = 0;
+        return;
+      }
+    } else if (ult && PadRecord(base, x) >= 0) {
+      // IW 0x200E50: la definitiva (bit 0x0008) no exige estado; aqui solo sale con la marca de Arriba + E (L2 nunca
+      // la dispara, tampoco dentro del Burst). El ordenador sigue con su criterio de B3 (hiper y despues definitiva).
+      if (!pedida) {
+        ctx.r3.u64 = 0;
+        return;
+      }
+      const uint16_t mask = REX_LOAD_U16(x + kMask);
+      REX_STORE_U16(x + kMask, uint16_t(mask | 0x8000));
+      orig(ctx, base);
+      REX_STORE_U16(x + kMask, mask);
+      return;
+    }
+    orig(ctx, base);
+    return;
+  }
   const bool on = REXCVAR_GET(dbz3_combate_definitiva_directa) && Rules() && REX_LOAD_U8(x + kHyper) == 0 &&
                   BattleState(base) == 4;   // solo en plena pelea (no tras un KO ni en el fin de tiempo)
   if (on && (c5 & 0x0400)) {
@@ -1051,6 +1439,8 @@ DBZ3_HOOK_EU(sub_8208FD58) {
   if (user > 3 || BattleState(base) != 4) return;
   dbz3::formas::PruebaMando(base, user);   // frente transformaciones: P+K+G de prueba (DBZ3_TEST_PKG)
   dbz3::fusion::PruebaMando(base, user);   // Nova's Mods: definitiva a voluntad (DBZ3_TEST_ULT)
+  PruebaRush(base, user);   // PRUEBA (DBZ3_TEST_COMP_RUSH)
+  CompMando(base, user);   // COMP: Arriba + E = definitiva
   const int bit = CancelButton();
   if (!bit || !Rules()) return;
   uint32_t x = 0;
@@ -1086,12 +1476,260 @@ DBZ3_HOOK_EU(sub_8208FD58) {
               SideOf(base, x) + 1, g_frame.load());
 }
 
+// R16: la entrada de animacion comparte el punto de llamada B3, pero NO su estado, filtro, armadura ni aura.
+// IW 0x210E40 / 0x22AAE0: entrar con una barra o reloj de ki ilimitado; no volver a entrar mientras esta activo.
+// Armadura IW: 0x240220/0x2400E0 abren/consumen X+0xABA desde el flag 4 de la pista de animacion.
+// B3 conserva ese contador en (X+2336)+426 = X+2762 (sub_82121698 y sub_8211B738): no se fuerza por estar en Burst.
+// La colision respeta la espalda y el flag 0x20 del golpe; X+8208=0 evita la excepcion Hiper del atacante.
+// Las pistas IW nuevas 0x200/0x400 no se importan: su mascara 0x70F difiere del 0x10F nativo B3.
+REX_HOOK_RAW(sub_82119360) {
+  using namespace dbz3::combate;
+  const uint32_t x = ctx.r3.u32;
+  if (SideOf(base, x) < 0 || !Competitivo()) { __imp__sub_82119360(ctx, base); return; }
+  if (Burst(base, x) || (LoadF(base, x + 6720) <= 0.0f && LoadF(base, x + kKi) < 1000.0f)) return;
+  REX_STORE_U32(x + kCompBurst, kCompBurstOn);
+  REXLOG_INFO("dbz3 combate: COMP estado propio del lado {} encendido (accion {}, llamada {:08X}, Hiper {})",
+              SideOf(base, x) + 1, REX_LOAD_U16(x + kAct), ctx.lr, REX_LOAD_U8(x + kHyper));
+  PublicarComp(base);
+}
+// Los finales de caida, guion y reinicio pasan por aqui. En COMP no se crea ni se destruye el recurso Hiper.
+REX_HOOK_RAW(sub_82111A98) {
+  using namespace dbz3::combate;
+  const uint32_t x = ctx.r3.u32;
+  if (SideOf(base, x) < 0 || !Competitivo()) { __imp__sub_82111A98(ctx, base); return; }
+  if (Burst(base, x))
+    REXLOG_INFO("dbz3 combate: COMP estado propio del lado {} apagado (accion {}, llamada {:08X})",
+                SideOf(base, x) + 1, REX_LOAD_U16(x + kAct), ctx.lr);
+  CompApagar(base, x);
+  PublicarComp(base);
+}
+// IW 0x200E50: omite el ki de ranuras especiales (0x30000); el flag 2 comprueba posesion, no ki.
+// El contexto no modifica el nodo compartido; conserva los demas filtros, capsulas y la definitiva.
+REX_HOOK_RAW(sub_820F7588) {
+  using namespace dbz3::combate;
+  const uint32_t nodo = ctx.r3.u32, x = ctx.r4.u32;
+  const uint32_t previo_nodo = g_comp_nodo, previo_actor = g_comp_actor;
+  if (Burst(base, x)) g_comp_nodo = nodo, g_comp_actor = x;
+  __imp__sub_820F7588(ctx, base);
+  g_comp_nodo = previo_nodo, g_comp_actor = previo_actor;
+}
+// IW 0x21C530: recuerda si el ataque empezo en Burst (IW +0x2092); no usa el byte 8210 de B3,
+// que pertenece a otro mecanismo. El bit 2 comparte nuestra palabra +6116 y viaja en el rollback.
+REX_HOOK_RAW(sub_82104C00) {
+  using namespace dbz3::combate;
+  const uint32_t x = ctx.r3.u32;
+  if (SideOf(base, x) >= 0 && Competitivo())
+    REX_STORE_U32(x + kCompBurst, Burst(base, x) ? kCompBurstOn | kCompAtaqueGratis : 0);
+  __imp__sub_82104C00(ctx, base);
+}
+// B3 reparte el precio entre el nodo y el #SKC. Se conserva la comprobacion de capsula/forma;
+// solo se deja gratis el pago anidado al iniciar un ataque en Burst (IW 0x224670).
+REX_HOOK_RAW(sub_82102650) {
+  using namespace dbz3::combate;
+  const uint32_t x = ctx.r3.u32, previo = g_comp_capsula;
+  if (SideOf(base, x) >= 0 && Competitivo() && AtaqueGratis(base, x))
+    g_comp_capsula = x;
+  __imp__sub_82102650(ctx, base);
+  g_comp_capsula = previo;
+}
+// IW reparte las gratuidades por accion, no en HitDamageCount (0x235320). Se limitan por llamada y banderas;
+// nunca se sube el ki temporalmente ni se activa Hiper. La definitiva y el drenaje siguen pagando.
+REX_HOOK_RAW(sub_82115518) {
+  using namespace dbz3::combate;
+  const uint32_t x = ctx.r3.u32, flags = ctx.r5.u32;
+  const bool l1 = x == g_comp_chase &&
+                  ((ctx.lr == 0x8210B2B0 && flags == 10) || (ctx.lr == 0x8210B42C && flags == 0));
+  const bool burst = l1 && Burst(base, x);
+  static const bool prueba_cobros = std::getenv("DBZ3_TEST_COMP_COBROS") != nullptr;
+  const float antes = l1 || prueba_cobros ? LoadF(base, x + kKi) : 0.0f;
+  const double coste = ctx.f1.f64;
+  const uint64_t llamada = ctx.lr;
+  bool gratis = burst;
+  if (SideOf(base, x) >= 0 && Competitivo()) {
+    const bool activo = Burst(base, x);
+    // IW 0x22E150 / 0x22E290: solo el coste, despues de todos los bloqueos defensivos originales.
+    gratis |= activo && flags == 10 && (ctx.lr == 0x82117CB8 || ctx.lr == 0x82117BE0);
+    // IW 0x221A60 y rama equivalente de impacto: teleport/esquiva, sin coste ni fatiga durante Burst.
+    gratis |= activo && flags == 8 &&
+              (ctx.lr == 0x8210EB64 || ctx.lr == 0x8210EE7C || ctx.lr == 0x8210F2D8);
+    gratis |= activo && x == g_comp_actor && g_comp_nodo && flags == 2 && ctx.lr == 0x820F7744 &&
+               (REX_LOAD_U32(g_comp_nodo + 8) & 0x30000);
+    gratis |= activo && x == g_comp_actor && g_comp_nodo && flags == 2 && ctx.lr == 0x821159F0 &&
+               !(REX_LOAD_U32(g_comp_nodo + 8) & 8);   // B3 junta posesion y ki; la definitiva (8) sigue pagando
+    // IW 0x224670: el golpe del ataque iniciado en Burst no cobra, incluso si Burst ya termino.
+    gratis |= flags == 0 && ctx.lr == 0x821026B0 && AtaqueGratis(base, x);
+    gratis |= flags == 0 && ctx.lr == 0x821159F0 && x == g_comp_capsula;
+    // Las mismas ramas IW tampoco regalan 200 de ki al rival cuando la defensa se hizo en Burst.
+    if (coste < 0.0 && flags == 0 && (ctx.lr == 0x8210EEA4 || ctx.lr == 0x8210F2EC) &&
+        Burst(base, ctx.r31.u32)) { ctx.r3.u64 = 1; return; }
+  }
+  if (gratis && coste > 0.0) {
+    ctx.r3.u64 = 1;
+  } else __imp__sub_82115518(ctx, base);
+  if (prueba_cobros && coste > 1.0 && (flags == 0 || (flags == 2 && g_comp_actor == x)))
+    REXLOG_INFO("dbz3 combate: COMP prueba cobro: lado {}, retorno {:08X}, banderas {}, coste {:.0f}, gratis {}, ki {:.0f} -> {:.0f}",
+                SideOf(base, x) + 1, llamada, flags, coste, gratis, antes, LoadF(base, x + kKi));
+  if (static const bool prueba = std::getenv("DBZ3_TEST_COMP_RUSH") != nullptr; prueba && l1)
+    REXLOG_INFO("dbz3 combate: COMP prueba L1: lado {}, Burst {}, banderas {}, coste {:.0f}, ki {:.0f} -> {:.0f}",
+                SideOf(base, x) + 1, burst, flags, coste, antes, LoadF(base, x + kKi));
+}
+
+// COMP: ki y fatiga por cuadro (IW 0x22BCD0). Estado independiente: la rutina Hiper no corre durante el Burst.
+REX_HOOK_RAW(sub_82119EA0) {
+  using namespace dbz3::combate;
+  const uint32_t x = ctx.r3.u32;
+  const int lado = SideOf(base, x);
+  static bool antes[2] = {};
+  static uint32_t desde[2] = {};
+  const bool burst = lado >= 0 && Burst(base, x);
+  if (lado >= 0 && burst != antes[lado]) {   // solo registro
+    if (burst) desde[lado] = g_frame.load();
+    REXLOG_INFO("dbz3 combate: COMP Aura Burst del lado {} {} (ki {:.0f}, fatiga {:.1f}, agotado {}, accion {}, {} cuadros)",
+                lado + 1, burst ? "encendido" : "apagado", LoadF(base, x + kKi), LoadF(base, x + 6120),
+                REX_LOAD_U8(x + 8211), REX_LOAD_U16(x + kAct), burst ? 0u : g_frame.load() - desde[lado]);
+    antes[lado] = burst;
+  }
+  // el estado con byte 21 == 112 del #SKC (ki siempre al tope) va antes que el hiper tambien en B3: sin cambios
+  const int16_t est = int16_t(REX_LOAD_U16(x + 8176));
+  const uint32_t skc = REX_LOAD_U32(dbz3::GA(0x8237560C));
+  if (!burst || (est && skc && REX_LOAD_U8(skc + 40 * uint32_t(est) + 21) == 112)) {
+    __imp__sub_82119EA0(ctx, base);
+    return;
+  }
+  // IW 0x22BCD0: no corre en 0x32, 0x1E, 0x35 ni agotado.
+  const uint16_t accion = REX_LOAD_U16(x + kAct);
+  if (accion == 0x32 || accion == 0x1E || accion == 0x35 || REX_LOAD_U8(x + 8211)) return;
+  const PPCContext guardado = ctx;
+  // IW LAB_0022bd98: HitDamageCount(X+0x20A8 * 10.0, X, 4) -> 10 de ki por cuadro, sin multiplicador de coste
+  // (X+0x20A8 = 1.0: las capsulas de duracion del hiper se ocultan en el modo, decision 5). Pareja: sub_82115518.
+  ctx.r3.u64 = x, ctx.r5.u64 = 4, ctx.f1.f64 = 10.0;
+  sub_82115518(ctx, base);
+  // IW: ki (o el tope, con el reloj de ki ilimitado) < 20.0 -> se apaga; NO llama al agotamiento (0x22DFD0)
+  if ((LoadF(base, x + 6720) > 0.0f ? LoadF(base, x + kKiMax) : LoadF(base, x + kKi)) < 20.0f) {
+    ctx = guardado;
+    ctx.r3.u64 = x, ctx.r4.u64 = 1;   // 1 = suelta tambien el filtro oscuro (X+6836), como IW al apagarse
+    sub_82111A98(ctx, base);
+  }
+  // IW LAB_0022bfd8: FatigueBarScript(-(2.0 * 0.01), X, 0): la fatiga baja el doble en el Burst. Pareja: sub_821194E0.
+  ctx = guardado;
+  ctx.r3.u64 = x, ctx.r5.u64 = 0, ctx.f1.f64 = -0.02;
+  sub_821194E0(ctx, base);
+  ctx = guardado;
+}
+
+// COMP/7: persecucion (sub_8210B1C0 = IW 0x220EC0 P_K_G_E_AnimationPicker, rama de la persecucion). Las condiciones
+// son las mismas en los dos (atacante con X+8215 = IW 0x207C, tope de 3 = X+8218 / 0x207F, no agotado, rival saliendo
+// volando, 1000 de ki comprobados y cobrados). Lo que IW cambio: en el Aura Burst la persecucion es GRATIS y es la
+// accion 0x28; B3, en hiper, en vez de la persecucion lanza el Dragon Rush (sub_82120C90(5, ...): evento 5,
+// sub_82121390). En COMP +8208 siempre queda a cero. El contexto de cobro solo cubre esta llamada; el motor mantiene
+// la distancia y el seguimiento nativos, el contador de tres, la victima en vuelo y los bloqueos de accion.
+REX_HOOK_RAW(sub_8210B1C0) {
+  using namespace dbz3::combate;
+  const uint32_t x = ctx.r3.u32;
+  if (SideOf(base, x) < 0 || !Competitivo()) {
+    __imp__sub_8210B1C0(ctx, base);
+    return;
+  }
+  const float ki = LoadF(base, x + kKi);
+  const uint16_t act = REX_LOAD_U16(x + kAct);
+  const uint32_t previo = g_comp_chase;
+  g_comp_chase = x;
+  __imp__sub_8210B1C0(ctx, base);
+  g_comp_chase = previo;
+  if (act != 40 && REX_LOAD_U16(x + kAct) == 40 && Burst(base, x))
+    REXLOG_INFO("dbz3 combate: COMP persecucion en el Aura Burst del lado {} (gratis, ki {:.0f}, seguidas {})",
+                SideOf(base, x) + 1, ki, REX_LOAD_U8(x + 8218));
+}
+// COMP/7: tipo de persecucion del humano (sub_821033E0(I = X+4960), solo la llama sub_8210B1C0). B3 la pide con E
+// pulsado ese cuadro (I+84 == 1) y la direccion del historial de la palanca (neutro 1, -1 -> 2, +1 -> 3); en el modo
+// la pide L1 (decision 6): se le ensena E pulsado solo si L1 lo esta, y si no, no hay persecucion (0).
+REX_HOOK_RAW(sub_821033E0) {
+  using namespace dbz3::combate;
+  const uint32_t i = ctx.r3.u32;
+  const int lado = SideOf(base, i - 4960);
+  if (lado < 0 || !Competitivo()) {
+    __imp__sub_821033E0(ctx, base);
+    return;
+  }
+  if (!g_l1[size_t(lado)]) {
+    ctx.r3.u64 = 0;
+    return;
+  }
+  const uint32_t e = REX_LOAD_U32(i + 84);
+  REX_STORE_U32(i + 84, 1);
+  __imp__sub_821033E0(ctx, base);
+  REX_STORE_U32(i + 84, e);
+  REXLOG_INFO("dbz3 combate: COMP L1 del lado {}: persecucion pedida (tipo {})", lado + 1, ctx.r3.u32);
+}
+
+// COMP paso 6: ataque y defensa (sub_82115A20 = IW 0x233CD0 GeneralKiLoss; las dos las llama el paso de pelea cada
+// cuadro para los dos luchadores). IW, con X+0x2091: suma 5.0 al ataque y a la defensa de la forma antes de acumularlos;
+// como los dos se suman tal cual al total, aqui se suman 5 a los totales (X+6668 / X+6672), se rehacen sus factores
+// (x 0.01, X+6680 / X+6684) y las dos cifras del marcador, con la misma cuenta que el final de la funcion.
+REX_HOOK_RAW(sub_82115A20) {
+  using namespace dbz3::combate;
+  const uint32_t x = ctx.r3.u32;
+  __imp__sub_82115A20(ctx, base);
+  if (SideOf(base, x) < 0 || !Burst(base, x)) return;
+  const int32_t ata = int32_t(REX_LOAD_U32(x + 6668)) + 5, def = int32_t(REX_LOAD_U32(x + 6672)) + 5;
+  REX_STORE_U32(x + 6668, uint32_t(ata));
+  REX_STORE_U32(x + 6672, uint32_t(def));
+  const float fa = float(ata) * 0.01f, fd = float(def) * 0.01f;
+  StoreF(base, x + 6680, fa);
+  StoreF(base, x + 6684, fd);
+  const PPCContext guardado = ctx;
+  ctx.r3.u64 = REX_LOAD_U32(x + 4944);
+  sub_820DB540(ctx, base);
+  const uint32_t hud = ctx.r3.u32;
+  ctx = guardado;
+  auto cifra = [](float f) { return int16_t(100 - int32_t((f + (f >= 0.0f ? 0.005f : -0.005f)) * -100.0f)); };
+  if (hud) REX_STORE_U16(hud + 60, uint16_t(cifra(fa))), REX_STORE_U16(hud + 58, uint16_t(cifra(fd)));
+}
+
+// COMP paso 6: fatiga (sub_821194E0 = IW 0x235180 FatigueBarScript). B3 solo aturde (sub_82117CD0(X, 1)) fuera del hiper
+// y con fatiga > 800 y ki < 1000; IW, tambien en el Burst y solo con la barra llena: banderas & 1, no agotado y
+// fatiga >= 1000.0. Se deja a B3 sumar y limitar (sub_82112028) sin su aturdimiento y se aplica el de IW.
+REX_HOOK_RAW(sub_821194E0) {
+  using namespace dbz3::combate;
+  const uint32_t x = ctx.r3.u32;
+  // IW 0x221A60 / rama de impacto: los 100 de fatiga del teleport no se suman en Burst.
+  // No se filtra la fatiga de golpes ni capsulas ni la recuperacion por cuadro.
+  if (Burst(base, x) && ctx.r5.u32 == 0 && ctx.f1.f64 == 100.0 &&
+      (ctx.lr == 0x8210EB78 || ctx.lr == 0x8210EE90)) { ctx.r3.u64 = 0; return; }
+  if (SideOf(base, x) < 0 || !Competitivo() || ctx.f1.f64 < 0.0 || !(ctx.r5.u32 & 1)) {
+    __imp__sub_821194E0(ctx, base);
+    return;
+  }
+  const PPCContext guardado = ctx;
+  ctx.r5.u64 = ctx.r5.u32 & ~1u;
+  __imp__sub_821194E0(ctx, base);
+  const uint32_t ret = ctx.r3.u32;
+  ctx = guardado;
+  if (!REX_LOAD_U8(x + 8211) && LoadF(base, x + 6120) >= 1000.0f) {
+    REXLOG_INFO("dbz3 combate: COMP fatiga llena del lado {}: aturdido (ki {:.0f}, Burst {})", SideOf(base, x) + 1,
+                LoadF(base, x + kKi), Burst(base, x));
+    ctx.r3.u64 = x, ctx.r4.u64 = 1;
+    sub_82117CD0(ctx, base);
+    ctx = guardado;
+  }
+  ctx.r3.u64 = ret;
+}
+
 namespace dbz3::combate {
 void SetMuneco(int modo) {   // 0 nada, 1 quieto, 2 guardia, 3 ataca, -1 el ajuste dbz3_combate_prueba_muneco
   if (g_muneco_api.exchange(modo) == modo) return;
   REXLOG_INFO("dbz3 combate: muneco {}", modo == 1 ? "quieto" : modo == 2 ? "en guardia" : modo == 3 ? "ataca" : modo == 0 ? "no" : "del ajuste");
 }
 }  // namespace dbz3::combate
+
+namespace dbz3::comp {
+bool EnBurst(int lado) {
+  return lado >= 0 && lado < 2 && dbz3::combate::g_comp_burst[lado].load(std::memory_order_relaxed);
+}
+float KiBloques(int lado) {
+  return lado >= 0 && lado < 2 ? dbz3::combate::g_comp_ki[lado].load(std::memory_order_relaxed) : 0.0f;
+}
+}  // namespace dbz3::comp
 
 // Marcador del combate (2026-10-16, frente P4). El objeto del marcador (*0x82324064) registra 4 tareas al crearse
 // (sub_820DCBC0): "FIX MAIN" (sub_820DCA10), "FIX PREDRAW" (sub_820DC080), "FIX DRAW" (sub_820DC1A8, o sub_820DC230
@@ -1100,14 +1738,134 @@ void SetMuneco(int modo) {   // 0 nada, 1 quieto, 2 guardia, 3 ataca, -1 el ajus
 // salta esa tarea entera.
 std::atomic<bool> g_ocultar_hud{false};
 std::atomic<int64_t> g_fix_draw_ms{0};   // (frente R6) ultima vez que el juego llamo a FIX DRAW: HudNativoVisible
+
+// POST/SDK-01-ultra (`dbz3_ultrapanoramico`): el presentador estira x g_ultra_k la imagen 1280x720 del juego. Mientras
+// se pinta el marcador, cada vertice 2D se encoge 1/k hacia el ancla de su pieza: izquierda, derecha o
+// centro segun el centro de la pieza (o del vertice, si no viene de una pieza). Asi sale sin estirar y a la
+// misma distancia de su borde que en 16:9. Fuera del combate todo el 2D va a 16:9 en el centro, con bandas.
+static int g_hud_ancla = 0;   // > 0 dentro de una tarea de dibujo del marcador
+struct HudAncla {
+  HudAncla() { g_hud_ancla += g_ultra_k > 1.01f; }
+  ~HudAncla() { g_hud_ancla -= g_ultra_k > 1.01f; }
+};
+static float HudF(uint8_t* base, uint32_t a) { const uint32_t u = REX_LOAD_U32(a); float f; std::memcpy(&f, &u, 4); return f; }
+static void HudS(uint8_t* base, uint32_t a, float f) { uint32_t u; std::memcpy(&u, &f, 4); REX_STORE_U32(a, u); }
+static float g_ancla_pieza = -1.0f;
+static bool UltraMenu();   // ancla de la pieza que se esta pintando (-1: se decide por vertice)
+// El 2D del marcador mide 800 de ancho sobre la imagen 1280 (medido 12/11 con SONDA_ULTRA: el reloj esta en x = 400;
+// con el render ancho de 1704 de antes medía 1066,7 = 800 x 1704 / 1280)
+constexpr float kAncho2D = 800.0f;
+static float AnclaDe(float cx) {
+  return cx < kAncho2D * 0.5f - 20 ? 0.0f : cx > kAncho2D * 0.5f + 20 ? kAncho2D : kAncho2D * 0.5f;
+}
+namespace dbz3::campaigns { bool NarracionAncha(); }   // campaigns.cpp
+static void AnclarSprite(PPCContext& ctx, uint8_t* base, Dbz3GuestFn orig) {
+  const uint32_t d = ctx.r3.u32, dev = REX_LOAD_U32(dbz3::GA(0x82386260));
+  if (d && dbz3::campaigns::NarracionAncha() && REX_LOAD_U8(dbz3::GA(0x824BA110)) == 8) {   // historia del Heroe con dibujo grande (campaigns.cpp)
+    const float x1 = HudF(base, d + 56), y1 = HudF(base, d + 60), x0 = HudF(base, d + 48), y0 = HudF(base, d + 52);
+    float px = HudF(base, d + 32), py = HudF(base, d + 36), nx = px, ny = py;
+    if (x1 == 240.0f && y1 == 160.0f) ny = py + 2000.0f;                                      // marco nativo del panel: fuera de pantalla
+    else if (x0 == 0.0f && x1 == 600.0f && y1 == 0.0f && y0 < 0.0f && py > 300.0f) ny = py + 2000.0f;   // tiras de nubes del borde inferior
+    else if (x0 == -16.0f && x1 == 16.0f && y0 == 0.0f && y1 == 32.0f && py > 330.0f) nx = 645.0f, ny = 372.0f;   // triangulo de continuar: abajo a la derecha de la franja
+    if (nx != px || ny != py) {
+      HudS(base, d + 32, nx), HudS(base, d + 36, ny);
+      orig(ctx, base);
+      HudS(base, d + 32, px), HudS(base, d + 36, py);
+      return;
+    }
+  }
+  if (g_hud_ancla <= 0 || !d || !dev) return orig(ctx, base);
+  // centro de la pieza en pantalla: escala/desplazamiento 2D del dibujo (dev+312/+304, ver sub_82098000) sobre la
+  // posicion (+32), el desplazamiento del grupo (+96, si el bit 0x40) y las esquinas x (+48/+56)
+  const float gx = (REX_LOAD_U32(d + 4) & 0x40) ? HudF(base, d + 96) : 0.0f;
+  const float cx = HudF(base, dev + 312) * (HudF(base, d + 32) + gx + (HudF(base, d + 48) + HudF(base, d + 56)) * 0.5f) +
+                   HudF(base, dev + 304);
+  g_ancla_pieza = AnclaDe(cx);
+  orig(ctx, base);
+  g_ancla_pieza = -1.0f;
+}
+// pareja EU a mano: misma distancia (-0x70) que sus vecinas verificadas sub_820ACCF0 / sub_820B04C8 (eu_map_gen.h)
+namespace dbz3::heroe_start { bool DibujarSprite(PPCContext&, uint8_t*, Dbz3GuestFn); }
+DBZ3_HOOK(sub_820AD6E0, dbz3eu_sub_820AD670) { if (!dbz3::heroe_start::DibujarSprite(ctx, base, orig)) AnclarSprite(ctx, base, orig); }
+DBZ3_HOOK(sub_820ADD18, dbz3eu_sub_820ADCA8) { if (!dbz3::heroe_start::DibujarSprite(ctx, base, orig)) AnclarSprite(ctx, base, orig); }
+// Vertice 2D (r3 = dibujo, r4 = x,y,z): x pantalla = dev[312] * x + dev[304]. Dentro del marcador se cambian esos dos
+// para que el vertice caiga en ancla + (X - ancla) / k. EU: -0x68 como sub_82096FF0 (eu_map_gen.h).
+// Combate = el juego llamo a FIX DRAW hace < 250 ms (corre tambien con el marcador oculto en la vuelta de camara).
+static bool UltraMenu() { return g_ultra_k > 1.01f && dbz3::combate::NowMs() - g_fix_draw_ms.load() > 250; }
+static void AnclarVertice(PPCContext& ctx, uint8_t* base, Dbz3GuestFn orig) {
+  const uint32_t dev = ctx.r3.u32, v = ctx.r4.u32;
+  if (g_hud_ancla <= 0 || !dev || !v) return orig(ctx, base);
+  const float k = g_ultra_k, s = HudF(base, dev + 312), o = HudF(base, dev + 304);
+  const float ancla = g_ancla_pieza >= 0 ? g_ancla_pieza : AnclaDe(s * HudF(base, v) + o);
+  HudS(base, dev + 312, s / k);
+  HudS(base, dev + 304, ancla + (o - ancla) / k);
+  orig(ctx, base);
+  HudS(base, dev + 312, s);
+  HudS(base, dev + 304, o);
+}
+// los tres emisores de vertices 2D (via sub_82085A58 / sub_82085AA0 / sub_82085A70); EU: -0x68 como sub_82096FF0
+DBZ3_HOOK(sub_82098000, dbz3eu_sub_82097F98) { AnclarVertice(ctx, base, orig); }
+DBZ3_HOOK(sub_82097F20, dbz3eu_sub_82097EB8) { AnclarVertice(ctx, base, orig); }
+DBZ3_HOOK(sub_82098100, dbz3eu_sub_82098098) { AnclarVertice(ctx, base, orig); }
+// POST2/ULTRA: el render del guest sigue en 1280x720 (asi menus y escenas salen identicos al 16:9 normal). En combate
+// la proyeccion del 3D pasa al aspecto de la ventana (video+3408/+3412, la lee la camara en cada cuadro) y el
+// presentador estira la imagen a la ventana sin bandas: 3D sin deformar y con mas campo, HUD anclado (AnclarVertice).
+// Fuera del combate, aspecto original y las bandas que tenga el usuario. Lo decide el hilo de ImGui cada cuadro con el
+// tamano real de la ventana y el ajuste: cambiar cualquiera de los dos en marcha surte efecto al momento.
+namespace {
+class BandasUltra : public rex::ui::ImGuiDialog {
+ public:
+  explicit BandasUltra(rex::ui::ImGuiDrawer* drawer) : ImGuiDialog(drawer) {}
+
+ protected:
+  void OnDraw(ImGuiIO& io) override {
+    const int ww = int(io.DisplaySize.x), wh = int(io.DisplaySize.y);
+    const bool on = g_ultra_video && REXCVAR_GET(dbz3_ultrapanoramico) && wh > 0 && ww * 9 > wh * 16 + wh / 8;
+    g_ultra_k = on ? (float(ww) / float(wh)) / (16.0f / 9.0f) : 0.0f;   // estirado del presentador (HUD)
+    const int modo = !on ? 0 : UltraMenu() ? 1 : 2;
+    if (modo == modo_ && (modo != 2 || (ww == ww_ && wh == wh_))) return;
+    uint8_t* base = rex::Runtime::instance() ? rex::Runtime::instance()->virtual_membase() : nullptr;
+    if (!base) return;
+    if (modo == 2 && modo_ != 2) letterbox_ = rex::cvar::GetFlagByName("present_letterbox");   // el del usuario
+    unsigned aw = g_ultra_aw0, ah = g_ultra_ah0;
+    if (modo == 2) {
+      unsigned a = unsigned(ww), b = unsigned(wh);
+      while (b) { const unsigned t = a % b; a = b; b = t; }
+      aw = unsigned(ww) / a, ah = unsigned(wh) / a;
+    }
+    REX_STORE_U32(g_ultra_video + 3408, aw);
+    REX_STORE_U32(g_ultra_video + 3412, ah);
+    if (modo == 2) rex::cvar::SetFlagByName("present_letterbox", "false");
+    else if (modo_ == 2 && !letterbox_.empty()) rex::cvar::SetFlagByName("present_letterbox", letterbox_);
+    REXLOG_INFO("dbz3: ultrapanoramico {} (ventana {}x{}, aspecto 3D {}:{})",
+                modo == 2 ? "combate (ancho)" : modo == 1 ? "menu (16:9)" : "apagado", ww, wh, aw, ah);
+    modo_ = modo, ww_ = ww, wh_ = wh;
+  }
+
+ private:
+  int modo_ = 0, ww_ = 0, wh_ = 0;
+  std::string letterbox_;
+};
+}  // namespace
+void CrearBandasUltra() {
+  dbz3::comp::hud::Crear();
+  dbz3::comp::aura::Crear();
+  static BandasUltra* p = nullptr;   // vive lo que el juego (el dibujante no borra sus dialogos)
+  auto* rt = rex::Runtime::instance();
+  if (!p && rt && rt->imgui_drawer()) p = new BandasUltra(rt->imgui_drawer());
+}
+// FIX PREDRAW del marcador (sub_820DCBC0); EU a mano: -0x40 como FIX DRAW (sub_820DC1A8 -> sub_820DC168)
+DBZ3_HOOK(sub_820DC080, dbz3eu_sub_820DC040) { HudAncla a; orig(ctx, base); }
 DBZ3_HOOK_EU(sub_820DC1A8) {
   g_fix_draw_ms = dbz3::combate::NowMs();
   if (g_ocultar_hud.load()) return;
+  HudAncla a;
   orig(ctx, base);
 }
 DBZ3_HOOK_EU(sub_820DC230) {
   g_fix_draw_ms = dbz3::combate::NowMs();
   if (g_ocultar_hud.load()) return;
+  HudAncla a;
   orig(ctx, base);
 }
 // (frente R14) Contadores de golpes y dano ("2 HITS!!", "80 DMG."): son tareas aparte por jugador, registradas en
@@ -1115,26 +1873,24 @@ DBZ3_HOOK_EU(sub_820DC230) {
 // sub_820DDFE8). OcultarHud salta tambien sus dibujos.
 DBZ3_HOOK_EU(sub_820DDCA0) {
   if (g_ocultar_hud.load()) return;
+  HudAncla a;
   orig(ctx, base);
 }
 DBZ3_HOOK_EU(sub_820DDFE8) {
   if (g_ocultar_hud.load()) return;
+  HudAncla a;
   orig(ctx, base);
 }
-// y el segundo callback de cada tarea [FIX] (sub_820DDC20 de DMG y sub_820DDF68 de CMB: dos llamadas a sub_820ACCA0),
-// que es el que pinta el contador mientras se desvanece (seguia viendose "48 DMG." del lado 2: R14 segunda vuelta)
-DBZ3_HOOK_EU(sub_820DDC20) {
-  if (g_ocultar_hud.load()) return;
-  orig(ctx, base);
-}
-DBZ3_HOOK_EU(sub_820DDF68) {
-  if (g_ocultar_hud.load()) return;
-  orig(ctx, base);
-}
+// (B2-P02) NO se saltan sub_820DDC20 (DMG) ni sub_820DDF68 (CMB): son el DESTRUCTOR de la tarea [FIX] (segundo
+// argumento de sub_82092908 en sub_820DF248 / sub_820DF330), no un dibujo: ponen a 0 su hueco en 0x823CD904/0x823CD914,
+// matan la tarea DMGDRW/CMBDRW (sub_82092A20) y sueltan los sprites (sub_820ACCA0). Saltarlos con el marcador oculto
+// (toda la Nave) dejaba viva la tarea de dibujo apuntando a la [FIX] ya liberada; al reusarse esa memoria,
+// sub_820DDD88 llamaba a sub_820AE730 con un 1.0f como puntero (lectura de 0x3F800004, planta III 10/11).
 // y los avisos del combate ("FIRST ATTACK!!", contraataque, rotura de guardia: tareas "[MSG]FATK/CNTR/GBREAK %dP"),
 // que pinta la tarea "[MSGDRW]ID=%d" (sub_820DE490, registrada en sub_820DEAC8)
 DBZ3_HOOK_EU(sub_820DE490) {
   if (g_ocultar_hud.load()) return;
+  HudAncla a;
   orig(ctx, base);
 }
 namespace dbz3::combate {

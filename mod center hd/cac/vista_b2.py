@@ -14,6 +14,9 @@ Salida: <juego>/ingame_ui/nave_vista/sk_<fid>.sk   (formato HMS3, little endian)
   huesos:   (i32 padre, char[24] sufijo, f32 local[12] = filas 3x4 R|t, u32 con_giro, f32 giro[9]) x nhuesos   (giro = rotacion LOCAL del select nativo de B3)
   triangulos: 3 x (pos xyz, normal xyz, uv; en el espacio del hueso, f32 x8, u32 hueso) ; i32 textura ; u32 banderas (1 = translucido)
   rampa de B3 (25/10): u32 n_orig; por textura original: u32 n, n x (f32 luz desde, u32 textura cocida de ese tramo)
+  boca (R23 BOCA-03, opcional): "LIP1", u32 nposes, u32 nhuesos; nhuesos x (u32 hueso del .sk); nposes x nhuesos x f32[12]
+    = matrices LOCALES de los huesos de boca en el ultimo cuadro de cada clip del #ACM del bin LIPS de la forma (pose =
+    variante*6 + visema). Los lectores viejos paran tras la rampa y no lo ven.
 Uso: python vista_b2.py --juego D:\DBZ3HD\copia --fid 264 [--id 0] [--us <carpeta us>]
 """
 import argparse
@@ -63,7 +66,74 @@ def giros_select(afs, m, cid):
         return {}
 
 
-def exportar_sk(m, path, giros=None):
+# POST2/SHENRON-HD: modelos cuyo reposo no sirve para la escena de B2 y se exportan ya posados con un cuadro de su propia
+# animacion de B3 ({fid: (anim, cuadro)}). Shenron (534): el reposo es RECTO (421 de largo en -z); el cuadro 114 de su
+# anim 0 (#ACM, hijo 3 del #AMB) es el enroscado de la pantalla de deseos de B3. PonerShenronB3 lo lleva a la caja de B2.
+POSE_FIJA = {534: (0, 114), 2209: (0, 0)}
+# POST3/SHENRON-HD: el Shenron de la pantalla de deseos de B3 HD NO es el 534 (ese es dorado: bases blancas y rampa azul)
+# sino tres entradas sueltas de data_cmn: #ACM 2208 (anim 0 = enroscado, 300 cuadros), #AWO 2209 (112 huesos SNR_*,
+# 12056 triangulos) y #AZT 2210 (8 texturas, verdes). Mide como el de B2 (x -10..11, y 2..20). {fid del #AWO: (#AZT, #ACM)}
+SUELTOS = {2209: (2210, 2208)}
+
+
+def posar_con_acm(m, amb, awo_bin, anim, cuadro):
+    """Pone en m.local las matrices locales del cuadro `cuadro` de la anim `anim` del #ACM del propio #AMB."""
+    import altura  # noqa: PLC0415
+    sys.path.insert(0, os.path.join(os.path.dirname(HERE), "studio"))
+    import studio_core as sc  # noqa: PLC0415
+    acm, e = (amb, ">") if amb[:4] == b"#ACM" else sc.anim_pool(amb)
+    if acm is None:
+        raise ValueError("el #AMB no trae #ACM")
+    m.local = sc.anim_locals(altura.skeleton(awo_bin), acm, e, anim, cuadro)
+
+
+def poses_lips(afs, fid, m):
+    """[(hueso del modelo, [12 matrices 4x4])] del bin LIPS de la forma del modelo `fid` (roster_db.json: lips[traje*lpc +
+    min(forma, lpc-1)]), o None. Mismo convenio que m.local (comprobado en Goku 264 / LIPS 289: reposo identico)."""
+    import json  # noqa: PLC0415
+    import altura  # noqa: PLC0415
+    sys.path.insert(0, os.path.join(os.path.dirname(HERE), "studio"))
+    import studio_core as sc  # noqa: PLC0415
+    try:
+        db = json.load(open(os.path.join(os.path.dirname(HERE), "roster_db.json"), encoding="utf-8"))
+        lips = None
+        for e in (db.get("ids") or []):
+            if fid in e.get("models", []):
+                i = e["models"].index(fid)
+                mpc, lpc = max(1, e["models_per_costume"]), max(1, e.get("lips_per_costume", 1))
+                k = (i // mpc) * lpc + min(i % mpc, lpc - 1)
+                lips = e["lips"][k] if k < len(e.get("lips", [])) else None
+                break
+        if lips is None:
+            return None
+        lp = afs.entry(lips)
+        if lp[:4] != b"#AMB":
+            return None
+        o = lp.find(b"#ACM", 0x40)   # #AMB -> #AWO (0x40) #AWG #ACM (Goku 289: 0x760)
+        if o < 0:
+            return None
+        acm = lp[o:]
+        sk = altura.skeleton(lp)
+        nclips, = struct.unpack(">I", acm[0x10:0x14])
+        tbl, = struct.unpack(">I", acm[0x14:0x18])
+        poses = []
+        for c in range(nclips):
+            nf = struct.unpack_from(">I", acm, tbl + 16 * c + 8)[0]
+            poses.append(sc.anim_locals(sk, acm, ">", c, max(0, nf - 1)))
+        etiq = [l.lstrip("X") for l in m.labels]
+        out = []
+        for j, (nm, *_r) in enumerate(sk):
+            nm = nm.lstrip("X")
+            if "_M_" in nm and nm in etiq:
+                out.append((etiq.index(nm), [p[j] for p in poses]))
+        print("vista_b2: boca LIPS %d: %d poses, %d huesos" % (lips, nclips, len(out)))
+        return out or None
+    except Exception as e:   # noqa: BLE001
+        print("vista_b2: boca LIPS no disponible (%s)" % e)
+        return None
+
+
+def exportar_sk(m, path, giros=None, boca=None):
     giros = giros or {}
     tris = m.tris
     texs, clave_tex, tri_tex, tramos = [], {}, [], []
@@ -110,6 +180,15 @@ def exportar_sk(m, path, giros=None):
         out += struct.pack("<I", len(fila))
         for l0, ti in fila:
             out += struct.pack("<fI", l0, ti)
+    boca = boca or []   # LIP1 siempre (vacio sin LIPS): el juego sabe que el .sk ya es del horno con boca
+    if True:
+        npos = len(boca[0][1]) if boca else 0
+        out += b"LIP1" + struct.pack("<II", npos, len(boca))
+        for h, _p in boca:
+            out += struct.pack("<I", h)
+        for k in range(npos):
+            for _h, p in boca:
+                out += struct.pack("<12f", *np.asarray(p[k])[:3, :4].reshape(-1))
     tmp = path + ".tmp"
     with open(tmp, "wb") as fh:
         fh.write(out)
@@ -127,8 +206,18 @@ def main():
     salida = os.path.join(a.juego, "ingame_ui", "nave_vista")
     os.makedirs(salida, exist_ok=True)
     afs = vh.rb.Afs(os.path.join(vh.rb.us_dir(a.us), "data_cmn.afs"), tempfile.mkdtemp(prefix="vista_b2_"))
-    m = vh.mr.Model(afs.entry(a.fid))
-    nt, ntex, nb = exportar_sk(m, os.path.join(salida, "sk_%d.sk" % a.fid), giros_select(afs, m, a.id))
+    amb = d = afs.entry(a.fid)
+    awo = struct.unpack(">I", d[0x20:0x24])[0] if d[:4] == b"#AMB" and len(d) > 0x24 else 0x40
+    if awo > 0x40:   # B2-P13-HD: #AMB de 3 hijos (Shenron, 534): model_render espera el #AWO en 0x40
+        d = d[awo - 0x40:]
+    if a.fid in SUELTOS:   # #AWO suelto: model_render lo espera en 0x40 y con su #AZT detras
+        d = bytes(1) * 0x40 + d + afs.entry(SUELTOS[a.fid][0])
+        amb = afs.entry(SUELTOS[a.fid][1])
+    m = vh.mr.Model(d)
+    if a.fid in POSE_FIJA:
+        posar_con_acm(m, amb, d, *POSE_FIJA[a.fid])
+    nt, ntex, nb = exportar_sk(m, os.path.join(salida, "sk_%d.sk" % a.fid), giros_select(afs, m, a.id),
+                               poses_lips(afs, a.fid, m))
     print("vista_b2: fid %d -> %d triangulos, %d texturas, %d huesos" % (a.fid, nt, ntex, nb))
     return 0
 

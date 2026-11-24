@@ -115,6 +115,9 @@ class ModPipeline {
   void RunOfficialPorts(const std::vector<std::string>& install, const std::vector<std::string>& remove);
   // Musica de Tenkaichi 3 (Nova's Mods): crea mods/t3_musica con t3_audio.py desde la ISO de T3 del jugador (no se
   // reparte nada del juego) o la aparta a mods_respaldo/. Con un trabajo en curso no hace nada.
+  void RunDlcB1(const std::filesystem::path& iso, bool install);
+  static bool DlcB1Available();
+  static bool DlcB1HasSources();
   void RunT3Music(bool install);
   static bool T3MusicInstalled();
   // Tag Team: equipo de 2-4 personajes de B3 (roster_build.py equipo -> mods/equipo_*).
@@ -125,10 +128,21 @@ class ModPipeline {
   static bool RosterToolAvailable();
   static bool StagesToolAvailable();
   static bool ToolsInstalled();
+  static bool Xv2PrepareAvailable();
+  void PrepareXv2(const std::string& cpk);   // catalogo local; no activa el interruptor
+  // Abre el Kit (mod center hd/modkit_gui.py) en un proceso aparte, sin esperarlo: Python se busca en un hilo
+  // suelto y la interfaz no se para. ModKitState() dice como fue el ultimo intento.
+  enum class KitLaunch { kIdle, kOpening, kOpened, kNoKit, kNoPython, kFailed };
+  static void LaunchModKit(const char* lang);
+  static KitLaunch ModKitState();
+  static bool ModKitAlive();   // true mientras el Kit lanzado siga abierto (Windows)
   // Blocks until the current async run (if any) finishes.
   void Wait();
   // True if any enabled mod declares a new character (mods/*/personaje.toml).
   static bool HasCharacterSources();
+  // dsSAIBAMAN: deja las fuentes `traje.toml` del recolor del Saibaman de B2 (una vez; no duplica
+  // trajes del jugador). El modelo se genera al montar el roster desde los datos del juego.
+  static bool EnsureSaibamanCostumes();
   static std::filesystem::path ModsDir();
 
   // Path to the data_cmn.afs to operate on (the model source/destination).
@@ -163,7 +177,8 @@ class ModPipeline {
 
  private:
   void RunAsync(const std::filesystem::path& script,
-                const std::vector<std::string>& args);
+                const std::vector<std::string>& args, const std::string& bootstrap = "",
+                bool allow_prebuilt_roster = false);
   void AppendOutput(const std::string& text);
   // G11: aparta a mods_respaldo/ las carpetas de escenario auto-generadas (origen.txt) incompletas, para que
   // campos_iw.py las vuelva a crear en vez de darlas por buenas con el sello viejo.

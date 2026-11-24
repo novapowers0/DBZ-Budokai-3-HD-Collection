@@ -1,0 +1,27 @@
+# Kitbash PELO-02: Gohan largo = casco y flequillo/laterales de Gohan (235) + melena trasera larga de Yamcha largo (447).
+nombre = "gohan_largo"
+variante = "base"
+
+[casco]
+donante = 235
+
+[capsula]
+sesgo = 0.2
+mezcla = 0.0
+
+[[mechon]]
+donante = 235
+zona = "flequillo"
+[[mechon]]
+donante = 235
+zona = "copete"
+[[mechon]]
+donante = 235
+zona = "lat_izq"
+[[mechon]]
+donante = 235
+zona = "lat_der"
+[[mechon]]
+donante = 447
+zona = "nuca"
+largo = 0.7

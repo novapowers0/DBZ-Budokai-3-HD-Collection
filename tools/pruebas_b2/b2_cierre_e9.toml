@@ -1,0 +1,10 @@
+descripcion = "PM-19: cierre B2 e9 con la configuracion de serie"
+turbo = false
+env = ["DBZ3_TEST_MISIONES=1,auto,reset", "DBZ3_TEST_B2_CIERRE=9", "DBZ3_PS2_GAMES=D:/DBZ3HD/ps2_games"]
+pasos = [
+  "log \"prueba CIERRES dirigida: 9\" 240",
+  "esperar 450",
+  "captura cierre_e9",
+  "log \"escena 9\" 40",
+  "captura despues_e9"
+]

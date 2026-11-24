@@ -1,0 +1,45 @@
+# Heroe 12/11 (por partes) - 7/7: PIEZAS B3 (torso/piernas/guantes/botas de un donante).
+#   Copia: sol.
+#   python tools\pruebas.py correr sol "docs\14_frentes\escenarios_pruebas\post1212\heroe_07_piezas_b3.toml"
+#
+# clave    = creador del Heroe: piezas de Budokai 3 injertadas (HEROE/Luna 6).
+# cvar     = DBZ3_CAC_XV2=0 (sin piezas de Xenoverse 2: cuerpo base de B3, que es cuando salen las piezas B3).
+# criterio = se abre Create con cuerpo/traje base, la fila 6 (torso) cambia de donante con D: el log trae el nombre
+#            de la pieza B3 elegida; la vista previa 3D se regenera y se puede seguir hasta Edit y Confirmar.
+# log      = "dbz3 heroe: Create abierto (ficha N, cuerpo N, traje N, ...)"
+#            "dbz3 heroe: pieza B3 torso = ..."
+descripcion = "Heroe 7/7 piezas B3: cambiar el torso por un donante medido y guardar"
+env = ["DBZ3_TEST_RINGOUT=1", "DBZ3_CAC_XV2=0"]
+pasos = [
+  "esperar 2500",
+  "tecla W 1200",
+  "tecla Space 3500",
+  "tecla S 450", "tecla S 450", "tecla S 450", "tecla S 450", "tecla S 450",
+  "tecla Space 2500",
+  "tecla S 700", "tecla S 700", "tecla S 700",
+  "tecla Space 3500",
+  "tecla S 500", "tecla S 500",
+  "tecla Space 3000",
+  "log \"Create abierto \\(ficha [0-9]+, cuerpo [0-9]+, traje [0-9]+, logo [0-9]+, scouter [0-9]+, pelo [0-9]+\\)\" 20",
+  "captura 01_create_base",
+  "tecla S 500", "tecla S 500", "tecla S 500", "tecla S 500", "tecla S 500",
+  "captura 02_torso_previo",
+  "tecla D 500",
+  "log \"pieza B3 torso = \" 20",
+  "esperar 6000",
+  "captura 03_torso_donante",
+  "captura 04_opciones",
+  "tecla P 500",
+  "esperar 6000",
+  "captura 05_edit",
+  "tecla D 500",
+  "esperar 6000",
+  "captura 06_peinado_nativo",
+  "tecla S 500", "tecla S 500", "tecla S 500",
+  "captura 07_confirmar",
+  "tecla Space 2500",
+  "log \"Edit: confirmar\" 20",
+  "captura 08_guardado",
+  "tecla Backspace 2500",
+  "esperar 1500",
+]

@@ -1,0 +1,3 @@
+descripcion = "dsGIG: identificar el boton de guardia G y la entrada de agarre P+G (codigo 0x480) con la sonda de combate; combate normal con muneco quieto"
+env = ["DBZ3_TEST_BATTLE=0,7,7", "DBZ3_HUB_MODE=5", "DBZ3_COMBATE_SONDA=1", "DBZ3_COMBATE_MUNECO=quieto"]
+pasos = ["log \"hub: combate nativo\" 60", "esperar 1500", "tecla P 300", "esperar 300", "tecla Backspace 300", "esperar 300", "tecla 1 300", "esperar 300", "tecla Q 300", "esperar 300", "tecla E 300", "esperar 300", "tecla 3 300", "esperar 300", "tecla L+1 300", "esperar 400", "tecla L+Q 300", "esperar 400", "tecla L+E 300", "esperar 400", "tecla L+3 300", "esperar 400", "tecla L+P 300", "esperar 400", "tecla L+Backspace 300", "esperar 400", "captura 01_final"]

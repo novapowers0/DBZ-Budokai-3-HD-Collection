@@ -208,13 +208,15 @@ def escribir(modo, n, salida):
 # ---- Retos nativos: src/modos.cpp lee <juego>/user_data/dbz3/modos/<tipo>.toml ----
 # Los mismos retos por defecto que el juego (PorDefecto en src/modos.cpp): rivales, vida del primer rival y
 # cuanto sube en cada combate, si la vida del jugador pasa al siguiente combate y cuanta recupera entre medias.
-NATIVO = {"torre": dict(rivales=[42, 18, 19, 21, 20, 27, 33, 36], vida_rival=(2000, 300), arrastra=False, recupera=0),
+NATIVO = {"torre": dict(rivales=[42, 18, 19, 21, 20, 27, 33, 36], vida_rival=(2000, 300), arrastra=False, recupera=0,
+                         premio=800),   # MODOS-02: el mismo premio que PorDefecto (src/modos.cpp)
           # ficha 09: 1000 Zenie al completarla; oleadas 3/6/9 con 60 s y 4/7/10 con un rival que se regenera
           "supervivencia": dict(rivales=[42, 43, 29, 28, 30, 38, 37, 35, 40, 41], vida_rival=(1500, 150),
                                 arrastra=True, recupera=500, premio=1000,
                                 por_combate={2: {"tiempo": 60}, 5: {"tiempo": 60}, 8: {"tiempo": 60},
                                              3: {"regen": 25}, 6: {"regen": 25}, 9: {"regen": 25}}),
-          "kumite": dict(rivales=[27, 33, 38, 40, 36], vida_rival=(5000, 500), arrastra=True, recupera=1000)}
+          "kumite": dict(rivales=[27, 33, 38, 40, 36], vida_rival=(5000, 500), arrastra=True, recupera=1000,
+                         premio=1200)}   # MODOS-02: el mismo premio que PorDefecto (src/modos.cpp)
 ESCENARIOS_NATIVO = [0, 1, 2, 3, 4, 5, 6, 7]   # indice de escenario del Duelo (0 = Torneo, con ring)
 VIDA_TOPE = 7000                                # 7 barras
 RECORTADOS = {22, 23, 24, 25, 26, 31}           # sin modelo en el juego: solo con un mod de roster

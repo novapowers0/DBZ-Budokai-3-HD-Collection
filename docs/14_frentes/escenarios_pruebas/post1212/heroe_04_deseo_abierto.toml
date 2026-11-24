@@ -1,0 +1,28 @@
+# Heroe 12/11 (por partes) - 4/7: DESEO de Shenron (raza/cuerpo abiertos con las 7 Esferas).
+#   Copia: sol.
+#   python tools\pruebas.py correr sol "docs\14_frentes\escenarios_pruebas\post1212\heroe_04_deseo_abierto.toml"
+#
+# clave    = creador del Heroe: candado de raza/cuerpo y deseo de Shenron.
+# cvar     = DBZ3_TEST_HEROE_SAGA=1 (aventura empezada) y DBZ3_TEST_HEROE_ESFERAS=127 (las 7 Esferas = 1 deseo).
+# criterio = con la aventura empezada y 7 Esferas, D en la fila de raza abre el cambio: el log dice "deseo concedido"
+#            (con copia de la ficha y los deseos que quedan) y se puede cambiar raza/cuerpo; B vuelve sin cuelgue.
+# log      = "dbz3 heroe: deseo concedido: cambio de raza/cuerpo abierto (copia ..., deseos que quedan N)"
+descripcion = "Heroe 4/7 deseo: con 7 Esferas se abre el cambio de raza/cuerpo"
+env = ["DBZ3_TEST_RINGOUT=1", "DBZ3_TEST_HEROE_SAGA=1", "DBZ3_TEST_HEROE_ESFERAS=127"]
+pasos = [
+  "esperar 2500",
+  "tecla W 1200",
+  "tecla Space 3500",
+  "tecla S 450", "tecla S 450", "tecla S 450", "tecla S 450", "tecla S 450",
+  "tecla Space 2500",
+  "tecla S 700", "tecla S 700", "tecla S 700",
+  "tecla Space 3500",
+  "captura 01_heroe",
+  "tecla D 700",
+  "log \"deseo concedido\" 20",
+  "captura 02_deseo_abierto",
+  "tecla D 700",
+  "captura 03_raza_cambiada",
+  "tecla Backspace 3000",
+  "esperar 2500",
+]

@@ -1,0 +1,46 @@
+# S3 / IW-A01 + IW-A03 + IW09: mapa de Dragon Mission de IW con la logica del ELF (MAPA + resultado TIME/RANK).
+# FASE 3: lo ejecuta Z una sola vez. El carril NO abre el juego en fase 1.
+#   python tools\pruebas.py correr <copia> "docs\14_frentes\escenarios_pruebas\final\s3-iw-mapa\mapa.toml"
+#
+# clave    = IW-A01 (flujo original del mapa), IW-A03 (resultado con TIME/RANK, sin SCORE inventado), IW09
+# cvar     = logica, mapa, globo y resultado originales fijados para esta corrida; R10 activa la fila de texto del ELF.
+#            Este guion prueba mision 11 de combate, no es pareja visual de la ficha de Raditz (minijuego 0x7D0).
+# env      = DBZ3_TEST_MISIONES=4,reset,desde=10 (mapa con las 10 primeras superadas; cursor en la 11)
+#            DBZ3_TEST_RINGOUT=1 gana el combate de la mision 11.
+# criterio = (banco sin juego, ya verde) mapa_pares EU 200/200 y mapa_casos 4/4 (A mision 96/96, A esfera 22/22,
+#            L1/R1 12/12, borde 2/2); mapa_recompensas EU/USA 0 DIF en 17.477 casos (Zenie 6 dificultades y capsula,
+#            rango por grados). En juego: sale "dbz3 iw mapa original: espejo listo", el resultado de la mision lleva
+#            RANK y TIME (la linea "mision N superada" no trae "score") y la vuelta al mapa es la del original.
+# log      = "dbz3 iw mapa original: espejo listo" / "misiones: iw combate" / "misiones: iw: mision \d+ superada: " /
+#            "iw mapa: vuelta de combate: ScreenTransition_PushCommands"
+# PENDIENTE_JUEGO: la pulsacion fisica de L1/R1 con dos areas abiertas y la esfera (mapa_l1r1.toml y mapa_esfera.toml;
+#            el banco ya prueba ambas ramas contra el ELF). El numero de pares del dorado es 200, no 150.
+descripcion = "IW mapa de Dragon Mission con la logica del ELF: mapa, ficha, combate, resultado TIME/RANK y vuelta"
+env = [
+  "DBZ3_TEST_MISIONES=4,reset,desde=10",
+  "DBZ3_TEST_RINGOUT=1",
+  "DBZ3_TEST_CFG=dbz3_iw_logica_original=true;dbz3_iw_mapa_original=true;dbz3_iw_mapa_globo_original=true;dbz3_iw_mapa_frase_original=true;dbz3_iw_resultado_original=true",
+  'DBZ3_PS2_GAMES=D:\DBZ3HD\ps2_games',
+]
+pasos = [
+  "log \"misiones: iw: mapa de Dragon Mission\" 90",
+  "esperar 4000",
+  "captura a_mapa",
+  "log \"dbz3 iw mapa original: espejo listo\" 60",
+  "captura b_espejo",
+  "tecla Space 2500",
+  "captura c_ficha",
+  "tecla Space 1800",
+  "log \"misiones: iw combate\" 60",
+  "captura d_combate",
+  "log \"misiones: iw: mision \\d+ superada: \" 240",
+  "esperar 5000",
+  "captura e_resultado",
+  "tecla Space 2500",
+  "log \"iw mapa: vuelta de combate: ScreenTransition_PushCommands\" 120",
+  "captura f_mapa",
+  "tecla 1 500",
+  "tecla 3 500",
+  "esperar 3500",
+  "captura g_tras_l1r1",
+]

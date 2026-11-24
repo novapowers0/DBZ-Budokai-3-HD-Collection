@@ -1,0 +1,4 @@
+descripcion = "CAC2: Goku base, Kaioken, tres SSJ y regreso a base desde el mando"
+turbo = false
+env = ["DBZ3_TEST_MODO=heroe,0", "DBZ3_TEST_HEROE_ABRIR=2", "DBZ3_TEST_CFG=dbz3_cac_xv2=false;dbz3_heroe_ui_nueva=true;dbz3_cac2_pestanas=true;dbz3_cac2_formas=true"]
+pasos = ['log "Create abierto" 180', 'repetir 3', 'tecla Z', 'fin', 'log "CAC2 pestana 3" 15', 'hasta_log "CAC2 forma 1 capsula" 180', 'tecla D 1500', 'fin', 'log "CAC2 forma 1 lista" 180', 'captura kaioken', 'tecla D', 'log "CAC2 forma 2 lista" 180', 'captura ssj1', 'tecla D', 'log "CAC2 forma 3 lista" 180', 'captura ssj2', 'tecla D', 'log "CAC2 forma 4 lista" 180', 'captura ssj3', 'tecla D', 'log "CAC2 forma 0 capsula 0" 15', 'captura base']

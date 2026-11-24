@@ -1,0 +1,24 @@
+# SLOTS_ESC-01: 40 altas contadas en el log y selector con desplazamiento hasta la ultima (registro 56).
+#   Requiere la copia fija esc_n preparada con:  python tools\escenarios_copia_n.py preparar --n 40
+#     python tools\pruebas.py correr esc_n docs\14_frentes\escenarios_pruebas\final\slots_esc\selector_desplazamiento_40.toml
+descripcion = "SLOTS_ESC-01: 40 altas contadas y selector_desplazamiento hasta la 40 (registro 56)"
+env = ["DBZ3_SONDA_ESCENARIO=1", "DBZ3_TEST_RINGOUT=1"]
+pasos = [
+  "esperar 2000",
+  "log \"alta 56 = 'COPIA 0040'\" 60",
+  "tecla S 1200",
+  "tecla Space 3000",
+  "tecla Space 3000",
+  "hasta_log 'lecturas del juego al entrar al selector' 120", "tecla Space 4000", "fin",
+  "esperar 2500",
+  "log \"selector con \\d+ casillas nuevas, 40 escenarios nuevos\" 15",
+  "captura a_selector",
+  "tecla A 1500",
+  "tecla A 1500",
+  "log \"sel casilla \\d+ \\(registro 56\\)\" 20",
+  "captura b_desplazado",
+  "tecla Space 3000",
+  "log \"alta 56 'COPIA 0040' \\(mod Copia ESC 0040\\) en el registro\" 60",
+  "esperar 15000",
+  "captura c_combate",
+]

@@ -1,0 +1,7 @@
+descripcion = "modos_rogue_apagado: con dbz3_rogue apagado (sin DBZ3_TEST_ROGUE) el HUB abre como siempre y Dragon Rogue no hace nada. El guion solo abre el HUB y captura; DESPUES hay que mirar que el registro no tenga ninguna linea 'rogue' (los pasos no saben comprobar ausencias)"
+env = ["DBZ3_HUB_MODE=5"]
+pasos = [
+  "esperar_pantalla 5 120",
+  "esperar 4000",
+  "captura 01_hub_sin_rogue",
+]

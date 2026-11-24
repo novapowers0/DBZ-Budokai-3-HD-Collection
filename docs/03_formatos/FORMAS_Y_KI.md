@@ -13,11 +13,27 @@ Claves de `personaje.toml` añadidas el 2026-10-06 (agente de formas; guía comp
 - Cada forma tiene un nivel de ki al que tiende estando quieto (`ki_base`).
 - El runtime solo puede **reducir** las formas del donante (copia el registro de cada forma).
 
+## Contrato de `formas` (2026-11-09)
+
+`roster_build.py` **escribe siempre** `formas` en el `roster.toml` generado (el runtime lo usa para
+recortar las filas del donante que sobren). Reglas:
+
+- **Sin `formas` declarado**: se usan las formas del donante. Si el traje tiene **menos modelos que
+  formas**, las formas sobrantes **comparten el último modelo** (el runtime limita el modelo de cada
+  forma al último del traje); no se recortan. Para fijar cuántas hay, declara `formas`.
+- **Excepción**: un traje de **1 solo modelo** y sin `modelo_forma` (o con una sola entrada) usa
+  **1 forma**; si no, el donante dejaría una transformación con su cápsula para una forma sin modelo
+  detrás (caso Super 17 con el Androide 17).
+- **`formas_donante` / `formas_de`** mandan sobre `formas`.
+- Una cápsula propia de transformación para una forma que el personaje **no tiene**
+  (`forma >= formas`) se descarta: no se pone en `capsulas`, ni en `capsulas_forma`, ni en `hereda`,
+  y el log lo avisa.
+
 ## `[personaje]`
 
 | Clave | Valor | Por defecto | Qué hace |
 |---|---|---|---|
-| `formas` | 1..8 | las del donante | número de formas (no más que el donante) |
+| `formas` | 1..8 | las del donante | número de formas (no más que el donante). Con menos modelos que formas, las formas comparten el último modelo |
 | `modelos_por_traje` | entero | 1 | modelos de cada traje, en orden (4 formas, 1 traje: `modelos = [normal, ssj, ssj2, pu]`) |
 | `modelo_forma` | lista | ver nota | modelo del traje que usa cada forma, p. ej. `[0, 1, 2, 3]`. Si hay tantos modelos por traje como formas no hace falta |
 | `ki_base` | lista de barras 0..7 | las del donante | barras a las que tiende cada forma; Gohan adulto `[3, 4, 4, 5]` |

@@ -1,0 +1,7 @@
+kind = "antenna"
+size = 1.0
+curve = -0.35
+segments = 10
+colour = [0.30, 0.65, 0.20]
+colour_region = "piel"
+bone = "HEAD"

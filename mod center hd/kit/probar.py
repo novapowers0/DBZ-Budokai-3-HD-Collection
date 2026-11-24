@@ -28,9 +28,10 @@ def T(es, en, ingles):
     return en if ingles else es
 
 
-def analizar(texto, mods=(), ingles=False, personajes=0):
+def analizar(texto, mods=(), ingles=False, personajes=0, trajes=0):
     """Lee el registro del juego -> (estado, frase). estado: ok | aviso | error.
-    personajes = cuantos de los mods son de personaje (su linea de carga: «roster [_roster]: personaje id=N»)."""
+    personajes = cuantos de los mods son de personaje (su linea de carga: «roster [_roster]: personaje id=N»);
+    trajes = cuantos son trajes extra (lineas «roster [_roster]: traje N de id I: forma ...», una por traje)."""
     lineas = texto.splitlines()
     errs = [ln for ln in lineas if ERR.search(ln)]
     if errs:
@@ -51,10 +52,51 @@ def analizar(texto, mods=(), ingles=False, personajes=0):
     if cargados < personajes:
         return "aviso", T("El juego arranca, pero solo ha cargado %d de %d personajes nuevos." % (cargados, personajes),
                           "The game starts, but loaded only %d of %d new characters." % (cargados, personajes), ingles)
+    tr = len(set(re.findall(r"dbz3 roster \[[^\]]+\]: traje (\d+) de id (\d+): forma", texto)))
+    if tr < trajes:
+        return "aviso", T("El juego arranca, pero solo ha cargado %d de %d trajes nuevos." % (tr, trajes),
+                          "The game starts, but loaded only %d of %d new costumes." % (tr, trajes), ingles)
+    que_es = [x for x in (("%d personaje(s) nuevo(s)" % cargados) if cargados else "",
+                          ("%d traje(s)" % tr) if tr else "") if x]
+    que_en = [x for x in (("%d new character(s)" % cargados) if cargados else "",
+                          ("%d costume(s)" % tr) if tr else "") if x]
     return "ok", T("Funciona: el juego arranca y ha cargado el mod sin errores%s." % (
-        " (%d personaje(s) nuevo(s) en la rueda)" % cargados if cargados else ""),
+        " (%s en la rueda)" % " y ".join(que_es) if que_es else ""),
                    "It works: the game starts and loaded the mod with no errors%s." % (
-        " (%d new character(s) on the wheel)" % cargados if cargados else ""), ingles)
+        " (%s on the wheel)" % " and ".join(que_en) if que_en else ""), ingles)
+
+
+def resumen(montaje, mods_dir, mods=(), ingles=False):
+    """Qué se montó, leyendo el registro de roster_build: [«✓ 1 traje nuevo: …» / «✕ el traje X se omitió: motivo»].
+    Lee los «+ …: traje extra NOMBRE» y los «!! <mod>: … omitido» de cualquier mod (personaje, traje, escenario…)."""
+    out = []
+    for m in mods:
+        malos = [ln.split(": ", 1)[1].strip() for ln in montaje.splitlines()
+                 if ln.startswith("!! %s: " % m) and "omitido" in ln]
+        f = os.path.join(mods_dir, m, "traje.toml")
+        tipo = ("traje", "costume") if os.path.isfile(f) else (
+            ("personaje", "character") if os.path.isfile(os.path.join(mods_dir, m, "personaje.toml")) else ("mod", "mod"))
+        nombre = m
+        if tipo[0] == "traje":
+            hit = re.search(r'^nombre\s*=\s*"?([^"\n]*)', open(f, encoding="utf-8", errors="replace").read(), re.M)
+            nombre = hit.group(1).strip() if hit else m
+        from kit import fusiones
+        if fusiones.datos_mod(os.path.join(mods_dir, m)):
+            out += fusiones.resumen_mod(montaje, os.path.join(mods_dir, m), ingles)
+        elif malos:
+            out.append(T("✕ el %s %s se omitió: %s" % (tipo[0], nombre, malos[0]),
+                         "✕ the %s %s was skipped: %s" % (tipo[1], nombre, malos[0]), ingles))
+        elif tipo[0] == "traje":
+            if re.search(r"^\+ .*: traje extra %s, " % re.escape(nombre), montaje, re.M):
+                out.append(T("✓ 1 traje nuevo: %s" % nombre, "✓ 1 new costume: %s" % nombre, ingles))
+            else:
+                out.append(T("✕ el traje %s no aparece en el montaje" % nombre,
+                             "✕ the costume %s is not in the build" % nombre, ingles))
+        else:
+            from kit import escenarios
+            out += escenarios.resumen(os.path.join(mods_dir, m), ingles)
+    from kit import fusiones   # KIT-07b: el ajuste de duracion (dbz3_user.toml junto a la carpeta mods)
+    return out + fusiones.resumen(os.path.dirname(os.path.abspath(mods_dir)), ingles)
 
 
 def _mover(origen, destino):
@@ -158,7 +200,8 @@ def probar(mods_dir, game, mods=(), ingles=False, say=print, forzar_jugador=Fals
             return "error", T("No encuentro el juego en la carpeta elegida.", "I cannot find the game in that folder.",
                               ingles), modo
     n = sum(os.path.isfile(os.path.join(mods_dir, m, "personaje.toml")) for m in mods)
-    est, frase = analizar(texto, mods, ingles, n)
+    nt = sum(os.path.isfile(os.path.join(mods_dir, m, "traje.toml")) for m in mods)
+    est, frase = analizar(texto, mods, ingles, n, nt)
     return est, frase, modo
 
 
@@ -177,6 +220,12 @@ def rapido(say):
         c = est == esperado and bool(frase) and "Traceback" not in frase
         ok &= c
         say(("OK" if c else "FAIL") + ": probar.analizar -> %s (esperado %s)" % (est, esperado))
+    tr = base + "[info] dbz3 roster [_roster]: traje 5 de id 0: forma 0 -> id 0 modelo 5 = 3990\n" + LISTO
+    for esperado, n in (("ok", 1), ("aviso", 2)):
+        est, frase = analizar(tr, ["t"], False, 1, n)
+        c = est == esperado and ("1 traje" in frase or esperado == "aviso")
+        ok &= c
+        say(("OK" if c else "FAIL") + ": probar.analizar con trajes -> %s (esperado %s)" % (est, esperado))
     return ok
 
 

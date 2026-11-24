@@ -1,0 +1,28 @@
+# Misma navegación que R16_solB2_FIG_on; comprobación visual separada del PASS funcional.
+descripcion = "B2 REFS: tablero traducido ON, selección y figuras nativas en reposo"
+env = [
+  'DBZ3_PS2_GAMES=D:\DBZ3HD\ps2_games',
+  "DBZ3_TEST_MISIONES=1,reset",
+  "DBZ3_TEST_TURBO=1",
+  "DBZ3_TEST_CFG=dbz3_b2_traducido=true",
+  "DBZ3_TEST_B2TRAD_MEDIR=1",
+]
+pasos = [
+  'log "tablero b2: fase 1 leida" 120',
+  "esperar 3000",
+  "tecla Space 2500",
+  'log "tablero b2: fase 1 empieza" 30',
+  'log "dbz3 b2trad: arranque previo acabado en" 400',
+  'log "dbz3 b2trad: frontera DMA resuelta:" 60',
+  'log "ficha nativa tipo 3 slot 16 id B2 10 CMN 335" 60',
+  'log "dbz3 b2trad: ELF vblank" 60',
+  "captura 00_seleccion",
+  "tecla W 600",
+  "esperar 600",
+  "tecla Space 600",
+  "esperar 6000",
+  "tecla Space 600",
+  "esperar 5000",
+  'log "ficha nativa tipo 4 slot 0 id B2 0 CMN 337" 60',
+  "captura 01_tablero_reposo",
+]

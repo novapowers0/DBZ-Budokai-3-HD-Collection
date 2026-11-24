@@ -1,0 +1,47 @@
+# Heroe 12/11 (por partes) - 3/7: TECNICAS (Moveset > pestana Tecnicas > equipar y pelear).
+#   Copia: sol.
+#   python tools\pruebas.py correr sol "docs\14_frentes\escenarios_pruebas\post1212\heroe_03_tecnicas.toml"
+#
+# clave    = creador del Heroe: pantalla de Movesets y pestana Tecnicas (equipar cartas en los 4 huecos).
+# cvar     = DBZ3_TEST_HEROE_TODO=1 abre todas las tecnicas/estilos (pruebas).
+# criterio = la pestana Combate lleva a Moveset, Y abre Tecnicas (log con el inventario y el equipo), se equipan
+#            dos cartas, se vuelve al heroe, se empieza la mision y el combate carga las tecnicas equipadas.
+# log      = "dbz3 heroe: pantalla de movesets abierta (...)"
+#            "dbz3 heroe: tecnicas abiertas (N en el inventario, donante N, equipo ...)"
+#            "dbz3 heroe: tecnicas equipadas en el combate: +N (equipo ..."
+descripcion = "Heroe 3/7 tecnicas: Moveset > Tecnicas, equipar cartas y cargarlas en el combate"
+env = ["DBZ3_TEST_RINGOUT=1", "DBZ3_TEST_HEROE_TODO=1"]
+pasos = [
+  "esperar 2500",
+  "tecla W 1200",
+  "tecla Space 3500",
+  "tecla S 450", "tecla S 450", "tecla S 450", "tecla S 450", "tecla S 450",
+  "tecla Space 2500",
+  "tecla S 700", "tecla S 700", "tecla S 700",
+  "tecla Space 3500",
+  "captura 01_heroe",
+  "tecla 3 700", "tecla S 500",
+  "captura 02_fila_moveset",
+  "tecla Space 2500",
+  "log \"pantalla de movesets abierta\" 20",
+  "captura 03_movesets",
+  "tecla P 1500",
+  "log \"tecnicas abiertas\" 20",
+  "esperar 12000",
+  "captura 04_tecnicas",
+  "tecla L 300", "tecla D 300", "tecla L 300", "tecla D 300", "tecla L 300", "tecla D 300", "tecla L 300", "tecla D 300",
+  "tecla Space 800",
+  "tecla D 500",
+  "tecla S 500",
+  "tecla Space 800",
+  "tecla S 500",
+  "captura 05_equipadas",
+  "tecla Backspace 2500",
+  "captura 06_vuelta_heroe",
+  "tecla S 500", "tecla S 500", "tecla S 500",
+  "captura 07_empezar",
+  "tecla Space 4000",
+  "log \"tecnicas equipadas en el combate: [+][0-9]\" 120",
+  "esperar 4000",
+  "captura 08_combate",
+]

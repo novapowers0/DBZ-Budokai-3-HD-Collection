@@ -1,0 +1,24 @@
+# S1 / IW 0x7E1 (MSN019, "Flight training!"): reparto ORIGINAL de filas (msn019::g_fila) y resultado; el yaw de la
+# camara (residuo 11,7 grados: original 72,96 / port 84,70 en #AMC 879/0, LUNA18) es de F3 (src/iw_minijuegos.cpp).
+#
+# clave    = IW-M18 / 0x7E1
+# cvar     = dbz3_iw_logica_original=true (ya de serie) y dbz3_iw_efectos_original=true (nueva, APAGADA)
+# criterio = tools/iw_mips/msn019.py dorado --cap .../7E1/filas.jsonl = 10/10 filas; en juego, el reparto y el
+#            resultado iguales al dorado. Yaw pendiente de F3 (criterio de la pieza: <= 0,3 grados).
+# log      = "iwmini: prueba: empieza" y "r14: fin: "
+descripcion = "7E1 (MSN019) con el reparto original de filas; el yaw de camara queda para F3"
+env = [
+  "DBZ3_TEST_IWMINI=0x7E1,auto",
+  "DBZ3_TEST_CFG=dbz3_iw_logica_original=true;dbz3_iw_efectos_original=true",
+  'DBZ3_PS2_GAMES=D:\DBZ3HD\ps2_games',
+]
+pasos = [
+  "log \"iwmini: prueba: empieza\" 90",
+  "log \"r14: en juego\" 120",
+  "captura a_ready",
+  "esperar 6000",
+  "captura b_iconos",
+  "log \"r14: fin: \" 240",
+  "esperar 1500",
+  "captura c_fin",
+]

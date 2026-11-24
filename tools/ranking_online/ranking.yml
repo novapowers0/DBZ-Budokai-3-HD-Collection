@@ -1,0 +1,33 @@
+# Ranking online de DBZ Budokai 3 HD (RANK-ONLINE). Va en el repo DBZ3HD-Ranking como .github/workflows/ranking.yml.
+# Cada 10 min lee el buzon ntfy, valida y reescribe los JSON que descarga el juego (raw.githubusercontent.com).
+name: ranking
+on:
+  schedule:
+    - cron: "7,17,27,37,47,57 * * * *"   # cada 10 min, lejos del minuto 0 (a esa hora GitHub va con retraso)
+  workflow_dispatch: {}
+permissions:
+  contents: write
+concurrency:
+  group: ranking
+  cancel-in-progress: false
+jobs:
+  actualizar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validar y escribir las tablas
+        env:
+          RANK_HMAC_KEY: ${{ secrets.RANK_HMAC_KEY }}
+          RANK_HMAC_KEY_ANTERIOR: ${{ secrets.RANK_HMAC_KEY_ANTERIOR }}
+          RANK_TEMA: ${{ vars.RANK_TEMA }}
+        run: python validar.py --repo .
+      - name: Subir si cambio algo
+        run: |
+          git config user.name "ranking-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add survivors rogue recibidos.json datos
+          git diff --cached --quiet || (git commit -m "ranking $(date -u +%F' '%H:%M)" && git push)

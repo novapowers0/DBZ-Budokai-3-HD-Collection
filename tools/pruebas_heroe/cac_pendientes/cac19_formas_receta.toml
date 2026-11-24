@@ -1,0 +1,30 @@
+# CAC-19 (R23): la forma 1 es otra receta propia, con su color de estallido.
+# Fixture: receta 1 «Azul» (traje y pelo distintos) elegida como forma 1, estallido #FFAA00.
+# Abre la Habitación, entra en Aspecto (creador), recorre la fila «Forma 1» hasta la receta, confirma y comprueba
+# el montaje. La transformación y la vuelta se rematan con `heroe_exportado --par fase=forma` (ver LEEME.md):
+# ese escenario ya manda P+K+G y saca una foto por forma.
+# REXLOG nuevos que espera: CAC-19: forma {n} = receta ...; CAC-19: montaje: formas 0..N ....
+descripcion = "CAC-19: forma 1 = receta propia; fila del creador, montaje y capturas"
+env = ["DBZ3_TEST_MODO=heroe,0", "DBZ3_HUB_MODE=5", "DBZ3_TEST_HEROE_PANTALLA=habitacion", "DBZ3_TEST_HEROE_CUERPO=7",
+       "DBZ3_CAC_FILA=forma1", "DBZ3_TEST_CFG=dbz3_heroe_ui_nueva=true;dbz3_heroe_habitacion=true"]
+apartar = ["user_data/dbz3/cac.toml*", "user_data/dbz3/heroe", "user_data/dbz3/hub_heroe.toml*", "mods/heroe_propio"]
+poner = ["tools/pruebas_heroe/cac_pendientes/fixtures/cac19_formas_cac.toml -> user_data/dbz3/cac.toml"]
+pasos = [
+  "esperar_pantalla 5 120",
+  'log "Habitacion abierta" 180',
+  "esperar 3000",
+  "captura cac19_a_habitacion",
+  "tecla Space 1500",
+  'log "Create abierto" 60',
+  'log "vista previa 3D .* cargada" 120',
+  "esperar 3000",
+  "tecla D 900",
+  'log "dbz3 heroe: .*forma [0-9] = receta" 60',
+  "esperar 3000",
+  "captura cac19_b_forma_receta",
+  "tecla 3 1500",
+  'log "el heroe propio de la ficha .* se monta" 60',
+  'log "dbz3 heroe: .*formas 0" 180',
+  "esperar 120000",
+  "captura cac19_c_montado",
+]

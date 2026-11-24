@@ -1,0 +1,36 @@
+# CAC-15/16 (cac-modelo): creador con Vegeta y 3 capas puestas por DBZ3_TEST_CAPAS (268 pelo, 424 armadura, 424 accesorios);
+# fila «Mechon de capa» (la 16.a): parpadea y A quita el mechon. Solo vista previa del creador.
+descripcion = "CAC-15/16: creador con capas puestas y quitar un mechon desde la fila Mechon"
+env = ["DBZ3_TEST_MODO=heroe", "DBZ3_HUB_MODE=5", "DBZ3_TEST_HEROE_ABRIR=2", "DBZ3_TEST_HEROE_CUERPO=7", "DBZ3_TEST_CAPAS=268:0,424:2,424:3"]
+pasos = [
+  "log \"Create abierto\" 180",
+  "log \"vista previa 3D .* cargada\" 90",
+  "esperar 1500",
+  "tecla S 300",
+  "tecla S 300",
+  "esperar 40000",
+  "captura capas_a_vista_con_capas",
+  "tecla S 300",
+  "tecla S 300",
+  "tecla S 300",
+  "tecla S 300",
+  "tecla S 300",
+  "tecla S 300",
+  "tecla S 300",
+  "tecla S 300",
+  "tecla S 300",
+  "tecla S 300",
+  "tecla S 300",
+  "tecla S 300",
+  "tecla S 300",
+  "captura capas_b_fila_mechon",
+  "tecla D 400",
+  "captura capas_c_parpadeo_1",
+  "esperar 400",
+  "captura capas_c_parpadeo_2",
+  "tecla Space 600",
+  "tecla W 600",
+  "esperar 1500",
+  "captura capas_d_quitado",
+  "log \"mechon .* quitado\" 10"
+]

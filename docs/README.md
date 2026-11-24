@@ -2,8 +2,9 @@
 
 > Guía accesible para agentes y humanos. Consolidación del estado del proyecto,
 > estructura de carpetas, cómo hacer mods, formatos, herramientas y builds.
-> Actualizado: 2026-09-26 (tras la **v1.2.9**, y con la compactación de
-> `AGENTS.md` a ≤60 KB: el detalle verbatim se movió a
+> Actualizado: 2026-11-23 (estado de v1.5.7 y guías del jugador del 12/11;
+> el índice histórico parte de la **v1.2.9** y de la compactación de
+> `AGENTS.md` a ≤60 KB, con el detalle verbatim en
 > `01_estructura/HISTORICO_RELEASES.md`)
 
 ---
@@ -41,7 +42,8 @@
 | [01_estructura/HISTORICO_AGENTS.md](01_estructura/HISTORICO_AGENTS.md) | Historial verbatim de sesiones hasta 2026-09-02 (solo bajo demanda) |
 | [01_estructura/HISTORICO_RELEASES.md](01_estructura/HISTORICO_RELEASES.md) | Detalle verbatim extraído de `AGENTS.md` en la compactación 2026-09-26: §A releases 1.1.3→1.2.9, §B investigación del port PS2→B3, §C launcher (solo bajo demanda) |
 | [02_mods](02_mods/COMO_HACER_MODS.md) | Pipeline de mods (override por entrada) |
-| [02_mods/MODEL_SWAP.md](02_mods/MODEL_SWAP.md) | Investigación de model swap (lo que sabemos/falla) |
+| [Guía rápida del Mod Kit](02_mods/KIT_GUIA_RAPIDA.md) | Para jugadores: asistentes, deshacer y límites ([EN](02_mods/KIT_GUIA_RAPIDA_EN.md)) |
+| [02_mods/MODEL_SWAP.md](02_mods/MODEL_SWAP.md) | Investigación de model swap (histórica; hoy el swap funciona) |
 | [02_mods/TEXTURAS_MOD.md](02_mods/TEXTURAS_MOD.md) | **Pestaña Texturas del launcher** (extraer/editar/reconstruir) |
 | [02_mods/PACKS_DE_TEXTURAS.md](02_mods/PACKS_DE_TEXTURAS.md) | **Packs de texturas (estilo PCSX2)**: volcado dev, cargador en runtime y guía para autores |
 | [02_mods/SESION_MODS_LAUNCHER_2026-09-14.md](02_mods/SESION_MODS_LAUNCHER_2026-09-14.md) | Barrido de mods + cierre/pulido del **Model Swap HD↔HD** + aviso ISO + refactor del Centro de mods |
@@ -67,10 +69,16 @@
 | [14_frentes](14_frentes/REGLAS.md) | **Frentes de trabajo 2026-10-15**: reglas comunes e informe de cada frente (HUB, modos, Tag Team, ports, escenarios, pasarela, QoL, bugs, vision futura). Ronda 2 ([RONDA2.md](14_frentes/RONDA2.md)): combate, rpg, transformaciones, online, grafico, modkit, campanas, eu (+ `eu_mapa.txt`) |
 | [14_dragon_universe](14_dragon_universe/) | Dragon Universe por dentro: opcodes, casillas, guardado |
 | [15_tecnicas](15_tecnicas/) | Tecnicas por dentro: codigos de energia, coste de ki, #CST/#CSE |
-| [16_pasarela_modos](16_pasarela_modos/) | **Pasarela de modos B1/B2/IW**: viabilidad por modo, Leyenda de Mr. Satan, saga B1, tablero B2, misiones y retos de IW ([04_misiones_y_tablero.md](16_pasarela_modos/04_misiones_y_tablero.md); `src/pasarela*.cpp`, `mod center hd/pasarela/pasarela.py`) |
+| [16_pasarela_modos](16_pasarela_modos/) | **Pasarela de modos PS2**: documentación técnica de Leyenda de Mr. Satán, tablero B2, misiones y retos de IW ([04_misiones_y_tablero.md](16_pasarela_modos/04_misiones_y_tablero.md); `src/pasarela*.cpp`, `mod center hd/pasarela/pasarela.py`) |
 | [jugador/MODOS_Y_RETOS.md](jugador/MODOS_Y_RETOS.md) | Guia del jugador: HUB, retos y torre de la semana |
 | [jugador/CAMARA_LIBRE.md](jugador/CAMARA_LIBRE.md) | Guía del jugador: activar y usar la cámara libre (BETA) |
 | [jugador/RESOLUCION_Y_BROLY.md](jugador/RESOLUCION_Y_BROLY.md) | Guía del jugador: resolución interna (360p/240p/144p) y Broly sin destello |
+| [jugador/SOLUCION_10_SINTOMAS.md](jugador/SOLUCION_10_SINTOMAS.md) | Guía del jugador: 10 síntomas frecuentes y su solución (X3.8) |
+| [jugador/OPCIONES_1211.md](jugador/OPCIONES_1211.md) | Guía del jugador (12/11): pantalla ultra ancha, borde nativo de los menús, 238 escenarios, el «?» entre todos, escenarios no jugables y Clima vivo (noche, lluvia y nieve) |
+| [jugador/FORMAS_7_8_Y_TAG_TEAM.md](jugador/FORMAS_7_8_Y_TAG_TEAM.md) | Guía del jugador (12/11): empezar en las formas 7 y 8 y relevo del Tag Team en esas formas |
+| [jugador/DRAGON_ROGUE.md](jugador/DRAGON_ROGUE.md) | Guía del jugador (12/11): Dragon Rogue (beta), sus 8 caminos, cartas y evoluciones/fusiones, jefes, reto diario y Entrenamiento de Kami |
+| [jugador/KIT_DE_MODDING.md](jugador/KIT_DE_MODDING.md) | Guía del jugador (12/11): qué permite hoy el Kit de Modding (probado en el juego, en pruebas y lo que aún no se puede) |
+| [jugador/CARGA_TACTICS_Y_SURVIVORS.md](jugador/CARGA_TACTICS_Y_SURVIVORS.md) | Guía del jugador (12/11): por qué Dragon Tactics y Dragon Budokai Survivors cargan mucho más rápido (y qué esperar la primera vez) |
 | [02_mods/PLUGINS.md](02_mods/PLUGINS.md) | Plugins de código (DLL en `plugins/`, API `rex_mod_init`): vía oficial para mods como Budokai3Access |
 | [09_mods_nativos](09_mods_nativos.md) | Mods nativos: «Desbloquear todo», restaurar la partida y estado de los cheats |
 | [Kit modo PS2](../studies%205/ENTREGAS/KIT_PS2_31-10.md) | **Modding Kit, modo Budokai 3 PS2** (ISO nueva con texturas, intercambio de modelos y música; probado solo en PCSX2 US). Reglas de ISO/AFS en [HOJA_DE_RUTA_PORT_PS2_B3](07_ports/HOJA_DE_RUTA_PORT_PS2_B3.md) |
@@ -86,7 +94,11 @@
 - **Jugar**: `out\build\win-amd64-release\dbz3.exe`
 - **Config**: `out\build\win-amd64-release\dbz3_user.toml`
 - **Mods**: carpeta `mods\<mod>\` junto al exe. Solo los que NO tienen `.disabled`.
-- **Estado**: **v1.2.9 publicada (Latest)** - La v1.2.9 es **diagnóstico que se explica solo**: avisos SIEMPRE activos de fps sostenido, disco lento e **instalación mixta** (las DLL publican su sello de build en `rex/dbz3_build.h`, porque no tienen VERSIONINFO), `vram=`/`lim=` en la línea `perf` y una línea `dbz3: entorno os=... ram=... <versiones>` al arrancar; guardia de VRAM (no se conceden upscales nuevos con el heap local al 92 %) y `tools/copy_sdk_dlls.ps1`. Sobre la v1.2.8.2 (la mejora de texturas deja de hundir los fps: solo nivel 0 en recargas dinámicas), la v1.2.8.1 (volcado de los formatos del HUD/UI + packs RGBA8, issue #11), la v1.2.8 (fix del volcado: la cvar del launcher no llegaba al plugin), la v1.2.7 (packs de texturas estilo PCSX2, D3D12 y Vulkan), la v1.2.6 (mejora de texturas HD pulida, HUD limpio, UX de escala y autorreparación del `dbz3_user.toml`), la v1.2.5 (foco/disco), la v1.2.4 EX, la v1.2.3 y la v1.2.2 EX (auto-detección del ejecutable + modo ISO retail). Juego funcional (D3D12, 60 fps, US+EU). Swap nativo HD↔HD y texturas funcionan (Vía A aproximada). Port completo PS2→HD **aparcado** (§3.4.10). Escalado: FSR1/CAS sí; FSR3/DLSS no viable a corto plazo. El consumo alto es el **supersampling** (escala interna), no las texturas HD.
+- **Estado**: **v1.5.7 candidata, sin publicar**. Consulta las [notas completas](../github/RELEASE_NOTES_v1.5.7.md) y el [changelog](../CHANGELOG.md). El candidato Windows incluye DLSS; aún falta verificar los paquetes finales del juego y del Kit. La v1.2.9 y sus diagnósticos quedan en el [historial de releases](01_estructura/HISTORICO_RELEASES.md).
+- **Nuevos modos (BETA) en Dragon HUB**: **Dragon Budokai Survivors**, con hordas, cartas, ocho luchadores, seis escenarios y mejoras permanentes; y **Dragon Rogue**, con ocho caminos, cartas, guardado de partidas, entrenamiento de Kami y reto diario de El Abismo. Retos clásicos mantiene su propio acceso.
+- **Llanura de Budokai 2**: cambia de zona en pleno combate al lanzar al rival contra la pared que activa la escena. Es para combate local, con núcleo HD USA y el escenario convertido desde tu copia de Budokai 2. Dragon World e Infinite World siguen experimentales; los cursos compatibles de IW usan la ruta traducida. También se retocan la Nave de Babidi y la Leyenda de Mr. Satán.
+- **Modos existentes**: Héroe y el creador (BETA) renuevan Habitación, Técnicas, Evolución y atuendos por forma. Dragon Tactics (EXPERIMENTAL) renueva la tienda y el carrusel e incorpora el historial por rival al reanudar. Tag Team y Online (BETA) mejoran los relevos y los avisos de conexión.
+- **Combate, launcher y Kit**: rueda con hasta 238 escenarios añadidos, preescucha y mejoras de retos; migración de ajustes listados y respaldos, recetas B1/B2 con datos HD, 75 textos en siete idiomas y mejoras de CPU, búsqueda de mods y sonido.
 
 ---
 
@@ -98,6 +110,24 @@
 4. **Compresión**: los bins del AFS van comprimidos LZX `/N:2048` (NO `/N:32`).
 5. **Tamaño slot**: cada entrada del AFS tiene un tamaño fijo; el bin del mod debe caber (padded al slot) o usar mid-insert virtual.
 6. **Contexto operativo**: `AGENTS.md` es la referencia operativa compactada; el detalle histórico está en `01_estructura/HISTORICO_AGENTS.md` (hasta 2026-09-02) y `01_estructura/HISTORICO_RELEASES.md` (releases, port y launcher).
+
+---
+
+## TANDA R23 · CORTE DEL 21–22 DE NOVIEMBRE DE 2026
+
+La batería de la tanda dio 6/10 en paralelo; los cuatro casos fallidos pasaron en solitario con el ejecutable congelado de la tanda.
+El ZIP nocturno de la tanda no llevaba el ejecutable dual y las dos bibliotecas esperadas. En el candidato del 23/11, el ZIP coincide con su stage y las tres DLL de referencia coinciden, pero el ejecutable no coincide con la referencia dual actual. El cierre de la tanda no equivale a aprobar el paquete.
+
+### Ajustes de serie observados en el árbol R23
+
+- **IW:** ruta traducida (`dbz3_iw_traducido`) y frase original del mapa (`dbz3_iw_mapa_frase_original`) activadas; la serie EU/USA del candidato aún debe acreditarse.
+- **B2:** tablero 2D original (`dbz3_b2_tablero_2d_original`) y audio del cierre 11 (`dbz3_b2_audio_cierre11`) activados. La transición de Llanura es una mejora de combate distinta del tablero.
+- **Héroe:** Técnicas v2 activadas. La cobertura de la batería no acredita la progresión completa ni todos los finales.
+
+### Dónde revisar pruebas y aprobaciones
+
+- Consultar el [plan maestro R23](../studies%205/ENTREGAS/R23/PLAN_MAESTRO_PULIDO.md) y la [hoja de aprobaciones](../studies%205/ENTREGAS/R23/V2_APROBACIONES.md). Una entrega de fábrica o un preflight no acreditan un resultado en juego.
+- Para cerrar el candidato: repetir la batería con un solo ejecutable identificado por su SHA-256, cotejar el ejecutable y las tres DLL del ZIP con sus fuentes y exigir código 0 de `tools/verify_release.ps1`. El Kit se verifica aparte.
 
 ---
 

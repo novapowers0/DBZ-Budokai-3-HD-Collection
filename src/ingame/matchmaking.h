@@ -5,6 +5,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
+#include <cstdio>
 #include <set>
 #include <string>
 #include <vector>
@@ -23,6 +25,23 @@ inline std::string Topic(const std::string& build_hex, const std::string& mods_k
     return o;
   };
   return "dbz3hd-mm-" + clean(build_hex, 10) + "-" + (mods_key.empty() ? "v" : clean(mods_key, 8));
+}
+
+// Canal de matchmaking por dominio de compatibilidad (dbz3_net_compat_caps=true, BETA):
+// agrupa ejecutables distintos con el mismo sim_abi, plataforma, region, contrato lockstep y mods.
+inline std::string CompatTopic(uint16_t sim_abi, uint8_t platform_abi, uint8_t region,
+                               uint32_t sim_contract, uint32_t content_schema, const std::string& mods_key) {
+  auto clean = [](std::string s, size_t n) {
+    std::string o;
+    for (char c : s)
+      if (std::isalnum((unsigned char)c) && o.size() < n) o += char(std::tolower((unsigned char)c));
+    return o;
+  };
+  char buf[64]{};
+  std::snprintf(buf, sizeof(buf), "dbz3hd-mmc-s%u-p%u-r%u-%08x-m%u-",
+                unsigned(sim_abi), unsigned(platform_abi), unsigned(region),
+                unsigned(sim_contract), unsigned(content_schema));
+  return std::string(buf) + (mods_key.empty() ? "v" : clean(mods_key, 8));
 }
 
 // `body` = lineas JSON de ntfy (`/topic/json?poll=1`). Devuelve los codigos vivos, sin repetir.

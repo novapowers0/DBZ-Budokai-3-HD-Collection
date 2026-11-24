@@ -1,0 +1,20 @@
+descripcion = "solHAB: tercera accion nativa con Habitacion activa"
+env = [
+  "DBZ3_TEST_DU_HEROE=35",
+  "DBZ3_TEST_CFG=dbz3_heroe_habitacion=true",
+]
+pasos = [
+  'log "escena 10[02] entrada 35" 180',
+  "tecla Space 2000",
+  "tecla Space 2000",
+  "tecla Space 2000",
+  "tecla Space 2000",
+  "tecla Space 2000",
+  "tecla Space 2000",
+  "esperar 8000",
+  "tecla Return 1500",
+  "tecla S 500",
+  "tecla S 500",
+  "tecla Space 5000",
+  "captura a_guardar_nativo",
+]

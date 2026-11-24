@@ -1,4 +1,4 @@
-// dbz3 - Dibujo con el aspecto de los menus de Budokai 3 (marco naranja, filas con letras
+﻿// dbz3 - Dibujo con el aspecto de los menus de Budokai 3 (marco naranja, filas con letras
 // turquesa perfiladas, cinta del titulo, bocadillo). Lo usan las pantallas propias que se
 // meten dentro del juego (ONLINE en el Duelo, TAG TEAM en el menu principal).
 // Piezas: ingame_ui/<nombre>.png, que roster_build.ui_native saca de los AFS del jugador (marco,
@@ -44,7 +44,7 @@ Pic Img(const char* name);
 void DrawPic(ImDrawList* dl, const Pic& p, ImVec2 p0, ImVec2 p1, ImVec4 src = ImVec4(0, 0, 0, 0),
              ImU32 tint = IM_COL32_WHITE, bool mirror = false);
 
-void Frame(ImDrawList* dl, ImVec2 p0, ImVec2 p1, float s);                 // marco de las listas
+void Frame(ImDrawList* dl, ImVec2 p0, ImVec2 p1, float s, bool interior = true);   // marco de las listas (interior=false: solo el borde)
 void Highlight(ImDrawList* dl, ImVec2 p0, ImVec2 p1, float t);             // franja de la fila elegida
 // max_w > 0: la letra se reduce hasta que el texto quepa en ese ancho (px de pantalla).
 void MenuText(ImDrawList* dl, ImVec2 center, float size, const char* text, bool selected, bool disabled,
@@ -54,9 +54,9 @@ void MenuText(ImDrawList* dl, ImVec2 center, float size, const char* text, bool 
 void MenuTextB3(ImDrawList* dl, ImVec2 center, float size, const char* text, bool selected, bool disabled, float max_w = 0);
 // Cinta del titulo arriba a la izquierda, como la del Duelo; `title` = imagen del titulo
 // (ingame_ui) o, sin ella, `text` con la fuente.
-void Banner(ImDrawList* dl, const Area& a, const char* text, const char* title = nullptr);
+void Banner(ImDrawList* dl, const Area& a, const char* text, const char* title = nullptr, float escala = 1.0f);
 // Banner con la etiqueta BETA (pieza `beta`) en el borde derecho del pergamino: pantallas del Modo Heroe.
-void BannerBeta(ImDrawList* dl, const Area& a, const char* text, const char* title = nullptr);
+void BannerBeta(ImDrawList* dl, const Area& a, const char* text, const char* title = nullptr, float escala = 1.0f, float beta_dy = 0.0f);
 // Titulo en letras doradas con perfil (las del Banner), centrado en (cx, cy) del area 1200x900 y encogido para que
 // quepa en `ancho` unidades: sobre el papel de una cinta que ya dibuja el juego. `alpha` 0..1. X1: sustituye al logo/PNG.
 void TitleText(ImDrawList* dl, const Area& a, float cx, float cy, float ancho, const char* text, float escala = 1.0f);
@@ -97,7 +97,7 @@ constexpr float kCornerX0 = 650, kCornerY0 = 40, kCornerY1 = 120;
 constexpr float kLine = 18, kPad = 22, kText = 34;
 // HUD de los modos en combate: un solo bloque centrado en x 600 ABAJO (pedido del usuario: lejos del reloj y del
 // contador nativo de rivales, que van arriba). El marcador del modo (kHudY, alto kHudH) pegado al borde de abajo y
-// sus lineas de reglas (como mucho 2: "¡Aguanta!"/modificadores y las de rpg::Hud) encima, cada kHudLine desde
+// sus lineas de reglas (como mucho 2: "Â¡Aguanta!"/modificadores y las de rpg::Hud) encima, cada kHudLine desde
 // kHudInfoY.
 constexpr float kHudH = 58, kHudLine = 28, kHudY = 900 - kHudH - 36, kHudInfoY = kHudY - 16 - 2 * kHudLine;
 // Franja de la fila elegida dentro del marco x0..x1 (px del area): sin pisar su linea, como la del juego.
@@ -110,7 +110,7 @@ void Help(ImDrawList* dl, const Area& a, const std::vector<std::pair<const char*
 // elegidas con la cara y el nombre. mirror = lado derecho (jugador 2). active = eligiendo.
 void TeamStrip(ImDrawList* dl, ImVec2 p0, float s, bool mirror, int slots, const std::vector<std::string>& names,
                const std::vector<ImTextureID>& faces, bool active, bool done, float t);
-// Ficha de un compañero del Tag Team bajo el marcador del juego (estilo FighterZ/Tenkaichi 3):
+// Ficha de un compaÃ±ero del Tag Team bajo el marcador del juego (estilo FighterZ/Tenkaichi 3):
 // cara (la del marcador del juego; sin ella, la inicial), nombre y barra de vida. mirror = lado del jugador 2 (crece hacia la izquierda).
 // button = boton que lo hace entrar ("BACK" o "BACK+LB") o nullptr; switching = parpadeo del relevo.
 void PartnerCard(ImDrawList* dl, ImVec2 p0, float s, bool mirror, const char* name, ImTextureID face, float hp,

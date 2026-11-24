@@ -1,0 +1,66 @@
+# PM-31 / R17. Recetas nuevas, no reemplazan las entradas nativas del catálogo.
+# FID = entrada del AFS HD local, inventariada en catalogo_pelo04.csv.
+# Siempre se parte del cuerpo original de la forma; se selecciona UN donante,
+# se transforma su pelo entero con su atlas y se injerta una vez, quitando el base.
+version = 1
+ranura = "pelo"
+operacion = "sustituir"
+raza_ssj = "saiyan"
+fisica = "rigido"
+fid_paleta_ssj = 266
+
+[ssj1]
+# Alargamiento vertical sobre la raíz; recoger el flequillo frontal.
+altura = 1.25
+recoge_frente = 0.20
+
+[ssj2]
+# Misma subida, con una caída frontal asimétrica en el lado de cada receta.
+caida = 0.14
+
+[ssj3]
+# Melena nativa entera; igualar la caída posterior de Goku SSJ3 en marco HEAD.
+fid_largo_referencia = 268
+ocultar_cejas = true
+
+[[receta]]
+id = "corona_sesgada"
+fid_base = 264
+alto_base = 0.08
+lado_flequillo = -1
+fid_melena = 268
+
+[[receta]]
+id = "llama_compacta"
+fid_base = 416
+alto_base = -0.10
+lado_flequillo = 1
+fid_melena = 360
+
+[[receta]]
+id = "cresta_escalonada"
+fid_base = 235
+alto_base = 0.10
+lado_flequillo = 1
+fid_melena = 268
+
+[[receta]]
+id = "raya_alta"
+fid_base = 390
+alto_base = 0.14
+lado_flequillo = -1
+fid_melena = 360
+
+[[receta]]
+id = "puntas_abiertas"
+fid_base = 298
+alto_base = 0.12
+lado_flequillo = -1
+fid_melena = 268
+
+[[receta]]
+id = "nuca_larga"
+fid_base = 447
+alto_base = 0.05
+lado_flequillo = 1
+fid_melena = 360

@@ -19,6 +19,7 @@
 #include "../ps2_modelo.h"
 #include "../mods.h"
 #include "catalogo.h"
+#include "entrada.h"
 
 namespace dbz3::pasarela::nave {
 float AltoRelFiguraB3(int b3, int forma, int fid);
@@ -85,9 +86,9 @@ class Prueba : public rex::ui::ImGuiDialog {
   }
 
   void OnDraw(ImGuiIO& io) override {
-    if (const char* hv = std::getenv("DBZ3_TEST_TACTICS_HOJA")) return Hoja(io, std::atoi(hv));
+    if (const char* hv = EnvPrueba("HOJA")) return Hoja(io, std::atoi(hv));
     const auto t0 = std::chrono::steady_clock::now();
-    static const bool solape = std::getenv("DBZ3_TEST_TACTICS_SOLAPE") != nullptr;
+    static const bool solape = EnvPrueba("SOLAPE") != nullptr;
     const int cols = std::min(n_, 6), filas = (n_ + cols - 1) / cols;
     const float w = io.DisplaySize.x, h = io.DisplaySize.y;
     const float cw = w / float(cols) * (solape ? 0.45f : 1.0f), ch = h / float(filas) * (solape ? 0.6f : 1.0f);
@@ -140,7 +141,7 @@ class Prueba : public rex::ui::ImGuiDialog {
 }  // namespace
 
 void CrearPruebaFiguras(rex::ui::ImGuiDrawer* drawer) {
-  const int n = std::clamp(std::atoi(std::getenv("DBZ3_TEST_TACTICS_FIGURAS")), 1, 24);
+  const int n = std::clamp(std::atoi(EnvPrueba("FIGURAS")), 1, 24);
   new Prueba(drawer, n);   // vive lo que el juego (el dibujante no borra sus dialogos)
 }
 

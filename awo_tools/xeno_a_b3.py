@@ -78,7 +78,7 @@ def ancestors(parents, child):
         child = parents[child]
 
 
-def segment_matrix(a, b, x, y):
+def segment_matrix(a, b, x, y, grosor=1.0):
     """Afine minimo: a->x, b->y; estira SOLO el eje del segmento.
 
     No usa las bases ESK/B3 como si fueran iguales. Conserva el grosor de la
@@ -101,7 +101,9 @@ def segment_matrix(a, b, x, y):
                       [-cross[1], cross[0], 0]])
         R = np.eye(3) + K + K @ K / (1 + c)
     M = np.eye(4)
-    M[:3, :3] = R @ (np.eye(3) + (lv / lu - 1) * np.outer(u, u))
+    # grosor: escala de la seccion (XV2 -> B3). Con el esqueleto ya en proporcion XV2 (lv = grosor * lu) es una semejanza
+    # exacta; con grosor 1 y el hueso mas largo la extremidad salia fina (el defecto de las razas, 12/11).
+    M[:3, :3] = R @ (grosor * np.eye(3) + (lv / lu - grosor) * np.outer(u, u))
     M[:3, 3] = x - M[:3, :3] @ a
     return M
 
@@ -109,7 +111,7 @@ def segment_matrix(a, b, x, y):
 class Retarget:
     """Mapeo auditable; conserva ejes, jerarquia y paleta del donante B3."""
 
-    def __init__(self, esk, tpl):
+    def __init__(self, esk, tpl, grosor=1.0):
         order(esk.parent)
         order(tpl.parent)
         if len(set(esk.names)) != len(esk.names):
@@ -135,7 +137,8 @@ class Retarget:
             if p is not None and self.direct[p] not in set(ancestors(tpl.parent, t)):
                 raise ValueError("retarget: jerarquia incompatible: %s -> %s" % (name, tpl.labels[t]))
             M = np.eye(4)
-            M[:3, 3] = self.W[t][:3, 3] - esk.world[i]
+            M[:3, :3] *= grosor      # hueso sin tramo (mano, cabeza, punta del pie): semejanza alrededor de su articulacion
+            M[:3, 3] = self.W[t][:3, 3] - grosor * np.asarray(esk.world[i], float)
             child = NEXT.get(name)
             residual = 0.0
             if child:
@@ -146,14 +149,14 @@ class Retarget:
                     # (pecho-cuello 1,46 / 2,30; cuello-cabeza 1,66 / 0,77). Por tramos, el cuello de las prendas subia un 57 %
                     # y la cabeza se hundia hasta la boca.
                     a0, b0 = esk.index["b_C_Chest"], esk.index["b_C_Head"]
-                    M = segment_matrix(esk.world[a0], esk.world[b0], self.W[self.direct[a0]][:3, 3], self.W[self.direct[b0]][:3, 3])
+                    M = segment_matrix(esk.world[a0], esk.world[b0], self.W[self.direct[a0]][:3, 3], self.W[self.direct[b0]][:3, 3], grosor)
                     residual = float(np.linalg.norm(M[:3, :3] @ esk.world[b0] + M[:3, 3] - self.W[self.direct[b0]][:3, 3]))
                     self.matrices[name] = M
                     checks.append(dict(source=name, target=tpl.labels[t], target_index=t,
                                        source_parent=esk.names[p] if p is not None else None,
                                        hierarchy_ok=True, endpoint_error=residual))
                     continue
-                M = segment_matrix(esk.world[i], esk.world[j], U, V)
+                M = segment_matrix(esk.world[i], esk.world[j], U, V, grosor)
                 residual = float(np.linalg.norm(M[:3, :3] @ esk.world[j] + M[:3, 3] - V))
             self.matrices[name] = M
             checks.append(dict(source=name, target=tpl.labels[t], target_index=t,
@@ -169,12 +172,56 @@ class Retarget:
                 self.missing.append(dict(source_index=i, source=name, reason=reason,
                                          target=tpl.labels[t] if t is not None else None,
                                          geometry_anchor=anchor))
+        # Cola sin pose horneada: los pivotes tienen que coincidir con la malla
+        # ANTES de aplicar las pistas del donante. Cinco indices equidistantes
+        # no equivalen a cinco articulaciones (TAIL1->2 es mucho mas corto).
+        fuente = [esk.index.get('X_T_TAIL%d' % n) for n in range(1, 11)]
+        destino = [tpl.bone('T_TAIL%d' % n) for n in range(1, 6)]
+        self.tail_targets = {}
+        tail_report = dict(enabled=False)
+        if (os.environ.get('DBZ3_XV2_COLA_ANIMADA') == '1'
+                and all(i is not None for i in fuente + destino)
+                and all(esk.parent[fuente[i]] == fuente[i - 1] for i in range(1, 10))
+                and all(tpl.parent[destino[i]] == destino[i - 1] for i in range(1, 5))):
+            X = np.asarray([esk.world[i] for i in fuente], float)
+            D = np.asarray([self.W[i][:3, 3] for i in destino], float)
+            sx = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(X, axis=0), axis=1))]
+            sd = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(D, axis=0), axis=1))]
+            if np.any(np.diff(sx) <= 1e-7) or np.any(np.diff(sd) <= 1e-7):
+                raise ValueError("cola: cadena degenerada")
+            sx, sd = sx / sx[-1], sd / sd[-1]
+            anchor = self.anchor[esk.names[fuente[0]]]
+            if any(self.anchor[esk.names[i]] != anchor for i in fuente):
+                raise ValueError("cola: anclas anatomicas incompatibles")
+            M = self.matrices[anchor]
+            # Mantener ejes, padres e indices que leen las animaciones B3;
+            # adaptar solo traslaciones bind, como xv2_proporcion.esqueleto.
+            puntos = np.column_stack([np.interp(sd, sx, X[:, k]) for k in range(3)])
+            puntos = puntos @ M[:3, :3].T + M[:3, 3]
+            for t, punto in zip(destino, puntos):
+                W = tpl.world()
+                parent = tpl.parent[t]
+                local = np.linalg.inv(W[parent]) @ np.r_[punto, 1.0] if parent >= 0 else np.r_[punto, 1.0]
+                tpl.local[t] = tpl.local[t].copy()
+                tpl.local[t][:3, 3] = local[:3]
+                tpl.axes[t][16:28] = struct.pack(">3f", *local[:3])
+            self.W = tpl.world()
+            self.invW = [np.linalg.inv(w) for w in self.W]
+            for src, p in zip(fuente, sx):
+                a = int(np.clip(np.searchsorted(sd, p, side="right") - 1, 0, 3))
+                f = float(np.clip((p - sd[a]) / (sd[a + 1] - sd[a]), 0, 1))
+                self.tail_targets[esk.names[src]] = (destino[a], destino[a + 1], f)
+            tail_report = dict(enabled=True, source_bones=len(fuente), target_bones=len(destino),
+                               target_indices=destino, source_fractions=sx.tolist(), target_fractions=sd.tolist(),
+                               bind_error=max(float(np.linalg.norm(self.W[t][:3, 3] - p)) for t, p in zip(destino, puntos)),
+                               axes_preserved=True, baked_pose=False)
         self.report = dict(status="offline_hierarchy_and_bind_validated_runtime_separate",
                            source_bones=len(esk.names), target_bones=tpl.nb,
                            direct_matches=len(self.direct), unmatched=self.missing,
                            checks=checks, inverse_bind_error=esk.inverse_bind_error,
                            endpoint_max_error=max(c["endpoint_error"] for c in checks),
-                           b3_axes_preserved=True,
+                            b3_axes_preserved=True,
+                            tail=tail_report,
                             limitations=["B3: un hueso+mezcla implicita con padre; no 4 influencias",
                                           "Dedos/gestos horneados en variantes; sin reloj EAN; SCD usa controlador propio [H]"])
 
@@ -189,7 +236,9 @@ class Retarget:
             for suffix, target in helper.items():
                 if name == "b_%s_%s" % (side, suffix):
                     anchor = "b_%s_%s" % (side, target)
-                    return anchor, self.direct[e.index[anchor]], "helper XV2 sin controlador equivalente; joint anatomico"
+                    from xeno_cuerpo import destino_helper
+                    t = destino_helper(self.tpl, side, suffix, self.direct[e.index[anchor]])
+                    return anchor, t, "helper XV2; nodo intermedio B3 si existe, ancla anatomica conservada"
         if name in BOCA and self.tpl.bone(BOCA[name]) is not None:
             return "b_C_Head", self.tpl.bone(BOCA[name]), "boca: hueso B3 equivalente, sin mover la geometria"
         if name.startswith("f_"):
@@ -260,6 +309,16 @@ def remap_weights(rig, sm, slots, suavizar=False):
             name = sm.bone_names[bi]
             if name not in rig.target:
                 raise ValueError("peso: hueso EMD desconocido: %s" % name)
+            if name in rig.tail_targets:
+                a, b, f = rig.tail_targets[name]
+                for target, fraction in ((a, 1.0 - f), (b, f)):
+                    if fraction <= 0:
+                        continue
+                    t = next((x for x in ancestors(rig.tpl.parent, target) if x in slots), None)
+                    if t is None:
+                        raise ValueError("peso: no hay slot B3 para %s" % name)
+                    infl[t] = infl.get(t, 0.0) + float(w) * fraction
+                continue
             t = rig.target[name]
             t = next((a for a in ancestors(rig.tpl.parent, t) if a in slots), None)
             if t is None:
@@ -330,9 +389,11 @@ def material_image(base, dyt, material, cap, subtract_ramp=False, tint=None, zoo
         raise ValueError("material: falta textura DDS base o DYT")
     h, w = base.shape[:2]
     scale = min(1.0, cap / max(h, w))
+    reducir = None
     if scale < 1:
-        w, h = max(4, int(w * scale) // 4 * 4), max(4, int(h * scale) // 4 * 4)
-        base = S.resize_rgba(base, w, h)
+        # La tinta se umbraliza a la resolucion ORIGINAL y se reduce DESPUES promediando: reducir antes borraba las lineas y a
+        # medias (512) las dejaba en motas negras (vista del creador, 13/11). Asi quedan lineas finas y continuas.
+        reducir = (max(4, int(w * scale) // 4 * 4), max(4, int(h * scale) // 4 * 4))
     elif zoom > 1 and max(h, w) * zoom <= cap:
         w, h = w * zoom, h * zoom
         base = S.resize_rgba(base, w, h)
@@ -373,6 +434,11 @@ def material_image(base, dyt, material, cap, subtract_ramp=False, tint=None, zoo
     rgba = np.zeros((h, w, 4), np.uint8)
     rgba[..., :3] = np.clip(np.rint(rgb), 0, 255)
     rgba[..., 3] = 255 if "EYE" in shader else 0
+    if reducir:
+        from PIL import Image
+        # color y alfa por separado: PIL premultiplica el RGBA al reducir y el alfa aqui es control de sombreado (0), no opacidad
+        rgb_ = np.asarray(Image.fromarray(rgba[..., :3]).resize(reducir, Image.Resampling.BOX))
+        rgba = np.dstack([rgb_, np.full(rgb_.shape[:2], rgba[0, 0, 3], np.uint8)])
     return rgba
 
 
@@ -411,6 +477,19 @@ def material_ramp(dyt, material, native, tint=None, rango=RAMPA_U, pelo=False, t
     c = np.maximum(curve[np.rint(x * n).astype(int)], SOMBRA_MIN * curve[int(.85 * n)])
     # Degradado entre bandas: la curva tiene saltos de un texel que en la cara salian como curvas de nivel.
     c = np.stack([np.convolve(np.pad(c[:, k], 3, mode="edge"), np.array((1, 2, 3, 3, 3, 2, 1)) / 15, "valid") for k in range(3)], 1)
+    if os.environ.get("DBZ3_XV2_RAMPA_SUAVE", "0") != "1":
+        # Toon de B3 (13/11, usuario: "tela facetada"): la rampa nativa son BANDAS DURAS (Goku: sombra honda hasta la columna 2,
+        # sombra hasta la 39 y luz desde la 40, medido), no un degradado. El degradado de la curva DYT daba 4 tonos repartidos por
+        # triangulos (facetas) en la vista y un sombreado blando en combate. Se toman los cortes de la rampa nativa del donante y
+        # un tono de la curva por banda: el corte de luz queda como una linea limpia, igual que en los personajes del juego.
+        nat = ramp[0, :, :3].astype(int)
+        saltos = [int(x) + 1 for x in np.where(np.abs(np.diff(nat, axis=0)).sum(1) > 12)[0]]
+        cortes = [0] + [x for k, x in enumerate(saltos) if k == 0 or x - saltos[k - 1] > 1] + [64]
+        if len(cortes) > 2:
+            q = c.copy()
+            for x0, x1 in zip(cortes[:-1], cortes[1:]):
+                q[x0:x1] = c[min(63, (x0 + x1) // 2 + (x1 - x0) // 4)]
+            c = q
     ramp[:14, :, :3] = 255 - np.clip(c, 0, 255).astype(np.uint8)
     ramp[..., 3] = 255
     return ramp
@@ -648,11 +727,13 @@ def pose_hand(esk, sm, side, number):
 
 def prepare_pieces(rig, pieces, triangle_ratio, gestos=True):
     from xeno_gestos import FACE_CLIPS, HAND_NUMBERS, HAND_ALIASES, skin_pose
+    from xeno_cuerpo import preparar_brazos
+    pieces = preparar_brazos(rig, pieces)
     result, reductions = [], []
     face_poses = {}
     for p in pieces:
         sm = rig.geometry(p["sm"], p["attachment"])
-        is_hand = p["part"] == "Rist" and any(n.startswith("h_") for n in sm.bone_names)
+        is_hand = p["part"] == "Rist" and not p.get("cuerpo_proximal") and any(n.startswith("h_") for n in sm.bone_names)
         if not is_hand and triangle_ratio < 1 and len(sm.tris) > 24:
             # El reductor existente conserva UV/costuras y pesos; no elimina
             # triangulos arbitrarios para forzar un presupuesto.
@@ -712,7 +793,105 @@ def prepare_pieces(rig, pieces, triangle_ratio, gestos=True):
     return result, reductions
 
 
-def build_model(tpl, rig, pieces, cap):
+def capa(p, pelo=False):
+    """Orden de las capas del cuerpo: 0 piel, 1 ropa interior, 2 ropa de encima. None = no entra (cara, pelo, ojos, piezas
+    rigidas o de fisica). XV2RAZAS 12/11: la camiseta interior y la piel asomaban a traves del gi en juego."""
+    n = p["sm"].name.lower()
+    if pelo and not p.get("attachment") and not p.get("variant"):
+        # Vista del creador (sin z-buffer): el pelo es la capa de encima de la piel de la cabeza (el flequillo se mezclaba con la frente).
+        if p["part"] == "Hair":
+            return 3
+        if p["part"].startswith("Face") and n.startswith("skin"):
+            return 0
+    if p.get("rigid") is not None or p.get("attachment") or p["part"].startswith("Face") or p["part"] == "Hair":
+        return None
+    if "eye" in n:
+        return None
+    return 0 if n.startswith("skin") else 1 if "inner" in n else 2
+
+
+def rayo_tapado(pos, nrm, tri, dmax, d0=0.01):
+    """Para cada punto, True si la semirrecta por su normal corta algun triangulo `tri` (T,3,3) entre d0 y dmax
+    (Moller-Trumbore, por tandas). Es la prueba de 'hay tela justo encima', sin depender de donde caigan los vertices."""
+    out = np.zeros(len(pos), bool)
+    if not len(tri) or not len(pos):
+        return out
+    a, e1, e2 = tri[:, 0], tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0]
+    for i in range(0, len(pos), 128):
+        o, d = pos[i:i + 128, None, :], nrm[i:i + 128, None, :]
+        pv = np.cross(d, e2[None])
+        det = (e1[None] * pv).sum(-1)
+        ok = np.abs(det) > 1e-9
+        inv = 1.0 / np.where(ok, det, 1.0)
+        tv = o - a[None]
+        u = (tv * pv).sum(-1) * inv
+        qv = np.cross(tv, e1[None])
+        v = (d * qv).sum(-1) * inv
+        t = (e2[None] * qv).sum(-1) * inv
+        out[i:i + 128] = (ok & (u >= 0) & (v >= 0) & (u + v <= 1) & (t > d0) & (t < dmax)).any(1)
+    return out
+
+
+def separar_capas(rig, pieces, slots, pesos, cerca=0.30, hueco=0.12, pelo=False):
+    """Capas casi pegadas (camiseta bajo el gi, piel bajo la manga): B3 deja un hueso + su padre por vertice y cada capa salia
+    con un reparto distinto, asi que al moverse se cruzaban y la de dentro asomaba en manchas. Cada vertice de una capa a menos
+    de `cerca` de otra de ENCIMA toma el reparto del vertice de encima mas cercano (se mueven juntas) y se mete hacia dentro
+    hasta quedar a `hueco` (sin z-fighting). No toca lo que no esta tapado (piel de los brazos, cuello). La vista del creador
+    pinta por orden de profundidad de cada triangulo, sin z-buffer: alli el hueco va mayor (0,40) para que la capa de dentro
+    quede siempre detras en ese orden."""
+    from scipy.spatial import cKDTree
+    capas = {}
+    for p in pieces:
+        c = capa(p, pelo)
+        if c is not None:
+            capas.setdefault(c, []).append(p)
+    for c in sorted(capas)[:-1]:
+        encima = [q for k in capas if k > c for q in capas[k]]
+        if not encima:
+            continue
+        P = np.vstack([q["sm"].pos for q in encima])
+        nada = (np.zeros(0, int), np.zeros(0), None)       # pieza rigida (cara, pelo): sin reparto que copiar
+        B = np.concatenate([pesos.get(id(q), nada)[0] if id(q) in pesos else np.full(len(q["sm"].pos), -1) for q in encima])
+        Wt = np.concatenate([pesos[id(q)][1] if id(q) in pesos else np.ones(len(q["sm"].pos)) for q in encima])
+        arbol = cKDTree(P)
+        T3 = np.vstack([q["sm"].pos[q["sm"].tris] for q in encima])
+        for p in capas[c]:
+            sm = p["sm"]
+            d, ix = arbol.query(sm.pos)
+            n = sm.nrm / np.maximum(np.linalg.norm(sm.nrm, axis=1, keepdims=True), 1e-9)
+            tapado = rayo_tapado(sm.pos, n, T3, 0.6)
+            debajo = ((d < cerca) & (np.einsum("ij,ij->i", P[ix] - sm.pos, n) > -0.03)) | tapado
+            if not debajo.any():
+                continue
+            if id(p) in pesos:
+                bs, ws, dr = pesos[id(p)]
+                copia = debajo & (d < cerca) & (B[ix] >= 0)   # solo del vecino CERCANO (tapado por rayo puede estar lejos: la otra pierna, 13/11)
+                pesos[id(p)] = (np.where(copia, B[ix], bs), np.where(copia, Wt[ix], ws), dr)
+            pos = sm.pos.copy()
+            # hondo (hueco) solo lo que tiene tela justo encima; el resto, lo justo para no pelear en profundidad (0,12): con todo
+            # hondo, la piel junto a la munequera se hundia y asomaba su borde rojizo (vista de cerca, 13/11)
+            hondo = min(hueco, 0.15) if p["part"].startswith("Face") else hueco   # la frente bajo el flequillo: hundirla mas la agrietaba
+            meter = np.where(tapado, hondo, np.where(d < cerca, np.clip(0.12 - d, 0, 0.12), 0.0))
+            pos[debajo] -= n[debajo] * meter[debajo, None]
+            sm.pos = pos
+            # Lo que queda del todo tapado se QUITA (como los hide_from de XV2): la capa de encima esta justo sobre el vertice
+            # (a lo largo de su normal, sin desvio lateral). La vista del creador pinta por orden de profundidad, sin z-buffer,
+            # y la capa de dentro salia en manchas a traves del gi; en combate deja de asomar al moverse. Los bordes visibles
+            # (cuello en V, punos) no cumplen la condicion y se conservan.
+            fuera = tapado[sm.tris].all(1)
+            if os.environ.get("DBZ3_XV2_CAPAS_DIAG"):
+                print("capas: %-8s %-28s capa %d verts %d debajo %d tapados %d tris %d fuera %d" % (p["part"], sm.name, c, len(sm.pos), int(debajo.sum()), int(tapado.sum()), len(sm.tris), int(fuera.sum())))
+            if fuera.any() and not fuera.all():
+                usados = np.unique(sm.tris[~fuera])
+                mapa = np.full(len(sm.pos), -1)
+                mapa[usados] = np.arange(len(usados))
+                p["sm"] = compact(sm, sm.tris[~fuera])
+                if id(p) in pesos:
+                    bs, ws, dr = pesos[id(p)]
+                    pesos[id(p)] = (bs[usados], ws[usados], dr[usados])
+
+
+def build_model(tpl, rig, pieces, cap, hueco=0.12, pelo=False):
     from amo2awo import win_bytes
     slots = {b: s for s, b in enumerate(tpl.palette) if s and b < tpl.nb}
     if not slots or tpl.palette[0] != 0xFFFFFFFF:
@@ -755,6 +934,10 @@ def build_model(tpl, rig, pieces, cap):
         if p["part"] == "Pants" and p["rigid"] is None and len(p["sm"].tris) > 400:
             b0, w0, _ = remap_weights(rig, p["sm"], slots, True)
             capa_baja.append((p["sm"].pos, b0, w0))
+    pesos = {id(p): remap_weights(rig, p["sm"], slots, p["part"] in ("Bust", "Pants", "Boots"))
+             for p in pieces if p["rigid"] is None}
+    if os.environ.get("DBZ3_XV2_CAPAS", "1") != "0":
+        separar_capas(rig, pieces, slots, pesos, hueco=hueco, pelo=pelo)
     for p in pieces:
         sm = p["sm"]
         lit = "EYE" not in p["material"]["shader"]
@@ -765,8 +948,9 @@ def build_model(tpl, rig, pieces, cap):
         if key not in tex_keys:
             # Prioridad de resolucion: ojos y atlas de la cara al maximo; pelo y manos, tinta a doble resolucion.
             zoom = 2 if p["part"] in ("Hair", "Rist", "Face_eye") else 1
+            cap_p = max(cap, 512) if p["part"] in ("Hair", "Rist") or p["part"].startswith("Face") else cap   # vista: pelo, cara y manos nitidos
             pelo = "hair" in p["part"].lower()
-            rgba = material_image(p["base"], p["dyt"], p["material"], cap, subtract_ramp=lit, tint=tint, zoom=zoom, pelo=pelo)
+            rgba = material_image(p["base"], p["dyt"], p["material"], cap_p, subtract_ramp=lit, tint=tint, zoom=zoom, pelo=pelo)
             h, w = rgba.shape[:2]
             base_idx = add_texture(w, h, 0x21, S.dds_dxt3(w, h) + S.encode_dxt3(rgba))
             ramp_idx = 0xFFFFFFFF
@@ -792,7 +976,7 @@ def build_model(tpl, rig, pieces, cap):
         mi = materials.index(mat)
         win, rigid, nmax = [], p["rigid"], 0
         if rigid is None:
-            bs, ws, dropped = remap_weights(rig, sm, slots, p["part"] in ("Bust", "Pants", "Boots"))
+            bs, ws, dropped = pesos[id(p)]
             weights_report.append(dict(part=p["part"], material=sm.name, vertices=len(bs),
                                        discarded_mean=float(dropped.mean()), discarded_max=float(dropped.max()),
                                        two_weights=int(np.count_nonzero(ws < 0.99999)),
@@ -864,7 +1048,7 @@ def build_model(tpl, rig, pieces, cap):
                        textures=len(textures), weights=weights_report, material_bindings=bindings,
                        packed_bind_roundtrip_max_error=bind_roundtrip, physics_runtime=physics_stats,
                        materials="Curva DYT convertida a resta B3; detalle DFD horneado; no shader XV2",
-                       aux=aux_stats,
+                        aux=aux_stats, cuerpo=getattr(tpl, "cuerpo_report", []),
                         hand_face_variants=dict(hands="L00/01/02/04/05/10/11 del donante con dedos XV2 [H]; 20->11 y 38->1",
                                                 face="instantaneas FCE EAN XV2, listas/alias del donante B3; asociaciones semanticas [H]",
                                                 samples={str(p['variant']): p['gesture'] for p in pieces if p.get('gesture')},

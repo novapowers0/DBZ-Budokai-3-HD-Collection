@@ -31,7 +31,7 @@ emulator. Native Linux builds use Vulkan and SDL3.
 | Platform | Windows / Linux |
 | Engine | Xbox 360 (ReXGlue SDK) |
 | Genre | 3D fighting |
-| Version | v1.5.6 |
+| Version | v1.5.7 candidate (unpublished) |
 
 Copyright (c) 2026 **NovaPowers**. Released under the MIT License (see `LICENSE`).
 
@@ -40,6 +40,17 @@ Copyright (c) 2026 **NovaPowers**. Released under the MIT License (see `LICENSE`
 [Mods and new characters](#mods-and-new-characters)
 
 ---
+
+## What's new in 1.5.7
+
+- **Dragon Budokai Survivors — new mode (BETA):** survive hordes with automatic attacks, collect gems and evolve techniques with cards and passive upgrades. Eight fighters, six stages, two phases for bosses with their own movesets, and permanent upgrades and local records between runs.
+- **Dragon Rogue — new mode (BETA):** eight paths, Ki/Body/Support cards, transformations and fusions, save and resume, Kami’s Training and a daily Abyss challenge. Classic Challenges keeps its own entry. Both new modes are in the Dragon HUB.
+- **Budokai 2’s Plains:** knock your opponent into the wall that triggers the scene to change areas mid-fight in local battles on the US HD core, using the stage converted from your Budokai 2 copy. Dragon World and Infinite World (EXPERIMENTAL) receive board and minigame updates; Babidi’s Ship and Mr. Satan’s Legend get dialogue and audio improvements.
+- **Hero Mode and character creator (BETA):** revamped Room, map, profile, Techniques, Evolution and Collection. Four creator tabs, Budokai 3 hairstyles, colour reset, outfit codes and assignments per compatible form, and controller previews.
+- **Combat, Dragon HUB and Dragon Tactics:** a continuous stage wheel supports up to 238 added stages, random selection among visible stages and music previews. Challenge rules and rewards are visible; selected challenges allow retries. Dragon Tactics (EXPERIMENTAL) gets a revamped shop, carousel and rival history. Tag Team and Online (BETA) get switch safeguards and clearer connection reports, respectively.
+- **Launcher, mods, languages and performance:** settings migration and backups, updated import tools and Kit workflows, 75 interface texts in seven languages, lower CPU load, faster mod lookup and audio recovery. With Japanese and European data, the port UI is Japanese and the original game runs in English. The Windows candidate includes NVIDIA DLSS; final package verification is pending.
+
+See the [full v1.5.7 notes](github/RELEASE_NOTES_v1.5.7.md) for installation, downloads and known limits. The download link above points to the latest published version. This candidate includes the updates prepared as 1.5.6.1 and 1.5.6.2.
 
 ## What's new in 1.5.6
 
@@ -50,11 +61,11 @@ Everything below was measured in test runs; "not seen" means nobody has watched 
 - **Fusions (beta):** Potara now shows in Edit Skills; Gotan and a fused Yamhan were seen fighting; a failed Yamhan no longer closes the game. The real button sequence (X, Y, A, Y, B) was not seen.
 - **Characters:** Gogeta SS4's ultimate plays in full (it was cut off before); Majin Buu's absorption technique and label work after absorbing; Shin Budokai 1 models keep their skin; Infinite World imports use their own ultimates (rebuild with Play). The Ultra Instinct Goku beta shows its wheel and aura (voices not confirmed).
 - **Online (beta):** on one PC, lockstep stayed in sync with 200 ms round trip, jitter, 20 % lost inputs and a slow-PC emulation; rollback (off by default) passed 25/25. Two real PCs and Windows-Linux are **not tested**.
-- **Infinite World / Budokai 2 (experimental):** native ground grid and Spaceship scoreboard I-IV in Infinite World; Budokai 2 music plays from your disc. None is accepted as identical to the original; five Budokai 2 scene transitions stay off.
+- **Infinite World / Budokai 2 (experimental):** native ground grid and Spaceship scoreboard I-IV in Infinite World; Budokai 2 music plays from your disc. Neither was certified as identical to the original. All five Budokai 2 scene transitions were still off in v1.5.6.
 - **Xenoverse 2 parts (experimental, YOUR copy):** male Majin keeps his eyes and gets shorter legs; other races unchanged.
 - **Linux (beta, not tested on Linux):** links and "Open folder" use `xdg-open`; the repair check looks for `.so` files; the start log lists your distribution and desktop.
 
-Known: Select Characters at 16:9/21:9 has a box covering part of the title; the Dragon HUB at 4:3 has a bar covering part of the Tactics text. Not in this version: Crusher Ball, Piccolo Red Ribbon, Wii, Videl, Great Ape and Glacier.
+Known in v1.5.6: Select Characters at 16:9/21:9 has a box covering part of the title; the Dragon HUB at 4:3 has a bar covering part of the Tactics text. Not in v1.5.6: Crusher Ball, Piccolo Red Ribbon, Wii, Videl, Great Ape and Glacier.
 
 ## What's new in 1.5.5.5
 
@@ -80,7 +91,7 @@ Known: online is untested in long matches between two homes, Linux is not fully 
 - **Dragon HUB:** rank plates (KYU 5 to MASTER), new backgrounds and hosts, fighters flying to the camera, a save icon, and **BETA / EXPERIMENTAL** labels on everything still under construction.
 - **Tag Team (beta):** teleport relays, also between computer fighters (COM vs COM).
 - **Mods from the ISO:** mods now work when you play straight from the `.iso` (prepared in a few seconds the first time).
-- **Your PS2 games with one button:** "Pick ISO" for Budokai 1, Budokai 2 and Infinite World (launcher > Game, or press A inside the campaign). The game is recognised by its content and nothing is copied.
+- **Your PS2 discs:** use “Pick ISO” in Launcher → Game: Budokai 1 for Mr. Satan's legend and character imports, Budokai 2 and Infinite World for their experimental modes. The launcher recognises the disc by its content.
 - **Renewed launcher** (hover help, Nova's Mods as cards, mods ON/OFF) and **renewed F1 menu**.
 - **New modes:** Mission 100, Hero mode (beta, swap fighting style between fights with LB/RB), Mr. Satan legend (beta, Budokai 3 models).
 - **Infinite World and Budokai 2 campaigns + Babidi's Ship (EXPERIMENTAL):** playable for testing; still work in progress.
@@ -179,15 +190,14 @@ From the [**Releases**](../../releases/latest) page:
 
 | File | What it is |
 |---|---|
-| `DBZ-Budokai-3-HD-Collection-v1.5.6.zip` | **The game for Windows** (required). |
-| `DBZ-Budokai-3-HD-Collection-v1.5.6-linux-amd64.tar.gz` | The game for Linux (Vulkan, beta). |
+| Windows game ZIP | **The game for Windows** (required). |
+| Linux amd64 `.tar.gz`, if attached | The game for Linux (Vulkan, beta). |
 | [`DBZ3HD-1.4.3-Personajes.zip`](https://drive.google.com/file/d/1jDRwzd_idmeIxwAMN4q4bC89JKFiGXX7/view?usp=sharing) | Optional: the 7 new characters (**Google Drive**, updated in 1.4.3; WIP). |
-| `DBZ3HD-1.5.6-Kit-Modding.zip` | Optional: tools to create and import characters. |
+| `DBZ3HD-…-Kit-Modding.zip`, if attached | Optional: tools to create and import characters. |
 
 ### Windows
 
-1. **Extract** `DBZ-Budokai-3-HD-Collection-v1.5.6.zip` into a folder, for
-   example `C:\Games\DBZ3\`.
+1. **Extract** the Windows game ZIP into a folder, for example `C:\Games\DBZ3\`.
 2. **Add the data from your copy of the game**, in one of two ways:
    - **Easiest — the ISO**: drop the game's `.iso` next to `dbz3.exe`. Nothing
      to extract. (Mods work from the ISO too; they are prepared in a few seconds the first time.)
@@ -296,7 +306,7 @@ and yells of their Budokai 1 version, and Zarbon, Dodoria and Android 19 their u
 To remove one, untick it under **New characters → Installed**. Your saves are
 never touched.
 
-### Modding kit (`DBZ3HD-1.5.6-Kit-Modding.zip`)
+### Modding kit
 
 The tools behind the launcher's modding tabs: create and **import characters**
 (Budokai 1, Budokai 2, Infinite World and community models), custom capsules,

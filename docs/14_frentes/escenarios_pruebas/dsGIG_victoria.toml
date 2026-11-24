@@ -1,0 +1,3 @@
+descripcion = "dsGIG: el GIGANTE jugador gana (rival KO) y se ve su pose de victoria con la camara del juego; comprobar que no se corta"
+env = ["DBZ3_TEST_BATTLE=0,7,7", "DBZ3_HUB_MODE=5", "DBZ3_GIGANTE=1.8", "DBZ3_GIGANTE_LADO=1", "DBZ3_SONDA_GIGANTE=1", "DBZ3_TEST_KO=1"]
+pasos = ["log \"hub: combate nativo\" 60", "log \"gigante: escala\" 120", "log \"prueba: el rival cae\" 40", "tecla D:800 100", "tecla L 250", "tecla L 250", "tecla L 250", "tecla L 250", "tecla L 250", "tecla L 250", "log \"combate acabado\" 40", "esperar 1200", "captura 01_ko", "esperar 1500", "captura 02_victoria", "esperar 2000", "captura 03_victoria_b", "log \"combate acabado\" 30"]

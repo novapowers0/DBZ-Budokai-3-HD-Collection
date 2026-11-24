@@ -282,6 +282,43 @@ def registrar_en_sonda(s, n):
     return s
 
 
+APARTADOS = Path(r'D:\_PARA_BORRAR_CLAUDE') / 'pool_controles'
+
+
+def par_control(sstates, serial, primero=80, rotar_hasta=90, apartar=None):
+    """INFRA-04: par de slots de control libre para este juego. Si estan todos usados (10/11: 3 grabaciones murieron con
+    StopIteration a los ~90 s), el par mas viejo de `primero`..`rotar_hasta` (solo de controles de Sesion; 90+ tiene
+    estados de otros) se APARTA (se mueve, no se borra) y se reutiliza."""
+    def ruta(slot):
+        c = sorted(Path(sstates).glob('%s (*).%02d.p2s' % (serial, slot)))
+        return c[0] if c else None
+    pares = range(primero, 99, 2)
+    for b in pares:
+        if not ruta(b) and not ruta(b + 1):
+            return b
+    viejo = min((b for b in pares if b < rotar_hasta), key=lambda b: max(r.stat().st_mtime for r in (ruta(b), ruta(b + 1)) if r))
+    dst = Path(apartar or APARTADOS) / Path(sstates).parent.name
+    dst.mkdir(parents=True, exist_ok=True)
+    for r in (ruta(viejo), ruta(viejo + 1)):
+        if r:
+            shutil.move(str(r), str(dst / ('%d_%s' % (int(time.time()), r.name))))
+    return viejo
+
+
+def comprobar_antes(n, iso, estado=None):
+    """INFRA-04: comprobacion barata ANTES de pedir turno (10/11: 5 grabaciones hicieron cola para fallar en 0 s por la
+    plaza). Devuelve '' si todo esta, o la causa en una linea."""
+    _comprobar(n)
+    if not Path(iso).is_file():
+        return 'no existe la ISO %s' % iso
+    if estado and not any(c.is_file() for c in (Path(estado), perfil(n) / 'sstates' / estado, PLANTILLA / 'sstates' / estado)):
+        return 'no existe el savestate %s' % estado
+    e = estado_instancia(n)
+    if not e.startswith('libre'):
+        return 'pool_%d %s (usa otra plaza: pcsx2_pool.py estado)' % (n, e)
+    return ''
+
+
 # ---------------------------------------------------------------- sesion resistente a cortes (mejora 5)
 class Sesion:
     """Una instancia del pool lanzada, con reconexion y retoma desde un savestate de control.
@@ -301,23 +338,44 @@ class Sesion:
         self.pid, self.p = None, None
 
     def __enter__(self):
+        mal = comprobar_antes(self.n, self.iso, self.estado)
+        if mal:
+            raise RuntimeError('comprobacion previa: ' + mal)
         preparar(self.n, [self.estado], pausado=self.pausado, truco=self.truco, velocidad=self.velocidad)
-        self._arrancar(self.estado)
-        return self
+        # INFRA-04: si PINE no contesta se cierra ese PCSX2 (antes quedaba vivo con la plaza) y se reintenta UNA vez;
+        # el primer intento espera como mucho 240 s (arranque normal ~80 s) y entre los dos no pasan de `limite`.
+        primero = min(self.limite, 240)
+        for intento, espera in ((1, primero), (2, max(60, self.limite - primero))):
+            try:
+                self._arrancar(self.estado, espera)
+                return self
+            except BaseException as e:
+                self.cerrar()
+                if intento == 2 or 'PINE no contesta' not in str(e):
+                    raise
+                from pcsx2_turnos import registrar
+                registrar('arranque_reintento', pool=self.n, error=repr(e))
+                print('PCSX2 pool %d: %s; reintento una vez' % (self.n, e), flush=True)
 
     def __exit__(self, *a):
         self.cerrar()
         return False
 
-    def _arrancar(self, estado):
+    def _arrancar(self, estado, limite=None):
         import pcsx2_sonda as S
-        lanzar(self.n, self.iso, estado)
-        m = re.search(r'pid=(\d+)', estado_instancia(self.n))
-        self.pid = int(m.group(1)) if m else None
+        from pcsx2_turnos import cronometro, process_alive
+        limite = limite or self.limite
+        with cronometro('pcsx2_arranque', detalle='pool%d' % self.n):
+            self._esperar_pine(S, estado, limite, process_alive)
+
+    def _esperar_pine(self, S, estado, limite, process_alive):
+        self.pid = lanzar(self.n, self.iso, estado)      # INFRA-04: el pid que devuelve lanzar (no se relee el cerrojo)
         registrar_en_sonda(S, self.n)
-        fin = time.time() + self.limite
+        fin = time.time() + limite
         self.p = None
         while time.time() < fin:       # PINE contesta Y el contador de cuadros avanza
+            if self.pid and not process_alive(self.pid):
+                raise RuntimeError('PINE no contesta: PCSX2 (pid %d) se cerro al arrancar' % self.pid)
             try:
                 p = S.Pine()
                 a1 = p.lote([(self.contador, 4)])[0]
@@ -333,7 +391,7 @@ class Sesion:
             except Exception:
                 time.sleep(4)
         if self.p is None:
-            raise RuntimeError('PINE no contesta en %d s' % self.limite)
+            raise RuntimeError('PINE no contesta en %d s' % limite)
         self.p.settimeout(30)          # maquina cargada: la respuesta puede tardar
 
     def control_cada(self, p, seg=20):
@@ -344,13 +402,11 @@ class Sesion:
         self._t = time.time()
         try:
             if self._base is None:       # primer par de slots que este juego no use ya (nunca se pisa un savestate ajeno)
-                serial = p.id()
-                self._base = next(b for b in range(S.SLOT_CONTROL, 99, 2)
-                                  if not S.ruta_estado(b, serial) and not S.ruta_estado(b + 1, serial))
+                self._base = par_control(perfil(self.n) / 'sstates', p.id(), S.SLOT_CONTROL)
             ruta = S.punto_control(p, self._base + self._k % 2)
             self._k += 1
             self.control = (ruta, S.contador_en_estado(ruta, self.contador))
-        except (RuntimeError, OSError):
+        except (RuntimeError, OSError, StopIteration):
             pass
 
     def ejecutar(self, cuerpo):
@@ -378,6 +434,7 @@ class Sesion:
         if self.pid:
             subprocess.run(['taskkill', '/F', '/PID', str(self.pid)], capture_output=True)
             time.sleep(2)
+            self.pid = None          # INFRA-04: nunca se mata dos veces un pid (podria ser ya de otro proceso)
         subprocess.run([sys.executable, str(Path(__file__).resolve()), 'liberar', str(self.n)], capture_output=True)
 
 
@@ -420,7 +477,63 @@ def autoprueba():
         assert perfil(1).exists() == existia, 'el dry-run no debe crear nada'
     import inspect
     assert 'afinar' in inspect.getsource(lanzar) and callable(Sesion.ejecutar)
+    autoprueba_infra04()
     print('AUTOPRUEBA pcsx2_pool OK')
+
+
+def autoprueba_infra04():
+    """Sin emulador: par de control con rotacion, comprobacion previa y reintento unico de arranque."""
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        ss = Path(d) / '3' / 'sstates'
+        ss.mkdir(parents=True)
+        for k, b in enumerate(range(80, 100)):
+            if b != 85:
+                f = ss / ('SLES-1 (AB).%02d.p2s' % b)
+                f.write_bytes(b'x')
+                os.utime(f, (1000 + k, 1000 + k))
+        (ss / 'SLES-1 (AB).84.p2s').rename(ss / 'otro.bin')
+        assert par_control(ss, 'SLES-1', apartar=Path(d) / 'ap') == 84                 # par entero libre
+        (ss / 'otro.bin').rename(ss / 'SLES-1 (AB).84.p2s')
+        assert par_control(ss, 'SLES-2', apartar=Path(d) / 'ap') == 80                 # otro juego: sus slots estan libres
+        os.utime(ss / 'SLES-1 (AB).82.p2s', (1, 1))
+        os.utime(ss / 'SLES-1 (AB).83.p2s', (1, 1))
+        os.utime(ss / 'SLES-1 (AB).84.p2s', (5000, 5000))
+        (ss / 'SLES-1 (AB).85.p2s').write_bytes(b'x')                                  # todo lleno -> rota el mas viejo (<90)
+        assert par_control(ss, 'SLES-1', apartar=Path(d) / 'ap') == 82
+        assert not list(ss.glob('*.82.p2s')) and len(list((Path(d) / 'ap' / '3').iterdir())) == 2   # apartados, no borrados
+        assert comprobar_antes(1, Path(d) / 'no.iso').startswith('no existe la ISO')
+        iso = Path(d) / 'a.iso'
+        iso.write_bytes(b'')
+        assert comprobar_antes(1, iso, Path(d) / 'no.p2s').startswith('no existe el savestate')
+    import pcsx2_turnos as T
+    g = globals()
+    guardado = g['comprobar_antes'], g['preparar'], T.TRABAJO, T.REGISTRO
+    g['comprobar_antes'], g['preparar'] = (lambda *a: ''), (lambda *a, **k: [])
+    d = tempfile.mkdtemp()
+    T.TRABAJO, T.REGISTRO = Path(d), Path(d) / 'registro.jsonl'       # la prueba no escribe en el registro real
+    try:
+        for fallo, esperado in (('PINE no contesta en 1 s', [240, 'cerrar', 360, 'cerrar']),
+                                ('pool_1 ya está reservada en PINE 28051 por PID 9', [240, 'cerrar'])):
+            llamadas = []
+
+            class Falsa(Sesion):
+                def _arrancar(self, estado, limite=None, _f=fallo, _l=llamadas):
+                    _l.append(limite)
+                    if len(_l) == 1 or 'reservada' in _f:
+                        raise RuntimeError(_f)
+
+                def cerrar(self, _l=llamadas):
+                    _l.append('cerrar')
+            try:
+                with Falsa(1, 'x.iso', 'e.p2s', 0, limite=600):
+                    pass
+            except RuntimeError:
+                pass
+            assert llamadas == esperado, (fallo, llamadas)
+    finally:
+        g['comprobar_antes'], g['preparar'], T.TRABAJO, T.REGISTRO = guardado
+    print('AUTOPRUEBA INFRA-04 (rotacion de control, previa, reintento de arranque) OK')
 
 
 def main():

@@ -1,0 +1,49 @@
+# C3 / SEL02 + SEL03: selector de escenarios del Duelo. FASE 3; lo ejecuta Z.
+#   python tools\pruebas.py correr smoke_a "docs\14_frentes\escenarios_pruebas\final\c3-selector-hub\selector.toml"
+#
+# clave    = SEL02 (musica/titulo al mover el cursor y aislamiento) + SEL03 (casilla "?" y combate).
+#            SEL01 (revancha aleatoria) esta APARCADO: la revancha nativa NO recarga el escenario (medido
+#            10/11: estados 7->2->3->4 sin pasar por sub_820C26E0), asi que no puede cambiar de stage sin
+#            enganchar el arranque de la revancha; su prueba queda en _selector_revancha_pendiente.toml.
+# cvar     = dbz3_selector_musica=true; dbz3_selector_musica_aislada=true; dbz3_musica_combate="fija:b3:11"
+#            (apagadas de serie). dbz3_escenarios_revancha_aleatoria NO se enciende.
+# criterio = al entrar al selector suena la pista elegida, con su titulo, y el audio del juego se calla
+#            ("vista previa musical ... (entrada N)", "vista previa aislada"); al salir vuelve
+#            "audio del juego restaurado". La casilla "?" (12) confirma y empieza un combate.
+# log      = "dbz3 escenarios: vista previa musical del escenario", "dbz3 escenarios: vista previa aislada",
+#            "dbz3 escenarios: audio del juego restaurado", "dbz3 escenarios: sel casilla 12",
+#            "dbz3 tag: empieza un combate"
+#
+# PENDIENTE_JUEGO: oir que suena SOLO la pista (el banco no oye). SEL01 aparcado (ver ESTADO_C3).
+descripcion = "SEL02/03: selector del Duelo: previa musical aislada con titulo, casilla ? y combate"
+env = [
+  "DBZ3_SONDA_ESCENARIO=1",
+  "DBZ3_TEST_RINGOUT=1",
+  'DBZ3_TEST_CFG=dbz3_selector_musica=true;dbz3_selector_musica_aislada=true;dbz3_musica_combate="fija:b3:11"',
+]
+pasos = [
+  "esperar 2500",
+  "tecla S 1200",
+  "tecla Space 3000",
+  "tecla Space 3000",
+  "tecla Space 4000",
+  "tecla Space 4000",
+  "tecla Space 4000",
+  "tecla Space 4000",
+  "esperar 2500",
+  "log \"escenarios: vista previa musical del escenario\" 40",
+  "log \"escenarios: vista previa aislada\" 40",
+  "captura 01_selector_previa",
+  "tecla 3 900",                                  # R1: cambia la eleccion (debe reiniciar la previa con otro titulo)
+  "log \"musica: eleccion musical\" 30",
+  "captura 02_selector_r1",
+  "tecla A 700",                                  # casilla "?" (12)
+  "log \"escenarios: sel casilla 12\" 30",
+  "captura 03_casilla_azar",
+  "tecla Space 3000",
+  "log \"tag: empieza un combate\" 90",
+  # el selector se cierra al confirmar: la previa deja de sonar y se devuelve el audio del juego
+  "log \"escenarios: audio del juego restaurado\" 30",
+  "esperar 2500",
+  "captura 04_combate",
+]

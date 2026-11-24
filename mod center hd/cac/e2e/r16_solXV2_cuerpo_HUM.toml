@@ -1,0 +1,11 @@
+descripcion = "R16 solXV2_CUERPO: HUM, cuatro vistas y brazos en golpe/ki"
+turbo = false
+env = ["DBZ3_TEST_HEROE_ABRIR=2", "DBZ3_TEST_MODO=heroe,0", "DBZ3_TEST_HEROE_RAZA=7", "DBZ3_TEST_HEROE_CAM=2", "DBZ3_TEST_CFG=dbz3_cac_xv2=true;dbz3_heroe_ui_nueva=true"]
+pasos = [
+  'log "Create abierto" 120', "esperar 60000",
+  "captura c_scouter_on", "tecla E 150", "esperar 1500", "captura d_vista1",
+  "tecla E 150", "esperar 1500", "captura d_vista2",
+  "tecla E 150", "esperar 1500", "captura d_vista3",
+  "tecla E 150", "esperar 1500", "tecla 1 200", "tecla 1 200", "esperar 180", "captura e_golpe",
+  "tecla 1 200", "esperar 600", "captura f_ki"
+]

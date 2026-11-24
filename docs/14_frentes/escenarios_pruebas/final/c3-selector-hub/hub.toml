@@ -1,0 +1,28 @@
+# C3 / HUB01: entrar en Laboratorio desde el HUB y volver. FASE 3; lo ejecuta Z (raton fisico en PENDIENTE).
+#   python tools\pruebas.py correr smoke_a "docs\14_frentes\escenarios_pruebas\final\c3-selector-hub\hub.toml"
+#
+# clave    = HUB01 (entrada/vuelta; raton real y 3 formatos en PENDIENTE_JUEGO)
+# cvar     = ninguna nueva: dbz3_hub_enabled ya existe (ON de serie).
+# criterio = desde el menu principal (fila HUB) se entra en Laboratorio (7 pulsaciones desde Tag Team: es la
+#            ultima de las 8 filas siempre visibles), el log dice "hub: modo laboratorio" y al volver con B
+#            el HUB sigue en pantalla.
+# log      = "dbz3 hub: modo laboratorio"
+# Nota (10/11): el HUB solo muestra las entradas registradas; "escenarios", "minijuegos" y "online" no tienen
+#       RegisterMode en este build y no salen. No es un fallo del codigo: la entrada "escenarios" del HUB es
+#       una funcion nueva aparte (RegisterMode "escenarios"); si se quiere, se pide como pieza propia.
+descripcion = "HUB01: HUB -> Laboratorio -> vuelta al HUB (camino automatico; raton fisico pendiente)"
+env = []
+pasos = [
+  "esperar 2500",
+  "tecla W 1200",                                  # fila HUB (la ultima del menu principal)
+  "tecla Space 3500",                              # pantalla HUB (cursor en Tag Team)
+  "captura 01_hub",
+  "tecla S 450", "tecla S 450", "tecla S 450", "tecla S 450",
+  "tecla S 450", "tecla S 450", "tecla S 450",     # Tag Team -> Laboratorio
+  "captura 02_hub_laboratorio",
+  "tecla Space 2500",
+  "log \"hub: modo laboratorio\" 20",
+  "captura 03_laboratorio",
+  "tecla Backspace 2000",
+  "captura 04_vuelta_hub",
+]

@@ -21,7 +21,32 @@ MINIMO = {"Hair": [1, 2, 3], "FaceBase": [1, 2, 3], "FaceEye": [1, 2, 3], "Bust"
           "Boots": [300, 301, 302], "Rist": [300, 301, 302]}
 
 
+def _habilitada(raza):
+    """C2/HER09: la tabla medida (cac/xv2_razas.json) manda. Sin tabla, todas (legado)."""
+    try:
+        import xv2_proporcion as P  # noqa: PLC0415
+        if P.tabla() is None:
+            return True
+        return P.habilitada(raza)
+    except Exception:   # noqa: BLE001
+        return True
+
+
+def razas_medidas():
+    """Razas encendidas por el banco, o None si no hay tabla (sin filtro)."""
+    try:
+        import xv2_proporcion as P  # noqa: PLC0415
+        d = P.tabla()
+        if d is None:
+            return None
+        return [r for r, v in d.get("razas", {}).items() if v.get("encendida")]
+    except Exception:   # noqa: BLE001
+        return None
+
+
 def lista(raza, tipo):
+    if not _habilitada(raza):
+        return []
     try:
         with open(os.path.join(RAIZ, "res", "datos", "xv2_cac.toml"), "rb") as f:
             d = tomllib.load(f)

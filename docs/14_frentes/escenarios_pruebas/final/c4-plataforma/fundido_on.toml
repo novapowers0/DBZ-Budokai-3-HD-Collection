@@ -1,0 +1,35 @@
+# C4 / DR04 (#15): fundido cruzado del corte de la intro. Lado ON.
+# FASE 3: lo ejecuta Z UNA vez; este carril NO abre el juego en la fase 1.
+#   python tools\pruebas.py correr smoke "docs\14_frentes\escenarios_pruebas\final\c4-plataforma\fundido_on.toml"
+#
+# clave    = DR04 (#15)
+# cvars    = dbz3_fundido_cruzado=true  (NUEVA, apagada de serie; src/main.cpp)
+#            dbz3_fundido_cuadros=30    (opcional; 16-60)
+#            dbz3_fundido_captura_cada=6 (opcional; 4-30)
+# criterio = al irse a negro la presentacion (corte de plano o entrada en pelea) sale
+#            "dbz3 fundido: cruce del corte de la intro" y la captura 02 (0,3 s despues)
+#            NO tiene el cuadro negro que si tiene el lado OFF (fundido_off.toml) en la misma captura. La medida
+#            fuerte ya esta hecha sin juego (banco): peso del plano viejo MAE 0,000 en los 15 cuadros medidos del
+#            PS2 frente a 0,569 del port (studies 5/ENTREGAS/C4PLAT/evidencias/banco_fundido.json).
+# log      = "dbz3 fundido: cuadro bueno del intro guardado" / "dbz3 fundido: cruce del corte de la intro"
+# NOTA     = el guardado del cuadro bueno cuesta una lectura de GPU cada 6 cuadros SOLO durante la presentacion
+#            (estados 1-3); con el ajuste apagado no se ejecuta nada.
+descripcion = "DR04 lado ON: el corte de la intro mezcla el plano anterior (dbz3_fundido_cruzado=true)"
+env = [
+  "DBZ3_TEST_BATTLE=0,7,7",
+  "DBZ3_HUB_MODE=5",
+  "DBZ3_TEST_CFG=dbz3_fundido_cruzado=true;dbz3_fundido_cuadros=30;dbz3_fundido_captura_cada=6",
+]
+pasos = [
+  "log \"hub: combate nativo\" 90",
+  "log \"dbz3 fundido: cuadro bueno del intro guardado\" 120",
+  "esperar 1200",
+  "captura 01_intro",
+  "log \"dbz3 fundido: cruce del corte de la intro\" 60",
+  "esperar 300",
+  "captura 02_cruce_03s",
+  "esperar 300",
+  "captura 03_cruce_06s",
+  "esperar 1200",
+  "captura 04_pelea",
+]

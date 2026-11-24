@@ -69,6 +69,8 @@
 #include "ps2_modelo.h"
 #include "roster_ext.h"
 
+namespace dbz3::anim { bool LeyendoIW(); }   // anim_iw.h
+
 namespace dbz3::hub {
 // 0 = lo normal en cada campo; time_s > 0 segundos, < 0 sin tiempo; hp > 0 vida inicial y maxima, < 0 solo la
 // inicial; form = forma inicial
@@ -88,6 +90,8 @@ int GameScreen();   // online_panel.cpp
 namespace dbz3::combate {
 int OndasEvento(int lado, int tipo);   // combate.cpp: ondas del lado dado; 0 devueltas con G, 1 con un golpe, 2 desviadas
 void OcultarHud(bool ocultar);         // S1-F03.1: combate.h (marcador del juego)
+int PalabraIW(int lado, int k);        // IWFIN/HUECOS-08: combate.h
+void PalabrasIWCero();
 }
 namespace dbz3::net {
 void InyectarPad(uint32_t usuario, int32_t botones);   // net/netplay_hooks.cpp (< 0: el mando de verdad)
@@ -194,8 +198,30 @@ std::map<std::string, int64_t> LeerTodo() {   // con g_prog_mu
       if (const auto n = v.value<int64_t>()) out[std::string(k.str())] = *n;
     }
   } catch (const toml::parse_error&) {
+    // MODOS 11/11: un progreso.toml ilegible se leia como vacio y la escritura siguiente borraba todo el avance
+    // (leyenda, rangos, PE). Se guarda una copia antes (la primera; como el .roto de rpg.toml).
+    std::error_code ec;
+    std::filesystem::copy_file(Carpeta() / "progreso.toml", Carpeta() / "progreso.toml.roto",
+                               std::filesystem::copy_options::skip_existing, ec);
   }
   return out;
+}
+
+// R20 dsFLUIDEZ_2: publica el mapa completo en un solo fichero temporal + rename (con g_prog_mu). La usan
+// GuardarProgreso (una clave) y GuardarProgresoBatch (muchas), que antes repetian lectura+escritura por clave.
+void PublicarProgreso(const std::map<std::string, int64_t>& t) {
+  std::error_code ec;
+  std::filesystem::create_directories(Carpeta(), ec);
+  const auto tmp = Carpeta() / "progreso.toml.tmp";
+  if (std::FILE* f = std::fopen(tmp.string().c_str(), "w")) {
+    std::fprintf(f, "# Pasarela de modos: avance de cada modo (lo escribe el juego)\n");
+    for (const auto& [k, v] : t) std::fprintf(f, "%s = %lld\n", k.c_str(), static_cast<long long>(v));
+    // H9 24/10: solo se publica si la escritura fue bien (disco lleno -> el progreso anterior queda intacto)
+    const bool ok = std::ferror(f) == 0;
+    if (std::fclose(f) == 0 && ok) {
+      std::filesystem::rename(tmp, Carpeta() / "progreso.toml", ec);
+    }
+  }
 }
 
 // Nombres de B3 (los de tagteam_panel.cpp, en espanol e ingles como el resto de textos propios).
@@ -291,18 +317,15 @@ void GuardarProgreso(const std::string& clave, int valor) {
   std::lock_guard<std::mutex> lk(g_prog_mu);
   auto t = LeerTodo();
   t[clave] = valor;
-  std::error_code ec;
-  std::filesystem::create_directories(Carpeta(), ec);
-  const auto tmp = Carpeta() / "progreso.toml.tmp";
-  if (std::FILE* f = std::fopen(tmp.string().c_str(), "w")) {
-    std::fprintf(f, "# Pasarela de modos: avance de cada modo (lo escribe el juego)\n");
-    for (const auto& [k, v] : t) std::fprintf(f, "%s = %lld\n", k.c_str(), static_cast<long long>(v));
-    // H9 24/10: solo se publica si la escritura fue bien (disco lleno -> el progreso anterior queda intacto)
-    const bool ok = std::ferror(f) == 0;
-    if (std::fclose(f) == 0 && ok) {
-      std::filesystem::rename(tmp, Carpeta() / "progreso.toml", ec);
-    }
-  }
+  PublicarProgreso(t);
+}
+
+void GuardarProgresoBatch(const std::vector<std::pair<std::string, int>>& pares) {
+  if (pares.empty()) return;
+  std::lock_guard<std::mutex> lk(g_prog_mu);
+  auto t = LeerTodo();
+  for (const auto& [k, v] : pares) t[k] = v;
+  PublicarProgreso(t);
 }
 
 namespace {
@@ -643,11 +666,14 @@ void VigilarCombate(const char* quien, const Reglas& r, std::function<void(const
     int rival_ki_racha = 0;
     float ki_riv_prev = -1;
     int64_t rival_ki_t0 = 0, rival_ki_ult = 0;   // inicio y ultimo cuadro con el ki del rival subiendo
+    float ki_jug_prev = -1;                      // IWFIN/HUECOS-08: lo mismo para el jugador (+0x38)
+    int64_t jug_ki_t0 = 0, jug_ki_ult = 0;
     float combo_dano_rival = 0;   // vida quitada al jugador en el combo en curso del rival
     int64_t b1_golpe[2] = {-100000, -100000}, b1_tecnica = -100000;
     bool b1_agarre = false, b1_especial = false;
     bool empezado = false;   // reglas de inicio ya aplicadas en esta pelea
     int n_reglas = 0, n_reglas_ki = 0;   // registro de las reglas (pruebas)
+    int n_ataque_rival = 0;              // R21 dsB2_D: lineas de traza del ataque extra del rival (max. 6 por pelea)
     int64_t traza_ms = 0;
     // sucesos de B1 sin ganchos propios (docs/14_frentes/pasarela.md s3): accion y codigo de cada lado para la traza
     // (DBZ3_PASARELA_TRAZA), contadores de ondas de combate.cpp al empezar y el piloto de pruebas
@@ -659,6 +685,7 @@ void VigilarCombate(const char* quien, const Reglas& r, std::function<void(const
     Historial hist;                        // DULL...
     const int con_piloto = std::getenv("DBZ3_PASARELA_PILOTO") ? std::atoi(std::getenv("DBZ3_PASARELA_PILOTO")) : 0;
     PilotoB1 piloto;
+    int64_t espera0 = t0;   // vigilante de inicio (60 s sin contar la lectura del banco de IW)
     while (base) {
       const bool own = dbz3::hub::OwnBattle();
       visto = visto || own;
@@ -685,6 +712,8 @@ void VigilarCombate(const char* quien, const Reglas& r, std::function<void(const
         rival_ki_t0 = rival_ki_ult = 0;
         f.combo_max = f.combo_dano_max = 0;
         f.rival_ki_max = f.rival_combo_dano_max = 0;
+        f.ki_max = 0, jug_ki_t0 = jug_ki_ult = 0, ki_jug_prev = -1;   // IWFIN/HUECOS-08
+        dbz3::combate::PalabrasIWCero();
         if (r.puntos_b1) {   // pelea nueva (o revancha): puntos de sucesos a 0
           f.puntos = 0;
           g_puntos_vivo = 0;
@@ -768,6 +797,18 @@ void VigilarCombate(const char* quien, const Reglas& r, std::function<void(const
         }
         // ki del jugador: lo que gasta (ki o tecnicas: ventana de 1,5 s para "solo ki") y lo que gana (ki lento)
         const float ki = LoadF(base, x0 + kKi);
+        // IWFIN/HUECOS-08: +0x38 = mayor racha de carga de ki del JUGADOR (mismo criterio que la del rival, abajo) y las
+        // cuatro palabras de control que cuenta combate.cpp.
+        if (ki_jug_prev >= 0 && ki > ki_jug_prev + 1.0f) {
+          const int64_t ahora_ki = NowMs();
+          if (!jug_ki_t0 || ahora_ki - jug_ki_ult > 50) jug_ki_t0 = ahora_ki;
+          jug_ki_ult = ahora_ki;
+          f.ki_max = std::max(f.ki_max, 1 + int((ahora_ki - jug_ki_t0) * 60 / 1000));
+        } else if (jug_ki_t0 && NowMs() - jug_ki_ult > 100) {
+          jug_ki_t0 = jug_ki_ult = 0;
+        }
+        ki_jug_prev = ki;
+        for (int k = 0; k < 4; ++k) f.iw_palabra[k] = dbz3::combate::PalabraIW(0, k);
         // gastar ki = bajar 30 o mas de un vistazo a otro (8 ms): rafagas y tecnicas; el modo hiper gasta poco a poco
         if (ki_jug >= 0 && ki < ki_jug - 30.0f) gasto_ki = NowMs();
         if (const float kr = LoadF(base, x1 + kKi); ki_riv >= 0 && kr < ki_riv - 30.0f) gasto_ki_rival = NowMs();
@@ -786,14 +827,31 @@ void VigilarCombate(const char* quien, const Reglas& r, std::function<void(const
           rival_ki_racha = 0;
         }
         ki_riv_prev = ki_riv;
-        if (r.vida_baja > 0) {   // la pausa no cuenta
+        if (r.vida_baja > 0 || r.ki_baja > 0) {   // la pausa no cuenta
           const int64_t t = NowMs();
           const float vj = LoadF(base, x0 + kVida);
-          if (vida_t > 0 && vj > 1 && !dbz3::GameDimmed()) {
-            const float nueva = std::max(1.0f, vj - LoadF(base, x0 + kVidaMax) * r.vida_baja * float(t - vida_t) / 1000.0f);
+          const float suelo = std::max(1.0f, LoadF(base, x0 + kVidaMax) * r.vida_baja_suelo);
+          if (vida_t > 0 && vj > suelo && !dbz3::GameDimmed()) {
+            const float nueva = std::max(suelo, vj - LoadF(base, x0 + kVidaMax) * r.vida_baja * float(t - vida_t) / 1000.0f);
             StoreF(base, x0 + kVida, nueva);
             if (vida_jug > 0) vida_jug -= vj - nueva;   // la armadura no anula lo que se gasta solo
           }
+          // B2-03 (b2.c:149665-149680): la casilla de condicion 3 drena a LOS DOS; lo que pierde el rival no cuenta como golpe
+          if (const float vr = LoadF(base, x1 + kVida), sr = std::max(1.0f, LoadF(base, x1 + kVidaMax) * r.vida_baja_suelo);
+              r.vida_baja_rival && vida_t > 0 && vr > sr && !dbz3::GameDimmed()) {
+            const float nueva = std::max(sr, vr - LoadF(base, x1 + kVidaMax) * r.vida_baja * float(t - vida_t) / 1000.0f);
+            StoreF(base, x1 + kVida, nueva);
+            if (vida_rival > 0) vida_rival -= vr - nueva;
+            if (static int n = 0; ++n == 30 || n == 300)   // B2-03 (b2-reglas r23): evidencia para la prueba de la condicion 3
+              REXLOG_INFO("dbz3 {}: regla: condicion 3, el rival tambien pierde vida: {:.0f} (suelo {:.0f})", quien, nueva, sr);
+          }
+          // B2-03 (b2.c:149727 + FUN_001f0cc0): la casilla de condicion 4 gasta 0,24 de ki por cuadro a cada luchador
+          // (sobre 700 de B2 = r.ki_baja de su maximo por segundo)
+          for (uint32_t xk : {x0, x1})
+            if (const float k = LoadF(base, xk + kKi); r.ki_baja > 0 && vida_t > 0 && k > 0 && !dbz3::GameDimmed())
+              StoreF(base, xk + kKi, std::max(0.0f, k - LoadF(base, xk + kKiMax) * r.ki_baja * float(t - vida_t) / 1000.0f));
+          if (static int n = 0; r.ki_baja > 0 && (++n == 30 || n == 300))   // B2-03 (b2-reglas r23): evidencia para la condicion 4
+            REXLOG_INFO("dbz3 {}: regla: condicion 4, ki de los dos {:.0f} / {:.0f}", quien, LoadF(base, x0 + kKi), LoadF(base, x1 + kKi));
           vida_t = t;
         }
         if (r.ki_lento > 0 && ki_jug >= 0 && ki > ki_jug) {
@@ -837,6 +895,16 @@ void VigilarCombate(const char* quien, const Reglas& r, std::function<void(const
         }
         if (const float vj = LoadF(base, x0 + kVida); r.defensa > 0 && vida_jug > 0 && vj < vida_jug && vj > 0) {
           StoreF(base, x0 + kVida, vj + (vida_jug - vj) * r.defensa);   // armadura de B2: se anula una parte
+        }
+        // ataque del rival del tablero de B2 (Kid Bu +10 de la IX, ordenes 83/35): el golpe quita mas. Se aplica sobre
+        // lo que quito ya con la armadura del jugador, igual que la daga del jugador sobre el rival.
+        if (const float vj = LoadF(base, x0 + kVida); r.ataque_rival > 0 && vida_jug > 0 && vj < vida_jug && vj > 0) {
+          const float nueva = std::max(1.0f, vj - (vida_jug - vj) * r.ataque_rival);
+          StoreF(base, x0 + kVida, nueva);
+          // R21 dsB2_D: traza de que el ataque extra del rival del tablero llega AL COMBATE B3 HD y se aplica.
+          if (++n_ataque_rival <= 6)
+            REXLOG_INFO("dbz3 {}: regla: ataque del rival +{:.0f} %: golpe {:.0f} -> {:.0f} (aplicado)", quien,
+                        r.ataque_rival * 100.0f, vida_jug - vj, nueva >= 1.0f ? vida_jug - nueva : vida_jug - 1.0f);
         }
         vida_jug = LoadF(base, x0 + kVida);
         if (vida_rival > 0 && v < vida_rival && v > 0) {
@@ -988,7 +1056,10 @@ void VigilarCombate(const char* quien, const Reglas& r, std::function<void(const
       if (own && st != ultimo) REXLOG_INFO("dbz3 {} estado del combate {} (ganador {})", quien, st, f.ganador);
       ultimo = st;
       if (visto && !own) break;
-      if (!visto && NowMs() - t0 > 60000) {
+      // Disco lento: mientras se lee el banco de IW (ISO en frio, 10-15 s o minutos) el combate no puede empezar; esa
+      // espera no cuenta para los 60 s (antes cerraba el minijuego con «superado false»).
+      if (dbz3::anim::LeyendoIW()) espera0 = NowMs();
+      if (!visto && NowMs() - espera0 > 60000) {
         REXLOG_WARN("dbz3 {}: el combate no empezo en 60 s", quien);
         break;
       }
@@ -2201,6 +2272,8 @@ bool EscenaCellLarga(cinematica::Escena& e) {
     cinematica::Paso p;
     p.plano = cinematica::kLado1;
     PasoEscenaLarga(p, q.cam, t.ancla ? &sat : nullptr, 0, t.g0, t.g1);
+    if (t.g0 < 2430)   // RESTO-10: pose de espaldas de B1 en la toma del coche (cvar apagada de serie)
+      p.pose_satan_b1 = rex::cvar::Query<bool>("dbz3_satan_pose_espaldas");   // SPRINT: la cvar se define en cinematica.cpp
     // DS185: desde el clip 5 (Satan ya fuera del coche) el objetivo de B1 apunta al CUERPO de Satan: se lleva a la
     // fraccion equivalente del cuerpo que se dibuja. La toma del coche (g0 < 2430) se queda como estaba (su ojo de B1
     // y el resultado ya validado en DS168). `q.stn.suelo` (11,438) es la altura de la cadera de B3 que `LeerTrayectoriaB1`
@@ -4011,6 +4084,11 @@ bool Start() {
 
 bool Busy() { return g_fase_pub.load() != kNada; }
 
+// S6 (SAT-01/SAT01): la Leyenda esta en curso (cualquier fase menos "nada"). La usa cinematica.cpp para la camara
+// "WINNER!!" de B1 en los estados 5-7; fuera de este modo no se toca la camara del juego. Lee `g_fase_pub` (atomico):
+// el gancho de camara corre en otro hilo que la pasarela.
+bool EnLeyenda() { return g_fase_pub.load() != kNada; }
+
 namespace {
 
 // ---- Pantalla (hilo de la interfaz) ----
@@ -5104,7 +5182,17 @@ class Panel : public rex::ui::ImGuiDialog {
   void DrawCombate(float t) {
     if (dbz3::ingame::tutorial::Abierto() || t - lanzar_at_ < 1.0f) return;
     lanzar_at_ = t;
-    if (!Lanzar()) REXLOG_WARN("dbz3 pasarela: el conector no acepto el combate (otro pendiente)");
+    if (Lanzar()) {
+      fallos_lanzar_ = 0;
+      return;
+    }
+    REXLOG_WARN("dbz3 pasarela: el conector no acepto el combate (otro pendiente)");
+    // MODOS 11/11: tras ~10 s sin poder pedirlo se vuelve al HUB con el avance guardado (antes reintentaba sin fin
+    // con el mando bloqueado y sin salida)
+    if (++fallos_lanzar_ >= 10) {
+      fallos_lanzar_ = 0;
+      Salir(false);
+    }
   }
 
   // La cuenta del resultado y del final de B1 (FUN_00231c40 / FUN_00233680): el tablon 668 #15, "Now!!" (668 #19) con
@@ -5404,6 +5492,7 @@ class Panel : public rex::ui::ImGuiDialog {
   uint64_t prologo_de_ = ~0ull, musica_de_ = ~0ull, cuenta_de_ = ~0ull, fin_de_ = ~0ull;
   int prologo_k_ = -1, prologo_voz_ = -1;
   float prologo_at_ = 0, prologo_t0_ = 0, lanzar_at_ = -10, cuenta_fin_ = -1, fin_fase_at_ = 0;
+  int fallos_lanzar_ = 0;
   float letrero_at_ = -10;   // DS61: cuadro en que START abrio el letrero (0x22DDA0: 11 cuadros de animacion 7)
   int cuenta_tic_ = -1, fin_fase_ = 0;   // 0 cuenta, 7 fundido 0x2338C0, 1-2 clave, 3 espera 100, 4 5 cuadros, 5-6 total
   bool fin_musica_ = false;              // 0x234380: la musica del total (0x1EA810(10)) ya se pidio
@@ -5441,7 +5530,7 @@ const bool g_test = [] {
   g_real = std::strstr(t, "real") != nullptr;
   if (const char* d = std::strstr(t, "seg=")) g_auto_seg = std::max(1.0f, float(std::atof(d + 4)));
   std::thread([desde, dif] {
-    for (int quieto = 0; quieto < 120;) {
+    for (int quieto = 0; quieto < 20;) {
       quieto = dbz3::ingame::GameScreen() == kMainScreen ? quieto + 1 : 0;
       std::this_thread::sleep_for(std::chrono::milliseconds(25));
     }

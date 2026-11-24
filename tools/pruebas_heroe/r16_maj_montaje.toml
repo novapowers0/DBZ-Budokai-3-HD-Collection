@@ -1,0 +1,15 @@
+# La semilla comprueba el montaje; no acredita selección de IDs por la interfaz.
+descripcion = "R16 Majin: recursos propios en previa y montaje guardado"
+turbo = false
+poner = ["tools/pruebas_heroe/r16_maj_semilla.toml -> user_data/dbz3/cac.toml"]
+env = ["DBZ3_TEST_MODO=heroe", "DBZ3_HUB_MODE=5", "DBZ3_TEST_HEROE_ABRIR=2", "DBZ3_TEST_CFG=dbz3_heroe_ui_nueva=true", "DBZ3_CAC_XV2=0"]
+pasos = [
+  'log "Create abierto.*cuerpo 34" 180',
+  'log "vista previa 3D .* cargada" 120',
+  "captura majin_previa_semilla",
+  "tecla 3 1000",
+  'log "Create: confirmar" 25',
+  'log "traje de combate" 180',
+  "esperar 2000",
+  "captura majin_montado"
+]

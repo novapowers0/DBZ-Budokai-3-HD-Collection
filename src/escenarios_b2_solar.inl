@@ -118,40 +118,44 @@ struct B2SolarHD {
     std::lock_guard<std::mutex> l(mutex);quads.clear();publicado_ms=0;
   }
   bool Crear(PPCContext& ctx,uint8_t* base,const b2::Recurso& r) {
+    // Cada rechazo deja su motivo: el arranque se bloquea si esto falla.
+    auto no=[&](const char* m){REXLOG_WARN("dbz3 B2 solar: no creado: {} grupo={} zona={}",m,int(r.grupo),REX_LOAD_U32(kG+64));return false;};
     static const bool oraculo=ComprobarOriginal();
-    if(!oraculo){REXLOG_WARN("dbz3 B2 solar: fallo del oraculo PAL17650");return false;}
+    if(!oraculo)return no("fallo del oraculo PAL17650");
     const auto e=r.Bloque(12);const uint32_t zona=REX_LOAD_U32(kG+64);
-    if(e.n<528||e.U(4)!=1||zona>=2)return false;
+    if(e.n<528||e.U(4)!=1||zona>=2) {
+      REXLOG_WARN("dbz3 B2 solar: bloque12 n={} tipo={}",e.n,e.n>=8?e.U(4):0);return no("bloque12 o zona invalidos");
+    }
     const uint32_t off=32+128*zona;
     if(int32_t(e.U(off+4))<0)return true;
     const uint32_t mgr=REX_LOAD_U32(kMgrPtr),z=REX_LOAD_U32(kG+32);
-    if(!mgr||!z)return false;
+    if(!mgr||!z)return no("sin gestor o zdd");
     if(gestor!=mgr||zdd!=z||alta!=g_activa||grupo!=int(r.grupo)) {
       Quitar(ctx,base);gestor=mgr;zdd=z;alta=g_activa;grupo=int(r.grupo);
     }
     std::erase_if(tareas,[&](const Tarea& t){return !EsSolar(base,t.p);});
-    if(tareas.size()>=256)return false;
+    if(tareas.size()>=256)return no("256 tareas");
     bool libre=false;for(unsigned i=0;i<256;++i)if(!REX_LOAD_U32(0x82398940+4*i)){libre=true;break;}
-    if(!libre)return false; // BD448 espera una ranura libre: no llamarlo con el pool lleno.
-    const auto fx=r.Bloque(4);if(!fx.Rango(0,32))return false;
+    if(!libre)return no("pool de tareas lleno"); // BD448 espera una ranura libre: no llamarlo con el pool lleno.
+    const auto fx=r.Bloque(4);if(!fx.Rango(0,32))return no("bloque4 FX corto");
     std::vector<uint8_t> amb(fx.p,fx.p+fx.n);
     const auto amt=pasarela::HijoAmb(amb,0);
     std::array<pasarela::Imagen,2> imgs{pasarela::TexturaAmt(amt,8),pasarela::TexturaAmt(amt,9)};
-    if(!imgs[0]||!imgs[1])return false;
+    if(!imgs[0]||!imgs[1])return no("texturas 8/9 del AMT");
     auto fl=[&](size_t p){const uint32_t x=e.U(p);float f;std::memcpy(&f,&x,4);return f;};
-    for(unsigned i=0;i<20;++i){colores[i]=fl(288+4*i);if(!std::isfinite(colores[i]))return false;}
-    for(unsigned i=0;i<5;++i){escalas[i]=fl(368+4*i);if(!std::isfinite(escalas[i])||escalas[i]<=0)return false;}
+    for(unsigned i=0;i<20;++i){colores[i]=fl(288+4*i);if(!std::isfinite(colores[i]))return no("color no finito");}
+    for(unsigned i=0;i<5;++i){escalas[i]=fl(368+4*i);if(!std::isfinite(escalas[i])||escalas[i]<=0)return no("escala invalida");}
     for(unsigned i=0;i<4;++i) {
       uv[i]={fl(464+16*i),fl(468+16*i)};
-      if(!std::isfinite(uv[i].x)||!std::isfinite(uv[i].y))return false;
+      if(!std::isfinite(uv[i].x)||!std::isfinite(uv[i].y))return no("uv no finito");
     }
     std::array<float,4> posicion;
-    for(unsigned j=0;j<4;++j)if(!std::isfinite(posicion[j]=fl(off+96+4*j)))return false;
-    if(!nombre) {nombre=g_mem?g_mem->SystemHeapAlloc(32,32):0;if(!nombre)return false;
+    for(unsigned j=0;j<4;++j)if(!std::isfinite(posicion[j]=fl(off+96+4*j)))return no("posicion no finita");
+    if(!nombre) {nombre=g_mem?g_mem->SystemHeapAlloc(32,32):0;if(!nombre)return no("sin memoria para el nombre");
       std::memset(base+nombre,0,32);std::memcpy(base+nombre,"B2SOL",5);}
     PPCContext c=ctx;c.r3.u64=0x90000000u;c.r4.u64=nombre;c.r5.u64=0;
     c.r6.u64=0x820c8068;c.r7.u64=0x820c7c68;sub_820BD448(c,base);
-    const uint32_t p=c.r3.u32;if(!p)return false;
+    const uint32_t p=c.r3.u32;if(!p)return no("BD448 sin tarea");
     std::memset(base+p+48,0,128);
     REX_STORE_U32(p+32,(REX_LOAD_U32(p+32)&~15u)|4u);REX_STORE_U32(p+172,marca);
     Tarea t;t.p=p;

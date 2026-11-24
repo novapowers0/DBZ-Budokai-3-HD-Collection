@@ -1,0 +1,11 @@
+# Contents de B1: entrar en el capitulo 4 de Saiyan ("Goku's Quiet Fury": registro 3, Goku contra Nappa) y comprobar que
+# lanza su combate; al acabar vuelve al Contents y abre el siguiente (aqui solo se comprueba la entrada).
+# python tools/pruebas.py correr smoke_a docs/16_pasarela_modos/pruebas/contents_b1_cap.toml
+descripcion = "Pasarela: Contents de B1, entrar en el capitulo 4 de Saiyan"
+env = ["DBZ3_TEST_MISIONES=0,reset,cap=4,auto", "DBZ3_PS2_GAMES=D:/DBZ3HD/ps2_games"]
+pasos = [
+  'log "misiones: contents: capitulo 4 \(" 60',
+  'log "misiones: saga_b1 paso 1/1 \(combate\)" 20',
+  'esperar 1200', 'captura 01_tarjeta_capitulo4',
+  'log "misiones: saga_b1 combate: id " 60',
+]

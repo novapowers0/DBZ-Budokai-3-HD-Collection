@@ -1,0 +1,38 @@
+# S5 / B2F: lado B del A/B. Enciende la escala del IK de suelo por ficha (dbz3_b2_ik_escala_ficha, nueva y
+# apagada de serie) y la tabla pie/mano (ik_b2, de serie). FASE 3: lo ejecuta Z una vez; el carril no abre el juego.
+#   python tools\pruebas.py correr smoke_b "docs\14_frentes\escenarios_pruebas\final\s5-b2-huesos\ik_escala_ficha.toml"
+#
+# Mismo montaje que ik.toml (combate nativo en el alta 17 = Base Red Ribbon B2, motor B2 armado con
+# DBZ3_TEST_ESCENA_VOLCADO=1 + DBZ3_TEST_B2_MOTOR=1, rival quieto y lanzamiento con W + L+P).
+# criterio = el motor B2 arranca ("dbz3 B2 HD: inicio por colision real") y sale "dbz3 B2 IK: escala de modelo
+#            por ficha lado N ficha F x<k> (k <k>)". Con el combate de la fase I (Goku, ficha 0) k debe ser 1,0000.
+#            Cell (ficha 20) daria 1,1000 y Ten/Yamhan (7/37) 1,1025; medirlos necesita una pareja con ese
+#            personaje (PENDIENTE_JUEGO, estados de dsB2).
+#            Banco (sin juego): tools/b2_huesos.py escala -> 35 fichas 1,000000, Cell 1,1000, Ten/Yamhan 1,1025,
+#            15 sin dato 1,0; tools/b2_huesos.py modelo confirma en las trazas Cell 1,1000 y el resto 1,0000.
+# log      = "dbz3 B2 HD: inicio por colision real" / "dbz3 B2 IK: escala de modelo por ficha"
+descripcion = "B2 IK de suelo, lado B del A/B (dbz3_b2_ik_escala_ficha=1) en Base Red Ribbon B2"
+env = [
+  "DBZ3_TEST_BATTLE=0,0,17",
+  "DBZ3_TEST_CFG=dbz3_b2_ik_escala_ficha=true",
+  "DBZ3_TEST_ESCENA_VOLCADO=1",
+  "DBZ3_TEST_B2_MOTOR=1",
+  "DBZ3_COMBATE_MUNECO=quieto",
+  'DBZ3_PS2_GAMES=D:\DBZ3HD\ps2_games',
+]
+pasos = [
+  "esperar_pelea 120",
+  "captura 00_combate",
+  "esperar 2000",
+  "tecla W 1500",
+  "tecla L+P 450",
+  "esperar 1000",
+  "tecla W 800",
+  "tecla L+P 450",
+  "esperar 1000",
+  "tecla W 800",
+  "tecla L+P 450",
+  "log \"dbz3 B2 HD: inicio por colision real\" 90",
+  "log \"dbz3 B2 IK: escala de modelo por ficha\" 60",
+  "captura 01_b2_ik",
+]

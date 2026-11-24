@@ -1,0 +1,31 @@
+descripcion = "modos_mision100: HUB > Mision 100 (pagina 2 del HUB): paginas de misiones, mision 1 con HUD, pantalla de rango, vuelta a las paginas, B al HUB"
+env = ["DBZ3_HUB_MODE=5", "DBZ3_TEST_RINGOUT=1"]
+# MODOS-08: la prueba empieza sin partidas a medias y deja la copia como estaba (pruebas.py, _guion_preparar)
+apartar = ["user_data/dbz3/rpg.toml*", "user_data/dbz3/hub_modos.toml*", "user_data/dbz3/modos", "user_data/dbz3/retos.csv", "user_data/dbz3/hub_heroe.toml*", "user_data/dbz3/pasarela"]
+pasos = [
+  "esperar_pantalla 5 120",
+  "log 'menu principal estado 3' 60",
+  "esperar 3000",
+  "tecla W 1200",
+  "tecla Space 3500",
+  "log 'hub: entra la pantalla HUB' 60",
+  "repetir 10",
+  "tecla S 450",
+  "fin",
+  "captura 00_hub_mision100",
+  "tecla Space 3000",
+  "captura 01_paginas",
+  "tecla Space 3000",
+  "captura 02_tras_elegir",
+  "log 'hub: combate nativo' 120",
+  "esperar 6000",
+  "captura 03_combate_hud",
+  "log 'rival fuera del ring' 90",
+  "log 'hub: fin del combate nativo' 60",
+  "esperar 5000",
+  "captura 04_resultado",
+  "tecla Space 3000",
+  "captura 05_paginas_tras",
+  "tecla Backspace 3000",
+  "captura 06_tras_B",
+]

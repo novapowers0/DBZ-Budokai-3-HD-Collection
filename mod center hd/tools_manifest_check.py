@@ -25,7 +25,7 @@ def load_manifest(path: Path) -> dict:
     return data
 
 
-def validate(manifest_path: Path, data: dict) -> list[str]:
+def validate(manifest_path: Path, data: dict, package: bool = False) -> list[str]:
     errors: list[str] = []
     categories = data.get("categories")
     if not isinstance(categories, dict):
@@ -50,7 +50,17 @@ def validate(manifest_path: Path, data: dict) -> list[str]:
 
             relative = entry.get("path")
             if not isinstance(relative, str) or not relative:
+                errors.append(f"{prefix}.path must be a non-empty string")
                 continue
+            if "package_path" in entry:
+                package_path = entry["package_path"]
+                if package_path is not None and (not isinstance(package_path, str) or not package_path):
+                    errors.append(f"{prefix}.package_path must be a non-empty string or null")
+                    continue
+                if package:
+                    if package_path is None:
+                        continue
+                    relative = package_path
             target = (manifest_path.parent / relative).resolve()
             if not target.exists():
                 errors.append(f"{prefix} path does not exist: {relative}")
@@ -66,6 +76,8 @@ def main() -> int:
         type=Path,
         default=Path(__file__).with_name("tools_manifest.json"),
     )
+    parser.add_argument("--package", action="store_true",
+                        help="validate shipped paths; null package_path entries are repository-only")
     args = parser.parse_args()
 
     try:
@@ -74,14 +86,15 @@ def main() -> int:
         print(f"ERROR: {error}", file=sys.stderr)
         return 2
 
-    errors = validate(args.manifest, data)
+    errors = validate(args.manifest, data, package=args.package)
     if errors:
         for error in errors:
             print(f"ERROR: {error}")
         return 1
 
     entries = sum(len(data["categories"][category]) for category in REQUIRED_CATEGORIES)
-    print(f"OK: {args.manifest} ({entries} entries, metadata and paths valid)")
+    scope = "package" if args.package else "repository"
+    print(f"OK: {args.manifest} ({entries} entries, {scope} metadata and paths valid)")
     return 0
 
 

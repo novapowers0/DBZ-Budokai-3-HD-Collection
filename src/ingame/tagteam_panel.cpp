@@ -62,6 +62,8 @@ bool OverlayOpen();
 }
 
 REXCVAR_DEFINE_BOOL(dbz3_form_select_enabled, true, "DBZ3/Mods", "LT/RT starting-form selector at character select (beta)");
+REXCVAR_DEFINE_BOOL(dbz3_tag_coop, false, "DBZ3/Mods",
+                    "Tag Team cooperativo: dos mandos en el mismo equipo (cada uno lleva a su luchador) | Tag Team co-op: two controllers on the same team");
 
 namespace dbz3::ingame {
 bool Online();
@@ -84,7 +86,7 @@ std::atomic<bool> g_pad_pending{false};
 // a la rueda con Y), Y quita el ultimo, START cierra el equipo (el piloto confirma la casilla y el
 // juego sigue; al empezar, tagteam_slots.cpp cambia ese personaje por el equipo).
 std::atomic<bool> g_team_mode{false};
-std::atomic<int> g_mode{0};          // 0 1P VS COM, 1 1P VS 2P, 2 COM VS COM
+std::atomic<int> g_mode{0};          // 0 1P VS COM, 1 1P VS 2P, 2 COM VS COM, 3 2P cooperativo
 std::atomic<int> g_format{2};        // 0 2 VS 1, 1 1 VS 2, 2 2 VS 2, 3 3 VS 3
 std::atomic<bool> g_after_battle{false};
 std::mutex g_mu;
@@ -136,6 +138,9 @@ double Now() {
 
 // Miembros que elige el lado (1 = un personaje normal, sin tira).
 int Need(int side) {
+  // PRUEBAS: DBZ3_TAG_TEST_PICKS=N deja N elecciones por lado en la rueda (el equipo real lo pone
+  // DBZ3_TAG_TEST/DBZ3_TAG_TEST2 al empezar). Evita guiones ciegos largos en los escenarios finales.
+  if (const char* e = std::getenv("DBZ3_TAG_TEST_PICKS")) return std::max(1, std::atoi(e));
   switch (g_format.load()) {
     case 0: return side == 0 ? 2 : 1;
     case 1: return side == 0 ? 1 : 2;
@@ -676,7 +681,10 @@ void DrawFormPick(ImGuiIO& io, bool team) {
     char text[160];
     if (state.requested == 0 && result.applied == 0) {
       std::snprintf(text, sizeof(text), "%s", T::T("Normal", "Normal"));
-    } else if (state.requested == result.applied) {
+    } else if (state.requested == result.applied || result.reason == forms::Reason::kCapsule) {
+      // canal 11/11 ("missing capsule" al pasar por personajes): en la rueda aun no se ha elegido el juego de
+      // capsulas (Normal/Custom va despues) y la lista leida es la de la ficha, que en las plazas de pagina es la
+      // de otro personaje. El combate decide con el juego elegido (tagteam_slots.cpp, rec+52): no anunciar "> 0".
       std::snprintf(text, sizeof(text), "%s %d", T::T("Forma", "Form"), state.requested);
     } else {
       std::snprintf(text, sizeof(text), "%s %d > %d", T::T("Forma", "Form"), state.requested, result.applied);
@@ -685,7 +693,7 @@ void DrawFormPick(ImGuiIO& io, bool team) {
     // excluyentes: forms::Availability devuelve kOk justo cuando no hay motivo.
     char info[96] = "";
     if (result.reason == forms::Reason::kCapsule) {
-      std::snprintf(info, sizeof(info), "%s %d", T::T("Sin cápsula", "Missing capsule"), result.capsule);
+      std::snprintf(info, sizeof(info), "%s", T::T("Equipa su cápsula", "Equip its capsule"));
     } else if (result.reason == forms::Reason::kSpecial) {
       std::snprintf(info, sizeof(info), "%s", T::T("No al inicio", "Not at start"));
     } else if (result.reason == forms::Reason::kCapsuleData) {
@@ -799,14 +807,18 @@ void TagTeamPanel::DrawMenu(ImGuiIO& io, uint16_t pressed) {
     if (g_pad.load() == 0 && Now() - g_opened_at.load() > 0.3) wait_release_ = false;
     pressed = 0;
   }
-  const char* rows[] = {"1P VS COM", "1P VS 2P", "COM VS COM"};
+  const bool coop_on = REXCVAR_GET(dbz3_tag_coop);
+  const char* rows[] = {"1P VS COM", "1P VS 2P", "COM VS COM", "2P COOP"};
   const char* help[] = {
       T::T("Tu equipo contra el del ordenador. Eliges los dos equipos en la rueda de personajes.",
            "Your team against the computer's. You pick both teams on the character wheel."),
       T::T("Dos jugadores, cada uno elige su equipo en la rueda.", "Two players, each picks a team on the wheel."),
-      T::T("Mira un combate entre dos equipos que eliges tu.", "Watch two teams of your choice fight.")};
-  constexpr int kRows = 3;
+      T::T("Mira un combate entre dos equipos que eliges tu.", "Watch two teams of your choice fight."),
+      T::T("Dos mandos en el mismo equipo contra el ordenador: cada uno lleva a su luchador y SELECT releva.",
+           "Two controllers on the same team against the computer: each one controls their fighter and SELECT switches.")};
+  const int kRows = coop_on ? 4 : 3;
   constexpr uint16_t kLeft = 0x0004, kRight = 0x0008, kLb = 0x0100, kRb = 0x0200;
+  if (row_ >= kRows) row_ = 0;   // el ajuste del coop se puede apagar entre visitas
   if (pressed & kLb) g_presupuesto = (g_presupuesto.load() + kNumPresupuestos - 1) % kNumPresupuestos;
   if (pressed & kRb) g_presupuesto = (g_presupuesto.load() + 1) % kNumPresupuestos;
   if (pressed & kUp) row_ = (row_ + kRows - 1) % kRows;
@@ -814,8 +826,8 @@ void TagTeamPanel::DrawMenu(ImGuiIO& io, uint16_t pressed) {
   if (pressed & kLeft) g_format = (g_format.load() + kNumFormats - 1) % kNumFormats;
   if (pressed & kRight) g_format = (g_format.load() + 1) % kNumFormats;
   if (pressed & (kB | kY)) g_wanted = false;
-  // 1P VS 2P sale en gris en el Duelo sin mando 2: el piloto pulsaria A sin fin (2026-10-12)
-  const bool no_pad2 = row_ == 1 && !Pad2Connected();
+  // 1P VS 2P (y el cooperativo) salen en gris en el Duelo sin mando 2: el piloto pulsaria A sin fin
+  const bool no_pad2 = (row_ == 1 || row_ == 3) && !Pad2Connected();
   if (no_pad2) pressed &= uint16_t(~kA);
   if (pressed & kA) {
     g_wanted = false;
@@ -828,10 +840,12 @@ void TagTeamPanel::DrawMenu(ImGuiIO& io, uint16_t pressed) {
     dbz3::tag::ClearDynamicTeams();
     g_mode = row_;
     dbz3::tag::SetComSide(0, row_ == 2);   // 1P VS COM: el lado 2; COM VS COM: los dos
-    dbz3::tag::SetComSide(1, row_ != 1);
+    dbz3::tag::SetComSide(1, row_ != 1 && row_ != 3);
+    dbz3::tag::SetCoop(row_ == 3);         // TAG05: los dos mandos llevan el equipo del lado 1
     g_team_mode = true;
     g_after_battle = false;
-    const int duel_row = row_ == 0 ? 0 : row_ == 1 ? 1 : 3;   // Duelo: 1P VS COM, 1P VS 2P, COM VS 2P, COM VS COM
+    // Duelo: 1P VS COM, 1P VS 2P, COM VS 2P, COM VS COM. El cooperativo usa 1P VS COM (rival con IA).
+    const int duel_row = row_ == 0 ? 0 : row_ == 1 ? 1 : row_ == 2 ? 3 : 0;
     g_native_path = dbz3::tag::NativeEnter(duel_row);
     if (g_native_path.load()) {
       g_entering_at = Now();
@@ -849,20 +863,23 @@ void TagTeamPanel::DrawMenu(ImGuiIO& io, uint16_t pressed) {
   const float t = float(dbz3::RelojT(ImGui::GetTime()));
   // el anfitrion de la izquierda habla en las filas 1 y 3, la de la derecha en la 2 (el pico va hacia quien habla)
   const bool right = row_ == 1;
-  S::Backdrop(dl, a, "fondo_duelo");
+  // HUECOS (11/11): fondo propio del modo si un pack lo trae (pack_hub: ui_ingame/hub/fondo_tagteam); sin el, el del Duelo
+  S::Backdrop(dl, a, S::Img("hub/fondo_tagteam") ? "hub/fondo_tagteam" : "fondo_duelo");
   S::Host(dl, a, "anfitrion_tagteam_a", -68, 262, false);   // donde esta en el Duelo (medido)
   S::Host(dl, a, "anfitrion_tagteam_b", 800, 540, true);
   S::Sides(dl, a);
-  S::Banner(dl, a, "Tag Team", "titulo_tagteam");
+  if (S::Img("beta")) S::BannerBeta(dl, a, "Tag Team", "titulo_tagteam");
+  else S::Banner(dl, a, "Tag Team (BETA)");
   const ImVec2 f0 = a.At(330, 170), f1 = a.At(870, 170 + 82 * kRows + 20);
   S::Frame(dl, f0, f1, a.s);
   // las filas son las del Duelo (data_usi 2055, "filas_vs"): 1P VS COM, 1P VS 2P y COM VS COM
   const S::Pic native_rows = S::Img("filas_vs");
-  constexpr ImVec4 kRowSrc[] = {ImVec4(52, 9, 338, 54), ImVec4(53, 69, 297, 114), ImVec4(3, 189, 339, 234)};
+  constexpr ImVec4 kRowSrc[] = {ImVec4(52, 9, 338, 54), ImVec4(53, 69, 297, 114), ImVec4(3, 189, 339, 234),
+                                ImVec4(53, 69, 297, 114)};   // 2P COOP reusa el rotulo de 1P VS 2P
   for (int i = 0; i < kRows; ++i) {
     const ImVec2 r0(f0.x, f0.y + (10 + 82 * i) * a.s), r1(f1.x, r0.y + 80 * a.s);
     const ImVec2 c((r0.x + r1.x) * 0.5f, (r0.y + r1.y) * 0.5f);
-    const bool disabled = i == 1 && !Pad2Connected();
+    const bool disabled = (i == 1 || i == 3) && !Pad2Connected();
     if (i == row_ && !disabled) S::Highlight(dl, r0, r1, t);
     if (native_rows) {
       const ImVec4 src = kRowSrc[i];
@@ -1088,6 +1105,7 @@ void TagTeamPanel::OnDraw(ImGuiIO& io) {
       dbz3::tag::ClearDynamicTeams();
       dbz3::tag::SetComSide(0, false);
       dbz3::tag::SetComSide(1, false);
+      dbz3::tag::SetCoop(false);
     } else if (g_after_battle.load() && dbz3_select_live()) {
       g_after_battle = false;              // otra eleccion tras el combate: equipos nuevos
       std::lock_guard<std::mutex> lock(g_mu);

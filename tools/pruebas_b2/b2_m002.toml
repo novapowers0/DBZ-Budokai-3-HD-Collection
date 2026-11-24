@@ -1,0 +1,8 @@
+descripcion = "PM-22/D3: viñeta M002 de la siembra de la fase I"
+turbo = false
+env = ["DBZ3_TEST_MISIONES=1,auto,reset", "DBZ3_PS2_GAMES=D:/DBZ3HD/ps2_games"]
+pasos = [
+  "log \"escena M208: charla\" 300",
+  "esperar 400",
+  "captura m002"
+]

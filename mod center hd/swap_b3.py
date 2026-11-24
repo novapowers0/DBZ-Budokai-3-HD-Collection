@@ -30,7 +30,6 @@ Uso:
 import argparse
 import os
 import struct
-import subprocess
 import sys
 import tempfile
 
@@ -38,104 +37,24 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, '..'))
 
 
-def _first_existing(*paths):
-    for p in paths:
-        if os.path.exists(p):
-            return p
-    return paths[0]
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
+# rutas, xbcompress, us/ del Budokai 3 HD, LZX e indice AFS: kit/base.py (los nombres de siempre, como alias)
+from kit import base  # noqa: E402
+from kit.base import (CMN_ENTRIES, LZX_MAGIC, TOOLS_DIR, XBCOMPRESS, XBDECOMPRESS, build_afs,  # noqa: E402,F401
+                      cmn_problem, extract_afs_entry, lzx_compress, lzx_decompress, read_afs_index)
 
-
-# Ruta del xbcompress / xbdecompress (XDK). Se busca en varios sitios para que
-# el script funcione tanto desde el repo de desarrollo como desde el paquete de
-# release standalone (donde las tools viven junto al script).
-TOOLS_DIR = _first_existing(
-    os.path.join(HERE, 'tools'),
-    os.path.join(HERE, '..', 'mod center',
-                 'Xbox 360 Compression - Decompression tool '
-                 'from the XBOX Development Kit'),
-    os.path.join(HERE, '..', 'tools'),
-)
-XBCOMPRESS = os.path.join(TOOLS_DIR, 'xbcompress.exe')
-XBDECOMPRESS = os.path.join(TOOLS_DIR, 'xbdecompress.exe')
-
-# ------------------------------------------------ data_cmn.afs del Budokai 3 HD (Xbox 360)
-# Antes se cogia el primer us/data_cmn.afs que existiera junto al Kit, fuera cual fuera: un jugador
-# con otro data_cmn.afs (Infinite World: 1136 entradas; Budokai 1; uno cortado) veia
-# "IndexError: list index out of range" en la vista previa. El de PS2 (Budokai 3 GH) tambien tiene
-# 3990 entradas, pero sin LZX (#AMB de PS2): se distingue por la entrada 0.
-CMN_ENTRIES = 3990          # US y EU: las mismas 3990 entradas
-LZX_MAGIC = b'\x0f\xf5\x12\xee'
-_LAYOUTS = ('us', os.path.join('DBZ3', 'us'), os.path.join('assets', 'us'), os.path.join('assets', 'DBZ3', 'us'))
+_first_existing = base.first_existing
+_clean_env = base.clean_env
+_launcher_cfg = base.launcher_cfg
+_LAYOUTS = base.LAYOUTS
 B3_AFS_NAMES = ('data_cmn.afs', 'data_usi.afs', 'data_eng.afs', 'data_spn.afs', 'data_fra.afs', 'data_ger.afs',
                 'data_ita.afs', 'data_yah.afs', 'lang_usa.afs', 'lang_jpn.afs', 'adx_usa.afs', 'adx_jpn.afs')
 
 
-def cmn_problem(path):
-    """None si `path` es el data_cmn.afs del Budokai 3 HD; si no, (clave del motivo, detalle)."""
-    try:
-        with open(path, 'rb') as f:
-            head = f.read(16)
-            if head[:3] != b'AFS' or len(head) < 16:
-                return 'not_afs', path
-            count = struct.unpack('<I', head[4:8])[0]
-            if count < CMN_ENTRIES:
-                return 'few', '%s (%d / %d)' % (path, count, CMN_ENTRIES)
-            addr = struct.unpack('<I', head[8:12])[0]
-            f.seek(addr)
-            first = f.read(4)
-    except OSError:
-        return 'missing', path
-    if first != LZX_MAGIC:
-        return 'ps2', path          # entradas sin comprimir: data_cmn de PS2 / otro juego
-    return None
-
-
-def _launcher_cfg(roots):
-    """(carpeta de datos elegida en el launcher, region) de dbz3_user.toml junto al exe."""
-    for r in roots:
-        try:
-            with open(os.path.join(r, 'dbz3_user.toml'), encoding='utf-8', errors='replace') as fh:
-                text = fh.read()
-        except OSError:
-            continue
-        import re  # noqa: PLC0415
-        # "..." (barras dobladas) o '...' (literal: asi lo guarda el launcher)
-        m = re.search(r'''(?m)^\s*dbz3_game_dir\s*=\s*(["'])(.*)\1\s*$''', text)
-        reg = re.search(r'''(?m)^\s*dbz3_region\s*=\s*["'](\w+)["']''', text)
-        game = '' if not m else m.group(2).replace('\\\\', '\\') if m.group(1) == '"' else m.group(2)
-        return game, (reg.group(1) if reg else 'us')
-    return '', 'us'
-
-
 def find_us(prefer=None, roots=()):
-    """Carpeta us/ (o eu/) con el data_cmn.afs del Budokai 3 HD, o None. Orden: `prefer`, la carpeta
-    de datos del launcher (dbz3_game_dir), `roots` y la carpeta del Kit, subiendo hasta 4 niveles;
-    en cada una us, DBZ3/us (volcado del disco), assets/us, assets/DBZ3/us y sus eu."""
-    exe_dirs = [r for r in roots if r] + [ROOT, os.path.join(ROOT, 'out', 'build', 'win-amd64-release')]
-    # si la carpeta del juego no deja escribir, el launcher guarda dbz3_user.toml en Documentos\dbz3 (UserSettingsPath)
-    # (UserDataRoot: <juego>\user_data\dbz3 o la carpeta del usuario\dbz3)
-    home = os.path.expanduser('~')
-    game_dir, region = _launcher_cfg(exe_dirs + [os.path.join(r, 'user_data', 'dbz3') for r in exe_dirs] +
-                                     [os.path.join(home, 'Documents', 'dbz3'), os.path.join(home, 'dbz3')])
-    eu = [l.replace('us', 'eu') for l in _LAYOUTS]
-    layouts = eu + list(_LAYOUTS) if region == 'eu' else list(_LAYOUTS) + eu
-    seen = []
-    if prefer:
-        seen.append(prefer)
-    for r in [game_dir] + exe_dirs:
-        probe = r
-        for _ in range(4):
-            if not probe:
-                break
-            seen += [os.path.join(probe, l) for l in layouts]
-            parent = os.path.dirname(probe)
-            if parent == probe:
-                break
-            probe = parent
-    for d in seen:
-        if cmn_problem(os.path.join(d, 'data_cmn.afs')) is None:
-            return os.path.abspath(d)
-    return None
+    """base.find_us desde la carpeta del Kit (ROOT; el selftest la cambia)."""
+    return base.find_us(prefer, roots, ROOT)
 
 
 _MSG = {
@@ -235,117 +154,6 @@ _WARNED = set()
 DEFAULT_AFS = os.path.join(find_us() or _first_existing(
     os.path.join(ROOT, 'assets', 'us'), os.path.join(ROOT, 'us'),
     os.path.join(ROOT, 'assets', 'eu'), os.path.join(ROOT, 'eu')), 'data_cmn.afs')
-
-
-def _clean_env(workdir):
-    """Entorno para subprocesos externos con TEMP/TMP a una ruta valida.
-    El launcher hereda a veces un TEMP invalido, lo que rompe xbcompress/
-    xbdecompress (no pueden crear su propio temporal)."""
-    env = dict(os.environ)
-    env['TEMP'] = workdir
-    env['TMP'] = workdir
-    return env
-
-
-def lzx_compress(src, dst, workdir=None):
-    if os.path.exists(dst):
-        os.remove(dst)
-    env = _clean_env(workdir) if workdir else None
-    r = subprocess.run([XBCOMPRESS, '/N:2048', src, dst],
-                       capture_output=True, text=True, env=env)
-    if r.returncode != 0:
-        raise RuntimeError('xbcompress fallo: %s' % r.stdout + r.stderr)
-    return os.path.getsize(dst)
-
-
-def lzx_decompress(src, dst, workdir=None):
-    if os.path.exists(dst):
-        os.remove(dst)
-    env = _clean_env(workdir) if workdir else None
-    r = subprocess.run([XBDECOMPRESS, src, dst], capture_output=True, text=True,
-                       env=env)
-    if r.returncode != 0:
-        raise RuntimeError('xbdecompress fallo: %s' % r.stdout + r.stderr)
-    return os.path.getsize(dst)
-
-
-def read_afs_index(afs_path):
-    # El runtime (rexglue-sdk/src/filesystem/afs.cpp) lee la tabla en offset 8:
-    #   offset 0: magic "AFS" (3B) + padding (1B)
-    #   offset 4: count (uint32)
-    #   offset 8: tabla de (addr uint32, size uint32) -- 8 bytes por entrada
-    # Nota: leer la tabla en 0x10 producia un desfase de 1 entrada (off-by-one)
-    # que extraia bins de la entrada equivocada y provocaba crashes al servir
-    # el override (p.ej. tex_91 -> bin 92 en el slot 91). Corregido a offset 8.
-    with open(afs_path, 'rb') as f:
-        head = f.read(0x10)
-    if head[:3] != b'AFS':
-        raise RuntimeError('no es un AFS: %r' % head[:4])
-    count = struct.unpack('<I', head[4:8])[0]
-    entries = []
-    with open(afs_path, 'rb') as f:
-        f.seek(8)
-        for _ in range(count):
-            raw = f.read(8)
-            addr, size = struct.unpack('<II', raw)
-            entries.append((addr, size))
-    return entries
-
-
-def extract_afs_entry(afs_path, idx):
-    entries = read_afs_index(afs_path)
-    addr, size = entries[idx]
-    with open(afs_path, 'rb') as f:
-        f.seek(addr)
-        return f.read(size)
-
-
-def build_afs(afs_orig, idx, new_bin, out_path):
-    """Reconstruye el AFS con el bin nuevo en el slot idx (mid-insert).
-
-    Replica build_afs.py del awo_tools (mismo metodo validado):
-      - entrada idx mantiene su loc, el bin crece en su lugar
-      - entradas posteriores se desplazan por delta (multiplo 0x800)
-    """
-    afs = open(afs_orig, 'rb').read()
-    n = struct.unpack('<I', afs[4:8])[0]
-    base = 8  # tabla AFS en offset 8 (igual que el runtime)
-    first_data = struct.unpack('<I', afs[base:base + 4])[0]
-    old_loc = struct.unpack('<I', afs[base + idx * 8:base + idx * 8 + 4])[0]
-    old_sz = struct.unpack('<I', afs[base + idx * 8 + 4:base + idx * 8 + 8])[0]
-
-    delta_raw = len(new_bin) - old_sz
-    delta = ((delta_raw + 0x7FF) & ~0x7FF) if delta_raw > 0 else 0
-    print('AFS: %d entradas, header real=0x%X' % (n, first_data))
-    print('Entrada %d: loc=0x%X size=%d -> nuevo bin %d bytes (delta %+d)' % (
-        idx, old_loc, old_sz, len(new_bin), delta))
-
-    # Tabla A ajustada.
-    table_a = bytearray()
-    for i in range(n):
-        loc = struct.unpack('<I', afs[base + i * 8:base + i * 8 + 4])[0]
-        sz = struct.unpack('<I', afs[base + i * 8 + 4:base + i * 8 + 8])[0]
-        if i == idx:
-            sz = len(new_bin)
-        elif i > idx and loc != 0:
-            loc += delta
-        table_a += struct.pack('<II', loc, sz)
-
-    out_b = bytearray()
-    out_b += afs[:base]
-    out_b += table_a
-    out_b += afs[base + n * 8:first_data]
-    assert len(out_b) == first_data, 'header size mismatch'
-
-    out_b += afs[first_data:old_loc]
-    out_b += new_bin
-    if delta_raw > 0:
-        out_b += bytes(delta - delta_raw)
-    out_b += afs[old_loc + old_sz:]
-
-    with open(out_path, 'wb') as f:
-        f.write(bytes(out_b))
-    print('AFS reconstruido: %d bytes -> %s' % (len(out_b), out_path))
 
 
 def labels_of_amb(amb):

@@ -1,0 +1,53 @@
+# S7 / TAG01 (+ TAG04 TIME UP): Tag Team 3 VS 3 con relevos automaticos y precarga del companero.
+# FASE 3: lo deja escrito el carril S7; lo ejecuta Z una sola vez.
+#   python tools\pruebas.py correr smoke_a "docs\14_frentes\escenarios_pruebas\final\s7-tag-team\tag_time_3v3.toml"
+#
+# clave    = TAG01 (tirones al relevar) y la parte de TIME UP de TAG04
+# cvar     = dbz3_tag_precarga=true (NUEVA, APAGADA de serie; tagteam.cpp) y dbz3_tag_trace=true (diagnostico)
+# criterio = 20+ relevos; el banco tools\s7_tag_bench.py sobre el dbz3.log exige maximo de "ticks de carga"
+#            <= 2x la mediana (y lo mismo con max_frame_ms de la linea perf). TIME UP acaba el combate sin cierre.
+# log      = "relevo .* -> " (x20), "tag: prueba TAG04: tiempo agotado forzado", "tag: combate acabado ... motivo 3"
+#
+# DBZ3_TAG_TEST_PICKS=1: una eleccion por lado en la rueda; el equipo real lo pone DBZ3_TAG_TEST/2 (evita un
+# guion ciego de 2+2 elecciones). DBZ3_TAG_AUTOSWAP=120: los dos lados relevan cada 2 s (unos 30 relevos en 30 s).
+descripcion = "Tag Team 3v3: relevos automaticos con dbz3_tag_precarga (TAG01) y fin por tiempo (TAG04)"
+env = [
+  "DBZ3_TAG_TEST_PICKS=1",
+  "DBZ3_TAG_TEST=0,2,4",
+  "DBZ3_TAG_TEST2=7,10,13",
+  "DBZ3_TAG_AUTOSWAP=120",
+  "DBZ3_TEST_TAGTIME=30",
+  "DBZ3_TEST_CFG=dbz3_tag_precarga=true;dbz3_tag_trace=true;dbz3_combate_prueba_muneco=\"quieto\"",
+]
+pasos = [
+  "esperar 2500",
+  "tecla L 3000",
+  "captura a_panel",
+  "tecla Space 12000",
+  "captura b_rueda",
+  "tecla Space 4000",
+  "log \"menu de capsulas del jugador 1 abierto\" 30",
+  "esperar 1000",
+  "tecla Space 4000",
+  "tecla S 2000",
+  "tecla Space 4000",
+  "log \"menu de capsulas del jugador 2 abierto\" 30",
+  "esperar 1000",
+  "tecla Space 4000",
+  "captura c_equipos",
+  "tecla Space 6000",
+  "tecla Space 6000",
+  "tecla Space 3000",
+  "tecla Space 3000",
+  "tecla Space 3000",
+  "log \"tag: empieza un combate\" 60",
+  "esperar 6000",
+  "captura d_combate",
+  "log \"relevo .* -> \" 30",
+  "esperar 20000",
+  "captura e_relevos",
+  "log \"tag: prueba TAG04: tiempo agotado forzado\" 60",
+  "esperar 3000",
+  "log \"tag: combate acabado\" 30",
+  "captura f_fin",
+]

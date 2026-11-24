@@ -6,6 +6,7 @@ Los dos rename NO son una transacción atómica; el diario identifica el interva
 """
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import json
 import os
@@ -13,21 +14,74 @@ from pathlib import Path
 import uuid
 
 
-def fingerprint(root):
+def _firma(st):
+    """Lo que tiene que seguir igual para fiarse de una huella guardada."""
+    return [st.st_size, st.st_mtime_ns, st.st_ino]
+
+
+def _sha256(p, firmas, rel):
+    h = hashlib.sha256()
+    with p.open("rb") as stream:
+        if firmas is not None:
+            firmas[rel] = _firma(os.fstat(stream.fileno()))   # antes de leer
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def fingerprint(root, reuse=None, firmas=None):
+    """{ruta: sha256}. `reuse` = {ruta: [tamano, mtime_ns, ino, sha256]} de un montaje anterior:
+    solo se reutiliza si las tres primeras siguen iguales; si no, se lee el archivo. `firmas` (dict)
+    recibe la firma de cada archivo leido. Lee en varios hilos: casi todo es esperar al disco."""
     root = Path(root)
     if root.is_symlink():
         raise ValueError("No publicar enlaces")
-    out = {}
+    out, todo = {}, []
     for p in sorted(root.rglob("*")):
         if p.is_symlink() or (hasattr(p, "is_junction") and p.is_junction()):
             raise ValueError("No publicar enlaces/junctions")
         if p.is_file():
-            h = hashlib.sha256()
-            with p.open("rb") as stream:
-                for block in iter(lambda: stream.read(1024 * 1024), b""):
-                    h.update(block)
-            out[p.relative_to(root).as_posix()] = h.hexdigest()
+            rel = p.relative_to(root).as_posix()
+            old = reuse.get(rel) if reuse else None
+            out[rel] = old[3] if old and old[:3] == _firma(p.stat()) else None
+            if out[rel] is None:
+                todo.append((p, rel))
+    with ThreadPoolExecutor(8) as pool:
+        for (p, rel), h in zip(todo, pool.map(lambda t: _sha256(t[0], firmas, t[1]), todo)):
+            out[rel] = h
     return out
+
+
+def _leer_huellas(path, target):
+    """Indice de huellas del ultimo publicado, o None si falta, esta roto o es de otro destino."""
+    try:
+        doc = json.loads(Path(path).read_text(encoding="utf-8"))
+        if doc.get("target") != str(target) or not isinstance(doc.get("files"), dict):
+            return None
+        return {k: v for k, v in doc["files"].items()
+                if isinstance(v, list) and len(v) == 4 and all(isinstance(n, int) for n in v[:3])
+                and isinstance(v[3], str) and len(v[3]) == 64}
+    except (OSError, ValueError, AttributeError):
+        return None
+
+
+def _guardar_huellas(path, target, hashes, firmas):
+    """Guarda {ruta: firma + huella} del arbol recien publicado (fuera de el: no cambia el _roster).
+    Si un archivo cambio desde que se leyo (firma distinta), no entra: la proxima vez se relee."""
+    files = {}
+    for rel, h in hashes.items():
+        try:
+            st = (Path(target) / rel).stat()
+        except OSError:
+            continue
+        if firmas.get(rel) == _firma(st):
+            files[rel] = _firma(st) + [h]
+    tmp = Path("%s.%d.tmp" % (path, os.getpid()))
+    try:
+        tmp.write_text(json.dumps(dict(target=str(target), files=files)), encoding="utf-8")
+        os.replace(tmp, path)
+    except OSError:
+        pass   # sin indice: el proximo montaje calcula las huellas como antes
 
 
 def _leer_owner(lock):
@@ -108,17 +162,39 @@ class TreePublish:
             stream.flush()
             os.fsync(stream.fileno())
 
-    def commit(self, validate):
+    def _confirmar(self, estado, reparto, **extra):
+        self.state = estado
+        self.reparto_confirmado = reparto is not None
+        try:
+            self.record(**extra)
+        except OSError as exc:
+            if not self.reparto_confirmado:
+                raise
+            self._avisar_confirmado(exc)
+
+    def _avisar_confirmado(self, exc):
+        try:
+            print("aviso: plantel y reparto confirmados; diario/lock pendiente (%s): %s" % (self.run, exc))
+        except OSError:
+            pass
+
+    def commit(self, validate, reparto=None):
+        # reparto: última escritura esencial, con os.replace como último paso.
         if self.closed or self.state != "preparado":
             raise ValueError("Publicación ya terminada o pendiente de recuperación")
         validate(self.stage)  # antes de mover el original
-        stage_hashes = fingerprint(self.stage)
+        # Indice de huellas del publicado (DBZ3_ROSTER_SIN_CACHE=1 lo apaga): el arbol viejo no se relee.
+        indice = os.environ.get("DBZ3_ROSTER_SIN_CACHE") != "1"
+        huellas = self.store / (self.target.name + ".huellas.json")
+        firmas = {}
+        stage_hashes = fingerprint(self.stage, firmas=firmas)
         if not stage_hashes:
             raise ValueError("No publicar árbol vacío")
-        old_hashes = fingerprint(self.target) if self.target.exists() else {}
+        old_hashes = (fingerprint(self.target, _leer_huellas(huellas, self.target) if indice else None)
+                      if self.target.exists() else {})
         self.state = "validado"
         self.record(new=stage_hashes, old=old_hashes)
-        moved = False
+        moved = publicado = False
         try:
             if self.target.exists():
                 os.rename(self.target, self.backup)
@@ -126,20 +202,32 @@ class TreePublish:
             self.state = "anterior_apartado"
             self.record()
             os.rename(self.stage, self.target)
-        except OSError:
+            publicado = True
+            if reparto is not None:
+                reparto()
+        except (Exception, SystemExit) as exc:
+            if reparto is None and not isinstance(exc, OSError):
+                raise
+            if publicado:
+                self.state = "recuperacion_pendiente"
+                os.rename(self.target, self.stage)
             if moved and not self.target.exists():
                 os.rename(self.backup, self.target)
+                self.state = "restaurado"
+                self.record()
+            elif publicado and not moved and not self.target.exists():
                 self.state = "restaurado"
                 self.record()
             else:
                 self.state = "recuperacion_pendiente"
                 self.record()
             raise
-        self.state = "confirmado"
-        self.record()
+        self._confirmar("confirmado", reparto)
+        if indice:
+            _guardar_huellas(huellas, self.target, stage_hashes, firmas)
         return str(self.backup) if moved else None
 
-    def retire(self):
+    def retire(self, reparto=None):
         """Desactivar el generado cuando ya no hay fuentes; conservarlo fuera de mods."""
         if self.closed or self.state != "preparado":
             raise ValueError("Retirada ya terminada o pendiente")
@@ -148,8 +236,15 @@ class TreePublish:
             self.state = "retirada_validada"
             self.record(old=old, action="retire")
             os.rename(self.target, self.backup)
-            self.state = "retirado"
-            self.record(old=old, action="retire")
+            if reparto is not None:
+                try:
+                    reparto()
+                except (Exception, SystemExit):
+                    os.rename(self.backup, self.target)
+                    self.state = "restaurado"
+                    self.record()
+                    raise
+            self._confirmar("retirado", reparto, old=old, action="retire")
 
     def finish(self):
         if self.closed:
@@ -157,8 +252,14 @@ class TreePublish:
         # Una recuperación incompleta mantiene el lock, no oculta el problema.
         if self.state in ("anterior_apartado", "recuperacion_pendiente", "validado", "retirada_validada"):
             return
-        os.rename(self.lock, self.run / "lock_finalizado")
-        self.closed = True
+        try:
+            os.rename(self.lock, self.run / "lock_finalizado")
+        except OSError as exc:
+            if not getattr(self, "reparto_confirmado", False):
+                raise
+            self._avisar_confirmado(exc)
+        else:
+            self.closed = True
 
 
 def validate_roster(stage):

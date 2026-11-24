@@ -17,19 +17,11 @@ import argparse
 import hashlib
 import os
 import struct
-import subprocess
 import sys
 import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, '..'))
-
-
-def _first_existing(*paths):
-    for p in paths:
-        if os.path.exists(p):
-            return p
-    return paths[0]
 
 
 def _valid_custom_dir(path):
@@ -48,23 +40,18 @@ def _valid_custom_dir(path):
     return True
 
 
-# Ruta del xbcompress / xbdecompress (XDK). Funciona tanto desde el repo de
-# desarrollo como desde el paquete de release standalone (tools junto al script).
-TOOLS_DIR = _first_existing(
-    os.path.join(HERE, 'tools'),
-    os.path.join(HERE, '..', 'mod center',
-                 'Xbox 360 Compression - Decompression tool '
-                 'from the XBOX Development Kit'),
-    os.path.join(HERE, '..', 'tools'),
-)
-XBCOMPRESS = os.path.join(TOOLS_DIR, 'xbcompress.exe')
-XBDECOMPRESS = os.path.join(TOOLS_DIR, 'xbdecompress.exe')
-
 # AFS del B3 (modelos): la misma deteccion validada que swap_b3 (antes solo assets/us y us, sin
 # comprobar que fuera el data_cmn.afs del Budokai 3 HD ni mirar eu/, DBZ3/us o la carpeta del launcher).
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 from swap_b3 import DEFAULT_AFS, b3_afs  # noqa: E402
+# xbcompress, LZX e indice AFS: kit/base.py (los nombres de siempre, como alias)
+from kit import base  # noqa: E402
+from kit.base import (TOOLS_DIR, XBCOMPRESS, XBDECOMPRESS, build_afs, extract_afs_entry,  # noqa: E402,F401
+                      lzx_compress, lzx_decompress, read_afs_index)
+
+_first_existing = base.first_existing
+_clean_env = base.clean_env
 
 
 def sanitize_name(name):
@@ -73,104 +60,6 @@ def sanitize_name(name):
     cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]', '_', name)
     cleaned = cleaned.rstrip(' .')  # no puede terminar en espacio o punto
     return cleaned or 'tex'
-
-
-def _clean_env(workdir):
-    """Entorno para subprocesos externos con TEMP/TMP a una ruta valida.
-    El launcher hereda a veces un TEMP invalido, lo que rompe xbcompress/
-    xbdecompress (no pueden crear su propio temporal)."""
-    env = dict(os.environ)
-    env['TEMP'] = workdir
-    env['TMP'] = workdir
-    return env
-
-
-def lzx_compress(src, dst, workdir=None):
-    if os.path.exists(dst):
-        os.remove(dst)
-    env = _clean_env(workdir) if workdir else None
-    r = subprocess.run([XBCOMPRESS, '/N:2048', src, dst],
-                       capture_output=True, text=True, env=env)
-    if r.returncode != 0:
-        raise RuntimeError('xbcompress fallo: %s' % r.stdout + r.stderr)
-    return os.path.getsize(dst)
-
-
-def lzx_decompress(src, dst, workdir=None):
-    if os.path.exists(dst):
-        os.remove(dst)
-    env = _clean_env(workdir) if workdir else None
-    r = subprocess.run([XBDECOMPRESS, src, dst], capture_output=True, text=True,
-                       env=env)
-    if r.returncode != 0:
-        raise RuntimeError('xbdecompress fallo: %s' % r.stdout + r.stderr)
-    return os.path.getsize(dst)
-
-
-def read_afs_index(afs_path):
-    # El runtime (rexglue-sdk/src/filesystem/afs.cpp) lee la tabla en offset 8:
-    #   offset 0: magic "AFS" (3B) + padding (1B)
-    #   offset 4: count (uint32)
-    #   offset 8: tabla de (addr uint32, size uint32) -- 8 bytes por entrada
-    # Nota: leer la tabla en 0x10 producia un desfase de 1 entrada (off-by-one)
-    # que extraia bins de la entrada equivocada y provocaba crashes al servir
-    # el override (p.ej. tex_91 -> bin 92 en el slot 91). Corregido a offset 8.
-    with open(afs_path, 'rb') as f:
-        head = f.read(0x10)
-    if head[:3] != b'AFS':
-        raise RuntimeError('no es un AFS: %r' % head[:4])
-    count = struct.unpack('<I', head[4:8])[0]
-    entries = []
-    with open(afs_path, 'rb') as f:
-        f.seek(8)
-        for _ in range(count):
-            raw = f.read(8)
-            addr, size = struct.unpack('<II', raw)
-            entries.append((addr, size))
-    return entries
-
-
-def extract_afs_entry(afs_path, idx):
-    entries = read_afs_index(afs_path)
-    addr, size = entries[idx]
-    with open(afs_path, 'rb') as f:
-        f.seek(addr)
-        return f.read(size)
-
-
-def build_afs(afs_orig, idx, new_bin, out_path):
-    afs = open(afs_orig, 'rb').read()
-    n = struct.unpack('<I', afs[4:8])[0]
-    base = 8  # tabla AFS en offset 8 (igual que el runtime)
-    first_data = struct.unpack('<I', afs[base:base + 4])[0]
-    old_loc = struct.unpack('<I', afs[base + idx * 8:base + idx * 8 + 4])[0]
-    old_sz = struct.unpack('<I', afs[base + idx * 8 + 4:base + idx * 8 + 8])[0]
-
-    delta_raw = len(new_bin) - old_sz
-    delta = ((delta_raw + 0x7FF) & ~0x7FF) if delta_raw > 0 else 0
-
-    table_a = bytearray()
-    for i in range(n):
-        loc = struct.unpack('<I', afs[base + i * 8:base + i * 8 + 4])[0]
-        sz = struct.unpack('<I', afs[base + i * 8 + 4:base + i * 8 + 8])[0]
-        if i == idx:
-            sz = len(new_bin)
-        elif i > idx and loc != 0:
-            loc += delta
-        table_a += struct.pack('<II', loc, sz)
-
-    out_b = bytearray()
-    out_b += afs[:base]
-    out_b += table_a
-    out_b += afs[base + n * 8:first_data]
-    out_b += afs[first_data:old_loc]
-    out_b += new_bin
-    if delta_raw > 0:
-        out_b += bytes(delta - delta_raw)
-    out_b += afs[old_loc + old_sz:]
-    with open(out_path, 'wb') as f:
-        f.write(bytes(out_b))
-    print('AFS reconstruido: %d bytes -> %s' % (len(out_b), out_path))
 
 
 # ---------- #AZT parsing ----------

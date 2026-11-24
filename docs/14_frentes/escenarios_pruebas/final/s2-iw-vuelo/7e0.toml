@@ -1,0 +1,29 @@
+# S2 / IW-M17: vuelo 0x7E0 ("Race with Goten", carrera con Goten) con la logica ORIGINAL y piloto: VICTORIA.
+# SOLO fase 3 (Z). Copia: smoke_a/b/c.
+#
+# clave    = IW-M17 / 0x7E0
+# cvar     = dbz3_iw_vuelo_original=true (de serie APAGADA) + dbz3_iw_logica_original=true
+# criterio = offline (verde): comparar_vuelo.py dorado_7e0 = 0/699 DIF; piloto.py v1 dif2 = 29/29 aros y META en
+#            6053 cuadros con medidor 0,726 (limite v1: 240 s). En el juego: el piloto acaba, el resultado sale
+#            superado y el rango/puntos siguen la regla verificada en resultado_banco.py para las 6 dificultades
+#            (umbrales +0x38 y premios +0x4c; fallo = -2 en el port por el centinela de "sin rango").
+#            Derrota: 7e0_derrota.toml (sin piloto, el medidor del rival llega a 1,0).
+# log      = "dbz3 r12: vuelo con la logica original del ELF" / "dbz3 r12: resultado superado true rango"
+descripcion = "0x7E0 carrera con Goten: piloto automatico acaba el circuito y resultado original de victoria"
+env = [
+  "DBZ3_TEST_IWMINI=0x7E0,auto",
+  "DBZ3_TEST_CFG=dbz3_iw_vuelo_original=true;dbz3_iw_logica_original=true",
+  'DBZ3_PS2_GAMES=D:\DBZ3HD\ps2_games',
+]
+pasos = [
+  'log "iwmini: prueba: empieza" 90',
+  "captura 00_salida",
+  'log "dbz3 r12: vuelo con la logica original del ELF" 90',
+  "esperar 5000",
+  "captura 01_vuelo",
+  'log "dbz3 r12: punto de control" 120',
+  "captura 02_aro",
+  'log "dbz3 r12: resultado superado true rango" 300',
+  "captura 03_resultado",
+  'log "dbz3 r12: fin " 60',
+]

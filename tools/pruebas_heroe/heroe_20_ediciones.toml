@@ -1,0 +1,25 @@
+# copia: sol
+#
+# HEROE-04 (P13): 20 ediciones seguidas en el creador sin "Failed to get a buffer" y con el contador de vistas
+# previas vivas estable. Cuerpo 0 (malla de la ficha, ps2::Escena); fila 1 = color de la Parte 1; A abre el panel
+# HSV y cada D sube el tono 10 grados (una ficha nueva = un .malla nuevo por pulsacion).
+# Linea que se comprueba (heroe_ui.cpp, MallaClave): "vista previa 3D f_... cargada (...); vivas: N tiras, M mallas, T texturas"
+#   M y T no crecen con las ediciones (antes, una malla de ~80-100 texturas mas por edicion, sin soltar nunca).
+# Con pack HD: --env DBZ3_TEST_CFG=dbz3_texture_packs_on=true
+descripcion = "Heroe: 20 ediciones de color en el creador, 0 'Failed to get a buffer' y vistas previas vivas estables"
+env = ["DBZ3_TEST_MODO=heroe", "DBZ3_HUB_MODE=5", "DBZ3_TEST_HEROE_ABRIR=2", "DBZ3_TEST_HEROE_CUERPO=0"]
+pasos = [
+  "log \"dbz3 rpg: Modo Heroe\" 240",
+  "log \"vista previa 3D .* cargada\" 60",
+  "esperar 2000",
+  "tecla S 600",
+  "tecla Space 800",
+  "log \"panel de color\" 15",
+  "tecla D 3500", "tecla D 3500", "tecla D 3500", "tecla D 3500", "tecla D 3500",
+  "tecla D 3500", "tecla D 3500", "tecla D 3500", "tecla D 3500", "tecla D 3500",
+  "tecla D 3500", "tecla D 3500", "tecla D 3500", "tecla D 3500", "tecla D 3500",
+  "tecla D 3500", "tecla D 3500", "tecla D 3500", "tecla D 3500", "tecla D 3500",
+  "esperar 8000",
+  "captura 01_tras_20_ediciones",
+  "tecla Space 800",
+]

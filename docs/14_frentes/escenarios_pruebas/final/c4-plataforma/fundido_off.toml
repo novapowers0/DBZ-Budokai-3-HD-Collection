@@ -1,0 +1,26 @@
+# C4 / DR04 (#15): lado OFF del A/B (comportamiento de hoy, sin cruce).
+# FASE 3: lo ejecuta Z; el carril NO abre el juego en la fase 1.
+#   python tools\pruebas.py correr smoke "docs\14_frentes\escenarios_pruebas\final\c4-plataforma\fundido_off.toml"
+#
+# clave    = DR04 (#15)
+# cvar     = dbz3_fundido_cruzado=false (valor de serie; no hay que encender nada)
+# criterio = mismo combate y mismas capturas que fundido_on.toml; en 02/03 se ve el paso por negro (la captura
+#            del corte sale casi negra) y NO sale ninguna linea "dbz3 fundido:".
+# log      = ninguna linea "dbz3 fundido:" (el ajuste apagado no hace nada)
+descripcion = "DR04 lado OFF: corte a negro de hoy (dbz3_fundido_cruzado=false)"
+env = [
+  "DBZ3_TEST_BATTLE=0,7,7",
+  "DBZ3_HUB_MODE=5",
+  "DBZ3_TEST_CFG=dbz3_fundido_cruzado=false",
+]
+pasos = [
+  "log \"hub: combate nativo\" 90",
+  "esperar 1200",
+  "captura 01_intro",
+  "esperar 600",
+  "captura 02_cruce_03s",
+  "esperar 300",
+  "captura 03_cruce_06s",
+  "esperar 1200",
+  "captura 04_pelea",
+]

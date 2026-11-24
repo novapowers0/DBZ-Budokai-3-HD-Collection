@@ -26,4 +26,9 @@ void PedirSonido(int banco, int id);
 void CargarVoces(uint64_t mascara);
 int SlotVoz(int personaje);
 
+// IWFIN/HUECOS-08: palabras de control de IW del lado dado (0 jugador, 1 rival) desde PalabrasIWCero(): k = 0 esquivas
+// (palabra 1), 1 teletransportes (2), 2 entradas en la accion 0x1E (3), 3 ataques con teletransporte (16). Cualquier hilo.
+int PalabraIW(int lado, int k);
+void PalabrasIWCero();
+
 }  // namespace dbz3::combate

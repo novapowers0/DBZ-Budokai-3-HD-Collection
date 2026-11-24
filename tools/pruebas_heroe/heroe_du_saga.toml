@@ -1,0 +1,43 @@
+# R23 HER-08 (heroe2): primer tramo de la RUTA del Heroe en Dragon Universe (rutas encendidas de serie): intro 102,
+# cruce del mapa, combates del tramo, cierre y Esfera de la etapa 0 (H02 evento 0). Sin --forzar:
+#   python tools\pruebas.py correr smoke_b tools\pruebas_heroe\heroe_du_saga.toml
+# Teclas: Space = A, D = derecha (reparte puntos Z al subir de nivel; sin ellos el juego no deja salir). Con rutas la intro es la escena 102 (no 100) y el mapa la 5136.
+descripcion = "Heroe: tramo 0 de la ruta en DU (intro, cruce, combates, cierre, Esfera de la etapa)"
+env = ["DBZ3_TEST_DU_HEROE=35", "DBZ3_TEST_HEROE_RUTA_NUEVA=1", "DBZ3_TEST_HEROE_SEMILLA=7", "DBZ3_AUTO_TOUCH=1",
+       "DBZ3_TEST_RINGOUT=1", "REX_DBZ3_LANGUAGE=5", "REX_DBZ3_UI_LANGUAGE=5"]
+pasos = [
+  'log "se lanza la escena 102 entrada 35" 240',
+  "esperar 3000",
+  "captura a_intro",
+  'hasta_log "cruce v2: dibujado" 180',
+  "tecla Space 2000",
+  "fin",
+  "esperar 1500",
+  "captura b_cruce",
+  'hasta_log "jugador 1 = id 63" 180',
+  "tecla Space 2000",
+  "fin",
+  "esperar 6000",
+  "captura c_combate",
+  'hasta_log "ruta: tramo 0 combate 0 ganado" 300',
+  "tecla D 300",
+  "tecla D 300",
+  "tecla D 300",
+  "tecla Space 2000",
+  "fin",
+  "captura d_victoria",
+  'hasta_log "ULTIMO: etapa siguiente pendiente" 900',
+  "tecla D 300",
+  "tecla D 300",
+  "tecla D 300",
+  "tecla Space 1800",
+  "fin",
+  'hasta_log "H02 evento 0 cobrado" 240',
+  "tecla D 300",
+  "tecla D 300",
+  "tecla D 300",
+  "tecla Space 2000",
+  "fin",
+  "esperar 3000",
+  "captura e_tras_tramo",
+]

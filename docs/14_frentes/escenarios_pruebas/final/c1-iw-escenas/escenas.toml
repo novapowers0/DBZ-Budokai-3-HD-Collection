@@ -1,0 +1,40 @@
+# C1 / IW-V04 — Escenas y auras de los minijuegos de botones (7DB NB013, 7DC NB014).
+# FASE 3: lo ejecuta Z; el carril NO abre el juego en fase 1.
+#   python tools\pruebas.py correr <copia> "docs\14_frentes\escenarios_pruebas\final\c1-iw-escenas\escenas.toml"
+#
+# clave    = IW-V04 (escena MIND & TIME, aura SS en reposo, Gohan SSJ)
+# cvar     = dbz3_iw_7db_original=true y dbz3_iw_7dc_original=true (ya de serie). NO hay cvar nueva:
+#            la escena y el aura IW aun no estan convertidas (ver PENDIENTE_JUEGO).
+# env      = DBZ3_TEST_IWMINI=0x7DB,auto (piloto de botones); DBZ3_TEST_QTE_LOG=1.
+# criterio = (banco, ya verde) 7DB/7DC usan la misma familia de escena que el ELF EU: Stage_BeginLoad
+#            id 1 = MIND & TIME (tabla 44AB6C, fila 1), verificado en w_Stage_BeginLoad 3582F0/333F90.
+#            En juego (PENDIENTE_JUEGO): par de capturas del MISMO cuadro original/port con
+#            similitud >= 0,45 y pHash <= 18 (tools/comparar_iw_lote.py); aura SS visible en reposo;
+#            Gohan adolescente en forma SSJ (el codigo ya pasa forma 1 y se comprobo en el ELF).
+# log      = "dbz3 r14: 7DB con la logica original del ELF (dbz3_iw_7db_original)" / "r14: en juego"
+#            / "dbz3 r14: fin: aciertos" (la ruta ORIGINAL no emite "solIW5: NB013 choque inicio",
+#            que es del camino propio del port; por eso el escenario espera la linea de fin real)
+# PENDIENTE_JUEGO: el arte de MIND & TIME de IW no esta convertido. El port usa B3 58 (misma familia,
+#            distinto suelo/cielo). Convertir la escena IW 1 y apuntar NB013/NB014 a ella.
+#            Aura: el motor (src/iw_ame.h) reproduce las tablas del ELF (84/84 flotantes) pero
+#            iw_mini_botones.cpp no lo instancia; el original la crea en Player_InitAuraAndWeatherEffects
+#            (EU 2E8670) -> Auras (EU 1D4680).
+descripcion = "7DB (NB013) escena MIND & TIME de IW + aura SS de reposo (IW-V04); pareja del 7DC en 7dc_escena.toml"
+env = [
+  "DBZ3_TEST_IWMINI=0x7DB,auto",
+  "DBZ3_TEST_QTE_LOG=1",
+  "DBZ3_TEST_CFG=dbz3_iw_7db_original=true",
+  'DBZ3_PS2_GAMES=D:\DBZ3HD\ps2_games',
+]
+pasos = [
+  "log \"iwmini: prueba: empieza\" 90",
+  "log \"r14: en juego\" 90",
+  "captura t01_ready",
+  "log \"dbz3 r14: 7DB con la logica original del ELF\" 20",
+  "esperar 4000",
+  "captura t02_iconos",
+  "log \"dbz3 r14: fin: aciertos\" 120",
+  "captura t03_fin",
+  "esperar 1500",
+  "captura t04_resultado",
+]

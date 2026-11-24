@@ -62,7 +62,11 @@ class PaginaPs2:
         for p in sorted(glob.glob(os.path.join(self.app.env.ps2, "*Budokai 3*"))):
             if os.path.isdir(p) or p.lower().endswith(".iso"):
                 return p
-        return ""
+        try:   # '.ruta' de 'Elegir ISO' u otro nombre con SLUS_209.98 (iso.find_game, canal 11/11)
+            import iso
+            return iso.find_game("b3", self.app.env.ps2, carpetas=True) or ""
+        except (ImportError, OSError, ValueError):
+            return ""
 
     def _py(self, *args):
         return [self.app.env.python, os.path.join(self.g.HERE, "ps2_b3.py")] + list(args)

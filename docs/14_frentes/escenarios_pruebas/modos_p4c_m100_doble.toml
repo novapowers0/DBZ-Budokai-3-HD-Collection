@@ -1,0 +1,18 @@
+descripcion = "MODOS-04: Mision 100, mision 1 ganada dos veces en la misma partida con premio_unico: la primera paga 100 (rango S nuevo) y la segunda 10 (10 %), sin subir el rango"
+env = ["DBZ3_HUB_MODE=5", "DBZ3_TEST_RINGOUT=1", "DBZ3_TEST_CFG=dbz3_modos_premio_unico=true", "DBZ3_TEST_MODO=mision100,0,1"]
+apartar = ["user_data/dbz3/rpg.toml*", "user_data/dbz3/hub_modos.toml*", "user_data/dbz3/modos", "user_data/dbz3/retos.csv", "user_data/dbz3/hub_heroe.toml*", "user_data/dbz3/pasarela"]
+pasos = [
+  "log 'combate 1: pedido' 150",
+  "log 'mision 100 n 1: rango' 180",
+  "esperar 4000",
+  "captura 01_resultado_primera",
+  "tecla Space 3000",
+  "captura 02_paginas",
+  "tecla W 800",
+  "captura 03_paginas_mision1",
+  "tecla Space 3000",
+  "esperar 6000",
+  "captura 04_combate_otra_vez",
+  "esperar 20000",
+  "captura 05_resultado_repetida",
+]

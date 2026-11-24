@@ -44,9 +44,24 @@ class Drawer : public rex::ui::UIDrawer {
     ultimo_=ahora;
     io.BackendFlags|=ImGuiBackendFlags_RendererHasVtxOffset;
     ImGui::NewFrame();
+    static const bool medir=std::getenv("DBZ3_TEST_IW_ENVIO_PERFIL")!=nullptr;
+    const double intervalo=io.DeltaTime;
+    const auto inicio=medir?std::chrono::steady_clock::now():std::chrono::steady_clock::time_point{};
     OnDraw(io);
+    const auto medio=medir?std::chrono::steady_clock::now():std::chrono::steady_clock::time_point{};
     ImGui::Render();
     Pintar(*ImGui::GetDrawData(),context);
+    if(medir) {
+      const auto fin=std::chrono::steady_clock::now();
+      perfil_preparar_+=std::chrono::duration<double,std::milli>(medio-inicio).count();
+      perfil_enviar_+=std::chrono::duration<double,std::milli>(fin-medio).count();
+      perfil_tiempo_+=intervalo;
+      if(++perfil_n_==300) {
+        REXLOG_INFO("dbz3 gs envio: panel {} preparar_ms {:.3f} enviar_ms {:.3f} fps_pase {:.2f}",
+                    static_cast<const void*>(this),perfil_preparar_/perfil_n_,perfil_enviar_/perfil_n_,perfil_n_/perfil_tiempo_);
+        perfil_n_=0;perfil_preparar_=perfil_enviar_=perfil_tiempo_=0;
+      }
+    }
     ImGui::SetCurrentContext(previo);
   }
  protected:
@@ -62,7 +77,7 @@ class Drawer : public rex::ui::UIDrawer {
     texturas_.clear();
 #endif
   }
-  void RegistrarTextura(ImTextureID id,const pasarela::Imagen& im) {
+  void RegistrarTextura(ImTextureID id,const pasarela::Imagen& im,bool alfa128=false) {
     if(!id||im.rgba.empty()) return;
 #if defined(_WIN32)
     auto& t=texturas_[id];
@@ -74,10 +89,19 @@ class Drawer : public rex::ui::UIDrawer {
     bool opaca=true;
     for(size_t i=3;i<t.im.rgba.size();i+=4) if(t.im.rgba[i]) {opaca=false;break;}
     if(opaca) for(size_t i=3;i<t.im.rgba.size();i+=4) t.im.rgba[i]=255;
+    // TexturaAmt duplica el alfa PS2 y satura 128 a 255. Recuperarlo ANTES
+    // del filtrado: TFX opera en unidades GS y no en unidades /255.
+    if(alfa128) for(size_t i=3;i<t.im.rgba.size();i+=4) t.im.rgba[i]=uint8_t((unsigned(t.im.rgba[i])+1)/2);
+    if(alfa128 && std::getenv("DBZ3_TEST_B2_CAJA_RELOJ")) {
+      unsigned maxa=0;for(size_t i=3;i<t.im.rgba.size();i+=4) maxa=std::max(maxa,unsigned(t.im.rgba[i]));
+      REXLOG_INFO("dbz3 caja GS textura: {}x{} alfa_max={}", im.w, im.h, maxa);
+    }
 #endif
   }
  private:
   ImGuiContext* contexto_=nullptr;
+  unsigned perfil_n_=0;
+  double perfil_preparar_=0,perfil_enviar_=0,perfil_tiempo_=0;
   std::chrono::steady_clock::time_point ultimo_{};
 #if defined(_WIN32)
   template<class T> using Com=Microsoft::WRL::ComPtr<T>;
@@ -87,7 +111,7 @@ class Drawer : public rex::ui::UIDrawer {
   std::vector<Retirada> retiradas_;
   Com<ID3D12Device> dispositivo_;
   Com<ID3D12RootSignature> raiz_;
-  Com<ID3D12PipelineState> tuberias_[2];
+   Com<ID3D12PipelineState> tuberias_[3];
   Com<ID3D12DescriptorHeap> heap_;
   UINT paso_=0,siguiente_=0;
   std::vector<UINT> libres_;
@@ -111,10 +135,11 @@ class Drawer : public rex::ui::UIDrawer {
     auto comp=dll ? reinterpret_cast<decltype(&D3DCompile)>(GetProcAddress(dll,"D3DCompile")) : nullptr;
     auto serial=dx ? reinterpret_cast<decltype(&D3D12SerializeRootSignature)>(GetProcAddress(dx,"D3D12SerializeRootSignature")) : nullptr;
     if(!comp||!serial) return false;
-    const char* shader="cbuffer C:register(b0){float2 inv;} struct V{float2 p:POSITION;float2 uv:TEXCOORD;float4 c:COLOR;}; struct O{float4 p:SV_Position;float2 uv:TEXCOORD;float4 c:COLOR;}; O vs(V a){O o;o.p=float4((a.p*inv-.5)*float2(2,-2),0,1);o.uv=a.uv;o.c=a.c;return o;} Texture2D t:register(t0);SamplerState s:register(s0);float4 ps(O a):SV_Target{return t.Sample(s,a.uv)*a.c;}";
-    Com<ID3DBlob> vs,ps,error,rs;
+    const char* shader="cbuffer C:register(b0){float2 inv;} struct V{float2 p:POSITION;float2 uv:TEXCOORD;float4 c:COLOR;}; struct O{float4 p:SV_Position;float2 uv:TEXCOORD;float4 c:COLOR;}; O vs(V a){O o;o.p=float4((a.p*inv-.5)*float2(2,-2),0,1);o.uv=a.uv;o.c=a.c;return o;} Texture2D t:register(t0);SamplerState s:register(s0);float4 ps(O a):SV_Target{return t.Sample(s,a.uv)*a.c;} float4 ps128(O a):SV_Target{float4 v=round(a.c*255);float4 tex=floor(t.Sample(s,a.uv)*255+.0001);float4 gs=floor(tex*v/128);return float4(gs.rgb/255,gs.a/128);}";
+    Com<ID3DBlob> vs,ps,ps128,error,rs;
     if(FAILED(comp(shader,strlen(shader),"iw_gs",nullptr,nullptr,"vs","vs_5_0",D3DCOMPILE_OPTIMIZATION_LEVEL3,0,&vs,&error))||
-       FAILED(comp(shader,strlen(shader),"iw_gs",nullptr,nullptr,"ps","ps_5_0",D3DCOMPILE_OPTIMIZATION_LEVEL3,0,&ps,&error))) return false;
+       FAILED(comp(shader,strlen(shader),"iw_gs",nullptr,nullptr,"ps","ps_5_0",D3DCOMPILE_OPTIMIZATION_LEVEL3,0,&ps,&error))||
+       FAILED(comp(shader,strlen(shader),"iw_gs",nullptr,nullptr,"ps128","ps_5_0",D3DCOMPILE_OPTIMIZATION_LEVEL3,0,&ps128,&error))) return false;
     D3D12_DESCRIPTOR_RANGE rango{D3D12_DESCRIPTOR_RANGE_TYPE_SRV,1,0,0,0};
     D3D12_ROOT_PARAMETER parametros[2]{};
     parametros[0].ParameterType=D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
@@ -144,11 +169,15 @@ class Drawer : public rex::ui::UIDrawer {
       b.BlendOp=i ? D3D12_BLEND_OP_SUBTRACT : D3D12_BLEND_OP_REV_SUBTRACT;
       if(FAILED(dispositivo_->CreateGraphicsPipelineState(&pd,IID_PPV_ARGS(&tuberias_[i])))) return false;
     }
+    // ALPHA 0x44: (Cs-Cd)*As/128+Cd. RGBAQ y TFX se truncan antes.
+    pd.PS={ps128->GetBufferPointer(),ps128->GetBufferSize()};
+    b.SrcBlend=D3D12_BLEND_SRC_ALPHA;b.DestBlend=D3D12_BLEND_INV_SRC_ALPHA;b.BlendOp=D3D12_BLEND_OP_ADD;
+    if(FAILED(dispositivo_->CreateGraphicsPipelineState(&pd,IID_PPV_ARGS(&tuberias_[2])))) return false;
     D3D12_DESCRIPTOR_HEAP_DESC hd{};hd.Type=D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;hd.NumDescriptors=2048;
     hd.Flags=D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
     if(FAILED(dispositivo_->CreateDescriptorHeap(&hd,IID_PPV_ARGS(&heap_)))) return false;
     paso_=dispositivo_->GetDescriptorHandleIncrementSize(hd.Type);fallo_=false;
-    REXLOG_INFO("dbz3 iw GS: tuberias42=Cd-Cs*As y06=Cs-Cd*As creadas; mundo/AME/HUD en orden");
+    REXLOG_INFO("dbz3 iw GS: tuberias42=Cd-Cs*As y06=Cs-Cd*As y44=(Cs-Cd)*As/128+Cd creadas; mundo/AME/HUD en orden");
     return true;
   }
   bool Subir(Textura& t,ID3D12GraphicsCommandList* lista,Retirada& ret) {
@@ -208,7 +237,8 @@ class Drawer : public rex::ui::UIDrawer {
       for(const auto& c:lista.CmdBuffer) {
         if(c.UserCallback) {
           if(c.UserCallback==Resta) modo=2;
-          else if(c.UserCallback==Inversa) modo=3;
+           else if(c.UserCallback==Inversa) modo=3;
+           else if(c.UserCallback==Alfa128) modo=4;
           else if(c.UserCallback==rex::ui::kImDrawBlendAdditive) modo=1;
           else modo=0;
           continue;
@@ -248,6 +278,11 @@ class Drawer : public rex::ui::UIDrawer {
                 const float sx=contexto.render_target_width()/datos.DisplaySize.x,sy=contexto.render_target_height()/datos.DisplaySize.y;
                 const D3D12_RECT sc{LONG(std::max(0.0f,c.ClipRect.x*sx)),LONG(std::max(0.0f,c.ClipRect.y*sy)),
                     LONG(std::min(float(contexto.render_target_width()),c.ClipRect.z*sx)),LONG(std::min(float(contexto.render_target_height()),c.ClipRect.w*sy))};
+                if(modo==4 && !caja_medida_ && std::getenv("DBZ3_TEST_B2_CAJA_RELOJ")) {
+                  const auto& a=lista.VtxBuffer[c.VtxOffset+lista.IdxBuffer[c.IdxOffset]];
+                  REXLOG_INFO("dbz3 caja GS draw: xy={},{} uv={},{} color={} indices={} display={},{} clip={},{},{},{}",a.pos.x,a.pos.y,a.uv.x,a.uv.y,a.col,c.ElemCount,datos.DisplaySize.x,datos.DisplaySize.y,sc.left,sc.top,sc.right,sc.bottom);
+                  caja_medida_=true;   // una sola vez: con solo restas==0 este aviso salia en cada cuadro
+                }
                 cl->RSSetScissorRects(1,&sc);cl->DrawIndexedInstanced(c.ElemCount,1,c.IdxOffset,c.VtxOffset,0);++restas;continue;
               }
             }
@@ -273,5 +308,6 @@ class Drawer : public rex::ui::UIDrawer {
     if(restas&&!medido_) { medido_=true;REXLOG_INFO("dbz3 iw GS: {} dibujos de resta reales en el primer cuadro; alfa y suma restauradas",restas); }
   }
   bool medido_=false;
+  bool caja_medida_=false;
 };
 } // namespace dbz3::iwgs

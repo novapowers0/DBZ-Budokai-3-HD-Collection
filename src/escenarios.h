@@ -34,6 +34,7 @@ constexpr int kSerie = 17;   // registros de serie (0..16)
 
 // Lee las altas de los mods activos (lo llama stages::ApplyAtLaunch).
 void CargarDeMods(rex::memory::Memory* memory);
+
 // Registros disponibles: 17 de serie + altas de mods.
 int Total();
 int Visibles();
@@ -75,5 +76,8 @@ void OcultarFondo(bool ocultar);
 
 // eB2f: IK de suelo de B2 (escenarios_b2_ik.inl); apagado salvo DBZ3_TEST_B2_IK_SUELO=1.
 namespace b2ik { void AplicarActor(uint8_t* base, uint32_t x); void RestaurarIkB3(uint8_t* base); void AplicarMirada(uint8_t* base, uint32_t x, uint32_t rival, double cuadro); }  // eB2g: mirada (DBZ3_TEST_B2_MIRADA, apagado)
+
+// SLOTS_ESC-07: conduce el menu final de la revancha aleatoria; hilo de la interfaz (main.cpp), 1 vez por cuadro.
+void TickRevanchaUi();
 
 }  // namespace dbz3::escenarios

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """eu_map.py - pareja EU de cada funcion y dato del juego que usan los ficheros del HUB, modos, pasarela, escenarios,
 Tag Team, campanas, select/roster/stage y ports_guard (frente eu, 2026-10-15).
 
@@ -33,7 +33,7 @@ B = 0x82000000
 FUENTES = ["src/hub.cpp", "src/hub_menu.cpp", "src/ingame/hub_panel.cpp", "src/ingame/hub_panel.h", "src/modos.*",
            "src/net/*.cpp", "src/net/*.h", "src/ingame/online_panel.*",
            "src/pasarela*.cpp", "src/pasarela.h", "src/escenarios.cpp", "src/escenarios.h", "src/ports_guard.cpp", "src/tecnicas_ext.inl",
-           "src/tagteam*.cpp", "src/tagteam*.h", "src/ingame/tagteam_panel.*", "src/campaigns.cpp",
+           "src/tagteam*.cpp", "src/tagteam*.h", "src/ingame/tagteam_panel.*", "src/campaigns.cpp", "src/heroe_start.inl",
            "src/select_ext.cpp", "src/roster_ext.cpp", "src/roster_ext.h", "src/stage_ext.cpp", "src/stage_ext.h",
            # nuevos de la ronda 2 (escenarios, combate, rpg, transformaciones): tambien tendran que ir en EU
            "src/clima.*", "src/cine.*", "src/cinematica.*", "src/gigantes.*", "src/combate.*", "src/rpg.*", "src/transformaciones.*",
@@ -548,3 +548,4 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+

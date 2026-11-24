@@ -1,0 +1,43 @@
+# CAC-13 (R23): montaje rápido (caché por pieza/forma y barra de progreso). Sin el tope forzado; el tope va en
+# cac13_tope_avisado.toml. Usa el creador con la lista plana (dbz3_heroe_ui_nueva=false) para que la fila 1 sea
+# «Parte 1» y la fila 5 el torso B3: así el .toml no depende del orden de las pestañas de CAC-12.
+# Medición: el registro ya trae `vista previa ... generada (N ms)`; este .toml exige además la línea de caché y la de
+# progreso. La comparación numérica (mediana < 3 s en color y < 50 % de la base en pieza) se hace sobre dbz3.log.
+# REXLOG nuevos que espera: CAC-13: progreso {n}/{total} {texto}; CAC-13: cache {tipo} ... .
+descripcion = "CAC-13: 5 cambios de color y 5 de pieza con caché y barra de progreso (ms en el registro)"
+env = ["DBZ3_TEST_MODO=heroe,0", "DBZ3_HUB_MODE=5", "DBZ3_TEST_HEROE_ABRIR=2", "DBZ3_TEST_HEROE_CUERPO=0",
+       "DBZ3_TEST_CFG=dbz3_heroe_ui_nueva=false"]
+apartar = ["user_data/dbz3/cac.toml*", "user_data/dbz3/heroe", "user_data/dbz3/hub_heroe.toml*", "mods/heroe_propio"]
+pasos = [
+  "esperar_pantalla 5 120",
+  'log "Create abierto" 180',
+  'log "vista previa 3D .* cargada" 90',
+  "esperar 2000",
+  "tecla S 500",
+  "tecla Space 700",
+  'log "panel de color" 20',
+  "tecla D 700",
+  "captura cac13_a_progreso",
+  "esperar 3000",
+  "tecla D 3000",
+  "tecla D 3000",
+  "tecla D 3000",
+  "tecla D 3000",
+  "tecla D 3000",
+  'log "dbz3 heroe: .*progreso [0-9]+/[0-9]+" 120',
+  'log "dbz3 heroe: .*cache" 120',
+  "captura cac13_b_color",
+  "tecla Space 700",
+  "tecla S 500",
+  "tecla S 500",
+  "tecla S 500",
+  "tecla S 500",
+  "captura cac13_c_fila_pieza",
+  "tecla D 2500",
+  "tecla D 2500",
+  "tecla D 2500",
+  "tecla D 2500",
+  "tecla D 2500",
+  "esperar 4000",
+  "captura cac13_d_pieza",
+]

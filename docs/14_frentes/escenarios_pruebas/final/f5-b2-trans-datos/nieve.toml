@@ -1,0 +1,71 @@
+# F5 / B2-14 + B2N — transicion Nieve (grupo 7, entrada 5007) del port.
+#   python tools\pruebas.py correr <copia> "docs\14_frentes\escenarios_pruebas\final\f5-b2-trans-datos\nieve.toml"
+#
+# clave    = B2-14 / B2N
+# cvar     = dbz3_b2_transicion_nieve=true (de serie APAGADA)
+# env      = DBZ3_TEST_BATTLE=0,0,21 (escenario Nieve), muneco quieto, FOTOS=30,120,300
+# criterio = (banco offline, ya verde) camara del recurso == camara original en 30/120/300
+#            (distancia 0,000 / 0,000 / 0,004; desfase 28,8 constante) y duracion
+#            28,8+420+270 = 718,8 frente a 719 (dif -0,2 cuadros). La trayectoria
+#            (segundo #AMC) viaja en transicion_b2.b2t (CAMR/TRAY validos; 7 clips).
+#            EN JUEGO (PENDIENTE_JUEGO): el reloj de la escena debe terminar en 717..721
+#            y los dbz3_b2_foto_30/120/300.json deben traer ojo/objetivo/fov y las
+#            posiciones de los dos luchadores dentro del margen de Llanura
+#            (ojo +-1 %, rival +-0,01), ki conservado y la escena encendida sola.
+# log      = "dbz3 B2 HD: inicio" con entrada=5007 y "dbz3 B2 foto: detenida cuadro=30|120|300"
+#            (sin "bloqueo=" ni "VM bloqueada" antes del fin)
+descripcion = "Transicion Nieve B2 con dbz3_b2_transicion_nieve: fotos 30/120/300, duracion 719+-2 y camara/luchadores dentro del margen"
+env = [
+  "DBZ3_TEST_BATTLE=0,0,21",
+  "DBZ3_COMBATE_MUNECO=quieto",
+  "DBZ3_COMBATE_LADOS=2",
+  "DBZ3_TEST_B2_CONSULTA=1",
+  "DBZ3_TEST_B2_FOTOS=30,120,300",
+  "DBZ3_TEST_CFG=dbz3_b2_transicion_nieve=true",
+  'DBZ3_PS2_GAMES=D:\DBZ3HD\ps2_games',
+]
+pasos = [
+  'log "muneco en el lado 1" 90',
+  'esperar 4000',
+  'tecla Space+P 3000',
+  'tecla A:2500 300',
+  'tecla Space+P 3000',
+  'tecla A:2500 300',
+  'tecla Space+P 3000',
+  'tecla A:2500 300',
+  'tecla Space+P 3000',
+  'tecla A:2500 300',
+  'tecla Space+P 3000',
+  'tecla A:2500 300',
+  'tecla Space+P 3000',
+  'tecla A:2500 300',
+  'tecla Space+P 3000',
+  'tecla A:2500 300',
+  'tecla Space+P 3000',
+  'tecla A:2500 300',
+  'tecla Space+P 3000',
+  'tecla A:2500 300',
+  'tecla Space+P 3000',
+  'tecla A:2500 300',
+  'tecla Space+P 3000',
+  'tecla A:2500 300',
+  'tecla Space+P 3000',
+  'tecla A:2500 300',
+  'tecla Space+P 3000',
+  'tecla A:2500 300',
+  'tecla Space+P 3000',
+  'tecla A:2500 300',
+  'tecla Space+P 3000',
+  'tecla A:2500 300',
+  'tecla Space+P 3000',
+  'tecla A:2500 300',
+  'tecla Space+P 3000',
+  'tecla A:2500 300',
+  'tecla Space+P 3000',
+  'tecla A:2500 300',
+  'tecla Space+P 3000',
+  'tecla A:2500 300',
+  'tecla Space+P 3000',
+  'tecla A:2500 300',
+  'captura fin'
+]

@@ -1,0 +1,11 @@
+# Receta de traje del creador (sin arte): el modelo se monta con el juego de quien la abre.
+[traje_cac]
+version = 1
+cuerpo = 7
+traje = 0
+partes = [[200, 30, 10], [0, 0, 0], [0, 0, 0], [0, 0, 0]]
+pelo = 2
+c1 = [0, 0, 0]
+c2 = [0, 0, 0]
+logo = 0
+scouter = 0

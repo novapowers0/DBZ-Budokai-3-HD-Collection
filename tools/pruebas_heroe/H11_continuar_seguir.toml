@@ -1,0 +1,28 @@
+descripcion = "H11: recargar el final Cell legitimo, guardar tras creditos y volver a la rueda"
+turbo = false
+apartar = ["user_data/dbz3/cac.toml*", "user_data/dbz3/heroe", "user_data/dbz3/hub_heroe.toml*", "user_data/dbz3/rpg.toml*"]
+poner = ["D:/DBZ3HD/smoke_d/_apartado/20261114-235222/despues/user_data/dbz3/cac.toml -> user_data/dbz3/cac.toml"]
+env = ["DBZ3_TEST_DU_HEROE=35", "DBZ3_DU_TRACE=1", "DBZ3_TEST_DU_ESTADOS=1", "DBZ3_TEST_CFG=dbz3_heroe_rutas=true;dbz3_heroe_ui_nueva=true;dbz3_heroe_recompensas=true"]
+pasos = [
+  "esperar 5000",
+  "log \"ruta atomica de la ficha .*tramo -1, etapa pendiente -1\" 120",
+  "hasta_log \"video abierto: guest=us.*Ending00[.]sfd\" 180",
+  "tecla Space 200",
+  "esperar 1000",
+  "fin",
+  "esperar 280000",
+  "captura pregunta_guardado_nativo",
+  "tecla Space 200",
+  "esperar 2000",
+  "hasta_pantalla 5,6,7 240",
+  "tecla Space 200",
+  "esperar 2000",
+  "fin",
+  "captura titulo_tras_guardar",
+  "hasta_pantalla 7 60",
+  "tecla Return 3000",
+  "tecla Space 200",
+  "esperar 2000",
+  "fin",
+  "captura seleccion_tras_creditos"
+]

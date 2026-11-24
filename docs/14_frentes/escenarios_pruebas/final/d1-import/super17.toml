@@ -1,0 +1,28 @@
+# D1 / dspor-1 + dspor-2 (contrato de formas): Super 17 de IW con UNA forma (sin la capsula fantasma 107 del
+# donante Androide 17). FASE 3: lo deja escrito el carril D1; lo ejecuta Z.
+#   python tools\pruebas.py correr smoke_a "docs\14_frentes\escenarios_pruebas\final\d1-import\super17.toml"
+#
+# clave    = dspor-1 / dspor-2 (INVENTARIO_TOTAL_0911)
+# cvar     = ninguna nueva: el contrato va en el roster generado (formas = 1 y capsulas_forma = [0]); el roster
+#            de la copia debe venir de `roster_build.py construir` con imp_iw_super17 (id 45 en dsPOR).
+# criterio = en el combate nativo de Super 17 (id 45) el HUD de formas topa en la 0 de 1: no hay segunda forma ni
+#            capsula de transformar. Banco: roster `formas = 1`, `capsulas_forma = [0]`, sin 107.
+# log      = "dbz3 hub: combate nativo: id 45" y "dbz3 formas: prueba: tope en la forma 0 de 1"
+#
+# PENDIENTE_JUEGO: la foto del HUD (s17_1) y que el combate llegue al final sin cierre (la prueba lo da por PASS si
+# llega a la pelea y sale el tope; el cierre se ve en el log como access violation).
+descripcion = "D1: Super 17 (una forma, sin capsula fantasma) en combate nativo"
+env = [
+  "DBZ3_TEST_BATTLE=45,7,2",
+  "DBZ3_TEST_FORMAS=45",
+  "DBZ3_COMBATE_SONDA=1",
+]
+pasos = [
+  'log "hub: combate nativo: id 45" 150',
+  "esperar_pelea 120",
+  "esperar 2500",
+  "captura s17_0",
+  'log "formas: prueba: tope en la forma 0 de 1" 40',
+  "esperar 1500",
+  "captura s17_1",
+]

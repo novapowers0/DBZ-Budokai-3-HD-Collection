@@ -1,0 +1,33 @@
+descripcion = "modos_abyss: HUB > Torre > Abyss: selector, piso 1, cartas entre pisos, B = guardar y salir, y selector 'a medias'"
+env = ["DBZ3_HUB_MODE=5", "DBZ3_TEST_RINGOUT=1"]
+# MODOS-08: la prueba empieza sin partidas a medias y deja la copia como estaba (pruebas.py, _guion_preparar)
+apartar = ["user_data/dbz3/rpg.toml*", "user_data/dbz3/hub_modos.toml*", "user_data/dbz3/modos", "user_data/dbz3/retos.csv", "user_data/dbz3/hub_heroe.toml*", "user_data/dbz3/pasarela"]
+pasos = [
+  "esperar_pantalla 5 120",
+  "log 'menu principal estado 3' 60",
+  "esperar 3000",
+  "tecla W 1200",
+  "tecla Space 3500",
+  "log 'hub: entra la pantalla HUB' 60",
+  "tecla S 450",
+  "tecla S 450",
+  "tecla S 450",
+  "tecla Space 2500",
+  "tecla S 600",
+  "tecla S 600",
+  "captura 01_selector_abyss",
+  "tecla Space 3000",
+  "log 'hub: combate nativo' 120",
+  "esperar 6000",
+  "captura 02_combate_hud",
+  "log 'rival fuera del ring' 90",
+  "log 'hub: fin del combate nativo' 60",
+  "esperar 6000",
+  "captura 03_cartas",
+  "tecla Backspace 700",
+  "captura 04_tras_B",
+  "tecla Space 2500",
+  "captura 05_tras_ok",
+  "tecla Space 2500",
+  "captura 06_selector_a_medias",
+]

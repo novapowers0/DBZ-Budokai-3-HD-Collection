@@ -2,6 +2,7 @@
 
 #include "settings.h"
 #include "i18n.h"
+#include "update_check.h"
 
 #include <rex/cvar.h>
 #include <rex/filesystem.h>
@@ -31,6 +32,7 @@
 
 #if REX_PLATFORM_WIN32
 #include <windows.h>
+#pragma comment(lib, "advapi32.lib")
 #include <dxgi.h>
 #include <wrl/client.h>
 // The launcher only uses DXGI for GPU detection (name + performance tier).
@@ -55,8 +57,12 @@ REXCVAR_DEFINE_BOOL(dbz3_videos_hd, false, "DBZ3/Launcher",
 REXCVAR_DEFINE_STRING(dbz3_videos_hd_url, "https://api.github.com/repos/novapowers0/DBZ3HD-Novas-Mods/contents/videos_hd.toml", "DBZ3/Launcher",
                       "Direccion de videos_hd.toml (lista de los videos HD); sus ficheros, junto a ella si no llevan url");
 
+REXCVAR_DEFINE_STRING(dbz3_xv2_dir, "", "DBZ3/Launcher",
+                      "Carpeta de Xenoverse 2 elegida por el jugador (vacia = autodeteccion)");
 REXCVAR_DEFINE_BOOL(dbz3_cac_xv2, false, "DBZ3/Launcher",
                     "Creador de personajes: permitir piezas de Xenoverse 2 (requiere XV2 instalado)");
+REXCVAR_DEFINE_BOOL(dbz3_launcher_kit, true, "DBZ3/Launcher",
+                    "Boton 'Kit de Modding' en la pestana Personajes (abre mod center hd/modkit_gui.py)");
 
 // NOTE: dbz3_* cvars are defined here (single storage, compiled into dbz3.exe).
 // SDK cvars (resolution, vsync, present_effect, ...) are DECLAREd at global
@@ -247,6 +253,8 @@ REXCVAR_DEFINE_STRING(dbz3_aspect, "keep", "DBZ3/Video",
 // Old presets ("low"/"medium"/"high"/"ultra") are accepted as aliases and
 // mapped to the new ones at load, and old installs (toml without this key) are
 // migrated to "manual" so an existing custom setup is never silently changed.
+// 22/11: version the user's settings were last loaded with (MigrarTrasActualizar).
+REXCVAR_DEFINE_STRING(dbz3_version_previa, "", "DBZ3/Launcher", "Game version of the last launch (update migration)");
 REXCVAR_DEFINE_STRING(dbz3_quality_preset, "unset", "DBZ3/Video",
                       "Quality preset: auto, performance, balanced, quality, manual")
     .allowed({"unset", "auto", "performance", "balanced", "quality", "manual",
@@ -389,6 +397,12 @@ REXCVAR_DEFINE_BOOL(dbz3_occlusion_queries, true, "DBZ3/Dev",
 // grafica y el mismo driver no se repite la prueba al arrancar (cargaba el driver dos veces: 0,2-0,4 s).
 REXCVAR_DEFINE_STRING(dbz3_d3d12_ok, "", "DBZ3/Launcher", "Adapter key on which Direct3D 12 last worked");
 
+// 1.5.6.3: el camino RTV para Intel UHD/Iris Xe (dbz3_intel_rtv del SDK, encendido de serie en la 1.5.6.1)
+// solo se probo con WARP; un i3 de 12.a gen (UHD 730) dejo de arrancar con la 1.5.6.1. De serie vuelve el
+// camino de la 1.5.6 (ROV); quien quiera probar el rapido pone dbz3_intel_rapido = true.
+REXCVAR_DEFINE_BOOL(dbz3_intel_rapido, false, "DBZ3/Video",
+                    "Intel UHD/Iris Xe: camino de dibujo rapido (experimental; puede no arrancar)")
+    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 REXCVAR_DEFINE_BOOL(dbz3_skip_launcher, false, "DBZ3/Dev",
                     "Skip the pre-game launcher and boot straight into the game")
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
@@ -769,6 +783,76 @@ void LoadUserSettings() {
   }
 }
 
+// 22/11 (1.5.7): what someone who updates by unzipping over the old version needs, once per version change.
+// 1) Defaults: SaveConfig rewrites every key already in dbz3_user.toml even when it equals the default, so an old
+//    default stays pinned forever. res/datos/defaults_historial.toml (tools/defaults_historial.py) lists, per
+//    published version, the cvars whose default changed; if the user's value is exactly that old default (they never
+//    chose another one), it moves to the new default. A value the user picked is never touched.
+// 2) Files that no longer belong to the game (res/datos/obsoletos_actualizacion.txt, one relative path per line):
+//    they are moved to _respaldo_actualizacion/<previous version>/, never deleted.
+// Coming from <=1.5.6 there is no record (dbz3_version_previa empty): assume 1.5.6, the last published one.
+static std::string NormaCvar(std::string s) {
+  char* fin = nullptr;
+  const double d = std::strtod(s.c_str(), &fin);
+  if (!s.empty() && fin && *fin == '\0') {   // number: 1, 1.0 and 1.000000 are the same value
+    char b[64];
+    std::snprintf(b, sizeof(b), "%.6g", d);
+    return b;
+  }
+  return s;
+}
+
+void MigrarTrasActualizar() {   // main.cpp, once, after LoadUserSettings (with the log already open)
+  if (g_config_load_state != ConfigLoadState::kOk && g_config_load_state != ConfigLoadState::kRepaired) return;
+  std::string cur = dbz3::launcher::CurrentVersion();
+  if (cur.size() > 2 && cur.compare(cur.size() - 2, 2, ".0") == 0) cur.resize(cur.size() - 2);   // 1.5.7.0 -> 1.5.7 (tag name)
+  std::string prev = REXCVAR_GET(dbz3_version_previa);
+  REXLOG_INFO("dbz3 actualizar: version {} (anterior: {})", cur, prev.empty() ? "sin registro" : prev);
+  if (cur.empty() || prev == cur) return;
+  if (prev.empty()) prev = "1.5.6";
+  const auto datos = rex::filesystem::GetExecutableFolder() / "res" / "datos";
+  int movidos = 0, ajustes = 0;
+  try {
+    const auto t = toml::parse_file((datos / "defaults_historial.toml").string());
+    if (const auto* tabla = t[prev].as_table()) {
+      for (const auto& [k, v] : *tabla) {
+        const std::string nombre(k.str());
+        const auto viejo = v.value<std::string>();
+        if (!viejo || !rex::cvar::HasNonDefaultValue(nombre)) continue;
+        if (NormaCvar(rex::cvar::GetFlagByName(nombre)) != NormaCvar(*viejo)) continue;   // the user chose it: keep
+        rex::cvar::ResetToDefault(nombre);
+        ++ajustes;
+        REXLOG_INFO("dbz3 actualizar: {} tenia el valor de serie de la {} ({}) -> nuevo valor de serie {}", nombre, prev,
+                    *viejo, rex::cvar::GetFlagByName(nombre));
+      }
+    }
+  } catch (const std::exception& e) {
+    REXLOG_WARN("dbz3 actualizar: sin historial de valores de serie ({})", e.what());
+  }
+  {
+    namespace fs = std::filesystem;
+    const fs::path raiz = rex::filesystem::GetExecutableFolder();
+    std::ifstream in(datos / "obsoletos_actualizacion.txt");
+    for (std::string l; std::getline(in, l);) {
+      while (!l.empty() && (l.back() == '\r' || l.back() == ' ')) l.pop_back();
+      if (l.rfind("\xEF\xBB\xBF", 0) == 0) l.erase(0, 3);   // BOM (PowerShell 5.1 writes it)
+      if (l.empty() || l[0] == '#' || l.find("..") != std::string::npos) continue;   // only inside the game folder
+      std::error_code ec;
+      const fs::path src = raiz / fs::u8path(l);
+      if (!fs::exists(src, ec)) continue;
+      const fs::path dst = raiz / "_respaldo_actualizacion" / prev / fs::u8path(l);
+      fs::create_directories(dst.parent_path(), ec);
+      fs::rename(src, dst, ec);
+      if (ec) REXLOG_WARN("dbz3 actualizar: no se pudo apartar {} ({})", l, ec.message());
+      else ++movidos;
+    }
+  }
+  REXLOG_INFO("dbz3 actualizar: {} -> {}: {} ajustes al nuevo valor de serie, {} archivos viejos apartados", prev, cur,
+              ajustes, movidos);
+  REXCVAR_SET(dbz3_version_previa, cur);
+  SaveUserSettings();   // persist now: a run that never closes the launcher must not migrate again (and undo a later choice)
+}
+
 ConfigLoadState LastConfigLoadState() { return g_config_load_state; }
 
 void SaveUserSettings() {
@@ -936,6 +1020,10 @@ int32_t ResolutionScale() { return REXCVAR_GET(dbz3_resolution_scale); }
 void SetResolutionScale(int32_t scale) { REXCVAR_SET(dbz3_resolution_scale, scale); }
 
 int32_t Language() { return REXCVAR_GET(dbz3_language); }
+
+bool JapaneseUiOnly() { return Language() == 2 && Region() == "eu"; }
+
+int32_t GuestLanguage() { return JapaneseUiOnly() ? 1 : Language(); }
 
 int32_t UiLanguage() { return REXCVAR_GET(dbz3_ui_language) == "pt" ? 9 : Language(); }
 
@@ -1982,10 +2070,11 @@ std::filesystem::path LatestLogPath() {
 // siguiente a un fallo de la GPU (la sesion anterior registro "D3D12 device
 // removed"), que es justo cuando hace falta el informe. Un `d3d12_dred = true`
 // puesto a mano en el toml se respeta.
-static bool PreviousSessionLostGpu() {
+// Final del registro de la sesion anterior (256 KB), vacio si no lo hay.
+static std::string PreviousSessionLogTail() {
   const auto logs_dir = rex::filesystem::GetExecutableFolder() / "logs";
   std::error_code ec;
-  if (!std::filesystem::is_directory(logs_dir, ec)) return false;
+  if (!std::filesystem::is_directory(logs_dir, ec)) return {};
   // La sesion actual ya ha creado su log (el mas reciente): mirar el anterior.
   std::vector<std::pair<std::filesystem::file_time_type, std::filesystem::path>> logs;
   for (auto [it_4, iec_4] = std::pair{std::filesystem::directory_iterator(logs_dir, ec), std::error_code{}}; !iec_4 && it_4 != std::filesystem::directory_iterator(); it_4.increment(iec_4)) {
@@ -1994,22 +2083,46 @@ static bool PreviousSessionLostGpu() {
       logs.emplace_back(entry.last_write_time(ec), entry.path());
     }
   }
-  if (logs.size() < 2) return false;
+  if (logs.size() < 2) return {};
   std::sort(logs.begin(), logs.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
   std::ifstream in(logs[1].second, std::ios::binary);
-  if (!in) return false;
+  if (!in) return {};
   in.seekg(0, std::ios::end);
   const std::streamoff size = in.tellg();
   const std::streamoff tail = std::min<std::streamoff>(size, 256 * 1024);
   in.seekg(size - tail);
   std::string text(static_cast<size_t>(tail), '\0');
   in.read(text.data(), tail);
-  return text.find("D3D12 device removed:") != std::string::npos;
+  return text;
 }
 
+#if REX_PLATFORM_WIN32
+namespace {
+bool GetPrimaryGpu(DXGI_ADAPTER_DESC1* desc_out);   // mas abajo, en el mismo espacio anonimo
+}  // namespace
+#endif
+
 void ArmGpuCrashDiagnostics() {
+  const std::string previous = PreviousSessionLogTail();
+#if REX_PLATFORM_WIN32
+  // canal 11/11 ("tras actualizar no arranca", "se cierra por la integrada"): la 1.5.6.1 paso las Intel UHD/Iris
+  // Xe del camino ROV al RTV (dbz3_intel_rtv). Si la sesion anterior acabo en un error fatal de la grafica, en
+  // una Intel previa a Arc se vuelve al camino de la 1.5.5 y se queda asi mientras cada sesion lo apunte.
+  // Un dbz3_intel_rtv = false puesto a mano ya es lo mismo; vaciar logs/ devuelve el camino rapido.
+  constexpr const char* kIntelSeguro = "dbz3: Intel integrada en modo seguro (ROV, como la 1.5.5)";
+  DXGI_ADAPTER_DESC1 gpu{};
+  if (!rex::cvar::HasNonDefaultValue("dbz3_intel_rtv") && GetPrimaryGpu(&gpu) && gpu.VendorId == 0x8086 &&
+      !std::wcsstr(gpu.Description, L"Arc") &&
+      (previous.find("abort(): error fatal") != std::string::npos ||
+       previous.find("D3D12 device removed:") != std::string::npos ||
+       previous.find(kIntelSeguro) != std::string::npos)) {
+    rex::cvar::SetFlagByName("dbz3_intel_rtv", "false");
+    REXLOG_WARN("{}: la sesion anterior se cerro por la grafica o ya iba asi (se quita vaciando logs/)",
+                kIntelSeguro);
+  }
+#endif
   if (rex::cvar::HasNonDefaultValue("d3d12_dred")) return;
-  if (PreviousSessionLostGpu()) {
+  if (previous.find("D3D12 device removed:") != std::string::npos) {
     rex::cvar::SetFlagByName("d3d12_dred", "true");
     REXLOG_INFO("dbz3: la sesion anterior perdio la GPU (device removed): DRED activado para esta "
                 "sesion");
@@ -2035,42 +2148,157 @@ std::string VideosHdUrl() { return REXCVAR_GET(dbz3_videos_hd_url); }
 
 bool CacXv2Piezas() { return REXCVAR_GET(dbz3_cac_xv2); }
 void SetCacXv2Piezas(bool enabled) { REXCVAR_SET(dbz3_cac_xv2, enabled); }
+bool LauncherKitButton() { return REXCVAR_GET(dbz3_launcher_kit); }
 
-// Misma regla que heroe.cpp y mod center hd/xv2/xv2_leer.py: DBZ3_XENO2_CPK manda (si no existe, XV2 no esta).
-bool Xv2Instalado() {
-  static const bool ok = [] {
-    namespace fs = std::filesystem;
-    auto hay = [](const fs::path& p) {
-      std::error_code ec;
-      return !p.empty() && fs::is_regular_file(p, ec);
-    };
-    if (const char* e = std::getenv("DBZ3_XENO2_CPK"); e && *e) return hay(fs::u8path(e));
-    std::vector<fs::path> bases;
-    for (char d = 'C'; d <= 'J'; ++d) {
-      bases.emplace_back(std::string(1, d) + ":/SteamLibrary");
-      bases.emplace_back(std::string(1, d) + ":/Steam");
+// Xenoverse 2: carpeta elegida por el jugador (vacia = autodeteccion). data.cpk manda; DBZ3_XENO2_CPK sigue mandando
+// sobre todo (compat con pruebas). Al encontrarlo se exporta DBZ3_XENO2_CPK para que xv2_leer.py use el mismo.
+namespace {
+std::string g_xv2_cache;
+bool g_xv2_cache_ok = false;
+bool g_xv2_env_nuestro = false;   // DBZ3_XENO2_CPK exportada por nosotros (no cuenta como orden del usuario)
+bool EnvDelUsuario() { const char* e = std::getenv("DBZ3_XENO2_CPK"); return e && *e && !g_xv2_env_nuestro; }
+std::filesystem::path Xv2CpkEnCarpeta(const std::filesystem::path& d) {
+  namespace fs = std::filesystem;
+  std::error_code ec;
+  for (const fs::path& c : {d / "cpk" / "data.cpk", d / "data.cpk", d / "DB Xenoverse 2" / "cpk" / "data.cpk"})
+    if (!d.empty() && fs::is_regular_file(c, ec)) return c;
+  return {};
+}
+std::filesystem::path Xv2Buscar() {
+  namespace fs = std::filesystem;
+  if (EnvDelUsuario()) {
+    const char* e = std::getenv("DBZ3_XENO2_CPK");
+    std::error_code ec;
+    return fs::is_regular_file(fs::u8path(e), ec) ? fs::u8path(e) : fs::path{};
+  }
+  const std::string elegida = REXCVAR_GET(dbz3_xv2_dir);
+  if (!elegida.empty()) {
+    // Una eleccion explicita nunca cae silenciosamente en otra instalacion.
+    return Xv2CpkEnCarpeta(fs::u8path(elegida));
+  }
+  std::vector<fs::path> steams;   // carpetas de instalacion de Steam: registro + sitios habituales
+#if REX_PLATFORM_WIN32
+  for (const wchar_t* sub : {L"SOFTWARE\\WOW6432Node\\Valve\\Steam", L"SOFTWARE\\Valve\\Steam"}) {
+    wchar_t buf[MAX_PATH] = {};
+    DWORD n = sizeof(buf);
+    if (RegGetValueW(HKEY_LOCAL_MACHINE, sub, L"InstallPath", RRF_RT_REG_SZ, nullptr, buf, &n) == ERROR_SUCCESS)
+      steams.emplace_back(buf);
+  }
+  {
+    wchar_t buf[MAX_PATH] = {};
+    DWORD n = sizeof(buf);
+    if (RegGetValueW(HKEY_CURRENT_USER, L"SOFTWARE\\Valve\\Steam", L"SteamPath", RRF_RT_REG_SZ, nullptr, buf, &n) ==
+        ERROR_SUCCESS)
+      steams.emplace_back(buf);
+  }
+#endif
+  steams.emplace_back("C:/Program Files (x86)/Steam");
+  steams.emplace_back("C:/Program Files/Steam");
+  std::vector<fs::path> bases;
+  for (char d = 'C'; d <= 'Z'; ++d) {
+    bases.emplace_back(std::string(1, d) + ":/SteamLibrary");
+    bases.emplace_back(std::string(1, d) + ":/Steam");
+  }
+  bases.insert(bases.end(), steams.begin(), steams.end());
+  // Tambien Steam instalado fuera de Program Files puede declarar otras bibliotecas.
+  const auto lectores = bases;
+  for (const fs::path& st : lectores) {
+    std::ifstream f(st / "steamapps" / "libraryfolders.vdf");
+    std::string linea;
+    while (std::getline(f, linea)) {
+      const auto p = linea.find("\"path\"");
+      if (p == std::string::npos) continue;
+      const auto a = linea.find('"', p + 6), z = linea.find('"', a + 1);
+      if (a == std::string::npos || z == std::string::npos) continue;
+      std::string r = linea.substr(a + 1, z - a - 1);
+      for (size_t i = 0; (i = r.find("\\\\", i)) != std::string::npos; ++i) r.erase(i, 1);   // vdf duplica las barras
+      bases.push_back(fs::u8path(r));
     }
-    bases.emplace_back("C:/Program Files (x86)/Steam");
-    bases.emplace_back("C:/Program Files/Steam");
-    for (const fs::path& b : bases) {
-      if (hay(b / "steamapps" / "common" / "DB Xenoverse 2" / "cpk" / "data.cpk")) return true;
+  }
+  for (const fs::path& b : bases) {
+    const fs::path c = Xv2CpkEnCarpeta(b / "steamapps" / "common" / "DB Xenoverse 2");
+    if (!c.empty()) return c;
+  }
+  return {};
+}
+}  // namespace
+
+std::string Xv2Cpk() {
+  if (!g_xv2_cache_ok) {
+    { auto u = Xv2Buscar().u8string(); g_xv2_cache.assign(u.begin(), u.end()); }
+    g_xv2_cache_ok = true;
+    if (!EnvDelUsuario()) {
+      // Si una carpeta guardada desaparece, los lectores tampoco deben autodetectar otra.
+      std::string source = g_xv2_cache;
+      if (source.empty() && !Xv2Carpeta().empty())
+        source = rex::path_to_utf8(std::filesystem::u8path(Xv2Carpeta()) / "cpk" / "data.cpk");
+#if REX_PLATFORM_WIN32
+      _putenv_s("DBZ3_XENO2_CPK", source.c_str());
+      SetEnvironmentVariableW(L"DBZ3_XENO2_CPK", source.empty() ? nullptr : std::filesystem::u8path(source).c_str());
+#else
+      if (source.empty()) unsetenv("DBZ3_XENO2_CPK");
+      else setenv("DBZ3_XENO2_CPK", source.c_str(), 1);
+#endif
+      g_xv2_env_nuestro = true;
     }
-    for (const fs::path& b : {fs::path("C:/Program Files (x86)/Steam"), fs::path("C:/Program Files/Steam")}) {
-      std::ifstream f(b / "steamapps" / "libraryfolders.vdf");
-      std::string linea;
-      while (std::getline(f, linea)) {
-        const auto p = linea.find("\"path\"");
-        if (p == std::string::npos) continue;
-        const auto a = linea.find('"', p + 6), z = linea.find('"', a + 1);
-        if (a == std::string::npos || z == std::string::npos) continue;
-        if (hay(fs::u8path(linea.substr(a + 1, z - a - 1)) / "steamapps" / "common" / "DB Xenoverse 2" / "cpk" /
-                "data.cpk"))
-          return true;
-      }
+  }
+  return g_xv2_cache;
+}
+bool Xv2Instalado() { return !Xv2Cpk().empty(); }
+std::string Xv2Version() {
+  std::string version;
+  const std::string cpk = Xv2Cpk();
+  if (cpk.empty()) return version;
+  auto root = std::filesystem::u8path(cpk).parent_path();
+  if (root.filename() == "cpk") root = root.parent_path();
+#if REX_PLATFORM_WIN32
+  const auto exe = root / "bin" / "DBXV2.exe";
+  DWORD ignored = 0;
+  const DWORD size = GetFileVersionInfoSizeW(exe.c_str(), &ignored);
+  if (size > 0 && size < 1024 * 1024) {
+    std::vector<char> bytes(size);
+    VS_FIXEDFILEINFO* info = nullptr;
+    UINT count = 0;
+    if (GetFileVersionInfoW(exe.c_str(), 0, size, bytes.data()) &&
+        VerQueryValueW(bytes.data(), L"\\", reinterpret_cast<void**>(&info), &count) &&
+        count >= sizeof(VS_FIXEDFILEINFO) && info->dwSignature == 0xFEEF04BD) {
+      version = std::to_string(HIWORD(info->dwFileVersionMS)) + "." +
+                std::to_string(LOWORD(info->dwFileVersionMS)) + "." +
+                std::to_string(HIWORD(info->dwFileVersionLS)) + "." +
+                std::to_string(LOWORD(info->dwFileVersionLS));
     }
-    return false;
-  }();
-  return ok;
+  }
+#endif
+  if (version.empty()) {
+    std::ifstream f(root.parent_path().parent_path() / "appmanifest_454650.acf");
+    std::string line;
+    while (std::getline(f, line)) {
+      const auto p = line.find("\"buildid\"");
+      if (p == std::string::npos) continue;
+      const auto a = line.find('"', p + 9);
+      const auto z = a == std::string::npos ? a : line.find('"', a + 1);
+      if (a != std::string::npos && z != std::string::npos)
+        version = "Steam build " + line.substr(a + 1, z - a - 1);
+      break;
+    }
+  }
+  return version;   // vacio = version no declarada, nunca una version inventada
+}
+std::string Xv2Carpeta() { return REXCVAR_GET(dbz3_xv2_dir); }
+bool Xv2CarpetaValida(const std::string& dir) { return !Xv2CpkEnCarpeta(std::filesystem::u8path(dir)).empty(); }
+void SetXv2Carpeta(const std::string& dir) {
+  REXCVAR_SET(dbz3_xv2_dir, dir);
+  RefreshXv2();
+}
+void RefreshXv2() {
+  g_xv2_cache_ok = false;
+#if REX_PLATFORM_WIN32
+  if (g_xv2_env_nuestro) _putenv_s("DBZ3_XENO2_CPK", "");   // se recalcula (y se re-exporta) en la siguiente consulta
+#else
+  if (g_xv2_env_nuestro) unsetenv("DBZ3_XENO2_CPK");
+#endif
+  g_xv2_env_nuestro = false;
+  (void)Xv2Cpk();
 }
 
 std::string ModProfile() { return REXCVAR_GET(dbz3_mod_profile); }
@@ -2764,7 +2992,7 @@ bool LooksLikeTexturePackFile(const std::string& stem) {
 
 // UTF-8 text of a path: path::string() throws on names outside the Windows code page.
 std::string PathUtf8(const std::filesystem::path& p) {
-  const std::u8string s = p.u8string();
+  const auto s = p.u8string();   // auto: con -fno-char8_t (NDK) u8string() devuelve std::string
   return std::string(s.begin(), s.end());
 }
 
@@ -2881,6 +3109,7 @@ std::string GpuBackend() { return REXCVAR_GET(dbz3_gpu_backend); }
 void SetGpuBackend(const std::string& backend) { REXCVAR_SET(dbz3_gpu_backend, backend); }
 
 void ApplyUserSettingsToSdk() {
+  (void)Xv2Cpk();   // tambien al saltarse el launcher: los lectores reciben la carpeta persistida
   // NOTE: do NOT set the "resolution" or "fullscreen" cvars here. Both would
   // resize/fullscreen the host window before the pre-game launcher is shown,
   // making the launcher huge or borderless. They are applied on Play via
@@ -2895,9 +3124,14 @@ void ApplyUserSettingsToSdk() {
   // so it must be set here and not only saved to the TOML.
   RefreshTexturePacks();
   REXCVAR_SET(present_effect, REXCVAR_GET(dbz3_present_effect));
-  REXCVAR_SET(user_language, static_cast<uint32_t>(Language()));
+  REXCVAR_SET(user_language, static_cast<uint32_t>(GuestLanguage()));
+  if (JapaneseUiOnly()) {
+    REXLOG_INFO("dbz3 idioma: datos EU, interfaz ja, juego en (data_eng.afs)");
+  }
   // Host graphics backend (d3d12/vulkan). Read by the runtime when it loads
   // the GPU plugin during SetupPresentation, so it must be set before then.
+  // dbz3_intel_rtv es kInitOnly en el SDK: se fija aqui, antes de cargar el plugin de GPU.
+  rex::cvar::SetFlagByName("dbz3_intel_rtv", REXCVAR_GET(dbz3_intel_rapido) ? "true" : "false");
   std::string backend = GpuBackend();
 #if REX_PLATFORM_WIN32
   if (backend != "vulkan" && !D3D12Usable()) {

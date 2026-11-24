@@ -14,12 +14,14 @@ import os
 import sys
 
 import biblioteca_anim as ba
+import tactics_andar_iw as iw
+import capsulas
 
 sc = ba.sc
 AQUI = os.path.dirname(os.path.abspath(__file__))
 TOML = os.path.join(AQUI, "tactics_manifest.toml")
 OBLIGATORIOS = ("espera", "andar", "ataque", "tecnica")
-OPCIONALES = ("dano", "derrota", "carga_ki", "transformacion")
+OPCIONALES = ("dano", "derrota", "levantarse", "victoria", "carga_ki", "transformacion")
 BUCLE = {"espera": True, "andar": True, "carga_ki": True}
 # H9: cadena de formas por unidad (1 a 4 estrellas = su siguiente transformacion NATIVA de B3): (forma, ...) del propio personaje. El modelo
 # de la forma k es models[form_models[k][1]] de roster_db.json (lo mismo que FidB3 del juego); las formas que son OTRO id (SSJ4...) no se usan.
@@ -49,12 +51,14 @@ UNIDADES = tuple((c if k == 0 else "%s_%d" % (c, k + 1), bid, b2, f, _fid(bid, f
 # clip -> lista de (codigo, estado, nota); gana el primero que exista
 CANDIDATOS = {
     "espera": [(0x000, "medido", "neutro 0 (RONDA4_PULIDO.md)")],
-    "andar": [(0x00F, "medido", "andar por el suelo (altura.py GROUND_CODES)"),
-              (0x002, "medido", "andar por el suelo, codigo 2 (altura.py GROUND_CODES): el andar real de los que no traen 0xF"),
-              (0x009, "inferido", "codigo 9 (serie 9-0xB de los ninos: Goku, Trunks, Gohan ninos): andar del suelo"),
+    # 14/11 (usuario + render de los clips): 0xF-0x11 es la CARGA DE KI (inicio/bucle/fin) y 0x2 una pose de brazos cruzados, no
+    # andar: con ellos Piccolo/Goku "cargaban ki" al moverse en Tactics y Survivors. El andar de verdad es 0x5 (24 cuadros en Goku,
+    # Piccolo, Kaio-Shin, Cell); quien no lo trae usa 0x3/0x4 (Recoome, Kaio-Shin) y, si no, se desliza en su espera (abajo).
+    "andar": [(0x005, "medido", "andar por el suelo (render 14/11: piernas alternas; 24 cuadros)"),
+              (0x003, "medido", "andar por el suelo, serie 3-4 (render 14/11, Recoome)"),
+              (0x004, "inferido", "andar por el suelo, serie 3-4"),
               (0x0F4, "inferido", "sin andar en el suelo: bucle de 60 cuadros de la familia 0xF4-0xFF (vuelo); sin confirmar en juego")],
     "ataque": [(0x21B, "medido", "combo >P (ACM_FORMAT.md)")],
-    "tecnica": [(0x258, "inferido", "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica")],
     # dsTAC: pose del ganador al acabar la ronda (sonda de combate: estado 6, accion 15 codigo 0x2A1; 120 cuadros, bucle al final)
     "victoria": [(0x2A1, "medido", "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)")],
 }
@@ -102,8 +106,38 @@ def _clip(csk0, cskf, acm, en, codigo):
     return (info[0], fr) if fr else None
 
 
+def _tecnica(bid, csk0, cskf, acm, en):
+    """Primera tecnica propia de una capsula normal, no la entrada de modo hiper."""
+    roster = json.load(open(os.path.join(AQUI, "roster_db.json"), encoding="utf-8"))
+    personaje = next(x for x in roster["ids"] if x["id"] == bid)
+    cam = sc.hd_entry(personaje["cam"])
+    off, size = capsulas.ccm_child(cam)
+    ccm = cam[off:off + size]
+    bloques = capsulas.ccm_blocks(ccm)
+    for cap in personaje["skills"]["ataques"]:
+        if not cap:
+            continue
+        for off, _ in bloques:
+            cond = capsulas.w(ccm, off, 5)
+            cod = capsulas.w(ccm, off, 12)
+            if capsulas.w(ccm, off, 8) != cap or not cod or cond & (0x4000 | 0x0400 | 0x0008):
+                continue
+            r = _clip(csk0, cskf, acm, en, cod)
+            if r:
+                return dict(codigo=cod, anim=r[0], frames=r[1], bucle=False, estado="inferido",
+                            nota="tecnica de capsula %d, codigo del CCM propio; pose por confirmar en juego" % cap)
+    return None
+
+
 def construir():
     out = []
+    try:
+        fuente_iw = iw.fuente_iw()
+    except FileNotFoundError:
+        # Sin Infinite World el horno usa el respaldo B3 (vista_tactics_iw.py ya lo hace);
+        # el manifiesto simplemente no declara las claves iw_*.
+        print("tactics_manifest: sin IW; se conserva el andar B3 (sin claves iw_*)", flush=True)
+        fuente_iw = None
     # dsTAC: banco comun de reacciones (una sola lectura para las 51 entradas)
     comun = sc.hd_entry(BANCO_COMUN)
     csk_c, ec = sc.csk_of(comun)
@@ -117,12 +151,24 @@ def construir():
                 if r:
                     u["clips"][nom] = dict(codigo=cod, anim=r[0], frames=r[1], bucle=BUCLE.get(nom, False), estado=est, nota=nota)
                     break
+        tecnica = _tecnica(bid, csk0, cskf, acm, en)
+        u["clips"]["tecnica"] = tecnica or dict(u["clips"]["ataque"], estado="inferido", nota="sin tecnica propia resuelta: ataque de respaldo")
         if uid in ("yamcha", "ginyu"):   # H14: su banco no trae espera ni pose de pie (no son luchadores de B3: sin codigo 0 ni 2); espera = pose de espera generica del select (banco 3881, anim 5, 61 cuadros)
             u["clips"]["espera"] = dict(codigo=-1, anim=5, frames=61, bucle=True, banco=3881, estado="inferido", nota="sin espera propia: espera generica del select (banco 3881 anim 5)")
             u["clips"]["andar"] = dict(u["clips"]["espera"], nota="sin andar propio: se desliza en la espera generica del select (banco 3881 anim 5)")
+        if "andar" not in u["clips"] and "espera" in u["clips"]:   # 14/11: sin andar de suelo (ni 0x5 ni 0x3/0x4): se desliza en su espera, nunca la carga de ki
+            u["clips"]["andar"] = dict(u["clips"]["espera"], nota="sin andar propio: se desliza en su espera")
         an = u["clips"].get("andar")
         if an and an["codigo"] == 0xF4 and uid != "freezer" and "espera" in u["clips"]:   # H14: sin andar de suelo y no vuela por naturaleza: se desliza en su espera (el bucle de vuelo inclina y abre las piernas)
             u["clips"]["andar"] = dict(u["clips"]["espera"], nota="sin andar de suelo en su banco: se desliza en su espera")
+        # R16: no poner 915 en `banco`: ese numero pertenece a OTRO AFS. El horno
+        # IW lee las claves iw_*; el horno B3 anterior conserva un respaldo valido.
+        if fuente_iw:
+            u["clips"]["andar"].update(iw.metadatos(bid, forma, fuente_iw))
+            datos_iw = u["clips"]["andar"]
+            amm_iw, eiw, aiw, _nf = iw.clip_iw(fuente_iw, datos_iw["iw_banco"], datos_iw["iw_codigo"])
+            import altura
+            iw.compatibilidad(altura.skeleton(sc.hd_entry(fid)), amm_iw, eiw, aiw)
         for nom, (cod, nota) in COMUNES.items():   # dsTAC: golpe recibido, KO y levantarse del banco comun
             info = sc.code_info(csk_c, ec, cod)
             anim = info[0] if info else None
@@ -138,7 +184,11 @@ def construir():
 
 
 def escribir(unidades, path=TOML):
-    L = ["# Generado por tactics_manifest.py generar (no editar a mano). Ver el docstring del script.", "version = 1", "",
+    L = ["# Generado por tactics_manifest.py generar (no editar a mano). Ver el docstring del script.",
+         "# version 2 (D2 TAC03): el .tk guarda los 8 clips con el #ACM correcto de cada banco (dano/derrota/levantarse ya no salen en reposo).",
+         "version = 2", "",
+         "# R16: iw_* en andar = fuente preferida para cac/vista_tactics_iw.py; banco/anim/codigo = respaldo B3.",
+         "# IW 915: andar 0x15, carrera 0x17 (0x16 solo arranque); Cell usa 914. No requiere IW para leer un .tk ya horneado.",
          "[reglas]",
          '# Python (studio_core.anim_locals) SUMA la posicion de la pista al reposo; C++ (pasarela_nave.cpp EjesMundo, modo_rel 0) la SUSTITUYE.',
          '# Tactics usa el C++: la raiz de la animacion NO se suma al movimiento del tablero. La figura se coloca en su casilla con',

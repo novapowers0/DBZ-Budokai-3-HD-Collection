@@ -1,0 +1,16 @@
+descripcion = "L1: recuperacion de una practica interrumpida al abrir el laboratorio"
+env = ["DBZ3_HUB_MODE=5"]
+apartar = ["user_data/dbz3/rpg.toml*", "user_data/dbz3/hub_modos.toml*", "user_data/dbz3/modos", "user_data/dbz3/retos.csv", "user_data/dbz3/hub_heroe.toml*", "user_data/dbz3/pasarela"]
+poner = ["docs/14_frentes/escenarios_pruebas/acel_ports/L1/recuperacion_datos.toml -> user_data/dbz3/hub_modos.toml"]
+pasos = [
+  "esperar_pantalla 5 120",
+  "esperar 3000",
+  "tecla W 1500",
+  "tecla Space 4500",
+  "log 'hub: entra la pantalla HUB' 60",
+  "tecla S 700", "tecla S 700", "tecla S 700", "tecla S 700",
+  "tecla S 700", "tecla S 700", "tecla S 700",
+  "tecla Space 2500",
+  "log \"practica anterior no acabo: muneco devuelto a 'guardia'\" 30",
+  "captura recuperacion",
+]

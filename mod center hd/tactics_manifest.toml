@@ -1,6 +1,9 @@
 # Generado por tactics_manifest.py generar (no editar a mano). Ver el docstring del script.
-version = 1
+# version 2 (D2 TAC03): el .tk guarda los 8 clips con el #ACM correcto de cada banco (dano/derrota/levantarse ya no salen en reposo).
+version = 2
 
+# R16: iw_* en andar = fuente preferida para cac/vista_tactics_iw.py; banco/anim/codigo = respaldo B3.
+# IW 915: andar 0x15, carrera 0x17 (0x16 solo arranque); Cell usa 914. No requiere IW para leer un .tk ya horneado.
 [reglas]
 # Python (studio_core.anim_locals) SUMA la posicion de la pista al reposo; C++ (pasarela_nave.cpp EjesMundo, modo_rel 0) la SUSTITUYE.
 # Tactics usa el C++: la raiz de la animacion NO se suma al movimiento del tablero. La figura se coloca en su casilla con
@@ -25,12 +28,22 @@ bucle = true
 estado = "medido"
 nota = "neutro 0 (RONDA4_PULIDO.md)"
 [unidad.clips.andar]
-codigo = 15
-anim = 6
-frames = 16
+codigo = 5
+anim = 2
+frames = 24
 bucle = true
 estado = "medido"
-nota = "andar por el suelo (altura.py GROUND_CODES)"
+nota = "andar por el suelo (render 14/11: piernas alternas; 24 cuadros)"
+iw_banco = 915
+iw_codigo = 21
+iw_anim = 15
+iw_frames = 60
+iw_correr_inicio_codigo = 22
+iw_correr_inicio_anim = 16
+iw_correr_inicio_frames = 10
+iw_correr_codigo = 23
+iw_correr_anim = 17
+iw_correr_frames = 30
 [unidad.clips.ataque]
 codigo = 539
 anim = 31
@@ -38,13 +51,6 @@ frames = 36
 bucle = false
 estado = "medido"
 nota = "combo >P (ACM_FORMAT.md)"
-[unidad.clips.tecnica]
-codigo = 600
-anim = 9
-frames = 120
-bucle = false
-estado = "inferido"
-nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
 [unidad.clips.victoria]
 codigo = 673
 anim = 136
@@ -52,6 +58,13 @@ frames = 120
 bucle = false
 estado = "medido"
 nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
+[unidad.clips.tecnica]
+codigo = 586
+anim = 72
+frames = 100
+bucle = false
+estado = "inferido"
+nota = "tecnica de capsula 6, codigo del CCM propio; pose por confirmar en juego"
 [unidad.clips.dano]
 codigo = 154
 anim = 167
@@ -100,12 +113,22 @@ bucle = true
 estado = "medido"
 nota = "neutro 0 (RONDA4_PULIDO.md)"
 [unidad.clips.andar]
-codigo = 15
-anim = 6
-frames = 16
+codigo = 5
+anim = 2
+frames = 24
 bucle = true
 estado = "medido"
-nota = "andar por el suelo (altura.py GROUND_CODES)"
+nota = "andar por el suelo (render 14/11: piernas alternas; 24 cuadros)"
+iw_banco = 915
+iw_codigo = 21
+iw_anim = 15
+iw_frames = 60
+iw_correr_inicio_codigo = 22
+iw_correr_inicio_anim = 16
+iw_correr_inicio_frames = 10
+iw_correr_codigo = 23
+iw_correr_anim = 17
+iw_correr_frames = 30
 [unidad.clips.ataque]
 codigo = 539
 anim = 31
@@ -113,13 +136,6 @@ frames = 36
 bucle = false
 estado = "medido"
 nota = "combo >P (ACM_FORMAT.md)"
-[unidad.clips.tecnica]
-codigo = 600
-anim = 9
-frames = 120
-bucle = false
-estado = "inferido"
-nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
 [unidad.clips.victoria]
 codigo = 673
 anim = 136
@@ -127,6 +143,13 @@ frames = 120
 bucle = false
 estado = "medido"
 nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
+[unidad.clips.tecnica]
+codigo = 586
+anim = 72
+frames = 100
+bucle = false
+estado = "inferido"
+nota = "tecnica de capsula 6, codigo del CCM propio; pose por confirmar en juego"
 [unidad.clips.dano]
 codigo = 154
 anim = 167
@@ -175,12 +198,22 @@ bucle = true
 estado = "medido"
 nota = "neutro 0 (RONDA4_PULIDO.md)"
 [unidad.clips.andar]
-codigo = 15
-anim = 6
-frames = 16
+codigo = 5
+anim = 2
+frames = 24
 bucle = true
 estado = "medido"
-nota = "andar por el suelo (altura.py GROUND_CODES)"
+nota = "andar por el suelo (render 14/11: piernas alternas; 24 cuadros)"
+iw_banco = 915
+iw_codigo = 21
+iw_anim = 15
+iw_frames = 60
+iw_correr_inicio_codigo = 22
+iw_correr_inicio_anim = 16
+iw_correr_inicio_frames = 10
+iw_correr_codigo = 23
+iw_correr_anim = 17
+iw_correr_frames = 30
 [unidad.clips.ataque]
 codigo = 539
 anim = 31
@@ -188,13 +221,6 @@ frames = 36
 bucle = false
 estado = "medido"
 nota = "combo >P (ACM_FORMAT.md)"
-[unidad.clips.tecnica]
-codigo = 600
-anim = 9
-frames = 120
-bucle = false
-estado = "inferido"
-nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
 [unidad.clips.victoria]
 codigo = 673
 anim = 136
@@ -202,6 +228,13 @@ frames = 120
 bucle = false
 estado = "medido"
 nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
+[unidad.clips.tecnica]
+codigo = 586
+anim = 72
+frames = 100
+bucle = false
+estado = "inferido"
+nota = "tecnica de capsula 6, codigo del CCM propio; pose por confirmar en juego"
 [unidad.clips.dano]
 codigo = 154
 anim = 167
@@ -250,12 +283,22 @@ bucle = true
 estado = "medido"
 nota = "neutro 0 (RONDA4_PULIDO.md)"
 [unidad.clips.andar]
-codigo = 15
-anim = 6
-frames = 16
+codigo = 5
+anim = 2
+frames = 24
 bucle = true
 estado = "medido"
-nota = "andar por el suelo (altura.py GROUND_CODES)"
+nota = "andar por el suelo (render 14/11: piernas alternas; 24 cuadros)"
+iw_banco = 915
+iw_codigo = 21
+iw_anim = 15
+iw_frames = 60
+iw_correr_inicio_codigo = 22
+iw_correr_inicio_anim = 16
+iw_correr_inicio_frames = 10
+iw_correr_codigo = 23
+iw_correr_anim = 17
+iw_correr_frames = 30
 [unidad.clips.ataque]
 codigo = 539
 anim = 31
@@ -263,13 +306,6 @@ frames = 36
 bucle = false
 estado = "medido"
 nota = "combo >P (ACM_FORMAT.md)"
-[unidad.clips.tecnica]
-codigo = 600
-anim = 9
-frames = 120
-bucle = false
-estado = "inferido"
-nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
 [unidad.clips.victoria]
 codigo = 673
 anim = 136
@@ -277,6 +313,13 @@ frames = 120
 bucle = false
 estado = "medido"
 nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
+[unidad.clips.tecnica]
+codigo = 586
+anim = 72
+frames = 100
+bucle = false
+estado = "inferido"
+nota = "tecnica de capsula 6, codigo del CCM propio; pose por confirmar en juego"
 [unidad.clips.dano]
 codigo = 154
 anim = 167
@@ -325,12 +368,22 @@ bucle = true
 estado = "medido"
 nota = "neutro 0 (RONDA4_PULIDO.md)"
 [unidad.clips.andar]
-codigo = 2
-anim = 1
+codigo = 0
+anim = 0
 frames = 128
 bucle = true
 estado = "medido"
-nota = "andar por el suelo, codigo 2 (altura.py GROUND_CODES): el andar real de los que no traen 0xF"
+nota = "sin andar de suelo en su banco: se desliza en su espera"
+iw_banco = 915
+iw_codigo = 21
+iw_anim = 15
+iw_frames = 60
+iw_correr_inicio_codigo = 22
+iw_correr_inicio_anim = 16
+iw_correr_inicio_frames = 10
+iw_correr_codigo = 23
+iw_correr_anim = 17
+iw_correr_frames = 30
 [unidad.clips.ataque]
 codigo = 539
 anim = 23
@@ -338,13 +391,6 @@ frames = 54
 bucle = false
 estado = "medido"
 nota = "combo >P (ACM_FORMAT.md)"
-[unidad.clips.tecnica]
-codigo = 600
-anim = 81
-frames = 120
-bucle = false
-estado = "inferido"
-nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
 [unidad.clips.victoria]
 codigo = 673
 anim = 127
@@ -352,6 +398,13 @@ frames = 120
 bucle = false
 estado = "medido"
 nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
+[unidad.clips.tecnica]
+codigo = 585
+anim = 48
+frames = 110
+bucle = false
+estado = "inferido"
+nota = "tecnica de capsula 38, codigo del CCM propio; pose por confirmar en juego"
 [unidad.clips.dano]
 codigo = 154
 anim = 167
@@ -400,12 +453,22 @@ bucle = true
 estado = "medido"
 nota = "neutro 0 (RONDA4_PULIDO.md)"
 [unidad.clips.andar]
-codigo = 2
-anim = 1
+codigo = 0
+anim = 0
 frames = 128
 bucle = true
 estado = "medido"
-nota = "andar por el suelo, codigo 2 (altura.py GROUND_CODES): el andar real de los que no traen 0xF"
+nota = "sin andar de suelo en su banco: se desliza en su espera"
+iw_banco = 915
+iw_codigo = 21
+iw_anim = 15
+iw_frames = 60
+iw_correr_inicio_codigo = 22
+iw_correr_inicio_anim = 16
+iw_correr_inicio_frames = 10
+iw_correr_codigo = 23
+iw_correr_anim = 17
+iw_correr_frames = 30
 [unidad.clips.ataque]
 codigo = 539
 anim = 23
@@ -413,13 +476,6 @@ frames = 54
 bucle = false
 estado = "medido"
 nota = "combo >P (ACM_FORMAT.md)"
-[unidad.clips.tecnica]
-codigo = 600
-anim = 81
-frames = 120
-bucle = false
-estado = "inferido"
-nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
 [unidad.clips.victoria]
 codigo = 673
 anim = 127
@@ -427,6 +483,13 @@ frames = 120
 bucle = false
 estado = "medido"
 nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
+[unidad.clips.tecnica]
+codigo = 585
+anim = 48
+frames = 110
+bucle = false
+estado = "inferido"
+nota = "tecnica de capsula 38, codigo del CCM propio; pose por confirmar en juego"
 [unidad.clips.dano]
 codigo = 154
 anim = 167
@@ -475,12 +538,22 @@ bucle = true
 estado = "medido"
 nota = "neutro 0 (RONDA4_PULIDO.md)"
 [unidad.clips.andar]
-codigo = 2
-anim = 1
-frames = 128
+codigo = 0
+anim = 2
+frames = 64
 bucle = true
 estado = "medido"
-nota = "andar por el suelo, codigo 2 (altura.py GROUND_CODES): el andar real de los que no traen 0xF"
+nota = "sin andar de suelo en su banco: se desliza en su espera"
+iw_banco = 915
+iw_codigo = 21
+iw_anim = 15
+iw_frames = 60
+iw_correr_inicio_codigo = 22
+iw_correr_inicio_anim = 16
+iw_correr_inicio_frames = 10
+iw_correr_codigo = 23
+iw_correr_anim = 17
+iw_correr_frames = 30
 [unidad.clips.ataque]
 codigo = 539
 anim = 23
@@ -488,13 +561,6 @@ frames = 54
 bucle = false
 estado = "medido"
 nota = "combo >P (ACM_FORMAT.md)"
-[unidad.clips.tecnica]
-codigo = 600
-anim = 81
-frames = 120
-bucle = false
-estado = "inferido"
-nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
 [unidad.clips.victoria]
 codigo = 673
 anim = 127
@@ -502,6 +568,13 @@ frames = 120
 bucle = false
 estado = "medido"
 nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
+[unidad.clips.tecnica]
+codigo = 585
+anim = 48
+frames = 110
+bucle = false
+estado = "inferido"
+nota = "tecnica de capsula 38, codigo del CCM propio; pose por confirmar en juego"
 [unidad.clips.dano]
 codigo = 154
 anim = 167
@@ -550,12 +623,22 @@ bucle = true
 estado = "medido"
 nota = "neutro 0 (RONDA4_PULIDO.md)"
 [unidad.clips.andar]
-codigo = 15
-anim = 8
-frames = 20
+codigo = 5
+anim = 4
+frames = 24
 bucle = true
 estado = "medido"
-nota = "andar por el suelo (altura.py GROUND_CODES)"
+nota = "andar por el suelo (render 14/11: piernas alternas; 24 cuadros)"
+iw_banco = 915
+iw_codigo = 21
+iw_anim = 15
+iw_frames = 60
+iw_correr_inicio_codigo = 22
+iw_correr_inicio_anim = 16
+iw_correr_inicio_frames = 10
+iw_correr_codigo = 23
+iw_correr_anim = 17
+iw_correr_frames = 30
 [unidad.clips.ataque]
 codigo = 539
 anim = 21
@@ -563,13 +646,6 @@ frames = 30
 bucle = false
 estado = "medido"
 nota = "combo >P (ACM_FORMAT.md)"
-[unidad.clips.tecnica]
-codigo = 600
-anim = 14
-frames = 120
-bucle = false
-estado = "inferido"
-nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
 [unidad.clips.victoria]
 codigo = 673
 anim = 129
@@ -577,6 +653,13 @@ frames = 120
 bucle = false
 estado = "medido"
 nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
+[unidad.clips.tecnica]
+codigo = 604
+anim = 91
+frames = 102
+bucle = false
+estado = "inferido"
+nota = "tecnica de capsula 59, codigo del CCM propio; pose por confirmar en juego"
 [unidad.clips.dano]
 codigo = 154
 anim = 167
@@ -625,12 +708,22 @@ bucle = true
 estado = "medido"
 nota = "neutro 0 (RONDA4_PULIDO.md)"
 [unidad.clips.andar]
-codigo = 2
-anim = 6
-frames = 60
+codigo = 0
+anim = 4
+frames = 100
 bucle = true
 estado = "medido"
-nota = "andar por el suelo, codigo 2 (altura.py GROUND_CODES): el andar real de los que no traen 0xF"
+nota = "sin andar de suelo en su banco: se desliza en su espera"
+iw_banco = 915
+iw_codigo = 21
+iw_anim = 15
+iw_frames = 60
+iw_correr_inicio_codigo = 22
+iw_correr_inicio_anim = 16
+iw_correr_inicio_frames = 10
+iw_correr_codigo = 23
+iw_correr_anim = 17
+iw_correr_frames = 30
 [unidad.clips.ataque]
 codigo = 539
 anim = 48
@@ -638,13 +731,6 @@ frames = 79
 bucle = false
 estado = "medido"
 nota = "combo >P (ACM_FORMAT.md)"
-[unidad.clips.tecnica]
-codigo = 600
-anim = 2
-frames = 41
-bucle = false
-estado = "inferido"
-nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
 [unidad.clips.victoria]
 codigo = 673
 anim = 93
@@ -652,6 +738,13 @@ frames = 120
 bucle = false
 estado = "medido"
 nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
+[unidad.clips.tecnica]
+codigo = 606
+anim = 66
+frames = 100
+bucle = false
+estado = "inferido"
+nota = "tecnica de capsula 54, codigo del CCM propio; pose por confirmar en juego"
 [unidad.clips.dano]
 codigo = 154
 anim = 167
@@ -700,12 +793,22 @@ bucle = true
 estado = "medido"
 nota = "neutro 0 (RONDA4_PULIDO.md)"
 [unidad.clips.andar]
-codigo = 15
-anim = 5
-frames = 15
+codigo = 3
+anim = 2
+frames = 50
 bucle = true
 estado = "medido"
-nota = "andar por el suelo (altura.py GROUND_CODES)"
+nota = "andar por el suelo, serie 3-4 (render 14/11, Recoome)"
+iw_banco = 915
+iw_codigo = 21
+iw_anim = 15
+iw_frames = 60
+iw_correr_inicio_codigo = 22
+iw_correr_inicio_anim = 16
+iw_correr_inicio_frames = 10
+iw_correr_codigo = 23
+iw_correr_anim = 17
+iw_correr_frames = 30
 [unidad.clips.ataque]
 codigo = 539
 anim = 46
@@ -713,13 +816,6 @@ frames = 57
 bucle = false
 estado = "medido"
 nota = "combo >P (ACM_FORMAT.md)"
-[unidad.clips.tecnica]
-codigo = 600
-anim = 8
-frames = 120
-bucle = false
-estado = "inferido"
-nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
 [unidad.clips.victoria]
 codigo = 673
 anim = 98
@@ -727,6 +823,13 @@ frames = 120
 bucle = false
 estado = "medido"
 nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
+[unidad.clips.tecnica]
+codigo = 587
+anim = 71
+frames = 130
+bucle = false
+estado = "inferido"
+nota = "tecnica de capsula 103, codigo del CCM propio; pose por confirmar en juego"
 [unidad.clips.dano]
 codigo = 154
 anim = 167
@@ -775,12 +878,22 @@ bucle = true
 estado = "medido"
 nota = "neutro 0 (RONDA4_PULIDO.md)"
 [unidad.clips.andar]
-codigo = 15
-anim = 6
-frames = 15
+codigo = 5
+anim = 2
+frames = 31
 bucle = true
 estado = "medido"
-nota = "andar por el suelo (altura.py GROUND_CODES)"
+nota = "andar por el suelo (render 14/11: piernas alternas; 24 cuadros)"
+iw_banco = 915
+iw_codigo = 21
+iw_anim = 15
+iw_frames = 60
+iw_correr_inicio_codigo = 22
+iw_correr_inicio_anim = 16
+iw_correr_inicio_frames = 10
+iw_correr_codigo = 23
+iw_correr_anim = 17
+iw_correr_frames = 30
 [unidad.clips.ataque]
 codigo = 539
 anim = 30
@@ -788,13 +901,6 @@ frames = 36
 bucle = false
 estado = "medido"
 nota = "combo >P (ACM_FORMAT.md)"
-[unidad.clips.tecnica]
-codigo = 600
-anim = 87
-frames = 120
-bucle = false
-estado = "inferido"
-nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
 [unidad.clips.victoria]
 codigo = 673
 anim = 121
@@ -802,6 +908,13 @@ frames = 120
 bucle = false
 estado = "medido"
 nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
+[unidad.clips.tecnica]
+codigo = 583
+anim = 70
+frames = 100
+bucle = false
+estado = "inferido"
+nota = "tecnica de capsula 108, codigo del CCM propio; pose por confirmar en juego"
 [unidad.clips.dano]
 codigo = 154
 anim = 167
@@ -856,6 +969,16 @@ frames = 55
 bucle = true
 estado = "inferido"
 nota = "sin andar en el suelo: bucle de 60 cuadros de la familia 0xF4-0xFF (vuelo); sin confirmar en juego"
+iw_banco = 915
+iw_codigo = 21
+iw_anim = 15
+iw_frames = 60
+iw_correr_inicio_codigo = 22
+iw_correr_inicio_anim = 16
+iw_correr_inicio_frames = 10
+iw_correr_codigo = 23
+iw_correr_anim = 17
+iw_correr_frames = 30
 [unidad.clips.ataque]
 codigo = 539
 anim = 27
@@ -863,13 +986,6 @@ frames = 51
 bucle = false
 estado = "medido"
 nota = "combo >P (ACM_FORMAT.md)"
-[unidad.clips.tecnica]
-codigo = 600
-anim = 0
-frames = 120
-bucle = false
-estado = "inferido"
-nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
 [unidad.clips.victoria]
 codigo = 673
 anim = 133
@@ -877,6 +993,13 @@ frames = 120
 bucle = false
 estado = "medido"
 nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
+[unidad.clips.tecnica]
+codigo = 585
+anim = 81
+frames = 100
+bucle = false
+estado = "inferido"
+nota = "tecnica de capsula 100, codigo del CCM propio; pose por confirmar en juego"
 [unidad.clips.dano]
 codigo = 154
 anim = 167
@@ -925,12 +1048,22 @@ bucle = true
 estado = "medido"
 nota = "neutro 0 (RONDA4_PULIDO.md)"
 [unidad.clips.andar]
-codigo = 15
-anim = 9
-frames = 18
+codigo = 5
+anim = 7
+frames = 26
 bucle = true
 estado = "medido"
-nota = "andar por el suelo (altura.py GROUND_CODES)"
+nota = "andar por el suelo (render 14/11: piernas alternas; 24 cuadros)"
+iw_banco = 915
+iw_codigo = 21
+iw_anim = 15
+iw_frames = 60
+iw_correr_inicio_codigo = 22
+iw_correr_inicio_anim = 16
+iw_correr_inicio_frames = 10
+iw_correr_codigo = 23
+iw_correr_anim = 17
+iw_correr_frames = 30
 [unidad.clips.ataque]
 codigo = 539
 anim = 27
@@ -938,13 +1071,6 @@ frames = 51
 bucle = false
 estado = "medido"
 nota = "combo >P (ACM_FORMAT.md)"
-[unidad.clips.tecnica]
-codigo = 600
-anim = 0
-frames = 120
-bucle = false
-estado = "inferido"
-nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
 [unidad.clips.victoria]
 codigo = 673
 anim = 133
@@ -952,6 +1078,13 @@ frames = 120
 bucle = false
 estado = "medido"
 nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
+[unidad.clips.tecnica]
+codigo = 585
+anim = 81
+frames = 100
+bucle = false
+estado = "inferido"
+nota = "tecnica de capsula 100, codigo del CCM propio; pose por confirmar en juego"
 [unidad.clips.dano]
 codigo = 154
 anim = 167
@@ -1000,12 +1133,22 @@ bucle = true
 estado = "medido"
 nota = "neutro 0 (RONDA4_PULIDO.md)"
 [unidad.clips.andar]
-codigo = 15
-anim = 20
-frames = 14
+codigo = 5
+anim = 16
+frames = 22
 bucle = true
 estado = "medido"
-nota = "andar por el suelo (altura.py GROUND_CODES)"
+nota = "andar por el suelo (render 14/11: piernas alternas; 24 cuadros)"
+iw_banco = 915
+iw_codigo = 21
+iw_anim = 15
+iw_frames = 60
+iw_correr_inicio_codigo = 22
+iw_correr_inicio_anim = 16
+iw_correr_inicio_frames = 10
+iw_correr_codigo = 23
+iw_correr_anim = 17
+iw_correr_frames = 30
 [unidad.clips.ataque]
 codigo = 539
 anim = 27
@@ -1013,13 +1156,6 @@ frames = 51
 bucle = false
 estado = "medido"
 nota = "combo >P (ACM_FORMAT.md)"
-[unidad.clips.tecnica]
-codigo = 600
-anim = 0
-frames = 120
-bucle = false
-estado = "inferido"
-nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
 [unidad.clips.victoria]
 codigo = 673
 anim = 133
@@ -1027,6 +1163,13 @@ frames = 120
 bucle = false
 estado = "medido"
 nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
+[unidad.clips.tecnica]
+codigo = 585
+anim = 81
+frames = 100
+bucle = false
+estado = "inferido"
+nota = "tecnica de capsula 100, codigo del CCM propio; pose por confirmar en juego"
 [unidad.clips.dano]
 codigo = 154
 anim = 167
@@ -1075,12 +1218,22 @@ bucle = true
 estado = "medido"
 nota = "neutro 0 (RONDA4_PULIDO.md)"
 [unidad.clips.andar]
-codigo = 15
-anim = 20
-frames = 14
+codigo = 5
+anim = 16
+frames = 22
 bucle = true
 estado = "medido"
-nota = "andar por el suelo (altura.py GROUND_CODES)"
+nota = "andar por el suelo (render 14/11: piernas alternas; 24 cuadros)"
+iw_banco = 915
+iw_codigo = 21
+iw_anim = 15
+iw_frames = 60
+iw_correr_inicio_codigo = 22
+iw_correr_inicio_anim = 16
+iw_correr_inicio_frames = 10
+iw_correr_codigo = 23
+iw_correr_anim = 17
+iw_correr_frames = 30
 [unidad.clips.ataque]
 codigo = 539
 anim = 27
@@ -1088,13 +1241,6 @@ frames = 51
 bucle = false
 estado = "medido"
 nota = "combo >P (ACM_FORMAT.md)"
-[unidad.clips.tecnica]
-codigo = 600
-anim = 0
-frames = 120
-bucle = false
-estado = "inferido"
-nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
 [unidad.clips.victoria]
 codigo = 673
 anim = 133
@@ -1102,6 +1248,13 @@ frames = 120
 bucle = false
 estado = "medido"
 nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
+[unidad.clips.tecnica]
+codigo = 585
+anim = 81
+frames = 100
+bucle = false
+estado = "inferido"
+nota = "tecnica de capsula 100, codigo del CCM propio; pose por confirmar en juego"
 [unidad.clips.dano]
 codigo = 154
 anim = 167
@@ -1150,12 +1303,22 @@ bucle = true
 estado = "medido"
 nota = "neutro 0 (RONDA4_PULIDO.md)"
 [unidad.clips.andar]
-codigo = 2
-anim = 1
-frames = 70
+codigo = 5
+anim = 18
+frames = 24
 bucle = true
 estado = "medido"
-nota = "andar por el suelo, codigo 2 (altura.py GROUND_CODES): el andar real de los que no traen 0xF"
+nota = "andar por el suelo (render 14/11: piernas alternas; 24 cuadros)"
+iw_banco = 914
+iw_codigo = 21
+iw_anim = 13
+iw_frames = 61
+iw_correr_inicio_codigo = 22
+iw_correr_inicio_anim = 14
+iw_correr_inicio_frames = 10
+iw_correr_codigo = 23
+iw_correr_anim = 15
+iw_correr_frames = 30
 [unidad.clips.ataque]
 codigo = 539
 anim = 33
@@ -1163,13 +1326,6 @@ frames = 51
 bucle = false
 estado = "medido"
 nota = "combo >P (ACM_FORMAT.md)"
-[unidad.clips.tecnica]
-codigo = 600
-anim = 24
-frames = 120
-bucle = false
-estado = "inferido"
-nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
 [unidad.clips.victoria]
 codigo = 673
 anim = 140
@@ -1177,6 +1333,13 @@ frames = 120
 bucle = false
 estado = "medido"
 nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
+[unidad.clips.tecnica]
+codigo = 581
+anim = 89
+frames = 100
+bucle = false
+estado = "inferido"
+nota = "tecnica de capsula 117, codigo del CCM propio; pose por confirmar en juego"
 [unidad.clips.dano]
 codigo = 154
 anim = 167
@@ -1225,12 +1388,22 @@ bucle = true
 estado = "medido"
 nota = "neutro 0 (RONDA4_PULIDO.md)"
 [unidad.clips.andar]
-codigo = 2
-anim = 3
-frames = 90
+codigo = 5
+anim = 18
+frames = 24
 bucle = true
 estado = "medido"
-nota = "andar por el suelo, codigo 2 (altura.py GROUND_CODES): el andar real de los que no traen 0xF"
+nota = "andar por el suelo (render 14/11: piernas alternas; 24 cuadros)"
+iw_banco = 914
+iw_codigo = 21
+iw_anim = 13
+iw_frames = 61
+iw_correr_inicio_codigo = 22
+iw_correr_inicio_anim = 14
+iw_correr_inicio_frames = 10
+iw_correr_codigo = 23
+iw_correr_anim = 15
+iw_correr_frames = 30
 [unidad.clips.ataque]
 codigo = 539
 anim = 33
@@ -1238,13 +1411,6 @@ frames = 51
 bucle = false
 estado = "medido"
 nota = "combo >P (ACM_FORMAT.md)"
-[unidad.clips.tecnica]
-codigo = 600
-anim = 24
-frames = 120
-bucle = false
-estado = "inferido"
-nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
 [unidad.clips.victoria]
 codigo = 673
 anim = 140
@@ -1252,6 +1418,13 @@ frames = 120
 bucle = false
 estado = "medido"
 nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
+[unidad.clips.tecnica]
+codigo = 581
+anim = 89
+frames = 100
+bucle = false
+estado = "inferido"
+nota = "tecnica de capsula 117, codigo del CCM propio; pose por confirmar en juego"
 [unidad.clips.dano]
 codigo = 154
 anim = 167
@@ -1300,12 +1473,22 @@ bucle = true
 estado = "medido"
 nota = "neutro 0 (RONDA4_PULIDO.md)"
 [unidad.clips.andar]
-codigo = 2
-anim = 5
-frames = 60
+codigo = 5
+anim = 6
+frames = 22
 bucle = true
 estado = "medido"
-nota = "andar por el suelo, codigo 2 (altura.py GROUND_CODES): el andar real de los que no traen 0xF"
+nota = "andar por el suelo (render 14/11: piernas alternas; 24 cuadros)"
+iw_banco = 914
+iw_codigo = 21
+iw_anim = 13
+iw_frames = 61
+iw_correr_inicio_codigo = 22
+iw_correr_inicio_anim = 14
+iw_correr_inicio_frames = 10
+iw_correr_codigo = 23
+iw_correr_anim = 15
+iw_correr_frames = 30
 [unidad.clips.ataque]
 codigo = 539
 anim = 33
@@ -1313,13 +1496,6 @@ frames = 51
 bucle = false
 estado = "medido"
 nota = "combo >P (ACM_FORMAT.md)"
-[unidad.clips.tecnica]
-codigo = 600
-anim = 24
-frames = 120
-bucle = false
-estado = "inferido"
-nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
 [unidad.clips.victoria]
 codigo = 673
 anim = 140
@@ -1327,6 +1503,13 @@ frames = 120
 bucle = false
 estado = "medido"
 nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
+[unidad.clips.tecnica]
+codigo = 581
+anim = 89
+frames = 100
+bucle = false
+estado = "inferido"
+nota = "tecnica de capsula 117, codigo del CCM propio; pose por confirmar en juego"
 [unidad.clips.dano]
 codigo = 154
 anim = 167
@@ -1375,12 +1558,22 @@ bucle = true
 estado = "medido"
 nota = "neutro 0 (RONDA4_PULIDO.md)"
 [unidad.clips.andar]
-codigo = 15
-anim = 9
-frames = 16
+codigo = 0
+anim = 0
+frames = 80
 bucle = true
 estado = "medido"
-nota = "andar por el suelo (altura.py GROUND_CODES)"
+nota = "sin andar de suelo en su banco: se desliza en su espera"
+iw_banco = 915
+iw_codigo = 21
+iw_anim = 15
+iw_frames = 60
+iw_correr_inicio_codigo = 22
+iw_correr_inicio_anim = 16
+iw_correr_inicio_frames = 10
+iw_correr_codigo = 23
+iw_correr_anim = 17
+iw_correr_frames = 30
 [unidad.clips.ataque]
 codigo = 539
 anim = 34
@@ -1388,13 +1581,6 @@ frames = 51
 bucle = false
 estado = "medido"
 nota = "combo >P (ACM_FORMAT.md)"
-[unidad.clips.tecnica]
-codigo = 600
-anim = 13
-frames = 120
-bucle = false
-estado = "inferido"
-nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
 [unidad.clips.victoria]
 codigo = 673
 anim = 116
@@ -1402,6 +1588,13 @@ frames = 120
 bucle = false
 estado = "medido"
 nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
+[unidad.clips.tecnica]
+codigo = 586
+anim = 70
+frames = 100
+bucle = false
+estado = "inferido"
+nota = "tecnica de capsula 20, codigo del CCM propio; pose por confirmar en juego"
 [unidad.clips.dano]
 codigo = 154
 anim = 167
@@ -1450,12 +1643,22 @@ bucle = true
 estado = "medido"
 nota = "neutro 0 (RONDA4_PULIDO.md)"
 [unidad.clips.andar]
-codigo = 15
-anim = 9
-frames = 16
+codigo = 0
+anim = 0
+frames = 80
 bucle = true
 estado = "medido"
-nota = "andar por el suelo (altura.py GROUND_CODES)"
+nota = "sin andar de suelo en su banco: se desliza en su espera"
+iw_banco = 915
+iw_codigo = 21
+iw_anim = 15
+iw_frames = 60
+iw_correr_inicio_codigo = 22
+iw_correr_inicio_anim = 16
+iw_correr_inicio_frames = 10
+iw_correr_codigo = 23
+iw_correr_anim = 17
+iw_correr_frames = 30
 [unidad.clips.ataque]
 codigo = 539
 anim = 34
@@ -1463,13 +1666,6 @@ frames = 51
 bucle = false
 estado = "medido"
 nota = "combo >P (ACM_FORMAT.md)"
-[unidad.clips.tecnica]
-codigo = 600
-anim = 13
-frames = 120
-bucle = false
-estado = "inferido"
-nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
 [unidad.clips.victoria]
 codigo = 673
 anim = 116
@@ -1477,6 +1673,13 @@ frames = 120
 bucle = false
 estado = "medido"
 nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
+[unidad.clips.tecnica]
+codigo = 586
+anim = 70
+frames = 100
+bucle = false
+estado = "inferido"
+nota = "tecnica de capsula 20, codigo del CCM propio; pose por confirmar en juego"
 [unidad.clips.dano]
 codigo = 154
 anim = 167
@@ -1525,12 +1728,22 @@ bucle = true
 estado = "medido"
 nota = "neutro 0 (RONDA4_PULIDO.md)"
 [unidad.clips.andar]
-codigo = 15
-anim = 9
-frames = 16
+codigo = 0
+anim = 1
+frames = 80
 bucle = true
 estado = "medido"
-nota = "andar por el suelo (altura.py GROUND_CODES)"
+nota = "sin andar de suelo en su banco: se desliza en su espera"
+iw_banco = 915
+iw_codigo = 21
+iw_anim = 15
+iw_frames = 60
+iw_correr_inicio_codigo = 22
+iw_correr_inicio_anim = 16
+iw_correr_inicio_frames = 10
+iw_correr_codigo = 23
+iw_correr_anim = 17
+iw_correr_frames = 30
 [unidad.clips.ataque]
 codigo = 539
 anim = 34
@@ -1538,13 +1751,6 @@ frames = 51
 bucle = false
 estado = "medido"
 nota = "combo >P (ACM_FORMAT.md)"
-[unidad.clips.tecnica]
-codigo = 600
-anim = 13
-frames = 120
-bucle = false
-estado = "inferido"
-nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
 [unidad.clips.victoria]
 codigo = 673
 anim = 116
@@ -1552,6 +1758,13 @@ frames = 120
 bucle = false
 estado = "medido"
 nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
+[unidad.clips.tecnica]
+codigo = 586
+anim = 70
+frames = 100
+bucle = false
+estado = "inferido"
+nota = "tecnica de capsula 20, codigo del CCM propio; pose por confirmar en juego"
 [unidad.clips.dano]
 codigo = 154
 anim = 167
@@ -1600,12 +1813,22 @@ bucle = true
 estado = "medido"
 nota = "neutro 0 (RONDA4_PULIDO.md)"
 [unidad.clips.andar]
-codigo = 2
-anim = 1
+codigo = 0
+anim = 0
 frames = 119
 bucle = true
 estado = "medido"
-nota = "andar por el suelo, codigo 2 (altura.py GROUND_CODES): el andar real de los que no traen 0xF"
+nota = "sin andar de suelo en su banco: se desliza en su espera"
+iw_banco = 915
+iw_codigo = 21
+iw_anim = 15
+iw_frames = 60
+iw_correr_inicio_codigo = 22
+iw_correr_inicio_anim = 16
+iw_correr_inicio_frames = 10
+iw_correr_codigo = 23
+iw_correr_anim = 17
+iw_correr_frames = 30
 [unidad.clips.ataque]
 codigo = 539
 anim = 11
@@ -1613,13 +1836,6 @@ frames = 43
 bucle = false
 estado = "medido"
 nota = "combo >P (ACM_FORMAT.md)"
-[unidad.clips.tecnica]
-codigo = 600
-anim = 85
-frames = 120
-bucle = false
-estado = "inferido"
-nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
 [unidad.clips.victoria]
 codigo = 673
 anim = 114
@@ -1627,6 +1843,13 @@ frames = 120
 bucle = false
 estado = "medido"
 nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
+[unidad.clips.tecnica]
+codigo = 585
+anim = 65
+frames = 100
+bucle = false
+estado = "inferido"
+nota = "tecnica de capsula 47, codigo del CCM propio; pose por confirmar en juego"
 [unidad.clips.dano]
 codigo = 154
 anim = 167
@@ -1675,12 +1898,22 @@ bucle = true
 estado = "medido"
 nota = "neutro 0 (RONDA4_PULIDO.md)"
 [unidad.clips.andar]
-codigo = 2
-anim = 1
+codigo = 0
+anim = 0
 frames = 119
 bucle = true
 estado = "medido"
-nota = "andar por el suelo, codigo 2 (altura.py GROUND_CODES): el andar real de los que no traen 0xF"
+nota = "sin andar de suelo en su banco: se desliza en su espera"
+iw_banco = 915
+iw_codigo = 21
+iw_anim = 15
+iw_frames = 60
+iw_correr_inicio_codigo = 22
+iw_correr_inicio_anim = 16
+iw_correr_inicio_frames = 10
+iw_correr_codigo = 23
+iw_correr_anim = 17
+iw_correr_frames = 30
 [unidad.clips.ataque]
 codigo = 539
 anim = 11
@@ -1688,13 +1921,6 @@ frames = 43
 bucle = false
 estado = "medido"
 nota = "combo >P (ACM_FORMAT.md)"
-[unidad.clips.tecnica]
-codigo = 600
-anim = 85
-frames = 120
-bucle = false
-estado = "inferido"
-nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
 [unidad.clips.victoria]
 codigo = 673
 anim = 114
@@ -1702,6 +1928,13 @@ frames = 120
 bucle = false
 estado = "medido"
 nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
+[unidad.clips.tecnica]
+codigo = 585
+anim = 65
+frames = 100
+bucle = false
+estado = "inferido"
+nota = "tecnica de capsula 47, codigo del CCM propio; pose por confirmar en juego"
 [unidad.clips.dano]
 codigo = 154
 anim = 167
@@ -1750,12 +1983,22 @@ bucle = true
 estado = "medido"
 nota = "neutro 0 (RONDA4_PULIDO.md)"
 [unidad.clips.andar]
-codigo = 2
-anim = 1
-frames = 59
+codigo = 0
+anim = 0
+frames = 45
 bucle = true
 estado = "medido"
-nota = "andar por el suelo, codigo 2 (altura.py GROUND_CODES): el andar real de los que no traen 0xF"
+nota = "sin andar de suelo en su banco: se desliza en su espera"
+iw_banco = 915
+iw_codigo = 21
+iw_anim = 15
+iw_frames = 60
+iw_correr_inicio_codigo = 22
+iw_correr_inicio_anim = 16
+iw_correr_inicio_frames = 10
+iw_correr_codigo = 23
+iw_correr_anim = 17
+iw_correr_frames = 30
 [unidad.clips.ataque]
 codigo = 539
 anim = 30
@@ -1763,13 +2006,6 @@ frames = 36
 bucle = false
 estado = "medido"
 nota = "combo >P (ACM_FORMAT.md)"
-[unidad.clips.tecnica]
-codigo = 600
-anim = 8
-frames = 120
-bucle = false
-estado = "inferido"
-nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
 [unidad.clips.victoria]
 codigo = 673
 anim = 87
@@ -1777,6 +2013,13 @@ frames = 120
 bucle = false
 estado = "medido"
 nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
+[unidad.clips.tecnica]
+codigo = 586
+anim = 68
+frames = 100
+bucle = false
+estado = "inferido"
+nota = "tecnica de capsula 33, codigo del CCM propio; pose por confirmar en juego"
 [unidad.clips.dano]
 codigo = 154
 anim = 167
@@ -1825,12 +2068,22 @@ bucle = true
 estado = "medido"
 nota = "neutro 0 (RONDA4_PULIDO.md)"
 [unidad.clips.andar]
-codigo = 2
-anim = 1
-frames = 59
+codigo = 0
+anim = 0
+frames = 45
 bucle = true
 estado = "medido"
-nota = "andar por el suelo, codigo 2 (altura.py GROUND_CODES): el andar real de los que no traen 0xF"
+nota = "sin andar de suelo en su banco: se desliza en su espera"
+iw_banco = 915
+iw_codigo = 21
+iw_anim = 15
+iw_frames = 60
+iw_correr_inicio_codigo = 22
+iw_correr_inicio_anim = 16
+iw_correr_inicio_frames = 10
+iw_correr_codigo = 23
+iw_correr_anim = 17
+iw_correr_frames = 30
 [unidad.clips.ataque]
 codigo = 539
 anim = 30
@@ -1838,13 +2091,6 @@ frames = 36
 bucle = false
 estado = "medido"
 nota = "combo >P (ACM_FORMAT.md)"
-[unidad.clips.tecnica]
-codigo = 600
-anim = 8
-frames = 120
-bucle = false
-estado = "inferido"
-nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
 [unidad.clips.victoria]
 codigo = 673
 anim = 87
@@ -1852,6 +2098,13 @@ frames = 120
 bucle = false
 estado = "medido"
 nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
+[unidad.clips.tecnica]
+codigo = 586
+anim = 68
+frames = 100
+bucle = false
+estado = "inferido"
+nota = "tecnica de capsula 33, codigo del CCM propio; pose por confirmar en juego"
 [unidad.clips.dano]
 codigo = 154
 anim = 167
@@ -1900,12 +2153,22 @@ bucle = true
 estado = "medido"
 nota = "neutro 0 (RONDA4_PULIDO.md)"
 [unidad.clips.andar]
-codigo = 15
-anim = 6
-frames = 15
+codigo = 3
+anim = 2
+frames = 40
 bucle = true
 estado = "medido"
-nota = "andar por el suelo (altura.py GROUND_CODES)"
+nota = "andar por el suelo, serie 3-4 (render 14/11, Recoome)"
+iw_banco = 915
+iw_codigo = 21
+iw_anim = 15
+iw_frames = 60
+iw_correr_inicio_codigo = 22
+iw_correr_inicio_anim = 16
+iw_correr_inicio_frames = 10
+iw_correr_codigo = 23
+iw_correr_anim = 17
+iw_correr_frames = 30
 [unidad.clips.ataque]
 codigo = 539
 anim = 53
@@ -1913,13 +2176,6 @@ frames = 91
 bucle = false
 estado = "medido"
 nota = "combo >P (ACM_FORMAT.md)"
-[unidad.clips.tecnica]
-codigo = 600
-anim = 46
-frames = 50
-bucle = false
-estado = "inferido"
-nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
 [unidad.clips.victoria]
 codigo = 673
 anim = 97
@@ -1927,6 +2183,13 @@ frames = 120
 bucle = false
 estado = "medido"
 nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
+[unidad.clips.tecnica]
+codigo = 610
+anim = 68
+frames = 110
+bucle = false
+estado = "inferido"
+nota = "tecnica de capsula 124, codigo del CCM propio; pose por confirmar en juego"
 [unidad.clips.dano]
 codigo = 154
 anim = 167
@@ -1975,12 +2238,22 @@ bucle = true
 estado = "medido"
 nota = "neutro 0 (RONDA4_PULIDO.md)"
 [unidad.clips.andar]
-codigo = 15
-anim = 4
-frames = 16
+codigo = 3
+anim = 3
+frames = 56
 bucle = true
 estado = "medido"
-nota = "andar por el suelo (altura.py GROUND_CODES)"
+nota = "andar por el suelo, serie 3-4 (render 14/11, Recoome)"
+iw_banco = 915
+iw_codigo = 21
+iw_anim = 15
+iw_frames = 60
+iw_correr_inicio_codigo = 22
+iw_correr_inicio_anim = 16
+iw_correr_inicio_frames = 10
+iw_correr_codigo = 23
+iw_correr_anim = 17
+iw_correr_frames = 30
 [unidad.clips.ataque]
 codigo = 539
 anim = 49
@@ -1988,13 +2261,6 @@ frames = 51
 bucle = false
 estado = "medido"
 nota = "combo >P (ACM_FORMAT.md)"
-[unidad.clips.tecnica]
-codigo = 600
-anim = 87
-frames = 116
-bucle = false
-estado = "inferido"
-nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
 [unidad.clips.victoria]
 codigo = 673
 anim = 104
@@ -2002,6 +2268,13 @@ frames = 120
 bucle = false
 estado = "medido"
 nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
+[unidad.clips.tecnica]
+codigo = 595
+anim = 83
+frames = 110
+bucle = false
+estado = "inferido"
+nota = "tecnica de capsula 141, codigo del CCM propio; pose por confirmar en juego"
 [unidad.clips.dano]
 codigo = 154
 anim = 167
@@ -2050,12 +2323,22 @@ bucle = true
 estado = "medido"
 nota = "neutro 0 (RONDA4_PULIDO.md)"
 [unidad.clips.andar]
-codigo = 15
-anim = 17
-frames = 16
+codigo = 5
+anim = 13
+frames = 26
 bucle = true
 estado = "medido"
-nota = "andar por el suelo (altura.py GROUND_CODES)"
+nota = "andar por el suelo (render 14/11: piernas alternas; 24 cuadros)"
+iw_banco = 915
+iw_codigo = 21
+iw_anim = 15
+iw_frames = 60
+iw_correr_inicio_codigo = 22
+iw_correr_inicio_anim = 16
+iw_correr_inicio_frames = 10
+iw_correr_codigo = 23
+iw_correr_anim = 17
+iw_correr_frames = 30
 [unidad.clips.ataque]
 codigo = 539
 anim = 49
@@ -2063,13 +2346,6 @@ frames = 51
 bucle = false
 estado = "medido"
 nota = "combo >P (ACM_FORMAT.md)"
-[unidad.clips.tecnica]
-codigo = 600
-anim = 87
-frames = 116
-bucle = false
-estado = "inferido"
-nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
 [unidad.clips.victoria]
 codigo = 673
 anim = 104
@@ -2077,6 +2353,13 @@ frames = 120
 bucle = false
 estado = "medido"
 nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
+[unidad.clips.tecnica]
+codigo = 595
+anim = 85
+frames = 110
+bucle = false
+estado = "inferido"
+nota = "tecnica de capsula 141, codigo del CCM propio; pose por confirmar en juego"
 [unidad.clips.dano]
 codigo = 154
 anim = 167
@@ -2125,12 +2408,22 @@ bucle = true
 estado = "medido"
 nota = "neutro 0 (RONDA4_PULIDO.md)"
 [unidad.clips.andar]
-codigo = 2
-anim = 1
+codigo = 0
+anim = 0
 frames = 59
 bucle = true
 estado = "medido"
-nota = "andar por el suelo, codigo 2 (altura.py GROUND_CODES): el andar real de los que no traen 0xF"
+nota = "sin andar de suelo en su banco: se desliza en su espera"
+iw_banco = 915
+iw_codigo = 21
+iw_anim = 15
+iw_frames = 60
+iw_correr_inicio_codigo = 22
+iw_correr_inicio_anim = 16
+iw_correr_inicio_frames = 10
+iw_correr_codigo = 23
+iw_correr_anim = 17
+iw_correr_frames = 30
 [unidad.clips.ataque]
 codigo = 539
 anim = 5
@@ -2138,13 +2431,6 @@ frames = 51
 bucle = false
 estado = "medido"
 nota = "combo >P (ACM_FORMAT.md)"
-[unidad.clips.tecnica]
-codigo = 600
-anim = 69
-frames = 120
-bucle = false
-estado = "inferido"
-nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
 [unidad.clips.victoria]
 codigo = 673
 anim = 93
@@ -2152,6 +2438,13 @@ frames = 90
 bucle = false
 estado = "medido"
 nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
+[unidad.clips.tecnica]
+codigo = 580
+anim = 53
+frames = 110
+bucle = false
+estado = "inferido"
+nota = "tecnica de capsula 137, codigo del CCM propio; pose por confirmar en juego"
 [unidad.clips.dano]
 codigo = 154
 anim = 167
@@ -2200,12 +2493,22 @@ bucle = true
 estado = "medido"
 nota = "neutro 0 (RONDA4_PULIDO.md)"
 [unidad.clips.andar]
-codigo = 2
-anim = 1
-frames = 80
+codigo = 0
+anim = 0
+frames = 90
 bucle = true
 estado = "medido"
-nota = "andar por el suelo, codigo 2 (altura.py GROUND_CODES): el andar real de los que no traen 0xF"
+nota = "sin andar de suelo en su banco: se desliza en su espera"
+iw_banco = 915
+iw_codigo = 21
+iw_anim = 15
+iw_frames = 60
+iw_correr_inicio_codigo = 22
+iw_correr_inicio_anim = 16
+iw_correr_inicio_frames = 10
+iw_correr_codigo = 23
+iw_correr_anim = 17
+iw_correr_frames = 30
 [unidad.clips.ataque]
 codigo = 539
 anim = 8
@@ -2213,13 +2516,6 @@ frames = 51
 bucle = false
 estado = "medido"
 nota = "combo >P (ACM_FORMAT.md)"
-[unidad.clips.tecnica]
-codigo = 600
-anim = 2
-frames = 120
-bucle = false
-estado = "inferido"
-nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
 [unidad.clips.victoria]
 codigo = 673
 anim = 90
@@ -2227,6 +2523,13 @@ frames = 120
 bucle = false
 estado = "medido"
 nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
+[unidad.clips.tecnica]
+codigo = 587
+anim = 57
+frames = 120
+bucle = false
+estado = "inferido"
+nota = "tecnica de capsula 134, codigo del CCM propio; pose por confirmar en juego"
 [unidad.clips.dano]
 codigo = 154
 anim = 167
@@ -2275,12 +2578,22 @@ bucle = true
 estado = "medido"
 nota = "neutro 0 (RONDA4_PULIDO.md)"
 [unidad.clips.andar]
-codigo = 2
-anim = 1
-frames = 80
+codigo = 0
+anim = 118
+frames = 100
 bucle = true
 estado = "medido"
-nota = "andar por el suelo, codigo 2 (altura.py GROUND_CODES): el andar real de los que no traen 0xF"
+nota = "sin andar de suelo en su banco: se desliza en su espera"
+iw_banco = 915
+iw_codigo = 21
+iw_anim = 15
+iw_frames = 60
+iw_correr_inicio_codigo = 22
+iw_correr_inicio_anim = 16
+iw_correr_inicio_frames = 10
+iw_correr_codigo = 23
+iw_correr_anim = 17
+iw_correr_frames = 30
 [unidad.clips.ataque]
 codigo = 539
 anim = 8
@@ -2288,13 +2601,6 @@ frames = 51
 bucle = false
 estado = "medido"
 nota = "combo >P (ACM_FORMAT.md)"
-[unidad.clips.tecnica]
-codigo = 600
-anim = 2
-frames = 120
-bucle = false
-estado = "inferido"
-nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
 [unidad.clips.victoria]
 codigo = 673
 anim = 90
@@ -2302,6 +2608,13 @@ frames = 120
 bucle = false
 estado = "medido"
 nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
+[unidad.clips.tecnica]
+codigo = 587
+anim = 119
+frames = 120
+bucle = false
+estado = "inferido"
+nota = "tecnica de capsula 134, codigo del CCM propio; pose por confirmar en juego"
 [unidad.clips.dano]
 codigo = 154
 anim = 167
@@ -2350,12 +2663,22 @@ bucle = true
 estado = "medido"
 nota = "neutro 0 (RONDA4_PULIDO.md)"
 [unidad.clips.andar]
-codigo = 2
-anim = 1
-frames = 80
+codigo = 0
+anim = 0
+frames = 90
 bucle = true
 estado = "medido"
-nota = "andar por el suelo, codigo 2 (altura.py GROUND_CODES): el andar real de los que no traen 0xF"
+nota = "sin andar de suelo en su banco: se desliza en su espera"
+iw_banco = 915
+iw_codigo = 21
+iw_anim = 15
+iw_frames = 60
+iw_correr_inicio_codigo = 22
+iw_correr_inicio_anim = 16
+iw_correr_inicio_frames = 10
+iw_correr_codigo = 23
+iw_correr_anim = 17
+iw_correr_frames = 30
 [unidad.clips.ataque]
 codigo = 539
 anim = 8
@@ -2363,13 +2686,6 @@ frames = 51
 bucle = false
 estado = "medido"
 nota = "combo >P (ACM_FORMAT.md)"
-[unidad.clips.tecnica]
-codigo = 600
-anim = 2
-frames = 120
-bucle = false
-estado = "inferido"
-nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
 [unidad.clips.victoria]
 codigo = 673
 anim = 90
@@ -2377,6 +2693,13 @@ frames = 120
 bucle = false
 estado = "medido"
 nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
+[unidad.clips.tecnica]
+codigo = 587
+anim = 57
+frames = 120
+bucle = false
+estado = "inferido"
+nota = "tecnica de capsula 134, codigo del CCM propio; pose por confirmar en juego"
 [unidad.clips.dano]
 codigo = 154
 anim = 167
@@ -2425,12 +2748,22 @@ bucle = true
 estado = "medido"
 nota = "neutro 0 (RONDA4_PULIDO.md)"
 [unidad.clips.andar]
-codigo = 15
-anim = 4
-frames = 16
+codigo = 3
+anim = 2
+frames = 60
 bucle = true
 estado = "medido"
-nota = "andar por el suelo (altura.py GROUND_CODES)"
+nota = "andar por el suelo, serie 3-4 (render 14/11, Recoome)"
+iw_banco = 915
+iw_codigo = 21
+iw_anim = 15
+iw_frames = 60
+iw_correr_inicio_codigo = 22
+iw_correr_inicio_anim = 16
+iw_correr_inicio_frames = 10
+iw_correr_codigo = 23
+iw_correr_anim = 17
+iw_correr_frames = 30
 [unidad.clips.ataque]
 codigo = 539
 anim = 46
@@ -2438,13 +2771,6 @@ frames = 53
 bucle = false
 estado = "medido"
 nota = "combo >P (ACM_FORMAT.md)"
-[unidad.clips.tecnica]
-codigo = 600
-anim = 8
-frames = 119
-bucle = false
-estado = "inferido"
-nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
 [unidad.clips.victoria]
 codigo = 673
 anim = 104
@@ -2452,6 +2778,13 @@ frames = 120
 bucle = false
 estado = "medido"
 nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
+[unidad.clips.tecnica]
+codigo = 580
+anim = 81
+frames = 93
+bucle = false
+estado = "inferido"
+nota = "tecnica de capsula 91, codigo del CCM propio; pose por confirmar en juego"
 [unidad.clips.dano]
 codigo = 154
 anim = 167
@@ -2500,12 +2833,22 @@ bucle = true
 estado = "medido"
 nota = "neutro 0 (RONDA4_PULIDO.md)"
 [unidad.clips.andar]
-codigo = 15
-anim = 5
-frames = 16
+codigo = 3
+anim = 2
+frames = 24
 bucle = true
 estado = "medido"
-nota = "andar por el suelo (altura.py GROUND_CODES)"
+nota = "andar por el suelo, serie 3-4 (render 14/11, Recoome)"
+iw_banco = 915
+iw_codigo = 21
+iw_anim = 15
+iw_frames = 60
+iw_correr_inicio_codigo = 22
+iw_correr_inicio_anim = 16
+iw_correr_inicio_frames = 10
+iw_correr_codigo = 23
+iw_correr_anim = 17
+iw_correr_frames = 30
 [unidad.clips.ataque]
 codigo = 539
 anim = 32
@@ -2513,13 +2856,6 @@ frames = 54
 bucle = false
 estado = "medido"
 nota = "combo >P (ACM_FORMAT.md)"
-[unidad.clips.tecnica]
-codigo = 600
-anim = 8
-frames = 120
-bucle = false
-estado = "inferido"
-nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
 [unidad.clips.victoria]
 codigo = 673
 anim = 86
@@ -2527,6 +2863,13 @@ frames = 120
 bucle = false
 estado = "medido"
 nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
+[unidad.clips.tecnica]
+codigo = 561
+anim = 53
+frames = 100
+bucle = false
+estado = "inferido"
+nota = "tecnica de capsula 147, codigo del CCM propio; pose por confirmar en juego"
 [unidad.clips.dano]
 codigo = 154
 anim = 167
@@ -2575,12 +2918,22 @@ bucle = true
 estado = "medido"
 nota = "neutro 0 (RONDA4_PULIDO.md)"
 [unidad.clips.andar]
-codigo = 2
-anim = 1
-frames = 60
+codigo = 0
+anim = 0
+frames = 90
 bucle = true
 estado = "medido"
-nota = "andar por el suelo, codigo 2 (altura.py GROUND_CODES): el andar real de los que no traen 0xF"
+nota = "sin andar de suelo en su banco: se desliza en su espera"
+iw_banco = 915
+iw_codigo = 21
+iw_anim = 15
+iw_frames = 60
+iw_correr_inicio_codigo = 22
+iw_correr_inicio_anim = 16
+iw_correr_inicio_frames = 10
+iw_correr_codigo = 23
+iw_correr_anim = 17
+iw_correr_frames = 30
 [unidad.clips.ataque]
 codigo = 539
 anim = 34
@@ -2588,13 +2941,6 @@ frames = 51
 bucle = false
 estado = "medido"
 nota = "combo >P (ACM_FORMAT.md)"
-[unidad.clips.tecnica]
-codigo = 600
-anim = 3
-frames = 120
-bucle = false
-estado = "inferido"
-nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
 [unidad.clips.victoria]
 codigo = 673
 anim = 104
@@ -2602,6 +2948,13 @@ frames = 120
 bucle = false
 estado = "medido"
 nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
+[unidad.clips.tecnica]
+codigo = 580
+anim = 69
+frames = 100
+bucle = false
+estado = "inferido"
+nota = "tecnica de capsula 63, codigo del CCM propio; pose por confirmar en juego"
 [unidad.clips.dano]
 codigo = 154
 anim = 167
@@ -2650,12 +3003,22 @@ bucle = true
 estado = "medido"
 nota = "neutro 0 (RONDA4_PULIDO.md)"
 [unidad.clips.andar]
-codigo = 15
-anim = 5
-frames = 15
+codigo = 3
+anim = 2
+frames = 50
 bucle = true
 estado = "medido"
-nota = "andar por el suelo (altura.py GROUND_CODES)"
+nota = "andar por el suelo, serie 3-4 (render 14/11, Recoome)"
+iw_banco = 915
+iw_codigo = 21
+iw_anim = 15
+iw_frames = 60
+iw_correr_inicio_codigo = 22
+iw_correr_inicio_anim = 16
+iw_correr_inicio_frames = 10
+iw_correr_codigo = 23
+iw_correr_anim = 17
+iw_correr_frames = 30
 [unidad.clips.ataque]
 codigo = 539
 anim = 21
@@ -2663,13 +3026,6 @@ frames = 56
 bucle = false
 estado = "medido"
 nota = "combo >P (ACM_FORMAT.md)"
-[unidad.clips.tecnica]
-codigo = 600
-anim = 9
-frames = 120
-bucle = false
-estado = "inferido"
-nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
 [unidad.clips.victoria]
 codigo = 673
 anim = 107
@@ -2677,6 +3033,13 @@ frames = 120
 bucle = false
 estado = "medido"
 nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
+[unidad.clips.tecnica]
+codigo = 576
+anim = 69
+frames = 95
+bucle = false
+estado = "inferido"
+nota = "tecnica de capsula 83, codigo del CCM propio; pose por confirmar en juego"
 [unidad.clips.dano]
 codigo = 154
 anim = 167
@@ -2725,12 +3088,22 @@ bucle = true
 estado = "medido"
 nota = "neutro 0 (RONDA4_PULIDO.md)"
 [unidad.clips.andar]
-codigo = 15
-anim = 6
-frames = 16
+codigo = 5
+anim = 2
+frames = 31
 bucle = true
 estado = "medido"
-nota = "andar por el suelo (altura.py GROUND_CODES)"
+nota = "andar por el suelo (render 14/11: piernas alternas; 24 cuadros)"
+iw_banco = 915
+iw_codigo = 21
+iw_anim = 15
+iw_frames = 60
+iw_correr_inicio_codigo = 22
+iw_correr_inicio_anim = 16
+iw_correr_inicio_frames = 10
+iw_correr_codigo = 23
+iw_correr_anim = 17
+iw_correr_frames = 30
 [unidad.clips.ataque]
 codigo = 539
 anim = 43
@@ -2738,13 +3111,6 @@ frames = 49
 bucle = false
 estado = "medido"
 nota = "combo >P (ACM_FORMAT.md)"
-[unidad.clips.tecnica]
-codigo = 600
-anim = 80
-frames = 120
-bucle = false
-estado = "inferido"
-nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
 [unidad.clips.victoria]
 codigo = 673
 anim = 105
@@ -2752,6 +3118,13 @@ frames = 120
 bucle = false
 estado = "medido"
 nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
+[unidad.clips.tecnica]
+codigo = 588
+anim = 67
+frames = 100
+bucle = false
+estado = "inferido"
+nota = "tecnica de capsula 105, codigo del CCM propio; pose por confirmar en juego"
 [unidad.clips.dano]
 codigo = 154
 anim = 167
@@ -2800,12 +3173,22 @@ bucle = true
 estado = "medido"
 nota = "neutro 0 (RONDA4_PULIDO.md)"
 [unidad.clips.andar]
-codigo = 15
-anim = 10
-frames = 20
+codigo = 5
+anim = 5
+frames = 24
 bucle = true
 estado = "medido"
-nota = "andar por el suelo (altura.py GROUND_CODES)"
+nota = "andar por el suelo (render 14/11: piernas alternas; 24 cuadros)"
+iw_banco = 915
+iw_codigo = 21
+iw_anim = 15
+iw_frames = 60
+iw_correr_inicio_codigo = 22
+iw_correr_inicio_anim = 16
+iw_correr_inicio_frames = 10
+iw_correr_codigo = 23
+iw_correr_anim = 17
+iw_correr_frames = 30
 [unidad.clips.ataque]
 codigo = 539
 anim = 31
@@ -2813,13 +3196,6 @@ frames = 51
 bucle = false
 estado = "medido"
 nota = "combo >P (ACM_FORMAT.md)"
-[unidad.clips.tecnica]
-codigo = 600
-anim = 16
-frames = 120
-bucle = false
-estado = "inferido"
-nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
 [unidad.clips.victoria]
 codigo = 673
 anim = 108
@@ -2827,6 +3203,13 @@ frames = 120
 bucle = false
 estado = "medido"
 nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
+[unidad.clips.tecnica]
+codigo = 581
+anim = 79
+frames = 100
+bucle = false
+estado = "inferido"
+nota = "tecnica de capsula 130, codigo del CCM propio; pose por confirmar en juego"
 [unidad.clips.dano]
 codigo = 154
 anim = 167
@@ -2875,12 +3258,22 @@ bucle = true
 estado = "medido"
 nota = "neutro 0 (RONDA4_PULIDO.md)"
 [unidad.clips.andar]
-codigo = 15
-anim = 6
-frames = 16
+codigo = 5
+anim = 2
+frames = 30
 bucle = true
 estado = "medido"
-nota = "andar por el suelo (altura.py GROUND_CODES)"
+nota = "andar por el suelo (render 14/11: piernas alternas; 24 cuadros)"
+iw_banco = 915
+iw_codigo = 21
+iw_anim = 15
+iw_frames = 60
+iw_correr_inicio_codigo = 22
+iw_correr_inicio_anim = 16
+iw_correr_inicio_frames = 10
+iw_correr_codigo = 23
+iw_correr_anim = 17
+iw_correr_frames = 30
 [unidad.clips.ataque]
 codigo = 539
 anim = 31
@@ -2888,13 +3281,6 @@ frames = 51
 bucle = false
 estado = "medido"
 nota = "combo >P (ACM_FORMAT.md)"
-[unidad.clips.tecnica]
-codigo = 600
-anim = 9
-frames = 120
-bucle = false
-estado = "inferido"
-nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
 [unidad.clips.victoria]
 codigo = 673
 anim = 99
@@ -2902,6 +3288,13 @@ frames = 90
 bucle = false
 estado = "medido"
 nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
+[unidad.clips.tecnica]
+codigo = 579
+anim = 65
+frames = 101
+bucle = false
+estado = "inferido"
+nota = "tecnica de capsula 111, codigo del CCM propio; pose por confirmar en juego"
 [unidad.clips.dano]
 codigo = 154
 anim = 167
@@ -2950,12 +3343,22 @@ bucle = true
 estado = "medido"
 nota = "neutro 0 (RONDA4_PULIDO.md)"
 [unidad.clips.andar]
-codigo = 2
-anim = 1
-frames = 45
+codigo = 5
+anim = 2
+frames = 30
 bucle = true
 estado = "medido"
-nota = "andar por el suelo, codigo 2 (altura.py GROUND_CODES): el andar real de los que no traen 0xF"
+nota = "andar por el suelo (render 14/11: piernas alternas; 24 cuadros)"
+iw_banco = 915
+iw_codigo = 21
+iw_anim = 15
+iw_frames = 60
+iw_correr_inicio_codigo = 22
+iw_correr_inicio_anim = 16
+iw_correr_inicio_frames = 10
+iw_correr_codigo = 23
+iw_correr_anim = 17
+iw_correr_frames = 30
 [unidad.clips.ataque]
 codigo = 539
 anim = 15
@@ -2963,13 +3366,6 @@ frames = 47
 bucle = false
 estado = "medido"
 nota = "combo >P (ACM_FORMAT.md)"
-[unidad.clips.tecnica]
-codigo = 600
-anim = 3
-frames = 120
-bucle = false
-estado = "inferido"
-nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
 [unidad.clips.victoria]
 codigo = 673
 anim = 74
@@ -2977,6 +3373,13 @@ frames = 120
 bucle = false
 estado = "medido"
 nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
+[unidad.clips.tecnica]
+codigo = 562
+anim = 54
+frames = 100
+bucle = false
+estado = "inferido"
+nota = "tecnica de capsula 149, codigo del CCM propio; pose por confirmar en juego"
 [unidad.clips.dano]
 codigo = 154
 anim = 167
@@ -3024,13 +3427,6 @@ frames = 119
 bucle = true
 estado = "medido"
 nota = "neutro 0 (RONDA4_PULIDO.md)"
-[unidad.clips.andar]
-codigo = 15
-anim = 11
-frames = 16
-bucle = true
-estado = "medido"
-nota = "andar por el suelo (altura.py GROUND_CODES)"
 [unidad.clips.ataque]
 codigo = 539
 anim = 48
@@ -3038,13 +3434,6 @@ frames = 60
 bucle = false
 estado = "medido"
 nota = "combo >P (ACM_FORMAT.md)"
-[unidad.clips.tecnica]
-codigo = 600
-anim = 83
-frames = 120
-bucle = false
-estado = "inferido"
-nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
 [unidad.clips.victoria]
 codigo = 673
 anim = 112
@@ -3052,6 +3441,30 @@ frames = 120
 bucle = false
 estado = "medido"
 nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
+[unidad.clips.tecnica]
+codigo = 585
+anim = 71
+frames = 148
+bucle = false
+estado = "inferido"
+nota = "tecnica de capsula 70, codigo del CCM propio; pose por confirmar en juego"
+[unidad.clips.andar]
+codigo = 0
+anim = 0
+frames = 119
+bucle = true
+estado = "medido"
+nota = "sin andar propio: se desliza en su espera"
+iw_banco = 915
+iw_codigo = 21
+iw_anim = 15
+iw_frames = 60
+iw_correr_inicio_codigo = 22
+iw_correr_inicio_anim = 16
+iw_correr_inicio_frames = 10
+iw_correr_codigo = 23
+iw_correr_anim = 17
+iw_correr_frames = 30
 [unidad.clips.dano]
 codigo = 154
 anim = 167
@@ -3100,12 +3513,22 @@ bucle = true
 estado = "medido"
 nota = "neutro 0 (RONDA4_PULIDO.md)"
 [unidad.clips.andar]
-codigo = 15
-anim = 6
-frames = 16
+codigo = 5
+anim = 9
+frames = 24
 bucle = true
 estado = "medido"
-nota = "andar por el suelo (altura.py GROUND_CODES)"
+nota = "andar por el suelo (render 14/11: piernas alternas; 24 cuadros)"
+iw_banco = 915
+iw_codigo = 21
+iw_anim = 15
+iw_frames = 60
+iw_correr_inicio_codigo = 22
+iw_correr_inicio_anim = 16
+iw_correr_inicio_frames = 10
+iw_correr_codigo = 23
+iw_correr_anim = 17
+iw_correr_frames = 30
 [unidad.clips.ataque]
 codigo = 539
 anim = 35
@@ -3113,13 +3536,6 @@ frames = 51
 bucle = false
 estado = "medido"
 nota = "combo >P (ACM_FORMAT.md)"
-[unidad.clips.tecnica]
-codigo = 600
-anim = 14
-frames = 120
-bucle = false
-estado = "inferido"
-nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
 [unidad.clips.victoria]
 codigo = 673
 anim = 97
@@ -3127,6 +3543,13 @@ frames = 120
 bucle = false
 estado = "medido"
 nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
+[unidad.clips.tecnica]
+codigo = 580
+anim = 68
+frames = 90
+bucle = false
+estado = "inferido"
+nota = "tecnica de capsula 77, codigo del CCM propio; pose por confirmar en juego"
 [unidad.clips.dano]
 codigo = 154
 anim = 167
@@ -3175,12 +3598,22 @@ bucle = true
 estado = "medido"
 nota = "neutro 0 (RONDA4_PULIDO.md)"
 [unidad.clips.andar]
-codigo = 15
-anim = 9
-frames = 15
+codigo = 5
+anim = 4
+frames = 31
 bucle = true
 estado = "medido"
-nota = "andar por el suelo (altura.py GROUND_CODES)"
+nota = "andar por el suelo (render 14/11: piernas alternas; 24 cuadros)"
+iw_banco = 915
+iw_codigo = 21
+iw_anim = 15
+iw_frames = 60
+iw_correr_inicio_codigo = 22
+iw_correr_inicio_anim = 16
+iw_correr_inicio_frames = 10
+iw_correr_codigo = 23
+iw_correr_anim = 17
+iw_correr_frames = 30
 [unidad.clips.ataque]
 codigo = 539
 anim = 29
@@ -3188,13 +3621,6 @@ frames = 36
 bucle = false
 estado = "medido"
 nota = "combo >P (ACM_FORMAT.md)"
-[unidad.clips.tecnica]
-codigo = 600
-anim = 88
-frames = 120
-bucle = false
-estado = "inferido"
-nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
 [unidad.clips.victoria]
 codigo = 673
 anim = 129
@@ -3202,6 +3628,13 @@ frames = 120
 bucle = false
 estado = "medido"
 nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
+[unidad.clips.tecnica]
+codigo = 579
+anim = 71
+frames = 144
+bucle = false
+estado = "inferido"
+nota = "tecnica de capsula 74, codigo del CCM propio; pose por confirmar en juego"
 [unidad.clips.dano]
 codigo = 154
 anim = 167
@@ -3250,12 +3683,22 @@ bucle = true
 estado = "medido"
 nota = "neutro 0 (RONDA4_PULIDO.md)"
 [unidad.clips.andar]
-codigo = 15
-anim = 10
-frames = 12
+codigo = 5
+anim = 6
+frames = 22
 bucle = true
 estado = "medido"
-nota = "andar por el suelo (altura.py GROUND_CODES)"
+nota = "andar por el suelo (render 14/11: piernas alternas; 24 cuadros)"
+iw_banco = 915
+iw_codigo = 21
+iw_anim = 15
+iw_frames = 60
+iw_correr_inicio_codigo = 22
+iw_correr_inicio_anim = 16
+iw_correr_inicio_frames = 10
+iw_correr_codigo = 23
+iw_correr_anim = 17
+iw_correr_frames = 30
 [unidad.clips.ataque]
 codigo = 539
 anim = 45
@@ -3263,13 +3706,6 @@ frames = 49
 bucle = false
 estado = "medido"
 nota = "combo >P (ACM_FORMAT.md)"
-[unidad.clips.tecnica]
-codigo = 600
-anim = 60
-frames = 71
-bucle = false
-estado = "inferido"
-nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
 [unidad.clips.victoria]
 codigo = 673
 anim = 114
@@ -3277,6 +3713,13 @@ frames = 120
 bucle = false
 estado = "medido"
 nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
+[unidad.clips.tecnica]
+codigo = 623
+anim = 87
+frames = 126
+bucle = false
+estado = "inferido"
+nota = "tecnica de capsula 126, codigo del CCM propio; pose por confirmar en juego"
 [unidad.clips.dano]
 codigo = 154
 anim = 167
@@ -3331,6 +3774,16 @@ frames = 80
 bucle = true
 estado = "medido"
 nota = "sin andar de suelo en su banco: se desliza en su espera"
+iw_banco = 915
+iw_codigo = 21
+iw_anim = 15
+iw_frames = 60
+iw_correr_inicio_codigo = 22
+iw_correr_inicio_anim = 16
+iw_correr_inicio_frames = 10
+iw_correr_codigo = 23
+iw_correr_anim = 17
+iw_correr_frames = 30
 [unidad.clips.ataque]
 codigo = 539
 anim = 19
@@ -3338,13 +3791,6 @@ frames = 71
 bucle = false
 estado = "medido"
 nota = "combo >P (ACM_FORMAT.md)"
-[unidad.clips.tecnica]
-codigo = 600
-anim = 1
-frames = 120
-bucle = false
-estado = "inferido"
-nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
 [unidad.clips.victoria]
 codigo = 673
 anim = 76
@@ -3352,6 +3798,13 @@ frames = 120
 bucle = false
 estado = "medido"
 nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
+[unidad.clips.tecnica]
+codigo = 586
+anim = 57
+frames = 100
+bucle = false
+estado = "inferido"
+nota = "tecnica de capsula 17, codigo del CCM propio; pose por confirmar en juego"
 [unidad.clips.dano]
 codigo = 154
 anim = 167
@@ -3400,12 +3853,22 @@ bucle = true
 estado = "medido"
 nota = "neutro 0 (RONDA4_PULIDO.md)"
 [unidad.clips.andar]
-codigo = 9
-anim = 1
-frames = 30
+codigo = 0
+anim = 0
+frames = 50
 bucle = true
-estado = "inferido"
-nota = "codigo 9 (serie 9-0xB de los ninos: Goku, Trunks, Gohan ninos): andar del suelo"
+estado = "medido"
+nota = "sin andar de suelo en su banco: se desliza en su espera"
+iw_banco = 915
+iw_codigo = 21
+iw_anim = 15
+iw_frames = 60
+iw_correr_inicio_codigo = 22
+iw_correr_inicio_anim = 16
+iw_correr_inicio_frames = 10
+iw_correr_codigo = 23
+iw_correr_anim = 17
+iw_correr_frames = 30
 [unidad.clips.ataque]
 codigo = 539
 anim = 28
@@ -3413,13 +3876,6 @@ frames = 36
 bucle = false
 estado = "medido"
 nota = "combo >P (ACM_FORMAT.md)"
-[unidad.clips.tecnica]
-codigo = 600
-anim = 3
-frames = 120
-bucle = false
-estado = "inferido"
-nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
 [unidad.clips.victoria]
 codigo = 673
 anim = 84
@@ -3427,6 +3883,13 @@ frames = 120
 bucle = false
 estado = "medido"
 nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
+[unidad.clips.tecnica]
+codigo = 586
+anim = 62
+frames = 106
+bucle = false
+estado = "inferido"
+nota = "tecnica de capsula 51, codigo del CCM propio; pose por confirmar en juego"
 [unidad.clips.dano]
 codigo = 154
 anim = 167
@@ -3475,12 +3938,22 @@ bucle = true
 estado = "medido"
 nota = "neutro 0 (RONDA4_PULIDO.md)"
 [unidad.clips.andar]
-codigo = 9
-anim = 1
-frames = 5
+codigo = 0
+anim = 0
+frames = 120
 bucle = true
-estado = "inferido"
-nota = "codigo 9 (serie 9-0xB de los ninos: Goku, Trunks, Gohan ninos): andar del suelo"
+estado = "medido"
+nota = "sin andar de suelo en su banco: se desliza en su espera"
+iw_banco = 915
+iw_codigo = 21
+iw_anim = 15
+iw_frames = 60
+iw_correr_inicio_codigo = 22
+iw_correr_inicio_anim = 16
+iw_correr_inicio_frames = 10
+iw_correr_codigo = 23
+iw_correr_anim = 17
+iw_correr_frames = 30
 [unidad.clips.ataque]
 codigo = 539
 anim = 27
@@ -3488,13 +3961,6 @@ frames = 36
 bucle = false
 estado = "medido"
 nota = "combo >P (ACM_FORMAT.md)"
-[unidad.clips.tecnica]
-codigo = 600
-anim = 4
-frames = 120
-bucle = false
-estado = "inferido"
-nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
 [unidad.clips.victoria]
 codigo = 673
 anim = 120
@@ -3502,6 +3968,13 @@ frames = 120
 bucle = false
 estado = "medido"
 nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
+[unidad.clips.tecnica]
+codigo = 586
+anim = 75
+frames = 100
+bucle = false
+estado = "inferido"
+nota = "tecnica de capsula 13, codigo del CCM propio; pose por confirmar en juego"
 [unidad.clips.dano]
 codigo = 154
 anim = 167
@@ -3558,6 +4031,16 @@ bucle = true
 banco = 3881
 estado = "inferido"
 nota = "sin andar propio: se desliza en la espera generica del select (banco 3881 anim 5)"
+iw_banco = 915
+iw_codigo = 21
+iw_anim = 15
+iw_frames = 60
+iw_correr_inicio_codigo = 22
+iw_correr_inicio_anim = 16
+iw_correr_inicio_frames = 10
+iw_correr_codigo = 23
+iw_correr_anim = 17
+iw_correr_frames = 30
 [unidad.clips.ataque]
 codigo = 539
 anim = 26
@@ -3565,13 +4048,6 @@ frames = 47
 bucle = false
 estado = "medido"
 nota = "combo >P (ACM_FORMAT.md)"
-[unidad.clips.tecnica]
-codigo = 600
-anim = 59
-frames = 100
-bucle = false
-estado = "inferido"
-nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
 [unidad.clips.victoria]
 codigo = 673
 anim = 102
@@ -3579,6 +4055,13 @@ frames = 120
 bucle = false
 estado = "medido"
 nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
+[unidad.clips.tecnica]
+codigo = 598
+anim = 59
+frames = 100
+bucle = false
+estado = "inferido"
+nota = "tecnica de capsula 66, codigo del CCM propio; pose por confirmar en juego"
 [unidad.clips.dano]
 codigo = 154
 anim = 167
@@ -3627,12 +4110,22 @@ bucle = true
 estado = "medido"
 nota = "neutro 0 (RONDA4_PULIDO.md)"
 [unidad.clips.andar]
-codigo = 2
-anim = 1
-frames = 80
+codigo = 0
+anim = 0
+frames = 70
 bucle = true
 estado = "medido"
-nota = "andar por el suelo, codigo 2 (altura.py GROUND_CODES): el andar real de los que no traen 0xF"
+nota = "sin andar de suelo en su banco: se desliza en su espera"
+iw_banco = 915
+iw_codigo = 21
+iw_anim = 15
+iw_frames = 60
+iw_correr_inicio_codigo = 22
+iw_correr_inicio_anim = 16
+iw_correr_inicio_frames = 10
+iw_correr_codigo = 23
+iw_correr_anim = 17
+iw_correr_frames = 30
 [unidad.clips.ataque]
 codigo = 538
 anim = 32
@@ -3640,13 +4133,6 @@ frames = 54
 bucle = false
 estado = "inferido"
 nota = "sin 0x21B: golpe vecino de la serie"
-[unidad.clips.tecnica]
-codigo = 600
-anim = 3
-frames = 120
-bucle = false
-estado = "inferido"
-nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
 [unidad.clips.victoria]
 codigo = 673
 anim = 74
@@ -3654,6 +4140,13 @@ frames = 120
 bucle = false
 estado = "medido"
 nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
+[unidad.clips.tecnica]
+codigo = 576
+anim = 58
+frames = 95
+bucle = false
+estado = "inferido"
+nota = "tecnica de capsula 81, codigo del CCM propio; pose por confirmar en juego"
 [unidad.clips.dano]
 codigo = 154
 anim = 167
@@ -3702,12 +4195,22 @@ bucle = true
 estado = "medido"
 nota = "neutro 0 (RONDA4_PULIDO.md)"
 [unidad.clips.andar]
-codigo = 9
-anim = 1
-frames = 5
+codigo = 0
+anim = 0
+frames = 80
 bucle = true
 estado = "inferido"
-nota = "codigo 9 (serie 9-0xB de los ninos: Goku, Trunks, Gohan ninos): andar del suelo"
+nota = "sin andar ni vuelo en su banco: la espera"
+iw_banco = 915
+iw_codigo = 21
+iw_anim = 15
+iw_frames = 60
+iw_correr_inicio_codigo = 22
+iw_correr_inicio_anim = 16
+iw_correr_inicio_frames = 10
+iw_correr_codigo = 23
+iw_correr_anim = 17
+iw_correr_frames = 30
 [unidad.clips.ataque]
 codigo = 540
 anim = 38
@@ -3715,13 +4218,6 @@ frames = 56
 bucle = false
 estado = "inferido"
 nota = "sin 0x21B: golpe vecino de la serie"
-[unidad.clips.tecnica]
-codigo = 600
-anim = 18
-frames = 61
-bucle = false
-estado = "inferido"
-nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
 [unidad.clips.victoria]
 codigo = 673
 anim = 91
@@ -3729,6 +4225,13 @@ frames = 120
 bucle = false
 estado = "medido"
 nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
+[unidad.clips.tecnica]
+codigo = 621
+anim = 71
+frames = 70
+bucle = false
+estado = "inferido"
+nota = "tecnica de capsula 79, codigo del CCM propio; pose por confirmar en juego"
 [unidad.clips.dano]
 codigo = 154
 anim = 167
@@ -3785,6 +4288,16 @@ bucle = true
 banco = 3881
 estado = "inferido"
 nota = "sin andar propio: se desliza en la espera generica del select (banco 3881 anim 5)"
+iw_banco = 915
+iw_codigo = 21
+iw_anim = 15
+iw_frames = 60
+iw_correr_inicio_codigo = 22
+iw_correr_inicio_anim = 16
+iw_correr_inicio_frames = 10
+iw_correr_codigo = 23
+iw_correr_anim = 17
+iw_correr_frames = 30
 [unidad.clips.ataque]
 codigo = 539
 anim = 16
@@ -3792,13 +4305,6 @@ frames = 48
 bucle = false
 estado = "medido"
 nota = "combo >P (ACM_FORMAT.md)"
-[unidad.clips.tecnica]
-codigo = 600
-anim = 1
-frames = 120
-bucle = false
-estado = "inferido"
-nota = "bloque hiper/definitiva (CAPSULAS_B3.md:202); puede ser cinematica"
 [unidad.clips.victoria]
 codigo = 673
 anim = 90
@@ -3806,6 +4312,13 @@ frames = 120
 bucle = false
 estado = "medido"
 nota = "pose del ganador en el resultado (sonda de combate 1/11: accion 15 cod 0x2A1)"
+[unidad.clips.tecnica]
+codigo = 589
+anim = 64
+frames = 93
+bucle = false
+estado = "inferido"
+nota = "tecnica de capsula 86, codigo del CCM propio; pose por confirmar en juego"
 [unidad.clips.dano]
 codigo = 154
 anim = 167

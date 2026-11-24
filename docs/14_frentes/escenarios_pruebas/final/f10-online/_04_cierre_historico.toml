@@ -1,0 +1,25 @@
+# Captura04: 25/25 largos por lado, 54/54 checks; cierre no reproducido, causa pendiente.
+# Diagnostico del cierre anterior a F10: la captura02 demostro que el corte preventivo lo impide.
+# Solo estas copias usan validacion=false; no es un arreglo ni un escenario de aceptacion online.
+clave = "ONL03-R6-HISTORICO"
+cvar = "dbz3_net_cierre_sonda_f10=true"
+descripcion = "F10 R6: condiciones historicas del cierre, con sonda y volcados dirigidos"
+criterio = "Capturar pila del cierre o documentar que no aparece; nunca aceptar sumas distintas como PASS online"
+env = [
+  "DBZ3_TEST_CFG=dbz3_net_validacion_f10=false;dbz3_net_rollback=true;dbz3_net_cierre_sonda_f10=true;dbz3_diag_crashdump=true",
+  "DBZ3_NET_AUTO=host", "DBZ3_NET_LOCAL=1", "DBZ3_NET_PORT=25498", "DBZ3_NET_JOIN_PORT=25498",
+  "DBZ3_NET_SUMAS=1", "DBZ3_RB_SCRIPT=1", "DBZ3_RB_FIGHTS=25", "DBZ3_RB_TIME=60",
+  "DBZ3_TEST_OCULTO=0", "DBZ3_TEST_TURBO=1",
+  "DBZ3_RB_OUT=E:/DBZ3HD_trabajo/f10-online/ronda6_captura_04/datos",
+  "DBZ3_RB_CSV=r6_historico",
+  "DBZ3_RB_DUMPAT=3495,3496,3497,3498,3499,3500,3501,3502,3503,3504,3505,4076,4077,4078,4079,4080,4081,4082,4083,4084,4085",
+  "DBZ3_RB_DUMPST=3500,4081",
+]
+pasos = [
+  # RbAuto solo imprime ajustes F10 cuando validacion=true; esa linea no existe aqui.
+  'log "dbz3 rb: auto (host|guest): en marcha" 180',
+  'log "dbz3 rb: auto: combate pedido [(]ok[)]" 180',
+  'log "combate 25 de 25 terminado|F10 pre-cierre|F10: corte|UNREGISTERED|0x80000003|0xC0000005" 7200',
+  'log "dbz3 rb: resumen del combate 25: .*sumas [0-9]+ / malas 0" 20',
+  'captura f10_r6_historico_fin',
+]

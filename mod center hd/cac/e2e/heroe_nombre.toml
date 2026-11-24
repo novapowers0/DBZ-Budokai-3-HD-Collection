@@ -13,7 +13,7 @@ pasos = [
   "tecla Space 3000",
   "log \"Create abierto\" 20",
   "tecla W 500",
-  "tecla A 500",
+  "tecla D 400", "tecla D 400", "tecla D 400",   # fila de botones: Confirmar, Atras, Reset, Nombre (3.o a la derecha)
   "captura c_nombre_0_boton",
   "tecla Space 1500",
   "tecla L 300", "tecla L 300", "tecla L 300", "tecla L 300", "tecla L 300", "tecla L 300", "tecla L 300", "tecla L 300",
@@ -28,7 +28,7 @@ pasos = [
   "tecla P 1200",
   "log \"nombre = BC\" 20",
   "captura c_nombre_2_aceptado",
-  "tecla D 500",
+  "tecla A 400", "tecla A 400", "tecla A 400",   # de Nombre otra vez a Confirmar
   "tecla Space 2500",
   "log \"Create: confirmar\" 20",
   "tecla Backspace 3000",

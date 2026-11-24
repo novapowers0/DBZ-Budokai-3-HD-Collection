@@ -108,15 +108,47 @@ REXCVAR_DEFINE_BOOL(dbz3_mosaico_iw, true, "DBZ3/Mods",
 REXCVAR_DEFINE_BOOL(dbz3_escenarios_repetidos, false, "DBZ3/Mods",
                     "Muestra en el selector del Duelo los escenarios anadidos que son el mismo lugar que uno nativo "
                     "(res/datos/escenarios_repetidos.toml); de serie se ocultan. Al reiniciar");
+// SLOTS_ESC-03: hasta 238 escenarios nuevos (255-17) en vez de 110. El juego lee el byte del registro elegido CON SIGNO
+// (sub_820FFA80): 128..255 le llegan como -128..-1 a obj+340; el gancho de sub_820C26E0 los devuelve a 128..255.
+// Pasar de 238 obligaria a sacar el registro del byte (y a mandarlo aparte en el online): no se hace.
+// SLOTS_ESC-03 (A/B): false = no liberar nada nuestro del selector (tabla, copias de sprite, #AZT): la fuga de antes.
+REXCVAR_DEFINE_BOOL(dbz3_esc_liberar, true, "DBZ3/Dev",
+                    "Libera la tabla de sprites, las copias y los #AZT de las altas del selector de escenarios (A/B)");
+REXCVAR_DEFINE_BOOL(dbz3_escenarios_no_jugables, false, "DBZ3/Mods",
+                    "Muestra en el selector del Duelo los escenarios anadidos que no son jugables "
+                    "(res/datos/escenarios_no_jugables.toml); de serie se ocultan. Al reiniciar");
+// ESC-JUGABLES 12/11: encendido de serie (200 altas con 238 PASS: selector, vuelta entera y combate).
+REXCVAR_DEFINE_BOOL(dbz3_escenarios_238, true, "DBZ3/Mods",
+                    "Permite hasta 238 escenarios anadidos (apagado: 110). Al reiniciar");
+// SLOTS_ESC-04: con mas altas que casillas (rueda desplazada) el "?" del juego solo elige entre las 23 que muestra la rueda.
+// ESC-JUGABLES 12/11: encendido de serie (200 altas, casilla ? -> "entre todos" y combate PASS).
+REXCVAR_DEFINE_BOOL(dbz3_esc_azar_todos, true, "DBZ3/Mods",
+                    "El escenario \"aleatorio\" (casilla ?) del Duelo elige entre TODOS los visibles (0..10 y todas las "
+                    "altas), no solo entre los que muestra la rueda; online con la semilla compartida");
 REXCVAR_DEFINE_BOOL(dbz3_escenarios_revancha_aleatoria, false, "DBZ3/Mods",
                     "Con el escenario \"aleatorio\" del Duelo (casilla ?), cada revancha carga un escenario "
                     "distinto de los visibles (0..10 y las altas); online el azar sale de la semilla compartida");
+// SLOTS_ESC-09: la pista que un alta declara en su stage.toml (`musica` = entrada de adx_usa.afs) suena tambien
+// en el combate, no solo en la vista previa del selector (asi la previa y la pelea son la misma pista). Solo si
+// dbz3_musica_combate es "original" (si el jugador eligio otra, manda su eleccion). Apagada: igual que antes.
+REXCVAR_DEFINE_BOOL(dbz3_escenario_musica_combate, false, "DBZ3/Mods",
+                    "La pista `musica` del escenario (stage.toml, entrada de adx_usa.afs) suena tambien durante el "
+                    "combate; la vista previa del selector es esa misma pista");
 
 // Seguimiento 12c (studies 4): vista previa de la musica de combate en el selector del Duelo (la del
 // escenario que se esta mirando). Reutiliza el reproductor ADX de los modos de PS2 (pasarela_b1.cpp).
-REXCVAR_DEFINE_BOOL(dbz3_selector_musica, false, "DBZ3/Mods",
+REXCVAR_DEFINE_BOOL(dbz3_selector_musica, true, "DBZ3/Mods",
                     "Al mover el cursor en el selector del Duelo suena la musica de combate del escenario "
                     "(ADX de la copia del jugador); se corta al salir del selector");
+// SEL02: con la vista previa encendida, callar la mezcla del juego (su musica de menu y los efectos) mientras
+// suena la pista del escenario, para que se oiga SOLO la del escenario. Se restaura al cambiar de casilla, al
+// apagar la cvar o al salir. Apagado de serie; guarda y devuelve `audio_gain` (no toca el TOML del jugador).
+REXCVAR_DEFINE_BOOL(dbz3_selector_musica_aislada, true, "DBZ3/Mods",
+                    "Con la vista previa de musica del selector, calla el audio del juego mientras suena la "
+                    "pista del escenario (se restaura al salir)");
+// SLOTS_ESC-08: aislar sin audio_gain (solo US).
+REXCVAR_DEFINE_BOOL(dbz3_selector_musica_solo_adx, false, "DBZ3/Mods",
+                    "Al aislar la vista previa, calla solo la musica del menu (ADX) y deja los efectos del cursor");
 
 namespace dbz3::net { void InyectarPad(uint32_t usuario, int32_t botones); }   // net/netplay_hooks.cpp (-1 = el mando de verdad)
 
@@ -1080,11 +1112,27 @@ std::string Nombre(int registro, int idioma) {
     return a.titulo.empty() ? a.nombre : a.titulo;
   }
   if (registro < 0 || registro >= kSerie) return {};
+  static const char* const kPtJa[12][2] = {
+      {"Base da Red Ribbon", "レッドリボン軍基地"},
+      {"Casa do vovô Gohan", "孫悟飯じいちゃんの家"},
+      {"Dentro de Buu", "ブウの体内"},
+      {"Arquipélago", "群島"},
+      {"Mundo do Supremo Senhor Kaioh", "界王神界"},
+      {"Sala do Tempo", "精神と時の部屋"},
+      {"Planeta Namekusei", "ナメック星"},
+      {"Montanhas rochosas", "岩山"},
+      {"Arena do Torneio Mundial", "天下一武道会会場"},
+      {"Área urbana", "都市"},
+      {"Planícies", "平原"},
+      {"Arena de Cell", "セルリング"},
+  };
+  if (idioma == 9 || idioma == 2)
+    return kPtJa[kFila[registro]][idioma == 9 ? 0 : 1];
   const int col = idioma == 3 ? 1 : idioma == 4 ? 2 : idioma == 5 ? 3 : idioma == 6 ? 4 : 0;   // 1, 2: ingles
   return kFilas[kFila[registro]][col];
 }
 
-std::string Nombre(int registro) { return Nombre(registro, dbz3::settings::Language()); }
+std::string Nombre(int registro) { return Nombre(registro, dbz3::settings::UiLanguage()); }
 
 void CargarDeMods(rex::memory::Memory* memory) {
   g_altas.clear();
@@ -1247,9 +1295,15 @@ void CargarDeMods(rex::memory::Memory* memory) {
                          a.entrada, a.tema);
     return mal;
   });
-  // ponytail: tope por el byte del registro elegido (+30 de 0x824BA110, sin medir si el juego lo lee con signo):
-  // 17 + 110 = 127. Mas altas: medir esa lectura antes de subirlo.
-  constexpr size_t kMaxAltas = 110;
+  // Tope por el byte del registro elegido (+30 de 0x824BA110 = 0x824BA12E): el guest lo escribe con `stb`
+  // desde la tabla u16 0x82373384 (generated/dbz3_recomp.40.cpp:16122) y lo lee CON SIGNO en sub_820FFA80
+  // (`lbz` + `extsb`, generated/dbz3_recomp.43.cpp:7595-7598 y 7695-7700). Por tanto el byte vale 0..127 como maximo:
+  // 127-17 = 110 altas (medido por tools/c3_banco.py). Con dbz3_escenarios_238, el gancho de sub_820C26E0 (SinSigno)
+  // deshace el signo y vale el byte entero: 255-17 = 238.
+  constexpr size_t kMaxAltas110 = 110, kMaxAltas238 = 238;
+  static_assert(kMaxAltas110 <= size_t(127) - size_t(kSerie), "el byte +30 se lee con signo: 127-17 = 110 altas");
+  static_assert(kMaxAltas238 <= size_t(255) - size_t(kSerie), "el byte +30 es de 8 bits: 255-17 = 238 altas");
+  const size_t kMaxAltas = REXCVAR_GET(dbz3_escenarios_238) ? kMaxAltas238 : kMaxAltas110;
   if (g_altas.size() > kMaxAltas) {
     REXLOG_WARN("dbz3 escenarios: {} escenarios nuevos; se cargan los {} primeros", g_altas.size(), kMaxAltas);
     g_altas.resize(kMaxAltas);
@@ -1266,11 +1320,9 @@ void CargarDeMods(rex::memory::Memory* memory) {
       a.zona_b = 0;
     }
   }
-  // Campos de IW (campos_iw.py): llanuras para los minijuegos, no escenarios de Duelo. Las ocultas van al final
-  // y las visibles caben en el carrusel de 24 (escenarios_sel_gen.inc kSelMax) = 12 del juego + 11 + el "?";
-  // antes los 8 campos llenaban el carrusel y dejaban fuera las altas siguientes (Montanas nevadas de B2).
-  for (auto& a : g_altas)
-    if (a.mod.rfind("Campo IW", 0) == 0) a.oculta = true;
+  // Campos de IW (campos_iw.py): antes se ocultaban todos (el carrusel de 24 no daba para mas). ESC-JUGABLES 12/11: la rueda
+  // ya gira sin fin, asi que salen los que se juegan bien (medidos); los que no (interior de la nave, campos en vuelo
+  // sobre agua/nubes) estan en res/datos/escenarios_no_jugables.toml. Los minijuegos los buscan por carpeta (CampoIW).
   // Origen (peticion a, 8/11): el juego de la ISO de origen.txt (lo escribe tools/escenarios_convertir.py); si no hay, "Mod".
   for (auto& a : g_altas) {
     std::ifstream o(ModsRoot() / a.mod / "origen.txt");
@@ -1283,31 +1335,34 @@ void CargarDeMods(rex::memory::Memory* memory) {
                : iso.find("Budokai") != std::string::npos ? "B1"
                : "Mod";
   }
-  // Repetidos (8/11): los anadidos que son el mismo lugar que uno nativo salen del selector si no se pide verlos. Lista
-  // explicita (res/datos/escenarios_repetidos.toml): solo se ocultan; el nativo y los archivos siguen ahi.
-  if (!REXCVAR_GET(dbz3_escenarios_repetidos)) {
-    const auto lista = rex::filesystem::GetExecutableFolder() / "res" / "datos" / "escenarios_repetidos.toml";
-    std::ifstream in(lista);
+  // Repetidos (8/11): los anadidos que son el mismo lugar que uno nativo salen del selector si no se pide verlos.
+  // No jugables (12/11, ESC-JUGABLES): los que no sirven de Duelo (medidos con tools/pruebas.py, tabla en
+  // studies 5/ENTREGAS/ESCENARIOS_JUGABLES.md). Listas explicitas en res/datos: solo se ocultan; los archivos siguen ahi.
+  const auto ocultar = [](const char* archivo, const char* seccion_ok, const char* motivo) {
+    std::ifstream in(rex::filesystem::GetExecutableFolder() / "res" / "datos" / archivo);
     std::string line;
     bool seccion = false;
     while (std::getline(in, line)) {
       line = Limpia(line);
       if (line.empty() || line.front() == '#') continue;
       if (line.front() == '[') {
-        seccion = line == "[repetidos]";
+        seccion = line == seccion_ok;
         continue;
       }
       const auto eq = line.find('=');
       if (!seccion || eq == std::string::npos) continue;
-      const std::string mod = Valor(line.substr(0, eq)), nativo = Valor(line.substr(eq + 1));
+      const std::string mod = Valor(line.substr(0, eq)), dato = Valor(line.substr(eq + 1));
       for (auto& a : g_altas)
         if (a.mod == mod && !a.oculta) {
           a.oculta = true;
-          REXLOG_INFO("dbz3 escenarios: '{}' no sale en el selector: es el mismo lugar que '{}' (escenarios_repetidos.toml)",
-                      a.mod, nativo);
+          REXLOG_INFO("dbz3 escenarios: '{}' no sale en el selector: {} '{}' ({})", a.mod, motivo, dato, archivo);
         }
     }
-  }
+  };
+  if (!REXCVAR_GET(dbz3_escenarios_repetidos))
+    ocultar("escenarios_repetidos.toml", "[repetidos]", "es el mismo lugar que");
+  if (!REXCVAR_GET(dbz3_escenarios_no_jugables))
+    ocultar("escenarios_no_jugables.toml", "[no_jugables]", "no es jugable:");
   std::stable_partition(g_altas.begin(), g_altas.end(), [](const Alta& a) { return !a.oculta; });
   g_visibles = uint32_t(std::count_if(g_altas.begin(), g_altas.end(), [](const Alta& a) { return !a.oculta; }));
   // mas de 11: el carrusel del selector se desplaza sin fin por todas (Recolocar); todas cuentan para el azar y el HUB
@@ -1341,6 +1396,8 @@ namespace {
 constexpr dbz3::GA kSelDatos = 0x824BA110;   // datos del selector del Duelo (mn_StageSel; netplay kUiSnap)
 constexpr uint32_t kSelCasilla = 12;         // la casilla "?" (aleatorio) de la lista del selector
 bool g_aleatorio = false;                    // el combate en curso vino de la casilla "?"
+std::atomic<bool> g_azar_pendiente{false};               // SEL01: el resultado ya manda al selector a confirmar el "?"
+std::atomic<int> g_azar_fase{0};                         // 0..2 deja ver la casilla, 3..7 pulsa A, luego 8 = fin
 
 // Indice de registro al azar de las casillas visibles (mismo reparto que hub_menu.cpp Stage(): 0..10 de
 // serie + las altas). Nunca 11..16 (variantes) ni los campos de IW.
@@ -1349,6 +1406,27 @@ int RegistroAzar(uint32_t azar) {
   if (n <= 0) return 0;
   const int k = int(azar % uint32_t(n));
   return k <= 10 ? k : kSerie + (k - 11);
+}
+
+// Registro al azar distinto de `i`. El mapeo k->registro no es contiguo (0..10 y 17+), asi que sumar 1 al
+// azar podia caer otra vez en el mismo (medido en tools/c3_banco.py con N=3). Se reintenta y, si aun asi
+// no cambia, se toma el siguiente permitido.
+int g_ultimo_azar = -1;   // SLOTS_ESC-07: escenario del combate anterior del "?": la revancha no lo repite
+int RegistroDistinto(int i, uint32_t azar) {
+  int nuevo = RegistroAzar(azar);
+  if (nuevo == i) {
+    for (uint32_t intento = 1; intento <= 16; ++intento) {
+      nuevo = RegistroAzar(azar + intento);
+      if (nuevo != i) break;
+    }
+    if (nuevo == i) {
+      if (i >= kSerie) nuevo = (i - kSerie + 1 < Visibles()) ? i + 1 : 0;
+      else nuevo = (i + 1) % 11;
+    }
+  }
+  for (uint32_t intento = 17; (nuevo == g_ultimo_azar || nuevo == i) && intento < 64; ++intento)
+    nuevo = RegistroAzar(azar + intento);   // tampoco el de la vez anterior (si hay mas de dos escenarios)
+  return nuevo;
 }
 }  // namespace
 
@@ -1364,21 +1442,147 @@ int RevanchaAzar(uint8_t* base, int i) {
   }
   if (!g_aleatorio) {   // primera carga del combate aleatorio: se respeta lo que eligio el juego (si cabe en una pagina)
     g_aleatorio = true;
+    g_ultimo_azar = i;
     if (Visibles() <= kCeldas) return -1;   // con paginas, el "?" del juego solo ve la actual: se elige entre todas
   }
   const uint32_t azar = dbz3::net::Session::Get().AzarCompartido(uint32_t(i) * 0x9E3779B9u + 0x1234u);
-  int nuevo = RegistroAzar(azar);
-  if (nuevo == i && 11 + Visibles() > 1) nuevo = RegistroAzar(azar + 1u);   // que cambie de verdad
+  const int nuevo = RegistroDistinto(i, azar);
+  g_ultimo_azar = nuevo;
   REXLOG_INFO("dbz3 escenarios: revancha aleatoria: registro {} -> {} ('{}')", i, nuevo, Nombre(nuevo, 1));
   return nuevo;
+}
+
+// SLOTS_ESC-04: registro del "?" elegido entre todos, o -1 (sin cambio). Solo en la carga que sigue al selector (su ultimo
+// fotograma hace menos de 8 s; la revancha nativa no pasa por el y repite lo elegido, como el original) y solo con la rueda
+// desplazada: con <= kCeldas altas el "?" del juego ya ve todas. Con la revancha aleatoria encendida, ella ya lo hace.
+int AzarTodos(uint8_t* base, int i) {
+  static int64_t usado = -1;   // fotograma del selector ya consumido (una sola vez por paso por el selector)
+  const int64_t visto = g_selector_visto.load();
+  if (!REXCVAR_GET(dbz3_esc_azar_todos) || REXCVAR_GET(dbz3_escenarios_revancha_aleatoria) || Visibles() <= kCeldas ||
+      REX_LOAD_U8(kSelDatos + 25) != uint8_t(kSelCasilla) || visto == usado ||
+      std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count() -
+              visto > 8000)
+    return -1;
+  usado = visto;
+  const int nuevo = RegistroAzar(dbz3::net::Session::Get().AzarCompartido(uint32_t(i) * 0x9E3779B9u + 0x4321u));
+  REXLOG_INFO("dbz3 escenarios: \"?\" entre todos ({}): registro {} -> {} ('{}')", 11 + Visibles(), i, nuevo,
+              Nombre(nuevo, 1));
+  return nuevo;
+}
+
+// SLOTS_ESC-07: el flujo automatico de la revancha ya no usa el canal de pruebas (dbz3_input.req): pulsa los
+// botones por el mismo XamInputGetState que lee el juego (mando virtual de net::InyectarPad, el que usan las
+// cinematicas) y los suelta a los pocos fotogramas. Con la cvar apagada no se inyecta nada.
+// Todo va por el hilo de la interfaz (TickRevanchaUi, desde main.cpp): el menu final y la seleccion de personajes no
+// pasan por ningun gancho de combate. El tiempo va en ms (la interfaz no corre a 60 Hz fijos).
+namespace {
+constexpr int kPadA = 0x1000, kPadB = 0x2000, kPadArriba = 0x0001, kPadAbajo = 0x0002;   // X_INPUT_GAMEPAD
+std::atomic<int64_t> g_pad_hasta{0};   // ms (reloj de AhoraMs) hasta los que sigue pulsado el boton; 0 = nada
+std::atomic<int64_t> g_pad_suelta{0};  // ms a los que se devuelve el mando real
+std::atomic<bool> g_pad_activo{false};
+int64_t g_azar_t0 = 0, g_azar_ult_a = 0;   // arranque del menu final y ultimo A (solo hilo de la interfaz)
+int g_azar_intentos = 0;                    // A dados en este menu final
+bool g_azar_abajo = false, g_azar_arriba = false;
+
+int64_t RelojMs() {
+  return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+void SoltarPad() {
+  if (!g_pad_activo.exchange(false)) return;
+  dbz3::net::InyectarPad(0, -1);   // vuelve el mando de verdad
+}
+
+// Mantiene `botones` en el mando virtual `ms` milisegundos y lo suelta (con 100 ms a cero entre pulsos).
+void PulsoPadMs(int botones, int ms) {
+  const int64_t ahora = RelojMs();
+  g_pad_hasta = ahora + ms;
+  g_pad_suelta = ahora + ms + 100;
+  g_pad_activo = true;
+  dbz3::net::InyectarPad(0, botones);
+}
+
+void TickPulsoPad() {
+  if (!g_pad_activo) return;
+  const int64_t ahora = RelojMs();
+  if (g_pad_hasta != 0 && ahora >= g_pad_hasta) {
+    g_pad_hasta = 0;
+    dbz3::net::InyectarPad(0, 0);
+    return;
+  }
+  if (g_pad_hasta == 0 && ahora >= g_pad_suelta) SoltarPad();
+}
+}  // namespace
+
+void PulsoRevancha(int botones, int frames) { PulsoPadMs(botones, frames * 17); }   // para escenarios_selector.inl
+
+// SLOTS_ESC-07 (12/11): el menu final de B3 solo trae "Luchar otra vez / Reelegir person. / Menu principal" (B no hace
+// nada, y "Luchar otra vez" no recarga el escenario). Con un combate del "?" se baja a "Reelegir person.", se contesta Si
+// a su aviso EXIT?, se confirma la seleccion de personajes con A y, al abrirse el selector, ConfirmarAzarEnSelector deja
+// el "?" y pulsa A: el combate nuevo se carga por el camino normal (sub_820C26E0), ya con otro registro.
+void TickRevanchaUi() {
+  TickPulsoPad();
+  if (!REXCVAR_GET(dbz3_escenarios_revancha_aleatoria) || !g_aleatorio) {
+    SoltarPad();   // apagada a mitad: no dejar el mando virtual puesto
+    g_azar_pendiente = false;
+    return;
+  }
+  uint8_t* base = BaseGuest();
+  if (!base) return;
+  const uint32_t mgr = REX_LOAD_U32(dbz3::GA(0x823D6CF4));
+  const uint32_t st = mgr ? REX_LOAD_U32(mgr + 35128) : 0;   // sin gestor (seleccion de personajes): 0
+  const int64_t ahora = RelojMs();
+  if (!g_azar_pendiente) {
+    if (st != 7) return;
+    g_azar_pendiente = true;
+    g_azar_fase = 0;
+    g_azar_t0 = ahora;
+    g_azar_ult_a = 0;
+    g_azar_intentos = 0;
+    g_azar_abajo = g_azar_arriba = false;
+    REXLOG_INFO("dbz3 escenarios: revancha: menu final -> reelegir (mando virtual)");
+    return;
+  }
+  if (g_azar_fase > 0) return;   // el selector ya esta abierto: lo lleva ConfirmarAzarEnSelector
+  const int64_t t = ahora - g_azar_t0;
+  if (g_pad_activo) return;       // un pulso en curso
+  // el menu no acepta mando en sus primeros fotogramas (el primer abajo se perdia y A elegia "Luchar otra vez")
+  if (!g_azar_abajo && t >= 1000 && st == 7) {
+    g_azar_abajo = true;
+    PulsoPadMs(kPadAbajo, 150);
+    REXLOG_INFO("dbz3 escenarios: revancha: abajo");
+  } else if (g_azar_abajo && !g_azar_arriba && g_azar_intentos == 1 && t >= 2200) {   // aviso EXIT? Si/No con el cursor en No
+    g_azar_arriba = true;
+    PulsoPadMs(kPadArriba, 150);
+    REXLOG_INFO("dbz3 escenarios: revancha: arriba (Si)");
+  } else if (g_azar_abajo && t >= 1500 && ahora - g_azar_ult_a >= 700 && g_azar_intentos < 24 &&
+             (g_azar_intentos != 1 || g_azar_arriba)) {
+    ++g_azar_intentos;
+    g_azar_ult_a = ahora;
+    PulsoPadMs(kPadA, 150);
+    REXLOG_INFO("dbz3 escenarios: revancha: A {} (estado {}, pantalla {})", g_azar_intentos, st,
+                int(REX_LOAD_U8(dbz3::GA(0x824BA110))));
+  } else if (t > 40000) {   // sin llegar al selector: se deja (no pulsar A a ciegas para siempre)
+    g_azar_pendiente = false;
+    SoltarPad();
+    REXLOG_INFO("dbz3 escenarios: revancha: no llego al selector (estado {})", st);
+  }
+}
+// SLOTS_ESC-03: el registro 128..255 llega como -128..-1 (byte +30 leido con signo en sub_820FFA80). Solo con
+// dbz3_escenarios_238 y solo si es un alta que existe; apagado, el indice pasa tal cual (como antes).
+int SinSigno(int i) {
+  return REXCVAR_GET(dbz3_escenarios_238) && i >= -128 && i < 0 && i + 256 < Total() ? i + 256 : i;
 }
 }  // namespace dbz3::escenarios
 
 // Carga del escenario del combate (obj+340 = indice de registro).
 DBZ3_HOOK_EU(sub_820C26E0) {
   const uint32_t obj = ctx.r3.u32;
-  int i = int16_t(REX_LOAD_U16(obj + 340));
+  int i = dbz3::escenarios::SinSigno(int16_t(REX_LOAD_U16(obj + 340)));
   dbz3::escenarios::RecordarObj(obj);   // frente 07: para recargar el escenario al pasar de zona
+  if (const int t = dbz3::escenarios::AzarTodos(base, i); t >= 0 && t != i) {   // SLOTS_ESC-04
+    i = t;
+    REX_STORE_U16(obj + 340, uint16_t(i));   // la revancha nativa repite este, como el original repite el suyo
+  }
   if (const int rev = dbz3::escenarios::RevanchaAzar(base, i); rev >= 0 && rev != i) {   // frente 12: revancha aleatoria
     i = rev;
     REX_STORE_U16(obj + 340, uint16_t(i));   // se queda: la proxima revancha vuelve a barajar
@@ -1390,9 +1594,96 @@ DBZ3_HOOK_EU(sub_820C26E0) {
   if (j != i) REX_STORE_U16(obj + 340, uint16_t(i));   // "otra vez" vuelve a pedir el alta
 }
 
+
+REXCVAR_DEFINE_BOOL(dbz3_b2_nieve_nativa, false, "DBZ3/Dev",
+                    "Experimental: nevada ambiental PAL de Montanas nevadas con el emisor 3D de B3 HD (al cargar)");
+
+DBZ3_EXTERN_EU(dbz3eu_sub_820BD3D8);
+DBZ3_EXTERN_EU(dbz3eu_sub_82155818);
+
+// PAL 1B38F0 monta SNOW tanto en A como en B, aparte del 0x96 de las
+// escenas. HD 820C4788/820C4778 contiene el mismo tipo de emisor, pero con
+// otros parametros y efectos colaterales del tema; replicar solo su alta SNOW.
+DBZ3_HOOK_EU(sub_820C13A8) {
+  orig(ctx, base);
+  using namespace dbz3::escenarios;
+  if (!REXCVAR_GET(dbz3_b2_nieve_nativa) || REXCVAR_GET(dbz3_nieve_propia) ||
+      g_activa < kSerie || g_activa >= Total() || !g_mem || dbz3::net::Session::Get().active() ||
+      g_altas[size_t(g_activa - kSerie)].entrada != 5007 ||
+      REX_LOAD_U32(kG) != kAnfitrion || REX_LOAD_U32(kG + 64) > 1) return;
+
+  const uint32_t registro = REX_LOAD_U32(kG + 44);
+  if (!registro) return;
+  PPCContext c = ctx;
+  c.r3.u64 = registro;
+  // 640 es el atlas del donante (sin textura ID 8); 639 conserva FXHD[0] de PAL.
+  c.r4.u64 = 639;
+  DBZ3_CALL_EU(sub_820B0CF8)(c, base);
+  const uint32_t atlas = c.r3.u32;
+  constexpr uint32_t tex = 8;
+  const uint32_t tabla = atlas ? REX_LOAD_U32(atlas + 20) : 0;
+  REXLOG_INFO("dbz3 B2 SNOW diag: registro {:08X} atlas {:08X} tag {:08X} n {} tabla {} tex8 {:08X}", registro, atlas,
+              atlas ? REX_LOAD_U32(atlas) : 0u, atlas ? REX_LOAD_U32(atlas + 16) : 0u, tabla,
+              (atlas && tabla >= 32) ? REX_LOAD_U32(atlas + tabla + 4 * tex) : 0u);
+  if (!atlas || REX_LOAD_U32(atlas) != 0x21415A54u ||
+      REX_LOAD_U32(atlas + 24) != 0 || REX_LOAD_U32(atlas + 16) <= tex ||
+      tabla < 32 || !REX_LOAD_U32(atlas + tabla + 4 * tex)) {
+    REXLOG_WARN("dbz3 B2 SNOW: falta el atlas PAL preparado por D12 en la casilla 639 (ID 8)");
+    return;
+  }
+
+  // El motor conserva los punteros al arbol mientras la tarea vive. Una
+  // copia inmutable por imagen/heap, nunca modificar la plantilla compartida.
+  static uint8_t* nieve_base = nullptr;
+  static uint32_t nieve_raiz = 0;
+  if (nieve_base != base) { nieve_base = base; nieve_raiz = 0; }
+  if (!nieve_raiz) {
+    constexpr uint32_t plantilla = 0x82323EA0u;  // misma VA en los dos cuerpos
+    if (REX_LOAD_U32(plantilla + 4) != 0x10006 || REX_LOAD_U32(plantilla + 80 + 4) != 0x20006 ||
+        REX_LOAD_U32(plantilla + 16) != 0x534E4F57u || REX_LOAD_U32(plantilla + 80 + 16) != 0x534E4F57u) return;
+    nieve_raiz = g_mem->SystemHeapAlloc(80 + 112, 16);
+    if (!nieve_raiz) return;
+    const uint32_t nodo = nieve_raiz + 80;
+    std::memcpy(base + nieve_raiz, base + plantilla, 80 + 112);
+    REX_STORE_U32(nieve_raiz + 36, nodo);
+    REX_STORE_U32(nieve_raiz + 48, 0x43AF0000u);  // PAL 0x373AA0+0x30: 350 semillas por celda
+    REX_STORE_U32(nieve_raiz + 52, 0x43AF0000u);  // PAL +0x34: tasa de emision
+    REX_STORE_U32(nieve_raiz + 56, 0xC1A00000u);  // PAL +0x38: Vy=-20; X/Z ya son [-4,4]
+    for (uint32_t off = 48; off <= 64; off += 4) REX_STORE_U32(nodo + off, 0x3F800000u);
+    REX_STORE_U32(nodo + 68, 0x3E800000u);       // PAL 214200 copia .7 a ancho Y alto
+    REX_STORE_U32(nodo + 72, 0x3E800000u);
+    REX_STORE_U32(nodo + 76, tex);               // PAL 0x373AF0+0x48: ID de textura, no ID del bloque
+    REX_STORE_U32(nodo + 96, 0x82389470u);       // mismo enlace del setup nativo US/EU
+    REX_STORE_U32(nodo + 100, dbz3::GuestAddr(0x824E6720u, 0x824E6710u));
+  }
+
+  // Prioridad/flags, callbacks de dibujo/paso y carga de textura: solo el
+  // primer nodo de 820C4788/820C4778. La limpieza de zona nativa posee la tarea.
+  c = ctx;
+  c.r3.u64 = 0x84000000u;
+  c.r4.u64 = dbz3::GuestAddr(0x8201D600u, 0x8201D5F0u);
+  c.r5.u64 = 0;
+  c.r6.u64 = dbz3::GuestAddr(0x820C46E0u, 0x820C4670u);
+  c.r7.u64 = dbz3::GuestAddr(0x820C45A8u, 0x820C4588u);
+  DBZ3_CALL2(sub_820BD448, dbz3eu_sub_820BD3D8)(c, base);
+  const uint32_t tarea = c.r3.u32;
+  if (!tarea) return;
+  REX_STORE_U32(tarea + 32, REX_LOAD_U32(tarea + 32) | 0x800u);
+  std::memset(base + tarea + 48, 0, 128);  // Igual que el setup SNOW US/EU.
+  REX_STORE_U32(tarea + 48, atlas);
+  c = ctx;
+  c.r3.u64 = nieve_raiz;
+  c.r4.u64 = 0x02000004u;
+  c.r5.u64 = 0;
+  DBZ3_CALL2(sub_82155858, dbz3eu_sub_82155818)(c, base);
+  REX_STORE_U32(tarea + 52, c.r3.u32);
+  REXLOG_INFO("dbz3 B2 SNOW: zona {}, tarea {:08X}, emisor {:08X}, atlas {:08X}",
+              REX_LOAD_U32(kG + 64), tarea, c.r3.u32, atlas);
+}
+
 // id_SE del registro r3 (sub_821221F8, con el mismo indice del combate).
 DBZ3_HOOK_EU(sub_820C19B0) {
-  ctx.r3.u64 = uint32_t(dbz3::escenarios::Traducir(base, int(ctx.r3.s32)));
+  ctx.r3.u64 = uint32_t(dbz3::escenarios::Traducir(base, dbz3::escenarios::SinSigno(int(ctx.r3.s32))));
   orig(ctx, base);
 }
 
@@ -1680,551 +1971,7 @@ DBZ3_HOOK_EU(sub_820CBC90) {
               mal);
 }
 
-// ---------------------------------------------------------------------------------------------------
-// SELECTOR DE ESCENARIOS DEL DUELO (mn_StageSel): una casilla nueva por alta (13 + k -> registro 17 + k).
-// Datos ampliados y tablas por casilla propias: escenarios_sel_gen.inc (tools/gen_escenarios_sel.py).
-// Imagenes de la casilla nueva: el #AZT `menu` del mod (0 circulo, 1 vista, 2 rotulo, 3 bola) se carga con
-// los del selector y el juego lo registra al crearle las texturas. Lo de la casilla nueva se dibuja con ese
-// #AZT puesto como banco de texturas (el del selector, D+4, queda igual): circulo y bola (sub_8219D520 /
-// sub_8219D6E8), y la vista y el rotulo (sprites copiados de los nativos, tabla #ACA ampliada en D+0 +28;
-// se crean en sub_8219CC48 y se dibujan en sub_8219E828). Sin altas todo es el codigo original.
-// ---------------------------------------------------------------------------------------------------
-// valores de partida (US); Tablas() los cambia por las tablas propias antes de que corra ninguna copia Sel_/SelEu_
-uint32_t dbz3_esc_f94 = 0x82020F94, dbz3_esc_fb0 = 0x82020FB0, dbz3_esc_trans = 0x82373384, dbz3_esc_limite = 11;
-void dbz3_esc_instalar(PPCContext& ctx, uint8_t* base, uint32_t d);
-void dbz3_esc_banco(PPCContext& ctx, uint8_t* base, uint32_t d, bool nuevo);
-
-namespace {
-#include "escenarios_sel_gen.inc"
-#if defined(DBZ3_DUAL_REGION)
-#include "escenarios_sel_gen_eu.inc"   // las mismas copias del codigo EU (tools/gen_escenarios_sel.py)
-#define SEL(fn) DBZ3_CALL2(Sel_##fn, SelEu_##fn)
-#else
-#define SEL(fn) Sel_##fn
-#endif
-
-using dbz3::escenarios::g_altas;
-using dbz3::escenarios::g_visibles;
-using dbz3::escenarios::g_pos_sel;
-using dbz3::escenarios::g_cuantos;
-using dbz3::escenarios::kCeldas;
-constexpr uint32_t kCasillasSerie = 13;   // 0..11 escenarios, 12 = "?"
-constexpr dbz3::GA kGlobalSel = 0x8245F25C;   // estructura del selector: +20 tarea (+48 = datos)
-
-bool Ext() { return !g_altas.empty() && dbz3::escenarios::g_mem; }
-
-uint32_t Alloc(uint32_t n) {
-  const uint32_t a = dbz3::escenarios::g_mem->SystemHeapAlloc(n, 0x20);
-  if (a) std::memset(dbz3::escenarios::g_mem->TranslateVirtual<uint8_t*>(a), 0, n);
-  return a;
-}
-
-uint32_t Llamar(PPCContext& ctx, uint8_t* base, void (*fn)(PPCContext&, uint8_t*), uint32_t r3, uint32_t r4 = 0,
-                uint32_t r5 = 0) {
-  PPCContext c = ctx;
-  c.r3.u64 = r3;
-  c.r4.u64 = r4;
-  c.r5.u64 = r5;
-  fn(c, base);
-  return c.r3.u32;
-}
-
-std::vector<uint32_t> g_cargas;       // nodo de lectura AFS del #AZT de cada alta (sub_82083968)
-std::vector<uint32_t> g_azt;          // #AZT de cada alta ya en memoria y registrado (0 = no esta)
-uint32_t g_datos = 0, g_tabla_nat = 0;
-
-// DESPLAZAMIENTO CONTINUO (peticion a, 8/11; misma idea que las casillas virtuales de la rueda de personajes): cada casilla
-// del carrusel (0..23) lleva un CONTENIDO: un escenario nativo (su casilla 0..11) o un alta (kAlta + indice). Con mas de 11
-// altas, las casillas de la parte de atras del carrusel (fuera de la vista) cambian de contenido al mover el cursor, y la
-// rueda sigue sin fin por todos los escenarios. El "?" (12) no se toca. Con 11 o menos, cada casilla lleva lo suyo: el
-// selector de siempre.
-constexpr int kAlta = 1000;
-uint32_t Celdas() { return std::min<uint32_t>(g_visibles, uint32_t(kCeldas)); }   // casillas nuevas en la lista (13..)
-bool Virtual() { return g_visibles > uint32_t(kCeldas); }
-std::array<int, kSelMax> g_cont{};   // contenido de cada casilla (-1 = la casilla no se usa o es el "?")
-int ContenidoPropio(uint32_t c) {
-  return c < 12 ? int(c) : c >= kCasillasSerie && c - kCasillasSerie < Celdas() ? kAlta + int(c - kCasillasSerie) : -1;
-}
-
-// #AZT de la casilla c (0 si lleva un escenario del juego o su alta no tiene imagenes).
-uint32_t AztDe(uint32_t c) {
-  if (c >= kSelMax) return 0;
-  const int it = g_cont[c];
-  return it >= kAlta && size_t(it - kAlta) < g_azt.size() ? g_azt[size_t(it - kAlta)] : 0;
-}
-
-// 12b: #AZT que debe verse en la casilla `c`. mn_StageSel escribe cada fotograma el registro elegido
-// (con el "flag" de variante de Circle) en el byte +30 de sus datos (global 0x824BA110). Si ese registro
-// es un alta con imagenes, se ponen las suyas: asi el icono cambia al mantener Circle cuando el alta
-// declara `variante` en su stage.toml. Los registros de serie 11..16 NO traen icono propio (el atlas
-// data_<idioma>.afs 2043 solo tiene 13 vistas: 12 casillas + el "?"), asi que devuelven el de la casilla
-// (el normal). Ver VERIFICACION.md del seguimiento.
-uint32_t AztSel(uint8_t* base, uint32_t c) {
-  if (c < kCasillasSerie) return AztDe(c);
-  const uint32_t reg = REX_LOAD_U8(dbz3::GA(0x824BA110) + 30);
-  return reg >= uint32_t(dbz3::escenarios::kSerie) && reg - dbz3::escenarios::kSerie < g_azt.size() &&
-                 g_azt[reg - dbz3::escenarios::kSerie]
-             ? g_azt[reg - dbz3::escenarios::kSerie]
-             : AztDe(c);
-}
-
-// ---------------------------------------------------------------------------------------------------
-// FASE 0 (musica, 30/10, MEDIDO con DBZ3_TEST_VOCES, smoke_a/batalla escenario 2): sub_820F3980(handle, id, situacion) es el
-// sistema de VOCES (122 ids = personajes, no playlists de musica): en el arranque del combate solo abre la entrada 290 por ella
-// (lr 820F3A0C). El combate de B3 NO abre ninguna pista de musica por el mezclador del juego; las 4267-4337 que se abren van
-// antes, en los menus. Por tanto "Original" = sin musica de combate, y anadir una pista no sustituye nada. El texto de abajo
-// que habla de playlists de musica es la hipotesis ANTERIOR, refutada; kMusicaRegistro sigue en -1 porque no hay nada que mapear.
-// 12c (seguimiento, hipotesis anterior): musica de combate con vista previa en el selector. La pista la arranca EL JUEGO al
-// empezar la pelea por sub_820F3980(handle, playlist, track): lee el numero de pistas de la playlist
-// (*(0x82328298 + playlist*4)) y el indice ADX del item (*(*(0x823280B0 + playlist*4) + track*4)) y lo
-// reproduce con sub_82081FE8(item | 0x20000, -3) (generated/dbz3_recomp.30.cpp:6253-6344). El
-// (playlist, track) lo pone un comando de guion del escenario (sub_8211EF60, generated/dbz3_recomp.10.cpp:
-// 8659-8750); NO es un campo del registro: el `id_SE` del registro (+0x14) es el ambiente, no la musica.
-// La pista por registro de abajo es [H] (pendiente de medir en el juego; ver VERIFICACION.md §12c); un
-// alta la declara en su stage.toml (`musica = <entrada de adx_usa.afs>`). Solo US.
-// ---------------------------------------------------------------------------------------------------
-constexpr int kMusicaRegistro[dbz3::escenarios::kSerie] = {
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,   // 0..16: medir en el juego
-};
-
-// Indice ADX (adx_usa.afs) de la musica de combate del registro r, o -1 si no hay.
-int MusicaDeRegistro(int r) {
-  if (r >= 0 && r < dbz3::escenarios::kSerie) return kMusicaRegistro[r];
-  if (r >= dbz3::escenarios::kSerie && r - dbz3::escenarios::kSerie < int(g_altas.size()))
-    return g_altas[size_t(r - dbz3::escenarios::kSerie)].musica;
-  return -1;
-}
-
-// Fase 3: eleccion de la musica de combate en el selector de escenarios. L1/R1 (bits 0x0400/0x0800 del registro del mando 0,
-// medidos en IW) o las teclas [ y ] pasan a la pista anterior/siguiente (Original -> pistas). El cvar dbz3_musica_combate guarda
-// la eleccion (y musica.toml); la reproduccion es la de siempre (OirMusicaPs2, fuera del mezclador: no toca el online).
-// [H] que L1/R1 estan libres en esta pantalla (la sonda DBZ3_SONDA_ESCENARIO no los ha visto usados).
-int64_t AhoraMs() {
-  return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
-}
-
-void Recolocar(uint8_t* base, uint32_t d);
-// Registro del escenario que mira el cursor (casilla d+604 por su tabla casilla -> registro); -1 en el "?" o sin datos.
-// (+30 de 0x824BA110 no sigue al cursor en cada fotograma: medido 8/11 con la sonda.)
-int RegistroCursor(uint8_t* base, uint32_t d) {
-  if (!d) return -1;
-  const uint32_t c = REX_LOAD_U16(d + 604);
-  if (c == 12 || c >= kSelMax) return -1;
-  if (dbz3_esc_trans != 0x82373384) return int(REX_LOAD_U16(dbz3_esc_trans + 4 * c));
-  return c < 12 ? int(REX_LOAD_U16(dbz3::GA(0x82373384) + 4 * c)) : -1;
-}
-void EleccionMusical(uint8_t* base, uint32_t d) {
-  dbz3::escenarios::g_selector_visto = AhoraMs();
-  dbz3::escenarios::g_reg_sel = RegistroCursor(base, d);
-  static uint16_t antes = 0;
-  const uint16_t ahora = REX_LOAD_U16(dbz3::GA(0x8238B780) + 12);
-  const uint16_t pulsado = uint16_t(ahora & ~antes);
-  antes = ahora;
-  int delta = (pulsado & 0x0800) ? 1 : (pulsado & 0x0400) ? -1 : 0;
-  if (const int k = dbz3::musica::DeltaTeclado()) delta = k;
-  if (delta) dbz3::musica::CambiarEleccion(delta);
-  Recolocar(base, d);   // desplazamiento continuo: el cursor ya se ha movido en este fotograma
-}
-
-int g_mus_sonando = -1;   // pista de la vista previa que esta sonando (-1 = ninguna)
-
-// Corta la vista previa (al salir del selector o al apagarla con la cvar).
-void CortarVistaPreviaMusica() {
-  if (g_mus_sonando != -1) {
-    dbz3::pasarela::CallarMusicaPs2();
-    g_mus_sonando = -1;
-  }
-}
-
-// Suena la pista del registro elegido en vivo (0x824BA110 + 30, que mn_StageSel reescribe cada fotograma
-// con el flag de variante de Circle); al cambiar de casilla se corta y entra la nueva. [H] mientras suena,
-// la musica del propio menu del Duelo (la del guest) sigue por debajo: el port no puede cortarla sin RE
-// del reproductor del juego (ver VERIFICACION.md §12c); el volumen de la previa es bajo a proposito.
-void VistaPreviaMusica(uint8_t* base, uint32_t d) {
-  if (!REXCVAR_GET(dbz3_selector_musica) || !d) {
-    CortarVistaPreviaMusica();
-    return;
-  }
-  const int reg = int(REX_LOAD_U8(dbz3::GA(0x824BA110) + 30));
-  const int pista = MusicaDeRegistro(reg);
-  if (pista == g_mus_sonando) return;
-  CortarVistaPreviaMusica();
-  if (pista < 0) return;
-  g_mus_sonando = pista;
-  const float vol = dbz3::settings::AudioMute() ? 0.0f : float(dbz3::settings::MasterVolume()) * 0.5f;
-  REXLOG_INFO("dbz3 escenarios: vista previa musical del escenario {} ('{}'): adx_usa {}", reg,
-              dbz3::escenarios::Nombre(reg, 1), pista);
-  dbz3::pasarela::OirMusicaPs2(dbz3::HostDataRoot(), "adx_usa.afs", pista, vol);
-}
-
-// SONDA del selector (frente 15; DBZ3_SONDA_ESCENARIO=1, la misma que usa el frente 07): imprime la casilla
-// del cursor (+25) y el registro elegido (+30) cada vez que cambian. Sin ella, la navegacion de la prueba
-// 12a hay que adivinarla; con ella, una sola ejecucion da la cuenta exacta de teclas hasta la casilla "?".
-void SondaSel(uint8_t* base, uint32_t d) {
-  const int casilla = d ? int(REX_LOAD_U16(d + 604)) : int(REX_LOAD_U8(dbz3::GA(0x824BA110) + 25));
-  const int reg = d ? RegistroCursor(base, d) : int(REX_LOAD_U8(dbz3::GA(0x824BA110) + 30));
-  static int ult_c = -2, ult_r = -2;
-  if (casilla == ult_c && reg == ult_r) return;
-  ult_c = casilla;
-  ult_r = reg;
-  REXLOG_INFO("dbz3 escenarios: sel casilla {} (registro {})", casilla, reg);
-}
-
-uint32_t g_spr0 = 0;   // primer sprite propio (vista y rotulo de un alta, 2 por casilla); 0 = aun no hay
-
-// Pone en la casilla c el contenido `it`: registro (y su variante de Circle), circulo/bola y vista/rotulo. mn_StageSel lee
-// estas tablas cada fotograma: el cambio vale al momento.
-void PonerContenido(uint8_t* base, uint32_t c, int it) {
-  g_cont[c] = it;
-  if (dbz3_esc_trans == 0x82373384 || it < 0) return;   // Tablas() aun no ha corrido, o casilla sin uso
-  if (it < kAlta) {   // escenario del juego: sus datos nativos
-    REX_STORE_U32(dbz3_esc_trans + 4 * c, REX_LOAD_U32(dbz3::GA(0x82373384) + 4 * uint32_t(it)));
-    for (uint32_t b = 0; b < 2; ++b) {
-      REX_STORE_U8(dbz3_esc_f94 + 2 * c + b, REX_LOAD_U8(dbz3::GA(0x82020F94) + 2 * uint32_t(it) + b));
-      REX_STORE_U8(dbz3_esc_fb0 + 2 * c + b, REX_LOAD_U8(dbz3::GA(0x82020FB0) + 2 * uint32_t(it) + b));
-    }
-    return;
-  }
-  const uint32_t k = uint32_t(it - kAlta);
-  const uint16_t r = uint16_t(dbz3::escenarios::kSerie + k);
-  REX_STORE_U16(dbz3_esc_trans + 4 * c, r);
-  const int v = g_altas[k].variante;   // 12b: sin `variante` en el stage.toml, el mismo registro
-  REX_STORE_U16(dbz3_esc_trans + 4 * c + 2, uint16_t(v >= 0 ? v : r));
-  const bool img = k < g_azt.size() && g_azt[k];   // sin imagenes, circulo y bola del "?"
-  REX_STORE_U8(dbz3_esc_f94 + 2 * c, img ? 0 : REX_LOAD_U8(dbz3::GA(0x82020F94) + 24));
-  REX_STORE_U8(dbz3_esc_f94 + 2 * c + 1, img ? 3 : REX_LOAD_U8(dbz3::GA(0x82020F94) + 25));
-  for (uint32_t b = 0; b < 2; ++b)
-    REX_STORE_U8(dbz3_esc_fb0 + 2 * c + b, g_spr0 ? uint8_t(g_spr0 + 2 * c + b) : REX_LOAD_U8(dbz3::GA(0x82020FB0) + 24 + b));
-}
-
-// Cada casilla con lo suyo (lo de siempre).
-void ContenidoInicial(uint8_t* base) {
-  for (uint32_t c = 0; c < kSelMax; ++c) PonerContenido(base, c, ContenidoPropio(c));
-}
-
-// Desplazamiento continuo: al moverse el cursor una casilla, la posicion logica avanza una y todas las casillas pasan a
-// mostrar los escenarios alrededor de ella; solo cambian de verdad las dos del fondo del carrusel (fuera de la vista).
-// Lo mueve solo el cursor del juego: en el online los dos PC van igual (lockstep) y al entrar se parte del ultimo escenario
-// elegido (+30, que viaja en la foto del online).
-std::vector<uint32_t> g_posc;   // casillas en el orden del carrusel, sin el "?"
-std::vector<int> g_items;       // todos los escenarios: los del juego (en su orden) y luego todas las altas visibles
-int g_L = 0, g_q = -1;
-bool g_virt_listo = false;
-
-void Recolocar(uint8_t* base, uint32_t d) {
-  if (!Ext() || !d || !Virtual() || dbz3_esc_trans == 0x82373384) return;
-  const uint32_t cur = REX_LOAD_U16(d + 604);
-  if (!g_virt_listo) {
-    const uint32_t n = REX_LOAD_U8(d + 609);
-    if (n < 2) return;
-    g_posc.clear();
-    g_items.clear();
-    for (uint32_t i = 0; i < n && i < kSelMax; ++i) {
-      const uint32_t c = REX_LOAD_U16(d + kSelLista + 2 * i);
-      if (c != 12 && c < kSelMax) g_posc.push_back(c);
-    }
-    for (uint32_t c : g_posc)
-      if (c < 12) g_items.push_back(int(c));
-    for (uint32_t k = 0; k < g_visibles; ++k) g_items.push_back(kAlta + int(k));
-    if (g_items.size() <= g_posc.size()) return;
-    int it = cur < kSelMax ? ContenidoPropio(cur) : -1;
-    const int reg = int(REX_LOAD_U8(dbz3::GA(0x824BA110) + 30)) - dbz3::escenarios::kSerie;
-    if (cur != 12 && reg >= 0 && uint32_t(reg) < g_visibles) it = kAlta + reg;   // vuelve al ultimo elegido
-    const auto f = std::find(g_items.begin(), g_items.end(), it);
-    g_L = f == g_items.end() ? 0 : int(f - g_items.begin());
-    g_q = -1;
-    g_virt_listo = true;
-    g_cuantos = int(g_items.size());
-    REX_STORE_U16(d + 606, 0xFFFF);   // sub_8219CC48 rehace la vista y el rotulo de la casilla del cursor
-    REXLOG_INFO("dbz3 escenarios: selector continuo: {} escenarios en {} casillas", g_items.size(), g_posc.size());
-  }
-  if (cur == 12) return;   // en el "?" no se mueve nada
-  const auto fq = std::find(g_posc.begin(), g_posc.end(), cur);
-  if (fq == g_posc.end()) return;
-  const int q = int(fq - g_posc.begin()), P = int(g_posc.size()), M = int(g_items.size());
-  if (q == g_q) return;
-  if (g_q >= 0) {
-    int dq = q - g_q;
-    if (dq > P / 2) dq -= P;
-    if (dq < -((P - 1) / 2)) dq += P;
-    g_L = ((g_L + dq) % M + M) % M;
-  }
-  g_q = q;
-  for (int k = 0; k < P; ++k) {
-    int dd = k - q;
-    if (dd > P / 2) dd -= P;
-    if (dd < -((P - 1) / 2)) dd += P;
-    const int it = g_items[size_t(((g_L + dd) % M + M) % M)];
-    if (g_cont[g_posc[size_t(k)]] != it) PonerContenido(base, g_posc[size_t(k)], it);
-  }
-  g_pos_sel = g_L;
-}
-
-void Tablas(uint8_t* base) {
-  static bool hechas = false;
-  if (hechas) return;
-  hechas = true;
-  const uint32_t f94 = Alloc(2 * kSelMax), fb0 = Alloc(2 * kSelMax), tr = Alloc(4 * kSelMax);
-  for (uint32_t c = 0; c < kSelMax; ++c) {
-    const uint32_t src = c < kCasillasSerie ? c : 12;   // de relleno: las del "?"
-    REX_STORE_U8(f94 + 2 * c, REX_LOAD_U8(dbz3::GA(0x82020F94) + 2 * src));
-    REX_STORE_U8(f94 + 2 * c + 1, REX_LOAD_U8(dbz3::GA(0x82020F94) + 2 * src + 1));
-    REX_STORE_U8(fb0 + 2 * c, REX_LOAD_U8(dbz3::GA(0x82020FB0) + 2 * src));
-    REX_STORE_U8(fb0 + 2 * c + 1, REX_LOAD_U8(dbz3::GA(0x82020FB0) + 2 * src + 1));
-  }
-  for (uint32_t c = 0; c < 12; ++c) REX_STORE_U32(tr + 4 * c, REX_LOAD_U32(dbz3::GA(0x82373384) + 4 * c));
-  dbz3_esc_f94 = f94;
-  dbz3_esc_fb0 = fb0;
-  dbz3_esc_trans = tr;
-  dbz3_esc_limite = 12 + Celdas();
-  ContenidoInicial(base);
-}
-
-// Copia de un sprite del #ACA (hasta el siguiente de la tabla) con sus punteros internos rebasados y su
-// bloque de textura [tex, 3, 1.0, 0, x0, y0, x1, y1] apuntando a `tex` con el rectangulo logico dado.
-uint32_t CopiaSprite(uint8_t* base, uint32_t tabla, uint32_t n, uint32_t i, uint32_t tex, float w, float h,
-                     uint32_t indice) {
-  const uint32_t src = REX_LOAD_U32(tabla + 4 * i);
-  uint32_t tam = 0x200;
-  for (uint32_t j = 0; j < n; ++j) {
-    const uint32_t q = REX_LOAD_U32(tabla + 4 * j);
-    if (q > src && q - src < tam) tam = q - src;
-  }
-  const uint32_t dst = Alloc(tam);
-  if (!dst) return 0;
-  uint32_t bloque = 0;
-  for (uint32_t o = 0; o + 4 <= tam; o += 4) {
-    uint32_t v = REX_LOAD_U32(src + o);
-    if (v >= src && v < src + tam) v = v - src + dst;
-    REX_STORE_U32(dst + o, v);
-    if (!bloque && o >= 16 && o + 32 <= tam && REX_LOAD_U32(src + o + 4) == 3 &&
-        REX_LOAD_U32(src + o + 8) == 0x3F800000u && REX_LOAD_U32(src + o) < 0x100)
-      bloque = o;
-  }
-  if (!bloque) return 0;
-  auto f = [](float x) {
-    uint32_t u;
-    std::memcpy(&u, &x, 4);
-    return u;
-  };
-  REX_STORE_U32(dst + bloque, tex);
-  REX_STORE_U32(dst + bloque + 16, 0);
-  REX_STORE_U32(dst + bloque + 20, 0);
-  REX_STORE_U32(dst + bloque + 24, f(w));
-  REX_STORE_U32(dst + bloque + 28, f(h));
-  REX_STORE_U32(dst + 0x14, indice);
-  return dst;
-}
-
-// Pone el banco de texturas `banco` como lo hace el juego (sub_8219CBB8: globales del menu + sub_82092C58).
-void PonerBanco(PPCContext& ctx, uint8_t* base, uint32_t banco) {
-  REX_STORE_U32(dbz3::GA(0x8239592C), 0);
-  REX_STORE_U32(dbz3::GA(0x82395928), 28672);
-  REX_STORE_U32(dbz3::GA(0x82395930), banco);
-  Llamar(ctx, base, DBZ3_CALL_EU(sub_82092C58), banco, 28672);
-  REX_STORE_U32(dbz3::GA(0x82389430), 0);
-}
-
-}  // namespace
-
-// sub_8219F350 (regenerado), con los recursos ya en D: texturas de las altas y sprites nuevos.
-void dbz3_esc_instalar(PPCContext& ctx, uint8_t* base, uint32_t d) {
-  if (!Ext() || !d) return;
-  Tablas(base);
-  const size_t na = g_visibles;
-  g_azt.assign(na, 0);
-  for (size_t k = 0; k < na && k < g_cargas.size(); ++k) {
-    const uint32_t h = g_cargas[k];
-    if (!h || REX_LOAD_U16(h + 4) != 3) continue;
-    const uint32_t datos = REX_LOAD_U32(h + 212);
-    REX_STORE_U32(h + 212, 0);
-    Llamar(ctx, base, DBZ3_CALL_EU(sub_82083D08), h, 0);
-    g_cargas[k] = 0;
-    if (!datos || REX_LOAD_U8(datos + 1) != 'A' || REX_LOAD_U8(datos + 2) != 'Z' || REX_LOAD_U32(datos + 16) < 4) {
-      REXLOG_WARN("dbz3 escenarios: el #AZT del selector de '{}' (entrada {}) no vale", g_altas[k].nombre,
-                  g_altas[k].menu);
-      continue;
-    }
-    Llamar(ctx, base, DBZ3_CALL_EU(sub_820800A8), datos);   // crea y registra las texturas
-    g_azt[k] = datos;
-  }
-  const uint32_t aca = REX_LOAD_U32(d + 0);
-  if (!aca) return;
-  // sprites: tabla nativa + 2 por alta (vista y rotulo, copias de los de la casilla 0, texturas 1 y 2)
-  const uint32_t ns = REX_LOAD_U32(aca + 24), tn = REX_LOAD_U32(aca + 28);
-  const uint32_t t = Alloc(4 * (ns + 2 * kSelMax));
-  if (!t || ns + 2 * kSelMax > 255) return;
-  for (uint32_t i = 0; i < ns; ++i) REX_STORE_U32(t + 4 * i, REX_LOAD_U32(tn + 4 * i));
-  const uint32_t vista0 = REX_LOAD_U8(dbz3::GA(0x82020FB0)), rotulo0 = REX_LOAD_U8(dbz3::GA(0x82020FB1));
-  // sprites por CASILLA (no por alta), 2 en cada una de las 24 (cualquiera puede llevar un alta con el desplazamiento): la
-  // vista y el rotulo usan las texturas 1 y 2 del banco, que ConBanco pone con el #AZT del alta que lleva la casilla.
-  // ponytail: se cargan los #AZT de TODAS las altas visibles al entrar (~260 KB cada uno); con muchas decenas, cargar
-  // solo los de las casillas cercanas al cursor.
-  const bool alguna = std::any_of(g_azt.begin(), g_azt.end(), [](uint32_t z) { return z != 0; });
-  for (uint32_t c = 0; c < kSelMax; ++c) {
-    const uint32_t sv_i = ns + 2 * c;
-    const uint32_t sv = alguna ? CopiaSprite(base, tn, ns, vista0, 1, 440.0f, 320.0f, sv_i) : 0;
-    const uint32_t sr = alguna ? CopiaSprite(base, tn, ns, rotulo0, 2, 192.0f, 32.0f, sv_i + 1) : 0;   // fila 0 del atlas
-    REX_STORE_U32(t + 4 * sv_i, sv ? sv : REX_LOAD_U32(tn + 4 * vista0));
-    REX_STORE_U32(t + 4 * (sv_i + 1), sr ? sr : REX_LOAD_U32(tn + 4 * rotulo0));
-  }
-  g_spr0 = ns;
-  for (uint32_t c = 0; c < kSelMax; ++c) PonerContenido(base, c, g_cont[c]);   // ya con imagenes y sprites
-  g_datos = d;
-  g_tabla_nat = tn;
-  REX_STORE_U32(aca + 28, t);
-  REXLOG_INFO("dbz3 escenarios: selector con {} casillas nuevas, {} escenarios nuevos{} (sprites {}+)", Celdas(), na,
-              Virtual() ? ", desplazamiento continuo" : "", ns);
-}
-
-// sub_8219E828 (regenerado): banco de la casilla nueva alrededor de la vista grande y el rotulo.
-void dbz3_esc_banco(PPCContext& ctx, uint8_t* base, uint32_t d, bool nuevo) {
-  if (!Ext() || !d) return;
-  const uint32_t z = AztSel(base, REX_LOAD_U16(d + 604));
-  if (z) PonerBanco(ctx, base, nuevo ? z : REX_LOAD_U32(d + 4));
-}
-
-// Cargador del selector: los #AZT de las altas se piden ANTES que los del juego (la cola de lectura va en
-// orden, asi estan cuando sub_8219F350 ve el ultimo del juego).
-DBZ3_HOOK_EU(sub_8219C7B0) {
-  if (Ext()) {
-    g_spr0 = 0;
-    g_virt_listo = false;   // el desplazamiento se prepara en el primer fotograma con la lista hecha
-    Tablas(base);
-    ContenidoInicial(base);
-    g_cargas.clear();
-    for (uint32_t k = 0; k < g_visibles; ++k)
-      g_cargas.push_back(Llamar(ctx, base, DBZ3_CALL_EU(sub_82083968), g_altas[k].menu, 0, 0));
-  }
-  orig(ctx, base);
-}
-
-// Fin del selector: el juego libera lo suyo (con su tabla de sprites); luego los #AZT de las altas.
-DBZ3_HOOK_EU(sub_8219E108) {
-  CortarVistaPreviaMusica();   // 12c: se sale del selector; se corta la vista previa musical
-  if (Ext() && g_datos) {
-    const uint32_t g = REX_LOAD_U32(kGlobalSel), tarea = g ? REX_LOAD_U32(g + 20) : 0;
-    const uint32_t d = tarea ? REX_LOAD_U32(tarea + 48) : 0;
-    if (d == g_datos)
-      if (const uint32_t aca = REX_LOAD_U32(d + 0)) REX_STORE_U32(aca + 28, g_tabla_nat);
-    g_datos = 0;
-  }
-  g_spr0 = 0;
-  g_virt_listo = false;
-  orig(ctx, base);
-  if (Ext()) {
-    for (uint32_t z : g_azt)
-      if (z) Llamar(ctx, base, DBZ3_CALL_EU(sub_82089C10), z);
-    g_azt.clear();
-    for (uint32_t h : g_cargas)   // pedidos que no llegaron a usarse
-      if (h) Llamar(ctx, base, DBZ3_CALL_EU(sub_82083D08), h, 0);
-    g_cargas.clear();
-  }
-}
-
-// Lista de casillas: las del juego (bits 0..11 de la mascara), las altas y el "?" (bit 12) al final, que
-// es lo que espera la eleccion al azar (toma una de las n-1 primeras).
-DBZ3_HOOK_EU(sub_8219E268) {
-  if (!Ext()) {
-    orig(ctx, base);
-    return;
-  }
-  Tablas(base);
-  const uint32_t d = ctx.r3.u32, mascara = ctx.r4.u32 & 0xFFFF;
-  REX_STORE_U16(d + 576, uint16_t(mascara));
-  REX_STORE_U16(d + 574, uint16_t(mascara));
-  for (uint32_t i = 0; i < kSelMax; ++i) REX_STORE_U16(d + kSelLista + 2 * i, 0xFFFF);
-  uint32_t n = 0;
-  auto poner = [&](uint32_t c) {   // (REX_STORE_U16 es una macro: nada de n++ dentro)
-    if (n >= kSelMax) return;
-    REX_STORE_U16(d + kSelLista + 2 * n, uint16_t(c));
-    ++n;
-  };
-  for (uint32_t b = 0; b < 12; ++b)
-    if (mascara >> b & 1) poner(b);
-  for (uint32_t k = 0; k < Celdas(); ++k) poner(kCasillasSerie + k);
-  if (mascara >> 12 & 1) poner(12);
-  REX_STORE_U8(d + 609, uint8_t(n));
-  REX_STORE_U32(d + 632, n ? 65536u / (n * 12) : 0);
-  if (REX_LOAD_U8(d + 610) == 2) Llamar(ctx, base, DBZ3_CALL_EU(sub_8219CAE8), d);
-}
-
-// Circulo (sub_8219D6E8) y bola (sub_8219D520) de la casilla r4 y sprites de la casilla actual
-// (sub_8219CC48): con el #AZT de la casilla nueva en D+4 durante la llamada.
-void ConBanco(Dbz3GuestFn F, PPCContext& ctx, uint8_t* base, uint32_t c) {
-  // 12b: la casilla actual (la que mira el jugador) puede mostrar el icono de su variante (Circle); las
-  // demas del carrusel van siempre con el suyo.
-  const bool actual = c == REX_LOAD_U16(ctx.r3.u32 + 604);
-  const uint32_t d = ctx.r3.u32, z = actual ? AztSel(base, c) : AztDe(c), nat = REX_LOAD_U32(d + 4);
-  if (z) REX_STORE_U32(d + 4, z);
-  F(ctx, base);
-  if (z) {
-    REX_STORE_U32(d + 4, nat);
-    // F deja de banco global (0x8238CE10) el ultimo que puso, aqui el del alta: el del juego, como lo dejaria
-    // el juego. Los sprites de otras tareas piden sus texturas al banco global (sub_82092C80 -> sub_82096FF0:
-    // la 37 al pasar a la casilla, medido 2026-10-15); en el #AZT del alta solo hay 4 (y su indice va relleno
-    // hasta 64 por si acaso: tools/escenarios_convertir.py azt_menu)
-    if (REX_LOAD_U32(dbz3::GA(0x8238CE10)) == z) PonerBanco(ctx, base, nat);
-  }
-}
-
-DBZ3_HOOK_EU(sub_8219D520) {
-  if (Ext())
-    ConBanco(SEL(8219D520), ctx, base, ctx.r4.u32 & 0xFFFF);
-  else
-    orig(ctx, base);
-}
-DBZ3_HOOK_EU(sub_8219D6E8) {
-  if (Ext())
-    ConBanco(SEL(8219D6E8), ctx, base, ctx.r4.u32 & 0xFFFF);
-  else
-    orig(ctx, base);
-}
-DBZ3_HOOK_EU(sub_8219E540) {   // entrada r4 del carrusel
-  if (Ext())
-    ConBanco(SEL(8219E540), ctx, base, REX_LOAD_U16(ctx.r3.u32 + kSelCarrusel + 8 + 12 * (ctx.r4.u32 & 0xFFFF)));
-  else
-    orig(ctx, base);
-}
-DBZ3_HOOK_EU(sub_8219CC48) {
-  if (Ext())
-    ConBanco(SEL(8219CC48), ctx, base, REX_LOAD_U16(ctx.r3.u32 + 604));
-  else
-    orig(ctx, base);
-}
-
-#define DBZ3_SEL(fn)              \
-  DBZ3_HOOK_EU(sub_##fn) {        \
-    if (Ext())                    \
-      SEL(fn)(ctx, base);         \
-    else                          \
-      orig(ctx, base);            \
-  }
-DBZ3_SEL(8219F4F8)
-DBZ3_SEL(8219C870)
-DBZ3_SEL(8219CAE8)
-DBZ3_SEL(8219E6C0)
-DBZ3_SEL(8219F2A8)
-DBZ3_SEL(8219F350)
-DBZ3_SEL(8219E828)
-#undef DBZ3_SEL
-
-// 12c: al final del fotograma del selector, vista previa de la musica del escenario que se mira (funciona
-// tambien sin altas: la musica no depende de ellas).
-DBZ3_HOOK_EU(sub_8219ECC8) {
-  // La tarea del selector SOLO esta en r3 al ENTRAR (sub_8219ECC8 empieza con `lwz r31,48(r3)`); al volver,
-  // la funcion deja en r3 el resultado de su ultima llamada (sub_8219E4A0/sub_8219C8D0) y `r3+48` es basura:
-  // leerlo ahi hacia saltar el juego con 0xC0000005 al activar dbz3_selector_musica (studies 4, frente 15).
-  const uint32_t tarea = ctx.r3.u32;
-  if (std::getenv("DBZ3_SONDA_ESCENARIO")) SondaSel(base, tarea ? REX_LOAD_U32(tarea + 48) : 0);
-  if (Ext())
-    SEL(8219ECC8)(ctx, base);
-  else
-    orig(ctx, base);
-  if (REXCVAR_GET(dbz3_selector_musica))
-    VistaPreviaMusica(base, tarea ? REX_LOAD_U32(tarea + 48) : 0);
-  EleccionMusical(base, tarea ? REX_LOAD_U32(tarea + 48) : 0);
-}
+#include "escenarios_selector.inl"
 
 // ---------------------------------------------------------------------------------------------------
 // RING OUT CON ZONA B (frente 07, mod opcional dbz3_escenarios_zonas_b). En el original de B2, al caer un
@@ -2328,6 +2075,9 @@ struct ClimaIwEstado {
   float t = 0;
 };
 static ClimaIwEstado g_clima_estado;
+// 12/11 POST/F1-CLIMA: alta virtual para los escenarios de B3 (g_activa < 0) con la lluvia/nieve de Clima vivo
+// (dbz3::clima::Precipitacion). Solo lleva `climas`; el resto del sistema de IW la trata como un alta mas.
+static Alta g_alta_nativa;
 static std::atomic<int64_t> g_clima_ms{0};
 static std::atomic<int64_t> g_destello_ms{0};
 static std::atomic<int64_t> g_mosaico_ms{0};
@@ -2418,7 +2168,8 @@ static void TickClima(const Alta& a, float dt) {
       const float suelo = dbz3::suelo_iw::Altura(wx, wz, 0.0f);
       if (wy <= suelo || p.y <= 0.0f) {
         // EU 0x1E1FC0: salpicadura en el punto de impacto (solo lluvia/nieve, no polvo)
-        if (c.tipo != "dust" && g_clima_estado.salpicaduras.size() < 400)
+        // (no en los escenarios de B3: su suelo no es el de suelo_iw y los anillos quedaban flotando)
+        if (c.tipo != "dust" && &a != &g_alta_nativa && g_clima_estado.salpicaduras.size() < 400)
           g_clima_estado.salpicaduras.push_back({wx, suelo + 0.5f, wz, 0.0f, 0.25f});
         p.y += 1.0f;
         p.x = RndClima(g_clima_estado.sem) * 2 - 1;
@@ -2512,9 +2263,10 @@ class ClimaIwPanel : public rex::ui::ImGuiDialog {
   explicit ClimaIwPanel(rex::ui::ImGuiDrawer* d) : ImGuiDialog(d) {}
 
  protected:
-  const ps2::Tex* TexDe(uint32_t afs, uint32_t hijo, uint32_t tex) {
+  const ps2::Tex* TexDe(uint32_t afs, uint32_t hijo, uint32_t tex, bool prof = false) {
     if (!afs) return nullptr;
-    const uint64_t k = (uint64_t(afs) << 40) ^ (uint64_t(hijo & 0xFFFFFFu) << 16) ^ uint64_t(tex & 0xFFFFu);
+    const uint64_t k = (uint64_t(afs) << 40) ^ (uint64_t(hijo & 0xFFFFFFu) << 16) ^ uint64_t(tex & 0xFFFFu) ^
+                       (uint64_t(prof) << 63);
     auto it = tex_cache_.find(k);
     if (it != tex_cache_.end()) return it->second ? &it->second : nullptr;
     pasarela::Imagen im;
@@ -2522,11 +2274,12 @@ class ClimaIwPanel : public rex::ui::ImGuiDialog {
       tex_cache_.emplace(k, ps2::Tex{});
       return nullptr;
     }
-    auto [p, ok] = tex_cache_.emplace(k, ps2::Crear(im, false));
+    auto [p, ok] = tex_cache_.emplace(k, ps2::Crear(im, prof));
     return ok && p->second ? &p->second : nullptr;
   }
 
   void OnDraw(ImGuiIO& io) override {
+    dbz3::clima::PublicarNoche();
     DibujarClima(io);
     g_b2_motor.solar.Pintar(io);
     g_b2_motor.fundido.Pintar(io);
@@ -2535,15 +2288,73 @@ class ClimaIwPanel : public rex::ui::ImGuiDialog {
     const bool clima = AhoraMs() - g_clima_ms.load() < 250;
     const bool destello = AhoraMs() - g_destello_ms.load() < 250;
     const bool mosaico = AhoraMs() - g_mosaico_ms.load() < 250;
-    if (!clima && !destello && !mosaico) return;
+    const float noche = dbz3::clima::Noche();
+    if (!clima && !destello && !mosaico && noche <= 0.01f) return;
     uint8_t* base = BaseGuest();
     if (!base) return;
     const ps2::Camara cam = ps2::CamaraCombate(base, io.DisplaySize);
     if (!cam.ok) return;
-    if (g_activa < 0) return;
-    const Alta& a = g_altas[size_t(g_activa - kSerie)];
+    const Alta& a = g_activa < 0 ? g_alta_nativa : g_altas[size_t(g_activa - kSerie)];
     ImDrawList* fg = ImGui::GetForegroundDrawList();
     ImDrawList* bg = ImGui::GetBackgroundDrawList();
+    // 12/11 CLIMA-NOCHE: estrellas del clima vivo de B3. Ningun escenario nativo trae estrellas ni luna en el cielo
+    // (texturas_escenarios.md), asi que van como puntos lejanos con el z-buffer del juego: el terreno, el decorado y los
+    // luchadores las tapan. ponytail: a distancia fija (kLejos); si el cielo de un mapa escribe z mas cerca, ahi no salen.
+    if (noche > 0.5f) {
+      static bool dicho0 = false;
+      if (!dicho0) {
+        dicho0 = true;
+        REXLOG_INFO("dbz3 clima estrellas: activa {}, za {:.1f}, zb {:.1f}, prof {}", g_activa, cam.za, cam.zb,
+                    ps2::EstadoProfundidad());
+      }
+    }
+    if (noche > 0.01f && g_activa < 0 && cam.za > 0) {   // pedir el z-buffer antes de mirar si ya esta
+      static bool pedido = false;
+      if (!pedido) pedido = rex::cvar::SetFlagByName("dbz3_ui_depth", "true");
+    }
+    if (noche > 0.01f && g_activa < 0 && cam.za > 0 && ps2::EstadoProfundidad() >= 1) {
+      if (!blanca_z_) {
+        pasarela::Imagen im;
+        im.w = im.h = 1;
+        im.rgba = {255, 255, 255, 255};
+        blanca_z_ = ps2::Crear(im, true);
+      }
+      float ojo[3], mira[3];
+      if (blanca_z_ && dbz3::cine::LeerCamara(base, ojo, mira)) {
+        // ponytail: distancia fija; el plano lejano es 65535 y a 0,35 de el (22937) la cupula del cielo las tapaba
+        constexpr float kLejos = 1500.0f;
+        const float dist = std::min(cam.zb * 0.9f, kLejos);
+        static bool dicho = false;
+        if (!dicho) {
+          dicho = true;
+          REXLOG_INFO("dbz3 clima estrellas: noche {:.2f}, cerca {:.1f}, lejos {:.1f}, dist {:.1f}", noche, cam.za, cam.zb, dist);
+        }
+        const float ymin = 0.2f * io.DisplaySize.y;   // franja del HUD de arriba
+        fg->PushClipRect(ImVec2(0, ymin), io.DisplaySize, true);
+        uint32_t s = 0x9E3779B9u;
+        auto rnd = [&s] { s ^= s << 13; s ^= s >> 17; s ^= s << 5; return float(s & 0xFFFFFF) / float(0xFFFFFF); };
+        for (int i = 0; i < 420; ++i) {
+          const float az = rnd() * 6.2831853f, el = 0.05f + rnd() * 1.4f, br = rnd(), tw = rnd();
+          const float d[3] = {std::cos(el) * std::cos(az), std::sin(el), std::cos(el) * std::sin(az)};
+          ImVec2 p;
+          float k = 0;
+          if (!cam.P({ojo[0] + d[0] * dist, ojo[1] + d[1] * dist, ojo[2] + d[2] * dist}, p, k)) continue;
+          const float z = cam.Prof(k);
+          const float r = 0.8f + 1.4f * br * br;
+          const float parpa = 0.75f + 0.25f * std::sin(float(AhoraMs() % 100000) * 0.003f + tw * 40.0f);
+          const int al = int(255 * noche * (0.35f + 0.65f * br) * parpa);
+          const ImVec2 q[4] = {ImVec2(p.x, p.y - r), ImVec2(p.x + r, p.y), ImVec2(p.x, p.y + r), ImVec2(p.x - r, p.y)};
+          const ImVec2 u[4] = {ImVec2(0, 0), ImVec2(1, 0), ImVec2(1, 1), ImVec2(0, 1)};
+          fg->PushTextureID(blanca_z_.id());
+          fg->PrimReserve(6, 4);
+          const unsigned b = fg->_VtxCurrentIdx;
+          for (unsigned j : {0u, 1u, 2u, 0u, 2u, 3u}) fg->PrimWriteIdx(ImDrawIdx(b + j));
+          for (int j = 0; j < 4; ++j) fg->PrimWriteVtx(q[j], ps2::Empaquetar(u[j], z), IM_COL32(235, 240, 255, al));
+          fg->PopTextureID();
+        }
+        fg->PopClipRect();
+      }
+    }
     // EU 0x1E2590 Stage_DrawTiledGround: 47 copias alrededor de la camara cuantizada a 450 (el original:
     // floor(cam/450)*450; cada copia suma su vector de 0x44B5B0).
     if (mosaico && REXCVAR_GET(dbz3_mosaico_iw) && a.mosaico.on) {
@@ -2575,7 +2386,35 @@ class ClimaIwPanel : public rex::ui::ImGuiDialog {
         if (dbz3::cine::LeerCamara(base, ojo, mira) && (ojo[0] != 0 || ojo[2] != 0)) cx = ojo[0], cz = ojo[2], hay = true;
         else cx = LeeFl(mgr + 2096 + 64), cz = LeeFl(mgr + 2096 + 72), hay = true;
       }
+      // 12/11 POST/F1-CLIMA-2: con el z-buffer del juego (via R15 de ps2::Escena, como iw_ame.h) las gotas y copos
+      // quedan detras de los luchadores y del terreno; y se apagan en las franjas del HUD (arriba barras, abajo ki),
+      // que el juego pinta antes que esta capa.
+      const bool con_z = cam.za > 0 && ps2::EstadoProfundidad() >= 1;
+      if (con_z) { static bool pedido = false; if (!pedido) pedido = rex::cvar::SetFlagByName("dbz3_ui_depth", "true"); }
+      if (con_z && !blanca_z_) {
+        pasarela::Imagen im;
+        im.w = im.h = 1;
+        im.rgba = {255, 255, 255, 255};
+        blanca_z_ = ps2::Crear(im, true);
+      }
+      const float alto_px = io.DisplaySize.y;
+      auto hud = [&](float y) {   // 0 en la franja del HUD de B3 (barras y reloj, arriba), 1 por debajo
+        auto liso = [](float x) { x = std::clamp(x, 0.0f, 1.0f); return x * x * (3.0f - 2.0f * x); };
+        return liso((y / alto_px - 0.18f) / 0.08f);
+      };
+      // y un recorte duro de esa franja: la gota es una linea larga y su punta se metia en las barras (captura v3)
+      const bool recorte = g_activa < 0;
+      auto quad = [&](const ps2::Tex& t, const ImVec2 q[4], float z, ImU32 col) {
+        const ImVec2 u[4] = {ImVec2(0, 0), ImVec2(1, 0), ImVec2(1, 1), ImVec2(0, 1)};
+        fg->PushTextureID(t.id());
+        fg->PrimReserve(6, 4);
+        const unsigned b = fg->_VtxCurrentIdx;
+        for (unsigned i : {0u, 1u, 2u, 0u, 2u, 3u}) fg->PrimWriteIdx(ImDrawIdx(b + i));
+        for (int i = 0; i < 4; ++i) fg->PrimWriteVtx(q[i], ps2::Empaquetar(u[i], z), col);
+        fg->PopTextureID();
+      };
       if (hay) {
+        if (recorte) fg->PushClipRect(ImVec2(0, 0.18f * alto_px), io.DisplaySize, true);
         for (size_t gi = 0; gi < a.climas.size(); ++gi) {
           const ClimaP& c = a.climas[gi];
           const uint32_t col = c.color;
@@ -2588,6 +2427,38 @@ class ClimaIwPanel : public rex::ui::ImGuiDialog {
             float k = 0;
             if (!cam.P({wx, wy, wz}, s, k)) continue;
             const float tam = std::clamp(p.tam * c.tam * k, 0.6f, 24.0f);
+            const float vis = g_activa < 0 ? hud(s.y) : 1.0f;   // solo el clima vivo de B3 (las altas de IW, tal cual)
+            if (vis <= 0.01f) continue;
+            if (con_z && g_activa < 0) {
+              const float z = cam.Prof(k);
+              const ps2::Tex* tz = TexDe(c.afs, c.hijo_amt, c.tex, true);
+              if (c.tipo == "rain" && !(tz && *tz)) {
+                ImVec2 s2;
+                float k2 = 0;
+                if (!cam.P({wx, wy + c.tam * 6.0f, wz}, s2, k2)) continue;
+                const float an = std::max(1.0f, tam * 0.25f) * 0.5f;
+                float dx = s2.x - s.x, dy = s2.y - s.y;
+                const float l = std::max(0.001f, std::sqrt(dx * dx + dy * dy));
+                dx = -dy / l * an, dy = (s2.x - s.x) / l * an;
+                const ImVec2 q[4] = {ImVec2(s.x + dx, s.y + dy), ImVec2(s2.x + dx, s2.y + dy), ImVec2(s2.x - dx, s2.y - dy),
+                                     ImVec2(s.x - dx, s.y - dy)};
+                quad(blanca_z_, q, z, IM_COL32(cr, cg, cb, int(150 * vis)));
+              } else {
+                const ImVec2 q[4] = {ImVec2(s.x - tam, s.y - tam), ImVec2(s.x + tam, s.y - tam), ImVec2(s.x + tam, s.y + tam),
+                                     ImVec2(s.x - tam, s.y + tam)};
+                // sin textura de IW: copo de 4 lados (el de la textura blanca), algo mas pequeno que el circulo
+                if (tz && *tz) quad(*tz, q, z, IM_COL32(cr, cg, cb, int(210 * vis)));
+                else {
+                  // POST2: un halo oscuro detras del copo para que se lea tambien sobre cielos claros (Namek)
+                  const float r = tam * 0.7f, h = r * 1.8f;
+                  const ImVec2 o[4] = {ImVec2(s.x, s.y - h), ImVec2(s.x + h, s.y), ImVec2(s.x, s.y + h), ImVec2(s.x - h, s.y)};
+                  quad(blanca_z_, o, z, IM_COL32(20, 30, 60, int(90 * vis)));
+                  const ImVec2 d[4] = {ImVec2(s.x, s.y - r), ImVec2(s.x + r, s.y), ImVec2(s.x, s.y + r), ImVec2(s.x - r, s.y)};
+                  quad(blanca_z_, d, z, IM_COL32(cr, cg, cb, int(235 * vis)));
+                }
+              }
+              continue;
+            }
             const ps2::Tex* at = TexDe(c.afs, c.hijo_amt, c.tex);
             if (at && *at) {
               const int alfa = c.tipo == "dust" ? 90 : 210;
@@ -2599,13 +2470,14 @@ class ClimaIwPanel : public rex::ui::ImGuiDialog {
               ImVec2 s2;
               float k2 = 0;
               if (!cam.P({wx, wy + c.tam * 6.0f, wz}, s2, k2)) continue;
-              fg->AddLine(s, s2, IM_COL32(cr, cg, cb, 170), std::max(1.0f, tam * 0.25f));
+              fg->AddLine(s, s2, IM_COL32(cr, cg, cb, int(170 * vis)), std::max(1.0f, tam * 0.25f));
             } else {
               const int alfa = c.tipo == "dust" ? 70 : 190;
-              fg->AddCircleFilled(s, tam, IM_COL32(cr, cg, cb, alfa), 8);
+              fg->AddCircleFilled(s, tam, IM_COL32(cr, cg, cb, int(alfa * vis)), 8);
             }
           }
         }
+        if (recorte) fg->PopClipRect();
         // EU 0x1E1FC0 Rain/SnowToTheGroundEffect: salpicadura (anillo que crece y se apaga).
         for (const Salpicadura& sp : g_clima_estado.salpicaduras) {
           ImVec2 s;
@@ -2652,6 +2524,7 @@ class ClimaIwPanel : public rex::ui::ImGuiDialog {
   std::vector<ps2::Tex> tex_mosaico_;
   bool tex_intentado_ = false;
   std::map<uint64_t, ps2::Tex> tex_cache_;
+  ps2::Tex blanca_z_;   // 1x1 blanca con prueba de Z (gotas y copos sin textura)
 };
 static void CrearClimaPanel() {
   static ClimaIwPanel* panel = nullptr;
@@ -2689,9 +2562,40 @@ static void TickClimaIw(const Alta& a) {
 // 0x1E2750/0x1E29A0 recorren los registros de canal de 16 B del objeto con mascara 0x3C00 y llaman Anim_StepUvAnim;
 // el port aplica la capa del #MCF a las ventanas (una vez por parte) y el #MTA lo llevan los minijuegos
 // (src/iw_minijuegos.cpp AplicarDerivaUv, src/iw_mini_vuelo.cpp AplicarDerivaUvCasa). No se replica la lista PS2.
+// 12/11 POST/F1-CLIMA: lluvia o nieve de Clima vivo en los escenarios de B3, con el mismo emisor de IW (TickClima).
+// Medidas en unidades de IW como las altas; la caida y el viento del emisor van en cajas por segundo.
+static void TickClimaNativo(uint8_t* base) {
+  if (dbz3::clima::Noche() > 0.01f) {   // estrellas: el panel de DibujarClima, aunque no llueva
+    static bool pedido = false;
+    if (!pedido) { pedido = true; dbz3::launcher::DeferUi(&CrearClimaPanel); }
+  }
+  const int tipo = dbz3::clima::Precipitacion();
+  const uint32_t mgr = REX_LOAD_U32(kMgrPtr);
+  if (!tipo || !mgr || REX_LOAD_U32(mgr + 35128) != 4) return;   // solo en la pelea (estado 4)
+  Alta& a = g_alta_nativa;
+  const char* t = tipo == 1 ? "rain" : "snow";
+  if (a.climas.empty() || a.climas[0].tipo != t) {
+    ClimaP c;
+    c.tipo = t;
+    if (tipo == 1) c.n = 700, c.tam = 8.0f, c.vel = 1.6f, c.area = 1600, c.alto = 700, c.color = 0xB4C4DC, c.viento = 0.06f;
+    else c.n = 700, c.tam = 2.8f, c.vel = 0.12f, c.area = 1400, c.alto = 500, c.color = 0xF4F8FF, c.viento = 0.03f;
+    a.climas.assign(1, c);
+    a.usa_clima = true;
+    g_clima_estado.zdd = 0;   // TickClima vuelve a montar el emisor
+  }
+  static bool pedido = false;
+  if (!pedido) { pedido = true; dbz3::launcher::DeferUi(&CrearClimaPanel); }
+  static auto t_ant = std::chrono::steady_clock::now();
+  const auto ahora = std::chrono::steady_clock::now();
+  const float dt = std::min(0.25f, std::chrono::duration<float>(ahora - t_ant).count());
+  t_ant = ahora;
+  if (dt > 0.f) TickClima(a, dt);
+  (void)base;
+}
+
 static void PasoCapas(uint8_t* base) {
   TickNieve();
-  if (g_activa < 0) return;
+  if (g_activa < 0) { TickClimaNativo(base); return; }
   Alta& a = g_altas[size_t(g_activa - kSerie)];
   TickClimaIw(a);   // DS63: deja pedido el panel de clima/destellos/mosaico si el alta los declara
   if (a.nubes.empty() && a.mats.empty() && a.dinamicos.empty() && a.climas.empty() && a.destellos.empty() &&
@@ -3348,7 +3252,35 @@ void dbz3::escenarios::AplicarCamaraB2AntesDelDibujo(uint8_t* base) {
 bool dbz3::escenarios::EscenaDeZona() { return g_esc.activa||g_b2_motor.activo; }
 bool dbz3::escenarios::TransicionB2Activa() { return g_b2_motor.activo; }
 
+// SLOTS_ESC-09: la pista del alta cargada suena en el combate (estado 4) si la cvar esta encendida, la declara y
+// el jugador no ha elegido otra musica de combate ("original"). Se arranca una sola vez por combate y se corta al
+// salir de la pelea. La vista previa del selector usa la misma entrada (`MusicaDeRegistro`).
+void TickMusicaAlta(uint8_t* base) {
+  static int sonando = -1;   // entrada de adx_usa.afs que estamos reproduciendo (-1 = ninguna)
+  const int entrada = dbz3::escenarios::g_activa >= dbz3::escenarios::kSerie ? MusicaDeRegistro(dbz3::escenarios::g_activa) : -1;
+  const bool manda = REXCVAR_GET(dbz3_escenario_musica_combate) && entrada >= 0 &&
+                     rex::cvar::GetFlagByName("dbz3_musica_combate") == "original";
+  const uint32_t mgr = REX_LOAD_U32(dbz3::GA(0x823D6CF4));
+  const bool en_combate = mgr && REX_LOAD_U32(mgr + 35128) == 4;
+  if (manda && en_combate) {
+    if (sonando == entrada) return;
+    if (sonando >= 0) dbz3::pasarela::CallarMusicaPs2();
+    sonando = entrada;
+    const float vol = dbz3::settings::AudioMute() ? 0.0f : float(dbz3::settings::MasterVolume()) * 0.6f;
+    REXLOG_INFO("dbz3 escenarios: musica del alta en el combate: adx_usa {} ('{}')", entrada,
+                dbz3::escenarios::Nombre(dbz3::escenarios::g_activa, 1));
+    dbz3::pasarela::OirMusicaPs2(dbz3::HostDataRoot(), "adx_usa.afs", entrada, vol);
+    return;
+  }
+  if (sonando >= 0) {   // se acabo el combate, se apago la cvar o el jugador eligio otra musica
+    dbz3::pasarela::CallarMusicaPs2();
+    sonando = -1;
+    REXLOG_INFO("dbz3 escenarios: musica del alta en el combate: cortada");
+  }
+}
+
 void dbz3::escenarios::ComprobarZonaB(PPCContext& ctx, uint8_t* base) {
+  TickMusicaAlta(base);   // SLOTS_ESC-09: pista del alta en el combate (cvar apagada de serie)
   PasoCapas(base);
   if (B2PasoMotor(ctx, base)) return;
   TickEscena(ctx, base);

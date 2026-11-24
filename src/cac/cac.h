@@ -8,6 +8,7 @@
 #ifndef DBZ3_CAC_H_
 #define DBZ3_CAC_H_
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -31,18 +32,29 @@ void CargarCatalogo(const std::string& path);   // lee piezas_cac.json/toml (opc
 struct Hsv { int h = 0, s = 0, v = 0; };
 constexpr int kNumPartes = 6;   // UT: "Part 1..Part 4"; XV2 (C4): piel | pelo | torso | piernas | botas | guantes
 
+constexpr int kNumCapas = 4, kMaxRecetas = 4, kMaxFormasReceta = 8;
+struct Capa { int fid = -1; int parte = 0; int64_t quitar = 0; };   // quitar: bit i = mechon i de la capa quitado (CAC-16)
+struct RecetaGuardada { std::string nombre, ficha; };   // ficha = texto de heroe::ArgsFicha (receta sin arte)
+
+constexpr bool FidPeloCac2(int64_t fid) { return fid == 75 || fid == 80; }  // PEL1, anfitrión 264
 struct Heroe {
   std::string nombre = "Heroe";
   int raza = 0, cuerpo = 0, traje = 0;
   int cara = 0, pelo = 0, ropa = 0;     // piezas UT (aun no conectadas al juego: frente 02)
+  int pelo_fid_cac2 = -1;                // candidato FID validado; no altera los IDs de peinado 0..10
   // Campos del Modo Heroe (heroe.cpp Exportar/Importar). Los IDs son los del juego, no indices:
   //   raza: indice en kRazas; cuerpo: ID del cuerpo; estilo: ID del luchador de estilo (kEstilos[].id);
   //   moveset: ID del donante (-1: el del estilo); color 0-31; voz 0-31; aura: indice de kAuras.
+  int foto_pose = 0;                     // 0 automatico, 1 brazos bajos, 2 brazos abiertos
+  int foto_yaw = 22;                     // grados de la camara de retrato (P2 desde el lado opuesto)
   int color = 0;                        // paleta del avatar (heroe::PonerColor)
   int voz = 0;                          // banco de voz (heroe::PonerVoz)
   int aura = 0;                         // aura (heroe::PonerAura)
+  std::string material17, pintura17;   // Ajustes regionales y referencias a lienzos locales, no arte.
+  std::string texcol;                   // CAC-17: colores por entrada de textura "tex,entrada,h,s,v|..." (vista_heroe texcol_de)
   std::string aura_col, ki_col;         // C4: colores de aura / ki desbloqueados con los maestros ("#RRGGBB"; "" = el normal)
   int estilo = 0;                       // ID del luchador de estilo (0 = Goku)
+  int64_t moveset_logico = -1;          // opcional: no se guarda una plaza dinamica
   int moveset = -1;                     // donante del moveset (-1: el del estilo)
   // Create (UT): color propio de cada parte, logo (indice; 0 = ninguno) y scouter (0 off / 1 on).
   Hsv parte[kNumPartes];
@@ -53,6 +65,16 @@ struct Heroe {
   Hsv ojos_c;                           // 25/10: color de ojos (0,0,0 = el del rostro); `cara` = tipo de rostro (vista_heroe ROSTROS)
   int xv2[7] = {0, 0, 0, 0, 0, 0, 0};       // C4: piezas XV2 (cuerpo 110..115): modelo de Hair, FaceBase, Bust, Pants, Boots, Rist, FaceEye (0 = la primera)
   int b3_piezas[4] = {-1, -1, -1, -1};       // Luna 6: fid donante B3 por torso/piernas/guantes/botas (-1 = Base)
+  int orig[4] = {-1, -1, -1, -1};       // CAC-11: pieza propia 3000-3061 por grupo (cabeza, mandibula, placa, cola; vista_heroe orig1..4)
+  int b3_accesorio = -1;               // CAC-07a: fid del donante de accesorios (-1 = ninguno; vista_heroe b3_accesorios=)
+  int64_t ocultar = 0;                  // CAC-07: bit i = tira (draw) i del traje oculta (vista_heroe.py ocultar=)
+  int ocultar_de = -1;                  // cuerpo * 100 + traje al que se refieren esos bits (otro traje: no valen)
+  // cac.toml v3 (CAC-15, CAC-10, CAC-19). capas: fid del luchador nativo + indice de su parte (-1: capa libre; ficha `capaN=FID:PARTE`).
+  // recetas: hasta 4 recetas guardadas (nombre + texto de ficha, sin arte). forma_receta[i]: receta que sustituye la forma i (-1: la nativa).
+  Capa capas[kNumCapas];
+  RecetaGuardada recetas[kMaxRecetas];
+  int forma_receta[kMaxFormasReceta] = {-1, -1, -1, -1, -1, -1, -1, -1};
+  std::string forma_estallido[kMaxFormasReceta];   // color de estallido de la forma ("#RRGGBB"; "" = el nativo)
   int tecnicas[4] = {0, 0, 0, 0};       // capsulas de tecnica desbloqueadas con los maestros (H4; solo para mostrar)
   int xp = 0, nivel = 1;                // xp = combates ganados (manda); nivel = 1 + xp/3 (solo para leerlo)
   // studies 8 H1: progreso del Modo Heroe POR FICHA (antes global en hub_heroe.toml / rpg.toml).
@@ -77,9 +99,10 @@ struct Heroe {
 constexpr int kNumTecnicas = 4;
 constexpr int kNumEntreno = 6;
 constexpr int kProgresoFicha = 2;       // marcador `progreso = 2` de cada [[heroe]]
+void RestaurarColoresCac2(Heroe& h);  // solo tintes cosméticos del creador
 void ClampHsv(Hsv& c);                  // h 0..360, s y v -100..100
 constexpr int kMaxSlots = 3;   // heroes activos (cac.toml v2). Las fichas de mas (de la v1) pasan a [[archivado]]
-constexpr int kVersion = 2;    // cac.toml v2: 3 heroes + [[archivado]] + id/inv/equipo (v1: copia .v1.bak y migra al leer)
+constexpr int kVersion = 3;    // v3: capas + recetas (v2: copia .v2.bak y migra al leer); v2: 3 heroes + [[archivado]] + id/inv/equipo (v1: copia .v1.bak)
 
 // --- slots -------------------------------------------------------------------
 int NumSlots();

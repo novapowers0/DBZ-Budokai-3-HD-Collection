@@ -1,0 +1,25 @@
+# F1 / IW-M08. SOLO fase autorizada Z; no ejecutado en esta entrega.
+# Alcance: activar el rango original y cerrar una partida con tres pulsaciones.
+# No es banco de maquina completa, ni prueba de victoria, ni prueba de mando fisico.
+# Sin piloto: tres pulsaciones B no dan los siete aciertos exigidos por Freezer.
+# Offline: disparo_banco.py rangos -> 3960/3960 por region, primer DIF ninguno.
+# Requiere aplicar ambos 01_solF1.diff y compilar iw_mips.cpp + iw_mini_disparo.cpp.
+descripcion = "F1 7D7: tres entradas y rango original de Freezer (caso fallo)"
+env = [
+  "DBZ3_TEST_IWMINI=0x7D7",
+  'DBZ3_TEST_CFG=dbz3_iw_disparo_original=true;dbz3_iw_logica_original=true;dbz3_mnk_mode=true;dbz3_keybind_b="X"',
+  'DBZ3_PS2_GAMES=D:\DBZ3HD\ps2_games',
+]
+pasos = [
+  'log "dbz3 iwdisparo: juego 0x7D7 empieza" 90',
+  "captura 00_listo",
+  "tecla X 250",
+  "esperar 2500",
+  "tecla X 250",
+  "esperar 2500",
+  "tecla X 250",
+  "captura 01_disparos",
+  'log "dbz3 iwmips disparo rango clave=0x7d7 .*rango=-1" 240',
+  'log "dbz3 iwdisparo: fin: FALLO" 30',
+  "captura 02_resultado",
+]

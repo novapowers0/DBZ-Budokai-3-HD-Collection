@@ -24,6 +24,22 @@
 #include "../mods.h"
 #include "native_ui.h"
 
+// C4/PLT02 (#35): "ultraancho" para las pantallas propias (Duelo/HUB/TAG TEAM).
+// El juego dibuja 16:9 (1280x720); en 21:9/32:9 el presentador deja bandas a los
+// lados. Con `dbz3_ui_ultraancho`, los fondos y las tiras de esas pantallas usan
+// TODO el ancho de la ventana; la imagen 3D y el HUD siguen en su 16:9, que es lo
+// que dibuja el guest. Apagado por defecto.
+REXCVAR_DEFINE_BOOL(dbz3_ui_ultraancho, false, "DBZ3/Video",
+                    "Own screens fill the extra width on 21:9/32:9 (off = keep 16:9)")
+    .lifecycle(rex::cvar::Lifecycle::kHotReload);
+
+// POST/SDK-01-borde: sin "Bordes dorados", el SDK oculta las tiras de los menus del juego (textura "borde" de
+// data_usi y la greca). Con esto los menus del juego las conservan como en el original; nuestras pantallas
+// siguen llenando la ventana. Lo lee rexgpu-xenos (dbz3_texture_pack.cpp) una vez al arrancar; con una rexgpu sin
+// ese parche no hace nada. Encendido de serie (12/11, probado 16:9, 4:3 y con el pack HD).
+REXCVAR_DEFINE_BOOL(dbz3_ui_borde_nativo, true, "DBZ3/Video",
+                    "Keep the game's own menu side strip when golden borders are off (needs restart)");
+
 namespace dbz3::ingame::style {
 namespace {
 
@@ -90,6 +106,21 @@ Imagen GuestImage(const ImGuiIO& io) {
     const float h = W * al / an;
     g.p0.y = (H - h) * 0.5f;
     g.p1.y = g.p0.y + h;
+  }
+  return g;
+}
+
+bool UltraAncho() { return rex::cvar::GetFlagByName("dbz3_ui_ultraancho") == "true"; }
+
+// Rectangulo que ocupan los fondos y las tiras laterales. Igual que la imagen del
+// juego salvo en 21:9/32:9 con el ajuste encendido, que llega a los bordes.
+Imagen ImagenFondo(const ImGuiIO& io) {
+  Imagen g = GuestImage(io);
+  if (!UltraAncho()) return g;
+  const ImVec2 ds = io.DisplaySize;
+  if (ds.x > ds.y * 16.0f / 9.0f + 0.5f) {
+    g.p0.x = 0;
+    g.p1.x = ds.x;
   }
   return g;
 }
@@ -174,9 +205,10 @@ void DrawPic(ImDrawList* dl, const Pic& p, ImVec2 p0, ImVec2 p1, ImVec4 src, ImU
   dl->AddImage(p.tex, p0, p1, uv0, uv1, tint);
 }
 
-void Frame(ImDrawList* dl, ImVec2 p0, ImVec2 p1, float s) {
+void Frame(ImDrawList* dl, ImVec2 p0, ImVec2 p1, float s, bool interior) {
   const ImU32 gold = IM_COL32(232, 140, 32, 255), dark = IM_COL32(110, 50, 10, 255);
-  if (const Pic pn = Img("panel")) {   // el interior de las listas del juego (data_usi 2033)
+  if (!interior) {
+  } else if (const Pic pn = Img("panel")) {   // el interior de las listas del juego (data_usi 2033)
     DrawPic(dl, pn, p0, p1, ImVec4(4, 7, 309, 350), IM_COL32(255, 255, 255, 215));
   } else {
     dl->AddRectFilledMultiColor(p0, p1, IM_COL32(70, 82, 130, 200), IM_COL32(70, 82, 130, 200),
@@ -266,16 +298,16 @@ void MenuTextB3(ImDrawList* dl, ImVec2 center, float size, const char* text, boo
   OutlinedText(dl, font, size, pos, text, top, bottom, IM_COL32(17, 12, 8, 255), size * 0.075f);
 }
 
-void BannerBeta(ImDrawList* dl, const Area& a, const char* text, const char* title) {
-  Banner(dl, a, text, title);
+void BannerBeta(ImDrawList* dl, const Area& a, const char* text, const char* title, float escala, float beta_dy) {
+  Banner(dl, a, text, title, escala);
   if (const Pic b = Img("beta")) {
     const float h = 30 * a.s, w = b.w * h / b.h;
-    const ImVec2 p0 = a.At(470, 112);
+    const ImVec2 p0 = a.At(470, 112 + beta_dy);
     DrawPic(dl, b, p0, ImVec2(p0.x + w, p0.y + h));
   }
 }
 
-void Banner(ImDrawList* dl, const Area& a, const char* text, const char* title) {
+void Banner(ImDrawList* dl, const Area& a, const char* text, const char* title, float escala) {
   // medido en el Duelo (1600x900): pergamino (data_usi 2033, recorte 4,2-452,132) a 1.35 desde
   // 12,20 del area y el titulo de unos 93 px de alto desde 44,34
   const Pic tp = title ? Img(title) : Pic{};
@@ -298,7 +330,7 @@ void Banner(ImDrawList* dl, const Area& a, const char* text, const char* title) 
   const auto& fonts = dbz3::launcher::ui::GetFonts();
   ImFont* font = fonts.banner ? fonts.banner : ImGui::GetFont();
   // un titulo largo ("Supervivencia con tienda") se encoge para no salirse del pergamino (texto de x 60 a 450)
-  float size = 72 * a.s;
+  float size = 72 * a.s * escala;
   const float w = font->CalcTextSizeA(size, FLT_MAX, 0, text).x, room = 390 * a.s;
   if (w > room) size *= room / w;
   const ImVec2 at = a.At(60, 45);
@@ -394,8 +426,9 @@ void Backdrop(ImDrawList* dl, const Area& a, const char* image) {
       DrawPic(dl, p, a.p0, a.p1, ImVec4(0, 0, w, h));
       return;
     }
-    // S1-F06: a toda la imagen del juego (en 4:3 / 16:10 no tapa sus bandas negras)
-    const Imagen g = GuestImage(ImGui::GetIO());
+    // S1-F06: a toda la imagen del juego (en 4:3 / 16:10 no tapa sus bandas negras).
+    // PLT02: con `dbz3_ui_ultraancho`, en 21:9/32:9 llega a los bordes de la ventana.
+    const Imagen g = ImagenFondo(ImGui::GetIO());
     const ImVec2 d = g.Size();
     const float k = std::max(d.x / w, d.y / h), x0 = g.p0.x + (d.x - w * k) * 0.5f, y0 = g.p0.y + (d.y - h * k) * 0.5f;
     dl->PushClipRect(g.p0, g.p1, true);
@@ -429,13 +462,14 @@ void Host(ImDrawList* dl, const Area& a, const char* image, float x, float y, bo
 void Sides(ImDrawList* dl, const Area& a) {
   // data_usi 2033, 128x1024: tira opaca en x 14..63 y su sombra a la izquierda; es la de la derecha
   // y la izquierda va reflejada (la sombra cae siempre hacia dentro), a 1.33 como en el Duelo. Solo con la
-  // opcion "Bordes dorados" (F1)
+  // opcion "Bordes dorados" (F1). PLT02: en 21:9 con `dbz3_ui_ultraancho` van a los bordes de la ventana.
   const Pic p = Borders() ? Img("borde") : Pic{};
   if (!p) return;
-  const float k = 1.33f * a.s, w = 64 * k, h = std::min(p.h * k, a.p1.y - a.p0.y);
+  const Imagen g = ImagenFondo(ImGui::GetIO());
+  const float k = 1.33f * a.s, w = 64 * k, h = std::min(p.h * k, g.p1.y - g.p0.y);
   const ImVec4 src(0, 0, 64, h / k);
-  DrawPic(dl, p, ImVec2(a.p1.x - w, a.p0.y), ImVec2(a.p1.x, a.p0.y + h), src);
-  DrawPic(dl, p, a.p0, ImVec2(a.p0.x + w, a.p0.y + h), src, IM_COL32_WHITE, true);
+  DrawPic(dl, p, ImVec2(g.p1.x - w, g.p0.y), ImVec2(g.p1.x, g.p0.y + h), src);
+  DrawPic(dl, p, g.p0, ImVec2(g.p0.x + w, g.p0.y + h), src, IM_COL32_WHITE, true);
 }
 
 // Iconos de otro mando (ajuste "Tipo de mando" del launcher): dibujados por nosotros, sin arte de terceros.
@@ -557,11 +591,16 @@ void HelpLine(ImDrawList* dl, ImVec2 center, float h, const std::vector<std::pai
   const float fs = h * 0.62f, gap = h * 0.8f;
   float total = 0;
   for (const auto& [b, t] : items) {
-    total += Glyph(nullptr, b, ImVec2(), h) + h * 0.2f + font->CalcTextSizeA(fs, FLT_MAX, 0, t).x + gap;
+    total += Glyph(nullptr, b, ImVec2(), h) + (*t ? h * 0.2f + font->CalcTextSizeA(fs, FLT_MAX, 0, t).x + gap : h * 0.15f);
   }
   float x = center.x - (total - gap) * 0.5f;
   for (const auto& [b, t] : items) {
-    x += Glyph(dl, b, ImVec2(x, center.y), h) + h * 0.2f;
+    x += Glyph(dl, b, ImVec2(x, center.y), h);
+    if (!*t) {   // boton sin texto: el siguiente va pegado ("LB RB Pestaña")
+      x += h * 0.15f;
+      continue;
+    }
+    x += h * 0.2f;
     const ImVec2 ts = font->CalcTextSizeA(fs, FLT_MAX, 0, t);
     OutlinedText(dl, font, fs, ImVec2(x, center.y - ts.y * 0.5f), t, IM_COL32(240, 200, 60, 255),
                  IM_COL32(220, 150, 30, 255), IM_COL32(30, 20, 10, 255), fs * 0.07f);

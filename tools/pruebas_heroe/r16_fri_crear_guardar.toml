@@ -1,0 +1,31 @@
+# Selección por mando y guardado real; no inyecta IDs en la ficha.
+descripcion = "R16 Arcosiano: seis selectores originales y guardado de la ficha"
+env = ["DBZ3_TEST_MODO=heroe", "DBZ3_HUB_MODE=5", "DBZ3_TEST_HEROE_ABRIR=2", "DBZ3_TEST_HEROE_RAZA=3", "DBZ3_CAC_RAZAS_EXPERIMENTAL=1", "DBZ3_TEST_CFG=dbz3_heroe_ui_nueva=true"]
+pasos = [
+  'log "Create abierto" 180',
+  'log "vista previa 3D .* cargada" 90',
+  "tecla S 300", "tecla S 300", "tecla S 300", "tecla S 300", "tecla S 300",
+  "tecla D 8000",
+  'log "pieza B3 nativa Cabeza / cresta = Type 2 / 8" 20',
+  "captura 01_cabeza_estela",
+  "tecla S 400", "tecla D 6000",
+  'log "pieza B3 nativa Cuernos = Type 1 / 6" 20',
+  "captura 02_cuernos_horizonte",
+  "tecla S 400", "tecla D 6000",
+  'log "pieza B3 nativa Cara / boca = Type 2 / 8" 20',
+  "captura 03_mascara_respirador",
+  "tecla S 400", "tecla D 6000",
+  'log "pieza B3 nativa Cuerpo / placas = Type 2 / 4" 20',
+  "captura 04_placas_vertice",
+  "tecla S 400", "tecla D 6000",
+  'log "pieza B3 nativa Gema = Type 2 / 3" 20',
+  "captura 05_gema_rombo",
+  "tecla S 400", "tecla D 6000",
+  'log "pieza B3 nativa Cola = Type 2 / 4" 20',
+  "captura 06_cola_quilla",
+  "tecla 3 1000",
+  'log "Create: confirmar" 25',
+  'log "vista previa combate_f_.* generada" 360',
+  "esperar 5000",
+  "captura 07_guardado"
+]

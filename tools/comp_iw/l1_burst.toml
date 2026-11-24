@@ -1,0 +1,7 @@
+descripcion = "IW REF: L1 gratis en Burst, aproximación y seguimiento; sin Hyper/Rush"
+turbo = false
+env = ['DBZ3_TEST_BATTLE=0,7,2', 'DBZ3_COMBATE_MUNECO=quieto', 'DBZ3_COMBATE_SONDA=1', 'DBZ3_COMBATE_KI=6000', 'DBZ3_TEST_COMP_RUSH=2', 'DBZ3_TEST_CFG=dbz3_modo_competitivo=true;dbz3_combate_prueba_muneco="quieto";dbz3_combate_definitiva_directa=false']
+pasos = ['log "tag: empieza un combate" 90', 'esperar_pelea 90', 'log "COMP persecucion en el Aura Burst" 40', 'captura l1_humo']
+[iw]
+caso = "l1_burst"
+fuentes = ["220EC0", "2157B0"]

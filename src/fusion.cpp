@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
@@ -25,15 +26,20 @@
 
 #include "generated/dbz3_init.h"
 #include "eu_map.h"
+#include "fusion_b2.h"
 #include "net/netplay.h"
 #include "pasarela.h"
 #include "roster_ext.h"
 
 REXCVAR_DEFINE_BOOL(dbz3_fusion_nativa, true, "DBZ3/Combate", "Potara de Goku como la nativa: tecnica con el baile de Vegito, sin relevo");
+REXCVAR_DEFINE_BOOL(dbz3_b2_absorcion, true,  // 12/11 encendido de serie (HOJA_DECISIONES_0800 A)
+    "DBZ3/Combate",
+                    "Absorciones de Super Bu con el sorteo de Budokai 2 (FUN_001ef5b0: 6 resultados, sin Piccolo); apagado = el de siempre");
 
 REX_EXTERN(dbz3eu_sub_82103A78);
 REX_EXTERN(dbz3eu_sub_821150B8);
 REX_EXTERN(dbz3eu_sub_82115370);
+REX_EXTERN(dbz3eu_sub_821094C8);
 
 namespace dbz3::tag { bool Fuse(PPCContext& ctx, uint8_t* base, int side, int id); }
 
@@ -62,6 +68,24 @@ void StoreF(uint8_t* base, uint32_t a, float f) {
 
 // ID del resultado en el roster de mods (roster.toml, nombre interno); -1 si el mod no esta
 int IdDe(const char* nombre) { return dbz3::roster::IdPorNombre(nombre); }
+// IdPorNombre devuelve el PRIMERO que se llama asi, y el Yamhan publicado (vis_b2_yamhan, un personaje
+// de la rueda) va antes que el de la receta "Con tu copia" (sin casilla). Ese no declara capsula_fusion:
+// la via nativa se quedaba sin capsula que sustituir y la fusion no salia (con los dos mods instalados).
+// Se prefiere el que declara capsula_fusion; si ninguno, el de siempre.
+int IdDeFusion(const char* nombre) {
+  const int primero = IdDe(nombre);
+  auto vale = [](int k) { return k >= 0 && dbz3::roster::FusionCapsule(uint32_t(k)) > 0; };
+  if (vale(primero)) return primero;
+  std::string want(nombre);
+  for (char& c : want) c = char(std::toupper(uint8_t(c)));
+  for (int k = 0; k < 64; ++k) {
+    if (!vale(k)) continue;
+    std::string n = dbz3::roster::InternalName(uint32_t(k));
+    for (char& c : n) c = char(std::toupper(uint8_t(c)));
+    if (n == want) return k;
+  }
+  return primero;
+}
 const Receta* RecetaDe(uint32_t id) {
   for (const Receta& r : kRecetas)
     if (int(id) == r.a || int(id) == r.b) return &r;
@@ -121,14 +145,72 @@ constexpr Absorcion kAbsorciones[] = {{"BU VEGETA", 15, 7, 7, {7, 72, -1}, {38, 
 std::array<const Absorcion*, 2> g_bu_hereda{};
 // Voces del absorbido: el guion de su definitiva pide frases por indice en el banco del luchador (X+7924, el de sub_82109148); con el de Bu
 // el indice se salia y el juego caia (medido: lr 0x82155A58, cola de sonido). Se pide al conectar; se pone al llegar a la forma.
-constexpr uint32_t kLangFlag = 7920, kLang = 7924;
+// sub_8210FDE0: +7920 es la raiz procesada, NO una marca. +7924 es su
+// propietario (nodo antes de procesar, datos despues). sub_821093C8 enlaza
+// la raiz al banco 1 del reproductor de cada forma (instancia+44).
+constexpr uint32_t kLangRoot = 7920, kLang = 7924;
 std::array<uint32_t, 2> g_bu_lang{};        // nodo pedido, aun sin poner
-std::array<uint32_t, 2> g_bu_lang_puesto{}; // el del absorbido (se suelta al acabar el combate)
+std::array<uint32_t, 2> g_bu_lang_puesto{}; // datos procesados del absorbido, no el nodo ya consumido
 std::array<uint32_t, 2> g_bu_lang_suyo{};   // el de Bu
+std::array<uint32_t, 2> g_bu_lang_raiz{};   // raiz de Bu que corresponde a esos datos
+std::array<uint32_t, 2> g_bu_mgr{};         // gestor que presto el banco (0 = sin prestamo)
+std::array<uint32_t, 2> g_bu_epoca{};       // combate en que se presto
+uint32_t g_bu_combate = 1;                  // sube al empezar cada combate
+uint32_t g_teardown_mgr = 0;                // gestor del desmontaje en curso
+uint32_t g_teardown_epoca = 0;              // epoca que valia dentro de ese desmontaje
+
+void BuOlvidaPrestamo(size_t p) {
+  g_bu_lang[p] = 0;
+  g_bu_lang_puesto[p] = g_bu_lang_suyo[p] = g_bu_lang_raiz[p] = 0;
+  g_bu_mgr[p] = g_bu_epoca[p] = 0;
+}
+
+void BuEnlazaVoces(PPCContext& ctx, uint8_t* base, uint32_t x) {
+  PPCContext c = ctx;
+  c.r3.u64 = x;
+  c.r4.s64 = -1;   // todas las formas cargadas, como el reenlace nativo
+  c.r5.u64 = 0;
+  DBZ3_CALL2(sub_821093C8, dbz3eu_sub_821094C8)(c, base);
+}
+
+void BuRestauraVoces(PPCContext& ctx, uint8_t* base, uint32_t x, size_t p, uint32_t epoca = 0) {
+  const uint32_t mgr = REX_LOAD_U32(kMgr);
+  if (!epoca) epoca = g_bu_combate;
+  // El prestamo vale solo para el gestor y el combate que lo hicieron. Si el
+  // combate ya cambio (salida al menu, reinicio, otro gestor), sus datos son
+  // del gestor anterior: no se escribe en x ni se libera nada aqui; solo se
+  // olvida (el banco lo libera quien era su duenio).
+  if (g_bu_mgr[p] && (mgr != g_bu_mgr[p] || epoca != g_bu_epoca[p])) {
+    BuOlvidaPrestamo(p);
+    return;
+  }
+  if (g_bu_lang[p]) {
+    PPCContext c = ctx;
+    c.r3.u64 = g_bu_lang[p];
+    c.r4.u64 = 0;
+    DBZ3_CALL_EU(sub_82083D08)(c, base);
+    g_bu_lang[p] = 0;
+  }
+  if (!g_bu_lang_puesto[p]) {
+    BuOlvidaPrestamo(p);
+    return;
+  }
+  REX_STORE_U32(x + kLangRoot, g_bu_lang_raiz[p]);
+  REX_STORE_U32(x + kLang, g_bu_lang_suyo[p]);
+  // Primero retirar las referencias al prestamo; despues liberar su propietario.
+  BuEnlazaVoces(ctx, base, x);
+  PPCContext c = ctx;
+  c.r3.u64 = g_bu_lang_puesto[p];
+  DBZ3_CALL_EU(sub_82083A68)(c, base);
+  g_bu_lang_puesto[p] = g_bu_lang_suyo[p] = g_bu_lang_raiz[p] = 0;
+  g_bu_mgr[p] = g_bu_epoca[p] = 0;
+}
 struct Puesto { uint32_t dir = 0, fid = 0; };
 std::array<Puesto, 64> g_puestos{};
 std::array<uint32_t, 2> g_bu_forma{};
 std::array<bool, 2> g_bu_sorteado{};
+std::array<uint32_t, 2> g_bu_transp{};   // dbz3_b2_absorcion: forma nativa (2 Gotenks, 3 Gohan) puesta sobre la que salio
+std::array<std::array<uint16_t, 8>, 2> g_bu_caps_suyas{};   // #75: lista de combate de Bu (+52 cuantas, +54 IDs) antes de heredar
 void BuDevuelveFilas(uint8_t* base) {   // en orden inverso: una fila puede estar puesta dos veces
   for (auto p = g_puestos.rbegin(); p != g_puestos.rend(); ++p) {
     if (p->dir) REX_STORE_U32(p->dir, p->fid);
@@ -139,8 +221,11 @@ void BuRestaura(uint8_t* base) {
   BuDevuelveFilas(base);
   g_bu_sorteado = {};
   g_bu_hereda = {};
-  g_bu_lang = {};
+  BuOlvidaPrestamo(0);   // #75: el prestamo de voces no pasa al combate siguiente
+  BuOlvidaPrestamo(1);
   g_bu_forma = {};
+  g_bu_transp = {};
+  g_bu_caps_suyas = {};
   dbz3::roster::ClearFormFiles(35);
 }
 // Pone la boca del modelo nuevo en todas las entradas de bocas del ID: la boca va aparte del modelo (c96 +12, 8 B por entrada) y con
@@ -224,7 +309,7 @@ void NativaAlPreparar(uint8_t* base, uint32_t sel) {
   for (const Nativa& n : kNativas) {
     if (n.a != id) continue;
     // PRUEBA (DBZ3_TEST_FUSION_EXITO): sin nadie que acierte el minijuego sale el fallo (forma 2); ahi el fusionado bueno, para verlo
-    const int ok = IdDe(n.ok), mal = n.mal && !std::getenv("DBZ3_TEST_FUSION_EXITO") ? IdDe(n.mal) : ok;
+    const int ok = IdDeFusion(n.ok), mal = n.mal && !std::getenv("DBZ3_TEST_FUSION_EXITO") ? IdDeFusion(n.mal) : ok;
     const int cap = ok >= 0 ? dbz3::roster::FusionCapsule(uint32_t(ok)) : 0;
     if (cap <= 0 || mal < 0) return;
     for (uint32_t k = 0, c = std::min<uint32_t>(REX_LOAD_U16(sel + 52), 7); k < c; ++k) {
@@ -344,26 +429,95 @@ void NativaBaile(PPCContext& ctx, uint8_t* base, uint32_t mgr) {
   }
 }
 
+// KIT-07b (issue #73): cuanto dura una fusion. RE (generated/): la tecnica de fusion arranca el reloj con sub_821153D0
+// (X+6720 = 1800.0, la constante 0x8201D69C; ritmo X+6724 = 1.0; X+6728 = forma a la que vuelve; X+8207 = 0). Cada cuadro de
+// pelea sin pausa, sub_82118DE0 (desde sub_8211AB30) resta ritmo * paso * ...; a 0 pone ki 0 y X+8207 = 1, y el juego deshace
+// la fusion. sub_821024A8 dibuja la barra con X+6720 / 1800: por eso nunca se sube X+6720 por encima de lo que puso el juego.
+// Ajuste (solo fuera de linea; "original" = no se toca nada): "todas=V" y/o "<ficha>=V" separados por comas, con V = original |
+// sin (sin limite) | N% (del tiempo original: se cambia el ritmo) | Ns (segundos exactos: reloj propio). Fichas: 64/65 Gotenks,
+// 68/69 Gogeta, 70/71 Gogeta SSJ4, 72/73 Vegito, 76 Kibito-shin (las de los mods que entran por la via nativa usan esas filas).
+REXCVAR_DEFINE_STRING(dbz3_fusion_duracion, "original", "DBZ3/Combate",
+                      "Duracion de las fusiones: original | todas=sin | todas=50% | 68=45s ... (no online)");
+namespace {
+struct Duracion { bool sin = false; float pct = 0.0f; int seg = 0; };   // todo a 0 = original
+Duracion DuracionDe(const std::string& s, uint32_t ficha) {
+  Duracion todas, suya;
+  bool hay_suya = false;
+  for (size_t i = 0; i < s.size();) {
+    size_t j = s.find_first_of(",;", i);
+    if (j == std::string::npos) j = s.size();
+    std::string t = s.substr(i, j - i), clave = "todas";
+    i = j + 1;
+    if (const size_t e = t.find('='); e != std::string::npos) clave = t.substr(0, e), t = t.substr(e + 1);
+    Duracion d;
+    if (t == "sin") d.sin = true;
+    else if (!t.empty() && t.back() == 's') d.seg = std::clamp(std::atoi(t.c_str()), 1, 3600);
+    else if (!t.empty() && t != "original") d.pct = float(std::clamp(std::atoi(t.c_str()), 1, 1000));
+    if (clave == "todas") todas = d;
+    else if (std::atoi(clave.c_str()) == int(ficha)) suya = d, hay_suya = true;
+  }
+  return hay_suya ? suya : todas;
+}
+struct Reloj { bool visto = false; int total = 0, quedan = 0; };
+std::array<Reloj, 2> g_reloj{};
+void DuracionCuadro(uint8_t* base, uint32_t mgr) {
+  const std::string& s = REXCVAR_GET(dbz3_fusion_duracion);
+  if (s.empty() || s == "original") return;
+  for (int p = 0; p < 2; ++p) {
+    const uint32_t x = mgr + 2096 + 8240 * uint32_t(p);
+    Reloj& r = g_reloj[size_t(p)];
+    const float t = LoadF(base, x + 6720);
+    if (!(t > 0.0f) || REX_LOAD_U8(x + 8207) != 0) {   // sin fusion (al empezar el combate X+6720 = -1)
+      r = {};
+      continue;
+    }
+    if (!r.visto) {   // la fusion acaba de empezar: se aplica la regla de su ficha una vez
+      r.visto = true;
+      const Duracion d = DuracionDe(s, REX_LOAD_U32(x + kId));
+      if (d.sin) StoreF(base, x + 6724, 0.0f);
+      else if (d.pct > 0.0f) StoreF(base, x + 6724, LoadF(base, x + 6724) * 100.0f / d.pct);
+      else if (d.seg > 0) StoreF(base, x + 6724, 0.0f), r.total = r.quedan = d.seg * 60;
+      REXLOG_INFO("dbz3 fusion: lado {} ficha {}: duracion {} (ritmo {:.3f})", p + 1, REX_LOAD_U32(x + kId),
+                  d.sin ? "sin limite" : d.pct > 0.0f ? std::to_string(int(d.pct)) + "%" : d.seg > 0 ? std::to_string(d.seg) + " s" : "original",
+                  LoadF(base, x + 6724));
+    }
+    if (r.total <= 0 || REX_LOAD_U8(mgr + 35565) != 0) continue;   // pausa: el juego tampoco descuenta
+    if (--r.quedan > 0) {
+      StoreF(base, x + 6720, std::min(t, 1800.0f * float(r.quedan) / float(r.total)));   // la barra baja con el reloj propio
+    } else {
+      StoreF(base, x + 6720, 0.001f);   // el siguiente paso de sub_82118DE0 la deshace por su camino
+      StoreF(base, x + 6724, 1.0e9f);
+      r.total = 0;
+    }
+  }
+}
+}  // namespace
+
 void Tick(PPCContext& ctx, uint8_t* base) {
   static std::array<uint32_t, 2> hold{}, armed{};
   static uint32_t fight = 0;
   static const int test_s = std::getenv("DBZ3_TEST_FUSION") ? std::atoi(std::getenv("DBZ3_TEST_FUSION")) : -1;
   static const bool test_fallo = std::getenv("DBZ3_TEST_FUSION") && std::strchr(std::getenv("DBZ3_TEST_FUSION"), ',');
   const uint32_t mgr = REX_LOAD_U32(kMgr);
+  {   // #75: epoca de combate. Un prestamo de voces solo vale dentro del combate
+      // que lo hizo; al volver al menu o reiniciar, la epoca sube y se olvida.
+    static uint32_t ultimo_mgr = 0;
+    if (mgr != ultimo_mgr) {
+      ++g_bu_combate;
+      g_teardown_mgr = 0;   // el proximo desmontaje es de este combate
+      ultimo_mgr = mgr;
+    }
+  }
   if (!mgr || REX_LOAD_U32(mgr + 35128) != 4 || dbz3::net::Session::Get().link() != dbz3::net::Link::kIdle) {
     hold = {};
     armed = {};
+    g_reloj = {};
     if (mgr && REX_LOAD_U32(mgr + 35128) >= 5) NativaDevuelve(base);
-    // fin del combate: Bu recupera su banco antes de que el juego suelte el del luchador
+    // fin del combate: Bu recupera su banco antes de que el juego suelte el del luchador.
+    // Solo quien es Bu (id 35) puede tener un prestamo; no se toca al rival.
     for (int p = 0; mgr && REX_LOAD_U32(mgr + 35128) >= 5 && p < 2; ++p) {
       const uint32_t x = mgr + 2096 + 8240 * uint32_t(p);
-      if (g_bu_lang_puesto[size_t(p)]) {
-        REX_STORE_U32(x + kLang, g_bu_lang_suyo[size_t(p)]);
-        PPCContext c = ctx;
-        c.r3.u64 = g_bu_lang_puesto[size_t(p)];
-        DBZ3_CALL_EU(sub_82083A68)(c, base);
-        g_bu_lang_puesto[size_t(p)] = 0;
-      }
+      if (REX_LOAD_U32(x + kId) == 35) BuRestauraVoces(ctx, base, x, size_t(p));
     }
     if (!mgr || REX_LOAD_U32(mgr + 35128) < 4) {
       if (fight) BuRestaura(base);
@@ -376,11 +530,25 @@ void Tick(PPCContext& ctx, uint8_t* base) {
   for (int p = 0; p < 2; ++p) {
     const uint32_t x = mgr + 2096 + 8240 * uint32_t(p), n = g_bu_lang[size_t(p)];
     if (!n || !g_bu_forma[size_t(p)] || REX_LOAD_U32(x + kForm) != g_bu_forma[size_t(p)] || REX_LOAD_U16(x + kAct) > 2 || REX_LOAD_U8(n + 1) || !REX_LOAD_U32(n + 192)) continue;
+    const uint32_t data = REX_LOAD_U32(n + 192), root = REX_LOAD_U32(data + 208);
+    PPCContext c = ctx;
+    c.r3.u64 = root;
+    DBZ3_CALL_EU(sub_820800A8)(c, base);
+    // Misma transferencia de propiedad que sub_8210FDE0 (US 8210FE80..FEB4).
+    REX_STORE_U32(n + 192, 0);
+    c = ctx;
+    c.r3.u64 = n;
+    c.r4.u64 = 0;
+    DBZ3_CALL_EU(sub_82083D08)(c, base);
     g_bu_lang_suyo[size_t(p)] = REX_LOAD_U32(x + kLang);
-    g_bu_lang_puesto[size_t(p)] = n;
+    g_bu_lang_raiz[size_t(p)] = REX_LOAD_U32(x + kLangRoot);
+    g_bu_lang_puesto[size_t(p)] = data;
     g_bu_lang[size_t(p)] = 0;
-    REX_STORE_U32(x + kLangFlag, 0);
-    REX_STORE_U32(x + kLang, n);
+    g_bu_mgr[size_t(p)] = mgr;
+    g_bu_epoca[size_t(p)] = g_bu_combate;
+    REX_STORE_U32(x + kLangRoot, root);
+    REX_STORE_U32(x + kLang, data);
+    BuEnlazaVoces(ctx, base, x);
     REXLOG_INFO("dbz3 fusion: lado {}: voces del absorbido", p + 1);
   }
   // Bu ya en la forma absorbida (el cambio nativo, con el modelo bueno desde el principio): sus capsulas pasan a la lista de combate
@@ -391,6 +559,7 @@ void Tick(PPCContext& ctx, uint8_t* base) {
     const Absorcion* a = g_bu_hereda[size_t(p)];
     if (!a || REX_LOAD_U32(x + kForm) != g_bu_forma[size_t(p)] || REX_LOAD_U16(x + kAct) > 2) continue;
     if (const uint32_t lista = REX_LOAD_U32(x + 7412)) {
+      for (uint32_t k = 0; k < 8; ++k) g_bu_caps_suyas[size_t(p)][k] = REX_LOAD_U16(lista + 52 + 2 * k);   // #75: vuelven al salir
       uint32_t n = 0;
       for (const uint16_t c : a->caps)
         if (c) {
@@ -403,7 +572,75 @@ void Tick(PPCContext& ctx, uint8_t* base) {
     g_bu_hereda[size_t(p)] = nullptr;
     BuDevuelveFilas(base);
   }
+  // #75: Bu deja la forma absorbida (log del jugador: 01:16:10 vuelve a la forma 0 y 35 s despues cierre) -> recupera sus
+  // capsulas y sus voces, y los ficheros por forma del absorbido se quitan (tecnicas_ext vuelve a la forma 0 y suelta lo
+  // guardado). Antes se quedaba con las 3 capsulas del absorbido en la forma 0 (tecnicas sin nombre, "efecto 33 que no esta en
+  // el banco": las busca en su ranura A) y sin su definitiva.
+  static std::array<bool, 2> dentro{};
+  // PRUEBA: DBZ3_TEST_BU_VUELTA=2 -> a los 5 s en la forma absorbida, el lado 1 hace lo que la orden de guion de la vuelta
+  // (sub_82128CD0: suelta la ranura B con sub_821270C0) y el cambio nativo a la forma 0 (sub_82115270, como la 0x91)
+  if (static const bool vuelta2 = std::getenv("DBZ3_TEST_BU_VUELTA") && std::atoi(std::getenv("DBZ3_TEST_BU_VUELTA")) == 2; vuelta2) {
+    static uint32_t cuadros = 0;
+    const uint32_t x = mgr + 2096;
+    if (!dbz3::g_guest_eu && g_bu_forma[0] && REX_LOAD_U32(x + kForm) == g_bu_forma[0]) {   // solo US (prueba)
+      ++cuadros;   // contar la forma, no exigir cinco segundos seguidos de reposo
+      if (cuadros >= 300 && REX_LOAD_U16(x + kAct) <= 2) {
+        PPCContext c = ctx;
+        c.r3.u64 = x;
+        sub_821270C0(c, base);
+        c = ctx;
+        c.r3.u64 = x;
+        c.r4.u64 = 0;
+        DBZ3_CALL2(sub_82115270, dbz3eu_sub_82115370)(c, base);
+        REXLOG_INFO("dbz3 fusion: prueba: Bu vuelve a la forma 0 (ranura B suelta por el juego)");
+        cuadros = 0;
+      }
+    } else {
+      cuadros = 0;
+    }
+  }
+  static const bool sin_arreglo = std::getenv("DBZ3_TEST_SIN_GUARDAS") != nullptr;   // A/B de #75
+  for (int p = 0; p < 2 && !sin_arreglo; ++p) {
+    const uint32_t x = mgr + 2096 + 8240 * uint32_t(p), forma = REX_LOAD_U32(x + kForm);
+    if (!g_bu_forma[size_t(p)]) {
+      dentro[size_t(p)] = false;
+      continue;
+    }
+    if (forma == g_bu_forma[size_t(p)]) {
+      dentro[size_t(p)] = true;
+      continue;
+    }
+    if (!dentro[size_t(p)] || REX_LOAD_U32(x + kId) != 35) continue;
+    dentro[size_t(p)] = false;
+    BuRestauraVoces(ctx, base, x, size_t(p));
+    // sus capsulas: las heredadas dejaban a Bu sin su definitiva (no podia volver a absorber) y con tecnicas del absorbido
+    // La raiz de voces tambien ha vuelto: la siguiente tecnica ya puede usar el banco 1 de Bu.
+    if (const uint32_t lista = REX_LOAD_U32(x + 7412); lista && g_bu_caps_suyas[size_t(p)][0])
+      for (uint32_t k = 0; k < 8; ++k) REX_STORE_U16(lista + 52 + 2 * k, g_bu_caps_suyas[size_t(p)][k]);
+    g_bu_caps_suyas[size_t(p)] = {};
+    // Se conserva la politica anterior: solo el primer sorteo del combate toma un mod;
+    // las siguientes absorciones siguen el camino nativo.
+    REXLOG_INFO("dbz3 fusion: lado {}: Bu sale de la forma absorbida {} (ahora {}): sus voces y capsulas; la proxima absorcion es la nativa",
+                p + 1, g_bu_forma[size_t(p)], forma);
+    BuDevuelveFilas(base);
+    // la forma absorbida se vuelve a cargar con sus filas nativas (como NativaBaile al acabar una fusion): el juego guarda sus
+    // ficheros y modelos por forma y la siguiente absorcion usaba los del mod ya sueltos (modelo de la victima sin banco 1:
+    // lectura de 0x18, lr 0x8211011C, tambien con la absorcion nativa; D:\DBZ3HD\_pruebas\20261112-153422_smoke_f_i75_bu_tenyam_vuelta)
+    // Ademas del modelo hay que restaurar su raiz de voces: sin ella el reenlace
+    // nativo dejaba instancia+44 a cero (clip 000100A8, evidencia 14/11).
+    for (const auto fn : {DBZ3_CALL_EU(sub_82100A10), DBZ3_CALL_EU(sub_82100B78)}) {
+      PPCContext c = ctx;
+      c.r3.u64 = x;
+      c.r4.u64 = g_bu_forma[size_t(p)];
+      fn(c, base);
+    }
+    g_bu_forma[size_t(p)] = g_bu_transp[size_t(p)] = 0;
+    g_bu_hereda[size_t(p)] = nullptr;
+    g_bu_lang[size_t(p)] = 0;
+    dbz3::roster::ClearFormFiles(35);
+  }
   NativaBaile(ctx, base, mgr);
+  DuracionCuadro(base, mgr);   // KIT-07b
   for (int p = 0; p < 2; ++p) {
     const uint32_t x = mgr + 2096 + 8240 * uint32_t(p);
     const uint32_t id = REX_LOAD_U32(x + kId);
@@ -418,14 +655,14 @@ void Tick(PPCContext& ctx, uint8_t* base) {
     const bool want = test || (armed[size_t(p)] && fight <= armed[size_t(p)]);
     if (!receta || REX_LOAD_U16(x + kAct) > 2 || !want) continue;
     if (test && LoadF(base, x + kKi) < kCost) StoreF(base, x + kKi, kCost);
-    const int ok = IdDe(receta->ok);
+    const int ok = IdDeFusion(receta->ok);
     if (ok < 0 || !LlevaCapsula(base, x, ok) || LoadF(base, x + kKi) < kCost || !NoFormLeft(ctx, base, x)) {
       if (test && fight % 120 == 0)
         REXLOG_INFO("dbz3 fusion: prueba: no sale (id {}, capsula {}, ki {:.0f}, sin forma {})", ok, ok >= 0 && LlevaCapsula(base, x, ok), LoadF(base, x + kKi), NoFormLeft(ctx, base, x));
       continue;
     }
     int to = ok;
-    if (const int mal = receta->fallo ? IdDe(receta->fallo) : -1; mal >= 0) {
+    if (const int mal = receta->fallo ? IdDeFusion(receta->fallo) : -1; mal >= 0) {
       static uint32_t azar = uint32_t(fight * 2654435761u);
       azar = azar * 1664525u + 1013904223u + fight;
       if (test ? test_fallo : (azar >> 16) % 100 < kFallo) to = mal;
@@ -450,10 +687,67 @@ void BuAlConectar(PPCContext& ctx, uint8_t* base, uint32_t x, uint32_t forma) {
   const uint32_t mgr = REX_LOAD_U32(kMgr);
   if (!mgr || x < mgr + 2096 || REX_LOAD_U32(x + kId) != 35 || forma < 1 || forma > 3) return;
   const uint32_t p = (x - (mgr + 2096)) / 8240;
-  if (p > 1 || g_bu_sorteado[p]) return;
+  if (p > 1) return;
+  if (g_bu_sorteado[p]) {
+    if (std::getenv("DBZ3_TEST_BU_DIAG"))
+      REXLOG_INFO("dbz3 bu75: segunda absorcion nativa lado {} forma {}", p + 1, forma);
+    return;
+  }
   g_bu_sorteado[p] = true;
   const uint32_t rival = REX_LOAD_U32(mgr + 2096 + 8240 * (1 - p) + kId);
-  int total = kPesoNativo, ids[4];
+  int ids[4], elegido = -1;
+  if (REXCVAR_GET(dbz3_b2_absorcion)) {   // B2-P19: sorteo de B2 (fusion_b2.h) sobre los 6 resultados; Piccolo nunca
+    const uint32_t xr = mgr + 2096 + 8240 * (1 - p), lr = REX_LOAD_U32(xr + 7412);
+    bool potara = false;   // B2 excluye a Vegeta si el rival puede ser Vegito (su forma 38): Goku con la Potara (capsula 187)
+    for (uint32_t k = 0, n = lr ? std::min<uint32_t>(REX_LOAD_U16(lr + 52), 7) : 0; k < n; ++k) potara |= REX_LOAD_U16(lr + 54 + 2 * k) == 187;
+    unsigned m = b2::Mascara(int(rival), IdDe("YAMHAN"), rival == 0 && potara);
+    int idb[4];
+    for (int k = 0; k < 4; ++k)
+      if ((idb[k] = IdDe(kAbsorciones[k].nombre)) < 0) m |= 1u << (k + 2);   // sin su mod no puede salir (en B2 siempre esta)
+    static uint32_t azar_b2 = uint32_t(mgr ^ REX_LOAD_U32(0x8245EFC0u));
+    azar_b2 = azar_b2 * 1664525u + 1013904223u + uint32_t(std::chrono::steady_clock::now().time_since_epoch().count());
+    const int total = b2::Total(m);
+    int e = total > 0 ? b2::Sorteo(m, int((azar_b2 >> 16) % uint32_t(total))) : -1;
+    static const int forzado_b2 = std::getenv("DBZ3_TEST_BU_ABS") ? std::atoi(std::getenv("DBZ3_TEST_BU_ABS")) : -1;   // PRUEBA: 0-3 mods, 4 Gotenks, 5 Gohan
+    if (forzado_b2 >= 0 && forzado_b2 <= 5) e = forzado_b2 < 4 ? forzado_b2 + 2 : forzado_b2 - 4;
+    REXLOG_INFO("dbz3 fusion: B2: Bu (lado {}) contra el id {}: excluidos {:02X}, total {}, sale la entrada {} (forma de B2 {}), forma nativa {}", p + 1, rival, m,
+                total, e, e + 47, forma);
+    if (e < 0 || (e >= 2 && idb[e - 2] < 0)) return;
+    if (e < 2) {
+      const uint32_t d = e == 0 ? 2 : 3;   // formas nativas de Bu: 2 = Gotenks (modelo 78), 3 = Gohan (79); 1 = Piccolo (84), que B2 no tiene
+      if (d != forma) {   // la forma que salio toma la de B2: modelo, boca, victima, fichero de la forma (escena y golpes) y barras de ki
+        constexpr uint32_t kFid[] = {0, 84, 78, 79}, kVic[] = {0, 11, 64, 4}, kVicM[] = {0, 0, 2, 2};
+        auto pon = [&](uint32_t dir, uint32_t v) {
+          for (Puesto& q : g_puestos)
+            if (!q.dir) {
+              q = {dir, REX_LOAD_U32(dir)};
+              REX_STORE_U32(dir, v);
+              return;
+            }
+        };
+        const uint32_t traje = REX_LOAD_U16(0x8245EFC0u + 16 + 80 * p + 18);
+        if (const uint32_t f = FilaFid(base, kFid[d], 0, traje)) BuPon(base, kFid[forma], 0, traje, REX_LOAD_U32(f));
+        BuPonBoca(base, kFid[forma], BocaDe(base, kFid[d], 0));
+        if (const uint32_t f = FilaFid(base, kVic[d], kVicM[d], 0)) {
+          const uint32_t c96 = 0x8234ABB8u + 96 * kVic[forma], filas = uint32_t(REX_LOAD_U8(c96 + 4)) * std::max<uint32_t>(1, REX_LOAD_U8(c96 + 5));
+          for (uint32_t k = 0; k < filas; ++k) BuPon(base, kVic[forma], k, 0, REX_LOAD_U32(f));
+          BuPonBoca(base, kVic[forma], BocaDe(base, kVic[d], kVicM[d]));
+        }
+        if (const uint32_t rec = REX_LOAD_U32(x + 7416)) {
+          pon(rec + 4 * forma, REX_LOAD_U32(rec + 4 * d));
+          const uint32_t ki = rec + 212 + 20 * forma + 8;
+          pon(ki, (REX_LOAD_U32(ki) & 0xFF00FFFFu) | (REX_LOAD_U32(rec + 212 + 20 * d + 8) & 0x00FF0000u));
+        }
+        g_bu_transp[p] = d;
+        g_bu_forma[p] = forma;
+      }
+      REXLOG_INFO("dbz3 fusion: B2: Bu (lado {}) absorbe {} con la forma nativa {} (sobre la {})", p + 1, e == 0 ? "GOTENKS" : "GOHAN", d, forma);
+      return;
+    }
+    std::copy(idb, idb + 4, ids);   // entradas 2-5: el camino de los mods de siempre, con la eleccion de B2
+    elegido = e - 2;
+  } else {
+  int total = kPesoNativo;
   for (int k = 0; k < 4; ++k) {
     const Absorcion& a = kAbsorciones[k];
     const bool suyo = int(rival) == a.excl[0] || int(rival) == a.excl[1] || int(rival) == a.excl[2];
@@ -465,7 +759,6 @@ void BuAlConectar(PPCContext& ctx, uint8_t* base, uint32_t x, uint32_t forma) {
   azar = azar * 1664525u + 1013904223u + uint32_t(std::chrono::steady_clock::now().time_since_epoch().count());
   int t = int((azar >> 16) % uint32_t(total));
   static const int forzado = std::getenv("DBZ3_TEST_BU_ABS") ? std::atoi(std::getenv("DBZ3_TEST_BU_ABS")) : -1;   // PRUEBA
-  int elegido = -1;
   for (int k = 0; k < 4 && elegido < 0; ++k) {
     if (ids[k] < 0) continue;
     if (forzado >= 0 ? forzado == k : t < kAbsorciones[k].peso) elegido = k;
@@ -474,6 +767,7 @@ void BuAlConectar(PPCContext& ctx, uint8_t* base, uint32_t x, uint32_t forma) {
   if (elegido < 0) {
     REXLOG_INFO("dbz3 fusion: Bu (lado {}) conecta contra el id {}: absorbe con la forma nativa {}", p + 1, rival, forma);
     return;
+  }
   }
   const Absorcion& a = kAbsorciones[elegido];
   const uint32_t traje = REX_LOAD_U16(0x8245EFC0u + 16 + 80 * p + 18);
@@ -524,6 +818,10 @@ void BuAlConectar(PPCContext& ctx, uint8_t* base, uint32_t x, uint32_t forma) {
     c.r5.u64 = 1;
     DBZ3_CALL_EU(sub_82083968)(c, base);
     g_bu_lang[p] = c.r3.u32 != 0xFFFFFFFFu ? c.r3.u32 : 0;
+    if (g_bu_lang[p]) {
+      g_bu_mgr[p] = mgr;
+      g_bu_epoca[p] = g_bu_combate;
+    }
   }
   REXLOG_INFO("dbz3 fusion: Bu (lado {}) conecta contra el id {}: absorbe {} (id {}, sobre la forma {})", p + 1, rival, a.nombre, ids[elegido], forma);
 }
@@ -611,7 +909,27 @@ void PruebaMando(uint8_t* base, uint32_t user) {
   const uint32_t mgr = on > 0 && user == 0 ? REX_LOAD_U32(kMgr) : 0;
   if (!mgr || REX_LOAD_U16(mgr + 2096 + kAct) > 2 || ++tick % 60) return;
   if (on == 4 && (tick % 180 || REX_LOAD_U32(mgr + 2096 + kForm) != 0)) return;   // =4: P+K+G de verdad para la fusion, cada 3 s, sin definitiva
-  if (on == 3 && g_bu_forma[0]) return;   // =3: como 1, pero ya absorbido deja de pulsar (tomas cercanas)
+  if (on == 3 && (g_bu_forma[0] || REX_LOAD_U32(mgr + 2096 + kForm) != 0)) {
+    // Un clon de Bu tiene ID propio: no participa en el sorteo g_bu_forma.
+    // Comprobar la forma y su modelo real evita lanzar otra definitiva mientras
+    // se captura la primera absorcion; no cambia el mando fuera de la prueba.
+    static uint32_t observada = 0;
+    const uint32_t forma = REX_LOAD_U32(mgr + 2096 + kForm);
+    const uint32_t modelo = forma < 8 ? REX_LOAD_U32(mgr + 2096 + 7608 + 4 * forma) : 0;
+    if (forma && modelo && observada != forma) {
+      REXLOG_INFO("dbz3 fusion: prueba absorcion: lado 1 forma {} modelo {:08X}", forma, modelo);
+      observada = forma;
+    }
+    return;
+  }
+  // PRUEBA (#75): DBZ3_TEST_BU_VUELTA=1 -> Bu absorbido se queda sin ki (como el jugador tras dos definitivas) hasta que el juego
+  // lo devuelve a su forma; luego sigue pulsando: segunda absorcion en el mismo combate
+  static const bool vuelta = std::getenv("DBZ3_TEST_BU_VUELTA") && std::atoi(std::getenv("DBZ3_TEST_BU_VUELTA")) == 1;
+  if (vuelta && g_bu_forma[0] && REX_LOAD_U32(mgr + 2096 + kForm) == g_bu_forma[0]) {
+    StoreF(base, mgr + 2096 + kKi, 0.0f);
+    REXLOG_INFO("dbz3 fusion: prueba: Bu absorbido sin ki (forma {})", g_bu_forma[0]);
+    return;
+  }
   StoreF(base, mgr + 2096 + kKi, 7000.0f);
   {  // X+64: posicion (x, y, z): solo en el suelo; el alto no se toca
     const uint32_t a = mgr + 2096 + 64, b = mgr + 2096 + 8240 + 64;
@@ -643,7 +961,11 @@ bool BuFormaDeCapsula(uint8_t* base, uint32_t x, uint32_t cap, uint32_t& forma) 
   if (!mgr || x < mgr + 2096 || REX_LOAD_U32(x + kId) != 35) return false;
   const uint32_t p = (x - mgr - 2096) / 8240, skc = REX_LOAD_U32(dbz3::GA(0x8237560C));
   forma = REX_LOAD_U32(x + kForm);
-  if (p > 1 || !skc || cap >= 1024 || !g_bu_forma[p] || forma != g_bu_forma[p]) return false;
+  if (p <= 1 && g_bu_transp[p] && g_bu_forma[p] && forma == g_bu_forma[p]) {   // B2-P19: las capsulas de la forma puesta (2 o 3), no las de la que salio
+    REX_STORE_U32(x + kForm, g_bu_transp[p]);
+    return true;
+  }
+  if (p > 1 || !skc || cap >= dbz3::roster::CatalogueLimit() || !g_bu_forma[p] || forma != g_bu_forma[p]) return false;   // catalogo ampliado
   const uint8_t mascara = REX_LOAD_U8(skc + 40 * cap + 14);
   if (!mascara || (mascara >> forma & 1)) return false;
   uint32_t vale = 0;
@@ -679,12 +1001,68 @@ DBZ3_HOOK(sub_82100C10, dbz3eu_sub_82100D10) {   // EU: misma funcion (llama a 8
   orig(ctx, base);
 }
 
+// La limpieza nativa decide entre nodo y datos procesados por X+7920.
+// Devolver el prestamo ANTES evita que libere las voces prestadas como si fueran las de Bu.
+// #75: el desmontaje del combate pasa por aqui con el gestor aun vivo; se devuelve el
+// prestamo de ESE combate (epoca del desmontaje) y la epoca sube para el siguiente.
+DBZ3_HOOK_EU(sub_821092C8) {
+  const uint32_t x = ctx.r3.u32, mgr = REX_LOAD_U32(dbz3::fusion::kMgr);
+  if (mgr) {
+    if (mgr != dbz3::fusion::g_teardown_mgr) {   // primer luchador de este desmontaje
+      dbz3::fusion::g_teardown_epoca = dbz3::fusion::g_bu_combate;
+      ++dbz3::fusion::g_bu_combate;
+      dbz3::fusion::g_teardown_mgr = mgr;
+    }
+    for (size_t p = 0; p < 2; ++p)
+      if (x == mgr + 2096 + 8240 * uint32_t(p))
+        dbz3::fusion::BuRestauraVoces(ctx, base, x, p, dbz3::fusion::g_teardown_epoca);
+  }
+  orig(ctx, base);
+}
+
+// #75: el reproductor de animaciones de un luchador (X+1616 / X+3280, avanza el cuadro en sub_820F98B0) lee el banco (clip >> 16)
+// de la instancia del modelo (+1344, banco en +40+4*b) y su tabla +24. Tras la absorcion de Bu y la vuelta a su forma el banco 0
+// quedaba nulo. La raiz de voces y su reenlace se restauran arriba; esta guarda
+// conserva la proteccion para mods incompletos. La prueba #75 puede usar ambos
+// reproductores originales con DBZ3_TEST_BU_REPRODUCTOR_ORIGINAL=1.
+DBZ3_HOOK(sub_820F98B0, dbz3eu_sub_820F98C8) {
+  if (static const bool original = std::getenv("DBZ3_TEST_BU_REPRODUCTOR_ORIGINAL") != nullptr; original) {
+    orig(ctx, base);
+    return;
+  }
+  static bool visto = false;
+  if (!visto) { visto = true; REXLOG_INFO("dbz3 fusion: gancho del reproductor activo (primera llamada, EU {})", dbz3::g_guest_eu ? 1 : 0); }
+  const uint32_t p = ctx.r3.u32, inst = REX_LOAD_U32(p + 1344);
+  const int32_t clip = int32_t(REX_LOAD_U32(p + 1600));
+  if (inst && clip >= 0 && !REX_LOAD_U32(inst + 40 + 4 * (uint32_t(clip) >> 16))) {
+    static uint32_t ultimo = 0xFFFFFFFFu;
+    if (ultimo != uint32_t(clip)) {
+      ultimo = uint32_t(clip);
+      REXLOG_WARN("dbz3 fusion: reproductor {:08X}: el clip {:08X} pide un banco sin cargar (instancia {:08X}, forma {}): se salta el avance",
+                  p, uint32_t(clip), inst, int32_t(REX_LOAD_U32(p + 1364)));
+      if (std::getenv("DBZ3_TEST_BU_DIAG")) {
+        const uint32_t x = REX_LOAD_U32(p + 1384);
+        REXLOG_INFO("dbz3 bu75: fallo x {:08X} id {} modelo {:08X} voz {:08X}/{:08X} instancia {:08X} palabras {:08X} {:08X} {:08X} {:08X}",
+                    x, x ? REX_LOAD_U32(x + 7420) : 0, x ? REX_LOAD_U32(x + 2952) : 0,
+                    x ? REX_LOAD_U32(x + 7920) : 0, x ? REX_LOAD_U32(x + 7924) : 0,
+                    inst, REX_LOAD_U32(inst + 32), REX_LOAD_U32(inst + 36), REX_LOAD_U32(inst + 40), REX_LOAD_U32(inst + 44));
+      }
+    }
+    return;
+  }
+  orig(ctx, base);
+}
+
 // Guarda comun de la pose (1/11, subFusion): un clip cuyo descriptor no tiene tabla de pistas (+12 = 0) mientras el modelo
 // tiene huesos con pista asignada hacia el sampler del juego (sub_8208D518), que lee la direccion 0 y cierra todo (access violation).
 // Pasa con cualquier forma cuyo banco de animaciones no trae el clip que pide el guion (un mod sin moveset en la forma de fallo
 // de una fusion). Aqui se salta esa pose (el modelo se queda como estaba) y se avisa; las demas poses no se tocan.
 // r3 = modelo, r4 = estado del clip (+0 almacen<<16|clip, +8 cuadro). Mapa hueso->pista: modelo+688+almacen*512 (lha por hueso).
 DBZ3_HOOK(sub_8208DC60, dbz3eu_sub_8208DC28) {
+  if (static const bool original = std::getenv("DBZ3_TEST_BU_REPRODUCTOR_ORIGINAL") != nullptr; original) {
+    orig(ctx, base);
+    return;
+  }
   const uint32_t model = ctx.r3.u32, st = ctx.r4.u32;
   const uint32_t w = REX_LOAD_U32(st), banco = w >> 16;
   const uint32_t acm = REX_LOAD_U32(model + 4 * (banco + 282));

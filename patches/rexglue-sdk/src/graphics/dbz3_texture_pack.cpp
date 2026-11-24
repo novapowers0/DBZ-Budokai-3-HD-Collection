@@ -1511,6 +1511,13 @@ const Dbz3TexturePackEntry* Dbz3HiddenEntry(uint64_t hash, bool side_borders_hid
   if (!side_borders_hidden) {
     return nullptr;
   }
+  // POST/SDK-01-borde: con `dbz3_ui_borde_nativo` (lo define el exe; se lee al arrancar) los menus del juego
+  // conservan sus tiras como en el original ("borde" y la greca: probado, sin la greca la tira no se ve); las
+  // pantallas propias siguen sin tiras (game_style.cpp).
+  static const bool borde_nativo = rex::cvar::GetFlagByName("dbz3_ui_borde_nativo") == "true";
+  if (borde_nativo) {
+    return nullptr;
+  }
   for (const HiddenTexture& t : Hidden()) {
     if (t.entry.hash == hash) {
       return &t.entry;

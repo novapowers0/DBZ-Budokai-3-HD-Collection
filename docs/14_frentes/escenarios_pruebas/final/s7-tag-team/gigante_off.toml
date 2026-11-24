@@ -1,0 +1,24 @@
+# S7 / GIG02: modo gigante APAGADO, identico al nativo (control).
+# FASE 3: lo deja escrito el carril S7; lo ejecuta Z una sola vez.
+#   python tools\pruebas.py correr smoke_a "docs\14_frentes\escenarios_pruebas\final\s7-tag-team\gigante_off.toml"
+#
+# clave    = GIG02 (off identico)
+# cvar     = dbz3_jefe_gigante=0 (explicito) y sin DBZ3_GIGANTE
+# criterio = combate normal completo y vuelta al menu. NO debe salir ninguna linea "gigante:" (escala, FOV ni
+#            regla de reto); el log se compara con el del escenario "batalla" de la bateria (misma firma).
+# log      = "hub: combate nativo", "tag: combate acabado", pantalla 5; ninguna "dbz3 gigante:"
+descripcion = "GIG02 control: combate normal con el modo gigante apagado (sin lineas gigante:)"
+env = [
+  "DBZ3_TEST_BATTLE=0,7,2",
+  "DBZ3_TEST_RINGOUT=1",
+  "DBZ3_TEST_CFG=dbz3_jefe_gigante=0",
+]
+pasos = [
+  "log \"hub: combate nativo\" 40",
+  "log \"tag: empieza un combate\" 40",
+  "esperar 6000",
+  "captura a_combate",
+  "log \"tag: combate acabado\" 40",
+  "esperar_pantalla 5 60",
+  "captura b_menu",
+]

@@ -1,0 +1,18 @@
+# PM-32 HM-03: el HUD del combate del Heroe enseña al maestro de la SAGA (Ginyu = saga 0 entrena a Goku) con el rotulo "Maestro de saga".
+#   python tools\pruebas.py correr smoke_b tools\pruebas_heroe\heroe_hud_maestro.toml
+descripcion = "Heroe: HUD del combate con el maestro que entrena la saga (HM-03)"
+env = ["DBZ3_TEST_MODO=heroe", "DBZ3_HUB_MODE=5", "DBZ3_TEST_HEROE_SAGA=0",
+       "DBZ3_TEST_CFG=dbz3_heroe_ui_nueva=true", "REX_DBZ3_LANGUAGE=5", "REX_DBZ3_UI_LANGUAGE=5"]
+pasos = [
+  'log "dbz3 rpg: Modo Heroe" 240',
+  "esperar 5000",
+  "tecla W 800",
+  "tecla Space 3000",
+  'log "hub: combate nativo" 120',
+  "tecla Space 1500",
+  "tecla Space 1500",
+  "tecla Space 1500",
+  "tecla Space 1500",
+  "esperar 4000",
+  "captura a_hud_maestro",
+]

@@ -55,13 +55,14 @@
 // v1.5.1.2 = escenarios de PS2 (B2/B1/IW) sin Kit ni Python instalado (Python portatil en el zip; ISO elegida con .ruta),
 // salir del tablero de B2, heroe: cara propia en la saga, peinado en calvos, scouter, nombres con acentos.
 // v1.5.6.2 = #72: importar B1/B2 y recetas de Nova sin el Budokai 3 de PS2 (hdps2), herramientas que faltaban en el zip, motivo real de fallo en las recetas.
+// v1.5.7 = Modo Heroe v2 (rutas, habitacion, recompensas, tecnicas; beta, apagado), razas XV2 en el launcher, Dragon Budokai Survivors y Rogue (beta), Modo Competitivo, Modos, ranking online (beta), IW traducido (apagado).
 #include <windows.h>
 
 #define VERSION_MAJOR 1
 #define VERSION_MINOR 5
-#define VERSION_PATCH 6
-#define VERSION_BUILD 2
-#define DBZ3_VERSION_STR "1.5.6.2"
+#define VERSION_PATCH 7
+#define VERSION_BUILD 0
+#define DBZ3_VERSION_STR "1.5.7"
 
 VS_VERSION_INFO VERSIONINFO
 FILEVERSION VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH, VERSION_BUILD

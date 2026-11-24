@@ -82,3 +82,432 @@ nivel = 3
 vence = 36
 nombre_es = "Super Saiyan 3 (vencer a Kid Bu)"
 nombre_en = "Super Saiyan 3 (beat Kid Buu)"
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Evolucion por raza (DISENO 7.1, maqueta 12; solo con el ajuste dbz3_heroe_evolucion, apagado de serie). tipo "forma":
+#   raza    0 Saiyan, 1 Humano, 2 Namekiano, 3 Raza de Freezer, 4 Majin, 5 Androide (orden de las pestanas de Evolucion)
+#   rama    "" tronco comun, "A" / "B": el camino que la abre (camino_es/en = su nombre en la pantalla)
+#   previa  id de la forma anterior de la cadena ("" = sale de la forma base)
+#   marca   marca de ruta que abre el camino ("" = ninguna). HOY SON MARCAS DE PRUEBA (DBZ3_TEST_HEROE_MARCAS="a,b"):
+#           heroe-rutas las pondra de verdad en `marcas` de la ficha (enganche: heroe.cpp Marcas()).
+#   vence / abre_con   condicion: ganar a ese rival, o tener ya ese desbloqueo (ssj1..3); sin ninguna, se abre sola.
+#   cara    luchador cuya cabeza nativa se ve en el nodo;  capsula  capsula de transformacion que da (op 51);  cond_es/en  texto.
+# Los textos de condicion y los rivales son propuestas [H] de DISENO 7.1. La regla esta en src/heroe_formas.h (con test).
+# ---------------------------------------------------------------------------------------------------------------------
+
+[[desbloqueo]]
+id = "f_sai_ssj"
+tipo = "forma"
+raza = 0
+rama = ""
+previa = ""
+marca = ""
+vence = 27
+abre_con = "ssj1"
+cara = 0
+capsula = 2
+nombre_es = "Super Saiyan"
+nombre_en = "Super Saiyan"
+cond_es = "Vence a Freezer"
+cond_en = "Beat Frieza"
+
+[[desbloqueo]]
+id = "f_sai_ssj2"
+tipo = "forma"
+raza = 0
+rama = ""
+previa = "f_sai_ssj"
+marca = ""
+vence = 33
+abre_con = "ssj2"
+cara = 0
+capsula = 3
+nombre_es = "Super Saiyan 2"
+nombre_en = "Super Saiyan 2"
+cond_es = "Vence a Cell"
+cond_en = "Beat Cell"
+
+[[desbloqueo]]
+id = "f_sai_kaioken"
+tipo = "forma"
+raza = 0
+rama = "A"
+previa = ""
+marca = "maestro_goku"
+cara = 0
+capsula = 1
+nombre_es = "Kaioken"
+nombre_en = "Kaioken"
+cond_es = "Elige a Goku de maestro"
+cond_en = "Pick Goku as master"
+camino_es = "Camino de Goku"
+camino_en = "Goku's path"
+
+[[desbloqueo]]
+id = "f_sai_ssj3"
+tipo = "forma"
+raza = 0
+rama = "A"
+previa = "f_sai_ssj2"
+marca = "maestro_goku"
+vence = 36
+abre_con = "ssj3"
+cara = 0
+capsula = 4
+nombre_es = "Super Saiyan 3"
+nombre_en = "Super Saiyan 3"
+cond_es = "Vence a Kid Bu con Goku de maestro"
+cond_en = "Beat Kid Buu with Goku as master"
+camino_es = "Camino de Goku"
+camino_en = "Goku's path"
+
+[[desbloqueo]]
+id = "f_sai_majin"
+tipo = "forma"
+raza = 0
+rama = "B"
+previa = "f_sai_ssj2"
+marca = "villanos_revividos"
+vence = 35
+cara = 7
+capsula = 407
+nombre_es = "Vegeta Majin"
+nombre_en = "Majin Vegeta"
+cond_es = "Vence a Super Bu en la ruta de los villanos"
+cond_en = "Beat Super Buu on the villains route"
+camino_es = "Camino de Vegeta"
+camino_en = "Vegeta's path"
+
+[[desbloqueo]]
+id = "f_hum_potencial"
+tipo = "forma"
+raza = 1
+rama = "A"
+previa = ""
+marca = "opc_namek"
+cara = 10
+capsula = 53
+nombre_es = "Potencial liberado"
+nombre_en = "Unlocked potential"
+cond_es = "Haz el opcional de Namek (Gran Patriarca)"
+cond_en = "Do the optional fight on Namek"
+camino_es = "Camino del Patriarca"
+camino_en = "Elder's path"
+
+[[desbloqueo]]
+id = "f_hum_maestria"
+tipo = "forma"
+raza = 1
+rama = "B"
+previa = ""
+marca = "maestro_krilin"
+cara = 10
+capsula = 0
+nombre_es = "Maestría de técnicas"
+nombre_en = "Technique mastery"
+cond_es = "Elige a Krilin de maestro"
+cond_en = "Pick Krillin as master"
+camino_es = "Camino del maestro"
+camino_en = "Master's path"
+
+[[desbloqueo]]
+id = "f_nam_nail"
+tipo = "forma"
+raza = 2
+rama = "A"
+previa = ""
+marca = "camino_vegeta"
+cara = 11
+capsula = 57
+nombre_es = "Sincronía con Nail"
+nombre_en = "Fusion with Nail"
+cond_es = "Sigue a Vegeta y haz el opcional de Namek"
+cond_en = "Follow Vegeta and do the optional fight"
+camino_es = "Camino de Vegeta"
+camino_en = "Vegeta's path"
+
+[[desbloqueo]]
+id = "f_nam_kami"
+tipo = "forma"
+raza = 2
+rama = "B"
+previa = ""
+marca = "maestro_piccolo"
+cara = 11
+capsula = 58
+nombre_es = "Fusión con Kami"
+nombre_en = "Fusion with Kami"
+cond_es = "Elige a Piccolo de maestro"
+cond_en = "Pick Piccolo as master"
+camino_es = "Camino de Piccolo"
+camino_en = "Piccolo's path"
+
+[[desbloqueo]]
+id = "f_fre_2"
+tipo = "forma"
+raza = 3
+rama = "A"
+previa = ""
+marca = "camino_nave"
+cara = 27
+capsula = 96
+nombre_es = "Freezer 2.ª forma"
+nombre_en = "Frieza 2nd form"
+cond_es = "Toma el camino de la Nave de Freezer"
+cond_en = "Take the Frieza ship route"
+camino_es = "Camino de la Nave"
+camino_en = "Ship route"
+
+[[desbloqueo]]
+id = "f_fre_3"
+tipo = "forma"
+raza = 3
+rama = "A"
+previa = "f_fre_2"
+marca = "camino_nave"
+vence = 33
+cara = 27
+capsula = 97
+nombre_es = "Freezer 3.ª forma"
+nombre_en = "Frieza 3rd form"
+cond_es = "Vence a un rival de la Saga de Cell"
+cond_en = "Beat a rival in the Cell saga"
+camino_es = "Camino de la Nave"
+camino_en = "Ship route"
+
+[[desbloqueo]]
+id = "f_fre_final"
+tipo = "forma"
+raza = 3
+rama = "A"
+previa = "f_fre_3"
+marca = "camino_nave"
+vence = 33
+cara = 27
+capsula = 98
+nombre_es = "Forma final"
+nombre_en = "Final form"
+cond_es = "Vence a Cell en el Ring"
+cond_en = "Beat Cell in the ring"
+camino_es = "Camino de la Nave"
+camino_en = "Ship route"
+
+[[desbloqueo]]
+id = "f_fre_100"
+tipo = "forma"
+raza = 3
+rama = "A"
+previa = "f_fre_final"
+marca = "camino_nave"
+vence = 36
+cara = 27
+capsula = 99
+nombre_es = "Freezer 100 %"
+nombre_en = "Frieza 100%"
+cond_es = "Vence a Kid Bu"
+cond_en = "Beat Kid Buu"
+camino_es = "Camino de la Nave"
+camino_en = "Ship route"
+
+[[desbloqueo]]
+id = "f_fre_cooler"
+tipo = "forma"
+raza = 3
+rama = "B"
+previa = ""
+marca = "maestro_freezer"
+cara = 38
+capsula = 133
+nombre_es = "Cooler forma final"
+nombre_en = "Cooler final form"
+cond_es = "Elige a Freezer de maestro"
+cond_en = "Pick Frieza as master"
+camino_es = "Camino del maestro"
+camino_en = "Master's path"
+
+[[desbloqueo]]
+id = "f_maj_super"
+tipo = "forma"
+raza = 4
+rama = "A"
+previa = ""
+marca = "camino_maldad"
+cara = 35
+capsula = 0
+nombre_es = "Super Bu"
+nombre_en = "Super Buu"
+cond_es = "Villanos revividos: vence a Gohan en la Saga de Bu"
+cond_en = "Revived villains: beat Gohan in the Buu saga"
+camino_es = "Camino de la maldad"
+camino_en = "Path of evil"
+
+[[desbloqueo]]
+id = "f_maj_absorcion"
+tipo = "forma"
+raza = 4
+rama = "A"
+previa = "f_maj_super"
+marca = "camino_maldad"
+vence = 33
+cara = -1
+capsula = 123
+nombre_es = "Absorción"
+nombre_en = "Absorption"
+cond_es = "Vence a un rival tras ser Super Bu"
+cond_en = "Beat a rival as Super Buu"
+camino_es = "Camino de la maldad"
+camino_en = "Path of evil"
+
+[[desbloqueo]]
+id = "f_maj_kid"
+tipo = "forma"
+raza = 4
+rama = "B"
+previa = ""
+marca = "camino_puro"
+cara = 36
+capsula = 0
+nombre_es = "Kid Bu"
+nombre_en = "Kid Buu"
+cond_es = "Pide el deseo «más poder» a Shenron"
+cond_en = "Wish for \"more power\" from Shenron"
+camino_es = "Camino puro"
+camino_en = "Pure path"
+
+[[desbloqueo]]
+id = "f_and_absorcion"
+tipo = "forma"
+raza = 5
+rama = "A"
+previa = ""
+marca = "camino_lab"
+cara = -1
+capsula = 114
+nombre_es = "Absorción de C-17"
+nombre_en = "C-17 absorption"
+cond_es = "Toma el camino del Laboratorio de Gero"
+cond_en = "Take the Gero's Lab route"
+camino_es = "Laboratorio de Gero"
+camino_en = "Gero's Lab"
+
+[[desbloqueo]]
+id = "f_and_perfecto"
+tipo = "forma"
+raza = 5
+rama = "A"
+previa = "f_and_absorcion"
+marca = "camino_lab"
+vence = 33
+cara = 33
+capsula = 115
+nombre_es = "Cell perfecto"
+nombre_en = "Perfect Cell"
+cond_es = "Vence a Cell en el Laboratorio"
+cond_en = "Beat Cell in the Lab"
+camino_es = "Laboratorio de Gero"
+camino_en = "Gero's Lab"
+
+[[desbloqueo]]
+id = "f_and_super"
+tipo = "forma"
+raza = 5
+rama = "A"
+previa = "f_and_perfecto"
+marca = "camino_lab"
+vence = 36
+cara = 33
+capsula = 116
+nombre_es = "Cell superperfecto"
+nombre_en = "Super Perfect Cell"
+cond_es = "Vence a Kid Bu"
+cond_en = "Beat Kid Buu"
+camino_es = "Laboratorio de Gero"
+camino_en = "Gero's Lab"
+
+[[desbloqueo]]
+id = "f_and_accel"
+tipo = "forma"
+raza = 5
+rama = "B"
+previa = ""
+marca = "camino_ciudad"
+cara = 30
+capsula = 107
+nombre_es = "Accel Dance"
+nombre_en = "Accel Dance"
+cond_es = "Toma el camino de la Ciudad"
+cond_en = "Take the City route"
+camino_es = "Ciudad"
+camino_en = "City"
+
+# HEROE-TEC T2 (dbz3_heroe_tecnicas_v2): capsulas del hueco de ESQUIVA. Son las de apoyo nativas con efecto 0x43 del #SKC
+# (actuan al esquivar, teletransportarse o desviar; RE en src/heroe_tecnicas_v2.inl). Se abren con el % del maestro.
+[[desbloqueo]]
+id = "esquiva_desvio_piccolo"
+tipo = "tecnica"
+capsula = 409
+maestro = 11
+entreno = 60
+nombre_es = "Esquiva: Gero's Deflection R&D (Piccolo al 60 %)"
+nombre_en = "Dodge: Gero's Deflection R&D (Piccolo 60%)"
+
+[[desbloqueo]]
+id = "esquiva_concentracion_krilin"
+tipo = "tecnica"
+capsula = 445
+maestro = 10
+entreno = 60
+nombre_es = "Esquiva: Concentration (Krilin al 60 %)"
+nombre_en = "Dodge: Concentration (Krillin 60%)"
+
+[[desbloqueo]]
+id = "esquiva_caparazon_goku"
+tipo = "tecnica"
+capsula = 444
+maestro = 0
+entreno = 60
+nombre_es = "Esquiva: Turtle Shell (Goku al 60 %)"
+nombre_en = "Dodge: Turtle Shell (Goku 60%)"
+
+[[desbloqueo]]
+id = "esquiva_devolver_cell"
+tipo = "tecnica"
+capsula = 410
+maestro = 33
+entreno = 100
+nombre_es = "Esquiva: Gero's Deflect-Back R&D (Cell al 100 %)"
+nombre_en = "Dodge: Gero's Deflect-Back R&D (Cell 100%)"
+
+[[desbloqueo]]
+id = "f_maj_absorbida"
+tipo = "forma"
+raza = 4
+rama = "A"
+previa = "f_maj_absorcion"
+marca = "camino_maldad"
+vence = 37
+cara = 35
+capsula = 0
+nombre_es = "Forma absorbida"
+nombre_en = "Absorbed form"
+cond_es = "Vence a Gohan en la Saga de Bu"
+cond_en = "Beat Gohan in the Buu saga"
+camino_es = "Camino de la maldad"
+camino_en = "Path of evil"
+
+[[desbloqueo]]
+id = "f_maj_kid2"
+tipo = "forma"
+raza = 4
+rama = "B"
+previa = "f_maj_kid"
+marca = "camino_puro"
+vence = 36
+cara = 36
+capsula = 0
+nombre_es = "Kid Bu desatado"
+nombre_en = "Unleashed Kid Buu"
+cond_es = "Vence a Kid Bu con el Camino puro"
+cond_en = "Beat Kid Buu on the pure path"
+camino_es = "Camino puro"
+camino_en = "Pure path"

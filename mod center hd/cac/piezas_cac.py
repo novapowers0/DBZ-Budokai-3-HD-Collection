@@ -14,6 +14,7 @@ Uso:
   python piezas_cac.py [inventario.tsv] [salida.toml] [--bins DIR]
 """
 import argparse
+import json
 import os
 import re
 import sys
@@ -81,14 +82,31 @@ def main():
                            "idx_afs": -1, "archivo": bins[clave]})
             tipos[tipo] += 1
 
+    # R16: recetas propias (IDs estables); no contienen modelos/texturas del jugador.
+    import partes_originales
+    piezas.extend(partes_originales.catalogo())
+    import partes_majin
+    piezas.extend(partes_majin.catalogo_b3())
+    import namek_original
+    piezas.extend(namek_original.catalogo_b3())
+    import ia_namek
+    piezas.extend(ia_namek.catalogo_b3())
+
     with open(a.salida, "w", encoding="utf-8") as o:
         o.write("# Catalogo del creador de personaje (frente 02, studies 6).\n")
         o.write("# Generado por mod center hd/cac/piezas_cac.py. NO editar a mano.\n\n")
         for p in piezas:
             o.write("[[pieza]]\n")
-            o.write('tipo = "%s"\nid = %d\nnombre = "%s"\nidx_afs = %d\narchivo = "%s"\n\n'
-                    % (p["tipo"], p["id"], p["nombre"].replace('"', "'"),
-                       int(p["idx_afs"]), p["archivo"].replace("\\", "/")))
+            for clave in ("tipo", "id", "nombre", "idx_afs", "archivo", "cuerpos"):
+                if clave not in p:
+                    continue
+                valor = p[clave]
+                if clave == "idx_afs":
+                    valor = int(valor)
+                elif clave == "archivo":
+                    valor = valor.replace("\\", "/")
+                o.write("%s = %s\n" % (clave, json.dumps(valor, ensure_ascii=False)))
+            o.write("\n")
     print("piezas:", tipos, "->", a.salida)
     return 0
 

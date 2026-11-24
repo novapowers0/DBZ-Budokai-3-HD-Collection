@@ -1,0 +1,16 @@
+# SOLO Z/fase3. Radar no tiene arosA: recoger/marcar D y terminar con bolaG+16A5.
+# Humo de logs; verificar bola=1,mascara,reentrada,marca activa y audit18/18 por separado.
+# AvisosC/D permanecenOFF. No usar punto de llegada como criterio de exito.
+descripcion = "7DF Radar: humo del cierre por bola; aceptacion Radar pendiente"
+env = [
+  'DBZ3_PS2_GAMES=D:\DBZ3HD\ps2_games',
+  "DBZ3_TEST_IWMINI=0x7DF,auto",
+  "DBZ3_TEST_CFG=dbz3_iw_logica_original=true;dbz3_iw_7d0_original=true;dbz3_iw_cierre_campo_original=true",
+]
+pasos = [
+  'log "iwmini: prueba: empieza" 90',
+  "captura 00_radar",
+  'log "dbz3 iwmini: cierre original indice 16 total" 180',
+  'log "dbz3 iwmini: prueba: resultado superado true" 180',
+  "captura 01_resultado",
+]

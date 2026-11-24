@@ -245,10 +245,15 @@ que recompilar `rexgpu-xenos` en ambas variantes (v3 y v2) y copiar las DLLs.
 > cp -a patches/rexglue-sdk/. rexglue-sdk-0.10/        # PowerShell: Copy-Item -Recurse -Force
 > ```
 >
-> La lista de abajo es la historica (parches 1-13, v1.0-v1.3); el detalle de lo
-> anadido en la v1.4.0 esta en la ultima seccion de este README.
+> **La carpeta es el overlay COMPLETO** (desde la v1.4.0): tiene mas de 100
+> archivos y se copia entera. La lista de abajo es la base historica de los
+> parches 1-13 (v1.0-v1.3) mas los archivos del 12/11 y **no** es la lista
+> completa: si copias solo esos, faltan cabeceras, shaders y `.hlsl` y el link o
+> la compilacion fallan. Para el overlay actual, copia la carpeta entera (ver el
+> bloque de arriba).
 
-Copiar los 19 archivos sobre el SDK (rutas relativas a la raiz del SDK):
+Los archivos base (los 19 historicos y los anadidos el 12/11), con rutas
+relativas a su raiz:
 
 ```
 patches/rexglue-sdk/include/rex/filesystem/afs.h      ->  rexglue-sdk/include/rex/filesystem/afs.h
@@ -264,7 +269,18 @@ patches/rexglue-sdk/src/input/sdl/sdl_input_driver.cpp
                                                       ->  rexglue-sdk/src/input/sdl/sdl_input_driver.cpp
 patches/rexglue-sdk/src/kernel/xam/xam_info.cpp    ->  rexglue-sdk/src/kernel/xam/xam_info.cpp
 patches/rexglue-sdk/src/ui/presenter.cpp            ->  rexglue-sdk/src/ui/presenter.cpp
+patches/rexglue-sdk/include/rex/ui/d3d12/d3d12_presenter.h
+                                                      ->  rexglue-sdk/include/rex/ui/d3d12/d3d12_presenter.h
 patches/rexglue-sdk/src/ui/d3d12/d3d12_presenter.cpp -> rexglue-sdk/src/ui/d3d12/d3d12_presenter.cpp
+patches/rexglue-sdk/src/graphics/dbz3_texture_pack.h  ->  rexglue-sdk/src/graphics/dbz3_texture_pack.h
+patches/rexglue-sdk/src/graphics/dbz3_texture_pack.cpp
+                                                      ->  rexglue-sdk/src/graphics/dbz3_texture_pack.cpp
+patches/rexglue-sdk/src/graphics/shaders/dbz3_night.hlsl
+                                                      ->  rexglue-sdk/src/graphics/shaders/dbz3_night.hlsl
+patches/rexglue-sdk/src/graphics/command_processor.cpp
+                                                      ->  rexglue-sdk/src/graphics/command_processor.cpp
+patches/rexglue-sdk/src/graphics/d3d12/command_processor.cpp
+                                                      ->  rexglue-sdk/src/graphics/d3d12/command_processor.cpp
 patches/rexglue-sdk/src/graphics/graphics_system.cpp  ->  rexglue-sdk/src/graphics/graphics_system.cpp
 patches/rexglue-sdk/src/system/dbz1_audio_jp_flag.cpp  ->  rexglue-sdk/src/system/dbz1_audio_jp_flag.cpp
 patches/rexglue-sdk/src/system/dbz1_diag_flags.cpp     ->  rexglue-sdk/src/system/dbz1_diag_flags.cpp
@@ -300,6 +316,51 @@ Copy-Item rexglue-sdk/out/win-amd64/rexgpu-xenos.dll out/build/win-amd64-release
 Los scripts `mod center hd/swap_b3.py` y `mod center hd/texture_b3.py` generan
 los overrides con el padding correcto (al to_read del slot, o al to_read
 virtual si el bin es mayor) y el runtime los sirve con el mid-insert virtual.
+
+## 2026-11-09/12 - Overlay: texturas, borde nativo, cielo de noche y latencia
+
+Estos archivos ya estan en la carpeta `rexglue-sdk/` y forman parte del overlay.
+No son opcionales: si falta uno, la compilacion falla o la DLL se queda sin la
+funcion. Los que llevan cabecera y `.cpp` van **en pareja** (misma version).
+
+- **`include/rex/ui/d3d12/d3d12_presenter.h`** + **`src/ui/d3d12/d3d12_presenter.cpp`**
+  (rexruntime): cabecera y cuerpo del presentador D3D12. La cabecera declara los
+  recursos temporales del guest (`Dbz3TemporalInputs`, profundidad, movimiento y
+  reactividad), los tiempos de GPU del pintado y la cola de presentacion de
+  `dbz3_baja_latencia`. El `.cpp` aplica el frame cap, los tiempos y la latencia.
+- **`src/graphics/dbz3_texture_pack.{h,cpp}`** (rexgpu-xenos): indice y carga de
+  los packs de texturas estilo PCSX2 (`<hash>_<W>x<H>_<FOURCC>.dds/.png`), mas
+  el lector de `dbz3_ui_borde_nativo`: con la opcion encendida, los menus del
+  juego conservan sus tiras laterales cuando "Bordes dorados" esta apagado. La
+  cvar del exe se lee **una vez al arrancar**; por eso el ajuste pide reiniciar.
+  `src/graphics/CMakeLists.txt` compila estos dos archivos.
+- **`src/ui/presenter.cpp`** (rexruntime): frame cap (`frame_cap`), modo oculto
+  de pruebas, `dbz3_baja_latencia` y su sonda, y el arreglo de las bandas de
+  `dbz3_aspect=keep` en pantallas ultraanchas: la proporcion de las bandas sale
+  de la imagen del juego (1280x720), no del modo de video.
+- **`src/graphics/shaders/dbz3_night.hlsl`** + su bytecode
+  **`src/graphics/shaders/bytecode/d3d12_5_1/dbz3_night_ps.h`** (rexgpu-xenos):
+  pase de cielo de noche de "Clima vivo" (`dbz3_clima_noche`, lo pone
+  `src/clima.cpp` del juego). Corre donde el relight, sobre la escena 3D
+  compuesta y antes del HUD. Si se toca el `.hlsl`, regenerar la cabecera con
+  `fxc /nologo /T ps_5_1 /E night_ps /O3 /Vn dbz3_night_ps /Fh
+  bytecode/d3d12_5_1/dbz3_night_ps.h dbz3_night.hlsl`.
+- **`src/graphics/d3d12/command_processor.cpp`** (rexgpu-xenos): contadores de
+  la linea `perf`, lineas `tiron`, reporte DRED y el pase de cielo de noche
+  (`dbz3_night.hlsl`).
+- **`src/graphics/command_processor.cpp`** (rexgpu-xenos): control del hilo del
+  command processor (`dbz3_cp_event_wait`), contador `g_dbz3_regmem_wait_us`,
+  escala de rim light y ajustes de cielo. Va con su cabecera
+  `include/rex/graphics/command_processor.h`.
+- **`SLOTS_PJ-10_afs_ScanModDirs.patch`**: parche en formato diff (no es una
+  copia completa) sobre `src/filesystem/afs.cpp`. Anade
+  `dbz3_afs_saltar_fuentes` (apagado de serie; se enciende con
+  `dbz3_afs_saltar_fuentes = true`): al escanear `mods/`, salta las carpetas
+  FUENTE de `roster_build` (con `personaje.toml`/`traje.toml` pero sin `us/` ni
+  `eu/`), que no sirven ningun AFS. Con muchos mods ahorra decenas de segundos
+  de arranque. Se aplica despues de copiar el overlay:
+  `git apply SLOTS_PJ-10_afs_ScanModDirs.patch` (o a mano; el parche son dos
+  bloques pequenos). Si el `afs.cpp` copiado ya trae la cvar, no lo apliques.
 
 ## Cambios 2026-09-18 (rendimiento + texturas HD)
 

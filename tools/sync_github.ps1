@@ -43,7 +43,8 @@ function Sync-Tree([string]$src, [string]$rel, [string[]]$ExcludeDir = @(),
         return
     }
     New-Item -ItemType Directory -Path $dstFull -Force | Out-Null
-    $args = @("$srcFull", "$dstFull", "/MIR", "/NJH", "/NJS", "/NDL", "/NP")
+    # No seguir enlaces de directorio: mod center hd/tools apunta al XDK local.
+    $args = @("$srcFull", "$dstFull", "/MIR", "/XJ", "/NJH", "/NJS", "/NDL", "/NP")
     foreach ($x in $ExcludeDir) { $args += "/XD"; $args += $x }
     foreach ($x in $ExcludeFile) { $args += "/XF"; $args += $x }
     & robocopy @args | Out-Null
@@ -55,11 +56,11 @@ Write-Output "=== Sincronizando proyecto -> github/ ==="
 
 # Carpetas versionables (mirror exacto). Excluye cachés/artefactos que el
 # .gitignore de github/ ya ignora.
-Sync-Tree "src"                  "src"
+Sync-Tree "src"                  "src" -ExcludeFile @("*.local.inc")   # clave del ranking: nunca a github
 # docs/07_ports (estudios de ports) y docs/13_assets_externos (catalogo de arte de terceros) son privados.
 Sync-Tree "docs"                 "docs"           @("07_ports", "13_assets_externos")
 Sync-Tree "awo_tools"            "awo_tools"      @("bins_trabajo")
-Sync-Tree "mod center hd"        "mod center hd"  @("__pycache__")
+Sync-Tree "mod center hd"        "mod center hd"  @("__pycache__", "tools")
 Sync-Tree "portforge"            "portforge"
 # tools: mirror pero CONSERVA los .exe canonicos (xbcompress/xbdecompress) que
 # viven solo en github/ (ver .gitignore !tools/*.exe).

@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""biblioteca_anim.py - Biblioteca de clips de animacion de los personajes del Budokai 3 HD (solo lectura).
+"""biblioteca_anim.py - Biblioteca de clips de animacion de los personajes del Budokai 3 HD y motor de recetas.
 
 Lista cada clip de cada personaje del roster (id, nombre, codigo BSK, indice de animacion, n de
 fotogramas) leyendo us/data_cmn.afs del jugador con los lectores del proyecto (afs_pair, studio_core,
-altura). Nunca escribe en us/ ni en mods/.
+altura). Nunca escribe en us/; aplicar_receta escribe solo en la carpeta del mod que se le da.
 
   python biblioteca_anim.py listar [--texto goku] [--categoria ataque] [--json]
   python biblioteca_anim.py resumen
   python biblioteca_anim.py receta-guardar --destino-personaje 0 --destino-codigo 0x21b \\
          --fuente-personaje 5 --fuente-codigo 0x21b --out receta.toml [--nombre "Goku con golpe de Saiyaman"]
+  python biblioteca_anim.py aplicar --receta receta.toml --mod mods/mi_mod   (KIT-08: ver "aplicar recetas")
   python biblioteca_anim.py selftest
 
 Mapeo (RE del proyecto, docs/03_formatos/ACM_FORMAT.md y awo_tools/altura.py:code_anim):
@@ -213,29 +214,323 @@ def leer_receta(path):
     return r
 
 
-def validar_receta(receta, filas):
-    """Comprueba que destino y fuente existen en la biblioteca. -> lista de problemas (vacia = ok)."""
-    problemas = []
-    for nom in ("destino", "fuente"):
-        d = receta[nom]
+# ------------------------------------------------------------------ aplicar recetas (KIT-08)
+# Receta (dict o .toml v1):
+#   [destino] personaje, codigo              accion que cambia de movimiento
+#   [fuente]  personaje, codigo, desde?, hasta?   de donde sale (desde/hasta = recorte en fotogramas)
+#   [despues] personaje, codigo, desde?, hasta?   (opcional) segundo clip empalmado tras la fuente
+#   [[mas]]   personaje, codigo, desde?, hasta?   (opcional, KIT-09) mas tramos tras despues, en orden
+#   mezcla = N                                    fotogramas de mezcla entre cada par de tramos
+#   duracion = N                                  (opcional) re-temporizar el resultado a N fotogramas
+# Como cinematica.py (patron probado en juego): el clip se ANADE al #ACM propio del destino y el
+# sub-bloque del codigo en el #CSK pasa a apuntarlo. El resto del #CSK (golpes, dano, efectos, marcas)
+# es el del destino: editar fotogramas de las lineas AP crashea en combate (ACM_FORMAT.md 4.1), asi que
+# llevarse las marcas de golpe de la fuente queda como "no viable aun".
+# Huesos: el motor empareja pistas por nombre (sufijo tras el prefijo GOK_/VGT_...; asi comparte el
+# banco de poses del select, memoria b1-moveset-port); acm_append ya reasigna por sufijo. Si el destino
+# no tiene un hueso del cuerpo (b1port.CORE_BONES) que la fuente mueve, se rechaza.
+CINE_RANGO = (0x480, 0x500)       # agarres (0x480+) y cinematica de la definitiva (0x4A0+): con camara del guion
+CORE_BONES = {"BODY", "WAIST", "STMC", "CHEST", "NECK", "HEAD", "LCHN", "RCHN", "LARMROT", "RARMROT",
+              "LARM1", "RARM1", "LARM2", "RARM2", "LHANDROT", "RHANDROT", "L00_LHAND", "L00_RHAND",
+              "LLEGROT", "RLEGROT", "LLEG1", "RLEG1", "LLEG2", "RLEG2", "LFOOT1", "RFOOT1",
+              "LFOOT2", "RFOOT2", "M_JAW"}   # = awo_tools/b1port.CORE_BONES (b1port arrastra el puerto B1 entero)
+
+
+def _cin():
+    import cinematica  # noqa: PLC0415  (awo_tools: _keys/_track/_rot_at)
+    return cinematica
+
+
+def _rb():
+    import roster_build  # noqa: PLC0415  (acm_read/acm_append)
+    return roster_build
+
+
+def _subbloques(csk, code):
+    """Offsets de los sub-bloques de 48 B del codigo (regla de b1port.bsk_blocks / ps2hd.conv_bsk, en BE)."""
+    n, lst, _nhr, hr = struct.unpack_from(">4I", csk, 0x10)
+    if code >= n:
+        return []
+    a = struct.unpack_from(">I", csk, lst + 4 * code)[0]
+    if not a:
+        return []
+    aset = set(struct.unpack_from(">%dI" % n, csk, lst))
+    s, subs = a, []
+    while s + 48 <= hr:
+        pad, nap, apo = struct.unpack_from(">3I", csk, s + 0x24)
+        if pad or not 0 <= nap < 64 or (nap and not hr > apo >= 0x20):
+            break
+        subs.append(s)
+        s += 48
+        if s in aset:
+            break
+    return subs
+
+
+_acm_cache = {}
+
+
+def _acm_de(fid, us=None):
+    """(nombres, anims, csk) del ANM nativo `fid` (acm_read del primer #ACM)."""
+    key = (fid, os.path.abspath(sc.us_dir(us)))
+    if key not in _acm_cache:
+        anm = sc.hd_entry(fid, us)
+        csk, _ = sc.csk_of(anm)
+        acm, _ = sc.anim_pool(anm)
+        names, anims = _rb().acm_read(acm)
+        _acm_cache[key] = (names, anims, csk)
+    return _acm_cache[key]
+
+
+def _persona(pid):
+    p = next((x for x in personajes() if x["id"] == int(pid)), None)
+    if p is None:
+        raise ValueError("el personaje %s no existe en el roster" % pid)
+    return p
+
+
+def clip_de(d, us=None):
+    """Clip (flags, var, frames, {hueso: [giro, pos]}) de {personaje, codigo} (+ desde/hasta = recorte)."""
+    p = _persona(d["personaje"])
+    _names, anims, csk = _acm_de(p["anm"], us)
+    info = sc.code_info(csk, ">", int(d["codigo"])) if csk else None
+    if info is None:
+        raise ValueError("%s no tiene el codigo %#x" % (p["nombre"], int(d["codigo"])))
+    anim, pool, _ = info
+    if pool != 3 or anim >= len(anims) or anims[anim][3] is None:
+        raise ValueError("%s %#x usa un clip del banco comun %d: no viable aun (solo clips propios, banco 3)"
+                         % (p["nombre"], int(d["codigo"]), pool))
+    c = anims[anim]
+    if d.get("desde") is not None or d.get("hasta") is not None:
+        c = recortar(c, int(d.get("desde") or 0), int(d["hasta"]) if d.get("hasta") is not None else c[2] - 1)
+    return c
+
+
+def _remuestrear(c, fuentes):
+    """Clip con un fotograma por cada frame fuente (float) de `fuentes` (claves en todos los fotogramas)."""
+    cin = _cin()
+    fl, var, _n, bones = c
+    out = {}
+    for bone, tr in (bones or {}).items():
+        nt = []
+        for i, kind in enumerate(("rot", "pos")):
+            head, keys = cin._keys(tr[i] if len(tr) > i else None, kind)
+            if not keys:
+                nt.append(None)
+                continue
+            val = (lambda f: cin._rot_at(keys, f)) if kind == "rot" else (lambda f: sc.sample(keys, f))
+            nt.append(cin._track(head, [[d] + list(val(f)) for d, f in enumerate(fuentes)], kind))
+        out[bone] = nt
+    return (fl & ~0x10, var, len(fuentes), out)
+
+
+def recortar(c, desde, hasta):
+    """Fotogramas desde..hasta (incluidos; hasta < desde = al reves)."""
+    nf = c[2]
+    a, b = max(0, min(desde, nf - 1)), max(0, min(hasta, nf - 1))
+    paso = 1 if b >= a else -1
+    return _remuestrear(c, list(range(a, b + paso, paso)))
+
+
+def cambiar_duracion(c, n):
+    """El mismo movimiento re-temporizado a n fotogramas (mas lento o mas rapido)."""
+    if n < 2:
+        raise ValueError("la duracion minima es 2 fotogramas")
+    nf = c[2]
+    return _remuestrear(c, [d * (nf - 1) / (n - 1) for d in range(n)])
+
+
+def mezclar(a, b, n):
+    """a y despues b, con los ultimos n fotogramas de a fundidos con los n primeros de b
+    (giros por la vuelta mas corta, posiciones en linea recta). Total = len(a) + len(b) - n.
+    Un hueso que solo mueve uno de los dos clips toma, en el otro tramo, el valor del clip que lo
+    mueve en el empalme (asi no salta)."""
+    cin = _cin()
+    na, nb = a[2], b[2]
+    n = max(0, min(int(n), na, nb))
+    start = na - n
+    total = na + nb - n
+
+    def lerp(x, y, t, kind):
+        if kind == "rot":
+            return [int(round(u + (((v - u + 32768) % 65536) - 32768) * t)) % 65536 for u, v in zip(x, y)]
+        return [u + (v - u) * t for u, v in zip(x, y)]
+
+    out = {}
+    for bone in set(a[3] or {}) | set(b[3] or {}):
+        ta, tb = (a[3] or {}).get(bone) or [None, None], (b[3] or {}).get(bone) or [None, None]
+        nt = []
+        for i, kind in enumerate(("rot", "pos")):
+            ha, ka = cin._keys(ta[i], kind)
+            hb, kb = cin._keys(tb[i], kind)
+            if not ka and not kb:
+                nt.append(None)
+                continue
+            at = (lambda k: (lambda f: cin._rot_at(k, f)) if kind == "rot" else (lambda f: sc.sample(k, f)))
+            va = at(ka) if ka else (lambda f, _v=at(kb)(0): _v)
+            vb = at(kb) if kb else (lambda f, _v=at(ka)(na - 1): _v)
+            keys = []
+            for d in range(total):
+                if d < start:
+                    v = va(d)
+                elif d >= na:
+                    v = vb(d - start)
+                else:
+                    v = lerp(va(d), vb(d - start), (d - start + 1) / (n + 1), kind)
+                keys.append([d] + list(v))
+            nt.append(cin._track(ha or hb, keys, kind))
+        out[bone] = nt
+    return (a[0] & ~0x10, a[1], total, out)
+
+
+def _tramos(receta):
+    """[(nombre, tramo)] de los clips de una receta, en orden: fuente, despues y los de `mas` (KIT-09)."""
+    out = [("fuente", receta["fuente"])] + ([("despues", receta["despues"])] if receta.get("despues") else [])
+    return out + [("tramo %d" % (k + 3), t) for k, t in enumerate(receta.get("mas") or [])]
+
+
+def clip_receta(receta, us=None):
+    """Clip final de una receta (fuente [+ recorte] [+ despues y mas, con mezcla] [+ duracion])."""
+    c = clip_de(receta["fuente"], us)
+    for _nom, t in _tramos(receta)[1:]:
+        c = mezclar(c, clip_de(t, us), int(receta.get("mezcla") or 0))
+    if receta.get("duracion"):
+        c = cambiar_duracion(c, int(receta["duracion"]))
+    return c
+
+
+def _limites(filas):
+    fr = [f["frames"] for f in filas if f["pool"] == 3 and f["frames"]]
+    return (min(fr), max(fr)) if fr else (2, 600)
+
+
+def validar_receta(receta, filas=None, us=None):
+    """Avisos de una receta antes de aplicarla (vacia = sin pegas). Los que empiezan por "ERROR:"
+    impiden aplicarla: no existe el clip, banco comun, faltan huesos del cuerpo en el destino.
+    Avisos: huesos secundarios que el destino no tiene, duracion fuera de lo que usan los clips del
+    juego, marcas de golpe del destino que caen fuera del clip nuevo, clip de cinematica (con camara
+    del guion) puesto en otro sitio o con otra duracion."""
+    filas = biblioteca(us) if filas is None else filas
+    av = []
+    for nom, d in [("destino", receta["destino"])] + _tramos(receta):
         if not any(f["personaje"] == d["personaje"] and f["codigo"] == d["codigo"] for f in filas):
-            problemas.append("%s: personaje %s, codigo %#x no existe en el juego" % (nom, d["personaje"], d["codigo"]))
-    return problemas
+            av.append("ERROR: %s: personaje %s, codigo %#x no existe en el juego" % (nom, d["personaje"], d["codigo"]))
+    if av:
+        return av
+    try:
+        nuevo = clip_receta(receta, us)
+        orig = clip_de({k: receta["destino"][k] for k in ("personaje", "codigo")}, us)
+    except ValueError as ex:
+        return ["ERROR: %s" % ex]
+    dst = receta["destino"]
+    pd = _persona(dst["personaje"])
+    names_d, _anims, csk_d = _acm_de(pd["anm"], us)
+    tiene = {_rb()._suffix(n) for n in names_d}
+    for nom, t in _tramos(receta):
+        movidos = {b for b, tr in (clip_de(t, us)[3] or {}).items() if any(tr[:2])}
+        faltan = sorted(movidos - tiene)
+        core = [b for b in faltan if b in CORE_BONES]
+        if core:
+            av.append("ERROR: %s mueve huesos del cuerpo que %s no tiene: %s (esqueleto distinto)" % (
+                nom, pd["nombre"], ", ".join(core)))
+        elif faltan:
+            av.append("aviso: %s no tiene %s: esa parte no se movera" % (pd["nombre"], ", ".join(faltan)))
+    lo, hi = _limites(filas)
+    if not lo <= nuevo[2] <= hi:
+        av.append("aviso: el clip dura %d fotogramas; los del juego van de %d a %d" % (nuevo[2], lo, hi))
+    marcas = [f for f, t in sc.code_info(csk_d, ">", int(dst["codigo"]))[2] if t == 1]
+    fuera = [f for f in marcas if f >= nuevo[2]]
+    if fuera:
+        av.append("aviso: los golpes del destino caen en los fotogramas %s y el clip nuevo acaba en el %d: "
+                  "esos golpes no llegaran a salir" % (fuera, nuevo[2] - 1))
+    cine = lambda c: CINE_RANGO[0] <= int(c) < CINE_RANGO[1]  # noqa: E731
+    if cine(dst["codigo"]) and nuevo[2] != orig[2]:
+        av.append("aviso: %#x es de una cinematica: su camara dura %d fotogramas y el clip %d (desincronizado)"
+                  % (int(dst["codigo"]), orig[2], nuevo[2]))
+    if cine(receta["fuente"]["codigo"]) and not cine(dst["codigo"]):
+        av.append("aviso: el clip de la fuente es de una cinematica: aqui se vera sin su camara")
+    return av
 
 
-def aplicar_receta(receta, mod_dir):
-    """NO IMPLEMENTADO (a proposito). Para aplicarla hace falta, verificado antes:
-      1. Sustituir el bloque de animacion del codigo destino en el #CSK del ANM del personaje destino
-         (csk_graft / csk_set_anim de capsulas.py, mismo patron que roster_build.csk_copy_codes).
-      2. Insertar en el #ACM del destino los datos de pose del clip fuente. Como los esqueletos de
-         personajes distintos no coinciden, habria que remapear huesos (altura.py) y verificar que el
-         tamano del #ACM cambia en multiplos aceptados por amb_rebuild y por el runtime.
-      3. Guardar el ANM en mod_dir/us/data_cmn.afs/<fid>/ (como campana.write_entry / roster_build.write_entry),
-         con respaldo previo, sin tocar us/.
-    Sin esos tres pasos verificados en juego, esta funcion no escribe nada."""
-    raise NotImplementedError("aplicar_receta pendiente: ver el docstring (hace falta remapeo de huesos y "
-                              "reemplazo de clip verificados en juego). Receta: %s -> %s" % (
-                                  receta.get("fuente"), receta.get("destino")))
+def _anm_mod(fid, mod_dir, us=None):
+    """ANM del destino: el que ya dejo el mod (las recetas se acumulan) o el del juego."""
+    ruta = os.path.join(mod_dir, "us", "data_cmn.afs", str(fid), "geom.bin")
+    if os.path.isfile(ruta):
+        from kit import base  # noqa: PLC0415
+        with open(ruta, "rb") as fh:
+            return base.lzx_bytes(fh.read(), False), ruta
+    return sc.hd_entry(fid, us), ruta
+
+
+def anm_con_clip(anm, code, clip):
+    """ANM HD con `clip` anadido al #ACM propio y el codigo apuntandolo (sub-bloques con el mismo clip
+    que el primero; los de otros clips, p.ej. la version en el aire, se quedan). -> (bin, n sub-bloques)."""
+    from sb_tecnicas import amb_hd, kids  # noqa: PLC0415
+    ks = list(kids(anm, ">"))
+    ci = next(i for i, (x, _) in enumerate(ks) if x[:4] == b"#CSK")
+    ai = next(i for i, (_x, t) in enumerate(ks) if t == 3)
+    csk, acm = bytearray(ks[ci][0]), ks[ai][0]
+    n_anims = struct.unpack_from(">I", acm, 0x10)[0]
+    subs = _subbloques(csk, code)
+    if not subs:
+        raise ValueError("el codigo %#x no tiene bloque en el moveset destino: anadir golpes nuevos no es "
+                         "viable aun (haria falta injertar golpes y dano)" % code)
+    first, pool = struct.unpack_from(">HH", csk, subs[0])
+    if pool != 3:
+        raise ValueError("el codigo %#x del destino usa el banco comun %d: no viable aun" % (code, pool))
+    hechos = 0
+    for s in subs:
+        if struct.unpack_from(">HH", csk, s) == (first, 3):
+            struct.pack_into(">H", csk, s, n_anims)
+            hechos += 1
+    ks[ci] = (bytes(csk), ks[ci][1])
+    ks[ai] = (_rb().acm_append(acm, [clip]), ks[ai][1])
+    return amb_hd(ks), hechos
+
+
+def aplicar_receta(receta, mod_dir, us=None):
+    """Escribe en `mod_dir` el override del ANM del destino (mods/<mod>/us/data_cmn.afs/<fid>/geom.bin,
+    LZX /N:2048, relleno al tamano que lee el juego) con el clip de la receta en su codigo, mas
+    manifest.txt y animaciones.json (registro de recetas). Respaldo previo en <mod>/respaldo/<fecha>/.
+    Errores legibles (ValueError) si la receta no es viable; no escribe nada en ese caso.
+    -> dict(ruta, fid, tamano, informe, avisos)."""
+    av = validar_receta(receta, us=us)
+    errs = [a for a in av if a.startswith("ERROR")]
+    if errs:
+        raise ValueError("\n".join(errs))
+    from kit import base  # noqa: PLC0415
+    dst = receta["destino"]
+    pd = _persona(dst["personaje"])
+    code = int(dst["codigo"])
+    clip = clip_receta(receta, us)
+    anm, ruta = _anm_mod(pd["anm"], mod_dir, us)
+    out, hechos = anm_con_clip(anm, code, clip)
+    comp = base.lzx_bytes(out, True)
+    slot = sc.afs_slot(pd["anm"], us)
+    tam = max((slot + 0xFFF) & ~0xFFF, (len(comp) + 0xFFF) & ~0xFFF)   # >= to_read del juego (sin eso, crash)
+    when = sc.stamp()
+    reg = os.path.join(mod_dir, "animaciones.json")
+    man = os.path.join(mod_dir, "manifest.txt")
+    sc.backup(mod_dir, [ruta, reg, man], when)
+    sc.atomic_write(ruta, comp + bytes(tam - len(comp)))
+    with open(ruta, "rb") as fh:
+        if base.lzx_bytes(fh.read(), False) != out:
+            raise RuntimeError("la comprobacion del override fallo (LZX)")
+    hist = []
+    if os.path.isfile(reg):
+        with open(reg, encoding="utf-8") as fh:
+            hist = json.load(fh)
+    hist.append(dict(receta, aplicada=when, fid=pd["anm"], frames=clip[2]))
+    sc.atomic_write(reg, json.dumps(hist, indent=1).encode("utf-8"))
+    mod = os.path.basename(os.path.normpath(mod_dir))
+    if not os.path.isfile(man):
+        sc.atomic_write(man, ("name=%s\ndescription=Animaciones de %s (Kit)\ntype=animacion\nsource=ANM %d\n"
+                              "target=%d\nregion=us\n" % (mod, pd["nombre"], pd["anm"], pd["anm"])).encode("utf-8"))
+    f = receta["fuente"]
+    inf = "%s %#x: %d fotogramas de %s %#x%s (%d sub-bloque(s))" % (
+        pd["nombre"], code, clip[2], _persona(f["personaje"])["nombre"], int(f["codigo"]),
+        " + empalme" if receta.get("despues") else "", hechos)
+    return dict(ruta=ruta, fid=pd["anm"], tamano=len(comp), informe=inf, avisos=av)
 
 
 # ------------------------------------------------------------------ pose de un fotograma (para la pagina)
@@ -300,11 +595,11 @@ def _selftest(us=None):
         r = leer_receta(pth)
         chk("receta ida y vuelta", r["destino"]["personaje"] == d["personaje"] and r["fuente"]["codigo"] == f_["codigo"])
         chk("receta valida contra la biblioteca", validar_receta(r, filas) == [], str(validar_receta(r, filas)))
-    try:
-        aplicar_receta({"fuente": {}, "destino": {}}, td)
-        chk("aplicar_receta no escribe (NotImplementedError)", False)
-    except NotImplementedError:
-        chk("aplicar_receta no escribe (NotImplementedError)", True)
+    try:   # receta imposible: error legible y nada escrito (la prueba completa: kit/prueba_pelicula.py)
+        aplicar_receta({"destino": dict(personaje=0, codigo=0x7FFF), "fuente": dict(personaje=0, codigo=0)}, td)
+        chk("aplicar_receta rechaza un codigo inexistente", False)
+    except ValueError:
+        chk("aplicar_receta rechaza un codigo inexistente", not os.path.exists(td))
     print("RESULTADO: %d/%d OK" % (sum(ok), len(ok)))
     return all(ok)
 
@@ -327,7 +622,17 @@ def main(argv=None):
     rg.add_argument("--out", required=True)
     rg.add_argument("--nombre", default="")
     sub.add_parser("selftest")
+    apl = sub.add_parser("aplicar")
+    apl.add_argument("--receta", required=True)
+    apl.add_argument("--mod", required=True)
     a = ap.parse_args(argv)
+    if a.cmd == "aplicar":
+        r = leer_receta(a.receta)
+        for x in validar_receta(r, us=a.us):
+            print(x)
+        res = aplicar_receta(r, a.mod, a.us)
+        print(res["informe"], "->", res["ruta"])
+        return 0
     if a.cmd == "selftest":
         return 0 if _selftest(a.us) else 1
     filas = biblioteca(a.us)

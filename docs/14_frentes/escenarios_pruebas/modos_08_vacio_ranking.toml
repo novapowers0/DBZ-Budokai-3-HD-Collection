@@ -1,0 +1,32 @@
+descripcion = "MODOS-08 PERFIL VACIO (sin combates.csv ni perfil online): Auditoria modos: HUB > Ranking (fila con su bocadillo, las 4 paginas con RB/derecha, salir con B al HUB)"
+env = ["DBZ3_HUB_MODE=5"]
+# MODOS-08: la prueba empieza sin partidas a medias y deja la copia como estaba (pruebas.py, _guion_preparar)
+apartar = ["user_data/dbz3/rpg.toml*", "user_data/dbz3/hub_modos.toml*", "user_data/dbz3/modos", "user_data/dbz3/retos.csv", "user_data/dbz3/combates.csv*", "user_data/dbz3/online_profile.toml*", "user_data/dbz3/laboratorio.csv*", "user_data/dbz3/hub_heroe.toml*", "user_data/dbz3/pasarela"]
+pasos = [
+  "esperar_pantalla 5 120",
+  "log 'menu principal estado 3' 60",
+  "esperar 3000",
+  "tecla W 1200",
+  "tecla Space 3500",
+  "log 'hub: entra la pantalla HUB' 60",
+  "tecla S 700",
+  "tecla S 700",
+  "tecla S 700",
+  "tecla S 700",
+  "tecla S 700",
+  "tecla S 700",
+  "esperar 800",
+  "captura 01_entrada",
+  "tecla Space 2500",
+  "captura 02_pagina1",
+  "tecla D 1500",
+  "captura 03_pagina2",
+  "tecla D 1500",
+  "captura 04_pagina3",
+  "tecla D 1500",
+  "captura 05_pagina4",
+  "tecla D 1500",
+  "captura 06_pagina_vuelta",
+  "tecla Backspace 2500",
+  "captura 07_salir_con_B_al_hub",
+]

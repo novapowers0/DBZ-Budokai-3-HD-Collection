@@ -17,6 +17,10 @@ namespace dbz3::anim {
 
 enum Fase : int { kApagado = 0, kInicio = 1, kBucle = 2, kFin = 3 };
 
+// true mientras se lee el banco de IW (Leer, hilo del juego). Con la ISO en frio son 10-15 s o mas: el vigilante del
+// combate (pasarela.cpp VigilarCombate) no cuenta ese tiempo.
+bool LeyendoIW();
+
 // Pide la fase del scatto para el luchador x (direccion del luchador, p. ej. mgr + 2096). Cualquier hilo; se aplica
 // en el siguiente cuadro en el hilo del juego (gancho propio al leer el mando). kInicio pasa sola a kBucle al acabar
 // su animacion; kFin pasa sola a kApagado, que deja al luchador en guardia (accion 0) y al juego andar como siempre.
@@ -125,6 +129,10 @@ uint32_t CodigoQte(uint32_t cmn, uint32_t codigo);
 float AlturaRaiz(uint8_t* base, uint32_t x);
 // Lo mismo con la posicion entera de la cadera (x, y, z; el salto de superado de IW va 50 u hacia delante, z): false si no hay.
 bool RaizActual(uint8_t* base, uint32_t x, float out[3]);
+// IWINI (11/11): cadera ORIGINAL (coordenadas absolutas de IW) de un actor del guion del vuelo (0x370/0x375/0x758/
+// 0x75D/0x75E y sus alias) en el cuadro dado. Es la pista que SinRecta quita de la animacion: el consumidor coloca
+// con ella al actor, como el original (AMM y AMC en par absoluto). false si ese codigo no la guardo.
+bool CaderaGuion(uint32_t codigo, float cuadro, float out[3]);
 // 31/10: el codigo de IW de un alias de kExtras (0xFA6 -> 0x3B6); si no es alias, el mismo.
 uint32_t CodigoOriginalIW(uint32_t codigo);
 // AP9 del modelo principal IW: factor persistente y velocidad real de299EE0.

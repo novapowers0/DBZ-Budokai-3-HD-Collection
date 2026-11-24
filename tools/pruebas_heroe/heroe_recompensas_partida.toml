@@ -1,0 +1,31 @@
+# HEROE-REC R2/R4 (12/11): partida guiada del Heroe, UNA saga por ring out (como smoke_c_v05_resultado; el cierre de la saga reabre la intro del Universo Dragon, asi que cada saga siguiente es otro lanzamiento sobre la MISMA ficha) con
+# dbz3_heroe_recompensas encendido. Cada saga cerrada da su premio de tramo (el de la saga en que este la ficha de la copia) y el resultado
+# lo avisa con el bloque "¡Recompensa!". Lanzar en smoke_c, sin --forzar:
+#   python tools\pruebas.py correr smoke_c tools\pruebas_heroe\heroe_recompensas_partida.toml
+descripcion = "Heroe: una saga ganada = recompensa de tramo con aviso (3 lanzamientos = 3 recompensas)"
+env = ["DBZ3_TEST_MODO=heroe", "DBZ3_HUB_MODE=5", "DBZ3_TEST_RINGOUT=1", "DBZ3_TEST_HEROE_SAGA=0",
+       "DBZ3_TEST_CFG=dbz3_heroe_ui_nueva=true;dbz3_heroe_recompensas=true"]
+pasos = [
+  'log "dbz3 rpg: Modo Heroe" 240',
+  "esperar 5000",
+  "tecla W 800",
+  'hasta_log "hub: combate nativo" 90',
+  "tecla Space 3000",
+  "fin",
+  'log "combate 1 ganado" 120',
+  "esperar 6000",
+  'hasta_log "combate 2: pedido" 30',
+  "tecla Space 4000",
+  "fin",
+  'log "combate 2 ganado" 120',
+  "esperar 6000",
+  'hasta_log "combate 3: pedido" 30',
+  "tecla Space 4000",
+  "fin",
+  'log "fin de saga" 150',
+  'log "dbz3 heroe: premio (repetido )?r_t[0-9]+_" 20',
+  "esperar 4000",
+  "captura a_cierre",
+  "tecla Space 2500",
+  "captura b_resultado",
+]

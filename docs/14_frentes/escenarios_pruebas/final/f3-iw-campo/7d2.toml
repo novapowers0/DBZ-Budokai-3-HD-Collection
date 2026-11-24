@@ -1,0 +1,18 @@
+# IW-F03 11/11: recuperado de D:/_PARA_BORRAR_CLAUDE/solF3_ronda2_20261110_1055/7d2.toml.
+# Cierre original de Serpiente: planificador de tareas del ELF y final en el hito (+16BC=2, EU s_SPACE 411680-411694
+# -> 0x299900(actor,1)); banco sin juego E:/DBZ3HD_trabajo/iw-f03/serpiente_banco.py 900/900.
+# Humo: no sustituye la pareja original/port ni la validacion audiovisual. USA en IW-F13b.
+descripcion = "7D2 cierre original (hito) con planificador real: humo de logs"
+env = [
+  'DBZ3_PS2_GAMES=D:\DBZ3HD\ps2_games',
+  "DBZ3_TEST_IWMINI=0x7D2,auto",
+  "DBZ3_TEST_CFG=dbz3_iw_logica_original=true;dbz3_iw_7d0_original=true;dbz3_iw_cierre_campo_original=true;dbz3_iw_serpiente_original=true",
+]
+pasos = [
+  'log "iwmini: prueba: empieza" 90',
+  "captura 00_salida",
+  'log "dbz3 iwmini: cierre original Serpiente: hito alcanzado" 240',
+  'log "dbz3 iwmini: cierre original indice 2 total" 30',
+  'log "dbz3 iwmini: prueba: resultado superado true" 180',
+  "captura 01_resultado",
+]

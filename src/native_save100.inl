@@ -289,6 +289,18 @@ bool ApplySave100(std::string& message, bool in_game) {
   }
   message = std::string(i18n::T("Todo desbloqueado. Héroe y Tag Team conservados. Copia de seguridad: ",
                                 "Everything unlocked. Hero and Tag Team preserved. Backup: ")) + rex::path_to_utf8(backup);
+  {   // HEROE-REC: "Desbloquear todo" marca tambien la Coleccion del Heroe entera (coleccion.toml global; las fichas no se tocan)
+    std::error_code e2;
+    const fs::path col = settings::UserDataRoot() / "coleccion.toml";
+    std::string vistos = "[]";
+    if (std::ifstream in(col); in) {
+      std::string l;
+      while (std::getline(in, l))
+        if (l.rfind("vistos", 0) == 0) vistos = l.substr(l.find('=') + 1);
+    }
+    fs::create_directories(col.parent_path(), e2);
+    std::ofstream(col, std::ios::binary | std::ios::trunc) << "# Coleccion del Modo Heroe (global): lo visto y el desbloqueo total.\ntodo = true\nvistos =" << vistos << "\n";
+  }
   REXLOG_INFO("dbz3: save_100 applied: {}", rex::path_to_utf8(backup));
   return true;
 }

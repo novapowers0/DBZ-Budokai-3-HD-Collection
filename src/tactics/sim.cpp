@@ -53,6 +53,7 @@ int Sim::Anadir(const DefUnidad& d, int equipo, Casilla c) {
   pienso_hasta_.push_back(0);
   ant_.push_back(-1);
   retro_.push_back(false);
+  quieta_.push_back(0);
   ocupa_[idx] = static_cast<int>(u_.size()) - 1;
   return ocupa_[idx];
 }
@@ -158,6 +159,7 @@ int Sim::Elegir(int u, int* paso) {
 void Sim::Empezar(int u, Accion a, int obj) {
   Unidad& x = u_[u];
   retro_[u] = false;
+  quieta_[size_t(u)] = 0;
   if (a == Accion::Mover) {
     x.estado = Estado::Moviendo; x.destino = obj; ocupa_[obj] = u;
     x.t_impacto = 0; x.t_fin = tick_ + std::max(1, 600 / std::max(1, x.def.velocidad));
@@ -193,7 +195,12 @@ void Sim::Decidir(int u) {
   if (paso == -1) Empezar(u, Accion::Basico, obj);
   else if (paso >= 0 && paso == ant_[u] && !retro_[u]) retro_[u] = true, pienso_hasta_[u] = static_cast<int>(tick_) + kEsperaRetroceso;   // volver atras: primero se espera un poco por si se despeja el camino
   else if (paso >= 0) Empezar(u, Accion::Mover, paso);
-  else pienso_hasta_[u] = static_cast<int>(tick_) + kEsperaBloqueo;
+  else {
+    pienso_hasta_[u] = static_cast<int>(tick_) + kEsperaBloqueo;
+    // TACTICS-01 (atasco): sin camino a ningun enemigo (los suyos le rodean, p. ej. el ultimo rival en una casilla del borde con 3 vecinas ocupadas)
+    // y ya mas de kAtascoTicks sin hacer nada: concentra ki, y la tecnica (de mas alcance) le saca de la espera en vez de quedarse parado.
+    if (quieta_[size_t(u)] >= static_cast<uint32_t>(kAtascoTicks)) x.ki = std::min(x.def.ki_max, x.ki + kKiAtasco);
+  }
 }
 
 void Sim::Comprobar() {
@@ -277,10 +284,12 @@ void Sim::Paso() {
   for (size_t i = 0; i < u_.size(); ++i) if (u_[i].estado == Estado::Espera) libres.push_back(static_cast<int>(i));
   for (size_t i = libres.size(); i > 1; --i) std::swap(libres[i - 1], libres[combate_.Hasta(static_cast<uint32_t>(i))]);
   for (int id : libres) Decidir(id);
+  for (int id : libres)   // TACTICS-01: medida de atascos (no cambia el combate)
+    if (u_[size_t(id)].estado == Estado::Espera && ++quieta_[size_t(id)] > quieta_max_) quieta_max_ = quieta_[size_t(id)], quieta_unidad_ = id;
 }
 
 Resultado Sim::Resumen() const {
-  Resultado r; r.terminada = fin_; r.ticks = tick_;
+  Resultado r; r.terminada = fin_; r.ticks = tick_; r.quieta_max = quieta_max_; r.quieta_unidad = quieta_unidad_;
   for (const Unidad& u : u_) if (u.viva()) { ++r.vivas[u.equipo]; r.vida[u.equipo] += u.vida; }
   if (fin_) r.ganador = ev_.back().valor;
   return r;

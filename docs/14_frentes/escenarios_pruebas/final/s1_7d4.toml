@@ -1,0 +1,26 @@
+# S1 / IW 0x7D4 (NB006, "Gohan's Training"): logica ORIGINAL + efectos de acierto/fallo (destello del aro 0x2A y
+# cruz/chispas 7/8 del icono). Victoria con el piloto; la derrota es el mismo escenario con ',fallos' en DBZ3_TEST_IWMINI.
+#
+# clave    = IW-M05 / 0x7D4
+# cvar     = dbz3_iw_7d4_original=true (ya de serie) y dbz3_iw_efectos_original=true (nueva, APAGADA)
+# criterio = banco qte7d4.py comparar = 1290/1299 con los 9 residuos explicados (contador +0x10 x3 y bytes de
+#            fallado 0x1F8/0x1FC/0x25C); en juego: se ve el destello en el aro al acertar y la cruz al fallar.
+# log      = "dbz3 r14: 7D4 con la logica original del ELF (dbz3_iw_7d4_original)" y "r14: fin: "
+descripcion = "7D4 (NB006) original con dbz3_iw_efectos_original: victoria del piloto con destello de acierto en el aro"
+env = [
+  "DBZ3_TEST_IWMINI=0x7D4,auto",
+  "DBZ3_TEST_QTE_LOG=1",
+  "DBZ3_TEST_CFG=dbz3_iw_7d4_original=true;dbz3_iw_efectos_original=true",
+  'DBZ3_PS2_GAMES=D:\DBZ3HD\ps2_games',
+]
+pasos = [
+  "log \"iwmini: prueba: empieza\" 90",
+  "log \"r14: en juego\" 90",
+  "captura a_ready",
+  "log \"dbz3 r14: 7D4 con la logica original del ELF\" 20",
+  "esperar 6000",
+  "captura b_iconos",
+  "log \"r14: fin: \" 240",
+  "esperar 1500",
+  "captura c_fin",
+]

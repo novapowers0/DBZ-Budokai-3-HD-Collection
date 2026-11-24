@@ -1,0 +1,42 @@
+# F9 / SB-01, dspor-6 (#68) y DR01 (#63) — Dragon Rush de Gohan del Futuro (mod port_gohan_futuro, id 26 en la copia)
+# con cámara cercana y la mitigación del salto del atacante.
+# FASE 3: lo deja escrito F9; lo ejecuta Z una sola vez.
+#   python tools\pruebas.py correr smoke_a "docs\14_frentes\escenarios_pruebas\final\f9-combate-rush\rush.toml"
+#
+# clave    = SB-01 / dspor-6 (#68) y DR01 (#63)
+# cvar     = dbz3_rush_sin_salto=true (NUEVA, APAGADA de serie; src/combate.cpp). El Rush es nativo.
+# criterio = (a) DR01: al salir del Rush el atacante queda a <= 20 u de su sitio (línea DR01) y no a ~110 u;
+#            (b) #68: con la cámara cercana del Rush la cara/manos de GHF no se quedan en la pose neutra
+#            (fotos 01/02 frente al mismo Rush del nativo 7 en la misma corrida de control);
+#            (c) ningún ERROR ni cierre.
+# log      = "dbz3 combate: DR01: el lado 1 vuelve a su sitio tras el Rush"
+#
+# PENDIENTE_JUEGO: la copia de pruebas debe tener instalado mods/port_gohan_futuro (id del roster de la copia;
+# 26 tras instalar los 5 mods de F9 en smoke_a el 10/11) y el rival nativo 7.
+# Entrada del Rush (medida 4/11): hiper (L+P+Space+Quote) -> acercarse (D) -> L+P -> R1+B (3+Quote).
+descripcion = "Dragon Rush de Gohan del Futuro (#68) con camara cercana y mitigacion del salto (#63)"
+env = [
+  "DBZ3_TEST_BATTLE=26,7,2",
+  "DBZ3_COMBATE_MUNECO=quieto",
+  "DBZ3_TEST_CFG=dbz3_rush_sin_salto=true;dbz3_combate_definitiva_directa=false",
+]
+pasos = [
+  # el modo 1 (Duelo con presentacion) tarda en llegar al estado 4: las teclas de antes se pierden
+  "esperar_pelea 120",
+  "esperar 12000",             # en el modo 1 la presentacion (FIGHT!) acaba varios segundos despues del estado 4
+  "captura 00_inicio",
+  "tecla L+P+Space+Quote:2500 2600",
+  "tecla D:900 1100",
+  "tecla L+P:450 500",
+  "tecla 3+Quote:220 1200",    # como tools/tpend_pruebas.py: reintentos dentro de la ventana del Rush
+  "captura 01_rush",
+  "tecla 3+Quote:220 1200",
+  "captura 02_rush",
+  "tecla 3+Quote:220 1200",
+  "tecla 3+Quote:220 1200",
+  "tecla 3+Quote:220 1200",
+  "log \"dbz3 combate: DR01\" 90",
+  "captura 03_tras_remate",
+  "esperar 2000",
+  "captura 04_tras_remate2",
+]

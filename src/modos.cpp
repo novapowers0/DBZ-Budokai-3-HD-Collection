@@ -60,8 +60,13 @@
 #include "escenarios.h"
 #include "gigantes.h"
 #include "modos.h"
+#include "rogue.h"   // ROG-07: pestana del Ranking
+#include "ranking_online.h"     // RANK-ONLINE: paginas del ranking mundial (beta)
+#include "survivors/entrada.h"  // RANK-ONLINE: la de Survivors, con el modo encendido
 #include "mods.h"
 #include "roster_ext.h"
+#include "heroe_v2_shenron.inl"   // HEROE-V04 (08): menu de deseos del Heroe, aspecto nuevo (solo con dbz3_heroe_ui_nueva)
+#include "heroe_v2_cruce.inl"     // rutas del Heroe: cruce de caminos sobre el mapa de DU (solo con dbz3_heroe_rutas)
 
 namespace dbz3 {
 bool GameDimmed();
@@ -75,13 +80,43 @@ bool OwnBattle();
 // lo retiene en negro tras el combate (la pantalla entre combates va encima)
 bool ChainBattleEx(int id1, int id2, int stage, bool p2_com, int time_s, int hp1, int hp2, int form1, int form2);
 void NoCapsulesNext();
+void CapsulesNext(const std::vector<int>& caps);   // HEROE-TEC (hub.cpp)
 void HoldChain(bool hold);
+void SetPendingForm1(int form);   // ROG-04 (hub.cpp)
 void CancelChain();   // tambien en la espera en negro: vuelve al menu principal
 }  // namespace dbz3::hub
 namespace dbz3::ingame {
 int GameScreen();
 }
+namespace dbz3::heroe_ui { void VistaTecnicaLanzada(); }   // heroe_ui.cpp (R23 HER-07)
 namespace dbz3::modos {
+
+REXCVAR_DEFINE_BOOL(dbz3_modos_reglas_vista, true,  // 12/11 encendido de serie (HOJA_DECISIONES_0800 A)
+    "DBZ3/Mods",
+                    "MODOS-01: el bocadillo del selector de retos cuenta las reglas del reto cargado (nº de combates, "
+                    "vida que se arrastra, recuperación y premio)");
+REXCVAR_DEFINE_BOOL(dbz3_modos_rotulos, true,  // 12/11 encendido de serie (HOJA_DECISIONES_0800 A)
+    "DBZ3/Mods",
+                    "MODOS-02: rótulos «Combates ganados» y «Mejor marca» en las pantallas de resultado y guardado");
+REXCVAR_DEFINE_BOOL(dbz3_modos_revancha, true,  // 12/11 encendido de serie (HOJA_DECISIONES_0800 A)
+    "DBZ3/Mods",
+                    "MODOS-03: revancha con pantalla propia en Torres del Tiempo, Kumite de jefes y Misión 100 "
+                    "(A reintentar, B dejarlo); Abyss y Tienda siguen acabando al perder");
+REXCVAR_DEFINE_BOOL(dbz3_modos_premio_unico, true,  // 12/11 encendido de serie (HOJA_DECISIONES_0800 A)
+    "DBZ3/Mods",
+                    "MODOS-04: en Misión 100 el premio entero se paga la primera vez o al mejorar de rango; al repetir, "
+                    "el 10 %");
+REXCVAR_DEFINE_BOOL(dbz3_modos_lab_nombres, true,  // 12/11 encendido de serie (HOJA_DECISIONES_0800 A)
+    "DBZ3/Mods",
+                    "MODOS-06: la tabla del laboratorio enseña el tipo de golpe (patada, puñetazo, rush, definitiva) "
+                    "además de su código de entrada");
+REXCVAR_DEFINE_BOOL(dbz3_modos_un_rango, true,  // 12/11 encendido de serie (HOJA_DECISIONES_0800 A)
+    "DBZ3/Mods",
+                    "MODOS-05: el HUB llama «Nivel» al de PE y el selector «Rango» al Elo (un solo nombre de rango "
+                    "por pantalla)");
+// 12/11 encendido de serie
+REXCVAR_DEFINE_BOOL(dbz3_modos_pulido, true, "DBZ3/Mods",
+                    "MODOS-07: pulido de rótulos de los retos (p. ej. «¡Gigante!» pasa a explicar que el rival es enorme)");
 
 // Texto en el idioma del juego (es, en, fr, de, it; el resto en ingles).
 const char* L(const char* es, const char* en, const char* fr, const char* de, const char* it) {
@@ -101,7 +136,7 @@ constexpr dbz3::GA kHud = 0x82324064;   // marcador del combate (su menu: +4272,
 constexpr dbz3::GA kWt = 0x8245F270, kWtScreen = 0x824681D0, kSlotToId = 0x82020618, kIdToSlot = 0x82020668;
 constexpr int kVidaNormal = 3000, kVidaTope = 7000;   // CFG por defecto: 3000; 7000 = rec+48 (tope de barras)
 const char* const kNombres[kTipos] = {"torre", "supervivencia", "kumite", "simulacion", "tienda",
-                                      "heroe", "torres", "abyss", "jefes", "torneo4", "mision100"};
+                                      "heroe", "torres", "abyss", "jefes", "torneo4", "mision100", "rogue"};
 const char* const kResNombres[] = {"derrota", "victoria", "abandono", "guardado"};
 
 int64_t NowMs() { return dbz3::RelojMs(); }
@@ -155,6 +190,7 @@ Reto PorDefecto(int tipo) {
     }
   };
   if (tipo == kTorre) {   // 8 pisos: de Saibaman a Kid Buu, cada rival con mas vida
+    r.premio = 800;   // MODOS-02 (usuario, 11/11): antes la Torre no daba nada
     add({42, 18, 19, 21, 20, 27, 33, 36}, 2000, 300);
   } else if (tipo == kSupervivencia) {   // 10 oleadas: la vida se arrastra, +500 entre oleadas
     r.arrastra = true;
@@ -167,6 +203,7 @@ Reto PorDefecto(int tipo) {
   } else {   // kumite: 5 jefes con mucha vida; la del jugador se arrastra, +1000 entre jefes
     r.arrastra = true;
     r.recupera = 1000;
+    r.premio = 1200;   // MODOS-02 (usuario, 11/11): antes el Kumite no daba nada
     add({27, 33, 38, 40, 36}, 5000, 500);
   }
   return r;
@@ -341,12 +378,14 @@ std::vector<Marca> g_marcas;
 std::vector<EnCurso> g_curso;
 bool g_datos_leidos = false;
 bool g_lab_captura = false;   // laboratorio: captura por fotograma (user_data/dbz3/laboratorio.csv)
+std::atomic<bool> g_lab_hoy{false};   // MODOS-06: ya se jugo un combate en esta sesion (el resumen no es viejo)
 // Practica contra el muneco de combate.cpp (dbz3_combate_prueba_muneco = quieto|guardia, el ordenador no decide):
 // se pone solo para ese combate y se devuelve el valor de antes al acabar (o al abrir el juego si se cerro a mitad).
 int g_muneco = 0;                 // 0 quieto, 1 en guardia
 bool g_practica_guardada = false; // en el fichero: practica a medias
 std::string g_muneco_antes;
 std::atomic<bool> g_practica{false};
+bool g_probar = false;   // HEROE-TEC T4: la practica es un "Probar" del Heroe (con g_mu): se anotan sus capsulas y tecnicas
 constexpr const char* kCvarMuneco = "dbz3_combate_prueba_muneco";
 
 std::filesystem::path DatosPath() { return dbz3::settings::UserDataRoot() / "hub_modos.toml"; }
@@ -385,7 +424,9 @@ bool LeerDatos(const std::filesystem::path& p) {
         r.ganados = int((*x)["ganados"].value_or(int64_t(0)));
         r.vida = int((*x)["vida"].value_or(int64_t(0)));
         r.total = int((*x)["total"].value_or(int64_t(0)));
-        if (r.tipo >= 0 && r.id >= 0 && r.id < 64) c.push_back(r);
+        r.traje = r.traje < 0 || r.traje > 3 ? 0 : r.traje;   // MODOS 11/11: como UltimoDuelo
+        // MODOS 11/11: `ganados` negativo (guardado tocado o roto) indexaba combates[-1] al seguir el reto
+        if (r.tipo >= 0 && r.id >= 0 && r.id < 64 && r.ganados >= 0) c.push_back(r);
       }
     }
     g_lab_captura = t["laboratorio"].value_or(false);
@@ -443,6 +484,7 @@ void GuardarDatos() {   // con g_mu
       << l[1].golpes << "]\ncombo = [" << l[0].combo_mejor << ", " << l[1].combo_mejor << "]\n";
   }
   for (const Marca& m : g_marcas) {
+    if (m.tipo == kRogue) continue;   // ROG-01: el record de Dragon Rogue va en rogue.toml (rogue.cpp), no aqui
     o << "\n[[marca]]\ntipo = \"" << kNombres[m.tipo] << "\"\nid = " << m.id << "\nmejor = " << m.mejor
       << "\ntotal = " << m.total << "\nintentos = " << m.intentos << "\ncompletados = " << m.completados
       << "\nreto = " << toml::value<std::string>(m.reto) << "\n";
@@ -502,6 +544,7 @@ void AnotarCurso() {   // con g_mu: el reto en curso, tal como empieza su combat
   *c = {g_st.tipo, g_st.jugador, g_traje, g_st.ganados, g_st.vida, g_st.total};
 }
 void AnotarMarca(bool completado) {   // con g_mu
+  if (g_st.tipo == kRogue) return;   // ROG-01: su record va en rogue.toml (hub_modos.toml no se toca)
   Marca& m = MarcaDe(g_st.tipo, g_st.jugador);
   NuevaMarca(m);
   m.mejor = std::max(m.mejor, g_st.ganados);
@@ -552,7 +595,7 @@ bool Lanzar() {   // con g_mu: pide el combate g_st.ganados
   const Combate& c = g_reto.combates[size_t(g_st.ganados)];
   if (g_encadenado.exchange(false)) {   // ya pedido al acabar el anterior: sale de la espera en negro
     dbz3::hub::HoldChain(false);
-  } else if (!dbz3::hub::RequestBattleEx(g_st.jugador, c.id, c.escenario, true, 0, 0, 0, 0, c.forma)) {
+  } else if (!dbz3::hub::RequestBattleEx(g_st.jugador, c.id, c.escenario, true, 0, 0, 0, g_reglas.forma1, c.forma)) {   // ROG-04
     return false;
   }
   g_st.fase = kCombate;
@@ -586,7 +629,7 @@ void SiguienteAlMenu() {
 // su pantalla) o vuelve al menu principal con Abort (B). Sin el conector, por el menu principal como antes.
 void Encadenar(bool solo) {   // con g_mu
   const Combate& n = g_reto.combates[size_t(g_st.ganados)];
-  if (!dbz3::hub::ChainBattleEx(g_st.jugador, n.id, n.escenario, true, 0, 0, 0, 0, n.forma)) {
+  if (!dbz3::hub::ChainBattleEx(g_st.jugador, n.id, n.escenario, true, 0, 0, 0, g_reglas.forma1, n.forma)) {   // ROG-04
     if (solo) SiguienteAlMenu();
     return;
   }
@@ -609,6 +652,16 @@ void FinCombate(int raw, int winner, int reason, int hp, int rival_hp) {
   g_st.recibido = int(g_lab.lado[1].dano);   // dano del rival al jugador (resumen del laboratorio)
   if (hp <= 0 || !Gana(winner, reason)) {
     if (winner < 0 && raw == 2) return Terminar(kGuardado);   // salir desde la pausa: guardado
+    // MODOS-03: los retos propios con reintentar (Torres, Jefes, Mision 100) tambien esperan al mismo combate;
+    // rpg.cpp dibuja la pantalla de derrota con A (reintentar) y B (dejarlo). Abyss y Tienda no lo piden.
+    if (g_reto.propio && g_reto.reintentar && dbz3::modos::RevanchaPropios()) {
+      g_st.fase = kEntre;
+      g_st.resultado = kDerrota;
+      g_reintento = true;
+      g_tras_victoria = false;
+      Encadenar(false);
+      return;
+    }
     // revancha con pantalla propia (el menu del final del juego ya no sale): el mismo combate espera en negro
     // a A (Continue) o B (Abort). Los retos de rpg.cpp acaban al perder, como antes sin su revancha.
     if (!g_reto.reintentar || g_reto.propio) return Terminar(kDerrota);
@@ -619,6 +672,9 @@ void FinCombate(int raw, int winner, int reason, int hp, int rival_hp) {
     Encadenar(false);
     return;
   }
+  const Combate& ganado = g_reto.combates[size_t(g_st.ganados)];
+  g_st.rival_ganado = ganado.id;
+  g_st.forma_ganada = ganado.forma;
   ++g_st.ganados;
   g_st.resultado = kVictoria;
   if (g_reto.arrastra) g_st.vida = std::clamp(hp + g_reto.recupera, 1, g_st.vida_max);
@@ -643,6 +699,7 @@ uint32_t g_lab_visto = 0;
 void LabCuadro(uint8_t* base, uint32_t mgr) {   // hilo del juego, cada fotograma de pelea (estado 4)
   const uint32_t x[2] = {mgr + 2096, mgr + 2096 + 8240};
   std::lock_guard<std::mutex> lk(g_mu);
+  g_lab_hoy = true;   // MODOS-06: hay un combate de esta sesion (el resumen ya no es de una sesion anterior)
   const int id0 = int(REX_LOAD_U32(x[0] + 7420)), id1 = int(REX_LOAD_U32(x[1] + 7420));
   if (g_lab_visto != g_lab_combate) {   // combate nuevo (un relevo del Tag Team sigue en el mismo)
     g_lab_visto = g_lab_combate;
@@ -660,6 +717,12 @@ void LabCuadro(uint8_t* base, uint32_t mgr) {   // hilo del juego, cada fotogram
   g_lab.lado[1].id = id1;
   const int f = g_lab.cuadros++;
   const int act[2] = {REX_LOAD_U16(x[0] + 3244), REX_LOAD_U16(x[1] + 3244)};
+  static const bool prueba_contacto = std::getenv("DBZ3_TEST_LAB_CONTACTO") != nullptr;
+  if (prueba_contacto && f % 120 == 0)
+    REXLOG_INFO("dbz3 soliw: laboratorio cuadro {} acciones {} {} vida {:.0f} {:.0f} distancia {:.2f} captura {}", f,
+                act[0], act[1], LoadF(base, x[0] + 6080), LoadF(base, x[1] + 6080),
+                std::hypot(LoadF(base, x[0] + 64) - LoadF(base, x[1] + 64),
+                           LoadF(base, x[0] + 72) - LoadF(base, x[1] + 72)), g_lab_csv != nullptr);
   for (Golpe& g : g_lab.golpes) {   // ventaja: primer cuadro tras el contacto en que cada uno esta en una accion neutra
     if (f <= g.cuadro) continue;
     if (g.listo_a < 0 && act[g.lado] <= 2) g.listo_a = f;
@@ -687,6 +750,9 @@ void LabCuadro(uint8_t* base, uint32_t mgr) {   // hilo del juego, cada fotogram
         // guardia: en la accion 1 justo antes, o aun bloqueando el golpe anterior de la misma serie (sin volver a neutra)
         const Golpe* prev = g_lab.golpes.empty() ? nullptr : &g_lab.golpes.back();
         g.guardia = g_lab.accion[size_t(v)] == 1 || (prev && prev->lado == g.lado && prev->guardia && prev->listo_v < 0);
+        if (prueba_contacto)
+          REXLOG_INFO("dbz3 soliw: laboratorio contacto lado {} codigo {:03X} arranque {} dano {:.0f} guardia {} cuadro {}",
+                      g.lado + 1, g.codigo, g.arranque, g.dano, g.guardia, f);
         g_lab.golpes.push_back(g);
         if (g_lab.golpes.size() > kGolpesLab) g_lab.golpes.erase(g_lab.golpes.begin());
         ++a.golpes;
@@ -733,7 +799,10 @@ void AplicarReglas(uint8_t* base, uint32_t mgr) {
     }
   }
   // armadura: siempre o, con ventana, todo el ciclo menos sus 3 ultimos segundos (el hueco castigable)
-  g_ef.armadura = r.armadura > 0 && (r.ventana <= 0 || f % (r.ventana * 60) < (r.ventana - 3) * 60);
+  const bool arm_ahora = r.armadura > 0 && (r.ventana <= 0 || f % (r.ventana * 60) < (r.ventana - r.hueco) * 60);
+  if (r.armadura > 0 && r.ventana > 0 && arm_ahora != g_ef.armadura)   // ROG-02: el borde de la armadura al registro
+    REXLOG_INFO("dbz3 modos: reglas: armadura {} a los {:.1f} s (hueco {} s)", arm_ahora ? "puesta" : "abierta", f / 60.0, r.hueco);
+  g_ef.armadura = arm_ahora;
   for (int v = 0; v < 2; ++v) {
     const float hp = LoadF(base, x[v] + 6080), prev = g_ef.prev[v];
     float out = hp;
@@ -757,6 +826,7 @@ void AplicarReglas(uint8_t* base, uint32_t mgr) {
       REXLOG_INFO("dbz3 modos: tecnica: lado {} codigo {:03X} ki {:.0f} -> {:.0f} (forma {} -> {})", k + 1,
                   REX_LOAD_U32(x[k] + 2928) & 0xFFF, g_ef.ki_prev[k], ki, REX_LOAD_U32(x[k] + 2980),
                   REX_LOAD_U32(x[k] + 2984));
+      if (k == 0) dbz3::heroe_ui::VistaTecnicaLanzada();   // R23 HER-07: fotograma de la tecnica que se esta probando (si la hay)
     }
     g_ef.ki_prev[k] = ki;
   }
@@ -790,6 +860,7 @@ bool EmpezarPractica(int jugador, int rival) {   // con g_mu
 }
 void FinPractica() {   // hilo del juego, fin de un combate nuestro
   std::lock_guard<std::mutex> lk(g_mu);
+  g_probar = false;
   if (!g_practica.exchange(false)) return;
   rex::cvar::SetFlagByName(kCvarMuneco, g_muneco_antes);
   GuardarDatos();
@@ -930,10 +1001,12 @@ void SetVida(int vida, int vida_max) {
 void SetReglas(const Reglas& r) {
   std::lock_guard<std::mutex> lk(g_mu);
   g_reglas = r;
+  if (r.forma1 > 0) dbz3::hub::SetPendingForm1(r.forma1);   // ROG-04: el combate ya pedido arranca en esa forma
 }
 void SetJugador(int id) {
   std::lock_guard<std::mutex> lk(g_mu);
-  if (g_st.fase != kEntre || id == g_st.jugador || !Jugable(id)) return;
+  // ROG-04: tambien una ficha de fusion nativa (64-104: Dragon Rogue la pide en su forma fusionada con Reglas::forma1)
+  if (g_st.fase != kEntre || id == g_st.jugador || !(Jugable(id) || (g_st.tipo == kRogue && id >= 64 && id < 105))) return;
   // el siguiente ya iba pedido (Encadenar) con el luchador de antes: fuera; Continue lo pide de nuevo (RequestBattle)
   if (g_encadenado.exchange(false)) dbz3::hub::CancelChain();
   REXLOG_INFO("dbz3 modos: {}: el combate siguiente con el id {} (antes {})", kNombres[g_st.tipo], id, g_st.jugador);
@@ -1198,6 +1271,7 @@ const char* NombreTipo(int tipo) {
     case kJefes: return L("Kumite de jefes", "Boss Kumite", "Kumite des boss", "Boss-Kumite", "Kumite dei boss");
     case kTorneo4: return L("Torneo de 4", "4-Fighter Tournament", "Tournoi à 4", "Turnier zu viert", "Torneo a 4");
     case kMision: return L("Misión 100", "Mission 100", "Mission 100", "Mission 100", "Missione 100");
+    case kRogue: return "Dragon Rogue";
     default: return "Kumite";
   }
 }
@@ -1261,6 +1335,8 @@ class ModosPanel : public rex::ui::ImGuiDialog {
                 (st.propio && st.fase == kCombate && NowMs() - g_lanzado_ms.load() < 1500 && Pantalla() != 25)) &&
                dbz3::rpg::Activa()) {   // selector y pantallas de los retos propios (rpg.cpp), tambien en la espera en negro
       que = kRpgP;
+    } else if (dbz3::rpg::EnHabitacionMapa()) {   // la Habitacion encima del mapa de DU (SELECT; B vuelve al mapa)
+      que = kRpgP;
     } else if (st.propio) {
     } else if ((g_fin_visible.load() || fingida) && menu && st.fase == kFin) {
       que = kFinP;
@@ -1277,6 +1353,9 @@ class ModosPanel : public rex::ui::ImGuiDialog {
       const float info = Contador(io, st);
       if (st.propio) dbz3::rpg::Hud(ImGui::GetForegroundDrawList(), S::GameArea(io), info);
     }
+    if (!tapado) dbz3::heroe_ui::v2::DibujarCruce(ImGui::GetForegroundDrawList());    // rutas: sin cruce en el mapa, no dibuja
+    if (!tapado) dbz3::heroe_ui::v2::DibujarDeseos(ImGui::GetForegroundDrawList());   // HEROE-V04: sin el ajuste, no dibuja
+    else dbz3::heroe_ui::v2::DeseosTapados();   // HEROE-V05: deja dicho en el registro (una vez) que el menu salio tapado
     if (que != ultima_) {
       ultima_ = que;
       abierta_ = float(dbz3::RelojT(ImGui::GetTime()));
@@ -1397,7 +1476,7 @@ class ModosPanel : public rex::ui::ImGuiDialog {
     }
     // retos de rpg.cpp: su palabra y el marcador del modo parecido (torre: pisos; supervivencia: rondas; kumite)
     static constexpr int kMarcador[kTipos] = {kTorre, kSupervivencia, kKumite, kKumite, kSupervivencia,
-                                              kKumite, kTorre,         kTorre,  kKumite, kKumite, kKumite};
+                                              kKumite, kTorre,         kTorre,  kKumite, kKumite, kKumite, kTorre};
     const int base_tipo = kMarcador[std::clamp(st.tipo, 0, kTipos - 1)];
     const char* palabra = st.propio && !propia.empty() ? propia.c_str()
                           : base_tipo == kTorre        ? T::T("Piso", "Floor")
@@ -1409,6 +1488,8 @@ class ModosPanel : public rex::ui::ImGuiDialog {
       S::MenuText(dl, a.At(600, info), 24 * a.s, linea.c_str(), true, false, 600 * a.s);
       info += D::kHudLine;
     }
+    // MODOS-07 (5): con el pulido, el marcador va a la esquina de abajo a la derecha (centrado rozaba el pie del rival)
+    const float cx = REXCVAR_GET(dbz3_modos_pulido) ? 1010.0f : 600.0f;
     const S::Pic m = S::Img((std::string("retos/marcador_") + kNombres[base_tipo]).c_str());
     const std::string cifras = std::to_string(st.ganados + 1) + "/" + std::to_string(st.total);
     // cifras: las del marcador del juego (native_ui "cifras_hud", data_usi 0: 0-9 y "/" blancas con perfil, en naranja
@@ -1441,10 +1522,10 @@ class ModosPanel : public rex::ui::ImGuiDialog {
     }
     if (!m || nums.empty()) {   // sin las piezas: solo la letra del menu
       const std::string txt = std::string(palabra) + " " + std::to_string(st.ganados + 1) + "/" + std::to_string(st.total);
-      S::MenuText(dl, a.At(600, D::kHudY + D::kHudH * 0.5f), 30 * a.s, txt.c_str(), true, false, 360 * a.s);
+      S::MenuText(dl, a.At(cx, D::kHudY + D::kHudH * 0.5f), 30 * a.s, txt.c_str(), true, false, 360 * a.s);
       return info;
     }
-    const float h = D::kHudH, k = h / 128.0f, w = 560 * k, x0 = 600 - w * 0.5f, y0 = D::kHudY;
+    const float h = D::kHudH, k = h / 128.0f, w = 560 * k, x0 = cx - w * 0.5f, y0 = D::kHudY;
     S::DrawPic(dl, m, a.At(x0, y0), a.At(x0 + w, y0 + h));
     const float bx0 = x0 + 128 * k, bx1 = x0 + 538 * k, cy = y0 + 65.5f * k, dh = 81 * k * 0.62f;
     const float paso = hud ? 1.0f : -2.0f;   // las del juego van sueltas; las propias, montadas
@@ -1481,12 +1562,21 @@ class ModosPanel : public rex::ui::ImGuiDialog {
       D::Help(dl, a, {{"A", T::T("Reintentar", "Retry")}, {"B", T::T("Dejar el reto", "Quit")}});
       return;
     }
-    bool arrastra = false;
+    bool arrastra = false, pausa = false;
     std::string mods;   // modificadores del combate siguiente (ficha 09)
     {
       std::lock_guard<std::mutex> lk(g_mu);
       arrastra = g_reto.arrastra;
+      // MODOS 11/11: un reto clasico con `pausa = true` (modos_reto.py --pausa) se quedaba aqui sin salida: nadie
+      // llamaba a Continue(). A sigue; B lo deja guardado.
+      pausa = g_reto.pausa && !g_reto.propio && g_st.fase == kEntre && !g_encadenado.load();
       if (g_st.fase == kEntre) mods = Modificadores();
+      if (pausa && (pulsado & kB) && !(pulsado & kA)) Terminar(kGuardado);
+    }
+    if (pausa) {
+      if (pulsado & kA) Continue();
+      D::Help(dl, a, {{"A", T::T("Continuar", "Continue")},
+                      {"B", L("Guardar y salir", "Save and exit", "Sauver et quitter", "Speichern und raus", "Salva ed esci")}});
     }
     std::vector<std::string> l = {Paso(st.tipo, st.ganados, st.total) + T::T(": ¡superado!", ": cleared!"),
                                   std::string(T::T("Siguiente: ", "Next: ")) + NombrePj(st.rival) + "  (" +
@@ -1537,6 +1627,12 @@ class ModosPanel : public rex::ui::ImGuiDialog {
                                               std::to_string(st.total),
                                   std::string(T::T("Récord: ", "Record: ")) + std::to_string(mejor) + " / " +
                                       std::to_string(total) + (comp > 0 ? "  x" + std::to_string(comp) : "")};
+    if (dbz3::modos::RotulosNuevos()) {   // MODOS-02: decir que miden las dos cifras
+      l[1] = std::string(T::T("Combates ganados: ", "Fights won: ")) + std::to_string(st.ganados) + " / " +
+             std::to_string(st.total) + " (" + NombrePj(id) + ")";
+      l[2] = std::string(T::T("Mejor marca: ", "Best: ")) + std::to_string(mejor) + " / " + std::to_string(total) +
+             (comp > 0 ? "  x" + std::to_string(comp) : "");
+    }
     if (premio > 0) {
       l.push_back(std::string(L("Premio: ", "Prize: ", "Prix : ", "Preis: ", "Premio: ")) + std::to_string(premio) +
                   " Zenie");
@@ -1554,6 +1650,8 @@ class ModosPanel : public rex::ui::ImGuiDialog {
   struct Pagina {
     std::string titulo, dice;
     std::vector<Fila> filas;
+    int online = -1;   // RANK-ONLINE: 0 Survivors mundial, 1 Rogue diario mundial (la dibuja ranking_online.cpp)
+    bool diario_rogue = false;
   };
   void Refrescar() {
     paginas_.clear();
@@ -1598,6 +1696,15 @@ class ModosPanel : public rex::ui::ImGuiDialog {
                            TramoDe(top[size_t(i)].elo) + 1});
     }
     paginas_.push_back(std::move(elo));
+    if (dbz3::rogue::Activo()) {   // ROG-07: pestana Dragon Rogue (reto diario: ultimos dias, racha y codigo)
+      Pagina rg{"Dragon Rogue", {}, {}, -1, true};
+      for (const auto& f : dbz3::rogue::RankingRogue(&rg.dice)) rg.filas.push_back({f.pos, f.nombre, f.valor, f.extra, f.medalla});
+      paginas_.push_back(std::move(rg));
+    }
+    if (dbz3::rank::Activo()) {   // RANK-ONLINE: ranking mundial (beta)
+      if (dbz3::survivors::Activo()) paginas_.push_back({dbz3::rank::TituloTabla(0), {}, {}, 0});
+      if (dbz3::rogue::Activo()) paginas_.push_back({dbz3::rank::TituloTabla(1), {}, {}, 1});
+    }
     std::lock_guard<std::mutex> lk(g_mu);
     CargarDatos();
     for (int tipo = 0; tipo < kTipos; ++tipo) {
@@ -1630,12 +1737,26 @@ class ModosPanel : public rex::ui::ImGuiDialog {
 
   void DibujarRanking(ImDrawList* dl, const S::Area& a, float t, uint16_t pulsado) {
     const int np = std::max(int(paginas_.size()), 1);
+    if (!paginas_.empty() && paginas_[size_t(pagina_)].online >= 0) {   // RANK-ONLINE: LB/RB, A, X e Y son de la tabla
+      if (pulsado & (kLeft | kRight)) {
+        pagina_ = (pagina_ + (pulsado & kLeft ? np - 1 : 1)) % np;
+        return DibujarRanking(dl, a, t, 0);
+      }
+      if (!dbz3::rank::Tabla(dl, a, t, pulsado, paginas_[size_t(pagina_)].online) && (pulsado & kB)) g_rank_abierto = false;
+      return;
+    }
     if (pulsado & (kLeft | kLb)) pagina_ = (pagina_ + np - 1) % np;
     if (pulsado & (kRight | kRb | kA)) pagina_ = (pagina_ + 1) % np;
     if (pulsado & kB) g_rank_abierto = false;   // vuelve el HUB
     if (paginas_.empty()) return;
     const Pagina& pg = paginas_[size_t(pagina_)];
-    S::Banner(dl, a, "Ranking");
+    // encargo 4: gradas del torneo de cabecera (arte propio) a todo el ancho, bajo la cinta del titulo
+    if (const S::Pic cab = S::Img("hub/ranking_cabecera")) {
+      const float W = ImGui::GetIO().DisplaySize.x, h = W * cab.h / std::max(1.0f, cab.w);   // a todo el ancho de la ventana
+      S::DrawPic(dl, cab, ImVec2(0, a.p0.y), ImVec2(W, a.p0.y + h));
+      dl->AddRectFilledMultiColor(ImVec2(0, a.p0.y + h * 0.75f), ImVec2(W, a.p0.y + h), 0, 0, IM_COL32(0, 0, 0, 90), IM_COL32(0, 0, 0, 90));
+    }
+    S::Banner(dl, a, L("Ranking", "Ranking", "Classement", "Rangliste", "Classifica"));   // como la fila del HUB
     // pagina: el selector de formato del juego (marco, letra y flechas)
     // (arriba a la derecha, junto a la cinta: el hueco de la esquina del esquema comun)
     const ImVec2 g0 = a.At(D::kCornerX0 + 40, D::kCornerY0), g1 = a.At(D::kX1 - 40, D::kCornerY1);
@@ -1646,27 +1767,48 @@ class ModosPanel : public rex::ui::ImGuiDialog {
     // tabla: hasta 8 filas con la letra del menu (el marco, al alto de las que hay); la primera (el lider) con la
     // franja del juego. (paso 47: las 8 filas y el relleno kPad caben sin llegar al pico del bocadillo)
     const auto& filas = pg.filas;
-    const float y0 = D::kTop, paso = 47, x0 = D::kX0, x1 = D::kX1;
-    const ImVec2 f0 = a.At(x0, y0), f1 = a.At(x1, y0 + 2 * D::kPad + paso * float(std::clamp(int(filas.size()), 1, 8)));
+    const float y0 = D::kTop, paso = pg.diario_rogue ? 43.0f : 47.0f, x0 = D::kX0, x1 = D::kX1;
+    const float cabecera = pg.diario_rogue ? 38.0f : 0.0f;
+    const float cuerpo = y0 + D::kPad + cabecera;
+    const ImVec2 f0 = a.At(x0, y0), f1 = a.At(x1, cuerpo + D::kPad + paso * float(std::clamp(int(filas.size()), 1, 8)));
     S::Frame(dl, f0, f1, a.s);
+    if (pg.diario_rogue) {
+      const float y = cuerpo - cabecera * 0.5f, k = D::kSmall * a.s;
+      const float nx = S::Img("hub/ranking_avatares") ? 290.0f : 265.0f;
+      S::MenuText(dl, a.At(x0 + 58, y), k, L("Fecha", "Date", "Date", "Datum", "Data"), false, false, 110 * a.s);
+      S::MenuText(dl, a.At(x0 + nx, y), k, L("Luchador", "Fighter", "Combattant", "Kämpfer", "Lottatore"), false, false, 185 * a.s);
+      S::MenuText(dl, a.At(x0 + 480, y), k, L("Puntos", "Points", "Points", "Punkte", "Punti"), false, false, 112 * a.s);
+      S::MenuText(dl, a.At(x1 - D::kText - 50, y), k, L("Pisos", "Floors", "Étages", "Etagen", "Piani"), false, false, 100 * a.s);
+      dl->AddLine(a.At(x0 + 18, cuerpo - 2), a.At(x1 - 18, cuerpo - 2), IM_COL32(232, 140, 32, 255), a.s);
+    }
     if (filas.empty()) {
-      S::MenuText(dl, a.At(D::kCx, y0 + D::kPad + paso * 0.5f), D::kRow * a.s, T::T("Aún no hay combates", "No fights yet"),
+      S::MenuText(dl, a.At(D::kCx, cuerpo + paso * 0.5f), D::kRow * a.s, T::T("Aún no hay combates", "No fights yet"),
                   false, true);
     }
     for (size_t i = 0; i < filas.size() && i < 8; ++i) {
-      const float y = y0 + D::kPad + paso * (float(i) + 0.5f);
+      const float y = cuerpo + paso * (float(i) + 0.5f);
       if (i == 0) D::Stripe(dl, a, x0, y - paso * 0.5f + 2, x1, y + paso * 0.5f - 2, t);
       const float k = D::kSmall * a.s;
-      S::MenuText(dl, a.At(x0 + 48, y), k, filas[i].pos.c_str(), i == 0, false);
+      S::MenuText(dl, a.At(x0 + (pg.diario_rogue ? 58 : 48), y), k, filas[i].pos.c_str(), i == 0, false);   // PM-37: fecha del diario menos pegada al marco
       static const char* const kMedallas[] = {"retos/medalla_1_bronce", "retos/medalla_2_plata", "retos/medalla_3_oro",
                                               "retos/medalla_4_platino", "retos/medalla_5_diamante"};
       if (filas[i].medalla > 0) {
         if (const S::Pic md = S::Img(kMedallas[filas[i].medalla - 1])) {
           const float r = paso * 0.42f;
-          S::DrawPic(dl, md, a.At(x0 + 96 - r, y - r), a.At(x0 + 96 + r, y + r));
+          const float mx = filas[i].pos.size() > 3 ? 222.0f : 96.0f;   // PM-25: el puesto es una fecha ("20 Nov"): la medalla va tras el avatar
+          S::DrawPic(dl, md, a.At(x0 + mx - r, y - r), a.At(x0 + mx + r, y + r));
         }
       }
-      S::MenuText(dl, a.At(x0 + 265, y), k, filas[i].nombre.c_str(), i == 0, false, 240 * a.s);
+      // encargo 4: avatar redondo de la fila (8 de la tira, fijo por nombre para que cada jugador conserve el suyo)
+      float nx = 265, nw = 240;
+      if (const S::Pic av = filas[i].pos.empty() ? S::Pic{} : S::Img("hub/ranking_avatares")) {   // solo en las listas con puesto
+        uint32_t h = 2166136261u;
+        for (const char ch : filas[i].nombre) h = (h ^ uint8_t(ch)) * 16777619u;
+        const float u = 128.0f * float(h % 8), r = paso * 0.44f;
+        S::DrawPic(dl, av, a.At(x0 + 150 - r, y - r), a.At(x0 + 150 + r, y + r), ImVec4(u, 0, u + 128, 128));
+        nx = 290, nw = 190;
+      }
+      S::MenuText(dl, a.At(x0 + nx, y), k, filas[i].nombre.c_str(), i == 0, false, nw * a.s);
       S::MenuText(dl, a.At(x0 + 480, y), k, filas[i].valor.c_str(), i == 0, false, 160 * a.s);
       S::MenuText(dl, a.At(x1 - D::kText - 50, y), k, filas[i].extra.c_str(), i == 0, false, 100 * a.s);
     }
@@ -1726,8 +1868,15 @@ class ModosPanel : public rex::ui::ImGuiDialog {
            L("Aún no hay combates", "No fights yet", "Pas encore de combats", "Noch keine Kämpfe",
              "Ancora nessun incontro")};
     } else {
-      std::snprintf(buf, sizeof(buf), "%s  %d:%02d", L("Último combate", "Last fight", "Dernier combat", "Letzter Kampf",
-                                                        "Ultimo incontro"), lab.cuadros / 3600, lab.cuadros / 60 % 60);
+      // MODOS-06: si el resumen viene del fichero y no de un combate de ahora, se dice.
+      const char* viejo = dbz3::modos::LabSesionAnterior()
+                              ? L(" (de una sesión anterior)", " (from a previous session)",
+                                  " (d'une session précédente)", " (aus einer früheren Sitzung)",
+                                  " (da una sessione precedente)")
+                              : "";
+      std::snprintf(buf, sizeof(buf), "%s  %d:%02d%s", L("Último combate", "Last fight", "Dernier combat", "Letzter Kampf",
+                                                        "Ultimo incontro"), lab.cuadros / 3600, lab.cuadros / 60 % 60,
+                    viejo);
       l.emplace_back(buf);
       for (const Lado& s : lab.lado) {
         std::snprintf(buf, sizeof(buf), "%s: %.0f %s, %d %s, combo %d", NombrePj(s.id).c_str(), double(s.dano),
@@ -1765,7 +1914,12 @@ class ModosPanel : public rex::ui::ImGuiDialog {
     for (size_t i = 0; i < lab.golpes.size(); ++i) {
       const Golpe& g = lab.golpes[lab.golpes.size() - 1 - i];
       const float y = y0 + 8 + paso * (float(i) + 1.5f);
-      std::snprintf(buf, sizeof(buf), "%s %03X", NombrePj(g.id).c_str(), g.codigo);
+      const char* tipo = dbz3::modos::LabNombres() ? dbz3::modos::TipoGolpeLab(g.codigo) : nullptr;
+      if (tipo) {   // MODOS-06: primero el tipo de golpe; el codigo de entrada queda al lado
+        std::snprintf(buf, sizeof(buf), "%s  %s %03X", NombrePj(g.id).c_str(), tipo, g.codigo);
+      } else {
+        std::snprintf(buf, sizeof(buf), "%s %03X", NombrePj(g.id).c_str(), g.codigo);
+      }
       S::MenuText(dl, a.At(cx[0], y), D::kSmall * a.s, buf, false, false, 250 * a.s);
       S::MenuText(dl, a.At(cx[1], y), D::kSmall * a.s, std::to_string(g.arranque).c_str(), false, false);
       S::MenuText(dl, a.At(cx[2], y), D::kSmall * a.s, std::to_string(int(g.dano)).c_str(), false, false);
@@ -1881,7 +2035,9 @@ void UltimoDuelo(int* id, int* traje) {
 }
 bool EsJugable(int id) { return Jugable(id); }
 namespace {
+void RegistrarRogue();   // ROG-01 (abajo)
 bool RetoEnCurso() {
+  RegistrarRogue();
   const int f = Get().fase;
   // (g_prueba_r6: la pantalla fingida de la prueba de dibujo tapa el HUB como la de verdad)
   return f == kCombate || f == kEntre || (f == kFin && g_fin_visible.load()) || dbz3::rpg::Busy() || g_prueba_r6;
@@ -1930,6 +2086,27 @@ const bool g_hub = dbz3::hub::RegisterMode("torre", [] { AbrirSelector(kTorre); 
                                              "Il tuo eroe con la sua storia: crea corpo e stile, allenati con i maestri "
                                              "e sali di livello. Voce propria, fuori dal Kumite."},
                                             [] { PedirPanel(); dbz3::rpg::AbrirHeroe(); }, &RetoEnCurso);
+// ROG-01: Dragon Rogue con el ajuste dbz3_rogue (encendido de serie; apagado = sin entrada). Los ajustes aun no estan leidos en los
+// inicializadores estaticos: la entrada se registra la primera vez que el HUB pregunta por los retos (RetoEnCurso, en
+// el hilo del juego) con el ajuste encendido. Sin el ajuste no se registra nada ni hay hilo: el HUB queda como estaba.
+void RegistrarRogue() {
+  static std::atomic<bool> hecho{false};
+  if (!dbz3::rogue::Activo() || hecho.exchange(true)) return;
+  const bool ok = dbz3::hub::RegisterEntry(
+      "rogue", {"Dragon Rogue", "Dragon Rogue", "Dragon Rogue", "Dragon Rogue", "Dragon Rogue"},
+      {"Elige un camino (Torre, Abismo, Supervivencia, Kumite...) y un luchador; tras cada combate, "
+       "1 de 3 mejoras y cada pocos combates un jefe. Los retos de siempre siguen en Retos clásicos.",   // ROG-05
+       "Pick a path (Tower, Abyss, Survival, Kumite...) and a fighter; after each fight, 1 of 3 "
+       "upgrades and a boss every few fights. The usual challenges are in Classic challenges.",
+       "Choisis un chemin (Tour, Abîme, Survie, Kumite...) et un combattant ; après chaque combat, "
+       "1 amélioration sur 3 et un boss régulièrement. Les défis habituels sont dans Défis classiques.",
+       "Wähle einen Weg (Turm, Abgrund, Überleben, Kumite...) und einen Kämpfer; nach jedem Kampf "
+       "1 von 3 Verbesserungen und ab und zu ein Boss. Die üblichen Modi: Klassische Herausforderungen.",
+       "Scegli un percorso (Torre, Abisso, Sopravvivenza, Kumite...) e un lottatore; dopo ogni incontro "
+       "1 potenziamento su 3 e ogni tanto un boss. Le solite sfide sono in Sfide classiche."},
+      [] { AbrirSelector(5); }, &RetoEnCurso);
+  REXLOG_INFO("dbz3 modos: Dragon Rogue: entrada del HUB {}", ok ? "registrada" : "sin sitio");
+}
 
 // PRUEBAS. DBZ3_TEST_MODO="tipo,jugador[,traje]" (tipo: torre, supervivencia, kumite): empieza el reto cuando
 // el menu principal lleva 3 s en pantalla y, al acabar, escribe el ranking en el log.
@@ -1952,7 +2129,7 @@ const bool g_test = [] {
     int jugador = 0, traje = 0;
     std::sscanf(s.c_str(), "%31[^,],%d,%d", name, &jugador, &traje);
     const int tipo = std::max(TipoDe(name), 0);
-    for (int quieto = 0; quieto < 120;) {   // 3 s en el menu principal
+    for (int quieto = 0; quieto < 20;) {   // 0,5 s en el menu principal (VEL-05: antes 3 s)
       quieto = dbz3::ingame::GameScreen() == 5 ? quieto + 1 : 0;
       std::this_thread::sleep_for(std::chrono::milliseconds(25));
     }
@@ -1962,9 +2139,36 @@ const bool g_test = [] {
       REXLOG_INFO("dbz3 modos: prueba: Modo Heroe (entrada propia del HUB)");
       return;
     }
+    if (tipo == kRogue) {   // DBZ3_TEST_MODO=rogue: el selector de Dragon Rogue (como su entrada del HUB)
+      dbz3::rpg::AbrirSelector(5);
+      REXLOG_INFO("dbz3 modos: prueba: Dragon Rogue (ajuste dbz3_rogue {})", dbz3::rogue::Activo() ? "encendido" : "apagado");
+      return;
+    }
+    if (tipo == kTorres || tipo == kAbyss || tipo == kJefes || tipo == kTorneo4) {   // MODOS-08: el reto entero sin pasar por el HUB
+      REXLOG_INFO("dbz3 modos: prueba: {} con id {}: {}", kNombres[tipo], jugador,
+                  dbz3::rpg::ProbarReto(tipo, jugador) ? "empieza" : "no se pudo empezar");
+      return;
+    }
     if (tipo == kMision) {   // DBZ3_TEST_MODO=mision100,jugador,n: la mision n (1-100) de la Mision 100
-      REXLOG_INFO("dbz3 modos: prueba: mision 100 n {} con id {}: {}", traje, jugador,
-                  dbz3::rpg::ProbarMision(traje, jugador) ? "empieza" : "no se pudo empezar");
+      // MODOS-08: DBZ3_TEST_M100_HASTA=N encadena las misiones traje..N en una sola partida (cada una al volver al menu).
+      const char* hasta_e = std::getenv("DBZ3_TEST_M100_HASTA");
+      const int hasta = hasta_e ? std::clamp(std::atoi(hasta_e), traje, 100) : traje;
+      for (int n = traje; n <= hasta; ++n) {
+        const bool ok = dbz3::rpg::ProbarMision(n, jugador);
+        REXLOG_INFO("dbz3 modos: prueba: mision 100 n {} con id {}: {}", n, jugador, ok ? "empieza" : "no se pudo empezar");
+        if (!ok || n == hasta) continue;
+        for (int t = 0; Get().fase != kFin && t < 12000; ++t) std::this_thread::sleep_for(std::chrono::milliseconds(25));   // 5 min
+        REXLOG_INFO("dbz3 modos: prueba: mision 100 n {} terminada ({})", n, kResNombres[std::clamp(int(Get().resultado), 0, 3)]);
+        for (int quieto = 0, espera = 0; quieto < 20; ++espera) {   // otra vez 3 s en el menu principal (o 60 s y se sigue)
+          quieto = dbz3::ingame::GameScreen() == 5 ? quieto + 1 : 0;
+          if (espera == 2400) {
+            REXLOG_WARN("dbz3 modos: prueba: mision 100 n {}: no vuelve el menu en 60 s (pantalla {}, fase {}); se sigue", n,
+                        dbz3::ingame::GameScreen(), int(Get().fase));
+            break;
+          }
+          std::this_thread::sleep_for(std::chrono::milliseconds(25));
+        }
+      }
       return;
     }
     REXLOG_INFO("dbz3 modos: prueba: {} con id {} (traje {}): {}", kNombres[tipo], jugador, traje,
@@ -1979,6 +2183,9 @@ const bool g_test = [] {
   return true;
 }();
 }  // namespace
+
+// HEROE-V05: el menu de deseos de Shenron (heroe_ui.cpp) se dibuja desde este panel; sin un modo abierto antes no existia
+void AsegurarPanel() { PedirPanel(); }
 
 // S5-I1: ID que de verdad juega la plaza `plaza` del cuadro del Torneo cuando es un personaje de mod sin casilla propia
 // (torneo.toml); -1 = el de su casilla.
@@ -2023,13 +2230,27 @@ DBZ3_HOOK_EU(sub_821D7400) {
       const int antes = std::min<int>(REX_LOAD_U16(p1 + 52), 7);
       if (g_reglas.ncaps >= 0) {   // solo las del reto (heroe) o sumadas a las que ya trae (hasta 7)
         int n = g_reglas.reemplazar ? 0 : antes;
-        for (int i = 0; i < g_reglas.ncaps && n < 7; ++i, ++n) {   // (la macro evalua la direccion dos veces)
-          REX_STORE_U16(p1 + 54 + 2 * uint32_t(n), uint16_t(g_reglas.caps[i]));
+        if (g_st.tipo == kHeroe && g_reglas.caps_prioritarias > 0) {
+          uint16_t caps[7] = {};
+          const int prioridad = std::min({g_reglas.caps_prioritarias, g_reglas.ncaps, 7});
+          auto sumar = [&](uint16_t cap) {
+            if (cap && n < 7 && std::find(caps, caps + n, cap) == caps + n) caps[n++] = cap;
+          };
+          const int n_nativas = n;
+          n = 0;
+          for (int i = 0; i < prioridad; ++i) sumar(uint16_t(g_reglas.caps[i]));
+          for (int i = 0; i < n_nativas; ++i) sumar(REX_LOAD_U16(p1 + 54 + 2 * uint32_t(i)));
+          for (int i = prioridad; i < std::min(g_reglas.ncaps, 7); ++i) sumar(uint16_t(g_reglas.caps[i]));
+          for (int i = 0; i < n; ++i) REX_STORE_U16(p1 + 54 + 2 * uint32_t(i), caps[i]);
+        } else {
+          for (int i = 0; i < g_reglas.ncaps && n < 7; ++i, ++n) {   // (la macro evalua la direccion dos veces)
+            REX_STORE_U16(p1 + 54 + 2 * uint32_t(n), uint16_t(g_reglas.caps[i]));
+          }
         }
         for (int i = n; i < 7; ++i) REX_STORE_U16(p1 + 54 + 2 * uint32_t(i), 0);
         REX_STORE_U16(p1 + 52, uint16_t(n));
       }
-      REXLOG_INFO("dbz3 modos: CFG: capsulas del jugador {} -> {} ({} {} {} {} {} {} {})", antes, REX_LOAD_U16(p1 + 52),
+      REXLOG_INFO("dbz3 modos: CFG: rec {:08X} capsulas del jugador {} -> {} ({} {} {} {} {} {} {})", uint32_t(p1), antes, REX_LOAD_U16(p1 + 52),
                   REX_LOAD_U16(p1 + 54), REX_LOAD_U16(p1 + 56), REX_LOAD_U16(p1 + 58), REX_LOAD_U16(p1 + 60),
                   REX_LOAD_U16(p1 + 62), REX_LOAD_U16(p1 + 64), REX_LOAD_U16(p1 + 66));
       REXLOG_INFO("dbz3 modos: CFG: id {} traje {} vida {}/{} contra id {} traje {} vida {} (tiempo {} s, regen {}/s, "
@@ -2121,6 +2342,17 @@ DBZ3_HOOK_EU(sub_821A5A30) {
   std::lock_guard<std::mutex> lk(g_mu);
   const uint32_t obj = REX_LOAD_U32(kWtScreen);
   if (!obj) return;
+  {   // TOR01: marca del final del Torneo (obj+104) para el diagnostico del #55 (una linea por torneo)
+    static uint32_t seen_obj = 0, seen_done = 0;
+    const uint32_t done = REX_LOAD_U32(obj + 104);
+    if (obj != seen_obj) {
+      seen_obj = obj;
+      seen_done = done;
+    } else if (done && !seen_done) {
+      seen_done = done;
+      REXLOG_INFO("dbz3 modos: torneo terminado (obj+104 = 1); el cuadro ya no cambia de luchador");
+    }
+  }
   for (uint32_t p = 0; p < 2; ++p) {
     const int i = int8_t(REX_LOAD_U8(kWt + 36688 + p));
     if (i < 0 || i >= 32 || g_t_id[size_t(i)] < 0) continue;
@@ -2139,6 +2371,64 @@ DBZ3_HOOK_EU(sub_821A5A30) {
     }
   }
 }
+
+// ---- Ajustes nuevos (MODOS-01..06), todos apagados de serie ----
+namespace dbz3::modos {
+bool ReglasVista() { return REXCVAR_GET(dbz3_modos_reglas_vista); }
+bool RotulosNuevos() { return REXCVAR_GET(dbz3_modos_rotulos); }
+bool RevanchaPropios() { return REXCVAR_GET(dbz3_modos_revancha); }
+bool PremioUnico() { return REXCVAR_GET(dbz3_modos_premio_unico); }
+bool LabNombres() { return REXCVAR_GET(dbz3_modos_lab_nombres); }
+bool UnRango() { return REXCVAR_GET(dbz3_modos_un_rango); }
+bool ModoPulido() { return REXCVAR_GET(dbz3_modos_pulido); }
+// MODOS-06: el resumen del laboratorio viene del fichero (sesion anterior) y no de un combate jugado ahora.
+bool LabSesionAnterior() { return REXCVAR_GET(dbz3_modos_lab_nombres) && !g_lab_hoy.load(); }
+// HEROE-TEC T4 (Tecnicas v2 del Heroe, "Probar en Entrenamiento"): la practica del laboratorio (sin tiempo, muneco quieto, el
+// prado) con el luchador del heroe y SUS capsulas de combate (las equipadas incluidas); al acabar se vuelve como del laboratorio.
+bool PracticaConCapsulas(int jugador, const std::vector<int>& caps) {
+  std::lock_guard<std::mutex> lk(g_mu);
+  CargarDatos();
+  const int muneco_antes = g_muneco;
+  g_muneco = 0;   // quieto: la tecnica se ve entera
+  const bool ok = EmpezarPractica(jugador, jugador == 0 ? 7 : 0);
+  g_muneco = muneco_antes;
+  if (ok) dbz3::hub::CapsulesNext(caps);
+  if (ok) g_reglas = Reglas{}, g_probar = true;   // sin modificadores; AplicarReglas solo anota capsulas y tecnicas
+  REXLOG_INFO("dbz3 modos: probar tecnicas: id {} con {} capsulas ({})", jugador, caps.size(), ok ? "pedido" : "no se pudo");
+  return ok;
+}
+
+bool ResumenReto(int tipo, int* combates, bool* arrastra, int* recupera, int* premio) {
+  if (!combates || !arrastra || !recupera || !premio) return false;
+  if (tipo < kTorre || tipo > kKumite) return false;
+  const Reto r = Cargar(tipo);
+  *combates = int(r.combates.size());
+  *arrastra = r.arrastra;
+  *recupera = r.recupera;
+  *premio = r.premio;
+  return *combates > 0;
+}
+
+const char* TipoGolpeLab(int codigo) {
+  // Codigos del motor B3 (docs/03_formatos/SB_VS_B3_MOVESET.md): suelo 0x0xx, aire +0x100, ataques del BCM 0x2xx/0x3xx.
+  // Los dos medidos en la sonda de combate.cpp son 0x210 (patada) y 0x21B (combo de puñetazo); los demas, por la tabla
+  // documentada. Lo que no este aqui deja su codigo a la vista.
+  if (codigo == 0x210) return L("Patada", "Kick", "Coup de pied", "Tritt", "Calcio");
+  if (codigo == 0x21B) return L("Puñetazo", "Punch", "Coup de poing", "Schlag", "Pugno");
+  if (codigo == 0x259) return L("Definitiva", "Ultimate", "Ultime", "Ultimative", "Finale");
+  if (codigo >= 0x2E0 && codigo < 0x2F8) return L("Transformación", "Transformation", "Transformation",
+                                                  "Verwandlung", "Trasformazione");
+  if (codigo >= 0x3E0 && codigo < 0x3F8) return L("Transformación", "Transformation", "Transformation",
+                                                  "Verwandlung", "Trasformazione");
+  if (codigo >= 0x4A0 && codigo < 0x500) return L("Definitiva", "Ultimate", "Ultime", "Ultimative", "Finale");
+  if (codigo == 0x480) return L("Agarre", "Grab", "Saisie", "Griff", "Presa");
+  // Familias del motor (SB_VS_B3_MOVESET.md): suelo 0x2xx, aire +0x100; la mayoria son ataques.
+  if (codigo >= 0x200 && codigo < 0x300) return L("Ataque", "Attack", "Attaque", "Angriff", "Attacco");
+  if (codigo >= 0x300 && codigo < 0x400) return L("Ataque aéreo", "Air attack", "Attaque aérienne", "Luftangriff",
+                                                  "Attacco aereo");
+  return nullptr;
+}
+}  // namespace dbz3::modos
 
 // Menu del final del combate (estado 7 del combate, sub_820FF750 cada fotograma): sub_820DF568 lee la fila elegida
 // del menu del marcador (B = *0x82324064: +4272 bit 0 = aun eligiendo, +4292 = fila). Fila 2 ("Reselect
@@ -2169,7 +2459,7 @@ DBZ3_HOOK_EU(sub_820FD678) {
   if (dbz3::hub::OwnBattle()) {   // reglas del reto propio (antes del laboratorio: ve la vida final)
     const uint32_t mgr = REX_LOAD_U32(kMgrPtr);
     std::lock_guard<std::mutex> lk(g_mu);
-    if (mgr && g_st.fase == kCombate && g_reto.propio && REX_LOAD_U32(mgr + 35128) == 4) AplicarReglas(base, mgr);
+    if (mgr && ((g_st.fase == kCombate && g_reto.propio) || (g_probar && g_practica)) && REX_LOAD_U32(mgr + 35128) == 4) AplicarReglas(base, mgr);
   }
   {   // laboratorio: resumen de cualquier combate
     const uint32_t mgr = REX_LOAD_U32(kMgrPtr);
@@ -2195,4 +2485,3 @@ DBZ3_HOOK_EU(sub_820FD678) {
   }
   orig(ctx, base);
 }
-

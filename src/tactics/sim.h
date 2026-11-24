@@ -17,6 +17,7 @@ constexpr int kKiPorGolpe = 10, kKiPorRecibido = 5;
 constexpr int kHisteresis = 1;                   // H13: el objetivo actual se conserva mientras ningun otro enemigo este mas de 1 casilla mas cerca
 constexpr int kEsperaRetroceso = 15;             // H13: ticks que espera una unidad antes de deshacer el paso que acaba de dar
 constexpr int kEsperaBloqueo = 6;                // ticks que espera una unidad sin camino antes de volver a pensar
+constexpr int kAtascoTicks = 2 * kHz, kKiAtasco = 3;   // TACTICS-01: sin camino mas de 2 s, +3 de ki cada vez que piensa (30 por segundo)
 
 // Hexagonos: casilla (col, fila) <-> cubo; vecinos en orden fijo; distancia en pasos.
 struct Casilla { int col, fila; };
@@ -36,8 +37,12 @@ struct DefUnidad {
   int ataque_ticks = 48, tecnica_ticks = 120;                  // duracion total de cada accion; el impacto cae al 40 % / 50 %
   Tecnica tecnica;
   Pasiva pasiva = Pasiva::Ninguna; int pasiva_valor = 0;       // porcentaje (KiRegular: ki por segundo)
-  int voz_banco = 4, voz_ataque[3] = {42, 43, 50}, voz_ko[3] = {19, 20, 25};   // gritos (gestor de efectos del juego); solo sonido, no entra en la simulacion
+  int voz_banco = 4, voz_ataque[3] = {42, 44, 45}, voz_ko[3] = {19, 20, 21};   // gritos (gestor de efectos del juego); solo sonido, no entra en la simulacion
 };
+// TACTICS-09: papel de cada id del banco de gritos nativo del personaje (medido en un combate normal, H5). El toml elige dentro del papel solo
+// ids que suenan en ese personaje (mod center hd/tactics_voces.py los comprueba en usa y jpn); el catalogo rechaza un id fuera de su papel.
+enum class PapelVoz { Tecnica, Ko };
+constexpr bool EnPapel(PapelVoz p, int id) { return p == PapelVoz::Tecnica ? id >= 42 && id <= 50 : id >= 19 && id <= 25; }
 
 // Azar propio con estado serializable (SplitMix64). Flujo(semilla, n) da flujos independientes: 0 combate, 1 cosmetico, 2.. tiendas/bots.
 struct Rng {
@@ -69,7 +74,8 @@ struct Unidad {
   bool viva() const { return estado != Estado::Muerta; }
 };
 
-struct Resultado { bool terminada = false; int ganador = -1; uint32_t ticks = 0; int vivas[2] = {0, 0}; int vida[2] = {0, 0}; };
+struct Resultado { bool terminada = false; int ganador = -1; uint32_t ticks = 0; int vivas[2] = {0, 0}; int vida[2] = {0, 0};
+                   uint32_t quieta_max = 0; int quieta_unidad = -1; };   // TACTICS-01: la espera mas larga de una unidad viva sin empezar nada (ticks) y quien
 
 class Sim {
  public:
@@ -105,6 +111,9 @@ class Sim {
   std::vector<bool> retro_;                                      // por unidad: ya espero antes de volver atras
   std::vector<int> ant_;                                         // por unidad: casilla que acaba de dejar (para no volver atras)
   std::vector<int> pienso_hasta_;                                // por unidad: tick antes del que no vuelve a pensar (bloqueo)
+  std::vector<uint32_t> quieta_;                                 // TACTICS-01: por unidad, ticks seguidos en espera sin empezar nada
+  uint32_t quieta_max_ = 0;
+  int quieta_unidad_ = -1;
 };
 
 }  // namespace dbz3::tactics::sim

@@ -1,0 +1,27 @@
+# SLOTS_ESC-01: 12 altas contadas en el log y selector con desplazamiento hasta la ultima (registro 28).
+#   Requiere la copia fija esc_n preparada con:  python tools\escenarios_copia_n.py preparar --n 12
+#   NO se ejecuta con las copias smoke_a/b/c (no tienen las copias de alta). Correr:
+#     python tools\pruebas.py correr esc_n docs\14_frentes\escenarios_pruebas\final\slots_esc\selector_desplazamiento_12.toml
+# criterio = el arranque carga 12 altas (COPIA 0001..0012), el selector dice "12 escenarios nuevos", el cursor
+#            llega a la ultima por la izquierda (registro 28), se elige y empieza el combate en ella.
+descripcion = "SLOTS_ESC-01: 12 altas contadas y selector_desplazamiento hasta la 12 (registro 28)"
+env = ["DBZ3_SONDA_ESCENARIO=1", "DBZ3_TEST_RINGOUT=1"]
+pasos = [
+  "esperar 2000",
+  "log \"alta 28 = 'COPIA 0012'\" 60",
+  "tecla S 1200",
+  "tecla Space 3000",
+  "tecla Space 3000",
+  "hasta_log 'lecturas del juego al entrar al selector' 120", "tecla Space 4000", "fin",
+  "esperar 2500",
+  "log \"selector con \\d+ casillas nuevas, 12 escenarios nuevos\" 15",
+  "captura a_selector",
+  "tecla A 1500",
+  "tecla A 1500",
+  "log \"sel casilla \\d+ \\(registro 28\\)\" 20",
+  "captura b_desplazado",
+  "tecla Space 3000",
+  "log \"alta 28 'COPIA 0012' \\(mod Copia ESC 0012\\) en el registro\" 60",
+  "esperar 15000",
+  "captura c_combate",
+]

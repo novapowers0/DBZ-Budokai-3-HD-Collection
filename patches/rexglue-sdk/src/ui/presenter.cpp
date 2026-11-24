@@ -56,6 +56,19 @@ REXCVAR_DEFINE_BOOL(dbz3_test_oculto, false, "DBZ3/Dev",
                     "Tests: hidden mode, the host swap chain is not presented")
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
 
+// dbz3 (#59): latencia de mando -> pantalla. `dbz3_baja_latencia` deja la cola
+// de presentacion de D3D12 en 1 cuadro (IDXGISwapChain2::SetMaximumFrameLatency);
+// en Vulkan no hace nada (la cadencia ya la fija la FIFO del presentador).
+// `dbz3_latencia_sonda` escribe en el registro el tiempo entre la pulsacion que
+// lee el guest y el present (ver include/rex/dbz3_latencia.h); apagada no cuesta
+// nada. La latencia del panel y del mando real se miden con camara.
+REXCVAR_DEFINE_BOOL(dbz3_baja_latencia, false, "DBZ3/Video",
+                    "Present queue of 1 frame for lower input latency (off = default)")
+    .lifecycle(rex::cvar::Lifecycle::kHotReload);
+REXCVAR_DEFINE_BOOL(dbz3_latencia_sonda, false, "DBZ3/Dev",
+                    "Log input-to-present latency (dev; off = no cost)")
+    .lifecycle(rex::cvar::Lifecycle::kHotReload);
+
 // The present_* settings change how the finished guest frame is scaled to the
 // window, so they apply live (the app re-reads them through
 // Presenter::RefreshGuestOutputPaintConfigFromCvarsFromUIThread). The render
@@ -812,9 +825,16 @@ std::unique_lock<std::mutex> Presenter::ConsumeGuestOutput(
 }
 
 Presenter::GuestOutputPaintFlow Presenter::GetGuestOutputPaintFlow(
-    const GuestOutputProperties& properties, uint32_t host_rt_width, uint32_t host_rt_height,
+    const GuestOutputProperties& properties_in, uint32_t host_rt_width, uint32_t host_rt_height,
     uint32_t max_rt_width, uint32_t max_rt_height, const GuestOutputPaintConfig& config) const {
   GuestOutputPaintFlow flow = {};
+  // dbz3 (POST/SDK-01): las bandas salen de la proporcion de la IMAGEN del juego (1280x720), no de la del modo de
+  // video, que aqui llega igual a la ventana (2560:1080 a 21:9): con present_letterbox nunca habia bandas.
+  GuestOutputProperties properties = properties_in;
+  if (properties.frontbuffer_width && properties.frontbuffer_height) {
+    properties.display_aspect_ratio_x = properties.frontbuffer_width;
+    properties.display_aspect_ratio_y = properties.frontbuffer_height;
+  }
 
   // FIXME(Triang3l): Configuration variables racing with per-game config
   // loading.
@@ -835,6 +855,20 @@ Presenter::GuestOutputPaintFlow Presenter::GetGuestOutputPaintFlow(
   }
 
   flow.properties = properties;
+  {  // POST/SDK-01: registro (una vez por cambio) de lo que decide las bandas
+    static uint64_t visto = 0;
+    const uint64_t clave = (uint64_t(surface_width_in_paint_connection_) << 48) ^
+                           (uint64_t(surface_height_in_paint_connection_) << 32) ^
+                           (uint64_t(properties.display_aspect_ratio_x) << 16) ^ properties.display_aspect_ratio_y ^
+                           (uint64_t(REXCVAR_GET(present_letterbox)) << 63) ^ (uint64_t(host_rt_width) << 20);
+    if (clave != visto) {
+      visto = clave;
+      REXLOG_INFO("dbz3 presentador: superficie {}x{} destino {}x{} aspecto {}:{} letterbox={}",
+                  surface_width_in_paint_connection_, surface_height_in_paint_connection_, host_rt_width,
+                  host_rt_height, properties.display_aspect_ratio_x, properties.display_aspect_ratio_y,
+                  REXCVAR_GET(present_letterbox));
+    }
+  }
 
   // Multiplication-division rounding to the nearest.
   auto rescale_unsigned = [](uint32_t value, uint32_t new_scale, uint32_t old_scale) -> uint32_t {

@@ -61,7 +61,7 @@ struct Entrada {
 struct Salida {
   float x = 0, z = 0, vel = 0, t_ms = 0, medidor = 0, congelado = 0, t568 = 0, t56c = 0;
   uint32_t yaw = 0, anim = 0;
-  int estado = 0, monedas = 0, quedan = 0, n_obj = 0;
+  int estado = 0, monedas = 0, quedan = 0, n_obj = 0, rango = -1;   // rango: ctx+0x4E0 (Viewer_StateCheckResult)
   bool meta = false;                 // el original llamo a Viewer_BeginFinalPhase (cruzar la meta)
   uint16_t flags[256]{};              // flags de los objetos: [0] = meta, luego L1 y L2; bit 0x8000 = oculto/cogido
 };
@@ -405,6 +405,7 @@ bool CampoVuelo(const vuelo7::Entrada& in, vuelo7::Salida& out) {
   out.t_ms = e.Rf(G + 0x518); out.medidor = e.Rf(G + 0x51C); out.congelado = e.Rf(G + 0x520);
   out.t568 = e.Rf(G + 0x568); out.t56c = e.Rf(G + 0x56C);
   out.monedas = int(e.R32(G + 0x524)); out.quedan = int(e.R32(G + 0x50C));
+  out.rango = int(int32_t(e.R32(G + 0x4E0)));   // PAQ_3: -1 mientras no hay resultado (Viewer_StateCheckResult)
   out.n_obj = int(std::min<uint32_t>(e.R32(G + 0x510), 256));
   for (int i = 0; i < out.n_obj; ++i) out.flags[i] = e.R16(kObjV + 24 * uint32_t(i));
   if (std::getenv("DBZ3_TEST_IWMINI"))

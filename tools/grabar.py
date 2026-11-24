@@ -101,8 +101,11 @@ def main():
     audio = salida / (a.nombre + ".f32")
     video = salida / (a.nombre + "_v.mp4")
     final = salida / (a.nombre + ".mp4")
+    # DBZ3_TEST_OCULTO=0: la ventana tiene que verse para grabarla. Si el entorno trae DBZ3_PRUEBAS_ENV con OCULTO=1 (tandas en
+    # segundo plano), pruebas.py la escondia (SW_HIDE) en cuanto aparecia: aqui se veia un instante y despues ventana() daba None
+    # (12/11: survivors_partida, "int(h)" con h = None). --env gana a DBZ3_PRUEBAS_ENV en pruebas.py (_correr).
     cmd = [sys.executable, str(R / "tools" / "pruebas.py"), "correr", a.copia, a.escenario, "--forzar",
-           "--env", "REX_DBZ3_AUDIO_DUMP=" + str(audio)]
+           "--env", "REX_DBZ3_AUDIO_DUMP=" + str(audio), "--env", "DBZ3_TEST_OCULTO=0"]
     for p in a.par:
         cmd += ["--par", p]
     for e in a.env:
@@ -143,6 +146,16 @@ def main():
             time.sleep(0.2)
     time.sleep(a.retraso)
     h = ventana(pid)
+    t2 = time.time()
+    while not h:
+        # la ventana de antes ya no esta (oculta, o el juego se relanzo con otro proceso): se busca otra vez unos segundos
+        if prueba.poll() is not None or time.time() - t2 > 30:
+            sys.exit("la ventana del juego desaparecio antes de grabar (oculta o el juego se relanzo); pid %s" % pid)
+        nuevos = pids_titulo() - pids_antes
+        if pid not in nuevos and len(nuevos) == 1:
+            pid = next(iter(nuevos))
+        time.sleep(0.25)
+        h = ventana(pid)
     print("  grabacion: ventana %#x" % int(h), flush=True)
     inicio_v = int(time.time() * 1000)
     # gfxcapture graba la ventana aunque otra la tape (gdigrab con title= da negro con el swapchain de D3D12)

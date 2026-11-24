@@ -1,0 +1,24 @@
+descripcion = "H11: reanudar tras la decision real de revivir y llegar al final"
+turbo = false
+apartar = ["user_data/dbz3/cac.toml*", "user_data/dbz3/heroe", "user_data/dbz3/hub_heroe.toml*", "user_data/dbz3/rpg.toml*"]
+poner = ["E:/DBZ3HD_trabajo/heroe2_fixtures/revivir.toml -> user_data/dbz3/cac.toml"]
+env = ["DBZ3_TEST_DU_HEROE=35", "DBZ3_TEST_RINGOUT=1", "DBZ3_AUTO_TOUCH=40", "DBZ3_AUTO_TOUCH_S=3", "DBZ3_DU_TRACE=1", "DBZ3_TEST_CFG=dbz3_heroe_rutas=true;dbz3_heroe_ui_nueva=true;dbz3_heroe_recompensas=true"]
+pasos = [
+  "esperar 5000",
+  "log \"ruta atomica de la ficha\" 120",
+  "hasta_log \"ruta: tramo 6 combate .*ULTIMO\" 900",
+  "tecla D 250",
+  "tecla Space 1200",
+  "esperar 900",
+  "fin",
+  "hasta_log \"video abierto: guest=us.*Ending00[.]sfd\" 900",
+  "tecla D 250",
+  "tecla Space 1200",
+  "esperar 900",
+  "fin",
+  "esperar 5000",
+  "captura creditos_final_revivir",
+  "tecla Return 500",
+  "esperar 8000",
+  "captura despues_del_final_revivir"
+]

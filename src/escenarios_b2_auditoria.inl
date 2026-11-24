@@ -5,20 +5,54 @@ struct B2Contacto {
   uint32_t gestor = 0, actor = 0, cuadro = 0, superficie = 0;
   int entrada = -1;
   std::array<float,3> punto{}; // 3734E0/E4/E8: punto exacto de la consulta B2
+  std::array<float,3> normal{}; // normal de la pared B2 (B2-P12b: x+272 del estado 22)
 };
 B2Contacto g_b2_contacto;
+
+// Candidatas aisladas: nunca se habilitan por aprobar solo un banco offline.
+REXCVAR_DEFINE_BOOL(dbz3_b2_transicion_base, false, "DBZ3/Dev",
+                   "Escena del robot de Base B2; candidata pendiente de cotejo visual");
+REXCVAR_DEFINE_BOOL(dbz3_b2_transicion_kami, false, "DBZ3/Dev",
+                   "Destruccion del Templo de Kami B2; candidata pendiente de cotejo visual");
+REXCVAR_DEFINE_BOOL(dbz3_b2_transicion_nieve, false, "DBZ3/Dev",
+                   "Transicion Nieve B2; candidata pendiente de cotejo visual");
+REXCVAR_DEFINE_BOOL(dbz3_b2_transicion_ciudad, false, "DBZ3/Dev",
+                   "Transicion Ciudad B2; candidata pendiente de cotejo visual");
+REXCVAR_DEFINE_BOOL(dbz3_b2_validar_inicio, false, "DBZ3/Dev",
+                   "Preflight B2TZv2/SPX y reinicio de estado del motor B2; optativo");
+// RESCATE B2-TRANS (12/11): el centro del atacante (+1616; PAL +4B0 = ancla 0 de la pose, FUN_001f68c0)
+// sale del clip B2 del golpe solo si ForzarAtaque lo pone; exigia el codigo HD 574 y el golpe real
+// de la escena (arnes f4: guardia+patada) no lo es -> pose y desplazamiento del golpe B3.
+REXCVAR_DEFINE_BOOL(dbz3_b2_golpe_real, true,  // 12/11 encendido de serie (HOJA_DECISIONES_0800 A)
+    "DBZ3/Dev",
+                   "B2: clip B2 del golpe sobre el golpe real que abre la transicion (prueba)");
+
+REXCVAR_DEFINE_BOOL(dbz3_b2_giro_atacante, false, "DBZ3/Dev",
+                   "B2: el atacante mira a la victima al abrir la transicion (toma original de Nieve)");
 
 bool NieveB2Activa() {
   // Nombre histórico de la sonda; el consumidor/colisión es ahora común.
   if(g_activa<kSerie||g_activa>=Total()||dbz3::net::Session::Get().active())return false;
-  const uint32_t e=g_altas[size_t(g_activa-kSerie)].entrada;
+  const auto& a=g_altas[size_t(g_activa-kSerie)];
+  // Un alta con la misma entrada pero sin transicion_b2.b2t (p. ej. los mods
+  // "B2 grupo N" del selector) no tiene guion ni solar: no es escena B2.
+  if(a.transicion_b2.empty())return false;
+  const uint32_t e=a.entrada;
   return e==5000||e==5002||e==5004||e==5007||e==5008;
 }
 
-// El motor B2 corre en pruebas (DBZ3_TEST_B2_MOTOR) o, de serie, solo en la Llanura (unica cotejada con el original).
+// Llanura conserva su baseline ON; las otras escenas exigen su ajuste aislado.
 bool B2MotorOn() {
   if(std::getenv("DBZ3_TEST_B2_MOTOR"))return true;
-  return REXCVAR_GET(dbz3_b2_transicion_llanura)&&NieveB2Activa()&&g_altas[size_t(g_activa-kSerie)].entrada==5004;
+  if(!NieveB2Activa())return false;
+  switch(g_altas[size_t(g_activa-kSerie)].entrada) {
+    case 5000:return REXCVAR_GET(dbz3_b2_transicion_base);
+    case 5002:return REXCVAR_GET(dbz3_b2_transicion_kami);
+    case 5004:return REXCVAR_GET(dbz3_b2_transicion_llanura);
+    case 5007:return REXCVAR_GET(dbz3_b2_transicion_nieve);
+    case 5008:return REXCVAR_GET(dbz3_b2_transicion_ciudad);
+    default:return false;
+  }
 }
 
 void B2ContactoReal(uint8_t* base, uint32_t actor, uint32_t superficie, uint32_t resultado) {

@@ -498,6 +498,15 @@ VulkanTextureCache::~VulkanTextureCache() {
 void VulkanTextureCache::BeginSubmission(uint64_t new_submission_index) {
   TextureCache::BeginSubmission(new_submission_index);
 
+  // DBZ3: texturas del pack cuya memoria guest paso a tener otra imagen (ver
+  // UploadPackTextureData): fuera de la cache; se recrean con lo que haya ahora.
+  for (const TextureKey& key : pack_retire_now_) {
+    pack_factor_cache_.erase(key);
+    pack_entry_cache_.erase(key);
+    RetireTexture(key);
+  }
+  pack_retire_now_.clear();
+
   // DBZ3: el indice de packs se construye en segundo plano; cuando acaba, lo cargado
   // con las originales se rehace para que entren las HD.
   const bool pack_index_ready = Dbz3TexturePackIndex::Get().active();
@@ -2041,7 +2050,9 @@ bool VulkanTextureCache::UploadPackTextureData(VulkanTexture& texture, const Tex
   }
   // 1.4.3 EX: revalidar por contenido (ver la version D3D12). Vulkan no tiene la
   // pasada de upscale, asi que la original solo se puede cargar en packs x1; en
-  // packs Nx sin otra entrada se mantiene la imagen anterior.
+  // packs Nx sin otra entrada la textura se retira y se recrea como normal en la
+  // siguiente submission. Antes se quedaba la imagen HD ANTERIOR para siempre: en el
+  // Torneo las banderas salian con el publico pixelado (memoria reutilizada).
   {
     std::vector<uint8_t> linear;
     if (LinearizeGuestTexture(key, key.GetGuestLayout(), key.base_page << 12, linear)) {
@@ -2051,6 +2062,15 @@ bool VulkanTextureCache::UploadPackTextureData(VulkanTexture& texture, const Tex
         entry = now;
       } else if (entry->width == key.GetWidth()) {
         return false;
+      } else {
+        static int retire_logged = 0;
+        if (retire_logged < 16) {
+          ++retire_logged;
+          REXGPU_INFO("dbz3: pack (vulkan) {}x{} fmt {}: la memoria tiene otra imagen; se rehace",
+                      key.GetWidth(), key.GetHeight(), uint32_t(key.format));
+        }
+        pack_retire_now_.push_back(key);
+        return true;   // un frame con la imagen anterior, como en D3D12
       }
     }
   }

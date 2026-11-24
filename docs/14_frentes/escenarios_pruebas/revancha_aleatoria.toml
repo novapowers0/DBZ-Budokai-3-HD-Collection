@@ -1,34 +1,41 @@
-descripcion = "12a: con la casilla aleatoria (?) del selector del Duelo, cada revancha carga un escenario nuevo (log 'dbz3 escenarios: revancha aleatoria: registro X -> Y'); la primera carga respeta el elegido. Cvar dbz3_escenarios_revancha_aleatoria activada. DBZ3_SONDA_ESCENARIO=1 imprime 'dbz3 escenarios: sel casilla N (registro R)' cada vez que cambia el cursor del selector: sirve para fijar sin adivinar la cuenta de tecla A hasta el '?' (casilla 12). La comprobacion esencial es la linea de la revancha, no la captura."
-env = ["REX_DBZ3_ESCENARIOS_REVANCHA_ALEATORIA=true", "DBZ3_SONDA_ESCENARIO=1", "DBZ3_TEST_RINGOUT=1"]
+# (12/11 SLOTS_ESC-07: ya no esta aparcado) ronda 6 (sin verificar por copias rb_a/rb_b ocupadas >20 min): flujo implementado -
+# estado 7 -> Backspace por dbz3_input.req -> selector -> casilla ? + Space; cvar APAGADA. No se ejecuta.
+# C3 / SEL01 ronda 6: revancha aleatoria por el flujo completo (sin recarga en caliente).
+#   python tools\pruebas.py paralelo "docs\14_frentes\escenarios_pruebas\final\c3-selector-hub" --max 1
+#
+# clave    = SEL01. cvar = dbz3_escenarios_revancha_aleatoria=true (APAGADA de serie; la enciende el coordinador).
+# criterio = el combate sale de la casilla "?"; al llegar al menu final (estado 7) el port inyecta B y el juego
+#            vuelve al selector, que pone la casilla "?" y pulsa A: el escenario nuevo se carga por el camino
+#            normal (sub_820C26E0) y el log da "revancha aleatoria: registro X -> Y". Tres veces.
+# log      = "dbz3 escenarios: revancha: menu final -> selector (B)" y "revancha aleatoria: registro" (x3)
+# Si el menu final no auto-sale, el log de estado 7 y el de "menu final -> selector" lo dicen.
+descripcion = "SEL01: 3 revanchas aleatorias por el flujo del selector (B al menu final + A en la casilla ?)"
+env = [
+  "DBZ3_SONDA_ESCENARIO=1",
+  "DBZ3_TEST_RINGOUT=1",
+  'DBZ3_TEST_CFG=dbz3_escenarios_revancha_aleatoria=true;dbz3_selector_musica=true;dbz3_selector_musica_aislada=true;dbz3_musica_combate="fija:b3:11"',
+]
 pasos = [
   "esperar 2500",
   "tecla S 1200",
-  "tecla Space 3000",   # titulo -> menu -> ...
+  "tecla Space 3000",
   "tecla Space 3000",
   "tecla Space 4000",
   "tecla Space 4000",
   "tecla Space 4000",
-  "tecla Space 4000",   # ... -> selector de fases del Duelo (mn_StageSel)
+  "tecla Space 4000",
   "esperar 2500",
-  # sonda del selector (frente 15): da la casilla de partida y la secuencia al mover con A. Si la casilla de
-  # partida no fuera 0, la cuenta de tecla A de abajo se ajusta con lo que diga esta linea.
-  "log \"escenarios: sel casilla\" 30",
-  "captura 01_selector",
+  "log \"escenarios: sel casilla\" 40",
   "tecla A 700",
-  "log \"escenarios: sel casilla 12\" 20",   # la casilla "?" (aleatorio)
-  "captura 01_casilla_azar",
+  "log \"escenarios: sel casilla 12\" 30",
   "tecla Space 3000",
   "log \"tag: empieza un combate\" 90",
-  "esperar 2500",
-  "captura 02_combate",
   "log \"estado del combate 7\" 180",
-  "esperar 1500",
-  "tecla Space 3000",
-  "log \"revancha aleatoria: registro\" 60",
-  "captura 03_revancha",
-  "log \"(?s)(estado del combate 7.*){2}\" 90",
-  "esperar 1500",
-  "tecla Space 3000",
-  "log \"(?s)(revancha aleatoria: registro.*){2}\" 60",
-  "captura 04_revancha2",
+  "log \"revancha: menu final -> reelegir\" 30",
+  "log \"revancha aleatoria: registro\" 120",
+  "captura 01_revancha1",
+  "log \"(?s)(revancha aleatoria: registro.*){2}\" 150",
+  "captura 02_revancha2",
+  "log \"(?s)(revancha aleatoria: registro.*){3}\" 150",
+  "captura 03_revancha3",
 ]

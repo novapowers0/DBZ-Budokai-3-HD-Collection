@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <set>
 #include <sstream>
 #include <tuple>
@@ -100,6 +101,24 @@ bool CargarEconomia(const std::string& ruta, const Catalogo& cat, Economia* out,
     }
   }
   if (e.peso_coste.size() != e.tope_unidades.size()) err += "economia: 'peso_coste' debe tener una fila por nivel\n";
+  if (const toml::table* cr = raiz["carrusel"].as_table()) {   // TACTICS-03: opcional; sin el bloque no hay carrusel
+    const std::string dc = "carrusel";
+    e.carrusel_desde = l.Num(*cr, "desde", 2, 1000, dc);
+    e.carrusel_cada = l.Num(*cr, "cada", 0, 1000, dc);
+    e.carrusel_extra = l.Num(*cr, "extra", 0, kMaxCarrusel - kMaxJug, dc);
+    e.carrusel_nivel = l.Num(*cr, "nivel", 1, std::max(1, e.NivelMax()), dc);
+    e.carrusel_capsula = l.Num(*cr, "capsula", 0, 1, dc);
+  }
+  if (const toml::table* bt = raiz["bots"].as_table()) {   // TACTICS-04: opcional; sin el bloque los bots listos juegan como los de siempre
+    const std::string db = "bots";
+    e.bots_objetivo = l.Num(*bt, "objetivo", 0, 200, db);
+    e.bots_copia3 = l.Num(*bt, "copia3", 0, 200, db);
+    e.bots_sinergia = l.Num(*bt, "sinergia", 0, 200, db);
+    e.bots_rival = l.Num(*bt, "rival", 0, 100, db);
+    e.bots_ahorro_desde = l.Num(*bt, "ahorro_desde", 1, 1000, db);
+    e.bots_tiradas = l.Num(*bt, "tiradas", 0, 10, db);
+    e.bots_estrellas = l.Num(*bt, "estrellas", 0, 100, db);
+  }
 
   std::set<std::string> ids;
   {   // capsulas: tactics_capsulas.toml, junto a este fichero
@@ -174,23 +193,93 @@ bool CargarEconomia(const std::string& ruta, const Catalogo& cat, Economia* out,
       e.unidades.push_back(u);
     }
   for (const auto& cu : cat.unidades) if (!vistos.count(cu.id)) err += "la unidad '" + cu.id + "' del catalogo no tiene coste ni sinergias\n";
-  for (size_t k = 0; k < e.sinergias.size(); ++k) {   // cada umbral necesita suficientes unidades DISTINTAS
-    int miembros = 0;
-    for (const UnidadEco& u : e.unidades) miembros += u.sin[0] == int(k) || u.sin[1] == int(k);
-    int ant = 0;
-    for (const Umbral& b : e.sinergias[k].umbrales) {
-      if (b.n > miembros) err += "sinergia " + e.sinergias[k].id + ": umbral " + std::to_string(b.n) + " pero solo hay " + std::to_string(miembros) + " unidades distintas\n";
-      if (b.n <= ant) err += "sinergia " + e.sinergias[k].id + ": los umbrales deben crecer\n";
-      ant = b.n;
+  const auto revisar = [&err](const Economia& x, const std::string& pre) {
+    for (size_t k = 0; k < x.sinergias.size(); ++k) {   // cada umbral necesita suficientes unidades DISTINTAS
+      int miembros = 0;
+      for (const UnidadEco& u : x.unidades) miembros += u.sin[0] == int(k) || u.sin[1] == int(k);
+      int ant = 0;
+      for (const Umbral& b : x.sinergias[k].umbrales) {
+        if (b.n > miembros) err += pre + "sinergia " + x.sinergias[k].id + ": umbral " + std::to_string(b.n) + " pero solo hay " + std::to_string(miembros) + " unidades distintas\n";
+        if (b.n <= ant) err += pre + "sinergia " + x.sinergias[k].id + ": los umbrales deben crecer\n";
+        ant = b.n;
+      }
     }
+  };
+  revisar(e, "");
+  if (const toml::table* vt = raiz["variedad"].as_table()) {   // TACTICS-05: opcional; sin el bloque la variedad no cambia nada
+    const auto sin_id = [&](const std::string& sid) {
+      for (size_t k = 0; k < e.sinergias.size(); ++k) if (e.sinergias[k].id == sid) return int(k);
+      return -1;
+    };
+    if (auto* a = (*vt)["sinergia"].as_array())
+      for (auto& n : *a)
+        if (const toml::table* t = n.as_table()) {
+          Economia::VarSinergia vs;
+          const std::string sid = (*t)["id"].value_or<std::string>("");
+          vs.sinergia = sin_id(sid);
+          const std::string dv = "variedad: sinergia " + sid;
+          if (vs.sinergia < 0) { err += dv + ": desconocida\n"; continue; }
+          if (auto* u = (*t)["umbral"].as_array())
+            for (auto& m : *u)
+              if (const toml::table* ut = m.as_table())
+                vs.umbrales.push_back({l.Num(*ut, "n", 2, 6, dv), l.Num(*ut, "vida", 0, 300, dv), l.Num(*ut, "ataque", 0, 300, dv), l.Num(*ut, "defensa", 0, 300, dv)});
+          if (vs.umbrales.empty()) err += dv + ": sin umbrales\n";
+          e.var_sinergias.push_back(vs);
+        }
+    if (auto* a = (*vt)["unidad"].as_array())
+      for (auto& n : *a)
+        if (const toml::table* t = n.as_table()) {
+          Economia::VarUnidad vu;
+          const std::string uid = (*t)["id"].value_or<std::string>("");
+          for (size_t i = 0; i < e.unidades.size(); ++i) if (e.unidades[i].id == uid) vu.unidad = int(i);
+          const std::string dv = "variedad: unidad " + uid;
+          if (vu.unidad < 0) { err += dv + ": desconocida\n"; continue; }
+          vu.coste = t->contains("coste") ? l.Num(*t, "coste", 1, kMaxCoste, dv) : 0;
+          vu.sin[0] = e.unidades[size_t(vu.unidad)].sin[0], vu.sin[1] = e.unidades[size_t(vu.unidad)].sin[1];
+          if (const toml::array* s = (*t)["sinergias"].as_array()) {
+            if (s->size() != 2) { err += dv + ": 'sinergias' debe tener exactamente 2\n"; continue; }
+            for (size_t i = 0; i < 2; ++i) {
+              vu.sin[i] = sin_id(s->at(i).value_or<std::string>(""));
+              if (vu.sin[i] < 0) err += dv + ": sinergia desconocida\n";
+            }
+            if (vu.sin[0] >= 0 && vu.sin[0] == vu.sin[1]) err += dv + ": las dos sinergias son la misma\n";
+          }
+          e.var_unidades.push_back(vu);
+        }
+    if (err.empty()) revisar(ConVariedad(e), "variedad: ");
   }
   if (!err.empty()) { *error = err; return false; }
   *out = std::move(e);
   return true;
 }
 
-Partida::Partida(const Catalogo& cat, const Economia& eco, uint64_t semilla, int jugadores)
-    : cat_(&cat), eco_(&eco), semilla_(semilla), n_(jugadores > 0 ? std::min(jugadores, kMaxJug) : eco.jugadores), azar_(sim::Flujo(semilla, 5)) {
+Economia ConVariedad(const Economia& base) {
+  Economia e = base;
+  if (!base.HayVariedad()) return e;
+  for (const Economia::VarSinergia& vs : base.var_sinergias) e.sinergias[size_t(vs.sinergia)].umbrales = vs.umbrales;
+  for (const Economia::VarUnidad& vu : base.var_unidades) {
+    UnidadEco& u = e.unidades[size_t(vu.unidad)];
+    if (vu.coste > 0) u.coste = vu.coste, u.copias = e.copias_coste[vu.coste - 1];
+    u.sin[0] = vu.sin[0], u.sin[1] = vu.sin[1];
+  }
+  e.var_unidades.clear(), e.var_sinergias.clear();
+  e.variedad = true;
+  return e;
+}
+
+Partida::Partida(const Catalogo& cat, const Economia& eco_base, uint64_t semilla, int jugadores, bool carrusel, bool listos, bool variedad)
+    : cat_(&cat), eco_(&eco_base), semilla_(semilla), n_(jugadores > 0 ? std::min(jugadores, kMaxJug) : eco_base.jugadores), azar_(sim::Flujo(semilla, 5)), carrusel_(carrusel), listos_(listos) {
+  if (variedad && eco_base.HayVariedad()) {   // TACTICS-05: sin bloque [variedad] la partida es la de siempre (y su huella tambien)
+    eco_var_ = std::make_shared<const Economia>(ConVariedad(eco_base));
+    eco_ = eco_var_.get();
+  }
+  const Economia& eco = *eco_;
+  if (listos && !eco.sinergias.empty())   // TACTICS-04: objetivo de cada bot, de un flujo propio de la semilla (no se guarda: sale igual al cargar)
+    for (int p = 1; p < std::min(n_, kMaxJug); ++p) {
+      sim::Rng r = sim::Flujo(semilla, 60 + uint32_t(p));
+      objetivo_[p] = int(r.Hasta(uint32_t(eco.sinergias.size())));
+      estrellas_[p] = int(r.Hasta(100)) < eco.bots_estrellas;   // objetivo de 3 estrellas (con el de sinergia)
+    }
   for (const UnidadEco& u : eco.unidades) libres_.push_back(u.copias);
   for (int p = 0; p < n_; ++p) {
     tienda_[p] = sim::Flujo(semilla, p == 0 ? 2 : p == 1 ? 3 : 10 + uint32_t(p));
@@ -630,6 +719,8 @@ void Partida::TerminarCombate() {
     racha(j_[d.a], r.ganador < 0 ? 0 : r.ganador == 0 ? 1 : -1);
     if (!d.copia) racha(j_[d.b], r.ganador < 0 ? 0 : r.ganador == 1 ? 1 : -1);
     if (int(k) == duelo_h_) ganador_ronda_ = r.ganador, dano_rival_ = d1;
+    if (historial_ && !d.copia && d.b < kMaxJug)   // TACTICS-08: ultimo duelo de cada uno contra el otro
+      ultimo_[d.a][d.b] = r.ganador < 0 ? 3 : r.ganador == 0 ? 1 : 2, ultimo_[d.b][d.a] = r.ganador < 0 ? 3 : r.ganador == 1 ? 1 : 2;
   }
   const int vivos_antes = Vivos();
   std::vector<std::pair<int, int>> caidos;   // (valor del equipo al caer, jugador)
@@ -676,7 +767,8 @@ void Partida::SiguienteRonda() {
     }
     Ingresos();
     ++ronda_;
-    IniciarPreparacion();
+    if (CarruselEn(ronda_)) IniciarCarrusel();   // TACTICS-03: si le toca al humano, se queda en Fase::Carrusel hasta que elija
+    else IniciarPreparacion();
     if (j_[0].vivo) return;
     Listo();
     TerminarCombate();
@@ -688,6 +780,115 @@ std::vector<int> Partida::Clasificacion() const {
   for (int p = 0; p < n_; ++p) v[size_t(p)] = p;
   std::sort(v.begin(), v.end(), [&](int x, int y) { return j_[x].puesto < j_[y].puesto; });
   return v;
+}
+
+// ---- TACTICS-03: carrusel. Objetos = vivos + extra, cada uno una copia de la reserva compartida (coste segun la fila de peso_coste del nivel
+// carrusel_nivel + numero de carrusel) y, con carrusel_capsula, una capsula. Todo sale de un flujo propio de la semilla y la ronda: no toca el azar
+// de las tiendas ni de los bots hasta que estos eligen. Orden: menos vida primero; a igual vida, menos valor; despues, el de menor indice.
+void Partida::IniciarCarrusel() {
+  fase_ = Fase::Carrusel;
+  sim_.reset();
+  comb_.clear(), duelos_.clear(), res_.clear();
+  duelo_h_ = -1, neutral_ = false;
+  carr_.clear(), orden_.clear();
+  turno_ = 0;
+  const int k = (ronda_ - eco_->carrusel_desde) / std::max(1, eco_->carrusel_cada);
+  const auto& w = eco_->peso_coste[size_t(std::min(eco_->NivelMax(), eco_->carrusel_nivel + k) - 1)];
+  sim::Rng r = sim::Flujo(semilla_, 600 + uint32_t(ronda_));
+  const int n = std::min(kMaxCarrusel, Vivos() + eco_->carrusel_extra);
+  for (int i = 0; i < n; ++i) {
+    int disp[kMaxCoste] = {}, total = 0;
+    for (size_t u = 0; u < libres_.size(); ++u) disp[eco_->unidades[u].coste - 1] += libres_[u];
+    for (int t = 0; t < kMaxCoste; ++t) total += disp[t] ? w[size_t(t)] : 0;
+    const bool uniforme = total == 0;
+    if (uniforme) for (int t = 0; t < kMaxCoste; ++t) total += disp[t] ? 1 : 0;
+    if (total == 0) break;   // reserva vacia (imposible con los datos de serie)
+    int x = int(r.Hasta(uint32_t(total))), coste = 0;
+    for (int t = 0; t < kMaxCoste; ++t) {
+      const int pt = !disp[t] ? 0 : uniforme ? 1 : w[size_t(t)];
+      if (x < pt) { coste = t + 1; break; }
+      x -= pt;
+    }
+    ObjCarrusel o;
+    x = int(r.Hasta(uint32_t(disp[coste - 1])));
+    for (size_t u = 0; u < libres_.size(); ++u) {
+      if (eco_->unidades[u].coste != coste) continue;
+      if (x < libres_[u]) { --libres_[u]; o.unidad = int(u); break; }
+      x -= libres_[u];
+    }
+    if (eco_->carrusel_capsula) o.capsula = int(r.Hasta(uint32_t(eco_->capsulas.size())));
+    carr_.push_back(o);
+  }
+  for (int p = 0; p < n_; ++p) if (j_[p].vivo) orden_.push_back(p);
+  std::stable_sort(orden_.begin(), orden_.end(), [&](int a, int b) { return j_[a].vida != j_[b].vida ? j_[a].vida < j_[b].vida : Valor(a) < Valor(b); });
+  AvanzarCarrusel();
+}
+
+void Partida::AvanzarCarrusel() {
+  while (turno_ < int(orden_.size())) {
+    const int p = orden_[size_t(turno_)];
+    if (!j_[p].bot) return;   // le toca al humano
+    const int o = EleccionBot(p);
+    if (o < 0) break;
+    ElegirCarrusel(p, o);
+    return;   // ElegirCarrusel ya sigue la vuelta
+  }
+  for (const ObjCarrusel& o : carr_) if (o.quien < 0 && o.unidad >= 0) ++libres_[size_t(o.unidad)];   // lo que nadie eligio vuelve a la reserva
+  ultimo_carr_ = carr_;
+  carr_.clear(), orden_.clear();
+  turno_ = 0;
+  IniciarPreparacion();
+}
+
+void Partida::Recibir(int p, int u) {
+  Jugador& j = j_[p];
+  const int coste = eco_->unidades[size_t(u)].coste;
+  j.ganado += coste;   // una copia gratis cuenta como ingreso de su valor (el oro + el valor del equipo siguen cuadrando)
+  const int hueco = Sitio(p, u);
+  std::vector<int> iguales;
+  for (int s = kBanco; s < kSlots; ++s) if (j.pz[s].unidad == u && j.pz[s].estrellas == 1) iguales.push_back(s);
+  for (int s = 0; s < kBanco; ++s) if (j.pz[s].unidad == u && j.pz[s].estrellas == 1) iguales.push_back(s);
+  if (hueco >= 0) {
+    j.pz[hueco] = Pieza{u, 1};
+  } else if (iguales.size() >= 2) {
+    Absorber(j, iguales[0], iguales[1]);
+    j.pz[iguales[0]].estrellas = 2;
+  } else {   // sin sitio: la copia vuelve a la reserva y se cobra su valor
+    ++libres_[size_t(u)];
+    j.oro += coste;
+    return;
+  }
+  Combinar(p);
+}
+
+Res Partida::ElegirCarrusel(int p, int objeto) {
+  if (fase_ != Fase::Carrusel) return Res::FaseIncorrecta;
+  if (p != QuienElige() || objeto < 0 || objeto >= int(carr_.size()) || carr_[size_t(objeto)].quien >= 0 || carr_[size_t(objeto)].unidad < 0) return Res::Invalido;
+  ObjCarrusel& o = carr_[size_t(objeto)];
+  o.quien = p;
+  Recibir(p, o.unidad);
+  if (o.capsula >= 0) ++j_[p].inv[o.capsula], ++j_[p].caps_total;
+  ++turno_;
+  AvanzarCarrusel();
+  return Res::Ok;
+}
+
+// El bot elige como en la tienda (Puntua: copias para mejorar, sinergias, hueco en el tablero) mas el valor de la capsula; con su calidad q,
+// un (100-q) % de las veces coge uno al azar. Ve lo mismo que el humano: la fila comun.
+int Partida::EleccionBot(int p) {
+  if (fase_ != Fase::Carrusel) return -1;
+  std::vector<int> libres;
+  int mejor = -1, ms = -1;
+  for (int i = 0; i < int(carr_.size()); ++i) {
+    const ObjCarrusel& o = carr_[size_t(i)];
+    if (o.quien >= 0 || o.unidad < 0) continue;
+    libres.push_back(i);
+    const int s = Puntua(p, o.unidad) + (o.capsula >= 0 ? 12 : 0);
+    if (s > ms) mejor = i, ms = s;
+  }
+  if (libres.empty()) return -1;
+  if (int(bot_[p].Hasta(100)) < 100 - j_[p].calidad) mejor = libres[bot_[p].Hasta(uint32_t(libres.size()))];
+  return mejor;
 }
 
 // ---- Bot: solo mira su propio estado y sus cartas (nada del rival ni del futuro) y juega con las mismas acciones que el humano.
@@ -706,6 +907,26 @@ int Partida::Puntua(int p, int u) const {
   if (dos >= 2) s += 100;   // persigue la 3a estrella: con 2 copias de 2 estrellas retiene oro (s>=100 salta la reserva) y compra esa unidad
   for (int k : ue.sin) for (int o : propias) if (o != u && (eco_->unidades[size_t(o)].sin[0] == k || eco_->unidades[size_t(o)].sin[1] == k)) s += 8;
   if (EnTablero(p) + int(propias.size()) < TopeTablero(p) && iguales == 0) s += 15;
+  if (listos_ && p > 0) {   // TACTICS-04: bots listos (el piloto, jugador 0, juega como siempre)
+    const Economia& e = *eco_;
+    s += e.bots_copia3 * dos;
+    for (int k : ue.sin) {
+      if (k < 0) continue;
+      if (k == objetivo_[p]) s += e.bots_objetivo;
+      if (propias.count(u)) continue;   // ya cuenta como miembro
+      int miembros = 0;
+      for (int o : propias) miembros += eco_->unidades[size_t(o)].sin[0] == k || eco_->unidades[size_t(o)].sin[1] == k;
+      bool tramo = false;
+      for (const Umbral& t : e.sinergias[size_t(k)].umbrales) tramo = tramo || t.n == miembros + 1;
+      if (tramo) s += e.bots_sinergia;
+      else if (miembros > 0) s += e.bots_sinergia / 2;
+    }
+    int rival = 0;   // lectura del rival: copias de esta unidad en manos de los otros vivos (menos copias quedan para mejorarla)
+    for (int o = 0; o < n_; ++o)
+      if (o != p && j_[o].vivo)
+        for (const Pieza& z : j_[o].pz) if (z.unidad == u) rival += Peso(z.estrellas);
+    s -= e.bots_rival * rival;
+  }
   return s;
 }
 
@@ -715,7 +936,24 @@ void Partida::Jugar(int p) {
   Jugador& j = j_[p];
   sim::Rng& az = bot_[p];
   const int q = j.calidad, fallo = 100 - q;
-  const auto reserva = [&] { const bool guarda = q >= 50 && ronda_ >= 4 && EnTablero(p) >= TopeTablero(p); if (reserva_prueba_[p] >= 0) return guarda ? reserva_prueba_[p] : 0; return guarda ? std::min(eco_->interes_tope, j.oro / eco_->interes_cada) * eco_->interes_cada : 0; };
+  const bool listo = listos_ && p > 0;   // TACTICS-04
+  // TACTICS-04: "caza" (solo bots con objetivo de 3 estrellas) = tiene una unidad a 2 estrellas (3-8 copias) camino de la 3a
+  const auto caza = [&] {
+    if (!listo || !estrellas_[p]) return false;
+    std::map<int, int> cuenta;
+    for (const Pieza& z : j.pz) if (z.hay() && z.estrellas <= 2) cuenta[z.unidad] += Peso(z.estrellas);
+    for (const auto& [u, c] : cuenta) if (c >= 3) return true;
+    return false;
+  };
+  const auto reserva = [&] {
+    const bool guarda = q >= 50 && ronda_ >= (listo ? eco_->bots_ahorro_desde : 4) && EnTablero(p) >= TopeTablero(p);
+    if (reserva_prueba_[p] >= 0) return guarda ? reserva_prueba_[p] : 0;
+    return guarda ? std::min(eco_->interes_tope, j.oro / eco_->interes_cada) * eco_->interes_cada : 0;
+  };
+  const auto copia = [&](int u) {   // TACTICS-04: ya tiene esa unidad por debajo de 3 estrellas (la carta la acerca a una mejora)
+    for (const Pieza& z : j.pz) if (z.unidad == u && z.estrellas < 3) return true;
+    return false;
+  };
   const auto comprar = [&] {
     for (bool compro = true; compro;) {
       compro = false;
@@ -726,15 +964,31 @@ void Partida::Jugar(int p) {
         const int s = Puntua(p, j.tienda[c]), coste = eco_->unidades[size_t(j.tienda[c])].coste;
         if (coste > j.oro) continue;
         baratas.push_back(c);
+        if (listo && !copia(j.tienda[c]) && EnTablero(p) >= TopeTablero(p) && caza()) continue;   // TACTICS-04: cazando, con el tablero lleno solo compra copias
         if ((s < 100 && j.oro - coste < reserva()) || s <= ms) continue;
         mejor = c, ms = s;
       }
       if (!baratas.empty() && int(az.Hasta(100)) < fallo) mejor = baratas[az.Hasta(uint32_t(baratas.size()))];
-      if (mejor >= 0 && Comprar(p, mejor) == Res::Ok) compro = true;
+      if (mejor < 0) continue;
+      Res r = Comprar(p, mejor);
+      if (r == Res::SinSitio && listo && estrellas_[p] && copia(j.tienda[mejor])) {   // TACTICS-04: vende una suelta del banquillo para hacer sitio
+        std::map<int, int> peso;
+        for (const Pieza& z : j.pz) if (z.hay()) peso[z.unidad] += Peso(z.estrellas);
+        int vende = -1;
+        for (int b = 0; b < kBanco; ++b)
+          if (j.pz[b].hay() && j.pz[b].unidad != j.tienda[mejor] && peso[j.pz[b].unidad] == 1 &&
+              (vende < 0 || eco_->unidades[size_t(j.pz[b].unidad)].coste < eco_->unidades[size_t(j.pz[vende].unidad)].coste))
+            vende = b;
+        if (vende >= 0 && Vender(p, vende) == Res::Ok) r = Comprar(p, mejor);
+      }
+      if (r == Res::Ok) compro = true;
     }
   };
   comprar();
-  for (int i = 0; i < 2 && !j.bloq && j.oro - eco_->precio_actualizar >= reserva() && int(az.Hasta(100)) < q / 2; ++i) {
+  const bool cazando = caza();
+  const int tiradas = cazando ? std::max(2, eco_->bots_tiradas) : 2, prob = cazando ? q : q / 2;
+  const bool tira = cazando && int(az.Hasta(100)) < prob;   // cazando: una sola decision por ronda (si tira, tira hasta `tiradas` veces)
+  for (int i = 0; i < tiradas && !j.bloq && j.oro - eco_->precio_actualizar >= reserva() && (cazando ? tira : int(az.Hasta(100)) < prob); ++i) {
     if (Actualizar(p) != Res::Ok) break;
     comprar();
   }
@@ -800,24 +1054,75 @@ std::vector<int64_t> Partida::Estado() const {
   v.push_back(int64_t(azar_.estado));
   v.push_back(int64_t(duelos_.size()));
   for (const Duelo& d : duelos_) v.push_back(d.a), v.push_back(d.b), v.push_back(d.copia);
+  if (carrusel_) {   // TACTICS-03: solo con el carrusel encendido (apagado, el estado y la huella son los de antes)
+    v.push_back(int64_t(carr_.size()));
+    for (const ObjCarrusel& o : carr_) v.push_back(o.unidad), v.push_back(o.capsula), v.push_back(o.quien);
+    v.push_back(int64_t(orden_.size()));
+    for (int p : orden_) v.push_back(p);
+    v.push_back(turno_);
+  }
+  if (historial_)   // TACTICS-08: solo con el historial activado (apagado, el estado y la huella son los de antes)
+    for (int p = 0; p < n_; ++p) for (int q = 0; q < n_; ++q) v.push_back(ultimo_[p][q]);
   return v;
+}
+
+// TACTICS-01 (guardado v3): huella de las reglas de tactics_economia.toml y tactics_capsulas.toml. Si cambian (otra version del juego o un mod),
+// la partida guardada no se carga. La dificultad (calidad_bots) no entra: cada jugador guarda la suya.
+uint64_t HuellaEconomia(const Economia& e, bool carrusel, bool listos) {
+  uint64_t h = 1469598103934665603ull;
+  const auto n = [&](int64_t x) { for (int i = 0; i < 8; ++i) h = (h ^ uint64_t((x >> (8 * i)) & 0xff)) * 1099511628211ull; };
+  const auto t = [&](const std::string& x) { n(int64_t(x.size())); for (unsigned char c : x) n(c); };
+  const auto v = [&](const std::vector<int>& x) { n(int64_t(x.size())); for (int y : x) n(y); };
+  for (int x : {e.jugadores, e.oro_inicial, e.ingreso_ronda, e.ingreso_victoria, e.interes_cada, e.interes_tope, e.neutral_desde, e.neutral_cada, e.neutral_oro, e.neutral_pct,
+                e.neutral_pct_ronda, e.racha_desde, e.racha_cada, e.racha_tope, e.tienda, e.precio_actualizar, e.precio_exp, e.exp_compra, e.exp_ronda, e.capsula_cada,
+                e.precio_capsula, e.vida_entrenador, e.dano_base, e.dano_cada_rondas, e.dano_superviviente, e.dano_tope})
+    n(x);
+  for (int x : e.copias_coste) n(x);
+  for (int x : e.mult_estrella) n(x);
+  v(e.exp_subir), v(e.tope_unidades);
+  n(int64_t(e.peso_coste.size()));
+  for (const auto& p : e.peso_coste) for (int x : p) n(x);
+  n(int64_t(e.capsulas.size()));
+  for (const CapsulaDef& c : e.capsulas) {
+    t(c.id);
+    for (int x : {c.vida, c.ataque, c.defensa, c.velocidad, c.ki_inicial, c.ki_max, c.alcance, c.tecnica}) n(x);
+  }
+  n(int64_t(e.unidades.size()));
+  for (const UnidadEco& u : e.unidades) {
+    t(u.id);
+    for (int x : {u.coste, u.copias, u.cat, u.sin[0], u.sin[1]}) n(x);
+  }
+  n(int64_t(e.sinergias.size()));
+  for (const SinergiaDef& s : e.sinergias) {
+    t(s.id);
+    n(int64_t(s.umbrales.size()));
+    for (const Umbral& u : s.umbrales) for (int x : {u.n, u.vida, u.ataque, u.defensa}) n(x);
+  }
+  if (carrusel) for (int x : {1, e.carrusel_desde, e.carrusel_cada, e.carrusel_extra, e.carrusel_nivel, e.carrusel_capsula}) n(x);   // TACTICS-03
+  if (listos) for (int x : {2, e.bots_objetivo, e.bots_copia3, e.bots_sinergia, e.bots_rival, e.bots_ahorro_desde, e.bots_tiradas, e.bots_estrellas}) n(x);   // TACTICS-04
+  if (e.variedad) n(3);   // TACTICS-05: la copia con variedad (sus unidades y tramos ya van arriba)
+  return h;
 }
 
 uint64_t Partida::Huella() const {
   uint64_t h = 1469598103934665603ull;
   const auto mezcla = [&](int64_t x) { for (int i = 0; i < 8; ++i) h = (h ^ uint64_t((x >> (8 * i)) & 0xff)) * 1099511628211ull; };
-  mezcla(int64_t(semilla_)), mezcla(int64_t(fase_));
+  mezcla(int64_t(semilla_)), mezcla(int64_t(fase_)), mezcla(int64_t(HuellaEconomia(*eco_, carrusel_, listos_)));   // v3: la economia entra en la huella
   for (int64_t x : Estado()) mezcla(x);
   return h;
 }
 
 std::string Partida::Guardar() const {
-  if (fase_ != Fase::Preparacion) return {};
+  if (fase_ != Fase::Preparacion && fase_ != Fase::Carrusel) return {};
   const std::vector<int64_t> v = Estado();
   std::ostringstream o;
-  o << "# Dragon Tactics: partida guardada (no editar a mano: se rechaza si no coincide la huella).\nversion = 2\n";
+  o << "# Dragon Tactics: partida guardada (no editar a mano: se rechaza si no coincide la huella).\nversion = " << kVersionGuardado << "\n";
   o << "semilla = " << int64_t(semilla_) << "\nronda = " << ronda_ << "\njugadores = " << n_ << "\nvivos = " << Vivos() << "\nvida = " << j_[0].vida << "\n";
-  o << "huella = " << int64_t(Huella()) << "\nestado = [";
+  if (carrusel_) o << "carrusel = 1\n";   // TACTICS-03: sin la linea (carrusel apagado) el fichero es el de siempre
+  if (listos_) o << "bots = 1\n";          // TACTICS-04: igual con los bots listos
+  if (eco_->variedad) o << "variedad = 1\n";   // TACTICS-05: y con la variedad
+  if (historial_) o << "historial = 1\n";      // TACTICS-08: y con el historial por rival (va al final del estado)
+  o << "economia = " << int64_t(HuellaEconomia(*eco_, carrusel_, listos_)) << "\nhuella = " << int64_t(Huella()) << "\nestado = [";
   for (size_t i = 0; i < v.size(); ++i) o << (i ? ", " : "") << v[i];
   o << "]\n";
   return o.str();
@@ -868,12 +1173,30 @@ bool Partida::Restaurar(const std::vector<int64_t>& v, std::string* error) {
   azar.estado = uint64_t(leer(INT64_MIN, INT64_MAX));
   std::vector<Duelo> duelos(size_t(leer(0, kMaxJug)));
   for (Duelo& d : duelos) d.a = int(leer(0, n - 1)), d.b = int(leer(0, kMaxJug)), d.copia = leer(0, 1);
+  std::vector<ObjCarrusel> carr;
+  std::vector<int> orden;
+  int turno = 0;
+  if (carrusel_) {   // TACTICS-03
+    carr.resize(size_t(leer(0, kMaxCarrusel)));
+    for (ObjCarrusel& c : carr) c.unidad = int(leer(0, U - 1)), c.capsula = int(leer(-1, C - 1)), c.quien = int(leer(-1, n - 1));
+    orden.resize(size_t(leer(0, kMaxJug)));
+    for (int& p : orden) p = int(leer(0, n - 1));
+    turno = int(leer(0, int64_t(orden.size())));
+    if (carr.empty() != orden.empty() || (!carr.empty() && (!duelos.empty() || turno >= int(orden.size())))) bien = false;   // en el carrusel: sin duelos y con alguien por elegir
+    const auto hecho = orden.begin() + std::min<ptrdiff_t>(turno, ptrdiff_t(orden.size()));   // los que ya eligieron
+    for (const ObjCarrusel& c : carr) if (c.quien >= 0 && std::find(orden.begin(), hecho, c.quien) == hecho) bien = false;
+    for (int p : orden) if (!js[p].vivo) bien = false;
+  }
+  int ultimo[kMaxJug][kMaxJug] = {};
+  if (historial_)   // TACTICS-08
+    for (int p = 0; p < n; ++p) for (int q = 0; q < n; ++q) ultimo[p][q] = int(leer(0, 3));
   if (!bien || o != v.size()) {
     *error = "la partida guardada esta incompleta o tiene valores imposibles";
     return false;
   }
   for (int u = 0; u < U; ++u) {   // la reserva compartida tiene que cuadrar
     int total = libres[size_t(u)];
+    for (const ObjCarrusel& c : carr) total += c.quien < 0 && c.unidad == u;   // TACTICS-03: lo que sigue en el carrusel aun no es de nadie
     for (int p = 0; p < n; ++p) {
       for (int c : js[p].tienda) total += c == u;
       for (const Pieza& z : js[p].pz) total += z.unidad == u ? Peso(z.estrellas) : 0;
@@ -893,8 +1216,14 @@ bool Partida::Restaurar(const std::vector<int64_t>& v, std::string* error) {
   fase_ = Fase::Preparacion, ganador_ronda_ = -1, dano_rival_ = 0, duelo_h_ = -1;
   for (int p = 0; p < kMaxJug; ++p) dano_[p] = 0;
   for (size_t k = 0; k < duelos_.size(); ++k) if (duelos_[k].a == 0) duelo_h_ = int(k);
-  neutral_ = EsNeutral(ronda_);
-  if (neutral_) { const auto d = duelos_; duelos_.clear(); EmparejarNeutral(); }   // el tablero neutral se rehace (mismo equipo: sale de la semilla)
+  carr_ = carr, orden_ = orden, turno_ = turno, ultimo_carr_.clear();
+  std::copy(&ultimo[0][0], &ultimo[0][0] + kMaxJug * kMaxJug, &ultimo_[0][0]);   // TACTICS-08 (ceros sin historial)
+  if (!carr_.empty()) {   // TACTICS-03: guardada en pleno carrusel
+    fase_ = Fase::Carrusel, neutral_ = false;
+  } else {
+    neutral_ = EsNeutral(ronda_);
+    if (neutral_) { const auto d = duelos_; duelos_.clear(); EmparejarNeutral(); }   // el tablero neutral se rehace (mismo equipo: sale de la semilla)
+  }
   sim_.reset(), comb_.clear(), res_.clear();
   return true;
 }
@@ -907,8 +1236,15 @@ bool Partida::Cargar(const std::string& texto, const Catalogo& cat, const Econom
     *error = std::string("no se puede leer: ") + std::string(e.description());
     return false;
   }
-  if (t["version"].value_or<int64_t>(0) != 2) {
-    *error = "version desconocida";
+  if (t["version"].value_or<int64_t>(0) != kVersionGuardado) {
+    *error = "version " + std::to_string(t["version"].value_or<int64_t>(0)) + " (esta version del juego usa la " + std::to_string(kVersionGuardado) + ")";
+    return false;
+  }
+  const bool carrusel = t["carrusel"].value_or<int64_t>(0) == 1;   // TACTICS-03: la partida sigue con el carrusel con el que se creo
+  const bool listos = t["bots"].value_or<int64_t>(0) == 1;         // TACTICS-04: y con los bots con los que se creo
+  const bool variedad = t["variedad"].value_or<int64_t>(0) == 1;   // TACTICS-05: y con la variedad con la que se creo
+  if (t["economia"].value_or<int64_t>(0) != int64_t(HuellaEconomia(variedad ? ConVariedad(eco) : eco, carrusel, listos))) {
+    *error = "las reglas (tactics_economia.toml o tactics_capsulas.toml) cambiaron desde que se guardo";
     return false;
   }
   const toml::array* a = t["estado"].as_array();
@@ -927,7 +1263,8 @@ bool Partida::Cargar(const std::string& texto, const Catalogo& cat, const Econom
     *error = "numero de jugadores imposible";
     return false;
   }
-  Partida p(cat, eco, uint64_t(t["semilla"].value_or<int64_t>(0)), jug);
+  Partida p(cat, eco, uint64_t(t["semilla"].value_or<int64_t>(0)), jug, carrusel, listos, variedad);
+  if (t["historial"].value_or<int64_t>(0) == 1) p.ActivarHistorial();   // TACTICS-08
   if (!p.Restaurar(v, error)) return false;
   if (int64_t(p.Huella()) != t["huella"].value_or<int64_t>(0)) {
     *error = "la huella no coincide: el fichero esta cortado o editado";
@@ -972,6 +1309,25 @@ bool CargarArchivo(const std::string& ruta, const Catalogo& cat, const Economia&
   }
   *error = primero.empty() ? "no hay partida guardada" : primero;
   return false;
+}
+
+// TACTICS-01: una partida guardada que ya no se puede cargar (version vieja, reglas cambiadas o rota) se aparta, nunca se borra: ruta y ruta.bak
+// pasan a <nombre>.vieja.bak (o .vieja2.bak, .vieja3.bak... si ya hay una). Devuelve los nombres nuevos.
+std::vector<std::string> ApartarGuardado(const std::string& ruta) {
+  namespace fs = std::filesystem;
+  std::vector<std::string> r;
+  for (const std::string& o : {ruta, ruta + ".bak"}) {
+    std::error_code ec;
+    if (!fs::exists(o, ec)) continue;
+    for (int k = 1; k < 1000; ++k) {
+      const std::string d = o + ".vieja" + (k > 1 ? std::to_string(k) : "") + ".bak";
+      if (fs::exists(d, ec)) continue;
+      fs::rename(o, d, ec);
+      if (!ec) r.push_back(d);
+      break;
+    }
+  }
+  return r;
 }
 
 }  // namespace dbz3::tactics

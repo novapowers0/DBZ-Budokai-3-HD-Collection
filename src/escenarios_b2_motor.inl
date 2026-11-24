@@ -99,9 +99,27 @@ struct B2MotorHD {
     for(size_t i=0;i<o.cuenta;++i)REX_STORE_U32(scratch+128+uint32_t(i)*4,o.argumentos[i]);
     PPCContext c=*contexto;c.r3.u64=scratch+64;c.r4.u64=scratch;
     c.r9.u64=c.r10.u64=0; // llamada adaptada, no opcode IW crudo del guest
+    if(o.id==0x13&&B2AnimHD::GolpeReal()&&anim.ForzarAtaque(base,actor[0])&&anim.atq_primero) {
+      // POST/B2-P12 Ciudad (12/11): la orden 13 corre en el cuadro en que se abre la escena, antes de que Paso fuerce el
+      // clip B2 del golpe: el centro del atacante (+1616) salia de la pose B3 ((0,42; 12,71) frente a (1,30; 11,54) PAL).
+      // Se fuerza aqui el clip, se rehace la pose (820FAF40, como eB2i) y el centro (82110AB8 = 1F68C0) antes de la orden.
+      PPCContext p=*contexto;p.r3.u64=actor[0]+0x650;p.f1.f64=1.0;sub_820FAF40(p,base);
+      PPCContext q=*contexto;q.r3.u64=actor[0];q.r4.s64=-1;sub_82110AB8(q,base);
+    }
     if(o.id==0x11||o.id==0x13||o.id==0x19||o.id==0xC1)MedirActores1450("orden_antes",&o);
     fn(c,base);
     if(o.id==0x11||o.id==0x13||o.id==0x19||o.id==0xC1)MedirActores1450("orden_despues",&o);
+    if(o.id==0x13||o.id==0x19) {
+      // B2-TRANS (12/11): PAL 1FB580 (19) y la accion 12 de 1FB650 (13) sacan la direccion de
+      // centro(victima)-centro(atacante) (+4B0 PAL, +1616 HD; medido en las trazas g7/g8 a <0,2 grados).
+      // Una linea por orden para cotejar posicion, centro y velocidad con la traza original.
+      const uint32_t x0=actor[0],x1=actor[1];
+      REXLOG_INFO("dbz3 B2 vector: orden={:X} cuadro={:.1f} atacante pos=({:.2f},{:.2f},{:.2f}) centro=({:.2f},{:.2f},{:.2f})"
+                  " | victima pos=({:.2f},{:.2f},{:.2f}) centro=({:.2f},{:.2f},{:.2f}) vel=({:.2f},{:.2f},{:.2f})",
+                  o.id,o.cuadro,LeeFl(x0+64),LeeFl(x0+68),LeeFl(x0+72),LeeFl(x0+1616),LeeFl(x0+1620),LeeFl(x0+1624),
+                  LeeFl(x1+64),LeeFl(x1+68),LeeFl(x1+72),LeeFl(x1+1616),LeeFl(x1+1620),LeeFl(x1+1624),
+                  LeeFl(x1+208),LeeFl(x1+212),LeeFl(x1+216));
+    }
     REX_STORE_U32(mgr+35188,p0);REX_STORE_U32(mgr+35192,p1);
     return true;
   }
@@ -320,8 +338,21 @@ struct B2MotorHD {
   }
   bool Iniciar(PPCContext& ctx,uint8_t* b,const B2Contacto& contacto) {
     if(activo||!NieveB2Activa()||dbz3::g_guest_eu)return false;
+    const bool validar_inicio=REXCVAR_GET(dbz3_b2_validar_inicio);
+    if(validar_inicio&&!b2::Transicion::ValidarInicio(g_b2,uint32_t(contacto.entrada),bloqueo)) {
+      REXLOG_WARN("dbz3 B2 HD: preflight bloqueado: {}",bloqueo);return false;
+    }
     base=b;contexto=&ctx;mgr=REX_LOAD_U32(kMgrPtr);
     if(mgr!=contacto.gestor||!mgr)return false;
+    if(validar_inicio&&(REX_LOAD_U32(mgr+kEstadoCombate)!=4||
+        (contacto.actor!=mgr+2096&&contacto.actor!=mgr+2096+8240))) {
+      bloqueo="contacto B2 ajeno al combate actual";return false;
+    }
+    if(validar_inicio) {
+      // Una orden24 o camara fija de la escena anterior no pertenece al
+      // siguiente contacto. Solo se reinicia tras validar gestor/actores.
+      visible={true,true};fija=false;fija_ojo={};fija_obj={};bloqueo.clear();
+    }
     punto_contacto=contacto.punto;
     pantallas_dibujadas=0;
     fundido.Limpiar();
@@ -330,13 +361,35 @@ struct B2MotorHD {
     PrepararFotos();
     PrepararReaccion();
     if(!fondo.Cargar(base,g_b2)){bloqueo="raices B2 invalidas";return false;}
+    // B2-TRANS (12/11): toda escena usa 94 con el indice de raiz B2, y Vincular exige las mismas raices
+    // en HD. Si otro mod con la misma entrada gana la geometria (copias con "B2 grupo 4" del 17/10, 4
+    // raices, frente a las 6 de Llanura B2) la VM se bloqueaba en el cuadro 70 con la escena a medias.
+    if(REX_LOAD_U32(kG+56)!=fondo.raices.size()) {
+      bloqueo="la geometria cargada no trae las raices B2 (HD="+std::to_string(REX_LOAD_U32(kG+56))+
+              ", B2="+std::to_string(fondo.raices.size())+"): otro mod con la misma entrada gana; apartarlo";
+      REXLOG_WARN("dbz3 B2 HD: inicio bloqueado: {}",bloqueo);return false;
+    }
     actor[1]=contacto.actor;actor[0]=mgr+2096+(actor[1]==mgr+2096?8240:0);
+    anim.cod_golpe=REX_LOAD_U32(actor[0]+2928);
+    if(REXCVAR_GET(dbz3_b2_giro_atacante)) {
+      // POST/B2-P12 Nieve (12/11): en la toma original 17708 el atacante, al tocar la victima la pared, mira a la
+      // victima (giro 14297; atan2 de las posiciones = 14427). La orden 10 coloca al atacante a lo largo de ese giro
+      // y la 13 saca de ahi la direccion de la victima. En HD el giro sale del golpe B3 (medido 11286 y 16667).
+      const float dx=LeeFl(actor[1]+64)-LeeFl(actor[0]+64),dz=LeeFl(actor[1]+72)-LeeFl(actor[0]+72);
+      if(dx*dx+dz*dz>1e-4f) {
+        const uint32_t g=uint32_t(int32_t(std::lround(std::atan2(dx,dz)*65536.0/6.283185307179586)))&0xffffu;
+        REXLOG_INFO("dbz3 B2 giro atacante: {} -> {} (mira a la victima)",REX_LOAD_U32(actor[0]+6052),g);
+        REX_STORE_U32(actor[0]+6052,g);
+      }
+    }
+    if(B2AnimHD::GolpeReal())
+      REXLOG_INFO("dbz3 B2 golpe real: atacante codigo HD {} -> clip B2 del BSK {} (grupo {})",anim.cod_golpe,B2AnimHD::CodigoGolpeB2(),g_b2.grupo);
     if(!anim.Preparar(base,g_b2)||!anim.Instalar(base,actor[0])||!anim.Instalar(base,actor[1])) {
       anim.Restaurar(base);bloqueo="no se pudieron vincular pistas B2 a los huesos HD";
       REXLOG_WARN("dbz3 B2 HD: inicio bloqueado: {}",bloqueo);return false;
     }
     if(!scratch)scratch=g_mem->SystemHeapAlloc(256,32);
-    if(!scratch){anim.Restaurar(base);return false;}
+    if(!scratch){anim.Restaurar(base);if(validar_inicio)bloqueo="scratch B2 no disponible";return false;}
     if(!PrepararTrayectoria(ctx)) {
       anim.Restaurar(base);bloqueo="trayectoria ACC nativa no disponible";return false;
     }
@@ -346,8 +399,9 @@ struct B2MotorHD {
     aterrizaje_b2={false,false};
     escena=std::make_unique<b2::Transicion>();
     b2::Puente p;
+    p.validar_inicio=validar_inicio;
     p.ejecutar=[this](const auto& o,auto& m,auto& h){return Orden(o,m,h);};
-    p.observar=[](const auto& o){REXLOG_INFO("dbz3 B2 HD orden: cuadro={:.1f} id={:X} PC={:X} tarea={}",o.cuadro,o.id,o.pc,o.tarea);};
+    p.observar=[](const auto& o){REXLOG_INFO("dbz3 B2 HD orden: cuadro={:.1f} id={:X} PC={:X} tarea={} args={:X}/{:X}/{:X}/{:X}",o.cuadro,o.id,o.pc,o.tarea,o.argumentos[0],o.argumentos[1],o.argumentos[2],o.argumentos[3]);};
     // El original ya tiene el solar de la zona inicial antes del evento.
     // La orden79 del guion lo retira;78 crea el de la zona de llegada.
     if(!PrepararSolar(ctx,base)) {
@@ -361,7 +415,11 @@ struct B2MotorHD {
     };
     origen=REX_LOAD_U32(0x8238D6B4);ultimo=~0u;
     if(activo){PrepararTraza();MedirTraza("inicio");}
-    REXLOG_INFO("dbz3 B2 HD: inicio por colision real entrada={} guest={} actores={:08X}/{:08X}",contacto.entrada,origen,actor[0],actor[1]);
+    if(activo&&validar_inicio)
+      REXLOG_INFO("dbz3 B2 HD: inicio validado grupo={} entrada={} ajuste_aislado={}",
+                  g_b2.grupo,contacto.entrada,std::getenv("DBZ3_TEST_B2_MOTOR")==nullptr);
+    if(activo||!validar_inicio)
+      REXLOG_INFO("dbz3 B2 HD: inicio por colision real entrada={} guest={} actores={:08X}/{:08X}",contacto.entrada,origen,actor[0],actor[1]);
     if(!activo)Terminar("fallo al iniciar");
     return activo;
   }
@@ -470,6 +528,13 @@ bool B2ActualizarFx(PPCContext& ctx,uint8_t* base) {
 void B2ConsultarLanzamiento(PPCContext& ctx,uint8_t* base,uint32_t actor) {
   if(!NieveB2Activa()||g_b2_motor.activo||!B2MotorOn())return;
   const uint32_t mgr=REX_LOAD_U32(kMgrPtr);
+  if(std::getenv("DBZ3_TEST_B2_CONSULTA")&&mgr&&(actor==mgr+2096||actor==mgr+2096+8240)) {
+    // Laboratorio: cada cambio de accion del luchador, para ver si llega a20/22.
+    static uint16_t vista[2]={0xffff,0xffff};static unsigned n=0;
+    const unsigned lado=actor==mgr+2096?0:1;const uint16_t ac=REX_LOAD_U16(actor+3244);
+    if(ac!=vista[lado]&&n<200){++n;vista[lado]=ac;
+      REXLOG_INFO("dbz3 B2 consulta: lado={} accion={} b8184={} estado={}",lado,ac,int(int8_t(REX_LOAD_U8(actor+8184))),REX_LOAD_U32(mgr+kEstadoCombate));}
+  }
   // B2: estados0x12/0x14; tablas393520/3935B0.18=1DACA0/1DA7F0;
   //20=1DA080/1D9F30.3935AC era una celda anterior, no la tabla de paso.
   // HD:20 especial deE6D8 y22(82105FE8/821060E8).25 es otra reacción;
@@ -519,7 +584,7 @@ void B2ConsultarLanzamiento(PPCContext& ctx,uint8_t* base,uint32_t actor) {
       return;
     }
     float dot=0;for(unsigned j=0;j<3;++j)dot+=hit.normal[j]*v[j];
-    if(dot>=0)return;
+    if(dot>=0){if(diagnostico)REXLOG_INFO("dbz3 B2 filtro: actor={:X} intento={} pared de espaldas NdotV={:.4f} registro={}",actor,intento,dot,hit.registro);return;}
     // 1B6520 filtra &1 del MAS original; CA2C0 usa &2/&8 de HD.
     const float suelo=b2::AlturaSuelo(g_b2,variante,hit.punto[0],hit.punto[2],seleccionada);
     if(diagnostico)
@@ -532,10 +597,11 @@ void B2ConsultarLanzamiento(PPCContext& ctx,uint8_t* base,uint32_t actor) {
       const float dx=hit.punto[0]-LeeFl(rival+1616),dz=hit.punto[2]-LeeFl(rival+1624);
       const float tolerancia=std::max(0.0f,.6f*std::sqrt(dx*dx+dz*dz)-15);
       const float dy=p[1]-hit.punto[1];
+      if(diagnostico)REXLOG_INFO("dbz3 B2 filtro: actor={:X} intento={} dy={:.3f} tolerancia={:.3f} entrada={}",actor,intento,dy,tolerancia,hit.entrada);
       if(std::fabs(dy)<=tolerancia+5) {
         if(hit.entrada<0)return;
         const uint32_t frame=REX_LOAD_U32(0x8238D6B4);
-        g_b2_contacto={mgr,actor,frame,hit.superficie,hit.entrada,hit.punto};
+        g_b2_contacto={mgr,actor,frame,hit.superficie,hit.entrada,hit.punto,hit.normal};
         REXLOG_INFO("dbz3 B2 consulta REAL: guest={} registro={} superficie={} entrada={} NdotV={:.5f} impacto=({:.3f},{:.3f},{:.3f})",
                     frame,hit.registro,hit.superficie,hit.entrada,dot,hit.punto[0],hit.punto[1],hit.punto[2]);
         REXLOG_INFO("dbz3 B2 lanzamiento pendiente: accion={} umbral={:.3f} tiempo={:.3f}",REX_LOAD_U16(actor+3244),LeeFl(actor+6192),LeeFl(actor+3256));
@@ -547,6 +613,27 @@ void B2ConsultarLanzamiento(PPCContext& ctx,uint8_t* base,uint32_t actor) {
     l=std::sqrt(l);if(l<.0001f)return;
     for(unsigned j=0;j<3;++j){v[j]/=l;objetivo[j]=p[j]+60*v[j];}
   }
+}
+
+// POST/B2-P12b (12/11): en B2 la resolucion del golpe (bucle de 4 pasos de 001E0A78) prueba la trayectoria
+// de lanzamiento contra la geometria B2; si da con una pared de transicion pasa al estado 0x13 (init 1DA650:
+// umbral = distancia/3+1, update 1DA1B0 lanza la escena al superarlo). HD hace lo mismo en sub_8210AC00
+// (estado 22 con x+256 punto y x+272 normal; umbral 82105FE8) pero contra SU colision, que en la Base no
+// trae la pared 86: la victima quedaba en 20 (umbral 13,3), cruzaba la pared y aterrizaba sin escena.
+// Solo Base (grupo 0) y con su transicion encendida (dbz3_b2_transicion_base, apagada de serie).
+void B2ParedEnResolucion(PPCContext& ctx,uint8_t* base,uint32_t x) {
+  if(dbz3::g_guest_eu||g_b2.grupo!=0||!NieveB2Activa()||!B2MotorOn()||g_b2_motor.activo)return;
+  const uint32_t mgr=REX_LOAD_U32(kMgrPtr);
+  if(!mgr||(x!=mgr+2096&&x!=mgr+2096+8240)||REX_LOAD_U16(x+3244)!=20)return;
+  g_b2_contacto={};
+  B2ConsultarLanzamiento(ctx,base,x);
+  const auto c=g_b2_contacto;
+  if(c.actor!=x||c.entrada<0)return;
+  for(unsigned j=0;j<3;++j){B2MotorHD::Fl(base,x+256+4*j,c.punto[j]);B2MotorHD::Fl(base,x+272+4*j,c.normal[j]);}
+  REX_STORE_U8(x+6208,uint8_t(REX_LOAD_U16(x+3252)));   // rama 22 de 8210AC00: 6208 = 3252
+  PPCContext q=ctx;q.r3.u64=x;q.r4.u64=22;sub_82103908(q,base);
+  REXLOG_INFO("dbz3 B2 pared B2 en la resolucion: 20 -> 22 entrada={} punto=({:.3f},{:.3f},{:.3f}) umbral={:.3f}",
+              c.entrada,c.punto[0],c.punto[1],c.punto[2],LeeFl(x+6192));
 }
 
 bool B2PasoMotor(PPCContext& ctx,uint8_t* base) {

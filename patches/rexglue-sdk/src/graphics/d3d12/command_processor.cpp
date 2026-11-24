@@ -98,6 +98,12 @@ REXCVAR_DEFINE_INT32(dbz3_relight_debug, 0, "DBZ3/Dev",
 REXCVAR_DEFINE_BOOL(dbz3_relight_split, false, "DBZ3/Dev",
                     "Relight: only on the right half of the screen (before / after comparisons)")
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
+// Clima vivo (src/clima.cpp, 12/11 POST2/F1-CLIMA): how much it is night (0-1). The game sets it
+// every stage frame; the far scene (sky, clouds, distant scenery) is blended toward navy blue
+// before the HUD, see dbz3_night.hlsl. 0 = nothing runs.
+REXCVAR_DEFINE_DOUBLE(dbz3_clima_noche, 0.0, "DBZ3/Dev",
+                      "Clima vivo: night sky strength on the 3D scene (0-1, set by the game)")
+    .lifecycle(rex::cvar::Lifecycle::kHotReload);
 REXCVAR_DEFINE_STRING(dbz3_gpu_build, DBZ3_RUNTIME_BUILD, "DBZ3/Dev",
                       "Build de rexgpu-xenos (lo comprueba el launcher)");
 
@@ -120,6 +126,7 @@ namespace shaders {
 #include "../shaders/bytecode/d3d12_5_1/dbz3_relight_ao_cs.h"
 #include "../shaders/bytecode/d3d12_5_1/dbz3_relight_apply_ps.h"
 #include "../shaders/bytecode/d3d12_5_1/dbz3_relight_vs.h"
+#include "../shaders/bytecode/d3d12_5_1/dbz3_night_ps.h"
 }  // namespace shaders
 
 namespace {
@@ -2662,7 +2669,8 @@ void D3D12CommandProcessor::Dbz3TemporalOnCopy() {
 // occlusion at the resolve that stores it, once per frame.
 void D3D12CommandProcessor::Dbz3RelightOnCopy() {
   const int32_t level = REXCVAR_GET(dbz3_relight_level);
-  if (level <= 0 || dbz3_relight_failed_ || !dbz3_output_size_[0] ||
+  const float night = float(std::clamp(REXCVAR_GET(dbz3_clima_noche), 0.0, 1.0));
+  if ((level <= 0 && night <= 0.0f) || dbz3_relight_failed_ || !dbz3_output_size_[0] ||
       !dbz3_frontbuffer_width_unscaled_) {
     return;
   }
@@ -2802,6 +2810,92 @@ void D3D12CommandProcessor::Dbz3RelightOnCopy() {
     D3D12_RESOURCE_DESC depth_desc = dbz3_relight_depth_->GetDesc();
     width = std::min(width, uint32_t(depth_desc.Width));
     height = std::min(height, depth_desc.Height);
+  }
+
+  // Clima vivo night sky (dbz3_night.hlsl): the far scene blended toward navy, alpha by distance.
+  if (night > 0.0f) {
+    // ponytail: static (not a member) so the public header stays as is; released at exit.
+    static std::unordered_map<uint32_t, Microsoft::WRL::ComPtr<ID3D12PipelineState>>
+        dbz3_night_pipelines_;
+    auto night_it = dbz3_night_pipelines_.find(uint32_t(color_format));
+    if (night_it == dbz3_night_pipelines_.end()) {
+      D3D12_GRAPHICS_PIPELINE_STATE_DESC desc = {};
+      desc.pRootSignature = dbz3_relight_root_signature_.Get();
+      desc.VS.pShaderBytecode = shaders::dbz3_relight_vs;
+      desc.VS.BytecodeLength = sizeof(shaders::dbz3_relight_vs);
+      desc.PS.pShaderBytecode = shaders::dbz3_night_ps;
+      desc.PS.BytecodeLength = sizeof(shaders::dbz3_night_ps);
+      D3D12_RENDER_TARGET_BLEND_DESC& blend = desc.BlendState.RenderTarget[0];
+      blend.BlendEnable = TRUE;
+      blend.SrcBlend = D3D12_BLEND_SRC_ALPHA;
+      blend.DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
+      blend.BlendOp = D3D12_BLEND_OP_ADD;
+      blend.SrcBlendAlpha = D3D12_BLEND_ZERO;
+      blend.DestBlendAlpha = D3D12_BLEND_ONE;
+      blend.BlendOpAlpha = D3D12_BLEND_OP_ADD;
+      blend.LogicOp = D3D12_LOGIC_OP_NOOP;
+      blend.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_RED | D3D12_COLOR_WRITE_ENABLE_GREEN |
+                                    D3D12_COLOR_WRITE_ENABLE_BLUE;
+      desc.SampleMask = UINT_MAX;
+      desc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
+      desc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+      desc.RasterizerState.DepthClipEnable = TRUE;
+      desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+      desc.NumRenderTargets = 1;
+      desc.RTVFormats[0] = color_format;
+      desc.SampleDesc.Count = 1;
+      Microsoft::WRL::ComPtr<ID3D12PipelineState> pipeline;
+      if (FAILED(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&pipeline)))) {
+        REXGPU_WARN("dbz3: night sky unavailable (pipeline for format {} failed)",
+                    uint32_t(color_format));
+        dbz3_relight_failed_ = true;
+        return;
+      }
+      night_it = dbz3_night_pipelines_.emplace(uint32_t(color_format), std::move(pipeline)).first;
+    }
+    ui::d3d12::util::DescriptorCpuGpuHandlePair depth_view;
+    if (!RequestOneUseSingleViewDescriptors(1, &depth_view)) {
+      return;
+    }
+    D3D12_SHADER_RESOURCE_VIEW_DESC srv_desc = {};
+    srv_desc.Format = DXGI_FORMAT_R32_FLOAT;
+    srv_desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+    srv_desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    srv_desc.Texture2D.MipLevels = 1;
+    device->CreateShaderResourceView(dbz3_relight_depth_.Get(), &srv_desc, depth_view.first);
+    // ponytail: distances measured on B3 (near plane 1): the sky dome at ~3300, the fighters within
+    // ~300; a ki blast over the sky (no depth) is tinted too.
+    const float k[12] = {0, 0, 0.88f * night, 700.0f, 2600.0f,
+                         4.0f / 255, 6.0f / 255, 24.0f / 255,     // top
+                         22.0f / 255, 28.0f / 255, 66.0f / 255,   // horizon
+                         0};
+    uint32_t nk[12];
+    std::memcpy(nk, k, sizeof(nk));
+    nk[0] = width;
+    nk[1] = height;
+    SetExternalGraphicsRootSignature(dbz3_relight_root_signature_.Get());
+    SetExternalPipeline(night_it->second.Get());
+    deferred_command_list_.D3DSetGraphicsRoot32BitConstants(0, 12, nk, 0);
+    deferred_command_list_.D3DSetGraphicsRootDescriptorTable(1, depth_view.second);
+    deferred_command_list_.D3DSetGraphicsRootDescriptorTable(2, depth_view.second);
+    D3D12_VIEWPORT viewport = {0.0f, 0.0f, float(width), float(height), 0.0f, 1.0f};
+    SetViewport(viewport);
+    D3D12_RECT scissor = {0, 0, LONG(width), LONG(height)};
+    SetScissorRect(scissor);
+    SetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    deferred_command_list_.D3DOMSetRenderTargets(1, &color_rtv, FALSE, nullptr);
+    deferred_command_list_.D3DDrawInstanced(3, 1, 0, 0);
+    render_target_cache_->Dbz3InvalidateBoundRenderTargets();
+    ++g_dbz3_relight_passes;
+    static bool logged = false;
+    if (!logged) {
+      logged = true;
+      REXGPU_INFO("dbz3: clima noche: night sky pass on the scene ({}x{}, format {})", width, height,
+                  uint32_t(color_format));
+    }
+  }
+  if (level <= 0) {
+    return;
   }
 
   const uint32_t debug = uint32_t(std::clamp(REXCVAR_GET(dbz3_relight_debug), 0, 2));

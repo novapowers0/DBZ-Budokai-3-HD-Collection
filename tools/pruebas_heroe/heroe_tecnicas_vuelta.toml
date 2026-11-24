@@ -1,0 +1,50 @@
+# HEROE-TEC (12/11): Tecnicas v2 (maqueta 6). Goku al 60 %: abre sus primeras tecnicas y la esquiva Turtle Shell (444).
+# Equipa la esquiva y Kamehameha (6, E+derecha; vale en forma normal: Dragon Fist 7 solo transformado), pulsa RT (tecla E) "Probar en Entrenamiento" y en la practica
+# DBZ3_TEST_ESP=2 pulsa derecha + E con el ki lleno (fusion.cpp PruebaMando) hasta que el registro anota una tecnica del lado 1. Lanzar en sol, sin --forzar:
+#   python tools\pruebas.py correr sol tools\pruebas_heroe\heroe_tecnicas_v2.toml
+# Teclas: Space = A, Backspace = B, 3 = RB, 1 = LB, E = RT, P = Y (E del juego), D = derecha.
+descripcion = "Heroe: Tecnicas v2, probar y volver a la pantalla (HER-07)"
+env = ["DBZ3_TEST_MODO=heroe", "DBZ3_HUB_MODE=5", "DBZ3_TEST_HEROE_PANTALLA=movesets", "DBZ3_TEST_HEROE_TEC=1",
+       "DBZ3_TEST_HEROE_ENTRENO=0:60", "DBZ3_TEST_ESP=2",
+       "DBZ3_TEST_CFG=dbz3_heroe_ui_nueva=true;dbz3_heroe_tecnicas_v2=true"]
+pasos = [
+  'log "tecnicas v2: pantalla" 240',
+  "esperar 4000",
+  "captura a_definitiva",
+  "tecla 3 800",
+  "esperar 800",
+  "captura b_esquiva",
+  "tecla Space 800",
+  'log "equipada la capsula 444" 20',
+  "tecla 1 800",
+  "tecla 1 800",
+  "tecla 1 800",
+  "esperar 800",
+  "captura c0_especial",
+  "tecla Space 800",
+  'log "equipada la capsula 6 \(tipo 1\)" 20',
+  "esperar 1200",
+  "captura c_equipadas",
+  "tecla E 800",
+  'log "probar en entrenamiento: id \d+ con \d+ capsulas \(ok\)" 20',
+  'log "en combate: lado 1 con" 180',
+  "esperar 3000",
+  "captura d_practica",
+  'log "prueba especial: direccion 20 \+ E" 60',
+  'log "tecnica: lado 1 codigo" 60',
+  "esperar 400",
+  "captura e_tecnica",
+  "esperar 1500",
+  "tecla Return 800",
+  "esperar 800",
+  "captura f_pausa",
+  "tecla S 500",
+  "tecla S 500",
+  "tecla Space 1000",
+  "tecla W 500",
+  "tecla Space 800",
+  "esperar 6000",
+  "captura g_vuelta",
+  "esperar 4000",
+  "captura h_vuelta2",
+]

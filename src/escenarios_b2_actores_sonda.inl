@@ -46,6 +46,7 @@ REX_HOOK_RAW(sub_8210AC00) {
   const uint16_t antes=actor?REX_LOAD_U16(x+3244):0;
   const uint32_t modo=ctx.r4.u32;
   __imp__sub_8210AC00(ctx,base);
+  dbz3::escenarios::B2ParedEnResolucion(ctx,base,x);   // POST/B2-P12b: pared de transicion B2 (solo Base)
   if(!actor)return;
   static unsigned n=0;
   const uint16_t ahora=REX_LOAD_U16(x+3244);

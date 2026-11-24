@@ -1,0 +1,26 @@
+descripcion = "modos_rogue_ranking (ROG-04): HUB > Ranking, pestana 'Dragon Rogue' (reto diario: ultimos dias, racha y codigo) visible; captura para juzgar contra la maqueta"
+env = ["DBZ3_HUB_MODE=5"]
+apartar = ["user_data/dbz3/rpg.toml*", "user_data/dbz3/hub_modos.toml*", "user_data/dbz3/modos", "user_data/dbz3/retos.csv", "user_data/dbz3/hub_heroe.toml*", "user_data/dbz3/pasarela", "user_data/dbz3/rogue.toml*"]
+poner = ["docs/14_frentes/escenarios_pruebas/fixtures_rogue/rogue_dias.toml -> user_data/dbz3/rogue.toml"]
+pasos = [
+  "esperar_pantalla 5 120",
+  "log 'menu principal estado 3' 60",
+  "esperar 3000",
+  "tecla W 1200",
+  "tecla Space 3500",
+  "log 'hub: entra la pantalla HUB' 60",
+  "tecla S 700",
+  "tecla S 700",
+  "tecla S 700",
+  "tecla S 700",
+  "tecla S 700",
+  "tecla S 700",
+  "esperar 800",
+  "tecla Space 2500",
+  "tecla D 1500",
+  "tecla D 1500",
+  "esperar 800",
+  "captura 01_pestana_rogue",
+  "tecla Backspace 2500",
+]
+

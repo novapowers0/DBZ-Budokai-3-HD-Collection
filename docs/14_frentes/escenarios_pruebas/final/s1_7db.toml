@@ -1,0 +1,26 @@
+# S1 / IW 0x7DB (NB013, "Hyperbolic Time Chamber Trunks"): referencia de los efectos (CHRFADE del choque + aviso
+# HIT/MISS) y de la entrada del rotulo CLEAR/FAILED (s_MSN_CV_ReadyStart(2), que en el ELF es la voz A).
+#
+# clave    = IW-M13 / IW-E03 / IW-V03 / 0x7DB
+# cvar     = dbz3_iw_7db_original=true (ya de serie) y dbz3_iw_efectos_original=true (nueva, APAGADA)
+# criterio = banco qte7db.py comparar = 1999/1999 (tras quitar 0x11A6B0 de MUDOS); en juego se ve el CHRFADE sobre
+#            quien recibe el golpe y el aviso HIT/MISS; la intro con sus dialogos y el CLEAR/FAILED animado.
+# log      = "dbz3 r14: 7DB con la logica original del ELF (dbz3_iw_7db_original)" y "r14: fin: "
+descripcion = "7DB (NB013) original: efectos de choque (CHRFADE + HIT/MISS) e intro/rotulo final"
+env = [
+  "DBZ3_TEST_IWMINI=0x7DB,auto",
+  "DBZ3_TEST_QTE_LOG=1",
+  "DBZ3_TEST_CFG=dbz3_iw_7db_original=true;dbz3_iw_efectos_original=true",
+  'DBZ3_PS2_GAMES=D:\DBZ3HD\ps2_games',
+]
+pasos = [
+  "log \"iwmini: prueba: empieza\" 90",
+  "log \"r14: en juego\" 90",
+  "captura a_ready",
+  "log \"dbz3 r14: 7DB con la logica original del ELF\" 20",
+  "esperar 6000",
+  "captura b_iconos",
+  "log \"r14: fin: \" 240",
+  "esperar 1500",
+  "captura c_fin",
+]

@@ -1,0 +1,7 @@
+kind = "horn"
+size = 1.0
+curve = 0.45
+segments = 10
+colour = [0.35, 0.20, 0.43]
+colour_region = "cuerno"
+bone = "HEAD"

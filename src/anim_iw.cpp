@@ -8,9 +8,13 @@
 // A+0x608 (cuadro, float) avanza; al pasar de A+0x60C (cuadros) vuelve a 0, A+0x614 = 1 y A+0x618 cuenta las vueltas.
 // IW tiene la misma cadena con +0x10 menos (AnimationsStatic/Animations, decomp EU 0x207CE0/0x207E90).
 #include "anim_iw.h"
+#include "iw_anim_intro7db.h"
+#include "boca.h"   // R23 BOCA-02
+#include "iw_gs_traductor.h"   // R23 BOCA-02: TomarBoca
 #include "iw_eventos.h"
 #include "iw_ap_eventos.h"
 #include "iw_ap_consumidores.h"
+#include "iw_ast_original.h"   // PUL-IW-FX-06 AST07
 #include "iw_azar.h"
 #include "iw_iop.h"
 #include "iw_adx.h"
@@ -41,6 +45,19 @@
 #include "pasarela_iw.h"
 #include "reloj_prueba.h"
 #include "roster_ext.h"
+#include <rex/cvar.h>
+
+REXCVAR_DEFINE_BOOL(dbz3_lim_iw_claves, true, "DBZ3/Dev",
+                    "R23 LIM: admite hasta 8192 claves por pista en clips importados de IW");
+
+REXCVAR_DEFINE_BOOL(dbz3_iw_mezcla_entrada_vuelo_original, false, "DBZ3/IW",
+                    "IW vuelo: la primera pose del visor (0x320..0x330) entra sin mezcla, como el original (EU 0x341770) (pruebas)");
+// RESCATE IW-F10 (12/11): la 0x7BC de Videl (930; Satan 926 igual) dura 200 cuadros como su clip 0x5AA y su cadera
+// se aparta (-1,58; -0,46; -1,92) u: el clip la sigue (PINE, dorado iw_0x7E1: jr (-0,18; 9,10; 0,10) -> (-1,76; 8,64;
+// -1,82)). Cerrarla dejaba a Videl 2,5 u mas cerca del ojo y la camara acababa en su pelo.
+REXCVAR_DEFINE_BOOL(dbz3_iw_7e1_raiz_original, true,  // 12/11 encendido de serie (HOJA_DECISIONES_0800 A)
+    "DBZ3/IW",
+                    "IW 0x7E1: la pose 0x7BC conserva el desplazamiento de su cadera como el original (clip 0x5AA) (pruebas)");
 
 namespace dbz3::anim {
 namespace {
@@ -107,6 +124,7 @@ constexpr Extra kExtras[] = {{0x11D, 204}, {0x51, 922},  {0x53, 922},  {0x118, 9
                               {0x05, 915, 0x805}, {0x06, 915, 0x806},                        // cansado de IW
                               {0x02,915,0x8D0},{0x03,915,0x8D1},{0x04,915,0x8D2}, // EU2A3B10/2A3940: carga2->3
                               {0x02,914,0x8D3},{0x03,914,0x8D4},{0x04,914,0x8D5}, // misma maquina, banco de Cell
+                              {0x05,914,0x8D6}, // Cell capturado: estado 9 (EU 2A30B0), huesos CEL_*
                              {0x15, 915, 0x815}, {0x16, 915, 0x816}, {0x17, 915, kCorrer2},   // estados 2 y 3 (0x16 -> 0x17)
                              {0x18, 915, kParar},   // frenada del estado 4 (EU 0x2A3DE0)
                              // DS89: salto de la maquina de estados de tierra (State0C-0x12). En 204 los mismos cuadros del
@@ -194,7 +212,10 @@ constexpr Extra kExtras[] = {{0x11D, 204}, {0x51, 922},  {0x53, 922},  {0x118, 9
                                 {0x409,925,0xFCB},{0x40A,925,0xFCC},{0x40B,925,0xFCD},
                               {0x690,929,0xFB5},{0x691,929,0xFB6},{0x692,929,0xFB7},{0x695,914,0xFB8},
                               {0x6F4,928,0xA58},{0x6F5,928,0xA59},{0x6F6,928,0xA5A},
-                              {0x6F4,931,0xA5B},{0x6F5,931,0xA5C},{0x6F6,931,0xA5D}};
+                              {0x6F4,931,0xA5B},{0x6F5,931,0xA5C},{0x6F6,931,0xA5D},
+                              {0x6F4,925,0xA5E},{0x6F5,925,0xA5F},{0x6F6,925,0xA60},
+                              {0x6F4,929,0xA61},{0x6F5,929,0xA62},{0x6F6,929,0xA63},
+                              {0x6F4,932,0xA64},{0x6F5,932,0xA65},{0x6F6,932,0xA66}};
 // R14: poses de los minijuegos de botones (QTE) de IW. Cada personaje trae las suyas en su #BSK de DATA_CMN (almacen
 // propio, hijo 1; 915 trae las de espera 0x57A-0x57D en su #BSK del hijo 3 y su #AMM del hijo 0). Tablas pose -> codigo
 // de NB014 (Goku 922 / Gohan joven 920), NB013 (Vegeta 931 / Trunks 928) y NB006 (Gohan nino 921 / Piccolo 925):
@@ -323,6 +344,16 @@ std::string Sufijo(const char* s, size_t n) {
 // Valores del #ACM cargado: reubicados (direccion) o relativos al #ACM.
 uint32_t Abs(uint32_t v, uint32_t acm) { return v && v < 0x01000000u ? acm + v : v; }
 
+// Solo Copiar crea pistas de >4096 claves (dbz3_lim_iw_claves) y reserva su guarda.
+// Actualizar la pose, sin cambiar el cuadro de guarda ni el contador declarado.
+void RefrescarGuarda(uint8_t* base, uint32_t pista, uint32_t nk, bool angular) {
+  if (nk <= 4096) return;
+  const uint32_t paso = angular ? 8u : 16u;
+  const uint32_t fin = pista + 12 + nk * paso;
+  for (uint32_t q = angular ? 2u : 4u; q < paso; q += 2)
+    REX_STORE_U16(fin + q, REX_LOAD_U16(fin - paso + q));
+}
+
 // Las animaciones del scatto de IW corren hacia el +X del modelo (la columna de la cadera se inclina a rumbo 86) y el
 // luchador de B3 mira a +Z (la guardia: eje Z de la cadera a -47, X a +43): sin girarlas, Goku corre de lado. Se gira
 // la raiz (GOK_WAIST) -90 grados alrededor del eje vertical, en proporcion a lo inclinada que esta (0 en la postura
@@ -372,6 +403,8 @@ void GirarRaiz(uint8_t* base, uint32_t ang, uint32_t pos) {
     REX_STORE_U32(e + 4, vx);
     REX_STORE_U32(e + 12, vz);
   }
+  RefrescarGuarda(base, ang, nk, true);
+  RefrescarGuarda(base, pos, np, false);
 }
 
 // R14: gira la raiz (GOK_WAIST) `t` radianes alrededor del eje vertical en TODOS los cuadros (el lado "P2" de las poses
@@ -416,6 +449,8 @@ void GirarYaw(uint8_t* base, uint32_t ang, uint32_t pos, double t) {
     REX_STORE_U32(e + 4, vx);
     REX_STORE_U32(e + 12, vz);
   }
+  RefrescarGuarda(base, ang, nk, true);
+  RefrescarGuarda(base, pos, np, false);
 }
 
 // iw_fix: la entrada y el final de cada minijuego de campo (0x17C-0x17E de Snake Way: z = 3522 y -3289; 0x49C-0x49E: x =
@@ -444,16 +479,32 @@ void SinOrigenXZ(uint8_t* base, const Anim& an) {
       REX_STORE_U32(e + 4, vx);
       REX_STORE_U32(e + 12, vz);
     }
+    RefrescarGuarda(base, pos, nk, false);
   }
 }
 
 // 31/10: actores de la entrada del vuelo: la cadera sin su pista (45 u por cuadro, con vuelta al mundo); la coloca el consumidor.
-void SinRecta(uint8_t* base, const Anim& an) {
+// IWINI (11/11): la pista quitada se guarda por codigo (alias incluido) para CaderaGuion: {cuadro, x, y, z}.
+std::mutex g_cadera_mu;
+std::map<uint32_t, std::vector<std::array<float, 4>>> g_cadera_guion;
+void SinRecta(uint8_t* base, const Anim& an, uint32_t clave) {
   for (size_t w = 0; w < an.sufijos.size(); ++w) {
     const uint32_t pos = an.sufijos[w] == "WAIST" ? an.pistas[w][1] : 0;
     const uint32_t nk = pos ? REX_LOAD_U32(pos + 8) : 0;
     if (nk < 2) continue;
     auto lee = [&](uint32_t e) { const uint32_t u = REX_LOAD_U32(e); float f; std::memcpy(&f, &u, 4); return f; };
+    {
+      std::vector<std::array<float, 4>> claves;
+      for (uint32_t k = 0; k < nk; ++k) {
+        const uint32_t e = pos + 12 + 16 * k;
+        claves.push_back({float(REX_LOAD_U32(e)), lee(e + 4), lee(e + 8), lee(e + 12)});
+      }
+      REXLOG_INFO("dbz3 anim: cadera del guion 0x{:X}: {} claves, cuadro {:.0f} ({:.1f}, {:.1f}, {:.1f}) .. cuadro {:.0f} "
+                  "({:.1f}, {:.1f}, {:.1f})", clave, nk, claves.front()[0], claves.front()[1], claves.front()[2],
+                  claves.front()[3], claves.back()[0], claves.back()[1], claves.back()[2], claves.back()[3]);
+      std::lock_guard<std::mutex> lk(g_cadera_mu);
+      g_cadera_guion[clave] = std::move(claves);
+    }
     for (uint32_t c = 0; c < 3; ++c) {
       const float a = lee(pos + 12 + 4 + 4 * c), b = lee(pos + 12 + 16 * (nk - 1) + 4 + 4 * c);
       for (uint32_t k = 0; k < nk; ++k) {
@@ -464,6 +515,7 @@ void SinRecta(uint8_t* base, const Anim& an) {
         REX_STORE_U32(e, u);
       }
     }
+    RefrescarGuarda(base, pos, nk, false);
   }
 }
 
@@ -494,6 +546,7 @@ void CerrarRaiz(uint8_t* base, const Anim& an) {
         REX_STORE_U32(pos + 12 + 16 * k + 4 + 4 * uint32_t(c), u);
       }
     }
+    RefrescarGuarda(base, pos, nk, false);
   }
 }
 
@@ -568,20 +621,60 @@ bool Copiar(uint8_t* base, Anim& an, const std::vector<uint8_t>& bsk, uint32_t c
   // vez de quedar en silencio.
   if (per == 3) REXLOG_WARN("dbz3 anim: codigo 0x{:X} trae la pista de escala (flags 0x{:X}): no se copia", codigo,
                             Le32(a, e));
+  const bool claves_ext = REXCVAR_GET(dbz3_lim_iw_claves);
+  // Presupuesto de las pistas largas publicadas en este proceso. Su vida es la de
+  // los clips IW; los bloques ya copiados no se liberan al cambiar de combate.
+  static uint32_t bytes_ext = 0;
+  constexpr uint32_t kPresupuestoExt = 8 * 1024 * 1024;
   for (uint32_t j = 0; j < nb; ++j) {
     an.sufijos.push_back(Sufijo(reinterpret_cast<const char*>(a.data() + nombres + 32 * j), 32));
     std::array<uint32_t, 2> pj{0, 0};
     for (uint32_t i = 0; i < 2; ++i) {   // 2 pistas (giro 4 x s16 / posicion 4 x s32); ver arriba la escala
-      const uint32_t p = Le32(a, off + 4 * (per * j + i)), nk = Le32(a, p + 8);
-      const uint32_t tam = 12 + nk * (i == 0 ? 8 : 16);
-      if (!p || nk > 4096 || p + tam > a.size()) continue;
-      const uint32_t g = dbz3::roster::GuestAlloc(tam);
+      const size_t p = Le32(a, size_t(off) + 4 * (per * j + i));
+      if (!p || p > a.size() || a.size() - p < 12) continue;
+      const uint32_t nk = Le32(a, p + 8), paso = i == 0 ? 8u : 16u;
+      if (nk > (claves_ext ? 8192u : 4096u)) continue;
+      const uint32_t tam = 12 + nk * paso;
+      if (tam > a.size() - p) continue;
+      const bool larga = nk > 4096;
+      uint32_t ultimo = 0;
+      const uint32_t reserva = tam + (larga ? paso : 0);
+      if (larga) {
+        if (reserva > kPresupuestoExt - bytes_ext) {
+          // ponytail: el presupuesto no decrece al liberar clips (GuestAlloc sin dueño por clip); se avisa una vez.
+          static bool avisado = false;
+          if (!avisado) { avisado = true; REXLOG_WARN("dbz3 lim: IW presupuesto de pistas largas agotado ({} de {} bytes): codigo=0x{:X} pista={} se omite", bytes_ext, kPresupuestoExt, codigo, i); }
+          continue;
+        }
+        bool ordenada = true;
+        for (uint32_t k = 0; k < nk; ++k) {
+          const size_t q = p + 12 + k * paso;
+          const uint32_t cuadro = i == 0 ? uint32_t(Le16(a, q)) : Le32(a, q);
+          // El lector nativo angular hace lha; no subir el limite de tiempo.
+          if (cuadro > 32766 || (k ? cuadro <= ultimo : cuadro != 0)) {
+            ordenada = false;
+            break;
+          }
+          ultimo = cuadro;
+        }
+        if (!ordenada || !an.cuadros || an.cuadros > ultimo + 1) continue;
+      }
+      const uint32_t g = dbz3::roster::GuestAlloc(reserva);
       if (!g) return false;
       for (uint32_t q = 0; q < 12; q += 4) REX_STORE_U32(g + q, Le32(a, p + q));
       if (i == 0)
         for (uint32_t q = 12; q < tam; q += 2) REX_STORE_U16(g + q, Le16(a, p + q));
       else
         for (uint32_t q = 12; q < tam; q += 4) REX_STORE_U32(g + q, Le32(a, p + q));
+      if (larga) {
+        // El lector nativo puede mirar la siguiente clave. El guard ocupa el
+        // cuadro siguiente (evita divisor cero) y no cuenta para el muestreador IW.
+        RefrescarGuarda(base, g, nk, i == 0);
+        if (i == 0) REX_STORE_U16(g + tam, uint16_t(ultimo + 1));
+        else REX_STORE_U32(g + tam, ultimo + 1);
+        bytes_ext += reserva;
+        REXLOG_INFO("dbz3 lim: IW codigo=0x{:X} pista={} claves={} bytes_ext={}", codigo, i, nk, bytes_ext);
+      }
       pj[i] = g;
     }
     if (girar && an.sufijos.back() == "WAIST") GirarRaiz(base, pj[0], pj[1]);
@@ -658,6 +751,12 @@ bool CorteMezcla(uint32_t de, uint32_t a) {
   if (std::getenv("DBZ3_MEZCLA_FORZADA")) return false;   // prueba: fundir aunque IW corte
   if (de == 0x330) return false;                          // de 0x330 siempre hay rampa (1/15)
   if (de >= kQteBase || a >= kQteBase) return true;       // poses de los minijuegos: corte
+  // PUL-IW-ANIM (dbz3_iw_mezcla_entrada_vuelo_original): de los 38 CharModel_SetAnimBlend del visor (EU 0x33EB30-0x341770)
+  // el unico que parte de una animacion ajena al visor es la entrada FlyingMinigameCharacterHeightPosition EU 0x341770
+  // (estados 9/3/0: 0x32B/0x322/800 con peso 1,0 y tasa 0 salvo desde 0x330): corte seco al entrar en una pose del visor.
+  if (REXCVAR_GET(dbz3_iw_mezcla_entrada_vuelo_original) && a >= 0x320 && a <= 0x330 && (de < 0x320 || de > 0x330) &&
+      de != kTransicion)   // otra pose a mitad de una mezcla del visor sigue fundiendo
+    return true;
   // 30/10: la maquina de tierra no funde nunca (ningun CharModel_SetAnimBlend en EU 0x299000-0x2AA000; escribe +0xB60 y
   // llama a AnimationsStatic), y sus clips ya enlazan por la cadera. Igual la entrada y los finales de campo.
   if ((a >= 0x800 && a <= 0x8F1) || (a >= 0x970 && a <= 0x99B) || (a >= 0xA03 && a <= 0xA09) || a == 0x11D ||
@@ -764,6 +863,37 @@ void MarcarEventoSonoro(uint32_t x) {
   g_ev_x[0].store(x);
   g_ev_ticks[0].store(kEventoSonando);
 }
+// R23 BOCA-02: luchadores a los que AP8 arranco la boca; Tick registra cada cambio de visema (prueba del guion).
+std::atomic<uint32_t> g_hablantes[2];
+void AnotarHablante(uint32_t x) {
+  if (g_hablantes[0].load() == x || g_hablantes[1].load() == x) return;
+  g_hablantes[g_hablantes[0].load() ? 1 : 0].store(x);
+}
+void RegistrarVisemas(uint8_t* base) {
+  static int antes[2] = {-2, -2};
+  for (int i = 0; i < 2; ++i) {
+    const uint32_t x = g_hablantes[i].load();
+    if (!x) continue;
+    int var = -1;
+    const int v = boca::VisemaActual(base, x, &var), clave = v < 0 ? -1 : v + 8 * var;
+    if (clave != antes[i]) REXLOG_INFO("dbz3 boca: visema {} variante {} luchador 0x{:08X}", v, var, x);
+    antes[i] = clave;
+  }
+}
+// R23 BOCA-02: banco #AMK del actor IW (ADX_USA/JPN.AFS, entrada BancoActor-1, como Bubbles) -> boca::Hablar.
+bool HablarIW(uint8_t* base,uint32_t x,uint32_t cmn,int clip,bool japones,bool intro7db=false) {
+  static const auto iw=P::BuscarIW();
+  static const auto elf=P::LeerElf(iw);
+  static std::map<std::pair<uint32_t,bool>,std::vector<uint8_t>> amks;
+  auto [it,nueva]=amks.try_emplace({cmn,japones});
+  const int entrada=apev::BancoBoca(elf,cmn);
+  if(nueva && entrada>=0){P::AfsPs2 afs;if(afs.Abrir(iw,japones?"ADX_JPN.AFS":"ADX_USA.AFS"))it->second=afs.Entrada(size_t(entrada));}
+  const bool ok=boca::Hablar(base,x,it->second,clip,!intro7db,intro7db);
+  if(ok)AnotarHablante(x);
+  REXLOG_INFO("dbz3 boca: IW AP8 luchador 0x{:08X} CMN{} AMK {} ({} B) clip {} -> {}",x,cmn,entrada,it->second.size(),clip,
+              ok?"habla":"no");
+  return ok;
+}
 void DispararEvento(uint8_t* base,uint32_t x,uint32_t codigo,const Anim::Evento& ev) {
   static const bool log = std::getenv("DBZ3_IW_EVENTOS_LOG") != nullptr;
   if (std::getenv("DBZ3_IW_EVENTOS_OFF")) return;
@@ -785,8 +915,21 @@ void DispararEvento(uint8_t* base,uint32_t x,uint32_t codigo,const Anim::Evento&
     if(ImpactoAp5(base,x,ev.valor,elf))
       se={apev::Ruta::SilencioOriginal,-1,-1,"AP5 generado: AME original813, subtipos0/1, ancla por nombre"};
     else se.estado="AP5 pendiente: subtipo, ancla por nombre, recurso813 o vista no disponibles; no se simula generacion";
+  } else if(ev.tipo==4 && iwmini::EfectosOriginalIW()) {   // PUL-IW-FX-06 AST07: decision del original (apagado: igual que antes)
+    const auto r=iwast::Ap4(elf,actor_cmn,ev.valor,[](uint32_t c){P::AfsPs2 a;return a.Abrir(iw,"DATA_CMN.AFS")?a.Entrada(c):std::vector<uint8_t>{};});
+    REXLOG_INFO("{}",r.texto);
+    se={r.silencio_original?apev::Ruta::SilencioOriginal:apev::Ruta::Pendiente,-1,-1,r.texto};
   } else if(ev.tipo==8) {
     se.estado="AP8 pendiente: AMK solo selecciona; falta paleta AMM de boca y enlace de matrices locales del cuerpo B3";
+    if(boca::Activo()) {   // R23 BOCA-02: AP8 -> boca nativa de B3 (LIPS) con el #AMK del actor IW
+      const bool ok=HablarIW(base,x,actor_cmn,int16_t(uint16_t(ev.valor)),japones);
+      se={apev::Ruta::SilencioOriginal,-1,-1,ok?"AP8: boca nativa B3 (LIPS) con el AMK del actor IW":
+          "AP8: sin hablante LIPS, cuerpo congelado o clip fuera del AMK"};
+    } else
+
+    if(iwmini::EfectosOriginalIW())   // PUL-IW-FX-06 AST02: indices de boca en el cuerpo B3 (solo registro)
+      REXLOG_INFO("{}",iwast::Ap8Boca(REX_LOAD_U32(x+kAnimObj+kModelo),[&](uint32_t a){return uint32_t(REX_LOAD_U32(a));},
+                                      [&](uint32_t a){return uint8_t(REX_LOAD_U8(a));}));
   } else if(ev.tipo==3) {
     static const auto tabla=apev::LeerAzarVoz(elf);
     auto memoria=[](){return iwazar::Global().Memory(32);};
@@ -894,6 +1037,46 @@ void Muestra(uint8_t* base, uint32_t trk, bool angular, float f, float out[3]) {
     out[c] = valor(a, c) + u * d;
   }
 }
+
+// Solo arnes. Construye dos pistas RAM sin adjuntarlas a un personaje ni al #ACM.
+void ProbarClavesLim(uint8_t* base) {
+  if (!std::getenv("DBZ3_TEST_LIM_IW_CLAVES")) return;
+  const bool activo = REXCVAR_GET(dbz3_lim_iw_claves);
+  auto put = [](std::vector<uint8_t>& d, size_t p, uint32_t v, size_t ancho = 4) {
+    for (size_t i = 0; i < ancho; ++i) d[p + i] = uint8_t(v >> (8 * i));
+  };
+  std::vector<uint8_t> bsk(0x60, 0);
+  std::memcpy(bsk.data(), "#BSK", 4);
+  put(bsk, 0x10, 1); put(bsk, 0x14, 0x20); put(bsk, 0x20, 0x30);
+  for (const uint32_t n : {4096u, 8192u}) {
+    constexpr uint32_t p = 0x58;
+    std::vector<uint8_t> amm(p + 12 + n * 8, 0);
+    std::memcpy(amm.data(), "#AMM", 4);
+    put(amm, 0x10, 1); put(amm, 0x14, 0x20); put(amm, 0x18, 1); put(amm, 0x1C, 0x30);
+    put(amm, 0x20, 9); put(amm, 0x28, n); put(amm, 0x2C, 0x50);
+    std::memcpy(amm.data() + 0x30, "SINT_CONTROL", 12);
+    put(amm, 0x50, p); put(amm, p + 8, n);
+    for (uint32_t i = 0; i < n; ++i) {
+      put(amm, p + 12 + i * 8, i, 2);
+      put(amm, p + 14 + i * 8, i, 2);
+    }
+    Anim an;
+    const bool copiado = Copiar(base, an, bsk, 0, amm, {}, false, 0);
+    const uint32_t g = !an.pistas.empty() ? an.pistas[0][0] : 0;
+    const bool esperado = n <= 4096 || activo;
+    bool ok = copiado && bool(g) == esperado;
+    if (g) {
+      float mitad[3] = {}, fin[3] = {};
+      Muestra(base, g, true, float(n / 2) - .5f, mitad);
+      Muestra(base, g, true, float(n - 1), fin);
+      ok = ok && mitad[0] == float(n / 2) - .5f && fin[0] == float(n - 1);
+      if (n > 4096) ok = ok && REX_LOAD_U16(g + 12 + n * 8) == n;
+      dbz3::roster::GuestFree(g);
+    }
+    REXLOG_INFO("dbz3 lim: prueba claves {} activo={} n={} presente={}", ok ? "PASS" : "FAIL", activo, n, bool(g));
+  }
+}
+
 const Anim* AnimDe(uint32_t codigo) {
   for (uint32_t c = 0; c < Total(); ++c)
     if (AnimN(c).codigo == codigo) return &AnimN(c);
@@ -1166,9 +1349,13 @@ void AvanzarEventos(PPCContext& ctx,uint8_t* base,uint32_t x,uint32_t codigo,flo
     DispararEvento(ctx,base,x,codigo,ev);
   });
 }
+std::atomic<bool> g_leyendo{false};
 bool Leer(uint8_t* base) {
   if (g_leida) return g_ok;
   g_leida = true;
+  g_leyendo = true;
+  struct Fin { ~Fin() { g_leyendo = false; } } fin_lectura;
+  ProbarClavesLim(base);
   const std::filesystem::path iw = P::BuscarIW();
   P::AfsPs2 cmn;
   if (iw.empty() || !cmn.Abrir(iw, "DATA_CMN.AFS")) {
@@ -1218,7 +1405,7 @@ bool Leer(uint8_t* base) {
         (salto_914 || (e.codigo >= 0x51 && e.codigo <= 0x6F6 && e.codigo != 0x62C &&
         e.codigo != 0x62D && e.codigo != 0x62E && (e.codigo < 0x640 || e.codigo > 0x66C))))
       SinOrigenXZ(base, an);   // entradas y finales de los minijuegos de campo (922): sin la posicion absoluta de IW
-    if (ok && (e.codigo == 0x370 || e.codigo == 0x375 || e.codigo == 0x758 || e.codigo == 0x75D || e.codigo == 0x75E)) SinRecta(base, an);
+    if (ok && (e.codigo == 0x370 || e.codigo == 0x375 || e.codigo == 0x758 || e.codigo == 0x75D || e.codigo == 0x75E)) SinRecta(base, an, e.como ? e.como : e.codigo);
     // Cutscene_GotoLine: AMM y AMC son un par absoluto. Conservar la
     // trayectoria del actor; el consumidor coloca su mundo en identidad.
     if (ok && e.como) an.codigo = e.como;
@@ -1229,13 +1416,15 @@ bool Leer(uint8_t* base) {
                (an.codigo >= kCellQuieto && an.codigo <= kCellParar)))
       for (size_t w = 0; w < an.sufijos.size(); ++w)
         if (an.sufijos[w] != "WAIST") an.pistas[w][1] = 0;
+    // IWINI (11/11): probado y descartado quitar tambien las posiciones a Freezer (0xFAD-0xFAF, 918): su estela en el
+    // clip 1000 del 0x7D8 no era deformacion de huesos (grabacion arr3_7d8, igual con y sin).
     // 30/10: solo los que van en bucle. 0x01 y 0x16 enlazan por la cadera con 0x0B y 0x17: cerrarlos abriria ese enlace
     if (ok && (an.codigo == 0x8F1 || an.codigo == kCorrer2 || an.codigo == kQuieto || an.codigo == kReposo2 || an.codigo == kAndar || an.codigo == 0x805 ||
                an.codigo == 0x806 || an.codigo == 0x807 || an.codigo == kCellQuieto || an.codigo == kCellCorrer2 || an.codigo == kCellReposo2 ||
                an.codigo == kKaioReady || an.codigo == kKaioReposo2 || an.codigo == kKaioAndar || an.codigo == kKaioCorrer2 ||
                an.codigo == kNamekReposo2 || an.codigo == kCellAndar))
       CerrarRaiz(base, an);   // en bucle, o quieto en su sitio (cansado: la cadera de IW deriva ~20 u)
-    if(ok&&e.como>=0xA40&&e.como<=0xA5D)
+    if(ok&&e.como>=0xA40&&e.como<=0xA66)
       REXLOG_INFO("dbz3 iw alternativa9: CMN{} BSK{:#x} alias{:#x} {} cuadros {} huesos",
                   e.entrada,e.codigo,e.como,an.cuadros,an.sufijos.size());
     if (ok) g_ex.push_back(std::move(an));
@@ -1288,7 +1477,7 @@ bool Leer(uint8_t* base) {
       if (q.codigo == 0x4B0 || q.codigo == 0x2BC || q.codigo == 0x76C || q.codigo == 0x76E || q.codigo == 0x770 ||
           // (0x578 / 0x579, el READY de NB013 / NB014, no son reposos: suben al aire de y 6-10 a ~44 y se ponen una vez; con
           // la rampa quitada Gohan se quedaba en el suelo, fuera del plano de la camara de IW. R6, 2026-10-17)
-          q.codigo == 0x7BC || q.codigo == 0x57A || q.codigo == 0x57B || q.codigo == 0x258 ||
+          (q.codigo == 0x7BC && !REXCVAR_GET(dbz3_iw_7e1_raiz_original)) || q.codigo == 0x57A || q.codigo == 0x57B || q.codigo == 0x258 ||
           q.codigo == 0x259 || q.codigo == 0x5C8 || q.codigo == 0x5CD)
         CerrarRaiz(base, an);
       g_ex.push_back(std::move(an));
@@ -1644,6 +1833,7 @@ struct Luchador {
   uint32_t luego = 0;
   float cuadro_ev = -1.0f;   // 06: ultimo cuadro mirado de los eventos (lineas AP) de la animacion en curso
   bool reiniciar = false;
+  int64_t ms_7bc = -1;   // RESCATE IW-F10: arranque de la 0x7BC (reloj de juego, el mismo del clip 0x5AA)
 };
 std::mutex g_mu;
 std::vector<Pedido> g_pedidos;
@@ -1787,6 +1977,23 @@ void ConsumirImpactosAP(uint8_t* base) {
   }
   for(const auto& a:lista)for(const auto& ev:a.eventos)DispararEvento(base,a.x,a.codigo,ev);
 }
+bool CaderaGuion(uint32_t codigo, float cuadro, float out[3]) {
+  std::lock_guard<std::mutex> lk(g_cadera_mu);
+  const auto it = g_cadera_guion.find(codigo);
+  if (it == g_cadera_guion.end() || it->second.empty()) return false;
+  const auto& c = it->second;
+  size_t j = 0;
+  while (j + 1 < c.size() && c[j + 1][0] <= cuadro) ++j;
+  const size_t s = std::min(j + 1, c.size() - 1);
+  const float d = c[s][0] - c[j][0];
+  float t = d > 0 ? std::clamp((cuadro - c[j][0]) / d, 0.0f, 1.0f) : 0.0f;
+  // la pista da la vuelta al mundo (Node_WrapPositionInGrid, 16000/24000): entre dos claves a un lado y otro no se mezcla
+  for (int k = 1; k <= 3; ++k)
+    if (std::fabs(c[s][size_t(k)] - c[j][size_t(k)]) > 4000.0f) t = 0.0f;
+  for (int k = 0; k < 3; ++k) out[k] = c[j][size_t(k + 1)] + (c[s][size_t(k + 1)] - c[j][size_t(k + 1)]) * t;
+  return true;
+}
+
 bool RaizActual(uint8_t* base, uint32_t x, float out[3]) {
   for (const Luchador& l : g_l) {
     if (l.modo == kNada || l.x != x || !l.puesto || l.puesto == kTransicion) continue;
@@ -1923,6 +2130,54 @@ void Tick(PPCContext& ctx, uint8_t* base) {
   uint64_t reinicios[2] = {};
   Prueba(base);
   VolcarHuesos(base);
+  if (boca::Activo()) RegistrarVisemas(base);
+  // Sondeo historico por lado, sin atribucion a voz ni banco. Para BOCA-04 usar DBZ3_TEST_BOCA_NATIVA=1.
+  static const bool reg = [] {
+    const char* v = std::getenv("DBZ3_TEST_BOCA_REGISTRO");
+    return v && std::strcmp(v, "1") == 0;
+  }();
+  if (reg) {
+    static int antes_nat[2] = {-2, -2};
+    const uint32_t mgr = REX_LOAD_U32(kMgrPtr);
+    if (mgr >= 0x10000000u && mgr < 0xF0000000u) {
+      for (int lado = 0; lado < 2; ++lado) {
+        int var = -1;
+        const int v = boca::VisemaActual(base, mgr + kX0 + uint32_t(lado) * kXPaso, &var), clave = v < 0 ? -1 : v + 8 * var;
+        if (clave != antes_nat[lado]) REXLOG_INFO("dbz3 boca: nativo lado {} visema {} variante {}", lado, v, var);
+        antes_nat[lado] = clave;
+      }
+    }
+  }
+  if (anim7db::escena.load()) {
+    const uint32_t mgr = REX_LOAD_U32(kMgrPtr);
+    for (int r = 0; r < 2; ++r) {
+      const uint64_t orden = anim7db::cara[r].exchange(0);
+      const uint32_t x = uint32_t(orden >> 32);
+      if (!orden || mgr < 0x10000000u || mgr >= 0xF0000000u || x != mgr + kX0 + r*kXPaso) continue;
+      HablarIW(base,x,r ? 928u : 931u,int(orden & 0xFFFF),REX_LOAD_U8(dbz3::GA(0x824BA110)+0x2C0C9)==0,true);
+    }
+  }
+  // R23 BOCA-02: la boca que arranca el original (MinigameMouthAnimations) va al luchador B3 de ese lado (0 jugador, 1 rival)
+  if (boca::Activo() && dbz3::iwtrad::Activo()) {
+    const uint32_t mgr = REX_LOAD_U32(kMgrPtr);
+    for (int lado = 0, clip = 0; dbz3::iwtrad::TomarBoca(lado, clip);) {
+      if (lado < 0 || lado > 1 || mgr < 0x10000000u || mgr >= 0xF0000000u) continue;
+      const uint32_t x = mgr + kX0 + uint32_t(lado) * kXPaso;
+      REXLOG_INFO("dbz3 boca: original MinigameMouthAnimations lado {} clip 0x{:X}", lado, clip);
+      HablarIW(base, x, apev::CmnActor(REX_LOAD_U32(x + 7420)), clip,
+               REX_LOAD_U8(dbz3::GA(0x824BA110) + 0x2C0C9) == 0);
+    }
+  }
+  // R23 prueba: DBZ3_TEST_BOCA="cmn,clip" hace hablar al jugador 1 cada 4 s con el AMK de ese actor IW (el mismo camino
+  // que AP8), para juzgar la boca en un combate normal de B3 aunque ningun minijuego ponga hoy un clip con AP8.
+  if (static const char* tb = std::getenv("DBZ3_TEST_BOCA"); tb && boca::Activo()) {
+    static unsigned n = 0;
+    const uint32_t mgr = REX_LOAD_U32(kMgrPtr);
+    if (mgr >= 0x10000000u && mgr < 0xF0000000u && n++ % 960 == 120) {   // Tick va 4 veces por cuadro
+      const int cmn = std::atoi(tb), clip = std::strchr(tb, ',') ? std::atoi(std::strchr(tb, ',') + 1) : 0;
+      HablarIW(base, mgr + kX0, uint32_t(cmn), clip, false);
+    }
+  }
   for (int i = 0; i < 2; ++i) {   // 06: la marca de "evento sonoro reciente" se gasta por tick
     const int t = g_ev_ticks[i].load();
     if (t > 0) g_ev_ticks[i].store(t - 1);
@@ -1945,7 +2200,12 @@ void Tick(PPCContext& ctx, uint8_t* base) {
         if (l->modo == p.modo) l->fase = 0;
         continue;
       }
-      if (!p.reiniciar && l->modo == p.modo && (p.modo != kModoScatto || p.fase == l->ultima) &&
+      // RESCATE IW-F10: MgPly estado 4 arranca la 0x7BC desde su cuadro 0 con el clip 0x5AA (PINE: jr vuelve a
+      // (-0,18; 9,10; 0,10)). Aqui la de la fase 0 ya iba en bucle con el mismo codigo: no se reiniciaba y, con sus
+      // vueltas > 0, se daba por acabada en el acto y Videl pasaba a la espera durante toda la presentacion.
+      const bool reinicia = p.reiniciar || (p.modo == kModoPose && REXCVAR_GET(dbz3_iw_7e1_raiz_original) &&
+                                            (p.codigo == AliasQte(930, 0x7BC) || p.codigo == AliasQte(926, 0x7BC)));
+      if (!reinicia && l->modo == p.modo && (p.modo != kModoScatto || p.fase == l->ultima) &&
           ((p.modo != kModoPose && p.modo != kModoCorredor) || p.codigo == l->codigo))
         continue;   // repetir no hace nada
       {
@@ -1963,7 +2223,9 @@ void Tick(PPCContext& ctx, uint8_t* base) {
       l->sujetar = p.sujetar;
       l->tope = p.tope;
       l->luego = p.luego;
-      l->reiniciar = p.reiniciar;
+      l->reiniciar = reinicia;
+      l->ms_7bc = reinicia && !p.reiniciar ? RelojMs() : -1;
+      if (l->ms_7bc >= 0) REXLOG_INFO("dbz3 RESCATE IW-F10: 0x7BC desde el cuadro 0 (luego 0x{:X})", p.luego);
     }
   }
   for (Luchador& l : g_l) {
@@ -2248,7 +2510,9 @@ void AjustarReloj(PPCContext& ctx, uint8_t* base, uint32_t A, float antes) {
     float& reloj = l.reloj[cuerpo];
     // Avance real del motor (hacia delante): se adopta. Si no avanzo (congelado, codigo pisado o vuelta a 0), se
     // lleva con nuestro reloj: +1 por llamada (una por cuerpo y cuadro de juego).
-    if (l.modo == kModoPose && (l.sujetar || l.tope)) {
+    const float intro = anim7db::ParaCuerpo(l.x, des);
+    if (intro >= 0.f && l.modo == kModoPose) reloj = std::min(intro, float(total - 1));
+    else if (l.modo == kModoPose && (l.sujetar || l.tope)) {
       // sub_820FA4B8 suma DESPUES de Tick: dur-1 -> dur -> 0 (0x820FA5C8).
       // Tick no puede impedir esa vuelta ni sujetaba el cuerpo B. Acotar aqui,
       // antes de que sub_820FAF40 copie el reloj al modelo, conserva el cuadro
@@ -2260,6 +2524,14 @@ void AjustarReloj(PPCContext& ctx, uint8_t* base, uint32_t A, float antes) {
       if (antes >= limite || (ahora < antes && antes + 1.0f >= float(total))) reloj = limite;
       else if (antes >= 0.0f) reloj = std::min(limite, ahora);
       else reloj = std::min(limite, reloj);   // codigo repuesto: sigue donde iba
+    } else if (l.ms_7bc >= 0 && l.modo == kModoPose) {
+      // RESCATE IW-F10: PINE EU, 10 muestras del 0x5AA: cuadro de la 0x7BC = cuadro del clip (+-1). El motor la
+      // llevaba 1,30x (acababa en el cuadro 154 del clip y Videl saltaba a la espera). Un cuadro por 1/60 s de juego.
+      reloj = std::min(float(total - 1), float(RelojMs() - l.ms_7bc) * 0.06f);
+      if (cuerpo == 0 && reloj >= float(total - 1) && l.ms_7bc > 0) {
+        REXLOG_INFO("dbz3 RESCATE IW-F10: 0x7BC en su ultimo cuadro ({}) a los {} ms", total - 1, RelojMs() - l.ms_7bc);
+        l.ms_7bc = 0;   // registrado una vez; sigue en su ultimo cuadro hasta que Tick ponga `luego`
+      }
     } else if (ahora > antes + 0.5f) reloj = ahora;
     else {
       reloj += 1.0f;
@@ -2595,6 +2867,8 @@ int ConsumirGolpePendiente(uint8_t* base, uint32_t param) {
 }
 
 }  // namespace puente
+
+bool LeyendoIW() { return g_leyendo.load(); }
 
 }  // namespace dbz3::anim
 

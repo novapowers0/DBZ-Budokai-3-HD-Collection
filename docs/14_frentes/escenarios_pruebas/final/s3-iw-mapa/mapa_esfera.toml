@@ -1,0 +1,41 @@
+# S3 / IW-A01 (esfera): coger la esfera de cristal 0x851 con el flujo del ELF (0x2FE270 -> comando 0x10 y
+# Transition_SetupWithParams 0x11 con el indice +0x1C, que reproduce su SFD y marca 0xC0 en su capsula).
+#   python tools\pruebas.py correr <copia> "docs\14_frentes\escenarios_pruebas\final\s3-iw-mapa\mapa_esfera.toml"
+# ROBUSTO: Goku entra en la mision 11 (890,610) y la esfera 0x851 esta en (981,587); a su altura (y=610) no hay otra
+# casilla a menos de 32 px salvo la mision 11, que queda detras tras 6 pulsaciones de D. La tecla del mando virtual se
+# mantiene 150 ms por pulsacion, asi que el avance depende de los cuadros: se pulsa A entre pasos y algun paso cae en
+# la ventana de 32 px (sin depender de la velocidad exacta, que varia con la carga del PC).
+# criterio = banco sin juego mapa_casos.py: A esfera 22/22 y caso_pick 5/5; en juego sale "dbz3 iw mapa: esfera".
+env = [
+  "DBZ3_TEST_MISIONES=4,reset,desde=10",
+  "DBZ3_TEST_CFG=dbz3_iw_mapa_original=true",
+  'DBZ3_PS2_GAMES=D:\DBZ3HD\ps2_games',
+]
+pasos = [
+  "log \"misiones: iw: mapa de Dragon Mission\" 90",
+  "esperar 5000",
+  "captura a_mapa",
+  "log \"dbz3 iw mapa original: espejo listo\" 60",
+  "tecla D 400",
+  "tecla D 400",
+  "tecla D 400",
+  "tecla D 400",
+  "tecla D 400",
+  "tecla D 400",
+  "captura b_sweep",
+  "tecla Space 700",
+  "tecla D 400",
+  "tecla Space 700",
+  "tecla D 400",
+  "tecla Space 700",
+  "tecla D 400",
+  "tecla Space 700",
+  "tecla D 400",
+  "tecla Space 700",
+  "tecla D 400",
+  "tecla Space 700",
+  "log \"dbz3 iw mapa: esfera\" 60",
+  "captura c_esfera",
+  "esperar 4000",
+  "captura d_tras_esfera",
+]

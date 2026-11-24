@@ -1,0 +1,49 @@
+# TACTICS-10 / TACTICS-09 12/11: carga de Dragon Tactics y su sonido.
+#   Copia: smoke_d (las pruebas de Tactics se pasaron en smoke_d/opus2; necesita mod center hd/tactics_*).
+#   python tools\pruebas.py correr smoke_d "docs\14_frentes\escenarios_pruebas\post1212\tactics_carga_sonido.toml"
+#
+# clave    = TACTICS-10 (carga: 34 figuras y el combate de fondo a la vez, admision de sonidos) + TACTICS-09 (voces).
+# cvar     = ninguna nueva. DBZ3_TEST_TACTICS_LADO=6 juega la ronda de demostracion 6v6 a x1 sin preparacion.
+# criterio = la arena pide el combate de fondo al empezar la carga, la precarga termina con su tiempo, la ronda
+#            espera a que las voces de cada unidad esten en su ranura ("listas en X s"), el combate suena (golpes,
+#            tecnicas y KO; juntados) sin ningun grito sin banco propio y deja el ritmo medido. Al cerrar, la arena
+#            se cierra sin cuelgue.
+# log      = "dbz3 tactics: arena abierta"
+#            "dbz3 tactics: combate de fondo pedido (escenario N)"
+#            "dbz3 tactics: precarga de N figuras en X s"
+#            "dbz3 tactics: tablero sobre el escenario"
+#            "dbz3 tactics: voces de la ronda listas en X s"
+#            "dbz3 tactics: sonidos: golpes N (descartados N), tecnicas ... juntados N ... gritos sin banco propio 0"
+#            "dbz3 tactics: ritmo del combate: N cuadros, N FPS de media, peor cuadro X ms, N cuadros de mas de 25 ms"
+#            "dbz3 tactics: arena cerrada"
+#
+# Nota: SIN_FOCO deja correr la ronda sin que la ventana tenga el foco (la cola abre otros juegos). La primera
+# vez genera los modelos y clips de B3 (minutos): el log de la precarga espera hasta 300 s.
+descripcion = "TACTICS-10/09: carga (fondo en paralelo, precarga y voces) y sonido del combate 6v6"
+env = [
+  "DBZ3_TEST_TACTICS_PRUEBA=1",
+  "DBZ3_TEST_TACTICS_SEMILLA=2024",
+  "DBZ3_TEST_TACTICS_LADO=6",
+  "DBZ3_TEST_TACTICS_VEL=1",
+  "DBZ3_TEST_TACTICS_SIN_FOCO=1",
+]
+pasos = [
+  "esperar 2500",
+  "tecla W 1200",
+  "tecla Space 3500",
+  "tecla W 600",
+  "tecla Space 1500",
+  "log \"tactics: arena abierta\" 45",
+  "log \"tactics: combate de fondo pedido \\(escenario [0-9]+\\)\" 60",
+  "log \"tactics: precarga de [0-9]+ figuras en [0-9.]+ s\" 300",
+  "log \"tactics: tablero sobre el escenario\" 120",
+  "captura 01_tablero",
+  "log \"tactics: voces de la ronda listas en [0-9.]+ s\" 60",
+  "log \"tactics: ritmo del combate: [0-9]+ cuadros\" 240",
+  "log \"tactics: sonidos: golpes [0-9]+ \\(descartados [0-9]+\\), tecnicas\" 30",
+  "log \"gritos sin banco propio 0\" 30",
+  "captura 02_combate",
+  "tecla Backspace 600",
+  "tecla Backspace 2000",
+  "log \"tactics: arena cerrada\" 15",
+]

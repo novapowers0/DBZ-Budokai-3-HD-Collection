@@ -1,0 +1,32 @@
+# CAC-11 (R23): piezas propias 3000+ por la misma receta, mezcladas con una pieza B3 en otra zona.
+# Fixture: Vegeta (cuerpo 7) con la receta «Mixta» = placa propia orig3=3040 + botas B3 99. Se aplica al abrir el
+# Héroe (DBZ3_TEST_HEROE_RECETA=0); la Habitación enseña el modelo, Aspecto abre el creador, se cambia la fila de
+# botas para forzar un montaje nuevo y se confirma (vuelve a la Habitación).
+# El juicio visual se hace fuera del juego con `tools/pruebas_heroe/cac_juez.py --lamina "<ficha>"` (ver LEEME.md).
+# REXLOG nuevo que espera: CAC-11: montaje mixto: originales [...]; piezas_b3 [...].
+descripcion = "CAC-11: receta mixta sobre Vegeta (placa propia 3040 + botas B3 99); previa, montaje y capturas para el juez"
+env = ["DBZ3_TEST_MODO=heroe,0", "DBZ3_HUB_MODE=5", "DBZ3_TEST_HEROE_PANTALLA=habitacion", "DBZ3_TEST_HEROE_CUERPO=7",
+       "DBZ3_TEST_HEROE_RECETA=0", "DBZ3_CAC_FILA=pieza_botas", "DBZ3_CAC_B3_TEST_TODOS=1",
+       "DBZ3_TEST_CFG=dbz3_heroe_ui_nueva=true;dbz3_heroe_habitacion=true"]
+apartar = ["user_data/dbz3/cac.toml*", "user_data/dbz3/heroe", "user_data/dbz3/hub_heroe.toml*", "mods/heroe_propio"]
+poner = ["tools/pruebas_heroe/cac_pendientes/fixtures/cac11_vegeta_mixta_cac.toml -> user_data/dbz3/cac.toml"]
+pasos = [
+  "esperar_pantalla 5 120",
+  'log "Habitacion abierta" 180',
+  'log "dbz3 heroe: .*receta aplicada a la ficha 1" 30',
+  "esperar 5000",
+  "captura cac11_a_habitacion_mixta",
+  "tecla Space 1500",
+  'log "Create abierto" 60',
+  'log "vista previa 3D .* cargada" 120',
+  "esperar 3000",
+  "captura cac11_b_creador_mixto",
+  "tecla D 900",
+  'log "dbz3 heroe: .*montaje mixto.*originales" 180',
+  "esperar 5000",
+  "captura cac11_c_previa_mixta",
+  "tecla 3 1500",
+  'log "el heroe propio de la ficha .* se monta" 60',
+  "esperar 120000",
+  "captura cac11_d_postura_confirmada",
+]

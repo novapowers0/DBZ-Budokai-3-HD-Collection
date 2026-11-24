@@ -1,0 +1,31 @@
+# F1-CLIMA / POST2 12/11: "Clima vivo" con LLUVIA en un escenario nativo de B3 (Llanura, registro 5).
+#   Copia: smoke_a (o cualquiera con data_cmn; las pruebas de clima se pasaron en smoke_a/b/c).
+#   python tools\pruebas.py correr smoke_a "docs\14_frentes\escenarios_pruebas\post1212\clima_lluvia.toml"
+#
+# clave    = F1-CLIMA (tiempo del clima vivo: lluvia) + POST2/F1-CLIMA (cielo de noche nativo).
+# cvar     = ninguna: DBZ3_CLIMA=rapido + DBZ3_CLIMA_TIEMPO=1 (lluvia) la activan en pruebas.
+# criterio = el clima esta activo (sonda), cae lluvia en la Llanura desde el primer cuadro de pelea, el
+#            oscurecimiento avanza a la noche y la capa de estrellas se activa. Las capturas 02/03/04 tienen
+#            que ensenar los trazos de lluvia; el emisor (escenarios.cpp TickClimaNativo) NO deja linea de
+#            registro, por eso la lluvia se comprueba en la foto.
+# log      = "dbz3 sonda clima: registro  5 'PLANE'"
+#            "dbz3 sonda clima: N s: oscuro 0.1x"
+#            "dbz3 clima estrellas: activa -1, za ..., zb ..., prof ..."
+#
+# Nota: la lluvia va con el z-buffer del juego desde POST2 (queda detras de luchadores y terreno) y se recorta
+# bajo la franja del HUD. DBZ3_HUB_MODE=5 entra directo al READY. Sin DBZ3_TEST_RINGOUT para que dure la noche.
+descripcion = "F1 Clima vivo con lluvia (Llanura): clima activo, lluvia en las capturas y noche con estrellas"
+env = ["DBZ3_CLIMA=rapido", "DBZ3_CLIMA_TIEMPO=1", "DBZ3_SONDA_CLIMA=1", "DBZ3_TEST_BATTLE=0,7,5", "DBZ3_HUB_MODE=5"]
+pasos = [
+  "log \"tag: empieza un combate\" 90",
+  "esperar_pelea 90",
+  "log \"sonda clima: registro  5 'PLANE'\" 30",
+  "captura 01_dia_lluvia",
+  "esperar 3000",
+  "captura 02_lluvia",
+  "esperar 5000",
+  "captura 03_atardecer_lluvia",
+  "log \"sonda clima: [0-9]+ s: oscuro 0\\.1\" 30",
+  "log \"clima estrellas: activa -1\" 30",
+  "captura 04_noche_lluvia",
+]

@@ -1,0 +1,21 @@
+# Records y retos a medias de los modos del HUB (src/modos.cpp). No editar con el juego abierto.
+version = 1
+laboratorio = false
+muneco = 0
+
+[[marca]]
+tipo = "torre"
+id = 0
+mejor = 0
+total = 8
+intentos = 1
+completados = 0
+reto = ''
+
+[[en_curso]]
+tipo = "torre"
+id = 0
+traje = 0
+ganados = -1
+vida = 3000
+total = 8

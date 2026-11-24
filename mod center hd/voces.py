@@ -230,13 +230,31 @@ class IwVoices:
 B3_PS2_DIR = os.path.join(ROOT, "ps2_games", "Budokai 3 Greatest Hits (USA)")
 
 
-def b3_block(cid, folder=B3_PS2_DIR):
+def b3_elf(folder=None):
+    """Bytes del SLUS_209.98 de la copia de B3 de PS2: carpeta extraida con cualquier nombre, ISO o el '.ruta' de
+    'Elegir ISO' (iso.find_game('b3')). Antes solo valia la carpeta 'Budokai 3 Greatest Hits (USA)' (canal 11/11)."""
+    src = folder if folder and os.path.exists(folder) else iso.find_game("b3", carpetas=True)
+    if not src:
+        return None
+    if os.path.isdir(src):
+        elf = find_elf(src)
+        return open(elf, "rb").read() if elf else None
+    img = iso.Iso(src)
+    try:
+        elf = img.boot_elf()
+        return img.read(elf) if elf else None
+    finally:
+        img._f.close()
+
+
+def b3_block(cid, folder=None):
     """Bloque de voces de un ID de B3 HD leido del SLUS de B3 de PS2 (misma tabla y mismos ADX;
     en PS2 el indice es ID - 2 desde el 3 y el 0 es Goku). None si no hay SLUS o es el 1/2."""
-    elf = find_elf(folder) if os.path.isdir(folder) else None
-    if not elf or cid in (1, 2):
+    if cid in (1, 2):
         return None
-    d = open(elf, "rb").read()
+    d = b3_elf(folder)
+    if not d:
+        return None
     ph = struct.unpack_from("<I", d, 0x1C)[0]
     _, off, va = struct.unpack_from("<3I", d, ph)[:3]
     n = 122
@@ -495,7 +513,7 @@ def resolve(spec, writer, iw=None, log=print, donor=None, base=None):
         durs = donor_durations(donor, writer)
         if base is None or not durs:
             raise ValueError("t3: hace falta el bloque de voces del donante y sus ADX "
-                             "(ps2_games/%s)" % os.path.basename(B3_PS2_DIR))
+                             "(tu Budokai 3 de PS2 USA, SLUS-20998: ISO o carpeta en ps2_games)")
         pools = {lk: t3.clips_tiempos(who2, lk, juegos[lk]) for lk in ("usa", "jpn")}
         if not pools["usa"] and not pools["jpn"]:
             raise KeyError("personaje de Tenkaichi 3 desconocido: %s" % who2)

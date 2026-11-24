@@ -1,0 +1,17 @@
+descripcion = "L1: cambiar luchador, rival y muneco, practicar y salir desde pausa"
+env = ["DBZ3_HUB_MODE=5", "DBZ3_TEST_LAB_CONTACTO=1"]
+apartar = ["user_data/dbz3/rpg.toml*", "user_data/dbz3/hub_modos.toml*", "user_data/dbz3/modos", "user_data/dbz3/retos.csv", "user_data/dbz3/laboratorio.csv*", "user_data/dbz3/hub_heroe.toml*", "user_data/dbz3/pasarela"]
+pasos = [
+  "esperar_pantalla 5 120", "esperar 3000", "tecla W 1500", "tecla Space 4500",
+  "log 'hub: entra la pantalla HUB' 60",
+  "tecla S 700", "tecla S 700", "tecla S 700", "tecla S 700",
+  "tecla S 700", "tecla S 700", "tecla S 700", "tecla Space 2500",
+  "tecla D 700", "tecla S 700", "tecla D 700", "tecla S 700", "tecla S 700",
+  "tecla Space 700", "captura muneco_guardia", "tecla W 700", "tecla Space 3000",
+  "log 'laboratorio: practica id .*guardia' 60", "esperar_pelea", "esperar 1500",
+  "colocar 0,0,-1 0,0,1", "tecla L 1200", "tecla P 1200",
+  "log 'soliw: laboratorio contacto lado 1 .*guardia true' 30",
+  "tecla Return 350", "captura pausa", "tecla W 250", "tecla Space 350",
+  "tecla W 250", "tecla Space 2500", "log 'laboratorio: fin de la practica [(][1-9][0-9]* golpes medidos[)]' 90",
+  "esperar 3000", "captura retorno",
+]

@@ -61,6 +61,20 @@ Un personaje nuevo es un mod "fuente" con `personaje.toml` (sin numeros de entra
     nombre = "Hell Gate"
     tipo = "especial"              # especial | definitiva | transformacion (+ forma = 1)
 
+Un FUSIONADO del juego como personaje suelto (issue #73) es otro personaje.toml SIN modelos:
+
+    [personaje]
+    ficha_nativa = 68        # ficha de combate del juego: 64 Gotenks, 68 Gogeta, 72 Vegito, 76 Kibito-shin
+    forma_inicial = 3        # opcional: forma fusionada de esa ficha (por defecto la del fusionado;
+                             # 64: 3-5, 68: 3, 72: 2-3, 76: 2)
+    nombre = "Gogeta"        # opcional; donante (por defecto el de la fila nativa: Goku, Goten, Kibito)
+                             # solo da la casilla (sitio en la rueda, partida guardada)
+
+La casilla usa el modelo del juego de esa forma (no se copia: icono, retratos y vista previa
+se pintan de el). En combate el runtime la cambia por la ficha nativa en esa forma, como
+las filas de sub_821007E8 (ID = ficha, forma minima y maxima = forma, capsulas = la de la
+forma): golpes, tecnicas, definitiva y voces son los del juego, sin tiempo de fusion.
+
 Un traje EXTRA para un personaje que ya existe es otro mod fuente, con `traje.toml`:
 
     [traje]
@@ -412,19 +426,30 @@ def _file_sha256(path):
     return h.hexdigest()
 
 
-def _compress(raw, dst, work):
+def _compress(raw, dst, work, key=None, data=None):
     def comprimir():
+        if data is not None:           # acierto que la poda borro entre medias: el bin, ahora si, a disco
+            with open(raw, "wb") as fh:
+                fh.write(data)
         swap_b3.lzx_compress(raw, dst, work)
         with open(dst, "rb") as fh:
             return fh.read()
 
     # Clave por contenido sin duplicar el bin en memoria (antes se leia entero solo para
     # hashearlo y se tenia otra copia en el llamador).
-    key = "%s-%s" % (_file_tag(swap_b3.XBCOMPRESS), _file_sha256(raw))
+    if key is None:
+        key = "%s-%s" % (_file_tag(swap_b3.XBCOMPRESS), _file_sha256(raw))
     blob = _cached("lzx_c", key, comprimir, cap_mb=256)
     with open(dst, "wb") as fh:
         fh.write(blob)
-    os.remove(raw)
+    if os.path.exists(raw):
+        os.remove(raw)
+
+
+# INFRA-05: la clave LZX se calcula del bin en memoria (no se relee del disco) y, si ya esta en la
+# cache, el bin no se escribe a disco; la salida es la misma (misma clave, mismo blob).
+# DBZ3_ROSTER_SIN_CACHE=1 vuelve al camino de antes.
+_SIN_ATAJO = os.environ.get("DBZ3_ROSTER_SIN_CACHE") == "1"
 
 
 def write_entry(mod_dir, afs, n, data, work):
@@ -436,11 +461,18 @@ def write_entry(mod_dir, afs, n, data, work):
         prev.result()                  # la misma entrada otra vez: primero la anterior
     _SEQ[0] += 1
     raw = os.path.join(work, "raw_%d.bin" % _SEQ[0])
-    open(raw, "wb").write(data)
+    key, hit = None, None
+    if not _SIN_ATAJO:
+        key = "%s-%s" % (_file_tag(swap_b3.XBCOMPRESS), hashlib.sha256(data).hexdigest())
+        if ("lzx_c", key) in _MEM or (CACHE_DIR and os.path.isfile(os.path.join(CACHE_DIR, "lzx_c", key))):
+            hit = bytes(data)          # acierto: el bin solo hace falta si la poda borra la entrada
+    if hit is None:
+        with open(raw, "wb") as fh:
+            fh.write(data)
     if _POOL is None:
-        _compress(raw, dst, work)
+        _compress(raw, dst, work, key, hit)
     else:
-        _PENDING[dst] = _POOL.submit(_compress, raw, dst, work)
+        _PENDING[dst] = _POOL.submit(_compress, raw, dst, work, key, hit)
 
 
 def flush_entries():
@@ -656,6 +688,40 @@ def sb_var_fixed(anm_bins, c, cmn, dn, name):
             log("   %s: pies: var de los codigos %s como el donante" % (name, ", ".join(hex(x) for x in cods)))
         out.append(b)
     return out
+
+
+def donor_b2_moveset(cmn, dn, raws, out_dir, next_fid, work, name, orig_donor=None):
+    """Mod de Budokai 2 sin moveset propio: el ANM de B3 del donante es de otro esqueleto y el
+    reset del luchador cae leyendo el asset (read 0x20; Fat/Ghost Gotenks). Se porta el moveset
+    de B2 del donante (b1port) contra el modelo del mod, como hace importar: el ANM sale con
+    los huesos del modelo. -> (anm_fid, anm_hd, cam_hd, next_fid) o None."""
+    import afs_pair  # noqa: PLC0415
+    import altura  # noqa: PLC0415
+    import b1port  # noqa: PLC0415
+    import importar  # noqa: PLC0415
+    import ps2hd  # noqa: PLC0415
+    src = IDS.get(int(orig_donor)) if orig_donor is not None else dn
+    if not src or not src.get("models") or not src.get("anm") or src["anm"][0] >= 0xFFFFFFFF or not src.get("cam"):
+        return None
+    iso = importar.source_path("b2")
+    if not iso:
+        return None
+    labels = [n for n, _q, _p, _par in altura.skeleton(cmn.entry(src["models"][0]))]
+    pre = labels[0].lstrip("X").split("_")[0] if labels else ""
+    b1 = b1port.B2(iso)
+    rec = (b1.movesets().get(pre) or [None])[0]
+    if rec is None:
+        log("   %s: aviso: %s no tiene moveset en Budokai 2 (sigue el ANM del donante)" % (name, pre))
+        return None
+    rep, ult = [], {}
+    anm, cam = b1port.port(b1, rec, afs_pair.ps2(src["anm"][0]), afs_pair.ps2(src["cam"]), rep,
+                           raws, [0x64], b1port.donor_model(src["anm"][0]), ult_out=ult)
+    anm_hd, cam_hd = bytes(ps2hd.convert_block(anm)), bytes(ps2hd.convert_block(cam))
+    write_entry(out_dir, "data_cmn.afs", next_fid, anm_hd, work)
+    afid, next_fid = next_fid, next_fid + 1
+    log("   %s: moveset de Budokai 2 del donante %s (el ANM de B3 con este modelo cierra el juego)"
+        % (name, src["name"]))
+    return afid, anm_hd, cam_hd, next_fid
 
 
 def donor_moveset_fixed(cmn, dn, model_hd, out_dir, next_fid, work, name):
@@ -1009,6 +1075,70 @@ def iw_recursos_guion(cam, bsp, dbsp):
 # Port -> de que otros ports salen sus formas si estan activos (por clave de importar.py; "" = la forma es suya).
 FORMAS_PORT_AUTO = {"c:gogeta": ["", "c:gogeta ss4"]}
 
+# Fusionados del juego (ficha_nativa): nombre, donante de la casilla (A de la fila nativa de sub_821007E8),
+# modelos data_cmn por forma fusionada (uno por traje: char96[ID del modelo] +8, indice char372 +212+20f +4) y
+# bocas (char96 +12). Leido del default.xex US (E:\DBZ3HD_trabajo\kit_07b\us_img.bin, KIT-14). La primera forma
+# es la de por defecto.
+FICHAS_NATIVAS = {
+    64: ("Gotenks", 6, {3: [305, 308], 4: [306, 309], 5: [307, 310]}, 311),
+    68: ("Gogeta", 0, {3: [217, 219]}, 221),
+    72: ("Vegito", 0, {2: [438, 440], 3: [439, 441]}, 442),
+    76: ("Kibito-shin", 16, {2: [334, 335]}, 337),
+}
+
+
+def ficha_nativa(src):
+    """personaje.toml con ficha_nativa: completa la casilla (donante, una forma, modelos "juego:N").
+    None = personaje normal (nada cambia); False = clave no valida (el mod se omite)."""
+    name, _, c = src
+    if c.get("ficha_nativa") is None:
+        return None
+    try:
+        ficha = int(c["ficha_nativa"])
+        nombre, donante, formas, bocas = FICHAS_NATIVAS[ficha]
+        forma = int(c.get("forma_inicial", next(iter(formas))))
+        modelos = formas[forma]
+    except (KeyError, ValueError, TypeError):
+        log("!! %s: ficha_nativa/forma_inicial no validas (fichas %s): omitido" % (
+            name, ", ".join("%d %s" % (k, v[0]) for k, v in FICHAS_NATIVAS.items())))
+        return False
+    c["ficha_nativa"], c["forma_inicial"], c["_bocas_nativas"] = ficha, forma, bocas
+    c.setdefault("nombre", nombre)
+    c.setdefault("donante", donante)
+    c.update(formas=1, modelos_por_traje=1, modelos=["juego:%d" % m for m in modelos])
+    return True
+
+
+def formas_port_toml(mods):
+    """Parejas de mas sin tocar el codigo: <mods>/formas_port.toml, [parejas] "c:clave" = ["", "c:otra"] (mismo formato
+    que FORMAS_PORT_AUTO) y [ajustes] (fx_mezcla = true, apagado de serie). -> (parejas, ajustes); ({}, {}) sin fichero."""
+    p = os.path.join(mods, "formas_port.toml")
+    if not os.path.isfile(p):
+        return {}, {}
+    try:
+        with open(p, "rb") as fh:
+            t = tomllib.load(fh)
+        par = {str(k): [str(x) for x in v] for k, v in t.get("parejas", {}).items() if isinstance(v, list)}
+        return par, dict(t.get("ajustes", {}))
+    except (OSError, ValueError) as e:
+        log("   aviso: formas_port.toml no se lee (%s)" % e)
+        return {}, {}
+
+
+def fx_mezcla(base, otras):
+    """Fila de la orden 0x19C (fx_tabla, 12 B = 3 entradas de 4; sub_821262E8 lee id*12 + 4*r4, bytes 0-2): es por ID, no
+    por forma, asi que el guion prestado (formas_port) lee la del personaje. Cada entrada vacia (bytes 0-2 a cero) del
+    personaje toma la del port de esa forma; las que ya usa el personaje no se tocan. -> fila nueva o None si no cambia."""
+    fila = [int(x) & 0xFF for x in base] if len(base or []) == 12 else [0] * 12
+    nueva = list(fila)
+    for o in otras:
+        if len(o or []) != 12:
+            continue
+        for e in range(3):
+            if not any(nueva[4 * e:4 * e + 3]) and any(int(x) & 0xFF for x in o[4 * e:4 * e + 3]):
+                nueva[4 * e:4 * e + 4] = [int(x) & 0xFF for x in o[4 * e:4 * e + 4]]
+    return nueva if nueva != fila else None
+
 
 def formas_port(name, c, montados, anm, extra, out_dir, next_fid, work):
     """formas_port = ["", "imp_iw_gogeta_ss4"] en personaje.toml: esa forma lleva el moveset, el guion y las tecnicas de
@@ -1066,6 +1196,11 @@ def formas_port(name, c, montados, anm, extra, out_dir, next_fid, work):
         log("   %s: forma %d con moveset, guion y tecnicas de %s (%d recursos; %s)" % (
             name, f, mod, bsp_resources(b["bsp"]) if b["bsp"] else 0, "; ".join(notas)))
     extra[:] = [("anm = %s" % toml_list(anm)) if ln.startswith("anm = ") else ln for ln in extra]
+    if c.get("_fx_mezcla"):   # SLOTS_PJ-03, apagado de serie ([ajustes] fx_mezcla = true en formas_port.toml)
+        fila = fx_mezcla(c.get("fx_tabla"), [montados[m].get("fx") for m in pedido if m and m in montados])
+        if fila:
+            extra[:] = [ln for ln in extra if not ln.startswith("fx_tabla = ")] + ["fx_tabla = %s" % toml_list(fila)]
+            log("   %s: fx_tabla con las entradas de sus formas prestadas: %s" % (name, fila))
     if any(x >= 0 for x in tec):
         extra.append("tecnicas_forma = %s" % toml_list(tec))
     if any(x >= 0 for x in gui):
@@ -1104,6 +1239,59 @@ def bsp_resources(bsp):
         return sub + max(0, len(top) - 2)
     except (struct.error, IndexError):
         return 0
+
+
+def bsp_efectos_gaps(bsp):
+    """Huecos del BSP de tecnicas, offline: cada enlace #CST (rayos/bolas, 0xF0 B) y #CSE (efectos,
+    0xD0 B) -origen 2 = hijo de su propio #AMB, 1 = del #AMB de los #CSE- debe apuntar a un #ACE, y
+    las texturas que piden sus particulas deben existir en el #AZT grande. Es la "textura que falta
+    en el banco" del especial de Super 17 (dsPOR #57). -> (huecos, n_texturas, n_efectos)."""
+    from colores import _ace_nodes  # noqa: PLC0415
+    from sb_tecnicas import azt_entries, kids  # noqa: PLC0415
+    top = kids(bsp, ">")
+    ambs = [list(kids(top[0][0], ">")), list(kids(top[1][0], ">"))]
+    gaps = []
+
+    def tabla(tab, size, code_off, links, which, a):
+        n, s0 = struct.unpack_from(">II", tab, 8)
+        for k in range(n):
+            o = s0 + k * size
+            code = struct.unpack_from(">H", tab, o + code_off)[0]
+            typ = struct.unpack_from(">H", tab, o + 0x10)[0]
+            for lk in links:
+                src, idx = struct.unpack_from(">HH", tab, o + lk)
+                if lk == 0x68 and typ != 1:
+                    continue
+                if src in (1, 2):
+                    tgt = a if src == 2 else 1
+                    if idx >= len(ambs[tgt]):      # fuera de la tabla de recursos que carga el juego
+                        gaps.append("%s %#x: enlace %#x -> %d (solo hay %d)"
+                                    % (which, code, lk, idx, len(ambs[tgt])))
+    tabla(ambs[0][0][0], 0xF0, 0x12, (0x34, 0x5C, 0x68, 0x78, 0xB4), "rayo/bola", 0)
+    tabla(ambs[1][0][0], 0xD0, 0x6A, (0x5C,), "efecto", 1)
+    zs = [(None, i) for i, (x, _) in enumerate(top) if x[:4] == b"#AZT"]
+    zs += [(a, i) for a in (0, 1) for i, (x, _) in enumerate(ambs[a]) if x[:4] == b"#AZT"]
+    ntex = 0
+    if zs:
+        w = max(zs, key=lambda w: len(azt_entries((top if w[0] is None else ambs[w[0]])[w[1]][0])))
+        ntex = len(azt_entries((top if w[0] is None else ambs[w[0]])[w[1]][0]))
+    nace = 0
+    for a in (0, 1):
+        for i, (x, _) in enumerate(ambs[a]):
+            if x[:4] != b"#ACE":
+                continue
+            nace += 1
+            for o in _ace_nodes(x):
+                if struct.unpack_from(">H", x, o + 4)[0] != 2:
+                    continue
+                cnt, t = struct.unpack_from(">II", x, o + 0xA0)
+                if cnt == 1 and t < 0x10000 and t >= ntex:
+                    gaps.append("particula %d/%d: textura %d (hay %d)" % (a, i, t, ntex))
+                if o + 0xC8 <= len(x):
+                    c2, t2 = struct.unpack_from(">II", x, o + 0xC0)
+                    if c2 in (0, 1) and t2 < 0x100 and t2 >= ntex:
+                        gaps.append("particula %d/%d: textura2 %d (hay %d)" % (a, i, t2, ntex))
+    return gaps, ntex, nace
 
 
 
@@ -1538,6 +1726,19 @@ AURA_TIPOS = {"base": -3, "ninguna": -1, "normal": 0, "kaioken": 1, "ssj": 2, "s
 CACHE_IMAGENES = None   # carpeta de la cache de iconos/retratos (la pone construir: <juego>/mods_cache/retratos)
 
 
+def cac_foto(c):
+    pose, yaw = c.get("cac_foto_pose"), c.get("cac_foto_yaw")
+    if type(pose) is int and pose in (1, 2) and type(yaw) is int and -40 <= yaw <= 40:
+        return pose, yaw
+    return None
+
+
+def cac_foto_huesos(model, foto):
+    pose = model.arms_down(68.0 if foto[0] == 1 else 28.0)
+    pose.update(model.mouth_closed())
+    return pose
+
+
 def select_images(c, ui, hd_model, portrait_size, want=("icono", "retrato"), fetch=None):
     """select_images con cache en disco: el render de iconos y retratos era casi todo el tiempo de un montaje
     completo (12 min con ~25 personajes) y se repetia en cada actualizacion del Kit aunque nada del personaje
@@ -1547,6 +1748,8 @@ def select_images(c, ui, hd_model, portrait_size, want=("icono", "retrato"), fet
     import pickle  # noqa: PLC0415
     h = hashlib.sha1(open(os.path.join(HERE, "model_render.py"), "rb").read())
     h.update(bytes(hd_model))
+    if foto := cac_foto(c):
+        h.update(repr(("cac-foto1", foto)).encode())
     h.update(json.dumps([image_source(c, ui, "icono"), image_source(c, ui, "retrato"), adjust(c, "icono"),
                          adjust(c, "retrato"), list(portrait_size), list(want), fetch is not None]).encode())
     if os.path.isdir(ui):
@@ -1621,7 +1824,10 @@ def _select_images(c, ui, hd_model, portrait_size, want=("icono", "retrato"), fe
         pors = [None, None]
     if pors is None and src == "modelo":
         try:
-            pors = mr.make_portraits(get_model(), portrait_size, yaw=yaw, roll=roll, zoom=z, dx=dx, dy=dy)
+            m = get_model()
+            foto = cac_foto(c)
+            pors = mr.make_portraits(m, portrait_size, yaw=foto[1] if foto else yaw, roll=roll, zoom=z, dx=dx, dy=dy,
+                                     pose=cac_foto_huesos(m, foto) if foto else None)
             if pors and all(p is not None and float((np.asarray(p)[..., 3] > 32).mean()) < 0.01 for p in pors):
                 pors = None   # render vacio (ver el icono)
                 notes.append("retrato: el render del modelo salio vacio; se usa la imagen")
@@ -1753,6 +1959,8 @@ def hud_images(c, ui, form_models, fetch=None):
         import pickle  # noqa: PLC0415
         h = hashlib.sha1(open(os.path.join(HERE, "model_render.py"), "rb").read())
         h.update(b"".join(form_models))
+        if foto := cac_foto(c):
+            h.update(repr(("cac-foto1", foto)).encode())
         h.update(json.dumps([c.get("hud_ajuste"), c.get("hud_centrado_ps2", True), fetch is not None]).encode())
         if os.path.isdir(ui):
             for fn in sorted(os.listdir(ui)):
@@ -1798,7 +2006,9 @@ def _hud_images(c, ui, form_models, fetch=None):
             acc = mr.native_accessory(m)
             if acc is not None and fetch is not None:
                 m.attach(fetch(acc[0]), acc[1])
-            cache[id(hd)] = mr.make_hud(m, yaw=yaw, zoom=z, dx=dx,
+            foto = cac_foto(c)
+            cache[id(hd)] = mr.make_hud(m, yaw=foto[1] if foto else yaw, zoom=z, dx=dx,
+                                        pose=cac_foto_huesos(m, foto) if foto else None,
                                        dy=dy if isinstance(v, list) else hud_dy(m), center_ps2=center_ps2)
         out.append(cache[id(hd)])
     return out
@@ -1854,6 +2064,23 @@ def build_trajes(trajes, cmn, out_dir, next_fid, work, toml, manifest, ids=None)
                     "(los trajes extra solo van sobre personajes del juego o de mods por carpeta)" % (name, cid))
                 continue
             dn = IDS[cid]
+        if c.get("receta"):
+            # CAC-09: traje de una receta del creador (sin arte): los bins se montan con el juego de quien lo abre
+            try:
+                rdir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cac")
+                if rdir not in sys.path:
+                    sys.path.insert(0, rdir)
+                import recetas  # noqa: PLC0415
+                if not recetas.montaje_vigente(d):
+                    import subprocess  # noqa: PLC0415
+                    cmd = [sys.executable, os.path.join(rdir, "recetas.py"), "--juego", os.path.dirname(os.path.dirname(d)), "--montar", d]
+                    if subprocess.run(cmd, capture_output=True, timeout=900).returncode != 0:
+                        log("!! %s: no se pudo montar la receta (ingame_ui/heroe_vista/recetas.json): traje omitido" % name)
+                        continue
+                    c = dict(toml_file(os.path.join(d, "traje.toml")).get("traje", {}))   # el traje.toml acaba de rehacerse
+            except Exception as exc:  # noqa: BLE001 -- error del mod
+                log("!! %s: receta no valida (%s): traje omitido" % (name, exc))
+                continue
         files = c.get("modelos", [])
         if not files:
             log("!! %s: sin modelos" % name)
@@ -2122,14 +2349,15 @@ def guardar_reparto(mods_dir, mapa, orden, caps=None):
             return
     except OSError:
         pass
-    open(path + ".tmp", "w", encoding="utf-8").write(txt)
+    with open(path + ".tmp", "w", encoding="utf-8") as f:
+        f.write(txt)
     os.replace(path + ".tmp", path)
 
 
 def guardar_avisos(mods_dir):
     """mods/roster_avisos.txt: 'carpeta<TAB>texto' (src/mods.cpp lo ensena como problema del mod)."""
-    open(os.path.join(mods_dir, AVISOS_FILE), "w", encoding="utf-8").write(
-        "".join("%s\t%s\n" % a for a in dict.fromkeys(AVISOS)))
+    with open(os.path.join(mods_dir, AVISOS_FILE), "w", encoding="utf-8") as f:
+        f.write("".join("%s\t%s\n" % a for a in dict.fromkeys(AVISOS)))
 
 
 def all_source_mods(mods_dir):
@@ -2412,14 +2640,16 @@ EVERYONE = 0xFFFFFFFFFFF      # objetos comunes: bits de los IDs 0..43
 class Capsules:
     """IDs nuevos (596+), registros del catalogo, bancos de nombres y lineas de roster.toml."""
 
-    def __init__(self, usi, cmn=None, fijas=None):
+    def __init__(self, usi, cmn=None, fijas=None, sin_tope=False):
         self.usi = usi
         self.cmn = cmn
         self.recs = capsulas.skc_records(usi.entry(capsulas.SKC_ENTRY))
         self.next_id = len(self.recs)   # primera ID nueva (clean_custom_lists)
+        # SLOTS_PJ-06: mas alla de las 1388 de siempre (requiere dbz3_capsulas_sin_tope en el juego)
+        self.sin_tope = bool(sin_tope)
         # peticion d: ID fija por capsula ("carpeta|tipo|nombre" -> ID, en roster_ids.toml [capsulas]); una capsula
         # conserva su ID aunque se anadan o quiten otros personajes (la partida guarda inventario y listas Custom por ID)
-        self.fijas = {k: v for k, v in (fijas or {}).items() if self.next_id <= v < capsulas.ID_MAX_NUEVA}
+        self.fijas = {k: v for k, v in (fijas or {}).items() if capsulas.id_nueva_valida(v, self.sin_tope)}
         self.usadas = set()
         self._claves = set()
         self.new = []                 # [(id, registro, nombre)]
@@ -2443,7 +2673,8 @@ class Capsules:
         nid = self.fijas.get(clave)
         if nid is None or nid in self.usadas:
             reservadas = set(self.fijas.values())
-            libres = [i for i in range(self.next_id, capsulas.ID_MAX_NUEVA) if i not in self.usadas]
+            libres = [i for i in capsulas.ids_nuevas(self.sin_tope)
+                      if i >= self.next_id and i not in self.usadas]
             # sin hueco libre: se reutiliza la reserva de una capsula que ya no esta (mod quitado o desactivado)
             nid = next((i for i in libres if i not in reservadas), libres[0] if libres else None)
             if nid is None:
@@ -2544,7 +2775,9 @@ class Capsules:
                 continue
             nid = self._id_fija(mod, kind, cc)
             if nid is None:
-                notes.append("capsula '%s' omitida: catalogo lleno (IDs nuevas hasta %d)" % (cc.get("nombre"), capsulas.ID_MAX_NUEVA - 1))
+                tope = capsulas.ID_MAX_SIN_TOPE if self.sin_tope else capsulas.ID_MAX_NUEVA
+                notes.append("capsula '%s' omitida: sin IDs libres (hasta %d; activa [ajustes] capsulas_sin_tope)"
+                             % (cc.get("nombre"), tope - 1))
                 continue
             req = last_tr if kind == "transformacion" else 0
             forma = int(cc.get("forma", 1))
@@ -2689,7 +2922,7 @@ class Capsules:
         if not own and not iw:
             # con una sola forma (formas = 1: Fat Gotenks, Ghost Gotenks, sin modelo de Super Saiyan) las
             # transformaciones del donante no se heredan: se podian equipar y "transformaban" sin cambiar de modelo
-            one_form = int(c.get("formas") or 0) == 1
+            one_form = int(self.nforms or 1) == 1
             trans = {x for x in dn.get("form_caps", []) if x} if one_form else set()
             inherit = [x for x in inherit if x not in trans]
             lines.append("hereda = %s" % toml_list(inherit))
@@ -2711,16 +2944,28 @@ class Capsules:
         # solo caben 7: primero transformaciones y definitivas (Goku GT: 3 + 2 + 3 especiales;
         # sin esto la Spirit Bomb, la unica definitiva en SSJ4, quedaba fuera)
         prio = {"transformacion": 0, "definitiva": 1, "especial": 2}
-        defaults = [o["id"] for o in sorted((o for o in own if o["equipada"]), key=lambda o: prio[o["tipo"]])] +             [x for x in nativas]
+        # capsula propia de transformacion para una forma que el personaje no tiene: se descartaba su
+        # fila de capsulas_forma pero seguia equipada en la lista por defecto (no hacia nada). Ahora
+        # se quita tambien de defaults/inherit y se avisa.
+        nfc = max(1, int(self.nforms or 1))
+        sin_forma = [o for o in own if o["tipo"] == "transformacion" and not 1 <= o["forma"] < nfc]
+        drop = {o["id"] for o in sin_forma}
+        defaults = [o["id"] for o in sorted((o for o in own if o["equipada"]), key=lambda o: prio[o["tipo"]])
+                    if o["id"] not in drop] + [x for x in nativas if x not in drop]
         if not iw:
-            defaults += [repl.get(x, x) for x in dn.get("caps", []) if repl.get(x, x) not in defaults]
+            defaults += [repl.get(x, x) for x in dn.get("caps", [])
+                         if repl.get(x, x) not in defaults and repl.get(x, x) not in drop]
         defaults = [x for x in defaults if x not in dmoves or x in {o["id"] for o in own}][:7]
         fcaps = [repl.get(x, x) for x in dforms] or [0]
         fcaps[0] = 0                # la forma inicial no exige capsula (Gogeta: el SSJ del donante)
-        if c.get("formas"):
-            fcaps = fcaps[:max(1, int(c["formas"]))]
+        # nunca mas capsulas de forma que formas tiene el personaje: las que sobran del donante
+        # dejaban una transformacion en su ficha (Super 17: 107) para una forma que no existe
+        fcaps = (fcaps + [0] * nfc)[:nfc]
+        if sin_forma:
+            notes.append("sin las transformaciones propias para formas que no tiene %s (formas = %d)"
+                         % (sorted(o["nombre"] for o in sin_forma), nfc))
         for o in own:
-            if o["tipo"] == "transformacion" and o["forma"] >= 1:
+            if o["tipo"] == "transformacion" and 1 <= o["forma"] < nfc:
                 while len(fcaps) <= o["forma"]:
                     fcaps.append(0)
                 fcaps[o["forma"]] = o["id"]
@@ -2734,7 +2979,7 @@ class Capsules:
                     notes.append("capsula '%s' (formas %s): de serie tambien %s" % (cc.get("nombre"), fs, faltan))
         lines += ["capsulas = %s" % toml_list(defaults), "capsulas_forma = %s" % toml_list(fcaps)]
         if cid >= LOGICO_BASE:
-            inherit += [o["id"] for o in own]
+            inherit += [o["id"] for o in own if o["id"] not in drop]
         if inherit:
             lines.append("hereda = %s" % toml_list(inherit))
         # banco de nombres propio: [base .. id mas alto] con todo lo que puede llevar (tambien las de la lista por defecto
@@ -2909,7 +3154,8 @@ class Capsules:
         out = []
         # huecos de capsulas reservadas de mods quitados: registro sin dueno (nadie la ve ni la equipa)
         hueco = capsulas.make_record(self.recs[CAP_TEMPLATES["especial"]], [])
-        for nid in sorted(set(range(self.next_id, max(self.usadas, default=0))) - self.usadas):
+        for nid in sorted(i for i in capsulas.ids_nuevas(self.sin_tope)
+                          if self.next_id <= i < max(self.usadas, default=0) and i not in self.usadas):
             out += ["[[capsula]]", "# hueco reservado", "id = %d" % nid, 'registro = "%s"' % hueco.hex(), ""]
         for nid, rec, nm in self.new:
             out += ["[[capsula]]", "# %s" % nm, "id = %d" % nid, 'registro = "%s"' % rec.hex()]
@@ -2975,6 +3221,9 @@ def forms_config(c, dn, per, donor, name):
       fisica = "donante"    cadenas de fisica (pelo, colas del cinturon) del donante, o = ID de
                             otro personaje; sin la clave, ninguna (el modelo queda rigido)"""
     nforms = max(1, int(dn.get("forms") or 1))
+    absorciones = bool(c.get("absorciones_nativas")) and donor == 35 and per >= 8
+    if absorciones:
+        nforms = 8  # una forma ordinaria, mas las filas especiales nativas de Bu
     fdon = [int(x) for x in c.get("formas_donante", [])][:8]
     fde = [int(x) for x in c.get("formas_de", [])][:16]
     if fde:       # Tag Team: formas_de = [ID, forma, ID, forma...]: cada forma de un personaje
@@ -3000,6 +3249,22 @@ def forms_config(c, dn, per, donor, name):
         if want > nforms:
             log("   %s: aviso: formas = %d pero %s solo tiene %d" % (name, want, dn["name"], nforms))
         nforms = min(want, nforms)
+    if not (c.get("formas") or c.get("formas_donante") or c.get("formas_de")):
+        # sin formas declaradas. Un traje de un solo modelo y sin reparto (modelo_forma) no puede
+        # tener formas: se deja 1 (Super 17: el Androide 17 le dejaba una segunda forma y su capsula
+        # de transformar 107 sin modelo detras). Con 2+ modelos NO se recorta: las formas comparten
+        # el ultimo modelo (el runtime limita el modelo de cada forma al ultimo del traje,
+        # src/roster_ext.cpp) y el resto se declara con "formas". Antes se recortaba a los modelos y
+        # se perdian formas legitimas (contrato de docs/03_formatos/FORMAS_Y_KI.md).
+        per_n = max(1, int(per or 1))
+        if nforms > per_n:
+            if per_n == 1 and len(c.get("modelo_forma") or []) < 2:
+                log("   %s: aviso: %s tiene %d formas y el traje 1 modelo; sin 'formas' se usa 1 "
+                    "(declara formas/modelo_forma si comparten modelo)" % (name, dn["name"], nforms))
+                nforms = 1
+            else:
+                log("   %s: aviso: hereda %d formas de %s con %d modelos por traje; las formas comparten "
+                    "el ultimo modelo (declara formas = X para fijarlo)" % (name, nforms, dn["name"], per_n))
     mforma = [int(x) for x in c.get("modelo_forma", [])][:nforms]
     if not mforma and per == nforms > 1:
         mforma = list(range(nforms))
@@ -3007,6 +3272,8 @@ def forms_config(c, dn, per, donor, name):
         log("   %s: aviso: modelo_forma %s fuera de 0..%d (modelos_por_traje)" % (name, mforma, per - 1))
         mforma = [max(0, min(per - 1, m)) for m in mforma]
     lines = ["modelo_forma = %s" % toml_list(mforma)] if mforma else []
+    if absorciones:
+        lines.append("absorciones_nativas = true")
     if fdon:
         lines.append("formas_donante = %s" % toml_list(fdon))
     kib = [max(0, min(7, int(x))) for x in c.get("ki_base", [])][:nforms]
@@ -3027,15 +3294,29 @@ def forms_config(c, dn, per, donor, name):
     return nforms, mforma, lines
 
 
+def _aviso_dlcb1(accion, escribir):
+    try:
+        escribir()
+    except OSError as exc:
+        try:
+            log("aviso DLC B1: %s (%s)" % (accion, exc))
+        except OSError:  # el canal de informes también puede no estar disponible
+            pass
+
+
 def build(a):
     global CACHE_IMAGENES, CACHE_DIR
     mods = a.mods or default_mods()
     us = a.us or default_us()
+    coherente = getattr(a, "dlcb1_coherente", False)
     out_dir = os.path.join(mods, OUT_MOD)
     CACHE_IMAGENES = os.path.join(os.path.dirname(os.path.abspath(mods)), "mods_cache", "retratos")
     CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(mods)), "mods_cache")
     gritos.PACKETS_DIR = os.path.join(CACHE_DIR, "gritos")
+    import sb_voces  # noqa: PLC0415  (ADX de las voces de SB/IW: misma cache por contenido)
+    sb_voces.CACHE_DIR = os.path.join(CACHE_DIR, "adx")
     srcs = source_mods(mods)
+    srcs = [s for s in srcs if ficha_nativa(s) is not False]
     trajes = traje_mods(mods)
     if not srcs and not trajes:
         # Fuentes presentes pero ilegibles: no retirar el roster que funcionaba.
@@ -3044,13 +3325,25 @@ def build(a):
                    ("personaje.toml", "traje.toml")) for n in os.listdir(mods) if n != OUT_MOD):
             raise ValueError("ninguna fuente valida: _roster anterior conservado")
         if os.path.isdir(out_dir):
-            if not os.path.isfile(os.path.join(mods, IDS_FILE)):   # reservas antes de apartar el _roster
-                guardar_reparto(mods, ids_del_roster(mods), {})
-            retire_tree(out_dir)
-            log("sin personajes nuevos activos: _roster apartado en mods_respaldo")
-        else:
+            sin_reparto = not os.path.isfile(os.path.join(mods, IDS_FILE))
+            if coherente:
+                reservas = ids_del_roster(mods) if sin_reparto else None
+                retiro = TreePublish(out_dir)
+                try:
+                    retiro.retire(lambda: guardar_reparto(mods, reservas, {}) if sin_reparto else None)
+                finally:
+                    retiro.finish()
+            else:
+                if sin_reparto:
+                    guardar_reparto(mods, ids_del_roster(mods), {})
+                retire_tree(out_dir)
+                log("sin personajes nuevos activos: _roster apartado en mods_respaldo")
+        elif not coherente:
             log("sin personajes nuevos activos")
-        guardar_avisos(mods)
+        if coherente:
+            _aviso_dlcb1("no se pudieron guardar los avisos", lambda: guardar_avisos(mods))
+        else:
+            guardar_avisos(mods)
         return 0
     ids, mapa, orden = plan_ids(mods, srcs)
     trajes, orden = ordenar_trajes(trajes, orden)
@@ -3062,8 +3355,14 @@ def build(a):
     digest = inputs_hash(srcs + [(n, d, None) for n, d, _ in trajes])
     # el reparto entra en el sello: si cambia un ID u orden de trajes, se vuelve a montar
     digest = hashlib.sha1((digest + json.dumps([ids, [t[0] for t in trajes]], sort_keys=True)).encode()).hexdigest()
+    if os.path.isfile(os.path.join(mods, "formas_port.toml")):   # parejas/ajustes de formas_port: cambiarlas vuelve a montar
+        digest = hashlib.sha1((digest + json.dumps(formas_port_toml(mods), sort_keys=True)).encode()).hexdigest()
     stamp = os.path.join(out_dir, "build.hash")
     if not a.force and os.path.isfile(stamp) and open(stamp).read().strip() == digest:
+        if coherente:
+            validate_roster(out_dir)
+            guardar_reparto(mods, mapa, orden, capsulas_fijas(mods))
+            return 0
         guardar_reparto(mods, mapa, orden)
         log("_roster al dia (%d personajes)" % len(srcs))
         return 0
@@ -3099,7 +3398,8 @@ def build(a):
         free = ALL_IDS
         toml = ["# GENERADO por mod center hd/roster_build.py (no editar: se regenera).", ""]
         manifest = []
-        caps = Capsules(usi, cmn, capsulas_fijas(mods))
+        parejas_toml, ajustes_fp = formas_port_toml(mods)   # [ajustes] capsulas_sin_tope (SLOTS_PJ-06)
+        caps = Capsules(usi, cmn, capsulas_fijas(mods), sin_tope=ajustes_fp.get("capsulas_sin_tope") is True)
         own_caps, first_new = {}, caps.next_id
         voice_out = voces.VoiceWriter(us, out_dir)
         iw_voices = None
@@ -3110,10 +3410,15 @@ def build(a):
         steps = len(srcs) + 2
         ports_montados = {}     # lo montado de cada port, para formas_port de los que vienen detras
         por_clave = {c.get("origen_clave"): n for n, _, c in srcs if c.get("origen_clave")}
+        parejas = dict(FORMAS_PORT_AUTO, **parejas_toml)
         for n, _, c in srcs:       # parejas conocidas con los dos ports activos (un toml puede pedir otra cosa)
-            auto = FORMAS_PORT_AUTO.get(c.get("origen_clave"))
+            auto = parejas.get(c.get("origen_clave"))
             if auto and "formas_port" not in c and all(not k or k in por_clave for k in auto):
                 c["formas_port"] = [por_clave.get(k, "") for k in auto]
+            elif c.get("formas_port"):   # en personaje.toml vale la carpeta del mod o su clave ("c:gogeta ss4")
+                c["formas_port"] = [por_clave.get(k, k) for k in c["formas_port"]]
+            if c.get("formas_port") and ajustes_fp.get("fx_mezcla") is True:
+                c["_fx_mezcla"] = True
         srcs = sorted(srcs, key=lambda s: bool(s[2].get("formas_port")))   # estable: solo mueve a los que lo usan
         for k_src, (name, d, c) in enumerate(srcs):
             nombre = c.get("nombre", name)
@@ -3121,8 +3426,19 @@ def build(a):
             cid = ids[name]
             if cid is None:
                 continue          # sin ID o sin casilla: plan_ids ya dio el aviso
+            b2_orig = None
             try:
                 donor = int(c.get("donante", 21))
+                # POST 12/11: tambien con moveset propio si el modelo no es un Trunks de B2 (Gotenks B2 de
+                # `importar b2`, XGTX, traia moveset y se saltaba la guarda: mismo read 0x20 en sub_820FB0D0,
+                # descriptor nulo del bloque asset+76). Trunks L de B2 (XTR*) con la ficha de 8 combate bien.
+                if (c.get("origen_fuente") == "b2" and donor == 8 and c.get("guarda_donante_b2", True)
+                        and (not c.get("moveset") or not str(c.get("origen_clave", "")).startswith("XTR"))):
+                    # GUARDA (Fat/Ghost Gotenks): la ficha de combate del donante Trunks (B3) con
+                    # un modelo de B2 deja nula la tabla del asset en el reset (read 0x20). La
+                    # ficha de 0 (Goku) es compatible; el moveset se porta del Trunks de B2.
+                    b2_orig, donor = donor, 0
+                    log("   %s: guarda: donante 8 incompatible con modelo B2; ficha de 0 y moveset B2 de 8" % name)
                 dn = IDS[donor]
                 if not dn.get("models"):
                     raise ValueError("donante sin modelos")
@@ -3148,6 +3464,9 @@ def build(a):
             try:              # un modelo que no se puede leer no tumba el montaje de los demas
                 raws = []
                 for rel in files:
+                    if c.get("ficha_nativa") is not None:   # modelo del juego tal cual: solo para pintar la casilla
+                        raws.append(cmn.entry(int(rel[6:])))
+                        continue
                     with open(os.path.join(d, rel), "rb") as fh:
                         raws.append(fh.read())
                 if c.get("moveset") and c.get("altura", True):
@@ -3171,6 +3490,9 @@ def build(a):
                 labels, height = skeleton(hdb, work)
                 prefixes.append(prefix(labels))
                 heights.append(height)
+                if c.get("ficha_nativa") is not None:   # su entrada del juego, sin copiarla
+                    model_fids.append(int(files[len(model_fids)][6:]))
+                    continue
                 write_entry(out_dir, "data_cmn.afs", next_fid, hdb, work)
                 model_fids.append(next_fid)
                 next_fid += 1
@@ -3181,6 +3503,8 @@ def build(a):
             own_lips = c.get("bocas", [])
             dper = max(1, dn["models_per_costume"])
             lips_fids, lips_cache = [], {}
+            if c.get("ficha_nativa") is not None:   # las bocas del juego de ese modelo
+                own_lips, lips_fids = None, [c["_bocas_nativas"]] * (ncos * lpc)
             if own_lips:                # bocas propias: una por forma, repetidas por traje
                 own = []
                 for rel in own_lips:
@@ -3188,7 +3512,7 @@ def build(a):
                     own.append(next_fid)
                     next_fid += 1
                 lips_fids = [own[min(kk, len(own) - 1)] for _ in range(ncos) for kk in range(lpc)]
-            for cidx in range(0 if own_lips else ncos):
+            for cidx in range(0 if own_lips or lips_fids else ncos):
                 for kk in range(lpc):
                     mi = cidx * per + min(kk, per - 1)
                     src = dn["lips"][kk]
@@ -3254,7 +3578,7 @@ def build(a):
                 log("   %s: sin franja de ojos propia (%s)" % (name, e))
             # cara de la barra de vida: una por forma (render de su modelo o ui/hud*.png)
             hud_tpl = cmn.entry(dn.get("hud_face") or IDS[0]["hud_face"])
-            nf = nforms if c.get("formas") or c.get("formas_donante") else struct.unpack(">I", hud_tpl[0x10:0x14])[0]
+            nf = nforms      # "formas" se escribe siempre: no hace falta contar las caras del molde
             try:
                 huds = hud_images(c, ui, [hds[min(len(hds) - 1, mforma[f] if f < len(mforma) else min(f, per - 1))]
                                           for f in range(nf)], fetch=cmn.entry)
@@ -3433,6 +3757,9 @@ def build(a):
                     if bsp:
                         cam, bsp, rep = iw_recursos_guion(cam, bsp, cmn.entry(dn["bsp"]))
                         notes += rep
+                        if any("indice > 255" in r for r in rep):   # SLOTS_PJ-12b: tope del #SPX (1 byte), visible en el launcher
+                            log("!! %s: el guion pide mas de 255 recursos de tecnicas (tope del juego): algunos efectos "
+                                "de su definitiva no saldran" % name)
                 except Exception as e:  # noqa: BLE001
                     notes.append("aviso: guion de IW sin cambiar por el del donante (%s)" % e)
             # todos (ports de IW incluidos) deben poder entrar en modo hiper y lanzar su definitiva
@@ -3456,6 +3783,19 @@ def build(a):
                 fid_of[rel] = next_fid
                 next_fid += 1
             anm = [fid_of[rel] for rel in anm_rels]
+            if not anm and b2_orig is not None and first_hd:
+                # modelo de B2 + moveset de un donante B3: el ANM de B3 es de otro esqueleto y
+                # el reset del luchador cae (read 0x20; Fat/Ghost Gotenks). Mejor el moveset de
+                # B2 del donante, portado contra este modelo (la via que ya usa importar).
+                try:
+                    r = donor_b2_moveset(cmn, dn, raws, out_dir, next_fid, work, name, b2_orig)
+                    if r:
+                        afid, anm_hd, cam_hd, next_fid = r
+                        anm = [afid]
+                        cam = cam_hd
+                        poses.append((cid, anm_hd))
+                except Exception as e:  # noqa: BLE001
+                    log("   %s: aviso: moveset de B2 del donante sin portar (%s)" % (name, e))
             if not anm and c.get("altura", True):
                 # moveset del donante: la cadera de sus animaciones esta hecha para sus piernas
                 # (Guldo con las de Recoome flotaba); copia con la cadera ajustada al modelo
@@ -3470,8 +3810,9 @@ def build(a):
                     anm = []
             if anm:
                 extra.append("anm = %s" % toml_list(anm))
-            if c.get("formas") or c.get("formas_donante"):
-                extra.append("formas = %d" % nforms)
+            # siempre explicito: el runtime clampa con el las filas del donante que sobren
+            # (sin la clave heredaba las formas del donante, aunque el port tuviera una sola)
+            extra.append("formas = %d" % nforms)
             extra += form_lines
             # efectos de tecnicas propios (bsp, leido arriba) y/o color del ki (tono sobre los del donante)
             if c.get("ki_color") is not None:
@@ -3483,6 +3824,15 @@ def build(a):
                 except Exception as e:  # noqa: BLE001
                     log("   %s: aviso: color del ki sin cambiar (%s)" % (name, e))
             if bsp is not None:
+                try:                       # efectos/texturas que el BSP pide y su banco no trae (dsPOR #57)
+                    gaps, ntex, nace = bsp_efectos_gaps(bsp)
+                    if gaps:
+                        log("   %s: aviso: tecnicas: %d referencias sin efecto/textura (%s)"
+                            % (name, len(gaps), "; ".join(gaps[:4])))
+                    elif c.get("origen_fuente") == "iw":
+                        log("   %s: tecnicas: %d efectos y %d texturas referidos, 0 huecos" % (name, nace, ntex))
+                except Exception as e:     # noqa: BLE001
+                    log("   %s: aviso: tecnicas sin auditar (%s)" % (name, e))
                 write_entry(out_dir, "data_cmn.afs", next_fid, bsp, work)
                 extra.append("tecnicas = %d" % next_fid)
                 next_fid += 1
@@ -3530,7 +3880,10 @@ def build(a):
             elif cam_fid_esc is not None:      # camara del donante ya escrita por donor_cam_scaled (arreglo E3: antes se pasaba el fid como bytes)
                 extra.append("cam = %d" % cam_fid_esc)
             extra += cap_lines
-            ports_montados[name] = dict(anm=anm_bins[0] if anm_bins else None, cam=cam, bsp=bsp, own=list(caps.own))
+            if c.get("ficha_nativa") is not None:   # roster_ext: en combate, esa ficha en esa forma
+                extra += ["ficha_nativa = %d" % c["ficha_nativa"], "forma_inicial = %d" % c["forma_inicial"]]
+            ports_montados[name] = dict(anm=anm_bins[0] if anm_bins else None, cam=cam, bsp=bsp, own=list(caps.own),
+                                        fx=c.get("fx_tabla"))
             next_fid = formas_port(name, c, ports_montados, anm, extra, out_dir, next_fid, work)
             # voces de combate: las de su juego (port), las de otro personaje o las del donante
             try:
@@ -3648,6 +4001,8 @@ def build(a):
                      "retrato = %s" % toml_list(por)] +
                     (["ojos = [@o%d]" % ojos_k] if ojos_k is not None else []) + [
                      "select = %s" % toml_list([float(x) if i % 7 < 4 else int(x) for i, x in enumerate(s)])])
+            if c.get("obj_cel") is True:
+                toml.append("obj_cel = true")
             toml += extra + [""]
             manifest.append("%s: id %d, donante %d (%s), modelos %s, bocas %s, retratos %s, altura %.1f -> escala %.2f"
                             % (nombre, cid, donor, dn["name"], model_fids, sorted(set(lips_fids)), por, h, scale))
@@ -3716,6 +4071,11 @@ def build(a):
         open(os.path.join(out_dir, "manifest.txt"), "w", encoding="utf-8").write(
             "Personajes nuevos (generado por roster_build.py)\n" + "\n".join(manifest) + "\n")
         open(stamp, "w").write(digest)
+        if coherente:
+            txn.commit(validate_roster, lambda: guardar_reparto(mods, mapa, orden, caps.fijas))
+            _aviso_dlcb1("no se pudieron guardar los avisos", lambda: guardar_avisos(mods))
+            # El trabajo de DLC no reescribe listas Custom guardadas por el juego.
+            return 0
         txn.commit(validate_roster)
         guardar_reparto(mods, mapa, orden, caps.fijas)     # solo con el _roster publicado (si falla, nada cambia)
         guardar_avisos(mods)
@@ -4358,6 +4718,7 @@ def main():
     b.add_argument("--mods")
     b.add_argument("--us", help="carpeta con data_cmn.afs y data_usi.afs (us/)")
     b.add_argument("--force", action="store_true")
+    b.add_argument("--b1-iso", help="ISO de B1 elegida por el lanzador para los gritos")
     b.add_argument("--iw", help="carpeta de Infinite World (para sus voces); por defecto ps2_games/")
     n = sub.add_parser("nuevo")
     n.add_argument("--mods")
@@ -4419,6 +4780,9 @@ def main():
     k.add_argument("--lista", help="nombres de las capsulas: .xlsx de IW, lista de B3 o 'ID: Nombre'")
     k.add_argument("--catalogo", help="catalogo #SKA del juego de origen (B1/B2: tipo de cada capsula)")
     a = ap.parse_args()
+    if a.cmd == "construir" and a.b1_iso:
+        import b1port  # noqa: PLC0415
+        b1port.find_b1_iso = lambda: a.b1_iso
     try:
         return {"construir": build, "nuevo": new_char, "equipo": make_team, "estado": status, "vista": preview,
                 "capsulas": caps_cmd}[a.cmd](a)
@@ -4427,4 +4791,17 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:   # cronometro de tools/infra.py (INFRA-05); sin el, nada cambia
+        sys.path.insert(0, os.path.join(ROOT, "tools"))
+        try:
+            from infra import cronometro
+        finally:
+            sys.path.pop(0)
+    except Exception:  # noqa: BLE001  (sin tools/infra.py o roto: sin cronometro)
+        import contextlib
+
+        def cronometro(*_a, **_k):
+            return contextlib.nullcontext()
+    with cronometro("roster_build", detalle=" ".join(sys.argv[1:2])):
+        rc = main()
+    sys.exit(rc)

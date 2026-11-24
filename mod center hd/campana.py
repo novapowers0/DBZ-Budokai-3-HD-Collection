@@ -261,6 +261,9 @@ STYLES = {
                   "color": [0, 40, 33], "borde": 2, "color_borde": [239, 235, 239]},
 }
 STYLES["final"] = dict(STYLES["narracion"])
+# texto de la narracion con imagen ancha (Heroe, dbz3_heroe_fondos_historia): <= 2 lineas, letra grande, blanco con borde verde; campaigns.cpp
+# lo pone en una franja bajo la imagen (escala 0,48: 38 px -> ~44 px a 1080p)
+STYLES["narracion_ancha"] = dict(STYLES["narracion"], tamano=38, interlineado=46, ancho=1300, color=[255, 255, 255], borde=3, color_borde=[20, 80, 45], izquierda=True)
 
 
 def render(text, style, lang=None):
@@ -288,8 +291,9 @@ def render(text, style, lang=None):
     w = int(max(f.getlength(t) for t in lines)) + 8
     img = Image.new("RGBA", (max(16, w), max(16, pitch * len(lines) + 6)), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
+    izq = st.get("izquierda", False)   # R23 HER-02: la narracion ancha va alineada a la izquierda (maqueta 11)
     for k, t in enumerate(lines):
-        d.text((w // 2, 3 + pitch * k + pitch // 2), t, font=f, anchor="mm", fill=tuple(st["color"]) + (255,),
+        d.text((4 if izq else w // 2, 3 + pitch * k + pitch // 2), t, font=f, anchor="lm" if izq else "mm", fill=tuple(st["color"]) + (255,),
                stroke_width=stroke, stroke_fill=tuple(st["color_borde"]) + (255,))
     return np.array(img)
 
@@ -297,6 +301,151 @@ def render(text, style, lang=None):
 def text_bank(lines, style, lang=None):
     """#AZT de dialogo: texturas 0..n-1 (DXT3, flags 0x21, +0x28 = 0x40 como las nativas)."""
     return capsulas.build_bank(0, {k: render(t, style, lang) for k, t in enumerate(lines)}, flag28=0x40, tall=True)
+
+
+_NATIVAS = {}
+
+
+def piezas_nativas(us, work):
+    """R23: piezas del propio juego (data_usi del jugador, nada se distribuye) para la pantalla de historia del Heroe:
+    pergamino 2033:2, marco naranja 2033:5, interior oscuro 2033:12, glifos 2062:30 y aro dorado 2062:15. Sin ellas: {} (se dibuja a mano)."""
+    clave = os.path.abspath(us or "")
+    if clave in _NATIVAS:
+        return _NATIVAS[clave]
+    pz = {}
+    try:
+        usi = rb.Afs(os.path.join(us, "data_usi.afs"), work)
+        for nombre, ent, tex in (("pergamino", 2033, 2), ("marco", 2033, 5), ("interior", 2033, 12), ("glifos", 2062, 30), ("aro", 2062, 15)):
+            b = usi.entry(ent)
+            pz[nombre] = Image.fromarray(rb.azt_read(b, rb.azt_textures(b)[tex])).convert("RGBA")
+    except Exception as e:   # noqa: BLE001 (sin data_usi legible: dibujo a mano de siempre)
+        rb.log("aviso: piezas nativas de la historia no leidas (%s); se dibuja a mano" % e)
+        pz = {}
+    _NATIVAS[clave] = pz
+    return pz
+
+
+def _marco9(c, marco, x0, y0, x1, y1, k=1.0, esquina=46):
+    """Marco naranja del juego en 9 trozos (esquinas sin deformar a escala k, lados estirados) alrededor de (x0,y0)-(x1,y1)."""
+    box = marco.getchannel("A").getbbox()
+    m = marco.crop(box)
+    e = int(esquina * k)
+    xs, ys = [0, esquina, m.width - esquina, m.width], [0, esquina, m.height - esquina, m.height]
+    xd, yd = [x0, x0 + e, x1 - e, x1], [y0, y0 + e, y1 - e, y1]
+    for j in range(3):
+        for i in range(3):
+            t = m.crop((xs[i], ys[j], xs[i + 1], ys[j + 1]))
+            dw, dh = xd[i + 1] - xd[i], yd[j + 1] - yd[j]
+            if dw > 0 and dh > 0:
+                t = t.resize((dw, dh), Image.LANCZOS)
+                c.paste(t, (xd[i], yd[j]), t)
+
+
+def banda_ancha(im, titulo="", cierre=False, nat=None, marco_completo=False):
+    """Pantalla completa de la narracion del Heroe en una 1024x512 (campaigns.cpp, ajuste dbz3_heroe_fondos_historia, la estira a 800x450
+    unidades de 2D): fondo oscuro, banda de ilustracion con marco naranja, pergamino con `titulo`, franja oscura para el texto con
+    foto redonda del escenario y pie de ayuda. Se dibuja a 1920x1080 (maqueta_3) y se reduce. `cierre`: cielo nocturno con las Esferas."""
+    import math  # noqa: PLC0415
+    import random  # noqa: PLC0415
+    from PIL import ImageDraw, ImageFont  # noqa: PLC0415
+    cierre = cierre or titulo.startswith(("End of", "Fin de"))
+    # HER-02: el pie pintado va en el idioma del juego (HEROE_IDIOMA; el japones y el resto, en ingles: la fuente no trae kana)
+    pie_a, pie_b = {5: ("Continuar", "Saltar"), 4: ("Continuer", "Passer"), 3: ("Weiter", "Überspringen"), 6: ("Continua", "Salta")}.get(int(os.environ.get("HEROE_IDIOMA", "1") or 1), ("Continue", "Skip"))
+    W, H = 1920, 1080
+    c = Image.new("RGB", (W, H))
+    d = ImageDraw.Draw(c)
+    for y in range(H):   # fondo: marron dorado oscuro
+        t = y / H
+        d.line((0, y, W, y), fill=(int(96 - 30 * t), int(66 - 20 * t), int(18 - 6 * t)))
+    for x0 in (0, 1730):   # pilares laterales
+        d.rectangle((x0, 0, x0 + 190, H), fill=(120, 80, 20))
+        for x in range(x0 + 14, x0 + 190, 34):
+            d.rectangle((x, 0, x + 10, H), fill=(150, 100, 26))
+    # Margen para que las cuatro esquinas entren en la textura visible.
+    bx0, by0, bx1, by1 = (38, 150, 1882, 785) if marco_completo else (12, 120, 1908, 800)
+    bw, bh = bx1 - bx0, by1 - by0
+    if cierre:   # cielo nocturno con las 7 Esferas dispersas
+        sky = Image.new("RGB", (bw, bh))
+        sd = ImageDraw.Draw(sky)
+        for y in range(bh):
+            t = y / bh
+            sd.line((0, y, bw, y), fill=(int(8 + 30 * t), int(12 + 40 * t), int(48 + 70 * t)))
+        rnd = random.Random(7)
+        for _ in range(160):
+            x, y, r = rnd.randrange(bw), rnd.randrange(bh), rnd.choice((1, 1, 2, 3))
+            sd.ellipse((x - r, y - r, x + r, y + r), fill=(235, 235, 255))
+        for n in range(7):
+            cx, cy, r = 220 + n * 240 + rnd.randrange(-40, 40), 200 + rnd.randrange(-90, 190), 58
+            for k in range(r, 0, -1):   # esfera con degradado
+                sd.ellipse((cx - k, cy - k, cx + k, cy + k), fill=(255, int(150 + 90 * k / r), int(20 + 70 * k / r)))
+            sd.ellipse((cx - r - 12, cy - r - 12, cx + r + 12, cy + r + 12), outline=(255, 230, 140), width=5)
+            for a in range(n + 1):   # estrellas rojas
+                ang = 2 * math.pi * a / (n + 1) if n else 0
+                px, py = cx + (math.cos(ang) * 20 if n else 0), cy + (math.sin(ang) * 20 if n else 0)
+                sd.regular_polygon((px, py, 9), 5, fill=(200, 20, 20))
+        band = sky
+        foto = sky.crop((300, 100, 300 + 400, 100 + 400))
+    else:
+        k = max(bw / im.width, bh / im.height)
+        r = im.convert("RGB").resize((round(im.width * k), round(im.height * k)), Image.LANCZOS)
+        band = r.crop(((r.width - bw) // 2, (r.height - bh) // 2, (r.width - bw) // 2 + bw, (r.height - bh) // 2 + bh))
+        foto = band.crop((bw // 2 - 260, bh // 2 - 260, bw // 2 + 260, bh // 2 + 260))
+    c.paste(band, (bx0, by0))
+    nat = nat or {}
+    if nat.get("marco"):   # marco del juego (2033:5) en 9 trozos alrededor de la banda
+        _marco9(c, nat["marco"], bx0 - 28, by0 - 28, bx1 + 28, by1 + 28, 1.0)
+    else:
+        d.rectangle((bx0 - 12, by0 - 12, bx1 + 12, by1 + 12), outline=(214, 140, 40), width=12)   # marco naranja
+        d.rectangle((bx0, by0, bx1, by1), outline=(120, 70, 12), width=4)
+        for x, y in ((bx0 - 12, by0 - 12), (bx1 + 12, by0 - 12), (bx0 - 12, by1 + 12), (bx1 + 12, by1 + 12)):   # esquinas
+            d.rectangle((x - 22, y - 22, x + 22, y + 22), fill=(236, 168, 60), outline=(120, 70, 12), width=5)
+    if nat.get("interior") and nat.get("marco"):   # franja de texto: interior oscuro del juego (2033:12) con su marco
+        panel = nat["interior"].crop((4, 7, 308, 349)).resize((1760, 184), Image.LANCZOS)
+        panel.putalpha(panel.getchannel("A").point(lambda a: int(a * 0.92)))
+        c.paste(panel, (80, 816), panel)
+        _marco9(c, nat["marco"], 68, 804, 1852, 1012, 0.55, 46)
+    else:
+        d.rectangle((80, 816, 1840, 1000), fill=(14, 22, 34), outline=(214, 140, 40), width=6)   # franja de texto
+    ph = foto.resize((152, 152), Image.LANCZOS)   # foto redonda del escenario
+    m = Image.new("L", (152, 152), 0)
+    ImageDraw.Draw(m).ellipse((0, 0, 151, 151), fill=255)
+    c.paste(ph, (110, 832), m)
+    if nat.get("aro"):   # aro dorado del juego (2062:15)
+        aro = nat["aro"]
+        aro = aro.crop((10, 55, 660, 690)).resize((180, 180), Image.LANCZOS)   # sin la cupula de arriba a la derecha
+        c.paste(aro, (96, 818), aro)
+    else:
+        d.ellipse((108, 830, 264, 986), outline=(214, 140, 40), width=6)
+    f = lambda n: ImageFont.truetype(os.path.join(HERE, "fonts", "Roboto-Bold.ttf"), n)
+    if titulo and nat.get("pergamino"):   # pergamino del juego (2033:2) con el nombre de la saga en naranja con perfil, como los titulos de B3
+        pg = nat["pergamino"].crop((4, 2, 452, 132))
+        pg = pg.resize((int(pg.width * 1.6), int(pg.height * 1.6)), Image.LANCZOS)
+        c.paste(pg, (8, 0), pg)
+        ft = f(60)
+        while d.textlength(titulo, font=ft) > 400 and ft.size > 26:
+            ft = f(ft.size - 2)
+        d.text((345, 98), titulo, font=ft, anchor="mm", fill=(255, 168, 32), stroke_width=6, stroke_fill=(96, 44, 8))
+    elif titulo:   # pergamino con el nombre de la saga
+        d.rounded_rectangle((40, 40, 700, 150), radius=14, fill=(238, 222, 178), outline=(150, 100, 40), width=5)
+        for x in (28, 700):
+            d.rounded_rectangle((x, 28, x + 28, 162), radius=12, fill=(214, 186, 120), outline=(150, 100, 40), width=5)
+        d.text((370, 95), titulo, font=f(46), anchor="mm", fill=(40, 90, 150), stroke_width=2, stroke_fill=(255, 255, 255))
+    if nat.get("glifos"):   # pastilla oscura con los glifos del mando del juego (2062:30: LB LT RB RT Y B A X, 64 px cada uno)
+        d.rounded_rectangle((60, 1018, 760, 1076), radius=14, fill=(14, 22, 34))
+        for x, (gx0, gx1), txt in ((84, (346, 381), pie_a), (350 + 40, (297, 332), pie_b)):   # A y B
+            g = nat["glifos"].crop((gx0 - 2, 0, gx1 + 2, 48))
+            g = g.resize((round(g.width * 52 / 48), 52), Image.LANCZOS)
+            c.paste(g, (x, 1021), g)
+            d.text((x + 66, 1048), txt, font=f(30), anchor="lm", fill=(255, 255, 255))
+    else:
+        for x, letra, col, txt in ((90, "A", (60, 170, 70), pie_a), (340, "B", (200, 50, 50), pie_b)):   # pie de ayuda
+            d.ellipse((x, 1032, x + 40, 1072), fill=col, outline=(255, 255, 255), width=3)
+            d.text((x + 20, 1052), letra, font=f(26), anchor="mm", fill=(255, 255, 255))
+            d.text((x + 52, 1052), txt, font=f(28), anchor="lm", fill=(255, 255, 255), stroke_width=2, stroke_fill=(0, 0, 0))
+    # medido con una rejilla: el juego solo muestra las columnas 109..913 de la textura (ancho 804) estiradas al rectangulo entero
+    lienzo = Image.new("RGB", (1024, 512), (60, 42, 12))
+    lienzo.paste(c.resize((804, 512), Image.LANCZOS), (109, 0))
+    return np.array(lienzo.convert("RGBA"))
 
 
 # ---------------------------------------------------------------- lectura
@@ -743,7 +892,17 @@ def story(cfg, us, mod, work):
             return 0x20000 | writer[0].add(adx, adx)
         return word(v)
 
-    def picture(img):
+    def es_ancha(img):
+        """True si `img` es un fichero de imagen ancho (>= 2:1): banda a todo el ancho del Heroe."""
+        if not isinstance(img, str) or img.strip().isdigit():
+            return False
+        path = os.path.join(TOML_DIR[0], img)
+        if not os.path.isfile(path):
+            return False
+        with Image.open(path) as im:
+            return im.width >= 2 * im.height
+
+    def picture(img, key="", titulo=""):
         """`imagen`: numero = imagen de data_cmn del juego (1411 panel verde, 1536 Namek, 1549 la Tierra);
         texto = un .png/.webp/.jpg/.avif propio (660x420, recorte centrado); vacio = el panel de la historia."""
         if img in (None, ""):
@@ -755,7 +914,15 @@ def story(cfg, us, mod, work):
             rb.log("aviso: no encuentro %s; se usa el panel del juego" % img)
             return panel
         pic = new_pic()
-        write_entry(mod, "data_cmn.afs", pic, png2pic.build_picture(Image.open(path)), work)
+        im = Image.open(path)
+        if im.width >= 2 * im.height:   # imagen ancha (Heroe, 1920x680): banda a todo el ancho + franja oscura para el texto, en una sola 1024x512 (gancho de campaigns.cpp)
+            nativo = os.path.basename(path).startswith("b3_") and os.environ.get("HEROE_FONDOS_B3") == "1"
+            lienzo = banda_ancha(im, titulo, key == "cierre_", piezas_nativas(us, work), marco_completo=nativo)
+            write_entry(mod, "data_cmn.afs", pic, png2pic.build_picture(lienzo), work)
+            if nativo:
+                rb.log("heroe: fondo nativo montado: %s" % os.path.basename(path))
+            return pic
+        write_entry(mod, "data_cmn.afs", pic, png2pic.build_picture(im), work)
         return pic
 
     def narration(bank, c, key):
@@ -771,8 +938,8 @@ def story(cfg, us, mod, work):
             if j:
                 bank = extra_b(xb[0])
                 xb[0] += 1
-            pages = text(bank, sub, "p_", "narracion")
-            pic = picture(p.get("imagen"))
+            pages = text(bank, sub, "p_", "narracion_ancha" if es_ancha(p.get("imagen")) else "narracion")
+            pic = picture(p.get("imagen"), key, c.get(key + "imagen_titulo", ""))
             # locucion: `voz` (o `cierre_voz`), una por frase como las del juego (14, pagina, 2.N: la
             # entrada N de adx_usa/adx_jpn; la intro de Namek trae 14,1..3 = 2.1231..1233). Vale un
             # numero (entrada ADX del juego), "2.N" o un fichero de audio propio (.wav/.mp3/.ogg)
@@ -799,6 +966,9 @@ def story(cfg, us, mod, work):
         0 o -1 = pagina sin voz."""
         return [(14, k + 1, voice(v)) for k, v in enumerate(c.get(key + "voz", [])) if str(v).strip() not in ("", "-1", "0")]
 
+    for c in chapters:   # `combate = -1` (rutas del Heroe): #BPC nuevo en una entrada propia, rehecho sobre la plantilla
+        if "combate" in c and int(c["combate"]) < 0:
+            c["combate"] = nueva_entrada()
     # saga y posicion de cada combate
     s, k, place = saga0, {}, []
     for c in chapters:
@@ -865,14 +1035,19 @@ def story(cfg, us, mod, work):
 
     # [[maestro_marca]] (Heroe): combate opcional de la saga `saga` (0..), con su marca en el mapa desde la introduccion. Va
     # detras de los combates de la saga: su entrada par da k >= combates a DuVictoria (entrenamiento, no avance de saga).
-    mm = {saga0 + int(m["saga"]): m for m in cfg.get("maestro_marca", [])}
-    mm_word = {s: (bcode(s) << 16) | 2 * sum(1 for i, p in enumerate(place) if "combate" in chapters[i] and p[0] == s) for s in mm}
+    mm = {}
+    for m in cfg.get("maestro_marca", []):   # varias por saga: en su orden, detras de los combates (k = combates, combates + 1...)
+        mm.setdefault(saga0 + int(m["saga"]), []).append(m)
+    mm_word = {s: [(bcode(s) << 16) | 2 * (j + sum(1 for i, p in enumerate(place) if "combate" in chapters[i] and p[0] == s))
+                   for j in range(len(mm[s]))] for s in mm}
     # [[punto_mapa]] (Heroe): marcas de escenas que ya existen en el juego (`palabra`: esfera, objeto, Zeni, combate opcional)
     # desde la introduccion de la saga `saga`; `marca` = hueco, icono, zona, x, y, z, escala
     puntos = {}
     for p in cfg.get("punto_mapa", []):
         puntos.setdefault(saga0 + int(p["saga"]), []).append((24, int(p["marca"][0]), word(p["palabra"]), *p["marca"][1:]))
-    mm_marca = lambda s: puntos.get(s, []) + ([tuple([24, 5, mm_word[s]] + list(mm[s]["marca"]))] if s in mm else [])
+    for p in cfg.get("marca_extra", []):   # rutas del Heroe: caminos del cruce y "?" del opcional (`marca` = hueco, icono, zona, x, y, z, escala)
+        puntos.setdefault(saga0 + int(p["saga"]), []).append((24, int(p["marca"][0]), int(p["palabra"]), *p["marca"][1:]))
+    mm_marca = lambda s: puntos.get(s, []) + [tuple([24, 5, w] + list(m["marca"])) for m, w in zip(mm.get(s, []), mm_word.get(s, [])) if not m.get("oculta")]
     for i, c in enumerate(chapters):
         if "combate" not in c:
             continue
@@ -913,7 +1088,7 @@ def story(cfg, us, mod, work):
         fights.setdefault(s, []).append(([0, 0, 0, 0, 0, 0, s_fight],
                                          [(16, 0, int(c["combate"])), (15, 0, s_after),
                                           (23, 0, bword(i)),                          # quita su marca
-                                          ] + ([] if os.environ.get("HEROE_SIN_CHARLA") and s > 1 else [(21, 0, (dcode(s) << 16) | kk)]) + [   # dialogo al empezar
+                                          ] + [(23, 0, int(w)) for w in c.get("quitar", [])] + ([] if os.environ.get("HEROE_SIN_CHARLA") and s > 1 else [(21, 0, (dcode(s) << 16) | kk)]) + [   # dialogo al empezar
                                           (20, 0, bword(i) + 1)]))                    # gana: escena de victoria
         nxt = chapters[i + 1] if i + 1 < len(chapters) else None
         if nxt is None:
@@ -967,7 +1142,8 @@ def story(cfg, us, mod, work):
                 intros_s[s2] = (parts, [e for e in _ops if e[0] not in _quitar])
             else:
                 intros[intro] = (parts, [e for e in _ops if e[0] not in _quitar])
-            tail = [(22, 0, 0)] + ([(47, 0, int(nxt.get("planeta", 0)))] if h.get("sin_guardar") and not os.environ.get("HEROE_SIN_PLANETA") and int(nxt.get("planeta", 0)) != next((int(x["planeta"]) for x in reversed(chapters[:i + 1]) if "planeta" in x), 1) else []) + [(20, 0, ((outro if os.environ.get("HEROE_CON_103") else intro) << 16) | slot)]   # C8: SIN la escena de cierre 103 (con ella, el 1.er combate de la saga siguiente se cuelga: la cola de cargas del juego no termina); HEROE_CON_103=1 la deja
+            pl_sig = int(c.get("planeta_siguiente", nxt.get("planeta", 0)))
+            tail = [(22, 0, 0)] + ([(47, 0, pl_sig)] if h.get("sin_guardar") and not os.environ.get("HEROE_SIN_PLANETA") and pl_sig != next((int(x["planeta"]) for x in reversed(chapters[:i + 1]) if "planeta" in x), 1) else []) + [(20, 0, ((outro if os.environ.get("HEROE_CON_103") else intro) << 16) | slot)]   # C8: SIN la escena de cierre 103 (con ella, el 1.er combate de la saga siguiente se cuelga: la cola de cargas del juego no termina); HEROE_CON_103=1 la deja
         else:                                           # sigue la saga: la marca del combate siguiente
             # y, como el juego (2138.1 -> 5100.5), se vuelve al mapa por una escena del mapa: una frase
             # de tu personaje (`mapa_es`; guion 2899, el de 5000.8); sin ella el dialogo del combate
@@ -1012,15 +1188,15 @@ def story(cfg, us, mod, work):
         intros[intro_c(s0)] = (narration(narr(0), c0, ""),
                                 [(22, 0, 0), tuple([44, 0] + list(c0["salida"]))] + objs + [(54, 0, 0), tuple(mark(0))] + mm_marca(s0) +
                                 [(20, 0, mapc(s0) << 16)])
-    for s, m in mm.items():
+    for s, m, word_m in [(s, m, w) for s in mm for m, w in zip(mm[s], mm_word[s])]:
         entrada = nueva_entrada()
         bpc_propio(m, entrada, int(m.get("nivel", 2)))
-        word_m = mm_word[s]
         bancos = [extra_b(xb[0] + j) for j in range(3)]
         xb[0] += 3
         kk = len(talks[s])
         talks[s].append(talk(bancos[0], m, "dialogo_"))
-        fights[s].append(([0, 0, 0, 0, 0, 0, s_fight], [(16, 0, entrada), (15, 0, s_after), (23, 0, word_m), (21, 0, (dcode(s) << 16) | kk), (20, 0, word_m + 1)]))
+        fights[s].append(([0, 0, 0, 0, 0, 0, s_fight], [(16, 0, entrada), (15, 0, s_after), (23, 0, word_m)] + [(23, 0, int(w)) for w in m.get("quitar", [])] +
+                          [(21, 0, (dcode(s) << 16) | kk), (20, 0, word_m + 1)]))
         text(bancos[2], {"mapa_es": m["mapa_es"], "mapa_en": m["mapa_en"]}, "mapa_", "dialogo")
         fondo = int(m.get("fondo_dialogo", h.get("fondo_dialogo", 1536)))
         mapk = len(maps.setdefault(s, []))
@@ -1246,6 +1422,8 @@ def cmd_montar(a):
             rb.log("ERROR: " + e)
         raise SystemExit("la campana no se monta: corrige lo de arriba")
     os.makedirs(mod, exist_ok=True)
+    global CMN_N
+    CMN_N = int(cfg.get("historia", {}).get("entradas_propias", CMN_N))   # rutas del Heroe: mas tramos, mas contenedores
     rb.log("contenedores propios de data_cmn: %d-%d" % (reservar_cmn(mods, mod), CMN["base"] + CMN_N - 1))
     n = 0
     for t in cfg.get("texto", []):

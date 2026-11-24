@@ -32,6 +32,7 @@ namespace dbz3::tag {
 namespace {
 std::mutex g_mu;
 std::array<std::vector<int>, 2> g_dyn;   // miembros por lado (vacio = sin equipo)
+std::vector<int> g_mine_stable;
 std::vector<int> g_mine;                 // ultimo equipo de 1P (el que se lleva al online)
 std::array<std::map<int, std::array<uint16_t, 8>>, 2> g_caps;   // por lado: ID -> capsulas Custom
 }  // namespace
@@ -93,14 +94,19 @@ void PutCapsules(uint8_t* base, uint32_t rec, int side, int id) {
   for (uint32_t k = 0; k < 8; ++k) REX_STORE_U16(rec + 52 + 2 * k, c[k]);
 }
 
+static void RememberTeam(const std::vector<int>& members) {  // g_mu
+  g_mine = members.size() >= 2 ? members : std::vector<int>{};
+  g_mine_stable = g_mine;
+  for (auto& id : g_mine_stable) id = dbz3::roster::OnlineWireId(id);
+}
 void SetDynamicTeam(int side, const std::vector<int>& members, bool remember) {
   if (side < 0 || side > 1) return;
   std::lock_guard<std::mutex> lock(g_mu);
   g_dyn[size_t(side)] = members;
-  if (remember && side == 0 && members.size() >= 2) g_mine = members;
+  if (remember && side == 0 && members.size() >= 2) RememberTeam(members);
 }
 
-std::vector<int> MyLastTeam() {
+std::vector<int> MyLastTeam(bool stable) {
   std::lock_guard<std::mutex> lock(g_mu);
   // pruebas del online (DBZ3_NET_TEAM="0,11"): el equipo que este PC lleva a la partida online si no
   // eligio uno; solo lo lee el arranque online, no la demo ni los combates normales
@@ -115,7 +121,7 @@ std::vector<int> MyLastTeam() {
       return team;
     }
   }
-  return g_mine;
+  return stable ? g_mine_stable : g_mine;
 }
 
 std::array<uint16_t, 8> OwnCustomCapsules(int id) {
@@ -160,7 +166,7 @@ std::array<uint16_t, 8> OwnCustomCapsules(int id) {
 
 void SetMyOnlineTeam(const std::vector<int>& members) {
   std::lock_guard<std::mutex> lock(g_mu);
-  g_mine = members.size() >= 2 ? members : std::vector<int>{};
+  RememberTeam(members);
 }
 
 void ClearDynamicTeams() {
@@ -202,6 +208,7 @@ void BeforeBattleSetup(uint8_t* base, uint32_t sel) {
     std::lock_guard<std::mutex> lock(g_mu);
     if (!g_mine.empty()) REXLOG_INFO("dbz3 tag: combate sin TAG TEAM: se olvida el ultimo equipo ({} miembros)", g_mine.size());
     g_mine.clear();
+    g_mine_stable.clear();
   }
   for (int k = 0; k < 2; ++k) {
     std::vector<int> team = DynamicTeam(k);

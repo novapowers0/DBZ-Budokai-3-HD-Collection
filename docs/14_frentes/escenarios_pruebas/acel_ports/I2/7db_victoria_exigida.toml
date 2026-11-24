@@ -1,0 +1,12 @@
+descripcion = "7DB traducido: exige victoria real y resultado con rango y premio"
+env = [
+  "DBZ3_TEST_IWMINI=0x7DB,auto,machaca",
+  "DBZ3_TEST_CFG=dbz3_iw_traducido=true;dbz3_iw_7db_original=true",
+  'DBZ3_PS2_GAMES=D:\DBZ3HD\ps2_games',
+]
+pasos = [
+  "log \"iwmini: prueba: empieza\" 90",
+  "log \"la ronda es la del original arrancado desde el ELF\" 150",
+  "log \"r14: resultado MSN_NB013 superado true rango [1-5] score [0-9]+ zeni [1-9][0-9]*\" 720",
+  "log \"iwmini: modulo 0x7DB: resultado listo [(]superado true, rango [1-5], score [0-9]+, zeni [1-9][0-9]*[)]\" 120",
+]

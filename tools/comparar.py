@@ -34,10 +34,13 @@ def alinear(org, port, ancho=800):
     go, ko = _gris(org, ancho)
     gp, kp = _gris(port, ancho)
     orb = ORB(n_keypoints=2000, fast_threshold=0.03)
-    orb.detect_and_extract(go)
-    ko_, do_ = orb.keypoints, orb.descriptors
-    orb.detect_and_extract(gp)
-    kp_, dp_ = orb.keypoints, orb.descriptors
+    try:   # captura casi lisa (cielo, fundido a negro): ORB sin rasgos -> sin alinear, no un fallo
+        orb.detect_and_extract(go)
+        ko_, do_ = orb.keypoints, orb.descriptors
+        orb.detect_and_extract(gp)
+        kp_, dp_ = orb.keypoints, orb.descriptors
+    except RuntimeError:
+        return None, 0
     m = match_descriptors(dp_, do_, cross_check=True, max_ratio=0.95)
     if len(m) < 12:
         return None, 0
@@ -77,7 +80,8 @@ def comparar(org_p, port_p, pref, umbral=40, min_area=300):
     W, H = port.size
     rep = ["original: %s" % org_p, "port: %s" % port_p]
     if t is None:
-        lado = Image.new("RGB", (org.width + W, max(org.height, H)))
+        org = org.resize((max(1, round(org.width * H / org.height)), H))   # a la altura del port (PS2 512x448 junto a HD)
+        lado = Image.new("RGB", (org.width + W, H))
         lado.paste(org, (0, 0))
         lado.paste(port, (org.width, 0))
         lado.save(pref + "_lado.png")

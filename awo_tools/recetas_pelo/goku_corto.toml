@@ -1,0 +1,158 @@
+# Peinado original "Goku corto" (estilo B3: pinchos de seccion triangular + casquete). Marco: HEAD de Goku (264).
+# Angulos en grados sobre el craneo: az 0 = frente (+Z), 90 = +X, 180 = atras. el 0 = ecuador, 90 = coronilla.
+# largo y ancho en unidades del modelo (craneo de Goku: radio 1,15). curva: desvio final de la direccion, en fracciones del largo, hacia `hacia`.
+nombre = "goku_corto"
+segmentos = 3          # anillos por pincho (baja solo si no cabe en el tope de ventanas)
+
+[craneo]
+centro = [0.0, 0.5, 0.35]
+radio = [1.15, 1.02, 1.05]
+
+[casquete]               # masa de pelo que cubre el craneo (cascara abierta por abajo)
+escala = 1.07
+frente_el = 48           # linea del nacimiento del pelo: elevacion al frente
+lados_el = 18
+atras_el = 4
+anillos = 4
+cortes = 16
+
+[[mechon]]
+nombre = "corona"
+az = 0
+el = 78
+dir_az = 160
+dir_el = 72
+largo = 2.4
+ancho = 1.05
+curva = 0.18
+hacia = [0, 0, -1]
+[[mechon]]
+nombre = "corona_d"
+az = 62
+el = 62
+dir_az = 80
+dir_el = 52
+largo = 2.3
+ancho = 1.0
+curva = 0.20
+hacia = [0, -1, 0]
+[[mechon]]
+nombre = "corona_i"
+az = -62
+el = 62
+dir_az = -80
+dir_el = 52
+largo = 2.3
+ancho = 1.0
+curva = 0.20
+hacia = [0, -1, 0]
+[[mechon]]
+nombre = "trasero"
+az = 180
+el = 58
+dir_az = 180
+dir_el = 38
+largo = 2.3
+ancho = 1.05
+curva = 0.25
+hacia = [0, -1, 0]
+[[mechon]]
+nombre = "trasero_d"
+az = 128
+el = 42
+dir_az = 135
+dir_el = 22
+largo = 2.0
+ancho = 0.95
+curva = 0.22
+hacia = [0, -1, 0]
+[[mechon]]
+nombre = "trasero_i"
+az = -128
+el = 42
+dir_az = -135
+dir_el = 22
+largo = 2.0
+ancho = 0.95
+curva = 0.22
+hacia = [0, -1, 0]
+[[mechon]]
+nombre = "lado_d"
+az = 90
+el = 28
+dir_az = 100
+dir_el = 4
+largo = 1.6
+ancho = 0.8
+curva = 0.25
+hacia = [0, -1, 0]
+[[mechon]]
+nombre = "lado_i"
+az = -90
+el = 28
+dir_az = -100
+dir_el = 4
+largo = 1.6
+ancho = 0.8
+curva = 0.25
+hacia = [0, -1, 0]
+[[mechon]]
+nombre = "nuca"
+az = 180
+el = 14
+dir_az = 180
+dir_el = -28
+largo = 1.4
+ancho = 0.85
+curva = 0.15
+hacia = [0, -1, 0]
+[[mechon]]
+nombre = "nuca_d"
+az = 150
+el = 10
+dir_az = 155
+dir_el = -20
+largo = 1.2
+ancho = 0.7
+curva = 0.15
+hacia = [0, -1, 0]
+[[mechon]]
+nombre = "nuca_i"
+az = -150
+el = 10
+dir_az = -155
+dir_el = -20
+largo = 1.2
+ancho = 0.7
+curva = 0.15
+hacia = [0, -1, 0]
+[[mechon]]
+nombre = "flequillo_c"
+az = 0
+el = 52
+dir_az = 0
+dir_el = -32
+largo = 1.35
+ancho = 0.6
+curva = 0.10
+hacia = [0, -1, 0]
+[[mechon]]
+nombre = "flequillo_d"
+az = 30
+el = 50
+dir_az = 42
+dir_el = -26
+largo = 1.25
+ancho = 0.55
+curva = 0.12
+hacia = [0, -1, 0]
+[[mechon]]
+nombre = "flequillo_i"
+az = -30
+el = 50
+dir_az = -42
+dir_el = -26
+largo = 1.25
+ancho = 0.55
+curva = 0.12
+hacia = [0, -1, 0]

@@ -3,6 +3,7 @@
 #DMD (DATA_CMN 1093, hijo '#DMD' del #AMB) reubicado + #SCD de capsulas (DATA_CMN 1127) + punteros globales. Sin savestate.
 `python mapa_espejo.py` compara la aparicion de casillas y el movimiento con el mismo escenario sobre el savestate del
 PCSX2 (mapa_banco.Mapa)."""
+import functools
 import struct
 import sys
 from pathlib import Path
@@ -31,6 +32,7 @@ PANTALLA = {0x49C824: 1, 0x49C82C: 0x44000000, 0x49C830: 0x43E00000, 0x49C834: 0
             0x49C854: 0x3F5A740E, 0x49C858: 0x3F7EDCBB, 0x49C85C: 0x44160000, 0x49C860: 0x43E10000}
 
 
+@functools.lru_cache(maxsize=None)   # POST2: requisitos crea miles de espejos; sin cache leia E: sin parar
 def entrada_afs(i, afs=CMN):
     with open(afs, 'rb') as f:
         n = struct.unpack('<I', f.read(8)[4:8])[0]
@@ -56,8 +58,18 @@ def dmd_de(entrada):
     return b''
 
 
+@functools.lru_cache(maxsize=1)
+def _elf():
+    return B.ELF.read_bytes()
+
+
+@functools.lru_cache(maxsize=1)
+def _simbolos():
+    return B.leer_simbolos()   # 12,8 MB del decompilado en E: (antes una lectura por espejo)
+
+
 def imagen_vacia():
-    d = B.ELF.read_bytes()
+    d = _elf()
     mem = bytearray(ee.TOTAL)
     phoff, phnum = struct.unpack_from('<I', d, 28)[0], struct.unpack_from('<H', d, 44)[0]
     for i in range(phnum):
@@ -69,7 +81,7 @@ def imagen_vacia():
 
 class Espejo(MB.Mapa):
     def __init__(s, saga=0, hechas=(), road=False, goku=None, dmd=None, scd=None):
-        s.nom = B.leer_simbolos()
+        s.nom = dict(_simbolos())
         mem = imagen_vacia()
         s.base = mem
         s.c = ee.Ee(mem, B.GP, entradas=s.nom.keys(), nombres=s.nom)

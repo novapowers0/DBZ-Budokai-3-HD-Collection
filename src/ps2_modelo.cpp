@@ -20,6 +20,12 @@
 #include "launcher/launcher_state.h"
 #include "suelo_iw.h"
 
+// F7 (B2H): los triangulos SIN textura que traen color por vertice (columna de luz, brillos y nubes de la escena de
+// Shenron de B2) se pintan con un vertice por color en vez de un color plano por triangulo. El color plano tomaba el
+// del primer vertice (alfa 0-1 segun el vertice): bordes duros y velo de un solo tono. Apagado de serie.
+REXCVAR_DEFINE_BOOL(dbz3_ps2_alfa_vertice, true, "DBZ3/Dev",
+                    "Triangulos sin textura con color por vertice interpolados (bordes suaves de la luz de B2)");
+
 namespace dbz3::ps2 {
 namespace {
 namespace P = dbz3::pasarela;
@@ -66,7 +72,7 @@ Giro LeerGiro(const std::vector<uint8_t>& b) {
 }
 
 bool LeerAmo(const std::vector<uint8_t>& b, int variante, Malla& out, Esqueleto* esq, bool colores, bool material,
-             uint32_t piel_rampas) {
+             uint32_t piel_rampas, bool material_b1) {
   auto u32 = [&](size_t o) -> uint32_t {
     if (o + 4 > b.size()) return 0;
     uint32_t v;
@@ -142,8 +148,10 @@ bool LeerAmo(const std::vector<uint8_t>& b, int variante, Malla& out, Esqueleto*
         std::vector<uint32_t> dv(cnt);   // direccion del vertice desde el #AMG (la que llevan los pesos)
         // sin textura (B2: el pelo de Goku, vtype 0x190, textura -1): el color de material de la parte (+0x30, RGBA)
         const bool sin_tex = colores && (!(vtype & 4) || tex == 0xFFFFFFFFu);
-        auto mat8 = [&](size_t q2) { return int(std::clamp(f32(q2), 0.0f, 1.0f) * 255.0f + 0.5f); };
-        const bool tinte = sin_tex || (colores && material && !(vtype & 2));   // F1: material sobre la textura
+        auto mat8 = [&](size_t q2) {
+           return int(std::clamp(f32(q2)/(material_b1 ? 128.f : 1.f),0.f,1.f)*255.f+0.5f);
+         };
+        const bool tinte = sin_tex || (material_b1 && !(vtype & 2)) || (colores && material && !(vtype & 2));   // F1: material sobre la textura
         std::vector<ImU32> vc(cnt, piel    ? IM_COL32(255, 210, 170, 255)
                                    : tinte ? IM_COL32(mat8(po + 0x30), mat8(po + 0x34), mat8(po + 0x38), mat8(po + 0x3C))
                                            : IM_COL32_WHITE);
@@ -174,6 +182,12 @@ bool LeerAmo(const std::vector<uint8_t>& b, int variante, Malla& out, Esqueleto*
           }
            tr.tex = int(tex);
            tr.parte = parte_actual;
+           if (material_b1) {
+             tr.b1_flags = vtype;
+             tr.b1_alpha = uint64_t(u32(po + 0x60)) | (uint64_t(u32(po + 0x64)) << 32);
+             tr.b1_centro = mundo[i].por({f32(po+0x10),f32(po+0x14),f32(po+0x18)});
+             tr.b1_radio = f32(po+0x1c);
+           }
           // B2 (colores): el bit alto es mezcla con el alfa de la textura (la carta de las fichas del tablero), opaca; la
           // translucidez de B2 viene del alfa del color de vertice (nubes de la escena de Shenron)
           tr.trans = (vtype & 0x80000000u) != 0 && !colores;
@@ -274,7 +288,7 @@ Anim LeerAnim(const std::vector<uint8_t>& b, uint32_t anim, size_t nb) {
 
 // Malla de `esq` en el cuadro `t` (segundos, en bucle a 60 por segundo) de `an`, con el mismo centro que Centrar en x/z
 // (en la animacion el suelo ya es y = 0: la pista de BBR_WAIST lleva la altura).
-void Posar(const Esqueleto& esq, const Anim& an, float t, Malla& out) {
+std::vector<M34> Locales(const Esqueleto& esq, const Anim& an, float t) {   // B2-P13-HD: los ejes locales de Posar
   const size_t nb = esq.padre.size();
   // cuadro con fraccion: entre dos claves se interpola (antes se quedaba en la ultima clave y la pose iba a saltos;
   // auditoria7/G: Goku y las fichas del tablero de B2, Shenron, el Goku del mapa de IW)
@@ -324,8 +338,9 @@ void Posar(const Esqueleto& esq, const Anim& an, float t, Malla& out) {
     }
     locales[i] = l;
   }
-  PosarMatrices(esq, locales, an.relativa, out);
+  return locales;
 }
+void Posar(const Esqueleto& esq, const Anim& an, float t, Malla& out) { PosarMatrices(esq, Locales(esq, an, t), an.relativa, out); }
 void PosarMatrices(const Esqueleto& esq, const std::vector<M34>& locales, bool relativa, Malla& out) {
   const size_t nb = esq.padre.size();
   if(locales.size()!=nb || esq.inv_mundo.size()!=nb) {out.tris.clear();return;}
@@ -338,6 +353,7 @@ void PosarMatrices(const Esqueleto& esq, const std::vector<M34>& locales, bool r
   out.tris = esq.crudo.tris;
   for (size_t t = 0; t < out.tris.size(); ++t) {
     Malla::Tri& tr = out.tris[t];
+    if (tr.b1_flags) tr.b1_centro = piel[tr.hueso[0] < nb ? tr.hueso[0] : 0].por(tr.b1_centro);
     for (int c = 0; c < 3; ++c) {
       V3 p, nn;   // posicion y normal (la normal, con el giro del mismo eje)
       const int32_t lp = t * 3 + size_t(c) < esq.pesos_de.size() ? esq.pesos_de[t * 3 + size_t(c)] : -1;
@@ -410,10 +426,10 @@ uint32_t RampasPiel(const std::vector<uint8_t>& amt) {
 
 // #AMO y #AMT sueltos (entradas propias de DATA_CMN: personajes de IW como Bubbles 118/119 o Piccolo 573/574).
 Modelo CargarSuelto(const std::vector<uint8_t>& amo, const std::vector<uint8_t>& amt, bool animable, bool colores,
-                    bool material) {
+                    bool material, bool opaca_sin_alfa, bool material_b1) {
   Modelo m;
   if (animable) m.esq = std::make_shared<Esqueleto>();
-  if (!LeerAmo(amo, 0, m.malla, m.esq.get(), colores, material, material ? RampasPiel(amt) : 0)) return m;
+  if (!LeerAmo(amo, 0, m.malla, m.esq.get(), colores, material, material ? RampasPiel(amt) : 0, material_b1)) return m;
   if (m.esq) {   // el mismo centro x/z que Centrar
     float x0 = 1e9f, x1 = -1e9f, z0 = 1e9f, z1 = -1e9f;
     for (const auto& t : m.malla.tris)
@@ -429,7 +445,7 @@ Modelo CargarSuelto(const std::vector<uint8_t>& amo, const std::vector<uint8_t>&
       if (size_t(idx) + 4 * size_t(j) + 4 <= amt.size()) std::memcpy(&e, &amt[idx + 4 * size_t(j)], 4);
       if (size_t(e) + 8 <= amt.size()) std::memcpy(&fl, &amt[e + 4], 4);
     }
-    if (colores && !(fl & 0x80000000u))
+    if (colores && opaca_sin_alfa && !(fl & 0x80000000u))
       for (size_t i = 3; i < im.rgba.size(); i += 4) im.rgba[i] = 255;
     m.tex.push_back(std::move(im));
   }
@@ -487,7 +503,7 @@ int EstadoProfundidad() {
   return apagado ? 0 : estado;
 }
 
-Tex Crear(const P::Imagen& im, bool prof) {
+Tex Crear(const P::Imagen& im, bool prof, bool repetir) {
   Tex x;
   auto* dr = dbz3::launcher::PreviewDrawer();
   if (!im || !dr) return x;
@@ -503,7 +519,7 @@ Tex Crear(const P::Imagen& im, bool prof) {
   // repetidas, como el GS de la PS2 por defecto (CLAMP = REPEAT): las UV de los modelos de B2 salen de [0, 1] (el
   // cuerpo de Shenron, v hasta -4.9) y sujetas a la orilla se veian de un color liso (frente R2)
   x.t = dr->CreateTexture(uint32_t(im.w), uint32_t(im.h), prof ? kFiltroProf : rex::ui::ImmediateTextureFilter::kLinear,
-                          true, sin_alfa ? opaca.data() : im.rgba.data());
+                          repetir, sin_alfa ? opaca.data() : im.rgba.data());
   x.w = float(im.w);
   x.h = float(im.h);
   x.prof = prof && x.t;
@@ -525,8 +541,70 @@ void Escena::Poner(const Camara& cam, const Malla& malla, const std::vector<Tex>
                    float esc, const Toon& toon) {
   PonerT(cam, malla, tx, pos, giro, esc, &toon);
 }
+void Escena::PonerCine(const Camara& cam, const Malla& malla, const std::vector<Tex>& tx,
+                       const Toon* toon, const Entorno& entorno) {
+  // Recorte previo a la division perspectiva. El PAL tiene plano cercano .1
+  // (335e50+20), no el 1 del combate. Un triangulo cruzado no desaparece entero.
+  Camara vis=cam;
+  vis.corte_cercano=.099f;  // tolerancia para el redondeo al evaluar el punto recortado
+  Malla recortada;
+  recortada.tris.reserve(malla.tris.size());
+  const float fy=vis.Foco(), fx=fy*(vis.foco_x/vis.foco_y);
+  const float sx=fx/vis.h.x, sy=fy/vis.h.y;
+  struct Vert { V3 p,n; ImVec2 uv; ImU32 col; };
+  auto distancia=[&](const V3& v,int i) {
+    const float d=-(cam.m[2]*v.x+cam.m[6]*v.y+cam.m[10]*v.z+cam.m[14]);
+    if (i==0) return d-.1f;
+    if (i==1) return 65535.f-d;
+    if (i<4) {
+      const float x=cam.m[0]*v.x+cam.m[4]*v.y+cam.m[8]*v.z+cam.m[12];
+      return d+(i==2 ? sx : -sx)*x;
+    }
+    const float y=cam.m[1]*v.x+cam.m[5]*v.y+cam.m[9]*v.z+cam.m[13];
+    return d+(i==4 ? sy : -sy)*y;
+  };
+  auto mezclar=[](const Vert& a,const Vert& b,float t) {
+    auto v=[&](const V3& q,const V3& r) { return V3{std::lerp(q.x,r.x,t),std::lerp(q.y,r.y,t),std::lerp(q.z,r.z,t)}; };
+    ImU32 col=0;
+    for (int j=0;j<4;++j) col|=ImU32(std::lerp(float((a.col>>(j*8))&255),float((b.col>>(j*8))&255),t)+.5f)<<(j*8);
+    return Vert{v(a.p,b.p),v(a.n,b.n),{std::lerp(a.uv.x,b.uv.x,t),std::lerp(a.uv.y,b.uv.y,t)},col};
+  };
+  for (const auto& tr:malla.tris) {
+    unsigned any=0, all=63;
+    for (const auto& p:tr.p) {
+      unsigned mask=0;
+      for (int i=0;i<6;++i) if (!(distancia(p,i)>=0.f)) mask|=1u<<i;
+      any|=mask; all&=mask;
+    }
+    if (all) continue;
+    if (!any) { recortada.tris.push_back(tr); continue; }
+    std::array<Vert,10> a{}, b{};
+    int n=3;
+    for (int j=0;j<3;++j) a[j]={tr.p[j],tr.n[j],tr.uv[j],tr.col[j]};
+    for (int i=0;i<6 && n>=3;++i) if (any&(1u<<i)) {
+      int m=0;
+      for (int j=0;j<n;++j) {
+        const auto& p=a[j]; const auto& q=a[(j+1)%n];
+        const float d=distancia(p.p,i), e=distancia(q.p,i);
+        if (d>=0) b[m++]=p;
+        if ((d>=0)!=(e>=0) && std::isfinite(d) && std::isfinite(e)) b[m++]=mezclar(p,q,d/(d-e));
+      }
+      a.swap(b); n=m;
+    }
+    for (int j=1;j+1<n;++j) {
+      auto t=tr;
+      const int ids[]={0,j,j+1};
+      for (int c=0;c<3;++c) {
+        const auto& v=a[ids[c]]; t.p[c]=v.p; t.n[c]=v.n; t.uv[c]=v.uv; t.col[c]=v.col;
+      }
+      recortada.tris.push_back(t);
+    }
+  }
+  PonerT(vis,recortada,tx,{},0.f,1.f,toon,&entorno);
+}
+
 void Escena::PonerT(const Camara& cam, const Malla& malla, const std::vector<Tex>& tx, const V3& pos, float giro,
-                    float esc, const Toon* toon) {
+                    float esc, const Toon* toon, const Entorno* entorno) {
   const size_t i0 = tris_.size();
   const float cg = std::cos(giro), sg = std::sin(giro);
   auto amundo = [&](const V3& v) {
@@ -565,14 +643,57 @@ void Escena::PonerT(const Camara& cam, const Malla& malla, const std::vector<Tex
     // detras de la camara: Camara::P ya corta en el plano cercano (z de vista > -1). Antes tambien se quitaba lo que daba
     // mas de 45 px por unidad (a menos de ~19 de la camara del combate): el disco recien lanzado (R13) no se veia.
     if (!ok) continue;
+    if (toon && toon->recortar) {
+      const ImVec2 ds = ImGui::GetIO().DisplaySize;
+      const float m = 0.05f * ds.y;   // margen: el borde toon sobresale un poco de su triangulo
+      auto fuera = [&](auto f) { return f(tp.p[0]) && f(tp.p[1]) && f(tp.p[2]); };
+      if (fuera([&](const ImVec2& q) { return q.x < -m; }) || fuera([&](const ImVec2& q) { return q.x > ds.x + m; }) ||
+          fuera([&](const ImVec2& q) { return q.y < -m; }) || fuera([&](const ImVec2& q) { return q.y > ds.y + m; }))
+        continue;
+    }
     tp.w = {wm.x / 3.0f, wm.y / 3.0f, wm.z / 3.0f};
-    tp.k = ks / 3.0f;
+    tp.k = entorno && entorno->fondo ? -1.f : ks / 3.0f;
     tp.tex = tr.tex >= 0 && tr.tex < int(tx.size()) && tx[size_t(tr.tex)] ? tx[size_t(tr.tex)].id() : ImTextureID{};
     tp.prof = tp.tex ? tx[size_t(tr.tex)].prof : prof_sin_tex;
     tp.tapable = tapable_;   // DS179: la aureola (parte del luchador) no la tapa el propio luchador
     tp.col = tr.trans ? IM_COL32(255, 255, 255, 110) : IM_COL32_WHITE;
     tp.vcol = tr.con_color;
     for (int c = 0; c < 3; ++c) tp.cols[c] = tr.col[c];
+    auto luz_cine=[&](int c) {
+      std::array<float,3> v{1.f,1.f,1.f};
+      if (!entorno || entorno->sin_luz) return v;
+      const auto n=gira(tr.n[c]);
+      if (n.x==0 && n.y==0 && n.z==0) return v;
+      v=entorno->ambiente;
+      for (int l=0;l<2;++l) {
+        const auto& d=entorno->dir[l];
+        const float f=std::max(0.f,-(n.x*d[0]+n.y*d[1]+n.z*d[2]));
+        for (int i=0;i<3;++i) v[i]+=f*entorno->luz[l][i];
+      }
+      return v;
+    };
+    auto color_cine=[&](int c,ImU32 base) {
+      const auto v=luz_cine(c);
+      auto ch=[&](int i) { return int(std::clamp(float((base>>(8*i))&255)*v[i],0.f,255.f)); };
+      return IM_COL32(ch(0),ch(1),ch(2),base>>24);
+    };
+    // La niebla exacta del GS necesita la muestra de textura. En ImGui usamos
+    // una segunda mezcla por vertice solo para superficies opacas.
+    if (entorno && entorno->niebla && (!tp.tex || toon) && !tr.trans && !entorno->fondo &&
+        (!tr.con_color || ((tr.col[0]&tr.col[1]&tr.col[2])>>24)==255)) {
+      const auto rgb=entorno->color;
+      for (int c=0;c<3;++c) {
+        const V3 w=amundo(tr.p[c]);
+        const float d=-(cam.m[2]*w.x+cam.m[6]*w.y+cam.m[10]*w.z+cam.m[14]);
+        const auto ds=entorno->distancia, a=entorno->densidad;
+        const float f=std::clamp((d-ds[0])/(ds[1]-ds[0]),0.f,1.f);
+        tp.fog[c]=IM_COL32(int(rgb[0]*255),int(rgb[1]*255),int(rgb[2]*255),int(a[0]+(a[1]-a[0])*f));
+      }
+    }
+    if (entorno && !toon) {
+      tp.vcol=true;
+      for (int c=0;c<3;++c) tp.cols[c]=color_cine(c,tr.con_color ? tr.col[c] : tp.col);
+    }
     if (toon) {
       // toon: 3 tonos por vertice segun n.l en vista; y el borde: si la cara mira hacia atras (normal media en vista con
       // z < 0), una copia empujada `borde` por las normales, negra y un poco mas lejos (se pinta antes)
@@ -587,7 +708,8 @@ void Escena::PonerT(const Camara& cam, const Malla& malla, const std::vector<Tex
         const float d = nv[c].x * kLuz.x + nv[c].y * kLuz.y + nv[c].z * kLuz.z;
         // sin normal (aros, monedas y nave de IW: vtype 0x36/0xB6, sin el bit 1): su color, sin tono ni borde
         const float f = !con_n ? 1.0f : d > toon->cortes[0] ? toon->tonos[0] : d > toon->cortes[1] ? toon->tonos[1] : toon->tonos[2];
-        tp.cols[c] = tonado(tr.con_color ? tr.col[c] : tp.col, f);
+        tp.cols[c] = entorno ? color_cine(c,tr.con_color ? tr.col[c] : tp.col)
+                              : tonado(tr.con_color ? tr.col[c] : tp.col, f);
       }
       tp.vcol = true;
       if (normales && zm < 0 && !tr.trans && toon->borde > 0) {
@@ -609,13 +731,48 @@ void Escena::PonerT(const Camara& cam, const Malla& malla, const std::vector<Tex
           b.tapable = tp.tapable;
           b.vcol = true;
           b.cols[0] = b.cols[1] = b.cols[2] = IM_COL32(0, 0, 0, 255);
+          if ((toon->ligero || toon->borde_tex) && tp.tex) b.tex = tp.tex, b.prof = tp.prof;
           tris_.push_back(b);
+        }
+      }
+      if (toon->sin_traseras && normales && zm < 0 && !tr.trans) {   // de espaldas: sin cortar la rampa
+        // ...pero de espaldas DE VERDAD: la cara geometrica (orientada como sus normales) tambien mira hacia atras. Con solo las
+        // normales de vertice (suavizadas) se quitaban caras visibles de los pliegues y quedaba su borde: cunas negras (13/11).
+        const V3 a = amundo(tr.p[0]), b1 = amundo(tr.p[1]), c1 = amundo(tr.p[2]);
+        const V3 e1{b1.x - a.x, b1.y - a.y, b1.z - a.z}, e2{c1.x - a.x, c1.y - a.y, c1.z - a.z};
+        V3 nf = vista(V3{e1.y * e2.z - e1.z * e2.y, e1.z * e2.x - e1.x * e2.z, e1.x * e2.y - e1.y * e2.x});
+        const V3 ns{nv[0].x + nv[1].x + nv[2].x, nv[0].y + nv[1].y + nv[2].y, nv[0].z + nv[1].z + nv[2].z};
+        if (nf.x * ns.x + nf.y * ns.y + nf.z * ns.z < 0) nf = V3{-nf.x, -nf.y, -nf.z};
+        if (nf.z < 0) {   // de espaldas: un solo trozo (tramo por luz media), sin cortar. Se ve por los huecos de la ropa
+          const auto* tr2 = (toon->rampa && tr.tex >= 0 && size_t(tr.tex) < toon->rampa->size()) ? &(*toon->rampa)[size_t(tr.tex)] : nullptr;
+          if (tr2 && tr2->size() > 1) {
+            float l = 0;
+            for (int c = 0; c < 3; ++c) l += (0.5f + 0.5f * (nv[c].x * kLuz.x + nv[c].y * kLuz.y + nv[c].z * kLuz.z)) / 3.0f;
+            size_t s2 = 0;
+            while (s2 + 1 < tr2->size() && l >= (*tr2)[s2 + 1].first) ++s2;
+            const int ti = (*tr2)[s2].second;
+            if (ti >= 0 && ti < int(tx.size()) && tx[size_t(ti)]) tp.tex = tx[size_t(ti)].id();
+            tp.vcol = false;
+          }
+          tris_.push_back(tp);
+          continue;
         }
       }
       // rampa de B3: el triangulo cortado por los cambios de tramo, cada trozo con la textura cocida de su tramo
       const auto* tramos = (toon->rampa && normales && !tr.trans && tr.tex >= 0 && size_t(tr.tex) < toon->rampa->size())
                                ? &(*toon->rampa)[size_t(tr.tex)] : nullptr;
-      if (tramos && tramos->size() > 1) {
+      if (!entorno && tramos && tramos->size() > 1 && toon->ligero) {
+        float l = 0;
+        for (int c = 0; c < 3; ++c) l += (0.5f + 0.5f * (nv[c].x * kLuz.x + nv[c].y * kLuz.y + nv[c].z * kLuz.z)) / 3.0f;
+        size_t s = 0;
+        while (s + 1 < tramos->size() && l >= (*tramos)[s + 1].first) ++s;
+        const int ti = (*tramos)[s].second;
+        if (ti >= 0 && ti < int(tx.size()) && tx[size_t(ti)]) tp.tex = tx[size_t(ti)].id();
+        tp.vcol = false;
+        tris_.push_back(tp);
+        continue;
+      }
+      if (!entorno && tramos && tramos->size() > 1) {
         struct Pt { ImVec2 p, uv; float z, l; };
         Pt v[3];
         for (int c = 0; c < 3; ++c) {
@@ -703,7 +860,7 @@ static uint16_t Media(float f) {
   return uint16_t(s | std::min(h, 0x7BFFu));
 }
 // u = las dos mitades (u abajo, v arriba), v = la profundidad del juego (dbz3_ui_depth.vs del SDK)
-static ImVec2 Empaquetar(ImVec2 uv, float z) {
+ImVec2 Empaquetar(ImVec2 uv, float z) {   // IW-FX-LAVADO2: tambien la usa iw_ame.h (efectos con prueba de Z)
   const uint32_t p = uint32_t(Media(uv.x)) | (uint32_t(Media(uv.y)) << 16);
   float u;
   std::memcpy(&u, &p, 4);
@@ -743,12 +900,21 @@ void Escena::Pintar(ImDrawList* dl) {
   // vertices de cada triangulo: 3 por PrimReserve (con textura o con profundidad); AddTriangleFilled (sin textura: los bordes toon) con el
   // antialiasing de relleno de ImGui saca 6 (los 3 y su franja). Medido: con 3 por triangulo los bordes hacian dar la vuelta a los indices.
   const size_t sin_tex = (dl->Flags & ImDrawListFlags_AntiAliasedFill) ? 6 : 3;
-  auto coste = [&](const Tri& t) { return t.prof || t.tex ? size_t(3) : sin_tex; };
-  size_t vert = dl->_VtxCurrentIdx;
+  auto tiene_fog=[](const Tri& t) { return ((t.fog[0]|t.fog[1]|t.fog[2])>>24)!=0; };
+  auto coste = [&](const Tri& t) { return (t.prof || t.tex ? size_t(3) : sin_tex)+(tiene_fog(t) ? 3 : 0); };
+  const bool offsets = (dl->Flags & ImDrawListFlags_AllowVtxOffset) != 0;
+  size_t vert = offsets ? size_t(dl->VtxBuffer.Size) : size_t(dl->_VtxCurrentIdx);
   for (const Tri& t : tris_) vert += coste(t);   // (la suma no depende del orden)
   vertices_ = vert;
   tandas_ = 1;
   static Tex blanca;                            // 1x1 blanca para los triangulos sin textura con profundidad
+  static Tex blanca_color;                      // 1x1 blanca para interpolar el color por vertice sin textura
+  const bool alfa_vertice = REXCVAR_GET(dbz3_ps2_alfa_vertice);
+  static bool dicho_alfa = false;
+  if (alfa_vertice && !dicho_alfa) {
+    dicho_alfa = true;
+    REXLOG_INFO("dbz3 ps2: alfa por vertice activo (dbz3_ps2_alfa_vertice)");
+  }
   bool pedir = false;
   auto pinta = [&](ImDrawList* dl, size_t i0, size_t i1) {
   // la textura se cambia solo cuando cambia (un Push/Pop por triangulo abria una orden de dibujo por triangulo)
@@ -786,6 +952,18 @@ void Escena::Pintar(ImDrawList* dl) {
       continue;
     }
     ++pintados_;
+    auto niebla_cine=[&] {
+      if (!tiene_fog(tp)) return;
+      if (!blanca_color) {
+        P::Imagen im; im.w=im.h=1; im.rgba={255,255,255,255};
+        blanca_color=Crear(im,false);
+      }
+      if (blanca_color) {
+        usa(blanca_color.id());
+        dl->PrimReserve(3,3);
+        for (int c=0;c<3;++c) dl->PrimVtx(tp.p[c],{0.5f,0.5f},tp.fog[c]);
+      }
+    };
     if (tp.prof) {
       if (!tp.tex && !blanca) {
         P::Imagen im;
@@ -798,24 +976,46 @@ void Escena::Pintar(ImDrawList* dl) {
         usa(id);
         dl->PrimReserve(3, 3);
         for (int c = 0; c < 3; ++c) {
-          const ImU32 col = !tp.tex ? (tp.vcol ? tp.cols[0] : IM_COL32(200, 200, 200, 255)) : tp.vcol ? tp.cols[c] : tp.col;
+          const ImU32 col = !tp.tex ? (tp.vcol ? (alfa_vertice ? tp.cols[c] : tp.cols[0]) : IM_COL32(200, 200, 200, 255))
+                                    : tp.vcol ? tp.cols[c] : tp.col;
           dl->PrimVtx(tp.p[c], Empaquetar(tp.tex ? tp.uv[c] : ImVec2(0.5f, 0.5f), tp.z[c]), col);
         }
         continue;
       }
     }
     if (!tp.tex) {
+      // F7: con el ajuste encendido, un triangulo sin textura y con color por vertice va por una textura blanca de
+      // 1x1 para que el color (y su alfa) se interpole entre los tres vertices; sin el, color plano del primero.
+      if (alfa_vertice && tp.vcol) {
+        if (!blanca_color) {
+          P::Imagen im;
+          im.w = im.h = 1;
+          im.rgba = {255, 255, 255, 255};
+          blanca_color = Crear(im, false);
+        }
+        if (blanca_color) {
+          usa(blanca_color.id());
+          dl->PrimReserve(3, 3);
+          for (int c = 0; c < 3; ++c)
+            dl->PrimVtx(tp.p[c], ImVec2(0.5f, 0.5f), tp.cols[c]);
+          niebla_cine();
+          continue;
+        }
+      }
       suelta();
       dl->AddTriangleFilled(tp.p[0], tp.p[1], tp.p[2], tp.vcol ? tp.cols[0] : IM_COL32(200, 200, 200, 255));
+      niebla_cine();
       continue;
     }
     usa(tp.tex);
     dl->PrimReserve(3, 3);
     for (int c = 0; c < 3; ++c) dl->PrimVtx(tp.p[c], tp.uv[c], tp.vcol ? tp.cols[c] : tp.col);
+    niebla_cine();
   }
   suelta();
   };
-  if (vert <= 65535) {
+  // PrimReserve abre otro rango al cruzar 64K: conserva el clip y orden de esta lista.
+  if (offsets || vert <= 65535) {
     pinta(dl, 0, tris_.size());
   } else {
     static int cuadro = -1, n_ventana = 0;   // nombre propio por tanda y cuadro: dos Pintar en un cuadro no comparten lista

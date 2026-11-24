@@ -1,0 +1,7 @@
+descripcion = "IW REF: entrada, 10 ki/cuadro, +5/+5 y final sin agotamiento (usar comp_pruebas_iw.py para validar números)"
+turbo = false
+env = ['DBZ3_TEST_BATTLE=0,7,2', 'DBZ3_COMBATE_MUNECO=quieto', 'DBZ3_COMBATE_SONDA=1', 'DBZ3_COMBATE_CAPS=10', 'DBZ3_TEST_CFG=dbz3_modo_competitivo=true;dbz3_combate_prueba_muneco="quieto";dbz3_combate_definitiva_directa=false']
+pasos = ['log "tag: empieza un combate" 90', 'esperar_pelea 90', 'esperar 1500', 'tecla "set dbz3_combate_prueba_ki=3000" 500', 'tecla Q 0', 'log "COMP estado propio del lado 1 encendido" 10', 'captura burst_humo']
+[iw]
+caso = "burst"
+fuentes = ["22AAE0", "22BCD0", "233CD0"]

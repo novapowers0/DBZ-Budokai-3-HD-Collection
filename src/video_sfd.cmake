@@ -43,7 +43,7 @@ file(CONFIGURE OUTPUT "${DBZ3_FF_OV}/config.h" @ONLY CONTENT [[
 #define CONFIG_IDCTDSP 1
 ]])
 file(CONFIGURE OUTPUT "${DBZ3_FF_OV}/libavcodec/codec_list.c" @ONLY CONTENT [[
-static const AVCodec * const codec_list[] = { &ff_mpeg1video_decoder, &ff_mpeg2video_decoder, NULL };
+static const AVCodec * const codec_list[] = { &ff_mpeg1video_decoder, &ff_mpeg2video_decoder, &ff_xmaframes_decoder, NULL };
 ]])
 file(CONFIGURE OUTPUT "${DBZ3_FF_OV}/libavcodec/parser_list.c" @ONLY CONTENT [[
 static const AVCodecParser * const parser_list[] = { &ff_mpegvideo_parser, NULL };
@@ -57,6 +57,8 @@ set(_ff_src
     pthread_frame mpeg12framerate idctdsp simple_idct jrevdct faanidct faandct fdctdsp jfdctfst jfdctint
     mpeg12dec mpeg12 mpeg12data mpegvideo mpegvideodsp rl mpegvideo_motion mpegutils mpegvideodata mpegpicture
     mpeg_er error_resilience blockdsp h264chroma hpeldsp me_cmp videodsp pixblockdsp mpegvideo_parser
+    wmaprodec wma wma_common wma_freqs sinewin mdct_float mdct_fixed_32 fft_float fft_fixed_32 fft_init_table avfft
+    rdft dct dct32_float dct32_fixed aactab x86/fft_init x86/dct_init
     x86/constants x86/idctdsp_init x86/fdctdsp_init x86/fdct x86/blockdsp_init x86/h264chroma_init
     x86/hpeldsp_init x86/me_cmp_init x86/videodsp_init x86/pixblockdsp_init x86/mpegvideo x86/mpegvideodsp)
 list(TRANSFORM _ff_src PREPEND "${DBZ3_FF}/libavcodec/")

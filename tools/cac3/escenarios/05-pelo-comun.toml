@@ -1,0 +1,4 @@
+descripcion = "CAC2: Goku pasa de pelo de serie a un donante medido por PEL1"
+turbo = false
+env = ["DBZ3_TEST_MODO=heroe,0", "DBZ3_TEST_HEROE_ABRIR=2", "DBZ3_CAC_XV2=0", "DBZ3_TEST_CFG=dbz3_cac_xv2=false;dbz3_heroe_ui_nueva=true;dbz3_cac2_pestanas=true;dbz3_cac2_pelo=true"]
+pasos = ['log "Create abierto" 180', 'repetir 2', 'tecla Z', 'fin', 'log "CAC2 pestana 2" 15', 'captura antes', 'tecla A', 'log "CAC2 pelo legado 0 fid 80" 15', 'esperar 6000', 'captura despues', 'tecla D', 'log "CAC2 pelo legado 0 fid [-]1\\b" 15']

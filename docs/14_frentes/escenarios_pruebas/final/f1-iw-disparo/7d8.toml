@@ -1,0 +1,23 @@
+# F1 / IW-M09. SOLO fase autorizada Z; no ejecutado en esta entrega.
+# Alcance: tres entradas y llamada al clasificador original. El gameplay aun es port.
+# Offline: disparo_banco.py rangos -> 1320/1320 por region, primer DIF ninguno.
+# El rango depende del tiempo; el cierre puede ser fallo. Victoria e impacto dirigidos pendientes.
+descripcion = "F1 7D8: tres entradas y rango original de Piccolo"
+env = [
+  "DBZ3_TEST_IWMINI=0x7D8",
+  'DBZ3_TEST_CFG=dbz3_iw_disparo_original=true;dbz3_iw_logica_original=true;dbz3_mnk_mode=true;dbz3_keybind_b="X"',
+  'DBZ3_PS2_GAMES=D:\DBZ3HD\ps2_games',
+]
+pasos = [
+  'log "dbz3 iwdisparo: juego 0x7D8 empieza" 90',
+  "captura 00_listo",
+  "tecla X 250",
+  "esperar 2500",
+  "tecla X 250",
+  "esperar 2500",
+  "tecla X 250",
+  "captura 01_disparos",
+  'log "dbz3 iwmips disparo rango clave=0x7d8 " 240',
+  'log "dbz3 iwdisparo: fin: " 30',
+  "captura 02_resultado",
+]

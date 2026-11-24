@@ -13,9 +13,12 @@
 #include <algorithm>
 #include <atomic>
 #include <cctype>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <mutex>
 #include <string>
+#include <vector>
 
 #include "generated/dbz3_init.h"
 #include "eu_map.h"
@@ -23,6 +26,7 @@
 
 namespace dbz3::tag { void OnScreen(int screen); }
 namespace dbz3::campaigns { void ForgetStoryBattle(); void DuAuto(int slot); void DuSesionFin(); }
+namespace dbz3::escenarios { int Total(); }   // escenarios.cpp: 17 de serie + altas de mods
 
 namespace dbz3::hub {
 namespace {
@@ -62,12 +66,28 @@ Request Make(int id1, int id2, int stage, bool p2_com, int time_s, int hp1, int 
   r.form[1] = form2;
   return r;
 }
+// B2-TRANS (12/11): un escenario fuera de la lista (p. ej. un numero de alta de otra copia) cerraba el juego al
+// cargar (0xC0000005, lr 0x82122750). Se rechaza el pedido con un aviso en el registro, sin lanzar el combate.
+bool EscenarioValido(int stage) {
+  const int total = dbz3::escenarios::Total();
+  if (stage >= 0 && stage < total) return true;
+  REXLOG_WARN("dbz3 hub: escenario {} no existe (hay {}, 0..{}): combate no lanzado", stage, total, total - 1);
+  return false;
+}
+// KIT-19 (12/11): un ID sin plaza (un personaje de mod con ID logico >= 10000 cuando las plazas libres de la rueda
+// se agotan; las tablas por personaje del juego tienen 105 entradas, 0..104) cerraba el juego al lanzar el combate
+// (0xC0000005, lr 0x82083A08). Se rechaza el pedido con un aviso en el registro, sin lanzar el combate.
+bool PersonajeValido(int id) {
+  if (id >= 0 && id < 105) return true;
+  REXLOG_WARN("dbz3 hub: combate rechazado: personaje {} sin plaza en la rueda (validos 0..104): combate no lanzado", id);
+  return false;
+}
 }  // namespace
 
 // Pide un combate desde el menu principal (cualquier hilo; lo lanza el hilo del juego en su siguiente tick).
 // Con tiempo, vida y forma inicial por combate (Leyenda de Mr. Satan, retos): 0 = lo normal en cada uno.
 bool RequestBattleEx(int id1, int id2, int stage, bool p2_com, int time_s, int hp1, int hp2, int form1, int form2) {
-  if (g_phase.load() != 0) {
+  if (g_phase.load() != 0 || !EscenarioValido(stage) || !PersonajeValido(id1) || !PersonajeValido(id2)) {
     g_nocaps = false;   // pedido sin combate: NoCapsulesNext no pasa al siguiente
     return false;
   }
@@ -103,7 +123,7 @@ bool RequestEditSkills() {
 // Durante un combate nuestro (OwnBattle): el siguiente sale al acabar este, sin cargar el menu principal (retos,
 // Torre...). Mientras HoldChain(true), espera en negro tras el combate (para una pantalla propia entre medias).
 bool ChainBattleEx(int id1, int id2, int stage, bool p2_com, int time_s, int hp1, int hp2, int form1, int form2) {
-  if (g_phase.load() != 3) {
+  if (g_phase.load() != 3 || !EscenarioValido(stage) || !PersonajeValido(id1) || !PersonajeValido(id2)) {
     g_nocaps = false;
     return false;
   }
@@ -113,8 +133,21 @@ bool ChainBattleEx(int id1, int id2, int stage, bool p2_com, int time_s, int hp1
   return true;
 }
 void HoldChain(bool hold) { g_hold = hold; }
+// ROG-04: forma inicial del jugador 1 del combate ya pedido y aun sin lanzar (las Reglas llegan tras el pedido).
+// ponytail: escribe g_req sin cerrojo, como los demas pedidos; el hilo del juego lo lee al lanzarlo.
+void SetPendingForm1(int form) {
+  // ROG-04: tambien en la espera en negro del encadenado (fase 4: g_chain ya se gasto al acabar el combate anterior)
+  if (g_phase.load() == 1 || g_phase.load() == 4 || g_chain.load()) g_req.form[0] = form;
+}
 // El siguiente combate sin capsulas (el Laboratorio mide golpes sin modificadores de dano); solo ese combate.
 void NoCapsulesNext() { g_nocaps = true; }
+// HEROE-TEC T4: capsulas del jugador 1 para el siguiente combate pedido (Probar del Heroe); solo ese combate.
+std::mutex g_caps_next_mu;
+std::vector<int> g_caps_next;
+void CapsulesNext(const std::vector<int>& caps) {
+  std::lock_guard<std::mutex> lk(g_caps_next_mu);
+  g_caps_next = caps;
+}
 // A2nave: el siguiente combate (solo el jugador 1) con su lista «Custom» del Edit Skills (partida +4928 + 4624 por casilla; vacia =
 // la Normal). Lo pide pasarela_misiones.cpp con la eleccion Normal/Custom de la rueda de la nave.
 std::atomic<bool> g_custom1{false};
@@ -164,6 +197,20 @@ void Launch(PPCContext& ctx, uint8_t* base, bool from_menu) {
         for (uint32_t c = 0; c < 7; ++c) REX_STORE_U16(rec + 54 + 2 * c, ids[c]);
       }
       REXLOG_INFO("dbz3 hub: jugador 1 (id {}): lista Custom con {} capsulas ({} {} {})", q.id[0], n, ids[0], ids[1], ids[2]);
+    }
+    if (k == 0) {   // HEROE-TEC T4: las pedidas con CapsulesNext mandan (rec+52 cuantas, rec+54 IDs)
+      std::vector<int> c;
+      {
+        std::lock_guard<std::mutex> lk(g_caps_next_mu);
+        c.swap(g_caps_next);
+      }
+      if (!c.empty()) {
+        const uint32_t n = uint32_t(std::min<size_t>(c.size(), 7));
+        REX_STORE_U16(rec + 52, uint16_t(n));
+        for (uint32_t i = 0; i < 7; ++i) REX_STORE_U16(rec + 54 + 2 * i, uint16_t(i < n ? c[i] : 0));
+        REXLOG_INFO("dbz3 hub: jugador 1: {} capsulas pedidas ({} {} {} {} {} {} {})", n, REX_LOAD_U16(rec + 54), REX_LOAD_U16(rec + 56),
+                    REX_LOAD_U16(rec + 58), REX_LOAD_U16(rec + 60), REX_LOAD_U16(rec + 62), REX_LOAD_U16(rec + 64), REX_LOAD_U16(rec + 66));
+      }
     }
     // Capsulas: sub_82179408 deja las listas vacias y sin ellas nadie lanza tecnicas ni se transforma. Como en el
     // Duelo, la lista Normal del personaje (tabla 0x8234ABB8 + 96 * ID: +80 cuantas, +82 7 IDs; la que el Torneo
@@ -324,7 +371,16 @@ DBZ3_HOOK_EU(sub_821D7C30) {
     static uint32_t ticks = 0;
     static int done = 0;
     ticks = REX_LOAD_U8(kGame) == 5 ? ticks + 1 : 0;
-    if (done < 2 && ticks == 180 && g_phase.load() == 0) {   // dos seguidos: ida y vuelta al menu
+    // R23 CAC: DBZ3_TEST_BATTLE_ESPERA = ms de reloj en el menu antes del combate (el arnes corre el arranque a x16: los
+    // pasos no valen), para que vea el menu principal antes de empezar
+    static const int espera_ms = [] { const char* e = std::getenv("DBZ3_TEST_BATTLE_ESPERA"); return e ? std::atoi(e) : 0; }();
+    static auto t_menu = std::chrono::steady_clock::time_point{};
+    static bool lanzado = false;   // una peticion por visita al menu (como ticks == 30)
+    if (ticks == 1) t_menu = std::chrono::steady_clock::now(), lanzado = false;
+    const bool listo = espera_ms > 0 ? !lanzado && ticks >= 30 && std::chrono::steady_clock::now() - t_menu >= std::chrono::milliseconds(espera_ms)
+                                     : ticks == 30;
+    if (done < 2 && listo && g_phase.load() == 0) {   // dos seguidos: ida y vuelta al menu
+      lanzado = true;
       int a = 0, b = 7, st = 0, t = 0, h1 = 0, h2 = 0, f1 = 0, f2 = 0;   // ",tiempo,vida1,vida2,forma1,forma2" opcional
       std::sscanf(tb, "%d,%d,%d,%d,%d,%d,%d,%d", &a, &b, &st, &t, &h1, &h2, &f1, &f2);
       if (RequestBattleEx(a, b, st, true, t, h1, h2, f1, f2)) ++done;
@@ -335,7 +391,7 @@ DBZ3_HOOK_EU(sub_821D7C30) {
     static uint32_t ticks = 0;
     static bool done = false;
     ticks = REX_LOAD_U8(kGame) == 5 ? ticks + 1 : 0;
-    if (!done && ticks >= 120 && int32_t(REX_LOAD_U32(kReqCur)) == -1 && MenuListo(base)) {
+    if (!done && ticks >= 30 && int32_t(REX_LOAD_U32(kReqCur)) == -1 && MenuListo(base)) {
       // lo que hace LaunchDu (salida del menu y peticion de escena) con la 12
       const uint32_t mgr = REX_LOAD_U32(dbz3::GA(0x8245F230)), task = mgr ? REX_LOAD_U32(mgr + 16) : 0;
       const uint32_t obj = task ? REX_LOAD_U32(task + 48) : 0;
@@ -367,10 +423,15 @@ DBZ3_HOOK_EU(sub_821D7C30) {
   }
   // PRUEBA (DBZ3_TEST_DU_HEROE=casilla): a los 3 s en el menu principal abre DU del Heroe (hub::RequestDu)
   if (static const char* td = std::getenv("DBZ3_TEST_DU_HEROE"); td) {
-    static uint32_t ticks = 0;
+    // R23: 3 s de reloj, no 30 cuadros: pruebas.py arranca a x16 hasta VER el menu y con cuadros se iba a DU antes
+    // (la herramienta no veia la pantalla 5 y pulsaba START sobre DU sin fin).
+    static long long desde = -1;
     static bool done = false;
-    ticks = REX_LOAD_U8(kGame) == 5 ? ticks + 1 : 0;
-    if (!done && ticks == 180 && RequestDu(std::atoi(td))) done = true;
+    const long long ahora = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
+    if (REX_LOAD_U8(kGame) != 5) desde = -1;
+    else if (desde < 0) desde = ahora;
+    if (!done && desde >= 0 && ahora - desde >= 3000 && RequestDu(std::atoi(td))) done = true;
   }
   if (g_edit_skills.load()) {
     if (int32_t(REX_LOAD_U32(kReqCur)) == 22) g_edit_skills = false;
@@ -409,6 +470,23 @@ DBZ3_HOOK_EU(sub_821D7D18) {
     }
     Launch(ctx, base, false);
     return;
+  }
+  // VEL-05, experimental: solo el final nativo de logos -> titulo, una vez.
+  // US sub_821D4140 / EU sub_821D2F28: el retorno distingue este sitio de los resets al titulo.
+  // Se llama al constructor nativo (rama 5), nunca se falsifica el byte de pantalla.
+  static const bool corto = [] {
+    const char* e = std::getenv("DBZ3_TEST_ARRANQUE_CORTO");
+    return e && e[0] == '1' && e[1] == '\0' && std::getenv("DBZ3_NO_DIALOGS");
+  }();
+  static bool salto = false;
+  const uint64_t retorno_logos = dbz3::g_guest_eu ? 0x821D2F68u : 0x821D4180u;
+  if (corto && !salto && ctx.r3.u32 == 4 && ctx.lr == retorno_logos) {
+    const uint8_t pantalla = REX_LOAD_U8(kGame);
+    if (pantalla == 2 || pantalla == 3) {
+      salto = true;
+      ctx.r3.u64 = 5;
+      REXLOG_INFO("dbz3 hub: VEL-05 salto nativo desde pantalla {}", int(pantalla));
+    }
   }
   orig(ctx, base);
 }

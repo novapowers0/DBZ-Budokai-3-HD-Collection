@@ -47,6 +47,10 @@ struct Malla {
     V3 p[3];
     ImVec2 uv[3];
     int tex = 0;
+    uint32_t b1_flags = 0;   // AMO PAL, solamente cuando material_b1
+    uint64_t b1_alpha = 0x44;
+    V3 b1_centro;
+    float b1_radio = 0;
     int parte = 0;            // EU 0x306C30 Stage_SetUvAnim: parte del #AMO para asociar su canal #MTA
     bool trans = false;      // vtype con el bit alto (barrera del aro, sombra): translucida
     uint8_t hueso[3] = {};   // hueso de cada vertice (para animar; ver Esqueleto)
@@ -154,20 +158,24 @@ Giro LeerGiro(const std::vector<uint8_t>& amm);
 // piel_rampas: mascara de los indices de rampa (u32(parte+0x0C)) de las partes de piel (RampasPiel); por defecto la 3
 // (Goku del mapa de IW)
 bool LeerAmo(const std::vector<uint8_t>& amo, int variante, Malla& out, Esqueleto* esq = nullptr, bool colores = false,
-             bool material = false, uint32_t piel_rampas = 1u << 3);
+             bool material = false, uint32_t piel_rampas = 1u << 3, bool material_b1 = false);
 // Rampas de piel de un #AMT de IW: las texturas rampa (bandera 0x80000000) azuladas (media B - R >= 40); auditoria10/E
 uint32_t RampasPiel(const std::vector<uint8_t>& amt);
 // Animacion `anim` de un #AMM de PS2 para un esqueleto de `huesos` huesos (mismo orden).
 Anim LeerAnim(const std::vector<uint8_t>& amm, uint32_t anim, size_t huesos);
 // Malla de `esq` en el segundo `t` (bucle a 60 cuadros por segundo) de `an`, con el centro x/z de Centrar.
 void Posar(const Esqueleto& esq, const Anim& an, float t, Malla& out);
+std::vector<M34> Locales(const Esqueleto& esq, const Anim& an, float t);   // los ejes locales que usa Posar
 // LIVE de IW ya evaluado: no volver a interpolar Euler ni envolver el reloj.
 void PosarMatrices(const Esqueleto& esq, const std::vector<M34>& locales, bool relativa, Malla& out);
 void Centrar(Malla& m);
 // #AMO y #AMT sueltos (entradas propias de un AFS); animable: con esqueleto y pesos para Posar.
 // colores (frente R2, B2): color por vertice (vtype & 2) y, en las partes sin textura, el color de material (+0x30).
+// opaca_sin_alfa: true (por defecto) = comportamiento historico: con `colores`, fuerza el alfa de las texturas sin la
+// bandera 0x80000000 a 255. La escena de Shenron de B2 lo pone en false: sus texturas de efecto llevan el alfa real (el
+// agujero de las Bolas deja ver las estrellas rojas de dentro). F7, 10/11.
 Modelo CargarSuelto(const std::vector<uint8_t>& amo, const std::vector<uint8_t>& amt, bool animable = false,
-                    bool colores = false, bool material = false);
+                    bool colores = false, bool material = false, bool opaca_sin_alfa = true, bool material_b1 = false);
 Modelo CargarDeAfs(pasarela::AfsPs2& afs, size_t amo, size_t amt, bool animable = false);
 // Hijos `amo` y `amt` de un #AMB (y el #AMM de giro en amo + 1).
 Modelo CargarModelo(const std::vector<uint8_t>& amb, uint32_t amo, uint32_t amt, int variante);
@@ -180,7 +188,9 @@ struct Camara {
   ImVec2 c, h;   // centro y media pantalla (px)
   bool ok = false;
   float periodo_x = 0, periodo_z = 0;   // IW296370: imagen mas proxima a la camara (cero en otros modos)
-  float Foco() const { return h.y / std::tan(fov * 0.5f); }   // px por unidad a distancia 1 (se calcula una vez por modelo: tan es caro)
+  float foco_x = 0, foco_y = 0;  // unidades de pantalla antes de dividir por tan (B1)
+  float corte_cercano = 1.f;
+  float Foco() const { return (foco_y>0 ? foco_y : h.y) / std::tan(fov * 0.5f); }   // px por unidad a distancia 1 (se calcula una vez por modelo: tan es caro)
   bool P(const V3& p, ImVec2& o, float& k) const { return P(p, o, k, Foco()); }
   bool P(const V3& punto, ImVec2& o, float& k, float f) const {   // f = Foco()
     V3 p=punto;
@@ -195,9 +205,9 @@ struct Camara {
     const float xv = m[0] * p.x + m[4] * p.y + m[8] * p.z + m[12];
     const float yv = m[1] * p.x + m[5] * p.y + m[9] * p.z + m[13];
     const float zv = m[2] * p.x + m[6] * p.y + m[10] * p.z + m[14];
-    if (!(zv <= -1.0f) || !std::isfinite(xv) || !std::isfinite(yv) || !std::isfinite(zv)) return false;   // y NaN fuera
+    if (!(zv <= -corte_cercano) || !std::isfinite(xv) || !std::isfinite(yv) || !std::isfinite(zv)) return false;   // y NaN fuera
     k = f / -zv;   // px por unidad a esa distancia
-    o = ImVec2(c.x + xv * k, c.y - yv * k);
+    o = ImVec2(c.x + xv * k * (foco_x>0 ? foco_x/foco_y : 1.f), c.y - yv * k);
     return true;
   }
   // Profundidad del juego (frente R15): planos cerca/lejos de la camara del combate (mgr+0x20 = 1, mgr+0x24 = 65535,
@@ -220,12 +230,16 @@ struct Tex {
   ImTextureID id() const { return reinterpret_cast<ImTextureID>(t.get()); }
   explicit operator bool() const { return t != nullptr; }
 };
-Tex Crear(const pasarela::Imagen& im, bool prof = false);
+// `repetir` = direccionamiento del sampler en los bordes (true, REPEAT; false, CLAMP). Los modelos 3D con UV fuera de
+// [0,1] (Shenron) necesitan REPEAT; las capas 2D traducidas del tablero de B2, CLAMP (ver iw_trad_bucle.cpp).
+Tex Crear(const pasarela::Imagen& im, bool prof = false, bool repetir = true);
 // Texturas de un modelo para Escena: con el z-buffer del juego si el SDK lo permite (R15, D3D12). Solo se pintan con
 // Escena::Pintar (sus vertices van empaquetados); para dibujos 2D, Crear.
 std::vector<Tex> Texturas(const Modelo& m);
 // R15: 0 = sin z-buffer en la interfaz (Vulkan o SDK viejo), 1 = se puede, 2 = el ultimo cuadro se probo contra el.
 int EstadoProfundidad();
+// UV de un vertice de textura Crear(im, true): u = las dos mitades (u, v) y v = la profundidad z (Camara::Prof).
+ImVec2 Empaquetar(ImVec2 uv, float z);
 // Triangulos de un cuadro: se ponen todos los modelos, se tapa con los luchadores y se pintan de lejos a cerca.
 class Escena {
  public:
@@ -255,12 +269,32 @@ class Escena {
     // de ella, por triangulo: sin esto los triangulos de figuras en la misma fila se intercalan y cada cambio de textura abre una orden
     // de dibujo (Pintar de 12 figuras: 16 ms). Mantiene el orden interior de la pieza (k' = kc + (k - kc) * 1e-3).
     bool agrupar = false;
+    // POST3/SHENRON-HD: no poner los triangulos que caen enteros fuera de la pantalla (camara pegada a un modelo grande:
+    // sin esto el Shenron HD pasaba de 65535 vertices, iba en tandas y las tapaba el fondo de la lista de primer plano)
+    bool recortar = false;
+    // POST3/SHENRON-HD: modelo de muchos triangulos pequenos (12056): el tramo de la rampa se elige por triangulo (luz media)
+    // en vez de cortarlo (x2,3 triangulos) y el borde va con la textura del triangulo tenida de negro (3 vertices, no los 6 de
+    // AddTriangleFilled con antialiasing). Con las dos cosas cabe siempre en una lista (medido: 96497 -> < 56000 vertices)
+    bool ligero = false;
+    // XV2RAZAS 13/11: el borde lleva la textura de su triangulo aunque no sea modo ligero (negro por color de vertice: se ve igual).
+    // Sin textura cada borde gasta 6 vertices (relleno suavizado de ImGui) en vez de 3 y la vista del heroe no cabia en 65535.
+    bool borde_tex = false;
+    // XV2RAZAS 13/11: las caras de espaldas a la camara van en un solo trozo (sin cortar la rampa): se ven poco (huecos de la ropa).
+    // Ahorra ~1/3 de los vertices: la vista del heroe XV2 cabe con la rampa cortada (sombreado limpio) y contorno.
+    bool sin_traseras = false;
   };
   void Poner(const Camara& cam, const Malla& malla, const std::vector<Tex>& tx, const V3& pos, float giro, float esc,
              const Toon& toon);
   // Oclusion por el luchador X: sus 22 esferas de cuerpo (centros X+1616 + 16 i, radios [[X+2996] + 24 + 4 i]); un
   // triangulo mas lejos que una esfera y con su centro dentro de ella no se pinta. Se mantiene con el
   // z-buffer del juego (R15: escenario y luchadores tapan pixel a pixel) como respaldo, por orden del coordinador.
+  struct Entorno {
+    std::array<float,3> ambiente{1.f,1.f,1.f}, color{};
+    std::array<std::array<float,3>,2> dir{}, luz{};
+    std::array<float,2> densidad{}, distancia{0.f,1.f};
+    bool niebla=false, fondo=false, sin_luz=false;
+  };
+  void PonerCine(const Camara&, const Malla&, const std::vector<Tex>&, const Toon*, const Entorno&);
   void Tapar(const Camara& cam, uint8_t* base, uint32_t x);
   // DS179: lo que se ponga a continuacion NO lo tapa el luchador de `Tapar`. Es para lo que forma parte del propio
   // luchador y no debe borrarse nunca: la aureola de IW (4,19 sobre el centro de la cabeza, y la esfera de la cabeza
@@ -270,7 +304,7 @@ class Escena {
 
  private:
   void PonerT(const Camara& cam, const Malla& malla, const std::vector<Tex>& tx, const V3& pos, float giro, float esc,
-              const Toon* toon);
+              const Toon* toon, const Entorno* entorno = nullptr);
   struct Tri {
     ImVec2 p[3], uv[3];
     V3 w;   // DS179: centro en MUNDO (para la prueba de tapado en 3D, no solo en pantalla)
@@ -281,6 +315,7 @@ class Escena {
     float k = 0;   // px por unidad: mas pequeno = mas lejos
     bool prof = false;   // R15: con prueba de profundidad (vertices empaquetados, textura de Tex::prof)
     bool tapable = true; // DS179: si lo puede tapar el luchador (Tapar)
+    ImU32 fog[3] = {};
     float z[3] = {-1, -1, -1};   // R15: profundidad del juego de cada vertice (Camara::Prof)
   };
   struct Tapa {

@@ -1,0 +1,41 @@
+# S7 / TOR01: Torneo Mundial nivel Novato de principio a fin (#55: congelacion al ganar).
+# FASE 3: lo deja escrito el carril S7; lo ejecuta Z una sola vez.
+#   python tools\pruebas.py correr smoke_a "docs\14_frentes\escenarios_pruebas\final\s7-tag-team\manual\torneo_novato.toml"
+#
+# clave    = TOR01 (Novato: tres combates ganados y vuelta al menu sin congelar)
+# cvar     = ninguna; DBZ3_TEST_RINGOUT=1 gana cada combate a los 5 s (motivo 4, vale en cualquier modo)
+# criterio = tras ganar los 3 combates el juego vuelve a la pantalla 5 y sigue respondiendo (sin cierre). La
+#            linea "modos: torneo terminado (obj+104 = 1)" marca el final del cuadro.
+# log      = "VS del torneo", "tag: combate acabado", "modos: torneo terminado", pantalla 5
+descripcion = "Torneo Mundial Novato completo (3 combates por ring out) y vuelta al menu (TOR01/#55)"
+env = [
+  "DBZ3_TEST_RINGOUT=1",
+]
+pasos = [
+  "esperar 3000",
+  "tecla S 1200",
+  "tecla S 1200",
+  "tecla Space 3500",
+  "tecla Space 3000",
+  "captura a_nivel_novato",
+  "tecla Space 2200",
+  "tecla Space 2200",
+  "tecla Space 2200",
+  "tecla Space 2200",
+  "tecla Space 2200",
+  "tecla Space 2200",
+  "tecla Space 2200",
+  "tecla Space 2200",
+  "log \"VS del torneo\" 90",
+  "captura b_vs",
+  "esperar 12000",
+  "tecla Space 2500",
+  "esperar 8000",
+  "tecla Space 2500",
+  "esperar 8000",
+  "tecla Space 2500",
+  "esperar 8000",
+  "captura c_combates",
+  "esperar_pantalla 5 90",
+  "captura d_menu",
+]

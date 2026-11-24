@@ -1,0 +1,27 @@
+# S2 / IW-M17: DERROTA de 0x7E0 (sin piloto: el medidor del rival llega a 1,0 y Vegeta/Goten alcanza al jugador).
+# SOLO fase 3 (Z). Copia: smoke_a/b/c. Es el otro lado de 7e0.toml.
+#
+# clave    = IW-M17 / 0x7E0 (fallo)
+# cvar     = dbz3_iw_vuelo_original=true + dbz3_iw_logica_original=true
+# criterio = sin entradas, el medidor sube con la base del bloque (+0x18 = 1e-4): 0,00012 por cuadro a paso 1,2
+#            (50 Hz) o 0,0072/s; a 60 Hz del port llega a 1,0 en ~140 s. Al llegar, el original fija +0x550=1 y
+#            Viewer_StateCheckResult -> ResultFail: rango -1 en el original (el port lo codifica -2), puntos de
+#            fallo (+0x60 = 100) y la frase corta 1250. NO se espera un tiempo de vuelo agotado (v1 no lo tiene).
+#            Offline: resultado_banco.py prueba el rango -1 y los 100 puntos en las 6 dificultades (verde).
+# log      = "dbz3 r12: resultado superado false rango - / 'dbz3 r12: fin ('
+descripcion = "0x7E0 derrota: dejarse alcanzar por el rival y comprobar rango de fallo y puntos"
+env = [
+  "DBZ3_TEST_IWMINI=0x7E0",
+  "DBZ3_TEST_CFG=dbz3_iw_vuelo_original=true;dbz3_iw_logica_original=true",
+  'DBZ3_PS2_GAMES=D:\DBZ3HD\ps2_games',
+]
+pasos = [
+  'log "iwmini: prueba: empieza" 90',
+  'log "dbz3 r12: vuelo con la logica original del ELF" 90',
+  "captura 00_salida",
+  "esperar 150000",
+  "captura 01_casi",
+  'log "dbz3 r12: resultado superado false rango" 600',
+  "captura 02_resultado",
+  'log "dbz3 r12: fin " 60',
+]

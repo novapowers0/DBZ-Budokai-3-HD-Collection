@@ -1,4 +1,4 @@
-// dbz3 - Minijuegos de DISPARO del mapa de Dragon Mission de Infinite World (frente R13, ronda 4, 2026-10-16).
+﻿// dbz3 - Minijuegos de DISPARO del mapa de Dragon Mission de Infinite World (frente R13, ronda 4, 2026-10-16).
 // Registrados en iwmini::RegistrarModulo (src/iw_minijuegos.h). Ver docs/14_frentes/RONDA4_PULIDO.md ("R13").
 //
 // Hecho: 9 (0x7D8) "Fire beams at Piccolo! Go easy on him, though!" (modulo MSN010). Del decomp EU de IW
@@ -51,6 +51,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <charconv>
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
@@ -68,6 +69,9 @@
 #define IWV_SOLO_DECL
 #include "iw_mips_vuelo.inl"   // tanda3 iw-vuelo: mgfly (7D3 con la logica original)
 #undef IWV_SOLO_DECL
+#define IWD_SOLO_DECL
+#include "iw_mips_disparo.inl"   // F1: rango/carga/entrada Cell, ajustes independientes OFF
+#undef IWD_SOLO_DECL
 #include "cine.h"
 #include "combate.h"
 #include "escenarios.h"
@@ -84,9 +88,24 @@
 #include "iw_azar.h"
 #include "iw_mips.h"
 #include "iw_piccolo_reaccion.h"
+#include "iw_gs_traductor.h"   // PAQ_0: unico include del traductor en este archivo
 
 REXCVAR_DEFINE_BOOL(dbz3_iw_amc_unico, true, "DBZ3/Mods",
                     "Disparo IW: camara de los clips #AMC con el reproductor unico y fiel al original (iw_amc.h). Apagado = copia antigua (interruptor de vuelta atras)");
+REXCVAR_DEFINE_BOOL(dbz3_iw_disparo_voces_poses_original, false, "DBZ3/IW",
+                    "IW disparo 0x7DE/0x7D8: voces como el original (1248/1249 de la entrada, 1253/1255/1260/1261 del final y frases de Ten) (pruebas)");
+REXCVAR_DEFINE_BOOL(dbz3_iw_7d8_voz_freezer, true, "DBZ3/IW",
+                    "IW 0x7D8: voces de Freezer al empezar y al cierre como el original (Viewer_PlayEventSfx 3 y 10, perfil ADX 14)");
+REXCVAR_DEFINE_BOOL(dbz3_iw_disparo_continuo_original, true,  // 12/11 encendido de serie (HOJA_DECISIONES_0800 A)
+    "DBZ3/IW",
+                    "IW-F05b Stop Cell 0x7DE: orden del campo y reloj como el original (MgShoot 0x4100 antes que Cell 0x5300 y el reloj 0x54FF; reloj en tics exactos; GameOver de 141 llamadas). IW-F06: tambien 0x7D7/0x7D8 (Ready de 101 llamadas, reloj en tics, final de 141 y rango -1 por tiempo o sin siete aciertos) (pruebas)");
+
+// IW-06 (R23): voces de reaccion de 0x7D7/0x7D8 que faltaban (Viewer_PlayCharReaction EU 0x34BDA0 y Viewer_PlayEventSfx
+// EU 0x327F90), palanca por direccion (Camera_OrbitInputUpdate 0x3245D0 / Viewer_UpdateReticleFromInput 0x348520),
+// vibracion del choque NB013 (s_UTL_ACTUATE 0x2EFA10) y una linea «dbz3 r23 ev» por evento. Tambien lo lee
+// iw_mips_botones.inl e iw_mini_botones.cpp (REXCVAR_DECLARE).
+REXCVAR_DEFINE_BOOL(dbz3_iw_r23_eventos, true, "DBZ3/IW",
+                    "IW-06: voces de reaccion de 0x7D7/0x7D8, palanca por direccion, vibracion del choque NB013 y registro de eventos como el original (pruebas)");
 
 namespace dbz3::hub {
 bool RequestBattleEx(int id1, int id2, int stage, bool p2_com, int time_s, int hp1, int hp2, int form1, int form2);
@@ -194,6 +213,8 @@ constexpr float kAltura15 = 400.0f;
 inline float Env15(const char* n, float def) { const char* e = std::getenv(n); return e && *e ? float(std::atof(e)) : def; }
 // eIW2: manos de Ten con el sombreado de IW (3 tonos de la rampa 895/2 sobre la piel; la luz como la de B3). Apagado por defecto:
 // DBZ3_IW_MANOS_TOON=1 lo enciende (y DBZ3_TEST_MANOS15=4 la pose medida).
+REXCVAR_DEFINE_BOOL(dbz3_iw_7d8_brillo_ready_original, false, "DBZ3/IW",
+                    "IW MSN010: prepara el brillo 935/7 de las manos al entrar en READY (pruebas)");
 inline bool ManosToon15() { static const bool v = std::getenv("DBZ3_IW_MANOS_TOON") != nullptr || ::dbz3::original::Arreglo("manos_toon"); return v; }
 constexpr float kEsc3 = 1.0f;   // 3: unidades de IW = las de B3 (el campo 897 de R8 va a escala 1)
 // R17: camara del 3 medida en el original con PCSX2 (struct del modulo de disparo, *(0x49CEAC)+0x660): ojo (0,30,100),
@@ -227,6 +248,95 @@ void Poner(uint8_t* base, uint32_t x, const V3& p) {
 uint8_t* Base() {
   rex::Runtime* rt = rex::Runtime::instance();
   return rt ? rt->virtual_membase() : nullptr;
+}
+// PUL-IW-ANIM (dbz3_iw_disparo_voces_poses_original): voces de MgShoot (0x7DE). Banco 3 = el AFS de voces elegido en
+// Opciones (byte G+0x2C0C9: 0 = ADX_JPN), el mismo criterio que iw_mini_vuelo VozCorta.
+bool VocesDisparoOriginal() { return REXCVAR_GET(dbz3_iw_disparo_voces_poses_original); }
+void VozDisparo(int entrada, const char* motivo) {
+  if (entrada < 0) return;
+  uint8_t* base = Base();
+  const bool jp = base && REX_LOAD_U8(dbz3::GA(0x824BA110) + 0x2C0C9) == 0;
+  const float vol = dbz3::settings::AudioMute() ? 0.0f : float(dbz3::settings::MasterVolume());
+  REXLOG_INFO("dbz3 pulanim disparo voz: {} ADX {}", motivo, entrada);
+  P::OirAdxPs2(P::BuscarIW(), jp ? "ADX_JPN.AFS" : "ADX_USA.AFS", entrada, vol);
+}
+// EU 0x1FC7C0 Audio_PlayCharacterVoice(i): CharacterDialoguesStart_(Table_Lookup480450(i) | 0x30000); la tabla EU
+// 0x480450 vale 1248 + i para i = 0..0x1B (leida en el ELF EU; fuera de rango el original no suena).
+bool R23() { return REXCVAR_GET(dbz3_iw_r23_eventos); }
+void VozAnuncio(int i, const char* motivo) {
+  if (R23()) REXLOG_INFO("dbz3 r23 ev {}: Audio_PlayCharacterVoice 0x{:X} ({}; suena {})", std::string_view(motivo).substr(0, 3), i,
+                         motivo, VocesDisparoOriginal() ? "si" : "no");
+  if (VocesDisparoOriginal() && i >= 0 && i <= 0x1B) VozDisparo(1248 + i, motivo);
+}
+// IW-06: un evento de Viewer_PlayCharReaction (7D7) / Viewer_PlayEventSfx (7D8). Con linea >= 0, PlayHit_KiblastAudios
+// (EU 0x2EF500) = linea del perfil ADX del actor (tabla EU 0x4803B0); con se >= 0, Hits_TransformationSounds (EU
+// 0x240740: banco, id, 0, 0, f12 0, f13 1) del banco de efectos del personaje (2 = el primero, 3 = el segundo): solo se
+// registra, el port no carga esos #AMB. La boca (w_MinigameMouthAnimations) no se reproduce.
+void EvR23(unsigned clave, int ev, const char* que, int perfil, int linea, int banco = -1, int se = -1) {
+  if (!R23()) return;
+  if (linea >= 0) {
+    static const std::vector<uint8_t> elf = P::LeerElf(P::BuscarIW());
+    const int adx = dbz3::anim::apev::EntradaAdxPerfil(elf, perfil, linea);
+    REXLOG_INFO("dbz3 r23 ev {:X}: evento {} {} voz perfil {} linea 0x{:X} ADX {}", clave, ev, que, perfil, linea, adx);
+    VozDisparo(adx, que);
+  } else if (se >= 0) {
+    REXLOG_INFO("dbz3 r23 ev {:X}: evento {} {} SE banco {} id 0x{:X} (sin sonido: banco del personaje)", clave, ev, que, banco, se);
+  }
+}
+// ponytail: azar propio, no el LFSR Memory() del original (no se toca la serie de las esquivas); igualarlo si se coteja voz a voz.
+uint32_t AzarR23() {
+  static uint32_t s = 0x2545F491u;
+  s = s * 1103515245u + 12345u;
+  return s >> 16;
+}
+// Perfiles ADX (MinigameAudioTriggerFilter EU 0x298380): Krilin 8, Freezer 14 (0x1B), Piccolo 9 (0x0B).
+// [VERIFICAR] que el Freezer del 7D7 sea el id 0x1B (si es otra forma, otro perfil).
+constexpr int kPerfilKrilin = 8, kPerfilFreezer = 14, kPerfilPiccolo = 9;
+// IW-06: palanca de 7D7/7D8 como el original: fuera de la zona muerta (32, EU 0x49C384 / 0x49C4B8) solo cuenta la
+// DIRECCION (atan2 -> seno y coseno por la velocidad), no lo inclinada que este.
+void PalancaR23(float& gx, float& gy, bool palanca) {
+  if (!R23() || !palanca) return;
+  const float l = std::sqrt(gx * gx + gy * gy);
+  if (l > 1e-6f) gx /= l, gy /= l;
+}
+// EU 0x30D610 Minigame_PlayEventVoiceAnim -> PlayHit_KiblastAudios EU 0x2EF500 (actor +0x800 = Ten): linea `linea` del
+// perfil ADX de Ten (CmnActor 12 = 929 -> perfil 10), la misma tabla EU 0x4803B0 que Audio_GetFilteredTableEntry.
+void VozTen(int linea, const char* motivo) {
+  if (!VocesDisparoOriginal()) return;
+  static const std::vector<uint8_t> elf = P::LeerElf(P::BuscarIW());
+  VozDisparo(dbz3::anim::apev::EntradaAdxPerfil(elf, dbz3::anim::apev::PerfilAdx(dbz3::anim::apev::CmnActor(12)), linea),
+             motivo);
+}
+// RESCATE IW-F07 (dbz3_iw_disparo_continuo_original): Viewer_PlayCharReaction EU 0x34BDA0 caso 8 (llamada en 0x3499A0,
+// fin del 7D7): PlayHit_KiblastAudios(+0x800 = Krilin, 0x16 si ce78+0xC < 7 aciertos, si no 0x13). Perfil ADX de
+// Krilin: CmnActor 10 = 924 -> perfil 8 (tabla EU 0x4803B0). La boca (0xA9/0xA6) no se reproduce.
+void VozKrilinFin(int aciertos) {
+  if (R23()) REXLOG_INFO("dbz3 r23 ev 7D7: evento 8 ShootRecoil fin (EU 0x3498B0), voz Krilin linea 0x{:X}", aciertos < 7 ? 0x16 : 0x13);
+  if (!REXCVAR_GET(dbz3_iw_disparo_continuo_original) && !R23()) return;
+  static const std::vector<uint8_t> elf = P::LeerElf(P::BuscarIW());
+  VozDisparo(dbz3::anim::apev::EntradaAdxPerfil(elf, dbz3::anim::apev::PerfilAdx(dbz3::anim::apev::CmnActor(10)),
+                                                aciertos < 7 ? 0x16 : 0x13),
+             "7D7 fin, reaccion 8 (EU 0x34BDA0)");
+}
+// IWFIN/IW-F07 (dbz3_iw_7d8_voz_freezer): Viewer_PlayEventSfx EU 0x327F90 del 7D8: caso 3 (al pasar a Input) =
+// linea 6 del actor +0x800 (el tirador, Freezer); caso 10 (cierre) = linea 10 si Piccolo cae sin agotar el reloj, si
+// no 0xD. Perfil ADX: actor+0xB8C = id del personaje y MinigameAudioTriggerFilter EU 0x298380 da 0x1B (Freezer, 27) ->
+// 0xE; el perfil 14 de la tabla EU 0x4803B0 tiene justo las 15 lineas de este minijuego (6 = ADX 965, 10 = 969,
+// 0xD = 972). La boca (0xAF/0xB3/0xB6) no se reproduce.
+void VozFreezer7D8(int linea, const char* motivo) {
+  if (R23()) REXLOG_INFO("dbz3 r23 ev 7D8: {} voz perfil 14 linea 0x{:X}", motivo, linea);
+  if (!REXCVAR_GET(dbz3_iw_7d8_voz_freezer) && !R23()) return;
+  static const std::vector<uint8_t> elf = P::LeerElf(P::BuscarIW());
+  VozDisparo(dbz3::anim::apev::EntradaAdxPerfil(elf, 14, linea), motivo);
+}
+// RESCATE IW-F07 (dbz3_iw_disparo_continuo_original): MgShoot_UpdateUiTimerBeeps EU 0x30A120 (tarea 0x54FF, cada campo):
+// tras UiTimer_Update, si quedan 60/120/180/240/300 tics, 0x240740(banco 1, 0x29, f12 0, f13 1). Banco 1 = DATA_CMN 954
+// (#AMB, MinigameMovementsAudioEffects EU 0x302E50). Con f12 = 0 el original no filtra repeticiones.
+void Pitido15(int tics) {
+  if (!REXCVAR_GET(dbz3_iw_disparo_continuo_original) || tics <= 0 || tics > 300 || tics % 60) return;
+  REXLOG_INFO("dbz3 iwdisparo: pitido del reloj ({} tics, DATA_CMN 954 id 0x29)", tics);
+  P::OirSonidoPs2(P::BuscarIW(), "DATA_CMN.AFS", 954, 0x29, 5,
+                  dbz3::settings::AudioMute() ? 0.0f : float(dbz3::settings::MasterVolume()));
 }
 V3 Mas(const V3& a, const V3& b) { return {a.x + b.x, a.y + b.y, a.z + b.z}; }
 V3 Por(const V3& a, float k) { return {a.x * k, a.y * k, a.z * k}; }
@@ -343,12 +453,14 @@ struct Datos {
   // copia 890/6): atlas (hijo 0) y los #AME (hijos 3..23) por indice de hijo
   std::vector<P::Imagen> atlas;
   std::vector<ame::Efecto> efectos;
+  std::vector<ps2::Malla> fx_modelos;  // PUL-IW-FX-02: mallas del #AMO del paquete (hijo 1), solo con el ajuste
   std::vector<P::Imagen> hud;          // DATA_USA 9/1 (HUD de los minijuegos de disparo)
   P::Imagen hit;                       // DATA_USA 5/1 t07 "HIT!" (UI_SetObjectField158AndEnable(0, 11, 5) en Viewer_HitSparkUpdate)
   anim::ama::Obra hit_ama;
   std::vector<P::Imagen> avisos3_atlas;
   int hit_cuadros=0;
   P::Imagen clear;                     // DATA_USA 334/3 t69 "CLEAR" (el mismo final que los de P4)
+  P::Imagen ready, start, failed;      // IWINI: DATA_USA 5/1 t08 "READY?", t00 "START!" y t10 "FAILED!"
 };
 std::mutex g_mu;
 std::shared_ptr<Datos> g_d;
@@ -377,6 +489,12 @@ std::atomic<int> g_juego{9};   // el que corre (3: el jugador se ve y el rival s
 std::atomic<float> g_ex{0}, g_ey{0}, g_ez{0}, g_tx{0}, g_ty{0}, g_tz{0}, g_jx{0}, g_jz{0};
 // DS123: camara de un clip de IW (entrada/cierre) que manda sobre la del port mientras dura el clip.
 std::atomic<bool> g_camclip{false};
+// IWINI (11/11): 0x7D8, clip 1000 de la entrada. B3 dibuja al actor en SU suelo + la pista de la animacion (medido: con
+// suelo fijo a 50,83 la cadera pasa de y = 136,0 a 186,9). El Poner(x0, {0, 50.83, 0}) del 31/10 no subia nada: B3 lo
+// devolvia a su suelo cada fotograma y ese vaiven de 50,83 u se dibujaba como una estela vertical en vez de Freezer
+// (grabaciones arr_7d8/arr3_7d8). En la entrada va en y = 0: cadera 136,0 = la del original (136,04, PINE).
+// Los clips de cierre (1001/1002) siguen como estaban, sin revisar. DBZ3_IWINI_FREEZER_5083=1 (solo pruebas): como antes.
+std::atomic<bool> g_alto9{false};   // true mientras dura el clip 1000 de la entrada
 std::atomic<uint32_t> g_x1{0};
 // 31/10: entradas y finales (PINE en PCSX2): los dos actores en el origen con matriz identidad y sus codigos propios;
 // AMM y AMC son un par en coordenadas absolutas. Bits: 4 activo, 1 se ve A, 2 se ve B.
@@ -402,6 +520,12 @@ class Panel : public rex::ui::ImGuiDialog {
     if (!base || st < 3 || st > 8) return;   // iw_fix: hasta el 8 (el menu azul de B3, ~1,7 s)
     const uint32_t mgr = REX_LOAD_U32(kMgrPtr);
     if (!mgr) return;
+    // IWINI (11/11): mientras el combate funde desde negro (estado 3, antes del primer Cuadro) la vista ya es el cuadro 0
+    // del primer clip de la entrada; antes se veia ~1,5 s la camara de juego y luego un salto con mezcla al clip.
+    if (fase_ == kListo && t_ == 0 && HayCine(*d)) {
+      float ojo[3], obj[3];
+      if (ClipPose(*d, d->intro.front(), 0.0f, base, mgr, ojo, obj)) PonerCamara(ojo, obj);
+    }
     const bool pausa = dbz3::GameDimmed() || dbz3::OverlayOpen();
     if (st == 4 && !pausa) {
       acc_ += dbz3::RelojDt(std::min(io.DeltaTime, 0.1f));
@@ -412,6 +536,30 @@ class Panel : public rex::ui::ImGuiDialog {
           continue;
         }
         Efectos();
+        // PAQ_0: un solo bloque de disparo traducido, antes del reparto por juego (0x7D3/0x7D7/0x7D8/0x7DE).
+        if ((d->clave == 0x7D3 || d->clave == 0x7D7 || d->clave == 0x7D8 || d->clave == 0x7DE) && dbz3::iwtrad::Activo()) {
+          if (!trad_disparo_entrada_) {
+            trad_disparo_entrada_ = true;
+            dbz3::iwtrad::PonerClave(uint32_t(d->clave));
+            dbz3::iwtrad::NuevaEntrada();
+          }
+          const uint32_t m = g_mando.load();
+          const uint16_t dd3 = uint16_t((m >> 16) | (m >> 24));
+          const uint16_t pad3 = uint16_t((m & ~0x00F0) | (dd3 & 0x00F0));
+          if (!dbz3::iwtrad::CuadroBucle(pad3)) trad_control_ = 3;   // roto o apagado: no esperar al original
+          // R23 IW-7: como el campo y los botones, el juego C++ espera mientras arranca el original.
+          if (dbz3::iwtrad::Arrancando()) continue;
+          uint32_t cfg = 0, flags = 0;
+          if (trad_control_ < 2 && dbz3::iwtrad::LeerPalabra(dbz3::iwtrad::DirIW(0x49CBA4), cfg) && cfg >= 0x100000 &&
+              dbz3::iwtrad::LeerPalabra(cfg + 0x8C, flags)) {
+            if (!(flags & 2) && trad_control_ == 0) trad_control_ = 1;
+            else if ((flags & 2) && trad_control_ == 1) {
+              trad_control_ = 2;
+              REXLOG_INFO("dbz3 iwdisparo: el original da el control (GameState_SetFlag2) en 0x{:X}; C++ en fase {} t {} listo {}",
+                          d->clave, int(fase_), t_, listo_t_);
+            }
+          }
+        }
         if (d->juego == 3) Cuadro3(base, mgr, *d);
         else if (d->juego == 15) Cuadro15(base, mgr, *d);
         else if (d->juego == 8) CuadroDisco(base, mgr, *d);
@@ -458,6 +606,10 @@ class Panel : public rex::ui::ImGuiDialog {
       tx_suma_.push_back(ps2::Crear(su));
     }
     efx_.clear();
+    if (d.juego == 9 && REXCVAR_GET(dbz3_iw_7d8_brillo_ready_original)) {
+      brillo_[0].reset();
+      brillo_[1].reset();
+    }
     aura_.reset();
     datos_ = &d;
     giro_disco_ = 0;
@@ -466,11 +618,15 @@ class Panel : public rex::ui::ImGuiDialog {
     fin_id_ = -1;
     fin_dur_ = 140;
     g_camclip = false;
+    g_alto9 = false;
     tx_d_ = ps2::Texturas(d.mano_d);
     hud_.clear();
     for (const P::Imagen& im : d.hud) hud_.push_back(ps2::Crear(im));
     tx_hit_ = ps2::Crear(d.hit);
     clear_ = ps2::Crear(d.clear);
+    ready_ = ps2::Crear(d.ready);
+    failed_ = ps2::Crear(d.failed);
+    start_ = ps2::Crear(d.start);
     tx_avisos3_.clear();for(const auto& im:d.avisos3_atlas)tx_avisos3_.push_back(ps2::Crear(im));
     juego_ = d.juego;
     res_ = iwmini::Resultado{};
@@ -490,6 +646,8 @@ class Panel : public rex::ui::ImGuiDialog {
     fz_interp_ = fz_ant_ok_ = false; fz_az_ant_ = fz_el_ant_ = 0; esquiva_dur_ = esquiva_vivida_ = 0;
     restante_ = float(kLimite[d.dif]);
     fase_ = kListo;
+    listo_t_ = 0;
+    r23_hp_ = r23_golpes_ = r23_fallos_ = 0;   // IW-06
     t_ = 0;
     acc_ = 0;
     disparos_ = 0;
@@ -522,6 +680,20 @@ class Panel : public rex::ui::ImGuiDialog {
     if (probar_acuse_piccolo_)
       REXLOG_INFO("dbz3 solIWX: Piccolo acuse candidato; normal=false, identidad tras reinicio A/B");
     semilla_ = uint32_t(std::chrono::steady_clock::now().time_since_epoch().count());
+    // F4: mismo recorrido en las dos corridas del piloto 7DE (voces ON/OFF).
+    if (d.clave == 0x7DE && g_auto) {
+      if (const char* valor = std::getenv("DBZ3_TEST_IW_7DE_SEMILLA_HEX")) {
+        const char* fin = valor + std::strlen(valor);
+        uint32_t semilla = 0;
+        const auto r = std::from_chars(valor, fin, semilla, 16);
+        if (fin - valor == 8 && r.ec == std::errc{} && r.ptr == fin && (semilla & 1u)) {
+          semilla_ = semilla;
+          REXLOG_INFO("dbz3 iwdisparo: F4 semilla piloto 7DE {:08X}", semilla);
+        } else {
+          REXLOG_WARN("dbz3 iwdisparo: F4 semilla ignorada (requiere 8 digitos hex y valor impar)");
+        }
+      }
+    }
 
     g_yaw = d.juego == 9 ? 3.14159265f : 0.0f;
     g_polar = d.juego == 9 ? 1.57079633f : 1.5708f - 0.06f;
@@ -537,6 +709,8 @@ class Panel : public rex::ui::ImGuiDialog {
       mira_x_ = 300, mira_y_ = 225;
       tramos_disponibles_ = 0;
       orig3_ = -1; acum3_ = 0; held3_ = 0; sem3_ = 0; aviso_fin3_ = false;
+      trad_disparo_entrada_ = false;   // PAQ_0: partida nueva = reenganchar el bucle traducido
+      trad_control_ = 0;
       mensaje3_.Reiniciar();bloqueo_tiro3_=false;tramo_preparado3_=false;cargar_postmensaje3_=false;fin3_inicio_=-1;
       tramo_espera_ = 0;
       ladrillo_vivo_ = fijado_ = false;
@@ -562,6 +736,11 @@ class Panel : public rex::ui::ImGuiDialog {
       rumbo_ = 0;
       p15_ = -1;
       antes15_ = 0;
+      intro15_original_ = -1;
+      intro15_estado_ = {};
+      intro15_clip_ = 0;
+      intro15_cuadro_ = 0;
+      intro15_preparaciones_ = 0;
       Camara15();
     }
     if (d.juego == 8) {   // MSN009: 180 s, N discos; Freezer al frente (yaw pi/2, pitch 0 de IW)
@@ -578,6 +757,12 @@ class Panel : public rex::ui::ImGuiDialog {
       g_yaw = 3.14159265f;
       g_polar = 1.57079633f;
     }
+    // IWINI (11/11): la entrada empieza ya aqui. Dibujar corre en los estados 3..8 del combate y Cuadro* solo en el 4:
+    // hasta el primer Cuadro (t_ = 1 -> Cine(mgr, 0, 0, 0)) g_cine valia 0 y se pintaban ~2 s las manos y el marcador
+    // del JUEGO con la camara de juego, que luego desaparecian (grabacion ser_7de 11/11 20:45; comun a 3/8/9/15).
+    // El primer clip no lleva actores: mascara 4 y su cuadro 0 como camara desde el fundido de entrada.
+    // La camara del cuadro 0 la pone OnDraw mientras espera (aqui el combate aun puede no existir).
+    if (HayCine(d)) g_cine = 4;
   }
   uint32_t Azar() {
     semilla_ = semilla_ * 1103515245u + 12345u;
@@ -672,9 +857,44 @@ class Panel : public rex::ui::ImGuiDialog {
   // encadena los clips del #AMC tal cual los pone el estado (los cuadros suman) y luego devuelve el mando a la camara
   // del juego. Devuelve true mientras dura la entrada (el cuadro ya esta puesto).
   bool HayCine(const Datos& d) const { return !sin_cine_ && !d.intro.empty() && d.intro_dur > 0; }
+  // IWINI-09 (12/11): el Ready de 100 cuadros que el original hace TRAS los clips (Viewer_StateReady EU 0x325840,
+  // Viewer_State_AimStart 0x34A070, MgShoot Ready 0x30B1C0; foto G02_0x7D3_INI campos 2880-2960: marcador, reloj
+  // parado y «READY?», luego «START!»). El port saltaba del clip al juego. Devuelve true mientras dura; `voz` = la
+  // frase de entrada al Ready (-1 sin voz). Sin clips la espera de 100 ya la hace cada juego.
+  bool PausaListo(const Datos& d, int voz, const char* motivo) {
+    if (TradYaJuega()) return false;   // R23 IW-7: el original ya juega: sin el Ready del port
+    if (!HayCine(d)) return EsperaTraducido() && ++listo_t_;
+    if (listo_t_ == 0) {
+      g_cine = 0;
+      if (voz >= 0) VozAnuncio(voz, motivo);
+      REXLOG_INFO("dbz3 iwdisparo: Ready tras los clips (100 cuadros) juego {}", juego_);
+    }
+    // IW-F06 (dbz3_iw_disparo_continuo_original): Viewer_State_AimStart EU 0x34A070 / Viewer_StateReady EU 0x325840 cuentan
+    // con Timer_SetSlot(100) y Timer_TickSlot EU 0x2EF990 (v < 0): pasan a jugar en la llamada 101 (voz 0xF / 1).
+    const bool f06 = (juego_ == 8 || juego_ == 9) && REXCVAR_GET(dbz3_iw_disparo_continuo_original);
+    return ++listo_t_ <= (f06 ? 101 : 100) || EsperaTraducido();   // R23 IW-7: y hasta que el original de el control
+  }
+  // IW-F06: reloj de UiTimer de 0x7D7/0x7D8 en tics (UiTimer_Init(tiempo) x60, UiTimer_Update EU 0x31EB60 en la tarea
+  // 0x54FF, despues del estado a 0x4100: s_MSN009_UPDATE 0x34B3F0 / s_MSN010_UPDATE 0x327590). El campo en que AimStart /
+  // Ready ponen el estado 1 ya descuenta un tic; cada campo de juego decide (UiTimer_IsFinished) con el valor del campo
+  // anterior y luego descuenta. Devuelve el restante en segundos para el resto del port.
+  void RelojVisorInicio() { reloj_visor_ = int(restante_) * 60 - 1; }
+  float RelojVisorPaso() {
+    const float r = reloj_visor_ <= 0 ? 0.0f : float(reloj_visor_) / 60.0f;
+    --reloj_visor_;
+    return r;
+  }
+  // IW-F06: Viewer_State_ShootRecoil EU 0x3498B0 / Viewer_StateActive EU 0x324E30: Timer_SetSlot(140) -> pose y clip de
+  // cierre en la llamada 141 (como MgShoot_St_GameOver del 7DE).
+  int InicioDerribo() const {
+    return (juego_ == 8 || juego_ == 9) && REXCVAR_GET(dbz3_iw_disparo_continuo_original) ? -1 : 0;
+  }
+  // La interfaz (manos, marcador, cartel) va 1-2 cuadros por delante de la vista: se calla ese rato al entrar en el
+  // Ready para no pintarse sobre la camara del ultimo clip (grabado en 7D8, w5largo).
+  bool Asentando() const { return fase_ == kListo && listo_t_ > 0 && listo_t_ < 3; }
   bool PasoIntro(uint8_t* base, uint32_t mgr, const Datos& d) {
     if (!HayCine(d)) return false;
-    const int f = t_ - 1;   // t_ empieza en 1 en el primer cuadro de kListo
+    const int f = TradYaJuega() ? d.intro_dur : t_ - 1;   // t_ empieza en 1 en el primer cuadro de kListo; R23 IW-7: el original ya juega, se corta la entrada
     if (f < 0) return true;
     if (f >= d.intro_dur) {
       g_camclip = false;
@@ -741,8 +961,12 @@ class Panel : public rex::ui::ImGuiDialog {
     if (t_==140) REXLOG_INFO("dbz3 solIW6: disparo fin espera140 clip {} duracion {}",fin_id_,fin_dur_-140+1);
     if (t_==140) {   // PINE: el codigo propio del actor a la vez que el clip
       const bool bien = !d.fin_bien.empty() && fin_id_ == d.fin_bien[0];
-      if (juego_ == 8) Cine(mgr, 3, bien ? 0xFA4 : 0xFA5, 0xFAA);
-      else if (juego_ == 9) Cine(mgr, 3, bien ? 0xFAE : 0xFAF, bien ? 0 : 0xFB0);
+      // IWINI-16 (12/11): en los cierres 1001/1002 Freezer tambien va a su suelo + pista (como la entrada, IWINI-06);
+      // con 50,83 salia como una raya en el cielo (grabado w16cierre_7d8 frente a G02_0x7D8_CIERRE_DENSO2 10720).
+      if (juego_ == 9) g_alto9 = true;
+      if (juego_ == 8) Cine(mgr, 3, bien ? 0xFA4 : 0xFA5, 0xFAA), VozKrilinFin(aciertos_);
+      else if (juego_ == 9) Cine(mgr, 3, bien ? 0xFAE : 0xFAF, bien ? 0 : 0xFB0),
+                            VozFreezer7D8(bien ? 10 : 0xD, "7D8 evento 10 al cierre (EU 0x327F90)");
       else if (juego_ == 15) Cine(mgr, 3, bien ? 0xFB6 : 0xFB7, 0x960);
       else if (juego_ == 3) Cine(mgr, 1, bien ? 0xFA1 : 0xFA2, 0);
     }
@@ -765,21 +989,40 @@ class Panel : public rex::ui::ImGuiDialog {
       if (HayCine(d)) {
         const int t0 = d.cams.count(0) ? d.cams.at(0).dur : 0;
         if (t_ == 1 && t0) Cine(mgr, 0, 0, 0);
-        if (t_ == t0 + 1) Cine(mgr, 3, 0xFAD, 0xFB0);                               // PINE: 0x438 y 0x3E8 con 1000
-        if (t_ == t0 + 441) Cine(mgr, 2, 0, 0xFB1, true);                           // 0x43D con 1003, sin Freezer
+        if (t_ == t0 + 1) Cine(mgr, 3, 0xFAD, 0xFB0), g_alto9 = juego_ == 9;        // PINE: 0x438 y 0x3E8 con 1000
+        if (t_ == t0 + 441) Cine(mgr, 2, 0, 0xFB1, true), g_alto9 = false;          // 0x43D con 1003, sin Freezer
+        if (t_ == t0 + 441 && juego_ == 9)   // IW-06: Viewer_StateIntro -> Countdown, Viewer_PlayEventSfx(0)
+          EvR23(0x7D8, 0, "Intro->Countdown (EU 0x325C30)", kPerfilFreezer, 4);
         if (PasoIntro(base, mgr, d)) return;
       } else if (t_ < 100) {
+        if (t_ == 1 && juego_ == 9) VozAnuncio(0, "7D8 Ready sin clips (EU 0x325AB0)");
         return;
       }
+      // 7D8: Viewer_StateCountdown EU 0x325AB0 -> Audio_PlayCharacterVoice(0) al acabar la camara; Viewer_StateReady EU
+      // 0x325840 -> (1) al acabar los 100 cuadros. Sin Ready tras los clips en el port: la que toca es la del Countdown.
+      if (listo_t_ == 0) dbz3::anim::Bucle(mgr + kX0 + kXPaso, 0xFB0);   // en su espera ya durante el Ready (G02_0x7D8_P02 3600)
+      if (listo_t_ == 0 && juego_ == 9 && HayCine(d))   // IW-06: Countdown -> Ready, Viewer_PlayEventSfx(2) sobre Piccolo
+        EvR23(0x7D8, 2, "Countdown->Ready (EU 0x325AB0)", -1, -1, 3, 0x1C);
+      const bool sigue_ready = PausaListo(d, juego_ == 9 ? 0 : -1, "7D8 Countdown->Ready (EU 0x325AB0)");
+      // EU3267F0 -> 32BDD0(-2, 0): prepara las dos manos antes de Viewer_StateReady.
+      // El dibujado del ELF traducido tiene su propio efecto.
+      if (juego_ == 9 && !dbz3::iwtrad::Activo() && REXCVAR_GET(dbz3_iw_7d8_brillo_ready_original))
+        BrilloManos7D8();
+      if (sigue_ready) return;
+      if (juego_ == 9) VozAnuncio(1, "7D8 Ready->Input (EU 0x325840)");
+      if (juego_ == 9) VozFreezer7D8(6, "7D8 evento 3 al empezar (EU 0x327F90)");
       g_cine = 0;
       dbz3::anim::Bucle(mgr + kX0 + kXPaso, 0xFB0);
       fase_ = kJuego;
       t_ = 0;
+      RelojVisorInicio();
       REXLOG_INFO("dbz3 iwdisparo: juego 0x{:X} empieza", d.clave);
       return;
     }
     if (fase_ == kJuego) {
-      restante_ -= 1.0f / 60.0f;
+      // IW-F06: Viewer_StateInput EU 0x325430 mira UiTimer_IsFinished con el reloj del campo anterior.
+      if (juego_ == 9 && REXCVAR_GET(dbz3_iw_disparo_continuo_original)) restante_ = RelojVisorPaso();
+      else restante_ -= 1.0f / 60.0f;
       // camara (Camera_OrbitInputUpdate): palanca fuera de la zona muerta (32) o la cruceta (+108, palanca << 8)
       const float vel = disparos_ < 3 ? 0.0165f : 0.01f;
       float gx = 0, gy = 0;
@@ -790,6 +1033,13 @@ class Panel : public rex::ui::ImGuiDialog {
         const uint16_t dd = uint16_t(dirs | (dirs >> 8));
         gx = float((dd & kDerecha) != 0) - float((dd & kIzquierda) != 0);
         gy = float((dd & kArriba) != 0) - float((dd & kAbajo) != 0);
+      }
+      if (juego_ == 9) PalancaR23(gx, gy, std::abs(sx) > 32 || std::abs(sy) > 32);   // IW-06: EU 0x3245D0
+      if (juego_ == 9 && R23()) {   // IW-06: Viewer_Update EU 0x3249C0, avisos de vida de Piccolo (una vez cada uno)
+        const float r = float(vida_) / float(std::max(vida_max_, 1));
+        if (!(r23_hp_ & 1) && r <= 0.75f) r23_hp_ |= 1, EvR23(0x7D8, 0xC, "vida <= 75 % (EU 0x3249C0)", -1, -1, 2, 1);
+        if (!(r23_hp_ & 2) && r <= 0.5f) r23_hp_ |= 2, EvR23(0x7D8, 0xD, "vida <= 50 % (EU 0x3249C0)", -1, -1, 2, 0x19);
+        if (!(r23_hp_ & 4) && r < 0.25f) r23_hp_ |= 4, EvR23(0x7D8, 9, "vida < 25 % (EU 0x3249C0)", -1, -1, 2, 0x1B);
       }
       bool fuego = (bot & kDisparo) != 0;
       if (g_auto) Piloto(base, mgr, gx, gy, fuego);
@@ -819,26 +1069,32 @@ class Panel : public rex::ui::ImGuiDialog {
         mano_ ^= 1;
         ++disparos_;
       }
-      if (juego_ == 9) for (int m = 0; m < 2; ++m) {   // EU 0x32BDD0 (-2, 0): Effect 8 (935/7) siempre en cada mano, se relanza al acabar
-        if (!brillo_[m] || !brillo_[m]->vivo) brillo_[m] = Lanzar(7, Mano(m, 0), Mas(Cam({0, 0, 1}), Por(Cam({0, 0, 0}), -1.0f)));
-        if (brillo_[m]) brillo_[m]->origen = Mano(m, retroceso_[m]);
+      if (juego_ == 9) BrilloManos7D8();
+      if (juego_ == 9 && ame::FielIW() && t_ % 60 == 1 && t_ < 1200) {   // PUL-IW-FX-02: el brillo 935/7 desde el inicio
+        size_t n = 0;
+        for (const auto& b : brillo_) if (b) for (const auto& l : b->ps) n += l.size();
+        REXLOG_INFO("pulfx02: 7D8 brillo de las manos t {} particulas {}", t_, n);
       }
       Rayos(base, mgr);
       MoverPiccolo(base, mgr, vida_ < 0.25f * vida_max_);
       if (vida_ <= 0) {
         fase_ = kDerribo;
-        t_ = 0;
+        t_ = InicioDerribo();
         segundos_ = float(kLimite[d.dif]) - restante_;
         g_suelo = true;
         dbz3::anim::Reproducir(mgr + kX0 + kXPaso, 0xFB2, true, 0, 0xFB0);   // PINE: 0x410 al quedarse sin vida
         ElegirFin(d, d.fin_bien);   // EU 0x324e30 Viewer_StateActive: clip 1001 (derribo)
+        // EU 0x326520 Viewer_CheckDepletedTransition: vida a 0 con el reloj sin acabar -> Audio_PlayCharacterVoice(7) = 1255
+        if (juego_ == 9) VozAnuncio(7, "7D8 derribo (EU 0x326520)");
         REXLOG_INFO("dbz3 iwdisparo: Piccolo derribado en {:.2f} s ({} disparos)", segundos_, disparos_);
       } else if (restante_ <= 0) {
         restante_ = 0;
         fase_ = kDerribo;
-        t_ = 0;
+        t_ = InicioDerribo();
         segundos_ = 0;   // Viewer_StateInput: tiempo agotado -> +0x10 = 0 -> sin rango
         ElegirFin(d, d.fin_mal);   // clip 1002 (tiempo agotado)
+        // EU 0x325430 Viewer_StateInput: UiTimer_IsFinished -> Audio_PlayCharacterVoice(0xC) = 1260
+        if (juego_ == 9) VozAnuncio(0xC, "7D8 tiempo agotado (EU 0x325430)");
         REXLOG_INFO("dbz3 iwdisparo: TIEMPO (vida de Piccolo {} de {})", vida_, vida_max_);
       }
       return;
@@ -899,16 +1155,32 @@ class Panel : public rex::ui::ImGuiDialog {
           }
         }
         if (t_ == t0 + 1) Cine(mgr, 3, 0xFA3, 0xFAA);   // PINE: 0x3D4 y 0x384 con 950
+        // IW-06: Viewer_State_ShootSetup EU 0x34A280 pone a Krilin en el estado 5 y Viewer_PlayCharReaction(0); su tick
+        // (Char_PoseTickSpinEvents EU 0x35CE50, tabla EU 0x49B200[5]) da los eventos 1 y 2 a los 180 y 360 cuadros (+0xCC8).
+        // [VERIFICAR] que la tabla 0x49B200 sea la de ticks por estado (indice 5).
+        if (t_ == t0 + 1) EvR23(0x7D7, 0, "ShootSetup->ShootIntroReady (EU 0x34A280)", kPerfilKrilin, 0xD);
+        if (t_ == t0 + 181) EvR23(0x7D7, 1, "estado 5 a 180 cuadros (EU 0x35CE50)", kPerfilKrilin, 0xE);
+        if (t_ == t0 + 361) EvR23(0x7D7, 2, "estado 5 a 360 cuadros (EU 0x35CE50)", kPerfilKrilin, 0xF);
         if (PasoIntro(base, mgr, d)) return;
       } else if (t_ < 100) {
+        if (t_ == 1) VozAnuncio(0xE, "7D7 AimStart sin clips (EU 0x34A1D0)");
         return;
       }
+      // 7D7: Viewer_State_ShootIntroReady EU 0x34A1D0 -> Audio_PlayCharacterVoice(0xE) = 1262 al acabar la camara;
+      // Viewer_State_AimStart EU 0x34A070 -> (0xF) = 1263 a los 100 cuadros. Sin AimStart tras el clip en el port.
+      if (listo_t_ == 0) {   // Krilin de espaldas y Freezer en su espera ya durante el Ready (G02_0x7D7_P02 3500)
+        dbz3::anim::Bucle(mgr + kX0, 0xFA6);
+        dbz3::anim::Bucle(mgr + kX0 + kXPaso, 0xFAA);
+      }
+      if (PausaListo(d, 0xE, "7D7 intro->AimStart (EU 0x34A1D0)")) return;
+      VozAnuncio(0xF, "7D7 AimStart->Aim (EU 0x34A070)");
       g_cine = 0;
       dbz3::anim::Bucle(mgr + kX0, 0xFA6);
       dbz3::anim::Bucle(mgr + kX0 + kXPaso, 0xFAA);
       (void)::dbz3::original::FuenteIw();   // dia1O: lee el ELF aqui y no en el primer freno
       fase_ = kJuego;
       t_ = 0;
+      RelojVisorInicio();
       REXLOG_INFO("dbz3 iwdisparo: juego 0x{:X} empieza", d.clave);
       return;
     }
@@ -923,7 +1195,10 @@ class Panel : public rex::ui::ImGuiDialog {
       }
       return;
     }
-    restante_ -= 1.0f / 60.0f;
+    // IW-F06: Viewer_State_AimShootA/B/D EU 0x349250/0x348EF0/0x349CE0 miran UiTimer_IsFinished con el reloj del campo
+    // anterior (RelojVisorPaso).
+    if (REXCVAR_GET(dbz3_iw_disparo_continuo_original)) restante_ = RelojVisorPaso();
+    else restante_ -= 1.0f / 60.0f;
     // Escena desechable del arnes, equivalente a los contadores de PINE;
     // no es una opcion del jugador ni modifica una partida guardada.
     if (std::getenv("DBZ3_TEST_IWMINI")&&t_==120)
@@ -941,6 +1216,7 @@ class Panel : public rex::ui::ImGuiDialog {
       gx = float((dd & kDerecha) != 0) - float((dd & kIzquierda) != 0);
       gy = float((dd & kArriba) != 0) - float((dd & kAbajo) != 0);
     }
+    PalancaR23(gx, gy, std::abs(sx) > 32 || std::abs(sy) > 32);   // IW-06: EU 0x348520
     bool fuego = (bot & kDisparo) != 0;
     if (g_auto) Piloto(base, mgr, gx, gy, fuego);
     if (pausa_ > 0) {   // AimShootC: 120 cuadros o el boton
@@ -959,6 +1235,8 @@ class Panel : public rex::ui::ImGuiDialog {
       disco_ = 1;
       carga_ = 0;
       dbz3::anim::Reproducir(mgr + kX0, 0xFA7, true, 0, 0xFA8);   // PINE: 0x3B7 y 0x3B8 cargando
+      static constexpr int kSeCarga[3] = {0, 4, 0x22};   // Viewer_PlayCharReaction(6): Memory() % 3
+      EvR23(0x7D7, 6, "AimShootA->B carga (EU 0x349250)", -1, -1, 2, kSeCarga[AzarR23() % 3]);
     } else if (disco_ == 1 && ++carga_ >= 40) {   // fase 0x12 a los 40: listo
       disco_ = 2;
     } else if (disco_ == 2 && fuego && !fuego_antes_) {   // AimShootB: lanza (pose 10), un disco menos
@@ -972,6 +1250,8 @@ class Panel : public rex::ui::ImGuiDialog {
       disco_ = 3;
       --tiros_;
       dbz3::anim::Reproducir(mgr + kX0, 0xFA9, true, 0, 0xFA6);   // PINE: 0x3B9 al lanzar y vuelta a 0x3B6
+      static constexpr int kSeLanza[4] = {2, 0x19, 0x1A, 0x1B};   // Viewer_PlayCharReaction(7): Memory() & 3
+      EvR23(0x7D7, 7, "AimShootB->AimAndShoot lanza (EU 0x348EF0)", -1, -1, 2, kSeLanza[AzarR23() & 3]);
       retroceso_[1] = 1.0f;
       REXLOG_INFO("dbz3 iwdisparo: Kienzan lanzado (quedan {}; mira {})", tiros_,
                   bloqueo_ >= 0 ? "en un hueso" : "libre");
@@ -982,16 +1262,18 @@ class Panel : public rex::ui::ImGuiDialog {
     if (disco_ == 3) return;   // AimShootD mira el resultado cuando el disco acaba
     if (aciertos_ >= 7) {
       fase_ = kDerribo;
-      t_ = 0;
+      t_ = InicioDerribo();
       segundos_ = 180.0f - restante_;
       ElegirFin(d,d.fin_bien);
+      VozAnuncio(0x15, "7D7 7 aciertos (EU 0x3499C0/0x349CE0)");   // 1269
       REXLOG_INFO("dbz3 iwdisparo: 7 aciertos en {:.2f} s", segundos_);
     } else if (restante_ <= 0 || aciertos_ + tiros_ < 7) {
       restante_ = std::max(restante_, 0.0f);
       fase_ = kDerribo;
-      t_ = 0;
+      t_ = InicioDerribo();
       segundos_ = 0;   // ce78+8 = -1: sin banda
       ElegirFin(d,d.fin_mal);
+      VozAnuncio(0x19, "7D7 fallo (EU 0x348EF0/0x349250/0x349CE0)");   // 1273
       REXLOG_INFO("dbz3 iwdisparo: FALLO ({} aciertos, {} discos, {:.1f} s)", aciertos_, tiros_, restante_);
     }
   }
@@ -1001,7 +1283,9 @@ class Panel : public rex::ui::ImGuiDialog {
     float dmin = 1e9f;
     for (uint32_t i = 0; i < 22; ++i) {
       const uint32_t a = x1 + 1616 + 16 * i;
-      const float dd = Largo(Mas(p, Por(V3{LoadF(base, a), LoadF(base, a + 4), LoadF(base, a + 8)}, -1.0f)));
+      // R23: los huesos (X+1616) estan en el MUNDO y el disco/mira en el modulo: T7 (su propia inversa) los iguala.
+      // Antes se comparaban sin pasar (Freezer z~485 contra el disco z~-126): ningun disco podia acertar.
+      const float dd = Largo(Mas(p, Por(T7(V3{LoadF(base, a), LoadF(base, a + 4), LoadF(base, a + 8)}), -1.0f)));
       if (dd <= radio + kRadioHueso[i] && dd < dmin) dmin = dd, mejor = int(i);
     }
     return mejor;
@@ -1011,7 +1295,7 @@ class Panel : public rex::ui::ImGuiDialog {
     const V3 ojo = Ojo();
     if (bloqueo_ >= 0 && combustible_ > 0 && Largo(Mas(disco_p_, Por(ojo, -1.0f))) < kRadioFz) {
       const uint32_t a = x1 + 1616 + 16 * uint32_t(bloqueo_);
-      V3 h = Mas(V3{LoadF(base, a), LoadF(base, a + 4), LoadF(base, a + 8)}, Por(disco_p_, -1.0f));
+      V3 h = Mas(T7(V3{LoadF(base, a), LoadF(base, a + 4), LoadF(base, a + 8)}), Por(disco_p_, -1.0f));   // R23: hueso al modulo
       h = Por(h, 1.0f / std::max(Largo(h), 1e-3f));
       const V3 v = Mas(Por(disco_v_, (1.0f - combustible_) / kDiscoVel), Por(h, combustible_));
       disco_v_ = Por(v, kDiscoVel / std::max(Largo(v), 1e-3f));
@@ -1024,10 +1308,28 @@ class Panel : public rex::ui::ImGuiDialog {
       disco_ = 0;
       dbz3::anim::Reproducir(mgr + kX0 + kXPaso, 0xFAB, true, 0, 0xFAA);   // PINE: 0x3AC
       chispas_.push_back({disco_p_, 0});
+      if (fase_ == kJuego && aciertos_ < 7) {   // IW-06: Viewer_State_AimAndShoot EU 0x348B40, Viewer_PlayCharReaction(4)
+        switch (AzarR23() & 3) {
+          case 0: EvR23(0x7D7, 4, "acierto (EU 0x348B40)", kPerfilFreezer, 2); break;
+          case 1: EvR23(0x7D7, 4, "acierto (EU 0x348B40)", kPerfilFreezer, 3); break;
+          case 2: EvR23(0x7D7, 4, "acierto (EU 0x348B40)", -1, -1, 2, 0xB); break;
+          default: EvR23(0x7D7, 4, "acierto (EU 0x348B40)", -1, -1, 2, 0xC); break;
+        }
+      }
       REXLOG_INFO("dbz3 iwdisparo: Kienzan acierta (hueso {}): {} aciertos", h, aciertos_);
     } else if (Largo(Mas(disco_p_, Por(ojo, -1.0f))) > kRadioFz) {
       disco_ = 0;
       if (++fallos_seguidos_ >= 3) pausa_ = 120;
+      if (fase_ == kJuego && R23()) {   // IW-06: Viewer_State_AimAndShoot EU 0x348B40, fallo
+        if (fallos_seguidos_ >= 3) {   // AimShootC + Viewer_PlayCharReaction(5); el original deja +4 a 0
+          EvR23(0x7D7, 5, "3 fallos, AimShootC (EU 0x348B40)", kPerfilFreezer, int(AzarR23() & 1));
+          fallos_seguidos_ = 0;
+        } else if (tiros_ - (7 - aciertos_) >= 0) {   // Viewer_PlayCharReaction(3): +0x10 = la mira estaba fijada
+          if (bloqueo_ >= 0) EvR23(0x7D7, 3, "fallo con la mira fijada (EU 0x348B40)", kPerfilKrilin, 0x11);
+          else if (AzarR23() & 1) EvR23(0x7D7, 3, "fallo (EU 0x348B40)", -1, -1, 2, 0x10);
+          else EvR23(0x7D7, 3, "fallo (EU 0x348B40)", kPerfilKrilin, 0x10);
+        }
+      }
       REXLOG_INFO("dbz3 iwdisparo: Kienzan falla ({} seguidos)", fallos_seguidos_);
     }
   }
@@ -1253,6 +1555,82 @@ class Panel : public rex::ui::ImGuiDialog {
   // proyectada cae en el rombo (300,147)-(403,250)-(300,353)-(197,250) de la pantalla de 600x500 (EU 0x480A10,
   // Char_IsProjectedInQuad). Peligro = altura de Cell / 400: >= 0,5 DANGER, >= 1 o energia <= 0 pierde. Tiempo
   // {40..160} s; al acabar p = altura / 400: <= 0,0001 Z, <= 0,1 S, <= 0,4 A, <= 0,7 B, si no C; {3600..6000} x mult.
+  // F1 R4: control PreIntro/Intro/Ready original; el reloj de cada clip es una
+  // entrada real del sampler del port. No sumar duraciones ni usar el 361 fijo.
+  // El espejo completo viaja en intro15_estado_, independiente de otros usuarios EE.
+  bool Intro15Original(uint8_t* base, uint32_t mgr, const Datos& d, uint16_t pulsado) {
+    namespace dc = dbz3::iwmips::disparo;
+    using Fase = dc::FaseIntroCell;
+    if (intro15_original_ == 0 || !dc::g_intro_cell) return false;
+    const auto it = d.cams.find(intro15_clip_);
+    const int duracion = HayCine(d) && it != d.cams.end() ? std::max(0, it->second.dur - 1) : 0;
+    dc::EntradaIntroCell in;
+    in.estado = intro15_estado_;
+    in.camara = float(std::min(intro15_cuadro_, duracion));
+    in.duracion = float(duracion);
+    in.pulsado = pulsado;
+    dc::SalidaIntroCell out;
+    if (!dc::g_intro_cell(in, out)) {
+      if (intro15_original_ == 1) {
+        REXLOG_WARN("dbz3 iwdisparo: intro original interrumpida; reinicia entrada del port");
+        t_ = 1;
+      }
+      intro15_original_ = 0;
+      return false;
+    }
+    if (intro15_original_ < 0) {
+      intro15_original_ = 1;
+      Cine(mgr, 0, 0, 0);
+      REXLOG_INFO("dbz3 iwdisparo: intro original Cell activa (PreIntro/Intro/Ready, paso 1)");
+    }
+    const auto anterior = intro15_estado_.fase;
+    intro15_estado_ = out.estado;
+    if (out.clip >= 0) {
+      intro15_clip_ = out.clip;
+      intro15_cuadro_ = 0;
+      if (out.clip == 1300) Cine(mgr, 3, 0xFB5, 0x960), VozTen(0x32, "PreIntro->Intro, evento 0 (EU 0x30B410)");
+      else if (out.clip == 1303) Cine(mgr, 2, 0, 0xFB8, true);
+    }
+    // SetupRound es una frontera explicita: aplicar la preparacion del port por
+    // CADA solicitud (incluida la doble peticion natural+START), nunca desde un hook EE.
+    for (int i = 0; i < out.preparaciones; ++i) {
+      energia_ = 1.f;
+      restante_ = float(kTiempo15[dif15_]);
+      mx_ = 0; mz_ = 200;
+      sub15_ = t15_ = kikoho_ = 0;
+      baja_usada_ = false;
+      ++intro15_preparaciones_;
+    }
+    if (out.estado.fase == Fase::ready || out.estado.fase == Fase::mira) {
+      g_camclip = false;
+      g_cine = 0;
+      Camara15();
+    } else if (HayCine(d)) {
+      float ojo[3], obj[3];
+      if (!ClipPose(d, intro15_clip_, float(intro15_cuadro_), base, mgr, ojo, obj)) {
+        // Clip ausente no puede bloquear la maquina: se da por terminado en el
+        // cuadro siguiente, igual que SIN_CINE. No se finge haber dibujado un clip.
+        intro15_cuadro_ = duracion;
+      } else {
+        PonerCamara(ojo, obj);
+        ++intro15_cuadro_;
+      }
+    }
+    if (out.estado.fase == Fase::ready && anterior != Fase::ready) {
+      VozAnuncio(0, "Intro->Ready (EU 0x30B1C0)");
+      REXLOG_INFO("dbz3 iwdisparo: intro original Cell Ready reloj=100 setup={}", intro15_preparaciones_);
+    }
+    if (out.estado.fase == Fase::mira) {
+      VozAnuncio(1, "Ready->Aim (EU 0x30B110)");
+      fase_ = kJuego;
+      t_ = 0;
+      Reloj15Inicio();
+      REXLOG_INFO("dbz3 iwdisparo: intro original Cell Aim setup={}", intro15_preparaciones_);
+      REXLOG_INFO("dbz3 iwdisparo: juego 0x{:X} empieza", d.clave);
+      CellEstado(1);
+    }
+    return true;
+  }
   // EU 0x30CCF0 s_MSN016_UPDATE
   // EU 0x30CC40 Minigame_SetupScene
   void Cuadro15(uint8_t* base, uint32_t mgr, const Datos& d) {
@@ -1261,6 +1639,7 @@ class Panel : public rex::ui::ImGuiDialog {
     const uint32_t m = g_mando.load();
     const uint16_t bot = uint16_t(m & 0xFFFF), dirs = uint16_t(m >> 16);
     const bool nuevo = (bot & kDisparo) && !(antes15_ & kDisparo);
+    const uint16_t pulsado = uint16_t(bot & ~antes15_);
     antes15_ = bot;
     const int pal = g_palanca.load();
     const int sx = int8_t(pal & 0xFF), sy = int8_t((pal >> 8) & 0xFF);
@@ -1268,29 +1647,63 @@ class Panel : public rex::ui::ImGuiDialog {
     // el Ready de 100 cuadros.
     if (fase_ == kListo) {
       if (t_ == 1 && g_x1.load()) dbz3::anim::Bucle(g_x1.load(), 0x960);   // en reposo (0x640, estado 0)
+      if (Intro15Original(base, mgr, d, pulsado)) return;
       if (HayCine(d)) {
         const int t0 = d.cams.count(0) ? d.cams.at(0).dur : 0;
         if (t_ == 1 && t0) Cine(mgr, 0, 0, 0);
-        if (t_ == t0 + 1) Cine(mgr, 3, 0xFB5, 0x960);        // PINE: 0x690 con 1300
+        if (t_ == t0 + 1) Cine(mgr, 3, 0xFB5, 0x960), VozTen(0x32, "PreIntro->Intro, evento 0 (EU 0x30B410)");   // PINE: 0x690 con 1300
         if (t_ == t0 + 361) Cine(mgr, 2, 0, 0xFB8, true);    // 0x695 con 1303, sin Ten
         if (PasoIntro(base, mgr, d)) return;
       } else if (t_ < 100) {
+        if (t_ == 1) VozAnuncio(0, "Ready sin clips (EU 0x30B1C0)");
         Camara15();
         return;
       }
+      // Sin la intro original el port no tiene Ready tras los clips: la frase que toca al acabar es la de la Intro.
+      if (PausaListo(d, 0, "Intro->Ready (EU 0x30B1C0)")) { Camara15(); return; }
+      VozAnuncio(1, "Ready->Aim (EU 0x30B110)");
       g_cine = 0;
       fase_ = kJuego;
       t_ = 0;
+      Reloj15Inicio();
       REXLOG_INFO("dbz3 iwdisparo: juego 0x{:X} empieza", d.clave);
       if (const char* r = std::getenv("DBZ3_TEST_MANOS15_RAFAGA")) if (FILE* f = std::fopen("dbz3_shot.req", "wb")) { std::fputs(r, f); std::fclose(f); }   // eIW2: fotos por cuadro del juego (prueba)
       CellEstado(1);
       return;
     }
     if (fase_ == kJuego) {
-      restante_ -= 1.0f / 60.0f;
-      if (sub15_ != 4) CellCuadro(d);   // en la espera de energia baja Cell se para (Store5d94c0Pair(0, 0))
+      // IW-F05: con el Aim del ELF, LowEnergyWait pone el reloj de UI en pausa (UiTimer_SetState 3; UiTimer_Update EU 0x31EB60
+      // solo descuenta en el estado 1) hasta volver a Aim (estado 1).
+      // IW-F05b (dbz3_iw_disparo_continuo_original): orden de tareas del original por campo (s_MSN016_UPDATE EU 0x30CD08 y
+      // s_PLY_PRE_EXEC): MgShoot (0x4100) decide con la altura de Cell y el reloj del campo ANTERIOR; despues se mueve Cell
+      // (0x5300) y descuenta el reloj (MgShoot_UpdateUiTimerBeeps 0x30A120, 0x54FF). Ver el final de este bloque.
+      const bool continuo = REXCVAR_GET(dbz3_iw_disparo_continuo_original);
+      if (continuo) {
+        restante_ = reloj15_ <= 0 ? 0.0f : float(reloj15_) / 60.0f;   // UiTimer_IsFinished: estado 2 si quedan <= 0 tics
+      } else {
+        if (!(sub15_ == 4 && fuego_elf_)) restante_ -= 1.0f / 60.0f;
+        if (sub15_ != 4) CellCuadro(d);   // en la espera de energia baja Cell se para (Store5d94c0Pair(0, 0))
+      }
+      // R23 IW-7: con el original traducido jugando, Cell, la energia y el reloj son los SUYOS (los que pinta su HUD):
+      // altura *(0x49CA70)+0x2914, energia *(0x49CDBC)+4 y UiTimer *(0x49CDE4)+0x14 (tics de 1/60 s). Asi el 3D sigue al HUD y el
+      // final cae en el mismo cuadro que MgShoot_St_Aim/CheckTimeUp del original (EU 0x30ADE0/0x30BE70).
+      // ponytail: el piloto de prueba (g_auto) solo mueve el lado C++ (su disparo no llega al mando del original), asi
+      // que con el piloto Cell sigue siendo la del port; mandar su entrada al original si hace falta probarlo asi.
+      if (TradYaJuega() && !g_auto) {
+        auto f = [](uint32_t dir, uint32_t mas, float& v) {
+          uint32_t b = 0, w = 0;
+          if (!dbz3::iwtrad::LeerPalabra(dbz3::iwtrad::DirIW(dir), b) || b < 0x100000 || !dbz3::iwtrad::LeerPalabra(b + mas, w)) return;
+          std::memcpy(&v, &w, 4);
+        };
+        f(0x49CA70, 0x2914, cy_);
+        f(0x49CD6C, 0x84, alto15_);   // Camera_GetControllerPtr()+0x84: el tope de Cell (el medidor llega a 350)
+        f(0x49CDBC, 4, energia_);
+        float tics = restante_ * 60.0f;   // UiTimer_Update resta fRam0049c7dc (1,2 por campo PAL): tics de 1/60 s
+        f(0x49CDE4, 0x14, tics);
+        restante_ = tics / 60.0f;
+      }
       // fin por tiempo (MgShoot_CheckTimeUp) o derrota (energia <= 0, Cell a la altura de Ten)
-      const float p = cy_ / kAltura15;
+      const float p = cy_ / (alto15_ > 1.0f ? alto15_ : kAltura15);   // MgShoot_St_Aim: altura / (camara+0x84)
       if (restante_ <= 0) {
         restante_ = 0;
         p15_ = p;
@@ -1311,7 +1724,23 @@ class Panel : public rex::ui::ImGuiDialog {
           gz = float((dd & kAbajo) != 0) - float((dd & kArriba) != 0);
         }
         if (g_auto) Piloto15(gx, gz, fuego, carga);
-        if (sub15_ == 0) {   // mira
+        namespace dcm = dbz3::iwmips::disparo;
+        dcm::SalidaMira mira_orig;
+        // IW-F05 (dbz3_iw_disparo_mira_original): un campo de MgShoot_St_Aim del ELF con la cruceta o la palanca
+        // (fuera de la zona muerta de 32 el original solo mira la palanca y avanza 1,5 en su direccion).
+        const uint16_t cruceta = uint16_t((gx > 0 ? kDerecha : 0) | (gx < 0 ? kIzquierda : 0) | (gz > 0 ? kAbajo : 0) |
+                                          (gz < 0 ? kArriba : 0));
+        if (sub15_ == 0 && dcm::g_mira_cell &&
+            dcm::g_mira_cell({mx_, mz_, energia_, cy_, baja_usada_, uint16_t(cruceta | (carga ? 0x8000u : 0u)),
+                              uint16_t(fuego ? kDisparo : 0), int8_t(sx), int8_t(sy)}, mira_orig)) {
+          mx_ = mira_orig.x, mz_ = mira_orig.z, baja_usada_ = mira_orig.usada;
+          fuego_elf_ = true;
+          if (mira_orig.siguiente == dcm::SiguienteMira::carga) sub15_ = 1;
+          else if (mira_orig.siguiente == dcm::SiguienteMira::fuego) sub15_ = 2, t15_ = 0;
+          else if (mira_orig.siguiente == dcm::SiguienteMira::baja)
+            sub15_ = 4, t15_ = 0, VozTen(0x40, "LowEnergyWait, evento 7 (EU 0x30ADE0)");
+        } else if (sub15_ == 0) {   // mira
+          fuego_elf_ = false;
           mx_ = std::clamp(mx_ + gx * 1.5f, -111.0f, 74.0f);   // derecha (0x20) X + 1,5; arriba (0x10) Z - 1,5
           mz_ = std::clamp(mz_ + gz * 1.5f, 60.0f, 280.0f);
           if (carga && energia_ < 1.0f) {
@@ -1323,15 +1752,29 @@ class Panel : public rex::ui::ImGuiDialog {
             sub15_ = 4;   // LowEnergyWait: 220 cuadros
             t15_ = 0;
             baja_usada_ = true;
+            VozTen(0x40, "LowEnergyWait, evento 7 (EU 0x30ADE0)");
           }
         } else if (sub15_ == 1) {   // Charge: +0,1 / (2 x 60) por cuadro; Effect 6 (935/19) en las manos
-          energia_ += 0.1f / 120.0f;
+          namespace dc = dbz3::iwmips::disparo;
+          dc::SalidaCarga original;
+          // Piloto15 puede cambiar la decision de carga: pasar el mando efectivo.
+          const uint16_t mando_carga = uint16_t((bot & ~0x8000u) | (carga ? 0x8000u : 0u));
+          const bool carga_original = dc::g_carga_cell && dc::g_carga_cell({energia_, cy_, mando_carga}, original);
+          if (carga_original) {
+            energia_ = original.energia;
+            if (original.volver_mira) sub15_ = 0;
+          } else {
+            energia_ += 0.1f / 120.0f;
+            if (energia_ > 1.0f || !carga) energia_ = std::min(energia_, 1.0f), sub15_ = 0;
+          }
           if (!aura_ || !aura_->vivo) aura_ = Lanzar(19, Cam({0, -0.6f, 4.0f}), Mas(Cam({0, 0, 1}), Por(Cam({0, 0, 0}), -1.0f)));
-          if (energia_ > 1.0f || !carga) energia_ = std::min(energia_, 1.0f), sub15_ = 0;
         } else if (sub15_ == 2) {   // Fire: 32 cuadros de carga, el disparo, 32 de luces
           const V3 manos = Cam({0, -0.6f, 4.0f}), fv = Mas(Cam({0, 0, 1}), Por(Cam({0, 0, 0}), -1.0f));
           if (t15_ == 0) Lanzar(3, manos, fv);   // Effect 2 (935/3): la carga
-          if (++t15_ == 32) {
+          // IW-F05: con el Aim del ELF, los tiempos de MgShoot_St_Fire EU 0x30A800 (disparo_fire.py: espera de 33 llamadas
+          // con paso 1): Fire0 en la llamada 1, el disparo (Fire2) en la 35 y la vuelta a Aim en la 68.
+          const int t_disparo = fuego_elf_ ? 35 : 32, t_vuelta = fuego_elf_ ? 68 : 64;
+          if (++t15_ == t_disparo) {
             Lanzar(4, manos, Por(fv, -1.0f));   // Effect 3 (935/4) con la direccion negada
             Lanzar(6, manos, fv);               // Effect 5 (935/6): el Kikoho hacia la mira
             energia_ -= 0.1f;
@@ -1344,13 +1787,19 @@ class Panel : public rex::ui::ImGuiDialog {
               CellGolpe();
               chispas_.push_back({V3{cx_, cy_ + 6.0f, cz_}, 0});   // el golpe (Effect 4 de IW): la chispa t21
             }
-          } else if (t15_ >= 64) {
+          } else if (t15_ >= t_vuelta) {
             sub15_ = 0;
           }
         } else if (sub15_ == 4) {
-          if (++t15_ >= 220) sub15_ = 0;
+          // IW-F05: con el Aim del ELF, LowEnergyWait EU 0x30A530 dura 221 llamadas con paso 1 (disparo_low.py)
+          if (++t15_ >= (fuego_elf_ ? 221 : 220)) sub15_ = 0;
         }
       }
+      if (continuo && fase_ == kJuego) {
+        if (sub15_ != 4) CellCuadro(d);                 // tarea de Cell 0x5300 (parada en LowEnergyWait: Store5d94c0Pair(0, 0))
+        if (!(sub15_ == 4 && fuego_elf_)) --reloj15_;   // UiTimer_Update EU 0x31EB60: -paso (1) solo en el estado 1
+      }
+      if (continuo) Pitido15(reloj15_);   // RESCATE IW-F07: 0x30A120 tras el descuento (y en el campo de entrada a GameOver)
       if (kikoho_ > 0) --kikoho_;
       for (auto& c : chispas_) c.second += 1;
       chispas_.erase(std::remove_if(chispas_.begin(), chispas_.end(), [](const auto& c) { return c.second > 20; }),
@@ -1362,21 +1811,35 @@ class Panel : public rex::ui::ImGuiDialog {
       if (kikoho_ > 0) --kikoho_;
       Camara15();
       PasoFinal(base, mgr, d);
+      Pitido15(reloj15_);   // RESCATE IW-F07: la tarea 0x54FF sigue con el reloj parado (estado 3)
+      // EU 0x30A3D0 MgShoot_St_GameOver: al vencer Timer_SetSlot(140), en la MISMA llamada que la pose 8/9 de Ten (que
+      // PasoFinal pone en t_ == 140), evento 10: Ten dice 0x39 si 0 <= p < 1 y 0x3B si no.
+      if (t_ == 140) VozTen(p15_ >= 0 && p15_ < 1 ? 0x39 : 0x3B, "GameOver, evento 10 (EU 0x30A3D0)");
       if (t_ >= fin_dur_) {
         fase_ = kFinal;
         Acabar(base, mgr, d);
       }
     }
   }
+  // IW-F05b: SetupRound pone UiTimer_Init(tiempo) (x60 tics) y el campo del fin de Ready ya descuenta uno (Ready pone el
+  // estado 1 en la tarea 0x4100 y UiTimer_Update corre despues en la 0x54FF).
+  void Reloj15Inicio() { reloj15_ = kTiempo15[dif15_] * 60 - 1; }
   void Final15(const char* por) {
     fase_ = kDerribo;
-    t_ = 0;
+    // IW-F05b: MgShoot_St_GameOver EU 0x30A3D0 con Timer_SetSlot(140) y Timer_TickSlot EU 0x2EF990 (v -= paso; v < 0):
+    // la pose 8/9 de Ten, el evento 10 y WaitResult llegan en la llamada 141, no en la 140.
+    t_ = REXCVAR_GET(dbz3_iw_disparo_continuo_original) ? -1 : 0;
     segundos_ = p15_ >= 0 && p15_ < 1 ? float(kTiempo15[dif15_]) : 0;   // para el CLEAR y el registro
     // DS126: los clips lo dicen al reves de DS123: contenido (p en [0,1), Cell a ras de suelo) -> 1302 (ojo y=3.7);
     // Cell arriba o sin energia -> 1301 (ojo y=152). Ver Empezar.
     // EU 0x30a3d0 MgShoot_St_GameOver
     if (datos_) ElegirFin(*datos_, p15_ >= 0 && p15_ < 1 ? datos_->fin_bien : datos_->fin_mal);
+    // EU 0x30BE70 MgShoot_CheckTimeUp: 5 (1253) si 0 <= p < 1, si no 0xD (1261); Aim/Fire/Charge sin energia (EU
+    // 0x30ADE0/0x30A800/0x30A5C0, p = -1): 0xD (1261). Las dos al entrar en GameOver.
+    VozAnuncio(p15_ >= 0 && p15_ < 1 ? 5 : 0xD, "entrada en GameOver (EU 0x30BE70 / 0x30A800)");
     REXLOG_INFO("dbz3 iwdisparo: fin del 15 ({}): altura de Cell {:.1f}, p {:.4f}", por, cy_, p15_);
+    if (REXCVAR_GET(dbz3_iw_disparo_continuo_original))
+      REXLOG_INFO("dbz3 iwdisparo: f07 gameover reloj {} y {:.3f}", reloj15_, cy_);
     if (g_x1.load()) dbz3::anim::Corredor(g_x1.load(), false);
   }
   // EU 0x3245D0 Camera_OrbitInputUpdate
@@ -1424,12 +1887,20 @@ class Panel : public rex::ui::ImGuiDialog {
     cc0_ = cst_ == e ? cc0_ + 1 : 0;
     cst_ = e;
     ce_t_ = 0;
+    // RESCATE IW-F07: traza para comparar con G02_0x7DE_MEM2/por_campo.tsv (pose de Cell, tics de UiTimer, altura)
+    if (REXCVAR_GET(dbz3_iw_disparo_continuo_original))
+      REXLOG_INFO("dbz3 iwdisparo: f07 cell estado {} vuelta {} reloj {} y {:.3f}", e, cc0_, reloj15_, cy_);
     // la animacion de IW de cada estado (auditoria7/I, Char_EnterPoseState0..6Alt; la 1.a entrada y las siguientes)
     if (const uint32_t x1 = g_x1.load()) {
       const uint32_t an[7][3] = {{0x960, 0x960, 0x960}, {0x961, 0x962, 0x962}, {0x963, 0x963, 0x963},
                                  {0x964, 0x965, 0x966}, {0x967, 0x968, 0x968}, {0x969, 0x96A, 0x96A},
                                  {0x96B, 0x96B, 0x96B}};
-      if (e >= 0 && e < 7) dbz3::anim::Bucle(x1, an[e][std::min(cc0_, 2)]);
+      if (e >= 0 && e < 7) {
+        const uint32_t codigo = an[e][std::min(cc0_, 2)];
+        // EU 31CEF0: Enter3 llama BonesMovement y reinicia CC8 tambien al repetir 659.
+        if (e == 3 && std::getenv("DBZ3_IW_ANI2_7DE")) dbz3::anim::BucleForzado(x1, codigo);
+        else dbz3::anim::Bucle(x1, codigo);
+      }
     }
     if (e == 3) cvy_ = kSubida15[dif15_];   // Char_EnterPoseState3Alt: vy = campo +0x10 (3,0..4,0)
     if (e == 4) cvy_ = cvy_ > 0 ? -0.08f : cvy_ - 0.08f;   // Char_EnterPoseState4Alt (golpe)
@@ -1580,6 +2051,7 @@ class Panel : public rex::ui::ImGuiDialog {
       } else if (t_ < 100) {
         return;
       }
+      if (PausaListo(d, -1, "")) return;
       g_cine = 0;
       fase_ = kJuego;
       t_ = 0;
@@ -1595,7 +2067,18 @@ class Panel : public rex::ui::ImGuiDialog {
       return;
     }
     if (fase_ != kJuego) return;
-    if (orig3_ != 0 && PasoOriginal3(d, bot, dirs, sx, sy)) return;   // T3: logica original del ELF (mgfly)
+    if (orig3_ != 0) {   // T3: logica original del ELF (mgfly)
+      int px = sx, py = sy;
+      uint16_t pb = bot;
+      if (g_auto) {   // R23: el piloto de prueba tambien manda en la ruta original (antes no llegaba: 0 aciertos)
+        float ax = 0, ay = 0;
+        bool af = false;
+        Piloto3(ax, ay, af);
+        px = int(std::lround(ax * 127.0f)), py = int(std::lround(ay * 127.0f));
+        pb = uint16_t(af ? (bot | kDisparo) : (bot & ~kDisparo));
+      }
+      if (PasoOriginal3(d, pb, dirs, px, py)) return;
+    }
     // mira: palanca (x*x + y*y > 0xFFF) o cruceta, a la velocidad del #MSS (+0x10 = 10 px de PS2 por cuadro)
     float gx = 0, gy = 0;
     if (sx * sx + sy * sy > 0xFFF) {
@@ -1893,6 +2376,11 @@ class Panel : public rex::ui::ImGuiDialog {
       if (r.nucleo) r.nucleo->origen = r.p, r.nucleo->dir = Unir(r.v);
       if (Largo(Mas(r.p, Por(Ojo(), -1.0f))) > kRayoMax) {   // fuera: fallo
         r.vivo = false;
+        if (juego_ == 9 && fase_ == kJuego && R23()) {   // IW-06: Viewer_HitSparkUpdate EU 0x32B2A0, rayo perdido
+          r23_golpes_ = 0;
+          if (++r23_fallos_ % 0x25 == 0)
+            EvR23(0x7D8, 4, "37 fallos seguidos (EU 0x32B2A0)", kPerfilFreezer, 7 + int(AzarR23() % 3));
+        }
         continue;
       }
       if (!rt || vida_ <= 0) continue;
@@ -1923,6 +2411,14 @@ class Panel : public rex::ui::ImGuiDialog {
         }
       }
       vida_ = std::max(0, vida_ - kDano[g]);
+      if (juego_ == 9 && fase_ == kJuego && R23()) {   // IW-06: Viewer_HitSparkUpdate EU 0x32B2A0, golpe (Viewer_IsBelowThreshold 0,25)
+        r23_fallos_ = 0;
+        const bool bajo = float(vida_) / float(std::max(vida_max_, 1)) < 0.25f;
+        if (++r23_golpes_ % (bajo ? 9 : 3) == 0)
+          EvR23(0x7D8, 5, "golpes seguidos (EU 0x32B2A0)", kPerfilPiccolo, (AzarR23() & 1) ? 0x23 : 0x22);
+        else if ((AzarR23() & 3) == 0)
+          EvR23(0x7D8, 6, "golpe (EU 0x32B2A0)", -1, -1, 2, 0x13 + int(AzarR23() % 3));
+      }
       chispas_.push_back({r.p, 0});
       hit_t_ = datos_?datos_->hit_cuadros:0; // AMA5/0 objeto5:17cuadros en el disco del jugador
       iwmini::FadeRival(20);   // EU 0x32B2A0: s_UTL_CHRFADE (20, 20, 0,95; tabla 0x480C54) sobre Piccolo
@@ -2103,8 +2599,13 @@ class Panel : public rex::ui::ImGuiDialog {
       // el objetivo del piloto es esa misma posicion; el punto de cuerpo del
       // actor oculto puede estar sin actualizar (medido y 0) y hacia fallar el
       // tiro. El piloto es solo prueba (g_auto).
-      p = {g_px.load(), g_py.load(), g_pz.load()};
-      p = T7(p);
+      // R23: SIN T7. Ojo(), Dir() y la mira del 8 van en coordenadas del modulo (T7 solo pasa al mundo para Poner y
+      // la camara); con T7 el objetivo quedaba en yaw 0, fuera del giro pi+-1.147: la mira se clavaba en 1.99 y
+      // nunca disparaba (11 discos sin lanzar).
+      // R23 (IW_3): el acierto se mide contra los HUESOS (HuesoCerca, en el modulo con T7); la posicion logica queda
+      // ~6-7 u por debajo del pecho y a veces el disco pasaba fuera de todos los radios (0 aciertos). Se apunta al pecho.
+      if (HuesoMundo(base, mgr + kX0 + kXPaso, 1, p)) p = T7(p);
+      else p = {g_px.load(), g_py.load(), g_pz.load()};
     } else {
       const uint32_t rol = probar_reaccion_piccolo_ ? uint32_t(rol_piccolo_prueba_) : 1u;
       if (!HuesoMundo(base,mgr+kX0+kXPaso,rol,p)) p={g_px.load(),g_py.load(),g_pz.load()};
@@ -2120,7 +2621,10 @@ class Panel : public rex::ui::ImGuiDialog {
     // La focal deja acabar cada reaccion; solo limita las pulsaciones del piloto.
     if (probar_reaccion_piccolo_ && reaccion_piccolo_.Ver().pose_estado == 3) fuego = false;
     if (hecho_ && hecho_->juego == 8)
-      fuego = std::abs(dy) < 0.03f && std::abs(polar - g_polar.load()) < 0.03f && auto_t_ % 2 == 0;
+      // FLECOS_IW_B2_DS §2: lanzar solo cuando su tirada B50 de esta pose ya fallo (Freezer quieto hasta el impacto);
+      // cargar puede hacerse en cualquier momento. Asi el piloto no depende de la semilla de reloj.
+      fuego = std::abs(dy) < 0.03f && std::abs(polar - g_polar.load()) < 0.03f && auto_t_ % 2 == 0 &&
+              (disco_ != 2 || (fz_estado_ == 1 && tirada_ && !fz_preparada_));
   }
 
   // EU 0x3675f0 MgFly_FinishAndApplyResult / EU 0x367790 MgFly_StateApplyResultAndExit: escribe el bloque de resultado
@@ -2130,8 +2634,9 @@ class Panel : public rex::ui::ImGuiDialog {
   // quedarse sin tiros. Antes el 0x7D8 ponia 0'00"00 (segundos_ = 0 en el tiempo agotado) y el 0x7D7/0x7D8 un fallo
   // "sin banda" (100). El original: Viewer_StoreResultToConfig 0x324C50 = Menu_ClassifyValueByThreshold(+0x10/60, tabla
   // 0x5D97DC = {999,75,60,45,30,0}); Viewer_CommitShootResult 0x3496B0 = Effect_ClassifyRange (misma tabla 0x5D9AEC,
-  // leida del ELF 0x483700); MgShoot_ApplyResult 0x30A200 = MgShoot_GetRankFromTime(p). El premio es SIEMPRE el de la
-  // tabla del rango (no depende de superar): 100 solo si el valor no cae en ninguna banda (0x5D986C/0x5D9B34/0x5D9390).
+  // leida del ELF 0x483700); MgShoot_ApplyResult 0x30A200 = MgShoot_GetRankFromTime(p). Con el ajuste F1, el
+  // clasificador original de Freezer tambien exige siete aciertos; sin ellos devuelve -1. Premios/resultados
+  // siguen en el port: este paquete solo sustituye el indice (0x5D986C/0x5D9B34/0x5D9390).
   void Acabar(uint8_t* base, uint32_t mgr, const Datos& d) {
     iwmini::Resultado r;
     r.clave = d.clave;
@@ -2176,15 +2681,33 @@ class Panel : public rex::ui::ImGuiDialog {
       const float q = p15_;
       idx = q <= 0 || q >= 1 ? -1 : q <= 0.0001f ? 4 : q <= 0.1f ? 3 : q <= 0.4f ? 2 : q <= 0.7f ? 1 : 0;
     }
-    // Superado = se gano el minijuego (Piccolo derribado / 7 discos / Cell contenido). El rango/premio NO lo decide:
-    // son del tiempo (8/9) o de la altura (15), como en los Store/ApplyResult citados.
+    // F1: con ajuste OFF (o sin la integracion de F2) se conserva el camino previo.
+    // El original 7D7 devuelve -1 si no hubo siete aciertos, aunque el reloj caiga en una banda.
+    if ((d.juego == 8 || d.juego == 9 || d.juego == 15) && iwmips::disparo::g_rango) {
+      const unsigned clave = d.juego == 8 ? 0x7D7u : d.juego == 9 ? 0x7D8u : 0x7DEu;
+      int original = -1;
+      if (iwmips::disparo::g_rango(clave, d.dif, aciertos_, d.juego == 15 ? p15_ : jugado, original))
+        idx = original;
+    }
+    // IW-F06 (dbz3_iw_disparo_continuo_original): el original no clasifica el tiempo jugado al fallar. 7D8: Viewer_StateInput
+    // EU 0x325430 deja +0x10 = 0 al acabar por tiempo y Viewer_StoreResultToConfig 0x324C50 clasifica 0/60 -> -1. 7D7:
+    // Viewer_State_AimShootA/B/D ponen ce78+8 = -1 y Viewer_CommitShootResult 0x3496B0 da -1 (premio 100, 0x5D986C/0x5D9B34).
+    if (REXCVAR_GET(dbz3_iw_disparo_continuo_original) && ((d.juego == 9 && vida_ > 0) || (d.juego == 8 && aciertos_ < 7)))
+      idx = -1;
+    if (d.juego == 9)   // PAQ_3: medir el cierre del reloj del 0x7D8 (IW-F06)
+      REXLOG_INFO("dbz3 iwdisparo: 7D8 fin reloj jugado={:.3f} vida={} idx={}", jugado, vida_, idx);
+    // Superado = se gano el minijuego (Piccolo derribado / 7 discos / Cell contenido).
+    // Ademas del tiempo (8/9) o altura (15), el rango original de Freezer exige siete aciertos.
     if (d.juego == 15)
       r.superado = p15_ >= 0 && p15_ < 1;
     else if (d.juego == 8)
       r.superado = aciertos_ >= 7;
     else
       r.superado = vida_ <= 0;
-    r.rango = std::max(idx, 0);
+    // R23 IW-7: sin banda el original deja el rango en -1 (MgShoot_ApplyResult EU 0x30A200: config +0x48 = -1, +4 = 0
+    // estrellas; Viewer_CommitShootResult/StoreResultToConfig igual) y su pantalla no pinta letra (PCSX2, 7DE fallido):
+    // -2 = fallo sin rango, como el vuelo. Antes salia una «C» y una estrella.
+    r.rango = idx >= 0 ? idx : -2;
     if (idx >= 0) {
       const int raw = int(float(d.juego == 15 ? kBase15[idx] : d.juego == 8 ? kBaseDisco[idx] : kBase[idx]) * kMult[d.dif]);
       r.puntos = (raw % 100 >= 50 ? raw / 100 + 1 : raw / 100) * 100;
@@ -2194,6 +2717,15 @@ class Panel : public rex::ui::ImGuiDialog {
     r.centesimas = int(jugado * 100.0f);
     r.score = r.puntos;
     r.zeni = idx >= 0 ? r.puntos : 100;   // premio de la tabla del rango; sin banda, 100 (0x5D986C)
+    if (d.juego == 8 || d.juego == 9)
+      REXLOG_INFO("dbz3 iwdisparo: premio ELF consulta juego={} dif={} idx={} g_premio={}", d.juego, d.dif, idx, iwmips::disparo::g_premio != nullptr);
+    if ((d.juego == 8 || d.juego == 9) && iwmips::disparo::g_premio) {   // R22/PAQ_3: el premio del ELF manda si esta
+      const int pe = iwmips::disparo::g_premio(d.juego == 8 ? 0x7D7u : 0x7D8u, d.dif, idx);
+      if (pe >= 0) {
+        if (pe != r.zeni) REXLOG_WARN("dbz3 iwdisparo: premio del port {} distinto del ELF {}; uso el del ELF", r.zeni, pe);
+        r.puntos = r.score = r.zeni = pe;
+      }
+    }
     // DS129: la pantalla de estos tres no lleva fila de objetos (la unica etiqueta leida, 334/1 t17 fila 2, es BRICKS
     // DESTROYED, solo del 0x7D3): -1 = no se pinta (antes salia "BRICKS DESTROYED <disparos>"). El nº de aciertos va
     // en `monedas`, que es lo que lee la prueba.
@@ -2210,7 +2742,7 @@ class Panel : public rex::ui::ImGuiDialog {
       g_res = r;
     }
     REXLOG_INFO("dbz3 iwdisparo: fin: {} en {:.2f} s (limite {:.0f}), rango {}, premio {}",
-                r.superado ? "DERRIBO" : "FALLO", jugado, limite, "CBASZ"[r.rango], r.zeni);
+                r.superado ? "DERRIBO" : "FALLO", jugado, limite, r.rango >= 0 ? "CBASZ"[r.rango] : '-', r.zeni);
     EmpezarRecompensa();
   }
 
@@ -2295,7 +2827,7 @@ class Panel : public rex::ui::ImGuiDialog {
     if (cam.ok) {   // rayos, chispas y manos (modelos de IW) sobre el combate
       ImDrawList* bg = ImGui::GetBackgroundDrawList();
       escena_.Empezar();
-      for (int k = 0; k < (juego_ == 8 || (g_cine.load() & 4) ? 0 : 2); ++k) {
+      for (int k = 0; k < (juego_ == 8 || (g_cine.load() & 4) || Asentando() ? 0 : 2); ++k) {
         const ps2::Modelo& m = k == 0 ? d.mano_i : d.mano_d;
         if (!m.malla) continue;
         ps2::Malla w = m.malla;
@@ -2379,6 +2911,7 @@ class Panel : public rex::ui::ImGuiDialog {
       }
       escena_.Pintar(bg);
       for (const auto& e : efx_) ame::Pintar(*e, cam, tx_atlas_, tx_suma_, bg, 160.0f * io.DisplaySize.y / 720.0f);
+      for (const auto& e : efx_) ame::PintarModelosFiel(*e, cam, d.fx_modelos, tx_atlas_, bg, "disparo");   // PUL-IW-FX-02
       ImDrawList* fg = ImGui::GetForegroundDrawList();
       for (const auto& c : chispas_) {   // chispa (9/1 t21)
         ImVec2 s;
@@ -2390,7 +2923,13 @@ class Panel : public rex::ui::ImGuiDialog {
                                   ImVec2(1, 1), col);
       }
     }
-    if (fase_ != kFinal && !(g_cine.load() & 4)) HudPantalla(io, base, mgr, cam);   // PCSX2: sin HUD en entradas y finales
+    // PAQ_0: una sola guarda de HUD de disparo para 0x7D3/0x7D7/0x7D8/0x7DE. R23 G3: 7DE tambien; con el traducido
+    // el original ya dibuja su contador y su medidor DANGER (mismo tamano que PCSX2) y el HUD hecho a mano del port
+    // salia encima, mas pequeno y con otros colores.
+    const bool hud_traducido3 =
+        (d.clave == 0x7D3 || d.clave == 0x7D7 || d.clave == 0x7D8 || d.clave == 0x7DE) && dbz3::iwtrad::Activo();
+    if (!hud_traducido3 && fase_ != kFinal && !(g_cine.load() & 4) && !Asentando())
+      HudPantalla(io, base, mgr, cam);   // PCSX2: sin HUD en entradas y finales
     // final: el clip de cierre (1001/1002 o 1301/1302) se ve entero y luego fundido a negro (tapa el final de combate
     // de B3); fin_dur_ = 140 cuando no hay clip.
     if (fase_ == kDerribo || fase_ == kFinal) {
@@ -2400,6 +2939,21 @@ class Panel : public rex::ui::ImGuiDialog {
       // Con clip de cierre: el clip se ve entero en kDerribo (fundido a negro al final) y la tabla va en kFinal. Sin
       // clip (el 8): la tabla sale ya en kDerribo, que si no serian 140 cuadros de negro.
       if (fin_id_ >= 0 && fase_ == kDerribo) {
+        // IWINI-16 (12/11): al perder, durante la espera de 140 el original oscurece la pantalla (con el marcador) y
+        // saca «FAILED!» ~120 cuadros (G02_0x7D8_CIERRE_DENSO2 10600-10700, G02_0x7DE_P02). Solo 7D8 y 7DE, los que
+        // tienen grabacion. Vuelta atras: DBZ3_IWINI_SIN_FAILED=1.
+        static const bool sin_failed = std::getenv("DBZ3_IWINI_SIN_FAILED") != nullptr;
+        const bool mal = d.fin_bien.empty() || fin_id_ != d.fin_bien[0];
+        if (!sin_failed && mal && (juego_ == 9 || juego_ == 15) && t_ >= 0 && t_ < 140) {
+          const S::Area a = S::GameArea(io);
+          fg->AddRectFilled(ImVec2(0, 0), io.DisplaySize, IM_COL32(0, 0, 0, 110));   // pantalla entera, tambien las bandas
+          if (failed_ && t_ < 120) {
+            const ImVec2 c = a.At(600, 464);   // el mismo sitio que READY?/START!
+            const float kc = 2.0f * a.s;
+            fg->AddImage(failed_.id(), ImVec2(c.x - failed_.w * kc / 2, c.y - failed_.h * kc / 2),
+                         ImVec2(c.x + failed_.w * kc / 2, c.y + failed_.h * kc / 2));
+          }
+        }
         return;
       }
       // El combate sigue en estado 4 hasta confirmar el panel. El reloj es el
@@ -2440,6 +2994,22 @@ class Panel : public rex::ui::ImGuiDialog {
     ImDrawList* fg = ImGui::GetForegroundDrawList();
     const S::Area a = S::GameArea(io);
     const float k = 1.6f * a.s;
+    // IWINI (11/11): cartel de inicio. El original saca «START!» con el marcador al empezar (PCSX2 G02_0x7D8_P02 y
+    // G02_0x7DE_P02) y «READY?» en la fase Ready; el port no pintaba ninguno. Mismas texturas que vuelo y botones
+    // (DATA_USA 5/1 t08 y t00), 60 cuadros de START! como ellos. READY? solo existe con la fase Ready del ELF (7DE,
+    // dbz3_iw_disparo_intro_original): de serie el port no tiene esa fase.
+    {
+      const bool listo15 = fase_ == kListo && (listo_t_ > 0 || (juego_ == 15 && intro15_original_ == 1));
+      const ps2::Tex& cartel = listo15 ? ready_ : start_;
+      if (cartel && (listo15 || (fase_ == kJuego && t_ < 60))) {
+        // Medido lado a lado con G02_0x7D8_P02: centro al 51 % del alto y 47 % del ancho del lienzo 4:3 (con 1,6 y
+        // y = 400 salia al 80 % del tamano y al 43 % del alto).
+        const ImVec2 c = a.At(600, 464);
+        const float kc = 2.0f * a.s;
+        fg->AddImage(cartel.id(), ImVec2(c.x - cartel.w * kc / 2, c.y - cartel.h * kc / 2),
+                     ImVec2(c.x + cartel.w * kc / 2, c.y + cartel.h * kc / 2));
+      }
+    }
     // solIWZ DATA_USA9/0: objeto2 centro(470,34),rect+-152/28,
     // escala0.8; objetos27..33 estrellas(373..560,31),rect+-20.
     // EU34B260: municion x=575-37*i,y=417. Lienzo600x450.
@@ -2600,14 +3170,22 @@ class Panel : public rex::ui::ImGuiDialog {
     in->mezcla_gs = true;   // suma real del GS y afectores: el brillo rojo de la mano sale naranja sobre el cielo, como el original
     in->origen = pos;
     in->dir = Unir(dir);
+    ame::Fiel(*in, "disparo", hijo, !datos_->fx_modelos.empty());   // PUL-IW-FX-02 (solo con el ajuste)
     efx_.push_back(in);
     return in;
+  }
+  void BrilloManos7D8() {
+    for (int m = 0; m < 2; ++m) {
+      if (!brillo_[m] || !brillo_[m]->vivo)
+        brillo_[m] = Lanzar(7, Mano(m, 0), Mas(Cam({0, 0, 1}), Por(Cam({0, 0, 0}), -1.0f)));
+      if (brillo_[m]) brillo_[m]->origen = Mano(m, retroceso_[m]);
+    }
   }
   void Efectos() {   // un cuadro de los efectos
     for (auto& e : efx_) ame::Cuadro(*e, semilla_);
     efx_.erase(std::remove_if(efx_.begin(), efx_.end(), [](const auto& e) { return !e->vivo; }), efx_.end());
   }
-  ps2::Tex clear_;
+  ps2::Tex clear_, ready_, start_, failed_;   // IWINI: READY? / START! / FAILED! (DATA_USA 5/1 t08 / t00 / t10)
   std::vector<ps2::Tex> tx_avisos3_;
   iwmini::Resultado res_;   // DS129: resultado de Acabar, para la tabla de DibujarResultadoIW en kFinal
   double t_fin_ = 0.0;      // DS129: ImGui::GetTime() al acabar (reloj de la tabla de resultados)
@@ -2635,6 +3213,7 @@ class Panel : public rex::ui::ImGuiDialog {
   bool probar_reaccion_piccolo_ = false;
   bool probar_acuse_piccolo_ = false; // solo testmini9 + reaccion + DBZ3_TEST_IWX_PICCOLO_ACUSE
   float espera_[2] = {}, retroceso_[2] = {};
+  int r23_hp_ = 0, r23_golpes_ = 0, r23_fallos_ = 0;   // IW-06 (7D8): avisos de vida dados, golpes y fallos seguidos (+0x138/+0x134)
   int tiros_ = 0, aciertos_ = 0, fallos_seguidos_ = 0, disco_ = 0, carga_ = 0, pausa_ = 0, bloqueo_ = -1;
   struct Marca {
     int tipo = 0;
@@ -2647,12 +3226,27 @@ class Panel : public rex::ui::ImGuiDialog {
   float mx_ = 0, mz_ = 200, cx_ = 0, cy_ = 0, cz_ = 0, cvy_ = 0, golpe_y_ = 0, rumbo_ = 0, wx_ = 0, wz_ = 0;
   float energia_ = 1, p15_ = -1;
   bool baja_usada_ = false;
+  int reloj15_ = 0;           // IW-F05b: reloj de UiTimer en tics de 1/60 (EU 0x31EB60), con dbz3_iw_disparo_continuo_original
+  int reloj_visor_ = 0;       // IW-F06: lo mismo para 0x7D7/0x7D8 (RelojVisorPaso)
+  bool fuego_elf_ = false;   // IW-F05: el ultimo Aim salio del ELF (tiempos de MgShoot_St_Fire)
   uint16_t antes15_ = 0;
+  int listo_t_ = 0;   // IWINI-09: cuadros del Ready tras los clips
+  int intro15_original_ = -1,intro15_clip_ = 0, intro15_cuadro_ = 0, intro15_preparaciones_ = 0;
+  dbz3::iwmips::disparo::EstadoIntroCell intro15_estado_;
   int orig3_ = -1;   // T3: -1 sin decidir, 0 port, 1 logica original, 2 la original fallo a mitad (port)
   int acum3_ = 0;
   uint16_t held3_ = 0;
   uint32_t sem3_ = 0;
   bool aviso_fin3_ = false;
+  bool trad_disparo_entrada_ = false;   // PAQ_0: unico bool del bucle traducido (0x7D3/0x7D7/0x7D8/0x7DE)
+  // R23 IW-7: el juego C++ no empieza hasta que el original traducido da el control: GameState_SetFlag2(1) (EU 0x28A980,
+  // bit 1 de *(0x49CBA4)+0x8C), que ponen MgShoot_St_Ready, Viewer_StateReady, Viewer_State_AimStart y
+  // MgFly_StateIntroSetup en el mismo cuadro que UiTimer_SetState(1). Se exige verlo a 0 antes (la foto puede traerlo a
+  // 1 del mapa). 0 sin ver 0, 1 visto 0, 2 control dado (corta la entrada y el Ready del port: empiezan a la vez), 3 sin traducido.
+  int trad_control_ = 0;
+  float alto15_ = kAltura15;   // R23 IW-7: tope de Cell del original traducido (Camera_GetControllerPtr()+0x84)
+  bool EsperaTraducido() const { return trad_disparo_entrada_ && trad_control_ < 2 && listo_t_ < 3600; }   // ponytail: 60 s de tope si el original no da el control
+  bool TradYaJuega() const { return trad_disparo_entrada_ && trad_control_ == 2; }
   int quedan_ = 0;
   float tramo_espera_ = 0;
   float mira_x_ = 300, mira_y_ = 225, progreso_ = 0, lad_vel_ = 1, lad_x_ = 0, lad_y_ = 0, lad_z_ = 0, tiro_t_ = 0;
@@ -2883,9 +3477,10 @@ bool Empezar(int clave, int fila, int dificultad, int personaje) {
     d->efectos.resize(25);
     int cuantos = 0;
     for (uint32_t h = 3; h < 25; ++h) {
-      d->efectos[h] = ame::Leer(P::HijoAmb(pq, h));
+      d->efectos[h] = ame::LeerFiel(P::HijoAmb(pq, h));   // PUL-IW-FX-02: con el ajuste, tambien las raices
       cuantos += d->efectos[h] ? 1 : 0;
     }
+    if (ame::FielIW()) d->fx_modelos = ame::ModelosAmo(P::HijoAmb(pq, 1));
     REXLOG_INFO("dbz3 iwdisparo: efectos de IW: {} #AME, atlas de {} texturas", cuantos, d->atlas.size());
   }
   const std::vector<uint8_t> hud = P::HijoAmb(usa.Entrada(9), 1);
@@ -2899,6 +3494,12 @@ bool Empezar(int clave, int fila, int dificultad, int personaje) {
     for(int i=0,n=P::CuantasAmt(atlas);i<n;++i)d->avisos3_atlas.push_back(P::TexturaAmt(atlas,i));
   }
   d->clear = P::TexturaAmt(P::HijoAmb(usa.Entrada(334), 3), 69);
+  {
+    const std::vector<uint8_t> t51 = P::HijoAmb(usa.Entrada(5), 1);
+    d->ready = P::TexturaAmt(t51, 8);
+    d->start = P::TexturaAmt(t51, 0);
+    d->failed = P::TexturaAmt(t51, 10);   // IWINI-16: «FAILED!» (el mismo de botones)
+  }
   REXLOG_INFO("dbz3 iwdisparo: 0x{:X} ({}, dificultad {}): manos {}+{} triangulos, proyectil {} ({} texturas), HUD {} "
               "texturas", clave, d->juego == 15 ? "Kikoho contra Cell" : d->juego == 8 ? "Kienzan contra Freezer" : "rayos contra Piccolo", d->dif,
               d->mano_i.malla.tris.size(), d->mano_d.malla.tris.size(), d->efecto.malla.tris.size(), d->efecto.tex.size(),
@@ -3010,15 +3611,20 @@ void FotogramaDisparo(uint8_t* base, uint32_t estado) {
                                    : V3{0, 0, 0});   // 3: oculto en el origen (la camara es la del original)
   const bool lad = juego == 3;   // 3: el rival no se ve; el jugador tampoco (camara fija de galeria, como IW)
   const bool ver_jug = juego == 8;
-  REX_STORE_U8(x0 + kOcultoA, ver_jug ? 0 : 1);
-  REX_STORE_U8(x0 + kOcultoB, ver_jug ? 0 : 1);
+  // IWINI (11/11): UN solo valor por fotograma. Antes se escribia "oculto" aqui y "visible" mas abajo (bloque cine & 4)
+  // mientras duraba un clip con el jugador en plano (Ten en 1300/1301/1302, Piccolo en 1000...): si el dibujo leia
+  // entre las dos escrituras, el personaje parpadeaba.
+  const int cine0 = g_cine.load();
+  const uint8_t ocu0 = (cine0 & 4) ? ((cine0 & 1) ? 0 : 1) : (ver_jug ? 0 : 1);
+  REX_STORE_U8(x0 + kOcultoA, ocu0);
+  REX_STORE_U8(x0 + kOcultoB, ocu0);
   if (juego == 8) {   // DS126: el cuerpo visible mira hacia donde apunta (la camara del 950 mira a -Z)
     const int yaw = int(std::lround(g_yaw.load() * 65536.0f / 6.2831853f)) & 0xFFFF;
     REX_STORE_U16(x0 + kMiradaA, uint16_t(yaw - 15759));
     REX_STORE_U16(x0 + kMiradaB, uint16_t(yaw - 15968));
   }
   if (lad) REX_STORE_U8(x1 + kOcultoA, 1), REX_STORE_U8(x1 + kOcultoB, 1);
-  const int cine = g_cine.load();
+  const int cine = cine0;   // IWINI: la misma lectura que la mascara del jugador de arriba
   // solIWZ: B3 vuelve a apoyar al blanco en SU suelo tras Poner. Medido
   // 7D8: posicion158 pero hueso0=0; el piloto apuntaba al agua. Como el
   // vueloIW, la consulta del suelo mantiene la altura que lleva el modulo.
@@ -3043,11 +3649,11 @@ void FotogramaDisparo(uint8_t* base, uint32_t estado) {
       // PINE 0x438: cintura de Freezer a y 139,5; la pista copiada da 85,1 (el #AMM de 918 sube otros 54,4 por encima de
       // la cintura, en un hueso que no se copia).
       // 31/10 medido en 0x438: original cintura = pista (136,04 a f1 .. 138,73 a f340, +0x40 = 0); port pista - 50,83 (+-0,04 en 4 cuadros).
-      Poner(base, x, {0, x == x0 && juego == 9 ? 50.83f : 0.0f, 0});
+      static const bool como_antes = std::getenv("DBZ3_IWINI_FREEZER_5083") != nullptr;
+      const bool sube = x == x0 && juego == 9 && (como_antes || !g_alto9.load());   // IWINI: en la entrada, y = 0 (ver g_alto9)
+      Poner(base, x, {0, sube ? 50.83f : 0.0f, 0});
       for (uint32_t i = 0; i < 12; ++i) StoreF(base, x + 4 * i, kId[i]);
     }
-    REX_STORE_U8(x0 + kOcultoA, (cine & 1) ? 0 : 1);
-    REX_STORE_U8(x0 + kOcultoB, (cine & 1) ? 0 : 1);
     REX_STORE_U8(x1 + kOcultoA, (cine & 2) ? 0 : 1);
     REX_STORE_U8(x1 + kOcultoB, (cine & 2) ? 0 : 1);
   }

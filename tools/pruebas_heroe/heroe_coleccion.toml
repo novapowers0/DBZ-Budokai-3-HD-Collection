@@ -1,0 +1,18 @@
+# HEROE-REC R5 (12/11): pantalla Coleccion (maqueta 13_coleccion). Con premios de prueba ya abiertos (DBZ3_TEST_HEROE_PREMIOS) para ver
+# la rejilla con conseguidos, nuevos y bloqueados. Lanzar en sol, sin --forzar:
+#   python tools\pruebas.py correr sol tools\pruebas_heroe\heroe_coleccion.toml
+descripcion = "Heroe: pantalla Coleccion con premios de prueba"
+env = ["DBZ3_TEST_MODO=heroe", "DBZ3_HUB_MODE=5", "DBZ3_TEST_HEROE_PANTALLA=coleccion",
+       "DBZ3_TEST_CFG=dbz3_heroe_ui_nueva=true;dbz3_heroe_habitacion=true;dbz3_heroe_recompensas=true;dbz3_heroe_evolucion=true",
+       "DBZ3_TEST_HEROE_PREMIOS=r_t0_death_beam,r_t1_masenko,r_t2_galick,r_t4_kikoho,r_b_cell_kamehameha,r_o_namek_kienzan,r_t6_titulo_torneo"]
+pasos = [
+  'log "Coleccion abierta" 240',
+  "esperar 4000",
+  "captura a_tecnicas",
+  "tecla S 600",
+  "tecla S 600",
+  "tecla D 600",
+  'log "Coleccion: celda" 20',
+  "esperar 800",
+  "captura b_celda",
+]

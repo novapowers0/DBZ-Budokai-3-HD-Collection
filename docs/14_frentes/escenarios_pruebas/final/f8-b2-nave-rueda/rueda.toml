@@ -1,0 +1,58 @@
+# F8, B2-11 (fase final SOLO Z): rueda de la Nave con el encuadre medido en los datos de B2.
+# clave = B2-11
+# cvar  = dbz3_nave_rueda_datos=true (OFF de serie)
+# criterio = 29/29 figuras con el encuadre de B2 (cabeza/aro dentro del umbral B2-03) y el aro de las caras
+#            de B3 con el marco nativo (celda 96, radio interior 23,8, grosor 2,7); sin 0,93 en los extras.
+# log   = "dbz3 nave: aro de B2 medido activo (celda 96..." y una linea "pose de la rueda id B2 ..." por figura.
+# Medido sin juego: E:/DBZ3HD_trabajo/F8/medir_rueda_b2.py + banco_nave.py (14/14 PASS).
+descripcion = "F8 B2-11: rueda 1P recorriendo los 29 con encuadre/aro de B2 medidos"
+env = [
+  "DBZ3_PS2_GAMES=D:\\DBZ3HD\\ps2_games",
+  "DBZ3_TEST_MISIONES=5,reset",
+  "DBZ3_TEST_NAVE_TODO=1",
+  "DBZ3_TEST_CFG=dbz3_nave_rueda_datos=true",
+]
+pasos = [
+  'log "nave: entrar" 120',
+  "esperar 3500",
+  "tecla Space 900",
+  "tecla W 300", "tecla W 300", "tecla W 300", "tecla S 300", "tecla S 300",
+  'log "nave: pantalla planta" 30',
+  "tecla Space 1500",
+  'log "nave: pantalla rueda 1P" 30',
+  "esperar 1800",
+  "captura 00_rueda_01_goku",
+  "tecla W 400", "esperar 500", "captura 01_rueda_01_traje2",
+  "tecla S 400", "esperar 500",
+  "tecla D 700", "esperar 700", "captura 02_rueda_02",
+  "tecla D 700", "esperar 700", "captura 03_rueda_03",
+  "tecla D 700", "esperar 700", "captura 04_rueda_04",
+  "tecla D 700", "esperar 700", "captura 05_rueda_05",
+  "tecla D 700", "esperar 700", "captura 06_rueda_06",
+  "tecla D 700", "esperar 700", "captura 07_rueda_07",
+  "tecla D 700", "esperar 700", "captura 08_rueda_08",
+  "tecla D 700", "esperar 700", "captura 09_rueda_09",
+  "tecla D 700", "esperar 700", "captura 10_rueda_10",
+  "tecla D 700", "esperar 700", "captura 11_rueda_11",
+  "tecla D 700", "esperar 700", "captura 12_rueda_12",
+  "tecla D 700", "esperar 700", "captura 13_rueda_13",
+  "tecla D 700", "esperar 700", "captura 14_rueda_14",
+  "tecla D 700", "esperar 700", "captura 15_rueda_15",
+  "tecla D 700", "esperar 700", "captura 16_rueda_16",
+  "tecla D 700", "esperar 700", "captura 17_rueda_17",
+  "tecla D 700", "esperar 700", "captura 18_rueda_18",
+  "tecla D 700", "esperar 700", "captura 19_rueda_19",
+  "tecla D 700", "esperar 700", "captura 20_rueda_20",
+  "tecla D 700", "esperar 700", "captura 21_rueda_21",
+  "tecla D 700", "esperar 700", "captura 22_rueda_22",
+  "tecla D 700", "esperar 700", "captura 23_rueda_23",
+  "tecla D 700", "esperar 700", "captura 24_rueda_24",
+  "tecla D 700", "esperar 700", "captura 25_rueda_25",
+  "tecla D 700", "esperar 700", "captura 26_rueda_26",
+  "tecla D 700", "esperar 700", "captura 27_rueda_27",
+  "tecla D 700", "esperar 700", "captura 28_rueda_28",
+  "tecla D 700", "esperar 700", "captura 29_rueda_29",
+  "tecla 3 400", "esperar 1200", "captura 30_pagina2_aro_b3",
+  'log "aro de B2 medido activo" 60',
+  'log "pose de la rueda" 60',
+]

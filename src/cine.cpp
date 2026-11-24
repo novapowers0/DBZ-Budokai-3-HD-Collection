@@ -47,6 +47,11 @@
 
 REXCVAR_DEFINE_BOOL(dbz3_cine_intro, false, "DBZ3/Mods",
                     "Intro de cine: 10 s de camara propia al empezar cada combate (A la salta)");
+// DR05 (#65): camara de seguimiento detrás del luchador humano durante la pelea. Apagada = camara del juego.
+REXCVAR_DEFINE_BOOL(dbz3_camara_sigue, false, "DBZ3/Mods",
+                    "Camara de seguimiento: detras del luchador humano en la pelea, cede en las cinematicas "
+                    "(apagada = original) | Follow camera: behind the human fighter during the fight, yields "
+                    "in cutscenes (off = original)");
 
 namespace dbz3::cine {
 namespace {
@@ -109,6 +114,49 @@ bool Encendida() {
   static const bool prueba = std::getenv("DBZ3_CINE") != nullptr;
   return (prueba || g_pedido.load() || REXCVAR_GET(dbz3_cine_intro)) &&
          !dbz3::net::Session::Get().active();
+}
+
+// DR05 (#65): camara de seguimiento detras del luchador humano. Cede en las cinematicas (codigos 0x400..0x4FF:
+// Rush, expulsion y definitivas) y mientras dura la intro; el resto del tiempo sigue al humano mirando al rival.
+struct SigV3 {
+  V3 ojo{}, obj{};
+  bool antes = false;
+};
+SigV3 g_sig;
+
+bool CodigoCine(uint8_t* base, uint32_t mgr) {
+  for (uint32_t k = 0; k < 2; ++k) {
+    const uint32_t c = REX_LOAD_U32(mgr + 2096 + 8240 * k + 2928);
+    // Rush (0x400..0x47F), definitivas (0x259, 0x4A0..), expulsión (0x23E) y todo lo que va de 0x200 en
+    // adelante: ahi manda la camara del juego y la de seguimiento cede. Solo sigue en el combate normal.
+    if (c >= 0x200u) return true;
+  }
+  return false;
+}
+
+int LadoHumano(uint8_t* base, uint32_t mgr) {
+  for (uint32_t k = 0; k < 2; ++k)
+    if (int16_t(REX_LOAD_U16(mgr + 2096 + 8240 * k + 5028)) >= 0) return int(k);   // X+5028 >= 0: mando humano
+  return 0;
+}
+
+void Seguir(uint8_t* base, uint32_t mgr) {
+  const int lado = LadoHumano(base, mgr);
+  const uint32_t x = mgr + 2096 + 8240 * uint32_t(lado), r = mgr + 2096 + 8240 * uint32_t(1 - lado);
+  const V3 p = LeeV(base, x + 48), q = LeeV(base, r + 48);
+  const float s = std::max(1.0f, dbz3::gigantes::EscalaDe(base, lado));
+  const V3 f = Unit(V3{q.x - p.x, 0, q.z - p.z});             // del humano al rival, horizontal
+  const V3 ojo = p + f * (-5.0f * s) + V3{0, 2.6f * s, 0};    // detras del humano y algo alto
+  const V3 obj = Mezcla(p + V3{0, 1.7f * s, 0}, q + V3{0, 1.7f * s, 0}, 0.35f);
+  if (!g_sig.antes) {
+    g_sig.ojo = ojo;
+    g_sig.obj = obj;
+    g_sig.antes = true;
+  }
+  g_sig.ojo = Mezcla(g_sig.ojo, ojo, 0.35f);   // suaviza sin lag perceptible
+  g_sig.obj = Mezcla(g_sig.obj, obj, 0.35f);
+  const float e[3] = {g_sig.ojo.x, g_sig.ojo.y, g_sig.ojo.z}, o[3] = {g_sig.obj.x, g_sig.obj.y, g_sig.obj.z};
+  Camara(base, e, o);
 }
 
 // PRUEBA (DBZ3_TEST_VITRINA="segundos_por_vuelta distancia alto"): camara de vitrina para los clips del video:
@@ -299,6 +347,7 @@ void NuevoCombate() {
   g_en_curso = false;
   g_frame = 0;
   g_vitrina_frame = 0;
+  g_sig.antes = false;   // DR05: la camara de seguimiento empieza limpia
 }
 
 void Fotograma(uint8_t* base, uint32_t estado, uint32_t frames_pelea) {
@@ -347,6 +396,13 @@ void Fotograma(uint8_t* base, uint32_t estado, uint32_t frames_pelea) {
       return;
     }
   }
+  // DR05 (#65): seguimiento del humano en plena pelea; cede con la intro y en las cinematicas (Rush/definitivas).
+  if (mgr && estado == 4 && REXCVAR_GET(dbz3_camara_sigue) && !dbz3::net::Session::Get().active() &&
+      !g_en_curso.load() && !CodigoCine(base, mgr)) {
+    Seguir(base, mgr);
+    return;
+  }
+  g_sig.antes = false;
   const bool saltar = g_saltar.exchange(false);
   if (!mgr || estado != 4 || saltar) {   // A, o fuera de la pelea: se acaba
     Terminar(base, saltar ? "saltada" : "cortada");

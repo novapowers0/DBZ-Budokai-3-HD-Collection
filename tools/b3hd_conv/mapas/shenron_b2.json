@@ -1,0 +1,7 @@
+{
+ "_nota": "Shenron de B2 (CMN 327/0, 8 huesos SNR_ de cabeza y cuello; el cuerpo enroscado va cocido en la malla) -> B3 HD (data_cmn 534, 28 DGN_ con la cabeza de raiz). La cabeza de B2 mueve la raiz de B3 (con traslacion); el cuello de B2 va al reves que el de B3 (TORUS4 es el mas cercano a la cabeza). El cuerpo y los brazos guardan el mundo de la pose base (anim 0 de 534/2, cuadro 114). Escala = alto del enroscado de B3 (117) / alto de la malla de B2 (20). Los bigotes de B2 son otros #AMO (327/2-3, anims 328/4-5): aqui siguen a la cabeza.",
+ "huesos": {"WAIST": "SNR_HEAD", "HEAD": "SNR_HEAD", "JAW": "SNR_AGO", "NECK1": "SNR_TORUS4", "NECK2": "SNR_TORUS3", "BODY": null},
+ "fijos": ["CHEST", "STMC1", "STMC2", "STMC3", "STMC4", "TAIL1", "TAIL2", "TAIL3", "TAIL4", "TAIL5", "LARMROT", "LARM", "LHANDROT", "RARMROT", "RARM", "RHANDROT"],
+ "raiz": "WAIST",
+ "escala": 5.85
+}

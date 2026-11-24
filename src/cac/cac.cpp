@@ -6,12 +6,15 @@
 #include <toml++/toml.hpp>
 
 #include <algorithm>
+#include <charconv>
+#include <string_view>
 #include <chrono>
 #include <ctime>
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <mutex>
 #include <sstream>
 
 namespace dbz3::cac {
@@ -39,6 +42,7 @@ std::vector<Heroe> g_archivados;
 int g_activo = 0;
 bool g_migrado = false;
 std::string g_ruta;   // el ultimo cac.toml leido o guardado (para RespaldarCopia)
+std::recursive_mutex g_archivo_mu;   // Leer puede recuperar recursivamente el .bak.
 int g_por_limite = 0;
 Camara g_cam;
 std::string NuevoId() {
@@ -145,18 +149,48 @@ void RestaurarArchivado(int i) {
   g_slots.push_back(g_archivados[i]);
   g_archivados.erase(g_archivados.begin() + i);
   g_activo = NumSlots() - 1;
+  AjustarSlot(g_activo);
 }
 const std::vector<Heroe>& Archivados() { return g_archivados; }
 int NumArchivados() { return int(g_archivados.size()); }
 
+// Cinco enteros por entrada: el editor admite saturación y valor negativos.
+static bool TexcolValido(std::string_view s) {
+  if (s.size() > 2048) return false;
+  constexpr int minimos[] = {0, 0, 0, -100, -100};
+  constexpr int maximos[] = {2147483647, 5, 360, 100, 100};
+  while (!s.empty()) {
+    for (int i = 0; i < 5; ++i) {
+      int valor = 0;
+      const auto [fin, error] = std::from_chars(s.data(), s.data() + s.size(), valor);
+      if (error != std::errc{} || valor < minimos[i] || valor > maximos[i]) return false;
+      s.remove_prefix(size_t(fin - s.data()));
+      if (i == 4 && s.empty()) return true;
+      if (s.empty() || s.front() != (i == 4 ? '|' : ',')) return false;
+      s.remove_prefix(1);
+      if (s.empty()) return false;
+    }
+  }
+  return true;
+}
+
+void RestaurarColoresCac2(Heroe& h) {
+  for (auto& c : h.parte) c = {};
+  h.pelo_c1 = h.pelo_c2 = h.ojos_c = h.piel_c = {};
+  h.texcol.clear();
+  h.pintura17.clear();  // se quita la referencia, no se toca el archivo de pintura ni los acabados
+}
 void ClampHsv(Hsv& c) {
   c.h = std::clamp(c.h, 0, 360);
   c.s = std::clamp(c.s, -100, 100);
   c.v = std::clamp(c.v, -100, 100);
 }
 
-void AjustarSlot(int i) {
-  Heroe& h = SlotEditable(i);
+static void AjustarHeroe(Heroe& h) {
+  if (!TexcolValido(h.texcol)) {
+    // texcol invalido: se conserva el color original (sin log: este fichero se compila tambien en las pruebas sin rex)
+    h.texcol.clear();
+  }
   // Rangos del Modo Heroe (heroe.cpp valida otra vez al importar). Sin catalogo: los IDs son del juego.
   auto n_de = [](const std::string& tipo) { return int(PiezasDe(tipo).size()); };
   h.raza = std::clamp(h.raza, 0, 12);   // G06a: raza 6 = catálogo UT (100..105); C4: 7..12 = piezas XV2 (110..115)
@@ -170,13 +204,29 @@ void AjustarSlot(int i) {
   h.voz = std::clamp(h.voz, 0, 31);
   h.aura = std::clamp(h.aura, 0, 7);
   for (Hsv& c : h.parte) ClampHsv(c);
+  h.foto_pose = std::clamp(h.foto_pose, 0, 2);
+  h.foto_yaw = std::clamp(h.foto_yaw, -40, 40);
   ClampHsv(h.pelo_c1);
+  if (!FidPeloCac2(h.pelo_fid_cac2)) h.pelo_fid_cac2 = -1;
   ClampHsv(h.pelo_c2);
   ClampHsv(h.ojos_c);
   ClampHsv(h.piel_c);
   h.logo = std::max(0, h.logo);
   h.scouter = std::clamp(h.scouter, 0, 1);
   for (int& fid : h.b3_piezas) fid = std::clamp(fid, -1, 4095);
+  h.b3_accesorio = std::clamp(h.b3_accesorio, -1, 4095);
+  for (int& fid : h.orig) fid = std::clamp(fid, -1, 3999);
+  for (Capa& c : h.capas) {
+    // Una parte inválida no se puede convertir en otra pieza (por ejemplo, en pelo).
+    if (c.fid < 0 || c.fid > 4095 || c.parte < 0 || c.parte >= 4) c = Capa{};
+    else c.quitar = c.quitar < 0 ? 0 : c.quitar & ((int64_t{1} << 47) - 1);
+  }
+  for (RecetaGuardada& r : h.recetas) { if (r.ficha.empty()) r.nombre.clear(); else if (r.nombre.empty()) r.nombre = "Traje"; if (r.ficha.size() > 4096) r = RecetaGuardada{}; }
+  for (int i = 0; i < kMaxFormasReceta; ++i) {
+    int& f = h.forma_receta[i];
+    if (f < -1 || f >= kMaxRecetas || h.recetas[std::max(f, 0)].ficha.empty()) f = -1;   // solo apunta a una receta que existe
+    if (f < 0) h.forma_estallido[i].clear();
+  }
   h.estilo = std::max(0, h.estilo);
   h.moveset = std::clamp(h.moveset, -1, 63);
   h.traje = std::max(0, h.traje);
@@ -207,6 +257,8 @@ void AjustarSlot(int i) {
   if (h.id.empty()) h.id = NuevoId();
 }
 
+void AjustarSlot(int i) { AjustarHeroe(SlotEditable(i)); }
+
 // ---------------------------------------------------------------------------
 // Guardado (patron rpg.toml)
 // ---------------------------------------------------------------------------
@@ -216,21 +268,27 @@ std::string RutaPorDefecto() {
 
 namespace {
 std::string HsvTxt(const Hsv& c);
+std::string Escapa(const std::string& s);
 void EscribirHeroe(std::ostream& o, const char* tabla, const Heroe& h) {
   o << "[[" << tabla << "]]\n";
-  o << "id = \"" << h.id << "\"\n";
+  o << "id = \"" << Escapa(h.id) << "\"\n";
   o << "esferas = " << h.esferas << "\ndeseos = " << h.deseos << "\n";
   o << "desbloqueos = [";
-  for (size_t i = 0; i < h.desbloqueos.size(); ++i) o << (i ? ", " : "") << '"' << h.desbloqueos[i] << '"';
+  for (size_t i = 0; i < h.desbloqueos.size(); ++i) o << (i ? ", " : "") << '"' << Escapa(h.desbloqueos[i]) << '"';
   o << "]\n";
-  o << "nombre = \"" << h.nombre << "\"\n";
+  o << "nombre = \"" << Escapa(h.nombre) << "\"\n";
   o << "inventario = [";
   for (size_t i = 0; i < h.inv.size(); ++i) o << (i ? ", " : "") << h.inv[i];
   o << "]\nequipo = [" << h.equipo[0] << ", " << h.equipo[1] << ", " << h.equipo[2] << ", " << h.equipo[3] << "]\n";
+  if (FidPeloCac2(h.pelo_fid_cac2)) o << "pelo_fid_cac2 = " << h.pelo_fid_cac2 << '\n';
+  if (h.moveset_logico >= 64 && h.moveset_logico <= INT32_MAX) o << "moveset_logico = " << h.moveset_logico << '\n';
   o << "raza = " << h.raza << "\ncuerpo = " << h.cuerpo << "\ntraje = " << h.traje
+    << (h.foto_pose ? "\nfoto_pose = " + std::to_string(h.foto_pose) : std::string())
+    << (h.foto_pose || h.foto_yaw != 22 ? "\nfoto_yaw = " + std::to_string(h.foto_yaw) : std::string())
     << "\ncara = " << h.cara << "\npelo = " << h.pelo << "\nropa = " << h.ropa
     << "\ncolor = " << h.color << "\nvoz = " << h.voz << "\naura = " << h.aura
-    << "\naura_col = \"" << h.aura_col << "\"\nki_col = \"" << h.ki_col << "\"\nestilo = " << h.estilo << "\nmoveset = " << h.moveset
+    << "\nmaterial17 = \"" << Escapa(h.material17) << "\"\npintura17 = \"" << Escapa(h.pintura17) << "\""
+    << "\ntexcol = \"" << Escapa(h.texcol) << "\"\naura_col = \"" << Escapa(h.aura_col) << "\"\nki_col = \"" << Escapa(h.ki_col) << "\"\nestilo = " << h.estilo << "\nmoveset = " << h.moveset
     << "\ntecnicas = [" << h.tecnicas[0] << ", " << h.tecnicas[1] << ", " << h.tecnicas[2]
     << ", " << h.tecnicas[3] << "]\n"
     << "\nxp = " << h.xp << "\nnivel = " << h.nivel << "\n"
@@ -239,6 +297,20 @@ void EscribirHeroe(std::ostream& o, const char* tabla, const Heroe& h) {
      << ", " << HsvTxt(h.parte[3]) << ", " << HsvTxt(h.parte[4]) << ", " << HsvTxt(h.parte[5]) << "]\n"
      << "xv2 = [" << h.xv2[0] << ", " << h.xv2[1] << ", " << h.xv2[2] << ", " << h.xv2[3] << ", " << h.xv2[4] << ", " << h.xv2[5] << ", " << h.xv2[6] << "]\n"
      << "b3_piezas = [" << h.b3_piezas[0] << ", " << h.b3_piezas[1] << ", " << h.b3_piezas[2] << ", " << h.b3_piezas[3] << "]\n"
+     << "b3_accesorio = " << h.b3_accesorio << "\n"
+     << "orig = [" << h.orig[0] << ", " << h.orig[1] << ", " << h.orig[2] << ", " << h.orig[3] << "]\n"
+     << "ocultar = " << h.ocultar << "\nocultar_de = " << h.ocultar_de << "\n"
+     << "capas = [";
+  for (int i = 0; i < kNumCapas; ++i) o << (i ? ", " : "") << "[" << h.capas[i].fid << ", " << h.capas[i].parte << ", " << h.capas[i].quitar << "]";
+  o << "]\nreceta_nombres = [";
+  for (int i = 0; i < kMaxRecetas; ++i) o << (i ? ", " : "") << '"' << Escapa(h.recetas[i].nombre) << '"';
+  o << "]\nreceta_fichas = [";
+  for (int i = 0; i < kMaxRecetas; ++i) o << (i ? ", " : "") << '"' << Escapa(h.recetas[i].ficha) << '"';
+  o << "]\nforma_receta = [";
+  for (int i = 0; i < kMaxFormasReceta; ++i) o << (i ? ", " : "") << h.forma_receta[i];
+  o << "]\nforma_estallido = [";
+  for (int i = 0; i < kMaxFormasReceta; ++i) o << (i ? ", " : "") << '"' << Escapa(h.forma_estallido[i]) << '"';
+  o << "]\n"
      << "pelo_color1 = " << HsvTxt(h.pelo_c1) << "\npelo_color2 = " << HsvTxt(h.pelo_c2) << "\n"
      << "ojos_color = " << HsvTxt(h.ojos_c) << "\n"
      << "piel_color = " << HsvTxt(h.piel_c) << "\n";
@@ -262,9 +334,23 @@ Hsv LeerHsv(const toml::node* n) {
 }
 std::string Escapa(const std::string& s) {
   std::string r;
-  for (char c : s) {
-    if (c == '"' || c == '\\') r += '\\';
-    r += c;
+  for (unsigned char c : s) {
+    switch (c) {
+      case '"': r += "\\\""; break;
+      case '\\': r += "\\\\"; break;
+      case '\n': r += "\\n"; break;
+      case '\r': r += "\\r"; break;
+      case '\t': r += "\\t"; break;
+      default:
+        if (c < 0x20 || c == 0x7f) {
+          constexpr char hex[] = "0123456789abcdef";
+          r += "\\u00";
+          r += hex[c >> 4];
+          r += hex[c & 15];
+        } else {
+          r += char(c);
+        }
+    }
   }
   return r;
 }
@@ -291,15 +377,25 @@ Heroe LeerHeroe(const toml::table* p) {
   h.cuerpo = int((*p)["cuerpo"].value_or(int64_t{0}));
   h.traje = int((*p)["traje"].value_or(int64_t{0}));
   h.cara = int((*p)["cara"].value_or(int64_t{0}));
+  h.foto_pose = int(std::clamp((*p)["foto_pose"].value_or(int64_t{0}), int64_t{0}, int64_t{2}));
+  h.foto_yaw = int(std::clamp((*p)["foto_yaw"].value_or(int64_t{22}), int64_t{-40}, int64_t{40}));
   h.pelo = int((*p)["pelo"].value_or(int64_t{0}));
   h.ropa = int((*p)["ropa"].value_or(int64_t{0}));
   h.color = int((*p)["color"].value_or(int64_t{0}));
   h.voz = int((*p)["voz"].value_or(int64_t{0}));
   h.aura = int((*p)["aura"].value_or(int64_t{0}));
+  h.material17 = (*p)["material17"].value_or(std::string());
+  h.pintura17 = (*p)["pintura17"].value_or(std::string());
+  if (const auto* nodo = (*p)["texcol"].as_string()) {
+    const std::string& texto = nodo->get();
+    if (TexcolValido(texto)) h.texcol = texto;
+  }
   h.aura_col = (*p)["aura_col"].value_or(std::string());
   h.ki_col = (*p)["ki_col"].value_or(std::string());
   h.estilo = int((*p)["estilo"].value_or(int64_t{0}));
   h.moveset = int((*p)["moveset"].value_or(int64_t{-1}));
+  const auto logical = (*p)["moveset_logico"].value_or(int64_t{-1});
+  h.moveset_logico = logical >= 64 && logical <= INT32_MAX ? logical : -1;
   if (auto* tec = (*p)["tecnicas"].as_array()) {
     int k = 0;
     for (const auto& v : *tec) {
@@ -310,6 +406,9 @@ Heroe LeerHeroe(const toml::table* p) {
   h.xp = int((*p)["xp"].value_or(int64_t{0}));
   h.nivel = int((*p)["nivel"].value_or(int64_t{1}));
   h.logo = int((*p)["logo"].value_or(int64_t{0}));
+  h.ocultar = (*p)["ocultar"].value_or(int64_t{0});
+  h.b3_accesorio = int((*p)["b3_accesorio"].value_or(int64_t{-1}));
+  h.ocultar_de = int((*p)["ocultar_de"].value_or(int64_t{-1}));
   h.scouter = int((*p)["scouter"].value_or(int64_t{0}));
   if (auto* ps = (*p)["partes"].as_array()) {
     for (size_t k = 0; k < ps->size() && k < kNumPartes; ++k) h.parte[k] = LeerHsv(&(*ps)[k]);
@@ -317,9 +416,33 @@ Heroe LeerHeroe(const toml::table* p) {
   if (auto* xs = (*p)["xv2"].as_array()) {
     for (size_t k = 0; k < xs->size() && k < 7; ++k) h.xv2[k] = int((*xs)[k].value_or(int64_t{0}));
   }
+  if (auto* os = (*p)["orig"].as_array())
+    for (size_t k = 0; k < os->size() && k < 4; ++k) h.orig[k] = int((*os)[k].value_or(int64_t{-1}));
   if (auto* bs = (*p)["b3_piezas"].as_array()) {
     for (size_t k = 0; k < bs->size() && k < 4; ++k) h.b3_piezas[k] = int((*bs)[k].value_or(int64_t{-1}));
   }
+  if (auto* cs = (*p)["capas"].as_array()) {   // v3
+    for (size_t k = 0; k < cs->size() && k < size_t(kNumCapas); ++k)
+      if (auto* par = (*cs)[k].as_array(); par && par->size() >= 2) {
+        const auto fid = (*par)[0].value_or(int64_t{-1});
+        const auto parte = (*par)[1].value_or(int64_t{-1});
+        if (fid < 0 || fid > 4095 || parte < 0 || parte >= 4) continue;
+        h.capas[k].fid = int(fid);
+        h.capas[k].parte = int(parte);
+        h.capas[k].quitar = par->size() > 2 ? (*par)[2].value_or(int64_t{0}) : 0;
+      }
+  }
+  auto texto4 = [&](const char* clave, auto&& poner, size_t tope) {
+    if (auto* ar = (*p)[clave].as_array())
+      for (size_t k = 0; k < ar->size() && k < tope; ++k) poner(k, (*ar)[k].value_or(std::string{}));
+  };
+  texto4("receta_nombres", [&](size_t k, std::string v) { h.recetas[k].nombre = std::move(v); }, size_t(kMaxRecetas));
+  texto4("receta_fichas", [&](size_t k, std::string v) { h.recetas[k].ficha = std::move(v); }, size_t(kMaxRecetas));
+  texto4("forma_estallido", [&](size_t k, std::string v) { h.forma_estallido[k] = std::move(v); }, size_t(kMaxFormasReceta));
+  const int64_t pelo_fid = (*p)["pelo_fid_cac2"].value_or(int64_t{-1});
+  h.pelo_fid_cac2 = FidPeloCac2(pelo_fid) ? int(pelo_fid) : -1;
+  if (auto* fr = (*p)["forma_receta"].as_array())
+    for (size_t k = 0; k < fr->size() && k < size_t(kMaxFormasReceta); ++k) h.forma_receta[k] = int((*fr)[k].value_or(int64_t{-1}));
   h.pelo_c1 = LeerHsv((*p)["pelo_color1"].node());
   h.pelo_c2 = LeerHsv((*p)["pelo_color2"].node());
   h.ojos_c = LeerHsv((*p)["ojos_color"].node());
@@ -337,9 +460,14 @@ Heroe LeerHeroe(const toml::table* p) {
 }
 
 bool Leer(const std::string& path) {
+  const std::lock_guard<std::recursive_mutex> lock(g_archivo_mu);
   std::error_code ec;
   if (path.size() < 4 || path.compare(path.size() - 4, 4, ".bak") != 0) g_ruta = path;
-  if (!fs::exists(path, ec)) return false;
+  if (!fs::exists(path, ec)) {
+    // Un cierre interrumpido de builds anteriores puede dejar solo el respaldo.
+    if (!ec && fs::exists(path + ".bak", ec)) return Leer(path + ".bak");
+    return false;
+  }
   toml::table t;
   try {
     t = toml::parse_file(path);
@@ -356,6 +484,10 @@ bool Leer(const std::string& path) {
     const std::string v1 = path + ".v1.bak";
     if (!fs::exists(v1, ec)) fs::copy_file(path, v1, ec);
     g_migrado = true;
+  }
+  if (ver == 2) {                                     // v2 -> v3 (capas y recetas): copia INTACTA, una sola vez
+    const std::string v2 = path + ".v2.bak";
+    if (!fs::exists(v2, ec)) fs::copy_file(path, v2, ec);
   }
   g_slots.clear();
   g_archivados.clear();
@@ -389,9 +521,7 @@ bool Leer(const std::string& path) {
       ++g_por_limite;
     }
   }
-  for (Heroe& h : g_archivados) {
-    if (h.id.empty()) h.id = NuevoId();
-  }
+  for (Heroe& h : g_archivados) AjustarHeroe(h);
   if (g_slots.empty()) g_slots.push_back(Heroe{});
   g_activo = std::clamp(activo, 0, NumSlots() - 1);
   for (int i = 0; i < NumSlots(); ++i) AjustarSlot(i);
@@ -399,6 +529,7 @@ bool Leer(const std::string& path) {
 }
 
 bool RespaldarCopia(const char* motivo) {
+  const std::lock_guard<std::recursive_mutex> lock(g_archivo_mu);
   std::error_code ec;
   if (g_ruta.empty() || !fs::exists(g_ruta, ec)) return false;
   const auto t = std::time(nullptr);
@@ -409,6 +540,7 @@ bool RespaldarCopia(const char* motivo) {
 }
 
 bool Guardar(const std::string& path) {
+  const std::lock_guard<std::recursive_mutex> lock(g_archivo_mu);
   g_ruta = path;
   for (Heroe& h : g_slots) {   // el heroe inicial nace sin id: se le da UNO y no cambia
     if (h.id.empty()) h.id = NuevoId();
@@ -416,28 +548,54 @@ bool Guardar(const std::string& path) {
   for (Heroe& h : g_archivados) {
     if (h.id.empty()) h.id = NuevoId();
   }
-  const std::string tmp = path + ".tmp", bak = path + ".bak";
+  // Un generador de una build anterior puede conservar abierto el viejo .tmp.
+  // Cada transaccion usa su propio nombre; los restos nunca se truncan ni borran.
+  static unsigned secuencia = 0;
+  const std::string tmp = path + ".tmp." + std::to_string(
+      std::chrono::steady_clock::now().time_since_epoch().count()) + "." + std::to_string(++secuencia);
+  const std::string bak = path + ".bak";
   std::error_code ec;
   if (fs::path(path).has_parent_path()) fs::create_directories(fs::path(path).parent_path(), ec);
-  std::ofstream o(tmp, std::ios::binary);
-  if (!o) return false;
-  o << "version = 2\nschema = \"dbz3-cac/2\"\n";
+  if (ec) return false;
+  std::ostringstream o;
+  o << "version = 3\nschema = \"dbz3-cac/3\"\n";
   o << "activo = " << g_activo << "\n\n";
   for (const Heroe& h : g_slots) {
-    Heroe e = h;
-    e.nombre = Escapa(h.nombre);
-    EscribirHeroe(o, "heroe", e);
+    EscribirHeroe(o, "heroe", h);
     o << "\n";
   }
   for (const Heroe& h : g_archivados) {
-    Heroe e = h;
-    e.nombre = Escapa(h.nombre);
-    EscribirHeroe(o, "archivado", e);
+    EscribirHeroe(o, "archivado", h);
     o << "\n";
   }
-  o.close();
-  if (!o) return false;
-  if (fs::exists(path, ec)) fs::rename(path, bak, ec);
+  // fopen/ifstream normales en MSVC crean handles heredables. Un CreateProcess
+  // del preview con redireccion de salida podia heredarlos y retener el .tmp
+  // incluso despues de cerrar el juego. N evita esa herencia en Windows.
+  std::FILE* f = nullptr;
+#ifdef _WIN32
+  if (_wfopen_s(&f, fs::path(tmp).c_str(), L"wbN") != 0) return false;
+#else
+  f = std::fopen(tmp.c_str(), "wb");
+  if (!f) return false;
+#endif
+  const std::string texto = o.str();
+  const bool escrito = std::fwrite(texto.data(), 1, texto.size(), f) == texto.size();
+  const bool vaciado = std::fflush(f) == 0;
+  const bool cerrado = std::fclose(f) == 0;
+  if (!escrito || !vaciado || !cerrado) return false;
+  const bool hay_principal = fs::exists(path, ec);
+  if (ec) return false;
+  if (hay_principal) {
+    // El principal sigue disponible hasta el commit. Preparar tambien el respaldo
+    // por separado evita dejarlo truncado si se interrumpe la copia.
+    const std::string bak_tmp = bak + ".tmp";
+    fs::copy_file(path, bak_tmp, fs::copy_options::overwrite_existing, ec);
+    if (ec) return false;
+    fs::rename(bak_tmp, bak, ec);
+    if (ec) return false;
+  }
+  // Ambos archivos estan en el mismo directorio: rename reemplaza el destino
+  // sin el intervalo sin principal del antiguo principal->bak, tmp->principal.
   fs::rename(tmp, path, ec);
   return !ec;
 }

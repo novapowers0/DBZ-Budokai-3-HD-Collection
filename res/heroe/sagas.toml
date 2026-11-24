@@ -7,10 +7,22 @@ version = 1
 [[saga]]
 nombre_es = "Saga de Ginyu"
 nombre_en = "Ginyu Saga"
+fondo = "goku_vegeta_namek"   # R23: ilustración propia (encargo 4); antes "esc7". fondos de historia (dbz3_heroe_fondos_historia): captura del escenario 7 (Namek) al montar; cierre = escenario 14 (Namek B)
+fondo_nativo = "b3_ginyu"
+fondo_cierre = "esc14"
 maestro = 0   # [H] design
-intro_es = ["Un mundo caotico: catastrofes y villanos revividos. Solo las siete Esferas pueden devolver la paz.", "Un joven saiyan sale a buscarlas. En el camino, el capitan Ginyu."]
-intro_en = ["A chaotic world: disasters and revived villains. Only the seven Dragon Balls can restore peace.", "A young Saiyan sets out to find them. On the way, Captain Ginyu."]
-cierre_es = ["Ginyu deja una Esfera de Dragon como agradecimiento."]
+etapa = 0   # rutas (dbz3_heroe_rutas): cruce del Acto 1
+cruce_es = "Nave de Freezer"
+cruce_en = "Freezer's Ship"
+marca = "camino_nave"
+lugar_es = "Namek"
+lugar_en = "Namek"
+pregunta_es = "¿Nave de Freezer o seguir a Vegeta?"
+pregunta_en = "Freezer's ship or follow Vegeta?"
+opcional_marca = "opc_namek"
+intro_es = ["Un mundo caótico: catástrofes y villanos revividos. Solo las siete Esferas pueden devolver la paz.", "Un joven héroe sale a buscarlas. En el camino, el capitán Ginyu."]
+intro_en = ["A chaotic world: disasters and revived villains. Only the seven Dragon Balls can restore peace.", "A young hero sets out to find them. On the way, Captain Ginyu."]
+cierre_es = ["Ginyu deja una Esfera de Dragón como agradecimiento."]
 cierre_en = ["Ginyu leaves a Dragon Ball as a thank-you."]
 
 [[saga.combate]]
@@ -24,6 +36,7 @@ en = "Saibaman blocks the way."
 
 [[saga.combate]]
 rival = 21   # Recoome (JSON studies 6, ID nativo)
+nombre = "Recoome"   # rutas: nombre en la placa del cruce (maqueta 1)
 alt = 43
 alt2 = 42
 vida = 2000   # [H] nivel 2
@@ -43,12 +56,43 @@ nota = "jefe"   # studies 6 heroe_sagas.json
 jefe_es = "Fuerzas Especiales... ¡Ginyu en persona! Tu cuerpo sera mio."   # [H] texto propio
 jefe_en = "Ginyu Force... Captain Ginyu himself! Your body will be mine."
 
+# rutas: rivales opcionales del tramo; la semilla de la partida sortea uno (marcador "?" del mapa)
+[[saga.opcional]]
+rival_mod = "cut_dodoria"   # villano revivido (mod de Nova); sin el mod, el nativo de `rival`
+rival = 42   # [H] respaldo nativo: Saibaman
+vida = 1500
+escenario = 7
+nombre = "Dodoria"
+es = "Dodoria te cierra el paso."
+en = "Dodoria blocks your way."
+
+[[saga.opcional]]
+rival_mod = "cut_zarbon"
+nombre = "Zarbon"
+rival = 43   # [H] respaldo nativo: Cell Jr.
+vida = 1500
+escenario = 7
+es = "Zarbon te cierra el paso."
+en = "Zarbon blocks your way."
+
 
 [[saga]]
 nombre_es = "Saga de los Androides"
 nombre_en = "Androids Saga"
+fondo = "heroe_foto_androides"   # encargo 7 de GPT (21/11)
+fondo_nativo = "b3_androides"
 planeta = 0   # H3: mapa de la Tierra (las demas, Namek)
 maestro = 5   # [H] design
+etapa = 1   # rutas: Laboratorio + Mono gigante (si seguiste a Vegeta)
+condicion = "camino_vegeta"
+cruce_es = "Laboratorio de Gero"
+cruce_en = "Gero's Laboratory"
+marca = "camino_lab"
+lugar_es = "Montañas"
+lugar_en = "Mountains"
+pregunta_es = "¿Laboratorio de Gero o la ciudad?"
+pregunta_en = "Gero's laboratory or the city?"
+opcional_marca = "opc_tierra"
 intro_es = ["Una pareja busca las Esferas con un radar: son los Androides 17 y 18, corrompidos por el caos.", "Si los vences, recuperan la cordura y te prestan su radar."]
 intro_en = ["A pair is hunting the Dragon Balls with a radar: Androids 17 and 18, changed by the chaos.", "If you beat them, they come back to their senses and lend you their radar."]
 cierre_es = ["El mundo sigue sumido en el caos. Reune las Esferas."]
@@ -82,14 +126,36 @@ es = "Mono Gigante (Vegeta) sale al paso."
 en = "Great Ape (Vegeta) blocks the way."
 nota = "gigante"   # studies 6 heroe_sagas.json
 
+# rutas: rivales opcionales sorteados (Acto 1, Tierra)
+[[saga.opcional]]
+rival = 43   # Cell Jr.
+vida = 2500
+escenario = 8
+nombre = "Cell Jr."
+es = "Un Cell Jr. anda suelto."
+en = "A Cell Jr. is on the loose."
+
+[[saga.opcional]]
+rival_mod = "cut_guldo"
+nombre = "Guldo"
+rival = 42   # [H] respaldo nativo: Saibaman
+vida = 2500
+escenario = 4
+es = "Guldo te cierra el paso."
+en = "Guldo blocks your way."
+
 
 [[saga]]
 nombre_es = "Saga de Piccolo"
 nombre_en = "Piccolo Saga"
+fondo = "heroe_foto_piccolo"   # encargo 7 de GPT (21/11)
+fondo_nativo = "b3_piccolo"
 planeta = 0   # H3: mapa de la Tierra (las demas, Namek)
 maestro = 2   # [H] design
-intro_es = ["El radar pierde la senal. Se dice que Piccolo, la reencarnacion del Rey Demonio, esta detras.", "Piccolo no es el culpable: pelea contigo para entrenarte y despertar tu Super Saiyan."]
-intro_en = ["The radar loses the signal. They say Piccolo, the reincarnation of the Demon King, is behind it.", "Piccolo is not the culprit: he fights you to train you and awaken your Super Saiyan."]
+etapa = 2   # rutas: Acto 2 si tu maestro es Piccolo o Krilin
+condicion = "maestro_piccolo|maestro_krilin"
+intro_es = ["El radar pierde la señal. Se dice que Piccolo, la reencarnación del Rey Demonio, está detrás.", "Piccolo no es el culpable: pelea contigo para entrenarte y despertar tu poder."]
+intro_en = ["The radar loses the signal. They say Piccolo, the reincarnation of the Demon King, is behind it.", "Piccolo is not the culprit: he fights you to train you and awaken your power."]
 cierre_es = ["Alguien pidio a Ultimate Shenron que la Tierra fuera un infierno."]
 cierre_en = ["Someone wished to Ultimate Shenron for Earth to become a living hell."]
 relevo = 11   # Piccolo entra de relevo en su combate (JSON nota 'maestro')
@@ -126,11 +192,14 @@ en = "Cell Jr. blocks the way."
 [[saga]]
 nombre_es = "Saga de Baby"
 nombre_en = "Baby Saga"
+fondo = "heroe_foto_baby"   # encargo 7 de GPT (21/11)
 planeta = 0   # H4: la ciudad (Tierra), no Namek
 maestro = 1   # [H] design
-intro_es = ["El mono gigante que hirio a Piccolo esta en la ciudad, con el control de los villanos.", "Es Baby en su forma de mono gigante dorado. Quien lo derrote sabra la verdad."]
+etapa = 2   # rutas: Acto 2 si tu maestro es Vegeta o Freezer
+condicion = "maestro_vegeta|maestro_freezer"
+intro_es = ["El mono gigante que hirió a Piccolo está en la ciudad, con el control de los villanos.", "Es Baby en su forma de mono gigante dorado. Quien lo derrote sabrá la verdad."]
 intro_en = ["The Great Ape that hurt Piccolo is in the city, controlling the villains.", "It is Baby in his Golden Great Ape form. Whoever beats him will learn the truth."]
-cierre_es = ["El mono gigante dorado revela: tras todo esta Omega Shenron."]
+cierre_es = ["El mono gigante dorado revela: tras todo está Omega Shenron."]
 cierre_en = ["The Golden Great Ape reveals: Omega Shenron is behind all of it."]
 
 [[saga.combate]]
@@ -160,15 +229,17 @@ escenario = 12   # Zona urbana B, la ciudad destruida: Baby (fuente: intro) [H] 
 es = "Baby Vegeta Oozaru Dorado sale al paso."
 en = "Golden Great Ape Baby blocks the way."
 nota = "gigante"   # studies 6 heroe_sagas.json
-jefe_es = "Soy Baby. Este mundo de caos es mio... ¡y tu tambien!"   # [H] texto propio
+jefe_es = "Soy Baby. Este mundo de caos es mío... ¡y tú también!"   # [H] texto propio
 jefe_en = "I am Baby. This world of chaos is mine... and so are you!"
 
 
 [[saga]]
 nombre_es = "Saga de Omega Shenron"
 nombre_en = "Omega Shenron Saga"
+fondo = "heroe_foto_omega"   # encargo 7 de GPT (21/11)
 maestro = 4   # [H] design
-intro_es = ["El radar marca tres Esferas en un mismo lugar: alli espera Omega Shenron.", "La pelea parece imposible... y al final Omega dispersa las Esferas por el mundo."]
+etapa = 3   # rutas: convergencia
+intro_es = ["El radar marca tres Esferas en un mismo lugar: allí espera Omega Shenron.", "La pelea parece imposible... y al final Omega dispersa las Esferas por el mundo."]
 intro_en = ["The radar marks three Dragon Balls in one place: Omega Shenron waits there.", "The fight seems impossible... and in the end Omega scatters the Dragon Balls across the world."]
 cierre_es = ["Omega dispersa las Esferas: hay que volver a encontrarlas."]
 cierre_en = ["Omega scatters the Dragon Balls: you must find them again."]
@@ -187,10 +258,13 @@ jefe_en = "Seven Dragon Balls, seven powers. You cannot beat me."
 
 
 [[saga]]
-nombre_es = "Reunion de las Esferas"
+nombre_es = "Reunión de las Esferas"
 nombre_en = "Gathering the Dragon Balls"
+fondo = "heroe_foto_esferas"   # encargo 7 de GPT (21/11)
+fondo_nativo = "b3_esferas"
 maestro = 3   # [H] design
-intro_es = ["Villanos revividos guardan las Esferas: Saibaman, Cooler, Cell, Freezer, Ginyu y Raditz.", "La ultima, la de cuatro estrellas, brilla lejos, donde se celebro el torneo de Cell."]
+etapa = 4   # rutas
+intro_es = ["Villanos revividos guardan las Esferas: Saibaman, Cooler, Cell, Freezer, Ginyu y Raditz.", "La última, la de cuatro estrellas, brilla lejos, donde se celebro el torneo de Cell."]
 intro_en = ["Revived villains hold the Dragon Balls: Saibamen, Cooler, Cell, Frieza, Ginyu and Raditz.", "The last one, the four-star ball, shines far away, where Cell's tournament was held."]
 cierre_es = ["Falta la Esfera de cuatro estrellas: en el estadio de Cell."]
 cierre_en = ["The four-star ball is still missing: at the Cell Games Arena."]
@@ -265,7 +339,13 @@ jefe_en = "A Dragon Ball? Win it from me... if you can keep up."
 [[saga]]
 nombre_es = "Torneo Mundial"
 nombre_en = "World Tournament"
+fondo = "heroe_foto_torneo"   # encargo 7 de GPT (21/11)
+fondo_nativo = "b3_torneo"
+planeta = 0   # R23 HER-08: la etapa 5 (Torneo, Juegos de Cell, ultima batalla) va en la Tierra y comparte planeta
 maestro = -1   # [H] design
+etapa = 5   # rutas: final F1 (deseo "revivir", paso 6)
+condicion = "deseo_revivir"
+prioridad = 2
 intro_es = ["En el estadio, un torneo de villanos: Cell, Freezer, Ginyu y Raditz.", "Gana el torneo para atraer a Omega Shenron a la final."]
 intro_en = ["In the stadium, a tournament of villains: Cell, Frieza, Ginyu and Raditz.", "Win the tournament to draw Omega Shenron to the final."]
 cierre_es = ["El torneo era una trampa: Omega te espera en la arena de Cell."]
@@ -321,9 +401,12 @@ jefe_es = "¡Soy el gran Gotenks! ¡Prepárate para mi ataque más fuerte!"   # 
 jefe_en = "I am the great Gotenks! Get ready for my strongest attack!"
 
 [[saga]]
-nombre_es = "Omega Shenron, la ultima batalla"
+nombre_es = "Omega Shenron, la última batalla"
 nombre_en = "Omega Shenron, the Last Battle"
+fondo = "heroe_foto_omega_final"   # encargo 7 de GPT (21/11)
+planeta = 0   # R23 HER-08: la etapa 5 (Torneo, Juegos de Cell, ultima batalla) va en la Tierra y comparte planeta
 maestro = -1   # [H] design
+etapa = 5   # rutas: final F3 por defecto
 intro_es = ["Con las siete Esferas, Omega Shenron es casi invencible. Es la batalla decisiva.", "Vence a Omega y recupera la Esfera de cuatro estrellas."]
 intro_en = ["With all seven Dragon Balls, Omega Shenron is nearly invincible. This is the decisive fight.", "Beat Omega and take back the four-star ball."]
 cierre_es = ["Omega cae, pero avisa: el mundo ya es un infierno y la de cuatro estrellas lo retiene."]
@@ -358,3 +441,350 @@ jefe_en = "This time there will be no mercy! Come, if you dare!"
 [epilogo]
 es = ["Ultimate Shenron no puede devolver el mundo tal como era: el caos supera su poder.", "Entonces el heroe pide que vuelvan los caidos y promete arreglar el mundo con sus propias manos."]
 en = ["Ultimate Shenron cannot restore the world as it was: the chaos exceeds his power.", "So the hero wishes the fallen back and promises to fix the world with his own two hands."]
+
+# ===================== rutas (dbz3_heroe_rutas, apagado de serie): tramos NUEVOS =====================
+# DISENO 12/11 §1.5-1.6. `variante = true`: solo existen con el ajuste encendido (el juego y el generador los saltan si no).
+# Indice de tramo = orden en este archivo: 0-7 las sagas de siempre, 8-13 estas.
+
+[[saga]]
+variante = true   # rutas (dbz3_heroe_rutas): tramo nuevo; con el ajuste apagado no existe
+nombre_es = "Saga de Ginyu: tras Vegeta"
+nombre_en = "Ginyu Saga: Vegeta's Trail"
+fondo = "heroe_foto_ginyu_vegeta"   # encargo 7 de GPT (21/11)
+fondo_nativo = "b3_ginyu_vegeta"
+maestro = 0
+etapa = 0
+cruce_es = "Seguir a Vegeta"
+cruce_en = "Follow Vegeta"
+marca = "camino_vegeta"
+lugar_es = "Llanuras"
+lugar_en = "Plains"
+pregunta_es = "¿Nave de Freezer o seguir a Vegeta?"
+pregunta_en = "Freezer's ship or follow Vegeta?"
+opcional_marca = "opc_namek"
+intro_es = ["Un mundo caótico: catástrofes y villanos revividos. Solo las siete Esferas pueden devolver la paz.", "Sigues el rastro de Vegeta por las llanuras de Namek."]
+intro_en = ["A chaotic world: disasters and revived villains. Only the seven Dragon Balls can restore peace.", "You follow Vegeta's trail across the plains of Namek."]
+cierre_es = ["Ginyu deja una Esfera de Dragón como agradecimiento."]
+cierre_en = ["Ginyu leaves a Dragon Ball as a thank-you."]
+
+[[saga.combate]]
+rival = 42   # Saibaman
+vida = 1500
+escenario = 5
+es = "Saibaman sale al paso."
+en = "Saibaman blocks the way."
+
+[[saga.combate]]
+rival_mod = "cut_jeice"
+retrato_recorte = [220, 230, 739, 749]   # rutas: la cara en ui/retrato.png del mod (739x903, primer plano), medida 13/11
+nombre = "Jeice"   # Jeice (mod de Nova); Burter pendiente: un rival por combate
+rival = 21   # [H] respaldo nativo: Recoome
+vida = 2000
+escenario = 5   # Llanuras: el camino B de la maqueta 1 (foto distinta de la del camino A)
+es = "Jeice sale al paso."
+en = "Jeice blocks the way."
+
+[[saga.combate]]
+rival = 20   # Ginyu
+vida = 2500
+escenario = 7
+es = "Ginyu sale al paso."
+en = "Ginyu blocks the way."
+nota = "jefe"
+jefe_es = "Fuerzas Especiales... ¡Ginyu en persona! Tu cuerpo sera mio."
+jefe_en = "Ginyu Force... Captain Ginyu himself! Your body will be mine."
+
+# rutas: rivales opcionales del tramo; la semilla de la partida sortea uno (marcador "?" del mapa)
+[[saga.opcional]]
+rival_mod = "cut_dodoria"   # villano revivido (mod de Nova); sin el mod, el nativo de `rival`
+rival = 42   # [H] respaldo nativo: Saibaman
+vida = 1500
+escenario = 7
+nombre = "Dodoria"
+es = "Dodoria te cierra el paso."
+en = "Dodoria blocks your way."
+
+[[saga.opcional]]
+rival_mod = "cut_zarbon"
+nombre = "Zarbon"
+rival = 43   # [H] respaldo nativo: Cell Jr.
+vida = 1500
+escenario = 7
+es = "Zarbon te cierra el paso."
+en = "Zarbon blocks your way."
+
+[[saga]]
+variante = true   # rutas (dbz3_heroe_rutas): tramo nuevo; con el ajuste apagado no existe
+nombre_es = "Saga de los Androides: la Ciudad"
+nombre_en = "Androids Saga: the City"
+fondo = "heroe_foto_androides_ciudad"   # encargo 7 de GPT (21/11)
+fondo_nativo = "b3_androides_ciudad"
+planeta = 0
+maestro = 5
+etapa = 1
+condicion = "camino_vegeta"
+cruce_es = "Ciudad"
+cruce_en = "City"
+marca = "camino_ciudad"
+lugar_es = "Ciudad"
+lugar_en = "City"
+pregunta_es = "¿Laboratorio de Gero o la ciudad?"
+pregunta_en = "Gero's laboratory or the city?"
+opcional_marca = "opc_tierra"
+intro_es = ["Una pareja busca las Esferas con un radar: son los Androides 17 y 18, corrompidos por el caos.", "Los rastreas hasta la ciudad."]
+intro_en = ["A pair is hunting the Dragon Balls with a radar: Androids 17 and 18, changed by the chaos.", "You track them down to the city."]
+cierre_es = ["El mundo sigue sumido en el caos. Reune las Esferas."]
+cierre_en = ["The world is still in chaos. Gather the Dragon Balls."]
+
+[[saga.combate]]
+rival = 30   # C-18
+vida = 2500
+escenario = 3
+es = "C-18 sale al paso."
+en = "Android 18 blocks the way."
+
+[[saga.combate]]
+rival = 29   # C-17
+vida = 3000
+escenario = 3
+es = "C-17 sale al paso."
+en = "Android 17 blocks the way."
+
+[[saga.combate]]
+rival = 7   # Mono Gigante (Vegeta)
+vida = 3500
+escenario = 5
+es = "Mono Gigante (Vegeta) sale al paso."
+en = "Great Ape (Vegeta) blocks the way."
+nota = "gigante"
+
+# rutas: rivales opcionales sorteados (Acto 1, Tierra)
+[[saga.opcional]]
+rival = 43   # Cell Jr.
+vida = 2500
+escenario = 8
+nombre = "Cell Jr."
+es = "Un Cell Jr. anda suelto."
+en = "A Cell Jr. is on the loose."
+
+[[saga.opcional]]
+rival_mod = "cut_guldo"
+nombre = "Guldo"
+rival = 42   # [H] respaldo nativo: Saibaman
+vida = 2500
+escenario = 4
+es = "Guldo te cierra el paso."
+en = "Guldo blocks your way."
+
+[[saga]]
+variante = true   # rutas (dbz3_heroe_rutas): tramo nuevo; con el ajuste apagado no existe
+nombre_es = "Saga de los Androides: Cell"
+nombre_en = "Androids Saga: Cell"
+fondo = "heroe_foto_cell"   # encargo 7 de GPT (21/11)
+fondo_nativo = "b3_cell"
+planeta = 0
+maestro = 5
+etapa = 1
+condicion = "camino_nave"
+cruce_es = "Laboratorio de Gero"
+cruce_en = "Gero's Laboratory"
+marca = "camino_lab"
+lugar_es = "Montañas"
+lugar_en = "Mountains"
+pregunta_es = "¿Laboratorio de Gero o la ciudad?"
+pregunta_en = "Gero's laboratory or the city?"
+opcional_marca = "opc_tierra"
+intro_es = ["Una pareja busca las Esferas con un radar: son los Androides 17 y 18, corrompidos por el caos.", "Los rastreas hasta el laboratorio del Dr. Gero."]
+intro_en = ["A pair is hunting the Dragon Balls with a radar: Androids 17 and 18, changed by the chaos.", "You track them down to Dr. Gero's laboratory."]
+cierre_es = ["El mundo sigue sumido en el caos. Reune las Esferas."]
+cierre_en = ["The world is still in chaos. Gather the Dragon Balls."]
+
+[[saga.combate]]
+rival = 29   # C-17
+vida = 2500
+escenario = 4
+es = "C-17 sale al paso."
+en = "Android 17 blocks the way."
+
+[[saga.combate]]
+rival = 30   # C-18
+vida = 3000
+escenario = 4
+es = "C-18 sale al paso."
+en = "Android 18 blocks the way."
+
+[[saga.combate]]
+rival = 33   # Cell (nativo; Cell imperfecto no existe en B3)
+vida = 3500
+escenario = 8
+es = "Cell sale al paso."
+en = "Cell blocks the way."
+nota = "jefe"
+jefe_es = "Vengo a por los Androides... y a por ti."
+jefe_en = "I came for the Androids... and for you."
+
+# rutas: rivales opcionales sorteados (Acto 1, Tierra)
+[[saga.opcional]]
+rival = 43   # Cell Jr.
+vida = 2500
+escenario = 8
+nombre = "Cell Jr."
+es = "Un Cell Jr. anda suelto."
+en = "A Cell Jr. is on the loose."
+
+[[saga.opcional]]
+rival_mod = "cut_guldo"
+nombre = "Guldo"
+rival = 42   # [H] respaldo nativo: Saibaman
+vida = 2500
+escenario = 4
+es = "Guldo te cierra el paso."
+en = "Guldo blocks your way."
+
+[[saga]]
+variante = true   # rutas (dbz3_heroe_rutas): tramo nuevo; con el ajuste apagado no existe
+nombre_es = "Saga de los Androides: la Ciudad y Cell"
+nombre_en = "Androids Saga: the City and Cell"
+fondo = "heroe_foto_cell"   # encargo 7 de GPT (21/11)
+fondo_nativo = "b3_androides_ciudad_cell"
+planeta = 0
+maestro = 5
+etapa = 1
+condicion = "camino_nave"
+cruce_es = "Ciudad"
+cruce_en = "City"
+marca = "camino_ciudad"
+lugar_es = "Ciudad"
+lugar_en = "City"
+pregunta_es = "¿Laboratorio de Gero o la ciudad?"
+pregunta_en = "Gero's laboratory or the city?"
+opcional_marca = "opc_tierra"
+intro_es = ["Una pareja busca las Esferas con un radar: son los Androides 17 y 18, corrompidos por el caos.", "Los rastreas hasta la ciudad."]
+intro_en = ["A pair is hunting the Dragon Balls with a radar: Androids 17 and 18, changed by the chaos.", "You track them down to the city."]
+cierre_es = ["El mundo sigue sumido en el caos. Reune las Esferas."]
+cierre_en = ["The world is still in chaos. Gather the Dragon Balls."]
+
+[[saga.combate]]
+rival = 30   # C-18
+vida = 2500
+escenario = 3
+es = "C-18 sale al paso."
+en = "Android 18 blocks the way."
+
+[[saga.combate]]
+rival = 29   # C-17
+vida = 3000
+escenario = 3
+es = "C-17 sale al paso."
+en = "Android 17 blocks the way."
+
+[[saga.combate]]
+rival = 33   # Cell (nativo; Cell imperfecto no existe en B3)
+vida = 3500
+escenario = 8
+es = "Cell sale al paso."
+en = "Cell blocks the way."
+nota = "jefe"
+jefe_es = "Vengo a por los Androides... y a por ti."
+jefe_en = "I came for the Androids... and for you."
+
+# rutas: rivales opcionales sorteados (Acto 1, Tierra)
+[[saga.opcional]]
+rival = 43   # Cell Jr.
+vida = 2500
+escenario = 8
+nombre = "Cell Jr."
+es = "Un Cell Jr. anda suelto."
+en = "A Cell Jr. is on the loose."
+
+[[saga.opcional]]
+rival_mod = "cut_guldo"
+nombre = "Guldo"
+rival = 42   # [H] respaldo nativo: Saibaman
+vida = 2500
+escenario = 4
+es = "Guldo te cierra el paso."
+en = "Guldo blocks your way."
+
+[[saga]]
+variante = true   # rutas (dbz3_heroe_rutas): tramo nuevo; con el ajuste apagado no existe
+nombre_es = "Villanos revividos"
+nombre_en = "Revived Villains"
+fondo = "heroe_foto_villanos"   # encargo 7B de GPT (21/11)
+fondo_nativo = "b3_villanos"
+planeta = 0
+maestro = 0
+etapa = 2   # Acto 2 si tu maestro es Goku o Cell
+condicion = "maestro_goku|maestro_cell"
+intro_es = ["El caos ha devuelto a la vida a viejos enemigos.", "Uno a uno, te esperan por toda la Tierra."]
+intro_en = ["The chaos has brought old enemies back to life.", "One by one, they wait for you all over the Earth."]
+cierre_es = ["Los villanos revividos caen. Algo más grande mueve los hilos."]
+cierre_en = ["The revived villains fall. Something bigger is pulling the strings."]
+
+[[saga.combate]]
+rival_mod = "cut_guldo"
+nombre = "Guldo"
+rival = 42   # [H] respaldo nativo: Saibaman
+vida = 3000
+escenario = 4
+es = "Guldo sale al paso."
+en = "Guldo blocks the way."
+
+[[saga.combate]]
+rival_mod = "cut_zarbon"
+nombre = "Zarbon"
+rival = 43   # [H] respaldo nativo: Cell Jr.
+vida = 3500
+escenario = 3
+es = "Zarbon sale al paso."
+en = "Zarbon blocks the way."
+
+[[saga.combate]]
+rival_mod = "cut_janemba"
+nombre = "Janemba"
+rival = 38   # [H] respaldo nativo: Cooler
+vida = 4000
+escenario = 12
+es = "Janemba sale al paso."
+en = "Janemba blocks the way."
+nota = "jefe"
+
+[[saga]]
+variante = true   # rutas (dbz3_heroe_rutas): tramo nuevo; con el ajuste apagado no existe
+nombre_es = "Juegos de Cell"
+nombre_en = "Cell Games"
+fondo = "heroe_foto_cell"   # encargo 7 de GPT (21/11)
+fondo_nativo = "b3_juegos_cell"
+planeta = 0   # R23 HER-08: la etapa 5 (Torneo, Juegos de Cell, ultima batalla) va en la Tierra y comparte planeta
+# mapa de Namek como los otros finales (todos los tramos de una etapa comparten planeta: el generador lo exige)
+etapa = 5   # final F2 si tu maestro es Cell o Goku
+condicion = "maestro_cell|maestro_goku"
+prioridad = 1
+intro_es = ["Cell anuncia su torneo: los Juegos de Cell.", "Sus hijos te esperan en el ring antes que el."]
+intro_en = ["Cell announces his tournament: the Cell Games.", "His children wait for you in the ring before he does."]
+cierre_es = ["Cell cae en su propio ring."]
+cierre_en = ["Cell falls in his own ring."]
+
+[[saga.combate]]
+rival = 43   # Cell Jr.
+vida = 4500
+escenario = 8
+es = "Cell Jr. sale al paso."
+en = "Cell Jr. blocks the way."
+
+[[saga.combate]]
+rival = 43   # Cell Jr.
+vida = 4500
+escenario = 8
+es = "Otro Cell Jr. sale al paso."
+en = "Another Cell Jr. blocks the way."
+
+[[saga.combate]]
+rival = 33   # Cell
+vida = 5000
+escenario = 8
+es = "Cell sale al paso."
+en = "Cell blocks the way."
+nota = "jefe"
+jefe_es = "Bienvenido a mis Juegos. Que empiece el espectaculo."
+jefe_en = "Welcome to my Games. Let the show begin."

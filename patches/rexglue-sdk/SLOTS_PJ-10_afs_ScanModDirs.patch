@@ -1,0 +1,28 @@
+--- a/src/filesystem/afs.cpp
++++ b/src/filesystem/afs.cpp
+@@ -49,6 +49,11 @@
+                     "Log AFS I/O statistics (read rate, latency, slow reads)");
+ REXCVAR_DEFINE_INT32(dbz3_io_slow_ms, 25, "DBZ3/Dev",
+                      "Log a line for AFS reads slower than this many milliseconds");
++// DBZ3 SLOTS_PJ-10 (apagado de serie): las carpetas FUENTE de roster_build (personaje.toml / traje.toml sin us/ ni eu/)
++// no sirven ningun fichero AFS; con 120 mods eran ~11 000 entradas x carpetas x 2 consultas (+62 s de arranque). Con
++// esto el escaneo las salta sin tocar las carpetas del jugador (roster_ext deja entonces su rodeo de marcas .disabled).
++REXCVAR_DEFINE_BOOL(dbz3_afs_saltar_fuentes, false, "DBZ3/Mods",
++                    "Skip roster_build source folders (personaje.toml/traje.toml without us/ or eu/) when scanning mods");
+ 
+ // DBZ3 - build stamp of THIS DLL (rexruntime). No la version del juego, sino la
+ // del runtime: el launcher la compara con la suya para detectar instalaciones
+@@ -390,6 +395,13 @@
+           std::filesystem::exists(mod_entry.path() / ".disabled", fec)) {
+         continue;
+       }
++      if (REXCVAR_GET(dbz3_afs_saltar_fuentes) &&
++          (std::filesystem::exists(mod_entry.path() / "personaje.toml", fec) ||
++           std::filesystem::exists(mod_entry.path() / "traje.toml", fec)) &&
++          !std::filesystem::exists(mod_entry.path() / "us", fec) &&
++          !std::filesystem::exists(mod_entry.path() / "eu", fec)) {
++        continue;   // fuente de roster_build: sus ficheros salen montados en mods/_roster
++      }
+       g_mod_dirs_cache.push_back(mod_entry.path());
+     }
+   }

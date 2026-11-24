@@ -49,6 +49,31 @@ REXCVAR_DEFINE_INT32(dbz3_net_rollback_ventana, 2, "DBZ3/Online",
                      "Online con rollback: ticks sin confirmar permitidos (0 = lockstep, maximo 6). El retardo de entrada baja en esa cantidad");
 REXCVAR_DEFINE_BOOL(dbz3_net_sumas, false, "DBZ3/Online",
                     "Online: suma por fotograma de la region del combate (R1). Los dos PCs deben tenerla igual; solo registra");
+REXCVAR_DEFINE_BOOL(dbz3_net_validacion_f10, false, "DBZ3/Online",
+                    "Experimental F10: validar fragmentos y sumas; ante desincronia con rollback, avisar y cerrar en vez de afirmar una reparacion. Probar en ambos PCs");
+REXCVAR_DEFINE_BOOL(dbz3_net_cierre_sonda_f10, false, "DBZ3/Online",
+                    "Diagnostico F10: registrar pila guest y nativa antes del cierre o purecall con rollback US. Apagado de serie; no corrige ni evita el cierre");
+REXCVAR_DEFINE_BOOL(dbz3_net_tareas_sonda_f10, false, "DBZ3/Online",
+                    "Diagnostico F10: conservar nodos de tareas de los dos luchadores antes de una suma distinta. Solo lectura, US, apagado de serie");
+REXCVAR_DEFINE_BOOL(dbz3_net_rb_cas_delta, false, "DBZ3/Online",
+                    "Rollback RESTO-01: al deshacer, los contadores de referencias (sub_82080750) que tambien cambio otro dueno se corrigen restando solo lo que hizo la logica. Apagado de serie; sin probar");
+REXCVAR_DEFINE_BOOL(dbz3_net_rb_reparacion_larga, false, "DBZ3/Online",
+                    "Rollback RESTO-02: ventana de deshacer de 60 ticks para que la instantanea de reparacion (llega ~20 ticks tarde) se pueda aplicar. Los dos PCs igual. Apagado; sin probar");
+REXCVAR_DEFINE_BOOL(dbz3_net_rb_tarea_identidad, false, "DBZ3/Online",
+                    "Rollback RESTO-02: el nodo de tarea del luchador (+0x1AB0) cuenta solo como nulo/no nulo en la suma y se conserva al reparar. Los dos PCs igual. Apagado; sin probar");
+#include "rb_exit_probe.h"
+#include "rb_task_probe.h"
+
+#ifdef _WIN32
+REX_HOOK_RAW(sub_822F8988) {
+  dbz3::net::rb::ExitProbe("salida", ctx, base);
+  __imp__sub_822F8988(ctx, base);
+}
+REX_HOOK_RAW(sub_822F5460) {
+  dbz3::net::rb::ExitProbe("purecall", ctx, base);
+  __imp__sub_822F5460(ctx, base);
+}
+#endif
 
 namespace {
 
@@ -153,6 +178,14 @@ void RbAuto(uint8_t* base, dbz3::net::Session& s) {
   static uint32_t menu_ticks = 0, act_ticks = 0, retry_at = 0;
   static bool fired = false;
   const bool in_menu = base[dbz3::GuestAddr(0x824BA110, 0x824BA100)] == 5;
+  // F10: comprobar lo que realmente cargo el juego, no solo el env del arnes.
+  static bool settings_logged = false, mod_diff_logged = false;
+  if (in_menu && !settings_logged && REXCVAR_GET(dbz3_net_validacion_f10)) {
+    settings_logged = true;
+    REXLOG_INFO("dbz3 online: F10 ajustes efectivos: validacion true rollback {} region {}",
+                REXCVAR_GET(dbz3_net_rollback), dbz3::g_guest_eu ? "EU" : "US");
+    REXLOG_INFO("dbz3 online: F10 sonda pre-cierre {}", REXCVAR_GET(dbz3_net_cierre_sonda_f10));
+  }
   menu_ticks = in_menu ? menu_ticks + 1 : 0;
   if ((s.active() || solo) && in_menu) ++act_ticks;
   static const bool rueda = std::getenv("DBZ3_NET_RUEDA") != nullptr;   // PRUEBAS: los dos van a la rueda con sus teclas
@@ -181,9 +214,12 @@ void RbAuto(uint8_t* base, dbz3::net::Session& s) {
 #endif
   if (solo) return;
   if (step == 0 && menu_ticks > (host ? 60u : 120u) && calls >= retry_at) {
+    mod_diff_logged = false;
     std::string err;
     s.Close();
-    const bool ok = s.ConfigureIdentity(std::string(32, 'a'), true, false);
+    const char* test_id = std::getenv("DBZ3_NET_TEST_ID");
+    const std::string auto_id = (test_id && std::strlen(test_id) == 32) ? std::string(test_id) : std::string(32, 'a');
+    const bool ok = s.ConfigureIdentity(auto_id, true, false);
     s.SetProfile(1000, -1);
     const auto envi = [](const char* k, int d) { const char* v = std::getenv(k); return v && *v ? std::atoi(v) : d; };
     // PRUEBAS: DBZ3_NET_PORT = puerto del anfitrion, DBZ3_NET_JOIN_PORT = al que llama el invitado (el frontal de tools/red_sim.py),
@@ -204,6 +240,18 @@ void RbAuto(uint8_t* base, dbz3::net::Session& s) {
   if (step == 1 && !host && (s.link() == dbz3::net::Link::kError || s.link() == dbz3::net::Link::kLost)) { step = 0; retry_at = calls + 300; }   // el anfitrion aun no escucha
   if (step == 1) {
     s.Poll();
+    if (REXCVAR_GET(dbz3_net_validacion_f10) && !mod_diff_logged &&
+        s.link() == dbz3::net::Link::kConnected && !s.mods_match()) {
+      std::vector<dbz3::net::Session::ModDelta> diff;
+      if (s.ModDiff(diff)) {
+        mod_diff_logged = true;
+        REXLOG_WARN("dbz3 online: F10 auto bloqueado por mods: {} diferencias; igualar contenido antes de repetir", diff.size());
+        for (const auto& d : diff)
+          REXLOG_WARN("dbz3 online: F10 mod {}: {}", d.name,
+                      d.kind == dbz3::net::Session::ModDelta::kMissing ? "falta aqui" :
+                      d.kind == dbz3::net::Session::ModDelta::kExtra ? "sobra aqui" : "otra version");
+      }
+    }
     if (host && s.link() == dbz3::net::Link::kConnected && s.mods_match()) s.RequestStart();   // sin la sala/equipo del otro no hace nada: se repite
     if (s.link() == dbz3::net::Link::kStarting || s.active()) { step = 2; REXLOG_INFO("dbz3 rb: auto: empezando"); }
   }
@@ -673,6 +721,11 @@ void RbTrack(uint8_t* base, dbz3::net::Session& s) {
 // Dentro del combate con rollback: reconcilia con la red, resimula si el rival hizo otra cosa de lo predicho, espera si hay
 // ya demasiados ticks sin confirmar, guarda la instantanea de este tick y manda las sumas de lo confirmado.
 void OnSumBadRb(uint32_t tick, uint32_t mask) {   // DBZ3_RB_DUMP: vuelca la instantanea del tick malo (si sigue en el anillo) para compararla con la del otro PC
+  if (REXCVAR_GET(dbz3_net_tareas_sonda_f10) && !dbz3::g_guest_eu) {
+    const auto path = dbz3::net::rb::OutDir() / (std::string("tareas_") + g_who_name(dbz3::net::Session::Get()) + "_bad" + std::to_string(tick - g_rbs.t0) + ".tsv");
+    const bool ok = dbz3::net::rb::g_task_probe.Dump(path, tick, g_rbs.t0);
+    REXLOG_INFO("dbz3 rb: F10 tareas tick {} guardadas {}: {}", tick, ok, path.string());
+  }
   const uint8_t* d = g_rbs.core.Get(tick);
   if (!d) return;
   std::ofstream(dbz3::net::rb::OutDir() / (std::string("dump_") + g_who_name(dbz3::net::Session::Get()) + "_bad" + std::to_string(tick - g_rbs.t0) + ".bin"),
@@ -734,13 +787,21 @@ void RbBegin(PPCContext& ctx, uint8_t* base, Dbz3GuestFn orig, dbz3::net::Sessio
   if (!s.rb_mode()) {
     if (!m || dbz3::tag::DynamicTeam(0).size() >= 2 || dbz3::tag::DynamicTeam(1).size() >= 2) return;   // Tag Team (relevos): sin rollback
     R.core.Init(m, base, std::getenv("DBZ3_RB_COSMSTATE") ? &g_cosm_rng : nullptr);
+    dbz3::net::rb::g_task_probe.Reset();
+    if (REXCVAR_GET(dbz3_net_tareas_sonda_f10) && !dbz3::g_guest_eu)
+      REXLOG_INFO("dbz3 rb: F10 sonda tareas activa (solo lectura)");
     dbz3::net::rb::Effects::Init(R.fights);
     if (dbz3::net::rb::Effects::On() && std::getenv("DBZ3_RB_ORACLE")) {
       REXLOG_ERROR("dbz3 rb: EFFECTS bloqueado: los oraculos antiguos no estan adaptados al journal");
       s.RequestLeave(); return;
     }
     if (!Snapshot::Init(base, R.fights, &g_cosm_rng)) { s.RequestLeave(); return; }
+    WLog::cas_delta = REXCVAR_GET(dbz3_net_rb_cas_delta);
+    WLog::win = REXCVAR_GET(dbz3_net_rb_reparacion_larga) ? WLog::kRing - 4 : WLog::kTicks;
+    dbz3::net::rb::g_task_id = REXCVAR_GET(dbz3_net_rb_tarea_identidad);
+    REXLOG_INFO("dbz3 rb: RESTO-02 ventana de deshacer {} ticks, nodo de tarea como identidad {}", WLog::win, dbz3::net::rb::g_task_id);
     if (WLog::On() && !WLog::Init(base, &g_cosm_rng)) { s.RequestLeave(); return; }
+    if (WLog::On()) REXLOG_INFO("dbz3 rb: WLOG contadores por diferencia {}", WLog::cas_delta);
     R.pure_samples = R.pure_bad = 0;
     R.mgr = m;
     if (WLog::On()) REXLOG_INFO("dbz3 rb: gestor del combate en {:08X}", m);
@@ -788,6 +849,8 @@ void RbBegin(PPCContext& ctx, uint8_t* base, Dbz3GuestFn orig, dbz3::net::Sessio
       ResimTick(ctx, base, orig, RbMask());   // mandos + sub_820927E0 + paso del LFSR
       WLog::End();
       R.core.Save(base, k + 1);
+      if (REXCVAR_GET(dbz3_net_tareas_sonda_f10) && !dbz3::g_guest_eu)
+        dbz3::net::rb::g_task_probe.Capture(base, R.mgr, k + 1, true);
     } } catch (const dbz3::net::rb::Effects::Stop&) { s.RbEndResim(); return false; }
     s.RbEndResim();
     const double ms = MsSince(t0);
@@ -1253,13 +1316,18 @@ void RbBegin(PPCContext& ctx, uint8_t* base, Dbz3GuestFn orig, dbz3::net::Sessio
   if (std::getenv("DBZ3_RB_CNT") && t - R.t0_rb < 8)
     REXLOG_INFO("dbz3 rb: contadores tick {}: D6B4 {} 823D0A40 {:08X} 823CEA10 {:08X} D6D8 {}", t, REX_LOAD_U32(0x8238D6B4), REX_LOAD_U32(0x823D0A40), REX_LOAD_U32(0x823CEA10), REX_LOAD_U32(0x8238D6D8));
   if (!leaving && s.rb_conf() >= t) dbz3::net::rb::DumpStatics(base, g_who_name(s), R.fights, t - R.t0);   // estado confirmado: comparable entre PCs
-  if (!leaving) R.core.Save(base, t);
+  if (!leaving) {
+    R.core.Save(base, t);
+    if (REXCVAR_GET(dbz3_net_tareas_sonda_f10) && !dbz3::g_guest_eu)
+      dbz3::net::rb::g_task_probe.Capture(base, R.mgr, t, false);
+  }
   // sumas de los ticks ya confirmados (la instantanea de k es correcta si todo lo anterior a k lo esta)
   const uint32_t last_ok = leaving ? (t ? t - 1 : 0) : std::min(s.rb_conf(), t);
   for (uint32_t k = s.rb_sum_next(); k <= last_ok; ++k) {
     dbz3::net::rb::Sums sm;
     if (R.core.SumsAt(k, &sm)) {
       s.NoteSum(k, sm.b);
+      if (!s.active()) { Snapshot::Release(); WLog::Release(); return; }   // F10: cierre por suma distinta
       g_csv.Put(g_who_name(s), R.fights, k - R.t0, sm);
       dbz3::net::rb::DumpAt(g_who_name(s), R.fights, k - R.t0, R.core.Get(k));
     }
@@ -1276,7 +1344,7 @@ void RbBegin(PPCContext& ctx, uint8_t* base, Dbz3GuestFn orig, dbz3::net::Sessio
     RbWriteSummary(s);
     g_csv.Flush();
   }
-  if (!leaving && WLog::On() && t >= WLog::kTicks + 1) { const PPCContext keep = ctx; WLog::FlushFrees(ctx, t - WLog::kTicks - 1); ctx = keep; }
+  if (!leaving && WLog::On() && t >= WLog::win + 1) { const PPCContext keep = ctx; WLog::FlushFrees(ctx, t - WLog::win - 1); ctx = keep; }
   if (!leaving) { Snapshot::Begin(t, false); dbz3::net::rb::Effects::Begin(t, false); WLog::Begin(t, false); }
 }
 }  // namespace
@@ -1427,6 +1495,10 @@ DBZ3_HOOK(sub_8221C178, dbz3eu_sub_8221A940) {
     return;
   }
 #endif
+  // GameScreen 5 = menu principal (online_panel.cpp); nunca reinstalar el roster en una pelea.
+  if (user == 0 && out && s.link() == dbz3::net::Link::kIdle && dbz3::ingame::GameScreen() == 5 && !dbz3_select_live() &&
+      !dbz3::ingame::BattleNow() && !dbz3::ingame::pilot::Busy())
+    dbz3::roster::ProcessHeroRosterRequest();
   if (user == 1 && out && s.cut_fight() && dbz3::ingame::BattleNow()) {   // corte en combate: P2 neutro y conectado
     static uint32_t packet = 0;
     REX_STORE_U32(out + 0, ++packet);
@@ -1509,6 +1581,14 @@ DBZ3_HOOK(sub_8221C178, dbz3eu_sub_8221A940) {
       if (static const bool pkg = std::getenv("DBZ3_RB_PKG") != nullptr; pkg && (s.tick() - g_rbs.t0) % 300 < 20) {
         static const uint16_t kTerna[4] = {0x7000, 0xB000, 0xD000, 0xE000};
         b = kTerna[((s.tick() - g_rbs.t0) / 300) & 3];
+      }
+      // PRUEBAS (DBZ3_RB_COMP, COMP/8): cada 6 s, P+K+G+E (Aura Burst con el Modo Competitivo), a los 2 s Arriba + B (definitiva)
+      // y a los 4 s LB (persecucion): las entradas nuevas del modo en los dos PCs, para las sumas por tick
+      if (static const bool comp = std::getenv("DBZ3_RB_COMP") != nullptr; comp) {
+        const uint32_t ct = (s.tick() - g_rbs.t0) % 360;
+        if (ct < 12) b = 0xF000;
+        else if (ct >= 120 && ct < 126) b = 0x2001;
+        else if (ct >= 240 && ct < 246) b = 0x0100;
       }
       // PRUEBAS (DBZ3_RB_SELECT=N): SELECT unos ticks cada N: relevo real; el anfitrion al principio, el invitado a media vuelta
       if (static const uint32_t sel = std::getenv("DBZ3_RB_SELECT") ? uint32_t(std::atoi(std::getenv("DBZ3_RB_SELECT"))) : 0; sel) {

@@ -1,0 +1,17 @@
+# CAC-15 (cac-modelo, 21/11): Trunks con pelo SSJ3 de Goku (268:0) como capa en el creador, perfil izquierdo (RT = tecla E, 3 veces) y derecho.
+descripcion = "CAC-15: Trunks con pelo de capa en perfil izquierdo y derecho (previa = combate)"
+env = ["DBZ3_TEST_MODO=heroe", "DBZ3_HUB_MODE=5", "DBZ3_TEST_HEROE_ABRIR=2", "DBZ3_TEST_HEROE_CUERPO=7", "DBZ3_TEST_CAPAS=268:0"]
+pasos = [
+  "log \"Create abierto\" 180",
+  "log \"vista previa 3D .* cargada\" 90",
+  "esperar 25000",
+  "tecla E 400",
+  "tecla E 400",
+  "tecla E 400",
+  "esperar 7000",
+  "captura perfil_izq",
+  "tecla E 400",
+  "tecla E 400",
+  "esperar 7000",
+  "captura perfil_der"
+]

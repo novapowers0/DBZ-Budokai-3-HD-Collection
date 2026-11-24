@@ -1,0 +1,14 @@
+descripcion = "R17: compara cada textura reutilizada con decodificacion completa durante una muestra jugable"
+env = [
+  "DBZ3_TEST_IWMINI=0x7DA,auto",
+  "DBZ3_TEST_CFG=dbz3_iw_traducido=true;dbz3_iw_7da_original=true",
+  'DBZ3_PS2_GAMES=D:\DBZ3HD\ps2_games',
+  "DBZ3_IW_RITMO=1",
+  "DBZ3_TEST_IW_CACHE_VERIFICAR=1",
+]
+pasos = [
+  'log "la ronda es la del original arrancado desde el ELF" 180',
+  'log "cache verificada 1000 texturas, 0 diferencias" 120',
+  "esperar 12000",
+  "captura cache_juego",
+]

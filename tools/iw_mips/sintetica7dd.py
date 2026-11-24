@@ -1,15 +1,19 @@
 # SPDX-License-Identifier: MIT
 """Sesion sintetica del espejo del 0x7DD (iw_7dd_raiz, 7/11): jugador QUIETO donde estaba en el dorado del tick y Piccolo
-entrando donde entro en el original; cuenta los campos hasta que la distancia horizontal baja de 14 (criterio del port,
-iw_minijuegos.cpp). Rayos y barridos: el arnes rayo7dd.exe sobre el #WCF 907/0 (= el juego). Original (PCSX2): ~42 s.
+entrando donde entro en el original. El criterio historico de este banco es distancia 3D <14 (el port usa horizontal).
+El criterio opcional original-anclas8 es el predicado de contacto, no ejecuta la transicion completa a estado9.
+Rayos y barridos: arnes WCF o codigo de colision del ELF offline con --col-original.
 Uso: python tools/iw_mips/sintetica7dd.py [--campos 4000] [--sin-raiz]
 """
 import argparse
+import atexit
+import hashlib
 import json
 import math
 import struct
 import subprocess as sp
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -25,13 +29,22 @@ def main():
     ap.add_argument('--sin-raiz-previa', action='store_true', help='el espejo de antes: +0x50 sin escribir y la Update antes de la tarea')
     ap.add_argument('--cintura', action='store_true', help='hueso 1 con el giro de su clip (no la pose fija)')
     ap.add_argument('--entre', action='store_true', help='avanza el LFSR entre ticks como el resto del juego original')
+    ap.add_argument('--pic0', type=lambda x: [float(v) for v in x.split(':')], default=None, help='X:Y:Z de salida de Piccolo')
+    ap.add_argument('--entre-port', action='store_true', help='IW-F09: pasos entre ticks con la regla del runtime')
     ap.add_argument('--inicio4', action='store_true', help='Piccolo sale como en el original: estado 4 en (-9; -49,7; -879,7)')
     ap.add_argument('--traza', type=lambda x: [int(v) for v in x.split(':')], default=None, help='A:B campos a imprimir')
     ap.add_argument('--cabeza-fija', action='store_true', help='rayo desde ancla + 5,5 (lo de antes) y no la tabla CABEZA')
     ap.add_argument('--semilla', type=lambda x: int(x, 0), default=0x12345678)
     ap.add_argument('--col-original', action='store_true',
                     help='rayos y barridos con Collision_Raycast/MoveSphere del ELF sobre el arbol del savestate (PS2)')
+    ap.add_argument('--criterio', choices=('distancia3d14', 'original-anclas8'), default='distancia3d14')
+    ap.add_argument('--salida', type=Path, help='JSON nuevo de diagnostico en una carpeta existente')
     a = ap.parse_args()
+    if a.campos < 1:
+        ap.error('--campos debe ser positivo')
+    if a.salida and (a.salida.exists() or not a.salida.parent.is_dir()):
+        ap.error('--salida debe estar ausente y su carpeta debe existir')
+    t0 = time.perf_counter()
     meta = json.loads((P.CAP_TICK / 'parejas.json').read_text())
     dat = (P.CAP_TICK / 'parejas.bin').read_bytes()
     b0 = meta['base']
@@ -51,7 +64,21 @@ def main():
             print('entrada en el cuadro', par['cnt'], 'jugador', [round(P.b2f(x), 1) for x in jug[0]],
                   'piccolo', [round(P.b2f(x), 1) for x in pic0])
             break
-    pr = sp.Popen([str(P.RAYO_EXE), str(P.WCF)], stdin=sp.PIPE, stdout=sp.PIPE, text=True, bufsize=1)
+    if jug is None:
+        raise ValueError('el dorado no contiene una entrada de Piccolo en estado13')
+    pr = None
+    if not a.col_original:
+        pr = sp.Popen([str(P.RAYO_EXE), str(P.WCF)], stdin=sp.PIPE, stdout=sp.PIPE, text=True, bufsize=1)
+
+        def cerrar():
+            pr.stdin.close()
+            try:
+                pr.wait(timeout=2)
+            except sp.TimeoutExpired:
+                pr.terminate()
+                pr.wait(timeout=2)
+            pr.stdout.close()
+        atexit.register(cerrar)
 
     def proveedor(k, x, y, radio, m):
         q = ' '.join(repr(P.b2f(v)) for v in x + y)
@@ -71,9 +98,28 @@ def main():
     seed = a.semilla
     if a.inicio4:   # fase 1 (7/11): la salida del original (pareja 238, cuadro 18287: estado 4 en el suelo)
         pic0 = [B.f2b(-9.0), B.f2b(-49.7), B.f2b(-879.7)]
+    if a.pic0:   # IW-F09: p. ej. la salida del port en el juego (11/11): -9:124:-875
+        pic0 = [B.f2b(v) for v in a.pic0]
     primer13 = None
     jx, jz = P.b2f(jug[0][0]), P.b2f(jug[0][2])
     estados, modos, vuela, alturas, dists, tipos, vis, con_tarea, frente, prev_p = {}, {}, {}, {}, {}, {}, {}, {}, {}, None
+
+    def guardar(alcanza, ticks, distancia3d):
+        r = dict(alcance='Hipotesis sintetica; no dorado ni transicion completa del jugador a estado9',
+                 criterio=a.criterio, alcanza=alcanza, ticks=ticks, limite=a.campos,
+                 segundos_pal=ticks * 1.2 / 60, primer13=primer13, distancia3d=distancia3d,
+                 semilla_inicial=hex(a.semilla), semilla_final=hex(seed),
+                 opciones=dict(cintura=a.cintura, cabeza_fija=a.cabeza_fija, entre=a.entre,
+                               col_original=a.col_original, inicio4=a.inicio4, sin_raiz=a.sin_raiz,
+                               raiz_previa=not a.sin_raiz_previa),
+                 estados=estados, modos=modos, duracion_s=round(time.perf_counter() - t0, 3))
+        r['entradas'] = [dict(path=str(p), sha256=hashlib.sha256(p.read_bytes()).hexdigest())
+                         for p in (P.CAP_TICK / 'parejas.json', P.CAP_TICK / 'parejas.bin', P.P2S, B.ELF)]
+        if a.salida:
+            with a.salida.open('x', encoding='utf-8') as f:
+                json.dump(r, f, ensure_ascii=False, indent=2)
+                f.write('\n')
+        print(json.dumps(r, ensure_ascii=False))
     import random
     rnd_entre = random.Random(a.semilla)
     pasos_n, pesos = zip(*P.PASOS_ENTRE)
@@ -84,11 +130,14 @@ def main():
         p770 = ([p640[0], B.f2b(P.b2f(p640[1]) + 5.5), p640[2]] if a.cabeza_fija or not n else
                 P.cabeza(p640, P.b2f(c.r32(P.W1 + 0x50)), P.b2f(c.r32(P.W1 + 0x58)), c.r32(P.PIC + 0xB60)))
         dist = math.sqrt(sum((P.b2f(jug[1][i]) - P.b2f(p640[i])) ** 2 for i in range(3)))
+        estado_pre = c.r16(P.PIC + 0xCBC) if n else (4 if a.inicio4 else 13)
         e = dict(ini=int(n == 0), estado_ini=4 if a.inicio4 else 13, seed=seed, pic0=pic0, j40=jug[0], j640=jug[1], p640=p640, p770=p770,
                  dist=B.f2b(dist), jcbc=1, dif=2, t25a=1, w180=0, rayos=[])
         o = esp.tick(e)
         seed = o['seed']
-        if a.entre:   # el resto del juego tira del LFSR entre dos ticks (persecucion.PASOS_ENTRE, medido en el dorado)
+        if a.entre_port:   # IW-F09: la regla del runtime (iw_mips.cpp PasosEntre7DD): tabla expandida por el LFSR
+            seed = P.lfsr(seed, P.pasos_entre_port(seed))
+        elif a.entre:   # el resto del juego tira del LFSR entre dos ticks (persecucion.PASOS_ENTRE, medido en el dorado)
             seed = P.lfsr(seed, rnd_entre.choices(pasos_n, pesos)[0])
         if 0x7A000000 in esp.ev:   # tarea nueva: su modo (1 = va a por el jugador, 2/3 = vaga) en +0x60
             m_ = c.r16(P.TAREA + 0x60)
@@ -133,12 +182,15 @@ def main():
                   'ev', [hex(x) for x in esp.ev])
         if n % 250 == 0 or (a.traza and a.traza[0] <= n < a.traza[1] and n % 4 == 0):
             print('campo', n, 'estado', o['estado'], 'pos', round(px, 1), round(P.b2f(o['p'][1]), 1), round(pz, 1), 'dist', round(dh, 1))
-        if dh < 14:
+        contacto = dh < 14 if a.criterio == 'distancia3d14' else dist <= 8 and estado_pre != 11 and estado_pre < 18
+        if contacto:
             print('ALCANZA en el campo', n, '= %.1f s' % (n * 1.2 / 60), 'desde el primer 13:', None if primer13 is None else n - primer13, 'modos de tarea', modos, '(estado, vuela)', sorted(vuela.items()), 'estados', estados)
+            guardar(True, n, dh)
             return
     print('mgw+0x25A tras el tick', sorted(tipos.items()), 'rayos de vision (choca: veces)', sorted(vis.items()), 'tarea activa', sorted(con_tarea.items()), 'frente vs desplazamiento', sorted(frente.items()))
     print('y640', sorted(alturas.items()), 'dist horizontal', sorted(dists.items()))
     print('NO alcanza en', a.campos, 'campos (%.1f s)' % (a.campos * 1.2 / 60), 'modos de tarea', modos, '(estado, vuela)', sorted(vuela.items()), 'estados', estados)
+    guardar(False, a.campos, None)
 
 
 if __name__ == '__main__':

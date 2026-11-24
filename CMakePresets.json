@@ -73,6 +73,16 @@
             "displayName": "Linux AMD64 RelWithDebInfo",
             "inherits": "linux-base",
             "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo" }
+        },
+        {
+            "name": "linux-arm64-release",
+            "displayName": "Linux ARM64 Release (comprobacion de portabilidad: PLAT-04)",
+            "inherits": "linux-base",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "CMAKE_CXX_FLAGS": "-march=armv8-a -stdlib=libc++ -pthread",
+                "DBZ3_LINUX_ARM64_CHECK": "ON"
+            }
         }
     ],
     "buildPresets": [
@@ -81,6 +91,7 @@
         { "name": "win-amd64-relwithdebinfo", "configurePreset": "win-amd64-relwithdebinfo" },
         { "name": "linux-amd64-debug", "configurePreset": "linux-amd64-debug" },
         { "name": "linux-amd64-release", "configurePreset": "linux-amd64-release" },
-        { "name": "linux-amd64-relwithdebinfo", "configurePreset": "linux-amd64-relwithdebinfo" }
+        { "name": "linux-amd64-relwithdebinfo", "configurePreset": "linux-amd64-relwithdebinfo" },
+        { "name": "linux-arm64-release", "configurePreset": "linux-arm64-release", "targets": ["dbz3"] }
     ]
 }

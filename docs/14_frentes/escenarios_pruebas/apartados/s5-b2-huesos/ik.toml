@@ -1,0 +1,51 @@
+# S5 / B2-19 + B2F: IK de suelo de B2 con la ficha APAGADA (lado A del A/B) y la tabla pie/mano ON
+# (ik_b2 va en dbz3_original_on de serie). FASE 3: lo ejecuta Z; el carril NO abre el juego.
+#   python tools\pruebas.py correr smoke_a "docs\14_frentes\escenarios_pruebas\final\s5-b2-huesos\ik.toml"
+#
+# A/B: este fichero es el lado A (umbrales por defecto). El lado B es ik_escala_ficha.toml (cvar).
+# El IK de suelo vive en la escena B2 (B2MotorHD::Paso), no en el combate B3 normal: hay que armarla con
+# DBZ3_TEST_ESCENA_VOLCADO=1 (captura el actor de la colision) y DBZ3_TEST_B2_MOTOR=1 (fuerza el motor).
+# Se arranca un combate nativo en el alta 17 = 'BASE RED RIBBON' (mod Base Red Ribbon B2, entrada 5000):
+# sala cerrada, el lanzamiento llega a la pared enseguida. El area B2 solo se enciende con DBZ3_TEST_B2_MOTOR=1;
+# si cambia la lista de mods, el alta esta en el log: "dbz3 escenarios: alta 17 = 'BASE RED RIBBON' ... 5000".
+# El rival es un munecco quieto (DBZ3_COMBATE_MUNECO=quieto): Goku se acerca con W y lanza con L+P (P+K).
+#
+# criterio = el motor B2 arranca en el primer golpe con colision de superficie ("dbz3 B2 HD: inicio por
+#            colision real") y el IK de suelo PAL actua cada cuadro ("dbz3 B2 IK suelo: actor=... cabeza=...
+#            extremidades=..."). Con FICHA=0 no se aplica la tabla pie/mano (A/B): el error angular frente al
+#            PAL se mide en el banco con tools/b2_huesos.py comparar (ya en verde: |d| <= 0,44 en 5 parejas).
+# log      = "dbz3 B2 HD: inicio por colision real" / "dbz3 B2 IK suelo:"
+#
+# PAREJAS (29 de la rueda; cada una con la siguiente, ciclico): Yamcha-Tien, Tien-Hercule, Hercule-Supreme Kai,
+#   Supreme Kai-Dabura, Dabura-Majin Buu, Majin Buu-Super Buu, Super Buu-Kid Buu, Kid Buu-Android 20,
+#   Android 20-Cell, Cell-A18, A18-A17, A17-A16, A16-Frieza, Frieza-Ginyu, Ginyu-Recoome, Recoome-Raditz,
+#   Raditz-Nappa, Nappa-Vegeta, Vegeta-Trunks, Trunks-Kid Trunks, Kid Trunks-Goten, Goten-Goku, Goku-Teen Gohan,
+#   Teen Gohan-Gohan, Gohan-Saiyaman, Saiyaman-Videl, Videl-Piccolo, Piccolo-Krillin, Krillin-Yamcha.
+# BLOQUEO conocido (dsB2): el modo B2 solo arranca sus parejas desde estados de la mision/tablero; el lote PAL
+# existente es Goku contra Goku. Hasta que dsB2 entregue estados con las parejas, este .toml mide Goku y deja
+# el resto PENDIENTE_JUEGO.
+descripcion = "B2 IK de suelo, lado A del A/B (DBZ3_TEST_B2_IK_FICHA=0) en Base Red Ribbon B2"
+env = [
+  "DBZ3_TEST_BATTLE=0,0,17",
+  "DBZ3_TEST_B2_IK_FICHA=0",
+  "DBZ3_TEST_ESCENA_VOLCADO=1",
+  "DBZ3_TEST_B2_MOTOR=1",
+  "DBZ3_COMBATE_MUNECO=quieto",
+  'DBZ3_PS2_GAMES=D:\DBZ3HD\ps2_games',
+]
+pasos = [
+  "esperar_pelea 120",
+  "captura 00_combate",
+  "esperar 2000",
+  "tecla W 1500",
+  "tecla L+P 450",
+  "esperar 1000",
+  "tecla W 800",
+  "tecla L+P 450",
+  "esperar 1000",
+  "tecla W 800",
+  "tecla L+P 450",
+  "log \"dbz3 B2 HD: inicio por colision real\" 90",
+  "log \"dbz3 B2 IK suelo:\" 60",
+  "captura 01_b2_ik",
+]

@@ -2,6 +2,7 @@
 // Port en C++ de tools/iw_mips/ee.py (codigo propio). Misma semantica: el oraculo Python es la referencia.
 // No usa ni copia Unicorn, PS2Recomp ni PCSX2 (GPL). El codigo que se ejecuta se lee del ELF del jugador.
 #include "iw_mips.h"
+#include "iw_vu_rapida.h"
 
 #include <algorithm>
 #include <chrono>
@@ -21,6 +22,7 @@
 
 #include "pasarela.h"
 #include "pasarela_iw.h"
+#include "iw_gs_traductor.h"
 
 // 6/11 20:00: encendida de serie con OK del usuario (INFORME_dia1E 7-11: Bubbles/Freezer/Piccolo/MSN019 = original, EU y USA, 0 vueltas al port).
 REXCVAR_DEFINE_BOOL(dbz3_iw_logica_original, true, "DBZ3/IW",
@@ -31,6 +33,8 @@ REXCVAR_DEFINE_BOOL(dbz3_iw_logica_original, true, "DBZ3/IW",
 // 7/11 21h: de serie APAGADO por decision del usuario (tarda el doble que el original).
 REXCVAR_DEFINE_BOOL(dbz3_iw_7dd_original, false, "DBZ3/IW",
                     "IW 0x7DD: Piccolo con su CPU original del ELF (en pruebas; requiere dbz3_iw_logica_original)");
+REXCVAR_DEFINE_BOOL(dbz3_iw_7dd_captura_original, false, "DBZ3/IW",
+                    "IW 0x7DD: tarea y estado de captura originales (en pruebas; requiere CPU original e integracion del host)");
 // T2B (7/11): piloto de la familia de botones. Apagado de serie hasta que el usuario lo pruebe.
 REXCVAR_DEFINE_BOOL(dbz3_iw_7dc_original, true, "DBZ3/IW",
                     "IW 0x7DC (NB014): carriles, juicio, vida y rango con la logica original del ELF (en pruebas; requiere dbz3_iw_logica_original)");
@@ -44,18 +48,25 @@ constexpr double MAXF = 3.4028234663852886e38, MINF = 1.1754943508222875e-38;
 inline uint64_t Sx(uint64_t x) { return uint64_t(int64_t(int32_t(uint32_t(x)))); }
 
 // ---- FPU/VU del R5900: sin inf/NaN (exp 255 = numero), denormal = 0, hacia cero exacto (ee.py fv/fb) ----
-double Fv(uint32_t b) {
+// R18: el bucle de huesos 139394 encadena estas operaciones por carril. Evitar llamadas fuera de linea
+// conserva las mismas cuentas y el mismo redondeo, sin cambiar la precision para ganar velocidad.
+#if defined(_MSC_VER)
+#define IW_FP_INLINE __forceinline
+#else
+#define IW_FP_INLINE inline __attribute__((always_inline))
+#endif
+IW_FP_INLINE double Fv(uint32_t b) {
   const uint32_t e = (b >> 23) & 0xFF;
   if (e == 0) return (b >> 31) ? -0.0 : 0.0;
   if (e == 255) {
-    const double v = std::ldexp(1.0 + (b & 0x7FFFFF) / 8388608.0, 128);
+    const double v = (1.0 + (b & 0x7FFFFF) / 8388608.0) * 3.4028236692093846e38;
     return (b >> 31) ? -v : v;
   }
   float f;
   std::memcpy(&f, &b, 4);
   return f;
 }
-uint32_t Fb(double x, double err = 0, bool cercano = false) {
+IW_FP_INLINE uint32_t Fb(double x, double err = 0, bool cercano = false) {
   const bool neg = x < 0 || (x == 0 && std::signbit(x));
   const double ax = std::fabs(x);
   uint32_t b;
@@ -71,7 +82,7 @@ uint32_t Fb(double x, double err = 0, bool cercano = false) {
   }
   return b | (neg ? 0x80000000u : 0);
 }
-uint32_t Add(double a, double b) {
+IW_FP_INLINE uint32_t Add(double a, double b) {
   const double s = a + b, bb = s - a;
   return Fb(s, (a - (s - bb)) + (b - bb));
 }
@@ -83,7 +94,7 @@ void SumaPs2(uint32_t& a, uint32_t& b) {
   else if (d <= -25) a &= 0x80000000u;
   else if (d < 0) a &= 0xFFFFFFFFu << (-d - 1);
 }
-uint32_t Mul(double a, double b) { return Fb(a * b); }  // producto de dos float32 en double: exacto
+IW_FP_INLINE uint32_t Mul(double a, double b) { return Fb(a * b); }  // producto de dos float32 en double: exacto
 uint32_t Div(double a, double b) {
   if (b == 0) return 0x7F7FFFFF | ((std::signbit(a) != std::signbit(b)) ? 0x80000000u : 0);
   const double q = a / b, r = std::fma(-q, b, a);
@@ -94,13 +105,19 @@ uint32_t Sqrt(double a) {
   const double q = std::sqrt(a), r = std::fma(-q, q, a);
   return Fb(q, r);
 }
-uint32_t Ftoi(uint32_t b, int k) {
-  const double x = std::ldexp(Fv(b), k);
+IW_FP_INLINE double EscalaVu(double v, int k) {
+  // VFTOI/VITOF solo usan 0,4,12,15: multiplicar por 2^k es exacto en double y evita ldexp del CRT por carril.
+  const uint64_t bits = uint64_t(1023 + k) << 52;
+  double factor; std::memcpy(&factor, &bits, 8);
+  return v * factor;
+}
+IW_FP_INLINE uint32_t Ftoi(uint32_t b, int k) {
+  const double x = EscalaVu(Fv(b), k);
   if (x >= 2147483647.0) return 0x7FFFFFFF;
   if (x <= -2147483648.0) return 0x80000000u;
   return uint32_t(int32_t(x));
 }
-uint32_t Itof(uint32_t b, int k) { return Fb(std::ldexp(double(int32_t(b)), -k)); }
+IW_FP_INLINE uint32_t Itof(uint32_t b, int k) { return Fb(EscalaVu(double(int32_t(b)), -k)); }
 
 // ---- dia1E6: COP1 con reglas del R5900 medidas con los vectores de HARDWARE de ps2autotests (= ee.py fpu_h;
 // tools/iw_mips/fpu_hw.py compila este bloque aparte y lo coteja). de serie kFpuHwSerie (suma, mul, div, sqrt, rsqrt, madd); hw = 0: lo de arriba, como PCSX2. ----
@@ -133,6 +150,17 @@ uint32_t SumaH(uint32_t a, uint32_t b, bool guarda, uint32_t hw, uint32_t& fcr) 
 // 'mul': el multiplicador quita 1 al producto de 48 bits si el bit 1 de la mantisa de ft esta (-1 ulp si es exacto).
 bool Booth(uint32_t b, uint32_t hw) { return (hw & kHwMul) && ((b >> 1) & 1) && (b & 0x7F800000); }
 int64_t Orden(uint32_t a) { return (a >> 31) ? -int64_t(a & 0x7FFFFFFFu) - 1 : int64_t(a); }  // 'maxmin': -0 < +0
+// Fv produce cero o un double normal finito; el producto de dos Fv tambien
+// es normal (sus exponentes estan entre -252 y 256). Obtener su exponente
+// y potencias de dos sin entrar cuatro veces al CRT por cada MADD del EE.
+IW_FP_INLINE int ExponenteEe(double x) {
+  uint64_t b; std::memcpy(&b, &x, 8);
+  return int((b >> 52) & 0x7FF) - 1022;   // mismo exponente que frexp
+}
+IW_FP_INLINE double PotenciaEe(int e) {
+  const uint64_t b = uint64_t(1023 + e) << 52;
+  double x; std::memcpy(&x, &b, 8); return x;
+}
 uint32_t FpuH(FOp op, uint32_t a, uint32_t b, uint32_t c, uint32_t hw, bool guarda, uint32_t& fcr) {
   switch (op) {
     case kAdd: case kSub: return SumaH(a, op == kSub ? b ^ 0x80000000u : b, guarda || (hw & kHwSuma), hw, fcr);
@@ -185,19 +213,17 @@ uint32_t FpuH(FOp op, uint32_t a, uint32_t b, uint32_t c, uint32_t hw, bool guar
       // 'madd': producto truncado a 24 bits con exponente libre; la suma alinea con un bit de guarda
       double p = Fv(a) * Fv(b);
       if (p != 0) {
-        int e;
-        const double m = std::frexp(p, &e);
+        const int e = ExponenteEe(p);
+        const double m = p * PotenciaEe(-e);   // exacto: solo cambia el exponente
         double q = std::trunc(m * 16777216.0);
         if (Booth(b, hw) && q == m * 16777216.0) q -= q > 0 ? 1 : -1;
-        p = std::ldexp(q, e - 24);
+        p = q * PotenciaEe(e - 24);
       }
       if (neg) p = -p;
       double x = Fv(c);
       if (x != 0 && p != 0) {
-        int ex, ep;
-        std::frexp(x, &ex);
-        std::frexp(p, &ep);
-        const double u = std::ldexp(1.0, std::max(ex, ep) - 25);
+        const int ex = ExponenteEe(x), ep = ExponenteEe(p);
+        const double u = PotenciaEe(std::max(ex, ep) - 25);
         if (ex < ep) x = std::trunc(x / u) * u;
         else if (ep < ex) p = std::trunc(p / u) * u;
       }
@@ -272,6 +298,8 @@ enum Op : uint16_t {
   MADDS, MSUBS, MADDAS, MSUBAS, CVTSW, CVTWS, CF, CEQ, CLT, CLE, BC1F, BC1T, BC1FL, BC1TL,
   LQC2, SQC2, QMFC2, QMTC2, CFC2, CTC2,
   VADD, VSUB, VMUL, VMADD, VMSUB, VMOVE, VMR32, VABS, VOPMULA, VOPMSUB, VDIV, VSQRT, VRSQRT, VFTOI, VITOF,
+  SYSCALL, VMAXBC, VMINIBC, PMFHLLW, EI, DI,   // TRAD/3: bucle principal del IW (iw_trad_bucle.cpp)
+  PADDB, PSUBB, PADDH, PSUBH, PADDW, PSUBW, PCEQB, PCEQH, PCEQW, PCGTB, PCGTH, PCGTW, PMAXW, PMINW,   // TRAD/5: arranque (libc)
 };
 // VU: Ins.sa = 0-3 difusion x/y/z/w, 4 = Q, 5 = vector; Ins.simm = 1 si el destino es ACC.
 uint16_t DecodificarOp(uint32_t w, uint8_t& sa, int32_t& extra) {
@@ -283,7 +311,7 @@ uint16_t DecodificarOp(uint32_t w, uint8_t& sa, int32_t& extra) {
       switch (fn) {
         case 0x00: return SLL; case 0x02: return SRL; case 0x03: return SRA; case 0x04: return SLLV;
         case 0x06: return SRLV; case 0x07: return SRAV; case 0x08: return JR; case 0x09: return JALR;
-        case 0x0A: return MOVZ; case 0x0B: return MOVN; case 0x0F: return NOP;
+        case 0x0A: return MOVZ; case 0x0B: return MOVN; case 0x0C: return SYSCALL; case 0x0F: return NOP;
         case 0x10: return MFHI; case 0x11: return MTHI; case 0x12: return MFLO; case 0x13: return MTLO;
         case 0x14: return DSLLV; case 0x16: return DSRLV; case 0x17: return DSRAV;
         case 0x18: return MULT; case 0x19: return MULTU; case 0x1A: return DIV; case 0x1B: return DIVU;
@@ -307,7 +335,7 @@ uint16_t DecodificarOp(uint32_t w, uint8_t& sa, int32_t& extra) {
     case 0x10:
       if (rs == 0) return MFC0;
       if (rs == 4) return NOP;
-      if (rs == 0x10 && (fn == 0x38 || fn == 0x39)) return NOP;  // ei/di
+      if (rs == 0x10 && (fn == 0x38 || fn == 0x39)) return fn == 0x38 ? EI : DI;  // ei/di (TRAD/3: tocan Status si se fija)
       return NADA;
     case 0x11:
       switch (rs) {
@@ -332,11 +360,13 @@ uint16_t DecodificarOp(uint32_t w, uint8_t& sa, int32_t& extra) {
       }
       if (fn < 0x3C) {
         sa = uint8_t(fn & 3);
-        switch (fn >> 2) { case 0: return VADD; case 1: return VSUB; case 2: return VMADD; case 3: return VMSUB; case 6: return VMUL; }
+        switch (fn >> 2) { case 0: return VADD; case 1: return VSUB; case 2: return VMADD; case 3: return VMSUB; case 6: return VMUL;
+                           case 4: return VMAXBC; case 5: return VMINIBC; }
         sa = 4;
         switch (fn) { case 0x1C: return VMUL; case 0x20: return VADD; case 0x21: return VMADD; case 0x24: return VSUB; case 0x25: return VMSUB; }
         sa = 5;
-        switch (fn) { case 0x28: return VADD; case 0x29: return VMADD; case 0x2A: return VMUL; case 0x2C: return VSUB; case 0x2D: return VMSUB; case 0x2E: return VOPMSUB; }
+        switch (fn) { case 0x28: return VADD; case 0x29: return VMADD; case 0x2A: return VMUL; case 0x2C: return VSUB; case 0x2D: return VMSUB; case 0x2E: return VOPMSUB;
+                      case 0x2B: return VMAXBC; case 0x2F: return VMINIBC; }   // TRAD/3: vmax/vmini vectoriales (sa = 5)
         return NADA;
       } else {
         const uint32_t o2 = (w & 3) | ((w >> 4) & 0x7C);
@@ -364,7 +394,15 @@ uint16_t DecodificarOp(uint32_t w, uint8_t& sa, int32_t& extra) {
     case 0x1C:
       switch (fn) {
         case 0x00: return MADD; case 0x01: return MADDU; case 0x04: return PLZCW;
-        case 0x08: return s5 == 0x12 ? PEXTLW : NADA;
+        case 0x30: return s5 == 0 ? PMFHLLW : NADA;   // TRAD/3
+        case 0x08:
+          switch (s5) { case 0x12: return PEXTLW; case 0: return PADDW; case 1: return PSUBW; case 2: return PCGTW; case 3: return PMAXW;
+                        case 4: return PADDH; case 5: return PSUBH; case 6: return PCGTH; case 8: return PADDB; case 9: return PSUBB;
+                        case 0xA: return PCGTB; }
+          return NADA;
+        case 0x28:   // TRAD/5: MMI1
+          switch (s5) { case 2: return PCEQW; case 3: return PMINW; case 6: return PCEQH; case 0xA: return PCEQB; }
+          return NADA;
         case 0x09: return s5 == 0x0E ? PCPYLD : s5 == 0x12 ? PAND : s5 == 0x13 ? PXOR : NADA;
         case 0x10: return MFHI1; case 0x11: return MTHI1; case 0x12: return MFLO1; case 0x13: return MTLO1;
         case 0x18: return MULT1; case 0x19: return MULTU1; case 0x1A: return DIV1; case 0x1B: return DIVU1;
@@ -382,27 +420,103 @@ uint16_t DecodificarOp(uint32_t w, uint8_t& sa, int32_t& extra) {
 }
 }  // namespace
 
-int64_t Ee::Fis(uint32_t a) {
+IW_FP_INLINE int64_t Ee::Fis(uint32_t a) {
   if (a < kRam) return a;
   if (a >= 0x70000000u && a < 0x70004000u) return kSpr + (a - 0x70000000u);
   if (a >= 0x80000000u || (a >= 0x20000000u && a < 0x40000000u)) {
-    const uint32_t b = a & 0x1FFFFFFF;
+    const uint32_t b = a & (a < 0x40000000u ? 0x0FFFFFFFu : 0x1FFFFFFFu);   // TRAD/3: espejo 0x3xxxxxxx (UCAB) = RAM
     if (b < kRam) return b;
   }
   if (a >= kPila && a < kSpr) return a;
   return -1;
 }
-template <class T> T Ee::Lee(uint32_t a) {
+// La RAM es el caso caliente. Separar los dispositivos evita que el coste
+// de std::function/DMA impida insertar estas cargas en el despacho MIPS.
+template <class T> IW_FP_INLINE T Ee::Lee(uint32_t a) {
   const int64_t p = Fis(a);
-  T v{};
-  if (p < 0 || size_t(p) + sizeof(T) > mem_.size()) { ++io; return v; }
-  std::memcpy(&v, mem_.data() + p, sizeof(T));
-  return v;
+  if (p >= 0 && size_t(p) + sizeof(T) <= mem_.size()) {
+    T v; std::memcpy(&v, mem_.data() + p, sizeof(T)); return v;
+  }
+  return LeeIo<T>(a);
 }
-template <class T> void Ee::Escribe(uint32_t a, T v) {
+template <class T> T Ee::LeeIo(uint32_t a) {
+  T v{};
+  if constexpr (sizeof(T) <= 8) {   // TRAD/3: registros de hardware del bucle principal
+    uint64_t x = 0;
+    if (io_leer && io_leer(*this, a, x)) { std::memcpy(&v, &x, sizeof(T)); return v; }
+  }
+  ++io; return v;
+}
+uint64_t Ee::R64(uint32_t a) { return Lee<uint64_t>(a); }
+const uint8_t* Ee::Bloque(uint32_t a, size_t bytes) {
   const int64_t p = Fis(a);
-  if (p < 0 || size_t(p) + sizeof(T) > mem_.size()) { ++io; return; }
-  std::memcpy(mem_.data() + p, &v, sizeof(T));
+  if (!bytes || p < 0 || bytes > mem_.size() || size_t(p) > mem_.size() - bytes ||
+      uint64_t(a) + bytes - 1 > 0xFFFFFFFFull || Fis(a + uint32_t(bytes - 1)) != p + int64_t(bytes - 1)) return nullptr;
+  return mem_.data() + p;
+}
+void Ee::CargarImagen(const uint8_t* d, size_t n) { std::memcpy(mem_.data(), d, n < mem_.size() ? n : mem_.size()); }
+void Ee::Guardar(Cpu& s) const {
+  std::memcpy(s.r, r, sizeof r); std::memcpy(s.up, up, sizeof up); std::memcpy(s.f, f_, sizeof f_);
+  std::memcpy(s.vf, vf_, sizeof vf_); std::memcpy(s.vacc, vacc_, sizeof vacc_); std::memcpy(s.vi, vi_, sizeof vi_);
+  s.lo = lo_; s.hi = hi_; s.lo1 = lo1_; s.hi1 = hi1_; s.acc = acc_; s.q = q_; s.fcr = fcr_; s.status = cop0_status; s.c = c_;
+}
+void Ee::Poner(const Cpu& s) {
+  std::memcpy(r, s.r, sizeof r); std::memcpy(up, s.up, sizeof up); std::memcpy(f_, s.f, sizeof f_);
+  std::memcpy(vf_, s.vf, sizeof vf_); std::memcpy(vacc_, s.vacc, sizeof vacc_); std::memcpy(vi_, s.vi, sizeof vi_);
+  lo_ = s.lo; hi_ = s.hi; lo1_ = s.lo1; hi1_ = s.hi1; acc_ = s.acc; q_ = s.q; fcr_ = s.fcr; c_ = s.c;
+  if (s.status) cop0_status = s.status;   // como oraculo.poner_cpu
+}
+void Ee::Bytes(uint32_t a, const uint8_t* d, size_t n) {
+  const int64_t p = Fis(a);
+  if (p < 0) return;
+  if (size_t(p) + n > mem_.size()) n = mem_.size() - size_t(p);
+  std::memcpy(mem_.data() + p, d, n);
+}
+bool Ee::Anidada(uint32_t dir, std::initializer_list<uint32_t> args, uint64_t limite) {
+  // Manejador de interrupcion en medio de otra llamada: guarda y repone todo el estado de la CPU (oraculo.anidada).
+  uint64_t r0[32], u0[32];
+  std::memcpy(r0, r, sizeof r); std::memcpy(u0, up, sizeof up);
+  uint32_t f0[32], vf0[32][4], va0[4];
+  std::memcpy(f0, f_, sizeof f_); std::memcpy(vf0, vf_, sizeof vf_); std::memcpy(va0, vacc_, sizeof vacc_);
+  uint16_t vi0[16]; std::memcpy(vi0, vi_, sizeof vi_);
+  const uint32_t acc0 = acc_, q0 = q_, fcr0 = fcr_, pila0 = pila, st0 = cop0_status;
+  const bool c0 = c_;
+  const uint64_t lo0 = lo_, hi0 = hi_, lo10 = lo1_, hi10 = hi1_, io0 = io;
+  pila = uint32_t(r[29]) - 0x400;
+  const bool ok = Llamar(dir, args, limite);
+  const std::string err = error_;
+  std::memcpy(r, r0, sizeof r); std::memcpy(up, u0, sizeof up);
+  std::memcpy(f_, f0, sizeof f_); std::memcpy(vf_, vf0, sizeof vf_); std::memcpy(vacc_, va0, sizeof vacc_);
+  std::memcpy(vi_, vi0, sizeof vi_);
+  acc_ = acc0; q_ = q0; fcr_ = fcr0; pila = pila0; c_ = c0; lo_ = lo0; hi_ = hi0; lo1_ = lo10; hi1_ = hi10; io = io0;
+  if (st0) cop0_status = st0;   // TRAD/5: como oraculo.anidada (poner_cpu)
+  error_ = ok ? std::string() : err;
+  return ok;
+}
+namespace { uint64_t LeeDma(void* c, uint32_t a) { return static_cast<Ee*>(c)->R64(a); } }
+template <class T> IW_FP_INLINE void Ee::Escribe(uint32_t a, T v) {
+  const int64_t p = Fis(a);
+  if (p >= 0 && size_t(p) + sizeof(T) <= mem_.size()) {
+    std::memcpy(mem_.data() + p, &v, sizeof(T)); return;
+  }
+  EscribeIo<T>(a, v);
+}
+template <class T> void Ee::EscribeIo(uint32_t a, T v) {
+  if constexpr (sizeof(T) <= 8) {
+    uint64_t x = 0; std::memcpy(&x, &v, sizeof(T));
+    if (io_escribir && io_escribir(*this, a, x)) return;
+  }
+  if constexpr (sizeof(T) == 4) {   // TRAD/2b: DMA de VIF1/GIF -> traductor GS (solo con dbz3_iw_traducido)
+    uint32_t w; std::memcpy(&w, &v, 4);
+    if (iwtrad::Activo() && iwtrad::GlobalDma().Escribir(a, w, iwtrad::Global(), this, LeeDma)) {
+      if (iwtrad::GlobalDma().envios == 1 && iwtrad::Global().prims.size() + iwtrad::Global().subidas.size() < 100000)
+        REXLOG_INFO("dbz3 iwtrad: primer envio DMA al GS visto (dir {:08X})", a);
+      // ponytail: sin vblank en el interprete nadie vacia el cuadro; se corta a 64k primitivas hasta que haya pintor
+      if (iwtrad::Global().prims.size() > 65536) iwtrad::Global().FinCuadro();
+      return;
+    }
+  }
+  ++io;
 }
 uint32_t Ee::R32(uint32_t a) { return Lee<uint32_t>(a); }
 float Ee::Rf(uint32_t a) { const uint32_t b = R32(a); float f; std::memcpy(&f, &b, 4); return f; }
@@ -472,7 +586,13 @@ const Ee::Ins* Ee::Decodificar(uint32_t pc) {
 bool Ee::Llamar(uint32_t dir, std::initializer_list<uint32_t> args, uint64_t limite) {
   int k = 4;
   for (uint32_t a : args) r[k++] = Sx(a);
-  r[28] = Sx(gp); r[29] = kPila + 0xFF000; r[31] = kRetorno;
+  r[28] = Sx(gp); r[29] = pila ? Sx(pila) : kPila + 0xFF000; r[31] = kRetorno;
+  uint32_t pc = dir;
+  if (!Correr(pc, limite)) return false;
+  return pc == kRetorno || Fallo("cambio de hilo dentro de una llamada", pc);
+}
+
+bool Ee::Correr(uint32_t& pc0, uint64_t limite) {
   error_.clear(); io = 0;
   // El hilo del juego puede llevar otro MXCSR (redondeo/FTZ del runtime PPC): las cuentas double van en el de fabrica.
 #if defined(__x86_64__) || defined(_M_X64)
@@ -481,12 +601,13 @@ bool Ee::Llamar(uint32_t dir, std::initializer_list<uint32_t> args, uint64_t lim
   struct Csr { std::fenv_t e; Csr() { std::fegetenv(&e); std::fesetenv(FE_DFL_ENV); } ~Csr() { std::fesetenv(&e); } } csr;
 #endif
   const uint32_t hw = FpuHwActivas();  // dia1E6: reglas de hardware de la FPU (de serie kFpuHwSerie, 6 reglas)
+  const bool medir_pc = !perfil.empty();
   auto entrar = [&](uint32_t t) -> uint32_t {
     if (auto it = puentes.find(t); it != puentes.end()) { it->second(*this); return uint32_t(r[31]); }
     if (auto it = observadores.find(t); it != observadores.end()) it->second(*this);
     return t;
   };
-  uint32_t pc = dir, dt = 0;
+  uint32_t pc = pc0, dt = 0;
   bool hay_dt = false, dt_llamada = false;
   uint64_t cuenta = 0;
   auto vu = [&](const Ins& in, auto op) {  // op(a,b) -> bits; dest x/y/z/w = bits 24..21
@@ -500,10 +621,28 @@ bool Ee::Llamar(uint32_t dir, std::initializer_list<uint32_t> args, uint64_t lim
     if (in.simm) std::memcpy(vacc_, out, 16);
     else if ((in.w >> 6) & 31) std::memcpy(vf_[(in.w >> 6) & 31], out, 16);
   };
+  static const bool vu_lenta = std::getenv("DBZ3_TEST_IW_VU_LENTA") != nullptr;
+  auto vu4 = [&](const Ins& in, OpVu op) {
+    if (vu_lenta) return false;
+    uint32_t b[4], out[4];
+    for (int i = 0; i < 4; ++i) b[i] = in.sa == 4 ? q_ : in.sa == 5 ? vf_[in.rt][i] : vf_[in.rt][in.sa];
+    if (!VuRapida(op, vf_[in.rd], b, vacc_, out)) return false;
+    uint32_t* dst = in.simm ? vacc_ : vf_[(in.w >> 6) & 31];
+    if (in.simm || ((in.w >> 6) & 31))
+      for (int i = 0; i < 4; ++i) if ((in.w >> (24 - i)) & 1) dst[i] = out[i];
+    return true;
+  };
   for (;;) {
-    const Ins* ip = Decodificar(pc);
+    // La instruccion ya decodificada es el caso caliente (casi un millon por cuadro en 7DB).
+    // Mantener Decodificar fuera de linea para el primer uso y para los mismos fallos de antes.
+    const Ins* ip = nullptr;
+    if (pc >= t0_ && pc < t1_ && !(pc & 3)) {
+      const Ins& guardada = code_[(pc - t0_) / 4];
+      ip = guardada.op ? &guardada : Decodificar(pc);
+    }
     if (!ip) return Fallo(pc < t0_ || pc >= t1_ ? "pc fuera del texto" : "instruccion fuera del subconjunto", pc);
     const Ins& in = *ip;
+    if (medir_pc && !(cuenta & 63) && (pc >> 6) < perfil.size()) ++perfil[pc >> 6];
     const uint32_t rs = in.rs, rt = in.rt, rd = in.rd, sa = in.sa;
     const int64_t simm = in.simm;
     uint64_t* R = r;
@@ -518,6 +657,30 @@ bool Ee::Llamar(uint32_t dir, std::initializer_list<uint32_t> args, uint64_t lim
     };
     switch (in.op) {
       case NOP: break;
+      case SYSCALL:
+        if (!syscall) return Fallo("syscall sin puente", pc);
+        syscall(*this);
+        if (!error_.empty()) return false;
+        if (ceder) { ceder = false; R[0] = 0; n += cuenta + 1; pc0 = pc + 4; return true; }   // TRAD/5: cambio de hilo
+        break;
+      case EI: if (cop0_status) cop0_status |= 0x10000; break;
+      case DI: if (cop0_status) cop0_status &= ~0x10000u; break;
+      case PMFHLLW:
+        if (rd) { R[rd] = (lo_ & 0xFFFFFFFFull) | ((hi_ & 0xFFFFFFFFull) << 32); up[rd] = (lo1_ & 0xFFFFFFFFull) | ((hi1_ & 0xFFFFFFFFull) << 32); }
+        break;
+      case VMAXBC: case VMINIBC: {   // vmax/vmini.dest fd, fs, ft.bc: bits del mayor/menor (como ee.py)
+        const uint32_t d = (in.w >> 6) & 31;
+        if (!d) break;
+        uint32_t o[4];
+        std::memcpy(o, vf_[d], 16);
+        for (int i = 0; i < 4; ++i) {
+          if (!((in.w >> (24 - i)) & 1)) continue;
+          const uint32_t x = vf_[rd][i], y = vf_[rt][in.sa == 5 ? i : in.sa];
+          o[i] = ((Fv(x) >= Fv(y)) == (in.op == VMAXBC)) ? x : y;
+        }
+        std::memcpy(vf_[d], o, 16);
+        break;
+      }
       case LUI: R[rt] = Sx(uint32_t(in.w << 16)); break;
       case ADDIU: R[rt] = Sx(R[rs] + uint64_t(simm)); break;
       case DADDIU: R[rt] = R[rs] + uint64_t(simm); break;
@@ -669,7 +832,32 @@ bool Ee::Llamar(uint32_t dir, std::initializer_list<uint32_t> args, uint64_t lim
       case JAL: R[31] = pc + 8; res = 2; dest = in.t; llama = true; break;
       case JR: res = 2; dest = uint32_t(R[rs]); break;
       case JALR: res = 2; dest = uint32_t(R[rs]); if (rd) R[rd] = pc + 8; llama = true; break;
-      case MFC0: R[rt] = rd == 9 ? Sx(uint32_t(n + cuenta)) : 0; break;
+      case MFC0: R[rt] = rd == 9 ? Sx(uint32_t(n + cuenta)) : rd == 12 ? Sx(cop0_status) : 0; break;   // Status: TRAD/3
+      case PADDB: case PSUBB: case PADDH: case PSUBH: case PADDW: case PSUBW: case PCEQB: case PCEQH: case PCEQW:
+      case PCGTB: case PCGTH: case PCGTW: case PMAXW: case PMINW: {   // TRAD/5: MMI por carriles (ee.py _carriles)
+        const int o = in.op;
+        const int bits = (o == PADDB || o == PSUBB || o == PCEQB || o == PCGTB) ? 8 : (o == PADDH || o == PSUBH || o == PCEQH || o == PCGTH) ? 16 : 32;
+        const uint64_t m = bits == 32 ? 0xFFFFFFFFull : (1ull << bits) - 1, g = 1ull << (bits - 1);
+        auto sx = [&](uint64_t v) { return int64_t(v & g ? v - 2 * g : v); };
+        const uint64_t A[2] = {R[rs], up[rs]}, B[2] = {R[rt], up[rt]};
+        uint64_t X[2] = {0, 0};
+        for (int h = 0; h < 2; ++h)
+          for (int i = 0; i < 64 / bits; ++i) {
+            const uint64_t u = (A[h] >> (i * bits)) & m, v = (B[h] >> (i * bits)) & m;
+            uint64_t x;
+            switch (o) {
+              case PADDB: case PADDH: case PADDW: x = u + v; break;
+              case PSUBB: case PSUBH: case PSUBW: x = u - v; break;
+              case PCEQB: case PCEQH: case PCEQW: x = u == v ? m : 0; break;
+              case PMAXW: x = sx(u) >= sx(v) ? u : v; break;
+              case PMINW: x = sx(u) <= sx(v) ? u : v; break;
+              default: x = sx(u) > sx(v) ? m : 0; break;
+            }
+            X[h] |= (x & m) << (i * bits);
+          }
+        if (rd) { R[rd] = X[0]; up[rd] = X[1]; }
+        break;
+      }
       case PCPYLD: { const uint64_t a = R[rs], b = R[rt]; up[rd] = a; R[rd] = b; break; }
       case PCPYUD: { const uint64_t a = up[rs], b = up[rt]; R[rd] = a; up[rd] = b; break; }
       case PCPYH: { const uint64_t a = R[rt] & 0xFFFF, b = up[rt] & 0xFFFF; R[rd] = a * 0x0001000100010001ull; up[rd] = b * 0x0001000100010001ull; break; }
@@ -722,17 +910,33 @@ bool Ee::Llamar(uint32_t dir, std::initializer_list<uint32_t> args, uint64_t lim
       case BC1T: br(c_, false); break;
       case BC1FL: br(!c_, true); break;
       case BC1TL: br(c_, true); break;
-      case LQC2: { const uint32_t a = ea() & 0xFFFFFFF0u; if (rt) for (int i = 0; i < 4; ++i) vf_[rt][i] = Lee<uint32_t>(a + 4 * i); break; }
-      case SQC2: { const uint32_t a = ea() & 0xFFFFFFF0u; for (int i = 0; i < 4; ++i) Escribe<uint32_t>(a + 4 * i, vf_[rt][i]); break; }
+      case LQC2: {
+        const uint32_t a = ea() & 0xFFFFFFF0u;
+        if (rt) {
+          const int64_t p = Fis(a);
+          if (p >= 0 && size_t(p) + 16 <= mem_.size()) std::memcpy(vf_[rt], mem_.data() + p, 16);
+          else for (int i = 0; i < 4; ++i) vf_[rt][i] = Lee<uint32_t>(a + 4 * i);
+        }
+        break;
+      }
+      case SQC2: {
+        const uint32_t a = ea() & 0xFFFFFFF0u;
+        const int64_t p = Fis(a);
+        if (p >= 0 && size_t(p) + 16 <= mem_.size()) std::memcpy(mem_.data() + p, vf_[rt], 16);
+        else for (int i = 0; i < 4; ++i) Escribe<uint32_t>(a + 4 * i, vf_[rt][i]);
+        break;
+      }
       case QMFC2: { const uint32_t* v = vf_[rd]; R[rt] = v[0] | (uint64_t(v[1]) << 32); up[rt] = v[2] | (uint64_t(v[3]) << 32); break; }
       case QMTC2: if (rd) { vf_[rd][0] = uint32_t(R[rt]); vf_[rd][1] = uint32_t(R[rt] >> 32); vf_[rd][2] = uint32_t(up[rt]); vf_[rd][3] = uint32_t(up[rt] >> 32); } break;
       case CFC2: R[rt] = rd < 16 ? Sx(vi_[rd]) : (rd == 22 ? q_ : 0); break;
       case CTC2: if (rd > 0 && rd < 16) vi_[rd] = uint16_t(R[rt]); break;
-      case VADD: vu(in, [](int, double a, double b) { return Add(a, b); }); break;
-      case VSUB: vu(in, [](int, double a, double b) { return Add(a, -b); }); break;
-      case VMUL: vu(in, [](int, double a, double b) { return Mul(a, b); }); break;
-      case VMADD: { uint32_t c[4]; std::memcpy(c, vacc_, 16); vu(in, [&](int i, double a, double b) { return Add(Fv(c[i]), Fv(Mul(a, b))); }); break; }
-      case VMSUB: { uint32_t c[4]; std::memcpy(c, vacc_, 16); vu(in, [&](int i, double a, double b) { return Add(Fv(c[i]), -Fv(Mul(a, b))); }); break; }
+      case VADD: if (!vu4(in, OpVu::Suma)) vu(in, [](int, double a, double b) { return Add(a, b); }); break;
+      case VSUB: if (!vu4(in, OpVu::Resta)) vu(in, [](int, double a, double b) { return Add(a, -b); }); break;
+      case VMUL: if (!vu4(in, OpVu::Producto)) vu(in, [](int, double a, double b) { return Mul(a, b); }); break;
+      case VMADD: { if (vu4(in, OpVu::Acumula)) break;
+        uint32_t c[4]; std::memcpy(c, vacc_, 16); vu(in, [&](int i, double a, double b) { return Add(Fv(c[i]), Fv(Mul(a, b))); }); break; }
+      case VMSUB: { if (vu4(in, OpVu::Desacumula)) break;
+        uint32_t c[4]; std::memcpy(c, vacc_, 16); vu(in, [&](int i, double a, double b) { return Add(Fv(c[i]), -Fv(Mul(a, b))); }); break; }
       case VMOVE: case VMR32: case VABS: case VFTOI: case VITOF:
         if (ft) {
           const uint32_t* s = vf_[fs];
@@ -774,8 +978,8 @@ bool Ee::Llamar(uint32_t dir, std::initializer_list<uint32_t> args, uint64_t lim
     if (io) { n += cuenta; return Fallo("acceso fuera de la RAM", pc); }
     if (hay_dt) {
       pc = dt; hay_dt = false;
-      if (dt_llamada) pc = entrar(pc);
-      if (pc == kRetorno) break;
+      if (dt_llamada) { pc = entrar(pc); if (puente_fallo && !error_.empty()) return false; }   // TRAD/5: fallo en un puente
+      if (pc == kRetorno) { pc0 = pc; break; }
       if (cuenta > limite) { n += cuenta; return Fallo("presupuesto de instrucciones", pc); }
       continue;
     }
@@ -919,7 +1123,7 @@ std::string Lista(const std::vector<uint32_t>& ev) {
 }
 
 // Quien uso el espejo por ultima vez: un minijuego con espejo persistente (7DD) sabe si sigue siendo suyo.
-enum Dueno { kNadie, kDBubbles, kD7D7, kD7D8, kD7E1, kD7DE, kD7DD, kD7DA, kD7DC };
+enum Dueno { kNadie, kDBubbles, kD7D7, kD7D8, kD7E1, kD7DE, kD7DD, kD7DA, kD7DC, kDObjetivo7DD };
 
 struct Estado {
   Ee ee;
@@ -931,6 +1135,9 @@ struct Estado {
   uint64_t llamadas = 0;
   double us_total = 0, us_max = 0;
   Dueno dueno = kNadie;
+  std::vector<uint8_t> limpia;  // PM-18: datos del ELF tras Iniciar (cada campo empieza de aqui, como una partida suelta)
+  bool objetivo_listo = false;
+  uint64_t objetivo_t = 0;
   void Cuenta(double us) { ++llamadas; us_total += us; us_max = std::max(us_max, us); }
 };
 
@@ -956,6 +1163,7 @@ Estado* Iniciar() {
   }
   Ee& e = s->ee;
   e.gp = kGp;
+  if (iwtrad::Activo()) REXLOG_INFO("dbz3 iwtrad: traductor GS encendido (productor DMA en el interprete)");
   auto v0 = V0;
   e.puentes[kObjsA] = e.puentes[kObjsB] = [v0](Ee& c) { v0(c, kObjs); };
   e.puentes[kCtxF] = [v0](Ee& c) { v0(c, kCtx); };
@@ -1025,6 +1233,7 @@ Estado* Iniciar() {
   s->log = std::getenv("DBZ3_TEST_IW_SEMILLA") != nullptr;
   REXLOG_INFO("dbz3 iwmips: logica original de Bubbles ACTIVA (ELF {} verificado, interprete autocomprobado)",
               freezer::g_ntsc ? "USA" : "EU");
+  if (const uint8_t* p = s->ee.Bloque(kTexto1, Ee::kRam - kTexto1)) s->limpia.assign(p, p + (Ee::kRam - kTexto1));
   return s;
 }
 
@@ -1057,9 +1266,15 @@ Estado* Listo() { return REXCVAR_GET(dbz3_iw_logica_original) ? St() : nullptr; 
 //     }
 //  4. Registrar g_x en kRegistrado; el llamador del port (iw_mini_*.cpp) prueba g_x y, si da false, usa lo suyo.
 //  Piezas: V0, Fpr, Choque (rayo/barrido -> wcf::Backend), ClipNuevo (BonesMovement), InstanciaAnim, Rejilla, Lfsr, Hx, Lista.
+// PM-18 (solo pruebas): quien toma el espejo compartido; un campo de 0x7D9 lo perdia a mitad de partida en la serie.
+inline void CambioDueno(int antes, int ahora) {
+  static const bool log = std::getenv("DBZ3_TEST_IWMINI") != nullptr;
+  if (log && antes != ahora && antes != 0) REXLOG_INFO("dbz3 iwmips espejo: dueno {} -> {}", antes, ahora);
+}
 class Ambito {
  public:
   Ambito(Estado& st, Dueno quien) : e_(st.ee), continua(st.dueno == quien) {
+    CambioDueno(st.dueno, quien);
     st.dueno = quien;
     std::swap(obs_, e_.observadores);
   }
@@ -1077,7 +1292,16 @@ class Ambito {
     }
     e_.puentes[dir] = std::move(f);
   }
-  void Mudo(std::initializer_list<uint32_t> dirs) { for (uint32_t a : dirs) Puente(a, [](Ee&) {}); }  // sin efecto
+  // sin efecto. R23 IW-4: 0x11DEF8 («ExecuteScript_MMI2» en Ghidra, igual en EU y USA) es memset: nunca se calla.
+  void Mudo(std::initializer_list<uint32_t> dirs) {
+    for (uint32_t a : dirs)
+      if (a != 0x11DEF8) Puente(a, [](Ee&) {});
+  }
+  // IW-F03: la funcion del ELF corre de verdad en este ambito (aparta el puente que hubiera; se repone al salir).
+  void Quitar(uint32_t dir) {
+    Puente(dir, [](Ee&) {});
+    e_.puentes.erase(dir);
+  }
  private:
   Ee& e_;
   std::unordered_map<uint32_t, std::function<void(Ee&)>> obs_;
@@ -1104,6 +1328,7 @@ bool Llamada(const uint32_t& dir, const char* que, const EntradaIA& in, SalidaIA
   out = SalidaIA{};
   st->in = &in;
   st->out = &out;
+  CambioDueno(st->dueno, kDBubbles);
   st->dueno = kDBubbles;
   e.Cero(kMgr, 0x9000); e.Cero(kObjs, 0x800); e.Cero(kCtx, 0x40); e.Cero(kTareas, 0x400); e.Cero(kActiva, 0x100);
   e.Cero(kClip, 0x40); e.Cero(kMgw, 0x300);
@@ -1663,6 +1888,92 @@ bool Activa7DD() {
   return REXCVAR_GET(dbz3_iw_7dd_original) && Listo() != nullptr;
 }
 
+bool ActivaObjetivo7DD() {
+  return REXCVAR_GET(dbz3_iw_7dd_captura_original) && Activa7DD();
+}
+
+// EU/USA comprobados por instrucciones Y ejecutando la cadena durante ocho campos por caso:
+// audita7dd.py objetivo-continuo [--usa], 144/144 por region. No es la distribucion de nueve partidas.
+// Imagen propia: la tarea de objetivo no pisa kTareas ni los puentes persistentes de la CPU de Piccolo.
+bool Objetivo7DD(const persecucion::EntradaObjetivo& in, persecucion::SalidaObjetivo& out, uint32_t& semilla) {
+  out = {};
+  if (!ActivaObjetivo7DD()) return false;
+  static Estado* const st = Iniciar();
+  if (!st) return false;
+  if (in.limite <= 0 || !std::isfinite(in.tiempo) || in.tiempo < 0 || !std::isfinite(in.vida) ||
+      !std::isfinite(in.distancia_ctx) || in.distancia_ctx < 0 || in.jugador < 0 || in.jugador >= 44 ||
+      in.piccolo < 0 || in.piccolo >= 44) {
+    st->objetivo_listo = false;
+    return false;
+  }
+  Ee& e = st->ee;
+  Ambito amb(*st, kDObjetivo7DD);
+  if ((!in.inicio && (!st->objetivo_listo || !amb.continua || in.t != st->objetivo_t + 1)) ||
+      (in.jugador == 9 && (in.inicio || e.R16(kJug + 0xCBC) != 9))) {
+    st->objetivo_listo = false;  // no importar un9 sintetico ni resincronizar silenciosamente una secuencia perdida
+    return false;
+  }
+  const bool usa = freezer::g_ntsc;
+  const uint32_t disparador = usa ? 0x2A5DE0u : 0x2A6260u;
+  const uint32_t callback = usa ? 0x298D70u : 0x299000u;
+  const uint32_t tarea = kTareas + 0x400;
+  bool sin_puente = false;
+  amb.Puente(kCrear, [&](Ee& c) {
+    if (uint32_t(c.r[4]) != callback) { sin_puente = true; c.r[2] = 0; return; }
+    c.Cero(tarea, 0x100);
+    c.W32(tarea + 0x1C, callback);
+    out.creada = true;
+    c.r[2] = tarea;
+  });
+  // Asignacion propia y efectos graficos/sonoros mudos; fabrica, tarea, despacho y entrada9 se ejecutan.
+  // Memory (0x127CA0) NO se intercepta: su consumo del RNG vuelve al llamador.
+  amb.Mudo({kBorrar, kBones, kAura, kGuion, kSonidoFz,
+            usa ? 0x2A5090u : 0x2A54C0u, usa ? 0x302330u : 0x302570u,
+            usa ? 0x2E88D0u : 0x2E8AE0u, 0x13FEB0u,
+            usa ? 0x3384F0u : 0x3389D0u, usa ? 0x2619C0u : 0x261BD0u});
+  if (in.inicio) {
+    st->objetivo_listo = false;
+    e.Cero(kMgr, 0x9000); e.Cero(kObjs, 0x800); e.Cero(kCtx, 0x40);
+    e.Cero(kMgw, 0x300); e.Cero(kCtxM, 0x800); e.Cero(tarea, 0x100);
+    e.W32(kPMgr, kMgr); e.W32(kPObjs, kObjs); e.W32(kPCtxD, kCtx);
+    e.W32(kPMgw, kMgw); e.W32(kPCtxM, kCtxM); e.W32(kCtx + 4, 14);
+    e.W16(kJug + 0xCBE, uint16_t(in.jugador));
+    e.W16(kJug + 0xCBC, uint16_t(in.jugador));
+  }
+  // CBC9 pertenece al invitado y persiste aunque el host siga enviando su pose anterior.
+  if (e.R16(kJug + 0xCBC) != 9) e.W16(kJug + 0xCBC, uint16_t(in.jugador));
+  e.W8(kJug + 0x2061, uint8_t(in.aire));
+  e.W16(kBub + 0xCBC, uint16_t(in.piccolo));
+  e.W32(kMgr + 0x7CC, uint32_t(in.limite)); e.Wf(kMgr + 0x8B9C, in.tiempo);
+  e.Wf(kMgr + 0x2050, in.vida); e.W32(kMgr + 0x8B7C, uint32_t(in.pausa));
+  e.Wf(kCtxM + 0x75C, in.distancia_ctx); e.Wf(kPasoT, kPasoCampo); e.W32(kSemilla, semilla);
+  const int anterior = int16_t(e.R16(kJug + 0xCBC));
+  bool ok = e.Llamar(disparador, {});
+  if (ok && e.R32(kObjs + 0x180)) {
+    if (e.R32(kObjs + 0x180) != tarea || e.R32(tarea + 0x1C) != callback) ok = false;
+    else ok = e.Llamar(callback, {tarea});
+  }
+  if (!ok || sin_puente) {
+    st->objetivo_listo = false;
+    out = {};
+    REXLOG_WARN("dbz3 iwmips objetivo7dd: fallo t={} {}; no hay autoridad de captura", in.t, e.error());
+    return false;
+  }
+  out.jugador = int16_t(e.R16(kJug + 0xCBC)); out.anterior = int16_t(e.R16(kJug + 0xCBE));
+  out.clip = e.R32(kJug + 0xB60); out.accion = int32_t(e.R32(kObjs + 0x1A8));
+  out.gate = int32_t(e.R32(kObjs + 0x1B0)); out.tarea = e.R32(kObjs + 0x180) != 0;
+  out.aviso = out.tarea ? int16_t(e.R16(tarea + 0x6C)) : -1;
+  out.procesada = e.R8(tarea + 0x6E) != 0; out.reloj_tarea = e.Rf(tarea + 0x50);
+  out.bloqueo = e.R32(kObjs + 0x248) != 0; out.pausa_gestor = e.R8(kMgr + 0x8D21) != 0;
+  out.capturado = out.jugador == 9;
+  st->objetivo_listo = true; st->objetivo_t = in.t;
+  semilla = e.R32(kSemilla);
+  if (anterior != 9 && out.capturado)
+    REXLOG_INFO("dbz3 iwmips captura7dd jugador=9 autoridad=original t={} region={} distribucion=pendiente",
+                in.t, usa ? "USA" : "EU");
+  return true;
+}
+
 bool Tick7DD(const persecucion::Entrada& in, persecucion::Salida& out, uint32_t& semilla) {
   if (!REXCVAR_GET(dbz3_iw_7dd_original) || !in.rayo || !in.barrido) return false;
   Estado* const st = Listo();
@@ -1811,6 +2122,10 @@ bool Tick7DD(const persecucion::Entrada& in, persecucion::Salida& out, uint32_t&
   // sesiones de 150 s; el original 3 de 3). tools/iw_mips/persecucion.py Espejo.raiz_previa, sintetica7dd.py.
   for (int i = 0; i < 4; ++i) e.W32(kBub + 0x50 + 4 * i, e.R32(kBub + 0x40 + 4 * i));
   ok = ok && e.Llamar(kEntradaJug, {kBub}) && e.Llamar(kTick7DD, {kBub});
+  // PAQ_5: rastro de la decision original de la CPU del 0x7DD (el alias de este ambito es `e`).
+  if (log && in.t % 24 == 0)
+    REXLOG_INFO("dbz3 iwmips 7dd: t={} cpu={:X} ctxM={:X} ancla={:.2f},{:.2f},{:.2f} ok={}", in.t, kCpu7DD, kPCtxM,
+                e.Rf(kBub + 0x40), e.Rf(kBub + 0x44), e.Rf(kBub + 0x48), ok);
   if (ok && e.R32(kW1 + 0xB8)) {   // la Update que la tarea guardo al crearse
     const uint32_t t = e.R32(kW1 + 0xB8), f = e.R32(t + 0x1C);
     ok = e.Llamar(f ? f : kTray, {t});
@@ -1836,6 +2151,7 @@ bool Tick7DD(const persecucion::Entrada& in, persecucion::Salida& out, uint32_t&
     return false;
   }
   out.codigo = codigo;
+  out.distancia_ctx = dist;
   out.estado = int16_t(e.R16(kBub + 0xCBC));
   out.clip = e.R32(kBub + 0xB60);
   out.tarea = e.R32(kW1 + 0xB8) != 0;
@@ -1870,14 +2186,41 @@ uint32_t kAudioPlay = 0x35EB60, kAudioStop = 0x35EA50, kUiAnim = 0x2ED8F0, kCamT
 uint32_t kPoseDA = 0x311DF0, kEngine = 0x28AB00, kJadeo = 0x22FCB0, kReady = 0x381F80, kScr158 = 0x31E1F0;
 uint32_t kEfectoFinDA = 0x313920, kResultDA = 0x312D90, kAnimResDA = 0x3130F0, kPremio = 0x28A020, kFlag4 = 0x28A300;
 uint32_t kGolpeSnd = 0x240740, kTransSnd = 0x371E30, kVibra = 0x2EFA10, kQteUpd = 0x2EEFB0;
+// IW-F01: Mg_FinishAndWriteResults (kResultDA) corre entero (total W+0x44 = +0x48 + +0x4C + +0x50, banco 3164/3164);
+// del port solo su bloque de configuracion (GameState_GetConfigBlock) y el guion MMI2.
+uint32_t kCfgDA = 0x28AA40, kMmi2DA = 0x11DEF8;
 // Punteros globales que el original lee (trabajo, vibracion, actor, QTE, contexto de carga) y el ancho de la UI.
 uint32_t kPWorkDA = 0x49CDC8, kPVibDA = 0x49CDD4, kPActor = 0x49CA70, kPQte = 0x49CD70, kPCdd0 = 0x49CDD0, kPAnchoUi = 0x49C85C,
          kFlancoDA = 0x4ADED2;
 // Espejo propio: trabajo 0x114 B, vibracion, QTE, contexto, motor (+0x10 personaje), actor (+0x800 maquina de poses) y UI.
 constexpr uint32_t kWDA = 0x1100000, kVDA = 0x1101000, kQDA = 0x1102000, kCdd0DA = 0x1103000, kEngDA = 0x1104000,
-                   kADA = 0x1110000, kUiDA = 0x1120000, kNUiDA = 0x40;
+                   kCfgBlkDA = 0x1105000, kADA = 0x1110000, kUiDA = 0x1120000, kNUiDA = 0x40;
 
 bool ActivaDA() { return REXCVAR_GET(dbz3_iw_7da_original) && Listo() != nullptr; }
+
+// IW-F02 (iw_mips.h namespace ui): UI_SetObjectField158AndEnable (EU 0x2F0F90, USA 0x2F0D80) se ejecuta y ademas se anota
+// el objeto (a0), su tiempo de arranque (f12) y si cayo antes (fase 1) o despues (fase 2) del UI_UpdateFrame del campo.
+uint32_t kUiF158 = 0x2F0F90;
+void ObservarUi(Ee& e, const int& fase) {
+  ui::g_tabla = ui::Tabla{};
+  e.observadores[kUiF158] = [&fase](Ee& c) {
+    const uint32_t k = uint32_t(c.r[4]);   // EE: el float va en f12, objeto en a0 y animacion en a1 (sonda ee.py: (0x3C, 0x2A))
+    if (k >= uint32_t(ui::kN)) return;
+    ui::Obj& o = ui::g_tabla.o[k];
+    const uint32_t b = c.F(12);
+    std::memcpy(&o.t0, &b, 4);
+    o.puesto = uint8_t(fase);
+  };
+}
+void LeerUi(Ee& e, uint32_t base, int n) {
+  ui::Tabla& t = ui::g_tabla;
+  t.n = std::min(n, ui::kN);
+  for (int k = 0; k < t.n; ++k) {
+    const uint32_t b = base + uint32_t(k) * 400;
+    ui::Obj& o = t.o[k];
+    o.anim = e.R32(b + 0x158); o.flags = e.R32(b + 0x150); o.x = e.Rf(b + 0x20); o.y = e.Rf(b + 0x24);
+  }
+}
 
 // Mg_UI_CreateObjects (EU 0x316060) para lo que la logica lee: objetos activos (+0x150 bit 0), iconos 1..10 caja +-16
 // en (-16, 395) y el objetivo 0x20 caja +-28 en (ancho/2, 395). El resto de la UI la dibuja el port.
@@ -1925,9 +2268,12 @@ bool CampoDA(const nb012::Entrada& in, nb012::Salida& out, uint32_t& semilla) {
   amb.Puente(kCamTimer, [&](Ee& c) { v0(c, cam_fin ? 1u : 0u); });
   amb.Puente(kEngine, [&](Ee& c) { v0(c, kEngDA); });
   amb.Puente(kReady, [&](Ee& c) { ev('R', int(c.r[4] & 0xFF)); });
-  amb.Puente(kResultDA, [&](Ee&) { ev('F', 0); });
+  amb.Puente(kCfgDA, [&](Ee& c) { ev('F', 0); v0(c, kCfgBlkDA); });   // dentro de Mg_FinishAndWriteResults
   amb.Puente(kGolpeSnd, [&](Ee&) { ev('G', 0); });
-  amb.Mudo({kAudioPlay, kAudioStop, kCamF164, kJadeo, kScr158, kEfectoFinDA, kAnimResDA, kPremio, kFlag4, kTransSnd, kVibra});
+  // kTransSnd (Minigame_CheckTransformSound) corre: gasta el LFSR (Memory) como el original; su sonido es kGolpeSnd ('G')
+  amb.Mudo({kAudioPlay, kAudioStop, kCamF164, kJadeo, kScr158, kEfectoFinDA, kAnimResDA, kPremio, kFlag4, kVibra});   // kMmi2DA (0x11DEF8) es memset: corre (R23 IW-4)
+  int fase_ui = 1;   // IW-F02: Mg_UpdateFrame = iconos, cadena del fallo, UI_UpdateFrame; despues Mg_UpdateMain
+  ObservarUi(e, fase_ui);
   if (in.inicio) {
     e.Cero(kWDA, 0x120); e.Cero(kVDA, 0x20); e.Cero(kQDA, 0x120); e.Cero(kCdd0DA, 0x20); e.Cero(kEngDA, 0x20);
     e.Cero(kADA, 0x2000);
@@ -1951,7 +2297,9 @@ bool CampoDA(const nb012::Entrada& in, nb012::Salida& out, uint32_t& semilla) {
   e.W16(kADA + 0x14BC, uint16_t(in.pose)); e.W32(kADA + 0x1478, uint32_t(in.pose_t));
   const Cronometro cr(e);
   // orden medido en PCSX2 (dorado T2B): la tarea de Mg_UpdateFrame (iconos, cadena del fallo) va antes que Mg_UpdateMain
-  const bool ok = e.Llamar(kScrollDA, {}) && e.Llamar(kMissDA, {}) && e.Llamar(kMainDA, {});
+  bool ok = e.Llamar(kScrollDA, {}) && e.Llamar(kMissDA, {});
+  fase_ui = 2;
+  ok = ok && e.Llamar(kMainDA, {});
   const double us = cr.Us();
   if (!ok) {
     REXLOG_WARN("dbz3 iwmips nb012: {} (t={}); la partida sigue con el port", e.error(), in.t);
@@ -1969,7 +2317,9 @@ bool CampoDA(const nb012::Entrada& in, nb012::Salida& out, uint32_t& semilla) {
     out.x[i] = e.Rf(kUiDA + uint32_t(i + 1) * 400 + 0x20);
     out.vivo[i] = e.R8(kWDA + 0x89 + uint32_t(i)); out.fallado[i] = e.R8(kWDA + 0x9D + uint32_t(i));
     out.acierto[i] = e.R8(kWDA + 0x60 + uint32_t(i)); out.seq[i] = e.R8(kQDA + 0x28 + uint32_t(i));
+    out.w93[i] = e.R8(kWDA + 0x93 + uint32_t(i));
   }
+  LeerUi(e, kUiDA, int(kNUiDA));
   for (int i = 0; i < 3; ++i) out.cat[i] = e.Rf(kWDA + 0x48 + 4 * uint32_t(i));
   st->Cuenta(us);
   if (log) {  // solo pruebas: E:/DBZ3HD_trabajo/T2B/qte7da.py juego --log <dbz3.log> la reejecuta en ee.py
@@ -2021,8 +2371,11 @@ bool CampoDC(const nb014::Entrada& in, nb014::Salida& out, uint32_t& semilla) {
   amb.Puente(kCfg, [&](Ee& c) { V0(c, kEngDA + 0x100); });
   amb.Puente(kCda4, [&](Ee& c) { V0(c, kCda4DC); });
   amb.Puente(kVidaSnd, [&](Ee&) { ev('V', 0); });
-  amb.Mudo({kUiModo, kUiTrans, kCam170, kCamVista, kCamUpd, kUiUpd, kFadeH, kFadeR, kFadeU, kEfecto, kChrFade, kAudioPlay,
-            kAudioStop, kJadeo, kVibra, kPremio, kFlag4, kScr158, kReady, kMmi2, kFinalDC, kGolpeSnd});
+  amb.Mudo({kUiModo, kUiTrans, kCam170, kCamVista, kCamUpd, kFadeH, kFadeR, kFadeU, kEfecto, kChrFade, kAudioPlay,
+            kAudioStop, kJadeo, kVibra, kPremio, kFlag4, kScr158, kReady, kFinalDC, kGolpeSnd});
+  int fase_ui = 1;   // IW-FX-04 (resto de IW-F02): UI_UpdateFrame (mudo) dentro de QteMg_UpdateGameplay marca la fase 2
+  amb.Puente(kUiUpd, [&fase_ui](Ee&) { fase_ui = 2; });
+  ObservarUi(e, fase_ui);
   if (in.inicio) {
     e.Cero(kWDC, 0x400); e.Cero(kCe00DC, 0x200); e.Cero(kQDA, 0x120); e.Cero(kEngDA, 0x200); e.Cero(kMDC, 0x5000);
     e.Cero(kCda4DC, 0x100);
@@ -2078,8 +2431,10 @@ bool CampoDC(const nb014::Entrada& in, nb014::Salida& out, uint32_t& semilla) {
   out.ronda = int(int32_t(e.R32(kWDC + 0x24))); out.activo = int(e.R32(kWDC + 0x2E0));
   out.rango = int(e.R32(kWDC + 0x1C)); out.nota = e.Rf(kWDC + 0x20);
   out.vida[0] = e.Rf(kMDC + 0x800 + 0x1850); out.vida[1] = e.Rf(kMDC + 0x28D0 + 0x1850);
+  LeerUi(e, kUiDA, 0x60);   // IW-FX-04
   for (int l = 0; l < 2; ++l) {   // QteMg_UpdatePlayerButtons: el icono k va en el objeto 0x15 + 15 l + k % 15
     out.aciertos[l] = int(e.R32(kWDC + 0x3C + 4 * uint32_t(l)));
+    out.intentos[l] = int(e.R32(kWDC + 0x44 + 4 * uint32_t(l)));
     out.llegaron[l] = std::min(50, int(e.R32(kWDC + 0x2C + 4 * uint32_t(l))));
     const int cnt = int(e.R32(kWDC + 0x2C8 + 4 * uint32_t(l)));
     for (int k = std::max(0, cnt - 15); k < cnt && k < 50; ++k) {
@@ -2135,13 +2490,13 @@ void MapaUsa() {
   kAudioPlay = 0x35ECA0; kAudioStop = 0x35EB90; kUiAnim = 0x2ED6E0; kCamTimer = 0x2ED690; kCamF164 = 0x2ED6C0;
   kPoseDA = 0x311B80; kEngine = 0x28A8D0; kJadeo = 0x22FB40; kReady = 0x381F50; kScr158 = 0x31DF00;
   kEfectoFinDA = 0x313680; kResultDA = 0x312B20; kAnimResDA = 0x312E50; kPremio = 0x289DF0; kFlag4 = 0x28A0D0;
-  kGolpeSnd = 0x2405B0; kTransSnd = 0x371F60; kVibra = 0x2EF800; kQteUpd = 0x2EEDA0;
+  kGolpeSnd = 0x2405B0; kTransSnd = 0x371F60; kVibra = 0x2EF800; kQteUpd = 0x2EEDA0; kCfgDA = 0x28A810;
   kPWorkDA = 0x49C5A8; kPVibDA = 0x49C5B4; kPActor = 0x49C270; kPQte = 0x49C550; kPCdd0 = 0x49C5B0; kPAnchoUi = 0x49C05C;
   kFlancoDA = 0x4AD6D2;
   // T2B: NB014 (pc_eu_a_usa; Gameplay y Reset emparejados a mano)
   kUpdDC = 0x331AC0; kJuegoDC = 0x332850; kResetDC = 0x332BA0; kVelDC = 0x32E800; k354DC = 0x32E760; kStatsDC = 0x32E5A0;
   kPose1DC = 0x335FB0; kPose2DC = 0x338310; kUiModo = 0x2ED8D0; kUiTrans = 0x2ED940; kCam170 = 0x2ED680; kCamVista = 0x2ED5D0;
-  kCamUpd = 0x2EE130; kUiUpd = 0x2F0F80; kFadeH = 0x31E590; kFadeR = 0x31E2B0; kFadeU = 0x31E0E0; kEfecto = 0x2F7740;
+  kCamUpd = 0x2EE130; kUiUpd = 0x2F0F80; kUiF158 = 0x2F0D80; kFadeH = 0x31E590; kFadeR = 0x31E2B0; kFadeU = 0x31E0E0; kEfecto = 0x2F7740;
   kChrFade = 0x2EF430; kVidaSnd = 0x372400; kFinalDC = 0x32EDC0; kMmi2 = 0x11DEF8; kCfg = 0x28A810; kCda4 = 0x2F5D20;
   kPWorkDC = 0x49C5D8; kPCe00 = 0x49C5E0; kPCe04 = 0x49C5E4; kPJug = 0x49C5E8; kPRiv = 0x49C5EC;   // -0x820: los lw de gp de QteMg_Update USA (usa_datos da -0x81C)
   kPasoCampo = 1.0f;
@@ -2152,6 +2507,7 @@ const bool kRegistrado =
     (g_ia = &IA, g_update = &Update, g_trayectoria = &Trayectoria, g_tarea5 = &Tarea5, g_tick = &Tick,
      freezer::g_activa = &ActivaFz, freezer::g_esquiva = &Esquiva, msn019::g_fila = &Fila19,
      piccolo::g_esquiva = &EsquivaPc, cell::g_marcas = &Marcas7DE, persecucion::g_tick = &Tick7DD, persecucion::g_activa = &Activa7DD,
+     persecucion::g_objetivo = &Objetivo7DD, persecucion::g_objetivo_activa = &ActivaObjetivo7DD,
      nb012::g_campo = &CampoDA, nb012::g_activa = &ActivaDA, nb014::g_campo = &CampoDC, nb014::g_activa = &ActivaDC,
      true);   // dia1E4: + Piccolo; N2: + Cell; P1: + 0x7DD
 }  // namespace
@@ -2169,3 +2525,6 @@ const bool kRegistrado =
 
 // tanda4 iw-mapa: el mapa de Dragon Mission / Fighter's Road con su logica original (cvar dbz3_iw_mapa_original, apagada)
 #include "iw_mips_mapa.inl"
+
+// F1: rango/carga original de disparo (ajustes OFF); motor completo pendiente.
+#include "iw_mips_disparo.inl"

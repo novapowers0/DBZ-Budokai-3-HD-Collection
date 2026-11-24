@@ -6,9 +6,10 @@
 //   START / START_ACK
 //   INPUT  n x {tick, pad[12]} + {rng_tick, rng} + {stamp u32, eco u32, espera u16, retardo u8 (+0x80 AUTO)}
 //   BYE
-//   TEAM n ids u16 / ROOM elo u16 tramo u8 reglas u8 reversion u16 (cada 0,5 s antes de jugar)
+//   TEAM n ids u16 (u32 si HELLO negocia v8) / ROOM elo u16 tramo u8 reglas u8 reversion u16 (cada 0,5 s antes de jugar)
 #include "netplay.h"
 #include "room.h"
+#include "f10_guards.h"
 #include "../tagteam.h"
 #include "../roster_ext.h"
 
@@ -53,6 +54,11 @@
 #include <unistd.h>
 #endif
 
+REXCVAR_DEFINE_BOOL(dbz3_net_team_id_v8, false, "DBZ3/Net",
+                    "Negotiate 32-bit roster IDs for online teams");
+REXCVAR_DEFINE_BOOL(dbz3_net_compat_caps, false, "DBZ3/Net",
+                    "Allow connecting different executables via versioned capability handshake (BETA)");
+
 // Existing Tag Team control bits; no resource or swap state is touched here.
 namespace dbz3::tag { extern std::atomic<uint16_t> g_net_local; }
 namespace dbz3::net {
@@ -72,6 +78,7 @@ uint32_t NewNonce() {
 namespace T = dbz3::i18n;
 // PRUEBAS (DBZ3_NET_NOFAIL): una diferencia del RNG solo se registra (los menus de dos copias no van al mismo ritmo)
 bool NoFail() { static const bool v = std::getenv("DBZ3_NET_NOFAIL") != nullptr; return v; }
+bool F10Validation() { return rex::cvar::GetFlagByName("dbz3_net_validacion_f10") == "true"; }
 
 constexpr uint8_t kProto = 7;   // 7: kTeam lleva ademas las listas Custom de las 38 plazas (1 contra 1); 6: kTeam lleva la lista Custom de cada miembro; // 5: START lleva los dos equipos de Tag Team; 4: INPUT con ping y retardo (adaptativo)
 constexpr size_t kInputBase = 34;   // INPUT sin mandos: cabecera 6 + nonces 8 + n 1 + rng 8 + ping/retardo 11
@@ -92,7 +99,7 @@ constexpr uint64_t kLostMs = 10000;
 // Ethernet (1472 B de UDP) sin fragmentar; con 7 (1811 B) un router que tire fragmentos dejaba la lista colgada
 constexpr size_t kModsPerPacket = 5, kModEntry = 256, kMaxMods = 512;
 std::vector<uint8_t> StartPacket(uint32_t seed, const std::vector<uint8_t>& snap,
-                                 const std::vector<int>& host_team, const std::vector<int>& guest_team);
+                                 const std::vector<int>& host_team, const std::vector<int>& guest_team, team_wire::Version wire);
 
 uint64_t NowMs() {
   return uint64_t(std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -123,6 +130,48 @@ const char* OtherBuildMessage() {
 const char* OtherProtocolMessage() {
   return T::T("el protocolo online es distinto: actualizad los dos al mismo paquete del juego",
               "the online protocol differs: both players must update to the same game package");
+}
+const char* CapsRejectMessage(caps::RejectCode code) {
+  switch (code) {
+    case caps::RejectCode::kPlatformAbi: return OtherOsMessage();
+    case caps::RejectCode::kProtocol: return OtherProtocolMessage();
+    case caps::RejectCode::kSimAbi:
+      return T::T("la simulacion online de los dos ejecutables no es compatible: actualizad a una version compatible",
+                  "the online simulation of both executables is not compatible: update to a compatible version");
+    case caps::RejectCode::kSimContract:
+      return T::T("las reglas internas del lockstep difieren entre los dos ejecutables: actualizad a una version compatible",
+                  "internal lockstep rules differ between both executables: update to a compatible version");
+    case caps::RejectCode::kContentSchema:
+      return T::T("el formato de comprobacion de mods difiere entre los dos ejecutables: actualizad a una version compatible",
+                  "the mod verification schema differs between both executables: update to a compatible version");
+    case caps::RejectCode::kMissingCaps:
+      return T::T("faltan capacidades online requeridas por el equipo o la sesion: activa las mismas opciones o actualiza el juego",
+                  "missing online capabilities required by the team or session: enable the same options or update the game");
+    case caps::RejectCode::kStrictPolicy:
+      return T::T("el otro PC exige exactamente el mismo ejecutable: activad compatibilidad por capacidades en ambos o usad el mismo paquete",
+                  "the other PC requires the exact same executable: enable capability compatibility on both or use the same package");
+    case caps::RejectCode::kBetaRequired:
+      return T::T("el modo online es siempre BETA: paquete de capacidades no valido",
+                  "online mode is always BETA: invalid capability packet");
+    default: return OtherBuildMessage();
+  }
+}
+const char* CapsRejectReason(caps::RejectCode code) {
+  switch (code) {
+    case caps::RejectCode::kPlatformAbi: return "os";
+    case caps::RejectCode::kProtocol: return "protocol";
+    case caps::RejectCode::kSimAbi: return "sim_abi";
+    case caps::RejectCode::kSimContract: return "sim_contract";
+    case caps::RejectCode::kContentSchema: return "content_schema";
+    case caps::RejectCode::kMissingCaps: return "capabilities";
+    case caps::RejectCode::kStrictPolicy: return "strict_policy";
+    case caps::RejectCode::kBetaRequired: return "beta_required";
+    default: return "build";
+  }
+}
+bool LocalRollbackWanted() {
+  const std::string v = rex::cvar::GetFlagByName("dbz3_net_rollback");
+  return !dbz3::g_guest_eu && (v == "true" || v == "1" || std::getenv("DBZ3_RB_ON") != nullptr);
 }
 int SocketError() {
 #ifdef _WIN32
@@ -203,25 +252,8 @@ struct Reader {
   }
 };
 
-// Equipos de Tag Team en kTeam y kStart: n u8 (0-3) + n IDs u16 (0-63 o logico si es de pagina), en el orden de la rueda.
+// Physical slots are 0..63; higher IDs must exist in the local logical registry.
 bool TeamIdOk(int id) { return (id >= 0 && id < 64) || dbz3::roster::IsLogicalRosterId(id); }
-bool ReadTeam(Reader& r, std::vector<int>& out) {
-  out.clear();
-  const auto n = r.u8();
-  if (!r.ok || n > 3) return false;
-  for (uint8_t i = 0; i < n; ++i) {
-    const auto id = r.u16();
-    if (!r.ok || !TeamIdOk(int(id))) return false;
-    out.push_back(int(id));
-  }
-  return true;
-}
-
-void WriteTeam(Writer& w, const std::vector<int>& team) {
-  const size_t n = std::min<size_t>(team.size(), 3);
-  w.u8(uint8_t(n));
-  for (size_t i = 0; i < n; ++i) w.u16(uint16_t(team[i]));
-}
 
 std::string TeamText(const std::vector<int>& team) {
   std::string s = "[";
@@ -332,7 +364,10 @@ bool Session::ConfigureIdentity(const std::string& digest, bool safe_selection, 
 
 bool Session::ValidPacket(const std::vector<uint8_t>& pkt) const {
   if (pkt.size() < 6 || pkt.size() > 2048 ||
-      std::memcmp(pkt.data(), kMagic, 4) || pkt[5] != kProto) return false;
+      std::memcmp(pkt.data(), kMagic, 4)) return false;
+  const bool team_packet = pkt[4] == kTeam || pkt[4] == kStart;
+  if (team_packet && !team_wire_locked_) return false;
+  if (pkt[5] != (team_packet ? uint8_t(team_wire_) : kProto)) return false;
   const auto state = link_.load();
   if (state == Link::kIdle || state == Link::kLost || state == Link::kError) return false;
   const auto type = pkt[4];
@@ -340,15 +375,31 @@ bool Session::ValidPacket(const std::vector<uint8_t>& pkt) const {
   if (type == kHello || type == kHelloAck) {
     if (state != Link::kWaiting && state != Link::kConnected) return false;
     if ((type == kHello) != (role_ == Role::kHost)) return false;
+    if (pkt.size() != caps::kHelloBaseSize && pkt.size() != caps::kHelloCapSize) return false;
     auto build = r.str(40), mods = r.str(40);
     const auto delay = r.u8();
     const auto save = r.u32();
     const auto region = r.u8();
     const auto nonce = r.u32(), echo = r.u32();
-    return r.ok && r.o == pkt.size() && identity_ready_ && build == identity_ &&
-           HexDigest(mods, 32) && delay >= 1 && delay <= 10 && !save && region <= 1 &&   // 0 US, 1 EU (distinta: Handle avisa)
-           nonce && (!peer_nonce_ || peer_nonce_ == nonce) &&
-           echo == local_nonce_;
+    if (!r.ok || r.o != caps::kHelloBaseSize || !identity_ready_ || !HexDigest(build, 32) ||
+        !HexDigest(mods, 32) || delay < 1 || delay > 10 || save || region > 1 ||
+        !nonce || (peer_nonce_ && peer_nonce_ != nonce) || echo != local_nonce_) return false;
+    const std::string os = PeerOs(pkt);
+    caps::Descriptor peer_caps{};
+    bool peer_has_caps = false;
+    caps::RejectCode parse_err = caps::RejectCode::kNone;
+    if (!caps::ParseHelloTrailer(pkt, os, &peer_has_caps, &peer_caps, &parse_err)) return false;
+    const bool peer_wide_legacy = team_wire::Negotiate(wide_team_offer_, pkt) == team_wire::Version::kWide;
+    const auto adm = caps::EvaluateAdmission(local_caps_desc_, compat_caps_offer_, identity_, kMyOs,
+                                             build, os, peer_has_caps, peer_caps, peer_wide_legacy);
+    if (!adm.admitted) return false;
+    if (caps_locked_) {
+      if (peer_has_caps != peer_has_caps_ || (peer_has_caps && !(peer_caps == peer_caps_desc_)) ||
+          adm.agreed_caps != agreed_caps_ || adm.cross_build != cross_build_session_ ||
+          adm.team_wire != team_wire_) return false;
+    }
+    if (team_wire_locked_ && adm.team_wire != team_wire_) return false;
+    return true;
   }
   if (!peer_nonce_ || r.u32() != peer_nonce_ || r.u32() != local_nonce_) return false;
   switch (type) {
@@ -364,12 +415,9 @@ bool Session::ValidPacket(const std::vector<uint8_t>& pkt) const {
     }
     case kTeam: {
       if (state != Link::kConnected && state != Link::kStarting) return false;
-      const auto n = r.u8();
-      if (n > 3) return false;
-      if (n >= 2 && !safe_tagteam_) return false;
       std::vector<int> ids;
-      for (int i = 0; i < n; ++i) { const auto id = r.u16(); if (!TeamIdOk(int(id))) return false; ids.push_back(id); }
-      for (int i = 0; i < n; ++i) {   // lista Custom de cada miembro: n (0-7) y esos IDs
+      if (!team_wire::Read(r, team_wire_, ids, TeamIdOk) || (ids.size() >= 2 && !safe_tagteam_)) return false;
+      for (size_t i = 0; i < ids.size(); ++i) {   // lista Custom de cada miembro: n (0-7) y esos IDs
         const auto nc = r.u8();
         if (nc > 7) return false;
         for (int k = 0; k < nc; ++k) r.u16();
@@ -377,9 +425,12 @@ bool Session::ValidPacket(const std::vector<uint8_t>& pkt) const {
       {   // listas Custom de las plazas (1 contra 1): m u8 y por cada una id u8 (< 38), n u8 (1-7) y n IDs
         const auto m = r.u8();
         if (m > 38) return false;
+        uint64_t used = 0;
         for (int q = 0; q < m; ++q) {
           const auto pid = r.u8(), nc = r.u8();
           if (pid >= 38 || nc == 0 || nc > 7) return false;
+          if (F10Validation() && (used & (1ull << pid))) return false;
+          used |= 1ull << pid;
           for (int k = 0; k < nc; ++k) r.u16();
         }
       }
@@ -391,7 +442,7 @@ bool Session::ValidPacket(const std::vector<uint8_t>& pkt) const {
       r.u16();
       const auto tramo = r.u8(), reglas = r.u8();
       r.u16();
-      return r.ok && r.o == pkt.size() && (tramo <= 4 || tramo == 255) && !(reglas & 0xE0) && (reglas & 0x0C) != 0x0C;
+      return r.ok && r.o == pkt.size() && (tramo <= 4 || tramo == 255) && !(reglas & 0xC0) && (reglas & 0x0C) != 0x0C;   // 0x20 = Modo Competitivo (COMP/8)
     }
     case kStart: {
       if (role_ != Role::kGuest || !mods_match_ || !team_ready_ || !peer_profile_ ||
@@ -402,7 +453,7 @@ bool Session::ValidPacket(const std::vector<uint8_t>& pkt) const {
       const size_t snap_at = r.o;
       r.o += n;
       std::vector<int> host_team, guest_team;
-      if (!ReadTeam(r, host_team) || !ReadTeam(r, guest_team) || r.o != pkt.size()) return false;
+      if (!team_wire::Read(r, team_wire_, host_team, TeamIdOk) || !team_wire::Read(r, team_wire_, guest_team, TeamIdOk) || r.o != pkt.size()) return false;
       // el anfitrion manda los dos equipos ya acordados: si no coinciden con lo recibido en kTeam, no se empieza
       if (host_team != peer_team_ || guest_team != local_team_) return false;
       if (state == Link::kStarting && (seed != seed_ ||
@@ -439,6 +490,13 @@ bool Session::ValidPacket(const std::vector<uint8_t>& pkt) const {
       if (state != Link::kPlaying) return false;
       const auto n = r.u8();
       if (!n || n > 8 || pkt.size() != 6 + 8 + 1 + 24u * n) return false;
+      if (F10Validation()) {
+        for (uint8_t i = 0; i < n; ++i) {
+          if (!f10::SumTickOk(r.u32(), tick_.load())) return false;
+          for (int b = 0; b < 5; ++b) r.u32();
+        }
+        return r.ok && r.o == pkt.size();
+      }
       return r.ok;
     }
     case kSnap: {
@@ -446,6 +504,7 @@ bool Session::ValidPacket(const std::vector<uint8_t>& pkt) const {
       r.u32();
       const auto total = r.u32();
       const auto idx = r.u16(), cnt = r.u16(), n = r.u16();
+      if (F10Validation()) return r.ok && f10::SnapshotChunkOk(total, idx, cnt, n) && r.o + n == pkt.size();
       return r.ok && total > 0 && total <= 262144 && cnt > 0 && idx < cnt && n > 0 && n <= 1100 && r.o + n == pkt.size();
     }
     case kSnapAck:
@@ -563,7 +622,9 @@ bool Session::Recv(std::vector<uint8_t>& pkt) {
     return true;
   }
   if (n < 6 || std::memcmp(buf, kMagic, 4) != 0) return true;
-  if (buf[5] != kProto) {
+  const bool team_packet = buf[4] == kTeam || buf[4] == kStart;
+  if (team_packet && (!team_wire_locked_ || buf[5] != uint8_t(team_wire_))) return true;
+  if (!team_packet && buf[5] != kProto) {
     // HELLO v5/v6 tiene el mismo cuerpo de 100 bytes y entiende kReject. Antes el
     // anfitrion lo tiraba en silencio: el invitado solo veia un timeout.
     if (!have_peer_ && role_ == Role::kHost && link_ == Link::kWaiting &&
@@ -606,10 +667,22 @@ bool Session::Recv(std::vector<uint8_t>& pkt) {
       }
       return true;
     }
-    if (buf[4] == kReject && (n == 10 || n == 18) && reply.u32() == local_nonce_) {
-      const std::string os = n == 18 ? reply.str(8) : std::string();
+    if (buf[4] == kReject && (n == 10 || n == 18 || n == int(caps::kRejectExtSize)) && reply.u32() == local_nonce_) {
+      const std::string os = n >= 18 ? reply.str(8) : std::string();
       conn_.peer_os = os; conn_.peer_proto = buf[5];
       ++conn_.rx_valid; --conn_.rx_ignored;
+      caps::RejectExt ext{};
+      if (n == int(caps::kRejectExtSize) && caps::ParseRejectExt(candidate, &ext)) {
+        conn_.peer_has_caps = true;
+        conn_.peer_platform_abi = ext.host_platform_abi;
+        conn_.peer_sim_abi = ext.host_sim_abi;
+        conn_.missing_caps = ext.missing_caps;
+        const char* why = CapsRejectMessage(ext.code);
+        const char* reason = CapsRejectReason(ext.code);
+        REXLOG_INFO("dbz3 online: rechazo del anfitrion ({}): {}", reason, why);
+        Fail(Link::kError, why, reason);
+        return true;
+      }
       const bool other_os = (os == "windows" || os == "linux") && os != kMyOs;
       const char* why = other_os ? OtherOsMessage() : OtherBuildMessage();
       REXLOG_INFO("dbz3 online: rechazo del anfitrion: {}", why);
@@ -620,25 +693,56 @@ bool Session::Recv(std::vector<uint8_t>& pkt) {
   // Stateless admission challenge: no endpoint claim on initial HELLO.
   // Random echo prevents stale HELLO capture, not user authentication.
   if (!have_peer_ && role_ == Role::kHost && link_ == Link::kWaiting &&
-      buf[4] == kHello && n == 100) {
+      buf[4] == kHello && (n == int(caps::kHelloBaseSize) || n == int(caps::kHelloCapSize))) {
     Reader hello(candidate);
     const auto identity = hello.str(40), mods = hello.str(40);
     const auto delay = hello.u8(); const auto save = hello.u32(); const auto region = hello.u8();
     const auto nonce = hello.u32(), echo = hello.u32();
-    if (!hello.ok || !nonce || delay < 1 || delay > 10 || save || region > 1 || !HexDigest(mods, 32)) return true;   // region 0 US, 1 EU
-    if (identity != identity_) {
-      const std::string os = PeerOs(candidate);
-      if (!HexDigest(identity, 32)) return true;
+    if (!hello.ok || !nonce || delay < 1 || delay > 10 || save || region > 1 ||
+        !HexDigest(mods, 32) || !HexDigest(identity, 32)) return true;   // region 0 US, 1 EU
+    const std::string os = PeerOs(candidate);
+    caps::Descriptor peer_caps{};
+    bool peer_has_caps = false;
+    caps::RejectCode parse_err = caps::RejectCode::kNone;
+    const bool parsed_ok = caps::ParseHelloTrailer(candidate, os, &peer_has_caps, &peer_caps, &parse_err);
+    caps::Admission adm{};
+    if (!parsed_ok) {
+      if (parse_err == caps::RejectCode::kMalformed) return true;
+      adm.admitted = false;
+      adm.reject_code = parse_err;
+    } else {
+      const bool peer_wide_legacy = team_wire::Negotiate(wide_team_offer_, candidate) == team_wire::Version::kWide;
+      adm = caps::EvaluateAdmission(local_caps_desc_, compat_caps_offer_, identity_, kMyOs,
+                                    identity, os, peer_has_caps, peer_caps, peer_wide_legacy);
+    }
+    if (!adm.admitted) {
+      if (adm.reject_code == caps::RejectCode::kMalformed) return true;
       conn_.peer_proto = buf[5]; conn_.peer_build = identity; conn_.peer_os = os;
-      const bool other_os = !os.empty() && os != kMyOs;
+      conn_.peer_has_caps = peer_has_caps;
+      conn_.peer_sim_abi = peer_has_caps ? peer_caps.sim_abi : 0;
+      conn_.peer_platform_abi = peer_has_caps ? uint8_t(peer_caps.platform_abi) : 0;
+      conn_.missing_caps = adm.missing_caps;
+      const bool other_os = adm.reject_code == caps::RejectCode::kPlatformAbi || (!os.empty() && os != kMyOs);
       Writer reject(kReject); reject.u32(nonce);
-      if (!os.empty()) reject.str(kMyOs, 8);   // sin etiqueta (version vieja): exactamente los 10 bytes anteriores
+      if (peer_has_caps) {
+        reject.str(kMyOs, 8);
+        caps::WriteRejectExt(reject.b, adm.reject_code, local_caps_desc_.platform_abi,
+                             local_caps_desc_.sim_abi, adm.missing_caps);
+      } else if (!os.empty()) {
+        reject.str(kMyOs, 8);   // sin etiqueta (version vieja): exactamente los 10 bytes anteriores
+      }
       SendDatagram(reject.b, &from, int(len));
-      const uint8_t bit = other_os ? 2 : 1;
+      const uint8_t bit = peer_has_caps && adm.reject_code != caps::RejectCode::kBuild &&
+                                  adm.reject_code != caps::RejectCode::kPlatformAbi
+                              ? 16
+                              : (other_os ? 2 : 1);
       if (!(conn_.reported & bit)) {   // no inundar disco por las retransmisiones del HELLO
         conn_.reported |= bit;
-        const char* why = other_os ? OtherOsMessage() : OtherBuildMessage();
-        const auto rep = WriteConnectionReport(why, other_os ? "os" : "build");
+        const char* why = peer_has_caps ? CapsRejectMessage(adm.reject_code)
+                                        : (other_os ? OtherOsMessage() : OtherBuildMessage());
+        const char* reason = peer_has_caps ? CapsRejectReason(adm.reject_code)
+                                           : (other_os ? "os" : "build");
+        const auto rep = WriteConnectionReport(why, reason);
         std::lock_guard<std::mutex> lock(mu_);
         peer_os_notice_ = std::string(why) + " " + rep;
       }
@@ -659,7 +763,7 @@ bool Session::Recv(std::vector<uint8_t>& pkt) {
   if (!have_peer_ || std::memcmp(peer_addr_, &from, sizeof(from)) != 0) return true;
   pkt = std::move(candidate);
   ++conn_.rx_valid; --conn_.rx_ignored;
-  conn_.peer_proto = kProto;
+  conn_.peer_proto = team_wire_locked_ ? uint8_t(team_wire_) : kProto;
   if (buf[4] == kHello || buf[4] == kHelloAck) {
     Reader hello(pkt); conn_.peer_build = hello.str(40); conn_.peer_os = PeerOs(pkt);
     std::lock_guard<std::mutex> lock(mu_);
@@ -684,13 +788,22 @@ bool Session::Host(uint16_t port, uint8_t delay, std::string* error) {
   }
   identity_admission_ = false;
   local_nonce_ = NewNonce();
-  local_team_ = dbz3::tag::MyLastTeam();
+  wide_team_offer_ = REXCVAR_GET(dbz3_net_team_id_v8);
+  compat_caps_offer_ = REXCVAR_GET(dbz3_net_compat_caps);
+  team_wire_locked_ = caps_locked_ = peer_has_caps_ = cross_build_session_ = hello_legacy_fallback_ = false;
+  team_wire_ = team_wire::Version::kLegacy;
+  agreed_caps_ = 0;
+  peer_caps_desc_ = {};
+  local_team_ = dbz3::tag::MyLastTeam(wide_team_offer_);
   local_caps_.clear();
-  for (int id : local_team_) local_caps_.push_back(dbz3::tag::OwnCustomCapsules(id));   // antes de pasar a ids de protocolo
+  for (int id : local_team_) {
+    const int slot = wide_team_offer_ && id >= 64 ? dbz3::roster::ActiveGuestForLogical(id) : id;
+    local_caps_.push_back(dbz3::tag::OwnCustomCapsules(slot));
+  }
   local_all_.clear();
   for (int id = 0; id < 38; ++id)
     if (const auto c = dbz3::tag::OwnCustomCapsules(id); c[0]) local_all_[id] = c;
-  for (int& id : local_team_) id = dbz3::roster::OnlineWireId(id);
+  if (!wide_team_offer_) for (int& id : local_team_) id = dbz3::roster::OnlineWireId(id);
   if (local_team_.size() >= 2 && !safe_tagteam_) {
     // Tag Team online sin autorizar: se juega 1 contra 1. Antes el ultimo equipo del Tag Team de 1P (que no
     // se borra) dejaba CREAR y UNIRSE fallando hasta reiniciar el juego (2026-10-15)
@@ -702,6 +815,9 @@ bool Session::Host(uint16_t port, uint8_t delay, std::string* error) {
     if (error) *error = T::T("Online: equipo de Tag Team no valido", "Online: invalid Tag Team team");
     return false;
   }
+  local_caps_desc_ = caps::MakeLocalDescriptor(compat_caps_offer_, safe_tagteam_, wide_team_offer_,
+                                               local_team_, F10Validation(), LocalRollbackWanted());
+  conn_.compat_caps = compat_caps_offer_;
   role_ = Role::kHost;
   auto_delay_ = delay == 0;
   auto_view_ = auto_delay_;
@@ -777,13 +893,22 @@ bool Session::Join(const std::string& ip, uint16_t port, std::string* error) {
   }
   identity_admission_ = false;
   local_nonce_ = NewNonce();
-  local_team_ = dbz3::tag::MyLastTeam();
+  wide_team_offer_ = REXCVAR_GET(dbz3_net_team_id_v8);
+  compat_caps_offer_ = REXCVAR_GET(dbz3_net_compat_caps);
+  team_wire_locked_ = caps_locked_ = peer_has_caps_ = cross_build_session_ = hello_legacy_fallback_ = false;
+  team_wire_ = team_wire::Version::kLegacy;
+  agreed_caps_ = 0;
+  peer_caps_desc_ = {};
+  local_team_ = dbz3::tag::MyLastTeam(wide_team_offer_);
   local_caps_.clear();
-  for (int id : local_team_) local_caps_.push_back(dbz3::tag::OwnCustomCapsules(id));   // antes de pasar a ids de protocolo
+  for (int id : local_team_) {
+    const int slot = wide_team_offer_ && id >= 64 ? dbz3::roster::ActiveGuestForLogical(id) : id;
+    local_caps_.push_back(dbz3::tag::OwnCustomCapsules(slot));
+  }
   local_all_.clear();
   for (int id = 0; id < 38; ++id)
     if (const auto c = dbz3::tag::OwnCustomCapsules(id); c[0]) local_all_[id] = c;
-  for (int& id : local_team_) id = dbz3::roster::OnlineWireId(id);
+  if (!wide_team_offer_) for (int& id : local_team_) id = dbz3::roster::OnlineWireId(id);
   if (local_team_.size() >= 2 && !safe_tagteam_) {
     // Tag Team online sin autorizar: se juega 1 contra 1. Antes el ultimo equipo del Tag Team de 1P (que no
     // se borra) dejaba CREAR y UNIRSE fallando hasta reiniciar el juego (2026-10-15)
@@ -795,6 +920,9 @@ bool Session::Join(const std::string& ip, uint16_t port, std::string* error) {
     if (error) *error = T::T("Online: equipo de Tag Team no valido", "Online: invalid Tag Team team");
     return false;
   }
+  local_caps_desc_ = caps::MakeLocalDescriptor(compat_caps_offer_, safe_tagteam_, wide_team_offer_,
+                                               local_team_, F10Validation(), LocalRollbackWanted());
+  conn_.compat_caps = compat_caps_offer_;
   role_ = Role::kGuest;
   auto_delay_ = false;   // el retardo lo marca el anfitrion
   auto_view_ = false;
@@ -869,6 +997,9 @@ void Session::SendHello(uint8_t type) {
   w.u8(dbz3::g_guest_eu ? 1 : 0);
   w.u32(local_nonce_);
   w.u32(peer_nonce_);
+  if (wide_team_offer_) team_wire::Offer(w.b);
+  if (compat_caps_offer_ && !(role_ == Role::kGuest && hello_legacy_fallback_))
+    caps::AppendHelloTrailer(w.b, local_caps_desc_);
   Send(w.b);
 }
 
@@ -891,11 +1022,19 @@ void Session::Handle(const std::vector<uint8_t>& pkt, bool) {
       if (peer_nonce_ && peer_nonce_ != nonce) return;
       peer_nonce_ = nonce;
       if (my_build_.empty()) return;   // aun sin huella de mods propia: el otro repite el HELLO
-      if (type == kHello && role_ == Role::kHost) SendHello(kHelloAck);
-      if (build != my_build_) {
-        Fail(Link::kError, T::T("el otro PC tiene otra version del juego", "the other PC has another game version"));
+      const std::string os = PeerOs(pkt);
+      caps::Descriptor peer_caps{};
+      bool peer_has_caps = false;
+      caps::RejectCode parse_err = caps::RejectCode::kNone;
+      if (!caps::ParseHelloTrailer(pkt, os, &peer_has_caps, &peer_caps, &parse_err)) return;
+      const bool peer_wide_legacy = team_wire::Negotiate(wide_team_offer_, pkt) == team_wire::Version::kWide;
+      const auto adm = caps::EvaluateAdmission(local_caps_desc_, compat_caps_offer_, my_build_, kMyOs,
+                                               build, os, peer_has_caps, peer_caps, peer_wide_legacy);
+      if (!adm.admitted) {
+        Fail(Link::kError, CapsRejectMessage(adm.reject_code), CapsRejectReason(adm.reject_code));
         return;
       }
+      if (type == kHello && role_ == Role::kHost) SendHello(kHelloAck);
       if (region != uint8_t(dbz3::g_guest_eu ? 1 : 0)) {   // US y EU no son el mismo juego (semilla, datos)
         Fail(Link::kError, T::T("el otro PC tiene otra region del juego (US/EU)",
                                 "the other PC has another game region (US/EU)"));
@@ -913,6 +1052,31 @@ void Session::Handle(const std::vector<uint8_t>& pkt, bool) {
           save_have_.assign((save_size + kChunk - 1) / kChunk, 0);
           save_ready_ = save_size == 0;
         }
+      }
+      const bool first_lock = !caps_locked_;
+      peer_has_caps_ = peer_has_caps;
+      peer_caps_desc_ = peer_caps;
+      agreed_caps_ = adm.agreed_caps;
+      cross_build_session_ = adm.cross_build;
+      caps_locked_ = true;
+      team_wire_ = adm.team_wire;
+      team_wire_locked_ = true;
+      conn_.peer_proto = uint8_t(team_wire_);
+      conn_.peer_has_caps = peer_has_caps;
+      conn_.peer_sim_abi = peer_has_caps ? peer_caps.sim_abi : 0;
+      conn_.peer_platform_abi = peer_has_caps ? uint8_t(peer_caps.platform_abi) : 0;
+      conn_.agreed_caps = agreed_caps_;
+      conn_.cross_build = cross_build_session_;
+      if (first_lock && cross_build_session_) {
+        REXLOG_INFO("dbz3 online (BETA): ejecutables distintos admitidos por capacidades (sim_abi={}, platform={}, caps=0x{:08X}, team_wire=v{}, lockstep)",
+                    peer_caps.sim_abi, int(peer_caps.platform_abi), agreed_caps_, int(team_wire_));
+      }
+      if (std::any_of(local_team_.begin(), local_team_.end(), [&](int id) {
+            return uint32_t(id) > team_wire::MaxId(team_wire_);
+          })) {
+        Fail(Link::kError, T::T("El equipo necesita IDs v8: activa la opción en ambos PCs o cambia el equipo",
+                                "The team needs v8 IDs: enable the option on both PCs or change the team"));
+        return;
       }
       // Mods distintos: se queda conectado SIN poder empezar (RequestStart, kStart y TakeStart exigen
       // mods_match_) y se cruzan las listas para decir cuales faltan y ofrecer bajarlos de Nova's Mods.
@@ -973,7 +1137,7 @@ void Session::Handle(const std::vector<uint8_t>& pkt, bool) {
         const size_t snap_at = r.o;
         r.o += n;
         std::vector<int> host_team, guest_team;
-        if (!ReadTeam(r, host_team) || !ReadTeam(r, guest_team)) return;
+        if (!team_wire::Read(r, team_wire_, host_team, TeamIdOk) || !team_wire::Read(r, team_wire_, guest_team, TeamIdOk)) return;
         Send(Writer(kStartAck).b);
         if (link_ != Link::kStarting) {
           seed_ = seed;
@@ -1045,12 +1209,8 @@ void Session::Handle(const std::vector<uint8_t>& pkt, bool) {
       break;
     }
     case kTeam: {   // su equipo de Tag Team (se aplica al empezar, TakeStart)
-      const uint8_t n = r.u8();
       std::vector<int> ids;
-      for (uint8_t i = 0; i < n && i < 3 && r.need(2); ++i) {
-        const int id = int(r.u16());
-        if (TeamIdOk(id)) ids.push_back(id);   // otro valor se saldria de la tabla
-      }
+      if (!team_wire::Read(r, team_wire_, ids, TeamIdOk)) return;
       std::vector<std::array<uint16_t, 8>> caps(ids.size());
       for (size_t i = 0; i < ids.size(); ++i) {
         const uint8_t nc = r.u8();
@@ -1096,6 +1256,7 @@ void Session::Handle(const std::vector<uint8_t>& pkt, bool) {
         if (s.tick == v.tick) continue;   // ya comparada o repetida
         s = v;
         CompareSum(v.tick);
+        if (!active()) return;   // F10: Fail borra los anillos; no procesar el resto de este paquete
       }
       break;
     }
@@ -1153,6 +1314,12 @@ void Session::Poll() {
     pkt.clear();
   }
   const uint64_t now = NowMs();
+  if (role_ == Role::kGuest && link_ == Link::kWaiting && compat_caps_offer_ &&
+      !peer_nonce_ && !hello_legacy_fallback_ && conn_.rx_valid == 0 &&
+      conn_.since && now - conn_.since > 2000) {
+    hello_legacy_fallback_ = true;
+    REXLOG_INFO("dbz3 online (BETA): sin respuesta al HELLO con capacidades; reintento compatible v7 (solo mismo ejecutable)");
+  }
   if (role_ == Role::kGuest && link_ == Link::kWaiting && now - last_send_ms_ > 300) SendHello(kHello);
   if (role_ == Role::kHost && link_ == Link::kWaiting && !conn_.reported && now - conn_.since > 20000) {
     conn_.reported |= 8;
@@ -1191,7 +1358,7 @@ void Session::Poll() {
     }
     if (role_ == Role::kHost && link_ == Link::kStarting && !launch_ && now - last_send_ms_ > 200) {
       std::lock_guard<std::mutex> lock(mu_);
-      Send(StartPacket(seed_, ui_snap_, local_team_, peer_team_));
+      Send(StartPacket(seed_, ui_snap_, local_team_, peer_team_, team_wire_));
     }
     if (link_ == Link::kConnected && !mods_match_ && now - mod_req_ms_ > 1000) {
       std::vector<ModDelta> diff;
@@ -1204,8 +1371,8 @@ void Session::Poll() {
       team_sent_ms_ = now;
       const std::vector<int>& team = local_team_;
       Writer w(kTeam);
-      w.u8(uint8_t(std::min<size_t>(team.size(), 3)));
-      for (size_t i = 0; i < team.size() && i < 3; ++i) w.u16(uint16_t(team[i]));
+      w.b[5] = uint8_t(team_wire_);
+      if (!team_wire::Write(w, team_wire_, team)) return;
       for (size_t i = 0; i < team.size() && i < 3; ++i) {
         const auto c = i < local_caps_.size() ? local_caps_[i] : std::array<uint16_t, 8>{};
         w.u8(uint8_t(c[0]));
@@ -1248,15 +1415,15 @@ void Session::SetUiSnapshot(const uint8_t* p, size_t n) {
 
 namespace {
 std::vector<uint8_t> StartPacket(uint32_t seed, const std::vector<uint8_t>& snap,
-                                 const std::vector<int>& host_team, const std::vector<int>& guest_team) {
+                                 const std::vector<int>& host_team, const std::vector<int>& guest_team, team_wire::Version wire) {
   Writer w(kStart);
+  w.b[5] = uint8_t(wire);
   w.u32(seed);
   w.u16(uint16_t(snap.size()));
   w.bytes(snap.data(), snap.size());
   // Equipos ya acordados (lado 1 anfitrion, lado 2 invitado): ids y orden, lo unico que el online usa
   // del Tag Team (capsulas Normal y sin formas/trajes privados: forms::Resolve los rechaza en online).
-  WriteTeam(w, host_team);
-  WriteTeam(w, guest_team);
+  if (!team_wire::Write(w, wire, host_team) || !team_wire::Write(w, wire, guest_team)) return {};
   return w.b;
 }
 }  // namespace
@@ -1273,7 +1440,7 @@ void Session::RequestStart() {
   seed_ = uint32_t(NowMs() * 2654435761u) | 1u;
   if (const char* e = std::getenv("DBZ3_NET_SEED")) seed_ = uint32_t(std::strtoul(e, nullptr, 0)) | 1u;   // PRUEBAS: corridas comparables
   std::lock_guard<std::mutex> lock(mu_);
-  Send(StartPacket(seed_, ui_snap_, local_team_, peer_team_));
+  Send(StartPacket(seed_, ui_snap_, local_team_, peer_team_, team_wire_));
   REXLOG_INFO("dbz3 online: START con equipos lado 1 {} y lado 2 {}", TeamText(local_team_), TeamText(peer_team_));
 }
 
@@ -1438,6 +1605,12 @@ void Session::ResetTransport() {
   ++generation_;
   guest_owner_ = false;
   local_nonce_ = peer_nonce_ = 0;
+  wide_team_offer_ = team_wire_locked_ = false;
+  compat_caps_offer_ = caps_locked_ = peer_has_caps_ = cross_build_session_ = hello_legacy_fallback_ = false;
+  team_wire_ = team_wire::Version::kLegacy;
+  local_caps_desc_ = {};
+  peer_caps_desc_ = {};
+  agreed_caps_ = 0;
   last_send_ms_ = last_recv_ms_ = team_sent_ms_ = 0;
   peer_len_ = 0;
   std::memset(peer_addr_, 0, sizeof(peer_addr_));
@@ -1504,6 +1677,7 @@ CombatRules CombatRules::Now() {
   r.flags = uint8_t((on("dbz3_combate_reglas_v0") ? 1 : 0) | (on("dbz3_combate_definitiva_directa") ? 2 : 0) |
                     (c == "lb" ? 4 : c == "rb" ? 8 : 0));
   r.reversion = uint16_t(std::clamp(std::atoi(rex::cvar::GetFlagByName("dbz3_combate_reversion").c_str()), 0, 65535));
+  if (on("dbz3_modo_competitivo") && !dbz3::g_guest_eu) r.flags |= 0x20;   // COMP/8: Modo Competitivo (solo US, como sus ganchos)
   if ((on("dbz3_net_rollback") || std::getenv("DBZ3_RB_ON")) && !dbz3::g_guest_eu) r.flags |= 0x10;   // R4: pide rollback (se acuerda en TakeStart). Solo US: EU sigue en lockstep
   return r;
 }
@@ -1513,6 +1687,7 @@ void CombatRules::Apply() const {
   rex::cvar::SetFlagByName("dbz3_combate_definitiva_directa", (flags & 2) ? "true" : "false");
   rex::cvar::SetFlagByName("dbz3_combate_boton_cancel", (flags & 4) ? "lb" : (flags & 8) ? "rb" : "no");
   rex::cvar::SetFlagByName("dbz3_combate_reversion", std::to_string(reversion));
+  rex::cvar::SetFlagByName("dbz3_modo_competitivo", (flags & 0x20) ? "true" : "false");
 }
 
 void Session::Fail(Link l, const std::string& why, const char* reason) {
@@ -1565,6 +1740,11 @@ std::string Session::WriteConnectionReport(const std::string& why, const char* r
       << " state=" << int(link_.load()) << " elapsed_ms=" << (conn_.since ? NowMs() - conn_.since : 0) << "\r\n";
     f << "build_local=" << identity_ << " mods_local=" << my_mods_hash_ << " scan_ready=" << !my_build_.empty() << "\r\n";
     f << "build_peer=" << conn_.peer_build << " os_peer=" << conn_.peer_os << " protocol_peer=" << conn_.peer_proto << "\r\n";
+    f << "online_stage=BETA compat_caps=" << (conn_.compat_caps ? 1 : 0)
+      << " cross_build=" << (conn_.cross_build ? 1 : 0)
+      << " sim_abi_local=" << local_caps_desc_.sim_abi << " sim_abi_peer=" << conn_.peer_sim_abi
+      << " platform_local=" << int(local_caps_desc_.platform_abi) << " platform_peer=" << int(conn_.peer_platform_abi)
+      << " agreed_caps=" << conn_.agreed_caps << " missing_caps=" << conn_.missing_caps << "\r\n";
     f << "local_udp_port=" << conn_.port;
     if (have_peer_) {
       const auto& a = *reinterpret_cast<const sockaddr_in*>(peer_addr_);
@@ -1611,6 +1791,9 @@ std::string Session::WriteDesyncReport(const std::string& why) {
     f << "Informe de desincronia (DBZ Budokai 3 HD) " << stamp << "\r\n" << why << "\r\n";
     f << "rol: " << (role_ == Role::kHost ? "anfitrion" : "invitado") << "  tick: " << tick_ << "  retardo: " << int(delay_.load())
       << "  ping: " << ping_ms_.load() << " ms  rollback: " << rb_on_.load() << "\r\n";
+    f << "online_stage=BETA cross_build=" << (cross_build_session_ ? 1 : 0)
+      << " sim_abi=" << local_caps_desc_.sim_abi << " agreed_caps=" << agreed_caps_
+      << " build_local=" << identity_ << " build_peer=" << conn_.peer_build << "\r\n";
     f << "sumas comparadas: " << sum_cmp_.load() << "  distintas: " << sum_bad_.load() << "\r\n";
     f << "mods (" << my_mods_.size() << "):";
     for (const auto& m : my_mods_) f << " " << m;
@@ -1848,6 +2031,16 @@ void Session::CompareSum(uint32_t tick) {
                 "del otro {:08X} {:08X} {:08X} {:08X} {:08X}; {} iguales antes)", tick, mask, a.b[0], a.b[1], a.b[2], a.b[3], a.b[4],
                 b.b[0], b.b[1], b.b[2], b.b[3], b.b[4], sum_cmp_.load() - bad);
   if (sum_hook && bad <= 80) sum_hook(tick, mask);
+  if (f10::StopOnBadSum(F10Validation(), rb_mode_.load(), tick, rb_ignore_until_)) {
+    // No afirmar que una instantanea del gestor ha reparado tambien los objetos del monton.
+    // Fail conserva el informe ANTES de vaciar los anillos y activa el aviso existente del panel.
+    REXLOG_WARN("dbz3 online: F10: corte por suma distinta en tick {} (mascara {:05b}); no se declara reparacion", tick, mask);
+    desync_ = true;
+    Writer bye(kBye);
+    Send(bye.b);
+    Fail(Link::kError, T::T("DESINCRONIA: se detuvo la partida; volved a crear la sala y enviad el informe si se repite",
+                          "DESYNC: the match was stopped; create the room again and send the report if it happens again"));
+  }
 }
 
 void Session::SendSums() {
@@ -2130,6 +2323,10 @@ void Session::RbApplyW() {
   rb_mode_ = false;
   bool both;
   { std::lock_guard<std::mutex> lock(mu_); both = (my_rules_.flags & 0x10) && (peer_rules_.flags & 0x10); }
+  if (cross_build_session_ && both) {
+    REXLOG_INFO("dbz3 online (BETA): ejecutables distintos: se desactiva rollback y se mantiene lockstep determinista");
+    both = false;
+  }
   rb_on_ = both;
   int w = 2;
   if (const char* e = std::getenv("DBZ3_RB_W")) w = std::atoi(e);

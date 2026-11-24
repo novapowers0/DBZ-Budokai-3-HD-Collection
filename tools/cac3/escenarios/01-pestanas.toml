@@ -1,0 +1,4 @@
+descripcion = "CAC2: lista anterior y cuatro categorías con BACK"
+turbo = false
+env = ["DBZ3_TEST_MODO=heroe,0", "DBZ3_TEST_HEROE_ABRIR=2", "DBZ3_TEST_CFG=dbz3_cac_xv2=false;dbz3_heroe_ui_nueva=true;dbz3_cac2_pestanas=false"]
+pasos = ['log "Create abierto" 180', 'captura antes', 'tecla set:dbz3_cac2_pestanas=true', 'captura traje', 'tecla Z', 'log "CAC2 pestana 1" 15', 'captura colores', 'tecla Z', 'log "CAC2 pestana 2" 15', 'captura rostro', 'tecla Z', 'log "CAC2 pestana 3" 15', 'captura despues', 'tecla Z', 'log "CAC2 pestana 0" 15']

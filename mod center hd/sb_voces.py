@@ -36,6 +36,7 @@ Uso:
     python sb_voces.py sb2:GHF --donante 4 --salida DIR         banco, ADX, WAV y tabla
 """
 import argparse
+import hashlib
 import os
 import shutil
 import struct
@@ -367,6 +368,42 @@ def adx_encode(x, rate=ADX_RATE, cut=500):
     return bytes(out + b"\x80\x01\x00\x0e" + bytes(14))
 
 
+CACHE_DIR = None    # cache en disco de los ADX ya comprobados (la pone el montaje, como gritos.PACKETS_DIR)
+_TAG = [None]
+
+
+def _adx_ok(x, ctx):
+    """adx_encode + ida y vuelta (el ADX da la misma frase), recordado por CONTENIDO en CACHE_DIR:
+    solo se guarda lo que paso la comprobacion. La clave lleva la firma de este modulo (si cambia el
+    codificador, la cache vieja no se usa). DBZ3_ROSTER_SIN_CACHE=1 la apaga."""
+    path = None
+    if CACHE_DIR and os.environ.get("DBZ3_ROSTER_SIN_CACHE") != "1":
+        if _TAG[0] is None:
+            with open(__file__, "rb") as fh:
+                _TAG[0] = hashlib.sha256(fh.read()).hexdigest()[:16]
+        x = np.ascontiguousarray(x)
+        key = hashlib.sha256(("%s|%s|" % (x.dtype.str, x.shape)).encode() + x.tobytes()).hexdigest()
+        path = os.path.join(CACHE_DIR, "%s-%d-%s.adx" % (_TAG[0], ADX_RATE, key))
+        try:
+            with open(path, "rb") as fh:
+                return fh.read()
+        except OSError:
+            pass
+    data = adx_encode(x)
+    y, _ = gritos.adx_decode(data)
+    assert len(y) == len(x) and snr(x, y) > 15, ctx
+    if path:
+        try:
+            os.makedirs(CACHE_DIR, exist_ok=True)
+            tmp = "%s.%d.tmp" % (path, os.getpid())
+            with open(tmp, "wb") as fh:
+                fh.write(data)
+            os.replace(tmp, path)
+        except OSError:
+            pass
+    return data
+
+
 def voice_block(spec, writer, donor_block=None, log=print):
     """-> bloque de 50 indices ADX (voces.py) con las frases del personaje de SB. Solo se rellenan
     las situaciones que tiene el donante (su moveset y sus cinematicas son las que las piden)."""
@@ -390,10 +427,7 @@ def voice_block(spec, writer, donor_block=None, log=print):
             block[s] = donor_block[s] if donor_block else -1
             used.append((s, "donante" if donor_block else "sin voz"))
             continue
-        adx = {lk: adx_encode(x) for lk, x in clips.items() if x is not None}
-        for lk, data in adx.items():      # ida y vuelta: el ADX da la misma frase
-            y, _ = gritos.adx_decode(data)
-            assert len(y) == len(clips[lk]) and snr(clips[lk], y) > 15, (s, lk)
+        adx = {lk: _adx_ok(x, (s, lk)) for lk, x in clips.items() if x is not None}
         block[s] = writer.add(adx["usa"], adx.get("jpn"))
         used.append((s, "%s %s (%.2f s)" % (src[0], src[1], len(clips["usa"]) / ADX_RATE)))
     return block, used

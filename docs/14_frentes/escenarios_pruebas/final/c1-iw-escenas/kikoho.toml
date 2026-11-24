@@ -1,0 +1,29 @@
+# C1 / IW-E02 — Kikoho (7DE, "Stop Cell!", objeto 15).
+#   python tools\pruebas.py correr <copia> "docs\14_frentes\escenarios_pruebas\final\c1-iw-escenas\kikoho.toml"
+#
+# clave    = IW-E02 (Kikoho) / IW13
+# cvar     = ninguna nueva.
+# env      = DBZ3_TEST_IWMINI=0x7DE,auto; DBZ3_TEST_KIKOHO_MATERIAL=1 (vuelca el material usado);
+#            DBZ3_DISPARO_VER_CELL=1 (posicion/objetivo del efecto).
+# criterio = (banco) el original carga el banco 895 con Minigame_LoadShootingData (EU 30CEF0) y el port
+#            usa el paquete 935 (efecto 935/6) y la malla 935/1; banco confirmado, sin paridad visual.
+#            En juego (PENDIENTE_JUEGO): el cono de Kikoho sale hacia la mira, con el mismo tinte y
+#            escala; par de capturas del mismo cuadro con SSIM >= 0,45 / pHash <= 18.
+# log      = "dbz3 iwdisparo: Kikoho (le da|falla)" / "dbz3 iwdisparo:.*material"
+descripcion = "7DE Kikoho: efecto 935/6 y malla 935/1 hacia la mira (IW-E02)"
+env = [
+  "DBZ3_TEST_IWMINI=0x7DE,auto",
+  "DBZ3_TEST_KIKOHO_MATERIAL=1",
+  "DBZ3_DISPARO_VER_CELL=1",
+  "DBZ3_TEST_CFG=dbz3_iw_logica_original=true",
+  'DBZ3_PS2_GAMES=D:\DBZ3HD\ps2_games',
+]
+pasos = [
+  "log \"iwmini: prueba: empieza\" 90",
+  "esperar 3000",
+  "captura t01_inicio",
+  "log \"dbz3 iwdisparo: Kikoho\" 120",
+  "captura t02_kikoho",
+  "esperar 1200",
+  "captura t03_kikoho2",
+]

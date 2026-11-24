@@ -1,0 +1,3 @@
+descripcion = "dsGIG: presentacion completa con el jefe gigante (opcion 1.8): capturas cada segundo para ver los planos y si se corta"
+env = ["DBZ3_TEST_BATTLE=0,7,7", "DBZ3_HUB_MODE=5", "DBZ3_SONDA_GIGANTE=1"]
+pasos = ["log \"hub: combate nativo\" 60", "esperar 2000", "captura 01", "esperar 1000", "captura 02", "esperar 1000", "captura 03", "esperar 1000", "captura 04", "esperar 1000", "captura 05", "esperar 1000", "captura 06", "esperar 1000", "captura 07", "esperar 1000", "captura 08", "esperar 1000", "captura 09", "esperar 1000", "captura 10", "log \"gigante: escala\" 60"]

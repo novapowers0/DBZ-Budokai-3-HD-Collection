@@ -1,0 +1,34 @@
+descripcion = "modos_rogue_supervivencia (ROG-05): camino Supervivencia: rivales al azar con 1500 + 150 de vida por oleada, la 3.a a 60 s, la 4.a con rival que se regenera 25/s; final con 4 pisos y 200 + 1000 Zenie"
+# ROG-05: pasar en una copia SIN partida de Rogue a medias (la pantalla 01 solo sigue la suya): despues de
+# modos_rogue_reanudar, que la termina. Pantalla 01: el cursor sale en El Abismo (2.a fila); W = arriba, S = abajo.
+# Teclas: Space = A, P = Y (saltar la carta), D = derecha, L = X (cambiar las 3).
+env = ["DBZ3_HUB_MODE=5", "DBZ3_TEST_RINGOUT=1", "DBZ3_TEST_MODO=rogue,0", "REX_DBZ3_LANGUAGE=5", "DBZ3_TEST_ROGUE=4"]
+pasos = [
+  "esperar_pantalla 5 120",
+  "log 'prueba: Dragon Rogue' 30",
+  "esperar 2500",
+  "tecla S 1200",
+  "tecla Space 3000",
+  "log 'rogue: camino supervivencia .0 combates, jefe cada 5, rivales semilla, pausa cartas.' 20",
+  "log 'Dragon Rogue combate 1: pedido .vida 3000/3000' 30",
+  "log 'Dragon Rogue: combate 1 ganado' 180",
+  "esperar 3000",
+  "tecla P 1500",
+  "esperar 1000",
+  "tecla Space 3000",
+  "log 'Dragon Rogue: combate 2 ganado' 180",
+  "esperar 3000",
+  "tecla P 1500",
+  "esperar 1000",
+  "tecla Space 3000",
+  "log 'CFG: id 0 .* vida 1800 .tiempo 60 s, regen 0/s' 60",
+  "log 'Dragon Rogue: combate 3 ganado' 180",
+  "esperar 3000",
+  "tecla P 1500",
+  "esperar 1000",
+  "tecla Space 3000",
+  "log 'CFG: id 0 .* vida 1950 .tiempo 0 s, regen 25/s' 60",
+  "log 'rogue: fin de supervivencia: id 0, 4 pisos .record 4[^)]*., 1200 Zenie' 180",
+  "esperar 3000",
+  "tecla Space 2500",
+]

@@ -1,0 +1,16 @@
+# SOLO Z/fase3. Humo del cierre opt-in; no sustituye audit21/21 ni pareja original/port.
+# Z: EU y USA, bola pendiente/guardada, reentrada y fracaso sin credito; misma dificultad/mascara/slot.
+# Comparar total,cogidos,rango,ZENI,SCORE y ausencia de doble bonus. Revisar bola/meta/camara/pose.
+descripcion = "7D0 cierre opt-in: humo de logs, aceptacion numerica y visual pendiente"
+env = [
+  'DBZ3_PS2_GAMES=D:\DBZ3HD\ps2_games',
+  "DBZ3_TEST_IWMINI=0x7D0,auto",
+  "DBZ3_TEST_CFG=dbz3_iw_logica_original=true;dbz3_iw_7d0_original=true;dbz3_iw_cierre_campo_original=true",
+]
+pasos = [
+  'log "iwmini: prueba: empieza" 90',
+  "captura 00_salida",
+  'log "dbz3 iwmini: cierre original indice 0 total" 180',
+  'log "dbz3 iwmini: prueba: resultado superado true" 180',
+  "captura 01_resultado",
+]

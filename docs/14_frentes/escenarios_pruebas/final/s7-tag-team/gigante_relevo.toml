@@ -1,0 +1,50 @@
+# S7 / GIG01+GIG02: gigante (DBZ3_GIGANTE=1.8) con Tag Team y relevos; el FOV debe volver al acabar.
+# FASE 3: lo deja escrito el carril S7; lo ejecuta Z una sola vez.
+#   python tools\pruebas.py correr smoke_a "docs\14_frentes\escenarios_pruebas\final\s7-tag-team\gigante_relevo.toml"
+#
+# clave    = GIG01 (gigante con relevo) y GIG02 (restauracion de escala/FOV y regla de reto)
+# cvar     = DBZ3_GIGANTE=1.8 (prueba, mismo camino que dbz3_jefe_gigante) y dbz3_tag_precarga=true
+# criterio = el rival sale a escala ("gigante: escala 1.80"), el FOV se abre y vuelve al terminar (la linea
+#            "campo de vision" aparece una vez y el combate acaba por tiempo); los relevos no cierran el juego.
+# log      = "dbz3 gigante: escala 1.80", "dbz3 gigante: campo de vision", "relevo", "tag: combate acabado"
+#
+# PENDIENTE_JUEGO: el Dragon Rush/definitiva del gigante y el agarre son camaras/posiciones del guest
+# (INFORME_dsGIG); se prueban a mano (no hay tecla automatica fiable para el Rush).
+descripcion = "GIG01/02: gigante 1.8 con Tag Team 2v2, relevos automaticos y fin por tiempo"
+env = [
+  "DBZ3_TAG_TEST_PICKS=1",
+  "DBZ3_TAG_TEST=0,2",
+  "DBZ3_TAG_TEST2=7,10",
+  "DBZ3_TAG_AUTOSWAP=120",
+  "DBZ3_TEST_TAGTIME=25",
+  "DBZ3_GIGANTE=1.8",
+  "DBZ3_TEST_CFG=dbz3_tag_precarga=true",
+]
+pasos = [
+  "esperar 2500",
+  "tecla L 3000",
+  "tecla Space 12000",
+  "tecla Space 4000",
+  "log \"menu de capsulas del jugador 1 abierto\" 30",
+  "esperar 1000",
+  "tecla Space 4000",
+  "tecla S 2000",
+  "tecla Space 4000",
+  "log \"menu de capsulas del jugador 2 abierto\" 30",
+  "esperar 1000",
+  "tecla Space 4000",
+  "tecla Space 6000",
+  "tecla Space 6000",
+  "tecla Space 3000",
+  "tecla Space 3000",
+  "tecla Space 3000",
+  "log \"tag: empieza un combate\" 60",
+  "log \"dbz3 gigante: escala 1.80\" 30",
+  "esperar 6000",
+  "captura a_gigante",
+  "log \"relevo .* -> \" 30",
+  "esperar 15000",
+  "captura b_relevos",
+  "log \"tag: combate acabado\" 40",
+  "captura c_fin",
+]

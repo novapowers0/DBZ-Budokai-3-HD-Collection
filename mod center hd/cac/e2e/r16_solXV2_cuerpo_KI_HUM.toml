@@ -1,0 +1,4 @@
+descripcion = "R16 cuerpo HUM: clip ANI1 de ki, cuadro 20 fijo, vista completa"
+turbo = false
+env = ["DBZ3_TEST_HEROE_ABRIR=2", "DBZ3_TEST_MODO=heroe,0", "DBZ3_TEST_HEROE_RAZA=7", "DBZ3_TEST_HEROE_CAM=0", "DBZ3_TEST_HEROE_ANIM=3:20", "DBZ3_TEST_CFG=dbz3_cac_xv2=true;dbz3_heroe_ui_nueva=true"]
+pasos = ['log "Create abierto" 120', "esperar 60000", "captura ki_frente", "tecla E 150", "esperar 1500", "captura ki_derecha", "tecla E 150", "esperar 1500", "captura ki_espalda", "tecla E 150", "esperar 1500", "captura ki_izquierda"]

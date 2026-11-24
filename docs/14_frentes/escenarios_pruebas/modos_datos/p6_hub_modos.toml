@@ -1,0 +1,12 @@
+# Fixture MODOS-06: hub_modos.toml con el resumen de un combate de una sesion anterior (laboratorio)
+version = 1
+laboratorio = false
+muneco = 0
+practica = false
+
+[ultimo_combate]
+cuadros = 3600
+id = [0.0, 1.0]
+dano = [1234.0, 900.0]
+golpes = [12.0, 9.0]
+combo = [3.0, 2.0]

@@ -8,6 +8,7 @@
 
 #include <array>
 #include <string>
+#include <vector>
 
 #include <cstdint>
 #include <cstddef>
@@ -53,10 +54,17 @@ void RequestDynamicRosterPage(int delta);
 void RequestDynamicRosterPageAbs(int page);
 bool IsLogicalRosterId(int id);
 int OnlineWireId(int guest);
+int ActiveGuestForLogical(int logical);
 int OnlineGuestId(int wire);
 void ClearOnlinePins();   // al cerrar la sesion: la sala siguiente reparte plazas desde cero en los dos PC
 int64_t LogicalForProxy(int guest);   // L: id logico del proxy o -1
 bool ProcessDynamicRosterPage(uint64_t& removed_proxy_mask, uint64_t& added_proxy_mask);
+std::vector<int> HeroRosterIds();
+std::string HeroRosterName(int logical);
+void RequestHeroRosterId(int logical);
+int HeroRosterGuest(int logical);
+bool HeroRosterAnswered(int logical);
+void ProcessHeroRosterRequest();  // hilo guest, solo fuera de select y de combate
 
 // Tecnicas (BSP) y guion (cam) propios de cada forma: fid por forma, -1 = los de la forma 0.
 struct FormFiles {
@@ -79,6 +87,12 @@ int TeamMember(uint32_t id, int k);
 std::string InternalName(uint32_t id);
 // Capsula que hay que llevar para fusionarse en este ID (roster.toml capsula_fusion); 0 si no pide ninguna (fusion.cpp)
 int FusionCapsule(uint32_t id);
+// Casilla de un fusionado del juego (roster.toml ficha_nativa / forma_inicial): en combate pelea como esa ficha
+// (64-104) en esa forma; 0 si la casilla no lo pide.
+int FichaNativa(uint32_t id);
+int FormaNativa(uint32_t id);
+// Acabado cel del importador: omite el rim HD compartido durante esa pelea.
+bool ObjCel(uint32_t id);
 int IdPorNombre(const std::string& nombre);   // ID de un personaje de roster.toml por su nombre; -1 si no esta
 // Casilla nueva elegida por el jugador k (0 = 1P): el ID nuevo y el de su anfitrion. En
 // "1P VS COM" / Practica la lista del rival vuelve a escribir los IDs por casilla (sale
@@ -134,6 +148,10 @@ uint32_t SkillSlot1();
 // keeps 2048 although the retail catalogue has 596).
 uint32_t CapsuleCount();
 void OwnNewCapsules(uint32_t inventory);
+// SLOTS_PJ-06 (dbz3_capsulas_sin_tope, apagado): con el ajuste encendido el catalogo pasa de las 2048
+// del inventario; las capsulas >= 596 son siempre tuyas. Apagado, CatalogueLimit() = 2048.
+bool CapsulesSinTope();
+uint32_t CatalogueLimit();
 // Capsula de transformacion unica (ficha 14, ID forms::UnifiedId): bit f = la forma f la da (agrupable y
 // desbloqueada, con las anteriores tambien); 0 si el personaje no tiene o el mod no esta activo.
 uint8_t UnifiedForms(int id);

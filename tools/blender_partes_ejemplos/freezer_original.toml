@@ -1,0 +1,7 @@
+# Solo parametros propios. El modelo y texturas se leen del juego del usuario.
+cuerpo = 27
+modelo = 181
+b3_torso = 3000
+b3_piernas = 3020
+b3_guantes = 3040
+b3_botas = 3061

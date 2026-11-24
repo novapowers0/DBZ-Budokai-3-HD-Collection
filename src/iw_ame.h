@@ -4,6 +4,7 @@
 
 #include <imgui.h>
 #include <rex/ui/imgui_drawer.h>
+#include <rex/cvar.h>
 #include <rex/logging.h>
 
 #include <algorithm>
@@ -21,6 +22,9 @@
 #include "ps2_modelo.h"
 #include "iw_gs_blend.h"
 
+namespace dbz3::iwmini {
+bool EfectosOriginalIW();   // iw_mini_botones.cpp: el ajuste dbz3_iw_efectos_original (apagado de serie)
+}
 namespace dbz3::iwame {
 using ps2::V3;
 inline V3 Mas(const V3& a, const V3& b) { return {a.x + b.x, a.y + b.y, a.z + b.z}; }
@@ -58,6 +62,7 @@ struct Nodo {
                     // 2 0x42 resta, 3 0x06
   std::vector<std::array<float, 5>> anim;   // {duracion, u0, v0, u1, v1}
   std::vector<Afector> afectores;
+  std::shared_ptr<Nodo> hija;   // particula 0x2000x colgada de esta: nace al morir esta (EU 0x276D30)
 };
 struct Efecto {   // un #AME: los emisores de la raiz con sus particulas hijas
   struct Grupo {
@@ -74,7 +79,7 @@ inline Efecto Leer(const std::vector<uint8_t>& b, bool particulas_raiz = false) 
   if (b.size() < 0x20 || std::memcmp(b.data(), "#AME", 4) != 0) return e;
   auto u32 = [&](size_t o) { uint32_t v = 0; if (o + 4 <= b.size()) std::memcpy(&v, b.data() + o, 4); return v; };
   auto f32 = [&](size_t o) { float v = 0; if (o + 4 <= b.size()) std::memcpy(&v, b.data() + o, 4); return v; };
-  auto nodo = [&](size_t o) {
+  std::function<Nodo(size_t,int)> nodo = [&](size_t o,int profundidad) {
     Nodo n;
     const uint32_t t = u32(o + 4);
     n.emisor = (t >> 16) == 1;
@@ -103,15 +108,19 @@ inline Efecto Leer(const std::vector<uint8_t>& b, bool particulas_raiz = false) 
         if ((u32(c+4)>>16)==3)
           n.afectores.push_back({int(u32(c+4)&65535),u32(c+8),
               {f32(c+0x30),f32(c+0x34),f32(c+0x38)},f32(c+0x40),f32(c+0x44),f32(c+0x48)});
+    // EU 0x276D30 Effect_SpawnChildParticle: la primera particula hija (+0x1C del grupo) nace al morir esta
+    if (!n.emisor && profundidad < 8)
+      for (size_t c=u32(o+0x24), k=0;c>=0x10&&c+0x60<=b.size()&&k<32;c=u32(c+0x28),++k)
+        if ((u32(c+4)>>16)==2) { n.hija=std::make_shared<Nodo>(nodo(c,profundidad+1)); break; }
     return n;
   };
   std::function<Efecto::Grupo(size_t,int)> grupo = [&](size_t o,int profundidad) {
     Efecto::Grupo g;
-    g.emisor=nodo(o);
+    g.emisor=nodo(o,0);
     if(profundidad>=32) return g;
     for(size_t c=u32(o+0x24),k=0;c>=0x10&&c+0x60<=b.size()&&k<32;c=u32(c+0x28),++k) {
       const uint32_t clase=u32(c+4)>>16;
-      if(clase==2) g.parts.push_back(nodo(c));
+      if(clase==2) g.parts.push_back(nodo(c,0));
       else if(clase==1) {
         auto hijo=std::make_shared<Efecto>();
         hijo->grupos.push_back(grupo(c,profundidad+1));
@@ -126,7 +135,7 @@ inline Efecto Leer(const std::vector<uint8_t>& b, bool particulas_raiz = false) 
     if ((t >> 16) == 1) {   // emisor: sus particulas por +0x24 y +0x28
       e.grupos.push_back(grupo(o,0));
     } else if (particulas_raiz && (t >> 16) == 2) {
-      e.raices.push_back(nodo(o));
+      e.raices.push_back(nodo(o,0));
     }
     o = u32(o + 0x28);
     if (o == 0) break;
@@ -139,6 +148,9 @@ struct Particula {
   float giro_signo=1,cuadro_t=0;
   size_t cuadro=0;
   bool inv_u=false,inv_v=false;
+  bool q_propio=false;               // IW-FX-05: orientacion y eje de giro propios (Effect_InitModelParticle)
+  std::array<float,4> q{0,0,0,1};
+  V3 eje;
   const Nodo* n = nullptr;
 };
 struct Instancia {
@@ -152,6 +164,11 @@ struct Instancia {
   bool vivo = true;
   bool modelos = false;   // tambien las particulas de modelo (tipo 4); las pinta el que llama (PintarModelos)
   bool mezcla_gs = false; // consumidor con atlas original y suma real del SDK
+  bool encadenar = false;  // particulas hijas al morir (EU 0x276D30); solo los consumidores que lo piden
+  bool fiel = false;   // IW-FX-05 (solo los efectos de pose de los botones): modelo con su orientacion (EU 0x271C90),
+                       // emisor caja (EU 0x275A00) y afectores sin mezcla_gs
+  bool raiz_mundo = false; // PUL-IW-FX-02: las particulas raiz nacen en origen + pos (consumidores sin hueso)
+  int hueso_rol = -1, hueso_nodo = 0;  // IW-FX-04: Effect_DrawAmoAttachedToBone (EU 0x1F0100): local al hueso; lo aplica quien pinta
   struct Hija { size_t grupo = 0, definicion = 0; std::shared_ptr<Instancia> in; };
   std::vector<Hija> hijas;
   V3 velocidad;
@@ -173,8 +190,20 @@ inline V3 Rotar(const std::array<float,4>& q,const V3& v) {
   const V3 t=Por(Cruz(xyz,v),2);
   return Mas(v,Mas(Por(t,q[3]),Cruz(xyz,t)));
 }
-inline Particula Nacer(const Nodo& n,float escala,bool gs,uint32_t& sem) {
+inline Particula Nacer(const Nodo& n,float escala,bool gs,uint32_t& sem,bool fiel=false) {
   Particula p;p.n=&n;p.edad=-std::max(n.f[1],0.0f);p.vida=n.f[0]>0 ? n.f[0] : 60;
+  if(fiel&&n.tipo==4) {
+    // IW-FX-05: EU 0x271C90 Effect_InitModelParticle: sin azar de tamano (escala +0x70/+0x80); bandera 0x40 eje al azar
+    // (3 bytes - 0,5, normalizado) y angulo (byte / 255 x 2 pi), 0x80 eje de giro al azar (velocidad +0x6C)
+    p.medio=escala;p.q_propio=true;p.q=n.q;p.eje={n.f[4],n.f[5],n.f[6]};
+    auto azar=[&] {V3 a{U(sem)-.5f,U(sem)-.5f,U(sem)-.5f};const float l=Largo(a);return l>0 ? Por(a,1/l) : a;};
+    if(n.flags&0x40) {
+      const V3 a=azar();const float g=U(sem)*6.28318530718f,s=std::sin(g*.5f);
+      p.q={a.x*s,a.y*s,a.z*s,std::cos(g*.5f)};
+    }
+    if(n.flags&0x80) p.eje=azar();
+    return p;
+  }
   if(n.tipo==2 || (n.tipo==4&&gs)) p.medio=escala;
   else p.medio=.5f*(n.f[3]+U(sem)*n.f[4])*escala;
   if(n.tipo==1) {
@@ -191,7 +220,7 @@ inline void Afectar(Particula&,const Nodo::Afector&,const V3&,const V3&,const V3
 inline void PasoParticula(Particula& p,uint32_t& sem,const Instancia& in,const V3& r,const V3& u,const V3& f) {
   ++p.edad;if(p.edad<=0) return;
   p.p=Mas(p.p,Por(p.v,1.0f/60));
-  if(in.mezcla_gs) for(const auto& a:p.n->afectores) Afectar(p,a,in.origen,r,u,f,1.0f/60,sem);
+  if(in.mezcla_gs||in.fiel) for(const auto& a:p.n->afectores) Afectar(p,a,in.origen,r,u,f,1.0f/60,sem);
   if(p.n->tipo==1&&(p.n->flags&8)) p.ang+=p.giro_signo*p.n->f[11]/60*0.01745329252f;
   if((p.n->flags&0x8000)&&!p.n->anim.empty()) {
     p.cuadro_t+=1;
@@ -229,6 +258,22 @@ inline void Afectar(Particula& p,const Nodo::Afector& a,const V3& origen,
     }
   }
 }
+// Quita las particulas que han cumplido su vida. EU 0x276D30 Effect_SpawnChildParticle (desde los cinco Update*):
+// la que tiene hija la hace nacer en su posicion y con su velocidad.
+inline void Morir(std::vector<Particula>& lista,const Instancia& in,uint32_t& sem) {
+  std::vector<Particula> nuevas;
+  if (in.encadenar)
+    for (const Particula& p : lista) {
+      if (p.edad < p.vida || !p.n->hija) continue;
+      const Nodo& h = *p.n->hija;
+      if (h.tipo == 4 ? !in.modelos : h.tex < 0) continue;
+      Particula c = Nacer(h,in.esc,in.mezcla_gs,sem,in.fiel);
+      c.p = p.p; c.v = p.v;
+      nuevas.push_back(c);
+    }
+  lista.erase(std::remove_if(lista.begin(), lista.end(), [](const Particula& p) { return p.edad >= p.vida; }), lista.end());
+  lista.insert(lista.end(), nuevas.begin(), nuevas.end());
+}
 // Un cuadro (60 por segundo): emision y particulas.
 inline void Cuadro(Instancia& in, uint32_t& sem) {
   if (!in.ef) return;
@@ -252,12 +297,14 @@ inline void Cuadro(Instancia& in, uint32_t& sem) {
       if (in.edad == 1)
         for (const Nodo& n : in.ef->raices) {
           if (n.tipo == 4 ? !in.modelos : n.tex < 0) continue;
-          Particula p=Nacer(n,in.esc,in.mezcla_gs,sem);
+          Particula p=Nacer(n,in.esc,in.mezcla_gs,sem,in.fiel);
           p.p = n.pos;
+          if (in.raiz_mundo)   // PUL-IW-FX-02: en el marco del efecto (origen, dir), como los emisores
+            p.p = Mas(in.origen, Por(Mas(Por(r, n.pos.x), Mas(Por(u, n.pos.y), Por(f, n.pos.z))), in.esc));
           lista.push_back(p);
         }
       for (auto& p : lista) PasoParticula(p,sem,in,r,u,f);
-      lista.erase(std::remove_if(lista.begin(), lista.end(), [](const Particula& p) { return p.edad >= p.vida; }), lista.end());
+      Morir(lista,in,sem);
       if (!lista.empty()) queda = true;
       continue;
     }
@@ -291,6 +338,11 @@ inline void Cuadro(Instancia& in, uint32_t& sem) {
             d={U(sem)-.5f,U(sem)-.5f,U(sem)-.5f};
             const float l=Largo(d);if(l>0) d=Por(d,1/l);
             d=Rotar(gr.emisor.q,d);
+          } else if(gr.emisor.tipo==2&&in.fiel) {
+            // IW-FX-05: EU 0x275A00 Effect_UpdateBoxSpawnerNode: x = +0x7C (u - 0,5), z = +0x80 (u - 0,5), dir (0,1,0)
+            const float ux=U(sem),uz=U(sem);
+            extra=Rotar(gr.emisor.q,{E[11]*ux-E[11]*.5f,0,E[12]*uz-E[12]*.5f});
+            d=Rotar(gr.emisor.q,{0,1,0});
           } else {
             const uint16_t ang=uint16_t(std::lround(U(sem)*65536));
             const float ph=float(ang)*6.28318530718f/65536;
@@ -308,7 +360,7 @@ inline void Cuadro(Instancia& in, uint32_t& sem) {
           const V3 off=Por(contexto(Mas(extra,Por(d,axial))),in.esc);
           const V3 vel=Por(contexto(d),velocidad*in.esc);
           if(n) {
-            auto p=Nacer(*n,in.esc,in.mezcla_gs,sem);
+            auto p=Nacer(*n,in.esc,in.mezcla_gs,sem,in.fiel);
             p.p=Mas(Mas(base,off),Por(n->pos,in.esc));
             p.v=in.mezcla_gs ? Mas(vel,Por(in.velocidad,n->f[2])) : vel;
             lista.push_back(p);
@@ -316,15 +368,14 @@ inline void Cuadro(Instancia& in, uint32_t& sem) {
             const size_t hijo=hi-gr.parts.size();
             auto a=std::make_shared<Instancia>();a->ef=gr.hijos[hijo].get();a->origen=Mas(base,off);
             a->velocidad=Mas(vel,Por(in.velocidad,a->ef->grupos[0].emisor.f[2]));
-            a->dir=in.dir;a->esc=in.esc;a->modelos=in.modelos;a->mezcla_gs=in.mezcla_gs;
+            a->dir=in.dir;a->esc=in.esc;a->modelos=in.modelos;a->mezcla_gs=in.mezcla_gs;a->encadenar=in.encadenar;a->fiel=in.fiel;
             in.hijas.push_back({g,hijo,std::move(a)});
           }
         }
       }
     }
     for (Particula& p : lista) PasoParticula(p,sem,in,r,u,f);
-    lista.erase(std::remove_if(lista.begin(), lista.end(), [](const Particula& p) { return p.edad >= p.vida; }),
-                lista.end());
+    Morir(lista,in,sem);
     if (!lista.empty()) queda = true;
   }
   for(auto& h:in.hijas) if(h.in->vivo) {
@@ -339,9 +390,20 @@ inline void Cuadro(Instancia& in, uint32_t& sem) {
 // B2: la resta (0x42, Cd - Cs·As) ya se pinta; ImGui no permite cambiar el blend por draw, asi que se aproxima
 // oscureciendo con el brillo de Cs (negro con alfa = brillo·alfa). No es 1:1 (marcado [H]).
 inline void Pintar(const Instancia& in, const ps2::Camara& cam, const std::vector<ps2::Tex>& atlas_n,
-                    const std::vector<ps2::Tex>& suma, ImDrawList* dl, float tope_px, bool gs_propio=false) {
+                    const std::vector<ps2::Tex>& suma, ImDrawList* dl, float tope_px, bool gs_propio=false,
+                    const std::vector<ps2::Tex>* atlas_z=nullptr) {
   if(!cam.ok) return;
   const float foco=cam.Foco();
+  // IW-FX-LAVADO2: EU 0x2716E0/0x272070/0x272FA0/0x273C10/0x274990: con la bandera 0x1000000 el nodo deja el TEST de la
+  // escena (0x49BE18 = 0x5040A: ZTE, ZTST GEQUAL) y se prueba contra la Z de los luchadores, que se pintan ANTES (tarea
+  // 0x3500 Battle_DrawAllCharacters < 0x3710 Effect_UpdateAndDrawScene, EU 0x302620); sin ella, TEST pasa a ZTST ALWAYS.
+  // 0x2000000 = ZBUF ZMSK (no escribe Z). Aqui: textura gemela `atlas_z` (Crear(im, true), la via R15 de ps2::Escena)
+  // contra el z-buffer del juego: normal (0x44) con la tuberia R15 y suma (0x48) con la de suma del SDK (la del sol de
+  // B2, que exige la Z de la escena). La resta (0x42) y 0x06 van por iwgs, sin Z: siguen encima.
+  const bool hay_z=gs_propio&&atlas_z&&!atlas_z->empty()&&cam.za>0&&ps2::EstadoProfundidad()>=1;
+  const bool z_suma=hay_z&&std::atoi(rex::cvar::GetFlagByName("dbz3_solar_depth_estado").c_str())==2;
+  if(hay_z) { static bool pedido=false; if(!pedido) pedido=rex::cvar::SetFlagByName("dbz3_ui_depth","true"); }
+  int con_z_n=0;
   static const bool forzar_alfa = std::getenv("DBZ3_TEST_AME_ALFA") != nullptr;
   int mezcla=0;
   for (const auto& lista : in.ps)
@@ -378,7 +440,10 @@ inline void Pintar(const Instancia& in, const ps2::Camara& cam, const std::vecto
         const float du=F[deriva]*p.edad/60*(p.inv_u ? -1 : 1),dv=F[deriva+1]*p.edad/60*(p.inv_v ? -1 : 1);
         uv0.x+=du;uv1.x+=du;uv0.y+=dv;uv1.y+=dv;
       }
-      const ImTextureID id = atlas[size_t(n.tex)].id();
+      const bool con_z=hay_z&&(n.flags&0x1000000)&&(n.estado==0||(n.estado==1&&z_suma))&&
+                       size_t(n.tex)<atlas_z->size()&&(*atlas_z)[size_t(n.tex)];
+      con_z_n+=con_z;
+      const ImTextureID id = con_z ? (*atlas_z)[size_t(n.tex)].id() : atlas[size_t(n.tex)].id();
       const int nueva_mezcla=gs_propio ? n.estado : in.mezcla_gs&&n.estado==1 ? 1 : 0;
       // ALPHA0x48 = Cs*As+Cd: el backend ya lo admite. Restablecer siempre
       // alfa al terminar para que ningun HUD herede el estado del efecto.
@@ -418,9 +483,10 @@ inline void Pintar(const Instancia& in, const ps2::Camara& cam, const std::vecto
           if(zb<=0) rec[nr++]=b;else cortado=true;
         }
         if(nr<3) continue;
-        ImVec2 xy[8];bool valido=true;
+        ImVec2 xy[8];float zp[8]={};bool valido=true;
         for(int i=0;i<nr;++i) {
           const auto& v=rec[i].p;const float k=foco/std::max(1.0f,-z(v));
+          if(con_z) zp[i]=cam.Prof(k,foco);
           xy[i]=ImVec2(cam.c.x+(cam.m[0]*v.x+cam.m[4]*v.y+cam.m[8]*v.z+cam.m[12])*k,
               cam.c.y-(cam.m[1]*v.x+cam.m[5]*v.y+cam.m[9]*v.z+cam.m[13])*k);
           valido=valido&&std::isfinite(xy[i].x)&&std::isfinite(xy[i].y);
@@ -433,7 +499,7 @@ inline void Pintar(const Instancia& in, const ps2::Camara& cam, const std::vecto
         dl->PushTextureID(id);dl->PrimReserve((nr-2)*3,nr);const unsigned b=dl->_VtxCurrentIdx;
         if(!cortado) for(unsigned i:{0u,1u,3u,3u,1u,2u}) dl->PrimWriteIdx(ImDrawIdx(b+i));
         else for(int i=1;i<nr-1;++i) {dl->PrimWriteIdx(ImDrawIdx(b));dl->PrimWriteIdx(ImDrawIdx(b+i));dl->PrimWriteIdx(ImDrawIdx(b+i+1));}
-        for(int i=0;i<nr;++i) dl->PrimWriteVtx(xy[i],rec[i].uv,rec[i].c);
+        for(int i=0;i<nr;++i) dl->PrimWriteVtx(xy[i],con_z ? ps2::Empaquetar(rec[i].uv,zp[i]) : rec[i].uv,rec[i].c);
         dl->PopTextureID();
       } else {
         // EU274990/273C10: tipo0 es sprite de dos dimensiones, no una estela.
@@ -442,12 +508,25 @@ inline void Pintar(const Instancia& in, const ps2::Camara& cam, const std::vecto
         const float rx=n.tipo==3 ? std::clamp(tam*k,0.0f,tope_px) : tam*k;
         const float ry=rx*(n.tipo==3 ? 1 : 1+F[5]);
         const float a=n.tipo==1 ? p.ang : 0,ca=std::cos(a),sa=std::sin(a);
-        dl->AddImageQuad(id,ImVec2(s.x-ca*rx-sa*ry,s.y+sa*rx-ca*ry),ImVec2(s.x+ca*rx-sa*ry,s.y-sa*rx-ca*ry),
-            ImVec2(s.x+ca*rx+sa*ry,s.y-sa*rx+ca*ry),ImVec2(s.x-ca*rx+sa*ry,s.y+sa*rx+ca*ry),
-            uv0,ImVec2(uv1.x,uv0.y),uv1,ImVec2(uv0.x,uv1.y),c);
+        const ImVec2 q[4]={ImVec2(s.x-ca*rx-sa*ry,s.y+sa*rx-ca*ry),ImVec2(s.x+ca*rx-sa*ry,s.y-sa*rx-ca*ry),
+            ImVec2(s.x+ca*rx+sa*ry,s.y-sa*rx+ca*ry),ImVec2(s.x-ca*rx+sa*ry,s.y+sa*rx+ca*ry)};
+        const ImVec2 u[4]={uv0,ImVec2(uv1.x,uv0.y),uv1,ImVec2(uv0.x,uv1.y)};
+        if(con_z) {   // el billboard mira a la camara: sus 4 esquinas, a la profundidad del centro
+          const float zc=cam.Prof(k,foco);
+          dl->PushTextureID(id);dl->PrimReserve(6,4);const unsigned b=dl->_VtxCurrentIdx;
+          for(unsigned i:{0u,1u,2u,0u,2u,3u}) dl->PrimWriteIdx(ImDrawIdx(b+i));
+          for(int i=0;i<4;++i) dl->PrimWriteVtx(q[i],ps2::Empaquetar(u[i],zc),c);
+          dl->PopTextureID();
+        } else dl->AddImageQuad(id,q[0],q[1],q[2],q[3],u[0],u[1],u[2],u[3],c);
       }
     }
   if (mezcla) dl->AddCallback(rex::ui::kImDrawBlendAlpha,nullptr);
+  static int avisos_z=0;
+  if(con_z_n&&avisos_z<4) {
+    ++avisos_z;
+    REXLOG_INFO("dbz3 iwfx lavado2: {} nodos probados contra la Z del juego (estado Z {}, suma con Z {})",con_z_n,
+                ps2::EstadoProfundidad(),z_suma);
+  }
 }
 // EU2716E0/2719A0: selectorAMG+5C, escala70->80 y color90->A0.
 // Mallas sin Centrar; la restaGS y orientaciones aleatorias siguen pendientes.
@@ -459,10 +538,12 @@ inline size_t PintarModelos(const Instancia& in,const ps2::Camara& cam,
     const auto& n=*p.n;
     if (n.tipo!=4||p.edad<=0||n.tex<0||size_t(n.tex)>=modelos.size()||!modelos[size_t(n.tex)]||n.estado==2) continue;
     const float t=std::clamp(p.edad/p.vida,0.0f,1.0f);
-    float q[4];std::copy(n.q.begin(),n.q.end(),q);
+    float q[4];
+    if(p.q_propio) std::copy(p.q.begin(),p.q.end(),q); else std::copy(n.q.begin(),n.q.end(),q);
     if (n.flags&4) {
       const float ang=n.f[7]*p.edad/60, sn=std::sin(ang/2), cs=std::cos(ang/2);
-      const float x=n.f[4]*sn,y=n.f[5]*sn,z=n.f[6]*sn;
+      const V3 eje=p.q_propio ? p.eje : V3{n.f[4],n.f[5],n.f[6]};
+      const float x=eje.x*sn,y=eje.y*sn,z=eje.z*sn;
       const float a=q[0],b=q[1],c=q[2],d=q[3];
       q[0]=d*x+a*cs+b*z-c*y;q[1]=d*y-a*z+b*cs+c*x;
       q[2]=d*z+a*y-b*x+c*cs;q[3]=d*cs-a*x-b*y-c*z;
@@ -496,6 +577,52 @@ inline size_t PintarModelos(const Instancia& in,const ps2::Camara& cam,
     dibujados+=escena.Pintados();
   }
   return dibujados;
+}
+// ---- PUL-IW-FX-02: lo que IW-FX-03/05 dieron a las poses de botones (hijas al morir EU 0x276D30, modelo tipo 4
+// EU 0x271C90, emisor caja EU 0x275A00, afectores, particulas raiz EU 0x277270) para disparo, vuelo y campos. Todo tras
+// dbz3_iw_efectos_original: apagado, cada consumidor queda igual que antes (tambien su Leer sin raices).
+inline bool FielIW() { return dbz3::iwmini::EfectosOriginalIW(); }
+inline Efecto LeerFiel(const std::vector<uint8_t>& b, bool raiz = false) { return Leer(b, raiz || FielIW()); }
+// `raiz_mundo`: el consumidor no transforma al pintar (las raices nacen en origen + pos en el marco del efecto).
+inline void Fiel(Instancia& in, const char* quien, int hijo, bool con_modelos = false, bool raiz_mundo = true) {
+  if (!FielIW() || !in.ef) return;
+  in.encadenar = in.fiel = true;
+  in.raiz_mundo = raiz_mundo;
+  if (con_modelos) in.modelos = true;
+  static std::atomic<int> vistos{0};
+  if (vistos++ >= 60) return;
+  int hijas = 0, cajas = 0, afect = 0, modelos = 0;
+  auto nodo = [&](const Nodo& n) {
+    hijas += n.hija ? 1 : 0; afect += int(n.afectores.size()); modelos += n.tipo == 4 ? 1 : 0;
+  };
+  std::function<void(const Efecto&)> contar = [&](const Efecto& e) {
+    for (const auto& g : e.grupos) {
+      cajas += g.emisor.tipo == 2 ? 1 : 0;
+      for (const auto& p : g.parts) nodo(p);
+      for (const auto& h : g.hijos) if (h) contar(*h);
+    }
+    for (const auto& r : e.raices) nodo(r);
+  };
+  contar(*in.ef);
+  REXLOG_INFO("pulfx02: {} hijo {} hijas {} caja {} afectores {} modelos {} (pintados {}) raices {}", quien, hijo, hijas,
+              cajas, afect, modelos, in.modelos ? 1 : 0, in.ef->raices.size());
+}
+// Las mallas de un #AMO de efectos por selector (como iw_mini_vuelo: hasta 64).
+inline std::vector<ps2::Malla> ModelosAmo(const std::vector<uint8_t>& amo) {
+  std::vector<ps2::Malla> m;
+  uint32_t nm = 0;
+  if (amo.size() < 0x20 || std::memcmp(amo.data(), "#AMO", 4) != 0) return m;
+  std::memcpy(&nm, amo.data() + 0x18, 4);
+  m.resize(std::min<uint32_t>(nm, 64));
+  for (size_t i = 0; i < m.size(); ++i) ps2::LeerAmo(amo, int(i), m[i], nullptr, true);
+  return m;
+}
+inline void PintarModelosFiel(const Instancia& in, const ps2::Camara& cam, const std::vector<ps2::Malla>& modelos,
+                              const std::vector<ps2::Tex>& atlas, ImDrawList* dl, const char* quien) {
+  if (!in.modelos || modelos.empty()) return;
+  const size_t n = PintarModelos(in, cam, modelos, atlas, dl);
+  static std::atomic<int> vistos{0};
+  if (n && vistos++ < 20) REXLOG_INFO("pulfx02: {} modelos de efecto pintados {} triangulos", quien, n);
 }
 // Aura de cuerpo entero (31/10). EU 0x1D3BC0 Aura_UpdateAll / 0x1D3930 Aura_DrawAll: 2 emisores 0x10004 (plantillas EU
 // 0x447E60/0x447FE0, "Back Aura"; EU 0x2709B0) repartidos por 5 tramos de puntos de cuerpo, con rayos (tipo 2, EU

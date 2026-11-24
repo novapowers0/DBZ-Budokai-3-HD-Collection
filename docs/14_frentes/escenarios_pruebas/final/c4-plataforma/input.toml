@@ -1,0 +1,40 @@
+# ACTIVO (ronda 10/11, 3.ª): la canonica rexruntime.dll ya trae dbz3_latencia_sonda/dbz3_baja_latencia
+# (recompilada con `DBZ3_COMPILAR_SDK=1 python tools/compilar.py`, 11238400 B; rexgpu-xenos intacta).
+# Si esta prueba vuelve a fallar por falta de las lineas, comprueba que la copia tiene esa DLL.
+#
+# C4 / #59: retraso del mando (entrada -> present) y cola de 1 cuadro.
+# FASE 3: lo ejecuta Z UNA vez; el carril NO abre el juego en la fase 1.
+#   python tools\pruebas.py correr smoke "docs\14_frentes\escenarios_pruebas\final\c4-plataforma\input.toml"
+#
+# clave    = #59 (retraso del mando; inventario: "sin medir la latencia fisica")
+# cvars    = dbz3_latencia_sonda=true    (NUEVA, dev; src/ui/presenter.cpp; escribe una linea por pulsacion)
+#            dbz3_baja_latencia=true     (NUEVA; D3D12 deja la cola de presentacion en 1 cuadro)
+# criterio = salen 6 lineas "dbz3 latencia: entrada->present X ms" (una por tecla). La linea de la cola a 1 cuadro
+#            ("dbz3 latencia: cola de presentacion a 1 cuadro") es informativa: si el driver no deja bajarla, el
+#            aviso sale igual y la prueba sigue midiendo la sonda (por eso ya no es un paso obligatorio). Mediana con el ajuste OFF
+#            (lado A: dbz3_baja_latencia=false) frente al ON (lado B): el ON no debe ser peor. La latencia del
+#            PANEL y del mando fisico se mide aparte con camara (protocolo en el LEEME): esto solo mide host.
+# log      = "dbz3 latencia: entrada->present" / "dbz3 latencia: cola de presentacion a 1 cuadro"
+# NOTA     = la sonda solo compara marcas de reloj del host; no sustituye a la camara de alta velocidad.
+descripcion = "#59 lado ON: latencia entrada->present con la cola a 1 cuadro"
+env = [
+  "DBZ3_TEST_BATTLE=0,7,7",
+  "DBZ3_HUB_MODE=5",
+  "DBZ3_TEST_CFG=dbz3_latencia_sonda=true;dbz3_baja_latencia=true",
+]
+pasos = [
+  "log \"hub: combate nativo\" 90",
+  "esperar 1500",
+  "tecla Space 120",
+  "log \"dbz3 latencia: entrada->present\" 30",
+  "tecla P 120",
+  "log \"dbz3 latencia: entrada->present\" 30",
+  "tecla Space 120",
+  "log \"dbz3 latencia: entrada->present\" 30",
+  "tecla P 120",
+  "log \"dbz3 latencia: entrada->present\" 30",
+  "tecla Space 120",
+  "log \"dbz3 latencia: entrada->present\" 30",
+  "tecla Backspace 120",
+  "log \"dbz3 latencia: entrada->present\" 30",
+]

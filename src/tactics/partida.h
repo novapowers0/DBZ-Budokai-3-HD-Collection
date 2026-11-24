@@ -5,10 +5,14 @@
 // Datos editables en tactics_economia.toml (ver CargarEconomia). Reserva compartida de copias: para cada unidad,
 // libres + ofertas en tiendas + peso(estrellas) de lo que tiene cada jugador vivo = copias totales, siempre (los eliminados lo devuelven).
 // Capsulas (H5): 2 por unidad, del inventario del jugador; se ganan una cada capsula_cada rondas o en la tienda; vender y combinar las devuelven al inventario.
-// Guardar()/Cargar(): la partida se guarda en preparacion (antes de cerrarla) con todo el azar, y cargarla da la misma partida.
+// Guardar()/Cargar(): la partida se guarda en preparacion (antes de cerrarla) o en el carrusel con todo el azar, y cargarla da la misma partida.
+// TACTICS-03 (carrusel, apagado de serie): en las rondas de [carrusel] de tactics_economia.toml, antes de la preparacion, se ofrece una fila comun de
+// unidades (cada una con una capsula); los vivos eligen una por turnos, primero el de MENOS vida. Las copias salen de la reserva compartida y lo que
+// nadie elige vuelve a ella. Solo existe si la partida se creo con el carrusel encendido (lo guarda el fichero); apagado, todo es como antes.
 #pragma once
 #include <array>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -18,6 +22,7 @@
 
 namespace dbz3::tactics {
 
+constexpr int kMaxCarrusel = 12;   // TACTICS-03: objetos del carrusel como maximo
 constexpr int kMaxJug = 8, kNeutral = kMaxJug, kBanco = 8, kTablero = 18, kSlots = kBanco + kTablero, kMaxTienda = 5, kMaxCoste = 4, kMaxEstrellas = 4, kMaxCaps = 12, kHuecosCaps = 2;
 // slot 0..7 = banquillo; 8..25 = tablero: (slot-8) = fila*6 + columna, fila 0 = la de delante (la mas cercana al rival).
 
@@ -39,13 +44,33 @@ struct Economia {
   std::vector<std::array<int, kMaxCoste>> peso_coste;         // por nivel: peso de que la oferta sea de coste 1..4
   int copias_coste[kMaxCoste] = {};
   int mult_estrella[kMaxEstrellas] = {100, 180, 324, 583};   // % de vida y ataque con 1, 2, 3 y 4 estrellas
+  // TACTICS-03: carrusel (bloque [carrusel], opcional; cada = 0 o sin bloque = nunca). Rondas desde, desde+cada...; objetos = vivos + extra (tope kMaxCarrusel);
+  // el coste de cada unidad sale de la fila de peso_coste del nivel `nivel` + numero de carrusel (tope el ultimo nivel); capsula = 1: cada objeto lleva una.
+  int carrusel_desde = 0, carrusel_cada = 0, carrusel_extra = 1, carrusel_nivel = 2, carrusel_capsula = 1;
+  // TACTICS-04: bots listos (bloque [bots], opcional; solo en partidas creadas con "Tacticas: bots listos" encendido). Puntos que suma el bot a una carta:
+  // objetivo = de su sinergia objetivo (una por bot, sale de la semilla); copia3 = por cada pieza de 2 estrellas suya de esa unidad (camino a 3);
+  // sinergia = si completa un tramo de una sinergia suya (la mitad si solo suma un miembro); rival = resta por cada copia que tienen los rivales vivos;
+  // ahorro_desde = ronda desde la que guarda oro para el interes.
+  // estrellas = % de bots con objetivo de 3 estrellas: esos "cazan" (con una unidad a 2 estrellas camino de la 3a venden sueltas para hacer sitio y, con el
+  // tablero lleno, solo compran copias; tiradas = veces que actualizan la tienda en esa ronda).
+  int bots_objetivo = 0, bots_copia3 = 0, bots_sinergia = 0, bots_rival = 0, bots_ahorro_desde = 4, bots_tiradas = 2, bots_estrellas = 0;
   int vida_entrenador = 100, dano_base = 4, dano_cada_rondas = 2, dano_superviviente = 2, dano_tope = 25;
   std::vector<UnidadEco> unidades;
   std::vector<SinergiaDef> sinergias;
+  // TACTICS-05: variedad de composiciones (bloque [variedad], opcional; solo en partidas creadas con "Tacticas: variedad" encendido). Cambios de
+  // sinergias/coste de unidades y de tramos de sinergias que ConVariedad aplica sobre una copia; apagado no se usan ni cuentan en la huella.
+  struct VarUnidad { int unidad = -1, coste = 0, sin[2] = {-1, -1}; };   // coste 0 = el de siempre
+  struct VarSinergia { int sinergia = -1; std::vector<Umbral> umbrales; };
+  std::vector<VarUnidad> var_unidades;
+  std::vector<VarSinergia> var_sinergias;
+  bool variedad = false;                                       // true en la copia que devuelve ConVariedad (entra en la huella)
+  bool HayVariedad() const { return !var_unidades.empty() || !var_sinergias.empty(); }
   int NivelMax() const { return int(tope_unidades.size()); }
 };
 // Carga y valida (rangos, ids del catalogo, sinergias existentes, cada umbral alcanzable con unidades distintas). Errores legibles, uno por linea.
 bool CargarEconomia(const std::string& ruta, const Catalogo& cat, Economia* out, std::string* error);
+// TACTICS-05: copia de `eco` con el bloque [variedad] aplicado (variedad = true). Sin bloque, devuelve la copia tal cual (variedad = false).
+Economia ConVariedad(const Economia& eco);
 
 struct Pieza { int unidad = -1, estrellas = 1, caps[kHuecosCaps] = {-1, -1}; bool hay() const { return unidad >= 0; } };   // unidad: indice en Economia::unidades; caps: capsulas equipadas o -1
 struct Jugador {
@@ -65,7 +90,8 @@ struct Jugador {
   int ganado = 0, gastado = 0;                     // ingresos acumulados y oro gastado en servicios (actualizar, EXP): para auditar la economia
 };
 
-enum class Fase { Preparacion, Combate, Resultado, Fin };
+enum class Fase { Preparacion, Combate, Resultado, Fin, Carrusel };   // Carrusel (TACTICS-03): antes de la preparacion de una ronda de carrusel
+struct ObjCarrusel { int unidad = -1, capsula = -1, quien = -1; };     // quien: el jugador que lo eligio (-1 = libre)
 enum class Res { Ok, FaseIncorrecta, Invalido, SinOro, SinSitio, Tope };
 
 // Un duelo de la ronda: el jugador `a` contra el tablero de `b`. Si `copia`, b solo presta su tablero (una copia que no consume reserva ni
@@ -76,7 +102,8 @@ struct Combatiente { int jugador, slot, unidad, estrellas; };   // por unidad de
 
 class Partida {
  public:
-  Partida(const Catalogo& cat, const Economia& eco, uint64_t semilla, int jugadores = 0);   // 0 = eco.jugadores
+  // 0 = eco.jugadores; carrusel: TACTICS-03; listos: TACTICS-04; variedad: TACTICS-05 (la partida juega con su copia ConVariedad(eco); Eco() la devuelve)
+  Partida(const Catalogo& cat, const Economia& eco, uint64_t semilla, int jugadores = 0, bool carrusel = false, bool listos = false, bool variedad = false);
   const Economia& Eco() const { return *eco_; }
   const Jugador& J(int p) const { return j_[p]; }
   Fase FaseActual() const { return fase_; }
@@ -116,6 +143,25 @@ class Partida {
   Res Equipar(int p, int slot, int hueco, int capsula);   // del inventario al hueco 0/1 de la pieza; la que estaba vuelve al inventario
   Res Quitar(int p, int slot, int hueco);           // de la pieza al inventario
   void Listo();                                     // el jugador humano cierra la preparacion: nace el combate
+  // TACTICS-03: carrusel. En Fase::Carrusel le toca a QuienElige() (los bots anteriores ya eligieron); el humano elige con ElegirCarrusel y
+  // los demas eligen solos; al acabar la vuelta empieza la preparacion. JugarCarrusel(p) = la eleccion del bot (piloto de pruebas).
+  bool ConCarrusel() const { return carrusel_; }
+  bool BotsListos() const { return listos_; }        // TACTICS-04
+  bool Variedad() const { return eco_->variedad; }   // TACTICS-05
+  int Objetivo(int p) const { return objetivo_[p]; }  // TACTICS-04: sinergia objetivo del bot p (-1 sin bots listos)
+  // TACTICS-08: historial por rival (solo si se activa justo despues de crear la partida; apagado, ni el estado ni la huella ni el fichero cambian).
+  // Ultimo duelo de p contra el jugador q: 0 ninguno, 1 gano p, 2 perdio p, 3 empate (las copias y la ronda neutral no cuentan). Se guarda.
+  void ActivarHistorial() { historial_ = true; }
+  bool Historial() const { return historial_; }
+  int UltimoContra(int p, int q) const { return ultimo_[p][q]; }
+  bool CarruselEn(int ronda) const { return carrusel_ && eco_->carrusel_cada > 0 && ronda >= eco_->carrusel_desde && (ronda - eco_->carrusel_desde) % eco_->carrusel_cada == 0; }
+  const std::vector<ObjCarrusel>& Carrusel() const { return carr_; }
+  const std::vector<int>& OrdenCarrusel() const { return orden_; }
+  int QuienElige() const { return fase_ == Fase::Carrusel && turno_ < int(orden_.size()) ? orden_[size_t(turno_)] : -1; }
+  const std::vector<ObjCarrusel>& UltimoCarrusel() const { return ultimo_carr_; }   // el ultimo carrusel ya cerrado (solo para dibujarlo; no se guarda)
+  Res ElegirCarrusel(int p, int objeto);
+  int EleccionBot(int p);                            // objeto que elegiria el bot p ahora (-1 si no hay)
+  Res JugarCarrusel(int p) { return ElegirCarrusel(p, EleccionBot(p)); }
   // Combate: quien presenta llama a Paso() de la simulacion; cuando Terminada(), TerminarCombate() aplica el resultado.
   sim::Sim& Combate() { return *sim_; }
   const std::vector<Combatiente>& Combatientes() const { return comb_; }
@@ -152,10 +198,14 @@ class Partida {
   void Devolver(Jugador& j, int slot);              // todas las capsulas de una pieza al inventario
   void Absorber(Jugador& j, int queda, int se_va);  // las capsulas de `se_va` pasan a los huecos libres de `queda` y el resto al inventario
   int Puntua(int p, int u) const;                   // utilidad de una unidad para el bot
+  void IniciarCarrusel();
+  void AvanzarCarrusel();                           // eligen los bots hasta el turno del humano; al acabar, cierra y abre la preparacion
+  void Recibir(int p, int u);                       // una copia gratis (ya fuera de la reserva) al banquillo, o mejora, o su valor en oro si no cabe
   sim::DefUnidad Def(int p, const Pieza& pz, const std::vector<SinActiva>& sin) const;
 
   const Catalogo* cat_;
   const Economia* eco_;
+  std::shared_ptr<const Economia> eco_var_;          // TACTICS-05: la copia con variedad (eco_ apunta a ella); compartida entre copias de la partida
   uint64_t semilla_;
   int n_ = 2;
   Jugador j_[kMaxJug + 1];   // el ultimo (kNeutral) es el rival neutral de las rondas neutrales: solo su tablero
@@ -170,10 +220,24 @@ class Partida {
   std::vector<sim::Resultado> res_;   // por duelo, tras Listo(): los del humano se rellenan al acabar su combate
   std::optional<sim::Sim> sim_;
   std::vector<Combatiente> comb_;
+  bool carrusel_ = false;
+  bool listos_ = false;                             // TACTICS-04
+  bool historial_ = false;                          // TACTICS-08
+  int ultimo_[kMaxJug][kMaxJug] = {};               // TACTICS-08: ver UltimoContra
+  int objetivo_[kMaxJug] = {-1, -1, -1, -1, -1, -1, -1, -1};
+  bool estrellas_[kMaxJug] = {};                    // TACTICS-04: bots con objetivo de 3 estrellas
+  std::vector<ObjCarrusel> carr_, ultimo_carr_;
+  std::vector<int> orden_;
+  int turno_ = 0;
 };
 
 // Guardado en disco (ver Partida::Guardar): temporal + reemplazo con copia anterior (.bak); al leer, si la principal esta rota se prueba la .bak.
+// TACTICS-01: version 3 = la huella de la economia (HuellaEconomia) va en el fichero y en Partida::Huella(); una guardada de otra version o
+// con otras reglas se rechaza, y ApartarGuardado la renombra a .vieja.bak (nunca se borra).
+constexpr int kVersionGuardado = 3;
+uint64_t HuellaEconomia(const Economia& eco, bool carrusel = false, bool listos = false);   // TACTICS-03/04: con carrusel o bots listos, sus reglas tambien cuentan (apagado = la huella de antes)
 bool GuardarArchivo(const std::string& ruta, const std::string& texto, std::string* error);
 bool CargarArchivo(const std::string& ruta, const Catalogo& cat, const Economia& eco, std::optional<Partida>* out, std::string* error);
+std::vector<std::string> ApartarGuardado(const std::string& ruta);
 
 }  // namespace dbz3::tactics

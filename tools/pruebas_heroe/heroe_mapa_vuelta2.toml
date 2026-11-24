@@ -1,0 +1,11 @@
+# PM-32 HM-02: con las 8 sagas cerradas (DBZ3_TEST_HEROE_SAGA=8) el mapa deja empezar la vuelta 2 (nodo 1 = siguiente).
+#   python tools\pruebas.py correr smoke_b tools\pruebas_heroe\heroe_mapa_vuelta2.toml
+descripcion = "Heroe: mapa en la vuelta 2 (8 sagas cerradas): la siguiente es la 1 y A deja empezar"
+env = ["DBZ3_TEST_MODO=heroe", "DBZ3_HUB_MODE=5", "DBZ3_TEST_HEROE_PANTALLA=mapa", "DBZ3_TEST_HEROE_SAGA=8", "DBZ3_TEST_HEROE_ESFERAS=7", "DBZ3_TEST_CFG=dbz3_heroe_ui_nueva=true", "REX_DBZ3_LANGUAGE=5", "REX_DBZ3_UI_LANGUAGE=5"]
+pasos = [
+  'log "dbz3 heroe: mapa abierto .8 sagas, completadas 8, la siguiente 9." 240',
+  "esperar 3000",
+  "captura 01_mapa_vuelta2",
+  "tecla Space 1500",
+  'log "mapa: empezar la saga 1 .+, vuelta 2" 20',
+]

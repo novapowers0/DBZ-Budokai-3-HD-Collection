@@ -1,0 +1,34 @@
+# Retos de rol del HUB (src/rpg.cpp): monedero de Zenie y partidas a medias. No editar con el juego abierto.
+version = 1
+zeni = 0
+tienda_record = 0
+heroe_variante = 0
+heroe_tecnicas = 3
+heroe_raza = 0
+heroe_cuerpo = 0
+heroe_traje = 0
+heroe_estilo = 0
+heroe_maestro = 0
+heroe_moveset = -1
+heroe_exp = 0
+heroe_saga = 0
+heroe_ph = 0
+heroe_ph_vida = 0
+heroe_ph_dano = 0
+heroe_maestros = 0
+mision100 = '----------------------------------------------------------------------------------------------------'
+
+[[partida]]
+modo = 6
+jugador = 0
+traje = 0
+semilla = 2966
+ganados = 0
+vida = 3000
+vida_max = 3000
+zeni = 0
+eventos = ''
+extra = 2
+tecnicas = 0
+bots = [-1, -1, -1]
+finalista = -1

@@ -66,6 +66,7 @@ struct Mm {
   double next_poll = 0, next_renew = 0, join_at = 0;
   int tries = 0, poll_fails = 0;
   bool test_local = false;   // PRUEBAS (DBZ3_TEST_MM): anuncia tambien el codigo de red local
+  bool f10_safe = false;     // ajuste experimental, apagado: cada busqueda posee su propio topic
 
   static std::shared_ptr<MmReq> Fetch(std::function<std::string()> make_url) {
     auto r = std::make_shared<MmReq>();
@@ -79,9 +80,19 @@ struct Mm {
   void StartPoll(bool first) {
     auto tp = topic;
     const std::string b = base;
-    poll = Fetch([tp, b, first] {
+    const bool safe = f10_safe;
+    const std::string build = safe ? g_build_digest : std::string();
+    const bool compat_caps = rex::cvar::GetFlagByName("dbz3_net_compat_caps") == "true";
+    const uint8_t region = dbz3::g_guest_eu ? 1 : 0;
+    poll = Fetch([tp, b, first, safe, build, compat_caps, region] {
       if (first && tp->get().empty()) {
-        std::string t = dbz3::mm::Topic(g_build_digest, MmModsKey());
+        const std::string mkey = MmModsKey();
+        std::string t = compat_caps
+                            ? dbz3::mm::CompatTopic(dbz3::net::caps::kCurrentSimAbi,
+                                                    uint8_t(dbz3::net::caps::LocalPlatformAbi()), region,
+                                                    dbz3::net::caps::kCurrentSimContractHash,
+                                                    dbz3::net::caps::kCurrentContentSchema, mkey)
+                            : dbz3::mm::Topic(safe ? build : g_build_digest, mkey);
         if (const char* x = std::getenv("DBZ3_TEST_MM_TOPIC")) t += std::string("-") + x;   // PRUEBAS: topic propio
         tp->set(t);
       }
@@ -99,6 +110,8 @@ struct Mm {
   }
   bool Active() const { return st == kFirstPoll || st == kHost || st == kJoin; }
   void Start() {
+    f10_safe = rex::cvar::GetFlagByName("dbz3_net_validacion_f10") == "true";
+    if (f10_safe) topic = std::make_shared<MmTopic>();   // un sondeo cancelado no cambia la busqueda siguiente
     base = REXCVAR_GET(dbz3_mm_url);
     while (!base.empty() && base.back() == '/') base.pop_back();
     if (const char* u = std::getenv("DBZ3_TEST_MM_URL")) base = u;   // PRUEBAS: servidor falso local

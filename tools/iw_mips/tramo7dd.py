@@ -1,15 +1,19 @@
 # SPDX-License-Identifier: MIT
 """Tramo libre del espejo del 0x7DD desde un estado del dorado del tick (iw_7dd_raiz, 7/11). Copia el estado A de la
 pareja --desde (Piccolo, su work, la tarea, la semilla, el jugador) y corre el espejo campo a campo, solo (rayos del
-#WCF por el arnes), comparando la posicion de Piccolo con la de PCSX2 en cada pareja posterior (por numero de cuadro).
+#WCF por el arnes), comparando la posicion de Piccolo con la de PCSX2 por diferencia del contador.
+Esa diferencia no certifica ticks logicos; --desfase-inicial solo explora la fase de partida del banco.
 Uso: python tools/iw_mips/tramo7dd.py --desde 540 [--hasta 600]
 """
 import argparse
+import atexit
+import hashlib
 import json
 import math
 import struct
 import subprocess as sp
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -27,8 +31,16 @@ def main():
     ap.add_argument('--col-original', action='store_true', help='choques con la colision del PS2 (persecucion.proveedor_ps2)')
     ap.add_argument('--extra', type=int, default=0, help='campos de mas tras la ultima pareja')
     ap.add_argument('--traza', type=int, default=0, help='imprime los N primeros ticks del espejo')
+    ap.add_argument('--desfase-inicial', type=int, choices=(0, 1), default=0,
+                    help='hipotesis: omitir el primer tick del espejo; no cambia ni certifica el reloj original')
+    ap.add_argument('--salida', type=Path, help='JSON nuevo; conserva primera DIF y limites de reloj/RNG')
     a = ap.parse_args()
+    if a.salida and (a.salida.exists() or not a.salida.parent.is_dir()):
+        ap.error('--salida debe estar ausente y su carpeta debe existir')
+    t0 = time.perf_counter()
     meta = json.loads((P.CAP_TICK / 'parejas.json').read_text())
+    if not 0 <= a.desde < a.hasta <= len(meta['parejas']) or a.extra < 0:
+        ap.error('se requiere 0 <= desde < hasta <= parejas y extra >= 0')
     dat = (P.CAP_TICK / 'parejas.bin').read_bytes()
     b0 = meta['base']
     tam = max(o + n for bl in meta['bloques'].values() for _, _, n, o in bl) - b0
@@ -42,7 +54,19 @@ def main():
         return bytes(mem), par['cnt']
     eA, cnt0 = estado(a.desde)
     mgr = u32(eA, 0x49CA70); pic = mgr + 0x28D0; jug = mgr + 0x800; w = u32(eA, 0x49CBC0); w1 = w + 0x260
-    pr = sp.Popen([str(P.RAYO_EXE), str(P.WCF)], stdin=sp.PIPE, stdout=sp.PIPE, text=True, bufsize=1)
+    pr = None
+    if not a.col_original:
+        pr = sp.Popen([str(P.RAYO_EXE), str(P.WCF)], stdin=sp.PIPE, stdout=sp.PIPE, text=True, bufsize=1)
+
+        def cerrar():
+            pr.stdin.close()
+            try:
+                pr.wait(timeout=2)
+            except sp.TimeoutExpired:
+                pr.terminate()
+                pr.wait(timeout=2)
+            pr.stdout.close()
+        atexit.register(cerrar)
 
     def proveedor(k, x, y, radio, m):
         q = ' '.join(repr(b2f(v)) for v in x + y)
@@ -91,8 +115,8 @@ def main():
         e, c = estado(k)
         obj[c - cnt0] = ([b2f(u32(e, pic + 0x40 + 4 * i)) for i in range(3)], struct.unpack_from('<h', e, pic + 0xCBC)[0])
     ult = max(obj) if obj else 0
-    malas, alcanza = 0, None
-    alc_pcsx2 = next((n for n in sorted(obj) if math.hypot(obj[n][0][0], obj[n][0][2]) < 14), None)
+    malas, alcanza, filas = 0, None, []
+    alc_pcsx2 = next((n for n in sorted(obj) if math.hypot(obj[n][0][0] - b2f(j40[0]), obj[n][0][2] - b2f(j40[2])) < 14), None)
     for n in range(ult + 1 + a.extra):
         q = [b2f(u32(m2, P.PIC + 0x40 + 4 * i)) for i in range(3)]
         if alcanza is None and math.hypot(q[0] - b2f(j40[0]), q[2] - b2f(j40[2])) < 14:
@@ -102,9 +126,14 @@ def main():
             o, est = obj[n]
             d = math.dist(q, o)
             malas += d > 1
+            filas.append(dict(delta_contador=n, original=o, espejo=q, error=d, estado_original=est,
+                              error_y=abs(q[1] - o[1]), exacta_pos=q == o,
+                              estado_espejo=struct.unpack_from('<h', m2, P.PIC + 0xCBC)[0], igual_pos=d <= 1))
             print('campo %4d estado PCSX2 %2d espejo %2d  PCSX2 %s  espejo %s  dif %.2f  a %.1f del jugador' % (
                 n, est, struct.unpack_from('<h', m2, P.PIC + 0xCBC)[0], [round(x, 1) for x in o],
-                [round(x, 1) for x in q], d, math.hypot(q[0], q[2])))
+                  [round(x, 1) for x in q], d, math.hypot(q[0] - b2f(j40[0]), q[2] - b2f(j40[2]))))
+        if n < a.desfase_inicial:
+            continue
         p640 = [u32(m2, P.PIC + 0x640 + 4 * i) for i in range(3)]
         p770 = [p640[0], B.f2b(b2f(p640[1]) + 5.5), p640[2]]
         dist = math.sqrt(sum((b2f(j640[i]) - b2f(p640[i])) ** 2 for i in range(3)))
@@ -118,8 +147,28 @@ def main():
                   'c68', g(0xC68), 'c70', g(0xC70), 'a0', round(b2f(u32(m2, P.W1 + 0x1A0)), 1), 'choques',
                   [(k[0], k[1]) for k in esp.col], 'ev', [hex(x) for x in esp.ev])
     print('parejas con mas de 1 u de diferencia:', malas, 'de', len(obj))
-    print('desde', a.desde, 'cuadro', cnt0, ': PCSX2 alcanza (<14) en el campo', alc_pcsx2, '; espejo en el campo', alcanza)
+    print('desde', a.desde, 'contador', cnt0, ': proximidad horizontal <14 original', alc_pcsx2, '; espejo', alcanza,
+          '(no es captura ni valida el reloj)')
+    r = dict(desde=a.desde, hasta=a.hasta, contador_inicial=cnt0, comparadas=len(filas),
+             iguales_pos=len(filas) - malas, tolerancia_pos=1, primera_diferencia=next((f for f in filas if not f['igual_pos']), None),
+             exactas_pos=sum(f['exacta_pos'] for f in filas),
+             primera_diferencia_exacta=next((f for f in filas if not f['exacta_pos']), None),
+             max_error_y=max((f['error_y'] for f in filas), default=0),
+             iguales_estado=sum(f['estado_original'] == f['estado_espejo'] for f in filas), filas=filas,
+             proximidad_h14_original=alc_pcsx2, proximidad_h14_espejo=alcanza,
+             alcance='Tramo libre aproximado: delta de contador tratado como ticks, RNG externo omitido; no captura ni 0DIF continuo',
+             col_original=a.col_original, desfase_inicial=a.desfase_inicial,
+             duracion_s=round(time.perf_counter() - t0, 3),
+             entradas=[dict(path=str(p), sha256=hashlib.sha256(p.read_bytes()).hexdigest())
+                       for p in (P.CAP_TICK / 'parejas.json', P.CAP_TICK / 'parejas.bin', P.P2S, B.ELF,
+                                 Path(__file__), Path(P.__file__), Path(B.__file__))])
+    if a.salida:
+        with a.salida.open('x', encoding='utf-8') as f:
+            json.dump(r, f, ensure_ascii=False, indent=2)
+            f.write('\n')
+    print(json.dumps({k: v for k, v in r.items() if k not in ('filas', 'entradas')}, ensure_ascii=False))
+    return int(malas > 0 or r['iguales_estado'] != r['comparadas'])
 
 
 if __name__ == '__main__':
-    main()
+    raise SystemExit(main())

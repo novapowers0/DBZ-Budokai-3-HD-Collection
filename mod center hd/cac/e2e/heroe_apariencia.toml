@@ -1,5 +1,5 @@
 # copia: s5_c2
-descripcion = "C3: la apariencia se edita siempre: Apariencia (A) > Create: otro traje, Confirmar; cac.toml guarda el traje nuevo"
+descripcion = "C3: la apariencia se edita siempre: Apariencia (A) > Create: otro traje, Confirmar (W da la vuelta a la fila de botones; 1.o = Confirmar); cac.toml guarda el traje nuevo"
 env = ["DBZ3_TEST_RINGOUT=1"]
 pasos = [
   "esperar 2500",
@@ -15,8 +15,8 @@ pasos = [
   "log \"Create abierto\" 20",
   "captura c2_apariencia_1_create",
   "tecla D 700",
-  "tecla S 400", "tecla S 400", "tecla S 400", "tecla S 400", "tecla S 400", "tecla S 400", "tecla S 400",
   "captura c2_apariencia_2_botones",
+  "tecla W 600",
   "tecla Space 2500",
   "log \"Create: confirmar\" 20",
   "captura c2_apariencia_3_confirmado",

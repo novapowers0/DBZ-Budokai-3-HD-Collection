@@ -1,5 +1,10 @@
 # MODEL SWAP — Investigación completa
 
+> **Nota (2026-11-12): este documento es la investigación histórica de agosto.** Hoy el cambio de modelo
+> B3 → B3 **funciona** (`swap_b3.py`; Cell Forma 2 → Krillin validado el 2026-09-10) y el Mod Kit lo usa:
+> ver `mod center hd/GUIA_SWAPS_Y_PORTS.md` (§1) y [KIT_GUIA_RAPIDA.md](KIT_GUIA_RAPIDA.md). Lo de «crashea»
+> de abajo describe las pruebas de agosto; la guía explica qué cambió (se instala el bin #AWO completo del otro personaje).
+
 > Actualizado: 2026-08-14. Qué sabemos, qué falla, y qué dice la documentación
 > de la comunidad sobre cómo se hacía el model swap en el B3 original.
 
@@ -8,9 +13,8 @@
 ## RESUMEN
 
 El **model swap** (poner el modelo de un personaje en el slot de otro) es la meta.
-Estado actual: **el mecanismo de override funciona** (el bin se sirve íntegro),
-pero **el guest crashea al procesar un bin de otro personaje**. La investigación
-sigue abierta.
+Estado en agosto: el mecanismo de override funcionaba (el bin se sirve íntegro), pero el guest crasheaba
+al procesar un bin de otro personaje. **Resuelto después** (nota de arriba).
 
 ---
 

@@ -1,0 +1,13 @@
+# Dragon Rogue: partida fija para modos_rogue_reanudar
+version = 1
+
+[partida]
+camino = "abismo"
+jugador = 0
+traje = 0
+semilla = 12345
+ganados = 4
+vida = 4000
+vida_max = 4000
+cartas = ["saltar", "utilidad_03", "fisica_07", "utilidad_08"]
+cambios = [3]

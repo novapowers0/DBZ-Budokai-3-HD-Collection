@@ -3,8 +3,8 @@
 version = 1
 
 [tut_titulo_1]
-es = "1/4  Comprar"
-en = "1/4  Buy"
+es = "Paso 1 de 4: comprar"
+en = "Step 1 of 4: buy"
 fr = "1/4  Acheter"
 de = "1/4  Kaufen"
 it = "1/4  Comprare"
@@ -21,8 +21,8 @@ pt = "Gaste seu ouro na loja abaixo para contratar lutadores. Três cópias igua
 ja = "下のショップでゴールドを使って戦士を雇いましょう。同じカード3枚は星の多い強いユニットに合体します。「更新」でカードを入れ替え、「EXP購入」でレベルを上げると盤面に出せる数が増えます。"
 
 [tut_titulo_2]
-es = "2/4  Colocar"
-en = "2/4  Place"
+es = "Paso 2 de 4: colocar"
+en = "Step 2 of 4: place"
 fr = "2/4  Placer"
 de = "2/4  Aufstellen"
 it = "2/4  Schierare"
@@ -30,8 +30,8 @@ pt = "2/4  Posicionar"
 ja = "2/4  配置"
 
 [tut_texto_2]
-es = "Pasa las unidades del banquillo al tablero: delante las de cuerpo a cuerpo y detrás las de distancia. Con el mando, A coge y suelta y X vende. Con el ratón, clic para coger y soltar y clic derecho para vender."
-en = "Move units from the bench to the board: melee fighters in front, ranged ones behind. With a gamepad, A picks up and drops and X sells. With the mouse, click to pick up and drop and right-click to sell."
+es = "Pasa unidades del banquillo al tablero: cuerpo a cuerpo delante, a distancia detrás. A coge y suelta, X vende."
+en = "Move units from the bench to the board: melee in front, ranged behind. A picks up and drops, X sells."
 fr = "Déplace les unités du banc vers le plateau : les combattants au corps à corps devant, ceux à distance derrière. À la manette, A prend et pose, X vend. À la souris, clic pour prendre et poser, clic droit pour vendre."
 de = "Bringe Einheiten von der Bank aufs Feld: Nahkämpfer vorne, Fernkämpfer hinten. Mit dem Controller nimmt und setzt A, X verkauft. Mit der Maus nimmst und setzt du per Klick, Rechtsklick verkauft."
 it = "Sposta le unità dalla panchina al campo: i combattenti da mischia davanti, quelli a distanza dietro. Col controller A prende e posa, X vende. Col mouse clicca per prendere e posare, clic destro per vendere."
@@ -39,8 +39,8 @@ pt = "Passe as unidades do banco para o tabuleiro: corpo a corpo na frente e dis
 ja = "ベンチのユニットを盤面へ移しましょう。近接は前、遠距離は後ろです。パッドではAで持つ・置く、Xで売却。マウスはクリックで持つ・置く、右クリックで売却します。"
 
 [tut_titulo_3]
-es = "3/4  Sinergias y cápsulas"
-en = "3/4  Synergies and capsules"
+es = "Paso 3 de 4: sinergias"
+en = "Step 3 of 4: synergies"
 fr = "3/4  Synergies et capsules"
 de = "3/4  Synergien und Kapseln"
 it = "3/4  Sinergie e capsule"
@@ -57,8 +57,8 @@ pt = "As unidades compartilham sinergias (painel da esquerda): com 2, 4 ou 6 mem
 ja = "ユニットはシナジーを共有します(左のパネル)。異なる2・4・6体でボーナスが付きます。各ユニットは強化カプセルを最大2個持て、3ラウンドごとに1個もらえ、購入もできます。パネルでカプセルを選び、ユニットの上に置きましょう。"
 
 [tut_titulo_4]
-es = "4/4  ¡Listo!"
-en = "4/4  Ready!"
+es = "Paso 4 de 4: ¡listo!"
+en = "Step 4 of 4: ready!"
 fr = "4/4  Prêt !"
 de = "4/4  Bereit!"
 it = "4/4  Pronto!"
@@ -289,3 +289,58 @@ de = "Fehlen"
 it = "Mancano"
 pt = "Faltam"
 ja = "不足"
+
+# TACTICS-03: carrusel (ajuste "Tácticas: carrusel", apagado de serie)
+[carr_fase]
+es = "CARRUSEL"
+en = "CAROUSEL"
+fr = "CARROUSEL"
+de = "KARUSSELL"
+it = "GIOSTRA"
+pt = "CARROSSEL"
+ja = "カルーセル"
+
+[carr_tu_turno]
+es = "¡Te toca! Elige una unidad gratis: viene con su cápsula"
+en = "Your turn! Pick a free unit: it comes with its capsule"
+fr = "À toi ! Choisis une unité gratuite : elle vient avec sa capsule"
+de = "Du bist dran! Wähle eine kostenlose Einheit: Sie kommt mit ihrer Kapsel"
+it = "Tocca a te! Scegli un'unità gratis: arriva con la sua capsula"
+pt = "Sua vez! Escolha uma unidade grátis: ela vem com sua cápsula"
+ja = "あなたの番！無料のユニットを1体選ぼう（カプセル付き）"
+
+[carr_espera]
+es = "Eligen los demás entrenadores"
+en = "The other trainers are picking"
+fr = "Les autres entraîneurs choisissent"
+de = "Die anderen Trainer wählen"
+it = "Gli altri allenatori stanno scegliendo"
+pt = "Os outros treinadores estão escolhendo"
+ja = "ほかのトレーナーが選んでいます"
+
+[carr_hecho]
+es = "Reparto hecho: la unidad va a tu banquillo y la cápsula a tu inventario"
+en = "Pick done: the unit goes to your bench and the capsule to your inventory"
+fr = "Choix fait : l'unité va sur ton banc et la capsule dans ton inventaire"
+de = "Wahl getroffen: Die Einheit kommt auf deine Bank, die Kapsel ins Inventar"
+it = "Scelta fatta: l'unità va in panchina e la capsula nell'inventario"
+pt = "Escolha feita: a unidade vai para o banco e a cápsula para o inventário"
+ja = "決定！ユニットはベンチへ、カプセルはインベントリへ"
+
+[carr_orden]
+es = "Orden (menos vida primero)"
+en = "Order (lowest health first)"
+fr = "Ordre (moins de vie d'abord)"
+de = "Reihenfolge (wenigste Leben zuerst)"
+it = "Ordine (meno vita prima)"
+pt = "Ordem (menos vida primeiro)"
+ja = "順番（体力が少ない順）"
+
+[carr_ayuda]
+es = "Cruceta o ratón: elegir  ·  A o clic: coger  ·  B dos veces: volver al HUB"
+en = "D-pad or mouse: choose  ·  A or click: take  ·  B twice: back to the HUB"
+fr = "Croix ou souris : choisir  ·  A ou clic : prendre  ·  B deux fois : retour au HUB"
+de = "Steuerkreuz oder Maus: wählen  ·  A oder Klick: nehmen  ·  2x B: zurück zum HUB"
+it = "Croce o mouse: scegli  ·  A o clic: prendi  ·  B due volte: torna all'HUB"
+pt = "Direcional ou mouse: escolher  ·  A ou clique: pegar  ·  B duas vezes: voltar ao HUB"
+ja = "十字キー/マウス：選ぶ  ·  A/クリック：取る  ·  Bを2回：HUBへ戻る"

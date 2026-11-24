@@ -402,10 +402,19 @@ class AwgVertexBuffer:
         # ventanas/IB (se veia basura 0x1... en los indices). Limite = AWG0 real.
         awg0_primera = awo + be32(b, tbl)
         tbl_end = tbl + n_awg * 4
+        zonas = set(range(awo + 0x34, tbl, 0x20))
         for o in range(awo, awg0_primera - 2, 4):
             if tbl <= o < tbl_end:
                 continue
             v = be32(b, o)
+            if o in zonas:
+                # Estos punteros son RELATIVOS al AWO. En los primeros 64
+                # bytes del tail, v < old_end_abs aunque awo+v ya se movio.
+                # Dejarlos atras hace que el ajuste de variantes escriba
+                # dentro de la ultima AWG, corrompiendo incluso su cabecera.
+                if v and old_end_abs <= awo + v < len(self.data):
+                    set32(b, o, v + total_delta)
+                continue
             if old_end_abs <= v < len(b) - total_delta:
                 set32(b, o, v + total_delta)
         # ZONAS DE VARIANTES (cola del #AWO): la cabecera AWO tiene un registro de

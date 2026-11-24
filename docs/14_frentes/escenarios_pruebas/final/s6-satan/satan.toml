@@ -1,0 +1,51 @@
+# S6 / SAT-01 + SAT01 + SAT-02 + SAT02 + SAT03: Leyenda de Mr. Satan de B1 (11 rondas) + camara "WINNER!!" + escena
+# final 3D de 47,5 s, con la musica de B3 callada. FASE 3: lo deja escrito el carril S6; lo ejecuta Z una sola vez.
+#   python tools\pruebas.py correr smoke_a "docs\14_frentes\escenarios_pruebas\final\s6-satan\satan.toml"
+#   (la carpeta final/ se corre con --max 3; este .toml va en subcarpeta, asi que se pasa por ruta)
+#
+# clave    = SAT-01 (camara WINNER), SAT-02 (High Tension: NO cambia el modelo; aura/estado), SAT01 (duplicado de
+#            SAT-01), SAT02 (decision B1), SAT03 ([H] visuales de la leyenda)
+# cvar     = dbz3_satan_camara_ganador=true (NUEVA, APAGADA de serie; cinematica.cpp). Los demas ajustes de la leyenda
+#            ya venian de serie (voces/musica/poses/escena final).
+# criterio = el modo se juega entero: 11 combates ganados por ring out, en cada uno sale "cinematica: camara WINNER de
+#            B1" y la sonda 'WINNER cuadro N ... d X' baja de ~55 a ~8 u (curva de A3: recorrido.tsv, t 78,9-88,8 s,
+#            exponencial k~0,95/s); despues, "escena final 3D terminada" y "final de la leyenda". La musica de B3 no
+#            suena durante la leyenda (DBZ3_SIN_MUSICA_B1 no hace falta: es el defecto).
+# log      = "dbz3 cinematica: camara WINNER de B1" / "dbz3 pasarela: escena final 3D terminada" /
+#            "dbz3 pasarela: final de la leyenda"
+#
+# PENDIENTE_JUEGO (lo unico que no se puede medir sin abrir el juego): comparar la curva de ojo/objetivo por cuadro con
+# la traza del original (A3) y la foto de High Tension (SAT02). El resto esta medido en el banco (ee.py/b1.c).
+descripcion = "Leyenda de Mr. Satan: 11 rondas con la camara WINNER de B1 (dbz3_satan_camara_ganador) y escena final de 47,5 s"
+env = [
+  "DBZ3_TEST_PASARELA=auto,seg=8",
+  "DBZ3_TEST_RINGOUT=1",
+  "DBZ3_TEST_CFG=dbz3_satan_camara_ganador=true",
+  "DBZ3_SATAN_GANADOR_LOG=6",
+  'DBZ3_PS2_GAMES=D:\DBZ3HD\ps2_games',
+]
+pasos = [
+  "log \"pasarela: prueba: disponible true; empieza\" 120",
+  "log \"pasarela: titulo: START\" 60",
+  "captura a_titulo",
+  "log \"pasarela: prologo 2/7\" 90",
+  "captura b_prologo",
+  "log \"hub: combate nativo\" 240",
+  "log \"pasarela: paso \\d+ estado del combate 4\" 120",
+  "captura c_combate1",
+  "log \"cinematica: camara WINNER de B1\" 240",
+  "log \"cinematica: WINNER cuadro\" 60",
+  "captura d_winner",
+  "esperar 2500",
+  "log \"cinematica: WINNER cuadro\" 60",
+  "captura e_winner_fin",
+  "esperar 4000",
+  "captura f_resultado",
+  "log \"pasarela: paso \\d+/\\d+ \\(combate\" 400",
+  "captura g_ronda_siguiente",
+  "log \"dbz3 pasarela: escena final 3D terminada\" 900",
+  "captura h_final3d",
+  "log \"dbz3 pasarela: final de la leyenda\" 300",
+  "esperar 2000",
+  "captura i_final_cuenta",
+]

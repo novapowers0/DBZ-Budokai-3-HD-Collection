@@ -1,0 +1,31 @@
+# ACTIVO (ronda 10/11, 3.ª): la canonica rexruntime.dll ya trae dbz3_latencia_sonda/dbz3_baja_latencia
+# (recompilada con `DBZ3_COMPILAR_SDK=1 python tools/compilar.py`, 11238400 B; rexgpu-xenos intacta).
+# Si esta prueba vuelve a fallar por falta de las lineas, comprueba que la copia tiene esa DLL.
+#
+# C4 / #59: lado OFF del A/B (cola de presentacion por defecto; la sonda sigue encendida).
+#   python tools\pruebas.py correr smoke "docs\14_frentes\escenarios_pruebas\final\c4-plataforma\input_off.toml"
+#
+# criterio = mismas 6 lineas "dbz3 latencia: entrada->present" que input.toml. La mediana del lado ON no debe ser
+#            peor que la del OFF. NO debe salir "dbz3 latencia: cola de presentacion a 1 cuadro".
+descripcion = "#59 lado OFF: latencia entrada->present con la cola por defecto"
+env = [
+  "DBZ3_TEST_BATTLE=0,7,7",
+  "DBZ3_HUB_MODE=5",
+  "DBZ3_TEST_CFG=dbz3_latencia_sonda=true;dbz3_baja_latencia=false",
+]
+pasos = [
+  "log \"hub: combate nativo\" 90",
+  "esperar 1500",
+  "tecla Space 120",
+  "log \"dbz3 latencia: entrada->present\" 30",
+  "tecla P 120",
+  "log \"dbz3 latencia: entrada->present\" 30",
+  "tecla Space 120",
+  "log \"dbz3 latencia: entrada->present\" 30",
+  "tecla P 120",
+  "log \"dbz3 latencia: entrada->present\" 30",
+  "tecla Space 120",
+  "log \"dbz3 latencia: entrada->present\" 30",
+  "tecla Backspace 120",
+  "log \"dbz3 latencia: entrada->present\" 30",
+]

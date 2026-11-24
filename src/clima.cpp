@@ -22,6 +22,9 @@
 #include "cinematica.h"
 
 #include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -39,15 +42,24 @@
 REXCVAR_DEFINE_BOOL(dbz3_clima, false, "DBZ3/Mods",
                     "Clima vivo: el cielo del escenario se oscurece poco a poco durante el combate");
 
+REXCVAR_DEFINE_INT32(dbz3_clima_tiempo, 0, "DBZ3/Mods",
+                     "Clima vivo en escenarios de B3: 0 despejado, 1 lluvia, 2 nieve (particulas de escenarios.cpp)");
+
 namespace dbz3::clima {
 namespace {
 
 constexpr dbz3::GA kRecs = 0x82323760;
 constexpr dbz3::GA kFogOn = 0x8238941C, kFogColor = 0x82389424;
-constexpr float kOscuro = 0.55f;   // oscuridad final del cielo (el modo hiper llega a 0,75)
+// Oscuridad final (el modo hiper llega a 0,75). Apaga cielo Y suelo a la vez: el usuario (12/11) quiere el suelo casi
+// igual y el cambio en el cielo, asi que se queda en un toque leve. El cielo de noche propio (textura nocturna generada
+// desde la original) esta pendiente: necesita localizar la textura del cielo o el cargador de texturas del SDK.
+// POST2 (12/11): el cielo de noche va aparte (rexgpu-xenos, dbz3_clima_noche), asi que el suelo baja aun menos.
+constexpr float kOscuro = 0.15f;
 
 bool g_regla = false;          // regla de reto (Activar)
 uint32_t g_frames = 0;         // fotogramas de pelea (estado 4) en este escenario
+std::atomic<float> g_noche{0.0f};   // 0..1, lo lee la capa de estrellas desde el hilo de dibujo
+std::atomic<int64_t> g_visto_ms{0};   // ultimo fotograma de escenario (sub_820C2058)
 
 float F(uint8_t* base, uint32_t a) {
   uint32_t u = REX_LOAD_U32(a);
@@ -89,10 +101,34 @@ bool Activo() {
          !dbz3::net::Session::Get().active();
 }
 void Activar(bool on) { g_regla = on; }
+int Precipitacion() {
+  static const int prueba = [] { const char* e = std::getenv("DBZ3_CLIMA_TIEMPO"); return e ? std::atoi(e) : -1; }();
+  if (!Activo()) return 0;
+  const int t = prueba >= 0 ? prueba : REXCVAR_GET(dbz3_clima_tiempo);
+  return t == 1 || t == 2 ? t : 0;
+}
 
 void EscenarioPedido() {
   dbz3::cine::NuevoCombate();
   g_frames = 0;
+  g_noche.store(0.0f);
+}
+float Noche() {
+  // fuera del escenario (menus, otra pantalla) el gancho deja de correr: no es de noche
+  const int64_t ahora = std::chrono::duration_cast<std::chrono::milliseconds>(
+                            std::chrono::steady_clock::now().time_since_epoch()).count();
+  return Activo() && ahora - g_visto_ms.load() < 250 ? g_noche.load() : 0.0f;
+}
+
+void PublicarNoche() {
+  // POST2/F1-CLIMA: el cielo de noche lo pinta rexgpu-xenos (dbz3_night.hlsl) sobre la escena 3D, antes del HUD
+  static float puesto = 0.0f;
+  const float n = Noche();
+  if (std::abs(n - puesto) < 0.01f && (n > 0.0f || puesto == 0.0f)) return;
+  puesto = n;
+  char b[16];
+  std::snprintf(b, sizeof(b), "%.3f", n);
+  rex::cvar::SetFlagByName("dbz3_clima_noche", b);
 }
 
 }  // namespace dbz3::clima
@@ -104,6 +140,8 @@ DBZ3_HOOK_EU(sub_820C2058) {
   const uint32_t mgr = REX_LOAD_U32(dbz3::GA(0x823D6CF4));
   const uint32_t st = mgr ? REX_LOAD_U32(mgr + 35128) : 0;
   if (st == 4) ++g_frames;
+  g_visto_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                   std::chrono::steady_clock::now().time_since_epoch()).count();
   dbz3::cine::Fotograma(base, st, st == 4 ? g_frames : 0);
   dbz3::gigantes::Fotograma(base, st == 4 ? g_frames : 0);
   dbz3::iwmini::Fotograma(base, st);   // minijuegos de IW (frente P4): modo libre con camara detras
@@ -123,21 +161,29 @@ DBZ3_HOOK_EU(sub_820C2058) {
   }();
   const float t0 = rapido ? 3.0f : 20.0f, dur = rapido ? 8.0f : 40.0f;
   const float k = std::clamp((float(g_frames) / 60.0f - t0) / dur, 0.0f, 1.0f);
-  const float suave = k * k * (3.0f - 2.0f * k);   // suave al empezar y al acabar
+  auto liso = [](float x) { x = std::clamp(x, 0.0f, 1.0f); return x * x * (3.0f - 2.0f * x); };
+  const float suave = liso(k);   // suave al empezar y al acabar
   if (suave <= 0.0f) return;
+  // 12/11 POST/F1-CLIMA: dia -> atardecer -> noche. Primero la niebla se calienta (atardecer, hasta k 0,45) y luego
+  // vira al azul marino de B3 (el aro de los iconos, 22/22/57); el escenario se apaga despacio al principio, de
+  // modo que el atardecer se lee como luz calida y no como un velo oscuro.
+  const float tarde = liso(k / 0.45f), noche = liso((k - 0.35f) / 0.65f);
+  g_noche.store(noche);
   // el oscurecimiento del juego: el mayor entre el suyo (modo hiper) y el del clima
-  const float osc = kOscuro * suave;
+  const float osc = kOscuro * (0.25f * tarde + 0.75f * noche);
   if (F(base, mgr + 35180) < osc) PonF(base, mgr + 35180, osc);
   if (F(base, mgr + 35184) < suave) PonF(base, mgr + 35184, suave);
-  // niebla del juego (recien puesta) tenida hacia un azul de noche y mas cerca: el fondo lejano tambien se apaga
+  // niebla del juego (recien puesta): calida al atardecer, azul de noche despues y algo mas cerca (no un muro plano)
   const uint32_t col = REX_LOAD_U32(kFogColor);
   const bool on = REX_LOAD_U32(kFogOn) != 0;
   const float ini = on ? F(base, dbz3::GA(0x823106B4)) : 0.0f, fin = on ? F(base, dbz3::GA(0x823106B8)) : 4000.0f;
-  constexpr uint8_t kNoche[3] = {18, 20, 44};
+  constexpr uint8_t kTarde[3] = {214, 128, 84}, kNoche[3] = {22, 24, 57};
   uint32_t nuevo = col & 0xFF000000u;
   for (int c = 0; c < 3; ++c) {
-    const float v = float((col >> (16 - 8 * c)) & 0xFF);
-    nuevo |= uint32_t(v + (float(kNoche[c]) - v) * suave + 0.5f) << (16 - 8 * c);
+    float v = float((col >> (16 - 8 * c)) & 0xFF);
+    v += (float(kTarde[c]) - v) * tarde * (1.0f - noche);
+    v += (float(kNoche[c]) - v) * noche;
+    nuevo |= uint32_t(std::clamp(v, 0.0f, 255.0f) + 0.5f) << (16 - 8 * c);
   }
   PPCContext c = ctx;
   c.r3.u64 = 1;
@@ -147,7 +193,7 @@ DBZ3_HOOK_EU(sub_820C2058) {
   DBZ3_CALL_EU(sub_82085670)(c, base);
   c = ctx;
   c.f1.f64 = ini;
-  c.f2.f64 = fin + (std::max(ini + 150.0f, 0.15f * fin) - fin) * suave;
+  c.f2.f64 = fin + (std::max(ini + 300.0f, 0.4f * fin) - fin) * suave;   // mas cerca tine a los luchadores (probado: 0,4 al atardecer los pone rosas)
   DBZ3_CALL_EU(sub_82085688)(c, base);
   if (sonda && g_frames % 120 == 0)
     REXLOG_INFO("dbz3 sonda clima: {:.0f} s: oscuro {:.2f}, niebla {:08X} -> {:08X}, {:.0f}..{:.0f} -> {:.0f}",

@@ -1001,16 +1001,9 @@ def atomic_write(path, data, tries=8):
 
 
 def lzx(data, work=None):
-    """LZX /N:2048 (como swap_b3 / swap_matrix) -> bytes comprimidos."""
-    import swap_matrix  # noqa: PLC0415
-    work = work or tempfile.mkdtemp(prefix="studio_lzx_")
-    src = os.path.join(work, "cam_%d.bin" % os.getpid())
-    dst = src + ".lzx"
-    with open(src, "wb") as fh:
-        fh.write(data)
-    swap_matrix.lzx_compress(src, dst, work)
-    with open(dst, "rb") as fh:
-        return fh.read()
+    """LZX /N:2048 (kit/base.py, el de swap_b3 / swap_matrix) -> bytes comprimidos."""
+    from kit import base  # noqa: PLC0415
+    return base.lzx_bytes(data, True, work)
 
 
 def conflicts(mods, fid, own):

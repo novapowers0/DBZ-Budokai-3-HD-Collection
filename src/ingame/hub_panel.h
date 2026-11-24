@@ -7,6 +7,7 @@
 #pragma once
 
 #include <cstdint>
+#include <filesystem>   // SetEntryImage
 
 struct PPCContext;
 
@@ -40,6 +41,11 @@ const char* Tr(const Texts& t);   // el del idioma del juego (sin el: el ingles)
 //   static const bool reg = dbz3::hub::RegisterEntry("abismo", {"Abismo", "Abyss", "Abysse", "Abgrund", "Abisso"},
 //       {"Baja piso a piso...", "Go down floor by floor...", ...}, &AbismoOpen, &AbismoBusy);
 bool RegisterEntry(const char* key, const Texts& name, const Texts& help, void (*open)(), bool (*busy)() = nullptr);
+// Insignia PROPIA de la fila `key` desde un PNG de cualquier ruta (p. ej. res/survivors/04_interfaz/hub_ficha_survivors.png): sustituye a
+// modo_<clave> / modo_extra solo en esa fila; las demas siguen igual. Se carga al dibujarla la primera vez; si falta o no se lee, se avisa una
+// vez en el registro y queda la insignia de siempre. Llamar desde el hilo de dibujo (p. ej. donde se registra la fila) o antes del primer HUB.
+//   dbz3::hub::SetEntryImage("rogue", ruta_res / "mejoras" / "rogue" / "hub_ficha_rogue.png");
+void SetEntryImage(const char* key, const std::filesystem::path& png);
 // Nombre y ayuda de la entrada e en el idioma del juego ("" si no hay).
 const char* EntryName(int e);
 const char* EntryHelp(int e);

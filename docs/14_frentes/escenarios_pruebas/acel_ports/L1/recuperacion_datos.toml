@@ -1,0 +1,5 @@
+version = 1
+laboratorio = false
+muneco = 1
+practica = true
+muneco_antes = "guardia"

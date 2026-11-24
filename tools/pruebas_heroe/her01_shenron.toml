@@ -1,0 +1,21 @@
+# R23 HER-01 (de E:\DBZ3HD_trabajo\heroe_post2\p2_shenron.toml, con el aspecto nuevo y en espanol):  python tools\pruebas.py correr smoke_b tools\pruebas_heroe\her01_shenron.toml
+# POST2 (12/11): como v05_shenron + Backspace (B) en el menu de deseos. Lanzar con --env DBZ3_TEST_CFG=dbz3_heroe_ui_nueva=true
+descripcion = "POST2 Heroe: menu de deseos de Shenron (B Pensarlo): A y B en el menu"
+env = ["DBZ3_TEST_DU_HEROE=35", "DBZ3_TEST_DU_HEROE_FORZAR=1", "DBZ3_TEST_HEROE_FINAL=1", "DBZ3_TEST_HEROE_ESFERAS=127", "DBZ3_TEST_CFG=dbz3_heroe_ui_nueva=true", "REX_DBZ3_LANGUAGE=5", "REX_DBZ3_UI_LANGUAGE=5"]
+pasos = [
+  "esperar 12000",
+  'hasta_log "shenron: sub_8215C1B0" 240',
+  "tecla Space 2500",
+  "fin",
+  "captura a_shenron",
+  'log "7 Esferas: aparece Shenron" 10',
+  'log "menu de deseos: fila" 60',
+  "esperar 2000",
+  "captura b_deseos",
+  "tecla S 1500",
+  "captura c_fila_2",
+  "tecla Backspace 2500",
+  "captura d_tras_b",
+  "esperar 3000",
+  "captura e_tras_b_3s",
+]

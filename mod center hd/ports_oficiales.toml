@@ -52,7 +52,9 @@ clave = "c:super 17"
 donante = 29
 preset = "original"
 voces = "iw:SUPER ANDROID No.17|donante"
-extra = { aura_de = 29 }   # el aura del Androide 17 (el encargo pide "oscura": el kit no oscurece)
+# formas = 1: el port de la comunidad tiene una sola forma; sin fijarlo heredaba la 2.a del
+# Androide 17 (capsula de transformar 107) y una forma sin modelo detras.
+extra = { aura_de = 29, formas = 1 }   # el aura del Androide 17 (el encargo pide "oscura": el kit no oscurece)
 
 [imp_iw_pikkon]
 nombre = "Pikkon"

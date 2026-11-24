@@ -1,0 +1,45 @@
+descripcion = "modos_rogue_reanudar (ROG-02/03, parte 2 de 2): Dragon Rogue sigue la partida que dejo modos_rogue_cartas en rogue.toml (4 pisos, 2 capsulas, vida maxima 4000): aviso y combate de jefe en el piso 5 (armadura 50 %, recibido 150 %), premio de jefe (ROG-04: carta de evolucion = Goku arranca el combate 6 en la forma 1, Kaioken, con su capsula), tramo 2 con recibido 110 %, carta de defensa y final con 7 pisos"
+# Pasar SIEMPRE despues de modos_rogue_cartas en la misma copia (sin ella no hay partida que seguir y falla el primer
+# registro). Oferta: python tools/rogue_oferta.py s 2 c1 2 1 2  (en pruebas el primer jefe es Broly, kJefes[0]).
+# ROG-05: la pantalla 01 abre en el camino de la partida a medias (El Abismo): Space la sigue.
+# Teclas: Space = A, D = derecha.
+env = ["DBZ3_HUB_MODE=5", "DBZ3_TEST_RINGOUT=1", "DBZ3_TEST_ROGUE=7", "DBZ3_TEST_MODO=rogue,0", "REX_DBZ3_LANGUAGE=5"]
+apartar = ["user_data/dbz3/rogue.toml*"]
+poner = ["docs/14_frentes/escenarios_pruebas/fixtures_rogue/rogue_4pisos.toml -> user_data/dbz3/rogue.toml"]
+pasos = [
+  "esperar_pantalla 5 120",
+  "log 'rogue: .*rogue.toml: [0-9]+ records, partida a medias' 30",
+  "log 'prueba: Dragon Rogue' 30",
+  "esperar 2500",
+  "tecla Space 3000",
+  "log 'Dragon Rogue combate 5: reanudada .aun sin pedir. .vida [0-9]+/4000, dano 100%, recibido 150%, armadura 50%, ki 0/s, 2 capsulas' 30",
+  "esperar 1500",
+  "captura 01_aviso_jefe",
+  "tecla Space 3000",
+  "log 'Dragon Rogue combate 5: pedido .vida [0-9]+/4000, dano 100%, recibido 150%, armadura 50%, ki 0/s, 2 capsulas' 60",
+  "esperar 9000",
+  "captura 02_combate_jefe",
+  "log 'Dragon Rogue: combate 5 ganado .vida 4000/4000' 180",
+  "esperar 3000",
+  "captura 03_premio_jefe",
+  "tecla Space 1500",
+  "log 'rogue: piso 5: carta evolucion_01 .1 de 1.; reglas: dano 100%, recibido 100%, ki 0/s, 2 capsulas; sellos ki 0 cuerpo 1 apoyo 2' 20",
+  "log 'rogue: piso 5: evolucion: luchador 0 forma 1 .1 capsulas: 1.' 10",
+  "esperar 1000",
+  "tecla Space 3000",
+  "log 'Dragon Rogue combate 6: pedido .vida [0-9]+/4000, dano 100%, recibido 110%, armadura 0%, ki 4/s, 3 capsulas' 60",
+  "log 'en combate: lado 1 con [0-9]+ capsulas .*forma 1' 90",
+  "captura 04_combate_forma1",
+  "log 'Dragon Rogue: combate 6 ganado' 180",
+  "esperar 3000",
+  "tecla Space 1500",
+  "log 'rogue: piso 6: carta fisica_11 .1 de 1.' 20",
+  "esperar 1000",
+  "tecla Space 3000",
+  "log 'Dragon Rogue combate 7: pedido .vida [0-9]+/4000, dano 110%, recibido 85%, armadura 0%, ki 4/s, 3 capsulas' 60",
+  "log 'rogue: fin de abismo: id 0, 7 pisos' 180",
+  "esperar 3000",
+  "captura 05_final",
+  "tecla Space 2500",
+]
+

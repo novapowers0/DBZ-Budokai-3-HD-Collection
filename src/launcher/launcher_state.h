@@ -75,6 +75,14 @@ class LauncherDialog : public rex::ui::ImGuiDialog {
   void DrawModelSwapTab();
   void DrawTexturesTab();
   void DrawNewCharactersTab();
+  void DrawXv2();
+  ModPipeline xv2_pipeline_;
+  bool xv2_checked_ = false;
+  bool xv2_preparing_ = false;
+  bool xv2_finished_ = false;
+  bool xv2_ok_ = false;
+  std::string xv2_version_;
+  std::string xv2_folder_error_;
   void DrawImporter();
   void ParseImporterOutput();
   void DrawDevTab();
@@ -148,7 +156,7 @@ class LauncherDialog : public rex::ui::ImGuiDialog {
     bool then_play = false;   // pedida con JUGAR: al acabar, se juega
     std::string error;
   };
-  void StartIsoPrep(bool then_play);
+  void StartIsoPrep(bool then_play, bool force_voices = false);
   void DrawPs2Box();
   std::string ps2_msg_;   // resultado de la ultima ISO de PS2 elegida
   // Pack de Infinite World (Nova's Mods): estado de cada receta de IW (importar.py oficiales) y casillas (true = la quiero)
@@ -167,6 +175,8 @@ class LauncherDialog : public rex::ui::ImGuiDialog {
   int nrec_estado_ = 0;   // 0 sin leer, 1 leyendo la lista, 2 lista leida, 3 construyendo
   std::string nrec_msg_;
   void DrawVideosHd();   // Nova's Mods: opening y final HD (descarga opcional)
+  bool dlcb1_job_ = false;
+  int dlcb1_done_ = 0;   // D8: resultado del ultimo trabajo del DLC (0 ninguno, 1 ok, 2 fallo); no lo cambian tareas posteriores
   void DrawMusicaT3();   // Nova's Mods: musica de Tenkaichi 3 creada con la ISO del jugador
   std::string t3_msg_;
   std::vector<PackFila> pack_filas_;

@@ -1,0 +1,36 @@
+# C4 / PLT02 (#35): ultraancho en las pantallas propias. Lado ON.
+# RONDA 6 (pulido 10/11): la ventana se ensancha con `window_width/height` (window_sdl.cpp los aplica al crear la
+# ventana) y el guest se queda en 16:9 con `video_mode_width/height` no por defecto (si no, window_* tambien manda
+# en el modo de video del guest). Se abre la pantalla ONLINE (fondo `hub/fondo_online`, existe en la copia), que
+# dibuja con `Backdrop`: con el ajuste ON el fondo llega a los bordes de la ventana 21:9; con el OFF queda en su
+# 16:9 centrado con bandas. No hace falta `borde.png`.
+#   python tools\pruebas.py paralelo "docs\14_frentes\escenarios_pruebas\final\c4-plataforma" --max 1
+#
+# clave    = PLT02 (#35)
+# cvar     = dbz3_ui_ultraancho=true (NUEVA, apagada de serie; src/ingame/game_style.cpp)
+# criterio = la captura 01/02 sale a 2560x1080 con el fondo a todo el ancho (ON) o con bandas negras laterales y el
+#            fondo 16:9 centrado (OFF). Comparar las dos parejas.
+# log      = ninguna linea (es dibujo); la prueba es la pareja de capturas.
+# NOTA     = geometria medida sin juego: studies 5/ENTREGAS/C4PLAT/evidencias/ultraancho_geometria.csv
+#            (3440x1440 gana 880 px; 2560x1080 gana 640 px).
+descripcion = "PLT02 lado ON: fondo de la pantalla ONLINE a todo el ancho en ventana 21:9"
+env = [
+  "DBZ3_TEST_CFG=window_width=2560;window_height=1080;video_mode_width=1920;video_mode_height=1080;dbz3_ui_ultraancho=true",
+]
+pasos = [
+  "log \"dbz3 hub: menu principal estado 3\" 120",
+  "esperar 2500",
+  "tecla S 1200",
+  "tecla Space 0",
+  "esperar_pantalla 14 10",
+  "esperar 1500",
+  "tecla S 700",
+  "tecla S 700",
+  "tecla S 700",
+  "tecla S 700",
+  "tecla Space 1500",
+  "esperar 2500",
+  "captura 01_fondo_21_9",
+  "esperar 1200",
+  "captura 02_fondo_21_9",
+]

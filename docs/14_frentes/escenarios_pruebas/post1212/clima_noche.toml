@@ -1,0 +1,34 @@
+# F1-CLIMA / POST2 12/11: "Clima vivo" de noche en un escenario nativo de B3 (Llanura, registro 5).
+#   Copia: smoke_a (o cualquiera con data_cmn; las pruebas de clima se pasaron en smoke_a/b/c).
+#   python tools\pruebas.py correr smoke_a "docs\14_frentes\escenarios_pruebas\post1212\clima_noche.toml"
+#
+# clave    = F1-CLIMA (dia -> atardecer -> noche) + POST2/F1-CLIMA (cielo de noche nativo de rexgpu-xenos).
+# cvar     = ninguna: DBZ3_CLIMA=rapido activa el clima en pruebas (noche a los 11 s de pelea, 3 s + 8 s).
+# criterio = el clima esta activo (sonda de registros), el oscurecimiento llega a su tope de noche y la capa de
+#            estrellas se activa en el escenario nativo (g_activa = -1). Las capturas 04/05 tienen que verse de
+#            noche: el pase del cielo (dbz3_night.hlsl, rexgpu-xenos) no deja linea de registro, se mira en la foto.
+# log      = "dbz3 sonda clima: registro  5 'PLANE'"
+#            "dbz3 sonda clima: N s: oscuro 0.1x"   (kOscuro = 0,15 desde POST2; antes 0,30)
+#            "dbz3 clima estrellas: activa -1, za ..., zb ..., prof ..."
+#            "dbz3 clima estrellas: noche 0.xx, cerca ..., lejos ..., dist ..."   (si el z-buffer ya esta listo)
+#
+# Nota: el clima cuenta cuadros de pelea (estado 4), no la presentacion. DBZ3_HUB_MODE=5 entra directo al READY.
+# Sin DBZ3_TEST_RINGOUT: el combate tiene que durar los 11 s que tarda la noche.
+descripcion = "F1 Clima vivo de noche (Llanura): sonda, oscurecimiento tope y capa de estrellas activa"
+env = ["DBZ3_CLIMA=rapido", "DBZ3_SONDA_CLIMA=1", "DBZ3_TEST_BATTLE=0,7,5", "DBZ3_HUB_MODE=5"]
+pasos = [
+  "log \"tag: empieza un combate\" 90",
+  "esperar_pelea 90",
+  "log \"sonda clima: registro  5 'PLANE'\" 30",
+  "captura 01_dia",
+  "esperar 6000",
+  "captura 02_atardecer",
+  "log \"sonda clima: [0-9]+ s: oscuro\" 30",
+  "esperar 4000",
+  "captura 03_anochecer",
+  "log \"sonda clima: [0-9]+ s: oscuro 0\\.1\" 30",
+  "log \"clima estrellas: activa -1\" 30",
+  "captura 04_noche",
+  "esperar 2000",
+  "captura 05_noche",
+]

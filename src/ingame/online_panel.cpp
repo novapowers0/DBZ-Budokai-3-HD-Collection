@@ -81,6 +81,7 @@ bool RequestBattleEx(int id1, int id2, int stage, bool p2_com, int time_s, int h
 namespace dbz3::campaigns {
 void Trace(uint8_t* base);   // campaigns.cpp
 void ForgetStoryBattle();   // campaigns.cpp: menu principal = fuera de Dragon Universe
+bool VolandoMapa();         // campaigns.cpp: se vuela por el mapa de Dragon Universe (ultimo segundo)
 }
 
 namespace dbz3::ingame {
@@ -196,6 +197,7 @@ std::string WaitDots(const char* text, float t) {
 std::string RulesText(const CombatRules& r) {
   std::string out;
   auto add = [&out](const char* x) { out += (out.empty() ? "" : "  ") + std::string(x); };
+  if (r.flags & 0x20) add(T::T("COMPETITIVO", "COMPETITIVE"));
   if (r.flags & 1) add("V0");
   if (r.flags & 2) add(T::T("DEF. DIRECTA", "DIRECT ULT."));
   if (r.flags & 4) add(T::T("CANCELACION LB", "CANCEL LB"));
@@ -327,7 +329,7 @@ void OnlineRow(ImGuiIO& io, bool focus) {
     S::Speech(dl, a.At(195, 650), a.At(950, 860), a.s,
               T::T("Juega contra otra persona por internet.", "Play against another person over the internet."));
   }
-  S::MenuText(dl, ImVec2((r0.x + r1.x) * 0.5f, (r0.y + r1.y) * 0.5f), 50 * a.s, "ONLINE", focus, false);
+  S::MenuText(dl, ImVec2((r0.x + r1.x) * 0.5f, (r0.y + r1.y) * 0.5f), 50 * a.s, "ONLINE (BETA)", focus, false);
   FadeFrom(dl, v0, fade);
 }
 
@@ -353,7 +355,7 @@ void TagTeamRow(ImGuiIO& io, bool focus) {
   }
   S::Frame(dl, r0, r1, a.s);
   if (focus) S::Highlight(dl, r0, r1, float(ImGui::GetTime()));
-  S::MenuText(dl, ImVec2((r0.x + r1.x) * 0.5f, (r0.y + r1.y) * 0.5f), 40 * a.s, "Tag Team", focus, false);
+  S::MenuText(dl, ImVec2((r0.x + r1.x) * 0.5f, (r0.y + r1.y) * 0.5f), 40 * a.s, "Tag Team (BETA)", focus, false);
   FadeFrom(dl, v0, fade);
 }
 
@@ -535,7 +537,7 @@ void OnlineTick(uint8_t* base, uint16_t p1_buttons) {
   dbz3::campaigns::Trace(base);
   auto& s = Session::Get();
   constexpr uint16_t kX = 0x4000;
-  const int screen = base[dbz3::GuestAddr(0x824BA110, 0x824BA100)];
+  int screen = base[dbz3::GuestAddr(0x824BA110, 0x824BA100)];
   {
     const uint32_t bits = REX_LOAD_U32(kGameFade);
     float f;
@@ -544,6 +546,9 @@ void OnlineTick(uint8_t* base, uint16_t p1_buttons) {
   }
   dbz3::tag::OnScreen(screen);
   if (screen == kMainMenuScreen) dbz3::campaigns::ForgetStoryBattle();
+  // Dragon Universe entra por la fila 0 y el byte puede seguir a 5 mientras se vuela por el mapa: no es
+  // el menu principal (sin fila TAG TEAM ni X -> Tag Team, que bloqueaban el mando en el mapa).
+  if (screen == kMainMenuScreen && dbz3::campaigns::VolandoMapa()) screen = -3;
   if (screen != kDuelMenuScreen) dbz3_select_reset_flow();
   const bool battle = dbz3::tag::InBattle();
   if (screen != g_screen.load()) {          // llegada a otro menu: sale de negro
@@ -798,12 +803,30 @@ void OnlinePanel::DrawScreen(ImGuiIO& io, uint16_t pressed) {
   // comparan aparte en el HELLO. 1 contra 1: Tag Team online sigue sin autorizar (falta el relevo guest).
   std::string admission_reason;
   auto admission_ready = [this, &admission_reason]() {
+    // Identidad = el codigo que corre: el exe y las bibliotecas del runtime. Donde el ejecutable es del
+    // sistema (Android: app_process), DBZ3_ONLINE_ID_DIR nombra la carpeta de las bibliotecas del juego y
+    // la identidad son todos sus .so (ordenados).
     const std::filesystem::path exe = rex::filesystem::GetExecutablePath();
-    std::vector<std::filesystem::path> files = {exe};
+    std::vector<std::filesystem::path> files;
+    std::error_code ec;
+    if (const char* dir = std::getenv("DBZ3_ONLINE_ID_DIR"); dir && *dir) {
+      for (const auto& e : std::filesystem::directory_iterator(dir, ec))
+        if (e.path().extension() == ".so") files.push_back(e.path());
+      std::sort(files.begin(), files.end());
+    } else {
+      files.push_back(exe);
 #ifdef _WIN32
-    files.push_back(exe.parent_path() / "rexruntime.dll");
-    files.push_back(exe.parent_path() / "rexgpu-xenos.dll");
+      files.push_back(exe.parent_path() / "rexruntime.dll");
+      files.push_back(exe.parent_path() / "rexgpu-xenos.dll");
+#else
+      for (const char* lib : {"librexruntime.so", "librexgpu-xenos.so"})
+        if (std::filesystem::exists(exe.parent_path() / lib, ec)) files.push_back(exe.parent_path() / lib);
 #endif
+    }
+    if (files.empty()) {
+      admission_reason = T::T("Online: DBZ3_ONLINE_ID_DIR no tiene bibliotecas .so.", "Online: DBZ3_ONLINE_ID_DIR has no .so libraries.");
+      return false;
+    }
     std::string acc;
     for (const auto& p : files) {
       const std::string h = rex::hash_file(p);
@@ -1488,6 +1511,8 @@ void OnlinePanel::DrawScreen(ImGuiIO& io, uint16_t pressed) {
   else if (host && mode_ != 1) help.push_back({"X", T::T("Copiar codigo", "Copy code")});
   S::HelpLine(dl, a.At(idle || (host && mode_ != 1) ? 690 : 745, 870), 38 * a.s, help);
 }
+
+std::string ModsDePartida() { return MmModsKey(); }   // RANK-ONLINE: la huella de mods del online (vacia = sin mods de juego)
 
 }  // namespace dbz3::ingame
 

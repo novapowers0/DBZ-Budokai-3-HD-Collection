@@ -2135,4 +2135,17 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:   # cronometro de tools/infra.py (INFRA-05); sin el, nada cambia
+        sys.path.insert(0, os.path.join(ROOT, "tools"))
+        try:
+            from infra import cronometro
+        finally:
+            sys.path.pop(0)
+    except Exception:  # noqa: BLE001  (sin tools/infra.py o roto: sin cronometro)
+        import contextlib
+
+        def cronometro(*_a, **_k):
+            return contextlib.nullcontext()
+    with cronometro("importar", detalle=" ".join(sys.argv[1:3])):
+        rc = main()
+    sys.exit(rc)

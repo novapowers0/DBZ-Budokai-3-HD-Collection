@@ -139,14 +139,29 @@
     if(foto_i>=fotos.size()||!escena||escena->reloj.cuadro<float(fotos[foto_i]+1))return;
     const uint32_t f=fotos[foto_i];
     std::ofstream out("dbz3_b2_foto_"+std::to_string(f)+".json");
+    // B2-TRANS (12/11): sin clip de camara B2 (camara<0; p. ej. la camara fija 31 de Ciudad, cuadros 1..40)
+    // la foto daba ojo (0,0,0) y fov 0: se mide la camara HD aplicada (el mismo registro que
+    // AplicarCamaraB2AntesDelDibujo y la traza "aplicada"), marcada con camara_hd=1.
+    std::array<float,3> ojo=escena->ojo,obj=escena->objetivo;float fov=escena->fov;
+    const bool camara_hd=escena->camara<0;
+    if(camara_hd) {
+      uint32_t p=REX_LOAD_U32(mgr+0x264);
+      if(p<0x82000000u||p>=0x83000000u)p=REX_LOAD_U32(mgr+0x260);
+      if(p<0x82000000u||p>=0x83000000u)p=mgr+0x190;
+      for(unsigned j=0;j<3;++j){ojo[j]=LeeFl(p+4*j);obj[j]=LeeFl(p+16+4*j);}
+      fov=LeeFl(p+0x34);
+    }
     out<<"{\"cuadro\":"<<f<<",\"guest\":"<<ultimo<<",\"zona\":"<<REX_LOAD_U32(kG+64)
-       <<",\"camara\":"<<escena->camara<<",\"tiempo_camara\":"<<escena->tiempo_camara
-       <<",\"fov\":"<<escena->fov<<",\"ojo\":["<<escena->ojo[0]<<','<<escena->ojo[1]<<','<<escena->ojo[2]
-       <<"],\"objetivo\":["<<escena->objetivo[0]<<','<<escena->objetivo[1]<<','<<escena->objetivo[2]<<"],\"actores\":[";
+       <<",\"camara\":"<<escena->camara<<",\"camara_hd\":"<<(camara_hd?1:0)<<",\"tiempo_camara\":"<<escena->tiempo_camara
+       <<",\"fov\":"<<fov<<",\"ojo\":["<<ojo[0]<<','<<ojo[1]<<','<<ojo[2]
+       <<"],\"objetivo\":["<<obj[0]<<','<<obj[1]<<','<<obj[2]<<"],\"actores\":[";
     for(unsigned i=0;i<2;++i) {
       if(i)out<<',';const uint32_t x=actor[i];
+      // centro (+1616, el +4B0 PAL) y vel (+208): los dos datos con que 13/19 orientan a la victima.
       out<<"{\"pos\":["<<LeeFl(x+64)<<','<<LeeFl(x+68)<<','<<LeeFl(x+72)<<"],\"codigo\":"<<REX_LOAD_U32(x+2928)
-         <<",\"giro\":"<<REX_LOAD_U32(x+6052)<<",\"vida\":"<<LeeFl(x+6080)<<",\"ki\":"<<LeeFl(x+6100)<<'}';
+         <<",\"giro\":"<<REX_LOAD_U32(x+6052)<<",\"vida\":"<<LeeFl(x+6080)<<",\"ki\":"<<LeeFl(x+6100)
+         <<",\"centro\":["<<LeeFl(x+1616)<<','<<LeeFl(x+1620)<<','<<LeeFl(x+1624)
+         <<"],\"vel\":["<<LeeFl(x+208)<<','<<LeeFl(x+212)<<','<<LeeFl(x+216)<<"]}";
     }
     out<<"],\"raices\":[";
     for(size_t i=0;i<fondo.raices.size();++i) {

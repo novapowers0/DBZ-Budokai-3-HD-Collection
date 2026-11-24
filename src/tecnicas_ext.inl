@@ -90,7 +90,18 @@ void PutResource(PPCContext& ctx, uint8_t* base, uint32_t slot, Spill& sp, uint3
 DBZ3_HOOK(sub_821093C8, dbz3eu_sub_821094C8) {
   const uint32_t x = ctx.r3.u32, other = ctx.r5.u32;
   const int form = ctx.r4.s32;
+  const bool diag = std::getenv("DBZ3_TEST_BU_DIAG") != nullptr;
+  auto dump = [&](const char* cuando) {
+    if (!diag) return;
+    for (int f = 0; f < 4; ++f) {
+      const uint32_t r = REX_LOAD_U32(x + 7608 + 4 * f), i = r ? REX_LOAD_U32(r + 4) : 0;
+      if (i) REXLOG_INFO("dbz3 bu75: enlace {} x {:08X} id {} forma {} otra {:08X} f {} recurso {:08X} inst {:08X} b0 {:08X} b1 {:08X} voz {:08X}",
+                         cuando, x, REX_LOAD_U32(x + 7420), form, other, f, r, i, REX_LOAD_U32(i + 40), REX_LOAD_U32(i + 44), REX_LOAD_U32(x + 7920));
+    }
+  };
+  dump("antes");
   orig(ctx, base);
+  dump("despues");
   if (other) return;
   const auto* files = dbz3::roster::FormFilesOf(int32_t(REX_LOAD_U32(x + 7420)));
   if (!files) return;
@@ -257,6 +268,7 @@ struct FormBank {
 };
 std::array<std::vector<FormBank>, 2> g_banks;   // por lado; un Tag Team puede traer varios IDs con formas
 std::array<int, 2> g_last_id{-1, -1};
+int g_diag_cuadros = 0;   // PRUEBA #75 (DBZ3_TEST_BU_DIAG)
 
 // A que hueco de banco corresponde la forma: las formas sin fichero propio usan el de la forma 0.
 int BankIndex(const std::array<int32_t, 8>& fids, uint32_t form) {
@@ -305,10 +317,45 @@ void BankTick(PPCContext& ctx, uint8_t* base, uint32_t k, uint32_t x) {
     g_last_id[k] = id;
   }
   const dbz3::roster::FormFiles* files = dbz3::roster::FormFilesOf(id);
-  if (!files) return;
   FormBank* bank = nullptr;
   for (auto& b : banks)
     if (b.id == id) bank = &b;
+  // #75: la entrada se quita en pleno combate (Bu vuelve de una absorcion): sin ficheros nuevos, pero lo puesto vuelve a la forma 0
+  static const dbz3::roster::FormFiles kSinFicheros = [] {
+    dbz3::roster::FormFiles f;
+    f.tech.fill(-1);
+    f.cam.fill(-1);
+    return f;
+  }();
+  if (!files && bank && id == 35 && !SinGuardas()) files = &kSinFicheros;
+  if (!files) return;
+  // ...y ya en la forma 0, lo guardado de las otras formas se suelta y el banco se olvida: la siguiente absorcion carga sus
+  // ficheros de cero, como la primera (medido: reutilizar la camara guardada de la primera cerraba el juego al volver a absorber,
+  // lr 0x8211011C, D:\DBZ3HD\_pruebas\20261112-150019_smoke_f_i75_bu_tenyam_vuelta)
+  if (files == &kSinFicheros && !bank->tech_cur && !bank->cam_cur) {
+    const uint32_t slot = SlotAddr(base, k, 1);
+    std::array<uint8_t, 544> keep;
+    if (slot) std::memcpy(keep.data(), base + slot, 544);
+    int sueltos = 0;
+    for (size_t f = 1; f < kMaxForm; ++f) {
+      if (bank->tech_node[f]) TEC_CALL(sub_82083D08, bank->tech_node[f], 0);
+      if (bank->cam_node[f]) TEC_CALL(sub_82083D08, bank->cam_node[f], 0);
+      if (bank->slot_ok[f] && slot) {
+        std::memcpy(base + slot, bank->slot[f].data(), 544);
+        TEC_CALL(sub_821266A8, k, 1);   // j = 1: el hook no toca los bancos (tech_cur = 0)
+        ++sueltos;
+      }
+      if (bank->cam_ok[f]) {
+        const auto& c = bank->cam[f];
+        TEC_CALL(sub_82083A68, (uint32_t(c[20]) << 24) | (uint32_t(c[21]) << 16) | (uint32_t(c[22]) << 8) | c[23]);
+        ++sueltos;
+      }
+    }
+    if (slot) std::memcpy(base + slot, keep.data(), 544);
+    REXLOG_INFO("dbz3 ports: lado {} id {}: sin ficheros por forma y en la forma 0: {} guardados sueltos, banco olvidado", k, id, sueltos);
+    banks.erase(banks.begin() + (bank - banks.data()));
+    return;
+  }
   if (!bank) {
     banks.emplace_back();
     bank = &banks.back();
@@ -379,6 +426,14 @@ void BankTick(PPCContext& ctx, uint8_t* base, uint32_t k, uint32_t x) {
       REXLOG_INFO("dbz3 ports: lado {} id {}: animaciones propias de la forma {}", k, id, want_cam);
     }
     REXLOG_INFO("dbz3 ports: lado {} id {} forma {}: guion {}", k, id, form, want_cam);
+    if (std::getenv("DBZ3_TEST_BU_DIAG")) g_diag_cuadros = 40;
+  }
+  if (g_diag_cuadros > 0) {   // PRUEBA #75: el objeto de X+1616 (sub_820F98B0) lee el banco (clip >> 16) del modelo de X+2960
+    --g_diag_cuadros;
+    const uint32_t m = REX_LOAD_U32(x + 2960), clip = REX_LOAD_U32(x + 3216);
+    const uint32_t banco = m && int32_t(clip) >= 0 ? REX_LOAD_U32(m + 40 + 4 * (clip >> 16)) : 0xFFFFFFFFu;
+    REXLOG_INFO("dbz3 ports: diag lado {} id {} forma {}: X+2952 {:08X} X+2960 {:08X} clip {:08X} banco {:08X} X+3260 {}", k, id,
+                REX_LOAD_U32(x + kXForm), REX_LOAD_U32(x + 2952), m, clip, banco, REX_LOAD_U8(x + 3260));
   }
 }
 
@@ -450,4 +505,24 @@ DBZ3_HOOK_EU(sub_821266A8) {
   ctx.r3.u64 = k;
   ctx.r4.u64 = j;
   orig(ctx, base);
+  // #75 (log del jugador: Bu absorbe a Ten/Yamcha, vuelve a su forma y luego cierre en sub_82083D08 con un nodo 0xF2): la orden
+  // de guion de la vuelta (sub_82128CD0 -> sub_821270C0) suelta la ranura B en pleno combate. Si en ese momento esta puesta la
+  // de una forma guardada aqui, el juego suelta la nuestra y la suya queda en el banco: al volver a la forma 0 se ponia de nuevo
+  // (el juego ya la daba por suelta) y la nuestra, suelta, quedaba marcada como lista para la siguiente absorcion. Se suelta
+  // tambien la suya (lo que el juego queria) y el banco queda en la forma 0 sin nada guardado de esa ranura.
+  if (slot && j == 1 && k < 2 && !SinGuardas()) {
+    for (auto& b : g_banks[k]) {
+      if (b.id != 35 || !b.tech_cur) continue;
+      const size_t cur = size_t(b.tech_cur);
+      if (b.slot_ok[0]) {
+        std::memcpy(base + slot, b.slot[0].data(), 544);
+        ctx.r3.u64 = k;
+        ctx.r4.u64 = j;
+        orig(ctx, base);
+      }
+      b.slot_ok[0] = b.slot_ok[cur] = false;
+      b.tech_cur = 0;
+      REXLOG_INFO("dbz3 ports: lado {} id 35: el juego suelta la ranura B en la forma {}: tambien la guardada (vuelve a la 0)", k, cur);
+    }
+  }
 }

@@ -91,6 +91,7 @@ struct DragonMissionIW {
   // azul con borde blanco). Cotejado: 346 = "Hyperbolic Time Chamber (Trunks)" (NB013, captura iw_nb013_d), 340 =
   // "1, 2, 3, 4!" (NB007, nb007fin_200). DATA_ENG (IW europeo) tiene las mismas entradas.
   std::vector<Imagen> titulos_mini;
+  Imagen previo_raditz;   // DATA_CMN 1094/0 t0 (EU y USA)
   std::array<int, 29> ids_mini{};        // tabla del ELF (EU 0x47DC00 / USA 0x47D450)
   std::vector<CasillaDM> casillas;
   // Casillas de evento (tipos 3 y 4 del #DMD) de Dragon Mission y de Fighter's Road. NO entran en `casillas` (no las
@@ -283,6 +284,7 @@ class PantallaDM {
   int dificultad_ = 2;                  // 0 Very Easy .. 4 Very Hard (lista de 334/1 t16)
   float t_ultimo_ = 0;
   bool guia_ = true;                    // SELECT: Bulma y su globo
+  bool globo_visto_ = false;            // IWFIN/HUECOS-09: ultimo estado del globo (solo para el registro)
   bool flechas_[4] = {};                // se puede desplazar hacia arriba, abajo, izquierda, derecha
   std::string aviso_;                   // minijuego elegido sin portar
   int video_ = -1, linea_ = 0;          // escena de la historia en curso (Contar)

@@ -1,0 +1,25 @@
+# Plantilla de escenario final (dsB3, 9/11). Copiar a <carril>_<pieza>.toml (sin "_" delante: los ficheros que
+# empiezan por "_" NO se ejecutan) y rellenar. La carpeta se corre entera con:
+#   python tools\pruebas.py paralelo "docs\14_frentes\escenarios_pruebas\final" --max 3
+# Cada .toml se juega en su propia copia (smoke_a/b/c), de 3 en 3. Sin juego en los carriles: esta carpeta es
+# SOLO la prueba final; el carril la deja escrita y la fase de verificacion la ejecuta.
+#
+# clave      = id de la pieza del inventario (IW-M05, B2-14, SAT-02...) y, si es un minijuego IW, su clave 0x7D5
+# cvar       = ajuste que enciende la pieza (apagado de serie); va en DBZ3_TEST_CFG y se escribe en el
+#              dbz3_user.toml de la copia (asin llega al juego; al acabar esa linea se quita sola)
+# criterio   = lo que tiene que pasar para dar la pieza por buena (numeros del banco y del juego)
+# log        = linea exacta (regex) que prueba que la pieza esta encendida y ha hecho su trabajo
+#
+# clave = IW-XXX / B2-XX / SAT-XX / ...
+# cvar  = dbz3_xxx_original=true
+# criterio = ...
+# log   = "dbz3 ..."
+descripcion = "PLANTILLA: copiar a <carril>_<pieza>.toml; pasos DSL: tecla|esperar|esperar_pantalla|esperar_pelea|captura|log"
+env = [
+  # variables del proceso hijo (las DBZ3_TEST_* de la prueba y DBZ3_PS2_GAMES si el banco esta en E:)
+  "DBZ3_TEST_CFG=dbz3_xxx_original=true",
+]
+pasos = [
+  "esperar 2000",
+  "captura 00_inicio",
+]

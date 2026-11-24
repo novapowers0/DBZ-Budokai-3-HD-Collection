@@ -1,0 +1,12 @@
+descripcion = "R16: elegir piezas y color XV2 y guardar"
+env = ["DBZ3_TEST_RINGOUT=1", "DBZ3_TEST_CFG=dbz3_cac_xv2=true"]
+pasos = [
+  "esperar 2500", "tecla W 1200", "tecla Space 3500",
+  "tecla S 450", "tecla S 450", "tecla S 450", "tecla S 450", "tecla S 450", "tecla Space 2500",
+  "tecla S 700", "tecla S 700", "tecla S 700", "tecla Space 3500",
+  "tecla S 500", "tecla S 500", "tecla Space 3000", "log \"Create abierto\" 20",
+  "esperar 5000", "tecla D 600", "tecla S 400", "tecla D 600", "tecla S 400", "tecla D 600",
+  "tecla S 400", "tecla S 400", "tecla S 400", "tecla S 400", "tecla S 400", "tecla S 400", "tecla S 400",
+  "tecla Space 1200", "tecla D 400", "tecla D 400", "tecla D 400", "tecla Space 1200",
+  "esperar 10000", "captura r16_color", "tecla 3 3000", "log \"Create: confirmar\" 20"
+]

@@ -7,6 +7,8 @@
 
 ## 0. ATAJO PARA JUGADORES: LOS ASISTENTES DEL MOD KIT (fase 2)
 
+> **Guía rápida con capturas:** [KIT_GUIA_RAPIDA.md](KIT_GUIA_RAPIDA.md) (English: [KIT_GUIA_RAPIDA_EN.md](KIT_GUIA_RAPIDA_EN.md)). Describe la portada actual con seis tarjetas; esta sección es de la fase 2 (cuatro asistentes).
+
 Si no quieres tocar bins ni consola, la portada del Mod Kit tiene cuatro tarjetas «guiadas». Cada una pregunta
 paso a paso, enseña un resumen con «Cambiar» en cada línea (el ajuste/preset y el personaje base se ven ahí) y
 tiene un único botón **Montar y probar**:
@@ -333,3 +335,45 @@ Qué no está: personajes nuevos, cápsulas, colores de aura, historias, Studio 
 - Sin moveset propio, un personaje se mueve como su donante. Renombrar las técnicas del donante no las hace propias.
 
 **Voces:** `voces = "t3:<banco>|ninguna"` toma las voces de tu Tenkaichi 3 y sigue mudo sin la ISO. Esos clips no traen tabla de situaciones: asignarlos por duración puede soltar una frase a destiempo, así que comprueba cada uno. Mejor mudo que una frase equivocada.
+
+## Importar un personaje propio desde OBJ (Blender 5.2)
+
+Con Blender 5.2 instalado y tus datos de B3 disponibles, desde la raíz del proyecto:
+
+```powershell
+python "mod center hd/importar_obj.py" "E:/Mis modelos/Personaje.obj" --nombre MiPersonaje --donante 0
+```
+
+El donante es el **ID del personaje**, no la entrada del archivo: `0` es Goku. El
+modelo recibe su esqueleto, golpes y voces. Conserva el OBJ, MTL e imágenes juntos;
+el importador trabaja sobre una copia y deja un mod independiente en
+`E:/DBZ3HD_trabajo/obj_import/mods_opcionales/`. Puedes elegir otro destino con
+`--mods "E:/Mis mods"` y otra carpeta de trabajo con `--trabajo "E:/Trabajo OBJ"`.
+Nunca sustituye un mod que ya exista.
+
+Admite varios objetos y materiales, colores por vértice, falta de MTL o de UV y
+escala distinta. Detecta Y/Z vertical; usa `--arriba y|z` y `--giro 180` si la
+orientación necesita corrección. Ajusta el esqueleto, genera pesos automáticos,
+reduce a 5.000 triángulos y conserva la rampa de sombreado de B3. `--triangulos`
+y `--textura 128|256|512` permiten ajustar la densidad y el atlas.
+
+Está pensado para **humanoides en pose T o A**. No puede adivinar de forma fiable
+cualquier anatomía: cara y dedos quedan rígidos. `--landmarks archivo.json`
+permite ajustar articulaciones con coordenadas normalizadas: X lateral, Y altura
+desde la suela y Z hacia delante. El archivo usa nombres como `HEAD`, `WAIST`,
+`LARM1`, `LARM2`, `L00_LHAND`, `LLEG1`, `LLEG2` y `LFOOT1` (también sus lados R).
+
+La carpeta de trabajo conserva `rig.blend`, atlas, retrato, cuatro vistas e
+`informe.json`; el mod lleva `importacion.json` con las huellas de los archivos.
+El PASS inicial comprueba estructura y pesos válidos: **revisa también las imágenes
+en selección y combate**, sobre todo al pegar, cargar ki y recibir daño.
+
+Para usarlo, copia la carpeta del personaje a `mods/` de tu juego y reconstruye
+los personajes con el Kit o con:
+
+```powershell
+python "mod center hd/roster_build.py" construir --mods "E:/Mi juego/mods"
+```
+
+NovaPowers se entrega por separado como mod opcional; no se incorpora al roster
+predeterminado ni al paquete de lanzamiento.

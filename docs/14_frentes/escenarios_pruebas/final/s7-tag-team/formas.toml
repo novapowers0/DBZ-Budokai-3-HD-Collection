@@ -1,0 +1,38 @@
+# S7 / TAG02: tirones al transformar. Traza de la operacion que consume el fotograma y precarga de la
+# forma siguiente. FASE 3: lo deja escrito el carril S7; lo ejecuta Z una sola vez.
+#   python tools\pruebas.py correr smoke_a "docs\14_frentes\escenarios_pruebas\final\s7-tag-team\formas.toml"
+#
+# clave    = TAG02 (forma) y la parte comun de #14 en Linux
+# cvar     = dbz3_forma_precarga=true y dbz3_forma_traza=true (NUEVAS, APAGADAS; transformaciones.cpp)
+# criterio = Goku (0) sube por sus formas: por cada una sale "formas traza: lado 1 en la forma N: X ms desde la
+#            peticion" y "preparacion de la forma en Y ms". Con la precarga, Y debe quedar por debajo del control
+#            sin precarga (mismo escenario con dbz3_forma_precarga=false). El cambio nativo y la carga quedan
+#            separados en el log para decir QUE operacion consume el tiempo.
+# log      = "hub: combate nativo", "formas traza: lado 1 en la forma 5", "formas: prueba: tope"
+#
+# PENDIENTE_JUEGO/PLATAFORMA: la parte Linux (#14) necesita una maquina Linux del usuario; aqui se mide Windows.
+# DBZ3_TEST_FORMAS_FORCE enciende las formas sin la capsula unica (solo copia de pruebas).
+descripcion = "TAG02: Goku sube por sus formas con traza de tiempos y precarga (dbz3_forma_precarga)"
+env = [
+  "DBZ3_TEST_BATTLE=0,7,2",
+  "DBZ3_TEST_FORMAS=1",
+  "DBZ3_TEST_PKG=1",
+  "DBZ3_TEST_FORMAS_FORCE=1",
+  "DBZ3_COMBATE_MUNECO=quieto",
+  "DBZ3_TEST_CFG=dbz3_forma_precarga=true;dbz3_forma_traza=true",
+]
+pasos = [
+  "log \"hub: combate nativo\" 40",
+  "log \"tag: empieza un combate\" 40",
+  "captura a_combate",
+  'log "formas: prueba: P\+K\+G en el mando 1" 60',
+  "log \"formas traza: lado 1 pide la forma 1\" 60",
+  "log \"formas traza: lado 1 en la forma 1\" 40",
+  "log \"formas traza: lado 1 en la forma 2\" 40",
+  "log \"formas traza: lado 1 en la forma 3\" 40",
+  "log \"formas traza: lado 1 en la forma 4\" 40",
+  "log \"formas traza: lado 1 en la forma 5\" 40",
+  "captura b_forma5",
+  "log \"formas: prueba: tope\" 40",
+  "captura c_tope",
+]

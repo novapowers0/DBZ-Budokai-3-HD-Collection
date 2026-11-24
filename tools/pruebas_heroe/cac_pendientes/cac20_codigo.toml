@@ -1,0 +1,30 @@
+# CAC-20 (R23): pegar un código de texto crea el héroe con la misma receta (sin arte).
+# Código generado offline con `recetas.py codigo` desde fixtures/cac20_traje.toml; su ficha está en
+# fixtures/cac20_ficha.txt. El .toml usa DBZ3_CAC_CODIGO (plan B del diseño, sin portapapeles): la acción «Pegar
+# código» lo usa cuando el portapapeles está vacío. La igualdad de bin se comprueba fuera del juego (ver LEEME.md).
+# REXLOG nuevos que espera: CAC-20: codigo pegado ....
+descripcion = "CAC-20: pegar un código bueno aplica su ficha; el héroe se monta"
+env = ["DBZ3_TEST_MODO=heroe,0", "DBZ3_HUB_MODE=5", "DBZ3_TEST_HEROE_ABRIR=2", "DBZ3_TEST_HEROE_CUERPO=0",
+       "DBZ3_CAC_FILA=pegar",
+       "DBZ3_CAC_CODIGO=DBZ3R1.eNpLLk0tKsi3NbcuKUrMSrU1sC5ILCpJLbY1MjDQMTbQMTSoMdABQmTSuiA1J9_WyDrZ0BbCTzaCMnLy0_OBRhQn55eWpBbZGgAAD_Ea6w.1c720cc9",
+       "DBZ3_TEST_CFG=dbz3_heroe_ui_nueva=true"]
+apartar = ["user_data/dbz3/cac.toml*", "user_data/dbz3/heroe", "user_data/dbz3/hub_heroe.toml*", "mods/heroe_propio"]
+poner = ["tools/pruebas_heroe/cac_pendientes/fixtures/cac20_base_cac.toml -> user_data/dbz3/cac.toml"]
+pasos = [
+  "esperar_pantalla 5 120",
+  'log "Create abierto" 180',
+  'log "vista previa 3D .* cargada" 90',
+  "esperar 2000",
+  "captura cac20_a_creador_antes",
+  "tecla Space 1500",
+  'log "dbz3 heroe: .*codigo pegado" 90',
+  'log "dbz3 heroe: .*receta aplicada a la ficha 1" 30',
+  "esperar 3000",
+  "captura cac20_b_codigo_pegado",
+  "tecla P 900",
+  "esperar 800",
+  "tecla 3 1500",
+  'log "el heroe propio de la ficha .* se monta" 60',
+  "esperar 120000",
+  "captura cac20_c_montado",
+]

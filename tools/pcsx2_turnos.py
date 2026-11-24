@@ -11,7 +11,15 @@ from ctypes import wintypes
 from datetime import datetime
 from pathlib import Path
 
-K32 = ctypes.WinDLL("kernel32", use_last_error=True)
+try:                                     # INFRA-04: cronometro comun (tools/infra.py); sin el, no mide nada
+    from infra import cronometro
+except ImportError:
+    from contextlib import nullcontext
+
+    def cronometro(nombre, detalle=""):
+        return nullcontext()
+
+K32 =ctypes.WinDLL("kernel32", use_last_error=True)
 K32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
 K32.OpenProcess.restype = ctypes.c_void_p
 K32.GetExitCodeProcess.argtypes = [ctypes.c_void_p, ctypes.POINTER(wintypes.DWORD)]
@@ -225,6 +233,29 @@ def comprobar_tope():
         raise TimeoutError("tope de tiempo de la grabacion agotado")
 
 
+GRACIA_TOPE_S = float(os.environ.get("DBZ3_GRABACION_GRACIA_S", 60))   # INFRA-04: tras el tope, corte duro si nadie llamo a comprobar_tope
+
+
+def causa_fallo(exc):
+    """INFRA-04: clase del fallo de una grabacion (para el registro y el mensaje de una linea)."""
+    if exc is None or (isinstance(exc, SystemExit) and exc.code in (0, None)):
+        return ""
+    m = repr(exc)
+    if isinstance(exc, TimeoutError) and "tope" in m:
+        return "tope"
+    if "ya está reservada" in m or "PINE bloqueado" in m or "instancias estan ocupadas" in m:
+        return "plaza_ocupada"
+    if "PINE no contesta" in m:
+        return "pine_arranque"
+    if type(exc).__name__ == "PartidaPerdida":
+        return "pine_perdido"
+    if isinstance(exc, StopIteration):
+        return "slots_control"
+    if "comprobacion previa" in m:
+        return "previa"
+    return "guion"            # fallo de la logica de la toma (pausa tarde, paso inexacto, KeyError...): no es del emulador
+
+
 class Grabacion:
     """Turno exclusivo para grabar el original: nunca dos grabaciones a la vez en el PC (todas las sesiones lo comparten).
     with Grabacion('iw 0x7D1') as g: ...   Registra la espera y si la grabacion acabo bien o con fallo."""
@@ -268,17 +299,44 @@ class Grabacion:
         self._reloj = threading.Timer(self.tope_s, vencer)
         self._reloj.daemon = True
         self._reloj.start()
+        # INFRA-04: corte duro. Si el bucle no llama a comprobar_tope (8/11: 1.090 s con tope 300), se interrumpe el hilo
+        # principal; __exit__ lo convierte en TimeoutError y los with interiores (Sesion) cierran su PCSX2.
+        self._duro = False
+        if threading.current_thread() is threading.main_thread():
+            def cortar():
+                import _thread
+                self._duro = True
+                registrar("grabacion_tope_duro", nombre=self.nombre, tope_s=self.tope_s)
+                _thread.interrupt_main()
+            self._reloj2 = threading.Timer(self.tope_s + GRACIA_TOPE_S, cortar)
+            self._reloj2.daemon = True
+            self._reloj2.start()
+        self._crono = cronometro("pcsx2_grabar", detalle=self.nombre)
+        self._crono.__enter__()
         return self
 
     def __exit__(self, tipo, exc, tb):
         self._reloj.cancel()
+        if getattr(self, "_reloj2", None):
+            self._reloj2.cancel()
         VENCIDA.clear()
-        registrar("grabacion_fin", nombre=self.nombre, ok=tipo is None, dur_s=round(time.time() - self.t_ini, 1),
-                  error=repr(exc) if exc else "")
+        if self._duro and isinstance(exc, KeyboardInterrupt):
+            exc = TimeoutError("tope de tiempo de la grabacion agotado (corte duro a %d s)" % (self.tope_s + GRACIA_TOPE_S))
+        causa = causa_fallo(exc)
+        registrar("grabacion_fin", nombre=self.nombre, ok=not causa, dur_s=round(time.time() - self.t_ini, 1),
+                  error=repr(exc) if exc else "", causa=causa)
+        if causa:
+            print("GRABACION FALLIDA [%s] %s: %s" % (causa, self.nombre, str(exc)[:200]), flush=True)
+        try:
+            self._crono.__exit__(None, None, None)
+        except Exception:
+            pass
         try:
             self.turno.liberar(os.getpid(), fuerza=True)
         except RuntimeError:
             pass
+        if self._duro and tipo is KeyboardInterrupt:
+            raise exc
         return False
 
 
@@ -320,8 +378,28 @@ def autoprueba():
             raise AssertionError("el tope no corto")
         except TimeoutError:
             pass
+        global GRACIA_TOPE_S                        # INFRA-04: corte duro aunque el bucle no llame a comprobar_tope
+        GRACIA_TOPE_S, t0 = 0.2, time.time()
+        try:
+            with Grabacion("tope duro", tope_s=0.1):
+                while time.time() - t0 < 5:
+                    time.sleep(0.05)
+            raise AssertionError("el tope duro no corto")
+        except TimeoutError:
+            assert time.time() - t0 < 2
+        try:                                        # SystemExit(0) no es un fallo (10/11 contaba como fallida)
+            with Grabacion("sale con 0"):
+                raise SystemExit(0)
+        except SystemExit:
+            pass
+        assert causa_fallo(SystemExit(0)) == "" and causa_fallo(None) == ""
+        assert causa_fallo(TimeoutError("tope de tiempo de la grabacion agotado")) == "tope"
+        assert causa_fallo(RuntimeError("pool_3 ya está reservada en PINE 28053 por PID 1")) == "plaza_ocupada"
+        assert causa_fallo(RuntimeError("PINE no contesta en 600 s")) == "pine_arranque"
+        assert causa_fallo(StopIteration()) == "slots_control"
+        assert causa_fallo(RuntimeError("la pausa llego tarde")) == "guion"
         r = resumen_registro()
-        assert r["grabaciones"] == 3 and r["fallidas"] == 2, r
+        assert r["grabaciones"] == 5 and r["fallidas"] == 3, r
     print("AUTOPRUEBA pcsx2_turnos OK; nucleos rapidos mascara", hex(m), "(%d CPUs)" % bin(m).count("1"))
 
 

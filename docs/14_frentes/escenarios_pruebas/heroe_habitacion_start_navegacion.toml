@@ -1,0 +1,27 @@
+descripcion = "solHAB: vueltas del cursor virtual y primera accion nativa"
+env = [
+  "DBZ3_TEST_DU_HEROE=35",
+  "DBZ3_TEST_CFG=dbz3_heroe_habitacion=true",
+]
+pasos = [
+  'log "escena 10[02] entrada 35" 180',
+  "tecla Space 2000",
+  "tecla Space 2000",
+  "tecla Space 2000",
+  "tecla Space 2000",
+  "tecla Space 2000",
+  "tecla Space 2000",
+  "esperar 8000",
+  "tecla Return 1500",
+  "tecla W 500",
+  "captura a_arriba_a_habitacion",
+  "tecla W 500",
+  "captura b_arriba_a_guardar",
+  "tecla S 500",
+  "tecla S 500",
+  "captura c_abajo_a_primera",
+  "tecla Space 5000",
+  "captura d_habilidades_nativas",
+  "tecla Quote 5000",
+  "captura e_regreso",
+]

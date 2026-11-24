@@ -1,0 +1,19 @@
+# Reto corto con premio (MODOS-02): 2 combates y 800 Zenie al completarlo
+vida = 3000
+vida_inicial = 0
+arrastra_vida = false
+recupera = 0
+pausa = true
+premio = 800
+nombre = "Prueba premio"
+name = "Prize test"
+
+[[combate]]
+rival = 42
+escenario = 0
+vida = 1500
+
+[[combate]]
+rival = 18
+escenario = 1
+vida = 1500

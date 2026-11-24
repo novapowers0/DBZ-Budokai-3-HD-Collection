@@ -1,0 +1,74 @@
+# F5 / B2-15 + B2C — transicion Ciudad (grupo 8, entrada 5008) del port.
+#   python tools\pruebas.py correr <copia> "docs\14_frentes\escenarios_pruebas\final\f5-b2-trans-datos\ciudad.toml"
+#
+# clave    = B2-15 / B2C
+# cvar     = dbz3_b2_transicion_ciudad=true (de serie APAGADA)
+# env      = DBZ3_TEST_BATTLE=0,0,18 (escenario Ciudad), muneco quieto en el LADO 2 (sin
+#            DBZ3_COMBATE_LADOS: el teclado lleva el lado 1, como el arnes que midio la escena), FOTOS=30,120,300
+# criterio = (banco offline, ya verde) camara del recurso == original: 0,005 a 120 y
+#            0,000 a 300 (clip 1, t=142,8; desfase 158,4 = preludio 38,4 + 120); a 30 la
+#            toma original aun es la camara de combate (distancia 71,2: no comparable).
+#            Destino del hueso del rival: clip TRAY 1 termina en z=-19,0; la posicion
+#            del actor en la toma original esta en z=-25,49 a los 300 y -47,11 al FIN.
+#            A los 300 la diferencia -6,49 es el hueso raiz del modelo; el criterio
+#            z=-25+-1 corresponde a la foto 300, no al FIN (tras tumbarse sigue hasta
+#            -47,11). Duracion original 357,6; camara 38,4+280 = 318,4 y cola de 39,2.
+#            EN JUEGO (PENDIENTE_JUEGO): rival termina a z=-25+-1 y camara a 120/300
+#            dentro del margen; los dbz3_b2_foto_*.json traen la posicion y los codigos
+#            de actor (la toma original mide 152/estado18 a 120 y 168/estado20 a 300).
+# log      = "dbz3 B2 HD: inicio" con entrada=5008 y "dbz3 B2 foto: detenida cuadro=30|120|300"
+#            (sin "bloqueo=" ni "VM bloqueada" antes del fin)
+descripcion = "Transicion Ciudad B2 con dbz3_b2_transicion_ciudad: rival z=-25+-1, camara 120/300 y fotos 30/120/300"
+env = [
+  "DBZ3_TEST_BATTLE=0,0,18",
+  "DBZ3_COMBATE_MUNECO=quieto",
+  "DBZ3_TEST_B2_CONSULTA=1",
+  "DBZ3_TEST_B2_FOTOS=30,120,300",
+  "DBZ3_TEST_CFG=dbz3_b2_transicion_ciudad=true",
+  'DBZ3_PS2_GAMES=D:\DBZ3HD\ps2_games',
+]
+pasos = [
+  'log "muneco en el lado 2" 90',
+  'esperar 4000',
+  'tecla Space+P 3000',
+  'tecla D:2500 300',
+  'tecla Space+P 3000',
+  'tecla D:2500 300',
+  'tecla Space+P 3000',
+  'tecla D:2500 300',
+  'tecla Space+P 3000',
+  'tecla D:2500 300',
+  'tecla Space+P 3000',
+  'tecla D:2500 300',
+  'tecla Space+P 3000',
+  'tecla D:2500 300',
+  'tecla Space+P 3000',
+  'tecla D:2500 300',
+  'tecla Space+P 3000',
+  'tecla D:2500 300',
+  'tecla Space+P 3000',
+  'tecla D:2500 300',
+  'tecla Space+P 3000',
+  'tecla D:2500 300',
+  'tecla Space+P 3000',
+  'tecla D:2500 300',
+  'tecla Space+P 3000',
+  'tecla D:2500 300',
+  'tecla Space+P 3000',
+  'tecla D:2500 300',
+  'tecla Space+P 3000',
+  'tecla D:2500 300',
+  'tecla Space+P 3000',
+  'tecla D:2500 300',
+  'tecla Space+P 3000',
+  'tecla D:2500 300',
+  'tecla Space+P 3000',
+  'tecla D:2500 300',
+  'tecla Space+P 3000',
+  'tecla D:2500 300',
+  'tecla Space+P 3000',
+  'tecla D:2500 300',
+  'tecla Space+P 3000',
+  'tecla D:2500 300',
+  'captura fin'
+]

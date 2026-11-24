@@ -20,6 +20,24 @@ struct NewsBlock {
   int count;
 };
 
+inline constexpr NewsItem kNews157[] = {
+    {"Dos modos nuevos (BETA)", "Two new modes (BETA)",
+     "Dragon Budokai Survivors: sobrevive a las hordas con 8 luchadores y 6 escenarios, cartas de mejora y jefes en dos fases. Dragon Rogue: ocho caminos (Torre, El Abismo, Kumite...) con cartas, transformaciones y reto diario. Los dos están en el Dragon HUB.",
+     "Dragon Budokai Survivors: survive the hordes with 8 fighters and 6 stages, upgrade cards and two-phase bosses. Dragon Rogue: eight paths (Tower, The Abyss, Kumite...) with cards, transformations and a daily challenge. Both are in the Dragon HUB."},
+    {"Budokai 2", "Budokai 2",
+     "Llanura cambia de zona en pleno combate (juego local con el núcleo USA y la Llanura convertida desde tu copia de Budokai 2).",
+     "Plains changes area mid-fight (local play with the USA core and the Plains converted from your Budokai 2 copy)."},
+    {"Héroe (BETA)", "Hero mode (BETA)",
+     "La pantalla de Técnicas muestra lo que llevas equipado y qué maestro abre cada técnica. Fondos originales en las sagas y 10 fallos corregidos (uno cerraba el juego).",
+     "The Techniques screen shows what you have equipped and which master unlocks each move. Original backgrounds in the sagas and 10 bugs fixed (one closed the game)."},
+    {"Creador de personajes (BETA)", "Character creator (BETA)",
+     "Pestañas, vista de cada transformación con el mando, peinados originales de Budokai 3 (se sustituyen, nunca se apilan) y botón para volver a los colores de serie. Super Saiyan con pelo dorado y ojos azules.",
+     "Tabs, preview each transformation with the controller, original Budokai 3 hairstyles (they replace each other, never stack) and a button to restore the default colours. Super Saiyan gets gold hair and blue eyes."},
+    {"Actualizar", "Updating",
+     "Al actualizar, el launcher pone los ajustes nuevos de serie que no habías cambiado y aparta (sin borrar) los archivos que ya no se usan en _respaldo_actualizacion. El japonés con datos europeos ya no se queda en la carga.",
+     "When updating, the launcher applies the new defaults you had not changed and moves (never deletes) unused files to _respaldo_actualizacion. Japanese with European data no longer hangs on loading."},
+};
+
 inline constexpr NewsItem kNews1562[] = {
     {"Mods con tu copia", "Mods from your copy",
      "Las absorciones de Bu, Yamhan y Gotan (y cualquier personaje importado de Budokai 1 o 2) ya no necesitan el Budokai 3 de PS2: los movimientos base salen de tu versión HD.",
@@ -410,6 +428,7 @@ inline constexpr NewsItem kNews145[] = {
 
 // Del mas nuevo al mas antiguo.
 inline constexpr NewsBlock kNewsBlocks[] = {
+    {"1.5.7", kNews157, int(sizeof(kNews157) / sizeof(kNews157[0]))},
     {"1.5.6.2", kNews1562, int(sizeof(kNews1562) / sizeof(kNews1562[0]))},
     {"1.5.6.1", kNews1561, int(sizeof(kNews1561) / sizeof(kNews1561[0]))},
     {"1.5.6", kNews156, int(sizeof(kNews156) / sizeof(kNews156[0]))},

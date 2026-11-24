@@ -8,6 +8,8 @@
 namespace dbz3::tag {
 
 bool InBattle();
+// Un relevo esta cargando (algún lado). Lo consulta la precarga de formas (TAG02) para no pisar sus huecos.
+bool Swapping();
 
 // Lo que dibuja el marcador de los compañeros (tagteam_panel.cpp), copiado en cada tick.
 struct HudSide {
@@ -35,13 +37,15 @@ void SetMemberCapsules(int side, int id, const uint16_t* caps);
 // suyas por defecto. Online siempre las de por defecto (los dos PCs tienen que ver lo mismo).
 void PutCapsules(uint8_t* base, uint32_t rec, int side, int id);
 // Ultimo equipo elegido por 1P en TAG TEAM: online, cada PC manda el suyo (netplay kTeam).
-std::vector<int> MyLastTeam();
+std::vector<int> MyLastTeam(bool stable = false);
 // Pantalla ONLINE: equipo que se lleva a la sala (2+ ids = Tag Team; vacio = 1 contra 1). No toca los equipos de combate.
 void SetMyOnlineTeam(const std::vector<int>& members);
 // Online: lista Custom propia del luchador (id de serie o de plaza): {n, hasta 7 IDs de capsula}; n = 0 = la Normal.
 std::array<uint16_t, 8> OwnCustomCapsules(int id);
 // Lado que lleva el ordenador (relevo propio cuando le queda poca vida).
 void SetComSide(int side, bool com);
+// TAG05: cooperativo con dos mandos en el mismo equipo (miembro 0 = mando 1, miembro 1 = mando 2).
+void SetCoop(bool on);
 // Inicio del combate (roster_ext.cpp, hook de sub_820FE668): rellena las ranuras y cambia el ID.
 void BeforeBattleSetup(uint8_t* base, uint32_t sel);
 // Online: relevos ya cargados en este PC (bits 0x0400/0x0800 que viajan en el mando) y los de los

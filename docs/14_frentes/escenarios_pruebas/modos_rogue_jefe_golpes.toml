@@ -1,0 +1,30 @@
+descripcion = "modos_rogue_jefe_golpes (ROG-01): Dragon Rogue, jefe en cada combate (DBZ3_TEST_ROGUE_JEFE=1): el jugador lo lleva el ordenador (DBZ3_COMBATE_LADOS=2) y golpea de verdad al jefe 1 (Broly, armadura 50 %, ventana 10 s) y al 2 (gigante, 60 %, ventana 8 s): el registro debe tener golpes con armadura y golpes sin armadura en el hueco de 3 s; el aviso sale como siempre"
+# El aviso de ring out llega a los 12 s (DBZ3_TEST_RINGOUT_S, tagteam.cpp): hueco de 3 s = de 7 a 10 s (jefe 1) y de 5 a 8 s (jefe 2).
+# Aparta rogue.toml para empezar sin partida; la oferta tras el jefe 1 sale de ROGUE_JEFE=1 python tools/rogue_oferta.py (Space = la del medio).
+# Teclas: Space = A, Backspace = B (guardar y salir).
+env = ["DBZ3_HUB_MODE=5", "DBZ3_TEST_RINGOUT=1", "DBZ3_TEST_RINGOUT_S=12", "DBZ3_COMBATE_LADOS=2", "DBZ3_TEST_ROGUE=3", "DBZ3_TEST_ROGUE_JEFE=1", "DBZ3_TEST_MODO=rogue,0", "REX_DBZ3_LANGUAGE=5"]
+apartar = ["user_data/dbz3/rogue.toml*"]
+pasos = [
+  "esperar_pantalla 5 120",
+  "log 'prueba: Dragon Rogue' 30",
+  "esperar 2500",
+  "tecla Space 3000",
+  "log 'Dragon Rogue combate 1: pedido .vida [0-9]+/[0-9]+, dano 100%, recibido 150%, armadura 50%' 60",
+  "log 'dbz3 modos: reglas: golpe al rival [0-9]+ -> [0-9]+ .50%, con armadura.' 90",
+  "log 'dbz3 modos: reglas: golpe al rival [0-9]+ sin armadura .hueco.' 60",
+  "captura 01_combate_jefe1",
+  "log 'Dragon Rogue: combate 1 ganado' 180",
+  "esperar 3000",
+  "tecla Space 1500",
+  "esperar 1500",
+  "captura 02_aviso_jefe2",
+  "tecla Space 3000",
+  "log 'Dragon Rogue combate 2: pedido .vida [0-9]+/[0-9]+, dano [0-9]+%, recibido [0-9]+%, armadura 60%' 60",
+  "log 'dbz3 modos: reglas: golpe al rival [0-9]+ -> [0-9]+ .40%, con armadura.' 90",
+  "log 'dbz3 modos: reglas: golpe al rival [0-9]+ sin armadura .hueco.' 60",
+  "captura 03_combate_jefe2",
+  "log 'Dragon Rogue: combate 2 ganado' 180",
+  "esperar 3000",
+  "tecla Backspace 2500",
+  "captura 04_guardar_y_salir",
+]

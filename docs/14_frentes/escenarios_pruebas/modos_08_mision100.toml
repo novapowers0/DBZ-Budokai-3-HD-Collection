@@ -1,0 +1,12 @@
+descripcion = "MODOS-08: Mision 100 de la 2 a la 100 encadenadas en una sola partida (DBZ3_TEST_M100_HASTA, RINGOUT): cada una ha de empezar, acabar y dar rango"
+turbo = 2
+env = ["DBZ3_HUB_MODE=5", "DBZ3_TEST_RINGOUT=1", "DBZ3_TEST_MODO=mision100,0,25", "DBZ3_TEST_M100_HASTA=100"]
+apartar = ["user_data/dbz3/rpg.toml*", "user_data/dbz3/hub_modos.toml*", "user_data/dbz3/modos", "user_data/dbz3/retos.csv", "user_data/dbz3/hub_heroe.toml*", "user_data/dbz3/pasarela"]
+pasos = [
+  "esperar_pantalla 5 120",
+  "log 'modos: prueba: mision 100 n 25 con id 0: empieza' 90",
+  "hasta_log \"mision 100 n 100: rango\" 7200",
+  "tecla Space 2500",
+  "fin",
+  "esperar 3000",
+]

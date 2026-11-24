@@ -72,6 +72,33 @@ REGLAS = [
 # lectura del pad / mando: no es puente (lee un global), pero el port debe dar el global; se anota aparte
 PAD = re.compile(r'(ReadPlayer(Buttons|Stick)|ReadControlAxes|GetPressedButton|PlayerInput|MovePlayerByStick)')
 TOKEN_HW = (0x10000000, 0x12000000)   # registros DMA/GS/timers del EE (lui 0x1000..0x1200..)
+# IW-F01 (11/11): libm de float (sin/cos/atan2/acos) y libgcc (64 bits y soft-float de doble: __extendsfdf2 0x119BB0,
+# __muldf3 0x11A040, __truncdfsf2 0x11A6B0...). Mismas direcciones en EU y USA (cuerpos iguales). Sus nombres del
+# decompilado son inventados ("LoadingScreenEffects...") y las reglas por nombre las hacian mudas: nunca son puente.
+MATES = (0x113A48, 0x11A7A8)
+PUENTES_MATES = {0x11A040}   # __muldf3: puente CON valor (el interprete no tiene pmfhl.lw), no mudo
+MEMORY = 0x127CA0            # Memory(n): n pasos del LFSR de la semilla (gp-0x7FE8); igual en EU y USA
+
+
+def es_mates(a):
+    return MATES[0] <= a < MATES[1]
+
+
+def auditar_mudos():
+    """Ningun ayudante matematico mudo en el C++ (src/iw_mips*) ni en los bancos de botones (T2B/qte*.py)."""
+    fs = sorted(RAIZ.glob('src/iw_mips*.cpp')) + sorted(RAIZ.glob('src/iw_mips*.inl')) + sorted(Path('E:/DBZ3HD_trabajo/T2B').glob('qte*.py'))
+    mal = []
+    for f in fs:
+        for n, l in enumerate(f.read_text(encoding='utf-8', errors='replace').splitlines(), 1):
+            codigo = l.split('//')[0] if f.suffix != '.py' else l.split('#')[0]
+            for m in re.finditer(r'0x([0-9A-Fa-f]{5,6})\b', codigo):
+                a = int(m.group(1), 16)
+                if es_mates(a) and a not in PUENTES_MATES:
+                    mal.append(f'{f.name}:{n}: {a:06X}  {l.strip()[:100]}')
+    print(f'auditar_mudos: {len(fs)} archivos, {len(mal)} ayudantes matematicos mudos')
+    for x in mal:
+        print('  ' + x)
+    return mal
 
 
 class Elf:
@@ -221,12 +248,14 @@ def detecta(clave, prof=8, elf=None, cov=None):
         if not (TEXTO0 <= a < TEXTO1):
             res['desconocidas'].append(f'{a:06X} fuera del texto')
             continue
-        c = None if (p == 0 or PAD.search(nom)) else clasifica_nombre(nom)
+        c = None if (p == 0 or PAD.search(nom) or es_mates(a)) else clasifica_nombre(nom)
         if PAD.search(nom):
             res['pad'].append(f'{a:06X} {nom}')
         info = analiza(elf, a)
         if c is None and p > 0 and info['hw']:
             c = ('hardware', True)
+        if c is not None and c[1] and MEMORY in info['llama']:
+            c = (c[0] + '+azar', False)   # IW-F01: gasta el LFSR (Memory): mudo, cambia las secuencias siguientes
         if c is not None:
             res['puentes'][a] = dict(nombre=nom, clase=c[0], mudo=c[1], prof=p)
             continue
@@ -298,6 +327,11 @@ def autoprueba():
     assert any(v['nombre'] == 'Audio_PlaySlot' and v['clase'] == 'sonido' and v['mudo'] for v in ra['puentes'].values()), ra['puentes']
     # idempotente
     assert resumen(detecta('7D4', elf=elf, cov=cov)) == resumen(ra)
+    # IW-F01: __truncdfsf2 (nombre falso de "carga") ya no sale como puente mudo
+    assert 0x11A6B0 not in ra['puentes'], ra['puentes'].get(0x11A6B0)
+    # IW-F01: Minigame_CheckTransformSound (0x371E30) llama a Memory: no es mudo aunque su nombre sea de sonido
+    r5 = detecta('7D5', elf=elf, cov=cov)
+    assert r5['puentes'][0x371E30]['mudo'] is False, r5['puentes'][0x371E30]
     print(f"detector.py autoprueba OK (cubiertas {len(cov)}; IA Bubbles: {r['puras']} puras, {len(r['puentes'])} puentes {sorted(pu)[:6]}; "
           f"7D4: {len(ra['puentes'])} puentes)")
 
@@ -309,9 +343,12 @@ def main():
     ap.add_argument('--json', type=Path)
     ap.add_argument('--md', type=Path, help='tabla Markdown + detalle')
     ap.add_argument('--autoprueba', action='store_true')
+    ap.add_argument('--mudos', action='store_true', help='auditar ayudantes matematicos mudos (C++ y bancos)')
     a = ap.parse_args()
     if a.autoprueba:
         return autoprueba()
+    if a.mudos:
+        sys.exit(1 if auditar_mudos() else 0)
     elf = Elf()
     cov = cubiertas(elf)
     claves = LOS_12 if a.clave == 'todos' else [a.clave.upper().replace('0X', '')]

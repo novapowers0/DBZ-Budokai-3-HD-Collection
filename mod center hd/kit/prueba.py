@@ -100,10 +100,23 @@ def rapido(app, g, say):
     modelo = tempfile.NamedTemporaryFile(suffix=".amb", delete=False)
     modelo.close()
     w.v["modelo"].set(modelo.name)
-    check(w.siguiente() and w.siguiente() and w.idx == 3, "wizard Traje: llega al resumen")
-    w.montar()
-    cmds = [c for t, c in app.selftest_cmds[n0:] if t.startswith("asistente:")]
-    check(len(cmds) == 2 and cmds[0] == ["<funcion>"] and cmds[1][2] == "construir", "wizard Traje monta")
+    check(not w.siguiente(), "wizard Traje: rechaza un archivo que no es un modelo")
+    try:                                                   # un modelo de verdad: el de Goku del juego del jugador
+        import roster_build as rb
+        wk = rb.work_dir("kit_st_")
+        with open(modelo.name, "wb") as fh:
+            fh.write(rb.to_hd(rb.Afs(os.path.join(app.env.us or rb.default_us(), "data_cmn.afs"), wk).entry(264), wk))
+        hay = True
+    except Exception as ex:                                # noqa: BLE001 -- sin juego: se salta esta parte
+        say("wizard Traje: sin datos del juego (%s), no se prueba el montaje" % ex)
+        hay = False
+    if hay:
+        w.v["modelo"].set(modelo.name)
+        check(w.siguiente() and w.siguiente() and w.idx == 3, "wizard Traje: llega al resumen")
+        check(w.respuestas().get("modelo") == modelo.name, "wizard Traje: el mismo modelo para todas las formas")
+        w.montar()
+        cmds = [c for t, c in app.selftest_cmds[n0:] if t.startswith("asistente:")]
+        check(len(cmds) == 2 and cmds[0] == ["<funcion>"] and cmds[1][2] == "construir", "wizard Traje monta")
     w.cerrar()
     os.unlink(modelo.name)
     # 4) Instalar .zip + deshacer (carpeta temporal, sin motores)

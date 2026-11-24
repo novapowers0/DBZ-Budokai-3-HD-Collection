@@ -7,12 +7,13 @@ las respuestas (`respuestas`) y que plan de kit/planes.py corresponde. `g` = mod
 from __future__ import annotations
 
 import colorsys
+import json
 import os
 import queue
 import sys
 import threading
 
-from kit import errores, musica, planes, probar, vistas
+from kit import errores, musica, planes, probar, traje, vistas
 
 
 class Paso:
@@ -27,6 +28,7 @@ class Asistente:
     """Ventana con pasos. Las subclases rellenan `self.pasos`, `respuestas()` y `plan()`."""
     nombre = ("", "")
     intro = ("", "")
+    geometria, minimo = "820x640", (700, 520)
 
     def __init__(self, app, g):
         import tkinter as tk
@@ -37,8 +39,8 @@ class Asistente:
             self.win.withdraw()
         self.win.title(g.T(*self.nombre))
         self.win.configure(bg=g.C["bg"])
-        self.win.geometry("820x640")
-        self.win.minsize(700, 520)
+        self.win.geometry(self.geometria)
+        self.win.minsize(*self.minimo)
         self.idx, self.vuelve, self.hecho, self.lote, self.cancelar = 0, False, False, None, False
         self.cola, self.proc = queue.Queue(), None
         self.pasos = []
@@ -235,6 +237,10 @@ class Asistente:
                     if ok:
                         extra = (g.T(" Ojo: %d aviso(s) en el registro.", " Note: %d warning(s) in the log.") % len(av)
                                  if av else "")
+                        plan = getattr(self, "ultimo_plan", None)
+                        if plan is not None and plan.construye:   # qué se montó (trajes, personajes, omitidos)
+                            lineas = probar.resumen(texto, self.app.env.mods, plan.nuevos, g.LANG == "en")
+                            extra += "".join("\n" + x for x in lineas)
                         pr = getattr(self, "prueba", None)
                         if pr:
                             self.estado_txt({"ok": "ok", "aviso": "warn"}.get(pr[0], "err"), pr[1] + extra)
@@ -654,20 +660,36 @@ class AsistenteAspecto(Asistente):
 
 # ====================================================================================== 3. Traje
 class AsistenteTraje(Asistente):
-    nombre = ("Dar un traje a un personaje", "Give a character a costume")
-    intro = ("Añade un traje extra a un personaje del juego, con un personaje que ya importaste o con tu propio modelo.",
-             "Add an extra costume to a game character, using a character you already imported or your own model.")
+    """«Cambiar traje» (maqueta KIT_VISUAL/02_traje.png): a quién, qué aspecto (una casilla por forma con su render toon,
+    hecho en segundo plano y guardado en la cache del Kit) y nombre. La logica esta en kit/traje.py."""
+    nombre = ("Cambiar traje", "Change costume")
+    intro = ("Un traje extra para un personaje del juego: con tu modelo, con un personaje que ya tienes, con otro traje "
+             "del juego o cambiando solo los colores.",
+             "An extra costume for a game character: from your model, a character you already have, another game "
+             "costume, or just new colours.")
+    geometria, minimo = "1300x880", (1100, 760)
+    ORIGENES = (("modelo", "Mi archivo de modelo", "My model file"),
+                ("port", "Otro personaje que ya tengo", "Another character I have"),
+                ("juego", "Otro traje del juego", "Another game costume"),
+                ("colores", "Solo cambiar colores", "Only change colours"))
 
     def construir_pasos(self):
         g = self.g
-        self.v = {k: self.var() for k in ("pj", "origen", "port", "modelo", "nombre")}
+        self.v = {k: self.var() for k in ("pj", "origen", "port", "modelo", "nombre", "juego", "color")}
         self.v["pj"].set(g.donor_values()[0])
-        self.v["origen"].set("port")
+        self.v["origen"].set("modelo")
+        self.v["modelo"].trace_add("write", lambda *_: self.win.after_idle(self._actualizar))
+        self.pid_ant = None
+        self.elegidas = {"modelo": {}, "juego": {}}       # forma -> origen elegido a mano (pulsando su casilla)
+        self.sel, self.celdas, self.fotos, self.pedidas = 0, {}, {}, set()
+        self.trabajos, self.listas, self.hilo_v, self.revisor = queue.Queue(), queue.Queue(), None, None
+        self.catalogo = [c for c in g.load_catalog(self.app.env) if c["playable"]]
         self.pasos = [
-            Paso("¿A quién?", "Who gets it?", self._p_pj, None, lambda: [(g.T("Personaje", "Character"), self._pnombre())]),
-            Paso("¿Qué modelo?", "Which model?", self._p_modelo, self._c_modelo, self._f_modelo),
-            Paso("Nombre", "Name", self._p_nombre, self._c_nombre, self._f_nombre)]
+            Paso("¿A quién?", "Who?", self._p_pj, self._c_pj, lambda: [(g.T("Personaje", "Character"), self._pnombre())]),
+            Paso("¿Qué aspecto?", "Which look?", self._p_aspecto, self._c_aspecto, self._f_aspecto),
+            Paso("Nombre y guardar", "Name and save", self._p_nombre, self._c_nombre, self._f_nombre)]
 
+    # ---------------------------------------------------------------- datos
     def _pid(self):
         vals = self.g.donor_values()
         v = self.v["pj"].get()
@@ -676,49 +698,378 @@ class AsistenteTraje(Asistente):
     def _pnombre(self):
         return self.g.donor_name(self._pid())
 
-    def _p_pj(self, b):
-        b.columnconfigure(1, weight=1)
-        self.fila_combo(b, self.g.T("Personaje del juego", "Game character"), self.v["pj"], self.g.donor_values(), 0, 40)
+    def _formas(self):
+        return traje.formas(self._pid())
+
+    def _fn(self, fo):
+        return self.g.T(fo["es"], fo["en"])
 
     def _ports(self):
         return [m["name"] for m in self.g.scan_mods(self.app.env.mods)
                 if m["type"] == "personaje" and not m["name"].startswith("traje_")]
 
-    def _p_modelo(self, b):
-        g = self.g
+    def _cat_bin(self):
+        v = self.v["juego"].get()
+        return next((c["bin"] for c in self.catalogo if self.g.char_label(c) == v), None)
+
+    def _tono(self):
+        return next((t for k, es, en, t in self.g.COLOR_PRESETS if self.g.T(es, en) == self.v["color"].get()), None)
+
+    def _origenes(self):
+        """Origen elegido por forma (None = sin modelo propio) y tono de color (solo en «Solo cambiar colores")."""
+        o, fs = self.v["origen"].get(), self._formas()
+        if o == "port":
+            try:
+                return traje.origenes_port(self.app.env.mods, self.v["port"].get(), self._pid()), None
+            except (OSError, ValueError):
+                return [None] * len(fs), None
+        if o == "colores":
+            return ["juego:%d" % f["nat"] for f in fs], self._tono()
+        comun = self.v["modelo"].get().strip() if o == "modelo" else (
+            "juego:%d" % self._cat_bin() if self._cat_bin() is not None else "")
+        return [self.elegidas[o].get(f["f"]) or comun or None for f in fs], None
+
+    def _plan_formas(self):
+        """[(origen, estado, desde)] (traje.resolver) o [] si aun no hay ningun modelo."""
+        orig, _t = self._origenes()
+        try:
+            return traje.resolver(self._pid(), orig)
+        except traje.NoEncaja:
+            return []
+
+    # ---------------------------------------------------------------- vistas en segundo plano
+    def _vista(self, f, origen, tono=None):
+        """Carpeta de la vista de la forma f con ese origen (frente.png, lado.png, res.json); la pide si no esta."""
+        us = self.app.env.us or ""
+        d = traje.cache_vista(us, self._pid(), f, origen, tono)
+        if not os.path.isfile(os.path.join(d, "res.json")) and d not in self.pedidas and not self.app.selftest:
+            self.pedidas.add(d)
+            self.trabajos.put(traje.cmd_vista(self.app.env.python, us, self._pid(), f, origen, d, tono))
+            if self.hilo_v is None or not self.hilo_v.is_alive():
+                self.hilo_v = threading.Thread(target=self._dibujar, daemon=True)
+                self.hilo_v.start()
+                self.win.after(300, self._recoger)
+        return d
+
+    def _dibujar(self):
+        import subprocess
+        while True:
+            try:
+                cmd = self.trabajos.get(timeout=2)
+            except queue.Empty:
+                return
+            try:
+                subprocess.run(cmd, capture_output=True, timeout=300, creationflags=self.g.NO_WINDOW)
+            except (OSError, subprocess.SubprocessError):
+                pass
+            self.listas.put(cmd[7])
+
+    def _recoger(self):
+        hubo = False
+        while not self.listas.empty():
+            self.listas.get_nowait()
+            hubo = True
+        try:
+            if hubo and self.idx == 1:
+                self._actualizar()
+            if (self.hilo_v and self.hilo_v.is_alive()) or not self.listas.empty():
+                self.win.after(300, self._recoger)
+        except self.tk.TclError:
+            pass
+
+    @staticmethod
+    def _res(d):
+        try:
+            with open(os.path.join(d, "res.json"), encoding="utf-8") as fh:
+                return json.load(fh)
+        except (OSError, ValueError):
+            return None
+
+    def _foto(self, ruta, lado):
+        from PIL import Image, ImageTk
+        k = (ruta, lado, os.path.getmtime(ruta) if os.path.isfile(ruta) else 0)
+        if k not in self.fotos:
+            try:
+                with Image.open(ruta) as im:
+                    im = im.convert("RGBA")
+            except OSError:
+                return None
+            if im.getbbox():
+                im = im.crop(im.getbbox())                 # sin margen vacio: la figura llena su hueco
+            im.thumbnail(lado)
+            self.fotos[k] = ImageTk.PhotoImage(im)
+        return self.fotos[k]
+
+    # ---------------------------------------------------------------- pasos
+    def _p_pj(self, b):
         b.columnconfigure(1, weight=1)
-        ports = self._ports()
-        self.ttk.Radiobutton(b, text=g.T("De un personaje que ya importé", "From a character I already imported"),
-                             value="port", variable=self.v["origen"], style="Card.TRadiobutton").grid(
-            row=0, column=0, columnspan=2, sticky="w", pady=3)
-        self.fila_combo(b, g.T("Personaje importado", "Imported character"), self.v["port"], ports, 1, 40)
-        if ports and self.v["port"].get() not in ports:
-            self.v["port"].set(ports[0])
-        if not ports:
-            g.hint(b, g.T("Todavía no has importado ninguno: usa «Añadir un personaje» primero.",
-                          "You have not imported any yet: use 'Add a character' first."),
-                   bg=g.C["card"]).grid(row=2, column=1, sticky="w")
-        self.ttk.Radiobutton(b, text=g.T("De mi propio modelo (.amb o .bin)", "From my own model (.amb or .bin)"),
-                             value="modelo", variable=self.v["origen"], style="Card.TRadiobutton").grid(
-            row=3, column=0, columnspan=2, sticky="w", pady=(10, 3))
-        g.label(b, g.T("Archivo del modelo", "Model file"), bg=g.C["card"]).grid(row=4, column=0, sticky="w",
-                                                                                padx=(0, 12))
-        g.PathEntry(b, self.v["modelo"], "file", bg=g.C["card"]).grid(row=4, column=1, sticky="ew", pady=4)
+        self.fila_combo(b, self.g.T("Personaje del juego", "Game character"), self.v["pj"], self.g.donor_values(), 0, 40)
 
-    def _c_modelo(self):
-        g = self.g
-        if self.v["origen"].get() == "port" and not self.v["port"].get():
-            return g.T("Elige un personaje importado o usa tu propio modelo.", "Pick an imported character or use "
-                       "your own model.")
-        if self.v["origen"].get() == "modelo" and not os.path.isfile(self.v["modelo"].get().strip()):
-            return g.T("Elige el archivo del modelo.", "Pick the model file.")
+    def _c_pj(self):
+        if not self._formas():
+            return self.g.T("Este personaje no tiene trajes en el juego: elige otro.",
+                            "This character has no costumes in the game: pick another one.")
+        if self._pid() != self.pid_ant:                   # otro personaje: sus formas son otras
+            self.pid_ant, self.sel = self._pid(), 0
+            self.elegidas = {"modelo": {}, "juego": {}}
 
-    def _f_modelo(self):
-        g = self.g
+    def _p_aspecto(self, b):
+        g, tk, ttk = self.g, self.tk, self.ttk
+        C, F, T = g.C, g.F, g.T
+        b.columnconfigure(1, weight=1)
+        b.rowconfigure(0, weight=1)
+        # izquierda: personaje y de donde sale el aspecto
+        izq = tk.Frame(b, bg=C["card"], width=285, padx=14, pady=12, highlightthickness=1,
+                       highlightbackground=C["line"])
+        izq.grid(row=0, column=0, sticky="nsw", padx=(0, 12))
+        izq.pack_propagate(False)                          # ancho fijo: la rejilla del centro se lleva el resto
+        g.label(izq, T("Personaje", "Character"), font=F["bold"], bg=C["card"]).pack(anchor="w")
+        g.label(izq, self._pnombre(), font=F["h3"], bg=C["card"]).pack(anchor="w", pady=(6, 0))
+        g.label(izq, T("%d formas", "%d forms") % len(self._formas()), fg=C["dim"], bg=C["card"]).pack(anchor="w")
+        g.label(izq, T("¿De dónde sale el aspecto?", "Where does the look come from?"), font=F["bold"],
+                bg=C["card"]).pack(anchor="w", pady=(16, 6))
+        for k, es, en in self.ORIGENES:
+            ttk.Radiobutton(izq, text=T(es, en), value=k, variable=self.v["origen"], style="Card.TRadiobutton",
+                            command=lambda: self.ir(1)).pack(anchor="w", fill="x", pady=3)
+        extra = tk.Frame(izq, bg=C["card"])
+        extra.pack(fill="x", pady=(12, 0))
+        o = self.v["origen"].get()
+        if o == "modelo":
+            g.label(extra, T("El mismo para todas las formas (opcional)", "The same for every form (optional)"),
+                    bg=C["card"], wrap=220).pack(anchor="w")
+            g.PathEntry(extra, self.v["modelo"], "file", [(T("Modelo", "Model"), "*.amb *.bin")],
+                        width=18, bg=C["card"]).pack(fill="x", pady=(2, 0))
+            pie = T("O pulsa una forma y elige su modelo. El Kit los adapta al esqueleto de %s él solo.",
+                    "Or click a form and pick its model. The Kit fits them to %s's skeleton by itself.") % self._pnombre()
+        elif o == "port":
+            ports = self._ports()
+            if ports and self.v["port"].get() not in ports:
+                self.v["port"].set(ports[0])
+            cb = ttk.Combobox(extra, textvariable=self.v["port"], values=ports, state="readonly", width=28)
+            cb.pack(fill="x")
+            cb.bind("<<ComboboxSelected>>", lambda _e: self._actualizar())
+            pie = T("Cada forma usa la suya del personaje importado.", "Each form uses its own from the imported "
+                    "character.") if ports else T("Todavía no has importado ninguno: usa «Añadir un personaje» "
+                                                   "primero.", "You have not imported any yet: use 'Add a character' "
+                                                   "first.")
+        elif o == "juego":
+            vals = [g.char_label(c) for c in self.catalogo]
+            cb = ttk.Combobox(extra, textvariable=self.v["juego"], values=vals, state="readonly", width=28)
+            cb.pack(fill="x")
+            cb.bind("<<ComboboxSelected>>", lambda _e: (self.elegidas["juego"].clear(), self._actualizar()))
+            pie = T("Se usa en todas las formas. Pulsa una forma y «Usar aquí» para ponerlo solo en ella.",
+                    "It is used for every form. Click a form and 'Use here' to put it on that form only.")
+        else:
+            vals = [T(es, en) for _k, es, en, _t in g.COLOR_PRESETS]
+            if self.v["color"].get() not in vals:
+                self.v["color"].set(vals[0])
+            cb = ttk.Combobox(extra, textvariable=self.v["color"], values=vals, state="readonly", width=28)
+            cb.pack(fill="x")
+            cb.bind("<<ComboboxSelected>>", lambda _e: self._actualizar())
+            pie = T("Gira el color de la ropa y el pelo; lo blanco y lo gris se quedan igual.",
+                    "Shifts the colour of clothes and hair; white and grey stay the same.")
+        g.label(izq, pie, fg=C["dim"], bg=C["card"], wrap=220, font=F["small"]).pack(side="bottom", anchor="w")
+        # centro: una casilla por forma
+        cen = tk.Frame(b, bg=C["card"], padx=12, pady=10, highlightthickness=1, highlightbackground=C["line"])
+        cen.grid(row=0, column=1, sticky="nsew")
+        cab = tk.Frame(cen, bg=C["card"])
+        cab.pack(fill="x", pady=(0, 8))
+        g.label(cab, T("Así quedará cada forma", "How each form will look"), font=F["bold"], bg=C["card"]).pack(
+            side="left")
+        g.label(cab, " · " + T("pulsa una para verla y cambiar su modelo", "click one to see it and change its model"),
+                fg=C["dim"], bg=C["card"], font=F["small"]).pack(side="left")
+        rej = tk.Frame(cen, bg=C["card"])
+        rej.pack(fill="both", expand=True)
+        self.celdas = {}
+        fs = self._formas()
+        cols = 3 if len(fs) > 4 else max(1, min(len(fs), 2))
+        for i, fo in enumerate(fs):
+            rej.columnconfigure(i % cols, weight=1, uniform="c")
+            rej.rowconfigure(i // cols, weight=1)
+            cel = tk.Frame(rej, bg=C["bg"], highlightthickness=2, highlightbackground=C["line"], cursor="hand2")
+            cel.grid(row=i // cols, column=i % cols, sticky="nsew", padx=4, pady=4)
+            tit = g.label(cel, self._fn(fo), font=F["bold"], bg=C["bg"])
+            tit.pack(anchor="w", padx=8, pady=(6, 0))
+            est = g.label(cel, "", bg=C["bg"], font=F["small"], wrap=160)
+            est.pack(side="bottom", anchor="w", padx=8, pady=(0, 6))       # el estado siempre se ve
+            img = tk.Label(cel, bg=C["bg"], text="…", fg=C["dim"])
+            img.pack(fill="both", expand=True)
+            for w in (cel, tit, img, est):
+                w.bind("<Button-1>", lambda _e, f=fo["f"]: self._elegir_forma(f))
+            self.celdas[fo["f"]] = (cel, img, est)
+        # derecha: vista grande y avisos
+        der = tk.Frame(b, bg=C["card"], width=330)
+        der.grid(row=0, column=2, sticky="ns", padx=(12, 0))
+        der.pack_propagate(False)
+        av = tk.Frame(der, bg=C["card"], padx=12, pady=10, highlightthickness=1, highlightbackground=C["line"])
+        av.pack(side="bottom", fill="x", pady=(10, 0))     # antes que la vista: los avisos siempre se ven
+        self.lbl_cuenta = g.label(av, "", font=F["bold"], fg=C["warn"], bg=C["card"])
+        self.lbl_cuenta.pack(anchor="w")
+        self.lbl_avisos = g.label(av, "", bg=C["card"], wrap=300)
+        self.lbl_avisos.pack(anchor="w", fill="x")
+        self.lbl_detalle = g.label(av, "", fg=C["dim"], bg=C["card"], wrap=300, font=F["small"])
+        self.lbl_detalle.pack(anchor="w", fill="x", pady=(4, 0))
+        caja = tk.Frame(der, bg=C["bg"], padx=10, pady=8, highlightthickness=1, highlightbackground=C["line"])
+        caja.pack(fill="both", expand=True)
+        self.lbl_grande = g.label(caja, "", font=F["bold"], bg=C["bg"])
+        self.lbl_grande.pack(anchor="w")
+        self.botones = tk.Frame(caja, bg=C["bg"])
+        self.botones.pack(side="bottom", fill="x", pady=(6, 0))
+        if o in ("modelo", "juego"):
+            ttk.Button(self.botones, text=T("Elegir su modelo…", "Pick its model…") if o ==
+                       "modelo" else T("Usar aquí el elegido", "Use the chosen one here"), style="Small.TButton",
+                       command=self._cambiar_forma).pack(side="left")
+            ttk.Button(self.botones, text=T("Quitar", "Remove"), style="Small.TButton",
+                       command=self._quitar_forma).pack(side="left", padx=6)
+        par = tk.Frame(caja, bg=C["bg"])
+        par.pack(expand=True)
+        self.img_frente = tk.Label(par, bg=C["bg"])
+        self.img_frente.pack(side="left", padx=(0, 10))
+        self.img_lado = tk.Label(par, bg=C["bg"])
+        self.img_lado.pack(side="left")
+        self._actualizar()
+
+    def _elegir_forma(self, f):
+        self.sel = f
+        self._actualizar()
+
+    def _cambiar_forma(self):
+        o = self.v["origen"].get()
+        if o == "modelo":
+            from tkinter import filedialog
+            ruta = filedialog.askopenfilename(parent=self.win, filetypes=[(self.g.T("Modelo", "Model"), "*.amb *.bin"),
+                                                                          ("*", "*.*")])
+            if ruta:
+                self.elegidas["modelo"][self.sel] = ruta
+        elif self._cat_bin() is not None:
+            self.elegidas["juego"][self.sel] = "juego:%d" % self._cat_bin()
+        self._actualizar()
+
+    def _quitar_forma(self):
+        o = self.v["origen"].get()
+        if self.sel in self.elegidas.get(o, {}):
+            self.elegidas[o].pop(self.sel)
+        elif o == "modelo":
+            self.v["modelo"].set("")
+        self._actualizar()
+
+    def _texto_origen(self, origen):
+        o = str(origen)
+        if self.v["origen"].get() == "colores":
+            return self.v["color"].get()
         if self.v["origen"].get() == "port":
-            return [(g.T("Modelo", "Model"), g.T("Del personaje importado «%s»", "From imported character '%s'")
-                     % self.v["port"].get())]
-        return [(g.T("Modelo", "Model"), self.v["modelo"].get())]
+            return self.v["port"].get()
+        if o.startswith("juego:"):
+            c = next((c for c in self.catalogo if c["bin"] == int(o[6:])), None)
+            return "%s %s" % (c["name"], c["variant"]) if c else self.g.T("modelo del juego", "game model")
+        return os.path.basename(o)
+
+    def _estados(self):
+        """[(forma, origen, estado, desde, res)] con res = res.json de su vista (None si aun no esta)."""
+        _o, tono = self._origenes()
+        out = []
+        for fo, (orig, est, desde) in zip(self._formas(), self._plan_formas()):
+            res = None
+            if est != "juego" or tono is not None:
+                res = self._res(self._vista(fo["f"], orig, tono))
+            out.append((fo, orig, est, desde, res))
+        return out
+
+    def _actualizar(self):
+        g, C, T = self.g, self.g.C, self.g.T
+        try:
+            if not self.celdas or not next(iter(self.celdas.values()))[0].winfo_exists():
+                return
+        except self.tk.TclError:
+            return
+        fs, estados = self._formas(), self._estados()
+        _o, tono = self._origenes()
+        avisos, pend, detalle = [], 0, []
+        for fo, orig, est, desde, res in estados:
+            cel, img, lbl = self.celdas[fo["f"]]
+            d = self._vista(fo["f"], orig, tono) if est != "juego" or tono is not None else None
+            if est == "juego":
+                txt, col = "✕ " + T("falta: se queda como está", "missing: stays as it is"), C["err"]
+                pend += 1
+                avisos.append(T("%s es otro luchador por dentro: elige su modelo o déjalo como está.",
+                                "%s is another fighter inside: pick its model or leave it as it is.") % self._fn(fo))
+                d = self._vista(fo["f"], "juego:%d" % fo["nat"])
+            elif res is None:
+                txt, col = "… " + T("preparando la vista", "preparing the preview"), C["dim"]
+            elif not res.get("ok"):
+                txt, col = "✕ " + T("este modelo no encaja", "this model does not fit"), C["err"]
+                avisos.append("%s: %s" % (self._fn(fo), T(res.get("es", ""), res.get("en", ""))))
+                if res.get("detalle"):
+                    detalle.append("%s: %s" % (self._fn(fo), res["detalle"]))
+            elif est == "otra":
+                txt, col = "⚠ " + T("usará el de %s", "will use %s's") % self._fn(fs[desde]), C["warn"]
+                avisos.append(T("%s no tiene modelo propio: usará el de %s.", "%s has no model of its own: it will "
+                                "use %s's.") % (self._fn(fo), self._fn(fs[desde])))
+            else:
+                txt, col = "✓ " + self._texto_origen(orig), C["ok"]
+            lbl.configure(text=txt, fg=col)
+            foto = self._foto(os.path.join(d, "frente.png"), (180, 150)) if d else None
+            img.configure(image=foto or "", text="" if foto else "…")
+            cel.configure(highlightbackground=C["accent"] if fo["f"] == self.sel else C["line"])
+            if fo["f"] == self.sel:
+                self.lbl_grande.configure(text=self._fn(fo) + " · " + T("frente y lado", "front and side"))
+                for lab, nom in ((self.img_frente, "frente"), (self.img_lado, "lado")):
+                    ft = self._foto(os.path.join(d, nom + ".png"), (200 if nom == "frente" else 90, 250)) if d else None
+                    lab.configure(image=ft or "", text="" if ft else "…", fg=C["dim"])
+        if not estados:
+            for cel, img, lbl in self.celdas.values():
+                lbl.configure(text="✕ " + T("sin modelo", "no model"), fg=C["err"])
+                img.configure(image="", text="…")
+            avisos.append(T("Elige un modelo: para todas las formas a la izquierda, o pulsa una forma.",
+                            "Pick a model: for every form on the left, or click a form."))
+        n = len(avisos) - pend
+        self.lbl_cuenta.configure(text=" · ".join(x for x in (
+            (T("%d aviso", "%d warning") if n == 1 else T("%d avisos", "%d warnings")) % n if n else "",
+            (T("%d pendiente", "%d pending") if pend == 1 else T("%d pendientes", "%d pending")) % pend if pend else "")
+            if x) or T("Todo listo", "All set"), fg=C["warn"] if avisos else C["ok"])
+        self.lbl_avisos.configure(text="\n".join(avisos))
+        self.lbl_detalle.configure(text="\n".join(detalle))
+
+    def _c_aspecto(self):
+        g, o = self.g, self.v["origen"].get()
+        if o == "port":
+            if not self.v["port"].get():
+                return g.T("Elige un personaje importado u otro origen.", "Pick an imported character or another source.")
+            return None
+        if o == "colores":
+            return None if self._tono() is not None else g.T("Elige un color.", "Pick a colour.")
+        plan = self._plan_formas()
+        if not plan:
+            return g.T("Elige un modelo: para todas las formas a la izquierda, o pulsa una forma.",
+                       "Pick a model: for every form on the left, or click a form.")
+        fs = self._formas()
+        for fo, (orig, est, _d) in zip(fs, plan):
+            if est == "juego":
+                continue
+            if not str(orig).startswith("juego:") and not os.path.isfile(orig):
+                return g.T("%s: no encuentro el archivo %s.", "%s: cannot find the file %s.") % (self._fn(fo), orig)
+            res = self._res(traje.cache_vista(self.app.env.us or "", self._pid(), fo["f"], orig))
+            if res is None:                                # vista aun sin hacer: se valida aqui (1-2 s)
+                if self.revisor is None:
+                    self.revisor = traje.Revisor(self.app.env.us or None)
+                ex = self.revisor.revisar(orig, self._pid(), fo["f"])
+                res = {"ok": ex is None, "es": ex and ex.es, "en": ex and ex.en}
+            if not res["ok"]:
+                return "%s: %s" % (self._fn(fo), g.T(res["es"], res["en"]))
+
+    def _f_aspecto(self):
+        g, o = self.g, self.v["origen"].get()
+        nombre = next(g.T(es, en) for k, es, en in self.ORIGENES if k == o)
+        if o == "port":
+            return [(g.T("Aspecto", "Look"), "%s: %s" % (nombre, self.v["port"].get()))]
+        if o == "colores":
+            return [(g.T("Aspecto", "Look"), "%s: %s" % (nombre, self.v["color"].get()))]
+        fs = self._formas()
+        partes = []
+        for fo, (orig, est, d) in zip(fs, self._plan_formas()):
+            partes.append("%s: %s" % (self._fn(fo), g.T("se queda como está", "stays as it is") if est == "juego" else (
+                g.T("el de %s", "%s's") % self._fn(fs[d]) if est == "otra" else self._texto_origen(orig))))
+        return [(g.T("Aspecto", "Look"), nombre), (g.T("Formas", "Forms"), " · ".join(partes))]
 
     def _p_nombre(self, b):
         g = self.g
@@ -727,6 +1078,11 @@ class AsistenteTraje(Asistente):
         g.label(b, g.T("Nombre del traje", "Costume name"), bg=g.C["card"]).grid(row=0, column=0, sticky="w",
                                                                                 padx=(0, 12))
         self.ttk.Entry(b, textvariable=self.v["nombre"], width=34).grid(row=0, column=1, sticky="w")
+        g.hint(b, g.T("En la rueda sale detrás de los trajes del juego. Al pulsar «Siguiente» verás el resumen y "
+                      "podrás montarlo y probarlo; «Deshacer» lo deja todo como estaba.",
+                      "On the wheel it comes after the game's costumes. Press 'Next' to see the summary and build "
+                      "and try it; 'Undo' leaves everything as it was."), wrap=640, bg=g.C["card"]).grid(
+            row=1, column=0, columnspan=2, sticky="w", pady=(10, 0))
 
     def _c_nombre(self):
         if not self.v["nombre"].get().strip():
@@ -737,10 +1093,15 @@ class AsistenteTraje(Asistente):
 
     def respuestas(self):
         r = {"personaje": self._pid(), "nombre": self.v["nombre"].get().strip()}
-        if self.v["origen"].get() == "port":
+        o = self.v["origen"].get()
+        if o == "port":
             r["port"] = self.v["port"].get()
+        elif o == "colores":
+            r["tono"] = self._tono()
+        elif o == "modelo" and self.v["modelo"].get().strip() and not self.elegidas["modelo"]:
+            r["modelo"] = self.v["modelo"].get().strip()             # el mismo para todas: como siempre
         else:
-            r["modelo"] = self.v["modelo"].get().strip()
+            r["modelos"] = self._origenes()[0]
         return r
 
     def plan(self):

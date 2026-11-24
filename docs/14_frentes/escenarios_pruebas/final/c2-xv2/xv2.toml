@@ -1,0 +1,57 @@
+# C2 / HER09: heroe creado con piezas de Xenoverse 2 (razas y proporciones medidas). FASE 3; lo ejecuta Z.
+#   python tools\pruebas.py correr smoke_c "docs\14_frentes\escenarios_pruebas\final\c2-xv2\xv2.toml"
+#
+# clave    = HER09 (proporciones/razas, fisica del heroe, boca y Piccolo Red Ribbon)
+# cvar     = dbz3_cac_xv2=true (ya existe; APAGADA por defecto). Sin cvar nueva.
+#            El banco offline (cac/xv2_razas.json) mide HUM/NMC/MAM; las demas caen al heroe base de B3.
+# criterio = abrir Create, cambiar pelo/cara/torso de XV2 (logs "XV2: Pelo/Cara/Torso = modelo"),
+#            confirmar sin ningun ERROR y montar la vista de combate. Medida visual: capturas frente/lado
+#            para SSIM de fase 3 (>=0,80 de silueta frente a la referencia offline).
+# log      = "Create abierto", "XV2: Pelo|Hair = modelo", "XV2: Cara|Face = modelo", "XV2: Torso = modelo",
+#            "Create: confirmar", "vista previa combate_" y CERO lineas "ERROR".
+#            NO se espera "piezas Xenoverse 2": esa linea solo sale al CONMUTAR la opcion en el menu
+#            (heroe.cpp case 10), no al abrir Create; por eso la version anterior fallaba.
+#
+# PENDIENTE_JUEGO: capturas reales frente/lado de HUM, NMC y MAM; fisica del obi en combate (XV5S 6 nodos)
+#   y decision de licencia de Piccolo Red Ribbon (no se publica sin ella).
+descripcion = "HER09: heroe con piezas XV2 (HUM), cambio de pelo/cara/torso y montaje sin errores"
+env = [
+  "DBZ3_CAC_XV2=1",
+  "DBZ3_TEST_HEROE_RAZA=7",
+  "DBZ3_TEST_CFG=dbz3_cac_xv2=true",
+]
+pasos = [
+  "esperar 2500",
+  "tecla W 1200",
+  "tecla Space 3500",
+  "tecla S 450", "tecla S 450", "tecla S 450", "tecla S 450", "tecla S 450",
+  "tecla Space 2500",
+  "tecla S 700", "tecla S 700", "tecla S 700",
+  "tecla Space 3500",
+  "captura c2_xv2_0_heroe",
+  "tecla S 500", "tecla S 500",
+  "tecla Space 3000",
+  "log \"Create abierto\" 20",
+  "esperar 12000",
+  "captura c2_xv2_1_create",
+  "tecla D 900",
+  "log \"XV2: (Pelo|Hair) = modelo\" 20",
+  "tecla S 400", "tecla D 900",
+  "log \"XV2: (Cara|Face) = modelo\" 20",
+  "tecla S 400", "tecla D 900",
+  "log \"XV2: Torso = modelo\" 20",
+  "esperar 12000",
+  "captura c2_xv2_2_piezas",
+  "tecla S 400", "tecla S 400", "tecla S 400", "tecla S 400", "tecla S 400", "tecla S 400", "tecla S 400",
+  "tecla Space 1500",
+  "tecla D 400", "tecla D 400", "tecla D 400",
+  "tecla Space 1500",
+  "tecla S 400", "tecla S 400", "tecla S 400", "tecla S 400",
+  "captura c2_xv2_2b_botones",
+  "tecla Space 2500",
+  "log \"Create: confirmar\" 20",
+  "log \"vista previa combate_\" 180",
+  "captura c2_xv2_3_combate",
+  "tecla Backspace 3000",
+  "esperar 2500",
+]

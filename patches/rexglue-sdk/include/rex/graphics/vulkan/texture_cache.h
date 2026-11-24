@@ -365,6 +365,9 @@ class VulkanTextureCache final : public TextureCache {
   bool pack_index_seen_ = false;  // el indice de packs (en segundo plano) ya estaba listo
   mutable std::unordered_map<TextureKey, const Dbz3TexturePackEntry*, TextureKey::Hasher>
       pack_entry_cache_;
+  // Texturas del pack cuya memoria guest ya tiene OTRA imagen (revalidacion por hash):
+  // se retiran en la siguiente submission y se recrean con su contenido real.
+  std::vector<TextureKey> pack_retire_now_;
   // Buffers de subida del pack en vuelo (se liberan al completarse su
   // submission).
   struct PendingPackUpload {

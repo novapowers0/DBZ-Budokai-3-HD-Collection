@@ -1,0 +1,16 @@
+clave = "F10-PREVIO-OFF"
+cvar = "dbz3_net_validacion_f10=true;dbz3_net_rollback=false"
+descripcion = "F10 una ventana: rollback apagado efectivo tras el escenario que lo activa"
+criterio = "El juego lee rollback false en la copia reutilizada y vuelve a abrir la sala local. No acredita combate lockstep."
+log = 'dbz3 online: F10 ajustes efectivos: validacion true rollback false region US'
+env = [
+  "DBZ3_TEST_CFG=dbz3_net_validacion_f10=true;dbz3_net_rollback=false",
+  "DBZ3_NET_AUTO=host", "DBZ3_NET_LOCAL=1", "DBZ3_NET_PORT=25478",
+  "DBZ3_TEST_OCULTO=0", "DBZ3_TEST_TURBO=1",
+]
+pasos = [
+  'log "dbz3 online: F10 ajustes efectivos: validacion true rollback false region US" 30',
+  'log "dbz3 rb: auto host: en marcha" 30',
+  'log "dbz3 rb: auto estado: enlace 1" 30',
+  "captura f10_ajustes_lockstep_sala",
+]

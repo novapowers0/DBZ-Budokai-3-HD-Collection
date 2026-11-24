@@ -14,6 +14,7 @@ isos/
 *.amg
 *.amt
 *.rgba
+*.dds
 
 # Save data and save states.
 saves/
@@ -81,6 +82,11 @@ __pycache__/
 dbz3_user.toml
 *.local.toml
 *.local.ini
+*.local.inc
+.claude/
+.mcp.json
+.env
+.env.*
 
 # Logs, dumps, scratch.
 *.log
@@ -91,6 +97,7 @@ dbz3_user.toml
 *.csv
 *.frag
 *.bak
+*.orig
 *.tmp
 crash_*/
 
@@ -104,6 +111,14 @@ Thumbs.db
 
 # Release zips (assets de GitHub, no se versionan)
 *.zip
+/release_packs/
+/mod center hd/tools/
+
+# Local reports generated against an installed copy of Xenoverse 2.
+/mod center hd/cac/xv2_boca.json
+/mod center hd/cac/xv2_fisica.json
+/mod center hd/cac/xv2_piccolo_rr.json
+/mod center hd/cac/xv2_razas.json
 
 # Archivo local de artefactos de releases antiguas (zips viejos + release-stage
 # movidos aqui para despejar la raiz). Se conserva en disco, nunca se versiona.

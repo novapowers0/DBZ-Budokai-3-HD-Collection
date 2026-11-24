@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import sys
 import time
+import uuid
 import zipfile
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -30,7 +31,7 @@ class Lote:
 
     def __init__(self, env, anotar):
         self.env, self.anotar = env, anotar
-        self.stamp = time.strftime("%Y%m%d-%H%M%S")
+        self.stamp = time.strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex
         self.dir = os.path.join(env.backups, self.stamp + "-asistente")
         self.antes, self.extra = set(), []
 
@@ -114,7 +115,8 @@ def _copiar_png(origen, destino):
 
 
 def plan_traje(g, env, r):
-    """r: personaje (ID del juego), nombre, y uno de: port (mod ya importado) | modelo (.amb/.bin)."""
+    """r: personaje (ID del juego), nombre, y uno de: port (mod ya importado) | modelo (.amb/.bin, el mismo para todas
+    las formas) | modelos (uno por forma: ruta, "juego:N" o None) | tono (solo colores: los modelos del juego girados)."""
     mod = r.get("mod") or g.unique_mod_name(env.mods, g.slug(r["nombre"], "traje_"))
     if r.get("port"):
         paso = (g.T("Crear el traje", "Create the costume"), g.cmd_importer(env, [
@@ -127,17 +129,19 @@ def plan_traje(g, env, r):
 
 
 def _traje_de_modelo(env, mod, r):
-    d = os.path.join(env.mods, mod)
-    os.makedirs(os.path.join(d, "modelos"))
-    fn = os.path.basename(r["modelo"])
-    shutil.copy2(r["modelo"], os.path.join(d, "modelos", fn))
-    nombre = r["nombre"].replace('"', "").replace("\\", "")
-    with open(os.path.join(d, "manifest.txt"), "w", encoding="utf-8") as fh:
-        fh.write("name=%s\ndescription=Traje creado con el asistente del Mod Kit\nauthor=\nversion=1.0\ntype=traje\n"
-                 % nombre)
-    with open(os.path.join(d, "traje.toml"), "w", encoding="utf-8") as fh:
-        fh.write('[traje]\npersonaje = %d\nnombre = "%s"\nmodelos = ["modelos/%s"]\n' % (r["personaje"], nombre, fn))
-    return "traje.toml creado"
+    """Modelo por forma, reetiquetado al esqueleto del personaje y validado antes de escribir (kit/traje.py)."""
+    from kit import traje  # noqa: PLC0415
+    cid = r["personaje"]
+    if r.get("modelos"):
+        por_forma = r["modelos"]
+    elif r.get("tono") is not None:
+        por_forma = ["juego:%d" % f["nat"] for f in traje.formas(cid)]
+    else:
+        por_forma = [r["modelo"]] * max(1, len(traje.formas(cid)))
+    try:
+        return traje.escribir(env.mods, mod, cid, r["nombre"], por_forma, r.get("tono"), env.us or None)
+    except traje.NoEncaja as ex:
+        raise RuntimeError("%s (%s)" % (ex.es, ex.detalle) if ex.detalle else ex.es) from ex
 
 
 def plan_musica(g, env, r):

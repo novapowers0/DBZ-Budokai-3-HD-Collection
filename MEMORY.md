@@ -5,7 +5,32 @@
 > curso, qué falta, y el **protocolo de colaboración con Claude**). Actualizar
 > este fichero al cerrar cada sesión; no duplicar aquí lo que ya está en AGENTS.
 
-Última actualización: **2026-11-05** (cierre solLAT3; se conservan los cierres previos de la ronda 1.5.6.1).
+Última actualización: **2026-11-20** (traspaso de la coordinación de R23; cierres previos conservados).
+
+
+## Plan definitivo R23 — 2026-11-19 (noche)
+
+- **Plan único:** `studies 5/PLAN_DEFINITIVO.md` (78 puntos con criterio comprobable: VEL, B2, IW, BOCA, HER, SUR, ROG, OTR). Sustituye como guía de trabajo a los índices de R16-R21. Estado sin gastar: `python tools/tanda.py tablero`; carriles: `python tools/tanda.py estado r23`; encargos: `studies 5/TANDAS/r23.toml`; diagnósticos con archivo y línea: `studies 5/ENTREGAS/R23/diag_*.md`.
+- **Por qué íbamos lentos (medido):** cola de 120 s de mediana antes de cada prueba (guiones normales con `DBZ3_TEST_EXCLUSIVA` reservaban las 6 plazas; el arranque real son 14,6 s); las pruebas las hacía el modelo caro (Haiku 0,1 % del gasto); las listas de 100 % de B2 e IW tenían la mitad de filas «dudosas» y cada ronda las volvía a auditar.
+- **Herramienta nueva:** `tools/tanda.py item|tablero` (HECHO exige la ruta, que exista, de la prueba); reglas nuevas embebidas en cada encargo; el archivo de relevo ya no pisa el encargo.
+- **Ola 1 en marcha (19/11, 22:45):** `vel`, `b2-reglas`, `iw-juegos` y `boca` como ayudantes dentro de la sesión coordinadora (la app no deja abrir sesiones sin la palabra directa del usuario); `heroe`, `survivors` y `rogue` iniciados por el usuario como sesiones propias esa noche. Copia previa del código: `E:/DBZ3HD_trabajo/respaldos_r23/inicio`. Nada publicado.
+- **Traspaso (20/11):** por decisión del usuario coordina la sesión principal (Opus) y Fable queda fuera. Causa de fondo de la lentitud y de las pantallas negras: el banco de pruebas vivía en `E:` (disco USB) y se saturaba; ahora está en `D:\Caches\dbz3_pruebas` (aislamiento ~1 s, batería 5/5 en ~100 s). Tablero al traspasar: VEL 8/10, B2 7/10, IW 3/13, BOCA 1/4, HER 0/13, SUR 2/13, ROG 7/8, OTR 0/7. Lo que quedó sin verificar o por decidir (7D7 cambiado sin interruptor, premio de IW solo por registro, IW-04 sin marcar con 18/18 pruebas de fluidez pasadas, arte por encargar, limpieza propuesta): `studies 5/ENTREGAS/R23/TRASPASO_FABLE_2011.md`, que complementa `CIERRE_FABLE_2011.md`. **Batería de cierre sin pasar** tras los últimos cambios de los carriles.
+
+## Cierre R19-R21 (tablero B2 nativo) — 2026-11-18 01:00
+
+Resumen para el usuario: `studies 5/ENTREGAS/R21/CIERRE_R21.md`. Nada publicado; la release 1.5.7 empaquetada NO lleva nada de esto.
+- **B2 (único runtime: tablero nativo `src/pasarela_b2.cpp`; el original traducido solo es juez):** las **9 fases dan 0 fallos de órdenes** en el juez (`tools/b2_juez.py`, `tools/b2_juez_bateria.py`, `tools/comparar_modo.py`). Integrados los pasos 0-13 y 15 del índice `R21/INTEGRACION/00_INDICE_SOL_v3.md`: tabla única de combates `res/datos/b2_combates.toml` (combate nativo B3 HD, escenarios porteados de la ISO), nube de aturdimiento (3 capas AMA 397, -1 barra; la regla -2 sigue sin confirmar), tope 2 fichas/casilla, objetos, Dende/Popo, HUD, viñetas, audio, cierres y escenas, Shenron completo, menús/guardado/Salir, animaciones, inventario de recursos; LFSR del original, IA tipo 5, ki/COM/+10 Kid Buu al combate, Saibaman nativo + recolor. **Pendiente:** paso 14 (reorganización interna, `INTEGRACION/ARQ_PASOS.md`).
+- **IW:** todo preparado en `R21/IW/` (plan maestro, 8 paquetes, índice v2, 122 escenarios, criterios para activar). Integrado: 7DE (Sol 6.2); 60 fps en 7D4/7DB/7DC/7E1. 7D0 no llega a META. Resto sin integrar; IW traducido sigue OFF.
+- **Héroe:** Continuar carga el héroe tras el final (PASS). **Survivors:** cofre/reloj y estrella con arte del juego (PASS).
+- **Build/pruebas:** compila (exe 18/11 00:15). La batería 5/5 pasó con el exe anterior (00:11, Sol); **la del exe de 00:15 está SIN PASAR**: mi tanda se colgó (pid 15624 no se deja cerrar) y no se repitió porque otra sesión usaba la GPU (ComfyUI). Hay un recibo de aislamiento pendiente (`E:/DBZ3HD_trabajo/aislamiento_pruebas/ejecuciones/_pendientes/`), se restaura solo en la siguiente prueba. **Primera tarea de la próxima sesión:** `python tools/pruebas.py todo --max 3`.
+- **Modelos:** Hy gratis tiene tope (falla con >3 a la vez). GPT-6.2 Sol por clave API del usuario (`--modelo sol62` en `tools/oc.py`): gastados 14,29 $ de 38 $. Gemini 4 Hydrogen: `tools/gemini.py` (consultas) y `--modelo gem` en oc.py con las claves de `~/.dbz3_gemini_keys` una a una; capa gratis = **20 peticiones/día por clave**, inútil como agente; además a ratos "alta demanda". DeepSeek: dos sesiones cayeron por "invalid JSON Schema" del proveedor.
+- **Disco:** borradas con OK del usuario ~16 GB (pruebas >3 días, INFRA-02 build, eu_test2, v_a/b/c, sub66, DBZ3HD_s1/s2). D: 75 GB, E: 234 GB libres.
+
+## Cierre de diagnostico solF10 — 2026-11-11
+
+- **NO ARREGLADO:** cierreUS17840 sin causa; captura05FAIL tras22combates por lado,44/54checks, primer desyncglobal173118/rel5370. Los14bytes de diferencia se reducen a2en la direccion de tarea luch1+0x1AB0 con las mascaras existentes; codigoUS demuestra prioridad0x5380/callback82118598. Falta el contenido del nodo, no se normaliza especulativamente. Evidencia e informes conSHA256: `E:/DBZ3HD_trabajo/f10-online/ronda6_captura_05/revision_solF10/`.
+- Sonda nueva **`dbz3_net_tareas_sonda_f10=false`**, `src/net/rb_task_probe.h` + hooks: lectura acotada del pool,64limites y64resimulaciones, TSVantefallo de losultimos16ticks. No restaura ni modifica checksum. `python -B src/net/f10_task_probe_test.py` **PASS**; `python tools/compilar.py` **codigo0**,dual/release/DLLcanonicaOK. SDK/generated/arnes compartido sin cambios propios.
+- Captura06 **25/25largos por lado,54/54checks**,min4000ticks,rollbackreal,~53min,sin reproducir. `ronda6_captura_06/validacion.json`; corridas `D:/DBZ3HD/_pruebas/20261111-020820_rb_{a,b}_06_tareas_luchador/`. Sin suma distinta no hubo TSV al fallo; no acredita equivalencia del nodo ni arreglo. Procesos propios terminados,plazas vacias,TOMLlimpios. Detalle `studies 5/ENTREGAS/ESTADO_F10.md`; unicoescenarioactivo06,no repetir sin cambio; onlinebeta/rollbackOFF. Entrega `E:/DBZ3HD_trabajo/coord/log/ronda6/solF10.txt`.
 
 ## Cierre solLAT3 — 2026-11-05
 

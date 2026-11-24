@@ -1,0 +1,10 @@
+descripcion = "R16: recargar ficha XV2 y cambiar color"
+env = ["DBZ3_TEST_RINGOUT=1", "DBZ3_TEST_CFG=dbz3_cac_xv2=true"]
+pasos = [
+  "esperar 2500", "tecla W 1200", "tecla Space 3500",
+  "tecla S 450", "tecla S 450", "tecla S 450", "tecla S 450", "tecla S 450", "tecla Space 2500",
+  "tecla S 700", "tecla S 700", "tecla S 700", "tecla Space 3500",
+  "tecla S 500", "tecla S 500", "tecla Space 3000", "log \"Create abierto\" 20",
+  "esperar 10000", "captura r16_recarga", "tecla S 400", "tecla S 400", "tecla S 400", "tecla S 400", "tecla S 400", "tecla S 400", "tecla S 400", "tecla S 400", "tecla S 400",
+  "tecla Space 1200", "tecla D 400", "tecla D 400", "tecla D 400", "tecla Space 1200", "tecla 3 3000", "log \"Create: confirmar\" 20"
+]

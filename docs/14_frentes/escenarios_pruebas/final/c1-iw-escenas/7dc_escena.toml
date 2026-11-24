@@ -1,0 +1,28 @@
+# C1 / IW-V04 — 7DC (NB014) escena MIND & TIME y Gohan adolescente SSJ.
+#   python tools\pruebas.py correr <copia> "docs\14_frentes\escenarios_pruebas\final\c1-iw-escenas\7dc_escena.toml"
+#
+# clave    = IW-V04 (segunda mitad)
+# cvar     = dbz3_iw_7dc_original=true (de serie)
+# env      = DBZ3_TEST_IWMINI=0x7DC,auto
+# criterio = (banco) NB014 comparte w_Stage_BeginLoad id 1 = MIND & TIME (ELF EU 333F90); formas de
+#            partida 2/1 en el codigo del port (Goku SSJ / Gohan SSJ; capturas nb014_020/036 citadas,
+#            hoy no en disco). En juego (PENDIENTE_JUEGO): mismo cuadro original/port con SSIM >= 0,45
+#            y pHash <= 18; Gohan se ve SSJ.
+# log      = "dbz3 r14: 7DC con la logica original del ELF (dbz3_iw_7dc_original)" / "r14: en juego"
+descripcion = "7DC (NB014) escena MIND & TIME de IW + Gohan adolescente SSJ (IW-V04)"
+env = [
+  "DBZ3_TEST_IWMINI=0x7DC,auto",
+  "DBZ3_TEST_QTE_LOG=1",
+  "DBZ3_TEST_CFG=dbz3_iw_7dc_original=true",
+  'DBZ3_PS2_GAMES=D:\DBZ3HD\ps2_games',
+]
+pasos = [
+  "log \"iwmini: prueba: empieza\" 90",
+  "log \"r14: en juego\" 90",
+  "captura t01_ready",
+  "log \"dbz3 r14: 7DC con la logica original del ELF\" 20",
+  "esperar 3500",
+  "captura t02_juego",
+  "esperar 2500",
+  "captura t03_juego2",
+]

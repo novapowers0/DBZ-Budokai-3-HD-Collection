@@ -10,7 +10,7 @@ oro_inicial = 8
 ingreso_ronda = 5
 ingreso_victoria = 1
 interes_cada = 10          # interes = min(interes_tope, oro al cerrar la preparacion / interes_cada), una vez por ronda
-interes_tope = 5
+interes_tope = 3           # D2 TAC04: valor del diseno (ENCARGO_USUARIO §5); medido 0 fuera de limites y 22-26 min de partida
 racha_desde = 3            # H10: 3 victorias (o derrotas) seguidas dan +1 oro al acabar la ronda, +1 mas cada 2 seguidas, hasta racha_tope
 racha_cada = 2
 racha_tope = 3
@@ -32,13 +32,23 @@ tope_unidades = [3, 4, 5, 6]   # unidades en el tablero por nivel
 peso_coste = [[75, 25, 0, 0], [55, 35, 10, 0], [35, 35, 25, 5], [20, 30, 30, 20]]
 copias_coste = [45, 36, 30, 27]   # copias de cada unidad en la reserva compartida segun su coste (8 entrenadores comparten la reserva); H9: una 4 estrellas vale 27 copias, asi que cada reserva llega a 27 o mas (rara pero posible)
 mult_estrella = [100, 180, 324, 583]  # % de vida y ataque con 1, 2, 3 y 4 estrellas (x1,8 por estrella)
-vida_entrenador = 100
+vida_entrenador = 80       # D2 TAC04: valor del diseno (ENCARGO_USUARIO §5); 100 -> 80 acorta a ~22 min (objetivo 20-30)
 # dano al perder = dano_base + (ronda-1)/dano_cada_rondas + dano_superviviente * unidades vivas del ganador (tope dano_tope); un empate quita dano_base+ a los dos
 # contra una copia (numero impar de vivos) solo pierde vida quien la enfrenta
 dano_base = 4
 dano_cada_rondas = 3
 dano_superviviente = 1
 dano_tope = 25
+
+# TACTICS-03: carrusel (solo si esta encendido "Tácticas: carrusel" en F1 > Modos; apagado de serie). En las rondas desde, desde+cada... (6, 12, 18...,
+# nunca a la vez que una neutral: 3, 9, 15...), antes de la preparacion, una fila comun de unidades (una por vivo + extra), cada una con una capsula
+# (capsula = 1). Elige primero el que tiene MENOS vida. El coste sale de la fila de peso_coste del nivel `nivel` (+1 por cada carrusel ya jugado).
+[carrusel]
+desde = 6
+cada = 6
+extra = 0                  # objetos = vivos + extra; medido: con 1, Misticos pasa del 60 % (tactics_equilibrio ... 1)
+nivel = 2
+capsula = 1
 
 [[sinergia]]
 id = "saiyan"
@@ -278,3 +288,57 @@ sinergias = ["terricolas", "veloces"]
 id = "ginyu"
 coste = 2
 sinergias = ["freezer", "veloces"]
+
+# TACTICS-04: bots listos (solo si esta encendido "Tácticas: bots listos" en F1 > Modos; apagado de serie). Cada bot tiene un objetivo de partida:
+# una sinergia (sale de la semilla) y, el `estrellas` % de ellos, ademas llegar a 3 estrellas. Puntos que el bot suma a una carta:
+# objetivo = es de su sinergia objetivo; copia3 = por cada pieza suya de 2 estrellas de esa unidad (camino a 3); sinergia = completa un tramo de
+# una sinergia suya (la mitad si solo suma un miembro); rival = resta por cada copia de esa unidad en manos de los rivales vivos.
+# ahorro_desde = ronda desde la que guarda oro para el interes (con el tablero lleno). Los de 3 estrellas, con una unidad a 2 estrellas, "cazan":
+# venden una suelta del banquillo si no cabe la copia, con el tablero lleno solo compran copias y actualizan la tienda hasta `tiradas` veces.
+# Medido (tactics_equilibrio ... 0 1, 1500 torneos): algun bot a 3 estrellas en el 21 % de las partidas en Normal; puesto medio del piloto
+# 1,27 / 1,98 / 2,68 en Facil / Normal / Dificil.
+[bots]
+objetivo = 20
+copia3 = 60
+sinergia = 20
+rival = 4
+ahorro_desde = 4
+tiradas = 2
+estrellas = 25
+
+# TACTICS-05: variedad de composiciones (solo si esta encendido "Tácticas: variedad" en F1 > Modos; apagado de serie no cambia nada ni la huella).
+# Cambia, sobre una copia de lo de arriba, las sinergias de algunas unidades ([[variedad.unidad]]: id, sinergias y/o coste) y los tramos de algunas
+# sinergias ([[variedad.sinergia]]: id, umbral). Antes, Saiyan (12-13 de 34 unidades) era la sinergia principal del 51-55 % de los campeones.
+# Medido (tactics_equilibrio "mod center hd" 20000 1500 0 <bots listos> 1): sinergia principal del campeon como mucho Saiyan 33,0 % (bots de
+# siempre) / 32,3 % (bots listos); 11 de 11 sinergias activas y 34 de 34 unidades en algun tablero campeon; 0 fuera de limites; 23,2 min.
+# Saibaman: no es saiyan (lo cultivan Vegeta y Nappa) -> Ejercito de Freezer; Gohan nino: mitad terricola; Goku nino: veloz.
+[[variedad.unidad]]
+id = "saibaman"
+sinergias = ["freezer", "veloces"]
+
+[[variedad.unidad]]
+id = "gohankid"
+sinergias = ["terricolas", "guerreros_z"]
+
+[[variedad.sinergia]]
+id = "terricolas"
+umbral = [{ n = 2, vida = 20, ataque = 10, defensa = 5 }, { n = 4, vida = 40, ataque = 22, defensa = 14 }]
+
+[[variedad.sinergia]]
+id = "fuerza_bruta"
+umbral = [{ n = 2, vida = 10, ataque = 14, defensa = 8 }, { n = 4, vida = 20, ataque = 26, defensa = 14 }]
+
+[[variedad.sinergia]]
+id = "freezer"
+umbral = [{ n = 2, vida = 6, ataque = 16, defensa = 6 }, { n = 3, vida = 12, ataque = 26, defensa = 10 }, { n = 5, vida = 20, ataque = 38, defensa = 14 }]
+
+[[variedad.sinergia]]
+id = "regeneradores"
+umbral = [{ n = 2, vida = 16, ataque = 0, defensa = 4 }, { n = 3, vida = 24, ataque = 6, defensa = 8 }]
+
+[[variedad.sinergia]]
+id = "guerreros_z"
+umbral = [{ n = 2, vida = 8, ataque = 0, defensa = 8 }, { n = 4, vida = 22, ataque = 12, defensa = 18 }, { n = 6, vida = 32, ataque = 22, defensa = 22 }]
+[[variedad.unidad]]
+id = "gokukid"
+sinergias = ["saiyan", "veloces"]

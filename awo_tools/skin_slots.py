@@ -57,7 +57,14 @@ def palette_table(avb):
         return None
     t = list(struct.unpack(">%dI" % n, bytes(b[p:p + 4 * n])))
     nb = avb.bone_count()
-    if t[0] != 0xFFFFFFFF or any(x >= nb for x in t[1:]) or t[1:] != sorted(set(t[1:])):
+    # 12/11 (Shenron 534, #AMB de 3 hijos): tabla SIN el FFFFFFFF del slot 0 (1, 2, 3...). El guest escribe palette[k]
+    # para tabla[k] desde k = 0, asi que ahi el slot 0 tambien es un hueso (SkinSlots empieza en 0). Antes se rechazaba
+    # -> regla de flags -> un hueso de desfase en toda la malla (el triangulo estirado del Shenron HD).
+    if t[0] != 0xFFFFFFFF:
+        return t if all(x < nb for x in t) and t == sorted(set(t)) else None
+    # La tabla indexa slots: al ampliar una paleta se añaden huesos al final,
+    # sin ordenar ni cambiar los indices que ya usan los vertices del modelo.
+    if any(x >= nb for x in t[1:]) or len(t[1:]) != len(set(t[1:])):
         return None
     return t
 
@@ -69,13 +76,15 @@ class SkinSlots:
         self.slot_of = {}     # hueso de esqueleto -> slot de paleta (1..)
         self.bone_of = {}     # slot de paleta -> hueso de esqueleto
         self.table = palette_table(avb)
+        primero = 1
         if self.table:
-            bones = self.table[1:]
+            primero = 1 if self.table[0] == 0xFFFFFFFF else 0   # sin centinela: el slot 0 es tabla[0]
+            bones = self.table[primero:]
             self.source = "tabla"
         else:
             bones = [i for i, f in enumerate(self.flags) if f & SKIN_FLAG]
             self.source = "flags"
-        for s, i in enumerate(bones, 1):
+        for s, i in enumerate(bones, primero):
             self.slot_of[i] = s
             self.bone_of[s] = i
         self.n_slots = len(bones)

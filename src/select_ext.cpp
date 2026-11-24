@@ -166,7 +166,7 @@ uint32_t BuildImage(uint8_t* base, uint32_t tbl, int vc, bool name) {
     if (q > src && q - src < n) n = q - src;
   }
   auto& b = g_images[vc * 2 + (name ? 1 : 0)];
-  if (b.tpl == src && b.buf) return b.buf;
+  // SLOTS_PJ-02: sin atajo por plantilla: con paginas la misma casilla cambia de personaje y de imagen
   if (!b.buf || b.cap < n) {
     b.buf = dbz3::roster::GuestAlloc(0x200);
     b.cap = 0x200;
@@ -373,9 +373,13 @@ DBZ3_HOOK(sub_8217E6D8, dbz3eu_sub_8217E690) {
   DBZ3_WHEEL(8217E6D8)(ctx, base);
   std::lock_guard<std::mutex> lk(g_mu);
   if (ctx.r3.u32) {
-    g_wheel_objs[ctx.r3.u32] = REX_LOAD_U32(ctx.r3.u32 + 48);
-    g_wheel_base_masks.erase(ctx.r3.u32);
-    g_wheel_page_versions.erase(ctx.r3.u32);
+    const uint32_t d = REX_LOAD_U32(ctx.r3.u32 + 48);
+    g_wheel_objs[ctx.r3.u32] = d;
+    // SLOTS_PJ-02: la creacion ya paso por sub_8217E490 (lr 0x8217E788), que apunto la mascara base y la pagina.
+    // Borrarlas aqui dejaba la rueda sin rehacer al cambiar de pagina (RefreshDynamicWheelForState salia sin mascara):
+    // se quedaba con el mapa y el numero de casillas de la pagina anterior. Se rehacen con lo de esta rueda nueva.
+    g_wheel_base_masks[ctx.r3.u32] = REX_LOAD_U64(d + 16) & ~dbz3::roster::ExtraUnlockMask();
+    g_wheel_page_versions[ctx.r3.u32] = g_dynamic_page_version.load();
   }
 }
 

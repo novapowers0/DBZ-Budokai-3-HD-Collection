@@ -1201,6 +1201,15 @@ def _a_respaldo(mods, d):
         return None
 
 
+def _manifest_del_conversor(carpeta):
+    """True si el manifest.txt es el que escribe escenarios_convertir.instalar() (escenario convertido de tu ISO)."""
+    try:
+        t = (carpeta / "manifest.txt").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    return "convertido desde tu ISO (casilla nueva, no sustituye nada)" in t
+
+
 def _apartar_viejos(mods):
     """Arreglo automatico para instalaciones de versiones anteriores (7/11; antes solo la Base, UH 23/10).
     Un escenario creado por una version vieja del conversor con OTRO nombre de carpeta (p. ej. "Base B2",
@@ -1217,7 +1226,10 @@ def _apartar_viejos(mods):
         e = _entrada(d)
         if e is None or e not in por_entrada:
             continue
-        if (d / "origen.txt").is_file() or e == 5000:   # 5000: la "Base B2" vieja no siempre llevaba origen.txt
+        # B2-TRANS 12/11: los "B2 grupo N" / "Ciudad B2" del conversor de octubre no llevan origen.txt pero si su
+        # manifest; ganaban la entrada por orden alfabetico ("B2 grupo 4" con 4 raices tapaba a "Llanura B2", 6) y
+        # la transicion de B2 se paraba en el cuadro 70. Se reconocen por la descripcion que escribe instalar().
+        if (d / "origen.txt").is_file() or e == 5000 or _manifest_del_conversor(d):   # 5000: la "Base B2" vieja no siempre llevaba origen.txt
             destino = _a_respaldo(mods, d)
             if destino:
                 print("escenarios: version vieja '%s' (entrada %d, ahora '%s') apartada a %s"

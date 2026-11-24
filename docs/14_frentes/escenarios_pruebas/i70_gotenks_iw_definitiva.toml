@@ -1,0 +1,3 @@
+descripcion = "#70: Gotenks de IW importado (importar.py iw c:gotenks, id 24 en opus) lanza su definitiva (capsula 599) en forma base: no debe cerrar el juego y la cinematica debe hacer dano (antes: codigos 25A 0, 135 cuadros, dano 0)"
+env = ["DBZ3_TEST_BATTLE=24,7,2", "DBZ3_TEST_CAPS=599", "DBZ3_TEST_ULT=1", "DBZ3_COMBATE_MUNECO=quieto"]
+pasos = ["log \"tag: empieza un combate\" 90", "esperar_pelea 120", "log \"definitiva .* del lado 1\" 60", "esperar 3000", "captura 01_definitiva", "log \"fin de la definitiva del lado 1: .*dano al rival [1-9]\" 120", "esperar 2000", "captura 02_despues"]

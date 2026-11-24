@@ -1,0 +1,33 @@
+# Tolerancias PRERREGISTRADAS de HER09 (carril C2) - no se cambian despues de medir.
+# Las usa `mod center hd/cac/xv2_razas.py` para decidir que razas se encienden.
+# Fuente de la referencia: datos de XV2 instalado (EMD/ESK/EMB), render offline con el
+# mismo proyector que el modelo B3. NO es una captura de juego (eso es fase 3).
+
+[forma]
+# SSIM de la silueta (mascara binaria) con el mismo encuadre normalizado.
+ssim_silueta_min = 0.90
+# SSIM de color sin sombreado (albedo plano) dentro de la mascara comun.
+ssim_color_min = 0.70
+# La calibrada no puede empeorar la silueta mas que esto frente a la linea base
+# (piernas de Goku). Un empate dentro de este margen se acepta si la geometria mejora.
+ssim_regresion_max = 0.010
+
+[geometria]
+# Error relativo maximo de la relacion pierna/torso tras aplicar el factor de la raza.
+error_pierna_max = 0.05
+# Error relativo maximo medio de cabeza, brazo y hombro (normalizados por altura).
+error_forma_max = 0.10
+# La cabeza no puede quedar por debajo del cuello de la plantilla ni el pie despegado:
+# tras la correccion de cadera los pies deben quedar a menos de esto del suelo de la plantilla.
+pies_tolerancia_u = 0.02
+
+[fisica]
+# El creador de XV2 no trae cadenas SCD propias (medido: off_no_SCD). Si una raza las
+# trajera, deben ser un bloque XV5S v1 valido; si no, la raza no se enciende.
+exigir_bloque_si_hay_scd = true
+
+[captura_fase3]
+# Criterio para las capturas en juego (PENDIENTE_JUEGO): mismo encuadre que la referencia
+# y SSIM sobre la caja del personaje.
+ssim_silueta_min = 0.80
+ssim_color_min = 0.60

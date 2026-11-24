@@ -1,0 +1,32 @@
+# CAC-18 (R23): postura de espera por hueso y retrato HD.
+# Fixture: 6 huesos girados (CHEST, LARM1, RARM1, HEAD, LLEG1, RLEG1) y retrato con pose 0, giro 22 y zoom 100.
+# Abre la Habitación (se ve el héroe con la postura), entra en Aspecto (creador), cambia la pose del retrato y
+# confirma: al volver a la Habitación se comprueba el montaje (moveset propio + postura). El retrato en selector/HUD
+# se remata con `heroe_exportado --par fase=rueda|esp` (ver LEEME.md), porque el héroe propio no sale en la rueda.
+# REXLOG nuevos que espera: CAC-18: postura: {n} huesos ...; CAC-18: retrato: pose ...; CAC-18: moveset propio ... .
+descripcion = "CAC-18: postura por hueso en la previa y el montaje, y retrato con pose elegida"
+env = ["DBZ3_TEST_MODO=heroe,0", "DBZ3_HUB_MODE=5", "DBZ3_TEST_HEROE_PANTALLA=habitacion", "DBZ3_TEST_HEROE_CUERPO=7",
+       "DBZ3_CAC_FILA=retrato", "DBZ3_TEST_CFG=dbz3_heroe_ui_nueva=true;dbz3_heroe_habitacion=true"]
+apartar = ["user_data/dbz3/cac.toml*", "user_data/dbz3/heroe", "user_data/dbz3/hub_heroe.toml*", "mods/heroe_propio"]
+poner = ["tools/pruebas_heroe/cac_pendientes/fixtures/cac18_postura_cac.toml -> user_data/dbz3/cac.toml"]
+pasos = [
+  "esperar_pantalla 5 120",
+  'log "Habitacion abierta" 180',
+  "esperar 4000",
+  "captura cac18_a_postura_habitacion",
+  "tecla Space 1500",
+  'log "Create abierto" 60',
+  'log "dbz3 heroe: .*postura.*huesos" 90',
+  'log "vista previa 3D .* cargada" 120',
+  "esperar 3000",
+  "captura cac18_b_postura_previa",
+  "tecla D 900",
+  'log "dbz3 heroe: .*retrato.*pose" 60',
+  "esperar 3000",
+  "captura cac18_c_retrato",
+  "tecla 3 1500",
+  'log "el heroe propio de la ficha .* se monta" 60',
+  'log "dbz3 heroe: .*moveset propio" 180',
+  "esperar 120000",
+  "captura cac18_d_postura_confirmada",
+]

@@ -810,6 +810,20 @@ int DeltaTeclado() {
 #endif
 }
 
+// SEL02: pista que representa AHORA dbz3_musica_combate (sin leer ni escribir musica.toml): la usa la vista
+// previa del selector, que corre cada fotograma. Vacia (entrada -1) con "original"; con "aleatoria" da la
+// primera de la fuente para que la previa sea estable hasta que L1/R1 cambie la eleccion.
+Pista ElegidaAhora() {
+  const Eleccion e = ParseCvar(rex::cvar::GetFlagByName("dbz3_musica_combate"));
+  if (e.modo == Modo::kOriginal) return {};
+  if (e.modo == Modo::kAleatoria) {
+    std::vector<Pista> lista = Pistas();
+    if (!e.fuente.empty()) std::erase_if(lista, [&](const Pista& p) { return p.fuente != e.fuente; });
+    return lista.empty() ? Pista{} : lista.front();
+  }
+  return PistaDe(e.fuente, e.ordinal);
+}
+
 std::string TextoEleccion() {
   const Eleccion e = ParseCvar(rex::cvar::GetFlagByName("dbz3_musica_combate"));
   if (e.modo == Modo::kOriginal) return "Original";

@@ -1,0 +1,29 @@
+# F1-CLIMA / POST2 12/11: "Clima vivo" con NIEVE en un escenario nativo de B3 (Llanura, registro 5).
+#   Copia: smoke_b (o cualquiera con data_cmn; las pruebas de clima se pasaron en smoke_a/b/c).
+#   python tools\pruebas.py correr smoke_b "docs\14_frentes\escenarios_pruebas\post1212\clima_nieve.toml"
+#
+# clave    = F1-CLIMA (tiempo del clima vivo: nieve) + POST2/F1-CLIMA (cielo de noche nativo).
+# cvar     = ninguna: DBZ3_CLIMA=rapido + DBZ3_CLIMA_TIEMPO=2 (nieve) la activan en pruebas.
+# criterio = el clima esta activo (sonda), cae nieve desde el primer cuadro de pelea, el oscurecimiento avanza
+#            a la noche y la capa de estrellas se activa. Las capturas 02/03/04 tienen que ensenar los copos
+#            (POST2: copo mayor con halo oscuro); el emisor no deja linea de registro, se mira en la foto.
+# log      = "dbz3 sonda clima: registro  5 'PLANE'"
+#            "dbz3 sonda clima: N s: oscuro 0.1x"
+#            "dbz3 clima estrellas: activa -1, za ..., zb ..., prof ..."
+#
+# Nota: DBZ3_HUB_MODE=5 entra directo al READY. Sin DBZ3_TEST_RINGOUT para que dure la noche.
+descripcion = "F1 Clima vivo con nieve (Llanura): clima activo, copos en las capturas y noche con estrellas"
+env = ["DBZ3_CLIMA=rapido", "DBZ3_CLIMA_TIEMPO=2", "DBZ3_SONDA_CLIMA=1", "DBZ3_TEST_BATTLE=0,7,5", "DBZ3_HUB_MODE=5"]
+pasos = [
+  "log \"tag: empieza un combate\" 90",
+  "esperar_pelea 90",
+  "log \"sonda clima: registro  5 'PLANE'\" 30",
+  "captura 01_dia_nieve",
+  "esperar 3000",
+  "captura 02_nieve",
+  "esperar 5000",
+  "captura 03_atardecer_nieve",
+  "log \"sonda clima: [0-9]+ s: oscuro 0\\.1\" 30",
+  "log \"clima estrellas: activa -1\" 30",
+  "captura 04_noche_nieve",
+]

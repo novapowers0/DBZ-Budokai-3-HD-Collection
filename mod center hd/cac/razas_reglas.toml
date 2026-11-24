@@ -1,0 +1,41 @@
+# Selección conservadora: solo cápsulas identificadas en fuentes del proyecto.
+# La tabla de formas y sus condiciones vive en res/heroe/desbloqueos.toml.
+# Los IDs no incluidos están pendientes de identificación y se rechazan.
+version = 1
+comunes = [409, 410, 444, 445]
+
+[[raza]]
+id = 0
+nombre = "Saiyan"
+formas = ["f_sai_ssj", "f_sai_ssj2", "f_sai_kaioken", "f_sai_ssj3", "f_sai_majin"]
+tecnicas = [6, 139]
+
+[[raza]]
+id = 1
+nombre = "Humano"
+formas = ["f_hum_potencial", "f_hum_maestria"]
+tecnicas = [6]
+
+[[raza]]
+id = 2
+nombre = "Namekiano"
+formas = ["f_nam_nail", "f_nam_kami"]
+tecnicas = []
+
+[[raza]]
+id = 3
+nombre = "Raza de Freezer"
+formas = ["f_fre_2", "f_fre_3", "f_fre_final", "f_fre_100", "f_fre_cooler"]
+tecnicas = []
+
+[[raza]]
+id = 4
+nombre = "Majin"
+formas = ["f_maj_super", "f_maj_absorcion", "f_maj_absorbida", "f_maj_kid", "f_maj_kid2"]
+tecnicas = []
+
+[[raza]]
+id = 5
+nombre = "Androide"
+formas = ["f_and_absorcion", "f_and_perfecto", "f_and_super", "f_and_accel"]
+tecnicas = [6]

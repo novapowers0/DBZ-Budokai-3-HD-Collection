@@ -1,0 +1,3 @@
+descripcion = "dsGIG: bola de ki del muñeco GIGANTE (los dos a 1.8, muneco=ki): comprobar de donde sale el proyectil (mano vs rodilla)"
+env = ["DBZ3_TEST_BATTLE=0,7,7", "DBZ3_HUB_MODE=5", "DBZ3_GIGANTE=1.8", "DBZ3_GIGANTE_LADO=3", "DBZ3_SONDA_GIGANTE=1", "DBZ3_COMBATE_MUNECO=ki"]
+pasos = ["log \"hub: combate nativo\" 60", "log \"gigante: escala\" 120", "esperar 2000", "captura 01_ki_a", "esperar 200", "captura 02_ki_b", "esperar 200", "captura 03_ki_c", "esperar 200", "captura 04_ki_d", "esperar 200", "captura 05_ki_e", "esperar 200", "captura 06_ki_f"]

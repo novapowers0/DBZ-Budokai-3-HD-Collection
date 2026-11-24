@@ -1,0 +1,4 @@
+# Solo apertura y vista previa: no acredita guardar, reiniciar ni transformar.
+descripcion = "R16 Freezer: apertura del creador y vista previa"
+env = ["DBZ3_TEST_MODO=heroe", "DBZ3_HUB_MODE=5", "DBZ3_TEST_HEROE_ABRIR=2", "DBZ3_TEST_HEROE_RAZA=3"]
+pasos = ["log \"Create abierto\" 180", "log \"vista previa 3D .* cargada\" 90", "captura freezer_creador"]

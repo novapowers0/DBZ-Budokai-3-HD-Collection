@@ -1,0 +1,39 @@
+# ESC-JUGABLES 12/11: la casilla "?" del Duelo con 238 altas elige entre TODAS (no solo las 6 de la rueda).
+#   Copia: esc_n preparada con  python tools\escenarios_copia_n.py preparar --n 238
+#   python tools\pruebas.py correr esc_n "docs\14_frentes\escenarios_pruebas\post1212\sel238_azar.toml"
+#
+# clave    = ESC-JUGABLES / SLOTS_ESC-04 (azar entre todos).
+# cvar     = dbz3_esc_azar_todos=true y dbz3_escenarios_238=true (ya de serie; se fijan por claridad).
+# criterio = el arranque carga 238 altas, el selector monta la rueda continua (243 escenarios en 16 casillas),
+#            el cursor llega a la casilla 12 ("?"), al confirmar el registro sale "entre todos (249)" (11
+#            nativos + 238 altas) y empieza un combate sin cierre.
+# log      = "dbz3 escenarios: alta 254 = 'COPIA 0238'"
+#            "dbz3 escenarios: selector continuo: 243 escenarios en 16 casillas"
+#            "dbz3 escenarios: sel casilla 12 (registro -1)"
+#            "dbz3 escenarios: \"?\" entre todos (249): registro N -> M ('...')"
+#            "dbz3 tag: empieza un combate"
+#
+# Nota: 249 = 11 nativos + 238 altas visibles (11 + Visibles() en escenarios.cpp:1468).
+descripcion = "ESC-JUGABLES: casilla ? con 238 altas elige entre los 249 escenarios visibles"
+env = ["DBZ3_SONDA_ESCENARIO=1", "DBZ3_TEST_RINGOUT=1", "DBZ3_TEST_CFG=dbz3_escenarios_238=true;dbz3_esc_azar_todos=true"]
+pasos = [
+  "esperar 2000",
+  "log \"alta 254 = 'COPIA 0238'\" 90",
+  "tecla S 1200",
+  "tecla Space 3000",
+  "tecla Space 3000",
+  "hasta_log 'lecturas del juego al entrar al selector' 120",
+  "tecla Space 4000",
+  "fin",
+  "esperar 6000",
+  "log \"selector continuo: 243 escenarios en 16 casillas\" 20",
+  "hasta_log 'sel casilla 12 ' 60",
+  "tecla A 900",
+  "fin",
+  "captura 01_casilla_azar",
+  "tecla Space 3000",
+  "log \"entre todos \\(249\\): registro \\d+ -> \\d+\" 60",
+  "log \"tag: empieza un combate\" 90",
+  "esperar 10000",
+  "captura 02_combate_azar",
+]

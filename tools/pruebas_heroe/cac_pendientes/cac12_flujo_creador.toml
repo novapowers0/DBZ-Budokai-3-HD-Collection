@@ -1,0 +1,36 @@
+# CAC-12 (R23): flujo del creador con el aspecto nuevo (pestañas, editor de color con muestras y nombre/título).
+# Captura 4 de las 6 pantallas que pide el criterio. Las otras dos (Pruébatelo y Modo foto) se sacan con
+# `cac12_pantallas.toml`, que se lanza dos veces cambiando solo DBZ3_TEST_HEROE_PANTALLA (ver LEEME.md).
+# REXLOG nuevo que espera: CAC-12: pestana {nombre} ({i}/{n}).
+descripcion = "CAC-12: creador con pestañas, muestras de color y teclado de nombre/título (4 capturas para el juez)"
+env = ["DBZ3_TEST_MODO=heroe,0", "DBZ3_HUB_MODE=5", "DBZ3_TEST_HEROE_PANTALLA=crear", "DBZ3_TEST_HEROE_CUERPO=0",
+       "DBZ3_TEST_CFG=dbz3_heroe_ui_nueva=true"]
+apartar = ["user_data/dbz3/cac.toml*", "user_data/dbz3/heroe", "user_data/dbz3/hub_heroe.toml*", "mods/heroe_propio"]
+pasos = [
+  "esperar_pantalla 5 120",
+  'log "Create abierto" 180',
+  'log "vista previa 3D .* cargada" 90',
+  "esperar 2000",
+  "captura cac12_1_crear_pestanas",
+  "tecla W 500",
+  "tecla D 700",
+  "tecla D 700",
+  'log "dbz3 heroe: .*pestana" 30',
+  "esperar 1000",
+  "captura cac12_2_pestana_activa",
+  "tecla Tab 1200",
+  'log "dbz3 heroe: pasa a Edit" 20',
+  "esperar 1000",
+  "tecla S 500",
+  "tecla Space 700",
+  'log "panel de color" 20',
+  "esperar 2500",
+  "captura cac12_3_color_muestras",
+  "tecla Backspace 700",
+  "esperar 800",
+  "tecla L 900",
+  "esperar 1000",
+  "tecla 3 700",
+  "esperar 800",
+  "captura cac12_4_nombre_titulo",
+]

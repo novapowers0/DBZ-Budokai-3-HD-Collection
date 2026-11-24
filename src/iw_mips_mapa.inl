@@ -28,6 +28,7 @@ struct Entrada {
   const uint8_t* scd = nullptr; uint32_t scd_n = 0;   // #SCD de capsulas crudo (DATA_CMN 1127)
   const Marca* marcas = nullptr; uint32_t n_marcas = 0;   // progreso del port traducido a bytes de capsula
   bool fijar_goku = false; float goku[2]{};              // con inicio: posicion de Goku
+  bool goku_defecto = false;   // con fijar_goku: usa la posicion por defecto del area (0x47DB60 / 0x47DBC0), como la partida nueva
   float paso = 1.0f;         // fRam0049c7dc: 1,0 a 60 cuadros/s (el EU de 50 Hz usa 1,2)
   bool libre = false;        // este cuadro corre los mandos del mapa libre
   uint16_t mant = 0, pulsa = 0;   // botones de PS2: mantenidos y recien pulsados (cruz 0x4000, L1 0x400, R1 0x800, cuadrado 0x8000)
@@ -40,16 +41,22 @@ struct Salida {
   float sale_a[kFilas]{};
   float duracion = 0;        // cuadros hasta la ultima
   // estado actual
-  uint32_t flags[kFilas]{};  // bit 0 viva, bit 1 elegible, bit 2 aun sin aparecer del todo
+  uint32_t flags[kFilas]{};  // bit 0 viva, bit 1 elegible, bit 2 estado «?» (capsula sin 0x80 o desbloqueo por hacer)
+  // objeto del #AMA 334/4 que pinta Story_SpawnSpriteNode/Story_RefreshSpriteNode: tabla ctx+0x180c[id*8] con id =
+  // nodo +0xE si bit 4, si no +0xC (-1 = sin dato; 188 = vacio)
+  int objeto[kFilas]{};
   float goku[2]{}, cam[2]{}, scroll[2]{};
   int anim = 0;              // animacion de Goku (M+0x220): 0 quieto, 1 aburrido, 2 anda, 3 corre, 4/6/0xC tras elegir
   int sel = -1;              // fila del #DMD bajo Goku (M+0x330) o -1
+  int globo_fila = -1;       // M+0x338: ultima fila con frase, incluso tras perder el nodo
+  float globo_t = -1.0f;     // IWFIN/HUECOS-09: reloj del globo de Bulma (M+0x334): 60 sobre una casilla, baja al salir; < 0 = se cierra
   int n_ord = 0; Orden ord[16];   // ordenes empujadas a la cola del mapa (0x5D9220/0x5D9260) en este cuadro
   int conf_fila = -1, conf_tipo = -1, conf_idx = -1;   // casilla elegida con A (M+0x1C / +0x14 / +0x10)
   int area_destino = -1;     // area del comando 5 (cambio de saga con L1/R1)
   float pos_defecto[2]{};    // posicion por defecto de Goku en el area destino (0x47DB60 / 0x47DBC0)
   bool transicion = false;   // el original llamo a Transition_SetupWithParams (esfera: escena de cine)
   int trans_tipo = 0, trans_a = 0;
+  uint32_t cerrojos = 0;     // cerrojos de area 0x842-0x84D (bit = clave - 0x842) a 0xE1 tras un avance automatico de saga
 };
 inline bool (*g_paso)(const Entrada&, Salida&) = nullptr;
 inline bool (*g_activa)() = nullptr;   // cvar dbz3_iw_mapa_original (de serie apagada), dbz3_iw_logica_original y ELF EU
@@ -121,7 +128,7 @@ bool MapaUsaIm() {
     kImCapIdsM = 0x5C4D10, kImCapHdrM = 0x5C5810, kImCapRecM = 0x5C5830;
     kImPadM = 0x4AD6CC, kImColaCmdM = 0x5D8A20, kImColaArgM = 0x5D8A60, kImColaNM = 0x5D8AA0;
     kImPantallaDesp = 0x800;
-    kImPosDM = 0x47D360, kImPosRoadM = 0x47D3C0;
+    kImPosDM = 0x47D3B0, kImPosRoadM = 0x47D410;   // r23: EU - 0x7B0 (>= 0x47D000), no - 0x800: bytes y lui+lo emparejados
   }
   return true;
 }
@@ -157,13 +164,40 @@ bool PasoMapa(const mapa::Entrada& in, mapa::Salida& out) {
     st->dueno = kNadie;
     return false;
   };
-  auto Nodos = [&](bool aparecidos) {
+  // Desbloqueo: el original lo cierra con Story_RefreshSpriteNode (EU 0x31B960), que limpia el bit 4 del
+  // nodo (+4 &= ~4) tras el paneo de _StartUnlock___Func (aqui ~90 cuadros). Ese callback vive en el sistema de sprites,
+  // que aqui va mudo: sin limpiarlo, Story_PickObjectAtCursor (EU 0x2F8200) exige (flags&1)&&(flags&2)&&!(flags&4) y
+  // NUNCA elige casilla (A no abre ficha, L1/R1 no cambia de saga). Se reproduce el final del fundido por tiempo.
+  // HUECOS-09: el bit 4 NO es solo el fundido; es el estado «?» (Story_SpawnMapObjectSprite EU 0x2FD580 lo pone si el
+  // byte de capsula no lleva 0x80, y Story_SpawnSpriteNode 0x31B770 pinta entonces el sprite +0xE = #DMD +0x14 en vez
+  // del +0xC). Solo se limpia para los nodos de la cola de desbloqueo (M+0x3A0, cuenta M+0x4A0, la llena
+  // Story_CollectBattlePointObjects) que recorre _StartUnlock___Func con Story_RefreshSpriteNode; los demas siguen «?».
+  auto EnCola = [&](uint32_t n) {
+    const uint32_t cuenta = std::min<uint32_t>(e.R32(kImMM + 0x4A0), 0x40);
+    for (uint32_t k = 0; k < cuenta; ++k) if (e.R32(kImMM + 0x3A0 + 4 * k) == n) return true;
+    return false;
+  };
+  static bool tabla_ok = false;   // ctx+0x180c.. copiada del ELF (Story_InitSpriteCtx)
+  static float s_nace[mapa::kFilas];
+  auto Nodos = [&](bool aparecidos, bool fundido) {
     for (uint32_t i = 0; i < 0x80; ++i) {
       const uint32_t n = kImCtxM + i * 0x30;
-      const uint32_t fl = e.R32(n + 4);
+      uint32_t fl = e.R32(n + 4);
       const uint32_t fila = e.R16(n);
       if (fl && fila < mapa::kFilas) {
+        if (fundido) {
+          if (s_nace[fila] < 0) s_nace[fila] = float(in.t);
+          if ((fl & 4u) && float(in.t) - s_nace[fila] >= 90.0f && EnCola(n)) {
+            e.W32(n + 4, fl & ~uint32_t(4));
+            REXLOG_INFO("dbz3 iwmips mapa: fila {} desbloqueada (bit 4 fuera, cola de _StartUnlock___Func)", fila);
+            fl &= ~uint32_t(4);
+          }
+        }
         out.flags[fila] = fl;
+        // Story_SpawnSpriteNode (EU 0x31B770): con el bit 4 el sprite es el del +0xE, si no el del +0xC; par de la
+        // tabla ctx+0x180c que Story_InitSpriteCtx copia del ELF (se copia igual al empezar, ver arriba)
+        const uint32_t id = e.R16(n + ((fl & 4u) ? 0xE : 0xC));
+        out.objeto[fila] = tabla_ok && id < 0x80 ? int(e.R32(kImCtxM + 0x180C + 8 * id)) : -1;
         if (aparecidos && out.sale_a[fila] < 0) out.sale_a[fila] = 0;   // marca provisional (se ajusta abajo)
       }
     }
@@ -175,6 +209,28 @@ bool PasoMapa(const mapa::Entrada& in, mapa::Salida& out) {
       return false;
     }
     e.Cero(kImMM, 0x1000); e.Cero(kImObj0M, 0x100); e.Cero(kImAssetM, 0x100); e.Cero(kImCtxM, 0x2000);
+    e.W32(kImMM + 0x338, 0xFFFFFFFFu);   // sin frase hasta que 0x2FE270 anote la primera fila
+    // Story_InitSpriteCtx (EU 0x31C1F0 aprox.; decomp «KernelRelatedShit» = copia): las cuatro tablas de sprites del ELF
+    // (EU 0x4804D0/0x480580/0x480750/0x480780) a ctx+0x180c/0x18fc/0x1b2c/0x1b7c. La region USA se busca por su firma
+    // (188,188,0,1,2,3), con el mismo orden relativo.
+    {
+      static uint32_t s_t0 = 0;
+      if (!s_t0) {
+        for (uint32_t a = 0x100000; a < 0x700000 && !s_t0; a += 4)
+          if (e.R32(a) == 188 && e.R32(a + 4) == 188 && e.R32(a + 8) == 0 && e.R32(a + 12) == 1 && e.R32(a + 16) == 2 &&
+              e.R32(a + 20) == 3 && e.R32(a + 0xB0) == 40 && e.R32(a + 0x280) == 172)
+            s_t0 = a;
+        if (!s_t0) s_t0 = 1;
+        REXLOG_INFO("dbz3 iwmips mapa: tablas de sprites del ELF en {:#x}", s_t0);
+      }
+      tabla_ok = s_t0 > 1;
+      if (tabla_ok) {
+        const uint32_t cp[4][3] = {{0x180C, 0, 0xA8}, {0x18FC, 0xB0, 0x1D0}, {0x1B2C, 0x280, 0x28}, {0x1B7C, 0x2B0, 0x40}};
+        for (const auto& c : cp)
+          for (uint32_t k = 0; k < c[2]; k += 4) e.W32(kImCtxM + c[0] + k, e.R32(s_t0 + c[1] + k));
+      }
+    }
+    for (float& v : s_nace) v = -1.0f;   // entrada nueva: cada nodo vuelve a su fundido
     e.Cero(kImColaCmdM, 0x84);
     for (const auto& p : kImPantallaM) e.W32(p[0] - kImPantallaDesp, p[1]);
     for (uint32_t i = 0; i < in.dmd_n; i += 4) {   // #DMD reubicado: '#' -> '!' y la tabla de punteros (+0x10) pasa a absoluta
@@ -213,15 +269,20 @@ bool PasoMapa(const mapa::Entrada& in, mapa::Salida& out) {
     }
     if (!Llama(kImCapUnlockM, {kImEstadoBaseM})) return false;
     if (in.fijar_goku) {
-      e.Wf(kImMM + 0x1D0, in.goku[0]); e.Wf(kImMM + 0x1D4, in.goku[1]);
-      e.Wf(kImMM + 0x29C, in.goku[0]); e.Wf(kImMM + 0x2A0, in.goku[1]);
+      float gx = in.goku[0], gy = in.goku[1];
+      if (in.goku_defecto && in.saga >= 0 && in.saga < 6) {   // HUECOS-09: partida nueva = posicion por defecto del area
+        const uint32_t base = (in.road ? kImPosRoadM : kImPosDM) + 16u * uint32_t(in.saga);
+        gx = out.pos_defecto[0] = e.Rf(base); gy = out.pos_defecto[1] = e.Rf(base + 4);
+      }
+      e.Wf(kImMM + 0x1D0, gx); e.Wf(kImMM + 0x1D4, gy);
+      e.Wf(kImMM + 0x29C, gx); e.Wf(kImMM + 0x2A0, gy);
     }
     // aparicion: ICONS (comando 10; argumento 1 = de golpe) y AppearTick hasta agotar la lista
     for (int i = 0; i < mapa::kFilas; ++i) out.sale_a[i] = -1.0f;
     e.W32(kImColaArgM, in.de_golpe ? 1u : 0u);
     e.W32(kImColaNM, 1);
     if (!Llama(kImIconsM, {kImObj0M})) return false;
-    Nodos(true);
+    Nodos(true, false);
     for (int i = 0; i < mapa::kFilas; ++i) if (out.sale_a[i] >= 0) out.sale_a[i] = 0;
     int k = 0;
     while (!in.de_golpe && int32_t(e.R32(kImObj0M + 0x30)) >= 0 && k < 600) {
@@ -233,6 +294,18 @@ bool PasoMapa(const mapa::Entrada& in, mapa::Salida& out) {
       }
     }
     out.duracion = float(k) * in.paso;
+    {   // HUECOS-09: estado de cada casilla al entrar (fila:banderas:+0xC:+0xE:objeto del #AMA)
+      std::string ns;
+      for (uint32_t i = 0; i < 0x80; ++i) {
+        const uint32_t n = kImCtxM + i * 0x30, fl = e.R32(n + 4), fila = e.R16(n);
+        if (!fl || fila >= mapa::kFilas) continue;
+        char tmp[64];
+        std::snprintf(tmp, sizeof tmp, "%u:%X:%u:%u:%d@%d,%d ", fila, fl, e.R16(n + 0xC), e.R16(n + 0xE), out.objeto[fila],
+                      int(e.Rf(n + 0x18)), int(e.Rf(n + 0x1C)));
+        ns += tmp;
+      }
+      REXLOG_INFO("dbz3 iwmips mapa nodos (cola {}): {}", e.R32(kImMM + 0x4A0), ns);
+    }
     e.W32(kImColaNM, 0);
     if (log) {
       std::string ms;
@@ -243,7 +316,7 @@ bool PasoMapa(const mapa::Entrada& in, mapa::Salida& out) {
   } else {
     e.W32(kImColaNM, 0);   // la cola real la lleva el port (ordenes_); aqui solo se recogen las que empuja el original
   }
-  Nodos(false);
+  Nodos(false, in.libre);
   if (in.libre) {
     const uint32_t M = kImMM;
     e.W16(kImPadM, in.mant); e.W16(kImPadM + 2, in.pulsa);
@@ -256,6 +329,14 @@ bool PasoMapa(const mapa::Entrada& in, mapa::Salida& out) {
     out.cam[0] = e.Rf(M + 0x29C); out.cam[1] = e.Rf(M + 0x2A0);
     out.scroll[0] = e.Rf(M + 0x2A4); out.scroll[1] = e.Rf(M + 0x2A8);
     out.anim = int(e.R32(M + 0x220));
+    if (static int ant = -1; out.anim != ant) {   // R23 IW-7: cambio de animacion de Goku (GeneralMapScripts EU 0x2FE270)
+      REXLOG_INFO("dbz3 iw mapa original: Goku animacion {} -> {} (M+0x238 {} mando+6 {:04X} +0x66 {:04X})", ant, out.anim,
+                  int(e.R32(M + 0x238)), e.R16(kImPadM + 6), e.R16(kImPadM + 0x66));
+      ant = out.anim;
+    }
+    out.globo_t = e.Rf(M + 0x334);
+    const uint32_t globo_fila = e.R32(M + 0x338);
+    if (globo_fila < mapa::kFilas) out.globo_fila = int(globo_fila);
     if (const uint32_t nodo = e.R32(M + 0x330); nodo >= kImCtxM && nodo < kImCtxM + 0x80 * 0x30) {
       const uint32_t fila = e.R16(nodo);
       if (fila < mapa::kFilas) out.sel = int(fila);
@@ -269,6 +350,18 @@ bool PasoMapa(const mapa::Entrada& in, mapa::Salida& out) {
         out.conf_tipo = int(e.R32(M + 0x14)); out.conf_idx = int(e.R32(M + 0x10));
       }
       if (out.ord[i].cmd == 5) out.area_destino = out.ord[i].arg;
+    }
+    // Avance de saga automatico (EU 0x2FE270): con el cerrojo del area (LockScript_ 0x2F7E60: capsulas 0x842-0x84D)
+    // abierto y sin el bit 1, el original pasa al area siguiente y lo marca |= 0xE1. El port lo guarda (iw_cerrojos) para
+    // volver a ponerlo en las marcas: sin eso el mapa repetia el recorrido de sagas en cada entrada.
+    for (int i = 0; i < out.n_ord; ++i) {
+      if (out.ord[i].cmd != 2) continue;
+      for (uint32_t c = 0x842; c <= 0x84D; ++c) {
+        if (!Llama(kImCapModM, {c})) return false;
+        const uint32_t idx = uint32_t(e.r[2]) & 0xFFFF;
+        if (idx < 0x580 && (e.R8(kImEstadoM + idx) & 0xE1) == 0xE1) out.cerrojos |= 1u << (c - 0x842);
+      }
+      break;
     }
     if (trans) {   // esfera de cristal (tipo 2): 0xC0 en su byte y escena 0x11 con el indice +0x10
       out.transicion = true; out.trans_tipo = int(trans_tipo); out.trans_a = int(trans_a);
@@ -299,7 +392,7 @@ bool PasoMapa(const mapa::Entrada& in, mapa::Salida& out) {
                   out.n_ord, out.conf_fila, e.n - cr.n0, us);
     }
   }
-  Nodos(false);
+  Nodos(false, in.libre);
   return true;
 }
 

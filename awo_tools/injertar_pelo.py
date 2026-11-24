@@ -530,7 +530,48 @@ def _tex_usadas(amb):
 RIGIDO = False   # 9/11: scouter como lista rigida de un hueso hijo de la cabeza (como el original); False = lista del hueso 0
 
 
-def injertar_nativo(amb, ex, donor, ddraw):
+def _recolor_rampa(donor, src, rsrc, amb, candidatas, tinte=None):
+    """CAC-15: elige entre las rampas `candidatas` (texturas del cuerpo del tamano de la del donante) la que deja el color
+    de la pieza mas fiel y devuelve (donor con la textura `src` (DXT3 sin mips) corregida para esa rampa, su indice).
+    Formula "resta" de model_render: final = rgb - K * rampa[banda] (la banda 15 no se sombrea); la correccion se
+    recorta a 0..1, y por eso se elige la rampa de menor error.
+    ponytail: solo la columna clara; el tono de las sombras sigue el de la rampa del cuerpo."""
+    import io  # noqa: PLC0415
+    from PIL import Image  # noqa: PLC0415
+    import model_render as mr  # noqa: PLC0415
+    import texture_b3 as tb  # noqa: PLC0415
+    dec = lambda d, t: np.asarray(Image.open(io.BytesIO(bytes(d[t["bitmap_abs"] - 128:t["bitmap_abs"] + t["w"] * t["h"]]))).convert("RGBA"), np.float32) / 255.0  # noqa: E731
+
+    def filas(d, t, col=-1):
+        r = dec(d, t)
+        yi = np.clip(((np.arange(16) + 0.5) * t["h"] / 16).astype(int), 0, t["h"] - 1)
+        return r[yi, col % t["w"], :3]
+    im = dec(donor, src)
+    band = np.clip(np.round(im[..., 3] * 15), 0, 15).astype(int)
+    rd, rw = filas(donor, rsrc), rsrc["w"]
+    mejor = None
+    for t in candidatas:
+        rh = filas(amb, t)
+        rgb = np.where(band[..., None] >= 15, im[..., :3], np.clip(im[..., :3] - mr.RAMP_K * (rd - rh)[band], 0, 1))
+        err = 0.0   # error medio en 5 columnas (luz llena ... sombra): una rampa oscura en la sombra dejaba manchas negras
+        for col in (0, rw // 4, rw // 2, 3 * rw // 4, rw - 1):
+            fd, fh = filas(donor, rsrc, col), filas(amb, t, col)
+            err += float(np.abs(np.where(band[..., None] >= 15, rgb, rgb - mr.RAMP_K * fh[band]) -
+                                np.where(band[..., None] >= 15, im[..., :3], im[..., :3] - mr.RAMP_K * fd[band])).mean())
+        if mejor is None or err < mejor[0]:
+            mejor = (err, t, rgb)
+    rgb_f = mejor[2]
+    if tinte is not None:   # color medido del pelo (SSJ_PELO_RGB): la parte clara de la textura a ese tono, las lineas siguen oscuras
+        claro = rgb_f.mean(-1) > 0.55
+        if claro.any():
+            rgb_f = np.clip(rgb_f * (np.asarray(tinte, np.float32) / np.maximum(np.median(rgb_f[claro], axis=0), 0.05)), 0, 1)
+    nuevo = tb.encode_dxt3((np.concatenate([rgb_f, im[..., 3:4]], 2) * 255 + 0.5).astype(np.uint8))
+    d = bytearray(donor)
+    d[src["bitmap_abs"]:src["bitmap_abs"] + src["w"] * src["h"]] = nuevo
+    return bytes(d), mejor[1]["idx"]
+
+
+def injertar_nativo(amb, ex, donor, ddraw, recorte=None, rampa_nueva=False, tinte=None, ramp_forzada=None):
     """1/11 Scouter NATIVO: anade al cuerpo un DRAW NUEVO con el material PROPIO del donante (textura + rampa + flags del
     material del draw `ddraw` del #AMB `donor`, p. ej. el XGOK_SCOUT1 del modelo 281). El resto del injerto comparte el
     material del anfitrion (y su rampa), y por eso el color salia como el del cuerpo.
@@ -538,7 +579,10 @@ def injertar_nativo(amb, ex, donor, ddraw):
     slot de la cabeza (igual que el pelo de Jeice): un draw mas en el array del hueso 0, ventanas nuevas, y los bloques DXT3
     de la textura del donante copiados a un hueco libre de una textura del cuerpo (rampa identica o la mas parecida). La
     tabla de draws del hueso 0 y la de materiales se REUBICAN en bytes insertados al final de la cabecera del AWG0.
-    Devuelve (bytes, resumen); sin textura libre / rampa identica / cabeza devuelve el #AMB intacto con la causa."""
+    Devuelve (bytes, resumen); sin textura libre / rampa identica / cabeza devuelve el #AMB intacto con la causa.
+    CAC-07a (accesorios): ex["huesos"] (opcional) = hueso del CUERPO de cada vertice de ex["P"] (rigido a el, por su slot
+    de paleta: lista del grupo BODY); recorte = (bx, by, bw, bh) en bloques 4x4 de la textura del donante: solo se copia
+    ese trozo (ex["UV"] siguen en 0..1 de la textura entera del donante)."""
     import texture_b3 as tb  # noqa: PLC0415
     amb, donor = bytes(amb), bytes(donor)
     be = lambda d, o: struct.unpack(">I", d[o:o + 4])[0]  # noqa: E731
@@ -557,6 +601,9 @@ def injertar_nativo(amb, ex, donor, ddraw):
     cab = _hueso_cabeza(labels)
     gb = next((d["group_bone"] for d in dt.draws if d["group_bone"] > 0 and d["prim"] == 4 and parents[d["group_bone"]] == cab
                and "UTEETH" in labels[d["group_bone"]]), None) if (RIGIDO and cab is not None) else None
+    huesos_v = ex.get("huesos")
+    if huesos_v is not None:
+        gb = None
     if gb is not None:
         d0 = [d for d in dt.draws if d["group_bone"] == gb]
         slot, inv = 0, np.array(minv_affine(world[gb]))
@@ -564,13 +611,22 @@ def injertar_nativo(amb, ex, donor, ddraw):
         d0 = [d for d in dt.draws if d["group_bone"] == 0]
         if len(d0) < 2:
             return amb, {"scouter": "sin array de draws del grupo BODY"}
-        eff, seen = cab, set()
-        while eff is not None and eff not in ss.slot_of and eff >= 0 and eff not in seen:
-            seen.add(eff)
-            eff = parents[eff]
-        if cab is None or eff not in ss.slot_of:
-            return amb, {"scouter": "sin hueso HEAD / slot de paleta"}
-        slot, inv = ss.slot_of[eff], np.array(minv_affine(world[eff]))
+        def con_slot(h):
+            seen = set()
+            while h is not None and h not in ss.slot_of and h >= 0 and h not in seen:
+                seen.add(h)
+                h = parents[h]
+            return h if h in ss.slot_of else None
+        if huesos_v is not None:
+            effs = [con_slot(int(h)) for h in huesos_v]
+            if any(e is None for e in effs):
+                return amb, {"scouter": "hueso del accesorio sin slot de paleta"}
+            slot, inv = None, None
+        else:
+            eff = con_slot(cab) if cab is not None else None
+            if eff is None:
+                return amb, {"scouter": "sin hueso HEAD / slot de paleta"}
+            slot, inv = ss.slot_of[eff], np.array(minv_affine(world[eff]))
     # --- textura del donante (bloques DXT3 copiados tal cual) -> hueco libre 16x16 bloques (+1 de margen) de una textura
     # grande del cuerpo que ningun triangulo de ningun AWG cubre; rampa identica (o la mas parecida) ya presente en el cuerpo
     _, th = tb.parse_azt(amb)
@@ -590,13 +646,30 @@ def injertar_nativo(amb, ex, donor, ddraw):
     rb_ = bits(donor, rsrc)
     same = [t for t in th if (t["w"], t["h"], t["size"]) == (rsrc["w"], rsrc["h"], rsrc["size"]) and t["idx"] in usadas_shader]
     ident = [t for t in same if bits(amb, t) == rb_]
-    if ident:
+    if ramp_forzada is not None:   # CAC-15: piel de la capa con la rampa de piel del cuerpo (mano/brazo del mismo tono)
+        ramp, ident = int(ramp_forzada), [{"idx": int(ramp_forzada)}]
+    elif ident:
         ramp = ident[0]["idx"]
     elif same:     # sin la identica: la rampa del cuerpo mas parecida (mismo tamano)
         ra = np.frombuffer(rb_, np.uint8).astype(int)
         ramp = min(same, key=lambda t: int(np.abs(np.frombuffer(bits(amb, t), np.uint8).astype(int) - ra).sum()))["idx"]
     else:
         return amb, {"scouter": "el cuerpo no tiene rampa de %dx%d" % (rsrc["w"], rsrc["h"])}
+    if rampa_nueva and ramp_forzada is None and (not ident or tinte is not None):   # CAC-15 (via Libre): la pieza lleva su color bajo la rampa PARECIDA del cuerpo
+        donor, ramp = _recolor_rampa(donor, src, rsrc, amb, same if not ident else ident, tinte)
+        sbw, sbh = src["w"] // 4, src["h"] // 4
+    src0 = src
+    if recorte is not None:   # solo el trozo de la textura que usa la pieza: UV de la textura entera -> del trozo
+        rx, ry, rw, rh = recorte
+        full = bits(donor, src)
+        blq0 = lambda by, bx: full[(by * sbw + bx) * 16:(by * sbw + bx) * 16 + 16]  # noqa: E731
+        trozo = b"".join(blq0(ry + r_, rx + c_) for r_ in range(rh) for c_ in range(rw))
+        UVr = np.asarray(ex["UV"], float).copy()
+        UVr[:, 0] = (UVr[:, 0] * src["w"] - rx * 4) / (rw * 4)
+        UVr[:, 1] = (UVr[:, 1] * src["h"] - ry * 4) / (rh * 4)
+        ex = dict(ex, UV=UVr)
+        src = dict(src, w=rw * 4, h=rh * 4)
+        sbw, sbh = rw, rh
     cub = {t["idx"]: np.zeros((t["h"] // 4, t["w"] // 4), bool) for t in th if t["size"] - 128 == t["w"] * t["h"]}
     n_awg = be(amb, 0x40 + 0x18)
     from PIL import Image, ImageDraw  # noqa: PLC0415
@@ -629,9 +702,9 @@ def injertar_nativo(amb, ex, donor, ddraw):
                     if ii[y0 + need_h, x0 + need_w] - ii[y0, x0 + need_w] - ii[y0 + need_h, x0] + ii[y0, x0] == 0:
                         return t, x0 + 1, y0 + 1
         return None
-    sb = bits(donor, src)
+    sb = trozo if recorte is not None else bits(donor, src)
     sitio = buscar(sbw + 2, sbh + 2)
-    if sitio is None and sbw % 2 == 0 and sbh % 2 == 0:   # sin hueco entero: la textura a la mitad (cada pixel = media 2x2)
+    if sitio is None and recorte is None and sbw % 2 == 0 and sbh % 2 == 0:   # sin hueco entero: la textura a la mitad (cada pixel = media 2x2)
         import io  # noqa: PLC0415
         a_ = src["bitmap_abs"]   # con la cabecera DDS del propio #AZT (la de texture_b3.decode_dxt3_bitmap falla con Pillow 11+)
         im4 = np.asarray(Image.open(io.BytesIO(donor[a_ - 128:a_ + src["w"] * src["h"]])).convert("RGBA"), np.float32)
@@ -641,6 +714,22 @@ def injertar_nativo(amb, ex, donor, ddraw):
         sbw, sbh = sbw // 2, sbh // 2
         sitio = buscar(sbw + 2, sbh + 2)
         mitad = True
+    elif sitio is None and recorte is not None and rampa_nueva:   # CAC-15: el trozo recortado, a la mitad hasta 2 veces
+        import io  # noqa: PLC0415
+        mitad = 0
+        while sitio is None and mitad < 2 and max(sbw, sbh) > 4:
+            hdr = bytearray(donor[src0["bitmap_abs"] - 128:src0["bitmap_abs"]])   # cabecera DDS del #AZT con el tamano del trozo
+            struct.pack_into("<III", hdr, 12, src["h"], src["w"], src["w"] * src["h"])
+            im4 = Image.open(io.BytesIO(bytes(hdr) + sb)).convert("RGBA")
+            nw, nh = max(4, -(-src["w"] // 8) * 4), max(4, -(-src["h"] // 8) * 4)
+            im4 = np.asarray(im4)   # canal a canal: el alfa es la banda toon, y con RGBA Pillow premultiplica (RGB 0 donde alfa 0)
+            im4 = np.stack([np.asarray(Image.fromarray(np.ascontiguousarray(im4[..., c]), "L").resize((nw, nh), Image.Resampling.BOX))
+                            for c in range(4)], 2)
+            sb = tb.encode_dxt3(im4)
+            src = dict(src, w=nw, h=nh)
+            sbw, sbh = nw // 4, nh // 4
+            sitio = buscar(sbw + 2, sbh + 2)
+            mitad += 1
     else:
         mitad = False
     if sitio is None:
@@ -654,18 +743,27 @@ def injertar_nativo(amb, ex, donor, ddraw):
     ex = dict(ex, UV=UVn)
     # --- geometria soldada (pos + normal + uv) en el espacio local de la cabeza
     P, N, UV = np.asarray(ex["P"], float), np.asarray(ex["N"], float), np.asarray(ex["UV"], float)
+    HV = np.asarray(effs if huesos_v is not None else [-1] * len(P), int)
     uniq, idx = {}, []
-    for p_, n_, u_ in zip(P, N, UV):
-        idx.append(uniq.setdefault((tuple(np.round(p_, 4)), tuple(np.round(n_, 2)), tuple(np.round(u_, 5))), len(uniq)))
+    for p_, n_, u_, h_ in zip(P, N, UV, HV):
+        idx.append(uniq.setdefault((tuple(np.round(p_, 4)), tuple(np.round(n_, 2)), tuple(np.round(u_, 5)), int(h_)),
+                                   len(uniq)))
     nv = len(uniq)
-    nP, nN, nU = np.zeros((nv, 3)), np.zeros((nv, 3)), np.zeros((nv, 2))
+    nP, nN, nU, nH = np.zeros((nv, 3)), np.zeros((nv, 3)), np.zeros((nv, 2)), np.zeros(nv, int)
     for i, r in enumerate(idx):
-        nP[r], nN[r], nU[r] = P[i], N[i], UV[i]
+        nP[r], nN[r], nU[r], nH[r] = P[i], N[i], UV[i], HV[i]
     tris = [tuple(idx[v] for v in t) for t in ex["tris"]]
     tris = [t for t in tris if len(set(t)) == 3]
-    R = inv[:3, :3]
-    loc = nP @ R.T + inv[:3, 3]
-    nl = nN @ R.T
+    if huesos_v is not None:   # cada vertice en el marco de SU hueso
+        invs = {h: np.array(minv_affine(world[h])) for h in set(nH.tolist())}
+        loc = np.array([invs[h][:3, :3] @ p_ + invs[h][:3, 3] for p_, h in zip(nP, nH)])
+        nl = np.array([invs[h][:3, :3] @ n_ for n_, h in zip(nN, nH)])
+        slots_v = [ss.slot_of[h] for h in nH]
+    else:
+        R = inv[:3, :3]
+        loc = nP @ R.T + inv[:3, 3]
+        nl = nN @ R.T
+        slots_v = [slot] * nv
     nl /= np.maximum(np.linalg.norm(nl, axis=1), 1e-9)[:, None]
     # --- espacio: ventanas + indices + (draws del hueso 0 + materiales) reubicados
     n_mat, nd = len(dt.materials), len(d0)
@@ -677,7 +775,7 @@ def injertar_nativo(amb, ex, donor, ddraw):
     for i in range(nv):
         o = obj.vb0 + (avb.n + i) * WINDOW
         b[o:o + WINDOW] = AwgVertexBuffer.pack_window(
-            {"pos": tuple(loc[i]), "w": 1.0, "bone": slot, "nrm": tuple(nl[i]), "uv": (float(nU[i][0]), float(nU[i][1]))})
+            {"pos": tuple(loc[i]), "w": 1.0, "bone": slots_v[i], "nrm": tuple(nl[i]), "uv": (float(nU[i][0]), float(nU[i][1]))})
     cur = avb.n_ib
     for k, v in enumerate(v for t in tris for v in t):
         struct.pack_into(">H", b, obj.ib_abs + (cur + k) * 2, (avb.n + int(v)) & 0xFFFF)
@@ -720,8 +818,9 @@ def injertar_nativo(amb, ex, donor, ddraw):
     set32(b, a0 + 0x20, tab2 - a0)
     set32(b, a0 + 0x24, n_mat + 1)
     set32(b, a0 + 0x18, max(be(b, a0 + 0x18), dest + 1, ramp + 1))
-    return bytes(b), {"scouter": "draw %d material %d (tex %d bloque %d,%d%s, rampa %d), %d ventanas, %d triangulos" % (
-        nd, n_mat, dest, bx0, by0, " a la mitad" if mitad else "", ramp, nv, len(tris)), "ventanas_total": new_n}
+    return bytes(b), {"scouter": "draw %d material %d (tex %d bloque %d,%d%s, rampa %d%s), %d ventanas, %d triangulos" % (
+        nd, n_mat, dest, bx0, by0, " a la mitad" if mitad else "", ramp, "" if ident else " PARECIDA", nv, len(tris)),
+        "ventanas_total": new_n, "rampa_identica": bool(ident)}
 
 
 def _selftest(cuerpo, pelo, salida):

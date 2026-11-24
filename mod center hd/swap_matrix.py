@@ -25,15 +25,11 @@ Tipos y magic esperado (--type):
 import argparse
 import json
 import os
-import struct
-import subprocess
 import sys
 import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, ".."))
-
-LZX_MAGIC = b"\x0f\xf5\x12\xee"
 
 TYPES = {
     "model": ("#AWO", "geom.bin"),
@@ -45,77 +41,19 @@ TYPES = {
 }
 
 
-def _first_existing(*paths):
-    for p in paths:
-        if os.path.exists(p):
-            return p
-    return paths[0]
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
+# xbcompress, LZX e indice AFS: kit/base.py (los nombres de siempre, como alias)
+from kit import base  # noqa: E402
+from kit.base import (LZX_MAGIC, TOOLS_DIR, XBCOMPRESS, XBDECOMPRESS, lzx_compress,  # noqa: E402,F401
+                      lzx_decompress, read_afs_index)
 
-
-TOOLS_DIR = _first_existing(
-    os.path.join(HERE, "tools"),
-    os.path.join(HERE, "..", "mod center",
-                 "Xbox 360 Compression - Decompression tool "
-                 "from the XBOX Development Kit"),
-    os.path.join(HERE, "..", "tools"),
-)
-XBCOMPRESS = os.path.join(TOOLS_DIR, "xbcompress.exe")
-XBDECOMPRESS = os.path.join(TOOLS_DIR, "xbdecompress.exe")
+_first_existing = base.first_existing
+_clean_env = base.clean_env
+extract_entry = base.extract_afs_entry
 
 MAGICS = [b"#AWO", b"#AWG", b"#AZT", b"#ACM", b"#AWM", b"#AMO0", b"#AMB",
           b"#SPX", b"#ACC", b"#AMT"]
-
-
-def _clean_env(workdir):
-    env = dict(os.environ)
-    env["TEMP"] = workdir
-    env["TMP"] = workdir
-    return env
-
-
-def lzx_compress(src, dst, workdir=None):
-    if os.path.exists(dst):
-        os.remove(dst)
-    env = _clean_env(workdir) if workdir else None
-    r = subprocess.run([XBCOMPRESS, "/N:2048", src, dst], capture_output=True,
-                       text=True, env=env)
-    if r.returncode != 0:
-        raise RuntimeError("xbcompress fallo: %s" % (r.stdout + r.stderr))
-    return os.path.getsize(dst)
-
-
-def lzx_decompress(src, dst, workdir=None):
-    if os.path.exists(dst):
-        os.remove(dst)
-    env = _clean_env(workdir) if workdir else None
-    r = subprocess.run([XBDECOMPRESS, src, dst], capture_output=True, text=True,
-                       env=env)
-    if r.returncode != 0:
-        raise RuntimeError("xbdecompress fallo: %s" % (r.stdout + r.stderr))
-    return os.path.getsize(dst)
-
-
-def read_afs_index(afs_path):
-    with open(afs_path, "rb") as f:
-        head = f.read(0x10)
-    if head[:3] != b"AFS":
-        raise RuntimeError("no es AFS: %r" % head[:4])
-    count = struct.unpack("<I", head[4:8])[0]
-    entries = []
-    with open(afs_path, "rb") as f:
-        f.seek(8)
-        for _ in range(count):
-            addr, size = struct.unpack("<II", f.read(8))
-            entries.append((addr, size))
-    return entries
-
-
-def extract_entry(afs_path, idx):
-    entries = read_afs_index(afs_path)
-    addr, size = entries[idx]
-    with open(afs_path, "rb") as f:
-        f.seek(addr)
-        return f.read(size)
 
 
 def describe_bin(b):

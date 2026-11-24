@@ -1,0 +1,32 @@
+descripcion = "[pt ROG-07] modos_rogue_diario (ROG-07): reto diario del dia 20404 (DBZ3_TEST_DIA): pantalla 07 vacia (Y en el selector), partida del dia de 2 pisos con el luchador y la semilla del dia, puntuacion al final, pantalla 07 con la puntuacion, racha y codigo, y segundo intento como practica (no puntua)."
+# Teclas: Space = A, Backspace = B, P = Y, 3 = RB.
+env = ["DBZ3_HUB_MODE=5", "DBZ3_TEST_RINGOUT=1", "DBZ3_TEST_ROGUE=2", "DBZ3_TEST_DIA=20404", "DBZ3_TEST_MODO=rogue,0", "REX_DBZ3_LANGUAGE=9"]
+apartar = ["user_data/dbz3/rogue.toml*"]
+pasos = [
+  "esperar_pantalla 5 120",
+  "log 'prueba: Dragon Rogue' 30",
+  "esperar 2500",
+  "tecla P 1500",
+  "log 'reto diario 20404: pantalla' 10",
+  "captura 01_diario_vacio",
+  "tecla Space 3000",
+  "log 'reto diario 20404: id [0-9]+, semilla [0-9]+ .puntua.' 10",
+  "log 'Dragon Rogue combate 1: pedido' 30",
+  "log 'Dragon Rogue: combate 1 ganado' 180",
+  "esperar 3000",
+  "tecla Space 1500",
+  "esperar 1500",
+  "tecla Space 3000",
+  "log 'Dragon Rogue combate 2: pedido' 60",
+  "log 'reto diario 20404: [0-9]+ puntos .2 pisos, 0 jefes' 240",
+  "esperar 3000",
+  "captura 02_resultado_diario",
+  "tecla P 2500",
+  "tecla Backspace 1500",
+  "tecla P 1500",
+  "captura 03_diario_puntuado",
+  "tecla Space 3000",
+  "log 'reto diario 20404: id [0-9]+, semilla [0-9]+ .practica.' 10",
+  "log 'Dragon Rogue combate 1: pedido' 30",
+]
+

@@ -32,6 +32,7 @@ extern const rex::PPCImageInfo PPCImageConfigEU;
 #include <rex/ui/keybinds.h>
 #include <rex/rex_app.h>
 #include <rex/hook.h>
+#include "escenarios.h"
 #include "hooks.h"
 #include "datos.h"
 
@@ -49,7 +50,8 @@ __declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
 #include "stage_ext.h"
 #endif
 #ifndef DBZ3_EU_VARIANT
-namespace dbz3::tactics { void CrearPruebaFiguras(rex::ui::ImGuiDrawer* drawer); }   // tactics/prueba_figuras.cpp
+namespace dbz3::tactics { void CrearPruebaFiguras(rex::ui::ImGuiDrawer* drawer); const char* EnvPrueba(const char* nombre); }   // tactics/prueba_figuras.cpp
+namespace dbz3::survivors { void CrearPrueba(rex::ui::ImGuiDrawer* drawer); bool PruebaPedida(); }   // survivors/prueba.cpp
 #endif
 #include "region.h"
 #include "plugins.h"
@@ -70,7 +72,28 @@ namespace dbz3::tactics { void CrearPruebaFiguras(rex::ui::ImGuiDrawer* drawer);
 #include "ingame/menu.h"
 #include "ingame/online_panel.h"
 #include "ingame/tagteam_panel.h"
+#include "ingame/game_style.h"   // C4/DR04: rectangulo de la imagen del juego (GuestImage)
+#include "eu_map.h"              // C4/DR04: direccion US/EU del gestor del combate
 #include "net/room.h"
+
+// Plataformas fuera de PC (Android, Switch): su capa se engancha aqui sin parchear este archivo. El
+// `platform.cmake` de DBZ3_PLATFORM_DIR (CMakeLists.txt) define DBZ3_PLATFORM_HEADER, una cabecera que
+// puede definir:
+//   DBZ3_PLATFORM_PRE_SETUP(config)  tras leer dbz3_user.toml (p. ej. elegir otro renderizador)
+//   DBZ3_PLATFORM_APP_MEMBERS        metodos que se anaden a Dbz3App (overrides de rex::ReXApp)
+//   DBZ3_PLATFORM_SHUTDOWN()         al cerrar, antes de nuestra limpieza
+#ifdef DBZ3_PLATFORM_HEADER
+#include DBZ3_PLATFORM_HEADER
+#endif
+#ifndef DBZ3_PLATFORM_PRE_SETUP
+#define DBZ3_PLATFORM_PRE_SETUP(config) ((void)0)
+#endif
+#ifndef DBZ3_PLATFORM_APP_MEMBERS
+#define DBZ3_PLATFORM_APP_MEMBERS
+#endif
+#ifndef DBZ3_PLATFORM_SHUTDOWN
+#define DBZ3_PLATFORM_SHUTDOWN() ((void)0)
+#endif
 #include <rex/audio/sdl/sdl_audio_system.h>
 #include <rex/input/input_system.h>
 #include <rex/kernel/init.h>
@@ -79,6 +102,11 @@ namespace dbz3::tactics { void CrearPruebaFiguras(rex::ui::ImGuiDrawer* drawer);
 #include <rex/audio/flags.h>
 
 #include <imgui.h>
+
+#include <rex/cvar.h>
+#include <rex/runtime.h>
+#include <rex/ui/immediate_drawer.h>
+#include <rex/ui/presenter.h>
 
 #include <spdlog/spdlog.h>
 
@@ -110,13 +138,230 @@ bool OverlayOpen() { return g_overlay_open.load() || rex::ui::QuickMenuDialog::I
 #include <csignal>
 #include <cstdlib>
 #include <cstring>
+#include <cstdint>
 #include <atomic>
+#include <algorithm>
+#include <cmath>
+#include <memory>
+#include <vector>
+#include <fstream>
+#include <iterator>
 
 #if REX_PLATFORM_WIN32
 #include <windows.h>
 #include <dbghelp.h>
 #pragma comment(lib, "dbghelp.lib")
 #endif
+
+// ---------------------------------------------------------------------------
+// C4 / DR04 (#15): fundido cruzado del corte de la intro.
+//
+// Medido (X1esc, 22/10): el original de PS2 mezcla el plano viejo con el nuevo
+// durante ~30 cuadros; el port corta a negro y sube desde negro. Banco sin juego
+// (studies 5/ENTREGAS/C4PLAT/herramientas/banco_fundido.py): contra los 15
+// cuadros medidos del PS2, el peso del plano viejo pasa de MAE 0,569 / primera
+// diferencia en el cuadro 1 a MAE 0,000 / sin diferencia.
+//
+// No toca el SDK: durante la presentacion del combate (mgr+35128 en 1..3) se
+// guarda de vez en cuando el ultimo cuadro bueno del intro
+// (Presenter::CaptureGuestOutput). Cuando la presentacion se va a negro (corte
+// de plano o entrada en pelea, estado 4) se pinta ese cuadro encima con el peso
+// medido del PS2 durante `dbz3_fundido_cuadros`; debajo entra el cuadro nuevo
+// solo, asi que sale el cruce. Apagado por defecto.
+// ---------------------------------------------------------------------------
+REXCVAR_DEFINE_BOOL(dbz3_fundido_cruzado, false, "DBZ3/Video",
+                    "Fundido cruzado del corte de la intro (off = corte en seco, como el 360/original)");
+REXCVAR_DEFINE_INT32(dbz3_fundido_cuadros, 30, "DBZ3/Video",
+                     "Cuadros del fundido cruzado de la intro (16-60)");
+REXCVAR_DEFINE_INT32(dbz3_fundido_captura_cada, 6, "DBZ3/Video",
+                     "Cada cuantos cuadros se guarda un cuadro bueno del intro (4-30)");
+
+namespace dbz3::fundido {
+namespace {
+constexpr dbz3::GA kMgrPtr = 0x823D6CF4;   // gestor del combate: el mapa EU da la pareja si cambia
+constexpr uint32_t kEstado = 35128;        // 1..3 presentacion (intro), 4 pelea
+// Peso del plano viejo por cuadro, medido en el original PS2
+// (X1esc, studies 5/ENTREGAS/X1esc/evidencias/fundido_alfa_por_cuadro.csv).
+constexpr float kPesoPs2[] = {1.000f, 0.777f, 0.743f, 0.717f, 0.695f, 0.670f,
+                              0.643f, 0.621f, 0.594f, 0.571f, 0.551f, 0.524f,
+                              0.501f, 0.477f, 0.451f};
+constexpr int kMedidos = int(sizeof(kPesoPs2) / sizeof(kPesoPs2[0]));
+
+struct Estado {
+  std::vector<uint8_t> foto;                 // ultimo cuadro bueno (RGBA8, sin huecos)
+  uint32_t ancho = 0, alto = 0;
+  std::unique_ptr<rex::ui::ImmediateTexture> tex;
+  int generacion = 0, tex_generacion = -1;   // la textura se rehace al guardar otra foto
+  float lum = 0;                             // luminancia media del cuadro guardado
+  int estado_prev = -1;                      // mgr+35128 del cuadro anterior
+  int tomas = 0, contador = 0, intentos = 0; // capturas guardadas / desde la ultima / intentos
+  int cuadro_cruce = -1;                     // -1 = sin cruce; si no, cuadro actual
+} g;
+
+uint32_t Ld32(const uint8_t* base, uint32_t a) {
+  uint32_t v = 0;
+  std::memcpy(&v, base + a, 4);
+  return __builtin_bswap32(v);
+}
+
+uint32_t LeerEstado(const uint8_t* base) {
+  const uint32_t mgr = Ld32(base, uint32_t(kMgrPtr));
+  return mgr ? Ld32(base, mgr + kEstado) : 0;
+}
+
+float LumaMedia(const rex::ui::RawImage& img) {
+  if (img.data.empty() || img.stride < size_t(img.width) * 4) return 0;
+  const uint32_t paso_x = std::max(1u, img.width / 32), paso_y = std::max(1u, img.height / 18);
+  double suma = 0;
+  int n = 0;
+  for (uint32_t y = 0; y < img.height; y += paso_y)
+    for (uint32_t x = 0; x < img.width; x += paso_x) {
+      const uint8_t* p = &img.data[size_t(y) * img.stride + size_t(x) * 4];
+      suma += 0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2];
+      ++n;
+    }
+  return n ? float(suma / n) : 0;
+}
+
+void Guardar(const rex::ui::RawImage& img) {
+  const size_t fila = size_t(img.width) * 4;
+  g.foto.resize(fila * img.height);
+  for (uint32_t y = 0; y < img.height; ++y)
+    std::memcpy(&g.foto[size_t(y) * fila], &img.data[size_t(y) * img.stride], fila);
+  g.ancho = img.width;
+  g.alto = img.height;
+  ++g.generacion;
+}
+
+// Guarda el ultimo cuadro bueno del intro (no el que ya se esta fundiendo a negro).
+// Devuelve true si el cuadro actual es casi negro (corte a negro) y hay un cuadro bueno guardado.
+bool Capturar() {
+  rex::Runtime* rt = rex::Runtime::instance();
+  rex::system::IGraphicsSystem* gs = rt ? rt->graphics_system() : nullptr;
+  rex::ui::Presenter* p = gs ? gs->presenter() : nullptr;
+  if (!p) return false;
+  rex::ui::RawImage img;
+  if (!p->CaptureGuestOutput(img) || img.width < 32 || img.height < 32 || img.data.empty())
+    return false;
+  const float lum = LumaMedia(img);
+  if (lum < 8.0f) return !g.foto.empty();   // corte a negro: no se guarda, pero avisa
+  if (g.foto.empty() || lum >= 0.8f * g.lum) {   // se queda el ultimo cuadro bueno
+    Guardar(img);
+    g.lum = lum;
+    ++g.tomas;
+    if (g.tomas == 1)
+      REXLOG_INFO("dbz3 fundido: cuadro bueno del intro guardado ({}x{}, lum {:.0f})", img.width,
+                  img.height, lum);
+  }
+  return false;
+}
+
+rex::ui::ImmediateTexture* FotoTex() {
+  if (g.tex && g.tex_generacion == g.generacion) return g.tex.get();
+  g.tex.reset();
+  if (g.foto.empty() || !dbz3::launcher::PreviewDrawer()) return nullptr;
+  g.tex = dbz3::launcher::PreviewDrawer()->CreateTexture(
+      g.ancho, g.alto, rex::ui::ImmediateTextureFilter::kLinear, false, g.foto.data());
+  g.tex_generacion = g.generacion;
+  return g.tex.get();
+}
+
+constexpr float Peso(int n, int cuadros) {
+  if (n <= 0) return 1.0f;
+  if (n >= cuadros) return 0.0f;
+  if (n < kMedidos) return kPesoPs2[n];
+  return kPesoPs2[kMedidos - 1] * float(cuadros - n) / float(cuadros - (kMedidos - 1));
+}
+// Banco en tiempo de compilacion de la curva del cruce (el de juego es
+// banco_fundido.py): extremos, puntos medidos y la cola lineal.
+static_assert(Peso(0, 30) == 1.0f);
+static_assert(Peso(1, 30) == kPesoPs2[1]);
+static_assert(Peso(14, 30) == kPesoPs2[14]);
+static_assert(Peso(22, 30) == kPesoPs2[14] * 0.5f);
+static_assert(Peso(30, 30) == 0.0f);
+static_assert(Peso(90, 30) == 0.0f);
+static_assert(Peso(-3, 30) == 1.0f);
+
+void Dibujar(ImDrawList* dl, const ImGuiIO& io, int n, int cuadros) {
+  rex::ui::ImmediateTexture* tex = FotoTex();
+  if (!tex) return;
+  const dbz3::ingame::style::Imagen gi = dbz3::ingame::style::GuestImage(io);
+  const float w = Peso(n, cuadros);
+  const int alfa = int(std::lround(std::clamp(w, 0.0f, 1.0f) * 255.0f));
+  if (alfa <= 0) return;
+  dl->AddImage(reinterpret_cast<ImTextureID>(tex), gi.p0, gi.p1, ImVec2(0, 0), ImVec2(1, 1),
+               IM_COL32(255, 255, 255, alfa));
+}
+
+void Limpiar() {
+  g.foto.clear();
+  g.ancho = g.alto = 0;
+  g.lum = 0;
+  g.tomas = 0;
+  g.contador = 0;
+  g.intentos = 0;
+  g.cuadro_cruce = -1;
+  g.estado_prev = -1;
+  ++g.generacion;
+}
+}  // namespace
+
+// Una vez por cuadro de la interfaz (DebugOverlayDialog::OnDraw).
+void Paso(ImDrawList* dl, const ImGuiIO& io) {
+  if (!REXCVAR_GET(dbz3_fundido_cruzado)) {
+    if (!g.foto.empty() || g.cuadro_cruce >= 0) Limpiar();
+    return;
+  }
+  rex::Runtime* rt = rex::Runtime::instance();
+  const uint8_t* base = rt ? rt->virtual_membase() : nullptr;
+  if (!base) return;
+  const int cuadros = std::clamp(int(REXCVAR_GET(dbz3_fundido_cuadros)), 16, 60);
+  const int cada = std::clamp(int(REXCVAR_GET(dbz3_fundido_captura_cada)), 4, 30);
+  const uint32_t st = LeerEstado(base);
+  if (st >= 1 && st <= 3) {                        // presentacion del combate (intro)
+    if (g.estado_prev < 1 || g.estado_prev > 3) {  // intro nueva: se empieza de cero
+      g.foto.clear();
+      g.lum = 0;
+      g.tomas = 0;
+      g.contador = 0;
+      g.intentos = 0;
+    }
+    if (g.intentos < 120 && ++g.contador >= cada) {
+      ++g.intentos;
+      g.contador = 0;
+      const bool negro = Capturar();
+      if (negro && g.cuadro_cruce < 0) {           // corte a negro de la presentacion
+        g.cuadro_cruce = 0;
+        REXLOG_INFO("dbz3 fundido: cruce del corte de la intro ({} cuadros, foto {}x{}, lum {:.0f})",
+                    cuadros, g.ancho, g.alto, g.lum);
+      }
+    }
+  } else if (st == 4) {                            // empieza la pelea: cruce
+    if (g.estado_prev >= 1 && g.estado_prev <= 3 && !g.foto.empty()) {
+      g.cuadro_cruce = 0;
+      REXLOG_INFO("dbz3 fundido: cruce del corte de la intro ({} cuadros, foto {}x{}, lum {:.0f})",
+                  cuadros, g.ancho, g.alto, g.lum);
+    }
+  } else {
+    g.cuadro_cruce = -1;
+    if (st == 0 && g.estado_prev != 0) {
+      g.foto.clear();
+      g.lum = 0;
+      g.tomas = 0;
+      g.intentos = 0;
+    }
+  }
+  g.estado_prev = int(st);
+  if (g.cuadro_cruce >= 0) {
+    Dibujar(dl, io, g.cuadro_cruce, cuadros);
+    if (++g.cuadro_cruce >= cuadros) {
+      g.cuadro_cruce = -1;
+      g.foto.clear();   // hasta la proxima intro
+      g.lum = 0;
+    }
+  }
+}
+}  // namespace dbz3::fundido
 
 namespace dbz3 {
 std::atomic<void*> g_hwnd{nullptr};
@@ -180,6 +425,10 @@ public:
         : ImGuiDialog(imgui_drawer) {}
 protected:
     void OnDraw(ImGuiIO& io) override {
+        dbz3::escenarios::TickRevanchaUi();   // SLOTS_ESC-07 (sin la cvar no hace nada)
+        // C4/DR04 (#15): fundido cruzado del corte de la intro (cvar apagada: no hace nada).
+        if (!dbz3::GameDimmed() && !dbz3::OverlayOpen())
+            dbz3::fundido::Paso(ImGui::GetForegroundDrawList(), io);
         // Dimmed "the game is in the background" screen. Drawn whether or not
         // the FPS counter is on: it makes it obvious that the window is not
         // active, and hides the picture so it cannot be read while the player is
@@ -332,8 +581,20 @@ public:
               wchar_t file[MAX_PATH] = {};
               OPENFILENAMEW ofn = {};
               ofn.lStructSize = sizeof(ofn);
-              ofn.lpstrFilter = std::strcmp(dbz3::i18n::LangCode(), "es") == 0
+              // HUECOS-26: el filtro estaba solo en es/en; ahora los 6 idiomas del lanzador.
+              const char* lg = dbz3::i18n::LangCode();
+              ofn.lpstrFilter = std::strcmp(lg, "es") == 0
                                     ? L"Imagen de disco (*.iso)\0*.iso;*.xiso\0Todos los archivos\0*.*\0"
+                                : std::strcmp(lg, "fr") == 0
+                                    ? L"Image disque (*.iso)\0*.iso;*.xiso\0Tous les fichiers\0*.*\0"
+                                : std::strcmp(lg, "de") == 0
+                                    ? L"Datenträgerabbild (*.iso)\0*.iso;*.xiso\0Alle Dateien\0*.*\0"
+                                : std::strcmp(lg, "it") == 0
+                                    ? L"Immagine disco (*.iso)\0*.iso;*.xiso\0Tutti i file\0*.*\0"
+                                : std::strcmp(lg, "pt") == 0
+                                    ? L"Imagem de disco (*.iso)\0*.iso;*.xiso\0Todos os arquivos\0*.*\0"
+                                : std::strcmp(lg, "ja") == 0
+                                    ? L"ディスクイメージ (*.iso)\0*.iso;*.xiso\0すべてのファイル\0*.*\0"
                                     : L"Disc image (*.iso)\0*.iso;*.xiso\0All files\0*.*\0";
               ofn.lpstrFile = file;
               ofn.nMaxFile = MAX_PATH;
@@ -405,6 +666,7 @@ public:
         try {
             dbz3::settings::LoadUserSettings();
             REXLOG_INFO("dbz3: LoadUserSettings done");
+            dbz3::settings::MigrarTrasActualizar();
             // Force the launcher to always open windowed, regardless of what
             // the user config or a previous session may have stored. The chosen
             // fullscreen mode is applied on Play via ApplyWindowSizeToSdk.
@@ -416,7 +678,10 @@ public:
         } catch (...) {
             REXLOG_ERROR("dbz3: settings apply failed (unknown error), continuing with defaults");
         }
+        DBZ3_PLATFORM_PRE_SETUP(config);
     }
+
+    DBZ3_PLATFORM_APP_MEMBERS
 
     // Called after runtime is fully initialized, before window creation
     void OnPostSetup() override {
@@ -490,7 +755,8 @@ public:
         }
         imgui_drawer_ = drawer;
 #ifndef DBZ3_EU_VARIANT
-        if (std::getenv("DBZ3_TEST_TACTICS_FIGURAS")) dbz3::tactics::CrearPruebaFiguras(drawer);   // prueba de Dragon Tactics (pruebas.py)
+        if (dbz3::tactics::EnvPrueba("FIGURAS")) dbz3::tactics::CrearPruebaFiguras(drawer);   // prueba de Dragon Tactics (pruebas.py)
+        if (dbz3::survivors::PruebaPedida()) dbz3::survivors::CrearPrueba(drawer);   // prueba tecnica Dragon Budokai Survivors (ajuste o pruebas.py)
 #endif
         // nombre del juego en la ventana (el SDK pone "dbz3" y su sello de compilacion)
         if (window()) {
@@ -933,6 +1199,7 @@ public:
     // Called before cleanup begins
     void OnShutdown() override {
         REXLOG_INFO("OnShutdown called");
+        DBZ3_PLATFORM_SHUTDOWN();
         dbz3::SessionEnd(true);   // partida cerrada bien: sus mods pasan a "ultima partida buena"
         dbz3::plugins::CerrarTodos();
         if (drop_listener_added_ && window()) {
@@ -1078,8 +1345,35 @@ private:
     std::filesystem::path game_dir_;
     static std::atomic<bool> crash_logged_;
 
+    // canal 11/11 ("error grave, normalmente de la grafica" sin saber cual): rex::FatalError y los asserts del SDK
+    // dejan su motivo en stderr y llaman a abort(). En una app de ventana stderr no iba a ningun sitio; se manda a
+    // logs/dbz3_motivo_cierre.txt (el UCRT es compartido: vale para las DLL del SDK) y SIGABRT lo lee.
+    static std::filesystem::path& MotivoPath() {
+        static std::filesystem::path p;
+        return p;
+    }
+    static std::string LeerMotivoCierre() {
+        if (MotivoPath().empty()) return {};
+        std::fflush(stderr);
+        std::ifstream f(MotivoPath(), std::ios::binary);
+        std::string s((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+        size_t i = s.rfind("FATAL ERROR: ");
+        if (i != std::string::npos) i += 13;
+        else if ((i = s.rfind("Assertion failed: ")) == std::string::npos) return {};
+        s = s.substr(i, 1500);
+        while (!s.empty() && (s.back() == '\n' || s.back() == '\r')) s.pop_back();
+        return s;
+    }
+
     static void SetupCrashHandler() {
 #if REX_PLATFORM_WIN32
+        if (MotivoPath().empty()) {
+            std::error_code ec;
+            const auto dir = rex::filesystem::GetExecutableFolder() / "logs";
+            std::filesystem::create_directories(dir, ec);
+            MotivoPath() = dir / "dbz3_motivo_cierre.txt";
+            if (!_wfreopen(MotivoPath().c_str(), L"w", stderr)) MotivoPath().clear();
+        }
         SetUnhandledExceptionFilter([](EXCEPTION_POINTERS* ep) -> LONG {
             if (crash_logged_.exchange(true)) return EXCEPTION_CONTINUE_SEARCH;
             // A debugger is attached: let it take the exception (don't swallow
@@ -1225,16 +1519,22 @@ private:
         // jugador solo veia la pantalla en negro y el cierre. Ventana con el registro y la prueba de Vulkan.
         std::signal(SIGABRT, [](int) {
             if (crash_logged_.exchange(true)) return;
-            REXLOG_CRITICAL("abort(): error fatal del runtime (grafica o arranque)");
+            const std::string motivo = LeerMotivoCierre();
+            REXLOG_CRITICAL("abort(): error fatal del runtime; motivo: {}",
+                            motivo.empty() ? std::string("(sin texto del SDK)") : motivo);
             rex::FlushLogging();
             if (std::getenv("DBZ3_NO_DIALOGS")) return;
             dbz3::i18n::SetLanguage(dbz3::settings::Language());
             const std::string log_path = dbz3::settings::LatestLogPath().string();
             const std::string msg =
-                std::string(dbz3::i18n::T("DBZ Budokai 3 HD Collection se cerro por un error grave (normalmente de la "
-                                          "tarjeta grafica).",
-                                          "DBZ Budokai 3 HD Collection closed because of a fatal error (usually the "
-                                          "graphics card).")) +
+                (motivo.empty()
+                     ? std::string(dbz3::i18n::T("DBZ Budokai 3 HD Collection se cerro por un error grave (normalmente "
+                                                 "de la tarjeta grafica).",
+                                                 "DBZ Budokai 3 HD Collection closed because of a fatal error (usually "
+                                                 "the graphics card)."))
+                     : std::string(dbz3::i18n::T("DBZ Budokai 3 HD Collection se cerro por este error:",
+                                                 "DBZ Budokai 3 HD Collection closed because of this error:")) +
+                           "\n\n" + motivo) +
                 "\n\n" + dbz3::i18n::T("El registro del juego esta en:", "The game log is in:") + "\n" +
                 (log_path.empty() ? std::string("logs/") : log_path) + "\n\n" +
                 dbz3::i18n::T("Prueba en el lanzador: Motor grafico -> Vulkan, y actualiza el driver de la grafica. "

@@ -6,10 +6,14 @@
 // permitan; la bajada (sub_82119258) tambien los mira. La capsula unica (1984 + ID, roster_ext.cpp) solo
 // enciende esos bytes para las formas que agrupa: el ki que pide cada forma y el resto del juego no cambian.
 // Online no hace nada (cada PC tiene su partida: las formas desbloqueadas podrian no coincidir).
+#include <rex/cvar.h>
 #include <rex/logging.h>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
+#include <chrono>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <string>
@@ -20,12 +24,91 @@
 #include "form_selection.h"
 #include "net/netplay.h"
 #include "roster_ext.h"
+#include "tagteam.h"
 #include "heroe_api.h"   // Modo Heroe: niveles Super Saiyan del heroe propio
+
+// TAG02: traza de tiempos de la transformacion (que operacion consume el fotograma) y precarga de la
+// forma siguiente en su propio hueco. Las dos apagadas de serie; no cambian nada si no se encienden.
+REXCVAR_DEFINE_BOOL(dbz3_forma_traza, false, "DBZ3/Dev",
+                    "Trazas de tiempo de la transformacion: cambio nativo y carga de modelo/animacion | Transformation timing traces");
+REXCVAR_DEFINE_BOOL(dbz3_forma_precarga, false, "DBZ3/Mods",
+                    "Precarga la forma siguiente del luchador mientras espera (menos tirones al transformar) | Preloads the next form while idle");
 
 namespace {
 
 constexpr dbz3::GA kMgr = 0x823D6CF4;   // combate: luchador k en +2096 + 8240k, estado en +35128 (4 = pelea)
 std::atomic<bool> g_pkg{false};         // prueba: pulsar P+K+G en el siguiente registro del mando 1
+
+int64_t NowUs() {
+  return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+// Llamada al guest con r3/r4 (mismo patron que TestTick).
+uint32_t GCall(PPCContext& ctx, uint8_t* base, void (*fn)(PPCContext&, uint8_t*), uint32_t r3, uint32_t r4 = 0) {
+  PPCContext c = ctx;
+  c.r3.u64 = r3;
+  c.r4.u64 = r4;
+  fn(c, base);
+  return c.r3.u32;
+}
+
+// TAG02: por lado, forma pedida y su reloj (traza) y forma precargada en su hueco (si la hay).
+std::array<int, 2> g_target{-1, -1};
+std::array<int64_t, 2> g_target_us{0, 0};
+std::array<int, 2> g_preload{-1, -1};
+
+// Lee el estado de una transformacion y, si toca, precarga la forma siguiente. Solo lectura salvo la
+// precarga (cvar) y sus liberaciones; se llama al primer paso de cada luchador en el fotograma.
+void FormWatch(PPCContext& ctx, uint8_t* base, uint32_t x) {
+  const bool trace = REXCVAR_GET(dbz3_forma_traza) || std::getenv("DBZ3_TEST_FORMAS") != nullptr;
+  const bool preload = REXCVAR_GET(dbz3_forma_precarga);
+  if (!trace && !preload) return;
+  const uint32_t mgr = REX_LOAD_U32(kMgr);
+  if (!mgr || x < mgr + 2096 || x > mgr + 2096 + 8240) return;
+  const int side = x == mgr + 2096 ? 0 : x == mgr + 2096 + 8240 ? 1 : -1;
+  if (side < 0) return;
+  if (REX_LOAD_U32(mgr + 35128) != 4) {   // fuera de la pelea no hay transformacion que medir
+    g_target[size_t(side)] = -1;
+    g_target_us[size_t(side)] = 0;
+    g_preload[size_t(side)] = -1;
+    return;
+  }
+  const uint32_t cur = REX_LOAD_U32(x + 2980), next = REX_LOAD_U32(x + 2984);
+  if (trace) {
+    if (next != cur && int(next) != g_target[size_t(side)]) {
+      g_target[size_t(side)] = int(next);
+      g_target_us[size_t(side)] = NowUs();
+      REXLOG_INFO("dbz3 formas traza: lado {} pide la forma {} (desde {})", side + 1, next, cur);
+    } else if (next == cur && g_target[size_t(side)] >= 0 && int(cur) == g_target[size_t(side)]) {
+      REXLOG_INFO("dbz3 formas traza: lado {} en la forma {}: {:.1f} ms desde la peticion", side + 1, cur,
+                  double(NowUs() - g_target_us[size_t(side)]) / 1000.0);
+      g_target[size_t(side)] = -1;
+    }
+  }
+  if (!preload) return;
+  // Solo en reposo y sin un relevo cargando: no se pisa el hueco que usa el Tag Team.
+  if (cur != next || REX_LOAD_U16(x + 3244) > 2 || dbz3::tag::Swapping()) return;
+  const int target = int(GCall(ctx, base, DBZ3_CALL_EU(sub_82119108), x));
+  if (target < 1 || target >= 6) return;   // 6 y 7 son los huecos del relevo del Tag Team
+  if (const int old = g_preload[size_t(side)]; old >= 0 && old != target) {
+    if (uint32_t(old) != cur && uint32_t(old) != next && REX_LOAD_U32(x + 7608 + 4 * uint32_t(old))) {
+      GCall(ctx, base, DBZ3_CALL_EU(sub_82100D60), x, uint32_t(old));
+      GCall(ctx, base, DBZ3_CALL_EU(sub_82100DE8), x, uint32_t(old));
+      if (REXCVAR_GET(dbz3_forma_traza))
+        REXLOG_INFO("dbz3 formas traza: lado {} suelta la precarga de la forma {}", side + 1, old);
+    }
+    g_preload[size_t(side)] = -1;
+  }
+  if (int(cur) == target) { g_preload[size_t(side)] = -1; return; }   // ya es la forma actual
+  if (REX_LOAD_U32(x + 7608 + 4 * uint32_t(target))) return;           // ya cargada (juego o precarga)
+  const int64_t t0 = NowUs();
+  GCall(ctx, base, DBZ3_CALL_EU(sub_82100A10), x, uint32_t(target));
+  GCall(ctx, base, DBZ3_CALL_EU(sub_82100B78), x, uint32_t(target));
+  g_preload[size_t(side)] = target;
+  if (REXCVAR_GET(dbz3_forma_traza)) {
+    REXLOG_INFO("dbz3 formas traza: lado {} precarga la forma {} en {:.1f} ms (modelo {:08X})", side + 1, target,
+                double(NowUs() - t0) / 1000.0, REX_LOAD_U32(x + 7608 + 4 * uint32_t(target)));
+  }
+}
 
 // X: +7412 registro de seleccion (+52 n capsulas, +54 IDs), +7416 char372, +7420 ID, +8156 + f forma permitida
 void GrantForms(uint8_t* base, uint32_t x) {
@@ -47,7 +130,7 @@ void GrantForms(uint8_t* base, uint32_t x) {
   for (uint32_t f = 1; f < 8; ++f) {
     if ((mask >> f) & 1) REX_STORE_U8(x + 8156 + f, 1);
     const uint32_t cap = c372 ? REX_LOAD_U16(c372 + 212 + 20 * f) : 0;
-    if (cap) caps += " " + std::to_string(cap) + ":" + std::to_string(cap < 2048 ? REX_LOAD_U8(inv + cap) : 0);
+    if (cap) caps += " " + std::to_string(cap) + ":" + std::to_string(cap < dbz3::roster::CatalogueLimit() ? REX_LOAD_U8(inv + cap) : 0);
   }
   REXLOG_INFO("dbz3 formas: luchador {:08X} id {}: capsula unica {} -> formas {:02X} (capsula:tienes{})", x, id,
               uid, mask, caps);
@@ -69,9 +152,22 @@ void TestTick(PPCContext& ctx, uint8_t* base) {
   const uint32_t c372 = REX_LOAD_U32(x + 7416);
   const int cur = int32_t(REX_LOAD_U32(x + 2980));
   if (!c372) return;
+  // R23 CAC: DBZ3_TEST_FORMAS_PAUSA = ms quieto en cada forma (una foto por forma); sin ella, como siempre. En tiempo de
+  // reloj: este paso corre varias veces por cuadro.
+  static const int pausa = [] { const char* e = std::getenv("DBZ3_TEST_FORMAS_PAUSA"); return e ? std::atoi(e) : 0; }();
+  static int64_t quieto = 0;
   if (cur != last) {
     if (last >= 0) REXLOG_INFO("dbz3 formas: prueba: {} a la forma {}", cur > last ? "sube" : "baja", cur);
     last = cur;
+    quieto = NowUs() + int64_t(pausa) * 1000;
+  }
+  // R23 CAC: DBZ3_TEST_FORMAS_INICIO = ms quieto en la forma 0 al empezar la pelea (el arnes de fotos llega tarde)
+  static const int inicio = [] { const char* e = std::getenv("DBZ3_TEST_FORMAS_INICIO"); return e ? std::atoi(e) : 0; }();
+  static int64_t t_inicio = 0;
+  if (inicio > 0 && !t_inicio) t_inicio = NowUs() + int64_t(inicio) * 1000;
+  if ((pausa > 0 && NowUs() < quieto) || (inicio > 0 && NowUs() < t_inicio)) {
+    if (!std::getenv("DBZ3_COMBATE_MUNECO")) REX_STORE_U16(mgr + 2096 + 8240 + 5028, 0);   // el rival no ataca mientras (lee el mando 1)
+    return;
   }
   static uint16_t held = 0;   // botones convertidos del usuario 0 (0x8238B780 +12) que ve el juego
   if (const uint16_t h = REX_LOAD_U16(dbz3::GA(0x8238B780) + 12); h != held) {
@@ -254,26 +350,53 @@ DBZ3_HOOK(sub_82112260, dbz3eu_sub_82112360) {
   }
   orig(ctx, base);
   GrantForms(base, x);
+  // PRUEBAS TAG02: todas las formas permitidas sin depender de la capsula unica (solo copias de prueba).
+  if (std::getenv("DBZ3_TEST_FORMAS_FORCE")) {
+    for (uint32_t f = 1; f < 8; ++f) REX_STORE_U8(x + 8156 + f, 1);
+  }
   // Super Saiyan del Modo Heroe (25/10): el heroe propio sube a las formas que ha despertado (heroe::SsjNivel, por
   // victorias clave) sin capsula: aqui, como lo haria su capsula. El ki de cada forma y la subida son los nativos.
   if (const int id = int32_t(REX_LOAD_U32(x + 7420)); id >= 0 && id == dbz3::heroe::IdHeroeCargado() &&
                                                        dbz3::net::Session::Get().link() == dbz3::net::Link::kIdle) {
-    const int niv = dbz3::heroe::SsjNivel();
-    for (int f = 1; f <= niv && f < 8; ++f) REX_STORE_U8(x + 8156 + uint32_t(f), 1);
-    if (niv > 0) REXLOG_INFO("dbz3 formas: heroe id {}: Super Saiyan hasta el nivel {}", id, niv);
+    // R23 CAC: por la capsula de cada forma (heroe::FormasCombate), no por posicion
+    const uint32_t c372 = 0x82329CF0u + uint32_t(id) * 372u;
+    const int nf = std::clamp<int>(int(REX_LOAD_U32(c372 + 0xD0)), 1, 8);
+    uint16_t caps[8] = {};
+    for (int f = 0; f < nf; ++f) caps[f] = REX_LOAD_U16(c372 + 212 + 20 * uint32_t(f));
+    const uint32_t m = dbz3::heroe::FormasCombate(caps, nf);
+    for (int f = 1; f < nf; ++f)
+      if (m & (1u << f)) REX_STORE_U8(x + 8156 + uint32_t(f), 1);
+    REXLOG_INFO("dbz3 formas: heroe id {}: {} formas, capsulas {} {} {} {} {} {} {}, abiertas {:02X} (SSJ {})", id, nf, caps[1], caps[2],
+                caps[3], caps[4], caps[5], caps[6], caps[7], m, dbz3::heroe::SsjNivel());
   }
 }
 
 // Primer paso de cada luchador en el fotograma de combate (r3 = X; lo llama sub_821100B0, que es de
 // combate.cpp): solo para la prueba, con el jugador 1.
 DBZ3_HOOK_EU(sub_82110B08) {
+  const uint32_t x = ctx.r3.u32;
   static const bool test = std::getenv("DBZ3_TEST_FORMAS") != nullptr;
   if (test) {
     const uint32_t mgr = REX_LOAD_U32(kMgr);
-    if (mgr && ctx.r3.u32 == mgr + 2096) TestTick(ctx, base);
+    if (mgr && x == mgr + 2096) TestTick(ctx, base);
   }
+  FormWatch(ctx, base, x);   // TAG02: traza por lado y precarga de la forma siguiente (cvars apagadas)
   orig(ctx, base);
 }
+
+// TAG02: tiempo del cambio de forma del juego (sub_82115330) y del bloque que lo prepara
+// (sub_8210E100: decision + carga del modelo/animacion). Solo log con dbz3_forma_traza.
+DBZ3_HOOK_EU(sub_82115330) {
+  const int64_t t0 = NowUs();
+  const uint32_t x = ctx.r3.u32;
+  const uint32_t from = x ? REX_LOAD_U32(x + 2980) : 0, to = x ? REX_LOAD_U32(x + 2984) : 0;
+  orig(ctx, base);
+  if (REXCVAR_GET(dbz3_forma_traza)) {
+    REXLOG_INFO("dbz3 formas traza: cambio nativo {} -> {} en {:.1f} ms", from, to, double(NowUs() - t0) / 1000.0);
+  }
+}
+
+// (hook sub_8210E100 apartado 10/11: sin simbolo EU, no enlaza; solo era traza. Carril F7/TAG02.)
 
 // ---------------------------------------------------------------------------------------------------------------
 // Nombres y panel de la capsula unica, hechos por el juego al arrancar desde los AFS del jugador (lo mismo que
@@ -765,10 +888,12 @@ bool PrepareNamesMod(const std::vector<std::pair<int, uint32_t>>& banks, const s
   fs::path dir = root / (dbz3::settings::Region() == "eu" ? "eu" : "us");
   if (!fs::exists(dir / "data_usi.afs", ec) && !fs::exists(dir / "data_eng.afs", ec)) dir = root / "us";
   // solo el data_*.afs del idioma del juego (los 6 ocupaban ~110 MB sin comprimir); otro idioma = se rehace
-  const int32_t lang = dbz3::settings::Language();
+  const int32_t lang = dbz3::settings::GuestLanguage();
   const char* active = lang == 3 ? "data_ger.afs" : lang == 4 ? "data_fra.afs" : lang == 5 ? "data_spn.afs"
                      : lang == 6 ? "data_ita.afs" : "data_usi.afs";
-  {   // pt (interfaz 9, juego en ingles) y ja (2): su copia de data_usi, si existe
+  if (dbz3::settings::JapaneseUiOnly()) {
+    active = "data_eng.afs";
+  } else {   // pt (interfaz 9, juego en ingles) y ja (2): su copia de data_usi, si existe
     const char* propio = lang == 2 ? "data_jpn.afs" : (lang == 1 && dbz3::settings::UiLanguage() == 9) ? "data_por.afs" : nullptr;
     if (propio && fs::exists(dir / propio, ec)) active = propio;
   }

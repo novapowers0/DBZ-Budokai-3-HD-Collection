@@ -1,0 +1,33 @@
+# HEROE-06 / POST3 HEROE-VISTAS: heroe B3 nativo (Trunks) en el creador nuevo (dbz3_heroe_ui_nueva), vista previa de frente,
+# derecha, espalda e izquierda con el control de verdad: RT pulsado (teclado E) = vista siguiente. Animacion fija en la
+# guardia, cuadro 0 (DBZ3_TEST_HEROE_ANIM=0:0), para comparar con heroe06_xv2.toml en la lamina.
+descripcion = "HEROE-06: heroe B3 nativo (Trunks) en el creador nuevo, vista previa de frente, derecha, espalda e izquierda"
+env = ["DBZ3_TEST_RINGOUT=1", "DBZ3_TEST_HEROE_RAZA=0", "DBZ3_TEST_HEROE_CUERPO=3", "DBZ3_TEST_HEROE_CAM=1",
+       "DBZ3_TEST_HEROE_ANIM=0:0", "DBZ3_TEST_CFG=dbz3_heroe_ui_nueva=true"]
+pasos = [
+  "esperar 2500",
+  "tecla W 1200",
+  "tecla Space 3500",
+  "tecla S 450", "tecla S 450", "tecla S 450", "tecla S 450", "tecla S 450",
+  "tecla Space 2500",
+  "tecla S 700", "tecla S 700", "tecla S 700",
+  "tecla Space 3500",
+  "esperar 1500",
+  "tecla S 500", "tecla S 500",
+  "tecla Space 3000",
+  "log \"Create abierto\" 20",
+  "esperar 15000",
+  "captura h06_b3_frente",
+  "tecla E 150",
+  "esperar 1500",
+  "log \"vista previa: Right view\" 10",
+  "captura h06_b3_derecha",
+  "tecla E 150",
+  "esperar 1500",
+  "log \"vista previa: Back view\" 10",
+  "captura h06_b3_espalda",
+  "tecla E 150",
+  "esperar 1500",
+  "log \"vista previa: Left view\" 10",
+  "captura h06_b3_izquierda",
+]

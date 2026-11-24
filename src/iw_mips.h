@@ -24,6 +24,7 @@ class Ee {
   // Llama a `dir` con a0..a3; false si se sale del subconjunto, de la memoria o del presupuesto (ver error()).
   bool Llamar(uint32_t dir, std::initializer_list<uint32_t> args, uint64_t limite = 200000);
   uint32_t R32(uint32_t a);
+  uint64_t R64(uint32_t a);
   uint16_t R16(uint32_t a) { return uint16_t(R32(a & ~3u) >> ((a & 2) * 8)); }
   uint8_t R8(uint32_t a) { return uint8_t(R32(a & ~3u) >> ((a & 3) * 8)); }
   void W8(uint32_t a, uint8_t v) {
@@ -37,21 +38,49 @@ class Ee {
   void Cero(uint32_t a, uint32_t n);
   uint64_t r[32]{}, up[32]{};
   uint64_t n = 0;  // instrucciones ejecutadas (total)
+  std::vector<uint64_t> perfil;  // pruebas: muestras de PC por bloques de 64 bytes, vacio fuera del sondeo
   uint32_t gp = 0;
   std::unordered_map<uint32_t, std::function<void(Ee&)>> puentes;  // direccion -> puente (lee a0-a3, escribe v0)
   std::unordered_map<uint32_t, std::function<void(Ee&)>> observadores;  // se llaman al entrar y la funcion se ejecuta
   uint32_t F(int i) const { return f_[i]; }  // bits de la FPR i (f12 = primer argumento float)
+  void WF(int i, uint32_t bits) { if (i >= 0 && i < 32) f_[i] = bits; }  // argumento float sin conversion host
   const std::string& error() const { return error_; }
   uint64_t io = 0;  // accesos fuera de RAM/pila/scratchpad (se aborta)
   // add.s/sub.s del R5900 como PCSX2 (FPU_ADD_SUB): el operando menor pierde los bits que caen por debajo del mayor
   // (deja uno de guarda). Medido 6/11 en la esquiva de Freezer (149/149 con, 99/149 sin). Por llamada: Bubbles sin.
   bool suma_ps2 = false;
+  // TRAD/3: hardware minimo del bucle principal (iw_trad_bucle.cpp). Sin enganche, como antes (io aborta).
+  std::function<void(Ee&)> syscall;                          // v1 = numero; escribe v0 (error -> Fallo)
+  std::function<bool(Ee&, uint32_t, uint64_t&)> io_leer;     // true = atendido
+  std::function<bool(Ee&, uint32_t, uint64_t)> io_escribir;
+  uint32_t pila = 0;                                         // sp de Llamar (0 = la pila propia)
+  uint32_t cop0_status = 0;                                  // mfc0 Status (0 = como antes; el bucle: hilo de usuario)
+  bool Anidada(uint32_t dir, std::initializer_list<uint32_t> args, uint64_t limite);  // manejador de interrupcion
+  void CargarImagen(const uint8_t* d, size_t n);             // RAM+pila+scratchpad tal cual (punto del oraculo)
+  void Error(const std::string& e) { error_ = e; }
+  // TRAD/5: hilos del nucleo del oraculo. Correr sigue desde `pc` con los registros actuales hasta el retorno
+  // (pc = kRetorno) o hasta que el puente de syscall pida cambiar de hilo (`ceder`; pc = syscall + 4).
+  bool Correr(uint32_t& pc, uint64_t limite);
+  bool ceder = false, puente_fallo = false;   // puente_fallo: un puente que pone error() para la ejecucion
+  struct Cpu {
+    uint64_t r[32], up[32], lo, hi, lo1, hi1;
+    uint32_t f[32], vf[32][4], vacc[4], acc, q, fcr, status;
+    uint16_t vi[16];
+    bool c;
+  };
+  void Guardar(Cpu& s) const;
+  void Poner(const Cpu& s);
+  void Bytes(uint32_t a, const uint8_t* d, size_t n);   // copia en la RAM (lecturas de CD)
+  const std::vector<uint8_t>& Imagen() const { return mem_; }
+  const uint8_t* Bloque(uint32_t direccion, size_t bytes);  // DMA: solo un rango fisico contiguo; nunca registros
 
  private:
   struct Ins { uint16_t op = 0; uint8_t rs, rt, rd, sa; int32_t simm; uint32_t w, t; };
   int64_t Fis(uint32_t a);  // direccion fisica en mem_ o -1
   template <class T> T Lee(uint32_t a);
   template <class T> void Escribe(uint32_t a, T v);
+  template <class T> T LeeIo(uint32_t a);
+  template <class T> void EscribeIo(uint32_t a, T v);
   const Ins* Decodificar(uint32_t pc);
   bool Fallo(const char* que, uint32_t pc);
   std::vector<uint8_t> mem_;
@@ -218,10 +247,44 @@ struct Salida {
   float p[3]{}, frente[3]{};          // Piccolo +0x40 tras la tarea y work+0x50
   bool tarea = false, vuela = false;  // work+0xB8 != 0, +0x2061
   uint32_t clip = 0;                  // +0xB60
+  float distancia_ctx = 0;           // ctx+0x75C usado por ESTE tick (anclas, no DistH del port)
+};
+// Ronda5: cadena de objetivo 7DD, en imagen propia. El host llama una vez por campo logico, con el contexto de la
+// fase anterior a la CPU (Salida::distancia_ctx/codigo); el orden con el motor completo aun necesita su dorado.
+// Apagada de serie. No usa estado del port como autoridad de captura: solo la entrada9 ejecutada desde el ELF.
+struct EntradaObjetivo {
+  bool inicio = false, aire = false, pausa = false;
+  int jugador = 1, piccolo = 13, limite = 0;  // limite y tiempo en cuadros originales, NO segundos/milisegundos
+  float distancia_ctx = 0, tiempo = 0, vida = 0;
+  uint64_t t = 0;                            // secuencia logica estricta, sin repetir ni saltar campos
+};
+struct SalidaObjetivo {
+  int jugador = 0, anterior = 0, accion = 0, gate = 0, aviso = -1;
+  uint32_t clip = 0;
+  float reloj_tarea = 0;
+  bool creada = false, tarea = false, procesada = false, capturado = false;
+  bool bloqueo = false, pausa_gestor = false;  // se conservan hasta que el consumidor del aviso confirme su fin
 };
 inline bool (*g_tick)(const Entrada&, Salida&, uint32_t& semilla) = nullptr;
 inline bool (*g_activa)() = nullptr;   // cvars dbz3_iw_7dd_original (de serie apagada: decision del usuario 7/11 21h) y dbz3_iw_logica_original
+inline bool (*g_objetivo)(const EntradaObjetivo&, SalidaObjetivo&, uint32_t& semilla) = nullptr;
+inline bool (*g_objetivo_activa)() = nullptr;  // ademas dbz3_iw_7dd_captura_original, de serie false
 }  // namespace persecucion
+
+// IW-F02 (11/11): objetos UI del invitado tras cada campo (tabla *(0x49CD8C), 400 B por objeto) para dibujar los efectos
+// de acierto/fallo como el original: UI_SetObjectField158AndEnable 0x2F0F90 (f12 tiempo, a0 objeto, a1 animacion del
+// #AMA) se observa y `puesto` dice si fue antes (1) o despues (2) del UI_UpdateFrame 0x2F1190 del campo, que suma el paso
+// al reloj +0x1C de los objetos con el bit 4. Lo rellenan CampoDA (7DA) y CampoD5 (7D5); lo lee iw_mini_botones.cpp.
+namespace ui {
+struct Obj { uint32_t anim = 0, flags = 0; float x = 0, y = 0, t0 = 0; uint8_t puesto = 0; };
+constexpr int kN = 0x60;
+struct Tabla { Obj o[kN]; int n = 0; };
+inline Tabla g_tabla;   // ponytail: una sola tabla global (un minijuego a la vez, hilo del juego)
+// IWFIN/IW-F14: duracion (+0x168 = Anim_GetMaxValueRec EU 0x2F3090) de cada objeto del #AMA de la UI de botones; -1 = no
+// existe. La rellena iw_mini_botones.cpp al cargar el #AMA; la lee el UI_UpdateFrame minimo de CampoBot.
+inline float g_dur[256];
+inline bool g_dur_ok = false;
+}  // namespace ui
 
 // T2B (7/11): NB012 (0x7DA, un carril y 10 rondas) con su logica ORIGINAL. Por campo PAL se ejecutan del ELF
 // Mg_UpdateMain 0x315010 y, de Mg_UpdateFrame, Mg_UpdateScrollingIcons 0x315540 y Mg_UpdateMissPoseSequence 0x315230:
@@ -245,7 +308,7 @@ struct Evento { char tipo = 0; int n = 0; };
 struct Salida {
   int fase = 0, sub = 0, paso = 0, ronda = -1, actual = 0, juicio = 0, botones = 0, rango = 0, n_ev = 0;
   float reloj = 0, nota = 0, total = 0, x[10]{}, ronda_pts[10]{}, cat[3]{};
-  uint8_t vivo[10]{}, fallado[10]{}, acierto[10]{}, seq[10]{};
+  uint8_t vivo[10]{}, fallado[10]{}, acierto[10]{}, seq[10]{}, w93[10]{};   // w93: +0x93 (Mg_UI_UpdateQteIcons, la cruz)
   Evento ev[16];
 };
 inline bool (*g_campo)(const Entrada&, Salida&, uint32_t& semilla) = nullptr;
@@ -273,6 +336,7 @@ struct Salida {
   int fase = 0, sub = 0, paso = 0, ronda = -1, activo = 0, rango = 0, n_ev = 0;
   float nota = 0, vida[2]{};
   int n_ic[2]{}, aciertos[2]{}, llegaron[2]{};   // +0x3C/+0x40 aciertos y +0x2C/+0x30 iconos ya resueltos por carril
+  int intentos[2]{};   // +0x44/+0x48: denominador de OFFENCE/DEFENCE (SkillEdit_ComputeStatPercent EU 0x371C..., partida entera)
   Icono ic[2][15];
   Evento ev[16];
 };

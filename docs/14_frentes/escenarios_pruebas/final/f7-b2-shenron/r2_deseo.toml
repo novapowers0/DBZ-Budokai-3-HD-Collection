@@ -1,0 +1,47 @@
+# F7 / B2-07 + B2H: aparición de Shenron y Esferas del Dragón (deseo del Dragon World de B2).
+# FASE 3 (ronda de integración 10/11): lo ejecuta Z; no repetir sin un cambio entre medias.
+#   python tools\pruebas.py paralelo "docs\14_frentes\escenarios_pruebas\final\f7-b2-shenron" --max 1
+#
+# clave    = B2-07 (aparición 3D: Bolas, columna de luz, encuadre/pose) y B2H (Bolas 2D/3D, cielo y luz suave).
+# cvar     = dbz3_ps2_alfa_vertice=true (NUEVA, OFF de serie): pinta con un vértice por color los triángulos sin
+#            textura (nubes del sitio y, si se enciende la luz, su columna). dbz3_b2_shenron=true (NUEVA, OFF) es el
+#            interruptor de Bolas/estrellas y luz; su consumo va en el parche Z/07 sobre pasarela_b2.cpp, aplicado
+#            en la ronda de integración (sin él no hay línea nueva de Bolas).
+# env      = DBZ3_TEST_B2_DESEO=2 (aparición completa desde el tablero) y DBZ3_TEST_SHEN_T fija inicio/medio/fin;
+#            A/Espacio pasa a la siguiente foto (el mismo banco que usa r2_shen_foto); 5 s = Bolas ya sin el blanco de
+#            entrada (1,5-3,5 s), 9,5 s = columna de luz, 18 s = Shenron.
+# criterio = banco sin juego: AMP por hueso completo (0 tri en huesos sin pista; 5194/5194 Bolas y 23319/23319 luz;
+#            valores solo -1/0); 14077/23783 vértices de la luz con alfa < 0,9 (el color plano era el defecto);
+#            3 piezas por Bola con la estrella de material (0,8;0;0) y el alfa real de la cúpula.
+#            En juego: 3 capturas (inicio, medio, fin) de la aparición con la cámara/pose del #AMC/#AMM del #SPX 329
+#            dentro del criterio B2-03, sin cierre; la línea del pintor prueba que el ajuste llega al juego.
+#            En juego (ronda 2): Bolas naranjas con su estrella roja visible y columna de luz sin velo a pantalla llena;
+#            los cuadros de brillo tex2/3 se quitan con el ajuste (eran los discos enormes). La forma completa de la
+#            Bola (billboard/cúpula) y el SSIM >= 0,6 en los 5 puntos de la hoja (B2H) siguen PENDIENTE_JUEGO.
+# log      = "dbz3 ps2: alfa por vertice activo" + "Shenron: Bolas con estrellas y alfa real" + "Shenron: Bolas 3D"
+#            + "AMP: bolas"
+# PENDIENTE_JUEGO: forma completa de la Bola (el modelo son cúpula+disco; el original parece orientarlos a cámara) y
+#            SSIM/comparación; partículas del emisor 0x100 del #SPX 329 (script con rutas /CDROM ausentes en la ISO EU).
+descripcion = "Shenron de B2: aparición (inicio/medio/fin), ajuste del pintor activo y carga del AMP de las Bolas"
+env = [
+  "DBZ3_TEST_MISIONES=1,reset",
+  "DBZ3_TEST_B2_DESEO=2",
+  "DBZ3_TEST_SHEN_T=5,9.5,18",
+  "DBZ3_TEST_CFG=dbz3_ps2_alfa_vertice=true;dbz3_b2_shenron=true",
+  'DBZ3_PS2_GAMES=D:\DBZ3HD\ps2_games',
+]
+pasos = [
+  'log "tablero b2: fase 1 leida" 90',
+  "esperar 3000",
+  'log "dbz3 ps2: alfa por vertice activo" 120',
+  'log "dbz3 tablero b2: Shenron: Bolas con estrellas y alfa real" 60',
+  'log "dbz3 tablero b2: Shenron: Bolas 3D" 60',
+  'log "dbz3 tablero b2: AMP: bolas" 60',
+  "captura 00_inicio_bolas",
+  "tecla Space",
+  "esperar 1500",
+  "captura 01_medio_columna",
+  "tecla Space",
+  "esperar 1500",
+  "captura 02_fin_shenron",
+]

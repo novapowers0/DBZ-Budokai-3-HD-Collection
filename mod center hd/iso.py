@@ -101,7 +101,7 @@ class Iso:
 
 
 # juegos de origen en ps2_games, de cualquier region: '(USA)', '(Europe)', '(En,Fr,De,Es,It)'...
-GAME_RE = {"b1": r"budokai \(|budokai 1(?![0-9])", "b2": r"budokai 2", "iw": r"infinite world",
+GAME_RE = {"b1": r"budokai \(|budokai 1(?![0-9])", "b2": r"budokai 2", "b3": r"budokai 3", "iw": r"infinite world",
            "sb1": r"shin budokai(?! ?2)(?!.*another)", "sb2": r"another road|shin budokai ?2"}
 GAME_SKIP = {"b1": "shin"}
 
@@ -109,6 +109,7 @@ GAME_SKIP = {"b1": "shin"}
 SERIES = {
     "b1": ("sles_512.33",),
     "b2": ("sles_518.39",),
+    "b3": ("slus_209.98",),     # Budokai 3 USA (original y Greatest Hits): ps2_b3.py, voces.b3_block, afs_pair
     "iw": ("slus_218.42", "sles_553.47"),
 }
 

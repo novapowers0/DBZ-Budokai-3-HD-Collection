@@ -1,0 +1,16 @@
+clave = "F10-PREVIO-ON"
+cvar = "dbz3_net_validacion_f10=true;dbz3_net_rollback=true"
+descripcion = "F10 una ventana: ajustes efectivos y sala local; sin partida ni rival"
+criterio = "El juego lee F10 y rollback true, abre anfitrion y sigue esperando. No acredita rollback negociado ni 50/50."
+log = 'dbz3 online: F10 ajustes efectivos: validacion true rollback true region US'
+env = [
+  "DBZ3_TEST_CFG=dbz3_net_validacion_f10=true;dbz3_net_rollback=true",
+  "DBZ3_NET_AUTO=host", "DBZ3_NET_LOCAL=1", "DBZ3_NET_PORT=25478",
+  "DBZ3_TEST_OCULTO=0", "DBZ3_TEST_TURBO=1",
+]
+pasos = [
+  'log "dbz3 online: F10 ajustes efectivos: validacion true rollback true region US" 30',
+  'log "dbz3 rb: auto host: en marcha" 30',
+  'log "dbz3 rb: auto estado: enlace 1" 30',
+  "captura f10_ajustes_rollback_sala",
+]

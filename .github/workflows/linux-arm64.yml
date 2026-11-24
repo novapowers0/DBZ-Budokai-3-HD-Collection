@@ -1,0 +1,90 @@
+name: Linux ARM64 build check
+
+# PLAT-04: solo compila (no empaqueta ni publica). Avisa cuando entra en src/ codigo que solo
+# compila en Windows o en x86, lo que rompe los ports de la comunidad (Android, Switch).
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - 'src/**'
+      - 'CMakeLists.txt'
+      - 'CMakePresets.json'
+      - '.github/workflows/linux-arm64.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-linux-arm64:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: Check out public project
+        uses: actions/checkout@v4
+
+      - name: Check out private generated code
+        uses: actions/checkout@v4
+        with:
+          repository: novapowers0/DBZ-Budokai-3-HD-Collection-generated
+          ssh-key: ${{ secrets.DBZ3_GENERATED_SSH_KEY }}
+          path: generated-private
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build pkg-config \
+            libvulkan-dev libx11-xcb-dev libxcursor-dev \
+            libxinerama-dev libxi-dev libxrandr-dev libxss-dev libxtst-dev \
+            libxkbcommon-dev \
+            libwayland-dev wayland-protocols libasound2-dev libpulse-dev \
+            libpipewire-0.3-dev \
+            clang-18 lld-18 libc++-18-dev libc++abi-18-dev
+
+      - name: Check out ReXGlue SDK
+        uses: actions/checkout@v4
+        with:
+          repository: rexglue/rexglue-sdk
+          ref: v0.10.0
+          path: rexglue-sdk-0.10
+          submodules: recursive
+
+      - name: Apply project runtime patches
+        shell: bash
+        run: |
+          cp -a patches/rexglue-sdk/. rexglue-sdk-0.10/
+          bash tools/patch_rexglue_linux.sh
+
+      - name: Use generated sources
+        shell: bash
+        run: |
+          rm -rf generated generated_eu
+          cp -a generated-private/us generated
+          cp -a generated-private/eu generated_eu
+          test -f generated/sources.cmake
+          test -f generated_eu/sources.cmake
+
+      - name: Build ReXGlue SDK (arm64)
+        run: |
+          cmake --preset linux-arm64 -S rexglue-sdk-0.10 \
+            -DCMAKE_C_COMPILER=clang-18 \
+            -DCMAKE_CXX_COMPILER=clang++-18 \
+            -DCMAKE_C_FLAGS="-march=armv8-a" \
+            -DCMAKE_CXX_FLAGS="-march=armv8-a -stdlib=libc++ -pthread" \
+            -DREXGLUE_ENABLE_FIDELITYFX=OFF \
+            -DREXGLUE_ENABLE_TRACY=OFF \
+            -DCMAKE_INSTALL_PREFIX="$GITHUB_WORKSPACE/rexglue-linux"
+          cmake --build rexglue-sdk-0.10/out/build/linux-arm64 --config Release --parallel
+          cmake --install rexglue-sdk-0.10/out/build/linux-arm64 --config Release
+
+      - name: Configure and build dbz3 (arm64)
+        run: |
+          cmake --preset linux-arm64-release \
+            -DCMAKE_C_COMPILER=clang-18 \
+            -DCMAKE_CXX_COMPILER=clang++-18 \
+            -DCMAKE_CXX_FLAGS="-march=armv8-a -stdlib=libc++ -pthread" \
+            -DCMAKE_PREFIX_PATH="$GITHUB_WORKSPACE/rexglue-linux"
+          cmake --build out/build/linux-arm64-release --config Release --parallel
+
+      - name: Check ELF is arm64
+        run: |
+          file out/build/linux-arm64-release/dbz3 | tee /dev/stderr | grep -q 'ARM aarch64'

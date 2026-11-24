@@ -1,0 +1,21 @@
+# CAC-12 (R23): las dos pantallas que faltan para el juicio de 6: Pruébatelo y Modo foto.
+# Mismo .toml para las dos: se lanza una vez por defecto (Pruébatelo) y otra con
+#   --env DBZ3_TEST_HEROE_PANTALLA=foto
+# (el --env manda sobre el env del .toml; ver LEEME.md).
+# REXLOG nuevo que espera: CAC-12: pruebatelo abierto / CAC-12: modo foto.
+descripcion = "CAC-12: Pruébatelo (rejilla de cuerpos) o Modo foto, según DBZ3_TEST_HEROE_PANTALLA"
+env = ["DBZ3_TEST_MODO=heroe,0", "DBZ3_HUB_MODE=5", "DBZ3_TEST_HEROE_PANTALLA=pruebatelo", "DBZ3_TEST_HEROE_CUERPO=0",
+       "DBZ3_TEST_CFG=dbz3_heroe_ui_nueva=true"]
+apartar = ["user_data/dbz3/cac.toml*", "user_data/dbz3/heroe", "user_data/dbz3/hub_heroe.toml*", "mods/heroe_propio"]
+pasos = [
+  "esperar_pantalla 5 120",
+  'log "dbz3 heroe: .*(pruebatelo|modo foto)" 180',
+  "esperar 3000",
+  "captura cac12_5_pantalla",
+  "tecla D 900",
+  "esperar 4000",
+  "captura cac12_6_pantalla_movida",
+  "tecla S 900",
+  "esperar 3000",
+  "captura cac12_7_pantalla_otra",
+]

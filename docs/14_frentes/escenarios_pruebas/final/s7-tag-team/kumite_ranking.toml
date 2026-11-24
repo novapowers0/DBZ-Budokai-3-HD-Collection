@@ -1,0 +1,22 @@
+# S7 / TOR01: regresion de Kumite y Ranking (los otros dos modos del issue #55).
+# FASE 3: lo deja escrito el carril S7; lo ejecuta Z una sola vez.
+#   python tools\pruebas.py correr smoke_a "docs\14_frentes\escenarios_pruebas\final\s7-tag-team\kumite_ranking.toml"
+#
+# clave    = TOR01 (Kumite y Ranking sin cierre)
+# cvar     = ninguna; DBZ3_TEST_RINGOUT=1 gana cada combate a los 5 s
+# criterio = el Kumite recorre sus combates y al acabar escribe el ranking en el log (puesto, id, elo) y vuelve
+#            al menu; despues se abre la pantalla de Ranking sin cierre.
+# log      = "modos: prueba: kumite", "modos: ranking 1: id", pantalla 5
+descripcion = "Kumite completo por ring out + ranking escrito y pantalla de Ranking (TOR01)"
+env = [
+  "DBZ3_TEST_MODO=kumite,0",
+  "DBZ3_TEST_RINGOUT=1",
+]
+pasos = [
+  "log \"modos: prueba: kumite\" 120",
+  "captura a_kumite",
+  "log \"modos: ranking 1: id\" 600",
+  "captura b_ranking",
+  "esperar_pantalla 5 60",
+  "captura c_menu",
+]

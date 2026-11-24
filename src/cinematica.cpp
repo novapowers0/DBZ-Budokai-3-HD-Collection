@@ -45,6 +45,9 @@
 namespace dbz3::net {
 void InyectarPad(uint32_t usuario, int32_t botones);   // net/netplay_hooks.cpp
 }
+namespace dbz3::pasarela {
+bool EnLeyenda();   // pasarela.cpp: hay una partida de la Leyenda de Mr. Satan en curso (fase != nada)
+}
 
 // Parejas EU medidas con el metodo de tools/eu_map.py (E:/DBZ3HD_trabajo/P3/eu_par.py, sin reescribir el mapa):
 // sub_82114FB8 -> 821150B8 (26 instr., 0 diferencias sin explicar, 67 llamadas bien) y sub_82103978 -> 82103A78
@@ -59,6 +62,15 @@ REX_EXTERN(dbz3eu_sub_820FF920);
 // DS178: pareja EU de sub_820FF820 medida con el metodo de tools/eu_map.py (mismo cuerpo normalizado, 79 lineas, y las
 // mismas llamadas: 82133D50->82133E58, 820FDDE0->820FDEE0, 82165190->82165150; el resto de diferencias son datos).
 #define DBZ3_SALIDA_RESULTADO DBZ3_CALL2(sub_820FF820, dbz3eu_sub_820FF920)
+
+// S6 (SAT-01/SAT01): camara "WINNER!!" de B1 en la Leyenda de Mr. Satan. APAGADA por defecto.
+REXCVAR_DEFINE_BOOL(dbz3_satan_camara_ganador, false, "DBZ3/Mods",
+                    "Leyenda de Satan: camara de victoria de B1 en los estados 5-7 (ojo 55->8 u del ganador)");
+// RESTO-10/SAT02: en la toma del coche de la llegada (G 2030..2430) B1 tiene a Satan de espaldas, quieto (pose
+// estatica #AMM STN anim 0). El paso ya la aplica (cinematica.cpp::AplicaPoseSatanB1); faltaba activarla.
+// Apagado = identico al original del port.
+REXCVAR_DEFINE_BOOL(dbz3_satan_pose_espaldas, false, "DBZ3/Mods",
+                    "Leyenda de Satan: pose de espaldas junto al coche en la toma de la llegada (apagado = como antes)");
 
 namespace dbz3::cinematica {
 namespace {
@@ -1551,6 +1563,93 @@ void AplicarCamaraSonda(uint8_t* base) {
   cine::Camara(base, g_son_ojo, g_son_obj, 0.0f);
 }
 
+// S6 (SAT-01/SAT01): camara "WINNER!!" de la Leyenda de Mr. Satan, en los estados 5-7 del combate real (sin escena).
+// Codigo de B1 (medido con ee.py + mips_perfil 'b1' y con b1.c, FUN_001996e0 -> FUN_00190f70 -> FUN_00193060):
+//  - FUN_001996e0 (fin de combate, cam+0xd03c = 4) llama a FUN_00190940(0, &modo, &bloque) con modo = 1 (ojo directo)
+//    y un bloque de 0x40 B: vec (0,0,55,1) + vec (0,0,8,1) + 240.0 (+0x1d0); el ancla del ojo es el campo +0x1a6 y la
+//    del objetivo +0x1a4 (los dos = indice del GANADOR en el caso 1P/2P; en empate B1 no fija bloque).
+//  - por cuadro, FUN_00193060 gira ese bloque por el angulo del ganador y le suma su posicion, UNA sola vez (solo si
+//    cam+0x1f0 == 0; despues FUN_00190f70 incrementa ese contador), y amortigua ojo y objetivo hacia esos dos puntos
+//    con factor min(1, cam+0x1d4 * dt). El ojo termina a 8 u del cuerpo del ganador y el objetivo sobre el cuerpo.
+//  - cam+0x1d4 NO lo escribe FUN_001996e0: cae en las 7 palabras del bloque de 0x40 B que no se inicializan (se
+//    copian de pila; comprobado en el desensamblado: tras los 9 stores viene paddub $a0,$zero,$zero y la llamada).
+//    Por eso la velocidad NO se toma del binario: se ajusta a la traza del original de A3 (recorrido.tsv), que da una
+//    exponencial de 55 a 8 u en ~5,8 s (ajuste LS de la traza: k = 0,88/s; se usa 0,88). Lo que solo se puede
+//    PENDIENTE_JUEGO (una ronda del port con captura por cuadro).
+//  - el fov de B1 en esta camara es 0x3f490fdb = 0,785398 rad (FUN_00193060 lo escribe en cam+0x104 cada cuadro), el
+//    MISMO que el de B3: no hay que tocar el fov del port.
+// Direccion: +z del modelo del ganador (fila 2 de su matriz de luchador, igual que PuntoCuerpo) orientada al lado de la
+// camara actual, para que el dolly empiece donde ya estaba mirando (B1 cae de espaldas respecto de esa camara).
+struct CamGanador {
+  bool activa = false;
+  int lado = 0;
+  V3 p0{}, f{}, ojo{}, obj{};
+  int cuadros = 0;
+};
+CamGanador g_gan;
+constexpr float kGanOjo0 = 55.0f;   // bloque (0,0,55): distancia inicial del ojo al cuerpo del ganador
+constexpr float kGanOjo1 = 8.0f;   // bloque (0,0,8): a donde va
+constexpr float kGanVel = 0.88f;   // ajuste LS de la traza A3 (s6_validar_camara.py); el port corre a 60 Hz
+void AplicarCamaraGanador(uint8_t* base) {
+  if (g_en_curso.load()) {   // una escena manda
+    g_gan.activa = false;
+    return;
+  }
+  const uint32_t mgr = REX_LOAD_U32(kMgrPtr);
+  const uint32_t st = mgr ? REX_LOAD_U32(mgr + 35128) : 0;
+  const bool en = mgr && st >= 5 && st <= 7 && REXCVAR_GET(dbz3_satan_camara_ganador) && dbz3::pasarela::EnLeyenda();
+  if (!en) {
+    g_gan.activa = false;
+    return;
+  }
+  const int w = int32_t(REX_LOAD_U32(mgr + 35136));   // 0 = jugador, 1 = rival (mgr+35136; pasarela.cpp)
+  if (w < 0 || w > 1) {   // empate: B1 no fija bloque (reusa el anterior); sin dato medido
+    g_gan.activa = false;
+    return;
+  }
+  const uint32_t x = mgr + kX0 + kXPaso * uint32_t(w);
+  V3 cintura{}, cabeza{};
+  const bool hay = PuntoCuerpo(base, x, 0, cintura) && PuntoCuerpo(base, x, 3, cabeza);
+  if (!hay) {   // aun sin esqueleto: no se toca la camara del juego
+    g_gan.activa = false;
+    return;
+  }
+  const V3 cuerpo = Mezcla(cintura, cabeza, 0.5f);   // el objetivo de B1 va sobre el cuerpo del ganador
+  if (!g_gan.activa) {
+    const V3 r2 = LeeV(base, x + 32);   // fila 2 de la matriz = +z del modelo en el mundo
+    V3 f{r2.x, 0.0f, r2.z};
+    const float l = std::sqrt(f.x * f.x + f.z * f.z);
+    if (l < 1e-4f) return;
+    f = f * (1.0f / l);
+    float ce[3] = {0, 0, 0}, cb[3] = {0, 0, 0};
+    if (cine::LeerCamara(base, ce, cb) && (ce[0] - cuerpo.x) * f.x + (ce[2] - cuerpo.z) * f.z < 0.0f)
+      f = f * -1.0f;   // la camara estaba al otro lado: se empieza por su lado (sin salto de 180)
+    g_gan = CamGanador{};
+    g_gan.activa = true;
+    g_gan.lado = w;
+    g_gan.p0 = cuerpo;
+    g_gan.f = f;
+    g_gan.ojo = cuerpo + f * kGanOjo0;
+    g_gan.obj = cuerpo;
+    REXLOG_INFO("dbz3 cinematica: camara WINNER de B1 (lado {}): desde {:.1f} u del cuerpo, frente ({:.2f} {:.2f})",
+                w + 1, kGanOjo0, f.x, f.z);
+  }
+  const float a = std::min(1.0f, kGanVel / 60.0f);
+  const V3 fin = cuerpo + g_gan.f * kGanOjo1;   // 8 u sobre el cuerpo VIVO; el frente se fija al entrar (B1 gira el bloque una vez)
+  g_gan.ojo = Mezcla(g_gan.ojo, fin, a);
+  g_gan.obj = Mezcla(g_gan.obj, cuerpo, a);   // el objetivo sigue el cuerpo dibujado (vivo)
+  const float eo[3] = {g_gan.ojo.x, g_gan.ojo.y, g_gan.ojo.z};
+  const float eb[3] = {g_gan.obj.x, g_gan.obj.y, g_gan.obj.z};
+  if (const int sonda = [] { const char* v = std::getenv("DBZ3_SATAN_GANADOR_LOG"); return v ? std::max(1, std::atoi(v)) : 0; }();
+      sonda && g_gan.cuadros % sonda == 0)
+    REXLOG_INFO("dbz3 cinematica: WINNER cuadro {} ojo ({:.2f} {:.2f} {:.2f}) obj ({:.2f} {:.2f} {:.2f}) d {:.2f}",
+                g_gan.cuadros, eo[0], eo[1], eo[2], eb[0], eb[1], eb[2],
+                std::sqrt((eo[0] - eb[0]) * (eo[0] - eb[0]) + (eo[1] - eb[1]) * (eo[1] - eb[1]) +
+                          (eo[2] - eb[2]) * (eo[2] - eb[2])));
+  cine::Camara(base, eo, eb, 0.0f);
+  ++g_gan.cuadros;
+}
+
 // DS178: saltar la victoria/resultado de un combate "solo escena" (DS170 midio 3,0 s de estado 5 + 0,2 s de 6-7; el
 // estado 8, la pantalla de resultado, sigue su curso). Lo arma pasarela al acabar la escena (LanzarSolo) y lo consume
 // el gancho de la camara del juego (sub_820F47E0, mas abajo) con su contexto: la funcion del juego usa la pila, asi que
@@ -1591,6 +1690,7 @@ DBZ3_HOOK_EU(sub_820F47E0) {   // A3b: despues de la camara del juego
   orig(ctx, base);
   dbz3::cinematica::AplicarCamaraDirecta(base);
   dbz3::cinematica::AplicarCamaraSonda(base);   // S1: primer plano de la cara en un combate nativo (sonda)
+  dbz3::cinematica::AplicarCamaraGanador(base);   // S6: camara WINNER de B1 (Leyenda; cvar apagada por defecto)
   dbz3::freecam::AplicarCamara(base);   // DS162: camara libre (no hace nada si esta apagada)
   dbz3::cinematica::SaltarResultadoEscena(ctx, base);   // DS178: victoria/resultado del combate de escena (si esta armado)
 }

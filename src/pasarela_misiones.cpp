@@ -61,6 +61,10 @@
 #include "launcher/launcher_state.h"
 #include "launcher/settings.h"
 
+#include <rex/cvar.h>
+#include <future>
+#include "escena_b1_1910.inl"
+
 namespace dbz3::net {
 void InyectarPad(uint32_t usuario, int32_t botones);   // net/netplay_hooks.cpp (-1 = el mando de verdad)
 }
@@ -102,6 +106,9 @@ int Dibujar(ImDrawList* dl, const dbz3::ingame::style::Area& a, float t, uint16_
 void Mantenidos(uint16_t mantenidos);   // botones mantenidos (camara de R2 a 5 px por cuadro)
 void Resultado(int ganador, int vida);
 int FormaTableroB3(int id_b3, int forma_b2);
+int ComRivalB2();        // orden 51: byte +0x18 del rival; -1 = sin orden (pasarela_b2.cpp)
+int AtaqueRivalB2();     // +0x10 del rival (Kid Bu +10 de la IX); bonus sobre 100
+bool CombateRechazado(); // R1: un pedido rechazado; true = se agotaron los reintentos y se solto el contacto
 }  // namespace dbz3::pasarela::b2
 namespace dbz3::pasarela::nave {   // Nave de Babidi de B2 (pasarela_nave.cpp; todo con g_mu)
 bool Disponible();
@@ -131,8 +138,25 @@ namespace dbz3::pasarela {
 // DS135: datos de la tabla de IW que resuelve pasarela_iw.cpp (mismo namespace dbz3::pasarela).
 int VarianteB3IW(int id_iw, int variante);                 // traje/variante de IW -> forma inicial de B3
 int TecnicasMisionIW(int mision, int* salida, int max);    // tecnicas equipadas (IDs de capsula IW, SCD ya resueltos)
+int PropiedadZeniCapsulaIW(int mision);                    // +5 de la capsula de Zeni equipada (0 = sin capsula)
 }  // namespace dbz3::pasarela
 
+// S3 (IW-A03 + IW-D01): resultado de mision con la formula original del ELF (rango con los contadores reales, Zenie
+// con las 6 dificultades y la capsula de Zeni, sin SCORE inventado ni BEST SCORE). Apagada: de serie sigue el
+// comportamiento anterior. Ver tools/iw_mips/mapa_recompensas.py (0 DIF contra el ELF EU y USA).
+REXCVAR_DEFINE_BOOL(dbz3_iw_resultado_original, true, "DBZ3/IW",
+                    "IW resultado de mision: rango, Zenie (6 dificultades y capsula) y TIME/RANK con la logica del ELF");
+
+// HUECOS-08: ELF EU 0x2AC0D0 empieza en 40, no 39. Candidato; no cubre contadores RAMEvents.
+REXCVAR_DEFINE_BOOL(dbz3_iw_rango_fight40, false, "DBZ3/IW",
+                    "IW experimental: primer corte Fight en 40 por ciento; requiere resultado original");
+
+// IWFIN/HUECOS-08: los cinco contadores que faltaban (palabras 1, 2, 3 y 16 y la racha de ki del jugador): formula
+// completa de Char_ComputeStatGrade (EU 0x2AC0D0), 3488/3488 filas iguales al ELF (h08_rango_candidato40.json).
+REXCVAR_DEFINE_BOOL(dbz3_iw_rango_contadores, false, "DBZ3/IW",
+                    "IW rango de mision: cuenta esquivas, teletransportes y carga de ki como el original; requiere resultado original");
+
+namespace dbz3::combate { int PalabraIW(int lado, int k); }   // combate.h
 namespace dbz3::pasarela::misiones {
 namespace {
 
@@ -161,14 +185,30 @@ struct Texto {
   const char *es = "", *en = "";
   const char* operator()() const { return T::T(es, en); }
 };
+REXCVAR_DEFINE_BOOL(dbz3_historia_b1, false, "DBZ3/Dev",
+                   "Historia de Budokai 1 experimental: titulos y prologo leidos de tu copia.");
+
+REXCVAR_DEFINE_BOOL(dbz3_historia_b1_cine, false, "DBZ3/Dev",
+                   "Escena 3D de Saiyan 1 en Windows (requiere la cache PAL de la escena 1910).");
+
+// La historia de B1 no sale en 1.5.7. Un TOML antiguo no basta para abrirla:
+// solo el arnés de misiones, con el interruptor explícito, puede recuperarla.
+bool HistoriaB1Activa() {
+  return std::getenv("DBZ3_TEST_MISIONES") && REXCVAR_GET(dbz3_historia_b1);
+}
+
 enum TipoPaso : int { kCharla, kCombate, kEleccion, kFinal, kInforme };
 struct Paso {
   int tipo = kCharla;
+  std::shared_future<std::shared_ptr<cine1910::Player>> carga_cine_b1;
+  std::shared_ptr<cine1910::Player> cine_b1;
+  int lamina_b1 = -1;     // titulo o prologo B1; -1: charla habitual
   int quien = -1;          // charla/final: quien habla (su cara)
   bool derecha = false;    // charla: cara a la derecha (el rival)
   Texto texto;             // charla/final: lo que dice; combate: aviso de la tarjeta
   std::string texto_propio;   // en lugar de `texto` (charlas armadas con nombres)
   int jugador = 0, forma1 = 0, rival = 0, forma2 = 0, mapa = kMapaPradera, tiempo = 0, vida2 = 0;
+  int vida1_b1 = 0;       // solo vida inicial, no cambia el maximo de B3
   Reglas reglas;
   int desbloquea = -1;     // Bu: absorcion que gana al vencer (bit)
   int informe = -1;        // IW: mision (indice de g_iw) cuyo titulo y texto se ensenan
@@ -474,8 +514,9 @@ Paso PasoIW(const MisionTablaIW& t, std::string& regla) {
 // --- Tablero: Dragon World de B2 (pasarela_b2.cpp lee la ISO, lo dibuja y aplica sus reglas) ---
 
 // ---- Estado (g_mu) ----
-enum Fase : int { kNada = 0, kMenu, kPantalla, kLuchando, kPerdido, kTableroF, kMapaIW, kNaveF, kMenuB2 };
-const char* const kFaseNombre[] = {"nada", "menu", "pantalla", "combate", "perdido", "tablero", "mapa de IW", "nave", "menu principal B2"};
+enum Fase : int { kNada = 0, kMenu, kPantalla, kLuchando, kPerdido, kTableroF, kMapaIW, kNaveF, kMenuB2, kContenidosF };
+const char* const kFaseNombre[] = {"nada", "menu", "pantalla", "combate", "perdido", "tablero", "mapa de IW", "nave", "menu principal B2",
+                                   "contents de B1"};
 int g_cursor_b2 = 6;   // el original conserva la fila de la Nave al volver (FUN_0023F980)
 bool g_desde_menu_b2 = false;
 
@@ -484,6 +525,123 @@ int g_fase = kNada, g_modo = 0, g_cursor = 0, g_intentos = 0;
 std::vector<Paso> g_pasos;
 int g_paso = 0;
 uint64_t g_cambio = 0;
+
+// ---- Pantalla "Contents" de la historia de B1 (3 sagas, 29 capitulos) ----
+// Arte (fondo, logos, titulos, miniaturas): DATA_<idioma>.AFS entrada 920 (#AMT) de la ISO de B1 del jugador, leido en
+// marcha; nunca se reparte. Los titulos de capitulo son imagenes (3 bloques de lineas de 32 px, uno por saga).
+// Capitulo -> combates: PROVISIONAL (por el argumento de cada capitulo, aun sin cruzar con la tabla del ELF de B1);
+// numeros de registro de la tabla de la historia (1 = el primero; ver studies 5/ENTREGAS/R23/ESTUDIO_HISTORIA_B1.md).
+constexpr int kEntContents = 920, kSagasB1 = 3, kCapsB1 = 29;
+constexpr int kCapsSaga[kSagasB1] = {7, 10, 12}, kCapsBase[kSagasB1] = {0, 7, 17};
+constexpr int kRegsCap[kCapsB1][3] = {
+    // Saiyan
+    {1, 0, 0}, {2, 6, 0}, {7, 0, 0}, {3, 0, 0}, {4, 0, 0}, {5, 0, 0}, {4, 0, 0},
+    // Namekian
+    {0, 0, 0}, {13, 0, 0}, {8, 0, 0}, {14, 0, 0}, {15, 16, 0}, {9, 0, 0}, {10, 0, 0}, {11, 0, 0}, {12, 0, 0}, {20, 0, 0},
+    // Android
+    {22, 0, 0}, {27, 0, 0}, {28, 0, 0}, {21, 0, 0}, {29, 0, 0}, {30, 0, 0}, {23, 0, 0}, {24, 0, 0}, {25, 0, 0}, {26, 0, 0},
+    {31, 0, 0}, {32, 0, 0}};
+bool g_b1_directo = false;       // prueba "directo": la saga de Vegeta de siempre, sin pasar por el Contents
+int g_cont_saga = 0, g_cont_fila = 0, g_cont_scroll = 0;
+int g_cap_actual = -1;           // capitulo en juego (global 0..28), -1 = ninguno
+// D5: Namek 2..4, indices locales 1..3 (base cero).
+bool PlanNamekD5(int c, const DatosB1& d);
+std::vector<int> g_regs_cap;     // registros del capitulo en juego (vacio = la saga de Vegeta de siempre)
+std::string ClaveCap(int saga) { return "b1_cap" + std::to_string(saga); }
+
+struct ArteContents {
+  std::mutex mu;
+  std::atomic<int> estado{0};   // 0 sin leer, 1 leyendo, 2 listo, 3 sin arte (sin ISO o entrada no valida)
+  std::vector<Imagen> img;
+  std::vector<std::unique_ptr<rex::ui::ImmediateTexture>> tex;
+  std::vector<S::Pic> pic;
+};
+ArteContents g_arte;
+ArteContents g_laminas_b1;
+
+void LeerArteContents() {   // en un hilo; una vez
+  int esperado = 0;
+  if (!g_arte.estado.compare_exchange_strong(esperado, 1)) return;
+  // dsREV: ruta de la ISO e idioma se copian aqui (hilo de UI) y no se leen desde el hilo suelto.
+  std::thread([iso = IsoPs2(0), lc = std::string(T::LangCode())] {
+    std::vector<Imagen> img;
+    if (!iso.empty()) {
+      const char* afs = lc == "es" ? "DATA_SP.AFS" : lc == "fr" ? "DATA_FR.AFS" : lc == "de" ? "DATA_GE.AFS"
+                        : lc == "it" ? "DATA_IT.AFS" : "DATA_EN.AFS";
+      for (const char* nombre : {afs, "DATA_EN.AFS"}) {
+        AfsPs2 a;
+        if (!a.Abrir(iso, nombre)) continue;
+        const std::vector<uint8_t> amt = a.Entrada(kEntContents);
+        const int n = CuantasAmt(amt);
+        if (n < 50) continue;
+        for (int j = 0; j < n; ++j) img.push_back(TexturaAmt(amt, j));
+        if (REXCVAR_GET(dbz3_historia_b1_cine) && std::string_view(nombre) == "DATA_SP.AFS" && img.size() > 17)
+          cine1910::ExpandirContentsCap1Es(img[17]);
+        break;
+      }
+    }
+    std::lock_guard<std::mutex> lk(g_arte.mu);
+    g_arte.tex.clear();
+    g_arte.pic.assign(img.size(), S::Pic{});
+    g_arte.tex.resize(img.size());
+    g_arte.img = std::move(img);
+    REXLOG_INFO("dbz3 misiones: contents: arte {} ({} texturas)", g_arte.img.empty() ? "no disponible" : "leido", g_arte.img.size());
+    g_arte.estado = g_arte.img.empty() ? 3 : 2;
+  }).detach();
+}
+int PrepLaminasB1(int cap, bool prologo) {   // al entrar desde Contents, con g_mu
+  const auto iso = IsoPs2(0);
+  if (iso.empty()) return 0;
+  const char* local = cine1910::BancoPal(dbz3::settings::Language());
+  for (const char* banco : {local, "DATA_EN.AFS"}) {
+    AfsPs2 afs;
+    if (!afs.Abrir(iso, banco)) continue;
+    const auto titulo = afs.Entrada(2376 + cap);   // titulos PAL comprobados por los SPX 2457..2485
+    if (CuantasAmt(titulo) != 1) continue;
+    std::vector<Imagen> img;
+    if (prologo) {
+      // AMB 1909, hijo 58: tipo 2/sub 1, sprite 0, en los cinco idiomas PAL.
+      const auto subtitulos = HijoAmb(afs.Entrada(1909), 58);
+      if (CuantasAmt(subtitulos) < 8) continue;
+      for (int i = 0; i < 8; ++i) img.push_back(TexturaAmt(subtitulos, i));
+    }
+    img.push_back(TexturaAmt(titulo, 0));
+    if (REXCVAR_GET(dbz3_historia_b1_cine) && cap == 0 && std::string_view(banco) == "DATA_SP.AFS") {
+      const auto t3 = afs.Entrada(2378);
+      if (CuantasAmt(t3) == 1) cine1910::ExpandirTituloCap1Es(img.back(), TexturaAmt(t3, 0));
+    }
+    if (std::any_of(img.begin(), img.end(), [](const auto& im) { return !im; })) continue;
+    std::lock_guard<std::mutex> lk(g_laminas_b1.mu);
+    g_laminas_b1.tex.clear();
+    g_laminas_b1.pic.assign(img.size(), S::Pic{});
+    g_laminas_b1.tex.resize(img.size());
+    g_laminas_b1.img = std::move(img);
+    g_laminas_b1.estado = 2;
+    REXLOG_INFO("dbz3 misiones: historia B1: capitulo {} laminas {} ({})", cap + 1, g_laminas_b1.img.size(), banco);
+    return int(g_laminas_b1.img.size());
+  }
+  return 0;
+}
+
+S::Pic ArteTex(int k, ArteContents& arte = g_arte) {
+  auto& g_arte = arte;
+  if (g_arte.estado.load() != 2) return {};
+  std::lock_guard<std::mutex> lk(g_arte.mu);
+  if (k < 0 || k >= int(g_arte.img.size())) return {};
+  if (g_arte.pic[size_t(k)].tex) return g_arte.pic[size_t(k)];
+  const Imagen& im = g_arte.img[size_t(k)];
+  auto* drawer = dbz3::launcher::PreviewDrawer();
+  if (!im || !drawer) return {};
+  g_arte.tex[size_t(k)] = drawer->CreateTexture(uint32_t(im.w), uint32_t(im.h), rex::ui::ImmediateTextureFilter::kLinear,
+                                                false, im.rgba.data());
+  if (!g_arte.tex[size_t(k)]) return {};
+  S::Pic p;
+  p.tex = reinterpret_cast<ImTextureID>(g_arte.tex[size_t(k)].get());
+  p.w = float(im.w);
+  p.h = float(im.h);
+  g_arte.pic[size_t(k)] = p;
+  return p;
+}
 std::atomic<int> g_fase_pub{kNada};
 std::atomic<bool> g_auto{false};
 // marcador del reto en el combate (IW): 0 nada, 1 golpes (g_hud_golpes de g_hud_meta), 2 aguantar sin atacar
@@ -492,6 +650,10 @@ std::atomic<bool> g_panel{false};
 // tablero: vida que le queda al del jugador en el combate pedido (0 = llena)
 int g_vida = 0;
 int g_nave_prueba = -1;   // prueba de la nave en curso (CombateNave c[5])
+// B2-09: NaveReviveRival() lo llama el hilo del juego en cada golpe que hace dano (sub_8211A5A8) y en Tick; alli no
+// se puede tomar g_mu (bloquearia el combate mientras el UI dibuja). Este atomico es la copia lista para leer.
+std::atomic<bool> g_nave_revive{false};
+void ActualizarReviveNave() { g_nave_revive = (g_modo == kNave && g_nave_prueba == 0 && g_fase == kLuchando); }
 bool g_nave_armada = false;      // el fin del combate de la prueba I ya encadeno el siguiente (gancho sub_820FE9B0)
 bool g_nave_encadenada = false;  // el combate de la nave lo pidio la cadena: Lanzar no vuelve a pedirlo
 // Bu
@@ -511,6 +673,7 @@ void Publicar(int fase) {   // con g_mu
   }
   g_fase = fase;
   g_fase_pub = fase;
+  ActualizarReviveNave();
   ++g_cambio;
 }
 
@@ -521,13 +684,18 @@ bool Listo(int m, std::string* motivo) {
     return false;
   };
   if (m == kSagaB1) {
+    if (!HistoriaB1Activa()) return false;
     const auto d = DatosLeidos();
     if (!d) return no("Necesita tu copia de Dragon Ball Z Budokai (PS2).",
                       "Needs your copy of Dragon Ball Z Budokai (PS2).");
-    if (HiloSaga(*d).empty()) return no("Tu ISO de Budokai 1 no trae la historia de Namek.", "Your Budokai 1 ISO has no Namek story.");
-    if (IdPort("b1", std::to_string(kZarbonB1)) < 0)
-      return no("Importa a Zarbon de Budokai 1 con el Mod Kit (Importar personaje > Budokai 1).",
-                "Import Zarbon from Budokai 1 with the Mod Kit (Import character > Budokai 1).");
+    if (!g_b1_directo) {   // Contents: basta la ISO (cada capitulo comprueba sus luchadores)
+      if (d->historia.empty()) return no("Tu ISO de Budokai 1 no trae la historia.", "Your Budokai 1 ISO has no story.");
+    } else {
+      if (HiloSaga(*d).empty()) return no("Tu ISO de Budokai 1 no trae la historia de Namek.", "Your Budokai 1 ISO has no Namek story.");
+      if (IdPort("b1", std::to_string(kZarbonB1)) < 0)
+        return no("Importa a Zarbon de Budokai 1 con el Mod Kit (Importar personaje > Budokai 1).",
+                  "Import Zarbon from Budokai 1 with the Mod Kit (Import character > Budokai 1).");
+    }
   }
   if (m == kNave && !nave::Disponible())
     return no("Necesita tu copia de Dragon Ball Z Budokai 2 (PS2).",
@@ -547,6 +715,8 @@ bool Listo(int m, std::string* motivo) {
   }
   if (m == kIW && !IW()) {
     LeerIW();
+    if (g_iw_leyendo.load())   // disco lento: la copia se esta leyendo, no falta
+      return no("Leyendo tu copia de Infinite World...", "Reading your copy of Infinite World...");
     return no("Necesita tu copia de Dragon Ball Z Infinite World (PS2).",
               "Needs your copy of Dragon Ball Z Infinite World (PS2).");
   }
@@ -558,7 +728,7 @@ bool Listo(int m, std::string* motivo) {
 }
 
 const Texto kTitulos[kModos] = {{"Saga de Vegeta en Namek (Budokai 1)", "Vegeta's Namek saga (Budokai 1)"},
-                                {"Dragon World (Budokai 2) - BETA", "Dragon World (Budokai 2) - BETA"},
+                                {"Dragon World (Budokai 2)", "Dragon World (Budokai 2)"},
                                 {"¡Fusión fallida! (Gotenks gordo)", "Failed fusion! (Fat Gotenks)"},
                                 {"Las absorciones de Súper Bu", "Super Buu's absorptions"},
                                 {"Misiones del Dragón (Infinite World)", "Dragon Mission (Infinite World)"},
@@ -566,8 +736,8 @@ const Texto kTitulos[kModos] = {{"Saga de Vegeta en Namek (Budokai 1)", "Vegeta'
 const Texto kAyudas[kModos] = {
     {"Los combates de la historia de Budokai 1 de tu copia del juego, con Zarbon importado de Budokai 1.",
      "The story battles from your copy of Budokai 1, with Zarbon imported from Budokai 1."},
-    {"En construcción. El tablero de Budokai 2 de tu copia: mueve a Goku y a su compañero casilla a casilla, busca objetos y lucha al tocar a un rival.",
-     "Work in progress. The Budokai 2 board from your copy: move Goku and his partner space by space, search for items and fight when you touch a rival."},
+    {"El tablero de Budokai 2 de tu copia: mueve a Goku y a su compañero casilla a casilla, busca objetos y lucha al tocar a un rival.",
+     "The Budokai 2 board from your copy: move Goku and his partner space by space, search for items and fight when you touch a rival."},
     {"Una misión nueva: la fusión sale mal, pero la Tierra no puede esperar.",
      "A new mission: the fusion goes wrong, but the Earth can't wait."},
     {"Bu absorbe a quien vence. Antes de cada combate, elige con qué absorción luchar.",
@@ -610,7 +780,19 @@ std::vector<Paso> PasosDe(int m) {
   if (m == kSagaB1) {
     const auto d = DatosLeidos();
     if (!d) return p;
-    for (const CombateB1& c : HiloSaga(*d)) {
+    const bool namek_d5 = PlanNamekD5(g_cap_actual, *d);
+    std::vector<CombateB1> lista;
+    if (g_regs_cap.empty()) {
+      lista = HiloSaga(*d);
+    } else {   // capitulo del Contents: sus registros (los que tienen luchador en B3)
+      for (int rg : g_regs_cap)
+        if (rg >= 1 && rg <= int(d->historia.size())) {
+          const CombateB1& c = d->historia[size_t(rg - 1)];
+          if (LuchadorB1(c.jugador_b1) >= 0 && LuchadorB1(c.rival_b1) >= 0) lista.push_back(c);
+          else REXLOG_WARN("dbz3 misiones: contents: registro {} sin luchador de B3 (jugador {} rival {}): se salta", rg, c.jugador_b1, c.rival_b1);
+        }
+    }
+    for (const CombateB1& c : lista) {
       const int j = LuchadorB1(c.jugador_b1), r = LuchadorB1(c.rival_b1);
       for (const auto& f : kFrasesSaga) {
         if (f.rival_b1 != c.rival_b1 || (f.forma_b1 >= 0 && f.forma_b1 != c.forma)) continue;
@@ -623,9 +805,15 @@ std::vector<Paso> PasosDe(int m) {
       x->tiempo = c.tiempo > 0 ? (c.tiempo + 30) / 60 : c.tiempo == -1 ? -1 : 0;
       x->vida2 = c.vida_rival > 0 && c.vida_rival != 3000 ? c.vida_rival : 0;
       x->reglas.ki_rival = float(c.ki_rival) / 100.0f;
+      if (namek_d5) {
+        if (c.vida_jugador > 0 && c.vida_jugador < 3000) x->vida1_b1 = -c.vida_jugador;
+        if (c.ki_jugador > 0 && c.ki_jugador != 0xFFFF)
+          x->reglas.ki_jugador = float(c.ki_jugador) / 100.0f;
+      }
     }
-    final(kVegeta, {"¡Kakarotto! Esto no ha terminado. El único que derrotará a Freezer seré yo...",
-                    "Kakarot! This isn't over. I'm the only one who will defeat Frieza..."});
+    if (g_regs_cap.empty())
+      final(kVegeta, {"¡Kakarotto! Esto no ha terminado. El único que derrotará a Freezer seré yo...",
+                      "Kakarot! This isn't over. I'm the only one who will defeat Frieza..."});
   } else if (m == kGotenks) {
     const int fat = IdGotenksGordo();
     charla(kPiccolo, true, {"¡Os habéis equivocado de postura! ¡Los dedos no se tocaban!",
@@ -746,6 +934,17 @@ void CombateTablero(const int c[14]) {   // con g_mu
   if (c[2] < 0) x.escenario = -c[2] - 1;   // pasarela_b2: el alta del escenario de B2 de la casilla
   else x.mapa = c[2];
   x.vida2 = c[4];
+  // Ki inicial de las piezas (orden 53, +0x16 del registro; FUN_00276D10/FUN_00279050). Reglas lo pide en barras
+  // (1 barra = kKiBarra = 1000 de B3); B2 usa 100 por barra como B1, analogia NO CONFIRMADA sin medir su HUD: el
+  // log dice el valor crudo y VigilarCombate el ki real del luchador al empezar. <0 = esa pieza no trae la orden.
+  if (c[12] > 0) x.reglas.ki_jugador = float(c[12]) / 100.0f;
+  if (c[13] > 0) x.reglas.ki_rival = float(c[13]) / 100.0f;
+  // COM del rival (orden 51: +0x18 -> 0x699365). B3 solo tiene tres niveles: mapa B2 0-7 -> 0/1/2 NO CONFIRMADO.
+  if (const int com = b2::ComRivalB2(); com >= 0) x.reglas.nivel_com = com <= 1 ? 0 : com <= 4 ? 1 : 2;
+  // Ataque del rival (Kid Bu +10 de la IX, ordenes 83/35 sobre +0x10): bonus sobre 100, como la daga del jugador.
+  if (const int at = b2::AtaqueRivalB2(); at > 100) x.reglas.ataque_rival = float(at - 100) / 100.0f;
+  REXLOG_INFO("dbz3 misiones: tablero combate B2: ki {} / {} (crudo) -> {:.1f} / {:.1f} barras, COM {}, ataque rival {}",
+              c[12], c[13], x.reglas.ki_jugador, x.reglas.ki_rival, x.reglas.nivel_com, b2::AtaqueRivalB2());
   // sin condicion no hay aviso: la franja repetia la cinta del titulo (revision de R6)
   if (c[5] == 1) x.texto = {"Empezáis con media vida.", "Both start with half health."};
   if (c[5] == 2) {
@@ -754,32 +953,46 @@ void CombateTablero(const int c[14]) {   // con g_mu
     x.texto = {"Empiezas con 0 de ki.", "You start with 0 ki."};
   }
   if (c[5] == 3) {
-    x.reglas.vida_baja = 0.01f;   // aproximacion provisional: 1 % de la vida maxima/s, minimo 1; tasa B2 [VERIFICAR] en b2.c
+    // B2-03 (b2.c:149665-149680): 1 de vida por cuadro (dt 1,0) a LOS DOS mientras tengan mas de 500; sobre 3000 de B2
+    // (b2.c:145695) = 2 %/s y suelo 1/6. ponytail: con mas de 3000 de maximo el original va mas lento en proporcion.
+    x.reglas.vida_baja = 60.0f / 3000.0f;
+    x.reglas.vida_baja_suelo = 500.0f / 3000.0f;
+    x.reglas.vida_baja_rival = true;
     x.texto = {"La vida se va gastando.", "Health keeps draining."};
   }
-  if (c[5] == 5) x.reglas.sin_bloqueo = true;
-  // Saibaman de colores: cada combate contra uno saca un traje al azar entre los que tenga (los 2 de serie y los del
-  // mod de colores, mod center hd/campanas/trajes_saibaman). Con un solo traje, el de siempre.
-  if (c[1] == 42) {
-    auto* rt = rex::Runtime::instance();
-    uint8_t* base = rt ? rt->virtual_membase() : nullptr;
-    const int n = base ? REX_LOAD_U8(dbz3::GA(0x8234ABB8u) + 96u * 42u + 4) : 0;
-    if (n > 1) x.reglas.traje_rival = int(std::chrono::steady_clock::now().time_since_epoch().count() % n);
-  }
-  x.reglas.ataque = float(c[6]) / 100.0f;   // daga y armadura del tablero
-  x.reglas.defensa = std::min(0.9f, float(c[7]) / 100.0f);
-  if (c[5] == 4) {
-    x.reglas.ki_lento = 1.0f;
+  if (c[5] == 4) {   // B2-03 (b2.c:149727 + FUN_001f0cc0): 0,24 de ki por cuadro a cada uno, sobre 700 de B2 (b2.c:145696)
+    x.reglas.ki_baja = 0.24f * 60.0f / 700.0f;
     x.texto = {"El ki se va gastando.", "Ki keeps draining."};
   }
+  if (c[5] == 5) x.reglas.sin_bloqueo = true;
+  // dsSAIBAMAN (R20, decision del usuario): el Saibaman del tablero usa el nativo y, en los modos de color
+  // del original (T2 +7: 1-4), el traje recolor que le toca (out[11]; generado desde los datos del jugador).
+  // Ya no es un traje al azar: el modo de sprites de B2 es el que elige. Si la variante no esta montada,
+  // out[11] vale 0 y entra el nativo.
+  if (c[1] == 42) x.reglas.traje_rival = c[11] > 0 ? c[11] : 0;
+  // c[6]/c[7] son las estadisticas absolutas del registro de pieza de B2 (+0x10/+0x12: la daga y la armadura las
+  // suman; 100 = normal). Reglas las pide como bonus sobre 100.
+  x.reglas.ataque = std::max(0.0f, float(c[6] - 100) / 100.0f);
+  x.reglas.defensa = std::min(0.9f, std::max(0.0f, float(c[7] - 100) / 100.0f));
+  // B2-03 (b2-reglas r23): fuera el ki_lento = 1 de la condicion 4 (el jugador no ganaba ki); el original solo suma el
+  // gasto de 0,24 por cuadro a los dos (b2.c:149727), que ya hace ki_baja arriba.
   if (c[5] == 5) x.texto = {"Sin bloqueo.", "No blocking."};
+  // FUN_0027EEF0: dato observado del motor B2; las tasas y los bandos del consumidor siguen sin medir.
+  if (c[5] >= 3 && c[5] <= 5)
+    REXLOG_INFO("dbz3 misiones: tablero condicion {} -> flag 0x69939A={} (motor B2, consumidor b2.c:149665/149727/135297)", c[5], c[5] - 2);
   g_pasos.push_back(x);
   g_vida = c[3];
   g_paso = 0;
   g_intentos = 0;
   // B2 no tiene tarjeta VS: del contacto ("!!" y pose, en pasarela_b2) va derecho al combate. La tarjeta solo si
   // el conector esta ocupado (la tarjeta lo reintenta).
-  if (!Lanzar()) Publicar(kPantalla);
+  if (!Lanzar()) {
+    // R1 (PLAN2/COMBATE_IDA_VUELTA): el conector puede rechazar el combate (hub ocupado, personaje o escenario
+    // invalido). Los dos primeros rechazos dejan la tarjeta de reintento; al tercero pasarela_b2 suelta el contacto
+    // y se vuelve al tablero, para que el turno no quede colgado esperando un combate que nunca se pidio.
+    if (b2::CombateRechazado()) return Publicar(kTableroF);
+    Publicar(kPantalla);
+  }
 }
 // ---- Nave de Babidi (pasarela_nave.cpp): c = {jugador, rival, mapa, vida inicial, tiempo, prueba, P2 humano} ----
 void VolverANave() {   // con g_mu
@@ -813,6 +1026,7 @@ void CombateNave(const int c[7]) {   // con g_mu
   g_pasos.push_back(x);
   g_vida = c[3];
   g_nave_prueba = c[5];
+  ActualizarReviveNave();
   g_paso = 0;
   g_intentos = 0;
   // Prueba I de B2: el rival se levanta y sigue el combate, sin pantalla VS. El combate siguiente ya lo pidio el
@@ -1264,15 +1478,15 @@ void VolverAlMapa() {   // con g_mu
 //  - Defeat: vida (cortes 24/35/45/55/65/75/85 del decomp = 25/35/... al contar hacia arriba) + tiempo
 //    (<60 -> 7, <75 -> 6 ... >=180 -> 1, exacto) + contadores.
 //  - Fight: vida + dano hecho (39/50/60/70/80/90/100) + contadores (pesos 1/2/1/2/1).
-//  - Endure: vida sobre el objetivo + vida del rival (40/70/75/85/90/95/100) + los cinco contadores
-//    (4 < +0x30, +0x2c >= 3, +0x34 >= 10, +0x38 >= 5, +0x3c >= 0x12D; pesos 0/1/1/2/2).
+//  - Endure: vida sobre el objetivo + vida del rival (40/70/75/85/90/95/100) + los cinco contadores DEL REVES
+//    (+0x30 > 4, +0x2c < 3, +0x34 < 10, +0x38 < 5, +0x3c < 0x12D; pesos 0/1/1/2/2; ver el comentario de g2).
 //  - Fighter's Road: SOLO dos notas (vida + contadores); la tercera llamada de Char_ComputeStatGrade con param_3 = 2
 //    cae en el camino por defecto y vale 0. Cortes con param_1 == 1: 13/11/8/5.
 //  - Los cuatro contadores exactos (H8): (+0x1c != 0) + 2*(+0x20 >= 1) + 2*(+0x24 >= 5) + 2*(+0x28 > 499) en
 //    Defeat/FR, y (+0x1c != 0) + 2*(+0x2c >= 3) + 1*(+0x20 >= 1) + 2*(+0x24 >= 5) + 1*(+0x28 > 499) en Fight.
 //    +0x1c = Fin::golpes > 0 (golpe directo), +0x24 = Fin::rival_ki_max (racha de carga del rival) y +0x28 =
 //    Fin::rival_combo_dano_max (mayor combo del rival), medidos en pasarela.cpp. +0x20/+0x2c = 0 (guiones MMI2).
-int RangoIW(const MisionTablaIW& t, const Fin& f, int segundos) {
+int RangoIW(const MisionTablaIW& t, const Fin& f, int segundos, bool exacto) {
   auto escala = [](int v, std::initializer_list<int> cortes) {
     int n = 0;
     for (const int c : cortes) n += v >= c;
@@ -1294,6 +1508,31 @@ int RangoIW(const MisionTablaIW& t, const Fin& f, int segundos) {
     }
     return c;
   };
+  if (exacto && REXCVAR_GET(dbz3_iw_rango_contadores)) {   // IWFIN/HUECOS-08: los once contadores, cortes del ELF
+    const int w30 = f.iw_palabra[0], w2c = f.iw_palabra[1], w34 = f.iw_palabra[2], w20 = f.iw_palabra[3];
+    const int directo = f.golpes > 0, vida_n = escala(vida, {25, 35, 45, 55, 65, 75, 85});
+    int suma = 0;
+    if (t.notas == 1) {
+      suma = vida_n + 7 - escala(segundos, {60, 75, 90, 120, 150, 180}) + directo + 2 * (w20 >= 1) + 2 * ki_rival + 2 * dano_rival;
+    } else if (t.notas == 2) {
+      suma = vida_n + escala(pct(f.vida_max[1] - std::max(0, f.vida[1]), f.vida_max[1] - objetivo), {40, 50, 60, 70, 80, 90, 100}) +
+             directo + 2 * (w2c >= 3) + (w20 >= 1) + 2 * ki_rival + dano_rival;
+    } else if (t.notas == 3) {
+      suma = 1 + escala(100 - pct(f.vida_max[0] - std::max(0, f.vida[0]), f.vida_max[0] - objetivo), {15, 30, 45, 60, 75, 90}) +
+             escala(pct(std::max(0, f.vida[1]), f.vida_max[1]), {40, 70, 75, 85, 90, 95, 100}) + (w30 > 4) + (w2c >= 3) +
+             (w34 >= 10) + 2 * (f.ki_max < 5) + 2 * (f.combo_dano_max < 301);
+    } else if (t.notas == 4) {
+      suma = vida_n + directo + 2 * (w20 >= 1) + 2 * ki_rival + 2 * dano_rival;
+      return suma >= 13 ? 4 : suma >= 11 ? 3 : suma >= 8 ? 2 : suma >= 5 ? 1 : 0;
+    } else {
+      return -1;
+    }
+    REXLOG_INFO("dbz3 misiones: iw rango contadores: nota {} suma {} (esquivas {}, teletransportes {}, accion 1E {}, ataques tele {}, "
+                "ki jugador {}, ki rival {}, combo {}/{}; rival: {} {} {} {})", t.notas, suma, w30, w2c, w34, w20, f.ki_max, f.rival_ki_max,
+                f.combo_dano_max, f.rival_combo_dano_max, dbz3::combate::PalabraIW(1, 0), dbz3::combate::PalabraIW(1, 1),
+                dbz3::combate::PalabraIW(1, 2), dbz3::combate::PalabraIW(1, 3));
+    return suma >= 19 ? 4 : suma >= 16 ? 3 : suma >= 12 ? 2 : suma >= 7 ? 1 : 0;
+  }
   int g0 = 0, g1 = 0, g2 = 3;
   if (t.notas == 1) {
     g0 = escala(vida, {25, 35, 45, 55, 65, 75, 85});
@@ -1301,16 +1540,19 @@ int RangoIW(const MisionTablaIW& t, const Fin& f, int segundos) {
     g2 = contadores(false);
   } else if (t.notas == 2) {
     g0 = escala(vida, {25, 35, 45, 55, 65, 75, 85});
-    g1 = escala(pct(f.vida_max[1] - std::max(0, f.vida[1]), f.vida_max[1] - objetivo), {39, 50, 60, 70, 80, 90, 100});
+    const int primer_corte = exacto && REXCVAR_GET(dbz3_iw_rango_fight40) ? 40 : 39;
+    g1 = escala(pct(f.vida_max[1] - std::max(0, f.vida[1]), f.vida_max[1] - objetivo),
+                {primer_corte, 50, 60, 70, 80, 90, 100});
     g2 = contadores(true);
   } else if (t.notas == 3) {
     g0 = 1 + escala(100 - pct(f.vida_max[0] - std::max(0, f.vida[0]), f.vida_max[0] - objetivo), {15, 30, 45, 60, 75, 90});
     g1 = escala(pct(std::max(0, f.vida[1]), f.vida_max[1]), {40, 70, 75, 85, 90, 95, 100});
-    // Exacto en el decomp: (4 < +0x30) + (+0x2c >= 3) + (+0x34 >= 10) + 2*(+0x38 >= 5) + 2*(+0x3c >= 0x12D), todos del
-    // jugador. De esos +0x3c es el mayor dano de un combo (Fin::combo_dano_max) y +0x38 la mayor carga de ki (el port
-    // no la mide); +0x1e/+0x20/+0x22 no tienen escritor en el C. Se conserva el valor medio 3 del decomp (0..8) y se
-    // deja [H] el reparto exacto: (f.combo_dano_max >= 301) + 2*(combo_max >= 5) seria la parte conocida.
-    g2 = 3;
+    // Decomp EU 0x2AC0D0 (param_3 = 2): el +2 cae cuando el contador esta POR DEBAJO del corte, no por encima:
+    //   (+0x30 > 4) + (+0x2c < 3) + (+0x34 < 10) + 2*(+0x38 < 5) + 2*(+0x3c < 0x12d).
+    // +0x2c/+0x30/+0x34 solo los escriben los guiones MMI2 (RAMEvents EU 0x22F9D0): 0 en el port. +0x38 = mayor racha
+    // de carga de ki del jugador (el port no la mide: 0, que cuenta como < 5). +0x3c = Fin::combo_dano_max (medido).
+    // Con los no medidos a 0: 2 + 2*(combo_dano_max < 301). El valor medio 3 anterior no era el del ELF.
+    g2 = exacto ? 2 + 2 * (f.combo_dano_max < 301) : 3;
   } else if (t.notas == 4) {   // Fighter's Road: vida + contadores (la 3.a nota vale 0 en Char_ComputeStatGrade)
     const int suma = escala(vida, {25, 35, 45, 55, 65, 75, 85}) + contadores(false);
     return suma >= 13 ? 4 : suma >= 11 ? 3 : suma >= 8 ? 2 : suma >= 5 ? 1 : 0;
@@ -1393,6 +1635,7 @@ int CapsulaIWAB3(int iw) {
 // Mision ganada: puntos, record (iw_mejor_N), Zenie al monedero del HUB y avance (iw_hecho = la mas alta superada).
 void GanarIW(const Paso& p, const Fin& f) {   // con g_mu
   const int n = p.informe + 1;
+  const bool exacto = REXCVAR_GET(dbz3_iw_resultado_original);
   ResultadoDM r;
   r.mision = n;
   r.segundos = p.tiempo > 0 && f.segundos >= 0 ? p.tiempo - f.segundos : int((NowMs() - g_iw_t0) / 1000);
@@ -1402,6 +1645,7 @@ void GanarIW(const Paso& p, const Fin& f) {   // con g_mu
   // y no se pinta en la ficha de mision (Resultado() solo anade SCORE/TOTAL a los minijuegos).
   r.puntos = std::clamp(std::max(0, f.vida[0]) * 4 / 5 + std::max(0, 180 - r.segundos) * 8, 0, 99999);
   r.score = r.puntos;   // DS108: el marcador del port tambien va por el campo SCORE (ficha: BEST SCORE)
+  if (exacto) { r.puntos = 0; r.score = -1; }   // IW-A03: la historia no tiene SCORE; el resultado solo lleva TIME y RANK
   {
     std::lock_guard<std::mutex> lk(g_iw_mu);
     // Zenie de IW (descompilacion Ghidra, EU): Char_ComputeScaledStat 0x2ABB80 = +0x0E del registro de la mision x
@@ -1410,13 +1654,36 @@ void GanarIW(const Paso& p, const Fin& f) {   // con g_mu
     // entrenamientos 1-10 ni en la 77) y redondeo a la centena. El rango es RangoIW() (Char_ComputeStatGrade
     // 0x2AC0D0 + cortes de Battle_ComputeRankAndRecord 0x28A5E0); los contadores que no expone el guest quedan
     // aproximados con Fin (ver el comentario de RangoIW).
-    constexpr int kZeni[5] = {50, 80, 100, 130, 160}, kExtra[5] = {0, 20, 40, 60, 100};
-    if (n >= 1 && n - 1 < int(g_iw_tabla.size())) r.rango = RangoIW(g_iw_tabla[size_t(n - 1)], f, r.segundos);
+    constexpr int kZeni[6] = {50, 80, 100, 130, 160, 200}, kExtra[5] = {0, 20, 40, 60, 100};
+    constexpr int kZeniCapsula[6] = {100, 110, 120, 130, 150, 200};   // +5 del registro de capsulas (1..5)
+    if (n >= 1 && n - 1 < int(g_iw_tabla.size()))
+      r.rango = RangoIW(g_iw_tabla[size_t(n - 1)], f, r.segundos, exacto);
     const int rango = r.rango >= 0 ? r.rango : PantallaDM::Rango(r.score);
     if (n >= 1 && n - 1 < int(g_iw_tabla.size())) {
-      const int base = g_iw_tabla[size_t(n - 1)].premio * (n == 77 ? 100 : kZeni[std::clamp(g_iw_dificultad, 0, 4)]);
-      const int extra = n <= 10 || n == 77 ? 0 : base / 100 * kExtra[std::clamp(rango, 0, 4)];
-      r.zeni = (base + extra + 50) / 100 * 100;
+      if (exacto) {
+        // Char_ComputeScaledStat (EU 0x2ABB80) + Char_RoundAndScaleStat (EU 0x2ABD90), enteros EXACTOS:
+        //  77  -> modo 0x4C: premio x100, sin dificultad (la capsula si se aplica) y solo redondeo.
+        //  resto -> premio x (50/80/100/130/160/200) [0..5]; capsula de Zeni: base = (base/100) x (110/120/130/150/200).
+        //  misiones 1-10 -> sin bonus de rango, pero con el redondeo comun a la centena.
+        //  resto -> + (base/100) x (0/20/40/60/100 %) por rango y redondeo a la centena.
+        const int cap = PropiedadZeniCapsulaIW(n);
+        int base = g_iw_tabla[size_t(n - 1)].premio *
+                   (n == 77 ? 100 : kZeni[std::clamp(g_iw_dificultad, 0, 5)]);
+        if (cap > 0) base = base / 100 * kZeniCapsula[std::clamp(cap, 1, 5)];
+        if (n == 77 || n <= 10) {
+          r.zeni = (base + 50) / 100 * 100;
+        } else {
+          const int extra = base / 100 * kExtra[std::clamp(rango, 0, 4)];
+          r.zeni = (base + extra + 50) / 100 * 100;
+        }
+        if (cap > 0)
+          REXLOG_INFO("dbz3 misiones: iw: capsula de Zenie nivel {} en la mision {}: Zenie {} (ELF 0x2ABB80)",
+                      cap, n, r.zeni);
+      } else {
+        const int base = g_iw_tabla[size_t(n - 1)].premio * (n == 77 ? 100 : kZeni[std::clamp(g_iw_dificultad, 0, 4)]);
+        const int extra = n <= 10 || n == 77 ? 0 : base / 100 * kExtra[std::clamp(rango, 0, 4)];
+        r.zeni = (base + extra + 50) / 100 * 100;
+      }
     }
   }
   // Como IW (Battle_ComputeRankAndRecord, EU 0x28A5E0): los combates guardan el mejor RANGO de cada mision (sin
@@ -1430,9 +1697,10 @@ void GanarIW(const Paso& p, const Fin& f) {   // con g_mu
     RangoMejora("rango_iw_" + std::to_string(n), ahora, 30, 20);   // escalafon: 30 por rango mejorado, 20 la 1.a vez
     // DS108: BEST SCORE de la ficha (iw_mejor_N = mejor SCORE de la mision; 0 = sin marca -> guion). Es el marcador
     // que el registro del original guarda junto al rango (Battle_ApplyResultRewards EU 0x28A020, campos +0x14/+0x18
-    // del bloque por mision; fama y valor exacto del original [H], ver informe).
+    // del bloque por mision; fama y valor exacto del original [H], ver informe). IW-A03: con el ajuste original NO se
+    // escribe (la historia no tiene SCORE); las partidas viejas conservan su clave y la ficha sigue leyendola.
     const std::string clave_score = "iw_mejor_" + std::to_string(n);
-    if (r.score > LeerProgreso(clave_score, 0)) GuardarProgreso(clave_score, r.score);
+    if (!exacto && r.score > LeerProgreso(clave_score, 0)) GuardarProgreso(clave_score, r.score);
   }
   // Zení a lo ganado: Battle_ApplyResultRewards (EU 0x28A020) suma el premio (pi[0x5a], el de Char_RoundAndScaleStat) a
   // DOS monederos de la campaña (iRam005c154c y iRam005c1550) con tope 0xF41DC = 999900. El monedero del port es el
@@ -1497,14 +1765,161 @@ void GanarIW(const Paso& p, const Fin& f) {   // con g_mu
   const char* clave_hecho = n > kMisionesDM ? "iw_road_hecho" : "iw_hecho";   // Fighter's Road: su avance
   const int hecho = std::max(LeerProgreso(clave_hecho, n > kMisionesDM ? kMisionesDM : 0), n);
   GuardarProgreso(clave_hecho, hecho);
-  REXLOG_INFO("dbz3 misiones: iw: mision {} superada: {} s, score {} (record {}), rango {}, {} Zenie, hechas hasta la {}",
-              n, r.segundos, r.score, r.mejor, r.rango >= 0 ? r.rango : PantallaDM::Rango(r.score), r.zeni, hecho);
+  REXLOG_INFO("dbz3 misiones: iw: avance {} = {} (mision {})", clave_hecho, hecho, n);   // PAQ_MUNDO/2.B
+  if (exacto)
+    REXLOG_INFO("dbz3 misiones: iw: mision {} superada: {} s, rango {} (record {}), {} Zenie, hechas hasta la {}",
+                n, r.segundos, r.rango >= 0 ? r.rango : PantallaDM::Rango(r.puntos), r.mejor, r.zeni, hecho);
+  else
+    REXLOG_INFO("dbz3 misiones: iw: mision {} superada: {} s, score {} (record {}), rango {}, {} Zenie, hechas hasta la {}",
+                n, r.segundos, r.score, r.mejor, r.rango >= 0 ? r.rango : PantallaDM::Rango(r.score), r.zeni, hecho);
   g_iw_res = r;
   g_iw_vista = 2;
 }
 
 // ---- Avance ----
+bool EnContents() { return g_modo == kSagaB1 && !g_b1_directo && g_cap_actual >= 0; }
+void VolverAContents() {   // con g_mu: del capitulo al Contents
+  g_pasos.clear();
+  g_paso = 0;
+  g_cap_actual = -1;
+  g_regs_cap.clear();
+  Publicar(kContenidosF);
+}
+void CapituloSuperado() {   // con g_mu: abre el siguiente capitulo de la saga
+  const int c = g_cap_actual;
+  if (c < 0 || c >= kCapsB1) return;
+  int s = kSagasB1 - 1;
+  while (s > 0 && c < kCapsBase[s]) --s;
+  const int li = c - kCapsBase[s];
+  const int abiertos = std::min(kCapsSaga[s], std::max(LeerProgreso(ClaveCap(s), 1), li + 2));
+  GuardarProgreso(ClaveCap(s), abiertos);
+  REXLOG_INFO("dbz3 misiones: contents: capitulo {} de la saga {} superado ({} abiertos)", li + 1, s + 1, abiertos);
+}
+// Filas (base 1) del ELF del jugador. Para las colas D0 resueltas hasta el
+// retorno (pantalla 5/6), se conservan los combates normales en orden. En
+// 1/2/22/27 solo se porta el primer combate: no se simulan sus salidas.
+// Namekian 1 (global 8) usa reglas especiales y solo muestra el titulo.
+constexpr int kPal[kCapsB1][3] = {
+      {2}, {6}, {34, 7}, {3}, {4}, {5}, {35, 36, 37},
+      {}, {13, 14}, {8, 9, 41}, {15}, {16}, {10}, {11}, {12}, {17, 18, 19}, {20},
+      {42}, {27, 28}, {21}, {22}, {29}, {30}, {23}, {24}, {43, 25}, {26}, {31, 32}, {33}};
+
+bool HistoriaPal(const DatosB1& d) {
+  return d.historia.size() == 43 && std::filesystem::path(d.elf).filename() == "sles_512.33";
+}
+
+bool PlanNamekD5(int c, const DatosB1& d) {
+  return c >= kCapsBase[1] + 1 && c <= kCapsBase[1] + 3 &&
+         REXCVAR_GET(dbz3_historia_b1) && HistoriaPal(d) && d.ruta == IsoPs2(0);
+}
+
+// DLC B1: un capitulo que necesita a Zarbon o Dodoria sin su mod generado queda bloqueado (no se regala).
+bool CapituloFaltaDlc(int c, const DatosB1& d) {
+  // D8: IdPort copia el mapa de ports; los dos ids se resuelven como mucho cada 0,5 s, no por fila y fotograma.
+  static int z = -1, dd = -1;
+  static std::chrono::steady_clock::time_point t_ids{};
+  const auto ahora = std::chrono::steady_clock::now();
+  if (t_ids == std::chrono::steady_clock::time_point{} || ahora - t_ids > std::chrono::milliseconds(500)) {
+    z = LuchadorB1(kZarbonB1);
+    dd = LuchadorB1(kDodoriaB1);
+    t_ids = ahora;
+  }
+  if (z >= 0 && dd >= 0) return false;
+  const auto falta = [&](int id) { return (id == kZarbonB1 && z < 0) || (id == kDodoriaB1 && dd < 0); };
+  const auto requiere = [&](const int (&regs)[3]) {
+    for (int r : regs) if (r > 0 && r <= int(d.historia.size())) {
+      const auto& b = d.historia[size_t(r - 1)];
+      if (falta(b.jugador_b1) || falta(b.rival_b1)) return true;
+    }
+    return false;
+  };
+  if (PlanNamekD5(c, d)) return requiere(kPal[c]);
+  return requiere(kRegsCap[c]) || (REXCVAR_GET(dbz3_historia_b1) && HistoriaPal(d) && requiere(kPal[c]));
+}
+
+void EntrarCapitulo(int c) {   // con g_mu: lanza el capitulo c (global 0..28) desde el Contents
+  c = std::clamp(c, 0, kCapsB1 - 1);
+  const auto fuente = DatosLeidos();
+  if (!fuente || CapituloFaltaDlc(c, *fuente)) return;
+  const bool namek_d5 = PlanNamekD5(c, *fuente);
+  g_cap_actual = c;
+  g_regs_cap.clear();
+  for (int r : kRegsCap[c]) if (r > 0) g_regs_cap.push_back(r);
+  const auto datos = REXCVAR_GET(dbz3_historia_b1) ? fuente : nullptr;
+  const bool pal = datos && HistoriaPal(*datos) && datos->ruta == IsoPs2(0);
+  const bool saiyan1 = c == 0 && pal &&
+      datos->historia[1].jugador_b1 == 0 && datos->historia[1].rival_b1 == 9;
+  int laminas = pal ? PrepLaminasB1(c, saiyan1) : 0;
+  if (!laminas && saiyan1) laminas = PrepLaminasB1(c, false);
+  // En Namek 2..4 el titulo es opcional, la cadena de combates no.
+  if ((laminas || namek_d5) && kPal[c][0] && (c != 0 || saiyan1)) {
+    std::vector<int> plan;
+    for (int r : kPal[c]) if (r) {
+      const auto& b = datos->historia[size_t(r - 1)];
+      if (b.modo != 0 || LuchadorB1(b.jugador_b1) < 0 || LuchadorB1(b.rival_b1) < 0) {
+        plan.clear();
+        break;
+      }
+      plan.push_back(r);
+    }
+    if (!plan.empty()) {
+      REXLOG_INFO("dbz3 misiones: historia B1: capitulo {} plan PAL: {} combates, primer registro {}",
+                  c + 1, plan.size(), plan.front());
+      g_regs_cap = std::move(plan);
+    } else if (namek_d5) {
+      REXLOG_WARN("dbz3 misiones: historia B1: capitulo {} plan PAL incompleto; no se inicia", c + 1);
+      return VolverAContents();
+    }
+  }
+  g_intentos = 0;
+  if (g_regs_cap.empty() && !laminas) {   // sin combate ni titulo disponible: comportamiento anterior
+    REXLOG_INFO("dbz3 misiones: contents: capitulo {} sin combate (solo escena): visto", c + 1);
+    CapituloSuperado();
+    g_cap_actual = -1;
+    return;
+  }
+  // No llamar a PasosDe con registros vacios: eso cargaria la saga directa de Vegeta.
+  g_pasos = g_regs_cap.empty() ? std::vector<Paso>{} : PasosDe(kSagaB1);
+  if (namek_d5 && std::count_if(g_pasos.begin(), g_pasos.end(),
+                                [](const Paso& p) { return p.tipo == kCombate; }) != int(g_regs_cap.size())) {
+    REXLOG_WARN("dbz3 misiones: historia B1: capitulo {} faltan pasos de combate", c + 1);
+    return VolverAContents();
+  }
+  if (laminas) {
+    std::vector<Paso> intro;
+    for (int i = 0; i < laminas; ++i) {
+      Paso p;
+      p.lamina_b1 = i;
+      intro.push_back(std::move(p));
+    }
+    const auto primer = std::find_if(g_pasos.begin(),g_pasos.end(),[](const Paso& p){return p.tipo == kCombate;});
+    if (saiyan1 && laminas == 9 && primer != g_pasos.end() && !g_regs_cap.empty() && g_regs_cap.front() == 2 &&
+        REXCVAR_GET(dbz3_historia_b1_cine)) {
+      Paso cine;
+      const auto cache = dbz3::settings::UserDataRoot()/"cache_ps2"/"b1"/"escena_1910";
+      std::error_code ec;
+      if (std::filesystem::is_regular_file(cache/"escena_1910.toml",ec)) {
+        std::packaged_task<std::shared_ptr<cine1910::Player>()> cargar([cache,iso=datos->ruta,idioma=dbz3::settings::Language()] {
+          return cine1910::Cargar(cache,iso,idioma);
+        });
+        cine.carga_cine_b1 = cargar.get_future().share();
+        std::thread(std::move(cargar)).detach();
+        intro.insert(intro.begin(),std::move(cine));
+      }
+    }
+    g_pasos.insert(g_pasos.begin(), intro.begin(), intro.end());
+    if (laminas == 9) REXLOG_INFO("dbz3 misiones: historia B1: Saiyan 1, 8 subtitulos y titulo; combate registro 2");
+  }
+  g_paso = 0;
+  REXLOG_INFO("dbz3 misiones: contents: capitulo {} ({} pasos, registros {})", c + 1, g_pasos.size(), g_regs_cap.size());
+  if (g_pasos.empty()) {   // ningun luchador disponible en B3: no se regala el capitulo (dsREV)
+    REXLOG_WARN("dbz3 misiones: contents: capitulo {} sin luchadores importados en B3: no se marca superado", c + 1);
+    return VolverAContents();
+  }
+  Publicar(kPantalla);
+}
 void Salir() {   // con g_mu: al menu de la pasarela (se guarda donde iba)
+  if (EnContents()) return VolverAContents();
   if (g_modo == kIW && DM() && g_fase != kMapaIW && g_fase != kMenu) {   // IW: de la ficha o la derrota, al mapa
     g_iw_vuelta_combate = true;   // H03: la derrota vuelve al mapa sin repetir la intro de 100 cuadros
     g_iw_vista = 0;
@@ -1517,7 +1932,14 @@ void Salir() {   // con g_mu: al menu de la pasarela (se guarda donde iba)
 }
 void Terminar() {   // con g_mu: modo completado
   REXLOG_INFO("dbz3 misiones: {} completado", kClaves[g_modo]);
-  if (g_modo != kTablero) GuardarProgreso(kClaves[g_modo], 0);
+  // El Contents experimental solo usa las claves de desbloqueo b1_capN.
+  // El indice de paso con laminas no pertenece a la saga directa de Vegeta.
+  if (g_modo != kTablero && !EnContents())   // dsREV: Contents nunca pisa el progreso de la saga directa
+    GuardarProgreso(kClaves[g_modo], 0);
+  if (EnContents()) {
+    CapituloSuperado();
+    return VolverAContents();
+  }
   if (g_modo == kBuu) {
     g_absorbidos = 1;
     GuardarProgreso("buu_absorbidos", 1);
@@ -1534,7 +1956,8 @@ void Siguiente() {   // con g_mu
     if (g_modo == kIW && DM()) return VolverAlMapa();
     return Terminar();
   }
-  if (g_modo != kTablero) GuardarProgreso(kClaves[g_modo], g_paso);
+  if (g_modo != kTablero && !EnContents())   // dsREV: Contents nunca pisa el progreso de la saga directa
+    GuardarProgreso(kClaves[g_modo], g_paso);
   Publicar(kPantalla);
 }
 
@@ -1655,7 +2078,9 @@ void VideoAperturaIW() {
 }
 
 void Entrar(int m) {   // con g_mu: desde el menu
+  if (m == kSagaB1 && !HistoriaB1Activa()) return;
   g_modo = m;
+  ActualizarReviveNave();
   g_intentos = 0;
   if (m == kTablero) {
     b2::Entrar();
@@ -1672,6 +2097,15 @@ void Entrar(int m) {   // con g_mu: desde el menu
     VideoAperturaIW();   // M2 (mod opcional iw.video_apertura)
     return VolverAlMapa();
   }
+  if (m == kSagaB1 && !g_b1_directo) {   // la historia de B1 se elige en su pantalla Contents
+    LeerArteContents();
+    g_cap_actual = -1;
+    g_regs_cap.clear();
+    g_cont_fila = g_cont_scroll = 0;
+    REXLOG_INFO("dbz3 misiones: contents: abierto (saga {})", g_cont_saga + 1);
+    return Publicar(kContenidosF);
+  }
+  g_regs_cap.clear();
   g_pasos = PasosDe(m);
   g_paso = std::clamp(LeerProgreso(kClaves[m], 0), 0, std::max(0, int(g_pasos.size()) - 1));
   // se sigue desde la charla de antes del combate pendiente
@@ -1686,6 +2120,14 @@ void Entrar(int m) {   // con g_mu: desde el menu
 
 bool Lanzar() {   // con g_mu
   const Paso& p = g_pasos[size_t(g_paso)];
+  // PRUEBA (R1): DBZ3_TEST_RECHAZO=N hace que el conector rechace N pedidos seguidos, para probar que un combate que
+  // no arranca no deja el turno colgado (b2::CombateRechazado, pasarela_misiones.cpp: CombateTablero).
+  static int rechazos = std::getenv("DBZ3_TEST_RECHAZO") ? std::atoi(std::getenv("DBZ3_TEST_RECHAZO")) : 0;
+  if (rechazos > 0) {
+    --rechazos;
+    REXLOG_WARN("dbz3 misiones: prueba: se rechaza el combate a proposito (quedan {})", rechazos);
+    return false;
+  }
   int escenario = 0;
   if (p.escenario >= 0) {
     escenario = p.escenario;
@@ -1703,6 +2145,7 @@ bool Lanzar() {   // con g_mu
   if (g_modo == kBuu && p.jugador == kSuperBu) reglas.traje_jugador = std::max(0, TrajeBu(g_forma_bu));
   g_iw_t0 = NowMs();
   int vida1 = (g_modo == kTablero || g_modo == kNave) && g_vida > 0 ? -g_vida : 0;   // la vida que le quedo (tablero)
+  if (p.vida1_b1 < 0) vida1 = p.vida1_b1;
   if (g_modo == kNave && g_nave_prueba == 1) vida1 = 1000;   // Prueba II de B2: el jugador tambien con una sola barra
   if (p.p2_humano && g_modo == kNave) vida1 = g_nave_prueba == 1 ? 1000 : 0;   // 2P: cada pelea empieza entera
   // Nave 2P: P2 humano = el registro de mando del lado 2 (rec+26 = 1) en vez de COM (-1); es el camino nativo del
@@ -1788,12 +2231,12 @@ void CreatePanel();
 
 // ---- API (HUB y pruebas) ----
 bool Start() {
-  DatosLeidos();   // la saga lee la ISO de B1 (si no estaba leida)
+  if (HistoriaB1Activa()) DatosLeidos();
   LeerIW();
   if (!g_panel.exchange(true)) dbz3::launcher::DeferUi(&CreatePanel);
   std::lock_guard<std::mutex> lk(g_mu);
   if (g_fase != kNada) return false;
-  g_cursor = 0;
+  g_cursor = HistoriaB1Activa() ? kSagaB1 : kTablero;
   g_desde_menu_b2 = false;
   Publicar(kMenu);
   return true;
@@ -1831,7 +2274,7 @@ class Panel : public rex::ui::ImGuiDialog {
       std::lock_guard<std::mutex> lk(g_mu);
       nave::MarcadorCombateB2(io,
           g_fase == kLuchando && g_modo == kNave && dbz3::ingame::GameScreen() == 25,
-          g_hud_golpes.load());
+          g_modo == kNave && g_nave_prueba == 2 ? nave::GolpesHudB2() : g_hud_golpes.load());
     }
     if (fase == kLuchando && g_hud_tipo.load() && dbz3::ingame::GameScreen() == 25 &&
         (EstadoCombate() == 3 || EstadoCombate() == 4)) {
@@ -1857,6 +2300,11 @@ class Panel : public rex::ui::ImGuiDialog {
       if (show) in->AddUIInputBlocker(); else in->RemoveUIInputBlocker();
       blocked_ = show;
     }
+    if (!show) {
+      std::lock_guard<std::mutex> lk(g_mu);
+      if (g_paso >= 0 && g_paso < int(g_pasos.size()))
+        if (const auto& p = g_pasos[size_t(g_paso)].cine_b1) p->Pausa(true);
+    }
     if (b2_nativo_) {   // el piloto y los menus B3 deben recibir el mando sin nuestra capa ni musica
       wait_release_ = true;
       alpha_ = 0;
@@ -1879,7 +2327,15 @@ class Panel : public rex::ui::ImGuiDialog {
       if (g_pad.load() == 0 && g_pad2.load() == 0 && alpha_ >= 1.0f) wait_release_ = false;
       pressed = p1 = p2 = 0;
     }
-    if (!show || g_auto.load()) pressed = p1 = p2 = 0;   // prueba automatica: solo avanza el modo (teclas de mas no cuentan)
+    if (!show) pressed = p1 = p2 = 0;
+    if (g_auto.load()) {
+      // El piloto no acepta entradas externas salvo R2 en la prueba inmovil del HUD B2.
+      // Sin esta excepcion el escenario pulsa E, pero nunca puede abrir Display Status.
+      const bool hud_b2 = g_fase == kTableroF && std::getenv("DBZ3_TEST_B2_HUD") &&
+                          std::getenv("DBZ3_TEST_B2_SIN_MOVIMIENTO");
+      pressed &= hud_b2 ? uint16_t(0x0400) : uint16_t(0);
+      p1 = p2 = 0;
+    }
     if (dbz3::ingame::tutorial::Abierto()) pressed = p1 = p2 = 0;   // F3: tutorial encima
     ent1_ = p1;
     ent2_ = p2;
@@ -1891,12 +2347,19 @@ class Panel : public rex::ui::ImGuiDialog {
     }
     const auto a = S::GameArea(io);
     auto* dl = ImGui::GetForegroundDrawList();
+    if (g_fase == kPantalla && g_paso >= 0 && g_paso < int(g_pasos.size()) &&
+        (g_pasos[size_t(g_paso)].cine_b1 || g_pasos[size_t(g_paso)].carga_cine_b1.valid())) {
+      if (show) DrawB1Cine(dl,io.DisplaySize,pressed);
+      return;
+    }
     const int v0 = dl->VtxBuffer.Size;
     S::Backdrop(dl, a, S::Img("hub/fondo") ? "hub/fondo" : "fondo_duelo");   // el del HUB, como sus modos
     S::Sides(dl, a);
     const bool auto_on = g_auto.load() && t - cambio_at_ > kAutoSeg;
     if (g_fase == kMenu) {
       DrawMenu(dl, a, t, pressed, auto_on);
+    } else if (g_fase == kContenidosF) {
+      DrawContenidos(dl, a, t, pressed, auto_on);
     } else if (g_fase == kMenuB2) {
       DrawMenuB2(dl, a, t, pressed);
     } else if (g_fase == kTableroF) {
@@ -1998,15 +2461,18 @@ class Panel : public rex::ui::ImGuiDialog {
     const bool gohan = bool(S::Img("hub/anfitrion_gohan_futuro"));
     if (gohan) S::Host(dl, a, "hub/anfitrion_gohan_futuro", S::mode::kHostX, S::mode::kHostY, false);
     const float fx0 = gohan ? S::mode::kX0 : 150.0f, fx1 = gohan ? S::mode::kX1 : 1050.0f;
-    const float y0 = 140, paso = 470.0f / float(kModos);   // el marco acaba antes del bocadillo (640)
-    S::Frame(dl, a.At(fx0, y0), a.At(fx1, y0 + 30 + paso * float(kModos)), a.s);
+    const int primero = HistoriaB1Activa() ? kSagaB1 : kTablero;
+    const int n = kModos - primero;
+    const float y0 = 140, paso = 470.0f / float(n);   // el marco acaba antes del bocadillo (640)
+    S::Frame(dl, a.At(fx0, y0), a.At(fx1, y0 + 30 + paso * float(n)), a.s);
     std::string motivo[kModos];
-    bool listo[kModos];
-    for (int m = 0; m < kModos; ++m) listo[m] = Listo(m, &motivo[m]);
-    if (pressed & kUp) g_cursor = (g_cursor + kModos - 1) % kModos;
-    if (pressed & kDown) g_cursor = (g_cursor + 1) % kModos;
-    for (int m = 0; m < kModos; ++m) {
-      const float y = y0 + 15 + paso * (float(m) + 0.5f);
+    bool listo[kModos]{};
+    for (int m = primero; m < kModos; ++m) listo[m] = Listo(m, &motivo[m]);
+    g_cursor = std::clamp(g_cursor, primero, int(kModos) - 1);
+    if (pressed & kUp) g_cursor = primero + (g_cursor - primero + n - 1) % n;
+    if (pressed & kDown) g_cursor = primero + (g_cursor - primero + 1) % n;
+    for (int m = primero; m < kModos; ++m) {
+      const float y = y0 + 15 + paso * (float(m - primero) + 0.5f);
       if (m == g_cursor) S::Highlight(dl, a.At(fx0 + 15, y - paso * 0.5f + 6), a.At(fx1 - 15, y + paso * 0.5f - 6), t);
       S::MenuText(dl, a.At((fx0 + fx1) * 0.5f, y), 40 * a.s, kTitulos[m](), m == g_cursor, !listo[m]);
     }
@@ -2034,6 +2500,86 @@ class Panel : public rex::ui::ImGuiDialog {
     (void)auto_on;
   }
 
+  // Pantalla "Contents" de la historia de B1 (recreada con el arte de la ISO del jugador: entrada 920). Las medidas son
+  // las de la pantalla original de 640x448 (x1,875 en el area virtual de 1200 de ancho).
+  void DrawContenidos(ImDrawList* dl, const S::Area& a, float t, uint16_t pressed, bool auto_on) {
+    constexpr float K = 1.875f;
+    const int saga = g_cont_saga, n = kCapsSaga[saga], base = kCapsBase[saga];
+    // dsREV: LeerProgreso parsea progreso.toml entero; se relee como mucho cada 0,5 s por saga, no cada fotograma.
+    static int cache_ab[8] = {};
+    static std::chrono::steady_clock::time_point cache_t[8] = {};
+    const auto ahora = std::chrono::steady_clock::now();
+    if (cache_ab[saga] == 0 || ahora - cache_t[saga] > std::chrono::milliseconds(500)) {
+      cache_ab[saga] = LeerProgreso(ClaveCap(saga), 1);
+      cache_t[saga] = ahora;
+    }
+    const int abiertos = std::clamp(cache_ab[saga], 1, n);
+    if (pressed & (kLeft | kLB)) { g_cont_saga = (saga + kSagasB1 - 1) % kSagasB1; g_cont_fila = g_cont_scroll = 0; }
+    if (pressed & (kRight | kRB)) { g_cont_saga = (saga + 1) % kSagasB1; g_cont_fila = g_cont_scroll = 0; }
+    if (g_cont_saga != saga) return;   // se redibuja en el siguiente fotograma con la saga nueva
+    if (pressed & kUp) g_cont_fila = std::max(0, g_cont_fila - 1);
+    if (pressed & kDown) g_cont_fila = std::min(abiertos - 1, g_cont_fila + 1);
+    g_cont_fila = std::clamp(g_cont_fila, 0, abiertos - 1);
+    if (g_cont_fila < g_cont_scroll) g_cont_scroll = g_cont_fila;
+    if (g_cont_fila >= g_cont_scroll + 5) g_cont_scroll = g_cont_fila - 4;
+    g_cont_scroll = std::clamp(g_cont_scroll, 0, std::max(0, n - 5));
+
+    auto P = [&](float x, float y) { return a.At(x * K, y * K + 30.0f); };
+    auto Img = [&](int k, float x, float y, float w, float h, float u0 = 0, float v0 = 0, float u1 = 1, float v1 = 1,
+                   ImU32 col = IM_COL32_WHITE) {
+      const S::Pic p = ArteTex(k);
+      if (p.tex) dl->AddImage(p.tex, P(x, y), P(x + w, y + h), ImVec2(u0, v0), ImVec2(u1, v1), col);
+      return bool(p.tex);
+    };
+    if (g_arte.estado.load() != 2) {   // sin ISO / aun leyendo: aviso sencillo (el menu ya avisa de la ISO que falta)
+      S::Banner(dl, a, T::T("Historia de Budokai 1", "Budokai 1 story"));
+      S::MenuText(dl, a.At(600, 430), 40 * a.s,
+                  g_arte.estado.load() == 3 ? T::T("No se pudo leer el arte de tu ISO de Budokai 1.", "Could not read the art from your Budokai 1 ISO.")
+                                            : T::T("Leyendo tu ISO de Budokai 1...", "Reading your Budokai 1 ISO..."), true, false);
+      Ayuda(dl, a, {{"B", T::T("Volver", "Back")}});
+      if (pressed & kB) Publicar(kMenu);
+      return;
+    }
+    Img(0, 0, 0, 640, 448);                                              // fondo de piedra
+    Img(7, 232, 30, 176, 72, 0, 0, 1, 0.5f);                             // Roshi (flecha izquierda)
+    Img(8, 540, 34, 84, 66, 0, 0, 0.5f, 1);                              // Oolong (flecha derecha)
+    Img(9, 310, 32, 264, 96);                                            // oval "Story Mode"
+    Img(10 + saga, 314, 28, 256, 64);                                    // Saiyan / Namekan / Android
+    Img(3, 30, 22, 200, 80);                                             // "Contents"
+    Img(1, 39, 113, 173, 272);                                           // marco de pelicula (medido en el original)
+    const int cap_sel = base + g_cont_fila;
+    const auto datos_dlc = DatosLeidos();
+    const auto falta_dlc = [&](int cap) { return datos_dlc && CapituloFaltaDlc(cap, *datos_dlc); };
+    const bool bloqueado = falta_dlc(cap_sel);
+    if (!Img(21 + cap_sel, 50, 147, 152, 203)) Img(20, 50, 147, 152, 203);   // miniatura del capitulo
+    Img(2, 130, 353, 387, 82);                                           // DRAGONBALLZ
+    for (int i = 0; i < 5; ++i) {
+      const int li = g_cont_scroll + i;
+      if (li >= n) break;
+      const float cy = 165.0f + 36.0f * float(i);
+      const bool abierto = li < abiertos && !falta_dlc(base + li), sel = li == g_cont_fila;
+      if (sel) Img(13, 234, cy - 22, 362, 44, 0, 0, 1, 1, IM_COL32(255, 255, 255, 220 + int(35 * std::sin(t * 5.0f))));
+      const ImU32 col = abierto ? IM_COL32_WHITE : IM_COL32(255, 255, 255, 110);
+      const int celda = li;   // "#1".."#12" en 2 columnas de 72x32
+      const float cu = float(celda % 2) * 72.0f / 144.0f, cv = float(celda / 2) * 32.0f / 192.0f;
+      Img(16, 244, cy - 16, 72, 32, cu, cv, cu + 0.5f, cv + 32.0f / 192.0f, col);
+      if (abierto) Img(17 + saga, 311, cy - 16, 272, 32, 0, float(li) * 32.0f / (saga == 0 ? 224.0f : saga == 1 ? 320.0f : 384.0f),
+                       1, float(li + 1) * 32.0f / (saga == 0 ? 224.0f : saga == 1 ? 320.0f : 384.0f));
+      if (abierto && li == abiertos - 1 && abiertos < n) Img(6, 578, cy - 18, 56, 48);   // sello New (ultimo abierto)
+    }
+    if (g_cont_scroll > 0) Img(5, 577, 120, 32, 32);
+    if (g_cont_scroll + 5 < n) Img(4, 577, 372, 32, 32);
+    Ayuda(dl, a, {{"A", bloqueado ? T::T("Falta Zarbon/Dodoria: instala el DLC de B1 (Juego > Contenido de tus juegos de PS2)", "Zarbon/Dodoria missing: install the B1 DLC (Game > Content of your PS2 games)")
+                              : T::T("Elegir", "Select")},
+                {"LB/RB", T::T("Saga", "Saga")}, {"B", T::T("Volver", "Back")}});
+    (void)auto_on;
+    if (pressed & kB) {
+      REXLOG_INFO("dbz3 misiones: contents: fuera");
+      return Publicar(kMenu);
+    }
+    if ((pressed & (kA | kStart)) && !bloqueado) EntrarCapitulo(base + g_cont_fila);
+  }
+
   void Cara(ImDrawList* dl, const S::Area& a, int id, bool derecha, bool on, float t) {
     if (id < 0) return;
     // marco 170..450, nombre debajo (hasta ~500) y la franja del aviso desde 525: no se pisan
@@ -2042,8 +2588,71 @@ class Panel : public rex::ui::ImGuiDialog {
                 NombreDe(id).c_str(), on, false);
   }
 
+  void DrawB1Cine(ImDrawList* dl, ImVec2 pantalla, uint16_t pressed) {
+    auto& paso = g_pasos[size_t(g_paso)];
+    auto& p = paso.cine_b1;
+    if (pressed & kB) return Salir();
+    auto avanzar = [&](bool omitir_laminas) {
+      paso.carga_cine_b1 = {};
+      p.reset();
+      if (omitir_laminas) g_paso += 8;  // el titulo PAL permanece, luego VS y el combate nativo
+      Siguiente();
+    };
+    if (!REXCVAR_GET(dbz3_historia_b1) || !REXCVAR_GET(dbz3_historia_b1_cine)) return avanzar(false);
+    if (pressed & kStart) return avanzar(true);
+    if (!p) {
+      if (paso.carga_cine_b1.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+        dl->AddRectFilled({},pantalla,IM_COL32_BLACK);
+        dl->AddText({20,20}, IM_COL32_WHITE,T::T("Cargando escena...", "Loading scene..."));
+        return;
+      }
+      try { p = paso.carga_cine_b1.get(); }
+      catch (const std::exception& e) { REXLOG_WARN("dbz3 historia B1: {}",e.what()); }
+      paso.carga_cine_b1 = {};
+      if (!p) return avanzar(false);
+    }
+    if (!p->preparado) {
+      if (!p->Preparar(dbz3::settings::AudioMute() ? 0.f : float(dbz3::settings::MasterVolume())))
+        return avanzar(false);
+      REXLOG_INFO("dbz3 historia B1: reproduciendo escena 1910 antes de Saiyan 1");
+    }
+    p->Pausa(false);
+    const double u = p->Reloj();
+    if (u >= p->salida) { p->Avanzar(u); return avanzar(true); }
+    p->Pintar(dl,u,pantalla);
+    if (p->subtitular && p->subtitulo >= 0 && size_t(p->subtitulo)<p->subs_tex.size()) {
+      const auto& im = p->subs_tex[p->subtitulo];
+      const float s = std::min(pantalla.x/640.f,pantalla.y/448.f);
+      const float x = pantalla.x*.5f+(p->pos_sub.x-320.f)*s;
+      const float y = pantalla.y*.5f+(p->pos_sub.y-224.f)*s;
+      dl->AddImage(im.id(), {x-im.w*s*.5f,y-im.h*s*.5f}, {x+im.w*s*.5f,y+im.h*s*.5f});
+    }
+    if (u > p->fin) {
+      const int alpha = int(255*std::clamp((u-p->fin)/p->fade,0.,1.));
+      dl->AddRectFilled({},pantalla,IM_COL32(0,0,0,alpha));
+    }
+  }
+
   void DrawCharla(ImDrawList* dl, const S::Area& a, float t, uint16_t pressed, bool auto_on) {
     const Paso& p = g_pasos[size_t(g_paso)];
+    if (p.lamina_b1 >= 0) {
+      const auto img = ArteTex(p.lamina_b1, g_laminas_b1);
+      // PM-37: pantalla completa en negro (sin escena del HUB ni marco ni aviso de botones), la lamina centrada
+      const ImVec2 pant = ImGui::GetIO().DisplaySize;
+      dl->AddRectFilled(ImVec2(0, 0), pant, IM_COL32(0, 0, 0, 255));
+      if (img.tex && img.w > 0 && img.h > 0) {
+        const float escala = std::min(std::min(pant.x, pant.y * 4.0f / 3.0f) / img.w, pant.y / img.h);   // margen como el original: dentro del cuadro 4:3
+        const float w = img.w * escala, h = img.h * escala;
+        const ImVec2 p0((pant.x - w) * .5f, (pant.y - h) * .5f);
+        dl->AddImage(img.tex, p0, ImVec2(p0.x + w, p0.y + h));
+      } else {
+        S::MenuText(dl, ImVec2(pant.x * .5f, pant.y * .5f), 34 * a.s,
+                    T::T("Imagen no disponible", "Image unavailable"), true, false);
+      }
+      if (pressed & kB) return Salir();
+      if (auto_on || (pressed & (kA | kStart))) Siguiente();
+      return;
+    }
     S::Banner(dl, a, kTitulos[g_modo]());
     Cara(dl, a, p.quien, p.derecha, true, t);
     Bocadillo(dl, a, t, p.texto_propio.empty() ? p.texto() : p.texto_propio.c_str(), p.derecha ? 0.78f : 0.22f);
@@ -2103,7 +2712,12 @@ class Panel : public rex::ui::ImGuiDialog {
     Ayuda(dl, a, {{"A", T::T("¡A luchar!", "Fight!")}, {"B", T::T("Salir", "Quit")}});
     if (auto_on) pressed |= kA;
     if (pressed & kB) return Salir();
-    if ((pressed & kA) && !Lanzar()) REXLOG_WARN("dbz3 misiones: el conector no acepto el combate (otro pendiente)");
+    if ((pressed & kA) && !Lanzar()) {
+      REXLOG_WARN("dbz3 misiones: el conector no acepto el combate (otro pendiente)");
+      // R1: el reintento de la tarjeta tambien cuenta; al tercer rechazo se suelta el contacto y se vuelve al
+      // tablero (solo Dragon World; los demas modos conservan su tarjeta tal cual).
+      if (g_modo == kTablero && b2::CombateRechazado()) return Publicar(kTableroF);
+    }
   }
 
   // Dragon Mission de IW (frente P1): mapa del mundo, ficha y resultado con los graficos de la copia del jugador
@@ -2216,6 +2830,13 @@ class Panel : public rex::ui::ImGuiDialog {
       r.mejor = std::max(antes, score);
       const std::string clave_rango = "iw_rango_mini_" + std::to_string(mr.clave);
       if (std::max(rango, -1) + 1 > LeerProgreso(clave_rango, 0)) GuardarProgreso(clave_rango, std::max(rango, -1) + 1);
+      // Ficha 7D0: Story_DrawMapResultIcon (EU 0x2FC970) tiene un registro por dificultad.
+      // Las claves historicas por mision no guardaron la dificultad: no atribuirlas a Normal.
+      if (mr.clave == 0x7D0 && rango >= 0 && score > 0) {
+        const std::string marca = "iw_ficha_raditz_" + std::to_string(std::clamp(pantalla_.Dificultad(), 0, 4));
+        if (score > LeerProgreso(marca + "_score", 0)) GuardarProgreso(marca + "_score", score);
+        if (rango + 1 > LeerProgreso(marca + "_rank", 0)) GuardarProgreso(marca + "_rank", rango + 1);
+      }
       // Monedero de IW: suma el premio +0x5A del bloque de resultados a las DOS bolsas de la campana
       // (iRam005c154c/iRam005c1550) con tope 0xF41DC = 999900. `iw_zeni` es la bolsa del port; a rpg::Premio entra solo
       // lo que cabe. `saldo` = lo que ensena la fila TOTAL (el monedero ya sumado).
@@ -2641,8 +3262,8 @@ void Abrir() {
 }
 bool Lista() { return true; }   // US y EU
 const char* Por() {
-  return T::T("Modos de Budokai 1 y 2: la saga de Namek, el tablero, Gotenks gordo y las absorciones de Bu.",
-              "Budokai 1 and 2 modes: the Namek saga, the board, Fat Gotenks and Buu's absorptions.");
+  return T::T("Historias y misiones de Budokai 2 e Infinite World. Algunas necesitan tu copia del juego: elige su ISO en la campaña (botón A) o en el lanzador (pestaña Juego).",
+              "Stories and missions from Budokai 2 and Infinite World. Some need your copy of the game: pick its ISO in the campaign (A button) or in the launcher (Game tab).");
 }
 const bool g_hub = dbz3::hub::RegisterMode("pasarela", &Abrir, &Busy) && dbz3::hub::RegisterGate("pasarela", &Lista, &Por);
 
@@ -2726,7 +3347,7 @@ const bool g_test = [] {
     std::vector<int> ks;
     for (const char* c = std::strchr(t, ','); c; c = std::strchr(c + 1, ',')) ks.push_back(std::atoi(c + 1));
     std::thread([ks] {
-      for (int quieto = 0; quieto < 120;) {
+      for (int quieto = 0; quieto < 20;) {
         quieto = dbz3::ingame::GameScreen() == kMainScreen ? quieto + 1 : 0;
         std::this_thread::sleep_for(std::chrono::milliseconds(25));
       }
@@ -2752,7 +3373,7 @@ const bool g_test = [] {
         std::atomic<bool> listo{false};
         VigilarCombate(("misiones: tecnica " + std::to_string(i + 1)).c_str(), r, [&listo](const Fin&) { listo = true; });
         while (!listo.load()) std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        for (int quieto = 0; quieto < 120;) {   // de vuelta en el menu principal
+        for (int quieto = 0; quieto < 20;) {   // de vuelta en el menu principal
           quieto = dbz3::ingame::GameScreen() == kMainScreen ? quieto + 1 : 0;
           std::this_thread::sleep_for(std::chrono::milliseconds(25));
         }
@@ -2765,13 +3386,23 @@ const bool g_test = [] {
   int desde = -1;
   if (const char* d = std::strstr(t, "desde=")) desde = std::atoi(d + 6);
   const bool reset = std::strstr(t, "reset") != nullptr;
-  std::thread([modo, desde, reset] {
-    for (int quieto = 0; quieto < 120;) {
+  // B1 Contents: "directo" = la saga de Vegeta de siempre; "cap=N" (1..29) entra ya en ese capitulo; "todo" abre todos
+  g_b1_directo = std::strstr(t, "directo") != nullptr;
+  int cap_prueba = -1;
+  if (const char* c = std::strstr(t, "cap=")) cap_prueba = std::atoi(c + 4) - 1;
+  const bool abrir_todo = std::strstr(t, "todo") != nullptr;
+  std::thread([modo, desde, reset, cap_prueba, abrir_todo, t_copia = std::string(t)] {
+    for (int quieto = 0; quieto < 20;) {
       quieto = dbz3::ingame::GameScreen() == kMainScreen ? quieto + 1 : 0;
       std::this_thread::sleep_for(std::chrono::milliseconds(25));
     }
+    if (modo == kSagaB1 && !HistoriaB1Activa()) {
+      REXLOG_WARN("dbz3 misiones: prueba B1 requiere dbz3_historia_b1=true");
+      return;
+    }
     LeerIW();
-    for (int i = 0; i < 200 && (!DatosLeidos() || g_iw_leyendo.load()); ++i) {
+    // B1 (solo en su prueba): hasta 5 s. IW: hasta que acabe la lectura, tope 10 min.
+    for (int i = 0; i < 24000 && ((modo == kSagaB1 && i < 200 && !DatosLeidos()) || g_iw_leyendo.load()); ++i) {
       std::this_thread::sleep_for(std::chrono::milliseconds(25));
     }
     LogDatos();
@@ -2779,7 +3410,8 @@ const bool g_test = [] {
       if (reset) {
         GuardarProgreso(kClaves[modo], 0);
         if (modo == kTablero) {
-          for (const char* k : {"tablero_b2_fase", "tablero_b2_bolas"}) GuardarProgreso(k, 0);
+          for (const char* k : {"tablero_b2_partida", "tablero_b2_fase", "tablero_b2_bolas"}) GuardarProgreso(k, 0);
+          GuardarProgreso("tablero_b2_snap_version", 0);   // R21: sin esto un reset reanuda el tablero de la corrida anterior
           // deseos de Shenron ya pedidos (pasarela_b2.cpp SortearDeseos): la prueba empieza como una partida nueva
           for (int f : {503, 505, 506, 507, 508, 509, 237, 266, 279, 290, 301}) GuardarProgreso("tablero_b2_dw" + std::to_string(f), 0);
           for (int f = 314; f <= 342; ++f) GuardarProgreso("tablero_b2_dw" + std::to_string(f), 0);
@@ -2792,8 +3424,15 @@ const bool g_test = [] {
           GuardarProgreso("iw_bolas", 0);
           GuardarProgreso("iw_zeni", 0);
           GuardarProgreso("iw_eventos", 0);
+          GuardarProgreso("iw_esferas", 0);
+          GuardarProgreso("iw_guardado", 0);   // cRam005c1d88: partida nueva = menu START con 1 opcion
+          for (int c = 0x7D0; c <= 0x7E1; ++c) GuardarProgreso("iw_rango_mini_" + std::to_string(c), 0);
         }
       }
+      // IW: ",mini=CLAVE" (decimal, repetible) = minijuego ya superado (abre lo que pide, p. ej. 2000 -> esfera 0x850)
+      if (modo == kIW && t_copia.find("mini=") != std::string::npos)
+        for (size_t p = t_copia.find("mini="); p != std::string::npos; p = t_copia.find("mini=", p + 5))
+          GuardarProgreso("iw_rango_mini_" + std::to_string(std::atoi(t_copia.c_str() + p + 5)), 1);
       if (desde >= 0) GuardarProgreso(modo == kTablero ? "tablero_b2_fase" : kClaves[modo], desde);
       if (modo == kIW && (reset || desde >= 0)) GuardarProgreso("iw_hecho", std::max(desde, 0));   // superadas hasta N
     }
@@ -2804,7 +3443,19 @@ const bool g_test = [] {
       const bool listo = Listo(modo, &motivo);
       REXLOG_INFO("dbz3 misiones: prueba: modo {} listo {} ({})", kClaves[modo], listo, motivo);
       g_cursor = modo;
+      if (modo == kSagaB1 && !g_b1_directo) {
+        for (int s = 0; s < kSagasB1; ++s) {
+          if (reset) GuardarProgreso(ClaveCap(s), 1);
+          if (abrir_todo) GuardarProgreso(ClaveCap(s), kCapsSaga[s]);
+        }
+      }
       if (ok && listo) Entrar(modo);
+      if (ok && listo && modo == kSagaB1 && !g_b1_directo && cap_prueba >= 0) {
+        int s = kSagasB1 - 1;
+        while (s > 0 && cap_prueba < kCapsBase[s]) --s;
+        g_cont_saga = s;
+        EntrarCapitulo(cap_prueba);
+      }
     } else {   // solo el menu: lo que esta disponible y por que no (WL-20: falta un mod)
       std::lock_guard<std::mutex> lk(g_mu);
       for (int m = 0; m < kModos; ++m) {
@@ -2822,11 +3473,10 @@ const bool g_test = [] {
 // Nave, prueba I en 1P (B2: el rival cae y se levanta ~2,5 s despues con la barra llena, en el mismo combate). El
 // golpe y la levantada los hace tagteam.cpp (gancho sub_8211A5A8 y Tick, como el KO con compañero vivo); aqui solo
 // se dice si toca y se cuenta el vencido. La cadena de sub_820FE9B0 queda para un fin de B3 que no pase por el golpe.
+// Sin g_mu: solo atomos (g_nave_revive), se llama en el hilo del juego desde cada golpe.
 bool NaveReviveRival() {
-  return dbz3::hub::OwnBattle() && g_modo == kNave && g_nave_prueba == 0 && g_fase == kLuchando && !nave::DosJugadores();
+  return g_nave_revive.load() && dbz3::hub::OwnBattle() && !nave::DosJugadores();
 }
-void NaveRivalLevantado() {
-  std::lock_guard<std::mutex> lk(g_mu);
-  nave::Levantado();
-}
+// Sin g_mu: Levantado() solo suma su contador atomico y registra; antes tomaba g_mu y podia esperar al UI.
+void NaveRivalLevantado() { nave::Levantado(); }
 }  // namespace dbz3::pasarela::misiones

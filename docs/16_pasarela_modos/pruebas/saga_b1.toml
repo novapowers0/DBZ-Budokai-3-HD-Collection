@@ -3,7 +3,7 @@
 # y final) y ki inicial del rival de la tabla de B1.
 # python tools/pruebas.py correr campanas_test docs/16_pasarela_modos/pruebas/saga_b1.toml
 descripcion = "Pasarela: saga de Vegeta en Namek (Budokai 1) con Zarbon importado"
-env = ["DBZ3_TEST_MISIONES=0,auto,reset", "DBZ3_PS2_GAMES=D:/DBZ3HD/ps2_games", "DBZ3_TEST_RINGOUT=1"]
+env = ["DBZ3_TEST_MISIONES=0,auto,reset,directo", "DBZ3_PS2_GAMES=D:/DBZ3HD/ps2_games", "DBZ3_TEST_RINGOUT=1"]
 pasos = [
   'log "misiones: prueba: modo saga_b1 listo true" 60',
   'log "misiones: saga_b1 paso 1/13 \(charla\)" 15',

@@ -1,0 +1,15 @@
+# Escenarios añadidos que NO sirven para el Duelo (medidos: tools/pruebas.py con el verbo `posiciones`; tabla y
+# criterio en studies 5/ENTREGAS/ESCENARIOS_JUGABLES.md). No salen en el selector: solo se ocultan, no se borra nada.
+# Para verlos igualmente: dbz3_escenarios_no_jugables = true (y reiniciar).
+# Los campos de IW ya no se ocultan todos por código: aquí van solo los que se midieron como no jugables.
+#
+# Clave = carpeta del mod. Valor = motivo medido.
+[no_jugables]
+"Campo IW 880" = "interior de la nave de Goku: la cámara queda dentro de la pared y no hay suelo a la vista (minijuego de IW)"
+"Campo IW 881" = "Tierra en vuelo: campo de vuelo sobre el mar, sin suelo (minijuego de IW)"
+"Campo IW 883" = "Namek en vuelo: campo de vuelo sobre agua y nubes, sin suelo (minijuego de IW)"
+"Campo IW 884" = "Camino de la Serpiente: el camino es más estrecho que el ring (radio 75); a 75 el luchador queda sobre las nubes"
+# Sin revisar (12/11: la cola de pruebas no dio tiempo); siguen ocultos como antes hasta medirlos:
+"Campo IW 900" = "sin revisar (Namek que explota)"
+"Campo IW 906" = "sin revisar (Llanura de Piccolo)"
+"Campo IW 909" = "sin revisar (Roquedal)"

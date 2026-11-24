@@ -1,0 +1,15 @@
+# SLOTS_ESC-01: 110 altas contadas en el log (el tope actual del byte +30 leido con signo: 127-17).
+#   Requiere la copia fija esc_n preparada con:  python tools\escenarios_copia_n.py preparar --n 110
+#     python tools\pruebas.py correr esc_n docs\14_frentes\escenarios_pruebas\final\slots_esc\selector_desplazamiento_110.toml
+# criterio = el arranque carga 110 altas (registro 17..126): esta la 110 y la lista de nombres TERMINA en la
+#            126 (si hubiera una 111, la lista acabaria en "127 Copia 0111"). No se abre el selector: con 110
+#            altas el juego se cae al entrar (medido el 11/11: access violation escribiendo en 0x8070, lr
+#            0x82228F40, memcpy del cargador con destino nulo). Eso lo arregla SLOTS_ESC-03; aqui solo se cuenta.
+descripcion = "SLOTS_ESC-01: 110 altas contadas (la lista de nombres acaba en la 126)"
+env = ["DBZ3_SONDA_ESCENARIO=1"]
+pasos = [
+  "esperar 2000",
+  "log \"alta 126 = 'COPIA 0110'\" 90",
+  "log \"nombres \\(idioma \\d+\\): .*126 Copia 0110\\r?\\n\" 10",
+  "captura a_110_altas",
+]

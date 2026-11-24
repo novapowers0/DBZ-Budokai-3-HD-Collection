@@ -4,9 +4,12 @@
 // dbz3 - Model swap pipeline integration (project-side).
 
 #include "mod_pipeline.h"
+
+#include "../pasarela.h"
 #include "settings.h"
 #include "../region.h"
 
+#include <rex/cvar.h>
 #include <rex/filesystem.h>
 #include <rex/filesystem/afs.h>
 #include <rex/logging.h>
@@ -144,6 +147,10 @@ std::filesystem::path StagesScript() {
 
 std::filesystem::path ImporterScript() {
   return ProjectRoot() / "mod center hd" / "importar.py";
+}
+
+std::filesystem::path ModKitScript() {
+  return ProjectRoot() / "mod center hd" / "modkit_gui.py";
 }
 
 std::filesystem::path CatalogFile() {
@@ -335,6 +342,16 @@ std::string ResolvePython() {
   return "";
 }
 
+bool HasBuiltRoster(const std::filesystem::path& root) {
+  std::error_code ec;
+  for (const char* name : {"roster.toml", "manifest.txt", "build.hash"}) {
+    const auto path = root / name;
+    if (!std::filesystem::is_regular_file(path, ec) || ec) return false;
+    if (std::filesystem::file_size(path, ec) == 0 || ec) return false;
+  }
+  return true;
+}
+
 int ParseIntField(const std::string& s) {
   return s.empty() ? 0 : std::atoi(s.c_str());
 }
@@ -430,7 +447,8 @@ void ModPipeline::AppendOutput(const std::string& text) {
 }
 
 void ModPipeline::RunAsync(const std::filesystem::path& script,
-                           const std::vector<std::string>& args) {
+                           const std::vector<std::string>& args, const std::string& bootstrap,
+                           bool allow_prebuilt_roster) {
   if (running_.exchange(true)) {
     stages_run_pending_ = false;   // G11: no dejar marcado un paso de escenarios que no llego a arrancar
     return;
@@ -453,6 +471,7 @@ void ModPipeline::RunAsync(const std::filesystem::path& script,
   // resolves to the Microsoft Store alias stub is skipped instead of failing
   // with exit code 9009 (issue #13).
   std::string tail = Quote(Utf8(script));
+  if (!bootstrap.empty()) tail = "-u -c " + Quote(bootstrap) + " " + tail;
   for (const std::string& a : args) {
     // Escapar cada argumento: si contiene espacios, envolverlo en comillas
     // para que cmd.exe lo trate como un solo token (las rutas del proyecto
@@ -461,7 +480,7 @@ void ModPipeline::RunAsync(const std::filesystem::path& script,
   }
 
   REXLOG_INFO("dbz3: mod pipeline: {}", tail);
-  worker_ = std::thread([this, tail]() {
+  worker_ = std::thread([this, tail, allow_prebuilt_roster]() {
     // todos los caminos de salida (return temprano, excepcion) pasan por aqui: sin exit 0
     // explicito el trabajo queda kFailed
     struct Completion {
@@ -476,8 +495,25 @@ void ModPipeline::RunAsync(const std::filesystem::path& script,
       }
     } completion{generation_, running_, exit_code_, state_};
     try {
+    const auto reuse_prebuilt = [&]() {
+      if (!allow_prebuilt_roster) return false;
+      const auto roster = ModsOutDir() / "_roster";
+      std::error_code ec;
+      const bool disabled = std::filesystem::exists(roster / ".disabled", ec);
+      if (ec || disabled || !HasBuiltRoster(roster)) return false;
+      AppendOutput("Se usa el _roster precompilado; los cambios de personajes no se aplican.\n"
+                   "Using the prebuilt _roster; character changes are not applied.\n");
+      exit_code_.store(0);
+      return true;
+    };
+#if !REX_PLATFORM_WIN32
+    // El constructor actual llama a xbcompress.exe/xbdecompress.exe. Para Jugar,
+    // preferir el pack intacto aunque exista python3; no sustituye una reconstruccion forzada.
+    if (reuse_prebuilt()) return;
+#endif
     const std::string python = ResolvePython();
     if (python.empty()) {
+      if (reuse_prebuilt()) return;
       AppendOutput(PythonMissingMessage());
       return;
     }
@@ -621,6 +657,50 @@ void ModPipeline::RunAsync(const std::filesystem::path& script,
     running_.store(false);
     try { AppendOutput("ERROR: no se pudo iniciar el trabajo.\n"); } catch (...) {}
   }
+}
+
+bool ModPipeline::Xv2PrepareAvailable() {
+  std::error_code ec;
+  return std::filesystem::is_regular_file(ProjectRoot() / "mod center hd" / "xv2" / "xv2_cac_preparar.py", ec);
+}
+
+void ModPipeline::PrepareXv2(const std::string& cpk) {
+  // Envoltorio del lector existente: argumentos separados (ninguna ruta se inserta en codigo).
+  // Se publica en la misma raiz que lee heroe.cpp, no en la carpeta del Kit ni en XV2.
+  static const std::string code = R"PY(import os, sys, runpy
+from pathlib import Path
+script, cpk, game, backup = sys.argv[1:]
+try:
+    print('@progreso 0/3 opening', flush=True)
+    if not Path(cpk).is_file(): raise FileNotFoundError(cpk)
+    os.environ['DBZ3_XENO2_CPK'] = cpk
+    ns = runpy.run_path(script)
+    import xv2_leer as L
+    L.cpk_xv2()
+    print('@progreso 1/3 reading', flush=True)
+    dst = ns['preparar'](game, cpk, backup)
+    if dst is None: raise FileNotFoundError(cpk)
+    print('@progreso 2/3 checking', flush=True)
+    import tomllib
+    with open(dst, 'rb') as f: data = tomllib.load(f)
+    assert all(data.get('raza', {}).get(r, {}).get('parte') for r in ('HUM','HUF','NMC','FRI','MAM','MAF'))
+    print('@progreso 3/3 ready', flush=True)
+    print('@xv2_ok', flush=True)
+except PermissionError:
+    print('@xv2_error permissions', flush=True)
+    sys.exit(2)
+except ModuleNotFoundError:
+    print('@xv2_error dependencies', flush=True)
+    sys.exit(3)
+except FileNotFoundError:
+    print('@xv2_error missing', flush=True)
+    sys.exit(4)
+except Exception as e:
+    print('@xv2_error invalid: ' + str(e), flush=True)
+    sys.exit(5)
+)PY";
+  RunAsync(ProjectRoot() / "mod center hd" / "xv2" / "xv2_cac_preparar.py",
+           {cpk, Utf8(ModsOutDir().parent_path()), Utf8(dbz3::settings::UserDataRoot() / "xv2_respaldos")}, code);
 }
 
 void ModPipeline::SwapB3ToB3(const B3Char& src, const B3Char& dst) {
@@ -898,6 +978,33 @@ void ModPipeline::CreateTeam(const std::vector<int>& members, const std::string&
   RunAsync(RosterScript(), args);
 }
 
+bool ModPipeline::DlcB1Available() {
+  std::error_code ec;
+  const auto kit = ProjectRoot() / "mod center hd";
+  return std::filesystem::is_regular_file(kit / "dlc_b1.py", ec) &&
+         std::filesystem::is_regular_file(kit / "receta" / "personajes.toml", ec) && ToolsInstalled();
+}
+
+bool ModPipeline::DlcB1HasSources() {
+  std::error_code ec;
+  const auto root = ModsOutDir();
+  for (const char* folder : {"dlcb1_zarbon", "dlcb1_dodoria", "dlcb1_zarbon.disabled", "dlcb1_dodoria.disabled"})
+    if (std::filesystem::is_regular_file(root / folder / "dlcb1.json", ec)) return true;
+  return false;
+}
+
+void ModPipeline::RunDlcB1(const std::filesystem::path& iso, bool install) {
+  if (IsRunning() || !DlcB1Available() || (install && iso.empty())) return;
+  const std::string us = UsDir();
+  if (us.empty()) return;
+  std::vector<std::string> args = {install ? "instalar" : "quitar", "--mods", Utf8(ModsOutDir()), "--us", us};
+  if (install) {
+    args.push_back("--iso");
+    args.push_back(Utf8(iso));
+  }
+  RunAsync(ProjectRoot() / "mod center hd" / "dlc_b1.py", args);
+}
+
 void ModPipeline::RunT3Music(bool install) {
   if (IsRunning()) return;
   ClearOutput();
@@ -936,12 +1043,81 @@ bool ModPipeline::RosterToolAvailable() {
 
 bool ModPipeline::RosterArtifactsOk() {
   if (!HasCharacterSources()) return true;   // roster_build retira _roster y sale 0
+  return HasBuiltRoster(ModsOutDir() / "_roster");
+}
+
+namespace {
+std::atomic<ModPipeline::KitLaunch> g_kit_state{ModPipeline::KitLaunch::kIdle};
+
+std::atomic<void*> g_kit_proc{nullptr};   // HANDLE del proceso del Kit (Windows); null = no hay Kit vivo
+}  // namespace
+
+ModPipeline::KitLaunch ModPipeline::ModKitState() { return g_kit_state.load(); }
+
+bool ModPipeline::ModKitAlive() {
+#if REX_PLATFORM_WIN32
+  void* h = g_kit_proc.load();
+  if (!h) return false;
+  if (WaitForSingleObject(static_cast<HANDLE>(h), 0) == WAIT_TIMEOUT) return true;
+  if (g_kit_proc.compare_exchange_strong(h, nullptr)) CloseHandle(static_cast<HANDLE>(h));   // ya termino
+#endif
+  return false;
+}
+
+void ModPipeline::LaunchModKit(const char* lang) {
+  if (g_kit_state.load() == KitLaunch::kOpening || ModKitAlive()) return;   // un solo Kit a la vez
   std::error_code ec;
-  const auto r = ModsOutDir() / "_roster";
-  for (const char* f : {"roster.toml", "manifest.txt", "build.hash"}) {   // = validate_roster
-    if (!std::filesystem::is_regular_file(r / f, ec)) return false;
+  const auto script = ModKitScript();
+  if (!std::filesystem::is_regular_file(script, ec)) {
+    REXLOG_WARN("dbz3: kit de modding: no esta {}", Utf8(script));
+    g_kit_state.store(KitLaunch::kNoKit);
+    return;
   }
-  return std::filesystem::file_size(r / "build.hash", ec) > 0 && !ec;
+  g_kit_state.store(KitLaunch::kOpening);
+  const std::string tail = Quote(Utf8(script)) + " --lang " + lang;
+  // hilo suelto: ResolvePython prueba cada candidato (hasta 15 s cada uno) y no debe parar la interfaz;
+  // nadie espera al Kit (con RunAsync el launcher quedaria "ocupado" mientras el Kit siga abierto)
+  std::thread([tail]() {
+    const std::string python = ResolvePython();
+    if (python.empty()) {
+      REXLOG_WARN("dbz3: kit de modding: no se encontro Python 3");
+      g_kit_state.store(KitLaunch::kNoPython);
+      return;
+    }
+    const std::string cmd = python + " -X utf8 " + tail;
+    REXLOG_INFO("dbz3: kit de modding: {}", cmd);
+#if REX_PLATFORM_WIN32
+    const int wlen = MultiByteToWideChar(CP_UTF8, 0, cmd.c_str(), -1, nullptr, 0);
+    std::vector<wchar_t> wcmd(wlen > 0 ? wlen : 1, L'\0');
+    if (wlen > 0) MultiByteToWideChar(CP_UTF8, 0, cmd.c_str(), -1, wcmd.data(), wlen);
+    STARTUPINFOW si{};
+    si.cb = sizeof(si);
+    PROCESS_INFORMATION pi{};
+    const BOOL ok = wlen > 0 && CreateProcessW(nullptr, wcmd.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW,
+                                               nullptr, nullptr, &si, &pi);
+    if (!ok) {
+      REXLOG_WARN("dbz3: kit de modding: CreateProcess fallo (WinError {})", GetLastError());
+      g_kit_state.store(KitLaunch::kFailed);
+      return;
+    }
+    CloseHandle(pi.hThread);
+    g_kit_proc.store(pi.hProcess);   // se cierra en ModKitAlive() cuando el Kit termina
+#else
+    const std::string shell = "/bin/sh";
+    const std::string bg = cmd + " &";
+    std::vector<char*> argv = {const_cast<char*>(shell.c_str()), const_cast<char*>("-c"),
+                               const_cast<char*>(bg.c_str()), nullptr};
+    pid_t pid = -1;
+    if (posix_spawn(&pid, shell.c_str(), nullptr, nullptr, argv.data(), environ) != 0) {
+      g_kit_state.store(KitLaunch::kFailed);
+      return;
+    }
+    int status = 0;
+    waitpid(pid, &status, 0);   // solo el sh, que sale en cuanto deja el Kit en segundo plano
+#endif
+    REXLOG_INFO("dbz3: kit de modding: abierto");
+    g_kit_state.store(KitLaunch::kOpened);
+  }).detach();
 }
 
 bool ModPipeline::ToolsInstalled() {
@@ -961,8 +1137,14 @@ void ModPipeline::BuildRoster(bool force) {
     args.push_back("--us");
     args.push_back(us);
   }
+  if (DlcB1HasSources()) {
+    if (const auto iso = dbz3::pasarela::IsoPs2(0); !iso.empty()) {
+      args.push_back("--b1-iso");
+      args.push_back(Utf8(iso));
+    }
+  }
   if (force) args.push_back("--force");
-  RunAsync(RosterScript(), args);
+  RunAsync(RosterScript(), args, {}, !force);
 }
 
 bool ModPipeline::StagesToolAvailable() {
@@ -1120,6 +1302,9 @@ void ModPipeline::BuildStages(bool force) {
   if (const char* env = std::getenv("DBZ3_PS2_GAMES"); env && *env) {
     candidates.push_back(std::filesystem::u8path(env));
   } else {
+    // HUECOS: la carpeta elegida en el launcher (dbz3_ps2_games_dir, vacia de serie) va primero
+    if (const std::string c = rex::cvar::Query<std::string>("dbz3_ps2_games_dir"); !c.empty())
+      candidates.push_back(std::filesystem::u8path(c));
     candidates.push_back(dbz3::settings::UserSettingsPath().parent_path() / "ps2_games");
     candidates.push_back(rex::filesystem::GetExecutableFolder() / "ps2_games");
     candidates.push_back(dbz3::settings::UserDataRoot() / "ps2_games");
@@ -1174,10 +1359,57 @@ void ModPipeline::Wait() {
 
 std::filesystem::path ModPipeline::ModsDir() { return ModsOutDir(); }
 
+// dsSAIBAMAN (R20): los Saibaman de los combates del tablero de B2 usan el Saibaman nativo de B3
+// (ID 42) y, en los modos de color del original (T2 +7), un traje recolor generado en marcha desde
+// los datos del jugador (roster_build: "tono" sobre el modelo nativo 371). Aqui solo se dejan las
+// cuatro fuentes `traje.toml`; el modelo NO se embarca. Si el jugador ya tiene sus propios trajes
+// de Saibaman, no se duplican. Con el Kit de modding ausente no se crea nada (se juega con lo que
+// haya montado).
+bool ModPipeline::EnsureSaibamanCostumes() {
+  std::error_code ec;
+  const auto dir = ModsOutDir();
+  if (!std::filesystem::is_directory(dir, ec)) return false;
+  // Cada color se comprueba abajo: un traje propio no debe impedir crear los otros colores.
+  struct Color { const char* carpeta; const char* nombre; const char* nombre_en; int tono; };
+  static const Color kColores[] = {
+      {"saibaman_rojo", "Saibaman rojo", "Red Saibaman", 285},
+      {"saibaman_azul", "Saibaman azul", "Blue Saibaman", 130},
+      {"saibaman_morado", "Saibaman morado", "Purple Saibaman", 195},
+      {"saibaman_dorado", "Saibaman dorado", "Gold Saibaman", 330},
+  };
+  for (const Color& c : kColores) {
+    const auto folder = dir / c.carpeta;
+    if (std::filesystem::exists(folder, ec)) continue;   // respeta una carpeta desactivada o editada
+    std::filesystem::create_directories(folder, ec);
+    if (ec) {
+      REXLOG_WARN("dbz3: Saibaman de colores: no se pudo crear {} ({})", Utf8(folder), ec.message());
+      return false;
+    }
+    std::ofstream out(folder / "traje.toml", std::ios::binary | std::ios::trunc);
+    if (!out) {
+      REXLOG_WARN("dbz3: Saibaman de colores: no se pudo escribir {}", Utf8(folder / "traje.toml"));
+      return false;
+    }
+    out << "# dbz3 (B2): Saibaman de color, traje extra del nativo (ID 42). No trae arte: roster_build\n"
+           "# gira el tono del modelo del juego del jugador al montar el roster (JUGAR).\n"
+           "[traje]\n"
+        << "personaje = 42\n"
+        << "nombre = \"" << c.nombre << "\"\n"
+        << "nombre_en = \"" << c.nombre_en << "\"\n"
+        << "modelos = [\"juego:371\"]\n"
+        << "tono = " << c.tono << "\n";
+    REXLOG_INFO("dbz3: Saibaman de colores: fuente {}", Utf8(folder));
+  }
+  return true;
+}
+
 bool ModPipeline::HasCharacterSources() {
   std::error_code ec;
   const auto dir = ModsOutDir();
   if (!std::filesystem::is_directory(dir, ec)) return false;
+  // dsSAIBAMAN: las fuentes del recolor del Saibaman se dejan aqui, antes de contar fuentes, para
+  // que JUGAR monte el roster tambien cuando el jugador no tiene ningun otro mod de personaje.
+  if (RosterToolAvailable()) EnsureSaibamanCostumes();
   for (auto [it_1, iec_1] = std::pair{std::filesystem::directory_iterator(dir, ec), std::error_code{}}; !iec_1 && it_1 != std::filesystem::directory_iterator(); it_1.increment(iec_1)) {
     const auto& e = *it_1;
     if (e.is_directory(ec) &&

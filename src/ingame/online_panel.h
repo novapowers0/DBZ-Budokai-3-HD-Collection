@@ -77,5 +77,8 @@ int DuelMenuRow();
 void SetDuelMenuRow(int row);
 // Objeto del menu principal en pantalla (guest; +150 = fila del cursor), 0 si no esta.
 uint32_t MainMenuObj();
+// RANK-ONLINE: huella de los mods que cambian la partida (la del online); vacia = sin mods. Recorre la carpeta de mods:
+// llamarla desde un hilo de fondo.
+std::string ModsDePartida();
 
 }  // namespace dbz3::ingame

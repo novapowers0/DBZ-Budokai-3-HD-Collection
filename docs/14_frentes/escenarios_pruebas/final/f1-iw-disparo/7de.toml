@@ -1,0 +1,26 @@
+# F1 R4 / IW-M10. PreIntro/Intro/Ready originales ON, despues rango original.
+# El escenario exige activacion y llegada a Aim; no afirma que cada pulso impacte.
+# Offline: disparo_banco.py rangos -> 1302/1302 por region, primer DIF ninguno.
+# La carga, los impactos, escenas y maquina completa requieren referencia B8.
+descripcion = "F1 7DE: entrada original Cell hasta Aim y rango original"
+env = [
+  "DBZ3_TEST_IWMINI=0x7DE",
+  'DBZ3_TEST_CFG=dbz3_iw_disparo_intro_original=true;dbz3_iw_disparo_original=true;dbz3_iw_logica_original=true;dbz3_mnk_mode=true;dbz3_keybind_b="X"',
+  'DBZ3_PS2_GAMES=D:\DBZ3HD\ps2_games',
+]
+pasos = [
+  'log "dbz3 iwdisparo: intro original Cell activa" 90',
+  'log "dbz3 iwdisparo: intro original Cell Ready reloj=100 setup=1" 90',
+  'log "dbz3 iwdisparo: intro original Cell Aim setup=1" 10',
+  'log "dbz3 iwdisparo: juego 0x7DE empieza" 90',
+  "captura 00_listo",
+  "tecla X 250",
+  "esperar 2500",
+  "tecla X 250",
+  "esperar 2500",
+  "tecla X 250",
+  "captura 01_disparos",
+  'log "dbz3 iwmips disparo rango clave=0x7de " 240',
+  'log "dbz3 iwdisparo: fin: " 30',
+  "captura 02_resultado",
+]

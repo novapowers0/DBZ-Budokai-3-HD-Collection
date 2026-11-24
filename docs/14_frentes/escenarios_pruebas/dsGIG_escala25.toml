@@ -1,0 +1,3 @@
+descripcion = "dsGIG: escala 2.5 (tope del menu) con el campo de vision nuevo: comprobar que la cabeza sigue en cuadro en el cuerpo a cuerpo"
+env = ["DBZ3_TEST_BATTLE=0,7,7", "DBZ3_HUB_MODE=5", "DBZ3_GIGANTE=2.5", "DBZ3_SONDA_GIGANTE=1"]
+pasos = ["log \"hub: combate nativo\" 60", "log \"gigante: escala\" 120", "esperar 1500", "captura 01_gigante25", "tecla D:900 100", "tecla L 250", "tecla L 250", "tecla L 250", "captura 02_melee25", "tecla L 250", "tecla L 250", "tecla Space 250", "captura 03_melee25b", "esperar 1500", "captura 04_tras25"]

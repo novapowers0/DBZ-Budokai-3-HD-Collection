@@ -1,0 +1,28 @@
+# C1 / IW-E02 — Lava (7D9, Namek que explota): predicado de contacto y superficie.
+#   python tools\pruebas.py correr <copia> "docs\14_frentes\escenarios_pruebas\final\c1-iw-escenas\lava.toml"
+#
+# clave    = IW-E02 (lava) / IW13
+# cvar     = ninguna nueva; el predicado de src/iw_lava.h va siempre con el minijuego.
+# env      = DBZ3_TEST_IWMINI=0x7D9,auto; TEST_IWX_LAVA=<csv> (sonda de solo lectura de campos).
+# criterio = (banco, ya verde) 756/756 casos C++ = interprete del ELF EU (2A5DE0/2A5F40), 0 fallos;
+#            abs(y-suelo) <= 0,01 para superficie 3 y sin excluir pared. En juego (PENDIENTE_JUEGO):
+#            las filas del CSV llevan estados y alturas reales y ninguna contradice el predicado.
+# log      = "dbz3 iwmini: prueba: empieza" / lineas "dbz3 iwmini:" del 7D9
+# PENDIENTE_JUEGO: par de capturas del mismo cuadro con la lava visible (SSIM >= 0,45 / pHash <= 18);
+#            el banco cubre el predicado, no el dibujo ni la animacion de la superficie.
+descripcion = "7D9 lava: predicado de contacto original + superficie (IW-E02)"
+env = [
+  "DBZ3_TEST_IWMINI=0x7D9,auto",
+  "TEST_IWX_LAVA=dbz3_lava_c1.csv",
+  "DBZ3_TEST_CFG=dbz3_iw_logica_original=true",
+  'DBZ3_PS2_GAMES=D:\DBZ3HD\ps2_games',
+]
+pasos = [
+  "log \"iwmini: prueba: empieza\" 90",
+  "esperar 2500",
+  "captura t01_inicio",
+  "esperar 3500",
+  "captura t02_lava",
+  "esperar 3500",
+  "captura t03_lava2",
+]

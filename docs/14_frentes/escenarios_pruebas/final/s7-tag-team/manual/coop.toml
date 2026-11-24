@@ -1,0 +1,49 @@
+# S7 / TAG05: cooperativo con DOS mandos en el mismo equipo (manual; NO entra en la pasada automatica).
+# Necesita dos mandos XInput conectados y el ajuste encendido. Lo prueba el usuario o Z a mano:
+#   python tools\pruebas.py correr smoke_a "docs\14_frentes\escenarios_pruebas\final\s7-tag-team\manual\coop.toml"
+#
+# clave    = TAG05 (dos jugadores humanos en el mismo equipo)
+# cvar     = dbz3_tag_coop=true (NUEVA, APAGADA; tagteam_panel.cpp). Sin dos mandos la fila "2P COOP" sale en
+#            gris y el escenario no puede empezar -> por eso va en manual/ y no en la carpeta que se barre.
+# criterio = la fila 2P COOP abre la rueda; el jugador 1 elige el equipo (los dos miembros); en combate, cada
+#            miembro responde a SU mando (miembro 0 = mando 1, miembro 1 = mando 2) y SELECT releva sin cierre.
+# log      = "tag: empieza un combate", "relevo", "pose de entrada", "tag: combate acabado"
+descripcion = "TAG05 manual: 2P cooperativo con dos mandos (dbz3_tag_coop=true)"
+env = [
+  "DBZ3_TAG_TEST_PICKS=1",
+  "DBZ3_TAG_TEST=0,2",
+  "DBZ3_TAG_TEST2=7,10",
+  "DBZ3_TEST_TAGTIME=40",
+  "DBZ3_TEST_CFG=dbz3_tag_coop=true;dbz3_tag_trace=true",
+]
+pasos = [
+  "esperar 2500",
+  "tecla L 3000",
+  "captura a_panel",
+  "tecla S 800",
+  "tecla S 800",
+  "tecla S 800",
+  "captura b_fila_coop",
+  "tecla Space 12000",
+  "tecla Space 4000",
+  "log \"menu de capsulas del jugador 1 abierto\" 30",
+  "esperar 1000",
+  "tecla Space 4000",
+  "tecla S 2000",
+  "tecla Space 4000",
+  "log \"menu de capsulas del jugador 2 abierto\" 30",
+  "esperar 1000",
+  "tecla Space 4000",
+  "tecla Space 6000",
+  "tecla Space 6000",
+  "tecla Space 3000",
+  "tecla Space 3000",
+  "tecla Space 3000",
+  "log \"tag: empieza un combate\" 60",
+  "esperar 6000",
+  "captura c_combate",
+  "log \"relevo .* -> \" 30",
+  "captura d_relevo",
+  "log \"tag: combate acabado\" 40",
+  "captura e_fin",
+]

@@ -18,6 +18,8 @@
 #include "entrada.h"
 
 #include <imgui.h>
+#include <imgui_internal.h>
+#include <rex/cvar.h>
 #include <rex/input/input_system.h>
 #include <rex/logging.h>
 #include <rex/runtime.h>
@@ -28,6 +30,7 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <cstring>
 #include <cstdlib>
 #include <cstdint>
 #include <cstdio>
@@ -74,6 +77,45 @@ void BattleModeNext(int mode);
 bool OwnBattle();
 }  // namespace dbz3::hub
 
+// TAC05: las texturas/colores de tecnica leidos de data_cmn (fx_nativo.inc) se pueden apagar para aislar un fallo de dibujo.
+// Encendido conserva el comportamiento entregado; apagado vuelve al dibujo anterior (ColorKi de la tabla a mano y formas propias).
+REXCVAR_DEFINE_BOOL(dbz3_tactics_fx_nativo, true, "DBZ3/Mods",
+                    "Dragon Tactics: textura y color de la tecnica leidos del juego (apagado = dibujo anterior)")
+    .lifecycle(rex::cvar::Lifecycle::kHotReload);
+// TACTICS-03 / R12: validado en juego; cuenta al empezar una partida nueva (una guardada sigue con el que tenia).
+REXCVAR_DEFINE_BOOL(dbz3_tactics_carrusel, true, "DBZ3/Mods",
+                    "Dragon Tactics: carrusel (cada 6 rondas, una unidad gratis con capsula; elige primero quien tiene menos vida)")
+    .lifecycle(rex::cvar::Lifecycle::kHotReload);
+
+// TACTICS-04: bots listos (objetivo de partida, copias para 3 estrellas, sinergias y lectura del rival; reglas en [bots] de tactics_economia.toml).
+// R12: validado en juego; cuenta al empezar una partida nueva (una guardada sigue con los bots con los que se creo).
+REXCVAR_DEFINE_BOOL(dbz3_tactics_bots_listos, true, "DBZ3/Mods",
+                    "Dragon Tactics: bots listos (persiguen las 3 estrellas y sus sinergias y leen lo que acaparan los rivales)")
+    .lifecycle(rex::cvar::Lifecycle::kHotReload);
+
+// TACTICS-08: historial por rival guardado con la partida y una linea en el registro por cada sinergia activa al empezar cada combate.
+// R13: historial real guardado y continuado validado en juego; una guardada sigue con lo que tenia.
+REXCVAR_DEFINE_BOOL(dbz3_tactics_historial, true, "DBZ3/Mods",
+                    "Dragon Tactics: historial por rival guardado con la partida y registro de las sinergias activas")
+    .lifecycle(rex::cvar::Lifecycle::kHotReload);
+
+// TACTICS-05: variedad de composiciones (bloque [variedad] de tactics_economia.toml: otras sinergias para algunas unidades y otros tramos).
+// R13: torneo presentado y composiciones ganadoras validados; una guardada conserva sus reglas.
+REXCVAR_DEFINE_BOOL(dbz3_tactics_variedad, true, "DBZ3/Mods",
+                    "Dragon Tactics: variedad (menos Saiyan; mas composiciones distintas que pueden ganar)")
+    .lifecycle(rex::cvar::Lifecycle::kHotReload);
+
+// TACTICS-V04: maquetas v2 aprobadas (studies 5/ENTREGAS/TACTICS_VISUAL/MAQUETAS_V2.md). APAGADO de serie: apagado, todo se dibuja como antes.
+// Solo cambia el dibujo (v2_*.inc); las reglas, el guardado y las zonas del mando/raton son las mismas. Se puede cambiar en caliente.
+REXCVAR_DEFINE_BOOL(dbz3_tactics_visual_v2, true, "DBZ3/Mods",
+                    "Dragon Tactics: interfaz nueva (maquetas v2: tienda compacta, fichas con placas, paneles con titulo)")
+    .lifecycle(rex::cvar::Lifecycle::kHotReload);
+
+// R-VARIOS TACTICS-10: observacion solamente; apagado mantiene los contadores anteriores.
+REXCVAR_DEFINE_BOOL(dbz3_tactics_medir_regimen, false, "DBZ3/Dev",
+                    "Tactics: medir con foco tras 2 segundos, CPU de tablero y figuras")
+    .lifecycle(rex::cvar::Lifecycle::kHotReload);
+
 namespace dbz3::pasarela::nave {
 float AltoRelFiguraB3(int b3, int forma, int fid);   // pasarela_nave.cpp: altura relativa del modelo (0 = no listo)
 int EstadoFiguraB3(int b3, int forma, int fid = -1);   // pasarela_nave.cpp: 0 falta algo de B3 HD, 1 preparandose, 2 lista
@@ -82,6 +124,8 @@ bool DibujarFiguraB3En(dbz3::ps2::Escena* esc, const dbz3::ps2::Camara& cam, int
 }  // namespace dbz3::pasarela::nave
 
 namespace dbz3::tactics {
+const char* EnvPrueba(const char* nombre) { return std::getenv((std::string("DBZ3_TEST_TACTICS_") + nombre).c_str()); }
+
 namespace {
 
 namespace T = dbz3::i18n;
@@ -138,7 +182,7 @@ constexpr Puesto kPuesto[12] = {{"goku", 0, 2, 3}, {"vegeta", 0, 3, 4}, {"piccol
                                 {"krilin", 0, 4, 5}, {"a16", 0, 0, 3}, {"a18", 0, 2, 5}, {"a16", 1, 4, 2}, {"krilin", 1, 0, 1}, {"goku", 1, 2, 0}};
 // Solo pruebas (DBZ3_TEST_TACTICS_DISTINTOS=1): 12 personajes distintos en una ronda 6 contra 6 (voz propia de cada uno)
 constexpr const char* kDistintos[12] = {"goku", "vegeta", "piccolo", "freezer", "cell", "a18", "krilin", "a16", "gohan", "trunks", "broly", "bardock"};
-constexpr int kVidaNumero = 34;   // ticks que vive un numero de dano flotante
+constexpr int kVidaNumero = 48;   // ticks que vive un numero de dano flotante
 constexpr int kTicksHundir = 30;  // ticks que tarda una unidad derrotada en hundirse
 
 std::atomic<bool> g_abierta{false}, g_cerrar{false}, g_lista{false}, g_panel_pedido{false}, g_fin{false};
@@ -154,6 +198,8 @@ rex::input::InputSystem* Input() {
 enum class Zona { Tablero, Banco, Tienda, Botones, Caps, Ayuda, Sin };   // Caps: panel de capsulas (0..n-1 y n = comprar); Ayuda: boton Tutorial (solo raton)
 struct Hit { Zona z; int i; ImVec2 a, b; };
 constexpr uint16_t kArriba = 0x0001, kAbajo = 0x0002, kIzq = 0x0004, kDer = 0x0008;
+constexpr uint16_t kLT = 0x0400, kRT = 0x0800;   // TACTICS-V05: gatillos (bits que XInput no usa); Pad() los pone
+
 constexpr int kColsCaps = 3;   // H12: columnas del panel de capsulas (se abre sobre la tira)
 constexpr int kBotones = 5;   // Comprar EXP, Actualizar, Listo, Volver al HUB, Bloquear tienda (H10)
 
@@ -163,178 +209,66 @@ const Modelo* ModeloDe(const std::string& id) {
 }
 // H9: estrellas = transformaciones. El catalogo (tactics_units.toml `formas`) dice el {luchador B3, forma, fid} del modelo de cada estrella.
 const Catalogo* g_cat = nullptr;
+int g_cat_idx[kModelos];   // TACTICS-10: indice en g_cat de cada kModelo (antes: busqueda lineal por nombre por figura y cuadro); IndexarCatalogo
+float g_alto[kModelos][5];   // AltoRel ya medida (0 = aun no)
+void IndexarCatalogo(const Catalogo* c) {
+  g_cat = c;
+  std::memset(g_alto, 0, sizeof g_alto);
+  for (int k = 0; k < kModelos; ++k) {
+    g_cat_idx[k] = -1;
+    for (size_t i = 0; c && i < c->unidades.size() && i < c->formas.size(); ++i)
+      if (c->unidades[i].id == kModelo[k].id && !c->formas[i].empty()) { g_cat_idx[k] = int(i); break; }
+  }
+}
 std::array<int, 3> FormaDe(const Modelo* m, int est) {
-  if (g_cat)
-    for (size_t i = 0; i < g_cat->unidades.size() && i < g_cat->formas.size(); ++i)
-      if (g_cat->unidades[i].id == m->id && !g_cat->formas[i].empty()) return g_cat->Forma(i, est);
+  const ptrdiff_t k = m - kModelo;
+  if (g_cat && k >= 0 && k < kModelos && g_cat_idx[k] >= 0) return g_cat->Forma(size_t(g_cat_idx[k]), est);
   return {m->b3, m->forma, -1};
 }
 // La figura de `m` con la forma de sus `est` estrellas; si esa forma aun se esta horneando (o fallo), la de la estrella anterior.
 bool DibujarEstrellas(dbz3::ps2::Escena* esc, const dbz3::ps2::Camara& cam, const Modelo* m, int est, dbz3::ps2::V3 suelo, float alto, float giro, int clip, float t, float dura = 0.0f,
                       float ciclo = -1.0f, int clip_prev = -1, float t_prev = 0.0f, float mezcla = 0.0f) {
-  static std::set<std::string> dicho;
+  static std::set<int> dicho;   // TACTICS-10: clave entera (antes una cadena nueva por figura y cuadro)
   for (int e = std::clamp(est, 1, 4); e >= 1; --e) {
     const std::array<int, 3> f = FormaDe(m, e);
     if (!pasarela::nave::DibujarFiguraB3En(esc, cam, f[0], f[1], suelo, alto, giro, clip, t, f[2], dura, ciclo, clip_prev, t_prev, mezcla)) continue;
-    if (dicho.insert(std::string(m->id) + "#" + std::to_string(est) + "#" + std::to_string(e)).second)
+    if (dicho.insert(int(m - kModelo) * 64 + est * 8 + e).second)
       REXLOG_INFO("dbz3 tactics: forma: {} estrella {} dibuja B3 {} forma {} fid {}{}", m->id, est, f[0], f[1], f[2], e == est ? "" : " (la de la estrella anterior: la pedida aun no esta lista)");
     return true;
   }
   return false;
 }
 
+// TACTICS-10: las figuras se pintan sin el antialiasing de relleno de ImGui. Solo afecta a los triangulos sin textura (el borde toon negro):
+// con el, cada uno sacaba 6 vertices y 21 indices con su franja (calculo de normales por triangulo) en vez de 3 y 3; los texturados ya iban sin el,
+// como el propio B3. Con 12 figuras la escena pasa de 65535 vertices y Pintar abre ventanas de tanda: sus listas toman InitialFlags.
+void PintarSinAA(dbz3::ps2::Escena& esc, ImDrawList* dl) {
+  ImDrawListFlags& ini = ImGui::GetCurrentContext()->DrawListSharedData.InitialFlags;   // la toman las listas de las ventanas que se abren ahora
+  const ImDrawListFlags fl = dl->Flags, fi = ini;
+  ini &= ~ImDrawListFlags_AntiAliasedFill;
+  dl->Flags &= ~ImDrawListFlags_AntiAliasedFill;
+  esc.Pintar(dl);
+  dl->Flags = fl;
+  ini = fi;
+}
+
 // Altura del modelo de `m` con `est` estrellas respecto a un luchador normal (1 si aun no esta listo): la usan barras y estrellas para ir sobre la cabeza.
 float AltoRel(const Modelo* m, int est) {
-  for (int e = std::clamp(est, 1, 4); e >= 1; --e) {
+  auto& hecho = g_alto;   // TACTICS-10: la de la forma PEDIDA no cambia una vez lista (antes: 1-4 consultas al modelo por unidad y cuadro)
+  const int es = std::clamp(est, 1, 4), k = int(m - kModelo);
+  if (k >= 0 && k < kModelos && hecho[k][es] > 0.0f) return hecho[k][es];
+  for (int e = es; e >= 1; --e) {
     const std::array<int, 3> f = FormaDe(m, e);
-    if (const float r = pasarela::nave::AltoRelFiguraB3(f[0], f[1], f[2]); r > 0.0f) return r;
+    if (const float r = pasarela::nave::AltoRelFiguraB3(f[0], f[1], f[2]); r > 0.0f) {
+      if (e == es && k >= 0 && k < kModelos) hecho[k][es] = r;
+      return r;
+    }
   }
   return 1.0f;
 }
 
-// Lienzo de 1600x900 sobre la imagen del juego (16:9): la maqueta pone los paneles en los bordes de la imagen, no en el area 4:3 de los menus.
-struct Lienzo {
-  ImVec2 p0;
-  float s = 1.0f;
-  ImVec2 At(float x, float y) const { return ImVec2(p0.x + x * s, p0.y + y * s); }
-};
-Lienzo LienzoDe(const ImGuiIO& io) {
-  const S::Imagen g = S::GuestImage(io);
-  const ImVec2 sz = g.Size();
-  Lienzo l;
-  l.s = std::min(sz.x / 1600.0f, sz.y / 900.0f);
-  l.p0 = ImVec2(g.p0.x + (sz.x - 1600.0f * l.s) * 0.5f, g.p0.y + (sz.y - 900.0f * l.s) * 0.5f);
-  return l;
-}
-// Texto con la letra de B3 alineado a la izquierda (0), al centro (1) o a la derecha (2) de x; maxw = ancho maximo (se encoge).
-constexpr float kMinTxt = 18.0f;   // H12: ningun texto por debajo de 18 (14,4 px a 720p); lo que no cabe se acorta con ".." en vez de encogerse mas
-void Txt(ImDrawList* dl, const Lienzo& q, float x, float y, float size, const std::string& t0, int al, bool sel = false, bool dis = false, float maxw = 0) {
-  size = std::max(size, kMinTxt);
-  std::string t = t0;
-  ImFont* f = dbz3::launcher::ui::GetFonts().menu ? dbz3::launcher::ui::GetFonts().menu : ImGui::GetFont();   // la misma letra con la que se pinta (MenuTextB3)
-  float w = f->CalcTextSizeA(size * q.s, 1e9f, 0, t.c_str()).x;
-  if (maxw > 0 && w > maxw * q.s) {   // primero se encoge hasta el minimo; si aun no cabe, se recorta
-    const float k = std::max(kMinTxt / size, maxw * q.s / w);
-    size = std::max(kMinTxt, size * k);
-    while (t.size() > 2 && f->CalcTextSizeA(size * q.s, 1e9f, 0, t.c_str()).x > maxw * q.s) {
-      size_t n = t.size() - 1;
-      while (n > 0 && (static_cast<unsigned char>(t[n]) & 0xC0) == 0x80) --n;   // no partir un caracter UTF-8
-      t.resize(n);
-      if (f->CalcTextSizeA(size * q.s, 1e9f, 0, (t + "..").c_str()).x <= maxw * q.s) { t += ".."; break; }
-    }
-    w = f->CalcTextSizeA(size * q.s, 1e9f, 0, t.c_str()).x;
-  }
-  const ImVec2 p = q.At(x, y);
-  S::MenuTextB3(dl, ImVec2(p.x + (al == 0 ? w * 0.5f : al == 1 ? 0.0f : -w * 0.5f), p.y), size * q.s, t.c_str(), sel, dis, 0);
-}
-void Caja(ImDrawList* dl, const Lienzo& q, float x0, float y0, float x1, float y1, ImU32 borde, ImU32 relleno = IM_COL32(10, 14, 30, 215), float grosor = 2.0f) {
-  dl->AddRectFilled(q.At(x0, y0), q.At(x1, y1), relleno, 6 * q.s);
-  dl->AddRect(q.At(x0, y0), q.At(x1, y1), borde, 6 * q.s, 0, grosor * q.s);
-}
-// H10: borde negro suave (dos capas translucidas) para que la estrella se vea sobre cualquier fondo, claro u oscuro
-void Estrella(ImDrawList* dl, ImVec2 c, float r) {
-  for (int capa = 0; capa < 3; ++capa) {
-    const float k = capa == 0 ? 1.38f : capa == 1 ? 1.2f : 1.0f;
-    const ImU32 col = capa == 0 ? IM_COL32(0, 0, 0, 80) : capa == 1 ? IM_COL32(0, 0, 0, 190) : IM_COL32(255, 205, 40, 255);
-    ImVec2 p[10];
-    for (int i = 0; i < 10; ++i) {
-      const float a = -1.5708f + 0.62832f * float(i), rr = (i % 2 ? r * 0.45f : r) * k;
-      p[i] = ImVec2(c.x + std::cos(a) * rr, c.y + std::sin(a) * rr);
-    }
-    for (int i = 0; i < 10; ++i) dl->AddTriangleFilled(c, p[i], p[(i + 1) % 10], col);
-  }
-}
-// H10: texto plano (el que no usa la letra de B3) con el mismo borde negro suave; wrap > 0 = ancho de ajuste de linea
-void TextoSuave(ImDrawList* dl, float fs, ImVec2 p, ImU32 col, const char* t, float wrap = 0, float alfa = 1.0f) {
-  const float g = std::max(1.0f, fs * 0.07f);
-  const ImU32 borde = IM_COL32(0, 0, 0, int(170.0f * alfa));
-  const auto& fuentes = dbz3::launcher::ui::GetFonts();
-  ImFont* f = std::strcmp(T::LangCode(), "ja") == 0 && fuentes.menu ? fuentes.menu : ImGui::GetFont();   // la letra del juego trae los kana y kanji; la de ImGui no
-  static const float d[8][2] = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}, {-0.7f, -0.7f}, {0.7f, -0.7f}, {-0.7f, 0.7f}, {0.7f, 0.7f}};
-  for (const auto& o : d) dl->AddText(f, fs, ImVec2(p.x + o[0] * g, p.y + o[1] * g), borde, t, nullptr, wrap);
-  dl->AddText(f, fs, p, col, t, nullptr, wrap);
-}
-void Estrellas(ImDrawList* dl, ImVec2 centro, float r, int n) {   // n estrellas en fila centrada en `centro`
-  // H11: cada estrella es la bola de dragon de 1 estrella del propio juego (native_ui "icono"); sin la pieza, la estrella dibujada
-  if (const S::Pic bola = S::Img("bola_estrella")) {
-    const float d = r * 2.5f, paso = d * 0.92f;
-    for (int i = 0; i < n; ++i) {
-      const ImVec2 c(centro.x + (float(i) - float(n - 1) * 0.5f) * paso, centro.y);
-      S::DrawPic(dl, bola, ImVec2(c.x - d * 0.5f, c.y - d * 0.5f), ImVec2(c.x + d * 0.5f, c.y + d * 0.5f));
-    }
-    return;
-  }
-  for (int i = 0; i < n; ++i) Estrella(dl, ImVec2(centro.x + (float(i) - float(n - 1) * 0.5f) * r * 2.1f, centro.y), r);
-}
-// H11: el oro es la pila de monedas de la caja de ZENIE de la Skill Shop (native_ui "caja_zenie", recorte 36,14-108,80); sin la pieza, el circulo
-void Moneda(ImDrawList* dl, ImVec2 c, float r) {
-  if (const S::Pic caja = S::Img("caja_zenie")) {
-    const float h = r * 2.9f, w = h * 72.0f / 66.0f;
-    S::DrawPic(dl, caja, ImVec2(c.x - w * 0.5f, c.y - h * 0.5f), ImVec2(c.x + w * 0.5f, c.y + h * 0.5f), ImVec4(36, 14, 108, 80));
-    return;
-  }
-  dl->AddCircleFilled(c, r, IM_COL32(255, 200, 40, 255));
-  dl->AddCircle(c, r, IM_COL32(150, 90, 10, 255), 0, r * 0.18f);
-  dl->AddCircle(c, r * 0.6f, IM_COL32(200, 130, 20, 255), 0, r * 0.14f);
-}
-
-// Textos nuevos de H5 (tutorial y capsulas): mod center hd/tactics_textos.toml, siete idiomas; sin el fichero o sin el idioma sale el ingles.
-std::string Texto(const char* clave) {
-  static const std::map<std::string, std::map<std::string, std::string>> tabla = [] {
-    std::map<std::string, std::map<std::string, std::string>> t;
-    try {
-      const toml::table doc = toml::parse_file(((dbz3::ModsRoot().parent_path() / "mod center hd") / "tactics_textos.toml").string());
-      for (const auto& [k, v] : doc)
-        if (const toml::table* e = v.as_table())
-          for (const auto& [l, x] : *e)
-            if (auto txt = x.value<std::string>()) t[std::string(k.str())][std::string(l.str())] = *txt;
-    } catch (...) {
-    }
-    return t;
-  }();
-  const auto it = tabla.find(clave);
-  if (it == tabla.end()) return clave;
-  const auto l = it->second.find(T::LangCode());
-  if (l != it->second.end()) return l->second;
-  const auto en = it->second.find("en");
-  return en != it->second.end() ? en->second : std::string(clave);
-}
-// "+25 % vida, +10 % ataque": generada de los mismos numeros de tactics_capsulas.toml, asi que nunca los contradice
-std::string Describir(const CapsulaDef& c) {
-  std::string r;
-  const auto sumar = [&](int v, const char* clave, bool casillas) {
-    if (!v) return;
-    if (!r.empty()) r += ", ";
-    r += (v > 0 ? "+" : "") + std::to_string(v) + (casillas ? " " : " % ") + Texto(clave);
-  };
-  sumar(c.vida, "ef_vida", false), sumar(c.ataque, "ef_ataque", false), sumar(c.defensa, "ef_defensa", false), sumar(c.velocidad, "ef_velocidad", false);
-  sumar(c.ki_inicial, "ef_ki_inicial", false), sumar(c.ki_max, "ef_ki_max", false), sumar(c.alcance, "ef_alcance", true), sumar(c.tecnica, "ef_tecnica", false);
-  return r;
-}
-ImU32 ColorCaps(int c) {
-  static const ImU32 col[kMaxCaps] = {IM_COL32(230, 80, 80, 255),  IM_COL32(255, 150, 40, 255), IM_COL32(90, 170, 255, 255), IM_COL32(110, 230, 140, 255),
-                                      IM_COL32(190, 120, 255, 255), IM_COL32(255, 230, 80, 255), IM_COL32(80, 230, 230, 255),  IM_COL32(255, 120, 190, 255),
-                                      IM_COL32(220, 220, 220, 255), IM_COL32(160, 200, 80, 255), IM_COL32(200, 150, 100, 255), IM_COL32(120, 120, 255, 255)};
-  return col[c % kMaxCaps];
-}
-// H11: botella de capsula de la Skill Shop del propio juego (native_ui "capsulas": roja, verde, amarilla y gris, 31x83 cada 36 px), centrada en `c`.
-// Cada tipo de capsula usa el color que le toca; sin la pieza, el circulo de color de siempre.
-void Botella(ImDrawList* dl, ImVec2 c, float alto, int tipo, bool apagada = false) {
-  static constexpr int kBot[kMaxCaps] = {1, 0, 3, 2, 2, 0, 2, 1, 3, 0, 1, 2};   // vigor verde, fuerza roja, guardia gris, viento y ki amarillos...
-  if (const S::Pic cap = S::Img("capsulas")) {
-    const float bx = 3 + 36.0f * float(kBot[tipo % kMaxCaps]), w = alto * 31 / 83;
-    S::DrawPic(dl, cap, ImVec2(c.x - w * 0.5f, c.y - alto * 0.5f), ImVec2(c.x + w * 0.5f, c.y + alto * 0.5f), ImVec4(bx, 7, bx + 31, 90),
-               apagada ? IM_COL32(255, 255, 255, 80) : IM_COL32_WHITE);
-    return;
-  }
-  dl->AddCircleFilled(c, alto * 0.25f, apagada ? IM_COL32(60, 64, 84, 255) : ColorCaps(tipo));
-  dl->AddCircle(c, alto * 0.25f, IM_COL32(0, 0, 0, 255), 0, 1.5f);
-}
-// H11: color del marco segun el rango (coste 1 a 4): gris azulado, verde, azul y dorado, como los rangos de cualquier autobattler
-ImU32 ColorRango(int coste) {
-  static const ImU32 col[4] = {IM_COL32(150, 165, 200, 255), IM_COL32(90, 205, 110, 255), IM_COL32(70, 170, 255, 255), IM_COL32(255, 190, 40, 255)};
-  return col[std::clamp(coste, 1, 4) - 1];
-}
+#include "dibujo.inc"   // TACTICS-V03: Lienzo, Txt, Caja, Estrella(s), Moneda, Texto, Describir, ColorCaps, Botella, ColorRango
+#include "v2_piezas.inc"   // TACTICS-V04: V2(), PanelV2, PlacaV2, AyudaV2, PestanaV2 (solo con dbz3_tactics_visual_v2)
 // Sonidos del juego (gestor de efectos, banco/id medidos en un combate normal; los de voz son los del luchador de fondo)
 constexpr int kSeImpacto[2] = {2, 2};   // los gritos de cada unidad salen de su `voz` en tactics_units.toml
 
@@ -378,10 +312,10 @@ class Arena : public rex::ui::ImGuiDialog {
       soltado_ = true;
     }
     if (salir) {
-      if (!combate_ || !error_.empty()) return Cerrar();
+      if (!combate_) return Cerrar();   // con el combate de fondo ya pedido (se pide al empezar la carga), hay que acabarlo aunque haya error
       Salir();
     }
-    if (!combate_ || !error_.empty()) {
+    if (!combate_ || !error_.empty() || !lista_) {   // la barra de carga sigue sobre su fondo aunque el combate de fondo ya se este cargando
       fondo->AddRectFilledMultiColor(ImVec2(0, 0), io.DisplaySize, IM_COL32(26, 30, 52, 255), IM_COL32(26, 30, 52, 255), IM_COL32(8, 8, 18, 255),
                                      IM_COL32(8, 8, 18, 255));
       if (S::Img("fondo_duelo")) {   // subTAC: fondo del propio juego (el cielo del Duelo, extraido de la copia del jugador) oscurecido; sin el, el degradado de arriba
@@ -418,6 +352,8 @@ class Arena : public rex::ui::ImGuiDialog {
     siguiente_ = 0;
     hechas_ = 0;
     combate_ = saliendo_ = false;
+    cam_ant_ok_ = tablero_dicho_ = false;
+    tres_ = 0;
     g_fin = false;
     for (bool& h : hecha_) h = false;
     ultimo_ = 0;
@@ -433,12 +369,12 @@ class Arena : public rex::ui::ImGuiDialog {
     tut_visto_ = false;
     se_ = MezclaSe();
     salir_t_ = -10;
-    const auto num = [](const char* n, long def) { const char* v = std::getenv(n); return v ? std::atol(v) : def; };
-    demo_ = std::getenv("DBZ3_TEST_TACTICS_VEL") || std::getenv("DBZ3_TEST_TACTICS_LADO");
-    auto_rondas_ = int(num("DBZ3_TEST_TACTICS_AUTO", 0));
-    semilla_ = uint64_t(num("DBZ3_TEST_TACTICS_SEMILLA", demo_ || auto_rondas_ ? 2024 : long(std::chrono::system_clock::now().time_since_epoch().count() & 0x7fffffff)));
+    const auto num = [](const char* n, long def) { const char* v = EnvPrueba(n); return v ? std::atol(v) : def; };
+    demo_ = EnvPrueba("VEL") || EnvPrueba("LADO");
+    auto_rondas_ = int(num("AUTO", 0));
+    semilla_ = uint64_t(num("SEMILLA", demo_ || auto_rondas_ ? 2024 : long(std::chrono::system_clock::now().time_since_epoch().count() & 0x7fffffff)));
     vels_.clear();
-    if (const char* v = std::getenv("DBZ3_TEST_TACTICS_VEL"))
+    if (const char* v = EnvPrueba("VEL"))
       for (; *v; ++v)
         if (*v == '1' || *v == '2' || *v == '4') vels_.push_back(*v - '0');
     vel_i_ = 0;
@@ -450,119 +386,26 @@ class Arena : public rex::ui::ImGuiDialog {
       REXLOG_ERROR("dbz3 tactics: {}", error_);
       return;
     }
-    g_cat = &cat_;
+    IndexarCatalogo(&cat_);
     calidad_base_ = eco_.calidad_bots;
+    eco_cargada_ = eco_;   // TACTICS-05
     CargarOpc();
     vel_ = opc_.vel;
-    if (demo_) Colocar(num("DBZ3_TEST_TACTICS_LADO", 3) == 6 ? 6 : 3, semilla_);
+    if (demo_) Colocar(num("LADO", 3) == 6 ? 6 : 3, semilla_);
     else IniciarOMenu();
   }
-  // Pruebas (tools/pruebas.py): DBZ3_TEST_TACTICS_PRUEBA=1 guarda en hub_tactics_prueba.toml (nunca toca la partida del jugador) y no ofrece
-  // "Continuar" salvo con DBZ3_TEST_TACTICS_MENU=1.
-  static bool EnPrueba() { return std::getenv("DBZ3_TEST_TACTICS_PRUEBA") || std::getenv("DBZ3_TEST_TACTICS_AUTO") || std::getenv("DBZ3_TEST_TACTICS_SEMILLA"); }
-  static std::filesystem::path RutaGuardado() { return dbz3::settings::UserDataRoot() / (EnPrueba() ? "hub_tactics_prueba.toml" : "hub_tactics.toml"); }
-  static std::filesystem::path RutaOpc() { return dbz3::settings::UserDataRoot() / (EnPrueba() ? "hub_tactics_opciones_prueba.toml" : "hub_tactics_opciones.toml"); }
-  void CargarOpc() {
-    opc_ = Opc{};
-    try {
-      const toml::table doc = toml::parse_file(RutaOpc().string());
-      opc_.reloj = std::clamp(int(doc["reloj"].value_or<int64_t>(0)), 0, 300);
-      opc_.vel = doc["velocidad"].value_or<int64_t>(1) == 4 ? 4 : doc["velocidad"].value_or<int64_t>(1) == 2 ? 2 : 1;
-      opc_.dif = std::clamp(int(doc["dificultad"].value_or<int64_t>(1)), 0, 2);
-      opc_.sonido = doc["sonido"].value_or(true);
-    } catch (...) {
-    }
-    if (const char* r = std::getenv("DBZ3_TEST_TACTICS_RELOJ")) opc_.reloj = std::clamp(std::atoi(r), 0, 300);   // solo pruebas
-  }
-  void GuardarOpc() const {
-    std::error_code ec;
-    std::filesystem::create_directories(RutaOpc().parent_path(), ec);
-    std::ofstream f(RutaOpc());
-    f << "# Dragon Tactics: opciones del menu del modo (reloj en segundos, 0 = apagado; velocidad 1, 2 o 4; dificultad 0 facil, 1 normal, 2 dificil)\n";
-    f << "reloj = " << opc_.reloj << "\nvelocidad = " << opc_.vel << "\ndificultad = " << opc_.dif << "\nsonido = " << (opc_.sonido ? "true" : "false") << "\n";
-  }
-  // dificultad: la calidad de decision de los bots 1..7 se mueve -25 / 0 / +15 puntos (nunca pasa de 0-100)
-  void AplicarDificultad() {
-    eco_.calidad_bots = calidad_base_;
-    for (int& q : eco_.calidad_bots) q = std::clamp(q + (opc_.dif == 0 ? -25 : opc_.dif == 2 ? 15 : 0), 0, 100);
-  }
-  void CambiarOpc(int i, int d) {
-    static const int relojes[] = {0, 30, 60, 90, 120};
-    const auto ciclo = [&](int v, const int* tabla, int n) {
-      int k = 0;
-      for (int j = 0; j < n; ++j) if (tabla[j] == v) k = j;
-      return tabla[(k + d + n) % n];
-    };
-    static const int vels[] = {1, 2, 4}, difs[] = {0, 1, 2};
-    if (i == 0) opc_.reloj = ciclo(opc_.reloj, relojes, 5);
-    else if (i == 1) opc_.vel = ciclo(opc_.vel, vels, 3), vel_ = opc_.vel;
-    else if (i == 2) opc_.sonido = !opc_.sonido;
-    else if (i == 3) opc_.dif = ciclo(opc_.dif, difs, 3);
-    else return;
-    GuardarOpc();
-    REXLOG_INFO("dbz3 tactics: opcion {} -> reloj {} s, velocidad x{}, sonido {}, dificultad {}", i, opc_.reloj, opc_.vel, opc_.sonido, opc_.dif);
-  }
-  // Menu propio: Continuar (si hay partida guardada), Jugar, Como se juega, Opciones y Volver. Las pruebas lo saltan salvo con DBZ3_TEST_TACTICS_MENU=1.
-  void IniciarOMenu() {
-    menu_ = false;
-    menu_pag_ = 0;
-    guardada_.reset();
-    mc_ = 0;
-    if (EnPrueba() && !std::getenv("DBZ3_TEST_TACTICS_MENU")) return NuevaPartida(semilla_);
-    menu_ = true;
-    std::error_code ec;
-    if (std::filesystem::exists(RutaGuardado(), ec) || std::filesystem::exists(RutaGuardado().string() + ".bak", ec)) {
-      std::string e;
-      if (CargarArchivo(RutaGuardado().string(), cat_, eco_, &guardada_, &e)) {
-        REXLOG_INFO("dbz3 tactics: menu de inicio: hay una partida guardada (ronda {}, {} vivos)", guardada_->Ronda(), guardada_->Vivos());
-        return;
-      }
-      REXLOG_WARN("dbz3 tactics: la partida guardada no se puede usar ({}): partida nueva", e);
-      aviso_ = T::T("Tu partida guardada es de una versión anterior y no se puede cargar. Empieza una nueva.", "Your saved game is from an older version and can't be loaded. Starting a new one.");
-    }
-    REXLOG_INFO("dbz3 tactics: menu de inicio: sin partida guardada");
-  }
-  // ids de las filas del menu principal: 0 Continuar, 1 Jugar, 2 Como se juega, 3 Opciones, 4 Volver
-  std::vector<int> FilasMenu() const {
-    std::vector<int> r;
-    if (guardada_) r.push_back(0);
-    for (int i = 1; i <= 4; ++i) r.push_back(i);
-    return r;
-  }
-  void ElegirMenu(int id) {
-    if (id == 0 && guardada_) {
-      partida_.emplace(std::move(*guardada_));
-      guardada_.reset();
-      menu_ = false;
-      fin_partida_ = false;
-      REXLOG_INFO("dbz3 tactics: partida continuada (ronda {}, huella {:016x})", partida_->Ronda(), partida_->Huella());
-      EntrarPreparacion(false);
-    } else if (id == 1) {
-      menu_ = false;
-      guardada_.reset();
-      AplicarDificultad();
-      if (!aviso_.empty()) aviso_t_ = ImGui::GetTime(), aviso_dura_ = 9.0;
-      NuevaPartida(semilla_);
-    } else if (id == 2) {
-      AbrirTutorial(true);
-    } else if (id == 3) {
-      menu_pag_ = 1, mc_ = 0;
-      REXLOG_INFO("dbz3 tactics: menu: opciones");
-    } else if (id == 4) {
-      g_cerrar = true;
-    }
-  }
-  void GuardarPartida() {
-    std::string e;
-    const std::string t = partida_->Guardar();
-    if (t.empty() || !GuardarArchivo(RutaGuardado().string(), t, &e)) REXLOG_WARN("dbz3 tactics: no se pudo guardar la partida: {}", e);
-    else REXLOG_INFO("dbz3 tactics: partida guardada (ronda {}, huella {:016x})", partida_->Ronda(), partida_->Huella());
-  }
+#include "menu_logica.inc"   // TACTICS-V03: opciones, dificultad, variedad, menu de inicio, continuar y guardar (miembros de Arena)
+#include "pruebas_r13.inc"   // Auditoria optativa de variedad e historial; solo DBZ3_TEST_TACTICS_AUDITAR.
   // Presentacion de las unidades de la simulacion en curso (sim_): modelo, estrellas y casilla de salida de cada una
   void IniciarPres(const std::vector<const Modelo*>& ms, const std::vector<int>& est) {
     if (combate_) dbz3::combate::CargarVoces(MascaraVoces(ms.data(), ms.size()));
+    voces_listas_ = false, voces_pedidas_ = combate_, voces_t0_ = ImGui::GetTime(), sin_banco_ = 0;
     cuadros_ = 0;
     media_ = 0;
+    medir_regimen_ = rex::cvar::GetFlagByName("dbz3_tactics_medir_regimen") == "true";
+    medir_inicio_ = -1;
+    medir_n_ = medir_sin_foco_ = 0;
+    medir_cpu_ = medir_cpu_max_ = medir_fig_ = medir_sim_ = 0;
     cc_ = lentos_ = 0;
     dt_suma_ = dt_peor_ = 0;
     acc_ = 0;
@@ -590,17 +433,17 @@ class Arena : public rex::ui::ImGuiDialog {
     std::vector<const Modelo*> ms;
     for (int i = 0; i < 2 * lado; ++i) {
       const Puesto& pu = kPuesto[i];
-      static const bool distintos = std::getenv("DBZ3_TEST_TACTICS_DISTINTOS") != nullptr;
+      static const bool distintos = EnvPrueba("DISTINTOS") != nullptr;
       // H13 (solo pruebas): DISTINTOS puede ser una lista de ids separados por comas (los 12 de la ronda 6 contra 6) para fotografiar unas unidades concretas
       static const std::vector<std::string> lista = [] {
         std::vector<std::string> v;
-        std::string t = std::getenv("DBZ3_TEST_TACTICS_DISTINTOS") ? std::getenv("DBZ3_TEST_TACTICS_DISTINTOS") : "";
+        std::string t = EnvPrueba("DISTINTOS") ? EnvPrueba("DISTINTOS") : "";
         for (size_t p0 = 0; !t.empty() && p0 <= t.size();) { const size_t c = std::min(t.find(',', p0), t.size()); if (c > p0) v.push_back(t.substr(p0, c - p0)); p0 = c + 1; }
         return v.size() >= 12 ? v : std::vector<std::string>();
       }();
       const char* id = !lista.empty() && lado == 6 ? lista[size_t(i)].c_str() : distintos && lado == 6 ? kDistintos[i] : pu.id;
       const sim::DefUnidad* d = cat_.Buscar(id);
-      static const bool ki_lleno = std::getenv("DBZ3_TEST_TACTICS_KI") != nullptr;   // solo pruebas: todos empiezan con el ki lleno (la tecnica sale pronto)
+      static const bool ki_lleno = EnvPrueba("KI") != nullptr;   // solo pruebas: todos empiezan con el ki lleno (la tecnica sale pronto)
       sim::DefUnidad copia = d ? *d : sim::DefUnidad{};
       if (ki_lleno) copia.ki_inicial = 100;
       if (!d || sim_->Anadir(copia, pu.equipo, {pu.col, pu.fila}) < 0) {
@@ -615,16 +458,49 @@ class Arena : public rex::ui::ImGuiDialog {
   }
   void NuevaPartida(uint64_t semilla) {
     semilla_ = semilla;
-    partida_.emplace(cat_, eco_, semilla);
+    const bool carrusel = rex::cvar::GetFlagByName("dbz3_tactics_carrusel") == "true";   // TACTICS-03
+    const bool listos = rex::cvar::GetFlagByName("dbz3_tactics_bots_listos") == "true";   // TACTICS-04
+    const bool variedad = rex::cvar::GetFlagByName("dbz3_tactics_variedad") == "true";   // TACTICS-05
+    FijarVariedad(variedad);
+    partida_.emplace(cat_, eco_, semilla, 0, carrusel, listos, variedad);
+    if (rex::cvar::GetFlagByName("dbz3_tactics_historial") == "true") partida_->ActivarHistorial();   // TACTICS-08
+    if (EnvPrueba("AUDITAR")) AuditarVariedadPrueba();
+    // R12/R13: referencia SIN presentacion, con las cuatro reglas efectivas, incluidos
+    // variedad e historial de serie. No usa las huellas del banco antiguo con todo OFF.
+    // Solo la solicita tactics_partida; no toca la partida real ni escribe guardados.
+    if (const char* n = EnvPrueba("REFERENCIA")) {
+      Partida ref = *partida_;
+      const int limite = std::clamp(std::atoi(n), 1, 100);
+      REXLOG_INFO("dbz3 tactics referencia: reglas carrusel={} bots={} variedad={} historial={}",
+                  ref.ConCarrusel(), ref.BotsListos(), ref.Variedad(), ref.Historial());
+      while (!ref.Acabada() && ref.Ronda() <= limite) {
+        if (ref.FaseActual() == Fase::Carrusel) ref.JugarCarrusel(0);
+        ref.Jugar(0);
+        ref.Listo();
+        const int duelo = ref.DueloHumano();
+        if (duelo < 0) break;
+        const Duelo rival = ref.Duelos()[size_t(duelo)];
+        while (!ref.Combate().Terminada()) ref.Combate().Paso();
+        const uint32_t huella = ref.Combate().Huella();
+        ref.TerminarCombate();
+        REXLOG_INFO("dbz3 tactics referencia: ronda {}: ganador {} huella {:08x} vida {} / {}", ref.Ronda(),
+                    ref.GanadorRonda(), huella, ref.J(0).vida, rival.copia ? 0 : ref.J(rival.b).vida);
+        ref.SiguienteRonda();
+      }
+    }
+    tres_ = 0;
     sim_ = nullptr;
     p_.clear();
     flota_.clear(), fx_.clear();
     fin_t_ = -1, caido_ = nullptr;
     fin_partida_ = false;
-    REXLOG_INFO("dbz3 tactics: partida nueva, semilla {}", semilla);
+    REXLOG_INFO("dbz3 tactics: partida nueva, semilla {}{}{}{}", semilla, carrusel ? " (con carrusel)" : "", listos ? " (con bots listos)" : "",
+                partida_->Variedad() ? " (con variedad)" : "");
     EntrarPreparacion();
   }
   void EntrarPreparacion(bool guardar = true) {
+    if (partida_->FaseActual() == Fase::Carrusel) return EntrarCarrusel(guardar);
+    carr_fin_t_ = -1;
     sim_ = nullptr;
     p_.clear();
     flota_.clear(), fx_.clear();
@@ -640,7 +516,7 @@ class Arena : public rex::ui::ImGuiDialog {
     destellos_.clear();
     prep_resto_ = float(opc_.reloj);
     espia_ = -1;
-    if (const char* ids = std::getenv("DBZ3_TEST_TACTICS_PUESTO"); ids && partida_->Ronda() == 1) {   // solo pruebas: unidades de 1 estrella ya puestas en el tablero (ids separados por comas)
+    if (const char* ids = EnvPrueba("PUESTO"); ids && partida_->Ronda() == 1) {   // solo pruebas: unidades de 1 estrella ya puestas en el tablero (ids separados por comas)
       std::string resto = ids;
       while (!resto.empty()) {
         const size_t c = resto.find(',');
@@ -656,20 +532,49 @@ class Arena : public rex::ui::ImGuiDialog {
     REXLOG_INFO("dbz3 tactics: preparacion ronda {}: oro {}, nivel {}, vida {}, {} vivos, rival {}{} (vida {}), tienda {} {} {} {} {}", partida_->Ronda(), j.oro, j.nivel, j.vida,
                 partida_->Vivos(), d.copia ? "copia de " : "", d.b, partida_->J(d.b).vida, j.tienda[0], j.tienda[1], j.tienda[2], j.tienda[3], j.tienda[4]);
   }
+  // TACTICS-03: pantalla del carrusel. Se guarda al entrar (Continuar vuelve aqui); el cursor empieza en el primer objeto libre.
+  void EntrarCarrusel(bool guardar) {
+    sim_ = nullptr;
+    p_.clear();
+    flota_.clear(), fx_.clear();
+    fin_t_ = -1, caido_ = nullptr;
+    mano_ = capmano_ = arr_ = -1;
+    espia_ = -1;
+    destellos_.clear();
+    zc_ = Zona::Tienda, ic_ = 0;
+    for (size_t i = 0; i < partida_->Carrusel().size(); ++i) if (partida_->Carrusel()[i].quien < 0) { ic_ = int(i); break; }
+    carr_t_ = ImGui::GetTime(), carr_fin_t_ = -1;
+    carr_orden_ = partida_->OrdenCarrusel();
+    carr_resto_ = opc_.reloj > 0 ? 20.0f : 0.0f;
+    if (guardar) GuardarPartida();
+    std::string objs, orden;
+    for (const ObjCarrusel& o : partida_->Carrusel()) objs += " " + eco_.unidades[size_t(o.unidad)].id + "+" + std::to_string(o.capsula) + (o.quien >= 0 ? "(" + std::to_string(o.quien) + ")" : "");
+    for (int p : partida_->OrdenCarrusel()) orden += " " + std::to_string(p) + ":" + std::to_string(partida_->J(p).vida);
+    REXLOG_INFO("dbz3 tactics: carrusel ronda {}: {} objetos{}; orden (jugador:vida){}; te toca: {}", partida_->Ronda(), partida_->Carrusel().size(), objs, orden, partida_->QuienElige() == 0 ? "si" : "no");
+  }
+  void ElegirCarrusel(int i, const char* como) {
+    const int u = i >= 0 && i < int(partida_->Carrusel().size()) ? partida_->Carrusel()[size_t(i)].unidad : -1;
+    const Res r = partida_->ElegirCarrusel(0, i);
+    REXLOG_INFO("dbz3 tactics: accion carrusel {} ({}) -> {} ({}; oro {}, huella {:016x})", i, como, r == Res::Ok ? "ok" : "invalido", u >= 0 ? eco_.unidades[size_t(u)].id : std::string("-"), partida_->J(0).oro, partida_->Huella());
+    if (r != Res::Ok) return;
+    carr_fin_t_ = ImGui::GetTime();   // se ve el reparto completo unos segundos y despues empieza la preparacion
+    Sonar(ImGui::GetTime(), PrioSe::Tecnica, 0.3, 0, 3);   // el "aceptar" del sistema, como al comprar
+  }
   // H9: (1) hornea en segundo plano, una a una, las formas de las estrellas 2..4; (2) destello al subir una pieza de estrella;
   // (3) pruebas: DBZ3_TEST_TACTICS_ESTRELLAS=N pone una unidad de 1 estrella (DBZ3_TEST_TACTICS_ESTRELLAS_UNIDAD, por defecto goku), espera a
   // que este lista la forma de N estrellas y la sube a N (antes y despues se capturan desde pruebas.py; el log trae el fid de cada forma).
   void ActualizarFormas(double ahora, bool prep) {
-    if (lista_ && g_cat)
+    // TACTICS-10: nunca durante una ronda: cada forma lanza un proceso de Python y lee su cache en este hilo (tirones de 20-180 ms medidos)
+    if (lista_ && g_cat && prep)
       for (int pasos = 0; pasos < 8 && forma_sig_ < size_t(kModelos) * 3; ++pasos) {
         const std::array<int, 3> f = FormaDe(&kModelo[forma_sig_ / 3], int(forma_sig_ % 3) + 2);
         if (pasarela::nave::EstadoFiguraB3(f[0], f[1], f[2]) == 1) break;
         if (++forma_sig_ == size_t(kModelos) * 3) REXLOG_INFO("dbz3 tactics: formas de las estrellas 2 a 4 preparadas ({:.1f} s desde que se abrio)", Seg());
       }
     if (!partida_ || !prep) return;
-    static const int prueba = std::getenv("DBZ3_TEST_TACTICS_ESTRELLAS") ? std::clamp(std::atoi(std::getenv("DBZ3_TEST_TACTICS_ESTRELLAS")), 0, 4) : 0;
+    static const int prueba = EnvPrueba("ESTRELLAS") ? std::clamp(std::atoi(EnvPrueba("ESTRELLAS")), 0, 4) : 0;
     if (prueba >= 2 && partida_->Ronda() == 1) {
-      const char* id = std::getenv("DBZ3_TEST_TACTICS_ESTRELLAS_UNIDAD") ? std::getenv("DBZ3_TEST_TACTICS_ESTRELLAS_UNIDAD") : "goku";
+      const char* id = EnvPrueba("ESTRELLAS_UNIDAD") ? EnvPrueba("ESTRELLAS_UNIDAD") : "goku";
       int u = -1;
       for (size_t i = 0; i < eco_.unidades.size(); ++i) if (eco_.unidades[i].id == id) u = int(i);
       const Modelo* m = ModeloDe(id);
@@ -732,7 +637,7 @@ class Arena : public rex::ui::ImGuiDialog {
       if (tut_visto_) return;
       tut_visto_ = true;
       std::error_code ec;
-      if (!std::getenv("DBZ3_TEST_TACTICS_TUTORIAL") && (EnPrueba() || std::filesystem::exists(RutaTutorial(), ec))) return;
+      if (!EnvPrueba("TUTORIAL") && (EnPrueba() || std::filesystem::exists(RutaTutorial(), ec))) return;
     }
     tut_ = 1;
     REXLOG_INFO("dbz3 tactics: tutorial abierto{}", pedido ? " (a peticion)" : "");
@@ -759,6 +664,14 @@ class Arena : public rex::ui::ImGuiDialog {
     Sonar(ImGui::GetTime(), PrioSe::Tecnica, 0.3, 0, 3);   // el "aceptar" del sistema, como al empezar un combate del juego
     const auto rival = std::count_if(partida_->Combatientes().begin(), partida_->Combatientes().end(), [](const Combatiente& c) { return c.jugador == 1; });
     REXLOG_INFO("dbz3 tactics: combate ronda {}: {} contra {} unidades a x{}", partida_->Ronda(), ms.size() - size_t(rival), rival, vel_);
+    if (partida_->Historial() && partida_->DueloHumano() >= 0) {   // TACTICS-08: una linea por cada sinergia activa de cada lado
+      const Duelo& d = partida_->Duelos()[size_t(partida_->DueloHumano())];
+      for (int lado = 0; lado < 2; ++lado)
+        for (const SinActiva& sa : partida_->Sinergias(lado == 0 ? d.a : d.b))
+          if (sa.umbral >= 0)
+            REXLOG_INFO("dbz3 tactics: sinergia activa ronda {}: equipo {} {} {} miembros (tramo {})", partida_->Ronda(), lado, eco_.sinergias[size_t(sa.sinergia)].id, sa.cuenta,
+                        sa.umbral + 1);
+    }
   }
   void Cerrar() {
     dbz3::combate::CargarVoces(0);   // sueltas las ranuras de voz que quedaran
@@ -778,9 +691,6 @@ class Arena : public rex::ui::ImGuiDialog {
   }
   // botones recien pulsados del mando 1 (lectura en el hilo de la interfaz, como modos.cpp); la palanca cuenta como cruceta
   uint16_t Pad() {
-    static int pendiente_n = 0;
-    if (g_pad_pendiente.load()) { if (EnPrueba() && ++pendiente_n % 300 == 0) REXLOG_INFO("dbz3 tactics: pad: la lectura del mando lleva {} cuadros pendiente", pendiente_n); }
-    else pendiente_n = 0;
     if (!g_pad_pendiente.exchange(true)) {
       dbz3::launcher::DeferUi([] {
         uint16_t b = 0;
@@ -788,6 +698,8 @@ class Arena : public rex::ui::ImGuiDialog {
           rex::input::X_INPUT_STATE s = {};
           if (inp->GetStateForUI(0, &s) == 0) {
             b = static_cast<uint16_t>(s.gamepad.buttons);
+            if (s.gamepad.left_trigger > 128) b |= kLT;    // TACTICS-V05: gatillos en dos bits libres (solo los lee la interfaz v2)
+            if (s.gamepad.right_trigger > 128) b |= kRT;
             const int lx = int16_t(s.gamepad.thumb_lx), ly = int16_t(s.gamepad.thumb_ly);
             if (ly > 16000) b |= kArriba;
             if (ly < -16000) b |= kAbajo;
@@ -807,6 +719,9 @@ class Arena : public rex::ui::ImGuiDialog {
   // Precarga: un modelo nuevo por cuadro; los ya pedidos se miran en cada cuadro
   // (el modelo y los clips de B3 se generan en otro proceso). 0 = fallo -> mensaje; 2 = lista.
   void Cargar(ImDrawList* dl, const S::Area& a) {
+    // TACTICS-10 (carga): el combate de fondo (escenario, camara y voces, ~4,5 s medidos) se pide YA y carga a la vez que las figuras;
+    // antes se pedia al acabar las 34 y se esperaba en serie. Hasta que las figuras estan, se sigue viendo esta barra.
+    if (!combate_ && error_.empty() && !saliendo_) Pedir();
     if (siguiente_ < kModelos) ++siguiente_;
     for (int i = 0; i < siguiente_ && error_.empty(); ++i) {
       if (hecha_[i]) continue;
@@ -831,7 +746,6 @@ class Arena : public rex::ui::ImGuiDialog {
     if (hechas_ == kModelos) {
       lista_ = true;
       REXLOG_INFO("dbz3 tactics: precarga de {} figuras en {:.1f} s", kModelos, Seg());
-      Pedir();
       return;
     }
     const float x0 = 300, x1 = 900, y = 470, p = float(hechas_) / float(kModelos);
@@ -918,8 +832,18 @@ class Arena : public rex::ui::ImGuiDialog {
     }
     if (estado != 4 || saliendo_) return negro();
     if (!dbz3::cinematica::Activa()) PonerCamara();   // START la salto: se vuelve a poner
+    // A (y START) acaban la escena de la camara en cinematica.cpp y aqui se vuelve a poner: unos cuadros sin camara de escena. Antes salia
+    // negro esos cuadros y la pulsacion de A de ese cuadro se perdia (Entrada no corre): el menu de inicio no respondia a "Continuar" al
+    // volver a entrar (tactics_guardado, 11/11). La camara es fija: se reutiliza la ultima.
     float ojo[3], obj[3], giro;
-    if (!dbz3::cinematica::CamaraEscena(ojo, obj, &giro)) return negro();
+    if (dbz3::cinematica::CamaraEscena(ojo, obj, &giro)) {
+      std::memcpy(cam_ant_, ojo, sizeof(ojo)), std::memcpy(cam_ant_ + 3, obj, sizeof(obj));
+      cam_ant_ok_ = true;
+    } else if (cam_ant_ok_) {
+      std::memcpy(ojo, cam_ant_, sizeof(ojo)), std::memcpy(obj, cam_ant_ + 3, sizeof(obj));
+    } else {
+      return negro();
+    }
     float p[2][3];
     for (uint32_t k = 0; k < 2; ++k)
       for (uint32_t i = 0; i < 3; ++i) {
@@ -944,8 +868,8 @@ class Arena : public rex::ui::ImGuiDialog {
     }
     cam_.m[3] = cam_.m[7] = cam_.m[11] = 0, cam_.m[15] = 1;
     cam_.za = cam_.zb = 0;   // sin prueba de profundidad: el ring queda debajo de las figuras
-    if (static bool dicho = false; !dicho) {
-      dicho = true;
+    if (!tablero_dicho_) {   // una vez por apertura (antes, una por proceso: las pruebas esperaban la segunda 120 s en balde)
+      tablero_dicho_ = true;
       REXLOG_INFO("dbz3 tactics: tablero sobre el escenario (centro {:.1f} {:.1f} {:.1f}, ojo {:.1f} {:.1f} {:.1f})", centro_[0], suelo_, centro_[1], ojo[0], ojo[1], ojo[2]);
     }
     g_lista = true;
@@ -971,6 +895,7 @@ class Arena : public rex::ui::ImGuiDialog {
   struct Pres {
     const Modelo* m = nullptr;
     float x = 0, z = 0, x1 = 0, z1 = 0, giro = 0;   // (x, z): centro de su casilla; (x1, z1): destino si anda
+    float pasos = 0;                                  // vueltas acumuladas del andar, continuas entre casillas
     bool anda = false, muerta = false;
     int clip = 0, mira = -1, est = 1;                // clip 0 espera, 1 andar, 2 ataque, 3 tecnica, 4 dano, 5 derrota, 6 levantarse, 7 victoria; est = estrellas
     uint32_t t0 = 0, t1 = 0, t_muerte = 0;           // ticks: inicio del clip, fin del paso, caida
@@ -981,6 +906,7 @@ class Arena : public rex::ui::ImGuiDialog {
     uint32_t t_reaccion = 0;                         // tick del golpe recibido si seguia andando (t0 es el del paso)
     uint32_t clip_fin = 0;                           // tick en que el clip de golpe vuelve a la espera
     uint32_t derribo_t = 0;                          // tick del derribo (dano > derrota > levantarse); 0 = ninguno
+    uint32_t accion_t0 = 0;                          // inicio real del ataque, aunque una reaccion lo interrumpa visualmente
   };
   struct Flota { float x, z, dx; uint32_t tick; int valor, tipo; float dy; };   // numero de dano flotante; tipo 0 basico, 1 tecnica, 2 desgaste
   // Instantanea inmutable de un cuadro: todo lo que hace falta para pintarlo, sin tocar la simulacion ni el estado de presentacion.
@@ -1007,16 +933,22 @@ class Arena : public rex::ui::ImGuiDialog {
   }
   // Lee los eventos nuevos de la simulacion y actualiza la presentacion (clips, destinos, numeros de dano, fin de ronda).
   // Un efecto del juego por la mezcla (maximo de voces, prioridad a tecnicas y KO); las pruebas pueden apagarlo con DBZ3_TEST_TACTICS_SIN_SONIDO
+  // Ranura del banco de gritos propio de `m`: 3/4 (los dos luchadores de fondo, Goku y Vegeta) o la que cargo combate.cpp; -1 = aun no esta
+  static int BancoVoz(const Modelo* m) { return m->b3 == kFondoA ? 3 : m->b3 == kFondoB ? 4 : dbz3::combate::SlotVoz(m->b3); }
   void Sonar(double ahora, PrioSe prio, double dura, int banco, int id, int unidad = -1) {
-    static const bool apagado = std::getenv("DBZ3_TEST_TACTICS_SIN_SONIDO") != nullptr;
-    if (apagado || !opc_.sonido || !se_.Pedir(ahora, prio, dura)) return;
-    if (unidad >= 0) {   // su propia voz: ranura 3/4 (los dos luchadores de fondo, Goku y Vegeta) o la que cargo combate.cpp; si aun no esta, la del toml
-      if (const Modelo* m = ModeloDe(sim_->Unidades()[size_t(unidad)].def.id)) {
-        const int s = m->b3 == kFondoA ? 3 : m->b3 == kFondoB ? 4 : dbz3::combate::SlotVoz(m->b3);
-        if (s >= 0) banco = s;
+    static const bool apagado = EnvPrueba("SIN_SONIDO") != nullptr;
+    if (apagado || !opc_.sonido) return;
+    if (unidad >= 0) {   // TACTICS-09: SIEMPRE su propia voz; el banco de respaldo del toml (Vegeta) daba la onda de otro personaje: sin su banco, no suena
+      const Modelo* m = p_[size_t(unidad)].m;
+      banco = m ? BancoVoz(m) : -1;
+      if (banco < 0) {
+        ++sin_banco_;
+        REXLOG_INFO("dbz3 tactics: voz: {} sin banco propio cargado (id {}): no suena", sim_->Unidades()[size_t(unidad)].def.id, id);
+        return;
       }
-      REXLOG_INFO("dbz3 tactics: voz: {} banco {} id {}", sim_->Unidades()[size_t(unidad)].def.id, banco, id);
     }
+    if (!se_.Pedir(ahora, prio, dura, banco, id)) return;
+    if (unidad >= 0) REXLOG_INFO("dbz3 tactics: voz: {} banco {} id {}", sim_->Unidades()[size_t(unidad)].def.id, banco, id);
     dbz3::combate::PedirSonido(banco, id);
   }
   void Leer(double ahora) {
@@ -1030,6 +962,7 @@ class Arena : public rex::ui::ImGuiDialog {
           const int nuevo = e.accion == sim::Accion::Mover ? 1 : e.accion == sim::Accion::Tecnica ? 3 : 2;
           CambiarClip(*p, nuevo, e.tick);
           p->t0 = e.tick;
+          p->accion_t0 = e.tick;
           p->clip_fin = 0;
           p->derribo_t = 0;   // una accion nueva corta el derribo
           if (e.accion == sim::Accion::Mover) {
@@ -1047,7 +980,11 @@ class Arena : public rex::ui::ImGuiDialog {
           break;
         }
         case sim::Tipo::Recuperacion:
-          if (e.accion == sim::Accion::Mover) Pos(e.valor / sim::kAncho, e.valor % sim::kAncho, p->x, p->z), p->anda = false;
+          if (e.accion == sim::Accion::Mover) {
+            const float dx = p->x1 - p->x, dz = p->z1 - p->z;
+            p->pasos += std::sqrt(dx * dx + dz * dz) / kAncho;
+            Pos(e.valor / sim::kAncho, e.valor % sim::kAncho, p->x, p->z), p->anda = false;
+          }
           CambiarClip(*p, 0, e.tick);
           p->t0 = e.tick;
           break;
@@ -1095,17 +1032,25 @@ class Arena : public rex::ui::ImGuiDialog {
               if (sim_->Unidades()[i].viva() && sim_->Unidades()[i].equipo == r.ganador) {
                 CambiarClip(p_[i], 7, sim_->Tick());
                 p_[i].t0 = sim_->Tick();
+                p_[i].clip_fin = 0, p_[i].derribo_t = 0;   // la reaccion anterior no debe reemplazar la victoria
               }
-          REXLOG_INFO("dbz3 tactics: sonidos: golpes {} (descartados {}), tecnicas {} ({}), KO {} ({}), como mucho {} voces a la vez", se_.Sonados(PrioSe::Golpe), se_.Descartados(PrioSe::Golpe),
-                      se_.Sonados(PrioSe::Tecnica), se_.Descartados(PrioSe::Tecnica), se_.Sonados(PrioSe::Muerte), se_.Descartados(PrioSe::Muerte), int(MezclaSe::kVoces));
+          REXLOG_INFO("dbz3 tactics: sonidos: golpes {} (descartados {}), tecnicas {} ({}), KO {} ({}), como mucho {} voces a la vez; juntados {} (mismo sonido o tope de {} por cuadro), gritos sin banco propio {}",
+                      se_.Sonados(PrioSe::Golpe), se_.Descartados(PrioSe::Golpe), se_.Sonados(PrioSe::Tecnica), se_.Descartados(PrioSe::Tecnica), se_.Sonados(PrioSe::Muerte),
+                      se_.Descartados(PrioSe::Muerte), int(MezclaSe::kVoces), se_.Juntados(), MezclaSe::kPorCuadro, sin_banco_);
           REXLOG_INFO("dbz3 tactics: ritmo del combate: {} cuadros, {:.0f} FPS de media, peor cuadro {:.1f} ms, {} cuadros de mas de 25 ms ({} unidades)", cc_, cc_ ? double(cc_) / dt_suma_ : 0.0,
                       dt_peor_ * 1000.0, lentos_, sim_->Unidades().size());
-          if (demo_) {
-            REXLOG_INFO("dbz3 tactics: ronda {}v{} semilla {} fin: ganador {} en {} ticks, {} eventos, huella {:08x} (velocidad x{})", lado_, lado_, semilla_, r.ganador,
+           if (medir_regimen_) {
+             REXLOG_INFO("dbz3 tactics: regimen: calentamiento 2 s, foco perdido {} cuadros, CPU tablero media {:.3f} max {:.3f} ms, figuras {:.3f} ms, simulacion {:.3f} ms, muestras {} (tiempos host, no GPU)",
+                         medir_sin_foco_, medir_n_ ? medir_cpu_ / medir_n_ : 0.0, medir_cpu_max_, medir_n_ ? medir_fig_ / medir_n_ : 0.0,
+                         medir_n_ ? medir_sim_ / medir_n_ : 0.0, medir_n_);
+           }
+           if (demo_) {
+             REXLOG_INFO("dbz3 tactics: ronda {}v{} semilla {} fin: ganador {} en {} ticks, {} eventos, huella {:08x} (velocidad x{})", lado_, lado_, semilla_, r.ganador,
                         r.ticks, ev.size(), sim_->Huella(), vel_);
           } else if (!aplicado_) {
             aplicado_ = true;
             partida_->TerminarCombate();
+            if (EnvPrueba("AUDITAR")) AuditarDuelosPrueba();
             const Duelo& d = partida_->Duelos()[size_t(partida_->DueloHumano())];
             REXLOG_INFO("dbz3 tactics: partida ronda {} fin: ganador {} en {} ticks, {} eventos, huella {:08x} (velocidad x{}), vida {} / {}, dano {} / {}", partida_->Ronda(),
                         r.ganador, r.ticks, ev.size(), sim_->Huella(), vel_, partida_->J(0).vida, d.copia ? 0 : partida_->J(d.b).vida, partida_->DanoRonda(0), partida_->DanoRival());
@@ -1133,10 +1078,30 @@ class Arena : public rex::ui::ImGuiDialog {
       }
       return;
     }
-    static const bool sin_foco = std::getenv("DBZ3_TEST_TACTICS_SIN_FOCO") != nullptr;
+    static const bool sin_foco = EnvPrueba("SIN_FOCO") != nullptr;
     if (pausa_ || (!sin_foco && !TengoFoco()) || dt <= 0 || dt > 0.25) {
       acc_ = 0;
       return;
+    }
+    if (!voces_listas_) {   // TACTICS-09: la ronda no empieza hasta que el banco de gritos de cada unidad esta en su ranura (tope 3 s)
+      static const bool sin_sonido = EnvPrueba("SIN_SONIDO") != nullptr;
+      if (!voces_pedidas_ && combate_) {   // la ronda de demostracion se coloca antes de pedir el combate de fondo: sus voces se piden aqui
+        std::vector<const Modelo*> ms;
+        for (const Pres& p : p_) ms.push_back(p.m);
+        dbz3::combate::CargarVoces(MascaraVoces(ms.data(), ms.size()));
+        voces_pedidas_ = true, voces_t0_ = ahora;
+      }
+      bool listas = sin_sonido || !opc_.sonido || !combate_;
+      if (!listas) {
+        listas = true;
+        for (const Pres& p : p_) listas = listas && (!p.m || BancoVoz(p.m) >= 0);
+      }
+      if (!listas && ahora - voces_t0_ < 3.0) {
+        acc_ = 0;
+        return;
+      }
+      voces_listas_ = true;
+      REXLOG_INFO("dbz3 tactics: voces de la ronda {} en {:.2f} s", listas ? "listas" : "sin cargar del todo", ahora - voces_t0_);
     }
     if (!sim_->Terminada()) {
       constexpr double kPaso = 1.0 / sim::kHz;
@@ -1151,6 +1116,14 @@ class Arena : public rex::ui::ImGuiDialog {
   // Tras el letrero (5 s o A): siguiente ronda, o fin de la partida (A: otra nueva)
   void Resultado(double ahora) {
     if (ahora - fin_t_ < 5.0 && !ok_) return;
+    if (partida_->BotsListos())   // TACTICS-04: en el registro, la primera vez que un bot tiene una pieza de 3 estrellas
+      for (int b = 1; b < partida_->N(); ++b)
+        for (const Pieza& z : partida_->J(b).pz)
+          if (z.hay() && z.estrellas >= 3 && !(tres_ & (1u << b))) {
+            tres_ |= 1u << b;
+            REXLOG_INFO("dbz3 tactics: bot {} a {} estrellas con {} en la ronda {} (objetivo {})", b, z.estrellas, eco_.unidades[size_t(z.unidad)].id, partida_->Ronda(),
+                        partida_->Objetivo(b) >= 0 ? eco_.sinergias[size_t(partida_->Objetivo(b))].id : "-");
+          }
     partida_->SiguienteRonda();
     if (partida_->Acabada()) {
       fin_partida_ = true;
@@ -1190,14 +1163,17 @@ class Arena : public rex::ui::ImGuiDialog {
   Foto Instantanea() {
     Foto f;
     const uint32_t tick = sim_->Tick();
-    f.tp = float(tick) + alpha_;
+    // Tras el ultimo golpe la simulacion se detiene, pero la caida y los efectos
+    // deben seguir visibles durante el letrero de resultado.
+    f.tp = float(tick) + (fin_t_ >= 0 ? float(std::max(0.0, ImGui::GetTime() - fin_t_) * 60.0 * vel_) : alpha_);
     for (size_t i = 0; i < p_.size(); ++i) {
       Pres& p = p_[i];
       const sim::Unidad& u = sim_->Unidades()[i];
       // fin del clip de golpe: vuelve a andar (si seguia andando) o a la espera (con mezcla)
       if (p.clip == 4 && p.clip_fin && tick >= p.clip_fin && !p.derribo_t) {
-        CambiarClip(p, p.anda ? 1 : 0, p.clip_fin);
-        if (!p.anda) p.t0 = p.clip_fin;
+        const int vuelve = p.anda ? 1 : u.estado == sim::Estado::Basico ? 2 : u.estado == sim::Estado::Tecnica ? 3 : 0;
+        CambiarClip(p, vuelve, p.clip_fin);
+        if (!p.anda) p.t0 = vuelve >= 2 ? p.accion_t0 : p.clip_fin;
         p.clip_fin = 0;
       }
       // derribo: golpe recibido > tumbado (KO) > levantarse, y vuelve a la espera
@@ -1217,9 +1193,10 @@ class Arena : public rex::ui::ImGuiDialog {
       o.dura = p.clip == 2 ? u.def.ataque_ticks / 60.0f : p.clip == 3 ? u.def.tecnica_ticks / 60.0f : p.clip == 4 ? 0.27f : p.clip == 6 ? 1.0f : 0.0f;
       if (p.clip == 7) o.t = float(ImGui::GetTime() - victoria_t0_);   // victoria: reloj de pared (la simulacion ya acabo)
       else o.t = p.clip <= 1 ? f.tp / 60.0f + 0.37f * float(i) : std::max(0.0f, f.tp - float(ClipT0(p))) / 60.0f;
-      if (p.clip == 1 && p.anda && !p.muerta) {   // andar sin deslizar: el clip va con el avance (una vuelta cada ~0,4 s)
+      if (p.clip == 1 && p.anda && !p.muerta) {   // fase ligada a la distancia, no al tiempo ni a la velocidad del combate
         const float prog = std::clamp((f.tp - float(p.t0)) / float(std::max<uint32_t>(1, p.t1 - p.t0)), 0.0f, 1.0f);
-        o.ciclo = prog * std::clamp(float(p.t1 - p.t0) / 24.0f, 1.0f, 8.0f);
+        const float dx = p.x1 - p.x, dz = p.z1 - p.z;
+        o.ciclo = p.pasos + prog * std::sqrt(dx * dx + dz * dz) / kAncho;
       }
       o.clip_prev = p.clip_prev;
       o.t_prev = p.t_prev;
@@ -1249,9 +1226,10 @@ class Arena : public rex::ui::ImGuiDialog {
   // Preparacion: los dos tableros quietos, tal como estan en la partida
   Foto FotoPreparacion(double ahora) const {
     Foto f;
-    if (partida_->DueloHumano() < 0) return f;
-    const Duelo& d = partida_->Duelos()[size_t(partida_->DueloHumano())];
-    for (int p = 0; p < 2; ++p)
+    const bool sin_duelo = partida_->DueloHumano() < 0;   // TACTICS-03: en el carrusel no hay rival: solo tu tablero
+    if (sin_duelo && partida_->FaseActual() != Fase::Carrusel && carr_fin_t_ < 0) return f;
+    const Duelo d = sin_duelo ? Duelo{0, 0, true} : partida_->Duelos()[size_t(partida_->DueloHumano())];
+    for (int p = 0; p < (sin_duelo ? 1 : 2); ++p)
       for (int s = kBanco; s < kSlots; ++s) {
         const Pieza& z = partida_->J(p == 0 ? 0 : d.b).pz[s];
         if (!z.hay()) continue;
@@ -1266,8 +1244,16 @@ class Arena : public rex::ui::ImGuiDialog {
 
   // ---- entrada: mando (cruceta/palanca, A, B, X, Y, Start) y raton; mismas acciones
   void Entrada(uint16_t pad, double ahora) {
+    // TACTICS-V05: con la interfaz v2, en preparacion los mandos de la maqueta: Y subir nivel, X cambiar, RT ¡Listo!; vender pasa a LT y espiar a Start
+    int v2_boton = -1;
+    const uint16_t pad_leido = pad;   // TACTICS-V05: el registro anota el boton pulsado (LT, Start...), no el que lo sustituye
+    if (V2() && partida_ && !menu_ && !demo_ && !fin_partida_ && !sim_ && tut_ == 0 && carr_fin_t_ < 0 && partida_->FaseActual() == Fase::Preparacion) {
+      v2_boton = (pad & kY) ? 0 : (pad & kX) ? 1 : (pad & kRT) ? 2 : -1;
+      if ((pad & kStart) && partida_) espia_ = espia_ + 1 < partida_->N() ? espia_ + 1 : -1;
+      pad = uint16_t((pad & ~(kY | kX | kStart | kRT | kLT)) | ((pad & kLT) ? kX : 0));   // LT hace lo que hacia X (vender)
+    }
     bool ok = pad & kA, vender = (pad & kX) || ImGui::IsKeyPressed(ImGuiKey_Delete, false);
-    if (pad && EnPrueba()) REXLOG_INFO("dbz3 tactics: pad {:04x} con el cursor en zona {} casilla {}", pad, int(zc_), ic_);
+    if (pad_leido && EnPrueba()) REXLOG_INFO("dbz3 tactics: pad {:04x} con el cursor en zona {} casilla {}", pad_leido, int(zc_), ic_);
     const ImGuiIO& io = ImGui::GetIO();
     const bool mueve = io.MouseDelta.x != 0 || io.MouseDelta.y != 0, clic = ImGui::IsMouseClicked(0), clic2 = ImGui::IsMouseClicked(1), clic3 = ImGui::IsMouseClicked(2);
     if (pad || mueve || clic || clic2) ficha_ver_ = true;
@@ -1291,7 +1277,6 @@ class Arena : public rex::ui::ImGuiDialog {
         }
       if (mueve && !sobre && zc_ == Zona::Sin) zc_ = Zona::Tablero, ic_ = 0;   // el raton salio de la ficha de sinergia
     }
-    if ((clic || clic2) && EnPrueba()) REXLOG_INFO("dbz3 tactics: clic en {:.0f},{:.0f}: zona {} casilla {}, sobre una zona: {}, tutorial {}, hits {}", io.MousePos.x, io.MousePos.y, int(zc_), ic_, sobre, tut_, hits_.size());
     if ((pad & kY) || ImGui::IsKeyPressed(ImGuiKey_V, false)) vel_ = vel_ == 1 ? 2 : vel_ == 2 ? 4 : 1;
     if ((pad & kY) && !sim_ && partida_ && partida_->FaseActual() == Fase::Preparacion) espia_ = espia_ + 1 < partida_->N() ? espia_ + 1 : -1;   // H10: Y recorre los tableros de la lista y luego se apaga
     if ((pad & kStart) || ImGui::IsKeyPressed(ImGuiKey_P, false)) pausa_ = !pausa_;
@@ -1320,7 +1305,26 @@ class Arena : public rex::ui::ImGuiDialog {
       if (ok) NuevaPartida(semilla_ + 1);
       return;
     }
+    if (partida_->FaseActual() == Fase::Carrusel || carr_fin_t_ >= 0) {   // TACTICS-03: izquierda/derecha (o el raton) eligen el objeto; A o clic lo coge
+      if (carr_fin_t_ >= 0) return;
+      const int n = int(partida_->Carrusel().size()), dx = ((pad & kDer) ? 1 : 0) - ((pad & kIzq) ? 1 : 0);
+      if (zc_ != Zona::Tienda) zc_ = Zona::Tienda, ic_ = 0;
+      for (int k = 0; dx && k < n; ++k) {   // salta los ya elegidos
+        ic_ = (ic_ + dx + n) % n;
+        if (partida_->Carrusel()[size_t(ic_)].quien < 0) break;
+      }
+      if (ok && zc_ == Zona::Tienda && partida_->QuienElige() == 0) ElegirCarrusel(ic_, clic ? "raton" : "mando");
+      return;
+    }
     if (partida_->FaseActual() != Fase::Preparacion) return;
+    if (v2_boton >= 0) {   // TACTICS-V05: la misma accion que el boton de la pantalla (Confirmar de Botones 0/1/2), sin mover el cursor
+      const Zona z = zc_;
+      const int i = ic_;
+      zc_ = Zona::Botones, ic_ = v2_boton;
+      Confirmar(ahora);
+      if (partida_->FaseActual() == Fase::Preparacion) zc_ = z, ic_ = i;
+      return;
+    }
     if ((pad & kBack) || ImGui::IsKeyPressed(ImGuiKey_T, false)) return AbrirTutorial(true);
     if (pad & kRB) Registra("bloquear", 0, 0, partida_->Bloquear(0));
     if (mano_ >= 0 && !partida_->J(0).pz[mano_].hay()) mano_ = -1;
@@ -1407,7 +1411,7 @@ class Arena : public rex::ui::ImGuiDialog {
   }
   // Pruebas de mando y raton (tools/pruebas.py): una vez por preparacion se escribe en el log el centro en pixeles de cada zona clicable
   void LogHits(const ImGuiIO& io) {
-    if (hits_dichos_ || !EnPrueba() || !partida_ || partida_->FaseActual() != Fase::Preparacion || hits_.size() < 30) return;
+    if (hits_dichos_ || !EnPrueba() || !partida_ || partida_->FaseActual() != Fase::Preparacion || carr_fin_t_ >= 0 || hits_.size() < 30) return;
     hits_dichos_ = true;
     static const char letra[] = {'T', 'B', 'S', 'X', 'C', 'A', 'N'};
     std::string t;
@@ -1421,7 +1425,7 @@ class Arena : public rex::ui::ImGuiDialog {
     // subTAC: sonido de la interfaz del juego (banco 0 = sistema, el del menu: 3 = aceptar, 2 = mover) al comprar / vender; respeta Opciones > Sonidos
     if (r == Res::Ok && partida_->FaseActual() == Fase::Preparacion && (!std::strcmp(accion, "comprar") || !std::strcmp(accion, "vender"))) {
       int sb = 0, si = accion[0] == 'c' ? 3 : 2;
-      if (const char* t = std::getenv("DBZ3_TEST_TACTICS_SE_COMPRA")) std::sscanf(t, "%d,%d", &sb, &si);   // pruebas.py: otro (banco,id) para medir cual suena
+      if (const char* t = EnvPrueba("SE_COMPRA")) std::sscanf(t, "%d,%d", &sb, &si);   // pruebas.py: otro (banco,id) para medir cual suena
       Sonar(ImGui::GetTime(), PrioSe::Tecnica, 0.3, sb, si);
       if (accion[0] == 'v') destellos_.push_back({a, ImGui::GetTime(), 1});   // venta: aro rojo en el hueco que se vacia
     }
@@ -1496,27 +1500,44 @@ class Arena : public rex::ui::ImGuiDialog {
     const auto t0 = Reloj::now();
     const double dt = ahora - ultimo_t_;
     ultimo_t_ = ahora;
-    if (sim_ && fin_t_ < 0 && !pausa_ && dt > 0 && dt < 1.0) ++cc_, dt_suma_ += dt, dt_peor_ = std::max(dt_peor_, dt), lentos_ += dt > 0.025;   // ritmo del dibujo durante el combate
+    const bool activo_medido = sim_ && fin_t_ < 0 && !pausa_;
+    if (medir_regimen_ && activo_medido && medir_inicio_ < 0) medir_inicio_ = ahora;
+    const bool en_regimen = medir_regimen_ && activo_medido && ahora - medir_inicio_ >= 2.0;
+    const bool foco_medido = !medir_regimen_ || TengoFoco();
+    if (en_regimen && !foco_medido) ++medir_sin_foco_;
+    if (sim_ && fin_t_ < 0 && !pausa_ && dt > 0 && (!medir_regimen_ ? dt < 1.0 : en_regimen && foco_medido && ahora - dt >= medir_inicio_ + 2.0)) ++cc_, dt_suma_ += dt, dt_peor_ = std::max(dt_peor_, dt), lentos_ += dt > 0.025;   // ritmo del dibujo durante el combate
+    const auto medir_sim_inicio = medir_regimen_ ? Reloj::now() : Reloj::time_point{};
     Avanzar(ahora, dt);
+    const double medir_sim_ms = en_regimen && foco_medido ? std::chrono::duration<double, std::milli>(Reloj::now() - medir_sim_inicio).count() : 0.0;
     Girar(std::clamp(float(dt), 0.0f, 0.1f));
     hits_.clear();
     const bool prep = !sim_;
-    if (static const char* rep = std::getenv("DBZ3_TEST_TACTICS_SE_REPITE"); rep && prep) {   // pruebas.py (tactics_compra): "banco,id" cada 0,5 s entre los segundos 6 y 12 de la preparacion, para medir en el volcado de audio si suena
+    if (static const char* rep = EnvPrueba("SE_REPITE"); rep && prep) {   // pruebas.py (tactics_compra): "banco,id" cada 0,5 s entre los segundos 6 y 12 de la preparacion, para medir en el volcado de audio si suena
       static double t0 = ahora, ult = 0;
       int sb = 0, si = 3;
       std::sscanf(rep, "%d,%d", &sb, &si);
       if (ahora - t0 > 6.0 && ahora - t0 < 12.0 && ahora - ult >= 0.5) ult = ahora, Sonar(ahora, PrioSe::Tecnica, 0.3, sb, si);
     }
     // piloto automatico de las pruebas: compra y coloca como el bot y juega N rondas seguidas
-    if (prep && auto_rondas_ > 0 && !fin_partida_ && partida_->FaseActual() == Fase::Preparacion) {
+    if (prep && auto_rondas_ > 0 && !fin_partida_ && partida_->FaseActual() == Fase::Carrusel && carr_fin_t_ < 0 && ahora - carr_t_ > 2.5 && !EnvPrueba("CARRUSEL_MANO")) {   // TACTICS-03 (CARRUSEL_MANO: elige la prueba con el mando)
+      ElegirCarrusel(partida_->EleccionBot(0), "piloto");
+    }
+    if (prep && auto_rondas_ > 0 && !fin_partida_ && partida_->FaseActual() == Fase::Preparacion && carr_fin_t_ < 0) {
       if (prep_t_ < 0) prep_t_ = ahora;
-      static const bool pasivo = std::getenv("DBZ3_TEST_TACTICS_PASIVO") != nullptr;   // prueba de la clasificacion: el humano no hace nada y cae
-      if (ahora - prep_t_ > 3.0 && !auto_jugado_) auto_jugado_ = true, pasivo ? void() : partida_->Jugar(0);   // a los 3 s compra y coloca (antes se ve la tienda sin tocar)
+      static const bool pasivo = EnvPrueba("PASIVO") != nullptr;   // prueba de la clasificacion: el humano no hace nada y cae
+      if (ahora - prep_t_ > 3.0 && !auto_jugado_) {
+        auto_jugado_ = true;
+        if (!pasivo) {
+          partida_->Jugar(0);
+          REXLOG_INFO("dbz3 tactics: piloto automatico: compra y coloca (oro {}, tablero {})", partida_->J(0).oro, partida_->EnTablero(0));
+        }
+      }
       if (ahora - prep_t_ > 6.0) --auto_rondas_, IniciarCombate();
     }
     // casillas hexagonales (de las de mas lejos a las mas cercanas)
     const float R = kAncho / 1.7320508f;
-    for (int f = 0; f < kFilas; ++f)
+    const bool sin_casillas = V2() && fin_partida_ && !demo_;   // TACTICS-V05: la clasificacion final (maqueta 07) se ve sobre el escenario, sin tablero
+    for (int f = 0; f < kFilas && !sin_casillas; ++f)
       for (int c = 0; c < kCols; ++c) {
         float cx, cz;
         Pos(f, c, cx, cz);
@@ -1541,7 +1562,7 @@ class Arena : public rex::ui::ImGuiDialog {
           else if (mano_ == kBanco + idx) dl->AddPolyline(q, 6, IM_COL32(90, 230, 255, 255), ImDrawFlags_Closed, 4.0f);
         }
       }
-    static const int clip = std::getenv("DBZ3_TEST_TACTICS_CLIP") ? std::atoi(std::getenv("DBZ3_TEST_TACTICS_CLIP")) : -1;   // prueba: fija el clip de todos
+    static const int clip = EnvPrueba("CLIP") ? std::atoi(EnvPrueba("CLIP")) : -1;   // prueba: fija el clip de todos
     ActualizarFormas(ahora, prep);
     const Foto foto = fin_partida_ ? Foto{} : prep ? FotoPreparacion(ahora) : Instantanea();
     const float giro_mundo = std::atan2(eje_[0], eje_[1]) - 1.5707963f;   // giro del tablero (0 = hacia +z del tablero) llevado al mundo
@@ -1551,12 +1572,14 @@ class Arena : public rex::ui::ImGuiDialog {
       if (u.golpe > 0.0f && Proy(u.x, kAltoFigura * 0.5f, u.z, o, k)) dl->AddCircleFilled(o, 0.42f * k * (1.0f + 0.25f * (1.0f - u.golpe)), IM_COL32(255, 245, 220, int(95.0f * u.golpe * u.golpe)), 24);
     }
     PintarFx(dl, foto.tp, 0);   // H12: antes de las figuras, para no taparlas
+    const auto medir_fig_inicio = medir_regimen_ ? Reloj::now() : Reloj::time_point{};
     esc_.Empezar();
     for (const Foto::U& u : foto.u)
       if (!u.oculta && u.esc > 0.0f)
         DibujarEstrellas(&esc_, cam_, u.m, u.est, Mundo(u.x, 0, u.z), kAltoFigura * kEscala * u.esc, u.giro + giro_mundo, clip >= 0 ? clip : u.clip, u.t, u.dura,
                          u.ciclo, u.clip_prev, u.t_prev, u.mezcla);
-    esc_.Pintar(dl);
+    PintarSinAA(esc_, dl);
+    const double medir_fig_ms = en_regimen && foco_medido ? std::chrono::duration<double, std::milli>(Reloj::now() - medir_fig_inicio).count() : 0.0;
     PintarFx(dl, foto.tp, 1);
     // estrellas, y vida y ki reales sobre cada unidad en pie, por encima de todo
     const float y_techo = LienzoDe(ImGui::GetIO()).At(0, 100).y;   // en 4:3 las barras de los mas altos rozaban el rotulo Rival (y=80)
@@ -1573,6 +1596,12 @@ class Arena : public rex::ui::ImGuiDialog {
 
         }
       const ImU32 bando = u.equipo ? IM_COL32(230, 70, 60, 255) : IM_COL32(70, 150, 255, 255);
+      if (V2()) {   // TACTICS-V05: barra fina del color del bando (azul tuyo, rojo rival) y el ki en una raya debajo, como la maqueta
+        arriba->AddRectFilled(ImVec2(o.x - w * 0.4f - 1, o.y - 1), ImVec2(o.x + w * 0.4f + 1, o.y + 1.4f * h + 1), IM_COL32(0, 0, 0, 200), 3);
+        arriba->AddRectFilled(ImVec2(o.x - w * 0.4f, o.y), ImVec2(o.x - w * 0.4f + w * 0.8f * u.vida, o.y + h), bando, 3);
+        arriba->AddRectFilled(ImVec2(o.x - w * 0.4f, o.y + h), ImVec2(o.x - w * 0.4f + w * 0.8f * u.ki, o.y + 1.4f * h), IM_COL32(150, 230, 255, 255));
+        continue;
+      }
       arriba->AddRectFilled(ImVec2(o.x - w / 2 - 1, o.y - 1), ImVec2(o.x + w / 2 + 1, o.y + 2.0f * h + 1), IM_COL32(0, 0, 0, 200), 2);
       arriba->AddRectFilled(ImVec2(o.x - w / 2, o.y), ImVec2(o.x - w / 2 + w * u.vida, o.y + h), IM_COL32(80, 220, 90, 255));
       arriba->AddRectFilled(ImVec2(o.x - w / 2, o.y + h), ImVec2(o.x - w / 2 + w * u.ki, o.y + 2.0f * h), IM_COL32(70, 170, 255, 255));
@@ -1585,7 +1614,7 @@ class Arena : public rex::ui::ImGuiDialog {
       float k;
       if (!Proy(f.x + f.dx, kAltoFigura + 0.5f + f.dy + 0.7f * edad, f.z, o, k)) continue;
       const std::string t = std::to_string(f.valor);
-      const float fs = (f.tipo == 1 ? 0.30f : 0.24f) * k;
+      const float fs = (f.tipo == 1 ? 0.42f : 0.34f) * k;   // POST 12/11: maqueta 05, cifras grandes y legibles
       const int al = int(255.0f * (1.0f - edad * edad));
       const ImVec2 sz = ImGui::GetFont()->CalcTextSizeA(fs, 1e9f, 0, t.c_str());
       const ImVec2 pos(o.x - sz.x / 2, o.y - sz.y / 2);
@@ -1597,15 +1626,26 @@ class Arena : public rex::ui::ImGuiDialog {
       const ImU32 col = g < 0 ? IM_COL32(230, 230, 230, 255) : g == 0 ? IM_COL32(255, 205, 40, 255) : IM_COL32(230, 70, 60, 255);
       const float fs = 110 * a.s;
       const ImVec2 sz = ImGui::GetFont()->CalcTextSizeA(fs, 1e9f, 0, txt), c = a.At(600, 380);
-      arriba->AddRectFilled(ImVec2(0, c.y - sz.y * 0.8f), ImVec2(ImGui::GetIO().DisplaySize.x, c.y + sz.y * 0.8f), IM_COL32(0, 0, 0, 150));
-      arriba->AddText(ImGui::GetFont(), fs, ImVec2(c.x - sz.x / 2 + 4 * a.s, c.y - sz.y / 2 + 4 * a.s), IM_COL32(0, 0, 0, 255), txt);
-      TextoSuave(arriba, fs, ImVec2(c.x - sz.x / 2, c.y - sz.y / 2), col, txt);
+      if (demo_ || !V2()) {   // TACTICS-V04: con la interfaz nueva el resultado va en el panel de abajo, no dos veces
+        arriba->AddRectFilled(ImVec2(0, c.y - sz.y * 0.8f), ImVec2(ImGui::GetIO().DisplaySize.x, c.y + sz.y * 0.8f), IM_COL32(0, 0, 0, 150));
+        arriba->AddText(ImGui::GetFont(), fs, ImVec2(c.x - sz.x / 2 + 4 * a.s, c.y - sz.y / 2 + 4 * a.s), IM_COL32(0, 0, 0, 255), txt);
+        TextoSuave(arriba, fs, ImVec2(c.x - sz.x / 2, c.y - sz.y / 2), col, txt);
+      }
       if (!demo_ && hist_ronda_ != partida_->Ronda() && partida_->DueloHumano() >= 0) {   // H14: historial por rival
         hist_ronda_ = partida_->Ronda();
+        if (hist_ronda_ <= 1) dano_total_ = 0;   // POST 12/11 (07): dano hecho al rival, sumado por ronda
+        dano_total_ += partida_->DanoRival();
+        {   // POST2 (07): el equipo de esta ronda (tablero, o banquillo si esta vacio) para la placa "Tu equipo": al caer se vacia
+          const Jugador& yo = partida_->J(0);
+          std::vector<int> eq;
+          for (int s = kBanco; s < kSlots; ++s) if (yo.pz[s].hay()) eq.push_back(yo.pz[s].unidad);
+          if (eq.empty()) for (int s = 0; s < kBanco; ++s) if (yo.pz[s].hay()) eq.push_back(yo.pz[s].unidad);
+          if (!eq.empty() || hist_ronda_ <= 1) ultimo_equipo_ = eq;
+        }
         const Duelo& dh = partida_->Duelos()[size_t(partida_->DueloHumano())];
         if (dh.b >= 0 && dh.b < kMaxJug && !dh.copia) hist_[dh.b] = g < 0 ? 3 : g == 0 ? 1 : 2;
       }
-      if (g > 0 && !demo_) {   // H13: por que perdiste: la sinergia que estuvo a una unidad y quien cayo primero
+      if (g > 0 && !demo_ && !V2()) {   // H13: por que perdiste (TACTICS-V05: con la interfaz nueva lo dice el aviso de abajo a la izquierda): la sinergia que estuvo a una unidad y quien cayo primero
         std::string l1, l2;
         const SinergiaDef* mejor = nullptr;
         int mc = 0, mn = 0;
@@ -1627,6 +1667,14 @@ class Arena : public rex::ui::ImGuiDialog {
       }
     } else if (pausa_) {
       S::MenuText(arriba, a.At(600, 380), 80 * a.s, T::T("PAUSA", "PAUSED"), false, false);
+    }
+    if (en_regimen && foco_medido) {
+      const double cpu = std::chrono::duration<double, std::milli>(Reloj::now() - t0).count();
+      ++medir_n_;
+      medir_cpu_ += cpu;
+      medir_cpu_max_ = std::max(medir_cpu_max_, cpu);
+      medir_fig_ += medir_fig_ms;
+      medir_sim_ += medir_sim_ms;
     }
     media_ += (std::chrono::duration<double, std::milli>(Reloj::now() - t0).count() - media_) * 0.05;
     if (++cuadros_ == 120)
@@ -1650,7 +1698,9 @@ class Arena : public rex::ui::ImGuiDialog {
     return nullptr;
   }
   static void ColorKi(const char* id, float c[3]) {
-    if (const KiNativo* n = KiDe(id); n && (n->c[0] + n->c[1] + n->c[2]) > 0.0f) return void(std::copy(n->c, n->c + 3, c));
+    if (rex::cvar::GetFlagByName("dbz3_tactics_fx_nativo") != "false") {
+      if (const KiNativo* n = KiDe(id); n && (n->c[0] + n->c[1] + n->c[2]) > 0.0f) return void(std::copy(n->c, n->c + 3, c));
+    }
     struct K { const char* id; float c[3]; };
     static const K t[] = {{"goku", {0.35f, 0.65f, 1.0f}}, {"gokukid", {0.35f, 0.65f, 1.0f}}, {"gohan", {0.55f, 0.75f, 1.0f}}, {"gohankid", {0.9f, 0.7f, 1.0f}},
                           {"vegeta", {0.85f, 0.45f, 1.0f}}, {"trunks", {0.6f, 0.5f, 1.0f}}, {"trunkskid", {0.6f, 0.5f, 1.0f}}, {"goten", {1.0f, 0.75f, 0.3f}},
@@ -1679,6 +1729,7 @@ class Arena : public rex::ui::ImGuiDialog {
     if (!impacto || !nucleo || !halo) return;   // sin las piezas del juego no se dibuja nada propio
     // bola y rayo propios de la tecnica de cada unidad (los del juego nativo, ya coloreados: se dibujan sin tinte); sin ellos, el dibujo de siempre
     const auto tex_de = [&](int u, const char* que) -> S::Pic {
+      if (rex::cvar::GetFlagByName("dbz3_tactics_fx_nativo") == "false") return {};
       if (u < 0 || !sim_ || size_t(u) >= sim_->Unidades().size()) return {};
       const std::string& id = sim_->Unidades()[size_t(u)].def.id;
       const KiNativo* n = KiDe(id.c_str());
@@ -1759,18 +1810,12 @@ class Arena : public rex::ui::ImGuiDialog {
         continue;
       }
       const bool fisico = Fisico(sim_->Unidades()[size_t(f.de)].def.id.c_str());
-      if (vuelo && fisico) {   // H13: tecnica de golpes sin ki (Videl, Satan, Yamcha, Ginyu): embestida con estela de lineas de velocidad, sin bola
-        ImVec2 q0, q1;
-        float kq0, kq1;
+      if (vuelo && fisico) {   // tecnica fisica: destello de impacto original, sin lineas dibujadas
+        ImVec2 q1;
+        float kq1;
         const float vv = std::min(1.0f, v * 1.6f);
-        if (Proy(ax + (bx - ax) * std::max(0.0f, vv - 0.35f), kAltoFigura * 0.5f, az + (bz - az) * std::max(0.0f, vv - 0.35f), q0, kq0) && Proy(ax + (bx - ax) * vv, kAltoFigura * 0.5f, az + (bz - az) * vv, q1, kq1)) {
-          const float ang = std::atan2(q1.y - q0.y, q1.x - q0.x), nx = -std::sin(ang), ny = std::cos(ang);
-          for (int l = -2; l <= 2; ++l) {
-            const float of = float(l) * 0.11f * kq0, largo = (1.0f - 0.2f * std::abs(float(l)));
-            dl->AddLine(ImVec2(q0.x + nx * of, q0.y + ny * of), ImVec2(q0.x + (q1.x - q0.x) * largo + nx * of, q0.y + (q1.y - q0.y) * largo + ny * of), l == 0 ? IM_COL32(255, 255, 255, 230) : tinte(c, 0.7f), (l == 0 ? 3.0f : 1.6f));
-          }
-          sprite(nucleo, q1, 0.5f * kq1, 0.5f * kq1, tinte(c, 0.9f));
-        }
+        if (Proy(ax + (bx - ax) * vv, kAltoFigura * 0.5f, az + (bz - az) * vv, q1, kq1))
+          sprite(impacto, q1, 0.5f * kq1, 0.5f * kq1, IM_COL32_WHITE);
       } else if (vuelo) {   // bola de ki (tipo 1) o carga del circulo (tipo 3): viaja y deja estela
         for (int t = 5; t >= 0; --t) {
           const float vv = std::max(0.0f, v - 0.045f * float(t));
@@ -1804,11 +1849,14 @@ class Arena : public rex::ui::ImGuiDialog {
   }
 
   // Interfaz de la maqueta (lienzo de 1600x900 sobre la imagen del juego)
+#include "v2_interfaz.inc"   // TACTICS-V04: InterfazV2 (preparacion, combate y resultado)
   void Interfaz(ImDrawList* dl, const ImGuiIO& io, double ahora) {
+    if (V2()) return InterfazV2(dl, io, ahora);   // TACTICS-V04
     const Lienzo q = LienzoDe(io);
     const Partida& pa = *partida_;
     const Economia& eco = eco_;
     const Jugador& yo = pa.J(0);
+    if ((pa.FaseActual() == Fase::Carrusel || carr_fin_t_ >= 0) && !fin_partida_) return PantallaCarrusel(dl, io, ahora);   // TACTICS-03
     const bool prep = pa.FaseActual() == Fase::Preparacion;
     if (prep && opc_.reloj > 0 && !fin_partida_ && !tut_) {   // H10: reloj de preparacion opcional: al llegar a 0 empieza el combate con lo que haya
       prep_resto_ -= std::min(io.DeltaTime, 0.25f);
@@ -2036,7 +2084,7 @@ class Arena : public rex::ui::ImGuiDialog {
                                               ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav);
       ImDrawList* capa = ImGui::GetWindowDrawList();
       for (int i = 0; i < kBanco; ++i) capa->AddRectFilled(q.At(400 + 100.0f * float(i), 714), q.At(494 + 100.0f * float(i), 776), IM_COL32(8, 10, 24, 200), 6 * q.s);
-      esc_b_.Pintar(capa);
+      PintarSinAA(esc_b_, capa);
       ImGui::End();
       banco_ms_ += (std::chrono::duration<double, std::milli>(Reloj::now() - t_banco).count() - banco_ms_) * 0.05;
     }
@@ -2289,7 +2337,9 @@ class Arena : public rex::ui::ImGuiDialog {
     if (tut_ > 0) Tutorial(dl, q, io);
   }
   // Tutorial: 4 pantallas sobre el tablero atenuado (textos en tactics_textos.toml)
+#include "v2_carrusel.inc"   // TACTICS-V04: PantallaCarruselV2, FichaV2, TutorialV2, ClasificacionV2
   void Tutorial(ImDrawList* dl, const Lienzo& q, const ImGuiIO& io) {
+    if (V2()) return TutorialV2(dl, q, io);   // TACTICS-V04
     const ImU32 naranja = IM_COL32(255, 160, 30, 255);
     dl->AddRectFilled(ImVec2(0, 0), io.DisplaySize, IM_COL32(0, 0, 0, 175));
     Caja(dl, q, 300, 210, 1300, 650, naranja, IM_COL32(10, 14, 30, 245), 3.0f);
@@ -2301,6 +2351,7 @@ class Arena : public rex::ui::ImGuiDialog {
   }
   // Clasificacion final del torneo (todos los entrenadores por puesto)
   void Clasificacion(ImDrawList* dl, const Lienzo& q) {
+    if (V2()) return ClasificacionV2(dl, q);   // TACTICS-V04
     const Partida& pa = *partida_;
     const ImU32 naranja = IM_COL32(255, 160, 30, 255), amarillo = IM_COL32(255, 220, 60, 255);
     Caja(dl, q, 420, 110, 1180, 130 + 48.0f * float(pa.N()) + 110, naranja, IM_COL32(10, 14, 30, 235), 3.0f);
@@ -2322,8 +2373,106 @@ class Arena : public rex::ui::ImGuiDialog {
     }
     Txt(dl, q, 800, 175 + 48.0f * float(pa.N()) + 32, 22, T::T("A: nueva partida  ·  B dos veces: volver al HUB", "A: new game  ·  B twice: back to the HUB"), 1, false, false, 700);
   }
+  // TACTICS-03: pantalla del carrusel con piezas del propio juego (caras del HUD, marcos de rango, botellas de capsula, moneda zenie y la letra de B3).
+  // Arriba la fila comun de objetos (unidad + capsula); a la izquierda el orden (menos vida primero) con lo que cogio cada uno; a la derecha la ficha
+  // del objeto enfocado. Tras tu eleccion se ve el reparto completo 3 s y empieza la preparacion.
+  void PantallaCarrusel(ImDrawList* dl, const ImGuiIO& io, double ahora) {
+    if (V2()) return PantallaCarruselV2(dl, io, ahora);   // TACTICS-V04
+    const Lienzo q = LienzoDe(io);
+    const Partida& pa = *partida_;
+    const bool hecho = carr_fin_t_ >= 0;
+    const std::vector<ObjCarrusel>& objs = hecho ? pa.UltimoCarrusel() : pa.Carrusel();
+    const ImU32 naranja = IM_COL32(255, 160, 30, 255), amarillo = IM_COL32(255, 220, 60, 255), oscuro = IM_COL32(10, 14, 30, 215);
+    if (hecho && ahora - carr_fin_t_ > 3.0) {
+      carr_fin_t_ = -1;
+      EntrarPreparacion();
+      return;
+    }
+    const bool mi_turno = !hecho && pa.QuienElige() == 0;
+    if (mi_turno && carr_resto_ > 0 && !tut_) {   // con el reloj de Opciones encendido, 20 s para elegir; si se acaba, el objeto enfocado (o el primero libre)
+      carr_resto_ -= std::min(io.DeltaTime, 0.25f);
+      if (carr_resto_ <= 0) {
+        int i = ic_ >= 0 && ic_ < int(objs.size()) && objs[size_t(ic_)].quien < 0 ? ic_ : -1;
+        for (size_t k = 0; i < 0 && k < objs.size(); ++k) if (objs[k].quien < 0) i = int(k);
+        REXLOG_INFO("dbz3 tactics: se acabo el tiempo del carrusel");
+        return ElegirCarrusel(i, "reloj");
+      }
+    }
+    const auto nombre = [&](int unidad) { const Modelo* m = ModeloDe(eco_.unidades[size_t(unidad)].id); return std::string(T::T(m->es, m->en)); };
+    const auto cara = [&](const char* id, ImVec2 a, ImVec2 b, ImU32 tinte) {
+      const Modelo* m = ModeloDe(id);
+      if (const S::Pic pic = m ? S::Img(("caras/" + std::to_string(m->b3)).c_str()) : S::Pic{}) S::DrawPic(dl, pic, a, b, ImVec4(0, 0, 0, 0), tinte);
+      else dl->AddRectFilled(a, b, IM_COL32(40, 48, 80, 255));
+    };
+    const auto entrenador = [&](int p) { return p == 0 ? std::string(T::T("Tú", "You")) : nombre([&] { for (size_t u = 0; u < eco_.unidades.size(); ++u) if (eco_.unidades[u].id == kEntrenador[p]) return int(u); return 0; }()); };
+    // arriba: ronda y fase (como en la preparacion), titulo y salida
+    Caja(dl, q, 500, 8, 1100, 56, naranja);
+    Txt(dl, q, 575, 32, 26, std::string(T::T("RONDA ", "ROUND ")) + std::to_string(pa.Ronda()), 1);
+    Txt(dl, q, 800, 32, 30, Texto("carr_fase"), 1, true, false, 300);
+    char tiempo[32];
+    if (mi_turno && carr_resto_ > 0) std::snprintf(tiempo, sizeof tiempo, "%02d:%02d", int(carr_resto_ + 0.99f) / 60, int(carr_resto_ + 0.99f) % 60);
+    else std::snprintf(tiempo, sizeof tiempo, "%s", T::T("SIN LÍMITE", "NO LIMIT"));
+    Txt(dl, q, 1010, 32, 24, tiempo, 1, mi_turno && carr_resto_ > 0 && carr_resto_ < 6.0f, false, 160);
+    Txt(dl, q, 16, 26, 34, "Dragon Tactics", 0, true);
+    Txt(dl, q, 300, 36, 18, "BETA", 0, false, true);
+    if (ahora - salir_t_ < 3.0) Txt(dl, q, 800, 80, 24, T::T("Pulsa B otra vez para salir al HUB", "Press B again to go back to the HUB"), 1, true);
+    else Txt(dl, q, 800, 80, 22, Texto(hecho ? "carr_hecho" : mi_turno ? "carr_tu_turno" : "carr_espera"), 1, true, false, 900);
+    // la fila comun
+    const int n = int(objs.size());
+    const float w = 112, sep = 10, h = 236, y0 = 120, total = float(n) * w + float(std::max(0, n - 1)) * sep, xi = 800 - total * 0.5f;
+    S::Frame(dl, q.At(xi - 18, y0 - 14), q.At(xi + total + 18, y0 + h + 14), q.s);
+    for (int i = 0; i < n; ++i) {
+      const ObjCarrusel& o = objs[size_t(i)];
+      const UnidadEco& ue = eco_.unidades[size_t(o.unidad)];
+      const float x0 = xi + float(i) * (w + sep), x1 = x0 + w, y1 = y0 + h;
+      const bool libre = o.quien < 0, el = !hecho && Elegido(Zona::Tienda, i);
+      Caja(dl, q, x0, y0, x1, y1, el ? amarillo : ColorRango(ue.coste), IM_COL32(18, 28, 62, 235), el ? 4.0f : 2.5f + 0.5f * float(ue.coste));
+      if (el && libre && mi_turno) dl->AddRectFilled(q.At(x0 + 3, y0 + 3), q.At(x1 - 3, y1 - 3), IM_COL32(255, 255, 255, 22 + int(18.0f * std::sin(float(ahora) * 6.0f))), 5 * q.s);
+      const ImU32 tinte = libre ? IM_COL32_WHITE : IM_COL32(110, 110, 120, 255);
+      cara(ue.id.c_str(), q.At(x0 + 6, y0 + 6), q.At(x1 - 6, y0 + 6 + (w - 12) * 0.625f), tinte);
+      Txt(dl, q, x0 + w * 0.5f, y0 + 90, 18, nombre(o.unidad), 1, el, !libre, w - 8);
+      for (int k = 0; k < 2; ++k) Txt(dl, q, x0 + w * 0.5f, y0 + 114 + 20.0f * float(k), 15, T::T(eco_.sinergias[size_t(ue.sin[k])].es.c_str(), eco_.sinergias[size_t(ue.sin[k])].en.c_str()), 1, false, true, w - 8);
+      Moneda(dl, q.At(x0 + w * 0.5f + 14, y0 + 162), 9 * q.s);
+      Txt(dl, q, x0 + w * 0.5f + 2, y0 + 162, 22, std::to_string(ue.coste), 2, false, !libre);
+      if (o.capsula >= 0) {
+        const CapsulaDef& cp = eco_.capsulas[size_t(o.capsula)];
+        Botella(dl, q.At(x0 + 20, y0 + 202), 40 * q.s, o.capsula, !libre);
+        Txt(dl, q, x0 + 34, y0 + 202, 15, T::T(cp.es.c_str(), cp.en.c_str()), 0, false, !libre, w - 40);
+      }
+      if (!libre) {   // ya elegido: oscuro y la cara de quien se lo llevo
+        dl->AddRectFilled(q.At(x0 + 2, y0 + 2), q.At(x1 - 2, y1 - 2), IM_COL32(0, 0, 0, 120), 5 * q.s);
+        cara(kEntrenador[o.quien], q.At(x0 + 26, y0 + 30), q.At(x1 - 26, y0 + 68), IM_COL32_WHITE);
+        dl->AddRect(q.At(x0 + 26, y0 + 30), q.At(x1 - 26, y0 + 68), o.quien == 0 ? IM_COL32(70, 150, 255, 255) : IM_COL32(230, 70, 60, 255), 3 * q.s, 0, 2.5f * q.s);
+      }
+      if (!hecho) Marcar(Zona::Tienda, i, q.At(x0, y0), q.At(x1, y1));
+    }
+    // izquierda: el orden de eleccion (menos vida primero)
+    const std::vector<int>& lista = hecho ? carr_orden_ : pa.OrdenCarrusel();   // tras el reparto, el orden que tenia la vuelta
+    Caja(dl, q, 8, 120, 236, 160, naranja, oscuro);
+    Txt(dl, q, 122, 140, 20, Texto("carr_orden"), 1, true, false, 216);
+    float y = 166;
+    for (size_t k = 0; k < lista.size(); ++k) {
+      const int p = lista[k];
+      const bool ahora_elige = !hecho && pa.QuienElige() == p;
+      int cogio = -1;
+      for (const ObjCarrusel& o : objs) if (o.quien == p) cogio = o.unidad;
+      Caja(dl, q, 8, y, 236, y + 40, ahora_elige ? amarillo : p == 0 ? IM_COL32(70, 150, 255, 255) : IM_COL32(90, 96, 120, 255), oscuro, ahora_elige ? 3.0f : 1.5f);
+      Txt(dl, q, 24, y + 20, 18, std::to_string(k + 1), 1, ahora_elige);
+      cara(kEntrenador[p], q.At(38, y + 6), q.At(84, y + 34), IM_COL32_WHITE);
+      Txt(dl, q, 90, y + 20, 18, entrenador(p), 0, p == 0, false, 80);
+      Txt(dl, q, 196, y + 20, 18, std::to_string(pa.J(p).vida), 2, false, false, 40);
+      if (cogio >= 0) cara(eco_.unidades[size_t(cogio)].id.c_str(), q.At(200, y + 6), q.At(232, y + 34), IM_COL32_WHITE);
+      y += 44;
+    }
+    // derecha: ficha del objeto enfocado (la de la tienda, con su capsula)
+    if (ic_ >= 0 && ic_ < n && zc_ == Zona::Tienda) Ficha(dl, q, objs[size_t(ic_)].unidad, 1, objs[size_t(ic_)].capsula, -1);
+    // abajo: ayuda
+    Caja(dl, q, 400, 846, 1200, 886, naranja, oscuro);
+    Txt(dl, q, 800, 866, 18, Texto("carr_ayuda"), 1, false, false, 780);
+  }
   // Ficha de una unidad: atributos (con las estrellas), tecnica, pasiva y sinergias
   void Ficha(ImDrawList* dl, const Lienzo& q, int u, int est, int c0, int c1) {
+    if (V2()) return FichaV2(dl, q, u, est, c0, c1);   // TACTICS-V04
     const UnidadEco& ue = eco_.unidades[size_t(u)];
     const sim::DefUnidad& d = cat_.unidades[size_t(ue.cat)];
     const Modelo* m = ModeloDe(ue.id);
@@ -2360,7 +2509,9 @@ class Arena : public rex::ui::ImGuiDialog {
       }
   }
   // Menu propio del modo (estilo de los paneles del juego: marco, filas naranjas y la letra de B3, con el borde negro suave)
+#include "v2_menu.inc"   // TACTICS-V04: MenuV2
   void Menu(ImDrawList* dl, const ImGuiIO& io) {
+    if (V2()) return MenuV2(dl, io);   // TACTICS-V04
     const Lienzo q = LienzoDe(io);
     hits_.clear();
     const ImU32 naranja = IM_COL32(255, 160, 30, 255), amarillo = IM_COL32(255, 220, 60, 255);
@@ -2432,14 +2583,25 @@ class Arena : public rex::ui::ImGuiDialog {
   int mc_ = 0, minis_ = 0;           // menu de inicio: opcion elegida; miniaturas 3D del banquillo en este cuadro
   int capmano_ = -1, tut_ = 0;       // capsula cogida del inventario (tipo) y pantalla del tutorial (0 = cerrado, 1..4)
   bool tut_visto_ = false;           // el tutorial ya se comprobo en esta apertura
+  bool medir_regimen_ = false;
+  double medir_inicio_ = -1, medir_cpu_ = 0, medir_cpu_max_ = 0, medir_fig_ = 0, medir_sim_ = 0;
+  long medir_n_ = 0, medir_sin_foco_ = 0;
   long cc_ = 0, lentos_ = 0;         // cuadros del combate en curso y los de mas de 25 ms
   double dt_suma_ = 0, dt_peor_ = 0;
+  std::vector<int> ultimo_equipo_;   // POST2: unidades del humano en su ultima ronda (placa "Tu equipo" de la 07)
+  int dano_total_ = 0;   // POST 12/11: placa "Dano total" de la clasificacion final (07)
   int hist_[kMaxJug] = {}, hist_ronda_ = -1;   // H14: resultado del ultimo duelo contra cada rival (1 gano, 2 perdio, 3 empate)
   MezclaSe se_;                      // mezcla de sonido del combate en curso
+  bool voces_listas_ = true, voces_pedidas_ = false;   // TACTICS-09: la ronda espera a los bancos de gritos de sus unidades (desde voces_t0_)
+  double voces_t0_ = 0;
+  int sin_banco_ = 0;                // gritos que no sonaron por no tener aun su banco propio
   double banco_ms_ = 0;              // CPU media del banquillo 3D (ms/cuadro)
   std::optional<Partida> guardada_;  // la partida guardada leida para el menu de inicio
   dbz3::ps2::Camara cam_;   // la del combate de fondo (cada cuadro)
   float centro_[2] = {}, suelo_ = 0, eje_[2] = {1, 0}, alpha_ = 0;   // marco del tablero en el mundo: centro (x, z), suelo (y) y eje x del tablero (x, z)
+  float cam_ant_[6] = {};            // ultima camara de la escena (ojo, objetivo): sirve los cuadros en que la escena se vuelve a poner
+  bool cam_ant_ok_ = false, tablero_dicho_ = false;
+  uint32_t tres_ = 0;                // TACTICS-04: bots que ya llegaron a 3 estrellas en esta partida (solo para el registro)
   const Modelo* caido_ = nullptr;   // H13: primera unidad propia caida en el combate (para la pantalla de derrota)
   double abierta_ = 0, media_ = 0, ultimo_t_ = 0, acc_ = 0, fin_t_ = -1, prep_t_ = -1, salir_t_ = -10, aviso_t_ = -10;
   double victoria_t0_ = -100;   // cuando empezo la pose de victoria (reloj de pared)
@@ -2477,7 +2639,11 @@ class Arena : public rex::ui::ImGuiDialog {
   int menu_pag_ = 0, nsin_ = 0;
   bool caps_abiertas_ = false;   // H12: panel de capsulas abierto con un clic en su tira (con el mando se abre solo al llegar a el)
   float prep_resto_ = 0;
+  double carr_t_ = -1, carr_fin_t_ = -1;   // TACTICS-03: cuando se abrio el carrusel y cuando eligio el humano (-1 = no); carr_resto_: reloj del carrusel
+  float carr_resto_ = 0;
+  std::vector<int> carr_orden_;
   std::vector<int> calidad_base_;
+  Economia eco_cargada_;   // TACTICS-05: la economia tal como se leyo (con el bloque [variedad] sin aplicar)
   double aviso_dura_ = 2.5;
   uint16_t ultimo_ = 0;
   std::string error_;
@@ -2512,9 +2678,35 @@ const bool g_hub = dbz3::hub::RegisterEntry(
      "Auto chess con i combattenti di Budokai 3: compra, schiera e potenzia la squadra e guardala combattere contro un rivale CPU. Versione di prova (beta)."},
     &AbrirArena, &ArenaAbierta);
 
+#if defined(_WIN32)
+// R12: canal de pruebas por proceso. Cada peticion abre UNA vez; tambien permite
+// salir y volver a entrar para comprobar Continuar sin depender de las filas del HUB.
+const bool g_abrir_prueba = [] {
+  if (!EnvPrueba("ABRIR")) return false;
+  char nombre[96];
+  std::snprintf(nombre, sizeof nombre, "Local\\DBZ3_TACTICS_ABRIR_%lu", GetCurrentProcessId());
+  HANDLE evento = CreateEventA(nullptr, FALSE, FALSE, nombre);
+  if (!evento) return false;
+  std::thread([evento] {
+    using namespace std::chrono_literals;
+    while (WaitForSingleObject(evento, INFINITE) == WAIT_OBJECT_0) {
+      // Igual que DBZ3_TEST_MODO: tres segundos estables en el menu principal.
+      for (int quieto = 0; quieto < 120;) {
+        quieto = dbz3::ingame::GameScreen() == 5 && !g_abierta.load() ? quieto + 1 : 0;
+        std::this_thread::sleep_for(25ms);
+      }
+      REXLOG_INFO("dbz3 tactics prueba: apertura directa solicitada");
+      AbrirArena();
+    }
+    CloseHandle(evento);
+  }).detach();
+  return true;
+}();
+#endif
+
 // prueba: abre y cierra la arena N veces seguidas desde el menu principal (pantalla 5)
 const bool g_prueba = [] {
-  const char* n = std::getenv("DBZ3_TEST_TACTICS_ENTRADA");
+  const char* n = EnvPrueba("ENTRADA");
   if (!n) return false;
   std::thread([ciclos = std::max(1, std::atoi(n))] {
     using namespace std::chrono_literals;

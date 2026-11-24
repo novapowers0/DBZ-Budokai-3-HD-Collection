@@ -984,7 +984,7 @@ def pose_hand(esk, sm, side, angles):
     return P, N
 
 
-def decimate(sm, target_tris, max_flip_deg=40.0):
+def decimate(sm, target_tris, max_flip_deg=40.0, tol_pesos=0.3):
     """Reduce una submalla pielada a ~target_tris triangulos (copia): colapso de MEDIA arista u->v
     con error cuadrico (Garland-Heckbert), sin vertices nuevos (v conserva su pos/uv/normal/pesos).
     Restricciones: no se mueven vertices de costura de UV (posicion compartida) ni de borde; u y v
@@ -1035,7 +1035,7 @@ def decimate(sm, target_tris, max_flip_deg=40.0):
             return
         nb = {x for fi in faces_of[u] for x in T[fi]} - {u}
         for v in nb:
-            if dom[u] != dom[v] or np.abs(W[u] - W[v]).sum() > 0.3:
+            if dom[u] != dom[v] or np.abs(W[u] - W[v]).sum() > tol_pesos:
                 continue
             h = np.append(P[v], 1.0)
             heapq.heappush(heap, (float(h @ (Q[u] + Q[v]) @ h), int(ver[u]), u, v))

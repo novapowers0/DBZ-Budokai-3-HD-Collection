@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "updated": "2026-10-06",
+  "updated": "2026-11-14",
   "project": "DBZ Budokai 3 HD Collection",
   "categories": {
     "hd": [
@@ -36,6 +36,7 @@
       },
       {
         "path": "ports/port_ps2_b3_verify.py",
+        "package_path": null,
         "kind": "port_verification",
         "status": "research",
         "formats": ["PS2", "X360", "AWO", "AWG"]
@@ -57,6 +58,24 @@
         "kind": "blender_bridge",
         "status": "validated_offline",
         "formats": ["glTF", "BLEND"]
+      },
+      {
+        "path": "biblioteca_anim.py",
+        "kind": "animation_library",
+        "status": "validated",
+        "formats": ["AWO", "BSK", "TOML"]
+      },
+      {
+        "path": "capsulas.py",
+        "kind": "capsule_catalog",
+        "status": "validated",
+        "formats": ["SKC", "TOML"]
+      },
+      {
+        "path": "modkit_gui.py",
+        "kind": "mod_kit_gui",
+        "status": "validated",
+        "formats": ["TOML", "AFS", "LZX"]
       },
       {
         "path": "importar.py",
@@ -87,35 +106,484 @@
         "kind": "model_port",
         "status": "validated_offline",
         "formats": ["EMD", "ESK", "EMB", "AWO", "AZT"]
+      },
+      {
+        "path": "../awo_tools/acm_parse.py",
+        "kind": "moveset_reader",
+        "status": "validated_offline",
+        "formats": ["X360", "AMB", "ACM"]
+      },
+      {
+        "path": "../awo_tools/afs_pair.py",
+        "kind": "afs_compare",
+        "status": "validated_offline",
+        "formats": ["AFS", "PS2", "X360"]
+      },
+      {
+        "path": "../awo_tools/altura.py",
+        "kind": "height_fix",
+        "status": "validated",
+        "formats": ["AWO", "AMM", "PS2"]
+      },
+      {
+        "path": "../awo_tools/amo2awo.py",
+        "kind": "model_port",
+        "status": "validated",
+        "formats": ["PS2", "AMO0", "AMG", "AWO", "AWG"]
+      },
+      {
+        "path": "../awo_tools/amt_ps2.py",
+        "kind": "texture",
+        "status": "validated",
+        "formats": ["PS2", "AMT", "AZT", "PNG"]
+      },
+      {
+        "path": "../awo_tools/awg_vertex_buffer.py",
+        "kind": "vertex_buffer_oracle",
+        "status": "research",
+        "formats": ["X360", "AWO", "AWG", "JSON"]
+      },
+      {
+        "path": "../awo_tools/b1port.py",
+        "kind": "moveset_port",
+        "status": "validated_offline",
+        "formats": ["PS2", "B1", "BSK", "AMM", "SPX"]
+      },
+      {
+        "path": "../awo_tools/b3_gateway.py",
+        "kind": "model_gateway",
+        "status": "validated_offline",
+        "formats": ["OBJ", "glTF", "PS2", "AMB", "AWO"]
+      },
+      {
+        "path": "../awo_tools/cinematica.py",
+        "kind": "cinematic_port",
+        "status": "validated_offline",
+        "formats": ["AWO", "AMM", "SPX"]
+      },
+      {
+        "path": "../awo_tools/cri.py",
+        "kind": "audio_container",
+        "status": "validated_offline",
+        "formats": ["CRI", "CPK", "AFS", "ADX"]
+      },
+      {
+        "path": "../awo_tools/crilayla.py",
+        "kind": "decompression",
+        "status": "validated_offline",
+        "formats": ["CRI", "CRILAYLA"]
+      },
+      {
+        "path": "../awo_tools/csk_chain.py",
+        "kind": "moveset_reader",
+        "status": "validated_offline",
+        "formats": ["CSK", "ACM", "PS2"]
+      },
+      {
+        "path": "../awo_tools/csk_edit.py",
+        "kind": "moveset_edit",
+        "status": "validated_offline",
+        "formats": ["CSK", "X360"]
+      },
+      {
+        "path": "../awo_tools/dae_a_b3.py",
+        "kind": "model_import",
+        "status": "validated_offline",
+        "formats": ["DAE", "ESK", "AMB", "AWO"]
+      },
+      {
+        "path": "../awo_tools/dae_lector.py",
+        "kind": "model_import",
+        "status": "validated_offline",
+        "formats": ["DAE", "ESK", "EMD"]
+      },
+      {
+        "path": "../awo_tools/extract_azt_afs.py",
+        "kind": "texture",
+        "status": "validated_offline",
+        "formats": ["X360", "AFS", "AZT", "DDS"]
+      },
+      {
+        "path": "../awo_tools/hdps2.py",
+        "kind": "model_port",
+        "status": "validated_offline",
+        "formats": ["X360", "AWO", "PS2", "AMG"]
+      },
+      {
+        "path": "../awo_tools/injertar_pelo.py",
+        "kind": "outfit_inject",
+        "status": "in_development",
+        "formats": ["AWO", "AWG", "UT"]
+      },
+      {
+        "path": "../awo_tools/injertar_ropa.py",
+        "kind": "outfit_inject",
+        "status": "in_development",
+        "formats": ["AWO", "AWG", "UT"]
+      },
+      {
+        "path": "../awo_tools/name_banner.py",
+        "kind": "name_banner",
+        "status": "validated_offline",
+        "formats": ["AZT", "AMB", "X360"]
+      },
+      {
+        "path": "../awo_tools/pies.py",
+        "kind": "feet_fix",
+        "status": "validated_offline",
+        "formats": ["PS2", "EAN", "AWO"]
+      },
+      {
+        "path": "../awo_tools/portrait_hd.py",
+        "kind": "portrait",
+        "status": "validated_offline",
+        "formats": ["PS2", "AMT", "AZT", "PNG"]
+      },
+      {
+        "path": "../awo_tools/ps2hd.py",
+        "kind": "model_port",
+        "status": "validated",
+        "formats": ["PS2", "AMO0", "AMG", "AWO", "AWG"]
+      },
+      {
+        "path": "../awo_tools/rampas.py",
+        "kind": "shading_ramp",
+        "status": "in_development",
+        "formats": ["B2", "PS2", "AWO"]
+      },
+      {
+        "path": "../awo_tools/sb_amm.py",
+        "kind": "animation_port",
+        "status": "validated_offline",
+        "formats": ["PSP", "AMM", "PS2"]
+      },
+      {
+        "path": "../awo_tools/texture_dump_import.py",
+        "kind": "texture_pack",
+        "status": "validated",
+        "formats": ["AZT", "PNG", "DDS", "TOML"]
+      },
+      {
+        "path": "../awo_tools/xeno_a_b3.py",
+        "kind": "model_port",
+        "status": "validated_offline",
+        "formats": ["XV2", "EMD", "ESK", "EMB", "AMB"]
+      },
+      {
+        "path": "../awo_tools/xeno_bcs.py",
+        "kind": "xv2_reader",
+        "status": "validated_offline",
+        "formats": ["XV2", "BCS", "JSON"]
+      },
+      {
+        "path": "../awo_tools/xeno_binary.py",
+        "kind": "xv2_reader",
+        "status": "validated_offline",
+        "formats": ["XV2", "XV1"]
+      },
+      {
+        "path": "../awo_tools/xeno_emm.py",
+        "kind": "xv2_reader",
+        "status": "validated_offline",
+        "formats": ["XV2", "EMM", "JSON"]
+      },
+      {
+        "path": "../awo_tools/xeno_fisica.py",
+        "kind": "xv2_reader",
+        "status": "validated_offline",
+        "formats": ["XV2", "SCD", "ESK", "JSON"]
+      },
+      {
+        "path": "../awo_tools/xeno_gestos.py",
+        "kind": "animation_port",
+        "status": "validated_offline",
+        "formats": ["XV2", "EAN", "AWO"]
+      },
+      {
+        "path": "../awo_tools/xeno_importar.py",
+        "kind": "xv2_importer",
+        "status": "validated_offline",
+        "formats": ["XV2", "CPK", "AMB", "AFS"]
+      },
+      {
+        "path": "../awo_tools/xeno_model.py",
+        "kind": "xv2_reader",
+        "status": "validated_offline",
+        "formats": ["XV2", "CPK", "EMD", "ESK", "EMB", "DDS"]
+      },
+      {
+        "path": "../awo_tools/xeno_prueba.py",
+        "kind": "xv2_probe",
+        "status": "validated_offline",
+        "formats": ["AMB", "AFS", "LZX"]
+      },
+      {
+        "path": "../awo_tools/xeno_rig.py",
+        "kind": "skeleton_report",
+        "status": "in_development",
+        "formats": ["XV2", "ESK", "AWO"]
+      },
+      {
+        "path": "auditar_importar.py",
+        "kind": "character_import_audit",
+        "status": "validated_offline",
+        "formats": ["PS2", "PSP", "AMB", "AFS"]
+      },
+      {
+        "path": "campana.py",
+        "kind": "campaign_builder",
+        "status": "validated",
+        "formats": ["TOML", "AZT", "AFS", "LZX"]
+      },
+      {
+        "path": "campos_iw.py",
+        "kind": "stage_bridge",
+        "status": "validated",
+        "formats": ["PS2", "IW", "SPX", "AWO"]
+      },
+      {
+        "path": "color_vista.py",
+        "kind": "color_preview",
+        "status": "validated_offline",
+        "formats": ["AZT", "PNG"]
+      },
+      {
+        "path": "colores.py",
+        "kind": "color_edit",
+        "status": "validated",
+        "formats": ["AZT", "CTR", "BSP", "TMP"]
+      },
+      {
+        "path": "comprobar_assets.py",
+        "kind": "asset_validator",
+        "status": "validated_offline",
+        "formats": ["AWO", "AWG", "AMB"]
+      },
+      {
+        "path": "diagnostico.py",
+        "kind": "log_diagnostics",
+        "status": "validated_offline",
+        "formats": ["LOG"]
+      },
+      {
+        "path": "editor_historias.py",
+        "kind": "story_editor",
+        "status": "validated_offline",
+        "formats": ["TOML", "GUI"]
+      },
+      {
+        "path": "escenarios_convertir.py",
+        "kind": "stage_converter",
+        "status": "validated",
+        "formats": ["PS2", "B1", "B2", "SPX", "AWO"]
+      },
+      {
+        "path": "final_b1.py",
+        "kind": "animation_port",
+        "status": "validated",
+        "formats": ["B1", "PS2", "AMO", "AMM"]
+      },
+      {
+        "path": "forma_unica.py",
+        "kind": "capsule",
+        "status": "validated",
+        "formats": ["TOML", "AZT", "AFS"]
+      },
+      {
+        "path": "gritos.py",
+        "kind": "audio_yells",
+        "status": "validated",
+        "formats": ["ADX", "AWO", "TOML"]
+      },
+      {
+        "path": "heroe_sagas_a_du.py",
+        "kind": "campaign_bridge",
+        "status": "validated",
+        "formats": ["TOML"]
+      },
+      {
+        "path": "hexedit.py",
+        "kind": "hex_editor",
+        "status": "validated_offline",
+        "formats": ["AMB", "AMO", "LE", "BE"]
+      },
+      {
+        "path": "inventario_copias.py",
+        "kind": "game_inventory",
+        "status": "validated_offline",
+        "formats": ["ISO", "AFS", "JSON"]
+      },
+      {
+        "path": "iso.py",
+        "kind": "iso_reader",
+        "status": "validated",
+        "formats": ["ISO", "PS2", "PSP"]
+      },
+      {
+        "path": "log_en.py",
+        "kind": "log_translation",
+        "status": "validated_offline",
+        "formats": ["TXT"]
+      },
+      {
+        "path": "model_render.py",
+        "kind": "model_render",
+        "status": "validated_offline",
+        "formats": ["AMB", "AWO", "PNG"]
+      },
+      {
+        "path": "modos_reto.py",
+        "kind": "challenge_modes",
+        "status": "validated",
+        "formats": ["TOML", "AFS"]
+      },
+      {
+        "path": "nova_recetas.py",
+        "kind": "mod_recipe",
+        "status": "validated",
+        "formats": ["TOML", "AFS"]
+      },
+      {
+        "path": "pagina_biblioteca.py",
+        "kind": "gui_page",
+        "status": "validated_offline",
+        "formats": ["GUI", "AWO"]
+      },
+      {
+        "path": "png2pic.py",
+        "kind": "image_convert",
+        "status": "validated_offline",
+        "formats": ["PNG", "AZT"]
+      },
+      {
+        "path": "ps2_b3.py",
+        "kind": "ps2_mod",
+        "status": "validated_offline",
+        "formats": ["PS2", "ISO", "AFS", "ADX"]
+      },
+      {
+        "path": "recolorear.py",
+        "kind": "recolor",
+        "status": "validated",
+        "formats": ["AWO", "AZT", "HSV"]
+      },
+      {
+        "path": "retos_predefinidos.py",
+        "kind": "challenge_catalog",
+        "status": "validated",
+        "formats": ["TOML"]
+      },
+      {
+        "path": "retratos_pack.py",
+        "kind": "portrait_pack",
+        "status": "validated_offline",
+        "formats": ["PNG", "TOML"]
+      },
+      {
+        "path": "roster_build.py",
+        "kind": "roster_builder",
+        "status": "validated",
+        "formats": ["TOML", "AZT", "AMB", "AFS", "LZX"]
+      },
+      {
+        "path": "sb_voces.py",
+        "kind": "audio_voices",
+        "status": "validated_offline",
+        "formats": ["PSP", "ADX", "AFS"]
+      },
+      {
+        "path": "swap_matrix.py",
+        "kind": "file_swap",
+        "status": "validated",
+        "formats": ["AFS", "LZX", "AMB", "AZT"]
+      },
+      {
+        "path": "t3.py",
+        "kind": "legacy_parser",
+        "status": "validated_offline",
+        "formats": ["PS2", "AFS", "T3"]
+      },
+      {
+        "path": "t3_audio.py",
+        "kind": "audio_t3",
+        "status": "validated",
+        "formats": ["PS2", "ADX", "AFS"]
+      },
+      {
+        "path": "texturas_originales.py",
+        "kind": "texture",
+        "status": "validated",
+        "formats": ["AZT", "PNG", "DDS"]
+      },
+      {
+        "path": "texture_pack.py",
+        "kind": "texture_pack",
+        "status": "validated_offline",
+        "formats": ["TOML", "AZT", "DDS", "PNG"]
+      },
+      {
+        "path": "texture_upscale_b3.py",
+        "kind": "texture_upscale",
+        "status": "validated_offline",
+        "formats": ["AZT", "PNG", "DDS"]
+      },
+      {
+        "path": "voces.py",
+        "kind": "audio_voices",
+        "status": "validated",
+        "formats": ["ADX", "AFS"]
+      },
+      {
+        "path": "cac/heroe_arte.py",
+        "kind": "heroe_art",
+        "status": "validated",
+        "formats": ["AZT", "AWO", "PNG"]
+      },
+      {
+        "path": "cac/retrato_anime.py",
+        "kind": "portrait",
+        "status": "validated_offline",
+        "formats": ["AZT", "PNG"]
+      },
+      {
+        "path": "cac/vista_heroe.py",
+        "kind": "heroe_preview",
+        "status": "validated",
+        "formats": ["AWO", "AZT", "OBJ"]
       }
     ],
     "bridge": [
       {
         "path": "emd_to_awo_hd.py",
+        "package_path": null,
         "kind": "skeleton_bridge",
         "status": "experimental",
         "formats": ["EMD", "ESK", "AWO"]
       },
       {
         "path": "../modding resources discord/tools/Model-Rig_Extractor.py",
+        "package_path": null,
         "kind": "rig_extraction",
         "status": "reference",
         "formats": ["PS2", "AMG", "JSON"]
       },
       {
         "path": "../awo_tools/parse_ps2_mesh.py",
+        "package_path": null,
         "kind": "geometry_bridge",
         "status": "validated_input",
         "formats": ["AMG", "PS2", "JSON"]
       },
       {
         "path": "../awo_tools/pose_matrix.py",
+        "package_path": null,
         "kind": "skeleton_bridge",
         "status": "validated_input",
         "formats": ["PS2", "JSON"]
       },
       {
         "path": "../awo_tools/historial_fallidos/rig_mapeo.py",
+        "package_path": null,
         "kind": "skeleton_bridge",
         "status": "research",
         "formats": ["PS2", "JSON"]
@@ -124,24 +592,28 @@
     "reference": [
       {
         "path": "../mod center/Xbox 360 Compression - Decompression tool from the XBOX Development Kit/xbcompress.exe",
+        "package_path": "tools/xbcompress.exe",
         "kind": "compression",
         "status": "validated_external",
         "formats": ["LZX", "X360"]
       },
       {
         "path": "../mod center/SLXS Editor v0.50/SLXS Editor.exe",
+        "package_path": null,
         "kind": "select_editor",
         "status": "PS2_only",
         "formats": ["SLXS", "PS2"]
       },
       {
         "path": "../mod center/Budokai 3 BPL Editor v1.0/Budokai 3 BPL Editor v1.0.exe",
+        "package_path": null,
         "kind": "stage_editor",
         "status": "PS2_only",
         "formats": ["BPL", "PS2"]
       },
       {
         "path": "../awo_tools/analyze_bin_hd.py",
+        "package_path": null,
         "kind": "legacy_parser",
         "status": "obsolete",
         "formats": ["PS3_template"]

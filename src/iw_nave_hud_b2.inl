@@ -36,6 +36,31 @@ struct Recursos {
 };
 Recursos& R() { static Recursos r; return r; }
 
+// B2-08: cuenta de golpes del encuentro de la planta III. El marcador de B3 (+0x1c) solo lleva la marca 0/1 del golpe
+// directo; el original (0x9DD0) cuenta cada golpe. Cada bajada de vida del rival >= 0,5 en un cuadro es un golpe; el
+// reinicio es por encuentro (mgr), planta o cuando el reloj del combate vuelve atras (pelea nueva).
+std::atomic<int> g_golpes_vivos{0};
+std::atomic<int> g_cool_golpe{0};
+float g_vida_rival_antes = -1.0f;
+float g_cuadros_antes = -1.0f;
+uint64_t g_encuentro_golpes = 0;
+int g_planta_golpes = -1;
+void ContarGolpesB2(const MuestraMarcadorB2& m) {
+  if (!kContadorVivoB2 || m.planta != 2) return;
+  if (m.encuentro != g_encuentro_golpes || m.planta != g_planta_golpes || m.cuadros < g_cuadros_antes) {
+    g_encuentro_golpes = m.encuentro; g_planta_golpes = m.planta;
+    g_golpes_vivos = 0; g_cool_golpe = 0; g_vida_rival_antes = m.vida[1]; g_cuadros_antes = m.cuadros;
+    return;
+  }
+  g_cuadros_antes = m.cuadros;
+  if (g_cool_golpe > 0) --g_cool_golpe;
+  if (g_vida_rival_antes > 0.0f && m.vida[1] < g_vida_rival_antes - 0.5f) {
+    if (g_cool_golpe == 0) ++g_golpes_vivos;
+    g_cool_golpe = 1;
+  }
+  g_vida_rival_antes = m.vida[1];
+}
+
 bool DentroArnesNave() {
   const char* e = std::getenv("DBZ3_TEST_MISIONES");
   return e && e[0] == '5' && (e[1] == '\0' || e[1] == ',');
@@ -378,6 +403,14 @@ bool PintarMarcadorB2(ImDrawList* dl, const MuestraMarcadorB2& entrada) {
   }
   return Descargar(dl);
 }
+int GolpesHudB2() { return hud_b2_detalle::g_golpes_vivos.load(); }
+void ReiniciarGolpesB2() {
+  hud_b2_detalle::g_golpes_vivos = 0;
+  hud_b2_detalle::g_cool_golpe = 0;
+  hud_b2_detalle::g_vida_rival_antes = -1.0f;
+  hud_b2_detalle::g_cuadros_antes = -1.0f;
+  hud_b2_detalle::g_planta_golpes = -1;
+}
 void SoltarMarcadorB2() {
   auto& r = hud_b2_detalle::R();
   if (r.propietario) { dbz3::combate::OcultarHud(false); r.propietario = false; }
@@ -419,6 +452,11 @@ void MarcadorCombateB2(ImGuiIO& io, bool activo, int golpes) {
     // La forma B3 no es el indice de cara B2. Cerrar hasta aportar esa correspondencia.
     if (!std::isfinite(m.vida[i]) || !std::isfinite(m.ki[i]) ||
         !std::isfinite(m.ki_max[i])) { SoltarMarcadorB2(); return; }
+  }
+  ContarGolpesB2(m);
+  if (kContadorVivoB2 && m.planta == 2) {
+    const int vivos = g_golpes_vivos.load();
+    if (vivos > m.golpes) m.golpes = vivos;
   }
   const bool probar_caras = Opciones(m).caras;
   for(int i=0;i<(m.planta==0?2:1);++i)

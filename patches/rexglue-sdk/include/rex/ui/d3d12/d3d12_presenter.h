@@ -361,6 +361,18 @@ class D3D12Presenter final : public Presenter {
   bool Dbz3PresentTimeBegin(uint32_t& slot_out);
   void Dbz3PresentTimeConsume();
 
+  // dbz3 (#59): cola de presentacion a 1 cuadro con `dbz3_baja_latencia`, y su
+  // restauracion al apagarlo. Se aplica al empezar a pintar (la swap chain puede
+  // cambiar de tamano). En Vulkan no existe: alli la cadencia la fija la FIFO.
+  void Dbz3ApplyLatency();
+  bool dbz3_latency_applied_ = false;
+  UINT dbz3_latency_original_ = 0;
+  // SDK-01 (RESTO-15): SetMaximumFrameLatency solo vale en una swap chain creada con
+  // FRAME_LATENCY_WAITABLE_OBJECT; se crea asi si `dbz3_baja_latencia` esta encendido
+  // al crearla, y entonces se espera su objeto antes de pintar cada cuadro.
+  bool dbz3_swap_chain_waitable_ = false;
+  HANDLE dbz3_latency_wait_ = nullptr;
+
   // The first is the refresher submission tracker fence value at which the
   // guest output texture was last refreshed, the second is the reference to the
   // texture, which may be null. The indices are the mailbox indices.

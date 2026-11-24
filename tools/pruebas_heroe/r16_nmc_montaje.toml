@@ -1,0 +1,16 @@
+# Previa y montaje de una ficha sintética; no prueba las seis listas del menú.
+descripcion = "R16 NMC: previa y montaje de piezas originales desde ficha aislada"
+turbo = false
+poner = ["tools/pruebas_heroe/r16_nmc_semilla.toml -> user_data/dbz3/cac.toml"]
+env = ["DBZ3_TEST_MODO=heroe", "DBZ3_TEST_HEROE_ABRIR=2", "DBZ3_TEST_CFG=dbz3_heroe_ui_nueva=true;dbz3_cac_xv2=false"]
+pasos = [
+  'log "Create abierto.*cuerpo 11" 180',
+  'log "vista previa 3D .* cargada" 120',
+  "captura nmc_previa_semilla",
+  "tecla 3 1000",
+  'log "Create: confirmar" 25',
+  # El montaje incluye las historias; no basta el aviso de traje pendiente.
+  'log "vista previa combate_.* generada" 600',
+  "esperar 2000",
+  "captura nmc_montado"
+]

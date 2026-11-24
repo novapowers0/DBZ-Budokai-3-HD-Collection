@@ -1,0 +1,4 @@
+descripcion = "CAC2: teñir y restaurar los colores sin reponer las piezas"
+turbo = false
+env = ["DBZ3_TEST_MODO=heroe,0", "DBZ3_TEST_HEROE_ABRIR=2", "DBZ3_TEST_CFG=dbz3_cac_xv2=false;dbz3_heroe_ui_nueva=true;dbz3_cac2_pestanas=true;dbz3_cac2_reset_color=true"]
+pasos = ['log "Create abierto" 180', 'esperar 1500', 'tecla Z', 'log "CAC2 pestana 1" 15', 'tecla Space', 'tecla S', 'tecla D', 'tecla Space', 'esperar 5000', 'captura antes', 'tecla Space', 'tecla P', 'log "CAC2 colores originales" 15', 'esperar 5000', 'captura despues']

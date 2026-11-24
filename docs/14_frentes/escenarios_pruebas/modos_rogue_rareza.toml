@@ -1,0 +1,11 @@
+descripcion = "modos_rogue_rareza (ROG-06): con DBZ3_TEST_ROGUE_RAREZA, al leer la baraja el juego reparte 3000 ofertas con el peso de la rareza (1 estrella x3, 2 x2, 3 x1) y sin el, con semillas reales; la carta comun debe salir mas y la legendaria menos (rogue.cpp PruebaRareza). Solo el registro: no hace falta jugar."
+env = ["DBZ3_HUB_MODE=5", "DBZ3_TEST_ROGUE=3", "DBZ3_TEST_MODO=rogue,0", "DBZ3_TEST_ROGUE_RAREZA=1"]
+apartar = ["user_data/dbz3/rogue.toml*"]
+pasos = [
+  "esperar_pantalla 5 120",
+  "log 'prueba: Dragon Rogue' 30",
+  "esperar 2500",
+  "tecla Space 3000",
+  "log 'rogue: baraja de [0-9]+ cartas' 30",
+  "log 'prueba rareza: con peso .*: PASS' 10",
+]

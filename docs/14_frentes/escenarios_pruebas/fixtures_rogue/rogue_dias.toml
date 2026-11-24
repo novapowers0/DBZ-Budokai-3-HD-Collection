@@ -1,0 +1,42 @@
+# Dragon Rogue: reto diario con 4 dias jugados (racha 3) para modos_rogue_ranking; dias contados desde 20/11/2026 (repetir tras esa fecha: racha menor)
+version = 1
+
+[[dia]]
+dia = 20777
+jugador = 0
+camino = "abismo"
+puntos = 900
+ganados = 7
+jefes = 1
+vida = 2500
+segundos = 310
+
+[[dia]]
+dia = 20776
+jugador = 0
+camino = "abismo"
+puntos = 770
+ganados = 6
+jefes = 0
+vida = 2300
+segundos = 330
+
+[[dia]]
+dia = 20775
+jugador = 0
+camino = "abismo"
+puntos = 640
+ganados = 5
+jefes = 0
+vida = 2100
+segundos = 350
+
+[[dia]]
+dia = 20773
+jugador = 0
+camino = "abismo"
+puntos = 510
+ganados = 4
+jefes = 0
+vida = 1900
+segundos = 370

@@ -1,0 +1,18 @@
+{
+  "nota": "CAC-11: piezas propias (deformacion del cuerpo del jugador). aprobada_en = 'cuerpo_traje' donde un juez las aprobo; Freezer/Cooler (27/38) valen siempre.",
+  "piezas": [
+    {"fid": 3000, "grupo": 0, "nombre": "Cresta dorsal", "aprobada_en": []},
+    {"fid": 3001, "grupo": 0, "nombre": "Cupula alta", "aprobada_en": []},
+    {"fid": 3002, "grupo": 0, "nombre": "Doble quilla", "aprobada_en": []},
+    {"fid": 3003, "grupo": 0, "nombre": "Corona lateral", "aprobada_en": []},
+    {"fid": 3004, "grupo": 0, "nombre": "Casco afilado", "aprobada_en": []},
+    {"fid": 3005, "grupo": 0, "nombre": "Casco ancho", "aprobada_en": []},
+    {"fid": 3020, "grupo": 1, "nombre": "Mandibula ancha", "aprobada_en": []},
+    {"fid": 3021, "grupo": 1, "nombre": "Menton proyectado", "aprobada_en": []},
+    {"fid": 3022, "grupo": 1, "nombre": "Rostro estrecho", "aprobada_en": []},
+    {"fid": 3040, "grupo": 2, "nombre": "Placa pectoral", "aprobada_en": []},
+    {"fid": 3041, "grupo": 2, "nombre": "Placas laterales", "aprobada_en": []},
+    {"fid": 3060, "grupo": 3, "nombre": "Cola acorazada", "aprobada_en": []},
+    {"fid": 3061, "grupo": 3, "nombre": "Cola de quilla", "aprobada_en": []}
+  ]
+}

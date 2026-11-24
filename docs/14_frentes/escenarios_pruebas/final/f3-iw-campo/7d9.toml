@@ -1,0 +1,15 @@
+# SOLO Z/fase3. Humo; faltan audit22/22 y pareja de intro0x41A/HUD/grupoD/curacion/poseFreezer.
+# Comparar recorrido completo y resultado con la misma dificultad,mascara y slot en EU/USA.
+descripcion = "7D9 cierre opt-in: humo de logs; intro, grupoD y pose pendientes"
+env = [
+  'DBZ3_PS2_GAMES=D:\DBZ3HD\ps2_games',
+  "DBZ3_TEST_IWMINI=0x7D9,auto",
+  "DBZ3_TEST_CFG=dbz3_iw_logica_original=true;dbz3_iw_7d0_original=true;dbz3_iw_cierre_campo_original=true",
+]
+pasos = [
+  'log "iwmini: prueba: empieza" 90',
+  "captura 00_intro",
+  'log "dbz3 iwmini: cierre original indice 10 total" 180',
+  'log "dbz3 iwmini: prueba: resultado superado true" 180',
+  "captura 01_resultado",
+]

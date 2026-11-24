@@ -18,7 +18,45 @@ def selftest():
     C.selftest()
     import xv2_cac_preparar as P
     P.selftest()
-    print('xv2_prueba: N0 OK (selecciones opcionales y ausencia, sin juegos)')
+    import xv2_proporcion as PR
+    PR.selftest()
+    import xv2_razas as R
+    R.selftest()
+    import xv2_fisica_heroe as F
+    F.selftest()
+    import xv2_boca as B
+    B.selftest()
+    import xv2_piccolo_rr as RR
+    RR.selftest()
+    print('xv2_prueba: N0 OK (selecciones opcionales, proporciones, razas, fisica, boca y Piccolo RR; sin juegos)')
+
+
+def medir(args):
+    """Bancos de HER09 sin juego: razas, fisica, boca y Piccolo Red Ribbon."""
+    import xv2_razas as R
+    import xv2_fisica_heroe as F
+    import xv2_boca as B
+    import xv2_piccolo_rr as RR
+    res, tol = R.correr()
+    doc = R.publicar(res, tol)
+    on = [r for r, v in doc['razas'].items() if v['encendida']]
+    fis = F.medir()
+    boca = B.medir()
+    rr = RR.medir()
+    ok = (all(not v.get('errores') for v in fis.values())
+          and all(v.get('boca_movil') and v.get('boca_pintada') for v in boca.values())
+          and rr['errores_estructura'] == 0)
+    print('razas ON:', ','.join(on) or 'ninguna')
+    print('fisica:', ','.join('%s=%s' % (r, (v.get('con_fisica') or {}).get('bloque', 'sin pieza')) for r, v in fis.items()))
+    print('boca:', ','.join('%s=%s' % (r, 'MOVIL' if v.get('boca_movil') else 'REVISAR') for r, v in boca.items()))
+    print('Piccolo RR: errores %d, jaw %d, mascara %s' % (
+        rr['errores_estructura'], rr['vertices_mandibula'], rr['lectura']))
+    from xeno_binary import write_json
+    destino = args.trabajo/'HER09_BANCO.json'
+    if destino.exists():
+        destino.unlink()
+    write_json(destino, dict(razas=doc['razas'], fisica=fis, boca=boca, piccolo_rr=rr, ok=bool(ok)))
+    return 0 if ok else 1
 
 
 def run(args):
@@ -79,11 +117,14 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument('--selftest', action='store_true')
     ap.add_argument('--sin-xv2', action='store_true')
+    ap.add_argument('--medir', action='store_true')
     ap.add_argument('--plantilla', type=Path)
     ap.add_argument('--trabajo', type=Path, default=Path('D:/tmp/xv4'))
     args = ap.parse_args()
     if args.selftest:
         selftest(); return 0
+    if args.medir:
+        return medir(args)
     if not args.plantilla:
         ap.error('indica --plantilla')
     return sin_xv2(args) if args.sin_xv2 else run(args)

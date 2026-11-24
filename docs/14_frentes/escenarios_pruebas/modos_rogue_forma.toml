@@ -1,0 +1,13 @@
+descripcion = "modos_rogue_forma (ROG-04, prueba corta): Dragon Rogue con la forma inicial del jugador forzada a 1 (DBZ3_TEST_ROGUE_FORMA=1): el primer combate debe arrancar con el jugador en la forma 1. Vale con partida nueva o reanudada entre combates (P = saltar la carta, Space = seguir)."
+env = ["DBZ3_HUB_MODE=5", "DBZ3_TEST_RINGOUT=1", "DBZ3_TEST_ROGUE=7", "DBZ3_TEST_MODO=rogue,0", "REX_DBZ3_LANGUAGE=5", "DBZ3_TEST_ROGUE_FORMA=1"]
+pasos = [
+  "esperar_pantalla 5 120",
+  "log 'prueba: Dragon Rogue' 30",
+  "esperar 2500",
+  "tecla Space 3000",
+  "tecla P 1500",
+  "tecla Space 3000",
+  "log 'Dragon Rogue combate [0-9]+: pedido' 30",
+  "log 'en combate: lado 1 con [0-9]+ capsulas .*forma 1' 90",
+  "captura 01_forma1",
+]

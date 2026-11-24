@@ -26,6 +26,7 @@
 #include <thread>
 #include <tuple>
 
+#include <rex/cvar.h>
 #include <rex/logging.h>
 #include <rex/platform.h>
 
@@ -328,10 +329,21 @@ std::filesystem::path Destino(const std::filesystem::path& e) {
 bool EsRuta(const std::string& n) { return n.size() > 5 && n.compare(n.size() - 5, 5, ".ruta") == 0; }
 }  // namespace
 
+// HUECOS (11/11, feedback 1.4.6 punto 5): carpeta de los juegos de PS2/PSP. Vacio (de serie) = ps2_games junto a los
+// ajustes, como siempre; el launcher (Juego > Contenido de tus juegos de PS2) deja elegir otra. DBZ3_PS2_GAMES (pruebas) manda.
+REXCVAR_DEFINE_STRING(dbz3_ps2_games_dir, "", "DBZ3/Pasarela",
+                      "Folder with your PS2/PSP games (empty: ps2_games next to the game)");
+std::filesystem::path CarpetaPs2() {
+  if (const char* e = std::getenv("DBZ3_PS2_GAMES")) return e;
+  const std::filesystem::path p = std::filesystem::u8path(REXCVAR_GET(dbz3_ps2_games_dir));
+  std::error_code ec;
+  if (!p.empty() && std::filesystem::is_directory(p, ec)) return p;   // una carpeta que ya no existe no cuenta
+  return dbz3::settings::UserSettingsPath().parent_path() / "ps2_games";
+}
+
 std::filesystem::path BuscarIsoB1() {
   std::vector<std::filesystem::path> dirs;   // DBZ3_PS2_GAMES (pruebas) sustituye a la carpeta junto al juego
-  if (const char* e = std::getenv("DBZ3_PS2_GAMES")) dirs.emplace_back(e);
-  else dirs.push_back(dbz3::settings::UserSettingsPath().parent_path() / "ps2_games");
+  dirs.push_back(CarpetaPs2());
   std::error_code ec;
   for (const auto& d : dirs) {
     std::vector<std::filesystem::path> isos;
@@ -467,6 +479,17 @@ std::mutex g_voz_mu;
 std::vector<uint8_t> g_wav;          // lo que suena (PlaySound lo lee mientras suena)
 std::atomic<uint32_t> g_voz_turno{0};
 }  // namespace
+
+// Decodificacion sin lanzar un hilo ni abrir un dispositivo. El reproductor
+// de 1910 usa el total real de muestras como reloj y rechaza entradas cortadas.
+std::vector<int16_t> LeerVoz1910(AfsPs2& afs, int entry, int esperado_hz, int esperado_n) {
+  const auto b = afs.Entrada(size_t(entry));
+  if (b.size() < 32 || b[0] != 0x80 || b[1] != 0x00 || b[4] != 3 || b[6] != 4) return {};
+  auto be = [&](size_t i) { return uint32_t(b[i])<<24 | uint32_t(b[i+1])<<16 | uint32_t(b[i+2])<<8 | b[i+3]; };
+  if (be(8) != uint32_t(esperado_hz) || be(12) != uint32_t(esperado_n)) return {};
+  int hz = 0;
+  return Adx(b,hz);
+}
 
 void CallarVozB1() {
   ++g_voz_turno;
@@ -636,6 +659,74 @@ void OirMusicaPs2(const std::filesystem::path& juego, const std::string& afs, in
 }
 void CallarMusicaPs2() { ++g_mus_gen; }
 
+// B2 FUN_00245ec0: baja la pista anterior ANTES de arrancar la siguiente (no crossfade).
+// Tasas del ELF; sin cotejo auditivo. Limitacion: no conserva la posicion de la anterior.
+void FundirMusicaPs2(const std::filesystem::path& juego, const std::string& afs,
+                     int antes, int nueva, float volumen, float bajada_s, float subida_s) {
+  const uint32_t gen = ++g_mus_gen;
+  if (!std::isfinite(volumen) || volumen <= 0) return;
+  volumen = std::clamp(volumen, 0.0f, 1.0f);
+  bajada_s = std::isfinite(bajada_s) ? std::clamp(bajada_s, 0.0f, 10.0f) : 0.0f;
+  subida_s = std::isfinite(subida_s) ? std::clamp(subida_s, 0.0f, 10.0f) : 0.0f;
+  std::thread([=] {
+    AfsPs2 a;
+    if (!a.Abrir(juego, afs)) return;
+    auto leer = [&](int id, int& hz) {
+      return id >= 0 && size_t(id) < a.Cuantas() ? Adx(a.Entrada(size_t(id)), hz, true) : std::vector<int16_t>{};
+    };
+    int hz_vieja = 0, hz_nueva = 0;
+    const std::vector<int16_t> vieja = leer(antes, hz_vieja);
+    std::vector<int16_t> siguiente = leer(nueva, hz_nueva);
+    if (gen != g_mus_gen.load()) return;
+    auto poner = [&](std::vector<int16_t>& pcm, int hz, bool bucle) {
+      if (pcm.empty() || hz <= 0 || gen != g_mus_gen.load()) return;
+#if REX_PLATFORM_WIN32
+      WAVEFORMATEX f{};
+      f.wFormatTag = WAVE_FORMAT_PCM;
+      f.nChannels = 2; f.nSamplesPerSec = DWORD(hz);
+      f.wBitsPerSample = 16; f.nBlockAlign = 4; f.nAvgBytesPerSec = DWORD(hz) * 4;
+      HWAVEOUT wo = nullptr;
+      if (waveOutOpen(&wo, WAVE_MAPPER, &f, 0, 0, CALLBACK_NULL) != MMSYSERR_NOERROR) return;
+      WAVEHDR h{};
+      h.lpData = reinterpret_cast<LPSTR>(pcm.data());
+      h.dwBufferLength = DWORD(pcm.size() * sizeof(int16_t));
+      if (bucle) { h.dwFlags = WHDR_BEGINLOOP | WHDR_ENDLOOP; h.dwLoops = 0xFFFFFFFFu; }
+      if (waveOutPrepareHeader(wo, &h, sizeof(h)) == MMSYSERR_NOERROR) {
+        if (waveOutWrite(wo, &h, sizeof(h)) == MMSYSERR_NOERROR)
+          while (!(h.dwFlags & WHDR_DONE) && gen == g_mus_gen.load()) Sleep(10);
+        waveOutReset(wo);
+        waveOutUnprepareHeader(wo, &h, sizeof(h));
+      }
+      waveOutClose(wo);
+#endif
+    };
+    REXLOG_INFO("dbz3 pasarela: fundido {} {} -> {}: bajada {:.3f} s, subida {:.3f} s (secuencial; posicion anterior no conservada)",
+                afs, antes, nueva, bajada_s, subida_s);
+    auto escalar = [&](int16_t x, float ganancia) {
+      return int16_t(std::clamp(int(float(x) * volumen * ganancia), -32768, 32767));
+    };
+    if (!vieja.empty() && hz_vieja > 0 && bajada_s > 0) {
+      const size_t cuadros = size_t(bajada_s * float(hz_vieja));
+      std::vector<int16_t> cola(cuadros * 2);
+      for (size_t i = 0; i < cuadros; ++i) {
+        const float ganancia = cuadros > 1 ? 1.0f - float(i) / float(cuadros - 1) : 0.0f;
+        for (size_t c = 0; c < 2; ++c) cola[2 * i + c] = escalar(vieja[(2 * i + c) % vieja.size()], ganancia);
+      }
+      poner(cola, hz_vieja, false);
+    }
+    if (siguiente.empty() || hz_nueva <= 0 || gen != g_mus_gen.load()) return;
+    const size_t cuadros = std::min(siguiente.size() / 2, size_t(subida_s * float(hz_nueva)));
+    std::vector<int16_t> entrada(siguiente);
+    for (size_t i = 0; i < entrada.size() / 2; ++i) {
+      const float ganancia = i < cuadros && cuadros > 1 ? float(i) / float(cuadros - 1) : 1.0f;
+      for (size_t c = 0; c < 2; ++c) entrada[2 * i + c] = escalar(entrada[2 * i + c], ganancia);
+    }
+    poner(entrada, hz_nueva, false);
+    for (int16_t& x : siguiente) x = escalar(x, 1.0f);
+    poner(siguiente, hz_nueva, true);   // bucle completo, sin repetir la subida ni saltarse el inicio
+  }).detach();
+}
+
 // Efectos cortos de PS2 (R7 b2_sonido): banco Sony HD/BD. `cuerpo` = entrada del cuerpo PS-ADPCM (bloques VAG de 16 B), la
 // siguiente = indice IECS ("VagiCEI": tabla de desplazamientos -> registros {inicio, 0xFF000000|frecuencia}). Un sonido por
 // id; los de un mismo `tipo` se cortan entre si (la orden 75/76 de B2 manda el mensaje 9 antes del 7). ponytail: sin
@@ -675,7 +766,20 @@ bool CargarSonido(const std::filesystem::path& juego, const std::string& afs, in
   if (auto it = g_snd_cache.find(k); it != g_snd_cache.end()) { r = it->second; return !r.pcm.empty(); }
   AfsPs2 a;
   if (!a.Abrir(juego, afs) || cuerpo < 0 || size_t(cuerpo) + 1 >= a.Cuantas()) return false;
-  const std::vector<uint8_t> body = a.Entrada(size_t(cuerpo)), x = a.Entrada(size_t(cuerpo) + 1);
+  std::vector<uint8_t> body = a.Entrada(size_t(cuerpo)), x = a.Entrada(size_t(cuerpo) + 1);
+  // IW (RESCATE IW-F07): el banco va en UNA entrada #AMB {hijo 0 = cuerpo PS-ADPCM, hijo 1 = indice IECS}; p. ej.
+  // DATA_CMN 954 = banco 1 de efectos de los minijuegos (MinigameMovementsAudioEffects EU 0x302E50, 0x3BA).
+  if (body.size() >= 0x40 && std::memcmp(body.data(), "#AMB", 4) == 0) {
+    auto hijo = [&](size_t i) {
+      uint32_t o = 0, n = 0;
+      std::memcpy(&o, &body[0x20 + 0x10 * i], 4);
+      std::memcpy(&n, &body[0x24 + 0x10 * i], 4);
+      return size_t(o) + n <= body.size() ? std::vector<uint8_t>(body.begin() + o, body.begin() + o + n)
+                                          : std::vector<uint8_t>{};
+    };
+    x = hijo(1);
+    body = hijo(0);
+  }
   auto u32 = [&](size_t o) { uint32_t v = 0; if (o + 4 <= x.size()) std::memcpy(&v, &x[o], 4); return v; };
   size_t vi = 0;
   while (vi + 16 < x.size() && std::memcmp(&x[vi], "IECSigaV", 8) != 0) vi += 4;   // "VagiCEI" al reves
@@ -775,8 +879,7 @@ std::filesystem::path ElegirFuente(const std::filesystem::path& d, const std::st
 
 std::filesystem::path BuscarIW() {
   std::vector<std::filesystem::path> dirs;
-  if (const char* e = std::getenv("DBZ3_PS2_GAMES")) dirs.emplace_back(e);
-  else dirs.push_back(dbz3::settings::UserSettingsPath().parent_path() / "ps2_games");
+  dirs.push_back(CarpetaPs2());
   for (const auto& d : dirs) {
     if (const auto p = ElegirFuente(d, "infinite world"); !p.empty()) return p;
   }
@@ -924,8 +1027,7 @@ int CuantasAmt(const std::vector<uint8_t>& amt) { return AmtN(amt); }
 Imagen TexturaAmt(const std::vector<uint8_t>& amt, int j) { return AmtN(amt) > 0 ? Textura(amt, j) : Imagen{}; }
 
 std::filesystem::path BuscarJuego(const std::string& clave) {
-  std::filesystem::path d = dbz3::settings::UserSettingsPath().parent_path() / "ps2_games";
-  if (const char* e = std::getenv("DBZ3_PS2_GAMES")) d = e;
+  const std::filesystem::path d = CarpetaPs2();
   return ElegirFuente(d, clave);   // G01-iw-iso B-03: .ruta elegido > carpeta > ISO
 }
 
@@ -975,8 +1077,7 @@ static int JuegoPsp(const std::filesystem::path& p) {
 }
 
 static std::filesystem::path BuscarPsp(int juego) {
-  std::filesystem::path d = dbz3::settings::UserSettingsPath().parent_path() / "ps2_games";
-  if (const char* e = std::getenv("DBZ3_PS2_GAMES")) d = e;
+  const std::filesystem::path d = CarpetaPs2();
   std::error_code ec;
   if (std::filesystem::exists(d / kRutaPs2[juego], ec)) {   // la ISO que el jugador eligio para este juego
     if (const auto p = Destino(d / kRutaPs2[juego]); !p.empty()) return p;
@@ -1044,8 +1145,7 @@ std::string RegistrarIsoPs2(int juego, const std::filesystem::path& iso) {
     conocida = true;
   }
   if (!conocida) REXLOG_INFO("dbz3 ps2: {} con serie {} (otra region?): se acepta", kNombre[juego], s);
-  std::filesystem::path d = dbz3::settings::UserSettingsPath().parent_path() / "ps2_games";
-  if (const char* e = std::getenv("DBZ3_PS2_GAMES")) d = e;
+  const std::filesystem::path d = CarpetaPs2();
   std::error_code ec;
   std::filesystem::create_directories(d, ec);
   std::ofstream f(d / kRutaPs2[juego], std::ios::binary | std::ios::trunc);
@@ -1063,6 +1163,11 @@ std::string g_eleccion;
 }  // namespace
 
 void ElegirIsoPs2EnSegundoPlano(int juego) {
+  // pruebas automaticas (tools/pruebas.py pone DBZ3_NO_DIALOGS): sin ventana de elegir ISO encima del escritorio
+  if (std::getenv("DBZ3_NO_DIALOGS")) {
+    REXLOG_INFO("dbz3 ps2: falta la ISO del juego {}; dialogo omitido en pruebas", juego);
+    return;
+  }
   if (g_eligiendo.exchange(true)) return;
   std::thread([juego] {
     const std::string r = ElegirIsoPs2(juego);

@@ -1,21 +1,23 @@
 // dbz3 - Camara libre de pruebas (DS162/DS163, 2026-10-27).
 //
 // Por que la version de DS162 no cambiaba la vista (medido en el codigo recompilado):
-//   * sub_820F4300 (generated/dbz3_recomp.6.cpp) NO dibuja con mgr+0x60. Copia 64 B de la camara activa
+//   * sub_820F4300 (generated/dbz3_recomp.6.cpp) prepara la vista. Copia 64 B de la camara activa
 //     (*(mgr+0x264), puntero que deja sub_820F47E0) a una struct de pila y construye la vista desde ELLA
 //     (sub_82082970 -> sub_82082A08 -> sub_82082908); solo al final copia el resultado a mgr+0x60 con
-//     sub_8208A168. Escribir mgr+0x190/+0x1A0/+0x60 en el gancho de sub_820F47E0 se pierde/queda sin uso
-//     para el dibujo: eso es lo que midio K2 con DBZ3_TEST_CAMARA_LUCHA (la imagen no cambiaba).
+//     sub_8208A168. Escribir mgr+0x60 en el gancho temprano de sub_820F47E0 se pierde en esa copia.
+//     R16: sub_820FC3D0 llama DESPUES a sub_82087500(mgr+0x60), que envia esa vista al render. Se comprueba
+//     esa salida y se corrige solo si no coincide. El A/B con coordenadas absolutas confirma que la struct
+//     por si sola funciona: no se atribuye el antiguo fallo de las poses a una sobrescritura demostrada.
 //   * La struct de camara (sub_82082468 la rellena) es: +0x00 ojo (x,y,z,1), +0x10 objetivo (x,y,z,1),
 //     +0x20 quaternion de orientacion, +0x30 balanceo, +0x34 fov (rad), +0x38 flags.
 //   * Si flags&1, sub_82082868 recalcula el quaternion a partir de ojo->objetivo (sub_82092DA8 +
 //     sub_82090BB8) y limpia el bit. Por eso B3 puede dibujar una camara "libre": basta escribir ojo,
 //     objetivo y flags|=1 en la struct ACTIVA antes de sub_820F4300; el juego deriva la orientacion.
-//     DS163 hace eso (y ademas escribe el quaternion ya calculado, para no depender del flag).
+//     La ruta principal hace eso; no necesita inventar un quaternion con otra convencion.
 //
 // Ganchos: 47E0 (cinematica.cpp, tras la camara del juego) y 4300 (iw_mini_vuelo.cpp). En 4300 se llama
 // ANTES del original (AplicarAntesDelDibujo: la ultima escritura que ve el dibujo) y DESPUES (TrasLaVista:
-// solo registra la vista que queda en mgr+0x60 y reafirma la struct).
+// publica la vista final en mgr+0x60, antes de su consumo por sub_82087500).
 // Con la opcion apagada no se toca nada.
 //
 // Controles: WASD mueve, Q/E baja y sube, raton con el boton derecho o palanca derecha para mirar, palanca
@@ -331,6 +333,8 @@ void Activar(uint32_t mgr) {
   g_fov_pisado = true;
   g_activa = true;
   const uint32_t ptr = PunteroCamara(mgr);
+  if (g_test) REXLOG_INFO("dbz3 camara libre: diagnostico mgr={:08X} activa={:08X} seleccionada={:08X} elegida={:08X}",
+                          mgr, LoadU(mgr + kPtrCamA), LoadU(mgr + kPtrCamB), ptr);
   REXLOG_INFO("dbz3 camara libre: activa (ojo {:.2f} {:.2f} {:.2f}, objetivo {:.2f} {:.2f} {:.2f}, camara "
               "{:08X}){}",
               ojo[0], ojo[1], ojo[2], obj[0], obj[1], obj[2], ptr, g_test ? " [prueba]" : "");
@@ -381,6 +385,25 @@ void LeerPeticionTest() {
   if (s == "off") {
     g_test = false;
     Desactivar();
+    return;
+  }
+  // R16: encuadre absoluto reproducible, independiente de la camara inicial. Solo se lee en modo test.
+  int id = 0;
+  float e[3], o[3], fov = 45.0f;
+  if (std::sscanf(s.c_str(), "mirar %d %f %f %f %f %f %f %f", &id,
+                  &e[0], &e[1], &e[2], &o[0], &o[1], &o[2], &fov) == 8) {
+    const float dx = o[0] - e[0], dy = o[1] - e[1], dz = o[2] - e[2];
+    const float largo = std::sqrt(dx * dx + dy * dy + dz * dz);
+    if (!Finito(largo) || largo < 0.001f || !Finito(fov) || fov < 15 || fov > 110) return;
+    {
+      std::lock_guard<std::mutex> lk(g_mu);
+      for (int i = 0; i < 3; ++i) g_ojo[i] = e[i], g_obj[i] = o[i];
+      g_yaw = std::atan2(dx, dz);
+      g_pitch = std::asin(std::clamp(dy / largo, -1.0f, 1.0f));
+      g_fov = fov;
+    }
+    REXLOG_INFO("dbz3 camara libre: prueba mirar {} ojo ({:.3f} {:.3f} {:.3f}) objetivo ({:.3f} {:.3f} {:.3f}) fov {:.1f}",
+                id, e[0], e[1], e[2], o[0], o[1], o[2], fov);
     return;
   }
   char* fin = nullptr;
@@ -543,6 +566,7 @@ void ParsearPoses() {
   static bool hecho = false;
   if (hecho) return;
   hecho = true;
+  if (const char* log = std::getenv("DBZ3_TEST_FREECAM_LOG")) g_log = std::max(0, std::atoi(log));
   const char* e = std::getenv("DBZ3_TEST_FREECAM");
   if (!e || !*e) return;
   std::string texto(e);
@@ -599,6 +623,32 @@ void LogMuestra(const char* fase, uint32_t mgr, const Camara& antes, const float
   if (!dbz3::g_guest_eu) LogMatriz("render", kMatrizRender);
 }
 
+// La matriz que sub_82087500 copia y entrega al dispositivo (filas de 4 floats BE, traslacion en la ultima).
+// Se comprueba DESPUES de sub_8208A168: antes la reemplaza la vista calculada por el original.
+void PublicarVista(uint32_t mgr, const float e[3], const float o[3]) {
+  float ax = e[0] - o[0], ay = e[1] - o[1], az = e[2] - o[2];
+  const float largo = std::sqrt(ax * ax + ay * ay + az * az);
+  if (!Finito(largo) || largo < 0.001f) return;
+  ax /= largo; ay /= largo; az /= largo;
+  const float horizontal = std::sqrt(ax * ax + az * az);
+  if (horizontal < 0.001f) return;
+  const float dx = az / horizontal, dz = -ax / horizontal;
+  const float ux = ay * dz, uy = az * dx - ax * dz, uz = -ay * dx;
+  const float m[16] = {dx, ux, ax, 0, 0, uy, ay, 0, dz, uz, az, 0,
+                       -(dx * e[0] + dz * e[2]), -(ux * e[0] + uy * e[1] + uz * e[2]),
+                       -(ax * e[0] + ay * e[1] + az * e[2]), 1};
+  bool distinta = false;
+  for (uint32_t i = 0; i < 16; ++i) {
+    const float actual = LoadF(mgr + 0x60 + 4 * i);
+    distinta = distinta || !Finito(actual) || std::abs(actual - m[i]) > 0.002f;
+  }
+  if (!distinta) return;
+  for (uint32_t i = 0; i < 16; ++i) StoreF(mgr + 0x60 + 4 * i, m[i]);
+  static uint32_t correcciones = 0;
+  if (++correcciones <= 8 && g_test)
+    REXLOG_INFO("dbz3 camara libre: salida de vista reafirmada ({})", correcciones);
+}
+
 // Estado comun (activacion, pose, pausa, HUD) y escritura de la camara activa. momento: 0 = tras la camara
 // del juego (sub_820F47E0), 1 = antes de sub_820F4300, 2 = despues de sub_820F4300.
 void Aplicar(uint8_t* base, int momento) {
@@ -626,6 +676,14 @@ void Aplicar(uint8_t* base, int momento) {
   }
   if (!g_activa.load()) return;
 
+  if (g_test) {
+    static bool visto[3] = {};
+    if (!visto[momento]) {
+      visto[momento] = true;
+      REXLOG_INFO("dbz3 camara libre: fase de dibujo {}", momento);
+    }
+  }
+
   if (g_test) LeerPeticionTest();
 
   // DS164: "Pausar el juego" usa la pausa del propio juego (ver PausarJuego), no solo el reloj de pelea.
@@ -641,7 +699,8 @@ void Aplicar(uint8_t* base, int momento) {
   }
   if (g_pausa.load()) REX_STORE_U32(mgr + kReloj, g_reloj);
 
-  const bool hud = rex::cvar::GetFlagByName("dbz3_freecam_hud") == "true";
+  const bool hud = rex::cvar::GetFlagByName("dbz3_freecam_hud") == "true" ||
+                   (g_test && std::getenv("DBZ3_TEST_FREECAM_HUD"));
   if (hud != g_hud.load()) {
     if (hud) {
       g_hud_antes = combate::HudNativoVisible() || EnCombate(estado);
@@ -677,9 +736,11 @@ void Aplicar(uint8_t* base, int momento) {
   }
 
   if (momento == 2) {
-    // La vista ya la ha construido el juego (sub_82082908) a partir de la struct que escribimos: NO se toca
-    // mgr+0x60 (es justo la matriz que acaba de aplicar; reescribirla con otra convencion la romperia). Solo
-    // se reafirma el flag por si el juego lo limpio en la struct original y se registra lo que quedo.
+    // R16: el consumidor llega despues, 87500(mgr+0x60). Se conserva la vista nativa cuando coincide;
+    // se reafirma si una peticion llego entre la construccion nativa y este punto final del cuadro.
+    if (g_log.load() >= 2 && g_cuadros.load() % 60 == 0) LogMatriz("nativa_antes", mgr + 0x60);
+    // Control A/B del laboratorio: conserva solo la escritura de struct de los intentos anteriores.
+    if (!(g_test && std::getenv("DBZ3_TEST_FREECAM_SOLO_STRUCT"))) PublicarVista(mgr, ojo, obj);
     Camara despues;
     LeerCamara(ptr, despues);
     StoreU(ptr + kCamFlags, LoadU(ptr + kCamFlags) | 1u);

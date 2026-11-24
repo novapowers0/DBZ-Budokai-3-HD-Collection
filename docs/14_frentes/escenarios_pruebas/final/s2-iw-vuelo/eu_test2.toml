@@ -1,0 +1,30 @@
+# S2 / IW-L01 + IW06: capa de animacion de IW con el ARCHIVO EUROPEO. Se ejecuta en la copia `eu_test2` (xex EU),
+# no en smoke_a/b/c. SOLO fase 3 (Z); este carril NO abre el juego.
+#   python tools\pruebas.py correr eu_test2 "docs\14_frentes\escenarios_pruebas\final\s2-iw-vuelo\eu_test2.toml"
+#
+# clave    = IW-L01 / IW06 / 0x7D6 (capa: pies, cuello, sombreado de manos; DBZ3_HOOK_EU en src/anim_iw.cpp)
+# cvar     = dbz3_iw_vuelo_original=true + dbz3_iw_logica_original=true (la capa va con los ganchos de siempre)
+# criterio = offline (verde): regional_banco.py -> todos los DATA_CMN del vuelo (915 modelo y 924/921/919/927/931/923
+#            de actor) son BYTE A BYTE iguales en EU y USA, y la tabla 0x320..0x330 tiene los mismos cuadros.
+#            En el juego: DBZ3_TEST_IW_HUESOS vuelca huesos_eu.jsonl y eani2_pose_vs_pista.py debe dar la misma
+#            medida que huesos_usa.jsonl (misma tolerancia, ningun hueso peor). Esa comparacion es el criterio que
+#            queda PENDIENTE_JUEGO: no hay dorado EU/USA de huesos en disco (no se graba en esta fase).
+# log      = "dbz3 r12: vuelo con la logica original del ELF" y el volcado de huesos
+descripcion = "Capa de animacion IW con el archivo europeo: volcado de huesos del vuelo 0x7D6 en la copia EU"
+env = [
+  "DBZ3_TEST_IWMINI=0x7D6,auto",
+  "DBZ3_TEST_IW_HUESOS=E:/DBZ3HD_trabajo/S2/huesos_eu.jsonl",
+  "DBZ3_TEST_IW_HUESOS_CADA=5",
+  "DBZ3_TEST_CFG=dbz3_iw_vuelo_original=true;dbz3_iw_logica_original=true",
+  'DBZ3_PS2_GAMES=E:\DBZ3HD_trabajo\_bancos_archivados\ps2_eu_iw_20261021',
+]
+pasos = [
+  'log "iwmini: prueba: empieza" 90',
+  'log "dbz3 r12: vuelo con la logica original del ELF" 90',
+  "esperar 5000",
+  "captura 00_eu_vuelo",
+  'log "dbz3 r12: punto de control" 120',
+  "captura 01_eu_aro",
+  'log "dbz3 r12: resultado superado true rango" 300',
+  "captura 02_eu_resultado",
+]

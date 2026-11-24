@@ -620,6 +620,24 @@ def ccm_build(head, starters, nodes):
 # IW en COM, issue #58)
 # y tres fases por forma (sub_8210E250 suma 8 al acabar cada una: arranque, espera, final)
 ID_MAX_NUEVA = 1984    # el inventario de la partida acaba en 2048 y 1984+ son las capsulas unicas (src/form_selection.h)
+# SLOTS_PJ-06: con [ajustes] capsulas_sin_tope = true en mods/formas_port.toml el catalogo pasa del
+# inventario (2048) y los IDs nuevos siguen desde 2048 (1984..2047 quedan para las capsulas unicas).
+# El runtime lo enciende con dbz3_capsulas_sin_tope; apagado, el juego se queda en los 1388 de siempre.
+ID_MAX_SIN_TOPE = 4096
+UNIFICADAS = range(1984, 2048)
+
+
+def ids_nuevas(sin_tope=False):
+    """IDs libres para capsulas nuevas (596+), en orden. Con sin_tope incluye >= 2048 y salta el hueco
+    de las capsulas unicas (1984..2047)."""
+    if not sin_tope:
+        return list(range(N_NATIVE, ID_MAX_NUEVA))
+    return list(range(N_NATIVE, 1984)) + list(range(2048, ID_MAX_SIN_TOPE))
+
+
+def id_nueva_valida(v, sin_tope=False):
+    return v is not None and N_NATIVE <= v < (ID_MAX_SIN_TOPE if sin_tope else ID_MAX_NUEVA) and \
+        not (sin_tope and v in UNIFICADAS)
 TRANSFORM_CODES = tuple(range(0x2E0, 0x2F8)) + tuple(range(0x3E0, 0x3F8))
 
 

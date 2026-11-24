@@ -1,0 +1,29 @@
+# C1 / IW-E02 — AST07: efectos de tecnica por eventos (tipo 4) en 7D5 (carga el banco 922).
+#   python tools\pruebas.py correr <copia> "docs\14_frentes\escenarios_pruebas\final\c1-iw-escenas\ast07_tecnica.toml"
+#
+# clave    = IW-E02 (AST07) / IW13
+# cvar     = ninguna nueva (el despacho de efecto aun no esta conectado: ver PENDIENTE_JUEGO).
+# env      = DBZ3_TEST_IWMINI=0x7D5,auto; DBZ3_IW_EVENTOS_LOG=1.
+# criterio = (banco, ya verde) 5/5 registros tipo 4 verificados (922/0 0x30C f76=0x10; 924/0 0x3B7
+#            f6/12/47/47 = 0x10/0x2A/0x1/0x2B); cadena original Anim_ProcessEventTrack 23F520 ->
+#            +0x1FC (7 plazas) -> Super_Ult_Ki_AttackEffects 1BF610 -> Battle_DispatchEffectEvent
+#            1BEC60. En juego (PENDIENTE_JUEGO): el efecto de la tecnica aparece en el cuadro del evento.
+#            Hoy se espera NO verlo: es el fallo que este escenario documenta hasta que F3 conecte
+#            Preparar4/el despacho.
+# log      = "iwmini: prueba: empieza" / "dbz3 iwmini:"
+descripcion = "7D5 efecto de tecnica tipo 4: esperado NO conectado (documenta AST07)"
+env = [
+  "DBZ3_TEST_IWMINI=0x7D5,auto",
+  "DBZ3_IW_EVENTOS_LOG=1",
+  "DBZ3_TEST_CFG=dbz3_iw_logica_original=true",
+  'DBZ3_PS2_GAMES=D:\DBZ3HD\ps2_games',
+]
+pasos = [
+  "log \"iwmini: prueba: empieza\" 90",
+  "esperar 2500",
+  "captura t01_inicio",
+  "esperar 2000",
+  "captura t02_tecnica",
+  "esperar 2500",
+  "captura t03_tecnica2",
+]

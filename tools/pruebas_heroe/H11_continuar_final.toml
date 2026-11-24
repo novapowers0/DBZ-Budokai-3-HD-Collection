@@ -1,0 +1,24 @@
+# R23 heroe2: W (arriba) antes de A: el aviso nativo "sobrescribir" sale con el cursor en No y el guion daba vueltas
+descripcion = "H11: Continuar una ficha terminada y regreso natural despues de los creditos completos"
+turbo = false
+apartar = ["user_data/dbz3/cac.toml*", "user_data/dbz3/heroe", "user_data/dbz3/hub_heroe.toml*", "user_data/dbz3/rpg.toml*"]
+poner = ["E:/DBZ3HD_trabajo/heroe2_fixtures/final_revivir.toml -> user_data/dbz3/cac.toml"]
+env = ["DBZ3_TEST_DU_HEROE=35", "DBZ3_DU_TRACE=1", "DBZ3_TEST_DU_ESTADOS=1", "DBZ3_TEST_CFG=dbz3_heroe_rutas=true;dbz3_heroe_ui_nueva=true;dbz3_heroe_recompensas=true"]
+pasos = [
+  "esperar 5000",
+  "log \"ruta atomica de la ficha .*tramo -1, etapa pendiente -1\" 120",
+  "hasta_log \"video abierto: guest=us.*Ending00[.]sfd\" 180",
+  "tecla Space 200",
+  "esperar 1000",
+  "fin",
+  "captura continuar_ficha_terminada",
+  "esperar 245000",
+  "captura regreso_natural_creditos",
+  "hasta_pantalla 5,6,7 180",
+  "tecla W 200",
+  "tecla Space 200",
+  "esperar 2000",
+  "fin",
+  "esperar 2000",
+  "captura despues_de_confirmar_regreso"
+]

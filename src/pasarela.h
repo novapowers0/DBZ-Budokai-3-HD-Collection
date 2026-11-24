@@ -9,6 +9,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <imgui.h>
@@ -90,6 +91,7 @@ std::filesystem::path BuscarIsoB1();
 // Juegos de PS2 del jugador elegidos con un boton (launcher o el propio juego): ps2_games/<nombre>.ruta guarda la ruta de
 // su ISO (no se copia nada) y los buscadores la aceptan como si estuviera ahi. juego: 0 = Budokai 1, 1 = Budokai 2,
 // 2 = Infinite World, 3 = Shin Budokai (PSP), 4 = Another Road (PSP). Registrar: "" si vale; si no, el motivo para el jugador (su ISO es de otro juego...).
+std::filesystem::path CarpetaPs2();        // donde se buscan (ajuste dbz3_ps2_games_dir; vacio = ps2_games junto al juego)
 std::filesystem::path IsoPs2(int juego);   // la que usara el juego (vacia = falta)
 std::string RegistrarIsoPs2(int juego, const std::filesystem::path& iso);
 // Dialogo para elegirla (Windows); bloquea hasta que el jugador cierra. "" = elegida y valida, "-" = cancelado.
@@ -113,6 +115,10 @@ void CallarAdxPs2();
 // Musica (ADX estereo en bucle) de los modos de PS2: una a la vez; la nueva corta la anterior.
 void OirMusicaPs2(const std::filesystem::path& juego, const std::string& afs, int entrada, float volumen, float desde_s = 0);
 void CallarMusicaPs2();
+// Fundido B2: bajada de la anterior y despues subida de la nueva; -1 = silencio.
+// Experimental: la anterior se reconstruye desde su principio, sin conservar su posicion.
+void FundirMusicaPs2(const std::filesystem::path& juego, const std::string& afs,
+                     int antes, int nueva, float volumen, float bajada_s, float subida_s);
 // Efecto corto PS-ADPCM (VAG) de un banco IECS: entrada `cuerpo` del AFS = datos, `cuerpo`+1 = indice; `id` = sonido del
 // banco. Los del mismo `tipo` (0..7) se cortan entre si. periodo_ms > 0: se repite cada tanto hasta cortarlo.
 // solo_decodificar: valida y registra el recurso sin abrir salida de audio (pruebas silenciadas).
@@ -164,6 +170,9 @@ std::shared_ptr<const DatosB1> DatosLeidos();
 // Avance: user_data/dbz3/pasarela/progreso.toml (una clave por modo; se reescribe entero conservando las demas).
 int LeerProgreso(const std::string& clave, int defecto = 0);
 void GuardarProgreso(const std::string& clave, int valor);
+// R20 dsFLUIDEZ_2: varios campos en UNA lectura + UNA escritura + UN rename (antes, uno por campo reescribia el
+// fichero entero decenas de veces por accion del tablero B2). Mismo formato TOML y mismas claves.
+void GuardarProgresoBatch(const std::vector<std::pair<std::string, int>>& pares);
 // Escalafon del Dojo (rangos al estilo Tekken, auditoria8/A): puntos de escalafon (PE) acumulados en progreso.toml
 // (rango_pe), que nunca bajan. 11 peldanos: Kyu 5..Kyu 1, Dan 1..Dan 5 y Maestro.
 int RangoPE();
@@ -202,10 +211,14 @@ struct Reglas {
   bool puntos_b1 = false;     // Leyenda de Mr. Satan: puntos por suceso como B1 (HIT, COMBO FIN, THROW...; Fin::puntos)
   // casillas de condicion del Dragon World de B2 (frente R2)
   float vida_baja = 0;        // parte de su vida maxima que pierde el jugador por segundo (no baja de 1)
+  float vida_baja_suelo = 0;  // B2-03: no baja de esta parte de su vida maxima (B2: 500 de 3000)
+  bool vida_baja_rival = false;   // B2-03: el rival tambien la pierde (casilla de condicion 3)
+  float ki_baja = 0;          // B2-03: parte del ki maximo que pierden los dos por segundo (casilla de condicion 4)
   bool sin_bloqueo = false;   // el boton de guardia del jugador no hace nada (el que solo da G, en su configuracion)
   bool ki_cero = false;       // el jugador empieza con el ki a 0
   float ataque = 0;           // dano extra que hace el jugador (daga de B2: 0.10 = +10 %)
   float defensa = 0;          // parte del dano que recibe el jugador que se anula (armadura de B2: 0.10)
+  float ataque_rival = 0;     // dano extra que hace el rival (Kid Bu +10 de la IX de B2: 0.10 = +10 %)
 };
 // Fin del combate pedido (lado 0 = jugador).
 struct Fin {
@@ -225,6 +238,10 @@ struct Fin {
   // (jugador +0x8c3c) solo lo escriben los guiones MMI2 (RAMEvents EU 0x22F9D0): 0 en el port.
   int rival_ki_max = 0;
   int rival_combo_dano_max = 0;
+  // IWFIN/HUECOS-08: los que faltaban. iw_palabra = palabras 1, 2, 3 y 16 del jugador (+0x30, +0x2C, +0x34, +0x20;
+  // combate::PalabraIW) y ki_max = mayor racha de carga de ki del JUGADOR en cuadros (+0x38, jugador +0x8c44).
+  int iw_palabra[4] = {0, 0, 0, 0};
+  int ki_max = 0;
 };
 // Vigila el combate pedido con dbz3::hub::RequestBattleEx (hilo propio): aplica las reglas mientras se pelea y llama
 // a `fin` cuando el conector suelta el combate. `quien` = prefijo del registro ("pasarela", "misiones").

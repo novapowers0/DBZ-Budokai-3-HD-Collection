@@ -1,0 +1,58 @@
+version = 3
+schema = "dbz3-cac/3"
+activo = 0
+
+[[heroe]]
+id = "h100010"
+esferas = 0
+deseos = 0
+desbloqueos = []
+nombre = "CAC10"
+inventario = []
+equipo = [0, 0, 0, 0]
+raza = 0
+cuerpo = 0
+traje = 0
+cara = 0
+pelo = 0
+ropa = 0
+color = 0
+voz = 0
+aura = 0
+aura_col = ""
+ki_col = ""
+estilo = 0
+moveset = -1
+tecnicas = [0, 0, 0, 0]
+xp = 0
+nivel = 1
+logo = 0
+scouter = 0
+partes = [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]]
+xv2 = [0, 0, 0, 0, 0, 0, 0]
+b3_piezas = [-1, -1, -1, -1]
+b3_accesorio = -1
+ocultar = 0
+ocultar_de = -1
+capas = [[-1, 0, 0], [-1, 0, 0], [-1, 0, 0], [-1, 0, 0]]
+receta_nombres = ["Rojo", "Azul", "Verde", "Oro"]
+receta_fichas = [
+  "cuerpo=0;traje=0;partes=120,40,0|0,0,0|0,0,0|0,0,0;pelo=2;c1=0,0,0;c2=0,0,0;logo=0;scouter=0",
+  "cuerpo=0;traje=0;partes=220,30,10|0,0,0|0,0,0|0,0,0;pelo=0;c1=0,0,0;c2=0,0,0;logo=0;scouter=1",
+  "cuerpo=0;traje=0;partes=100,50,0|0,0,0|0,0,0|0,0,0;pelo=5;c1=0,0,0;c2=0,0,0;logo=1;scouter=0",
+  "cuerpo=0;traje=0;partes=40,90,20|0,0,0|0,0,0|0,0,0;pelo=7;c1=0,0,0;c2=0,0,0;logo=0;scouter=0",
+]
+receta_activa = -1
+forma_receta = [-1, -1, -1, -1, -1, -1, -1, -1]
+forma_estallido = ["", "", "", "", "", "", "", ""]
+pelo_color1 = [0, 0, 0]
+pelo_color2 = [0, 0, 0]
+ojos_color = [0, 0, 0]
+piel_color = [0, 0, 0]
+progreso = 0
+saga = 0
+ph = 0
+ph_vida = 0
+ph_dano = 0
+maestros = 0
+entreno = [0, 0, 0, 0, 0, 0]

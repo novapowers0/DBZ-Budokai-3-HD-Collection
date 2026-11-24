@@ -4,6 +4,18 @@
 cmake_minimum_required(VERSION 3.25)
 project(dbz3 LANGUAGES CXX)
 
+option(DBZ3_LINUX_ARM64_CHECK "Check the Linux ARM64 build and both generated regions" OFF)
+if(DBZ3_LINUX_ARM64_CHECK)
+    if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux" OR
+       NOT CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
+        message(FATAL_ERROR "linux-arm64-release requires a Linux ARM64 target")
+    endif()
+    if(NOT DBZ3_DUAL_REGION OR NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/generated/sources.cmake" OR
+       NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/generated_eu/sources.cmake")
+        message(FATAL_ERROR "linux-arm64-release requires both US and EU generated sources")
+    endif()
+endif()
+
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -34,6 +46,7 @@ set(DBZ3_SOURCES
     src/ingame/quick_settings.cpp
     src/ingame/game_style.cpp
     src/ingame/native_ui.cpp
+    src/xma_propio.cpp
     src/ingame/menu_pilot.cpp
     src/ingame/online_panel.cpp
     src/ingame/tagteam_panel.cpp
@@ -57,7 +70,14 @@ set(DBZ3_SOURCES
     src/ingame/hub_panel.cpp
     src/modos.cpp
     src/rpg.cpp
+    src/rogue.cpp
+    src/rogue_evoluciones.cpp
+    src/rogue_caminos.cpp
+    src/rogue_resultado.cpp
+    src/rogue_fx.cpp
+    src/ranking_online.cpp
     src/heroe.cpp
+    src/heroe_avatar.cpp
     src/heroe_ui.cpp
     src/cac/cac.cpp
     src/fusion.cpp
@@ -69,16 +89,31 @@ set(DBZ3_SOURCES
     src/tactics/sim.cpp
     src/tactics/catalogo.cpp
     src/tactics/partida.cpp
+    src/survivors/sim.cpp
+    src/survivors/prueba.cpp
+    src/survivors/juego.cpp
+    src/survivors/entrada.cpp
+    src/survivors/recursos.cpp
+    src/survivors/impostores.cpp
+    src/survivors/modo.cpp
+    src/survivors/modo_mundo.cpp
+    src/survivors/modo_pantallas.cpp
+    src/survivors/modo_audio.cpp
+    src/survivors/tienda.cpp
+    src/survivors/ambiente.cpp
     src/iw_minijuegos.cpp
     src/cinematica.cpp
     src/freecam.cpp
     src/ports_guard.cpp
     src/ports_regs_luchadores.cpp
     src/combate.cpp
+    $<$<OR:$<BOOL:${DBZ3_DUAL_REGION}>,$<NOT:$<STREQUAL:${DBZ3_GENERATED_DIR},generated_eu>>>:src/comp_aura.cpp>
+    $<$<OR:$<BOOL:${DBZ3_DUAL_REGION}>,$<NOT:$<STREQUAL:${DBZ3_GENERATED_DIR},generated_eu>>>:src/comp_hud.cpp>
     src/plugins.cpp
     src/transformaciones.cpp
     src/video_sfd.cpp
     src/anim_iw.cpp
+    src/boca.cpp
     src/suelo_iw.cpp
     src/ps2_modelo.cpp
     src/iw_mini_botones.cpp
@@ -86,6 +121,8 @@ set(DBZ3_SOURCES
     src/iw_mini_disparo.cpp
     src/iw_mini_extra.cpp
     src/iw_mips.cpp
+    src/iw_gs_traductor.cpp
+    src/iw_trad_bucle.cpp
     src/datos.cpp
 )
 
@@ -108,10 +145,15 @@ if(DBZ3_DUAL_REGION OR DBZ3_GENERATED_DIR STREQUAL "generated")
         list(APPEND DBZ3_SOURCES ${GENERATED_SOURCES})
         # Opus R5 (rollback): escrituras vectoriales/dcbz/atomicas del codigo US al registro de deshacer (src/net/rb_store.h)
         set_source_files_properties(${GENERATED_SOURCES} PROPERTIES COMPILE_DEFINITIONS DBZ3_RBW_TU=1)
-        # El PCH se regenera sin el registro de escrituras: se anade al configurar, solo si falta (si no, no se recompila nada)
+        # El PCH se regenera sin el registro: asegurar un include final fuera de bloques condicionales/comentarios.
+        if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/generated/dbz3_pch.h")
+            message(FATAL_ERROR "Falta generated/dbz3_pch.h: regenerar el core US antes de configurar rollback")
+        endif()
         file(READ "${CMAKE_CURRENT_SOURCE_DIR}/generated/dbz3_pch.h" DBZ3_PCH_TEXTO)
-        if(NOT DBZ3_PCH_TEXTO MATCHES "net/rb_store\\.h")
-            file(APPEND "${CMAKE_CURRENT_SOURCE_DIR}/generated/dbz3_pch.h" "\n#include \"../src/net/rb_store.h\"\n")
+        # La linea vacia anterior evita continuaciones de macros; EOF evita aceptar un include dentro de #if 0.
+        # rb_store.h tiene pragma once: un include previo no hace dano. Tras anadirlo, configurar es idempotente.
+        if(NOT DBZ3_PCH_TEXTO MATCHES "(^|\n[ \t]*\n)[ \t]*#[ \t]*include[ \t]*\"\\.\\./src/net/rb_store\\.h\"[ \t\r\n]*$")
+            file(APPEND "${CMAKE_CURRENT_SOURCE_DIR}/generated/dbz3_pch.h" "\n\n#include \"../src/net/rb_store.h\"\n")
         endif()
     endif()
 endif()
@@ -126,19 +168,20 @@ endif()
 # and dual-region). The single-EU build excludes it: the EU guest addresses
 # differ and the US hooks would not apply.
 if(DBZ3_GENERATED_DIR STREQUAL "generated_eu" AND NOT DBZ3_DUAL_REGION)
-    list(REMOVE_ITEM DBZ3_SOURCES src/hooks.cpp)
+    list(REMOVE_ITEM DBZ3_SOURCES src/hooks.cpp src/heroe_avatar.cpp)
     list(REMOVE_ITEM DBZ3_SOURCES src/roster_trace.cpp)
     list(REMOVE_ITEM DBZ3_SOURCES src/combate.cpp)
     list(REMOVE_ITEM DBZ3_SOURCES src/transformaciones.cpp)
     list(REMOVE_ITEM DBZ3_SOURCES src/video_sfd.cpp)
     list(REMOVE_ITEM DBZ3_SOURCES src/anim_iw.cpp)
+    list(REMOVE_ITEM DBZ3_SOURCES src/boca.cpp)
     list(REMOVE_ITEM DBZ3_SOURCES src/suelo_iw.cpp)
     list(REMOVE_ITEM DBZ3_SOURCES src/ps2_modelo.cpp)
     list(REMOVE_ITEM DBZ3_SOURCES src/iw_mini_botones.cpp)
     list(REMOVE_ITEM DBZ3_SOURCES src/iw_mini_vuelo.cpp)
     list(REMOVE_ITEM DBZ3_SOURCES src/iw_mini_disparo.cpp)
     list(REMOVE_ITEM DBZ3_SOURCES src/roster_ext.cpp src/select_ext.cpp src/stage_ext.cpp)
-    list(REMOVE_ITEM DBZ3_SOURCES src/net/netplay_hooks.cpp src/tagteam.cpp src/tagteam_slots.cpp src/campaigns.cpp src/hub.cpp src/escenarios.cpp src/clima.cpp src/cine.cpp src/gigantes.cpp src/pasarela.cpp src/pasarela_b1.cpp src/pasarela_misiones.cpp src/hub_menu.cpp src/ingame/hub_panel.cpp src/ingame/tutorial.cpp src/modos.cpp src/rpg.cpp src/heroe.cpp src/heroe_ui.cpp src/cac/cac.cpp src/fusion.cpp src/pasarela_iw.cpp src/pasarela_b2.cpp src/pasarela_nave.cpp src/tactics/prueba_figuras.cpp src/tactics/entrada.cpp src/tactics/sim.cpp src/tactics/catalogo.cpp src/tactics/partida.cpp src/iw_minijuegos.cpp src/iw_mips.cpp src/cinematica.cpp src/freecam.cpp)
+    list(REMOVE_ITEM DBZ3_SOURCES src/net/netplay_hooks.cpp src/tagteam.cpp src/tagteam_slots.cpp src/campaigns.cpp src/hub.cpp src/escenarios.cpp src/clima.cpp src/cine.cpp src/gigantes.cpp src/pasarela.cpp src/pasarela_b1.cpp src/pasarela_misiones.cpp src/hub_menu.cpp src/ingame/hub_panel.cpp src/ingame/tutorial.cpp src/modos.cpp src/rpg.cpp src/rogue.cpp src/rogue_caminos.cpp src/rogue_resultado.cpp src/ranking_online.cpp src/rogue_evoluciones.cpp src/heroe.cpp src/heroe_ui.cpp src/cac/cac.cpp src/fusion.cpp src/pasarela_iw.cpp src/pasarela_b2.cpp src/pasarela_nave.cpp src/tactics/prueba_figuras.cpp src/tactics/entrada.cpp src/tactics/sim.cpp src/tactics/catalogo.cpp src/tactics/partida.cpp src/iw_minijuegos.cpp src/iw_mips.cpp src/iw_gs_traductor.cpp src/iw_trad_bucle.cpp src/cinematica.cpp src/freecam.cpp)
 endif()
 
 # src/escenarios_sel_gen.inc sale del codigo generado (US) y no va al repo publico: si falta, se crea aqui
@@ -165,6 +208,12 @@ else()
     add_executable(dbz3 ${DBZ3_SOURCES})
 endif()
 
+# CaC: prueba de persistencia real, sin motor; se compila con tools/compilar.py.
+add_executable(cac_guardado_test tests/cac_guardado_test.cpp src/cac/cac.cpp)
+target_include_directories(cac_guardado_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/rexglue/include)
+add_executable(cac_recetas_test tests/cac_recetas_test.cpp src/cac/cac.cpp)   # cac1: migracion v2->v3 y recetas
+target_include_directories(cac_recetas_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/rexglue/include)
+
 # Dragon Tactics H2 (T8/T9): simulacion de combate + catalogo + pruebas, sin el juego ni el SDK. No entra en "all":
 #   cmake --build <build> --target tactics_sim_test   y luego   tactics_sim_test "mod center hd" D:/tmp   (desde la raiz del repo)
 add_executable(tactics_sim_test EXCLUDE_FROM_ALL tests/tactics_sim_test.cpp src/tactics/sim.cpp src/tactics/catalogo.cpp)
@@ -175,6 +224,20 @@ target_include_directories(tactics_partida_test PRIVATE ${CMAKE_CURRENT_SOURCE_D
 # Dragon Tactics H5: equilibrio (bots contra bots: victorias por unidad, sinergia y coste, y duracion de la partida).   tactics_equilibrio "mod center hd" [duelos] [torneos]
 add_executable(tactics_equilibrio EXCLUDE_FROM_ALL tests/tactics_equilibrio.cpp src/tactics/partida.cpp src/tactics/sim.cpp src/tactics/catalogo.cpp)
 target_include_directories(tactics_equilibrio PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/rexglue/include)
+# Dragon Budokai Survivors (prueba tecnica): simulacion de la horda (determinismo, solape y ms por paso con 100..2000 enemigos).   survivors_sim_test
+add_executable(survivors_sim_test EXCLUDE_FROM_ALL tests/survivors_sim_test.cpp src/survivors/sim.cpp)
+target_include_directories(survivors_sim_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+# Dragon Budokai Survivors: partida (determinismo, 20 partidas con bot, cada tecnica hace dano, ms por paso).   survivors_juego_test [res/survivors/survivors.toml] [partidas]
+add_executable(survivors_juego_test EXCLUDE_FROM_ALL tests/survivors_juego_test.cpp src/survivors/juego.cpp src/survivors/sim.cpp src/survivors/tienda.cpp)
+target_include_directories(survivors_juego_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/rexglue/include)
+# Dragon Budokai Survivors, P1 (A02, A05, A06, A08, A09): lógica nueva sin juego.   survivors_p1_test
+add_executable(survivors_p1_test EXCLUDE_FROM_ALL tests/survivors_p1_test.cpp src/survivors/juego.cpp src/survivors/sim.cpp src/survivors/tienda.cpp)
+target_include_directories(survivors_p1_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/rexglue/include)
+# SUR-07: decodificador XMA propio (bancos #AMB de B3 HD) sin el juego.   xma_propio_test <entrada.dec> [carpeta_wav]
+add_executable(xma_propio_test EXCLUDE_FROM_ALL tests/xma_propio_test.cpp src/xma_propio.cpp)
+target_compile_definitions(xma_propio_test PRIVATE XMA_PROPIO_TEST=1)
+target_include_directories(xma_propio_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/rexglue-sdk-0.10/thirdparty/FFmpeg)
+target_link_libraries(xma_propio_test PRIVATE rex::libavcodec)
 
 target_include_directories(dbz3 PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
@@ -197,11 +260,17 @@ target_link_libraries(dbz3 PRIVATE
     rex::runtime
     rex::gpu-xenos
 )
+# SUR-07 (src/xma_propio.cpp, xmaframes) usa el mismo FFmpeg estatico que los videos SFD (src/video_sfd.cmake). Con
+# rex::libavcodec enlazado ademas, su avcodec_find_decoder (lista solo de audio) tapaba el MPEG-2: los SFD de IW no abrian.
+target_include_directories(dbz3 PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/rexglue-sdk-0.10/thirdparty/FFmpeg)
 
 if(WIN32)
     # Launcher update check (GitHub releases over WinHTTP) and VERSIONINFO
     # reading (winver) for the running build.
-    target_link_libraries(dbz3 PRIVATE winhttp version ws2_32 ole32 oleaut32)   # ws2_32: online (src/net); ole32: UPnP del router
+    target_link_libraries(dbz3 PRIVATE winhttp version ws2_32 ole32 oleaut32 bcrypt advapi32)
+else()
+    # xma_propio usa avcodec tambien fuera de Windows. Alli no se enlaza dbz3_ffvideo.
+    target_link_libraries(dbz3 PRIVATE rex::libavcodec)
 endif()
 
 # libjuice v1.7.4 (ICE/STUN/TURN, MPL-2.0, third_party/libjuice sin cambios): biblioteca estatica para el transporte de R5. APAGADO por
@@ -229,6 +298,13 @@ endif()
 # REXGLUE_BUILD_CONFIG define, runtime DLL staging (rexruntime, TracyClient),
 # and copies the xenos GPU plugin next to the executable.
 rexglue_configure_target(dbz3 GPU_PLUGINS xenos)
+
+# Plataformas fuera de PC (Android, Switch): su carpeta trae un platform.cmake que anade a `dbz3` sus
+# fuentes, definiciones y DBZ3_PLATFORM_HEADER (enganches de src/main.cpp). Vacio = PC, sin cambios.
+set(DBZ3_PLATFORM_DIR "" CACHE PATH "Carpeta de plataforma con platform.cmake (vacio = PC)")
+if(DBZ3_PLATFORM_DIR)
+    include("${DBZ3_PLATFORM_DIR}/platform.cmake")
+endif()
 
 # Videos SFD de IW (frente R7): MPEG-2 del FFmpeg del SDK, objetivo estatico propio solo en el exe
 include(src/video_sfd.cmake)
@@ -274,6 +350,18 @@ add_custom_command(TARGET dbz3 POST_BUILD
     COMMENT "Staging res/heroe next to dbz3"
     VERBATIM)
 endif()
+
+# Dragon Budokai Survivors y Dragon Rogue: arte propio (res/mejoras: iconos y piezas de interfaz comunes; res/survivors: fondos y
+# survivors.toml). survivors/recursos.cpp los busca en <exe>/res/.
+foreach(_dbz3_res mejoras survivors)
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/res/${_dbz3_res}")
+add_custom_command(TARGET dbz3 POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_CURRENT_SOURCE_DIR}/res/${_dbz3_res}" "$<TARGET_FILE_DIR:dbz3>/res/${_dbz3_res}"
+    COMMENT "Staging res/${_dbz3_res} next to dbz3"
+    VERBATIM)
+endif()
+endforeach()
 
 # Codegen target - run 'cmake --build . --target dbz3_codegen'
 add_custom_target(dbz3_codegen

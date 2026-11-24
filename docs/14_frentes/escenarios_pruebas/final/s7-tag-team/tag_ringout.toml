@@ -1,0 +1,52 @@
+# S7 / TAG04 (ring out con companero vivo): Tag Team 2 VS 2, el jugador 1 cae fuera del ring.
+# FASE 3: lo deja escrito el carril S7; lo ejecuta Z una sola vez.
+#   python tools\pruebas.py correr smoke_a "docs\14_frentes\escenarios_pruebas\final\s7-tag-team\tag_ringout.toml"
+#
+# clave    = TAG04 (ring out con companero vivo cuenta como KO y entra el companero)
+# cvar     = dbz3_tag_trace=true solo para tiempos
+# criterio = a los 5 s el jugador 1 sale del ring; RingOutToSwap lo convierte en KO con relevo (no termina el
+#            combate), el companero entra dentro del ring (pose de entrada) y a los 25 s acaba por tiempo.
+# log      = "tag: prueba: jugador 1 fuera del ring", "ring out de ... con compañero vivo", "relevo", "tag: combate acabado"
+descripcion = "Tag Team 2v2 (TAG04): ring out del jugador 1 convertido en relevo, sin cierre"
+env = [
+  "DBZ3_TAG_TEST_PICKS=1",
+  "DBZ3_TAG_TEST=0,2",
+  "DBZ3_TAG_TEST2=7,10",
+  "DBZ3_TEST_RINGOUT=2",
+  "DBZ3_TEST_TAGTIME=25",
+  "DBZ3_TEST_CFG=dbz3_tag_trace=true;dbz3_combate_prueba_muneco=\"quieto\"",
+]
+pasos = [
+  "esperar 2500",
+  "tecla L 3000",
+  "captura a_panel",
+  "tecla Space 12000",
+  "captura b_rueda",
+  "tecla Space 4000",
+  "log \"menu de capsulas del jugador 1 abierto\" 30",
+  "esperar 1000",
+  "tecla Space 4000",
+  "tecla S 2000",
+  "tecla Space 4000",
+  "log \"menu de capsulas del jugador 2 abierto\" 30",
+  "esperar 1000",
+  "tecla Space 4000",
+  "captura c_equipos",
+  "tecla Space 6000",
+  "tecla Space 6000",
+  "tecla Space 3000",
+  "tecla Space 3000",
+  "tecla Space 3000",
+  "log \"tag: empieza un combate\" 60",
+  "esperar 6000",
+  "captura d_combate",
+  "log \"tag: prueba: jugador 1 fuera del ring\" 30",
+  "esperar 2000",
+  "captura e_ringout",
+  "log \"ring out de .* con compa\" 30",
+  "log \"relevo\" 30",
+  "captura f_entrada",
+  "esperar 3000",
+  "log \"tag: combate acabado\" 30",
+  "captura g_fin",
+]

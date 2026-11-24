@@ -1,0 +1,29 @@
+descripcion = "solHAB: START del Heroe -> Habitacion -> B -> mapa"
+env = [
+  "DBZ3_TEST_DU_HEROE=35",
+  "DBZ3_TEST_CFG=dbz3_heroe_habitacion=true",
+]
+pasos = [
+  'log "escena 10[02] entrada 35" 180',
+  "tecla Space 2000",
+  "tecla Space 2000",
+  "tecla Space 2000",
+  "tecla Space 2000",
+  "tecla Space 2000",
+  "tecla Space 2000",
+  "esperar 8000",
+  "captura a_mapa",
+  "tecla Return 1500",
+  'log "solHAB: START abierto" 10',
+  "captura b_start",
+  "tecla S 500",
+  "tecla S 500",
+  "tecla S 500",
+  'log "solHAB: cursor en Habitacion" 10',
+  "captura c_habitacion_fila",
+  "tecla Space 2000",
+  'log "solHAB: Habitacion abierta desde START" 10',
+  "captura d_habitacion",
+  "tecla Backspace 1500",
+  "captura e_mapa",
+]

@@ -21,6 +21,7 @@ enum class Accion { kNada, kVolver, kConfirmar, kCrear };   // kCrear: heroe nue
 
 void PedirCombate();   // C4: remonta mods/heroe_propio con la ficha actual si cambio (aura/ki de color, piezas...)
 void AvisarMenuDeseo(int fila, int filas);
+bool MenuDeseo(int* fila, int* filas);   // HEROE-V04: el menu de deseos del Heroe esta en pantalla (aviso de hace < 0,25 s)
 bool FaltaRotuloNombre();   // ficha montada sin mods/heroe_nombres
 bool MontajeFallido();      // el ultimo montaje del heroe fallo (sin Python, sin sagas...): aviso en pantalla
 void AbrirCrear(bool edit);   // edit = pantalla Edit (pelo); guarda una copia para Atras
@@ -47,6 +48,22 @@ void Principal(ImDrawList* dl, const dbz3::ingame::style::Area& a, float t, int 
 
 void AbrirMaestros();
 Accion Maestros(ImDrawList* dl, const dbz3::ingame::style::Area& a, float t, uint16_t p);
+
+// Rediseno del Modo Heroe (dbz3_heroe_habitacion / dbz3_heroe_evolucion, apagados de serie): la Habitacion (casa del heroe) y la
+// Evolucion por raza. Habitacion devuelve a donde ir (rpg.cpp abre esa pantalla y vuelve); kCambio = cambio de traje/maestro (guardar).
+enum class Hab { kNada, kVolver, kCambio, kAspecto, kEvolucion, kMaestros, kTecnicas, kFicha, kColeccion };
+bool HabitacionActiva();   // el ajuste dbz3_heroe_habitacion esta encendido
+void AbrirHabitacion(bool reentrada = false);   // reentrada: vuelve de una de sus pantallas (conserva la fila)
+Hab Habitacion(ImDrawList* dl, const dbz3::ingame::style::Area& a, float t, uint16_t p);
+void AbrirEvolucion();
+Accion Evolucion(ImDrawList* dl, const dbz3::ingame::style::Area& a, float t, uint16_t p);
+// Coleccion (HEROE-REC, dbz3_heroe_recompensas): se abre desde Habitacion > Coleccion; kVolver = B.
+void AbrirColeccion();
+Accion Coleccion(ImDrawList* dl, const dbz3::ingame::style::Area& a, float t, uint16_t p);
+// aviso de recompensa del resultado (rpg.cpp), en el lienzo 1600x900 `q`: cabecera de la carta de una tecnica y cabeza nativa
+bool AvisoCabeceraTecnica(ImDrawList* dl, const dbz3::ingame::style::Area& q, int cap, float x0, float y0, float w);
+dbz3::ingame::style::Pic AvisoPiezaTitulo();   // laurel de los titulos (res/heroe/premio_titulo.png)
+void AvisoCara(ImDrawList* dl, const dbz3::ingame::style::Area& q, int id, float cx, float cy, float r);
 
 // Vista previa (tira de giros) del cuerpo `id` con el traje `traje`: si falta, se genera en segundo plano.
 void PedirVista(int id, int traje);

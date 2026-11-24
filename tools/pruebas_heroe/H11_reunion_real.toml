@@ -1,0 +1,20 @@
+# R23 heroe2: ficha reunion.toml hecha de siete.toml (5 Esferas, eventos 0-4, tramo 5 cerrado, etapa 5 pendiente), la de R16 ya no existe
+descripcion = "H11: recoger las dos Esferas de mapa desde el quinto cierre real"
+turbo = false
+apartar = ["user_data/dbz3/cac.toml*", "user_data/dbz3/heroe", "user_data/dbz3/hub_heroe.toml*", "user_data/dbz3/rpg.toml*"]
+poner = ["E:/DBZ3HD_trabajo/heroe2_fixtures/reunion.toml -> user_data/dbz3/cac.toml"]
+env = ["DBZ3_TEST_DU_HEROE=35", "DBZ3_TEST_RINGOUT=1", "DBZ3_AUTO_TOUCH=40", "DBZ3_AUTO_TOUCH_S=3", "DBZ3_DU_TRACE=1", "DBZ3_TEST_CFG=dbz3_heroe_rutas=true;dbz3_heroe_ui_nueva=true;dbz3_heroe_recompensas=true"]
+pasos = [
+  'esperar 5000',
+  'log "ruta atomica de la ficha" 120',
+  'captura quinto_cierre_real',
+  'hasta_log "H02 evento 6 cobrado una vez" 180',
+    'tecla Space 200', 'esperar 1000',
+  'fin',
+  'captura siete_esferas_reales',
+  'hasta_log "menu de deseos: fila 1 de 2" 120',
+    'tecla Space 200', 'esperar 1000',
+  'fin',
+  'esperar 1000',
+  'captura decision_historia_real',
+]

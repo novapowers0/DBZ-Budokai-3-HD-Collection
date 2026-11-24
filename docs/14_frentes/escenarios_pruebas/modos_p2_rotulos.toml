@@ -1,0 +1,32 @@
+descripcion = "MODOS-02: Torre corta de 2 combates con premio 800 y el ajuste rotulos: la pantalla entre combates dice «Combates ganados»/«Mejor marca» y la final ensena el premio"
+env = ["DBZ3_HUB_MODE=5", "DBZ3_TEST_RINGOUT=1", "DBZ3_TEST_CFG=dbz3_modos_rotulos=true"]
+apartar = ["user_data/dbz3/rpg.toml*", "user_data/dbz3/hub_modos.toml*", "user_data/dbz3/modos", "user_data/dbz3/retos.csv", "user_data/dbz3/hub_heroe.toml*", "user_data/dbz3/pasarela"]
+poner = ["docs/14_frentes/escenarios_pruebas/modos_p2_reto.toml -> user_data/dbz3/modos/torre.toml"]
+pasos = [
+  "esperar_pantalla 5 120",
+  "log 'menu principal estado 3' 60",
+  "esperar 3000",
+  "tecla W 1200",
+  "tecla Space 3500",
+  "log 'hub: entra la pantalla HUB' 60",
+  "tecla S 700",
+  "tecla S 700",
+  "tecla S 700",
+  "esperar 800",
+  "tecla Space 2500",
+  "captura 01_selector",
+  "tecla Space 2500",
+  "log \"modos: torre 1/2\" 90",
+  "log \"fin del combate 1/2: gana el lado 1\" 90",
+  "esperar 4000",
+  "captura 02_entre_combates",
+  "tecla Space 2500",
+  "log \"fin del combate 2/2: gana el lado 1\" 90",
+  "log \"torre terminado: victoria\" 120",
+  "esperar_pantalla 5 40",
+  "esperar 1500",
+  "captura 03_final",
+  "tecla Space 2500",
+  "esperar 2000",
+  "captura 04_hub_vuelve",
+]

@@ -1,0 +1,27 @@
+# D1 / PEDIDOS_dsPOR: Ghost Gotenks (modelo de B2) con el moveset del donante Trunks ya no cierra el juego.
+# FASE 3: lo deja escrito el carril D1; lo ejecuta Z.
+#   python tools\pruebas.py correr smoke_a "docs\14_frentes\escenarios_pruebas\final\d1-import${name}.toml"
+#
+# clave    = PEDIDOS_dsPOR (Fat/Ghost Gotenks) / B2-20
+# cvar     = ninguna nueva: el arreglo va en el roster generado (roster_build.donor_anm_bones_fixed reasigna las
+#            pistas del ANM del donante a los huesos del modelo y quita SOWD/SOWDCASE/WIG). El roster de la copia
+#            debe venir de roster_build con vis_b2_ghost_gotenks (id 47 en la copia nova_t3).
+# criterio = el combate nativo de Ghost Gotenks (id 47) llega a la pelea y aguanta 16 s sin cerrarse; antes
+#            cerraba al empezar (access violation read of guest 0x20, lr 0x820FB14C). Banco (offline): el ANM
+#            propio del build tiene los 52/57 huesos del modelo y 0 pistas de SOWD.
+# log      = "dbz3 hub: combate nativo: id 47"
+#
+# PENDIENTE_JUEGO: la foto de la pelea (g0/g1); sin "access violation" en el log.
+descripcion = "D1: Ghost Gotenks (B2 + moveset del donante) en combate nativo sin cierre"
+env = [
+  "DBZ3_TEST_BATTLE=47,7,2",
+  "DBZ3_COMBATE_SONDA=1",
+]
+pasos = [
+  'log "hub: combate nativo: id 47" 150',
+  "esperar_pelea 150",
+  "esperar 8000",
+  "captura g0",
+  "esperar 8000",
+  "captura g1",
+]

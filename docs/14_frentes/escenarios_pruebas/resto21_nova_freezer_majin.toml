@@ -1,0 +1,11 @@
+descripcion = "RESTO-21: combate nativo del id 27 con el traje extra nova_freezer_majin (Freezer Majin (traje de Freeza)); la copia debe tener el mod instalado y el roster construido (mods Nova en E:/DBZ3HD_trabajo/sprint/A-PRUEBAS-2/nova)"
+env = ["DBZ3_TEST_BATTLE=27,7,2", "DBZ3_TEST_TRAJES=nova_freezer_majin,0"]
+pasos = [
+  'log "hub: combate nativo: id 27" 180',
+  "esperar_pelea 120",
+  "esperar 2000",
+  "captura nova_freezer_majin_0",
+  "tecla L 250", "tecla L 250", "tecla Space 250",
+  "esperar 3000",
+  "captura nova_freezer_majin_1"
+]

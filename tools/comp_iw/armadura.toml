@@ -1,0 +1,7 @@
+descripcion = "IW REF: observar ventanas naturales de armadura; no certificar absorción sin colisión sincronizada"
+turbo = false
+env = ['DBZ3_TEST_BATTLE=0,7,2', 'DBZ3_COMBATE_MUNECO=quieto', 'DBZ3_COMBATE_SONDA=1', 'DBZ3_COMBATE_KI=5000', 'DBZ3_TEST_CFG=dbz3_modo_competitivo=true;dbz3_combate_prueba_muneco="quieto";dbz3_combate_definitiva_directa=false']
+pasos = ['log "tag: empieza un combate" 90', 'esperar_pelea 90', 'esperar 1500', 'tecla Q 0', 'log "COMP estado propio del lado 1 encendido" 10', 'captura armadura_humo']
+[iw]
+caso = "armadura"
+fuentes = ["240220", "2400E0", "2318B0"]

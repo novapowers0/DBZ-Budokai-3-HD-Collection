@@ -87,7 +87,7 @@ def revisar(carpeta, en=False):
             if not p.get("nombre"):
                 out.append(("error", t("Falta el nombre del personaje (nombre = \"...\").",
                                        "The character name is missing (nombre = \"...\").")))
-            if "donante" not in p:
+            if "donante" not in p and "ficha_nativa" not in p:   # el fusionado suelto lo trae de la ficha
                 out.append(("aviso", t("No indica «donante», el personaje del que hereda lo que le falte.",
                                        "It has no 'donante', the character it inherits what it lacks from.")))
             for c in datos.get("capsula", []):

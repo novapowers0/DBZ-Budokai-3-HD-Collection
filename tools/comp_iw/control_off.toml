@@ -1,0 +1,7 @@
+descripcion = "IW REF: control Versus OFF conserva Hyper y Dragon Rush nativos"
+turbo = false
+env = ['DBZ3_TEST_BATTLE=0,7,2', 'DBZ3_COMBATE_MUNECO=quieto', 'DBZ3_COMBATE_SONDA=1', 'DBZ3_COMBATE_KI=6000', 'DBZ3_TEST_COMP_RUSH=1', 'DBZ3_TEST_CFG=dbz3_modo_competitivo=false;dbz3_combate_prueba_muneco="quieto";dbz3_combate_definitiva_directa=false']
+pasos = ['log "tag: empieza un combate" 90', 'esperar_pelea 90', 'esperar 12000', 'captura versus_off_humo']
+[iw]
+caso = "control_off"
+fuentes = ["control B3: sub_8210B1C0"]

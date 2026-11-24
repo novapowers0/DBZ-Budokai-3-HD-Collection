@@ -116,5 +116,7 @@ int DeltaTeclado();   // +1 al pulsar ], -1 al pulsar [ (solo con la ventana del
 // Previa: reproduce en bucle y corta la anterior. `volumen` 0..1.
 void Escuchar(const Pista& pista, float volumen);
 void Parar();
+// SEL02: pista que representa ahora dbz3_musica_combate sin tocar musica.toml (vacia con "original").
+Pista ElegidaAhora();
 
 }  // namespace dbz3::musica

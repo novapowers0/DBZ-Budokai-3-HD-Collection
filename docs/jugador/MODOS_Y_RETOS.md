@@ -13,7 +13,8 @@ En el menú principal, baja (o sube) más allá de la última fila: aparece la f
 | Torre | Pisos seguidos contra rivales cada vez más fuertes. |
 | Supervivencia | Oleadas seguidas: la vida que te queda pasa a la siguiente y recuperas un poco entre medias. |
 | Kumite | Jefes con mucha vida, uno tras otro. Tu vida también se arrastra. |
-| Ranking / Laboratorio | Aún en gris: llegarán en una versión próxima. |
+| Ranking | Aún en gris. |
+| Laboratorio | Práctica con elección de luchadores y opciones del muñeco; su cierre completo sigue en pruebas. |
 
 En Torre, Supervivencia y Kumite **juegas con el último luchador que usaste en el Duelo**. Cada vez que ganas,
 el juego pasa solo al combate siguiente. Si pierdes, el reto termina y se apunta hasta dónde llegaste. Si eliges
@@ -21,6 +22,16 @@ el juego pasa solo al combate siguiente. Si pierdes, el reto termina y se apunta
 
 Tus resultados se guardan en `user_data/dbz3/retos.csv` (cada reto) y `user_data/dbz3/combates.csv` (cada combate,
 de ahí sale el ranking). Nada de esto toca tu partida guardada.
+
+### Laboratorio
+
+Desde el HUB entra en Laboratorio, elige luchador y rival y configura el muñeco. La práctica ofrece resumen y registro; al salir se restaura el estado anterior y existe recuperación tras interrupción. Quedan pendientes la comprobación completa del recorrido y la precisión de todos los datos de combate.
+
+### Campañas experimentales de IW y B2
+
+Infinite World requiere tu propia ISO europea para la ruta traducida; sin ella se usa la versión recreada. En las pruebas disponibles, las claves **7D5, 7DA, 7D4 y 7DC** llegaron a un resultado de victoria; **7E1** cubrió victoria, omisión de una fila, derrota y regreso al mapa. **7DB** llegó al resultado pero solo se observó derrota. Son casos concretos, no una traducción completa; la opción traducida sigue experimental y apagada de serie.
+
+Budokai 2 requiere tu propia copia para sus recursos. El tablero y las fichas tienen pruebas funcionales parciales; el ciclo completo de tablero, combate, resultado y retorno, así como su fidelidad visual, siguen pendientes de aceptación. No se anuncian tableros completos como aprobados.
 
 ## Retos predefinidos
 Cada modo usa un reto. Sin hacer nada tienes el de serie. La carpeta `mod center hd` del Mod Kit trae un catálogo listo para jugar:
@@ -59,7 +70,7 @@ python retos_predefinidos.py quitar torre --juego "C:\Juegos\DBZ3HD"      (vuelv
 # HUB modes and challenges (player guide)
 
 Go past the last row of the main menu to reach the **HUB** row. It holds Tag Team (beta), Online (beta), Quick
-Battle, Tower, Survival and Kumite (Ranking and Laboratory are greyed out for now).
+Battle, Tower, Survival, Kumite and Laboratory. Ranking remains greyed out; Laboratory's complete practice and recovery flow is still under test.
 
 In Tower, Survival and Kumite you play with **the last fighter you used in Duel**. Each win moves on to the next
 fight automatically; a loss ends the challenge and your progress is recorded. In Survival and Kumite your remaining

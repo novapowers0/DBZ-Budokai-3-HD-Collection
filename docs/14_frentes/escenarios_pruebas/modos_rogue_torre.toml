@@ -1,0 +1,32 @@
+descripcion = "modos_rogue_torre (ROG-05): Dragon Rogue, camino La Torre desde la pantalla 01: escalera fija (Saibaman, Raditz, Nappa), vida llena en cada piso, final con 3 pisos y 150 + 800 Zenie del camino"
+# ROG-05: pasar en una copia SIN partida de Rogue a medias (la pantalla 01 solo sigue la suya): despues de
+# modos_rogue_reanudar, que la termina. Pantalla 01: el cursor sale en El Abismo (2.a fila); W = arriba, S = abajo.
+# Teclas: Space = A, P = Y (saltar la carta), D = derecha, L = X (cambiar las 3).
+env = ["DBZ3_HUB_MODE=5", "DBZ3_TEST_RINGOUT=1", "DBZ3_TEST_MODO=rogue,0", "REX_DBZ3_LANGUAGE=5", "DBZ3_TEST_ROGUE=3"]
+pasos = [
+  "esperar_pantalla 5 120",
+  "log 'prueba: Dragon Rogue' 30",
+  "esperar 2500",
+  "tecla W 1200",
+  "captura 01_pantalla01_torre",
+  "tecla Space 3000",
+  "log 'rogue: camino torre .10 combates, jefe cada 5, rivales escalera, pausa cartas.' 20",
+  "log 'Dragon Rogue: partida nueva' 30",
+  "log 'dbz3 modos: rogue 1/3: id 0 contra id 42' 30",
+  "log 'Dragon Rogue: combate 1 ganado .vida 3000/3000' 180",
+  "esperar 3000",
+  "tecla P 1500",
+  "esperar 1000",
+  "tecla Space 3000",
+  "log 'dbz3 modos: rogue 2/3: id 0 contra id 18' 60",
+  "log 'Dragon Rogue: combate 2 ganado .vida 3000/3000' 180",
+  "esperar 3000",
+  "tecla P 1500",
+  "esperar 1000",
+  "tecla Space 3000",
+  "log 'dbz3 modos: rogue 3/3: id 0 contra id 19' 60",
+  "log 'rogue: fin de torre: id 0, 3 pisos .record 3[^)]*., 950 Zenie' 180",
+  "esperar 3000",
+  "captura 02_final",
+  "tecla Space 2500",
+]

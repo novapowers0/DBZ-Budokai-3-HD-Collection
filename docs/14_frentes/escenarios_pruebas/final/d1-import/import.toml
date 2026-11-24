@@ -1,0 +1,23 @@
+# D1 / import.toml (B2-20 + contrato de importacion): crear un personaje con receta y abrir el launcher.
+# FASE 3: lo deja escrito el carril D1; lo ejecuta Z.
+#   python tools\pruebas.py correr smoke_a "docs\14_frentes\escenarios_pruebas\final\d1-import\import.toml"
+#
+# clave    = B2-20 (importacion de B2 con receta) + dspor-4 (textos/vista previa del Kit)
+# cvar     = ninguna nueva; el launcher se abre sobre el juego con DBZ3_TEST_OVERLAY.
+# criterio = el launcher abre y lee los mods (incluido el importado con su receta: preset, origen, formas); en la
+#            pestana Personajes/Modelos la vista previa de formas coincide con `formas` del personaje.toml.
+#            Banco (offline): `auditar_importar.py --fuente b2 --construir` = 44 personajes, 0 ERROR (29 OK/15 AVISO).
+# log      = "dbz3 launcher perf: ... mods leidos" (launcher abierto) y "dbz3 launcher perf: pestana"
+#
+# PENDIENTE_JUEGO: la captura de la pestana con la receta del personaje importado (import_1/import_2).
+descripcion = "D1: launcher abierto sobre el juego con los mods importados (receta y formas)"
+env = [
+  "DBZ3_TEST_OVERLAY=20",
+]
+pasos = [
+  "esperar 22000",
+  'log "launcher perf: .*mods leidos" 40',
+  "captura import_0",
+  "esperar 2000",
+  "captura import_1",
+]

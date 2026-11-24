@@ -385,6 +385,65 @@ void ConfigureQuickMenu(rex::ui::QuickMenuConfig& menu, std::function<void()> op
       again.shown_if_values = {"true"};
       modes.items.push_back(std::move(again));
     }
+    // TACTICS-01 (D2 TAC05): texturas/colores de tecnica de Dragon Tactics (fx_nativo.inc). Encendido = entrega actual.
+    modes.items.push_back(Toggle(
+        T::T("Tacticas: efectos nativos", "Tactics: native effects"), "dbz3_tactics_fx_nativo",
+        T::T("Usa la textura y el color de la tecnica del juego en Dragon Tactics. Apagado deja el dibujo anterior.",
+             "Uses the game's skill texture and colour in Dragon Tactics. Off uses the previous drawing.")));
+    // TACTICS-03: carrusel de Dragon Tactics (apagado de serie; cuenta al empezar una partida nueva).
+    modes.items.push_back(Toggle(
+        T::T("Tacticas: carrusel", "Tactics: carousel"), "dbz3_tactics_carrusel",
+        T::T("Cada 6 rondas, una fila de unidades gratis con cápsula: elige primero quien tiene menos vida. Cuenta al empezar una partida nueva.",
+             "Every 6 rounds, a row of free units with a capsule: the trainer with the least health picks first. Applies when you start a new game.")));
+    // TACTICS-V04: interfaz nueva de Dragon Tactics (maquetas v2; apagado de serie; solo cambia el dibujo, se puede cambiar en caliente).
+    modes.items.push_back(Toggle(
+        T::T("Tacticas: interfaz nueva", "Tactics: new interface"), "dbz3_tactics_visual_v2",
+        T::T("Tienda compacta, fichas con placas y paneles con titulo, con piezas del propio juego. Apagado se ve como siempre.",
+             "Compact shop, cards with plates and titled panels, built from the game's own art. Off looks as before.")));
+    // TACTICS-04: bots listos de Dragon Tactics (apagado de serie; cuenta al empezar una partida nueva).
+    modes.items.push_back(Toggle(
+        T::T("Tacticas: bots listos", "Tactics: smart bots"), "dbz3_tactics_bots_listos",
+        T::T("Los bots persiguen sus sinergias y las 3 estrellas y evitan las unidades que acaparan los rivales. Cuenta al empezar una partida nueva.",
+             "Bots chase their synergies and 3 stars and avoid the units their rivals hoard. Applies when you start a new game.")));
+    // TACTICS-05: variedad de composiciones de Dragon Tactics (apagado de serie; cuenta al empezar una partida nueva).
+    modes.items.push_back(Toggle(
+        T::T("Tacticas: variedad", "Tactics: variety"), "dbz3_tactics_variedad",
+        T::T("Algunas unidades cambian de sinergia y se ajustan los tramos: menos Saiyan y mas equipos distintos que pueden ganar. Cuenta al empezar una partida nueva.",
+             "Some units change synergy and the tiers are tuned: fewer Saiyans and more different teams that can win. Applies when you start a new game.")));
+    // TACTICS-08: historial por rival guardado y registro de sinergias activas de Dragon Tactics (apagado de serie; cuenta al empezar una partida nueva).
+    modes.items.push_back(Toggle(
+        T::T("Tacticas: historial por rival", "Tactics: rival history"), "dbz3_tactics_historial",
+        T::T("El último duelo contra cada rival se guarda con la partida y sigue al continuarla. Cuenta al empezar una partida nueva.",
+             "The last duel against each rival is saved with the game and kept when you continue it. Applies when you start a new game.")));
+    // Dragon Budokai Survivors (apagado de serie): su fila en el HUB sale al encenderlo (survivors/entrada.cpp).
+    modes.items.push_back(Toggle(
+        Tagged(T::T("Dragon Budokai Survivors", "Dragon Budokai Survivors"), kBeta), "dbz3_survivors",
+        T::T("Añade al HUB el modo de hordas: aguanta 15 minutos mientras tus técnicas atacan solas. Al apagarlo, la fila se va al reiniciar.",
+             "Adds the horde mode to the HUB: survive 15 minutes while your techniques fire on their own. When turned off, the row goes away after a restart.")));
+    // Survivors comercial (12/11): ajustes de prueba por paquete, todos apagados de serie; solo tienen efecto con dbz3_survivors encendido.
+    {
+      struct SurvAj { const char* cvar; const char* es; const char* en; };
+      static const SurvAj kSurv[] = {
+          {"dbz3_survivors_jugo", "Survivors v2: impacto y luchador legible", "Survivors v2: impact and readable fighter"},
+          {"dbz3_survivors_fx_b3", "Survivors v2: efectos de técnica como B3", "Survivors v2: B3-style technique effects"},
+          {"dbz3_survivors_formas", "Survivors v2: transformaciones", "Survivors v2: transformations"},
+          {"dbz3_survivors_ia", "Survivors v2: enemigos con conducta propia", "Survivors v2: enemies with their own behavior"},
+          {"dbz3_survivors_jefes_v2", "Survivors v2: jefes con kit de B3 y eventos", "Survivors v2: B3-kit bosses and events"},
+          {"dbz3_survivors_menu_v2", "Survivors v2: portada y menú propio", "Survivors v2: title screen and own menu"},
+          {"dbz3_survivors_meta_v2", "Survivors v2: rareza, cofre, logros y colección", "Survivors v2: rarity, chest, achievements and collection"},
+          {"dbz3_survivors_audio_v2", "Survivors v2: música y sonidos de B3", "Survivors v2: B3 music and sounds"},
+          {"dbz3_survivors_contenido_v2", "Survivors v2: más luchadores, técnicas y escenarios", "Survivors v2: more fighters, techniques and stages"},
+      };
+      for (const SurvAj& a : kSurv)
+        modes.items.push_back(Toggle(Tagged(T::T(a.es, a.en), kBeta), a.cvar,
+                                     T::T("Parte de la subida de Dragon Budokai Survivors a juego completo (apagado de serie). Cuenta al abrir el modo.",
+                                          "Part of the Dragon Budokai Survivors full-game upgrade (off by default). Applies when you open the mode.")));
+    }
+    // RANK-ONLINE: ranking mundial de Survivors y del reto diario de Rogue (apagado de serie; ranking_online.cpp).
+    modes.items.push_back(Toggle(
+        Tagged(T::T("Ranking online", "Online ranking"), kBeta), "dbz3_ranking_online",
+        T::T("Un botón en la pantalla final envía la partida al ranking mundial (sin cuenta ni navegador: solo el alias, el luchador y los puntos). Sin red, se guarda y se envía sola después.",
+             "A button on the final screen sends the run to the world ranking (no account or browser: only the alias, the fighter and the score). Offline, it is saved and sent later on its own.")));
     // DS162: camara libre de pruebas. Apagada siempre al arrancar y no se guarda (freecam.cpp la devuelve a la
     // fuente "linea de comandos" para que SaveConfig no la escriba).
     modes.items.push_back(Toggle(
@@ -415,6 +474,60 @@ void ConfigureQuickMenu(rex::ui::QuickMenuConfig& menu, std::function<void()> op
              "Tambien con la tecla F9. No se guarda: al abrir el juego vuelve a verse.",
              "Hides the whole fight HUD: bars, portraits and counters. Works with and without the free camera. Also "
              "with the F9 key. Not saved: the HUD is back next time you start the game.")));
+    // B2-P01 (11/11): filas de los modos de B2 ya escritos (F6, F8, S4, Shenron). Sus valores de serie no cambian.
+    modes.items.push_back(Toggle(
+        Tagged(T::T("Pasos del tablero B2", "B2 board footsteps"), kExperimental), "dbz3_b2_pasos_estrictos",
+        T::T("Prueba la frontera de sonido del original. Apagado de serie; sincronizacion pendiente de verificar.",
+             "Tests the original sound boundary. Off by default; timing still needs verification.")));
+    modes.items.push_back(Toggle(
+        Tagged(T::T("Shenron de B2", "B2 Shenron"), kExperimental), "dbz3_b2_shenron",
+        T::T("Bolas de Dragon con sus estrellas y columna de luz de bordes suaves al llamar a Shenron en B2.",
+             "Dragon Balls with their stars and a soft-edged light column when calling Shenron in B2.")));
+    // B2-FX-02 (11/11): recursos visuales del tablero como el original. Apagado de serie.
+    modes.items.push_back(Toggle(
+        Tagged(T::T("Efectos del tablero B2", "B2 board effects"), kExperimental), "dbz3_b2_fx_nativo",
+        T::T("Tablero de B2: selector de aliados con el velo, los fundidos, las flechas y la barra de ayuda del "
+             "original, y los fundidos de las subidas de ataque y defensa. Apagado deja lo anterior.",
+             "B2 board: ally selector with the original's veil, fades, arrows and help bar, and the fades of the "
+             "attack and defence boosts. Off keeps the previous look.")));
+    // B2-P16 (11/11): requisitos de los deseos de Shenron desde el inventario de capsulas. Apagado de serie.
+    modes.items.push_back(Toggle(
+        Tagged(T::T("Deseos B2 por capsulas", "B2 wishes from capsules"), kExperimental), "dbz3_b2_requisitos_inventario",
+        T::T("Shenron de B2: los deseos que en el original piden tener una capsula se abren con las capsulas que has "
+             "ganado. Apagado deja lo anterior.",
+             "B2 Shenron: wishes that need a capsule in the original open with the capsules you have won. Off keeps "
+             "the previous behaviour.")));
+    // B2-P05 (11/11): alfombra de Mr. Popo con el destino ocupado (FUN_00273210). Apagado de serie.
+    modes.items.push_back(Toggle(
+        Tagged(T::T("Alfombra de Popo B2", "B2 Popo carpet"), kExperimental), "dbz3_b2_alfombra_fiel",
+        T::T("Tablero de B2: si la casilla a la que lleva la alfombra esta ocupada, vas a la libre mas cercana, como "
+             "el original. Apagado deja lo anterior.",
+             "B2 board: if the carpet's target point is taken, you go to the nearest free one, as in the original. "
+             "Off keeps the previous behaviour.")));
+    // B2-P05 (11/11): orden del original tras un combate del tablero (FUN_002360B0). Apagado de serie.
+    modes.items.push_back(Toggle(
+        Tagged(T::T("Tras el combate B2", "B2 after-fight order"), kExperimental), "dbz3_b2_poscombate_fiel",
+        T::T("Tablero de B2: tras un combate, primero el guion del resultado y despues la reaccion del perdedor, como "
+             "el original. Apagado deja lo anterior.",
+             "B2 board: after a fight, the result script runs first and then the loser reacts, as in the original. "
+             "Off keeps the previous behaviour.")));
+    // F8 (noche 10/11): encuadre de la rueda y aro de las caras medidos en los datos de B2 (cvar en pasarela_nave_rueda.inl).
+    modes.items.push_back(Toggle(
+        Tagged(T::T("Rueda de la nave medida", "Measured ship wheel"), kBeta), "dbz3_nave_rueda_datos",
+        T::T("Rueda de personajes de la Nave de Babidi: encuadre, escala y aro de las caras sacados de los datos de "
+             "Budokai 2 (29 luchadores y extras). Apagado usa lo anterior.",
+             "Babidi's ship character wheel: framing, scale and face ring taken from Budokai 2 data (29 fighters "
+             "and extras). Off keeps the previous look.")));
+    // S4 (B2-10): espera de la pantalla de resultado de la Nave. 0 = el original (sin espera extra).
+    modes.items.push_back(Number(
+        T::T("Espera del resultado de la Nave (s)", "Spaceship result hold (s)"), "dbz3_nave_resultado_seg", 0.0,
+        30.0, 0.5,
+        T::T("Solo Nave de Babidi (B2). 0 = como el original: la pantalla de resultado ya dura 7-10 s cuando hay "
+             "Kili. Con un valor, se queda ese tiempo antes de volver a la torre; el total fin->torre se alarga, "
+             "asi que se deja en 0 salvo en pruebas.",
+             "Babidi's Spaceship only (B2). 0 = as the original: the result screen already lasts 7-10 s with Kili. "
+             "With a value it stays that long before returning to the tower; the fin->tower total grows, so keep "
+             "it at 0 except in tests.")));
   }
 
   // 6. COMBATE (frente combate, src/combate.cpp): todo apagado de serie; lo que cambia el combate no se usa online.
@@ -435,6 +548,14 @@ void ConfigureQuickMenu(rex::ui::QuickMenuConfig& menu, std::function<void()> op
              "juego original. No se usa en el online.",
              "WARNING: changes the damage of 2 Goku hits (kick 50 to 70, forward + punch 35 to 50). Off is the "
              "original game. Not used online.")));
+    fight.items.push_back(Toggle(
+        T::T("Modo Competitivo", "Competitive Mode"), "dbz3_modo_competitivo",
+        T::T("AVISO: cambia las reglas del combate, como en Infinite World. L2 es Aura Burst: pide una barra de ki, "
+             "gasta ki mientras dura y no deja cansado al acabar. La definitiva sale con Arriba + Circulo. No hay "
+             "Dragon Rush. Apagado es el juego original. En el online, solo si los dos lo tienen encendido.",
+             "WARNING: changes the fight rules, as in Infinite World. L2 is Aura Burst: needs one ki bar, drains ki "
+             "while active and leaves no fatigue when it ends. The ultimate is Up + Circle. No Dragon Rush. Off is "
+             "the original game. Online, only if both players have it on.")));
     fight.items.push_back(Toggle(
         T::T("Definitiva directa", "Direct ultimate"), "dbz3_combate_definitiva_directa",
         T::T("La definitiva sin entrar en el modo hiper: su misma entrada, pagando una vez el ki de su capsula. No se "
@@ -463,29 +584,56 @@ void ConfigureQuickMenu(rex::ui::QuickMenuConfig& menu, std::function<void()> op
                          T::T("Opcional: todo viene apagado. Nada de esto se usa en el online.",
                               "Optional: everything starts off. None of this is used online."));
     stage.items.push_back(Toggle(T::T("Clima vivo", "Living weather"), "dbz3_clima",
-                                 T::T("El cielo del escenario se oscurece poco a poco durante el combate. Solo se "
-                                      "ve: no cambia el combate. No se usa en el online.",
-                                      "The stage sky slowly darkens during the fight. Display only: the fight does "
-                                      "not change. Not used online.")));
+                                 T::T("Durante el combate el escenario pasa del día al atardecer (bruma cálida) y "
+                                      "a la noche (cielo oscuro y bruma azul). Solo se ve: no cambia el combate. No "
+                                      "se usa en el online.",
+                                      "During the fight the stage goes from day to dusk (warm haze) and to night "
+                                      "(dark sky and blue haze). Display only: the fight does not change. Not used "
+                                      "online.")));
+    stage.items.push_back(Choice(T::T("Tiempo del clima vivo", "Living weather sky"), "dbz3_clima_tiempo",
+                                 {{"0", T::T("Despejado", "Clear")}, {"1", T::T("Lluvia", "Rain")},
+                                  {"2", T::T("Nieve", "Snow")}},
+                                 T::T("Con «Clima vivo» encendido, lluvia o nieve en los escenarios de B3. Despejado "
+                                      "de serie.",
+                                      "With Living weather on, rain or snow on the B3 stages. Clear by default.")));
     stage.items.push_back(Choice(T::T("Jefe gigante", "Giant boss"), "dbz3_jefe_gigante",
                                  {{"0", T::T("No", "Off")}, {"1.25", "125 %"}, {"1.5", "150 %"}, {"1.75", "175 %"},
-                                  {"2", "200 %"}, {"2.5", "250 %"}},
+                                  {"2", "200 %"}},
                                  T::T("El rival que controla la consola sale más grande, como un jefe gigante, y la"
                                       " cámara se abre para verlo. Solo cambia su tamaño en pantalla. No se usa en "
-                                      "el online.",
+                                      "el online. (A partir de 200 % la cabeza puede salirse en el cuerpo a cuerpo:"
+                                      " el tope que encuadra bien es 200 %.)",
                                       "The rival controlled by the console appears bigger, like a giant boss, and "
                                       "the camera widens to show it. Only its on-screen size changes. Not used "
-                                      "online.")));
+                                      "online. (Above 200% the head can leave the frame in close combat: 200% is"
+                                      " the largest size that frames well.)")));
     stage.items.push_back(Toggle(T::T("Escenarios repetidos", "Repeated stages"), "dbz3_escenarios_repetidos",
                                  T::T("Muestra en la pantalla de escenarios los añadidos que son el mismo lugar que uno "
                                       "del juego (p. ej. el Torneo de B2). Apagado de serie. Se aplica al reiniciar.",
                                       "Shows on the stage screen the added stages that are the same place as one of "
                                       "the game (e.g. the B2 Tournament). Off by default. Applies after a restart.")));
+    stage.items.push_back(Toggle(T::T("Revancha aleatoria", "Random rematch"), "dbz3_escenarios_revancha_aleatoria",
+                                 T::T("Con el escenario «?» del Duelo, cada revancha carga un escenario distinto de los "
+                                      "visibles. Apagado de serie. No se usa en el online.",
+                                      "With the random (?) stage of the Duelo, every rematch loads a different stage. "
+                                      "Off by default. Not used online.")));
+    stage.items.push_back(Toggle(T::T("El «?» entre todos", "Random stage among all"), "dbz3_esc_azar_todos",
+                                 T::T("El escenario «?» del Duelo elige entre todos los visibles, no solo entre los que "
+                                      "muestra la rueda. Apagado de serie.",
+                                      "The random (?) stage of the Duelo picks among every visible stage, not only the "
+                                      "ones on the wheel. Off by default.")));
     stage.items.push_back(Toggle(T::T("Intro de cine", "Cinematic intro"), "dbz3_cine_intro",
                                  T::T("Al empezar cada combate, 10 s de cámara de cine sobre el escenario y los "
                                       "luchadores; A la salta. No se usa en el online.",
                                       "When each fight starts, 10 s of cinematic camera over the stage and the "
                                       "fighters; A skips it. Not used online.")));
+    stage.items.push_back(Toggle(
+        Tagged(T::T("IK de suelo de B2 por ficha", "B2 floor IK per fighter"), kExperimental),
+        "dbz3_b2_ik_escala_ficha",
+        T::T("B2: escala los umbrales del IK de suelo por la altura del modelo HD de cada personaje "
+             "(Cell 1,10; Ten/Yamhan 1,1025; el resto 1,00). Apagado de serie: A/B en pruebas.",
+             "B2: scales the floor IK thresholds by each fighter's HD model height (Cell 1.10; "
+             "Tien/Yamhan 1.1025; the rest 1.00). Off by default: A/B testing.")));
   }
 
   // 8. AVANZADO: herramientas de laboratorio y el launcher completo.
@@ -493,6 +641,18 @@ void ConfigureQuickMenu(rex::ui::QuickMenuConfig& menu, std::function<void()> op
     auto& advanced = menu.sections.emplace_back();
     advanced.title = Titled(T::T("AVANZADO", "ADVANCED"),
                             T::T("Para quien quiere más control.", "For those who want more control."));
+    // F4 (solF4, 10/11): escenas de transicion de B2 aun sin cotejo visual. La Llanura sigue encendida de serie y
+    // no tiene fila aqui.
+    advanced.items.push_back(Toggle(T::T("B2: robot de Base (prueba)", "B2: Base robot (test)"), "dbz3_b2_transicion_base",
+                                  T::T("Escena experimental. Apagada de serie; no se usa online.", "Experimental scene. Off by default; not used online.")));
+    advanced.items.push_back(Toggle(T::T("B2: destruccion de Kami (prueba)", "B2: Kami destruction (test)"), "dbz3_b2_transicion_kami",
+                                  T::T("Escena experimental. Apagada de serie; no se usa online.", "Experimental scene. Off by default; not used online.")));
+    advanced.items.push_back(Toggle(T::T("B2: transicion de Nieve (prueba)", "B2: Snow transition (test)"), "dbz3_b2_transicion_nieve",
+                                  T::T("Escena experimental. Apagada de serie; no se usa online.", "Experimental scene. Off by default; not used online.")));
+    advanced.items.push_back(Toggle(T::T("B2: transicion de Ciudad (prueba)", "B2: City transition (test)"), "dbz3_b2_transicion_ciudad",
+                                  T::T("Escena experimental. Apagada de serie; no se usa online.", "Experimental scene. Off by default; not used online.")));
+    advanced.items.push_back(Toggle(T::T("B2: verificar inicio (prueba)", "B2: verify start (test)"), "dbz3_b2_validar_inicio",
+                                  T::T("Comprueba recursos y reinicia el estado entre escenas. Apagado de serie.", "Checks resources and resets state between scenes. Off by default.")));
     advanced.items.push_back(Toggle(
         T::T("Sonda del laboratorio", "Lab probe"), "dbz3_combate_sonda",
         T::T("Guarda cada cuadro y cada golpe del combate en logs/combate_*.csv para medir los golpes (frame data).",

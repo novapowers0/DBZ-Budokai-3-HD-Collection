@@ -1,0 +1,31 @@
+# Dragon Budokai Survivors 12/11: una partida completa con el piloto automatico de pruebas.
+#   Copia: opus2 (las partidas de Survivors se pasaron en opus2; tiene mod center hd y data_cmn).
+#   python tools\pruebas.py correr opus2 "docs\14_frentes\escenarios_pruebas\post1212\survivors_partida.toml"
+#
+# clave    = Survivors (MVP, ajuste dbz3_survivors) con la tanda de arte/efectos del 12/11.
+# cvar     = dbz3_survivors no hace falta: DBZ3_TEST_SURVIVORS_AUTO=1 abre el modo al llegar al menu, elige
+#            personaje y juega con piloto (DURA comprime la partida entera; SEMILLA la fija).
+# criterio = se abre la eleccion de personaje, sale el mapa, empieza la partida con piloto, sube de nivel (tarjetas)
+#            y termina en la pantalla de resultados sin cierre.
+# log      = "dbz3 survivors: eleccion de personaje"
+#            "dbz3 survivors: mapa"
+#            "dbz3 survivors: partida empezada personaje="
+#            "dbz3 survivors: nivel N opciones="
+#            "dbz3 survivors: fin resultado="
+#
+# Nota: el primer arranque genera los modelos y los clips de B3 (minutos): el primer log espera hasta 900 s.
+# DURA=90 comprime la partida a 90 s de juego (el piloto puede ganar o perder: vale cualquiera de las dos).
+descripcion = "Survivors: partida con piloto de la eleccion a los resultados (90 s de juego)"
+env = ["DBZ3_TEST_SURVIVORS_AUTO=1", "DBZ3_TEST_SURVIVORS_DURA=90", "DBZ3_TEST_SURVIVORS_SEMILLA=2024"]
+pasos = [
+  "log \"survivors: eleccion de personaje\" 900",
+  "captura 01_eleccion",
+  "log \"survivors: mapa\" 30",
+  "log \"survivors: partida empezada personaje=\" 60",
+  "esperar 8000",
+  "captura 02_partida",
+  "log \"survivors: nivel [0-9]+ opciones=\" 180",
+  "captura 03_nivel",
+  "log \"survivors: fin resultado=\" 600",
+  "captura 04_resultados",
+]

@@ -1,0 +1,37 @@
+# Referencia R16. Navegación de R16_solB2_FIG_off: cerrar introducción y elegir aliado.
+# La primera versión capturaba la cámara durante el guion 301, no el reposo.
+descripcion = "B2 REFS: tablero OFF, área inicial Goku/Saibaman y diálogo intro"
+env = [
+  'DBZ3_PS2_GAMES=D:\DBZ3HD\ps2_games',
+  "DBZ3_TEST_MISIONES=1,reset",
+  "DBZ3_TEST_B2_ORDENES=1",
+  "DBZ3_TEST_TURBO=1",
+  "DBZ3_TEST_CFG=dbz3_b2_traducido=false;dbz3_b2_pasos_estrictos=true",
+]
+pasos = [
+  'log "tablero b2: fase 1 leida" 120',
+  "esperar 3000",
+  "tecla Space 2500",
+  'log "tablero b2: fase 1 empieza" 30',
+  'log "tablero b2: escena T155" 30',
+  "esperar 2000",
+  "captura 00_dialogo_T155",
+  "tecla Return 1500",
+  'log "dbz3 tablero b2: pasos estrictos activos" 30',
+  'log "tablero b2: escena M207" 40',
+  "esperar 2000",
+  "tecla Backspace 1500",
+  "esperar 3000",
+  "tecla Space 600",
+  'log "tablero b2: script .*eleccion de .* aliado" 40',
+  "esperar 2000",
+  "captura 01_seleccion",
+  "tecla Space 600",
+  "esperar 2000",
+  "tecla W 600",
+  "esperar 600",
+  "tecla Space 600",
+  "esperar 6000",
+  'log "tablero b2: aliado elegido:" 30',
+  "captura 02_tablero_reposo",
+]

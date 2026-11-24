@@ -31,9 +31,9 @@ MODS = os.path.join(ROOT, "out", "build", "win-amd64-release", "mods")
 OUT = os.path.join(ROOT, "release_packs")
 CHARACTERS = ["cut_janemba", "cut_android19", "cut_zarbon", "cut_dodoria", "cut_guldo", "cut_jeice",
               "cut_burter"]
-KIT_ENTRIES = ["t3", "inventario_copias",   # studies 1 F08/F09: Tenkaichi 3 e inventario de las copias del jugador
+KIT_ENTRIES = ["auditar_importar", "t3", "inventario_copias",   # studies 1 F08/F09: Tenkaichi 3 e inventario de las copias del jugador
                "vista_heroe",   # Modo Heroe: vista previa 3D y traje de combate (cac/vista_heroe.py + awo_tools/injertar_pelo.py)
-               "roster_build", "importar", "swap_b3", "texture_b3", "texture_dump_import", "texture_pack",
+               "roster_build", "importar", "dlc_b1", "swap_b3", "texture_b3", "texture_dump_import", "texture_pack",
                "capsulas", "gritos", "voces", "iso", "model_render",
                "modkit_gui",      # DBZ3 HD Mod Kit: the no-console window over all of these
                "diagnostico",     # its Diagnostics page (reads a game log, explains it)
@@ -54,9 +54,11 @@ KIT_EXTRA_TOOLS = ["dae_a_b3", "name_banner", "portrait_hd", "extract_azt_afs", 
                    "awg_cara_export", "swap_matrix", "texture_upscale_b3", "psp_amo", "sb_amm", "csk_edit",
                    "acm_parse", "sbport", "sb_tablas", "sdbh_model", "sb_tecnicas", "sb_voces",
                    "cri",           # voces de SDBH (importar.py lo importa dentro de una funcion: el rastreo no lo ve)
-                   "comprobar_assets"]   # studies 6 frente 01: validador de bins (ventana 44 B, rampa, pesos PS2);
-                                         # opcional: si no esta en mod center hd/, `find` devuelve None y se ignora
-KIT_DATA = ["catalog_b3.cat", "cac/piezas_b3_base.json", "roster_db.json", "b1_capsulas.txt",   # b1_capsulas: nombres de B1 (importador)
+                   "comprobar_assets",   # validador de bins
+                   "tools_manifest_check"]  # comprueba el inventario del Kit instalado
+KIT_DATA = ["receta/personajes.toml", "catalog_b3.cat", "cac/piezas_b3_base.json",
+            "cac/xv2_razas.json",   # banco de razas XV2 (solo medidas): sin el, toda raza XV2 sale con el cuerpo de Goku
+            "roster_db.json", "b1_capsulas.txt",   # b1_capsulas: nombres de B1 (importador)
             # sin estos el Kit fallaba en casa de los jugadores (log de un jugador, 2026-10-12): presets del
             # importador, nombres de los modelos de IW, codigos de Dragon Universe, etiquetas de texturas
             # y la lista de herramientas de la ventana
@@ -84,7 +86,7 @@ RES_FILES = ["Budokai_3_Capsules_IDs.txt", "Dragon Ball Z Infinite World Capsule
 # Zip del juego (tools/make_release.ps1 -> --game-stage): lo que el launcher y el juego lanzan SIN Kit instalado
 # (escenarios de PS2 al pulsar Jugar, vista previa/traje del Modo Heroe, personajes de mods). Mismas rutas que
 # el Kit: si el Kit se descomprime encima nada cambia.
-GAME_ENTRIES = ["campos_iw", "escenarios_convertir", "iso", "importar", "vista_heroe", "roster_build",
+GAME_ENTRIES = ["dlc_b1", "campos_iw", "escenarios_convertir", "iso", "importar", "vista_heroe", "roster_build",
                 "swap_b3", "texture_b3", "texture_pack", "texture_dump_import", "capsulas", "colores", "gritos",
                 "hornada_support", "voces", "model_render", "heroe_sagas_a_du", "nombre_levelup", "campana",
                 "retrato_anime", "tecnicas_tipo", "nova_recetas",   # recetas locales: necesitan la ISO B1/B2 del jugador
@@ -93,7 +95,7 @@ GAME_ENTRIES = ["campos_iw", "escenarios_convertir", "iso", "importar", "vista_h
                 # tecnicas del Modo Heroe (heroe_ui.cpp GenerarCon)
                 "vista_b2", "vista_nave", "tecnicas_cartas",
                 # Dragon Tactics: clips de B3 horneados para sus figuras (pasarela_nave.cpp TkEstado)
-                "vista_tactics",
+                "vista_tactics", "vista_tactics_iw",
                 # #72: el launcher/juego los lanzan sin Kit (musica de Tenkaichi 3, recolorear en partida, arte del Heroe)
                 "t3_audio", "recolorear", "heroe_arte"]
 
@@ -108,7 +110,12 @@ def kit_modules(entries=None):
             if os.path.exists(p):
                 return p
         return None
-    seen, todo = set(), [find(e) for e in (entries or KIT_ENTRIES + KIT_EXTRA_TOOLS)]
+    nombres = KIT_ENTRIES + KIT_EXTRA_TOOLS if entries is None else entries
+    requeridos = {e: find(e) for e in nombres}
+    faltan = [e for e, p in requeridos.items() if p is None]
+    if faltan:
+        raise SystemExit("Faltan scripts requeridos: " + ", ".join(faltan))
+    seen, todo = set(), list(requeridos.values())
     while todo:
         p = todo.pop()
         if not p or p in seen:
@@ -176,11 +183,15 @@ def kit_pack(ver, stage, dry=False):
         shutil.copytree(studio, os.path.join(mch, "studio"), ignore=shutil.ignore_patterns("__pycache__"))
     kit = os.path.join(ROOT, "mod center hd", "kit")         # modulos del Mod Kit (portada, asistente, errores)
     if os.path.isdir(kit):
-        shutil.copytree(kit, os.path.join(mch, "kit"), ignore=shutil.ignore_patterns("__pycache__"))
+        shutil.copytree(kit, os.path.join(mch, "kit"), ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "prueba*.py", "test_*.py"))   # 13/11: sin bancos de laboratorio (rutas a E:)
+    xv2 = os.path.join(ROOT, "mod center hd", "xv2")          # conversores XV2 que importa cac/vista_heroe.py
+    if os.path.isdir(xv2):
+        shutil.copytree(xv2, os.path.join(mch, "xv2"), ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
     fonts = os.path.join(ROOT, "mod center hd", "fonts")      # fuente propia: nunca "cannot open resource"
     if os.path.isdir(fonts):
         shutil.copytree(fonts, os.path.join(mch, "fonts"))
     for f in KIT_DATA:
+        os.makedirs(os.path.dirname(os.path.join(mch, f)), exist_ok=True)
         shutil.copyfile(os.path.join(ROOT, "mod center hd", f), os.path.join(mch, f))
     camp = os.path.join(ROOT, "mod center hd", "campanas")
     for pat in KIT_CAMPAIGNS:
@@ -207,11 +218,19 @@ def kit_pack(ver, stage, dry=False):
     os.makedirs(os.path.join(stage, "ps2_games"))
     docs = os.path.join(stage, "docs")
     os.makedirs(docs)
-    mod_docs = ("COMO_HACER_MODS.md", "PACKS_DE_TEXTURAS.md", "TEXTURAS_MOD.md", "MODEL_SWAP.md", "STUDIO_CAMARAS.md")
+    mod_docs = ("COMO_HACER_MODS.md", "PACKS_DE_TEXTURAS.md", "TEXTURAS_MOD.md", "MODEL_SWAP.md", "STUDIO_CAMARAS.md",
+                "KIT_GUIA_RAPIDA.md")
     for f in mod_docs + tuple(x.replace(".md", "_EN.md") for x in mod_docs):     # _EN = la del Kit en ingles
         src = os.path.join(ROOT, "docs", "02_mods", f)
         if os.path.exists(src):
             shutil.copyfile(src, os.path.join(docs, f))
+    img = os.path.join(ROOT, "docs", "02_mods", "img", "kit")     # capturas de la guia rapida
+    if os.path.isdir(img):
+        shutil.copytree(img, os.path.join(docs, "img", "kit"))
+    ocr = os.path.join("docs", "07_ports", "GOHAN_FUTURO_EXPLORACION_2026-10-06", "04_transformaciones", "skills_ocr.json")
+    if os.path.exists(os.path.join(ROOT, ocr)):     # nombres oficiales de tecnica (kit/generador.py); sin el, "tipo + n."
+        os.makedirs(os.path.dirname(os.path.join(stage, ocr)), exist_ok=True)
+        shutil.copyfile(os.path.join(ROOT, ocr), os.path.join(stage, ocr))
     formats = os.path.join(docs, "formatos")      # the Mod Kit's Help tab lists them
     os.makedirs(formats)
     for f in KIT_FORMAT_DOCS + [x.replace(".md", "_EN.md") for x in KIT_FORMAT_DOCS]:
@@ -241,7 +260,7 @@ def kit_pack(ver, stage, dry=False):
     return out
 
 
-def copiar_scripts_juego(stage):
+def copiar_scripts_juego(stage, *, release=False):
     """Los scripts que el juego lanza (GAME_ENTRIES, con sus imports) y sus datos, con las rutas del juego. Lo usan el zip
     del juego y las copias de prueba (tools/pruebas.py prep). Devuelve cuantos scripts copio."""
     mch = os.path.join(stage, "mod center hd")
@@ -257,17 +276,37 @@ def copiar_scripts_juego(stage):
     for sub in ("studio", "fonts", "kit", "xv2"):   # xv2: vista_heroe lo importa con piezas XV2 activas (solo codigo; se convierte en el PC del jugador)
         src = os.path.join(ROOT, "mod center hd", sub)
         if os.path.isdir(src):
-            shutil.copytree(src, os.path.join(mch, sub), dirs_exist_ok=True, ignore=shutil.ignore_patterns("__pycache__"))
+            ignore = shutil.ignore_patterns("__pycache__", "*.pyc", "prueba*.py", "test_*.py")
+            if release:
+                from release_content import blocked, tree
+                from pathlib import Path
+                for rel, source in tree(Path(src)):
+                    leaf = source.name
+                    if sub == 'xv2' and rel in {'cola_fri_estudio.py', 'ssim_material.py'}:
+                        continue
+                    # kit/nucleo.py imports kit.prueba; it is not a lab script.
+                    ignored = leaf in ignore('', [leaf]) and (sub, rel) != ('kit', 'prueba.py')
+                    if ignored or blocked(f"mod center hd/{sub}/{rel}"):
+                        continue
+                    target = Path(mch) / sub / rel
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copyfile(source, target)
+            else:
+                shutil.copytree(src, os.path.join(mch, sub), dirs_exist_ok=True, ignore=ignore)
     for f in KIT_DATA:
+        os.makedirs(os.path.dirname(os.path.join(mch, f)), exist_ok=True)
         shutil.copyfile(os.path.join(ROOT, "mod center hd", f), os.path.join(mch, f))
-    for f in AWO_DATA:
-        shutil.copyfile(os.path.join(ROOT, "awo_tools", f), os.path.join(awo, f))
+    if not release:
+        for f in AWO_DATA:
+            shutil.copyfile(os.path.join(ROOT, "awo_tools", f), os.path.join(awo, f))
+    else:
+        print("Rampa de PSP derivada del juego omitida; revisar importacion PSP antes de publicar")
     return n
 
 
 def game_stage(stage):
     """Anade al stage del juego los scripts, sus datos y Python con sus dependencias de ejecucion."""
-    n = copiar_scripts_juego(stage)
+    n = copiar_scripts_juego(stage, release=True)
     mch = os.path.join(stage, "mod center hd")
     sys.path.insert(0, os.path.join(ROOT, "tools"))
     import make_python_bundle  # noqa: PLC0415
@@ -283,9 +322,11 @@ def game_stage(stage):
 
 
 def main():
+    global ROOT
     ap = argparse.ArgumentParser()
     ap.add_argument("--game-stage", metavar="DIR",
                     help="anade al stage de make_release.ps1 los scripts de PS2/Modo Heroe y el Python portatil; no hace mas")
+    ap.add_argument("--project-root", help="lee las fuentes de esta raiz (solo con --game-stage)")
     ap.add_argument("--version", default="1.4.2")
     ap.add_argument("--solo", choices=("kit", "personajes"),
                     help="build only one pack (the other one is reused from an earlier release)")
@@ -293,6 +334,10 @@ def main():
                     help="stage the Kit in a temp folder and list its mod center hd/ files (no python bundle, no zip, "
                          "release_packs/ untouched); fails if third-party art would ship")
     a = ap.parse_args()
+    if a.project_root:
+        if not a.game_stage:
+            ap.error("--project-root exige --game-stage")
+        ROOT = os.path.abspath(a.project_root)
     if a.game_stage:
         return game_stage(a.game_stage)
     if a.dry_run:

@@ -1,0 +1,55 @@
+# F9 / TAG03 — especiales E+dirección de los mods con formas_donante dentro de un relevo Tag Team.
+# FASE 3: lo deja escrito F9; lo ejecuta Z una sola vez.
+#   python tools\pruebas.py correr smoke_a "docs\14_frentes\escenarios_pruebas\final\f9-combate-rush\tag03.toml"
+#
+# clave    = TAG03 (4 mods: Goku GT 24, Vegeta GT 25, Vegeta Saiyán 31 y Goku Black 44 en la copia; aquí los dos primeros)
+# cvar     = ninguna nueva: la ruta es la nativa de roster_ext.cpp (formas_donante ya en el _roster de los 4)
+# criterio = E+dirección (Quote + W/A/S/D) sale con el especial propio en base, en una forma (P+K+G) y después de
+#            un relevo automático, en los dos modos de la pareja; sin ERROR ni cierre. Fotos 01-04.
+# log      = "tag: empieza un combate", "relevo .* -> " (sin ERROR); no hay línea propia de E+dirección
+#
+# PENDIENTE_JUEGO: la copia necesita los 4 mods instalados (imp_iw_goku_gt, imp_iw_vegeta_gt,
+# vis_iw_vegeta_saiyan y vis_sdbh_goku_black) montados en el _roster. Los ids son los que les da
+# roster_build en la copia (24/25/31/44 tras instalarlos en smoke_a el 10/11).
+descripcion = "TAG03: E+direccion de Goku GT y Vegeta GT en base, forma y tras relevo"
+env = [
+  "DBZ3_TAG_TEST_PICKS=1",
+  "DBZ3_TAG_TEST=24,25",
+  "DBZ3_TAG_TEST2=7,10",
+  "DBZ3_TAG_AUTOSWAP=120",
+  "DBZ3_TEST_CFG=dbz3_combate_prueba_muneco=\"quieto\"",
+]
+pasos = [
+  "esperar 2500",
+  "tecla L 3000",
+  "captura 00_panel",
+  "tecla Space 12000",
+  "tecla Space 4000",
+  "esperar 1000",
+  "tecla Space 4000",
+  "tecla S 2000",
+  "tecla Space 4000",
+  "esperar 1000",
+  "tecla Space 4000",
+  "tecla Space 6000",
+  "tecla Space 6000",
+  "tecla Space 3000",
+  "tecla Space 3000",
+  "tecla Space 3000",
+  "log \"tag: empieza un combate\" 60",
+  "esperar 4000",
+  "captura 01_base",
+  "tecla Quote+W:180 500",
+  "captura 02_base_especial",
+  "tecla L+P+Space:400 1500",
+  "captura 03_forma",
+  "tecla Quote+W:180 500",
+  "captura 04_forma_especial",
+  "log \"relevo .* -> \" 30",
+  "esperar 3000",
+  "captura 05_tras_relevo",
+  "tecla Quote+W:180 500",
+  "captura 06_tras_relevo_especial",
+  "esperar 2000",
+  "captura 07_final",
+]

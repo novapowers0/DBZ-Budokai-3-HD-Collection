@@ -1,0 +1,16 @@
+descripcion = "R18 IW traducido: panel, recorte GS y coste real por cuadro (clave/piloto por entorno)"
+env = [
+  "DBZ3_TEST_CFG=dbz3_iw_traducido=true;dbz3_iw_7db_original=true;dbz3_iw_7da_original=true;dbz3_iw_7d5_original=true",
+  'DBZ3_PS2_GAMES=D:\DBZ3HD\ps2_games',
+  "DBZ3_IW_RITMO=1",
+]
+pasos = [
+  'log "iwmini: prueba: empieza" 120',
+  'log "la ronda es la del original arrancado desde el ELF" 180',
+  "esperar 9000",
+  "captura a_panel",
+  "esperar 4500",
+  "captura b_panel",
+  "esperar 16500",
+  "captura c_panel",
+]

@@ -1,0 +1,57 @@
+# R23 pase de diseno (HER-04/05/07): Evolucion, Tecnicas y Coleccion con un perfil parecido al de las maquetas 12-14.
+#   Evolucion en Majin (R23 CAC: ficha Majin de verdad, raza 4 cuerpo Majin Bu; ya no hay atajo de raza aparte) con Super Bu y Absorcion abiertas (Camino de la maldad), como la maqueta 12.
+#   Tecnicas: Goku al 60 % y Vegeta y Piccolo entrenados (mascara 6): lista larga con abiertas y por abrir (maqueta 14).
+#   Coleccion: los premios del recorrido + el luchador Omega Shenron (HER-06).
+#   python tools\pruebas.py correr smoke_b tools\pruebas_heroe\heroe_pase_diseno.toml
+# Antes, para que la vista previa de Tecnicas tenga fotograma: heroe_tecnicas_v2.toml en la misma copia (guarda vista_6.bmp).
+# R23 HER-13: en Tecnicas equipa la primera de Definitiva, E+izq y E+der (la maqueta 14 trae los huecos llenos).
+# Teclas: Space = A, Backspace = B, S = abajo, 1 = LB, 3 = RB.
+descripcion = "Heroe: pase de diseno (Evolucion Majin, Tecnicas con catalogo, Coleccion)"
+env = ["DBZ3_TEST_MODO=heroe", "DBZ3_HUB_MODE=5", "DBZ3_TEST_HEROE_PANTALLA=habitacion", "DBZ3_TEST_HEROE_ENTRENO=0:60", "DBZ3_TEST_HEROE_MAESTROS=6",
+       "DBZ3_TEST_HEROE_ESFERAS=3", "DBZ3_TEST_HEROE_FORMAS=f_maj_super,f_maj_absorcion",
+       "DBZ3_TEST_HEROE_MARCAS=camino_maldad", "DBZ3_TEST_HEROE_RAZA=4", "DBZ3_TEST_HEROE_CUERPO=0",
+       "DBZ3_TEST_HEROE_TRAJE=1", "DBZ3_TEST_HEROE_ESTILO=1", "DBZ3_TEST_HEROE_TEC=1",
+       "DBZ3_TEST_HEROE_PREMIOS=r_t0_death_beam,r_t1_masenko,r_t2_galick,r_t4_kikoho,r_b_cell_kamehameha,r_o_namek_kienzan,r_t6_titulo_torneo,r_luchador_omega",
+       "DBZ3_TEST_CFG=dbz3_heroe_ui_nueva=true;dbz3_heroe_habitacion=true;dbz3_heroe_evolucion=true;dbz3_heroe_recompensas=true;dbz3_heroe_tecnicas_v2=true",
+       "REX_DBZ3_LANGUAGE=5", "REX_DBZ3_UI_LANGUAGE=5"]
+pasos = [
+  'log "Habitacion abierta" 240',
+  "esperar 5000",
+  "tecla Space 1500",
+  "esperar 6000",
+  "captura p0_aspecto",
+  "tecla Backspace 1500",
+  'log "Habitacion abierta" 20',
+  "esperar 2500",
+  "tecla S 700",
+  "tecla Space 1500",
+  'log "Evolucion abierta \(raza 4" 30',
+  "esperar 3000",
+  "captura p1_evolucion",
+  "tecla Backspace 1500",
+  'log "Evolucion: atras" 20',
+  "esperar 2000",
+  "tecla S 700",
+  "tecla S 700",
+  "tecla Space 1500",
+  'log "tecnicas v2: pantalla" 60',
+  "esperar 3500",
+  "captura p2_tecnicas_definitiva",
+  "tecla Space 1200",
+  "tecla 1 800",
+  "tecla Space 1200",
+  "tecla 1 800",
+  "tecla Space 1200",
+  "esperar 1500",
+  "captura p3_tecnicas_especial",
+  "tecla Backspace 1500",
+  "esperar 2500",
+  "tecla S 700",
+  "tecla S 700",
+  "tecla Space 1500",
+  'log "Coleccion abierta" 30',
+  "esperar 3000",
+  "captura p4_coleccion",
+  "tecla Backspace 1500",
+  'log "Coleccion: atras" 20',
+]

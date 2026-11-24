@@ -1,0 +1,29 @@
+# C1 / IW-E02 — AST02: boca por eventos (tipo 8) en 7D5 (NB007, carga el banco 922).
+#   python tools\pruebas.py correr <copia> "docs\14_frentes\escenarios_pruebas\final\c1-iw-escenas\ast02_boca.toml"
+#
+# clave    = IW-E02 (AST02) / IW13
+# cvar     = ninguna nueva (el consumidor de boca aun no esta conectado: ver PENDIENTE_JUEGO).
+# env      = DBZ3_TEST_IWMINI=0x7D5,auto; DBZ3_IW_EVENTOS_LOG=1.
+# criterio = (banco, ya verde) 33/33 registros tipo 8 verificados byte a byte en los #BSK del jugador
+#            (24 con selector literal + 9 sin resolver en 925/929/932); cadena original
+#            Anim_ProcessEventTrack 23F520 -> +0x240 -> Animations2 207180 -> MouthAnimations 25FA90.
+#            En juego (PENDIENTE_JUEGO): la boca se mueve en los cuadros de los eventos 922/0 codigo
+#            0x1E0..0x1E2 (cuadros 1, 1, 1). Hoy se espera NO verla: es el fallo que este escenario
+#            documenta hasta que F3 conecte el consumidor.
+# log      = "iwmini: prueba: empieza" / "dbz3 iwmini:"
+descripcion = "7D5 boca por eventos tipo 8: esperado NO conectado (documenta AST02)"
+env = [
+  "DBZ3_TEST_IWMINI=0x7D5,auto",
+  "DBZ3_IW_EVENTOS_LOG=1",
+  "DBZ3_TEST_CFG=dbz3_iw_logica_original=true",
+  'DBZ3_PS2_GAMES=D:\DBZ3HD\ps2_games',
+]
+pasos = [
+  "log \"iwmini: prueba: empieza\" 90",
+  "esperar 2500",
+  "captura t01_inicio",
+  "esperar 2500",
+  "captura t02_boca",
+  "esperar 2000",
+  "captura t03_boca2",
+]

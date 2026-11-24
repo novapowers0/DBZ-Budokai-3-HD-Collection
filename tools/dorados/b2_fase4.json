@@ -5,6 +5,7 @@
  "estado": "E:\\DBZ3HD_trabajo\\A2\\sstates\\fase4.p2s",
  "teclas": "z espera2000 down espera800 z espera2500 up espera800 z espera7000 z espera1500 z espera8000 z espera1500 z espera1500 z espera1500 z espera1500 z espera1500 z espera1500 z espera1500 z espera1500 z espera1500 z espera1500 z espera1500 z espera1500  start espera4000 a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z a*6 s*2 z  z espera1500 z espera8000 z espera1500 z espera8000 z espera1500 z espera8000 z espera1500 z espera8000 espera10000",
  "seg": 230.0,
+ "resultado_tablero": {"suceso": 60, "codigo": 4},
  "secuencia": [
   5,
   1,

@@ -9,6 +9,8 @@
 // Interruptor apagado: DBZ3_TEST_B2_IK_SUELO=1. Solo actua con la escena B2 activa.
 // Se llama una vez por fotograma desde B2MotorHD::Paso, con las matrices ya finales (sub_82110AB8 se
 // llama tambien a mitad de actualizacion y dejaba matrices a medio hacer: no sirve como punto de gancho).
+REXCVAR_DEFINE_BOOL(dbz3_b2_ik_escala_ficha, false, "DBZ3/Original",
+                    "B2 (B2F): escala del IK de suelo por ficha (modelo HD/B2). Apagado = sin escala de modelo");
 namespace dbz3::escenarios::b2ik {
 struct Esq {
   uint32_t sk=0;
@@ -308,9 +310,30 @@ inline bool SinIkB3() {   // eB2i DBZ3_TEST_B2_SIN_IK_B3=1: apaga el IK de suelo
 // SLES_518.39 y validadas contra b2_ik_tabla_pal.json). La ficha del luchador sale de su ID de B3 (mgr+1712+80*lado) por la tabla de la pasarela.
 inline constexpr double kIkPie[53]={1.0,1.1,0.8,0.9,0.8,1.1,1.2,1.0,1.0,1.1,2.2,1.2,1.8,1.3,1.5,1.2,1.5,1.1,1.0,1.1,1.5,1.1,0.8,0.8,1.0,1.0,0.8,0.8,1.0,1.4,1.4,0.9,1.25,1.1,0.9,0.8,0.8,1.0,1.0,1.0,1.1,1.0,1.0,1.5,0.35,0.8,1.0,1.4,1.4,1.4,1.4,1.4,1.4};
 inline constexpr double kIkMano[53]={0.8,0.8,0.6,0.7,0.6,0.8,0.8,0.8,0.8,0.9,1.5,1.0,1.2,0.8,0.8,0.8,1.0,0.8,0.7,0.8,1.0,0.8,0.7,0.7,0.8,0.8,0.7,0.7,0.8,1.1,1.0,0.7,0.8,0.8,0.7,0.7,0.7,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.7,0.8,1.0,1.0,1.0,1.0,1.0,1.0};
+// B2F 11/11: escala del modelo que dibuja el port (HD) respecto al de B2, por ficha. Los umbrales de
+// suelo (pie/mano/cuello) estan en unidades de mundo del modelo B2; con un modelo HD mas alto hay que
+// escalarlos (Goku mide 1,000 en reposo; el 1,24 de eB2h es del estado/suelo, no del modelo). Medido con
+// tools/b2_huesos.py escala desde el ISO de B2 y us/data_cmn: 35 fichas identicas (1,000000), Cell 1,1000,
+// Ten/Yamhan 1,1025; 15 sin cuerpo propio en el ELF (SoloB2/donante) o escala no uniforme = 1,0.
+// Regla de ficha desconocida: 1,0 (se quedan los umbrales de la tabla, sin escala de modelo). Es la ficha base;
+// una transformacion usa otro modelo B3 y necesitaria su propia razon.
+inline constexpr double kIkEscala[53]={1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.1025,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.1,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.1025,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0};
 }
 namespace dbz3::pasarela::b2 {int FichaDeB3(int id_b3);}   // pasarela_b2.cpp
 namespace dbz3::escenarios::b2ik {
+// Ficha de B2 (0..52) del actor `x`; -1 si el mgr no da un ID de B3 con ficha. La usan la tabla
+// pie/mano (P3) y la escala de modelo por ficha (B2F, apagada de serie).
+inline int FichaActor(uint8_t* base,uint32_t x,uint32_t mgr) {
+  if(!mgr)return -1;
+  const int id=int(REX_LOAD_U16(mgr+1712u+80u*(x==mgr+2096u?0u:1u)));
+  return ::dbz3::pasarela::b2::FichaDeB3(id);
+}
+// B2F 11/11: DBZ3_TEST_B2_IK_ESCALA_FICHA=1 multiplica los tres umbrales por kIkEscala[ficha].
+// Apagado de serie (identico a hoy); ficha desconocida o sin dato = 1,0.
+inline bool EscalaFichaActiva() {
+  static const bool v=[]{const char* s=std::getenv("DBZ3_TEST_B2_IK_ESCALA_FICHA");return s&&*s=='1';}();
+  return v||REXCVAR_GET(dbz3_b2_ik_escala_ficha);
+}
 // false = ficha desconocida: se quedan los valores de siempre. DBZ3_TEST_B2_IK_FICHA=0 la apaga (A/B con el mismo exe).
 inline bool FilaFicha(uint8_t* base,uint32_t x,uint32_t mgr,double& pie,double& mano) {
   static const bool off=[]{const char* s=std::getenv("DBZ3_TEST_B2_IK_FICHA");return s&&*s=='0';}();
@@ -319,7 +342,8 @@ inline bool FilaFicha(uint8_t* base,uint32_t x,uint32_t mgr,double& pie,double& 
   const int f=::dbz3::pasarela::b2::FichaDeB3(id);
   static bool logeado[2]{};
   const int lado=x==mgr+2096u?0:1;
-  if(!logeado[lado]){logeado[lado]=true;REXLOG_INFO("dbz3 B2 IK: lado {} id B3 {} ficha B2 {}",lado,id,f);}
+  if(!logeado[lado]){logeado[lado]=true;REXLOG_INFO("dbz3 B2 IK: lado {} id B3 {} ficha B2 {} escala {}",lado,id,f,
+      (f>=0&&f<53)?kIkEscala[f]:1.0);}
   if(f<0||f>=53)return false;
   pie=kIkPie[f];mano=kIkMano[f];return true;
 }
@@ -356,15 +380,23 @@ void AplicarActor(uint8_t* base,uint32_t x) {
   const uint32_t cod=REX_LOAD_U32(x+2928);
   // eB2i: sin el IK B3 de por medio (SIN_IK_B3) el atacante va mejor con los umbrales PAL literales (Nieve 547 -> 696 de 719 con k=1);
   // la victima sigue necesitando la escala (k=1: Ciudad 340 -> 334, Llanura 497 -> 480, Base 168 -> 157). Medido con Goku contra Goku.
-  const double k=(SinIkB3()&&x==m.actor[0])?1.0:((EscalaLevantar()>0&&(cod==166||cod==172))?EscalaLevantar():EscalaIK());
+  double k=(SinIkB3()&&x==m.actor[0])?1.0:((EscalaLevantar()>0&&(cod==166||cod==172))?EscalaLevantar():EscalaIK());
+  if(EscalaFichaActiva()) {
+    const int f=FichaActor(base,x,m.mgr);
+    if(f>=0&&f<53&&kIkEscala[f]>0.0) {
+      k*=kIkEscala[f];
+      static bool lg[2]{};
+      const int lado=x==m.actor[1]?1:0;
+      if(!lg[lado]){lg[lado]=true;REXLOG_INFO("dbz3 B2 IK: escala de modelo por ficha lado {} ficha {} x{:.4f} (k {:.4f})",lado,f,kIkEscala[f],k);}
+    }
+  }
   const bool h=Cabeza(W,e,y,suelo,k);
   bool l=false;
-  // eB2i DBZ3_TEST_B2_IK_TABLA=1: umbrales de la tabla PAL por personaje (FUN_001f2c50: pies DAT_00389380[actor+0x754], manos DAT_00389460[...]);
-  // en la prueba Goku contra Goku el atacante es la fila 0 (1,0 / 0,8) y la victima la 22 (0,8 / 0,7, los de siempre).
-  // ponytail: filas medidas en esta prueba; para otros personajes hace falta la fila de su ficha (actor+0x754 del B2).
+  // eB2i DBZ3_TEST_B2_IK_TABLA: umbrales de la tabla PAL por personaje (FUN_001f2c50: pies DAT_00389380[actor+0x754], manos DAT_00389460[...]).
+  // Se enciende con ik_b2 (de serie). Regla de ficha desconocida (B2-19): pie 1,0 / mano 0,8 en LOS DOS lados; antes
+  // se heredaba 0,8/0,7 del caso "Goku victima = ficha 22" de la prueba del 7/11, que con FichaDeB3 ya no se da.
   static const bool tabla=[]{const char* s=std::getenv("DBZ3_TEST_B2_IK_TABLA");return (s&&*s=='1')||::dbz3::original::Arreglo("ik_b2");}();
-  const bool fila0=tabla&&x==m.actor[0];
-  double pie=fila0?1.0:0.8,mano=fila0?0.8:0.7;
+  double pie=1.0,mano=0.8;
   if(tabla)FilaFicha(base,x,m.mgr,pie,mano);
   l|=Extremidad(W,e,e.nlf,pie,y,suelo,k);
   l|=Extremidad(W,e,e.nrf,pie,y,suelo,k);

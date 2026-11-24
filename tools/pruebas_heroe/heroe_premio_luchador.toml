@@ -1,0 +1,15 @@
+# R23 HER-06: premio de tipo "luchador" (res/heroe/recompensas.toml r_luchador_omega) abierto en el selector de luchadores.
+# El premio se da por conseguido con DBZ3_TEST_HEROE_PREMIOS (ganarlo de verdad = vencer a Omega Shenron con el Heroe; la regla
+# "vence" es la misma que ya cubren los premios de tecnica). El registro anota la mascara del selector antes y despues.
+#   python tools\pruebas.py correr smoke_b tools\pruebas_heroe\heroe_premio_luchador.toml
+descripcion = "Heroe: premio luchador (Omega Shenron) abierto en el selector de luchadores"
+env = ["DBZ3_TEST_HEROE_PREMIOS=r_luchador_omega", "DBZ3_TEST_CFG=dbz3_heroe_recompensas=true"]
+pasos = [
+  'log "hub: menu principal estado 2" 120', "esperar 1500",
+  "tecla S 1200", "tecla Space 3000",
+  "tecla Space 3000",
+  "tecla Space 4000", "tecla Space 4000",
+  'log "premio luchador: mascara del selector" 40',
+  "esperar 2000",
+  "captura a_selector",
+]

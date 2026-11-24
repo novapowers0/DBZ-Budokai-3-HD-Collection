@@ -1,0 +1,28 @@
+# S1 / IW 0x7D5 (NB007, "1,2,3,4!"): logica ORIGINAL + efectos de acierto/fallo.
+# Se corre con:
+#   python tools\pruebas.py correr <copia> "docs\14_frentes\escenarios_pruebas\final\s1_7d5.toml"
+#
+# clave    = IW-M06 / IW02 / 0x7D5
+# cvar     = dbz3_iw_7d5_original=true (de serie APAGADA) y dbz3_iw_efectos_original=true (nueva, APAGADA)
+# criterio = el log trae '7D5 con la logica original del ELF'; con el piloto 'fallos' se falla 1 de cada 5 y se
+#            deja caducar una ronda (r14: fin:); banco qte7d5.py comparar = 1843/1853 (ui 21/23 y c94:0x8c).
+#            En fase 3 ademas: qte7d5.py juego <dbz3.log> debe dar PASS con el mismo banco (parser nb007 corregido).
+# log      = "dbz3 r14: 7D5 con la logica original del ELF (dbz3_iw_7d5_original)" y "r14: fin: "
+descripcion = "7D5 (NB007) original: fallar una tecla y dejar caducar una ronda, con los efectos de acierto/fallo encendidos"
+env = [
+  "DBZ3_TEST_IWMINI=0x7D5,auto,fallos",
+  "DBZ3_TEST_QTE_LOG=1",
+  "DBZ3_TEST_CFG=dbz3_iw_7d5_original=true;dbz3_iw_efectos_original=true",
+  'DBZ3_PS2_GAMES=D:\DBZ3HD\ps2_games',
+]
+pasos = [
+  "log \"iwmini: prueba: empieza\" 90",
+  "log \"r14: en juego\" 90",
+  "captura a_ready",
+  "log \"dbz3 r14: 7D5 con la logica original del ELF\" 20",
+  "esperar 6000",
+  "captura b_iconos",
+  "log \"r14: fin: \" 240",
+  "esperar 1500",
+  "captura c_fin",
+]

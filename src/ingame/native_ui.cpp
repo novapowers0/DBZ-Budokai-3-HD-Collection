@@ -62,14 +62,102 @@ constexpr Piece kPieces[] = {
     // caras del contador de rivales, "/" (124,76-139,94), "V" y "%"; el juego las tine (el "2/2", naranja). Frente R6
     {"cifras_hud", 0, 0x38CE22710151CFA1ull, false},
     {"vs_torneo", 2047, 0xEEC9E52D040DC990ull, false},     // "VS" naranja del Torneo Mundial (0,4-236,103). R6
+    // Modo Heroe, aspecto nuevo (HEROE-V04, heroe_ui_v2.h; solo con dbz3_heroe_ui_nueva). Hashes comprobados con
+    // E:\DBZ3HD_trabajo\heroe_visual\verificar_piezas.py (misma regla que Extract: DdsSize + XXH3 del nivel base).
+    {"heroe_kami", 2039, 0x74CCE71F92035CB7ull, false},           // 2039_13 Palacio de Kami 1024 (dibujo 0,0-900,672)
+    {"heroe_kamehouse", 2062, 0xD84474804397FD5Eull, false},      // 2062_10 Kame House 1024 DXT5 (0,0-912,684)
+    {"heroe_noche", 2045, 0x4C0F90CCAA4270A9ull, false},          // 2045_11 cielo de noche 1024 (1,1-900,672)
+    {"heroe_peana", 2022, 0x4D0493CE5F3A98AEull, false},          // 2022_06 peana cian del selector (6,3-304,69)
+    {"heroe_orbe", 2043, 0x2D52A07C07BDD47Dull, false},           // 2043_45 orbe gris (1,1-226,226), se tine
+    {"heroe_placa_du", 2020, 0x466153F82C0C760Full, false},       // 2020_09 placa de fila de Dragon Universe (1,7-442,67)
+    {"heroe_bolitas", 2049, 0xCEFD279693222E9Dull, false},        // 2049_16 bolitas 1-8 del Torneo (cada 60 px: 4,3-50,48)
+    {"heroe_radar_aro", 2062, 0xD4C270A1543BBBB2ull, false},      // 2062_09 aro del radar 1024 DXT5 (13,4-655,686)
+    {"heroe_radar_rejilla", 2062, 0xCEE1D646B05C574Aull, false},  // 2062_11 rejilla del radar 1024 DXT5 (7,3-600,600)
+    {"heroe_barra_torneo", 2047, 0xC5EDF58D3C6CCEFFull, false},   // R23 HER-10: 2047_24 barra azul del Torneo (12,12-440,70); hash de ui_dump2
+    // R23 HER-04 v3: cabezas redondas del selector (5 por tira, 72x72 cada 84 px desde 6,6); mismas texturas que 2027_03/07/08
+    {"heroe_cabezas_13", 2047, 0x071C113EB3682CB4ull, false},     // 2047_13: Goku adulto (i0), Gohan, ...
+    {"heroe_cabezas_15", 2047, 0x4313F609EE1DEC4Dull, false},     // 2047_15: Krilin, Piccolo, Goku, ...
+    {"heroe_cabezas_16", 2047, 0x28055828F9157070ull, false},     // 2047_16: ..., Freezer (i3)
+    {"heroe_cabezas_18", 2047, 0x025001542947F798ull, false},     // 2047_18: ..., Cell (i1), Majin Bu, Super Bu, Kid Bu (i2-i4)
+    // R23 HER-05 v3: medidor de la pantalla Edit Skills (data_usi 1985; volcado en E:/DBZ3HD_trabajo/ui_dump3)
+    {"edit_capsula", 1985, 0x0A01D9E75204436Bull, false},         // 1985_15 capsula azul, la crema de fondo y el relleno cian
+    {"edit_placa", 1985, 0x7F77DF0EA4CA5830ull, false},           // 1985_16 placa azul clara (20,2-384,64)
+    {"edit_cifras", 1985, 0x48CEFDAD3AD7E458ull, false},          // 1985_08 cifras blancas "1234567890%" (y 5-35)
+    // HEROE-V05-B (mapa): fotos redondas (2022, 256x256) y panoramicas (2043, 512x512, opacas arriba) del selector de
+    // escenarios, por FILA de nombres de escenarios.cpp (0 Red Ribbon, 1 Abuelo, 2 Buu, 3 Archipielago, 4 Kaioshin,
+    // 5 Habitacion del Tiempo, 6 Namek, 7 Montanas, 8 Torneo, 9 Ciudad, 10 Llanuras, 11 Ring de Cell). Todas RGBA8, hash
+    // comprobado con verificar_piezas.py (OK). La fila 11 (2022_21 tanque y restos / 2043_41) y la 7 (2022_28 / 2043_33,
+    // mesetas) salen por el orden de la tabla y lo que se ve en la foto: comprobar en el juego.
+    {"heroe_esc_0", 2022, 0x1459FE3A632D52D3ull, false},   // 2022_11
+    {"heroe_esc_1", 2022, 0xED42B3C9503AE249ull, false},   // 2022_12
+    {"heroe_esc_2", 2022, 0xA6495695CF6AC196ull, false},   // 2022_13
+    {"heroe_esc_3", 2022, 0xA0918103AF443C40ull, false},   // 2022_14
+    {"heroe_esc_4", 2022, 0x70A8441BC03889A2ull, false},   // 2022_15
+    {"heroe_esc_5", 2022, 0xB86E7D4A0444E543ull, false},   // 2022_16
+    {"heroe_esc_6", 2022, 0x784316AB2D06704Dull, false},   // 2022_17
+    {"heroe_esc_7", 2022, 0x3CEE2708B04559D7ull, false},   // 2022_28
+    {"heroe_esc_8", 2022, 0x8D4263706786E196ull, false},   // 2022_18
+    {"heroe_esc_9", 2022, 0xF25EB6840462EBEFull, false},   // 2022_19
+    {"heroe_esc_10", 2022, 0xB574979A1F881347ull, false},  // 2022_20
+    {"heroe_esc_11", 2022, 0x91593ECBF8D0A966ull, false},  // 2022_21
+    {"heroe_esc_desconocido", 2022, 0xD87EB3F504B36B55ull, false},   // 2022_22 foto "?" (cruce del Heroe: opcional sorteado)
+    {"heroe_pan_0", 2043, 0xCB4820B7E8474677ull, false},   // 2043_40
+    {"heroe_pan_1", 2043, 0x24FF92037759909Full, false},   // 2043_39
+    {"heroe_pan_2", 2043, 0xCA785453BB1BD217ull, false},   // 2043_38
+    {"heroe_pan_3", 2043, 0x3772978C7D38C2B1ull, false},   // 2043_37
+    {"heroe_pan_4", 2043, 0x42C3E812C9ACC59Bull, false},   // 2043_29
+    {"heroe_pan_5", 2043, 0x4674566058810B45ull, false},   // 2043_35
+    {"heroe_pan_6", 2043, 0x5086BA98DA7AD075ull, false},   // 2043_34
+    {"heroe_pan_7", 2043, 0xACE3ACA9FE4AFE22ull, false},   // 2043_33
+    {"heroe_pan_8", 2043, 0x6C985448F48ACBF5ull, false},   // 2043_32
+    {"heroe_pan_9", 2043, 0x88E842A661AA10EAull, false},   // 2043_31
+    {"heroe_pan_10", 2043, 0x7DE363AA95603032ull, false},  // 2043_30
+    {"heroe_pan_11", 2043, 0xD2BCC5D9A1A026D4ull, false},  // 2043_41
+    // R23 SURV-4 (Survivors, arte del juego en vez de arte por encargar): portada de B3 (data_usi 2045). Hashes de E:/DBZ3HD_trabajo/ui_dump2.
+    {"b3_logo_dbz", 2045, 0x0CBB5DF261053F53ull, true},     // 2045_07 "DRAGON BALL Z" 512x256
+    {"b3_logo_budokai3", 2045, 0xF39E2E0D03DC4954ull, true}, // 2045_19 "BUDOKAI 3" 512x256
+    {"b3_arte_cell", 2045, 0x4C79F71F97AE4312ull, true},     // 2045_20 Cell perfecto con la bola de energia 512x512
+    {"b3_arte_freezer", 2045, 0x39BBCDADE6FC4EEEull, true},  // 2045_03 Freezer 512x512
+    // Dragon Tactics, maquetas v2. Hashes comprobados con verificar_piezas.py (control OK) contra ui_dump2; todas RGBA8.
+    {"tac_placa_du", 2020, 0x466153F82C0C760Full, false},        // 2020_09 placa de fila de Dragon Universe 512x128
+    {"tac_carta_1", 2068, 0xD8C97E929EB280A4ull, false},         // 2068_01 carta del Skill List 1024x1024
+    {"tac_carta_2", 2069, 0x3CF2D20F20E4CD0Bull, false},         // 2069_01 1024x1024
+    {"tac_carta_3", 2070, 0x6EB41CBC98844662ull, false},         // 2070_01 1024x1024
+    {"tac_carta_4", 2071, 0xB187642050D8A3FBull, false},         // 2071_01 1024x1024
+    {"tac_bocadillo_lado", 2033, 0x34F4D7BBD6DA2299ull, false},  // 2033_09 1024x256
+    {"tac_torneo_fondo", 2049, 0x73C63D7D90350FCBull, false},    // 2049_00 1024x1024
+    {"tac_locutor", 2049, 0xFF7AFE5C73AA5EB4ull, false},         // 2049_05 512x512
+    {"tac_flecha_cian", 2049, 0xEEFEECBA0E3B4A23ull, false},     // 2049_07 64x128
+    {"tac_bolitas", 2049, 0xCEFD279693222E9Dull, false},         // 2049_16 512x64
+    {"tac_destello", 2047, 0x900A4356A3BB4FB7ull, false},        // 2047_21 512x256
+    {"tac_barra_azul", 2047, 0xC5EDF58D3C6CCEFFull, false},      // 2047_24 512x128
+    {"tac_barra_roja", 2047, 0x3F89DD9955240F54ull, false},      // 2047_25 512x128
+    {"tac_hud_placa", 0, 0xD457813D562A7ED8ull, false},          // POST 12/11: data_usi 0, tex 30 (512x128): placa azul de rayas del marcador de combate (4,1-361,68)
+    {"tac_cabeza_0", 2047, 0x071C113EB3682CB4ull, false},        // 2047_13..20 512x128
+    {"tac_cabeza_1", 2047, 0x45CEB0C32F6E2FE3ull, false},
+    {"tac_cabeza_2", 2047, 0x4313F609EE1DEC4Dull, false},
+    {"tac_cabeza_3", 2047, 0x28055828F9157070ull, false},
+    {"tac_cabeza_4", 2047, 0x40D4B7C9E31945C9ull, false},
+    {"tac_cabeza_5", 2047, 0x025001542947F798ull, false},
+    {"tac_cabeza_6", 2047, 0xC32709676A6F6AA3ull, false},
+    {"tac_cabeza_7", 2047, 0xE10C0477915093B8ull, false},
     // H11 (Dragon Tactics): texturas de efectos del combate del juego (data_cmn, DXT3). 504 = efectos comunes; 553 = efectos de Vegeta.
     {"fx_impacto", 504, 0x40AF1EBA62CD4A73ull, false, true},   // estallido radial blanco 256x256
+    // CAC3: nodos 0x90 y 0x230 del #ACE 12 del banco común (BSP 504), fogonazo y núcleo.
+    {"cac3_estallido", 504, 0x0A83F1084D8FD002ull, false, true}, // #AZT t16, 128x128
+    {"cac3_nucleo", 504, 0x8AC8FAF388B7BC40ull, false, true},    // #AZT t0, 32x32
     {"fx_anillo", 504, 0xC5C95EF10DC7667Dull, false, true},    // onda de choque 64x64
     {"fx_nucleo", 504, 0xBC4107469032B90Full, false, true},    // punto blanco 32x32
     {"fx_rayo", 504, 0xA85E604E0EA9A4C9ull, false, true},      // chorro de energia azul 64x64
     {"fx_halo", 553, 0x9E585F231E5CD258ull, false, true},      // ovalo blanco suave 64x64
     {"fx_brillo", 553, 0x0F42A9F23C423FC0ull, false, true},    // bola de brillo rosa 64x64
     {"fx_chispas", 531, 0xC8611BC86718688Bull, false, true},   // chispas de golpe 128x128
+    // POST2 12/11 (Survivors): texturas de los #ACE exactos del combate (atlas 2x2, sin recortar). 504 = banco comun 0; 533 = BSP de Goku.
+    {"fx_golpe", 504, 0xC52ED001D62B4DA1ull, false, true},     // banco 0 #ACE 1 (rayas del golpe) t2 64x64
+    {"fx_kibola", 504, 0x47355D0DC97D7DE8ull, false, true},    // banco 0 #ACE 9 (cabeza de la rafaga de ki, codigo 350) t15 64x64
+    {"fx_kame_cabeza", 533, 0x2610A90B24AFA7E4ull, false, true},  // BSP 533 AMB0 #ACE 2 (cabeza del Kamehameha) t31 64x64
+    {"fx_kame_brillo", 533, 0x5650F9AE8D679B95ull, false, true},  // t32 64x64
+    {"fx_kame_raya", 533, 0xA57611EB6A4077BDull, false, true},    // t33 64x64
     // Dragon Tactics: bola y rayo de la tecnica de energia de cada unidad, tal como los liga el juego nativo (BSP del personaje en data_cmn;
     // tabla generada por mod center hd/tactics_fx.py: solo entrada y hash, la imagen sale de la copia del jugador). Nombres tkfx/<id>/bola|rayo.
 #define TKFX(id, entrada, hbola, hrayo, r, g, b)     {"tkfx/" id "/bola", entrada, hbola, false, true}, {"tkfx/" id "/rayo", entrada, hrayo, false, true},
@@ -77,6 +165,10 @@ constexpr Piece kPieces[] = {
 #undef TKFX
 };
 // Cara del marcador: ID -> entrada de data_cmn (#AZT hud_face; textura 0 = forma normal).
+// Rutas del Heroe (cruce de caminos, maqueta 1): retrato de dialogo de B3 (data_cmn 1416-1499, el busto de 541x530 arriba a la
+// izquierda de su textura 1024) recortado a la cara (110,40-430,360). Solo los rivales que salen en un cruce; nunca 1464/1465/1486.
+constexpr std::pair<int, int> kRetratos[] = {{7, 1436}, {20, 1461}, {21, 1462}, {29, 1469}, {30, 1471}, {33, 1477}, {42, 1491}, {43, 1492}};
+
 constexpr std::pair<int, int> kFaces[] = {
     {0, 476},  {1, 474},  {2, 473},  {3, 472},  {4, 471},  {5, 478},  {6, 480},  {7, 500},
     {8, 494},  {9, 493},  {10, 482}, {11, 487}, {12, 496}, {13, 502}, {14, 492}, {15, 498},
@@ -327,10 +419,33 @@ void Extract(std::filesystem::path dir) {
     const size_t at = size_t(z) + Be32(&b[o + 20]);
     Image img;
     if (at < b.size() && DecodeDds(&b[at], b.size() - at, img)) {
+      Image rec = img;   // la cara sin el margen transparente: los menus la centran sin estirarla
+      Trim(rec);
+      if (id == 0) REXLOG_INFO("dbz3 ui: cara 0 textura {}x{}, recortada {}x{}", img.w, img.h, rec.w, rec.h);
       std::lock_guard<std::mutex> lock(g_mu);
+      g_images["caras_rec/" + std::to_string(id)] = std::move(rec);
       g_images["caras/" + std::to_string(id)] = std::move(img);
       ++faces;
     }
+  }
+  for (const auto& [id, n] : kRetratos) {   // mismo #AZT que las caras; recorte a la cara (la textura entera son 4 MB)
+    const std::vector<uint8_t> b = ReadEntry(dir / "data_cmn.afs", n);
+    const auto z = std::search(b.begin(), b.end(), "#AZT", "#AZT" + 4) - b.begin();
+    if (size_t(z) + 0x18 > b.size()) continue;
+    const size_t idx = size_t(z) + Be32(&b[size_t(z) + 0x14]);
+    if (idx + 4 > b.size()) continue;
+    const size_t o = size_t(z) + Be32(&b[idx]);
+    if (o + 24 > b.size()) continue;
+    const size_t at = size_t(z) + Be32(&b[o + 20]);
+    Image img;
+    if (at >= b.size() || !DecodeDds(&b[at], b.size() - at, img) || img.w < 430 || img.h < 360) continue;
+    Image cara;
+    cara.w = 320, cara.h = 320;
+    cara.rgba.resize(size_t(cara.w) * cara.h * 4);
+    for (int y = 0; y < cara.h; ++y)
+      std::memcpy(&cara.rgba[size_t(y) * cara.w * 4], &img.rgba[(size_t(y + 40) * img.w + 110) * 4], size_t(cara.w) * 4);
+    std::lock_guard<std::mutex> lock(g_mu);
+    g_images["retratos/" + std::to_string(id)] = std::move(cara);
   }
   REXLOG_INFO("dbz3 ui: {} de {} piezas ({} de tecnicas de Tactics) y {} caras sacadas del juego ({})", found, std::size(kPieces), fx_tecnicas, faces,
               dir.string());
@@ -350,6 +465,32 @@ void Prefetch() {
 
 bool Ready() { return g_ready.load(); }
 
+bool DecodificarDds(std::span<const uint8_t> dds, Image& out) {
+  return dds.size() >= 128 && std::memcmp(dds.data(), "DDS ", 4) == 0 && DecodeDds(dds.data(), dds.size(), out);
+}
+
+bool CombatAtlas(int entrada) {
+  const auto root=dbz3::HostDataRoot();if(root.empty())return false;
+  const auto b=ReadEntry(root/(dbz3::settings::Region()=="eu"?"eu":"us")/"data_cmn.afs",entrada);
+  size_t z=0;uint32_t cantidad=0,tabla=0;
+  for(size_t p=0;p+32<=b.size();++p)if(!std::memcmp(b.data()+p,"#AZT",4)) {
+    const uint32_t n=Be32(b.data()+p+16),t=Be32(b.data()+p+20);
+    if(n>cantidad&&n<512&&t<=b.size()-p&&uint64_t(t)+4ull*n<=b.size()-p)z=p,cantidad=n,tabla=t;
+  }
+  if(!cantidad)return false;
+  unsigned cargadas=0;
+  for(uint32_t i=0;i<cantidad;++i) {
+    const size_t o=z+Be32(b.data()+z+tabla+4*i);if(o+28>b.size())continue;
+    const size_t d=z+Be32(b.data()+o+20),n=Be32(b.data()+o+24);
+    if(d>b.size()||n>b.size()-d)continue;
+    Image im;if(!DecodeDds(b.data()+d,n,im))continue;
+    std::lock_guard<std::mutex> l(g_mu);
+    g_images["fxreal/"+std::to_string(entrada)+"/"+std::to_string(i)]=std::move(im);++cargadas;
+  }
+  REXLOG_INFO("dbz3 survivors: atlas original FX BSP={} texturas={}",entrada,cargadas);
+  return cargadas>0;
+}
+
 bool Take(const std::string& name, Image& out) {
   std::lock_guard<std::mutex> lock(g_mu);
   auto it = g_images.find(name);
@@ -358,5 +499,7 @@ bool Take(const std::string& name, Image& out) {
   g_images.erase(it);
   return true;
 }
+
+std::vector<uint8_t> LeerEntrada(const std::filesystem::path& afs, int n) { return ReadEntry(afs, n); }
 
 }  // namespace dbz3::ingame::native_ui

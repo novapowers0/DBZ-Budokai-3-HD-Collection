@@ -1,0 +1,11 @@
+descripcion = "MODOS-08: jefes entero (DBZ3_TEST_MODO, sin HUB) hasta el premio final de 1500 Zenie; Space entre pantallas"
+env = ["DBZ3_HUB_MODE=5", "DBZ3_TEST_RINGOUT=1", "DBZ3_TEST_MODO=jefes,0"]
+apartar = ["user_data/dbz3/rpg.toml*", "user_data/dbz3/hub_modos.toml*", "user_data/dbz3/modos", "user_data/dbz3/retos.csv", "user_data/dbz3/hub_heroe.toml*", "user_data/dbz3/pasarela"]
+pasos = [
+  "esperar_pantalla 5 120",
+  "log 'modos: prueba: jefes con id 0: empieza' 90",
+  "hasta_log \"rpg: premio de 1500 Zenie\" 600",
+  "tecla Space 2500",
+  "fin",
+  "esperar 4000",
+]

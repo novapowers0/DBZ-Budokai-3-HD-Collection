@@ -1,0 +1,37 @@
+# CAC-10 (R23): hasta 4 trajes por héroe. Fixture con 4 recetas guardadas (Rojo, Azul, Verde, Oro).
+# Recorre el hueco 1 -> 4, aplica una receta (A), guarda la apariencia actual en el hueco 4 (X) y confirma.
+# Criterio del tablero: heroe_trajes PASS. El .toml prueba la fila «Traje guardado» de la interfaz; la mitad de combate
+# la sigue midiendo el escenario integrado `heroe_trajes` (ver LEEME.md).
+# REXLOG nuevos que espera: CAC-10: hueco {i}/4 (...); CAC-10: receta {i} guardada (...).
+descripcion = "CAC-10: creador con 4 trajes guardados; aplicar, guardar en el hueco 4 y montar el héroe"
+env = ["DBZ3_TEST_MODO=heroe,0", "DBZ3_HUB_MODE=5", "DBZ3_TEST_HEROE_ABRIR=2", "DBZ3_TEST_HEROE_CUERPO=0",
+       "DBZ3_CAC_FILA=traje_guardado", "DBZ3_TEST_CFG=dbz3_heroe_ui_nueva=true"]
+apartar = ["user_data/dbz3/cac.toml*", "user_data/dbz3/heroe", "user_data/dbz3/hub_heroe.toml*", "mods/heroe_propio"]
+poner = ["tools/pruebas_heroe/cac_pendientes/fixtures/cac10_cuatro_trajes_cac.toml -> user_data/dbz3/cac.toml"]
+pasos = [
+  "esperar_pantalla 5 120",
+  'log "Create abierto" 180',
+  'log "vista previa 3D .* cargada" 90',
+  "esperar 2000",
+  "captura cac10_a_fila_traje",
+  "tecla D 800",
+  'log "dbz3 heroe: .*hueco 2/4" 20',
+  "tecla Space 1500",
+  'log "dbz3 heroe: .*receta aplicada a la ficha" 30',
+  "esperar 4000",
+  "captura cac10_b_receta_aplicada",
+  "tecla D 800",
+  "tecla D 800",
+  'log "dbz3 heroe: .*hueco 4/4" 20',
+  "tecla L 900",
+  'log "dbz3 heroe: .*receta 4 guardad" 40',
+  "esperar 1000",
+  "captura cac10_c_receta_guardada",
+  "tecla Space 1500",
+  'log "dbz3 heroe: .*receta aplicada a la ficha" 30',
+  "esperar 3000",
+  "tecla 3 1500",
+  'log "el heroe propio de la ficha .* se monta" 60',
+  "esperar 120000",
+  "captura cac10_d_combate_montado",
+]

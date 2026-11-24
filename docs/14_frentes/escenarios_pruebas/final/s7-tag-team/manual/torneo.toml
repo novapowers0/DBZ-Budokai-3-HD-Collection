@@ -1,0 +1,38 @@
+# S7 / TOR01: Torneo Mundial nivel Novato de principio a fin (#55: congelacion al ganar).
+# RESTO-04 (11/11): el DSL ya tiene bucles (hasta_log / hasta_pantalla ... fin): el guion recorre el cuadro solo, como el
+# escenario Python `torneo` (avanza con Space mirando el log antes de cada pulsacion; nunca pulsa de mas). El cuadro
+# Novato trae tambien combates COM contra COM ("combate acabado" cuenta todos): la vuelta al menu espera hasta 300 s.
+# FASE 3: lo deja escrito el carril S7; lo ejecuta Z una sola vez.
+#   python tools\pruebas.py correr smoke_a "docs\14_frentes\escenarios_pruebas\final\s7-tag-team\manual\torneo.toml"
+#
+# clave    = TOR01 (Novato: tres combates ganados y vuelta al menu sin congelar)
+# cvar     = ninguna; DBZ3_TEST_RINGOUT=1 gana cada combate a los 5 s (motivo 4, vale en cualquier modo)
+# criterio = tras ganar los 3 combates el juego vuelve a la pantalla 5 y sigue respondiendo (sin cierre). La
+#            linea "modos: torneo terminado (obj+104 = 1)" marca el final del cuadro.
+# log      = "VS del torneo", "tag: combate acabado", "modos: torneo terminado", pantalla 5
+descripcion = "Torneo Mundial Novato completo (3 combates por ring out) y vuelta al menu (TOR01/#55)"
+env = [
+  "DBZ3_TEST_RINGOUT=1",
+]
+pasos = [
+  "esperar 3000",
+  "tecla S 1200",
+  "tecla S 1200",
+  "tecla Space 3500",
+  "tecla Space 3000",
+  "captura a_nivel_novato",
+  "hasta_log 'VS del torneo' 90",
+  "tecla Space 2200",
+  "fin",
+  "captura b_vs",
+  "hasta_log 'tag: combate acabado' 300 3",
+  "tecla Space 1500",
+  "esperar 500",
+  "fin",
+  "captura c_combates",
+  "hasta_pantalla 5 300",
+  "esperar 5000",
+  "tecla Space 1500",
+  "fin",
+  "captura d_menu",
+]

@@ -17,14 +17,17 @@
 //      el juego al empezar: sub_8210FDE0 (golpes y camara: X+7896..), sub_82109638 (reinicio
 //      del luchador) y la forma 0 (sub_8210E690 + sub_82115270). La vida se restaura despues.
 #include "reloj_prueba.h"
+#include <rex/cvar.h>
 #include <rex/hook.h>
 #include <rex/logging.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdlib>
 #include <array>
 #include <atomic>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <map>
@@ -62,6 +65,15 @@ DBZ3_EXTERN_EU(dbz3eu_sub_82115430);
 
 namespace dbz3::fusion { void Tick(PPCContext& ctx, uint8_t* base); }
 namespace dbz3::pasarela::misiones { bool NaveReviveRival(); void NaveRivalLevantado(); }   // Nave B2, prueba I
+
+// TAG01: precarga del companero en un hueco libre (apagada de serie). Mueve la carga del que entra a un
+// momento de reposo en vez de al relevo; si el juego suelta el hueco, el relevo lo pide otra vez como siempre.
+REXCVAR_DEFINE_BOOL(dbz3_tag_precarga, false, "DBZ3/Mods",
+                    "Precarga el compañero del Tag Team mientras espera (menos tirones al relevar) | Preloads the Tag Team partner while idle");
+// TAG01/TAG02: tiempos por fase (solo diagnostico; no cambia nada).
+REXCVAR_DEFINE_BOOL(dbz3_tag_trace, false, "DBZ3/Dev",
+                    "Trazas de tiempos del relevo y de la precarga (desarrollo) | Tag Team timing traces (development)");
+
 namespace dbz3::tag {
 // TAG_F3_RECIPE_V1
 bool ReadMemberCapsules(uint8_t*, int, int, std::array<uint16_t, 8>&);
@@ -154,6 +166,9 @@ struct Team {
   bool tele_fx = false;            // su estela y su sonido ya salieron
   bool veiled = false;             // X+3261 puesto por nosotros (se quita si el combate acaba a mitad)
   bool fused = false;              // fusion (Fuse, fusion.cpp): equipo de 2 sin vuelta atras ni fichas del Tag Team
+  int preload = -1;                // TAG01: miembro cuyos ficheros ya se pidieron en kLoad (sin cambiar de luchador)
+  uint32_t preload_at = 0;         // tick de esa precarga
+  int64_t request_us = 0;          // TAG01/TAG02: reloj de la peticion de relevo (traza)
 };
 
 std::mutex g_mu;
@@ -162,6 +177,7 @@ std::array<uint16_t, 4> g_prev_buttons{};
 // En combate: desde el reinicio de luchadores del inicio del combate (sub_82109638) hasta que
 // vuelve un menu del juego (OnScreen). Fuera de el, los bloques X son de un combate viejo.
 std::atomic<bool> g_in_battle{false};
+std::atomic<bool> g_coop{false};              // TAG05: dos mandos en el mismo equipo (el activo usa el suyo)
 std::atomic<uint32_t> g_frame{0};             // ticks del bucle principal
 std::atomic<uint32_t> g_fall_x{0};            // luchador tumbado por KO que aun tiene que salir despedido
 // Nave de Babidi, prueba I (B2, medido en PCSX2: pre_ko_2500/3000): el rival cae con el golpe letal y a los ~2,5 s
@@ -198,9 +214,18 @@ uint16_t ExitBtn() {   // botones de la salida (DBZ3_TAG_EXIT_BTN, hex)
   return uint16_t(v);
 }
 
+uint32_t Fighter(uint8_t* base, int p);   // definido abajo (lo usa la restauracion del mando cooperativo)
+int64_t NowUs() {
+  return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+bool SlotFree(uint8_t* base, uint32_t x, uint32_t slot) {
+  return !REX_LOAD_U32(x + kModel0 + 4 * slot) && !REX_LOAD_U32(x + kAnm0 + 28 * slot) &&
+         !REX_LOAD_U32(x + kAnm0 + 28 * slot + 20) && !REX_LOAD_U32(x + kAnm0 + 28 * slot + 24);
+}
 void PoseEnd(uint8_t* base, int p) {
   if (const uint32_t x = g_pose_com[size_t(p)]) {
-    if (int16_t(REX_LOAD_U16(x + kPoseSlotOff)) == kPoseSlot) REX_STORE_U16(x + kPoseSlotOff, 0xFFFF);
+    const uint16_t back = g_coop.load() && g_in_battle.load() && p == 0 ? uint16_t(std::min<int>(g_team[0].active, 1)) : 0xFFFFu;
+    if (int16_t(REX_LOAD_U16(x + kPoseSlotOff)) == kPoseSlot) REX_STORE_U16(x + kPoseSlotOff, back);
     for (const uint32_t o : {12u, 14u, 16u, 88u, 92u}) REX_STORE_U32(kPoseRec + o, 0);
     g_pose_com[size_t(p)] = 0;
   }
@@ -617,9 +642,113 @@ uint8_t SuitFor(uint8_t* base, uint32_t rec, uint32_t slot, uint8_t suit) {
   return int8_t(suit) < int8_t(REX_LOAD_U8(kChar96 + 96u * uint32_t(mid) + 4)) ? suit : 0;
 }
 
+// TAG01: pide los ficheros del miembro k en el hueco kLoad sin cambiar de luchador. Al relevar, si el
+// hueco sigue con su modelo, StartSwap se ahorra la peticion y el pico de carga; si el juego lo solto
+// (formas sin usar) o el que entra es otro, el camino de siempre lo vuelve a pedir.
+void PreloadMember(PPCContext& ctx, uint8_t* base, uint32_t x, Team& t, int k) {
+  if (t.preload >= 0 || t.round_owned || t.fused || t.phase != Phase::kIdle) return;
+  if (k < 0 || k >= int(t.ids.size()) || k == t.active || t.down[size_t(k)]) return;
+  if (t.form[size_t(k)] != 0 || t.spare) return;             // vuelve en forma 0 (el hueco kSpare seria otro)
+  if (!Fighting(base) || PreFight(base) || Over(base) || !Free(base, x)) return;
+  if (g_frame.load() - t.form_at < kFormQuiet) return;
+  if (!SlotFree(base, x, kLoad) || !SlotFree(base, x, kSpare)) return;
+  const int side = SideOf(base, x);
+  if (side < 0) return;
+  const uint32_t id = uint32_t(t.ids[size_t(k)]);
+  const uint32_t sel = REX_LOAD_U32(x + kSel);
+  if (!sel) return;
+  if (!t.rec) t.rec = dbz3::roster::GuestAlloc(372);
+  if (!t.rec) return;
+  const int64_t t0 = NowUs();
+  TAG_CALL(sub_82100D60, dbz3eu_sub_82100E60, x, kLoad);
+  TAG_CALL(sub_82100DE8, dbz3eu_sub_82100EE8, x, kLoad);
+  const uint32_t src = kChar372 + 372 * id;
+  std::memcpy(base + t.rec, base + src, 372);
+  std::memcpy(base + t.rec + 4 * kLoad, base + src, 4);
+  std::memcpy(base + t.rec + 212 + 20 * kLoad, base + src + 212, 20);
+  const uint32_t keep[] = {REX_LOAD_U32(x + kRec372), REX_LOAD_U32(x + kId), REX_LOAD_U32(x + kCam),
+                           REX_LOAD_U32(x + kLang), REX_LOAD_U32(x + 7928)};
+  const uint8_t suit7 = REX_LOAD_U8(x + 7436 + kLoad);
+  REX_STORE_U8(x + 7436 + kLoad, SuitFor(base, t.rec, kLoad, REX_LOAD_U8(x + 7436)));
+  const uint16_t sel20 = REX_LOAD_U16(sel + 20), sel22 = REX_LOAD_U16(sel + 22);
+  REX_STORE_U32(x + kRec372, t.rec);
+  REX_STORE_U32(x + kId, id);
+  REX_STORE_U32(x + kCam, 0);
+  REX_STORE_U32(x + kLang, 0);
+  REX_STORE_U16(sel + 20, uint16_t(kLoad));
+  REX_STORE_U16(sel + 22, uint16_t(kLoad));
+  TAG_CALL(sub_82109148, dbz3eu_sub_82109248, x, sel);
+  t.new_cam = REX_LOAD_U32(x + kCam);
+  t.new_lang = REX_LOAD_U32(x + kLang);
+  t.new_tech = 0;
+  {
+    const uint32_t fid = REX_LOAD_U32(kTechFid + 4 * id);
+    if (fid != 0xFFFFFFFFu && !t.tech_ok[size_t(k)] && t.tech_owner != k) {
+      const uint32_t h = Call(ctx, base, DBZ3_CALL_EU(sub_82083968), fid, 0, 1);
+      t.new_tech = h != 0xFFFFFFFFu ? h : 0;
+    }
+    const uint32_t hud = REX_LOAD_U32(kHudBase);
+    auto& faces = g_face[size_t(side)];
+    if (hud && !faces.count(int(keep[1]))) faces[int(keep[1])] = REX_LOAD_U32(hud + kHudFaces + 4 * uint32_t(side));
+    dbz3::roster::SkillTable(true);
+    const uint32_t row = FaceRow(base, id, REX_LOAD_U16(sel + 18));
+    const uint32_t face_fid = row ? REX_LOAD_U32(row + 8) : 0xFFFFFFFFu;
+    t.new_face = 0;
+    if (row && face_fid != 0xFFFFFFFFu && !faces.count(int(id))) {
+      const uint32_t h = Call(ctx, base, DBZ3_CALL_EU(sub_82083968), face_fid, 0, 1);
+      t.new_face = h != 0xFFFFFFFFu ? h : 0;
+    }
+    if (t.new_portrait) Call(ctx, base, DBZ3_CALL_EU(sub_821B63F8), t.new_portrait, 0);
+    t.new_portrait = row ? Call(ctx, base, DBZ3_CALL_EU(sub_821B62D0), REX_LOAD_U32(row + 12), 0) : 0;
+    dbz3::roster::SkillTable(false);
+    const uint32_t afid = REX_LOAD_U32(kAuraFid + 4 * id);
+    t.new_aura = 0;
+    if (afid != 0xFFFFFFFFu && afid != REX_LOAD_U32(kAuraFid + 4 * keep[1])) {
+      const uint32_t h = Call(ctx, base, DBZ3_CALL_EU(sub_82083968), afid, 0, 1);
+      t.new_aura = h != 0xFFFFFFFFu ? h : 0;
+    }
+  }
+  REX_STORE_U32(x + kRec372, keep[0]);                        // el de pantalla sigue igual
+  REX_STORE_U32(x + kId, keep[1]);
+  REX_STORE_U32(x + kCam, keep[2]);
+  REX_STORE_U32(x + kLang, keep[3]);
+  REX_STORE_U32(x + 7928, keep[4]);
+  REX_STORE_U16(sel + 20, sel20);
+  REX_STORE_U16(sel + 22, sel22);
+  REX_STORE_U8(x + 7436 + kLoad, suit7);
+  if (side >= 0) g_keep[size_t(side)] = 1u << kLoad;
+  t.preload = k;
+  t.preload_at = g_frame.load();
+  if (REXCVAR_GET(dbz3_tag_trace)) {
+    REXLOG_INFO("dbz3 tag traza: precarga del miembro {} en {:.1f} ms (id {}, camara {:08X})", k,
+                double(NowUs() - t0) / 1000.0, id, t.new_cam);
+  }
+}
+
+// Suelta los nodos que dejo una precarga que no se va a usar (el que entra es otro). El modelo y la
+// animacion del hueco kLoad los suelta el camino normal de StartSwap.
+void DropPreload(PPCContext& ctx, uint8_t* base, Team& t) {
+  if (t.preload < 0) return;
+  if (t.new_cam) Call(ctx, base, DBZ3_CALL_EU(sub_82083A68), t.new_cam, 0);    // camara: decremento (sub_821092C8)
+  if (t.new_lang) Call(ctx, base, DBZ3_CALL_EU(sub_82083A68), t.new_lang, 0);  // idioma: decremento
+  if (t.new_tech) Call(ctx, base, DBZ3_CALL_EU(sub_82083D08), t.new_tech, 0);  // nodos frescos: descarga directa
+  if (t.new_face) Call(ctx, base, DBZ3_CALL_EU(sub_82083D08), t.new_face, 0);  // (como SwapFace)
+  if (t.new_aura) Call(ctx, base, DBZ3_CALL_EU(sub_82083D08), t.new_aura, 0);  // (como SwapAura)
+  if (t.new_portrait) Call(ctx, base, DBZ3_CALL_EU(sub_821B63F8), t.new_portrait, 0);
+  t.new_cam = t.new_lang = t.new_tech = t.new_face = t.new_aura = t.new_portrait = 0;
+  t.preload = -1;
+}
+
 void StartSwap(PPCContext& ctx, uint8_t* base, uint32_t x, Team& t, int k) {
   if (k < 0 || k >= int(t.ids.size()) || k == t.active || t.phase != Phase::kIdle ||
       t.down[size_t(k)]) return;
+  // POST/FORMAS-8 (12/11): en las formas 7-8 (huecos 6/7) el que entra se cargaria encima de la forma en pantalla
+  // (0xC0000005, lr 0x82110228). Sin relevo hasta que baje de forma, como ya hace la ronda (ScratchFree).
+  if (REX_LOAD_U32(x + kForm) >= kSpare) {
+    t.refused_at = g_frame.load();
+    REXLOG_WARN("dbz3 tag: relevo rechazado en la forma {} (los huecos 6/7 son los del relevo)", REX_LOAD_U32(x + kForm));
+    return;
+  }
   if (const int side = SideOf(base, x); side >= 0) PoseEnd(base, side);
   t.pose_at = 0;
   if (t.round_owned && (t.round_blocked || t.restore || !Fighting(base))) return;
@@ -652,6 +781,13 @@ void StartSwap(PPCContext& ctx, uint8_t* base, uint32_t x, Team& t, int k) {
     t.visited[size_t(t.active)] = true;
   }
   t.restore = 0;
+  // TAG01: si el companero ya se precargo en kLoad, no se vuelve a pedir (el pico de carga ya paso). Si el
+  // juego solto el hueco o el que entra es otro, se sueltan sus nodos y se hace el camino de siempre.
+  const bool reuse = t.preload == k && t.form[size_t(k)] == 0 && t.new_cam != 0 &&
+                     REX_LOAD_U32(x + kModel0 + 4 * kLoad) != 0;
+  if (t.preload >= 0 && !reuse) DropPreload(ctx, base, t);
+  t.preload = -1;
+  if (!reuse) {
   if (const int side = SideOf(base, x); side >= 0) g_keep[size_t(side)] = 0;   // (un reintento suelta lo suyo)
   if (t.spare) {   // la forma pedida en un intento anterior (carga que no llego) se suelta
     TAG_CALL(sub_82100D60, dbz3eu_sub_82100E60, x, kSpare);
@@ -741,9 +877,17 @@ void StartSwap(PPCContext& ctx, uint8_t* base, uint32_t x, Team& t, int k) {
     REX_STORE_U8(x + 7436 + kSpare, suit6);
     REX_STORE_U8(x + 7436 + kLoad, suit7);
   }
+  } else {   // precargado: el modelo, sus animaciones y sus nodos ya estan pedidos
+    t.spare = 0;
+    if (const int side = SideOf(base, x); side >= 0) g_keep[size_t(side)] = 1u << kLoad;
+  }
   t.phase = Phase::kLoading;
   t.target = k;
   t.since = g_frame.load();
+  t.request_us = NowUs();
+  if (REXCVAR_GET(dbz3_tag_trace)) {
+    REXLOG_INFO("dbz3 tag traza: peticion de relevo {} (id {}, precargado {}, camara {:08X})", k, id, reuse, t.new_cam);
+  }
   for (uint32_t i = 0; i < 3; ++i) t.home[i] = LoadF(base, x + 64 + 4 * i);
   if (!t.down[size_t(t.active)] && TeleportOn() && !t.round_owned) {
     // teletransporte (2026-10-15): el que sale sigue en combate mientras carga el compañero (la ficha dice
@@ -950,9 +1094,17 @@ void FinishSwap(PPCContext& ctx, uint8_t* base, uint32_t x, Team& t) {
   }
   if (t.fused) t.down[size_t(t.active)] = true;   // fusionado: no vuelve (sin SELECT de vuelta; su KO es el de verdad)
   t.active = k;
+  t.preload = -1;
+  // TAG05: en cooperativo, el que entra pasa a leer SU mando (miembro 0 = mando 1, miembro 1 = mando 2).
+  if (g_coop.load() && !dbz3::net::Session::Get().active() && SideOf(base, x) == 0)
+    REX_STORE_U16(x + kPoseSlotOff, uint16_t(std::min<int>(k, 1)));
   t.phase = Phase::kIdle;
   t.retries = 0;
   t.done_at = g_frame.load();
+  if (REXCVAR_GET(dbz3_tag_trace)) {
+    REXLOG_INFO("dbz3 tag traza: relevo completado en {} ticks, {:.1f} ms desde la peticion (id {})", g_frame.load() - t.since,
+                t.request_us ? double(NowUs() - t.request_us) / 1000.0 : 0.0, id);
+  }
   const float mx = LoadF(base, x + kHpMax);
   StoreF(base, x + kHp, std::min(t.hp[size_t(k)], mx > 0 ? mx : t.hp[size_t(k)]));
   REX_STORE_U8(x + kNearDeath, near_death);   // en Practica vale 1 (vida infinita)
@@ -1111,9 +1263,11 @@ void Tick(PPCContext& ctx, uint8_t* base) {
       last_mode = mode;
     }
   }
-  // PRUEBA (DBZ3_TEST_RINGOUT=1): a los 5 s de pelea (no de presentacion: antes saltaba en la intro)
-  // el rival aparece fuera del ring (para medir el ring out)
-  static const bool test_ro = std::getenv("DBZ3_TEST_RINGOUT") != nullptr;
+  // PRUEBA (DBZ3_TEST_RINGOUT=1|2): a los 5 s de pelea (no de presentacion: antes saltaba en la intro)
+  // cae fuera del ring el rival (1) o el jugador 1 (2; en Tag Team con companero vivo cuenta como KO y releva).
+  static const char* ro_env = std::getenv("DBZ3_TEST_RINGOUT");
+  static const bool test_ro = ro_env != nullptr;
+  static const bool ro_player = ro_env && std::atoi(ro_env) == 2;
   static bool ro_logged = false;
   // DS131: el aviso se repite cada 0,5 s mientras dure la pelea. Un unico aviso podia consumirse (p. ej. el cambio
   // de zona de B2, ver escenarios.cpp) y el piloto automatico se quedaba sin ganar el combate y perdia por KO.
@@ -1121,15 +1275,16 @@ void Tick(PPCContext& ctx, uint8_t* base) {
   // escenas piden un combate al motor solo para tener camara/modelos y el aviso las cortaba a los 5 s (log 27/10:
   // "prueba: rival fuera del ring" -> "combate acabado ... motivo 4" -> "cinematica: cortada en el cuadro 301"),
   // dejando la previa en 5,5 s de 33,83 s. El combate de verdad, sin escena, sigue ganandose igual a los 5 s.
-  if (test_ro && !dbz3::cinematica::Activa() && battle_frames >= 300 && (battle_frames - 300) % 30 == 0) {
+  static const int ro_ini = std::getenv("DBZ3_TEST_RINGOUT_S") ? std::max(5, std::atoi(std::getenv("DBZ3_TEST_RINGOUT_S"))) * 60 : 300;   // ROG-01: segundos hasta el aviso (por defecto 5)
+  if (test_ro && !dbz3::cinematica::Activa() && battle_frames >= ro_ini && (battle_frames - ro_ini) % 30 == 0) {
     // como el juego al caer fuera del ring (medido 2026-10-14): aviso pendiente mgr+35569 = hueco del
     // GANADOR + 1 (el manejador del modo, sub_820FD678, lo da como "motivo 4"). 1 = gana el jugador 1, cae
     // el rival. Mover al rival no siempre lo provocaba: no todos los escenarios tienen ring.
     if (const uint32_t mgr = REX_LOAD_U32(dbz3::GA(0x823D6CF4))) {
-      REX_STORE_U8(mgr + 35569, 1);
+      REX_STORE_U8(mgr + 35569, ro_player ? 2 : 1);   // +1 = hueco del ganador: 1 gana P1, 2 gana P2
       if (!ro_logged) {
         ro_logged = true;
-        REXLOG_INFO("dbz3 tag: prueba: rival fuera del ring");
+        REXLOG_INFO("dbz3 tag: prueba: {} fuera del ring", ro_player ? "jugador 1" : "rival");
       }
     }
   }
@@ -1148,6 +1303,27 @@ void Tick(PPCContext& ctx, uint8_t* base) {
         // a 1 (barra vacia): el golpe que lo tumba pasa por sub_8211A5A8, como un KO de verdad
         if (LoadF(base, x2 + kHp) > 1.0f) StoreF(base, x2 + kHp, 1.0f);
         if (battle_frames == 120) REXLOG_INFO("dbz3 tag: prueba: el rival cae");
+      }
+    }
+  }
+  // PRUEBAS TAG04 (solo copias): el activo del jugador 1 cae de verdad (KO con animacion y relevo) o se
+  // agota el tiempo, para ver la caida y la entrada en los formatos 2v1/2v2/3v3.
+  static const int test_tagko = std::getenv("DBZ3_TEST_TAGKO") ? std::atoi(std::getenv("DBZ3_TEST_TAGKO")) : 0;
+  static const int test_tagtime = std::getenv("DBZ3_TEST_TAGTIME") ? std::atoi(std::getenv("DBZ3_TEST_TAGTIME")) : 0;
+  static uint32_t tag_frames = 0;
+  if (test_tagko > 0 || test_tagtime > 0) {
+    tag_frames = BattleState(base) == 4 ? tag_frames + 1 : 0;
+    if (tag_frames && test_tagko > 0 && tag_frames == uint32_t(test_tagko) * 60) {
+      const uint32_t x0 = Fighter(base, 0);
+      if (x0) {
+        REXLOG_INFO("dbz3 tag: prueba TAG04: golpe letal al jugador 1 (a los {} s)", test_tagko);
+        Call(ctx, base, DBZ3_CALL_EU(sub_8211A5A8), x0, 999999u);   // mismo camino que un KO real
+      }
+    }
+    if (tag_frames && test_tagtime > 0 && tag_frames == uint32_t(test_tagtime) * 60) {
+      if (const uint32_t mgr = REX_LOAD_U32(dbz3::GA(0x823D6CF4))) {
+        REX_STORE_U32(mgr + 2028, 60);   // reloj del combate (cuadros): acaba por tiempo en ~1 s (motivo 3)
+        REXLOG_INFO("dbz3 tag: prueba TAG04: tiempo agotado forzado a los {} s", test_tagtime);
       }
     }
   }
@@ -1282,6 +1458,12 @@ void Tick(PPCContext& ctx, uint8_t* base) {
       t.pending = Pick(t, false);
       t.pending_until = now + kSelectBuffer;
     }
+    // TAG01: precarga el siguiente companero en un hueco libre mientras hay calma (dbz3_tag_precarga).
+    if (REXCVAR_GET(dbz3_tag_precarga) && t.phase == Phase::kIdle && t.pending < 0 && t.preload < 0 &&
+        t.ids.size() >= 2 && !t.fused && !t.round_owned && now % 30 == uint32_t(p) * 15) {
+      const int k = Pick(t, false);
+      if (k >= 0) PreloadMember(ctx, base, x, t, k);
+    }
     const bool form_quiet = now - t.form_at >= kFormQuiet;
     if (t.phase == Phase::kIdle && t.pending >= 0) {
       if (!form_quiet && t.pending_until) t.pending_until = std::max(t.pending_until, now + kSelectBuffer);   // espera a la forma
@@ -1305,6 +1487,12 @@ void Tick(PPCContext& ctx, uint8_t* base) {
     // 0x0400 lado 1, 0x0800 lado 2; libres en XInput) de que ya tiene cargado al que entra, y se
     // termina cuando los dos mandos aplicados (iguales en los dos PCs) lo dicen
     StepSlide(base, x, t, now);   // deslizamiento de salida / llegada del relevo
+    // TAG05: cooperativo, cada miembro lee SU mando (0 = mando 1, 1 = mando 2) cuando esta en combate.
+    if (g_coop.load() && p == 0 && !dbz3::net::Session::Get().active() && t.phase == Phase::kIdle && !t.pose_at &&
+        g_pose_com[0] == 0 && g_pose_slot[0] < 0 && g_exit_slot[0] < 0 && !t.tele_at) {
+      const uint16_t want = uint16_t(std::min<int>(t.active, 1));
+      if (REX_LOAD_U16(x + kPoseSlotOff) != want) REX_STORE_U16(x + kPoseSlotOff, want);
+    }
     if (t.tele_at) {              // aparece: estela y sonido a los 2 ticks y el parpadeo del juego
       const uint32_t f = (now - t.tele_at) / std::max(1u, SlideTicks(1) / 12);   // DBZ3_TAG_SLOW: mas lento
       if (f >= 3 && !t.tele_fx) {   // su estela (el sonido ya sono al irse el otro)
@@ -1505,9 +1693,14 @@ void Tick(PPCContext& ctx, uint8_t* base) {
 
 bool InBattle() { return g_in_battle.load(); }
 
+bool Swapping() { return g_team[0].phase != Phase::kIdle || g_team[1].phase != Phase::kIdle; }
+
 void SetComSide(int side, bool com) {
   if (side == 0 || side == 1) g_com[size_t(side)] = com;
 }
+
+// TAG05: cooperativo con dos mandos en el mismo equipo (solo 1P vs COM). El rival va por la IA.
+void SetCoop(bool on) { g_coop = on && !dbz3::net::Session::Get().active(); }
 
 // Fusion (fusion.cpp): el luchador del lado `side` pasa a `id` con la carga del relevo (ficheros del juego,
 // misma vida). El que se fusiona queda fuera para siempre (FinishSwap lo da por caido). false = ahora no se
@@ -1549,7 +1742,7 @@ void OnScreen(int screen) {
     // Este callback se repite mientras permanece en 5/14. g_com lo administra TagTeamPanel; borrarlo
     // aqui limpiaba la orden COM cada tick antes de iniciar la rueda/el combate.
     std::lock_guard<std::mutex> lock(g_mu);
-    for (auto& t : g_team) { ++t.generation; t.restore = 0; t.pending = -1; }
+    for (auto& t : g_team) { ++t.generation; t.restore = 0; t.pending = -1; t.preload = -1; }
   }
 }
 
@@ -1594,7 +1787,8 @@ bool OnPad(PPCContext& ctx, uint8_t* base, uint32_t user, uint16_t buttons, uint
   const bool pressed = (buttons & kBack) && !(g_prev_buttons[user] & kBack) && !(buttons & kStart);
   g_prev_buttons[user] = buttons;
   if (!g_in_battle.load()) return false;      // solo en combate (no un bloque viejo en los menus)
-  const uint32_t x = Fighter(base, int(user));
+  // TAG05: en cooperativo los dos mandos llevan el equipo del lado 1 (el rival es la consola, mando -1).
+  const uint32_t x = Fighter(base, g_coop.load() && user == 1 ? 0 : int(user));
   std::lock_guard<std::mutex> lock(g_mu);
   Team* t = x ? TeamOf(base, x) : nullptr;
   if (!t || t->fused) return false;
@@ -1875,6 +2069,7 @@ DBZ3_HOOK_EU(sub_82126A10) {
   int freed = 0;
   for (int p = 0; p < 2; ++p) {
     auto& t = dbz3::tag::g_team[size_t(p)];
+    if (t.preload >= 0) dbz3::tag::DropPreload(ctx, base, t);   // TAG01: nodos de una precarga que no se uso
     const uint32_t g2 = REX_LOAD_U32(dbz3::tag::kTechBlock);
     if (!g2) break;
     const uint32_t slot = g2 + 1152 * uint32_t(p) + 80;

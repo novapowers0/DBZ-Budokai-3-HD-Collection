@@ -1,0 +1,9 @@
+# Fallo grave 22/11: Goku (cuerpo 0, traje 1) con Capa 1 = Goku (Traje roto, fid 276) pelo: la previa salia con una malla gigante.
+descripcion = "CAC-15: Goku con capa de pelo 276 (traje roto)"
+env = ["DBZ3_TEST_MODO=heroe", "DBZ3_HUB_MODE=5", "DBZ3_TEST_HEROE_ABRIR=2", "DBZ3_TEST_HEROE_CUERPO=0", "DBZ3_TEST_CAPAS=276:0"]
+pasos = [
+  "log \"Create abierto\" 180",
+  "log \"vista previa 3D .* cargada\" 90",
+  "esperar 30000",
+  "captura goku_roto_pelo"
+]

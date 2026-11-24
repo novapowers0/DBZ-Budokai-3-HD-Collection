@@ -1,0 +1,15 @@
+version = 1
+
+[dlcb1_zarbon]
+clave = "13"
+nombre = "Zarbon"
+id = 25
+donante = 38
+formas = 2
+
+[dlcb1_dodoria]
+clave = "14"
+nombre = "Dodoria"
+id = 26
+donante = 19
+formas = 1

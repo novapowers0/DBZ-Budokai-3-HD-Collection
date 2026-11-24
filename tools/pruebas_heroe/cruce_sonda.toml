@@ -1,0 +1,27 @@
+# R23 (heroe2): sonda de la camara del mapa en el Cruce de caminos (DBZ3_TEST_CRUCE_CAM): registra camara y marcas 1 vez/s
+# mientras se gira la camara (flechas = stick derecho) y se mueve el heroe (A/D = stick izquierdo). Capturas a1..a4 para comparar.
+#   python tools\pruebas.py correr smoke_b tools\pruebas_heroe\cruce_sonda.toml
+descripcion = "Sonda: camara del mapa y marcas del cruce"
+env = ["DBZ3_TEST_DU_HEROE=35", "DBZ3_TEST_HEROE_RUTA_NUEVA=1", "DBZ3_TEST_HEROE_SEMILLA=7", "DBZ3_TEST_CRUCE_CAM=1",
+       "REX_DBZ3_LANGUAGE=5", "REX_DBZ3_UI_LANGUAGE=5",
+       "DBZ3_TEST_CFG=dbz3_heroe_rutas=true;dbz3_heroe_ui_nueva=true;dbz3_heroe_recompensas=true"]
+pasos = [
+  'log "se lanza la escena 102 entrada 35" 240',
+  'hasta_log "cruce v2: dibujado" 180',
+  'tecla Space 2000',
+  'fin',
+  'esperar 3000',
+  'captura a1_quieto',
+  'tecla Left:1500 1700',
+  'esperar 1500',
+  'captura a2_camara_izq',
+  'tecla Right:3000 3200',
+  'esperar 1500',
+  'captura a3_camara_der',
+  'tecla A:1500 1700',
+  'esperar 1500',
+  'captura a4_heroe_izq',
+  'tecla W:1500 1700',
+  'esperar 1500',
+  'captura a5_heroe_arriba',
+]

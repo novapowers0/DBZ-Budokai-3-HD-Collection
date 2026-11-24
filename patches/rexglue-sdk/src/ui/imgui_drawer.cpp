@@ -9,13 +9,16 @@
  * @modified    Tom Clay, 2026 - Adapted for ReXGlue runtime
  */
 
+#include <algorithm>
 #include <cfloat>
 #include <cstring>
 #include <filesystem>
 #include <map>
+#include <vector>
 
 #include <rex/assert.h>
 #include <rex/chrono/clock.h>
+#include <rex/cvar.h>
 #include <rex/logging.h>
 #include <rex/ui/imgui_dialog.h>
 #include <rex/ui/imgui_drawer.h>
@@ -35,6 +38,9 @@ const char kProggyTinyCompressedDataBase85[10950 + 1] =
 static_assert(sizeof(ImmediateVertex) == sizeof(ImDrawVert), "Vertex types must match");
 
 namespace {
+
+REXCVAR_DEFINE_BOOL(dbz3_lim_ui_vtx_offset, false, "DBZ3/Dev",
+                   "R23 LIM: allow multiple 16-bit vertex ranges in an ImGui draw list");
 
 void ApplyDefaultStyle(ImGuiStyle& style) {
   style.ScrollbarRounding = 0;
@@ -397,6 +403,12 @@ void ImGuiDrawer::Draw(UIDrawContext& ui_draw_context) {
   ImGui::SetCurrentContext(internal_state_);
 
   ImGuiIO& io = ImGui::GetIO();
+  // Set before NewFrame: ImGui propagates this into each list's initial flags.
+  static const bool lim_offsets = REXCVAR_GET(dbz3_lim_ui_vtx_offset);
+  if (lim_offsets)
+    io.BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset;
+  else
+    io.BackendFlags &= ~ImGuiBackendFlags_RendererHasVtxOffset;
 
   uint64_t current_frame_time_ticks = rex::chrono::Clock::QueryHostTickCount();
   io.DeltaTime =
@@ -452,15 +464,32 @@ void ImGuiDrawer::RenderDrawLists(ImDrawData* data, UIDrawContext& ui_draw_conte
 
   for (int i = 0; i < data->CmdListsCount; ++i) {
     const auto cmd_list = data->CmdLists[i];
-
-    ImmediateDrawBatch batch;
-    batch.vertices = reinterpret_cast<ImmediateVertex*>(cmd_list->VtxBuffer.Data);
-    batch.vertex_count = cmd_list->VtxBuffer.size();
-    batch.indices = cmd_list->IdxBuffer.Data;
-    batch.index_count = cmd_list->IdxBuffer.size();
-    immediate_drawer_->BeginDrawBatch(batch);
-
+    const bool offsets = (io.BackendFlags & ImGuiBackendFlags_RendererHasVtxOffset) != 0;
     bool additive = false;
+    bool batch_open = false;
+    unsigned vertex_start = 0, index_start = 0;
+    std::vector<unsigned> vertex_ranges;
+    if (offsets) {
+      // Channel merge may reorder commands' vertex offsets (e.g. ImGui tables).
+      for (const auto& cmd : cmd_list->CmdBuffer)
+        vertex_ranges.push_back(cmd.VtxOffset);
+      std::sort(vertex_ranges.begin(), vertex_ranges.end());
+      vertex_ranges.erase(std::unique(vertex_ranges.begin(), vertex_ranges.end()), vertex_ranges.end());
+    }
+    auto begin_batch = [&](unsigned vs, unsigned ve, unsigned is, unsigned ie) {
+      ImmediateDrawBatch batch;
+      batch.vertices = reinterpret_cast<const ImmediateVertex*>(cmd_list->VtxBuffer.Data);
+      if (vs) batch.vertices += vs;
+      batch.vertex_count = static_cast<int>(ve - vs);
+      batch.indices = cmd_list->IdxBuffer.Data;
+      if (is) batch.indices += is;
+      batch.index_count = static_cast<int>(ie - is);
+      immediate_drawer_->BeginDrawBatch(batch);
+      batch_open = true;
+      vertex_start = vs;
+      index_start = is;
+    };
+    if (!offsets) begin_batch(0, cmd_list->VtxBuffer.Size, 0, cmd_list->IdxBuffer.Size);
     for (int j = 0; j < cmd_list->CmdBuffer.size(); ++j) {
       const auto& cmd = cmd_list->CmdBuffer[j];
       if (cmd.UserCallback) {
@@ -472,11 +501,28 @@ void ImGuiDrawer::RenderDrawLists(ImDrawData* data, UIDrawContext& ui_draw_conte
         }
         continue;
       }
+      if (offsets && !cmd.ElemCount) continue;
+      if (offsets && (!batch_open || vertex_start != cmd.VtxOffset)) {
+        if (batch_open) immediate_drawer_->EndDrawBatch();
+        const auto next_v = std::upper_bound(vertex_ranges.begin(), vertex_ranges.end(), cmd.VtxOffset);
+        const unsigned ve = next_v == vertex_ranges.end() ? unsigned(cmd_list->VtxBuffer.Size) : *next_v;
+        unsigned ie = unsigned(cmd_list->IdxBuffer.Size);
+        if (offsets) {
+          // Upload by range, not by list: both GPU backends have a 2 MiB allocation ceiling.
+          for (int k = j + 1; k < cmd_list->CmdBuffer.Size; ++k) {
+            const auto& next = cmd_list->CmdBuffer[k];
+            if (next.VtxOffset == cmd.VtxOffset) continue;
+            ie = next.IdxOffset;
+            break;
+          }
+        }
+        begin_batch(cmd.VtxOffset, ve, cmd.IdxOffset, ie);
+      }
 
       ImmediateDraw draw;
       draw.primitive_type = ImmediatePrimitiveType::kTriangles;
       draw.count = cmd.ElemCount;
-      draw.index_offset = cmd.IdxOffset;
+      draw.index_offset = cmd.IdxOffset - index_start;
       draw.texture = reinterpret_cast<ImmediateTexture*>(cmd.GetTexID());
       draw.scissor = true;
       draw.scissor_left = cmd.ClipRect.x;
@@ -487,7 +533,7 @@ void ImGuiDrawer::RenderDrawLists(ImDrawData* data, UIDrawContext& ui_draw_conte
       immediate_drawer_->Draw(draw);
     }
 
-    immediate_drawer_->EndDrawBatch();
+    if (batch_open) immediate_drawer_->EndDrawBatch();
   }
 
   immediate_drawer_->End();

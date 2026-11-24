@@ -1,0 +1,24 @@
+# CAC-20 (R23): un código roto avisa y no guarda nada. Mismo fixture y misma acción que cac20_codigo.toml, con
+# DBZ3_CAC_CODIGO=hola (no es un código DBZ3R1). Se exige la línea de rechazo; que cac.toml y mods/heroe_propio no
+# cambian se comprueba fuera del juego comparando hashes antes/después (ver LEEME.md).
+# REXLOG nuevo que espera: CAC-20: codigo rechazado ....
+descripcion = "CAC-20: código roto avisa y no crea ni modifica la ficha"
+env = ["DBZ3_TEST_MODO=heroe,0", "DBZ3_HUB_MODE=5", "DBZ3_TEST_HEROE_ABRIR=2", "DBZ3_TEST_HEROE_CUERPO=0",
+       "DBZ3_CAC_FILA=pegar", "DBZ3_CAC_CODIGO=hola",
+       "DBZ3_TEST_CFG=dbz3_heroe_ui_nueva=true"]
+apartar = ["user_data/dbz3/cac.toml*", "user_data/dbz3/heroe", "user_data/dbz3/hub_heroe.toml*", "mods/heroe_propio"]
+poner = ["tools/pruebas_heroe/cac_pendientes/fixtures/cac20_base_cac.toml -> user_data/dbz3/cac.toml"]
+pasos = [
+  "esperar_pantalla 5 120",
+  'log "Create abierto" 180',
+  'log "vista previa 3D .* cargada" 90',
+  "esperar 2000",
+  "captura cac20r_a_antes",
+  "tecla Space 1500",
+  'log "dbz3 heroe: .*codigo rechaz" 90',
+  "esperar 2000",
+  "captura cac20r_b_aviso",
+  "tecla Backspace 900",
+  "esperar 2000",
+  "captura cac20r_c_creador_intacto",
+]

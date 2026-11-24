@@ -1,0 +1,27 @@
+# Ronda6: captura CBC9 del ELF, aplicada al jugador y cierre tras terminar su aviso.
+# La distribucion contra nueve partidas originales sigue pendiente.
+descripcion = "7DD quieto90s: captura original aplicada y resultado no superado"
+env = [
+  "DBZ3_TEST_IWMINI=0x7DD",
+  'DBZ3_TEST_CFG=dbz3_iw_7dd_original=true;dbz3_iw_7dd_captura_original=true;dbz3_iw_logica_original=true;dbz3_iw_campo_aislado=true;dbz3_mnk_mode=true;dbz3_keybind_a="Space"',
+  'DBZ3_PS2_GAMES=D:\DBZ3HD\ps2_games',
+]
+pasos = [
+  'log "iwmini: prueba: empieza" 90',
+  'log "dbz3 iwmips persecucion t=" 90',
+  'log "dbz3 iwmips campo aislamiento=propio idx=14 dif=[0-9]+ completo=0" 1',
+  'log "dbz3 iwmips persecucion t=120 ini=0 " 90',
+  "captura 00_quieto",
+  "esperar 90000",
+  "captura 01_tras90s",
+  'log "dbz3 iwmips captura7dd jugador=9 autoridad=original" 1',
+  'log "dbz3 iwmini: captura7dd aplicada jugador=9 clip=5" 1',
+  'log "dbz3 iwmini: objetivo7dd aviso terminado jugador=9" 1',
+  'log "dbz3 IW campo9c: tabla sobre escena al terminar pose; final 2" 30',
+  "esperar 8000",
+  "captura 02_tabla_no_superado",
+  "tecla Space 250",
+  'log "dbz3 IW campo9c: tabla confirmada" 10',
+  'log "dbz3 iwmini: prueba: resultado superado false" 120',
+  "captura 03_resultado",
+]

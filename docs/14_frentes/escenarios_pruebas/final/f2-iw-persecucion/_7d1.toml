@@ -1,0 +1,27 @@
+obsoleto = "El marcador de cotejo completo 7D1 (completo=1 dif=0) es un contrato pendiente; la traza de aislamiento parcial no lo acredita."
+# IW-M02 / IW05 / 0x7D1. Ronda3 F2: apartado tras FAIL; aislamiento comprobado.
+# PENDIENTE_JUEGO y dorado7D1 completo: base7D0/IA no son motor completo7D1.
+# Se usan solo cvars EXISTENTES; no existe aun dbz3_iw_7d1_original.
+# Al implementar F3/F2 el motor completo tras ajuste propio OFF, Z debe añadir su cvar.
+# Criterio: recorrido corto, captura/reloj/fin/halo/resultado comparados con dorado7D1;
+# 0DIF continuo. CPU Bubbles o s_SPACE activos no bastan.
+# El marcador completo de abajo es CONTRATO PENDIENTE; no implementado hoy.
+# Ausencia del marcador debe FALLAR: no sustituirlo por un log de IA o resultado del port.
+descripcion = "7D1 recorrido y resultado: requiere referencia completa y oraculo; base parcial no es PASS"
+env = [
+  "DBZ3_TEST_IWMINI=0x7D1,auto",
+  "DBZ3_TEST_CFG=dbz3_iw_logica_original=true;dbz3_iw_7d0_original=true;dbz3_iw_campo_aislado=true",
+  # IW-F08 (12/11): la logica original de 7D1 solo esta emparejada con el ELF EU; D:\DBZ3HD\ps2_games solo tiene IW USA
+  # y entonces 7D1 sigue con el port. Carpeta EU (rutas .ruta a las ISO, como eu_test2.toml).
+  'DBZ3_PS2_GAMES=E:\DBZ3HD_trabajo\_bancos_archivados\ps2_eu_iw_20261021',
+]
+pasos = [
+  'log "iwmini: prueba: empieza" 90',
+  'log "dbz3 iwmips campo aislamiento=propio idx=1 dif=[0-9]+ completo=0" 90',
+  "captura 00_salida",
+  "esperar 10000",
+  "captura 01_recorrido_halo",
+  'log "dbz3 iwmini: prueba: resultado superado true" 180',
+  "captura 02_resultado",
+  'log "dbz3 iwmips campo7d1 completo=1 dif=0" 1',
+]

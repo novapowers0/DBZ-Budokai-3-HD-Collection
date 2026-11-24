@@ -10,12 +10,14 @@
  */
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
 
 #include <rex/dbg.h>
+#include <rex/dbz3_latencia.h>
 #include <rex/input/device_assignment.h>
 #include <rex/input/flags.h>
 #include <rex/input/input_driver.h>
@@ -260,6 +262,24 @@ X_RESULT InputSystem::GetState(uint32_t user_index, X_INPUT_STATE* out_state) {
       consumed_buttons_[user_index] &= buttons;
       out_state->gamepad.buttons =
           static_cast<uint16_t>(buttons & ~consumed_buttons_[user_index]);
+    }
+
+    // dbz3 (#59): marca de la ultima pulsacion NUEVA que lee el guest, para la
+    // sonda de latencia entrada->present (dbz3_latencia_sonda). No altera la
+    // entrada: solo apunta la hora.
+    {
+      static uint16_t prev_buttons[kMaxGuestUsers] = {};
+      const uint16_t buttons = static_cast<uint16_t>(out_state->gamepad.buttons);
+      const uint16_t nueva = static_cast<uint16_t>(buttons & ~prev_buttons[user_index]);
+      prev_buttons[user_index] = buttons;
+      if (nueva != 0) {
+        rex::dbz3::g_input_edge_buttons.store(nueva, std::memory_order_relaxed);
+        rex::dbz3::g_input_edge_ns.store(
+            uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                         std::chrono::steady_clock::now().time_since_epoch())
+                         .count()),
+            std::memory_order_relaxed);
+      }
     }
   }
   return result;

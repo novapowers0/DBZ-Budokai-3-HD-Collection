@@ -19,6 +19,9 @@
 // en un tick distinto.
 #pragma once
 
+#include "net_caps.h"
+#include "team_wire.h"
+
 #include <array>
 #include <map>
 #include <atomic>
@@ -41,7 +44,8 @@ enum class Link : uint8_t {
 };
 
 // Reglas opcionales del combate que cambian la simulacion (src/combate.cpp, F1 > COMBATE): bit0 reglas v0, bit1
-// definitiva directa, bits 2-3 boton de cancelacion (4 lb, 8 rb); reversion = dano que quita la forma (0 nunca).
+// definitiva directa, bits 2-3 boton de cancelacion (4 lb, 8 rb), bit5 (0x20) Modo Competitivo; reversion = dano que
+// quita la forma (0 nunca).
 struct CombatRules {
   uint8_t flags = 0;
   uint16_t reversion = 0;
@@ -218,6 +222,12 @@ class Session {
   bool guest_owner_ = false;
   uint64_t generation_ = 0;
   uint32_t local_nonce_ = 0, peer_nonce_ = 0;
+  bool wide_team_offer_ = false, team_wire_locked_ = false;
+  team_wire::Version team_wire_ = team_wire::Version::kLegacy;
+  bool compat_caps_offer_ = false, caps_locked_ = false, peer_has_caps_ = false;
+  bool cross_build_session_ = false, hello_legacy_fallback_ = false;
+  caps::Descriptor local_caps_desc_{}, peer_caps_desc_{};
+  uint32_t agreed_caps_ = 0;
   std::string identity_;
   bool identity_ready_ = false;
   bool identity_admission_ = false; // one fresh measurement per Host/Join
@@ -230,7 +240,10 @@ class Session {
     uint64_t since = 0, tx_ok = 0, tx_errors = 0, rx_udp = 0, rx_valid = 0, rx_ignored = 0;
     int socket_error = 0, peer_proto = -1;
     uint16_t port = 0;
-    uint8_t reported = 0;
+    uint8_t reported = 0, peer_platform_abi = 0;
+    uint16_t peer_sim_abi = 0;
+    uint32_t agreed_caps = 0, missing_caps = 0;
+    bool compat_caps = false, cross_build = false, peer_has_caps = false;
     std::string operation, peer_build, peer_os;
   } conn_;
   bool SendDatagram(const std::vector<uint8_t>& wire, const void* address, int length);

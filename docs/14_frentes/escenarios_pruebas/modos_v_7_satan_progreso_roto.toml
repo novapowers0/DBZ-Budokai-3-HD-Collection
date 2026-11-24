@@ -1,0 +1,17 @@
+descripcion = "verif modos caso 7: pasarela/progreso.toml ilegible: al abrir el HUB (lee el rango) el juego guarda una copia progreso.toml.roto antes de pisarlo; se comprueba en <copia>/_apartado/<fecha>/despues/user_data/dbz3/pasarela"
+env = ["DBZ3_HUB_MODE=5"]
+# MODOS-08: la prueba empieza sin partidas a medias y deja la copia como estaba (pruebas.py, _guion_preparar)
+apartar = ["user_data/dbz3/rpg.toml*", "user_data/dbz3/hub_modos.toml*", "user_data/dbz3/modos", "user_data/dbz3/retos.csv", "user_data/dbz3/hub_heroe.toml*", "user_data/dbz3/pasarela"]
+poner = ["docs/14_frentes/escenarios_pruebas/modos_datos/v7_progreso_roto.toml -> user_data/dbz3/pasarela/progreso.toml"]
+pasos = [
+  "esperar_pantalla 5 120",
+  "log 'menu principal estado 3' 60",
+  "esperar 3000",
+  "tecla W 1200",
+  "tecla Space 3500",
+  "log 'hub: entra la pantalla HUB' 60",
+  "captura 01_hub",
+  "tecla S 600",
+  "esperar 2000",
+  "captura 02_hub_fila2",
+]

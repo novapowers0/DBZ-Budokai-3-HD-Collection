@@ -32,6 +32,7 @@
 #include <bit>        // S1-F07: std::bit_cast (guarda de sub_821117B8)
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <map>
 #include <mutex>
@@ -153,6 +154,43 @@ bool GuardLuchadores(uint8_t* base) {
   return true;
 }
 }  // namespace dbz3::ports
+
+// Ronda 10/11 (mods al empezar el combate: access violation al leer la direccion 0x1, lr 0x82080148; Gotenks de
+// D1 y los escenarios de F9): sub_820800A8(datos) instancia un objeto de escena por el nombre que va en datos+1.
+// Con datos NULL (un banco/raiz que no trae ese campo) el strncmp de su tabla lee 0x0/0x1 y cierra el juego. Sin
+// datos no hay objeto que crear: se devuelve 0, el mismo camino que "nombre no encontrado" (no llama al manejador).
+DBZ3_HOOK_EU(sub_820800A8) {
+  if (!ctx.r3.u32) {
+    static std::atomic<int> avisos{0};
+    if (avisos.fetch_add(1) < 8)
+      REXLOG_WARN("dbz3 ports: sub_820800A8 con datos NULL (llamador {:08X}): se devuelve 0 (antes, cierre)",
+                  uint32_t(ctx.lr));
+    ctx.r3.u64 = 0;
+    return;
+  }
+  // 12/11 (Bu absorbe a Vegeta con los mods Nova: «UNREGISTERED indirect call target=0 lr=0x8208018C»): si el
+  // nombre de datos+1 no esta en la tabla (0x82310110, 8 B: +0 manejador, +4 nombre en linea; acaba en manejador
+  // 0) el original deja r27 = 0 y llama a 0. Mismo trato que con datos NULL: 0, sin llamar. Solo US (tabla EU sin
+  // volcar).
+  if (!dbz3::g_guest_eu && REX_LOAD_U8(ctx.r3.u32) != 33) {
+    constexpr uint32_t kTabla = 0x82310110;
+    const char* nombre = reinterpret_cast<const char*>(base + ctx.r3.u32 + 1);
+    bool hay = false;
+    for (uint32_t i = 0; i < 64 && !hay && REX_LOAD_U32(kTabla + 8 * i); ++i) {
+      const char* e = reinterpret_cast<const char*>(base + kTabla + 8 * i + 4);
+      hay = std::strncmp(e, nombre, strnlen(e, 4)) == 0;
+    }
+    if (!hay) {
+      static std::atomic<int> avisos{0};
+      if (avisos.fetch_add(1) < 8)
+        REXLOG_WARN("dbz3 ports: sub_820800A8 con objeto '{:.3s}' que no esta en la tabla (llamador {:08X}): se "
+                    "devuelve 0 (antes, llamada a 0 y cierre)", nombre, uint32_t(ctx.lr));
+      ctx.r3.u64 = 0;
+      return;
+    }
+  }
+  orig(ctx, base);
+}
 
 // Efecto de tecnica sin funcion (s9, 2026-10-19): sub_82130DA0(luchador r3, ...) busca con sub_820CD6C0(*(r3+4944) como
 // s16, 1) el registro del efecto y llama por la tabla 0x823339A0[tipo] (tipo = s16 en *(registro+32+12)+16) sin mirar si
@@ -817,10 +855,15 @@ DBZ3_HOOK_EU(sub_8209F568) {
 // definitiva en curso es la de Broly nativo (ID 40, código 0x4A0..0x4A9). El escenario se sigue destruyendo y la
 // técnica no se toca; otros personajes conservan su destello. Medido 3/11: sin él la fase 4A5 sale blanca entera;
 // con él se ve la cinemática y la pantalla final queda con el escenario destruido.
+// Límite declarado (DR03, plan §6): un clon con otra ID NO está cubierto; ampliarlo exige banco propio y la
+// decisión del usuario sobre quitar un destello que existe en el juego original (por eso la opción va apagada).
 REXCVAR_DEFINE_BOOL(dbz3_broly_sin_destello, false, "DBZ3/Mods",
-                    "Broly sin destello: quita el destello blanco de su definitiva en escenarios que se destruyen "
-                    "(solo ese ataque). | Broly without flash: removes the white flash from his ultimate on "
-                    "destructible stages (that attack only).");
+                    "Broly sin destello: quita el destello blanco de su definitiva en escenarios que se destruyen. "
+                    "Solo el Broly nativo (ID 40, codigos 0x4A0-0x4A9): un clon con otra ID conserva su destello. "
+                    "Apagado = juego original (el destello es del original, no del port). | Broly without flash: "
+                    "removes the white flash from his ultimate on destructible stages. Native Broly only (ID 40, "
+                    "codes 0x4A0-0x4A9): a clone with another ID keeps the flash. Off = original game (the flash "
+                    "belongs to the original, not to the port).");
 namespace {
 // ID y código en curso de los dos luchadores (los mismos campos de src/combate.cpp: kId y kCode).
 bool DefinitivaBrolyEnCurso(uint8_t* base) {

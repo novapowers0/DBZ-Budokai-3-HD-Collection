@@ -317,6 +317,10 @@ def main(a):
     import pcsx2_pool as P
     import lector_camara as LC
     from pcsx2_turnos import Grabacion
+    mal = P.comprobar_antes(o.pool, o.iso, est)       # INFRA-04: no hacer cola para fallar (ISO, savestate, plaza)
+    if mal:
+        print("GRABACION FALLIDA [previa] sin pedir turno:", mal)
+        return 3
     cont = CONT_IW
     cam_campo = CAM_CAMPO
     if o.usa:                              # direcciones USA = EU por tramos (dif_mapa_iw_usa)

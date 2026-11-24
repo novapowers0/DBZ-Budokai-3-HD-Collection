@@ -23,13 +23,17 @@ QUITAR UN PERSONAJE
 NOTAS
 - Son personajes experimentales: alguna tecnica con agarre de Budokai 1 sale como un
   golpe normal, y algun efecto puede no ser perfecto.
-- La carpeta "_roster" es el resultado ya montado de estos 7. Si ademas tienes el Kit de
-  modding instalado, el launcher la vuelve a montar sola cuando cambias algo.
+- La carpeta "_roster" es el resultado ya montado de estos 7. Copiala tal cual en una
+  instalacion sin otros mods de personajes. Se usa sin Python ni Kit.
+- Para cambiar la seleccion o combinar packs necesitas Python y el Kit. Sin Python
+  se conserva la seleccion precompilada; desmarcar una fuente no la reconstruye.
+- Windows y Linux usan el mismo ZIP. Prepara los cambios en Windows (Kit y compresor XDK);
+  en Linux, Jugar reutiliza el pack precompilado aunque haya Python.
 
 ----------------------------------------------------------------------------------
 ENGLISH (short): copy "mods" next to dbz3.exe (v1.4.0+, game data as a folder), open
-dbz3.exe, check the "New characters" tab and press PLAY. To remove one, untick it under
-"Installed". Saves are never touched.
+dbz3.exe, check the "New characters" tab and press PLAY. The bundled _roster works
+as-is without Python. Changing its selection requires the Kit and Python.
 
 CREDITOS / CREDITS: modelos de Guldo, Jeice, Burter, Zarbon (normal y monstruo),
 Dodoria y Androide 19 por @ArielPVB. Models by @ArielPVB.

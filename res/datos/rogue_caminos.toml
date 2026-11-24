@@ -1,0 +1,254 @@
+# Dragon Rogue (ROG-05): los 7 caminos como datos. Lo lee src/rogue_caminos.cpp (dbz3::datos, F5 recarga; una partida
+# en curso guarda su camino al empezar). Diseno: studies 5/ENTREGAS/ROGUE_DISENO.md 2. Un camino = una fila; un solo motor.
+#   nombre/en/fr/de/it y t_es..t_it = nombre y descripcion (sin un idioma, el ingles)
+#   clasico   = tipo del modo antiguo en hub_modos.toml; su [[marca]] se ensena como "Record clasico" (solo se lee)
+#   combates  = 0 sin fin (50 pisos); cada_jefe = combates entre jefes (0 = ninguno, 1 = todos son jefes)
+#   vida      = "llena" (cada combate) o "arrastra"; cura = vida que recuperas al ganar si arrastra; cura_jefe = al
+#               ganar a un jefe (9999 = toda)
+#   rivales   = "semilla" (al azar), "escalera" (la lista `escalera`, en orden), "jefes" (la lista `escalera` con las reglas
+#               de los jefes del Kumite de jefes), "elo" (cuadro por la fuerza del Ranking: semifinal y final)
+#   vida0/vida_paso = vida del rival del combate 1 y lo que sube por combate (los jefes, la suya)
+#   tiempo/regen = cada 3 combates, uno a tiempo y otro con rival que se regenera (las oleadas de Supervivencia)
+#   pausa     = "cartas" (elige 1 de 3) o "simulacion" (entrenar / explorar / descansar)
+#   maldicion = "semana": la regla de la torre de la semana ([maldiciones], rota cada lunes UTC) en todos los combates
+#   reglas_tramo = ids de [maldiciones]: cada tramo de 5 combates (el 2.o en adelante) suma la regla de una, en ciclo (r23)
+#   premio    = Zenie extra al completar el camino. Regla del diseno 1.6: el premio del modo clasico equivalente (Torre 800 y
+#               Kumite 1200 de MODOS-02; Torres 600, Torneo de 4 600, Simulacion 500, Supervivencia 1000, Abyss 800)
+#   abierto   = 1 disponible de salida; si no, se abre con `abre` pisos de record en cualquier camino de Rogue
+orden = "torre,abismo,supervivencia,kumite,kumite2,semana,simulacion,torneo"
+
+[caminos.torre]
+nombre = "La Torre"
+en = "The Tower"
+fr = "La Tour"
+de = "Der Turm"
+it = "La Torre"
+t_es = "Diez pisos con la escalera de la Torre de siempre, de Saibaman a Kid Buu. Vida llena en cada piso; jefes en el 5 y el 10."
+t_en = "Ten floors with the usual Tower ladder, from Saibaman to Kid Buu. Full health every floor; bosses on 5 and 10."
+t_fr = "Dix étages avec l'échelle habituelle de la Tour, de Saibaman à Kid Buu. Vie pleine à chaque étage ; boss au 5 et au 10."
+t_de = "Zehn Etagen mit der üblichen Turmleiter, von Saibaman bis Kid Buu. Volles Leben auf jeder Etage; Bosse auf 5 und 10."
+t_it = "Dieci piani con la solita scala della Torre, da Saibaman a Kid Buu. Vita piena a ogni piano; boss al 5 e al 10."
+clasico = "torre"
+combates = 10
+cada_jefe = 5
+vida = "llena"
+rivales = "escalera"
+escalera = "42,18,19,21,20,27,33,36"
+vida0 = 2000
+vida_paso = 300
+pausa = "cartas"
+premio = 800
+abierto = 1
+
+[caminos.abismo]
+nombre = "El Abismo"
+en = "The Abyss"
+fr = "L'Abîme"
+de = "Der Abgrund"
+it = "L'Abisso"
+t_es = "Baja piso a piso con la vida que te quede. Rivales al azar, cada vez más fuertes; cada 5 pisos, un jefe con armadura."
+t_en = "Go down floor by floor with the health you have left. Random rivals, ever stronger; an armored boss every 5 floors."
+t_fr = "Descends étage par étage avec la vie qu'il te reste. Rivaux au hasard, toujours plus forts ; un boss blindé tous les 5 étages."
+t_de = "Steige Etage um Etage hinab, mit dem Leben, das dir bleibt. Zufallsgegner, immer stärker; alle 5 Etagen ein Boss."
+t_it = "Scendi piano dopo piano con la vita che ti resta. Rivali a caso, sempre più forti; ogni 5 piani un boss corazzato."
+clasico = "abyss"
+combates = 0
+cada_jefe = 5
+vida = "arrastra"
+cura = 300
+rivales = "semilla"
+vida0 = 2000
+vida_paso = 250
+pausa = "cartas"
+reglas_tramo = "saiyan,androide,ginyu,majin"
+premio = 800
+abierto = 1
+
+[caminos.supervivencia]
+nombre = "Supervivencia"
+en = "Survival"
+fr = "Survie"
+de = "Überleben"
+it = "Sopravvivenza"
+t_es = "Oleadas sin fin con la misma vida (+500 al ganar). Algunas oleadas duran 60 s y en otras el rival se regenera."
+t_en = "Endless waves with the same health (+500 per win). Some waves last 60 s and in others the rival regenerates."
+t_fr = "Vagues sans fin avec la même vie (+500 par victoire). Certaines durent 60 s, dans d'autres l'adversaire se régénère."
+t_de = "Endlose Wellen mit demselben Leben (+500 pro Sieg). Manche dauern 60 s, in anderen regeneriert sich der Gegner."
+t_it = "Ondate infinite con la stessa vita (+500 a vittoria). Alcune durano 60 s e in altre l'avversario si rigenera."
+clasico = "supervivencia"
+combates = 0
+cada_jefe = 5
+vida = "arrastra"
+cura = 500
+rivales = "semilla"
+vida0 = 1500
+vida_paso = 150
+tiempo = 60
+regen = 25
+pausa = "cartas"
+premio = 1000
+abierto = 0
+abre = 5
+
+[caminos.kumite]
+nombre = "Kumite"
+en = "Kumite"
+fr = "Kumite"
+de = "Kumite"
+it = "Kumite"
+t_es = "Cinco jefes seguidos, de Freezer a Kid Buu, con armadura y golpes duros. La vida se arrastra (+1000 por jefe)."
+t_en = "Five bosses in a row, from Frieza to Kid Buu, armored and hitting hard. Health carries over (+1000 per boss)."
+t_fr = "Cinq boss d'affilée, de Freezer à Kid Buu, blindés et qui frappent fort. La vie se reporte (+1000 par boss)."
+t_de = "Fünf Bosse am Stück, von Freezer bis Kid Buu, gepanzert und hart. Das Leben bleibt (+1000 pro Boss)."
+t_it = "Cinque boss di fila, da Freezer a Kid Buu, corazzati e duri. La vita si trascina (+1000 per boss)."
+clasico = "kumite"
+clasico_ii = "jefes"
+combates = 5
+cada_jefe = 1
+vida = "arrastra"
+cura = 1000
+cura_jefe = 1000
+rivales = "jefes"
+escalera = "27,33,38,40,36"
+vida0 = 5000
+vida_paso = 500
+pausa = "cartas"
+premio = 1200
+abierto = 0
+abre = 10
+
+[caminos.kumite2]
+# POST3: dificultad II del Kumite = el antiguo "Kumite de jefes" (diseno 1.6 y tabla 3.1): sus 3 jefes (kJefes de rpg.cpp)
+# con sus reglas EN ORDEN (en_orden = 1) y su premio clasico (1500). Se abre con 15 pisos de record o comprandolo en Kami.
+nombre = "Kumite II"
+en = "Kumite II"
+fr = "Kumite II"
+de = "Kumite II"
+it = "Kumite II"
+t_es = "Los tres jefes del Kumite de jefes: Cell con armadura, un gigante bajo la tormenta y Kid Buu, al que hay que aguantar 45 s. La vida se arrastra (+1000 por jefe)."
+t_en = "The three bosses of the Boss Kumite: armored Cell, a giant under the storm and Kid Buu, whom you must survive for 45 s. Health carries over (+1000 per boss)."
+t_fr = "Les trois boss du Kumite des boss : Cell blindé, un géant sous la tempête et Kid Buu, à qui il faut résister 45 s. La vie se reporte (+1000 par boss)."
+t_de = "Die drei Bosse des Boss-Kumite: gepanzerter Cell, ein Riese im Sturm und Kid Buu, den man 45 s überstehen muss. Das Leben bleibt (+1000 pro Boss)."
+t_it = "I tre boss del Kumite dei boss: Cell corazzato, un gigante sotto la tempesta e Kid Buu, a cui bisogna resistere 45 s. La vita si trascina (+1000 per boss)."
+arte = "kumite"
+clasico = "jefes"
+combates = 3
+cada_jefe = 1
+vida = "arrastra"
+cura = 1000
+cura_jefe = 1000
+rivales = "jefes"
+escalera = "33,40,36"
+vida0 = 5000
+vida_paso = 1000
+pausa = "cartas"
+premio = 1500
+abierto = 0
+abre = 15
+en_orden = 1
+
+[caminos.semana]
+nombre = "Torre de la semana"
+en = "Weekly Tower"
+fr = "Tour de la semaine"
+de = "Wochenturm"
+it = "Torre della settimana"
+t_es = "Ocho pisos con la maldición de esta semana en todos los combates. Cambia cada lunes; jefes en el 4 y el 8."
+t_en = "Eight floors with this week's curse in every fight. It changes every Monday; bosses on 4 and 8."
+t_fr = "Huit étages avec la malédiction de la semaine dans chaque combat. Elle change chaque lundi ; boss au 4 et au 8."
+t_de = "Acht Etagen mit dem Fluch dieser Woche in jedem Kampf. Wechselt jeden Montag; Bosse auf 4 und 8."
+t_it = "Otto piani con la maledizione della settimana in ogni incontro. Cambia ogni lunedì; boss al 4 e all'8."
+clasico = "torres"
+combates = 8
+cada_jefe = 4
+vida = "llena"
+rivales = "escalera"
+vida0 = 2000
+vida_paso = 300
+pausa = "cartas"
+maldicion = "semana"
+premio = 600
+abierto = 0
+abre = 5
+
+[caminos.simulacion]
+nombre = "Simulación"
+en = "Simulation"
+fr = "Simulation"
+de = "Simulation"
+it = "Simulazione"
+t_es = "Entre combate y combate eliges tu día: entrenar (más daño y fatiga), explorar (cápsulas o sustos) o descansar."
+t_en = "Between fights you pick your day: train (more damage and fatigue), explore (capsules or scares) or rest."
+t_fr = "Entre deux combats tu choisis ta journée : t'entraîner (dégâts et fatigue), explorer (capsules ou pièges) ou te reposer."
+t_de = "Zwischen den Kämpfen wählst du deinen Tag: trainieren (mehr Schaden, Erschöpfung), erkunden (Kapseln oder Fallen) oder ruhen."
+t_it = "Tra un incontro e l'altro scegli la giornata: allenarti (più danni e fatica), esplorare (capsule o sorprese) o riposare."
+clasico = "simulacion"
+combates = 0
+cada_jefe = 5
+vida = "arrastra"
+cura = 0
+rivales = "semilla"
+vida0 = 2000
+vida_paso = 250
+pausa = "simulacion"
+premio = 500
+abierto = 0
+abre = 5
+
+[caminos.torneo]
+nombre = "Torneo"
+en = "Tournament"
+fr = "Tournoi"
+de = "Turnier"
+it = "Torneo"
+t_es = "Semifinal y final contra rivales elegidos por su fuerza en el Ranking. Una mejora entre las dos rondas."
+t_en = "Semifinal and final against rivals picked by their Ranking strength. One upgrade between the two rounds."
+t_fr = "Demi-finale et finale contre des adversaires choisis selon leur force au classement. Une amélioration entre les deux."
+t_de = "Halbfinale und Finale gegen Gegner nach ihrer Stärke im Ranking. Eine Verbesserung zwischen den Runden."
+t_it = "Semifinale e finale contro rivali scelti per la forza nel Ranking. Un potenziamento tra i due turni."
+clasico = "torneo4"
+combates = 2
+cada_jefe = 0
+vida = "llena"
+rivales = "elo"
+vida0 = 3000
+vida_paso = 0
+pausa = "cartas"
+premio = 600
+abierto = 0
+abre = 3
+
+# Maldiciones de la Torre de la semana: las 4 torres del modo Torres del Tiempo (rpg.cpp kTorres, mismas cifras).
+# Rota por la semana UTC (lunes), las 4 (el modo clasico solo rota la 3.a y la 4.a). PRUEBAS: DBZ3_TEST_SEMANA=N.
+# rivales = los de la torre (la escalera del camino); ki = % del tope de ki que pierdes por segundo; recibido = % del
+# dano que recibes; armadura = % de tu dano que absorben los rivales.
+[maldiciones]
+orden = "saiyan,androide,ginyu,majin"
+
+[maldiciones.saiyan]
+nombre = "Torre Saiyan: suelo que drena el ki"
+en = "Saiyan Tower: floor that drains ki"
+rivales = "18,19,7"
+tiempo = 60
+ki = 4
+
+[maldiciones.androide]
+nombre = "Torre Androide: el rival se regenera"
+en = "Android Tower: the rival regenerates"
+rivales = "29,30,33"
+tiempo = 90
+regen = 20
+
+[maldiciones.ginyu]
+nombre = "Torre Ginyu: +50 % de daño recibido"
+en = "Ginyu Tower: +50% damage taken"
+rivales = "21,20,27"
+tiempo = 75
+recibido = 150
+
+[maldiciones.majin]
+nombre = "Torre Majin: rivales blindados (-30 % de daño)"
+en = "Majin Tower: armored rivals (-30% damage)"
+rivales = "34,35,36"
+tiempo = 99
+armadura = 30

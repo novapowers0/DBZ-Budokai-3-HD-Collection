@@ -1,0 +1,36 @@
+# POST3 HEROE-VISTAS: animaciones de la vista previa del creador nuevo (dbz3_heroe_ui_nueva). Giro fijo a 30 grados con
+# DBZ3_TEST_HEROE_YAW (solo pruebas) y LB (teclado 1) pasa a la animacion siguiente: guardia, andar, golpe, cargar ki,
+# pose de victoria y transformacion (si el cuerpo la tiene). Heroe B3 por defecto (Goku).
+descripcion = "POST3: vista previa del creador, LB cambia de animacion (6 animaciones reales de B3), giro fijo 30 grados"
+env = ["DBZ3_TEST_RINGOUT=1", "DBZ3_TEST_HEROE_RAZA=0", "DBZ3_TEST_HEROE_CAM=1", "DBZ3_TEST_HEROE_YAW=30",
+       "DBZ3_TEST_CFG=dbz3_heroe_ui_nueva=true"]
+pasos = [
+  "esperar 2500",
+  "tecla W 1200",
+  "tecla Space 3500",
+  "tecla S 450", "tecla S 450", "tecla S 450", "tecla S 450", "tecla S 450",
+  "tecla Space 2500",
+  "tecla S 700", "tecla S 700", "tecla S 700",
+  "tecla Space 3500",
+  "esperar 1500",
+  "tecla S 500", "tecla S 500",
+  "tecla Space 3000",
+  "log \"Create abierto\" 20",
+  "esperar 15000",
+  "captura va_0_guardia",
+  "tecla 1 150", "esperar 700",
+  "log \"animacion 1 .Walking\" 10",
+  "captura va_1_andar",
+  "tecla 1 150", "esperar 400",
+  "log \"animacion 2 .Punch\" 10",
+  "captura va_2_golpe",
+  "tecla 1 150", "esperar 900",
+  "log \"animacion 3 .Charge ki\" 10",
+  "captura va_3_ki",
+  "tecla 1 150", "esperar 900",
+  "log \"animacion 4 .Victory pose\" 10",
+  "captura va_4_victoria",
+  "tecla 1 150", "esperar 500",
+  "log \"animacion 5 .Transformation\" 10",
+  "captura va_5_transformacion",
+]

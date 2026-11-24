@@ -1,0 +1,14 @@
+# Pantalla "Contents" de la historia de B1 (arte leido en marcha de DATA_*.AFS entrada 920 de la ISO del jugador).
+# "todo" abre todos los capitulos; sin "directo" la saga pasa por el Contents.
+# python tools/pruebas.py correr campanas_test docs/16_pasarela_modos/pruebas/contents_b1.toml
+descripcion = "Pasarela: pantalla Contents de la historia de Budokai 1 (3 sagas, 29 capitulos)"
+env = ["DBZ3_TEST_MISIONES=0,reset,todo", "DBZ3_PS2_GAMES=D:/DBZ3HD/ps2_games"]
+pasos = [
+  'log "misiones: prueba: modo saga_b1 listo true" 60',
+  'log "misiones: contents: abierto" 15',
+  'log "misiones: contents: arte leido \(" 60',
+  'esperar 1500', 'captura 01_contents_saiyan',
+  'tecla S 800', 'tecla S 800', 'esperar 800', 'captura 02_contents_cap3',
+  'tecla D 800', 'esperar 1000', 'captura 03_contents_namek',
+  'tecla S 600', 'tecla S 600', 'tecla S 600', 'tecla S 600', 'tecla S 600', 'esperar 800', 'captura 04_contents_scroll',
+]

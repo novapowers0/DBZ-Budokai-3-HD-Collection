@@ -1,0 +1,10 @@
+# R23 HER-01 (de E:\DBZ3HD_trabajo\heroe_post2\p2_mapa.toml, con el aspecto nuevo y en espanol):  python tools\pruebas.py correr smoke_b tools\pruebas_heroe\her01_mapa.toml
+descripcion = "Heroe: mapa (saga 2, 3 Esferas)"
+env = ["DBZ3_TEST_MODO=heroe", "DBZ3_HUB_MODE=5", "DBZ3_TEST_HEROE_PANTALLA=mapa", "DBZ3_TEST_HEROE_SAGA=1", "DBZ3_TEST_HEROE_ESFERAS=7", "DBZ3_TEST_HEROE_ENTRENO=0:72", "DBZ3_TEST_CFG=dbz3_heroe_ui_nueva=true", "REX_DBZ3_LANGUAGE=5", "REX_DBZ3_UI_LANGUAGE=5"]
+pasos = [
+  'log "dbz3 rpg: Modo Heroe" 240',
+  "esperar 5000",
+  "captura a_mapa",
+  "tecla S 1500",
+  "captura b_mapa_saga_2",
+]

@@ -1,0 +1,20 @@
+# CAC-13 (R23): tope de ventanas avisado. DBZ3_CAC_TOPE_TEST=1000 baja el presupuesto de la comprobación previa: hasta
+# la mezcla más simple debe pasar del tope. Se exige el aviso ámbar y que Confirmar no monte (no debe aparecer
+# mods/heroe_propio; se comprueba fuera del juego, ver LEEME.md).
+# REXLOG nuevos que espera: CAC-13: tope de ventanas ...; CAC-13: Confirmar bloqueado ....
+descripcion = "CAC-13: el tope de 3261 ventanas se avisa y Confirmar no monta (tope forzado a 1000)"
+env = ["DBZ3_TEST_MODO=heroe,0", "DBZ3_HUB_MODE=5", "DBZ3_TEST_HEROE_ABRIR=2", "DBZ3_TEST_HEROE_CUERPO=0",
+       "DBZ3_CAC_TOPE_TEST=1000", "DBZ3_TEST_CFG=dbz3_heroe_ui_nueva=true"]
+apartar = ["user_data/dbz3/cac.toml*", "user_data/dbz3/heroe", "user_data/dbz3/hub_heroe.toml*", "mods/heroe_propio"]
+poner = ["tools/pruebas_heroe/cac_pendientes/fixtures/cac13_tope_cac.toml -> user_data/dbz3/cac.toml"]   # Goku con botas B3 99 (sin pieza no hay ventanas que contar)
+pasos = [
+  "esperar_pantalla 5 120",
+  'log "Create abierto" 180',
+  'log "dbz3 heroe: .*tope.*ventanas" 180',
+  "esperar 2000",
+  "captura cac13_tope_a_aviso",
+  "tecla 3 2000",
+  'log "dbz3 heroe: .*Confirmar bloqueado" 120',
+  "esperar 3000",
+  "captura cac13_tope_b_confirmar_bloqueado",
+]

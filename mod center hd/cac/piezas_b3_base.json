@@ -47,14 +47,42 @@
    "fid": 99,
    "ok": true,
    "notas": "25/10 Opus (3.a revision): comparada con su personaje original (frente y espalda) + QA Haiku; sin defectos a la vista. Pendiente de combate.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "8_0",
+    "39_0",
+    "8_1",
+    "8_2",
+    "11_0",
+    "11_1",
+    "11_2",
+    "13_0",
+    "13_2",
+    "11_3",
+    "27_0",
+    "27_1"
+   ]
   },
   {
    "nombre": "Bardock (Traje alternativo)",
    "fid": 100,
    "ok": true,
    "notas": "25/10 Opus (3.a revision): comparada con su personaje original (frente y espalda) + QA Haiku; sin defectos a la vista. Pendiente de combate.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "8_0",
+    "39_0",
+    "39_1",
+    "8_1",
+    "8_2",
+    "13_0",
+    "13_2",
+    "11_3",
+    "27_0",
+    "27_1"
+   ]
   },
   {
    "nombre": "Majin Buu (Gordo)",
@@ -133,7 +161,39 @@
    "fid": 228,
    "ok": true,
    "notas": "25/10 Opus (3.a revision): comparada con su personaje original (frente y espalda) + QA Haiku; sin defectos a la vista. Pendiente de combate.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "8_0",
+    "39_0",
+    "39_1",
+    "0_1",
+    "0_2",
+    "0_3",
+    "0_4",
+    "8_1",
+    "8_2",
+    "10_0",
+    "11_0",
+    "11_1",
+    "11_2",
+    "13_0",
+    "13_2",
+    "10_1",
+    "12_1",
+    "38_0",
+    "38_1",
+    "11_3",
+    "27_0",
+    "27_1",
+    "29_1",
+    "28_0",
+    "28_1",
+    "30_0",
+    "30_1",
+    "30_2",
+    "29_0"
+   ]
   },
   {
    "nombre": "Gohan (Saga Cell)",
@@ -158,7 +218,36 @@
    "fid": 270,
    "ok": true,
    "notas": "25/10 Opus (3.a revision): comparada con su personaje original (frente y espalda) + QA Haiku; sin defectos a la vista. Pendiente de combate.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "8_0",
+    "39_0",
+    "39_1",
+    "0_1",
+    "0_2",
+    "0_3",
+    "0_4",
+    "8_1",
+    "8_2",
+    "10_0",
+    "13_0",
+    "13_2",
+    "10_1",
+    "10_2",
+    "12_0",
+    "12_1",
+    "11_3",
+    "27_0",
+    "27_1",
+    "29_1",
+    "28_0",
+    "28_1",
+    "30_0",
+    "30_1",
+    "30_2",
+    "29_0"
+   ]
   },
   {
    "nombre": "Goku (Traje roto)",
@@ -243,7 +332,17 @@
    "fid": 392,
    "ok": true,
    "notas": "25/10 Opus: camiseta de tirantes con correa y espada; cuello soldado a la piel (sin banda negra), brazos enteros; huecos medidos = solo entre la espada y el cuerpo (como el original). Pendiente de combate.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "8_0",
+    "39_1",
+    "8_1",
+    "8_2",
+    "10_0",
+    "10_1",
+    "12_0",
+    "12_1"
+   ]
   },
   {
    "nombre": "Trunks (Futuro armadura)",
@@ -280,35 +379,136 @@
    "fid": 416,
    "ok": true,
    "notas": "25/10 Opus (3.a revision): comparada con su personaje original (frente y espalda) + QA Haiku; sin defectos a la vista. Pendiente de combate.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "8_0",
+    "39_0",
+    "7_1",
+    "39_1",
+    "0_1",
+    "0_2",
+    "0_3",
+    "0_4",
+    "8_1",
+    "8_2",
+    "10_0",
+    "13_0",
+    "13_2",
+    "10_1",
+    "10_2",
+    "12_0",
+    "12_1",
+    "38_0",
+    "38_1",
+    "11_3",
+    "27_0",
+    "27_1",
+    "29_1",
+    "28_0",
+    "28_1",
+    "30_0",
+    "30_1",
+    "30_2",
+    "29_0"
+   ]
   },
   {
    "nombre": "Vegeta (Armadura androides)",
    "fid": 420,
    "ok": true,
    "notas": "25/10 Opus: hombros sin picos (el cuello del heroe ya no empuja la tela de debajo), brazo entero hasta el puno del guante; comparada con el original (frente y espalda), huecos y munecas medidos. Pendiente de combate.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "8_0",
+    "39_0",
+    "7_1",
+    "39_1",
+    "0_1",
+    "0_2",
+    "0_3",
+    "0_4",
+    "8_1",
+    "8_2",
+    "10_0",
+    "13_0",
+    "13_2",
+    "10_1",
+    "10_2",
+    "12_0",
+    "12_1",
+    "38_0",
+    "38_1",
+    "27_0",
+    "27_1",
+    "30_0",
+    "30_1",
+    "30_2",
+    "29_0"
+   ]
   },
   {
    "nombre": "Vegeta (Armadura saga Saiyan)",
    "fid": 424,
    "ok": true,
    "notas": "25/10 Opus: con hombreras (accesorios SPAT rigidos al hombro), faldones caidos sobre el pantalon y cola-fajin; mangas sin piel del heroe debajo. Comparada con su personaje original (frente y espalda). Pendiente de combate.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "8_0",
+    "39_0"
+   ]
   },
   {
    "nombre": "Vegeta (Armadura Namek)",
    "fid": 427,
    "ok": true,
    "notas": "25/10 Opus: con hombreras (accesorios SPAT rigidos al hombro), faldones caidos sobre el pantalon y cola-fajin; mangas sin piel del heroe debajo. Comparada con su personaje original (frente y espalda). Pendiente de combate.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "8_0",
+    "39_0",
+    "38_0",
+    "38_1"
+   ]
   },
   {
    "nombre": "Yamcha (Pelo corto)",
    "fid": 445,
    "ok": true,
    "notas": "25/10 Opus (3.a revision): comparada con su personaje original (frente y espalda) + QA Haiku; sin defectos a la vista. Pendiente de combate.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "8_0",
+    "39_0",
+    "39_1",
+    "0_1",
+    "0_2",
+    "0_3",
+    "0_4",
+    "8_1",
+    "8_2",
+    "10_0",
+    "13_0",
+    "13_2",
+    "10_1",
+    "12_1",
+    "38_0",
+    "38_1",
+    "11_3",
+    "27_0",
+    "27_1",
+    "29_1",
+    "28_0",
+    "28_1",
+    "30_0",
+    "30_1",
+    "30_2",
+    "29_0"
+   ]
   },
   {
    "nombre": "Yamcha (Vestimenta amarilla)",
@@ -321,7 +521,36 @@
    "fid": 447,
    "ok": true,
    "notas": "25/10 Opus (3.a revision): comparada con su personaje original (frente y espalda) + QA Haiku; sin defectos a la vista. Pendiente de combate.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "8_0",
+    "39_0",
+    "39_1",
+    "0_1",
+    "0_2",
+    "0_3",
+    "0_4",
+    "8_1",
+    "8_2",
+    "10_0",
+    "13_0",
+    "13_2",
+    "10_1",
+    "12_1",
+    "38_0",
+    "38_1",
+    "11_3",
+    "27_0",
+    "27_1",
+    "29_1",
+    "28_0",
+    "28_1",
+    "30_0",
+    "30_1",
+    "30_2",
+    "29_0"
+   ]
   }
  ],
  "piernas": [
@@ -450,14 +679,70 @@
    "fid": 225,
    "ok": true,
    "notas": "25/10 Opus (3.a revision): comparada con su personaje original (frente y espalda) + QA Haiku; sin defectos a la vista. Pendiente de combate.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "8_0",
+    "39_0",
+    "39_1",
+    "0_1",
+    "0_3",
+    "0_4",
+    "8_1",
+    "10_0",
+    "11_0",
+    "11_1",
+    "11_2",
+    "13_0",
+    "13_2",
+    "10_1",
+    "12_1",
+    "38_0",
+    "38_1",
+    "34_0",
+    "34_1",
+    "35_0",
+    "35_1",
+    "11_3",
+    "27_0",
+    "27_1",
+    "30_0",
+    "29_0"
+   ]
   },
   {
    "nombre": "Gohan (Adulto (naranja))",
    "fid": 228,
    "ok": true,
    "notas": "25/10 Opus (3.a revision): comparada con su personaje original (frente y espalda) + QA Haiku; sin defectos a la vista. Pendiente de combate.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "8_0",
+    "39_0",
+    "39_1",
+    "0_1",
+    "0_3",
+    "0_4",
+    "8_1",
+    "10_0",
+    "11_0",
+    "11_1",
+    "11_2",
+    "13_0",
+    "13_2",
+    "10_1",
+    "12_1",
+    "38_0",
+    "38_1",
+    "34_0",
+    "34_1",
+    "35_0",
+    "35_1",
+    "11_3",
+    "27_0",
+    "27_1",
+    "30_0",
+    "29_0"
+   ]
   },
   {
    "nombre": "Gohan (Saga Cell)",
@@ -512,14 +797,60 @@
    "fid": 327,
    "ok": true,
    "notas": "25/10 Opus (3.a revision): comparada con su personaje original (frente y espalda) + QA Haiku; sin defectos a la vista. Pendiente de combate.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "8_0",
+    "39_0",
+    "39_1",
+    "0_1",
+    "0_3",
+    "0_4",
+    "8_1",
+    "10_0",
+    "11_0",
+    "11_1",
+    "11_2",
+    "13_0",
+    "13_2",
+    "10_1",
+    "12_1",
+    "38_0",
+    "38_1",
+    "35_0",
+    "35_1",
+    "11_3",
+    "27_0",
+    "27_1"
+   ]
   },
   {
    "nombre": "Krillin (Con pelo)",
    "fid": 328,
    "ok": true,
    "notas": "25/10 Opus (3.a revision): comparada con su personaje original (frente y espalda) + QA Haiku; sin defectos a la vista. Pendiente de combate.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "8_0",
+    "39_0",
+    "39_1",
+    "0_1",
+    "8_1",
+    "10_0",
+    "11_0",
+    "11_1",
+    "11_2",
+    "13_0",
+    "13_2",
+    "10_1",
+    "12_1",
+    "34_0",
+    "34_1",
+    "35_0",
+    "35_1",
+    "11_3",
+    "27_0",
+    "27_1"
+   ]
   },
   {
    "nombre": "Krillin (Armadura)",
@@ -568,14 +899,58 @@
    "fid": 392,
    "ok": true,
    "notas": "25/10 Opus (3.a revision): comparada con su personaje original (frente y espalda) + QA Haiku; sin defectos a la vista. Pendiente de combate.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "8_0",
+    "39_0",
+    "39_1",
+    "0_1",
+    "0_3",
+    "0_4",
+    "8_1",
+    "10_0",
+    "11_0",
+    "11_1",
+    "11_2",
+    "13_0",
+    "13_2",
+    "10_1",
+    "12_1",
+    "34_0",
+    "34_1",
+    "35_0",
+    "35_1",
+    "11_3",
+    "30_0",
+    "29_0"
+   ]
   },
   {
    "nombre": "Trunks (Futuro armadura)",
    "fid": 394,
    "ok": true,
    "notas": "25/10 Opus (3.a revision): comparada con su personaje original (frente y espalda) + QA Haiku; sin defectos a la vista. Pendiente de combate.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "39_0",
+    "39_1",
+    "0_1",
+    "0_3",
+    "0_4",
+    "8_1",
+    "10_0",
+    "13_0",
+    "13_2",
+    "10_1",
+    "12_1",
+    "34_0",
+    "34_1",
+    "35_0",
+    "35_1",
+    "11_3",
+    "30_0",
+    "29_0"
+   ]
   },
   {
    "nombre": "Tenshinhan (TSH_BODY)",
@@ -588,7 +963,33 @@
    "fid": 401,
    "ok": true,
    "notas": "25/10 Opus (3.a revision): comparada con su personaje original (frente y espalda) + QA Haiku; sin defectos a la vista. Pendiente de combate.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "8_0",
+    "39_0",
+    "39_1",
+    "0_1",
+    "0_3",
+    "0_4",
+    "8_1",
+    "10_0",
+    "11_0",
+    "11_1",
+    "11_2",
+    "13_0",
+    "13_2",
+    "10_1",
+    "12_1",
+    "34_0",
+    "34_1",
+    "35_0",
+    "35_1",
+    "11_3",
+    "27_0",
+    "27_1",
+    "30_0",
+    "29_0"
+   ]
   },
   {
    "nombre": "Videl (XVDL_BODY)",
@@ -607,35 +1008,143 @@
    "fid": 416,
    "ok": true,
    "notas": "25/10 Opus (3.a revision): comparada con su personaje original (frente y espalda) + QA Haiku; sin defectos a la vista. Pendiente de combate.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "8_0",
+    "39_0",
+    "39_1",
+    "0_1",
+    "0_3",
+    "0_4",
+    "8_1",
+    "10_0",
+    "13_0",
+    "13_2",
+    "10_1",
+    "12_1",
+    "34_0",
+    "34_1",
+    "35_0",
+    "35_1",
+    "11_3",
+    "30_0",
+    "29_0"
+   ]
   },
   {
    "nombre": "Vegeta (Armadura androides)",
    "fid": 420,
    "ok": true,
    "notas": "25/10 Opus (3.a revision): comparada con su personaje original (frente y espalda) + QA Haiku; sin defectos a la vista. Pendiente de combate.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "39_0",
+    "39_1",
+    "0_1",
+    "0_3",
+    "0_4",
+    "8_1",
+    "10_0",
+    "13_0",
+    "13_2",
+    "10_1",
+    "12_1",
+    "34_0",
+    "34_1",
+    "35_0",
+    "35_1",
+    "11_3",
+    "30_0",
+    "29_0"
+   ]
   },
   {
    "nombre": "Vegeta (Armadura saga Saiyan)",
    "fid": 424,
    "ok": true,
    "notas": "25/10 Opus (3.a revision): comparada con su personaje original (frente y espalda) + QA Haiku; sin defectos a la vista. Pendiente de combate.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "8_0",
+    "39_0",
+    "39_1",
+    "0_1",
+    "0_3",
+    "0_4",
+    "8_1",
+    "10_0",
+    "13_0",
+    "13_2",
+    "10_1",
+    "12_1",
+    "34_0",
+    "34_1",
+    "35_0",
+    "35_1",
+    "11_3",
+    "30_0",
+    "29_0"
+   ]
   },
   {
    "nombre": "Vegeta (Armadura Namek)",
    "fid": 427,
    "ok": true,
    "notas": "25/10 Opus (3.a revision): comparada con su personaje original (frente y espalda) + QA Haiku; sin defectos a la vista. Pendiente de combate.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "39_0",
+    "39_1",
+    "0_1",
+    "0_3",
+    "0_4",
+    "8_1",
+    "10_0",
+    "13_0",
+    "13_2",
+    "10_1",
+    "12_1",
+    "34_0",
+    "34_1",
+    "35_0",
+    "35_1",
+    "11_3",
+    "30_0",
+    "29_0"
+   ]
   },
   {
    "nombre": "Yamcha (Pelo corto)",
    "fid": 445,
    "ok": true,
    "notas": "25/10 Opus (3.a revision): comparada con su personaje original (frente y espalda) + QA Haiku; sin defectos a la vista. Pendiente de combate.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "8_0",
+    "39_0",
+    "39_1",
+    "0_1",
+    "0_3",
+    "0_4",
+    "8_1",
+    "10_0",
+    "11_0",
+    "11_1",
+    "11_2",
+    "13_0",
+    "13_2",
+    "10_1",
+    "12_1",
+    "38_0",
+    "38_1",
+    "35_0",
+    "35_1",
+    "11_3",
+    "27_0",
+    "27_1",
+    "30_0",
+    "29_0"
+   ]
   },
   {
    "nombre": "Yamcha (Vestimenta amarilla)",
@@ -648,7 +1157,33 @@
    "fid": 447,
    "ok": true,
    "notas": "25/10 Opus (3.a revision): comparada con su personaje original (frente y espalda) + QA Haiku; sin defectos a la vista. Pendiente de combate.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "8_0",
+    "39_0",
+    "39_1",
+    "0_1",
+    "0_3",
+    "0_4",
+    "8_1",
+    "10_0",
+    "11_0",
+    "11_1",
+    "11_2",
+    "13_0",
+    "13_2",
+    "10_1",
+    "12_1",
+    "38_0",
+    "38_1",
+    "35_0",
+    "35_1",
+    "11_3",
+    "27_0",
+    "27_1",
+    "30_0",
+    "29_0"
+   ]
   }
  ],
  "guantes": [
@@ -671,21 +1206,33 @@
    "fid": 75,
    "ok": true,
    "notas": "injerto OK: 470 tris, ventanas {'prenda': 531, 'reutilizadas': 102, 'nuevas': 429, 'total': 2884}; geometria del donante sin reescalar (solo prueba estructural); No aprobada en Luna 8b: falta confirmar encaje perfecto en frente, espalda y juego. | 27/10 23:10 Opus: aprobada en juego (heroe_pieza guante=75 tras DS187): los dos brazos en reposo, golpe y golpe recibido, sin manos sueltas ni huecos.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "39_0"
+   ]
   },
   {
    "nombre": "Android 17 (Traje alternativo)",
    "fid": 76,
    "ok": true,
    "notas": "injerto OK: 432 tris, ventanas {'prenda': 506, 'reutilizadas': 102, 'nuevas': 404, 'total': 2859}; geometria del donante sin reescalar (solo prueba estructural); No aprobada en Luna 8b: falta confirmar encaje perfecto en frente, espalda y juego. | 27/10 23:10 Opus: aprobada en juego (heroe_pieza guante=76 tras DS187): los dos brazos en reposo, golpe y golpe recibido, sin manos sueltas ni huecos.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "39_0"
+   ]
   },
   {
    "nombre": "Android 18 (X18G_BODY)",
    "fid": 80,
    "ok": true,
    "notas": "injerto OK: 528 tris, ventanas {'prenda': 532, 'reutilizadas': 102, 'nuevas': 430, 'total': 2885}; geometria del donante sin reescalar (solo prueba estructural); No aprobada en Luna 8b: falta confirmar encaje perfecto en frente, espalda y juego. | 27/10 23:10 Opus: aprobada en juego (heroe_pieza guante=80 tras DS187): los dos brazos en reposo, golpe y golpe recibido, sin manos sueltas ni huecos.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "39_0"
+   ]
   },
   {
    "nombre": "Android 18 (Traje alternativo)",
@@ -698,21 +1245,33 @@
    "fid": 82,
    "ok": true,
    "notas": "injerto OK: 532 tris, ventanas {'prenda': 504, 'reutilizadas': 102, 'nuevas': 402, 'total': 2857}; geometria del donante sin reescalar (solo prueba estructural); No aprobada en Luna 8b: falta confirmar encaje perfecto en frente, espalda y juego. | 27/10 23:10 Opus: aprobada en juego (heroe_pieza guante=82 tras DS187): los dos brazos en reposo, golpe y golpe recibido, sin manos sueltas ni huecos.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "39_0"
+   ]
   },
   {
    "nombre": "Bardock (XBDK_BODY)",
    "fid": 99,
    "ok": true,
    "notas": "injerto OK: 532 tris, ventanas {'prenda': 532, 'reutilizadas': 102, 'nuevas': 430, 'total': 2885}; geometria del donante sin reescalar (solo prueba estructural); No aprobada en Luna 8b: falta confirmar encaje perfecto en frente, espalda y juego. | 27/10 Opus: aprobada en juego (heroe_pieza guante=99, DS161+DS166): munequera ajustada en los dos brazos, mano pegada a la muneca en reposo, golpe, caida y derribo; sin manos sueltas.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "39_0"
+   ]
   },
   {
    "nombre": "Bardock (Traje alternativo)",
    "fid": 100,
    "ok": true,
    "notas": "injerto OK: 532 tris, ventanas {'prenda': 532, 'reutilizadas': 102, 'nuevas': 430, 'total': 2885}; geometria del donante sin reescalar (solo prueba estructural); No aprobada en Luna 8b: falta confirmar encaje perfecto en frente, espalda y juego. | 27/10 23:30 Opus: aprobada en juego (heroe_pieza guante=100 tras DS187): los dos brazos en reposo, golpe y golpe recibido, sin manos sueltas ni huecos.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "39_0"
+   ]
   },
   {
    "nombre": "Majin Buu (Gordo)",
@@ -737,28 +1296,44 @@
    "fid": 142,
    "ok": true,
    "notas": "injerto OK: 572 tris, ventanas {'prenda': 612, 'reutilizadas': 102, 'nuevas': 510, 'total': 2965}; geometria del donante sin reescalar (solo prueba estructural); No aprobada en Luna 8b: falta confirmar encaje perfecto en frente, espalda y juego. | 27/10 23:10 Opus: aprobada en juego (heroe_pieza guante=142 tras DS187): los dos brazos en reposo, golpe y golpe recibido, sin manos sueltas ni huecos.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "39_0"
+   ]
   },
   {
    "nombre": "Cell (Forma 1)",
    "fid": 146,
    "ok": true,
    "notas": "injerto OK: 464 tris, ventanas {'prenda': 560, 'reutilizadas': 102, 'nuevas': 458, 'total': 2913}; geometria del donante sin reescalar (solo prueba estructural); No aprobada en Luna 8b: falta confirmar encaje perfecto en frente, espalda y juego. | 27/10 23:10 Opus: aprobada en juego (heroe_pieza guante=146 tras DS187): los dos brazos en reposo, golpe y golpe recibido, sin manos sueltas ni huecos.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "39_0"
+   ]
   },
   {
    "nombre": "Cell (Forma 1 alt)",
    "fid": 149,
    "ok": true,
    "notas": "injerto OK: 464 tris, ventanas {'prenda': 560, 'reutilizadas': 102, 'nuevas': 458, 'total': 2913}; geometria del donante sin reescalar (solo prueba estructural); No aprobada en Luna 8b: falta confirmar encaje perfecto en frente, espalda y juego. | 27/10 23:30 Opus: aprobada en juego (heroe_pieza guante=149 tras DS187): los dos brazos en reposo, golpe y golpe recibido, sin manos sueltas ni huecos.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "39_0"
+   ]
   },
   {
    "nombre": "Cooler (Forma base)",
    "fid": 166,
    "ok": true,
    "notas": "injerto OK: 584 tris, ventanas {'prenda': 645, 'reutilizadas': 102, 'nuevas': 543, 'total': 2998}; geometria del donante sin reescalar (solo prueba estructural); No aprobada en Luna 8b: falta confirmar encaje perfecto en frente, espalda y juego. | 27/10 23:10 Opus: aprobada en juego (heroe_pieza guante=166 tras DS187): los dos brazos en reposo, golpe y golpe recibido, sin manos sueltas ni huecos.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "39_0"
+   ]
   },
   {
    "nombre": "Cooler (Forma base alt)",
@@ -789,91 +1364,143 @@
    "fid": 225,
    "ok": true,
    "notas": "injerto OK: 576 tris, ventanas {'prenda': 560, 'reutilizadas': 102, 'nuevas': 458, 'total': 2913}; geometria del donante sin reescalar (solo prueba estructural); No aprobada en Luna 8b: falta confirmar encaje perfecto en frente, espalda y juego. | 27/10 23:10 Opus: aprobada en juego (heroe_pieza guante=225 tras DS187): los dos brazos en reposo, golpe y golpe recibido, sin manos sueltas ni huecos.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "39_0"
+   ]
   },
   {
    "nombre": "Gohan (Adulto (naranja))",
    "fid": 228,
    "ok": true,
    "notas": "injerto OK: 576 tris, ventanas {'prenda': 560, 'reutilizadas': 102, 'nuevas': 458, 'total': 2913}; geometria del donante sin reescalar (solo prueba estructural); No aprobada en Luna 8b: falta confirmar encaje perfecto en frente, espalda y juego. | 27/10 23:30 Opus: aprobada en juego (heroe_pieza guante=228 tras DS187): los dos brazos en reposo, golpe y golpe recibido, sin manos sueltas ni huecos.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "39_0"
+   ]
   },
   {
    "nombre": "Gohan (Saga Cell)",
    "fid": 235,
    "ok": true,
    "notas": "injerto OK: 536 tris, ventanas {'prenda': 535, 'reutilizadas': 102, 'nuevas': 433, 'total': 2888}; geometria del donante sin reescalar (solo prueba estructural); No aprobada en Luna 8b: falta confirmar encaje perfecto en frente, espalda y juego. | 27/10 23:10 Opus: aprobada en juego (heroe_pieza guante=235 tras DS187): los dos brazos en reposo, golpe y golpe recibido, sin manos sueltas ni huecos.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "39_0"
+   ]
   },
   {
    "nombre": "Goku (Nino)",
    "fid": 252,
    "ok": true,
    "notas": "injerto OK: 504 tris, ventanas {'prenda': 518, 'reutilizadas': 102, 'nuevas': 416, 'total': 2871}; geometria del donante sin reescalar (solo prueba estructural); No aprobada en Luna 8b: falta confirmar encaje perfecto en frente, espalda y juego. | 27/10 23:10 Opus: aprobada en juego (heroe_pieza guante=252 tras DS187): los dos brazos en reposo, golpe y golpe recibido, sin manos sueltas ni huecos.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "39_0"
+   ]
   },
   {
    "nombre": "Goku (Normal)",
    "fid": 264,
    "ok": true,
    "notas": "injerto OK: 576 tris, ventanas {'prenda': 576, 'reutilizadas': 102, 'nuevas': 474, 'total': 2929}; geometria del donante sin reescalar (solo prueba estructural); No aprobada en Luna 8b: falta confirmar encaje perfecto en frente, espalda y juego. | 27/10 23:30 Opus: aprobada en juego (heroe_pieza guante=264 tras DS187): los dos brazos en reposo, golpe y golpe recibido, sin manos sueltas ni huecos.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "39_0"
+   ]
   },
   {
    "nombre": "Goku (Normal alt)",
    "fid": 270,
    "ok": true,
    "notas": "injerto OK: 576 tris, ventanas {'prenda': 560, 'reutilizadas': 102, 'nuevas': 458, 'total': 2913}; geometria del donante sin reescalar (solo prueba estructural); No aprobada en Luna 8b: falta confirmar encaje perfecto en frente, espalda y juego. | 27/10 23:10 Opus: aprobada en juego (heroe_pieza guante=270 tras DS187): los dos brazos en reposo, golpe y golpe recibido, sin manos sueltas ni huecos.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "39_0"
+   ]
   },
   {
    "nombre": "Goku (Traje roto)",
    "fid": 276,
    "ok": true,
    "notas": "injerto OK: 576 tris, ventanas {'prenda': 616, 'reutilizadas': 102, 'nuevas': 514, 'total': 2969}; geometria del donante sin reescalar (solo prueba estructural); No aprobada en Luna 8b: falta confirmar encaje perfecto en frente, espalda y juego. | 27/10 23:10 Opus: aprobada en juego (heroe_pieza guante=276 tras DS187): los dos brazos en reposo, golpe y golpe recibido, sin manos sueltas ni huecos.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "39_0"
+   ]
   },
   {
    "nombre": "Goku (Scouter (cuerpo de Ginyu))",
    "fid": 281,
    "ok": true,
    "notas": "injerto OK: 576 tris, ventanas {'prenda': 576, 'reutilizadas': 102, 'nuevas': 474, 'total': 2929}; geometria del donante sin reescalar (solo prueba estructural); No aprobada en Luna 8b: falta confirmar encaje perfecto en frente, espalda y juego. | 27/10 23:30 Opus: aprobada en juego (heroe_pieza guante=281 tras DS187): los dos brazos en reposo, golpe y golpe recibido, sin manos sueltas ni huecos.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "39_0"
+   ]
   },
   {
    "nombre": "Goku (Angelic)",
    "fid": 282,
    "ok": true,
    "notas": "injerto OK: 576 tris, ventanas {'prenda': 576, 'reutilizadas': 102, 'nuevas': 474, 'total': 2929}; geometria del donante sin reescalar (solo prueba estructural); No aprobada en Luna 8b: falta confirmar encaje perfecto en frente, espalda y juego. | 27/10 23:30 Opus: aprobada en juego (heroe_pieza guante=282 tras DS187): los dos brazos en reposo, golpe y golpe recibido, sin manos sueltas ni huecos.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "39_0"
+   ]
   },
   {
    "nombre": "Goten (XGTN_BODY)",
    "fid": 298,
    "ok": true,
    "notas": "injerto OK: 480 tris, ventanas {'prenda': 478, 'reutilizadas': 102, 'nuevas': 376, 'total': 2831}; geometria del donante sin reescalar (solo prueba estructural); No aprobada en Luna 8b: falta confirmar encaje perfecto en frente, espalda y juego. | 27/10 23:30 Opus: aprobada en juego (heroe_pieza guante=298 tras DS187): los dos brazos en reposo, golpe y golpe recibido, sin manos sueltas ni huecos.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "39_0"
+   ]
   },
   {
    "nombre": "Krillin (Sin pelo / con pelo / armadura)",
    "fid": 327,
    "ok": true,
    "notas": "injerto OK: 576 tris, ventanas {'prenda': 560, 'reutilizadas': 102, 'nuevas': 458, 'total': 2913}; geometria del donante sin reescalar (solo prueba estructural); No aprobada en Luna 8b: falta confirmar encaje perfecto en frente, espalda y juego. | 27/10 23:10 Opus: aprobada en juego (heroe_pieza guante=327 tras DS187): los dos brazos en reposo, golpe y golpe recibido, sin manos sueltas ni huecos.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "39_0"
+   ]
   },
   {
    "nombre": "Krillin (Con pelo)",
    "fid": 328,
    "ok": true,
    "notas": "injerto OK: 576 tris, ventanas {'prenda': 574, 'reutilizadas': 102, 'nuevas': 472, 'total': 2927}; geometria del donante sin reescalar (solo prueba estructural); No aprobada en Luna 8b: falta confirmar encaje perfecto en frente, espalda y juego. | 27/10 23:10 Opus: aprobada en juego (heroe_pieza guante=328 tras DS187): los dos brazos en reposo, golpe y golpe recibido, sin manos sueltas ni huecos.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "39_0"
+   ]
   },
   {
    "nombre": "Krillin (Armadura)",
    "fid": 329,
    "ok": true,
    "notas": "injerto OK: 516 tris, ventanas {'prenda': 526, 'reutilizadas': 102, 'nuevas': 424, 'total': 2879}; geometria del donante sin reescalar (solo prueba estructural); No aprobada en Luna 8b: falta confirmar encaje perfecto en frente, espalda y juego. | 27/10 23:30 Opus: aprobada en juego (heroe_pieza guante=329 tras DS187): los dos brazos en reposo, golpe y golpe recibido, sin manos sueltas ni huecos.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "39_0"
+   ]
   },
   {
    "nombre": "Piccolo (Normal)",
@@ -904,21 +1531,33 @@
    "fid": 383,
    "ok": true,
    "notas": "injerto OK: 548 tris, ventanas {'prenda': 542, 'reutilizadas': 102, 'nuevas': 440, 'total': 2895}; geometria del donante sin reescalar (solo prueba estructural); No aprobada en Luna 8b: falta confirmar encaje perfecto en frente, espalda y juego. | 27/10 Opus: aprobada en juego (heroe_pieza guante=383, camara de brazos DS160): munequeras ajustadas en los dos brazos, frente y espalda, con puno (DS157), sin piel ni huecos. | 27/10 16:16 Opus: revisada de nuevo tras DS166 (bytes cambiados): sigue perfecta en brazos y combate.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "39_0"
+   ]
   },
   {
    "nombre": "Trunks (Futuro espada)",
    "fid": 390,
    "ok": true,
    "notas": "injerto OK: 486 tris, ventanas {'prenda': 510, 'reutilizadas': 102, 'nuevas': 408, 'total': 2863}; geometria del donante sin reescalar (solo prueba estructural); No aprobada en Luna 8b: falta confirmar encaje perfecto en frente, espalda y juego. | 27/10 23:10 Opus: aprobada en juego (heroe_pieza guante=390 tras DS187): los dos brazos en reposo, golpe y golpe recibido, sin manos sueltas ni huecos.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "39_0"
+   ]
   },
   {
    "nombre": "Trunks (Futuro espada alt)",
    "fid": 392,
    "ok": true,
    "notas": "injerto OK: 488 tris, ventanas {'prenda': 506, 'reutilizadas': 102, 'nuevas': 404, 'total': 2859}; geometria del donante sin reescalar (solo prueba estructural); No aprobada en Luna 8b: falta confirmar encaje perfecto en frente, espalda y juego. | 27/10 23:30 Opus: aprobada en juego (heroe_pieza guante=392 tras DS187): los dos brazos en reposo, golpe y golpe recibido, sin manos sueltas ni huecos.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "39_0"
+   ]
   },
   {
    "nombre": "Trunks (Futuro armadura)",
@@ -931,49 +1570,77 @@
    "fid": 400,
    "ok": true,
    "notas": "injerto OK: 604 tris, ventanas {'prenda': 636, 'reutilizadas': 102, 'nuevas': 534, 'total': 2989}; geometria del donante sin reescalar (solo prueba estructural); No aprobada en Luna 8b: falta confirmar encaje perfecto en frente, espalda y juego. | 27/10 23:10 Opus: aprobada en juego (heroe_pieza guante=400 tras DS187): los dos brazos en reposo, golpe y golpe recibido, sin manos sueltas ni huecos.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "39_0"
+   ]
   },
   {
    "nombre": "Tenshinhan (Traje alternativo)",
    "fid": 401,
    "ok": true,
    "notas": "injerto OK: 556 tris, ventanas {'prenda': 548, 'reutilizadas': 102, 'nuevas': 446, 'total': 2901}; geometria del donante sin reescalar (solo prueba estructural); No aprobada en Luna 8b: falta confirmar encaje perfecto en frente, espalda y juego. | 27/10 23:30 Opus: aprobada en juego (heroe_pieza guante=401 tras DS187): los dos brazos en reposo, golpe y golpe recibido, sin manos sueltas ni huecos.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "39_0"
+   ]
   },
   {
    "nombre": "Videl (XVDL_BODY)",
    "fid": 410,
    "ok": true,
    "notas": "injerto OK: 500 tris, ventanas {'prenda': 536, 'reutilizadas': 102, 'nuevas': 434, 'total': 2889}; geometria del donante sin reescalar (solo prueba estructural); No aprobada en Luna 8b: falta confirmar encaje perfecto en frente, espalda y juego. | 27/10 23:10 Opus: aprobada en juego (heroe_pieza guante=410 tras DS187): los dos brazos en reposo, golpe y golpe recibido, sin manos sueltas ni huecos.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "39_0"
+   ]
   },
   {
    "nombre": "Videl (Traje alternativo)",
    "fid": 411,
    "ok": true,
    "notas": "injerto OK: 500 tris, ventanas {'prenda': 536, 'reutilizadas': 102, 'nuevas': 434, 'total': 2889}; geometria del donante sin reescalar (solo prueba estructural); No aprobada en Luna 8b: falta confirmar encaje perfecto en frente, espalda y juego. | 27/10 23:10 Opus: aprobada en juego (heroe_pieza guante=411 tras DS187): los dos brazos en reposo, golpe y golpe recibido, sin manos sueltas ni huecos.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "39_0"
+   ]
   },
   {
    "nombre": "Vegeta (Sin armadura)",
    "fid": 416,
    "ok": true,
    "notas": "injerto OK: 516 tris, ventanas {'prenda': 572, 'reutilizadas': 102, 'nuevas': 470, 'total': 2925}; geometria del donante sin reescalar (solo prueba estructural); No aprobada en Luna 8b: falta confirmar encaje perfecto en frente, espalda y juego. | 27/10 23:30 Opus: aprobada en juego (heroe_pieza guante=416 tras DS187): los dos brazos en reposo, golpe y golpe recibido, sin manos sueltas ni huecos.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "39_0"
+   ]
   },
   {
    "nombre": "Vegeta (Armadura androides)",
    "fid": 420,
    "ok": true,
    "notas": "injerto OK: 516 tris, ventanas {'prenda': 572, 'reutilizadas': 102, 'nuevas': 470, 'total': 2925}; geometria del donante sin reescalar (solo prueba estructural); No aprobada en Luna 8b: falta confirmar encaje perfecto en frente, espalda y juego. | 27/10 23:10 Opus: aprobada en juego (heroe_pieza guante=420 tras DS187): los dos brazos en reposo, golpe y golpe recibido, sin manos sueltas ni huecos.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "39_0"
+   ]
   },
   {
    "nombre": "Vegeta (Armadura saga Saiyan)",
    "fid": 424,
    "ok": true,
    "notas": "injerto OK: 516 tris, ventanas {'prenda': 568, 'reutilizadas': 102, 'nuevas': 466, 'total': 2921}; geometria del donante sin reescalar (solo prueba estructural); No aprobada en Luna 8b: falta confirmar encaje perfecto en frente, espalda y juego. | 27/10 Opus: aprobada en juego (heroe_pieza guante=424, camara de brazos DS160): guantes ajustados en los dos brazos, frente y espalda, con puno, sin piel ni huecos. | 27/10 16:16 Opus: revisada de nuevo tras DS166 (bytes cambiados): sigue perfecta en brazos y combate.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "39_0"
+   ]
   },
   {
    "nombre": "Vegeta (Armadura Namek)",
@@ -986,21 +1653,33 @@
    "fid": 445,
    "ok": true,
    "notas": "injerto OK: 576 tris, ventanas {'prenda': 582, 'reutilizadas': 102, 'nuevas': 480, 'total': 2935}; geometria del donante sin reescalar (solo prueba estructural); No aprobada en Luna 8b: falta confirmar encaje perfecto en frente, espalda y juego. | 27/10 23:10 Opus: aprobada en juego (heroe_pieza guante=445 tras DS187): los dos brazos en reposo, golpe y golpe recibido, sin manos sueltas ni huecos.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "39_0"
+   ]
   },
   {
    "nombre": "Yamcha (Vestimenta amarilla)",
    "fid": 446,
    "ok": true,
    "notas": "injerto OK: 432 tris, ventanas {'prenda': 452, 'reutilizadas': 102, 'nuevas': 350, 'total': 2805}; geometria del donante sin reescalar (solo prueba estructural); No aprobada en Luna 8b: falta confirmar encaje perfecto en frente, espalda y juego. | 27/10 23:30 Opus: aprobada en juego (heroe_pieza guante=446 tras DS187): los dos brazos en reposo, golpe y golpe recibido, sin manos sueltas ni huecos.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "39_0"
+   ]
   },
   {
    "nombre": "Yamcha (Pelo largo)",
    "fid": 447,
    "ok": true,
    "notas": "injerto OK: 576 tris, ventanas {'prenda': 561, 'reutilizadas': 102, 'nuevas': 459, 'total': 2914}; geometria del donante sin reescalar (solo prueba estructural); No aprobada en Luna 8b: falta confirmar encaje perfecto en frente, espalda y juego. | 27/10 Opus: aprobada en juego (heroe_pieza guante=447, DS161+DS166): munequera ajustada en los dos brazos, mano pegada a la muneca en reposo, golpe, caida y derribo; sin manos sueltas.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "39_0"
+   ]
   }
  ],
  "botas": [
@@ -1051,14 +1730,63 @@
    "fid": 99,
    "ok": true,
    "notas": "25/10 Opus (3.a revision): comparada con su personaje original (frente y espalda) + QA Haiku; sin defectos a la vista. Pendiente de combate.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "8_0",
+    "39_0",
+    "0_1",
+    "0_3",
+    "0_4",
+    "11_0",
+    "11_1",
+    "11_2",
+    "13_0",
+    "13_2",
+    "13_1",
+    "10_1",
+    "10_2",
+    "12_1",
+    "30_0",
+    "30_1",
+    "30_2",
+    "29_0"
+   ]
   },
   {
    "nombre": "Bardock (Traje alternativo)",
    "fid": 100,
    "ok": true,
    "notas": "25/10 Opus (3.a revision): comparada con su personaje original (frente y espalda) + QA Haiku; sin defectos a la vista. Pendiente de combate.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "8_0",
+    "39_0",
+    "7_1",
+    "7_2",
+    "7_3",
+    "39_1",
+    "0_1",
+    "0_3",
+    "0_4",
+    "8_1",
+    "8_2",
+    "10_0",
+    "11_0",
+    "11_1",
+    "11_2",
+    "13_0",
+    "13_2",
+    "13_1",
+    "10_1",
+    "10_2",
+    "12_1",
+    "30_0",
+    "30_1",
+    "30_2",
+    "29_0"
+   ]
   },
   {
    "nombre": "Majin Buu (Gordo)",
@@ -1191,7 +1919,37 @@
    "fid": 327,
    "ok": true,
    "notas": "25/10 Opus (3.a revision): comparada con su personaje original (frente y espalda) + QA Haiku; sin defectos a la vista. Pendiente de combate.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "8_0",
+    "39_0",
+    "7_1",
+    "7_2",
+    "7_3",
+    "39_1",
+    "0_1",
+    "0_2",
+    "0_3",
+    "0_4",
+    "8_1",
+    "8_2",
+    "10_0",
+    "11_0",
+    "11_1",
+    "11_2",
+    "13_0",
+    "13_2",
+    "13_1",
+    "10_1",
+    "10_2",
+    "12_1",
+    "11_3",
+    "30_0",
+    "30_1",
+    "30_2",
+    "29_0"
+   ]
   },
   {
    "nombre": "Krillin (Con pelo)",
@@ -1240,21 +1998,122 @@
    "fid": 390,
    "ok": true,
    "notas": "25/10 Opus (3.a revision): comparada con su personaje original (frente y espalda) + QA Haiku; sin defectos a la vista. Pendiente de combate.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "8_0",
+    "39_0",
+    "7_1",
+    "7_2",
+    "7_3",
+    "39_1",
+    "0_1",
+    "0_2",
+    "0_3",
+    "0_4",
+    "8_1",
+    "8_2",
+    "10_0",
+    "11_0",
+    "11_1",
+    "11_2",
+    "13_0",
+    "13_2",
+    "10_1",
+    "10_2",
+    "12_1",
+    "36_0",
+    "36_1",
+    "35_0",
+    "35_1",
+    "28_0",
+    "28_1",
+    "30_0",
+    "30_1",
+    "30_2",
+    "29_0"
+   ]
   },
   {
    "nombre": "Trunks (Futuro espada alt)",
    "fid": 392,
    "ok": true,
    "notas": "25/10 Opus (3.a revision): comparada con su personaje original (frente y espalda) + QA Haiku; sin defectos a la vista. Pendiente de combate.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "8_0",
+    "39_0",
+    "7_1",
+    "7_2",
+    "7_3",
+    "39_1",
+    "0_1",
+    "0_2",
+    "0_3",
+    "0_4",
+    "8_1",
+    "8_2",
+    "10_0",
+    "11_0",
+    "11_1",
+    "11_2",
+    "13_0",
+    "13_2",
+    "10_1",
+    "10_2",
+    "12_1",
+    "36_0",
+    "36_1",
+    "35_0",
+    "35_1",
+    "28_0",
+    "28_1",
+    "30_0",
+    "30_1",
+    "30_2",
+    "29_0"
+   ]
   },
   {
    "nombre": "Trunks (Futuro armadura)",
    "fid": 394,
    "ok": true,
    "notas": "25/10 Opus (3.a revision): comparada con su personaje original (frente y espalda) + QA Haiku; sin defectos a la vista. Pendiente de combate.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "8_0",
+    "39_0",
+    "7_1",
+    "7_2",
+    "7_3",
+    "39_1",
+    "0_1",
+    "0_2",
+    "0_3",
+    "0_4",
+    "8_1",
+    "8_2",
+    "10_0",
+    "11_0",
+    "11_1",
+    "11_2",
+    "13_0",
+    "13_2",
+    "10_1",
+    "10_2",
+    "12_1",
+    "36_0",
+    "36_1",
+    "35_0",
+    "35_1",
+    "11_3",
+    "28_1",
+    "30_0",
+    "30_1",
+    "30_2"
+   ]
   },
   {
    "nombre": "Tenshinhan (TSH_BODY)",
@@ -1285,28 +2144,163 @@
    "fid": 416,
    "ok": true,
    "notas": "25/10 Opus (3.a revision): comparada con su personaje original (frente y espalda) + QA Haiku; sin defectos a la vista. Pendiente de combate.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "8_0",
+    "39_0",
+    "7_1",
+    "7_2",
+    "7_3",
+    "39_1",
+    "0_1",
+    "0_2",
+    "0_3",
+    "0_4",
+    "8_1",
+    "8_2",
+    "10_0",
+    "11_0",
+    "11_1",
+    "11_2",
+    "13_0",
+    "13_2",
+    "10_1",
+    "10_2",
+    "12_1",
+    "36_0",
+    "36_1",
+    "35_0",
+    "35_1",
+    "11_3",
+    "30_0",
+    "30_1",
+    "30_2"
+   ]
   },
   {
    "nombre": "Vegeta (Armadura androides)",
    "fid": 420,
    "ok": true,
    "notas": "25/10 Opus (3.a revision): comparada con su personaje original (frente y espalda) + QA Haiku; sin defectos a la vista. Pendiente de combate.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "8_0",
+    "39_0",
+    "7_1",
+    "7_2",
+    "7_3",
+    "39_1",
+    "0_1",
+    "0_2",
+    "0_3",
+    "0_4",
+    "8_1",
+    "8_2",
+    "10_0",
+    "11_0",
+    "11_1",
+    "11_2",
+    "13_0",
+    "13_2",
+    "13_1",
+    "10_1",
+    "10_2",
+    "12_1",
+    "36_0",
+    "36_1",
+    "35_0",
+    "35_1",
+    "11_3",
+    "30_0",
+    "30_1",
+    "30_2"
+   ]
   },
   {
    "nombre": "Vegeta (Armadura saga Saiyan)",
    "fid": 424,
    "ok": true,
    "notas": "25/10 Opus (3.a revision): comparada con su personaje original (frente y espalda) + QA Haiku; sin defectos a la vista. Pendiente de combate.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "8_0",
+    "39_0",
+    "7_1",
+    "7_2",
+    "7_3",
+    "39_1",
+    "0_1",
+    "0_3",
+    "0_4",
+    "8_1",
+    "8_2",
+    "10_0",
+    "11_0",
+    "11_1",
+    "11_2",
+    "13_0",
+    "13_2",
+    "13_1",
+    "10_1",
+    "10_2",
+    "12_1",
+    "36_0",
+    "36_1",
+    "35_0",
+    "35_1",
+    "11_3",
+    "28_0",
+    "28_1",
+    "30_0",
+    "30_1",
+    "30_2",
+    "29_0"
+   ]
   },
   {
    "nombre": "Vegeta (Armadura Namek)",
    "fid": 427,
    "ok": true,
    "notas": "25/10 Opus (3.a revision): comparada con su personaje original (frente y espalda) + QA Haiku; sin defectos a la vista. Pendiente de combate.",
-   "validacion_visual": "perfecto"
+   "validacion_visual": "perfecto",
+   "aprobada_en": [
+    "7_0",
+    "8_0",
+    "39_0",
+    "7_1",
+    "7_2",
+    "7_3",
+    "39_1",
+    "0_1",
+    "0_3",
+    "0_4",
+    "8_1",
+    "8_2",
+    "10_0",
+    "11_0",
+    "11_1",
+    "11_2",
+    "13_0",
+    "13_2",
+    "13_1",
+    "10_1",
+    "10_2",
+    "12_1",
+    "36_0",
+    "36_1",
+    "35_0",
+    "35_1",
+    "11_3",
+    "28_0",
+    "28_1",
+    "30_0",
+    "30_1",
+    "30_2",
+    "29_0"
+   ]
   },
   {
    "nombre": "Yamcha (Pelo corto)",
@@ -1488,13 +2482,15 @@
    "nombre": "Goku (Traje roto)",
    "fid": 276,
    "ok": false,
-   "notas": "huesos propios ausentes en 264: LWCLOTH1,RWCLOTH1 (soldable al padre WAIST)"
+   "notas": "huesos propios ausentes en 264: LWCLOTH1,RWCLOTH1 (soldable al padre WAIST)",
+   "aprobada_en": []
   },
   {
    "nombre": "Goku (Scouter (cuerpo de Ginyu))",
    "fid": 281,
    "ok": false,
-   "notas": "huesos propios ausentes en 264: SCOUT1 (soldable al padre HEAD)"
+   "notas": "huesos propios ausentes en 264: SCOUT1 (soldable al padre HEAD)",
+   "aprobada_en": []
   },
   {
    "nombre": "Goku (Angelic)",
@@ -1560,19 +2556,88 @@
    "nombre": "Trunks (Futuro espada)",
    "fid": 390,
    "ok": false,
-   "notas": "huesos propios ausentes en 264: LCOLLAR,RCOLLAR,SOWD,SOWDCASE (soldable al padre CHEST,SOWDCASE)"
+   "notas": "huesos propios ausentes en 264: LCOLLAR,RCOLLAR,SOWD,SOWDCASE (soldable al padre CHEST,SOWDCASE)",
+   "aprobada_en": [
+    "0_0",
+    "7_0",
+    "7_1",
+    "7_2",
+    "7_3",
+    "0_1",
+    "0_2",
+    "0_3",
+    "0_4",
+    "10_0",
+    "15_1",
+    "12_0",
+    "12_1",
+    "11_3",
+    "27_0",
+    "27_1",
+    "28_0",
+    "28_1",
+    "30_0",
+    "30_1",
+    "30_2"
+   ]
   },
   {
    "nombre": "Trunks (Futuro espada alt)",
    "fid": 392,
    "ok": false,
-   "notas": "huesos propios ausentes en 264: SOWD,SOWDCASE (soldable al padre CHEST,SOWDCASE)"
+   "notas": "huesos propios ausentes en 264: SOWD,SOWDCASE (soldable al padre CHEST,SOWDCASE)",
+   "aprobada_en": [
+    "0_0",
+    "7_0",
+    "7_1",
+    "7_2",
+    "7_3",
+    "0_1",
+    "0_2",
+    "0_3",
+    "0_4",
+    "10_0",
+    "15_1",
+    "12_0",
+    "12_1",
+    "11_3",
+    "27_0",
+    "27_1",
+    "28_0",
+    "28_1",
+    "30_0",
+    "30_1",
+    "30_2"
+   ]
   },
   {
    "nombre": "Trunks (Futuro armadura)",
    "fid": 394,
    "ok": false,
-   "notas": "huesos propios ausentes en 264: SOWD,SOWDCASE (soldable al padre CHEST,SOWDCASE)"
+   "notas": "huesos propios ausentes en 264: SOWD,SOWDCASE (soldable al padre CHEST,SOWDCASE)",
+   "aprobada_en": [
+    "0_0",
+    "7_0",
+    "7_1",
+    "7_2",
+    "7_3",
+    "0_1",
+    "0_2",
+    "0_3",
+    "0_4",
+    "10_0",
+    "15_1",
+    "12_0",
+    "12_1",
+    "11_3",
+    "27_0",
+    "27_1",
+    "28_0",
+    "28_1",
+    "30_0",
+    "30_1",
+    "30_2"
+   ]
   },
   {
    "nombre": "Tenshinhan (TSH_BODY)",
@@ -1620,7 +2685,13 @@
    "nombre": "Vegeta (Armadura Namek)",
    "fid": 427,
    "ok": false,
-   "notas": "huesos propios ausentes en 264: LSPAT1,RSPAT1 (soldable al padre LSPAT,RSPAT)"
+   "notas": "huesos propios ausentes en 264: LSPAT1,RSPAT1 (soldable al padre LSPAT,RSPAT)",
+   "aprobada_en": [
+    "0_0",
+    "7_0",
+    "8_0",
+    "7_1"
+   ]
   },
   {
    "nombre": "Yamcha (Pelo corto)",

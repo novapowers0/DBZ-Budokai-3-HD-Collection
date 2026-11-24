@@ -1,0 +1,36 @@
+# Heroe 12/11 (por partes) - 1/7: APARIENCIA (Create > traje > Confirmar).
+#   Copia: sol (HEROE-18 paso el creador por partes en sol).
+#   python tools\pruebas.py correr sol "docs\14_frentes\escenarios_pruebas\post1212\heroe_01_apariencia.toml"
+#
+# clave    = creador del Heroe, pantalla Create (HEROE-V04/V05): fila de traje y boton Confirmar.
+# cvar     = ninguna: DBZ3_TEST_RINGOUT=1 solo para que el combate de pruebas acabe si se llega a el.
+# criterio = se abre Create con la ficha y el traje actuales, D cambia el traje (log con el numero nuevo), W lleva
+#            a la fila de botones y A confirma con el traje elegido; B vuelve sin cuelgue.
+# log      = "dbz3 heroe: Create abierto (ficha N, cuerpo N, traje N, logo N, scouter N, pelo N)"
+#            "dbz3 heroe: Create: traje N / M"
+#            "dbz3 heroe: Create: confirmar (traje N, partes ..."
+descripcion = "Heroe 1/7 apariencia: Create, cambiar de traje y confirmar"
+env = ["DBZ3_TEST_RINGOUT=1"]
+pasos = [
+  "esperar 2500",
+  "tecla W 1200",
+  "tecla Space 3500",
+  "tecla S 450", "tecla S 450", "tecla S 450", "tecla S 450", "tecla S 450",
+  "tecla Space 2500",
+  "tecla S 700", "tecla S 700", "tecla S 700",
+  "tecla Space 3500",
+  "captura 01_heroe",
+  "tecla S 500", "tecla S 500",
+  "tecla Space 3000",
+  "log \"Create abierto \\(ficha [0-9]+, cuerpo [0-9]+, traje [0-9]+, logo [0-9]+, scouter [0-9]+, pelo [0-9]+\\)\" 20",
+  "captura 02_create",
+  "tecla D 700",
+  "log \"Create: traje [0-9]+ / [0-9]+\" 20",
+  "captura 03_traje_nuevo",
+  "tecla W 600",
+  "tecla Space 2500",
+  "log \"Create: confirmar\" 20",
+  "captura 04_confirmado",
+  "tecla Backspace 3000",
+  "esperar 2500",
+]

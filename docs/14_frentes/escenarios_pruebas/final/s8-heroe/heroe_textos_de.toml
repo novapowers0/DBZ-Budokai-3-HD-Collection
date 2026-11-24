@@ -1,0 +1,25 @@
+# S8 / HER08: historia del Heroe en aleman sin cadenas inglesas.
+# FASE 3: lo ejecuta Z. Entrada directa al DU del Heroe (casilla 35) SIN montar el heroe en el creador: el montaje
+# tarda >180 s con 3 ventanas. El mapa usa el ID propio de la sesion (o Goku 0 si no hay heroe), asi no cierra.
+#   python tools/pruebas.py correr smoke_a "docs/14_frentes/escenarios_pruebas/final/s8-heroe/heroe_textos_de.toml"
+#
+# clave    = HER08 (historia en 7 idiomas)
+# cvar     = ninguna nueva; REX_DBZ3_LANGUAGE / UI_LANGUAGE eligen el idioma
+# criterio = la intro de la saga sale en aleman y la UI propia en de; una frase inglesa en la captura = fallo
+# log      = "escena 10[02] entrada 35" (intro del Heroe; la ficha activa es la 1 = casilla 35)
+#
+# Banco sin juego (verde): "heroe_banco.py" textos (135 frases por idioma, 0 iguales al ingles; test_i18n 0 faltas
+# en heroe/campaigns). PENDIENTE_JUEGO: la foto por idioma.
+descripcion = "Heroe: historia de la saga en aleman y textos propios en de (entrada directa al DU)"
+env = [
+  "DBZ3_TEST_DU_HEROE=35",
+  "REX_DBZ3_LANGUAGE=3",
+]
+pasos = [
+  "esperar 14000",
+  "log \"escena 10[02] entrada 35\" 180",
+  "captura a_historia_1",
+  "tecla Space 2500",
+  "esperar 8000",
+  "captura b_historia_2",
+]

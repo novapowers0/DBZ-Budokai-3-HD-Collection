@@ -1,0 +1,53 @@
+# S8 / HER08: historia del Heroe en italiano sin cadenas inglesas.
+# FASE 3: lo ejecuta Z. Confirma la ficha (monta heroe_propio 63, historias y rotulo), entra en la pestana
+# Progreso y pulsa Empezar: el mapa del Heroe ya esta disponible y la intro sale en su idioma.
+#   python tools/pruebas.py correr smoke_a "docs/14_frentes/escenarios_pruebas/final/s8-heroe/heroe_textos_it.toml"
+#
+# clave    = HER08 (historia en 7 idiomas)
+# cvar     = ninguna nueva; REX_DBZ3_LANGUAGE / UI_LANGUAGE eligen el idioma
+# criterio = la intro de la saga sale en italiano y la UI propia en it; una frase inglesa en la captura = fallo
+# log      = "el heroe propio de la ficha ... se monta" y "escena 10[02] entrada 35" (intro del Heroe)
+#
+# Banco sin juego (verde): "heroe_banco.py" textos (135 frases por idioma, 0 iguales al ingles; test_i18n 0 faltas
+# en heroe/campaigns). PENDIENTE_JUEGO: la foto por idioma (ja/pt vistos el 8/11; fr/de/it no repetidas).
+descripcion = "Heroe: historia de la saga en italiano y textos propios en it"
+env = [
+  "DBZ3_TEST_HEROE_ABRIR=2",
+  "REX_DBZ3_LANGUAGE=6",
+  "DBZ3_CAC_XV2=0",
+]
+pasos = [
+  "esperar 2500",
+  "tecla W 1200",
+  "tecla Space 3500",
+  "tecla S 450",
+  "tecla S 450",
+  "tecla S 450",
+  "tecla S 450",
+  "tecla S 450",
+  "tecla Space 2500",
+  "tecla S 700",
+  "tecla S 700",
+  "tecla S 700",
+  "tecla Space 2500",
+  "tecla D 600",
+  "tecla W 600",
+  "tecla Space 600",
+  "log \"traje de combate 1\" 600",
+  "captura a_montado",
+  "tecla 3 600",
+  "tecla 3 600",
+  "tecla S 450",
+  "tecla S 450",
+  "captura b_empezar",
+  "tecla D 600",
+  "log \"mapa abierto\" 60",
+  "esperar 1000",
+  "captura c_mapa",
+  "tecla Space 1500",
+  "log \"escena 10[02] entrada 35\" 300",
+  "captura c_historia_1",
+  "tecla Space 2500",
+  "esperar 8000",
+  "captura d_historia_2",
+]

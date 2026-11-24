@@ -1,0 +1,3 @@
+descripcion = "dsGIG: presentacion del juego con el jefe gigante encendido por la opcion (dbz3_jefe_gigante=1.8 via DBZ3_TEST_CFG): capturas de la presentacion y de la pelea"
+env = ["DBZ3_TEST_BATTLE=0,7,7", "DBZ3_HUB_MODE=5", "DBZ3_SONDA_GIGANTE=1"]
+pasos = ["log \"hub: combate nativo\" 60", "esperar 2000", "captura 01_pres_a", "esperar 2000", "captura 02_pres_b", "esperar 2000", "captura 03_pres_c", "log \"gigante: escala\" 60", "esperar 1500", "captura 04_pelea"]

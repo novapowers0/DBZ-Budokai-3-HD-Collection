@@ -1,4 +1,4 @@
-# DBZ Budokai 3 HD Collection — Release ejecutable
+# DBZ Budokai 3 HD Collection — Release ejecutable v1.5.7
 
 Copyright (c) 2026 **NovaPowers**. Released under the MIT License.
 
@@ -19,6 +19,7 @@ de tu copia legal.
   **`v1.1.0-clasico`**.
 - `TracyClient.dll` — profiling (requerido por el runtime).
 - `amd_fidelityfx_vk.dll`, `SPIRV-Tools-shared.dll` — utilidades del backend Vulkan.
+- `nvngx_dlss.dll` y `NVIDIA_DLSS_LICENSE.txt` — NVIDIA DLSS y su licencia.
 - `mod center hd/` — toolkit de modding (catálogo + scripts + herramientas XDK).
 - `RELEASE_README.md` — este archivo.
 
@@ -27,6 +28,12 @@ de tu copia legal.
 > usar el código correspondiente. Funciona con el ejecutable US y el EU.
 
 ## Cómo instalar y jugar (paso a paso)
+
+**Si actualizas desde 1.5.6:** guarda una copia de tus ajustes, partidas y mods,
+y reemplaza juntos el ejecutable y las DLL. El launcher migra los ajustes que
+figuran en su historial y aún coinciden con el valor de serie anterior; conserva
+los valores distintos. Mueve los archivos obsoletos de la lista a
+`_respaldo_actualizacion/1.5.6/` sin borrarlos.
 
 El paquete **NO incluye los archivos del juego** (copyright). Aporta los de tu
 **copia legal** en una de estas disposiciones (el launcher las detecta todas):
@@ -42,9 +49,9 @@ El paquete **NO incluye los archivos del juego** (copyright). Aporta los de tu
    - **Opción C — jugar directamente del `.iso`** (sin extraer nada): deja el
      `.iso` junto a `dbz3.exe` o usa «Seleccionar ISO...». Se extrae solo el
      ejecutable de Budokai 3 (`DBZ3\yae3_xenon.xex`, unos MB) y se monta el
-     resto desde la imagen. Funciona con el **ISO original completo** (con el
-     menú de la HD Collection en la raíz del disco). ⚠️ **Los mods necesitan la
-     carpeta extraída** (A/B); en modo disco se juega tal cual.
+     resto desde la imagen. Usa la **ISO original completa** (con el menú de
+     la HD Collection en la raíz del disco). Para usar mods desde la ISO, el
+     launcher prepara una copia local de los datos necesarios; no modifica la ISO.
 3. **Dentro de `us/`** copia los datos de tu copia legal: `data_cmn.afs`,
    `data_eng/fra/ger/ita/spn/usi.afs`, `data_yah.afs`, `adx_jpn/usa.afs`,
    `lang_jpn/usa.afs`, `opening.sfd`, `Ending00/01.sfd`. La variante PAL va en
@@ -63,14 +70,36 @@ El paquete **NO incluye los archivos del juego** (copyright). Aporta los de tu
 > Para extraer los archivos de tu **ISO legal** usa `extract-xiso` (FATX de Xbox
 > 360). Tamaños y SHA-256 de cada archivo en `baserom.md`.
 
-## Novedades de esta release — v1.5.0 (2026-10-17)
+## Novedades de esta release — v1.5.7 (23/11/2026)
+
+Incluye los cambios preparados como 1.5.6.1 y 1.5.6.2, que no se publicaron por separado.
+
+- **Dragon Budokai Survivors — nuevo modo (BETA):** hordas con ataques automáticos, cartas y evoluciones, ocho luchadores y seis escenarios. Jefes con repertorio propio en dos fases, Kienzan normal de Krilin con modelo y texturas originales cuando están disponibles, mejoras permanentes con zeni y récords locales. «Más fácil» reduce vida y daño enemigos.
+- **Dragon Rogue — nuevo modo (BETA):** ocho caminos, cartas de Ki, Cuerpo y Apoyo, transformaciones, fusiones, guardado y reanudación, entrenamiento de Kami y reto diario de El Abismo. Busca los dos modos nuevos en Dragon HUB, más allá de la última fila del menú principal. Retos clásicos mantiene su acceso.
+- **Llanura de Budokai 2:** lanza al rival contra la pared que activa la escena para cambiar de zona en pleno combate local. Requiere núcleo HD USA y el escenario convertido desde tu copia de Budokai 2. **Dragon World e Infinite World (EXPERIMENTAL):** mejoras de tablero, lógica de minijuegos y mapa; en los cursos de IW compatibles se usa la ruta traducida. La Nave de Babidi y la Leyenda de Mr. Satán (BETA) reciben mejoras de diálogo y audio.
+- **Modo Héroe y creador (BETA):** Habitación, mapa y ficha renovados, técnicas con maestros y recompensas en Colección. Cuatro pestañas, peinados de Budokai 3, restablecimiento de colores, vista de formas con el mando y atuendos guardables, compartibles por código y asignables por forma compatible.
+- **Combate y Dragon HUB:** rueda continua con origen, azar y preescucha cuando hay pista; admite hasta 238 escenarios añadidos. Mejoras de formas, clones y retos. **Dragon Tactics (EXPERIMENTAL):** tienda, carrusel e historial por rival renovados. **Tag Team y Online (BETA):** protección de relevos e informes de conexión más claros; sin certificar partidas largas entre dos PC ni compatibilidad Windows/Linux.
+- **Launcher, Kit, idiomas y rendimiento:** migración y respaldos; mejores importadores y generación de contenido desde tus copias; correcciones de Deshacer y Dragon Rush de Shin Budokai al reconstruir mods afectados. 75 textos en siete idiomas; con japonés y datos europeos, interfaz propia en japonés y juego original en inglés. Menos carga de CPU, búsqueda de mods más rápida y recuperación del audio.
+
+### English summary
+
+- **Dragon Budokai Survivors — new mode (BETA):** automatic attacks against hordes, cards and evolutions, eight fighters and six stages. Two phases for bosses with their own movesets, Krillin’s regular Destructo Disc with its original model and textures when available, permanent Zenie upgrades and local records. “Easier” lowers enemy health and damage.
+- **Dragon Rogue — new mode (BETA):** eight paths, Ki/Body/Support cards, transformations, fusions, save and resume, Kami’s Training and a daily Abyss challenge. Find both new modes in Dragon HUB beyond the last main-menu row. Classic Challenges keeps its own entry.
+- **Budokai 2’s Plains:** knock your opponent into the wall that triggers the scene to change areas mid-fight in a local battle. Requires the US HD core and the stage converted from your Budokai 2 copy. **Dragon World and Infinite World (EXPERIMENTAL):** board, minigame logic and map improvements, with a translated path in compatible IW courses. Babidi’s Ship and Mr. Satan’s Legend (BETA) get dialogue and audio updates.
+- **Hero Mode and creator (BETA):** updated Room, map and profile, master unlocks for equipped moves, and Collection rewards. Four tabs, Budokai 3 hairstyles, colour reset, controller previews and outfits you can save, share by code and assign to compatible forms.
+- **Combat and Dragon HUB:** a continuous wheel shows source games, supports up to 238 added stages, and offers random picks and music previews where available. Form, clone and challenge fixes. **Dragon Tactics (EXPERIMENTAL):** updated shop, carousel and rival history. **Tag Team and Online (BETA):** switch safeguards and clearer connection reports; long two-PC matches and Windows/Linux compatibility are not certified.
+- **Launcher, Kit, languages and performance:** back up settings, saves and mods when updating; replace the EXE and DLLs together. Updated import tools and same-second Undo; rebuild affected Shin Budokai mods for the Dragon Rush fix. 75 texts across seven languages; choosing Japanese with European data keeps the port UI in Japanese and runs the original game in English. Lower CPU load, faster mod lookup and audio recovery.
+
+Notas completas y límites / Full notes and known limits: [v1.5.7](RELEASE_NOTES_v1.5.7.md). En el ZIP, consulta las notas de la versión en [GitHub](https://github.com/novapowers0/DBZ-Budokai-3-HD-Collection/releases/tag/v1.5.7) cuando se publique.
+
+## Novedades de la v1.5.0 (2026-10-17)
 
 > Vídeo de la versión: tráiler, novedades y tutorial de instalación (ES/EN) en el canal de YouTube de NovaPowers.
 
 - **Dragon HUB:** placas de rango (de KYU 5 a MAESTRO), fondos y anfitriones nuevos, personajes que vuelan a cámara, icono de guardado y marcas **BETA / EXPERIMENTAL** en todo lo que está en construcción.
 - **Tag Team (beta):** relevos con teletransporte, también entre luchadores del ordenador (COM vs COM).
 - **Mods desde la ISO:** jugando directamente con la `.iso` los mods ya funcionan (la primera vez se prepara en unos segundos).
-- **Tus juegos de PS2 con un botón:** "Elegir ISO" para Budokai 1, Budokai 2 e Infinite World (launcher > Juego, o pulsando A dentro de la campaña). Se reconoce el juego por su contenido y no se copia nada.
+- **Tus discos de PS2:** usa «Elegir ISO» en Launcher → Juego: Budokai 1 para la Leyenda de Mr. Satán y la importación de personajes, Budokai 2 e Infinite World para sus modos experimentales.
 - **Launcher renovado** (ayuda al pasar el ratón, Nova's Mods en tarjetas, mods ACTIVO/APAGADO) y **menú F1 renovado**.
 - **Modos nuevos:** Misión 100, Modo Héroe (beta, cambia de estilo entre combates con LB/RB), Leyenda de Mr. Satán (beta, modelos de Budokai 3).
 - **Campañas de Infinite World y de Budokai 2 + Nave de Babidi (EXPERIMENTAL):** se pueden probar; les queda trabajo.
@@ -161,8 +190,9 @@ rendimiento»**.
 
 ## Historial de versiones
 
-| Versión | Fecha | Resumen |
-|---|---|---|
+| Versión | Fecha | Resumen | Pack de personajes |
+|---|---|---|---|
+| v1.5.7 | 2026-11-23 | Debut de Survivors y Rogue (BETA), transición en Llanura B2 local USA, mejoras por modo | 1.4.3 |
 | v1.5.0 | 2026-10-17 | Dragon HUB, Tag Team con teletransporte, mods desde la ISO, pasarela PS2 (B1/B2/IW), launcher y F1 renovados, Misión 100, Modo Héroe y Leyenda de Mr. Satán (beta), campañas IW y B2 + Nave de Babidi (experimental), todo traducido | 1.4.3 |
 | v1.4.5.2 | 2026-10-14 | Tag Team: ring out con compañero vivo = relevo; Online: instalar los mods que faltan desde el panel, UPnP/STUN; ports oficiales recreables; campañas con textos automáticos | 1.4.3 |
 | v1.4.5.1 | 2026-10-14 | El pack HD instalado desde el launcher se ve al pulsar JUGAR, sin reiniciar | 1.4.3 |
@@ -212,16 +242,16 @@ entradas concretas del AFS, así que cada mod pesa solo ~100 KB.
   - `DBZ3HD-1.4.3-Personajes.zip` (Google Drive: https://drive.google.com/file/d/1jDRwzd_idmeIxwAMN4q4bC89JKFiGXX7/view?usp=sharing) — Janemba, Androide 19, Zarbon, Dodoria,
     Guldo, Jeice y Burter (definitivas WIP: pueden tener fallos). Copia su carpeta
     `mods` junto a `dbz3.exe`.
-  - `DBZ3HD-1.4.3-Kit-Modding.zip` — herramientas para crear e importar
-    personajes (requiere Python 3.11+; ejecuta `instalar_requisitos.bat` una vez).
+  - `DBZ3HD-1.5.7-Kit-Modding.zip`, si está adjunto — herramientas para crear
+    e importar personajes (requiere Python 3.11+; ejecuta `instalar_requisitos.bat` una vez).
 
 ## Estado de la release
 
-El modo historia y los modos alternos se han verificado en una pasada completa
-**sin errores, crasheos ni fallos conocidos** con la configuración por defecto
-(D3D12 + upscaling 2x + 60 FPS). El sistema de mods es la parte experimental:
-los swaps y texturas funcionan, pero al ser personalizables, úsalos con copia de
-seguridad de tus AFS.
+El candidato aún no se ha publicado; falta verificar los paquetes finales del
+juego y del Kit. Las pruebas disponibles cubren casos concretos, no todos los
+recorridos o combinaciones. En Dragon World, el resumen de menos de siete Bolas
+muestra el recuento, pero difiere del original. El sistema de mods sigue en
+desarrollo; guarda una copia de tus AFS antes de usar las herramientas.
 
 ## Bugs conocidos
 
@@ -232,9 +262,7 @@ seguridad de tus AFS.
   ~6.5x más lento que D3D12. Usa **D3D12** (por defecto).
 - **Personajes nuevos (experimental)**: alguna técnica de agarre de Budokai 1
   sale como un golpe normal y algún efecto puede no ser perfecto. Necesitan la
-  versión USA y los datos en carpeta (no modo ISO).
-- **Textos nuevos de la v1.4.0** (launcher y menú rápido): en español e inglés;
-  en italiano, alemán y francés se ven en inglés por ahora.
+  versión USA; desde la ISO, el launcher prepara los datos necesarios para mods.
 
 ## Créditos y apoyo
 

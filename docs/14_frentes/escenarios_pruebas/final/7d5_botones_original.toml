@@ -1,0 +1,32 @@
+# dsB3 / IW 0x7D5 (NB007, "teclear"): la logica ORIGINAL del ELF con dbz3_iw_7d5_original encendido.
+# Ejemplo real de la carpeta final: se corre con
+#   python tools\pruebas.py correr <copia> "docs\14_frentes\escenarios_pruebas\final\7d5_botones_original.toml"
+#   python tools\pruebas.py paralelo "docs\14_frentes\escenarios_pruebas\final" --max 3
+#
+# clave    = IW-M05 / 0x7D5; el escenario integrado equivalente es: _r14_botones clave=0x7D5 fallos=1
+# cvar     = dbz3_iw_7d5_original=true (de serie APAGADA); va en DBZ3_TEST_CFG para que llegue al dbz3_user.toml
+#            de la copia y el juego lo lea al arrancar
+# criterio = el log dice '7D5 con la logica original del ELF', la ronda avanza con un fallo de tecla y caduca
+#            (r14: fin: ...), y se llega a 'resultado' sin cerrar el juego. Banco: 1843/1853 campos del dorado
+#            (INFORME_fable7D5.md); lo que no cuadra son los objetos 21/23 de interfaz y un global de puente.
+# log      = "dbz3 r14: 7D5 con la logica original del ELF (dbz3_iw_7d5_original)" y "r14: fin: "
+descripcion = "7D5 (NB007) con dbz3_iw_7d5_original: fallar una tecla y dejar caducar una ronda; el log debe traer la logica original y el fin de ronda"
+env = [
+  "DBZ3_TEST_IWMINI=0x7D5,auto,fallos",
+  "DBZ3_TEST_QTE_LOG=1",
+  "DBZ3_TEST_CFG=dbz3_iw_7d5_original=true",
+  'DBZ3_PS2_GAMES=D:\DBZ3HD\ps2_games',
+]
+pasos = [
+  "log \"iwmini: prueba: empieza\" 90",
+  "log \"r14: en juego\" 90",
+  "captura a_ready",
+  "log \"dbz3 r14: 7D5 con la logica original del ELF\" 20",
+  "esperar 6000",
+  "captura b_iconos",
+  "log \"r14: fin: \" 240",
+  "esperar 1500",
+  "captura c_fin",
+  "log \"r14: resultado \" 60",
+  "log \"iwmini: prueba: resultado superado\" 30",
+]

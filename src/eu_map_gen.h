@@ -5,6 +5,7 @@
 #include <cstdint>
 
 #define DBZ3EU_sub_820800A8 dbz3eu_sub_82080060
+#define DBZ3EU_sub_82080750 dbz3eu_sub_82080708
 #define DBZ3EU_sub_82081A48 dbz3eu_sub_82081A48
 #define DBZ3EU_sub_82081FE8 dbz3eu_sub_82081FE8
 #define DBZ3EU_sub_82082338 dbz3eu_sub_82082338
@@ -49,7 +50,10 @@
 #define DBZ3EU_sub_82092C80 dbz3eu_sub_82092BC8
 #define DBZ3EU_sub_82095530 dbz3eu_sub_820954C8
 #define DBZ3EU_sub_82095628 dbz3eu_sub_820955C0
+#define DBZ3EU_sub_82095680 dbz3eu_sub_82095618
 #define DBZ3EU_sub_82096FF0 dbz3eu_sub_82096F88
+#define DBZ3EU_sub_82097F20 dbz3eu_sub_82097EB8
+#define DBZ3EU_sub_82098100 dbz3eu_sub_82098098
 #define DBZ3EU_sub_8209D988 dbz3eu_sub_8209D6C0
 #define DBZ3EU_sub_8209DA08 dbz3eu_sub_8209D740
 #define DBZ3EU_sub_8209E650 dbz3eu_sub_8209E388
@@ -61,6 +65,8 @@
 #define DBZ3EU_sub_820A5820 dbz3eu_sub_820A5478
 #define DBZ3EU_sub_820AAD30 dbz3eu_sub_820AACC0
 #define DBZ3EU_sub_820ACCF0 dbz3eu_sub_820ACC80
+#define DBZ3EU_sub_820AD6E0 dbz3eu_sub_820AD670
+#define DBZ3EU_sub_820ADD18 dbz3eu_sub_820ADCA8
 #define DBZ3EU_sub_820B04C8 dbz3eu_sub_820B0458
 #define DBZ3EU_sub_820B06E0 dbz3eu_sub_820B0670
 #define DBZ3EU_sub_820B08E8 dbz3eu_sub_820B0878
@@ -101,6 +107,8 @@
 #define DBZ3EU_sub_820CF580 dbz3eu_sub_820CF510
 #define DBZ3EU_sub_820CF680 dbz3eu_sub_820CF610
 #define DBZ3EU_sub_820D85A8 dbz3eu_sub_820D8538
+#define DBZ3EU_sub_820DB540 dbz3eu_sub_820DB4F8
+#define DBZ3EU_sub_820DC080 dbz3eu_sub_820DC040
 #define DBZ3EU_sub_820DC1A8 dbz3eu_sub_820DC168
 #define DBZ3EU_sub_820DC230 dbz3eu_sub_820DC1F0
 #define DBZ3EU_sub_820DDC20 dbz3eu_sub_820DDC80
@@ -114,6 +122,7 @@
 #define DBZ3EU_sub_820F4678 dbz3eu_sub_820F4768
 #define DBZ3EU_sub_820F47E0 dbz3eu_sub_820F48D0
 #define DBZ3EU_sub_820F6560 dbz3eu_sub_820F6650
+#define DBZ3EU_sub_820F7588 dbz3eu_sub_820F7678
 #define DBZ3EU_sub_820F7758 dbz3eu_sub_820F7848
 #define DBZ3EU_sub_820F9548 dbz3eu_sub_820F9648
 #define DBZ3EU_sub_820FA378 dbz3eu_sub_820FA478
@@ -141,9 +150,15 @@
 #define DBZ3EU_sub_82100DE8 dbz3eu_sub_82100EE8
 #define DBZ3EU_sub_82100FA8 dbz3eu_sub_821010A8
 #define DBZ3EU_sub_82101CC8 dbz3eu_sub_82101DC8
+#define DBZ3EU_sub_82102650 dbz3eu_sub_82102750
 #define DBZ3EU_sub_82102DF8 dbz3eu_sub_82102EF8
+#define DBZ3EU_sub_821033E0 dbz3eu_sub_821034E0
 #define DBZ3EU_sub_82103908 dbz3eu_sub_82103A08
 #define DBZ3EU_sub_82103978 dbz3eu_sub_82103A78
+#define DBZ3EU_sub_82104C00 dbz3eu_sub_82104D50
+#define DBZ3EU_sub_82107380 dbz3eu_sub_82107478
+#define DBZ3EU_sub_82107DB0 dbz3eu_sub_82107EB0
+#define DBZ3EU_sub_82108098 dbz3eu_sub_82108198
 #define DBZ3EU_sub_82109148 dbz3eu_sub_82109248
 #define DBZ3EU_sub_821092C8 dbz3eu_sub_821093C8
 #define DBZ3EU_sub_82109380 dbz3eu_sub_82109480
@@ -151,6 +166,8 @@
 #define DBZ3EU_sub_82109638 dbz3eu_sub_82109738
 #define DBZ3EU_sub_82109BA0 dbz3eu_sub_82109CA0
 #define DBZ3EU_sub_82109D90 dbz3eu_sub_82109E90
+#define DBZ3EU_sub_8210B1C0 dbz3eu_sub_8210B2C0
+#define DBZ3EU_sub_8210D620 dbz3eu_sub_8210D720
 #define DBZ3EU_sub_8210E690 dbz3eu_sub_8210E790
 #define DBZ3EU_sub_8210E700 dbz3eu_sub_8210E800
 #define DBZ3EU_sub_8210ED48 dbz3eu_sub_8210EE48
@@ -163,6 +180,7 @@
 #define DBZ3EU_sub_82110B08 dbz3eu_sub_82110C08
 #define DBZ3EU_sub_821114F8 dbz3eu_sub_821115F8
 #define DBZ3EU_sub_821117B8 dbz3eu_sub_821118B8
+#define DBZ3EU_sub_82111A98 dbz3eu_sub_82111B98
 #define DBZ3EU_sub_82112260 dbz3eu_sub_82112360
 #define DBZ3EU_sub_82112478 dbz3eu_sub_82112578
 #define DBZ3EU_sub_82112588 dbz3eu_sub_82112688
@@ -176,9 +194,15 @@
 #define DBZ3EU_sub_82114FB8 dbz3eu_sub_821150B8
 #define DBZ3EU_sub_82115270 dbz3eu_sub_82115370
 #define DBZ3EU_sub_82115330 dbz3eu_sub_82115430
+#define DBZ3EU_sub_82115518 dbz3eu_sub_82115618
+#define DBZ3EU_sub_82115A20 dbz3eu_sub_82115B20
 #define DBZ3EU_sub_82116808 dbz3eu_sub_82116908
 #define DBZ3EU_sub_82116978 dbz3eu_sub_82116A78
+#define DBZ3EU_sub_82117CD0 dbz3eu_sub_82117DD0
 #define DBZ3EU_sub_82119108 dbz3eu_sub_82119208
+#define DBZ3EU_sub_82119360 dbz3eu_sub_82119460
+#define DBZ3EU_sub_821194E0 dbz3eu_sub_821195E0
+#define DBZ3EU_sub_82119EA0 dbz3eu_sub_82119FA0
 #define DBZ3EU_sub_8211A228 dbz3eu_sub_8211A328
 #define DBZ3EU_sub_8211A510 dbz3eu_sub_8211A610
 #define DBZ3EU_sub_8211A5A8 dbz3eu_sub_8211A6A8
@@ -210,6 +234,7 @@
 #define DBZ3EU_sub_82136328 dbz3eu_sub_82136430
 #define DBZ3EU_sub_821388D0 dbz3eu_sub_821389D8
 #define DBZ3EU_sub_82139578 dbz3eu_sub_82139680
+#define DBZ3EU_sub_8213A768 dbz3eu_sub_8213A870
 #define DBZ3EU_sub_8213EA28 dbz3eu_sub_8213EB28
 #define DBZ3EU_sub_82140BF8 dbz3eu_sub_82140CF8
 #define DBZ3EU_sub_82146430 dbz3eu_sub_821A1F00
@@ -231,8 +256,11 @@
 #define DBZ3EU_sub_8215E918 dbz3eu_sub_8215E8D8
 #define DBZ3EU_sub_8215E9C8 dbz3eu_sub_8215E988
 #define DBZ3EU_sub_8215EC68 dbz3eu_sub_8215EC28
+#define DBZ3EU_sub_821613A8 dbz3eu_sub_82161368
 #define DBZ3EU_sub_82161548 dbz3eu_sub_82161508
 #define DBZ3EU_sub_821618D8 dbz3eu_sub_82161898
+#define DBZ3EU_sub_82161AF0 dbz3eu_sub_82161AB0
+#define DBZ3EU_sub_82161FA8 dbz3eu_sub_82161F68
 #define DBZ3EU_sub_82162420 dbz3eu_sub_821623E0
 #define DBZ3EU_sub_82165190 dbz3eu_sub_82165150
 #define DBZ3EU_sub_821652D0 dbz3eu_sub_82165290
@@ -322,12 +350,23 @@
 #define DBZ3EU_sub_821B9F90 dbz3eu_sub_821B8D78
 #define DBZ3EU_sub_821BA820 dbz3eu_sub_821B9608
 #define DBZ3EU_sub_821BB680 dbz3eu_sub_821BA468
+#define DBZ3EU_sub_821BB8F0 dbz3eu_sub_821BA6D8
+#define DBZ3EU_sub_821BB930 dbz3eu_sub_821BA718
+#define DBZ3EU_sub_821BBF58 dbz3eu_sub_821BAD40
+#define DBZ3EU_sub_821C1F38 dbz3eu_sub_821C0D20
+#define DBZ3EU_sub_821C2090 dbz3eu_sub_821C0E78
 #define DBZ3EU_sub_821C24B8 dbz3eu_sub_821C12A0
+#define DBZ3EU_sub_821C2778 dbz3eu_sub_821C1560
+#define DBZ3EU_sub_821C2828 dbz3eu_sub_821C1610
 #define DBZ3EU_sub_821C3218 dbz3eu_sub_821C2000
+#define DBZ3EU_sub_821C3FD0 dbz3eu_sub_821C2DB8
 #define DBZ3EU_sub_821C4DA0 dbz3eu_sub_821C3B88
+#define DBZ3EU_sub_821C7108 dbz3eu_sub_821C5EF0
+#define DBZ3EU_sub_821C7EC0 dbz3eu_sub_821C6CA8
 #define DBZ3EU_sub_821CA020 dbz3eu_sub_821C8E08
 #define DBZ3EU_sub_821CA658 dbz3eu_sub_821C9440
 #define DBZ3EU_sub_821CC308 dbz3eu_sub_821CB0F0
+#define DBZ3EU_sub_821D0BE8 dbz3eu_sub_821CF9D0
 #define DBZ3EU_sub_821D2778 dbz3eu_sub_821D1560
 #define DBZ3EU_sub_821D27A8 dbz3eu_sub_821D1590
 #define DBZ3EU_sub_821D27B8 dbz3eu_sub_821D15A0
@@ -338,6 +377,8 @@
 #define DBZ3EU_sub_821D3628 dbz3eu_sub_821D2410
 #define DBZ3EU_sub_821D3888 dbz3eu_sub_821D2670
 #define DBZ3EU_sub_821D3EB8 dbz3eu_sub_821D2CA0
+#define DBZ3EU_sub_821D57E0 dbz3eu_sub_821D45C8
+#define DBZ3EU_sub_821D5D20 dbz3eu_sub_821D4B08
 #define DBZ3EU_sub_821D6A08 dbz3eu_sub_821D57F0
 #define DBZ3EU_sub_821D7400 dbz3eu_sub_821D61E8
 #define DBZ3EU_sub_821D78F8 dbz3eu_sub_821D66E0
@@ -451,6 +492,7 @@
 #define DBZ3EU_sub_822EB578 dbz3eu_sub_822E9D38
 #define DBZ3EU_sub_822EB580 dbz3eu_sub_822E9D40
 #define DBZ3EU_sub_822F6A00 dbz3eu_sub_822F51D0
+#define DBZ3EU_sub_822F8988 dbz3eu_sub_822F7158
 #define DBZ3EU_sub_82308398 dbz3eu_sub_82306B68
 
 #if defined(DBZ3_DUAL_REGION)
@@ -458,6 +500,8 @@
 
 REX_EXTERN(dbz3eu_sub_82080060);
 REX_EXTERN(__imp__dbz3eu_sub_82080060);
+REX_EXTERN(dbz3eu_sub_82080708);
+REX_EXTERN(__imp__dbz3eu_sub_82080708);
 REX_EXTERN(dbz3eu_sub_82081A48);
 REX_EXTERN(__imp__dbz3eu_sub_82081A48);
 REX_EXTERN(dbz3eu_sub_82081FE8);
@@ -546,8 +590,14 @@ REX_EXTERN(dbz3eu_sub_820954C8);
 REX_EXTERN(__imp__dbz3eu_sub_820954C8);
 REX_EXTERN(dbz3eu_sub_820955C0);
 REX_EXTERN(__imp__dbz3eu_sub_820955C0);
+REX_EXTERN(dbz3eu_sub_82095618);
+REX_EXTERN(__imp__dbz3eu_sub_82095618);
 REX_EXTERN(dbz3eu_sub_82096F88);
 REX_EXTERN(__imp__dbz3eu_sub_82096F88);
+REX_EXTERN(dbz3eu_sub_82097EB8);
+REX_EXTERN(__imp__dbz3eu_sub_82097EB8);
+REX_EXTERN(dbz3eu_sub_82098098);
+REX_EXTERN(__imp__dbz3eu_sub_82098098);
 REX_EXTERN(dbz3eu_sub_8209D6C0);
 REX_EXTERN(__imp__dbz3eu_sub_8209D6C0);
 REX_EXTERN(dbz3eu_sub_8209D740);
@@ -570,6 +620,10 @@ REX_EXTERN(dbz3eu_sub_820AACC0);
 REX_EXTERN(__imp__dbz3eu_sub_820AACC0);
 REX_EXTERN(dbz3eu_sub_820ACC80);
 REX_EXTERN(__imp__dbz3eu_sub_820ACC80);
+REX_EXTERN(dbz3eu_sub_820AD670);
+REX_EXTERN(__imp__dbz3eu_sub_820AD670);
+REX_EXTERN(dbz3eu_sub_820ADCA8);
+REX_EXTERN(__imp__dbz3eu_sub_820ADCA8);
 REX_EXTERN(dbz3eu_sub_820B0458);
 REX_EXTERN(__imp__dbz3eu_sub_820B0458);
 REX_EXTERN(dbz3eu_sub_820B0670);
@@ -650,6 +704,10 @@ REX_EXTERN(dbz3eu_sub_820CF610);
 REX_EXTERN(__imp__dbz3eu_sub_820CF610);
 REX_EXTERN(dbz3eu_sub_820D8538);
 REX_EXTERN(__imp__dbz3eu_sub_820D8538);
+REX_EXTERN(dbz3eu_sub_820DB4F8);
+REX_EXTERN(__imp__dbz3eu_sub_820DB4F8);
+REX_EXTERN(dbz3eu_sub_820DC040);
+REX_EXTERN(__imp__dbz3eu_sub_820DC040);
 REX_EXTERN(dbz3eu_sub_820DC168);
 REX_EXTERN(__imp__dbz3eu_sub_820DC168);
 REX_EXTERN(dbz3eu_sub_820DC1F0);
@@ -676,6 +734,8 @@ REX_EXTERN(dbz3eu_sub_820F48D0);
 REX_EXTERN(__imp__dbz3eu_sub_820F48D0);
 REX_EXTERN(dbz3eu_sub_820F6650);
 REX_EXTERN(__imp__dbz3eu_sub_820F6650);
+REX_EXTERN(dbz3eu_sub_820F7678);
+REX_EXTERN(__imp__dbz3eu_sub_820F7678);
 REX_EXTERN(dbz3eu_sub_820F7848);
 REX_EXTERN(__imp__dbz3eu_sub_820F7848);
 REX_EXTERN(dbz3eu_sub_820F9648);
@@ -730,12 +790,24 @@ REX_EXTERN(dbz3eu_sub_821010A8);
 REX_EXTERN(__imp__dbz3eu_sub_821010A8);
 REX_EXTERN(dbz3eu_sub_82101DC8);
 REX_EXTERN(__imp__dbz3eu_sub_82101DC8);
+REX_EXTERN(dbz3eu_sub_82102750);
+REX_EXTERN(__imp__dbz3eu_sub_82102750);
 REX_EXTERN(dbz3eu_sub_82102EF8);
 REX_EXTERN(__imp__dbz3eu_sub_82102EF8);
+REX_EXTERN(dbz3eu_sub_821034E0);
+REX_EXTERN(__imp__dbz3eu_sub_821034E0);
 REX_EXTERN(dbz3eu_sub_82103A08);
 REX_EXTERN(__imp__dbz3eu_sub_82103A08);
 REX_EXTERN(dbz3eu_sub_82103A78);
 REX_EXTERN(__imp__dbz3eu_sub_82103A78);
+REX_EXTERN(dbz3eu_sub_82104D50);
+REX_EXTERN(__imp__dbz3eu_sub_82104D50);
+REX_EXTERN(dbz3eu_sub_82107478);
+REX_EXTERN(__imp__dbz3eu_sub_82107478);
+REX_EXTERN(dbz3eu_sub_82107EB0);
+REX_EXTERN(__imp__dbz3eu_sub_82107EB0);
+REX_EXTERN(dbz3eu_sub_82108198);
+REX_EXTERN(__imp__dbz3eu_sub_82108198);
 REX_EXTERN(dbz3eu_sub_82109248);
 REX_EXTERN(__imp__dbz3eu_sub_82109248);
 REX_EXTERN(dbz3eu_sub_821093C8);
@@ -750,6 +822,10 @@ REX_EXTERN(dbz3eu_sub_82109CA0);
 REX_EXTERN(__imp__dbz3eu_sub_82109CA0);
 REX_EXTERN(dbz3eu_sub_82109E90);
 REX_EXTERN(__imp__dbz3eu_sub_82109E90);
+REX_EXTERN(dbz3eu_sub_8210B2C0);
+REX_EXTERN(__imp__dbz3eu_sub_8210B2C0);
+REX_EXTERN(dbz3eu_sub_8210D720);
+REX_EXTERN(__imp__dbz3eu_sub_8210D720);
 REX_EXTERN(dbz3eu_sub_8210E790);
 REX_EXTERN(__imp__dbz3eu_sub_8210E790);
 REX_EXTERN(dbz3eu_sub_8210E800);
@@ -774,6 +850,8 @@ REX_EXTERN(dbz3eu_sub_821115F8);
 REX_EXTERN(__imp__dbz3eu_sub_821115F8);
 REX_EXTERN(dbz3eu_sub_821118B8);
 REX_EXTERN(__imp__dbz3eu_sub_821118B8);
+REX_EXTERN(dbz3eu_sub_82111B98);
+REX_EXTERN(__imp__dbz3eu_sub_82111B98);
 REX_EXTERN(dbz3eu_sub_82112360);
 REX_EXTERN(__imp__dbz3eu_sub_82112360);
 REX_EXTERN(dbz3eu_sub_82112578);
@@ -800,12 +878,24 @@ REX_EXTERN(dbz3eu_sub_82115370);
 REX_EXTERN(__imp__dbz3eu_sub_82115370);
 REX_EXTERN(dbz3eu_sub_82115430);
 REX_EXTERN(__imp__dbz3eu_sub_82115430);
+REX_EXTERN(dbz3eu_sub_82115618);
+REX_EXTERN(__imp__dbz3eu_sub_82115618);
+REX_EXTERN(dbz3eu_sub_82115B20);
+REX_EXTERN(__imp__dbz3eu_sub_82115B20);
 REX_EXTERN(dbz3eu_sub_82116908);
 REX_EXTERN(__imp__dbz3eu_sub_82116908);
 REX_EXTERN(dbz3eu_sub_82116A78);
 REX_EXTERN(__imp__dbz3eu_sub_82116A78);
+REX_EXTERN(dbz3eu_sub_82117DD0);
+REX_EXTERN(__imp__dbz3eu_sub_82117DD0);
 REX_EXTERN(dbz3eu_sub_82119208);
 REX_EXTERN(__imp__dbz3eu_sub_82119208);
+REX_EXTERN(dbz3eu_sub_82119460);
+REX_EXTERN(__imp__dbz3eu_sub_82119460);
+REX_EXTERN(dbz3eu_sub_821195E0);
+REX_EXTERN(__imp__dbz3eu_sub_821195E0);
+REX_EXTERN(dbz3eu_sub_82119FA0);
+REX_EXTERN(__imp__dbz3eu_sub_82119FA0);
 REX_EXTERN(dbz3eu_sub_8211A328);
 REX_EXTERN(__imp__dbz3eu_sub_8211A328);
 REX_EXTERN(dbz3eu_sub_8211A610);
@@ -824,10 +914,10 @@ REX_EXTERN(dbz3eu_sub_8211E2B8);
 REX_EXTERN(__imp__dbz3eu_sub_8211E2B8);
 REX_EXTERN(dbz3eu_sub_8211E3C0);
 REX_EXTERN(__imp__dbz3eu_sub_8211E3C0);
-REX_EXTERN(dbz3eu_sub_8211E658);
-REX_EXTERN(__imp__dbz3eu_sub_8211E658);
 REX_EXTERN(dbz3eu_sub_8211E628);
 REX_EXTERN(__imp__dbz3eu_sub_8211E628);
+REX_EXTERN(dbz3eu_sub_8211E658);
+REX_EXTERN(__imp__dbz3eu_sub_8211E658);
 REX_EXTERN(dbz3eu_sub_8211E7A8);
 REX_EXTERN(__imp__dbz3eu_sub_8211E7A8);
 REX_EXTERN(dbz3eu_sub_8211E800);
@@ -868,12 +958,12 @@ REX_EXTERN(dbz3eu_sub_821389D8);
 REX_EXTERN(__imp__dbz3eu_sub_821389D8);
 REX_EXTERN(dbz3eu_sub_82139680);
 REX_EXTERN(__imp__dbz3eu_sub_82139680);
+REX_EXTERN(dbz3eu_sub_8213A870);
+REX_EXTERN(__imp__dbz3eu_sub_8213A870);
 REX_EXTERN(dbz3eu_sub_8213EB28);
 REX_EXTERN(__imp__dbz3eu_sub_8213EB28);
 REX_EXTERN(dbz3eu_sub_82140CF8);
 REX_EXTERN(__imp__dbz3eu_sub_82140CF8);
-REX_EXTERN(dbz3eu_sub_821A1F00);
-REX_EXTERN(__imp__dbz3eu_sub_821A1F00);
 REX_EXTERN(dbz3eu_sub_8214F8F8);
 REX_EXTERN(__imp__dbz3eu_sub_8214F8F8);
 REX_EXTERN(dbz3eu_sub_8214FBD0);
@@ -910,10 +1000,16 @@ REX_EXTERN(dbz3eu_sub_8215E988);
 REX_EXTERN(__imp__dbz3eu_sub_8215E988);
 REX_EXTERN(dbz3eu_sub_8215EC28);
 REX_EXTERN(__imp__dbz3eu_sub_8215EC28);
+REX_EXTERN(dbz3eu_sub_82161368);
+REX_EXTERN(__imp__dbz3eu_sub_82161368);
 REX_EXTERN(dbz3eu_sub_82161508);
 REX_EXTERN(__imp__dbz3eu_sub_82161508);
 REX_EXTERN(dbz3eu_sub_82161898);
 REX_EXTERN(__imp__dbz3eu_sub_82161898);
+REX_EXTERN(dbz3eu_sub_82161AB0);
+REX_EXTERN(__imp__dbz3eu_sub_82161AB0);
+REX_EXTERN(dbz3eu_sub_82161F68);
+REX_EXTERN(__imp__dbz3eu_sub_82161F68);
 REX_EXTERN(dbz3eu_sub_821623E0);
 REX_EXTERN(__imp__dbz3eu_sub_821623E0);
 REX_EXTERN(dbz3eu_sub_82165150);
@@ -1052,6 +1148,8 @@ REX_EXTERN(dbz3eu_sub_8219E198);
 REX_EXTERN(__imp__dbz3eu_sub_8219E198);
 REX_EXTERN(dbz3eu_sub_821A1548);
 REX_EXTERN(__imp__dbz3eu_sub_821A1548);
+REX_EXTERN(dbz3eu_sub_821A1F00);
+REX_EXTERN(__imp__dbz3eu_sub_821A1F00);
 REX_EXTERN(dbz3eu_sub_821A24B8);
 REX_EXTERN(__imp__dbz3eu_sub_821A24B8);
 REX_EXTERN(dbz3eu_sub_821A4810);
@@ -1092,18 +1190,40 @@ REX_EXTERN(dbz3eu_sub_821B9608);
 REX_EXTERN(__imp__dbz3eu_sub_821B9608);
 REX_EXTERN(dbz3eu_sub_821BA468);
 REX_EXTERN(__imp__dbz3eu_sub_821BA468);
+REX_EXTERN(dbz3eu_sub_821BA6D8);
+REX_EXTERN(__imp__dbz3eu_sub_821BA6D8);
+REX_EXTERN(dbz3eu_sub_821BA718);
+REX_EXTERN(__imp__dbz3eu_sub_821BA718);
+REX_EXTERN(dbz3eu_sub_821BAD40);
+REX_EXTERN(__imp__dbz3eu_sub_821BAD40);
+REX_EXTERN(dbz3eu_sub_821C0D20);
+REX_EXTERN(__imp__dbz3eu_sub_821C0D20);
+REX_EXTERN(dbz3eu_sub_821C0E78);
+REX_EXTERN(__imp__dbz3eu_sub_821C0E78);
 REX_EXTERN(dbz3eu_sub_821C12A0);
 REX_EXTERN(__imp__dbz3eu_sub_821C12A0);
+REX_EXTERN(dbz3eu_sub_821C1560);
+REX_EXTERN(__imp__dbz3eu_sub_821C1560);
+REX_EXTERN(dbz3eu_sub_821C1610);
+REX_EXTERN(__imp__dbz3eu_sub_821C1610);
 REX_EXTERN(dbz3eu_sub_821C2000);
 REX_EXTERN(__imp__dbz3eu_sub_821C2000);
+REX_EXTERN(dbz3eu_sub_821C2DB8);
+REX_EXTERN(__imp__dbz3eu_sub_821C2DB8);
 REX_EXTERN(dbz3eu_sub_821C3B88);
 REX_EXTERN(__imp__dbz3eu_sub_821C3B88);
+REX_EXTERN(dbz3eu_sub_821C5EF0);
+REX_EXTERN(__imp__dbz3eu_sub_821C5EF0);
+REX_EXTERN(dbz3eu_sub_821C6CA8);
+REX_EXTERN(__imp__dbz3eu_sub_821C6CA8);
 REX_EXTERN(dbz3eu_sub_821C8E08);
 REX_EXTERN(__imp__dbz3eu_sub_821C8E08);
 REX_EXTERN(dbz3eu_sub_821C9440);
 REX_EXTERN(__imp__dbz3eu_sub_821C9440);
 REX_EXTERN(dbz3eu_sub_821CB0F0);
 REX_EXTERN(__imp__dbz3eu_sub_821CB0F0);
+REX_EXTERN(dbz3eu_sub_821CF9D0);
+REX_EXTERN(__imp__dbz3eu_sub_821CF9D0);
 REX_EXTERN(dbz3eu_sub_821D1560);
 REX_EXTERN(__imp__dbz3eu_sub_821D1560);
 REX_EXTERN(dbz3eu_sub_821D1590);
@@ -1124,6 +1244,10 @@ REX_EXTERN(dbz3eu_sub_821D2670);
 REX_EXTERN(__imp__dbz3eu_sub_821D2670);
 REX_EXTERN(dbz3eu_sub_821D2CA0);
 REX_EXTERN(__imp__dbz3eu_sub_821D2CA0);
+REX_EXTERN(dbz3eu_sub_821D45C8);
+REX_EXTERN(__imp__dbz3eu_sub_821D45C8);
+REX_EXTERN(dbz3eu_sub_821D4B08);
+REX_EXTERN(__imp__dbz3eu_sub_821D4B08);
 REX_EXTERN(dbz3eu_sub_821D57F0);
 REX_EXTERN(__imp__dbz3eu_sub_821D57F0);
 REX_EXTERN(dbz3eu_sub_821D61E8);
@@ -1350,6 +1474,8 @@ REX_EXTERN(dbz3eu_sub_822E9D40);
 REX_EXTERN(__imp__dbz3eu_sub_822E9D40);
 REX_EXTERN(dbz3eu_sub_822F51D0);
 REX_EXTERN(__imp__dbz3eu_sub_822F51D0);
+REX_EXTERN(dbz3eu_sub_822F7158);
+REX_EXTERN(__imp__dbz3eu_sub_822F7158);
 REX_EXTERN(dbz3eu_sub_82306B68);
 REX_EXTERN(__imp__dbz3eu_sub_82306B68);
 #endif
@@ -1376,6 +1502,7 @@ inline constexpr Par kPares[] = {
     {0x82024760u, 0x82024778u},  // dato
     {0x82080000u, 0x82080000u},  // funcion
     {0x820800A8u, 0x82080060u},  // funcion
+    {0x82080750u, 0x82080708u},  // funcion
     {0x82081A48u, 0x82081A48u},  // funcion
     {0x82081FE8u, 0x82081FE8u},  // funcion
     {0x82082338u, 0x82082338u},  // funcion
@@ -1424,7 +1551,10 @@ inline constexpr Par kPares[] = {
     {0x82092C80u, 0x82092BC8u},  // funcion
     {0x82095530u, 0x820954C8u},  // funcion
     {0x82095628u, 0x820955C0u},  // funcion
+    {0x82095680u, 0x82095618u},  // funcion
     {0x82096FF0u, 0x82096F88u},  // funcion
+    {0x82097F20u, 0x82097EB8u},  // funcion
+    {0x82098100u, 0x82098098u},  // funcion
     {0x8209D988u, 0x8209D6C0u},  // funcion
     {0x8209DA08u, 0x8209D740u},  // funcion
     {0x8209E650u, 0x8209E388u},  // funcion
@@ -1437,6 +1567,8 @@ inline constexpr Par kPares[] = {
     {0x820A5820u, 0x820A5478u},  // funcion
     {0x820AAD30u, 0x820AACC0u},  // funcion
     {0x820ACCF0u, 0x820ACC80u},  // funcion
+    {0x820AD6E0u, 0x820AD670u},  // funcion
+    {0x820ADD18u, 0x820ADCA8u},  // funcion
     {0x820B04C8u, 0x820B0458u},  // funcion
     {0x820B06E0u, 0x820B0670u},  // funcion
     {0x820B08E8u, 0x820B0878u},  // funcion
@@ -1478,6 +1610,8 @@ inline constexpr Par kPares[] = {
     {0x820CF580u, 0x820CF510u},  // funcion
     {0x820CF680u, 0x820CF610u},  // funcion
     {0x820D85A8u, 0x820D8538u},  // funcion
+    {0x820DB540u, 0x820DB4F8u},  // funcion
+    {0x820DC080u, 0x820DC040u},  // funcion
     {0x820DC1A8u, 0x820DC168u},  // funcion
     {0x820DC230u, 0x820DC1F0u},  // funcion
     {0x820DDC20u, 0x820DDC80u},  // funcion
@@ -1491,6 +1625,8 @@ inline constexpr Par kPares[] = {
     {0x820F4678u, 0x820F4768u},  // funcion
     {0x820F47E0u, 0x820F48D0u},  // funcion
     {0x820F6560u, 0x820F6650u},  // funcion
+    {0x820F7588u, 0x820F7678u},  // funcion
+    {0x820F7744u, 0x820F7834u},  // codigo
     {0x820F7758u, 0x820F7848u},  // funcion
     {0x820F9548u, 0x820F9648u},  // funcion
     {0x820FA378u, 0x820FA478u},  // funcion
@@ -1519,9 +1655,16 @@ inline constexpr Par kPares[] = {
     {0x82100DE8u, 0x82100EE8u},  // funcion
     {0x82100FA8u, 0x821010A8u},  // funcion
     {0x82101CC8u, 0x82101DC8u},  // funcion
+    {0x82102650u, 0x82102750u},  // funcion
+    {0x821026B0u, 0x821027B0u},  // codigo
     {0x82102DF8u, 0x82102EF8u},  // funcion
+    {0x821033E0u, 0x821034E0u},  // funcion
     {0x82103908u, 0x82103A08u},  // funcion
     {0x82103978u, 0x82103A78u},  // funcion
+    {0x82104C00u, 0x82104D50u},  // funcion
+    {0x82107380u, 0x82107478u},  // funcion
+    {0x82107DB0u, 0x82107EB0u},  // funcion
+    {0x82108098u, 0x82108198u},  // funcion
     {0x82109148u, 0x82109248u},  // funcion
     {0x821092C8u, 0x821093C8u},  // funcion
     {0x82109380u, 0x82109480u},  // funcion
@@ -1529,10 +1672,21 @@ inline constexpr Par kPares[] = {
     {0x82109638u, 0x82109738u},  // funcion
     {0x82109BA0u, 0x82109CA0u},  // funcion
     {0x82109D90u, 0x82109E90u},  // funcion
+    {0x8210B1C0u, 0x8210B2C0u},  // funcion
+    {0x8210B2B0u, 0x8210B3B0u},  // codigo
+    {0x8210B42Cu, 0x8210B52Cu},  // codigo
     {0x8210C974u, 0x8210CA74u},  // codigo
+    {0x8210D620u, 0x8210D720u},  // funcion
     {0x8210E690u, 0x8210E790u},  // funcion
     {0x8210E700u, 0x8210E800u},  // funcion
+    {0x8210EB64u, 0x8210EC64u},  // codigo
+    {0x8210EB78u, 0x8210EC78u},  // codigo
     {0x8210ED48u, 0x8210EE48u},  // funcion
+    {0x8210EE7Cu, 0x8210EF7Cu},  // codigo
+    {0x8210EE90u, 0x8210EF90u},  // codigo
+    {0x8210EEA4u, 0x8210EFA4u},  // codigo
+    {0x8210F2D8u, 0x8210F3D8u},  // codigo
+    {0x8210F2ECu, 0x8210F3ECu},  // codigo
     {0x8210FDE0u, 0x8210FEE0u},  // funcion
     {0x821100B0u, 0x821101B0u},  // funcion
     {0x82110810u, 0x82110910u},  // funcion
@@ -1542,6 +1696,7 @@ inline constexpr Par kPares[] = {
     {0x82110B08u, 0x82110C08u},  // funcion
     {0x821114F8u, 0x821115F8u},  // funcion
     {0x821117B8u, 0x821118B8u},  // funcion
+    {0x82111A98u, 0x82111B98u},  // funcion
     {0x82112260u, 0x82112360u},  // funcion
     {0x82112478u, 0x82112578u},  // funcion
     {0x82112588u, 0x82112688u},  // funcion
@@ -1555,9 +1710,18 @@ inline constexpr Par kPares[] = {
     {0x82114FB8u, 0x821150B8u},  // funcion
     {0x82115270u, 0x82115370u},  // funcion
     {0x82115330u, 0x82115430u},  // funcion
+    {0x82115518u, 0x82115618u},  // funcion
+    {0x821159F0u, 0x82115AF0u},  // codigo
+    {0x82115A20u, 0x82115B20u},  // funcion
     {0x82116808u, 0x82116908u},  // funcion
     {0x82116978u, 0x82116A78u},  // funcion
+    {0x82117BE0u, 0x82117CE0u},  // codigo
+    {0x82117CB8u, 0x82117DB8u},  // codigo
+    {0x82117CD0u, 0x82117DD0u},  // funcion
     {0x82119108u, 0x82119208u},  // funcion
+    {0x82119360u, 0x82119460u},  // funcion
+    {0x821194E0u, 0x821195E0u},  // funcion
+    {0x82119EA0u, 0x82119FA0u},  // funcion
     {0x8211A228u, 0x8211A328u},  // funcion
     {0x8211A510u, 0x8211A610u},  // funcion
     {0x8211A5A8u, 0x8211A6A8u},  // funcion
@@ -1589,6 +1753,7 @@ inline constexpr Par kPares[] = {
     {0x82136328u, 0x82136430u},  // funcion
     {0x821388D0u, 0x821389D8u},  // funcion
     {0x82139578u, 0x82139680u},  // funcion
+    {0x8213A768u, 0x8213A870u},  // funcion
     {0x8213EA28u, 0x8213EB28u},  // funcion
     {0x82140BF8u, 0x82140CF8u},  // funcion
     {0x82146430u, 0x821A1F00u},  // funcion
@@ -1610,8 +1775,11 @@ inline constexpr Par kPares[] = {
     {0x8215E918u, 0x8215E8D8u},  // funcion
     {0x8215E9C8u, 0x8215E988u},  // funcion
     {0x8215EC68u, 0x8215EC28u},  // funcion
+    {0x821613A8u, 0x82161368u},  // funcion
     {0x82161548u, 0x82161508u},  // funcion
     {0x821618D8u, 0x82161898u},  // funcion
+    {0x82161AF0u, 0x82161AB0u},  // funcion
+    {0x82161FA8u, 0x82161F68u},  // funcion
     {0x82162420u, 0x821623E0u},  // funcion
     {0x82165190u, 0x82165150u},  // funcion
     {0x821652D0u, 0x82165290u},  // funcion
@@ -1718,15 +1886,26 @@ inline constexpr Par kPares[] = {
     {0x821B9F90u, 0x821B8D78u},  // funcion
     {0x821BA820u, 0x821B9608u},  // funcion
     {0x821BB680u, 0x821BA468u},  // funcion
+    {0x821BB8F0u, 0x821BA6D8u},  // funcion
+    {0x821BB930u, 0x821BA718u},  // funcion
+    {0x821BBF58u, 0x821BAD40u},  // funcion
+    {0x821C1F38u, 0x821C0D20u},  // funcion
+    {0x821C2090u, 0x821C0E78u},  // funcion
     {0x821C24B8u, 0x821C12A0u},  // funcion
+    {0x821C2778u, 0x821C1560u},  // funcion
+    {0x821C2828u, 0x821C1610u},  // funcion
     {0x821C3218u, 0x821C2000u},  // funcion
     {0x821C3960u, 0x821C2748u},  // funcion
+    {0x821C3FD0u, 0x821C2DB8u},  // funcion
     {0x821C4DA0u, 0x821C3B88u},  // funcion
     {0x821C7058u, 0x821C5E40u},  // funcion
+    {0x821C7108u, 0x821C5EF0u},  // funcion
+    {0x821C7EC0u, 0x821C6CA8u},  // funcion
     {0x821CA020u, 0x821C8E08u},  // funcion
     {0x821CA140u, 0x821C8F28u},  // codigo
     {0x821CA658u, 0x821C9440u},  // funcion
     {0x821CC308u, 0x821CB0F0u},  // funcion
+    {0x821D0BE8u, 0x821CF9D0u},  // funcion
     {0x821D2778u, 0x821D1560u},  // funcion
     {0x821D27A8u, 0x821D1590u},  // funcion
     {0x821D27B8u, 0x821D15A0u},  // funcion
@@ -1737,6 +1916,8 @@ inline constexpr Par kPares[] = {
     {0x821D3628u, 0x821D2410u},  // funcion
     {0x821D3888u, 0x821D2670u},  // funcion
     {0x821D3EB8u, 0x821D2CA0u},  // funcion
+    {0x821D57E0u, 0x821D45C8u},  // funcion
+    {0x821D5D20u, 0x821D4B08u},  // funcion
     {0x821D6A08u, 0x821D57F0u},  // funcion
     {0x821D7400u, 0x821D61E8u},  // funcion
     {0x821D7428u, 0x821D6210u},  // codigo
@@ -1852,8 +2033,10 @@ inline constexpr Par kPares[] = {
     {0x822EB578u, 0x822E9D38u},  // funcion
     {0x822EB580u, 0x822E9D40u},  // funcion
     {0x822F6A00u, 0x822F51D0u},  // funcion
+    {0x822F8988u, 0x822F7158u},  // funcion
     {0x82308398u, 0x82306B68u},  // funcion
     {0x82310000u, 0x82310000u},  // dato
+    {0x82310110u, 0x82310110u},  // dato
     {0x82310670u, 0x82310670u},  // dato
     {0x823106B4u, 0x823106B4u},  // dato
     {0x823106B8u, 0x823106B8u},  // dato
@@ -1949,6 +2132,7 @@ inline constexpr Par kPares[] = {
     {0x824A5960u, 0x824A5950u},  // dato
     {0x824BA110u, 0x824BA100u},  // dato
     {0x824BA129u, 0x824BA119u},  // dato
+    {0x824BA12Eu, 0x824BA11Eu},  // dato
     {0x824BA12Fu, 0x824BA11Fu},  // dato
     {0x824E6A88u, 0x824E6A78u},  // dato
     {0x824F0CD0u, 0x824F0CC0u},  // dato

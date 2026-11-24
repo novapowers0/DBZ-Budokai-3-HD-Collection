@@ -1,0 +1,32 @@
+# C3 / SEL03 (casilla nueva y combate): elige un alta (Templo de Kami, registro 18) y pelea en ella.
+#   Requiere la copia con las altas de escenarios instaladas (las mismas 12 de selector_desplazamiento /
+#   D:\_PARA_BORRAR_CLAUDE\escenarios_musica_0811). Sin ellas la casilla nueva no existe y este .toml NO es
+#   ejecutable: se queda como PENDIENTE_JUEGO hasta que Z monte la copia con altas.
+#   python tools\pruebas.py correr smoke_c "docs\14_frentes\escenarios_pruebas\final\c3-selector-hub\selector_alta.toml"
+#
+# clave    = SEL03 (casilla nueva visible y elegible; no se anade ningun ID AFS: usa el alta del mod)
+# cvar     = ninguna nueva; DBZ3_SONDA_ESCENARIO=1 imprime la casilla/registro del cursor
+# criterio = el cursor llega a la casilla nueva, el log confirma el alta (registro 18), el combate empieza en
+#            ella y no hay cierre. Con el tope medido (110 altas) el registro 18 queda muy por debajo de 127.
+# log      = "dbz3 escenarios: alta 18", "dbz3 tag: empieza un combate"
+descripcion = "SEL03: Duelo, casilla nueva (Templo de Kami, alta 18) y combate en ella (requiere mods de altas)"
+env = ["DBZ3_SONDA_ESCENARIO=1"]
+pasos = [
+  "esperar 2500",
+  "tecla S 1200",
+  "tecla Space 3000",
+  "tecla Space 3000",
+  "tecla Space 4000",
+  "tecla Space 4000",
+  "tecla Space 4000",
+  "tecla Space 4000",
+  "esperar 2500",
+  "tecla A 1500",
+  "tecla A 2000",
+  "captura 01_casilla_nueva",
+  "tecla Space 3000",
+  "log \"alta 18\" 30",
+  "log \"tag: empieza un combate\" 60",
+  "esperar 4000",
+  "captura 02_combate",
+]

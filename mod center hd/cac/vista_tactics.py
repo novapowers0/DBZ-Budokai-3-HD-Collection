@@ -11,6 +11,7 @@ Salida: <juego>/ingame_ui/nave_vista/tk_<fid>.tk (little endian):
   "TKB2", u32 nhuesos, u32 nclips; por clip: u32 cuadros, u32 bucle, f32 local[12] x nhuesos x cuadros  (filas 3x4 R|t)
 Clips en este orden: espera, andar, ataque, tecnica (ausente o pendiente = 0 cuadros).
 Uso: python vista_tactics.py --juego D:\DBZ3HD\copia --fid 264 --b3 0 --forma 0 [--us <carpeta us>]
+     python vista_tactics.py --juego <carpeta> --todas [--us <carpeta us>] [--salida <carpeta>]   # lote 51 entradas (34 unidades + formas)
 """
 import argparse
 import os
@@ -43,11 +44,18 @@ def sin_pista(skel, acm, e, anim):
     return [i for i, (nm, *_r) in enumerate(skel) if altura.suffix(nm) not in con]
 
 
+_COLAPSAR = set()   # SUR-8: huesos a escala 0 (alas de Cell perfecto: sus alas abiertas y planas no tienen el plegado de B3 localizado)
+
+
 def poses_fijas(afs, m, skel, acm, e, cid, padres):
     """{hueso: matriz local 3x3} de los huesos sin pista (cola, alas, pelo): la pose del select nativo de B3 si la hay; si no, para
     cola y alas, la del cuadro 0 de la animacion del banco que las anima y las deja mas recogidas (menos lejos de la cintura).
     Sin esto salen en el reposo del modelo (cola y alas rectas y extendidas, como lanzas)."""
     libres = range(len(skel))
+    nombres = [altura.suffix(x[0]) for x in skel]
+    _COLAPSAR.clear()
+    if any('WING' in n for n in nombres) and not any('TAIL' in n for n in nombres):
+        _COLAPSAR.update(i for i, n in enumerate(nombres) if 'WING' in n)
     sel = vb.giros_select(afs, m, cid)
     out = {i: np.array(sel[i], float) for i in libres if i in sel}
     pend = [i for i in libres if i not in out and any(k in altura.suffix(skel[i][0]) for k in ("TAIL", "WING"))]
@@ -81,6 +89,8 @@ def hornear(skel, acm, e, anim, cuadros, padres, fijas, ignorar_xz=True):
         loc = sc.anim_locals(skel, acm, e, anim, f)
         for i, r in fijas.items():
             loc[i][:3, :3] = r
+        for i in _COLAPSAR:
+            loc[i][:3, :3] = 0.0
         if ignorar_xz:
             for i, L in enumerate(loc):
                 d = L[:3, 3] - reposo[i]
@@ -100,46 +110,87 @@ def hornear(skel, acm, e, anim, cuadros, padres, fijas, ignorar_xz=True):
     return salida
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--juego", required=True)
-    ap.add_argument("--fid", type=int, required=True)
-    ap.add_argument("--b3", type=int, required=True, help="ID de B3 del personaje")
-    ap.add_argument("--forma", type=int, default=0)
-    ap.add_argument("--id", type=int, default=None, help="ID de B3 de la forma (su pose del select para cola y alas)")
-    ap.add_argument("--us", default=None)
-    a = ap.parse_args()
-    with open(os.path.join(HERE, "..", "tactics_manifest.toml"), "rb") as fh:
-        uni = next((u for u in tomllib.load(fh)["unidad"] if u["b3"] == a.b3 and u["forma"] == a.forma), None)
-    if uni is None:
-        print("vista_tactics: B3 %d forma %d no esta en el manifiesto de Tactics" % (a.b3, a.forma))
-        return 3
-    afs = vh.rb.Afs(os.path.join(vh.rb.us_dir(a.us), "data_cmn.afs"), tempfile.mkdtemp(prefix="vista_tactics_"))
-    mb = afs.entry(a.fid)
+def banco_anim(afs, entrada):
+    """(bytes #ACM/#AMM, endian) de una entrada de data_cmn que puede ser un #AMB con el #ACM dentro
+    (lo normal) o el propio #ACM suelto (la espera generica del select, entrada 3881: Yamcha/Ginyu)."""
+    b = afs.entry(int(entrada))
+    if b[:4] in (b"#ACM", b"#AMM"):
+        return b, sc.endian(b)
+    return sc.anim_pool(b)
+
+
+def hornear_unidad(afs, uni, cid):
+    """TKB2 completo de una entrada del manifiesto (o None y motivo si no se puede)."""
+    mb = afs.entry(int(uni["modelo"]))
     m = vh.mr.Model(mb)
     skel = altura.skeleton(mb)
-    acm, e = sc.anim_pool(afs.entry(uni["banco"]))
+    acm, e = banco_anim(afs, uni["banco"])
     if acm is None or len(skel) != len(m.local):
-        print("vista_tactics: banco %s sin animaciones o esqueleto distinto (%d / %d)" % (uni["banco"], len(skel), len(m.local)))
-        return 4
+        return None, "banco %s sin animaciones o esqueleto distinto (%d / %d)" % (uni["banco"], len(skel), len(m.local))
     padres = [int(x) for x in m.parent]
-    fijas = poses_fijas(afs, m, skel, acm, e, a.id if a.id is not None else a.b3, padres)
+    fijas = poses_fijas(afs, m, skel, acm, e, cid, padres)
     out = bytearray(b"TKB2" + struct.pack("<II", len(m.local), len(CLIPS)))
     for nom in CLIPS:
         c = uni["clips"].get(nom, {})
         n = int(c.get("frames", 0)) if c.get("estado") != "pendiente" else 0
         out += struct.pack("<II", n, 1 if c.get("bucle") else 0)
-        acm_c, e_c = (afs.entry(int(c["banco"])), ">") if c.get("banco") else (acm, e)   # H14: clip de otro banco (p. ej. la espera generica del select, 3881)
+        # H14: clip de otro banco (p. ej. la espera generica del select, 3881). Se extrae el #ACM del #AMB:
+        # pasar el #AMB crudo a anim_locals devolvia la pose de reposo (T-pose) en dano/derrota/levantarse (D2 TAC03).
+        acm_c, e_c = banco_anim(afs, c["banco"]) if c.get("banco") else (acm, e)
+        if n and acm_c is None:
+            return None, "clip %s: banco %s sin #ACM" % (nom, c["banco"])
         for fr in (hornear(skel, acm_c, e_c, int(c["anim"]), n, padres, {i: fijas[i] for i in sin_pista(skel, acm_c, e_c, int(c["anim"])) if i in fijas}) if n else []):
             for mat in fr:
                 out += struct.pack("<12f", *mat)
-    salida = os.path.join(a.juego, "ingame_ui", "nave_vista")
-    os.makedirs(salida, exist_ok=True)
-    path = os.path.join(salida, "tk_%d.tk" % a.fid)
+    return (out, len(m.local)), None
+
+
+def escribir_tk(destino, fid, datos):
+    os.makedirs(destino, exist_ok=True)
+    path = os.path.join(destino, "tk_%d.tk" % fid)
     with open(path + ".tmp", "wb") as fh:
-        fh.write(out)
+        fh.write(datos)
     os.replace(path + ".tmp", path)
-    print("vista_tactics: fid %d (B3 %d forma %d) -> %d huesos, %d bytes" % (a.fid, a.b3, a.forma, len(m.local), len(out)))
+    return path
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--juego", required=True)
+    ap.add_argument("--fid", type=int, default=None)
+    ap.add_argument("--b3", type=int, default=None, help="ID de B3 del personaje")
+    ap.add_argument("--forma", type=int, default=0)
+    ap.add_argument("--id", type=int, default=None, help="ID de B3 de la forma (su pose del select para cola y alas)")
+    ap.add_argument("--todas", action="store_true", help="hornea las 51 entradas del manifiesto (34 unidades + sus formas)")
+    ap.add_argument("--salida", default=None, help="carpeta de los tk_ (por defecto <juego>/ingame_ui/nave_vista)")
+    ap.add_argument("--us", default=None)
+    a = ap.parse_args()
+    with open(os.path.join(HERE, "..", "tactics_manifest.toml"), "rb") as fh:
+        man = tomllib.load(fh)
+    if a.todas:
+        unidades = man["unidad"]
+    else:
+        if a.fid is None or a.b3 is None:
+            ap.error("sin --todas hacen falta --fid y --b3")
+        unidades = [u for u in man["unidad"] if u["b3"] == a.b3 and u["forma"] == a.forma]
+        if not unidades:
+            print("vista_tactics: B3 %d forma %d no esta en el manifiesto de Tactics" % (a.b3, a.forma))
+            return 3
+    afs = vh.rb.Afs(os.path.join(vh.rb.us_dir(a.us), "data_cmn.afs"), vh.rb.work_dir("vista_tactics_"))
+    destino = a.salida or os.path.join(a.juego, "ingame_ui", "nave_vista")
+    fallos = 0
+    for uni in unidades:
+        datos, error = hornear_unidad(afs, uni, a.id if a.id is not None else int(uni["b3"]))
+        if error:
+            print("vista_tactics: %s: %s" % (uni["id"], error))
+            fallos += 1
+            continue
+        escribir_tk(destino, int(uni["modelo"]), datos[0])
+        print("vista_tactics: %s fid %d (B3 %d forma %d) -> %d huesos, %d bytes" % (
+            uni["id"], uni["modelo"], uni["b3"], uni["forma"], datos[1], len(datos[0])))
+    if fallos:
+        print("vista_tactics: %d entradas con fallo" % fallos)
+        return 4
     return 0
 
 

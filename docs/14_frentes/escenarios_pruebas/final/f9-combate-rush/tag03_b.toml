@@ -1,0 +1,52 @@
+# F9 / TAG03 (segunda pareja) — Vegeta Saiyán (31) + Goku Black (44) en Tag Team con E+dirección.
+# FASE 3: lo deja escrito F9; lo ejecuta Z una sola vez.
+#   python tools\pruebas.py correr smoke_b "docs\14_frentes\escenarios_pruebas\final\f9-combate-rush\tag03_b.toml"
+#
+# clave    = TAG03 (los otros dos de los 4 mods con formas_donante)
+# cvar     = ninguna nueva (ruta nativa de roster_ext.cpp)
+# criterio = E+dirección en base, en forma (P+K+G) y tras relevo automático, en los dos; sin ERROR ni cierre.
+# log      = "tag: empieza un combate", "relevo .* -> "
+#
+# PENDIENTE_JUEGO: copia con los 4 mods montados en el _roster (ids 24/25/31/44 en smoke_a, 10/11).
+descripcion = "TAG03 (b): E+direccion de Vegeta Saiyan y Goku Black en base, forma y tras relevo"
+env = [
+  "DBZ3_TAG_TEST_PICKS=1",
+  "DBZ3_TAG_TEST=31,44",
+  "DBZ3_TAG_TEST2=7,10",
+  "DBZ3_TAG_AUTOSWAP=120",
+  "DBZ3_TEST_CFG=dbz3_combate_prueba_muneco=\"quieto\"",
+]
+pasos = [
+  "esperar 2500",
+  "tecla L 3000",
+  "captura 00_panel",
+  "tecla Space 12000",
+  "tecla Space 4000",
+  "esperar 1000",
+  "tecla Space 4000",
+  "tecla S 2000",
+  "tecla Space 4000",
+  "esperar 1000",
+  "tecla Space 4000",
+  "tecla Space 6000",
+  "tecla Space 6000",
+  "tecla Space 3000",
+  "tecla Space 3000",
+  "tecla Space 3000",
+  "log \"tag: empieza un combate\" 60",
+  "esperar 4000",
+  "captura 01_base",
+  "tecla Quote+W:180 500",
+  "captura 02_base_especial",
+  "tecla L+P+Space:400 1500",
+  "captura 03_forma",
+  "tecla Quote+W:180 500",
+  "captura 04_forma_especial",
+  "log \"relevo .* -> \" 30",
+  "esperar 3000",
+  "captura 05_tras_relevo",
+  "tecla Quote+W:180 500",
+  "captura 06_tras_relevo_especial",
+  "esperar 2000",
+  "captura 07_final",
+]

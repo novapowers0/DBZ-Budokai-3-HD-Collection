@@ -1,0 +1,18 @@
+# Reto corto de prueba (auditoria de modos): 2 combates
+vida = 3000
+vida_inicial = 0
+arrastra_vida = false
+recupera = 0
+pausa = true
+nombre = "Prueba torre"
+name = "Test torre"
+
+[[combate]]
+rival = 42
+escenario = 0
+vida = 1500
+
+[[combate]]
+rival = 18
+escenario = 1
+vida = 1500

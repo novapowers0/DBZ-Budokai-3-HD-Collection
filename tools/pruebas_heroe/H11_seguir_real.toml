@@ -1,0 +1,46 @@
+descripcion = "H11: seguir desde siete Esferas obtenidas jugando"
+turbo = false
+apartar = ["user_data/dbz3/cac.toml*", "user_data/dbz3/heroe", "user_data/dbz3/hub_heroe.toml*", "user_data/dbz3/rpg.toml*"]
+poner = ["E:/DBZ3HD_trabajo/heroe2_fixtures/siete.toml -> user_data/dbz3/cac.toml"]
+env = ["DBZ3_TEST_DU_HEROE=35", "DBZ3_TEST_RINGOUT=1", "DBZ3_AUTO_TOUCH=40", "DBZ3_AUTO_TOUCH_S=3", "DBZ3_DU_TRACE=1", "DBZ3_TEST_DU_ESTADOS=1", "DBZ3_TEST_CFG=dbz3_heroe_rutas=true;dbz3_heroe_ui_nueva=true;dbz3_heroe_recompensas=true"]
+pasos = [
+  "esperar 5000",
+  "log \"ruta atomica de la ficha\" 120",
+  "hasta_log \"shenron: sub_8215C1B0\" 180",
+  "tecla Space 200",
+  "esperar 800",
+  "fin",
+  "log \"menu de deseos: fila 1 de 2\" 90",
+  "captura siete_reanudadas",
+  "tecla S 100",
+  "log \"menu de deseos: fila 2 de 2\" 15",
+  "tecla Space 200",
+  "log \"H02 deseo de historia confirmado: seguir sin revivir\" 30",
+  "hasta_log \"H02 despedida intermedia -> historia con decision, sin creditos\" 120",
+  "tecla Space 200",
+  "esperar 1000",
+  "fin",
+  "esperar 2000",
+  "captura regreso_historia",
+  "hasta_log \"ruta: tramo 13 combate .*ULTIMO\" 900",
+  "tecla D 250",
+  "tecla Space 1200",
+  "esperar 900",
+  "fin",
+  "hasta_log \"video abierto: guest=us.*Ending00[.]sfd\" 900",
+  "tecla D 250",
+  "tecla Space 1200",
+  "esperar 900",
+  "fin",
+  "esperar 5000",
+  "captura creditos_final",
+  "esperar 245000",
+  "captura despues_del_final",
+  "hasta_pantalla 5,6,7 180",
+  "tecla W 200",
+  "tecla Space 200",
+  "esperar 2000",
+  "fin",
+  "esperar 2000",
+  "captura menu_tras_creditos"
+]

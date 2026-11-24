@@ -1,0 +1,25 @@
+# B2-TRAD (13/11): dbz3_b2_traducido encendido. El Budokai 2 original arranca desde su ELF en segundo plano
+# (iw_trad_bucle.cpp IniciarB2) y su 2D se pinta encima con el traductor GS. Criterio: no se cae, el arranque acaba
+# sin "roto" y el original sigue dando vblanks. No certifica la imagen (ver studies 5/ENTREGAS/B2_TRAD_RELEVO.md).
+# clave = B2-TRAD
+# cvar = dbz3_b2_traducido=true (OFF de serie)
+descripcion = "B2-TRAD encendido, entero: el original llega a su tablero (vblank 7700) y se pinta"
+env = [
+  "DBZ3_PS2_GAMES=D:\\DBZ3HD\\ps2_games",
+  "DBZ3_TEST_MISIONES=1,reset",
+  "DBZ3_TEST_TURBO=1",
+  "DBZ3_TEST_CFG=dbz3_b2_traducido=true",
+]
+pasos = [
+  'log "tablero b2: fase 1 leida" 120',
+  "esperar 3000",
+  "tecla Space 2500",
+  'log "tablero b2: fase 1 empieza" 30',
+  'log "dbz3 b2trad: arranque previo del B2 original" 60',
+  'log "dbz3 b2trad: arranque desde la entrada del ELF de B2" 60',
+  'log "dbz3 b2trad: arranque previo acabado en" 400',
+  'log "dbz3 b2trad: ELF vblank" 60',
+  "captura 00_b2trad",
+  "esperar 4000",
+  "captura 01_b2trad",
+]

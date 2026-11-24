@@ -1,0 +1,45 @@
+# R23 HER-13 (heroe2): la partida completa SEGUIDA desde la Reunion (ficha reunion.toml: 5 Esferas de las etapas 0-4, tramo 5
+# cerrado), en la misma sesion: 2 Esferas del mapa -> Shenron (revivir, fila 1) -> tramo 6 (Torneo) -> Ending00 -> menu.
+# Las etapas 0-4 ya pasan en heroe_partida_completa.toml (20261120-095226: eventos 0-4). Casilla 35 = ficha 1.
+#   python tools\pruebas.py correr smoke_b tools\pruebas_heroe\H13_desde_instantanea.toml --instantanea heroe_reunion35
+descripcion = "HER-13 (instantanea heroe_reunion35): de la Reunion al final en una sesion (Esferas del mapa, deseo, Torneo, creditos)"
+turbo = false
+# apartar = ["user_data/dbz3/cac.toml*", "user_data/dbz3/heroe", "user_data/dbz3/hub_heroe.toml*", "user_data/dbz3/rpg.toml*"]
+# poner = ["E:/DBZ3HD_trabajo/heroe2_fixtures/reunion.toml -> user_data/dbz3/cac.toml"]
+env = ["DBZ3_TEST_DU_HEROE=35", "DBZ3_TEST_RINGOUT=1", "DBZ3_AUTO_TOUCH=40", "DBZ3_AUTO_TOUCH_S=3", "DBZ3_DU_TRACE=1",
+       "REX_DBZ3_LANGUAGE=5", "REX_DBZ3_UI_LANGUAGE=5",
+       "DBZ3_TEST_CFG=dbz3_heroe_rutas=true;dbz3_heroe_ui_nueva=true;dbz3_heroe_recompensas=true"]
+pasos = [
+  'esperar 5000',
+  'log "ruta atomica de la ficha" 120',
+  'captura reunion',
+  'hasta_log "H02 evento 6 cobrado una vez" 240',
+    'tecla Space 200', 'esperar 1000',
+  'fin',
+  'captura siete_esferas',
+  'hasta_log "menu de deseos: fila 1 de 2" 120',
+    'tecla Space 200', 'esperar 1000',
+  'fin',
+  'captura deseo',
+  'tecla Space 200',
+  'log "H02 deseo de historia confirmado: revivir caidos" 30',
+  'hasta_log "H02 despedida intermedia -> historia con decision, sin creditos" 120',
+    'tecla Space 200', 'esperar 1000',
+  'fin',
+  'esperar 2000',
+  'captura torneo',
+  'hasta_log "ruta: tramo 6 combate .*ULTIMO" 900',
+    'tecla D 250', 'tecla S 250', 'tecla D 250', 'tecla W 250', 'tecla Space 1200', 'esperar 900',
+  'fin',
+  'hasta_log "video abierto: guest=us.*Ending00[.]sfd" 900',
+    'tecla D 250', 'tecla S 250', 'tecla D 250', 'tecla W 250', 'tecla Space 1200', 'esperar 900',
+  'fin',
+  'esperar 5000',
+  'captura creditos',
+  'esperar 245000',
+  'hasta_pantalla 5,6,7 240',
+    'tecla W 200', 'tecla Space 200', 'esperar 2000',
+  'fin',
+  'esperar 2000',
+  'captura menu_final',
+]

@@ -1,0 +1,13 @@
+# Generado con el Kit: Goku 0x210, animacion de Vegeta 0x217; el original hizo 50 de dano.
+descripcion = "R16 Kit: patada copiada conserva el dano original"
+turbo = false
+poner = ['C:/Users/javie/AppData/Local/Temp/opencode/r16_terraT10c_mod_210/us/data_cmn.afs/292/geom.bin -> mods/000_r16_terraT10c/us/data_cmn.afs/292/geom.bin']
+env = ['DBZ3_TEST_BATTLE=0,7,2', 'DBZ3_TEST_CFG=dbz3_combate_prueba_muneco="quieto";dbz3_dev_mode=true;dbz3_diag_logging=true']
+pasos = [
+  'esperar_pelea 120',
+  'log "AFS OVERRIDE HIT .*000_r16_terraT10c.*292" 20',
+  'esperar 2000',
+  'colocar 0,0,0 0,0,2',
+  'tecla P 300',
+  'log "muneco .*golpe 210 -> golpe \\(50 de dano de 50" 15',
+]

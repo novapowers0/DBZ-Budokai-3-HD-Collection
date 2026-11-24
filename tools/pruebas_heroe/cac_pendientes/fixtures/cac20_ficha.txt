@@ -1,0 +1,1 @@
+cuerpo=7;traje=0;partes=200,30,10|0,0,0|0,0,0|0,0,0;pelo=2;c1=0,0,0;c2=0,0,0;logo=0;scouter=0

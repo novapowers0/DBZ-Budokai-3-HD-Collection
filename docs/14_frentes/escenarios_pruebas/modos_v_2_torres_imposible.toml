@@ -1,0 +1,27 @@
+descripcion = "verif modos caso 2: Torres del Tiempo con partida imposible (ganados=50): aviso, descartar y partida nueva"
+env = ["DBZ3_HUB_MODE=5"]
+# MODOS-08: la prueba empieza sin partidas a medias y deja la copia como estaba (pruebas.py, _guion_preparar)
+apartar = ["user_data/dbz3/rpg.toml*", "user_data/dbz3/hub_modos.toml*", "user_data/dbz3/modos", "user_data/dbz3/retos.csv", "user_data/dbz3/hub_heroe.toml*", "user_data/dbz3/pasarela"]
+poner = ["docs/14_frentes/escenarios_pruebas/modos_datos/v2_rpg.toml -> user_data/dbz3/rpg.toml"]
+pasos = [
+  "esperar_pantalla 5 120",
+  "log 'menu principal estado 3' 60",
+  "esperar 3000",
+  "tecla W 1200",
+  "tecla Space 3500",
+  "log 'hub: entra la pantalla HUB' 60",
+  "tecla S 450",
+  "tecla S 450",
+  "tecla S 450",
+  "tecla Space 2500",
+  "tecla S 600",
+  "captura 01_selector_a_medias",
+  "tecla Space 2500",
+  "captura 02_aviso",
+  "log 'la partida guardada no se puede seguir' 20",
+  "tecla Space 3000",
+  "log 'Time Towers: partida nueva|Torres del Tiempo: partida nueva|partida nueva' 30",
+  "captura 03_tras_segunda_A",
+  "esperar 3000",
+  "captura 04_combate",
+]

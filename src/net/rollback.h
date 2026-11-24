@@ -91,11 +91,22 @@ constexpr MaskRange kMaskFighter[] = {{0x13A8, 16}, {0x1A6C, 4}, {0x1AF0, 12}, {
 // medidos +0x1DB8, +0xB7C y +0xB84; salen campos nuevos segun la semilla, asi que se filtra por valor. Un float de 5e8 no aparece en la pelea.
 // ponytail: rango fijo medido en US; si el monton cambia de sitio, volveran las falsas alarmas.
 inline bool IsHeapWord(const uint8_t* p) { return p[0] == 0x4E || (p[0] == 0x4D && p[1] >= 0xF0); }
+// RESTO-02 (dbz3_net_rb_tarea_identidad, apagado): luchador +0x1AB0 es el nodo de tarea que crea sub_82118D48 (sub_82092908) y borra
+// sub_82111598 (sub_82092A20 y lo pone a 0). Son los dos unicos accesos del codigo US a ese campo del luchador y solo lo comparan con 0
+// o lo pasan a la baja (los demas "+6832" son de otra estructura, *0x82479770). La casilla del pool depende de la historia de rollbacks
+// (captura05: 400A5940 / 400A74D0, resto igual): en la suma vale 1 si no es nulo, y al reparar se queda el nodo local.
+inline bool g_task_id = false;
+constexpr uint32_t kFightTask = 0x1AB0;
 // Una direccion vale 1 (no 0): direccion contra nulo sigue saliendo distinto.
 inline void MaskHeapWords(uint8_t* mgr) {
   static const uint8_t kMark[4] = {0, 0, 0, 1};
   for (uint32_t i = kFight0; i + 4 <= kFight0 + 2 * kFightSz; i += 4)
     if (IsHeapWord(mgr + i)) std::memcpy(mgr + i, kMark, 4);
+  if (g_task_id)
+    for (uint32_t f = 0; f < 2; ++f) {
+      uint8_t* w = mgr + kFight0 + f * kFightSz + kFightTask;
+      if (w[0] | w[1] | w[2] | w[3]) std::memcpy(w, kMark, 4);
+    }
   // 1/11 (subONLN, Bu 35 con su definitiva absorbiendo, dos copias, DBZ3_RB_DUMP): la tabla de recursos del luchador recibe punteros del
   // monton del invitado (0x4014xxxx-0x401Fxxxx) al cargar el recurso del absorbido, en +0x1E28 o +0x1E60 segun la partida; unica diferencia
   // entre los dos PC (resto del estado y RNG iguales). Medido en los volcados: el resto de la tabla (+0x1E00..0x1EF8) guarda punteros 0x44xx/0x47xx
@@ -805,6 +816,8 @@ class Core {
       for (const auto& r : kMaskFighter) std::memcpy(sl.d.data() + kFight0 + f * kFightSz + r.off, keep.data() + kFight0 + f * kFightSz + r.off, r.len);
     for (uint32_t i = kFight0; i + 4 <= kFight0 + 2 * kFightSz && i + 4 <= n; i += 4)
       if (IsHeapWord(keep.data() + i) || IsHeapWord(remote + i)) std::memcpy(sl.d.data() + i, keep.data() + i, 4);
+    if (g_task_id)
+      for (int f = 0; f < 2; ++f) std::memcpy(sl.d.data() + kFight0 + f * kFightSz + kFightTask, keep.data() + kFight0 + f * kFightSz + kFightTask, 4);
     return true;
   }
   void Save(uint8_t* base, uint32_t tick) {

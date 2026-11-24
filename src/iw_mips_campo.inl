@@ -4,7 +4,7 @@
 // (+0x165A total, +0x165C cogidos), meta (+0x16BC) y el reloj del campo, sobre G = *(0x49CDE8). El init original
 // LoadWaitDragonMissionGroundMinigameItems 0x323840 llena G desde el #ITM del campo (A/B/C/D por dificultad).
 // Un solo #include al final de iw_mips.cpp (dentro: cvar, declaraciones y puente); iw_minijuegos.cpp lo incluye con
-// IWC_SOLO_DECL para ver solo las declaraciones. Apagado de serie (dbz3_iw_7d0_original); solo ELF EU (el USA usa el port).
+// IWC_SOLO_DECL para ver solo las declaraciones. Base aprobada ON (dbz3_iw_7d0_original), con DirC para EU y USA.
 // Dorado: tools/iw_mips/cap_campo.py (PCSX2 PINE, parejas antes/despues de s_SPACE con el jugador puesto sobre los
 // puntos del #ITM) + tools/iw_mips/campo.py / campo_espejo.py (reejecucion en ee.py: 74/74 parejas iguales en G+0x1620..0x1700
 // y los 0x9000 B del gestor, con recogidas hasta 40 y la bola oculta 0->1->0->2; el espejo desde cero tambien 74/74).
@@ -27,6 +27,9 @@ struct Entrada {
   float jug[3]{};                        // raiz del jugador (+0x40)
   float ex = 0, ez = 0;                  // periodos de la rejilla del campo (0 = sin rejilla)
   uint64_t t = 0;
+  // IW-F03: tareas del ELF (TCB 0x140020, Task_Create 0x140300, Task_Kill 0x140460, planificador 0x140200): el init crea
+  // la tarea de s_SPACE y el cuadro recorre la lista; la tarea del objetivo 0x299000 (0x299900) corre y muere como en PS2.
+  bool planificador = false;
 };
 struct Salida { uint8_t g[0xE0]{}; };
 inline int S16(const Salida& s, int off) { return int(int16_t(uint16_t(s.g[off - kBase] | (s.g[off - kBase + 1] << 8)))); }
@@ -34,8 +37,43 @@ inline int Total(const Salida& s) { return S16(s, 0x165A); }
 inline int Cogidos(const Salida& s) { return S16(s, 0x165C); }
 inline int Flag(const Salida& s, int off) { return s.g[off - kBase]; }
 inline bool (*g_campo)(const Entrada&, Salida&, uint32_t& semilla) = nullptr;
-inline bool (*g_activa)() = nullptr;     // cvar dbz3_iw_7d0_original y dbz3_iw_logica_original, ELF EU
+inline bool (*g_activa)() = nullptr;     // cvar dbz3_iw_7d0_original y dbz3_iw_logica_original, ELF EU/USA
 }  // namespace campo
+// IW-F08 (12/11): 0x7D1 Capturar a Bubbles, el flujo del minijuego con la logica ORIGINAL (ajuste dbz3_iw_7d1_original,
+// apagado). Un Paso = un campo PAL, en el orden de prioridades de las tareas del ELF (ver Paso7D1; banco
+// E:/DBZ3HD_trabajo/iw-f08/banco_7d1.py, 0 DIF con el dorado y 119/119 reglas): GroundMinigameTimer 0x2F3BE0 -> personajes
+// (Minigame_ProcessPlayerInput 0x29A1D0 y el agarre Minigame_State1C/1D_Update 0x29EF40/0x29EC00) -> tareas (START 0x299000,
+// cut-in) -> Battle_TriggerProgressCutins 0x2A63B0. Solo EU (SLES_553.47).
+namespace campo7d1 {
+struct Entrada {
+  bool inicio = false;          // primer campo: tareas (TCB) y LoadWaitMinigameLink 0x298760 (limite mgr+0x7CC)
+  bool start = false;           // fin de la entrada (Battle_CharState2dUpdate 317775): 0x299900(jugador, 0) = cartel START
+  bool pausa = false;           // menu de pausa (ctx+0x8C bit 0 -> mgr+0x8B7C)
+  int dif = 2;
+  int estado = 1;               // pose de IW del jugador (+0x14BC); 0x1C/0x1D = agarre en curso
+  float vida = 100, energia = 100;   // jugador +0x1850 (Minigame_TriggerObjective) y +0x185C (Char_GetNextActionCode)
+  uint16_t pad_mantenido = 0, pad_pulsado = 0;   // mando en disposicion PS2 (+0x4ADECC / +0x4ADECE): triangulo 0x1000
+  float y = 0;                  // raiz del jugador +0x44 (el agarre exige <= 2)
+  bool aire = false;            // +0x2061
+  float cuadro = 0;             // fotograma del clip del agarre (+0xC68: 200 en 0x1C, 0xC9 en 0x1D)
+  bool fin = false;             // clip acabado (+0xC74)
+  float mano[2][3]{};           // +0x720/+0x730: manos del jugador (B3: puntos de cuerpo 10 LHAND y 11 RHAND)
+  float bub[3]{};               // ancla de Bubbles (+0x28D0+0x640)
+  uint64_t t = 0;
+};
+struct Salida {
+  float restante = 0;           // mgr+0x7CC - mgr+0x8B9C (1/60 s)
+  bool start_vivo = false;      // tarea objetivo del cartel START viva (objs+0x180, +0x6C = 0)
+  bool fallo = false;           // Minigame_TriggerObjective 0x2A6260: tiempo o vida (pose 0x30, objetivo 2)
+  bool exito = false;           // agarre: Battle_CharState2fInit 0x29B120 (pose 0x2F)
+  int accion = 0;               // 0x1C/0x1D pedido por Minigame_ReadPlayerButtons (objs+0x21C/+0x220)
+  int pose = -1;                // pose pedida por 0x2AAF60 (9 tras el fallo)
+  int cartel = -1, voz = -1;    // aviso: UI_SprPlaceByIndex 0x3389C0 y la voz de s_PLY_CUTIN (PlayHit 0x22FD20)
+  bool bub_pose_d = false;      // Char_EnterPoseStateByIndex(Bubbles, 0xD) al atraparlo
+};
+inline bool (*g_paso)(const Entrada&, Salida&, uint32_t& semilla) = nullptr;
+inline bool (*g_activa)() = nullptr;     // cvar dbz3_iw_7d1_original + dbz3_iw_logica_original + ELF EU
+}  // namespace campo7d1
 }  // namespace dbz3::iwmips
 #endif
 
@@ -45,9 +83,14 @@ inline bool (*g_activa)() = nullptr;     // cvar dbz3_iw_7d0_original y dbz3_iw_
 
 REXCVAR_DEFINE_BOOL(dbz3_iw_7d0_original, true, "DBZ3/IW",
                     "IW MSNMW (0x7D0/7D2/7D9/7DF): recogida, bola oculta, contadores y meta con la logica original del ELF (en pruebas; requiere dbz3_iw_logica_original)");
+REXCVAR_DEFINE_BOOL(dbz3_iw_campo_aislado, false, "DBZ3/IW",
+                    "Prueba: imagen EE propia para s_SPACE, sin pisar la IA de Bubbles o Piccolo; no certifica el minijuego completo");
+REXCVAR_DEFINE_BOOL(dbz3_iw_7d1_original, false, "DBZ3/IW",
+                    "IW 0x7D1 Capturar a Bubbles: reloj, cartel START, avisos, agarre y fallo con la logica original del ELF EU (en pruebas)");
 
 namespace dbz3::iwmips::bubbles {
 namespace {
+constexpr Dueno kD7D1 = Dueno(10);   // el enum (0..9) solo admite hasta 15: 11 mapa, 12 campo/vuelo, 13-15 botones
 constexpr Dueno kDCampo = Dueno(12);   // 13-15 los usa iw_mips_botones.inl
 // Espejo propio: G, gestor (jugador en +0x800), objetos, camara, rejilla, contexto del minijuego y #ITM.
 constexpr uint32_t kGC = 0x1180000, kMgrC = 0x1182000, kObjsC = 0x118C000, kCamC = 0x118D000, kGridC = 0x118E000,
@@ -157,23 +200,56 @@ constexpr uint32_t kMudosU[] = {
 struct DirC {
   uint32_t space, init, pmgr, pg, pctx, pcam, pobjs, pgrid, pctxp, ctx, mascara, paso2;
   const uint32_t* mudos; size_t n_mudos;
+  uint32_t lista, dibujo;   // IW-F03: cabeza de la lista de tareas (centinela = +0x18) y tarea de dibujo del init (0x323560)
 };
 constexpr DirC kEuC = {0x31F280, 0x323840, 0x49CA70, 0x49CDE8, 0x49CBA4, 0x49CBBC, 0x49CBC0, 0x49CDB8, 0x49CDC0, 0x5C0DC0, 0x5C1D78, 0x49C7E0,
-                       kMudosC, sizeof kMudosC / 4};
+                       kMudosC, sizeof kMudosC / 4, 0x4AD558, 0x31F270};
 constexpr DirC kUsaC = {0x31EF90, 0x323550, 0x49C270, 0x49C5C8, 0x49C394, 0x49C3AC, 0x49C3B0, 0x49C598, 0x49C5A0, 0x5C05C0, 0x5C1578, 0x49BFE0,
-                        kMudosU, sizeof kMudosU / 4};
+                        kMudosU, sizeof kMudosU / 4, 0x4ACD58, 0x31EF80};
+// IW-F03: sistema de tareas del ELF (mismas direcciones en EU y USA; solo cambian sus globales). Banco sin juego:
+// E:/DBZ3HD_trabajo/iw-f03/serpiente_banco.py (900/900 con 0x140200 del ELF y con este mismo recorrido).
+constexpr uint32_t kTcbC = 0x140020, kCrearC = 0x140300, kMatarC = 0x140460, kLiberarC = 0x140B50, kAllocC = 0x11CF40,
+                   kMemsetC = 0x11DEF8, kNombreC = 0x121030, kArenaC = 0x1192000, kArenaFinC = 0x119C000;
+uint32_t g_arena_c = kArenaC;
+// FUN_00140200 (EU 48684-48713): llama +0x1C(tarea) de cada tarea viva en orden de prioridad y despues libera las
+// muertas (+0x1C = -1) con 0x140B50. Sin sus estadisticas de REG_RCNT0 (fuera de la RAM del interprete) y sin la tarea
+// de dibujo (la pinta el port).
+bool PlanificarCampo(Ee& e, const DirC& d) {
+  const uint32_t fin = d.lista + 0x18;
+  int vueltas = 0;
+  for (uint32_t t = e.R32(d.lista); t != fin; t = e.R32(t + 0x28)) {
+    if (++vueltas > 0x100) return false;
+    const uint32_t cb = e.R32(t + 0x1C);
+    if (int32_t(cb) > 0 && cb != d.dibujo && !e.Llamar(cb, {t})) return false;
+  }
+  for (uint32_t t = e.R32(d.lista); t != fin; t = e.R32(t + 0x28)) {
+    if (++vueltas > 0x200) return false;
+    if (e.R32(t + 0x1C) == 0xFFFFFFFFu && !e.Llamar(kLiberarC, {t})) return false;
+  }
+  return true;
+}
 bool EsUsaC() { return kGp == 0x4A35F0; }
 
 bool ActivaCampo() { return REXCVAR_GET(dbz3_iw_7d0_original) && Listo() != nullptr; }
 
+Estado* EspejoCampo() {
+  // No copiar Ee: sus puentes capturan el Estado que los creo. Una imagen verificada nueva conserva sus propios
+  // globales y su dueno entre llamadas; el campo y la IA del NPC se ejecutan en la MISMA partida, no solo al cambiarla.
+  static Estado* const st = Iniciar();
+  return st;
+}
+
 bool CampoMsn(const campo::Entrada& in, campo::Salida& out, uint32_t& semilla) {
   if (!REXCVAR_GET(dbz3_iw_7d0_original) || in.itm == nullptr || in.itm_n < 0x650) return false;
-  Estado* const st = Listo();
+  Estado* const compartido = Listo();
+  if (!compartido) return false;
+  Estado* const st = REXCVAR_GET(dbz3_iw_campo_aislado) ? EspejoCampo() : compartido;
   if (!st) return false;
   const DirC& d = EsUsaC() ? kUsaC : kEuC;
   Ee& e = st->ee;
   const bool log = st->log || std::getenv("DBZ3_TEST_IWMINI") != nullptr;
   out = campo::Salida{};
+  const Dueno antes = st->dueno;
   Ambito amb(*st, kDCampo);
   if (!in.inicio && !amb.continua) {   // G vive en el invitado entre campos
     st->dueno = kNadie;
@@ -186,10 +262,42 @@ bool CampoMsn(const campo::Entrada& in, campo::Salida& out, uint32_t& semilla) {
   amb.Puente(kObjsB, [](Ee& c) { V0(c, kObjsC); });
   amb.Puente(kGetWork, [](Ee& c) { V0(c, kCamC); });
   for (size_t q = 0; q < d.n_mudos; ++q) amb.Puente(d.mudos[q], [](Ee& c) { V0(c, 0); });
+  const bool plan = in.planificador;
+  if (plan) {
+    // Tareas de verdad: fuera los puentes de Task_Create/Kill (mudo del campo y los de Bubbles). Sustituidos solo el
+    // reservador (bloque propio), la copia del nombre (MMI) y memset fuera del bloque (sigue mudo como en el 74/74).
+    amb.Quitar(kCrearC); amb.Quitar(kMatarC); amb.Quitar(kLiberarC); amb.Quitar(kTcbC);
+    amb.Puente(kAllocC, [](Ee& c) {
+      const uint32_t al = std::max<uint32_t>(uint32_t(c.r[4]), 1), n = uint32_t(c.r[5]);
+      const uint32_t p = (g_arena_c + al - 1) & ~(al - 1);
+      g_arena_c = p + n;
+      V0(c, g_arena_c <= kArenaFinC ? p : 0);
+    });
+    amb.Puente(kMemsetC, [](Ee& c) {
+      const uint32_t a = uint32_t(c.r[4]), n = uint32_t(c.r[6]);
+      const uint8_t v = uint8_t(c.r[5]);
+      if (a < kArenaC || a >= kArenaFinC || n > kArenaFinC - a) { V0(c, 0); return; }
+      for (uint32_t i = 0; i < n; ++i) c.W8(a + i, v);
+      V0(c, a);
+    });
+    amb.Puente(kNombreC, [](Ee& c) {
+      const uint32_t dst = uint32_t(c.r[4]), src = uint32_t(c.r[5]), n = uint32_t(c.r[6]);
+      for (uint32_t i = 0; i < n; ++i) {
+        const uint8_t b = c.R8(src + i);
+        c.W8(dst + i, b);
+        if (!b) break;
+      }
+      V0(c, dst);
+    });
+  }
   e.W32(kSemilla, semilla);
   const Cronometro cr(e);
   bool ok = true;
   if (in.inicio) {
+    // PM-18: otro minijuego del mismo espejo (0x7D1: Bubbles y su campo) deja listas de sprites que s_SPACE libera
+    // despues (Sprite_DestroyTree EU 0x1B8BD0 salia de la RAM al coger el 4.o aro de 0x7D9 en la serie). Cada campo
+    // empieza de los datos limpios del ELF; si el espejo lo dejo 0x7D1 original en esta misma partida, se respeta.
+    if (antes != kD7D1 && !st->limpia.empty()) e.Bytes(kTexto1, st->limpia.data(), st->limpia.size());
     e.Cero(kGC, 0x2000); e.Cero(kMgrC, 0xA000); e.Cero(kObjsC, 0x1000); e.Cero(kCamC, 0x1000); e.Cero(kGridC, 0x1000);
     e.Cero(kCtxPC, 0x1000); e.Cero(kItmC, 0x2000);
     const uint32_t n = std::min<uint32_t>(in.itm_n, 0x2000);
@@ -205,7 +313,12 @@ bool CampoMsn(const campo::Entrada& in, campo::Salida& out, uint32_t& semilla) {
     e.W32(kGC + 0x148, kItmC);
     e.W8(kGC + 0x16A6, uint8_t(in.slot & 7));   // lo pone el script MMI2 del original (no se ejecuta): el slot lo elige el port
     e.Wf(kMgrC + 0x8B80, kPasoCampo);
-    ok = e.Llamar(d.init, {});
+    if (plan) {   // main EU 53996: TCB_InternalThreadStructure(0x100, 0x40); el init crea despues las tareas del campo
+      e.Cero(kArenaC, kArenaFinC - kArenaC);
+      g_arena_c = kArenaC;
+      ok = e.Llamar(kTcbC, {0x100, 0x40}, 1000000);
+    }
+    if (ok) ok = e.Llamar(d.init, {});
     if (!ok) {
       REXLOG_WARN("dbz3 iwmips campo: {} al preparar; se usa el port", e.error());
       st->dueno = kNadie;
@@ -228,7 +341,7 @@ bool CampoMsn(const campo::Entrada& in, campo::Salida& out, uint32_t& semilla) {
   e.Wf(kMgrC + 0x8B80, kPasoCampo);
   e.W32(kMgrC + 0x8B7C, 0);
   e.Wf(kPasoT, kPasoCampo); e.Wf(d.paso2, kPasoCampo);
-  ok = e.Llamar(d.space, {});
+  ok = plan ? PlanificarCampo(e, d) : e.Llamar(d.space, {});
   const double us = cr.Us();
   if (!ok) {
     REXLOG_WARN("dbz3 iwmips campo: {} (t={}); el campo sigue con el port", e.error(), in.t);
@@ -237,7 +350,13 @@ bool CampoMsn(const campo::Entrada& in, campo::Salida& out, uint32_t& semilla) {
   }
   // la semilla del port no se toca: los efectos mudos del original gastan numeros al azar que aqui no se hacen
   for (uint32_t i = 0; i < sizeof out.g; ++i) out.g[i] = e.R8(kGC + campo::kBase + i);
+  if (plan && (log || in.inicio))   // PAQ_1: planificador del 0x7D2 medido contra el oraculo
+    REXLOG_INFO("dbz3 iwmips campo plan: arena={:X}..{:X} tareas={} idx={}", kArenaC, g_arena_c, e.R32(d.ctx + 0x8), in.indice);
   st->Cuenta(us);
+  if (log && in.inicio && st != compartido) {
+    // Constata el ajuste y la llamada real a s_SPACE; NO es un oraculo de minijuego completo.
+    REXLOG_INFO("dbz3 iwmips campo aislamiento=propio idx={} dif={} completo=0", in.indice, in.dif);
+  }
   if (log) {
     REXLOG_INFO("dbz3 iwmips campo t={} ini={} idx={} tot={} cog={} oculto={} slot={} instr={} us={:.1f}", in.t, int(in.inicio),
                 in.indice, campo::Total(out), campo::Cogidos(out), campo::Flag(out, 0x16A4), campo::Flag(out, 0x16A6), e.n - cr.n0, us);
@@ -245,7 +364,203 @@ bool CampoMsn(const campo::Entrada& in, campo::Salida& out, uint32_t& semilla) {
   return true;
 }
 
-const bool kRegistradoCampo = (campo::g_campo = &CampoMsn, campo::g_activa = &ActivaCampo, true);
+// ---------------- IW-F08: 0x7D1 Capturar a Bubbles (EU) ----------------
+// Decompilado EU: LoadWaitMinigameLink 315586 (indice 1: limite = 0x49C7E4 * 60 * 4 = 12000 con 50 cuadros/s),
+// GroundMinigameTimer 380599 (+0x8B9C += +0x8B80 con +0x8D21 = 0, topado al limite), 0x299900 316288 / 0x299000 315946
+// (START: 140,0, al morir +0x8D21 = 0; fallo: 150,0 y pose 9 al primer paso), Battle_TriggerProgressCutins 325438 (avisos
+// del 1: carteles 0x16/0x17/0x18, voces 0/1/2) -> Minigame_TriggerObjective 325386 (restante <= 0 o vida <= 0 -> 0x30 y
+// objetivo 2), Minigame_ReadPlayerButtons 316201 (triangulo en el suelo: pose < 3 -> +0x220 = 0x1D, pose 3 -> +0x21C = 0x1C),
+// Minigame_State1C/1D_Update 320207/320064 (cuadros 11..24 / 11..20: mano a < 6 del ancla de Bubbles -> +0x1A8 = 0x2F) y
+// Battle_CharState2fInit 317414 (Bubbles a la pose 0xD, cartel 7). Banco: E:/DBZ3HD_trabajo/iw-f08/banco_7d1.py.
+constexpr uint32_t kMgr71 = 0x1220000, kObjs71 = 0x122A000, kMgw71 = 0x122B000, kCam71 = 0x122C000, kCtxP71 = 0x122D000,
+                   kArena71 = 0x1230000, kArenaFin71 = 0x1240000;
+// r23: TCB(0x100, 0x40) pide 0x100 bloques de 0x90 (0x9000) + anillo 0x400 = 0x9400. Con 0x8000 el reservador daba 0, la
+// reserva y el anillo quedaban en la direccion 0 pisandose (anillo[11] = 0x0D020A0C) y el Task_Create 12 (el primer aviso,
+// s_PLY_CUTIN) escribia fuera de la RAM: 0x14039C, 7D1 volvia al port y su captura por distancia daba "superado".
+constexpr uint32_t kJug71 = kMgr71 + 0x800, kBub71 = kMgr71 + 0x28D0;
+// Valen las del EU; MapaUsa71() las pasa a SLUS_218.42 (r23: emparejadas por ventana enmascarada unica y cuerpos sin
+// diferencias de campos, E:/DBZ3HD_trabajo/iw_eu_usa_tabla.py; sin probar en juego con el ELF USA).
+uint32_t kLink71 = 0x298760, kObjetivo71 = 0x299900, kReloj71 = 0x2F3BE0, kAvisos71 = 0x2A63B0,
+         kAgarre1C = 0x29EF40, kAgarre1D = 0x29EC00, kPose71 = 0x2AAF60, kCartel71 = 0x3389C0, kEntraPose71 = 0x31B280,
+         kPad71 = 0x4ADECC, kPadIdx71 = 0x5C14B4, kFps71 = 0x49C7E4, kEntrada71 = 0x29A1D0, kDistancia71 = 0x142440,
+         kStick71 = 0x299250, kCamStick71 = 0x2977F0;
+// LoadWaitMinigameLink: sus subsistemas (escena, camara, HUD, auras, sonido, objetos del campo, mensajes) no deciden el
+// reloj; mudos solo durante esa llamada (jal medidos en el ELF EU: 0x298760..0x2989D0 salvo los dos accesores).
+uint32_t kLinkSub71[] = {0x296B80, 0x29A450, 0x2982E0, 0x2E9210, 0x2F79D0, 0x302620, 0x30FC40, 0x1FD9D0, 0x323840, 0x338AA0};
+// Sin efecto en la logica de 7D1: camara, animacion (la lleva el port), sonido, raiz/huesos, liberar recursos, cadena de
+// huesos, voz del START. Se anotan aparte el cartel, la voz del aviso, la pose pedida y la de Bubbles.
+uint32_t kMudos71[] = {0x2972D0, 0x297300, 0x238640, 0x240740, 0x2AAA60, 0x261BD0, 0x2AAB70};
+void MapaUsa71() {
+  static bool hecho = false;
+  if (hecho) return;
+  hecho = true;
+  kLink71 = 0x2984D0, kObjetivo71 = 0x299670, kReloj71 = 0x2F39D0, kAvisos71 = 0x2A5F30;
+  kAgarre1C = 0x29EC40, kAgarre1D = 0x29E900, kPose71 = 0x2AAA70, kCartel71 = 0x3384E0, kEntraPose71 = 0x31AF90;
+  kPad71 = 0x4AD6CC, kPadIdx71 = 0x5C0CB4, kFps71 = 0x49BFE4, kEntrada71 = 0x299F40;   // kDistancia71 igual
+  kStick71 = 0x298FC0, kCamStick71 = 0x297560;
+  const uint32_t sub[] = {0x2968F0, 0x29A1C0, 0x298050, 0x2E9000, 0x2F77C0, 0x3023E0, 0x30F9D0, 0x1FD9C0, 0x323550, 0x3385C0};
+  const uint32_t mud[] = {0x297040, 0x297070, 0x2384B0, 0x2405B0, 0x2AA590, 0x2619C0, 0x2AA6A0};
+  std::copy(std::begin(sub), std::end(sub), kLinkSub71);
+  std::copy(std::begin(mud), std::end(mud), kMudos71);
+}
+uint32_t g_arena_71 = kArena71;
+bool g_listo_71 = false, g_exito_71 = false, g_fallo_71 = false;
+
+// Una linea de registro cada vez que cambia la respuesta (la primera, al entrar en 7D1): la prueba dice sola por que no entra.
+bool Activa7D1() {
+  const char* motivo = !REXCVAR_GET(dbz3_iw_7d1_original) ? "ajuste dbz3_iw_7d1_original apagado"
+                       : !REXCVAR_GET(dbz3_iw_logica_original) ? "ajuste dbz3_iw_logica_original apagado"
+                       : Listo() == nullptr ? "interprete o ELF de IW no cargado (ver 'logica original de Bubbles')"
+                                            : nullptr;
+  static const char* ultimo = "";
+  if (motivo != ultimo) {
+    ultimo = motivo;
+    if (motivo) REXLOG_INFO("dbz3 iwmips 7d1 original: no activo porque {}; 7D1 sigue con el port", motivo);
+    else REXLOG_INFO("dbz3 iwmips 7d1 original: activo (ELF {})", EsUsaC() ? "USA" : "EU");
+  }
+  return motivo == nullptr;
+}
+
+bool Paso7D1(const campo7d1::Entrada& in, campo7d1::Salida& out, uint32_t& semilla) {
+  out = campo7d1::Salida{};
+  if (!REXCVAR_GET(dbz3_iw_7d1_original)) return false;
+  Estado* const st = Listo();
+  if (!st) return false;
+  if (EsUsaC()) MapaUsa71();
+  if (!in.inicio && !g_listo_71) return false;
+  const DirC& d = EsUsaC() ? kUsaC : kEuC;
+  Ee& e = st->ee;
+  const bool log = st->log || std::getenv("DBZ3_TEST_IWMINI") != nullptr;
+  Ambito amb(*st, kD7D1);
+  // Puentes de Bubbles que miran st->in/out (nulos aqui) y accesores del minijuego -> espejo propio.
+  amb.Puente(kCtxF, [&d](Ee& c) { V0(c, d.ctx); });
+  amb.Puente(kObjsA, [](Ee& c) { V0(c, kObjs71); });
+  amb.Puente(kObjsB, [](Ee& c) { V0(c, kObjs71); });
+  amb.Puente(kGetWork, [](Ee& c) { V0(c, kMgw71); });
+  for (size_t q = 0; q < d.n_mudos; ++q) amb.Puente(d.mudos[q], [](Ee& c) { V0(c, 0); });
+  for (uint32_t a : kMudos71) amb.Puente(a, [](Ee& c) { V0(c, 0); });
+  // CharacterOutlines 0x142440 (distancia mano-ancla del agarre, VU0): muda en kMudosC deja f0 viejo y el agarre nunca
+  // atrapa (banco 77/89 -> 119/119). Aqui corre de verdad. Stick y camara de la entrada no deciden el agarre: mudos.
+  amb.Quitar(kDistancia71);
+  for (uint32_t a : {kStick71, kCamStick71}) amb.Puente(a, [](Ee& c) { V0(c, 0); });
+  amb.Puente(kBones, [](Ee& c) { V0(c, 0); });
+  amb.Puente(kRaiz, [](Ee& c) { V0(c, 0); });
+  amb.Puente(kVoz, [&out](Ee& c) { out.voz = int(c.r[5] & 0xFFFF); V0(c, 0); });
+  amb.Puente(kCartel71, [&out](Ee& c) { out.cartel = int(c.r[4] & 0xFFFF); V0(c, 0); });
+  amb.Puente(kPose71, [&out](Ee& c) { out.pose = int(c.r[5] & 0xFFFF); V0(c, 0); });
+  amb.Puente(kEntraPose71, [&out](Ee& c) {
+    if (uint32_t(c.r[4]) == kBub71 && (c.r[5] & 0xFFFF) == 0xD) out.bub_pose_d = true;
+    V0(c, 0);
+  });
+  // Tareas de verdad (como IW-F03): Task_Create/Kill/liberar/TCB del ELF; reservador en un bloque propio.
+  amb.Quitar(kCrearC); amb.Quitar(kMatarC); amb.Quitar(kLiberarC); amb.Quitar(kTcbC);
+  amb.Puente(kAllocC, [](Ee& c) {
+    const uint32_t al = std::max<uint32_t>(uint32_t(c.r[4]), 1), n = uint32_t(c.r[5]);
+    const uint32_t p = (g_arena_71 + al - 1) & ~(al - 1);
+    g_arena_71 = p + n;
+    V0(c, g_arena_71 <= kArenaFin71 ? p : 0);
+  });
+  amb.Puente(kMemsetC, [](Ee& c) {
+    const uint32_t a = uint32_t(c.r[4]), n = uint32_t(c.r[6]);
+    if (a < kArena71 || a >= kArenaFin71 || n > kArenaFin71 - a) { V0(c, 0); return; }
+    for (uint32_t i = 0; i < n; ++i) c.W8(a + i, uint8_t(c.r[5]));
+    V0(c, a);
+  });
+  amb.Puente(kNombreC, [](Ee& c) {
+    const uint32_t dst = uint32_t(c.r[4]), src = uint32_t(c.r[5]), n = uint32_t(c.r[6]);
+    for (uint32_t i = 0; i < n; ++i) {
+      const uint8_t b = c.R8(src + i);
+      c.W8(dst + i, b);
+      if (!b) break;
+    }
+    V0(c, dst);
+  });
+  // Punteros globales: los demas minijuegos del espejo los cambian entre campos.
+  e.W32(d.pmgr, kMgr71); e.W32(d.pobjs, kObjs71); e.W32(d.pctx, d.ctx); e.W32(d.pcam, kCam71); e.W32(d.pctxp, kCtxP71);
+  e.W32(d.ctx + 4, 1); e.W16(d.ctx + 0xC, uint16_t(in.dif)); e.W32(d.ctx + 0x8C, in.pausa ? 1u : 0u);
+  e.Wf(kPasoT, kPasoCampo); e.Wf(d.paso2, kPasoCampo); e.W32(kFps71, EsUsaC() ? 60 : 50);   // .bss del ELF: 50 cuadros/s en PAL (savestate 7DD); NTSC 60
+  e.W32(kSemilla, semilla);
+  const Cronometro cr(e);
+  bool ok = true;
+  if (in.inicio) {
+    e.Cero(kMgr71, 0xA000); e.Cero(kObjs71, 0x1000); e.Cero(kMgw71, 0x1000); e.Cero(kCam71, 0x1000); e.Cero(kCtxP71, 0x1000);
+    e.Cero(kArena71, kArenaFin71 - kArena71);
+    g_arena_71 = kArena71;
+    g_listo_71 = g_exito_71 = g_fallo_71 = false;
+    e.W32(kJug71 + 0x1380, 0); e.W32(kJug71 + 0x1384, kBub71); e.W32(kBub71 + 0x1380, 1); e.W32(kBub71 + 0x1384, kJug71);
+    e.Wf(kMgr71 + 0x8B80, kPasoCampo);
+    ok = e.Llamar(kTcbC, {0x100, 0x40}, 1000000);
+    if (ok) {
+      for (uint32_t a : kLinkSub71) amb.Puente(a, [](Ee& c) { V0(c, 0); });
+      ok = e.Llamar(kLink71, {});   // los subsistemas quedan mudos hasta el final de esta llamada
+    }
+    e.W8(kMgr71 + 0x8D21, 1);   // Minigame_StartPlayerWork 316927: la entrada corre con el reloj parado
+    if (!ok) {
+      REXLOG_WARN("dbz3 iwmips 7d1: {} al preparar; 7D1 sigue con el port", e.error());
+      st->dueno = kNadie;
+      return false;
+    }
+    g_listo_71 = true;
+  }
+  // Jugador: pose, vida/energia, altura y aire (lo que leen los avisos, el fallo y los botones).
+  e.W16(kJug71 + 0xCBC, uint16_t(g_exito_71 ? 0x2F : in.estado));
+  e.Wf(kJug71 + 0x1850, in.vida); e.Wf(kJug71 + 0x185C, in.energia);
+  e.Wf(kJug71 + 0x44, in.y); e.W8(kJug71 + 0x2061, in.aire ? 1 : 0);
+  // Orden por campo LEIDO del ELF: el planificador 0x140200 corre la lista de tareas por prioridad ascendente (Task_Create
+  // 0x140300 inserta ordenado por a2). MinigamePlayerFunc 0x2F6380: GroundMinigameTimer prio 0x4100; MinigameStageIntros
+  // 0x2AB000: Battle_UpdateAllCharacters 0x2AA7A0 prio 0x5100 (por luchador: Minigame_ProcessPlayerInput 0x29A1D0 y luego
+  // el Update del estado, 1C/1D) y ExplorationMinigameBodyAnimationsMerge 0x2AA0A0 prio 0x5300 (acaba en los avisos
+  // 0x2A63B0); la tarea del START (0x299900 -> 0x299000, 0x29997C) y el cut-in (0x2A5470) van a 0x5101.
+  // => reloj, personajes (START nace aqui, en Battle_CharState2dUpdate), tareas, avisos.
+  if (ok) ok = e.Llamar(kReloj71, {});
+  if (ok && in.start) ok = e.Llamar(kObjetivo71, {kJug71, 0});
+  if (ok && !g_exito_71) {
+    e.W8(kPadIdx71, 0);
+    e.W16(kPad71, in.pad_mantenido); e.W16(kPad71 + 2, in.pad_pulsado);
+    for (uint32_t o : {0x21Cu, 0x220u}) e.W32(kObjs71 + o, 0);
+    ok = e.Llamar(kEntrada71, {kJug71});   // sin botones con START (+0x180), fin (+0x248), pose 0x2C..0x31 o pausa
+    out.accion = e.R32(kObjs71 + 0x21C) ? 0x1C : e.R32(kObjs71 + 0x220) ? 0x1D : 0;
+    // las demas acciones (salto, scatto, carga...) las lleva el port: aqui solo se lee el agarre
+    for (uint32_t o : {0x1B8u, 0x1BCu, 0x1FCu, 0x200u, 0x208u, 0x21Cu, 0x220u, 0x22Cu, 0x230u, 0x234u, 0x24Cu}) e.W32(kObjs71 + o, 0);
+    if (ok && (in.estado == 0x1C || in.estado == 0x1D) && !in.fin) {
+      e.Wf(kJug71 + 0xC68, in.cuadro); e.W32(kJug71 + 0xC74, 0);
+      for (int i = 0; i < 3; ++i) {
+        e.Wf(kJug71 + 0x720 + 4 * i, in.mano[0][i]); e.Wf(kJug71 + 0x730 + 4 * i, in.mano[1][i]);
+        e.Wf(kBub71 + 0x640 + 4 * i, in.bub[i]);
+      }
+      e.Wf(kJug71 + 0x72C, 1.f); e.Wf(kJug71 + 0x73C, 1.f); e.Wf(kBub71 + 0x64C, 1.f);
+      ok = e.Llamar(in.estado == 0x1C ? kAgarre1C : kAgarre1D, {kJug71});
+      if (ok && e.R16(kJug71 + 0xCBC) == 0x2F) g_exito_71 = true;
+    }
+  }
+  if (ok) ok = PlanificarCampo(e, d);
+  if (ok) ok = e.Llamar(kAvisos71, {});
+  const double us = cr.Us();
+  if (!ok) {
+    REXLOG_WARN("dbz3 iwmips 7d1: {} (t={}); 7D1 sigue con el port", e.error(), in.t);
+    g_listo_71 = false;
+    st->dueno = kNadie;
+    return false;
+  }
+  semilla = e.R32(kSemilla);
+  const uint32_t tarea = e.R32(kObjs71 + 0x180);
+  if (e.R32(kObjs71 + 0x248) && e.R32(kObjs71 + 0x1A8) == 0x30) g_fallo_71 = true;
+  out.restante = float(int32_t(e.R32(kMgr71 + 0x7CC))) - e.Rf(kMgr71 + 0x8B9C);
+  out.start_vivo = tarea != 0 && e.R16(tarea + 0x6C) == 0;
+  out.fallo = g_fallo_71;
+  out.exito = g_exito_71;
+  st->Cuenta(us);
+  if (log && (in.inicio || in.start || out.accion || out.pose >= 0 || out.cartel >= 0 || out.voz >= 0 || out.bub_pose_d ||
+              (out.exito && in.estado != 0x2F)))
+    REXLOG_INFO("dbz3 iwmips 7d1 t={} ini={} start={} restante={:.1f} start_vivo={} fallo={} exito={} accion={:X} pose={} cartel={} "
+                "voz={} bubD={} estado={:X} cuadro={:.1f} instr={} us={:.1f}", in.t, int(in.inicio), int(in.start), out.restante,
+                int(out.start_vivo), int(out.fallo), int(out.exito), out.accion, out.pose, out.cartel, out.voz, int(out.bub_pose_d),
+                in.estado, in.cuadro, e.n - cr.n0, us);
+  return true;
+}
+
+const bool kRegistradoCampo = (campo::g_campo = &CampoMsn, campo::g_activa = &ActivaCampo, campo7d1::g_paso = &Paso7D1,
+                               campo7d1::g_activa = &Activa7D1, true);
 }  // namespace
 }  // namespace dbz3::iwmips::bubbles
 #endif

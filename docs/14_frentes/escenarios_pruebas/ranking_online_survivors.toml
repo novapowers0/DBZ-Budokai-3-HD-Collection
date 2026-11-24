@@ -1,0 +1,35 @@
+descripcion = "ranking_online_survivors (POST3, panel): con dbz3_ranking_online y el servidor falso local (python tools/ranking_online/servidor_falso.py 8097, arrancarlo antes; NUNCA el ntfy real): partida REAL de Dragon Budokai Survivors por el HUB (sin DBZ3_TEST_SURVIVORS_MANDO/AUTO: las de prueba no llevan ranking), quieto hasta caer, pantalla de resultados con el bloque del ranking, X = enviar (alias la primera vez), recibida y puesto"
+# Teclas: Space = A, Backspace = B, P = Y, L = X, W/S = arriba/abajo. Lanzar con DBZ3_PRUEBAS_LENTO=1 (los segundos cuentan para la plausibilidad).
+env = ["DBZ3_VANILLA_SESSION=1", "DBZ3_TEST_SURVIVORS_SEMILLA=2024", "DBZ3_TEST_SURVIVORS_SIN_SONIDO=1",
+       "DBZ3_TEST_CFG=dbz3_survivors=true;dbz3_ranking_online=true;dbz3_rank_url='http://127.0.0.1:8097';dbz3_rank_datos='http://127.0.0.1:8097/datos'"]
+apartar = ["user_data/dbz3/ranking.toml*", "user_data/dbz3/ranking_pendientes.txt*", "user_data/dbz3/ranking_cache"]
+pasos = [
+  "esperar 2500",
+  "tecla W 1200",
+  "tecla Space 3500",
+  "tecla W 600",
+  "tecla Space 1500",
+  "log 'survivors: abierto' 20",
+  "log 'survivors: eleccion de personaje' 900",
+  "esperar 1000",
+  "hasta_log 'survivors: partida empezada personaje=' 60",
+  "tecla Space",
+  "esperar 1500",
+  "fin",
+  "hasta_log 'survivors: fin resultado=' 900",
+  "tecla Space",
+  "esperar 2500",
+  "fin",
+  "esperar 3000",
+  "captura 01_resultados_bloque",
+  "tecla L 1500",
+  "log 'rank: alias: primera vez' 10",
+  "captura 02_alias",
+  "tecla Space 1500",
+  "log 'rank: alias elegido' 10",
+  "log 'rank: partida [0-9a-f]{16} a la cola .survivors, [0-9]+ puntos' 10",
+  "log 'rank: envio [0-9a-f]{16} .survivors, [0-9]+ bytes. a http://127.0.0.1:8097/dbz3hd-rank-[0-9a-f]+: ok' 60",
+  "log 'rank: recibida [0-9a-f]{16}: ok; cola 0' 90",
+  "esperar 2500",
+  "captura 03_enviada_puesto",
+]

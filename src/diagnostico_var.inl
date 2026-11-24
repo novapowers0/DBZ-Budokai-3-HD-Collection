@@ -47,6 +47,14 @@ class Mando {
 };
 }  // namespace dbz3::diagnostico_var
 
+REXCVAR_DEFINE_BOOL(dbz3_ultrapanoramico, false, "DBZ3/Video",
+                    "21:9 and wider: wider 3D view in battle with the HUD anchored to the edges; menus stay 16:9");
+// POST/SDK-01-ultra: cuanto estira el presentador la imagen 1280x720 en horizontal en combate (0 = apagado). Lo usa
+// el HUD del combate (combate.cpp, AnclarSprite) para deshacer el estirado y llevar cada pieza a su borde.
+static float g_ultra_k = 0.0f;
+static uint32_t g_ultra_video = 0, g_ultra_aw0 = 16, g_ultra_ah0 = 9;   // estructura de video y su aspecto original
+void CrearBandasUltra();   // combate.cpp
+
 // Gemelos verificados: misma seleccion HD/SD y mismos campos +3400..3412.
 // XGetVideoMode informa el modo de pantalla, pero B3 elige su propio backbuffer:
 // HD = 1280x720; SD panoramico = 640x360. Registrar el resultado, no inferirlo
@@ -84,6 +92,12 @@ DBZ3_HOOK(sub_820A7980, dbz3eu_sub_820A75D8) {
     }
     REXLOG_INFO("dbz3: render bajo {}x{} (aspecto {}:{}, dbz3_low_render)", w, h,
                 REX_LOAD_U32(video + 3408), REX_LOAD_U32(video + 3412));
+  } else {
+    // POST2/ULTRA (`dbz3_ultrapanoramico`): el render se queda en el tamano del guest (1280x720); en combate solo
+    // cambia la proyeccion (+3408/+3412, la lee la camara en cada cuadro) y el presentador estira la imagen a la
+    // ventana. Todo lo decide BandasUltra (combate.cpp) cada cuadro: ajuste y ventana en caliente.
+    g_ultra_video = video, g_ultra_aw0 = REX_LOAD_U32(video + 3408), g_ultra_ah0 = REX_LOAD_U32(video + 3412);
+    dbz3::launcher::DeferUi(&CrearBandasUltra);
   }
   REXLOG_INFO("dbz3: guest_render={}x{} aspect={}:{} video_requested={}x{} scale={}x{}",
               REX_LOAD_U32(video + 3400), REX_LOAD_U32(video + 3404),
