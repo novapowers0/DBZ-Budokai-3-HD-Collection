@@ -94,11 +94,19 @@ REXCVAR_DEFINE_BOOL(dbz3_iw_amc_unico, true, "DBZ3/Mods",
                     "Disparo IW: camara de los clips #AMC con el reproductor unico y fiel al original (iw_amc.h). Apagado = copia antigua (interruptor de vuelta atras)");
 REXCVAR_DEFINE_BOOL(dbz3_iw_disparo_voces_poses_original, false, "DBZ3/IW",
                     "IW disparo 0x7DE/0x7D8: voces como el original (1248/1249 de la entrada, 1253/1255/1260/1261 del final y frases de Ten) (pruebas)");
+REXCVAR_DEFINE_BOOL(dbz3_iw_disparo_texturas_directas, false, "DBZ3/IW",
+                    "Lee las texturas directas PSMCT32 del atlas de efectos de disparo de Infinite World.");
 REXCVAR_DEFINE_BOOL(dbz3_iw_7d8_voz_freezer, true, "DBZ3/IW",
                     "IW 0x7D8: voces de Freezer al empezar y al cierre como el original (Viewer_PlayEventSfx 3 y 10, perfil ADX 14)");
 REXCVAR_DEFINE_BOOL(dbz3_iw_disparo_continuo_original, true,  // 12/11 encendido de serie (HOJA_DECISIONES_0800 A)
     "DBZ3/IW",
                     "IW-F05b Stop Cell 0x7DE: orden del campo y reloj como el original (MgShoot 0x4100 antes que Cell 0x5300 y el reloj 0x54FF; reloj en tics exactos; GameOver de 141 llamadas). IW-F06: tambien 0x7D7/0x7D8 (Ready de 101 llamadas, reloj en tics, final de 141 y rango -1 por tiempo o sin siete aciertos) (pruebas)");
+REXCVAR_DEFINE_BOOL(dbz3_iw_7de_pausa_reloj_original, true, "DBZ3/IW",
+                    "IW Stop Cell 0x7DE: pausa el reloj continuo en LowEnergyWait aun con la mira de respaldo; false restaura el descuento anterior");
+REXCVAR_DEFINE_BOOL(dbz3_iw_7de_campo_low_original, true, "DBZ3/IW",
+                    "IW Stop Cell 0x7DE: espera 221 campos tambien con la mira de respaldo; false recupera 220 con esa mira");
+REXCVAR_DEFINE_BOOL(dbz3_iw_7d7_siete_aciertos_original, true, "DBZ3/IW",
+                    "IW 0x7D7: exige siete aciertos para dar rango tambien con el reloj antiguo");
 
 // IW-06 (R23): voces de reaccion de 0x7D7/0x7D8 que faltaban (Viewer_PlayCharReaction EU 0x34BDA0 y Viewer_PlayEventSfx
 // EU 0x327F90), palanca por direccion (Camera_OrbitInputUpdate 0x3245D0 / Viewer_UpdateReticleFromInput 0x348520),
@@ -213,7 +221,7 @@ constexpr float kAltura15 = 400.0f;
 inline float Env15(const char* n, float def) { const char* e = std::getenv(n); return e && *e ? float(std::atof(e)) : def; }
 // eIW2: manos de Ten con el sombreado de IW (3 tonos de la rampa 895/2 sobre la piel; la luz como la de B3). Apagado por defecto:
 // DBZ3_IW_MANOS_TOON=1 lo enciende (y DBZ3_TEST_MANOS15=4 la pose medida).
-REXCVAR_DEFINE_BOOL(dbz3_iw_7d8_brillo_ready_original, false, "DBZ3/IW",
+REXCVAR_DEFINE_BOOL(dbz3_iw_7d8_brillo_ready_original, true, "DBZ3/IW",
                     "IW MSN010: prepara el brillo 935/7 de las manos al entrar en READY (pruebas)");
 inline bool ManosToon15() { static const bool v = std::getenv("DBZ3_IW_MANOS_TOON") != nullptr || ::dbz3::original::Arreglo("manos_toon"); return v; }
 constexpr float kEsc3 = 1.0f;   // 3: unidades de IW = las de B3 (el campo 897 de R8 va a escala 1)
@@ -301,10 +309,11 @@ void PalancaR23(float& gx, float& gy, bool palanca) {
 }
 // EU 0x30D610 Minigame_PlayEventVoiceAnim -> PlayHit_KiblastAudios EU 0x2EF500 (actor +0x800 = Ten): linea `linea` del
 // perfil ADX de Ten (CmnActor 12 = 929 -> perfil 10), la misma tabla EU 0x4803B0 que Audio_GetFilteredTableEntry.
-void VozTen(int linea, const char* motivo) {
+// El evento 7 conserva su slot de actor, pero pasa personaje explicito 0 al filtro (perfil 0, no 10).
+void VozTen(int linea, const char* motivo, int personaje = 12) {
   if (!VocesDisparoOriginal()) return;
   static const std::vector<uint8_t> elf = P::LeerElf(P::BuscarIW());
-  VozDisparo(dbz3::anim::apev::EntradaAdxPerfil(elf, dbz3::anim::apev::PerfilAdx(dbz3::anim::apev::CmnActor(12)), linea),
+  VozDisparo(dbz3::anim::apev::EntradaAdxPerfil(elf, dbz3::anim::apev::PerfilAdx(dbz3::anim::apev::CmnActor(personaje)), linea),
              motivo);
 }
 // RESCATE IW-F07 (dbz3_iw_disparo_continuo_original): Viewer_PlayCharReaction EU 0x34BDA0 caso 8 (llamada en 0x3499A0,
@@ -605,6 +614,13 @@ class Panel : public rex::ui::ImGuiDialog {
         su.rgba[i + 3] = uint8_t(std::max({su.rgba[i], su.rgba[i + 1], su.rgba[i + 2]}) * su.rgba[i + 3] / 255);
       tx_suma_.push_back(ps2::Crear(su));
     }
+    if (std::getenv("DBZ3_TEST_IWMINI") && d.atlas.size() > 56) {
+      for (const int t : {35, 56}) {
+        const auto& im = d.atlas[t];
+        REXLOG_INFO("dbz3 iwdisparo: prueba atlas FX 0x{:X} t{} {}x{} normal={} suma={}", d.clave, t,
+                    im.w, im.h, bool(tx_atlas_[t]), bool(tx_suma_[t]));
+      }
+    }
     efx_.clear();
     if (d.juego == 9 && REXCVAR_GET(dbz3_iw_7d8_brillo_ready_original)) {
       brillo_[0].reset();
@@ -681,7 +697,7 @@ class Panel : public rex::ui::ImGuiDialog {
       REXLOG_INFO("dbz3 solIWX: Piccolo acuse candidato; normal=false, identidad tras reinicio A/B");
     semilla_ = uint32_t(std::chrono::steady_clock::now().time_since_epoch().count());
     // F4: mismo recorrido en las dos corridas del piloto 7DE (voces ON/OFF).
-    if (d.clave == 0x7DE && g_auto) {
+    if (d.clave == 0x7DE && (g_auto || std::getenv("DBZ3_TEST_IWMINI"))) {
       if (const char* valor = std::getenv("DBZ3_TEST_IW_7DE_SEMILLA_HEX")) {
         const char* fin = valor + std::strlen(valor);
         uint32_t semilla = 0;
@@ -1728,8 +1744,11 @@ class Panel : public rex::ui::ImGuiDialog {
         dcm::SalidaMira mira_orig;
         // IW-F05 (dbz3_iw_disparo_mira_original): un campo de MgShoot_St_Aim del ELF con la cruceta o la palanca
         // (fuera de la zona muerta de 32 el original solo mira la palanca y avanza 1,5 en su direccion).
-        const uint16_t cruceta = uint16_t((gx > 0 ? kDerecha : 0) | (gx < 0 ? kIzquierda : 0) | (gz > 0 ? kAbajo : 0) |
-                                          (gz < 0 ? kArriba : 0));
+        // MoveAimByPad prueba cada direccion digital por separado, incluso si son opuestas.
+        const uint16_t cruceta = !g_auto && std::abs(sx) <= 32 && std::abs(sy) <= 32
+            ? uint16_t((dirs | (dirs >> 8)) & (kDerecha | kIzquierda | kAbajo | kArriba))
+            : uint16_t((gx > 0 ? kDerecha : 0) | (gx < 0 ? kIzquierda : 0) | (gz > 0 ? kAbajo : 0) |
+                       (gz < 0 ? kArriba : 0));
         if (sub15_ == 0 && dcm::g_mira_cell &&
             dcm::g_mira_cell({mx_, mz_, energia_, cy_, baja_usada_, uint16_t(cruceta | (carga ? 0x8000u : 0u)),
                               uint16_t(fuego ? kDisparo : 0), int8_t(sx), int8_t(sy)}, mira_orig)) {
@@ -1738,7 +1757,7 @@ class Panel : public rex::ui::ImGuiDialog {
           if (mira_orig.siguiente == dcm::SiguienteMira::carga) sub15_ = 1;
           else if (mira_orig.siguiente == dcm::SiguienteMira::fuego) sub15_ = 2, t15_ = 0;
           else if (mira_orig.siguiente == dcm::SiguienteMira::baja)
-            sub15_ = 4, t15_ = 0, VozTen(0x40, "LowEnergyWait, evento 7 (EU 0x30ADE0)");
+            sub15_ = 4, t15_ = 0, VozTen(0x40, "LowEnergyWait, evento 7 (EU 0x30ADE0)", 0);
         } else if (sub15_ == 0) {   // mira
           fuego_elf_ = false;
           mx_ = std::clamp(mx_ + gx * 1.5f, -111.0f, 74.0f);   // derecha (0x20) X + 1,5; arriba (0x10) Z - 1,5
@@ -1749,10 +1768,10 @@ class Panel : public rex::ui::ImGuiDialog {
             sub15_ = 2;
             t15_ = 0;
           } else if (!baja_usada_ && energia_ <= 0.1f) {
-            sub15_ = 4;   // LowEnergyWait: 220 cuadros
+            sub15_ = 4;   // LowEnergyWait: el original arma el contador con 220
             t15_ = 0;
             baja_usada_ = true;
-            VozTen(0x40, "LowEnergyWait, evento 7 (EU 0x30ADE0)");
+            VozTen(0x40, "LowEnergyWait, evento 7 (EU 0x30ADE0)", 0);
           }
         } else if (sub15_ == 1) {   // Charge: +0,1 / (2 x 60) por cuadro; Effect 6 (935/19) en las manos
           namespace dc = dbz3::iwmips::disparo;
@@ -1791,13 +1810,18 @@ class Panel : public rex::ui::ImGuiDialog {
             sub15_ = 0;
           }
         } else if (sub15_ == 4) {
-          // IW-F05: con el Aim del ELF, LowEnergyWait EU 0x30A530 dura 221 llamadas con paso 1 (disparo_low.py)
-          if (++t15_ >= (fuego_elf_ ? 221 : 220)) sub15_ = 0;
+          // EU 0x30A530: salir solo cuando 220 - t15_ < 0 (paso 1).
+          if (++t15_ >= ((fuego_elf_ || REXCVAR_GET(dbz3_iw_7de_campo_low_original)) ? 221 : 220)) {
+            sub15_ = 0;
+            if (std::getenv("DBZ3_TEST_IWMINI"))
+              REXLOG_INFO("dbz3 iwdisparo: LowEnergyWait -> Aim ({} campos, mira={})", t15_, fuego_elf_ ? "elf" : "respaldo");
+          }
         }
       }
       if (continuo && fase_ == kJuego) {
         if (sub15_ != 4) CellCuadro(d);                 // tarea de Cell 0x5300 (parada en LowEnergyWait: Store5d94c0Pair(0, 0))
-        if (!(sub15_ == 4 && fuego_elf_)) --reloj15_;   // UiTimer_Update EU 0x31EB60: -paso (1) solo en el estado 1
+        // UiTimer_Update EU 0x31EB60: pausa en LowEnergyWait y reanuda en el cuadro de vuelta a Aim.
+        if (sub15_ != 4 || !(fuego_elf_ || REXCVAR_GET(dbz3_iw_7de_pausa_reloj_original))) --reloj15_;
       }
       if (continuo) Pitido15(reloj15_);   // RESCATE IW-F07: 0x30A120 tras el descuento (y en el campo de entrada a GameOver)
       if (kikoho_ > 0) --kikoho_;
@@ -2689,10 +2713,11 @@ class Panel : public rex::ui::ImGuiDialog {
       if (iwmips::disparo::g_rango(clave, d.dif, aciertos_, d.juego == 15 ? p15_ : jugado, original))
         idx = original;
     }
-    // IW-F06 (dbz3_iw_disparo_continuo_original): el original no clasifica el tiempo jugado al fallar. 7D8: Viewer_StateInput
-    // EU 0x325430 deja +0x10 = 0 al acabar por tiempo y Viewer_StoreResultToConfig 0x324C50 clasifica 0/60 -> -1. 7D7:
-    // Viewer_State_AimShootA/B/D ponen ce78+8 = -1 y Viewer_CommitShootResult 0x3496B0 da -1 (premio 100, 0x5D986C/0x5D9B34).
-    if (REXCVAR_GET(dbz3_iw_disparo_continuo_original) && ((d.juego == 9 && vida_ > 0) || (d.juego == 8 && aciertos_ < 7)))
+    // 7D7: Effect_ClassifyRange EU 0x3481E0 exige siete aciertos, tambien con reloj antiguo.
+    // 7D8 conserva la regla del reloj continuo (Viewer_StateInput y Viewer_StoreResultToConfig).
+    const bool continuo = REXCVAR_GET(dbz3_iw_disparo_continuo_original);
+    if ((d.juego == 8 && aciertos_ < 7 && (continuo || REXCVAR_GET(dbz3_iw_7d7_siete_aciertos_original))) ||
+        (d.juego == 9 && vida_ > 0 && continuo))
       idx = -1;
     if (d.juego == 9)   // PAQ_3: medir el cierre del reloj del 0x7D8 (IW-F06)
       REXLOG_INFO("dbz3 iwdisparo: 7D8 fin reloj jugado={:.3f} vida={} idx={}", jugado, vida_, idx);
@@ -3473,7 +3498,10 @@ bool Empezar(int clave, int fila, int dificultad, int personaje) {
   {   // efectos de IW (#AME) del paquete del minijuego: 935, o su copia 890/6 en el 3
     const std::vector<uint8_t> pq = d->juego == 3 ? P::HijoAmb(cmn.Entrada(890), 6) : cmn.Entrada(935);
     const std::vector<uint8_t> at = P::HijoAmb(pq, 0);
-    for (int j = 0, n = P::CuantasAmt(at); j < n; ++j) d->atlas.push_back(P::TexturaAmt(at, j));
+    // Los AME de ambos paquetes tambien refieren a t35/t56, PSMCT32 sin CLUT.
+    const bool directas = REXCVAR_GET(dbz3_iw_disparo_texturas_directas);
+    for (int j = 0, n = P::CuantasAmt(at); j < n; ++j)
+      d->atlas.push_back(directas ? P::TexturaAtlasIW(at, j) : P::TexturaAmt(at, j));
     d->efectos.resize(25);
     int cuantos = 0;
     for (uint32_t h = 3; h < 25; ++h) {

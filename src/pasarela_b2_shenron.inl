@@ -43,6 +43,7 @@ REXCVAR_DEFINE_BOOL(dbz3_b2_shenron_original, true, "DBZ3/Dev",
 // POST/B2-P13-HD (12/11): Shenron con el modelo de B3 HD (data_cmn 534, sk_534.sk de vista_b2.py) y la toon de B3, animado con
 // las anims de B2 de la escena por el sufijo de hueso (PonerShenronB3, pasarela_nave.cpp). Apagado: se queda el de PS2.
 REXCVAR_DEFINE_BOOL(dbz3_b2_shenron_hd, false, "DBZ3/Dev", "Shenron de B2 con el modelo de B3 HD (B2-P13-HD)");
+REXCVAR_DEFINE_BOOL(dbz3_b2_shenron_luz_alfa_pal, true, "DBZ3/Dev", "Conservar el alfa PS2 de la columna de luz de Shenron (CMN 328/12; se lee al cargar la escena)");
 std::vector<uint8_t> g_shen_amo;   // #AMO de CMN 327 hijo 0 (nombres de huesos)
 const ps2::Anim* g_shen_anim_uso = nullptr;   // anim e instante de este cuadro
 float g_shen_t_uso = 0;

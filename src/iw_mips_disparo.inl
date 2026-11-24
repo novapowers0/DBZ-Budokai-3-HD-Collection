@@ -69,13 +69,13 @@ inline bool (*g_mira_cell)(const EntradaMira&, SalidaMira&) = nullptr;
 #include <cstring>
 #include <array>
 #include <cstdlib>
-REXCVAR_DEFINE_BOOL(dbz3_iw_disparo_original, false, "DBZ3/IW",
+REXCVAR_DEFINE_BOOL(dbz3_iw_disparo_original, true, "DBZ3/IW",
                     "IW disparo: rango desde el ELF original EU/USA (solo resultados; motor completo pendiente; requiere dbz3_iw_logica_original)");
-REXCVAR_DEFINE_BOOL(dbz3_iw_disparo_carga_original, false, "DBZ3/IW",
+REXCVAR_DEFINE_BOOL(dbz3_iw_disparo_carga_original, true, "DBZ3/IW",
                     "IW Cell: energia y salida de carga desde el ELF (solo vivo/sin caducidad; HUD/FX del port; requiere dbz3_iw_logica_original)");
-REXCVAR_DEFINE_BOOL(dbz3_iw_disparo_intro_original, false, "DBZ3/IW",
+REXCVAR_DEFINE_BOOL(dbz3_iw_disparo_intro_original, true, "DBZ3/IW",
                    "IW Cell: PreIntro/Intro/Ready desde el ELF; camaras y actores del port; requiere dbz3_iw_logica_original");
-REXCVAR_DEFINE_BOOL(dbz3_iw_disparo_mira_original, false, "DBZ3/IW",
+REXCVAR_DEFINE_BOOL(dbz3_iw_disparo_mira_original, true, "DBZ3/IW",
                     "IW Cell: mira (cruceta) y paso Aim->Fire/Charge/LowEnergy desde el ELF (pruebas; requiere dbz3_iw_logica_original)");
 namespace dbz3::iwmips::bubbles {
 namespace {

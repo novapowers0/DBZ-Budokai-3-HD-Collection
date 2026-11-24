@@ -6,6 +6,7 @@
 #include <rex/filesystem.h>
 #include <rex/logging.h>
 #include <rex/hash.h>
+#include <toml++/toml.hpp>
 
 #include <chrono>
 #include <ctime>
@@ -73,6 +74,18 @@ bool FlushSaveFile(const std::filesystem::path& path, std::error_code& ec) {
   return !ec;
 }
 
+bool ReplaceSaveFile(const std::filesystem::path& tmp, const std::filesystem::path& to,
+                     std::error_code& ec) {
+  if (!FlushSaveFile(tmp, ec)) return false;
+#ifdef _WIN32
+  if (!MoveFileExW(tmp.c_str(), to.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+    ec = std::error_code(GetLastError(), std::system_category());
+#else
+  std::filesystem::rename(tmp, to, ec);
+#endif
+  return !ec;
+}
+
 bool CopyAtomic(const std::filesystem::path& from, const std::filesystem::path& to,
                 std::error_code& ec) {
   std::filesystem::create_directories(to.parent_path(), ec);
@@ -110,14 +123,7 @@ bool CopyAtomic(const std::filesystem::path& from, const std::filesystem::path& 
   }
   std::filesystem::copy_file(from, tmp, std::filesystem::copy_options::overwrite_existing, ec);
   if (ec) return false;
-  if (!FlushSaveFile(tmp, ec)) return false;
-#ifdef _WIN32
-  if (!MoveFileExW(tmp.c_str(), to.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
-    ec = std::error_code(GetLastError(), std::system_category());
-#else
-  std::filesystem::rename(tmp, to, ec);
-#endif
-  return !ec;
+  return ReplaceSaveFile(tmp, to, ec);
 }
 
 }  // namespace

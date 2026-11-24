@@ -89,7 +89,7 @@
 REXCVAR_DEFINE_BOOL(dbz3_iw_cierre_campo_original, true, "DBZ3/IW",
                     "IW Raditz/Namek/Radar: bola, mascara y cierre desde s_SPACE (experimental; nueva partida)");
 // IW-F03 11/11: Camino de la Serpiente con las tareas del ELF (0x299900 -> tarea 0x299000) y su cierre en el hito.
-REXCVAR_DEFINE_BOOL(dbz3_iw_serpiente_original, false, "DBZ3/IW",
+REXCVAR_DEFINE_BOOL(dbz3_iw_serpiente_original, true, "DBZ3/IW",
                     "IW Camino de la Serpiente: planificador de tareas y cierre originales (pruebas; requiere el cierre de campo)");
 // IW-F04 11/11: radar (que se marca) y avisos C/D sacados de las banderas de G que escribe s_SPACE EU 0x31F280.
 REXCVAR_DEFINE_BOOL(dbz3_iw_radar_original, true, "DBZ3/IW",
@@ -97,7 +97,7 @@ REXCVAR_DEFINE_BOOL(dbz3_iw_radar_original, true, "DBZ3/IW",
 // IW-F04 11/11: efectos de recogida de s_SPACE (Effect_DispatchCommandById 0x2C-0x33 -> hijos de DATA_CMN 934).
 // IW-F04 11/11: en 7D0/7D9 el hito #ITM+0x30 se activa al coger todos los aros (s_SPACE: +16BC 2 -> 0) y tocarlo pone la
 // pose 0x2E y 0x299900(actor, 1), como el final del 2 (IW-F03): el minijuego acaba superado.
-REXCVAR_DEFINE_BOOL(dbz3_iw_hito_original, false, "DBZ3/IW",
+REXCVAR_DEFINE_BOOL(dbz3_iw_hito_original, true, "DBZ3/IW",
                     "IW Raditz/Namek: llegar al objetivo tras todos los aros cierra el minijuego como s_SPACE (pruebas; requiere el cierre de campo)");
 // R23 (0x7D9): geiseres como Stage_SpawnObjectList EU 0x306B00 + Stage_UpdateObjAnims EU 0x3067E0: cada torre es su
 // propio modelo/motion (900 hijos 9..14 y 21..26, indices 0..5) con su reloj, que el #MIF +0x1C pone en 0/30/60/../150
@@ -108,14 +108,16 @@ REXCVAR_DEFINE_BOOL(dbz3_iw_campo_efectos_original, true, "DBZ3/IW",
                     "IW campos: efectos de recogida de aros, monedas, bebidas, marcas, hito, meta y bola de s_SPACE (pruebas; requiere dbz3_iw_7d0_original)");
 // PUL-IW-ANIM 11/11: seguimiento de camara del Camino de la Serpiente como Minigame_UpdateFollowCamera EU 0x299A70:
 // referencia del cuadro anterior, ancla640 segun work+1C8, k = 0,3 constante y sin salto a >150 u.
-REXCVAR_DEFINE_BOOL(dbz3_iw_seguimiento_original, false, "DBZ3/IW",
+REXCVAR_DEFINE_BOOL(dbz3_iw_seguimiento_original, true, "DBZ3/IW",
                     "IW Camino de la Serpiente: camara de seguimiento como el original (pruebas)");
 // PUL-IW-ANIM 11/11: 7D2, caida fuera de la carretera como EU 0x2AA0A0 (cae hasta y < -1000 y vuelve a +0x1620 + 5).
-REXCVAR_DEFINE_BOOL(dbz3_iw_caida_original, false, "DBZ3/IW",
+REXCVAR_DEFINE_BOOL(dbz3_iw_caida_original, true, "DBZ3/IW",
                     "IW Camino de la Serpiente: caida sin suelo hasta y -1000 como el original (pruebas)");
 // PUL-IW-ANIM 11/11: voces finales de los campos (Audio_PlaySlot de los estados 0x2E/0x30/0x2F; nueva partida).
 REXCVAR_DEFINE_BOOL(dbz3_iw_voces_campo_original, true, "DBZ3/IW",
                     "IW Raditz/Serpiente/Namek/Radar: voces de resultado como el original (pruebas)");
+REXCVAR_DEFINE_BOOL(dbz3_iw_7dd_captura_derrota, true, "DBZ3/IW",
+                    "IW 0x7DD: si Piccolo alcanza al jugador en la ruta de respaldo, cerrar como no superado");
 
 namespace dbz3::hub {
 bool RequestBattleEx(int id1, int id2, int stage, bool p2_com, int time_s, int hp1, int hp2, int form1, int form2);
@@ -1126,6 +1128,7 @@ bool Cargar(Datos& d, std::string& error) {
     return false;
   }
   d.cierre_campo = REXCVAR_GET(dbz3_iw_cierre_campo_original) && d.campo &&
+                   dbz3::iwmips::campo::g_activa && dbz3::iwmips::campo::g_activa() &&
                    (d.indice == 0 || d.indice == 10 || d.indice == 16 ||
                     (d.indice == 2 && REXCVAR_GET(dbz3_iw_serpiente_original)));
   if (REXCVAR_GET(dbz3_iw_cierre_campo_original) && d.campo && d.indice == 2 && !d.cierre_campo)
@@ -2653,6 +2656,9 @@ class Panel : public rex::ui::ImGuiDialog {
       in.pic0[0] = npc_p_.x, in.pic0[1] = npc_p_.y, in.pic0[2] = npc_p_.z;
       in.jug40[0] = yo.x + ox, in.jug40[1] = yo.y, in.jug40[2] = yo.z + oz;
       in.jug640[0] = ancla.x + ox, in.jug640[1] = ancla.y, in.jug640[2] = ancla.z + oz;
+      // La misma base que usa la palanca del jugador, no el frente de su pose animada.
+      const float yaw = g_yaw.load();
+      in.cam_fx = std::sin(yaw); in.cam_fz = std::cos(yaw);
       in.jcbc = objetivo && g_7dd_jugador.load() == 9 ? 9 : EstadoIWDeAnim(g_anim_estado);
       in.w180 = objetivo && piccolo_obj_.tarea;
       in.dif = d.dificultad;
@@ -2872,7 +2878,8 @@ class Panel : public rex::ui::ImGuiDialog {
     g_resbalando = resbalon_ > 0;
     if (!Captura7DD(d) && !Original7D1(d) && DistH(yo, npc_p_) < (d.npc == 1 ? 15.0f : 14.0f)) {
       REXLOG_INFO("dbz3 iwmini: {}", d.npc == 1 ? "Bubbles atrapado" : "Piccolo te alcanza");
-      Acabar(base, mgr, d, true);
+      // Como en el cierre nativo de 7DD: que Piccolo alcance al jugador no cumple el objetivo.
+      Acabar(base, mgr, d, d.npc != 2 || !REXCVAR_GET(dbz3_iw_7dd_captura_derrota));
     }
   }
 

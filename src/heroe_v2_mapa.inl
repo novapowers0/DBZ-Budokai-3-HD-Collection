@@ -192,9 +192,12 @@ constexpr float kNodos[][2] = {{690, 600}, {1040, 712}, {1250, 556}, {1130, 395}
 
 // caja = (kMx0, kMy0, kMx1, kMy1) del mapa de siempre (solo para el terreno de reserva); cur = g_mapa_cur.
 void DibujarMapaV2(ImDrawList* dl, const S::Area& a, float t, int total, int hechas, int cur, ImVec4 caja, const std::string& aviso) {
-  const int sig = H::Saga() % std::max(1, total);   // HM-02: vuelta 2 = g_saga >= total; todas abiertas, la siguiente la 1.a
-  const int vuelta = H::Saga() / std::max(1, total);
-  const bool abierta = (cur <= sig || vuelta > 0) && cur < H::kSagasJugables;   // la maqueta: lo que aun no se alcanza, "???"
+  const H::rutas::EstadoMapa st = H::rutas::CalcularEstadoMapa(
+      H::EtapaRuta(), total, H::VueltaRuta(), H::RutaCompletada(), H::Saga(),
+      H::ColeccionVueltasOn() && H::Rutas());
+  const int sig = st.sig;
+  const int vuelta = st.vuelta_idx;
+  const bool abierta = (cur <= sig || cur < hechas || vuelta > 0) && cur < H::kSagasJugables;   // la maqueta: lo que aun no se alcanza, "???"
   const auto combates = H::CombatesDeSaga(cur);
   const int lugar = combates.empty() ? -1 : combates.back().second;   // el lugar de la saga: el de su ultimo combate
   const S::Area q = v2::Lienzo(a);
@@ -258,7 +261,7 @@ void DibujarMapaV2(ImDrawList* dl, const S::Area& a, float t, int total, int hec
     v2::Panel(dl, q, x0, y0, x1, y0 + 30 + fila * float(total));
     for (int i = 0; i < total; ++i) {
       const float cy = y0 + 15 + fila * (float(i) + 0.5f);
-      const bool sel = i == cur, ab = (i <= sig || vuelta > 0) && i < H::kSagasJugables;
+      const bool sel = i == cur, ab = (i <= sig || i < hechas || vuelta > 0) && i < H::kSagasJugables;
       if (sel) v2::Franja(dl, q, x0 + 14, cy - fila * 0.5f + 2, x1 - 14, cy + fila * 0.5f - 2, t);
       BolitaV2(dl, q, x0 + 40, cy, fila * 0.6f, i + 1, !ab);
       // la maqueta: la elegida en cian, las demas en blanco, "???" apagado
@@ -282,7 +285,8 @@ void DibujarMapaV2(ImDrawList* dl, const S::Area& a, float t, int total, int hec
       linea = std::string(T::T("Combate ", "Battle ")) + Num(actual + 1) + ": " + (rival >= 0 ? M::Nombre(rival) : std::string("?")) +
               " - " + dbz3::escenarios::Nombre(esc);
     }
-    const char* estado = cur < hechas ? T::T("Saga completada", "Saga cleared")
+    const char* estado = (st.nueva_vuelta && cur == sig) ? T::T("Nueva vuelta", "New lap")
+                         : cur < hechas ? T::T("Saga completada", "Saga cleared")
                          : cur >= H::kSagasJugables ? T::T("En desarrollo", "In development")
                          : cur > sig ? T::T("Bloqueada", "Locked") : nullptr;   // la siguiente: A Empezar ya va en la barra
     v2::Texto(dl, q, x0 + 22, y0 + 27, v2::kLetraFila - 4, linea, 0, 2, false, false, x1 - x0 - (estado ? 300 : 44));
@@ -293,8 +297,10 @@ void DibujarMapaV2(ImDrawList* dl, const S::Area& a, float t, int total, int hec
                   0, false, true, x1 - x0 - 44);
     }
   }
-  if (cur == sig && cur < H::kSagasJugables)
-    v2::BarraAyuda(dl, q, {{"A", T::T("Empezar", "Start")}, {"LB", T::T("Saga", "Saga")}, {"B", T::T("Atrás", "Back")}}, 960);
+  if (cur == sig && cur < H::kSagasJugables) {
+    const char* accion_a = st.nueva_vuelta ? T::T("Nueva vuelta", "New lap") : T::T("Empezar", "Start");
+    v2::BarraAyuda(dl, q, {{"A", accion_a}, {"LB", T::T("Saga", "Saga")}, {"B", T::T("Atrás", "Back")}}, 960);
+  }
   else
     v2::BarraAyuda(dl, q, {{"LB", T::T("Saga", "Saga")}, {"B", T::T("Atrás", "Back")}}, 960);
 }

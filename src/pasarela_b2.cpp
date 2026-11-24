@@ -90,19 +90,37 @@
 REXCVAR_DEFINE_BOOL(dbz3_b2_panel_prefijo, false, "DBZ3/Dev",
                     "B2-P09: buscar el banco del panel sin el marcador X del hueso raiz (experimental).");
 
+REXCVAR_DEFINE_BOOL(dbz3_b2_paso_4px, false, "DBZ3/Dev",
+                    "B2: pos de la ficha a 4 px por cuadro para pasos sin cambio de hueco (experimental).");
 REXCVAR_DEFINE_BOOL(dbz3_b2_pasos_estrictos, true, "DBZ3/Dev",
                     "B2: paso de las fichas despues del cuadro 13 (PAL, experimental).");
 REXCVAR_DEFINE_BOOL(dbz3_b2_alfombra_fiel, false, "DBZ3/Dev",
                     "B2-P05: alfombra de Mr. Popo con destino ocupado: casilla libre mas cercana como FUN_00273210 "
                     "(experimental).");
+REXCVAR_DEFINE_BOOL(dbz3_b2_popo_origen_pal, true, "DBZ3/Dev",
+                    "B2: al aterrizar con Mr. Popo, usar el destino como origen de la ficha (PAL).");
+REXCVAR_DEFINE_BOOL(dbz3_b2_popo_hueco_pal, false, "DBZ3/Dev",
+                    "B2: en un aterrizaje valido de Mr. Popo, reservar solo el hueco de la ficha que viaja (PAL).");
 REXCVAR_DEFINE_BOOL(dbz3_b2_requisitos_inventario, true, "DBZ3/Dev",
                     "B2-P16: requisitos de deseos 461-489/253/220 desde el inventario de capsulas (experimental).");
+REXCVAR_DEFINE_BOOL(dbz3_b2_capas_tablero_pal, true, "DBZ3/Dev",
+                    "B2: capas PAL de las casillas del tablero y de las Bolas en el suelo.");
 REXCVAR_DEFINE_BOOL(dbz3_b2_fx_nativo, true, "DBZ3/Dev",
                     "B2-FX-02: selector de aliados del tablero con los recursos del original (velo y fundidos del CMN 399, "
                     "flechas 29-34 y tiras de ayuda 0/27/39 de DATA 1145) y alfa de la lista B en las subidas de "
                     "ataque/defensa (CMN 397 #116-123, #77); experimental.");
+REXCVAR_DEFINE_BOOL(dbz3_b2_color_ama_pal, false, "DBZ3/Dev",
+                    "B2: interpolacion y reloj PAL del color flotante de #AMA lista B (experimental).");
+REXCVAR_DEFINE_BOOL(dbz3_b2_tarjeta_cond_pal, true, "DBZ3/Dev",
+                    "B2: usa la trayectoria original CMN 410 para el texto de condicion de Battle!.");
+REXCVAR_DEFINE_BOOL(dbz3_b2_presentacion_pal, false, "DBZ3/Dev",
+                    "B2: activa juntas las capas PAL, el avance de 4 px y los fundidos #AMA del tablero nativo (experimental).");
 REXCVAR_DEFINE_BOOL(dbz3_b2_pm22_mecanica_pal, true, "DBZ3/Dev",
                     "G1: reloj PAL del radar y un solo alfa B en los objetos del tablero B2.");
+REXCVAR_DEFINE_BOOL(dbz3_b2_radar_indicadores_pal, false, "DBZ3/Dev",
+                    "B2: flechas y puntos del Radar solo para la ficha activa del jugador (PAL).");
+REXCVAR_DEFINE_BOOL(dbz3_b2_pm23_slot_inicial_pal, true, "DBZ3/Dev",
+                    "PM-23: conserva el hueco de carga PAL hasta que el guion o el movimiento lo recalculen.");
 REXCVAR_DEFINE_BOOL(dbz3_b2_saibaman_reinicio, true, "DBZ3/Dev",
                     "T10: empieza la animacion de reposo del Saibaman en cero al acabar el brote.");
 REXCVAR_DEFINE_BOOL(dbz3_b2_saibaman_ama, true, "DBZ3/Dev",
@@ -144,11 +162,12 @@ REXCVAR_DEFINE_BOOL(dbz3_b2_resumen_bolas, true, "DBZ3/Dev",
                     "B2: mostrar Bolas y ranking antes de la capsula en el final con menos de siete.");
 REXCVAR_DEFINE_BOOL(dbz3_b2_avisos, false, "DBZ3/Mods",
                     "B2: tiras de texto del port sobre el tablero (\"Dende te cura\", \"X pierde una barra\"...). El original no las tiene.");
-REXCVAR_DEFINE_BOOL(dbz3_b2_audio_dende_tarea, false, "DBZ3/Dev",
-                    "B2: trazar el envoltorio de Dende, sin cambiar su sonido ni su instante.");
-
 REXCVAR_DEFINE_BOOL(dbz3_b2_dende_espera, false, "DBZ3/Dev",
                     "B2T: al llegar a Dende, espera a que termine la tarea CMN 397 6-9 antes de curar.");
+REXCVAR_DEFINE_BOOL(dbz3_b2_dende_audio_original, false, "DBZ3/Dev",
+                    "B2 PAL: usa el banco nativo del canal 3 y el reloj original para el efecto de Dende.");
+REXCVAR_DEFINE_BOOL(dbz3_b2_dende_vida_pal, false, "DBZ3/Dev",
+                    "B2 PAL: Dende gana una barra, conserva la vida de combate y recalcula su banda.");
 
 namespace dbz3::rpg {
 void Premio(int zeni);   // Zenie al monedero del HUB (modos.h)
@@ -475,6 +494,7 @@ struct Ficha {
                                   // tambien las ordenes 35/36 del guion tras un combate ganado (studies 8, E).
   int ki_b2 = -1;                 // orden 53: +0x16 del registro (ki con el que empieza su combate; -1 = sin tocar)
   int vida_b2 = -1;               // orden 54: +0x14 del registro (vida con la que empieza; -1 = sin tocar)
+  int banda_dende = -1;           // +0x1F tras Dende PAL; -1 conserva el respaldo basado en T2
   // studies 2 G04 (ordenes 51/52 del guion; b2.c): campos del registro de la pieza que el combate de B2 copia a su
   // bloque. Se guardan como indices de B2; la forma se traduce con FormaTableroB3 y las absorciones de Bu (c47/48/50/51)
   // con TrajeAbsorcionB2 (DS23: id 35 + traje del absorbido; el consumidor debe aplicar el traje, ver INFORME).
@@ -573,7 +593,7 @@ struct Datos {
   // s9: tarjeta "Battle!" que sale tras el contacto: DATA_<idioma> 190 (12 texturas: pergamino, titulo...) + 189 (los 6 textos
   // de condicion, uno por T1+0x19) y la disposicion en CMN 408 (7 = pergamino, 6 = titulo; CMN 410 = pose del texto)
   std::vector<Imagen> tarjeta, tarjeta_cond;
-  std::vector<Sprite> tarjeta_ama;
+  std::vector<Sprite> tarjeta_ama, tarjeta_cond_ama;
   std::vector<Sprite> intro_ama;   // intro del Mundo Dragon (pantalla 5): #AMA CMN 396 con las 18 texturas de DATA_<idioma> 155
   std::vector<Sprite> resumen_ama;   // panel del resumen de Bolas (FUN_0029edd0): #AMA CMN 341 (0x155)
   std::vector<Imagen> resumen_tex;   // sus texturas: DATA_<idioma> 145 (0x10091)
@@ -680,11 +700,12 @@ std::vector<Subida> g_subidas;
 struct SonidoDif {
   float t;
   int id;
+  int cuerpo;
 };
 std::vector<SonidoDif> g_son_dif;   // sonidos del canal 3 programados (objetos recogidos)
 // B2-08: sonido diferido (como la tarea FUN_00246350 de FUN_002463d0); con DBZ3_TEST_B2T_AUDIO apunta el cuadro previsto.
-void ProgramarSonido(float t, int id) {
-  g_son_dif.push_back({t, id});
+void ProgramarSonido(float t, int id, int cuerpo = 142) {
+  g_son_dif.push_back({t, id, cuerpo});
   if (std::getenv("DBZ3_TEST_B2T_AUDIO"))
     REXLOG_INFO("dbz3 b2t: audio programado cuadro {:.3f} para {:.3f} id {}", g_ahora * 60.0f, t * 60.0f, id);
 }
@@ -810,6 +831,7 @@ void GuardarPiezasFase(std::vector<std::pair<std::string, int>>& pares) {
     const std::string k = "tablero_b2_snap_p" + std::to_string(i) + "_";
     for (size_t j = 0; j < std::size(kCamposPieza); ++j)
       pares.emplace_back(k + std::to_string(j), f.*kCamposPieza[j]);
+    pares.emplace_back(k + "banda_dende", f.banda_dende);
     pares.emplace_back(k + "flags", int(f.fuera) | (int(f.jugador) << 1) | (int(f.rival) << 2) | (int(f.oculta) << 3));
   }
 }
@@ -822,6 +844,8 @@ bool LeerPiezasFase() {
     const std::string k = "tablero_b2_snap_p" + std::to_string(i) + "_";
     for (size_t j = 0; j < std::size(kCamposPieza); ++j)
       f.*kCamposPieza[j] = LeerProgreso(k + std::to_string(j), f.*kCamposPieza[j]);
+    const int banda = LeerProgreso(k + "banda_dende", -1);
+    f.banda_dende = banda >= 0 && banda <= 32 ? banda : -1;
     const int flags = LeerProgreso(k + "flags", -1);
     if (flags < 0 || flags > 15 || f.n != g_f[i].n || f.c < 0 || f.c >= kB2Personajes ||
         f.casilla < 0 || f.casilla >= int(g_d.casillas.size()) || f.barras_max < 1 || f.barras < 0 ||
@@ -1028,15 +1052,15 @@ void SonidoEventoB2(const char* evento, int id) {
   REXLOG_INFO("dbz3 tablero b2: audio evento {}: canal 3 id {}", evento, id);
   SonidoCanal3(id);
 }
-// El cuerpo del sonido esta en DATA_<idioma> 142; FUN_00147260(canal, 0, id, 0) usa ese banco con el canal solicitado.
-void SonidoCanal(int canal, int id) {
+// Conservar el banco historico por defecto; los eventos medidos pueden indicar su cuerpo nativo.
+void SonidoCanal(int canal, int id, int cuerpo = 142) {
   if (g_iso_b2.empty()) return;
   const bool prueba = std::getenv("DBZ3_TEST_MUSICA") != nullptr;
   const float vol = dbz3::settings::AudioMute() ? 0.0f : float(dbz3::settings::MasterVolume()) * 0.7f;
-  REXLOG_INFO("dbz3 tablero b2: audio canal {}: cuerpo 142 id {}", canal, id);
+  REXLOG_INFO("dbz3 tablero b2: audio canal {}: cuerpo {} id {}", canal, cuerpo, id);
   if (std::getenv("DBZ3_TEST_B2T_AUDIO"))
     REXLOG_INFO("dbz3 b2t: audio cuadro {:.3f} canal {} id {}", g_ahora * 60.0f, canal, id);
-  OirSonidoPs2(g_iso_b2, g_loc_afs, 142, id, canal, prueba ? 1.0f : vol, 0, prueba);
+  OirSonidoPs2(g_iso_b2, g_loc_afs, cuerpo, id, canal, prueba ? 1.0f : vol, 0, prueba);
 }
 void SonidoCanal3(int id) { SonidoCanal(3, id); }
 // EU 0x2463D0 FUN_002463d0 (sonido por el canal 3 con su envoltorio FUN_00147260)
@@ -1442,6 +1466,7 @@ bool Cargar(int fase) {
   amt(loc, 190, d.tarjeta);
   amt(loc, 189, d.tarjeta_cond);
   leer_ama(408, d.tarjeta_ama);
+  leer_ama(410, d.tarjeta_cond_ama);
   leer_ama(396, d.intro_ama);   // FUN_002a5fb0 (b2.c:247478): FUN_0012d100(0x18c) + (0x1009b)
   if (!g_iso_b2.empty() && g_iso_b2 != iso.string()) LimpiarCachesIso(iso.string());   // otra copia de B2
   g_iso_b2 = iso.string();
@@ -1802,8 +1827,9 @@ void Empezar() {
     if (f.bando == 0 && f.c != kSaibaman) f.fuera = true;
     if (f.rival && (g_jefe < 0 || f.barras_max >= g_f[size_t(g_jefe)].barras_max)) g_jefe = int(i);
   }
-  // los aliados salen en la orden 69 del guion de inicio (g_elegir), no aqui
-  RecalcularSlots();
+  // FUN_002791A0 deja +0xC/+0xD a cero al cargar. Aparicion, movimiento y reanudacion
+  // conservan su propio recalculo. El reparto inicial anterior sigue de serie.
+  if (!REXCVAR_GET(dbz3_b2_pm23_slot_inicial_pal)) RecalcularSlots();
   g_sel = 0;
   for (size_t i = 0; i < g_f.size(); ++i) {
     Ficha& f = g_f[i];
@@ -3366,8 +3392,16 @@ void FinDeAccion() {
 // EU 0x27A370 FUN_0027a370 (recoloca la pieza en la casilla de la alfombra; el hueco libre lo elige FUN_00278A30 y
 // FUN_00273950 lo pasa a x/y: en el port lo hacen RecalcularSlots y PosFicha con el mismo criterio de primer hueco)
 void CurarDende(Ficha& f) {
-  f.vida = 0;
   f.barras = std::min(5, f.barras + 1);
+  if (REXCVAR_GET(dbz3_b2_dende_vida_pal)) {
+    // FUN_00279F60: no escribe +0x14. El port guarda un override o la vida restante;
+    // sin ninguno de los dos, solo conocemos el maximo del tablero.
+    const int hp = f.vida_b2 >= 0 ? f.vida_b2 : f.vida > 0 ? f.vida : f.vida_max;
+    f.banda_dende = hp >= 0 && hp <= 32767 ? hp / 1000 : -1;
+    return;
+  }
+  f.banda_dende = -1;
+  f.vida = 0;
   f.vida_b2 = -1;   // guardar la vida curada, no conservar el short anterior
 }
 void ActualizarAlfombra() {
@@ -3379,17 +3413,28 @@ void ActualizarAlfombra() {
     // FUN_00236830 caso 4: FUN_00272ff0 ya es 0, entonces FUN_00279f60; despues, caso 6.
     CurarDende(f);
     REXLOG_INFO("dbz3 tablero b2: Dende termina y cura a {} en la casilla {}", Nombre(f), f.casilla);
+    if (std::getenv("DBZ3_TEST_B2_DENDE")) {
+      REXLOG_INFO("dbz3 tablero b2: Dende postefecto: pieza {} barras {} vida_b2 {} banda {}",
+                  f.n, f.barras, f.vida_b2, f.banda_dende);
+    }
     SucesosDeCasilla(f);
     FinDeAccion();
     return;
   }
   if (g_ahora >= g_alf.t_mueve && f.casilla != g_alf.dest) {
-    f.desde = f.casilla;
+    // FUN_0027A370 recoloca la ficha: el aterrizaje no es otro paso del tablero.
+    f.desde = REXCVAR_GET(dbz3_b2_popo_origen_pal) ? g_alf.dest : f.casilla;
+    // FUN_0027A2B0 devuelve el hueco de llegada; FUN_0027A370 escribe solo los dos huecos de esta ficha.
+    // Si el destino dejo de ser valido durante el efecto, conservar el camino de respaldo del port.
+    const int hueco = REXCVAR_GET(dbz3_b2_popo_hueco_pal) ? HuecoLibre(f, g_alf.dest) : -1;
     f.casilla = g_alf.dest;
     f.anim_b2 = -1;   // al bajar de la alfombra vuelve al reposo
     f.anim_estado = 0;
-    RecalcularSlots();
+    if (hueco >= 0) f.slot = f.slot_ant = hueco;
+    else RecalcularSlots();
     REXLOG_INFO("dbz3 tablero b2: Mr. Popo deja a {} en la casilla {}", Nombre(f), f.casilla);
+    if (std::getenv("DBZ3_TEST_B2_ALFOMBRA"))
+      REXLOG_INFO("dbz3 tablero b2: prueba: Popo aterrizaje casilla={} desde={}", f.casilla, f.desde);
   }
   if (g_ahora < g_alf.t_fin) return;
   g_alf.i = -1;
@@ -3421,16 +3466,22 @@ void VolcarEstado(const char* hito) {
   j += ent_ok ? ",\"entrada_id\":\"" + std::string(ent) + "\"" : ",\"entrada_id\":null";
   j += ",\"evento\":" + std::to_string(++evento) + ",\"hito\":\"" + hito + "\"";
   j += ",\"orden_idx\":" + N(g_orden_idx) + ",\"vblank\":" + N(int(std::floor(g_ahora * 50.0f)));
+  // Estado del port, no el stock ni el identificador de la tarea PAL; 0 = sin premio pendiente.
+  j += ",\"premio_pendiente\":" + N(g_premio_id);
   j += ",\"turno\":" + N(g_turno) + std::string(",\"fase_rival\":") + B(g_fase_rival) + ",\"fase_actual\":" + N(g_d.fase);
   j += ",\"piezas\":[";
   for (size_t i = 0; i < g_f.size(); ++i) {
     const Ficha& f = g_f[i];
+    // El PAL cuenta como fuera al rival de reserva mientras no se ha materializado.
+    // No cambiar f.fuera: las ordenes de aparicion y la busqueda usan el estado interno oculta.
+    const bool fuera_pal = f.fuera || (f.bando == 2 && f.oculta);
     if (i) j += ',';
     j += "{\"n\":" + N(f.n) + ",\"c\":" + N(f.c) + ",\"bando\":" + N(f.bando) + ",\"barras\":" + N(f.barras) +
+         ",\"vida_b2\":" + N(f.vida_b2) +   // -1 = sin override, no equivale al short PAL con signo
          ",\"barras_max\":" + N(f.barras_max) + ",\"vida\":" + N(f.vida) + ",\"ki\":" + N(f.ki_b2) +
          ",\"ataque\":" + N(f.ataque) + ",\"defensa\":" + N(f.defensa) + ",\"casilla\":" + N(f.casilla) +
          ",\"slot\":" + N(f.slot) + ",\"desde\":" + N(f.desde) + std::string(",\"en_juego\":") + B(Activa(f)) +
-         std::string(",\"fuera\":") + B(f.fuera) + ",\"movs\":" + N(f.movs) + ",\"estado0\":" + N(f.anim_estado) +
+         std::string(",\"fuera\":") + B(fuera_pal) + ",\"movs\":" + N(f.movs) + ",\"estado0\":" + N(f.anim_estado) +
          ",\"acciones\":" + N(f.acciones) + ",\"aturdido\":" + N(f.aturdido) + ",\"nube\":" + B(f.nube) + "}";
   }
   j += "],\"objetos\":[";
@@ -3531,7 +3582,10 @@ void Mover(int i, int dest) {
     static constexpr float dy[] = {0, -20, -20, 20, 20, 30};
     const int hueco = f.slot >= 0 && f.slot < 6 ? f.slot : 0;
     const float dur = PonerEfectos397(6, 9, c.x + dx[hueco], c.y + dy[hueco], llega);
-    ProgramarSonido(g_ahora + llega + 45.0f / 60.0f, 0x0B);
+    // PAL: FUN_002350C0/FUN_00234EC0 carga DATA_LOC 185/186/187 en el slot 3.
+    // Su secuencia 11 toca VAG 11; la VAG 11 de 142/143 es un hueco sin audio.
+    const bool dende_audio_pal = REXCVAR_GET(dbz3_b2_dende_audio_original);
+    ProgramarSonido(g_ahora + llega + (dende_audio_pal ? 38.0f / 50.0f : 45.0f / 60.0f), 0x0B, dende_audio_pal ? 185 : 142);
     if (REXCVAR_GET(dbz3_b2_dende_espera) && g_d.life_ama.size() > 9 && dur > 0.0f) {
       g_alf = Alfombra{i, 0, 0.0f, g_ahora + llega + dur, true};
       return;   // ya recogio los objetos de llegada; espera el efecto antes del suceso y del siguiente movimiento
@@ -6758,9 +6812,38 @@ void DibHudSpB(ImDrawList* dl, int k, const Lienzo& L, float c = -1, ImU32 col =
 
 // Encargo 01: listas A (pose) y B (recorte) independientes. No cambia DibSp ni las barras de vida.
 // `imagen` permite la composicion original: pose de 0x2D + etiqueta de 0x33+j en el panel.
-// B2-FX-02: alfa de la lista B de un registro #AMA en el cuadro c, lineal entre claves (el velo 0 -> 0,7 en 15 cuadros, la
-// nube 0 -> 1 entre 10 y 30, las filas entre 20 y 25 del CMN 399). Pasada la ultima clave, la ultima.
+// Evaluador optativo de color flotante de la lista B de #AMA.
+// Las posiciones, recortes y la seleccion de clip conservan sus rutas de dibujo.
+std::array<float, 4> ColorAmaPal(const Datos::Sprite& sp, float c) {
+  const auto& r = sp.recortes;
+  const auto color = [](const Datos::Sprite::Recorte& k) { return std::array<float, 4>{k.r, k.g, k.b, k.a}; };
+  if (r.empty()) return {1, 1, 1, 1};
+  if (r.size() == 1 || c <= r.front().cuadro) return color(r.front());
+  // FUN_001A8200: +0x24 incluye el extremo. Bit 4 de +0x28 permite repetir;
+  // el extremo exacto se conserva (el bucle original resta mientras c > fin).
+  const float fin = sp.dur_b - 1.0f;
+  if (fin <= 0.0f || (c >= fin && !(sp.flags_b & 4))) return color(r.back());
+  if (c > fin) {
+    c = std::fmod(c, fin);
+    if (c == 0.0f) c = fin;
+  }
+  if (c <= r.front().cuadro) return color(r.front());
+  for (size_t i = 1; i < r.size(); ++i) {
+    if (c >= r[i].cuadro) continue;
+    const auto lo = color(r[i - 1]), hi = color(r[i]);
+    const float span = r[i].cuadro - r[i - 1].cuadro;
+    if (span <= 0.0f) return hi;
+    const float t = (c - r[i - 1].cuadro) / span;
+    // VU0 en 0x1A8200: interpola dos veces hacia el destino con el mismo t (t*t).
+    std::array<float, 4> out;
+    for (size_t k = 0; k < out.size(); ++k) out[k] = lo[k] + (hi[k] - lo[k]) * (t * t);
+    return out;
+  }
+  return color(r.back());
+}
 float AlfaB(const Datos::Sprite& sp, float c) {
+  if (c >= 0.0f && (REXCVAR_GET(dbz3_b2_presentacion_pal) || REXCVAR_GET(dbz3_b2_color_ama_pal)))
+    return ColorAmaPal(sp, c)[3];
   const auto& r = sp.recortes;
   if (r.empty()) return 1.0f;
   if (c <= r.front().cuadro) return r.front().a;
@@ -6771,13 +6854,16 @@ float AlfaB(const Datos::Sprite& sp, float c) {
     }
   return r.back().a;
 }
-// PUL-B2 (dbz3_b2_fx_nativo): el dibujante de #AMA del original (FUN_001a8d10) aplica SIEMPRE el color de la lista B
-// (+0x10..0x1C: r, g, b, a; 1,0 = la textura tal cual), lineal entre claves. c < 0 = reposo: la ultima clave.
+// PUL-B2: color de la lista B (+0x10..0x1C). Con el opt-in usa la curva de FUN_001A8200.
+// c < 0 sigue significando reposo en el port: se conserva la ultima clave.
 ImU32 TintB(ImU32 col, const Datos::Sprite& sp, float c) {
   const auto& r = sp.recortes;
   if (r.empty()) return col;
   float k[4] = {r.back().r, r.back().g, r.back().b, r.back().a};
-  if (c >= 0 && c <= r.front().cuadro) {
+  if (c >= 0 && (REXCVAR_GET(dbz3_b2_presentacion_pal) || REXCVAR_GET(dbz3_b2_color_ama_pal))) {
+    const auto v = ColorAmaPal(sp, c);
+    std::copy(v.begin(), v.end(), k);
+  } else if (c >= 0 && c <= r.front().cuadro) {
     k[0] = r.front().r, k[1] = r.front().g, k[2] = r.front().b, k[3] = r.front().a;
   } else if (c >= 0) {
     for (size_t i = 1; i < r.size(); ++i)
@@ -6874,6 +6960,71 @@ bool DibCasilla01(ImDrawList* dl, const Lienzo& L, int condicion, float cuadro, 
     DibNativa01(dl, g_d.life_ama, g_ticonos, anim, L, c, col);
   }
   return true;
+}
+
+// B2 PAL: comprobar todas las capas del conjunto antes de pintar. Si falta una
+// textura necesaria, no pintar el resto: el llamante conserva el respaldo anterior.
+struct CapaTableroPal {
+  int anim, imagen;
+  float cuadro = 0;
+  bool aditiva = false;
+};
+template <size_t N>
+bool DibCapasTableroPal(ImDrawList* dl, const Lienzo& L, CapaTableroPal (&capas)[N], float reloj, ImU32 color) {
+  const auto& ama = g_d.life_ama;
+  for (auto& q : capas) {
+    if (q.anim < 0 || q.imagen < 0 || size_t(q.anim) >= ama.size() || size_t(q.imagen) >= ama.size()) return false;
+    const auto& anim = ama[size_t(q.anim)];
+    const auto& imagen = ama[size_t(q.imagen)];
+    if (imagen.recortes.empty()) return false;
+    q.cuadro = std::floor(std::fmod(std::max(0.0f, reloj), std::max(1.0f, anim.dur)));
+    const auto* rec = &imagen.recortes.front();
+    for (const auto& r : imagen.recortes) {
+      if (r.cuadro > q.cuadro) break;
+      rec = &r;
+    }
+    if (rec->tex < 0 || size_t(rec->tex) >= g_ticonos.size() || !g_ticonos[size_t(rec->tex)]) return false;
+    if (rec->gs != 0x44 && rec->gs != 0x48) return false;
+    q.aditiva = rec->gs == 0x48;
+  }
+  for (const auto& q : capas) {
+    if (q.aditiva) dl->AddCallback(rex::ui::kImDrawBlendAdditive, nullptr);
+    DibNativa01(dl, ama, g_ticonos, q.anim, L, q.cuadro, TintB(color, ama[size_t(q.anim)], q.cuadro), 0, q.imagen);
+    if (q.aditiva) dl->AddCallback(rex::ui::kImDrawBlendAlpha, nullptr);
+  }
+  return true;
+}
+
+bool DibCasillaBasePal(ImDrawList* dl, const Lienzo& L, int tipo, int condicion, float reloj, ImU32 col) {
+  if (condicion != 0) return false;
+  // FUN_00239690, tabla 0x377D10: registro de animacion = registro de imagen.
+  switch (tipo) {
+    case 0: {
+      CapaTableroPal capas[] = {{0, 0}};
+      return DibCapasTableroPal(dl, L, capas, reloj, col);
+    }
+    case 2: {
+      CapaTableroPal capas[] = {{1, 1}, {2, 2}, {3, 3}, {4, 4}, {5, 5}};
+      return DibCapasTableroPal(dl, L, capas, reloj, col);
+    }
+    case 3: {
+      CapaTableroPal capas[] = {{10, 10}, {11, 11}};
+      return DibCapasTableroPal(dl, L, capas, reloj, col);
+    }
+    case 4: {
+      CapaTableroPal capas[] = {{0, 0}, {16, 16}};
+      return DibCapasTableroPal(dl, L, capas, reloj, col);
+    }
+  }
+  return false;
+}
+
+bool DibBolaSueloPal(ImDrawList* dl, const Lienzo& L, int numero, float reloj) {
+  if (numero < 0 || numero > 6) return false;
+  // FUN_0027B740 lee 1..7; el numero del snapshot del port empieza en cero.
+  const int imagen = numero == 0 ? 56 : 61 + numero;
+  CapaTableroPal capas[] = {{57, imagen}, {56, imagen}};
+  return DibCapasTableroPal(dl, L, capas, reloj, IM_COL32_WHITE);
 }
 
 // Orden real del panel (DAT_0037A830, 14 bytes); no es FUN_0027CD40 (objetos T8).
@@ -7298,9 +7449,14 @@ bool DibTarjeta(ImDrawList* dl, const S::Area& a, float t, float c, int condicio
   DibNativa01(dl, g_d.tarjeta_ama, tx, 7, L, c);   // pergamino
   DibNativa01(dl, g_d.tarjeta_ama, tx, 6, L, c);   // titulo
   const size_t ic = size_t(std::clamp(condicion, 0, 5));
-  if (ic < tc.size() && tc[ic]) {   // el texto de la condicion: x de -252 a 234 entre los cuadros 70 y 80 (CMN 410)
-    const float u = std::clamp((c - 70.0f) / 10.0f, 0.0f, 1.0f), x = -252.0f + 486.0f * u;
-    dl->AddImage(tc[ic].id(), L.P(x - tc[ic].w * 0.5f, 240 - tc[ic].h * 0.5f), L.P(x + tc[ic].w * 0.5f, 240 + tc[ic].h * 0.5f));
+  if (ic < tc.size() && tc[ic]) {
+    const float u = std::clamp((c - 70.0f) / 10.0f, 0.0f, 1.0f);
+    float x = -252.0f + 486.0f * u, y = 240.0f;
+    if (REXCVAR_GET(dbz3_b2_tarjeta_cond_pal) && !g_d.tarjeta_cond_ama.empty() && !g_d.tarjeta_cond_ama.front().claves.empty()) {
+      const Pose pose = PoseDe(g_d.tarjeta_cond_ama.front(), c);
+      x = pose.px; y = pose.py;  // CMN 410/0 incluye el rebote tras el cuadro 80; DATA loc 189 sigue eligiendo el texto.
+    }
+    dl->AddImage(tc[ic].id(), L.P(x - tc[ic].w * 0.5f, y - tc[ic].h * 0.5f), L.P(x + tc[ic].w * 0.5f, y + tc[ic].h * 0.5f));
   }
     if (c >= 80.0f) {
       // personaje: a la derecha, cabeza en y = 19 (448), pies fuera de la pantalla
@@ -7790,7 +7946,7 @@ ImVec2 PosFicha(const Ficha& f) {
   }
   const Casilla &a = g_d.casillas[size_t(f.desde)], &b = g_d.casillas[size_t(f.casilla)];
   // lineal, tras el giro (0x273630: inicio + direccion * 4 * cuadros)
-  const float k = std::clamp((g_ahora - f.t_mov - f.t_giro) / std::max(f.t_dur, 0.01f), 0.0f, 1.0f);
+  float k = std::clamp((g_ahora - f.t_mov - f.t_giro) / std::max(f.t_dur, 0.01f), 0.0f, 1.0f);
   // EU 0x273950 FUN_00273950 (x, y de la casilla + el desplazamiento del hueco: tabla 0x3A2C20 -> 0x2739A8..; solo el 0 y el 1 se usan)
   // hueco 1 de la casilla: (+60, -20) (FUN_00273950 -> 0x2739A8)
   // Huecos 2-5: red de seguridad de dibujo, nunca capacidad adicional del nodo.
@@ -7799,6 +7955,15 @@ ImVec2 PosFicha(const Ficha& f) {
   const int sa = std::clamp(f.slot_ant, 0, 5), sb = std::clamp(f.slot, 0, 5);
   const float ax = a.x + kSlotX[sa], ay = a.y + kSlotY[sa];
   float bx = b.x + kSlotX[sb], by = b.y + kSlotY[sb];
+  // FUN_00273630: 4 px por avance, no distancia / duracion total. El cuadro extra de
+  // FUN_00273800 es para terminar el paso, no para repartir el avance. Se preservan
+  // el plazo, los contactos y las recolocaciones entre huecos.
+  if ((REXCVAR_GET(dbz3_b2_presentacion_pal) || REXCVAR_GET(dbz3_b2_paso_4px)) &&
+      f.desde != f.casilla && f.corta == 0 && sa == sb && sa <= 1) {
+    const float dist = std::hypot(bx - ax, by - ay);
+    if (dist > 0.0f)
+      k = std::clamp((g_ahora - f.t_mov - f.t_giro) * (4.0f * 60.0f) / dist, 0.0f, 1.0f);
+  }
   if (f.corta > 0) {   // contacto: se queda a `corta` px del centro de destino, sobre la recta de llegada
     const float dx = bx - ax, dy = by - ay, d = std::hypot(dx, dy);
     if (d > f.corta) {
@@ -8391,6 +8556,12 @@ void DibTablero(ImDrawList* dl, const S::Area& a, float t, bool prepara) {
     if (!k.P(c.x, c.y, p, &e)) continue;
     const bool buscada = !prepara && i < g_buscada.size() && g_buscada[i];
     const ImU32 col = buscada ? IM_COL32(140, 140, 140, 255) : IM_COL32_WHITE;
+    if (REXCVAR_GET(dbz3_b2_presentacion_pal) || REXCVAR_GET(dbz3_b2_capas_tablero_pal)) {
+      Lienzo L;
+      L.o = p;
+      L.s = e;
+      if (DibCasillaBasePal(dl, L, c.tipo, c.condicion, t * 60.0f, col)) continue;
+    }
     if (c.tipo == 2) {   // solP4: faltaba Dende, visible junto al radar en el dorado de la fase VI.
       // #AMA 397: patron 1 = disco (y +5); patron 5 = Dende (x +33, y -40),
       // recortes 0/104/208 de #AMT 398/10 en 0/50/55/95/100 cuadros. Sin inventar la pose ni su tamano.
@@ -8460,6 +8631,12 @@ void DibTablero(ImDrawList* dl, const S::Area& a, float t, bool prepara) {
         const int b = BolaEn(o.casilla);
         if (b < 0) continue;
         const int n = g_bolas_fase[size_t(b)][1];
+        if (REXCVAR_GET(dbz3_b2_presentacion_pal) || REXCVAR_GET(dbz3_b2_capas_tablero_pal)) {
+          Lienzo L;
+          L.o = p;
+          L.s = e;
+          if (DibBolaSueloPal(dl, L, n, g_ahora * 60.0f)) continue;
+        }
         DibIcono(dl, 2, ImVec2(p.x - 18 * e, p.y - 40 * e), ImVec2(p.x + 18 * e, p.y - 4 * e), ImVec4(40.0f * float(n), 0, 40.0f * float(n + 1), 40));
         continue;
       }
@@ -8680,7 +8857,7 @@ void DibTablero(ImDrawList* dl, const S::Area& a, float t, bool prepara) {
   // (uRam00698DCC / uRam00698DB4), con su ancla en el punto de la pieza en el mapa (FUN_0027A790), como el original.
   for (size_t i = 0; i < g_son_dif.size();) {   // sonidos programados de los objetos recogidos
     if (t >= g_son_dif[i].t) {
-      SonidoCanal3(g_son_dif[i].id);
+      SonidoCanal(3, g_son_dif[i].id, g_son_dif[i].cuerpo);
       g_son_dif.erase(g_son_dif.begin() + std::ptrdiff_t(i));
     } else {
       ++i;
@@ -9021,7 +9198,11 @@ void DibHud(ImDrawList* dl, const S::Area& a, float t) {
           if (fxr) dl->AddCallback(rex::ui::kImDrawBlendAlpha, nullptr);
           const Datos::Sprite& centro = g_d.hud_ama[89];
           const Casilla& yo = g_d.casillas[size_t(g_f[size_t(g_sel)].casilla)];
-          for (size_t i = 0; i < g_bolas_fase.size() && i < 3; ++i) {
+           // FUN_0026F940 llama a FUN_00278B00 tras el brillo y antes de consultar las Bolas.
+           // FUN_00235FD0 conserva la ficha anterior durante la espera inicial del turno rival.
+           const bool indicadores = !REXCVAR_GET(dbz3_b2_radar_indicadores_pal) ||
+               (g_f[size_t(g_sel)].jugador && (!g_fase_rival || g_rival_paso < 0));
+           for (size_t i = 0; indicadores && i < g_bolas_fase.size() && i < 3; ++i) {
             const Casilla& b = g_d.casillas[size_t(g_bolas_fase[i][0])];
             const float dx = b.x - yo.x, dy = b.y - yo.y;
             if (dx * dx + dy * dy > 90000.0f)
@@ -9260,7 +9441,9 @@ void ComponerVidaKi(const Ficha& j, const Ficha& r, int condicion, int out[14], 
   out[3] = vida_j;
   if (r.vida_b2 > 0) {   // orden 54 del rival, con la correccion de coherencia del original
     int vida_r = r.vida_b2;
-    const int byte_1f = std::max(0, r.vida_max) / 1000;   // +0x1F de carga (FUN_002791a0: vida / 1000)
+    const int byte_1f = REXCVAR_GET(dbz3_b2_dende_vida_pal) && r.banda_dende >= 0
+                           ? r.banda_dende
+                           : std::max(0, r.vida_max) / 1000;   // respaldo de carga sin Dende
     if (vida_r / 1000 != byte_1f) vida_r = (byte_1f + 1) * 1000;
     out[4] = -vida_r;   // < 0: solo la inicial (la maxima, la de serie)
   } else {
@@ -9409,7 +9592,8 @@ void Entrar() {
   ComprobarFuenteB2();
   if (g_estado == kJuego && g_d.fase == fase) return;   // sigue la partida de esta sesion
   if (Cargar(fase)) Preparar();
-  if (std::getenv("DBZ3_TEST_B2_DESEO")) {   // PRUEBA: la pantalla de los deseos sin jugar las 9 fases
+  if (std::getenv("DBZ3_TEST_B2_DESEO") && !std::getenv("DBZ3_TEST_B2_CIERRE") &&
+      !std::getenv("DBZ3_TEST_B2_EVENTO") && !g_trad_reanudada) {   // PRUEBA: directo a deseos salvo cierre/evento o partida reanudada
     g_estado = kDeseo;
     g_deseo = 0;
     g_shen = 0;
@@ -11156,12 +11340,15 @@ int DibujarTablero(ImDrawList* dl, const S::Area& a, float t, uint16_t pressed, 
           }
         }
         if (kShenAmpValidado && ShenLuzB2()) {
-          g_shen_luz = ps2::CargarSuelto(HijoAmb(a328, 11), HijoAmb(a328, 12), true, true);
+          const bool alfa_pal = REXCVAR_GET(dbz3_b2_shenron_luz_alfa_pal);
+          // La paleta de CMN 328/12 lleva alfa PS2 aunque las texturas no marquen el bit alto de #AMT.
+          g_shen_luz = ps2::CargarSuelto(HijoAmb(a328, 11), HijoAmb(a328, 12), true, true, false, !alfa_pal);
           if (g_shen_luz.esq) {
             g_shen_luz.anim = ps2::LeerAnim(HijoAmb(a328, 13), 0, g_shen_luz.esq->padre.size());
             g_shen_luz.anim.relativa = true;
           }
           g_shen_luz_tx = ps2::Texturas(g_shen_luz);
+          if (alfa_pal) REXLOG_INFO("dbz3 tablero b2: Shenron alfa PAL de la luz: {} texturas", g_shen_luz_tx.size());
         }
         REXLOG_INFO("dbz3 tablero b2: AMP: bolas {} huesos/{} cuadros, luz {} huesos/{} cuadros; dibujo pendiente",
                     g_shen_bolas_amp.huesos.size(), g_shen_bolas_amp.cuadros,
@@ -11575,7 +11762,9 @@ int DibujarTablero(ImDrawList* dl, const S::Area& a, float t, uint16_t pressed, 
     if (g_shen != 1 || te < kShenTexto || n == 0 || g_d.shen_ama.empty() || g_tshen_marco.empty() || !g_tshen_marco[0])
       S::HelpLine(dl, a.At(600, 878), 38 * a.s, {{"A", g_shen == 1 ? T::T("Pedir", "Wish") : T::T("Seguir", "Continue")},
                                                  {"Y", T::T("Salir", "Quit")}});
-    if (auto_on && te < kShenTexto && fijo >= fijos.size()) shen_t0 = t - kShenTexto;
+    const char* deseo_prueba = std::getenv("DBZ3_TEST_B2_DESEO");
+    const bool ver_aparicion = deseo_prueba && std::strcmp(deseo_prueba, "2") == 0;
+    if (auto_on && !ver_aparicion && te < kShenTexto && fijo >= fijos.size()) shen_t0 = t - kShenTexto;
     // R21 dsB2_D: el piloto automatico de pruebas pulsa A una vez cada 1,4 s (como una persona), no en cada cuadro:
     // antes la lista de deseos, el "Si, eso es aceptable" y la despedida pasaban en tres cuadros y no se podian ver
     // ni capturar. Solo afecta a las pruebas (auto_on = DBZ3_TEST_MISIONES=...,auto); el jugador no cambia.
@@ -12219,11 +12408,16 @@ int Dibujar(ImDrawList* dl, const S::Area& a, float t, uint16_t pressed, bool au
     }
   }
   // ---- fuera del candado: silencios y arranque de la pista ----
+  // FUN_00245EC0 usa dt=1.2 en PAL. Desde nivel 1, cambia/corta en el campo 56 (<0);
+  // desde nivel 0, llega a 1 en otros 9 campos. El backend aproxima entre campos
+  // con una rampa lineal; su limitacion de posicion de la pista anterior sigue vigente.
+  constexpr float kBajadaPal = 56.0f / 50.0f;
+  constexpr float kSubidaPal = 9.0f / 50.0f;
   if (callar) {
     if (REXCVAR_GET(dbz3_b2_audio_fundido) && !iso_musica.empty() && sonando > 0 && pista <= 0)
       FundirMusicaPs2(iso_musica, "ADX_US.AFS", sonando, -1,
                       dbz3::settings::AudioMute() ? 0.0f : float(dbz3::settings::MasterVolume()) * 0.8f,
-                      1.0f / 0.015f / 50.0f, 0.2f);
+                      kBajadaPal, kSubidaPal);
     else if (sonando > 0)
       CallarMusicaPs2();
     // Un cierre calla la musica, pero no debe cancelar el ADX de la escena 11.
@@ -12244,7 +12438,7 @@ int Dibujar(ImDrawList* dl, const S::Area& a, float t, uint16_t pressed, bool au
       REXLOG_INFO("dbz3 tablero b2: musica de la fase {}: ADX_US {} (volumen {:.2f})", fase_musica + 1, pista, vol);
     // PRUEBA: DBZ3_TEST_MUSICA=1 la decodifica aunque el juego este en silencio (registro con su duracion)
     if (REXCVAR_GET(dbz3_b2_audio_fundido) && antes > 0 && antes != pista && !iso_musica.empty())
-      FundirMusicaPs2(iso_musica, "ADX_US.AFS", antes, pista, vol, 1.0f / 0.015f / 50.0f, 0.2f);
+      FundirMusicaPs2(iso_musica, "ADX_US.AFS", antes, pista, vol, kBajadaPal, kSubidaPal);
     else
       OirMusicaPs2(iso_musica, "ADX_US.AFS", pista, std::getenv("DBZ3_TEST_MUSICA") ? 0.001f : vol);
   }

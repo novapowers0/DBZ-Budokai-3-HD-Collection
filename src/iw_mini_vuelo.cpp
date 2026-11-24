@@ -108,7 +108,7 @@
 // 33 campos PAL (paso 1,2) o 39 NTSC. Entonces G+0x520 = bloque +0x24 y MgFly_CallLoadFunc(8). El port lo ponia al campo
 // siguiente. ponytail: +-1 campo sin medir (orden de las dos tareas en el campo de la recogida; hace falta una toma PINE
 // del original con G+0x520 por campo).
-REXCVAR_DEFINE_BOOL(dbz3_iw_vuelo_objeto8_viaje, false, "DBZ3/IW",
+REXCVAR_DEFINE_BOOL(dbz3_iw_vuelo_objeto8_viaje, true, "DBZ3/IW",
                     "IW vuelo 0x7D6/0x7E0: el objeto 8 congela el medidor cuando su efecto llega (33 campos PAL / 39 NTSC), no al cogerlo");
 REXCVAR_DEFINE_BOOL(dbz3_iw_voces_vuelo_original, true, "DBZ3/IW",
                     "IW vuelo: voces como el original (1249 del READY, 1261 de derrota, 955/956 a 10 s, aros con Memory) (pruebas)");

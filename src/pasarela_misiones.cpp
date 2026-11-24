@@ -147,13 +147,16 @@ int PropiedadZeniCapsulaIW(int mision);                    // +5 de la capsula d
 REXCVAR_DEFINE_BOOL(dbz3_iw_resultado_original, true, "DBZ3/IW",
                     "IW resultado de mision: rango, Zenie (6 dificultades y capsula) y TIME/RANK con la logica del ELF");
 
+REXCVAR_DEFINE_BOOL(dbz3_iw_vuelta_tras_resultado, true, "DBZ3/IW",
+                    "IW experimental: arrancar la vuelta de Dragon Mission al cerrar el resultado de combate");
+
 // HUECOS-08: ELF EU 0x2AC0D0 empieza en 40, no 39. Candidato; no cubre contadores RAMEvents.
-REXCVAR_DEFINE_BOOL(dbz3_iw_rango_fight40, false, "DBZ3/IW",
+REXCVAR_DEFINE_BOOL(dbz3_iw_rango_fight40, true, "DBZ3/IW",
                     "IW experimental: primer corte Fight en 40 por ciento; requiere resultado original");
 
 // IWFIN/HUECOS-08: los cinco contadores que faltaban (palabras 1, 2, 3 y 16 y la racha de ki del jugador): formula
 // completa de Char_ComputeStatGrade (EU 0x2AC0D0), 3488/3488 filas iguales al ELF (h08_rango_candidato40.json).
-REXCVAR_DEFINE_BOOL(dbz3_iw_rango_contadores, false, "DBZ3/IW",
+REXCVAR_DEFINE_BOOL(dbz3_iw_rango_contadores, true, "DBZ3/IW",
                     "IW rango de mision: cuenta esquivas, teletransportes y carga de ki como el original; requiere resultado original");
 
 namespace dbz3::combate { int PalabraIW(int lado, int k); }   // combate.h
@@ -2727,7 +2730,10 @@ class Panel : public rex::ui::ImGuiDialog {
     PantallaDM& pantalla_ = g_iw_road ? pantalla_road_ : pantalla_dm_;   // Fighter's Road: su propio cursor
     const auto textos = IW();
     if (!dm) return Salir();
-    if (g_iw_vuelta_combate.exchange(false)) pantalla_.VolverDelCombate();   // H03: vuelta de combate, sin intro
+    // EU 0x285F30 estado 2: la salida del resultado encola la vuelta.
+    const bool resultado_combate = !g_iw_road && g_iw_vista == 2 && g_iw_res.mision > 0;
+    const bool espera_resultado = resultado_combate && REXCVAR_GET(dbz3_iw_vuelta_tras_resultado);
+    if (!espera_resultado && g_iw_vuelta_combate.exchange(false)) pantalla_.VolverDelCombate(resultado_combate);
     if (iw_cambio_ != g_cambio || iw_gen_ != g_iw_gen.load()) {
       iw_cambio_ = g_cambio;
       iw_gen_ = g_iw_gen.load();
@@ -2944,9 +2950,13 @@ class Panel : public rex::ui::ImGuiDialog {
         if (x.iw == 5 || x.iw == 6) VigilarEntrenoIW(x.iw);
         if (!Lanzar()) Publicar(kPantalla);   // otro combate pendiente: la tarjeta lo reintenta
       }
-    } else if (pantalla_.Resultado(dl, io, t, pressed, info_, g_iw_res)) {
+    } else if (pantalla_.Resultado(dl, io, t, pressed, info_, g_iw_res,
+                                   espera_resultado && g_iw_vuelta_combate.load())) {
+      if (std::getenv("DBZ3_TEST_IW_FLUJO"))
+        REXLOG_INFO("dbz3 niwa resultado cerrado mision={} mini={}", g_iw_res.mision, g_iw_res.clave_mini);
       g_iw_vista = 0;
       ++g_cambio;
+      if (espera_resultado && g_iw_vuelta_combate.exchange(false)) pantalla_.VolverDelCombate(resultado_combate);
       if (g_iw_despues >= 0) {   // la escena de la historia de despues, sobre el mapa
         REXLOG_INFO("dbz3 misiones: iw: escena de la historia despues: video {} ({} lineas)", g_iw_despues,
                     dm->subtitulos[size_t(g_iw_despues)].size());

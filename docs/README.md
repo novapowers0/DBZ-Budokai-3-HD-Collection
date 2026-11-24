@@ -1,11 +1,27 @@
 # DBZ Budokai 3 HD Collection — Documentación del proyecto
 
-> Guía accesible para agentes y humanos. Consolidación del estado del proyecto,
-> estructura de carpetas, cómo hacer mods, formatos, herramientas y builds.
-> Actualizado: 2026-11-23 (estado de v1.5.7 y guías del jugador del 12/11;
-> el índice histórico parte de la **v1.2.9** y de la compactación de
-> `AGENTS.md` a ≤60 KB, con el detalle verbatim en
-> `01_estructura/HISTORICO_RELEASES.md`)
+Port nativo de *Dragon Ball Z: Budokai 3 HD Collection* (Xbox 360) con ReXGlue SDK. Este índice reúne guías del jugador, documentación técnica e historial del proyecto.
+
+**[Descargar v1.5.7 — última versión](https://github.com/novapowers0/DBZ-Budokai-3-HD-Collection/releases/tag/v1.5.7)** · **[Vídeo de lanzamiento](https://youtu.be/47XrgFQ8zaQ)** · [Guía de instalación y preguntas frecuentes](../RELEASE_README.md)
+
+## Empieza aquí
+
+- **Descargas:** en **Assets** están el ZIP de Windows x64 y el Kit de Modding opcional. Linux amd64 (Vulkan, BETA) y Mac con Apple Silicon (EXPERIMENTAL, SIN PROBAR) aún no tienen un archivo adjunto; consulta Assets.
+- **Instalación:** necesitas tu propia copia legal de Budokai 3 HD Collection; el paquete no trae sus datos. En Windows, extrae el ZIP entero, abre `dbz3.exe`, selecciona tu ISO completa o la carpeta con `default.xex` y sus datos `us/` o `eu/`, y pulsa **JUGAR**. Para los modos de PS2 que requieren otro disco, usa **Juego → Elegir ISO** con tu propia copia.
+- **Actualización:** respalda los ajustes, partidas y mods; sustituye juntos el ejecutable y las DLL con el ZIP completo. Solo se migran los ajustes listados que aún tienen el valor anterior de serie. Los archivos obsoletos de la lista pasan a `_respaldo_actualizacion/` sin borrarse.
+- **Mods:** se gestionan en **Mods** del launcher o en `mods/` junto al ejecutable. Extrae el Kit opcional sobre la instalación de Windows y abre `DBZ3_ModKit.bat`. [Guía rápida del Kit](02_mods/KIT_GUIA_RAPIDA.md).
+
+## Modos en v1.5.7
+
+- **Dragon HUB:** más allá de la última fila del menú principal. Admite ratón; Retos clásicos mantiene su entrada.
+- **Dragon Budokai Survivors (BETA):** hordas, cartas, ocho luchadores, seis escenarios, mejoras permanentes y récords locales.
+- **Dragon Rogue (BETA):** ocho caminos, cartas, guardado y reanudación, entrenamiento de Kami y reto diario de El Abismo.
+- **Modo Héroe y creador de personajes (BETA):** Habitación, Técnicas, Evolución y Colección renovadas; atuendos por forma compatible.
+- **Dragon Tactics (EXPERIMENTAL):** tienda, carrusel e historial por rival al reanudar.
+- **Dragon World (EXPERIMENTAL)** y **Nave de Babidi (BETA):** mejoras de tablero y diálogo. Llanura de Budokai 2 cambia de zona durante el combate local con núcleo HD USA y el escenario convertido desde tu propia copia.
+- **Infinite World (EXPERIMENTAL):** mejoras de mapa y minijuegos; ruta traducida de arranque y dibujo en cursos compatibles.
+- **Leyenda de Mr. Satán (BETA):** voces y música de la escena larga de la primera ronda si están disponibles en tu copia de Budokai 1.
+- **Tag Team (BETA)** y **Online (BETA):** protección de relevos en las formas más altas e informes de conexión más claros. Las partidas largas entre dos PC y la compatibilidad Windows/Linux no están confirmadas.
 
 ---
 
@@ -22,7 +38,7 @@
 | [HOJA_DE_RUTA](HOJA_DE_RUTA.md) | Plan modding original (histórico, superseded) |
 | [HOJA_DE_RUTA_COMUNIDAD](HOJA_DE_RUTA_COMUNIDAD.md) | Feedback comunidad P0-P5 (histórico, todo completado) |
 | [SESION_AUTODETECCION_XEX_2026-09-17](SESION_AUTODETECCION_XEX_2026-09-17.md) | **v1.2.2 EX**: auto-detección del ejecutable (volcado retail del disco, ISO original, `DBZ3\`), estados del xex y fix del TOML |
-| [ANALISIS_RENDIMIENTO_LOGS_2026-09-18](ANALISIS_RENDIMIENTO_LOGS_2026-09-18.md) | **Rendimiento**: análisis de los logs del reporte "va MUY lento" (RTX 5090) + instrumentación `dbz3_perf_logging` + gate del log AFS |
+| [ANALISIS_RENDIMIENTO_LOGS_2026-09-18](ANALISIS_RENDIMIENTO_LOGS_2026-09-18.md) | **Rendimiento (histórico):** diagnóstico de un reporte de lentitud con RTX 5090 |
 | [SESION_LAUNCHER_AUDIT_2026-09-19](SESION_LAUNCHER_AUDIT_2026-09-19.md) | **v1.2.4/1.2.4 EX**: auditoría del launcher (controles muertos, `audio_gain` real, update check, FXAA/dither, palancas GPU, datos portables) |
 | [SESION_IO_FOCO_2026-09-19](SESION_IO_FOCO_2026-09-19.md) | **v1.2.5**: camino de lectura (`dbz3_io_logging`, readahead) + QoL al perder el foco (`fg=`, mute/dim) |
 | [SESION_TOML_Y_UX_2026-09-20](SESION_TOML_Y_UX_2026-09-20.md) | **v1.2.6**: autorreparación del TOML + UX anti-abuso de la escala interna |
@@ -35,8 +51,6 @@
 | [LINUX](LINUX.md) | Build nativo Linux con Vulkan, SDL3 y CI usando codegen privado |
 | [ANALISIS_ESCALADO_RENDIMIENTO_2026-09-14](ANALISIS_ESCALADO_RENDIMIENTO_2026-09-14.md) | Escalado/rendimiento: FSR1/CAS sí; FSR3/DLSS no viable a corto plazo |
 | [VIABILIDAD_UPSCALING_TEMPORAL_2026-09-29](VIABILIDAD_UPSCALING_TEMPORAL_2026-09-29.md) | **DLSS/DLAA/FSR3/Frame Gen**: viabilidad real tras analizar `reblue` y `LostOdysseyRecomp`; qué adoptamos (DRED, gamecontrollerdb) y qué no |
-| [07_ports/TEXTURAS_HD_RUNTIME_UPSCALE](07_ports/TEXTURAS_HD_RUNTIME_UPSCALE.md) | **Texturas HD en runtime (APARCADO)**: capa exterior D3D12, evidencia de por qué el override del bin no sirve y cómo retomarlo |
-| [07_ports/UNIVERSAL_MODDER_2026-09-30](07_ports/UNIVERSAL_MODDER_2026-09-30.md) | **universal-modder (evaluación)**: qué es, qué se reutiliza (método de RE con Ghidra/IDA/RenderDoc vía MCP + oráculos) y su aplicación al bloqueo del bind/skin de la Vía B |
 | [01_estructura](01_estructura/ARBOL.md) | Árbol completo del proyecto, qué es cada carpeta |
 | [01_estructura/ESTADO.md](01_estructura/ESTADO.md) | Estado actual, qué funciona, qué falla |
 | [01_estructura/HISTORICO_AGENTS.md](01_estructura/HISTORICO_AGENTS.md) | Historial verbatim de sesiones hasta 2026-09-02 (solo bajo demanda) |
@@ -63,42 +77,19 @@
 | [06_limpieza](06_limpieza/PLAN_LIMPIEZA.md) | Plan de limpieza/reorganización |
 | [06_limpieza/INVENTARIO_FISICO_2026-09](06_limpieza/INVENTARIO_FISICO_2026-09.md) | Inventario físico y artefactos |
 | [06_limpieza/INTEGRACION_MODDING_HD](06_limpieza/INTEGRACION_MODDING_HD.md) | Clasificación de herramientas y recursos para HD |
-| [07_ports/GOHAN_FUTURO_EXPLORACION_2026-10-06](07_ports/GOHAN_FUTURO_EXPLORACION_2026-10-06/README.md) | **Gohan del Futuro al 100 %**: exploración de moveset, técnicas, modelo, formas y Studio |
-| [07_ports](07_ports/ESTRUCTURA_DIBUJO_HD.md) | **Estructura de dibujo HD mapeada (descriptores A/B, mesh-ref, arms)** |
 | [12_conectores](12_conectores/) | **Conectores nativos**: menu principal, cola de pantallas, combate nativo desde el menu y combates encadenados sin menu (`src/hub.cpp`, doc 10 s9.4) |
 | [14_frentes](14_frentes/REGLAS.md) | **Frentes de trabajo 2026-10-15**: reglas comunes e informe de cada frente (HUB, modos, Tag Team, ports, escenarios, pasarela, QoL, bugs, vision futura). Ronda 2 ([RONDA2.md](14_frentes/RONDA2.md)): combate, rpg, transformaciones, online, grafico, modkit, campanas, eu (+ `eu_mapa.txt`) |
 | [14_dragon_universe](14_dragon_universe/) | Dragon Universe por dentro: opcodes, casillas, guardado |
 | [15_tecnicas](15_tecnicas/) | Tecnicas por dentro: codigos de energia, coste de ki, #CST/#CSE |
 | [16_pasarela_modos](16_pasarela_modos/) | **Pasarela de modos PS2**: documentación técnica de Leyenda de Mr. Satán, tablero B2, misiones y retos de IW ([04_misiones_y_tablero.md](16_pasarela_modos/04_misiones_y_tablero.md); `src/pasarela*.cpp`, `mod center hd/pasarela/pasarela.py`) |
 | [jugador/MODOS_Y_RETOS.md](jugador/MODOS_Y_RETOS.md) | Guia del jugador: HUB, retos y torre de la semana |
-| [jugador/CAMARA_LIBRE.md](jugador/CAMARA_LIBRE.md) | Guía del jugador: activar y usar la cámara libre (BETA) |
-| [jugador/RESOLUCION_Y_BROLY.md](jugador/RESOLUCION_Y_BROLY.md) | Guía del jugador: resolución interna (360p/240p/144p) y Broly sin destello |
-| [jugador/SOLUCION_10_SINTOMAS.md](jugador/SOLUCION_10_SINTOMAS.md) | Guía del jugador: 10 síntomas frecuentes y su solución (X3.8) |
-| [jugador/OPCIONES_1211.md](jugador/OPCIONES_1211.md) | Guía del jugador (12/11): pantalla ultra ancha, borde nativo de los menús, 238 escenarios, el «?» entre todos, escenarios no jugables y Clima vivo (noche, lluvia y nieve) |
 | [jugador/FORMAS_7_8_Y_TAG_TEAM.md](jugador/FORMAS_7_8_Y_TAG_TEAM.md) | Guía del jugador (12/11): empezar en las formas 7 y 8 y relevo del Tag Team en esas formas |
 | [jugador/DRAGON_ROGUE.md](jugador/DRAGON_ROGUE.md) | Guía del jugador (12/11): Dragon Rogue (beta), sus 8 caminos, cartas y evoluciones/fusiones, jefes, reto diario y Entrenamiento de Kami |
 | [jugador/KIT_DE_MODDING.md](jugador/KIT_DE_MODDING.md) | Guía del jugador (12/11): qué permite hoy el Kit de Modding (probado en el juego, en pruebas y lo que aún no se puede) |
 | [jugador/CARGA_TACTICS_Y_SURVIVORS.md](jugador/CARGA_TACTICS_Y_SURVIVORS.md) | Guía del jugador (12/11): por qué Dragon Tactics y Dragon Budokai Survivors cargan mucho más rápido (y qué esperar la primera vez) |
 | [02_mods/PLUGINS.md](02_mods/PLUGINS.md) | Plugins de código (DLL en `plugins/`, API `rex_mod_init`): vía oficial para mods como Budokai3Access |
-| [09_mods_nativos](09_mods_nativos.md) | Mods nativos: «Desbloquear todo», restaurar la partida y estado de los cheats |
-| [Kit modo PS2](../studies%205/ENTREGAS/KIT_PS2_31-10.md) | **Modding Kit, modo Budokai 3 PS2** (ISO nueva con texturas, intercambio de modelos y música; probado solo en PCSX2 US). Reglas de ISO/AFS en [HOJA_DE_RUTA_PORT_PS2_B3](07_ports/HOJA_DE_RUTA_PORT_PS2_B3.md) |
-| [Vídeos HD](../studies%205/ENTREGAS/VIDEOS_HD_31-10.md) | **Vídeos HD opcionales** (apertura y final, descarga aparte, solo Windows): qué se midió y qué no |
-| [Rollback R5](../studies%205/ENTREGAS/ROLLBACK_R5.md) / [Online rework](../studies%205/ENTREGAS/ONLINE_REWORK.md) | Rollback (apagado por defecto, 50/50 medido en un PC) y búsqueda de partida sin servidor |
-| [Pendientes tras 1.5.5.6](../studies%205/PENDIENTES_TRAS_1556.md) | **Lista priorizada de lo abierto por frente**, con su informe y causa medida |
 
----
-
-## RESUMEN DE 30 SEGUNDOS
-
-- **Qué es**: Port recompilado a PC de DBZ Budokai 3 HD Collection (Xbox 360) con ReXGlue SDK.
-- **Jugar**: `out\build\win-amd64-release\dbz3.exe`
-- **Config**: `out\build\win-amd64-release\dbz3_user.toml`
-- **Mods**: carpeta `mods\<mod>\` junto al exe. Solo los que NO tienen `.disabled`.
-- **Estado**: **v1.5.7 candidata, sin publicar**. Consulta las [notas completas](../github/RELEASE_NOTES_v1.5.7.md) y el [changelog](../CHANGELOG.md). El candidato Windows incluye DLSS; aún falta verificar los paquetes finales del juego y del Kit. La v1.2.9 y sus diagnósticos quedan en el [historial de releases](01_estructura/HISTORICO_RELEASES.md).
-- **Nuevos modos (BETA) en Dragon HUB**: **Dragon Budokai Survivors**, con hordas, cartas, ocho luchadores, seis escenarios y mejoras permanentes; y **Dragon Rogue**, con ocho caminos, cartas, guardado de partidas, entrenamiento de Kami y reto diario de El Abismo. Retos clásicos mantiene su propio acceso.
-- **Llanura de Budokai 2**: cambia de zona en pleno combate al lanzar al rival contra la pared que activa la escena. Es para combate local, con núcleo HD USA y el escenario convertido desde tu copia de Budokai 2. Dragon World e Infinite World siguen experimentales; los cursos compatibles de IW usan la ruta traducida. También se retocan la Nave de Babidi y la Leyenda de Mr. Satán.
-- **Modos existentes**: Héroe y el creador (BETA) renuevan Habitación, Técnicas, Evolución y atuendos por forma. Dragon Tactics (EXPERIMENTAL) renueva la tienda y el carrusel e incorpora el historial por rival al reanudar. Tag Team y Online (BETA) mejoran los relevos y los avisos de conexión.
-- **Combate, launcher y Kit**: rueda con hasta 238 escenarios añadidos, preescucha y mejoras de retos; migración de ajustes listados y respaldos, recetas B1/B2 con datos HD, 75 textos en siete idiomas y mejoras de CPU, búsqueda de mods y sonido.
+En el árbol interno, `studies 5/01_ROADMAP.md` recoge la planificación; `docs/07_ports/` reúne las notas técnicas de conversión de modelos. Esas rutas no se incluyen en el espejo público.
 
 ---
 
@@ -113,21 +104,11 @@
 
 ---
 
-## TANDA R23 · CORTE DEL 21–22 DE NOVIEMBRE DE 2026
+## Referencias de la versión
 
-La batería de la tanda dio 6/10 en paralelo; los cuatro casos fallidos pasaron en solitario con el ejecutable congelado de la tanda.
-El ZIP nocturno de la tanda no llevaba el ejecutable dual y las dos bibliotecas esperadas. En el candidato del 23/11, el ZIP coincide con su stage y las tres DLL de referencia coinciden, pero el ejecutable no coincide con la referencia dual actual. El cierre de la tanda no equivale a aprobar el paquete.
+Consulta las notas completas y los límites en la página de v1.5.7 y el [historial de cambios](../CHANGELOG.md) para versiones anteriores. El corte interno R23 se conserva en `studies 5/ENTREGAS/R23/`: describe pruebas previas y no acredita por sí mismo la versión publicada.
 
-### Ajustes de serie observados en el árbol R23
-
-- **IW:** ruta traducida (`dbz3_iw_traducido`) y frase original del mapa (`dbz3_iw_mapa_frase_original`) activadas; la serie EU/USA del candidato aún debe acreditarse.
-- **B2:** tablero 2D original (`dbz3_b2_tablero_2d_original`) y audio del cierre 11 (`dbz3_b2_audio_cierre11`) activados. La transición de Llanura es una mejora de combate distinta del tablero.
-- **Héroe:** Técnicas v2 activadas. La cobertura de la batería no acredita la progresión completa ni todos los finales.
-
-### Dónde revisar pruebas y aprobaciones
-
-- Consultar el [plan maestro R23](../studies%205/ENTREGAS/R23/PLAN_MAESTRO_PULIDO.md) y la [hoja de aprobaciones](../studies%205/ENTREGAS/R23/V2_APROBACIONES.md). Una entrega de fábrica o un preflight no acreditan un resultado en juego.
-- Para cerrar el candidato: repetir la batería con un solo ejecutable identificado por su SHA-256, cotejar el ejecutable y las tres DLL del ZIP con sus fuentes y exigir código 0 de `tools/verify_release.ps1`. El Kit se verifica aparte.
+[Créditos del proyecto](../README_ES.md#créditos-y-apoyo) · [Ko-fi de NovaPowers](https://ko-fi.com/novapowers)
 
 ---
 

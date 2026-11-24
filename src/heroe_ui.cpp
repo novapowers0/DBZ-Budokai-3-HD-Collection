@@ -38,6 +38,7 @@ using DWORD = unsigned long;   // Linux: Lanzar va por std::system
 #include <map>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <set>
 #include <sstream>
 #include <string>
@@ -47,9 +48,11 @@ using DWORD = unsigned long;   // Linux: Lanzar va por std::system
 
 #include "cac/cac.h"
 #include "cac/arcosiano_ui.h"
+#include "cac/cac_creador_util.h"
 #include "cac/razas_b3_ui.h"
 #include "escenarios.h"
 #include "heroe_api.h"
+#include "heroe_rutas.h"
 #include "heroe_v2_casa.h"
 #include "heroe_ui_v2.h"   // HEROE-V04: kit del aspecto nuevo (solo con dbz3_heroe_ui_nueva)
 namespace dbz3::heroe { bool NaveEnMapa(); }   // heroe.cpp (PM-37: nave de Freezer en el mapa de Namek)
@@ -1539,6 +1542,37 @@ void Descartar() {
   std::copy_n(g_antes.recetas, C::kMaxRecetas, h.recetas);  // X prepara el hueco; Confirmar lo persiste
 }
 
+REXCVAR_DEFINE_BOOL(dbz3_cac_deshacer, true, "DBZ3/Mods", "CaC: undo and redo appearance edits in the B3 creator");
+std::optional<C::HistorialCreador> g_historial_creador;
+std::optional<C::AspectoCreador> g_aspecto_antes_panel;
+
+void RegistrarAspecto(std::optional<C::AspectoCreador>& antes, const C::Heroe& h) {
+  if (antes && g_historial_creador)
+    g_historial_creador->RegistrarSiCambio(std::move(*antes), h, H::Traje());
+  antes.reset();
+}
+
+void CambiarHistorial(C::Heroe& h, bool deshacer) {
+  auto aplicar = [&h](const C::AspectoCreador& destino) {
+    H::PonerTraje(destino.Traje());  // limpia capas/texturas si cambia el traje: restaurarlas después
+    destino.Restaurar(h);
+    H::PonerNombre(h.nombre);
+    g_tc.clear();
+    g_tc_txt.clear();
+    TcSincronizar(h);
+    PedirVista(H::Cuerpo(), H::Traje());
+  };
+  auto& historial = *g_historial_creador;
+  if (deshacer ? historial.Deshacer(h, H::Traje(), aplicar) : historial.Rehacer(h, H::Traje(), aplicar)) {
+    g_codigo_ficha.clear();
+    g_receta_armada = -1;
+    g_receta_aviso.clear();
+    REXLOG_INFO("dbz3 heroe: NCAC2 {} (traje {}, deshacer {}, rehacer {}, cambios {})",
+                deshacer ? "deshacer" : "rehacer", H::Traje() + 1, historial.PendientesDeshacer(),
+                historial.PendientesRehacer(), int(historial.HayCambiosSinGuardar(h, H::Traje())));
+  }
+}
+
 // 1.5.6 Exportar como personaje: vista_heroe.py --exportar deja mods/heroe_<nombre>/ (mod normal, con receta.toml) y
 // ingame_ui/heroe_vista/exportar.json con el resultado (ok | sin_id | fallo). Una peticion por pulsacion (clave nueva).
 std::string g_exp_clave, g_exp_ultimo;
@@ -1963,7 +1997,11 @@ VistaElegida ElegirVista() {
   return v;
 }
 // Solo la fila de formas pide el bin montado; nunca confundir una carga/fallo con la Base.
-std::string ArgsFormasCac2() { return H::ArgsPropio() + ";donante=" + Num(H::DonanteCombate()); }
+REXCVAR_DEFINE_BOOL(dbz3_cac_cejas_ssj3, false, "DBZ3/Mods", "CaC: preview eyebrow correction for SSJ3");
+std::string ArgsFormasCac2() {
+  return H::ArgsPropio() + ";donante=" + Num(H::DonanteCombate()) +
+         (REXCVAR_GET(dbz3_cac_cejas_ssj3) ? ";_cejas_ssj3=1" : "");
+}
 void LeerCatalogoFormasCac2(const std::string& args) {
   g_caps_cac2.fill(-1);
   const std::string clave = ClaveFicha(args + ";cac2_catalogo=1");
@@ -2484,6 +2522,8 @@ void AbrirCrear(bool edit) {
   g_panel = -1;
   g_imp_abierto = false;
   g_antes = Ficha();
+  g_historial_creador.reset();
+  g_aspecto_antes_panel.reset();
   g_forma_cac2 = 0;
   g_caps_cac2.fill(-1);
   g_estado_forma_cac2.clear();
@@ -2557,13 +2597,23 @@ Accion Crear(ImDrawList* dl, const S::Area& a, float t, uint16_t p) {
   C::Heroe& h = Ficha();
   LeerCodigo();
   struct TcSync { C::Heroe& h; explicit TcSync(C::Heroe& x) : h(x) { TcSincronizar(h); } ~TcSync() { TcSincronizar(h); } } tc_sync(h);   // CAC-17
+  const bool nueva = REXCVAR_GET(dbz3_heroe_ui_nueva);   // HEROE-V04: apagado = el dibujo de siempre
+  if (nueva && REXCVAR_GET(dbz3_cac_deshacer) && !CuerpoUT() && !Xv2()) {
+    if (!g_historial_creador) g_historial_creador.emplace(h, H::Traje());
+  } else if (g_historial_creador) {
+    g_historial_creador.reset();
+    g_aspecto_antes_panel.reset();
+  }
   if (g_p17.abierta && H::Materiales17()) {
     EditarMateriales17(h, p);
+    if (!g_p17.abierta) RegistrarAspecto(g_aspecto_antes_panel, h);
     return Accion::kNada;
   }
-  if (g_p17.abierta) g_p17 = {};
+  if (g_p17.abierta) {
+    g_p17 = {};
+    g_aspecto_antes_panel.reset();
+  }
   g_boton = std::min(g_boton, NumBotones() - 1);   // si se apaga Importar con el cursor en el, no cae en Reset
-  const bool nueva = REXCVAR_GET(dbz3_heroe_ui_nueva);   // HEROE-V04: apagado = el dibujo de siempre
   const bool fondo_cac2 = PestanasCac2();
   g_aro_creador = !fondo_cac2 && nueva && FondoGpt3(dl, a, "fondo_creador_domos.png");
   if (fondo_cac2) {
@@ -2599,13 +2649,19 @@ Accion Crear(ImDrawList* dl, const S::Area& a, float t, uint16_t p) {
     REXLOG_INFO("dbz3 heroe: camara preset={} ({}) zoom={:.2f}", g_cam_preset, kCams[g_cam_preset].nombre, g_cam_zoom);
   }
   if (g_nom_abierto) {
+    std::optional<C::AspectoCreador> antes;
+    if (g_historial_creador && (p & kY) && !(p & kB)) antes.emplace(h, H::Traje());
     NombreEntrada(p);
+    if (antes && !g_nom_abierto) RegistrarAspecto(antes, h);
   } else if (C::Hsv* color = g_panel >= 0 ? ColorDeFila(g_panel) : nullptr; g_panel >= 0 && !color) {
     g_panel = -1;   // la entrada desapareció: cerrar y consumir la pulsación
+    g_aspecto_antes_panel.reset();
   } else if (color) {
     if (ResetColoresCac2() && (p & kY) && !(p & kB)) {
       C::RestaurarColoresCac2(h);
       g_tc.clear();
+      if (g_aspecto_antes_panel) TcSincronizar(h);
+      RegistrarAspecto(g_aspecto_antes_panel, h);
       g_panel = -1;
       REXLOG_INFO("dbz3 heroe: CAC2 colores originales");
       DibujarCreadorV2(dl, a, t);
@@ -2627,6 +2683,8 @@ Accion Crear(ImDrawList* dl, const S::Area& a, float t, uint16_t p) {
     if ((nueva || EsFilaEnt(g_panel)) && (p & kX)) c = C::Hsv{};
     if (EsFilaEnt(g_panel) && ((p & kY) || ImGui::IsKeyPressed(ImGuiKey_Delete))) {
       g_tc.clear();
+      if (g_aspecto_antes_panel) TcSincronizar(h);
+      RegistrarAspecto(g_aspecto_antes_panel, h);
       g_panel = -1;
       return Accion::kNada;
     }   // X Original: el color de serie de la parte
@@ -2641,6 +2699,9 @@ Accion Crear(ImDrawList* dl, const S::Area& a, float t, uint16_t p) {
     if (!rapido && (p & (kA | kB))) {
       C::ClampHsv(c);
       if (entrada && !(p & kB)) *color = c;
+      if (p & kB) g_aspecto_antes_panel.reset();
+      if (g_aspecto_antes_panel) TcSincronizar(h);
+      RegistrarAspecto(g_aspecto_antes_panel, h);
       REXLOG_INFO("dbz3 heroe: {}: {} = ({}, {}, {}){}", g_edit ? "Edit" : "Create", NombreColor(g_panel), c.h, c.s, c.v,
                   (p & kB) ? " (sin cambios)" : "");
       g_panel = -1;
@@ -2669,6 +2730,16 @@ Accion Crear(ImDrawList* dl, const S::Area& a, float t, uint16_t p) {
           q += n_;
           if (*q == ',') ++q;
         }
+      }
+    }
+    // Ctrl+Z comparte Z con BACK en el teclado. Consumirlo antes de cambiar de pestaña.
+    if (g_historial_creador && !(p & kB)) {
+      const bool ctrl_z = io.KeyCtrl && !io.KeyAlt && !io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_Z, false);
+      const bool ctrl_y = io.KeyCtrl && !io.KeyAlt && !io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_Y, false);
+      const bool ls = (p & kLsV2) && !REXCVAR_GET(dbz3_heroe_importar);
+      if (ctrl_z || ctrl_y || ls) {
+        CambiarHistorial(h, ctrl_z || ls);
+        p = 0;
       }
     }
     const int n = nueva ? FilaBotones() : Filas();
@@ -2706,6 +2777,9 @@ Accion Crear(ImDrawList* dl, const S::Area& a, float t, uint16_t p) {
       const auto mv = TirasActuales().mechones;
       if (!mv.empty()) g_parpadeo_mechon = mv[size_t(std::min(g_mechon, int(mv.size()) - 1))];
     }
+    std::optional<C::AspectoCreador> antes_lista;
+    if (g_historial_creador && (p & (kA | kLeft | kRight | kX | kY | kStartV2)) && !(p & kB))
+      antes_lista.emplace(h, H::Traje());
     const int d = ((p & kRight) ? 1 : 0) - ((p & kLeft) ? 1 : 0);
     if (EsFilaFormaCac2(g_fila) && g_forma_cac2 && H::RecetaFormaCac2() && !(p & kB) && (p & (kX | kY))) {
       constexpr const char* kEstallidos[] = {"", "#FFAA00", "#64B4FF", "#DF50FF", "#FFFFFF"};
@@ -2929,6 +3003,12 @@ Accion Crear(ImDrawList* dl, const S::Area& a, float t, uint16_t p) {
         }
         Restablecer();
       }
+    }
+    if (g_panel >= 0 || g_p17.abierta) {
+      g_aspecto_antes_panel = std::move(antes_lista);
+    } else if (antes_lista) {
+      TcSincronizar(h);
+      RegistrarAspecto(antes_lista, h);
     }
   }
   // --- dibujo ---
@@ -3203,7 +3283,7 @@ Accion TecnicasUI(ImDrawList* dl, const S::Area& a, float t, uint16_t p) {
   }
   // huecos equipados (abajo)
   const float hy = ly0 + 24 + rowh * kTecFilas + 14;
-  static const char* kNomHueco[3] = {"Definitiva", "E + â", "E + â"};   // C4: definitiva, E+derecha, E+izquierda
+  static const char* kNomHueco[3] = {"Definitiva", "E + →", "E + ←"};   // C4: definitiva, E+derecha, E+izquierda
   for (int k = 0; k < 3; ++k) {
     const float x0 = 40 + k * 370, x1 = x0 + 352;
     Marco(dl, a, x0, hy, x1, hy + 104, k == g_tec_hueco ? 240 : 190);
@@ -3699,7 +3779,11 @@ void Esfera(ImDrawList* dl, ImVec2 c, float r, int estrellas, int alfa = 255) {
 }  // namespace
 
 void AbrirMapa() {
-  g_mapa_cur = H::Saga() % std::max(1, H::SagasTotal());   // HM-02: en la vuelta 2 la siguiente es la 1
+  const int total = std::max(1, std::min(H::SagasTotal(), int(std::size(kPuntos))));
+  const H::rutas::EstadoMapa st = H::rutas::CalcularEstadoMapa(
+      H::EtapaRuta(), total, H::VueltaRuta(), H::RutaCompletada(), H::Saga(),
+      H::ColeccionVueltasOn() && H::Rutas());
+  g_mapa_cur = st.cursor_inicial;   // HM-02 / NHER4: por etapa real de ruta cuando C2+Rutas ON
   const ImVec2 p = Punto(g_mapa_cur);
   g_mapa_x = p.x, g_mapa_y = p.y;
   g_mapa_t = 0;
@@ -3710,8 +3794,11 @@ void AbrirMapa() {
 
 Accion MapaUI(ImDrawList* dl, const S::Area& a, float t, uint16_t p) {
   const int total = std::max(1, std::min(H::SagasTotal(), int(std::size(kPuntos))));
-  const int sig = H::Saga() % total;   // HM-02: la que toca en esta vuelta (g_saga crece sin tope: vuelta 2 = 8, 9...)
-  const int hechas = sig;
+  const H::rutas::EstadoMapa st = H::rutas::CalcularEstadoMapa(
+      H::EtapaRuta(), total, H::VueltaRuta(), H::RutaCompletada(), H::Saga(),
+      H::ColeccionVueltasOn() && H::Rutas());
+  const int sig = st.sig;
+  const int hechas = st.hechas;
   const int antes = g_mapa_cur;
   if (p & (kRight | kDown)) g_mapa_cur = std::min(g_mapa_cur + 1, total - 1);   // se ven todas; solo empieza la siguiente jugable
   if (p & (kLeft | kUp)) g_mapa_cur = std::max(g_mapa_cur - 1, 0);
@@ -3728,8 +3815,12 @@ Accion MapaUI(ImDrawList* dl, const S::Area& a, float t, uint16_t p) {
       REXLOG_INFO("dbz3 heroe: mapa: la saga {} esta en desarrollo (bloqueada)", g_mapa_cur + 1);
     } else if (g_mapa_cur == sig) {
       REXLOG_INFO("dbz3 heroe: mapa: empezar la saga {} ({}){}", g_mapa_cur + 1, H::NombreSaga(g_mapa_cur),
-                  H::Saga() >= total ? ", vuelta " + std::to_string(H::Saga() / total + 1) : std::string());
+                  st.nueva_vuelta ? ", nueva vuelta " + std::to_string(H::VueltaRuta() + 1)
+                  : st.vuelta_idx > 0 ? ", vuelta " + std::to_string(st.vuelta_idx + 1) : std::string());
       return Accion::kConfirmar;
+    } else if (st.nueva_vuelta) {
+      g_mapa_aviso = T::T("Ruta completada: pulsa A en la saga 1 para empezar una nueva vuelta.",
+                          "Route completed: press A on saga 1 to start a new lap.");
     } else if (g_mapa_cur < sig) {
       g_mapa_aviso = T::T("Saga completada: ya tienes su Esfera.", "Saga cleared: you already have its Dragon Ball.");
       REXLOG_INFO("dbz3 heroe: mapa: la saga {} ya esta completada", g_mapa_cur + 1);
@@ -3743,7 +3834,7 @@ Accion MapaUI(ImDrawList* dl, const S::Area& a, float t, uint16_t p) {
     return Accion::kNada;
   }
   FondoSinAnfitrion(dl, a);
-  const int vuelta = H::Saga() / total + 1;
+  const int vuelta = st.vuelta_idx + 1;
   std::string titulo = T::T("Mapa del mundo", "World map");
   if (vuelta > 1) titulo += std::string(T::T(" - Vuelta ", " - Lap ")) + std::to_string(vuelta);
   S::BannerBeta(dl, a, titulo.c_str());

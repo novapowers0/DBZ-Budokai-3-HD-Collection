@@ -207,7 +207,7 @@ static void AjustarHeroe(Heroe& h) {
   h.foto_pose = std::clamp(h.foto_pose, 0, 2);
   h.foto_yaw = std::clamp(h.foto_yaw, -40, 40);
   ClampHsv(h.pelo_c1);
-  if (!FidPeloCac2(h.pelo_fid_cac2)) h.pelo_fid_cac2 = -1;
+  if (!FidPeloCac2(h.pelo_fid_cac2) || h.pelo > 0) h.pelo_fid_cac2 = -1;
   ClampHsv(h.pelo_c2);
   ClampHsv(h.ojos_c);
   ClampHsv(h.piel_c);
@@ -224,8 +224,10 @@ static void AjustarHeroe(Heroe& h) {
   for (RecetaGuardada& r : h.recetas) { if (r.ficha.empty()) r.nombre.clear(); else if (r.nombre.empty()) r.nombre = "Traje"; if (r.ficha.size() > 4096) r = RecetaGuardada{}; }
   for (int i = 0; i < kMaxFormasReceta; ++i) {
     int& f = h.forma_receta[i];
-    if (f < -1 || f >= kMaxRecetas || h.recetas[std::max(f, 0)].ficha.empty()) f = -1;   // solo apunta a una receta que existe
-    if (f < 0) h.forma_estallido[i].clear();
+    if (i == 0 || f < -1 || f >= kMaxRecetas || h.recetas[std::max(f, 0)].ficha.empty()) f = -1;
+    auto& color = h.forma_estallido[i];
+    if (f < 0 || color.size() != 7 || color[0] != '#' ||
+        color.find_first_not_of("0123456789abcdefABCDEF", 1) != std::string::npos) color.clear();
   }
   h.estilo = std::max(0, h.estilo);
   h.moveset = std::clamp(h.moveset, -1, 63);
@@ -362,7 +364,7 @@ Heroe LeerHeroe(const toml::table* p) {
   h.deseos = int((*p)["deseos"].value_or(int64_t{0}));
   if (auto* dv = (*p)["desbloqueos"].as_array()) {
     for (const auto& e : *dv) {
-      if (auto s = e.value<std::string>(); s && !s->empty() && s->size() < 48 && h.desbloqueos.size() < 64) h.desbloqueos.push_back(*s);
+      if (auto s = e.value<std::string>(); s && !s->empty() && s->size() < 48 && h.desbloqueos.size() < 128) h.desbloqueos.push_back(*s);
     }
   }
   h.id = (*p)["id"].value_or(std::string{});

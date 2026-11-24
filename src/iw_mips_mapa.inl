@@ -142,7 +142,8 @@ bool PasoMapa(const mapa::Entrada& in, mapa::Salida& out) {
   const bool usa = EsUsaC();
   if (usa) MapaUsaIm();
   Ee& e = st->ee;
-  const bool log = st->log || std::getenv("DBZ3_TEST_IWMINI") != nullptr;
+  static const bool niwa = std::getenv("DBZ3_TEST_IW_FLUJO") != nullptr;
+  const bool log = niwa || st->log || std::getenv("DBZ3_TEST_IWMINI") != nullptr;
   out = mapa::Salida{};
   Ambito amb(*st, kDMapa);
   if (!in.inicio && !amb.continua) {   // el espejo guarda el mapa: si otro minijuego lo piso, se deja al port
@@ -386,6 +387,7 @@ bool PasoMapa(const mapa::Entrada& in, mapa::Salida& out) {
       REXLOG_INFO("dbz3 iwmips mapa cerca: fila {} flags {:X} dist {:.1f}", mfi, mf, mejor);
     }
     if (log) {
+      if (niwa) REXLOG_INFO("dbz3 niwa globo reloj={:.9g} fila={}", out.globo_t, out.globo_fila);
       REXLOG_INFO("dbz3 iwmips mapa t={} mant={:X} pulsa={:X} lx={} ly={} paso={} goku={:.9g},{:.9g} cam={:.9g},{:.9g} anim={} sel={} ord={} "
                   "conf={} instr={} us={:.1f}",
                   in.t, in.mant, in.pulsa, in.lx, in.ly, in.paso, out.goku[0], out.goku[1], out.cam[0], out.cam[1], out.anim, out.sel,

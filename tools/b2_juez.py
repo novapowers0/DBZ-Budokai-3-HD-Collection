@@ -319,6 +319,9 @@ def autoprueba():
 
 
 def main(a):
+    if a in (["--help"], ["-h"]):
+        print(__doc__)
+        return 0
     if a[:1] == ["--autoprueba"]:
         return autoprueba()
     if len(a) < 2:

@@ -192,6 +192,8 @@ struct ResultadoDM {
   int clave_mini = 0;    // s1 F04.3: minijuego (0x7D0-0x7E1) para su titulo arriba; 0 = mision o sin titulo
 };
 constexpr int kTituloMini0 = 335;   // DATA_USA 335 + (clave - 0x7D0), hijo 1: titulo del minijuego (s1 F04.3)
+// Atlas de efectos IW: texturas indexadas y directas PSMCT32.
+Imagen TexturaAtlasIW(const std::vector<uint8_t>& amt, int j);
 struct InfoDM {
   const DragonMissionIW* dm = nullptr;
   const std::vector<MisionTablaIW>* tabla = nullptr;
@@ -218,7 +220,8 @@ class PantallaDM {
   // con su sonido (ritmo de Results_StateBeginRoll/Results_UpdateTally) y luego EARNED! ... ZENI (y TOTAL ... ZENI en
   // los minijuegos). SCORE/TOTAL SCORE salen de `score`; EARNED de `zeni`; TOTAL del monedero `saldo` (DS108). A salta
   // el conteo y, acabado, lo cierra.
-  bool Resultado(ImDrawList* dl, const ImGuiIO& io, float t, uint16_t pulsado, const InfoDM& in, const ResultadoDM& r);
+  bool Resultado(ImDrawList* dl, const ImGuiIO& io, float t, uint16_t pulsado, const InfoDM& in, const ResultadoDM& r,
+                 bool vuelta_pendiente);
   // Guardado del bloque del registro (Save_UpdateRecordIfChanged, EU 0x2B81D0) forzado. Lo usa el resultado de un
   // minijuego (pasarela_misiones.cpp): cambia el monedero pero no `hecho`, y el bloque debe quedar al dia.
   void GuardarRegistro(const InfoDM& in) { ActualizarRegistro(in, true); }
@@ -229,8 +232,8 @@ class PantallaDM {
   void ReiniciarMapa();
   // H03 P0: vuelta de un combate o minijuego al mapa. No repite Story_MapIntroDelayTick; corre
   // Story_MapResultDelayTick (60 cuadros) y Story_MapReloadAfterDelayTick (~100) para dar las casillas por recargadas.
-  void VolverDelCombate();
-  bool EnIntroMapa() const { return t_intro_ < 1.0f; }   // true mientras dura la espera de entrada
+  void VolverDelCombate(bool resultado_combate);
+  bool EnIntroMapa() const;                              // true mientras dura la espera de entrada
   float IntroMapa() const { return t_intro_; }           // 0..1 (+0,01 por cuadro, como el original)
   int NivelCom() const;                 // dificultad elegida -> nivel del COM de B3 (0..2)
   int Pista(const InfoDM& in) const;    // musica del mapa: entrada de ADX_CMN.AFS (-1 sin casilla)
@@ -261,7 +264,7 @@ class PantallaDM {
   int EstadoMapa() const { return estado_; }   // piRam0049cdac[0x12A]: 7 = GeneralMapScripts (cursor libre)
  private:
   ImTextureID Tex(int clave, const Imagen& img, ImVec2* tam = nullptr);
-  void DibujarFondo(ImDrawList* dl, const ImGuiIO& io, float t, const InfoDM& in);
+  void DibujarFondo(ImDrawList* dl, const ImGuiIO& io, float t, const InfoDM& in, bool vuelta_pendiente = false);
   void Imagen2(ImDrawList* dl, int clave, const Imagen& img, ImVec2 p0, ImVec2 p1, ImVec4 src = ImVec4(0, 0, 0, 0),
                ImU32 tint = IM_COL32_WHITE);
   float Cifras(ImDrawList* dl, bool grandes, const std::string& s, ImVec2 dcha, float alto, const InfoDM& in,
@@ -279,7 +282,8 @@ class PantallaDM {
   // B3: mandos bloqueados durante el primer ciclo del scroll (Story_MapScrollToTargetTick recarga los mandos
   // cuando su acumulador pasa de 1,0; ~100 cuadros). Antes solo se bloqueaba la intro.
   bool bloqueo_scroll_ = false;
-  float t_vuelta_ = 0;                    // cuadros desde la vuelta
+  float t_vuelta_ = 0;                    // cuadros de la fase de vuelta (sin reinicio en modo anterior)
+  bool reloj_vuelta_original_ = false;
   bool res_delay_hecho_ = false, recarga_hecha_ = false;
   int dificultad_ = 2;                  // 0 Very Easy .. 4 Very Hard (lista de 334/1 t16)
   float t_ultimo_ = 0;

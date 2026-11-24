@@ -1,0 +1,52 @@
+#include <algorithm>
+#include <cstdlib>
+#include <iostream>
+#include <vector>
+
+struct Ficha {
+  int vida=0, vida_b2=-1, barras=4, casilla=0, desde=0, slot=0, slot_ant=0, anim_b2=0, anim_estado=0;
+  bool fuera=true, oculta=false, rival=false;
+};
+struct Alfombra { int i=-1, dest=0; float t_mueve=0, t_fin=0; bool dende=false; };
+struct { std::vector<int> casillas=std::vector<int>(25); } g_d;
+std::vector<Ficha> g_f;
+Alfombra g_alf;
+float g_ahora=2;
+bool dbz3_b2_popo_hueco_pal;
+constexpr bool dbz3_b2_popo_origen_pal=true;
+#define REXCVAR_GET(k) (k)
+#define REXLOG_INFO(...) ((void)0)
+#define REXLOG_WARN(...) ((void)0)
+void SucesosDeCasilla(const Ficha&) {}
+void FinDeAccion() {}
+
+@FUNCIONES@
+
+int main() {
+  int on, actor, n;
+  while (std::cin >> on >> actor >> n) {
+    g_f.assign(5, Ficha{});
+    if (n < 1 || n > 3 || actor < 1 || actor > 4) return 2;
+    dbz3_b2_popo_hueco_pal=on!=0;
+    for (int i=0; i<n; ++i) {
+      int idx, tile, slot;
+      if (!(std::cin >> idx >> tile >> slot) || idx < 1 || idx > 4) return 3;
+      Ficha& f=g_f[idx];
+      f.fuera=false;
+      f.casilla=f.desde=tile;
+      f.slot=f.slot_ant=slot;
+    }
+    g_alf=Alfombra{actor,24,2,3,false};
+    ActualizarAlfombra();
+    const char* comma="";
+    std::cout << '[';
+    for (size_t i=1; i<g_f.size(); ++i) {
+      const Ficha& f=g_f[i];
+      if (f.fuera) continue;
+      std::cout << comma << '[' << i << ',' << f.casilla << ',' << f.desde << ',' << f.slot << ',' << f.slot_ant << ']';
+      comma=",";
+    }
+    std::cout << "]\n";
+  }
+  return std::cin.eof()?0:4;
+}

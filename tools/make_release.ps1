@@ -112,6 +112,17 @@ if (Test-Path -LiteralPath $ctrldb) {
 }
 
 # No se distribuyen credenciales, partidas ni caches de un directorio de usuario.
+# EXCEPCION obligatoria: la partida al 100% de Mods nativos (mods_nativos/partida_100). Sin ella el boton
+# Desbloquear todo falla ("falta mods_nativos\partida_100"); la 1.5.7 salio sin ella (issue #74).
+$save100 = Join-Path $root "out\build\win-amd64-release\mods_nativos\partida_100"
+if (-not (Test-Path -LiteralPath (Join-Path $save100 "data.bin"))) { $save100 = Join-Path $root "out\build\win-amd64-dual\mods_nativos\partida_100" }
+if ((Test-Path -LiteralPath (Join-Path $save100 "data.bin")) -and (Test-Path -LiteralPath (Join-Path $save100 "DBZ3.header"))) {
+    $dst100 = Join-Path $OutDir "mods_nativos\partida_100"
+    New-Item -ItemType Directory -Force -Path $dst100 | Out-Null
+    Copy-Item -LiteralPath (Join-Path $save100 "data.bin"), (Join-Path $save100 "DBZ3.header") $dst100
+} else {
+    throw "Sin mods_nativos/partida_100: Desbloquear todo no funcionaria (issue #74)"
+}
 
 # Shared DLLs: canonical copy in github/ root (versioned), then the snapshot
 # of the previous release, then the US build dir.

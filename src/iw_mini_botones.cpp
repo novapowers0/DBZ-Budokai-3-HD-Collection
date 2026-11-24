@@ -319,6 +319,20 @@ int BotonPulsado(uint16_t mascara) {
   return -1;
 }
 
+REXCVAR_DEFINE_BOOL(dbz3_iw_qte_palanca_ps2, true, "DBZ3/IW",
+                    "IW 7D4: zona muerta de Masenko en unidades del mando PS2");
+
+uint16_t PalancaMasenko(int x, int y) {
+  if (REXCVAR_GET(dbz3_iw_qte_palanca_ps2)) {
+    // EU 0x14BAA0/0x14BFF0: primero byte centrado, luego zona muerta de 0x40 inclusive.
+    // XInput: Y positivo arriba; PS2: byte Y positivo abajo.
+    const int rx = (x + 32768) / 256 - 128;
+    const int ry = (std::clamp(-y, -32768, 32767) + 32768) / 256 - 128;
+    return uint16_t((rx > 64 ? 0x2000 : rx < -64 ? 0x8000 : 0) | (ry > 64 ? 0x4000 : ry < -64 ? 0x1000 : 0));
+  }
+  return uint16_t((x > 16384 ? 0x2000 : x < -16384 ? 0x8000 : 0) | (y > 16384 ? 0x1000 : y < -16384 ? 0x4000 : 0));
+}
+
 struct Icono {
   int boton = 0;
   float x = 0;
@@ -472,7 +486,7 @@ std::atomic<bool> g_chr_activo[2]{};
 std::atomic<int> g_chr_total{15};
 std::atomic<uint32_t> g_chr_paleta[2]{iwchrfade::kNeutro,iwchrfade::kNeutro};
 // PUL-IW-FX-05: tinte de golpe IDENTICO al original (detalle en iw_tinte_original.h). Apagado: todo como antes.
-REXCVAR_DEFINE_BOOL(dbz3_iw_tinte_original, false, "DBZ3/IW",
+REXCVAR_DEFINE_BOOL(dbz3_iw_tinte_original, true, "DBZ3/IW",
                     "IW: tinte de golpe como el original (QTE blanco 15 cuadros solo a quien recibe; Piccolo DC903C 20)");
 static bool TinteIW() { static const bool v = REXCVAR_GET(dbz3_iw_tinte_original); return v; }
 // RESCATE IW-F15a: voz del rotulo CLEAR!/FAILED! de 7DB/7DC como el original (s_MSN_CV_ReadyStart(1/2)). Apagado: nada cambia.
@@ -1761,7 +1775,7 @@ bool PasoOriginalDB(Juego& j) {
   in.mantenido = j.antes;
   if (b06 && EfectosIW()) {   // PUL-IW-FX-03: palanca derecha (machaque del Masenko, ver iw_mips_botones.inl); piloto: palanca_auto
     const int x = PalancaDerechaX(), y = PalancaDerechaY();
-    in.palanca = uint16_t((x > 16384 ? 0x2000 : x < -16384 ? 0x8000 : 0) | (y > 16384 ? 0x1000 : y < -16384 ? 0x4000 : 0) | j.palanca_auto);
+    in.palanca = uint16_t(PalancaMasenko(x, y) | j.palanca_auto);
   }
   {
     const int clip = g_cb_clip.load();
@@ -2055,6 +2069,14 @@ bool PasoOriginalDB(Juego& j) {
 bool SolapaObjetivo(float x, float izq, float der) {
   return int(x+der)>=442 && int(x+izq)<=477;
 }
+// NIWF: el remate de NB006 tiene una opcion propia; no cambia el solape de las marcas ni el de los otros cursos.
+REXCVAR_DEFINE_BOOL(dbz3_iw_7d4_ventana_remate_pal, true, "DBZ3/IW",
+                    "IW 7D4: ventana PAL del remate de Masenko en la ruta de respaldo");
+bool SolapaRematePal06(float x) {
+  // EU 0x2F03C0 -> 0x2F3770 usa sumas y comparaciones float; no trunca los bordes.
+  return x + 16.f >= kObjetivoUI - 28.f && x - 16.f <= kObjetivoUI + 7.f;
+}
+
 // eIW5: ventana de los ICONOS normales, medida en el original (7DB/7D4/7DC, campos de PCSX2): el icono "llega" (+0x44) con
 // x = 405,7 y la pose de fallo sale con x = 471 (con 426 / 493 salia ~7 campos tarde). El objetivo esta en ~450 (el aro
 // dibujado en 480 de pantalla = 450 de la UI de 600), no en 470 (470 es el umbral de fallo, fRam0049c85c/2+150): ventana
@@ -2618,7 +2640,8 @@ void PasoRonda06(Juego& j,uint16_t pulsado,uint16_t palanca) {
   } else if (j.especial_fase==2) {
     ++j.remate_t;
     j.remate_x+=j.vel;
-    const bool solapa=SolapaObjetivo(j.remate_x,-16,16);
+    const bool solapa = REXCVAR_GET(dbz3_iw_7d4_ventana_remate_pal)
+                          ? SolapaRematePal06(j.remate_x) : SolapaObjetivo(j.remate_x,-16,16);
     uint16_t p=pulsado;
     if (j.auto_&&solapa&&!j.fallos) p=uint16_t(1u<<j.remate_boton);
     if ((solapa&&p) || (!solapa&&j.remate_x>kObjetivo)) {
@@ -2786,9 +2809,8 @@ void Paso(Juego& j, uint16_t pulsado) {
   const bool nb06=j.poses==&kPosesNB006;
   uint16_t palanca=0;
   if (nb06) {
-    const int x=PalancaDerechaX(),y=PalancaDerechaY();
-    const uint16_t dir=uint16_t((x>16384 ? 0x2000 : x< -16384 ? 0x8000 : 0) |
-                              (y>16384 ? 0x1000 : y< -16384 ? 0x4000 : 0));
+    const int x = PalancaDerechaX(), y = PalancaDerechaY();
+    const uint16_t dir = PalancaMasenko(x, y);
     palanca=uint16_t(dir&~j.palanca_antes);
     j.palanca_antes=dir;
     if (j.especial_fase>=0) { PasoRonda06(j,pulsado,palanca);return; }
@@ -4263,6 +4285,20 @@ constexpr float kUmbralT[6] = {1e9f, 55.0f, 45.0f, 40.0f, 35.0f, 25.0f};   // NB
 // EU 0x295C10 s_MSN_NB007_Update: +0xF8 = 0x40E00000 (7,0 s); es el limite de la QTE de cada ronda
 // (QTE_SetTimeLimit 0x2EE700 lo copia a +0xfc) y el corte de "ronda lenta" de MiniGame_CalcRank.
 constexpr float kLimiteTeclear = 7.0f;
+REXCVAR_DEFINE_BOOL(dbz3_iw_7d5_rango_pal, true, "DBZ3/IW",
+                    "IW 0x7D5: aplicar los intervalos PAL del rango a los tiempos del port de respaldo");
+
+int RangoNB007Pal(float total, int lentas) {
+  // EU 0x293820 / 0x295C10: limites inclusivos; por debajo de 55.01, un hueco da rango 1.
+  if (lentas >= 10 || total >= 55.01f) return 0;
+  if (total >= 45.01f && total <= 55.0f) return 1;
+  if (total >= 40.01f && total <= 45.0f) return 2;
+  if (total >= 35.01f && total <= 40.0f) return 3;
+  if (total >= 25.01f && total <= 35.0f) return 4;
+  if (total >=  0.01f && total <= 25.0f) return 5;
+  return 1;
+}
+
 // Objetivo de la familia B (un carril): el objeto 0x20 de la UI de Mg_UI_CreateObjects (EU 0x316060),
 // UI_SetObjectPosVec(pantalla/2, 395, 0, 0x20) con UI_SetObjectRect(-28, -28, 28, 28, 0x20): centro x 320 y caja de 56.
 // El juego lo juzga por solape (UI_CheckTwoObjectsOverlap(0x20, icono) en Mg_UpdateScrollingIcons EU 0x315540) y da el
@@ -4381,7 +4417,7 @@ struct JuegoB {
   float obj5_19_t = 0, obj6_19_t = 0;
   uint32_t fx_sem = 10;
 };
-REXCVAR_DEFINE_BOOL(dbz3_iw_7d5_fin_camara_original, false, "DBZ3/IW",
+REXCVAR_DEFINE_BOOL(dbz3_iw_7d5_fin_camara_original, true, "DBZ3/IW",
                     "IW NB007: espera el fin de la camara 0xBE para pasar a 0x353 y a la pose de victoria (pruebas)");
 std::shared_ptr<JuegoB> g_jb;
 std::atomic<bool> g_corre_b{false};
@@ -4887,13 +4923,15 @@ void PasoTeclear(JuegoB& j, uint16_t pulsado) {
   }
   j.total = int(total * 100);   // centesimas
   j.rango = 0;
-  if (lentas < 10)
+  if (REXCVAR_GET(dbz3_iw_7d5_rango_pal)) {
+    j.rango = RangoNB007Pal(total, lentas);
+  } else if (lentas < 10) {
     for (int r = 5; r >= 1; --r)
-      // EU 0x293820 MiniGame_CalcRank
       if (total <= kUmbralT[r]) {
         j.rango = r;
         break;
       }
+  }
   const float v = j.rango == 0 ? 100.0f : j.pts[j.rango] * j.mult[j.dif];
   j.puntos = (int(v) + 99) / 100 * 100;
   j.zeni = j.puntos;

@@ -34,9 +34,9 @@ S::Pic PiezaTitulo() {
 
 struct CeldaCol {
   std::string id, nombre, cond;
-  int tipo = 0;   // 0 tecnica, 1 titulo, 2 forma, 3 escenario, 4 luchador
+  int tipo = 0;   // 0 tecnica, 1 titulo, 2 forma, 3 escenario, 4 luchador, 5 capsula, 6 traje/cosmetico
   int cap = 0, cara = -1, ki = 0;
-  bool ok = false, nuevo = false;
+  bool ok = false, nuevo = false, en_ficha = true;
 };
 std::vector<CeldaCol> CeldasCol(int pest) {
   std::vector<CeldaCol> v;
@@ -46,7 +46,7 @@ std::vector<CeldaCol> CeldasCol(int pest) {
       if (p.tipo != tipo) continue;
       CeldaCol c;
       c.id = p.id, c.nombre = p.nombre, c.cond = p.condicion, c.tipo = pest == 1 ? 0 : pest == 4 ? 1 : pest == 5 ? 3 : 4, c.cap = p.capsula, c.cara = p.cara;
-      c.ok = p.conseguido, c.nuevo = p.nuevo;
+      c.ok = p.conseguido, c.nuevo = p.nuevo, c.en_ficha = p.en_ficha;
       for (const H::Tecnica& t : H::CatalogoTecnicas())
         if (t.cap == p.capsula) c.ki = t.ki;
       v.push_back(std::move(c));
@@ -55,6 +55,18 @@ std::vector<CeldaCol> CeldasCol(int pest) {
     for (const H::InfoForma& f : H::FormasDeRaza(H::RazaEvolucion())) {
       CeldaCol c;
       c.id = f.id, c.nombre = f.nombre, c.cond = f.condicion, c.tipo = 2, c.cara = f.cara, c.ok = f.estado == 0;
+      v.push_back(std::move(c));
+    }
+  } else if (pest == 3 && H::ColeccionVueltasOn()) {
+    for (const H::InfoExtraCol& x : H::CapsulasColeccion()) {
+      CeldaCol c;
+      c.id = x.id, c.nombre = x.nombre, c.cond = x.condicion, c.tipo = 5, c.cap = x.cap, c.cara = x.cara, c.ok = x.conseguido;
+      v.push_back(std::move(c));
+    }
+  } else if (pest == 0 && H::ColeccionVueltasOn()) {
+    for (const H::InfoExtraCol& x : H::TrajesColeccion()) {
+      CeldaCol c;
+      c.id = x.id, c.nombre = x.nombre, c.cond = x.condicion, c.tipo = 6, c.cara = x.cara, c.ok = x.conseguido;
       v.push_back(std::move(c));
     }
   }
@@ -89,7 +101,8 @@ void CeldaColDibujar(ImDrawList* dl, const S::Area& q, double ahora, const Celda
     CabeceraCarta(dl, q, c.cap, x0, y0, w, ahora, c.ok ? 255 : 50);
   } else {
     v2::Caja(dl, q, x0, y0, x0 + w, y0 + h, c.ok ? 200 : 110);
-    if (c.cara >= 0) CaraRedonda(dl, q, c.cara, x0 + 38, y0 + h * 0.5f, 24, c.ok ? 255 : 90, false);
+    if (c.tipo == 5) CapsulaV2(dl, q, x0 + 38, y0 + h * 0.5f, 48, c.ok);
+    else if (c.cara >= 0) CaraRedonda(dl, q, c.cara, x0 + 38, y0 + h * 0.5f, 24, c.ok ? 255 : 90, false);
     else if (const S::Pic e = PiezaTitulo()) S::DrawPic(dl, e, q.At(x0 + 14, y0 + 12), q.At(x0 + 62, y0 + 60), ImVec4(0, 0, 0, 0), c.ok ? IM_COL32_WHITE : IM_COL32(120, 120, 120, 160));
     v2::Texto(dl, q, x0 + 80, y0 + h * 0.5f, v2::kLetraFila, c.ok ? c.nombre : std::string("???"), 0, 0, false, !c.ok, w - 100 - (c.ok && c.nuevo ? 84 : 0));
   }
@@ -285,6 +298,11 @@ void DibujarColeccionV2(ImDrawList* dl, const S::Area& a, float t, double ahora)
     if (c.tipo == 1) sub = T::T("Título del Héroe", "Hero title");
     if (c.tipo == 2) sub = T::T("Forma de tu raza", "Form of your race");
     if (c.tipo == 3) sub = T::T("Escenario", "Stage");
+    if (c.tipo == 4) sub = T::T("Luchador", "Fighter");
+    if (c.tipo == 5) sub = T::T("Cápsula pasiva / esquiva", "Passive / dodge capsule");
+    if (c.tipo == 6) sub = T::T("Estilo / cosmético nativo", "Native style / cosmetic");
+    if (H::ColeccionVueltasOn() && c.ok && !c.en_ficha && c.tipo <= 4 && c.tipo != 2)
+      sub += T::T(" · Cuenta", " · Account");
     const bool ki = c.tipo == 0 && c.ki > 0;
     const float ancho = ki ? 280 : 390;
     v2::Texto(dl, q, 1148, 731, v2::kLetraMin, sub, 0, 0, false, false, ancho);

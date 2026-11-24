@@ -7,6 +7,12 @@
 
 Vídeo: `tools/grabar.py` graba un escenario de `pruebas.py` con su audio; `tools/grabar_vitrina.py` (`--dry-run`) graba cada traje girando con la cámara de prueba `DBZ3_TEST_VITRINA`.
 
+**Equilibrio de Survivors:** `python tools/survivors_mando.py --help` — simulación sin abrir el juego. Compila un arnés temporal con Clang/lld, enlaza la lógica actual de Survivors y reutiliza el bot C10 como comparación. Los pilotos de palanca y cruceta son sintéticos: sus resultados sirven para comparar semillas iguales, no para estimar victorias de jugadores.
+
+- `python tools/survivors_mando.py autoprueba`: zona muerta, diagonal de cruceta, latencia del piloto, repetibilidad y control negativo.
+- `python tools/survivors_mando.py equilibrio --perfil mando_medio --dif 0 --reps 4 --json base.json`: referencia emparejada por mapa, personaje y semilla.
+- `python tools/survivors_mando.py barrido --dif 1 --pares 1.50:1.30,1.15:0.90`: ensaya valores sin modificar el catálogo.
+
 ---
 
 ## 0. KIT DE MODS: PERSONAJES NUEVOS Y STUDIO (2026-10-06)
@@ -360,6 +366,24 @@ python awo_tools/parse_ps2_mesh.py entrada.amb 0 salida
 
 ## 6. ARNES DE PRUEBAS DEL JUEGO EN EJECUCION (tools/, 2026-09-19)
 
+### Auditoría local de CaC y Modo Héroe (`tools/cac_heroe/`)
+
+Desde la raíz, con Python 3.11+; cada comando admite `--help` y `--autoprueba`.
+
+| Comando | Qué comprueba |
+|---|---|
+| `python tools/cac_heroe/censo_cac.py --json censo.json` | Datos, candidatos a colisión, localización y carga de piezas del AFS US. `--sin-afs` omite modelos; `--estricto` falla ante hallazgos altos o medios. |
+| `python tools/cac_heroe/fuzzer_recetas_cac.py --iteraciones 200 --semilla 20261124` | Ida y vuelta de recetas y partidas; la ejecución completa necesita `g++`/Clang C++20 disponible como `g++`. |
+| `python tools/cac_heroe/historial_creador.py --self-check` | Regresión del historial del creador B3 (`dbz3_cac_deshacer`, OFF de serie): 32 pasos, restauración del aspecto sin tocar el progreso, deduplicación y bifurcación. Usa C++20 (`g++` o `clang++`); `--help` muestra las opciones. No abre el juego. |
+| `python tools/cac_heroe/juez_formas_cac.py --rapido --json formas.json` | Monta formas con el AFS del jugador y mide máscaras de pelo, ojos y cejas (NumPy/SciPy/Pillow). `--cejas-on` mide el candidato visual; por defecto mide OFF. Puede tardar varios minutos. |
+| `python tools/cac_heroe/grafo_progreso.py --json grafo.json --mermaid rutas.mmd` | Modela rutas, premios y dependencias de los TOML; `--skip-afs` omite cápsulas y datos nativos. Un ciclo estructural no demuestra bloqueo en partida. |
+| `python tools/cac_heroe/juez_coleccion_tecnicas.py --json coleccion.json` | Contrasta textos con datos y código. Los hallazgos son pistas de auditoría, no resultados de juego. |
+| `python -B -X utf8 tools/cac_heroe/coleccion_heroe.py --help` | Auditoría offline de premios y modelo del candidato NHER2. `--self-check` prueba el modelo; `todo --skip-afs --json reporte.json` incluye rutas y migraciones simuladas. Requiere Python 3.11+; no abre el juego ni migra guardados reales. El «DESPUÉS» modela los cuatro parches propuestos, no la integración. |
+| `python -B -X utf8 tools/cac_heroe/save100_coleccion.py --help` | Coteja tres copias locales: `antes.toml despues.toml coleccion.toml.bak`. Comprueba que solo se establece `todo = true`, que el resto de valores TOML se conserva y que el respaldo es idéntico al original. Python 3.11+; no escribe en los guardados. El escenario `python tools/pruebas.py correr sol save100_coleccion` genera evidencia pasando por el botón real del lanzador, en copia fija aislada. |
+| `python -B -X utf8 tools/cac_heroe/heroe_vueltas_test.py --self-check` | Regresión offline C++/UI de `dbz3_heroe_coleccion_vueltas` (OFF de serie, AP_NHER4): enlaza `src/heroe.cpp`, `src/cac/cac.cpp` y `heroe_v2_{coleccion,mapa,habitacion}.inl` integrados con `clang++` (C++20) y ejecuta 8 escenarios C++ (338 controles: OFF por defecto, protección de `coleccion.toml` corrupto, claves extra + `.bak`, colección compartida y consumidores, 4 vueltas/3 finales + rollback, +500 HP DU y espejos, paridad 1:1 de pestañas 0 y 3) y 38 controles de UI. Admite `--help`, `--cxx` y `--json`; no abre el juego ni toca guardados reales. |
+
+El ajuste `dbz3_cac_cejas_ssj3 = false` (por defecto) afecta solo a la vista previa de formas del creador. `true` permite comparar la corrección candidata; no cambia el modelo que se guarda o se usa en combate.
+
 | Herramienta | Funcion |
 |---|---|
 | `tools/long_run.ps1` | Lanza/para/consulta pruebas **largas** desacopladas; silencia el juego (`audio_mute=true`), aplica overrides al `dbz3_user.toml` y lo restaura. Estado en `%TEMP%\opencode\long_run_state.json`. |
@@ -381,6 +405,161 @@ salta la attract demo battle 3D.
 - `tools/eu_map.py`: mapa US->EU verificado de funciones y datos que usan los ficheros de `src/` (genera `src/eu_map_gen.h` y `docs/14_frentes/eu_mapa.txt`); `tools/eu_convertir.py`: pasa un fichero a ganchos/direcciones con pareja EU (`src/eu_map.h`). Ver `docs/14_frentes/eu.md`.
 - `studies/tools/frame_data.py`: tabla de frame data estilo Budokai 4 (entradas, cuadros, dano por situacion) desde los ficheros del juego; ver `docs/14_frentes/combate.md`.
 - `mod center hd/forma_unica.py`: respaldo de la capsula "Todas las transformaciones" (hoy la genera el propio juego al arrancar, `src/transformaciones.cpp`); ver `docs/14_frentes/transformaciones.md`.
+
+### Infinite World: censo y cotejo offline (HIWB)
+
+Ambas herramientas ofrecen `--help`.
+
+```powershell
+python -X utf8 tools/iw_censo.py --md censo.md --json censo.json
+python -X utf8 tools/iw_cotejo.py --listar
+python -X utf8 tools/iw_cotejo.py 7DE --json cell.json
+python -X utf8 tools/iw_censo.py --autoprueba
+python -X utf8 tools/iw_cotejo.py --autoprueba
+```
+
+- El censo lee los booleanos `dbz3_iw_*` declarados en `src/` y las filas de `#DMD 1093`. La ruta por defecto es un catálogo revisado, no una medición en partida. `--raiz` selecciona el árbol; `--afs` permite indicar otro `DATA_CMN.AFS`.
+- Los cotejos focales usan el ELF PS2 con entradas de laboratorio y modelos de ramas C++; `--todos` ejecuta los bancos automáticos. `--elf-eu` y `--elf-us` seleccionan los ELF para botones, vuelo y disparo; 7DD usa además `--wcf` y `--rayo`. MAPA/ROAD comprueban el espejo, no una partida. El JSON registra el alcance y cada resultado.
+- Para capturas: `7D3 --ladrillos DIR_ORIG DIR_PORT` llama a Astra (`medida.json` y `visor.csv`); `CURSO --gs ORACULO VOLCADO` compara solo GS/VU1. `CURSO --trazas A.jsonl B.jsonl` exige un objeto por línea con `i` entero único, al menos un campo `in_*` idéntico y al menos una salida. Campos y cuadros deben coincidir en ambos ficheros; quien prepara las trazas debe emparejar curso, región y fase.
+- Códigos de `iw_cotejo.py`: `0` coincide en el alcance probado, `1` difiere, `2` faltan datos o hay uso inválido, `3` error de ejecución. Una coincidencia focal no equivale a paridad del curso.
+- Stop Cell (`7DE`): `dbz3_iw_7de_pausa_reloj_original` está activada de serie. Con el reloj continuo, pausa la cuenta también si se usa la mira de respaldo; `false` recupera el descuento anterior en esa rama. El banco `7DE` sigue mostrando las diferencias de mira y de fases: su modelo de reloj no lee el HUD del juego.
+
+### Infinite World: pulsación, palancas y cierres de 7D5/7DD (NIWB)
+
+`python -B -X utf8 tools/iw_niwb/cotejo.py --help` muestra los modos. Ejemplos: `--listar`, `--autoprueba`, `7D5 --foco rango --ajuste on`, `7DD --ajuste todos` y `--legado --help` (delega en `iw_cotejo.py`). Ejecuta el ELF PAL `SLES_553.47` del banco HIWB (`--elf-eu`) y compila fragmentos del árbol actual con `g++` o un compilador C++17 compatible (`--cxx`). `--json` guarda los pares en un archivo nuevo. Códigos: 0 coincide, 1 difiere, 2 datos/uso inválidos, 3 error de ejecución.
+
+- `dbz3_iw_7d5_rango_pal`: aplica los intervalos PAL al rango de respaldo de 7D5. Apagada de serie; las 19 entradas de laboratorio conservan la salida anterior con el ajuste apagado.
+- `dbz3_iw_7dd_captura_derrota`: da la derrota si Piccolo alcanza al jugador en la ruta de respaldo. Apagada de serie hasta verificar en juego la confirmación del resultado; el detector sigue usando distancia horizontal.
+- El cotejo se limita al flanco de pulsación (sin Start/Select), la lectura de palancas de cámara con Y normal, el cálculo de rango y el resultado una vez decidida la captura. No valida trayectorias 3D, la cámara renderizada ni partidas completas. `--ajuste serie` usa los valores declarados en C++; `on`/`off` los fuerzan solo en las sondas.
+
+### Infinite World: inventario de recursos visuales (NIWC)
+
+`python -B -X utf8 tools/iw_niwc/iw_activos.py --help` enumera las opciones. `censo 0x7DE --idioma ENG` inventaría un curso; sin curso se revisan los 18 minijuegos, MAPA y ROAD. `original` comprueba la apertura del banco de efectos y la selección de filas de ayuda con el ELF PAL `SLES_553.47`, y lista las referencias en los AME. `--pal` selecciona la copia extraída (`USR/` y el ELF); la copia USA se busca bajo `ps2_games/`. `--salida` guarda el JSON en un archivo nuevo y `--autoprueba` comprueba el lector sin los discos.
+
+- `dbz3_iw_disparo_texturas_directas` recupera t35 y t56 del atlas de partículas de la ruta C++ de disparo. Está apagada de serie. El inventario acredita recursos y anclas de carga, no cuándo se dibujan los efectos ni su aspecto final.
+
+### Infinite World: vuelta de Dragon Mission (NIWA)
+
+`python -B tools/iw_niwa/niwa.py --help` lista `autoprueba`, `original`, `log` y `mapa-log`. Usar desde la raíz del proyecto o pasar `--repo` antes del modo. El banco requiere el ELF PAL `SLES_553.47` y su `DATA_CMN.AFS` (entradas 1093 y 1127); los modos de cotejo y `original` admiten `--afs`. El banco sustituye servicios de presentación e inyecta el desenlace del combate.
+
+- `log RUTA --dificultad N --rango N`: coteja una vuelta de la misión 11. Usa los parámetros observados del port para el premio; `mapa-log RUTA` repite el mando de los cuadros libres y coteja la telemetría disponible. Un resultado `0` coincide en los campos cubiertos, `1` indica diferencias, `2` indica falta de datos y `3`, un error de ejecución. Los segundos del log no son un conteo de cuadros.
+- `DBZ3_TEST_IW_FLUJO=1` añade reloj y fila del globo a la traza por cuadro y registra el cierre del panel de resultado. Usar en pruebas cortas.
+- `dbz3_iw_reloj_vuelta_original` separa las dos esperas del mapa tras ganar un combate de Dragon Mission; se activa de serie (`false` recupera el reloj compartido). Desde AP_NIWJ, `dbz3_iw_vuelta_tras_resultado` también se activa de serie: aplaza el inicio de la vuelta hasta cerrar el resultado de combate.
+
+### Infinite World: censo y cotejos en un solo comando (NIWD)
+
+`python -B -X utf8 tools/iw.py --help` ofrece `censo`, `activos`, `cotejo` y `autoprueba`. Usar desde la raíz del proyecto, o indicar `--repo` antes del subcomando. La autoprueba no necesita los discos ni un compilador.
+
+- `censo --con-activos --idioma SPN --idioma ENG` enlaza cursos, bancos y recursos USA/PAL; `activos 7DE` filtra un curso y `activos --original` coteja el selector PAL y las referencias AME.
+- `cotejo limites [todos|intro|low|rango-7d7] [--ajuste serie|on|off|todos]` compara fragmentos del C++ actual con el original. Requiere `g++` (o `--cxx`) y los ELF locales (`--elf-pal`, `--elf-usa`). `serie` lee el valor declarado en C++; `todos` incluye los modos apagados. Salida: 0 coincide en el alcance cubierto, 1 difiere, 2 faltan datos/uso, 3 error. `censo`, `activos` y `cotejo limites` aceptan `--json` con una ruta nueva. `cotejo mapa`, `focos` y `legado` conservan la ayuda y opciones de sus herramientas respectivas.
+- `dbz3_iw_mapa_intro_limite_original` espera hasta superar 1,0 en la entrada y `dbz3_iw_7d7_siete_aciertos_original` exige siete aciertos para dar rango también con el reloj antiguo. Ambos activos de serie; `false` recupera el comportamiento anterior. Desde AP_NIWG, `dbz3_iw_7de_campo_low_original` también está activo de serie: espera hasta el campo 221 con la mira de respaldo; `false` recupera 220 con esa mira. El ajuste de pausa del reloj no cambia. Los bancos miden las transiciones y el índice de rango, no la presentación completa.
+
+### Infinite World: comprobar la espera de Stop Cell (AP_NIWG)
+
+- `python -B -X utf8 tools/iw_7de_log.py --help` muestra el auditor de un `dbz3.log` archivado. Ejemplo: `python -B -X utf8 tools/iw_7de_log.py "RUTA\dbz3.log" --semilla 603F0359`. Sin opciones comprueba una sola transición a Aim en el campo 221 con mira de respaldo. `--campos` y `--mira` cambian lo esperado; `--semilla` exige que coincidan la semilla fijada y la efectiva. Emite JSON y devuelve 0 si coincide, 1 si discrepa, 2 si faltan datos o el uso no es válido, 3 si no puede leer o interpretar el registro. No abre el juego ni requiere el disco.
+- En el arnés, `DBZ3_TEST_IWMINI=0x7DE` admite `DBZ3_TEST_IW_7DE_SEMILLA_HEX` sin `,auto`. La semilla debe ser impar y tener ocho dígitos hexadecimales. El ajuste no interviene en una partida normal.
+
+### Infinite World: entrada única, autopruebas y tabla de cvars OFF (NIWH)
+
+- `python -B -X utf8 tools/iw.py --help` reúne `censo`, `activos`, los bancos de `cotejo`, `log-7de`, `campana`, `ladrillos`, `comparar`, `comparar-trad`, `cierre-r23`, `inventario`, `cvars` y `autoprueba`. Los delegados opcionales `niwe`, `ventanas` (`ventanas_iw.py`) y `validar` (`iw_validar.py`) prefieren `tools/` y, en su defecto, buscan los lotes NIWE/NIWF/NIWG bajo `--trabajo` (antes del subcomando; por defecto `DBZ3_TRABAJO`). Si faltan, su invocación devuelve 2.
+- `python -B -X utf8 tools/iw.py --self-check` (alias `--autoprueba` y subcomando `autoprueba`) ejecuta controles sin discos, ELF, compilador ni juego. Con `autoprueba --exigir-todas` falla si falta alguna de las herramientas con autoprueba registrada, incluidas las opcionales. `iw_censo.py`, `iw_cotejo.py`, `iw_niwa/niwa.py`, `iw_niwb/cotejo.py`, `iw_niwc/iw_activos.py` e `iw_7de_log.py` también aceptan ambos flags y `--help`. El subcomando `iw_niwa/niwa.py autoprueba` conserva su banco con ELF PAL.
+- `python -B -X utf8 tools/iw.py inventario --comprobar-help --comprobar-autoprueba` comprueba presencia, menciones en `TOOLS.md`, ayuda y controles registrados. La entrada de `iw.py` comprueba sus atajos en modo base para evitar recursión; el agregado se ejecuta aparte con `autoprueba`. `astra_iw_auditoria.py` solo figura en el inventario: no tiene CLI de ayuda y ejecutarla escribe resultados en una ruta fija.
+- `python -B -X utf8 tools/iw.py cvars --solo-off` lista los booleanos de IW apagados de serie; `--ambito todos` incluye auxiliares. `--json` y `--md` (también en `inventario`) escriben archivos nuevos. El conteo de menciones de `REXCVAR_GET` es textual: no prueba uso en el ejecutable ni en partida. AP_NIWH no cambia ningún valor de serie.
+
+### Infinite World: persecución de Piccolo, 7DD / mapa 906 (AP_NIWI)
+
+- `python -B -X utf8 tools/iw_7dd.py --help` muestra el comparador de registros, capturas PAL y banco offline. Para resumir una sola partida: `python -B -X utf8 tools/iw_7dd.py log --log "RUTA\dbz3.log"`.
+- Para comparar la base con el eje de cámara real, usa `python -B -X utf8 tools/iw_7dd.py banco --log "RUTA\dbz3.log" --ticks N --variante base --variante ejes-log`. Usa registros contiguos desde `t=1`; `ejes-log` exige `cam7dd` en cada registro. `--self-check` (alias `--autoprueba`) reproduce NIWG-01 y su control negativo.
+- `original`, `banco` y la autoprueba dependen del corpus local de `E:\DBZ3HD_trabajo` que usa `tools/iw_mips/persecucion.py`; el banco usa además el ejecutable de `rayo7dd.cpp` con el WCF. La distancia entre anclas del banco no certifica captura ni cierre. La corrección de la embestida solo opera con `dbz3_iw_7dd_original`; ese ajuste y `dbz3_iw_7dd_captura_original` siguen apagados de serie.
+
+### Infinite World: comparar capturas OFF/ON (AP_NIWJ)
+
+- `python -B -X utf8 tools/iw_evidencia.py --help` muestra el comparador offline de NIWJ adaptado a dos PNG de igual tamaño. Ejemplo: `python -B -X utf8 tools/iw_evidencia.py "off.png" "on.png" --roi 0.24 0.72 0.76 0.90 --lamina "comparativa.png"`. Requiere Pillow; `--self-check` ejecuta controles sintéticos.
+- Devuelve error medio por canal y porcentaje de píxeles con algún canal que difiera en más de 12, globalmente y dentro de la región indicada. La lámina es opcional y no sobrescribe archivos. La sincronización y la fidelidad al original se comprueban por separado. Los escenarios históricos de NIWJ se conservan en su entrega; el comparador no lanza partidas.
+
+### Infinite World: oráculos ELF EU/USA sin emulador (AP_NIWL)
+
+- `python -B -X utf8 tools/iw_oraculos_elf.py --help` muestra el banco offline de cuatro oráculos contra los ELF originales EU (`SLES_553.47`) y USA (`SLUS_218.42`) reutilizando `tools/iw_mips/ee.py` y `tools/iw_mips/disparo_banco.py`, sin abrir el juego ni PCSX2.
+- Comprueba prioridades `Task_Create` y retardo del objeto 8 en vuelo (`33` PAL / `39` NTSC), cierre por hito `#ITM+0x30` de `s_SPACE` en `0x7D0`/`0x7D9`, `Char_ComputeStatGrade` (Fight `39 -> 0` / `40 -> 1` y notas `1..4`), y `RangoDisparo` en `0x7D7`/`0x7D8`/`0x7DE` (303 casos). `--self-check` ejecuta controles rápidos y `--guardar RUTA.json` guarda el resultado. El auditor ligado al lote NIWL (`iw_cierre13.py`) permanece en `E:\DBZ3HD_trabajo\fabrica\NIWL\scripts\`.
+
+## Tablero B2: cotejo de carga y guiones dirigidos (HB2B)
+
+- `python -B tools/b2_pm23_carga.py --salida "RUTA NUEVA" [--slot-pal] [--sstates DIR] [--src CPP] [--cxx CLANG]`: compara las fichas iniciales de las nueve fases con el ELF PAL. Requiere los estados `fase1.p2s`…`fase9.p2s` y Clang con C++17. Compila fragmentos de `pasarela_b2.cpp` y deja los pares, las diferencias y el resultado de `b2_juez_bateria.py`. `--slot-pal` prueba la opción `dbz3_b2_pm23_slot_inicial_pal` (apagada de serie). Código 1: diferencias; 2: faltan datos (esperable aun si toda la carga coincide); 3: error de ejecución. No mide órdenes, relojes, objetos ni el cierre.
+- `python -B tools/b2_escenario.py pm23 --fase 7 --salida "RUTA NUEVA.toml" --preflight`: prepara un guion de carga sin lanzar el juego. Para ejecutarlo en copia fija: `python tools/pruebas.py correr smoke_c "RUTA NUEVA.toml"`. Los modos `radar`, `cierre11` y `shenron` son recetas de diagnóstico; fuerzan condiciones y no acreditan recogida, cierre natural ni paridad visual. `radar` y `cierre11` se diseñaron para parches que no se integraron.
+- `python -B tools/b2_diag_recursos.py --iso "B2 PAL.iso" --estado "fase1.p2s" --salida "RUTA NUEVA.json"`: coteja el ELF, localiza el radar en los nueve tableros e inventaría recursos del cielo y la luz de Shenron. No prueba su aspecto en pantalla.
+
+Las tres herramientas ofrecen `--help`.
+
+### Tablero B2: selección de capas PAL (NB2A)
+
+- `python -B tools/b2_nb2a/censo.py --help` lista las entradas; `--autoprueba` ejecuta seis controles sin datos del juego. El censo usa una ISO PAL propia (SLES-51839), un estado `fase1.p2s` del oráculo y el listado `b2.c` de Ghidra; indicar sus rutas con `--iso`, `--estado` y `--ghidra` si no están en las rutas locales de laboratorio.
+- `--fase 7 --loc DATA_SP.AFS --json "NUEVO.json" --md "NUEVO.md" --cotejo "CARPETA NUEVA"` limita el censo a la fase VII y compara los selectores del C++ con las solicitudes PAL; sin `--fase` recorre las nueve fases. El cotejo es opcional y requiere Clang C++23 (`--clang`). Código 0: informe generado, aunque haya diferencias; código 2: entradas inválidas o censo incompleto. No abre el juego ni valida píxeles, el ciclo completo de animación, o el orden de dibujo global.
+- `dbz3_b2_capas_tablero_pal` queda desactivada de serie. Si se activa, usa las capas del CMN 397/398 para casillas sin condición de los tipos 0/2/3/4 y para las Bolas en el suelo. Si no hay una textura necesaria, conserva el dibujo anterior para todo el conjunto.
+
+### Tablero B2: avance y fundidos PAL (NB2B)
+
+- `python -B tools/b2_nb2b/b2_anim.py --help` lista las opciones; `--self-check` prueba el comparador sin archivos del juego. Ejemplo: `python -B tools/b2_nb2b/b2_anim.py movimiento aliados --estado "fase1.p2s" --iso "B2 PAL.iso" --salida "CARPETA NUEVA" --paso-4px --color-ama-pal`.
+- Requiere el estado del oráculo PAL SLES-51839, Clang con C++20 y el entorno local de `b2_oraculo`. La ISO propia se requiere para los bancos de aliados, radar, viñetas y Shenron. Compara funciones del ELF PAL con un arnés compilado de fragmentos del port; permite otro C++ con `--src`. Sin focos explícitos mide los ocho. Guarda las muestras, tolerancias y divergencias en `cotejo.json`. Código 0: sin diferencias ni pendientes declarados; 1: diferencias; 2: datos pendientes sin divergencias medidas; 3: error del banco. Los argumentos inválidos también devuelven 2 (`argparse`). No abre el juego ni verifica la composición en pantalla.
+- `dbz3_b2_paso_4px` y `dbz3_b2_color_ama_pal` están **desactivadas de serie**. Activadas, aplican el avance de 4 unidades por cuadro a recorridos sin contacto ni cambio de hueco y la curva PAL al color flotante de la lista B de `#AMA`, respectivamente. Las opciones de la herramienta solo conmutan su arnés, no ajustan el juego.
+
+### Tablero B2: cotejo de eventos (NB2C)
+
+- `python -B tools/b2_nb2c/b2_eventos.py --help` lista los modos; `listar` enumera los 18 casos y `--autoprueba` comprueba el comparador sin datos del juego. `pal --estado "fase9.p2s" --salida "PAL.json"` usa el ELF PAL SLES-51839 del oráculo local y ese estado; `--caso popo/5-a-24` selecciona solo ese caso.
+- `cpp "PAL.json" --ajuste serie --salida "port.json"` compila fragmentos del C++ actual con Clang C++20 (`--compilador`). `--ajuste on|off` solo cambia la sonda; `--trabajo` elige dónde conservarla. `juzgar "PAL.json" "port.json"` da 0: coincide, 1: difiere, 2: faltan datos comparables, 3: error. `pm23` delega en el juez histórico de volcados de estado.
+- `dbz3_b2_popo_origen_pal` está **activada de serie**: al aterrizar, el destino pasa a ser también el origen de la ficha. `false` recupera el comportamiento anterior. El cotejo cubre la ruta 5→24 sin ocupantes; no valida el reparto de huecos con ocupantes ni la equivalencia visual o de una partida completa.
+
+### Tablero B2: batería offline unificada (NB2D)
+
+- `python -B tools/b2_nb2d/b2.py --help` lista `recursos`, `animacion`, `eventos`, `radar`, `popo`, `bateria`, `casos` y `pm23`. `--self-check` ejecuta los controles sin datos del juego. Ejemplo: `python -B tools/b2_nb2d/b2.py bateria --banco radar --banco popo --estados "RUTA A LOS ESTADOS" --salida "CARPETA NUEVA"`. Sin `--salida` usa una carpeta temporal nueva.
+- Requiere Python 3.11+, las herramientas NB2A/B/C instaladas, Clang (`--cxx`) y el oráculo PAL SLES-51839 con `fase1.p2s` y `fase9.p2s` según el banco. Para recursos y parte de animación se requiere la ISO propia (`--iso`); para recursos también el decompilado local (`--ghidra`). Los informes JSON conservan el alcance de cada banco. Códigos: 0 = coincide en lo medido, 1 = diferencias, 2 = faltan datos comparables, 3 = error de ejecución. La batería completa aún contiene diferencias y pendientes. No abre el juego.
+- `radar` y `popo` leen el C++ integrado y juzgan ON; OFF es el control. `dbz3_b2_radar_indicadores_pal` limita flechas y puntos a la ficha del jugador, conservándolos durante la espera inicial si esa ficha sigue activa. `dbz3_b2_popo_hueco_pal` asigna el hueco de llegada sin recolocar a las demás fichas si el destino es válido. Ambos ajustes están **desactivados de serie**: los bancos verifican solicitudes de sprites y huecos en casos dirigidos, sin validar el cambio de turno en pantalla ni un aterrizaje con aliados en partida.
+
+### Tablero B2: perfil conjunto y diagnóstico (NB2E)
+
+- `python -B tools/b2_nb2e.py --help` lista `diagnostico` y `capturas`. `--self-check` comprueba las láminas con imágenes de prueba (Pillow 9.1+). `diagnostico --salida "CARPETA NUEVA"` repite los bancos de NB2D, el cotejo de fichas iniciales y el juez de registros históricos. Requiere los datos de esos bancos y los archivos AP_HB2B/HB2 bajo `--trabajo` (por defecto `E:\DBZ3HD_trabajo`). Códigos: 0 = sin diferencias ni pendientes en los bancos, 1 = diferencias, 2 = pendientes, 3 = error de ejecución.
+- `capturas --manifiesto "PANELES.json" --salida "CARPETA NUEVA"` genera láminas sin abrir el juego (0 si se generan aunque falten tomas). Cada caso lleva `id`, `titulo`, `limite`, `capturas` (etiquetas a rutas relativas al JSON, `repo:`, `trabajo:` o `null`) y, opcionalmente, `sha256` por etiqueta. Sin manifiesto usa el de `fabrica/NB2E`. Ni las láminas ni el diagnóstico certifican paridad visual en juego.
+- `dbz3_b2_presentacion_pal` está **desactivada de serie**. `true` activa a la vez las capas originales, el avance de 4 unidades y el fundido de color de `#AMA` lista B. Con `false` siguen mandando las tres opciones individuales; el perfil no selecciona el hueco inicial de PM-23, el filtro de indicadores del radar ni el hueco de Popo.
+- El banco de capas coteja también el perfil encendido con la opción individual apagada. En `b2_nb2b/b2_anim.py`, usa `--presentacion-pal` **en vez de** `--paso-4px --color-ama-pal` para medir el avance y los fundidos con solo el perfil encendido en el arnés.
+
+### Tablero B2: música de combate y tarjeta «Battle!» (NB2F)
+
+- `python -B -X utf8 tools/b2_nb2f/b2_batalla.py --help` lista los modos. `--self-check` prueba el comparador sin datos del juego. `censo` inventaría casillas, recursos y pistas PAL. Usa tu ISO PAL (`--iso`), el ELF local SLES-51839 y el decompilado (`--ghidra`); `--fase` selecciona fases. No abre el juego.
+- `cotejo --base "E:\DBZ3HD_trabajo\respaldo_integracion_AP_NB2F"` compara los fragmentos de C++ integrados con las fuentes previas (respaldo con `src/`). Requiere también Clang C++20 (`--cxx`), las herramientas NB2A/B/C y el estado PAL de fase I (`--estado`). Define `--salida "CARPETA NUEVA"` antes del subcomando para guardar el JSON y las sondas ahí; si se omite se usa una carpeta temporal nueva.
+- `juzgar "PAL.json" "PORT.json"` compara trazas `nb2f-traza-v1` por ID, entrada y campo. En `cotejo` y `juzgar`, 0 indica coincidencia focal; 1, diferencias; 2, solo datos pendientes; 3, error de ejecución. El cotejo integrado da 1 por las diferencias del prototipo de música traducida, que no se integró porque esa ruta está deshabilitada. El banco no mide la mezcla ni compone la tarjeta en pantalla.
+- `dbz3_b2_tarjeta_cond_pal=true` activa el rebote original del texto de condición en la tarjeta nativa si hay claves de `CMN 410`; está **apagada de serie** y es independiente de `dbz3_b2_presentacion_pal`. El mod de música de la ruta nativa `b2.musica_combate` sigue como antes.
+
+### Tablero B2: cierre 11 y aparición de Shenron (NB2G)
+
+- `python -B -X utf8 tools/b2_cierre11.py --help` lista los modos. `--self-check` prueba el generador y el juez sin datos del juego. `ruta --salida "RUTA NUEVA.toml" --preflight` genera el salto dirigido a cierre 11 a velocidad normal, sin arrancar el juego. `--ps2-games` indica la carpeta de tu copia de B2 PAL y `--alfa-pal` activa la transparencia de la luz en el guion.
+- `python -B -X utf8 tools/b2_cierre11.py juzgar --log "dbz3.log" --exigir-alfa-pal` comprueba la transición, la carga de cinco texturas con alfa PAL, la firma AMP, el arranque del sonido y el marcador UV. Quita `--exigir-alfa-pal` para guiones sin el ajuste. Códigos: 0 = hitos confirmados; 1 = divergencia; 2 = faltan hitos; 3 = error de lectura/escritura. El salto dirigido no acredita la ejecución del script 303 ni la equivalencia de imagen o mezcla con PS2.
+- `dbz3_b2_shenron_luz_alfa_pal` está **apagada de serie**. Al iniciar el juego con `true`, la columna de luz usa las transparencias de la paleta de `CMN 328/12`. El ajuste se lee al cargar la escena por primera vez.
+
+### Tablero B2: entrada única, autopruebas y tabla de cvars OFF (NB2H)
+
+- `python -B -X utf8 tools/b2.py --help` reúne 13 herramientas instaladas de HB2B, NB2A–G y base, sin abrir el juego ni PCSX2. Usa `tools/b2.py <subcomando> --help` para ver las opciones de cada una. Los subcomandos delegados se ejecutan desde la raíz del proyecto; usa rutas absolutas para archivos externos.
+- `python -B -X utf8 tools/b2.py --self-check` (alias `--autoprueba`) ejecuta los controles propios y 11 autopruebas sin ISO, ELF, compilador ni juego. El subcomando `autoprueba` entrega el mismo resultado como JSON. Las nueve herramientas de HB2B y NB2A–F aceptan ambos nombres; `tools/b2_juez.py --help` también termina con código 0.
+- `python -B -X utf8 tools/b2.py inventario --comprobar-help --comprobar-autoprueba` muestra presencia en `tools/`, referencias en esta guía y los resultados individuales. El 0 del inventario indica que pudo listar todas las herramientas, no que pasaron sus comprobaciones. La batería sin datos deja fuera a `juez-bateria` (sin autoprueba propia) y `oraculo` (requiere datos locales y fuentes revisadas). Si el oráculo rechaza la huella de `inicio_piezas`, revisa su modelo antes de actualizarla.
+- `python -B -X utf8 tools/b2.py cvars --solo-off` lee los valores de serie de `src/` y cuenta llamadas literales a `REXCVAR_GET` (sin preprocesar ni medir ejecución). Las notas de prueba son evidencia histórica de los lotes indicados. Los nueve ajustes experimentales de la ronda siguen apagados mientras falta el cotejo visual; `dbz3_b2_popo_origen_pal` conserva la activación validada en AP_NB2C.
+
+### Tablero B2: premios en banco y atribución del cierre (NB2I)
+
+- `python -B -X utf8 tools/b2_nb2i/nb2i.py --help` lista `medir`, `rutas` y `cierre`. `--self-check` prueba el comparador y la atribución del cierre sin lanzar el juego. `sondas.py` es su módulo interno.
+- `medir --estado "fase9.p2s" --salida "CARPETA NUEVA"` coteja el ELF PAL SLES-51839 con fragmentos del C++ actual; requiere el oráculo local de NB2C y Clang C++20 (`--compilador`). `--caso premio/8` limita el banco a ese caso. Las 15 coincidencias nuevas cubren tres fixtures de premios; no prueban su aspecto, distribución aleatoria ni persistencia real. El cotejo completo conserva nueve pendientes (código 2). Códigos: 0 = OK en el alcance, 1 = divergencia, 2 = datos pendientes, 3 = error.
+- `rutas --snapshot "progreso_fase9.toml" --salida "CARPETA NUEVA"` genera guiones y ejecuta `preflight` sin abrir el juego. Usa un progreso de prueba compatible de fase IX y, si es necesario, `--ps2-games` para indicar la carpeta del disco PAL. `cierre --log "dbz3.log" --exigir-alfa-pal --salida "cierre.json"` comprueba la aparición y clasifica la atribución por separado; un código 0 no basta para acreditar la orden 42. `orden_42_observada` exige despacho, volcado de cierre y escena en ese orden; si el script 303 se inyectó, no acredita un cierre natural.
+- El volcado optativo `DBZ3_TEST_B2_STATE` añade `premio_pendiente` (0 = ninguno) y `vida_b2` por pieza (-1 = sin override). Son valores internos del port, no el stock ni una equivalencia con la vida PAL.
+
+### Tablero B2: combate, Dende PAL y diálogo en banco (NB2J)
+
+- `python -B -X utf8 tools/b2_nb2j/nb2j.py --help` lista `medir`, `relevo` y `juzgar-dende`. `--self-check` (alias `--autoprueba`) comprueba el comparador, el juez de Dende y las herramientas reutilizadas sin abrir el juego. `pal_nb2j.py` y `sonda.cpp` son sus módulos internos.
+- `medir --estado "fase9.p2s" --salida "CARPETA NUEVA"` coteja los nueve pendientes de NB2I (combate, Dende 4/5 barras y diálogo T6/301) con el ELF PAL SLES-51839 y fragmentos del `src/pasarela_b2.cpp` integrado; requiere el oráculo local de NB2C y Clang C++20 (`--compilador`). `--grupo combate|dende|dialogo` limita el banco; `--base "pasarela_b2_previo.cpp"` comprueba además que OFF coincide con la versión anterior.
+- `relevo --salida "CARPETA NUEVA" [--ps2-games DIR] [--log "dbz3.log"]` genera el guion breve de Dende (`NB2J_dende_efecto.toml`) con `preflight` y, si se pasa `--log`, vuelve a juzgar la atribución de cierre 11. `juzgar-dende --log "dbz3.log"` exige exactamente una línea `Dende postefecto: pieza N barras 5 vida_b2 500 banda 0` (códigos: 0 = igual, 1 = diferencia, 2 = faltan datos, 3 = error).
+- `dbz3_b2_dende_vida_pal` está **apagada de serie**. Activada, `CurarDende` suma una barra (tope 5), conserva la vida de combate (`vida` / `vida_b2`) y recalcula la banda (`+0x1F`), serializada opcionalmente en el progreso de fase y consumida en `ComponerVidaKi` para el rival. No modifica la regla de serie mientras siga en `false`; las dos divergencias de diálogo (`abre.termina` y `abierto`) quedan documentadas sin parche.
+
+### Infinite World y Budokai 2: comparación de peticiones de audio (AP_NAUD)
+
+- `python -B -X utf8 tools/naud_audio.py --help` muestra las opciones; `--self-check` prueba el juez sin abrir el juego ni leer sus discos.
+- `python -B -X utf8 tools/naud_audio.py comparar "original.json" "port.json" --salida "cotejo.json"` alinea trazas `naud-audio-v1` por `escena`, `evento` y `vez`. Cada evento lleva `bus`, `recurso`, `ms` desde un ancla común, `ganancia`, `unidad` y `prueba`. Escribe en un archivo nuevo; sin `--salida`, imprime el cotejo completo. Devuelve 0 si coinciden todas las peticiones, 1 si hay diferencias o eventos de más/de menos, 2 si faltan datos o no hay eventos, y 3 si hay error. Los niveles sin datos o en unidades distintas no se dan por iguales.
+- El banco de ELF/C++ y el montaje de escucha requieren datos locales y siguen en `E:\DBZ3HD_trabajo\fabrica\NAUD`. El juez compara peticiones registradas; no mide mezcla, latencia ni reproducción efectiva. Los ajustes `dbz3_iw_disparo_voces_poses_original`, `dbz3_b2_audio_fundido` y `dbz3_b2_dende_audio_original` quedan apagados de serie; los dos cambios de B2 se midieron con datos PAL.
 
 ## Tenkaichi 3 (PS2, copia del jugador) — estudio 2026-10-17
 - El `.chd` de Retrobat es de tipo CD (MODE1): `chdman extractcd -i <chd> -o t3.cue -ob t3.bin` da una ISO 9660 valida (sectores de 2048). `extractdvd` termina sin error pero NO da una ISO (unidades de 2448 B).

@@ -12,6 +12,9 @@
 
 namespace dbz3::iwmips {
 
+// ADD.S del perfil EE de serie; para relojes con operandos finitos y no negativos.
+float SumarRelojEE(float a, float b);
+
 class Ee {
  public:
   static constexpr uint32_t kRam = 0x2000000, kPila = 0x2000000, kSpr = 0x2100000, kTotal = kSpr + 0x4000;
@@ -232,6 +235,7 @@ struct Entrada {
   bool inicio = false;               // primera llamada de la partida: prepara el espejo y entra en el estado 13
   float pic0[3]{};                    // solo con inicio: sitio de salida de Piccolo (+0x40)
   float jug40[3]{}, jug640[3]{};      // raiz y ancla del jugador (coordenadas de IW = las del campo)
+  float cam_fx = 0.f, cam_fz = 1.f;   // frente horizontal de la camara de juego (work jugador +0x40)
   int jcbc = 1, dif = 2;              // estado de pose de IW del jugador (iwestado::DeAnim) y dificultad
   unsigned tipo25a = 1;               // MGW+0x25A: tipo del suelo del ultimo contacto (1 suelo)
   bool w180 = false;                  // work[0]+0x180 (pillado)

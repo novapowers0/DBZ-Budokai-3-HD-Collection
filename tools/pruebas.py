@@ -1046,7 +1046,9 @@ class Juego:
         env.update(env_extra)
         self.captura_ventana = env.get("DBZ3_TEST_CAPTURA_VENTANA") == "1"
         # medicion de FPS sin otros juegos del arnes. VEL-03: solo vale en guiones de FPS (nombre con "fps"); en el resto se ignora
-        self.exclusiva = env.get("DBZ3_TEST_EXCLUSIVA") == "1" and "fps" in self.nombre.lower()
+        # El operador puede pedir turno exclusivo para toda una bateria, sin modificar sus guiones.
+        self.exclusiva = (os.environ.get("DBZ3_PRUEBAS_EXCLUSIVA") == "1"
+                          or (env.get("DBZ3_TEST_EXCLUSIVA") == "1" and "fps" in self.nombre.lower()))
         t_espera = time.time()
         try:
             self.turbo = max(1, min(16, int(env.get("DBZ3_TEST_TURBO", "1"))))   # X0h: para dormir() en reloj de juego
@@ -6251,7 +6253,7 @@ ESCENARIOS = {
     "menu": ("llegar al menu principal y captura", lambda p: {}, _menu),
     "du_freezer_nuevo": ("DU > nueva historia > rueda > Freezer > bucle de combate",
                          lambda p: {}, _du_freezer_nuevo),
-    "du_continuar": ("DU > Continuar (Freezer: con --instantanea freezer_cap2)", lambda p: {}, _du_continuar),
+    "du_continuar": ("DU > Continuar (Freezer: instantanea freezer_cap2 por defecto)", lambda p: {}, _du_continuar),
     "batalla": ("combate nativo desde el menu (DBZ3_TEST_BATTLE) y vuelta al menu",
                 lambda p: {"DBZ3_TEST_BATTLE": p.get("ids", "0,7,2"), "DBZ3_TEST_RINGOUT": "1"}, _batalla),
     "tactics_sonda": ("dsTAC: combate nativo 1P vs COM sin ring out con la sonda de combate (DBZ3_COMBATE_SONDA): "
@@ -7572,6 +7574,80 @@ def _save100_guard(j, p):
 
 ESCENARIOS["save100"] = ("solUNLOCK: launcher real, partida vacia/avanzada US/EU, respaldo y restauracion; seguridad=1 prueba juego abierto", _cfg_save100, _save100, _prep_save100)
 
+
+def _cfg_save100_coleccion(p):
+    p["sin_arranque"] = "1"
+    p["region"] = "us"
+    p.pop("retomar", None)
+    return _cfg_save100(p)
+
+
+def _save100_coleccion(j, p):
+    from cac_heroe.save100_coleccion import verificar
+
+    root = j.dest / "user_data" / "dbz3"
+    col = root / "coleccion.toml"
+    bak = root / "coleccion.toml.bak"
+    for f in (col, bak, root / "coleccion.toml.bak.tmp", root / "respaldos_partida",
+              j.dest / "dbz3_save100_input.req"):
+        if f.exists():
+            shutil.move(str(f), str(j.run / ("apartado_" + f.name)))
+    fixture = (b'# fixture AP_NHER3\r\ntodo = false\r\n'
+               b'vistos = [\r\n    "r_h25", # comentario\r\n    "id\\\"con\\\\barra",\r\n]\r\n'
+               b'conseguidos = [\r\n    "r_t0_death_beam",\r\n]\r\nfinales = ["torneo"]\r\n'
+               b'[extra]\r\nversion = 3\r\nactivo = false\r\n')
+    original = j.run / "coleccion_antes.toml"
+    original.write_bytes(fixture)
+    col.write_bytes(fixture)
+    personal = {s: h for s, h in _save100_hashes(root).items()
+                if Path(s).parts[0] in ("cac.toml", "hub_heroe.toml", "rpg.toml", "hub_modos.toml", "heroe")}
+
+    j.log(r"dbz3: launcher shown", 90)
+    time.sleep(2)
+    j.tecla_real("Escape")
+    _save100_click(j, "open")
+
+    def aplicar(aviso):
+        inicio = len(j.texto_log())
+        _save100_click(j, "apply")
+        limite = time.monotonic() + 20
+        while time.monotonic() < limite:
+            nuevo = j.texto_log()[inicio:]
+            if "save_100 applied:" in nuevo:
+                if ("save_100: coleccion.toml no se pudo actualizar" in nuevo) != aviso:
+                    raise Fallo("aviso de Coleccion inesperado o ausente")
+                return
+            time.sleep(0.1)
+        raise Fallo("el lanzador no confirmó Desbloquear todo")
+
+    aplicar(aviso=False)
+    shutil.copy2(col, j.run / "coleccion_despues.toml")
+    shutil.copy2(bak, j.run / "coleccion.toml.bak")
+    verificar(original, col, bak)
+    _tactics_reducir(j, "coleccion_desbloqueada")
+
+    roto = b'vistos = ["sin cerrar\n'
+    col.write_bytes(roto)
+    aplicar(aviso=True)
+    if col.read_bytes() != roto or bak.read_bytes() != fixture:
+        raise Fallo("se alteró la Colección ilegible o su respaldo anterior")
+    (j.run / "coleccion_corrupta.toml").write_bytes(col.read_bytes())
+
+    col.write_bytes(fixture)
+    (root / "coleccion.toml.bak.tmp").mkdir()
+    aplicar(aviso=True)
+    if col.read_bytes() != fixture or bak.read_bytes() != fixture:
+        raise Fallo("se alteró la Colección al bloquear la escritura del respaldo")
+    (j.run / "coleccion_bloqueada.toml").write_bytes(col.read_bytes())
+    final = {s: h for s, h in _save100_hashes(root).items() if s in personal}
+    if final != personal:
+        raise Fallo("Save100 modificó progreso propio")
+    j.info("PASS: TOML multilinea y .bak; TOML invalido y escritura bloqueada conservados; fichas intactas")
+
+
+ESCENARIOS["save100_coleccion"] = ("AP_NHER3: preservar la Colección del Héroe al desbloquear todo (solo lanzador US)",
+                                  _cfg_save100_coleccion, _save100_coleccion)
+
 from pruebas_save100_fallos import registrar as _registrar_save100_fallos
 _registrar_save100_fallos(globals())
 
@@ -8257,9 +8333,16 @@ def _guion_restaurar(estado):
         shutil.move(str(dst), str(p))
 
 
+_ESCENARIOS_FREEZER = ("du_continuar", "campana")
+_INSTANTANEA_FREEZER = "freezer_cap2"
+
+
 def correr(copia, escenario, env_extra=(), instantanea=None, par=None, forzar=False):
     """Una prueba; si falla por la HERRAMIENTA se repite una sola vez (resultado: clase, reintentado).
     DBZ3_PRUEBAS_REINTENTO=0 lo apaga. Cada reintento se anota en _pruebas/_reintentos.jsonl."""
+    # La corrida suelta debe partir de la misma partida que todo, no del estado de la copia.
+    if escenario in _ESCENARIOS_FREEZER and instantanea is None:
+        instantanea = _INSTANTANEA_FREEZER
     serie = _es_iw_serie(escenario)
     forzar = forzar or serie  # VEL-07: una sola corrida nueva, sin repetir ni servir un PASS de cache
     reintentar = not serie and os.environ.get("DBZ3_PRUEBAS_REINTENTO", "1") != "0"
@@ -8369,8 +8452,11 @@ def _correr(copia, escenario, env_extra=(), instantanea=None, par=None, forzar=F
         preparado = True
         # Esta prueba necesita el mod de la instantanea, aunque otra prueba lo haya desactivado.
         # La copia esta bloqueada y el marcador original vuelve a su sitio al terminar.
-        if Path(escenario).stem in ("du_continuar", "campana") and instantanea == "freezer_cap2":
-            marca = BASE / copia / "mods" / "historia_freezer" / ".disabled"
+        if Path(escenario).stem in _ESCENARIOS_FREEZER and instantanea == _INSTANTANEA_FREEZER:
+            mod = j.dest / "mods" / "historia_freezer"
+            if not (mod / "campana.toml").is_file():
+                raise Fallo(f"falta el mod historia_freezer de la instantanea {instantanea} ({mod / 'campana.toml'})")
+            marca = mod / ".disabled"
             if marca.exists():
                 respaldo = j.run / "historia_freezer.disabled"
                 shutil.move(str(marca), str(respaldo))
@@ -9663,8 +9749,8 @@ def paralelo(pares, env_extra=(), copias=None, maxp=MAX_PARALELO):
 # Bateria rapida: (escenario, instantanea, parametros). Las largas primero: asi el total es menor.
 SMOKE = [
     ("tag_swap", "freezer_cap2", {"rafaga": "4"}),
-    ("campana", "freezer_cap2", {}),
-    ("du_continuar", "freezer_cap2", {"iter": "3"}),
+    ("campana", _INSTANTANEA_FREEZER, {}),
+    ("du_continuar", _INSTANTANEA_FREEZER, {"iter": "3"}),
     ("batalla", "freezer_cap2", {}),
     ("menu", "freezer_cap2", {}),
     # PM-25: Dragon Rogue (va encendido de serie). Guiones que se aislan solos (apartar rogue.toml/rpg.toml): resultado + Kami,

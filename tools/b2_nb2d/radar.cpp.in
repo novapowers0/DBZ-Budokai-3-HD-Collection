@@ -1,0 +1,69 @@
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <iostream>
+#include <utility>
+#include <vector>
+
+struct Casilla { float x=0, y=0; };
+struct Ficha { int casilla=1; bool jugador=false; };
+struct Datos {
+  struct Sprite { float px=0, py=0, dur=0; };
+  std::array<Sprite, 90> hud_ama;
+  std::array<Casilla, 5> casillas;
+} g_d;
+bool g_radar=true, g_hud_oculto=false, g_fase_rival, dbz3_b2_radar_indicadores_pal;
+int g_rival_paso, g_sel=0;
+float g_radar_t=0;
+std::array<Ficha, 1> g_f;
+std::vector<std::array<int, 2>> g_bolas_fase;
+std::vector<std::pair<int, float>> emisiones;
+constexpr bool dbz3_b2_pm22_mecanica_pal=true, dbz3_b2_fx_nativo=true;
+constexpr int IM_COL32_WHITE=0;
+#define REXCVAR_GET(k) (k)
+namespace rex::ui { enum { kImDrawBlendAdditive, kImDrawBlendAlpha }; }
+struct Sink { void AddCallback(int, void*) {} };
+void PulB2Log(int, const char*) {}
+void SonidoCanal3(int) {}
+void DibHudSp(Sink*, int id, int, float clock=0) { emisiones.emplace_back(id, clock); }
+void DibHudSpB(Sink*, int id, int, float clock, int=0, float=0, float=0, float=0) {
+  emisiones.emplace_back(id, clock);
+}
+void medir(float t) {
+  Sink sink;
+  Sink* dl=&sink;
+  const int L=0;
+  const float ch=t*60, cr=t*60;
+  const bool fxh=REXCVAR_GET(dbz3_b2_fx_nativo);
+  const auto dh=[&](int k, float antes) { return fxh ? std::max(1.f, g_d.hud_ama[k].dur) : antes; };
+@RADAR@
+}
+int main() {
+  g_d.hud_ama[16].dur=21;
+  g_d.hud_ama[89].dur=121;
+  int on, sel, rival, paso, campo, n;
+  while (std::cin >> on >> sel >> rival >> paso >> campo >> n) {
+    if (n < 0 || n > 3) return 2;
+    dbz3_b2_radar_indicadores_pal=on!=0;
+    g_f[0].jugador=sel!=0;
+    g_fase_rival=rival!=0;
+    g_rival_paso=paso;
+    g_bolas_fase.clear();
+    emisiones.clear();
+    for (int i=0; i<n; ++i) {
+      if (!(std::cin >> g_d.casillas[i+2].x >> g_d.casillas[i+2].y)) return 3;
+      g_bolas_fase.push_back({i+2,i});
+    }
+    // Centro temporal del campo, evitando límites de redondeo del host.
+    medir((18+campo+0.5f)/50.0f);
+    const char* comma="";
+    std::cout.precision(9);
+    std::cout << '[';
+    for (auto [id,clock]: emisiones) {
+      std::cout << comma << '[' << id << ',' << clock << ']';
+      comma=",";
+    }
+    std::cout << "]\n";
+  }
+  return std::cin.eof()?0:4;
+}

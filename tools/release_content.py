@@ -26,6 +26,10 @@ def blocked(name):
     ext = leaf.rpartition('.')[-1]
     if any(not p or p in {'.', '..'} or p.endswith(('.', ' ')) or ':' in p for p in parts):
         return 'ruta ambigua'
+    # Mandatory exception: the 100% save of Native mods ("Unlock everything" needs it; it's a progress save,
+    # not game content). Only these two exact files. 1.5.7 shipped without them because of this rule (issue #74).
+    if norm in {'mods_nativos/partida_100/data.bin', 'mods_nativos/partida_100/dbz3.header'}:
+        return None
     if (parts[0] in {'us', 'eu', 'ps2_games'} or {'pack_hub', 'mods_ps2'}.intersection(parts)
             or ext in ASSET_EXT or 'eememory' in leaf):
         return 'datos/medios del juego'

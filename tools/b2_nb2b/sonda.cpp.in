@@ -1,0 +1,105 @@
+#define _CRT_SECURE_NO_WARNINGS
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <cstdint>
+#include <cstdlib>
+#include <cstring>
+#include <iomanip>
+#include <iostream>
+#include <string>
+#include <vector>
+#define REXCVAR_GET(x) (x)
+#define REXLOG_INFO(...)
+#define REXLOG_WARN(...)
+struct ImVec2 { float x, y; ImVec2(float x_, float y_) : x(x_), y(y_) {} };
+@TIPOS@
+struct Datos { std::vector<Casilla> casillas; @SPRITE@ } g_d;
+std::vector<Ficha> g_f;
+float g_ahora;
+int g_ult_mov = -1;
+using ImU32 = uint32_t;
+bool dbz3_b2_paso_4px = false, dbz3_b2_pasos_estrictos = true, dbz3_b2_color_ama_pal = false;
+bool dbz3_b2_presentacion_pal = false;
+int sonido = 0;
+void SonidoCanal3(int id) { sonido = id; }
+@FUNCIONES@
+int main(int argc, char** argv) {
+  if (argc != 3 && argc != 4) return 2;
+  dbz3_b2_paso_4px = std::string(argv[1]) == "1";
+  dbz3_b2_color_ama_pal = std::string(argv[2]) == "1";
+  if (argc == 4) dbz3_b2_presentacion_pal = std::string(argv[3]) == "1";
+  std::cout << std::setprecision(9);
+  std::vector<Datos::Sprite> sprites;
+  auto cargar = [&](const std::vector<uint8_t>& am, std::vector<Datos::Sprite>& out) {
+@CARGADOR@
+  };
+  std::string caso;
+  Ficha f;
+  float previo;
+  while (std::cin >> caso) {
+    if (caso == "mov") {
+      float ax, ay, bx, by;
+      int c, a, b;
+      if (!(std::cin >> ax >> ay >> bx >> by >> a >> b >> c)) return 2;
+      g_d.casillas.resize(3);
+      g_d.casillas[1].x = ax; g_d.casillas[1].y = ay;
+      g_d.casillas[2].x = bx; g_d.casillas[2].y = by;
+      g_f.assign(1, Ficha{});
+      auto& ficha = g_f.front();
+      ficha.casilla = 1; ficha.slot = a; ficha.jugador = true; ficha.c = c;
+      EmpezarPaso(ficha, 2, 0.0f);
+      ficha.slot = b;
+      f = ficha;
+      previo = -1;
+      std::cout << f.t_dur * 60.0f << '\n';
+    } else if (caso == "paso") {
+      if (!(std::cin >> g_ahora)) return 2;
+      const auto pos = PosFicha(f);
+      sonido = 0;
+      SonidosPasosB2(previo, g_ahora);
+      previo = g_ahora;
+      std::cout << pos.x << ' ' << pos.y << ' ' << sonido << '\n';
+    } else if (caso == "load") {
+      size_t n;
+      if (!(std::cin >> n) || n > 4 * 1024 * 1024) return 2;
+      std::vector<uint8_t> bin(n);
+      for (auto& byte : bin) {
+        int v;
+        if (!(std::cin >> v) || v < 0 || v > 255) return 2;
+        byte = uint8_t(v);
+      }
+      sprites.clear();
+      cargar(bin, sprites);
+      std::cout << sprites.size() << '\n';
+    } else if (caso == "ama") {
+      size_t k;
+      float cuadro;
+      if (!(std::cin >> k >> cuadro) || k >= sprites.size()) return 2;
+      const auto& sp = sprites[k];
+      const auto p = PoseDe(sp, cuadro);
+      const auto rgba = TintB(0xffffffffu, sp, cuadro);
+      std::cout << sp.dur << ' ' << p.px << ' ' << p.py << ' ' << p.ex << ' ' << p.ey << ' ' << p.al << ' '
+                << AlfaB(sp, cuadro);
+      for (int i = 0; i < 4; ++i) std::cout << ' ' << ((rgba >> (8 * i)) & 255);
+      std::cout << '\n';
+    } else if (caso == "shen") {
+      float te;
+      uint16_t pressed;
+      if (!(std::cin >> te >> pressed)) return 2;
+      constexpr uint16_t kA = 1, kStart = 8;
+      float shen_t0 = 0, t = te;
+@SHEN_RELOJ@
+      if (te < kShenTexto) {
+@SHEN_START@
+      }
+      std::cout << (te >= kShenTexto) << ' ' << (shen_t0 < 0) << '\n';
+    } else if (caso == "iris") {
+      float cuadros;
+      bool g_iris_cierra;
+      if (!(std::cin >> cuadros >> g_iris_cierra)) return 2;
+@IRIS@
+      std::cout << std::max(0.0f, p) << '\n';
+    } else return 2;
+  }
+}

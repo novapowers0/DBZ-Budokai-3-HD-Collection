@@ -26,8 +26,10 @@ def main():
     for r in rec:
         if len(r["id"]) >= 48:
             errores.append("id largo " + r["id"])
-        if r["tipo"] not in ("tecnica", "titulo", "escenario"):
+        if r["tipo"] not in ("tecnica", "titulo", "escenario", "luchador"):
             errores.append("tipo " + r["id"])
+        if r["tipo"] == "luchador" and (type(r.get("luchador")) is not int or not 0 <= r["luchador"] <= 63):
+            errores.append("luchador invalido " + r["id"])
         if r["tipo"] == "tecnica" and r.get("capsula", 0) <= 0:
             errores.append("sin capsula " + r["id"])
         if r["tipo"] == "escenario" and (type(r.get("escenario")) is not int or r["escenario"] < 5000):

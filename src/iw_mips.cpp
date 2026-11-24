@@ -40,6 +40,8 @@ REXCVAR_DEFINE_BOOL(dbz3_iw_7dc_original, true, "DBZ3/IW",
                     "IW 0x7DC (NB014): carriles, juicio, vida y rango con la logica original del ELF (en pruebas; requiere dbz3_iw_logica_original)");
 REXCVAR_DEFINE_BOOL(dbz3_iw_7da_original, true, "DBZ3/IW",
                     "IW 0x7DA (NB012): rondas, iconos y juicio con la logica original del ELF (en pruebas; requiere dbz3_iw_logica_original)");
+REXCVAR_DEFINE_BOOL(dbz3_iw_qte_flancos_completos, true, "DBZ3/IW",
+                    "IW: conserva los flancos simultaneos de juego para el lector QTE original (7D4/7D5/7DB/7DC)");
 
 namespace dbz3::iwmips {
 namespace {
@@ -420,6 +422,15 @@ uint16_t DecodificarOp(uint32_t w, uint8_t& sa, int32_t& extra) {
 }
 }  // namespace
 
+float SumarRelojEE(float a, float b) {
+  uint32_t x, y, fcr = 0;
+  std::memcpy(&x, &a, 4);
+  std::memcpy(&y, &b, 4);
+  const uint32_t r = SumaH(x, y, true, kFpuHwSerie, fcr);
+  float salida;
+  std::memcpy(&salida, &r, 4);
+  return salida;
+}
 IW_FP_INLINE int64_t Ee::Fis(uint32_t a) {
   if (a < kRam) return a;
   if (a >= 0x70000000u && a < 0x70004000u) return kSpr + (a - 0x70000000u);
@@ -2083,6 +2094,9 @@ bool Tick7DD(const persecucion::Entrada& in, persecucion::Salida& out, uint32_t&
     e.W32(kBub + 0xC84, 0xFFFFFFFFu); e.W32(kBub + 0xC8C, 0xFFFFFFFFu);
     for (int i = 0; i < 3; ++i) e.Wf(kBub + 0x40 + 4 * i, in.pic0[i]);
     e.W32(kBub + 0x4C, 0x3F800000u);
+    // Frente de referencia de Piccolo (dorado PAL; 0x299BC0 lo usa al girar).
+    e.Wf(kW1 + 0x38, 1.f);
+    e.Wf(kW1 + 0x3C, 1.f);
     e.W32(kW1 + 0x58, 0x3F800000u);  // frente (0,0,1) hasta el primer giro
     W8(kBub + 0x2061, 1);             // sale volando (estado 13 con +0x2061: clip 0x606)
     for (int i = 0; i < 3; ++i) e.Wf(kBub + 0x640 + 4 * i, in.pic0[i] + (i == 1 ? 0.97f : 0.f));
@@ -2112,6 +2126,12 @@ bool Tick7DD(const persecucion::Entrada& in, persecucion::Salida& out, uint32_t&
   e.Wf(kBub + 0x77C, 1.f); e.Wf(kJug + 0x4C, 1.f); e.Wf(kJug + 0x64C, 1.f);
   e.W16(kJug + 0xCBC, uint16_t(in.jcbc));
   e.Wf(kCtxM + 0x75C, dist); e.W16(kCtx + 0xC, uint16_t(in.dif)); e.W16(kMgw + 0x25A, uint16_t(in.tipo25a));
+  // Piccolo_sCPUScript (EU 0x3638C0) copia work[0]+0x40 en work[1]+0x40. Si queda a cero,
+  // Minigame_MovePlayerByStick (EU 0x299EE0) pierde el avance de la palanca virtual en pose 9.
+  e.Wf(kObjs + 0x40, in.cam_fx);
+  e.Wf(kObjs + 0x44, 0.f);
+  e.Wf(kObjs + 0x48, in.cam_fz);
+  e.Wf(kObjs + 0x4C, 1.f);
   e.W32(kObjs + 0x180, in.w180 ? 1u : 0u);
   e.Wf(kW1 + 0x1A0, e.Rf(kW1 + 0x1A0) + kPasoCampo); e.Wf(kW1 + 0x1A4, e.Rf(kW1 + 0x1A4) + kPasoCampo);
   const int codigo = int16_t(e.R16(kBub + 0xCBC));   // estado antes del tick (se registra)
@@ -2171,10 +2191,12 @@ bool Tick7DD(const persecucion::Entrada& in, persecucion::Salida& out, uint32_t&
     for (int i = 0; i < 3; ++i) Hx(b, out.p[i]);
     std::snprintf(t, sizeof t, "%X,%X,%X,%X", e.R32(kW1 + 0xB8) ? 1u : 0u, unsigned(e.R16(kTareas + 0x60)), unsigned(out.vuela),
                   e.R32(kW1 + 0x1A4)); b += t;
+    std::string eje;
+    Hx(eje, in.cam_fx); Hx(eje, in.cam_fz); eje.pop_back();
     REXLOG_INFO("dbz3 iwmips persecucion t={} ini={} seed_in={:08X} seed_out={:08X} in={} col={} out={} ev={} instr={} us={:.1f} "
-                "media_us={:.2f} max_us={:.1f}",
+                "media_us={:.2f} max_us={:.1f} cam7dd={}",
                 in.t, int(in.inicio), semilla_in, semilla, a, col.empty() ? "-" : col, b, Lista(ev), e.n - cr.n0, us,
-                st->us_total / double(st->llamadas), st->us_max);
+                st->us_total / double(st->llamadas), st->us_max, eje);
   }
   return true;
 }
@@ -2414,7 +2436,9 @@ bool CampoDC(const nb014::Entrada& in, nb014::Salida& out, uint32_t& semilla) {
     const uint16_t nuevo = in.boton < 0 ? 0 : uint16_t(1u << in.boton);
     e.W16(kFlancoDA, uint16_t(in.flanco | nuevo));
     e.W16(kFlancoDA - 6, uint16_t(in.mantenido | nuevo));   // 0x4ADECC
-    e.W16(kFlancoDA - 4, nuevo);                            // 0x4ADECE
+    // DragonMissionQTEInputs recibe la mascara, no solo el boton de mayor indice. START/SELECT siguen fuera.
+    e.W16(kFlancoDA - 4, REXCVAR_GET(dbz3_iw_qte_flancos_completos)
+                           ? uint16_t((in.flanco & 0xFFF0u) | nuevo) : nuevo);
   }
   const Cronometro cr(e);
   // orden medido en PCSX2 (dorado T2B): la tarea de juego (QteMg_UpdateGameplay) va antes que la de fases (QteMg_Update)

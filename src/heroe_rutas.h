@@ -105,6 +105,106 @@ inline int Opcional(const Tramo& t, uint32_t semilla, int tramo) {
   return t.opcionales > 0 ? int(Mezcla(semilla, uint32_t(tramo)) % uint32_t(t.opcionales)) : -1;
 }
 
+// NHER4 (dbz3_heroe_coleccion_vueltas): finales de etapa 5, vueltas, mapa por etapa y +500 HP en DU.
+inline const char* NombreFinalDeTramo(int tramo) {
+  switch (tramo) {
+    case 6:  return "torneo";
+    case 7:  return "omega";
+    case 13: return "juegos_cell";
+    default: return "";
+  }
+}
+inline bool EstaCompletada(int tramo, int etapa_sig, const BusquedaEsferas& b) {
+  return tramo < 0 && etapa_sig < 0 && b.decision != 0;
+}
+inline int VidaExtraVuelta(int vuelta) { return 500 * std::max(0, vuelta - 1); }
+// sub_820FE668 (roster_ext.cpp): en combates de DU (vuelta 2+), suma +500 HP/vuelta al rival (sel+96 +36/+40, tope rec+48/7000).
+inline bool AplicarVidaExtraDu(uint32_t& hp_init, uint32_t& hp_max, uint32_t hp_cap, int extra) {
+  if (extra <= 0) return false;
+  constexpr uint32_t kNormal = 3000u, kTope = 7000u;
+  const uint32_t cap = (hp_cap > 0 && hp_cap <= kTope) ? hp_cap : kTope;
+  const uint32_t base_init = hp_init > 0 ? hp_init : kNormal;
+  const uint32_t base_max = hp_max > 0 ? std::max(hp_max, base_init) : base_init;
+  const uint32_t add = uint32_t(extra);
+  const uint32_t new_init = std::min(cap, base_init + add);
+  const uint32_t new_max = std::min(cap, base_max + add);
+  const bool cambio = new_init != hp_init || new_max != hp_max;
+  hp_init = new_init;
+  hp_max = new_max;
+  return cambio;
+}
+inline std::string RegistroVuelta(int vuelta) { return "h02_lap_" + std::to_string(std::max(1, vuelta)); }
+inline bool LeerRegistroVuelta(const std::string& reg, int& vuelta) {
+  if (reg.rfind("h02_lap_", 0) != 0) return false;
+  std::istringstream in(reg.substr(8));
+  int v = 0;
+  if (!(in >> v) || !in.eof() || v < 1 || v > 999) return false;
+  vuelta = v;
+  return true;
+}
+inline std::string RegistroFinal(const std::string& fin) { return "h02_fin_" + fin; }
+inline bool LeerRegistroFinal(const std::string& reg, std::string& fin) {
+  if (reg.rfind("h02_fin_", 0) != 0 || reg.size() <= 8 || reg.size() >= 48) return false;
+  fin = reg.substr(8);
+  return !fin.empty();
+}
+// Reinicia solo estado de ruta/esferas; conserva nivel, XP, PH, maestros, formas, premios y finales.
+inline bool IniciarNuevaVuelta(const std::vector<Tramo>& tabla, int& tramo, int& etapa_sig, uint32_t& semilla,
+                               BusquedaEsferas& busqueda, int& esferas, bool& shenron_abierto,
+                               std::set<std::string>& marcas, std::vector<int>& cruce, int& vuelta,
+                               uint32_t nueva_semilla) {
+  if (!EstaCompletada(tramo, etapa_sig, busqueda)) return false;
+  busqueda = {};
+  esferas = 0;
+  shenron_abierto = false;
+  marcas.clear();
+  cruce.clear();
+  etapa_sig = -1;
+  semilla = nueva_semilla;
+  vuelta = std::max(1, vuelta) + 1;
+  const Siguiente s = Elegir(tabla, 0, marcas);
+  tramo = s.tramo;
+  cruce = s.cruce;
+  if (tramo >= 0 && cruce.empty() && !tabla[size_t(tramo)].marca.empty()) marcas.insert(tabla[size_t(tramo)].marca);
+  return tramo >= 0;
+}
+// campaigns.cpp sub_821CA020: con NHER4 ON y heroe::Saga()>0 (vuelta 2+), entrar en DU por "Nueva historia".
+inline bool DuUsaNuevaHistoria(int saga_actual, int heroe_saga, bool coleccion_vueltas_on) {
+  return saga_actual > 0 || (coleccion_vueltas_on && heroe_saga > 0);
+}
+// MapaUI / AbrirMapa / DibujarMapaV2: sincroniza cursor, hechas y vuelta con la etapa real de ruta (0..5)
+// en lugar de Saga() % total (8), que desfasaba la vuelta 2+ (g_saga=6 tras 6 etapas de DU+Rutas).
+struct EstadoMapa {
+  int sig = 0, hechas = 0, vuelta_idx = 0, cursor_inicial = 0;
+  bool nueva_vuelta = false;
+};
+inline EstadoMapa CalcularEstadoMapa(int etapa_ruta, int total, int vuelta_ruta, bool completada,
+                                     int saga, bool rutas_c2_on) {
+  EstadoMapa st;
+  const int tot = std::max(1, total);
+  if (!rutas_c2_on) {
+    st.sig = std::max(0, saga) % tot;
+    st.hechas = st.sig;
+    st.vuelta_idx = std::max(0, saga) / tot;
+    st.cursor_inicial = st.sig;
+    st.nueva_vuelta = false;
+    return st;
+  }
+  st.vuelta_idx = std::max(0, vuelta_ruta - 1);
+  if (completada) {
+    st.sig = 0;
+    st.hechas = std::min(6, tot);
+    st.cursor_inicial = 0;
+    st.nueva_vuelta = true;
+    return st;
+  }
+  st.sig = std::clamp(etapa_ruta, 0, tot - 1);
+  st.hechas = st.sig;
+  st.cursor_inicial = st.sig;
+  st.nueva_vuelta = false;
+  return st;
+}
+
 }  // namespace dbz3::heroe::rutas
 
 // Cruce abierto en el mapa (heroe.cpp -> heroe_v2_cruce.inl): solo con el ajuste dbz3_heroe_rutas.

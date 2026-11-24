@@ -42,6 +42,7 @@
 #include "launcher/settings.h"
 #include "mods.h"
 #include "heroe_api.h"
+#include "heroe_rutas.h"
 
 REXCVAR_DEFINE_BOOL(dbz3_heroe_fondos_historia, true, "DBZ3/Mods",
                     "Hero Mode story screens with a big picture band and a text strip underneath (BETA; off = the original narration panel)");
@@ -490,7 +491,9 @@ REX_HOOK_RAW(sub_821CA020) {
     // lanza la introduccion siguiente (se queda en negro): se entra como historia nueva, que si lanza la intro de la casilla
     // (el progreso del heroe vive en su ficha; la introduccion la elige el gancho de sub_82156DC8 segun heroe::Saga())
     static const bool reanudar_nueva = std::getenv("DBZ3_DU_REANUDAR_CONTINUAR") == nullptr;
-    REX_STORE_U8(REX_LOAD_U32(ctx.r3.u32 + 48) + 85, (reanudar_nueva && dbz3::campaigns::SagaActual() > 0) ? 1 : 0);
+    const bool nueva_hist = dbz3::heroe::rutas::DuUsaNuevaHistoria(
+        dbz3::campaigns::SagaActual(), dbz3::heroe::Saga(), dbz3::heroe::ColeccionVueltasOn());
+    REX_STORE_U8(REX_LOAD_U32(ctx.r3.u32 + 48) + 85, (reanudar_nueva && nueva_hist) ? 1 : 0);
   }
   __imp__sub_821CA020(ctx, base);
 }

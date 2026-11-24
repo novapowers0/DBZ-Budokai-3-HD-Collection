@@ -1,0 +1,39 @@
+#include <iostream>
+#include <string>
+#include <vector>
+#include <cstddef>
+using std::size_t;
+int activo, custom;
+namespace dbz3::opcional {
+bool Activo(const char*) { return activo; }
+std::vector<int> Lista(const char*, const char*) {
+  return custom ? std::vector<int>(24, 4242) : std::vector<int>{};
+}
+}
+@TABLA@
+int main() {
+  int traducido, iso, raw, r, casilla_nativa;
+  while (std::cin >> traducido >> activo >> iso >> raw >> r >> custom >> casilla_nativa) {
+    struct { bool combate = false; int victoria, salida, casilla_combate = 10, indice_musica_combate = -1; } s;
+    struct { bool combate_b2; int victoria_b2 = 0, salida_b2 = 0; } b{r == 2};
+    struct { unsigned raw; unsigned R8(unsigned addr) const { return addr == 0x699392 ? raw : 255; } } c{unsigned(raw)};
+    @READBACK@
+    int casilla_musica = -1, indice_musica = -1;
+    struct { int casilla; } r_ficha{casilla_nativa};
+    const std::vector<decltype(r_ficha)> g_f{r_ficha};
+    const int g_pend_r = !traducido ? 0 : -1;
+    struct Casilla { int musica; };
+    const struct { std::vector<Casilla> casillas; } g_d{std::vector<Casilla>(13, {raw})};
+    if (r == 2 && traducido) {
+      @TRAD@
+    } else if (r == 2 && !traducido) {
+      const auto& r = r_ficha;
+      @NAT@
+    }
+    int pista = -1, pista_casilla = -1;
+    const bool callar = r != 0;
+    std::string iso_musica, g_iso_b2 = iso ? "original.iso" : "";
+    @AUDIO@
+    std::cout << pista_casilla << ' ' << pista << '\n';
+  }
+}

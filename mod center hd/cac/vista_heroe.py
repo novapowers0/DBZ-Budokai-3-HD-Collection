@@ -4292,10 +4292,12 @@ def texturas_ficha(amb, ficha, afs, solo_base=False):
         if fid and lista:
             sin_cejas = k > len(lista)
             fid = lista[min(k, len(lista)) - 1]
-            if sin_cejas:
+            if sin_cejas and not ficha.get("_cejas_ssj3"):
                 iris = SSJ_OJOS
         elif fid or not ficha.get("_ssj_nativa") or k >= 3:   # R23 CAC: el SSJ3 sobre una cara SSJ nativa tambien sin cejas
             iris, ceja, sin_cejas = SSJ_OJOS, (None if k >= 3 else SSJ_CEJAS), k >= 3
+            if sin_cejas and ficha.get("_cejas_ssj3") and fid is None and ficha.get("_ssj_nativa"):
+                iris = None  # No volver a teñir el iris original de una cara SSJ nativa.
     else:
         iris, ceja = _rgb_ficha(ficha.get("ojos", CERO)), _rgb_ficha(ficha.get("c1", CERO))
         pelo = int(ficha.get("pelo", 0))
@@ -4310,7 +4312,8 @@ def texturas_ficha(amb, ficha, afs, solo_base=False):
                 ceja = None
     if fid is None and iris is None and ceja is None and not sin_cejas:
         return {}
-    return texturas_rostro(amb, afs.entry(fid) if fid else None, gesto, iris, ceja, sin_cejas, solo_base)
+    return texturas_rostro(amb, afs.entry(fid) if fid else None, gesto, iris, ceja, sin_cejas, solo_base,
+                          corregir_cejas=sin_cejas and bool(ficha.get("_cejas_ssj3")))
 
 
 def _textura_principal(model, tris):
@@ -4565,7 +4568,7 @@ def _muestras_cara(model, P, n0, acum_m):
 
 
 def colorear_textura(out, muestras, iris_rgb=None, ceja_rgb=None, sin_cejas=False, depura=None, cejas3d=None,
-                     alto_ceja=0.6):
+                     alto_ceja=0.6, *, corregir_cejas=False):
     """Color de pupilas y cejas en una textura de cara de B3 (rgba float, la cara dibujada derecha: arriba = arriba).
     25/10 (3.a version; las dos primeras mezclaban parpado, ceja y pupila y solo hacian un juego de ojos):
       - cada OJO = una mancha del blanco del ojo (gris claro 0,957, distinto de la piel blanca 1,0) delante de la cara
@@ -4591,6 +4594,12 @@ def colorear_textura(out, muestras, iris_rgb=None, ceja_rgb=None, sin_cejas=Fals
             alto[y, x] = yy
             x3[y, x] = xx_
     dk = (img.max(2) < 0.35) & cara
+    cej_pix = dk
+    en_ojo = np.zeros_like(dk)
+    iris_azul = np.zeros_like(dk)
+    if corregir_cejas:
+        cej_pix = dk | ((img[..., 0] >= 0.58) & (img[..., 1] >= 0.44) & ((img[..., 0] - img[..., 2]) >= 0.18) & cara)
+        iris_azul = (img[..., 2] >= 0.35) & (img[..., 1] >= 0.32) & ((img[..., 2] - img[..., 0]) >= 0.12) & cara
     bl = (img.min(2) > 0.72) & (np.ptp(img, 2) < 0.08) & (img.max(2) < 0.985) & cara
     et, n = ndimage.label(bl)
     tam = ndimage.sum(np.ones_like(et), et, range(1, n + 1)) if n else np.zeros(0)
@@ -4621,6 +4630,8 @@ def colorear_textura(out, muestras, iris_rgb=None, ceja_rgb=None, sin_cejas=Fals
         caja = (gx >= x0 - 1) & (gx <= x1 + 1) & (gy >= y0 - 1) & (gy <= y1 + 1)
         dentro = np.zeros_like(dk)
         dentro[caja] = hull.find_simplex(np.stack([gx[caja], gy[caja]], 1)) >= 0
+        if corregir_cejas:
+            en_ojo |= dentro
         # (con blanco debajo O encima: hay pupilas pegadas al parpado y otras al borde de abajo)
         nucleo = dk & dentro & cerca(ojo, 0, 1) & cerca(ojo, 0, -1) & (cerca(ojo, -1, 0) | cerca(ojo, 1, 0))
         p_ = nucleo.copy()
@@ -4644,7 +4655,7 @@ def colorear_textura(out, muestras, iris_rgb=None, ceja_rgb=None, sin_cejas=Fals
             lo = max(0, t - hmax)
             ys_ = np.arange(lo, max(lo, t - L))
             if len(ys_):
-                cej[ys_[dk[ys_, x]], x] = True
+                cej[ys_[cej_pix[ys_, x]], x] = True
     if iris_rgb is not None and not pup.any():
         # Modelos como Bardock (99) colocan las pupilas en una isla redonda dedicada con un aro
         # fino de esclerotica (< 40 px) que no supera el umbral de manchas grandes.
@@ -4667,9 +4678,11 @@ def colorear_textura(out, muestras, iris_rgb=None, ceja_rgb=None, sin_cejas=Fals
                 pup |= ndimage.binary_opening(mk, np.ones((2, 2), bool))
     # parpado = lo negro pegado encima del blanco de un OJO (no de los brillos grises sueltos dentro de la ceja)
     cej &= ~pup & ~ndimage.binary_dilation(np.isin(et, ojos), np.ones((2 * L + 1, 1), bool), origin=(-L, 0))
+    if corregir_cejas:
+        cej &= ~en_ojo & ~iris_azul
     cej_ojos = cej.copy()
     zona_ojos = ndimage.binary_dilation(np.isin(et, ojos), iterations=max(4, wid // 8)) if ojos else np.zeros_like(dk)
-    libre = dk & cara & ~zona_ojos
+    libre = cej_pix & cara & ~zona_ojos & ~en_ojo & ~iris_azul
     if cejas3d is not None and libre.any():
         yy, xx = np.nonzero(libre)
         d, _ = cejas3d.query(np.stack([x3[yy, xx], alto[yy, xx]], 1))
@@ -4750,7 +4763,7 @@ def colorear_textura(out, muestras, iris_rgb=None, ceja_rgb=None, sin_cejas=Fals
                     out[by, bx, :3] = 1.0
     if (ceja_rgb is not None or sin_cejas) and cej.any():
         if sin_cejas:
-            q = ndimage.binary_dilation(cej) & ~bl & ~pup & cara
+            q = ndimage.binary_dilation(cej) & ~bl & ~pup & ~en_ojo & ~iris_azul & cara
             out[q, :3], out[q, 3] = 1.0, 0.0   # piel (la rampa del cuerpo le da el tono)
         else:
             relleno = ndimage.binary_erosion(cej)
@@ -4769,7 +4782,7 @@ def colorear_textura(out, muestras, iris_rgb=None, ceja_rgb=None, sin_cejas=Fals
 
 
 def texturas_rostro(host_bytes, donor_bytes=None, gesto=None, iris_rgb=None, ceja_rgb=None, sin_cejas=False,
-                    solo_base=False):
+                    solo_base=False, *, corregir_cejas=False):
     """Las texturas de cara del cuerpo para un tipo de rostro y unos colores, en TODAS sus expresiones: cada expresion
     del cuerpo (variantes *_Lnn_*_FACE: parpadeo, grito, dolor...; el juego cambia la placa de la cara por etiqueta)
     toma la misma expresion del donante (o su cara normal si no la tiene). Sin esto, al cambiar de gesto en combate
@@ -4799,13 +4812,15 @@ def texturas_rostro(host_bytes, donor_bytes=None, gesto=None, iris_rgb=None, cej
     dep = os.environ.get("DBZ3_DEBUG_CARA")
     tex_de = lambda t: np.asarray(acum.get(t, base.tex[t]), np.float32).copy()  # noqa: E731
     # 1.a pasada: donde estan las cejas en las caras con los ojos abiertos (para las de ojos cerrados)
-    pts = [colorear_textura(tex_de(t), m_)[1] for t, m_ in muestras.items()]
+    pts = [colorear_textura(tex_de(t), m_, sin_cejas=corregir_cejas, corregir_cejas=corregir_cejas)[1]
+           for t, m_ in muestras.items()]
     pts = np.concatenate(pts) if pts else np.zeros((0, 2))
     from scipy.spatial import cKDTree  # noqa: PLC0415
     arbol = cKDTree(pts) if len(pts) >= 10 else None
     for t, m_ in muestras.items():   # color: una vez por textura, con sus dos juegos de ojos
         acum[t] = colorear_textura(tex_de(t), m_, iris_rgb, ceja_rgb, sin_cejas,
-                                   dep.replace(".png", "_%d.png" % t) if dep else None, arbol)[0]
+                                   dep.replace(".png", "_%d.png" % t) if dep else None, arbol,
+                                   corregir_cejas=corregir_cejas)[0]
     return acum
 
 

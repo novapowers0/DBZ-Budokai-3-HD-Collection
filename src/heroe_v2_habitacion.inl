@@ -83,6 +83,16 @@ std::string ValorHabitacion(int fila) {
                         : m == "camino_ciudad" ? T::T("Ciudad", "City") : nullptr;
         if (n) r += (r.empty() ? "" : T::T(" y ", " and ")) + std::string(n);
       }
+      if (H::ColeccionVueltasOn()) {
+        const int nf = int(H::FinalesCompletados().size());
+        if (H::RutaCompletada())
+          return std::string(T::T("Finales ", "Endings ")) + Num(nf) + "/3 · " + T::T("Nueva vuelta", "New lap");
+        if (!r.empty() && (H::VueltaRuta() > 1 || nf > 0))
+          return std::string(T::T("Vuelta ", "Lap ")) + Num(H::VueltaRuta()) + " · " + r + " · " + Num(nf) + "/3";
+        if (!r.empty()) return r;
+        if (H::VueltaRuta() > 1 || nf > 0)
+          return std::string(T::T("Vuelta ", "Lap ")) + Num(H::VueltaRuta()) + " · " + T::T("Finales ", "Endings ") + Num(nf) + "/3";
+      }
       if (!r.empty()) return r;
       const int s = H::Saga();
       return s >= 0 && s < H::kSagasJugables ? std::string(H::NombreSaga(s)) : std::string(T::T("Completada", "Completed"));

@@ -12,6 +12,7 @@ Download the ZIPs listed below from **Assets** on the [v1.5.7 release page](http
 |---|---|
 | `DBZ-Budokai-3-HD-Collection-v1.5.7.zip` | Windows game package. Includes NVIDIA DLSS (`nvngx_dlss.dll` and `NVIDIA_DLSS_LICENSE.txt`). |
 | `DBZ3HD-1.5.7-Kit-Modding.zip` | Optional Modding Kit. Extract it into the game folder after installing the Windows package. |
+| `mods_nativos-partida_100-v1.5.7.zip` | **Fix (24 Nov):** the first 1.5.7 download was missing the `mods_nativos` folder, so "Unlock everything" failed. The Windows zip above already includes it again; if you downloaded before, extract this small zip next to `dbz3.exe`. |
 | `...-v1.5.7-linux-amd64.tar.gz` | Linux build (Vulkan, beta). Built automatically; it appears on this page a while after publishing. |
 | `...-v1.5.7-macos-arm64-EXPERIMENTAL.tar.gz` | Apple Silicon Mac (M1 or newer), experimental and UNTESTED. Built automatically; read `README_MAC.txt` and tell us what happens. |
 | [Character pack — WIP](https://drive.google.com/file/d/1jDRwzd_idmeIxwAMN4q4bC89JKFiGXX7/view?usp=sharing) | Separate optional download: `DBZ3HD-1.4.3-Personajes.zip`. |
@@ -111,6 +112,7 @@ Descarga los ZIP de la lista en **Assets** de la [página de la versión v1.5.7]
 |---|---|
 | `DBZ-Budokai-3-HD-Collection-v1.5.7.zip` | Paquete del juego para Windows. Incluye NVIDIA DLSS (`nvngx_dlss.dll` y `NVIDIA_DLSS_LICENSE.txt`). |
 | `DBZ3HD-1.5.7-Kit-Modding.zip` | Kit de Modding opcional. Descomprímelo en la carpeta del juego después de instalar el paquete de Windows. |
+| `mods_nativos-partida_100-v1.5.7.zip` | **Arreglo (24 nov):** la primera descarga de la 1.5.7 no traía la carpeta `mods_nativos`, y «Desbloquear todo» fallaba. El ZIP de Windows de arriba ya la incluye; si lo descargaste antes, descomprime este ZIP pequeño junto a `dbz3.exe`. |
 | `...-v1.5.7-linux-amd64.tar.gz` | Juego para Linux (Vulkan, beta). Se compila solo y aparece en esta página un rato después de publicar. |
 | `...-v1.5.7-macos-arm64-EXPERIMENTAL.tar.gz` | Mac con Apple Silicon (M1 o posterior), experimental y SIN PROBAR. Se compila solo; lee `README_MAC.txt` y cuéntanos qué pasa. |
 | [Pack de personajes — en desarrollo](https://drive.google.com/file/d/1jDRwzd_idmeIxwAMN4q4bC89JKFiGXX7/view?usp=sharing) | Descarga opcional separada: `DBZ3HD-1.4.3-Personajes.zip`. |

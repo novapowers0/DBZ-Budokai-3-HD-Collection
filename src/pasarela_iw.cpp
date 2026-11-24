@@ -9,6 +9,7 @@
 #include "guest_region.h"
 #include "ingame/tutorial.h"
 #include "iw_minijuegos.h"
+#include "iw_mips.h"
 #include "iw_mini_vuelo.h"
 #include "iw_spx_capsulas.h"
 #include "ps2_modelo.h"
@@ -21,12 +22,18 @@
 // S3 (IW-D01): la sexta dificultad (Z) de la ficha solo con el ajuste del resultado original. La define
 // pasarela_misiones.cpp (misma unidad: dbz3.exe).
 REXCVAR_DECLARE(bool, dbz3_iw_resultado_original);
+REXCVAR_DEFINE_BOOL(dbz3_iw_reloj_vuelta_original, true, "DBZ3/IW",
+                    "IW: reloj de vuelta en dos fases tras un combate ganado de Dragon Mission");
+REXCVAR_DEFINE_BOOL(dbz3_iw_reloj_vuelta_suma_ee, true, "DBZ3/IW",
+                    "IW: sumar como el EE en el reloj de vuelta en dos fases de Dragon Mission (experimental)");
 REXCVAR_DEFINE_BOOL(dbz3_iw_mapa_globo_original, true, "DBZ3/IW",
                     "IW mapa: el globo de Bulma solo sale con Goku sobre una casilla y 60 cuadros despues, como el original (EU 0x2FE270, M+0x334); SELECT no lo quita");
 REXCVAR_DEFINE_BOOL(dbz3_iw_mapa_frase_original, true, "DBZ3/IW",
                     "IW mapa: usar la fila de texto del globo que guarda el ELF (M+0x338) hasta que se cierre");
 REXCVAR_DEFINE_BOOL(dbz3_iw_mapa_inicio_original, true, "DBZ3/IW",
                     "IW mapa: en partida nueva Goku empieza en la posicion por defecto del area, como el original (requiere dbz3_iw_mapa_original)");
+REXCVAR_DEFINE_BOOL(dbz3_iw_mapa_intro_limite_original, true, "DBZ3/IW",
+                    "IW mapa: la entrada espera al llegar justo a 1,0; false restaura el paso inmediato al scroll");
 
 #include <algorithm>
 #include <array>
@@ -481,6 +488,12 @@ std::vector<uint8_t> Leer(std::ifstream& f, uint64_t off, uint32_t n) {
 }
 
 }  // namespace
+
+Imagen TexturaAtlasIW(const std::vector<uint8_t>& amt, int j) {
+  Imagen img = TexturaAmt(amt, j);
+  if (img) return img;
+  return Textura32Amt(amt, j);
+}
 
 // ELF del juego (SLUS_*/SLES_* en la raiz): de la carpeta extraida o de la ISO (ISO 9660, directorio raiz).
 std::vector<uint8_t> LeerElf(const std::filesystem::path& iw) {
@@ -2430,6 +2443,10 @@ bool IniciarMapaOrig(const void* dueno, const InfoDM& in, int saga, float gx, fl
 
 static bool g_casilla_de_prueba = false;   // solo pruebas: la casilla la eligio el entorno
 
+bool PantallaDM::EnIntroMapa() const {
+  return REXCVAR_GET(dbz3_iw_mapa_intro_limite_original) ? t_intro_ <= 1.0f : t_intro_ < 1.0f;
+}
+
 void PantallaDM::ReiniciarMapa() {
   g_mo.reiniciar = true, g_mo.de_golpe = false, g_mo.conservar = false, g_mo.apagado = false;   // iw-mapa: entrada nueva
   ReiniciarAmaMapa();   // sprites del mapa recreados; el Pool vuelve al cuadro 0 (Sprite_DisplayHudSetByMode)
@@ -2531,7 +2548,7 @@ void PantallaDM::SonidoEvento(const CasillaDM& e) {
   }
 }
 
-void PantallaDM::VolverDelCombate() {
+void PantallaDM::VolverDelCombate(bool resultado_combate) {
   // EU 0x300F80 ScreenTransition_PushCommands(saga, 1, 0): al volver de un combate o minijuego el original no cambia
   // de estado a mano: empuja a la cola 5 (entrar en la saga), 0xE (camara al objetivo con la posicion guardada, arg 1),
   // 10 (iconos), 4 (DragonMissionFightScenarioExitLoadWaitEnd), 1 (desbloqueos), 8 (Bulma y Bolas) y 0xD (Bolas
@@ -2539,6 +2556,7 @@ void PantallaDM::VolverDelCombate() {
   // lleva el comando 4 (Story_MapResultDelayTick / Story_MapReloadAfterDelayTick).
   volviendo_ = false;
   t_vuelta_ = 0;
+  reloj_vuelta_original_ = resultado_combate && REXCVAR_GET(dbz3_iw_reloj_vuelta_original);
   g_mo.reiniciar = true, g_mo.de_golpe = true, g_mo.conservar = true, g_mo.apagado = false;   // iw-mapa: comando 10 con arg 1
   ReiniciarAmaMapa();   // el original recrea los sprites del mapa (Sprite_DisplayHudSetByMode)
   res_delay_hecho_ = recarga_hecha_ = false;
@@ -3126,7 +3144,7 @@ int PantallaDM::Pista(const InfoDM& in) const {
 // Mapa de la saga de la casilla elegida (640 x 480 px del mapa en la pantalla, como en la PS2) con la camara siguiendo
 // al Goku del mapa, que anda hasta la casilla; insignias de las misiones abiertas y dibujos de los minijuegos.
 // EU 0x2F95A0 Story_MapRender
-void PantallaDM::DibujarFondo(ImDrawList* dl, const ImGuiIO& io, float t, const InfoDM& in) {
+void PantallaDM::DibujarFondo(ImDrawList* dl, const ImGuiIO& io, float t, const InfoDM& in, bool vuelta_pendiente) {
   const auto& cas = Cas(in);
   if (sel_ < 0 || sel_ >= int(cas.size())) Elegir(in, std::clamp(in.hecho + 1, 1, kRegistros));
   if (sel_ < 0) return;
@@ -3143,9 +3161,10 @@ void PantallaDM::DibujarFondo(ImDrawList* dl, const ImGuiIO& io, float t, const 
   const int cuadro = ImGui::GetFrameCount();
   const bool sin_pintar = cuadro - s_cuadro_ultimo > 2;
   s_cuadro_ultimo = cuadro;
-  if (t_intro_ < 0 || (t - t_ultimo_ > 0.5f && sin_pintar && ordenes_.empty() && !encima)) {
+  // Si el panel retiene la vuelta, el hueco del combate no es una entrada nueva al mapa.
+  if (t_intro_ < 0 || (t - t_ultimo_ > 0.5f && sin_pintar && ordenes_.empty() && !encima && !vuelta_pendiente)) {
     if (volviendo_) {
-      t_intro_ = 1.0f;
+      t_intro_ = REXCVAR_GET(dbz3_iw_mapa_intro_limite_original) ? 1.001f : 1.0f;
       ap_t_ = 1.0e6f;
       tcam_ = 1.0f;
     } else {
@@ -3158,9 +3177,14 @@ void PantallaDM::DibujarFondo(ImDrawList* dl, const ImGuiIO& io, float t, const 
   // EU 0x2F9060 Story_MapReloadAfterDelayTick
   // H03: espera de resultado y recarga de iconos.
   if (volviendo_) {
-    t_vuelta_ += dt * 60.0f;
+    const float paso_vuelta = dt * 60.0f;
+    if (reloj_vuelta_original_ && REXCVAR_GET(dbz3_iw_reloj_vuelta_suma_ee))
+      t_vuelta_ = dbz3::iwmips::SumarRelojEE(t_vuelta_, paso_vuelta);
+    else t_vuelta_ += paso_vuelta;
     if (!res_delay_hecho_ && t_vuelta_ >= 60.0f) {
       res_delay_hecho_ = true;
+      // 0x2F9100 pone +0x34 a cero: 0x2F9060 empieza a contar en el siguiente tick.
+      if (reloj_vuelta_original_) t_vuelta_ = 0.0f;
       g_pose_resultado = true;   // MiniGokuAnimations(...,8,...): la pose de resultado (EU 0x2F9100)
       REXLOG_INFO("dbz3 iw mapa: Story_MapResultDelayTick 60 cuadros: Goku vuelve a su sitio (pose 8)");
     }
@@ -3168,17 +3192,18 @@ void PantallaDM::DibujarFondo(ImDrawList* dl, const ImGuiIO& io, float t, const 
       recarga_hecha_ = true;
       volviendo_ = false;
       g_pose_resultado = false;
-      REXLOG_INFO("dbz3 iw mapa: Story_MapReloadAfterDelayTick 100 superado (cuadro 101): casillas recargadas");
+      REXLOG_INFO("dbz3 iw mapa: Story_MapReloadAfterDelayTick 100 superado: casillas recargadas (reloj={})",
+                  reloj_vuelta_original_ ? "dos fases" : "compartido");
       if (estado_ == 4) SacarOrdenYRecargar();   // el comando 4 acaba aqui y devuelve el turno al despachador
     }
   }
   // EU 0x2F8790 Story_MapIntroDelayTick
   // Story_MapIntroDelayTick: +0,01 por cuadro (fRam0049c7dc = 1,0 a 60 Hz; 1,2 en el modo de 50) y al
-  // pasar de 1,0 se pasa al scroll. Son 100 cuadros (101 por el > 1,0), no un sleep de interfaz.
-  if (t_intro_ < 1.0f) {
+  // pasar de 1,0 se pasa al scroll (101 cuadros a paso 1 desde cero).
+  if (EnIntroMapa()) {
     t_intro_ += 0.01f * dt * 60.0f;
-    if (t_intro_ >= 1.0f) {   // > 1,0 = cuadro 101 (el original compara estrictamente); se deja por encima de 1,0
-      t_intro_ = 1.001f;      // para que la vuelta de combate (t_intro_ = 1,0) NO repita la intro
+    if (!EnIntroMapa()) {
+      t_intro_ = 1.001f;
       ap_t_ = 0;      // Story_MapObjectsAppearTick empieza a contar
       tcam_ = 0;      // Story_MapScrollToTargetTick arranca con su acumulador a 0
       bloqueo_scroll_ = true;   // B3: el original recarga los mandos al pasar el scroll de 1,0 (cuadro 101)
@@ -3189,7 +3214,7 @@ void PantallaDM::DibujarFondo(ImDrawList* dl, const ImGuiIO& io, float t, const 
   } else {
     ap_t_ += dt * 60.0f;
   }
-  const bool listo = t_intro_ >= 1.0f;
+  const bool listo = !EnIntroMapa();
   // EU 0x2F98D0 DragonMissionMiscPlayerFuncs: con el mapa listo y sin estado en curso, ejecuta la primera orden de la
   // cola. Los mandos estan descargados (bloqueo_scroll_) hasta que el scroll pasa de 1,0, como LoadWaitPlayerCommands.
   if (listo && estado_ == 7 && !bloqueo_scroll_ && !volviendo_ && cambio_fase_ == 0 && ev_ < 0 && !ordenes_.empty())
@@ -4360,7 +4385,7 @@ PantallaDM::Accion PantallaDM::Mapa(ImDrawList* dl, const ImGuiIO& io, float t, 
   // libre, START abre el menu (Story_MapSetupScreen/Story_MapDrawMenu, comandos 0xB/0xC de la cola).
   if (EnIntroMapa() || bloqueo_scroll_) {
     if (pulsado & kStart) {
-      t_intro_ = 1.0f;
+      t_intro_ = REXCVAR_GET(dbz3_iw_mapa_intro_limite_original) ? 1.001f : 1.0f;
       bloqueo_scroll_ = false;
       REXLOG_INFO("dbz3 iw mapa: START durante la entrada: scroll al objetivo (EU 0x365090)");
     }
@@ -4972,7 +4997,7 @@ void PantallaDM::SonidoResultado(const InfoDM& in, int evento) {
 }
 
 bool PantallaDM::Resultado(ImDrawList* dl, const ImGuiIO& io, float t, uint16_t pulsado, const InfoDM& in,
-                           const ResultadoDM& r) {
+                          const ResultadoDM& r, bool vuelta_pendiente) {
   if (!in.dm) return true;
   if (r.mision <= 0) {   // DS153: resultado de un minijuego (0x7D0-0x7E1)
     // Si su modulo ya pinto su propia pantalla (iw_mini_disparo.cpp / iw_mini_botones.cpp), el original ensena UN solo
@@ -5016,7 +5041,7 @@ bool PantallaDM::Resultado(ImDrawList* dl, const ImGuiIO& io, float t, uint16_t 
     S::mode::Help(dl, a, {{"A", completo ? T::T("Al mapa", "To the map") : T::T("Saltar", "Skip")}});
     return false;
   }
-  DibujarFondo(dl, io, t, in);
+  DibujarFondo(dl, io, t, in, vuelta_pendiente);
   dl->AddRectFilled(ImVec2(0, 0), io.DisplaySize, IM_COL32(0, 0, 0, 215));
   const auto a = S::GameArea(io);
   const auto& ui = in.dm->ui;

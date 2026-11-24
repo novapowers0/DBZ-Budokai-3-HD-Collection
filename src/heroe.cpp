@@ -46,6 +46,7 @@
 #include "heroe_v2_casa.h"
 #include "heroe_formas.h"   // Evolucion por raza (dbz3_heroe_evolucion): regla pura raza + marcas -> formas
 #include "heroe_rutas.h"    // Rutas (dbz3_heroe_rutas): regla pura tramo + marcas + semilla -> tramo siguiente
+#include "heroe_coleccion_io.h"   // NHER4: I/O atomico de coleccion.toml y sincronizacion entre fichas
 #include <random>           // rutas: semilla de la partida
 
 REXCVAR_DEFINE_BOOL(dbz3_heroe_paginas, false, "DBZ3/Mods",
@@ -61,6 +62,8 @@ REXCVAR_DEFINE_BOOL(dbz3_heroe_rutas, true, "DBZ3/Mods",
                     "Hero Mode v3 routes (BETA): crossroads, optional fights and master branch pick the next saga");
 REXCVAR_DEFINE_BOOL(dbz3_heroe_recompensas, true, "DBZ3/Mods",
                     "Hero Mode rewards and Collection (BETA): each saga, boss and optional point unlocks real B3 content");
+REXCVAR_DEFINE_BOOL(dbz3_heroe_coleccion_vueltas, false, "DBZ3/Mods",
+                    "Hero Mode NHER4 (OFF): account-wide Collection, route replayability (New Lap), endings, DU +500 HP/lap and native Collection tabs");
 
 namespace dbz3::pasarela {
 int RangoMejora(const std::string& clave, int valor, int pe_por_paso, int pe_primera);   // pasarela.h
@@ -948,12 +951,13 @@ std::string ArgsFicha(int id, int traje, bool local) {
   for (int i = 0; i < 4; ++i)
     if (h.b3_piezas[i] >= 0) s += ";b3_" + std::string(kB3Zone[i]) + "=" + std::to_string(h.b3_piezas[i]);
   if (h.b3_accesorio >= 0) s += ";b3_accesorios=" + std::to_string(h.b3_accesorio);   // CAC-07a (vista_heroe accesorio_de)
-  for (int i = 0; i < C::kNumCapas; ++i)   // CAC-15: capaN=FID:PARTE (parte entera de un luchador nativo, sobre el cuerpo)
-    if (h.capas[i].fid >= 0) s += ";capa" + std::to_string(i + 1) + "=" + std::to_string(h.capas[i].fid) + ":" + std::to_string(h.capas[i].parte);
-  for (int i = 0; i < C::kNumCapas; ++i)   // CAC-16: mechones quitados de la capa (capaN_quitar=i,j)
-    if (h.capas[i].fid >= 0 && h.capas[i].quitar)
-      for (int b = 0, n = 0; b < 63; ++b)
+  for (int i = 0; i < C::kNumCapas; ++i) {   // capa y mechones juntos, como en recetas.py
+    if (h.capas[i].fid < 0) continue;
+    s += ";capa" + std::to_string(i + 1) + "=" + std::to_string(h.capas[i].fid) + ":" + std::to_string(h.capas[i].parte);
+    if (h.capas[i].quitar)
+      for (int b = 0, n = 0; b < 47; ++b)
         if (h.capas[i].quitar >> b & 1) s += (n++ ? std::string(",") : ";capa" + std::to_string(i + 1) + "_quitar=") + std::to_string(b);
+  }
   if (!h.texcol.empty()) s += ";texcol=" + h.texcol;   // CAC-17: colores por entrada de textura (vista_heroe texcol_de)
   if (local && Materiales17() && id == Cuerpo() && traje == Traje()) {
     if (!h.material17.empty() && h.material17.size() <= 128 && h.material17.find_first_not_of("0123456789,|") == std::string::npos)
@@ -1060,7 +1064,7 @@ std::string ArgsPropio(bool local) {
     for (const unsigned char c : h.recetas[r].ficha) { formas += kHex[c >> 4]; formas += kHex[c & 15]; }
     if (!h.forma_estallido[i].empty()) formas += ";estallido" + std::to_string(i) + "=" + h.forma_estallido[i];
   }
-  const std::string foto = FotoCac2() && h.foto_pose ?
+  const std::string foto = FotoCac2() && (h.foto_pose || h.foto_yaw != 22) ?
       ";foto_pose=" + std::to_string(h.foto_pose) + ";foto_yaw=" + std::to_string(h.foto_yaw) : std::string();
   return ArgsFicha(Cuerpo(), g_traje, local) + ocultar + formas + foto + ";nombre=" + n;
 }
@@ -1304,6 +1308,8 @@ int DonanteEfectivo() { const int mov = MovesetId(); return mov >= 0 ? mov : Est
 std::vector<int> CapsulasPremiadas();   // heroe_recompensas.inl (HEROE-REC): tecnicas ganadas como premio
 void PremiosAvisoVaciar();              // heroe_recompensas.inl
 void EvaluarRecompensas(int tramo, int rival, int forma);
+void ColeccionSincronizarConFichas();
+void RegistrarFinalColeccion(const std::string& fin);
 constexpr int kPrimeraCapsulaMod = 596;   // las capsulas de mod (Soul Punisher, Carga 00x...) no son tecnicas del Heroe
 bool TecnicasV2On();            // heroe_tecnicas_v2.inl (dbz3_heroe_tecnicas_v2)
 std::vector<int> InventarioV2();
@@ -1448,21 +1454,23 @@ std::string ArgsCartas() {
 // copia de aqui) y ahi se concede el deseo. Sin historia DU montada no hay Shenron: se concede al momento.
 int Esferas() { return g_shenron_abierto ? 0 : g_esferas; }   // la reserva no vuelve a invocar al dragon
 static rutas::BusquedaEsferas g_busqueda;
-// El lector de la ficha conserva como maximo 64 IDs (rpg.cpp, Guardar). Los h02_* se
-// regeneran solos en cada guardado; si una ficha larga no los deja caber, se sueltan
-// primero los desbloqueos de maestro mas antiguos (el final de la lista).
+// Mismo tope que LeerHeroe y Guardar en rpg.cpp. Si falta espacio para los registros
+// de ruta, solo se ceden desbloqueos no protegidos, empezando por el final de la lista.
 static void HacerSitioDesbloqueos(size_t nuevos) {
-  constexpr size_t kMax = 64;
+  constexpr size_t kMax = 128;
   size_t quitados = 0;
+  auto protegido = [](const std::string& id) {
+    return id.rfind("h02_", 0) == 0 || id.rfind("r_", 0) == 0 || id.rfind("f_", 0) == 0 || id.rfind("ssj", 0) == 0;
+  };
   for (size_t i = g_desbloqueos.size(); i-- > 0 && g_desbloqueos.size() + nuevos > kMax;)
-    if (g_desbloqueos[i].rfind("h02_", 0) != 0) { g_desbloqueos.erase(g_desbloqueos.begin() + ptrdiff_t(i)); ++quitados; }
+    if (!protegido(g_desbloqueos[i])) { g_desbloqueos.erase(g_desbloqueos.begin() + ptrdiff_t(i)); ++quitados; }
   if (quitados) REXLOG_INFO("dbz3 heroe: ficha llena: {} desbloqueos antiguos liberados para guardar el evento", quitados);
 }
 static void RegistrarBusqueda() {
   g_desbloqueos.erase(std::remove_if(g_desbloqueos.begin(), g_desbloqueos.end(), [](const std::string& s) {
     return s.rfind("h02_v1_", 0) == 0;
   }), g_desbloqueos.end());
-  // El lector conserva como maximo 64 IDs: el registro de autoridad va primero.
+  // El registro de autoridad va primero.
   HacerSitioDesbloqueos(1);
   g_desbloqueos.insert(g_desbloqueos.begin(), g_busqueda.Registro());
 }
@@ -1612,6 +1620,7 @@ void ImportarProgreso(const dbz3::cac::Heroe& h) {
   g_bloqueo_maestro = 0;
   g_nivel_antes = 0;
   CargarRuta();   // rutas (dbz3_heroe_rutas): su estado va aparte, por ficha
+  ColeccionSincronizarConFichas();   // NHER4 (solo si dbz3_heroe_coleccion_vueltas): une premios de las fichas
 }
 void ExportarProgreso(dbz3::cac::Heroe& h) {
   h.xp = g_exp;
@@ -1728,6 +1737,7 @@ int MaestroIndice(int id) {
 //  - cualquier otro luchador (estilo o moveset donante), al vencerlo: rival de una saga ya completada;
 //  - lo que el heroe ya lleva puesto (partidas de antes de s9).
 // DBZ3_TEST_HEROE_TODO=1 lo abre todo (pruebas).
+bool AfinidadRuta(int i);
 int SagaDelMaestro(int m) {
   const auto& s = Sagas();
   for (int i = 0; i < int(s.size()); ++i)
@@ -1742,6 +1752,7 @@ bool Desbloqueado(int id) {
   if (m == 0 || (m > 0 && ((g_maestros >> m) & 1))) return true;
   const auto& s = Sagas();
   if (m > 0) {
+    if (RutasOn() && AfinidadRuta(m)) return true;
     const int k = SagaDelMaestro(m);
     return k < 0 || g_saga >= k;
   }
@@ -1839,6 +1850,7 @@ bool AplicarFicha(const std::string& txt) {
   C::Heroe& h = C::SlotEditable(C::SlotActivo());
   for (C::Hsv& c : h.parte) c = {};
   h.pelo = h.logo = h.scouter = h.cara = h.ropa = 0;
+  h.pelo_fid_cac2 = -1;
   h.pelo_c1 = h.pelo_c2 = h.ojos_c = h.piel_c = {};
   h.texcol.clear();
   LimpiarMateriales17(h);
@@ -1867,7 +1879,8 @@ bool AplicarFicha(const std::string& txt) {
   if (kv.count("piel")) HsvDeTexto(kv["piel"], h.piel_c);
   h.pelo = ent("pelo", 0);
   const int pf = ent("pelo_fid_cac2", -1);
-  if (PeloCac2()) h.pelo_fid_cac2 = cuerpo == 0 && traje == 0 && C::FidPeloCac2(pf) ? pf : -1;
+  if (REXCVAR_GET(dbz3_cac2_pelo) && cuerpo == 0 && traje == 0 && !Xv2PiezasActivas() &&
+      h.pelo == 0 && C::FidPeloCac2(pf)) h.pelo_fid_cac2 = pf;
   if (kv.count("c1")) HsvDeTexto(kv["c1"], h.pelo_c1);
   if (kv.count("c2")) HsvDeTexto(kv["c2"], h.pelo_c2);
   h.logo = ent("logo", 0), h.scouter = ent("scouter", 0), h.ropa = ent("ropa", 0);
@@ -1893,7 +1906,7 @@ bool AplicarFicha(const std::string& txt) {
     size_t p = 0;
     while (p < it->second.size()) {
       const int bit = std::atoi(it->second.c_str() + p);
-      if (bit >= 0 && bit < 63) h.ocultar |= int64_t{1} << bit;
+      if (bit >= 0 && bit < 64) h.ocultar |= static_cast<int64_t>(uint64_t{1} << bit);
       const size_t q = it->second.find(',', p);
       if (q == std::string::npos) break;
       p = q + 1;
@@ -2310,9 +2323,10 @@ M::Reglas Reglas(int estilo, int extra, int traje) {
 void Mision(int saga, int k, int estilo, int cuerpo, int* rival, int* vida, int* escenario) {
   const Lucha& p = LuchaDe(saga, k);
   const int cand[] = {p.rival, p.alt, p.alt2, 42, 43};
-  *rival = p.alt;
+  const bool espejo_real = !ColeccionVueltasOn() || IdPropio() < 0;   // NHER4: con ID propio (63) no hay colision de ID
+  *rival = espejo_real ? p.alt : p.rival;
   for (const int c : cand) {
-    if (c != estilo && c != cuerpo) {
+    if (!espejo_real || (c != estilo && c != cuerpo)) {
       *rival = c;
       break;
     }
@@ -2548,18 +2562,31 @@ static void AplicarDecisionHistoria() {
   if (g_busqueda.decision == 1) g_marcas.insert("deseo_revivir");
 }
 static std::vector<int> g_cruce;            // tramos del cruce del mapa (2+) hasta que se toca uno
+static int g_vuelta_ruta = 1;               // NHER4: numero de vuelta de rutas (1..N)
+static std::set<std::string> g_finales;     // NHER4: finales alcanzados en esta ficha ("torneo", "omega", "juegos_cell")
 static void RegistrarRutaEnFicha() {
   g_desbloqueos.erase(std::remove_if(g_desbloqueos.begin(), g_desbloqueos.end(), [](const std::string& s) {
-    return s.rfind("h02_r1:", 0) == 0 || s.rfind("h02_rm:", 0) == 0 || s.rfind("h02_rc:", 0) == 0;
+    return s.rfind("h02_r1:", 0) == 0 || s.rfind("h02_rm:", 0) == 0 || s.rfind("h02_rc:", 0) == 0 ||
+           s.rfind("h02_lap_", 0) == 0 || s.rfind("h02_fin_", 0) == 0;
   }), g_desbloqueos.end());
   std::vector<std::string> ruta;
   ruta.push_back("h02_r1:" + std::to_string(g_tramo) + ":" + std::to_string(g_etapa_sig) + ":" + std::to_string(g_semilla));
+  if (g_vuelta_ruta > 1) ruta.push_back(rutas::RegistroVuelta(g_vuelta_ruta));
+  for (const auto& f : g_finales) ruta.push_back(rutas::RegistroFinal(f));
   for (const auto& m : g_marcas) ruta.push_back("h02_rm:" + m);
   for (int t : g_cruce) ruta.push_back("h02_rc:" + std::to_string(t));
   HacerSitioDesbloqueos(ruta.size());
   g_desbloqueos.insert(g_desbloqueos.begin(), ruta.begin(), ruta.end());
 }
 static bool RutaDeFicha() {
+  g_vuelta_ruta = 1;
+  g_finales.clear();
+  for (const auto& id : g_desbloqueos) {
+    int lv = 0;
+    if (rutas::LeerRegistroVuelta(id, lv)) g_vuelta_ruta = lv;
+    std::string fn;
+    if (rutas::LeerRegistroFinal(id, fn)) g_finales.insert(fn);
+  }
   for (const auto& id : g_desbloqueos) {
     if (id.rfind("h02_r1:", 0) != 0) continue;
     std::istringstream in(id.substr(7));
@@ -2603,8 +2630,44 @@ static void GuardarRuta() {
   sep = "";
   for (int t : g_cruce) o << sep << t, sep = ", ";
   o << "]\nexp = " << g_exp << "\n";   // si la ficha vuelve con menos experiencia, es una aventura nueva
+  if (g_vuelta_ruta > 1) o << "vuelta = " << g_vuelta_ruta << "\n";
+  if (!g_finales.empty()) {
+    o << "finales = [";
+    sep = "";
+    for (const std::string& f : g_finales) o << sep << '"' << f << '"', sep = ", ";
+    o << "]\n";
+  }
 }
 void GuardarRutaActual() { if (RutasOn()) GuardarRuta(); }
+static void RutaLista();
+bool RutaCompletada() {
+  if (!ColeccionVueltasOn() || !RutasOn()) return false;
+  RutaLista();
+  return rutas::EstaCompletada(g_tramo, g_etapa_sig, g_busqueda);
+}
+bool NuevaVueltaRuta() {
+  if (!RutaCompletada()) return false;
+  const char* e = std::getenv("DBZ3_TEST_HEROE_SEMILLA");
+  const uint32_t nueva_sem = e ? uint32_t(std::strtoul(e, nullptr, 10)) : uint32_t(std::random_device{}());
+  if (!rutas::IniciarNuevaVuelta(TablaTramos(), g_tramo, g_etapa_sig, g_semilla, g_busqueda, g_esferas,
+                                 g_shenron_abierto, g_marcas, g_cruce, g_vuelta_ruta, nueva_sem))
+    return false;
+  REXLOG_INFO("dbz3 heroe: NHER4 nueva vuelta {} iniciada (saga {}, semilla {}, tramo {}, vida_extra +{})",
+              g_vuelta_ruta, g_saga, g_semilla, g_tramo, rutas::VidaExtraVuelta(g_vuelta_ruta));
+  return true;
+}
+int VueltaRuta() { return std::max(1, g_vuelta_ruta); }
+int EtapaRuta() {
+  if (!RutasOn()) return -1;
+  RutaLista();
+  if (rutas::EstaCompletada(g_tramo, g_etapa_sig, g_busqueda)) return 6;
+  if (g_tramo >= 0 && g_tramo < NumTramos()) return std::clamp(TramoDe(g_tramo).ruta.etapa, 0, 5);
+  if (g_etapa_sig >= 0) return std::clamp(g_etapa_sig, 0, 6);
+  return 0;
+}
+int VidaExtraDu() {
+  return (ColeccionVueltasOn() && RutasOn()) ? rutas::VidaExtraVuelta(VueltaRuta()) : 0;
+}
 // R23 HER-08: el generador asegura un planeta por etapa (heroe_sagas_a_du.rutas_extra); sirve el de cualquier tramo de ella
 int PlanetaTramo(int t) {   // R23 HER-13: planeta del mapa de un tramo (0 Tierra, 1 Namek); -1 sin rutas o fuera de rango
   return RutasOn() && t >= 0 && t < NumTramos() ? TramoDe(t).planeta : -1;
@@ -2683,6 +2746,10 @@ static void CargarRuta() {
           if (auto x = m.value<std::string>()) g_marcas.insert(*x);
       if (const toml::array* a = t["cruce"].as_array())
         for (const auto& m : *a) g_cruce.push_back(int(m.value_or(int64_t(-1))));
+      g_vuelta_ruta = std::clamp(int(t["vuelta"].value_or(int64_t(1))), 1, 999);
+      if (const toml::array* a = t["finales"].as_array())
+        for (const auto& m : *a)
+          if (auto x = m.value<std::string>(); x && col_io::IdValido(*x)) g_finales.insert(*x);
       AplicarDecisionHistoria();
       REXLOG_INFO("dbz3 heroe: ruta de la ficha {}: tramo {}, etapa pendiente {}, semilla {}, marcas {}", FichaNumero(), g_tramo,
                   g_etapa_sig, g_semilla, TextoMarcas());
@@ -2888,7 +2955,8 @@ void DuVictoria(int saga, int k) {
   const SagaDef& tramo = TramoDe(saga);
   const int etapa = tramo.ruta.etapa;
   const bool cierre = k >= 0 && k + 1 == int(tramo.combates.size());
-  if (rutas_on && cierre && ((etapa >= 0 && etapa < 5 && (g_busqueda.cobrados & (1 << etapa))) || (etapa == 5 && g_saga >= 6))) {
+  const bool fin_ya_cerrado = ColeccionVueltasOn() ? (g_tramo < 0) : (g_saga >= 6);
+  if (rutas_on && cierre && ((etapa >= 0 && etapa < 5 && (g_busqueda.cobrados & (1 << etapa))) || (etapa == 5 && fin_ya_cerrado))) {
     REXLOG_INFO("dbz3 heroe: H02 cierre repetido de etapa {} ignorado", etapa);
     return;
   }
@@ -2945,7 +3013,16 @@ void DuVictoria(int saga, int k) {
               g_maestros, g_saga);
   // La ultima variante puede ir directamente a los creditos, sin otra intro que resuelva la ruta.
   // Confirmar el cierre junto con la victoria y su premio en la misma escritura de la ficha.
-  if (rutas_on && ultimo && etapa == 5) ElegirTramo(g_etapa_sig);
+  if (rutas_on && ultimo && etapa == 5) {
+    if (ColeccionVueltasOn()) {
+      if (const char* fin = rutas::NombreFinalDeTramo(saga); fin && *fin) {
+        g_finales.insert(fin);
+        RegistrarFinalColeccion(fin);
+        REXLOG_INFO("dbz3 heroe: NHER4 final archivado '{}' (vuelta {}, total ficha {})", fin, g_vuelta_ruta, g_finales.size());
+      }
+    }
+    ElegirTramo(g_etapa_sig);
+  }
 }
 
 // studies 8 H4 (heroe_api.h): datos de cada maestro para la pantalla Select Master.
@@ -3100,8 +3177,8 @@ bool PuedeCambiarA(int i) {
 bool ElegirMaestro(int i) {
   if (!PuedeCambiarA(i)) {
     g_bloqueo_maestro = 1;
-    REXLOG_INFO("dbz3 heroe: maestro {} ({}) bloqueado: {}% con el actual (hace falta {}%)", i, M::Nombre(kEstilos[i].id),
-                MaestroActual() >= 0 ? g_entreno[MaestroActual()] : 0, kEntrenoMinimo);
+    if (i >= 0 && i < kNumMaestros)
+      REXLOG_INFO("dbz3 heroe: maestro {} ({}) bloqueado por progreso o afinidad", i, M::Nombre(kEstilos[i].id));
     return false;
   }
   g_bloqueo_maestro = 0;

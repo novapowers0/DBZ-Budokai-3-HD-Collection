@@ -550,7 +550,12 @@ void DibujarCreadorV2(ImDrawList* dl, const S::Area& a, float t) {
     }
   }
   // ranura, pequena arriba a la derecha (maqueta: "Ranura 1 de 1"; el nombre va en la placa)
-  const std::string ranura = std::string(T::T("Ranura ", "Slot ")) + Num(C::SlotActivo() + 1) + T::T(" de ", " of ") + Num(C::NumSlots());
+  std::string ranura = std::string(T::T("Ranura ", "Slot ")) + Num(C::SlotActivo() + 1) + T::T(" de ", " of ") + Num(C::NumSlots());
+  if (g_historial_creador) {
+    if (g_historial_creador->HayCambiosSinGuardar(Ficha(), H::Traje())) ranura += '*';
+    ranura += " · " + std::string(T::T("Deshacer", "Undo")) + ' ' + Num(g_historial_creador->PendientesDeshacer()) +
+              '/' + Num(C::HistorialCreador::kMaxEstados);
+  }
   v2::Pastilla(dl, q, v2::kPanX1, 22, ranura);
   const bool lista = !g_nom_abierto && !g_imp_abierto && g_panel < 0;
   {   // 30 px mas arriba: la peana queda encima de la placa (que con su nota empieza en y 800)
@@ -626,6 +631,7 @@ void DibujarCreadorV2(ImDrawList* dl, const S::Area& a, float t) {
     else if (!Xv2()) otros.push_back({"BACK", g_edit ? T::T("Crear", "Create") : T::T("Editar pelo", "Edit hair")});
     otros.push_back({"START", T::T("Reiniciar", "Reset")});
     if (REXCVAR_GET(dbz3_heroe_importar)) otros.push_back({"LS", T::T("Importar", "Import")});
+    else if (g_historial_creador) otros.push_back({"LS", T::T("Deshacer", "Undo")});
     v2::BarraAyuda(dl, q, otros, 1585, 797);
   }
 }

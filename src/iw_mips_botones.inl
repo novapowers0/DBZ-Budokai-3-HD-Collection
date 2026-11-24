@@ -92,7 +92,7 @@ REXCVAR_DEFINE_BOOL(dbz3_iw_botones_ui_anim_d4, false, "DBZ3/IW",
 // bits 2/4 al acabar la animacion 0x0C (retorno Ui_ClearObjectFlags 0x351020) y la marca +0x1F8 se ponia al salir de la
 // caja, no a los 11 cuadros: igual por casualidad en dificultad 2 (dorado 0 DIF), distinto con iconos lentos (dificultad 0:
 // 132 campos de 4499; con esto 2). Banco: E:/DBZ3HD_trabajo/iwfin/cmp7db.py --ui.
-REXCVAR_DEFINE_BOOL(dbz3_iw_botones_ui_anim, false, "DBZ3/IW",
+REXCVAR_DEFINE_BOOL(dbz3_iw_botones_ui_anim, true, "DBZ3/IW",
                     "IW 0x7DB: relojes y fin de animacion de los objetos de la UI como el original (UI_UpdateFrame); corrige las dificultades distintas de la 2");
 REXCVAR_DEFINE_BOOL(dbz3_iw_7db_original, true, "DBZ3/IW",
                     "IW 0x7DB (NB013): carriles, marca, choque, juicio, vida y rango con la logica original del ELF (en pruebas; requiere dbz3_iw_logica_original)");
@@ -262,7 +262,8 @@ bool CampoBot(const DirDB& d, const char* nombre, const nb013::Entrada& in, nb01
     const uint16_t nuevo = in.boton < 0 ? 0 : uint16_t(1u << in.boton);
     e.W16(kFlancoDA, uint16_t(in.flanco | nuevo));
     e.W16(kFlancoDA - 6, uint16_t(in.mantenido | nuevo));   // 0x4ADECC
-    e.W16(kFlancoDA - 4, nuevo);                            // 0x4ADECE
+    e.W16(kFlancoDA - 4, REXCVAR_GET(dbz3_iw_qte_flancos_completos)
+                           ? uint16_t((in.flanco & 0xFFF0u) | nuevo) : nuevo);
     // PUL-IW-FX-03: el machaque del Masenko (NB006 Mg_PollPlayerButton EU 0x378F80) lee QTE_GetPressedButton(1,1,0) = Q+8,
     // que DragonMissionQTEInputs 0x2EE790 saca de pad +0x6E (0x4ADF2E): las direcciones NUEVAS de la palanca DERECHA
     // (FUN_0014baa0: +0x6C apretadas, +0x6E nuevas). Sin esto Q+8 era siempre -1: el especial no se cargaba nunca.
@@ -500,7 +501,8 @@ bool CampoD5(const nb007::Entrada& in, nb007::Salida& out, uint32_t& semilla) {
     const uint16_t nuevo = boton < 0 ? 0 : uint16_t(1u << boton);
     e.W16(kFlancoDA, uint16_t(flanco | nuevo));
     e.W16(kFlancoDA - 6, uint16_t(mantenido | nuevo));
-    e.W16(kFlancoDA - 4, nuevo);
+    e.W16(kFlancoDA - 4, REXCVAR_GET(dbz3_iw_qte_flancos_completos)
+                           ? uint16_t((flanco & 0xFFF0u) | nuevo) : nuevo);
   }
   if (in.pose >= 0) {   // la cadena del fallo (+0x82: 6 -> 7 -> 3) y el cierre de ronda esperan a la pose del actor
     const uint32_t a = kMD5 + 0x800;

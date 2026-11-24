@@ -6,6 +6,22 @@ are summarized at the end; the full history (in Spanish) is in
 
 Downloads: [latest release](../../releases/latest).
 
+## v1.5.7.1 — candidate (not published)
+
+### Español
+
+- **Dragon World (EXPERIMENTAL):** tarjeta «¡Batalla!» como el original PAL; fichas en sus huecos PAL; capas originales del tablero; Popo deja la ficha en su casilla de llegada; luz de Shenron con la transparencia PAL.
+- **Infinite World (EXPERIMENTAL):** derrota correcta si Piccolo te alcanza (7DD); rangos originales en 7D5; Stop Cell pausa con energía baja; tiempos originales del mapa de Dragon Mission; más lógica original en el Camino de la Serpiente, rondas de recogida, aros, vuelo, interfaz de botones, tinte de golpe y rango de misión.
+- **Héroe y creador (BETA):** deshacer/rehacer hasta 32 cambios; recetas con capas de pelo íntegras; fichas con 128 desbloqueos y protección del progreso; la Colección al 100 % ya se puede completar; «Desbloquear todo» conserva la Colección con copia `.bak`.
+- **Paquete:** vuelve a incluir `mods_nativos` («Desbloquear todo»).
+
+### English
+
+- **Dragon World (EXPERIMENTAL):** "Battle!" card as in the PAL original; pieces in their PAL tile slots; original board layers; Popo leaves the piece on its landing tile; Shenron's light keeps the PAL transparency.
+- **Infinite World (EXPERIMENTAL):** correct defeat when Piccolo catches you (7DD); original 7D5 ranks; Stop Cell pauses on low energy; original Dragon Mission map timing; more original logic in Snake Way, collection rounds, rings, flight, button UI, hit tint and mission rank.
+- **Hero and creator (BETA):** undo/redo up to 32 edits; outfit recipes keep hair layers intact; 128 unlock entries with progress protection; the 100% Collection can now be completed; "Unlock everything" keeps the Collection with a `.bak` copy.
+- **Package:** includes `mods_nativos` again ("Unlock everything").
+
 ## v1.5.7
 
 ### Español — 24/11/2026

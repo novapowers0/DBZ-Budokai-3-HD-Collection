@@ -140,6 +140,9 @@ bool EsferasDevueltas();
 bool ConsumirEsferas();
 bool ConcederDeseo();
 bool Rutas();
+bool ColeccionVueltasOn();
+bool RutaCompletada();
+bool NuevaVueltaRuta();
 bool EsferaMapaRuta(int evento);
 bool ConfirmarDeseoHistoria(bool revivir);
 void GuardarRutaActual();
@@ -576,7 +579,7 @@ bool Guardar() {   // con g_mu; el resultado confirma la ficha (los otros ficher
   if (g_cac_ok) {   // la ficha activa de cac.toml = el heroe de la partida
     H::Exportar(dbz3::cac::SlotEditable(dbz3::cac::SlotActivo()));
     const auto& ficha = dbz3::cac::Slot(dbz3::cac::SlotActivo());
-    if (ficha.desbloqueos.size() > 64 || std::any_of(ficha.desbloqueos.begin(), ficha.desbloqueos.end(),
+    if (ficha.desbloqueos.size() > 128 || std::any_of(ficha.desbloqueos.begin(), ficha.desbloqueos.end(),
         [](const std::string& id) { return id.size() >= 48; })) {
       REXLOG_WARN("dbz3 heroe: ficha sin espacio para confirmar el evento; se conserva el guardado anterior");
       return false;
@@ -2879,11 +2882,25 @@ void Dibujar(ImDrawList* dl, const S::Area& a, float t, uint16_t pulsado) {
       if (r == dbz3::heroe_ui::Accion::kNada) return;
       g_vista = kHeroeP;
       if (r == dbz3::heroe_ui::Accion::kConfirmar) {
-        Guardar();
-        // C3: el Heroe es exclusivo de su modo: con su historia instalada entra en el mapa de Dragon Universe (casilla 36)
-        // sin pasar por la rueda de personajes de DU; si no, las misiones de siempre
-        // DU tiene un cierre finito (DuVictoria no envuelve la saga); las vueltas del mapa se juegan como misiones.
-        if (H::Saga() < H::SagasTotal() && H::DuDisponible() && dbz3::hub::RequestDu(H::CasillaDu())) {
+        if (H::ColeccionVueltasOn() && H::RutaCompletada() && H::DuDisponible()) {
+          auto antes = dbz3::cac::Slot(dbz3::cac::SlotActivo());
+          H::Exportar(antes);
+          if (H::NuevaVueltaRuta()) {
+            if (Guardar()) {
+              H::GuardarRutaActual();
+            } else {
+              dbz3::cac::SlotEditable(dbz3::cac::SlotActivo()) = antes;
+              H::ImportarProgreso(antes);
+              REXLOG_WARN("dbz3 rpg: nueva vuelta revertida porque no se pudo guardar cac.toml");
+              return;
+            }
+          }
+        } else {
+          Guardar();
+        }
+        // C3/NHER4: con dbz3_heroe_coleccion_vueltas ON, NuevaVueltaRuta() reabre etapa 0 tras etapa 5; OFF mantiene la regla previa.
+        const bool entrar_du = (H::ColeccionVueltasOn() && H::Rutas()) ? (H::Tramo() >= 0) : (H::Saga() < H::SagasTotal());
+        if (entrar_du && H::DuDisponible() && dbz3::hub::RequestDu(H::CasillaDu())) {
           REXLOG_INFO("dbz3 rpg: el Heroe entra en el mapa de Dragon Universe");
           g_vista = kCerrada;
           return;

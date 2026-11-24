@@ -67,6 +67,8 @@ def _ficha_a_dict(txt):
         k = k.strip()
         if not k:
             continue
+        if k not in ORDEN and k not in CADENAS:
+            raise ErrorReceta("Clave de receta desconocida: «%s»." % k)
         try:
             if k == "partes":
                 d[k] = [[int(x) for x in p.split(",")] for p in v.split("|")]
@@ -99,6 +101,18 @@ def _ficha_a_dict(txt):
             raise ErrorReceta("«%s» no identifica un modelo y una parte válidos." % k)
         if k in TERNAS and len(d[k]) != 3 or k == "partes" and any(len(p) != 3 for p in d[k]):
             raise ErrorReceta("«%s» requiere ternas de enteros." % k)
+        colores = d[k] if k == "partes" else [d[k]] if k in TERNAS else ()
+        if any(not (0 <= h <= 360 and -100 <= s <= 100 and -100 <= l <= 100) for h, s, l in colores):
+            raise ErrorReceta("«%s» tiene un color HSV fuera de rango." % k)
+        if k.endswith("_quitar") and any(not 0 <= x < 47 for x in d[k]):
+            raise ErrorReceta("«%s» contiene índices de mechón fuera de 0..46." % k)
+        if k == "ocultar" and any(not 0 <= x < 64 for x in d[k]):
+            raise ErrorReceta("«ocultar» contiene índices fuera de 0..63.")
+        if k.startswith("estallido") and d[k] and not re.fullmatch(r"#[0-9A-Fa-f]{6}", d[k]):
+            raise ErrorReceta("«%s» requiere un color hexadecimal #RRGGBB." % k)
+        limites = {"foto_pose": (0, 2), "foto_yaw": (-40, 40), "pelo": (0, 10), "rostro": (0, 13)}
+        if k in limites and not limites[k][0] <= d[k] <= limites[k][1]:
+            raise ErrorReceta("«%s» está fuera de rango." % k)
     return d
 
 
@@ -135,7 +149,7 @@ def _dict_a_ficha(d):
             raise ErrorReceta("«%s» requiere una lista de enteros." % k)
         if k not in CADENAS and k not in TERNAS and k not in CAPAS and k not in ("partes", "xv2", "ocultar") and not k.endswith("_quitar") and type(v) is not int:
             raise ErrorReceta("«%s» requiere un entero." % k)
-        if k not in ORDEN and k not in CADENAS and type(v) is not int:
+        if k not in ORDEN and k not in CADENAS:
             raise ErrorReceta("Clave de receta desconocida: «%s»." % k)
         try:
             campos.append("%s=%s" % (k, val(k, v)))

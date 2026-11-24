@@ -185,6 +185,12 @@ if ((Test-Path -LiteralPath $rc) -and (Test-Path -LiteralPath $buildh)) {
     $errors += 'Falta version.rc o dbz3_build.h para verificar el sello fuente'
 }
 
+# --- partida al 100% de Mods nativos (issue #74: la 1.5.7 salio sin ella) ---
+foreach ($f in "data.bin", "DBZ3.header") {
+    if (Test-Path -LiteralPath (Join-Path $Stage "mods_nativos\partida_100\$f")) { Write-Output "partida_100 OK: $f" }
+    else { $errors += "falta mods_nativos\partida_100\$f (Desbloquear todo no funcionaria)" }
+}
+
 # --- mods/: solo README (vanilla) ----------------------------------------
 $modsDir = Join-Path $Stage "mods"
 if (Test-Path -LiteralPath $modsDir) {

@@ -70,6 +70,7 @@
 //   u32 = [1, 2]            # o u16 = [...] / u8 = [...]
 
 #include "roster_ext.h"
+#include "heroe_rutas.h"
 #include "lim3_limits.h"
 #include "net/netplay.h"
 #include "ids_registry.h"
@@ -2049,7 +2050,13 @@ DBZ3_HOOK(sub_82083618, dbz3eu_sub_82083618) {
   orig(ctx, base);
 }
 
-namespace dbz3::heroe { uint64_t LuchadoresPremiados(); }   // heroe_recompensas.inl (R23 HER-06)
+namespace dbz3::heroe {
+uint64_t LuchadoresPremiados();   // heroe_recompensas.inl (R23 HER-06)
+bool ColeccionVueltasOn();        // NHER4 (OFF de serie)
+bool Rutas();
+int VueltaRuta();
+int VidaExtraDu();
+}
 // Select: builds the per-mode availability state (r3); +56 = u64 mask of
 // unlocked character IDs. Roster characters are always available.
 DBZ3_HOOK(sub_8217A1C0, dbz3eu_sub_8217A178) {
@@ -2084,9 +2091,23 @@ int DuFighter(uint8_t* base);   // campaigns.cpp: el luchador de una campana (el
 }
 DBZ3_HOOK(sub_820FE668, dbz3eu_sub_820FE768) {
   const uint32_t sel = ctx.r3.u32;
-  if (const int f = sel ? dbz3::campaigns::DuFighter(base) : -1; f >= 0 && int(REX_LOAD_U16(sel + 32)) != f) {   // C3: el Heroe en DU
-    REXLOG_INFO("dbz3 roster: combate de historia de una campana: jugador 1 = id {} (la seleccion decia {})", f, REX_LOAD_U16(sel + 32));
-    REX_STORE_U16(sel + 32, uint16_t(f));
+  const int du_f = sel ? dbz3::campaigns::DuFighter(base) : -1;
+  if (du_f >= 0 && int(REX_LOAD_U16(sel + 32)) != du_f) {   // C3: el Heroe en DU
+    REXLOG_INFO("dbz3 roster: combate de historia de una campana: jugador 1 = id {} (la seleccion decia {})", du_f, REX_LOAD_U16(sel + 32));
+    REX_STORE_U16(sel + 32, uint16_t(du_f));
+  }
+  if (du_f >= 0 && dbz3::heroe::ColeccionVueltasOn() && dbz3::heroe::Rutas()) {
+    if (const int extra = dbz3::heroe::VidaExtraDu(); extra > 0) {   // NHER4: +500 HP rival por vuelta extra en DU (sel+96 +36/+40)
+      const uint32_t p2 = sel + 96;
+      uint32_t hp_init = REX_LOAD_U32(p2 + 36);
+      uint32_t hp_max = REX_LOAD_U32(p2 + 40);
+      const uint32_t hp_cap = REX_LOAD_U32(p2 + 48);
+      if (dbz3::heroe::rutas::AplicarVidaExtraDu(hp_init, hp_max, hp_cap, extra)) {
+        REX_STORE_U32(p2 + 36, hp_init);
+        REX_STORE_U32(p2 + 40, hp_max);
+        REXLOG_INFO("dbz3 heroe: NHER4 vuelta {}: vida rival DU +{} -> {}/{}", dbz3::heroe::VueltaRuta(), extra, hp_init, hp_max);
+      }
+    }
   }
   // Fase 2: BeforeBattleSetup se ejecuta tras recuperar PickedCell.
   for (uint32_t k = 0; sel && k < 2; ++k) {     // casilla nueva que la lista del rival deshizo

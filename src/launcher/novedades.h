@@ -20,6 +20,21 @@ struct NewsBlock {
   int count;
 };
 
+inline constexpr NewsItem kNews1571[] = {
+    {"Dragon World (EXPERIMENTAL)", "Dragon World (EXPERIMENTAL)",
+     "El texto de «¡Batalla!» se mueve como en el original PAL y la columna de Shenron conserva su transparencia.",
+     "The Battle! text moves as in the PAL original, and Shenron's pillar keeps its transparency."},
+    {"Infinite World (EXPERIMENTAL)", "Infinite World (EXPERIMENTAL)",
+     "En la ruta de respaldo, perder contra Piccolo en la persecución cuenta como derrota y el minijuego de diez rondas usa los rangos del original. En Stop Cell, el reloj continuo se pausa durante la espera por energía baja con la mira de respaldo.",
+     "On the fallback routes, being caught by Piccolo counts as a defeat and the ten-round minigame uses the original rank cutoffs. In Stop Cell, the continuous timer pauses during the low-energy wait with fallback aiming."},
+    {"Creador de personajes (BETA)", "Character creator (BETA)",
+     "El creador renovado de Budokai 3 permite deshacer hasta 32 cambios de aspecto en la sesión de edición.",
+     "The updated Budokai 3 creator lets you undo up to 32 appearance edits per editing session."},
+    {"Héroe (BETA)", "Hero Mode (BETA)",
+     "Cada ficha admite hasta 128 desbloqueos. «Desbloquear todo» conserva los datos de la Colección y guarda una copia del archivo original.",
+     "Each Hero save holds up to 128 unlock entries. Unlock everything keeps the Collection data and backs up the original file."},
+};
+
 inline constexpr NewsItem kNews157[] = {
     {"Dos modos nuevos (BETA)", "Two new modes (BETA)",
      "Dragon Budokai Survivors: sobrevive a las hordas con 8 luchadores y 6 escenarios, cartas de mejora y jefes en dos fases. Dragon Rogue: ocho caminos (Torre, El Abismo, Kumite...) con cartas, transformaciones y reto diario. Los dos están en el Dragon HUB.",
@@ -428,6 +443,7 @@ inline constexpr NewsItem kNews145[] = {
 
 // Del mas nuevo al mas antiguo.
 inline constexpr NewsBlock kNewsBlocks[] = {
+    {"1.5.7.1", kNews1571, int(sizeof(kNews1571) / sizeof(kNews1571[0]))},
     {"1.5.7", kNews157, int(sizeof(kNews157) / sizeof(kNews157[0]))},
     {"1.5.6.2", kNews1562, int(sizeof(kNews1562) / sizeof(kNews1562[0]))},
     {"1.5.6.1", kNews1561, int(sizeof(kNews1561) / sizeof(kNews1561[0]))},

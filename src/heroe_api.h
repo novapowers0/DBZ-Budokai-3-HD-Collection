@@ -140,6 +140,12 @@ bool ConcederDeseo();         // confirma la fila "cambiar raza y cuerpo" y apun
 bool EsferaMapaRuta(int evento);   // H02: solo las dos marcas de reunion (5/6), una vez por ficha
 bool EsferaRutaPendiente(int evento);   // productor del mapa: oculta las identidades ya cobradas
 bool Rutas();
+bool RutaCompletada();             // NHER4 (OFF de serie): etapa 5 terminada, lista para Nueva vuelta de rutas
+bool NuevaVueltaRuta();            // NHER4: reinicia solo ruta/esferas; conserva nivel, PH, maestros, premios y finales
+int VueltaRuta();                  // NHER4: numero de vuelta actual en DU+Rutas (1..N)
+int EtapaRuta();                   // NHER4: etapa actual de la ruta (0..5, 6 si completada, -1 sin rutas)
+int VidaExtraDu();                 // NHER4: +500 HP por vuelta extra en combates de DU (0 si OFF o vuelta 1)
+std::vector<std::string> FinalesCompletados();  // NHER4: finales alcanzados ("torneo", "omega", "juegos_cell")
 int PlanetaEtapaPendiente();       // R23: planeta (0 Tierra, 1 Namek) de la etapa que sigue; -1 sin rutas o sin etapa
 int PlanetaTramo(int t);           // R23 HER-13: planeta del mapa del tramo t (0 Tierra, 1 Namek); -1 sin rutas
 bool DeseoHistoriaPendiente();     // siete reunidas, etapa 5 pendiente y sin decision
@@ -201,9 +207,11 @@ struct InfoPremio {
   int capsula = 0, cara = -1;                // tecnica: capsula #SKC; cara: luchador de la cabeza nativa
   bool conseguido = false, nuevo = false;    // nuevo = conseguido y aun sin mirar en la Coleccion
   bool repetido = false;                     // solo en PremiosAviso: ya lo tenias (dio Zenie)
+  bool en_ficha = false;                     // NHER4: true si lo gano esta ficha (false = heredado de cuenta/todo)
   int escenario = -1;                        // entrada AFS estable; no indice del selector
 };
 bool RecompensasActivas();
+bool ColeccionVueltasOn();                   // NHER4 (OFF de serie): coleccion compartida, vueltas, finales y pestanas 0/3
 uint64_t LuchadoresPremiados();                   // R23 HER-06: bits de los luchadores premiados (selector)
 bool EscenarioPremiadoDisponible(int entrada);   // H06: OFF y entradas no declaradas siempre disponibles
 std::vector<InfoPremio> Premios();       // la tabla entera con su estado
@@ -211,5 +219,14 @@ std::vector<InfoPremio> PremiosAviso();  // lo ganado en el ultimo resultado (va
 int ColeccionPorcentaje();               // 0..100
 void ColeccionVisto(const std::string& id);   // quita el "NUEVO" de uno
 void ColeccionTodoVisto();                    // y de todos (al salir de la pantalla)
+// NHER4 (dbz3_heroe_coleccion_vueltas): entradas nativas B3 para pestanas 0 (Trajes y partes) y 3 (Capsulas).
+// El estado conseguido coincide 1:1 con lo equipable en Estilos(), Desbloqueos(), Reglas() y TecnicasV2().
+struct InfoExtraCol {
+  std::string id, nombre, condicion;
+  int cap = 0, cara = -1;
+  bool conseguido = false;
+};
+std::vector<InfoExtraCol> CapsulasColeccion();   // 9 capsulas nativas (6 de maestro + 3 de esquiva; 445 sin duplicar)
+std::vector<InfoExtraCol> TrajesColeccion();     // 9 entradas nativas (6 estilos de maestro + 3 auras/ki alcanzables)
 
 }  // namespace dbz3::heroe

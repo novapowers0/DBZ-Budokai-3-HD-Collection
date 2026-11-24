@@ -74,8 +74,7 @@ void DibujarMaestrosV2(ImDrawList* dl, const S::Area& a, float t, int cur, int a
   v2::Progreso(dl, q, px0 + 250, py0 + 190, px1 - 60, m.entreno / 100.0f, frac60, m.entrenado, 24);
   // maqueta 05: la nota de la regla del 60 % bajo la barra
   v2::Texto(dl, q, px0 + 250, py0 + 226, v2::kLetraMin,
-            Num(H::EntrenoMinimo()) + (m.entreno >= H::EntrenoMinimo() ? T::T(" %: ya puedes cambiar de maestro", "%: you can switch master now")
-                                                                       : T::T(" %: a partir de ahí puedes cambiar de maestro", "%: from there you can switch master")),
+            Num(H::EntrenoMinimo()) + T::T("% abres su técnica clave.", "% you unlock their key technique."),
             0, 0, false, true, px1 - px0 - 310);
   dl->AddLine(q.At(px0 + 30, py0 + 250), q.At(px1 - 30, py0 + 250), IM_COL32(232, 150, 40, 255), 2 * q.s);
   // modificadores (los de heroe.cpp kEstilos) sobre placas, y tecnicas con su capsula

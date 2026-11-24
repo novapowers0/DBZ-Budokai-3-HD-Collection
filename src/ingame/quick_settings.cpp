@@ -497,20 +497,6 @@ void ConfigureQuickMenu(rex::ui::QuickMenuConfig& menu, std::function<void()> op
              "ganado. Apagado deja lo anterior.",
              "B2 Shenron: wishes that need a capsule in the original open with the capsules you have won. Off keeps "
              "the previous behaviour.")));
-    // B2-P05 (11/11): alfombra de Mr. Popo con el destino ocupado (FUN_00273210). Apagado de serie.
-    modes.items.push_back(Toggle(
-        Tagged(T::T("Alfombra de Popo B2", "B2 Popo carpet"), kExperimental), "dbz3_b2_alfombra_fiel",
-        T::T("Tablero de B2: si la casilla a la que lleva la alfombra esta ocupada, vas a la libre mas cercana, como "
-             "el original. Apagado deja lo anterior.",
-             "B2 board: if the carpet's target point is taken, you go to the nearest free one, as in the original. "
-             "Off keeps the previous behaviour.")));
-    // B2-P05 (11/11): orden del original tras un combate del tablero (FUN_002360B0). Apagado de serie.
-    modes.items.push_back(Toggle(
-        Tagged(T::T("Tras el combate B2", "B2 after-fight order"), kExperimental), "dbz3_b2_poscombate_fiel",
-        T::T("Tablero de B2: tras un combate, primero el guion del resultado y despues la reaccion del perdedor, como "
-             "el original. Apagado deja lo anterior.",
-             "B2 board: after a fight, the result script runs first and then the loser reacts, as in the original. "
-             "Off keeps the previous behaviour.")));
     // F8 (noche 10/11): encuadre de la rueda y aro de las caras medidos en los datos de B2 (cvar en pasarela_nave_rueda.inl).
     modes.items.push_back(Toggle(
         Tagged(T::T("Rueda de la nave medida", "Measured ship wheel"), kBeta), "dbz3_nave_rueda_datos",

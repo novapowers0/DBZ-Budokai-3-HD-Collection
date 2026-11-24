@@ -245,6 +245,41 @@ bool SaveFailure(const fs::path& backup, std::error_code ec, std::string& messag
   REXLOG_ERROR("dbz3: save_100 failed: {}", message);
   return false;
 }
+
+// Save100 already unlocks the Hero collection. Preserve all other TOML values,
+// including multiline lists and fields added by newer versions or mods.
+void UnlockHeroCollection(const fs::path& backup) {
+  const auto col = settings::UserDataRoot() / "coleccion.toml";
+  std::error_code ec;
+  const bool exists = fs::exists(col, ec);
+  if (!ec) {
+    try {
+      toml::table data;
+      if (exists) {
+        std::ifstream in(col, std::ios::binary);
+        if (!in) ec = std::make_error_code(std::errc::io_error);
+        else data = toml::parse(in, std::string_view{"coleccion.toml"});
+      } else {
+        data.insert("vistos", toml::array{});
+      }
+      if (!ec) {
+        data.insert_or_assign("todo", true);
+        // Stage on the same volume in the unique Save100 backup directory.
+        const auto staged = backup / "coleccion_nueva.toml";
+        std::ofstream out(staged, std::ios::binary);
+        out << data << '\n';
+        out.close();
+        if (!out) ec = std::make_error_code(std::errc::io_error);
+        if (!ec && (!exists || CopyAtomic(col, col.parent_path() / "coleccion.toml.bak", ec)))
+          ReplaceSaveFile(staged, col, ec);
+      }
+    } catch (const toml::parse_error& e) {
+      REXLOG_WARN("dbz3: save_100: coleccion.toml no se pudo actualizar ({})", e.what());
+      return;
+    }
+  }
+  if (ec) REXLOG_WARN("dbz3: save_100: coleccion.toml no se pudo actualizar ({})", ec.message());
+}
 }  // namespace
 
 bool ApplySave100(std::string& message, bool in_game) {
@@ -289,18 +324,7 @@ bool ApplySave100(std::string& message, bool in_game) {
   }
   message = std::string(i18n::T("Todo desbloqueado. Héroe y Tag Team conservados. Copia de seguridad: ",
                                 "Everything unlocked. Hero and Tag Team preserved. Backup: ")) + rex::path_to_utf8(backup);
-  {   // HEROE-REC: "Desbloquear todo" marca tambien la Coleccion del Heroe entera (coleccion.toml global; las fichas no se tocan)
-    std::error_code e2;
-    const fs::path col = settings::UserDataRoot() / "coleccion.toml";
-    std::string vistos = "[]";
-    if (std::ifstream in(col); in) {
-      std::string l;
-      while (std::getline(in, l))
-        if (l.rfind("vistos", 0) == 0) vistos = l.substr(l.find('=') + 1);
-    }
-    fs::create_directories(col.parent_path(), e2);
-    std::ofstream(col, std::ios::binary | std::ios::trunc) << "# Coleccion del Modo Heroe (global): lo visto y el desbloqueo total.\ntodo = true\nvistos =" << vistos << "\n";
-  }
+  UnlockHeroCollection(backup);
   REXLOG_INFO("dbz3: save_100 applied: {}", rex::path_to_utf8(backup));
   return true;
 }
