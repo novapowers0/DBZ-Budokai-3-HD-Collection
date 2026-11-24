@@ -2250,7 +2250,7 @@ std::pair<std::filesystem::path, std::string> FuenteTk() {
   const auto tam = fs::file_size(archivo, e1);
   const auto fecha = fs::last_write_time(archivo, e2);
   return {fuente, "andar-iw-v1\nIW\n" + archivo.string() + "\n" +
-      (e1 ? "?" : std::to_string(tam)) + "\n" + (e2 ? "?" : std::to_string(fecha.time_since_epoch().count()))};
+      (e1 ? "?" : std::to_string(tam)) + "\n" + (e2 ? "?" : std::to_string(static_cast<long long>(fecha.time_since_epoch().count())))};
 }
 // hilo de dibujo: 0 = no hay (falta algo de B3 HD), 1 = preparandose, 2 = listo (`sk`, `tk`)
 // `fid_pedido` >= 0: el modelo exacto que dice el catalogo de Tactics; la tabla del juego no siempre lo da (Vegeta forma 4 trae el modelo 0 -> 416)
